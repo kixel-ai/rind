@@ -80,4 +80,13 @@ erases, so the static is the array `p256Tabulates` takes. -/
 theorem tabulated : p256Tabulates p256G mid.p256.precomp.CURVE_GENERATOR_PRECOMP :=
   tabulates_of_ok (by decide +kernel)
 
+/-- `generator_table` returns the static. Aeneas extracts `AlignedTable` as this
+array and erases `.0`. `step` rewrites the call to this static before
+`p256_scalarmulbase` sees it, so `tabulated` applies directly. -/
+@[simp, step_simps]
+theorem generator_table_eq :
+    mid.p256.generator_table = Result.ok mid.p256.precomp.CURVE_GENERATOR_PRECOMP := by
+  unfold mid.p256.generator_table
+  rfl
+
 end rind.aarch64

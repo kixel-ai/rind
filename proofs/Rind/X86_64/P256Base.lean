@@ -584,13 +584,18 @@ theorem from_affine_val (p : mid.p256.AffineMontPoint) :
       simp [Array.repeat, mid.p256.CURVE_ONE_MONT, Array.make, List.setSlice!]
 
 /-- The loop adds windows 1 to 36: each adds its digit's multiple of G to the
-accumulator, which holds the sum of the windows below it. -/
+accumulator, which holds the sum of the windows below it.
+
+Aeneas lifts `generator_table` out of this loop, so the extracted loop takes
+the table as its first argument. `generator_table_eq` reduces the call to the
+static, which is the table this indexes. -/
 theorem loop_spec (hc : RunsSelect) (X : p256Curve.Point) (hX : nist.fromM X = p256G) (hord : addOrderOf X = n256)
     (k : Nat) (hk : k < n256) (windows : Std.Array (U8 × U8) 37#usize) (hw : WindowsOk k windows 37)
     (iter : core.ops.range.Range Usize) (hs1 : 1 ≤ iter.start.val) (hs : iter.start.val ≤ 37)
     (he : iter.end.val = 37) (point : mid.p256.AffineMontPoint) (a : Std.Array U64 12#usize)
     (ha : p256Represents (gpt X (acc (digit k) iter.start.val)) (tripleNat a.val)) :
-    mid.p256.JacobianMontPoint.base_multiply_loop iter windows point a ⦃ r =>
+    mid.p256.JacobianMontPoint.base_multiply_loop mid.p256.precomp.CURVE_GENERATOR_PRECOMP
+      iter windows point a ⦃ r =>
       p256Represents (gpt X (acc (digit k) 37)) (tripleNat r.val) ⦄ := by
   have hk256 : k < 2 ^ 256 := lt_trans hk (by simp [n256])
   unfold mid.p256.JacobianMontPoint.base_multiply_loop
@@ -618,7 +623,6 @@ theorem loop_spec (hc : RunsSelect) (X : p256Curve.Point) (hX : nist.fromM X = p
       have hdig : digit k w = signed dg.val sg.val := by rw [digit, hdg, hsg]
       have hd64 : dg.val ≤ 64 := by rw [hdg]; exact boothD_le _ (window_lt _ _)
       have hrow' : row = mid.p256.precomp.CURVE_GENERATOR_PRECOMP.val[w]! := by
-        simp only [mid.p256.generator_table] at hrow
         rw [hrow, getElem!_pos _ _ (by rw [Std.Array.property]; scalar_tac)]
       step with select_entry hc X hX w (by omega) pt row hrow' dg sg hd64 as ⟨pt1, hz, hP2⟩
       step as ⟨r1, hr1⟩
@@ -678,7 +682,6 @@ theorem jac_base_multiply_spec (hc : RunsSelect) (k : mid.p256.Scalar) (hk : wor
   have hdig : digit (wordsNat k.val) 0 = signed dg.val sg.val := by rw [digit, hdg, hsg]
   have hd64 : dg.val ≤ 64 := by rw [hdg]; exact boothD_le _ (window_lt _ _)
   have hrow' : row = mid.p256.precomp.CURVE_GENERATOR_PRECOMP.val[0]! := by
-    simp only [mid.p256.generator_table] at hrow
     rw [hrow, getElem!_pos _ _ (by rw [Std.Array.property]; scalar_tac)]
   step with select_entry hc X hX 0 (by norm_num) _ row hrow' dg sg hd64 as ⟨pt1, hz, hP2⟩
   step with from_affine_val pt1 as ⟨res, hres⟩

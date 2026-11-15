@@ -88,6 +88,17 @@ struct, which Aeneas extracts as a reducible synonym of this array and whose
 theorem tabulated : Tabulated7 mid.p256.precomp.CURVE_GENERATOR_PRECOMP :=
   tabulated_of_ok (by decide +kernel)
 
+/-- `generator_table` returns the static. Aeneas extracts `AlignedTable` as this
+array and erases `.0`, then lifts the pure call out of
+`JacobianMontPoint::base_multiply`'s loop, so the loop indexes the table it is
+given. `step` rewrites the call to this static before looking up a specification,
+which is the table `base_multiply_loop` receives. -/
+@[simp, step_simps]
+theorem generator_table_eq :
+    mid.p256.generator_table = Result.ok mid.p256.precomp.CURVE_GENERATOR_PRECOMP := by
+  unfold mid.p256.generator_table
+  rfl
+
 /-- Row 0's first 32 entries are G to 32G, as `p256Tabulates` reads a row:
 what a twin multiplication's generator half selects from. -/
 theorem first_row : ∀ j, 1 ≤ j → j ≤ 32 →
