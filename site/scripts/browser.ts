@@ -67,7 +67,11 @@ try {
 		urls.set(requestId, request.url);
 	});
 	view.addEventListener("Network.loadingFailed", (e) => {
-		const { requestId, errorText, blockedReason } = (e as MessageEvent).data;
+		const { requestId, errorText, blockedReason, canceled } = (e as MessageEvent).data;
+		// Chrome cancels a request it stops needing, such as the <img> fallback of
+		// a <picture> whose <source> matched once styles were known; a missing
+		// file still fails above, with its status.
+		if (canceled && !blockedReason) return;
 		errors.push(`${current}: ${urls.get(requestId)} failed: ${blockedReason ?? errorText}`);
 	});
 	await view.cdp("Browser.grantPermissions", {
@@ -75,18 +79,23 @@ try {
 		permissions: ["clipboardReadWrite", "clipboardSanitizedWrite"],
 	});
 
-	for (const page of pages) {
-		current = page.path;
-		await view.navigate(new URL(page.path, server.url).href);
-		if (page.path === "/") {
-			try {
-				await copies();
-			} catch (e) {
-				errors.push(`${page.path}: ${e instanceof Error ? e.message : e}`);
+	// Each page in both colour schemes, since a <picture> requests only the
+	// variant whose media query matches.
+	for (const scheme of ["light", "dark"]) {
+		await view.cdp("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: scheme }] });
+		for (const page of pages) {
+			current = `${page.path} (${scheme})`;
+			await view.navigate(new URL(page.path, server.url).href);
+			if (page.path === "/") {
+				try {
+					await copies();
+				} catch (e) {
+					errors.push(`${current}: ${e instanceof Error ? e.message : e}`);
+				}
 			}
-		}
-		for (const v of (await view.evaluate("window.__violations")) as string[]) {
-			errors.push(`${page.path}: the Content-Security-Policy's ${v}`);
+			for (const v of (await view.evaluate("window.__violations")) as string[]) {
+				errors.push(`${current}: the Content-Security-Policy's ${v}`);
+			}
 		}
 	}
 } finally {
@@ -98,4 +107,4 @@ if (errors.length > 0) {
 	for (const e of errors) console.error(`error: ${e}`);
 	process.exit(1);
 }
-console.log(`site: ${pages.length} page(s) load under their policy, and the copy button copies the prompt`);
+console.log(`site: ${pages.length} page(s) load in both colour schemes under their policy, and the copy button copies the prompt`);
