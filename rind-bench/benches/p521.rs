@@ -308,12 +308,12 @@ fn ecdsa_sign(c: &mut Criterion) {
 
     // verified-garbage signs deterministically (RFC 6979), where rind hedges its nonce.
     group.bench_function("verified-garbage", |b| {
-        use rind::signature::{PublicKey, verify};
+        use rind::ecdsa::{PublicKey, verify};
         use verified_garbage::hashes::sha512::Sha512;
         let (signing_key, public_key) = vg_generate();
         // rind verifies verified-garbage's signature.
         let rind_key =
-            PublicKey::new(&verify::ECDSA_P521_SHA512_FIXED, public_key.as_bytes()).unwrap();
+            PublicKey::new(&verify::P521_SHA512_FIXED, public_key.as_bytes()).unwrap();
         let signature = signing_key.sign::<Sha512>(MESSAGE).unwrap();
         rind_key.verify(MESSAGE, &signature).unwrap();
 
@@ -381,12 +381,12 @@ fn ecdsa_sign(c: &mut Criterion) {
     // verified-garbage signs deterministically (RFC 6979), where rind hedges its nonce.
     group.bench_function("verified-garbage", |b| {
         use rind::digest;
-        use rind::signature::{PublicKey, verify};
+        use rind::ecdsa::{PublicKey, verify};
         use verified_garbage::hashes::sha512::Sha512;
         let (signing_key, public_key) = vg_generate();
         // rind verifies verified-garbage's signature.
         let rind_key =
-            PublicKey::new(&verify::ECDSA_P521_SHA512_FIXED, public_key.as_bytes()).unwrap();
+            PublicKey::new(&verify::P521_SHA512_FIXED, public_key.as_bytes()).unwrap();
         let signature = signing_key.sign::<Sha512>(MESSAGE).unwrap();
         rind_key.verify(MESSAGE, &signature).unwrap();
         let digest: [u8; 64] = digest::digest(&digest::SHA512, MESSAGE)

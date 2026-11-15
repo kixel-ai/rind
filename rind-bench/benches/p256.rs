@@ -495,12 +495,12 @@ fn ecdsa_sign(c: &mut Criterion) {
 
     // verified-garbage signs deterministically (RFC 6979), where rind hedges its nonce.
     group.bench_function("verified-garbage", |b| {
-        use rind::signature::{PublicKey, verify};
+        use rind::ecdsa::{PublicKey, verify};
         use verified_garbage::hashes::sha256::Sha256;
         let (signing_key, public_key) = vg_generate();
         // rind verifies verified-garbage's signature.
         let rind_key =
-            PublicKey::new(&verify::ECDSA_P256_SHA256_FIXED, public_key.as_bytes()).unwrap();
+            PublicKey::new(&verify::P256_SHA256_FIXED, public_key.as_bytes()).unwrap();
         let signature = signing_key.sign::<Sha256>(message).unwrap();
         rind_key.verify(message, &signature).unwrap();
 
@@ -587,12 +587,12 @@ fn ecdsa_sign(c: &mut Criterion) {
     // verified-garbage signs deterministically (RFC 6979), where rind hedges its nonce.
     group.bench_function("verified-garbage", |b| {
         use rind::digest;
-        use rind::signature::{PublicKey, verify};
+        use rind::ecdsa::{PublicKey, verify};
         use verified_garbage::hashes::sha256::Sha256;
         let (signing_key, public_key) = vg_generate();
         // rind verifies verified-garbage's signature.
         let rind_key =
-            PublicKey::new(&verify::ECDSA_P256_SHA256_FIXED, public_key.as_bytes()).unwrap();
+            PublicKey::new(&verify::P256_SHA256_FIXED, public_key.as_bytes()).unwrap();
         let signature = signing_key.sign::<Sha256>(message).unwrap();
         rind_key.verify(message, &signature).unwrap();
         let digest: [u8; 32] = digest::digest(&digest::SHA256, message)

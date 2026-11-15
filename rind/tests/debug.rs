@@ -260,13 +260,13 @@ fn agreement() {
 
 #[test]
 fn vrf() {
-    use rind::vrf::{ECVRF_EDWARDS25519_SHA512_TAI, ECVRF_P256_SHA256_TAI, SecretKey};
+    use rind::vrf::{ECVRF_EDWARDS25519_SHA512_TAI, ECVRF_P256_SHA256_TAI, KeyPair};
     for (algorithm, name) in [
         (&ECVRF_EDWARDS25519_SHA512_TAI, "Edwards25519Sha512Tai"),
         (&ECVRF_P256_SHA256_TAI, "P256Sha256Tai"),
     ] {
         assert_eq!(format!("{algorithm:?}"), name);
-        let key = SecretKey::from_bytes(algorithm, &[0x11; 32]).unwrap();
+        let key = KeyPair::from_seed(algorithm, &[0x11; 32]).unwrap();
         // `show` flags "255", which `Edwards25519`'s name contains, so check
         // the seed's decimal bytes (0x11) here.
         let secret = |value: &dyn core::fmt::Debug| {
@@ -276,9 +276,9 @@ fn vrf() {
         };
         assert_eq!(
             secret(&key),
-            format!("SecretKey {{ algorithm: {name}, .. }}")
+            format!("KeyPair {{ algorithm: {name}, .. }}")
         );
-        assert_eq!(secret(&key.to_bytes()), "SecretKeyBytes(..)");
+        assert_eq!(secret(&key.to_seed()), "Seed(..)");
 
         let public = key.public_key();
         let bytes = format!("{:?}", public.as_ref());

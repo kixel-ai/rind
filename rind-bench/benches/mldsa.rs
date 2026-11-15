@@ -113,7 +113,7 @@ macro_rules! ml_dsa {
             // verified-garbage generates a key only from a seed: drawn here,
             // as rind draws its own. Both expand a seed alike.
             group.bench_function("verified-garbage", |b| {
-                use rind::signature::sign::{MlDsaKeyPair, $rind};
+                use rind::ml_dsa::{KeyPair, $rind};
                 use verified_garbage::$vg::$vg_signing;
                 let seed = [7u8; 32];
                 assert_eq!(
@@ -121,7 +121,7 @@ macro_rules! ml_dsa {
                         .unwrap()
                         .verifying_key()
                         .as_bytes(),
-                    MlDsaKeyPair::<$rind>::from_seed(&seed)
+                    KeyPair::<$rind>::from_seed(&seed)
                         .unwrap()
                         .public_key()
                         .as_ref()
@@ -205,12 +205,12 @@ macro_rules! ml_dsa {
             // The key as rind holds it, the expanded private key encoding,
             // not the larger one `prepare` makes for many signatures.
             group.bench_function("verified-garbage", |b| {
-                use rind::signature::{PublicKey, verify};
+                use rind::ml_dsa::{PublicKey, $rind};
                 use verified_garbage::$vg::$vg_signing;
                 let mut seed = [0u8; 32];
                 getrandom::fill(&mut seed).unwrap();
                 let key = $vg_signing::from_seed(&seed).unwrap();
-                PublicKey::new(&verify::$rind_verify, key.verifying_key().as_bytes())
+                PublicKey::<$rind>::new(key.verifying_key().as_bytes())
                     .unwrap()
                     .verify(MESSAGE, &key.sign(MESSAGE, b"").unwrap())
                     .unwrap();

@@ -71,6 +71,8 @@ pub trait KeyPair: fmt::Debug + Send + Sized + Sync {
 pub(crate) use private::ParsedKey;
 
 pub(crate) mod private {
+    use rind::ml_dsa::{MlDsa44, MlDsa65, MlDsa87};
+
     use crate::digest::Digest;
     use crate::error::{KeyRejected, Unspecified};
 
@@ -80,6 +82,9 @@ pub(crate) mod private {
     pub enum ParsedKey {
         Ecdsa(rind::ecdsa::PublicKey),
         Ed25519(rind::ed25519::PublicKey),
+        MlDsa44(rind::ml_dsa::PublicKey<MlDsa44>),
+        MlDsa65(rind::ml_dsa::PublicKey<MlDsa65>),
+        MlDsa87(rind::ml_dsa::PublicKey<MlDsa87>),
         Rsa(rind::rsa::PublicKey),
     }
 
@@ -89,6 +94,9 @@ pub(crate) mod private {
             match self {
                 Self::Ecdsa(key) => key.to_spki(),
                 Self::Ed25519(key) => key.to_spki(),
+                Self::MlDsa44(key) => key.to_spki(),
+                Self::MlDsa65(key) => key.to_spki(),
+                Self::MlDsa87(key) => key.to_spki(),
                 Self::Rsa(key) => key.to_spki(),
             }
         }
