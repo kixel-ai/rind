@@ -39,9 +39,9 @@ export const spans = (tokens: Token[]): string =>
 export function definitions(tokens: Token[], source: Token[]): string {
 	const tags = new Set(
 		links(tokens)
-			.map((t) => t.raw.match(/\]\[([^\]]+)\]$/)?.[1] ?? t.raw.match(/^!?\[([\s\S]*)\](?:\[\])?$/)?.[1])
-			.filter((tag) => tag !== undefined)
-			.map((tag) => tag.trim().replace(/\s+/g, " ").toLowerCase()),
+			.map((t) => t.raw.match(/^!?\[([\s\S]*?)\](?:\[([^\]]*)\])?$/))
+			.filter((m) => m !== null)
+			.map((m) => (m[2] || m[1]).trim().replace(/\s+/g, " ").toLowerCase()),
 	);
 	return source
 		.filter((t): t is Tokens.Def => t.type === "def" && tags.has(t.tag))

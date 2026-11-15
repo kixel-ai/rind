@@ -3,8 +3,12 @@ import { blocks, definitions, hrefs, html, lex, section, spans } from "./markdow
 
 // A section quoted with its definitions renders as it does inside its document.
 test.each([
-	// Reference links, full, collapsed, and shortcut, with their definitions elsewhere.
-	"[a][R] and [r][] and [r]",
+	// Reference links, full, collapsed, and shortcut, each alone, with their
+	// definitions elsewhere.
+	"[a][R]",
+	"[r][]",
+	"[r]",
+	"[a\\]b][r]",
 	"[a][multi  word]",
 	// Spans and blocks the source wrote in a form a writer could get wrong.
 	"_a*b_ and __a**b__",
