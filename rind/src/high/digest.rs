@@ -145,7 +145,8 @@ pub fn digest(algorithm: &'static Algorithm, data: &[u8]) -> Digest {
 pub struct Context(State);
 
 // `repr(u8)` lays every variant out as the tag then its `Hashing`, so `ops`
-// sits at one offset in each, and each context 16 bytes in.
+// sits at one offset in each, and, on 64-bit targets, each context 16
+// bytes in.
 //
 // Aligned to a cache line, so the layouts of the contexts it holds decide
 // which loads and stores cross one. A load cannot take its bytes from a
@@ -698,6 +699,7 @@ mod tests {
 
     // Each context starts on a 16-byte boundary of a cache-line-aligned
     // `Context`, which `mid::sha2`'s layout test builds on.
+    #[cfg(target_pointer_width = "64")]
     #[test]
     fn layout() {
         assert_eq!(align_of::<Context>(), 64);

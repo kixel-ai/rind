@@ -75,10 +75,10 @@ impl UpdateBlocks for Sha256State {
 
 /// A context for incremental computation of SHA256.
 // In this order, `h`, the counters, then the buffer: placed on a 16-byte
-// boundary, as `digest::Context` places it, the context holds `h` and the
-// buffer on 16-byte boundaries too, so no 16-byte load or store of them
-// crosses a cache line, which on Zen 5 stops later loads taking their bytes
-// from the stores still in flight.
+// boundary, as `digest::Context` places it on 64-bit targets, the context
+// holds `h` and the buffer on 16-byte boundaries too, so no 16-byte load or
+// store of them crosses a cache line, which on Zen 5 stops later loads
+// taking their bytes from the stores still in flight.
 #[derive(Clone)]
 #[repr(C)]
 pub(crate) struct Sha256Context {
@@ -336,7 +336,8 @@ mod tests {
     use super::*;
 
     // From where each context starts, `h` and the buffer lie on 16-byte
-    // boundaries: `digest::Context` relies on it.
+    // boundaries on 64-bit targets: `digest::Context` relies on it.
+    #[cfg(target_pointer_width = "64")]
     #[test]
     fn layout() {
         fn offset<T>(base: &T, field: *const u8) -> usize {

@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
 // `used` first, so a context that holds its chaining value then this can
-// start the buffer on a 16-byte boundary: see `copy_lanes`.
+// start the buffer on a 16-byte boundary on 64-bit targets: see
+// `copy_lanes`.
 #[derive(Clone)]
 #[repr(C)]
 pub(crate) struct Blockwise<const N: usize> {

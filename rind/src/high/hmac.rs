@@ -356,7 +356,8 @@ impl Zeroable for Keyed {}
 pub(super) struct Streaming(Tagged);
 
 // As `Keyed`, with all-zero hash contexts too. Aligned to a cache line,
-// with each `Hmac` 16 bytes in, for the reason `digest::Context` is.
+// with each `Hmac` 16 bytes in on 64-bit targets, for the reason
+// `digest::Context` is.
 #[derive(Clone)]
 #[repr(u8, align(64))]
 enum Tagged {
@@ -523,6 +524,7 @@ mod tests {
 
     // Each inner context starts on a 16-byte boundary of a
     // cache-line-aligned `Context`, as `digest::Context`'s do.
+    #[cfg(target_pointer_width = "64")]
     #[test]
     fn layout() {
         assert_eq!(align_of::<Context>(), 64);
