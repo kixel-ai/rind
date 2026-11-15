@@ -224,9 +224,10 @@ establishes, and what it does not:
 - **Miri**, nightly, runs the portable backend's unit tests on x86_64 and
   big-endian s390x, failing on undefined behavior. It runs no assembly, and
   skips the slow tests `sh/miri.sh` lists.
-- **Mutation testing** (`admin/mutants`, nightly) fails on a change to rind's
-  Rust that no test catches. It skips generated assembly, which proofs and
-  differential tests own.
+- **Mutation testing** (`admin/mutants`) fails on a mutant of rind's Rust
+  that no test catches. Nightly, it mutates only the Rust that changed in the
+  last day; a campaign over the whole workspace runs only when dispatched. It
+  skips generated assembly, which proofs and differential tests own.
 - **Coverage** (`admin/coverage`, nightly on Linux and macOS) reports the
   published functions no test runs, under `cargo test`, `dart test`, and
   pyrind's tests, on each runner's tiers, but not under fuzzing.
@@ -300,20 +301,21 @@ closes them. The report's "Measure coverage" step lists each file.
 `unsafe` appears only in `low`, the FIPS build's DRBG handle, the bindings,
 and test code. Every block in `rind` and rind-dart carries a `SAFETY:`
 comment, which clippy's `undocumented_unsafe_blocks` lint enforces in CI.
-Counted outside comments by `admin/audit unsafe` at `f2407a07`:
+Counted outside comments and literals by `admin/audit unsafe` at `5bf369f7`:
 
 | Area | `unsafe` | What it is | What justifies it |
 |---|---|---|---|
 | `rind/src/low/x86_64` | 453 | `asm!`, naked functions, and intrinsics | [`rind::doc::inline_assembly_safety`](rind/src/low/inline_assembly_safety.rs), with the calling-convention, bounds, and `admin/prove bytes` checks above |
-| `rind/src/low/aarch64` | 310 | the same | the same |
+| `rind/src/low/aarch64` | 315 | the same | the same |
 | `rind/src/low/arm` | 89 | `global_asm!` and the calls into it | the same |
 | `rind/src/low/generic` | 22 | SSE2 intrinsics in `aes_nohw`, `ReuseCache`'s one-time initialization, the volatile wipe, a cast between same-layout arrays, and MD5's empty `asm!` barrier | each block's `SAFETY:` comment; Miri checks `ReuseCache` and the wipe |
 | `rind/src/low/portable` | 3 | volatile writes and reads for the wipe and the constant-time compare | the same |
-| other `rind/src/low` files | 86 | test harnesses (`abi`, `guard_pages`, `ct_binsec`, `tests`), and the `asm_call!` macro | test code, but for the macro |
+| other `rind/src/low` files | 79 | test harnesses (`abi`, `guard_pages`, `ct_binsec`, `tests`), and the `asm_call!` macro | test code, but for the macro |
 | `rind/src/mid` | 2 | a test's call into aws-lc | test code |
 | `rind/src` | 6 | the FIPS build's DRBG handle, and a test helper | `SAFETY:` comments |
 | `rind-dart` | 235 | the C ABI Dart's FFI calls | `SAFETY:` comments, `dart test`, and ctgrind over its exports |
 | `rind-python` | 6 | Python's buffer protocol | `SAFETY:` comments |
 | `rind-fips` | 583 | the unpublished FIPS module's C ABI | out of scope until published |
 
-The rest, in `rind/tests`, the fuzz targets, and `admin`, is test code.
+The rest, in `rind/tests`, rind-rcgen's tests, the fuzz targets, `admin`,
+and the unpublished bench, timing, and cpuid crates, is test code or tooling.

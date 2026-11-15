@@ -10,8 +10,8 @@
 # to a quest that no longer exists, since finishing it changes the gap
 # AUDIT.md describes there.
 #
-# `unsafe` prints how often the `unsafe` keyword appears outside comments in
-# each area of the tree, for AUDIT.md's dated count.
+# `unsafe` prints how often the `unsafe` keyword appears outside comments and
+# literals in each area of the tree, for AUDIT.md's dated count.
 
 import pathlib, re, subprocess, sys, tomllib
 
@@ -133,6 +133,43 @@ def replace(text, table):
     return f"{before}{BEGIN}\n{table}\n{END}{after}"
 
 
+# One Rust token the lexer skips or keeps: a comment opener, a string or char
+# literal, an identifier, or any other character. A `'` not closed as a char
+# literal is a lifetime or label, so its name lexes as an identifier.
+TOKEN = re.compile(
+    r"""(?P<line>//[^\n]*)"""
+    r"""|(?P<block>/\*)"""
+    r"""|(?P<raw>b?r(?P<hashes>#*)")"""
+    r"""|(?P<str>b?"(?:\\.|[^"\\])*")"""
+    r"""|(?P<char>b?'(?:\\(?:u\{[0-9a-fA-F_]*\}|x..|.)|[^'\\])')"""
+    r"""|(?P<ident>[A-Za-z_][A-Za-z0-9_]*)"""
+    r"""|.""",
+    re.S,
+)
+
+
+def idents(src):
+    """Yields the identifiers and keywords of Rust source, skipping comments and literals."""
+    i = 0
+    while i < len(src):
+        m = TOKEN.match(src, i)
+        i = m.end()
+        if m["block"]:
+            # Block comments nest.
+            depth = 1
+            while depth:
+                c = re.compile(r"/\*|\*/").search(src, i)
+                if not c:
+                    return
+                depth += 1 if c[0] == "/*" else -1
+                i = c.end()
+        elif m["raw"] is not None:
+            end = src.find('"' + m["hashes"], i)
+            i = len(src) if end < 0 else end + 1 + len(m["hashes"])
+        elif m["ident"]:
+            yield m["ident"]
+
+
 def unsafe():
     """Counts `unsafe` outside comments, by area."""
     counts = {}
@@ -150,8 +187,7 @@ def unsafe():
                 area = "rind/src"
         else:
             area = parts[0]
-        code = re.sub(r"//[^\n]*", "", (ROOT / f).read_text())
-        n = len(re.findall(r"\bunsafe\b", code))
+        n = sum(1 for t in idents((ROOT / f).read_text()) if t == "unsafe")
         if n:
             counts[area] = counts.get(area, 0) + n
     for area in sorted(counts):
