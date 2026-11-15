@@ -474,6 +474,18 @@ class Comparison(unittest.TestCase):
         self.assertIn("[1 of its 2 times]", rows["aws-lc-rs"][3])
         self.assertIn("[1 of its 2 times]", rows["ring"][3])
 
+    def test_an_unmeasured_library_reads_not_measured(self):
+        _, rows = self.cells(hosts())
+        # No host has a build cost, and RustCrypto has no times.
+        self.assertIn("[not measured]", rows["rind"][0])
+        self.assertEqual(rows["RustCrypto + dalek"][1], "not measured")
+        self.assertIn("[not measured]", rows["RustCrypto + dalek"][3])
+        h = hosts()
+        h["nixos"]["build_cost"] = {"status": "ok", "builds": [{"name": "rind", "tools": []}]}
+        _, rows = self.cells(h)
+        self.assertIn("[none]", rows["rind"][0])
+        self.assertIn("[not measured]", rows["ring"][0])
+
     def test_refuses_a_row_no_algorithm_matches(self):
         algorithms = br.ALGORITHMS
         br.ALGORITHMS = [a for a in algorithms if a[0] != "P-521"]

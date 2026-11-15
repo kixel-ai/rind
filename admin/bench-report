@@ -887,6 +887,9 @@ OUTSIDE_API = {
     ("aws-lc-rs", "XChaCha20-Poly1305"): "aws-lc has it, through aws-lc-sys",
 }
 
+# A comparison cell with no data behind it, which must never read as "none".
+UNMEASURED = "not measured"
+
 README = os.path.join(ROOT, "README.md")
 COMPARISON_MARKERS = (
     "<!-- comparison: `admin/bench-report render` writes this table -->",
@@ -1633,12 +1636,13 @@ def comparison_table(hosts, verified):
         "|---|---|---|---|---|",
     ]
     for lib, link in COMPARED.items():
-        tools = set()
+        tools, built = set(), False
         for h in hosts.values():
             cost = h.get("build_cost") or {}
             for b in cost.get("builds", []) if cost.get("status") == "ok" else []:
                 if b["name"] == lib:
                     tools.update(b["tools"])
+                    built = True
         lacks = [
             f"{name} ({OUTSIDE_API[lib, name]})" if (lib, name) in OUTSIDE_API else name
             for name in timed
@@ -1674,10 +1678,10 @@ def comparison_table(hosts, verified):
         # Absolute, since crates.io and docs.rs show the README too.
         benchmarks = f"https://github.com/{REPO}/blob/main/BENCHMARKS.md"
         lines.append(
-            f"| {name} | [{', '.join(sorted(tools)) or 'none'}]({benchmarks}#build-cost) "
-            f"| {', '.join(lacks) or 'none'} "
+            f"| {name} | [{(', '.join(sorted(tools)) or 'none') if built else UNMEASURED}]({benchmarks}#build-cost) "
+            f"| {(', '.join(lacks) or 'none') if offered[lib] else UNMEASURED} "
             f"| [{'; '.join(arches) or 'none'}]({benchmarks}#verified-code) "
-            f"| [{lead} of its {timings} times]({benchmarks}#speed) |"
+            f"| [{f'{lead} of its {timings} times' if timings else UNMEASURED}]({benchmarks}#speed) |"
         )
     return lines
 
