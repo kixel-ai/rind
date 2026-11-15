@@ -296,8 +296,9 @@ encryption.
 | `verify_digest` and `sign_digest` for RSA | none |
 | `rsa::KeySize`, `RsaKeyPair::generate(size)` | the same; `KeySize` adds `Rsa6144` |
 | `RsaKeyPair::generate_fips(size)` | `generate(size)`, which follows FIPS 186-5 A.1.3; rind-fips's also runs the pairwise consistency test |
-| `public_modulus_len()` | none |
-| `rsa::PublicKey::{modulus, exponent, modulus_len}`, `PublicKeyComponents::from(&key)` | none |
+| `public_modulus_len()` | `public_key().modulus_len()` |
+| `rsa::PublicKey::modulus_len` | the same |
+| `rsa::PublicKey::{modulus, exponent}`, `PublicKeyComponents::from(&key)` | none |
 | `PrivateDecryptingKey`, then `OaepPrivateDecryptingKey::new(key)` | `DecryptingKey`, which decrypts OAEP itself |
 | `PublicEncryptingKey`, then `OaepPublicEncryptingKey::new(key)` | `EncryptingKey`, which encrypts OAEP itself |
 | `PrivateDecryptingKey::from_pkcs8(der)`, `generate(size)`, `as_der()` | `DecryptingKey::from_pkcs8(alg, der)`, `from_pkcs1(alg, der)`, `generate(alg, size)`, `to_pkcs8()`, each key bound to one algorithm |
@@ -373,19 +374,17 @@ CPU the target does.
 
 ## key_wrap
 
-ring has none. A KEK is bound to one mode, RFC 3394's AES-KW or RFC 5649's
-AES-KWP, by the algorithm it is made for.
+ring has none. A KEK wraps in either mode, RFC 3394's AES-KW or RFC 5649's
+AES-KWP, which each call names.
 
 | aws-lc-rs | rind |
 |---|---|
-| `AesKek::new(&AES_128, key)?`, then `KeyWrap` | `AesKek::new(&AES_128_KW, key)?` |
-| `AesKek::new(&AES_128, key)?`, then `KeyWrapPadded` | `AesKek::new(&AES_128_KWP, key)?` |
-| `AES_256` | `AES_256_KW`, `AES_256_KWP` |
-| none | `AES_192_KW`, `AES_192_KWP` |
-| `KeyWrap::wrap(kek, key, output)?`, which consumes the key and takes any longer `output` | `kek.wrap_key(key, wrapped)?`, which borrows it and takes `wrapped` exactly 8 bytes longer than `key` |
-| `KeyWrap::unwrap(kek, wrapped, output)?` | `kek.unwrap_key(wrapped, key)?`, with `key` exactly 8 bytes shorter than `wrapped`, cleared if it fails to verify |
-| `KeyWrapPadded::wrap_with_padding(kek, key, output)?`, which takes any `output` at least 15 bytes longer than `key` | `kek.wrap_key(key, wrapped)?` under an AES-KWP KEK, with `wrapped` exactly `key.len().next_multiple_of(8) + 8` bytes |
-| `KeyWrapPadded::unwrap_with_padding(kek, wrapped, output)?` | `kek.unwrap_key(wrapped, key)?` under an AES-KWP KEK, with `key` exactly 8 bytes shorter than `wrapped`, cleared if it fails to verify; both modes return the key |
+| `AesKek::new(&AES_128, key)?`, `AES_128`, `AES_256` | the same |
+| none | `AES_192` |
+| `KeyWrap::wrap(kek, key, output)?`, which consumes the key and takes any longer `output` | `kek.wrap_key(Mode::Kw, key, wrapped)?`, which borrows it and takes `wrapped` exactly 8 bytes longer than `key` |
+| `KeyWrap::unwrap(kek, wrapped, output)?` | `kek.unwrap_key(Mode::Kw, wrapped, key)?`, with `key` exactly 8 bytes shorter than `wrapped`, cleared if it fails to verify |
+| `KeyWrapPadded::wrap_with_padding(kek, key, output)?`, which takes any `output` at least 15 bytes longer than `key` | `kek.wrap_key(Mode::Kwp, key, wrapped)?`, with `wrapped` exactly `key.len().next_multiple_of(8) + 8` bytes |
+| `KeyWrapPadded::unwrap_with_padding(kek, wrapped, output)?` | `kek.unwrap_key(Mode::Kwp, wrapped, key)?`, with `key` exactly 8 bytes shorter than `wrapped`, cleared if it fails to verify; both modes return the key |
 | `BlockCipherId`, `AesKek::block_cipher_id()` | none |
 
 ## Other modules
