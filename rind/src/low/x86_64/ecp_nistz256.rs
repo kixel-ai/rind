@@ -207,7 +207,9 @@ mod tests {
     /// A field element of edge limbs below the prime, `p - 1` and its
     /// neighbours among them.
     fn fe() -> impl Strategy<Value = [u64; 4]> {
-        let prime = POLY.0[..32].chunks(8).map(|w| u64::from_le_bytes(w.try_into().unwrap()));
+        let prime = POLY.0[..32]
+            .chunks(8)
+            .map(|w| u64::from_le_bytes(w.try_into().unwrap()));
         below(64, prime.collect()).prop_map(|x| x.try_into().unwrap())
     }
 
