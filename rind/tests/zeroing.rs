@@ -124,6 +124,14 @@ fn ml_dsa() {
         check_zeroed_on_drop(Box::pin(key.to_seed().unwrap()));
         let seed = key.to_seed().unwrap();
         check_zeroed_on_drop(Box::pin(KeyPair::<P>::from_seed(seed.as_ref()).unwrap()));
+        // Its public key's second verification keeps the expansion, which
+        // the drop frees before its wipe.
+        let signature = key.sign(b"message").unwrap();
+        for _ in 0..2 {
+            key.public_key()
+                .verify(b"message", signature.as_ref())
+                .unwrap();
+        }
         check_zeroed_on_drop(Box::pin(key));
     }
     check::<MlDsa44>();

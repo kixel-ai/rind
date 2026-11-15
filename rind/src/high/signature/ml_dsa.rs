@@ -51,6 +51,11 @@ pub struct Algorithm {
 
 /// An ML-DSA public key of parameter set `P`: FIPS 204's encoding, and its
 /// hash `tr`, which every signature it verifies binds in.
+///
+/// It keeps its encoding's expansion on the heap from its second
+/// verification on, so a key used once never holds it: 20 KiB for
+/// ML-DSA-44, 36 KiB for ML-DSA-65, and 64 KiB for ML-DSA-87. A clone keeps
+/// its own.
 pub struct PublicKey<P: ParameterSet>(mldsa::PublicKey<P>);
 
 impl<P: ParameterSet> PublicKey<P> {
@@ -77,7 +82,7 @@ impl<P: ParameterSet> PublicKey<P> {
     /// Verifies `signature` over `message`: pure ML-DSA with the empty
     /// context, as TLS and X.509 sign.
     pub fn verify(&self, message: &[u8], signature: &[u8]) -> Result<(), Error> {
-        mldsa::verify::<P>(self.as_ref(), &self.0.tr, &[], message, signature)
+        self.0.verify(&[], message, signature)
     }
 }
 
@@ -111,8 +116,9 @@ pub(super) const MAX_PRIVATE_KEY_LEN: usize = mldsa::secret_key_len::<MlDsa87>()
 /// It signs pure ML-DSA (FIPS 204) with the empty context, as TLS and X.509
 /// use it, hedged with fresh randomness, as [`PublicKey::verify`] verifies.
 ///
-/// It keeps FIPS 204's encodings, expanding them as each signature needs, as
-/// mldsa-native and aws-lc do.
+/// Loading it expands its encodings once, so that no signature repeats that
+/// work, and keeps the expansion on the heap: 28 KiB for ML-DSA-44, 47 KiB
+/// for ML-DSA-65, and 79 KiB for ML-DSA-87.
 ///
 /// It wipes its whole value on drop under the `wipe` feature.
 pub struct KeyPair<P: ParameterSet> {
@@ -245,12 +251,16 @@ impl<P: ParameterSet> fmt::Debug for KeyPair<P> {
     }
 }
 
-// Every field is bytes, or the private key's, whose seed is `None` zeroed.
-impl<P: ParameterSet> low::Zeroable for KeyPair<P> {}
+// As the mid layer's public key is.
+impl<P: ParameterSet> low::Zeroable for PublicKey<P> {}
 
 impl<P: ParameterSet> Drop for KeyPair<P> {
+    // The private key's own drop wipes its expansion and its value, which a
+    // wipe of this whole value would forget the expansion's place in, so
+    // this wipes the public key alone, once it frees its kept expansion.
     fn drop(&mut self) {
-        low::zeroise_value(self);
+        self.public.0.free_expansion();
+        low::zeroise_value(&mut self.public);
     }
 }
 

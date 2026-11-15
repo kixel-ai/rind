@@ -76,10 +76,9 @@ pub(crate) mod private {
     use crate::digest::Digest;
     use crate::error::{KeyRejected, Unspecified};
 
-    /// A public key rind parsed, of the algorithm that parsed it, which
-    /// only rind-aws-lc-rs can name.
+    /// A public key rind parsed, of the algorithm that parsed it.
     #[allow(clippy::large_enum_variant)]
-    pub enum ParsedKey {
+    pub(crate) enum ParsedKey {
         Ecdsa(rind::ecdsa::PublicKey),
         Ed25519(rind::ed25519::PublicKey),
         MlDsa44(rind::ml_dsa::PublicKey<MlDsa44>),
@@ -102,9 +101,12 @@ pub(crate) mod private {
         }
     }
 
-    /// How a verification algorithm parses keys and verifies with rind,
-    /// which only rind-aws-lc-rs can name.
-    pub trait Verify {
+    /// How a verification algorithm parses keys and verifies with rind. It
+    /// also seals [`super::VerificationAlgorithm`], whose one private
+    /// supertrait it is, as aws-lc-rs's has one. It is `pub(crate)`, since
+    /// code bounded by the subtrait could otherwise call these methods,
+    /// which aws-lc-rs's sealing trait does not have.
+    pub(crate) trait Verify: crate::sealed::Sealed {
         /// Parses an encoded public key.
         ///
         /// An RSA key outside the algorithm's range parses, as aws-lc-rs
@@ -130,9 +132,8 @@ pub(crate) mod private {
 }
 
 /// A signature verification algorithm.
-pub trait VerificationAlgorithm:
-    fmt::Debug + Sync + Any + sealed::Sealed + private::Verify
-{
+#[allow(private_bounds)]
+pub trait VerificationAlgorithm: fmt::Debug + Sync + Any + private::Verify {
     /// Verifies `signature` over `msg` with the encoded `public_key`.
     #[cfg(feature = "ring-sig-verify")]
     #[deprecated(

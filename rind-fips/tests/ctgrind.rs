@@ -119,6 +119,48 @@ fn aes() {
     public(&*opened);
     assert_eq!(opened, MESSAGE);
 
+    // Sealing under a random nonce, and a TLS 1.3 record's, of a secret
+    // message under the secret key.
+    let random = aead::RandomizedNonceKey::new(&aead::AES_256_GCM, &key).unwrap();
+    let mut message = MESSAGE.to_vec();
+    secret(&message[..]);
+    let nonce = random
+        .seal_in_place_append_tag(b"aad", &mut message)
+        .unwrap();
+    public(&message[..]);
+    let opened = random.open_in_place(nonce, b"aad", &mut message).unwrap();
+    public(&*opened);
+    assert_eq!(opened, MESSAGE);
+
+    let mut tls =
+        aead::TlsRecordSealingKey::new(&aead::AES_256_GCM, aead::TlsProtocolId::TLS13, &key)
+            .unwrap();
+    for seq in 0..2u8 {
+        let mut nonce = [1; 12];
+        nonce[11] ^= seq;
+        let mut message = MESSAGE.to_vec();
+        secret(&message[..]);
+        let tag = tls
+            .seal_in_place_separate_tag(
+                aead::Nonce::assume_unique_for_key(nonce),
+                b"aad",
+                &mut message,
+            )
+            .unwrap();
+        public(&message[..]);
+        public(tag.as_ref());
+        let opened = opening
+            .open_in_place_separate_tag(
+                aead::Nonce::assume_unique_for_key(nonce),
+                b"aad",
+                tag,
+                &mut message,
+            )
+            .unwrap();
+        public(&*opened);
+        assert_eq!(opened, MESSAGE);
+    }
+
     // GCM with a truncated tag and an IV that is not 96 bits, which GCM
     // hashes under the key into its counter.
     let iv = [9u8; 7];

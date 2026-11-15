@@ -585,7 +585,7 @@ mod kat {
     // Key generation from the seed of ACVP's first ML-DSA-44 keyGen vector,
     // then signing with a fixed `rnd`, and verifying.
     pub(super) fn ml_dsa() -> Result<(), &'static str> {
-        use crate::mid::mldsa::{KeyPair, MlDsa44, verify};
+        use crate::mid::mldsa::{KeyPair, MlDsa44};
 
         let seed: [u8; 32] = hex_array(ML_DSA_SEED);
         let (key, public_key) = KeyPair::<MlDsa44>::from_seed(&input("ml_dsa_keygen", seed));
@@ -607,9 +607,7 @@ mod kat {
             sha256_of(signature.as_ref())[..] == hex(ML_DSA_SIGNATURE_SHA256),
         )?;
 
-        let verified = verify::<MlDsa44>(
-            public_key.as_ref(),
-            key.tr(),
+        let verified = public_key.verify(
             b"",
             &input("ml_dsa_verify", message),
             signature.as_ref(),
