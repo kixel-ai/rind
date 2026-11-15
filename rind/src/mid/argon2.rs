@@ -31,6 +31,9 @@ pub(crate) struct Cost {
 ///
 /// Fails with [`Error::OutOfMemory`] if the memory `cost` asks for cannot be
 /// allocated.
+// Never inlined, so the MXCSR mitigation it holds covers exactly this call
+// and everything it calls, as `admin/ct-vartime` counts it.
+#[inline(never)]
 pub(crate) fn argon2id(
     cost: Cost,
     password: &[u8],
@@ -39,6 +42,8 @@ pub(crate) fn argon2id(
     data: &[u8],
     out: &mut [u8],
 ) -> Result<(), Error> {
+    // The AVX2 kernel's `vpmuludq` multiplies password-derived words.
+    let _mcdt = low::Mcdt::enter();
     let lanes = cost.lanes as usize;
     // RFC 9106 rounds the memory down to a whole number of segments.
     let segment_len = cost.memory_kib as usize / (SYNC_POINTS * lanes);
