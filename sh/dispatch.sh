@@ -372,7 +372,7 @@ step() {
             # the `module` feature that builds it; its offline run answers
             # every vector set on each of this CPU's paths, with the dev
             # shell's acvptool.
-            if printf '%s\n' "${packages[@]}" | grep -qxE 'rind-fips|rind-acvp|--workspace' &&
+            if { names rind-fips "${packages[@]}" || names rind-acvp "${packages[@]}"; } &&
                 [[ "$(rustc -vV | sed -n 's/^host: //p')" =~ ^(x86_64|aarch64)-unknown-linux-gnu$ ]]; then
                 for features in '' acvp; do
                     RUSTFLAGS='--cfg rind_fips --cfg rind_cpu_disable' run cargo clippy -p rind-fips-module \
@@ -384,7 +384,7 @@ step() {
                 fi
                 # Selected whenever rind or the module it builds changes,
                 # since its answers come from rind's services.
-                if printf '%s\n' "${packages[@]}" | grep -qxE 'rind-acvp|--workspace'; then
+                if names rind-acvp "${packages[@]}"; then
                     run cargo nextest run -p rind-acvp --features module --locked
                 fi
             fi
