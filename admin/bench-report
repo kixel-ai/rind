@@ -888,6 +888,7 @@ ALGORITHMS = [
     ("OPRF", r"v?oprf-"),
     ("VRF", r"vrf-"),
     ("SPAKE2+", r"spake2plus-"),
+    ("Argon2id", r"argon2id-"),
 ]
 
 # Rows that time an integration rather than an algorithm, which the
