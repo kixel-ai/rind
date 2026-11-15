@@ -1,6 +1,6 @@
 // Loads each built page in headless Chrome under its Content-Security-Policy
-// and fails if the policy refuses anything, or if the landing page's copy
-// button does not put the prompt on the clipboard.
+// and fails if the policy refuses anything, a request fails, or the landing
+// page's copy button does not put the prompt on the clipboard.
 import path from "node:path";
 import { prompt } from "../src/lib/landing";
 import { pages } from "../src/lib/pages";
@@ -27,6 +27,8 @@ const server = Bun.serve({
 // namespaces.
 const view = new Bun.WebView({ backend: { type: "chrome", url: false, argv: ["--no-sandbox"] } });
 const errors: string[] = [];
+// The page whose requests the network listeners are seeing.
+let current = "about:blank";
 
 // Click the copy button and read back what it put on the clipboard.
 async function copies() {
@@ -53,12 +55,28 @@ try {
 			document.addEventListener("securitypolicyviolation", (e) =>
 				window.__violations.push(e.effectiveDirective + " refused " + (e.blockedURI || "inline code")));`,
 	});
+	// Every request a page makes must succeed, so a missing image or chunk fails too.
+	await view.cdp("Network.enable");
+	view.addEventListener("Network.responseReceived", (e) => {
+		const { response } = (e as MessageEvent).data;
+		if (response.status >= 400) errors.push(`${current}: ${response.url} returned ${response.status}`);
+	});
+	const urls = new Map<string, string>();
+	view.addEventListener("Network.requestWillBeSent", (e) => {
+		const { requestId, request } = (e as MessageEvent).data;
+		urls.set(requestId, request.url);
+	});
+	view.addEventListener("Network.loadingFailed", (e) => {
+		const { requestId, errorText, blockedReason } = (e as MessageEvent).data;
+		errors.push(`${current}: ${urls.get(requestId)} failed: ${blockedReason ?? errorText}`);
+	});
 	await view.cdp("Browser.grantPermissions", {
 		origin: server.url.origin,
 		permissions: ["clipboardReadWrite", "clipboardSanitizedWrite"],
 	});
 
 	for (const page of pages) {
+		current = page.path;
 		await view.navigate(new URL(page.path, server.url).href);
 		if (page.path === "/") {
 			try {
