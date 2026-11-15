@@ -62,6 +62,14 @@ Each upstream rind changes, with where its fork is vendored and where the list o
 - **Reported:** [KDE bug 494162](https://bugs.kde.org/show_bug.cgi?id=494162).
 - **Goes when:** the flake's valgrind reports ADX.
 
+### Valgrind models only MXCSR's rounding mode
+
+- **Breaks:** valgrind's x86_64 guest keeps only MXCSR's rounding mode, so `stmxcsr` reads `0x1F80` after `ldmxcsr 0x1FBF`, and the `low::mcdt` tests that read back Intel's MXCSR mitigation fail. The guard itself still loads and restores MXCSR there.
+- **Reproduce:** `admin/ctgrind unit low::mcdt` fails `holds_and_restores` with `left: 8064, right: 8127`.
+- **Workaround:** `rind/src/low/mcdt.rs` ignores those two tests in `__ctgrind` builds; plain `cargo test` and x86-cpu.yml's SDE rows still run them.
+- **Reported:** no.
+- **Goes when:** valgrind keeps MXCSR's other bits.
+
 ### Valgrind cannot run x86_64's newest extensions
 
 - **Breaks:** valgrind (through 3.27) decodes no AVX-512, VAES, VPCLMULQDQ, or SHA instruction and hides them from `cpuid`, so ctgrind never reaches the code that uses them.
@@ -101,9 +109,9 @@ Each upstream rind changes, with where its fork is vendored and where the list o
 
 ### BINSEC cannot decode instructions `admin/ct-binsec` stubs
 
-- **Breaks:** BINSEC 0.11.3 stops with `uninterpreted` at these instructions rind's code or glibc runs: on x86_64, `stc` (`f9`), `clc` (`f8`), `movmskps` and VEX `vmovmskps`, `vinsertf128` (VEX.256 0F3A 18), `vpermpd` (VEX.256.W1 0F3A 01), `vmovshdup` (VEX F3 0F 16), and the `syscall` in glibc's `mprotect`; on aarch64, `mrs xN, tpidr_el0` (glibc's `malloc`), `tbl` with one to four table registers (8B and 16B), and `cnt` (8B and 16B).
+- **Breaks:** BINSEC 0.11.3 stops with `uninterpreted` at these instructions rind's code or glibc runs: on x86_64, `stc` (`f9`), `clc` (`f8`), `movmskps` and VEX `vmovmskps`, `vinsertf128` (VEX.256 0F3A 18), `vpermpd` (VEX.256.W1 0F3A 01), `vmovshdup` (VEX F3 0F 16), `stmxcsr` and `ldmxcsr` (0F AE /3 and /2, which Intel's MXCSR mitigation runs on a CPU that needs it), and the `syscall` in glibc's `mprotect`; on aarch64, `mrs xN, tpidr_el0` (glibc's `malloc`), `tbl` with one to four table registers (8B and 16B), and `cnt` (8B and 16B).
 - **Reproduce:** `admin/ct-binsec` with `STUBS` emptied stops at the first one its harnesses reach, such as `stc` in `ct_binsec_ecdh_p521` on x86_64 or `tbl` in `ct_binsec_aes` on aarch64.
-- **Workaround:** `admin/ct-binsec`'s `STUBS` gives each its effect in BINSEC's script language, generated per encoding from objdump's disassembly of the test binary and glibc, since `replace opcode` matches exact bytes; `tbl`, a constant-time table lookup, becomes a shift of the whole table, which needs no branch. Its script makes `mprotect` succeed without its system call.
+- **Workaround:** `admin/ct-binsec`'s `STUBS` gives each its effect in BINSEC's script language, generated per encoding from objdump's disassembly of the test binary and glibc, since `replace opcode` matches exact bytes; `tbl`, a constant-time table lookup, becomes a shift of the whole table, which needs no branch; `stmxcsr` stores MXCSR's default, and `ldmxcsr` does nothing, since BINSEC models no floating-point state. Its script makes `mprotect` succeed without its system call.
 - **Reported:** no.
 - **Goes when:** a BINSEC release decodes them, or `replace opcode` matches an encoding by mask, so one stub covers every encoding of an instruction.
 
@@ -138,6 +146,14 @@ Each upstream rind changes, with where its fork is vendored and where the list o
 - **Workaround:** `admin/prove` renames the second to `markerCopyInst1` with `sed`.
 - **Reported:** no.
 - **Goes when:** Aeneas names the clauses apart.
+
+### Charon panics on HACL*'s unrolled SHA-2
+
+- **Breaks:** libcrux-macros' `unroll_for!` unrolls the 64 or 80 rounds of libcrux-sha2's `sha256_update_nblocks` and `sha512_update_nblocks` into one body whose blocks nest past Charon's fixed `MAX_STACK_DEPTH` of 1024, and Charon panics rebuilding its control flow.
+- **Reproduce:** add `--include 'libcrux_sha2::hacl::sha256_update_nblocks' --extract-opaque-bodies` to `admin/prove`'s portable pass and run `admin/prove lean`: Charon panics with "stack depth limit exceeded" in `transform/control_flow/ullbc_to_llbc.rs` translating `sha256_update`.
+- **Workaround:** the portable pass leaves both functions opaque, as Charon leaves other crates' bodies, and `proofs/Rind/Portable/Hacl.lean` states each as an axiom restating HACL*'s F* theorem about it. Found in [kixel-ai/rind#649](https://github.com/kixel-ai/rind/pull/649).
+- **Reported:** not yet; filing is approved, and [its quest](/quest/m4/verified/hacl-sha2-lean.md) holds the draft issue awaiting the maintainer's approval of its text.
+- **Goes when:** Charon translates both, and that quest proves them in Lean.
 
 ### Lean cannot compile P-384's comb as one literal
 

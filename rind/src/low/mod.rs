@@ -119,6 +119,19 @@ mod generic {
 
 pub(crate) mod cpu;
 mod entry;
+// Intel's MXCSR mitigation, where the instructions it covers exist: on x86
+// with SSE2, outside Miri, which runs no assembly.
+#[cfg_attr(
+    not(all(
+        any(
+            target_arch = "x86_64",
+            all(target_arch = "x86", target_feature = "sse2")
+        ),
+        not(miri)
+    )),
+    path = "mcdt_none.rs"
+)]
+mod mcdt;
 mod posint;
 
 pub(crate) use entry::Entry;
@@ -133,6 +146,7 @@ pub(crate) use generic::md5::md5_compress_blocks;
 pub(crate) use generic::poly1305;
 pub(crate) use generic::reuse_cache::ReuseCache;
 pub(crate) use generic::zeroise::{Zeroable, ZeroableRef, zeroise, zeroise_value};
+pub(crate) use mcdt::Mcdt;
 #[cfg(rind_backend = "portable")]
 pub(crate) use portable::poly1305;
 pub(crate) use posint::{ModExp, PosInt, SecretPosInt};

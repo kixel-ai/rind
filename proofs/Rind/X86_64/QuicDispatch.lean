@@ -101,8 +101,8 @@ The model departs from the Rust in three ways, and adds no axiom:
 Drops are not modelled, as everywhere in the translation. Of the
 header-protection statics, only `CHACHA20` is here: each target's
 `Dispatch.lean`, where its translation reaches AES key setup (armv7's does
-not), models the AES ones. `admin/prove` writes the aarch64 and armv7 models
-from this file by renaming the target.
+not), models the AES ones. `admin/prove` writes the aarch64, armv7, and
+portable models from this file by renaming the target.
 -/
 
 namespace rind.x86_64

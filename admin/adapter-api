@@ -721,9 +721,20 @@ def compare(adapter, cfg, mirror, adapter_features, upstream_features, label, de
     theirs = Api(rustdoc(upstream_dir, crate), module, only, cfg.get("omitted", []))
     ours = Api(rustdoc(adapter_dir, adapter["name"]), [], only)
     theirs_e, ours_e = theirs.resolved(), ours.resolved()
+    omitted = cfg.get("omitted", [])
+
+    def omits(sig):
+        """Whether `sig` is an upstream impl of a trait, or with a trait argument, rind omits, which goes with that item."""
+        if not sig.startswith("impl "):
+            return False
+        names = re.findall(r'"\$::([^"]+)"', json.dumps(json.loads(sig[len("impl ") :])["trait"]))
+        return any(covers(o, name) for name in names for o in omitted)
+
     diffs = []
     for path in sorted(set(theirs_e) | set(ours_e)):
         a, b = theirs_e.get(path), ours_e.get(path)
+        if a is not None:
+            a = {s for s in a if not omits(s)} or (None if b is None else set())
         if a == b:
             continue
         if b is None:
