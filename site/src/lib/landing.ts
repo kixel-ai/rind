@@ -4,7 +4,7 @@ import type { Token, Tokens } from "marked";
 import { hrefs, lex, section } from "./markdown";
 import { read, repoUrl } from "./repo";
 
-const readme = lex(read("README.md"));
+export const readme = lex(read("README.md"));
 
 // A reference link the README defines, such as `[docs]`.
 function ref(name: string): string {
@@ -50,7 +50,7 @@ if (claims.length !== 3) throw new Error(`the README makes ${claims.length} clai
 
 // "With an agent": the paragraph introducing the prompt, the prompt, and the
 // paragraph after it, which names the manual route.
-const agent = section(readme, "With an agent").filter((t) => t.type !== "space");
+export const agent = section(readme, "With an agent").filter((t) => t.type !== "space");
 const [lead, code, ...after] = agent;
 if (lead?.type !== "paragraph" || code?.type !== "code" || after.length === 0) {
 	throw new Error("the README's With an agent section must be a paragraph, the prompt, and what follows");

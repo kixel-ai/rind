@@ -18,68 +18,35 @@ export function section(tokens: Token[], title: string): Token[] {
 export const html = (blocks: Token[]): string => Parser.parse(blocks);
 export const inlineHtml = (inline: Token[]): string => Parser.parseInline(inline);
 
-// Markdown for blocks, with reference links written inline, so a fragment
-// reads on its own without the definitions at the end of its source.
-export function markdown(blocks: Token[]): string {
-	return blocks
-		.map(block)
-		.filter((b) => b !== "")
+// Blocks as their source wrote them, so a fragment of a document says exactly
+// what the document does. Reference definitions are left to `definitions`.
+export const blocks = (tokens: Token[]): string =>
+	tokens
+		.filter((t) => t.type !== "space" && t.type !== "def")
+		.map((t) => t.raw.trimEnd())
 		.join("\n\n");
-}
 
-function block(token: Token): string {
-	switch (token.type) {
-		case "space":
-		// A reference definition is written inline at each link that uses it.
-		case "def":
-			return "";
-		case "paragraph":
-			return inline(token.tokens ?? []);
-		case "code":
-			return token.raw.trimEnd();
-		case "list": {
-			const list = token as Tokens.List;
-			const start = list.start === "" ? 1 : list.start;
-			return list.items
-				.map((item, i) => {
-					if (item.task) throw new Error(`no Markdown rendering for a task list item: ${item.raw}`);
-					const marker = list.ordered ? `${start + i}.` : "-";
-					const body = item.tokens.map((t) => (t.type === "text" ? inline(t.tokens ?? []) : block(t)));
-					// A continuation line is indented past the marker, or it leaves the item.
-					return `${marker} ${body.join("\n").replaceAll("\n", `\n${" ".repeat(marker.length + 1)}`)}`;
-				})
-				.join("\n");
-		}
-		default:
-			throw new Error(`no Markdown rendering for a ${token.type} block`);
-	}
-}
+// Spans as their source wrote them.
+export const spans = (tokens: Token[]): string =>
+	tokens
+		.map((t) => t.raw)
+		.join("")
+		.trim();
 
-// Inline tokens as Markdown. In a link's label, marked has already removed the
-// escapes from text, so `label` puts them back where a character would close the
-// label or start a span.
-export function inline(tokens: Token[], label = false): string {
-	return tokens
-		.map((t) => {
-			switch (t.type) {
-				case "text":
-					if (t.tokens) return inline(t.tokens, label);
-					return label ? t.raw.replace(/[\\[\]*_`<!]/g, "\\$&") : t.raw;
-				case "strong":
-					return `**${inline(t.tokens ?? [], label)}**`;
-				case "em":
-					return `*${inline(t.tokens ?? [], label)}*`;
-				case "link":
-					return link(inline(t.tokens ?? [], true), t.href, t.title);
-				case "codespan":
-				case "escape":
-				case "br":
-					return t.raw;
-				default:
-					throw new Error(`no Markdown rendering for a ${t.type} span`);
-			}
-		})
-		.join("");
+// The definitions in `source` of the reference links `tokens` use, so a fragment
+// of it reads on its own: the tag of `[text][tag]`, `[tag][]`, or `[tag]`,
+// normalized as marked keys them.
+export function definitions(tokens: Token[], source: Token[]): string {
+	const tags = new Set(
+		links(tokens)
+			.map((t) => t.raw.match(/\]\[([^\]]+)\]$/)?.[1] ?? t.raw.match(/^!?\[([\s\S]*)\](?:\[\])?$/)?.[1])
+			.filter((tag) => tag !== undefined)
+			.map((tag) => tag.trim().replace(/\s+/g, " ").toLowerCase()),
+	);
+	return source
+		.filter((t): t is Tokens.Def => t.type === "def" && tags.has(t.tag))
+		.map((t) => t.raw.trim())
+		.join("\n");
 }
 
 // A Markdown link to `href`, which may hold any character: one with spaces,
@@ -89,12 +56,12 @@ export function link(label: string, href: string, title?: string | null): string
 	return `[${label}](${dest}${title ? ` "${title.replace(/["\\]/g, "\\$&")}"` : ""})`;
 }
 
-// Every link target in some tokens, nested ones included.
-export function hrefs(tokens: Token[]): string[] {
-	const found: string[] = [];
+// Every link and image in some tokens, nested ones included.
+function links(tokens: Token[]): (Tokens.Link | Tokens.Image)[] {
+	const found: (Tokens.Link | Tokens.Image)[] = [];
 	const walk = (list: Token[]) => {
 		for (const t of list) {
-			if (t.type === "link") found.push(t.href);
+			if (t.type === "link" || t.type === "image") found.push(t as Tokens.Link | Tokens.Image);
 			if ("tokens" in t && t.tokens) walk(t.tokens);
 			if (t.type === "list") for (const item of (t as Tokens.List).items) walk(item.tokens);
 			if (t.type === "table") {
@@ -106,3 +73,9 @@ export function hrefs(tokens: Token[]): string[] {
 	walk(tokens);
 	return found;
 }
+
+// Every link target in some tokens, nested ones included.
+export const hrefs = (tokens: Token[]): string[] =>
+	links(tokens)
+		.filter((t) => t.type === "link")
+		.map((t) => t.href);

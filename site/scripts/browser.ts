@@ -34,14 +34,18 @@ let current = "about:blank";
 async function copies() {
 	// The button appears once its island hydrates, which the policy must allow.
 	await view.scrollTo("button", { timeout: 5000 });
-	await view.click("button", { timeout: 5000 });
-	// The handler awaits the clipboard before it relabels the button.
-	const label = await view.evaluate(`new Promise((resolve) => {
+	// Watch the label from before the click: the button resets it to "Copy" two
+	// seconds after, so a check that starts late would miss the result.
+	await view.evaluate(`void (window.__label = new Promise((resolve) => {
 		const button = document.querySelector("button");
-		const deadline = performance.now() + 5000;
-		const poll = () => (button.textContent === "Copy" && performance.now() < deadline ? requestAnimationFrame(poll) : resolve(button.textContent));
-		poll();
-	})`);
+		const observer = new MutationObserver(() => {
+			if (button.textContent !== "Copy") resolve(button.textContent);
+		});
+		observer.observe(button, { childList: true, characterData: true, subtree: true });
+		setTimeout(() => resolve(button.textContent), 5000);
+	}))`);
+	await view.click("button", { timeout: 5000 });
+	const label = await view.evaluate("window.__label");
 	if (label !== "Copied") throw new Error(`the copy button says "${label}"`);
 	const copied = await view.evaluate("navigator.clipboard.readText()");
 	if (copied !== prompt) throw new Error(`the copy button copied ${JSON.stringify(copied)}`);

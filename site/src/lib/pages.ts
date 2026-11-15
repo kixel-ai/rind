@@ -2,7 +2,7 @@
 // line in llms.txt, and a sitemap entry; scripts/check.ts fails a built page
 // that is missing from here.
 import * as landing from "./landing";
-import { inline, link, markdown } from "./markdown";
+import { blocks, definitions, link, spans } from "./markdown";
 
 export const origin = "https://rind.kixel.ai";
 
@@ -16,13 +16,6 @@ export interface Page {
 	markdown: () => string;
 }
 
-// A fenced code block holding `code`, its fence longer than any backtick run in it.
-function fence(code: string): string {
-	const longest = Math.max(0, ...[...code.matchAll(/`+/g)].map((m) => m[0].length));
-	const ticks = "`".repeat(Math.max(3, longest + 1));
-	return `${ticks}text\n${code}\n${ticks}`;
-}
-
 // The Markdown twin's path: `/` has no name of its own, so it is `/index.md`.
 export const twinPath = (page: Page) => (page.path === "/" ? "/index.md" : `${page.path}.md`);
 
@@ -30,21 +23,25 @@ export const home: Page = {
 	path: "/",
 	title: "rind",
 	answers: `What rind is, the evidence for its claims, how to switch to it, and what to weigh before depending on it.`,
-	markdown: () =>
-		[
+	markdown: () => {
+		// The README's own words, with the definitions of the reference links they use.
+		const quoted = [...landing.claims.flatMap((c) => c.body), ...landing.agent, ...landing.candor];
+		return `${[
 			"# rind",
 			`**${landing.headline}**\n${landing.subline}`,
-			...landing.claims.map((c) => `## ${c.icon} ${link(c.title, c.proof)}\n\n${inline(c.body).trim()}`),
+			...landing.claims.map((c) => `## ${c.icon} ${link(c.title, c.proof)}\n\n${spans(c.body)}`),
 			"## Switch with an agent",
-			markdown(landing.agentLead),
-			fence(landing.prompt),
-			markdown(landing.agentAfter),
+			blocks(landing.agent),
 			`## ${landing.candorTitle}`,
-			markdown(landing.candor),
+			blocks(landing.candor),
 			"## Links",
 			landing.footer.map((l) => `- ${link(l.label, l.href)}`).join("\n"),
 			`Built by ${link(landing.builtBy.label, landing.builtBy.href)}.`,
-		].join("\n\n") + "\n",
+			definitions(quoted, landing.readme),
+		]
+			.filter((b) => b !== "")
+			.join("\n\n")}\n`;
+	},
 };
 
 export const pages: Page[] = [home];
