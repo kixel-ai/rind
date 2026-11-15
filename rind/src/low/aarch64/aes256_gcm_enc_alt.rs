@@ -100,8 +100,8 @@ use crate::low::macros::*;
 
 // Transliterated from s2n-bignum's arm/aes_gcm/aes256_gcm_enc_alt.S.
 /// AES-256-GCM bulk encryption, 8 blocks at a time: counter-mode encryption of
-///
 /// whole blocks with the GHASH tag update
+///
 /// Inputs in[len_bits/8], len_bits, tag[2], ivec[16], key[240], htable[24];
 /// outputs out[len_bits/8], tag[2], ivec[16], returns bytes processed
 ///
