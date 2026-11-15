@@ -10,8 +10,8 @@ header. They are excluded from the published crate.
 inlined, without its fixed random sources, and with its failure logging always
 on; rind-aws-lc-rs offers none of them. The SHA-1, SHA-2, and SHA-3 SHAVS
 vectors aws-lc-rs keeps in `third_party/NIST` are rind's copies of the same
-files, under `thirdparty/`, read when the test runs since `thirdparty/cavp` is a
-submodule a build need not check out.
+files, under `thirdparty/`, read when the test runs since the published crate
+leaves them out.
 
 ## What is left out
 
@@ -44,7 +44,6 @@ Each follows from a difference the README lists under
 - RSA `verify_digest` is expected to fail.
 - An RSA key outside an algorithm's modulus range is expected to be refused
   when it is parsed for that algorithm, not when verifying.
-- A PKCS#8 v2 Ed25519 key without its public key is expected to be refused.
 
 Otherwise, imports name this harness, the modules are gathered under
 `main.rs`, `std::sync::LazyLock` stands in for the `lazy_static` crate, one
