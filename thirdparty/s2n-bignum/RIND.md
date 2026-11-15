@@ -29,6 +29,9 @@ Each bullet names one file.
 - `x86/proofs/instruction.ml`: the two sets of instructions below.
 - `x86/proofs/decode.ml`: their decoders.
 - `x86/proofs/x86.ml`: their semantics.
+- `x86/proofs/simulator.ml`: the CPU features `ANDN` and `RORX` need, BMI1
+  and BMI2, so cosimulation skips them on a CPU without those, as it does
+  upstream's other instructions.
 - `x86/proofs/utils/sha256_spec.ml`: SHA-256's FIPS 180-4 spec, from
   [awslabs/s2n-bignum#415](https://github.com/awslabs/s2n-bignum/pull/415) at
   `79120e64ed55e37c9652565ff272b7ef17f76738`, unchanged.
@@ -88,9 +91,11 @@ requires a 16-byte memory source to be aligned.
 What aws-lc's x86_64 ChaCha20-Poly1305 and ChaCha20 routines need,
 `chacha20_poly1305_{seal,open}`, `poly_hash_ad_internal`, and
 `ChaCha20_ctr32_ssse3_4x` (maintainer, 2026-11-11, on
-[kixel-ai/rind#627](https://github.com/kixel-ai/rind/pull/627)), and its
+[kixel-ai/rind#627](https://github.com/kixel-ai/rind/pull/627)), its
 AES-CTR and AES-CBC routines, `aes_hw_ctr32_encrypt_blocks` and
-`aes_hw_cbc_encrypt`. With them every instruction of those routines, as rind's release build emits them,
+`aes_hw_cbc_encrypt`, and what OpenSSL's `sha512_block_data_order_avx2` adds
+to them: BMI1's `ANDN`, BMI2's `RORX`, and `PUSH m64`. With them every
+instruction of those routines, as rind's release build emits them,
 decodes. Posting them to awslabs/s2n-bignum needs the maintainer's approval
 ([kixel-ai/rind#448](https://github.com/kixel-ai/rind/pull/448)).
 
@@ -108,6 +113,9 @@ decodes. Posting them to awslabs/s2n-bignum needs the maintainer's approval
 | `PUNPCKLDQ xmm, xmm/m128` | 66 0F 62 /r | |
 | `PUNPCKHDQ xmm, xmm/m128` | 66 0F 6A /r | |
 | `VBROADCASTI128 ymm, m128` | VEX.256.66.0F38.W0 5A /r | |
+| `ANDN r32/64, r32/64, r/m32/64` | VEX.LZ.0F38.W0/W1 F2 /r | sets SF and ZF, clears OF and CF, AF and PF undefined |
+| `RORX r32/64, r/m32/64, imm8` | VEX.LZ.F2.0F3A.W0/W1 F0 /r ib | leaves the flags |
+| `PUSH r/m64` | FF /6 | the memory form; the model already decodes the register one |
 | `RET` with the F3 prefix | F3 C3 | aws-lc's `rep ret`, which every CPU runs as `RET` |
 | `XORPS xmm, xmm/m128` | 0F 57 /r | decoded as `PXOR`, the same bitwise XOR of the low 128 bits |
 | `PREFETCHT0 m8` | 0F 18 /1 | decoded as `NOP_N`: a prefetch changes no architectural state |
