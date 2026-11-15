@@ -15,8 +15,8 @@ The models, each quoting the Rust it models, which `admin/prove`'s `check_quote`
   - `DigestDispatch.lean` and `DigestAlgorithm.lean`: `digest::Algorithm`'s `hash` and `start` (`rind/src/high/digest.rs:20`);
   - `HmacDispatch.lean`: `hmac::Algorithm`'s `key` and the key and tag `Ops` (`rind/src/high/hmac.rs:114`, `:430`);
   - `AeadDispatch.lean`: `aead::Algorithm`'s `expand` and `Sealer`'s `Ops` (`rind/src/aead.rs:62`, `:245`);
-  - `RsaDispatch.lean`: `rsa::VerificationAlgorithm`'s `verify` and `SigningAlgorithm`'s `sign` (`rind/src/high/signature/rsa.rs:152`, `:205`);
-  - `proofs/Rind/Aarch64/EcdsaDispatch.lean`: `ecdsa::VerificationAlgorithm`'s `parse`, `SigningAlgorithm`'s code, and the ECDSA statics (`rind/src/high/signature/ecdsa.rs:301`, `:497`, `:733`).
+  - `RsaDispatch.lean`: `rsa::VerificationAlgorithm`'s `verify` (`rind/src/high/signature/rsa.rs:152`);
+  - `proofs/Rind/X86_64/EcdsaDispatch.lean`, which `admin/prove` also writes for aarch64: `ecdsa::VerificationAlgorithm`'s `parse`, `SigningAlgorithm`'s code, and the ECDSA statics (`rind/src/high/signature/ecdsa.rs:301`, `:497`, `:733`).
 - Calls through `&dyn` (the same issue, whose title is that case): `proofs/Rind/Aarch64/P256Dispatch.lean` and `EcdsaDispatch.lean` model key generation's draws through `&mut dyn RandomSource` (`rind/src/mid/p256.rs:153`, `:223`).
 - `'static` borrows ([AeneasVerif/aeneas#727](https://github.com/AeneasVerif/aeneas/issues/727), open): `DigestAlgorithm.lean` models `Digest`, whose `&'static Algorithm` (`rind/src/high/digest.rs:387`) Aeneas cannot end a borrow of `Digest` across.
 - Nested borrows ([AeneasVerif/aeneas#1186](https://github.com/AeneasVerif/aeneas/issues/1186), open, a slice of slice references read in a loop):

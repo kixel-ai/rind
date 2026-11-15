@@ -113,8 +113,10 @@ fn new_verifier(algorithm: &Algorithm, key: &DecodingKey) -> Result<Box<dyn JwtV
     let algorithm = *algorithm;
     let ecdsa = |verification: &'static ecdsa::VerificationAlgorithm| {
         let der = key.try_get_as_bytes()?;
-        let key =
-            ecdsa::PublicKey::new(verification, der).map_err(|_| ErrorKind::InvalidEcdsaKey)?;
+        // The point or SPKI, as aws-lc-rs's verifier takes either.
+        let key = ecdsa::PublicKey::new(verification, der)
+            .or_else(|_| ecdsa::PublicKey::from_spki(verification, der))
+            .map_err(|_| ErrorKind::InvalidEcdsaKey)?;
         Ok::<_, Error>(verifier(algorithm, key))
     };
     let rsa = |verification: &'static RsaVerificationAlgorithm| -> Result<Box<dyn JwtVerifier>> {
@@ -145,7 +147,10 @@ fn new_verifier(algorithm: &Algorithm, key: &DecodingKey) -> Result<Box<dyn JwtV
         Algorithm::ES256 => ecdsa(&ecdsa::verify::P256_SHA256_FIXED)?,
         Algorithm::ES384 => ecdsa(&ecdsa::verify::P384_SHA384_FIXED)?,
         Algorithm::EdDSA => {
-            let key = ed25519::PublicKey::new(key.try_get_as_bytes()?)
+            // The raw key or SPKI, as aws-lc-rs's verifier takes either.
+            let der = key.try_get_as_bytes()?;
+            let key = ed25519::PublicKey::new(der)
+                .or_else(|_| ed25519::PublicKey::from_spki(der))
                 .map_err(|_| ErrorKind::InvalidEddsaKey)?;
             verifier(algorithm, key)
         }

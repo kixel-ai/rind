@@ -94,7 +94,8 @@ impl PublicKey {
         algorithm.parse(
             |ecdsa| ecdsa::PublicKey::new(ecdsa, &data),
             || ed25519::PublicKey::new(&data),
-            || rsa::PublicKey::new(&data),
+            // PKCS#1 or SPKI, as the old shared loader took either.
+            || rsa::PublicKey::new(&data).or_else(|_| rsa::PublicKey::from_spki(&data)),
         )
     }
 

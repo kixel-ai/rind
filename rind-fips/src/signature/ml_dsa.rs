@@ -53,11 +53,18 @@ pub enum MlDsa65 {}
 #[derive(Debug)]
 pub enum MlDsa87 {}
 
+mod sealed {
+    pub trait Sealed {}
+    impl Sealed for super::MlDsa44 {}
+    impl Sealed for super::MlDsa65 {}
+    impl Sealed for super::MlDsa87 {}
+}
+
 /// An ML-DSA parameter set, as FIPS 204 standardises them: [`MlDsa44`],
 /// [`MlDsa65`], or [`MlDsa87`], which fixes the sizes of its keys and
 /// signatures.
 pub trait ParameterSet:
-    fmt::Debug + Send + Sync + Unpin + UnwindSafe + RefUnwindSafe + 'static
+    sealed::Sealed + fmt::Debug + Send + Sync + Unpin + UnwindSafe + RefUnwindSafe + 'static
 {
     /// The parameter set's number in the module's C ABI.
     #[doc(hidden)]

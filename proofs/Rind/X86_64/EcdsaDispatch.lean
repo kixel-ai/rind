@@ -577,7 +577,13 @@ impl KeyPair {
     /// same `ECPrivateKey` without its curve, which PKCS#8 names instead.
     pub fn to_sec1(&self) -> Sec1 {
         let _entry = low::Entry::new_secret();
-        let scalar = self.to_scalar();
+        // A copy inside the call, so unwiped, unlike `to_scalar`'s.
+        let scalar = Buffer::<MAX_SCALAR_LEN>::encode(|output| {
+            on_ecdsa!(self, |pair| (pair.ops.get().to_scalar)(
+                &pair.signing,
+                output
+            ))
+        });
         let curve = curve_oid(self.public.algorithm.curve);
         Sec1(Buffer::encode(|output| {
             sec1::encode(scalar.as_ref(), self.public.as_ref(), Some(curve), output)

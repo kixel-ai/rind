@@ -31,6 +31,13 @@ fn same_error<A, B>(ours: &Result<A, Error>, theirs: &Result<B, rind::Error>) {
     );
 }
 
+/// Both refuse, with the same error.
+#[track_caller]
+fn same_refusal<A, B>(ours: &Result<A, Error>, theirs: &Result<B, rind::Error>) {
+    assert!(ours.is_err() && theirs.is_err(), "accepted");
+    same_error(ours, theirs);
+}
+
 /// The `Debug` of `ours` is `theirs`', plain and pretty.
 #[track_caller]
 fn same_debug(ours: &impl core::fmt::Debug, theirs: &impl core::fmt::Debug) {
@@ -53,9 +60,9 @@ fn same_verdicts(
     flipped[signature.len() / 2] ^= 1;
     let truncated = &signature[..signature.len() - 1];
     for signature in [&flipped[..], truncated, &[]] {
-        same_error(&ours(MESSAGE, signature), &theirs(MESSAGE, signature));
+        same_refusal(&ours(MESSAGE, signature), &theirs(MESSAGE, signature));
     }
-    same_error(&ours(b"another", signature), &theirs(b"another", signature));
+    same_refusal(&ours(b"another", signature), &theirs(b"another", signature));
 }
 
 /// The module parses `encoded` as rind does, to the same bytes, and refuses
@@ -71,7 +78,7 @@ fn same_parse<A: AsRef<[u8]>, B: AsRef<[u8]>>(
         theirs(encoded).unwrap().as_ref()
     );
     for bad in [&encoded[1..], &encoded[..encoded.len() - 1], &[]] {
-        same_error(&ours(bad), &theirs(bad));
+        same_refusal(&ours(bad), &theirs(bad));
     }
 }
 
