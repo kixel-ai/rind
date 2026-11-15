@@ -4540,6 +4540,7 @@ dependencies = [
  "sha2 0.11.1",
  "sha3",
  "spake2plus",
+ "verified-garbage",
  "voprf 0.6.0-pre.2",
  "vrf-rfc9381",
  "x25519-dalek 3.0.0",
@@ -4604,6 +4605,7 @@ dependencies = [
  "rcgen",
  "rind",
  "rind-dimpl",
+ "rind-openssl",
  "rind-rcgen",
  "rind-rustls",
  "rind-str0m",
@@ -4650,6 +4652,16 @@ dependencies = [
  "openmls_traits",
  "rind",
  "tls_codec",
+]
+
+[[package]]
+name = "rind-openssl"
+version = "3.0.0"
+dependencies = [
+ "crabgrind 0.4.0",
+ "openssl-sys",
+ "rind",
+ "zeroize",
 ]
 
 [[package]]
@@ -5744,6 +5756,74 @@ name = "vcpkg"
 version = "0.2.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
+
+[[package]]
+name = "verified-garbage"
+version = "0.0.0"
+source = "git+https://github.com/pyca/verified-garbage?rev=d004ffaeb3c226c377a59f9f824386246d73ca5d#d004ffaeb3c226c377a59f9f824386246d73ca5d"
+dependencies = [
+ "getrandom 0.4.3",
+ "verified-garbage-asm-aarch64",
+ "verified-garbage-asm-arm",
+ "verified-garbage-asm-powerpc64le",
+ "verified-garbage-asm-riscv64",
+ "verified-garbage-asm-x86",
+ "verified-garbage-asm-x86_64",
+ "verified-garbage-cpu",
+]
+
+[[package]]
+name = "verified-garbage-asm-aarch64"
+version = "0.0.0"
+source = "git+https://github.com/pyca/verified-garbage?rev=d004ffaeb3c226c377a59f9f824386246d73ca5d#d004ffaeb3c226c377a59f9f824386246d73ca5d"
+dependencies = [
+ "verified-garbage-cpu",
+]
+
+[[package]]
+name = "verified-garbage-asm-arm"
+version = "0.0.0"
+source = "git+https://github.com/pyca/verified-garbage?rev=d004ffaeb3c226c377a59f9f824386246d73ca5d#d004ffaeb3c226c377a59f9f824386246d73ca5d"
+dependencies = [
+ "verified-garbage-cpu",
+]
+
+[[package]]
+name = "verified-garbage-asm-powerpc64le"
+version = "0.0.0"
+source = "git+https://github.com/pyca/verified-garbage?rev=d004ffaeb3c226c377a59f9f824386246d73ca5d#d004ffaeb3c226c377a59f9f824386246d73ca5d"
+dependencies = [
+ "verified-garbage-cpu",
+]
+
+[[package]]
+name = "verified-garbage-asm-riscv64"
+version = "0.0.0"
+source = "git+https://github.com/pyca/verified-garbage?rev=d004ffaeb3c226c377a59f9f824386246d73ca5d#d004ffaeb3c226c377a59f9f824386246d73ca5d"
+dependencies = [
+ "verified-garbage-cpu",
+]
+
+[[package]]
+name = "verified-garbage-asm-x86"
+version = "0.0.0"
+source = "git+https://github.com/pyca/verified-garbage?rev=d004ffaeb3c226c377a59f9f824386246d73ca5d#d004ffaeb3c226c377a59f9f824386246d73ca5d"
+dependencies = [
+ "verified-garbage-cpu",
+]
+
+[[package]]
+name = "verified-garbage-asm-x86_64"
+version = "0.0.0"
+source = "git+https://github.com/pyca/verified-garbage?rev=d004ffaeb3c226c377a59f9f824386246d73ca5d#d004ffaeb3c226c377a59f9f824386246d73ca5d"
+dependencies = [
+ "verified-garbage-cpu",
+]
+
+[[package]]
+name = "verified-garbage-cpu"
+version = "0.0.0"
+source = "git+https://github.com/pyca/verified-garbage?rev=d004ffaeb3c226c377a59f9f824386246d73ca5d#d004ffaeb3c226c377a59f9f824386246d73ca5d"
 
 [[package]]
 name = "version_check"
