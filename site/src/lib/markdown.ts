@@ -44,10 +44,11 @@ export function definitions(tokens: Token[], source: TokensList): string {
 		.join("\n");
 }
 
-// A link's destination and title as Markdown writes them: a destination with
-// spaces, parentheses, or angle brackets goes between escaped angle brackets.
+// A link's destination and title as Markdown writes them: an empty destination,
+// or one with spaces, parentheses, or angle brackets, goes between escaped angle
+// brackets.
 function target(href: string, title?: string | null): string {
-	const dest = /[\s()<>\\]/.test(href) ? `<${href.replace(/[<>\\]/g, "\\$&")}>` : href;
+	const dest = href === "" || /[\s()<>\\]/.test(href) ? `<${href.replace(/[<>\\]/g, "\\$&")}>` : href;
 	return `${dest}${title ? ` "${title.replace(/["\\]/g, "\\$&")}"` : ""}`;
 }
 
