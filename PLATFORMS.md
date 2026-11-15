@@ -96,11 +96,21 @@ qemu. iOS devices' code is only built.
   when a change touches rind, the workspace manifest or lockfile, or the
   flake, and `just gate` always does. `wasm32-unknown-unknown` enables
   `getrandom/wasm_js` for JavaScript randomness; the WASI target uses its
-  system random source. The nightly `build.yml` runs the vector tests
-  on `wasm32-wasip2` under wasmtime (`just wasm`), without the differential
-  tests, since aws-lc does not build for wasm. `wasm32-unknown-unknown` stays
-  compile-only: its tests need a JavaScript host. Constant time is unchecked on
-  wasm: ctgrind and the trace checks inspect native code, and a wasm engine
+  system random source. The nightly `build.yml` runs `just wasm` on
+  `wasm32-wasip2` under wasmtime, and that job is not part of `just ci`.
+  `just ci`'s cross lane clippy-checks the wasm tests and, on Linux, runs
+  `cctv` and `heap_scratch` there, and wipe-checks RSA-3072 and RSA-4096
+  key generation on 32-bit limbs. `just wasm` is that wasm run with
+  `SLOW_TESTS=1`. aws-lc does not build for wasm, so the live differential
+  tests stay on `just portable`. Ed25519 CCTV verdicts are compared with a
+  file recorded from aws-lc.
+  `ReuseCache`'s threaded test does not run there: this target has no threads.
+  `wasm32-unknown-unknown` stays compile-only: its tests need a JavaScript
+  host. The cross lane clippy-checks `rind-ring` on that target with
+  `wasm32_unknown_unknown_js`, which enables rind's `wasm_js` and so selects
+  getrandom's JavaScript backend.
+  Constant time is unchecked on wasm: ctgrind and the trace checks inspect
+  native code, and a wasm engine
   compiles rind again, so its JIT may turn a select into a branch.
   RSA and the NIST curves run on 64-bit limbs on 64-bit targets and on
   `wasm32` built with `-C target-feature=+wide-arithmetic` (stable from Rust

@@ -33,9 +33,11 @@ omitted = [
 ]
 
 # ring's feature names, so a manifest naming them builds unchanged. As in ring,
-# `alloc` gates RSA and `std` the errors' `std::error::Error` impls; rind's
-# random source already falls back to `/dev/urandom`, and the rest pick
-# platforms, code paths, or tests rind lacks.
+# `alloc` gates RSA and `std` the errors' `std::error::Error` impls.
+# `wasm32_unknown_unknown_js` enables rind's `wasm_js`, which selects
+# getrandom's JavaScript backend, as ring's feature does. rind's random
+# source already falls back to `/dev/urandom`, and the rest pick platforms,
+# code paths, or tests rind lacks.
 [features]
 default = ["alloc", "dev_urandom_fallback"]
 alloc = []
@@ -47,9 +49,15 @@ std = ["alloc"]
 test_logging = []
 unstable-testing-arm-no-hw = []
 unstable-testing-arm-no-neon = []
-wasm32_unknown_unknown_js = []
+# ring's name for getrandom's JavaScript backend on wasm32-unknown-unknown.
+# Forwarded to rind: a direct getrandom here would enable `wasm_js` only if
+# cargo merged it with rind's copy.
+wasm32_unknown_unknown_js = ["rind/wasm_js"]
 
 [dependencies]
+# `wasm_js` is not in the published rind 0.3.2. This path dependency is the
+# workspace copy. Publish rind with that feature and bump this requirement
+# in the same release, or a crates.io build of `wasm32_unknown_unknown_js` fails.
 rind = { version = "0.3.2", path = "../rind" }
 untrusted = "0.9"
 
