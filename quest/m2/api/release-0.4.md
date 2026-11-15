@@ -13,7 +13,7 @@ Decided with the maintainer on 2026-11-09:
 - So the adapter fixes publish in the same release as rind 0.4, not before it, and MoQ's PR moves to both at once.
 - Decided 2026-11-12 (maintainer, /quest-audit): 0.4 also waits for every breaking change planned by then ✅ (rejected: only ML-KEM and wiping, with the API fixes in 0.5; ship the first three as planned). The audit found four more breaks already written or planned, and a 0.5 weeks after 0.4 would re-pin every adapter a second time, which is what this quest exists to prevent. They are ML-KEM's `kem` API ([kixel-ai/rind#606](https://github.com/kixel-ai/rind/pull/606)), wiping without the `wipe` feature, which [kixel-ai/rind#609](https://github.com/kixel-ai/rind/pull/609) makes and the maintainer accepted on 2026-11-13, [the API shape](/quest/m2/api/shape.md), and [HKDF's `Prk`](/quest/m2/api/hkdf-prk.md). The same day: 0.4 waits for the shape spike's verdict and whichever shape wins ✅ (rejected: fix names in today's modules for 0.4 and redesign in 0.5; only HKDF joins 0.4). `Required` below is the whole list, and the sentence after this list covers only the first three.
 
-What remains is [rind needs no runtime CPU check](/quest/m2/api/cpu-check.md).
+All three changes are on `main`.
 
 The hold uses only what the release tooling has. Publishing happens only when a release PR merges (`CONTRIBUTING.md`'s Releases section, `release_always = false` in `.release-plz.toml`), and one release PR covers every crate. So the hold is the maintainer leaving the release PR unmerged, and while it lasts no adapter fix and no pyrind release publishes either.
 
@@ -32,7 +32,7 @@ The benchmark report is refreshed once before each minor release (maintainer, 20
 
 ## Waiting
 
-- Maintainer: leave the release PR, [kixel-ai/rind#511](https://github.com/kixel-ai/rind/pull/511) or whichever replaces it, unmerged until every quest under `Required` is on `main` and MoQ's PR is ready, then merge it. An agent cannot: a release PR merges on the maintainer's approval (`CONTRIBUTING.md`'s Reviews section), and leaving rind alone out of the release (`release = false`) would not hold it, since every adapter's fix requires rind 0.4, which is why the hold is the unmerged PR. Check: `cargo search rind` shows 0.4.0.
+- Maintainer: leave the release PR, [kixel-ai/rind#511](https://github.com/kixel-ai/rind/pull/511) or whichever replaces it, unmerged until every quest under `Required` is on `main` and MoQ's PR is ready, then merge it once `just release-check` passes at its head. An agent cannot: a release PR merges on the maintainer's approval (`CONTRIBUTING.md`'s Reviews section), and leaving rind alone out of the release (`release = false`) would not hold it, since every adapter's fix requires rind 0.4, which is why the hold is the unmerged PR. Check: `cargo search rind` shows 0.4.0.
 
 ## Required
 
@@ -40,5 +40,3 @@ The benchmark report is refreshed once before each minor release (maintainer, 20
 - [The API takes one shape](/quest/m2/api/shape.md) - the spike's verdict, and the renames and moves of whichever shape wins
 - [HKDF PRKs load from bytes and fill a slice](/quest/m2/api/hkdf-prk.md) - `expand(info, usize)` replaced by `fill`
 - [Benchmark report refresh, before rind 0.4](/quest/m2/bench/report-refresh.md) - the report and the README's claims, current for the release
-- [rind needs no runtime CPU check](/quest/m2/api/cpu-check.md) - `cpu::check` and `MissingFeature` removed, the last of the three
-- [Releases publish only after the full suite passes locally](/quest/m0/ci-speed/release-check.md) - the local full-suite run every release PR now passes before it merges

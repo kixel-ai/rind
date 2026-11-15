@@ -97,9 +97,10 @@ declare -A scope=(
     # Quest documents form one graph, so any change validates the whole tree,
     # as does a bump of the flake-pinned validator.
     [quest]='^(quest/|flake\.lock$)'
-    # alert.yml must watch every workflow that runs outside a pull request, and
-    # every third-party action must be pinned.
-    [gh]='^(\.github/|sh/(alert|pins)\.sh$)'
+    # alert.yml must watch every workflow that runs outside a pull request,
+    # every third-party action must be pinned, and every scheduled workflow
+    # must run whole when the release check dispatches it.
+    [gh]='^(\.github/|sh/(alert|pins|release-check)\.sh$)'
     [shell]=''
     [nix]=''
 )
@@ -285,7 +286,8 @@ for module in "${selected[@]}"; do
                 done
             fi
             # The FIPS module's source rides along: its cfg touches only where
-            # randomness comes from, which no backend changes.
+            # randomness comes from, which no backend changes, and the CPU
+            # check, which only the backends it builds on have.
             CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS="$portable --cfg rind_fips" \
                 cargo clippy -p rind --lib --locked --target x86_64-unknown-linux-gnu -- --deny warnings
             # And on a 32-bit target, whose Poly1305 and GHASH differ.
@@ -314,7 +316,7 @@ for module in "${selected[@]}"; do
             ;;
         check:quest) quest check ;;
         check:license) bash admin/scan-license ;;
-        check:mutants) admin/mutants --pins ;;
+        check:mutants) admin/mutants --pins && admin/mutants --expand-diff-self-test ;;
         # It finds the generated kernels relative to its own directory.
         check:inplace) (cd admin/parse-asm && python3 inplace.py) ;;
         check:testing) python3 admin/testing ;;
@@ -343,6 +345,7 @@ for module in "${selected[@]}"; do
             fi
             sh/alert.sh check
             sh/pins.sh
+            sh/release-check.sh --check >/dev/null
             ;;
         check:shell) files 'sh/*.sh' | xargs -0 shellcheck ;;
         check:nix) files '*.nix' | xargs -0 nixfmt --check ;;
