@@ -173,6 +173,24 @@ fn digest(bytes: &[u8]) -> Bytes<MAX_DIGEST> {
     digest
 }
 
+/// The sum of `scalar * element` over `terms`, for the edwards25519
+/// suites, whose only multiplication is constant-time: a term whose public
+/// scalar is one, such as a hiding commitment, is added without one.
+fn edwards_mul_sum<G: Group>(
+    terms: &[(G::Element, G::Scalar)],
+    mul: impl Fn(&G::Element, &G::Scalar) -> G::Element,
+    add: impl Fn(&G::Element, &G::Element) -> G::Element,
+) -> Option<G::Element> {
+    let one = G::scalar_to_bytes(&scalar_from_u16::<G>(1));
+    terms
+        .iter()
+        .map(|(element, scalar)| match G::scalar_to_bytes(scalar) == one {
+            true => *element,
+            false => mul(element, scalar),
+        })
+        .reduce(|sum, product| add(&sum, &product))
+}
+
 /// FROST(Ed25519, SHA-512), over `mid`'s edwards25519.
 struct Ed25519;
 
@@ -266,10 +284,7 @@ impl Group for Ed25519 {
     }
 
     fn public_mul_sum(terms: &[(Self::Element, Self::Scalar)]) -> Option<Self::Element> {
-        terms
-            .iter()
-            .map(|(element, scalar)| element.mul(scalar))
-            .reduce(|sum, product| sum.add(&product))
+        edwards_mul_sum::<Self>(terms, |e, s| e.mul(s), |a, b| a.add(b))
             .and_then(Self::not_identity)
     }
 
@@ -360,10 +375,7 @@ impl Group for Ristretto255 {
     }
 
     fn public_mul_sum(terms: &[(Self::Element, Self::Scalar)]) -> Option<Self::Element> {
-        terms
-            .iter()
-            .map(|(element, scalar)| element.mul(scalar))
-            .reduce(|sum, product| sum.add(&product))
+        edwards_mul_sum::<Self>(terms, |e, s| e.mul(s), |a, b| a.add(b))
             .and_then(Self::not_identity)
     }
 
@@ -886,14 +898,16 @@ pub fn deal(
         return Err(Error::WrongLength);
     }
     with_group!(suite, G => {
-        let coefficients = (0..min_signers)
-            .map(|_| G::random_scalar())
-            .collect::<Result<Vec<_>, _>>()?;
-        let mut coefficients = coefficients;
-        let dealt = deal_with::<G>(&coefficients, max_signers);
-        // The constant coefficient is the group's signing key.
+        let mut coefficients = Vec::with_capacity(usize::from(min_signers));
+        let mut drawn = Ok(());
+        while drawn.is_ok() && coefficients.len() < coefficients.capacity() {
+            drawn = G::random_scalar().map(|c| coefficients.push(c));
+        }
+        let dealt = drawn.map(|()| deal_with::<G>(&coefficients, max_signers));
+        // The constant coefficient is the group's signing key; the capacity
+        // was exact, so no copy of it was freed unwiped.
         low::zeroise(&mut coefficients);
-        Ok(dealt)
+        dealt
     })
 }
 

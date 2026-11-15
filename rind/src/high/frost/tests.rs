@@ -755,7 +755,10 @@ mod differential {
                     .iter()
                     .map(|s| {
                         let id = FrostId::deserialize(s.identifier().as_ref()).unwrap();
-                        let share = FrostShare::deserialize(s.to_scalar().as_ref()).unwrap();
+                        // The reference branches on the share, so it leaves
+                        // ctgrind's watch here.
+                        let scalar = ct::into_public(s.to_scalar().0);
+                        let share = FrostShare::deserialize(&scalar).unwrap();
                         let secret = SecretShare::new(id, share, frost_commitment.clone());
                         (id, KeyPackage::try_from(secret).unwrap())
                     })
