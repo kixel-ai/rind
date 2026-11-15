@@ -172,13 +172,13 @@ establishes, and what it does not:
   exponentiation, the test compares that routine with itself, so it
   checks rind's glue around it, and only vectors check the routine. wasm runs
   none, since aws-lc does not build for it.
-- **Fuzz targets**, nightly for twenty minutes each against aws-lc-rs,
+- **Fuzz targets**, weekly for twenty minutes each against aws-lc-rs,
   replayed on every tier and against the portable backend. The ECVRF, OPRF,
   and blind RSA targets compare rind with itself, so they find panics and
   hangs, not wrong answers. Coverage does not measure what fuzzing reaches.
   [OSS-Fuzz](/quest/m4/oss-fuzz.md) is not running yet.
-- **ctgrind** (`admin/ctgrind`, nightly in release and weekly on armv7 in
-  debug) runs the unit tests under valgrind, failing on a branch or address
+- **ctgrind** (`admin/ctgrind`, weekly, in release and debug builds, armv7's
+  included) runs the unit tests under valgrind, failing on a branch or address
   that depends on a marked secret. It sees only the paths the tests take,
   with the secrets they mark; it cannot run AVX-512, VAES, the SHA
   extensions, or ARM's crypto extension and SHA3; and it sees no
@@ -231,7 +231,7 @@ establishes, and what it does not:
   pointer, or x86_64's direction flag comes back changed, and
   `admin/prove-bytes clobbers` checks each s2n-bignum block declares what
   its proof says it may change.
-- **Miri**, nightly, runs the portable backend's unit tests on x86_64 and
+- **Miri**, weekly, runs the portable backend's unit tests on x86_64 and
   big-endian s390x, failing on undefined behavior. It runs no assembly, and
   skips the slow tests `sh/miri.sh` lists.
 - **Mutation testing** (`admin/mutants`) fails on a mutant of rind's Rust
@@ -297,7 +297,7 @@ Constant time is checked by no tool on:
   every constant-time check runs on CI's Linux builds, so what carries over
   is the assembly those builds share and the proofs about its instructions;
 - AES-GCM and ML-DSA on aarch64 under BINSEC, which cannot finish them in a
-  nightly's time, and the paths whose instructions BINSEC cannot decode,
+  scheduled run's time, and the paths whose instructions BINSEC cannot decode,
   which ctgrind, `admin/ct-sde`, and `admin/ct-qemu` cover for one or two
   secrets.
 
@@ -315,7 +315,7 @@ closes them. The report's "Measure coverage" step lists each file.
 rind-openssl, and test code. Every block in `rind`, rind-dart, and
 rind-openssl carries a `SAFETY:` comment, which clippy's
 `undocumented_unsafe_blocks` lint enforces in CI.
-Counted outside comments and literals by `admin/audit unsafe` at `c3356fec`:
+Counted outside comments and literals by `admin/audit unsafe` at `2abc90e9`:
 
 | Area | `unsafe` | What it is | What justifies it |
 |---|---|---|---|
@@ -330,7 +330,7 @@ Counted outside comments and literals by `admin/audit unsafe` at `c3356fec`:
 | `rind-dart` | 235 | the C ABI Dart's FFI calls | `SAFETY:` comments, `dart test`, and ctgrind over its exports |
 | `rind-python` | 6 | Python's buffer protocol | `SAFETY:` comments |
 | `rind-openssl` | 245 | the C ABI OpenSSL's core calls, and the `OSSL_PARAM` arrays it passes | `SAFETY:` comments, `fuzz::openssl`, and OpenSSL's own tests with it loaded |
-| `rind-fips` | 583 | the unpublished FIPS module's C ABI | out of scope until published |
+| `rind-fips` | 608 | the unpublished FIPS module's C ABI | out of scope until published |
 
 The rest, in `rind/tests`, rind-rcgen's tests, the fuzz targets, `admin`,
 and the unpublished bench, timing, and cpuid crates, is test code or tooling.
