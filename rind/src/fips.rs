@@ -157,6 +157,7 @@ errors! {
         Fault,
         MessageLimitReached,
         Unsupported,
+        OutOfMemory,
     ],
     key: [
         WrongLength,
