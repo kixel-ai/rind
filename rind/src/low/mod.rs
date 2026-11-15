@@ -46,6 +46,7 @@ mod vartime_planted;
 pub mod inline_assembly_safety;
 
 mod generic {
+    pub(crate) mod argon2;
     // The portable backend's RSA arithmetic, which armv7 shares, also built
     // in tests elsewhere to check it against s2n-bignum.
     #[cfg(any(rind_backend = "arm", rind_backend = "portable", test))]
@@ -114,6 +115,9 @@ mod generic {
     pub(super) mod sha1;
     #[cfg(all(test, any(rind_backend = "arm", rind_backend = "x86_64")))]
     pub(super) mod sha256;
+    // SLH-DSA's SHA-256 lanes one at a time, which x86_64 runs with the SHA
+    // extensions or without AVX2.
+    pub(super) mod sha256x8;
     pub(super) mod zeroise;
 }
 
@@ -135,6 +139,9 @@ mod mcdt;
 mod posint;
 
 pub(crate) use entry::Entry;
+pub(crate) use generic::argon2::Argon2Block;
+#[cfg(not(rind_backend = "x86_64"))]
+pub(crate) use generic::argon2::argon2_compress;
 pub(crate) use generic::blockwise::{Blockwise, UpdateBlocks, pad, sha256_digest, split_tail};
 pub(crate) use generic::chacha20::{chacha20_block, hchacha20};
 pub(crate) use generic::ct_copy::{ct_copy, ct_select_i16};
@@ -238,6 +245,7 @@ mod x86_64;
 cfg_if::cfg_if! {
     if #[cfg(rind_backend = "x86_64")] {
         pub(in crate::low) use x86_64::cpu::{enter_cpu_state, zero_bytes, ct_compare_bytes, ct_compare_16, leave_cpu_state};
+        pub(crate) use x86_64::argon2::argon2_compress;
         #[cfg(rind_fips)]
         pub(crate) use x86_64::cpu::missing_cpu_feature;
         pub(crate) use x86_64::chacha20;
@@ -352,6 +360,7 @@ cfg_if::cfg_if! {
         pub(crate) use x86_64::adx_mux::p521_jscalarmul;
         pub(crate) use x86_64::sha1_mux::{sha1_compress_blocks, sha1_compress_padded};
         pub(crate) use x86_64::sha256_mux::{sha256_compress_blocks, sha256_finish};
+        pub(crate) use x86_64::sha256x8::sha256_finish_x8;
         pub(crate) use x86_64::sha512::sha512_compress_blocks;
         pub(crate) use x86_64::sha3_keccak_f1600::sha3_keccak_f1600;
         pub(crate) use x86_64::sha3_keccak4_f1600_shim::sha3_keccak4_f1600;
@@ -460,6 +469,7 @@ cfg_if::cfg_if! {
         pub(crate) use aarch64::p521_jscalarmul::p521_jscalarmul;
         pub(crate) use aarch64::sha1::{sha1_compress_blocks, sha1_compress_padded};
         pub(crate) use aarch64::sha256::{sha256_compress_blocks, sha256_finish};
+        pub(crate) use generic::sha256x8::sha256_finish_x8;
         pub(crate) use aarch64::sha3_keccak_f1600_mux::sha3_keccak_f1600;
         pub(crate) use aarch64::sha3_keccak4_f1600_mux::sha3_keccak4_f1600;
         pub(crate) use aarch64::sha3_keccak_nof4_f1600::sha3_keccak_nof4_f1600;
@@ -493,6 +503,7 @@ cfg_if::cfg_if! {
             sha1_compress_blocks, sha1_compress_padded, sha256_compress_blocks, sha256_finish,
             sha512_compress_blocks,
         };
+        pub(crate) use generic::sha256x8::sha256_finish_x8;
     } else if #[cfg(rind_backend = "portable")] {
         pub(in crate::low) use portable::cpu::{enter_cpu_state, zero_bytes, ct_compare_bytes, ct_compare_16, leave_cpu_state};
         pub(crate) use portable::aes::{AesDecKey, AesKey};
@@ -508,6 +519,7 @@ cfg_if::cfg_if! {
             sha1_compress_blocks, sha1_compress_padded, sha256_compress_blocks, sha256_finish,
             sha512_compress_blocks,
         };
+        pub(crate) use generic::sha256x8::sha256_finish_x8;
     } else {
         compile_error!("build.rs sets rind_backend");
     }
