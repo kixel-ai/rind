@@ -162,6 +162,10 @@ module license '^(rind/src/|rind/LICENSE$|rind-python/LICENSE$|admin/scan-licens
 # TESTING.md's table names every export, test, and vector file.
 module testing '^(TESTING\.md$|admin/testing$|rind/(src|tests)/|fuzz/)' \
     tools='python3'
+# AUDIT.md's pins table is generated from the files that hold the pins, and
+# the quests it links name gaps that finishing them closes.
+module audit '^(AUDIT\.md$|admin/(audit|import-[a-z-]+|prove-bytes|sync-(acvp|vectors))$|thirdparty/s2n-bignum/RIND\.md$|(rind/)?Cargo\.(toml|lock)$|quest/)' \
+    tools='python3 git' fix
 # COMPATIBILITY.md is generated from the CPU scans.
 module compat '^(COMPATIBILITY\.md$|admin/x86-cpus?(/|$))' \
     tools='python3' fix
@@ -490,6 +494,8 @@ step() {
             run admin/mutants --expand-diff-self-test
             ;;
         check:testing) run python3 admin/testing ;;
+        check:audit) run python3 admin/audit check ;;
+        fix:audit) run python3 admin/audit fix ;;
         check:compat)
             run python3 admin/x86-cpu markdown-table >"$logs/compat.md"
             run diff -u COMPATIBILITY.md "$logs/compat.md"
