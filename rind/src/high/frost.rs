@@ -1091,8 +1091,11 @@ impl fmt::Debug for Scalar {
 /// pair of nonces signs at most once.
 pub struct SigningNonces {
     suite: ZeroableRef<Suite>,
-    /// The group key of the share that drew them, which with the identifier
-    /// in the commitments names that share.
+    /// The secret and group key of the share that drew them, which with the
+    /// identifier in the commitments name that share: one dealer's
+    /// polynomials can share a group key yet give one identifier different
+    /// secrets.
+    share: [u8; SCALAR_LEN],
     public_key: PublicKey,
     hiding: [u8; SCALAR_LEN],
     binding: [u8; SCALAR_LEN],
@@ -1153,6 +1156,7 @@ impl SigningNonces {
         }
         Ok(Some(Self {
             suite: ZeroableRef::new(G::suite()),
+            share: secret,
             public_key: share.public_key,
             hiding: G::scalar_to_bytes(&hiding),
             binding: G::scalar_to_bytes(&binding),
@@ -1180,7 +1184,10 @@ impl SigningNonces {
         if share.public_key != package.public_key {
             return Err(KeyFormatError::MismatchedPublicKey.into());
         }
-        if self.commitments.identifier() != share.identifier || self.public_key != share.public_key
+        // Whether the secrets match is all the comparison publishes.
+        if self.commitments.identifier() != share.identifier
+            || self.public_key != share.public_key
+            || !ct::into_public(low::ct_equal(&self.share, &share.secret))
         {
             return Err(KeyFormatError::MismatchedCommitments.into());
         }

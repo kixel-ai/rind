@@ -329,6 +329,19 @@ fn refuses_misuse() {
         n.sign(&shares[0], &mixed).err(),
         rejected(KeyFormatError::MismatchedCommitments)
     );
+    // Another polynomial with the same group key, whose share for the same
+    // identifier has another secret.
+    let scalar = |b: u8| Ristretto255::scalar_from_bytes(&[b; SCALAR_LEN]).unwrap();
+    let (same_key, _) = deal_with::<Ristretto255>(&[scalar(1), scalar(2)], 2);
+    let (same_key_other, _) = deal_with::<Ristretto255>(&[scalar(1), scalar(3)], 2);
+    assert_eq!(same_key[0].public_key(), same_key_other[0].public_key());
+    let (n, c) = SigningNonces::commit(&same_key_other[0]).unwrap();
+    let (_, c2) = SigningNonces::commit(&same_key[1]).unwrap();
+    let same_key_package = SigningPackage::new(same_key[0].public_key(), &[c, c2], b"m").unwrap();
+    assert_eq!(
+        n.sign(&same_key[0], &same_key_package).err(),
+        rejected(KeyFormatError::MismatchedCommitments)
+    );
     // Fresh nonces whose commitments are not the package's.
     let (n, _) = SigningNonces::commit(&shares[0]).unwrap();
     assert_eq!(
