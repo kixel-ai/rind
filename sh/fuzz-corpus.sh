@@ -15,12 +15,23 @@ dir=${2:?$usage}
 : "${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required}"
 
 mkdir -p "$dir"
-run=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$name&per_page=100" --jq '
-    [.artifacts[] | select((.expired | not) and .workflow_run.head_branch == "main")]
-    | sort_by(.created_at) | last | .workflow_run.id // empty')
-if [[ -z "$run" ]]; then
-    echo "no saved corpus $name; starting empty" >&2
-    exit 0
-fi
-gh run download "$run" --repo "$GITHUB_REPOSITORY" --name "$name" --dir "$dir"
-echo "restored $name from run $run: $(find "$dir" -type f | wc -l) inputs" >&2
+# Only a scheduled or dispatched fuzz.yml run on main in this repository runs
+# main's own workflow file, so only its artifacts are trusted. Matching on the
+# artifact's branch alone would also take one from any workflow a fork's pull
+# request ran from a branch named main.
+repo_id=$(gh api "repos/$GITHUB_REPOSITORY" --jq .id)
+runs=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/fuzz.yml/runs?branch=main&per_page=100" --jq "
+    .workflow_runs[]
+    | select((.event == \"schedule\" or .event == \"workflow_dispatch\")
+        and .head_repository.id == $repo_id)
+    | .id")
+for run in $runs; do
+    found=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run/artifacts?name=$name" \
+        --jq '[.artifacts[] | select(.expired | not)] | length')
+    if [[ "$found" -gt 0 ]]; then
+        gh run download "$run" --repo "$GITHUB_REPOSITORY" --name "$name" --dir "$dir"
+        echo "restored $name from run $run: $(find "$dir" -type f | wc -l) inputs" >&2
+        exit 0
+    fi
+done
+echo "no saved corpus $name; starting empty" >&2
