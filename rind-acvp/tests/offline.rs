@@ -472,6 +472,7 @@ fn sets() -> Vec<Set> {
         sets.push(sample(name, |_, _| true));
     }
     sets.push(ml_kem_encap_decap());
+    sets.push(hmac_drbg_registered());
     sets.push(kda_hkdf());
     // CTR's whole-byte payloads, the only ones rind registers.
     sets.push(sample("ACVP-AES-CTR-1.0", |_, test| {
@@ -576,6 +577,124 @@ fn sample(name: &str, keep: impl Fn(&Value, &Value) -> bool) -> Set {
     strip_answers(&mut prompt);
     Set {
         prompt,
+        check: Check::Answers(expected),
+    }
+}
+
+/// SP 800-90A's HMAC_DRBG over SHA-512 on aws-lc-rs's HMAC, as a model:
+/// the key and value after instantiation.
+struct HmacDrbg {
+    k: Vec<u8>,
+    v: Vec<u8>,
+}
+
+impl HmacDrbg {
+    fn new(entropy: &[u8], nonce: &[u8], personalization: &[u8]) -> Self {
+        let mut drbg = Self {
+            k: vec![0; 64],
+            v: vec![1; 64],
+        };
+        drbg.update(&[entropy, nonce, personalization].concat());
+        drbg
+    }
+
+    fn hmac(&self, parts: &[&[u8]]) -> Vec<u8> {
+        let key = aws_lc_rs::hmac::Key::new(aws_lc_rs::hmac::HMAC_SHA512, &self.k);
+        let mut ctx = aws_lc_rs::hmac::Context::with_key(&key);
+        parts.iter().for_each(|part| ctx.update(part));
+        ctx.sign().as_ref().to_vec()
+    }
+
+    fn update(&mut self, provided: &[u8]) {
+        for byte in [0u8, 1] {
+            self.k = self.hmac(&[&self.v, &[byte], provided]);
+            self.v = self.hmac(&[&self.v]);
+            if provided.is_empty() {
+                break;
+            }
+        }
+    }
+
+    /// A prediction-resistant draw: reseed, then generate with no
+    /// additional input.
+    fn draw(&mut self, entropy: &[u8], additional: &[u8], len: usize) -> Vec<u8> {
+        self.update(&[entropy, additional].concat());
+        let mut out = Vec::new();
+        while out.len() < len {
+            self.v = self.hmac(&[&self.v]);
+            out.extend_from_slice(&self.v);
+        }
+        self.update(&[]);
+        out.truncate(len);
+        out
+    }
+
+    /// ACVP's test: instantiate, draw twice, and answer the second.
+    fn answer(test: &Value, len: usize) -> Vec<u8> {
+        let mut drbg = Self::new(
+            &hex(&test["entropyInput"]),
+            &hex(&test["nonce"]),
+            &hex(&test["persoString"]),
+        );
+        let mut out = Vec::new();
+        for other in test["otherInput"].as_array().unwrap() {
+            out = drbg.draw(
+                &hex(&other["entropyInput"]),
+                &hex(&other["additionalInput"]),
+                len,
+            );
+        }
+        out
+    }
+}
+
+/// HMAC_DRBG at the lengths the module registers, 256-bit entropy, a
+/// 128-bit nonce, no personalization or additional input, and 2048 bits
+/// returned, which NIST's sample group does not use. The answers come from
+/// [`HmacDrbg`], which first reproduces the sample's.
+fn hmac_drbg_registered() -> Set {
+    let sample = read("thirdparty/acvp/hmacDRBG-1.0.json");
+    let group = &sample["testGroups"][0];
+    let test = &group["tests"][0];
+    let len = group["returnedBitsLen"].as_u64().unwrap() as usize / 8;
+    assert_eq!(HmacDrbg::answer(test, len), hex(&test["returnedBits"]));
+
+    let random = |len: usize| {
+        let mut bytes = vec![0; len];
+        aws_lc_rs::rand::fill(&mut bytes).unwrap();
+        hex::encode(bytes)
+    };
+    let tests: Vec<Value> = (1..=15)
+        .map(|tc_id| {
+            let other = || json!({"intendedUse": "generate", "additionalInput": "", "entropyInput": random(32)});
+            let mut test = json!({
+                "tcId": tc_id,
+                "entropyInput": random(32),
+                "nonce": random(16),
+                "persoString": "",
+                "otherInput": [other(), other()],
+            });
+            test["returnedBits"] = json!(hex::encode(HmacDrbg::answer(&test, 256)));
+            test
+        })
+        .collect();
+    let group = json!({
+        "tgId": 1,
+        "testType": "AFT",
+        "derFunc": false,
+        "reSeed": true,
+        "predResistance": true,
+        "entropyInputLen": 256,
+        "nonceLen": 128,
+        "persoStringLen": 0,
+        "additionalInputLen": 0,
+        "returnedBitsLen": 2048,
+        "mode": "SHA2-512",
+        "tests": tests,
+    });
+    let expected = built("hmacDRBG", None, "1.0", vec![group]);
+    Set {
+        prompt: expected.clone(),
         check: Check::Answers(expected),
     }
 }
