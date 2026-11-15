@@ -163,9 +163,6 @@ opaque low.x86_64.ghash_nohw.NohwTable.new
 opaque low.x86_64.ghash.ClmulTable.from_powers
   : Slice core.core_arch.x86.__m128i → low.x86_64.cpu.HaveAesHardware → Result low.x86_64.ghash.ClmulTable
 
-opaque low.x86_64.aes_gcm_vaes.VaesKernel.powers
-  : low.x86_64.aes_gcm_vaes.VaesKernel → Result (Slice core.core_arch.x86.__m128i)
-
 opaque low.x86_64.aes_gcm_vaes.VaesKernel.avx512
   : Std.U128 → low.x86_64.cpu.HaveAvx512ForAesGcm → Result low.x86_64.aes_gcm_vaes.VaesKernel
 

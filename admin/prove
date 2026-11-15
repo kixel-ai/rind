@@ -751,6 +751,11 @@ aes_gcm_items() {
     items rind/src/low/x86_64/aes.rs '    pub(crate) fn round_keys(&self)'
     items rind/src/low/x86_64/aes_gcm.rs 'fn counter_block(' 'fn by8<' 'impl Counter {' 'const COUNTER_1:' \
         'const BYTESWAP:' 'const BYTESWAP_EPI64:'
+    items rind/src/low/x86_64/ghash.rs 'impl GhashTableAvx512 {' 'pub(crate) fn _mul16(' 'pub(crate) fn _mul_tail(' \
+        'const TERNARY_XOR:' 'const GF128_POLY_LO:'
+    items rind/src/low/x86_64/aes.rs '    pub(crate) fn round_keys_512(&self)' 'impl RoundKeys512 {'
+    items rind/src/low/x86_64/aes_gcm.rs 'fn _cipher_avx512<' 'impl Counter512 {' 'const COUNTER_512_4:' \
+        'const BYTESWAP_512:' 'const BYTESWAP_512_EPI64:'
 }
 check_quote X86_64/AesGcmModel aes_gcm_items
 select_items() {

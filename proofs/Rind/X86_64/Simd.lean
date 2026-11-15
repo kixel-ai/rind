@@ -268,19 +268,17 @@ def lane128 (x : BitVec 512) (j : Nat) : BitVec 128 := x.extractLsb' (128 * j) 1
 def ofLanes128 (f : Nat → BitVec 128) : BitVec 512 := f 3 ++ f 2 ++ f 1 ++ f 0
 
 /-- `VPTERNLOG`'s bitwise function: bit `i` is the bit of `imm` that bits `i`
-of `a`, `b`, and `c` index, `a`'s the highest. -/
+of `a`, `b`, and `c` index, `a`'s the highest, as the union of the minterms
+`imm` selects. -/
 def ternary {w : Nat} (imm : BitVec 8) (a b c : BitVec w) : BitVec w :=
-  BitVec.ofFn fun i => imm.getLsbD
-    ((if a.getLsbD i then 4 else 0) + (if b.getLsbD i then 2 else 0) + (if c.getLsbD i then 1 else 0))
+  let t (k : Nat) (m : BitVec w) := if imm.getLsbD k then m else 0
+  t 0 (~~~a &&& ~~~b &&& ~~~c) ||| t 1 (~~~a &&& ~~~b &&& c) ||| t 2 (~~~a &&& b &&& ~~~c) |||
+    t 3 (~~~a &&& b &&& c) ||| t 4 (a &&& ~~~b &&& ~~~c) ||| t 5 (a &&& ~~~b &&& c) |||
+    t 6 (a &&& b &&& ~~~c) ||| t 7 (a &&& b &&& c)
 
 end rind.simd
 
 open rind.simd
-
-/-- `__m512i`'s `Clone`. -/
-def core.core_arch.x86.__m512i.Insts.CoreCloneClone.clone (x : core.core_arch.x86.__m512i) :
-    Result core.core_arch.x86.__m512i :=
-  ok x
 
 /-- `_mm512_setzero_si512`. -/
 def core.core_arch.x86.avx512f._mm512_setzero_si512 : Result core.core_arch.x86.__m512i :=
