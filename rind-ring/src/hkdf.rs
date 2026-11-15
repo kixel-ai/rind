@@ -122,9 +122,14 @@ impl Prk {
 // As ring's, which holds an HMAC key.
 impl fmt::Debug for Prk {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        struct Key(&'static digest::Algorithm);
+        impl fmt::Debug for Key {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.debug_struct("Key").field("algorithm", self.0).finish()
+            }
+        }
         let digest = self.algorithm.0.digest_algorithm();
-        let key = format_args!("Key {{ algorithm: {digest:?} }}");
-        f.debug_tuple("Prk").field(&key).finish()
+        f.debug_tuple("Prk").field(&Key(digest)).finish()
     }
 }
 
@@ -179,5 +184,21 @@ impl<'a> Okm<'a, Algorithm> {
             len: self.len.0,
             len_cached: self.len_cached,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ring derives `Debug` for `Prk(hmac::Key)`, whose `Debug` is a `debug_struct`.
+    #[test]
+    fn prk_debug_matches_ring() {
+        let prk = Prk::new_less_safe(HKDF_SHA256, &[0; 32]);
+        assert_eq!(format!("{prk:?}"), "Prk(Key { algorithm: SHA256 })");
+        assert_eq!(
+            format!("{prk:#?}"),
+            "Prk(\n    Key {\n        algorithm: SHA256,\n    },\n)"
+        );
     }
 }
