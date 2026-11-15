@@ -242,6 +242,7 @@ LIBRARIES = {
     "libcrux": "libcrux",
     "libcrux-ml-kem": "libcrux",
     "openssl": "openssl",
+    "verified-garbage": "verified-garbage",
 }
 
 # The CPU features by architecture, as rind-cpuid names them, without which a
@@ -298,6 +299,7 @@ CRATES = {
         "hpke-rs-libcrux",
     ],
     "openssl": ["openssl", "openssl-sys", "rustls-openssl"],
+    "verified-garbage": ["verified-garbage"],
     "tls": ["rustls"],
 }
 
@@ -418,11 +420,13 @@ def os_name():
 
 
 def locked_versions():
-    """Each package's versions in Cargo.lock."""
+    """Each package's versions in Cargo.lock, with the commit of one from git,
+    such as verified-garbage, whose version never changes."""
     versions = {}
     with open(os.path.join(ROOT, "Cargo.lock")) as f:
-        for name, version in re.findall(r'\[\[package\]\]\nname = "([^"]+)"\nversion = "([^"]+)"', f.read()):
-            versions.setdefault(name, []).append(version)
+        pattern = r'\[\[package\]\]\nname = "([^"]+)"\nversion = "([^"]+)"(?:\nsource = "git\+[^"#]*#([0-9a-f]+)")?'
+        for name, version, commit in re.findall(pattern, f.read()):
+            versions.setdefault(name, []).append(f"{version} ({commit[:8]})" if commit else version)
     return versions
 
 
@@ -741,6 +745,7 @@ COLUMNS = {
     "graviola": "graviola",
     "libcrux": "libcrux",
     "openssl": "OpenSSL",
+    "verified-garbage": "verified-garbage",
 }
 
 # Rows that time a library's own code another way, by that library. Each
@@ -886,6 +891,12 @@ TIERS = [
 # The libraries the nightly bench times rind against.
 BASELINES = ["aws-lc-rs", "ring"]
 
+# Libraries the nightly also times and the tiers keep, but that neither the
+# tier heatmap nor the gate counts. A cell where pyca/verified-garbage's
+# proven code is faster gets a quest that switches rind to it, not an alert;
+# the hosts' report counts it like any other library.
+TIMED = ["verified-garbage"]
+
 # The CPU-tier rows, as patterns over a nightly benchmark ID with `*` in the
 # library's place.
 TIER_ROWS = [
@@ -927,6 +938,7 @@ UNRANKED = [
         r"(blind-rsa\d+|v?oprf|vrf|spake2plus)-",
         "neither aws-lc-rs nor ring offers the protocol, so no baseline; the report's hosts compare it",
     ),
+    (r"chacha20/", "neither aws-lc-rs nor ring offers ChaCha20 without Poly1305, so no baseline"),
 ]
 
 # rind's time over the fastest library's above which benchmarks/gaps.toml
@@ -1818,7 +1830,7 @@ def load_run(paths):
         benchmarks = {}
         for r in saved["results"]:
             parts = r["id"].split("/")
-            lib = next((p for p in parts if p == "rind" or p in BASELINES), None)
+            lib = next((p for p in parts if p == "rind" or p in BASELINES or p in TIMED), None)
             if lib is None:
                 continue
             key = "/".join("*" if p == lib else p for p in parts)
