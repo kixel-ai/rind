@@ -881,7 +881,8 @@ use crate::low::macros::*;
         title_end = 1
         while head_comment[title_end][:1].islower():
             title_end += 1
-        head_comment.insert(title_end, "")
+        if head_comment[title_end]:
+            head_comment.insert(title_end, "")
         return head_comment[:-1]
 
     def on_source(self, name):
