@@ -919,12 +919,13 @@ pub fn deal(
     with_group!(suite, G => {
         let mut coefficients = Vec::with_capacity(usize::from(min_signers));
         let mut drawn = Ok(());
-        while drawn.is_ok() && coefficients.len() < coefficients.capacity() {
+        while drawn.is_ok() && coefficients.len() < usize::from(min_signers) {
             drawn = G::random_scalar().map(|c| coefficients.push(c));
         }
         let dealt = drawn.map(|()| deal_with::<G>(&coefficients, max_signers));
         // The constant coefficient is the group's signing key; the capacity
-        // was exact, so no copy of it was freed unwiped.
+        // held every coefficient, so no push moved one, leaving a copy
+        // freed unwiped.
         low::zeroise(&mut coefficients);
         dealt
     })
@@ -1090,6 +1091,9 @@ impl fmt::Debug for Scalar {
 /// pair of nonces signs at most once.
 pub struct SigningNonces {
     suite: ZeroableRef<Suite>,
+    /// The group key of the share that drew them, which with the identifier
+    /// in the commitments names that share.
+    public_key: PublicKey,
     hiding: [u8; SCALAR_LEN],
     binding: [u8; SCALAR_LEN],
     commitments: Commitments,
@@ -1099,9 +1103,10 @@ impl SigningNonces {
     /// Draws nonces for `share` by RFC 9591's `commit`, returning them to
     /// keep and their commitments to send the coordinator.
     ///
-    /// Each nonce is `nonce_generate`'s: a hash of 32 bytes from the system
-    /// random source and the share, so a weak random source alone does not
-    /// repeat one.
+    /// Each nonce is `nonce_generate`'s: a hash of 32 fresh bytes from the
+    /// system random source and the share, which keeps a nonce secret from
+    /// whoever can predict those bytes. It does not survive their repeating:
+    /// the same bytes and share give the same nonces.
     pub fn commit(share: &SigningShare) -> Result<(Self, Commitments), Error> {
         let _entry = Entry::new_secret();
         let mut random = [[0u8; 32]; 2];
@@ -1148,6 +1153,7 @@ impl SigningNonces {
         }
         Ok(Some(Self {
             suite: ZeroableRef::new(G::suite()),
+            public_key: share.public_key,
             hiding: G::scalar_to_bytes(&hiding),
             binding: G::scalar_to_bytes(&binding),
             commitments,
@@ -1174,7 +1180,8 @@ impl SigningNonces {
         if share.public_key != package.public_key {
             return Err(KeyFormatError::MismatchedPublicKey.into());
         }
-        if self.commitments.identifier() != share.identifier {
+        if self.commitments.identifier() != share.identifier || self.public_key != share.public_key
+        {
             return Err(KeyFormatError::MismatchedCommitments.into());
         }
         if package.commitments.len() < usize::from(share.min_signers) {

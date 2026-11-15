@@ -321,6 +321,14 @@ fn refuses_misuse() {
         n.sign(&shares[1], &package).err(),
         rejected(KeyFormatError::MismatchedCommitments)
     );
+    // Another group's participant with the same identifier, whose
+    // commitments a package under this group's key carries.
+    let (n, c) = SigningNonces::commit(&other_shares[0]).unwrap();
+    let mixed = SigningPackage::new(public_key, &[c, c1.clone()], b"m").unwrap();
+    assert_eq!(
+        n.sign(&shares[0], &mixed).err(),
+        rejected(KeyFormatError::MismatchedCommitments)
+    );
     // Fresh nonces whose commitments are not the package's.
     let (n, _) = SigningNonces::commit(&shares[0]).unwrap();
     assert_eq!(
@@ -395,7 +403,6 @@ fn refuses_misuse() {
         SigningShare::from_scalar(shares[0].identifier(), &[0; 31], &commitment).err(),
         rejected(KeyFormatError::WrongLength)
     );
-    drop(other_shares);
 
     // Dealing.
     for (min, max) in [(0, 3), (1, 3), (4, 3), (2, 1)] {
