@@ -174,10 +174,11 @@ for (const file of files) {
 			for (const [name, value] of attrs) if (name === "href") check(file, value);
 		}
 	} else if (file.endsWith(".md") || file.endsWith(".txt")) {
-		// Links, and URLs quoted as text, such as the prompt's.
+		// Links, and URLs quoted as text, such as the prompt's, without the
+		// trailing punctuation GFM leaves out of an autolink.
 		const body = text(file);
 		for (const href of hrefs(lex(body))) check(file, href);
-		for (const m of body.matchAll(/https?:\/\/[^\s)<>"'`\]]+/g)) check(file, m[0]);
+		for (const m of body.matchAll(/https?:\/\/[^\s)<>"'`\]]+/g)) check(file, m[0].replace(/[?!.,:*_~]+$/, ""));
 	}
 }
 for (const m of sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)) check("/sitemap.xml", m[1]);
