@@ -99,6 +99,7 @@ slow=(
     mid::aes::tests::cavp
     mid::argon2::tests::matches_rustcrypto
     mid::argon2::tests::reference_kat
+    mid::blake2b::tests::matches_rustcrypto
     mid::aes::tests::srtp_aes_cm
     mid::mldsa::tests::wycheproof
     mid::p256::tests::base_point_precomp

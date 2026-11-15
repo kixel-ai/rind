@@ -207,4 +207,38 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn matches_rustcrypto() {
+        // RustCrypto's blake2 crate, as aws-lc-rs has no BLAKE2b, takes its
+        // output length at compile time.
+        fn oracle(out_len: usize, message: &[u8]) -> Vec<u8> {
+            use blake2::Digest;
+            use blake2::digest::consts::*;
+            macro_rules! by_len {
+                ($($n:literal $u:ident),*) => {
+                    match out_len {
+                        $($n => blake2::Blake2b::<$u>::digest(message).to_vec(),)*
+                        _ => unreachable!(),
+                    }
+                };
+            }
+            by_len!(1 U1, 2 U2, 3 U3, 4 U4, 5 U5, 6 U6, 7 U7, 8 U8, 9 U9, 10 U10, 11 U11, 12 U12, 13 U13, 14 U14, 15 U15, 16 U16, 17 U17, 18 U18, 19 U19, 20 U20, 21 U21, 22 U22, 23 U23, 24 U24, 25 U25, 26 U26, 27 U27, 28 U28, 29 U29, 30 U30, 31 U31, 32 U32, 33 U33, 34 U34, 35 U35, 36 U36, 37 U37, 38 U38, 39 U39, 40 U40, 41 U41, 42 U42, 43 U43, 44 U44, 45 U45, 46 U46, 47 U47, 48 U48, 49 U49, 50 U50, 51 U51, 52 U52, 53 U53, 54 U54, 55 U55, 56 U56, 57 U57, 58 U58, 59 U59, 60 U60, 61 U61, 62 U62, 63 U63, 64 U64)
+        }
+
+        // Every output length, over messages up to two blocks and one byte,
+        // each fed whole and split around the first block's boundary.
+        let message: Vec<u8> = (0..257u32).map(|i| (i * 7 + 3) as u8).collect();
+        for out_len in 1..=MAX_OUT_LEN {
+            for len in 0..=message.len() {
+                let message = &message[..len];
+                let expected = oracle(out_len, message);
+                for split in [0, 1, 127, 128, 129, len] {
+                    let split = split.min(len);
+                    let (a, b) = message.split_at(split);
+                    assert_eq!(hash(out_len, &[a, b]), expected, "{out_len} {len} {split}");
+                }
+            }
+        }
+    }
 }
