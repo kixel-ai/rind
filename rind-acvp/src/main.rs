@@ -82,11 +82,17 @@ fn main() -> ExitCode {
 /// The next request, or `None` at the end of the input.
 fn read_request(input: &mut impl Read) -> Result<Option<Vec<Vec<u8>>>> {
     let mut word = [0u8; 4];
-    match input.read_exact(&mut word) {
-        Ok(()) => {}
-        Err(error) if error.kind() == io::ErrorKind::UnexpectedEof => return Ok(None),
-        Err(error) => return Err(error.into()),
+    // The input ends cleanly only before a request's first byte; a request
+    // cut short anywhere after it is an error.
+    loop {
+        match input.read(&mut word[..1]) {
+            Ok(0) => return Ok(None),
+            Ok(_) => break,
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
+            Err(error) => return Err(error.into()),
+        }
     }
+    input.read_exact(&mut word[1..])?;
     let count = u32::from_le_bytes(word) as usize;
     if count == 0 || count > MAX_ARGS + 1 {
         return Err(format!("a request of {count} strings").into());
@@ -338,6 +344,13 @@ fn hash_ldt(algorithm: &'static digest::Algorithm, args: &[Vec<u8>]) -> Result<R
     if content.is_empty() {
         return Err("an empty large-data pattern".into());
     }
+    // The registration's largest test is 8 GiB.
+    if times
+        .checked_mul(content.len() as u64)
+        .is_none_or(|len| len > 8 << 30)
+    {
+        return Err("a large-data message over 8 GiB".into());
+    }
     let per_chunk = ((1 << 20) / content.len()).max(1);
     let chunk = content.repeat(per_chunk);
     let mut ctx = digest::Context::new(algorithm);
@@ -372,6 +385,15 @@ fn encrypting(direction: &str) -> Result<bool> {
 /// `AES/encrypt`: key, blocks, and iterations, to the blocks encrypted that
 /// many times, and the blocks before the last, as aws-lc's wrapper runs the
 /// Monte Carlo test's inner loop. The module's block cipher only encrypts.
+/// An AES request's iteration count: 1 for a known-answer test, or the
+/// Monte Carlo test's 1000, the only counts `acvptool` sends for AES.
+fn aes_iterations(bytes: &[u8]) -> Result<u32> {
+    match u32_le(bytes)? {
+        iterations @ (1 | 1000) => Ok(iterations),
+        iterations => Err(format!("{iterations} AES iterations, not 1 or 1000").into()),
+    }
+}
+
 fn aes_ecb(args: &[Vec<u8>]) -> Result<Reply> {
     let [key, input, iterations] = take(args)?;
     let aes = cipher::Aes::new(aes(key)?, key)?;
@@ -380,7 +402,7 @@ fn aes_ecb(args: &[Vec<u8>]) -> Result<Reply> {
     }
     let mut result = input.to_vec();
     let mut prev = Vec::new();
-    let iterations = u32_le(iterations)?;
+    let iterations = aes_iterations(iterations)?;
     for j in 0..iterations {
         if j + 1 == iterations {
             prev = result.clone();
@@ -409,7 +431,7 @@ fn aes_cbc(encrypt: bool, args: &[Vec<u8>]) -> Result<Reply> {
     let mut result = vec![0; input.len()];
     let mut prev_result = Vec::new();
     let mut prev_input = Vec::new();
-    for j in 0..u32_le(iterations)? {
+    for j in 0..aes_iterations(iterations)? {
         prev_result = result.clone();
         if j > 0 {
             let chained = if encrypt { &result } else { &prev_input };
@@ -544,8 +566,15 @@ fn pbkdf(args: &[Vec<u8>]) -> Result<Reply> {
         "SHA2-512" => &pbkdf2::PBKDF2_HMAC_SHA512,
         name => return Err(format!("no PBKDF2 over {name}").into()),
     };
-    let iterations = NonZeroU32::new(u32_le(iterations)?).ok_or("no iterations")?;
-    let mut out = vec![0; u32_le(bits)? as usize / 8];
+    // The registration's bounds: 1000 to 10000 iterations, and a key of
+    // 112 to 4096 bits in whole bytes.
+    let iterations = u32_le(iterations)?;
+    let bits = u32_le(bits)?;
+    if !(1000..=10000).contains(&iterations) || !(112..=4096).contains(&bits) || bits % 8 != 0 {
+        return Err(format!("PBKDF of {iterations} iterations to {bits} bits").into());
+    }
+    let iterations = NonZeroU32::new(iterations).ok_or("no iterations")?;
+    let mut out = vec![0; bits as usize / 8];
     pbkdf2::Secret::new(algorithm, password).derive(iterations, salt, &mut out)?;
     Ok(vec![out])
 }
@@ -997,5 +1026,23 @@ fn ml_dsa<P: MlDsaParameterSet>(operation: &str, args: &[Vec<u8>]) -> Result<Rep
             Ok(vec![flag(valid)])
         }
         _ => Err("not an operation rind's module registers".into()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::read_request;
+
+    #[test]
+    fn input_ends_only_between_requests() {
+        assert!(read_request(&mut &[][..]).unwrap().is_none());
+        for len in 1..4 {
+            assert!(read_request(&mut &[1, 0, 0, 0][..len]).is_err());
+        }
+        // One string, "ab", then a request cut short in its lengths.
+        let input = [1, 0, 0, 0, 2, 0, 0, 0, b'a', b'b', 1, 0, 0, 0, 2];
+        let mut input = &input[..];
+        assert_eq!(read_request(&mut input).unwrap(), Some(vec![b"ab".to_vec()]));
+        assert!(read_request(&mut input).is_err());
     }
 }
