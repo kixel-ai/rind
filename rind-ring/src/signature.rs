@@ -139,8 +139,8 @@ impl<B: AsRef<[u8]> + fmt::Debug> fmt::Debug for UnparsedPublicKey<B> {
 mod public_key {
     use core::fmt;
 
-    /// An ECDSA key pair's uncompressed point, or an Ed25519 key pair's 32 bytes.
-    /// `Copy`, as ring's are.
+    /// An ECDSA key pair's uncompressed point. `Copy`, as ring's is, and
+    /// a type of its own, as ring's is, apart from [`Ed25519PublicKey`].
     #[derive(Clone, Copy)]
     pub struct PublicKey {
         bytes: [u8; MAX_LEN],
@@ -175,9 +175,36 @@ mod public_key {
                 .finish()
         }
     }
+
+    /// An Ed25519 key pair's 32 bytes. `Copy`, as ring's is.
+    #[derive(Clone, Copy)]
+    pub struct Ed25519PublicKey([u8; 32]);
+
+    impl Ed25519PublicKey {
+        /// Copies `key`, rind's 32-byte encoding.
+        pub(crate) fn new(key: &[u8]) -> Self {
+            let mut bytes = [0; 32];
+            bytes.copy_from_slice(key);
+            Self(bytes)
+        }
+    }
+
+    impl AsRef<[u8]> for Ed25519PublicKey {
+        fn as_ref(&self) -> &[u8] {
+            &self.0
+        }
+    }
+
+    impl fmt::Debug for Ed25519PublicKey {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            f.debug_tuple("PublicKey")
+                .field(&crate::Hex(self.as_ref()))
+                .finish()
+        }
+    }
 }
 
-use public_key::PublicKey;
+use public_key::{Ed25519PublicKey, PublicKey};
 
 /// An ECDSA verification algorithm: a curve, a hash, and a signature encoding.
 pub struct EcdsaVerificationAlgorithm {
@@ -423,7 +450,7 @@ const ED25519_PKCS8_V1_PREFIX: [u8; 16] = [
 /// An Ed25519 private key and its public key.
 pub struct Ed25519KeyPair {
     key: rind::signature::Ed25519KeyPair,
-    public_key: PublicKey,
+    public_key: Ed25519PublicKey,
 }
 
 impl Ed25519KeyPair {
@@ -482,7 +509,7 @@ impl Ed25519KeyPair {
     }
 
     fn new(key: rind::signature::Ed25519KeyPair) -> Self {
-        let public_key = PublicKey::new(key.public_key().as_ref());
+        let public_key = Ed25519PublicKey::new(key.public_key().as_ref());
         Self { key, public_key }
     }
 
@@ -493,9 +520,9 @@ impl Ed25519KeyPair {
 }
 
 impl KeyPair for Ed25519KeyPair {
-    type PublicKey = PublicKey;
+    type PublicKey = Ed25519PublicKey;
 
-    fn public_key(&self) -> &PublicKey {
+    fn public_key(&self) -> &Ed25519PublicKey {
         &self.public_key
     }
 }

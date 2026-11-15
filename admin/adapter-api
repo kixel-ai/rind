@@ -196,6 +196,9 @@ class Api:
         # The unexported types along the path being walked, so a type reached
         # through its own impls is not walked again.
         self.chain = frozenset()
+        # The unexported types the route being walked needs exposed, as a
+        # conversion from one does.
+        self.needs = frozenset()
         # Types with a public field, which a `Drop` impl stops callers moving out.
         self.open = set()
         # Each variant's observable discriminant, which rustdoc gives only
@@ -218,7 +221,7 @@ class Api:
                 if id not in self.supertraits:
                     self.supertraits.add(id)
                     todo.append(id)
-        self.entries, self.public, self.exposed, self.origins = {}, {}, {}, {}
+        self.entries, self.public, self.exposed, self.origins, self.route_needs = {}, {}, {}, {}, {}
         for name in module:
             root = self.find(root, name)
         seen = set()
@@ -229,22 +232,31 @@ class Api:
             target = item["inner"].get("impl", {}).get("for", {}).get("resolved_path")
             if target is not None:
                 impls[target["id"]].append(int(id))
-        walked = set()
+        walked, routes = set(), collections.defaultdict(list)
         while pending := sorted((path, id) for id, paths in self.exposed.items() for path in paths if (id, path) not in walked):
             for path, id in pending:
                 walked.add((id, path))
                 if all(o is not None and gone(o) for o in self.origins[(id, path)]):
                     continue
+                routes[id].append(path)
                 # Listed under every path that hands it out, which both sides
                 # share when they match, whatever order rustdoc finds them in.
                 self.chain = self.exposed[id][path]
+                self.needs = self.route_needs[(id, path)]
                 # Callers read its public fields without naming it.
                 item = self.index.get(str(id))
                 kind, inner = next(iter(item["inner"].items())) if item else (None, None)
                 if kind in ("struct", "union") and self.walk_fields(kind, inner, path, seen):
                     self.open.add(id)
                 self.walk_impls(impls[id], path, seen, id)
-        self.chain = frozenset()
+        self.chain, self.needs = frozenset(), frozenset()
+        # Which routes hand out one type is API too: a caller can assign
+        # one's value where another's goes only when they are the same.
+        for id, paths in routes.items():
+            if len(paths) > 1:
+                same = Unordered("::".join(p) for p in paths)
+                for path in paths:
+                    self.entries.setdefault("::".join(path), []).append(("same", same, None, self.route_needs[(id, path)]))
 
     def bounds(self, id):
         """Trait `id`'s bounds on `Self`, including through `where Self:`."""
@@ -328,7 +340,9 @@ class Api:
             self.visit(item, prefix + (item["name"],), seen)
 
     def add(self, path, kind, sig, owner=None):
-        needs = frozenset()
+        # What the route being walked needs, so a type only a dropped
+        # conversion hands out goes with it.
+        needs = self.needs
         if self.exported is not None:
             if kind == "impl":
                 # A conversion from an unexported type no public signature
@@ -339,7 +353,7 @@ class Api:
                 # stay and hand out the types they name.
                 rest = sig
                 if self.external(sig["trait"]["path"].id, None) in CONVERSIONS:
-                    needs = frozenset(self.hidden(sig["trait"]))
+                    needs |= frozenset(self.hidden(sig["trait"]))
                     rest = {k: v for k, v in sig.items() if k != "trait"}
             else:
                 rest = sig
@@ -354,6 +368,9 @@ class Api:
                 # Which impls hand it out there, known to be omitted or not
                 # only once the walk has found every public path.
                 self.origins.setdefault((id, route), []).append(sig if kind == "impl" else None)
+                # Any one of its origins is enough to hand it out.
+                key = (id, route)
+                self.route_needs[key] = self.route_needs[key] & needs if key in self.route_needs else needs
         self.entries.setdefault("::".join(path), []).append((kind, sig, owner, needs))
 
     def hidden(self, value, bounds=True):
@@ -374,10 +391,11 @@ class Api:
             for v in items:
                 yield from self.hidden(v, bounds)
 
-    def visit(self, item, path, seen, owner=None, impl=None):
-        if (item["id"], path) in seen or len(path) > 16:
+    def visit(self, item, path, seen, owner=None, impl=None, through=None):
+        key = (item["id"], path) if through is None else (item["id"], path, json.dumps(through, sort_keys=True))
+        if key in seen or len(path) > 16:
             return
-        seen.add((item["id"], path))
+        seen.add(key)
         self.public.setdefault(item["id"], []).append(path)
         kind, inner = next(iter(item["inner"].items()))
         if kind == "module":
@@ -413,6 +431,9 @@ class Api:
         if kind in ("struct", "variant") and isinstance(sig["kind"], dict) and "tuple" in sig["kind"]:
             # Its fields are listed as children.
             sig["kind"] = {"tuple": len(sig["kind"]["tuple"])}
+        if through is not None:
+            # A supertrait's item, read through the bounds that reach it.
+            sig = {"through": self.sig(through), "item": sig}
         if impl is not None:
             # A method's callers also meet its impl block's bounds and target.
             sig = {"impl": self.sig(elide({"generics": impl["generics"], "for": impl["for"], "item": inner})), "item": sig}
@@ -446,7 +467,7 @@ class Api:
                         field = self.index[str(id)]
                         self.visit(field, path + (field["name"] or str(i),), seen)
         elif kind == "trait":
-            items = list(inner["items"])
+            items = inner["items"]
             if self.exported is not None:
                 # Code bounded by this trait also calls the items of the
                 # supertraits callers cannot name, or that the other side
@@ -455,23 +476,33 @@ class Api:
                 # though the supertraits it extends in turn may be callable.
                 # The bounds they carry, such as `Send`, hold for this
                 # trait's implementors too, so they are compared under it.
-                todo, done, implied = list(self.bounds(item["id"])), set(), {}
+                # Each comes with the arguments of the bounds that reach it,
+                # as `A<u8>`'s items differ from `A<u16>`'s.
+                todo, done, implied, inherited = [(b, ()) for b in self.bounds(item["id"])], set(), {}, []
                 while todo:
-                    bound = todo.pop()
-                    id = bound["trait_bound"]["trait"]["id"] if self.unnameable(bound) else None
-                    if id is None or id in done:
+                    bound, through = todo.pop()
+                    if not self.unnameable(bound):
                         continue
-                    done.add(id)
+                    id = bound["trait_bound"]["trait"]["id"]
+                    through += (bound["trait_bound"]["trait"]["args"],)
+                    key = (id, json.dumps(through, sort_keys=True))
+                    if key in done:
+                        continue
+                    done.add(key)
                     if self.index[str(id)]["visibility"] == "public":
-                        items += self.index[str(id)]["inner"]["trait"]["items"]
+                        inherited += [(i, through) for i in self.index[str(id)]["inner"]["trait"]["items"]]
                     for b in self.bounds(id):
                         if self.unnameable(b):
                             # Its own supertraits' methods stay callable through this bound.
-                            todo.append(b)
+                            todo.append((b, through))
                         else:
+                            b = {"through": list(through), "bound": b}
                             implied.setdefault(json.dumps(b, sort_keys=True), b)
                 if implied:
                     self.add(path + ("{supertraits}",), "bounds", Unordered(self.sig(list(implied.values()))))
+                for id, through in inherited:
+                    child = self.index[str(id)]
+                    self.visit(child, path + (child["name"],), seen, through=list(through))
             for id in items:
                 child = self.index[str(id)]
                 self.visit(child, path + (child["name"],), seen)
@@ -750,20 +781,9 @@ def compare(adapter, cfg, mirror, adapter_features, upstream_features, label, de
     theirs = Api(rustdoc(upstream_dir, crate), module, only, cfg.get("omitted", []))
     ours = Api(rustdoc(adapter_dir, adapter["name"]), [], only)
     theirs_e, ours_e = theirs.resolved(), ours.resolved()
-    omitted = cfg.get("omitted", [])
-
-    def omits(sig):
-        """Whether `sig` is an upstream impl of a trait, or with a trait argument, rind omits, which goes with that item."""
-        if not sig.startswith("impl "):
-            return False
-        names = re.findall(r'"\$::([^"]+)"', json.dumps(json.loads(sig[len("impl ") :])["trait"]))
-        return any(covers(o, name) for name in names for o in omitted)
-
     diffs = []
     for path in sorted(set(theirs_e) | set(ours_e)):
         a, b = theirs_e.get(path), ours_e.get(path)
-        if a is not None:
-            a = {s for s in a if not omits(s)} or (None if b is None else set())
         if a == b:
             continue
         if b is None:
