@@ -248,10 +248,10 @@ curve's length, as ring does, where aws-lc-rs takes leading zeros added or
 stripped.
 
 Every private key loader refuses bytes after the encoded key, which
-aws-lc-rs ignores and ring refuses. The ECDSA and RSA PKCS#8 loaders take
-version 1 only, as ring does, and the Ed25519 one also takes version 2 with
-its public key. Each refuses version 2 without a public key, which aws-lc-rs
-takes: RFC 5958 sets version 2 only when the public key is present.
+aws-lc-rs ignores and ring refuses. Every PKCS#8 loader takes version 2
+without a public key, as aws-lc-rs does, and the Ed25519 one also takes
+version 2 with its public key; ring, and so rind-ring, takes only version 1
+for ECDSA and RSA, and version 2 only with its public key for Ed25519.
 
 ## rsa
 
@@ -317,12 +317,12 @@ aws-lc-rs's `error::Unspecified` and `error::KeyRejected` become one
 ## cpu
 
 ring and aws-lc-rs detect CPU features and fall back to slower code, down
-to portable C. rind picks its path per CPU too, but only down to a floor (see
-[PLATFORMS.md](PLATFORMS.md)): it panics on a CPU below it.
+to portable C. rind picks its path per CPU too, down to what the target
+enables at compile time (see [PLATFORMS.md](PLATFORMS.md)), so it runs on every
+CPU the target does.
 
 | aws-lc-rs | rind |
 |---|---|
-| none | `cpu::check()`, at startup, returns `cpu::MissingFeature` naming the feature |
 | none | `cpu::has_aes_hardware()`, for preferring ChaCha20-Poly1305 where AES runs in software |
 
 ## key_wrap
@@ -354,10 +354,7 @@ ring has none.
 ## Adapter crates
 
 Each `rind-*` crate stands in for a crate's crypto backend, such as its
-aws-lc-rs, ring, or RustCrypto one, and offers that backend's signatures, so
-none returns an error for a CPU it lacks.
-Call `rind::cpu::check()` at startup to get that error, as the [cpu](#cpu)
-section describes.
+aws-lc-rs, ring, or RustCrypto one, and offers that backend's signatures.
 
 ### rind-ring
 
@@ -381,11 +378,10 @@ backs, so a crate on aws-lc-rs swaps it in with `aws-lc-rs = { package =
 "rind-aws-lc-rs", version = "1" }` and no code changes. The rename reaches
 only that crate. It accepts every aws-lc-rs feature but `fips`, and adds only
 a `wipe` feature, since aws-lc-rs always wipes. Its [README](rind-aws-lc-rs/README.md) lists
-the items it leaves out, such as ML-DSA, ML-KEM-512 and ML-KEM-1024, SHA-224,
-and the PKCS#1 v1.5 encryption keys, and where it behaves differently. rustls's
-`aws_lc_rs` provider, rustls-webpki's `aws-lc-rs` feature, and rcgen's
-`aws_lc_rs` feature name ML-DSA, so they do not build on it until it offers
-[ML-DSA](quest/m2/adoption/aws-lc-rs/ml-dsa.md).
+the items it leaves out, such as ML-KEM-512 and ML-KEM-1024, SHA-224, and the
+PKCS#1 v1.5 encryption keys, and where it behaves differently. rustls's
+`aws_lc_rs` provider names ML-KEM-1024, so it does not build on it until it
+offers [ML-KEM-1024](quest/m3/parity/ml-kem.md).
 
 ### rind-rustls
 
