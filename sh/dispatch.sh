@@ -249,9 +249,11 @@ for module in "${modules[@]}"; do
     if [[ -z "$all" && -n "$pattern" ]] && ! grep -qE "$pattern" "$changed"; then
         continue
     fi
-    # The host's build already covers its own backend.
-    if [[ "$verb:$module" == check:cross ]] && ! reaches "$(reach cross)" aarch64 arm portable; then
-        continue
+    # The host's build already covers its own backend. A plain assignment, so
+    # a failing `reach` stops the run instead of reading as no backend.
+    if [[ "$verb:$module" == check:cross ]]; then
+        cross_reach=$(reach cross)
+        reaches "$cross_reach" aarch64 arm portable || continue
     fi
     # Selection must not depend on the tools setup has yet to install.
     if [[ -n "$query" ]]; then
