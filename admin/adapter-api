@@ -99,6 +99,9 @@ IGNORED_TRAITS = {
     "core::ops::drop::Drop",
 }
 
+# A requirement every walk meets: one alternative, needing nothing.
+NONE_NEEDED = frozenset({frozenset()})
+
 # Traits whose arguments are only inputs: a caller converts from them.
 CONVERSIONS = {"core::convert::From", "core::convert::TryFrom"}
 
@@ -196,9 +199,9 @@ class Api:
         # The unexported types along the path being walked, so a type reached
         # through its own impls is not walked again.
         self.chain = frozenset()
-        # The unexported types the route being walked needs exposed, as a
-        # conversion from one does.
-        self.needs = frozenset()
+        # The sets of unexported types the route being walked needs exposed,
+        # any one of them, as a conversion from one does.
+        self.needs = NONE_NEEDED
         # Types with a public field, which a `Drop` impl stops callers moving out.
         self.open = set()
         # Each variant's observable discriminant, which rustdoc gives only
@@ -251,12 +254,17 @@ class Api:
                 if kind in ("struct", "union") and self.walk_fields(kind, inner, path, seen):
                     self.open.add(id)
                 self.walk_impls(impls[id], path, seen, id)
-        self.chain, self.needs = frozenset(), frozenset()
+        self.chain, self.needs = frozenset(), NONE_NEEDED
         # Which routes hand out one type is API too: a caller can assign
         # one's value where another's goes only when they are the same.
         for id, paths in routes.items():
-            # Leaving out routes only a dropped conversion opens.
-            paths = [p for p in paths if self.route_needs[(id, p)] <= self.exposed.keys()]
+            # Leaving out routes only a dropped conversion opens, and those
+            # under an item the other side omits.
+            paths = [
+                p
+                for p in paths
+                if self.met(self.route_needs[(id, p)]) and not any(covers(o, "::".join(p)) for o in self.omitted)
+            ]
             if len(paths) > 1:
                 same = Unordered("::".join(p) for p in paths)
                 for path in paths:
@@ -357,7 +365,7 @@ class Api:
                 # stay and hand out the types they name.
                 rest = sig
                 if self.external(sig["trait"]["path"].id, None) in CONVERSIONS:
-                    needs |= frozenset(self.hidden(sig["trait"]))
+                    needs = frozenset(n | frozenset(self.hidden(sig["trait"])) for n in needs)
                     rest = {k: v for k, v in sig.items() if k != "trait"}
             else:
                 rest = sig
@@ -374,7 +382,7 @@ class Api:
                 self.origins.setdefault((id, route), []).append(sig if kind == "impl" else None)
                 # Any one of its origins is enough to hand it out.
                 key = (id, route)
-                self.route_needs[key] = self.route_needs[key] & needs if key in self.route_needs else needs
+                self.route_needs[key] = self.route_needs.get(key, frozenset()) | needs
         self.entries.setdefault("::".join(path), []).append((kind, sig, owner, needs))
 
     def hidden(self, value, bounds=True):
@@ -525,7 +533,9 @@ class Api:
             self.add(path + ("{supertraits}",), "bounds", Unordered(self.sig(list(implied.values()))))
         for id, args in inherited:
             child = self.index[str(id)]
-            self.visit(child, path + (child["name"],), seen, through=args)
+            # Marked even without arguments: `<T as Public>::read` names
+            # only the trait's own items.
+            self.visit(child, path + (child["name"],), seen, through={"args": args})
 
     def walk_fields(self, kind, inner, path, seen):
         """Visits a struct's or union's public fields, returning whether it has any."""
@@ -653,11 +663,15 @@ class Api:
     def sig(self, value):
         return self.norm(value)
 
+    def met(self, needs):
+        """Whether the walk exposed every type in one of `needs`'s alternatives."""
+        return any(n <= self.exposed.keys() for n in needs)
+
     def resolved(self):
         """Each path's signatures, rendered once the walk has found every public path."""
         out = {}
         for path, sigs in self.entries.items():
-            rendered = {self.render(*entry) for entry in sigs if entry[3] <= self.exposed.keys()}
+            rendered = {self.render(*entry) for entry in sigs if self.met(entry[3])}
             rendered.discard(None)
             if rendered:
                 out[path] = rendered
