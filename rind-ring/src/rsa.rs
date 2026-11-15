@@ -292,21 +292,27 @@ pub(crate) mod verification {
 pub(crate) mod padding {
     use core::fmt;
 
-    use crate::sealed;
+    use crate::{digest, sealed};
 
     /// An RSA signature encoding, a padding and a hash, for [`super::KeyPair::sign`].
     pub trait RsaEncoding: Encoding {}
 
-    // Returns rind-ring's own `Padding`, never a rind type: a caller bounded
-    // by `E: RsaEncoding` can call this, and rind-ring's public API must not
-    // name rind.
-    pub trait Encoding: fmt::Debug + Sync + sealed::Sealed + 'static {
+    // A caller bounded by `E: RsaEncoding` can call this trait's methods, so
+    // it has exactly those of ring's `Padding`.
+    #[allow(private_bounds)]
+    pub trait Encoding: fmt::Debug + Sync + sealed::Sealed + Signs + 'static {
+        fn digest_alg(&self) -> &'static digest::Algorithm;
+    }
+
+    // `pub(crate)`, so callers cannot reach the rind algorithm through it.
+    pub(crate) trait Signs {
         fn padding(&self) -> &Padding;
     }
 
     /// One of the `RSA_PKCS1_*` and `RSA_PSS_*` signing encodings.
     pub struct Padding {
         pub(super) rind: &'static rind::signature::RsaSigningAlgorithm,
+        digest: &'static digest::Algorithm,
         id: &'static str,
     }
 
@@ -319,6 +325,12 @@ pub(crate) mod padding {
     impl sealed::Sealed for Padding {}
 
     impl Encoding for Padding {
+        fn digest_alg(&self) -> &'static digest::Algorithm {
+            self.digest
+        }
+    }
+
+    impl Signs for Padding {
         fn padding(&self) -> &Padding {
             self
         }
@@ -327,28 +339,44 @@ pub(crate) mod padding {
     impl RsaEncoding for Padding {}
 
     macro_rules! padding {
-        ($name:ident, $doc:expr) => {
+        ($name:ident, $digest:ident, $doc:expr) => {
             #[doc = $doc]
             pub static $name: Padding = Padding {
                 rind: &rind::signature::sign::$name,
+                digest: &digest::$digest,
                 id: stringify!($name),
             };
         };
     }
 
-    padding!(RSA_PKCS1_SHA256, "PKCS#1 v1.5 signatures with SHA-256.");
-    padding!(RSA_PKCS1_SHA384, "PKCS#1 v1.5 signatures with SHA-384.");
-    padding!(RSA_PKCS1_SHA512, "PKCS#1 v1.5 signatures with SHA-512.");
+    padding!(
+        RSA_PKCS1_SHA256,
+        SHA256,
+        "PKCS#1 v1.5 signatures with SHA-256."
+    );
+    padding!(
+        RSA_PKCS1_SHA384,
+        SHA384,
+        "PKCS#1 v1.5 signatures with SHA-384."
+    );
+    padding!(
+        RSA_PKCS1_SHA512,
+        SHA512,
+        "PKCS#1 v1.5 signatures with SHA-512."
+    );
     padding!(
         RSA_PSS_SHA256,
+        SHA256,
         "PSS signatures with SHA-256, MGF1, and a 32-byte random salt."
     );
     padding!(
         RSA_PSS_SHA384,
+        SHA384,
         "PSS signatures with SHA-384, MGF1, and a 48-byte random salt."
     );
     padding!(
         RSA_PSS_SHA512,
+        SHA512,
         "PSS signatures with SHA-512, MGF1, and a 64-byte random salt."
     );
 }

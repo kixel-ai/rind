@@ -99,6 +99,9 @@ IGNORED_TRAITS = {
     "core::ops::drop::Drop",
 }
 
+# Traits whose arguments are only inputs: a caller converts from them.
+CONVERSIONS = {"core::convert::From", "core::convert::TryFrom"}
+
 
 def cargo_metadata(*args, cwd=ROOT):
     out = subprocess.run(
@@ -211,15 +214,8 @@ class Api:
         self.supertraits = set()
         todo = [id for id in self.exported if "trait" in self.index[str(id)]["inner"]]
         while todo:
-            trait = self.index[str(todo.pop())]["inner"]["trait"]
-            bounds = list(trait["bounds"])
-            for pred in trait["generics"]["where_predicates"]:
-                pred = pred.get("bound_predicate")
-                if pred and pred["type"] == {"generic": "Self"}:
-                    bounds += pred["bounds"]
-            for bound in bounds:
-                id = (bound.get("trait_bound") or {}).get("trait", {}).get("id")
-                if id is not None and id not in self.supertraits and str(id) in self.index:
+            for id in self.supers(todo.pop()):
+                if id not in self.supertraits:
                     self.supertraits.add(id)
                     todo.append(id)
         self.entries, self.public, self.exposed = {}, {}, {}
@@ -242,6 +238,19 @@ class Api:
                 self.chain = self.exposed[id][path]
                 self.walk_impls(impls[id], path, seen, id)
         self.chain = frozenset()
+
+    def supers(self, id):
+        """The traits trait `id` extends directly, including through `where Self:`."""
+        trait = self.index[str(id)]["inner"]["trait"]
+        bounds = list(trait["bounds"])
+        for pred in trait["generics"]["where_predicates"]:
+            pred = pred.get("bound_predicate")
+            if pred and pred["type"] == {"generic": "Self"}:
+                bounds += pred["bounds"]
+        for bound in bounds:
+            id = (bound.get("trait_bound") or {}).get("trait", {}).get("id")
+            if id is not None and str(id) in self.index:
+                yield id
 
     def number(self, item):
         """Records each variant's discriminant, implicit ones only where a caller sees them."""
@@ -306,11 +315,16 @@ class Api:
         needs = frozenset()
         if self.exported is not None:
             if kind == "impl":
-                # An impl whose trait names an unexported type no public
-                # signature hands out, such as aws-lc-rs's
-                # `From<&[BigEndian<u32>; 3]> for Nonce`, cannot be used.
-                needs = frozenset(self.hidden(sig["trait"]))
-                rest = {k: v for k, v in sig.items() if k != "trait"}
+                # A conversion from an unexported type no public signature
+                # hands out, such as aws-lc-rs's
+                # `From<&[BigEndian<u32>; 3]> for Nonce`, cannot be used: its
+                # caller has no value to convert. Another trait's arguments,
+                # such as `AsRef<Hidden>`'s, may be outputs, so its impls
+                # stay and hand out the types they name.
+                rest = sig
+                if self.external(sig["trait"]["path"].id, None) in CONVERSIONS:
+                    needs = frozenset(self.hidden(sig["trait"]))
+                    rest = {k: v for k, v in sig.items() if k != "trait"}
             else:
                 rest = sig
             hidden = list(dict.fromkeys(self.hidden(rest, bounds=False)))
@@ -424,7 +438,20 @@ class Api:
                         field = self.index[str(id)]
                         self.visit(field, path + (field["name"] or str(i),), seen)
         elif kind == "trait":
-            for id in inner["items"]:
+            items = list(inner["items"])
+            if self.exported is not None:
+                # Code bounded by this trait also calls the items of the
+                # supertraits callers cannot name, or that the other side
+                # omits, so they are compared here; not a `pub(crate)` or
+                # narrower one's, which are uncallable outside the crate.
+                todo, done = list(self.supers(item["id"])), set()
+                while todo:
+                    id = todo.pop()
+                    if id not in done and self.name(id, None) in ("$private", "$omitted") and self.index[str(id)]["visibility"] == "public":
+                        done.add(id)
+                        items += self.index[str(id)]["inner"]["trait"]["items"]
+                        todo += self.supers(id)
+            for id in items:
                 child = self.index[str(id)]
                 self.visit(child, path + (child["name"],), seen)
             # Impls for the crate's own types are compared under each type;

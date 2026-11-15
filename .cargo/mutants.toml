@@ -371,7 +371,7 @@ exclude_re = [
   'rind-ring/src/rand\.rs:79:\d+: replace sealed::<impl RandomlyConstructable for \[u8; N\]>::as_mut_bytes -> &mut\[u8\] with Vec::leak\(vec!\[1\]\)$',
   'rind-ring/src/rsa\.rs:\d+:\d+: replace - with \+ in PublicKey::modulus_bits$',
   'rind-ring/src/rsa\.rs:204:\d+: replace <impl fmt::Debug for RsaParameters>::fmt -> fmt::Result with Ok\(Default::default\(\)\)$',
-  'rind-ring/src/rsa\.rs:315:\d+: replace padding::<impl fmt::Debug for Padding>::fmt -> fmt::Result with Ok\(Default::default\(\)\)$',
+  'rind-ring/src/rsa\.rs:321:\d+: replace padding::<impl fmt::Debug for Padding>::fmt -> fmt::Result with Ok\(Default::default\(\)\)$',
   'rind-ring/src/signature\.rs:256:\d+: replace <impl PartialEq for EcdsaSigningAlgorithm>::eq -> bool with false$',
   'rind-ring/src/signature\.rs:256:\d+: replace <impl PartialEq for EcdsaSigningAlgorithm>::eq -> bool with true$',
   'rind-ring/src/signature\.rs:250:\d+: replace <impl fmt::Debug for EcdsaSigningAlgorithm>::fmt -> fmt::Result with Ok\(Default::default\(\)\)$',
