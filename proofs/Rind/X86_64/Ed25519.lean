@@ -1,5 +1,4 @@
 import Rind.X86_64.S2nBignum
-import Rind.X86_64.SignatureDispatch
 import Rind.X86_64.Sha512
 import Rind.X86_64.X25519
 open Aeneas Aeneas.Std Result rind.spec
@@ -7,11 +6,11 @@ open Aeneas Aeneas.Std Result rind.spec
 /-!
 # Ed25519, proven from rind's signature API to s2n-bignum's contracts
 
-The `ed25519_*` theorems state what the signature API returns for Ed25519, in
-terms of `Rind.Ed25519`'s spec, through the dispatch
-`Rind.X86_64.SignatureDispatch` models, and SHA-512 as `Rind.X86_64.Sha512`
-proves it. `admin/prove` writes the aarch64 proof from this file by renaming
-the target.
+The `ed25519_*` theorems state what the signature API's `ed25519` module
+returns, in terms of `Rind.Ed25519`'s spec, and SHA-512 as
+`Rind.X86_64.Sha512` proves it. The module calls no function pointer, so the
+theorems are about its translation, with no hand model. `admin/prove` writes
+the aarch64 proof from this file by renaming the target.
 -/
 
 namespace rind.x86_64
@@ -636,7 +635,7 @@ theorem high_from_bytes_spec (h : Runs) (hs : RunsSha512) (bytes : Slice U8) :
       if bytes.length ≠ 32 then r = .Err (.KeyRejected .WrongLength)
       else if leNat bytes.val % 2 ^ 255 ∈ edSmallOrderY then r = .Err (.KeyRejected .SmallOrder)
       else if edValidEncode (leNat bytes.val) then
-        ∃ vk, r = .Ok vk ∧ vk.bytes.val = bytes.val ∧
+        ∃ vk, r = .Ok vk ∧ (mid.ed25519.VerifyingKey.bytes vk).val = bytes.val ∧
           pairNat vk.point.val = edModEncodePair (edDecode (leNat bytes.val))
       else r = .Err (.KeyRejected .NotOnCurve) ⦄ := by
   unfold high.ed25519.Ed25519VerifyingKey.from_bytes
@@ -661,17 +660,6 @@ theorem high_from_bytes_spec (h : Runs) (hs : RunsSha512) (bytes : Slice U8) :
     simp only [hl, ↓reduceIte] at hr
     subst hr
     simp [core.result.Result.map]
-
-theorem copy_from_ok (N : Usize) (bytes : Slice U8) (h : bytes.length ≤ N.val) :
-    high.signature.Buffer.copy_from N bytes ⦃ r => ∃ b, r = .Ok b ⦄ := by
-  unfold high.signature.Buffer.copy_from high.signature.Buffer.new
-  step*
-  have hle : bytes.len ≤ s.length := by
-    have : s.length = N.val := by simp [Slice.length, s_post]
-    scalar_tac
-  simp only [core.slice.Slice.get_mut, core.slice.index.SliceIndexRangeToUsizeSlice.get_mut, hle,
-    ↓reduceIte]
-  step*
 
 /-! ## Signing, `mid::ed25519::SigningKey` -/
 
@@ -790,25 +778,23 @@ theorem high_public_key_spec (h : Runs) (k : high.ed25519.Ed25519SigningKey) :
   subst_vars
   rfl
 
-theorem key_pair_new_spec (h : Runs) (k : high.ed25519.Ed25519SigningKey) (seed : List U8)
-    (hk : SeedKey k seed) :
-    high.signature.Ed25519KeyPair.new k ⦃ kp => kp.key = k ∧ kp.public_key.val = ed25519PublicKey seed ⦄ := by
-  unfold high.signature.Ed25519KeyPair.new high.ed25519.Ed25519VerifyingKey.as_bytes
-    mid.ed25519.VerifyingKey.as_bytes
+theorem key_pair_new_spec (h : Runs) (k : high.ed25519.Ed25519SigningKey) :
+    high.signature.ed25519.KeyPair.new k ⦃ kp => kp.key = k ∧ kp.«public» = k.verifying_key ⦄ := by
+  unfold high.signature.ed25519.KeyPair.new
   step with high_public_key_spec h k as ⟨vk, hvk⟩
-  rw [hvk]
-  exact hk.2.2.2.1
+  exact hvk
 
-/-- A key pair whose private key is the 32-byte `seed`. -/
-def KeyPairOf (kp : high.signature.Ed25519KeyPair) (seed : List U8) : Prop :=
-  SeedKey kp.key seed ∧ kp.public_key.val = ed25519PublicKey seed
+/-- A key pair whose private key is the 32-byte `seed`, holding its public
+key. -/
+def KeyPairOf (kp : high.signature.ed25519.KeyPair) (seed : List U8) : Prop :=
+  SeedKey kp.key seed ∧ kp.«public» = kp.key.verifying_key
 
 open Classical in
 theorem high_verify_spec (h : Runs) (hd : RunsDouble) (hs : RunsSha512) (vk : high.ed25519.Ed25519VerifyingKey) (A : EdPoint)
     (hA : edOnCurve A) (hp : pairNat vk.point.val = edModEncodePair A) (sig msg : Slice U8)
     (hm : msg.length + 64 < 2 ^ 64) :
     high.ed25519.Ed25519VerifyingKey.verify vk sig msg ⦃ r =>
-      r = if ed25519Verifies A vk.bytes.val msg.val sig.val then
+      r = if ed25519Verifies A (mid.ed25519.VerifyingKey.bytes vk).val msg.val sig.val then
         (.Ok () : core.result.Result Unit error.Error) else .Err .BadSignature ⦄ := by
   unfold high.ed25519.Ed25519VerifyingKey.verify
   step
@@ -822,7 +808,7 @@ theorem high_verify_spec (h : Runs) (hd : RunsDouble) (hs : RunsSha512) (vk : hi
     rw [hr, ha]
   · simp only [hl, ↓reduceIte] at hr
     obtain ⟨e, rfl⟩ := hr
-    have hn : ¬ ed25519Verifies A vk.bytes.val msg.val sig.val := fun ⟨h64, _⟩ => hl h64
+    have hn : ¬ ed25519Verifies A (mid.ed25519.VerifyingKey.bytes vk).val msg.val sig.val := fun ⟨h64, _⟩ => hl h64
     simp [core.result.Result.map_err, core.result.Result.Insts.CoreOpsTry.branch,
       high.ed25519.Ed25519VerifyingKey.verify.closure.Insts.CoreOpsFunctionFnOnceTupleTryFromSliceErrorError.call_once,
       core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual, hn]
@@ -872,24 +858,24 @@ theorem high_generate_spec (h : Runs) (hs : RunsSha512) (r : core.result.Result 
       mid.rng.RandomSourceSystemRandom.fill.closure.Insts.CoreOpsFunctionFnOnceTupleErrorError.call_once,
       core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual]
 
-/-! ## The signature API, `high::signature`, through the modelled dispatch -/
+/-! ## The signature API, `high::signature::ed25519` -/
 
 /-- A generated key pair's private key is the 32 bytes the random source drew,
 and a failed draw is refused. The draw itself is outside the functional spec. -/
 theorem ed25519_generate (h : Runs) (hs : RunsSha512) (r : core.result.Result Unit getrandom.error.Error)
     (out : Slice U8) (hout : out.length = 32)
     (hfill : getrandom.fill (Array.repeat 32#usize 0#u8).to_slice = ok (r, out)) :
-    high.signature.Ed25519KeyPair.generate ⦃ kp =>
+    high.signature.ed25519.KeyPair.generate ⦃ kp =>
       match r with
       | .Ok _ => ∃ k, kp = core.result.Result.Ok k ∧ KeyPairOf k out.val
       | .Err _ => kp = core.result.Result.Err error.Error.RngFailed ⦄ := by
-  unfold high.signature.Ed25519KeyPair.generate
+  unfold high.signature.ed25519.KeyPair.generate
   step with high_generate_spec h hs r out hout hfill as ⟨key, hkey⟩
   rcases r with _ | _ <;> simp only at hkey ⊢
   · obtain ⟨k, rfl, hk⟩ := hkey
     simp only [core.result.Result.Insts.CoreOpsTry.branch]
-    step with key_pair_new_spec h k out.val hk as ⟨kp, hkp1, hkp2⟩
-    exact ⟨kp, rfl, by rw [hkp1]; exact hk, hkp2⟩
+    step with key_pair_new_spec h k as ⟨kp, hkp1, hkp2⟩
+    exact ⟨kp, rfl, by rw [hkp1]; exact hk, by rw [hkp1]; exact hkp2⟩
   · subst hkey
     simp [core.result.Result.Insts.CoreOpsTry.branch,
       core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual]
@@ -899,23 +885,26 @@ open Classical in
 the seed is 32 bytes and the public key is the seed's, and otherwise its
 private key is the seed. -/
 theorem ed25519_from_seed_and_public_key (h : Runs) (hs : RunsSha512) (seed pk : Slice U8) :
-    high.signature.Ed25519KeyPair.from_seed_and_public_key seed pk ⦃ r =>
+    high.signature.ed25519.KeyPair.from_seed_and_public_key seed pk ⦃ r =>
       if seed.length = 32 then
         if ed25519PublicKey seed.val = pk.val then ∃ kp, r = .Ok kp ∧ KeyPairOf kp seed.val
         else r = .Err (.KeyRejected .MismatchedPublicKey)
       else r = .Err (.KeyRejected .WrongLength) ⦄ := by
-  unfold high.signature.Ed25519KeyPair.from_seed_and_public_key
+  unfold high.signature.ed25519.KeyPair.from_seed_and_public_key
   step with high_seed_from_bytes_spec h hs seed as ⟨r, hr⟩
   by_cases hl : seed.length = 32
   · simp only [hl, ↓reduceIte] at hr ⊢
     obtain ⟨k, rfl, hk⟩ := hr
     simp only [core.result.Result.Insts.CoreOpsTry.branch]
-    step with key_pair_new_spec h k seed.val hk as ⟨kp, hkp1, hkp2⟩
+    step with key_pair_new_spec h k as ⟨kp, hkp1, hkp2⟩
+    have hkb : (mid.ed25519.VerifyingKey.bytes kp.«public»).val = ed25519PublicKey seed.val := by rw [hkp2]; exact hk.2.2.2.1
+    unfold high.signature.ed25519.PublicKey.Insts.CoreConvertAsRefSliceU8.as_ref
+      high.ed25519.Ed25519VerifyingKey.bytes mid.ed25519.VerifyingKey.impl.bytes
     step*
-    all_goals rw [s_post, Array.val_to_slice, hkp2] at b_post
+    all_goals rw [Array.val_to_slice, hkb] at b_post
     · have he : ed25519PublicKey seed.val = pk.val := b_post.mp ‹_›
       simp only [he, ↓reduceIte]
-      exact ⟨kp, rfl, by rw [hkp1]; exact hk, hkp2⟩
+      exact ⟨kp, rfl, by rw [hkp1]; exact hk, by rw [hkp1]; exact hkp2⟩
     · have he : ¬ ed25519PublicKey seed.val = pk.val := fun he => ‹¬b = true› (b_post.mpr he)
       simp [he, error.Error.Insts.CoreConvertFromKeyFormatError.from]
   · simp only [hl, ↓reduceIte] at hr ⊢
@@ -923,74 +912,50 @@ theorem ed25519_from_seed_and_public_key (h : Runs) (hs : RunsSha512) (seed pk :
     simp [core.result.Result.Insts.CoreOpsTry.branch,
       core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual]
 
-/-- A buffer of an array, widened, holds the array's bytes. -/
-@[step]
-theorem widen_spec {N : Usize} (M : Usize) (b : Std.Array U8 N) (hM : N.val ≤ M.val) :
-    high.signature.Buffer.widen M { bytes := b, len := N } ⦃ w =>
-      w.len = N ∧ w.bytes.val.take N.val = b.val ⦄ := by
-  unfold high.signature.Buffer.widen high.signature.Buffer.new
-  step*
-  have hb : b.val.length = N.val := b.property
-  have hr : (Array.repeat M 0#u8).val.length = M.val := (Array.repeat M 0#u8).property
-  have := take_setSlice! (Array.repeat M 0#u8).val b.val 0 (by omega)
-  rw [s_post2, s2_post, s1_post, Array.val_to_slice]
-  simpa [hb] using this
-
-@[step]
-theorem buffer_as_ref_spec {M : Usize} (w : high.signature.Buffer M) (h : w.len.val ≤ M.val) :
-    high.signature.Buffer.Insts.CoreConvertAsRefSliceU8.as_ref w ⦃ s =>
-      s.val = w.bytes.val.take w.len.val ⦄ := by
-  unfold high.signature.Buffer.Insts.CoreConvertAsRefSliceU8.as_ref
-  step*
-  simp [s_post, List.slice, Array.val_to_slice]
-
 /-- An Ed25519 signature's bytes: RFC 8032's PureEd25519 signature of the
 message under the key pair's seed, for messages under 2⁶⁴ - 64 bytes. -/
-theorem ed25519_sign (h : Runs) (hs : RunsSha512) (kp : high.signature.Ed25519KeyPair) (seed : List U8)
+theorem ed25519_sign (h : Runs) (hs : RunsSha512) (kp : high.signature.ed25519.KeyPair) (seed : List U8)
     (hkp : KeyPairOf kp seed) (msg : Slice U8) (hm : msg.length + 64 < 2 ^ 64) :
     (do
-      let sig ← high.signature.Ed25519KeyPair.sign kp msg
-      high.signature.Signature.Insts.CoreConvertAsRefSliceU8.as_ref sig) ⦃ b =>
+      let sig ← high.signature.ed25519.KeyPair.sign kp msg
+      high.signature.ed25519.Signature.Insts.CoreConvertAsRefSliceU8.as_ref sig) ⦃ b =>
       b.val = ed25519Sign seed msg.val ⦄ := by
-  unfold high.signature.Ed25519KeyPair.sign high.signature.Signature.Insts.CoreConvertAsRefSliceU8.as_ref
-    high.signature.Buffer.Insts.CoreConvertFromArrayU8N.from
+  unfold high.signature.ed25519.KeyPair.sign high.signature.ed25519.Signature.Insts.CoreConvertAsRefSliceU8.as_ref
   step with high_sign_spec h hs kp.key seed hkp.1 msg hm as ⟨a, ha⟩
-  step*
+  simpa [Array.val_to_slice] using ha
 
 /-- A key pair's public key's bytes: RFC 8032's public key of its seed. -/
-theorem ed25519_key_pair_public_key (h : Runs) (kp : high.signature.Ed25519KeyPair) (seed : List U8)
+theorem ed25519_key_pair_public_key (kp : high.signature.ed25519.KeyPair) (seed : List U8)
     (hkp : KeyPairOf kp seed) :
     (do
-      let pk ← high.signature.Ed25519KeyPair.impl.public_key kp
-      high.signature.PublicKey.Insts.CoreConvertAsRefSliceU8.as_ref pk) ⦃ b =>
+      let pk ← high.signature.ed25519.KeyPair.public_key kp
+      high.signature.ed25519.PublicKey.Insts.CoreConvertAsRefSliceU8.as_ref pk) ⦃ b =>
       b.val = ed25519PublicKey seed ⦄ := by
-  unfold high.signature.Ed25519KeyPair.impl.public_key high.signature.PublicKey.Insts.CoreConvertAsRefSliceU8.as_ref
-    high.signature.Buffer.Insts.CoreConvertFromArrayU8N.from
-  step with high_public_key_spec h kp.key as ⟨vk, hvk⟩
-  step*
-  rw [b_post, x_post, ← hkp.2]
-  exact x_post1
+  unfold high.signature.ed25519.KeyPair.public_key high.signature.ed25519.PublicKey.Insts.CoreConvertAsRefSliceU8.as_ref
+    high.ed25519.Ed25519VerifyingKey.bytes mid.ed25519.VerifyingKey.impl.bytes
+  obtain ⟨⟨-, -, -, hkb, -⟩, hpub⟩ := hkp
+  simp only [bind_ok, WP.spec_ok, Array.val_to_slice]
+  rw [hpub]
+  exact hkb
 
 open Classical in
 /-- Verification with a key pair's public key: RFC 8032's verification with
 its seed's public key, whose point is the base point times its secret scalar,
 for a scalar whose multiple is a point of the group. -/
-theorem ed25519_key_pair_verify (h : Runs) (hd : RunsDouble) (hs : RunsSha512) (kp : high.signature.Ed25519KeyPair)
+theorem ed25519_key_pair_verify (h : Runs) (hd : RunsDouble) (hs : RunsSha512) (kp : high.signature.ed25519.KeyPair)
     (seed : List U8) (hkp : KeyPairOf kp seed) (hA : edOnCurve (edPow edB (ed25519Scalar seed)))
     (msg sig : Slice U8) (hm : msg.length + 64 < 2 ^ 64) :
     (do
-      let pk ← high.signature.Ed25519KeyPair.impl.public_key kp
-      high.signature.PublicKey.verify pk msg sig) ⦃ r =>
+      let pk ← high.signature.ed25519.KeyPair.public_key kp
+      high.signature.ed25519.PublicKey.verify pk msg sig) ⦃ r =>
       r = if ed25519Verifies (edPow edB (ed25519Scalar seed)) (ed25519PublicKey seed) msg.val sig.val then
         (.Ok () : core.result.Result Unit error.Error) else .Err .BadSignature ⦄ := by
-  unfold high.signature.Ed25519KeyPair.impl.public_key high.signature.PublicKey.verify
-    high.signature.Buffer.Insts.CoreConvertFromArrayU8N.from
-  obtain ⟨⟨-, -, -, hkb, hkpt⟩, -⟩ := hkp
-  step with high_public_key_spec h kp.key as ⟨vk, hvk⟩
-  step*
-  have hb : vk.bytes.val = ed25519PublicKey seed := by rw [hvk]; exact hkb
+  unfold high.signature.ed25519.KeyPair.public_key high.signature.ed25519.PublicKey.verify
+  obtain ⟨⟨-, -, -, hkb, hkpt⟩, hpub⟩ := hkp
+  simp only [bind_ok]
+  have hb : (mid.ed25519.VerifyingKey.bytes kp.«public»).val = ed25519PublicKey seed := by rw [hpub]; exact hkb
   rw [← hb]
-  exact high_verify_spec h hd hs vk _ hA (by rw [hvk]; exact hkpt) sig msg hm
+  exact high_verify_spec h hd hs kp.«public» _ hA (by rw [hpub]; exact hkpt) sig msg hm
 
 open Classical in
 /-- An Ed25519 public key parsed from its encoding: refused unless it is 32
@@ -999,31 +964,27 @@ refused unless it encodes a point of the group, and otherwise its
 verification is RFC 8032's with that point, for messages under 2⁶⁴ - 64
 bytes. -/
 theorem ed25519_public_key_new (h : Runs) (hd : RunsDouble) (hs : RunsSha512) (key : Slice U8) :
-    high.signature.PublicKey.new high.signature.verify.ED25519 key ⦃ r =>
+    high.signature.ed25519.PublicKey.new key ⦃ r =>
       if key.length ≠ 32 then r = .Err (.KeyRejected .WrongLength)
       else if leNat key.val % 2 ^ 255 ∈ edSmallOrderY then r = .Err (.KeyRejected .SmallOrder)
       else if edValidEncode (leNat key.val) then
         ∃ pk, r = .Ok pk ∧ ∀ msg sig : Slice U8, msg.length + 64 < 2 ^ 64 →
-          high.signature.PublicKey.verify pk msg sig ⦃ v =>
+          high.signature.ed25519.PublicKey.verify pk msg sig ⦃ v =>
             v = if ed25519Verifies (edDecode (leNat key.val)) key.val msg.val sig.val then
               (.Ok () : core.result.Result Unit error.Error) else .Err .BadSignature ⦄
       else r = .Err (.KeyRejected .NotOnCurve) ⦄ := by
-  unfold high.signature.PublicKey.new high.signature.verify.ED25519 high.signature.parse_ed25519
-  simp only
+  unfold high.signature.ed25519.PublicKey.new
   step with high_from_bytes_spec h hs key as ⟨r, hr⟩
   split_ifs at hr ⊢ with hl hso hv
-  · subst hr; simp
-  · subst hr; simp
+  · subst hr; simp [core.result.Result.map]
+  · subst hr; simp [core.result.Result.map]
   · obtain ⟨vk, rfl, hvb, hvp⟩ := hr
-    simp only
-    have hl' : key.length = 32 := by simpa using hl
-    step with copy_from_ok 2592#usize key (by simp [hl']) as ⟨b, enc, hb⟩
-    subst hb
-    simp only [WP.spec_ok]
+    simp only [core.result.Result.map, P.Insts.CoreOpsFunctionFnOnceTupleEd25519VerifyingKeyPublicKey.call_once,
+      high.signature.ed25519.PublicKey.constructor, bind_ok, WP.spec_ok]
     refine ⟨_, rfl, fun msg sig hm => ?_⟩
-    simp only [high.signature.PublicKey.verify]
+    simp only [high.signature.ed25519.PublicKey.verify]
     have := high_verify_spec h hd hs vk _ (edDecode_spec _ hv).1 hvp sig msg hm
     rwa [hvb] at this
-  · subst hr; simp
+  · subst hr; simp [core.result.Result.map]
 
 end rind.x86_64
