@@ -43,7 +43,8 @@ pub(crate) fn split(k: &[u64; 4]) -> Split {
     // steps keep the rows' matrix unimodular, so the two t are coprime, and
     // keep r0 |t1| + r1 |t0| = 8L with t0 and t1 of opposite signs: the row
     // from 8L keeps t <= 0, the row from k keeps t >= 0, so only magnitudes
-    // are stored, with which row is which.
+    // are stored, with which row is which. k < 2^255 < 8L, so k's row
+    // starts as the smaller.
     let mut big = Row {
         r: U256::from(&ORDER_TIMES_8),
         t: 0,
@@ -54,9 +55,6 @@ pub(crate) fn split(k: &[u64; 4]) -> Split {
         t: 1,
         from_k: true,
     };
-    if small.r > big.r {
-        core::mem::swap(&mut big, &mut small);
-    }
 
     // While small.r >= 2^128, |t| <= 8L / 2^128 < 2^127 + 1 in both rows,
     // so neither magnitude, nor a shift of one below the other's sum,
@@ -144,17 +142,14 @@ impl U256 {
         }
     }
 
-    /// `self << shift`, for `shift < 256` and no bits shifted out.
+    /// `self << shift`, for `shift < 128` and no bits shifted out: `split`
+    /// shifts only a row of at least 2^128 toward one below 2^256.
     fn shl(&self, shift: u32) -> Self {
         match shift {
             0 => *self,
-            s if s < 128 => Self {
+            s => Self {
                 hi: self.hi << s | self.lo >> (128 - s),
                 lo: self.lo << s,
-            },
-            s => Self {
-                hi: self.lo << (s - 128),
-                lo: 0,
             },
         }
     }

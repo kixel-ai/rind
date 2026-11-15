@@ -41,6 +41,7 @@ exclude_re = [
   # bit fields, or a carry and a borrow that cannot both occur, is their
   # exclusive or. So is an AND of flags that always agree their OR, and
   # `1 << 0` is `1 >> 0`, as `1 << 8` is `1 >> 8` in the byte kept.
+  'rind/src/mid/half_size\.rs:\d+:\d+: replace \| with \^ in U256::(from|shl)$',
   'rind/src/high/asn1\.rs:\d+:\d+: replace \| with \^ in (Parser<\x27a>::take_len|Tag::context)$',
   'rind/src/high/pkcs1\.rs:380:\d+: replace \^ with \| in decode_oaep$',
   'rind/src/high/pkcs1\.rs:\d+:\d+: replace \^= with \|= in decode_oaep$',
@@ -111,6 +112,14 @@ exclude_re = [
   # Equivalent: a comparison whose two forms differ only where both branches
   # give the same result, or a step that computes the same value another way,
   # such as squaring rather than multiplying to the same power.
+  # Ed25519's non-adjacent forms: no digit is zero where its sign is tested,
+  # past 64 bits a window's extra bits are masked off, and a borrow never
+  # carries past bit 255 of a scalar below 2^255. With equal remainders,
+  # either of `split`'s rows may lead.
+  'rind/src/low/generic/edwards25519_msm\.rs:59:\d+: replace > with >= in edwards25519_msm$',
+  'rind/src/low/generic/edwards25519_msm\.rs:13[79]:\d+: replace < with <= in non_adjacent_form$',
+  'rind/src/low/generic/edwards25519_msm\.rs:125:\d+: replace (> with >=|\+ with \*) in non_adjacent_form$',
+  'rind/src/mid/half_size\.rs:71:\d+: replace < with <= in split$',
   'rind/src/high/asn1\.rs:\d+:\d+: replace < with <= in ObjectId::from_path$',
   'rind/src/high/ecdsa\.rs:\d+:\d+: replace > with >= in hash_to_scalar$',
   'rind/src/high/rsa\.rs:\d+:\d+: replace > with >= in public_exponent$',
@@ -168,6 +177,11 @@ exclude_re = [
   'rind/src/mid/mldsa\.rs:777:\d+: replace - with [+/] in expand_a$',
   # Speed only: which of several implementations runs, or how far ahead it
   # prefetches. Each implementation is tested on its own against the others.
+  # Speed only: where Ed25519 verification's multiplication starts, as
+  # doubling the identity leaves it; and which of two valid half-size rows
+  # `split` returns, both odd and below 2^128.
+  'rind/src/low/generic/edwards25519_msm\.rs:36:\d+: replace != with == in edwards25519_msm$',
+  'rind/src/mid/half_size\.rs:85:\d+: replace (match guard .* with (true|false)|< with (==|>|<=)) in split$',
   'rind/src/low/x86_64/mldsa\.rs:\d+:\d+: delete match arm \(Some\(_\), [457]\) in mldsa_pointwise_acc$',
   'rind/src/low/aarch64/aes_gcm\.rs:\d+:\d+: replace <= with > in tagged_from$',
   'rind/src/low/aarch64/aes_gcm\.rs:\d+:\d+: replace \+ with \* in tagged_from$',

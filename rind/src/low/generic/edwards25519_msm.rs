@@ -132,11 +132,8 @@ pub(crate) fn non_adjacent_form(x: &[u64; 4], w: usize) -> [i8; 256] {
         };
         naf[i] = digit as i8;
 
-        // k -= digit 2^i clears the window, and for a negative digit adds
-        // 2^(i + w).
-        for j in i..(i + w).min(256) {
-            k[j / 64] &= !(1 << (j % 64));
-        }
+        // k -= digit 2^i clears the window, which the scan never reads
+        // again, and for a negative digit adds 2^(i + w).
         if digit < 0 {
             let mut j = i + w;
             while j < 256 {
