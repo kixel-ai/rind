@@ -17,6 +17,15 @@ std::thread_local! {
 pub(crate) struct Entry {
     secret: bool,
     cpu_state: u32,
+    // On x86 the portable backend's arithmetic may compile to any of the
+    // multiplies Intel's MXCSR mitigation covers, anywhere, so every call,
+    // public or secret, holds it. The x86_64 backend holds it only around
+    // the algorithms that run them.
+    #[cfg(all(
+        rind_backend = "portable",
+        any(target_arch = "x86", target_arch = "x86_64")
+    ))]
+    _mcdt: super::Mcdt,
 }
 
 impl Entry {
@@ -31,6 +40,11 @@ impl Entry {
         Self {
             secret: false,
             cpu_state: 0,
+            #[cfg(all(
+                rind_backend = "portable",
+                any(target_arch = "x86", target_arch = "x86_64")
+            ))]
+            _mcdt: super::Mcdt::enter(),
         }
     }
 
@@ -47,6 +61,11 @@ impl Entry {
         Self {
             secret: true,
             cpu_state,
+            #[cfg(all(
+                rind_backend = "portable",
+                any(target_arch = "x86", target_arch = "x86_64")
+            ))]
+            _mcdt: super::Mcdt::enter(),
         }
     }
 
