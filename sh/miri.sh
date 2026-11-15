@@ -65,6 +65,12 @@ slow=(
     high::oaep::tests::every_failure_is_the_same
     high::oaep::tests::round_trip
     high::oaep::tests::stays_secret
+    high::oprf::tests::rfc9497_oprf_vectors
+    high::oprf::tests::stays_secret
+    high::oprf::voprf::tests::refuses_altered_proofs
+    high::oprf::voprf::tests::refuses_bad_batches
+    high::oprf::voprf::tests::rfc9497_voprf_vectors
+    high::oprf::voprf::tests::stays_secret
     high::rsa::tests::key_generation_known_answer
     high::rsa::tests::loads_d_above_lcm
     high::rsa::tests::loads_q_above_p
@@ -90,6 +96,11 @@ slow=(
     high::signature::tests::ecdsa_verifies_only_under_its_algorithm
     high::signature::tests::encodings_fit_the_largest_keys
     high::signature::tests::rsa_public_key_components
+    high::spake2plus::tests::connectedhomeip
+    high::spake2plus::tests::draft01
+    high::spake2plus::tests::exceptional_peer_share_follows_rfc9383
+    high::spake2plus::tests::zero_residue_fails_closed
+    high::vrf::tests::refuses_altered_proofs
     low::generic::ct_equal::tests::matches_eq
     low::generic::mldsa_poly::tests::backend_matches_port
     low::posint::tests::aws_lc_mod_exp
@@ -143,8 +154,9 @@ args=(-p rind --features wipe --locked --target "$target" --lib --test cpu --tes
 
 # A slow entry that names no test, such as one a rename left behind, would let
 # the renamed test back into the run unnoticed. The listing builds what the
-# run then reuses, under the same flags and `cfg(miri)`.
-tests=$(cargo miri nextest list "${args[@]}" --message-format oneline | cut -d' ' -f2)
+# run then reuses, under the same flags and `cfg(miri)`. Uncoloured, since
+# CI sets CARGO_TERM_COLOR=always, which would colour the names.
+tests=$(cargo miri nextest list "${args[@]}" --message-format oneline --color never | cut -d' ' -f2)
 stale=0
 for name in "${slow[@]}"; do
     if ! grep -qxF -- "$name" <<<"$tests"; then

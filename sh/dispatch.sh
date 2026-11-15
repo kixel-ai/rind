@@ -60,7 +60,7 @@ declare -A scope=(
     # Each adapter's API against its upstream's, which reaches rind only
     # through a lockfile change, as read by the flake's rustdoc.
     # rind-object-store has none to copy.
-    [adapters]='^(rind/(src/|Cargo\.toml$)|rind-(aws-lc-rs|ring|rustls|rcgen|jsonwebtoken|dimpl|str0m|openmls)/(src/|Cargo\.toml$|README\.md$)|Cargo\.lock$|flake\.(nix|lock)$|admin/adapter-api(\.drift)?$)'
+    [adapters]='^(rind/(src/|Cargo\.toml$)|rind-(aws-lc-rs|ring|rustls|rcgen|jsonwebtoken|dimpl|str0m|openmls)/(src/|Cargo\.toml$|README\.md$)|Cargo\.lock$|flake\.(nix|lock)$|admin/adapter-api$)'
     [license]='^(rind/src/|rind/LICENSE$|rind-python/LICENSE$|admin/scan-license$)'
     # Dependents may build with the workspace's declared rust-version.
     [msrv]='^(rind[^/]*/|fuzz/|Cargo\.(toml|lock)$|flake\.(nix|lock)$)'
@@ -75,6 +75,9 @@ declare -A scope=(
     [mutants]='^(rind[^/]*/src/|\.cargo/mutants\.toml$|admin/mutants$)'
     # TESTING.md's table names every export, test, and vector file.
     [testing]='^(TESTING\.md$|admin/testing$|rind/(src|tests)/|fuzz/)'
+    # AUDIT.md's pins table is generated from the files that hold the pins,
+    # and the quests it links name gaps that finishing them closes.
+    [audit]='^(AUDIT\.md$|admin/(audit|import-[a-z-]+|prove-bytes|sync-(acvp|vectors))$|thirdparty/s2n-bignum/RIND\.md$|(rind/)?Cargo\.(toml|lock)$|quest/)'
     # COMPATIBILITY.md is generated from the CPU scans.
     [compat]='^(COMPATIBILITY\.md$|admin/x86-cpus?(/|$))'
     # BENCHMARKS.md is generated from the results, the verified-code table,
@@ -122,6 +125,7 @@ declare -A tools=(
     [vartime]='nix'
     [mutants]='cargo-mutants python3'
     [testing]='python3'
+    [audit]='python3 git'
     [compat]='python3'
     [bench]='python3'
     [fixtures]='cargo'
@@ -139,8 +143,8 @@ verb=$action
 [[ "$verb" != ci ]] || verb=check
 
 case "$verb" in
-    check) modules=(rs structure msrv cross vartime deny versions adapters license mutants testing compat bench fixtures patch py dart openssl quest gh shell nix) ;;
-    fix) modules=(rs compat patch dart nix) ;;
+    check) modules=(rs structure msrv cross vartime deny versions adapters license mutants testing audit compat bench fixtures patch py dart openssl quest gh shell nix) ;;
+    fix) modules=(rs audit compat patch dart nix) ;;
 esac
 
 selected=()
@@ -306,21 +310,13 @@ for module in "${selected[@]}"; do
         check:vartime) nix develop .#ct-vartime --command admin/ct-vartime ;;
         check:deny) cargo deny --locked check ;;
         check:versions) sh/adapter-versions.sh ;;
-        # The drift list only shrinks against the diff's merge base, even
-        # when an orchestration change forces a full run. Only an explicit
-        # --all has no diff to shrink from.
-        check:adapters)
-            if [[ "$base" != --all ]]; then
-                drift_base=$(sh/changed.sh --merge-base "$base")
-                python3 admin/adapter-api --base "$drift_base"
-            else
-                python3 admin/adapter-api
-            fi
-            ;;
+        check:adapters) python3 admin/adapter-api ;;
         check:quest) quest check ;;
         check:license) bash admin/scan-license ;;
         check:mutants) admin/mutants --pins && admin/mutants --expand-diff-self-test ;;
         check:testing) python3 admin/testing ;;
+        check:audit) python3 admin/audit check ;;
+        fix:audit) python3 admin/audit fix ;;
         check:compat) python3 admin/x86-cpu markdown-table | diff -u COMPATIBILITY.md - ;;
         fix:compat) python3 admin/x86-cpu markdown-table >COMPATIBILITY.md ;;
         check:bench)

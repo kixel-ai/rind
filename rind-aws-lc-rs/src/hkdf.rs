@@ -6,6 +6,7 @@
 
 use core::fmt;
 
+use crate::wipe::Wiped;
 use crate::{digest, error, hmac};
 
 /// An HKDF algorithm, chosen by one of this module's constants.
@@ -68,7 +69,7 @@ impl Salt {
     /// Extracts a pseudorandom key from `secret` (HKDF-Extract).
     pub fn extract(&self, secret: &[u8]) -> Prk {
         let prk = hmac::sign(&self.0, secret);
-        Prk::new_less_safe(self.algorithm(), prk.as_ref())
+        Prk::with_mode(self.algorithm(), prk.as_ref(), true)
     }
 
     /// The algorithm this salt was made for.
@@ -99,18 +100,26 @@ pub trait KeyType {
 
 /// A pseudorandom key, from which [`Prk::expand`] derives any number of keys;
 /// wiped on drop under the `wipe` feature.
+// `extracted` records whether HKDF-Extract made it, which only `Debug` shows,
+// as aws-lc-rs's does; it is wiped with the key.
 #[derive(Clone)]
 pub struct Prk {
     inner: rind::hkdf::Prk,
     algorithm: Algorithm,
+    extracted: Wiped<bool>,
 }
 
 impl Prk {
     /// Takes `value` as the pseudorandom key itself, skipping HKDF-Extract.
     pub fn new_less_safe(algorithm: Algorithm, value: &[u8]) -> Self {
+        Self::with_mode(algorithm, value, false)
+    }
+
+    fn with_mode(algorithm: Algorithm, value: &[u8], extracted: bool) -> Self {
         Self {
             inner: rind::hkdf::Prk::new(algorithm.rind(), value),
             algorithm,
+            extracted: Wiped::new(extracted),
         }
     }
 
@@ -138,6 +147,13 @@ impl fmt::Debug for Prk {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("hkdf::Prk")
             .field("algorithm", &self.algorithm)
+            .field(
+                "mode",
+                &format_args!(
+                    "{} {{ .. }}",
+                    if *self.extracted { "ExtractExpand" } else { "Expand" }
+                ),
+            )
             .finish()
     }
 }
