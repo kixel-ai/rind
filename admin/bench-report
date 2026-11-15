@@ -221,6 +221,7 @@ SECTIONS = [
         "SPAKE2+",
         [f"spake2plus-p256-{side}-{step}/{{lib}}" for step in ["start", "finish"] for side in ["prover", "verifier"]],
     ),
+    ("Argon2id", ["argon2id-16MiB-t1-p1/{lib}", "argon2id-64MiB-t3-p4/{lib}"]),
 ]
 OPERATIONS = [op for _, ops in SECTIONS for op in ops]
 
@@ -277,6 +278,7 @@ CRATES = {
         "voprf",
         "vrf-rfc9381",
         "spake2plus",
+        "argon2",
     ],
     "graviola": ["graviola", "rustls-graviola"],
     "libcrux": [
@@ -834,6 +836,8 @@ NAMES = {
     "spake2plus-p256-verifier-start": "SPAKE2+ P-256 verifier share and confirmation",
     "spake2plus-p256-prover-finish": "SPAKE2+ P-256 prover confirmation and key",
     "spake2plus-p256-verifier-finish": "SPAKE2+ P-256 verifier key",
+    "argon2id-16MiB-t1-p1": "Argon2id 16 MiB t=1 p=1",
+    "argon2id-64MiB-t3-p4": "Argon2id 64 MiB t=3 p=4",
 }
 
 # Each build of admin/build-cost, as the report names it.
@@ -986,7 +990,7 @@ UNRANKED = [
     (r"rsa\d+-key-generation", "RSA key generation varies too much from run to run to rank"),
     (r"jwt-[^/]+/\*/load$", "a token's key loading, the part of `token` spent on the key"),
     (
-        r"(blind-rsa\d+|v?oprf|vrf|spake2plus)-",
+        r"(blind-rsa\d+|v?oprf|vrf|spake2plus|argon2id)-",
         "neither aws-lc-rs nor ring offers the protocol, so no baseline; the report's hosts compare it",
     ),
     (r"chacha20/", "neither aws-lc-rs nor ring offers ChaCha20 without Poly1305, so no baseline"),
