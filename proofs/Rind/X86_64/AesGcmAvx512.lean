@@ -929,4 +929,50 @@ theorem cipher_avx512_spec (ENC : Bool) (hk : low.x86_64.aes.HwKey) (alg : Algor
       rw [← ghashPoly_append, ← List.map_append,
         ← ghashPoly_append, ← List.map_append, padBlocks_append _ _ hheadl]
 
+/-! ## The AVX-512 tier below the VAES kernel -/
+
+/-- A `GhashTableAvx512` of `H`'s powers hashes as GHASH with `H`. -/
+theorem avx512_ghashOf (H : P) (hH : Small H) (t : low.x86_64.ghash.GhashTableAvx512) (ht : Avx512Powers H t)
+    (htc : TableFor H t.clmul) : GhashOf H (.Avx512 t) := fun c b => by
+  obtain ⟨y, hy, hyp⟩ := avx512_add_spec H hH t ht htc b c
+  exact ⟨y, by simp only [low.x86_64.ghash.Ghash.addBytes, hy, bind_ok], hyp⟩
+
+theorem avx512_min_len : ∃ i, low.x86_64.aes_gcm.AVX512_MINIMUM_CIPHER_LEN = ok i ∧ i.val = 256 := by
+  have h : low.x86_64.aes_gcm.AVX512_MINIMUM_CIPHER_LEN ⦃ i => i.val = 256 ⦄ := by
+    unfold low.x86_64.aes_gcm.AVX512_MINIMUM_CIPHER_LEN
+    step*
+  revert h
+  generalize low.x86_64.aes_gcm.AVX512_MINIMUM_CIPHER_LEN = r
+  intro h
+  cases r <;> simp_all
+
+theorem avx512_kernel_len : low.x86_64.aes_gcm.AVX512_KERNEL_MINIMUM_CIPHER_LEN = 2048#usize := by
+  unfold low.x86_64.aes_gcm.AVX512_KERNEL_MINIMUM_CIPHER_LEN
+  rfl
+
+/-- `cipher` on the AVX-512 tier, below the 2048 bytes from which it runs the
+VAES kernel: `_cipher_avx512` from 256 bytes and `by8` below, each Vale's GCTR
+from the counter after `j0` and GHASH over the AAD's and the ciphertext's
+padded blocks, for tables of `H`'s powers. -/
+theorem cipher_avx512_tier (ENC : Bool) (hk : low.x86_64.aes.HwKey) (alg : Algorithm) (kw : List (BitVec 32))
+    (hkey : HwKeyIs alg kw hk) (H : P) (hH : Small H) (t : low.x86_64.ghash.GhashTableAvx512)
+    (ht : Avx512Powers H t) (htc : TableFor H t.clmul) (ghash : low.x86_64.ghash.Ghash)
+    (hg : ghash.table = .Avx512 t) (j0 : Quad32) (y0 : Std.Array U8 16#usize)
+    (hy : loadBytes y0.val = reverseBytesQuad32 j0) (aad inout : Slice U8) (hlen : inout.length < 2048) :
+    ∃ g out, low.x86_64.aes_gcm.cipher ENC (.Hw hk) ghash y0 aad inout = ok (g, out) ∧ g.table = ghash.table ∧
+      out.val.map (·.bv) = gctrEncrypt (inc32 j0 1) (inout.val.map (·.bv)) alg kw ∧
+      toPoly g.current = ghashPoly H (toPoly ghash.current)
+        ((padBlocks aad.val ++ padBlocks (if ENC then out.val else inout.val)).map toPoly) := by
+  obtain ⟨tb, cur⟩ := ghash
+  simp only at hg
+  subst hg
+  obtain ⟨i, hi, hiv⟩ := avx512_min_len
+  have h1 : ¬ (inout.len ≥ 2048#usize) := by scalar_tac
+  simp only [low.x86_64.aes_gcm.cipher, avx512_kernel_len, hi, bind_ok, h1, ite_false]
+  by_cases h2 : inout.len ≥ i
+  · rw [ite_eq_left h2]
+    exact cipher_avx512_spec ENC hk alg kw hkey H hH t ht htc _ rfl j0 y0 hy aad inout t.token
+  · rw [ite_eq_right h2]
+    exact by8_spec_of ENC hk alg kw hkey H hH t.clmul htc _ (avx512_ghashOf H hH t ht htc) j0 y0 hy aad inout
+
 end rind.x86_64
