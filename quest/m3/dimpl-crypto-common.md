@@ -28,4 +28,4 @@ whatever else 0.10.0 breaks.
 
 ## Waiting
 
-- algesten/dimpl: merges [#209](https://github.com/algesten/dimpl/pull/209) and publishes 0.10.0. On 2026-11-13 the issue and PR were open, its maintainer said the fix waits for 0.10.0, and the newest release was 0.9.0 (2026-10-25). Check with `gh pr view 209 -R algesten/dimpl --json state`, then dimpl's releases on crates.io.
+- algesten/dimpl: merges [#209](https://github.com/algesten/dimpl/pull/209) and publishes 0.10.0. On 2026-11-15 the issue and PR were still open, its maintainer said the fix waits for 0.10.0, and the newest release was 0.9.0 (2026-10-25). Check with `gh pr view 209 -R algesten/dimpl --json state`, then dimpl's releases on crates.io.
