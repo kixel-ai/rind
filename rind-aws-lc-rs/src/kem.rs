@@ -215,8 +215,12 @@ unsafe impl<Id: AlgorithmIdentifier> Sync for EncapsulationKey<Id> {}
 const _: () = {
     const fn send_sync<T: Send + Sync>() {}
     send_sync::<Algorithm<AlgorithmId>>();
-    send_sync::<rind::kem::DecapsulationKey>();
-    send_sync::<rind::kem::EncapsulationKey>();
+    send_sync::<rind::kem::DecapsulationKey<MlKem512>>();
+    send_sync::<rind::kem::DecapsulationKey<MlKem768>>();
+    send_sync::<rind::kem::DecapsulationKey<MlKem1024>>();
+    send_sync::<rind::kem::EncapsulationKey<MlKem512>>();
+    send_sync::<rind::kem::EncapsulationKey<MlKem768>>();
+    send_sync::<rind::kem::EncapsulationKey<MlKem1024>>();
 };
 
 impl<Id: AlgorithmIdentifier> fmt::Debug for DecapsulationKey<Id> {
