@@ -1655,7 +1655,10 @@ mod tests {
     fn base_mul(scalar: &[u64; 4]) -> [u64; 16] {
         let mut affine = [0; 8];
         edwards25519_scalarmulbase_alt(&mut affine, scalar);
-        let (x, y) = (affine[..4].try_into().unwrap(), affine[4..].try_into().unwrap());
+        let (x, y) = (
+            affine[..4].try_into().unwrap(),
+            affine[4..].try_into().unwrap(),
+        );
         let mut p = [0; 16];
         p[..8].copy_from_slice(&affine);
         p[8] = 1;
@@ -1672,10 +1675,13 @@ mod tests {
         let mut rng = Rng(0x2545_f491_4f6c_dd1d);
         let check = |base: &[u64; 4], scalars: &[[u64; 4]; 2], points: &[[u64; 16]; 2]| {
             let (mut want, mut got) = ([0; 12], [0; 12]);
-            crate::low::generic::edwards25519_msm::edwards25519_msm(&mut want, base, scalars, points);
+            crate::low::generic::edwards25519_msm::edwards25519_msm(
+                &mut want, base, scalars, points,
+            );
             edwards25519_msm(&mut got, base, scalars, points, token);
             // The same projective point: X1 Z2 = X2 Z1 and Y1 Z2 = Y2 Z1.
-            let c = |p: &[u64; 12], i: usize| -> [u64; 4] { p[4 * i..4 * i + 4].try_into().unwrap() };
+            let c =
+                |p: &[u64; 12], i: usize| -> [u64; 4] { p[4 * i..4 * i + 4].try_into().unwrap() };
             for i in 0..2 {
                 assert_eq!(
                     mul(&c(&want, i), &c(&got, 2)),

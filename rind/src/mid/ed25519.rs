@@ -188,7 +188,12 @@ impl VerifyingKey {
             false => self.point.negate().extended(),
         };
         let mut q = [0u64; 12];
-        low::edwards25519_msm(&mut q, &vs.0, &[split.v, split.u], &[r.negate().extended(), a]);
+        low::edwards25519_msm(
+            &mut q,
+            &vs.0,
+            &[split.v, split.u],
+            &[r.negate().extended(), a],
+        );
 
         // The identity is (0 : Z : Z), and the coordinates are reduced.
         q[0] | q[1] | q[2] | q[3] == 0
@@ -429,7 +434,10 @@ mod test {
         };
         let k = Scalar::reduce_from_le_bytes(&ed25519_digest(r_sig, &vk.bytes, msg));
         let a = Point::from_bytes(&vk.bytes).unwrap();
-        Point::mul_base(&S(s.0)).add(&a.neg().mul(&S(k.0))).to_bytes() == r_sig
+        Point::mul_base(&S(s.0))
+            .add(&a.neg().mul(&S(k.0)))
+            .to_bytes()
+            == r_sig
     }
 
     /// Keys and commitments with every torsion component, whose
@@ -491,11 +499,18 @@ mod test {
             let bit = round * 37 % 512;
             flipped[bit / 8] ^= 1 << (bit % 8);
             let want = verify_reference(&vk, &flipped, &msg);
-            assert_eq!(vk.verify(&flipped, &msg).is_ok(), want, "{i} {j} {flipped:x?}");
+            assert_eq!(
+                vk.verify(&flipped, &msg).is_ok(),
+                want,
+                "{i} {j} {flipped:x?}"
+            );
             let aws_lc = UnparsedPublicKey::new(&ED25519, &a_bytes).verify(&msg, &flipped);
             assert_eq!(aws_lc.is_ok(), want, "{i} {j} {flipped:x?}");
         }
-        assert!(accepted > 64 && torsion_accepted > 0, "{accepted} {torsion_accepted}");
+        assert!(
+            accepted > 64 && torsion_accepted > 0,
+            "{accepted} {torsion_accepted}"
+        );
     }
 
     /// An `R` that is no point's canonical encoding: `y` of `p` or above,

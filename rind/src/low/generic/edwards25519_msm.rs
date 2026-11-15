@@ -968,7 +968,10 @@ mod tests {
     fn base_mul(scalar: &[u64; 4]) -> [u64; 16] {
         let mut affine = [0; 8];
         edwards25519_scalarmulbase(&mut affine, scalar);
-        let (x, y) = (affine[..4].try_into().unwrap(), affine[4..].try_into().unwrap());
+        let (x, y) = (
+            affine[..4].try_into().unwrap(),
+            affine[4..].try_into().unwrap(),
+        );
         let mut p = IDENTITY;
         p[..8].copy_from_slice(&affine);
         p[12..].copy_from_slice(&mul(x, y));
@@ -1013,7 +1016,10 @@ mod tests {
                 assert!(same(projective(entry), projective(&multiple)), "{i}");
                 // Z = 1, so X and Y are affine, and T = XY.
                 assert_eq!(entry[8..12], [1, 0, 0, 0]);
-                let (x, y) = (entry[..4].try_into().unwrap(), entry[4..8].try_into().unwrap());
+                let (x, y) = (
+                    entry[..4].try_into().unwrap(),
+                    entry[4..8].try_into().unwrap(),
+                );
                 assert_eq!(entry[12..], mul(x, y));
             }
         }
@@ -1087,13 +1093,20 @@ mod tests {
                     let add = (digit as i64) as u64;
                     let mut carry = 0u64;
                     for (j, word) in sum.iter_mut().enumerate() {
-                        let addend = if j == 0 { add } else { (digit >> 7) as i64 as u64 };
+                        let addend = if j == 0 {
+                            add
+                        } else {
+                            (digit >> 7) as i64 as u64
+                        };
                         let (s, c1) = word.overflowing_add(addend);
                         let (s, c2) = s.overflowing_add(carry);
                         *word = s;
                         carry = u64::from(c1 | c2);
                     }
-                    assert!(digit == 0 || (digit & 1 == 1 && digit.unsigned_abs() < 1 << (w - 1)), "{i}");
+                    assert!(
+                        digit == 0 || (digit & 1 == 1 && digit.unsigned_abs() < 1 << (w - 1)),
+                        "{i}"
+                    );
                 }
                 assert_eq!(sum, x);
             }

@@ -246,7 +246,9 @@ mod tests {
         // whichever of v k - u and u - v k is nonnegative.
         let difference = match s.u_negative {
             true => add_or_sub(&vk, &s.u, false),
-            false => match vk[4..] == [0; 4] && U256::from(vk[..4].try_into().unwrap()) < U256::from(&s.u) {
+            false => match vk[4..] == [0; 4]
+                && U256::from(vk[..4].try_into().unwrap()) < U256::from(&s.u)
+            {
                 true => {
                     let mut u = [0; 8];
                     u[..4].copy_from_slice(&s.u);
@@ -255,7 +257,10 @@ mod tests {
                 false => add_or_sub(&vk, &s.u, true),
             },
         };
-        assert!(reduce(&difference) == U256 { hi: 0, lo: 0 }, "{k:x?}: {s:x?}");
+        assert!(
+            reduce(&difference) == U256 { hi: 0, lo: 0 },
+            "{k:x?}: {s:x?}"
+        );
         assert!(s.v[0] & 1 == 1, "{k:x?}: {s:x?}");
         assert_eq!(s.v[2..], [0, 0], "{k:x?}: {s:x?}");
         assert!(s.u[3] >> 63 == 0, "{k:x?}: {s:x?}");
@@ -299,6 +304,10 @@ mod tests {
             let k = [next(), next(), next(), next() >> 4];
             total += check(&k).max(128);
         }
-        assert!(total < 129 * rounds, "{}", f64::from(total) / f64::from(rounds));
+        assert!(
+            total < 129 * rounds,
+            "{}",
+            f64::from(total) / f64::from(rounds)
+        );
     }
 }
