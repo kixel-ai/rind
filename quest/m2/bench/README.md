@@ -1,4 +1,4 @@
-# Speed regressions are caught the night they land
+# Speed regressions fail the weekly bench by its second run after they land
 
 ## Goal
 
