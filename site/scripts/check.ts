@@ -4,7 +4,7 @@
 // the site or the repository resolves, anchors included.
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
-import { Lexer, type Token, walkTokens } from "marked";
+import { Lexer, type Token, type Tokens, walkTokens } from "marked";
 import { hrefs, lex } from "../src/lib/markdown";
 import { origin, pages, twinPath } from "../src/lib/pages";
 import { repoUrl, root } from "../src/lib/repo";
@@ -53,9 +53,11 @@ function anchors(file: string): Set<string> {
 	const counts = new Map<string, number>();
 	const out = new Set<string>();
 	const tokens = Lexer.lex(readFileSync(path.join(root, file), "utf8"));
-	for (const t of tokens) {
-		if (t.type !== "heading") continue;
-		const base = plain(t.tokens ?? [])
+	// Every heading in document order, nested ones included, as each takes a slug.
+	const headings: Tokens.Heading[] = [];
+	walkTokens(tokens, (t) => void (t.type === "heading" && headings.push(t as Tokens.Heading)));
+	for (const t of headings) {
+		const base = plain(t.tokens)
 			.toLowerCase()
 			.replace(/[^\p{L}\p{M}\p{N}\p{Pc} -]/gu, "")
 			.replaceAll(" ", "-");
