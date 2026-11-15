@@ -5,7 +5,7 @@ use core::hint::black_box;
 use core::mem::ManuallyDrop;
 
 use crate::Error;
-use crate::cipher;
+use crate::cipher::Algorithm;
 use crate::low::{self, AesDecKey, AesKey, Entry, Zeroable, ct_equal, zeroise_value};
 
 /// RFC 3394's default initial value, which unwrapping checks.
@@ -14,62 +14,18 @@ const IV: [u8; 8] = [0xa6; 8];
 /// RFC 5649's alternative initial value, which the key's length follows.
 const AIV: [u8; 4] = [0xa6, 0x59, 0x59, 0xa6];
 
-/// An AES key-wrapping algorithm: RFC 3394's AES-KW, which wraps keys a
-/// multiple of 8 bytes long, or RFC 5649's AES-KWP, which pads keys of any
-/// length; each under a 128-, 192-, or 256-bit key-encryption key.
-pub struct Algorithm {
-    cipher: &'static cipher::Algorithm,
-    padded: bool,
+/// How a key is wrapped.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Mode {
+    /// RFC 3394's AES-KW, which wraps keys at least 16 bytes long and a
+    /// multiple of 8, as JWE's `A128KW` does.
+    Kw,
+    /// RFC 5649's AES-KWP, which pads keys of any length from 1 byte.
+    Kwp,
 }
 
-impl fmt::Debug for Algorithm {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mode = match self.padded {
-            true => "KWP",
-            false => "KW",
-        };
-        write!(f, "AES_{}_{mode}", self.cipher.key_len * 8)
-    }
-}
-
-/// RFC 3394 AES-KW under a 128-bit key, JWE's `A128KW`.
-pub static AES_128_KW: Algorithm = Algorithm {
-    cipher: &cipher::AES_128,
-    padded: false,
-};
-
-/// RFC 3394 AES-KW under a 192-bit key, JWE's `A192KW`.
-pub static AES_192_KW: Algorithm = Algorithm {
-    cipher: &cipher::AES_192,
-    padded: false,
-};
-
-/// RFC 3394 AES-KW under a 256-bit key, JWE's `A256KW`.
-pub static AES_256_KW: Algorithm = Algorithm {
-    cipher: &cipher::AES_256,
-    padded: false,
-};
-
-/// RFC 5649 AES-KWP under a 128-bit key.
-pub static AES_128_KWP: Algorithm = Algorithm {
-    cipher: &cipher::AES_128,
-    padded: true,
-};
-
-/// RFC 5649 AES-KWP under a 192-bit key.
-pub static AES_192_KWP: Algorithm = Algorithm {
-    cipher: &cipher::AES_192,
-    padded: true,
-};
-
-/// RFC 5649 AES-KWP under a 256-bit key.
-pub static AES_256_KWP: Algorithm = Algorithm {
-    cipher: &cipher::AES_256,
-    padded: true,
-};
-
-/// An AES key-encryption key, which wraps and unwraps other keys with its
-/// algorithm; wiped on drop.
+/// An AES key-encryption key, which wraps and unwraps other keys in either
+/// [`Mode`]; wiped on drop.
 ///
 /// Wrapping is deterministic and authenticated: a wrapped key that was
 /// altered fails to unwrap.
@@ -79,15 +35,15 @@ pub static AES_256_KWP: Algorithm = Algorithm {
 /// both schedules would cost that call a second expansion.
 pub struct AesKek {
     key: [u8; 32],
-    algorithm: low::ZeroableRef<Algorithm>,
+    key_len: usize,
 }
 
 impl AesKek {
-    /// Takes `key` for `algorithm`, failing with [`Error::WrongLength`] if
+    /// Expands `key` for `algorithm`, failing with [`Error::WrongLength`] if
     /// it is not that algorithm's key length.
     pub fn new(algorithm: &'static Algorithm, key: &[u8]) -> Result<Self, Error> {
         let _entry = Entry::new_secret();
-        if key.len() != algorithm.cipher.key_len {
+        if key.len() != algorithm.key_len {
             return Err(Error::WrongLength);
         }
         // Mark a copy: the caller's buffer may be shared, or a promoted constant.
@@ -96,40 +52,45 @@ impl AesKek {
         low::ct::secret_slice(&copy);
         Ok(Self {
             key: copy,
-            algorithm: low::ZeroableRef::new(algorithm),
+            key_len: key.len(),
         })
+    }
+
+    fn key(&self) -> &[u8] {
+        &self.key[..self.key_len]
     }
 
     /// Wraps `key` into `wrapped`, which must be
     /// `key.len().next_multiple_of(8) + 8` bytes long.
     ///
-    /// AES-KW takes a `key` of at least 16 bytes and a multiple of 8, and
-    /// AES-KWP any `key` from 1 byte to `u32::MAX` bytes. Fails with
-    /// [`Error::WrongLength`], leaving `wrapped` unchanged, otherwise.
-    pub fn wrap_key(&self, key: &[u8], wrapped: &mut [u8]) -> Result<(), Error> {
-        match self.algorithm.get().padded {
-            true => self.wrap_padded(key, wrapped),
-            false => self.wrap(key, wrapped),
+    /// [`Mode::Kw`] takes a `key` at least 16 bytes long and a multiple of 8,
+    /// and [`Mode::Kwp`] any `key` from 1 byte to `u32::MAX` bytes. Fails
+    /// with [`Error::WrongLength`], leaving `wrapped` unchanged, otherwise.
+    pub fn wrap_key(&self, mode: Mode, key: &[u8], wrapped: &mut [u8]) -> Result<(), Error> {
+        match mode {
+            Mode::Kw => self.wrap(key, wrapped),
+            Mode::Kwp => self.wrap_padded(key, wrapped),
         }
     }
 
     /// Unwraps `wrapped` into `key`, which must be 8 bytes shorter,
-    /// returning the unwrapped key at its start: all of `key` under AES-KW,
-    /// and the length AES-KWP's header records under it.
+    /// returning the unwrapped key at its start: all of `key` under
+    /// [`Mode::Kw`], and the length its header records under [`Mode::Kwp`].
     ///
     /// Fails with [`Error::DecryptFailed`] if `wrapped` was not wrapped by
-    /// this key, clearing `key`, or is not a length the algorithm wraps to,
-    /// and with [`Error::WrongLength`] if `key` is not 8 bytes shorter; a
-    /// length failure leaves `key` unchanged.
-    pub fn unwrap_key<'a>(&self, wrapped: &[u8], key: &'a mut [u8]) -> Result<&'a mut [u8], Error> {
-        match self.algorithm.get().padded {
-            true => self.unwrap_padded(wrapped, key),
-            false => self.unwrap(wrapped, key).map(|()| key),
+    /// this key in `mode`, clearing `key`, or is not a length `mode` wraps
+    /// to, and with [`Error::WrongLength`] if `key` is not 8 bytes shorter;
+    /// a length failure leaves `key` unchanged.
+    pub fn unwrap_key<'a>(
+        &self,
+        mode: Mode,
+        wrapped: &[u8],
+        key: &'a mut [u8],
+    ) -> Result<&'a mut [u8], Error> {
+        match mode {
+            Mode::Kw => self.unwrap(wrapped, key).map(|()| key),
+            Mode::Kwp => self.unwrap_padded(wrapped, key),
         }
-    }
-
-    fn key(&self) -> &[u8] {
-        &self.key[..self.algorithm.get().cipher.key_len]
     }
 
     /// Wraps `key` into `wrapped`, which must be 8 bytes longer.
@@ -285,7 +246,7 @@ impl AesKek {
 impl fmt::Debug for AesKek {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("AesKek")
-            .field("algorithm", self.algorithm.get())
+            .field("algorithm", crate::cipher::aes(self.key_len))
             .finish_non_exhaustive()
     }
 }
@@ -372,28 +333,17 @@ mod tests {
     use crate::cipher::{AES_128, AES_192, AES_256};
     use crate::test::{Acvp, acvp};
 
-    /// A key-encryption key of `cipher`'s length. These tests call each
-    /// mode's method directly, whichever mode the key holds.
-    fn new_kek(cipher: &'static cipher::Algorithm, key: &[u8]) -> Result<AesKek, Error> {
-        let algorithm = match cipher.key_len {
-            16 => &AES_128_KW,
-            24 => &AES_192_KW,
-            _ => &AES_256_KW,
-        };
-        AesKek::new(algorithm, key)
-    }
-
     #[test]
     fn acvp_kw() {
-        acvp_set("ACVP-AES-KW-1.0", false);
+        acvp_set("ACVP-AES-KW-1.0", Mode::Kw);
     }
 
     #[test]
     fn acvp_kwp() {
-        acvp_set("ACVP-AES-KWP-1.0", true);
+        acvp_set("ACVP-AES-KWP-1.0", Mode::Kwp);
     }
 
-    fn acvp_set(name: &str, padded: bool) {
+    fn acvp_set(name: &str, mode: Mode) {
         for group in acvp(name) {
             assert_eq!(group.str("kwCipher"), "cipher");
             let encrypt = match group.str("direction") {
@@ -403,26 +353,18 @@ mod tests {
             };
             for test in group.tests() {
                 let key = test.hex("key");
-                let kek = new_kek(cipher::aes(key.len()), &key).unwrap();
+                let kek = AesKek::new(crate::cipher::aes(key.len()), &key).unwrap();
                 let ct = test.hex("ct");
                 if encrypt {
                     let mut wrapped = vec![0; ct.len()];
-                    if padded {
-                        kek.wrap_padded(&test.hex("pt"), &mut wrapped)
-                    } else {
-                        kek.wrap(&test.hex("pt"), &mut wrapped)
-                    }
-                    .unwrap();
+                    kek.wrap_key(mode, &test.hex("pt"), &mut wrapped).unwrap();
                     assert_eq!(wrapped, ct);
                     continue;
                 }
                 let mut unwrapped = vec![0; ct.len() - 8];
-                let result = if padded {
-                    kek.unwrap_padded(&ct, &mut unwrapped)
-                        .map(|key| key.to_vec())
-                } else {
-                    kek.unwrap(&ct, &mut unwrapped).map(|()| unwrapped)
-                };
+                let result = kek
+                    .unwrap_key(mode, &ct, &mut unwrapped)
+                    .map(|key| key.to_vec());
                 match test.flag("testPassed") {
                     true => assert_eq!(result.unwrap(), test.hex("pt")),
                     false => assert_eq!(result, Err(Error::DecryptFailed)),
@@ -461,7 +403,7 @@ mod tests {
                 "28c9f404c4b810f4cbccb35cfb87f8263f5786e2d80ed326cbc7f0e71a99f43bfb988b9b7a02dd21",
             ),
         ] {
-            let kek = new_kek(algorithm, &hex::decode(kek).unwrap()).unwrap();
+            let kek = AesKek::new(algorithm, &hex::decode(kek).unwrap()).unwrap();
             let key = hex::decode(key).unwrap();
             let wrapped = hex::decode(wrapped).unwrap();
 
@@ -506,7 +448,7 @@ mod tests {
                 "de497acf18a177a3a9b3d8da46d74dfa58dcc537a3a95323",
             ),
         ] {
-            let kek = new_kek(algorithm, &hex::decode(kek).unwrap()).unwrap();
+            let kek = AesKek::new(algorithm, &hex::decode(kek).unwrap()).unwrap();
             let key = hex::decode(key).unwrap();
             let wrapped = hex::decode(wrapped).unwrap();
 
@@ -524,7 +466,7 @@ mod tests {
     // clearing the key.
     #[test]
     fn padded() {
-        let kek = new_kek(&AES_128, &[0x42; 16]).unwrap();
+        let kek = AesKek::new(&AES_128, &[0x42; 16]).unwrap();
         let enc = AesKey::new(&[0x42; 16]);
         let _entry = Entry::new_secret();
         for len in 1..=24usize {
@@ -588,7 +530,7 @@ mod tests {
 
     #[test]
     fn unwrap_failure_clears_key() {
-        let kek = new_kek(&AES_128, &[0x42; 16]).unwrap();
+        let kek = AesKek::new(&AES_128, &[0x42; 16]).unwrap();
         let mut wrapped = [0u8; 40];
         kek.wrap(&[0x24; 32], &mut wrapped).unwrap();
 
@@ -604,7 +546,7 @@ mod tests {
 
     #[test]
     fn lengths() {
-        let kek = new_kek(&AES_256, &[0x42; 32]).unwrap();
+        let kek = AesKek::new(&AES_256, &[0x42; 32]).unwrap();
         let buf = [0x55u8; 64];
         for len in 0..=48usize {
             let valid = len >= 16 && len.is_multiple_of(8);
@@ -669,8 +611,8 @@ mod tests {
             );
         }
 
-        assert!(new_kek(&AES_128, &[0; 32]).is_err());
-        assert!(new_kek(&AES_256, &[0; 16]).is_err());
+        assert!(AesKek::new(&AES_128, &[0; 32]).is_err());
+        assert!(AesKek::new(&AES_256, &[0; 16]).is_err());
     }
 
     // armv7's AES-KW on the crypto extension, which valgrind hides, for each
@@ -685,7 +627,7 @@ mod tests {
         let bytes = |n| seed.iter().cycle().take(n).copied().collect::<Vec<u8>>();
         for algorithm in [&AES_128, &AES_192, &AES_256] {
             let kek_bytes = bytes(algorithm.key_len);
-            let kek = ct_qemu::traced(|| new_kek(algorithm, &kek_bytes).unwrap());
+            let kek = ct_qemu::traced(|| AesKek::new(algorithm, &kek_bytes).unwrap());
             assert!(
                 matches!(AesDecKey::new(kek.key()), AesDecKey::Hw(_)),
                 "the crypto extension"

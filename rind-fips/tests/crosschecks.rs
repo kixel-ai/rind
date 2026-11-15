@@ -589,6 +589,7 @@ fn aes_cbc() {
 #[test]
 fn key_wrap() {
     use aws_lc_rs::key_wrap::{AES_128, AES_256, AesKek, KeyWrap, KeyWrapPadded};
+    use rind_fips::key_wrap::Mode;
 
     // aws-lc-rs offers no AES-192 key-encryption key.
     for (ours, theirs_algorithm, kek_len) in [
@@ -601,11 +602,13 @@ fn key_wrap() {
             let theirs = || AesKek::new(theirs_algorithm, &kek).unwrap();
 
             let mut wrapped = vec![0u8; len + 8];
-            ours_kek.wrap(&key, &mut wrapped).unwrap();
+            ours_kek.wrap_key(Mode::Kw, &key, &mut wrapped).unwrap();
             let mut wanted = vec![0u8; len + 8];
             assert_eq!(theirs().wrap(&key, &mut wanted).unwrap(), &wrapped[..]);
             let mut unwrapped = vec![0u8; len];
-            ours_kek.unwrap(&wanted, &mut unwrapped).unwrap();
+            ours_kek
+                .unwrap_key(Mode::Kw, &wanted, &mut unwrapped)
+                .unwrap();
             assert_eq!(unwrapped, key);
         }
         for len in [1, 7, 8, 9, 31, 32] {
@@ -614,13 +617,15 @@ fn key_wrap() {
             let theirs = || AesKek::new(theirs_algorithm, &kek).unwrap();
 
             let mut wrapped = vec![0u8; len.next_multiple_of(8) + 8];
-            ours_kek.wrap_padded(&key, &mut wrapped).unwrap();
+            ours_kek.wrap_key(Mode::Kwp, &key, &mut wrapped).unwrap();
             let mut wanted = vec![0u8; len + 15];
             let wanted = theirs().wrap_with_padding(&key, &mut wanted).unwrap();
             assert_eq!(wanted, &wrapped[..]);
             let mut unwrapped = vec![0u8; wanted.len() - 8];
             assert_eq!(
-                ours_kek.unwrap_padded(wanted, &mut unwrapped).unwrap(),
+                ours_kek
+                    .unwrap_key(Mode::Kwp, wanted, &mut unwrapped)
+                    .unwrap(),
                 &key[..]
             );
         }

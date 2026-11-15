@@ -327,6 +327,12 @@ impl PublicKey {
         Spki(Buffer::encode(|output| self.key.to_spki_der(output)))
     }
 
+    /// The modulus's length in bytes, which is also its signatures' length,
+    /// so a caller can refuse a small key before it verifies anything.
+    pub fn modulus_len(&self) -> usize {
+        self.key.modulus_len_bits().div_ceil(8)
+    }
+
     /// Verifies `signature` over `message` with `algorithm`, refusing a
     /// malformed signature, and refusing the key if its modulus is below
     /// the algorithm's floor.

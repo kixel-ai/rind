@@ -719,31 +719,28 @@ pub mod cipher;
 /// `A128KW`, `A192KW`, and `A256KW` use it, and with AES-KWP, RFC 5649,
 /// which pads keys of any length.
 ///
-/// The algorithm fixes the mode, as an AEAD's does, so a key-encryption key
-/// wraps one way.
+/// A key-encryption key wraps in either [`Mode`](key_wrap::Mode), chosen
+/// per call.
 ///
 /// ```
-/// use rind::key_wrap::{AES_256_KW, AES_256_KWP, AesKek};
+/// use rind::key_wrap::{AES_256, AesKek, Mode};
 ///
-/// let kek = AesKek::new(&AES_256_KW, &[0x42; 32]).unwrap();
+/// let kek = AesKek::new(&AES_256, &[0x42; 32]).unwrap();
 /// let key = [0x24; 16];
 /// let mut wrapped = [0u8; 24];
-/// kek.wrap_key(&key, &mut wrapped).unwrap();
+/// kek.wrap_key(Mode::Kw, &key, &mut wrapped).unwrap();
 /// let mut unwrapped = [0u8; 16];
-/// assert_eq!(kek.unwrap_key(&wrapped, &mut unwrapped).unwrap(), key);
+/// assert_eq!(kek.unwrap_key(Mode::Kw, &wrapped, &mut unwrapped).unwrap(), key);
 ///
-/// let kek = AesKek::new(&AES_256_KWP, &[0x42; 32]).unwrap();
 /// let key = [0x24; 20];
 /// let mut wrapped = [0u8; 32];
-/// kek.wrap_key(&key, &mut wrapped).unwrap();
+/// kek.wrap_key(Mode::Kwp, &key, &mut wrapped).unwrap();
 /// let mut unwrapped = [0u8; 24];
-/// assert_eq!(kek.unwrap_key(&wrapped, &mut unwrapped).unwrap(), key);
+/// assert_eq!(kek.unwrap_key(Mode::Kwp, &wrapped, &mut unwrapped).unwrap(), key);
 /// ```
 pub mod key_wrap {
-    pub use crate::mid::aes_kw::{
-        AES_128_KW, AES_128_KWP, AES_192_KW, AES_192_KWP, AES_256_KW, AES_256_KWP, AesKek,
-        Algorithm,
-    };
+    pub use crate::cipher::{AES_128, AES_192, AES_256};
+    pub use crate::mid::aes_kw::{AesKek, Mode};
 }
 
 /// CPU support.

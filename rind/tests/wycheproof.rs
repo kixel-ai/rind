@@ -9,7 +9,7 @@ use rind::aead::{
 use rind::cipher::{
     AES_128, AES_192, AES_256, AesCbcDecryptingKey, AesCbcEncryptingKey, CbcIv, ChaCha20,
 };
-use rind::key_wrap::{self, AesKek};
+use rind::key_wrap::{self, AesKek, Mode};
 use rind::rsa::verify::legacy;
 use rind::rsa::{self, DecryptingKey, OaepAlgorithm};
 use rind::{ecdsa, ed25519, hkdf, hmac, ml_dsa, pbkdf2};
@@ -703,15 +703,15 @@ fn test_aes_wrap() {
             summary.start(&test);
 
             let algorithm = match test.key.len() {
-                16 => &key_wrap::AES_128_KW,
-                24 => &key_wrap::AES_192_KW,
-                32 => &key_wrap::AES_256_KW,
+                16 => &key_wrap::AES_128,
+                24 => &key_wrap::AES_192,
+                32 => &key_wrap::AES_256,
                 len => panic!("unexpected key length {len}"),
             };
             let kek = AesKek::new(algorithm, &test.key).unwrap();
 
             let mut key = vec![0xaa; test.ct.len().saturating_sub(8)];
-            let result = kek.unwrap_key(&test.ct, &mut key).map(|key| key.to_vec());
+            let result = kek.unwrap_key(Mode::Kw, &test.ct, &mut key).map(|key| key.to_vec());
             match (test.result, result) {
                 (ExpectedResult::Valid, Ok(key)) => assert_eq!(key, test.msg),
                 // RFC 3394 wraps no key shorter than 16 bytes, which the
@@ -726,7 +726,7 @@ fn test_aes_wrap() {
             }
 
             let mut wrapped = vec![0u8; test.msg.len() + 8];
-            let result = kek.wrap_key(&test.msg, &mut wrapped);
+            let result = kek.wrap_key(Mode::Kw, &test.msg, &mut wrapped);
             let wrappable = test.msg.len() >= 16 && test.msg.len().is_multiple_of(8);
             match (test.result, result) {
                 (ExpectedResult::Valid, Ok(())) => assert_eq!(wrapped, test.ct),
@@ -755,15 +755,15 @@ fn test_aes_kwp() {
             summary.start(&test);
 
             let algorithm = match test.key.len() {
-                16 => &key_wrap::AES_128_KWP,
-                24 => &key_wrap::AES_192_KWP,
-                32 => &key_wrap::AES_256_KWP,
+                16 => &key_wrap::AES_128,
+                24 => &key_wrap::AES_192,
+                32 => &key_wrap::AES_256,
                 len => panic!("unexpected key length {len}"),
             };
             let kek = AesKek::new(algorithm, &test.key).unwrap();
 
             let mut key = vec![0xaa; test.ct.len().saturating_sub(8)];
-            let result = kek.unwrap_key(&test.ct, &mut key).map(|key| key.to_vec());
+            let result = kek.unwrap_key(Mode::Kwp, &test.ct, &mut key).map(|key| key.to_vec());
             match (test.result, result) {
                 (ExpectedResult::Valid, Ok(key)) => assert_eq!(key, test.msg),
                 (ExpectedResult::Invalid, Err(Error::DecryptFailed)) => {
@@ -773,7 +773,7 @@ fn test_aes_kwp() {
             }
 
             let mut wrapped = vec![0u8; test.msg.len().next_multiple_of(8) + 8];
-            let result = kek.wrap_key(&test.msg, &mut wrapped);
+            let result = kek.wrap_key(Mode::Kwp, &test.msg, &mut wrapped);
             match (test.result, result) {
                 (ExpectedResult::Valid, Ok(())) => assert_eq!(wrapped, test.ct),
                 // a key wrapped and then altered

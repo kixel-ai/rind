@@ -16,7 +16,7 @@ use rind_fips::aead::{AES_128_GCM, AES_192_GCM, AES_256_GCM, Key, Nonce, Tag, gc
 use rind_fips::cipher::{
     AES_128, AES_192, AES_256, AesCbcDecryptingKey, AesCbcEncryptingKey, CbcIv,
 };
-use rind_fips::key_wrap::AesKek;
+use rind_fips::key_wrap::{AesKek, Mode};
 use rind_fips::signature::verify::legacy;
 use rind_fips::signature::{self, RsaVerificationAlgorithm, sign, verify};
 use rind_fips::{Error, agreement, digest, hkdf, hmac, kem, pbkdf2};
@@ -722,9 +722,11 @@ fn aes_wrap() {
             let kek = kek(&test.key);
 
             let mut key = vec![0xaa; test.ct.len().saturating_sub(8)];
-            let result = kek.unwrap(&test.ct, &mut key);
+            let result = kek
+                .unwrap_key(Mode::Kw, &test.ct, &mut key)
+                .map(|key| key.to_vec());
             match (test.result, result) {
-                (ExpectedResult::Valid, Ok(())) => assert_eq!(key, test.msg),
+                (ExpectedResult::Valid, Ok(key)) => assert_eq!(key, test.msg),
                 // RFC 3394 wraps no key shorter than 16 bytes, which the
                 // acceptable tests are.
                 (
@@ -740,7 +742,7 @@ fn aes_wrap() {
             }
 
             let mut wrapped = vec![0u8; test.msg.len() + 8];
-            let result = kek.wrap(&test.msg, &mut wrapped);
+            let result = kek.wrap_key(Mode::Kw, &test.msg, &mut wrapped);
             let wrappable = test.msg.len() >= 16 && test.msg.len().is_multiple_of(8);
             match (test.result, result) {
                 (ExpectedResult::Valid, Ok(())) => assert_eq!(wrapped, test.ct),
@@ -768,7 +770,7 @@ fn aes_kwp() {
 
             let mut key = vec![0xaa; test.ct.len().saturating_sub(8)];
             let result = kek
-                .unwrap_padded(&test.ct, &mut key)
+                .unwrap_key(Mode::Kwp, &test.ct, &mut key)
                 .map(|key| key.to_vec());
             match (test.result, result) {
                 (ExpectedResult::Valid, Ok(key)) => assert_eq!(key, test.msg),
@@ -782,7 +784,7 @@ fn aes_kwp() {
             }
 
             let mut wrapped = vec![0u8; test.msg.len().next_multiple_of(8) + 8];
-            let result = kek.wrap_padded(&test.msg, &mut wrapped);
+            let result = kek.wrap_key(Mode::Kwp, &test.msg, &mut wrapped);
             match (test.result, result) {
                 (ExpectedResult::Valid, Ok(())) => assert_eq!(wrapped, test.ct),
                 // A key wrapped and then altered.

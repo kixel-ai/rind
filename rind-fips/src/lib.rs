@@ -190,28 +190,27 @@ mod aes_kw;
 /// `A128KW`, `A192KW`, and `A256KW` use it, and with AES-KWP, RFC 5649,
 /// which pads keys of any length.
 ///
+/// A key-encryption key wraps in either [`Mode`](key_wrap::Mode), chosen
+/// per call.
+///
 /// ```
-/// use rind_fips::key_wrap::{AES_256, AesKek};
+/// use rind_fips::key_wrap::{AES_256, AesKek, Mode};
 ///
 /// let kek = AesKek::new(&AES_256, &[0x42; 32]).unwrap();
-///
 /// let key = [0x24; 16];
 /// let mut wrapped = [0u8; 24];
-/// kek.wrap(&key, &mut wrapped).unwrap();
-///
+/// kek.wrap_key(Mode::Kw, &key, &mut wrapped).unwrap();
 /// let mut unwrapped = [0u8; 16];
-/// kek.unwrap(&wrapped, &mut unwrapped).unwrap();
-/// assert_eq!(unwrapped, key);
+/// assert_eq!(kek.unwrap_key(Mode::Kw, &wrapped, &mut unwrapped).unwrap(), key);
 ///
 /// let key = [0x24; 20];
 /// let mut wrapped = [0u8; 32];
-/// kek.wrap_padded(&key, &mut wrapped).unwrap();
-///
+/// kek.wrap_key(Mode::Kwp, &key, &mut wrapped).unwrap();
 /// let mut unwrapped = [0u8; 24];
-/// assert_eq!(kek.unwrap_padded(&wrapped, &mut unwrapped).unwrap(), key);
+/// assert_eq!(kek.unwrap_key(Mode::Kwp, &wrapped, &mut unwrapped).unwrap(), key);
 /// ```
 pub mod key_wrap {
-    pub use crate::aes_kw::AesKek;
+    pub use crate::aes_kw::{AesKek, Mode};
     pub use crate::cipher::{AES_128, AES_192, AES_256};
 }
 

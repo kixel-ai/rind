@@ -20,7 +20,8 @@ use crabgrind::memcheck::{self, MemState};
 use crabgrind::valgrind::{self, RunningMode};
 use rind_fips::signature::sign::{self, MlDsa65, MlDsaKeyPair};
 use rind_fips::signature::{EcdsaKeyPair, Ed25519KeyPair, RsaKeyPair};
-use rind_fips::{aead, agreement, cipher, hkdf, hmac, kem, key_wrap, pbkdf2, rand};
+use rind_fips::key_wrap::{self, Mode};
+use rind_fips::{aead, agreement, cipher, hkdf, hmac, kem, pbkdf2, rand};
 
 /// Marks `value` secret: memcheck flags any branch or index that depends on it.
 fn secret<T: ?Sized>(value: &T) {
@@ -186,15 +187,18 @@ fn aes() {
     let wrapped_key = [0x24u8; 32];
     secret(&wrapped_key);
     let mut wrapped = [0u8; 40];
-    kek.wrap(&wrapped_key, &mut wrapped).unwrap();
+    kek.wrap_key(Mode::Kw, &wrapped_key, &mut wrapped)
+        .unwrap();
     public(&wrapped);
     let mut unwrapped = [0u8; 32];
-    kek.unwrap(&wrapped, &mut unwrapped).unwrap();
+    kek.unwrap_key(Mode::Kw, &wrapped, &mut unwrapped)
+        .unwrap();
     public(&unwrapped);
     assert_eq!(unwrapped, [0x24; 32]);
     wrapped[9] ^= 1;
     assert_eq!(
-        kek.unwrap(&wrapped, &mut unwrapped),
+        kek.unwrap_key(Mode::Kw, &wrapped, &mut unwrapped)
+            .map(|_| ()),
         Err(rind_fips::Error::DecryptFailed)
     );
 
@@ -204,15 +208,18 @@ fn aes() {
         let wrapped_key = vec![0x42u8; len];
         secret(&wrapped_key[..]);
         let mut wrapped = vec![0u8; len.next_multiple_of(8) + 8];
-        kek.wrap_padded(&wrapped_key, &mut wrapped).unwrap();
+        kek.wrap_key(Mode::Kwp, &wrapped_key, &mut wrapped)
+            .unwrap();
         public(&wrapped[..]);
         let mut unwrapped = vec![0u8; wrapped.len() - 8];
-        let key = kek.unwrap_padded(&wrapped, &mut unwrapped).unwrap();
+        let key = kek
+            .unwrap_key(Mode::Kwp, &wrapped, &mut unwrapped)
+            .unwrap();
         public(key);
         assert_eq!(key, &vec![0x42; len][..], "{len}");
         wrapped[9] ^= 1;
         assert_eq!(
-            kek.unwrap_padded(&wrapped, &mut unwrapped).err(),
+            kek.unwrap_key(Mode::Kwp, &wrapped, &mut unwrapped).err(),
             Some(rind_fips::Error::DecryptFailed),
             "{len}"
         );

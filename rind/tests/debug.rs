@@ -66,8 +66,8 @@ fn cipher() {
     use rind::cipher::{AES_128, AES_256, Aes, AesCtr, ChaCha20};
     use rind::key_wrap::{self, AesKek};
     for (algorithm, kek, len) in [
-        (&AES_128, &key_wrap::AES_128_KW, 16),
-        (&AES_256, &key_wrap::AES_256_KWP, 32),
+        (&AES_128, &key_wrap::AES_128, 16),
+        (&AES_256, &key_wrap::AES_256, 32),
     ] {
         let key = &[0xff; 32][..len];
         let algorithm_shown = format!("Algorithm {{ key_len: {len} }}");
@@ -82,10 +82,9 @@ fn cipher() {
             format!("AesCtr {{ algorithm: {algorithm_shown}, .. }}")
         );
         let kek = AesKek::new(kek, key).unwrap();
-        let mode = if len == 16 { "KW" } else { "KWP" };
         assert_eq!(
             show(&kek),
-            format!("AesKek {{ algorithm: AES_{}_{mode}, .. }}", len * 8)
+            format!("AesKek {{ algorithm: {algorithm_shown}, .. }}")
         );
     }
     assert_eq!(show(&ChaCha20::new(&[0xff; 32])), "ChaCha20 { .. }");

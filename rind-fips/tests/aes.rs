@@ -451,20 +451,13 @@ fn cbc_refuses_a_buffer_padding_cannot_grow() {
 
 #[test]
 fn key_wrap_matches_rind() {
-    use rind::key_wrap::{
-        AES_128_KW, AES_128_KWP, AES_192_KW, AES_192_KWP, AES_256_KW, AES_256_KWP,
-    };
-    // rind binds a KEK to one mode, so the reference is a KEK for each.
-    for (ours, _, key_len) in CIPHERS {
-        let (kw, kwp) = match key_len {
-            16 => (&AES_128_KW, &AES_128_KWP),
-            24 => (&AES_192_KW, &AES_192_KWP),
-            _ => (&AES_256_KW, &AES_256_KWP),
-        };
+    use key_wrap::Mode::{Kw, Kwp};
+    use rind::key_wrap::Mode as Theirs;
+    for (ours, theirs, key_len) in CIPHERS {
         let key_value = bytes("kek", key_len);
         let kek = key_wrap::AesKek::new(ours, &key_value).unwrap();
-        let reference = rind::key_wrap::AesKek::new(kw, &key_value).unwrap();
-        let padded = rind::key_wrap::AesKek::new(kwp, &key_value).unwrap();
+        let reference = rind::key_wrap::AesKek::new(theirs, &key_value).unwrap();
+        same_debug(&kek, &reference);
 
         for len in [0, 8, 15, 16, 24, 32, 40, 64] {
             let key = bytes(&format!("key {len}"), len);
@@ -472,23 +465,23 @@ fn key_wrap_matches_rind() {
                 let mut ours_buf = vec![0xaa; wrapped_len];
                 let mut theirs_buf = ours_buf.clone();
                 same(
-                    &kek.wrap(&key, &mut ours_buf),
-                    &reference.wrap_key(&key, &mut theirs_buf),
+                    &kek.wrap_key(Kw, &key, &mut ours_buf),
+                    &reference.wrap_key(Theirs::Kw, &key, &mut theirs_buf),
                 );
                 assert_eq!(ours_buf, theirs_buf);
             }
 
             let mut wrapped = vec![0; len + 8];
-            if reference.wrap_key(&key, &mut wrapped).is_ok() {
+            if reference.wrap_key(Theirs::Kw, &key, &mut wrapped).is_ok() {
                 let mut unwrapped = vec![0; len];
-                kek.unwrap(&wrapped, &mut unwrapped).unwrap();
-                assert_eq!(unwrapped, key);
+                assert_eq!(kek.unwrap_key(Kw, &wrapped, &mut unwrapped).unwrap(), key);
                 // Altered: refused, clearing the output as rind's does.
                 wrapped[len / 2] ^= 1;
                 let (mut ours_buf, mut theirs_buf) = (vec![0xaa; len], vec![0xaa; len]);
-                let result = kek.unwrap(&wrapped, &mut ours_buf);
+                let result = kek.unwrap_key(Kw, &wrapped, &mut ours_buf).map(|_| ());
+                let expected = reference.unwrap_key(Theirs::Kw, &wrapped, &mut theirs_buf);
                 assert_eq!(result, Err(Error::DecryptFailed));
-                same(&result, &reference.unwrap_key(&wrapped, &mut theirs_buf));
+                same(&result, &expected);
                 assert_eq!(ours_buf, theirs_buf);
             }
             // Lengths refused as rind refuses them.
@@ -496,8 +489,8 @@ fn key_wrap_matches_rind() {
             for key_len in [len.saturating_sub(8), len, len + 1] {
                 let (mut ours_buf, mut theirs_buf) = (vec![0xaa; key_len], vec![0xaa; key_len]);
                 same(
-                    &kek.unwrap(&wrapped, &mut ours_buf),
-                    &reference.unwrap_key(&wrapped, &mut theirs_buf),
+                    &kek.unwrap_key(Kw, &wrapped, &mut ours_buf),
+                    &reference.unwrap_key(Theirs::Kw, &wrapped, &mut theirs_buf),
                 );
                 assert_eq!(ours_buf, theirs_buf);
             }
@@ -510,21 +503,21 @@ fn key_wrap_matches_rind() {
                 let mut ours_buf = vec![0xaa; out_len];
                 let mut theirs_buf = ours_buf.clone();
                 same(
-                    &kek.wrap_padded(&key, &mut ours_buf),
-                    &padded.wrap_key(&key, &mut theirs_buf),
+                    &kek.wrap_key(Kwp, &key, &mut ours_buf),
+                    &reference.wrap_key(Theirs::Kwp, &key, &mut theirs_buf),
                 );
                 assert_eq!(ours_buf, theirs_buf);
             }
 
             let mut wrapped = vec![0; wrapped_len];
-            if padded.wrap_key(&key, &mut wrapped).is_ok() {
+            if reference.wrap_key(Theirs::Kwp, &key, &mut wrapped).is_ok() {
                 let mut unwrapped = vec![0; wrapped_len - 8];
-                assert_eq!(kek.unwrap_padded(&wrapped, &mut unwrapped).unwrap(), key);
+                assert_eq!(kek.unwrap_key(Kwp, &wrapped, &mut unwrapped).unwrap(), key);
                 wrapped[0] ^= 1;
                 let mut ours_buf = vec![0xaa; wrapped_len - 8];
                 let mut theirs_buf = ours_buf.clone();
-                let result = kek.unwrap_padded(&wrapped, &mut ours_buf).map(|_| ());
-                let expected = padded.unwrap_key(&wrapped, &mut theirs_buf).map(|_| ());
+                let result = kek.unwrap_key(Kwp, &wrapped, &mut ours_buf).map(|_| ());
+                let expected = reference.unwrap_key(Theirs::Kwp, &wrapped, &mut theirs_buf);
                 assert_eq!(result, Err(Error::DecryptFailed));
                 same(&result, &expected);
                 assert_eq!(ours_buf, theirs_buf);
@@ -533,10 +526,10 @@ fn key_wrap_matches_rind() {
             for key_len in [len.saturating_sub(8), len] {
                 let (mut ours_buf, mut theirs_buf) = (vec![0xaa; key_len], vec![0xaa; key_len]);
                 let result = kek
-                    .unwrap_padded(&wrapped, &mut ours_buf)
+                    .unwrap_key(Kwp, &wrapped, &mut ours_buf)
                     .map(|k| k.to_vec());
-                let expected = padded
-                    .unwrap_key(&wrapped, &mut theirs_buf)
+                let expected = reference
+                    .unwrap_key(Theirs::Kwp, &wrapped, &mut theirs_buf)
                     .map(|k| k.to_vec());
                 same(&result, &expected);
                 assert_eq!(result.ok(), expected.ok());

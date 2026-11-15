@@ -154,19 +154,19 @@ fn ct_binsec_aes_kw() {
     use crate::key_wrap::*;
 
     checked(|| {
-        for (kw, kwp, len) in [
-            (&AES_128_KW, &AES_128_KWP, 16),
-            (&AES_192_KW, &AES_192_KWP, 24),
-            (&AES_256_KW, &AES_256_KWP, 32),
-        ] {
-            let kek = AesKek::new(kw, &secret::<32>(1)[..len]).unwrap();
+        for algorithm in [&AES_128, &AES_192, &AES_256] {
+            let kek = AesKek::new(algorithm, &secret::<32>(1)[..algorithm.key_len]).unwrap();
             let (mut wrapped, mut key) = ([0; 24], [0; 16]);
-            kek.wrap_key(&secret::<16>(2), &mut wrapped).unwrap();
-            black_box(kek.unwrap_key(&wrapped, &mut key).is_ok());
-            let kek = AesKek::new(kwp, &secret::<32>(1)[..len]).unwrap();
+            kek.wrap_key(Mode::Kw, &secret::<16>(2), &mut wrapped)
+                .unwrap();
+            black_box(kek.unwrap_key(Mode::Kw, &wrapped, &mut key).is_ok());
+            // The key buffer is 8 bytes shorter than the wrapped key, as
+            // unwrapping requires, so the unwrap runs rather than refusing
+            // the length.
             let (mut wrapped, mut key) = ([0; 32], [0; 24]);
-            kek.wrap_key(&secret::<20>(2), &mut wrapped).unwrap();
-            black_box(kek.unwrap_key(&wrapped, &mut key).is_ok());
+            kek.wrap_key(Mode::Kwp, &secret::<20>(2), &mut wrapped)
+                .unwrap();
+            black_box(kek.unwrap_key(Mode::Kwp, &wrapped, &mut key).is_ok());
         }
     });
 }

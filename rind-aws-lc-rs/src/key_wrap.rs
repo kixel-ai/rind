@@ -2,9 +2,10 @@
 
 use core::fmt;
 
+use rind::key_wrap::Mode;
+
 use crate::error::{Unspecified, unspecified};
 use crate::sealed::Sealed;
-use crate::wipe::Wiped;
 
 /// A block cipher's identity.
 #[non_exhaustive]
@@ -32,14 +33,10 @@ pub struct AesBlockCipher {
 }
 
 impl BlockCipherId {
-    /// rind's algorithm for this cipher, with padding (RFC 5649) or without
-    /// (RFC 3394).
-    fn rind(self, padded: bool) -> &'static rind::key_wrap::Algorithm {
-        match (self, padded) {
-            (Self::Aes128, false) => &rind::key_wrap::AES_128_KW,
-            (Self::Aes128, true) => &rind::key_wrap::AES_128_KWP,
-            (Self::Aes256, false) => &rind::key_wrap::AES_256_KW,
-            (Self::Aes256, true) => &rind::key_wrap::AES_256_KWP,
+    fn rind(self) -> &'static rind::cipher::Algorithm {
+        match self {
+            Self::Aes128 => &rind::key_wrap::AES_128,
+            Self::Aes256 => &rind::key_wrap::AES_256,
         }
     }
 }
@@ -120,28 +117,15 @@ pub type AesKek = KeyEncryptionKey<AesBlockCipher>;
 /// A key encryption key, which wraps other keys.
 pub struct KeyEncryptionKey<Cipher: BlockCipher> {
     cipher: &'static Cipher,
-    /// The key, its first [`BlockCipher::key_len`] bytes, which rind binds
-    /// to a mode only as each call picks one.
-    key: Wiped<[u8; 32]>,
+    kek: rind::key_wrap::AesKek,
 }
 
 impl<Cipher: BlockCipher> KeyEncryptionKey<Cipher> {
     /// Makes a key encryption key from `key`, which must be `cipher`'s key
     /// length.
     pub fn new(cipher: &'static Cipher, key: &[u8]) -> Result<Self, Unspecified> {
-        let mut bytes = Wiped::new([0; 32]);
-        bytes
-            .get_mut(..cipher.key_len())
-            .filter(|_| key.len() == cipher.key_len())
-            .ok_or(Unspecified)?
-            .copy_from_slice(key);
-        Ok(Self { cipher, key: bytes })
-    }
-
-    /// rind's key encryption key, with padding or without.
-    fn rind(&self, padded: bool) -> Result<rind::key_wrap::AesKek, Unspecified> {
-        let key = &self.key[..self.cipher.key_len()];
-        rind::key_wrap::AesKek::new(self.cipher.id().rind(padded), key).map_err(unspecified)
+        let kek = rind::key_wrap::AesKek::new(cipher.id().rind(), key).map_err(unspecified)?;
+        Ok(Self { cipher, kek })
     }
 
     /// The block cipher's identity.
@@ -160,8 +144,8 @@ impl KeyWrap for KeyEncryptionKey<AesBlockCipher> {
     ) -> Result<&'output mut [u8], Unspecified> {
         let len = plaintext.len().checked_add(8).ok_or(Unspecified)?;
         let output = output.get_mut(..len).ok_or(Unspecified)?;
-        self.rind(false)?
-            .wrap_key(plaintext, output)
+        self.kek
+            .wrap_key(Mode::Kw, plaintext, output)
             .map_err(unspecified)?;
         Ok(output)
     }
@@ -173,8 +157,8 @@ impl KeyWrap for KeyEncryptionKey<AesBlockCipher> {
     ) -> Result<&'output mut [u8], Unspecified> {
         let len = ciphertext.len().checked_sub(8).ok_or(Unspecified)?;
         let output = output.get_mut(..len).ok_or(Unspecified)?;
-        self.rind(false)?
-            .unwrap_key(ciphertext, output)
+        self.kek
+            .unwrap_key(Mode::Kw, ciphertext, output)
             .map_err(unspecified)
     }
 }
@@ -191,8 +175,8 @@ impl KeyWrapPadded for KeyEncryptionKey<AesBlockCipher> {
             .and_then(|len| len.checked_add(8))
             .ok_or(Unspecified)?;
         let output = output.get_mut(..len).ok_or(Unspecified)?;
-        self.rind(true)?
-            .wrap_key(plaintext, output)
+        self.kek
+            .wrap_key(Mode::Kwp, plaintext, output)
             .map_err(unspecified)?;
         Ok(output)
     }
@@ -204,8 +188,8 @@ impl KeyWrapPadded for KeyEncryptionKey<AesBlockCipher> {
     ) -> Result<&'output mut [u8], Unspecified> {
         let len = ciphertext.len().checked_sub(8).ok_or(Unspecified)?;
         let output = output.get_mut(..len).ok_or(Unspecified)?;
-        self.rind(true)?
-            .unwrap_key(ciphertext, output)
+        self.kek
+            .unwrap_key(Mode::Kwp, ciphertext, output)
             .map_err(unspecified)
     }
 }

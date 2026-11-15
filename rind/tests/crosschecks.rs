@@ -416,7 +416,7 @@ mod cipher {
 mod key_wrap {
     use proptest::prelude::*;
     use rind::Error;
-    use rind::key_wrap as ours;
+    use rind::key_wrap::{self as ours, Mode};
 
     fn kek() -> impl Strategy<Value = Vec<u8>> {
         prop::sample::select(&[16, 24, 32][..])
@@ -536,26 +536,26 @@ mod key_wrap {
             flip in any::<prop::sample::Index>(),
         ) {
             let algorithm = match kek.len() {
-                16 => &ours::AES_128_KW,
-                24 => &ours::AES_192_KW,
-                _ => &ours::AES_256_KW,
+                16 => &ours::AES_128,
+                24 => &ours::AES_192,
+                _ => &ours::AES_256,
             };
             let ours = ours::AesKek::new(algorithm, &kek).unwrap();
 
             let mut wrapped = vec![0u8; key.len() + 8];
-            ours.wrap_key(&key, &mut wrapped).unwrap();
+            ours.wrap_key(Mode::Kw, &key, &mut wrapped).unwrap();
             let mut wanted = vec![0u8; key.len() + 8];
             theirs(&kek).wrap(&key, &mut wanted).unwrap();
             prop_assert_eq!(&wrapped, &wanted);
 
             let mut unwrapped = vec![0u8; key.len()];
-            ours.unwrap_key(&wrapped, &mut unwrapped).unwrap();
+            ours.unwrap_key(Mode::Kw, &wrapped, &mut unwrapped).unwrap();
             prop_assert_eq!(&unwrapped, &key);
 
             // both refuse any single bit flipped
             let bit = flip.index(wrapped.len() * 8);
             wrapped[bit / 8] ^= 1 << (bit % 8);
-            prop_assert_eq!(ours.unwrap_key(&wrapped, &mut unwrapped).map(|_| ()), Err(Error::DecryptFailed));
+            prop_assert_eq!(ours.unwrap_key(Mode::Kw, &wrapped, &mut unwrapped).map(|_| ()), Err(Error::DecryptFailed));
             prop_assert!(theirs(&kek).unwrap(&wrapped, &mut vec![0u8; key.len()]).is_err());
         }
 
@@ -566,25 +566,25 @@ mod key_wrap {
             flip in any::<prop::sample::Index>(),
         ) {
             let algorithm = match kek.len() {
-                16 => &ours::AES_128_KWP,
-                24 => &ours::AES_192_KWP,
-                _ => &ours::AES_256_KWP,
+                16 => &ours::AES_128,
+                24 => &ours::AES_192,
+                _ => &ours::AES_256,
             };
             let ours = ours::AesKek::new(algorithm, &kek).unwrap();
 
             let mut wrapped = vec![0u8; key.len().next_multiple_of(8) + 8];
-            ours.wrap_key(&key, &mut wrapped).unwrap();
+            ours.wrap_key(Mode::Kwp, &key, &mut wrapped).unwrap();
             let mut wanted = vec![0u8; key.len() + 15];
             let wanted = theirs(&kek).wrap_with_padding(&key, &mut wanted).unwrap();
             prop_assert_eq!(&wrapped[..], &wanted[..]);
 
             let mut unwrapped = vec![0u8; wrapped.len() - 8];
-            prop_assert_eq!(&ours.unwrap_key(&wrapped, &mut unwrapped).unwrap()[..], &key[..]);
+            prop_assert_eq!(&ours.unwrap_key(Mode::Kwp, &wrapped, &mut unwrapped).unwrap()[..], &key[..]);
 
             // both refuse any single bit flipped
             let bit = flip.index(wrapped.len() * 8);
             wrapped[bit / 8] ^= 1 << (bit % 8);
-            prop_assert_eq!(ours.unwrap_key(&wrapped, &mut unwrapped).map(|_| ()), Err(Error::DecryptFailed));
+            prop_assert_eq!(ours.unwrap_key(Mode::Kwp, &wrapped, &mut unwrapped).map(|_| ()), Err(Error::DecryptFailed));
             prop_assert!(theirs(&kek).unwrap_with_padding(&wrapped, &mut vec![0u8; wrapped.len()]).is_err());
         }
     }
@@ -1678,6 +1678,7 @@ mod rsa {
                 prop_assert_eq!(ours_spki.as_ref(), spki.as_ref());
                 let rng = SystemRandom::new();
                 let len = theirs.public_modulus_len();
+                prop_assert_eq!(ours.public_key().modulus_len(), len);
 
                 for scheme in &SCHEMES {
                     prop_assert_eq!(ours.public_key().as_ref(), public);
@@ -1931,6 +1932,8 @@ mod rsa {
         // and the others refuse it.
         let public = include_bytes!("../src/high/rsa/rsa2047.pub.der");
         let public = rind::rsa::PublicKey::new(public).unwrap();
+        // So a caller can refuse it at load, as aws-lc-rs's length reads it.
+        assert_eq!(public.modulus_len(), 256);
         assert!(matches!(
             public.verify(&verify::PKCS1_SHA256, b"message", &[0; 256]),
             Err(Error::KeyRejected(_))

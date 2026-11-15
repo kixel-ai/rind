@@ -4,28 +4,25 @@
 //! aws-lc-rs offers no AES-192 KEK.
 
 use libfuzzer_sys::{arbitrary, arbitrary::Arbitrary, fuzz_target};
-use rind::key_wrap::{
-    AES_128_KW, AES_128_KWP, AES_192_KW, AES_192_KWP, AES_256_KW, AES_256_KWP, AesKek,
-};
+use rind::key_wrap::{AES_128, AES_192, AES_256, AesKek, Mode};
 
 mod edit;
 
 fuzz_target!(|input: (Operation, edit::Edit)| {
     let (op, edit) = input;
-    let (kw, kwp, kek, key) = match &op {
-        Operation::Aes128 { kek, key } => (&AES_128_KW, &AES_128_KWP, &kek[..], key),
-        Operation::Aes192 { kek, key } => (&AES_192_KW, &AES_192_KWP, &kek[..], key),
-        Operation::Aes256 { kek, key } => (&AES_256_KW, &AES_256_KWP, &kek[..], key),
+    let (ours, kek, key) = match &op {
+        Operation::Aes128 { kek, key } => (&AES_128, &kek[..], key),
+        Operation::Aes192 { kek, key } => (&AES_192, &kek[..], key),
+        Operation::Aes256 { kek, key } => (&AES_256, &kek[..], key),
     };
-    let ours = AesKek::new(kw, kek).unwrap();
-    let ours_padded = AesKek::new(kwp, kek).unwrap();
+    let ours = AesKek::new(ours, kek).unwrap();
     let theirs = Theirs::new(kek);
 
     // Both wrap the keys RFC 5649 allows, alike, and refuse the rest.
     let mut wrapped = vec![0u8; key.len().next_multiple_of(8) + 8];
-    let ours_result = ours_padded.wrap_key(key, &mut wrapped);
+    let ours_padded = ours.wrap_key(Mode::Kwp, key, &mut wrapped);
     let theirs_padded = theirs.wrap_padded(key);
-    assert_eq!(ours_result.is_ok(), theirs_padded.is_some());
+    assert_eq!(ours_padded.is_ok(), theirs_padded.is_some());
     if let Some(right) = theirs_padded {
         assert_eq!(wrapped, right);
 
@@ -33,8 +30,8 @@ fuzz_target!(|input: (Operation, edit::Edit)| {
         // it changed.
         let changed = edit.apply(&mut wrapped);
         let mut ours_key = vec![0u8; wrapped.len().saturating_sub(8)];
-        let ours_result = ours_padded
-            .unwrap_key(&wrapped, &mut ours_key)
+        let ours_result = ours
+            .unwrap_key(Mode::Kwp, &wrapped, &mut ours_key)
             .map(|k| k.to_vec());
         assert_eq!(
             ours_result.as_ref().ok(),
@@ -45,7 +42,7 @@ fuzz_target!(|input: (Operation, edit::Edit)| {
 
     // Both wrap the keys RFC 3394 allows, alike, and refuse the rest.
     let mut wrapped = vec![0u8; key.len() + 8];
-    let ours_result = ours.wrap_key(key, &mut wrapped);
+    let ours_result = ours.wrap_key(Mode::Kw, key, &mut wrapped);
     let theirs_result = theirs.wrap(key);
     assert_eq!(ours_result.is_ok(), theirs_result.is_some());
     if ours_result.is_err() {
@@ -57,7 +54,9 @@ fuzz_target!(|input: (Operation, edit::Edit)| {
     // changed.
     let changed = edit.apply(&mut wrapped);
     let mut ours_key = vec![0u8; wrapped.len().saturating_sub(8)];
-    let ours_result = ours.unwrap_key(&wrapped, &mut ours_key).map(|k| k.to_vec());
+    let ours_result = ours
+        .unwrap_key(Mode::Kw, &wrapped, &mut ours_key)
+        .map(|k| k.to_vec());
     assert_eq!(ours_result.as_ref().ok(), theirs.unwrap(&wrapped).as_ref());
     assert_eq!(ours_result.is_err(), changed);
 });

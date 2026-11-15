@@ -371,15 +371,8 @@ fn cipher() {
 
 #[test]
 fn key_wrap() {
-    use rind::key_wrap::*;
-    for (algorithm, len) in [
-        (&AES_128_KW, 16),
-        (&AES_192_KW, 24),
-        (&AES_256_KW, 32),
-        (&AES_128_KWP, 16),
-        (&AES_192_KWP, 24),
-        (&AES_256_KWP, 32),
-    ] {
+    use rind::key_wrap::{AES_128, AES_192, AES_256, AesKek};
+    for (algorithm, len) in [(&AES_128, 16), (&AES_192, 24), (&AES_256, 32)] {
         let key = &[0xffu8; 32][..len];
         check_zeroed_on_drop(Box::pin(AesKek::new(algorithm, key).unwrap()));
     }

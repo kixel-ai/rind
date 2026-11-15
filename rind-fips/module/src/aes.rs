@@ -8,7 +8,7 @@
 
 use rind::aead::{self, gcm, quic};
 use rind::cipher::{self, Aes, AesCbcDecryptingKey, AesCbcEncryptingKey, AesCtr, CbcIv};
-use rind::key_wrap;
+use rind::key_wrap::{AesKek, Mode};
 use rind::{Error, hkdf};
 
 use crate::abi::{Bytes, Status, byte_list, bytes, bytes_mut, free, handle, put, status};
@@ -292,29 +292,6 @@ pub unsafe extern "C" fn rind_fips_aes_kek_new(
     unsafe { new_cipher(id, key, len, out, AesKek::new) }
 }
 
-/// An AES key-encryption key, expanded for AES-KW and for AES-KWP, which
-/// rind binds a key to one of.
-pub(crate) struct AesKek {
-    kw: key_wrap::AesKek,
-    kwp: key_wrap::AesKek,
-}
-
-impl AesKek {
-    fn new(algorithm: &'static cipher::Algorithm, key: &[u8]) -> Result<Self, Error> {
-        let (kw, kwp) = if core::ptr::eq(algorithm, &cipher::AES_128) {
-            (&key_wrap::AES_128_KW, &key_wrap::AES_128_KWP)
-        } else if core::ptr::eq(algorithm, &cipher::AES_192) {
-            (&key_wrap::AES_192_KW, &key_wrap::AES_192_KWP)
-        } else {
-            (&key_wrap::AES_256_KW, &key_wrap::AES_256_KWP)
-        };
-        Ok(Self {
-            kw: key_wrap::AesKek::new(kw, key)?,
-            kwp: key_wrap::AesKek::new(kwp, key)?,
-        })
-    }
-}
-
 /// Wraps the `key_len` bytes at `key` into the `wrapped_len` bytes at
 /// `wrapped` with AES-KW.
 ///
@@ -332,7 +309,7 @@ pub unsafe extern "C" fn rind_fips_aes_kek_wrap(
     // SAFETY: the caller's contract.
     let (kek, key, wrapped) =
         unsafe { (&*kek, bytes(key, key_len), bytes_mut(wrapped, wrapped_len)) };
-    scrubbed(Depth::Small, || status(kek.kw.wrap_key(key, wrapped)))
+    scrubbed(Depth::Small, || status(kek.wrap_key(Mode::Kw, key, wrapped)))
 }
 
 /// Unwraps the `wrapped_len` bytes at `wrapped` into the `key_len` bytes
@@ -352,9 +329,7 @@ pub unsafe extern "C" fn rind_fips_aes_kek_unwrap(
     // SAFETY: the caller's contract.
     let (kek, wrapped, key) =
         unsafe { (&*kek, bytes(wrapped, wrapped_len), bytes_mut(key, key_len)) };
-    scrubbed(Depth::Small, || {
-        status(kek.kw.unwrap_key(wrapped, key).map(|_| ()))
-    })
+    scrubbed(Depth::Small, || status(kek.unwrap_key(Mode::Kw, wrapped, key).map(|_| ())))
 }
 
 /// Wraps the `key_len` bytes at `key` into the `wrapped_len` bytes at
@@ -373,7 +348,7 @@ pub unsafe extern "C" fn rind_fips_aes_kek_wrap_padded(
     // SAFETY: the caller's contract.
     let (kek, key, wrapped) =
         unsafe { (&*kek, bytes(key, key_len), bytes_mut(wrapped, wrapped_len)) };
-    scrubbed(Depth::Small, || status(kek.kwp.wrap_key(key, wrapped)))
+    scrubbed(Depth::Small, || status(kek.wrap_key(Mode::Kwp, key, wrapped)))
 }
 
 /// Unwraps the `wrapped_len` bytes at `wrapped` into the `key_len` bytes
@@ -396,7 +371,7 @@ pub unsafe extern "C" fn rind_fips_aes_kek_unwrap_padded(
     let (kek, wrapped, key) =
         unsafe { (&*kek, bytes(wrapped, wrapped_len), bytes_mut(key, key_len)) };
     scrubbed(Depth::Small, || {
-        status(kek.kwp.unwrap_key(wrapped, key).map(|unwrapped| {
+        status(kek.unwrap_key(Mode::Kwp, wrapped, key).map(|unwrapped| {
             // SAFETY: the caller's contract.
             unsafe { put(unwrapped_len, unwrapped.len()) }
         }))

@@ -16,9 +16,9 @@
 use std::num::NonZeroU32;
 use std::sync::OnceLock;
 
+use rind::key_wrap::{self, Mode};
 use rind::{
-    aead, agreement, cipher, constant_time, digest, ecdsa, ed25519, hkdf, hmac, kem, key_wrap,
-    pbkdf2, rsa,
+    aead, agreement, cipher, constant_time, digest, ecdsa, ed25519, hkdf, hmac, kem, pbkdf2, rsa,
 };
 
 use crate::dudect::{Classes, Config, Report, classes, measure, measure_built};
@@ -369,21 +369,21 @@ fn cipher_cases(cases: &mut Vec<Case>) {
     }));
 
     cases.push(case("key-wrap/aes-256/wrap-kek", |config| {
-        let new = |kek: &Vec<u8>| key_wrap::AesKek::new(&key_wrap::AES_256_KW, kek).unwrap();
+        let new = |kek: &Vec<u8>| key_wrap::AesKek::new(&key_wrap::AES_256, kek).unwrap();
         let key = random::<32>();
         measure_built(config, &secrets(32), new, |kek| {
             let mut wrapped = [0; 40];
-            kek.wrap_key(&key, &mut wrapped).map(|()| wrapped)
+            kek.wrap_key(Mode::Kw, &key, &mut wrapped).map(|()| wrapped)
         })
     }));
     cases.push(case("key-wrap/aes-256/wrap-key", move |config| {
-        let kek = key_wrap::AesKek::new(&key_wrap::AES_256_KW, &random::<32>()).unwrap();
+        let kek = key_wrap::AesKek::new(&key_wrap::AES_256, &random::<32>()).unwrap();
         measure(
             config,
             &classes(VALUES, fixed(random::<32>()), random::<32>),
             |key| {
                 let mut wrapped = [0; 40];
-                kek.wrap_key(key, &mut wrapped).map(|()| wrapped)
+                kek.wrap_key(Mode::Kw, key, &mut wrapped).map(|()| wrapped)
             },
         )
     }));
@@ -392,37 +392,37 @@ fn cipher_cases(cases: &mut Vec<Case>) {
         let wrapped = random::<40>();
         measure(config, &secrets(32), |kek| {
             let mut key = [0; 32];
-            key_wrap::AesKek::new(&key_wrap::AES_256_KW, kek)
-                .and_then(|kek| kek.unwrap_key(&wrapped, &mut key).map(|key| key.len()))
+            key_wrap::AesKek::new(&key_wrap::AES_256, kek)
+                .and_then(|kek| kek.unwrap_key(Mode::Kw, &wrapped, &mut key).map(|key| key.len()))
         })
     }));
     // The integrity value an unwrap recovers, compared with RFC 3394's: keys
     // wrapped by hand from wrong initial values, all of one key.
     cases.push(case("key-wrap/aes-256/unwrap-integrity", |config| {
         let secret = random::<32>();
-        let kek = key_wrap::AesKek::new(&key_wrap::AES_256_KW, &secret).unwrap();
+        let kek = key_wrap::AesKek::new(&key_wrap::AES_256, &secret).unwrap();
         let key = random::<32>();
         let wrap = |iv: &Vec<u8>| wrap_from(&secret, iv[..].try_into().unwrap(), &key);
         let mut wrapped = [0; 40];
-        kek.wrap_key(&key, &mut wrapped).unwrap();
+        kek.wrap_key(Mode::Kw, &key, &mut wrapped).unwrap();
         assert_eq!(wrap(&vec![0xa6; 8]), wrapped);
         let wrapped = mismatches(&[0xa6; 8]).map(|ivs| ivs.iter().map(wrap).collect());
         measure(config, &wrapped, |wrapped| {
             let mut key = [0; 32];
-            kek.unwrap_key(wrapped, &mut key).map(|key| key.len())
+            kek.unwrap_key(Mode::Kw, wrapped, &mut key).map(|key| key.len())
         })
     }));
     // RFC 5649's integrity value adds the key's length, which a flip of its
     // last bit would leave valid, so the fixed one's is out of range.
     cases.push(case("key-wrap/aes-256/unwrap-padded-integrity", |config| {
         let secret = random::<32>();
-        let kek = key_wrap::AesKek::new(&key_wrap::AES_256_KWP, &secret).unwrap();
+        let kek = key_wrap::AesKek::new(&key_wrap::AES_256, &secret).unwrap();
         let key = random::<20>();
         let padded = [&key[..], &[0; 4]].concat();
         let wrap = |aiv: &Vec<u8>| wrap_from(&secret, aiv[..].try_into().unwrap(), &padded);
         let aiv = [0xa6, 0x59, 0x59, 0xa6, 0, 0, 0, 20];
         let mut wrapped = [0; 32];
-        kek.wrap_key(&key, &mut wrapped).unwrap();
+        kek.wrap_key(Mode::Kwp, &key, &mut wrapped).unwrap();
         assert_eq!(wrap(&aiv.to_vec()), wrapped);
         let mut late = aiv;
         late[7] ^= 0x80;
@@ -436,7 +436,7 @@ fn cipher_cases(cases: &mut Vec<Case>) {
         let wrapped = aivs.map(|aivs| aivs.iter().map(wrap).collect());
         measure(config, &wrapped, |wrapped| {
             let mut key = [0; 24];
-            kek.unwrap_key(wrapped, &mut key).map(|key| key.len())
+            kek.unwrap_key(Mode::Kwp, wrapped, &mut key).map(|key| key.len())
         })
     }));
 }

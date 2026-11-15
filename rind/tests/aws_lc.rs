@@ -13,7 +13,7 @@ use rind::cipher::{
     AES_128, AES_192, AES_256, Aes, AesCbcDecryptingKey, AesCbcEncryptingKey, AesCtr, CbcIv,
 };
 use rind::hmac;
-use rind::key_wrap::{self, AesKek};
+use rind::key_wrap::{AesKek, Mode};
 use rind::{ecdsa, ed25519, rsa};
 
 #[path = "../src/test/file_test.rs"]
@@ -250,21 +250,17 @@ fn aes() {
                 Aes::new(algorithm, &key).unwrap().encrypt_block(&mut block);
                 assert_eq!(block, &ct[..], "{test}");
             }
-            mode @ ("KeyWrap" | "KeyWrapWithPadding") => {
-                let algorithm = match (mode, key.len()) {
-                    ("KeyWrap", 16) => &key_wrap::AES_128_KW,
-                    ("KeyWrap", 24) => &key_wrap::AES_192_KW,
-                    ("KeyWrap", _) => &key_wrap::AES_256_KW,
-                    (_, 16) => &key_wrap::AES_128_KWP,
-                    (_, 24) => &key_wrap::AES_192_KWP,
-                    _ => &key_wrap::AES_256_KWP,
+            name @ ("KeyWrap" | "KeyWrapWithPadding") => {
+                let mode = match name {
+                    "KeyWrap" => Mode::Kw,
+                    _ => Mode::Kwp,
                 };
                 let kek = AesKek::new(algorithm, &key).unwrap();
                 let mut got = vec![0; ct.len()];
-                kek.wrap_key(&pt, &mut got).unwrap();
+                kek.wrap_key(mode, &pt, &mut got).unwrap();
                 assert_eq!(got, ct, "{test}");
                 let mut got = vec![0; ct.len() - 8];
-                assert_eq!(kek.unwrap_key(&ct, &mut got).unwrap(), pt, "{test}");
+                assert_eq!(kek.unwrap_key(mode, &ct, &mut got).unwrap(), pt, "{test}");
             }
             mode => panic!("{test}: unexpected mode {mode}"),
         }
