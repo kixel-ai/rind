@@ -6,10 +6,14 @@
 //!
 //! The assembly is aws-lc's, imported by `admin/import-aws-lc`. The addition
 //! selects its special cases with masks, so it neither branches on nor
-//! indexes by its inputs. It is not formally verified: its correctness rests
-//! on its use and testing in OpenSSL, BoringSSL, and aws-lc, and on rind's
-//! tests of it against s2n-bignum's verified arithmetic, Wycheproof, and
-//! aws-lc-rs.
+//! indexes by its inputs. Both routines are proven in HOL Light, of the
+//! object code rind's build emits, in
+//! `proofs/hol-light/x86_64/ecp_nistz256_point_add_affine.ml` and
+//! `ecp_nistz256_point_add_affinex.ml`: called in place, each adds the points
+//! for coordinates below p, as s2n-bignum's `p256_montjmixadd` states it, and
+//! returns either input for the other's infinity. The proofs assume the
+//! System V ABI's 16-byte stack alignment at the call, which the routines'
+//! `movdqa` spills need.
 
 use super::cpu::HaveBmi2Adx;
 

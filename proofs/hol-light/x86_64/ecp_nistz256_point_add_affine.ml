@@ -1275,23 +1275,26 @@ let represents2_p256 = new_definition
         x < p_256 /\ y < p_256 /\
         SOME(paired (montgomery_decode (256,p_256)) (x,y)) = P`;;
 
-(* The table's name as the relocations define it does not parse, so this
-   names it. *)
+(* The table: the first 200 bytes of the object's .rodata, rind's POLY
+   static. The section runs on to 208 bytes, padding that the linked binary
+   may give to other data, so the theorems assume only these. *)
+let nistz256_poly_bytes data =
+  mk_list(fst(chop_list 200 (dest_list(rand(concl data)))),`:byte`);;
+
 let ecp_nistz256_point_add_affine_poly = new_definition
   (mk_eq(`ecp_nistz256_point_add_affine_poly:byte list`,
-         lhs(concl ecp_nistz256_point_add_affine_data)));;
+         nistz256_poly_bytes ecp_nistz256_point_add_affine_data));;
 
-let NISTZ256_POLY_DEFS =
-  [ecp_nistz256_point_add_affine_poly; ecp_nistz256_point_add_affine_data];;
+let NISTZ256_POLY_DEFS = [ecp_nistz256_point_add_affine_poly];;
 
 let NISTZ256_POLY_LENGTH = prove
- (`LENGTH ecp_nistz256_point_add_affine_poly = 208`,
+ (`LENGTH ecp_nistz256_point_add_affine_poly = 200`,
   REWRITE_TAC NISTZ256_POLY_DEFS THEN CONV_TAC(LAND_CONV LENGTH_CONV) THEN
   REFL_TAC);;
 
 let NISTZ256_POLY_LOADED = prove
  (`!s tab. bytes_loaded s tab ecp_nistz256_point_add_affine_poly <=>
-           read (memory :> bytes(tab,208)) s =
+           read (memory :> bytes(tab,200)) s =
            num_of_bytelist ecp_nistz256_point_add_affine_poly`,
   REWRITE_TAC[bytes_loaded; READ_BYTELIST_EQ_BYTES; NISTZ256_POLY_LENGTH]);;
 
@@ -1885,8 +1888,8 @@ let ECP_NISTZ256_POINT_ADD_AFFINE_SUBROUTINE_CORRECT = time prove_steps
      riprel32_within_bounds tbl (pc + 2146) /\
      riprel32_within_bounds tbl (pc + 2137) /\
      ALL (nonoverlapping (word_sub stackpointer (word 544),552))
-         [(word pc,0x9fe); (word tbl,208); (p1,96); (p2,64)] /\
-     ALL (nonoverlapping (p1,96)) [(word pc,0x9fe); (word tbl,208); (p2,64)]
+         [(word pc,0x9fe); (word tbl,200); (p1,96); (p2,64)] /\
+     ALL (nonoverlapping (p1,96)) [(word pc,0x9fe); (word tbl,200); (p2,64)]
      ==> ensures x86
           (\s. bytes_loaded s (word pc) (ecp_nistz256_point_add_affine_mc pc tbl) /\
                read RIP s = word pc /\

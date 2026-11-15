@@ -1267,15 +1267,15 @@ let ECP_NISTZ256_SUBX_CORRECT = time prove_steps
   DISCH_THEN(fun th -> REWRITE_TAC[th]) THEN REAL_INTEGER_TAC)
  ]);;
 
-(* The table this function reads is the mulq one's. *)
+(* The table this function reads, its object's first 200 bytes of .rodata,
+   is the mulq one's. *)
 let ecp_nistz256_point_add_affinex_poly = new_definition
   (mk_eq(`ecp_nistz256_point_add_affinex_poly:byte list`,
-         lhs(concl ecp_nistz256_point_add_affinex_data)));;
+         nistz256_poly_bytes ecp_nistz256_point_add_affinex_data));;
 
 let NISTZ256_X_POLY = prove
  (`ecp_nistz256_point_add_affinex_poly = ecp_nistz256_point_add_affine_poly`,
-  REWRITE_TAC[ecp_nistz256_point_add_affinex_poly; ecp_nistz256_point_add_affinex_data;
-              ecp_nistz256_point_add_affine_poly; ecp_nistz256_point_add_affine_data]);;
+  REWRITE_TAC[ecp_nistz256_point_add_affinex_poly; ecp_nistz256_point_add_affine_poly]);;
 
 (* ------------------------------------------------------------------------- *)
 (* The body, from after the prologue at 0x11 to the epilogue at 0x531.       *)
@@ -1526,8 +1526,8 @@ let ECP_NISTZ256_POINT_ADD_AFFINEX_SUBROUTINE_CORRECT = time prove_steps
      riprel32_within_bounds tbl (pc + 2188) /\
      riprel32_within_bounds tbl (pc + 2344) /\
      ALL (nonoverlapping (word_sub stackpointer (word 544),552))
-         [(word pc,0xa27); (word tbl,208); (p1,96); (p2,64)] /\
-     ALL (nonoverlapping (p1,96)) [(word pc,0xa27); (word tbl,208); (p2,64)]
+         [(word pc,0xa27); (word tbl,200); (p1,96); (p2,64)] /\
+     ALL (nonoverlapping (p1,96)) [(word pc,0xa27); (word tbl,200); (p2,64)]
      ==> ensures x86
           (\s. bytes_loaded s (word pc) (ecp_nistz256_point_add_affinex_mc pc tbl) /\
                read RIP s = word pc /\
