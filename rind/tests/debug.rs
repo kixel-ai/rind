@@ -116,9 +116,12 @@ fn hmac() {
 
     let salt = hkdf::Salt::new(&hkdf::HKDF_SHA256, &[0xff; 32]);
     assert_eq!(show(&salt), "Salt { algorithm: Sha256, .. }");
-    let prk = salt.extract(&[0xff; 32]);
+    let prk = salt.extract(&[0xff; 32]).unwrap();
     assert_eq!(show(&prk), "Prk { algorithm: Sha256, .. }");
-    assert_eq!(show(&prk.expand(&[], 16)), "Okm { algorithm: Sha256, .. }");
+    assert_eq!(
+        show(&prk.expand(&[], 16).unwrap()),
+        "Okm { algorithm: Sha256, .. }"
+    );
 
     let secret = pbkdf2::Secret::new(&pbkdf2::PBKDF2_HMAC_SHA512, &[0xff; 8]);
     assert_eq!(show(&secret), "Secret { algorithm: Sha512, .. }");
@@ -285,4 +288,45 @@ fn agreement() {
     assert_eq!(format!("{public:?}"), format!("PublicKey({bytes})"));
     let secret = key.agree(public.as_ref()).unwrap();
     assert_eq!(format!("{secret:?}"), "SharedSecret(..)");
+}
+
+#[test]
+fn vrf() {
+    use rind::vrf::{ECVRF_EDWARDS25519_SHA512_TAI, ECVRF_P256_SHA256_TAI, SecretKey};
+    for (algorithm, name) in [
+        (&ECVRF_EDWARDS25519_SHA512_TAI, "Edwards25519Sha512Tai"),
+        (&ECVRF_P256_SHA256_TAI, "P256Sha256Tai"),
+    ] {
+        assert_eq!(format!("{algorithm:?}"), name);
+        let key = SecretKey::from_bytes(algorithm, &[0x11; 32]).unwrap();
+        // `show` flags "255", which `Edwards25519`'s name contains, so check
+        // the seed's decimal bytes (0x11) here.
+        let secret = |value: &dyn core::fmt::Debug| {
+            let shown = format!("{value:?}");
+            assert!(!shown.contains("17"), "{shown}");
+            shown
+        };
+        assert_eq!(
+            secret(&key),
+            format!("SecretKey {{ algorithm: {name}, .. }}")
+        );
+        assert_eq!(secret(&key.to_bytes()), "SecretKeyBytes(..)");
+
+        let public = key.public_key();
+        let bytes = format!("{:?}", public.as_ref());
+        assert_eq!(format!("{public:?}"), format!("PublicKey({bytes})"));
+        let (proof, output) = key.prove(b"alpha").unwrap();
+        let bytes = format!("{:?}", proof.as_ref());
+        assert_eq!(format!("{proof:?}"), format!("Proof({bytes})"));
+        let bytes = format!("{:?}", output.as_ref());
+        assert_eq!(format!("{output:?}"), format!("Output({bytes})"));
+    }
+}
+
+#[test]
+fn vrf_algorithms_differ() {
+    use rind::vrf::{ECVRF_EDWARDS25519_SHA512_TAI, ECVRF_P256_SHA256_TAI};
+    assert_eq!(ECVRF_P256_SHA256_TAI, ECVRF_P256_SHA256_TAI);
+    assert_eq!(ECVRF_EDWARDS25519_SHA512_TAI, ECVRF_EDWARDS25519_SHA512_TAI);
+    assert_ne!(ECVRF_EDWARDS25519_SHA512_TAI, ECVRF_P256_SHA256_TAI);
 }

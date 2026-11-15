@@ -7,8 +7,8 @@ and [ALGORITHMS.md](ALGORITHMS.md) whose code each tier runs.
 A primitive is checked five ways:
 
 - **Vectors**: published known-answer tests, from [Wycheproof] (each file's
-  name below, in `thirdparty/wycheproof/testvectors_v1/`), NIST's CAVP
-  (`thirdparty/cavp/`) and [ACVP](thirdparty/acvp/README.md) samples, the RFCs, [CCTV], and the [aws-lc and BoringSSL
+  name below, in `thirdparty/vectors/wycheproof/testvectors_v1/`), NIST's CAVP
+  (`thirdparty/vectors/cavp/`) and [ACVP](thirdparty/acvp/README.md) samples, the RFCs, [CCTV], and the [aws-lc and BoringSSL
   files](thirdparty/vectors/README.md), run by `cargo test`.
 - **Fuzz target**: a `fuzz/fuzzer/` target that compares rind with aws-lc-rs
   on fuzzed input. `fuzz.yml` runs each nightly, then replays its corpus on
@@ -160,9 +160,10 @@ Miri runs each test hundreds of times slower than a native build, so it runs a
 subset: the unit tests and `tests/cpu.rs` and `tests/debug.rs`, without the
 tests `sh/miri.sh` lists as slow, which are the vector sets and long loops
 over inputs, RSA private-key operations beyond one for each key type, and the
-tests that run many scalar multiplications. A test that repeats one code path
-over parameter sets or cases runs only those that take each branch under
-`cfg(miri)`, as ML-DSA's do. Every primitive keeps a test that builds, uses,
+tests that run many scalar multiplications. `sh/miri.sh` fails on an entry
+that names no test, so a rename cannot slip a slow test back in. A test that
+repeats one code path over parameter sets or cases runs only those that take
+each branch under `cfg(miri)`, as ML-DSA's do. Every primitive keeps a test that builds, uses,
 and drops its keys. Miri cannot run aws-lc's C, so its builds leave out
 aws-lc-rs and the differential tests, `tests/crosschecks.rs` and
 `tests/cctv.rs` among them.
@@ -195,7 +196,7 @@ secret names a zeroing test, or says why it has none.
 | HKDF | `hkdf::{Algorithm, KeyType, Okm, Prk, Salt, HKDF_SHA256, HKDF_SHA384, HKDF_SHA512}`, `hkdf::legacy::HKDF_SHA1` | `hkdf_sha*_test`, RFC 5869: `high::hkdf::rfc5869`, ACVP's SP 800-56C KDA: `high::hkdf::acvp_kda` | `fuzz::hkdf` | `crosschecks::hkdf::matches_aws_lc_rs`, `crosschecks::hkdf::keys` | ctgrind: `high::hkdf::secret_ikm`; BINSEC: `test::binsec::ct_binsec_hkdf` | `zeroing::hkdf` |
 | PBKDF2 | `pbkdf2::{Algorithm, Secret, PBKDF2_HMAC_SHA256, PBKDF2_HMAC_SHA384, PBKDF2_HMAC_SHA512}`, `pbkdf2::legacy::PBKDF2_HMAC_SHA1` | `pbkdf2_hmacsha*_test` | `fuzz::pbkdf2` | `crosschecks::pbkdf2::matches_aws_lc_rs` | ctgrind: `high::pbkdf2::secret_password`; BINSEC: `test::binsec::ct_binsec_pbkdf2` | `zeroing::pbkdf2` |
 | SPAKE2+ | `spake2plus::{Confirm, MATTER_PASE, MatterPase, ProverAwaiting, ProverSecrets, RFC9383, Rfc9383, Share, SharedKey, Suite, VerifierAwaiting, VerifierRecord}` | RFC 9383: `high::spake2plus::rfc9383`; draft-01 and connectedhomeip's PASE file: `high::spake2plus::draft01`, `high::spake2plus::connectedhomeip` | none: a share is a curve point Share::from_bytes refuses, and the vector tests cover an exchange | `high::spake2plus::matches_pakery`, `high::spake2plus::matches_matter_crypto` | ctgrind: `high::spake2plus::secrets_stay_secret`, `high::spake2plus::zero_residue_fails_closed` | `zeroing::spake2plus` |
-| X25519 | `agreement::{Algorithm, PrivateKey, PublicKey, Scalar, SharedSecret, X25519}` | `x25519_test`, `x25519_asn_test`, `aws_lc::evp`, ACVP: `high::agreement::acvp_x25519`, `high::agreement::acvp_x25519_key_gen`, `high::agreement::acvp_x25519_key_ver` | `fuzz::kx`, `fuzz::keys` | `crosschecks::ecdh_scalars::x25519`, `crosschecks::ecdh_scalars::x25519_pkcs8` | ctgrind: the key `mid::x25519::from_bytes`, `mid::x25519::new_random`, `high::agreement::loads_in_constant_time`, `low::arm::curve25519::neon_matches_dalek`; proof: on x86_64, s2n-bignum's _SAFE theorems, for the routines [ALGORITHMS.md](ALGORITHMS.md#s2n-bignums-constant-time-theorems) lists with one; BINSEC: `test::binsec::ct_binsec_x25519` | `zeroing::ecdh` |
+| X25519 | `agreement::{Algorithm, PrivateKey, PublicKey, Scalar, SharedSecret, X25519}` | `x25519_test`, `x25519_asn_test`, `aws_lc::evp`, ACVP: `high::agreement::acvp_x25519`, `high::agreement::acvp_x25519_key_gen`, `high::agreement::acvp_x25519_key_ver` | `fuzz::kx`, `fuzz::keys` | `crosschecks::ecdh_scalars::x25519`, `crosschecks::ecdh_scalars::x25519_pkcs8` | ctgrind: the key `mid::x25519::from_bytes`, `mid::x25519::new_random`, `high::agreement::loads_in_constant_time`, `low::arm::curve25519::neon_matches_dalek`; proof: s2n-bignum's _SAFE theorems, for the routines [ALGORITHMS.md](ALGORITHMS.md#s2n-bignums-constant-time-theorems) lists with one; BINSEC: `test::binsec::ct_binsec_x25519` | `zeroing::ecdh` |
 | ECDH P-256, P-384, P-521 | `agreement::{Algorithm, PrivateKey, PublicKey, Scalar, SharedSecret, ECDH_P256, ECDH_P384, ECDH_P521}` | `ecdh_secp*r1_test`, `ecdh_secp*r1_ecpoint_test`, `cavp/ecdsa` (key pairs and public key validation), `aws_lc::ecdh`, `aws_lc::ec_scalar_base_mult`, `aws_lc::evp`; x86_64 P-256 point addition: `low::x86_64::ecp_nistz256::aws_lc_point_add_affine`, `cavp/ecdh`: `high::agreement::cavp_ecdh` | `fuzz::kx`, `fuzz::keys` | `crosschecks::ecdh`, `crosschecks::ecdh_stored`, `crosschecks::ecdh_scalars::p256` | ctgrind: the keys `mid::p256::from_bytes`, `mid::p256::generate`, `mid::p384::from_bytes`, `mid::p384::generate`, `mid::p521::from_bytes`, `mid::p521::generate`, `high::agreement::loads_in_constant_time`; proof: s2n-bignum's _SAFE theorems, but not for P-256's scalar multiplications on aarch64 or its variable-base one on x86_64, for the routines [ALGORITHMS.md](ALGORITHMS.md#s2n-bignums-constant-time-theorems) lists with one; BINSEC: `test::binsec::ct_binsec_ecdh_p256`, `test::binsec::ct_binsec_ecdh_p384`, `test::binsec::ct_binsec_ecdh_p521` | `zeroing::ecdh` |
 | ML-KEM-768 | `kem::{Algorithm, Ciphertext, DecapsulationKey, EncapsulationKey, SharedSecret, ML_KEM_768}` | `mlkem_768*_test`, `high::kem::boringssl`, `high::kem::cctv_intermediate`, `high::kem::cctv_unlucky_sample`, `high::kem::cctv_strcmp`, `high::kem::cctv_modulus`, `high::kem::cctv_accumulated`, ACVP: `mid::mlkem768::acvp_key_gen`, `mid::mlkem768::acvp_encap_decap` | `fuzz::kem`, `fuzz::keys` | `crosschecks::mlkem768::encapsulated_by_ours`, `high::kem::encapsulated_by_theirs` | ctgrind: `mid::mlkem768::keygen_internal`, `mid::mlkem768::encaps_internal`; proof: on aarch64, and on x86_64 only for reduction and rejection sampling, s2n-bignum's _SAFE theorems, for the routines [ALGORITHMS.md](ALGORITHMS.md#s2n-bignums-constant-time-theorems) lists with one; qemu: `mid::mlkem768::ct_qemu_mlkem768`; BINSEC: `test::binsec::ct_binsec_mlkem768` | `zeroing::mlkem768` |
 | HPKE | `hpke::{Aead, EncapsulatedKey, Exporter, Kdf, Kem, PrivateKey, PublicKey, Recipient, Sender, Suite, AES_128_GCM, AES_256_GCM, CHACHA20_POLY1305, DHKEM_P256_HKDF_SHA256, DHKEM_P384_HKDF_SHA384, DHKEM_P521_HKDF_SHA512, DHKEM_X25519_HKDF_SHA256, HKDF_SHA256, HKDF_SHA384, HKDF_SHA512}` | `hpke_x25519_*_test`, RFC 9180 (X25519, P-256, and P-521 KEMs): `high::hpke::rfc9180` | `fuzz::hpke`, against rustls's aws-lc-rs provider | `crosschecks::hpke::matches_hpke_rs`, against hpke-rs, as aws-lc-rs has no HPKE; rind-rustls's tests/hpke.rs compares its suites with rustls's aws-lc-rs provider's | ctgrind: `high::hpke::secret_decapsulation`, `high::hpke::secret_key_derivation`; the keys, as X25519 and ECDH above | `zeroing::hpke` |
@@ -214,11 +215,11 @@ secret names a zeroing test, or says why it has none.
 | SLH-DSA verification | `signature::{PublicKey, VerificationAlgorithm}`, `signature::verify::{SLH_DSA_SHA2_128S, SLH_DSA_SHA2_128F, SLH_DSA_SHA2_192S, SLH_DSA_SHA2_192F, SLH_DSA_SHA2_256S, SLH_DSA_SHA2_256F, SLH_DSA_SHAKE_128S, SLH_DSA_SHAKE_128F, SLH_DSA_SHAKE_192S, SLH_DSA_SHAKE_192F, SLH_DSA_SHAKE_256S, SLH_DSA_SHAKE_256F}` | ACVP: `mid::slhdsa::acvp_sig_ver` | `fuzz::verify`, against RustCrypto's, `fuzz::keys` | the same tests, both ways | | |
 | RSA-OAEP | `rsa::{Ciphertext, DecryptingKey, EncryptingKey, OaepAlgorithm, Plaintext, OAEP_SHA256, OAEP_SHA384, OAEP_SHA512}`, `rsa::legacy::OAEP_SHA1` | `rsa_oaep_*_test`, `aws_lc::evp`, ACVP's decryption primitive: `mid::rsa_priv::acvp_decryption_primitive` | `fuzz::oaep` | `crosschecks::rsa::encrypt_decrypt`, `crosschecks::rsa::decrypt_agrees` | ctgrind: private keys are marked when loaded, `high::oaep::stays_secret`, `high::pkcs1::encode_oaep`; SDE: as RSA signing; BINSEC of loading the key and decrypting, at 2048 bits: `test::binsec::ct_binsec_rsa2048_oaep`, and the rest as RSA signing | `zeroing::rsa_oaep` |
 | RSA blind signatures | `blind_rsa::{Algorithm, BlindSignature, BlindedMessage, Blinding, KeyPair, PublicKey, Signature, RSABSSA_SHA384_PSS_DETERMINISTIC, RSABSSA_SHA384_PSS_RANDOMIZED, RSABSSA_SHA384_PSSZERO_DETERMINISTIC, RSABSSA_SHA384_PSSZERO_RANDOMIZED}` | `rsa_pss_2048_sha384_mgf1_48_test`, `rsa_pss_4096_sha384_mgf1_48_test`, RFC 9474: `high::blind_rsa::rfc9474_vectors`, RFC 9578's token: `high::blind_rsa::rfc9578_token` | `fuzz::blind_rsa`, against itself, as no reference runs on aws-lc | `crosschecks::blind_rsa::matches_blind_rsa_signatures`, against blind-rsa-signatures, as aws-lc-rs has no blind RSA | ctgrind: private keys are marked when loaded, `high::blind_rsa::stays_secret`; SDE and BINSEC: as RSA signing | `zeroing::blind_rsa` |
-| Key encodings | `encoding::{Pkcs8, Sec1, Spki}` | `aws_lc::evp` (PKCS#8, SPKI); the other keys in the files above | `fuzz::keys` | `crosschecks::encodings` | none: a key is marked once parsed, and its DER's lengths are not secret | `zeroing::ecdh`, `zeroing::ecdsa`, `zeroing::ed25519`, `zeroing::rsa` |
+| Key encodings | `encoding::{Pkcs8, Sec1, Spki}` | `aws_lc::evp` (PKCS#8, SPKI); the other keys in the files above | `fuzz::keys` | `crosschecks::encodings`, `crosschecks::pkcs8_attributes::v2_without_public_key` | none: a key is marked once parsed, and its DER's lengths are not secret | `zeroing::ecdh`, `zeroing::ecdsa`, `zeroing::ed25519`, `zeroing::rsa` |
 | Constant-time comparison | `constant_time::verify` | none: no published set | none: it returns whether two slices are equal, which the differential test covers | `crosschecks::slice_comparison_matches_aws_lc_rs` | ctgrind: `high::constant_time::contents_stay_secret`, `low::generic::ct_equal::equiv`; BINSEC: `test::binsec::ct_binsec_constant_time_verify` | none: it keeps nothing |
 | Random bytes | `rand::fill` | none: the operating system's generator, which no vector can check | none, as for vectors | none, as for vectors | none: rind passes the bytes on | none: rind keeps no copy of the bytes |
 
-Exports that are not primitives: `Error`, `KeyRejected`, `doc::inline_assembly_safety`, `cpu::Dit`, `cpu::MissingFeature`, `cpu::check`, `cpu::has_aes_hardware`.
+Exports that are not primitives: `Error`, `KeyRejected`, `doc::inline_assembly_safety`, `cpu::Dit`, `cpu::has_aes_hardware`, and the hooks the FIPS module builds on: `fips::DrbgHold`, `fips::SelfTest`, `fips::broken`, `fips::check_rsa_modulus`, `fips::digest`, `fips::error_code`, `fips::error_from_code`, `fips::fail`, `fips::hold_drbgs`, `fips::missing_cpu_feature`, `fips::zeroise_drbgs`.
 
 ## Adapters
 
@@ -230,7 +231,13 @@ edited in flight. A panic, a hang, or an answer that differs from aws-lc-rs's
 fails the run, as does a failed open that leaves plaintext in the caller's
 buffer.
 
-Adapter fuzz targets: `fuzz::rustls`, `fuzz::dimpl`, `fuzz::str0m`.
+rind-openssl's target calls its C ABI as OpenSSL does, through
+`OSSL_provider_init` and the dispatch tables it returns, with parameter
+arrays of any names, types, and sizes and output buffers of any length. Each
+answer must match rind's own API, and each error must reach OpenSSL's core
+with a known reason and a format that reads no arguments.
+
+Adapter fuzz targets: `fuzz::rustls`, `fuzz::dimpl`, `fuzz::str0m`, `fuzz::openssl`.
 
 ## Coverage
 
@@ -239,9 +246,9 @@ published code its own tests run: the `rind` crate and its adapters under
 `cargo test`, rind-dart under `dart test`, and pyrind under
 `sh/python.sh test`, leaving out the tools (rind-bench, rind-cpuid,
 rind-timing, and the fuzzer). A function it lists as never run is published
-code no test reaches. It runs the suites as the nightly jobs do, with the
-vector submodules, `SLOW_TESTS=1`, and again with CPU features denied (on
-x86_64, under Intel SDE too), so a plain `cargo llvm-cov` reports less. The
+code no test reaches. It runs the suites as the nightly jobs do, with
+`SLOW_TESTS=1`, and again with CPU features denied (on x86_64, under Intel
+SDE too), so a plain `cargo llvm-cov` reports less. The
 nightly `coverage` workflow runs it on Linux and macOS; the summary table in
 its "Measure coverage" step's log is the report.
 
@@ -271,7 +278,9 @@ sees divisions, can see an instruction whose timing depends on its
 operands, so `admin/ct-vartime`, which `just check` runs when rind changes,
 scans its release builds for every architecture it builds for, and its
 portable backend's on x86_64 and armv7, for divisions and floating-point arithmetic, and fails on one that `admin/ct-vartime.toml` does
-not list as taking only public operands.
+not list as taking only public operands. On the x86_64 backend it also fails
+on a multiply Intel's MXCSR configuration dependent timing affects that any
+function rind exports reaches outside `rind::low::Mcdt`, Intel's mitigation.
 `nix develop .#dudect --command admin/timing dudect` times each secret
 operation whose secret the API lets it set (not key generation, encapsulation,
 or varied ML-KEM decapsulation keys) on two classes of secret, as dudect does,

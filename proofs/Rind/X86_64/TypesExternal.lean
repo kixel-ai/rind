@@ -8,7 +8,8 @@ open Aeneas Aeneas.Std Result
 set_option linter.dupNamespace false
 
 /-! The rind types the x86_64 translation leaves opaque. `Rind.X86_64.Dispatch`,
-`Rind.X86_64.DigestDispatch`, and `Rind.X86_64.AeadDispatch` model the last six,
+`Rind.X86_64.QuicDispatch`, `Rind.X86_64.DigestDispatch`, and
+`Rind.X86_64.AeadDispatch` model the last six,
 `Rind.X86_64.DigestAlgorithm` `Algorithm` and `Digest`, and `Rind.X86_64.Simd`
 `__m128i`. -/
 
@@ -33,6 +34,14 @@ opaque low.x86_64.cpu.HaveSse41 : Type
 
 /-- MD5's chaining state, which no proof covers. -/
 opaque mid.md5.Md5State : Type
+
+/-- A value its owner builds once and keeps, whose atomics Aeneas cannot
+translate. -/
+opaque low.generic.reuse_cache.ReuseCache (T : Type) : Type
+
+/-- The HMAC-DRBG an ECDSA signature draws its nonces from, whose output the
+functional spec leaves out. -/
+opaque high.hmac_drbg.HmacDrbg (H : Type _) (Clause0_Context : Type _) (Clause0_State : Type _) : Type
 
 /-- An MD5 context, which no proof covers. -/
 opaque mid.md5.Md5Context : Type
@@ -76,7 +85,7 @@ nothing, since `Keyed::private_key` builds each `Ops<K::Key>` from the curve
 marker `K`'s own `Agree` functions, which the model calls directly. -/
 @[reducible] def high.agreement.Ops (_Key : Type) : Type := Unit
 
-/-- A header-protection key with its cipher's mask, as `Rind.X86_64.Dispatch` models it:
+/-- A header-protection key with its cipher's mask, as `Rind.X86_64.QuicDispatch` models it:
 the key, since `Masker::new` builds every one with `C`'s own `mask`, which the
 model calls directly. -/
 @[reducible] def aead.quic.Masker (C : Type) : Type := C

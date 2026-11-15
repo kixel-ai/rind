@@ -29,7 +29,7 @@ use rind::{Error, aead, agreement, cipher, digest, hkdf, hmac, kem, pbkdf2, rsa}
 mod ctgrind;
 
 /// The negative codes a call returns on failure, one per [`Error`] variant
-/// and two of the binding's own.
+/// and one of the binding's own.
 #[repr(isize)]
 enum Status {
     WrongLength = -1,
@@ -40,8 +40,6 @@ enum Status {
     NotEqual = -6,
     Fault = -7,
     Unsupported = -8,
-    /// The CPU lacks a feature rind requires; the message names it.
-    MissingCpuFeature = -9,
     /// An argument the Dart side should never pass, such as an unknown
     /// algorithm id.
     Misuse = -10,
@@ -93,12 +91,8 @@ impl From<Misuse> for Failure {
     }
 }
 
-/// Runs `f` on a CPU rind supports, which otherwise panics, and folds its
-/// result into a return value.
+/// Runs `f` and folds its result into a return value.
 fn run(f: impl FnOnce() -> Result<usize, Failure>) -> isize {
-    if let Err(missing) = rind::cpu::check() {
-        return fail(Status::MissingCpuFeature, missing);
-    }
     match f() {
         // A length never exceeds isize::MAX: it is the length of a slice.
         Ok(len) => len as isize,
@@ -627,7 +621,7 @@ pub unsafe extern "C" fn rind_dart_aes_cbc_encrypt(
         if pad == 0 {
             key.encrypt_blocks(iv, &mut in_out[..len])?;
         } else {
-            key.encrypt(iv, &mut Room { buf: in_out, len });
+            key.encrypt(iv, &mut Room { buf: in_out, len })?;
         }
         Ok(padded_len)
     })
@@ -935,7 +929,7 @@ pub unsafe extern "C" fn rind_dart_hkdf_extract(
 ) -> isize {
     run(|| {
         // SAFETY: forwarded from the caller.
-        let prk = unsafe { handle(salt) }.extract(unsafe { input(secret, secret_len) });
+        let prk = unsafe { handle(salt) }.extract(unsafe { input(secret, secret_len) })?;
         // SAFETY: forwarded from the caller.
         Ok(unsafe { store(out, prk) })
     })
@@ -955,7 +949,7 @@ pub unsafe extern "C" fn rind_dart_hkdf_expand(
         // SAFETY: forwarded from the caller.
         let (prk, info, out) =
             unsafe { (handle(prk), input(info, info_len), output(out, out_len)) };
-        prk.expand(&[info], out.len()).fill(out)?;
+        prk.expand(&[info], out.len())?.fill(out)?;
         Ok(out_len)
     })
 }

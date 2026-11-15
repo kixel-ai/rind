@@ -20,7 +20,7 @@ use serde::Deserialize;
 /// iOS simulator runs the tests.
 fn vectors(name: &str) -> String {
     let dir = env!("CARGO_MANIFEST_DIR");
-    format!("{dir}/../thirdparty/wycheproof/testvectors_v1/{name}")
+    format!("{dir}/../thirdparty/vectors/wycheproof/testvectors_v1/{name}")
 }
 
 #[derive(Deserialize, Debug)]
@@ -243,9 +243,13 @@ fn hkdf_tests() {
                 summary.start(&test);
 
                 let mut okm = vec![0u8; test.size];
-                let prk = hkdf::Salt::new(algorithm, &test.salt).extract(&test.ikm);
+                let prk = hkdf::Salt::new(algorithm, &test.salt)
+                    .extract(&test.ikm)
+                    .unwrap();
                 let info = [test.info.as_slice()];
-                let result = prk.expand(&info, okm.len()).fill(&mut okm);
+                let result = prk
+                    .expand(&info, okm.len())
+                    .and_then(|okm_| okm_.fill(&mut okm));
 
                 match (test.result, result) {
                     (ExpectedResult::Valid, Ok(())) => assert_eq!(okm, test.okm),
@@ -662,7 +666,8 @@ fn test_aes_cbc_pkcs7() {
                 (ExpectedResult::Valid, Ok(pt)) => {
                     assert_eq!(pt, test.msg);
                     let mut ct = test.msg.clone();
-                    enc.encrypt(CbcIv::assume_unpredictable(iv), &mut ct);
+                    enc.encrypt(CbcIv::assume_unpredictable(iv), &mut ct)
+                        .unwrap();
                     assert_eq!(ct, test.ct);
                 }
                 // Every invalid test is a whole number of blocks whose

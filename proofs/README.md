@@ -142,11 +142,14 @@ writes for aarch64:
 
 `rfcx25519` is HOL Light's RFC 7748 X25519, clamping and masking included.
 
-P-256 ECDH, from the same `PrivateKey` to s2n-bignum's routines, in
-`Rind/Aarch64/P256.lean` on aarch64, and, for its agreement alone, in
-`Rind/X86_64/P256Agree.lean`, which `admin/prove` also writes for aarch64, so
-`p256_agree` and `p256_shared_secret` hold on x86_64 too, where key generation
-runs aws-lc's generator multiplication, which no proof covers yet:
+P-256 ECDH on x86_64 and aarch64, from the same `PrivateKey` to s2n-bignum's
+routines, in `Rind/X86_64/P256Agree.lean` and `Rind/X86_64/P256.lean`, which
+`admin/prove` also writes for aarch64. Key generation multiplies the
+generator as each target's `Rind/<Arch>/P256Base.lean` states it: aarch64 by
+s2n-bignum's `p256_scalarmulbase`, and x86_64 by rind's Booth driver, which
+selects each table row's point by rind's Rust select and adds it by aws-lc's
+mixed addition, `ecp_nistz256_point_add_affine`, which a placeholder axiom
+states until rind's HOL Light proof of it lands:
 
 - `p256_generate`: the key's scalar is the first of up to 64 draws whose
   bytes, read big-endian, are in [1, n), it holds its public key, and the key
@@ -172,9 +175,14 @@ every finite point order n too, by `Rind/NistOrder.lean`'s count of the
 curve's points, but `p256_agree` does not yet use it to rule out its fault
 case for the peer's point.
 
-P-256 ECDSA with SHA-256 and fixed-length signatures on aarch64, from the
-signature API's `EcdsaKeyPair` and `PublicKey` to s2n-bignum's routines, in
-`Rind/Aarch64/P256Signature.lean` over `Rind/Aarch64/P256Ecdsa.lean`:
+P-256 ECDSA with SHA-256 and fixed-length signatures on x86_64 and aarch64,
+from the signature API's `EcdsaKeyPair` and `PublicKey` to s2n-bignum's
+routines, in `Rind/X86_64/P256Signature.lean` over
+`Rind/X86_64/P256Ecdsa.lean`, which `admin/prove` also writes for aarch64,
+over each target's generator multiplication, as for ECDH, and its check of a
+key pair's public key, `Rind/<Arch>/P256KeyCheck.lean`: aarch64 compares it
+with the key's own encoding, and x86_64 compares an uncompressed one's point
+with the generator multiplication's Jacobian result, without encoding it:
 
 - `p256_ecdsa_generate`: the key pair's scalar is in [1, n), and generation
   is refused only if the system source's draws fail;
@@ -221,7 +229,8 @@ They also assume `Fills`, that the system source returns, `Held`, that the
 entry guard holds, and `Cached`: a verifying key's lock-free caches of P to
 15P and 17P to 31P, and a signing key's of its encoded public key, whose
 atomics Aeneas cannot translate, are built from the key's own point or
-scalar.
+scalar, and a signing key's returns whenever its build does, as x86_64's
+key check stores the encoding it checked.
 
 P-384 ECDH's agreement on x86_64 and aarch64, from the same `PrivateKey` to
 s2n-bignum's routines, in `Rind/X86_64/P384.lean`, which `admin/prove` also
@@ -260,8 +269,22 @@ which Aeneas cannot translate, and are not modelled yet.
 proves it is multiplication in Mathlib's group of points on such a curve. `Rind/P384Group.lean` proves p and n prime,
 by Pratt certificates that `Rind/Pratt.lean` checks, and G's order n.
 
-ChaCha20 QUIC header protection on x86_64 and aarch64, from
-`HeaderProtectionKey` to HACL*'s rounds, in `Rind/X86_64/ChaCha20.lean`:
+The comb's constant-time row select on x86_64, `bignum_aff_point_select_p384`,
+and P-256's and P-521's, in `Rind/X86_64/PointSelect.lean`:
+
+- `bignum_aff_point_select_p256_spec`, `_p384_spec`, `_p521_spec`: the select
+  returns row `index` of a table of 8-, 12-, or 18-word affine points,
+  counting from 1, or zeros for an index of 0 or past the last row, on both
+  its AVX2 and SSE2 paths, for a table of fewer than 2^32 rows;
+- `bignum_aff_point_select_p384_rows16`: the same on P-384's 16-row comb
+  tables, as P-384's key generation takes it.
+
+They assume `RunsSelect`: `HaveAvx2::check` returns, as `Runs` assumes of
+`HaveBmi2Adx::check`. aarch64's NEON select has no model yet.
+
+ChaCha20 QUIC header protection on x86_64, aarch64, armv7, and the portable
+backend, from `HeaderProtectionKey` to HACL*'s rounds, in
+`Rind/X86_64/ChaCha20.lean`, which `admin/prove` also writes for the others:
 
 - `chacha20_new`: a key that is not 32 bytes is refused, and otherwise the
   key holds its bytes;
@@ -270,12 +293,30 @@ ChaCha20 QUIC header protection on x86_64 and aarch64, from
   little-endian block counter and the rest as the nonce.
 
 HACL*'s rounds are Rust, so they are translated and proven with the rest, and
-no axiom stands in for HACL*'s proof of them.
+no axiom stands in for HACL*'s proof of them. `chacha20_mask` assumes only
+`RunsChaCha20`, that the entry guard admits it, which each target's `Runs`
+implies. armv7's translation reaches only this API: its other operations run
+assembly or Rust that other proofs are still to cover.
 
 Theorems that run an entry guard assume `Runs`: rind's CPU-feature checks
-pass, which no input affects. `Rind/Aarch64/P256Table.lean` proves that
-rind's generator table holds the multiples of G that s2n-bignum's proof of
-`p256_scalarmulbase` assumes, so `p256_public_key` assumes nothing of it.
+pass, which no input affects. `Rind/<Arch>/P256Table.lean` proves that each
+target's generator table holds the multiples of G its generator
+multiplication reads, on aarch64 those s2n-bignum's proof of
+`p256_scalarmulbase` assumes, and `Rind/<Arch>/P256Base.lean` that its first
+row holds G to 32G, which ECDSA verification's twin multiplication reads, so
+no theorem assumes anything of the tables.
+On x86_64, `Rind/X86_64/P256Base.lean` proves that `base_multiply`, rind's
+port of aws-lc's Booth-recoded generator multiplication, computes k·G for k
+below n (`base_multiply_spec`, and `jac_base_multiply_spec` before its affine
+conversion): `Rind/P256Booth.lean` proves the recoded digits sum to k and that
+no addition doubles, and `Rind/X86_64/P256Table.lean` that its 37-row table
+holds j·2⁷ⁱ·G. Its table select is rind's Rust, which
+`Rind/X86_64/PointSelect.lean` proves on both the AVX2 and SSE2 paths, under
+`RunsSelect`, that `HaveAvx2::check` returns, which `Runs` includes. aws-lc's
+mixed addition is the placeholder axiom `p256_point_add_affine_spec` in
+`Rind/X86_64/S2nBignum.lean`, which no proof covers yet, so x86_64's P-256
+theorems rest on it and earn no ✓ until rind's HOL Light proof of the
+addition lands.
 `Rind/<Arch>/Axioms.lean` checks the axioms each theorem rests on.
 
 SHA-1 and SHA-256's padding and finalization, and HMAC's keyed states over
@@ -359,16 +400,18 @@ from axioms restating the HOL Light proofs of the `asm!` compares below it.
 `PrivateKey` reaches each curve's `Agree` impl through function pointers
 (`Algorithm`'s `generate` and `load`, and `Keyed`'s `Ops`), and `HeaderProtectionKey` each
 cipher's `Mask` impl (`Algorithm`'s `new` and `Masker`'s `mask`), which Aeneas
-cannot translate. `Rind/X86_64/Dispatch.lean` models that dispatch by hand, in
-Lean definitions beside the Rust they model, with an agreement `Algorithm` as
-which static it is. P-256's key generation draws through a `dyn
+cannot translate. `Rind/X86_64/Dispatch.lean` models the agreement dispatch
+and the AES header-protection statics, and `Rind/X86_64/QuicDispatch.lean` the
+rest of the header-protection dispatch, by hand, in Lean definitions beside
+the Rust they model, with an agreement `Algorithm` as which static it is.
+P-256's key generation draws through a `dyn
 RandomSource`, which Aeneas cannot translate either, and
 `Rind/X86_64/P256Dispatch.lean`, which `admin/prove` also writes for aarch64,
 models it the same way, for `Rind/<Arch>/Dispatch.lean` to call. The signature API's `EcdsaKeyPair` reaches each curve's code, and
 `PublicKey` each ECDSA key's parser and verifier, through function pointers,
 and P-256's ECDSA key generation draws through a `dyn RandomSource`;
-`Rind/Aarch64/EcdsaDispatch.lean` models them for P-256 with SHA-256 and
-fixed-length signatures.
+`Rind/X86_64/EcdsaDispatch.lean`, which `admin/prove` also writes for
+aarch64, models them for P-256 with SHA-256 and fixed-length signatures.
 
 SHA-384, SHA-512, and SHA-512/256, from the digest API to aws-lc's block
 routine, in `Rind/X86_64/Sha512.lean`, which `admin/prove` also writes for
@@ -500,7 +543,7 @@ instructions, in `Rind/X86_64/AesCipher.lean`, over each target's
 - `aes_encrypt_block`: the block becomes Vale's `aes_encrypt_LE` of it under
   the key;
 - `aes_header_new`: the same for `aead::quic::AES_128` and `AES_256`, whose
-  keys reach `Aes::new` through the dispatch `Rind/X86_64/Dispatch.lean`
+  keys reach `Aes::new` through the dispatch `Rind/X86_64/QuicDispatch.lean`
   models;
 - `aes_header_mask`: the mask is RFC 9001's, the first five bytes of that
   cipher of the sample.
@@ -517,8 +560,62 @@ unwraps with, against FIPS 197's equivalent inverse cipher, which
 which `#guard`s check against FIPS 197's and RFC 9001's vectors. The theorems
 assume `RunsAesHw`, or for a key already made only its entry guard: rind's
 CPU-feature checks find AES-NI, or on aarch64 the crypto extension, which no
-input affects. AES-CBC decrypts through its own routines over the same round keys,
-which [the AES modes quest](/quest/m4/verified/aes-modes.md) owns.
+input affects.
+
+AES-CTR and AES-CBC on aarch64 CPUs with the crypto extension, from
+`cipher::AesCtr`, `AesCbcEncryptingKey`, and `AesCbcDecryptingKey` down to
+rind's NEON CTR by 8 and CBC on the AES instructions, in
+`Rind/Aarch64/AesModesApi.lean` over `Rind/Aarch64/AesModesLow.lean`, against
+`Rind/AesModes.lean`'s SP 800-38A modes:
+
+- `aes_ctr_new_spec`: a key that is not the algorithm's length, or a counter
+  of no bits or more than 128, is refused, and otherwise the key holds the
+  round keys of its bytes and counts over that many low bits;
+- `aes_ctr_apply_keystream_spec`: a buffer with more blocks than the
+  counter's bits can count is refused unchanged, and otherwise becomes
+  SP 800-38A's CTR mode of it from the counter block, incrementing its low
+  bits;
+- `aes_cbc_encrypting_key_new_spec` and `aes_cbc_decrypting_key_new_spec`:
+  the same refusal, and otherwise the cipher's or the inverse cipher's round
+  keys;
+- `aes_cbc_encrypt_blocks_spec` and `aes_cbc_decrypt_blocks_spec`: a buffer
+  that is not whole blocks is refused, and otherwise becomes SP 800-38A's CBC
+  encryption or decryption of it;
+- `aes_cbc_encrypt_vec_spec`: a `Vec` message always succeeds and becomes
+  the CBC encryption of its PKCS#7 padding;
+- `aes_cbc_decrypting_key_decrypt_spec`: whole blocks decrypt, and the message
+  is returned if the PKCS#7 padding is good; otherwise decryption fails with
+  the buffer zeroed, and a buffer of no or partial blocks fails unchanged.
+
+On x86_64, `Rind/X86_64/AesModesApi.lean` proves the same over
+`Rind/X86_64/AesModesLow.lean`, whose axioms `hw_ctr32_spec`,
+`hw_cbc_encrypt_spec`, and `hw_cbc_decrypt_spec` restate HOL Light theorems
+of aws-lc's `aes_hw_ctr32_encrypt_blocks` and `aes_hw_cbc_encrypt` that are
+pending: `hol-light/x86_64/aes_hw_cbc_encrypt.ml` proves CBC encryption and
+most of decryption, and CTR has no proof yet. Until they are, those theorems are not in
+`Rind/X86_64/Axioms.lean` and earn no ✓, which [the AES modes
+quest](/quest/m4/verified/aes-modes.md) owns.
+
+AES key wrap on both targets, from `key_wrap::AesKek` to the block cipher and
+its inverse, in `Rind/<Arch>/AesKw.lean`, against `Rind/AesKw.lean`'s SP 800-38F
+transliteration, whose `#guard`s check RFC 3394's and RFC 5649's vectors:
+
+- `kek_new_spec`: a key that is not the algorithm's length is refused, and
+  otherwise the KEK holds it;
+- `kek_wrap_spec` and `kek_unwrap_spec`: KW-AE and KW-AD. A wrap refuses keys
+  under two semiblocks, not whole semiblocks, or an output of the wrong
+  length; an unwrap refuses input under three semiblocks or not whole
+  semiblocks with `DecryptFailed`, and a key buffer of the wrong length with
+  `WrongLength`, both leaving the buffer as it was, and returns
+  `DecryptFailed` with the buffer zeroed when KW-AD's integrity check fails;
+- `kek_wrap_padded_spec` and `kek_unwrap_padded_spec`: KWP-AE and KWP-AD. A
+  wrap takes any key of 1 to 2^32 - 1 bytes, aligned or not, into an output of
+  the key padded to whole semiblocks plus one, and refuses anything else; an
+  unwrap refuses as KW's does from two semiblocks of input, and zeroes the
+  buffer when KWP-AD's integrity check fails.
+
+The unwraps' integrity check rests on the constant-time compares'
+`Rind/<Arch>/CtEqual.lean` contracts; the rest rests on nothing.
 
 AES-128-GCM, AES-192-GCM, and AES-256-GCM on x86_64 CPUs with AES-NI and
 PCLMULQDQ, from the AEAD API's `Key` down to HACL*'s Vale AES-GCM routines on
@@ -692,6 +789,68 @@ dispatch models' quotes, if it builds a digest `Algorithm` outside
 `EcdsaPair`, or reads an `ops` outside the signature models' quotes, or if it
 mentions `Verification::Rsa(` or builds an `Rsa` outside them.
 
+## The portable backend
+
+`admin/prove` translates the portable backend too, under `--cfg
+rind_portable`, the cfg CI's portable jobs build with, on x86_64, into
+`Rind/Portable/`: the hash, HMAC, KDF, and header-protection paths, and the
+Keccak-f above, alone. None of that Rust picks by pointer width or CPU, and Aeneas's `usize` is either
+width, so the theorems hold on every target the backend builds for. The
+x86_64 proofs of SHA-256's padding, the SHA-512 family, HMAC's keyed states,
+the digest, HMAC, HKDF, and PBKDF2 APIs, and ChaCha20 header protection are
+written for it with the target renamed, as for aarch64, over what differs:
+
+- `Rind/Portable/Hacl.lean`: HACL*'s SHA-256 and SHA-512 block functions,
+  which libcrux-sha2 ships as the Rust KaRaMeL prints, as the axioms
+  `sha256_update_nblocks_spec` and `sha512_update_nblocks_spec`, restating
+  HACL*'s F* theorems, and the proof of rind's loop that hands them pieces
+  under 2^31 bytes. Charon cannot translate the two functions:
+  `krml::unroll_for!` unrolls their rounds into one body whose blocks nest
+  deeper than its recursion bound.
+- `Rind/Portable/Sha512Entry.lean`: `RunsSha512`, which assumes only the
+  entry checks, as no dispatch picks a routine, and SHA-512's block function
+  in the form the SHA-512 proof takes it.
+- `Rind/Portable/ShaBlocks.lean`: `Sha256Blocks`, only the entry checks, and
+  `Sha1Blocks`, as on the other targets the contract of SHA-1's block
+  function, `low::generic::sha1`, which no proof covers here.
+- `Rind/Portable/Compare.lean` and `Rind/Portable/CtEqual.lean`: the
+  constant-time compares behind `hmac::verify` and `pbkdf2::Secret::verify`,
+  Rust here, read through raw pointers and `black_box`, so modelled by hand
+  and proven, where x86_64 and aarch64 take HOL Light's theorems as axioms.
+
+`Rind/Portable/HashAxioms.lean` and `Rind/Portable/Axioms.lean` check the
+axioms each theorem rests on: HACL*'s two, and for ChaCha20 header
+protection none.
+
+Every other operation the portable backend runs has no proof yet, and
+these quests prove its code, whose proofs then run on this translation:
+
+- SHA-3 and ML-KEM: [the sponge's proof over its Keccak-f](/quest/m4/verified/sha3-portable.md),
+  which `Rind/Portable/Keccak.lean` proves,
+  [the construction](/quest/m4/verified/mlkem-construction.md), and
+  [the portable arithmetic](/quest/m4/verified/mlkem-portable.md);
+- ChaCha20-Poly1305:
+  [Graviola's Poly1305 and the separate-pass glue](/quest/m5/verified/chacha20-poly1305-portable.md);
+- AES and AES-GCM: rind's `aes_nohw.c` and `gcm_nohw.c` ports, in
+  [armv7's Rust proofs](/quest/m5/verified-armv7/prove.md) and
+  [x86_64 without AES-NI](/quest/m5/verified/x86-no-aesni.md), which share one
+  source file across word widths;
+- X25519 and Ed25519: curve25519-dalek's serial backend under rind's glue, in
+  [armv7's Curve25519](/quest/m5/verified-armv7/curve25519.md);
+- P-256, P-384, and P-521: [armv7's NIST curves](/quest/m5/verified-armv7/nist-curves.md),
+  whose point arithmetic `low/generic/limb64.rs` builds again over
+  fiat-crypto's 64-bit field and scalar arithmetic;
+- RSA: [verification](/quest/m4/verified/rsa-verify-portable.md), whose glue
+  `Rind/X86_64/RsaDispatch.lean` proves over the Montgomery products as
+  hypotheses, and [signing](/quest/m4/verified/rsa-sign.md), both over
+  `low/generic/mont.rs`'s products, on 64-bit limbs here;
+- SHA-1: `low::generic::sha1`, the block function `Sha1Blocks` stands for
+  here, in [SHA-1's quest](/quest/m5/verified/sha1.md);
+- MD5: [its own quest](/quest/m5/verified/md5.md).
+
+[The re-audit](/quest/m4/verified/re-audit.md) plans whatever still lacks a
+proof after those.
+
 ## Layout
 
 - `hol-light/<arch>/`: rind's HOL Light proofs, one file per routine, on
@@ -705,10 +864,13 @@ mentions `Verification::Rsa(` or builds an `Rsa` outside them.
   `Rind/X86_64/ValeAesGcm.lean`: s2n-bignum's, aws-lc-verification's, and
   Vale's theorems, restated as axioms about the routines' Rust wrappers.
 - `Rind/X86_64/Simd.lean`: models of the x86_64 intrinsics rind's AES,
-  AES-GCM setup, partial blocks, and by-8 kernels call;
+  AES-GCM setup, partial blocks, by-8 kernels, and point select call;
   `Rind/X86_64/AesGcmModel.lean`: a hand model, over those intrinsics, of its
   PCLMULQDQ GHASH and by-8 AES-GCM, whose raw pointers, `transmute`
   constants, `as_chunks`, and zipped iterators Aeneas cannot translate;
+  `Rind/X86_64/PointSelectModel.lean`, of its AVX2 and SSE2 point selects,
+  whose raw-pointer loads and `as_chunks` Aeneas cannot translate, and
+  `Rind/X86_64/PointSelect.lean`, their proofs;
   `Rind/Aarch64/Neon.lean`, of the aarch64 intrinsics rind's AES calls, and
   `Rind/Aarch64/NeonVectors.lean`, the vectors `admin/neon-vectors.rs` tests
   them with; `Rind/Lanes.lean`, both targets' vector lanes and bytes.
@@ -724,7 +886,7 @@ mentions `Verification::Rsa(` or builds an `Rsa` outside them.
   `Rind/ValeBytes.lean`, and `Rind/Gf128.lean`: Vale's AES and GF(2^128) specs
   and their lemmas, and `Rind/AesInverse.lean`, FIPS 197's equivalent inverse
   cipher.
-- `Rind/X86_64/{Dispatch,DigestDispatch,DigestAlgorithm,SignatureDispatch,AeadDispatch,HmacDispatch,GcmKey}.lean`:
+- `Rind/X86_64/{Dispatch,QuicDispatch,DigestDispatch,DigestAlgorithm,SignatureDispatch,AeadDispatch,HmacDispatch,GcmKey}.lean`:
   the hand models of the agreement, header-protection, digest, signature,
   AEAD, and HMAC APIs' dispatch, and of `aead::gcm::Key` over the AEAD model; `Rind/X86_64/HkdfExpand.lean` and
   `Rind/X86_64/Kdf/{TypesExternal,FunsExternal}.lean`, of what the HKDF and
@@ -738,7 +900,12 @@ mentions `Verification::Rsa(` or builds an `Rsa` outside them.
   header-protection keys; `Rind/Aes.lean`, FIPS 197's AES on bytes and its
   key schedule word by word; `Rind/<Arch>/AesKey.lean`, each target's key
   expansion and block cipher on the AES instructions;
-  `Rind/X86_64/AesCipher.lean`, `cipher::Aes` and AES header protection, and
+  `Rind/X86_64/AesCipher.lean`, `cipher::Aes` and AES header protection;
+  `Rind/AesModes.lean`, `Rind/AesModesBytes.lean`, and `Rind/AesKw.lean`,
+  SP 800-38A's CTR and CBC and SP 800-38F's key wrap on bytes, and
+  `Rind/<Arch>/{AesModesLow,AesModesApi,AesKw}.lean`, their proofs;
+  `hol-light/x86_64/aes_hw_spec.ml`, AES on the AES-NI instructions and CTR32's
+  counter blocks, for the x86_64 routines' HOL Light proofs; and
   `Rind/X86_64/{Ghash,PartialBlock,AesGcmGlue,AesGcm,GhashClmul,AesGcmBy8,AesGcmClmul,AesGcmAead,AesGcmAny}.lean`:
   the AES-GCM proof, on x86_64 alone; `Rind/X86_64/GcmKey.lean`, the hand model
   of `aead::gcm::Key` and its proofs; `Rind/X86_64/ChaCha20Poly1305.lean`, the
@@ -769,25 +936,39 @@ mentions `Verification::Rsa(` or builds an `Rsa` outside them.
   `Rind/S2nChaCha20Poly1305.lean`, rind's HOL Light ChaCha20-Poly1305 spec,
   transliterated, and its proof that it is `Rind/Spec.lean`'s.
 - `admin/prove` copies the other `Rind/X86_64/` models and proofs to
-  `Rind/Aarch64/` with the target renamed.
+  `Rind/Aarch64/` with the target renamed, and the hash, KDF, and
+  header-protection ones to `Rind/Portable/`.
+- `Rind/Portable/{TypesExternal,FunsExternal,Compare,Hacl,Sha512Entry,ShaBlocks,CtEqual}.lean`:
+  the portable backend's opaque items, its compares' hand model, and its own
+  proofs, which [the portable backend](#the-portable-backend) describes.
 - `Rind/NistGroup.lean`: that the NIST curves' `nist.add` is the addition of
   Mathlib's group of points on the curve; `Rind/NistOrder.lean`: that every
   finite point has order n, by counting the curve's points;
   `Rind/P256Group.lean`: that `p256` is prime, by a Pratt certificate;
   `Rind/N256Prime.lean`: that `n256` is prime; `Rind/P256Multiples.lean`: the
   group laws and multiples ECDSA's twin multiplication relies on.
-- `Rind/X86_64/P256Dispatch.lean`, `Rind/X86_64/P256Agree.lean`,
-  `Rind/Aarch64/P256Table.lean`, and `Rind/Aarch64/P256.lean`: the hand model
-  of P-256's key generation, the P-256 agreement proof on both targets, and
-  aarch64's generator table and key generation proofs.
-- `Rind/Aarch64/EcdsaDispatch.lean`, `Rind/Aarch64/P256Ecdsa.lean`, and
-  `Rind/Aarch64/P256Signature.lean`: the hand model of ECDSA's dispatch and
-  key generation, the proof of `high::ecdsa` and `mid::p256`'s ECDSA at
-  P-256, and the signature API's theorems.
+- `Rind/X86_64/P256Dispatch.lean`, `Rind/X86_64/P256Agree.lean`, and
+  `Rind/X86_64/P256.lean`: the hand model of P-256's key generation, and the
+  P-256 agreement and key generation proofs, on both targets.
+- `Rind/P256Booth.lean`: the arithmetic of x86_64's Booth-recoded generator
+  multiplication.
+- `Rind/<Arch>/P256Table.lean` and `Rind/<Arch>/P256Base.lean`, one per
+  target: its generator table's proof, and what the shared proofs take of its
+  generator multiplication and table, `base_multiply_spec` and `first_row`,
+  with x86_64's `jac_base_multiply_spec` for its key check.
+- `Rind/X86_64/EcdsaDispatch.lean`, `Rind/X86_64/P256Ecdsa.lean`, and
+  `Rind/X86_64/P256Signature.lean`, on both targets, over
+  `Rind/<Arch>/P256KeyCheck.lean`, one per target: the hand model of ECDSA's
+  dispatch and key generation, the proof of `high::ecdsa` and `mid::p256`'s
+  ECDSA at P-256, the signature API's theorems, and each target's check of a
+  key pair's public key.
 
 ## Trust base
 
 Beyond Lean's kernel:
+
+- x86_64 P-256's mixed addition, `p256_point_add_affine_spec`, which no
+  proof covers yet.
 
 - Charon and Aeneas's translation, and Aeneas's models of `core`, with
   `Rind/Core.lean`'s.
@@ -795,8 +976,8 @@ Beyond Lean's kernel:
   axiom.
 - That `Rind/HashSpec.lean` transliterates FIPS 180-4, RFC 2104, RFC 5869,
   and RFC 8018.
-- The restatement of each s2n-bignum and aws-lc-verification theorem as an
-  axiom, under the composition rule in the
+- The restatement of each s2n-bignum and aws-lc-verification theorem, and of
+  each of rind's own HOL Light theorems, as an axiom, under the composition rule in the
   [verification epic](/quest/m3/verified/README.md), and on aarch64 the
   caveats aws-lc-verification lists for its NSym proof. It lets a
   group-membership fact a proof must decide be its defining equation, so
@@ -818,6 +999,10 @@ Beyond Lean's kernel:
   `processBlock_Common` as FIPS 180-4's, `Rind/S2nSha256.lean` and
   `Rind/S2nSha512.lean` transliterate s2n-bignum's SHA-256 and SHA-512 specs,
   and `Rind/S2nChaCha20Poly1305.lean` rind's HOL Light ChaCha20-Poly1305 spec.
+- On the portable backend, HACL*'s F* theorems about its SHA-256 and SHA-512
+  block functions, restated as axioms in `Rind/Portable/Hacl.lean` under the
+  same composition rule, and that the Rust libcrux-sha2 ships is the code
+  KaRaMeL printed from the F* those theorems are about.
 - That `Rind/Rsa.lean` transliterates RFC 8017's RSASSA-PKCS1-v1_5 and
   RSASSA-PSS verification.
 - That `Rind/Spec.lean`'s ChaCha20, Poly1305, and ChaCha20-Poly1305

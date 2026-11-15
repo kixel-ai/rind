@@ -8,7 +8,9 @@ Linux on `armv7`, ARMv6, big-endian `s390x`, `riscv64gc` (glibc and musl),
 `loongarch64`, `powerpc64le`, and big-endian `powerpc64` and `powerpc` under
 qemu. iOS devices' code is only built.
 
-- `aarch64` requires the `neon` CPU feature. Where the CPU has the crypto
+- The `aarch64` assembly backend requires NEON, which every aarch64 target
+  with `std` enables at compile time; a build without it uses the portable
+  backend. Where the CPU has the crypto
   extension (`aes`, `pmull`, and `sha2`), as the Raspberry Pi 5 and most
   aarch64 servers and phones do, AES, GHASH, SHA1, and SHA256 run on its
   instructions. Without it, as on the Raspberry Pi 4, CM4, and Zero 2 W, they
@@ -84,10 +86,12 @@ qemu. iOS devices' code is only built.
   Raspberry Pi 1 and Zero), on `arm-linux-androideabi`, which Rust builds for
   ARMv5TE, on `powerpc64le` and big-endian `powerpc64` and `powerpc` Linux,
   and on `x86_64`,
-  where `--cfg rind_portable` forces it. Every PR also compiles the library for
-  `wasm32-wasip2` and `wasm32-unknown-unknown`, with and without `wipe`. The
-  latter enables `getrandom/wasm_js` for JavaScript randomness; the WASI target
-  uses its system random source. The nightly `build.yml` runs the vector tests
+  where `--cfg rind_portable` forces it. `just ci` also compiles the library
+  for `wasm32-wasip2` and `wasm32-unknown-unknown`, with and without `wipe`,
+  when a change touches rind, the workspace manifest or lockfile, or the
+  flake, and `just gate` always does. `wasm32-unknown-unknown` enables
+  `getrandom/wasm_js` for JavaScript randomness; the WASI target uses its
+  system random source. The nightly `build.yml` runs the vector tests
   on `wasm32-wasip2` under wasmtime (`just wasm`), without the differential
   tests, since aws-lc does not build for wasm. `wasm32-unknown-unknown` stays
   compile-only: its tests need a JavaScript host. Constant time is unchecked on
@@ -97,12 +101,17 @@ qemu. iOS devices' code is only built.
   `wasm32` built with `-C target-feature=+wide-arithmetic` (stable from Rust
   1.101), whose 128-bit products take one or two multiply instructions, and
   on 32-bit limbs elsewhere, where a 128-bit product would be a library call.
-  On 32-bit `x86` it needs Rust 1.94 rather than the 1.90 MSRV, since
-  libcrux-platform 0.0.4 calls `__cpuid` outside `unsafe`
-  ([libcrux#1646](https://github.com/celabshq/libcrux/issues/1646)).
 
-Every operation panics on a CPU missing one of these. Call `rind::cpu::check()`
-at startup to get an error naming the missing feature instead.
+A backend requires only what its target enables at compile time, so rind runs
+on every CPU its target does; every other feature only picks a faster path.
+
+[rind-fips](rind-fips/README.md)'s FIPS 140-3 module builds only for glibc
+Linux on `x86_64` and `aarch64`, and runs only the fastest paths there: on
+`x86_64` it requires `aes`, `pclmulqdq`, `ssse3`, `sse4.1`, `popcnt`,
+`movbe`, `avx`, `avx2`, `bmi1`, `bmi2`, and `adx`, as on Broadwell, Zen, and
+later cores, and on `aarch64` the crypto extension. It refuses to load on a
+CPU without them, naming the first missing, so each path it can take gets its
+own ACVP run and no other path is in it.
 
 rind's secret-dependent code divides no secret and does no floating-point
 arithmetic on any architecture, as `admin/ct-vartime` checks, but it multiplies
@@ -145,6 +154,33 @@ some operands, so it is not constant-time on them:
 - `x86_64` and 32-bit `x86`: VIA's Nano 2000 series ([BearSSL ctmul]). Intel
   lists `mul` and `imul` as data-independent-time ([Intel DOIT]).
 
+Intel guarantees the timing of the instructions it lists as data-independent
+([Intel DOIT]) only on two conditions:
+
+- On processors that enumerate DOITM, those from Ice Lake and Gracemont on
+  with current microcode, only while the operating system sets it in
+  `IA32_UARCH_MISC_CTL`, which user code cannot. A processor that does not
+  enumerate it with current microcode behaves as if it were set, and an SGX
+  enclave on one that does runs with it set whatever the OS does
+  ([Intel DOITM]). Linux does not set it, as of 7.4, nor does KVM pass it to
+  guests, and rind knows of no other kernel that does. Intel's list leaves out
+  the `VSHA512` instructions, which SHA-384 and SHA-512 run where the CPU has
+  them, as from Arrow Lake and Lunar Lake on.
+- On Intel processors that do not report `MCDT_NO`, such as its Core processors
+  from Skylake to Alder Lake, only while MXCSR holds `0x1FBF`: otherwise some
+  vector integer multiplies, such as `vpmuludq` and `vpmullw`, may take a cycle
+  longer for some values ([Intel MCDT]), and SGX enclaves are no exception.
+  rind loads `0x1FBF` around its x86_64 ML-KEM, ML-DSA, RSA exponentiation
+  with AVX2 or AVX-512, and Ed25519 verification with AVX2, and around every
+  call on 32-bit `x86`, whose compiled arithmetic may use them anywhere, then
+  restores the caller's MXCSR. On the x86_64 backend, `admin/ct-vartime`
+  checks that nothing rind exports reaches one except through a function that
+  enters the mitigation. It counts all of such a function as covered, so each
+  enters first, holds it to its end, and never inlines into its caller. On
+  32-bit `x86` and the portable backend, coverage rests on every call's
+  `Entry`, which the scan does not check. aws-lc and BoringSSL do not
+  mitigate this.
+
 [COMPATIBILITY.md](COMPATIBILITY.md) lists the features of each Intel CPU
 family since 2004, and of some AMD cores.
 
@@ -176,3 +212,5 @@ family since 2004, and of some AMD cores.
 [BearSSL ctmul]: https://www.bearssl.org/ctmul.html
 [Gu and Shacham]: https://arxiv.org/abs/2311.14246
 [Intel DOIT]: https://www.intel.com/content/www/us/en/developer/articles/technical/software-security-guidance/resources/data-operand-independent-timing-instructions.html
+[Intel DOITM]: https://www.intel.com/content/www/us/en/developer/articles/technical/software-security-guidance/best-practices/data-operand-independent-timing-isa-guidance.html
+[Intel MCDT]: https://www.intel.com/content/www/us/en/developer/articles/technical/software-security-guidance/best-practices/mxcsr-configuration-dependent-timing.html
