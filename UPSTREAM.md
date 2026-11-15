@@ -250,26 +250,12 @@ Each upstream rind changes, with where its fork is vendored and where the list o
 - **Reported:** no; offering it needs the maintainer's approval, which [upstream-reports](/quest/m2/upstream-reports.md) asks for.
 - **Goes when:** a blind-rsa-signatures release builds on `rsa` 0.10.0.
 
-### nixpkgs' Rust crashes cargo-llvm-cov's tests
-
-- **Breaks:** cargo-llvm-cov's tests build with nixpkgs' rustc, whose instrumented binaries crash on exit, so cache.nixos.org has no build of it.
-- **Workaround:** `flake.nix`'s `coverage` shell overrides cargo-llvm-cov with `doCheck = false`; rind's coverage builds with the pinned toolchain, not nixpkgs'.
-- **Reported:** no.
-- **Goes when:** nixpkgs builds cargo-llvm-cov.
-
 ### nixpkgs' Lean cannot read Mathlib's cache
 
 - **Breaks:** Mathlib's prebuilt cache is read by the `leantar` bundled with the Lean toolchain, which nixpkgs' Lean lacks.
 - **Workaround:** `flake.nix`'s `prove` shell takes `elan`, which fetches the toolchain `proofs/lean-toolchain` names.
 - **Reported:** no.
 - **Goes when:** nixpkgs' Lean reads Mathlib's cache.
-
-### nixpkgs marks release-plz broken on Darwin
-
-- **Breaks:** nixpkgs marks release-plz broken on Darwin, so the default shell cannot evaluate with it there.
-- **Workaround:** `flake.nix`'s default shell adds release-plz only off Darwin.
-- **Reported:** no.
-- **Goes when:** nixpkgs builds release-plz on Darwin.
 
 ## CI tools
 
