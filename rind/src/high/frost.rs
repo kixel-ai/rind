@@ -14,6 +14,10 @@
 //! Distributed key generation, which RFC 9591 leaves out, waits for a
 //! consumer, as do the secp256k1 and Ed448 suites.
 
+// `as_chunks` takes no associated constant of a generic group, as clippy's
+// suggestion for `chunks_exact(G::ELEMENT_LEN)` would need.
+#![allow(clippy::chunks_exact_to_as_chunks)]
+
 use core::cmp::Ordering;
 use core::fmt;
 
@@ -184,10 +188,12 @@ fn edwards_mul_sum<G: Group>(
     let one = G::scalar_to_bytes(&scalar_from_u16::<G>(1));
     terms
         .iter()
-        .map(|(element, scalar)| match G::scalar_to_bytes(scalar) == one {
-            true => *element,
-            false => mul(element, scalar),
-        })
+        .map(
+            |(element, scalar)| match G::scalar_to_bytes(scalar) == one {
+                true => *element,
+                false => mul(element, scalar),
+            },
+        )
         .reduce(|sum, product| add(&sum, &product))
 }
 
@@ -802,7 +808,7 @@ impl VssCommitment {
         let _entry = Entry::new_public();
         with_group!(suite, G => {
             let count = bytes.len() / G::ELEMENT_LEN;
-            if bytes.len() % G::ELEMENT_LEN != 0 || !(2..=usize::from(u16::MAX)).contains(&count) {
+            if !bytes.len().is_multiple_of(G::ELEMENT_LEN) || !(2..=usize::from(u16::MAX)).contains(&count) {
                 return Err(Error::WrongLength);
             }
             for coefficient in bytes.chunks_exact(G::ELEMENT_LEN) {
@@ -1363,7 +1369,12 @@ impl SigningPackage {
         for commitment in &commitments {
             let rho = G::hash_to_scalar(
                 b"rho",
-                &[prefix[0], prefix[1], prefix[2], commitment.identifier().as_ref()],
+                &[
+                    prefix[0],
+                    prefix[1],
+                    prefix[2],
+                    commitment.identifier().as_ref(),
+                ],
             )?;
             let [hiding, binding] = commitment.elements::<G>();
             terms.push((hiding, scalar_from_u16::<G>(1)));
@@ -1372,7 +1383,8 @@ impl SigningPackage {
         }
         let group_commitment =
             G::element_to_bytes(&G::public_mul_sum(&terms).ok_or_else(identity)?);
-        let challenge = G::scalar_to_bytes(&challenge::<G>(&group_commitment, public_key, message)?);
+        let challenge =
+            G::scalar_to_bytes(&challenge::<G>(&group_commitment, public_key, message)?);
         Ok(Self {
             suite: G::suite(),
             public_key: *public_key,
@@ -1432,7 +1444,8 @@ impl SigningPackage {
         if shares.len() != self.commitments.len() {
             return Err(Error::WrongLength);
         }
-        let mut identifiers: Vec<Identifier> = shares.iter().map(SignatureShare::identifier).collect();
+        let mut identifiers: Vec<Identifier> =
+            shares.iter().map(SignatureShare::identifier).collect();
         identifiers.sort();
         if identifiers
             .iter()
@@ -1445,9 +1458,9 @@ impl SigningPackage {
     }
 
     fn aggregate_with<G: Group>(&self, shares: &[SignatureShare]) -> Result<Signature, Error> {
-        let z = shares
-            .iter()
-            .fold(scalar_from_u16::<G>(0), |sum, share| add::<G>(&sum, &share.z::<G>()));
+        let z = shares.iter().fold(scalar_from_u16::<G>(0), |sum, share| {
+            add::<G>(&sum, &share.z::<G>())
+        });
         let r = element::<G>(self.group_commitment.as_ref());
         check_equation::<G>(
             &z,
@@ -1564,7 +1577,9 @@ impl AsRef<[u8]> for SignatureShare {
 
 impl fmt::Debug for SignatureShare {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("SignatureShare").field(&self.as_ref()).finish()
+        f.debug_tuple("SignatureShare")
+            .field(&self.as_ref())
+            .finish()
     }
 }
 

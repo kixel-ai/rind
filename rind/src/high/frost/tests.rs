@@ -33,7 +33,11 @@ fn check_vector<G: Group>(name: &str) {
     let _entry = Entry::new_secret();
     let v = vectors(name);
     let inputs = &v["inputs"];
-    let max: u16 = v["config"]["MAX_PARTICIPANTS"].as_str().unwrap().parse().unwrap();
+    let max: u16 = v["config"]["MAX_PARTICIPANTS"]
+        .as_str()
+        .unwrap()
+        .parse()
+        .unwrap();
 
     let mut coefficients = vec![field(inputs, "group_secret_key")];
     for c in inputs["share_polynomial_coefficients"].as_array().unwrap() {
@@ -64,7 +68,9 @@ fn check_vector<G: Group>(name: &str) {
             field(o, "hiding_nonce_randomness").try_into().unwrap(),
             field(o, "binding_nonce_randomness").try_into().unwrap(),
         ];
-        let n = SigningNonces::commit_with::<G>(share, &random).unwrap().unwrap();
+        let n = SigningNonces::commit_with::<G>(share, &random)
+            .unwrap()
+            .unwrap();
         assert_eq!(ct::into_public(n.hiding), &field(o, "hiding_nonce")[..]);
         assert_eq!(ct::into_public(n.binding), &field(o, "binding_nonce")[..]);
         let want = [
@@ -97,7 +103,10 @@ fn check_vector<G: Group>(name: &str) {
         .zip(v["round_two_outputs"]["outputs"].as_array().unwrap())
     {
         let signature_share = n.sign(share, &package).unwrap();
-        assert_eq!(&signature_share.as_ref()[SCALAR_LEN..], field(o, "sig_share"));
+        assert_eq!(
+            &signature_share.as_ref()[SCALAR_LEN..],
+            field(o, "sig_share")
+        );
         package.verify_share(&signature_share, &commitment).unwrap();
         signature_shares.push(signature_share);
     }
@@ -157,10 +166,16 @@ fn any_threshold_signs() {
             );
             let public_key = commitment.public_key();
             for (n, share) in shares.iter().enumerate() {
-                assert_eq!(share.identifier(), &Identifier::new(suite, &share.identifier().as_ref()).unwrap());
-                let reloaded =
-                    SigningShare::from_scalar(share.identifier(), share.to_scalar().as_ref(), &commitment)
-                        .unwrap();
+                assert_eq!(
+                    share.identifier(),
+                    &Identifier::new(suite, share.identifier().as_ref()).unwrap()
+                );
+                let reloaded = SigningShare::from_scalar(
+                    share.identifier(),
+                    share.to_scalar().as_ref(),
+                    &commitment,
+                )
+                .unwrap();
                 assert_eq!(reloaded.public_key(), public_key);
                 assert_eq!(reloaded.min_signers(), min);
                 let _entry = Entry::new_public();
@@ -289,9 +304,13 @@ fn refuses_misuse() {
 
     // Signing.
     let package = SigningPackage::new(public_key, &[c0.clone(), c1.clone()], b"m").unwrap();
-    let other_package =
-        SigningPackage::new(other_commitment.public_key(), &[c0.clone(), c1.clone()], b"m").unwrap();
-    let only_1 = SigningPackage::new(public_key, &[c1.clone()], b"m").unwrap();
+    let other_package = SigningPackage::new(
+        other_commitment.public_key(),
+        &[c0.clone(), c1.clone()],
+        b"m",
+    )
+    .unwrap();
+    let only_1 = SigningPackage::new(public_key, core::slice::from_ref(&c1), b"m").unwrap();
     let (n, _) = SigningNonces::commit(&shares[0]).unwrap();
     assert_eq!(
         n.sign(&shares[0], &other_package).err(),
@@ -330,7 +349,10 @@ fn refuses_misuse() {
     // Aggregation.
     let s0 = n0.sign(&shares[0], &package).unwrap();
     let s1 = n1.sign(&shares[1], &package).unwrap();
-    assert_eq!(package.aggregate(&[s0.clone()]).err(), Some(Error::WrongLength));
+    assert_eq!(
+        package.aggregate(core::slice::from_ref(&s0)).err(),
+        Some(Error::WrongLength)
+    );
     assert_eq!(
         package.aggregate(&[s0.clone(), s0.clone()]).err(),
         rejected(KeyFormatError::UnknownIdentifier)
@@ -377,7 +399,10 @@ fn refuses_misuse() {
 
     // Dealing.
     for (min, max) in [(0, 3), (1, 3), (4, 3), (2, 1)] {
-        assert_eq!(deal(&ED25519_SHA512, min, max).err(), Some(Error::WrongLength));
+        assert_eq!(
+            deal(&ED25519_SHA512, min, max).err(),
+            Some(Error::WrongLength)
+        );
     }
 }
 
@@ -403,7 +428,10 @@ fn identifiers_are_nonzero_scalars() {
         assert_eq!(reason(&n), rejected(KeyFormatError::ScalarOutOfRange));
         assert_eq!(reason(&[0; 32]), rejected(KeyFormatError::ScalarOutOfRange));
         assert_eq!(reason(&[1; 31]), rejected(KeyFormatError::WrongLength));
-        assert_eq!(reason(&[0xff; 32]), rejected(KeyFormatError::ScalarOutOfRange));
+        assert_eq!(
+            reason(&[0xff; 32]),
+            rejected(KeyFormatError::ScalarOutOfRange)
+        );
 
         let _entry = Entry::new_public();
         let [one, two_five_six] = with_group!(suite, G => [1, 256].map(Identifier::from_u16::<G>));
@@ -497,10 +525,7 @@ fn refuses_bad_elements() {
             rejected(KeyFormatError::WrongLength)
         );
     }
-    assert_eq!(
-        Commitments::new(&ED25519_SHA512, c.as_ref()).unwrap(),
-        c
-    );
+    assert_eq!(Commitments::new(&ED25519_SHA512, c.as_ref()).unwrap(), c);
 }
 
 /// Every single-bit change to a signature or its message is refused.
@@ -524,12 +549,18 @@ fn refuses_altered_signatures() {
         for len in [0, bytes.len() - 1, bytes.len() + 1] {
             let mut resized = bytes.to_vec();
             resized.resize(len, 0);
-            assert_eq!(public_key.verify(b"message", &resized), Err(Error::BadSignature));
+            assert_eq!(
+                public_key.verify(b"message", &resized),
+                Err(Error::BadSignature)
+            );
         }
         // `z = n`, which a reduced check would take as zero.
         let r_len = bytes.len() - SCALAR_LEN;
         let n_z = [&bytes[..r_len], &order(suite)].concat();
-        assert_eq!(public_key.verify(b"message", &n_z), Err(Error::BadSignature));
+        assert_eq!(
+            public_key.verify(b"message", &n_z),
+            Err(Error::BadSignature)
+        );
     }
 }
 
@@ -538,11 +569,11 @@ proptest::proptest! {
     #[test]
     fn arbitrary_inputs_never_panic(bytes in proptest::collection::vec(proptest::num::u8::ANY, 0..140)) {
         for suite in SUITES {
-            let _ = Identifier::new(suite, &bytes);
-            let _ = PublicKey::new(suite, &bytes);
-            let _ = VssCommitment::new(suite, &bytes);
-            let _ = Commitments::new(suite, &bytes);
-            let _ = SignatureShare::new(suite, &bytes);
+            Identifier::new(suite, &bytes).ok();
+            PublicKey::new(suite, &bytes).ok();
+            VssCommitment::new(suite, &bytes).ok();
+            Commitments::new(suite, &bytes).ok();
+            SignatureShare::new(suite, &bytes).ok();
         }
     }
 }
@@ -571,7 +602,10 @@ fn stays_secret() {
         let mut loaded = Vec::new();
         for share in &shares {
             let scalar = share.to_scalar();
-            loaded.push(SigningShare::from_scalar(share.identifier(), scalar.as_ref(), &commitment).unwrap());
+            loaded.push(
+                SigningShare::from_scalar(share.identifier(), scalar.as_ref(), &commitment)
+                    .unwrap(),
+            );
         }
         let mut nonces = Vec::new();
         let mut commitments = Vec::new();
@@ -581,7 +615,9 @@ fn stays_secret() {
             random[0].copy_from_slice(&field(o, "hiding_nonce_randomness"));
             random[1].copy_from_slice(&field(o, "binding_nonce_randomness"));
             ct::secret_slice(&random);
-            let n = SigningNonces::commit_with::<G>(share, &random).unwrap().unwrap();
+            let n = SigningNonces::commit_with::<G>(share, &random)
+                .unwrap()
+                .unwrap();
             commitments.push(n.commitments.clone());
             nonces.push((share, n));
         }
@@ -693,7 +729,8 @@ mod differential {
                     commitments.push(commitments_of(&their_commitments, &theirs_id));
 
                     let package =
-                        SigningPackage::new(commitment.public_key(), &commitments, message).unwrap();
+                        SigningPackage::new(commitment.public_key(), &commitments, message)
+                            .unwrap();
                     let frost_package = FrostPackage::new(
                         commitments.iter().map(frost_commitments).collect(),
                         message,
@@ -793,8 +830,7 @@ mod differential {
                     .public_key()
                     .verify(b"message", signature.as_ref())
                     .unwrap();
-                let frost_signature =
-                    $frost::Signature::deserialize(signature.as_ref()).unwrap();
+                let frost_signature = $frost::Signature::deserialize(signature.as_ref()).unwrap();
                 pubkeys
                     .verifying_key()
                     .verify(b"message", &frost_signature)

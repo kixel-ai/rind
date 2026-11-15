@@ -141,7 +141,10 @@ impl core::fmt::Display for KeyRejected {
                 write!(f, "a threshold participant's identifier given twice")
             }
             KeyFormatError::UnknownIdentifier => {
-                write!(f, "a threshold participant missing from the signing package")
+                write!(
+                    f,
+                    "a threshold participant missing from the signing package"
+                )
             }
             KeyFormatError::MismatchedCommitments => {
                 write!(f, "nonce commitments that are not the signer's")
