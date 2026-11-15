@@ -127,6 +127,29 @@ def core.slice.Slice.as_chunks {T : Type _} (N : Std.Usize) (s : Slice T) :
             exact le_trans (Nat.div_le_self _ _) this),
        Slice.from (s.val.drop (k * N.val)) (by have := s.property; simp; omega))
 
+/-- `core::slice::Chunks`: what is left of the slice, and the chunk size. -/
+structure core.slice.iter.Chunks (T : Type _) where
+  rest : Slice T
+  size : Std.Usize
+
+/-- `<[T]>::chunks`: the slice in pieces of `size` elements, the last shorter.
+It panics for a size of zero. -/
+def core.slice.Slice.chunks {T : Type _} (s : Slice T) (size : Std.Usize) :
+    Result (core.slice.iter.Chunks T) :=
+  if size.val = 0 then Std.Result.fail .panic else Std.Result.ok ⟨s, size⟩
+
+/-- `Chunks::next`: the next `size` elements, or all that is left if fewer,
+and none once nothing is. -/
+def core.slice.iter.Chunks.Insts.CoreIterTraitsIteratorIteratorSharedASlice.next {T : Type _}
+    (c : core.slice.iter.Chunks T) : Result (Option (Slice T) × core.slice.iter.Chunks T) :=
+  if c.rest.length = 0 then Std.Result.ok (none, c)
+  else
+    let head := Slice.from (c.rest.val.take c.size.val) (by
+      have := c.rest.property; simp only [List.length_take]; omega)
+    let tail := Slice.from (c.rest.val.drop c.size.val) (by
+      have := c.rest.property; simp only [List.length_drop]; omega)
+    Std.Result.ok (some head, { rest := tail, size := c.size })
+
 /-- `<[T]>::as_chunks_mut::<N>`: `as_chunks`'s views, which write back to the
 slice the chunks in order, then what is left. -/
 def core.slice.Slice.as_chunks_mut {T : Type _} (N : Std.Usize) (s : Slice T) :
