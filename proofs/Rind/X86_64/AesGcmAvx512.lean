@@ -319,4 +319,101 @@ theorem by16_loop_eq (ENC : Bool) (H : P) (hH : Small H) (t : low.x86_64.ghash.G
 
 end loop
 
+/-! ## Bytes of 512-bit vectors -/
+
+/-- Byte `k` of `Y`, zero past its end. -/
+def yb (Y : List U8) (k : Nat) : BitVec 8 := (Y[k]?.map (·.bv)).getD 0
+
+theorem byte_loadBytes (Y : List U8) {i : Nat} (hi : i < 16) : byte (loadBytes Y) i = yb Y i := by
+  rw [loadBytes, byte_leBytesToQuad32 _ hi]
+  simp only [yb, List.getElem!_eq_getElem?_getD, List.getElem?_map]
+  rfl
+
+theorem byte_lane_load512 (Y : List U8) {j i : Nat} (hj : j < 4) (hi : i < 16) :
+    byte (lane128 (loadBytes512 Y) j) i = yb Y (16 * j + i) := by
+  rw [loadBytes512, lane128_ofLanes128 _ _ hj, byte_loadBytes _ hi]
+  simp [yb, List.getElem?_take, List.getElem?_drop, hi]
+
+theorem yb_bytes (q : BitVec 128) {i : Nat} (hi : i < 16) : yb (low.x86_64.aes_gcm.bytes q) i = byte q i := by
+  simp [yb, low.x86_64.aes_gcm.bytes, storeBytes, leQuad32ToBytes, hi, byte]
+
+theorem yb_append (A B : List U8) (k : Nat) :
+    yb (A ++ B) k = if k < A.length then yb A k else yb B (k - A.length) := by
+  unfold yb
+  split
+  · rw [List.getElem?_append_left (by omega)]
+  · rw [List.getElem?_append_right (by omega)]
+
+theorem yb_bytes512 (v : BitVec 512) {k : Nat} (hk : k < 64) :
+    yb (bytes512 v) k = byte (lane128 v (k / 16)) (k % 16) := by
+  obtain ⟨g, rfl⟩ : ∃ g, v = ofLanes128 g := ⟨lane128 v, (ofLanes128_lane128 v).symm⟩
+  rw [bytes512_four, lane128_ofLanes128 _ _ (by omega)]
+  simp only [yb_append, List.length_append, length_bytes]
+  rcases (by omega : k < 16 ∨ (16 ≤ k ∧ k < 32) ∨ (32 ≤ k ∧ k < 48) ∨ (48 ≤ k ∧ k < 64)) with h | h | h | h
+  · rw [ite_eq_left (by omega), ite_eq_left (by omega), ite_eq_left h, yb_bytes _ (by omega),
+      show k / 16 = 0 by omega, show k % 16 = k by omega]
+  · rw [ite_eq_left (by omega), ite_eq_left (by omega), ite_eq_right (by omega), yb_bytes _ (by omega),
+      show k / 16 = 1 by omega, show k - 16 = k % 16 by omega]
+  · rw [ite_eq_left (by omega), ite_eq_right (by omega), yb_bytes _ (by omega),
+      show k / 16 = 2 by omega, show k - (16 + 16) = k % 16 by omega]
+  · rw [ite_eq_right (by omega), yb_bytes _ (by omega), show k / 16 = 3 by omega,
+      show k - (16 + 16 + 16) = k % 16 by omega]
+
+theorem eq_of_lanes {x y : BitVec 512} (h : ∀ j < 4, ∀ i < 16, byte (lane128 x j) i = byte (lane128 y j) i) :
+    x = y := by
+  rw [← ofLanes128_lane128 x, ← ofLanes128_lane128 y]
+  exact ofLanes128_ext _ _ fun j hj => eq_of_byte_eq (h j hj)
+
+theorem lane128_xor (x y : BitVec 512) (j : Nat) : lane128 (x ^^^ y) j = lane128 x j ^^^ lane128 y j := by
+  apply BitVec.eq_of_getLsbD_eq; intro k hk
+  simp [lane128, BitVec.getLsbD_extractLsb', hk]
+
+theorem mask_bit (l k : Nat) (hl : l ≤ 64) (hk : k < 64) :
+    (BitVec.allOnes 64 >>> (64 - l)).getLsbD k = decide (k < l) := by
+  simp only [BitVec.getLsbD_ushiftRight, BitVec.getLsbD_allOnes, decide_eq_decide]
+  omega
+
+theorem u8_ext {a b : U8} (h : a.bv = b.bv) : a = b := by
+  cases a; cases b; cases h; rfl
+
+theorem yb_take (A : List U8) (n k : Nat) : yb (A.take n) k = if k < n then yb A k else 0 := by
+  unfold yb
+  rw [List.getElem?_take]
+  split <;> rfl
+
+theorem yb_replicate (n k : Nat) : yb (List.replicate n 0#u8) k = 0 := by
+  unfold yb
+  by_cases h : k < n
+  · rw [List.getElem?_replicate_of_lt h]; rfl
+  · rw [List.getElem?_eq_none (by simp; omega)]; rfl
+
+theorem bytes512_load512 (Y : List U8) (hY : Y.length = 64) : bytes512 (loadBytes512 Y) = Y := by
+  apply List.ext_getElem (by rw [length_bytes512, hY])
+  intro k h1 h2
+  rw [length_bytes512] at h1
+  apply u8_ext
+  have h := yb_bytes512 (loadBytes512 Y) h1
+  rw [byte_lane_load512 _ (by omega) (by omega), show 16 * (k / 16) + k % 16 = k by omega] at h
+  simp only [yb, List.getElem?_eq_getElem h2, List.getElem?_eq_getElem (show k < (bytes512 (loadBytes512 Y)).length by
+    rw [length_bytes512]; exact h1), Option.map_some, Option.getD_some] at h
+  exact h
+
+/-- A masked 64-byte tail chunk: `VMOVDQU8` keeps the keystream's bytes under
+the chunk, so the XOR is the chunk's CTR output followed by zeros. -/
+theorem mask_chunk (K : BitVec 512) (C : List U8) (hl : C.length ≤ 64) :
+    (ofLanes128 fun j => ofBytes fun i =>
+        if (BitVec.allOnes 64 >>> (64 - C.length)).getLsbD (16 * j + i) then byte (lane128 K j) i else 0) ^^^
+      loadBytes512 (C ++ List.replicate (64 - C.length) 0#u8) =
+    loadBytes512 ((bytes512 (K ^^^ loadBytes512 (C ++ List.replicate (64 - C.length) 0#u8))).take C.length ++
+      List.replicate (64 - C.length) 0#u8) := by
+  apply eq_of_lanes; intro j hj i hi
+  rw [lane128_xor, lane128_ofLanes128 _ _ hj, byte_xor, byte_ofBytes _ hi, byte_lane_load512 _ hj hi,
+    byte_lane_load512 _ hj hi, mask_bit _ _ hl (by omega)]
+  simp only [yb_append, yb_take, yb_replicate, List.length_take, length_bytes512, Nat.min_eq_left hl]
+  by_cases h : 16 * j + i < C.length
+  · rw [yb_bytes512 _ (by omega), show (16 * j + i) / 16 = j by omega, show (16 * j + i) % 16 = i by omega,
+      lane128_xor, byte_xor, byte_lane_load512 _ hj hi, yb_append]
+    simp only [h, ite_true, decide_true]
+  · simp [h]
+
 end rind.x86_64
