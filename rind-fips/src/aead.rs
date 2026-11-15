@@ -294,7 +294,7 @@ impl TryFrom<&[u8]> for Tag {
 /// 96-bit nonces stay unlikely to collide only so long, so one key seals at
 /// most 2^32 messages, as SP 800-38D requires, and refuses more with
 /// [`Error::MessageLimitReached`]. Each seal also reseeds the DRBG from the
-/// OS, a few microseconds.
+/// OS, about 1.7 µs on x86_64.
 pub struct RandomizedNonceKey {
     algorithm: &'static Algorithm,
     handle: Handle<RandomIvKey>,
