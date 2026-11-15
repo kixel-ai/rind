@@ -34,17 +34,20 @@ nist_group!(
 
 fn refuses_identity_hash<G: Group>() {
     let _entry = Entry::new_secret();
-    let input = ct::into_secret(*b"identity");
+    // `hash_to_infinity` ignores this message and returns an opposite-point
+    // sum. `opposite_sum` taints those coordinates; tainting the message
+    // would not reach the hash.
+    let input = b"identity";
     let mut key = vec![0; G::SCALAR_LEN];
     key[G::SCALAR_LEN - 1] = 2;
     ct::secret_slice(&key);
     for mode in [Mode::Oprf, Mode::Voprf] {
         assert_eq!(
-            ClientState::<G>::blind(mode, &input, scalar::<G>(&key)).err(),
+            ClientState::<G>::blind(mode, input, scalar::<G>(&key)).err(),
             Some(identity())
         );
         assert_eq!(
-            evaluate::<G>(mode, &scalar::<G>(&key), &input).err(),
+            evaluate::<G>(mode, &scalar::<G>(&key), input).err(),
             Some(identity())
         );
     }
@@ -230,13 +233,14 @@ fn round_trips() {
             let evaluated = loaded.blind_evaluate(blinded.as_ref()).unwrap();
             let output = blind.finalize(evaluated.as_ref()).unwrap();
             let direct = server.evaluate(input).unwrap();
-            // `as_ref` is the public view of the output. Compare it to the
-            // direct evaluation's bytes, which a replaced `as_ref` does not
-            // return. `into_public` on a `Vec` marks only the header, so
-            // declassify the slice itself before `assert_eq!` reads it.
+            // `as_ref` is the output's bytes. Compare them with the direct
+            // evaluation, which a replaced `as_ref` does not return. Both
+            // copies are declassified before `assert_eq` reads them.
             let got = output.as_ref();
+            let expect = ct::into_public(direct.0.clone());
             ct::public_slice(got);
-            assert_eq!(got, ct::into_public(direct.0.clone()).as_ref());
+            ct::public_slice(expect.as_ref());
+            assert_eq!(got, expect.as_ref());
             assert_eq!(format!("{output:?}"), "Output(..)");
         }
         assert!(format!("{server:?}").starts_with("ServerKey"));

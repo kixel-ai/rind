@@ -6,7 +6,7 @@ use super::{
     CURVE_A, CURVE_B, CURVE_ONE, CURVE_ORDER_MM, FieldElement, JacobianPoint, PublicKey, Scalar,
     util,
 };
-use crate::error::{Error, KeyFormatError};
+use crate::error::Error;
 use crate::low;
 use crate::mid::hash_to_curve::{self, Curve};
 use crate::mid::sha2::Sha512Context;
@@ -25,16 +25,10 @@ pub(crate) fn hash_to_curve(msg: &[u8], dst: &[u8]) -> Result<PublicKey, Error> 
     )?)
 }
 
-fn public_key(mut point: [FieldElement; 3]) -> Result<PublicKey, Error> {
-    let infinity = point[2].ct_eq(&FieldElement::ZERO);
-    point[2] = point[2].select(&FieldElement::ONE, infinity);
-    let point = jacobian(&point).as_affine();
-    // This error verdict is public, as with private-key range validation;
-    // the coordinates remain secret, including the discarded conversion.
-    match low::ct::into_public(infinity) {
-        true => Err(KeyFormatError::SmallOrder.into()),
-        false => Ok(PublicKey { point }),
-    }
+fn public_key(point: [FieldElement; 3]) -> Result<PublicKey, Error> {
+    hash_to_curve::affine_or_small_order(point, |point| PublicKey {
+        point: jacobian(&point).as_affine(),
+    })
 }
 
 /// Converts an opposite-point sum for the OPRF boundary tests.
@@ -166,6 +160,7 @@ mod tests {
     use p521::hash2curve::{self as rustcrypto, GroupDigest};
 
     use super::*;
+    use crate::error::KeyFormatError;
     use crate::mid::hash_to_curve::tests;
 
     fn affine(p: &[FieldElement; 3]) -> Vec<u8> {

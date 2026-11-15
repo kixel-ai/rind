@@ -13,7 +13,7 @@
 //!
 //! [RFC 9380]: https://www.rfc-editor.org/rfc/rfc9380.html
 
-use crate::error::Error;
+use crate::error::{Error, KeyFormatError};
 use crate::mid::sha2::{Sha256Context, Sha384Context, Sha512Context};
 
 /// A SHA-2 hash, as `expand_message_xmd` takes it.
@@ -273,6 +273,25 @@ pub(crate) fn sum<C: Curve>(q0: &[C; 3], q1: &[C; 3]) -> [C; 3] {
     [x, y, z.select(&C::ZERO, opposite)]
 }
 
+/// The affine image of `point`, or [`KeyFormatError::SmallOrder`] at infinity.
+///
+/// Opposite hash outputs sum to `Z = 0`. That `Z` becomes [`Curve::ONE`], so
+/// `affine` inverts a nonzero element on either verdict, and only the verdict
+/// is public. A finite point keeps its `Z`. The coordinates stay secret,
+/// including the image discarded at infinity.
+pub(crate) fn affine_or_small_order<C: Curve, P>(
+    mut point: [C; 3],
+    affine: impl FnOnce([C; 3]) -> P,
+) -> Result<P, Error> {
+    let infinity = point[2].ct_eq(&C::ZERO);
+    point[2] = point[2].select(&C::ONE, infinity);
+    let point = affine(point);
+    match crate::low::ct::into_public(infinity) {
+        true => Err(KeyFormatError::SmallOrder.into()),
+        false => Ok(point),
+    }
+}
+
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 pub(crate) mod tests {
@@ -476,9 +495,10 @@ pub(crate) mod tests {
     /// whatever `Z` each has. The expected double is the affine slope
     /// `(3x^2 + A) / (2y)`, so a bug in `double_point` fails this check.
     /// `scaled` is `q` under another `Z`: a `same_y` comparison by the
-    /// wrong power of `Z` makes that sum infinity. Points that share
-    /// affine `Y`, differ in affine `X`, and have different `Z` are added;
-    /// `same_x | same_y` would double the first instead.
+    /// wrong power of `Z` makes that sum infinity. `shifted` has `q`'s
+    /// affine `Y` and `r`'s affine `X` under another `Z`. It is off the
+    /// curve, so this checks the same-`Y` select: `same_x | same_y` doubles
+    /// `q` there.
     ///
     /// `inv` is the field inverse in the same form as `C`'s arithmetic.
     pub(crate) fn check_sum<C: Curve>(affine: impl Fn(&[C; 3]) -> Vec<u8>, inv: impl Fn(&C) -> C) {
@@ -496,9 +516,11 @@ pub(crate) mod tests {
         assert_eq!(affine(&sum(&q, &r)), affine(&C::add_points(&q, &r)));
         assert_eq!(affine(&sum(&q, &r)), affine(&sum(&r, &q)));
 
-        // Same affine `Y` as `q`, `r`'s affine `X`, and `Z` scaled by `k`.
+        // `q`'s affine `Y`, `r`'s affine `X`, and `Z` scaled by `k`.
         // Jacobian `X` is `r_x * (q_z / r_z)^2 * k^2`, so the affine `X`
         // is `r`'s (`r_x / r_z^2`) even when `q_z` and `r_z` differ.
+        // The pair is off the curve: it exercises the select, and the
+        // curve equation below records that.
         let qz_over_rz = q[2].mul(&inv(&r[2]));
         let shifted = [
             r[0].mul(&qz_over_rz.sqr()).mul(&k2),
@@ -521,6 +543,9 @@ pub(crate) mod tests {
             q[1].mul(&shifted[2].sqr().mul(&shifted[2]))
                 .ct_eq(&shifted[1].mul(&q[2].sqr().mul(&q[2])))
         );
+        assert!(on_curve(&q));
+        assert!(on_curve(&r));
+        assert!(!on_curve(&shifted));
         let got = sum(&q, &shifted);
         let expect = C::add_points(&q, &shifted);
         assert!(got.iter().zip(expect).all(|(a, b)| a.ct_eq(&b)));
@@ -540,6 +565,20 @@ pub(crate) mod tests {
         let x2 = slope.sqr().add(&x.neg().add(&x.neg()));
         let y2 = slope.mul(&x.add(&x2.neg())).add(&y.neg());
         [x2, y2, C::ONE]
+    }
+
+    /// `Y^2 = X^3 + A X Z^4 + B Z^6`.
+    fn on_curve<C: Curve>(p: &[C; 3]) -> bool {
+        let [x, y, z] = *p;
+        let z2 = z.sqr();
+        let z4 = z2.sqr();
+        let z6 = z4.mul(&z2);
+        y.sqr().ct_eq(
+            &x.sqr()
+                .mul(&x)
+                .add(&C::A.mul(&x).mul(&z4))
+                .add(&C::B.mul(&z6)),
+        )
     }
 
     /// `pow_c1` raises to `(p - 3) / 4`: one more factor gives
