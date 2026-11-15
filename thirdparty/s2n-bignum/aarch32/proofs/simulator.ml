@@ -17,8 +17,9 @@
  * 256-byte scratch buffer, PC's offset from the instruction, and the buffer's
  * 64 words. SP starts at the buffer's middle and is the base of every load and
  * store, whose offsets stay inside the buffer, so the other registers take any
- * value. A branch lands 8, 12, or 16 bytes past the instruction, where the
- * executor has a landing slot, and falling through lands at 4.
+ * value. A branch lands 8 or 4 bytes before the instruction, or 8, 12, or 16
+ * past it, where the executor has a landing slot, and falling through lands
+ * at 4, as a branch to there does too.
  *)
 
 needs "common/cosim.ml";;
@@ -146,10 +147,16 @@ let make_movw_movt_case input =
         (random_register ()) (Random.int 16) (Random.int 256);
     case_memop = false; case_input = input };;
 
-(* B to one of the executor's landing slots, 8, 12, or 16 bytes on. *)
+(* B's imm24 for each of the executor's landing slots, from 8 bytes back to
+   16 on, the PC bias of 8 included; -2 would branch to itself. *)
+let branch_imm24s = [0xfffffc; 0xfffffd; 0xffffff; 0; 1; 2];;
+
+let encode_branch cond imm24 = (cond lsl 28) lor (0b1010 lsl 24) lor imm24;;
+
 let make_branch_case input =
   { case_instruction =
-      (random_condition () lsl 28) lor (0b1010 lsl 24) lor Random.int 3;
+      encode_branch (random_condition ())
+        (el (Random.int (length branch_imm24s)) branch_imm24s);
     case_memop = false; case_input = input };;
 
 (* A load or store through SP, at the buffer's middle, whose address, and
@@ -174,7 +181,8 @@ let make_case kind =
   el kind caseclasses (make_input_state (Random.int 65));;
 
 (* Edges the random cases reach only by chance: the shifts whose imm5 of 0
-   means 32 or RRX, and the carries and overflows of the arithmetic. *)
+   means 32 or RRX, the carries and overflows of the arithmetic, and a
+   backward branch's sign-extended offset. *)
 let directed_input assignments =
   let base = map (fun _ -> num_0) (0--13) @ map (fun _ -> num_0) (1--4) @
              [num 128; num_0] @ map (fun _ -> num_0) (0--63) in
@@ -201,7 +209,10 @@ let directed_cases =
    (* RSCS R0, R1, R2: 0x7fffffff - 0xffffffff - !C overflows. *)
    dp 7 true 1 0 0 0 2 [1,num 0xffffffff; 2,num 0x7fffffff; 16,num 1];
    (* CMP R1, R2 with equal operands: Z and C set. *)
-   dp 10 true 1 0 0 0 2 [1,num 0x12345678; 2,num 0x12345678]];;
+   dp 10 true 1 0 0 0 2 [1,num 0x12345678; 2,num 0x12345678];
+   (* B to 8 bytes before itself. *)
+   { case_instruction = encode_branch 14 0xfffffc; case_memop = false;
+     case_input = directed_input [] }];;
 
 let aarch32_cosim_executor = lazy
   (start_cosim_executor "RIND_AARCH32_EXECUTOR"

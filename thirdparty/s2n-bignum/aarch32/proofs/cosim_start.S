@@ -6,8 +6,9 @@
  * static Linux program, on an Armv7-A CPU or under qemu-arm. `cosim_enter`
  * loads R0-R12, LR, APSR, and SP from `cosim_state`, runs the one A32
  * instruction in `cosim_slot`, and stores the state it reaches back to
- * `cosim_state`, with how far past the instruction it landed: 4 when it falls
- * through, or 8, 12, or 16 when it branches to one of the slots that follow.
+ * `cosim_state`, with how far from the instruction it landed: 4 when it falls
+ * through, or -8, -4, 8, 12, or 16 when it branches to one of the slots around
+ * it, the first two a backward branch's.
  * The section is writable, since `cosim_runner.c` writes each instruction into
  * the slot, and the state follows the code in the next page, so a store to it
  * never touches a page that holds code. */
@@ -36,6 +37,8 @@ cosim_enter:
 	ldr	sp, [r0, #60]
 	ldm	r0, {r0-r12, lr}
 	b	cosim_slot
+	b	landm8
+	b	landm4
 
 	.global cosim_slot
 cosim_slot:
@@ -56,6 +59,12 @@ land12:	str	r0, saved_r0
 	b	landed
 land16:	str	r0, saved_r0
 	mov	r0, #16
+	b	landed
+landm8:	str	r0, saved_r0
+	mvn	r0, #7			@ -8
+	b	landed
+landm4:	str	r0, saved_r0
+	mvn	r0, #3			@ -4
 	b	landed
 
 landed:
