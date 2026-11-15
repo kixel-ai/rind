@@ -290,8 +290,9 @@ and P-256's and P-521's, in `Rind/X86_64/PointSelect.lean`:
 They assume `RunsSelect`: `HaveAvx2::check` returns, as `Runs` assumes of
 `HaveBmi2Adx::check`. aarch64's NEON select has no model yet.
 
-ChaCha20 QUIC header protection on x86_64 and aarch64, from
-`HeaderProtectionKey` to HACL*'s rounds, in `Rind/X86_64/ChaCha20.lean`:
+ChaCha20 QUIC header protection on x86_64, aarch64, and armv7, from
+`HeaderProtectionKey` to HACL*'s rounds, in `Rind/X86_64/ChaCha20.lean`,
+which `admin/prove` also writes for aarch64 and armv7:
 
 - `chacha20_new`: a key that is not 32 bytes is refused, and otherwise the
   key holds its bytes;
@@ -300,11 +301,14 @@ ChaCha20 QUIC header protection on x86_64 and aarch64, from
   little-endian block counter and the rest as the nonce.
 
 HACL*'s rounds are Rust, so they are translated and proven with the rest, and
-no axiom stands in for HACL*'s proof of them.
+no axiom stands in for HACL*'s proof of them. armv7's translation reaches
+only this API: its other operations run assembly or Rust that other proofs
+are still to cover.
 
 Theorems that run an entry guard assume `Runs`: rind's CPU-feature checks
-pass, which no input affects. `Rind/<Arch>/P256Table.lean` proves that each
-target's generator table holds the multiples of G its generator
+pass, which no input affects. `Rind/Armv7/Runs.lean` states armv7's.
+`Rind/<Arch>/P256Table.lean` proves that each target's generator table
+holds the multiples of G its generator
 multiplication reads, on aarch64 those s2n-bignum's proof of
 `p256_scalarmulbase` assumes, and `Rind/<Arch>/P256Base.lean` that its first
 row holds G to 32G, which ECDSA verification's twin multiplication reads, so
@@ -404,7 +408,7 @@ from axioms restating the HOL Light proofs of the `asm!` compares below it.
 `PrivateKey` reaches each curve's `Agree` impl through function pointers
 (`Algorithm`'s `generate` and `load`, and `Keyed`'s `Ops`), and `HeaderProtectionKey` each
 cipher's `Mask` impl (`Algorithm`'s `new` and `Masker`'s `mask`), which Aeneas
-cannot translate. `Rind/X86_64/Dispatch.lean` models that dispatch by hand, in
+cannot translate. `Rind/X86_64/Dispatch.lean` and `QuicDispatch.lean` model that dispatch by hand, in
 Lean definitions beside the Rust they model, with an agreement `Algorithm` as
 which static it is. P-256's key generation draws through a `dyn
 RandomSource`, which Aeneas cannot translate either, and
@@ -564,8 +568,62 @@ unwraps with, against FIPS 197's equivalent inverse cipher, which
 which `#guard`s check against FIPS 197's and RFC 9001's vectors. The theorems
 assume `RunsAesHw`, or for a key already made only its entry guard: rind's
 CPU-feature checks find AES-NI, or on aarch64 the crypto extension, which no
-input affects. AES-CBC decrypts through its own routines over the same round keys,
-which [the AES modes quest](/quest/m4/verified/aes-modes.md) owns.
+input affects.
+
+AES-CTR and AES-CBC on aarch64 CPUs with the crypto extension, from
+`cipher::AesCtr`, `AesCbcEncryptingKey`, and `AesCbcDecryptingKey` down to
+rind's NEON CTR by 8 and CBC on the AES instructions, in
+`Rind/Aarch64/AesModesApi.lean` over `Rind/Aarch64/AesModesLow.lean`, against
+`Rind/AesModes.lean`'s SP 800-38A modes:
+
+- `aes_ctr_new_spec`: a key that is not the algorithm's length, or a counter
+  of no bits or more than 128, is refused, and otherwise the key holds the
+  round keys of its bytes and counts over that many low bits;
+- `aes_ctr_apply_keystream_spec`: a buffer with more blocks than the
+  counter's bits can count is refused unchanged, and otherwise becomes
+  SP 800-38A's CTR mode of it from the counter block, incrementing its low
+  bits;
+- `aes_cbc_encrypting_key_new_spec` and `aes_cbc_decrypting_key_new_spec`:
+  the same refusal, and otherwise the cipher's or the inverse cipher's round
+  keys;
+- `aes_cbc_encrypt_blocks_spec` and `aes_cbc_decrypt_blocks_spec`: a buffer
+  that is not whole blocks is refused, and otherwise becomes SP 800-38A's CBC
+  encryption or decryption of it;
+- `aes_cbc_encrypt_vec_spec`: a `Vec` message always succeeds and becomes
+  the CBC encryption of its PKCS#7 padding;
+- `aes_cbc_decrypting_key_decrypt_spec`: whole blocks decrypt, and the message
+  is returned if the PKCS#7 padding is good; otherwise decryption fails with
+  the buffer zeroed, and a buffer of no or partial blocks fails unchanged.
+
+On x86_64, `Rind/X86_64/AesModesApi.lean` proves the same over
+`Rind/X86_64/AesModesLow.lean`, whose axioms `hw_ctr32_spec`,
+`hw_cbc_encrypt_spec`, and `hw_cbc_decrypt_spec` restate HOL Light theorems
+of aws-lc's `aes_hw_ctr32_encrypt_blocks` and `aes_hw_cbc_encrypt` that are
+pending: `hol-light/x86_64/aes_hw_cbc_encrypt.ml` proves CBC encryption and
+most of decryption, and CTR has no proof yet. Until they are, those theorems are not in
+`Rind/X86_64/Axioms.lean` and earn no ✓, which [the AES modes
+quest](/quest/m4/verified/aes-modes.md) owns.
+
+AES key wrap on both targets, from `key_wrap::AesKek` to the block cipher and
+its inverse, in `Rind/<Arch>/AesKw.lean`, against `Rind/AesKw.lean`'s SP 800-38F
+transliteration, whose `#guard`s check RFC 3394's and RFC 5649's vectors:
+
+- `kek_new_spec`: a key that is not the algorithm's length is refused, and
+  otherwise the KEK holds it;
+- `kek_wrap_spec` and `kek_unwrap_spec`: KW-AE and KW-AD. A wrap refuses keys
+  under two semiblocks, not whole semiblocks, or an output of the wrong
+  length; an unwrap refuses input under three semiblocks or not whole
+  semiblocks with `DecryptFailed`, and a key buffer of the wrong length with
+  `WrongLength`, both leaving the buffer as it was, and returns
+  `DecryptFailed` with the buffer zeroed when KW-AD's integrity check fails;
+- `kek_wrap_padded_spec` and `kek_unwrap_padded_spec`: KWP-AE and KWP-AD. A
+  wrap takes any key of 1 to 2^32 - 1 bytes, aligned or not, into an output of
+  the key padded to whole semiblocks plus one, and refuses anything else; an
+  unwrap refuses as KW's does from two semiblocks of input, and zeroes the
+  buffer when KWP-AD's integrity check fails.
+
+The unwraps' integrity check rests on the constant-time compares'
+`Rind/<Arch>/CtEqual.lean` contracts; the rest rests on nothing.
 
 AES-128-GCM, AES-192-GCM, and AES-256-GCM on x86_64 CPUs with AES-NI and
 PCLMULQDQ, from the AEAD API's `Key` down to HACL*'s Vale AES-GCM routines on
@@ -774,7 +832,7 @@ mentions `Verification::Rsa(` or builds an `Rsa` outside them.
   `Rind/ValeBytes.lean`, and `Rind/Gf128.lean`: Vale's AES and GF(2^128) specs
   and their lemmas, and `Rind/AesInverse.lean`, FIPS 197's equivalent inverse
   cipher.
-- `Rind/X86_64/{Dispatch,DigestDispatch,DigestAlgorithm,SignatureDispatch,AeadDispatch,HmacDispatch,GcmKey}.lean`:
+- `Rind/X86_64/{Dispatch,QuicDispatch,DigestDispatch,DigestAlgorithm,SignatureDispatch,AeadDispatch,HmacDispatch,GcmKey}.lean`:
   the hand models of the agreement, header-protection, digest, signature,
   AEAD, and HMAC APIs' dispatch, and of `aead::gcm::Key` over the AEAD model; `Rind/X86_64/HkdfExpand.lean` and
   `Rind/X86_64/Kdf/{TypesExternal,FunsExternal}.lean`, of what the HKDF and
@@ -788,7 +846,12 @@ mentions `Verification::Rsa(` or builds an `Rsa` outside them.
   header-protection keys; `Rind/Aes.lean`, FIPS 197's AES on bytes and its
   key schedule word by word; `Rind/<Arch>/AesKey.lean`, each target's key
   expansion and block cipher on the AES instructions;
-  `Rind/X86_64/AesCipher.lean`, `cipher::Aes` and AES header protection, and
+  `Rind/X86_64/AesCipher.lean`, `cipher::Aes` and AES header protection;
+  `Rind/AesModes.lean`, `Rind/AesModesBytes.lean`, and `Rind/AesKw.lean`,
+  SP 800-38A's CTR and CBC and SP 800-38F's key wrap on bytes, and
+  `Rind/<Arch>/{AesModesLow,AesModesApi,AesKw}.lean`, their proofs;
+  `hol-light/x86_64/aes_hw_spec.ml`, AES on the AES-NI instructions and CTR32's
+  counter blocks, for the x86_64 routines' HOL Light proofs; and
   `Rind/X86_64/{Ghash,PartialBlock,AesGcmGlue,AesGcm,GhashClmul,AesGcmBy8,AesGcmClmul,AesGcmAead,AesGcmAny}.lean`:
   the AES-GCM proof, on x86_64 alone; `Rind/X86_64/GcmKey.lean`, the hand model
   of `aead::gcm::Key` and its proofs; `Rind/X86_64/ChaCha20Poly1305.lean`, the

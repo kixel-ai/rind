@@ -21,4 +21,3 @@ Route: prove each against the HOL Light or Lean specs the x86_64 and aarch64 que
 ## Required
 
 - [An AArch32 instruction model checks armv7's assembly](/quest/m5/verified-armv7/model.md) - the model the proofs run on
-- [armv7 runs the Rust proofs](/quest/m5/verified-armv7/prove.md) - the armv7 translation these routines' theorems compose with

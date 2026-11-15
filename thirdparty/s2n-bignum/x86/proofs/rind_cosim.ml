@@ -19,7 +19,7 @@
    the model's is symbolic, except as PUSH m64's base, which runs between
    two LEAs that keep it within the harness's buffer. The F3 prefix the fork
    lets RET take is not cosimulated, since RET leaves the simulator's
-   harness. *)
+   harness, nor is STOSB, whose model allows every next state. *)
 
 loadt "x86/proofs/simulator.ml";;
 
@@ -35,6 +35,12 @@ let sse ?(w=0) opcode md reg rm tail =
   let pre = if w = 1 || reg > 7 || rm > 7 || rnd 4 = 0
             then [rex w reg rm] else [] in
   [0x66] @ pre @ opcode @ [modrm md reg rm] @ tail;;
+
+(* [REX] <opcode> with ModRM fields reg and rm and no 66 prefix, the REX
+   byte also present at random where nothing needs it. *)
+let ps opcode md reg rm tail =
+  let pre = if reg > 7 || rm > 7 || rnd 4 = 0 then [rex 0 reg rm] else [] in
+  pre @ opcode @ [modrm md reg rm] @ tail;;
 
 (* [REX] 0F 38 <opcode> with ModRM fields reg and rm, as the SHA extensions
    encode them, without the 66 prefix. *)
@@ -80,6 +86,7 @@ let register_forms = [
                [imm ()]);                                      (* RORX *)
   (fun () -> vexp 0 2 (rnd 2) (gpr ()) 0 0xf2 3 (gpr ()) (gpr ())
                []);                                            (* ANDN *)
+  (fun () -> ps [0x0f; 0x57] 3 (rnd 16) (rnd 16) []);          (* XORPS *)
 ];;
 
 (* Memory forms on [rsp + d], run as cosimulate_instructions (Some 0) 32:
@@ -111,6 +118,8 @@ let memory_forms = [
                (mem (rnd 128) @ [imm ()]));                    (* RORX m *)
   (fun () -> vexp 0 2 (rnd 2) (gpr ()) 0 0xf2 1 (gpr ()) 4
                (mem (rnd 128)));                               (* ANDN m *)
+  (fun () -> ps [0x0f; 0x57] 1 (rnd 16) 4 (mem (aligned ())));    (* XORPS *)
+  (fun () -> ps [0x0f; 0x18] 1 1 4 (mem (rnd 128)));              (* PREFETCHT0 *)
 ];;
 
 (* PUSH m64, FF /6, of [rsp + d] between LEA rsp, [rsp + 16] and LEA rsp,
