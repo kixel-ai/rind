@@ -416,4 +416,55 @@ theorem mask_chunk (K : BitVec 512) (C : List U8) (hl : C.length ≤ 64) :
     simp only [h, ite_true, decide_true]
   · simp [h]
 
+/-! ## The tail -/
+
+/-- `PSHUFB` by `BYTESWAP_512` of a 64-byte load: each block's bytes reversed. -/
+theorem shuffle_load512 (Y : List U8) :
+    core.core_arch.x86.avx512bw._mm512_shuffle_epi8 (loadBytes512 Y) 0x303132333435363738393a3b3c3d3e3f202122232425262728292a2b2c2d2e2f101112131415161718191a1b1c1d1e1f000102030405060708090a0b0c0d0e0f#512 =
+      ok (ofLanes128 fun j => blockBE ((Y.drop (16 * j)).take 16)) := by
+  rw [loadBytes512, ← ofLanes128_lane128 0x303132333435363738393a3b3c3d3e3f202122232425262728292a2b2c2d2e2f101112131415161718191a1b1c1d1e1f000102030405060708090a0b0c0d0e0f#512, pshufb512_eq]
+  exact congrArg ok (ofLanes128_ext _ _ fun j hj => by
+    rw [pshufb_congr _ _ _ (lanes_byteswap j hj), pshufb_byteswap, blockBE])
+
+/-- A tail chunk `C`'s output, from its counters' AES before the last round,
+`f`, and the last round key `l`. -/
+def tailOut (l : BitVec 128) (f : Nat → BitVec 128) (C : List U8) : List U8 :=
+  (bytes512 ((ofLanes128 fun j => subBytes (shiftRows (f j)) ^^^ l) ^^^
+    loadBytes512 (C ++ List.replicate (64 - C.length) 0#u8))).take C.length
+
+theorem length_tailOut (l : BitVec 128) (f : Nat → BitVec 128) (C : List U8) (hC : C.length ≤ 64) :
+    (tailOut l f C).length = C.length := by
+  rw [tailOut, List.length_take, length_bytes512, Nat.min_eq_left hC]
+
+/-- The vector `_cipher_avx512` hashes for a tail chunk `X`, its ciphertext or
+plaintext: its blocks zero-padded, their bytes reversed. -/
+def tailVec (X : List U8) : BitVec 512 :=
+  ofLanes128 fun j => blockBE (((X ++ List.replicate (64 - X.length) 0#u8).drop (16 * j)).take 16)
+
+theorem tail_loop_eq (ENC : Bool) (l : BitVec 128) : ∀ (fs : List (Nat → BitVec 128)) (chunks : List (List U8)),
+    chunks.length ≤ fs.length → (∀ C ∈ chunks, C.length ≤ 64) →
+    low.x86_64.aes_gcm.by16_tail_loop ENC (ofLanes128 fun _ => l) (fs.map ofLanes128) chunks =
+      ok ((fs.zip chunks).map (fun p => tailVec (if ENC then tailOut l p.1 p.2 else p.2)),
+        (fs.zip chunks).flatMap fun p => tailOut l p.1 p.2)
+  | [], [], _, _ => rfl
+  | _ :: _, [], _, _ => rfl
+  | [], _ :: _, h, _ => absurd h (by simp)
+  | f :: fs, C :: cs, h, hc => by
+    have hC : C.length ≤ 64 := hc C (by simp)
+    have hm := mask_chunk (ofLanes128 fun j => subBytes (shiftRows (f j)) ^^^ l) C hC
+    have hm' : (ofLanes128 fun j => ofBytes fun i => if (BitVec.allOnes 64 >>> (64 - C.length)).getLsbD (16 * j + i)
+          then byte (subBytes (shiftRows (f j)) ^^^ l) i else 0) ^^^
+        loadBytes512 (C ++ List.replicate (64 - C.length) 0#u8) =
+        loadBytes512 (tailOut l f C ++ List.replicate (64 - C.length) 0#u8) := by
+      rw [tailOut, ← hm]
+      exact congrArg (· ^^^ _) (ofLanes128_ext _ _ fun j hj => by rw [lane128_ofLanes128 _ _ hj])
+    have ht := length_tailOut l f C hC
+    rw [List.map_cons, low.x86_64.aes_gcm.by16_tail_loop]
+    simp only [aesenclast512_eq, bind_ok, maskz512_eq, core.core_arch.x86.avx512f._mm512_xor_epi32, hm',
+      low.x86_64.aes_gcm.BYTESWAP_512, tail_loop_eq ENC l fs cs (by simp at h; omega) (fun C h => hc C (by simp [h])),
+      uncurry_apply_pair]
+    rw [bytes512_load512 _ (by rw [List.length_append, List.length_replicate, ht]; omega), List.take_left' ht]
+    cases ENC <;> simp only [ite_true, Bool.false_eq_true, ite_false, shuffle_load512, bind_ok, List.zip_cons_cons,
+      List.map_cons, List.flatMap_cons, tailVec, ht]
+
 end rind.x86_64
