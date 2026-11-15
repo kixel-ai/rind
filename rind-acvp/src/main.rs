@@ -382,9 +382,6 @@ fn encrypting(direction: &str) -> Result<bool> {
     }
 }
 
-/// `AES/encrypt`: key, blocks, and iterations, to the blocks encrypted that
-/// many times, and the blocks before the last, as aws-lc's wrapper runs the
-/// Monte Carlo test's inner loop. The module's block cipher only encrypts.
 /// An AES request's iteration count: 1 for a known-answer test, or the
 /// Monte Carlo test's 1000, the only counts `acvptool` sends for AES.
 fn aes_iterations(bytes: &[u8]) -> Result<u32> {
@@ -394,6 +391,9 @@ fn aes_iterations(bytes: &[u8]) -> Result<u32> {
     }
 }
 
+/// `AES/encrypt`: key, blocks, and iterations, to the blocks encrypted that
+/// many times, and the blocks before the last, as aws-lc's wrapper runs the
+/// Monte Carlo test's inner loop. The module's block cipher only encrypts.
 fn aes_ecb(args: &[Vec<u8>]) -> Result<Reply> {
     let [key, input, iterations] = take(args)?;
     let aes = cipher::Aes::new(aes(key)?, key)?;
