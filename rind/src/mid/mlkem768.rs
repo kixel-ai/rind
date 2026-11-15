@@ -64,7 +64,10 @@ impl DecapKey {
     }
 
     /// Decode a key encoded as [`Self::as_bytes()`] encodes it, or `None` if
-    /// its `H(ek)` is not that of its encapsulation key.
+    /// its `H(ek)` is not that of its encapsulation key. Like FIPS 203's
+    /// decapsulation input check (section 7.3), it checks nothing else: an
+    /// embedded encapsulation key that fails its modulus check decodes
+    /// reduced mod q.
     ///
     /// This is used for testing, and by the FIPS module's ACVP build: rind
     /// generates keys only from seeds.
@@ -73,7 +76,7 @@ impl DecapKey {
         let (dk_pke, rest) = dk.split_at(K * 384);
         let (ek, rest) = rest.split_at(K * 384 + 32);
         let (h_ek, z) = rest.split_at(32);
-        let ek_pke = EncapKey::from_bytes(ek.try_into().unwrap()).ok()?;
+        let ek_pke = EncapKey::from_bytes_unchecked(ek.try_into().unwrap());
         (ek_pke.h_ek == h_ek).then(|| Self {
             ek_pke,
             dk_pke: dk_pke.try_into().unwrap(),
@@ -245,18 +248,38 @@ impl EncapKey {
         if t_hat != t_hat_coeffs.to_bytes() {
             return Err(KeyFormatError::MlKemModulus.into());
         }
+        Ok(Self::from_decoded(input, rho, t_hat_coeffs))
+    }
 
+    /// Decode `input` without its modulus check, as decapsulation's input
+    /// check (FIPS 203, section 7.3) has it: `ByteDecode_12` reduces each
+    /// coefficient mod q, and `H(ek)` stays the hash of `input` as given.
+    #[cfg(any(test, rind_fips))]
+    #[inline(never)]
+    fn from_bytes_unchecked(input: &[u8; K * 384 + 32]) -> Self {
+        let _entry = low::Entry::new_public();
+        let _mcdt = low::Mcdt::enter();
+        let (t_hat, rho) = input.split_at(K * 384);
+        let t_hat_coeffs = Coeffs::from_bytes(t_hat.try_into().unwrap());
+        Self::from_decoded(input, rho.try_into().unwrap(), t_hat_coeffs)
+    }
+
+    fn from_decoded(
+        input: &[u8; K * 384 + 32],
+        rho: [u8; 32],
+        t_hat_coeffs: Coeffs<{ K * N }, Ntt>,
+    ) -> Self {
         let transpose_a_hat = Coeffs::sample_poly_transposed(&rho);
 
         let mut h = sha3::Sha3_256Context::new();
         h.update(input);
 
-        Ok(Self {
+        Self {
             h_ek: h.finish(),
             rho,
             t_hat_coeffs,
             transpose_a_hat,
-        })
+        }
     }
 
     /// Encapsulate a random shared secret, returning the shared secret and a ciphertext.
@@ -877,6 +900,25 @@ mod tests {
             EncapKey::from_bytes(&[0xffu8; 1184]).err(),
             Some(KeyFormatError::MlKemModulus.into())
         );
+    }
+
+    #[test]
+    fn decaps_input_check_skips_the_modulus_check() {
+        // A decapsulation key whose embedded encapsulation key holds the
+        // coefficient q, with that key's hash: FIPS 203's section 7.3 checks
+        // only the hash, and ByteDecode_12 reduces q to 0.
+        let mut dk = DecapKey::keygen_internal(&[0x5a; 64]).as_bytes();
+        dk[K * 384] = 0x01;
+        dk[K * 384 + 1] = (dk[K * 384 + 1] & 0xf0) | 0x0d;
+        let ek: &[u8; K * 384 + 32] = dk[K * 384..K * 768 + 32].try_into().unwrap();
+        assert!(EncapKey::from_bytes(ek).is_err());
+        let mut h = sha3::Sha3_256Context::new();
+        h.update(ek);
+        let h = h.finish();
+        dk[K * 768 + 32..K * 768 + 64].copy_from_slice(&h);
+        let key = DecapKey::from_bytes(&dk).unwrap();
+        assert_eq!(key.ek_pke.h_ek, h);
+        assert_eq!(key.ek_pke.t_hat_coeffs.0[0], 0);
     }
 
     // Valgrind hides SHA3, so `admin/ctgrind` never reaches the Keccak

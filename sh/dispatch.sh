@@ -381,7 +381,9 @@ step() {
                 if [[ -n "$all" ]] || grep -q '^rind-fips/' "$changed"; then
                     run cargo nextest run -p rind-fips --features __break_tests --locked
                 fi
-                if [[ -n "$all" ]] || grep -qE '^(rind-fips|rind-acvp|thirdparty/acvp)/' "$changed"; then
+                # Selected whenever rind or the module it builds changes,
+                # since its answers come from rind's services.
+                if printf '%s\n' "${packages[@]}" | grep -qxE 'rind-acvp|--workspace'; then
                     run cargo nextest run -p rind-acvp --features module --locked
                 fi
             fi
