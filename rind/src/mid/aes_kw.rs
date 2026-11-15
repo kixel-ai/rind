@@ -88,7 +88,12 @@ impl AesKek {
         key: &'a mut [u8],
     ) -> Result<&'a mut [u8], Error> {
         match mode {
-            Mode::Kw => self.unwrap(wrapped, key).map(|()| key),
+            // A `match` rather than `map` with a closure that returns the
+            // `&mut` key, whose translation `proofs/` cannot check.
+            Mode::Kw => match self.unwrap(wrapped, key) {
+                Ok(()) => Ok(key),
+                Err(err) => Err(err),
+            },
             Mode::Kwp => self.unwrap_padded(wrapped, key),
         }
     }
