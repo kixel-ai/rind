@@ -11,7 +11,8 @@
 # target's own `ShaBlocks.lean` and `HashAxioms.lean`. The portable backend,
 # translated for x86_64 into `proofs/Rind/Portable/`, takes the hash, HMAC,
 # HKDF, PBKDF2, and ChaCha20 header protection proofs the same way, over
-# HACL*'s SHA-2 instead of aws-lc's.
+# HACL*'s SHA-2 instead of aws-lc's. So does armv7, its header-protection model
+# and ChaCha20 proof.
 #
 # Usage: admin/prove [bytes | hol-light [<arch>] | cosim | lean | session <arch> [<file>]]
 #
@@ -706,12 +707,12 @@ items rind/src/high/agreement.rs 'pub struct Algorithm ' 'pub static X25519:' \
     'pub static ECDH_P256:' 'pub static ECDH_P384:' 'pub static ECDH_P521:' 'pub struct PrivateKey {' \
     'impl PrivateKey {' 'struct Keyed<' 'struct Ops<' 'impl<K: Agree> Keyed<K> {' >"$out/agreement.rs"
 items rind/src/low/generic/zeroise.rs 'pub(crate) struct ZeroableRef<' 'impl<T> ZeroableRef<T> {' >"$out/zeroise.rs"
-items rind/src/aead/quic.rs 'pub struct Algorithm ' 'impl Algorithm {' 'pub static AES_128:' \
-    'pub static AES_256:' 'pub static CHACHA20:' 'impl HeaderProtectionKey {' 'struct Masker<' 'type MaskFn<' \
-    'impl<C: Mask> Masker<C> {' >"$out/quic.rs"
+items rind/src/aead/quic.rs 'pub struct Algorithm ' 'impl Algorithm {' 'pub static CHACHA20:' \
+    'impl HeaderProtectionKey {' 'struct Masker<' 'type MaskFn<' 'impl<C: Mask> Masker<C> {' >"$out/quic.rs"
+items rind/src/aead/quic.rs 'pub static AES_128:' 'pub static AES_256:' >"$out/quic-aes.rs"
 items rind/src/cipher.rs 'pub static AES_128:' 'pub static AES_256:' >"$out/cipher.rs"
-check_quote X86_64/Dispatch cat "$out/agreement.rs" "$out/zeroise.rs"
-check_quote X86_64/QuicDispatch cat "$out/quic.rs" "$out/zeroise.rs" "$out/cipher.rs"
+check_quote X86_64/Dispatch cat "$out/agreement.rs" "$out/zeroise.rs" "$out/quic-aes.rs" "$out/cipher.rs"
+check_quote X86_64/QuicDispatch cat "$out/zeroise.rs" "$out/quic.rs"
 p256_items() {
     items rind/src/mid/p256.rs '    pub(crate) fn new_random(' '    pub(crate) fn generate(rng: &mut dyn'
     items rind/src/mid/rng.rs 'impl RandomSource for SystemRandom {'
@@ -828,8 +829,9 @@ only_quoted() {
 }
 only_quoted rind/src/high/agreement.rs "$out/agreement.rs" '\bOps\b'
 only_quoted rind/src/high/agreement.rs "$out/agreement.rs" '= Algorithm \{'
-only_quoted rind/src/aead/quic.rs "$out/quic.rs" 'Masker(<[^>]*>)? *\{'
-only_quoted rind/src/aead/quic.rs "$out/quic.rs" '\.mask *=[^=]'
+cat "$out/quic.rs" "$out/quic-aes.rs" >"$out/quic-all.rs"
+only_quoted rind/src/aead/quic.rs "$out/quic-all.rs" 'Masker(<[^>]*>)? *\{'
+only_quoted rind/src/aead/quic.rs "$out/quic-all.rs" '\.mask *=[^=]'
 only_quoted rind/src/high/digest.rs "$out/DigestDispatch.rs" '\bOps\b'
 only_quoted rind/src/high/digest.rs "$out/DigestAlgorithm.rs" '= Algorithm \{'
 only_quoted rind/src/high/signature.rs "$out/SignatureDispatch.rs" 'Verification::Ed25519\('
@@ -1014,6 +1016,12 @@ extract() {
     (cd rind && charon cargo --preset=aeneas "$@" \
         --dest-file "$PWD/../$out/${dir,,}.llbc" \
         -- -p rind --lib --target "$arch-unknown-linux-gnu")
+    to_lean "$dir"
+}
+
+# Translates `$out/<dir, lowercased>.llbc` into `proofs/Rind/<dir>/{Types,Funs}.lean`.
+to_lean() {
+    local dir=$1
     rm -rf "$out/lean"
     # x86_64's generator table rows are 512-word literals, which elaborate
     # past Aeneas's default recursion depth of 2048.
@@ -1021,6 +1029,29 @@ extract() {
         -no-progress-bar -max-recdepth 4096 -dest "$out/lean" -subdir "Rind/$dir" \
         -namespace "rind.${dir,,}" "$out/${dir,,}.llbc"
     cp "$out/lean/Rind/$dir/Types.lean" "$out/lean/Rind/$dir/Funs.lean" "proofs/Rind/$dir/"
+}
+
+# armv7's translation reaches only the header-protection API, ChaCha20's the
+# one armv7 path that is Rust down to code a proof covers: the rest of armv7's
+# operations run assembly, which no instruction model covers yet, or Rust its
+# own proof quests translate. `Rind/Armv7/{Types,Funs}External.lean` define
+# what it leaves opaque.
+extract_armv7() {
+    (cd rind && charon cargo --preset=aeneas \
+        --start-from '{impl crate::aead::quic::Mask for crate::mid::chacha20::ChaCha20}' \
+        --start-from '{impl crate::aead::quic::Mask for crate::mid::aes::Aes}' \
+        --start-from crate::aead::quic::HeaderProtectionKey \
+        --start-from crate::aead::quic::AlgorithmId \
+        --start-from crate::mid::chacha20::ChaCha20::new \
+        --start-from crate::error::Error \
+        --opaque crate::aead::quic::Masker \
+        --opaque crate::mid::aes \
+        --opaque crate::low \
+        --include crate::low::ct \
+        --include crate::low::generic::chacha20 \
+        --dest-file "$PWD/../$out/armv7.llbc" \
+        -- -p rind --lib --target armv7-unknown-linux-gnueabihf)
+    to_lean Armv7
 }
 
 # HKDF and PBKDF2, in a second translation above the HMAC API, whose dispatch
@@ -1069,6 +1100,13 @@ extract_kdf() {
     sed 's/^  markerCopyInst := core.num.niche_types.NonZeroU32Inner.Insts.CoreMarkerCopy$/  markerCopyInst1 := core.num.niche_types.NonZeroU32Inner.Insts.CoreMarkerCopy/' \
         "$out/lean/Rind/$dir/Kdf/Funs.lean" >"proofs/Rind/$dir/Kdf/Funs.lean"
 }
+
+# Charon's builds take target directories of their own, the portable
+# translation's apart from x86_64's: Cargo can reuse a build script's output
+# across builds whose cfgs differ, such as `just check`'s portable cross builds,
+# leaving `rind_backend` naming another backend than the one compiled.
+prove_target=$PWD/target/prove
+export CARGO_TARGET_DIR=$prove_target
 
 extract x86_64 X86_64 "${hashes[@]}" "${assembly[@]}" \
     --include crate::low::x86_64::sha512::sha512_compress_blocks \
@@ -1240,6 +1278,7 @@ extract aarch64 Aarch64 "${hashes[@]}" "${assembly[@]}" \
 # are x86_64's, as AES-GCM's are.
 extract_kdf x86_64 X86_64 --start-from '{impl core::convert::From for crate::aead::Key}'
 extract_kdf aarch64 Aarch64
+extract_armv7
 
 # The portable backend, which builds only under the cfg CI's portable jobs
 # build with, here on x86_64: the hashes, down to HACL*'s SHA-2 block
@@ -1249,13 +1288,14 @@ extract_kdf aarch64 Aarch64
 # `black_box`. The error type and `into_public`, which the other targets reach
 # through their curves, are start points of their own here.
 portable_cfg='--cfg rind_portable --cfg curve25519_dalek_backend="serial"'
-RUSTFLAGS=$portable_cfg extract x86_64 Portable "${hashes[@]}" --include crate::low::portable::sha \
+portable_target=$prove_target-portable
+CARGO_TARGET_DIR=$portable_target RUSTFLAGS=$portable_cfg extract x86_64 Portable "${hashes[@]}" --include crate::low::portable::sha \
     --start-from crate::error::Error --start-from crate::low::ct::into_public \
     --start-from crate::low::portable::keccak::sha3_keccak4_f1600 \
     --start-from crate::low::portable::keccak::sha3_keccak_nof4_f1600 \
     --include crate::low::portable::keccak \
     --opaque crate::mid::sha3
-RUSTFLAGS=$portable_cfg extract_kdf x86_64 Portable
+CARGO_TARGET_DIR=$portable_target RUSTFLAGS=$portable_cfg extract_kdf x86_64 Portable
 
 mkdir -p proofs/Rind/Aarch64/Kdf
 # P-256's generator multiplication and its table differ per target, so each
@@ -1281,6 +1321,11 @@ for file in QuicDispatch DigestAlgorithm DigestDispatch Sha512 ChaCha20 Blockwis
 done
 sed -i '/Rind.Portable.AeadDispatch/d' proofs/Rind/Portable/Kdf/TypesExternal.lean
 sed -i '/-- BEGIN aead/,/-- END aead/d' proofs/Rind/Portable/Kdf/FunsExternal.lean
+# armv7's header-protection model and ChaCha20 proof are x86_64's with the
+# target renamed.
+for file in QuicDispatch ChaCha20; do
+    sed 's/X86_64/Armv7/g; s/x86_64/armv7/g' "proofs/Rind/X86_64/$file.lean" >"proofs/Rind/Armv7/$file.lean"
+done
 
 [ "${PROVE_TRANSLATE_ONLY:-}" ] && exit 0
 # Each hand model of a CPU intrinsic, a `core.core_arch` definition but its

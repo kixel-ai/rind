@@ -1,5 +1,5 @@
 import Rind.X86_64.AesKey
-import Rind.X86_64.QuicDispatch
+import Rind.X86_64.Dispatch
 open Aeneas Aeneas.Std Result rind.vale rind.simd
 
 /-!

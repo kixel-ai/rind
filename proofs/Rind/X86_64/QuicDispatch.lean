@@ -12,6 +12,18 @@ and this file models the Rust above them. `admin/prove` fails unless these
 quotes are still that Rust, so a change to it is a change to this model:
 
 ```rust
+pub(crate) struct ZeroableRef<T: 'static>(Option<&'static T>);
+
+impl<T> ZeroableRef<T> {
+    pub(crate) const fn new(value: &'static T) -> Self {
+        Self(Some(value))
+    }
+
+    pub(crate) fn get(&self) -> &'static T {
+        self.0.expect("wiped only on drop")
+    }
+}
+
 pub struct Algorithm {
     id: AlgorithmId,
     // The only path to the cipher's code, so a binary links only the ciphers
@@ -28,16 +40,6 @@ impl Algorithm {
         }
     }
 }
-
-pub static AES_128: Algorithm = Algorithm {
-    id: AlgorithmId::Aes128,
-    new: |key| Ok(Key::Aes(Masker::new(Aes::new(&cipher::AES_128, key)?))),
-};
-
-pub static AES_256: Algorithm = Algorithm {
-    id: AlgorithmId::Aes256,
-    new: |key| Ok(Key::Aes(Masker::new(Aes::new(&cipher::AES_256, key)?))),
-};
 
 pub static CHACHA20: Algorithm = Algorithm {
     id: AlgorithmId::ChaCha20,
@@ -86,25 +88,6 @@ impl<C: Mask> Masker<C> {
 
 ```
 
-```rust
-pub(crate) struct ZeroableRef<T: 'static>(Option<&'static T>);
-
-impl<T> ZeroableRef<T> {
-    pub(crate) const fn new(value: &'static T) -> Self {
-        Self(Some(value))
-    }
-
-    pub(crate) fn get(&self) -> &'static T {
-        self.0.expect("wiped only on drop")
-    }
-}
-
-pub static AES_128: Algorithm = Algorithm { key_len: 16 };
-
-pub static AES_256: Algorithm = Algorithm { key_len: 32 };
-
-```
-
 The model departs from the Rust in three ways, and adds no axiom:
 
 - `Masker<C>` is its key, and `Masker::mask` calls `C`'s `mask` directly:
@@ -115,9 +98,11 @@ The model departs from the Rust in three ways, and adds no axiom:
 - `?` is a `match`, since each error it passes on is already an `Error`, and
   `map_err(|_| Error::WrongLength)?` a `match` returning that error.
 
-Drops are not modelled, as everywhere in the translation. The last two
-quotes are `cipher`'s AES statics, which the AES header-protection statics
-name; `cipher::Algorithm` itself is translated.
+Drops are not modelled, as everywhere in the translation. Of the
+header-protection statics, only `CHACHA20` is here: each target's
+`Dispatch.lean`, where its translation reaches AES key setup (armv7's does
+not), models the AES ones. `admin/prove` writes the aarch64, armv7, and
+portable models from this file by renaming the target.
 -/
 
 namespace rind.x86_64
@@ -141,34 +126,6 @@ def aead.quic.Masker.new {C : Type} (key : C) : Result (aead.quic.Masker C) :=
 def aead.quic.Masker.mask {C : Type} (MaskInst : aead.quic.Mask C) (self : aead.quic.Masker C)
     (sample : Array Std.U8 16#usize) : Result (Array Std.U8 5#usize) :=
   MaskInst.mask self sample
-
-/-- `cipher`'s `AES_128` static. -/
-def cipher.AES_128 : cipher.Algorithm := { key_len := 16#usize }
-
-/-- `cipher`'s `AES_256` static. -/
-def cipher.AES_256 : cipher.Algorithm := { key_len := 32#usize }
-
-/-- The `AES_128` static. -/
-def aead.quic.AES_128 : aead.quic.Algorithm where
-  id := .Aes128
-  new key := do
-    let r ← mid.aes.Aes.new cipher.AES_128 key
-    match r with
-    | .Ok a =>
-      let m ← aead.quic.Masker.new a
-      ok (.Ok (.Aes m))
-    | .Err e => ok (.Err e)
-
-/-- The `AES_256` static. -/
-def aead.quic.AES_256 : aead.quic.Algorithm where
-  id := .Aes256
-  new key := do
-    let r ← mid.aes.Aes.new cipher.AES_256 key
-    match r with
-    | .Ok a =>
-      let m ← aead.quic.Masker.new a
-      ok (.Ok (.Aes m))
-    | .Err e => ok (.Err e)
 
 /-- The `CHACHA20` static. -/
 def aead.quic.CHACHA20 : aead.quic.Algorithm where

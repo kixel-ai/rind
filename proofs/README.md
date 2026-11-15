@@ -282,8 +282,9 @@ and P-256's and P-521's, in `Rind/X86_64/PointSelect.lean`:
 They assume `RunsSelect`: `HaveAvx2::check` returns, as `Runs` assumes of
 `HaveBmi2Adx::check`. aarch64's NEON select has no model yet.
 
-ChaCha20 QUIC header protection on x86_64, aarch64, and the portable backend,
-from `HeaderProtectionKey` to HACL*'s rounds, in `Rind/X86_64/ChaCha20.lean`:
+ChaCha20 QUIC header protection on x86_64, aarch64, armv7, and the portable
+backend, from `HeaderProtectionKey` to HACL*'s rounds, in
+`Rind/X86_64/ChaCha20.lean`, which `admin/prove` also writes for the others:
 
 - `chacha20_new`: a key that is not 32 bytes is refused, and otherwise the
   key holds its bytes;
@@ -294,7 +295,8 @@ from `HeaderProtectionKey` to HACL*'s rounds, in `Rind/X86_64/ChaCha20.lean`:
 HACL*'s rounds are Rust, so they are translated and proven with the rest, and
 no axiom stands in for HACL*'s proof of them. `chacha20_mask` assumes only
 `RunsChaCha20`, that the entry guard admits it, which each target's `Runs`
-implies.
+implies. armv7's translation reaches only this API: its other operations run
+assembly or Rust that other proofs are still to cover.
 
 Theorems that run an entry guard assume `Runs`: rind's CPU-feature checks
 pass, which no input affects. `Rind/<Arch>/P256Table.lean` proves that each
@@ -399,9 +401,10 @@ from axioms restating the HOL Light proofs of the `asm!` compares below it.
 (`Algorithm`'s `generate` and `load`, and `Keyed`'s `Ops`), and `HeaderProtectionKey` each
 cipher's `Mask` impl (`Algorithm`'s `new` and `Masker`'s `mask`), which Aeneas
 cannot translate. `Rind/X86_64/Dispatch.lean` models the agreement dispatch
-and `Rind/X86_64/QuicDispatch.lean` the header-protection one by hand, in Lean
-definitions beside the Rust they model, with an agreement `Algorithm` as which
-static it is. P-256's key generation draws through a `dyn
+and the AES header-protection statics, and `Rind/X86_64/QuicDispatch.lean` the
+rest of the header-protection dispatch, by hand, in Lean definitions beside
+the Rust they model, with an agreement `Algorithm` as which static it is.
+P-256's key generation draws through a `dyn
 RandomSource`, which Aeneas cannot translate either, and
 `Rind/X86_64/P256Dispatch.lean`, which `admin/prove` also writes for aarch64,
 models it the same way, for `Rind/<Arch>/Dispatch.lean` to call. The signature API's `EcdsaKeyPair` reaches each curve's code, and

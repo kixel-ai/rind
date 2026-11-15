@@ -9,8 +9,8 @@ open Aeneas Aeneas.Std Result rind.spec
 The `chacha20_*` theorems state what the header-protection API returns for
 ChaCha20, in terms of `chacha20.headerProtectionMask`, through the dispatch
 `Rind.X86_64.QuicDispatch` models. HACL*'s rounds are Rust, so they are proven
-here too, and no axiom stands in for them. `admin/prove` writes the aarch64
-proof from this file by renaming the target.
+here too, and no axiom stands in for them. `admin/prove` writes the aarch64,
+armv7, and portable proofs from this file by renaming the target.
 -/
 
 namespace rind.x86_64
