@@ -33,28 +33,27 @@ export const spans = (tokens: Token[]): string =>
 		.join("")
 		.trim();
 
-// The definitions in `source` of the reference links `tokens` use, so a fragment
-// of it reads on its own: the tag of `[text][tag]`, `[tag][]`, or `[tag]`,
-// normalized as marked keys them.
-export function definitions(tokens: Token[], source: Token[]): string {
-	const tags = new Set(
-		links(tokens)
-			.map((t) => t.raw.match(/^!?\[([\s\S]*?)\](?:\[([^\]]*)\])?$/))
-			.filter((m) => m !== null)
-			.map((m) => (m[2] || m[1]).trim().replace(/\s+/g, " ").toLowerCase()),
-	);
-	return source
-		.filter((t): t is Tokens.Def => t.type === "def" && tags.has(t.tag))
-		.map((t) => t.raw.trim())
+// The definitions in `source`, wherever it nests them, of the links `tokens`
+// resolve, so a fragment of it reads on its own. They are matched by target, so
+// no label needs parsing; one an inline link happens to share is harmless.
+export function definitions(tokens: Token[], source: TokensList): string {
+	const targets = new Set(links(tokens).map((t) => target(t.href, t.title)));
+	return Object.entries(source.links)
+		.filter(([, def]) => targets.has(target(def.href, def.title)))
+		.map(([tag, def]) => `[${tag}]: ${target(def.href, def.title)}`)
 		.join("\n");
 }
 
-// A Markdown link to `href`, which may hold any character: one with spaces,
-// parentheses, or angle brackets goes between escaped angle brackets.
-export function link(label: string, href: string, title?: string | null): string {
+// A link's destination and title as Markdown writes them: a destination with
+// spaces, parentheses, or angle brackets goes between escaped angle brackets.
+function target(href: string, title?: string | null): string {
 	const dest = /[\s()<>\\]/.test(href) ? `<${href.replace(/[<>\\]/g, "\\$&")}>` : href;
-	return `[${label}](${dest}${title ? ` "${title.replace(/["\\]/g, "\\$&")}"` : ""})`;
+	return `${dest}${title ? ` "${title.replace(/["\\]/g, "\\$&")}"` : ""}`;
 }
+
+// A Markdown link to `href`, which may hold any character.
+export const link = (label: string, href: string, title?: string | null): string =>
+	`[${label}](${target(href, title)})`;
 
 // Every link and image in some tokens, nested ones included.
 function links(tokens: Token[]): (Tokens.Link | Tokens.Image)[] {

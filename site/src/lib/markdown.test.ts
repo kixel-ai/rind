@@ -10,6 +10,9 @@ test.each([
 	"[r]",
 	"[a\\]b][r]",
 	"[a][multi  word]",
+	"[Guide][a\\]b]",
+	// A definition the document nests in a blockquote outside the section.
+	"[n]",
 	// Spans and blocks the source wrote in a form a writer could get wrong.
 	"_a*b_ and __a**b__",
 	"[a\\]b](/guide)",
@@ -18,7 +21,9 @@ test.each([
 	"- [ ] todo",
 	"````text\n```\n````",
 ])("%s", (body) => {
-	const doc = lex(`intro\n\n## S\n\n${body}\n\n## T\n\n[r]: https://example.com/r\n[multi word]: </m (x)> "t"\n`);
+	const doc = lex(
+		`> [n]: /nested\n\n## S\n\n${body}\n\n## T\n\n[r]: https://example.com/r\n[multi word]: </m (x)> "t"\n[a\\]b]: /guide\n`,
+	);
 	const quoted = section(doc, "S");
 	const twin = `${blocks(quoted)}\n\n${definitions(quoted, doc)}`;
 	expect(html(lex(twin))).toBe(html(quoted));
