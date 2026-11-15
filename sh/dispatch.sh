@@ -169,9 +169,10 @@ module audit '^(AUDIT\.md$|admin/(audit|import-[a-z-]+|prove-bytes|sync-(acvp|ve
 # COMPATIBILITY.md is generated from the CPU scans.
 module compat '^(COMPATIBILITY\.md$|admin/x86-cpus?(/|$))' \
     tools='python3' fix
-# BENCHMARKS.md is generated from the results, the verified-code table, and
-# the gap decisions, which link the quests that close them.
-module bench '^(BENCHMARKS\.md$|benchmarks/|admin/bench-report|quest/)' \
+# BENCHMARKS.md and the README's comparison are generated from the results,
+# the verified-code table, and the gap decisions, which link the quests that
+# close them.
+module bench '^(BENCHMARKS\.md$|README\.md$|benchmarks/|admin/bench-report|quest/)' \
     tools='python3'
 # Quest documents form one graph, so any change validates the whole tree, as
 # does a bump of the flake-pinned validator.
@@ -391,6 +392,9 @@ step() {
             mapfile -t libs < <(sh/select.sh "$changed" "$all" --lib)
             if ((${#libs[@]} > 0 || ${#packages[@]} == 0)); then
                 run cargo test "${libs[@]}" --locked --doc
+                # A broken or private intra-doc link renders as plain text on
+                # docs.rs.
+                RUSTDOCFLAGS='--deny warnings' run cargo doc "${libs[@]}" --no-deps --locked
             fi
             ;;
         fix:rs)
