@@ -32,67 +32,41 @@ pub(crate) fn p256_point_add_affine(p1: &mut [u64; 12], p2: &[u64; 8]) {
     }
 }
 
-/// aws-lc's `.Lpoly`, the field prime, as the multiplications load it.
+/// aws-lc's `.Lpoly`, the field prime, as the multiplications load it,
+/// running on through the scans' counters to `.LONE_mont`, one in Montgomery
+/// form, at byte 128, which the addition masks with `pand`, and `.Lord` and
+/// `.LordK`, which these routines never read.
 #[repr(C, align(16))]
-struct Poly([u64; 4]);
-
-/// aws-lc's `.LONE_mont`, one in Montgomery form, which the addition masks
-/// with `pand`. It runs on through `.Lord` and `.LordK`, which the import
-/// keeps but these routines never read.
-#[repr(C, align(16))]
-struct OneMont([u64; 9]);
+struct Poly([u8; 200]);
 
 static POLY: Poly = Poly(include!("aws_lc/p256-x86_64-asm.poly.rs"));
-static ONE_MONT: OneMont = OneMont(include!("aws_lc/p256-x86_64-asm.ONE_mont.rs"));
 
-/// Defines a naked function running an imported routine, which reaches its
-/// tables and helpers through the `sym` operands listed. Each takes the System
-/// V ABI on every OS, since its text is aws-lc's ELF and Mach-O flavors.
+/// Defines a naked function running an imported routine, which carries its
+/// field helpers and reaches its table through the `poly` operand. Each takes
+/// the System V ABI on every OS, since its text is aws-lc's ELF and Mach-O
+/// flavors.
 macro_rules! p256_routine {
-    ($name:ident($($arg:ident: $ty:ty),*) { $($op:ident = $sym:ident),* }) => {
+    ($name:ident) => {
         #[unsafe(naked)]
-        unsafe extern "sysv64" fn $name($($arg: $ty),*) {
+        unsafe extern "sysv64" fn $name(r: *mut [u64; 12], a: *const [u64; 12], b: *const [u64; 8]) {
             #[cfg(not(target_vendor = "apple"))]
             core::arch::naked_asm!(
-                include_str!(concat!("aws_lc/", stringify!($name), ".linux.s"))
-                $(, $op = sym $sym)*,
+                include_str!(concat!("aws_lc/", stringify!($name), ".linux.s")),
+                poly = sym POLY,
                 options(att_syntax),
             );
             #[cfg(target_vendor = "apple")]
             core::arch::naked_asm!(
-                include_str!(concat!("aws_lc/", stringify!($name), ".apple.s"))
-                $(, $op = sym $sym)*,
+                include_str!(concat!("aws_lc/", stringify!($name), ".apple.s")),
+                poly = sym POLY,
                 options(att_syntax),
             );
         }
     };
 }
 
-p256_routine!(ecp_nistz256_point_add_affine(r: *mut [u64; 12], a: *const [u64; 12], b: *const [u64; 8]) {
-    ONE_mont = ONE_MONT,
-    ecp_nistz256_mul_montq = ecp_nistz256_mul_montq,
-    ecp_nistz256_sqr_montq = ecp_nistz256_sqr_montq,
-    ecp_nistz256_sub_fromq = ecp_nistz256_sub_fromq,
-    ecp_nistz256_subq = ecp_nistz256_subq
-});
-p256_routine!(ecp_nistz256_point_add_affinex(r: *mut [u64; 12], a: *const [u64; 12], b: *const [u64; 8]) {
-    ONE_mont = ONE_MONT,
-    ecp_nistz256_mul_montx = ecp_nistz256_mul_montx,
-    ecp_nistz256_sqr_montx = ecp_nistz256_sqr_montx,
-    ecp_nistz256_sub_fromx = ecp_nistz256_sub_fromx,
-    ecp_nistz256_subx = ecp_nistz256_subx
-});
-
-// The routines' helpers, which pass their arguments in registers of their
-// own choosing rather than by the C ABI, so only the routines call them.
-p256_routine!(ecp_nistz256_mul_montq() { poly = POLY });
-p256_routine!(ecp_nistz256_sqr_montq() { poly = POLY });
-p256_routine!(ecp_nistz256_sub_fromq() {});
-p256_routine!(ecp_nistz256_subq() {});
-p256_routine!(ecp_nistz256_mul_montx() { poly = POLY });
-p256_routine!(ecp_nistz256_sqr_montx() { poly = POLY });
-p256_routine!(ecp_nistz256_sub_fromx() {});
-p256_routine!(ecp_nistz256_subx() {});
+p256_routine!(ecp_nistz256_point_add_affine);
+p256_routine!(ecp_nistz256_point_add_affinex);
 
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
@@ -114,9 +88,9 @@ mod tests {
             fiat_p256_montgomery_domain_field_element as Fe, fiat_p256_mul, fiat_p256_square,
         };
 
-        let one = Fe(include!("aws_lc/p256-x86_64-asm.ONE_mont.rs")[..4]
-            .try_into()
-            .unwrap());
+        let one = Fe(core::array::from_fn(|i| {
+            u64::from_le_bytes(POLY.0[128 + 8 * i..][..8].try_into().unwrap())
+        }));
         let mul = |a: &Fe, b: &Fe| {
             let mut out = Fe([0; 4]);
             fiat_p256_mul(&mut out, a, b);
@@ -229,7 +203,8 @@ mod tests {
     /// A field element of edge limbs below the prime, `p - 1` and its
     /// neighbours among them.
     fn fe() -> impl Strategy<Value = [u64; 4]> {
-        below(64, POLY.0.to_vec()).prop_map(|x| x.try_into().unwrap())
+        let prime = POLY.0[..32].chunks(8).map(|w| u64::from_le_bytes(w.try_into().unwrap()));
+        below(64, prime.collect()).prop_map(|x| x.try_into().unwrap())
     }
 
     /// A Jacobian `p1` and an affine `p2` of edge coordinates, and each case
