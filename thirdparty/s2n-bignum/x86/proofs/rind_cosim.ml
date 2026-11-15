@@ -186,22 +186,31 @@ do_list (fun (name,pat) ->
    "sha256_msg1",`sha256_msg1 (word a) (word b)`;
    "sha256_msg2",`sha256_msg2 (word a) (word b)`];;
 
+(* Cases the executor lacks a feature for, which cosimulate_instructions
+   skips and reports as agreeing; counted apart so a run says what it did
+   not check. *)
+let rind_cosim_skipped = ref 0;;
+
+let rind_cosim_check (decoded,result) =
+  match cosim_take_skipped () with
+  | [] ->
+      if result then
+        (Format.print_string ("OK: " ^ string_of_term decoded);
+         Format.print_newline ())
+      else failwith ("cosimulation disagrees: " ^ string_of_term decoded)
+  | missing ->
+      incr rind_cosim_skipped;
+      Format.print_string ("SKIPPED, the executor lacks " ^
+        String.concat ", " missing ^ ": " ^ string_of_term decoded);
+      Format.print_newline ();;
+
 let rind_cosim memop add_assum form =
-  let ibytes = form () in
-  let decoded,result = cosimulate_instructions memop add_assum [ibytes] in
-  if result then
-    (Format.print_string ("OK: " ^ string_of_term decoded);
-     Format.print_newline ())
-  else failwith ("cosimulation disagrees: " ^ string_of_term decoded);;
+  rind_cosim_check (cosimulate_instructions memop add_assum [form ()]);;
 
 let rind_cosim_rounds = 20;;
 
 let rind_cosim_push () =
-  let decoded,result = cosimulate_instructions (Some 1) 0 (push_form ()) in
-  if result then
-    (Format.print_string ("OK: " ^ string_of_term decoded);
-     Format.print_newline ())
-  else failwith ("cosimulation disagrees: " ^ string_of_term decoded);;
+  rind_cosim_check (cosimulate_instructions (Some 1) 0 (push_form ()));;
 
 for round = 1 to rind_cosim_rounds do
   do_list (rind_cosim None 0) register_forms;
@@ -209,5 +218,8 @@ for round = 1 to rind_cosim_rounds do
   rind_cosim_push ()
 done;;
 
-Printf.printf "cosimulated %d cases\n"
-  (rind_cosim_rounds * (length register_forms + length memory_forms + 1));;
+let rind_cosim_total =
+  rind_cosim_rounds * (length register_forms + length memory_forms + 1);;
+
+Printf.printf "cosimulated %d cases, skipped %d the executor lacks a feature for\n"
+  (rind_cosim_total - !rind_cosim_skipped) !rind_cosim_skipped;;
