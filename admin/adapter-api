@@ -221,11 +221,13 @@ class Api:
                 if id not in self.supertraits:
                     self.supertraits.add(id)
                     todo.append(id)
-        self.entries, self.public, self.exposed, self.origins, self.route_needs = {}, {}, {}, {}, {}
+        self.entries, self.public, self.exposed, self.origins, self.route_needs, self.later = {}, {}, {}, {}, {}, []
         for name in module:
             root = self.find(root, name)
         seen = set()
         self.walk_module(root, (), items, seen)
+        for item, path in self.later:
+            self.inherit(item, path, seen)
         # Rustdoc indexes an unexported type's impls but not always the type.
         impls = collections.defaultdict(list)
         for id, item in self.index.items():
@@ -471,40 +473,9 @@ class Api:
         elif kind == "trait":
             items = inner["items"]
             if self.exported is not None:
-                # Code bounded by this trait also calls the items of the
-                # supertraits callers cannot name, or that the other side
-                # omits, so they are compared here; not a `pub(crate)` or
-                # narrower one's, which are uncallable outside the crate,
-                # though the supertraits it extends in turn may be callable.
-                # The bounds they carry, such as `Send`, hold for this
-                # trait's implementors too, so they are compared under it.
-                # Each comes with the arguments of the bounds that reach it,
-                # as `A<u8>`'s items differ from `A<u16>`'s.
-                todo, done, implied, inherited = [(b, ()) for b in self.bounds(item["id"])], set(), {}, []
-                while todo:
-                    bound, through = todo.pop()
-                    if not self.unnameable(bound):
-                        continue
-                    id = bound["trait_bound"]["trait"]["id"]
-                    through += (bound["trait_bound"]["trait"]["args"],)
-                    key = (id, json.dumps(through, sort_keys=True))
-                    if key in done:
-                        continue
-                    done.add(key)
-                    if self.index[str(id)]["visibility"] == "public":
-                        inherited += [(i, through) for i in self.index[str(id)]["inner"]["trait"]["items"]]
-                    for b in self.bounds(id):
-                        if self.unnameable(b):
-                            # Its own supertraits' methods stay callable through this bound.
-                            todo.append((b, through))
-                        else:
-                            b = {"through": list(through), "bound": b}
-                            implied.setdefault(json.dumps(b, sort_keys=True), b)
-                if implied:
-                    self.add(path + ("{supertraits}",), "bounds", Unordered(self.sig(list(implied.values()))))
-                for id, through in inherited:
-                    child = self.index[str(id)]
-                    self.visit(child, path + (child["name"],), seen, through=list(through))
+                # Once every public path is known, so an omitted supertrait
+                # is told from a public one.
+                self.later.append((item, path))
             for id in items:
                 child = self.index[str(id)]
                 self.visit(child, path + (child["name"],), seen)
@@ -512,6 +483,43 @@ class Api:
             # the rest, such as one for `[u8]`, are listed only here.
             others = [id for id in inner["implementations"] if not self.local(self.index[str(id)]["inner"]["impl"]["for"])]
             self.walk_impls(others, path, seen, None)
+
+    def inherit(self, item, path, seen):
+        """Compares what trait `item` inherits from supertraits callers cannot name."""
+        # Code bounded by this trait also calls the items of the
+        # supertraits callers cannot name, or that the other side
+        # omits, so they are compared here; not a `pub(crate)` or
+        # narrower one's, which are uncallable outside the crate,
+        # though the supertraits it extends in turn may be callable.
+        # The bounds they carry, such as `Send`, hold for this
+        # trait's implementors too, so they are compared under it.
+        # Each comes with the arguments of the bounds that reach it,
+        # as `A<u8>`'s items differ from `A<u16>`'s.
+        todo, done, implied, inherited = [(b, ()) for b in self.bounds(item["id"])], set(), {}, []
+        while todo:
+            bound, through = todo.pop()
+            if not self.unnameable(bound):
+                continue
+            id = bound["trait_bound"]["trait"]["id"]
+            through += (bound["trait_bound"]["trait"]["args"],)
+            key = (id, json.dumps(through, sort_keys=True))
+            if key in done:
+                continue
+            done.add(key)
+            if self.index[str(id)]["visibility"] == "public":
+                inherited += [(i, through) for i in self.index[str(id)]["inner"]["trait"]["items"]]
+            for b in self.bounds(id):
+                if self.unnameable(b):
+                    # Its own supertraits' methods stay callable through this bound.
+                    todo.append((b, through))
+                else:
+                    b = {"through": list(through), "bound": b}
+                    implied.setdefault(json.dumps(b, sort_keys=True), b)
+        if implied:
+            self.add(path + ("{supertraits}",), "bounds", Unordered(self.sig(list(implied.values()))))
+        for id, through in inherited:
+            child = self.index[str(id)]
+            self.visit(child, path + (child["name"],), seen, through=list(through))
 
     def walk_fields(self, kind, inner, path, seen):
         """Visits a struct's or union's public fields, returning whether it has any."""
