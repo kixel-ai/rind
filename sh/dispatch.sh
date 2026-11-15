@@ -155,7 +155,7 @@ module versions '^(rind-[^/]+/Cargo\.toml$|sh/adapter-versions\.sh$)' \
 # Each adapter's API against its upstream's, which reaches rind only through a
 # lockfile change, as read by the flake's rustdoc. rind-object-store has none
 # to copy.
-module adapters '^(rind/(src/|Cargo\.toml$)|rind-(aws-lc-rs|ring|rustls|rcgen|jsonwebtoken|dimpl|str0m|openmls)/(src/|Cargo\.toml$|README\.md$)|Cargo\.lock$|flake\.(nix|lock)$|admin/adapter-api(\.drift)?$)' \
+module adapters '^(rind/(src/|Cargo\.toml$)|rind-(aws-lc-rs|ring|rustls|rcgen|jsonwebtoken|dimpl|str0m|openmls)/(src/|Cargo\.toml$|README\.md$)|Cargo\.lock$|flake\.(nix|lock)$|admin/adapter-api$)' \
     tools='cargo python3' compiles
 module license '^(rind/src/|rind/LICENSE$|rind-python/LICENSE$|admin/scan-license$)' \
     tools='find grep'
@@ -337,7 +337,7 @@ names() {
 
 # One module's check or fix, run through `run`.
 step() {
-    local listed=$logs/$2.files packages libs backends target targets drift_base
+    local listed=$logs/$2.files packages libs backends target targets
     case "$1:$2" in
         check:rs)
             mapfile -t packages < <(sh/select.sh "$changed" "$all")
@@ -482,17 +482,7 @@ step() {
         check:structure) run admin/structure ;;
         check:deny) run cargo deny --locked check ;;
         check:versions) run sh/adapter-versions.sh ;;
-        # The drift list only shrinks against the diff's merge base, even
-        # when an orchestration change forces a full run. Only an explicit
-        # --all has no diff to shrink from.
-        check:adapters)
-            if [[ "$base" != --all ]]; then
-                drift_base=$(sh/changed.sh --merge-base "$base")
-                run python3 admin/adapter-api --base "$drift_base"
-            else
-                run python3 admin/adapter-api
-            fi
-            ;;
+        check:adapters) run python3 admin/adapter-api ;;
         check:quest) run quest check ;;
         check:license) run bash admin/scan-license ;;
         check:mutants)
