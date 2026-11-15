@@ -36,10 +36,11 @@ const list = readme.find((t): t is Tokens.List => t.type === "list");
 if (!list) throw new Error("the README has no list of claims");
 export const claims: Claim[] = list.items.map((item) => {
 	const blocks = item.tokens.filter((t) => t.type !== "space");
-	if (blocks.length !== 1 || blocks[0].type !== "text") {
+	// A loose list's item holds a paragraph, a tight one's bare text.
+	if (blocks.length !== 1 || (blocks[0].type !== "text" && blocks[0].type !== "paragraph")) {
 		throw new Error(`a README claim must be one paragraph, which the page lays out as one: ${item.raw}`);
 	}
-	const spans = (blocks[0] as Tokens.Text).tokens ?? [];
+	const spans = (blocks[0] as Tokens.Text | Tokens.Paragraph).tokens ?? [];
 	const [lead, strong, ...body] = spans;
 	if (lead?.type !== "text" || strong?.type !== "strong") {
 		throw new Error(`a README claim must open with an emoji and a bold title: ${item.raw}`);
