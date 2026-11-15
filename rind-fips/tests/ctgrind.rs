@@ -317,13 +317,8 @@ fn with_secret(der: &[u8], private: &[u8]) -> Vec<u8> {
     der
 }
 
-/// Copies the PKCS#1 `RSAPrivateKey` `der`, marking secret its private
-/// integers, d, p, q, dp, dq, and qinv, but for a sign byte, the top byte,
-/// and p's and q's last bytes. rind reads only public facts from those: the
-/// top byte's bit length, and p's and q's parity, which every valid key
-/// fixes. But memcheck tracks the reads only per byte, through a comparison
-/// with zero and a parity test, so the bytes stay public until
-/// `/quest/m2/confidence/rsa-der-ct.md` makes those checks constant time.
+/// Copies the PKCS#1 `RSAPrivateKey` `der`, marking secret every byte of
+/// its private integers, d, p, q, dp, dq, and qinv.
 fn rsa_with_secret(der: &[u8]) -> Vec<u8> {
     let der = der.to_vec();
     // The length of the element at `at`'s tag and length, and its length.
@@ -342,15 +337,7 @@ fn rsa_with_secret(der: &[u8]) -> Vec<u8> {
     for index in 0..9 {
         let (head, len) = header(at);
         if index >= 3 {
-            let mut integer = &der[at + head..at + head + len];
-            if integer[0] == 0 {
-                integer = &integer[1..];
-            }
-            let end = match index {
-                4 | 5 => integer.len() - 1,
-                _ => integer.len(),
-            };
-            secret(&integer[1..end]);
+            secret(&der[at + head..at + head + len]);
         }
         at += head + len;
     }
