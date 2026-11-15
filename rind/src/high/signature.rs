@@ -3074,6 +3074,10 @@ mod tests {
                 rejected(PublicKey::from_spki(&algorithm, other_spki)),
                 KeyFormatError::MismatchedSpkiAlgorithm.into()
             );
+            // A signature takes Miri half an hour; the native runs sign.
+            if cfg!(miri) {
+                return;
+            }
             let signature = pair.sign(b"message").unwrap();
             assert_eq!(signature.as_ref().len(), P::SIG_LEN);
             parsed.verify(b"message", signature.as_ref()).unwrap();
@@ -3088,6 +3092,10 @@ mod tests {
             );
         }
         check::<SlhDsaSha2_128f>(&asn1::oid::id_slh_dsa_shake_128f);
+        // The other sets run the same encoding code, too slowly for Miri.
+        if cfg!(miri) {
+            return;
+        }
         check::<SlhDsaShake128f>(&asn1::oid::id_slh_dsa_sha2_128f);
         if crate::test::CTGRIND_DEBUG {
             return;

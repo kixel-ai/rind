@@ -267,13 +267,17 @@ fn signature() {
         format!("{public:?}"),
         format!("PublicKey {{ algorithm: SLH-DSA-SHAKE-128f, bytes: {bytes} }}")
     );
+    assert_eq!(format!("{:?}", pair.to_pkcs8()), "Pkcs8(..)");
+    // A signature takes Miri half an hour; the native runs sign.
+    if cfg!(miri) {
+        return;
+    }
     let signature = pair.sign(b"").unwrap();
     let bytes = format!("{:?}", signature.as_ref());
     assert_eq!(
         format!("{signature:?}"),
         format!("SlhDsaSignature({bytes})")
     );
-    assert_eq!(format!("{:?}", pair.to_pkcs8()), "Pkcs8(..)");
 }
 
 #[test]
