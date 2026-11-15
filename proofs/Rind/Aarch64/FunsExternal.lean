@@ -186,8 +186,7 @@ opaque high.hmac_drbg.HmacDrbg.Insts.RindMidRngRandomSource.fill
 verification's theorems take what they need of as a hypothesis. -/
 
 opaque low.generic.reuse_cache.ReuseCache.new
-  {T : Type _} (coremarkerCopyInst : core.marker.Copy T)
-  (coredefaultDefaultInst : core.default.Default T) :
+  {T : Type _} (coredefaultDefaultInst : core.default.Default T) :
   Result (low.generic.reuse_cache.ReuseCache T)
 
 opaque low.generic.reuse_cache.ReuseCache.get_or_build_now
@@ -197,8 +196,7 @@ opaque low.generic.reuse_cache.ReuseCache.get_or_build_now
   low.generic.reuse_cache.ReuseCache T → T1 → Result T
 
 opaque low.generic.reuse_cache.ReuseCache.get_or_build
-  {T : Type _} {T1 : Type _} (coremarkerCopyInst : core.marker.Copy T)
-  (coredefaultDefaultInst : core.default.Default T)
+  {T : Type _} {T1 : Type _} (coredefaultDefaultInst : core.default.Default T)
   (coreopsfunctionFnOnceT1TupleTInst : core.ops.function.FnOnce T1 Unit T) :
   low.generic.reuse_cache.ReuseCache T → T1 → Result (Option T)
 

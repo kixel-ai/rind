@@ -435,7 +435,9 @@ pub(crate) fn mu(tr: &[u8; TR_LEN], context: &[u8], message: &[u8]) -> Result<[u
 #[doc(hidden)]
 pub struct VerifyingKey {
     tr: [u8; TR_LEN],
-    expanded: low::ReuseCache<Polys>,
+    // Unwiped, as the NIST curves' public caches are: it derives from the
+    // public key alone.
+    expanded: low::ReuseCache<Box<[Poly]>>,
 }
 
 impl VerifyingKey {
@@ -466,7 +468,6 @@ impl VerifyingKey {
 /// feature, as heap scratch derived from a private key must be. All-zero
 /// bytes are none, so a key holding them can wipe its whole value.
 #[doc(hidden)]
-#[derive(Default)]
 pub struct Polys(Option<Box<[Poly]>>);
 
 impl Polys {
@@ -794,7 +795,7 @@ const MAX_L: usize = 7;
 #[inline(never)]
 fn verify_internal<P: Params>(
     pk: &[u8],
-    expanded: &low::ReuseCache<Polys>,
+    expanded: &low::ReuseCache<Box<[Poly]>>,
     mu: &[u8; MU_LEN],
     signature: &[u8],
 ) -> Result<(), Error> {
@@ -820,15 +821,24 @@ fn verify_internal<P: Params>(
         low::mldsa_ntt(&mut z.0);
     }
 
+    // A use that keeps nothing expands only `A`, and transforms `t1` a row
+    // at a time, as an unkept `t1 * 2^d` would only cost memory traffic.
     let unkept;
-    let expanded = match expanded.get_or_build(|| expand_public::<P>(pk)) {
-        Some(expanded) => expanded,
+    let (a, kept_t1) = match expanded.get_or_build(|| expand_public::<P>(pk)) {
+        Some(expanded) => {
+            let (a, t1_hat) = expanded.split_at(k * l);
+            (a, Some(t1_hat))
+        }
         None => {
-            unkept = expand_public::<P>(pk);
-            &unkept
+            unkept = {
+                let mut a = vec![Poly::ZERO; k * l];
+                expand_a::<P>(pk[..SEED_LEN].try_into().unwrap(), &mut a);
+                a
+            };
+            (&unkept[..], None)
         }
     };
-    let (a, t1_hat) = expanded.polys().split_at(k * l);
+    let t1_packed = pk[SEED_LEN..].as_chunks::<T1_PACKED>().0;
     let mut c = Poly::ZERO;
     sample_in_ball::<P>(&mut c, c_tilde);
     low::mldsa_ntt(&mut c.0);
@@ -836,11 +846,18 @@ fn verify_internal<P: Params>(
     // w1' = UseHint(h, A * z - c * t1 * 2^d)
     let mut w1_packed = [0u8; 8 * 192];
     let w1_packed = &mut w1_packed[..k * P::W1_PACKED];
-    let (mut w1, mut ct1, mut h) = (Poly::ZERO, Poly::ZERO, Poly::ZERO);
-    for (i, t1_hat) in t1_hat.iter().enumerate() {
+    let (mut w1, mut ct1, mut h, mut t1) = (Poly::ZERO, Poly::ZERO, Poly::ZERO, Poly::ZERO);
+    for i in 0..k {
         let row = &a[i * l..(i + 1) * l];
         let packed = &mut w1_packed[i * P::W1_PACKED..(i + 1) * P::W1_PACKED];
         low::mldsa_pointwise_acc(&mut w1.0, row, z);
+        let t1_hat = match kept_t1 {
+            Some(kept) => &kept[i],
+            None => {
+                t1_hat(&mut t1, &t1_packed[i]);
+                &t1
+            }
+        };
         low::mldsa_pointwise(&mut ct1.0, &t1_hat.0, &c.0);
         sub(&mut w1, &ct1);
         low::mldsa_reduce(&mut w1.0);
@@ -867,18 +884,23 @@ fn verify_internal<P: Params>(
 
 /// A public key's expansion from its encoding `pk`: `A`, then `t1 * 2^d`,
 /// in the NTT domain.
-fn expand_public<P: Params>(pk: &[u8]) -> Polys {
-    let mut expanded = Polys::new(public_expansion_len::<P>());
-    let (a, t1) = expanded.polys_mut().split_at_mut(P::K * P::L);
+fn expand_public<P: Params>(pk: &[u8]) -> Box<[Poly]> {
+    let mut expanded = vec![Poly::ZERO; public_expansion_len::<P>()].into_boxed_slice();
+    let (a, t1) = expanded.split_at_mut(P::K * P::L);
     expand_a::<P>(pk[..SEED_LEN].try_into().unwrap(), a);
     for (t1, packed) in t1.iter_mut().zip(pk[SEED_LEN..].as_chunks::<T1_PACKED>().0) {
-        unpack_t1(t1, packed);
-        for t in t1.0.iter_mut() {
-            *t <<= D;
-        }
-        low::mldsa_ntt(&mut t1.0);
+        t1_hat(t1, packed);
     }
     expanded
+}
+
+/// `t1 * 2^d` in the NTT domain, from `t1`'s packed encoding.
+fn t1_hat(t1: &mut Poly, packed: &[u8; T1_PACKED]) {
+    unpack_t1(t1, packed);
+    for t in t1.0.iter_mut() {
+        *t <<= D;
+    }
+    low::mldsa_ntt(&mut t1.0);
 }
 
 fn add(a: &mut Poly, b: &Poly) {
