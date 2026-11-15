@@ -277,13 +277,15 @@ class Verified(unittest.TestCase):
     def test_accepts_a_valid_entry(self):
         self.assertEqual(len(self.load(self.entry(cpu='["adx", "!vaes"]'))), 1)
         self.assertEqual(len(self.load(self.entry(arch=None))), 1)
+        self.assertEqual(len(self.load(self.entry(arch='"armv7"', cpu=None))), 1)
 
     def test_refuses_what_names_nothing(self):
         for fields in [
             {"library": '"rustls"'},
             {"operations": '["x25519"]'},
             {"operations": '["aes256-gcm/8B"]'},
-            {"arch": '"armv7"'},
+            {"arch": '"riscv64"'},
+            {"arch": '"armv7"', "cpu": '["neon"]'},
             {"arch": None, "cpu": '["adx"]'},
             {"cpu": '["sha2"]'},
             {"os": '"windows"'},

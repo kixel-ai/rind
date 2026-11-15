@@ -22,5 +22,4 @@ Route: prove each against the HOL Light or Lean specs the x86_64 and aarch64 que
 
 - [The AArch32 model covers armv7's integer assembly](/quest/m5/verified-armv7/model.md) - the integer instructions the proofs run on
 - [The AArch32 model covers NEON and the crypto extension](/quest/m5/verified-armv7/model-neon.md) - the NEON and crypto-extension instructions the proofs run on
-- [armv7 runs the Rust proofs](/quest/m5/verified-armv7/prove.md) - the armv7 translation these routines' theorems compose with
 - [x86_64 SHA-512 on AVX2 is proven](/quest/m4/verified/sha512-x86-avx2.md) - the pinned FIPS 180-4 SHA-512 spec and its Lean axiom shape
