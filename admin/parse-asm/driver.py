@@ -877,6 +877,8 @@ use crate::low::macros::*;
                 else:
                     head_comment.append(line)
             head_comment.append("")
+        if not head_comment:
+            return []
         # The title may wrap: a line starting in lowercase continues it.
         title_end = 1
         while head_comment[title_end][:1].islower():
