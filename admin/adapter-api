@@ -236,6 +236,11 @@ class Api:
                 # Listed under every path that hands it out, which both sides
                 # share when they match, whatever order rustdoc finds them in.
                 self.chain = self.exposed[id][path]
+                # Callers read its public fields without naming it.
+                item = self.index.get(str(id))
+                kind, inner = next(iter(item["inner"].items())) if item else (None, None)
+                if kind in ("struct", "union") and self.walk_fields(kind, inner, path, seen):
+                    self.open.add(id)
                 self.walk_impls(impls[id], path, seen, id)
         self.chain = frozenset()
 
@@ -413,18 +418,7 @@ class Api:
             sig = {"non_exhaustive": sig}
         self.add(path, kind, sig, owner)
         if kind in ("struct", "union", "enum"):
-            # A union lists its fields directly.
-            fields = inner["fields"] if kind == "union" else inner.get("kind", {})
-            if isinstance(fields, dict):
-                fields = fields.get("plain", fields.get("tuple", fields))
-            if isinstance(fields, dict):
-                fields = fields.get("fields", [])
-            for i, id in enumerate(fields if isinstance(fields, list) else []):
-                if id is None:
-                    continue
-                field = self.index[str(id)]
-                if field["visibility"] == "public":
-                    self.visit(field, path + (field["name"] or str(i),), seen)
+            self.walk_fields(kind, inner, path, seen)
             for id in inner.get("variants", []):
                 variant = self.index[str(id)]
                 self.visit(variant, path + (variant["name"],), seen)
@@ -443,13 +437,16 @@ class Api:
                 # Code bounded by this trait also calls the items of the
                 # supertraits callers cannot name, or that the other side
                 # omits, so they are compared here; not a `pub(crate)` or
-                # narrower one's, which are uncallable outside the crate.
+                # narrower one's, which are uncallable outside the crate,
+                # though the supertraits it extends in turn may be callable.
                 todo, done = list(self.supers(item["id"])), set()
                 while todo:
                     id = todo.pop()
-                    if id not in done and self.name(id, None) in ("$private", "$omitted") and self.index[str(id)]["visibility"] == "public":
+                    if id not in done and self.name(id, None) in ("$private", "$omitted"):
                         done.add(id)
-                        items += self.index[str(id)]["inner"]["trait"]["items"]
+                        if self.index[str(id)]["visibility"] == "public":
+                            items += self.index[str(id)]["inner"]["trait"]["items"]
+                        # Its own supertraits' methods stay callable through this bound.
                         todo += self.supers(id)
             for id in items:
                 child = self.index[str(id)]
@@ -458,6 +455,24 @@ class Api:
             # the rest, such as one for `[u8]`, are listed only here.
             others = [id for id in inner["implementations"] if not self.local(self.index[str(id)]["inner"]["impl"]["for"])]
             self.walk_impls(others, path, seen, None)
+
+    def walk_fields(self, kind, inner, path, seen):
+        """Visits a struct's or union's public fields, returning whether it has any."""
+        # A union lists its fields directly.
+        fields = inner["fields"] if kind == "union" else inner.get("kind", {})
+        if isinstance(fields, dict):
+            fields = fields.get("plain", fields.get("tuple", fields))
+        if isinstance(fields, dict):
+            fields = fields.get("fields", [])
+        found = False
+        for i, id in enumerate(fields if isinstance(fields, list) else []):
+            if id is None:
+                continue
+            field = self.index[str(id)]
+            if field["visibility"] == "public":
+                found = True
+                self.visit(field, path + (field["name"] or str(i),), seen)
+        return found
 
     def walk_impls(self, impls, path, seen, owner):
         for id in impls:
@@ -693,8 +708,9 @@ def compare(adapter, cfg, mirror, adapter_features, upstream_features, label, de
             # Each feature the upstream ones turn on through features the
             # adapter lacks, as rustls's `brotli` turns on `std`. A feature the
             # adapter declares implies only what its own table says, so a
-            # missing implication there shows up as a difference.
-            "features": sorted(f for f in implied(upstream_features, up_features, default, adapter_features) if f in adapter_features),
+            # missing implication there shows up as a difference; so do its
+            # defaults, which only its own `default` turns on.
+            "features": sorted(f for f in implied(upstream_features, up_features, default, set(adapter_features) | {"default"}) if f in adapter_features),
         }
     }
     if mirror:
