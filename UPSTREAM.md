@@ -226,6 +226,14 @@ Each upstream rind changes, with where its fork is vendored and where the list o
 - **Reported:** no (Intel SDE has no public tracker; LLVM documents that LeakSanitizer does not work under ptrace).
 - **Goes when:** an SDE release runs LeakSanitizer's stop-the-world without hanging.
 
+### Intel SDE aborts Go's `acvptool`
+
+- **Breaks:** with `x86-cpu.yml`'s Diamond Rapids job running the offline ACVP test under `sde -dmr --` as its cargo runner, SDE followed the test into `acvptool`, a Go binary, and Pin's instrumentation of it aborted it with SIGABRT and no message, twice on GitHub's AMD runners, so the job failed before any set was answered.
+- **Reproduce:** on an AMD x86_64 host in `nix develop .#sde`, run `CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER="sde -dmr --" cargo test -p rind-acvp --features module --release --test offline`. It has not reproduced on an Intel host (Core Ultra 7 270K), where all three CPU masks pass.
+- **Workaround:** the job sets `RIND_ACVP_WRAPPER_RUNNER` instead, and `rind-acvp/tests/offline.rs`'s `wrapper` runs only `rind-acvp`, the module, under SDE; the test and `acvptool` run natively. Found in [kixel-ai/rind#789](https://github.com/kixel-ai/rind/pull/789).
+- **Reported:** no (Intel SDE has no public tracker).
+- **Goes when:** an SDE release after 9.53.0 runs Go binaries on AMD hosts. Keeping it costs no coverage, since only the module needs the emulated CPU.
+
 ## Dependencies
 
 ### aws-lc cannot deny 32-bit ARM features at run time

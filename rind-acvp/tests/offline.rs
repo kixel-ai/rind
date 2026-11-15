@@ -95,8 +95,8 @@ fn acvptool() -> PathBuf {
 /// The wrapper `acvptool` runs: `rind-acvp`, or, with
 /// `$RIND_ACVP_WRAPPER_RUNNER` set, a script running it under that command,
 /// such as Intel SDE's emulator. Only the module needs the emulated CPU, so
-/// the test and `acvptool` run natively; Intel SDE instrumenting the Go
-/// `acvptool` sometimes aborts it on AMD hosts.
+/// the test and `acvptool` run natively. See UPSTREAM.md, "Intel SDE aborts
+/// Go's `acvptool`".
 fn wrapper(runner: Option<&str>) -> PathBuf {
     let exe = PathBuf::from(env!("CARGO_BIN_EXE_rind-acvp"));
     let Some(runner) = runner else {
