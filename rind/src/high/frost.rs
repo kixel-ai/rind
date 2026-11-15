@@ -140,6 +140,12 @@ trait Group: 'static {
     /// point outside the prime-order subgroup.
     fn element_from_bytes(bytes: &[u8]) -> Option<Self::Element>;
 
+    /// An encoding [`Self::element_from_bytes`] already took, decoded again
+    /// without repeating its checks.
+    fn element_from_checked(bytes: &[u8]) -> Option<Self::Element> {
+        Self::element_from_bytes(bytes)
+    }
+
     /// `SerializeElement` of an element other than the identity, in
     /// constant time.
     fn element_to_bytes(element: &Self::Element) -> Bytes<MAX_ELEMENT>;
@@ -277,6 +283,11 @@ impl Group for Ed25519 {
             Some(_) => None,
             None => Some(point),
         }
+    }
+
+    /// Skips the subgroup check, a constant-time multiplication.
+    fn element_from_checked(bytes: &[u8]) -> Option<Self::Element> {
+        edwards25519::Point::from_bytes(bytes.try_into().ok()?)
     }
 
     fn element_to_bytes(element: &Self::Element) -> Bytes<MAX_ELEMENT> {
@@ -557,7 +568,7 @@ fn scalar<G: Group>(bytes: &[u8; SCALAR_LEN]) -> G::Scalar {
 
 /// An element the caller already checked, such as one this module encoded.
 fn element<G: Group>(bytes: &[u8]) -> G::Element {
-    G::element_from_bytes(bytes).expect("checked when it was loaded")
+    G::element_from_checked(bytes).expect("checked when it was loaded")
 }
 
 /// `DeserializeElement`, refusing a wrong length, an encoding that does not
