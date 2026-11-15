@@ -253,7 +253,8 @@
           # its release with the decoders it takes from unisim-archisec and
           # the Bitwuzla solver it links. nixpkgs packages neither BINSEC nor
           # its `mula` dependency. BINSEC loads its plugins through findlib,
-          # so the wrapper points OCAMLPATH at its own.
+          # so the wrapper points OCAMLPATH at its own, and its library stays
+          # in `out`: a split `dev` output would reference `out` and back.
           binsec =
             let
               ocaml = pkgs.ocamlPackages;
@@ -269,6 +270,7 @@
             ocaml.buildDunePackage rec {
               pname = "binsec";
               version = "0.11.3";
+              outputs = [ "out" ];
               src = pkgs.fetchurl {
                 url = "https://github.com/binsec/binsec/releases/download/${version}/binsec-${version}.tbz";
                 hash = "sha256-k/b+Q51IaxZgYu9t2SxM46oJR7Xhixw6p94vwwA6ptk=";
