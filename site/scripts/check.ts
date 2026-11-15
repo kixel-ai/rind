@@ -4,7 +4,7 @@
 // the site or the repository resolves, anchors included.
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
-import { Lexer, type Token } from "marked";
+import { Lexer, type Token, walkTokens } from "marked";
 import { hrefs, lex } from "../src/lib/markdown";
 import { origin, pages, twinPath } from "../src/lib/pages";
 import { repoUrl, root } from "../src/lib/repo";
@@ -174,11 +174,20 @@ for (const file of files) {
 			for (const [name, value] of attrs) if (name === "href") check(file, value);
 		}
 	} else if (file.endsWith(".md") || file.endsWith(".txt")) {
-		// Links, and URLs quoted as text, such as the prompt's, without the
-		// trailing punctuation GFM leaves out of an autolink.
+		// Links, and URLs quoted as text: in code, such as the prompt, as a reader
+		// copies them; in prose, without the trailing punctuation GFM leaves out
+		// of an autolink.
 		const body = text(file);
-		for (const href of hrefs(lex(body))) check(file, href);
-		for (const m of body.matchAll(/https?:\/\/[^\s)<>"'`\]]+/g)) check(file, m[0].replace(/[?!.,:*_~]+$/, ""));
+		const tokens = lex(body);
+		const urls = /https?:\/\/[^\s)<>"'`\]]+/g;
+		let prose = body;
+		for (const href of hrefs(tokens)) check(file, href);
+		walkTokens(tokens, (t) => {
+			if (t.type !== "code" && t.type !== "codespan") return;
+			for (const m of t.text.matchAll(urls)) check(file, m[0]);
+			prose = prose.replace(t.raw, "");
+		});
+		for (const m of prose.matchAll(urls)) check(file, m[0].replace(/[?!.,:*_~]+$/, ""));
 	}
 }
 for (const m of sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)) check("/sitemap.xml", m[1]);

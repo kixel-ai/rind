@@ -1,4 +1,4 @@
-import { Lexer, Parser, type Token, type Tokens, type TokensList } from "marked";
+import { Lexer, Parser, type Token, type Tokens, type TokensList, walkTokens } from "marked";
 
 // Parse a Markdown document, resolving its reference links.
 export function lex(source: string): TokensList {
@@ -59,18 +59,9 @@ export const link = (label: string, href: string, title?: string | null): string
 // Every link and image in some tokens, nested ones included.
 function links(tokens: Token[]): (Tokens.Link | Tokens.Image)[] {
 	const found: (Tokens.Link | Tokens.Image)[] = [];
-	const walk = (list: Token[]) => {
-		for (const t of list) {
-			if (t.type === "link" || t.type === "image") found.push(t as Tokens.Link | Tokens.Image);
-			if ("tokens" in t && t.tokens) walk(t.tokens);
-			if (t.type === "list") for (const item of (t as Tokens.List).items) walk(item.tokens);
-			if (t.type === "table") {
-				const table = t as Tokens.Table;
-				for (const cell of [...table.header, ...table.rows.flat()]) walk(cell.tokens);
-			}
-		}
-	};
-	walk(tokens);
+	walkTokens(tokens, (t) => {
+		if (t.type === "link" || t.type === "image") found.push(t as Tokens.Link | Tokens.Image);
+	});
 	return found;
 }
 
