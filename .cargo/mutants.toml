@@ -73,7 +73,7 @@ exclude_re = [
   'rind/src/low/x86_64/cpu\.rs:402:\d+: replace \| with \^$',
   'rind/src/low/x86_64/cpu\.rs:407:\d+: replace \| with \^$',
   'rind/src/low/x86_64/cpu\.rs:\d+:\d+: replace \| with \^ in (HaveAesHardware::check|HaveAvx::check|HaveAvxMovbeForAesGcm::check|HaveBmi2Adx::check|HaveSha1::check|HaveSha256::check|HaveSha512::check|HaveSse41::check|HaveVaesAvx2ForAesGcm::check|detect|detect_once)$',
-  'rind/src/low/x86_64/edwards25519_msm_avx2\.rs:17[345]:\d+: replace \| with \^$',
+  'rind/src/low/x86_64/edwards25519_msm_avx2\.rs:17[789]:\d+: replace \| with \^$',
   'rind/src/low/x86_64/edwards25519_msm_avx2\.rs:\d+:\d+: replace \| with \^ in (Fe4::diff_sum|Fe4::split)$',
   'rind/src/low/x86_64/ghash\.rs:340:\d+: replace \| with \^ in Ghash<\x27a>::add_lengths$',
   'rind/src/low/x86_64/ghash\.rs:606:22: replace \| with \^ in load_partial$',
