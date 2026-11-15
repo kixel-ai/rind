@@ -5,7 +5,9 @@ run time. [MIGRATING.md][migrating] maps each ring and aws-lc-rs item to it.
 
 - Each module takes an algorithm as a `&'static` constant, such as
   `aead::AES_128_GCM` or `signature::verify::ECDSA_P256_SHA256_ASN1`, and has
-  one key type per role.
+  one key type per role. KEMs and signing key pairs instead take a type per
+  parameter set, such as `kem::DecapsulationKey<MlKem768>`, so a ciphertext or
+  key of one set fails to compile against another's.
 - Algorithms only old protocols should use sit in `legacy` submodules, such
   as `digest::legacy::SHA1`.
 - Key pairs name the DER format they load or encode (`from_pkcs8`,
@@ -34,7 +36,7 @@ The modules:
   load from a scalar, PKCS#8, or SEC1, and export as a scalar or PKCS#8, and
   peer keys parsed from a point, compressed or not, or a
   `SubjectPublicKeyInfo`.
-- `kem`: ML-KEM-768.
+- `kem`: ML-KEM-512, ML-KEM-768, and ML-KEM-1024.
 - `hpke`: RFC 9180's base mode and secret export, over DHKEM with X25519,
   P-256, P-384, and P-521, HKDF, and the AEADs: a recipient's keys, and
   sender, recipient, and export-only contexts.
@@ -57,20 +59,23 @@ The modules:
   ML-DSA-44, ML-DSA-65, and ML-DSA-87 (pure, with the empty context) verify
   through the same `PublicKey`, and sign with `sign::MlDsaKeyPair<P>`, whose
   parameter set is a type, so its signature is a fixed-size array.
+  SLH-DSA's twelve parameter sets (FIPS 205, pure, with the empty context)
+  verify through it too, and sign with `sign::SlhDsaKeyPair<P>`, whose
+  signatures, up to 49,856 bytes, live on the heap.
 - `digest`: MD5 and SHA-1 (legacy only), SHA-256, SHA-384, SHA-512,
   SHA-512/256, SHA3-256, SHA3-384, and SHA3-512.
 - `hmac`: HMAC over SHA-1 and SHA-2, keyed once and reused.
 - `hkdf`: HKDF over those HMACs, whose output becomes an `aead`, QUIC header-protection, or `hmac` key.
 - `pbkdf2`: PBKDF2 over those HMACs, deriving or verifying a key from a password.
+- `argon2`: Argon2id, deriving or verifying a key from a password at a memory and time cost.
 - `spake2plus`: SPAKE2+ on P-256 (RFC 9383, and Matter PASE's draft-01
   schedule), a password-authenticated key exchange whose suite is a type.
 - `encoding`: the PKCS#8, SEC1, and `SubjectPublicKeyInfo` encodings key
   types export.
 - `constant_time`: comparing secrets such as MACs without a timing leak.
 - `rand`: random bytes from the system.
-- `cpu`: the startup check for required CPU features, whether AES runs
-  in hardware, and `Dit`, which holds data-independent timing on across a
-  batch of calls.
+- `cpu`: whether AES runs in hardware, and `Dit`, which holds
+  data-independent timing on across a batch of calls.
 
 The public modules wrap three private layers:
 
@@ -86,7 +91,7 @@ or intrinsic-based implementations for a certain platform.
 
 `rind/build.rs` picks one backend per target and sets `rind_backend` to it:
 `x86_64`, `aarch64`, or `arm` on little-endian targets of those
-architectures (`arm` only from ARMv7 on), and `portable` everywhere else, or wherever `--cfg
+architectures (`aarch64` only with NEON, `arm` only from ARMv7 on), and `portable` everywhere else, or wherever `--cfg
 rind_portable` forces it. Code outside `low` gates on `rind_backend`, never
 `target_arch`. `low::portable` is pure Rust and needs no CPU features; the
 `arm` backend wraps its types with the crypto extension's, NEON's, and

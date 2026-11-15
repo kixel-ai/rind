@@ -12,7 +12,9 @@ use std::fs::File;
 use std::io::BufReader;
 use std::num::NonZeroU32;
 
-use rind_fips::aead::{AES_128_GCM, AES_192_GCM, AES_256_GCM, Key, Nonce, Tag, gcm};
+use rind_fips::aead::{
+    AES_128_GCM, AES_192_GCM, AES_256_GCM, Key, Nonce, Tag, TlsProtocolId, TlsRecordSealingKey, gcm,
+};
 use rind_fips::cipher::{
     AES_128, AES_192, AES_256, AesCbcDecryptingKey, AesCbcEncryptingKey, CbcIv,
 };
@@ -25,7 +27,7 @@ use serde::Deserialize;
 /// The path of the Wycheproof vector file `name`.
 fn vectors(name: &str) -> String {
     let dir = env!("CARGO_MANIFEST_DIR");
-    format!("{dir}/../thirdparty/wycheproof/testvectors_v1/{name}")
+    format!("{dir}/../thirdparty/vectors/wycheproof/testvectors_v1/{name}")
 }
 
 fn read<T: for<'de> Deserialize<'de>>(name: &str) -> T {
@@ -575,7 +577,7 @@ fn aes_gmac() {
 
 /// Opens a file of AES-GCM tests, or of GMAC's if `gmac`, whose message is
 /// the AAD of an empty one, through `gcm::Key`, and those with 96-bit IVs
-/// through `aead::Key` too. The module does not seal.
+/// through `aead::Key` too, and seals the valid ones a TLS record key takes.
 fn aes_gcm_file(file: &'static str, gmac: bool) {
     let mut summary = Summary::new(file);
     for group in read::<TestFile>(file).groups {
@@ -627,6 +629,24 @@ fn aes_gcm_file(file: &'static str, gmac: bool) {
                     (valid, _, result) => {
                         panic!("{file} {}: expected valid {valid}, got {result:?}", test.id)
                     }
+                }
+
+                // A TLS 1.3 key's first record takes any nonce, so it seals
+                // each valid test of TLS's key sizes.
+                if valid && !malformed && test.key.len() != 24 {
+                    let mut key =
+                        TlsRecordSealingKey::new(algorithm, TlsProtocolId::TLS13, &test.key)
+                            .unwrap();
+                    let mut sealed = msg.to_vec();
+                    let tag = key
+                        .seal_in_place_separate_tag(
+                            Nonce::assume_unique_for_key(iv),
+                            aad,
+                            &mut sealed,
+                        )
+                        .unwrap();
+                    assert_eq!(sealed, ct, "{file} {}", test.id);
+                    assert_eq!(tag.as_ref(), &test.tag[..], "{file} {}", test.id);
                 }
             }
 
@@ -1519,8 +1539,18 @@ struct KemTest {
 /// these check what reaches it through its ABI: each encapsulation key it
 /// must parse or refuse, and the ciphertext lengths it must refuse.
 #[test]
-fn ml_kem_768() {
-    let file = "mlkem_768_encaps_test.json";
+fn ml_kem() {
+    ml_kem_set::<kem::MlKem512>(["mlkem_512_encaps_test.json", "mlkem_512_test.json"], 768);
+    ml_kem_set::<kem::MlKem768>(["mlkem_768_encaps_test.json", "mlkem_768_test.json"], 1088);
+    ml_kem_set::<kem::MlKem1024>(
+        ["mlkem_1024_encaps_test.json", "mlkem_1024_test.json"],
+        1568,
+    );
+}
+
+/// Checks set `A` against its `[encapsulation, decapsulation]` files.
+fn ml_kem_set<A: kem::Algorithm>(files: [&'static str; 2], ciphertext_len: usize) {
+    let [file, decaps] = files;
     let mut summary = Summary::new(file);
     for test in read::<KemFile>(file)
         .groups
@@ -1528,7 +1558,7 @@ fn ml_kem_768() {
         .flat_map(|g| g.tests)
     {
         summary.start();
-        let key = kem::EncapsulationKey::new(&kem::ML_KEM_768, &test.ek);
+        let key = kem::EncapsulationKey::<A>::new(&test.ek);
         match (test.result, key) {
             (ExpectedResult::Valid, Ok(key)) => {
                 assert_eq!(key.as_ref(), &test.ek[..]);
@@ -1539,23 +1569,22 @@ fn ml_kem_768() {
         }
     }
 
-    let file = "mlkem_768_test.json";
+    let file = decaps;
     let mut summary = Summary::new(file);
-    let ours = kem::DecapsulationKey::generate(&kem::ML_KEM_768).unwrap();
     for test in read::<KemFile>(file)
         .groups
         .into_iter()
         .flat_map(|g| g.tests)
     {
         // A key of the vector's own, which only its seed makes.
-        if test.c.len() == 1088 {
+        if test.c.len() == ciphertext_len {
             summary.skip(1);
             continue;
         }
         summary.start();
         assert_eq!(test.result, ExpectedResult::Invalid, "{file} {}", test.id);
         assert_eq!(
-            ours.decapsulate(&test.c).map(|_| ()),
+            kem::Ciphertext::<A>::new(&test.c).map(|_| ()),
             Err(Error::WrongLength),
             "{file} {}",
             test.id
