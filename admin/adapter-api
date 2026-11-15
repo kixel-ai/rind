@@ -27,8 +27,10 @@
 #
 # Impls count where callers can use them. Those of an unexported type that a
 # public item hands out, such as ring's padding behind `RSA_PKCS1_SHA256`, are
-# compared under that item; those of a trait callers cannot name, or naming
-# an unexported type no public item hands out, are not API.
+# compared under each path that hands it out, told apart by their place in
+# its signature. Those of a trait callers cannot name are API only for the
+# associated types and consts an exported subtrait reaches; those naming an
+# unexported type no public item hands out are not API.
 #
 # Each comparison builds both sides' rustdoc JSON in their own probe crates,
 # so feature unification within the workspace hides nothing: with upstream's
@@ -36,7 +38,9 @@
 # depends on its upstream (it fills in a provider module) gets the same
 # features on that dependency; an adapter that replaces its upstream declares
 # the same feature names. A feature named both ways is turned on in both,
-# including one an upstream feature turns on, as rustls's `brotli` does `std`.
+# including one an upstream feature the adapter lacks turns on, as rustls's
+# `brotli` does `std`; a feature the adapter declares implies only what its
+# own table says.
 #
 # rind-object-store is excluded: object_store defines a provider trait and
 # ships no provider module whose shape the adapter could copy.
@@ -182,9 +186,13 @@ class Api:
         self.public = {}
         self.exported = None
         # Unexported types a public signature hands to callers, such as
-        # ring's `Padding` behind `RSA_PKCS1_SHA256`, with the paths naming
-        # them: callers hold their values, so their impls are API too.
+        # ring's `Padding` behind `RSA_PKCS1_SHA256`: callers hold their
+        # values, so their impls are API too. Each maps every path that hands
+        # it out to the unexported types along that path.
         self.exposed = {}
+        # The unexported types along the path being walked, so a type reached
+        # through its own impls is not walked again.
+        self.chain = frozenset()
         # Types with a public field, which a `Drop` impl stops callers moving out.
         self.open = set()
         # Each variant's observable discriminant, which rustdoc gives only
@@ -198,6 +206,22 @@ class Api:
         # side names by their definition paths.
         self.walk_module(root, (), None, set())
         self.exported = set(self.public)
+        # Every trait an exported one extends: generic code bounded by the
+        # subtrait reaches their associated items, nameable or not.
+        self.supertraits = set()
+        todo = [id for id in self.exported if "trait" in self.index[str(id)]["inner"]]
+        while todo:
+            trait = self.index[str(todo.pop())]["inner"]["trait"]
+            bounds = list(trait["bounds"])
+            for pred in trait["generics"]["where_predicates"]:
+                pred = pred.get("bound_predicate")
+                if pred and pred["type"] == {"generic": "Self"}:
+                    bounds += pred["bounds"]
+            for bound in bounds:
+                id = (bound.get("trait_bound") or {}).get("trait", {}).get("id")
+                if id is not None and id not in self.supertraits and str(id) in self.index:
+                    self.supertraits.add(id)
+                    todo.append(id)
         self.entries, self.public, self.exposed = {}, {}, {}
         for name in module:
             root = self.find(root, name)
@@ -210,12 +234,14 @@ class Api:
             if target is not None:
                 impls[target["id"]].append(int(id))
         walked = set()
-        while pending := sorted((id, path) for id, paths in self.exposed.items() for path in paths if (id, path) not in walked):
-            for id, path in pending:
+        while pending := sorted((path, id) for id, paths in self.exposed.items() for path in paths if (id, path) not in walked):
+            for path, id in pending:
                 walked.add((id, path))
-                # Listed under each public item that hands it out, which
-                # both sides share when they match.
-                self.walk_impls(impls[id], path + ("{private}",), seen, id)
+                # Listed under every path that hands it out, which both sides
+                # share when they match, whatever order rustdoc finds them in.
+                self.chain = self.exposed[id][path]
+                self.walk_impls(impls[id], path, seen, id)
+        self.chain = frozenset()
 
     def number(self, item):
         """Records each variant's discriminant, implicit ones only where a caller sees them."""
@@ -287,11 +313,14 @@ class Api:
                 rest = {k: v for k, v in sig.items() if k != "trait"}
             else:
                 rest = sig
-            for id in self.hidden(rest, bounds=False):
-                # One reached only through another unexported type's impls,
-                # its own included, is listed once, so the walk ends.
-                if "{private}" not in path or id not in self.exposed:
-                    self.exposed.setdefault(id, set()).add(tuple(path))
+            hidden = list(dict.fromkeys(self.hidden(rest, bounds=False)))
+            for n, id in enumerate(hidden):
+                if id in self.chain:
+                    continue
+                # Named by its place in the signature, so impls swapped
+                # between two of them still differ.
+                route = tuple(path) + ("{private}" if n == 0 else f"{{private {n}}}",)
+                self.exposed.setdefault(id, {})[route] = self.chain | {id}
         self.entries.setdefault("::".join(path), []).append((kind, sig, owner, needs))
 
     def hidden(self, value, bounds=True):
@@ -409,9 +438,18 @@ class Api:
                     child = self.index[str(child_id)]
                     if child["visibility"] == "public":
                         self.visit(child, path + (child["name"],), seen, owner, impl)
-            elif self.exported is not None and self.name(impl["trait"]["id"], None) == "$private":
+            elif (
+                self.exported is not None
+                and self.name(impl["trait"]["id"], None) == "$private"
+                and (
+                    impl["trait"]["id"] not in self.supertraits
+                    or all("function" in self.index[str(i)]["inner"] for i in impl["items"])
+                )
+            ):
                 # A trait callers cannot name, such as a sealing one, gives
-                # them nothing; a public trait's bounds on it are compared.
+                # them nothing but the associated types and consts an exported
+                # subtrait reaches, which are compared; so are a public
+                # trait's bounds on it.
                 continue
             elif (trait := self.external(impl["trait"]["id"], impl["trait"]["path"])) not in IGNORED_TRAITS or (
                 trait == "core::ops::drop::Drop" and owner in self.open
