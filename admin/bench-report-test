@@ -461,8 +461,8 @@ class Comparison(unittest.TestCase):
     def test_verified_by_arch_marks_cpu_or_os_limits(self):
         _, rows = self.cells(hosts())
         self.assertIn("[aarch64: X25519 (some CPUs); x86_64: AES-GCM (some CPUs), X25519 (some CPUs)]", rows["rind"][2])
-        # An entry with no arch covers every one, on every CPU.
-        self.assertIn("[aarch64: X25519; x86_64: X25519]", rows["ring"][2])
+        # An entry with no arch runs the same code on every one.
+        self.assertIn("[all: X25519]", rows["ring"][2])
         self.assertIn("[none]", rows["RustCrypto + dalek"][2])
 
     def test_counts_times_within_ten_percent_of_the_fastest(self):

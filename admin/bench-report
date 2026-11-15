@@ -1651,9 +1651,10 @@ def comparison_table(hosts, verified):
             if e["library"] != lib:
                 continue
             names = {algorithm[r] for p in e["operations"] for r in fnmatch.filter(rows, p) if r in algorithm}
-            for arch in [e["arch"]] if "arch" in e else CPU_FEATURES:
-                for name in names:
-                    proven.setdefault(arch, {}).setdefault(name, []).append(bool(e.get("cpu") or e.get("os")))
+            # An entry with no arch runs the same code on every one.
+            arch = e.get("arch", "all")
+            for name in names:
+                proven.setdefault(arch, {}).setdefault(name, []).append(bool(e.get("cpu") or e.get("os")))
         order = [name for name, _ in ALGORITHMS]
         arches = [
             f"{arch}: "
@@ -1661,7 +1662,7 @@ def comparison_table(hosts, verified):
                 name + (" (some CPUs)" if all(narrow) else "")
                 for name, narrow in sorted(proven[arch].items(), key=lambda item: order.index(item[0]))
             )
-            for arch in sorted(proven)
+            for arch in sorted(proven, key=lambda arch: (arch != "all", arch))
         ]
         lead = timings = 0
         for h in hosts.values():
