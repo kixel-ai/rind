@@ -81,7 +81,7 @@ impl Salt {
 impl fmt::Debug for Salt {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("hkdf::Salt")
-            .field("algorithm", &self.algorithm())
+            .field("algorithm", &self.0.algorithm())
             .finish()
     }
 }
@@ -146,12 +146,16 @@ impl Prk {
 impl fmt::Debug for Prk {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("hkdf::Prk")
-            .field("algorithm", &self.algorithm)
+            .field("algorithm", &self.algorithm.0)
             .field(
                 "mode",
                 &format_args!(
                     "{} {{ .. }}",
-                    if *self.extracted { "ExtractExpand" } else { "Expand" }
+                    if *self.extracted {
+                        "ExtractExpand"
+                    } else {
+                        "Expand"
+                    }
                 ),
             )
             .finish()
