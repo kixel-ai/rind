@@ -229,4 +229,94 @@ theorem gctr_chunk (icb : Quad32) (alg : Algorithm) (kw : List (BitVec 32)) (c :
       (List.range 16).map fun q => gBlock icb alg kw c i q := by
   simp [chunksOf, hc, List.range_succ, gctrEncryptRecursive, gBlock]
 
+theorem loads_stores512 (V : List (BitVec 512)) : (chunksOf 64 (V.flatMap bytes512)).map loadBytes512 = V := by
+  rw [chunksOf_flatMap_bytes512, List.map_map]
+  conv_rhs => rw [← List.map_id V]
+  exact List.map_congr_left fun v _ => load_store512 v
+
+theorem length_flatMap_bytes512 : ∀ (V : List (BitVec 512)), (V.flatMap bytes512).length = 64 * V.length
+  | [] => rfl
+  | v :: V => by
+    rw [List.flatMap_cons, List.length_append, length_bytes512, length_flatMap_bytes512 V, List.length_cons]; ring
+
+/-- `hash16` of four vectors: GHASH of their bytes' blocks. -/
+theorem hash16_vecs (H : P) (hH : Small H) (t : low.x86_64.ghash.GhashTableAvx512) (ht : Avx512Powers H t)
+    (V : List (BitVec 512)) (hV : V.length = 4) (current : BitVec 128) :
+    ∃ y, low.x86_64.ghash.hash16 t (ofLanes128 fun _ => 0x00010203_04050607_08090a0b_0c0d0e0f#128) V current = ok y ∧
+      toPoly y = ghashPoly H (toPoly current) ((padBlocks (V.flatMap bytes512)).map toPoly) := by
+  have h := hash16_spec H hH t ht (V.flatMap bytes512) (by rw [length_flatMap_bytes512, hV]) current
+  rwa [loads_stores512] at h
+
+section loop
+variable {hk : low.x86_64.aes.HwKey} {alg : Algorithm} {kw : List (BitVec 32)} (hkey : HwKeyIs alg kw hk)
+include hkey
+
+theorem by16_loop_eq (ENC : Bool) (H : P) (hH : Small H) (t : low.x86_64.ghash.GhashTableAvx512)
+    (ht : Avx512Powers H t) (icb : Quad32) :
+    ∀ (chunks : List (List U8)), (∀ c ∈ chunks, c.length = 256) → ∀ (i : Nat) (current : BitVec 128),
+      ∃ y, low.x86_64.aes_gcm.by16_loop ENC t (ofLanes128 fun _ => hk.round_keys.1)
+          (hk.round_keys.2.1.map fun k => ofLanes128 fun _ => k) (ofLanes128 fun _ => hk.round_keys.2.2) chunks
+          (counter512 icb i) current =
+        ok (counter512 icb (i + 16 * chunks.length), y,
+          (gctrEncryptRecursive icb alg kw (blocksAll chunks) i).flatMap low.x86_64.aes_gcm.bytes) ∧
+        toPoly y = ghashPoly H (toPoly current) ((padBlocks (if ENC then
+          (gctrEncryptRecursive icb alg kw (blocksAll chunks) i).flatMap low.x86_64.aes_gcm.bytes
+          else chunks.flatten)).map toPoly)
+  | [], _, i, current => ⟨current, by simp [low.x86_64.aes_gcm.by16_loop, blocksAll, gctrEncryptRecursive],
+      by cases ENC <;> simp [blocksAll, gctrEncryptRecursive, padBlocks_nil, ghashPoly_nil]⟩
+  | c :: cs, hc, i, current => by
+    have hc0 : c.length = 256 := hc c (by simp)
+    have hcs : ∀ c ∈ cs, c.length = 256 := fun c h => hc c (by simp [h])
+    have hp : ∀ v < 4, ((chunksOf 64 c).map loadBytes512)[v]! =
+        ofLanes128 fun b => loadBytes ((c.drop (16 * (4 * v + b))).take 16) := fun v hv => by
+      simp [chunksOf, hc0, hv, loadBytes512_chunk]
+    have hvec : ∀ v m, m = i + 4 * v → (ofLanes128 fun j => aesEncrypt alg kw (reverseBytesQuad32 (inc32 icb (m + j))) ^^^
+        loadBytes (List.take 16 (List.drop (16 * (4 * v + j)) c))) = ofLanes128 fun j => gBlock icb alg kw c i (4 * v + j) :=
+      fun v m hm => ofLanes128_ext _ _ fun j _ => by
+        rw [gBlock, gctrEncryptBlock, BitVec.xor_comm, hm, Nat.add_assoc]
+    simp only [low.x86_64.aes_gcm.by16_loop, next4_eq, bind_ok, uncurry_apply_pair, encrypt512_eq hk alg kw hkey,
+      hp 0 (by omega), hp 1 (by omega), hp 2 (by omega), hp 3 (by omega), xor512_eq,
+      low.x86_64.aes_gcm.BYTESWAP_512, hash16_byteswap512]
+    rw [hvec 0 i (by omega), hvec 1 (i + 4) (by omega), hvec 2 (i + 4 + 4) (by omega), hvec 3 (i + 4 + 4 + 4) (by omega),
+      show i + 4 + 4 + 4 + 4 = i + 16 by omega]
+    have hblocks : blocksAll (c :: cs) = (chunksOf 16 c).map loadBytes ++ blocksAll cs := by
+      rw [blocksAll, List.flatMap_cons, ← blocksAll]
+    have hl16 : ((chunksOf 16 c).map loadBytes).length = 16 := by rw [List.length_map, chunksOf_length, hc0]
+    have hout : List.flatMap bytes512 [ofLanes128 fun j => gBlock icb alg kw c i (4 * 0 + j),
+        ofLanes128 fun j => gBlock icb alg kw c i (4 * 1 + j), ofLanes128 fun j => gBlock icb alg kw c i (4 * 2 + j),
+        ofLanes128 fun j => gBlock icb alg kw c i (4 * 3 + j)] =
+        (gctrEncryptRecursive icb alg kw ((chunksOf 16 c).map loadBytes) i).flatMap low.x86_64.aes_gcm.bytes := by
+      rw [gctr_chunk icb alg kw c hc0]
+      simp [bytes512_four, List.range_succ]
+    rw [hout]
+    obtain ⟨y, hy, hyp⟩ : ∃ y, low.x86_64.ghash.hash16 t
+        (ofLanes128 fun _ => 0x00010203_04050607_08090a0b_0c0d0e0f#128)
+        (if ENC = true then [ofLanes128 fun j => gBlock icb alg kw c i (4 * 0 + j),
+          ofLanes128 fun j => gBlock icb alg kw c i (4 * 1 + j), ofLanes128 fun j => gBlock icb alg kw c i (4 * 2 + j),
+          ofLanes128 fun j => gBlock icb alg kw c i (4 * 3 + j)] else (chunksOf 64 c).map loadBytes512) current = ok y ∧
+        toPoly y = ghashPoly H (toPoly current) ((padBlocks (if ENC then
+          (gctrEncryptRecursive icb alg kw ((chunksOf 16 c).map loadBytes) i).flatMap low.x86_64.aes_gcm.bytes
+          else c)).map toPoly) := by
+      cases ENC
+      · exact hash16_spec H hH t ht c hc0 current
+      · obtain ⟨y, hy, hyp⟩ := hash16_vecs H hH t ht [ofLanes128 fun j => gBlock icb alg kw c i (4 * 0 + j),
+          ofLanes128 fun j => gBlock icb alg kw c i (4 * 1 + j), ofLanes128 fun j => gBlock icb alg kw c i (4 * 2 + j),
+          ofLanes128 fun j => gBlock icb alg kw c i (4 * 3 + j)] rfl current
+        rw [hout] at hyp
+        exact ⟨y, hy, hyp⟩
+    obtain ⟨z, hz, hzp⟩ := by16_loop_eq ENC H hH t ht icb cs hcs (i + 16) y
+    have hlo : ((gctrEncryptRecursive icb alg kw ((chunksOf 16 c).map loadBytes) i).flatMap
+        low.x86_64.aes_gcm.bytes).length % 16 = 0 := by rw [length_flatMap_bytes]; omega
+    refine ⟨z, ?_, ?_⟩
+    · rw [hy, bind_ok, hz, bind_ok, uncurry_apply_pair, uncurry_apply_pair, hblocks, gctr_append, hl16,
+        List.flatMap_append, List.length_cons, show i + 16 + 16 * cs.length = i + 16 * (cs.length + 1) by ring]
+    · rw [hzp, hyp, ← ghashPoly_append, ← List.map_append, hblocks, gctr_append, hl16, List.flatMap_append]
+      cases ENC
+      · simp only [Bool.false_eq_true, ite_false, List.flatten_cons]
+        rw [padBlocks_append _ _ (by rw [hc0])]
+      · simp only [ite_true]
+        rw [padBlocks_append _ _ hlo]
+
+end loop
+
 end rind.x86_64
