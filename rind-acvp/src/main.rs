@@ -1042,7 +1042,10 @@ mod tests {
         // One string, "ab", then a request cut short in its lengths.
         let input = [1, 0, 0, 0, 2, 0, 0, 0, b'a', b'b', 1, 0, 0, 0, 2];
         let mut input = &input[..];
-        assert_eq!(read_request(&mut input).unwrap(), Some(vec![b"ab".to_vec()]));
+        assert_eq!(
+            read_request(&mut input).unwrap(),
+            Some(vec![b"ab".to_vec()])
+        );
         assert!(read_request(&mut input).is_err());
     }
 }
