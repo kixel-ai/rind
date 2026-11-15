@@ -75,7 +75,7 @@ theorem high_verify_spec (h : Runs) (hd : RunsDouble) (hs : RunsSha512) (vk : hi
     (hA : edOnCurve A) (hp : pairNat vk.point.val = edModEncodePair A) (sig msg : Slice U8)
     (hm : msg.length + 64 < 2 ^ 64) :
     high.ed25519.Ed25519VerifyingKey.verify vk sig msg ⦃ r =>
-      r = if ed25519Verifies A vk.bytes.val msg.val sig.val then
+      r = if ed25519Verifies A (mid.ed25519.VerifyingKey.bytes vk).val msg.val sig.val then
         (.Ok () : core.result.Result Unit error.Error) else .Err .BadSignature ⦄ := by
   unfold high.ed25519.Ed25519VerifyingKey.verify
   step
@@ -89,7 +89,7 @@ theorem high_verify_spec (h : Runs) (hd : RunsDouble) (hs : RunsSha512) (vk : hi
     rw [hr, ha]
   · simp only [hl, ↓reduceIte] at hr
     obtain ⟨e, rfl⟩ := hr
-    have hn : ¬ ed25519Verifies A vk.bytes.val msg.val sig.val := fun ⟨h64, _⟩ => hl h64
+    have hn : ¬ ed25519Verifies A (mid.ed25519.VerifyingKey.bytes vk).val msg.val sig.val := fun ⟨h64, _⟩ => hl h64
     simp [core.result.Result.map_err, core.result.Result.Insts.CoreOpsTry.branch,
       high.ed25519.Ed25519VerifyingKey.verify.closure.Insts.CoreOpsFunctionFnOnceTupleTryFromSliceErrorError.call_once,
       core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual, hn]
