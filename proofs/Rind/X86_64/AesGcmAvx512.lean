@@ -544,4 +544,93 @@ theorem padBlocks_range (X : List U8) (N : Nat) (hN : 16 ≤ N) :
       · have h3 : ¬ k - (X.length - 16 * (X.length / 16)) < 16 - (X.length - 16 * (X.length / 16)) := by omega
         simp [List.getElem?_take, List.getElem?_drop, List.getElem?_append, List.getElem?_replicate, hk, hk', h3]
 
+theorem slice_partial (X : List U8) (N : Nat) (hN : 16 ≤ N) :
+    ((X ++ List.replicate N 0#u8).drop (16 * (X.length / 16))).take 16 =
+      chunksRest 16 X ++ List.replicate (16 - (chunksRest 16 X).length) 0#u8 := by
+  rw [chunksRest]
+  apply List.ext_getElem?; intro k
+  by_cases hk : k < X.length - 16 * (X.length / 16)
+  · have h1 : 16 * (X.length / 16) + k < X.length := by omega
+    simp [List.getElem?_take, List.getElem?_drop, List.getElem?_append, hk, h1, show k < 16 by omega]
+  · by_cases hk' : k < 16
+    · have h1 : ¬ 16 * (X.length / 16) + k < X.length := by omega
+      have h2 : 16 * (X.length / 16) + k - X.length < N := by omega
+      have h3 : k - (X.length - 16 * (X.length / 16)) < 16 - (X.length - 16 * (X.length / 16)) := by omega
+      simp [List.getElem?_take, List.getElem?_drop, List.getElem?_append, List.getElem?_replicate, hk, hk', h1,
+        h2, h3]
+    · have h3 : ¬ k - (X.length - 16 * (X.length / 16)) < 16 - (X.length - 16 * (X.length / 16)) := by omega
+      simp [List.getElem?_take, List.getElem?_drop, List.getElem?_append, List.getElem?_replicate, hk, hk', h3]
+
+theorem slice_whole (X Z : List U8) (q : Nat) (hq : 16 * q + 16 ≤ X.length) :
+    ((X ++ Z).drop (16 * q)).take 16 = (X.drop (16 * q)).take 16 := by
+  rw [List.drop_append_of_le_length (by omega), List.take_append_of_le_length (by simp; omega)]
+
+theorem flatMap_range_slice {α : Type} (g : Nat → List α) (k : Nat) (hg : ∀ x, (g x).length = k) :
+    ∀ (n v : Nat), v < n → (((List.range n).flatMap g).drop (k * v)).take k = g v
+  | 0, _, h => absurd h (by omega)
+  | n + 1, v, h => by
+    have hl : ((List.range n).flatMap g).length = k * n := by
+      rw [List.length_flatMap]; simp [hg, List.sum_replicate, Nat.mul_comm]
+    rw [List.range_succ, List.flatMap_append, List.flatMap_singleton]
+    by_cases hv : v < n
+    · rw [List.drop_append_of_le_length (by rw [hl]; exact Nat.mul_le_mul_left _ (by omega)),
+        List.take_append_of_le_length (by simp [hl]; rw [← Nat.mul_sub]; exact Nat.le_mul_of_pos_right _ (by omega)),
+        flatMap_range_slice g k hg n v hv]
+    · have : v = n := by omega
+      subst this
+      rw [List.drop_left' hl, List.take_of_length_le (by rw [hg])]
+
+theorem gctr_range (icb : Quad32) (alg : Algorithm) (kw : List (BitVec 32)) :
+    ∀ (n : Nat) (h : Nat → BitVec 128) (i : Nat),
+      gctrEncryptRecursive icb alg kw ((List.range n).map h) i =
+        (List.range n).map fun q => gctrEncryptBlock icb (h q) alg kw (i + q)
+  | 0, _, _ => rfl
+  | n + 1, h, i => by
+    rw [List.range_succ_eq_map, List.map_cons, List.map_map, gctrEncryptRecursive, gctr_range icb alg kw n _ (i + 1),
+      List.map_cons, List.map_map, Nat.add_zero]
+    refine congrArg (_ :: ·) (List.map_congr_left fun q _ => ?_)
+    simp only [Function.comp]
+    rw [show i + 1 + q = i + (q + 1) by omega]
+
+/-- The tail's GCTR: the first `T.length` bytes of all 16 blocks' GCTR, `T`
+zero-extended, are its whole blocks' GCTR then its partial block's, cut. -/
+theorem tail_gctr (icb : Quad32) (alg : Algorithm) (kw : List (BitVec 32)) (T : List U8) (hT : T.length < 256)
+    (i0 : Nat) :
+    ((List.range 16).flatMap fun q => low.x86_64.aes_gcm.bytes (gctrEncryptBlock icb
+        (loadBytes (((T ++ List.replicate 256 0#u8).drop (16 * q)).take 16)) alg kw (i0 + q))).take T.length =
+      (gctrEncryptRecursive icb alg kw ((chunksOf 16 T).map loadBytes) i0).flatMap low.x86_64.aes_gcm.bytes ++
+        if (chunksRest 16 T).isEmpty = true then []
+        else List.take (chunksRest 16 T).length (low.x86_64.aes_gcm.bytes
+          (gctrEncryptBlock icb (low.x86_64.ghash.loadPadded (chunksRest 16 T)) alg kw
+            (i0 + ((chunksOf 16 T).map loadBytes).length))) := by
+  set n := T.length / 16 with hn
+  have hr := chunksRest_length 16 T
+  have hsplit : List.range 16 = List.range n ++ (List.range (16 - n)).map (n + ·) := by
+    rw [← List.range_add, show n + (16 - n) = 16 by omega]
+  have hA : ((List.range n).flatMap fun q => low.x86_64.aes_gcm.bytes (gctrEncryptBlock icb
+      (loadBytes (((T ++ List.replicate 256 0#u8).drop (16 * q)).take 16)) alg kw (i0 + q))) =
+      (gctrEncryptRecursive icb alg kw ((chunksOf 16 T).map loadBytes) i0).flatMap low.x86_64.aes_gcm.bytes := by
+    rw [chunksOf, List.map_map, ← hn, gctr_range, List.flatMap_map]
+    apply List.flatMap_congr; intro q hq
+    have := List.mem_range.1 hq
+    simp only [Function.comp, slice_whole T _ q (by omega)]
+  have hAl : ((gctrEncryptRecursive icb alg kw ((chunksOf 16 T).map loadBytes) i0).flatMap
+      low.x86_64.aes_gcm.bytes).length = 16 * n := by
+    rw [length_flatMap_bytes, length_gctr, List.length_map, chunksOf_length]
+  rw [hsplit, List.flatMap_append, hA, List.take_append, hAl, List.take_of_length_le (by rw [hAl]; omega),
+    List.length_map, chunksOf_length, ← hn]
+  refine congrArg (_ ++ ·) ?_
+  have h16 : 16 - n = (16 - n - 1) + 1 := by omega
+  rw [h16, List.range_succ_eq_map, List.map_cons, List.flatMap_cons, Nat.add_zero]
+  by_cases h0 : T.length % 16 = 0
+  · have he : chunksRest 16 T = [] := List.eq_nil_of_length_eq_zero (by omega)
+    rw [he, show T.length - 16 * n = 0 by omega, List.take_zero]
+    rfl
+  · have he : (chunksRest 16 T).isEmpty = false := by
+      rw [List.isEmpty_eq_false_iff]; intro h; rw [h] at hr; simp at hr; omega
+    simp only [he, Bool.false_eq_true, ite_false]
+    rw [List.take_append_of_le_length (by rw [length_bytes]; omega), hr,
+      show T.length - 16 * n = T.length % 16 by omega,
+      low.x86_64.ghash.loadPadded, ← slice_partial T 256 (by omega), ← hn]
+
 end rind.x86_64
