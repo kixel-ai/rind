@@ -23,5 +23,7 @@ Three coverage children joined on 2026-11-12, with the maintainer, from the nigh
 
 Two constant-time children joined on 2026-11-12, with the maintainer, from reading pyca/verified-garbage: Intel's MXCSR-dependent timing and DOITM, and Apple's DIT barrier.
 
+Two children joined on 2026-11-14 from [the upstream-updates run](/quest/m2/upstream-updates.md): secret-branch checks for the portable-only targets, after libsodium's and RUSTSEC-2026-0426's compiler-inserted branches, and the HPKE revision's edge-case vectors.
+
 - Fix what a check finds in its own quest's PR when it's small; otherwise plan a follow-up.
 - Slow suites run in their own workflows, not in `just ci`.

@@ -9,13 +9,13 @@
 //! with pinned flags; a plain workspace build compiles it empty.
 //!
 //! - At load, a constructor runs the HMAC-SHA-256 and SHA-256 self-tests,
-//!   then the integrity test ([`integrity`]).
-//! - Each algorithm's self-test runs before its first use ([`selftest`]),
+//!   then the integrity test (`integrity`).
+//! - Each algorithm's self-test runs before its first use (`selftest`),
 //!   and a pairwise consistency test follows each key pair generation.
 //! - A failure prints which test failed and aborts: the error state.
 //! - Every service that handles an SSP zeroes the stack it used
-//!   ([`scrub`]), and the allocator zeroes every block it frees
-//!   ([`alloc`]), so no SSP outlives the call or handle holding it.
+//!   (`scrub`), and the allocator zeroes every block it frees
+//!   (`alloc`), so no SSP outlives the call or handle holding it.
 //! - Every service is approved, with approved parameters, so a successful
 //!   call is the service indicator.
 #![cfg(rind_fips)]

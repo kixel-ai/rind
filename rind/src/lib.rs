@@ -405,7 +405,7 @@ pub mod signature {
     /// parameter set is a type.
     ///
     /// Each signs as the [`verify`] algorithm of the same name verifies:
-    /// [`MlDsaKeyPair<MlDsa65>`] as [`verify::ML_DSA_65`].
+    /// [`MlDsaKeyPair<MlDsa65>`](sign::MlDsaKeyPair) as [`verify::ML_DSA_65`].
     ///
     /// ```
     /// use rind::signature::sign::{MlDsa65, MlDsaKeyPair};
