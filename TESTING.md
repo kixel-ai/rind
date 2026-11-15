@@ -218,7 +218,7 @@ secret names a zeroing test, or says why it has none.
 | Constant-time comparison | `constant_time::verify` | none: no published set | none: it returns whether two slices are equal, which the differential test covers | `crosschecks::slice_comparison_matches_aws_lc_rs` | ctgrind: `high::constant_time::contents_stay_secret`, `low::generic::ct_equal::equiv`; BINSEC: `test::binsec::ct_binsec_constant_time_verify` | none: it keeps nothing |
 | Random bytes | `rand::fill` | none: the operating system's generator, which no vector can check | none, as for vectors | none, as for vectors | none: rind passes the bytes on | none: rind keeps no copy of the bytes |
 
-Exports that are not primitives: `Error`, `KeyRejected`, `doc::inline_assembly_safety`, `cpu::Dit`, `cpu::MissingFeature`, `cpu::check`, `cpu::has_aes_hardware`, and the hooks the FIPS module builds on: `fips::DrbgHold`, `fips::SelfTest`, `fips::broken`, `fips::check_rsa_modulus`, `fips::digest`, `fips::error_code`, `fips::error_from_code`, `fips::fail`, `fips::hold_drbgs`, `fips::missing_cpu_feature`, `fips::zeroise_drbgs`.
+Exports that are not primitives: `Error`, `KeyRejected`, `doc::inline_assembly_safety`, `cpu::Dit`, `cpu::has_aes_hardware`, and the hooks the FIPS module builds on: `fips::DrbgHold`, `fips::SelfTest`, `fips::broken`, `fips::check_rsa_modulus`, `fips::digest`, `fips::error_code`, `fips::error_from_code`, `fips::fail`, `fips::hold_drbgs`, `fips::missing_cpu_feature`, `fips::zeroise_drbgs`.
 
 ## Adapters
 
@@ -271,7 +271,9 @@ sees divisions, can see an instruction whose timing depends on its
 operands, so `admin/ct-vartime`, which `just check` runs when rind changes,
 scans its release builds for every architecture it builds for, and its
 portable backend's on x86_64 and armv7, for divisions and floating-point arithmetic, and fails on one that `admin/ct-vartime.toml` does
-not list as taking only public operands.
+not list as taking only public operands. On the x86_64 backend it also fails
+on a multiply Intel's MXCSR configuration dependent timing affects that any
+function rind exports reaches outside `rind::low::Mcdt`, Intel's mitigation.
 `nix develop .#dudect --command admin/timing dudect` times each secret
 operation whose secret the API lets it set (not key generation, encapsulation,
 or varied ML-KEM decapsulation keys) on two classes of secret, as dudect does,
