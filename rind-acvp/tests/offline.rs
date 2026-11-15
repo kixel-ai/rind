@@ -14,7 +14,7 @@
 //! The large-data hash tests hash 15 GiB per hash, so they run only with
 //! `SLOW_TESTS` set.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -217,12 +217,24 @@ fn check(set: &Set, response: &Value) -> Result<(), String> {
         }
     }
     match &set.check {
-        Check::Answers(expected) => matches(
-            &response["testGroups"],
-            &expected["testGroups"],
-            &HashSet::new(),
-            "/testGroups".into(),
-        ),
+        Check::Answers(expected) => {
+            matches(
+                &response["testGroups"],
+                &expected["testGroups"],
+                "/testGroups".into(),
+            )?;
+            for group in response["testGroups"].as_array().unwrap() {
+                let tg_id = id(group, "tgId");
+                let want = find(&expected["testGroups"], "tgId", tg_id);
+                for test in tests(group) {
+                    let tc_id = id(test, "tcId");
+                    let expected_test = find(&want["tests"], "tcId", tc_id);
+                    complete(&set.prompt, want, test, expected_test)
+                        .map_err(|e| format!("tgId {tg_id} tcId {tc_id}: {e}"))?;
+                }
+            }
+            Ok(())
+        }
         Check::Validate(validate) => {
             for group in response["testGroups"].as_array().unwrap() {
                 let prompt = find(&set.prompt["testGroups"], "tgId", id(group, "tgId"));
@@ -245,32 +257,83 @@ fn find<'a>(array: &'a Value, key: &str, id: u64) -> &'a Value {
         .unwrap_or(&Value::Null)
 }
 
+/// The fields of `group`'s answers in `set`, by its algorithm, mode, and
+/// the group's test type, direction, or function, as `acvptool`'s responses
+/// carry them: it echoes no input, and drops an answer the wrapper left
+/// empty, so these cannot be read off a response.
+fn answer_fields(set: &Value, group: &Value) -> Result<&'static [&'static str], String> {
+    let field = |value: &Value, key: &str| value[key].as_str().unwrap_or_default().to_owned();
+    let [algorithm, mode] = ["algorithm", "mode"].map(|key| field(set, key));
+    let [kind, direction, function] =
+        ["testType", "direction", "function"].map(|key| field(group, key));
+    let key = (
+        algorithm.as_str(),
+        mode.as_str(),
+        kind.as_str(),
+        direction.as_str(),
+        function.as_str(),
+    );
+    Ok(match key {
+        (_, _, "MCT", _, _) => &["resultsArray"],
+        (a, ..) if a.starts_with("SHA2-") || a.starts_with("SHA3-") => &["md"],
+        (a, ..) if a.starts_with("HMAC-") => &["mac"],
+        (a, .., "encrypt", _) if a.starts_with("ACVP-AES-") => &["ct"],
+        (a, .., "decrypt", _) if a.starts_with("ACVP-AES-") => &["pt"],
+        ("hmacDRBG", ..) => &["returnedBits"],
+        ("ML-KEM", "keyGen", ..) => &["ek", "dk"],
+        ("ML-KEM", "encapDecap", .., "encapsulation") => &["c", "k"],
+        ("ML-KEM", "encapDecap", .., "decapsulation") => &["k"],
+        ("ML-DSA", "keyGen", ..) => &["pk", "sk"],
+        ("ML-DSA", "sigGen", ..) => &["signature"],
+        ("KDA", "HKDF", "AFT", ..) => &["dkm"],
+        ("PBKDF", ..) => &["derivedKey"],
+        ("ECDSA" | "EDDSA", "keyVer" | "sigVer", ..)
+        | ("RSA" | "ML-DSA", "sigVer", ..)
+        | ("ML-KEM", "encapDecap", ..)
+        | ("KDA" | "KAS-ECC-SSC", _, "VAL", ..) => &["testPassed"],
+        _ => return Err(format!("no answer fields for {key:?}")),
+    })
+}
+
+/// Whether the response `test` carries every nonempty answer of
+/// `expected`, the test's expected answers, in `group` of `set`. A test
+/// expected to fail answers only that, and a Monte Carlo test's every
+/// iteration carries every value it computes, all bytes.
+fn complete(set: &Value, group: &Value, test: &Value, expected: &Value) -> Result<(), String> {
+    let fields = if expected["testPassed"] == json!(false) {
+        &["testPassed"]
+    } else {
+        answer_fields(set, group)?
+    };
+    for &field in fields {
+        let Some(want) = expected.get(field) else {
+            return Err(format!("{field}: not in the expected answer"));
+        };
+        if want != "" && test.get(field).is_none() {
+            return Err(format!("{field}: missing"));
+        }
+    }
+    for (i, iteration) in test["resultsArray"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .enumerate()
+    {
+        let want = &expected["resultsArray"][i];
+        for (field, value) in want.as_object().into_iter().flatten() {
+            if value.as_str().is_some_and(|v| !v.is_empty()) && iteration.get(field).is_none() {
+                return Err(format!("resultsArray[{i}]/{field}: missing"));
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Whether every field of `response` equals `expected`'s, recursively,
-/// matching groups and tests by their ids and hex case-insensitively, and
-/// `response` leaves out none of `expected`'s nonempty `answers`: the fields
-/// its siblings in their array carry, since `acvptool` echoes no input and
-/// drops an answer the wrapper left empty. A test expected to fail answers
-/// only that.
-fn matches(
-    response: &Value,
-    expected: &Value,
-    answers: &HashSet<String>,
-    path: String,
-) -> Result<(), String> {
+/// matching groups and tests by their ids and hex case-insensitively.
+fn matches(response: &Value, expected: &Value, path: String) -> Result<(), String> {
     match (response, expected) {
         (Value::Object(response), Value::Object(expected)) => {
-            let empty = |value: &Value| value == "" || value == &json!([]);
-            let failed = expected.get("testPassed") == Some(&json!(false));
-            if let Some(key) = expected
-                .iter()
-                .filter(|_| !failed)
-                .find_map(|(key, value)| {
-                    (answers.contains(key) && !response.contains_key(key) && !empty(value))
-                        .then_some(key)
-                })
-            {
-                return Err(format!("{path}/{key}: missing"));
-            }
             for (key, value) in response {
                 if key == "vsId" {
                     continue;
@@ -279,7 +342,7 @@ fn matches(
                 let Some(want) = expected.get(key) else {
                     return Err(format!("{path}: no expected value"));
                 };
-                matches(value, want, answers, path)?;
+                matches(value, want, path)?;
             }
             Ok(())
         }
@@ -291,22 +354,12 @@ fn matches(
             ))
         }
         (Value::Array(response), Value::Array(_)) => {
-            let answers: HashSet<String> = response
-                .iter()
-                .filter_map(Value::as_object)
-                .flat_map(|object| object.keys().cloned())
-                .collect();
             for (i, value) in response.iter().enumerate() {
                 let (key, want) = ["tgId", "tcId"]
                     .into_iter()
                     .find_map(|key| Some((key, find(expected, key, value[key].as_u64()?))))
                     .unwrap_or(("", &expected[i]));
-                matches(
-                    value,
-                    want,
-                    &answers,
-                    format!("{path}[{key} {}]", value[key]),
-                )?;
+                matches(value, want, format!("{path}[{key} {}]", value[key]))?;
             }
             Ok(())
         }
