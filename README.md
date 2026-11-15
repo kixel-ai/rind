@@ -92,7 +92,7 @@ ring and aws-lc-rs item to rind's.
 The `rind` crate's own API covers AES-GCM, ChaCha20-Poly1305, and
 XChaCha20-Poly1305, QUIC header protection, X25519 and ECDH, ML-KEM-768,
 HPKE, ECDSA, Ed25519, ML-DSA, and RSA signatures, RSA blind signatures, ECVRF, OPRFs, RSA-OAEP, SHA-1, SHA-2, and SHA-3,
-HMAC, HKDF, PBKDF2, SPAKE2+, and AES key wrap. Each algorithm is a constant and each key
+HMAC, HKDF, PBKDF2, Argon2id, SPAKE2+, and AES key wrap. Each algorithm is a constant and each key
 type has one role, so misuse fails to compile:
 
 ```rust
@@ -236,6 +236,9 @@ building, testing, and how a PR lands.
   layers beneath them.
 - [BENCHMARKS.md][benchmarks]: every operation's time, build time, and binary
   size, against the other libraries.
+- [AUDIT.md][audit]: where a security review starts: the threat model, each
+  line's source and pin, what each check does and does not establish, and
+  where the checks are thinnest.
 
 ## Built on great work
 
@@ -307,3 +310,4 @@ from other projects keeps its source's license, which [LICENSE] lists.
 [sources]: https://github.com/kixel-ai/rind/blob/main/ALGORITHMS.md#sources
 [platforms]: https://github.com/kixel-ai/rind/blob/main/PLATFORMS.md
 [architecture]: https://github.com/kixel-ai/rind/blob/main/ARCHITECTURE.md
+[audit]: https://github.com/kixel-ai/rind/blob/main/AUDIT.md

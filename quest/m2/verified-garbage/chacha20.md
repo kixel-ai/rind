@@ -6,9 +6,9 @@ For each cell below, an operation on a tier, where pyca/verified-garbage (VG) me
 
 ## Plan
 
-- Measured only on `desktop` (Arrow Lake) under load on 2026-11-14, by the `chacha20` rows [kixel-ai/rind#741](https://github.com/kixel-ai/rind/pull/741) added after its nightly run, so first read those rows in a nightly that ran them and time an idle host. Ratios are VG's time over rind's.
+- Measured only on `desktop` (Arrow Lake) under load on 2026-11-14, by the `chacha20` rows [kixel-ai/rind#741](https://github.com/kixel-ai/rind/pull/741) added after its bench run, so first read those rows in a weekly bench run that ran them and time an idle host. Ratios are VG's time over rind's.
 - Take VG's lowest routine that leaves rind's API and behavior intact and keep rind's glue, as [the epic](/quest/m2/verified-garbage/README.md)'s Plan settles. Vendor it with `admin/import-vg`, which the first switch to land adds.
-- Re-measure each cell below before and after on the nightly's tiers and an idle host, and switch only the cells that still hold at every size; every other tier keeps rind's code.
+- Re-measure each cell below before and after on the weekly bench's tiers and an idle host, and switch only the cells that still hold at every size; every other tier keeps rind's code.
 - QUIC header protection keeps rind's one-block path, where VG lost (1.21 to 1.37), since a mask starts a new keystream each time.
 - Wycheproof and the aws-lc-rs differential tests already cover the operation; extend the ctgrind tests to the new code path.
 
