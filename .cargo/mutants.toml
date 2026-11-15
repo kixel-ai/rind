@@ -160,7 +160,10 @@ exclude_re = [
   # `q / n` and `(q + 1) / n`; decompose's `r0` never lies at `(q + 1) / 2`;
   # vpmuldq reads only the even lanes of ML-DSA's x86_64 `QDATA`; ExpandA's
   # first squeeze, of a multiple of 3 bytes, yields the same samples at any
-  # length; and the seed index of its padding lanes picks outputs it drops.
+  # length; the seed index of its padding lanes picks outputs it drops; and
+  # `copy_lanes` copies at most `N` bytes, so its loop breaks before any bound
+  # of at least `N / 16` lanes.
+  'rind/src/low/generic/blockwise\.rs:\d+:\d+: replace / with \* in copy_lanes$',
   'rind/src/low/generic/mldsa_poly\.rs:(38|39):27: replace - with [+/]$',
   'rind/src/low/generic/mldsa_poly\.rs:206:\d+: replace - with [+/] in decompose$',
   'rind/src/low/x86_64/mldsa\.rs:(209|211|213|215|237|239|241|243|245|247|249|251|257|259|269|277|283|285|287|293|295|537|539|541|543|549|551|565|569|571|575|577|579|581|583|587):5: delete -$',
