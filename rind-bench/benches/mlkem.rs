@@ -108,14 +108,15 @@ fn vg_agrees_with_rind() {
     use rind::kem::*;
     use verified_garbage::mlkem768::EncapsulationKey768;
 
-    let ours = DecapsulationKey::generate(&ML_KEM_768).unwrap();
+    let ours = DecapsulationKey::<MlKem768>::generate().unwrap();
     let theirs =
         EncapsulationKey768::from_bytes(ours.public_key().as_ref().try_into().unwrap()).unwrap();
     let (secret, ciphertext) = theirs.encapsulate().unwrap();
-    assert_eq!(ours.decapsulate(&ciphertext).unwrap().as_ref(), secret);
+    let ciphertext = Ciphertext::new(&ciphertext).unwrap();
+    assert_eq!(ours.decapsulate(&ciphertext).as_ref(), secret);
 
     let theirs = vg_generate();
-    let ours = EncapsulationKey::new(&ML_KEM_768, theirs.encapsulation_key().as_bytes()).unwrap();
+    let ours = EncapsulationKey::<MlKem768>::new(theirs.encapsulation_key().as_bytes()).unwrap();
     let (ciphertext, secret) = ours.encapsulate().unwrap();
     assert_eq!(
         theirs
