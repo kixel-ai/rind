@@ -27,7 +27,7 @@ use serde::Deserialize;
 /// The path of the Wycheproof vector file `name`.
 fn vectors(name: &str) -> String {
     let dir = env!("CARGO_MANIFEST_DIR");
-    format!("{dir}/../thirdparty/wycheproof/testvectors_v1/{name}")
+    format!("{dir}/../thirdparty/vectors/wycheproof/testvectors_v1/{name}")
 }
 
 fn read<T: for<'de> Deserialize<'de>>(name: &str) -> T {
