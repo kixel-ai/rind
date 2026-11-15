@@ -511,7 +511,7 @@ class Api:
             trait = self.index[str(id)]["inner"]["trait"]
             if self.index[str(id)]["visibility"] == "public":
                 inherited += [(i, args) for i in trait["items"]]
-            given = [a.get("type", a.get("const")) for a in ((args or {}).get("angle_bracketed") or {}).get("args", []) if "lifetime" not in a]
+            given = [a for a in ((args or {}).get("angle_bracketed") or {}).get("args", []) if "lifetime" not in a]
             params = [p["name"] for p in trait["generics"]["params"] if "lifetime" not in p["kind"]]
             inner = dict(zip(params, given))
             for b in self.bounds(id):
@@ -730,11 +730,21 @@ def assoc_item(inner):
 
 
 def substitute(value, params):
-    """`value` with each generic parameter named in `params` replaced by its argument."""
+    """`value` with each type or const parameter named in `params` replaced by
+    its argument, a rustdoc generic argument such as `{"type": ...}`."""
     if isinstance(value, dict):
-        if value.keys() == {"generic"} and value["generic"] in params:
-            return params[value["generic"]]
-        return {k: substitute(v, params) for k, v in value.items()}
+        name = value.get("generic")
+        if value.keys() == {"generic"} and "type" in params.get(name, {}):
+            return params[name]["type"]
+        expr = (value.get("const") or {}).get("expr") if value.keys() == {"const"} else None
+        if expr in params and "const" in params[expr]:
+            return params[expr]
+        out = {k: substitute(v, params) for k, v in value.items()}
+        if isinstance(out.get("len"), str) and "const" in params.get(out["len"], {}):
+            # An array's length names a const parameter by its bare name.
+            const = params[out["len"]]["const"]
+            out["len"] = const["value"] or const["expr"]
+        return out
     if isinstance(value, list):
         return [substitute(v, params) for v in value]
     return value
