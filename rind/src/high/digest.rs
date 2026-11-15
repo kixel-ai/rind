@@ -710,7 +710,10 @@ mod tests {
                 State::Sha512_256(hashing) => core::ptr::from_ref(&hashing.context).cast(),
                 _ => unreachable!(),
             };
-            assert_eq!((context as usize - core::ptr::from_ref(&ctx) as usize) % 16, 0);
+            assert_eq!(
+                (context as usize - core::ptr::from_ref(&ctx) as usize) % 16,
+                0
+            );
         }
     }
 

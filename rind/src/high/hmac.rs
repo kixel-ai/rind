@@ -534,7 +534,10 @@ mod tests {
                 Tagged::Sha512(tagging) => core::ptr::from_ref(&tagging.hmac.inner).cast(),
                 Tagged::Sha1(_) => unreachable!(),
             };
-            assert_eq!((inner as usize - core::ptr::from_ref(&ctx) as usize) % 16, 0);
+            assert_eq!(
+                (inner as usize - core::ptr::from_ref(&ctx) as usize) % 16,
+                0
+            );
         }
     }
 
