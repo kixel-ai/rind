@@ -146,10 +146,11 @@ unaligned, as Linux and Android leave them.
 
 `simulator.ml` cosimulates the model as s2n-bignum's
 `riscv/proofs/simulator.ml` does its own: directed cases at the shifts' and
-carries' edges and a backward branch, then random instructions from every row
-above, each with a random condition and state, branches forward and back,
-which `cosim_runner.c` and `cosim_start.S` run under qemu-arm, and the model
-must prove reach the same state. `admin/prove
-cosim` runs 1000 random cases, printing the seed, which
+carries' edges, a backward branch, and unaligned word loads and stores, then
+random instructions from every row above, each with a random condition and
+state, branches forward and back and word offsets unaligned, which
+`cosim_runner.c` and `cosim_start.S` run under qemu-arm, and the model must
+prove reach the same state. `admin/prove cosim` runs 1000 random cases,
+printing the seed, which
 `S2N_BIGNUM_SEMATEST_SEED` repeats. Offering the model upstream is also a
 post to awslabs/s2n-bignum, which needs the maintainer's approval.

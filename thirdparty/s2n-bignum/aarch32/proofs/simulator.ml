@@ -160,14 +160,15 @@ let make_branch_case input =
     case_memop = false; case_input = input };;
 
 (* A load or store through SP, at the buffer's middle, whose address, and
-   whose written-back SP, stay inside the buffer. Words are aligned. *)
+   whose written-back SP, stay inside the buffer. A word's offset may be
+   unaligned, as the model allows. *)
 let make_ldst_case input =
   let byte = Random.bool () and load = Random.bool ()
   and p = Random.bool () and u = Random.bool () in
   let w = p && Random.bool () in
   let imm12 =
     if byte then (if u then Random.int 128 else Random.int 129)
-    else 4 * (if u then Random.int 32 else Random.int 33) in
+    else if u then Random.int 125 else Random.int 129 in
   { case_instruction =
       encode_ldst (random_condition ()) p u byte w load 13
         (random_register ()) imm12;
@@ -181,8 +182,9 @@ let make_case kind =
   el kind caseclasses (make_input_state (Random.int 65));;
 
 (* Edges the random cases reach only by chance: the shifts whose imm5 of 0
-   means 32 or RRX, the carries and overflows of the arithmetic, and a
-   backward branch's sign-extended offset. *)
+   means 32 or RRX, the carries and overflows of the arithmetic, a backward
+   branch's sign-extended offset, and word transfers that straddle two of the
+   buffer's words, whose bytes differ so a misplaced one shows. *)
 let directed_input assignments =
   let base = map (fun _ -> num_0) (0--13) @ map (fun _ -> num_0) (1--4) @
              [num 128; num_0] @ map (fun _ -> num_0) (0--63) in
@@ -212,7 +214,20 @@ let directed_cases =
    dp 10 true 1 0 0 0 2 [1,num 0x12345678; 2,num 0x12345678];
    (* B to 8 bytes before itself. *)
    { case_instruction = encode_branch 14 0xfffffc; case_memop = false;
-     case_input = directed_input [] }];;
+     case_input = directed_input [] }] @
+  (* LDR R0, [SP, #1]; LDR R0, [SP, #-2]!; STR R1, [SP, #3];
+     STR R1, [SP, #-1]!. Inputs 51 to 53 are the words at SP-4, SP, and
+     SP+4. *)
+  map (fun (u,w,load,imm12) ->
+         { case_instruction =
+             encode_ldst 14 true u false w load 13 (if load then 0 else 1)
+               imm12;
+           case_memop = true;
+           case_input = directed_input
+             [1,num 0xddccbbaa; 51,num 0x03020100; 52,num 0x07060504;
+              53,num 0x0b0a0908] })
+    [true,false,true,1; false,true,true,2; true,false,false,3;
+     false,true,false,1];;
 
 let aarch32_cosim_executor = lazy
   (start_cosim_executor "RIND_AARCH32_EXECUTOR"
