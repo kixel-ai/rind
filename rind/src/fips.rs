@@ -607,11 +607,7 @@ mod kat {
             sha256_of(signature.as_ref())[..] == hex(ML_DSA_SIGNATURE_SHA256),
         )?;
 
-        let verified = public_key.verify(
-            b"",
-            &input("ml_dsa_verify", message),
-            signature.as_ref(),
-        );
+        let verified = public_key.verify(b"", &input("ml_dsa_verify", message), signature.as_ref());
         check("ml_dsa_verify", verified.is_ok())
     }
 
