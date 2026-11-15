@@ -42,6 +42,7 @@ exclude_re = [
   # bit fields, or a carry and a borrow that cannot both occur, is their
   # exclusive or. So is an AND of flags that always agree their OR, and
   # `1 << 0` is `1 >> 0`, as `1 << 8` is `1 >> 8` in the byte kept.
+  'rind/src/mid/half_size\.rs:\d+:\d+: replace \| with \^ in U256::(from|shl)$',
   'rind/src/high/asn1\.rs:\d+:\d+: replace \| with \^ in (Parser<\x27a>::take_len|Tag::context)$',
   'rind/src/high/pkcs1\.rs:380:\d+: replace \^ with \| in decode_oaep$',
   'rind/src/high/pkcs1\.rs:\d+:\d+: replace \^= with \|= in decode_oaep$',
@@ -73,8 +74,8 @@ exclude_re = [
   'rind/src/low/x86_64/cpu\.rs:402:\d+: replace \| with \^$',
   'rind/src/low/x86_64/cpu\.rs:407:\d+: replace \| with \^$',
   'rind/src/low/x86_64/cpu\.rs:\d+:\d+: replace \| with \^ in (HaveAesHardware::check|HaveAvx::check|HaveAvxMovbeForAesGcm::check|HaveBmi2Adx::check|HaveSha1::check|HaveSha256::check|HaveSha512::check|HaveSse41::check|HaveVaesAvx2ForAesGcm::check|detect|detect_once)$',
-  'rind/src/low/x86_64/edwards25519_scalarmuldouble_avx2\.rs:(220|221|222):\d+: replace \| with \^$',
-  'rind/src/low/x86_64/edwards25519_scalarmuldouble_avx2\.rs:\d+:\d+: replace \| with \^ in (Fe4::diff_sum|Fe4::split|non_adjacent_form)$',
+  'rind/src/low/x86_64/edwards25519_msm_avx2\.rs:17[789]:\d+: replace \| with \^$',
+  'rind/src/low/x86_64/edwards25519_msm_avx2\.rs:\d+:\d+: replace \| with \^ in (Fe4::diff_sum|Fe4::split)$',
   'rind/src/low/x86_64/ghash\.rs:340:\d+: replace \| with \^ in Ghash<\x27a>::add_lengths$',
   'rind/src/low/x86_64/ghash\.rs:606:22: replace \| with \^ in load_partial$',
   'rind/src/low/x86_64/ghash\.rs:632:\d+: replace \| with \^ in store_partial$',
@@ -111,6 +112,14 @@ exclude_re = [
   # Equivalent: a comparison whose two forms differ only where both branches
   # give the same result, or a step that computes the same value another way,
   # such as squaring rather than multiplying to the same power.
+  # Ed25519's non-adjacent forms: no digit is zero where its sign is tested,
+  # past 64 bits a window's extra bits are masked off, and a borrow never
+  # carries past bit 255 of a scalar below 2^255. With equal remainders,
+  # either of `split`'s rows may lead.
+  'rind/src/low/generic/edwards25519_msm\.rs:59:\d+: replace > with >= in edwards25519_msm$',
+  'rind/src/low/generic/edwards25519_msm\.rs:13[79]:\d+: replace < with <= in non_adjacent_form$',
+  'rind/src/low/generic/edwards25519_msm\.rs:125:\d+: replace (> with >=|\+ with \*) in non_adjacent_form$',
+  'rind/src/mid/half_size\.rs:71:\d+: replace < with <= in split$',
   'rind/src/high/asn1\.rs:\d+:\d+: replace < with <= in ObjectId::from_path$',
   'rind/src/high/ecdsa\.rs:\d+:\d+: replace > with >= in hash_to_scalar$',
   'rind/src/high/rsa\.rs:\d+:\d+: replace > with >= in public_exponent$',
@@ -136,9 +145,7 @@ exclude_re = [
   'rind/src/low/posint\.rs:\d+:\d+: replace \* with / in PosInt<N>::reduce_even$',
   'rind/src/low/x86_64/aes\.rs:568:\d+: replace - with / in invert_round_keys$',
   'rind/src/low/x86_64/chacha20\.rs:\d+:\d+: replace > with >= in core_2x$',
-  'rind/src/low/x86_64/edwards25519_scalarmuldouble_avx2\.rs:\d+:\d+: replace > with >= in double_base$',
-  'rind/src/low/x86_64/edwards25519_scalarmuldouble_avx2\.rs:\d+:\d+: replace < with <= in non_adjacent_form$',
-  'rind/src/low/x86_64/edwards25519_scalarmuldouble_avx2\.rs:113:\d+: replace - with / in non_adjacent_form$',
+  'rind/src/low/x86_64/edwards25519_msm_avx2\.rs:\d+:\d+: replace > with >= in msm$',
   'rind/src/low/x86_64/ghash\.rs:641:41: replace / with % in store_partial$',
   'rind/src/low/x86_64/mldsa\.rs:\d+:\d+: replace < with <= in rej_uniform_table$',
   'rind/src/low/x86_64/rsaz\.rs:\d+:\d+: replace < with <= in mod_exp$',
@@ -170,6 +177,11 @@ exclude_re = [
   'rind/src/mid/mldsa\.rs:(931|938):\d+: replace - with [+/] in (decompose|use_hint)$',
   'rind/src/mid/mldsa\.rs:1002:\d+: replace \* with / in expand_a$',
   'rind/src/mid/mldsa\.rs:1006:\d+: replace - with [+/] in expand_a$',
+  # Speed only: where Ed25519 verification's multiplication starts, as
+  # doubling the identity leaves it; and which of two valid half-size rows
+  # `split` returns, both odd and below 2^128.
+  'rind/src/low/generic/edwards25519_msm\.rs:36:\d+: replace != with == in edwards25519_msm$',
+  'rind/src/mid/half_size\.rs:85:\d+: replace (match guard .* with (true|false)|< with (==|>|<=)) in split$',
   # Speed only: which of several implementations runs, or how far ahead it
   # prefetches. Each implementation is tested on its own against the others.
   'rind/src/low/x86_64/mldsa\.rs:\d+:\d+: delete match arm \(Some\(_\), [457]\) in mldsa_pointwise_acc$',

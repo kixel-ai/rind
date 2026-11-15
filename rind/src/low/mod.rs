@@ -60,6 +60,10 @@ mod generic {
     pub(super) mod ct_copy;
     pub(super) mod ct_equal;
     pub(super) mod ctr;
+    // Ed25519 verification's multi-scalar multiplication over s2n-bignum's
+    // point routines.
+    #[cfg(rind_backend = "x86_64")]
+    pub(crate) mod edwards25519_msm;
     #[cfg(test)]
     pub(crate) mod ghash;
     // The portable backend's public-key arithmetic on limbs of `rind_limb`
@@ -319,7 +323,7 @@ cfg_if::cfg_if! {
         pub(crate) use x86_64::adx_mux::edwards25519_epdouble;
         pub(crate) use x86_64::adx_mux::edwards25519_pdouble;
         pub(crate) use x86_64::adx_mux::edwards25519_scalarmulbase;
-        pub(crate) use x86_64::adx_mux::edwards25519_scalarmuldouble;
+        pub(crate) use x86_64::adx_mux::edwards25519_msm;
         pub(crate) use x86_64::ghash;
         pub(crate) use x86_64::mldsa::{
             mldsa_ntt, mldsa_intt, mldsa_nttunpack, mldsa_pointwise, mldsa_pointwise_acc,

@@ -518,7 +518,10 @@ which has [its quest](/quest/m4/verified/mlkem-construction.md):
 
 Ed25519 on x86_64 and aarch64, from the signature API's `Ed25519KeyPair` and
 `PublicKey` to s2n-bignum's routines and the SHA-512 proof above, in
-`Rind/X86_64/Ed25519.lean`, which `admin/prove` also writes for aarch64:
+`Rind/X86_64/Ed25519.lean`, which `admin/prove` also writes for aarch64, and
+for aarch64's verification in `Rind/Aarch64/Ed25519Verify.lean`. x86_64's
+verification checks a multiple of RFC 8032's equation with half-size
+scalars, which nothing proves yet, so the last two are aarch64's only:
 
 - `ed25519_generate`: the key pair's seed is the 32 drawn bytes, and a failed
   draw is refused;
@@ -542,12 +545,10 @@ The spec, in `Rind/Ed25519.lean`, is RFC 8032 over HOL Light's
 `edwards25519_group`, whose multiplication and power stay opaque, with
 s2n-bignum's `ed25519_encode` and `ed25519_decode` of its points. Each theorem
 assumes `Runs` and `RunsSha512`, and each with a message bounds it at
-2^64 - 64 bytes. The two that verify also assume `RunsDouble`: on x86_64
-that a CPU without ADX lacks AVX2 too, since with it rind runs a port of
-curve25519-dalek's AVX2 backend, which nothing proves, and on aarch64
-nothing. That a multiple of the base point is a point of the group,
-which `ed25519_key_pair_verify` assumes, is the group's theory, which these
-theorems do not import. `PublicKey` reaches each algorithm's key parser, and
+2^64 - 64 bytes. The two that verify also assume `RunsDouble`, which
+holds on every aarch64 CPU. That a multiple of the base point is a point of
+the group, which `ed25519_key_pair_verify` assumes, is the group's theory,
+which these theorems do not import. `PublicKey` reaches each algorithm's key parser, and
 each parsed key its verification, through function pointers, which
 `Rind/X86_64/SignatureDispatch.lean` models.
 
