@@ -16,7 +16,6 @@
 #![allow(clippy::chunks_exact_to_as_chunks)]
 
 use core::fmt;
-use core::ops::{Deref, DerefMut};
 use core::panic::{RefUnwindSafe, UnwindSafe};
 
 use crate::Error;
@@ -102,7 +101,45 @@ pub trait Params: fmt::Debug + Send + Sync + Unpin + UnwindSafe + RefUnwindSafe 
     /// `sigma`, FIPS 204's signature encoding.
     #[doc(hidden)]
     type Signature: Array;
+
+    // The algorithms at this parameter set. As methods of each set's impl,
+    // they compile in rind, not in each generic caller, so `admin/ct-vartime`
+    // sees them, and the MXCSR mitigation they hold, from what rind exports.
+    // They trust their buffers' lengths, so each takes an `Internal`, which
+    // only rind can make.
+    #[doc(hidden)]
+    fn keygen(
+        _: Internal,
+        seed: &[u8; SEED_LEN],
+        pk: &mut [u8],
+        sk: &mut [u8],
+        expanded: &mut Polys,
+    );
+    #[doc(hidden)]
+    fn public_key_from_secret(_: Internal, sk: &[u8], pk: &mut [u8], expanded: &mut Polys) -> bool;
+    #[doc(hidden)]
+    fn sign(
+        _: Internal,
+        sk: &[u8],
+        expanded: &Polys,
+        mu: &[u8; MU_LEN],
+        rnd: &[u8; RND_LEN],
+    ) -> Result<Self::Signature, Error>;
+    #[doc(hidden)]
+    fn verify(
+        _: Internal,
+        key: &VerifyingKey,
+        pk: &[u8],
+        mu: &[u8; MU_LEN],
+        signature: &[u8],
+    ) -> Result<(), Error>;
 }
+
+/// Proof that a call to a [`Params`] method comes from rind: no other crate
+/// can make one, though a generic caller can name the methods.
+#[doc(hidden)]
+#[derive(Clone, Copy)]
+pub struct Internal(());
 
 /// A byte array of a parameter set's length.
 pub trait Array:
@@ -146,6 +183,45 @@ macro_rules! params {
             type PublicKey = [u8; $pk];
             type SecretKey = [u8; $sk];
             type Signature = [u8; $sig];
+
+            fn keygen(
+                _: Internal,
+                seed: &[u8; SEED_LEN],
+                pk: &mut [u8],
+                sk: &mut [u8],
+                expanded: &mut Polys,
+            ) {
+                keygen::<Self>(seed, pk, sk, expanded.polys_mut())
+            }
+
+            fn public_key_from_secret(
+                _: Internal,
+                sk: &[u8],
+                pk: &mut [u8],
+                expanded: &mut Polys,
+            ) -> bool {
+                public_key_from_secret::<Self>(sk, pk, expanded.polys_mut())
+            }
+
+            fn sign(
+                _: Internal,
+                sk: &[u8],
+                expanded: &Polys,
+                mu: &[u8; MU_LEN],
+                rnd: &[u8; RND_LEN],
+            ) -> Result<Self::Signature, Error> {
+                sign_internal::<Self>(sk, expanded.polys(), mu, rnd)
+            }
+
+            fn verify(
+                _: Internal,
+                key: &VerifyingKey,
+                pk: &[u8],
+                mu: &[u8; MU_LEN],
+                signature: &[u8],
+            ) -> Result<(), Error> {
+                verify_internal::<Self>(pk, &key.expanded, mu, signature)
+            }
         }
 
         // FIPS 204's table 2, from table 1.
@@ -225,7 +301,8 @@ impl<P: Params> KeyPair<P> {
             public_key: P::PublicKey::zeroed(),
             expanded: Polys::new(secret_expansion_len::<P>()),
         };
-        keygen::<P>(
+        P::keygen(
+            Internal(()),
             &seed,
             key.public_key.as_mut(),
             key.secret_key.as_mut(),
@@ -250,12 +327,12 @@ impl<P: Params> KeyPair<P> {
         };
         key.secret_key.as_mut().copy_from_slice(sk);
         low::ct::secret_slice(key.secret_key.as_ref());
-        let consistent = public_key_from_secret::<P>(
+        match P::public_key_from_secret(
+            Internal(()),
             key.secret_key.as_ref(),
             key.public_key.as_mut(),
             &mut key.expanded,
-        );
-        match consistent {
+        ) {
             true => Ok(key),
             false => Err(KeyFormatError::MlDsaSecretKey.into()),
         }
@@ -290,7 +367,7 @@ impl<P: Params> KeyPair<P> {
         let mut rnd = [0u8; RND_LEN];
         SystemRandom.fill(&mut rnd)?;
         low::ct::secret_slice(&rnd);
-        sign_internal::<P>(self.secret_key.as_ref(), &self.expanded, &mu, &rnd)
+        P::sign(Internal(()), self.secret_key.as_ref(), &self.expanded, &mu, &rnd)
     }
 
     /// `mu`, the message representative this key signs for `message` under
@@ -308,7 +385,7 @@ impl<P: Params> KeyPair<P> {
         rnd: &[u8; RND_LEN],
     ) -> Result<P::Signature, Error> {
         let _entry = Entry::new_secret();
-        sign_internal::<P>(self.secret_key.as_ref(), &self.expanded, mu, rnd)
+        P::sign(Internal(()), self.secret_key.as_ref(), &self.expanded, mu, rnd)
     }
 }
 
@@ -355,7 +432,8 @@ pub(crate) fn mu(tr: &[u8; TR_LEN], context: &[u8], message: &[u8]) -> Result<[u
 /// the NTT domain, which its second verification keeps for later ones, so a
 /// key used once never holds it. The key's encoding is its owner's, passed
 /// to each verification.
-pub(crate) struct VerifyingKey {
+#[doc(hidden)]
+pub struct VerifyingKey {
     tr: [u8; TR_LEN],
     expanded: low::ReuseCache<Polys>,
 }
@@ -380,19 +458,30 @@ impl VerifyingKey {
     ) -> Result<(), Error> {
         let _entry = Entry::new_public();
         let mu = mu(&self.tr, context, message).map_err(|_| Error::BadSignature)?;
-        verify_internal::<P>(pk, &self.expanded, &mu, signature)
+        P::verify(Internal(()), self, pk, &mu, signature)
     }
 }
 
 /// Polynomials on the heap, wiped before they are freed under the `wipe`
 /// feature, as heap scratch derived from a private key must be. All-zero
 /// bytes are none, so a key holding them can wipe its whole value.
+#[doc(hidden)]
 #[derive(Default)]
-struct Polys(Option<Box<[Poly]>>);
+pub struct Polys(Option<Box<[Poly]>>);
 
 impl Polys {
     fn new(polys: usize) -> Self {
         Self(Some(vec![Poly::ZERO; polys].into_boxed_slice()))
+    }
+
+    /// The polynomials, none once freed.
+    fn polys(&self) -> &[Poly] {
+        self.0.as_deref().unwrap_or_default()
+    }
+
+    /// The polynomials, mutably.
+    fn polys_mut(&mut self) -> &mut [Poly] {
+        self.0.as_deref_mut().unwrap_or_default()
     }
 
     /// Wipes and frees the polynomials, leaving none.
@@ -403,19 +492,6 @@ impl Polys {
     }
 }
 
-impl Deref for Polys {
-    type Target = [Poly];
-
-    fn deref(&self) -> &[Poly] {
-        self.0.as_deref().unwrap_or_default()
-    }
-}
-
-impl DerefMut for Polys {
-    fn deref_mut(&mut self) -> &mut [Poly] {
-        self.0.as_deref_mut().unwrap_or_default()
-    }
-}
 
 impl Drop for Polys {
     fn drop(&mut self) {
@@ -425,7 +501,10 @@ impl Drop for Polys {
 
 /// FIPS 204's `ML-DSA.KeyGen_internal`, writing `pk` and `sk`, and the key
 /// pair's expansion into `expanded`.
+#[inline(never)]
 fn keygen<P: Params>(seed: &[u8; SEED_LEN], pk: &mut [u8], sk: &mut [u8], expanded: &mut [Poly]) {
+    // Its arithmetic runs multiplies Intel's MXCSR mitigation covers.
+    let _mcdt = low::Mcdt::enter();
     let mut seeds = [0u8; 2 * SEED_LEN + 64];
     let mut h = Shake256Sponge::new();
     h.absorb(seed);
@@ -507,13 +586,15 @@ fn compute_t<P: Params>(
     t0: &mut [Poly],
     t0_packed: &mut [u8],
 ) {
-    for ((((row, s2), t), t1_packed), t0_packed) in a
-        .chunks_exact(P::L)
-        .zip(s2)
+    // Slices `a` by index, since zipping `chunks_exact` divides.
+    for (i, (((s2, t), t1_packed), t0_packed)) in s2
+        .iter()
         .zip(t0)
         .zip(t1_packed.as_chunks_mut::<T1_PACKED>().0)
         .zip(t0_packed.as_chunks_mut::<T0_PACKED>().0)
+        .enumerate()
     {
+        let row = &a[i * P::L..(i + 1) * P::L];
         low::mldsa_pointwise_acc(&mut t.0, row, s1_hat);
         low::mldsa_intt(&mut t.0);
         add(t, s2);
@@ -535,7 +616,10 @@ fn compute_t<P: Params>(
 /// private key `sk` computes into `pk`, and the key pair's expansion into
 /// `expanded`, returning whether `sk` is consistent. Its time does not
 /// depend on `sk`.
+#[inline(never)]
 fn public_key_from_secret<P: Params>(sk: &[u8], pk: &mut [u8], expanded: &mut [Poly]) -> bool {
+    // Its arithmetic runs multiplies Intel's MXCSR mitigation covers.
+    let _mcdt = low::Mcdt::enter();
     let layout = SecretKeyLayout::<P>::new();
     let rho: &[u8; SEED_LEN] = sk[..SEED_LEN].try_into().unwrap();
     low::ct::public_slice(rho);
@@ -578,12 +662,15 @@ fn public_key_from_secret<P: Params>(sk: &[u8], pk: &mut [u8], expanded: &mut [P
 
 /// FIPS 204's `ML-DSA.Sign_internal`: signs `mu` with expanded private key
 /// `sk`, whose expansion is `expanded`, and randomness `rnd`.
+#[inline(never)]
 fn sign_internal<P: Params>(
     sk: &[u8],
     expanded: &[Poly],
     mu: &[u8; MU_LEN],
     rnd: &[u8; RND_LEN],
 ) -> Result<P::Signature, Error> {
+    // Its arithmetic runs multiplies Intel's MXCSR mitigation covers.
+    let _mcdt = low::Mcdt::enter();
     let key = &sk[SEED_LEN..2 * SEED_LEN];
     let (k, l) = (P::K, P::L);
     let (a, rest) = expanded.split_at(k * l);
@@ -591,7 +678,7 @@ fn sign_internal<P: Params>(
     let (s2, t0) = rest.split_at(k);
 
     let mut scratch = Polys::new(2 * l + 2 * k);
-    let (y, rest) = scratch.split_at_mut(l);
+    let (y, rest) = scratch.polys_mut().split_at_mut(l);
     let (y_hat, rest) = rest.split_at_mut(l);
     let (w0, w1) = rest.split_at_mut(k);
 
@@ -617,15 +704,17 @@ fn sign_internal<P: Params>(
             low::mldsa_ntt(&mut y.0);
         }
 
-        // w = A * y, split into high bits w1 and low bits w0.
-        for ((row, w0), w1) in a.chunks_exact(l).zip(w0.iter_mut()).zip(w1.iter_mut()) {
+        // w = A * y, split into high bits w1 and low bits w0. This slices by
+        // index, as verification does, since zipping `chunks_exact` divides.
+        for (i, (w0, w1)) in w0.iter_mut().zip(w1.iter_mut()).enumerate() {
+            let row = &a[i * l..(i + 1) * l];
             low::mldsa_pointwise_acc(&mut w0.0, row, y_hat);
             low::mldsa_intt(&mut w0.0);
             low::mldsa_caddq(&mut w0.0);
             decompose::<P>(w1, w0);
         }
-        for (w1, packed) in w1.iter().zip(w1_packed.chunks_exact_mut(P::W1_PACKED)) {
-            pack_w1::<P>(packed, w1);
+        for (i, w1) in w1.iter().enumerate() {
+            pack_w1::<P>(&mut w1_packed[i * P::W1_PACKED..(i + 1) * P::W1_PACKED], w1);
         }
 
         let mut h = Shake256Sponge::new();
@@ -638,11 +727,8 @@ fn sign_internal<P: Params>(
 
         // z = y + c * s1
         let z_packed = &mut signature.as_mut()[P::CTILDE_LEN..P::CTILDE_LEN + l * P::Z_PACKED];
-        for ((s1, y), packed) in s1
-            .iter()
-            .zip(y.iter())
-            .zip(z_packed.chunks_exact_mut(P::Z_PACKED))
-        {
+        for (i, (s1, y)) in s1.iter().zip(y.iter()).enumerate() {
+            let packed = &mut z_packed[i * P::Z_PACKED..(i + 1) * P::Z_PACKED];
             low::mldsa_pointwise(&mut tmp.0, &c.0, &s1.0);
             low::mldsa_intt(&mut tmp.0);
             add(&mut tmp, y);
@@ -705,12 +791,15 @@ const MAX_L: usize = 7;
 ///
 /// A signature refused by its encoding or its `z`'s norm is refused before
 /// the key is expanded.
+#[inline(never)]
 fn verify_internal<P: Params>(
     pk: &[u8],
     expanded: &low::ReuseCache<Polys>,
     mu: &[u8; MU_LEN],
     signature: &[u8],
 ) -> Result<(), Error> {
+    // Its arithmetic runs multiplies Intel's MXCSR mitigation covers.
+    let _mcdt = low::Mcdt::enter();
     if pk.len() != public_key_len::<P>() || signature.len() != signature_len::<P>() {
         return Err(Error::BadSignature);
     }
@@ -739,7 +828,7 @@ fn verify_internal<P: Params>(
             &unkept
         }
     };
-    let (a, t1_hat) = expanded.split_at(k * l);
+    let (a, t1_hat) = expanded.polys().split_at(k * l);
     let mut c = Poly::ZERO;
     sample_in_ball::<P>(&mut c, c_tilde);
     low::mldsa_ntt(&mut c.0);
@@ -780,7 +869,7 @@ fn verify_internal<P: Params>(
 /// in the NTT domain.
 fn expand_public<P: Params>(pk: &[u8]) -> Polys {
     let mut expanded = Polys::new(public_expansion_len::<P>());
-    let (a, t1) = expanded.split_at_mut(P::K * P::L);
+    let (a, t1) = expanded.polys_mut().split_at_mut(P::K * P::L);
     expand_a::<P>(pk[..SEED_LEN].try_into().unwrap(), a);
     for (t1, packed) in t1.iter_mut().zip(pk[SEED_LEN..].as_chunks::<T1_PACKED>().0) {
         unpack_t1(t1, packed);
