@@ -133,12 +133,14 @@ impl PqdsaSigningAlgorithm {
 }
 
 /// rind's key pair, of whichever parameter set.
-// Always behind an `Arc`, so the smaller sets' wasted space is one allocation's.
-#[allow(clippy::large_enum_variant)]
+// Each set's key has its own allocation: one shared `Arc<Key>` would carry a
+// smaller set's key in the largest's space, whose slack a move fills with
+// stale stack bytes, a seed among them, that the key's wipe never reaches.
+#[derive(Clone)]
 enum Key {
-    MlDsa44(MlDsaKeyPair<MlDsa44>),
-    MlDsa65(MlDsaKeyPair<MlDsa65>),
-    MlDsa87(MlDsaKeyPair<MlDsa87>),
+    MlDsa44(Arc<MlDsaKeyPair<MlDsa44>>),
+    MlDsa65(Arc<MlDsaKeyPair<MlDsa65>>),
+    MlDsa87(Arc<MlDsaKeyPair<MlDsa87>>),
 }
 
 /// Runs `$body` with `$k` bound to the [`Key`]'s rind key pair.
@@ -157,9 +159,9 @@ macro_rules! with_key {
 macro_rules! new_key {
     ($id:expr, $method:ident($($arg:expr),*)) => {
         match $id {
-            AlgorithmID::ML_DSA_44 => MlDsaKeyPair::$method($($arg),*).map(Key::MlDsa44),
-            AlgorithmID::ML_DSA_65 => MlDsaKeyPair::$method($($arg),*).map(Key::MlDsa65),
-            AlgorithmID::ML_DSA_87 => MlDsaKeyPair::$method($($arg),*).map(Key::MlDsa87),
+            AlgorithmID::ML_DSA_44 => MlDsaKeyPair::$method($($arg),*).map(|k| Key::MlDsa44(Arc::new(k))),
+            AlgorithmID::ML_DSA_65 => MlDsaKeyPair::$method($($arg),*).map(|k| Key::MlDsa65(Arc::new(k))),
+            AlgorithmID::ML_DSA_87 => MlDsaKeyPair::$method($($arg),*).map(|k| Key::MlDsa87(Arc::new(k))),
         }
     };
 }
@@ -168,7 +170,7 @@ macro_rules! new_key {
 #[derive(Clone)]
 pub struct PqdsaKeyPair {
     algorithm: &'static PqdsaSigningAlgorithm,
-    key: Arc<Key>,
+    key: Key,
     public_key: PqdsaPublicKey,
 }
 
@@ -177,7 +179,7 @@ impl PqdsaKeyPair {
         let public_key = with_key!(&key, k => k.public_key().as_ref().to_vec());
         Self {
             algorithm,
-            key: Arc::new(key),
+            key,
             public_key: PqdsaPublicKey {
                 id: algorithm.0.id,
                 bytes: Arc::new(Wiped::new(public_key)),
@@ -235,7 +237,7 @@ impl PqdsaKeyPair {
     /// Encodes the private key's seed as PKCS#8 v1, failing for a key loaded
     /// from its expanded form, which has none.
     pub fn to_pkcs8v1(&self) -> Result<pkcs8::Document, Unspecified> {
-        with_key!(&*self.key, k => match k.has_seed() {
+        with_key!(&self.key, k => match k.has_seed() {
             true => Ok(pkcs8::Document::new(k.to_pkcs8().as_ref())),
             false => Err(Unspecified),
         })
@@ -254,7 +256,7 @@ impl PqdsaKeyPair {
     pub fn sign(&self, msg: &[u8], signature: &mut [u8]) -> Result<usize, Unspecified> {
         let len = self.algorithm.signature_len();
         let out = signature.get_mut(..len).ok_or(Unspecified)?;
-        with_key!(&*self.key, k => {
+        with_key!(&self.key, k => {
             out.copy_from_slice(k.sign(msg).map_err(unspecified)?.as_ref());
         });
         Ok(len)
