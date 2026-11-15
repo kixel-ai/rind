@@ -7,6 +7,26 @@
 (* it.                                                                       *)
 (* ========================================================================= *)
 
+(* rind's naked function low::x86_64::ecp_nistz256::ecp_nistz256_point_add_affine
+   is aws-lc's ecp_nistz256_point_add_affine
+   (crypto/fipsmodule/ec/asm/p256-x86_64-asm.pl, its mulq path), the mixed
+   addition rind's P-256 generator multiplication runs on CPUs without BMI2
+   and ADX. ECP_NISTZ256_POINT_ADD_AFFINE_SUBROUTINE_CORRECT is that, called
+   in place with the System V ABI, it adds the affine point at p2 to the
+   Jacobian point at p1, both in Montgomery form, as s2n-bignum's
+   p256_montjmixadd states it, and also handles the two infinities the
+   generator table and the accumulator start from. The proof follows the
+   code's shape:
+   - ECP_NISTZ256_MUL_MONTQ_CORRECT, _SQR_MONTQ_, _SUB_FROMQ_ and _SUBQ_, the
+     field helpers the function carries, each from its entry to its return;
+   - ECP_NISTZ256_POINT_ADD_AFFINE_BODY, 0x11 to 0x538, steps over each
+     helper call with its lemma, computes in SSE registers the masks for the
+     infinities, and selects the result with them in constant time;
+   - ECP_NISTZ256_POINT_ADD_AFFINE_SUBROUTINE_CORRECT adds the prologue and
+     the epilogue.
+   The field algebra that ties the helpers' results to the group law is
+   s2n-bignum's, from x86/proofs/p256_montjmixadd.ml. *)
+
 needs "x86/proofs/base.ml";;
 needs "common/ecencoding.ml";;
 needs "EC/jacobian.ml";;
@@ -867,13 +887,13 @@ let ECP_NISTZ256_MUL_MONTQ_CORRECT = time prove
                read RSP s = word_add stackpointer (word 8) /\
                read R14 s = word 0xffffffff /\
                read R15 s = word 0xffffffff00000001 /\
+               read (memory :> bytes64 z) s = read R12 s /\
+               read (memory :> bytes64 (word_add z (word 8))) s = read R13 s /\
+               read (memory :> bytes64 (word_add z (word 16))) s = read R8 s /\
+               read (memory :> bytes64 (word_add z (word 24))) s = read R9 s /\
                (bignum_of_wordlist [a0;a1;a2;a3] * bignum_of_wordlist [b0;b1;b2;b3]
                   <= 2 EXP 256 * p_256
-                ==> bignum_from_memory (z,4) s =
-                      (inverse_mod p_256 (2 EXP 256) *
-                       bignum_of_wordlist [a0;a1;a2;a3] *
-                       bignum_of_wordlist [b0;b1;b2;b3]) MOD p_256 /\
-                    bignum_of_wordlist [read R12 s; read R13 s; read R8 s; read R9 s] =
+                ==> bignum_of_wordlist [read R12 s; read R13 s; read R8 s; read R9 s] =
                       (inverse_mod p_256 (2 EXP 256) *
                        bignum_of_wordlist [a0;a1;a2;a3] *
                        bignum_of_wordlist [b0;b1;b2;b3]) MOD p_256))
@@ -978,11 +998,12 @@ let ECP_NISTZ256_SQR_MONTQ_CORRECT = time prove
                read (memory :> bytes64 (word_add pa (word 24))) s = a3)
           (\s. read RIP s = returnaddress /\
                read RSP s = word_add stackpointer (word 8) /\
+               read (memory :> bytes64 z) s = read R12 s /\
+               read (memory :> bytes64 (word_add z (word 8))) s = read R13 s /\
+               read (memory :> bytes64 (word_add z (word 16))) s = read R14 s /\
+               read (memory :> bytes64 (word_add z (word 24))) s = read R15 s /\
                (bignum_of_wordlist [a0;a1;a2;a3] EXP 2 <= 2 EXP 256 * p_256
-                ==> bignum_from_memory (z,4) s =
-                      (inverse_mod p_256 (2 EXP 256) *
-                       bignum_of_wordlist [a0;a1;a2;a3] EXP 2) MOD p_256 /\
-                    bignum_of_wordlist [read R12 s; read R13 s; read R14 s; read R15 s] =
+                ==> bignum_of_wordlist [read R12 s; read R13 s; read R14 s; read R15 s] =
                       (inverse_mod p_256 (2 EXP 256) *
                        bignum_of_wordlist [a0;a1;a2;a3] EXP 2) MOD p_256))
           (MAYCHANGE [RIP; RSP; RAX; RCX; RDX; RSI; RBP; R8; R9; R10; R11;
@@ -1093,13 +1114,15 @@ let ECP_NISTZ256_SUB_FROMQ_CORRECT = time prove
                read (memory :> bytes64 (word_add py (word 24))) s = y3)
           (\s. read RIP s = returnaddress /\
                read RSP s = word_add stackpointer (word 8) /\
+               read (memory :> bytes64 z) s = read R12 s /\
+               read (memory :> bytes64 (word_add z (word 8))) s = read R13 s /\
+               read (memory :> bytes64 (word_add z (word 16))) s = read R8 s /\
+               read (memory :> bytes64 (word_add z (word 24))) s = read R9 s /\
                (bignum_of_wordlist [x0;x1;x2;x3] < p_256 /\
                 bignum_of_wordlist [y0;y1;y2;y3] < p_256
-                ==> &(bignum_from_memory (z,4) s) =
+                ==> &(bignum_of_wordlist [read R12 s; read R13 s; read R8 s; read R9 s]) =
                       (&(bignum_of_wordlist [x0;x1;x2;x3]) -
-                       &(bignum_of_wordlist [y0;y1;y2;y3])) rem &p_256 /\
-                    bignum_of_wordlist [read R12 s; read R13 s; read R8 s; read R9 s] =
-                      bignum_from_memory (z,4) s))
+                       &(bignum_of_wordlist [y0;y1;y2;y3])) rem &p_256))
           (MAYCHANGE [RIP; RSP; RAX; RCX; RBP; R8; R9; R10; R11; R12; R13] ,,
            MAYCHANGE SOME_FLAGS ,, MAYCHANGE [events] ,,
            MAYCHANGE [memory :> bytes(z,8 * 4)])`,
@@ -1233,3 +1256,716 @@ let ECP_NISTZ256_SUBQ_CORRECT = time prove
   MAP_EVERY EXPAND_TAC ["m"; "n"] THEN
   REWRITE_TAC[bignum_of_wordlist; GSYM REAL_OF_NUM_CLAUSES; p_256] THEN
   DISCH_THEN(fun th -> REWRITE_TAC[th]) THEN REAL_INTEGER_TAC);;
+
+(* ------------------------------------------------------------------------- *)
+(* What the coordinates mean, and the table the body reads.                  *)
+(* ------------------------------------------------------------------------- *)
+
+(* A Jacobian triple, or an affine pair, in Montgomery form, coordinates below
+   p_256, representing a point of P-256, as s2n-bignum's p256_montjmixadd
+   states them. *)
+let represents_p256 = new_definition
+ `represents_p256 P (x,y,z) <=>
+        x < p_256 /\ y < p_256 /\ z < p_256 /\
+        weierstrass_of_jacobian (integer_mod_ring p_256)
+         (tripled (montgomery_decode (256,p_256)) (x,y,z)) = P`;;
+
+let represents2_p256 = new_definition
+ `represents2_p256 P (x,y) <=>
+        x < p_256 /\ y < p_256 /\
+        SOME(paired (montgomery_decode (256,p_256)) (x,y)) = P`;;
+
+(* The table's name as the relocations define it does not parse, so this
+   names it. *)
+let ecp_nistz256_point_add_affine_poly = new_definition
+  (mk_eq(`ecp_nistz256_point_add_affine_poly:byte list`,
+         lhs(concl ecp_nistz256_point_add_affine_data)));;
+
+let NISTZ256_POLY_DEFS =
+  [ecp_nistz256_point_add_affine_poly; ecp_nistz256_point_add_affine_data];;
+
+let NISTZ256_POLY_LENGTH = prove
+ (`LENGTH ecp_nistz256_point_add_affine_poly = 208`,
+  REWRITE_TAC NISTZ256_POLY_DEFS THEN CONV_TAC(LAND_CONV LENGTH_CONV) THEN
+  REFL_TAC);;
+
+let NISTZ256_POLY_LOADED = prove
+ (`!s tab. bytes_loaded s tab ecp_nistz256_point_add_affine_poly <=>
+           read (memory :> bytes(tab,208)) s =
+           num_of_bytelist ecp_nistz256_point_add_affine_poly`,
+  REWRITE_TAC[bytes_loaded; READ_BYTELIST_EQ_BYTES; NISTZ256_POLY_LENGTH]);;
+
+(* The words of the table the body and the helpers read: p_256's second and
+   fourth words, and the two halves of the 1 in Montgomery form. *)
+let NISTZ256_POLY_TABLE_FACTS = prove
+ (`!s tbl. bytes_loaded s (word tbl) ecp_nistz256_point_add_affine_poly
+     ==> read (memory :> bytes64 (word(tbl + 8))) s = word 0xffffffff /\
+         read (memory :> bytes64 (word(tbl + 24))) s = word 0xffffffff00000001 /\
+         read (memory :> bytes128 (word(tbl + 128))) s =
+           word 0xffffffff000000000000000000000001 /\
+         read (memory :> bytes128 (word(tbl + 144))) s =
+           word 0x00000000fffffffeffffffffffffffff`,
+  REPEAT GEN_TAC THEN REWRITE_TAC NISTZ256_POLY_DEFS THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `tbl = tbl + 0`] THEN
+  CONV_TAC(LAND_CONV DATA64_CONV) THEN
+  REWRITE_TAC[GSYM ADD_ASSOC] THEN CONV_TAC(DEPTH_CONV NUM_ADD_CONV) THEN
+  STRIP_TAC THEN
+  REWRITE_TAC[CONJUNCT1(CONJUNCT2 READ_MEMORY_BYTESIZED_SPLIT); GSYM WORD_ADD] THEN
+  REWRITE_TAC[GSYM ADD_ASSOC] THEN CONV_TAC(DEPTH_CONV NUM_ADD_CONV) THEN
+  ASM_REWRITE_TAC[] THEN CONV_TAC WORD_REDUCE_CONV);;
+
+(* ------------------------------------------------------------------------- *)
+(* The field algebra, from s2n-bignum's x86/proofs/p256_montjmixadd.ml       *)
+(* (Apache-2.0 OR ISC OR MIT-0), which proves the same formulas.             *)
+(* ------------------------------------------------------------------------- *)
+
+let unilemma0 = prove
+ (`x = a MOD p_256 ==> x < p_256 /\ &x = &a rem &p_256`,
+  REWRITE_TAC[INT_OF_NUM_REM; p_256] THEN ARITH_TAC);;
+
+let unilemma1 = prove
+ (`&x = a rem &p_256 ==> x < p_256 /\ &x = a rem &p_256`,
+  SIMP_TAC[GSYM INT_OF_NUM_LT; INT_LT_REM_EQ; p_256] THEN INT_ARITH_TAC);;
+
+let lemont = prove
+ (`(&i * x * y) rem &p_256 = (&i * x rem &p_256 * y rem &p_256) rem &p_256`,
+  CONV_TAC INT_REM_DOWN_CONV THEN REWRITE_TAC[]);;
+
+let demont = prove
+ (`(&(NUMERAL n) * &x) rem &p_256 = (&(NUMERAL n) * &x rem &p_256) rem &p_256`,
+  CONV_TAC INT_REM_DOWN_CONV THEN REWRITE_TAC[]);;
+
+let pumont = prove
+ (`(&(inverse_mod p_256 (2 EXP 256)) *
+    (&2 pow 256 * x) rem &p_256 * (&2 pow 256 * y) rem &p_256) rem &p_256 =
+   (&2 pow 256 * x * y) rem &p_256`,
+  CONV_TAC INT_REM_DOWN_CONV THEN REWRITE_TAC[INT_REM_EQ] THEN
+  MATCH_MP_TAC(INTEGER_RULE
+   `(i * t:int == &1) (mod p)
+    ==> (i * (t * x) * (t * y) == t * x * y) (mod p)`) THEN
+  REWRITE_TAC[GSYM num_congruent; INT_OF_NUM_CLAUSES] THEN
+  REWRITE_TAC[INVERSE_MOD_LMUL_EQ; COPRIME_REXP; COPRIME_2; p_256] THEN
+  CONV_TAC NUM_REDUCE_CONV);;
+
+let dismont = prove
+ (`((&2 pow 256 * x) rem &p_256 + (&2 pow 256 * y) rem &p_256) rem &p_256 =
+   (&2 pow 256 * (x + y)) rem &p_256 /\
+   ((&2 pow 256 * x) rem &p_256 - (&2 pow 256 * y) rem &p_256) rem &p_256 =
+   (&2 pow 256 * (x - y)) rem &p_256 /\
+   (&(NUMERAL n) * (&2 pow 256 * x) rem &p_256) rem &p_256 =
+   (&2 pow 256 * (&(NUMERAL n) * x)) rem &p_256`,
+  REPEAT CONJ_TAC THEN CONV_TAC INT_REM_DOWN_CONV THEN
+  AP_THM_TAC THEN AP_TERM_TAC THEN INT_ARITH_TAC);;
+
+let unmont = prove
+ (`(&(inverse_mod p_256 (2 EXP 256)) * (&2 pow 256 * x) rem &p_256) rem &p_256 =
+   x rem &p_256`,
+  CONV_TAC INT_REM_DOWN_CONV THEN REWRITE_TAC[INT_REM_EQ] THEN
+  MATCH_MP_TAC(INTEGER_RULE
+   `(i * e:int == &1) (mod p) ==> (i * e * x == x) (mod p)`) THEN
+  REWRITE_TAC[INT_OF_NUM_CLAUSES; GSYM num_congruent; INVERSE_MOD_LMUL_EQ] THEN
+  REWRITE_TAC[COPRIME_REXP; COPRIME_2; p_256] THEN CONV_TAC NUM_REDUCE_CONV);;
+
+let unreplemma = prove
+ (`!x. x < p_256
+         ==> x =
+             (2 EXP 256 * (inverse_mod p_256 (2 EXP 256) * x) MOD p_256) MOD
+             p_256`,
+  REPEAT STRIP_TAC THEN CONV_TAC SYM_CONV THEN
+  ASM_REWRITE_TAC[MOD_UNIQUE] THEN
+  REWRITE_TAC[CONG] THEN CONV_TAC MOD_DOWN_CONV THEN
+  REWRITE_TAC[GSYM CONG] THEN MATCH_MP_TAC(NUMBER_RULE
+   `(i * e == 1) (mod p) ==> (i * e * x == x) (mod p)`) THEN
+  REWRITE_TAC[INVERSE_MOD_RMUL_EQ] THEN
+  REWRITE_TAC[COPRIME_REXP; COPRIME_2; p_256] THEN CONV_TAC NUM_REDUCE_CONV);;
+
+let weierstrass_of_affine_p256 = prove
+ (`weierstrass_of_jacobian (integer_mod_ring p_256)
+                           (x rem &p_256,y rem &p_256,&1 rem &p_256) =
+   SOME(x rem &p_256,y rem &p_256)`,
+  MP_TAC(ISPEC `integer_mod_ring p_256` RING_INV_1) THEN
+  REWRITE_TAC[weierstrass_of_jacobian; ring_div; INTEGER_MOD_RING_CLAUSES] THEN
+  REWRITE_TAC[p_256] THEN CONV_TAC INT_REDUCE_CONV THEN
+  SIMP_TAC[GSYM p_256; option_INJ; PAIR_EQ; INT_MUL_RID; INT_REM_REM]);;
+
+let weierstrass_of_jacobian_p256_add = prove
+ (`!P1 P2 x1 y1 z1 x2 y2 z2 x3 y3 z3.
+        ~(weierstrass_of_jacobian (integer_mod_ring p_256)
+           (x1 rem &p_256,y1 rem &p_256,z1 rem &p_256) =
+          weierstrass_of_jacobian (integer_mod_ring p_256)
+           (x2 rem &p_256,y2 rem &p_256,z2 rem &p_256)) /\
+        jacobian_add_unexceptional nistp256
+         (x1 rem &p_256,y1 rem &p_256,z1 rem &p_256)
+         (x2 rem &p_256,y2 rem &p_256,z2 rem &p_256) =
+        (x3 rem &p_256,y3 rem &p_256,z3 rem &p_256)
+        ==> weierstrass_of_jacobian (integer_mod_ring p_256)
+                (x1 rem &p_256,y1 rem &p_256,z1 rem &p_256) = P1 /\
+            weierstrass_of_jacobian (integer_mod_ring p_256)
+                (x2 rem &p_256,y2 rem &p_256,z2 rem &p_256) = P2
+            ==> weierstrass_of_jacobian (integer_mod_ring p_256)
+                  (x3 rem &p_256,y3 rem &p_256,z3 rem &p_256) =
+                group_mul p256_group P1 P2`,
+  REPEAT GEN_TAC THEN
+  DISCH_THEN(CONJUNCTS_THEN2 ASSUME_TAC (SUBST1_TAC o SYM)) THEN
+  DISCH_THEN(CONJUNCTS_THEN(SUBST1_TAC o SYM)) THEN
+  REWRITE_TAC[nistp256; P256_GROUP] THEN
+  MATCH_MP_TAC WEIERSTRASS_OF_JACOBIAN_ADD_UNEXCEPTIONAL THEN
+  REWRITE_TAC[CONJ_ASSOC] THEN CONJ_TAC THENL
+   [ALL_TAC;
+    W(MP_TAC o PART_MATCH (rand o rand) WEIERSTRASS_OF_JACOBIAN_EQ o
+      rand o snd) THEN
+    ASM_REWRITE_TAC[] THEN DISCH_THEN MATCH_MP_TAC] THEN
+  ASM_REWRITE_TAC[FIELD_INTEGER_MOD_RING; PRIME_P256] THEN
+  ASM_REWRITE_TAC[jacobian_point; INTEGER_MOD_RING_CHAR;
+                  INTEGER_MOD_RING_CLAUSES; IN_INTEGER_MOD_RING_CARRIER] THEN
+  REWRITE_TAC[INT_REM_POS_EQ; INT_LT_REM_EQ; GSYM INT_OF_NUM_CLAUSES] THEN
+  REWRITE_TAC[p_256; b_256] THEN CONV_TAC INT_REDUCE_CONV);;
+
+(* ------------------------------------------------------------------------- *)
+(* Tactics for the body.                                                     *)
+(* ------------------------------------------------------------------------- *)
+
+(* The instantiation of a helper lemma's variables that makes its
+   precondition's equations hold in state sname, read off the assumptions. *)
+let nistz256_helper_inst lemma sname asl =
+  let avs,bod = strip_forall(concl lemma) in
+  let ens = if is_imp bod then rand bod else bod in
+  let pre = rand(rator(rator ens)) in
+  let sv,prebody = dest_abs pre in
+  let s = mk_var(sname,`:x86state`) in
+  let conjs = conjuncts(subst [s,sv] prebody) in
+  let asms = map (concl o snd) asl in
+  let norm t = try rand(concl(DEPTH_CONV NORMALIZE_RELATIVE_ADDRESS_CONV t))
+               with Failure _ -> t in
+  let rec loop binds =
+    let step binds c =
+      if not (is_eq c) then binds else
+      let l,r = dest_eq c in
+      if not (mem r avs) || can (rev_assoc r) binds then binds else
+      let l' = norm(subst binds l) in
+      if exists (fun v -> vfree_in v l') (subtract avs (map snd binds)) then binds else
+      try let a = find (fun a -> is_eq a && lhs a = l') asms in (rhs a,r)::binds
+      with Failure _ -> binds in
+    let binds' = itlist (fun c b -> step b c) conjs binds in
+    if length binds' = length binds then binds else loop binds' in
+  let binds = loop [`pc:num`,`pc:num`; `tbl:num`,`tbl:num`] in
+  map (fun v -> try rev_assoc v binds
+                with Failure _ -> failwith ("helper_inst: no value for "^string_of_term v)) avs;;
+
+
+let NISTZ256_RSP_RESTORE = WORD_RULE
+  `word_add (word_sub x (word 8)) (word 8):int64 = x`;;
+
+let NISTZ256_SUBWORD_JOIN_128 = prove
+ (`(!(h:int128) (l:int128). word_subword (word_join h l:256 word) (0,128):int128 = l) /\
+   (!(h:int128) (l:int128). word_subword (word_join h l:256 word) (128,128):int128 = h)`,
+  CONV_TAC WORD_BLAST);;
+
+let NISTZ256_SUBWORD_JOIN_64 = prove
+ (`(!(h:int64) (l:int64). word_subword (word_join h l:int128) (0,64):int64 = l) /\
+   (!(h:int64) (l:int64). word_subword (word_join h l:int128) (64,64):int64 = h)`,
+  CONV_TAC WORD_BLAST);;
+
+let NISTZ256_ZX_ZX_128 = prove
+ (`!x:int64. word_zx (word_zx x:int128):int64 = x`, CONV_TAC WORD_BLAST);;
+
+(* The SSE moves write a YMM register's low half; this reads back what they
+   wrote. *)
+let NISTZ256_NORM_TAC =
+  RULE_ASSUM_TAC(REWRITE_RULE[NISTZ256_SUBWORD_JOIN_128; NISTZ256_ZX_ZX_128]);;
+
+let NISTZ256_STEPS_TAC exec ns =
+  MAP_EVERY (fun n -> X86_STEPS_TAC exec [n] THEN NISTZ256_NORM_TAC) ns;;
+
+(* Steps the CALL at step n into the helper and over it, landing in s(n+1),
+   and names the result registers regs name_0, name_1, ... *)
+let NISTZ256_CALL_TAC exec lemma n regs name =
+  let sn = "s"^string_of_int n and sn' = "s"^string_of_int(n+1) in
+  let s' = mk_var(sn',`:x86state`) in
+  X86_STEPS_TAC exec [n] THEN
+  (fun (asl,w) ->
+     let inst = nistz256_helper_inst lemma sn asl in
+     MP_TAC(SPECL inst lemma) (asl,w)) THEN
+  REWRITE_TAC[SOME_FLAGS] THEN
+  (fun (asl,w) ->
+     if is_imp(lhand w) then
+       (ANTS_TAC THENL
+        [ASM_REWRITE_TAC[] THEN REPEAT CONJ_TAC THEN NONOVERLAPPING_TAC; ALL_TAC]) (asl,w)
+     else ALL_TAC (asl,w)) THEN
+  X86_BIGSTEP_TAC exec sn' THEN
+  (fun (asl,w as g) ->
+     if (try fst(dest_const(fst(strip_comb w))) = "eventually" with Failure _ -> false)
+     then ALL_TAC g
+     else (ASM_REWRITE_TAC[] THEN
+           CONV_TAC(DEPTH_CONV NORMALIZE_RELATIVE_ADDRESS_CONV) THEN
+           ASM_REWRITE_TAC[] THEN NO_TAC) g) THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[NISTZ256_RSP_RESTORE]) THEN
+  RULE_ASSUM_TAC(CONV_RULE(DEPTH_CONV NORMALIZE_RELATIVE_ADDRESS_CONV)) THEN
+  MAP_EVERY (fun (i,r) ->
+    ABBREV_TAC(mk_eq(mk_var(name^"_"^string_of_int i,`:int64`),
+                     list_mk_comb(`read:(x86state,int64)component->x86state->int64`,[r;s']))))
+   (zip (0--(length regs - 1)) regs);;
+
+let NISTZ256_READ_BYTES128_SPLIT = prove
+ (`!a (h:int64) (l:int64) s.
+     read (memory :> bytes128 a) s = word_join h l
+     ==> read (memory :> bytes64 a) s = l /\
+         read (memory :> bytes64 (word_add a (word 8))) s = h`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[CONJUNCT1(CONJUNCT2 READ_MEMORY_BYTESIZED_SPLIT)] THEN
+  DISCH_THEN(fun th ->
+    MP_TAC(AP_TERM `\x:int128. word_subword x (0,64):int64` th) THEN
+    MP_TAC(AP_TERM `\x:int128. word_subword x (64,64):int64` th)) THEN
+  CONV_TAC(ONCE_DEPTH_CONV BETA_CONV) THEN
+  REWRITE_TAC[NISTZ256_SUBWORD_JOIN_64] THEN SIMP_TAC[]);;
+
+(* Each 128-bit stack fact joining two 64-bit words also as two 64-bit facts,
+   for the helpers, which read the stack 64 bits at a time. *)
+let NISTZ256_STACK_SPLIT_TAC =
+  let pat = `read (memory :> bytes128 (word_add stackpointer (word n))) s =
+             word_join (h:int64) (l:int64)` in
+  EVERY_ASSUM (fun th ->
+    if can (term_match [] pat) (concl th) then
+      STRIP_ASSUME_TAC(CONV_RULE(DEPTH_CONV NORMALIZE_RELATIVE_ADDRESS_CONV)
+                         (MATCH_MP NISTZ256_READ_BYTES128_SPLIT th))
+    else ALL_TAC);;
+
+(* The 128-bit stack words at the offsets offs in state sname from the 64-bit
+   words the helpers wrote there, for the SSE loads that read them. *)
+let NISTZ256_STACK_MERGE_TAC sname offs (asl,w as g) =
+  let s = mk_var(sname,`:x86state`) in
+  let pat = `read (memory :> bytes64 a) s = (y:int64)` in
+  let facts = filter (fun th -> can (term_match [] pat) (concl th) && rand(lhand(concl th)) = s)
+                     (map snd asl) in
+  let one k =
+    let tm = subst [mk_small_numeral k, `n:num`; s, `s:x86state`]
+               `read (memory :> bytes128 (word_add stackpointer (word n))) s` in
+    let th = (REWR_CONV (CONJUNCT1(CONJUNCT2 READ_MEMORY_BYTESIZED_SPLIT)) THENC
+              DEPTH_CONV NORMALIZE_RELATIVE_ADDRESS_CONV) tm in
+    ASSUME_TAC(REWRITE_RULE facts th) in
+  MAP_EVERY one offs g;;
+
+(* Rewrites the mask in the low half of reg at state sname, which the code
+   computes from v with PCMPEQD, PSHUFD and POR, as a select between all
+   ones and zero on v = 0. *)
+let NISTZ256_MASK_TAC reg sname v (asl,w as g) =
+  let s = mk_var(sname,`:x86state`) in
+  let l = mk_comb(mk_comb(`read:(x86state,256 word)component->x86state->256 word`, reg), s) in
+  let th = snd(find (fun (_,th) -> is_eq(concl th) && lhs(concl th) = l) asl) in
+  let e = rand(rhs(concl th)) in
+  let vv = `v:int128` in
+  let e' = subst [vv,v] e in
+  let goal = mk_forall(vv, mk_eq(e',
+     `if (v:int128) = word 0 then word 340282366920938463463374607431768211455 else word 0:int128`)) in
+  let conds = setify(map (fun t -> rand(rator(rator t))) (find_terms is_cond e')) in
+  let cths = map (fun c -> prove(mk_eq(c, `(v:int128) = word 0`), BITBLAST_TAC)) conds in
+  let lemma = prove(goal, GEN_TAC THEN REWRITE_TAC cths THEN
+     COND_CASES_TAC THEN ASM_REWRITE_TAC[] THEN CONV_TAC WORD_REDUCE_CONV) in
+  RULE_ASSUM_TAC(REWRITE_RULE[SPEC v lemma]) g;;
+
+let NISTZ256_READ_BYTES128_SPLIT_GEN = prove
+ (`!a (v:int128) s.
+     read (memory :> bytes128 a) s = v
+     ==> read (memory :> bytes64 a) s = word_subword v (0,64) /\
+         read (memory :> bytes64 (word_add a (word 8))) s = word_subword v (64,64)`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[CONJUNCT1(CONJUNCT2 READ_MEMORY_BYTESIZED_SPLIT)] THEN
+  DISCH_THEN(SUBST1_TAC o SYM) THEN REWRITE_TAC[NISTZ256_SUBWORD_JOIN_64]);;
+
+let NISTZ256_SUBWORD_PUSH_64 = prove
+ (`(!x y:int128. word_subword (word_or x y) (0,64):int64 =
+                 word_or (word_subword x (0,64)) (word_subword y (0,64))) /\
+   (!x y:int128. word_subword (word_or x y) (64,64):int64 =
+                 word_or (word_subword x (64,64)) (word_subword y (64,64))) /\
+   (!x y:int128. word_subword (word_and x y) (0,64):int64 =
+                 word_and (word_subword x (0,64)) (word_subword y (0,64))) /\
+   (!x y:int128. word_subword (word_and x y) (64,64):int64 =
+                 word_and (word_subword x (64,64)) (word_subword y (64,64))) /\
+   (!x:int128. word_subword (word_not x) (0,64):int64 = word_not (word_subword x (0,64))) /\
+   (!x:int128. word_subword (word_not x) (64,64):int64 = word_not (word_subword x (64,64)))`,
+  REPEAT CONJ_TAC THEN CONV_TAC WORD_BLAST);;
+
+let NISTZ256_SUBWORD_COND_64 = prove
+ (`!b (x:int128) y k. word_subword (if b then x else y) (k,64):int64 =
+                      if b then word_subword x (k,64) else word_subword y (k,64)`,
+  REPEAT GEN_TAC THEN COND_CASES_TAC THEN REWRITE_TAC[]);;
+
+let NISTZ256_MASK_SIMP_64 = prove
+ (`(!x:int64. word_and (word 18446744073709551615) x = x) /\
+   (!x:int64. word_and (word 0) x = word 0) /\
+   (!x:int64. word_or (word 0) x = x) /\
+   (!x:int64. word_or x (word 0) = x) /\
+   word_not (word 18446744073709551615:int64) = word 0 /\
+   word_not (word 0:int64) = word 18446744073709551615`,
+  REPEAT CONJ_TAC THEN CONV_TAC WORD_BLAST);;
+
+(* Each 128-bit store to p1 as two 64-bit words, the masks pushed into each. *)
+let NISTZ256_P1_SPLIT_TAC sname =
+  let pat = `read (memory :> bytes128 a) s = (v:int128)` in
+  let s = mk_var(sname,`:x86state`) in
+  let simp = CONV_RULE(DEPTH_CONV NORMALIZE_RELATIVE_ADDRESS_CONV THENC
+     REWRITE_CONV[NISTZ256_SUBWORD_PUSH_64; NISTZ256_SUBWORD_COND_64;
+                  NISTZ256_SUBWORD_JOIN_64] THENC
+     DEPTH_CONV WORD_NUM_RED_CONV) in
+  EVERY_ASSUM (fun th ->
+    let c = concl th in
+    if can (term_match [] pat) c && rand(lhand c) = s && vfree_in `p1:int64` (lhand c) then
+      STRIP_ASSUME_TAC(simp(MATCH_MP NISTZ256_READ_BYTES128_SPLIT_GEN th))
+    else ALL_TAC);;
+
+(* The proofs below are scripts of tactics, each applied to the first goal
+   still open, as HOL Light's interactive e applies them. *)
+let prove_steps (tm,tacs) =
+  match rev_itlist (fun tac gs -> by (VALID tac) gs) tacs
+          (mk_goalstate([],tm)) with
+    (_,[],just) ->
+      let th = just null_inst [] in
+      if hyp th = [] && aconv (concl th) tm then th
+      else failwith "prove_steps: wrong theorem"
+  | _ -> failwith "prove_steps: unsolved goals";;
+
+(* ------------------------------------------------------------------------- *)
+(* The body, from after the prologue at 0x11 to the epilogue at 0x538.       *)
+(* ------------------------------------------------------------------------- *)
+
+(* The body's 17 helper calls each step over the helper's lemma, naming its
+   result; the doubling between them is inline. The masks that select the
+   result for the two infinities are computed at s52 and applied at the end,
+   where the three cases split. The stack frame, at stackpointer, must be
+   16-byte aligned, since the body's MOVDQA stores and loads require it. *)
+let ECP_NISTZ256_POINT_ADD_AFFINE_BODY = time prove_steps
+ (`!p1 p2 x1 y1 z1 x2 y2 pc tbl stackpointer.
+     aligned 16 stackpointer /\
+     riprel32_within_bounds tbl (pc + 893) /\
+     riprel32_within_bounds tbl (pc + 885) /\
+     riprel32_within_bounds tbl (pc + 1381) /\
+     riprel32_within_bounds tbl (pc + 1384) /\
+     riprel32_within_bounds tbl (pc + 2146) /\
+     riprel32_within_bounds tbl (pc + 2137) /\
+     ALL (nonoverlapping (word_sub stackpointer (word 8),496))
+         [(word pc,0x9fe); (word tbl,200); (p1,96); (p2,64)] /\
+     ALL (nonoverlapping (p1,96)) [(word pc,0x9fe); (word tbl,200); (p2,64)]
+     ==> ensures x86
+          (\s. bytes_loaded s (word pc) (ecp_nistz256_point_add_affine_mc pc tbl) /\
+               read RIP s = word(pc + 0x11) /\
+               read RSP s = stackpointer /\
+               bytes_loaded s (word tbl) ecp_nistz256_point_add_affine_poly /\
+               read RDI s = p1 /\ read RSI s = p1 /\ read RDX s = p2 /\
+               bignum_triple_from_memory (p1,4) s = (x1,y1,z1) /\
+               bignum_pair_from_memory (p2,4) s = (x2,y2))
+          (\s. read RIP s = word(pc + 0x538) /\
+               read RSP s = stackpointer /\
+               (x1 < p_256 /\ y1 < p_256 /\ z1 < p_256 /\ x2 < p_256 /\ y2 < p_256
+                ==> (x2 = 0 /\ y2 = 0
+                     ==> bignum_triple_from_memory (p1,4) s = (x1,y1,z1)) /\
+                    (~(x2 = 0 /\ y2 = 0) /\ z1 = 0
+                     ==> bignum_triple_from_memory (p1,4) s =
+                         (x2,y2,2 EXP 256 MOD p_256)) /\
+                    (~(x2 = 0 /\ y2 = 0) /\ ~(z1 = 0)
+                     ==> !P1 P2. represents_p256 P1 (x1,y1,z1) /\
+                                 represents2_p256 P2 (x2,y2) /\ ~(P1 = P2)
+                                 ==> represents_p256 (group_mul p256_group P1 P2)
+                                      (bignum_triple_from_memory (p1,4) s))))
+          (MAYCHANGE [RIP; RSP; RAX; RBX; RCX; RDX; RSI; RDI; RBP;
+                      R8; R9; R10; R11; R12; R13; R14; R15] ,,
+           MAYCHANGE [ZMM0; ZMM1; ZMM2; ZMM3; ZMM4; ZMM5] ,,
+           MAYCHANGE SOME_FLAGS ,, MAYCHANGE [events] ,,
+           MAYCHANGE [memory :> bytes(p1,96);
+                      memory :> bytes(word_sub stackpointer (word 8),8);
+                      memory :> bytes(stackpointer,488)])`,
+ [
+  (MAP_EVERY X_GEN_TAC
+   [`p1:int64`; `p2:int64`; `x1:num`; `y1:num`; `z1:num`; `x2:num`; `y2:num`;
+    `pc:num`; `tbl:num`; `stackpointer:int64`] THEN
+  REWRITE_TAC[ALLPAIRS; ALL; NONOVERLAPPING_CLAUSES] THEN STRIP_TAC THEN
+  REWRITE_TAC[SOME_FLAGS; PAIR_EQ;
+              bignum_pair_from_memory; bignum_triple_from_memory] THEN
+  CONV_TAC(ONCE_DEPTH_CONV NUM_MULT_CONV) THEN
+  CONV_TAC(ONCE_DEPTH_CONV NORMALIZE_RELATIVE_ADDRESS_CONV) THEN
+  REWRITE_TAC[BIGNUM_FROM_MEMORY_BYTES] THEN
+  MAP_EVERY (fun n -> GHOST_INTRO_TAC (mk_var("ymm"^string_of_int n,`:int256`))
+                                      (parse_term("read YMM"^string_of_int n))) (0--5) THEN
+  ENSURES_INIT_TAC "s0" THEN
+  FIRST_ASSUM(STRIP_ASSUME_TAC o MATCH_MP NISTZ256_POLY_TABLE_FACTS) THEN
+  BIGNUM_LDIGITIZE_TAC "x1_" `read (memory :> bytes (p1,8 * 4)) s0` THEN
+  BIGNUM_LDIGITIZE_TAC "y1_" `read (memory :> bytes (word_add p1 (word 32),8 * 4)) s0` THEN
+  BIGNUM_LDIGITIZE_TAC "z1_" `read (memory :> bytes (word_add p1 (word 64),8 * 4)) s0` THEN
+  BIGNUM_LDIGITIZE_TAC "x2_" `read (memory :> bytes (p2,8 * 4)) s0` THEN
+  BIGNUM_LDIGITIZE_TAC "y2_" `read (memory :> bytes (word_add p2 (word 32),8 * 4)) s0`);
+  (MEMORY_128_FROM_64_TAC "p1" 0 6 THEN MEMORY_128_FROM_64_TAC "p2" 0 4 THEN
+  ASM_REWRITE_TAC[WORD_ADD_0] THEN STRIP_TAC THEN STRIP_TAC);
+  (NISTZ256_STEPS_TAC ECP_NISTZ256_POINT_ADD_AFFINE_EXEC (1--37) THEN NISTZ256_STACK_SPLIT_TAC);
+  (NISTZ256_CALL_TAC ECP_NISTZ256_POINT_ADD_AFFINE_EXEC ECP_NISTZ256_SQR_MONTQ_CORRECT 38 [`R12`;`R13`;`R14`;`R15`] "zsq" THEN NISTZ256_NORM_TAC);
+  (NISTZ256_STEPS_TAC ECP_NISTZ256_POINT_ADD_AFFINE_EXEC (40--52));
+  (NISTZ256_MASK_TAC `YMM5` "s52" `word_or (word_join (z1_3:int64) (z1_2:int64):int128) (word_join (z1_1:int64) (z1_0:int64))`);
+  (NISTZ256_MASK_TAC `YMM4` "s52" `word_or (word_or (word_join (y2_3:int64) (y2_2:int64):int128) (word_join (y2_1:int64) (y2_0:int64)))
+                                  (word_or (word_join (x2_3:int64) (x2_2:int64):int128) (word_join (x2_1:int64) (x2_0:int64)))`);
+  (NISTZ256_STEPS_TAC ECP_NISTZ256_POINT_ADD_AFFINE_EXEC (53--55));
+  (NISTZ256_CALL_TAC ECP_NISTZ256_POINT_ADD_AFFINE_EXEC ECP_NISTZ256_MUL_MONTQ_CORRECT 56 [`R12`;`R13`;`R8`;`R9`] "u2" THEN NISTZ256_NORM_TAC);
+  (NISTZ256_STEPS_TAC ECP_NISTZ256_POINT_ADD_AFFINE_EXEC (58--59));
+  (NISTZ256_CALL_TAC ECP_NISTZ256_POINT_ADD_AFFINE_EXEC ECP_NISTZ256_SUB_FROMQ_CORRECT 60 [`R12`;`R13`;`R8`;`R9`] "h" THEN NISTZ256_NORM_TAC);
+  (NISTZ256_STEPS_TAC ECP_NISTZ256_POINT_ADD_AFFINE_EXEC (62--69));
+  (NISTZ256_CALL_TAC ECP_NISTZ256_POINT_ADD_AFFINE_EXEC ECP_NISTZ256_MUL_MONTQ_CORRECT 70 [`R12`;`R13`;`R8`;`R9`] "s2a" THEN NISTZ256_NORM_TAC);
+  (NISTZ256_STEPS_TAC ECP_NISTZ256_POINT_ADD_AFFINE_EXEC (72--79));
+  (NISTZ256_CALL_TAC ECP_NISTZ256_POINT_ADD_AFFINE_EXEC ECP_NISTZ256_MUL_MONTQ_CORRECT 80 [`R12`;`R13`;`R8`;`R9`] "resz" THEN NISTZ256_NORM_TAC);
+  (NISTZ256_STEPS_TAC ECP_NISTZ256_POINT_ADD_AFFINE_EXEC (82--89));
+  (NISTZ256_CALL_TAC ECP_NISTZ256_POINT_ADD_AFFINE_EXEC ECP_NISTZ256_MUL_MONTQ_CORRECT 90 [`R12`;`R13`;`R8`;`R9`] "s2" THEN NISTZ256_NORM_TAC);
+  (NISTZ256_STEPS_TAC ECP_NISTZ256_POINT_ADD_AFFINE_EXEC (92--93));
+  (NISTZ256_CALL_TAC ECP_NISTZ256_POINT_ADD_AFFINE_EXEC ECP_NISTZ256_SUB_FROMQ_CORRECT 94 [`R12`;`R13`;`R8`;`R9`] "r" THEN NISTZ256_NORM_TAC);
+  (NISTZ256_STEPS_TAC ECP_NISTZ256_POINT_ADD_AFFINE_EXEC (96--101));
+  (NISTZ256_CALL_TAC ECP_NISTZ256_POINT_ADD_AFFINE_EXEC ECP_NISTZ256_SQR_MONTQ_CORRECT 102 [`R12`;`R13`;`R14`;`R15`] "hsq" THEN NISTZ256_NORM_TAC);
+  (NISTZ256_STEPS_TAC ECP_NISTZ256_POINT_ADD_AFFINE_EXEC (104--109));
+  (NISTZ256_CALL_TAC ECP_NISTZ256_POINT_ADD_AFFINE_EXEC ECP_NISTZ256_SQR_MONTQ_CORRECT 110 [`R12`;`R13`;`R14`;`R15`] "rsq" THEN NISTZ256_NORM_TAC);
+  (NISTZ256_STEPS_TAC ECP_NISTZ256_POINT_ADD_AFFINE_EXEC (112--119));
+  (NISTZ256_CALL_TAC ECP_NISTZ256_POINT_ADD_AFFINE_EXEC ECP_NISTZ256_MUL_MONTQ_CORRECT 120 [`R12`;`R13`;`R8`;`R9`] "hcub" THEN NISTZ256_NORM_TAC);
+  (NISTZ256_STEPS_TAC ECP_NISTZ256_POINT_ADD_AFFINE_EXEC (122--129));
+  (NISTZ256_CALL_TAC ECP_NISTZ256_POINT_ADD_AFFINE_EXEC ECP_NISTZ256_MUL_MONTQ_CORRECT 130 [`R12`;`R13`;`R8`;`R9`] "u2b" THEN NISTZ256_NORM_TAC);
+  (X86_ACCSTEPS_TAC ECP_NISTZ256_POINT_ADD_AFFINE_EXEC [133;135;137;138;141;143;144;146;147] (132--155));
+  (SUBGOAL_THEN `bignum_of_wordlist [u2b_0;u2b_1;u2b_2;u2b_3] < p_256
+   ==> bignum_of_wordlist [read R12 s155; read R13 s155; read R8 s155; read R9 s155] =
+       (2 * bignum_of_wordlist [u2b_0;u2b_1;u2b_2;u2b_3]) MOD p_256` MP_TAC);
+  (ASM_REWRITE_TAC[] THEN ABBREV_TAC `u = bignum_of_wordlist [u2b_0;u2b_1;u2b_2;u2b_3]` THEN DISCH_TAC);
+  (SUBGOAL_THEN `carry_s147 <=> 2 * u < p_256` SUBST1_TAC);
+  (MATCH_MP_TAC FLAG_FROM_CARRY_LT THEN EXISTS_TAC `320` THEN EXPAND_TAC "u" THEN
+    REWRITE_TAC[p_256; bignum_of_wordlist; GSYM REAL_OF_NUM_CLAUSES; VAL_WORD_BITVAL] THEN
+    CONV_TAC NUM_REDUCE_CONV THEN
+    ACCUMULATOR_ASSUM_LIST(MP_TAC o end_itlist CONJ o DECARRY_RULE) THEN
+    DISCH_THEN(fun th -> REWRITE_TAC[th]) THEN BOUNDER_TAC[]);
+  (SUBGOAL_THEN `2 * u < 2 * p_256` ASSUME_TAC THENL [UNDISCH_TAC `u < p_256` THEN ARITH_TAC; ALL_TAC]);
+  (CONV_TAC SYM_CONV THEN MATCH_MP_TAC EQUAL_FROM_CONGRUENT_MOD_MOD THEN
+  MAP_EVERY EXISTS_TAC [`256`; `if 2 * u < p_256 then &(2 * u):real else &(2 * u) - &p_256`] THEN
+  REPEAT CONJ_TAC THENL
+   [W(MP_TAC o PART_MATCH lhand BIGNUM_OF_WORDLIST_BOUND_LENGTH o lhand o snd) THEN
+    REWRITE_TAC[LENGTH] THEN ARITH_TAC;
+    REWRITE_TAC[p_256] THEN ARITH_TAC;
+    REWRITE_TAC[p_256] THEN ARITH_TAC;
+    ALL_TAC;
+    ASM_SIMP_TAC[MOD_CASES] THEN
+    GEN_REWRITE_TAC LAND_CONV [COND_RAND] THEN
+    SIMP_TAC[REAL_OF_NUM_SUB; GSYM NOT_LT]]);
+  (COND_CASES_TAC THEN ASM_REWRITE_TAC[] THEN EXPAND_TAC "u" THEN
+  REWRITE_TAC[GSYM REAL_OF_NUM_CLAUSES; bignum_of_wordlist; p_256] THEN
+  ACCUMULATOR_POP_ASSUM_LIST(MP_TAC o end_itlist CONJ o DESUM_RULE) THEN
+  ASM_REWRITE_TAC[BITVAL_CLAUSES; VAL_WORD_BITVAL] THEN
+  DISCH_THEN(fun th -> REWRITE_TAC[th]) THEN REAL_INTEGER_TAC);
+  (DISCH_TAC THEN ACCUMULATOR_POP_ASSUM_LIST(K ALL_TAC) THEN
+  MAP_EVERY (fun (n,r) -> ABBREV_TAC(mk_eq(mk_var("dbl_"^string_of_int n,`:int64`),
+        list_mk_comb(`read:(x86state,int64)component->x86state->int64`,[r;`s155:x86state`]))))
+   [0,`R12`; 1,`R13`; 2,`R8`; 3,`R9`]);
+  (NISTZ256_CALL_TAC ECP_NISTZ256_POINT_ADD_AFFINE_EXEC ECP_NISTZ256_SUBQ_CORRECT 156 [`R12`;`R13`;`R8`;`R9`] "rmu" THEN NISTZ256_NORM_TAC);
+  (NISTZ256_STEPS_TAC ECP_NISTZ256_POINT_ADD_AFFINE_EXEC (158--159));
+  (NISTZ256_CALL_TAC ECP_NISTZ256_POINT_ADD_AFFINE_EXEC ECP_NISTZ256_SUB_FROMQ_CORRECT 160 [`R12`;`R13`;`R8`;`R9`] "resx" THEN NISTZ256_NORM_TAC);
+  (NISTZ256_STEPS_TAC ECP_NISTZ256_POINT_ADD_AFFINE_EXEC (162--166));
+  (NISTZ256_CALL_TAC ECP_NISTZ256_POINT_ADD_AFFINE_EXEC ECP_NISTZ256_SUBQ_CORRECT 167 [`R12`;`R13`;`R8`;`R9`] "t" THEN NISTZ256_NORM_TAC);
+  (NISTZ256_STEPS_TAC ECP_NISTZ256_POINT_ADD_AFFINE_EXEC (169--180));
+  (NISTZ256_CALL_TAC ECP_NISTZ256_POINT_ADD_AFFINE_EXEC ECP_NISTZ256_MUL_MONTQ_CORRECT 181 [`R12`;`R13`;`R8`;`R9`] "s2b" THEN NISTZ256_NORM_TAC);
+  (NISTZ256_STEPS_TAC ECP_NISTZ256_POINT_ADD_AFFINE_EXEC (183--190));
+  (NISTZ256_CALL_TAC ECP_NISTZ256_POINT_ADD_AFFINE_EXEC ECP_NISTZ256_MUL_MONTQ_CORRECT 191 [`R12`;`R13`;`R8`;`R9`] "tr" THEN NISTZ256_NORM_TAC);
+  (NISTZ256_STEPS_TAC ECP_NISTZ256_POINT_ADD_AFFINE_EXEC (193--194));
+  (NISTZ256_CALL_TAC ECP_NISTZ256_POINT_ADD_AFFINE_EXEC ECP_NISTZ256_SUB_FROMQ_CORRECT 195 [`R12`;`R13`;`R8`;`R9`] "resy" THEN NISTZ256_NORM_TAC);
+  (NISTZ256_STACK_MERGE_TAC "s196" [224;240;256;272;288;304]);
+  (RIPREL_TAC 1021 893 THEN RIPREL_TAC 1029 885);
+  (NISTZ256_STEPS_TAC ECP_NISTZ256_POINT_ADD_AFFINE_EXEC (197--263));
+  (RULE_ASSUM_TAC(REWRITE_RULE[YMM0_SSE; YMM1_SSE; YMM2_SSE; YMM3_SSE; YMM4_SSE; YMM5_SSE]) THEN
+  ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[]);
+  (NISTZ256_P1_SPLIT_TAC "s263");
+  (CONV_TAC(ONCE_DEPTH_CONV BIGNUM_LEXPAND_CONV) THEN
+  W(fun (asl,w) -> REWRITE_TAC (filter (fun th ->
+      let c = concl th in
+      can (term_match [] `read (memory :> bytes64 a) s263 = (v:int64)`) c &&
+      vfree_in `p1:int64` (lhand c)) (map snd asl))) THEN
+  REWRITE_TAC[WORD_ADD_0]);
+  (SUBGOAL_THEN `(word_or (word_join (z1_3:int64) (z1_2:int64)) (word_join (z1_1:int64) (z1_0:int64)):int128 = word 0) <=> z1 = 0`
+   SUBST1_TAC THENL
+   [REWRITE_TAC[SYM(ASSUME `bignum_of_wordlist [z1_0; z1_1; z1_2; z1_3] = z1`)] THEN
+    REWRITE_TAC[BIGNUM_OF_WORDLIST_EQ_0; ALL] THEN BITBLAST_TAC; ALL_TAC]);
+  (SUBGOAL_THEN `(word_or (word_or (word_join (y2_3:int64) (y2_2:int64)) (word_join (y2_1:int64) (y2_0:int64)))
+                         (word_or (word_join (x2_3:int64) (x2_2:int64)) (word_join (x2_1:int64) (x2_0:int64))):int128 = word 0) <=> x2 = 0 /\ y2 = 0`
+   SUBST1_TAC THENL
+   [REWRITE_TAC[SYM(ASSUME `bignum_of_wordlist [x2_0; x2_1; x2_2; x2_3] = x2`);
+                SYM(ASSUME `bignum_of_wordlist [y2_0; y2_1; y2_2; y2_3] = y2`)] THEN
+    REWRITE_TAC[BIGNUM_OF_WORDLIST_EQ_0; ALL] THEN BITBLAST_TAC; ALL_TAC]);
+  (STRIP_TAC THEN REPEAT CONJ_TAC THEN STRIP_TAC THEN ASM_REWRITE_TAC[NISTZ256_MASK_SIMP_64]);
+  (REWRITE_TAC[bignum_of_wordlist; p_256] THEN CONV_TAC(DEPTH_CONV WORD_NUM_RED_CONV) THEN CONV_TAC NUM_REDUCE_CONV);
+  (DISCARD_STATE_TAC "s263" THEN DISCARD_MATCHING_ASSUMPTIONS [`nonoverlapping_modulo a b c`] THEN
+  DISCARD_MATCHING_ASSUMPTIONS [`read c s = x`] THEN
+  MAP_EVERY (fun v ->
+    let l = mk_list(map (fun i -> mk_var(v^"_"^string_of_int i,`:int64`)) (0--3),`:int64`) in
+    let eq = mk_eq(mk_comb(`bignum_of_wordlist`,l), mk_var(v,`:num`)) in
+    FIRST_X_ASSUM(fun th -> if concl th = eq then SUBST_ALL_TAC th else failwith "")) ["x1";"y1";"z1";"x2";"y2"] THEN
+  MAP_EVERY (fun v ->
+    let l = mk_list(map (fun i -> mk_var(v^"_"^string_of_int i,`:int64`)) (0--3),`:int64`) in
+    ABBREV_TAC(mk_eq(mk_var(v,`:num`), mk_comb(`bignum_of_wordlist`,l))))
+   ["zsq";"u2";"h";"s2a";"resz";"s2";"r";"hsq";"rsq";"hcub";"u2b";"dbl";"rmu";"resx";"t";"s2b";"tr";"resy"]);
+  (MAP_EVERY X_GEN_TAC [`P1:(int#int)option`; `P2:(int#int)option`] THEN
+  REWRITE_TAC[represents_p256; represents2_p256; tripled; paired] THEN
+  REWRITE_TAC[montgomery_decode; INT_OF_NUM_CLAUSES; INT_OF_NUM_REM] THEN
+  STRIP_TAC THEN
+  REPEAT(FIRST_X_ASSUM(MP_TAC o check (is_imp o concl))) THEN
+  REPEAT(ANTS_TAC THENL
+   [REWRITE_TAC[p_256] THEN RULE_ASSUM_TAC(REWRITE_RULE[p_256]) THEN
+    CONV_TAC NUM_REDUCE_CONV THEN ASM BOUNDER_TAC[];
+    (DISCH_THEN(STRIP_ASSUME_TAC o MATCH_MP unilemma0) ORELSE
+     DISCH_THEN(STRIP_ASSUME_TAC o MATCH_MP unilemma1) ORELSE
+     STRIP_TAC)]));
+  (ASM_REWRITE_TAC[] THEN
+  MAP_EVERY (MP_TAC o C SPEC unreplemma)
+   [`y2:num`; `x2:num`; `z1:num`; `y1:num`; `x1:num`] THEN
+  MAP_EVERY (fun t -> ABBREV_TAC t THEN POP_ASSUM(K ALL_TAC))
+   [`x1d = inverse_mod p_256 (2 EXP 256) * x1`;
+    `y1d = inverse_mod p_256 (2 EXP 256) * y1`;
+    `z1d = inverse_mod p_256 (2 EXP 256) * z1`;
+    `x2d = inverse_mod p_256 (2 EXP 256) * x2`;
+    `y2d = inverse_mod p_256 (2 EXP 256) * y2`] THEN
+  ASM_REWRITE_TAC[] THEN REPEAT DISCH_TAC THEN
+  REPEAT(FIRST_X_ASSUM(K ALL_TAC o GEN_REWRITE_RULE I [GSYM NOT_LE])) THEN
+  RULE_ASSUM_TAC(REWRITE_RULE
+   [num_congruent; GSYM INT_OF_NUM_CLAUSES; GSYM INT_OF_NUM_REM]) THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[GSYM INT_REM_EQ]) THEN
+  RULE_ASSUM_TAC(CONV_RULE INT_REM_DOWN_CONV) THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[INT_POW_2]) THEN
+  RULE_ASSUM_TAC(ONCE_REWRITE_RULE[GSYM INT_ADD_REM; GSYM INT_SUB_REM]) THEN
+  RULE_ASSUM_TAC(ONCE_REWRITE_RULE[lemont; demont]) THEN
+  ASM_REWRITE_TAC[GSYM INT_OF_NUM_CLAUSES; GSYM INT_OF_NUM_REM] THEN
+  REWRITE_TAC[INT_REM_REM] THEN
+  REWRITE_TAC[pumont; dismont; unmont]);
+  (FIRST_X_ASSUM(MP_TAC o GEN_REWRITE_RULE LAND_CONV [GSYM
+    weierstrass_of_affine_p256]) THEN
+  FIRST_X_ASSUM(MP_TAC o
+    check(can (term_match [] `weierstrass_of_jacobian f j = p`) o concl)) THEN
+  REWRITE_TAC[IMP_IMP] THEN
+  DISCH_THEN(fun th -> STRIP_ASSUME_TAC th THEN MP_TAC th) THEN
+  MATCH_MP_TAC weierstrass_of_jacobian_p256_add THEN ASM_REWRITE_TAC[] THEN
+  ASM_REWRITE_TAC[jacobian_add_unexceptional; nistp256;
+                  INTEGER_MOD_RING_CLAUSES]);
+  (SUBGOAL_THEN `~(&z1d rem &p_256 = &0)` (fun th -> REWRITE_TAC[th]) THENL
+   [UNDISCH_TAC `~(&z1:int = &0)` THEN ASM_REWRITE_TAC[CONTRAPOS_THM] THEN
+    REWRITE_TAC[INT_REM_EQ_0] THEN CONV_TAC INTEGER_RULE;
+    ALL_TAC] THEN
+  REWRITE_TAC[p_256] THEN CONV_TAC INT_REDUCE_CONV THEN
+  REWRITE_TAC[GSYM p_256] THEN
+  CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN REWRITE_TAC[PAIR_EQ] THEN
+  CONV_TAC INT_REM_DOWN_CONV THEN
+  REPEAT CONJ_TAC THEN AP_THM_TAC THEN AP_TERM_TAC THEN INT_ARITH_TAC)
+ ]);;
+
+(* ------------------------------------------------------------------------- *)
+(* The whole function, with its prologue and epilogue.                       *)
+(* ------------------------------------------------------------------------- *)
+
+let NISTZ256_SUB_SUB_NUM = prove
+ (`!x:int64 a b. word_sub (word_sub x (word a)) (word b) = word_sub x (word(a + b))`,
+  REWRITE_TAC[WORD_ADD] THEN CONV_TAC WORD_RULE);;
+
+(* The frame's offsets below stackpointer as the epilogue's addresses state
+   them, offsets above it modulo 2^64. *)
+let NISTZ256_FRAME_OFFSETS = map
+  (fun k -> WORD_BLAST(parse_term(
+     "!x:int64. word_sub x (word " ^ string_of_int k ^ ") = word_add x (word " ^
+     string_of_num(num_of_string "18446744073709551616" -/ num_of_string(string_of_int k)) ^ ")")))
+  [8; 16; 24; 32; 40; 48; 536; 544];;
+
+(* ECP_NISTZ256_POINT_ADD_AFFINE_SUBROUTINE_CORRECT: called with the System V
+   ABI, in place, with p1 the Jacobian point and p2 the affine one, both in
+   Montgomery form with coordinates below p_256, the function leaves at p1
+   - p1 itself when p2 is (0,0), the affine encoding of infinity;
+   - p2 with z the Montgomery form of 1 when p1's z is 0, the Jacobian
+     infinity;
+   - otherwise a Jacobian triple for the sum of the points they represent,
+     unless those are equal, which these formulas cannot double.
+   Its stack frame, 544 bytes below the return address, is 16-byte aligned
+   whenever the caller's stack is, as the ABI requires at a call. *)
+let ECP_NISTZ256_POINT_ADD_AFFINE_SUBROUTINE_CORRECT = time prove_steps
+ (`!p1 p2 x1 y1 z1 x2 y2 pc tbl stackpointer returnaddress.
+     aligned 16 (word_add stackpointer (word 8)) /\
+     riprel32_within_bounds tbl (pc + 893) /\
+     riprel32_within_bounds tbl (pc + 885) /\
+     riprel32_within_bounds tbl (pc + 1381) /\
+     riprel32_within_bounds tbl (pc + 1384) /\
+     riprel32_within_bounds tbl (pc + 2146) /\
+     riprel32_within_bounds tbl (pc + 2137) /\
+     ALL (nonoverlapping (word_sub stackpointer (word 544),552))
+         [(word pc,0x9fe); (word tbl,208); (p1,96); (p2,64)] /\
+     ALL (nonoverlapping (p1,96)) [(word pc,0x9fe); (word tbl,208); (p2,64)]
+     ==> ensures x86
+          (\s. bytes_loaded s (word pc) (ecp_nistz256_point_add_affine_mc pc tbl) /\
+               read RIP s = word pc /\
+               read RSP s = stackpointer /\
+               read (memory :> bytes64 stackpointer) s = returnaddress /\
+               bytes_loaded s (word tbl) ecp_nistz256_point_add_affine_poly /\
+               C_ARGUMENTS [p1; p1; p2] s /\
+               bignum_triple_from_memory (p1,4) s = (x1,y1,z1) /\
+               bignum_pair_from_memory (p2,4) s = (x2,y2))
+          (\s. read RIP s = returnaddress /\
+               read RSP s = word_add stackpointer (word 8) /\
+               (x1 < p_256 /\ y1 < p_256 /\ z1 < p_256 /\ x2 < p_256 /\ y2 < p_256
+                ==> (x2 = 0 /\ y2 = 0
+                     ==> bignum_triple_from_memory (p1,4) s = (x1,y1,z1)) /\
+                    (~(x2 = 0 /\ y2 = 0) /\ z1 = 0
+                     ==> bignum_triple_from_memory (p1,4) s =
+                         (x2,y2,2 EXP 256 MOD p_256)) /\
+                    (~(x2 = 0 /\ y2 = 0) /\ ~(z1 = 0)
+                     ==> !P1 P2. represents_p256 P1 (x1,y1,z1) /\
+                                 represents2_p256 P2 (x2,y2) /\ ~(P1 = P2)
+                                 ==> represents_p256 (group_mul p256_group P1 P2)
+                                      (bignum_triple_from_memory (p1,4) s))))
+          (MAYCHANGE [RSP] ,, MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI ,,
+           MAYCHANGE [memory :> bytes(p1,96);
+                      memory :> bytes(word_sub stackpointer (word 544),544)])`,
+ [
+  (MAP_EVERY X_GEN_TAC
+    [`p1:int64`; `p2:int64`; `x1:num`; `y1:num`; `z1:num`; `x2:num`; `y2:num`;
+     `pc:num`; `tbl:num`; `stackpointer:int64`; `returnaddress:int64`] THEN
+   REWRITE_TAC[ALL; NONOVERLAPPING_CLAUSES; C_ARGUMENTS] THEN STRIP_TAC THEN
+   SUBGOAL_THEN `aligned 16 (word_sub stackpointer (word 536):int64)` ASSUME_TAC THENL
+    [SUBGOAL_THEN `word_sub stackpointer (word 536):int64 =
+                   word_sub (word_add stackpointer (word 8)) (word 544)` SUBST1_TAC THENL
+      [CONV_TAC WORD_RULE; CONV_TAC NORMALIZE_ALIGNED_WORD_CONV THEN ASM_REWRITE_TAC[]];
+     ALL_TAC]);
+  (REWRITE_TAC[MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI; SOME_FLAGS; PAIR_EQ;
+               bignum_pair_from_memory; bignum_triple_from_memory] THEN
+   CONV_TAC(ONCE_DEPTH_CONV NUM_MULT_CONV) THEN
+   CONV_TAC(ONCE_DEPTH_CONV NORMALIZE_RELATIVE_ADDRESS_CONV) THEN
+   REWRITE_TAC[BIGNUM_FROM_MEMORY_BYTES] THEN
+   ENSURES_PRESERVED_TAC "rbx_init" `RBX` THEN
+   ENSURES_PRESERVED_TAC "rbp_init" `RBP` THEN
+   ENSURES_PRESERVED_TAC "r12_init" `R12` THEN
+   ENSURES_PRESERVED_TAC "r13_init" `R13` THEN
+   ENSURES_PRESERVED_TAC "r14_init" `R14` THEN
+   ENSURES_PRESERVED_TAC "r15_init" `R15` THEN
+   ENSURES_INIT_TAC "s0");
+  (* Steps keep reads of bytes, not bytes_loaded, so the table goes as one. *)
+  (FIRST_X_ASSUM(MP_TAC o check (can (term_match []
+     `bytes_loaded s (word tbl) ecp_nistz256_point_add_affine_poly`) o concl)) THEN
+   REWRITE_TAC[NISTZ256_POLY_LOADED] THEN DISCH_TAC);
+  (X86_STEPS_TAC ECP_NISTZ256_POINT_ADD_AFFINE_EXEC (1--7) THEN
+   RULE_ASSUM_TAC(CONV_RULE(TOP_DEPTH_CONV(REWR_CONV NISTZ256_SUB_SUB_NUM THENC
+                                          RAND_CONV(RAND_CONV NUM_ADD_CONV)))));
+  (MP_TAC(REWRITE_RULE[BIGNUM_FROM_MEMORY_BYTES; NISTZ256_POLY_LOADED; SOME_FLAGS]
+     (CONV_RULE(ONCE_DEPTH_CONV NORMALIZE_RELATIVE_ADDRESS_CONV)
+       (CONV_RULE(ONCE_DEPTH_CONV NUM_MULT_CONV)
+         (REWRITE_RULE[PAIR_EQ; bignum_pair_from_memory; bignum_triple_from_memory]
+           (SPECL [`p1:int64`; `p2:int64`; `x1:num`; `y1:num`; `z1:num`;
+                   `x2:num`; `y2:num`; `pc:num`; `tbl:num`;
+                   `word_sub stackpointer (word 536):int64`]
+                  ECP_NISTZ256_POINT_ADD_AFFINE_BODY))))) THEN
+   REWRITE_TAC[NISTZ256_SUB_SUB_NUM] THEN CONV_TAC(ONCE_DEPTH_CONV NUM_ADD_CONV) THEN
+   ASM_REWRITE_TAC[ALL; NONOVERLAPPING_CLAUSES] THEN
+   ANTS_TAC THENL [REPEAT CONJ_TAC THEN NONOVERLAPPING_TAC; ALL_TAC]);
+  (X86_BIGSTEP_TAC ECP_NISTZ256_POINT_ADD_AFFINE_EXEC "s8");
+  (* The epilogue reloads the saved registers relative to the frame's top. *)
+  (ABBREV_TAC `x3 = read (memory :> bytes (p1,8 * 4)) s8` THEN
+   ABBREV_TAC `y3 = read (memory :> bytes (word_add p1 (word 32),8 * 4)) s8` THEN
+   ABBREV_TAC `z3 = read (memory :> bytes (word_add p1 (word 64),8 * 4)) s8` THEN
+   X86_STEPS_TAC ECP_NISTZ256_POINT_ADD_AFFINE_EXEC [9] THEN
+   RULE_ASSUM_TAC(REWRITE_RULE[WORD_RULE
+     `word_add (word_sub (x:int64) (word 536)) (word 536) = x`]) THEN
+   RULE_ASSUM_TAC(fun th ->
+     if can (term_match [] `read (memory :> bytes64 (word_sub x (word k))) s = v`)
+            (concl th)
+     then REWRITE_RULE NISTZ256_FRAME_OFFSETS th else th) THEN
+   X86_STEPS_TAC ECP_NISTZ256_POINT_ADD_AFFINE_EXEC (10--17));
+  (ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[]);
+  (RULE_ASSUM_TAC(REWRITE_RULE NISTZ256_FRAME_OFFSETS) THEN
+   REWRITE_TAC NISTZ256_FRAME_OFFSETS THEN MONOTONE_MAYCHANGE_TAC)
+ ]);;
