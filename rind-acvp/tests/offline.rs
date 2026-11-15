@@ -636,9 +636,10 @@ fn built(algorithm: &str, mode: Option<&str>, revision: &str, groups: Vec<Value>
 /// vectors, half with a corrupted shared secret, which the module must
 /// refuse; then shared secrets with keys the test generates.
 fn kas_ecc_ssc() -> Vec<Set> {
-    let text =
-        fs::read_to_string(root().join("thirdparty/vectors/cavp/ecdh/KAS_ECC_CDH_PrimitiveTest.txt"))
-            .unwrap();
+    let text = fs::read_to_string(
+        root().join("thirdparty/vectors/cavp/ecdh/KAS_ECC_CDH_PrimitiveTest.txt"),
+    )
+    .unwrap();
     let mut val = Vec::new();
     let mut aft = Vec::new();
     let mut servers = HashMap::new();
@@ -778,7 +779,9 @@ fn kas_ecc_ssc() -> Vec<Set> {
 }
 
 fn wycheproof(name: &str) -> Value {
-    read(&format!("thirdparty/vectors/wycheproof/testvectors_v1/{name}.json"))
+    read(&format!(
+        "thirdparty/vectors/wycheproof/testvectors_v1/{name}.json"
+    ))
 }
 
 /// PBKDF2 from Wycheproof's vectors that SP 800-132's bounds, which the
