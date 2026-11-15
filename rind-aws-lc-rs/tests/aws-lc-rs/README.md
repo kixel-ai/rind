@@ -21,7 +21,8 @@ or skip those cases where a test covers more:
 
 - `basic_openssh_test.rs` and the OpenSSH ChaCha20-Poly1305 AEAD test.
 - `cmac_tests.rs` (CMAC) and `kdf_test.rs` (KBKDF and SSKDF).
-- `pqdsa_test.rs` (ML-DSA).
+- ML-DSA's `PqdsaPrivateKey::as_raw_bytes`, and
+  `test_mldsa_seed_functional_equivalence`, which needs it.
 - `unsealed_rand_test.rs`, which needs the `dev-tests-only` feature's
   `rand::unsealed`.
 - AES-GCM-SIV; AES in ECB, CFB, and OFB modes; DES (`legacy-des`); and the
