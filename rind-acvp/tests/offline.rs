@@ -749,6 +749,9 @@ fn rsa_key_gen(prompt: &Value, group: &Value) -> Result<(), String> {
         if e != BigUint::from(65537u32) || &p * &q != n {
             return fail("n is not p * q, or e is not 65537");
         }
+        if p == q {
+            return fail("p and q are the same prime");
+        }
         let (p1, q1) = (&p - &one, &q - &one);
         let lambda = &p1 * &q1 / gcd(p1.clone(), q1.clone());
         if &d * &e % &lambda != one || d >= lambda {
@@ -1176,4 +1179,21 @@ fn rsa_sig_ver() -> Vec<Set> {
             }
         })
         .collect()
+}
+
+/// A key whose primes repeat passes every other check, `d` inverting `e`
+/// modulo `p - 1`, which is then `lcm(p - 1, q - 1)`.
+#[test]
+fn rsa_key_gen_refuses_a_repeated_prime() {
+    let p = "fffffffb";
+    let group = json!({"tests": [{
+        "tcId": 1,
+        "e": "010001",
+        "p": p,
+        "q": p,
+        "n": "fffffff600000019",
+        "d": "66669997",
+    }]});
+    let error = rsa_key_gen(&json!({"modulo": 64}), &group).unwrap_err();
+    assert!(error.contains("the same prime"), "{error}");
 }
