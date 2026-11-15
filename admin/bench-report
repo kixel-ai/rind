@@ -112,6 +112,8 @@ SECTIONS = [
             "rustls-full-handshake-key/ed25519/{lib}",
             "rustls-full-handshake-key/rsa-2048/{lib}",
             "rustls-resumed-handshake/x25519/{lib}",
+            "rustls-full-handshake-threads/x25519/{lib}",
+            "rustls-resumed-handshake-threads/x25519/{lib}",
             "rustls-bulk/aes128-gcm/{lib}",
             "rustls-bulk/aes256-gcm/{lib}",
             "rustls-bulk/chacha20poly1305/{lib}",
@@ -177,6 +179,40 @@ SECTIONS = [
             "p521-ecdsa-verify/{lib}",
         ],
     ),
+    (
+        "HPKE",
+        [
+            "hpke-x25519-setup-sender/{lib}",
+            "hpke-x25519-setup-recipient/{lib}",
+            "hpke-x25519-aes128-gcm-seal/{lib}/1350B",
+            "hpke-x25519-aes128-gcm-open/{lib}/1350B",
+        ],
+    ),
+    (
+        "Blind RSA",
+        [
+            "blind-rsa2048-blind/{lib}",
+            "blind-rsa2048-sign/{lib}",
+            "blind-rsa2048-finalize/{lib}",
+            "blind-rsa2048-verify/{lib}",
+        ],
+    ),
+    (
+        "OPRF",
+        [
+            f"{mode}-{group}-{step}/{{lib}}"
+            for mode, group in [("oprf", "ristretto255"), ("voprf", "p384")]
+            for step in ["blind", "evaluate", "finalize"]
+        ],
+    ),
+    (
+        "VRF",
+        [f"vrf-{curve}-{step}/{{lib}}" for curve in ["edwards25519", "p256"] for step in ["prove", "verify"]],
+    ),
+    (
+        "SPAKE2+",
+        [f"spake2plus-p256-{side}-{step}/{{lib}}" for step in ["start", "finish"] for side in ["prover", "verifier"]],
+    ),
 ]
 OPERATIONS = [op for _, ops in SECTIONS for op in ops]
 
@@ -195,6 +231,7 @@ LIBRARIES = {
     "libcrux": "libcrux",
     "libcrux-ml-kem": "libcrux",
     "openssl": "openssl",
+    "verified-garbage": "verified-garbage",
 }
 
 # The CPU features by architecture, as rind-cpuid names them, without which a
@@ -226,6 +263,12 @@ CRATES = {
         "ml-kem",
         "ed25519-dalek",
         "x25519-dalek",
+        # Protocols, each on RustCrypto's primitives.
+        "hpke",
+        "blind-rsa-signatures",
+        "voprf",
+        "vrf-rfc9381",
+        "spake2plus",
     ],
     "graviola": ["graviola", "rustls-graviola"],
     "libcrux": [
@@ -241,8 +284,11 @@ CRATES = {
         "libcrux-rsa",
         "libcrux-sha2",
         "libcrux-sha3",
+        "hpke-rs",
+        "hpke-rs-libcrux",
     ],
     "openssl": ["openssl", "openssl-sys", "rustls-openssl"],
+    "verified-garbage": ["verified-garbage"],
     "tls": ["rustls"],
 }
 
@@ -363,11 +409,13 @@ def os_name():
 
 
 def locked_versions():
-    """Each package's versions in Cargo.lock."""
+    """Each package's versions in Cargo.lock, with the commit of one from git,
+    such as verified-garbage, whose version never changes."""
     versions = {}
     with open(os.path.join(ROOT, "Cargo.lock")) as f:
-        for name, version in re.findall(r'\[\[package\]\]\nname = "([^"]+)"\nversion = "([^"]+)"', f.read()):
-            versions.setdefault(name, []).append(version)
+        pattern = r'\[\[package\]\]\nname = "([^"]+)"\nversion = "([^"]+)"(?:\nsource = "git\+[^"#]*#([0-9a-f]+)")?'
+        for name, version, commit in re.findall(pattern, f.read()):
+            versions.setdefault(name, []).append(f"{version} ({commit[:8]})" if commit else version)
     return versions
 
 
@@ -407,6 +455,9 @@ def run(args):
 
     env = dict(os.environ, CARGO_BUILD_JOBS=str(args.jobs), CARGO_TERM_COLOR="never")
     env["CARGO_TARGET_DIR"] = os.path.abspath(args.target_dir)
+    # The every-logical-CPU rows refuse to run on fewer CPUs than this, so the
+    # report's "all N logical CPUs" is what they measured.
+    env["RIND_BENCH_CPUS"] = str(result["cpu"]["logical_cpus"])
     cargo, versions, openssl = toolchain(env)
     result["toolchain"] = versions
     locked = locked_versions()
@@ -686,6 +737,7 @@ COLUMNS = {
     "graviola": "graviola",
     "libcrux": "libcrux",
     "openssl": "OpenSSL",
+    "verified-garbage": "verified-garbage",
 }
 
 # Rows that time a library's own code another way, by that library. Each
@@ -708,6 +760,8 @@ NAMES = {
     "rustls-full-handshake-key/ed25519": "full handshake, Ed25519 certificate",
     "rustls-full-handshake-key/rsa-2048": "full handshake, RSA-2048 certificate",
     "rustls-resumed-handshake/x25519": "resumed handshake, X25519",
+    "rustls-full-handshake-threads/x25519": "full handshake, X25519, every logical CPU",
+    "rustls-resumed-handshake-threads/x25519": "resumed handshake, X25519, every logical CPU",
     "rustls-bulk/aes128-gcm": "1 MB transfer, AES-128-GCM",
     "rustls-bulk/aes256-gcm": "1 MB transfer, AES-256-GCM",
     "rustls-bulk/chacha20poly1305": "1 MB transfer, ChaCha20-Poly1305",
@@ -749,6 +803,28 @@ NAMES = {
     "p521-ecdh": "P-521 ECDH",
     "p521-ecdsa-sign": "P-521 ECDSA sign",
     "p521-ecdsa-verify": "P-521 ECDSA verify",
+    "hpke-x25519-setup-sender": "HPKE X25519 sender setup",
+    "hpke-x25519-setup-recipient": "HPKE X25519 recipient setup",
+    "hpke-x25519-aes128-gcm-seal": "HPKE AES-128-GCM seal",
+    "hpke-x25519-aes128-gcm-open": "HPKE AES-128-GCM open",
+    "blind-rsa2048-blind": "Blind RSA-2048 blind",
+    "blind-rsa2048-sign": "Blind RSA-2048 sign",
+    "blind-rsa2048-finalize": "Blind RSA-2048 finalize",
+    "blind-rsa2048-verify": "Blind RSA-2048 verify",
+    "oprf-ristretto255-blind": "OPRF ristretto255 blind",
+    "oprf-ristretto255-evaluate": "OPRF ristretto255 evaluate",
+    "oprf-ristretto255-finalize": "OPRF ristretto255 finalize",
+    "voprf-p384-blind": "VOPRF P-384 blind",
+    "voprf-p384-evaluate": "VOPRF P-384 evaluate",
+    "voprf-p384-finalize": "VOPRF P-384 finalize",
+    "vrf-edwards25519-prove": "ECVRF edwards25519 prove",
+    "vrf-edwards25519-verify": "ECVRF edwards25519 verify",
+    "vrf-p256-prove": "ECVRF P-256 prove",
+    "vrf-p256-verify": "ECVRF P-256 verify",
+    "spake2plus-p256-prover-start": "SPAKE2+ P-256 prover share",
+    "spake2plus-p256-verifier-start": "SPAKE2+ P-256 verifier share and confirmation",
+    "spake2plus-p256-prover-finish": "SPAKE2+ P-256 prover confirmation and key",
+    "spake2plus-p256-verifier-finish": "SPAKE2+ P-256 verifier key",
 }
 
 # Each build of admin/build-cost, as the report names it.
@@ -814,12 +890,17 @@ COMPARISON_MARKERS = (
 
 # The CPU features a ✓ may require, as rind-cpuid names them.
 CPU_FEATURES = {
+    # rind's portable backend, the report's portable tier, which needs no CPU
+    # feature and is no host's arch, so its ✓ shows in the proof table alone.
+    "portable": set(),
     "x86_64": {
         "intel", "adx", "aes", "vaes", "pclmulqdq", "vpclmulqdq", "bmi2", "movbe", "popcnt", "ssse3", "sse4.1",
         "avx", "avx2", "avx512f", "avx512dq", "avx512ifma", "avx512bw", "avx512vl", "avx512vbmi", "avx512vbmi2",
         "sha",
     },
     "aarch64": {"aes", "dit", "neon", "pmull", "sha2", "sha3"},
+    # rind-cpuid reads no armv7 features, so an armv7 entry names none.
+    "armv7": set(),
 }
 
 # The nightly bench's columns, by target, portability, and denied tier, as
@@ -843,6 +924,12 @@ TIERS = [
 
 # The libraries the nightly bench times rind against.
 BASELINES = ["aws-lc-rs", "ring"]
+
+# Libraries the nightly also times and the tiers keep, but that neither the
+# tier heatmap nor the gate counts. A cell where pyca/verified-garbage's
+# proven code is faster gets a quest that switches rind to it, not an alert;
+# the hosts' report counts it like any other library.
+TIMED = ["verified-garbage"]
 
 # The CPU-tier rows, as patterns over a nightly benchmark ID with `*` in the
 # library's place.
@@ -870,6 +957,7 @@ TIER_ROWS = [
     ("ML-DSA", r"mldsa(44|65|87)-"),
     ("RSA signatures", r"rsa\d+-(pkcs1|pss|load)"),
     ("RSA-OAEP", r"rsa\d+-oaep-"),
+    ("HPKE", r"hpke-"),
     ("JSON Web Tokens", r"jwt-[^/]+/\*/token$"),
     ("rind-rustls handshakes", r"rustls-(full|resumed)-"),
     ("rind-rustls 1 MB transfer", r"rustls-bulk/"),
@@ -880,6 +968,11 @@ TIER_ROWS = [
 UNRANKED = [
     (r"rsa\d+-key-generation", "RSA key generation varies too much from run to run to rank"),
     (r"jwt-[^/]+/\*/load$", "a token's key loading, the part of `token` spent on the key"),
+    (
+        r"(blind-rsa\d+|v?oprf|vrf|spake2plus)-",
+        "neither aws-lc-rs nor ring offers the protocol, so no baseline; the report's hosts compare it",
+    ),
+    (r"chacha20/", "neither aws-lc-rs nor ring offers ChaCha20 without Poly1305, so no baseline"),
 ]
 
 # rind's time over the fastest library's above which benchmarks/gaps.toml
@@ -934,7 +1027,7 @@ def bin_of(value, edges):
 
 def host_arch(host):
     arch = host["cpu"]["arch"]
-    return {"arm64": "aarch64", "amd64": "x86_64"}.get(arch, arch)
+    return {"arm64": "aarch64", "amd64": "x86_64", "armv7l": "armv7", "armv8l": "armv7"}.get(arch, arch)
 
 
 def host_os(host):
@@ -1455,6 +1548,22 @@ def platform_of(entry):
     return " ".join(words)
 
 
+def scaling(host):
+    """How rind-rustls's handshake throughput scales from one thread to every
+    core on a host, as report lines. No threshold checks it: a refresh that
+    sees it fall opens a quest."""
+    t = times(host)
+    parts = []
+    for kind, one in (("full", "rustls-full-handshake-group/x25519"), ("resumed", "rustls-resumed-handshake/x25519")):
+        rind_one = t.get(one, {}).get("rind")
+        rind_all = t.get(f"rustls-{kind}-handshake-threads/x25519", {}).get("rind")
+        if rind_one and rind_all:
+            parts.append(f"{kind} handshakes at {rind_one / rind_all:.1f} times")
+    if not parts:
+        return []
+    return [f"rind-rustls on all {host['cpu']['logical_cpus']} logical CPUs runs {and_list(parts)} its one-thread rate.", ""]
+
+
 def host_table(host, verified):
     host_times = times(host)
     libs_shown = columns(host)
@@ -1636,6 +1745,14 @@ def report(hosts, tiers, verified, gaps):
             "the tables below each host give them all. A library with no square doesn't offer the operation, or "
             "the host didn't time it, as its section says.",
             "",
+            "The rustls rows run both peers in one process. The every-logical-CPU rows run one handshake per "
+            "thread on all of the host's logical CPUs at once, each thread with its own client and server, and give the "
+            "machine's time per handshake; each host's text gives rind-rustls's throughput there over its "
+            "one-thread rate. A full handshake over rind-rustls's default provider, both peers, makes 245 heap "
+            "allocations with an ECDSA P-256 certificate on x86_64, which `rind-rustls/tests/allocations.rs` pins. "
+            "Over rustls's aws-lc-rs provider it makes 214 through Rust's allocator and about 90 more in AWS-LC's C "
+            "code, which only a process-wide count such as valgrind's sees (2026-11-13).",
+            "",
             *(
                 [
                     "rind (DIT held) times rind with `rind::cpu::Dit::hold()` held across the timed loop, as a "
@@ -1664,6 +1781,7 @@ def report(hosts, tiers, verified, gaps):
             "",
             *([HOSTS[name]["note"], ""] if "note" in HOSTS[name] else []),
             *([f"Not timed on `{name}`: {', '.join(untimed)}.", ""] if untimed else []),
+            *scaling(h),
             *(
                 f"{COLUMNS[lib]} isn't timed on `{name}`: it requires {and_list([f.upper() for f in missing])}, "
                 "which this CPU lacks."
@@ -1861,7 +1979,7 @@ def load_run(paths):
         benchmarks = {}
         for r in saved["results"]:
             parts = r["id"].split("/")
-            lib = next((p for p in parts if p == "rind" or p in BASELINES), None)
+            lib = next((p for p in parts if p == "rind" or p in BASELINES or p in TIMED), None)
             if lib is None:
                 continue
             key = "/".join("*" if p == lib else p for p in parts)
