@@ -29,4 +29,4 @@ Found by the 2026-11-09 audit: the backend landed in [kixel-ai/rind#458](https:/
 
 ## Related
 
-- [armv7 runs the Rust proofs](/quest/m5/verified-armv7/prove.md) - translates the same Rust for a 32-bit target
+- [armv7's Rust AES-GCM is proven](/quest/m5/verified-armv7/prove.md) - proves the same AES-GCM Rust in 32-bit words

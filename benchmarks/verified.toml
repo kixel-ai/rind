@@ -21,7 +21,7 @@
 #   library     rind, aws-lc-rs, ring, rustcrypto, graviola, libcrux, or openssl
 #   operations  report rows, as admin/bench-report's OPERATIONS without the
 #               library; `*` matches any message size
-#   arch        optional: x86_64 or aarch64, unless the code is the same on both
+#   arch        optional: x86_64, aarch64, or armv7, unless the code is the same on all
 #   cpu         optional: features the host has, or lacks with a leading `!`,
 #               as rind-cpuid names them; needs an arch
 #   os          optional: linux or macos, where the code differs by OS
@@ -158,6 +158,13 @@ link = "https://github.com/kixel-ai/rind/blob/main/proofs/Rind/X86_64/ChaCha20.l
 library = "rind"
 operations = ["quic-header-protection/chacha20"]
 arch = "aarch64"
+proof = "rind's Lean proof, through Aeneas and a hand model of the function-pointer dispatch Aeneas cannot translate, which assumes each key's mask is its own cipher's, the only one rind builds, of its header-protection API's ChaCha20 against RFC 9001 and RFC 8439, HACL*'s rounds included"
+link = "https://github.com/kixel-ai/rind/blob/main/proofs/Rind/X86_64/ChaCha20.lean"
+
+[[verified]]
+library = "rind"
+operations = ["quic-header-protection/chacha20"]
+arch = "armv7"
 proof = "rind's Lean proof, through Aeneas and a hand model of the function-pointer dispatch Aeneas cannot translate, which assumes each key's mask is its own cipher's, the only one rind builds, of its header-protection API's ChaCha20 against RFC 9001 and RFC 8439, HACL*'s rounds included"
 link = "https://github.com/kixel-ai/rind/blob/main/proofs/Rind/X86_64/ChaCha20.lean"
 

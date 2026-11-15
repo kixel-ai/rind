@@ -32,7 +32,7 @@ rind (DIT held) times rind with `rind::cpu::Dit::hold()` held across the timed l
 
 Measured 2026-11-06 at [`f95b91da`](https://github.com/kixel-ai/rind/commit/f95b91da886bee265dbd836192a7ade2f9158c47), noisy, on NixOS 26.11 (Zokor) (Linux 6.18.56) with rustc 1.98.1 (48a229cea 2026-09-01).
 
-Not timed on `nixos`: SHA3-256, 64 B, SHA3-256, 1350 B, SHA3-256, 16 KB, SHA3-512, 64 B, SHA3-512, 1350 B, SHA3-512, 16 KB, ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verify.
+Not timed on `nixos`: SHA3-256, 64 B, SHA3-256, 1350 B, SHA3-256, 16 KB, SHA3-512, 64 B, SHA3-512, 1350 B, SHA3-512, 16 KB, ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verify, HPKE X25519 sender setup, HPKE X25519 recipient setup, HPKE AES-128-GCM seal, 1350 B, HPKE AES-128-GCM open, 1350 B, Blind RSA-2048 blind, Blind RSA-2048 sign, Blind RSA-2048 finalize, Blind RSA-2048 verify, OPRF ristretto255 blind, OPRF ristretto255 evaluate, OPRF ristretto255 finalize, VOPRF P-384 blind, VOPRF P-384 evaluate, VOPRF P-384 finalize, ECVRF edwards25519 prove, ECVRF edwards25519 verify, ECVRF P-256 prove, ECVRF P-256 verify, SPAKE2+ P-256 prover share, SPAKE2+ P-256 verifier share and confirmation, SPAKE2+ P-256 prover confirmation and key, SPAKE2+ P-256 verifier key.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="benchmarks/nixos-dark.svg">
@@ -112,6 +112,28 @@ Not timed on `nixos`: SHA3-256, 64 B, SHA3-256, 1350 B, SHA3-256, 16 KB, SHA3-51
 | P-521 ECDH | 283.91 µs | 288.17 µs | - | 868.41 µs | - | - | 505.62 µs |
 | P-521 ECDSA sign | 58.32 µs | 152.35 µs | - | 177.47 µs | - | - | 219.60 µs |
 | P-521 ECDSA verify | 222.28 µs | 327.35 µs | - | 610.17 µs | - | - | 473.66 µs |
+| HPKE X25519 sender setup | - | - | - | - | - | - | - |
+| HPKE X25519 recipient setup | - | - | - | - | - | - | - |
+| HPKE AES-128-GCM seal, 1350 B | - | - | - | - | - | - | - |
+| HPKE AES-128-GCM open, 1350 B | - | - | - | - | - | - | - |
+| Blind RSA-2048 blind | - | - | - | - | - | - | - |
+| Blind RSA-2048 sign | - | - | - | - | - | - | - |
+| Blind RSA-2048 finalize | - | - | - | - | - | - | - |
+| Blind RSA-2048 verify | - | - | - | - | - | - | - |
+| OPRF ristretto255 blind | - | - | - | - | - | - | - |
+| OPRF ristretto255 evaluate | - | - | - | - | - | - | - |
+| OPRF ristretto255 finalize | - | - | - | - | - | - | - |
+| VOPRF P-384 blind | - | - | - | - | - | - | - |
+| VOPRF P-384 evaluate | - | - | - | - | - | - | - |
+| VOPRF P-384 finalize | - | - | - | - | - | - | - |
+| ECVRF edwards25519 prove | - | - | - | - | - | - | - |
+| ECVRF edwards25519 verify | - | - | - | - | - | - | - |
+| ECVRF P-256 prove | - | - | - | - | - | - | - |
+| ECVRF P-256 verify | - | - | - | - | - | - | - |
+| SPAKE2+ P-256 prover share | - | - | - | - | - | - | - |
+| SPAKE2+ P-256 verifier share and confirmation | - | - | - | - | - | - | - |
+| SPAKE2+ P-256 prover confirmation and key | - | - | - | - | - | - | - |
+| SPAKE2+ P-256 verifier key | - | - | - | - | - | - | - |
 
 </details>
 
@@ -119,7 +141,7 @@ Not timed on `nixos`: SHA3-256, 64 B, SHA3-256, 1350 B, SHA3-256, 16 KB, SHA3-51
 
 Measured 2026-11-07 at [`9e7f6a5a`](https://github.com/kixel-ai/rind/commit/9e7f6a5a9ea59a0cf1251c24af6c5d4f21c2b0fd), on Ubuntu 26.04.1 LTS (Linux 7.0.0-42-generic) with rustc 1.98.1 (48a229cea 2026-09-01).
 
-Not timed on `desktop`: SHA3-256, 64 B, SHA3-256, 1350 B, SHA3-256, 16 KB, SHA3-512, 64 B, SHA3-512, 1350 B, SHA3-512, 16 KB, ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verify.
+Not timed on `desktop`: SHA3-256, 64 B, SHA3-256, 1350 B, SHA3-256, 16 KB, SHA3-512, 64 B, SHA3-512, 1350 B, SHA3-512, 16 KB, ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verify, HPKE X25519 sender setup, HPKE X25519 recipient setup, HPKE AES-128-GCM seal, 1350 B, HPKE AES-128-GCM open, 1350 B, Blind RSA-2048 blind, Blind RSA-2048 sign, Blind RSA-2048 finalize, Blind RSA-2048 verify, OPRF ristretto255 blind, OPRF ristretto255 evaluate, OPRF ristretto255 finalize, VOPRF P-384 blind, VOPRF P-384 evaluate, VOPRF P-384 finalize, ECVRF edwards25519 prove, ECVRF edwards25519 verify, ECVRF P-256 prove, ECVRF P-256 verify, SPAKE2+ P-256 prover share, SPAKE2+ P-256 verifier share and confirmation, SPAKE2+ P-256 prover confirmation and key, SPAKE2+ P-256 verifier key.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="benchmarks/desktop-dark.svg">
@@ -199,6 +221,28 @@ Not timed on `desktop`: SHA3-256, 64 B, SHA3-256, 1350 B, SHA3-256, 16 KB, SHA3-
 | P-521 ECDH | 159.57 µs | 171.50 µs | - | 428.27 µs | - | - | 276.64 µs |
 | P-521 ECDSA sign | 40.09 µs | 88.28 µs | - | 94.09 µs | - | - | 127.93 µs |
 | P-521 ECDSA verify | 145.10 µs | 186.69 µs | - | 352.95 µs | - | - | 261.10 µs |
+| HPKE X25519 sender setup | - | - | - | - | - | - | - |
+| HPKE X25519 recipient setup | - | - | - | - | - | - | - |
+| HPKE AES-128-GCM seal, 1350 B | - | - | - | - | - | - | - |
+| HPKE AES-128-GCM open, 1350 B | - | - | - | - | - | - | - |
+| Blind RSA-2048 blind | - | - | - | - | - | - | - |
+| Blind RSA-2048 sign | - | - | - | - | - | - | - |
+| Blind RSA-2048 finalize | - | - | - | - | - | - | - |
+| Blind RSA-2048 verify | - | - | - | - | - | - | - |
+| OPRF ristretto255 blind | - | - | - | - | - | - | - |
+| OPRF ristretto255 evaluate | - | - | - | - | - | - | - |
+| OPRF ristretto255 finalize | - | - | - | - | - | - | - |
+| VOPRF P-384 blind | - | - | - | - | - | - | - |
+| VOPRF P-384 evaluate | - | - | - | - | - | - | - |
+| VOPRF P-384 finalize | - | - | - | - | - | - | - |
+| ECVRF edwards25519 prove | - | - | - | - | - | - | - |
+| ECVRF edwards25519 verify | - | - | - | - | - | - | - |
+| ECVRF P-256 prove | - | - | - | - | - | - | - |
+| ECVRF P-256 verify | - | - | - | - | - | - | - |
+| SPAKE2+ P-256 prover share | - | - | - | - | - | - | - |
+| SPAKE2+ P-256 verifier share and confirmation | - | - | - | - | - | - | - |
+| SPAKE2+ P-256 prover confirmation and key | - | - | - | - | - | - | - |
+| SPAKE2+ P-256 verifier key | - | - | - | - | - | - | - |
 
 </details>
 
@@ -206,7 +250,7 @@ Not timed on `desktop`: SHA3-256, 64 B, SHA3-256, 1350 B, SHA3-256, 16 KB, SHA3-
 
 Measured 2026-11-06 at [`f95b91da`](https://github.com/kixel-ai/rind/commit/f95b91da886bee265dbd836192a7ade2f9158c47), on NixOS 26.11 (Zokor) (Linux 6.18.56) with rustc 1.98.1 (48a229cea 2026-09-01).
 
-Not timed on `nixos2`: SHA3-256, 64 B, SHA3-256, 1350 B, SHA3-256, 16 KB, SHA3-512, 64 B, SHA3-512, 1350 B, SHA3-512, 16 KB, ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verify.
+Not timed on `nixos2`: SHA3-256, 64 B, SHA3-256, 1350 B, SHA3-256, 16 KB, SHA3-512, 64 B, SHA3-512, 1350 B, SHA3-512, 16 KB, ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verify, HPKE X25519 sender setup, HPKE X25519 recipient setup, HPKE AES-128-GCM seal, 1350 B, HPKE AES-128-GCM open, 1350 B, Blind RSA-2048 blind, Blind RSA-2048 sign, Blind RSA-2048 finalize, Blind RSA-2048 verify, OPRF ristretto255 blind, OPRF ristretto255 evaluate, OPRF ristretto255 finalize, VOPRF P-384 blind, VOPRF P-384 evaluate, VOPRF P-384 finalize, ECVRF edwards25519 prove, ECVRF edwards25519 verify, ECVRF P-256 prove, ECVRF P-256 verify, SPAKE2+ P-256 prover share, SPAKE2+ P-256 verifier share and confirmation, SPAKE2+ P-256 prover confirmation and key, SPAKE2+ P-256 verifier key.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="benchmarks/nixos2-dark.svg">
@@ -286,6 +330,28 @@ Not timed on `nixos2`: SHA3-256, 64 B, SHA3-256, 1350 B, SHA3-256, 16 KB, SHA3-5
 | P-521 ECDH | 233.76 µs | 262.34 µs | - | 841.50 µs | - | - | 497.39 µs |
 | P-521 ECDSA sign | 64.26 µs | 158.67 µs | - | 185.93 µs | - | - | 221.00 µs |
 | P-521 ECDSA verify | 214.43 µs | 303.23 µs | - | 636.37 µs | - | - | 460.02 µs |
+| HPKE X25519 sender setup | - | - | - | - | - | - | - |
+| HPKE X25519 recipient setup | - | - | - | - | - | - | - |
+| HPKE AES-128-GCM seal, 1350 B | - | - | - | - | - | - | - |
+| HPKE AES-128-GCM open, 1350 B | - | - | - | - | - | - | - |
+| Blind RSA-2048 blind | - | - | - | - | - | - | - |
+| Blind RSA-2048 sign | - | - | - | - | - | - | - |
+| Blind RSA-2048 finalize | - | - | - | - | - | - | - |
+| Blind RSA-2048 verify | - | - | - | - | - | - | - |
+| OPRF ristretto255 blind | - | - | - | - | - | - | - |
+| OPRF ristretto255 evaluate | - | - | - | - | - | - | - |
+| OPRF ristretto255 finalize | - | - | - | - | - | - | - |
+| VOPRF P-384 blind | - | - | - | - | - | - | - |
+| VOPRF P-384 evaluate | - | - | - | - | - | - | - |
+| VOPRF P-384 finalize | - | - | - | - | - | - | - |
+| ECVRF edwards25519 prove | - | - | - | - | - | - | - |
+| ECVRF edwards25519 verify | - | - | - | - | - | - | - |
+| ECVRF P-256 prove | - | - | - | - | - | - | - |
+| ECVRF P-256 verify | - | - | - | - | - | - | - |
+| SPAKE2+ P-256 prover share | - | - | - | - | - | - | - |
+| SPAKE2+ P-256 verifier share and confirmation | - | - | - | - | - | - | - |
+| SPAKE2+ P-256 prover confirmation and key | - | - | - | - | - | - | - |
+| SPAKE2+ P-256 verifier key | - | - | - | - | - | - | - |
 
 </details>
 
@@ -295,7 +361,7 @@ Measured 2026-11-07 at [`9e7f6a5a`](https://github.com/kixel-ai/rind/commit/9e7f
 
 The maintainer's MacBook, in daily use. Its cores have DIT, which rind sets around each call that handles a secret and the other libraries never set; Known gaps gives its cost.
 
-Not timed on `kixtop`: SHA3-256, 64 B, SHA3-256, 1350 B, SHA3-256, 16 KB, SHA3-512, 64 B, SHA3-512, 1350 B, SHA3-512, 16 KB, ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verify.
+Not timed on `kixtop`: SHA3-256, 64 B, SHA3-256, 1350 B, SHA3-256, 16 KB, SHA3-512, 64 B, SHA3-512, 1350 B, SHA3-512, 16 KB, ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verify, HPKE X25519 sender setup, HPKE X25519 recipient setup, HPKE AES-128-GCM seal, 1350 B, HPKE AES-128-GCM open, 1350 B, Blind RSA-2048 blind, Blind RSA-2048 sign, Blind RSA-2048 finalize, Blind RSA-2048 verify, OPRF ristretto255 blind, OPRF ristretto255 evaluate, OPRF ristretto255 finalize, VOPRF P-384 blind, VOPRF P-384 evaluate, VOPRF P-384 finalize, ECVRF edwards25519 prove, ECVRF edwards25519 verify, ECVRF P-256 prove, ECVRF P-256 verify, SPAKE2+ P-256 prover share, SPAKE2+ P-256 verifier share and confirmation, SPAKE2+ P-256 prover confirmation and key, SPAKE2+ P-256 verifier key.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="benchmarks/kixtop-dark.svg">
@@ -375,6 +441,28 @@ Not timed on `kixtop`: SHA3-256, 64 B, SHA3-256, 1350 B, SHA3-256, 16 KB, SHA3-5
 | P-521 ECDH | 129.82 µs | - | 142.27 µs | - | 396.28 µs | - | - | 247.04 µs |
 | P-521 ECDSA sign | 36.25 µs | - | 84.10 µs | - | 80.09 µs | - | - | 132.31 µs |
 | P-521 ECDSA verify | 120.99 µs | - | 166.73 µs | - | 251.97 µs | - | - | 254.26 µs |
+| HPKE X25519 sender setup | - | - | - | - | - | - | - | - |
+| HPKE X25519 recipient setup | - | - | - | - | - | - | - | - |
+| HPKE AES-128-GCM seal, 1350 B | - | - | - | - | - | - | - | - |
+| HPKE AES-128-GCM open, 1350 B | - | - | - | - | - | - | - | - |
+| Blind RSA-2048 blind | - | - | - | - | - | - | - | - |
+| Blind RSA-2048 sign | - | - | - | - | - | - | - | - |
+| Blind RSA-2048 finalize | - | - | - | - | - | - | - | - |
+| Blind RSA-2048 verify | - | - | - | - | - | - | - | - |
+| OPRF ristretto255 blind | - | - | - | - | - | - | - | - |
+| OPRF ristretto255 evaluate | - | - | - | - | - | - | - | - |
+| OPRF ristretto255 finalize | - | - | - | - | - | - | - | - |
+| VOPRF P-384 blind | - | - | - | - | - | - | - | - |
+| VOPRF P-384 evaluate | - | - | - | - | - | - | - | - |
+| VOPRF P-384 finalize | - | - | - | - | - | - | - | - |
+| ECVRF edwards25519 prove | - | - | - | - | - | - | - | - |
+| ECVRF edwards25519 verify | - | - | - | - | - | - | - | - |
+| ECVRF P-256 prove | - | - | - | - | - | - | - | - |
+| ECVRF P-256 verify | - | - | - | - | - | - | - | - |
+| SPAKE2+ P-256 prover share | - | - | - | - | - | - | - | - |
+| SPAKE2+ P-256 verifier share and confirmation | - | - | - | - | - | - | - | - |
+| SPAKE2+ P-256 prover confirmation and key | - | - | - | - | - | - | - | - |
+| SPAKE2+ P-256 verifier key | - | - | - | - | - | - | - | - |
 
 </details>
 
@@ -384,7 +472,7 @@ Measured 2026-11-06 at [`6b185382`](https://github.com/kixel-ai/rind/commit/6b18
 
 OVH VPS in Virginia, 4 shared vCPUs: other tenants add noise that a dedicated host's times lack.
 
-Not timed on `ovh-iad`: SHA3-256, 64 B, SHA3-256, 1350 B, SHA3-256, 16 KB, SHA3-512, 64 B, SHA3-512, 1350 B, SHA3-512, 16 KB, ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verify.
+Not timed on `ovh-iad`: SHA3-256, 64 B, SHA3-256, 1350 B, SHA3-256, 16 KB, SHA3-512, 64 B, SHA3-512, 1350 B, SHA3-512, 16 KB, ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verify, HPKE X25519 sender setup, HPKE X25519 recipient setup, HPKE AES-128-GCM seal, 1350 B, HPKE AES-128-GCM open, 1350 B, Blind RSA-2048 blind, Blind RSA-2048 sign, Blind RSA-2048 finalize, Blind RSA-2048 verify, OPRF ristretto255 blind, OPRF ristretto255 evaluate, OPRF ristretto255 finalize, VOPRF P-384 blind, VOPRF P-384 evaluate, VOPRF P-384 finalize, ECVRF edwards25519 prove, ECVRF edwards25519 verify, ECVRF P-256 prove, ECVRF P-256 verify, SPAKE2+ P-256 prover share, SPAKE2+ P-256 verifier share and confirmation, SPAKE2+ P-256 prover confirmation and key, SPAKE2+ P-256 verifier key.
 
 graviola isn't timed on `ovh-iad`: it requires ADX, which this CPU lacks.
 
@@ -466,6 +554,28 @@ graviola isn't timed on `ovh-iad`: it requires ADX, which this CPU lacks.
 | P-521 ECDH | 467.34 µs | 510.81 µs | - | 1.39 ms | - | 750.80 µs |
 | P-521 ECDSA sign | 132.36 µs | 279.63 µs | - | 302.65 µs | - | 359.52 µs |
 | P-521 ECDSA verify | 423.15 µs | 547.94 µs | - | 1.01 ms | - | 740.33 µs |
+| HPKE X25519 sender setup | - | - | - | - | - | - |
+| HPKE X25519 recipient setup | - | - | - | - | - | - |
+| HPKE AES-128-GCM seal, 1350 B | - | - | - | - | - | - |
+| HPKE AES-128-GCM open, 1350 B | - | - | - | - | - | - |
+| Blind RSA-2048 blind | - | - | - | - | - | - |
+| Blind RSA-2048 sign | - | - | - | - | - | - |
+| Blind RSA-2048 finalize | - | - | - | - | - | - |
+| Blind RSA-2048 verify | - | - | - | - | - | - |
+| OPRF ristretto255 blind | - | - | - | - | - | - |
+| OPRF ristretto255 evaluate | - | - | - | - | - | - |
+| OPRF ristretto255 finalize | - | - | - | - | - | - |
+| VOPRF P-384 blind | - | - | - | - | - | - |
+| VOPRF P-384 evaluate | - | - | - | - | - | - |
+| VOPRF P-384 finalize | - | - | - | - | - | - |
+| ECVRF edwards25519 prove | - | - | - | - | - | - |
+| ECVRF edwards25519 verify | - | - | - | - | - | - |
+| ECVRF P-256 prove | - | - | - | - | - | - |
+| ECVRF P-256 verify | - | - | - | - | - | - |
+| SPAKE2+ P-256 prover share | - | - | - | - | - | - |
+| SPAKE2+ P-256 verifier share and confirmation | - | - | - | - | - | - |
+| SPAKE2+ P-256 prover confirmation and key | - | - | - | - | - | - |
+| SPAKE2+ P-256 verifier key | - | - | - | - | - | - |
 
 </details>
 
@@ -475,7 +585,7 @@ Measured 2026-11-06 at [`6b185382`](https://github.com/kixel-ai/rind/commit/6b18
 
 OVH VPS in Oregon, 4 shared vCPUs: other tenants add noise that a dedicated host's times lack.
 
-Not timed on `ovh-sea`: SHA3-256, 64 B, SHA3-256, 1350 B, SHA3-256, 16 KB, SHA3-512, 64 B, SHA3-512, 1350 B, SHA3-512, 16 KB, ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verify.
+Not timed on `ovh-sea`: SHA3-256, 64 B, SHA3-256, 1350 B, SHA3-256, 16 KB, SHA3-512, 64 B, SHA3-512, 1350 B, SHA3-512, 16 KB, ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verify, HPKE X25519 sender setup, HPKE X25519 recipient setup, HPKE AES-128-GCM seal, 1350 B, HPKE AES-128-GCM open, 1350 B, Blind RSA-2048 blind, Blind RSA-2048 sign, Blind RSA-2048 finalize, Blind RSA-2048 verify, OPRF ristretto255 blind, OPRF ristretto255 evaluate, OPRF ristretto255 finalize, VOPRF P-384 blind, VOPRF P-384 evaluate, VOPRF P-384 finalize, ECVRF edwards25519 prove, ECVRF edwards25519 verify, ECVRF P-256 prove, ECVRF P-256 verify, SPAKE2+ P-256 prover share, SPAKE2+ P-256 verifier share and confirmation, SPAKE2+ P-256 prover confirmation and key, SPAKE2+ P-256 verifier key.
 
 graviola isn't timed on `ovh-sea`: it requires ADX, which this CPU lacks.
 
@@ -557,6 +667,28 @@ graviola isn't timed on `ovh-sea`: it requires ADX, which this CPU lacks.
 | P-521 ECDH | 442.81 µs | 479.78 µs | - | 1.19 ms | - | 722.01 µs |
 | P-521 ECDSA sign | 116.50 µs | 256.02 µs | - | 287.24 µs | - | 344.79 µs |
 | P-521 ECDSA verify | 402.02 µs | 519.35 µs | - | 975.40 µs | - | 699.48 µs |
+| HPKE X25519 sender setup | - | - | - | - | - | - |
+| HPKE X25519 recipient setup | - | - | - | - | - | - |
+| HPKE AES-128-GCM seal, 1350 B | - | - | - | - | - | - |
+| HPKE AES-128-GCM open, 1350 B | - | - | - | - | - | - |
+| Blind RSA-2048 blind | - | - | - | - | - | - |
+| Blind RSA-2048 sign | - | - | - | - | - | - |
+| Blind RSA-2048 finalize | - | - | - | - | - | - |
+| Blind RSA-2048 verify | - | - | - | - | - | - |
+| OPRF ristretto255 blind | - | - | - | - | - | - |
+| OPRF ristretto255 evaluate | - | - | - | - | - | - |
+| OPRF ristretto255 finalize | - | - | - | - | - | - |
+| VOPRF P-384 blind | - | - | - | - | - | - |
+| VOPRF P-384 evaluate | - | - | - | - | - | - |
+| VOPRF P-384 finalize | - | - | - | - | - | - |
+| ECVRF edwards25519 prove | - | - | - | - | - | - |
+| ECVRF edwards25519 verify | - | - | - | - | - | - |
+| ECVRF P-256 prove | - | - | - | - | - | - |
+| ECVRF P-256 verify | - | - | - | - | - | - |
+| SPAKE2+ P-256 prover share | - | - | - | - | - | - |
+| SPAKE2+ P-256 verifier share and confirmation | - | - | - | - | - | - |
+| SPAKE2+ P-256 prover confirmation and key | - | - | - | - | - | - |
+| SPAKE2+ P-256 verifier key | - | - | - | - | - | - |
 
 </details>
 
@@ -1018,6 +1150,7 @@ A ✓ means a published, machine-checked proof shows that all the code computing
 | rind | `sha3-256/*`, `sha3-512/*` | aarch64 | [rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch Aeneas cannot translate, of its digest API's SHA3-256, SHA3-384, and SHA3-512, padding included, down to s2n-bignum's sha3_keccak_f1600_alt, which rind runs with the SHA3 instructions, and sha3_keccak_f1600 otherwise, against FIPS 202 as SymCrypt's Lean spec states it, composed with s2n-bignum's HOL Light proofs of those routines, of s2n-bignum's own object code, which rind transliterates](https://github.com/kixel-ai/rind/blob/main/proofs/Rind/X86_64/Sha3.lean) |
 | rind | `quic-header-protection/chacha20` | x86_64 | [rind's Lean proof, through Aeneas and a hand model of the function-pointer dispatch Aeneas cannot translate, which assumes each key's mask is its own cipher's, the only one rind builds, of its header-protection API's ChaCha20 against RFC 9001 and RFC 8439, HACL*'s rounds included](https://github.com/kixel-ai/rind/blob/main/proofs/Rind/X86_64/ChaCha20.lean) |
 | rind | `quic-header-protection/chacha20` | aarch64 | [rind's Lean proof, through Aeneas and a hand model of the function-pointer dispatch Aeneas cannot translate, which assumes each key's mask is its own cipher's, the only one rind builds, of its header-protection API's ChaCha20 against RFC 9001 and RFC 8439, HACL*'s rounds included](https://github.com/kixel-ai/rind/blob/main/proofs/Rind/X86_64/ChaCha20.lean) |
+| rind | `quic-header-protection/chacha20` | armv7 | [rind's Lean proof, through Aeneas and a hand model of the function-pointer dispatch Aeneas cannot translate, which assumes each key's mask is its own cipher's, the only one rind builds, of its header-protection API's ChaCha20 against RFC 9001 and RFC 8439, HACL*'s rounds included](https://github.com/kixel-ai/rind/blob/main/proofs/Rind/X86_64/ChaCha20.lean) |
 | rind | `quic-header-protection/aes128`, `quic-header-protection/aes256` | x86_64 with aes, pclmulqdq, ssse3, sse4.1 | [rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch Aeneas cannot translate, which assumes each key's mask is its own cipher's, the only one rind builds, and of the SIMD intrinsics as Intel's manual defines them, of its header-protection API's AES-128 and AES-256 against RFC 9001 and Vale's FIPS 197 spec](https://github.com/kixel-ai/rind/blob/main/proofs/Rind/X86_64/AesCipher.lean) |
 | rind | `quic-header-protection/aes128`, `quic-header-protection/aes256` | aarch64 with aes, pmull, sha2 | [rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch Aeneas cannot translate, which assumes each key's mask is its own cipher's, the only one rind builds, and of the NEON intrinsics as Arm's manual defines them, tested on an aarch64 CPU, of its header-protection API's AES-128 and AES-256 against RFC 9001 and Vale's FIPS 197 spec](https://github.com/kixel-ai/rind/blob/main/proofs/Rind/Aarch64/AesKey.lean) |
 | rind | `aes128-gcm/*`, `aes128-gcm-open/*`, `aes256-gcm/*`, `aes256-gcm-open/*` | x86_64 with aes, pclmulqdq, ssse3, sse4.1, avx, movbe without vaes | [rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch, of the by-8 AES-GCM and PCLMULQDQ GHASH Aeneas cannot translate, and of the SIMD intrinsics as Intel's manual defines them, of its AEAD API's AES-GCM key setup, seal, and open, for every AAD and message length it takes, down to HACL*'s Vale AES-GCM routines and, for seals under 129 bytes and AAD or messages of 2^32 bytes or more, rind's by-8 AES-CTR and PCLMULQDQ GHASH against Vale's gcm_encrypt_LE and gcm_decrypt_LE without their bound of 2^32 bytes, composed with Vale's F* proofs of Gcm_blocks_stdcall, Gcm_blocks_decrypt_stdcall, and Compute_iv_stdcall, of the code Vale prints at HACL* f557259007db, which rind imports, and with rind's HOL Light proofs of its constant-time tag compare](https://github.com/kixel-ai/rind/blob/main/proofs/Rind/X86_64/AesGcmAead.lean) |
