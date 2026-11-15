@@ -795,6 +795,7 @@ fn challenge<G: Group>(
 pub struct VssCommitment {
     suite: &'static Suite,
     public_key: PublicKey,
+    min_signers: u16,
     bytes: Vec<u8>,
 }
 
@@ -814,11 +815,12 @@ impl VssCommitment {
             for coefficient in bytes.chunks_exact(G::ELEMENT_LEN) {
                 decode_element::<G>(coefficient)?;
             }
-            Ok(Self::from_checked::<G>(bytes.to_vec()))
+            Ok(Self::from_checked::<G>(bytes.to_vec(), count as u16))
         })
     }
 
-    fn from_checked<G: Group>(bytes: Vec<u8>) -> Self {
+    /// A commitment of `min_signers` checked elements.
+    fn from_checked<G: Group>(bytes: Vec<u8>, min_signers: u16) -> Self {
         let mut public_key = Bytes::zeroed(G::ELEMENT_LEN);
         public_key
             .as_mut()
@@ -829,6 +831,7 @@ impl VssCommitment {
                 suite: ZeroableRef::new(G::suite()),
                 bytes: public_key,
             },
+            min_signers,
             bytes,
         }
     }
@@ -845,8 +848,7 @@ impl VssCommitment {
 
     /// Returns how many participants must sign: the number of coefficients.
     pub fn min_signers(&self) -> u16 {
-        let len = with_group!(self.suite, G => G::ELEMENT_LEN);
-        (self.bytes.len() / len) as u16
+        self.min_signers
     }
 
     /// The public key share of `identifier`, `sum(C[j] * x^j)`, or `None`
@@ -854,7 +856,7 @@ impl VssCommitment {
     fn public_share<G: Group>(&self, identifier: &Identifier) -> Option<G::Element> {
         let x = identifier.scalar::<G>();
         let mut power = scalar_from_u16::<G>(1);
-        let mut terms = Vec::with_capacity(self.bytes.len() / G::ELEMENT_LEN);
+        let mut terms = Vec::with_capacity(usize::from(self.min_signers));
         for coefficient in self.bytes.chunks_exact(G::ELEMENT_LEN) {
             let next = mul::<G>(&power, &x);
             terms.push((element::<G>(coefficient), power));
@@ -929,7 +931,7 @@ fn deal_with<G: Group>(
         let element = ct::into_public(G::element_to_bytes(&G::mul_base(coefficient)));
         commitment.extend_from_slice(element.as_ref());
     }
-    let commitment = VssCommitment::from_checked::<G>(commitment);
+    let commitment = VssCommitment::from_checked::<G>(commitment, coefficients.len() as u16);
     let shares = (1..=max_signers)
         .map(|n| {
             let identifier = Identifier::from_u16::<G>(n);
@@ -1339,7 +1341,8 @@ impl SigningPackage {
             return Err(Error::WrongLength);
         }
         let mut commitments = commitments.to_vec();
-        commitments.sort_by_key(Commitments::identifier);
+        // Unstable, as the stable sort divides; equal identifiers are refused.
+        commitments.sort_unstable_by_key(Commitments::identifier);
         if commitments
             .windows(2)
             .any(|pair| pair[0].identifier() == pair[1].identifier())
@@ -1446,7 +1449,7 @@ impl SigningPackage {
         }
         let mut identifiers: Vec<Identifier> =
             shares.iter().map(SignatureShare::identifier).collect();
-        identifiers.sort();
+        identifiers.sort_unstable();
         if identifiers
             .iter()
             .zip(&self.commitments)
