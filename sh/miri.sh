@@ -96,6 +96,7 @@ slow=(
     high::signature::tests::ecdsa_verifies_only_under_its_algorithm
     high::signature::tests::encodings_fit_the_largest_keys
     high::signature::tests::rsa_public_key_components
+    high::signature::tests::slh_dsa_rfc9909
     high::spake2plus::tests::connectedhomeip
     high::spake2plus::tests::draft01
     high::spake2plus::tests::exceptional_peer_share_follows_rfc9383
@@ -139,6 +140,7 @@ slow=(
     mid::sha3::tests::cavp_shake
     mid::sha3::tests::sha3_256_all_lengths
     mid::sha3::tests::sha3_512_all_lengths
+    mid::slhdsa::tests::sign_verify_round_trip
     mid::x25519::tests::rfc7748_3
 )
 filter=$(printf 'test(=%s) | ' "${slow[@]}")

@@ -9,8 +9,8 @@
 # here.
 set -euo pipefail
 
-AWS_LC=2f9a0e95cc2c29235d9b98db8cf86e22b271b35a
-BORINGSSL=0131ae9d78e42fcc2c1811315e62410ad96d8230
+AWS_LC=5ed12cce0fd4453f2f63300d44325ed14f845d6f
+BORINGSSL=8f2554dc344d403fd6d628773d39637c323eb801
 # RFC 9180's repository. hpkewg/hpke's revision of it repeats these vectors
 # unchanged.
 HPKE=b1f7cb0cdeab6906c61b3d6574e8bdfdbe1cd3fb
@@ -19,7 +19,7 @@ HASH_TO_CURVE=664b13592116cecc9e52fb192dcde0ade36f904e
 # blind-rsa-signatures 0.18.0, whose JSON holds all four of RFC 9474's
 # vectors; the CFRG draft's repository holds stale ones.
 BLIND_RSA=45d0abfa829c3623389daae30bc35e9b2f3b550c
-WYCHEPROOF=dab4ea2ed021eb633874959ca601004f3457d911
+WYCHEPROOF=65ca494727a52944c204441c860b039e6786b99b
 # ctz/cavp mirrors NIST's CAVP sample responses.
 CAVP=0220357e399badc6e9b87e237c428463a00d0992
 CCTV=b88c4b206254ac543df240097e0f1fcc6a664821
