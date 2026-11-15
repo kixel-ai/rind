@@ -467,4 +467,81 @@ theorem tail_loop_eq (ENC : Bool) (l : BitVec 128) : ∀ (fs : List (Nat → Bit
     cases ENC <;> simp only [ite_true, Bool.false_eq_true, ite_false, shuffle_load512, bind_ok, List.zip_cons_cons,
       List.map_cons, List.flatMap_cons, tailVec, ht]
 
+/-! ## Chunks and blocks of the tail -/
+
+theorem slice_chunk (Y : List U8) (N v b : Nat) (hb : b < 4) (hN : 64 * v + 64 ≤ Y.length + N) :
+    ((((Y.drop (64 * v)).take 64) ++ List.replicate (64 - ((Y.drop (64 * v)).take 64).length) 0#u8).drop (16 * b)).take 16 =
+      ((Y ++ List.replicate N 0#u8).drop (16 * (4 * v + b))).take 16 := by
+  apply List.ext_getElem?; intro k
+  simp only [List.getElem?_take, List.getElem?_drop, List.getElem?_append, List.length_take, List.length_drop,
+    List.getElem?_replicate, List.length_replicate]
+  by_cases hk : k < 16
+  · simp only [hk, ite_true]
+    by_cases h1 : 16 * b + k < min 64 (Y.length - 64 * v)
+    · rw [ite_eq_left h1, ite_eq_left (by omega), ite_eq_left (by omega), show 64 * v + (16 * b + k) = 16 * (4 * v + b) + k by ring]
+    · rw [ite_eq_right h1, ite_eq_right (show ¬ 16 * (4 * v + b) + k < Y.length by omega), ite_eq_left (by omega),
+        ite_eq_left (by omega)]
+  · simp only [hk, ite_false]
+
+theorem flatten_chunks (Y : List U8) :
+    ((List.range ((Y.length + 63) / 64)).map fun v => (Y.drop (64 * v)).take 64).flatten = Y := by
+  induction h : Y.length using Nat.strong_induction_on generalizing Y with
+  | _ n ih =>
+    by_cases h0 : n = 0
+    · subst h0; simp [List.eq_nil_of_length_eq_zero h]
+    · have e : (n + 63) / 64 = ((Y.drop 64).length + 63) / 64 + 1 := by simp; omega
+      rw [e, List.range_succ_eq_map, List.map_cons, List.flatten_cons, List.map_map]
+      have := ih (Y.drop 64).length (by simp; omega) (Y.drop 64) rfl
+      conv_rhs => rw [← List.take_append_drop 64 Y, ← this]
+      simp only [Nat.mul_zero, List.drop_zero]
+      congr 2
+      apply List.map_congr_left; intro v _
+      simp only [Function.comp, List.drop_drop]
+      congr 2; omega
+
+theorem chunksUpTo_range (Y : List U8) :
+    chunksUpTo 64 Y = (List.range ((Y.length + 63) / 64)).map fun v => (Y.drop (64 * v)).take 64 := by
+  rw [chunksUpTo, chunksOf, chunksRest]
+  by_cases h : Y.length % 64 = 0
+  · have : Y.drop (64 * (Y.length / 64)) = [] := List.drop_eq_nil_of_le (by omega)
+    rw [this, ite_eq_left rfl, List.append_nil, show (Y.length + 63) / 64 = Y.length / 64 by omega]
+  · have hne : Y.drop (64 * (Y.length / 64)) ≠ [] := by
+      intro he; have := congrArg List.length he; simp at this; omega
+    rw [ite_eq_right hne, show (Y.length + 63) / 64 = Y.length / 64 + 1 by omega, List.range_succ, List.map_append,
+      List.map_singleton, List.take_of_length_le (by simp; omega)]
+
+/-- GHASH's padded blocks of `X`, as 16-byte slices of `X` zero-extended. -/
+theorem padBlocks_range (X : List U8) (N : Nat) (hN : 16 ≤ N) :
+    padBlocks X = (List.range ((X.length + 15) / 16)).map fun b =>
+      blockBE (((X ++ List.replicate N 0#u8).drop (16 * b)).take 16) := by
+  have hw : ∀ b ∈ List.range (X.length / 16), blockBE ((X.drop (16 * b)).take 16) =
+      blockBE (((X ++ List.replicate N 0#u8).drop (16 * b)).take 16) := fun b hb => by
+    have := List.mem_range.1 hb
+    rw [List.drop_append_of_le_length (by omega), List.take_append_of_le_length (by simp; omega)]
+  rw [padBlocks, chunksOf, List.map_map]
+  by_cases h : X.length % 16 = 0
+  · have : chunksRest 16 X = [] := List.eq_nil_of_length_eq_zero (by rw [chunksRest_length]; exact h)
+    rw [this, ite_eq_left rfl, List.append_nil, show (X.length + 15) / 16 = X.length / 16 by omega]
+    exact List.map_congr_left hw
+  · have hne : chunksRest 16 X ≠ [] := fun he => by
+      have := congrArg List.length he; rw [chunksRest_length] at this; simp at this; omega
+    rw [ite_eq_right hne, show (X.length + 15) / 16 = X.length / 16 + 1 by omega, List.range_succ, List.map_append,
+      List.map_singleton]
+    refine congrArg₂ (· ++ ·) (List.map_congr_left hw) ?_
+    rw [tailBlock, chunksRest]
+    congr 2
+    congr 1
+    apply List.ext_getElem?; intro k
+    by_cases hk : k < X.length - 16 * (X.length / 16)
+    · have h1 : 16 * (X.length / 16) + k < X.length := by omega
+      simp [List.getElem?_take, List.getElem?_drop, List.getElem?_append, hk, h1, show k < 16 by omega]
+    · by_cases hk' : k < 16
+      · have h1 : ¬ 16 * (X.length / 16) + k < X.length := by omega
+        have h2 : 16 * (X.length / 16) + k - X.length < N := by omega
+        have h3 : k - (X.length - 16 * (X.length / 16)) < 16 - (X.length - 16 * (X.length / 16)) := by omega
+        simp [List.getElem?_take, List.getElem?_drop, List.getElem?_append, List.getElem?_replicate, hk, hk', h1,
+          h2, h3]
+      · have h3 : ¬ k - (X.length - 16 * (X.length / 16)) < 16 - (X.length - 16 * (X.length / 16)) := by omega
+        simp [List.getElem?_take, List.getElem?_drop, List.getElem?_append, List.getElem?_replicate, hk, hk', h3]
+
 end rind.x86_64
