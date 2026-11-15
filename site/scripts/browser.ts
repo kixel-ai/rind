@@ -38,7 +38,8 @@ async function copies() {
 	// The handler awaits the clipboard before it relabels the button.
 	const label = await view.evaluate(`new Promise((resolve) => {
 		const button = document.querySelector("button");
-		const poll = () => (button.textContent === "Copy" ? requestAnimationFrame(poll) : resolve(button.textContent));
+		const deadline = performance.now() + 5000;
+		const poll = () => (button.textContent === "Copy" && performance.now() < deadline ? requestAnimationFrame(poll) : resolve(button.textContent));
 		poll();
 	})`);
 	if (label !== "Copied") throw new Error(`the copy button says "${label}"`);
