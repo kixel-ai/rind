@@ -488,7 +488,7 @@ fn kem_cases(cases: &mut Vec<Case>) {
 
     let setup = || {
         let key = kem::DecapsulationKey::<MlKem768>::generate().unwrap();
-        let public = key.public_key();
+        let public = key.public_key().clone();
         let encapsulate = move || public.encapsulate().unwrap().0;
         (key, encapsulate)
     };
