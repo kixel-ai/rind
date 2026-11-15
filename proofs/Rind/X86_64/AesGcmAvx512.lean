@@ -757,4 +757,40 @@ theorem tailOut_eq (hk : low.x86_64.aes.HwKey) (alg : Algorithm) (kw : List (Bit
   congr 1
   simp only [List.length_take, List.length_drop]
 
+/-- The tail's hash: `_mul_tail` of the vectors `_cipher_avx512` builds from
+`X`, its ciphertext or plaintext, is GHASH of `X`'s padded blocks. -/
+theorem tail_hash (H : P) (hH : Small H) (t : low.x86_64.ghash.GhashTableAvx512) (ht : Avx512Powers H t)
+    (X : List U8) (hX0 : 0 < X.length) (hX : X.length < 256) (current : BitVec 128) :
+    ∃ y, low.x86_64.ghash._mul_tail t current
+        ((List.range ((X.length + 63) / 64)).map (fun v => tailVec ((X.drop (64 * v)).take 64)) ++
+          List.replicate (4 - ((X.length + 63) / 64)) 0) X.length = ok y ∧
+      toPoly y = ghashPoly H (toPoly current) ((padBlocks X).map toPoly) := by
+  generalize hxs : (List.range ((X.length + 63) / 64)).map (fun v => tailVec ((X.drop (64 * v)).take 64)) ++
+    List.replicate (4 - ((X.length + 63) / 64)) 0 = xs
+  have hxl : xs.length = 4 := by rw [← hxs]; simp; omega
+  obtain ⟨y, hy, hyp⟩ := mul_tail_sum H hH t ht current xs X.length (by omega) hX0 (by rw [hxl]; omega)
+  refine ⟨y, hy, ?_⟩
+  let blk : Nat → BitVec 128 := fun b => blockBE (((X ++ List.replicate 256 0#u8).drop (16 * b)).take 16)
+  rw [hyp, padBlocks_range X 256 (by omega)]
+  have hb : ∀ b ∈ List.range ((X.length + 15) / 16),
+      toPoly (tailBlock512 current xs b) = toPoly (blk b ^^^ if b = 0 then current else 0) := by
+    intro b hb
+    have hb' := List.mem_range.1 hb
+    have h4 : b / 4 < (X.length + 63) / 64 := by omega
+    rw [tailBlock512, ← hxs, rind.vale.getElem!_append_left' _ _ (by simp; omega)]
+    simp only [List.getElem!_eq_getElem?_getD, List.getElem?_map, List.getElem?_range h4, Option.map_some,
+      Option.getD_some]
+    rw [lane_tailVec X b (by omega)]
+  rw [List.map_congr_left hb]
+  obtain ⟨k, hk⟩ : ∃ k, (X.length + 15) / 16 = k + 1 := ⟨(X.length + 15) / 16 - 1, by omega⟩
+  have hl : (List.range (k + 1)).map (fun b => toPoly (blk b ^^^ if b = 0 then current else 0)) =
+      (tailInputs current ((List.range (k + 1)).map blk)).map toPoly := by
+    rw [List.range_succ_eq_map, List.map_cons, List.map_cons, tailInputs_cons, List.map_cons, ite_eq_left rfl,
+      BitVec.xor_comm (blk 0)]
+    refine congrArg (_ :: ·) ?_
+    rw [List.map_map, List.map_map, List.map_map]
+    apply List.map_congr_left; intro b _
+    simp [xor_zero']
+  rw [hk, hl, sumPow_tailInputs H current _ (by simp)]
+
 end rind.x86_64
