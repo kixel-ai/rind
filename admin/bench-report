@@ -900,7 +900,7 @@ ALGORITHMS = [
     ("P-384", r"p384-"),
     ("P-521", r"p521-"),
     ("RSA", r"rsa\d+-"),
-    ("ML-KEM", r"mlkem768-"),
+    ("ML-KEM", r"mlkem\d+-"),
     ("ML-DSA", r"mldsa65-"),
     ("HPKE", r"hpke-"),
     ("Blind RSA", r"blind-rsa\d+-"),
