@@ -216,6 +216,21 @@ impl From<hkdf::Okm<'_, &'static Algorithm>> for UnboundCipherKey {
     }
 }
 
+mod private {
+    /// What aws-lc-rs's `TryInto` turns an [`super::UnboundCipherKey`] into:
+    /// callers can hold one but name no use for it.
+    pub struct SymmetricCipherKey(#[allow(dead_code)] pub(super) super::UnboundCipherKey);
+}
+
+impl TryInto<private::SymmetricCipherKey> for UnboundCipherKey {
+    type Error = crate::error::KeyRejected;
+
+    // `new` and `From<Okm>` already fix the key's length, so this cannot fail.
+    fn try_into(self) -> Result<private::SymmetricCipherKey, Self::Error> {
+        Ok(private::SymmetricCipherKey(self))
+    }
+}
+
 enum Encrypting {
     Cbc(rind::cipher::AesCbcEncryptingKey),
     Ctr(rind::cipher::AesCtr),
