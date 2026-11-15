@@ -1649,8 +1649,8 @@ def comparison_table(hosts, verified):
             if name not in offered[lib] or (lib, name) in OUTSIDE_API
         ]
         # Each verified algorithm by architecture, marked when only some of
-        # that architecture's CPUs run the proven code, or the proofs cover
-        # only some of the algorithm's benchmarked operations.
+        # that architecture's CPUs run the proven code of one of its
+        # operations, or the proofs cover only some of its benchmarked ones.
         proven = {}
         for e in verified:
             if e["library"] != lib:
@@ -1658,14 +1658,15 @@ def comparison_table(hosts, verified):
             covered = {r for p in e["operations"] for r in fnmatch.filter(rows, p) if r in algorithm}
             # An entry with no arch runs the same code on every one.
             arch = e.get("arch", "all")
-            for name in {algorithm[r] for r in covered}:
-                narrow, ops = proven.setdefault(arch, {}).setdefault(name, ([], set()))
-                narrow.append(bool(e.get("cpu") or e.get("os")))
-                ops.update(covered)
+            everywhere = not (e.get("cpu") or e.get("os"))
+            for row in covered:
+                # Each row, and whether some proof of it runs on every CPU.
+                ops = proven.setdefault(arch, {}).setdefault(algorithm[row], {})
+                ops[row] = ops.get(row, False) or everywhere
         order = [name for name, _ in ALGORITHMS]
 
-        def limits(name, narrow, ops):
-            some = ["some CPUs"] if all(narrow) else []
+        def limits(name, ops):
+            some = ["some CPUs"] if not all(ops.values()) else []
             if any(algorithm[r] == name and r not in ops for r in algorithm):
                 some.append("some operations")
             return f" ({', '.join(some)})" if some else ""
@@ -1673,8 +1674,8 @@ def comparison_table(hosts, verified):
         arches = [
             f"{arch}: "
             + ", ".join(
-                name + limits(name, *proof)
-                for name, proof in sorted(proven[arch].items(), key=lambda item: order.index(item[0]))
+                name + limits(name, ops)
+                for name, ops in sorted(proven[arch].items(), key=lambda item: order.index(item[0]))
             )
             for arch in sorted(proven, key=lambda arch: (arch != "all", arch))
         ]

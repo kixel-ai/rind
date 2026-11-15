@@ -478,6 +478,15 @@ class Comparison(unittest.TestCase):
         self.assertIn("[1 of its 2 times]", rows["aws-lc-rs"][3])
         self.assertIn("[1 of its 2 times]", rows["ring"][3])
 
+    def test_a_cpu_limit_on_one_operation_marks_its_algorithm(self):
+        # Ed25519's sign proof runs everywhere, its verify proof only with ADX.
+        verified = [
+            {"library": "rind", "operations": ["ed25519-sign"], "arch": "x86_64", "proof": "p", "link": "l"},
+            {"library": "rind", "operations": ["ed25519-verify"], "arch": "x86_64", "cpu": ["adx"], "proof": "p", "link": "l"},
+        ]
+        table = br.comparison_table(hosts(), verified)
+        self.assertIn("[x86_64: Ed25519 (some CPUs)]", table[2])
+
     def test_an_unmeasured_library_reads_not_measured(self):
         _, rows = self.cells(hosts())
         # No host has a build cost, and RustCrypto has no times.
