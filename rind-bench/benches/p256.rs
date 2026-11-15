@@ -110,6 +110,7 @@ fn ecdh(c: &mut Criterion) {
     });
 
     group.bench_function("verified-garbage", |b| {
+        vg_agrees_with_rind();
         use verified_garbage::ec::PublicKey;
         let peer_bytes: [u8; 65] = PUBLIC_KEY[..].try_into().unwrap();
 
@@ -204,6 +205,7 @@ fn keygen(c: &mut Criterion) {
     });
 
     group.bench_function("verified-garbage", |b| {
+        vg_agrees_with_rind();
         b.iter(|| black_box(vg_generate()));
     });
 
@@ -243,6 +245,7 @@ fn ecdsa_keygen(c: &mut Criterion) {
     });
 
     group.bench_function("verified-garbage", |b| {
+        vg_agrees_with_rind();
         b.iter(|| black_box(vg_generate()));
     });
 }
@@ -633,25 +636,36 @@ fn stored(c: &mut Criterion) {
     });
 
     group.bench_function("verified-garbage", |b| {
-        use rind::agreement::{self, ECDH_P256};
         use verified_garbage::ec::{PrivateKey, PublicKey};
+        vg_agrees_with_rind();
         let key = PrivateKey::<verified_garbage::ec::P256>::from_bytes(&scalar);
         let peer_bytes: [u8; 65] = public_key[..].try_into().unwrap();
-        let rind_key = agreement::PrivateKey::from_scalar(&ECDH_P256, &scalar).unwrap();
-        assert_eq!(
-            key.public_key().unwrap().as_bytes()[..],
-            *rind_key.public_key().as_ref()
-        );
-        assert_eq!(
-            key.exchange(&PublicKey::from_bytes(&peer_bytes)).unwrap()[..],
-            *rind_key.agree(public_key).unwrap().as_ref()
-        );
 
         b.iter(|| {
             let peer = PublicKey::from_bytes(&peer_bytes);
             black_box(key.exchange(&peer).unwrap())
         })
     });
+}
+
+// Checks verified-garbage's public key and exchange against rind's, from a
+// fixed scalar, before any of its rows times them.
+fn vg_agrees_with_rind() {
+    use rind::agreement::{self, ECDH_P256};
+    use verified_garbage::ec::{PrivateKey, PublicKey};
+    let scalar = [1u8; 32];
+    let public_key: &[u8] = PUBLIC_KEY;
+    let key = PrivateKey::<verified_garbage::ec::P256>::from_bytes(&scalar);
+    let peer_bytes: [u8; 65] = public_key.try_into().unwrap();
+    let rind_key = agreement::PrivateKey::from_scalar(&ECDH_P256, &scalar).unwrap();
+    assert_eq!(
+        key.public_key().unwrap().as_bytes()[..],
+        *rind_key.public_key().as_ref()
+    );
+    assert_eq!(
+        key.exchange(&PublicKey::from_bytes(&peer_bytes)).unwrap()[..],
+        *rind_key.agree(public_key).unwrap().as_ref()
+    );
 }
 
 criterion_group!(

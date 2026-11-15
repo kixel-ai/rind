@@ -95,6 +95,7 @@ fn x25519(c: &mut Criterion) {
     });
 
     group.bench_function("verified-garbage", |b| {
+        vg_agrees_with_rind();
         use verified_garbage::x25519::{PrivateKey, PublicKey};
 
         b.iter(|| {
@@ -186,6 +187,7 @@ fn keygen(c: &mut Criterion) {
     });
 
     group.bench_function("verified-garbage", |b| {
+        vg_agrees_with_rind();
         b.iter(|| {
             let key = verified_garbage::x25519::PrivateKey::generate().unwrap();
             black_box(key.public_key());
@@ -232,23 +234,32 @@ fn stored(c: &mut Criterion) {
 
     group.bench_function("verified-garbage", |b| {
         use verified_garbage::x25519::{PrivateKey, PublicKey};
+        vg_agrees_with_rind();
         let key = PrivateKey::from_bytes(&scalar);
-        let rind_key =
-            rind::agreement::PrivateKey::from_scalar(&rind::agreement::X25519, &scalar).unwrap();
-        assert_eq!(
-            key.public_key().as_bytes()[..],
-            *rind_key.public_key().as_ref()
-        );
-        assert_eq!(
-            key.exchange(&PublicKey::from_bytes(PUBLIC_KEY)).unwrap()[..],
-            *rind_key.agree(public_key).unwrap().as_ref()
-        );
 
         b.iter(|| {
             let peer = PublicKey::from_bytes(PUBLIC_KEY);
             black_box(key.exchange(&peer).unwrap())
         })
     });
+}
+
+// Checks verified-garbage's public key and exchange against rind's, from a
+// fixed scalar, before any of its rows times them.
+fn vg_agrees_with_rind() {
+    use verified_garbage::x25519::{PrivateKey, PublicKey};
+    let scalar = [1u8; 32];
+    let key = PrivateKey::from_bytes(&scalar);
+    let rind_key =
+        rind::agreement::PrivateKey::from_scalar(&rind::agreement::X25519, &scalar).unwrap();
+    assert_eq!(
+        key.public_key().as_bytes()[..],
+        *rind_key.public_key().as_ref()
+    );
+    assert_eq!(
+        key.exchange(&PublicKey::from_bytes(PUBLIC_KEY)).unwrap()[..],
+        *rind_key.agree(PUBLIC_KEY).unwrap().as_ref()
+    );
 }
 
 criterion_group!(benches, x25519, keygen, stored);

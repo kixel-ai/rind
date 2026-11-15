@@ -275,6 +275,7 @@ fn mlkem768_encaps(c: &mut Criterion) {
     });
 
     group.bench_function("verified-garbage", |b| {
+        vg_agrees_with_rind();
         use verified_garbage::mlkem768::EncapsulationKey768;
 
         let encaps = *vg_generate().encapsulation_key().as_bytes();
@@ -366,6 +367,7 @@ fn mlkem768_decaps(c: &mut Criterion) {
     });
 
     group.bench_function("verified-garbage", |b| {
+        vg_agrees_with_rind();
         let decaps = vg_generate();
         let (_secret, ciphertext) = decaps.encapsulation_key().encapsulate().unwrap();
 
@@ -472,6 +474,7 @@ fn mlkem768_combined(c: &mut Criterion) {
     });
 
     group.bench_function("verified-garbage", |b| {
+        vg_agrees_with_rind();
         use verified_garbage::mlkem768::EncapsulationKey768;
 
         b.iter(|| {
