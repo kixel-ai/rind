@@ -585,7 +585,10 @@ macro_rules! mlkem_set {
             group.bench_function("rind", |b| {
                 use rind::kem::*;
 
-                let encaps = DecapsulationKey::<$set>::generate().unwrap().public_key().clone();
+                let encaps = DecapsulationKey::<$set>::generate()
+                    .unwrap()
+                    .public_key()
+                    .clone();
 
                 b.iter(|| {
                     let encaps = EncapsulationKey::<$set>::new(encaps.as_ref()).unwrap();

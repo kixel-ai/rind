@@ -729,7 +729,9 @@ pub mod pbkdf2 {
 /// let secret = argon2::Secret::new(b"password");
 /// let mut stored = [0u8; 32];
 /// // Each account's salt is its own, stored beside its key.
-/// secret.derive(params, b"per-user salt", &mut stored).unwrap();
+/// secret
+///     .derive(params, b"per-user salt", &mut stored)
+///     .unwrap();
 ///
 /// secret.verify(params, b"per-user salt", &stored).unwrap();
 /// ```

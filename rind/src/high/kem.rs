@@ -459,7 +459,7 @@ mod tests {
             rng.read(&mut ct);
 
             let key = DecapsulationKey::new(keygen::<MlKem768>(&seed));
-            let (secret, ciphertext) = encaps(&key.public_key(), &m);
+            let (secret, ciphertext) = encaps(key.public_key(), &m);
             assert_eq!(decapsulate(&key, ciphertext.as_ref()).unwrap(), secret);
             let rejected = decapsulate(&key, &ct).unwrap();
 
@@ -602,7 +602,7 @@ mod tests {
                         assert_eq!(secret_bytes(&decapsulated), secret_bytes(&secret), "{test}");
                         continue;
                     }
-                    let (secret, ciphertext) = encaps(&ek, &test.bytes("Entropy"));
+                    let (secret, ciphertext) = encaps(ek, &test.bytes("Entropy"));
                     assert_eq!(ciphertext.as_ref(), test.bytes("Ciphertext"), "{test}");
                     assert_eq!(secret, test.bytes("Secret"), "{test}");
                 } else if let Some(name) = test.get("EncapsulateDecapsulate") {
