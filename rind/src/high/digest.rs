@@ -700,7 +700,7 @@ mod tests {
     // `Context`, which `mid::sha2`'s layout test builds on.
     #[test]
     fn layout() {
-        assert_eq!(core::mem::align_of::<Context>(), 64);
+        assert_eq!(align_of::<Context>(), 64);
         for algorithm in [&SHA256, &SHA384, &SHA512, &SHA512_256] {
             let ctx = Context::new(algorithm);
             let context: *const u8 = match &ctx.0 {

@@ -525,7 +525,7 @@ mod tests {
     // cache-line-aligned `Context`, as `digest::Context`'s do.
     #[test]
     fn layout() {
-        assert_eq!(core::mem::align_of::<Context>(), 64);
+        assert_eq!(align_of::<Context>(), 64);
         for algorithm in [&HMAC_SHA256, &HMAC_SHA384, &HMAC_SHA512] {
             let ctx = Context::with_key(&Key::new(algorithm, b"key"));
             let inner: *const u8 = match &ctx.0.0 {
