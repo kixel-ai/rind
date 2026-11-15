@@ -105,15 +105,28 @@ pub trait Params: fmt::Debug + Send + Sync + Unpin + UnwindSafe + RefUnwindSafe 
     // The algorithms at this parameter set. As methods of each set's impl,
     // they compile in rind, not in each generic caller, so `admin/ct-vartime`
     // sees them, and the MXCSR mitigation they hold, from what rind exports.
+    // They trust their buffers' lengths, so each takes an `Internal`, which
+    // only rind can make.
     #[doc(hidden)]
-    fn keygen(seed: &[u8; SEED_LEN], pk: &mut [u8], sk: &mut [u8]);
+    fn keygen(_: Internal, seed: &[u8; SEED_LEN], pk: &mut [u8], sk: &mut [u8]);
     #[doc(hidden)]
-    fn public_key_from_secret(sk: &[u8], pk: &mut [u8]) -> bool;
+    fn public_key_from_secret(_: Internal, sk: &[u8], pk: &mut [u8]) -> bool;
     #[doc(hidden)]
-    fn sign(sk: &[u8], mu: &[u8; MU_LEN], rnd: &[u8; RND_LEN]) -> Result<Self::Signature, Error>;
+    fn sign(
+        _: Internal,
+        sk: &[u8],
+        mu: &[u8; MU_LEN],
+        rnd: &[u8; RND_LEN],
+    ) -> Result<Self::Signature, Error>;
     #[doc(hidden)]
-    fn verify(pk: &[u8], mu: &[u8; MU_LEN], signature: &[u8]) -> Result<(), Error>;
+    fn verify(_: Internal, pk: &[u8], mu: &[u8; MU_LEN], signature: &[u8]) -> Result<(), Error>;
 }
+
+/// Proof that a call to a [`Params`] method comes from rind: no other crate
+/// can make one, though a generic caller can name the methods.
+#[doc(hidden)]
+#[derive(Clone, Copy)]
+pub struct Internal(());
 
 /// A byte array of a parameter set's length.
 pub trait Array:
@@ -158,15 +171,16 @@ macro_rules! params {
             type SecretKey = [u8; $sk];
             type Signature = [u8; $sig];
 
-            fn keygen(seed: &[u8; SEED_LEN], pk: &mut [u8], sk: &mut [u8]) {
+            fn keygen(_: Internal, seed: &[u8; SEED_LEN], pk: &mut [u8], sk: &mut [u8]) {
                 keygen::<Self>(seed, pk, sk)
             }
 
-            fn public_key_from_secret(sk: &[u8], pk: &mut [u8]) -> bool {
+            fn public_key_from_secret(_: Internal, sk: &[u8], pk: &mut [u8]) -> bool {
                 public_key_from_secret::<Self>(sk, pk)
             }
 
             fn sign(
+                _: Internal,
                 sk: &[u8],
                 mu: &[u8; MU_LEN],
                 rnd: &[u8; RND_LEN],
@@ -174,7 +188,12 @@ macro_rules! params {
                 sign_internal::<Self>(sk, mu, rnd)
             }
 
-            fn verify(pk: &[u8], mu: &[u8; MU_LEN], signature: &[u8]) -> Result<(), Error> {
+            fn verify(
+                _: Internal,
+                pk: &[u8],
+                mu: &[u8; MU_LEN],
+                signature: &[u8],
+            ) -> Result<(), Error> {
                 verify_internal::<Self>(pk, mu, signature)
             }
         }
@@ -241,7 +260,12 @@ impl<P: Params> KeyPair<P> {
             secret_key: P::SecretKey::zeroed(),
             public_key: P::PublicKey::zeroed(),
         };
-        P::keygen(&seed, key.public_key.as_mut(), key.secret_key.as_mut());
+        P::keygen(
+            Internal(()),
+            &seed,
+            key.public_key.as_mut(),
+            key.secret_key.as_mut(),
+        );
         key
     }
 
@@ -260,7 +284,11 @@ impl<P: Params> KeyPair<P> {
         }
         key.secret_key.as_mut().copy_from_slice(sk);
         low::ct::secret_slice(key.secret_key.as_ref());
-        match P::public_key_from_secret(key.secret_key.as_ref(), key.public_key.as_mut()) {
+        match P::public_key_from_secret(
+            Internal(()),
+            key.secret_key.as_ref(),
+            key.public_key.as_mut(),
+        ) {
             true => Ok(key),
             false => Err(KeyFormatError::MlDsaSecretKey.into()),
         }
@@ -295,7 +323,7 @@ impl<P: Params> KeyPair<P> {
         let mut rnd = [0u8; RND_LEN];
         SystemRandom.fill(&mut rnd)?;
         low::ct::secret_slice(&rnd);
-        P::sign(self.secret_key.as_ref(), &mu, &rnd)
+        P::sign(Internal(()), self.secret_key.as_ref(), &mu, &rnd)
     }
 
     /// `mu`, the message representative this key signs for `message` under
@@ -313,7 +341,7 @@ impl<P: Params> KeyPair<P> {
         rnd: &[u8; RND_LEN],
     ) -> Result<P::Signature, Error> {
         let _entry = Entry::new_secret();
-        P::sign(self.secret_key.as_ref(), mu, rnd)
+        P::sign(Internal(()), self.secret_key.as_ref(), mu, rnd)
     }
 }
 
@@ -365,7 +393,7 @@ pub(crate) fn verify<P: Params>(
 ) -> Result<(), Error> {
     let _entry = Entry::new_public();
     let mu = mu(tr, context, message).map_err(|_| Error::BadSignature)?;
-    P::verify(pk, &mu, signature)
+    P::verify(Internal(()), pk, &mu, signature)
 }
 
 /// Polynomials on the heap, wiped before they are freed under the `wipe`
