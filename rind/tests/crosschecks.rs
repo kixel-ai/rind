@@ -3547,7 +3547,6 @@ mod frost {
     use std::collections::{BTreeMap, BTreeSet};
 
     use rand_core_voprf::OsRng;
-
     use rind::frost::*;
 
     /// Every suite's identifiers and scalars are 32 bytes.
