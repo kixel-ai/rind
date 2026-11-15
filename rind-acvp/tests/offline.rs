@@ -174,7 +174,8 @@ fn run(acvptool: &Path, sets: &[Set], mask: &[&str]) -> Vec<Value> {
     fs::remove_file(&file).unwrap();
     assert!(
         output.status.success(),
-        "acvptool failed:\n{}",
+        "acvptool failed ({}):\n{}",
+        output.status,
         String::from_utf8_lossy(&output.stderr)
     );
     let output: Vec<Value> = serde_json::from_slice(&output.stdout).unwrap();

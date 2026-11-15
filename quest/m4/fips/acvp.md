@@ -21,6 +21,12 @@ remains:
   [kixel-ai/rind#606](https://github.com/kixel-ai/rind/pull/606) adds them
   to the module: the lengths in `rind_fips::acvp` and the parameter set in
   `rind::fips::acvp`.
+- Find why `acvptool` once exited without a message, after 61 s of the
+  first CPU mask, in x86-cpu.yml's Diamond Rapids job
+  ([run](https://github.com/kixel-ai/rind/actions/runs/43691180379/job/132741976547)).
+  It passed on rerun and in five runs under SDE on an Intel host; GitHub's
+  runners are AMD's. The offline test now prints `acvptool`'s exit status,
+  so a recurrence names the signal; run the job repeatedly to reproduce.
 - Once a credential exists, run fresh demo sets for every registered
   algorithm, once per CPU mask, in a scheduled job, as the offline test
   runs the samples.
