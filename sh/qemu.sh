@@ -13,25 +13,6 @@ fi
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
-# RIND_SCOPE=BASE skips the whole run when nothing the branch changed since
-# BASE reaches the target's backend, as sh/backends.sh decides. rind/build.rs
-# picks aarch64's own backend for aarch64, and the portable one for every
-# other target these shells name or under `--cfg rind_portable`. Which of
-# Cargo's `*RUSTFLAGS` variables wins depends on precedence and target, so
-# when any names `rind_portable`, the run checks both backends it could build.
-if [[ -n "${RIND_SCOPE:-}" ]]; then
-    case "$target" in
-        aarch64-*) backends=aarch64 ;;
-        *) backends=portable ;;
-    esac
-    ! env | grep -q '^[A-Z0-9_]*RUSTFLAGS=.*rind_portable' || backends+='|portable'
-    reached=$(sh/changed.sh "$RIND_SCOPE" | sh/backends.sh -)
-    if ! grep -qxE "all|$backends" <<<"$reached"; then
-        echo "qemu: nothing changed since $RIND_SCOPE reaches the ${backends//|/ or } backend" >&2
-        exit 0
-    fi
-fi
-
 # Fail before the long cross build rather than partway through the tests.
 unfetched=$(git submodule status -- thirdparty/cavp thirdparty/cctv thirdparty/wycheproof | sed -n 's/^-[0-9a-f]* //p')
 if [[ -n "$unfetched" ]]; then

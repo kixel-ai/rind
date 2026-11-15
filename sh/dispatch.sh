@@ -118,7 +118,7 @@ module msrv '^(rind[^/]*/(src/|build\.rs$|Cargo\.toml$)|rind[^/]*/([^/]+/)+(src/
 # code, dependencies, toolchain, or the scan itself can bring. A change under
 # one backend's low/ directory scans only that backend's targets.
 module vartime '^(rind/(src/|Cargo\.toml$|build\.rs$)|Cargo\.(toml|lock)$|flake\.(nix|lock)$|admin/ct-vartime)' \
-    tools='nix'
+    tools='nix' compiles
 # rind-dart's Dart package, whose build hook compiles the crate into a target
 # directory of its own.
 module dart '^rind-dart/' \
