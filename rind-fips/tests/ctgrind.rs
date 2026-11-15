@@ -18,9 +18,11 @@ use std::num::NonZeroU32;
 
 use crabgrind::memcheck::{self, MemState};
 use crabgrind::valgrind::{self, RunningMode};
-use rind_fips::signature::sign::{self, MlDsa65, MlDsaKeyPair};
-use rind_fips::signature::{EcdsaKeyPair, Ed25519KeyPair, RsaKeyPair};
+use rind_fips::ecdsa::{KeyPair as EcdsaKeyPair, sign};
+use rind_fips::ed25519::KeyPair as Ed25519KeyPair;
 use rind_fips::key_wrap::{self, Mode};
+use rind_fips::ml_dsa::{KeyPair as MlDsaKeyPair, MlDsa65};
+use rind_fips::rsa::KeyPair as RsaKeyPair;
 use rind_fips::{aead, agreement, cipher, hkdf, hmac, kem, pbkdf2, rand};
 
 /// Marks `value` secret: memcheck flags any branch or index that depends on it.
@@ -187,12 +189,10 @@ fn aes() {
     let wrapped_key = [0x24u8; 32];
     secret(&wrapped_key);
     let mut wrapped = [0u8; 40];
-    kek.wrap_key(Mode::Kw, &wrapped_key, &mut wrapped)
-        .unwrap();
+    kek.wrap_key(Mode::Kw, &wrapped_key, &mut wrapped).unwrap();
     public(&wrapped);
     let mut unwrapped = [0u8; 32];
-    kek.unwrap_key(Mode::Kw, &wrapped, &mut unwrapped)
-        .unwrap();
+    kek.unwrap_key(Mode::Kw, &wrapped, &mut unwrapped).unwrap();
     public(&unwrapped);
     assert_eq!(unwrapped, [0x24; 32]);
     wrapped[9] ^= 1;
@@ -208,13 +208,10 @@ fn aes() {
         let wrapped_key = vec![0x42u8; len];
         secret(&wrapped_key[..]);
         let mut wrapped = vec![0u8; len.next_multiple_of(8) + 8];
-        kek.wrap_key(Mode::Kwp, &wrapped_key, &mut wrapped)
-            .unwrap();
+        kek.wrap_key(Mode::Kwp, &wrapped_key, &mut wrapped).unwrap();
         public(&wrapped[..]);
         let mut unwrapped = vec![0u8; wrapped.len() - 8];
-        let key = kek
-            .unwrap_key(Mode::Kwp, &wrapped, &mut unwrapped)
-            .unwrap();
+        let key = kek.unwrap_key(Mode::Kwp, &wrapped, &mut unwrapped).unwrap();
         public(key);
         assert_eq!(key, &vec![0x42; len][..], "{len}");
         wrapped[9] ^= 1;
@@ -248,16 +245,13 @@ fn agreement_and_kem() {
 
 #[test]
 fn signatures() {
-    let ecdsa = EcdsaKeyPair::generate(&sign::ECDSA_P256_SHA256_ASN1).unwrap();
+    let ecdsa = EcdsaKeyPair::generate(&sign::P256_SHA256_ASN1).unwrap();
     let mut scalar = ecdsa.to_scalar().as_ref().to_vec();
     let public_key = ecdsa.public_key().as_ref().to_vec();
     secret(&scalar[..]);
-    let loaded = EcdsaKeyPair::from_scalar_and_public_key(
-        &sign::ECDSA_P256_SHA256_ASN1,
-        &scalar,
-        &public_key,
-    )
-    .unwrap();
+    let loaded =
+        EcdsaKeyPair::from_scalar_and_public_key(&sign::P256_SHA256_ASN1, &scalar, &public_key)
+            .unwrap();
     scalar.fill(0);
     let signature = loaded.sign(MESSAGE).unwrap();
     public(signature.as_ref());
@@ -300,11 +294,17 @@ fn signatures() {
     public(signature.as_ref());
 
     let rsa = RsaKeyPair::generate(rind_fips::rsa::KeySize::Rsa2048).unwrap();
-    let signature = rsa.sign(&sign::RSA_PSS_SHA256, MESSAGE).unwrap();
+    let signature = rsa
+        .sign(&rind_fips::rsa::sign::PSS_SHA256, MESSAGE)
+        .unwrap();
     public(signature.as_ref());
     assert!(
-        rsa.public_key(&sign::RSA_PSS_SHA256)
-            .verify(MESSAGE, signature.as_ref())
+        rsa.public_key()
+            .verify(
+                &rind_fips::rsa::verify::PSS_SHA256,
+                MESSAGE,
+                signature.as_ref()
+            )
             .is_ok()
     );
 }
@@ -368,7 +368,7 @@ fn rsa_with_secret(der: &[u8]) -> Vec<u8> {
 /// key and public in their framing and public key.
 #[test]
 fn key_imports() {
-    let algorithm = &sign::ECDSA_P256_SHA256_ASN1;
+    let algorithm = &sign::P256_SHA256_ASN1;
     let ecdsa = EcdsaKeyPair::generate(algorithm).unwrap();
     let scalar = ecdsa.to_scalar().as_ref().to_vec();
     let public_key = ecdsa.public_key().as_ref().to_vec();

@@ -443,8 +443,7 @@ fn ecdsa_sign(c: &mut Criterion) {
         use verified_garbage::hashes::sha384::Sha384;
         let (signing_key, public_key) = vg_generate();
         // rind verifies verified-garbage's signature.
-        let rind_key =
-            PublicKey::new(&verify::P384_SHA384_FIXED, public_key.as_bytes()).unwrap();
+        let rind_key = PublicKey::new(&verify::P384_SHA384_FIXED, public_key.as_bytes()).unwrap();
         let signature = signing_key.sign::<Sha384>(message).unwrap();
         rind_key.verify(message, &signature).unwrap();
 
@@ -521,8 +520,7 @@ fn ecdsa_sign(c: &mut Criterion) {
         use verified_garbage::hashes::sha384::Sha384;
         let (signing_key, public_key) = vg_generate();
         // rind verifies verified-garbage's signature.
-        let rind_key =
-            PublicKey::new(&verify::P384_SHA384_FIXED, public_key.as_bytes()).unwrap();
+        let rind_key = PublicKey::new(&verify::P384_SHA384_FIXED, public_key.as_bytes()).unwrap();
         let signature = signing_key.sign::<Sha384>(message).unwrap();
         rind_key.verify(message, &signature).unwrap();
         let digest: [u8; 48] = digest::digest(&digest::SHA384, message)

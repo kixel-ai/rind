@@ -53,8 +53,7 @@ fn unsupported() -> Status {
     status(Err(Error::Unsupported))
 }
 
-/// A public key a handle holds, in its algorithm's module, and for RSA the
-/// algorithm it verifies with.
+/// A public key a handle holds, in its algorithm's module.
 #[allow(clippy::large_enum_variant)]
 pub(crate) enum PublicKey {
     Ecdsa(ecdsa::PublicKey),
@@ -62,7 +61,7 @@ pub(crate) enum PublicKey {
     MlDsa44(ml_dsa::PublicKey<MlDsa44>),
     MlDsa65(ml_dsa::PublicKey<MlDsa65>),
     MlDsa87(ml_dsa::PublicKey<MlDsa87>),
-    Rsa(rsa::PublicKey, &'static rsa::VerificationAlgorithm),
+    Rsa(rsa::PublicKey),
 }
 
 impl PublicKey {
@@ -73,7 +72,7 @@ impl PublicKey {
             Self::MlDsa44(key) => key.as_ref(),
             Self::MlDsa65(key) => key.as_ref(),
             Self::MlDsa87(key) => key.as_ref(),
-            Self::Rsa(key, _) => key.as_ref(),
+            Self::Rsa(key) => key.as_ref(),
         }
     }
 
@@ -84,10 +83,12 @@ impl PublicKey {
             Self::MlDsa44(key) => key.to_spki(),
             Self::MlDsa65(key) => key.to_spki(),
             Self::MlDsa87(key) => key.to_spki(),
-            Self::Rsa(key, _) => key.to_spki(),
+            Self::Rsa(key) => key.to_spki(),
         }
     }
 
+    /// Verifies with a key bound to its algorithm: any but RSA's, which
+    /// [`rind_fips_rsa_public_key_verify`] takes with its algorithm.
     fn verify(&self, message: &[u8], signature: &[u8]) -> Result<(), Error> {
         match self {
             Self::Ecdsa(key) => key.verify(message, signature),
@@ -95,7 +96,7 @@ impl PublicKey {
             Self::MlDsa44(key) => key.verify(message, signature),
             Self::MlDsa65(key) => key.verify(message, signature),
             Self::MlDsa87(key) => key.verify(message, signature),
-            Self::Rsa(key, algorithm) => key.verify(algorithm, message, signature),
+            Self::Rsa(_) => Err(Error::Unsupported),
         }
     }
 
@@ -107,7 +108,8 @@ impl PublicKey {
     }
 }
 
-/// A verification algorithm, in its module.
+/// A verification algorithm other than RSA's, whose keys are bound to none,
+/// in its module.
 #[derive(Clone, Copy)]
 enum Verification {
     Ecdsa(&'static ecdsa::VerificationAlgorithm),
@@ -115,13 +117,10 @@ enum Verification {
     MlDsa44,
     MlDsa65,
     MlDsa87,
-    /// An RSA algorithm, and whether it takes a 1024-bit modulus.
-    Rsa(&'static rsa::VerificationAlgorithm, bool),
 }
 
 impl Verification {
-    /// Parses a public key's encoding: an RSA key's PKCS#1 or
-    /// `SubjectPublicKeyInfo` DER.
+    /// Parses a public key's encoding.
     fn parse(self, bytes: &[u8]) -> Result<PublicKey, Error> {
         match self {
             Self::Ecdsa(algorithm) => ecdsa::PublicKey::new(algorithm, bytes).map(PublicKey::Ecdsa),
@@ -129,9 +128,6 @@ impl Verification {
             Self::MlDsa44 => ml_dsa::PublicKey::new(bytes).map(PublicKey::MlDsa44),
             Self::MlDsa65 => ml_dsa::PublicKey::new(bytes).map(PublicKey::MlDsa65),
             Self::MlDsa87 => ml_dsa::PublicKey::new(bytes).map(PublicKey::MlDsa87),
-            Self::Rsa(..) => {
-                self.rsa(rsa::PublicKey::new(bytes).or_else(|_| rsa::PublicKey::from_spki(bytes)))
-            }
         }
     }
 
@@ -144,27 +140,13 @@ impl Verification {
             Self::MlDsa44 => ml_dsa::PublicKey::from_spki(der).map(PublicKey::MlDsa44),
             Self::MlDsa65 => ml_dsa::PublicKey::from_spki(der).map(PublicKey::MlDsa65),
             Self::MlDsa87 => ml_dsa::PublicKey::from_spki(der).map(PublicKey::MlDsa87),
-            Self::Rsa(..) => self.rsa(rsa::PublicKey::from_spki(der)),
         }
-    }
-
-    /// Binds an RSA `key` to this algorithm, refused if its modulus is below
-    /// the algorithm's floor, which rind checks only as it verifies, or
-    /// unless FIPS 186-5 approves the modulus for it.
-    fn rsa(self, key: Result<rsa::PublicKey, Error>) -> Result<PublicKey, Error> {
-        let Self::Rsa(algorithm, legacy_1024) = self else {
-            return Err(Error::Unsupported);
-        };
-        let key = key?;
-        rind::fips::check_rsa_floor(&key, algorithm)?;
-        rind::fips::check_rsa_modulus(&key, legacy_1024)?;
-        Ok(PublicKey::Rsa(key, algorithm))
     }
 }
 
-/// The verification algorithm `id` names, after its self-tests.
+/// The verification algorithm other than RSA's `id` names, after its
+/// self-tests.
 fn verification(id: u32) -> Option<Verification> {
-    use Verification::Rsa;
     let (algorithm, tests): (Verification, &[T]) = match id {
         id::ECDSA_P256_SHA256_ASN1 => (
             Verification::Ecdsa(&ecdsa::verify::P256_SHA256_ASN1),
@@ -214,40 +196,36 @@ fn verification(id: u32) -> Option<Verification> {
             Verification::Ecdsa(&ecdsa::verify::P521_SHA512_FIXED),
             &[T::Ecdsa, T::Sha512],
         ),
-        id::RSA_PKCS1_SHA256 => (Rsa(&rsa::verify::PKCS1_SHA256, false), &[T::Rsa, T::Sha256]),
-        id::RSA_PKCS1_SHA384 => (Rsa(&rsa::verify::PKCS1_SHA384, false), &[T::Rsa, T::Sha512]),
-        id::RSA_PKCS1_SHA512 => (Rsa(&rsa::verify::PKCS1_SHA512, false), &[T::Rsa, T::Sha512]),
-        id::RSA_PSS_SHA256 => (Rsa(&rsa::verify::PSS_SHA256, false), &[T::Rsa, T::Sha256]),
-        id::RSA_PSS_SHA384 => (Rsa(&rsa::verify::PSS_SHA384, false), &[T::Rsa, T::Sha512]),
-        id::RSA_PSS_SHA512 => (Rsa(&rsa::verify::PSS_SHA512, false), &[T::Rsa, T::Sha512]),
         id::ED25519 => (Verification::Ed25519, &[T::Ed25519, T::Sha512]),
         id::ML_DSA_44 => (Verification::MlDsa44, &[T::MlDsa]),
         id::ML_DSA_65 => (Verification::MlDsa65, &[T::MlDsa]),
         id::ML_DSA_87 => (Verification::MlDsa87, &[T::MlDsa]),
-        id::RSA_PKCS1_SHA1 => (
-            Rsa(&rsa::verify::legacy::PKCS1_SHA1, false),
-            &[T::Rsa, T::Sha1],
-        ),
-        id::RSA_PKCS1_1024_SHA1 => (
-            Rsa(&rsa::verify::legacy::PKCS1_1024_SHA1, true),
-            &[T::Rsa, T::Sha1],
-        ),
-        id::RSA_PKCS1_1024_SHA256 => (
-            Rsa(&rsa::verify::legacy::PKCS1_1024_SHA256, true),
-            &[T::Rsa, T::Sha256],
-        ),
-        id::RSA_PKCS1_1024_SHA512 => (
-            Rsa(&rsa::verify::legacy::PKCS1_1024_SHA512, true),
-            &[T::Rsa, T::Sha512],
-        ),
-        id::RSA_PKCS1_3072_SHA384 => (
-            Rsa(&rsa::verify::legacy::PKCS1_3072_SHA384, false),
-            &[T::Rsa, T::Sha512],
-        ),
         _ => return None,
     };
     ensure(tests);
     Some(algorithm)
+}
+
+/// The RSA verification algorithm `id` names, and whether it takes a
+/// 1024-bit modulus, after its self-tests.
+fn rsa_verification(id: u32) -> Option<(&'static rsa::VerificationAlgorithm, bool)> {
+    use rsa::verify::{self as v, legacy};
+    let (algorithm, legacy_1024, hash) = match id {
+        id::RSA_PKCS1_SHA256 => (&v::PKCS1_SHA256, false, T::Sha256),
+        id::RSA_PKCS1_SHA384 => (&v::PKCS1_SHA384, false, T::Sha512),
+        id::RSA_PKCS1_SHA512 => (&v::PKCS1_SHA512, false, T::Sha512),
+        id::RSA_PSS_SHA256 => (&v::PSS_SHA256, false, T::Sha256),
+        id::RSA_PSS_SHA384 => (&v::PSS_SHA384, false, T::Sha512),
+        id::RSA_PSS_SHA512 => (&v::PSS_SHA512, false, T::Sha512),
+        id::RSA_PKCS1_SHA1 => (&legacy::PKCS1_SHA1, false, T::Sha1),
+        id::RSA_PKCS1_1024_SHA1 => (&legacy::PKCS1_1024_SHA1, true, T::Sha1),
+        id::RSA_PKCS1_1024_SHA256 => (&legacy::PKCS1_1024_SHA256, true, T::Sha256),
+        id::RSA_PKCS1_1024_SHA512 => (&legacy::PKCS1_1024_SHA512, true, T::Sha512),
+        id::RSA_PKCS1_3072_SHA384 => (&legacy::PKCS1_3072_SHA384, false, T::Sha512),
+        _ => return None,
+    };
+    ensure(&[T::Rsa, hash]);
+    Some((algorithm, legacy_1024))
 }
 
 /// The ECDSA signing algorithm `id` names, after its self-tests.
@@ -327,36 +305,6 @@ pub unsafe extern "C" fn rind_fips_public_key_from_spki(
     unsafe { put_handle(algorithm.parse_spki(bytes(der, len)), out) }
 }
 
-/// Loads an RSA public key for verification algorithm `id` from its
-/// big-endian modulus and exponent, boxing it at `out`.
-///
-/// # Safety
-/// `n` and `e` must be valid for their lengths' reads, and `out` for a
-/// write.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn rind_fips_public_key_from_components(
-    id: u32,
-    n: *const u8,
-    n_len: usize,
-    e: *const u8,
-    e_len: usize,
-    out: *mut *mut PublicKey,
-) -> Status {
-    let Some(algorithm @ Verification::Rsa(..)) = verification(id) else {
-        return unsupported();
-    };
-    // SAFETY: the caller's contract.
-    let components = unsafe {
-        PublicKeyComponents {
-            n: bytes(n, n_len),
-            e: bytes(e, e_len),
-        }
-    };
-    let key = algorithm.rsa(rsa::PublicKey::from_components(&components));
-    // SAFETY: the caller's contract.
-    unsafe { put_handle(key, out) }
-}
-
 /// The encoding of `key`, writing its length to `len`; it lives as long as
 /// the handle.
 ///
@@ -425,6 +373,123 @@ pub unsafe extern "C" fn rind_fips_public_key_verify_digest(
 }
 
 free!(rind_fips_public_key_free, PublicKey);
+
+// RSA public keys, which are bound to no algorithm: each verification
+// names its own.
+
+/// Refuses an RSA key whose modulus FIPS 186-5 approves for no algorithm:
+/// one of an odd number of bits, or under 2048 bits but for the legacy
+/// algorithms' 1024.
+fn rsa_public_key(key: Result<rsa::PublicKey, Error>) -> Result<PublicKey, Error> {
+    ensure(&[T::Rsa]);
+    let key = key?;
+    rind::fips::check_rsa_modulus(&key, true)?;
+    Ok(PublicKey::Rsa(key))
+}
+
+/// Parses the PKCS#1 `RSAPublicKey` in the `len` bytes at `der`, boxing it
+/// at `out`.
+///
+/// # Safety
+/// `der` must be valid for `len` reads, and `out` for a write.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rind_fips_rsa_public_key_new(
+    der: *const u8,
+    len: usize,
+    out: *mut *mut PublicKey,
+) -> Status {
+    // SAFETY: the caller's contract.
+    let der = unsafe { bytes(der, len) };
+    // SAFETY: the caller's contract.
+    unsafe { put_handle(rsa_public_key(rsa::PublicKey::new(der)), out) }
+}
+
+/// Parses the `SubjectPublicKeyInfo` in the `len` bytes at `der` as an RSA
+/// public key, boxing it at `out`.
+///
+/// # Safety
+/// As for [`rind_fips_rsa_public_key_new`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rind_fips_rsa_public_key_from_spki(
+    der: *const u8,
+    len: usize,
+    out: *mut *mut PublicKey,
+) -> Status {
+    // SAFETY: the caller's contract.
+    let der = unsafe { bytes(der, len) };
+    // SAFETY: the caller's contract.
+    unsafe { put_handle(rsa_public_key(rsa::PublicKey::from_spki(der)), out) }
+}
+
+/// Loads an RSA public key from its big-endian modulus and exponent,
+/// boxing it at `out`.
+///
+/// # Safety
+/// `n` and `e` must be valid for their lengths' reads, and `out` for a
+/// write.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rind_fips_rsa_public_key_from_components(
+    n: *const u8,
+    n_len: usize,
+    e: *const u8,
+    e_len: usize,
+    out: *mut *mut PublicKey,
+) -> Status {
+    // SAFETY: the caller's contract.
+    let components = unsafe {
+        PublicKeyComponents {
+            n: bytes(n, n_len),
+            e: bytes(e, e_len),
+        }
+    };
+    let key = rsa_public_key(rsa::PublicKey::from_components(&components));
+    // SAFETY: the caller's contract.
+    unsafe { put_handle(key, out) }
+}
+
+/// The modulus length in bytes of RSA key `key`, or 0 for another key.
+///
+/// # Safety
+/// `key` must be live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rind_fips_rsa_public_key_modulus_len(key: *const PublicKey) -> usize {
+    // SAFETY: the caller's contract.
+    match unsafe { &*key } {
+        PublicKey::Rsa(key) => key.modulus_len(),
+        _ => 0,
+    }
+}
+
+/// Verifies the `signature_len` bytes at `signature` over the `len` bytes
+/// at `message` with RSA key `key` and verification algorithm `id`,
+/// refusing a modulus below the algorithm's floor or one FIPS 186-5 does
+/// not approve for it.
+///
+/// # Safety
+/// As for [`rind_fips_public_key_verify`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rind_fips_rsa_public_key_verify(
+    key: *const PublicKey,
+    id: u32,
+    message: *const u8,
+    len: usize,
+    signature: *const u8,
+    signature_len: usize,
+) -> Status {
+    let Some((algorithm, legacy_1024)) = rsa_verification(id) else {
+        return unsupported();
+    };
+    // SAFETY: the caller's contract.
+    let (key, message, signature) =
+        unsafe { (&*key, bytes(message, len), bytes(signature, signature_len)) };
+    let PublicKey::Rsa(key) = key else {
+        return unsupported();
+    };
+    status(
+        rind::fips::check_rsa_modulus(key, legacy_1024)
+            .and_then(|()| key.verify(algorithm, message, signature)),
+    )
+}
 
 // ECDSA.
 
@@ -631,20 +696,6 @@ pub unsafe extern "C" fn rind_fips_ecdsa_to_sec1(key: *const EcdsaKeyPair) -> *m
     scrubbed(Depth::Small, || encoded(unsafe { (*key).to_sec1() }))
 }
 
-/// `key`'s public key as a `SubjectPublicKeyInfo`.
-///
-/// # Safety
-/// `key` must be live.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn rind_fips_ecdsa_to_spki(key: *const EcdsaKeyPair) -> *mut Encoded {
-    // rind encodes it as it does any public key's, which reaches a little
-    // deeper than the curve's own encoder did.
-    // SAFETY: the caller's contract.
-    scrubbed(Depth::Medium, || {
-        encoded(unsafe { (*key).public_key().to_spki() })
-    })
-}
-
 free!(rind_fips_ecdsa_free, EcdsaKeyPair);
 
 // Ed25519.
@@ -806,18 +857,6 @@ pub unsafe extern "C" fn rind_fips_ed25519_to_seed(key: *const Ed25519KeyPair) -
     scrubbed(Depth::Small, || encoded(unsafe { (*key).to_seed() }))
 }
 
-/// `key`'s public key as a `SubjectPublicKeyInfo`.
-///
-/// # Safety
-/// `key` must be live.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn rind_fips_ed25519_to_spki(key: *const Ed25519KeyPair) -> *mut Encoded {
-    // SAFETY: the caller's contract.
-    scrubbed(Depth::Small, || {
-        encoded(unsafe { (*key).public_key().to_spki() })
-    })
-}
-
 free!(rind_fips_ed25519_free, Ed25519KeyPair);
 
 // RSA.
@@ -907,27 +946,15 @@ pub unsafe extern "C" fn rind_fips_rsa_from_pkcs1(
     unsafe { rsa_load(out, || RsaKeyPair::from_pkcs1(der)) }
 }
 
-/// `key`'s public key, verifying what it signs with signing algorithm
-/// `id`, or null for an unknown `id`.
+/// `key`'s public key.
 ///
 /// # Safety
 /// `key` must be live.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rind_fips_rsa_public_key(
-    key: *const RsaKeyPair,
-    id: u32,
-) -> *mut PublicKey {
-    // Each signing algorithm's id is the verification algorithm's of the
-    // same name.
-    let (Some(_), Some(Verification::Rsa(algorithm, _))) = (rsa_algorithm(id), verification(id))
-    else {
-        return core::ptr::null_mut();
-    };
+pub unsafe extern "C" fn rind_fips_rsa_public_key(key: *const RsaKeyPair) -> *mut PublicKey {
     // SAFETY: the caller's contract.
     let key = unsafe { (*key).public_key() };
-    scrubbed(Depth::Small, || {
-        handle(PublicKey::Rsa(key.clone(), algorithm))
-    })
+    scrubbed(Depth::Small, || handle(PublicKey::Rsa(key.clone())))
 }
 
 /// Signs the `len` bytes at `message` with `key` and signing algorithm
@@ -964,18 +991,6 @@ pub unsafe extern "C" fn rind_fips_rsa_sign(
 pub unsafe extern "C" fn rind_fips_rsa_to_pkcs8(key: *const RsaKeyPair) -> *mut Encoded {
     // SAFETY: the caller's contract.
     scrubbed(Depth::Medium, || encoded(unsafe { (*key).to_pkcs8() }))
-}
-
-/// `key`'s public key as a `SubjectPublicKeyInfo`.
-///
-/// # Safety
-/// `key` must be live.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn rind_fips_rsa_to_spki(key: *const RsaKeyPair) -> *mut Encoded {
-    // SAFETY: the caller's contract.
-    scrubbed(Depth::Medium, || {
-        encoded(unsafe { (*key).public_key().to_spki() })
-    })
 }
 
 free!(rind_fips_rsa_free, RsaKeyPair);
@@ -1120,6 +1135,18 @@ pub unsafe extern "C" fn rind_fips_ml_dsa_to_seed(key: *const MlDsa) -> *mut Enc
     scrubbed(Depth::Small, || {
         on_ml_dsa!(key, |key| key.to_seed()).map_or(core::ptr::null_mut(), encoded)
     })
+}
+
+/// Whether `key` has its seed, which it lacks if it was loaded from its
+/// expanded form.
+///
+/// # Safety
+/// `key` must be live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rind_fips_ml_dsa_has_seed(key: *const MlDsa) -> bool {
+    // SAFETY: the caller's contract.
+    let key = unsafe { &*key };
+    on_ml_dsa!(key, |key| key.has_seed())
 }
 
 /// `key`'s private key as PKCS#8.

@@ -309,7 +309,9 @@ pub unsafe extern "C" fn rind_fips_aes_kek_wrap(
     // SAFETY: the caller's contract.
     let (kek, key, wrapped) =
         unsafe { (&*kek, bytes(key, key_len), bytes_mut(wrapped, wrapped_len)) };
-    scrubbed(Depth::Small, || status(kek.wrap_key(Mode::Kw, key, wrapped)))
+    scrubbed(Depth::Small, || {
+        status(kek.wrap_key(Mode::Kw, key, wrapped))
+    })
 }
 
 /// Unwraps the `wrapped_len` bytes at `wrapped` into the `key_len` bytes
@@ -329,7 +331,9 @@ pub unsafe extern "C" fn rind_fips_aes_kek_unwrap(
     // SAFETY: the caller's contract.
     let (kek, wrapped, key) =
         unsafe { (&*kek, bytes(wrapped, wrapped_len), bytes_mut(key, key_len)) };
-    scrubbed(Depth::Small, || status(kek.unwrap_key(Mode::Kw, wrapped, key).map(|_| ())))
+    scrubbed(Depth::Small, || {
+        status(kek.unwrap_key(Mode::Kw, wrapped, key).map(|_| ()))
+    })
 }
 
 /// Wraps the `key_len` bytes at `key` into the `wrapped_len` bytes at
@@ -348,7 +352,9 @@ pub unsafe extern "C" fn rind_fips_aes_kek_wrap_padded(
     // SAFETY: the caller's contract.
     let (kek, key, wrapped) =
         unsafe { (&*kek, bytes(key, key_len), bytes_mut(wrapped, wrapped_len)) };
-    scrubbed(Depth::Small, || status(kek.wrap_key(Mode::Kwp, key, wrapped)))
+    scrubbed(Depth::Small, || {
+        status(kek.wrap_key(Mode::Kwp, key, wrapped))
+    })
 }
 
 /// Unwraps the `wrapped_len` bytes at `wrapped` into the `key_len` bytes

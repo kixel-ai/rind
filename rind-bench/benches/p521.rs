@@ -312,8 +312,7 @@ fn ecdsa_sign(c: &mut Criterion) {
         use verified_garbage::hashes::sha512::Sha512;
         let (signing_key, public_key) = vg_generate();
         // rind verifies verified-garbage's signature.
-        let rind_key =
-            PublicKey::new(&verify::P521_SHA512_FIXED, public_key.as_bytes()).unwrap();
+        let rind_key = PublicKey::new(&verify::P521_SHA512_FIXED, public_key.as_bytes()).unwrap();
         let signature = signing_key.sign::<Sha512>(MESSAGE).unwrap();
         rind_key.verify(MESSAGE, &signature).unwrap();
 
@@ -385,8 +384,7 @@ fn ecdsa_sign(c: &mut Criterion) {
         use verified_garbage::hashes::sha512::Sha512;
         let (signing_key, public_key) = vg_generate();
         // rind verifies verified-garbage's signature.
-        let rind_key =
-            PublicKey::new(&verify::P521_SHA512_FIXED, public_key.as_bytes()).unwrap();
+        let rind_key = PublicKey::new(&verify::P521_SHA512_FIXED, public_key.as_bytes()).unwrap();
         let signature = signing_key.sign::<Sha512>(MESSAGE).unwrap();
         rind_key.verify(MESSAGE, &signature).unwrap();
         let digest: [u8; 64] = digest::digest(&digest::SHA512, MESSAGE)

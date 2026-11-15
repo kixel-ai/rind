@@ -56,6 +56,7 @@ These are in `rind` but not here, since FIPS 140-3 does not approve them:
 - MD5 and SHA-1 hashing; SHA-1 remains for HMAC, HKDF, PBKDF2, and
   verifying legacy signatures
 - HPKE, RSA-OAEP, RSA blind signatures, and ECVRF
-- RSA-PSS verification of any salt length (`RSA_PSS_*_ANY_SALT`)
+- RSA-PSS with a salt of another length than the hash's (`rsa::PssSaltLength`),
+  or verification of any salt length (`rsa::verify::PSS_*_ANY_SALT`)
 - AES-GCM sealing with a caller's nonce: FIPS 140-3 approves sealing only
   with an IV the module generates, which is not offered yet

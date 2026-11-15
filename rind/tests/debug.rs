@@ -273,10 +273,7 @@ fn vrf() {
             assert!(!shown.contains("17"), "{shown}");
             shown
         };
-        assert_eq!(
-            secret(&key),
-            format!("KeyPair {{ algorithm: {name}, .. }}")
-        );
+        assert_eq!(secret(&key), format!("KeyPair {{ algorithm: {name}, .. }}"));
         assert_eq!(secret(&key.to_seed()), "Seed(..)");
 
         let public = key.public_key();

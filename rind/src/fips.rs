@@ -249,19 +249,6 @@ pub fn digest(
     (value.len() == algorithm.output_len()).then(|| crate::digest::Digest::new(algorithm, value))
 }
 
-/// Refuses an RSA key whose modulus is below `algorithm`'s floor, as
-/// [`rsa::PublicKey::verify`](crate::rsa::PublicKey::verify) does, for the
-/// module's public keys, which are bound to an algorithm as they parse.
-pub fn check_rsa_floor(
-    key: &crate::rsa::PublicKey,
-    algorithm: &crate::rsa::VerificationAlgorithm,
-) -> Result<(), Error> {
-    match key.modulus_bits() >= algorithm.min_bits() {
-        true => Ok(()),
-        false => Err(KeyFormatError::RsaModulus.into()),
-    }
-}
-
 /// Refuses an RSA key whose modulus FIPS 186-5 does not approve, as
 /// aws-lc's service indicator does: an even length of 2048 bits or more,
 /// or exactly 1024 bits if `legacy_1024`, for verifying old signatures.

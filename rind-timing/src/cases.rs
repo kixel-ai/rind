@@ -392,8 +392,10 @@ fn cipher_cases(cases: &mut Vec<Case>) {
         let wrapped = random::<40>();
         measure(config, &secrets(32), |kek| {
             let mut key = [0; 32];
-            key_wrap::AesKek::new(&key_wrap::AES_256, kek)
-                .and_then(|kek| kek.unwrap_key(Mode::Kw, &wrapped, &mut key).map(|key| key.len()))
+            key_wrap::AesKek::new(&key_wrap::AES_256, kek).and_then(|kek| {
+                kek.unwrap_key(Mode::Kw, &wrapped, &mut key)
+                    .map(|key| key.len())
+            })
         })
     }));
     // The integrity value an unwrap recovers, compared with RFC 3394's: keys
@@ -409,7 +411,8 @@ fn cipher_cases(cases: &mut Vec<Case>) {
         let wrapped = mismatches(&[0xa6; 8]).map(|ivs| ivs.iter().map(wrap).collect());
         measure(config, &wrapped, |wrapped| {
             let mut key = [0; 32];
-            kek.unwrap_key(Mode::Kw, wrapped, &mut key).map(|key| key.len())
+            kek.unwrap_key(Mode::Kw, wrapped, &mut key)
+                .map(|key| key.len())
         })
     }));
     // RFC 5649's integrity value adds the key's length, which a flip of its
@@ -436,7 +439,8 @@ fn cipher_cases(cases: &mut Vec<Case>) {
         let wrapped = aivs.map(|aivs| aivs.iter().map(wrap).collect());
         measure(config, &wrapped, |wrapped| {
             let mut key = [0; 24];
-            kek.unwrap_key(Mode::Kwp, wrapped, &mut key).map(|key| key.len())
+            kek.unwrap_key(Mode::Kwp, wrapped, &mut key)
+                .map(|key| key.len())
         })
     }));
 }

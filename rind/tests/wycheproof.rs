@@ -711,7 +711,9 @@ fn test_aes_wrap() {
             let kek = AesKek::new(algorithm, &test.key).unwrap();
 
             let mut key = vec![0xaa; test.ct.len().saturating_sub(8)];
-            let result = kek.unwrap_key(Mode::Kw, &test.ct, &mut key).map(|key| key.to_vec());
+            let result = kek
+                .unwrap_key(Mode::Kw, &test.ct, &mut key)
+                .map(|key| key.to_vec());
             match (test.result, result) {
                 (ExpectedResult::Valid, Ok(key)) => assert_eq!(key, test.msg),
                 // RFC 3394 wraps no key shorter than 16 bytes, which the
@@ -763,7 +765,9 @@ fn test_aes_kwp() {
             let kek = AesKek::new(algorithm, &test.key).unwrap();
 
             let mut key = vec![0xaa; test.ct.len().saturating_sub(8)];
-            let result = kek.unwrap_key(Mode::Kwp, &test.ct, &mut key).map(|key| key.to_vec());
+            let result = kek
+                .unwrap_key(Mode::Kwp, &test.ct, &mut key)
+                .map(|key| key.to_vec());
             match (test.result, result) {
                 (ExpectedResult::Valid, Ok(key)) => assert_eq!(key, test.msg),
                 (ExpectedResult::Invalid, Err(Error::DecryptFailed)) => {
