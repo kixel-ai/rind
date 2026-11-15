@@ -154,15 +154,26 @@ pub mod hkdf;
 /// ```
 pub mod pbkdf2;
 
-/// Authenticated decryption with AES-GCM.
+/// Authenticated encryption with AES-GCM.
 ///
-/// An [`aead::Key`] is built from an algorithm constant and key bytes, and
-/// opens what a peer sealed under its nonces. It does not seal: FIPS 140-3
-/// approves AES-GCM encryption only under an IV the module generates, which
-/// this crate does not offer yet.
+/// FIPS 140-3 approves AES-GCM encryption only under an IV the module
+/// generates, so the caller never picks a nonce to seal under. A
+/// [`aead::RandomizedNonceKey`] draws each from the module's DRBG, and a
+/// [`aead::TlsRecordSealingKey`] seals TLS 1.3 records, whose sequence
+/// numbers it checks. An [`aead::Key`] opens what a peer sealed under its
+/// nonces, TLS 1.3 records included: opening one checks nothing more, so
+/// there is no `TlsRecordOpeningKey`.
 ///
 /// ```
 /// use rind_fips::aead::*;
+///
+/// let key = RandomizedNonceKey::new(&AES_256_GCM, &[0x42; 32]).unwrap();
+/// let mut in_out = b"hello".to_vec();
+/// let nonce = key
+///     .seal_in_place_append_tag(b"header", &mut in_out)
+///     .unwrap();
+/// let plaintext = key.open_in_place(nonce, b"header", &mut in_out).unwrap();
+/// assert_eq!(plaintext, b"hello");
 ///
 /// let key = Key::new(&AES_128_GCM, &[0; 16]).unwrap();
 ///
@@ -312,7 +323,10 @@ pub mod encoding;
 /// ```
 pub mod agreement;
 
-/// Key encapsulation: ML-KEM-768.
+/// Key encapsulation: ML-KEM-512, ML-KEM-768, and ML-KEM-1024.
+///
+/// Each type names its parameter set, so a ciphertext of one set fails to
+/// compile against a key of another.
 ///
 /// ```
 /// # fn main() -> Result<(), rind_fips::Error> {
@@ -320,16 +334,18 @@ pub mod agreement;
 ///
 /// // The recipient generates a key pair, and sends the encapsulation key to
 /// // the sender.
-/// let decapsulation_key = DecapsulationKey::generate(&ML_KEM_768)?;
+/// let decapsulation_key = DecapsulationKey::<MlKem768>::generate()?;
 /// let encapsulation_key = decapsulation_key.public_key();
 ///
 /// // The sender parses the encapsulation key, encapsulates a fresh secret,
 /// // and sends the ciphertext back to the recipient.
-/// let peer_key = EncapsulationKey::new(&ML_KEM_768, encapsulation_key.as_ref())?;
+/// let peer_key = EncapsulationKey::<MlKem768>::new(encapsulation_key.as_ref())?;
 /// let (ciphertext, sender_secret) = peer_key.encapsulate()?;
 ///
-/// // The recipient decapsulates the ciphertext, recovering the same secret.
-/// let recipient_secret = decapsulation_key.decapsulate(ciphertext.as_ref())?;
+/// // The recipient parses the ciphertext and decapsulates it, recovering the
+/// // same secret.
+/// let ciphertext = Ciphertext::<MlKem768>::new(ciphertext.as_ref())?;
+/// let recipient_secret = decapsulation_key.decapsulate(&ciphertext);
 ///
 /// // Each side derives its keys from the secret with a KDF.
 /// let salt = rind_fips::hkdf::Salt::new(&rind_fips::hkdf::HKDF_SHA256, b"session salt");

@@ -288,31 +288,39 @@ fn ecdh() {
 }
 
 #[test]
-fn ml_kem_768() {
-    use aws_lc_rs::kem::{Ciphertext, DecapsulationKey, EncapsulationKey, ML_KEM_768};
+fn ml_kem() {
+    use aws_lc_rs::kem::{ML_KEM_512, ML_KEM_768, ML_KEM_1024};
+
+    ml_kem_set::<kem::MlKem512>(&ML_KEM_512);
+    ml_kem_set::<kem::MlKem768>(&ML_KEM_768);
+    ml_kem_set::<kem::MlKem1024>(&ML_KEM_1024);
+}
+
+fn ml_kem_set<A: kem::Algorithm>(algorithm: &'static aws_lc_rs::kem::Algorithm) {
+    use aws_lc_rs::kem::{Ciphertext, DecapsulationKey, EncapsulationKey};
 
     for _ in 0..ROUNDS {
         // Theirs decapsulates what ours encapsulates to it.
-        let theirs_key = DecapsulationKey::generate(&ML_KEM_768).unwrap();
+        let theirs_key = DecapsulationKey::generate(algorithm).unwrap();
         let theirs_public = theirs_key.encapsulation_key().unwrap().key_bytes().unwrap();
-        let (ciphertext, secret) =
-            kem::EncapsulationKey::new(&kem::ML_KEM_768, theirs_public.as_ref())
-                .unwrap()
-                .encapsulate()
-                .unwrap();
+        let (ciphertext, secret) = kem::EncapsulationKey::<A>::new(theirs_public.as_ref())
+            .unwrap()
+            .encapsulate()
+            .unwrap();
         let theirs_secret = theirs_key
             .decapsulate(Ciphertext::from(ciphertext.as_ref()))
             .unwrap();
         assert_eq!(secret.as_ref(), theirs_secret.as_ref());
 
         // Ours decapsulates what theirs encapsulates to it.
-        let ours = kem::DecapsulationKey::generate(&kem::ML_KEM_768).unwrap();
+        let ours = kem::DecapsulationKey::<A>::generate().unwrap();
         let (ciphertext, theirs_secret) =
-            EncapsulationKey::new(&ML_KEM_768, ours.public_key().as_ref())
+            EncapsulationKey::new(algorithm, ours.public_key().as_ref())
                 .unwrap()
                 .encapsulate()
                 .unwrap();
-        let secret = ours.decapsulate(ciphertext.as_ref()).unwrap();
+        let ciphertext = kem::Ciphertext::new(ciphertext.as_ref()).unwrap();
+        let secret = ours.decapsulate(&ciphertext);
         assert_eq!(secret.as_ref(), theirs_secret.as_ref());
     }
 }
@@ -452,6 +460,87 @@ fn aes_gcm() {
                 .open_in_place(aead::Nonce::assume_unique_for_key(nonce), &aad, &mut sealed)
                 .unwrap();
             assert_eq!(opened, message);
+
+            // What the module seals under a random nonce, aws-lc-rs opens.
+            let ours_key = aead::RandomizedNonceKey::new(ours, &key).unwrap();
+            let mut sealed = message.clone();
+            let nonce = ours_key
+                .seal_in_place_append_tag(&aad, &mut sealed)
+                .unwrap();
+            let nonce = Nonce::try_assume_unique_for_key(nonce.as_ref()).unwrap();
+            let opened = theirs_key
+                .open_in_place(nonce, Aad::from(&aad), &mut sealed)
+                .unwrap();
+            assert_eq!(opened, message);
+        }
+    }
+}
+
+/// A TLS 1.3 record key seals and refuses each record as aws-lc's does.
+#[test]
+fn tls13_records() {
+    use aws_lc_rs::aead::{Aad, Nonce, TlsProtocolId, TlsRecordSealingKey};
+
+    for (ours, theirs_algorithm) in [
+        (&aead::AES_128_GCM, &aws_lc_rs::aead::AES_128_GCM),
+        (&aead::AES_256_GCM, &aws_lc_rs::aead::AES_256_GCM),
+    ] {
+        let key = random(ours.key_len());
+        let iv: [u8; 12] = random(12).try_into().unwrap();
+        let mut ours_key =
+            aead::TlsRecordSealingKey::new(ours, aead::TlsProtocolId::TLS13, &key).unwrap();
+        let mut theirs_key =
+            TlsRecordSealingKey::new(theirs_algorithm, TlsProtocolId::TLS13, &key).unwrap();
+        // Increasing, repeated, decreasing, and wrapping sequence numbers,
+        // then random ones.
+        let mut seqs = vec![0, 0, 1, 2, 2, 1, 10, 9, u64::MAX, u64::MAX - 1, u64::MAX];
+        let mut counter = 0u64;
+        seqs.extend((0..64).map(|_| {
+            counter = counter.wrapping_add(u64::from(random(1)[0] % 3));
+            counter
+        }));
+        let mut ours_key_late =
+            aead::TlsRecordSealingKey::new(ours, aead::TlsProtocolId::TLS13, &key).unwrap();
+        let mut theirs_key_late =
+            TlsRecordSealingKey::new(theirs_algorithm, TlsProtocolId::TLS13, &key).unwrap();
+        for (i, seq) in seqs.into_iter().enumerate() {
+            let mut nonce = iv;
+            for (n, s) in nonce[4..].iter_mut().zip(seq.to_be_bytes()) {
+                *n ^= s;
+            }
+            let (aad, message) = (random(13), random(i * 3));
+            // The first keys see the fixed steps; fresh ones see the random
+            // sequence from its start.
+            let (ours_key, theirs_key) = match i < 11 {
+                true => (&mut ours_key, &mut theirs_key),
+                false => (&mut ours_key_late, &mut theirs_key_late),
+            };
+            let mut ours_out = message.clone();
+            let ours_result = ours_key.seal_in_place_append_tag(
+                aead::Nonce::assume_unique_for_key(nonce),
+                &aad,
+                &mut ours_out,
+            );
+            let mut theirs_out = message.clone();
+            let theirs_result = theirs_key.seal_in_place_append_tag(
+                Nonce::assume_unique_for_key(nonce),
+                Aad::from(&aad),
+                &mut theirs_out,
+            );
+            assert_eq!(
+                ours_result.is_ok(),
+                theirs_result.is_ok(),
+                "record {i}, seq {seq}"
+            );
+            match ours_result {
+                Ok(()) => assert_eq!(ours_out, theirs_out),
+                Err(error) => {
+                    // Both zero the record; aws-lc-rs also appends a zero tag.
+                    assert_eq!(error, rind_fips::Error::MessageLimitReached);
+                    assert!(ours_out.iter().all(|&b| b == 0));
+                    assert_eq!(theirs_out, vec![0; message.len() + 16]);
+                }
+            }
         }
     }
 }
