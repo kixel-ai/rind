@@ -290,7 +290,8 @@ for module in "${selected[@]}"; do
                 done
             fi
             # The FIPS module's source rides along: its cfg touches only where
-            # randomness comes from, which no backend changes.
+            # randomness comes from, which no backend changes, and the CPU
+            # check, which only the backends it builds on have.
             CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS="$portable --cfg rind_fips" \
                 cargo clippy -p rind --lib --locked --target x86_64-unknown-linux-gnu -- --deny warnings
             # And on a 32-bit target, whose Poly1305 and GHASH differ.
@@ -321,7 +322,7 @@ for module in "${selected[@]}"; do
             ;;
         check:quest) quest check ;;
         check:license) bash admin/scan-license ;;
-        check:mutants) admin/mutants --pins ;;
+        check:mutants) admin/mutants --pins && admin/mutants --expand-diff-self-test ;;
         check:testing) python3 admin/testing ;;
         check:compat) python3 admin/x86-cpu markdown-table | diff -u COMPATIBILITY.md - ;;
         fix:compat) python3 admin/x86-cpu markdown-table >COMPATIBILITY.md ;;
