@@ -180,7 +180,15 @@ SECTIONS = [
             "mlkem512-decaps/{lib}",
         ],
     ),
-    ("ML-DSA", ["mldsa65-keygen/{lib}", "mldsa65-sign/{lib}", "mldsa65-verify/{lib}"]),
+    (
+        "ML-DSA",
+        [
+            "mldsa65-keygen/{lib}",
+            "mldsa65-sign/{lib}",
+            "mldsa65-verify/{lib}",
+            "mldsa65-load-verify/{lib}",
+        ],
+    ),
     (
         "P-384 and P-521",
         [
@@ -816,6 +824,7 @@ NAMES = {
     "mldsa65-keygen": "ML-DSA-65 key generation",
     "mldsa65-sign": "ML-DSA-65 sign",
     "mldsa65-verify": "ML-DSA-65 verify",
+    "mldsa65-load-verify": "ML-DSA-65 load and verify",
     "p384-ecdh": "P-384 ECDH",
     "p384-ecdsa-sign": "P-384 ECDSA sign",
     "p384-ecdsa-verify": "P-384 ECDSA verify",

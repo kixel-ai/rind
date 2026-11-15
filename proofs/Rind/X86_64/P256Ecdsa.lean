@@ -1470,7 +1470,6 @@ key's cache returns, whatever its build, if that build does: x86_64's key
 check stores an encoding it has checked, `Rind.X86_64.P256KeyCheck`. -/
 structure Cached : Prop where
   new : ∃ c, low.generic.reuse_cache.ReuseCache.new
-      (Array.Insts.CoreMarkerCopy 8#usize mid.p256.AffineMontPoint.Insts.CoreMarkerCopy)
       (core.default.DefaultArray 8#usize mid.p256.AffineMontPoint.Insts.CoreDefaultDefault) = ok c
   get_or_build_now : ∀ (key : mid.p256.VerifyingKey) (P : Std.Array mid.p256.AffineMontPoint 8#usize → Prop),
     mid.p256.AffineMontPoint.public_odd_multiples key.point ⦃ P ⦄ →
@@ -1485,7 +1484,6 @@ structure Cached : Prop where
       mid.p256.AffineMontPoint.public_more_odd_multiples o ⦃ P ⦄ ⦄ →
     mid.p256.AffineMontPoint.public_more_odd_multiples odd ⦃ P ⦄ →
     low.generic.reuse_cache.ReuseCache.get_or_build
-      (Array.Insts.CoreMarkerCopy 8#usize mid.p256.AffineMontPoint.Insts.CoreMarkerCopy)
       (core.default.DefaultArray 8#usize mid.p256.AffineMontPoint.Insts.CoreDefaultDefault)
       mid.p256.VerifyingKey.raw_ecdsa_verify.closure_1.Insts.CoreOpsFunctionFnOnceTupleArrayAffineMontPoint8
       key.more_odd_multiples odd ⦃ r => r = none ∨ ∃ m, r = some m ∧ P m ⦄
@@ -1493,7 +1491,7 @@ structure Cached : Prop where
       (Array.Insts.CoreMarkerCopy 8#usize mid.p256.AffineMontPoint.Insts.CoreMarkerCopy)
       (core.default.DefaultArray 8#usize mid.p256.AffineMontPoint.Insts.CoreDefaultDefault) c = ok c'
   point_new : ∃ c, low.generic.reuse_cache.ReuseCache.new
-      high.ecdsa.EncodedPoint.Insts.CoreMarkerCopy high.ecdsa.EncodedPoint.Insts.CoreDefaultDefault = ok c
+      high.ecdsa.EncodedPoint.Insts.CoreDefaultDefault = ok c
   point_get_or_build_now : ∀ (key : P256SigningKey) (P : high.ecdsa.EncodedPoint → Prop),
     high.ecdsa.SigningKey.public_key_uncompressed.closure.Insts.CoreOpsFunctionFnOnceTupleEncodedPoint.call_once
       P256C key () ⦃ P ⦄ →

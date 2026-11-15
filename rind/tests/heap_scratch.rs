@@ -228,6 +228,10 @@ fn ml_dsa_set<P: rind::signature::sign::MlDsaParameterSet>() {
     independent("ML-DSA seed load", seeds, |seed| {
         MlDsaKeyPair::<P>::from_seed(seed).unwrap()
     });
+    // A key pair's expansion is as good as its key, so its drop wipes it.
+    independent("ML-DSA key pair drop", seeds, |seed| {
+        drop(MlDsaKeyPair::<P>::from_seed(seed).unwrap())
+    });
     let keys = seeds.map(|seed| MlDsaKeyPair::<P>::from_seed(&seed).unwrap());
     independent("ML-DSA export", keys.each_ref(), |key| key.to_pkcs8());
     // Signing is hedged, so even under one key its randomness varies: every
@@ -246,7 +250,7 @@ fn ml_dsa_expanded_set<P: rind::signature::sign::MlDsaParameterSet>(
     let seeds = [[1u8; 32], [2u8; 32]];
     let expanded = seeds.map(|seed| ml_dsa_expanded_pkcs8(theirs, &seed));
     independent("ML-DSA expanded load", expanded, |der| {
-        MlDsaKeyPair::<P>::from_pkcs8(der).unwrap()
+        drop(MlDsaKeyPair::<P>::from_pkcs8(der).unwrap())
     });
 }
 

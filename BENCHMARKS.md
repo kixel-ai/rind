@@ -34,7 +34,7 @@ rind (DIT held) times rind with `rind::cpu::Dit::hold()` held across the timed l
 
 Measured 2026-11-06 at [`f95b91da`](https://github.com/kixel-ai/rind/commit/f95b91da886bee265dbd836192a7ade2f9158c47), noisy, on NixOS 26.11 (Zokor) (Linux 6.18.56) with rustc 1.98.1 (48a229cea 2026-09-01).
 
-Not timed on `nixos`: full handshake, X25519, every logical CPU, resumed handshake, X25519, every logical CPU, SHA3-256, 64 B, SHA3-256, 1350 B, SHA3-256, 16 KB, SHA3-512, 64 B, SHA3-512, 1350 B, SHA3-512, 16 KB, ML-KEM-1024 key generation, ML-KEM-1024 encapsulate, ML-KEM-1024 decapsulate, ML-KEM-512 key generation, ML-KEM-512 encapsulate, ML-KEM-512 decapsulate, ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verify, HPKE X25519 sender setup, HPKE X25519 recipient setup, HPKE AES-128-GCM seal, 1350 B, HPKE AES-128-GCM open, 1350 B, Blind RSA-2048 blind, Blind RSA-2048 sign, Blind RSA-2048 finalize, Blind RSA-2048 verify, OPRF ristretto255 blind, OPRF ristretto255 evaluate, OPRF ristretto255 finalize, VOPRF P-384 blind, VOPRF P-384 evaluate, VOPRF P-384 finalize, ECVRF edwards25519 prove, ECVRF edwards25519 verify, ECVRF P-256 prove, ECVRF P-256 verify, SPAKE2+ P-256 prover share, SPAKE2+ P-256 verifier share and confirmation, SPAKE2+ P-256 prover confirmation and key, SPAKE2+ P-256 verifier key.
+Not timed on `nixos`: full handshake, X25519, every logical CPU, resumed handshake, X25519, every logical CPU, SHA3-256, 64 B, SHA3-256, 1350 B, SHA3-256, 16 KB, SHA3-512, 64 B, SHA3-512, 1350 B, SHA3-512, 16 KB, ML-KEM-1024 key generation, ML-KEM-1024 encapsulate, ML-KEM-1024 decapsulate, ML-KEM-512 key generation, ML-KEM-512 encapsulate, ML-KEM-512 decapsulate, ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verify, ML-DSA-65 load and verify, HPKE X25519 sender setup, HPKE X25519 recipient setup, HPKE AES-128-GCM seal, 1350 B, HPKE AES-128-GCM open, 1350 B, Blind RSA-2048 blind, Blind RSA-2048 sign, Blind RSA-2048 finalize, Blind RSA-2048 verify, OPRF ristretto255 blind, OPRF ristretto255 evaluate, OPRF ristretto255 finalize, VOPRF P-384 blind, VOPRF P-384 evaluate, VOPRF P-384 finalize, ECVRF edwards25519 prove, ECVRF edwards25519 verify, ECVRF P-256 prove, ECVRF P-256 verify, SPAKE2+ P-256 prover share, SPAKE2+ P-256 verifier share and confirmation, SPAKE2+ P-256 prover confirmation and key, SPAKE2+ P-256 verifier key.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="benchmarks/nixos-dark.svg">
@@ -116,6 +116,7 @@ Not timed on `nixos`: full handshake, X25519, every logical CPU, resumed handsha
 | ML-DSA-65 key generation | - | - | - | - | - | - | - |
 | ML-DSA-65 sign | - | - | - | - | - | - | - |
 | ML-DSA-65 verify | - | - | - | - | - | - | - |
+| ML-DSA-65 load and verify | - | - | - | - | - | - | - |
 | P-384 ECDH | 179.71 µs ✓ | 180.49 µs | 601.49 µs | 1.04 ms | 302.57 µs | - | 656.67 µs |
 | P-384 ECDSA sign | 53.07 µs | 97.47 µs | 474.64 µs | 238.31 µs | 185.15 µs | - | 235.52 µs |
 | P-384 ECDSA verify | 157.33 µs | 199.21 µs | 727.10 µs | 872.06 µs | 315.99 µs | - | 551.89 µs |
@@ -151,7 +152,7 @@ Not timed on `nixos`: full handshake, X25519, every logical CPU, resumed handsha
 
 Measured 2026-11-07 at [`9e7f6a5a`](https://github.com/kixel-ai/rind/commit/9e7f6a5a9ea59a0cf1251c24af6c5d4f21c2b0fd), on Ubuntu 26.04.1 LTS (Linux 7.0.0-42-generic) with rustc 1.98.1 (48a229cea 2026-09-01).
 
-Not timed on `desktop`: full handshake, X25519, every logical CPU, resumed handshake, X25519, every logical CPU, SHA3-256, 64 B, SHA3-256, 1350 B, SHA3-256, 16 KB, SHA3-512, 64 B, SHA3-512, 1350 B, SHA3-512, 16 KB, ML-KEM-1024 key generation, ML-KEM-1024 encapsulate, ML-KEM-1024 decapsulate, ML-KEM-512 key generation, ML-KEM-512 encapsulate, ML-KEM-512 decapsulate, ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verify, HPKE X25519 sender setup, HPKE X25519 recipient setup, HPKE AES-128-GCM seal, 1350 B, HPKE AES-128-GCM open, 1350 B, Blind RSA-2048 blind, Blind RSA-2048 sign, Blind RSA-2048 finalize, Blind RSA-2048 verify, OPRF ristretto255 blind, OPRF ristretto255 evaluate, OPRF ristretto255 finalize, VOPRF P-384 blind, VOPRF P-384 evaluate, VOPRF P-384 finalize, ECVRF edwards25519 prove, ECVRF edwards25519 verify, ECVRF P-256 prove, ECVRF P-256 verify, SPAKE2+ P-256 prover share, SPAKE2+ P-256 verifier share and confirmation, SPAKE2+ P-256 prover confirmation and key, SPAKE2+ P-256 verifier key.
+Not timed on `desktop`: full handshake, X25519, every logical CPU, resumed handshake, X25519, every logical CPU, SHA3-256, 64 B, SHA3-256, 1350 B, SHA3-256, 16 KB, SHA3-512, 64 B, SHA3-512, 1350 B, SHA3-512, 16 KB, ML-KEM-1024 key generation, ML-KEM-1024 encapsulate, ML-KEM-1024 decapsulate, ML-KEM-512 key generation, ML-KEM-512 encapsulate, ML-KEM-512 decapsulate, ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verify, ML-DSA-65 load and verify, HPKE X25519 sender setup, HPKE X25519 recipient setup, HPKE AES-128-GCM seal, 1350 B, HPKE AES-128-GCM open, 1350 B, Blind RSA-2048 blind, Blind RSA-2048 sign, Blind RSA-2048 finalize, Blind RSA-2048 verify, OPRF ristretto255 blind, OPRF ristretto255 evaluate, OPRF ristretto255 finalize, VOPRF P-384 blind, VOPRF P-384 evaluate, VOPRF P-384 finalize, ECVRF edwards25519 prove, ECVRF edwards25519 verify, ECVRF P-256 prove, ECVRF P-256 verify, SPAKE2+ P-256 prover share, SPAKE2+ P-256 verifier share and confirmation, SPAKE2+ P-256 prover confirmation and key, SPAKE2+ P-256 verifier key.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="benchmarks/desktop-dark.svg">
@@ -233,6 +234,7 @@ Not timed on `desktop`: full handshake, X25519, every logical CPU, resumed hands
 | ML-DSA-65 key generation | - | - | - | - | - | - | - |
 | ML-DSA-65 sign | - | - | - | - | - | - | - |
 | ML-DSA-65 verify | - | - | - | - | - | - | - |
+| ML-DSA-65 load and verify | - | - | - | - | - | - | - |
 | P-384 ECDH | 100.20 µs ✓ | 109.34 µs | 369.83 µs | 402.09 µs | 174.12 µs | - | 265.21 µs |
 | P-384 ECDSA sign | 23.48 µs | 46.55 µs | 197.31 µs | 85.50 µs | 90.29 µs | - | 88.98 µs |
 | P-384 ECDSA verify | 100.10 µs | 115.71 µs | 357.26 µs | 359.61 µs | 166.49 µs | - | 216.27 µs |
@@ -268,7 +270,7 @@ Not timed on `desktop`: full handshake, X25519, every logical CPU, resumed hands
 
 Measured 2026-11-06 at [`f95b91da`](https://github.com/kixel-ai/rind/commit/f95b91da886bee265dbd836192a7ade2f9158c47), on NixOS 26.11 (Zokor) (Linux 6.18.56) with rustc 1.98.1 (48a229cea 2026-09-01).
 
-Not timed on `nixos2`: full handshake, X25519, every logical CPU, resumed handshake, X25519, every logical CPU, SHA3-256, 64 B, SHA3-256, 1350 B, SHA3-256, 16 KB, SHA3-512, 64 B, SHA3-512, 1350 B, SHA3-512, 16 KB, ML-KEM-1024 key generation, ML-KEM-1024 encapsulate, ML-KEM-1024 decapsulate, ML-KEM-512 key generation, ML-KEM-512 encapsulate, ML-KEM-512 decapsulate, ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verify, HPKE X25519 sender setup, HPKE X25519 recipient setup, HPKE AES-128-GCM seal, 1350 B, HPKE AES-128-GCM open, 1350 B, Blind RSA-2048 blind, Blind RSA-2048 sign, Blind RSA-2048 finalize, Blind RSA-2048 verify, OPRF ristretto255 blind, OPRF ristretto255 evaluate, OPRF ristretto255 finalize, VOPRF P-384 blind, VOPRF P-384 evaluate, VOPRF P-384 finalize, ECVRF edwards25519 prove, ECVRF edwards25519 verify, ECVRF P-256 prove, ECVRF P-256 verify, SPAKE2+ P-256 prover share, SPAKE2+ P-256 verifier share and confirmation, SPAKE2+ P-256 prover confirmation and key, SPAKE2+ P-256 verifier key.
+Not timed on `nixos2`: full handshake, X25519, every logical CPU, resumed handshake, X25519, every logical CPU, SHA3-256, 64 B, SHA3-256, 1350 B, SHA3-256, 16 KB, SHA3-512, 64 B, SHA3-512, 1350 B, SHA3-512, 16 KB, ML-KEM-1024 key generation, ML-KEM-1024 encapsulate, ML-KEM-1024 decapsulate, ML-KEM-512 key generation, ML-KEM-512 encapsulate, ML-KEM-512 decapsulate, ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verify, ML-DSA-65 load and verify, HPKE X25519 sender setup, HPKE X25519 recipient setup, HPKE AES-128-GCM seal, 1350 B, HPKE AES-128-GCM open, 1350 B, Blind RSA-2048 blind, Blind RSA-2048 sign, Blind RSA-2048 finalize, Blind RSA-2048 verify, OPRF ristretto255 blind, OPRF ristretto255 evaluate, OPRF ristretto255 finalize, VOPRF P-384 blind, VOPRF P-384 evaluate, VOPRF P-384 finalize, ECVRF edwards25519 prove, ECVRF edwards25519 verify, ECVRF P-256 prove, ECVRF P-256 verify, SPAKE2+ P-256 prover share, SPAKE2+ P-256 verifier share and confirmation, SPAKE2+ P-256 prover confirmation and key, SPAKE2+ P-256 verifier key.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="benchmarks/nixos2-dark.svg">
@@ -350,6 +352,7 @@ Not timed on `nixos2`: full handshake, X25519, every logical CPU, resumed handsh
 | ML-DSA-65 key generation | - | - | - | - | - | - | - |
 | ML-DSA-65 sign | - | - | - | - | - | - | - |
 | ML-DSA-65 verify | - | - | - | - | - | - | - |
+| ML-DSA-65 load and verify | - | - | - | - | - | - | - |
 | P-384 ECDH | 150.97 µs ✓ | 174.62 µs | 645.54 µs | 769.61 µs | 245.24 µs | - | 483.50 µs |
 | P-384 ECDSA sign | 39.62 µs | 82.65 µs | 343.16 µs | 170.64 µs | 128.64 µs | - | 164.53 µs |
 | P-384 ECDSA verify | 141.44 µs | 175.92 µs | 622.90 µs | 695.04 µs | 239.41 µs | - | 399.63 µs |
@@ -387,7 +390,7 @@ Measured 2026-11-07 at [`9e7f6a5a`](https://github.com/kixel-ai/rind/commit/9e7f
 
 The maintainer's MacBook, in daily use. Its cores have DIT, which rind sets around each call that handles a secret and the other libraries never set; Known gaps gives its cost.
 
-Not timed on `kixtop`: full handshake, X25519, every logical CPU, resumed handshake, X25519, every logical CPU, SHA3-256, 64 B, SHA3-256, 1350 B, SHA3-256, 16 KB, SHA3-512, 64 B, SHA3-512, 1350 B, SHA3-512, 16 KB, ML-KEM-1024 key generation, ML-KEM-1024 encapsulate, ML-KEM-1024 decapsulate, ML-KEM-512 key generation, ML-KEM-512 encapsulate, ML-KEM-512 decapsulate, ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verify, HPKE X25519 sender setup, HPKE X25519 recipient setup, HPKE AES-128-GCM seal, 1350 B, HPKE AES-128-GCM open, 1350 B, Blind RSA-2048 blind, Blind RSA-2048 sign, Blind RSA-2048 finalize, Blind RSA-2048 verify, OPRF ristretto255 blind, OPRF ristretto255 evaluate, OPRF ristretto255 finalize, VOPRF P-384 blind, VOPRF P-384 evaluate, VOPRF P-384 finalize, ECVRF edwards25519 prove, ECVRF edwards25519 verify, ECVRF P-256 prove, ECVRF P-256 verify, SPAKE2+ P-256 prover share, SPAKE2+ P-256 verifier share and confirmation, SPAKE2+ P-256 prover confirmation and key, SPAKE2+ P-256 verifier key.
+Not timed on `kixtop`: full handshake, X25519, every logical CPU, resumed handshake, X25519, every logical CPU, SHA3-256, 64 B, SHA3-256, 1350 B, SHA3-256, 16 KB, SHA3-512, 64 B, SHA3-512, 1350 B, SHA3-512, 16 KB, ML-KEM-1024 key generation, ML-KEM-1024 encapsulate, ML-KEM-1024 decapsulate, ML-KEM-512 key generation, ML-KEM-512 encapsulate, ML-KEM-512 decapsulate, ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verify, ML-DSA-65 load and verify, HPKE X25519 sender setup, HPKE X25519 recipient setup, HPKE AES-128-GCM seal, 1350 B, HPKE AES-128-GCM open, 1350 B, Blind RSA-2048 blind, Blind RSA-2048 sign, Blind RSA-2048 finalize, Blind RSA-2048 verify, OPRF ristretto255 blind, OPRF ristretto255 evaluate, OPRF ristretto255 finalize, VOPRF P-384 blind, VOPRF P-384 evaluate, VOPRF P-384 finalize, ECVRF edwards25519 prove, ECVRF edwards25519 verify, ECVRF P-256 prove, ECVRF P-256 verify, SPAKE2+ P-256 prover share, SPAKE2+ P-256 verifier share and confirmation, SPAKE2+ P-256 prover confirmation and key, SPAKE2+ P-256 verifier key.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="benchmarks/kixtop-dark.svg">
@@ -469,6 +472,7 @@ Not timed on `kixtop`: full handshake, X25519, every logical CPU, resumed handsh
 | ML-DSA-65 key generation | - | - | - | - | - | - | - | - |
 | ML-DSA-65 sign | - | - | - | - | - | - | - | - |
 | ML-DSA-65 verify | - | - | - | - | - | - | - | - |
+| ML-DSA-65 load and verify | - | - | - | - | - | - | - | - |
 | P-384 ECDH | 90.11 µs ✓ | - | 104.99 µs | 413.70 µs | 488.31 µs | 150.93 µs | - | 280.83 µs |
 | P-384 ECDSA sign | 22.30 µs | - | 49.21 µs | 222.34 µs | 111.89 µs | 80.22 µs | - | 102.69 µs |
 | P-384 ECDSA verify | 84.01 µs | - | 110.79 µs | 397.21 µs | 422.13 µs | 148.92 µs | - | 237.68 µs |
@@ -506,7 +510,7 @@ Measured 2026-11-06 at [`6b185382`](https://github.com/kixel-ai/rind/commit/6b18
 
 OVH VPS in Virginia, 4 shared vCPUs: other tenants add noise that a dedicated host's times lack.
 
-Not timed on `ovh-iad`: full handshake, X25519, every logical CPU, resumed handshake, X25519, every logical CPU, SHA3-256, 64 B, SHA3-256, 1350 B, SHA3-256, 16 KB, SHA3-512, 64 B, SHA3-512, 1350 B, SHA3-512, 16 KB, ML-KEM-1024 key generation, ML-KEM-1024 encapsulate, ML-KEM-1024 decapsulate, ML-KEM-512 key generation, ML-KEM-512 encapsulate, ML-KEM-512 decapsulate, ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verify, HPKE X25519 sender setup, HPKE X25519 recipient setup, HPKE AES-128-GCM seal, 1350 B, HPKE AES-128-GCM open, 1350 B, Blind RSA-2048 blind, Blind RSA-2048 sign, Blind RSA-2048 finalize, Blind RSA-2048 verify, OPRF ristretto255 blind, OPRF ristretto255 evaluate, OPRF ristretto255 finalize, VOPRF P-384 blind, VOPRF P-384 evaluate, VOPRF P-384 finalize, ECVRF edwards25519 prove, ECVRF edwards25519 verify, ECVRF P-256 prove, ECVRF P-256 verify, SPAKE2+ P-256 prover share, SPAKE2+ P-256 verifier share and confirmation, SPAKE2+ P-256 prover confirmation and key, SPAKE2+ P-256 verifier key.
+Not timed on `ovh-iad`: full handshake, X25519, every logical CPU, resumed handshake, X25519, every logical CPU, SHA3-256, 64 B, SHA3-256, 1350 B, SHA3-256, 16 KB, SHA3-512, 64 B, SHA3-512, 1350 B, SHA3-512, 16 KB, ML-KEM-1024 key generation, ML-KEM-1024 encapsulate, ML-KEM-1024 decapsulate, ML-KEM-512 key generation, ML-KEM-512 encapsulate, ML-KEM-512 decapsulate, ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verify, ML-DSA-65 load and verify, HPKE X25519 sender setup, HPKE X25519 recipient setup, HPKE AES-128-GCM seal, 1350 B, HPKE AES-128-GCM open, 1350 B, Blind RSA-2048 blind, Blind RSA-2048 sign, Blind RSA-2048 finalize, Blind RSA-2048 verify, OPRF ristretto255 blind, OPRF ristretto255 evaluate, OPRF ristretto255 finalize, VOPRF P-384 blind, VOPRF P-384 evaluate, VOPRF P-384 finalize, ECVRF edwards25519 prove, ECVRF edwards25519 verify, ECVRF P-256 prove, ECVRF P-256 verify, SPAKE2+ P-256 prover share, SPAKE2+ P-256 verifier share and confirmation, SPAKE2+ P-256 prover confirmation and key, SPAKE2+ P-256 verifier key.
 
 graviola isn't timed on `ovh-iad`: it requires ADX, which this CPU lacks.
 
@@ -590,6 +594,7 @@ graviola isn't timed on `ovh-iad`: it requires ADX, which this CPU lacks.
 | ML-DSA-65 key generation | - | - | - | - | - | - |
 | ML-DSA-65 sign | - | - | - | - | - | - |
 | ML-DSA-65 verify | - | - | - | - | - | - |
+| ML-DSA-65 load and verify | - | - | - | - | - | - |
 | P-384 ECDH | 295.16 µs ✓ | 310.31 µs | 1.02 ms | 1.23 ms | - | 860.17 µs |
 | P-384 ECDSA sign | 71.60 µs | 127.99 µs | 549.99 µs | 268.38 µs | - | 272.00 µs |
 | P-384 ECDSA verify | 255.43 µs | 316.06 µs | 1.00 ms | 1.08 ms | - | 652.34 µs |
@@ -627,7 +632,7 @@ Measured 2026-11-06 at [`6b185382`](https://github.com/kixel-ai/rind/commit/6b18
 
 OVH VPS in Oregon, 4 shared vCPUs: other tenants add noise that a dedicated host's times lack.
 
-Not timed on `ovh-sea`: full handshake, X25519, every logical CPU, resumed handshake, X25519, every logical CPU, SHA3-256, 64 B, SHA3-256, 1350 B, SHA3-256, 16 KB, SHA3-512, 64 B, SHA3-512, 1350 B, SHA3-512, 16 KB, ML-KEM-1024 key generation, ML-KEM-1024 encapsulate, ML-KEM-1024 decapsulate, ML-KEM-512 key generation, ML-KEM-512 encapsulate, ML-KEM-512 decapsulate, ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verify, HPKE X25519 sender setup, HPKE X25519 recipient setup, HPKE AES-128-GCM seal, 1350 B, HPKE AES-128-GCM open, 1350 B, Blind RSA-2048 blind, Blind RSA-2048 sign, Blind RSA-2048 finalize, Blind RSA-2048 verify, OPRF ristretto255 blind, OPRF ristretto255 evaluate, OPRF ristretto255 finalize, VOPRF P-384 blind, VOPRF P-384 evaluate, VOPRF P-384 finalize, ECVRF edwards25519 prove, ECVRF edwards25519 verify, ECVRF P-256 prove, ECVRF P-256 verify, SPAKE2+ P-256 prover share, SPAKE2+ P-256 verifier share and confirmation, SPAKE2+ P-256 prover confirmation and key, SPAKE2+ P-256 verifier key.
+Not timed on `ovh-sea`: full handshake, X25519, every logical CPU, resumed handshake, X25519, every logical CPU, SHA3-256, 64 B, SHA3-256, 1350 B, SHA3-256, 16 KB, SHA3-512, 64 B, SHA3-512, 1350 B, SHA3-512, 16 KB, ML-KEM-1024 key generation, ML-KEM-1024 encapsulate, ML-KEM-1024 decapsulate, ML-KEM-512 key generation, ML-KEM-512 encapsulate, ML-KEM-512 decapsulate, ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verify, ML-DSA-65 load and verify, HPKE X25519 sender setup, HPKE X25519 recipient setup, HPKE AES-128-GCM seal, 1350 B, HPKE AES-128-GCM open, 1350 B, Blind RSA-2048 blind, Blind RSA-2048 sign, Blind RSA-2048 finalize, Blind RSA-2048 verify, OPRF ristretto255 blind, OPRF ristretto255 evaluate, OPRF ristretto255 finalize, VOPRF P-384 blind, VOPRF P-384 evaluate, VOPRF P-384 finalize, ECVRF edwards25519 prove, ECVRF edwards25519 verify, ECVRF P-256 prove, ECVRF P-256 verify, SPAKE2+ P-256 prover share, SPAKE2+ P-256 verifier share and confirmation, SPAKE2+ P-256 prover confirmation and key, SPAKE2+ P-256 verifier key.
 
 graviola isn't timed on `ovh-sea`: it requires ADX, which this CPU lacks.
 
@@ -711,6 +716,7 @@ graviola isn't timed on `ovh-sea`: it requires ADX, which this CPU lacks.
 | ML-DSA-65 key generation | - | - | - | - | - | - |
 | ML-DSA-65 sign | - | - | - | - | - | - |
 | ML-DSA-65 verify | - | - | - | - | - | - |
+| ML-DSA-65 load and verify | - | - | - | - | - | - |
 | P-384 ECDH | 264.09 µs ✓ | 291.94 µs | 980.96 µs | 1.20 ms | - | 765.55 µs |
 | P-384 ECDSA sign | 67.08 µs | 126.33 µs | 534.87 µs | 262.54 µs | - | 253.00 µs |
 | P-384 ECDSA verify | 247.76 µs | 299.75 µs | 951.59 µs | 1.05 ms | - | 612.24 µs |
