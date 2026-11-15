@@ -801,8 +801,8 @@ const MAX_L: usize = 7;
 /// FIPS 204's `ML-DSA.Verify_internal`: verifies `signature` over `mu` under
 /// public key `pk`, whose expansion `expanded` keeps once built.
 ///
-/// A signature refused by its encoding or its `z`'s norm is refused before
-/// the key is expanded.
+/// A signature refused by its length, its hints' encoding, or its `z`'s
+/// norm is refused before it counts as a use of the key's expansion.
 #[inline(never)]
 fn verify_internal<P: Params>(
     pk: &[u8],
@@ -830,6 +830,9 @@ fn verify_internal<P: Params>(
             return Err(Error::BadSignature);
         }
         low::mldsa_ntt(&mut z.0);
+    }
+    if !hints_valid::<P>(hints) {
+        return Err(Error::BadSignature);
     }
 
     // A use that keeps nothing expands only `A`, and transforms `t1` a row
@@ -874,9 +877,7 @@ fn verify_internal<P: Params>(
         low::mldsa_reduce(&mut w1.0);
         low::mldsa_intt(&mut w1.0);
         low::mldsa_caddq(&mut w1.0);
-        if !unpack_hints::<P>(&mut h, hints, i) {
-            return Err(Error::BadSignature);
-        }
+        unpack_hints::<P>(&mut h, hints, i);
         use_hint::<P>(&mut w1, &h);
         pack_w1::<P>(packed, &w1);
     }
@@ -962,26 +963,37 @@ fn pack_hints<P: Params>(signature: &mut [u8], w0: &[Poly], w1: &[Poly]) -> bool
     true
 }
 
-/// Unpacks the `i`th polynomial's hints into `h`, returning false for an
-/// encoding FIPS 204's `HintBitUnpack` refuses: counts that fall or pass
-/// `omega`, indices not strictly increasing, or nonzero padding.
-fn unpack_hints<P: Params>(h: &mut Poly, hints: &[u8], i: usize) -> bool {
+/// Whether `hints` is an encoding FIPS 204's `HintBitUnpack` accepts: no
+/// count falls or passes `omega`, each polynomial's indices strictly
+/// increase, and the padding is zero.
+fn hints_valid<P: Params>(hints: &[u8]) -> bool {
+    let mut old = 0;
+    for i in 0..P::K {
+        let new = hints[P::OMEGA + i] as usize;
+        if new < old || new > P::OMEGA {
+            return false;
+        }
+        for j in old + 1..new {
+            if hints[j] <= hints[j - 1] {
+                return false;
+            }
+        }
+        old = new;
+    }
+    hints[old..P::OMEGA].iter().all(|b| *b == 0)
+}
+
+/// Unpacks the `i`th polynomial's hints into `h`, from an encoding
+/// [`hints_valid`] accepts.
+fn unpack_hints<P: Params>(h: &mut Poly, hints: &[u8], i: usize) {
     let old = match i {
         0 => 0,
         _ => hints[P::OMEGA + i - 1] as usize,
     };
-    let new = hints[P::OMEGA + i] as usize;
-    if new < old || new > P::OMEGA {
-        return false;
-    }
     h.0 = [0; N];
-    for j in old..new {
-        if j > old && hints[j] <= hints[j - 1] {
-            return false;
-        }
-        h.0[hints[j] as usize] = 1;
+    for &index in &hints[old..hints[P::OMEGA + i] as usize] {
+        h.0[index as usize] = 1;
     }
-    i != P::K - 1 || hints[new..P::OMEGA].iter().all(|b| *b == 0)
 }
 
 /// ExpandA: the matrix `A` in the NTT domain, row by row, in the backend's
@@ -1581,6 +1593,21 @@ mod tests {
                 key.sign(&[0; 256], b"message").err(),
                 Some(Error::WrongLength)
             );
+
+            // A signature refused by its encoding, however often, is no use
+            // of the expansion: `unreachable!` shows the cache still unused.
+            let fresh = VerifyingKey::new(tr);
+            let hints = P::CTILDE_LEN + P::L * P::Z_PACKED;
+            let mut bad_count = signature.clone();
+            bad_count.as_mut()[hints + P::OMEGA] = P::OMEGA as u8 + 1;
+            let mut bad_order = signature.clone();
+            bad_order.as_mut()[hints + 1] = bad_order.as_ref()[hints];
+            bad_order.as_mut()[hints + P::OMEGA] = 2;
+            for bad in [&bad_count, &bad_order, &bad_count] {
+                let result = fresh.verify::<P>(pk, b"context", b"message", bad.as_ref());
+                assert_eq!(result, Err(Error::BadSignature));
+            }
+            assert!(fresh.expanded.get_or_build(|| unreachable!()).is_none());
         }
         check::<MlDsa44>();
         check::<MlDsa65>();
