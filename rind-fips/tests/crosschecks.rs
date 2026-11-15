@@ -526,7 +526,12 @@ fn tls13_records() {
             );
             match ours_result {
                 Ok(()) => assert_eq!(ours_out, theirs_out),
-                Err(error) => assert_eq!(error, rind_fips::Error::MessageLimitReached),
+                Err(error) => {
+                    // Both zero the record; aws-lc-rs also appends a zero tag.
+                    assert_eq!(error, rind_fips::Error::MessageLimitReached);
+                    assert!(ours_out.iter().all(|&b| b == 0));
+                    assert_eq!(theirs_out, vec![0; message.len() + 16]);
+                }
             }
         }
     }

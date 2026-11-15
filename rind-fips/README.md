@@ -36,10 +36,11 @@ lab to test.
 - **AES-GCM IVs.** The module seals only under IVs it generates (IG C.H).
   A `RandomizedNonceKey` draws each 96-bit IV whole from the DRBG
   (scenario 2) and seals at most 2^32 messages. A `TlsRecordSealingKey`
-  is TLS 1.3's (scenario 1(a), RFC 8446): it seals a record only if its
+  is TLS 1.3's (scenario 5, RFC 8446): it seals a record only if its
   sequence number, the nonce XORed with the first nonce, is above the last
   and below 2^64 - 1, so the caller must rekey before it wraps. Keys live
-  only in memory, so after a restart a new key is established (scenario 3a).
+  only in memory, so after a restart a new key is established, as IG C.H
+  requires. A seal that fails zeroes its buffer, as aws-lc's does.
 
 ## Running
 

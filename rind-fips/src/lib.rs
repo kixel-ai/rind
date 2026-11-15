@@ -168,7 +168,9 @@ pub mod pbkdf2;
 ///
 /// let key = RandomizedNonceKey::new(&AES_256_GCM, &[0x42; 32]).unwrap();
 /// let mut in_out = b"hello".to_vec();
-/// let nonce = key.seal_in_place_append_tag(b"header", &mut in_out).unwrap();
+/// let nonce = key
+///     .seal_in_place_append_tag(b"header", &mut in_out)
+///     .unwrap();
 /// let plaintext = key.open_in_place(nonce, b"header", &mut in_out).unwrap();
 /// assert_eq!(plaintext, b"hello");
 ///

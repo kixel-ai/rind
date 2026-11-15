@@ -5,8 +5,11 @@
 //!
 //! AES-GCM seals here only under an IV the module generates, as IG C.H
 //! requires: one drawn whole from the DRBG (scenario 2), or a TLS 1.3
-//! record's, whose sequence number the module manages (scenario 1(a)).
+//! record's, whose sequence number the module manages (scenario 5).
 //! Opening takes the sender's IV, to which IG C.H does not apply.
+//!
+//! A seal that fails zeroes its buffer, as aws-lc's does, so a caller that
+//! ignores the error sends no plaintext.
 
 use core::sync::atomic::{AtomicU64, Ordering};
 
@@ -450,21 +453,25 @@ fn open(
 }
 
 /// Seals `in_out` under `key` and `nonce`, writing the tag to `tag`.
-///
-/// # Safety
-/// `tag` must be valid for 16 writes.
-unsafe fn seal(
+fn seal(
     key: &aead::Key,
     nonce: [u8; 12],
     aad: &[u8],
     in_out: &mut [u8],
-    tag: *mut [u8; 16],
+    tag: &mut [u8; 16],
 ) -> Result<(), Error> {
     let nonce = aead::Nonce::assume_unique_for_key(nonce);
     let sealed = key.seal_in_place_separate_tag(nonce, aad, in_out)?;
-    // SAFETY: the caller's contract; a tag is 16 bytes.
-    unsafe { put(tag, sealed.as_ref().try_into().unwrap()) };
+    tag.copy_from_slice(sealed.as_ref());
     Ok(())
+}
+
+/// `result`'s status, zeroing `in_out` if it failed.
+fn sealed(result: Result<(), Error>, in_out: &mut [u8]) -> Status {
+    if result.is_err() {
+        in_out.fill(0);
+    }
+    status(result)
 }
 
 free!(rind_fips_aead_key_free, aead::Key);
@@ -473,7 +480,11 @@ free!(rind_fips_aead_key_free, aead::Key);
 /// 8.3's bound, which keeps the chance that two 96-bit IVs collide near
 /// 2^-32 (IG C.H, additional comment 3). The break build lowers it so a
 /// test reaches it.
-const RANDOM_IV_SEALS: u64 = if cfg!(rind_fips_break) { 1 << 10 } else { 1 << 32 };
+const RANDOM_IV_SEALS: u64 = if cfg!(rind_fips_break) {
+    1 << 10
+} else {
+    1 << 32
+};
 
 /// An AES-GCM key that seals only under IVs drawn whole from the DRBG (IG
 /// C.H scenario 2), counting its seals to refuse those past
@@ -535,16 +546,20 @@ pub unsafe extern "C" fn rind_fips_aead_random_seal(
         // Counted before sealing, so threads sealing at once never pass the
         // bound between them; a seal that then fails spends its count.
         if key.sealed.fetch_add(1, Ordering::Relaxed) >= RANDOM_IV_SEALS {
-            return status(Err(Error::MessageLimitReached));
+            return sealed(Err(Error::MessageLimitReached), in_out);
         }
         let mut iv = [0u8; 12];
-        status(rind::rand::fill(&mut iv).and_then(|()| {
+        let mut sealed_tag = [0u8; 16];
+        let result = rind::rand::fill(&mut iv)
+            .and_then(|()| seal(&key.key, iv, aad, in_out, &mut sealed_tag));
+        if result.is_ok() {
             // SAFETY: the caller's contract.
-            unsafe { seal(&key.key, iv, aad, in_out, tag)? };
-            // SAFETY: the caller's contract.
-            unsafe { put(nonce, iv) };
-            Ok(())
-        }))
+            unsafe {
+                put(nonce, iv);
+                put(tag, sealed_tag);
+            }
+        }
+        sealed(result, in_out)
     })
 }
 
@@ -578,7 +593,7 @@ pub unsafe extern "C" fn rind_fips_aead_random_open(
 
 free!(rind_fips_aead_random_key_free, RandomIvKey);
 
-/// A TLS 1.3 record sealing key, the IV unit of IG C.H scenario 1(a): it
+/// A TLS 1.3 record sealing key, the IV unit of IG C.H scenario 5: it
 /// seals a record only if its sequence number, the nonce's last eight
 /// bytes XORed with the first nonce's, is above every one sealed before
 /// and below 2^64 - 1, so the sequence never repeats or wraps (RFC 8446
@@ -661,14 +676,25 @@ pub unsafe extern "C" fn rind_fips_tls13_seal(
     tag: *mut [u8; 16],
 ) -> Status {
     // SAFETY: the caller's contract.
-    let (key, nonce, aad, in_out) =
-        unsafe { (&mut *key, *nonce, bytes(aad, aad_len), bytes_mut(in_out, len)) };
+    let (key, nonce, aad, in_out) = unsafe {
+        (
+            &mut *key,
+            *nonce,
+            bytes(aad, aad_len),
+            bytes_mut(in_out, len),
+        )
+    };
     scrubbed(Depth::Small, || {
         // As in aws-lc, a seal that then fails spends its sequence number.
-        status(key.take(&nonce).and_then(|()| {
+        let mut sealed_tag = [0u8; 16];
+        let result = key
+            .take(&nonce)
+            .and_then(|()| seal(&key.key, nonce, aad, in_out, &mut sealed_tag));
+        if result.is_ok() {
             // SAFETY: the caller's contract.
-            unsafe { seal(&key.key, nonce, aad, in_out, tag) }
-        }))
+            unsafe { put(tag, sealed_tag) };
+        }
+        sealed(result, in_out)
     })
 }
 

@@ -245,6 +245,20 @@ impl Nonce {
     pub fn assume_unique_for_key(nonce: [u8; NONCE_LEN]) -> Self {
         Self(nonce)
     }
+
+    /// The nonce for sequence number `seq`: `iv` with `seq`, big-endian,
+    /// XORed into its last eight bytes, as TLS 1.3 (RFC 8446 section 5.3)
+    /// and QUIC (RFC 9001 section 5.3) build it.
+    ///
+    /// The caller promises that `seq` is used once under `iv` and the key:
+    /// the counter never repeats, wraps, or starts over while the key lives.
+    pub fn from_sequence(iv: &[u8; NONCE_LEN], seq: u64) -> Self {
+        let mut nonce = *iv;
+        for (n, s) in nonce[NONCE_LEN - 8..].iter_mut().zip(seq.to_be_bytes()) {
+            *n ^= s;
+        }
+        Self(nonce)
+    }
 }
 
 impl fmt::Debug for Nonce {
@@ -319,8 +333,8 @@ impl RandomizedNonceKey {
     ///
     /// Fails with [`Error::RngFailed`] if the DRBG does, with
     /// [`Error::MessageLimitReached`] once the key has sealed 2^32 messages,
-    /// and with [`Error::WrongLength`] past the sealing limits, leaving
-    /// `in_out` unchanged in each case.
+    /// and with [`Error::WrongLength`] past the sealing limits, zeroing
+    /// `in_out` in each case, as aws-lc does.
     pub fn seal_in_place_separate_tag(
         &self,
         aad: &[u8],

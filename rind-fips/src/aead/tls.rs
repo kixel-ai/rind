@@ -42,7 +42,7 @@ pub enum TlsProtocolId {
 /// sequence number is above the last one's; held in the module, which wipes
 /// it on drop. Open them with a [`super::Key`].
 ///
-/// This is FIPS 140-3's TLS 1.3 IV construction (IG C.H scenario 1(a)):
+/// This is FIPS 140-3's TLS 1.3 IV construction (IG C.H scenario 5):
 /// the module manages the sequence number. Its first nonce must be the
 /// traffic key's `write_iv`, sequence number 0, and each later one `write_iv`
 /// XORed with its record's sequence number (RFC 8446 section 5.3), which
@@ -53,13 +53,7 @@ pub enum TlsProtocolId {
 /// use rind_fips::aead::*;
 ///
 /// let iv = [0x5a; 12];
-/// let nonce = |seq: u64| {
-///     let mut nonce = iv;
-///     for (n, s) in nonce[4..].iter_mut().zip(seq.to_be_bytes()) {
-///         *n ^= s;
-///     }
-///     Nonce::assume_unique_for_key(nonce)
-/// };
+/// let nonce = |seq| Nonce::from_sequence(&iv, seq);
 ///
 /// let mut key = TlsRecordSealingKey::new(&AES_128_GCM, TlsProtocolId::TLS13, &[7; 16]).unwrap();
 /// let mut record = b"hello".to_vec();
@@ -125,8 +119,8 @@ impl TlsRecordSealingKey {
     /// Fails with [`Error::MessageLimitReached`] if `nonce`'s sequence
     /// number is not above the last one sealed, or is 2^64 - 1, past which
     /// it would wrap, and with [`Error::WrongLength`] past the sealing
-    /// limits, leaving `in_out` unchanged in either case. The latter still
-    /// spends the sequence number, as aws-lc's does.
+    /// limits, zeroing `in_out` in either case. The latter still spends the
+    /// sequence number. Both are as aws-lc does.
     pub fn seal_in_place_separate_tag(
         &mut self,
         nonce: Nonce,

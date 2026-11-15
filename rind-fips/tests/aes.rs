@@ -688,11 +688,7 @@ fn randomized_nonce_key_seals_what_rind_opens() {
 
 /// TLS 1.3's nonce for `seq` (RFC 8446 section 5.3).
 fn tls13_nonce(iv: [u8; 12], seq: u64) -> aead::Nonce {
-    let mut nonce = iv;
-    for (n, s) in nonce[4..].iter_mut().zip(seq.to_be_bytes()) {
-        *n ^= s;
-    }
-    aead::Nonce::assume_unique_for_key(nonce)
+    aead::Nonce::from_sequence(&iv, seq)
 }
 
 #[test]
@@ -722,7 +718,7 @@ fn tls_record_sealing_key_seals_as_rind_does() {
 
         // Sequence numbers that increase, skipping some, seal as rind does;
         // each one not above the last, or the one that would wrap, is
-        // refused, leaving the record.
+        // refused, zeroing the record.
         let steps = [
             (0, true),
             (0, false),
@@ -749,7 +745,7 @@ fn tls_record_sealing_key_seals_as_rind_does() {
             };
             if !sealed {
                 assert_eq!(result, Err(Error::MessageLimitReached), "seq {seq}");
-                assert_eq!(ours_out, plaintext);
+                assert_eq!(ours_out, vec![0; plaintext.len()]);
                 continue;
             }
             result.unwrap();
@@ -802,7 +798,7 @@ fn randomized_nonce_key_stops_at_its_limit() {
         key.seal_in_place_append_tag(b"", &mut in_out).err(),
         Some(Error::MessageLimitReached)
     );
-    assert_eq!(in_out, b"one too many");
+    assert_eq!(in_out, [0; 12]);
     assert_eq!(
         key.seal_in_place_separate_tag(b"", &mut in_out).err(),
         Some(Error::MessageLimitReached)

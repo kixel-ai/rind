@@ -22,7 +22,3 @@ From [the scope](/quest/m4/fips/README.md), 2026-11-11.
 - Deno's FIPS build ([denoland/deno#36906](https://github.com/denoland/deno/pull/36906))
   swaps aws-lc-rs for its FIPS module through these same features, so it is
   the first test of the swap.
-
-## Required
-
-- [AES-GCM with internal IVs](/quest/m4/fips/gcm-iv.md) - the TLS 1.3 IV unit the rustls provider seals with
