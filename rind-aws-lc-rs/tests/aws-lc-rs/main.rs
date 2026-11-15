@@ -24,6 +24,7 @@ mod ed25519_tests;
 mod hkdf_test;
 mod hmac_test;
 mod pbkdf2_test;
+mod pqdsa_test;
 mod quic_test;
 mod rand_test;
 mod rsa_test;
