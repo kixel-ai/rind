@@ -34,10 +34,11 @@ SLOW_TESTS=1 cargo test --release -p rind-acvp --features module  # with the 15 
 ```
 
 `just ci` runs it when `rind-fips`, `rind-acvp`, or the sample sets change.
-x86-cpu.yml runs the wrapper under Intel SDE's Diamond Rapids, for the
-AVX-512 paths, by setting `RIND_ACVP_WRAPPER_RUNNER="sde -dmr --"`: the
-test and `acvptool` run natively, and every CPU mask runs, and build.yml's nightly with the large-data tests on x86_64 and
-aarch64.
+build.yml's nightly runs it with the large-data tests on x86_64 and
+aarch64. x86-cpu.yml runs it for the AVX-512 paths with
+`RIND_ACVP_WRAPPER_RUNNER="sde -dmr --"`, which runs only the wrapper
+under Intel SDE's Diamond Rapids, and every CPU mask, while the test and
+`acvptool` run natively.
 
 Against NIST's demo server, with a credential in `acvptool`'s
 `config.json`, `-run` fetches an algorithm's fresh sets and answers them:
