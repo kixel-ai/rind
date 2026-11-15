@@ -21,6 +21,7 @@ Before the release PR merges, check what it proposes:
 
 - `rind` 0.4.0.
 - Each adapter already on crates.io at its next patch version, requiring rind 0.4.0. rind-openmls is not one of them, and the last item covers it. A `!` commit or a removed item makes release-plz propose an adapter's next breaking version, which `sh/adapter-versions.sh` fails (`CONTRIBUTING.md`'s Releases section). [kixel-ai/rind#548](https://github.com/kixel-ai/rind/pull/548) set rind-rustls, rind-rcgen, rind-ring, and rind-str0m by hand for the changes merged by then; a later adapter PR with a `!` title sets its own patch version, as [kixel-ai/rind#522](https://github.com/kixel-ai/rind/pull/522) did.
+- The README's `rind` requirements (`rind = "0.3"`, and the `wipe` example's) read 0.4, since its examples use the 0.4 API from `main`.
 - No breaking version for an adapter from the rind 0.4 requirement alone: its API did not change, so set its patch version by hand if release-plz proposes one.
 - No first version of rind-openmls. It is new ([kixel-ai/rind#645](https://github.com/kixel-ai/rind/pull/645)) and uses `rind::hpke`, which 0.3.2 lacks, so it cannot be published by hand before rind 0.4.0, as `CONTRIBUTING.md`'s Releases section asks of a new crate, and trusted publishing cannot create it: in the release, it would fail after rind publishes. A dry run of `cargo publish -p rind-openmls` from `main` on 2026-11-12 failed on that import.
 
