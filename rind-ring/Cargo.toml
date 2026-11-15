@@ -32,10 +32,11 @@ omitted = [
   "signature::RsaEncoding::encode",
 ]
 
-# ring's feature names, so a manifest naming them builds unchanged. rind-ring
-# always has `alloc` and `std`, rind's random source already falls back to
-# `/dev/urandom`, `wasm32_unknown_unknown_js` takes the browser's random source
-# as ring's does, and the rest pick platforms, code paths, or tests rind lacks.
+# ring's feature names, so a manifest naming them builds unchanged. As in ring,
+# `alloc` gates RSA, `std` the errors' `std::error::Error` impls, and
+# `wasm32_unknown_unknown_js` the browser's random source; rind's random source
+# already falls back to `/dev/urandom`, and the rest pick platforms, code
+# paths, or tests rind lacks.
 [features]
 default = ["alloc", "dev_urandom_fallback"]
 alloc = []

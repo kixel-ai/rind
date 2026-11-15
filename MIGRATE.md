@@ -132,11 +132,6 @@ For each way the survey found:
   ring's API. A dependency that then fails to build calls an item
   [rind-ring's README] leaves out: stop, and report it as a rind gap.
 
-rind panics on a CPU missing a feature it requires. At the start of each
-binary's `main`, refuse one by exiting with the error from
-`rind::cpu::check()`.
-A library leaves this to the binaries that use it, and says so in its docs.
-
 A binary released for `wasm32-unknown-unknown` adds, under
 `[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]`,
 what [PLATFORMS.md] lists for the browser that its tree lacks: rind's

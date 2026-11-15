@@ -13,8 +13,10 @@ changes:
 ring = { package = "rind-ring", version = "0.17" }
 ```
 
-Every ring feature is accepted, and all but `wasm32_unknown_unknown_js` (see
-[WebAssembly](#webassembly)) change nothing.
+Every ring feature is accepted. As in ring, `alloc` gates RSA, `std` the
+errors' `std::error::Error` impls, and `wasm32_unknown_unknown_js` the
+browser's random source (see [WebAssembly](#webassembly)); the rest change
+nothing.
 
 The rename reaches only the crate that makes it. A binary moves every crate
 in its tree on ring 0.17 to rind, including dependencies that name ring such

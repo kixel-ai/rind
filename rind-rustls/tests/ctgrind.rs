@@ -109,6 +109,7 @@ fn tls13_key_schedule() {
     }
 }
 
+#[cfg(feature = "tls12")]
 #[test]
 fn tls12_prf() {
     for (suite, reference) in [
@@ -325,6 +326,7 @@ fn subject_public_key(spki: &[u8]) -> &[u8] {
     &bits[1..]
 }
 
+#[cfg(feature = "std")]
 #[test]
 fn tickets() {
     let ticketer = rind_rustls::Ticketer::new().unwrap();

@@ -37,9 +37,11 @@ pub(crate) mod curve {
     pub(crate) const P521: u32 = 3;
 }
 
-/// Key encapsulation mechanisms.
+/// ML-KEM's parameter sets.
 pub(crate) mod kem {
     pub(crate) const ML_KEM_768: u32 = 1;
+    pub(crate) const ML_KEM_512: u32 = 2;
+    pub(crate) const ML_KEM_1024: u32 = 3;
 }
 
 /// ML-DSA's parameter sets.
@@ -103,4 +105,5 @@ pub(crate) mod error {
     pub(crate) const NOT_EQUAL: u32 = 6;
     pub(crate) const FAULT: u32 = 7;
     pub(crate) const UNSUPPORTED: u32 = 8;
+    pub(crate) const MESSAGE_LIMIT_REACHED: u32 = 9;
 }
