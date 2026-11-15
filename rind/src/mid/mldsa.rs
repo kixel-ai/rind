@@ -367,7 +367,13 @@ impl<P: Params> KeyPair<P> {
         let mut rnd = [0u8; RND_LEN];
         SystemRandom.fill(&mut rnd)?;
         low::ct::secret_slice(&rnd);
-        P::sign(Internal(()), self.secret_key.as_ref(), &self.expanded, &mu, &rnd)
+        P::sign(
+            Internal(()),
+            self.secret_key.as_ref(),
+            &self.expanded,
+            &mu,
+            &rnd,
+        )
     }
 
     /// `mu`, the message representative this key signs for `message` under
@@ -385,7 +391,13 @@ impl<P: Params> KeyPair<P> {
         rnd: &[u8; RND_LEN],
     ) -> Result<P::Signature, Error> {
         let _entry = Entry::new_secret();
-        P::sign(Internal(()), self.secret_key.as_ref(), &self.expanded, mu, rnd)
+        P::sign(
+            Internal(()),
+            self.secret_key.as_ref(),
+            &self.expanded,
+            mu,
+            rnd,
+        )
     }
 }
 
@@ -492,7 +504,6 @@ impl Polys {
         }
     }
 }
-
 
 impl Drop for Polys {
     fn drop(&mut self) {
