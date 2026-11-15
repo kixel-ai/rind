@@ -253,6 +253,8 @@ class Api:
         # Which routes hand out one type is API too: a caller can assign
         # one's value where another's goes only when they are the same.
         for id, paths in routes.items():
+            # Leaving out routes only a dropped conversion opens.
+            paths = [p for p in paths if self.route_needs[(id, p)] <= self.exposed.keys()]
             if len(paths) > 1:
                 same = Unordered("::".join(p) for p in paths)
                 for path in paths:
