@@ -173,7 +173,9 @@ pub(in crate::low) fn ct_compare_bytes(a: &[u8], b: &[u8]) -> u8 {
     let acc: u32;
     // SAFETY: reads `len` bytes from `a` and `b`, which both hold.
     // Its registers are fixed, and it is never inlined, so its proof in
-    // `proofs/hol-light/armv7/ct_compare_bytes.ml` is of one copy.
+    // `proofs/hol-light/armv7/ct_compare_bytes.ml` is of one copy, where the
+    // target builds A32. Android and the `thumbv7` targets build it as
+    // Thumb-2, which no proof covers.
     unsafe {
         core::arch::asm!(
             "   2:  subs r2, r2, #1",
@@ -205,7 +207,8 @@ pub(in crate::low) fn ct_compare_16(a: &[u8; 16], b: &[u8; 16]) -> usize {
     let (a, b) = (u128::from_ne_bytes(*a), u128::from_ne_bytes(*b));
     let diff: u32;
     // SAFETY: register-only arithmetic, proven in
-    // `proofs/hol-light/armv7/ct_compare_16.ml`.
+    // `proofs/hol-light/armv7/ct_compare_16.ml` where the target builds A32,
+    // as for `ct_compare_bytes`.
     unsafe {
         core::arch::asm!(
             "eor r0, r0, r4",

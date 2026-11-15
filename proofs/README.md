@@ -113,7 +113,12 @@ those inputs, in any worktree, restores in under a second.
   that their trace of loads and branches is a function of the addresses and
   length alone, each load in bounds. Both functions are `#[inline(never)]`
   with fixed registers, so the proof covers their one copy. armv7's are on
-  the fork's AArch32 model below.
+  the fork's AArch32 model below, which is A32 only, so they cover the
+  targets that build A32, such as `armv7-unknown-linux-gnueabihf`, whose
+  bytes `admin/prove` checks. `armv7-linux-androideabi` and the `thumbv7`
+  targets build these functions as Thumb-2, which no proof covers; rustc
+  refuses `#[instruction_set(arm::a32)]` on armv7's Linux and Android
+  targets, which would otherwise force A32.
 
 The fork adds what these proofs need to s2n-bignum: specs from s2n-bignum
 pull requests not yet merged, rind's own RFC 8439 spec of ChaCha20,

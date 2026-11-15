@@ -14,9 +14,10 @@
 
 needs "aarch32/proofs/base.ml";;
 
-(* admin/prove writes the block's bytes, as rind's release build emits them,
-   to armv7/ct_compare_16.bin, and the definition fails unless they are
-   these. *)
+(* admin/prove writes the block's bytes, as rind's release build for
+   armv7-unknown-linux-gnueabihf emits them, to armv7/ct_compare_16.bin, and the
+   definition fails unless they are these. A target that builds Thumb-2 by
+   default, as Android's does, emits other bytes, which this does not cover. *)
 let ct_compare_16_mc = define_assert_word_list "ct_compare_16_mc"
   (term_of_bytes (load_file "armv7/ct_compare_16.bin"))
 [
