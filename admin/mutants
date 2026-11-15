@@ -36,6 +36,11 @@
 # `low/portable/../generic/aes_nohw.rs` and compares that string to the diff.
 # Nothing matches, and "no mutants" exits 0.
 # See UPSTREAM.md, "cargo-mutants matches `#[path]` with `..` literally".
+#
+# rind-rcgen's `wipe` and `zeroize` are not in that file's `features` list:
+# cargo-mutants passes the list to every package, and a package that does not
+# depend on rind-rcgen fails to resolve them. `admin/mutants-cargo` adds the
+# two features only when the cargo invocation builds rind-rcgen.
 set -euo pipefail
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 
@@ -282,6 +287,9 @@ done
 exit 0
 EOF
     chmod +x "$bindir/cargo"
+    # The real invocation calls cargo-mutants directly so Cargo does not
+    # replace CARGO. This stub records `cargo mutants` instead.
+    export RIND_MUTANTS_STUB=1
     cat >"$sample" <<'EOF'
 diff --git a/rind/src/low/generic/aes_nohw.rs b/rind/src/low/generic/aes_nohw.rs
 --- a/rind/src/low/generic/aes_nohw.rs
@@ -572,6 +580,22 @@ for arg in "$@"; do
     prev=$arg
 done
 status=0
-cargo mutants "${args[@]}" ${cargo_args[@]+"${cargo_args[@]}"} || status=$?
+if [ "${RIND_MUTANTS_STUB:-}" = 1 ]; then
+    cargo mutants "${args[@]}" ${cargo_args[@]+"${cargo_args[@]}"} || status=$?
+else
+    # Cargo sets CARGO to its own executable when it launches a subcommand, which
+    # would replace the wrapper. Call cargo-mutants directly so the wrapper stays
+    # the cargo it invokes.
+    mutants=$(command -v cargo-mutants) || {
+        echo "admin/mutants: cargo-mutants is not installed; run this inside nix develop" >&2
+        exit 1
+    }
+    RIND_REAL_CARGO=$(command -v cargo)
+    export RIND_REAL_CARGO
+    export CARGO=$here/admin/mutants-cargo
+    # This cargo-mutants build's CLI is `cargo mutants`: the binary expects the
+    # `mutants` subcommand, which `cargo mutants` inserts and a direct exec does not.
+    "$mutants" mutants "${args[@]}" ${cargo_args[@]+"${cargo_args[@]}"} || status=$?
+fi
 [ "$status" -ne 3 ] || status=0
 exit "$status"

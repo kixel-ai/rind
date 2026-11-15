@@ -146,8 +146,9 @@ module fixtures '^(rind/(src/([^l]|l[^o]|lo[^w]|low[^/])|Cargo\.toml$|build\.rs$
 module deny '(^|/)Cargo\.(toml|lock)$|^deny\.toml$' \
     tools='cargo-deny'
 # .cargo/mutants.toml's exclusions name mutants by file, line, and function,
-# so moving code can leave one matching nothing.
-module mutants '^(rind[^/]*/src/|\.cargo/mutants\.toml$|admin/mutants$)' \
+# so moving code can leave one matching nothing. The cargo wrapper picks
+# rind-rcgen's features, which no other check exercises.
+module mutants '^(rind[^/]*/src/|\.cargo/mutants\.toml$|admin/mutants(-cargo(-test)?)?$)' \
     tools='cargo-mutants python3'
 # An adapter's manifest holds both its version and its upstream requirement.
 module versions '^(rind-[^/]+/Cargo\.toml$|sh/adapter-versions\.sh$)' \
@@ -363,6 +364,12 @@ step() {
             if names rind-aws-lc-rs "${packages[@]}"; then
                 run cargo nextest run -p rind-aws-lc-rs --features wipe --test zeroing --locked
             fi
+            # Its own invocation, so `wipe` and `zeroize` do not unify into the
+            # packages tested above. A dev-dependency cannot scope them: resolver
+            # 2 would turn `rind/wipe` on for that whole run.
+            if names rind-rcgen "${packages[@]}"; then
+                run cargo nextest run -p rind-rcgen --features wipe,zeroize --test zeroing --locked
+            fi
             # The FIPS module's own code compiles only under its cfg, which a
             # workspace build leaves off, and only for glibc Linux on x86_64
             # and aarch64, where rind-fips is not empty. Its break build
@@ -499,6 +506,7 @@ step() {
         check:quest) run quest check ;;
         check:license) run bash admin/scan-license ;;
         check:mutants)
+            run admin/mutants-cargo-test
             run admin/mutants --pins
             run admin/mutants --expand-diff-self-test
             ;;
