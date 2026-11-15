@@ -394,6 +394,9 @@ step() {
             # compiles nothing here.
             if reaches "$backends" "$host"; then
                 mapfile -t packages < <(sh/select.sh "$changed" "$all")
+                # A change that selects no crate, such as the flake's, can
+                # still change the toolchain.
+                ((${#packages[@]} > 0)) || packages=(--workspace)
                 # An adapter whose upstream needs a newer Rust declares that
                 # rust-version instead, which its users need anyway, so it is
                 # left out.
