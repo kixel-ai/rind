@@ -720,7 +720,9 @@ message: Vale's opens measured 0.95-1.44x its time on Zen 5 (median 1.03x),
 0.96-1.37x on Granite Rapids (median 1.07x), and 0.70-1.14x on Zen 4 (median
 1.00x), and its seals lost on all three.
 Vale's proof covers those short opens' kernel, but not the choice of it,
-which [`proofs/`](proofs/README.md) proves only without VAES.
+which [`proofs/`](proofs/README.md) proves only without VAES. On AVX-512
+cores, `proofs/` proves the by-16 and by-8 paths below 2 KB, given the key
+powers BoringSSL's setup computes, which nothing proves yet.
 The key picks its kernel once, when it is made.
 
 aarch64 decides once per process whether the CPU has the crypto extension.

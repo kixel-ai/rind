@@ -2,14 +2,12 @@ import Rind.X86_64.GhashClmul
 open Aeneas Aeneas.Std Result rind.vale rind.simd Polynomial
 
 /-!
-# rind's AVX-512 GHASH
+# rind's AVX-512 intrinsics, lane by lane
 
-`Rind.X86_64.AesGcmModel`'s `_mul16`, `_mul_tail`, and `GhashTableAvx512::add`
-hash blocks as `ClmulTable::add` does, for a table of the key's 16 powers:
-each lane sums schoolbook products of blocks with descending powers, each
-lane folds its sum once by the reflected modulus, and the lanes' folds are
-XORed, which, the fold being linear, is `Rind.Gf128`'s `reduce_sum` of all of
-them.
+A 512-bit vector as `ofLanes128` of four 128-bit lanes: each AVX-512, VAES,
+and VPCLMULQDQ intrinsic that `Rind.X86_64.AesGcmModel`'s by-16 AES-GCM calls
+acts on each lane as its 128-bit form does, so `Rind.X86_64.GhashAvx512` and
+`Rind.X86_64.AesGcmAvx512` reason one lane at a time.
 -/
 
 local notation "P" => Polynomial (ZMod 2)

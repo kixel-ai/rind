@@ -976,3 +976,46 @@ theorem cipher_avx512_tier (ENC : Bool) (hk : low.x86_64.aes.HwKey) (alg : Algor
     exact by8_spec_of ENC hk alg kw hkey H hH t.clmul htc _ (avx512_ghashOf H hH t ht htc) j0 y0 hy aad inout
 
 end rind.x86_64
+
+namespace rind.x86_64
+
+/-! ## `tagged_from` on the tier -/
+
+/-- `tagged_from` on the AVX-512 tier, below the VAES kernel's 2 KB: its
+ciphertext and tag are Vale's GCTR and GHASH, as `tagged_from_spec` states
+them on the by-8 tiers, given the key powers both of the tier's tables hold. -/
+theorem tagged_from_avx512_spec (ENC : Bool) (hk : low.x86_64.aes.HwKey) (alg : Algorithm)
+    (kw : List (BitVec 32)) (hkey : HwKeyIs alg kw hk) (t : low.x86_64.ghash.GhashTableAvx512)
+    (ht : Avx512Powers (polyLE (aesEncrypt alg kw (mkfour 0 0 0 0))) t)
+    (htc : TableFor (polyLE (aesEncrypt alg kw (mkfour 0 0 0 0))) t.clmul) (j0 : Quad32)
+    (y0 : Std.Array U8 16#usize) (hy : loadBytes y0.val = reverseBytesQuad32 j0) (aad inout : Slice U8)
+    (hin : inout.length < 2048) :
+    low.x86_64.aes_gcm.tagged_from ENC (.Hw hk) (.Avx512 t) y0 aad inout ⦃ r =>
+      r.2.length = inout.length ∧
+      bvs r.2.val = gctrEncrypt (inc32 j0 1) (bvs inout.val) alg kw ∧
+      bvs r.1.val = gctrEncrypt j0 (leQuad32ToBytes (gcmHash (aesEncrypt alg kw (mkfour 0 0 0 0)) (bvs aad.val)
+        (bvs (if ENC then r.2.val else inout.val)))) alg kw ⦄ := by
+  set hLE := aesEncrypt alg kw (mkfour 0 0 0 0)
+  obtain ⟨g, out, h8, hgt, hout, hgh⟩ := cipher_avx512_tier ENC hk alg kw hkey (polyLE hLE) (small_toPoly _) t
+    ht htc ⟨.Avx512 t, 0⟩ rfl j0 y0 hy aad inout hin
+  have hlen : out.length = inout.length := by
+    have := congrArg List.length hout
+    rw [List.length_map, length_gctrEncrypt, List.length_map] at this
+    exact this
+  have hc : (if ENC then out.val else inout.val).length = out.length := by
+    cases ENC
+    · exact hlen.symm
+    · rfl
+  unfold low.x86_64.aes_gcm.tagged_from
+  simp only [low.x86_64.ghash.Ghash.new, low.x86_64.ghash.zero, core.core_arch.x86.sse2._mm_setzero_si128,
+    bind_ok, h8, uncurry_apply_pair]
+  apply WP.spec_bind (add_lengths_spec g t.clmul (polyLE hLE) (small_toPoly _) htc (.inr ⟨t, hgt, rfl⟩) _ _
+    (by rw [Slice.len_val, hlen]; omega))
+  rintro g' ⟨-, hg'⟩
+  simp only [hw_encrypt_block hk alg kw hkey, bind_ok, low.x86_64.ghash.Ghash.tag, byte_reverse_eq,
+    core.core_arch.x86.sse2._mm_xor_si128, load_store, WP.spec_ok]
+  refine ⟨hlen, hout, ?_⟩
+  rw [store_bytes, gctr_block, ← hy, gcmHash_eq hLE aad.val _ g'.current ?_]
+  rw [hg', hgh, toPoly_zero, Slice.len_val, Slice.len_val, hc]
+
+end rind.x86_64
