@@ -14,7 +14,7 @@
 //! The large-data hash tests hash 15 GiB per hash, so they run only with
 //! `SLOW_TESTS` set.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -209,8 +209,20 @@ fn check(set: &Set, response: &Value) -> Result<(), String> {
     if asked != answered {
         return Err("the response answers other tests than the set asks".into());
     }
+    for group in response["testGroups"].as_array().unwrap() {
+        for test in group["tests"].as_array().unwrap() {
+            if test.as_object().is_none_or(|test| test.len() < 2) {
+                return Err(format!("tcId {}: no answer", test["tcId"]));
+            }
+        }
+    }
     match &set.check {
-        Check::Answers(expected) => subset(response, expected, "".into()),
+        Check::Answers(expected) => matches(
+            &response["testGroups"],
+            &expected["testGroups"],
+            &HashSet::new(),
+            "/testGroups".into(),
+        ),
         Check::Validate(validate) => {
             for group in response["testGroups"].as_array().unwrap() {
                 let prompt = find(&set.prompt["testGroups"], "tgId", id(group, "tgId"));
@@ -234,10 +246,31 @@ fn find<'a>(array: &'a Value, key: &str, id: u64) -> &'a Value {
 }
 
 /// Whether every field of `response` equals `expected`'s, recursively,
-/// matching groups and tests by their ids and hex case-insensitively.
-fn subset(response: &Value, expected: &Value, path: String) -> Result<(), String> {
+/// matching groups and tests by their ids and hex case-insensitively, and
+/// `response` leaves out none of `expected`'s nonempty `answers`: the fields
+/// its siblings in their array carry, since `acvptool` echoes no input and
+/// drops an answer the wrapper left empty. A test expected to fail answers
+/// only that.
+fn matches(
+    response: &Value,
+    expected: &Value,
+    answers: &HashSet<String>,
+    path: String,
+) -> Result<(), String> {
     match (response, expected) {
         (Value::Object(response), Value::Object(expected)) => {
+            let empty = |value: &Value| value == "" || value == &json!([]);
+            let failed = expected.get("testPassed") == Some(&json!(false));
+            if let Some(key) = expected
+                .iter()
+                .filter(|_| !failed)
+                .find_map(|(key, value)| {
+                    (answers.contains(key) && !response.contains_key(key) && !empty(value))
+                        .then_some(key)
+                })
+            {
+                return Err(format!("{path}/{key}: missing"));
+            }
             for (key, value) in response {
                 if key == "vsId" {
                     continue;
@@ -246,17 +279,34 @@ fn subset(response: &Value, expected: &Value, path: String) -> Result<(), String
                 let Some(want) = expected.get(key) else {
                     return Err(format!("{path}: no expected value"));
                 };
-                subset(value, want, path)?;
+                matches(value, want, answers, path)?;
             }
             Ok(())
         }
+        (Value::Array(response), Value::Array(expected)) if response.len() != expected.len() => {
+            Err(format!(
+                "{path}: {} elements, expected {}",
+                response.len(),
+                expected.len()
+            ))
+        }
         (Value::Array(response), Value::Array(_)) => {
+            let answers: HashSet<String> = response
+                .iter()
+                .filter_map(Value::as_object)
+                .flat_map(|object| object.keys().cloned())
+                .collect();
             for (i, value) in response.iter().enumerate() {
                 let (key, want) = ["tgId", "tcId"]
                     .into_iter()
                     .find_map(|key| Some((key, find(expected, key, value[key].as_u64()?))))
                     .unwrap_or(("", &expected[i]));
-                subset(value, want, format!("{path}[{key} {}]", value[key]))?;
+                matches(
+                    value,
+                    want,
+                    &answers,
+                    format!("{path}[{key} {}]", value[key]),
+                )?;
             }
             Ok(())
         }
@@ -373,14 +423,10 @@ fn sets() -> Vec<Set> {
 }
 
 /// The fields of an answer, which a prompt leaves out, that `acvptool`
-/// refuses to find in one: an AEAD's output, and `externalMu` outside the
-/// internal interface, which `acvptool` would take as true or false.
+/// refuses to find in one: an AEAD's output.
 fn strip_answers(prompt: &mut Value) {
     let algorithm = prompt["algorithm"].as_str().unwrap_or_default().to_owned();
     for group in prompt["testGroups"].as_array_mut().unwrap() {
-        if algorithm.starts_with("ML-DSA") && group["signatureInterface"] == "external" {
-            group.as_object_mut().unwrap().remove("externalMu");
-        }
         let direction = group["direction"].as_str().unwrap_or_default().to_owned();
         let aead = [
             "ACVP-AES-GCM",

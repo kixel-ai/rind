@@ -273,6 +273,14 @@ Each upstream rind changes, with where its fork is vendored and where the list o
 - **Reported:** [rhysd/actionlint#657](https://github.com/rhysd/actionlint/issues/657), with a fix in [rhysd/actionlint#654](https://github.com/rhysd/actionlint/pull/654).
 - **Goes when:** an actionlint release in nixpkgs accepts `queue`.
 
+### acvptool sends ML-DSA's externalMu for the external interface
+
+- **Breaks:** NIST's ML-DSA sigGen and sigVer sets give external-interface groups `externalMu: false`, and aws-lc's `acvptool` (through v5.11 and its `main`) forwards it to the module wrapper whatever the group's `signatureInterface`. A wrapper, aws-lc's own included, reads a present flag as the internal interface, so it signs and verifies the external interface's tests without their context and domain separation, and answers them wrongly.
+- **Reproduce:** run an unpatched `acvptool -json` on `thirdparty/acvp/ML-DSA-sigGen-FIPS204.json` through `rind-acvp`: the external groups' signatures differ from the expected ones.
+- **Workaround:** `flake.nix`'s `acvptool` forwards `externalMu` only for `signatureInterface: internal`, the convention aws-lc's module wrapper states. Found in [kixel-ai/rind#789](https://github.com/kixel-ai/rind/pull/789).
+- **Reported:** no (aws/aws-lc).
+- **Goes when:** an aws-lc release in nixpkgs forwards `externalMu` only for the internal interface.
+
 ### Dependabot's Cargo lockfile updates skip its cooldown
 
 - **Breaks:** Dependabot pins the crate it bumps to a release older than its cooldown, but not the crates that release newly needs, which `cargo update` resolves to their newest compatible releases, however young. It does not pin a crate declared in `[workspace.dependencies]` either, so one would take its newest release too; rind declares none.

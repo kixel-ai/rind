@@ -199,6 +199,27 @@
             inherit (pkgs.aws-lc) version src;
             subPackages = [ "util/fipstools/acvp/acvptool" ];
             vendorHash = "sha256-495bUr3Cuo7kuhuNLMVhrVg9NXTAXyFmnXRmBrCHovA=";
+            # It forwards ML-DSA's `externalMu` from external-interface groups
+            # too, which a wrapper then reads as the internal interface.
+            # See UPSTREAM.md, "acvptool sends ML-DSA's externalMu for the
+            # external interface".
+            postPatch = ''
+              file=util/fipstools/acvp/acvptool/subprocess/ml_dsa.go
+              substituteInPlace $file --replace-fail \
+                'boolToBytes(group.ExternalMu))' \
+                'boolToBytes(internalOnly(group.SignatureInterface, group.ExternalMu)))'
+              cat >>$file <<'EOF'
+
+              // internalOnly is externalMu for the internal interface, the only
+              // one it applies to, and absent for the external one.
+              func internalOnly(signatureInterface string, externalMu *bool) *bool {
+              	if !strings.EqualFold(signatureInterface, "internal") {
+              		return nil
+              	}
+              	return externalMu
+              }
+              EOF
+            '';
           };
 
           # The tracer `admin/ct-qemu` loads into qemu-arm or qemu-aarch64,

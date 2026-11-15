@@ -525,8 +525,11 @@ fn hkdf_kda(name: &str, args: &[Vec<u8>]) -> Result<Reply> {
     };
     let len = u32_le(len)? as usize;
     let prk = hkdf::Salt::new(algorithm, salt).extract(z)?;
+    // `expand` bounds the length before anything is allocated for it.
+    let info = [info];
+    let okm = prk.expand(&info, len)?;
     let mut out = vec![0; len];
-    prk.expand(&[info], len)?.fill(&mut out)?;
+    okm.fill(&mut out)?;
     Ok(vec![out])
 }
 
@@ -561,7 +564,12 @@ fn drbg(args: &[Vec<u8>]) -> Result<Reply> {
         entropy2,
         nonce,
     ] = take(args)?;
-    let mut out = vec![0; u32::from_ne_bytes(len.try_into()?) as usize];
+    // SP 800-90A's HMAC_DRBG returns at most 2^19 bits a request.
+    let len = u32::from_ne_bytes(len.try_into()?) as usize;
+    if len > 1 << 16 {
+        return Err("a DRBG request over 2^19 bits".into());
+    }
+    let mut out = vec![0; len];
     acvp::drbg(
         entropy,
         nonce,

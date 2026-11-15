@@ -20,7 +20,10 @@ which `acvptool -wrapper target/debug/rind-acvp -regcap` prints.
 
 ## Running
 
-`nix develop` provides `acvptool`. The offline test answers NIST's sample
+`nix develop` provides `acvptool`, patched to send ML-DSA's `externalMu`
+only for the internal interface; an unpatched one answers ML-DSA's
+external-interface tests wrongly (UPSTREAM.md, "acvptool sends ML-DSA's
+externalMu for the external interface"). The offline test answers NIST's sample
 sets (`thirdparty/acvp/`) and sets it builds from CAVP's and Wycheproof's
 vectors for what the samples lack, once for each CPU path this host can
 take, by the module's load-time `RIND_CPU_DISABLE_<feature>` mask:
