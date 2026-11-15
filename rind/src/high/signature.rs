@@ -15,6 +15,7 @@ pub(crate) mod ecdsa;
 pub(crate) mod ed25519;
 pub(crate) mod ml_dsa;
 pub(crate) mod rsa;
+pub(crate) mod slh_dsa;
 
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]

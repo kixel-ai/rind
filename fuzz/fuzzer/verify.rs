@@ -7,7 +7,8 @@
 //! signature, each after a big-endian 16-bit length, then the message.
 //! rind must never accept a signature aws-lc-rs refuses, and refuses one it
 //! accepts only for a key it refuses by design. RSA-PSS with any salt length,
-//! which aws-lc-rs does not expose, is checked against aws-lc's.
+//! which aws-lc-rs does not expose, is checked against aws-lc's, and SLH-DSA,
+//! which aws-lc lacks, against RustCrypto's.
 
 use aws_lc_rs::digest;
 use aws_lc_rs::signature::{self as theirs, UnparsedPublicKey};
@@ -39,6 +40,7 @@ fuzz_target!(|data: &[u8]| {
             .verify(message, signature)
             .is_ok(),
         Theirs::PssAnySalt(hash, md) => pss_any_salt(hash, md, key, message, signature),
+        Theirs::SlhDsa(verify) => verify(key, message, signature),
     };
     match ours.verify(key, message, signature) {
         Ok(verified) => assert_eq!(verified, accepted),
@@ -58,6 +60,9 @@ enum Ours {
     MlDsa44,
     MlDsa65,
     MlDsa87,
+    /// Whether a key of an SLH-DSA parameter set verifies a signature, or
+    /// an error if rind refuses the key.
+    SlhDsa(fn(&[u8], &[u8], &[u8]) -> Result<bool, Error>),
 }
 
 impl Ours {
@@ -81,6 +86,7 @@ impl Ours {
             Self::MlDsa44 => ml_dsa::PublicKey::<MlDsa44>::new(key)?.verify(message, signature),
             Self::MlDsa65 => ml_dsa::PublicKey::<MlDsa65>::new(key)?.verify(message, signature),
             Self::MlDsa87 => ml_dsa::PublicKey::<MlDsa87>::new(key)?.verify(message, signature),
+            Self::SlhDsa(verify) => return verify(key, message, signature),
         };
         Ok(verified.is_ok())
     }
@@ -101,6 +107,31 @@ enum Theirs {
         &'static digest::Algorithm,
         unsafe extern "C" fn() -> *const aws_lc_sys::EVP_MD,
     ),
+    /// RustCrypto's SLH-DSA, pure with the empty context: `(key, message,
+    /// signature)`.
+    SlhDsa(fn(&[u8], &[u8], &[u8]) -> bool),
+}
+
+/// Whether rind verifies `signature` with SLH-DSA parameter set `P`, or an
+/// error if it refuses `key`.
+fn our_slh_dsa<P: rind::slh_dsa::ParameterSet>(
+    key: &[u8],
+    message: &[u8],
+    signature: &[u8],
+) -> Result<bool, Error> {
+    let key = rind::slh_dsa::PublicKey::<P>::new(key)?;
+    Ok(key.verify(message, signature).is_ok())
+}
+
+/// Whether RustCrypto verifies `signature` with SLH-DSA parameter set `P`.
+fn slh_dsa<P: slh_dsa::ParameterSet>(key: &[u8], message: &[u8], signature: &[u8]) -> bool {
+    use slh_dsa::signature::Verifier;
+    let key = slh_dsa::VerifyingKey::<P>::try_from(key);
+    let signature = slh_dsa::Signature::<P>::try_from(signature);
+    let (Ok(key), Ok(signature)) = (key, signature) else {
+        return false;
+    };
+    key.verify(message, &signature).is_ok()
 }
 
 /// Whether aws-lc verifies `signature` with RSA-PSS and any salt length,
@@ -285,6 +316,54 @@ fn algorithm(selector: u8) -> Option<(Ours, Theirs)> {
         29 => (Ours::MlDsa44, Theirs::Rs(&theirs::ML_DSA_44)),
         30 => (Ours::MlDsa65, Theirs::Rs(&theirs::ML_DSA_65)),
         31 => (Ours::MlDsa87, Theirs::Rs(&theirs::ML_DSA_87)),
+        32 => (
+            Ours::SlhDsa(our_slh_dsa::<rind::slh_dsa::SlhDsaSha2_128s>),
+            Theirs::SlhDsa(slh_dsa::<slh_dsa::Sha2_128s>),
+        ),
+        33 => (
+            Ours::SlhDsa(our_slh_dsa::<rind::slh_dsa::SlhDsaSha2_128f>),
+            Theirs::SlhDsa(slh_dsa::<slh_dsa::Sha2_128f>),
+        ),
+        34 => (
+            Ours::SlhDsa(our_slh_dsa::<rind::slh_dsa::SlhDsaSha2_192s>),
+            Theirs::SlhDsa(slh_dsa::<slh_dsa::Sha2_192s>),
+        ),
+        35 => (
+            Ours::SlhDsa(our_slh_dsa::<rind::slh_dsa::SlhDsaSha2_192f>),
+            Theirs::SlhDsa(slh_dsa::<slh_dsa::Sha2_192f>),
+        ),
+        36 => (
+            Ours::SlhDsa(our_slh_dsa::<rind::slh_dsa::SlhDsaSha2_256s>),
+            Theirs::SlhDsa(slh_dsa::<slh_dsa::Sha2_256s>),
+        ),
+        37 => (
+            Ours::SlhDsa(our_slh_dsa::<rind::slh_dsa::SlhDsaSha2_256f>),
+            Theirs::SlhDsa(slh_dsa::<slh_dsa::Sha2_256f>),
+        ),
+        38 => (
+            Ours::SlhDsa(our_slh_dsa::<rind::slh_dsa::SlhDsaShake128s>),
+            Theirs::SlhDsa(slh_dsa::<slh_dsa::Shake128s>),
+        ),
+        39 => (
+            Ours::SlhDsa(our_slh_dsa::<rind::slh_dsa::SlhDsaShake128f>),
+            Theirs::SlhDsa(slh_dsa::<slh_dsa::Shake128f>),
+        ),
+        40 => (
+            Ours::SlhDsa(our_slh_dsa::<rind::slh_dsa::SlhDsaShake192s>),
+            Theirs::SlhDsa(slh_dsa::<slh_dsa::Shake192s>),
+        ),
+        41 => (
+            Ours::SlhDsa(our_slh_dsa::<rind::slh_dsa::SlhDsaShake192f>),
+            Theirs::SlhDsa(slh_dsa::<slh_dsa::Shake192f>),
+        ),
+        42 => (
+            Ours::SlhDsa(our_slh_dsa::<rind::slh_dsa::SlhDsaShake256s>),
+            Theirs::SlhDsa(slh_dsa::<slh_dsa::Shake256s>),
+        ),
+        43 => (
+            Ours::SlhDsa(our_slh_dsa::<rind::slh_dsa::SlhDsaShake256f>),
+            Theirs::SlhDsa(slh_dsa::<slh_dsa::Shake256f>),
+        ),
         _ => return None,
     })
 }
@@ -322,5 +401,7 @@ fn refused(ours: Ours, key: &[u8]) -> bool {
         Ours::MlDsa44 => key.len() != 1312,
         Ours::MlDsa65 => key.len() != 1952,
         Ours::MlDsa87 => key.len() != 2592,
+        // Any bytes of the key's length are one, on both sides.
+        Ours::SlhDsa(_) => false,
     }
 }

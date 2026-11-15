@@ -245,6 +245,32 @@ fn ml_dsa_set<P: rind::ml_dsa::ParameterSet>() {
     }
 }
 
+#[test]
+fn slh_dsa() {
+    use rind::slh_dsa::{SlhDsaSha2_128f, SlhDsaShake128f};
+    slh_dsa_set::<SlhDsaSha2_128f>();
+    slh_dsa_set::<SlhDsaShake128f>();
+}
+
+fn slh_dsa_set<P: rind::slh_dsa::ParameterSet>() {
+    use rind::slh_dsa::KeyPair;
+    zeroed("SLH-DSA key generation", || {
+        KeyPair::<P>::generate().unwrap()
+    });
+    let keys = [(); 2].map(|()| KeyPair::<P>::generate().unwrap());
+    independent("SLH-DSA export", keys.each_ref(), |key| key.to_pkcs8());
+    let pkcs8 = keys.each_ref().map(|key| key.to_pkcs8().as_ref().to_vec());
+    // Loading checks the key by making it again.
+    independent("SLH-DSA load", pkcs8, |der| {
+        KeyPair::<P>::from_pkcs8(der).unwrap()
+    });
+    // Signing is randomized, so even under one key it varies: every block
+    // it frees must be wiped.
+    for key in &keys {
+        zeroed("SLH-DSA signing", || key.sign(b"message").unwrap());
+    }
+}
+
 /// The expanded form, whose load checks the key.
 #[cfg(not(any(miri, target_family = "wasm")))]
 fn ml_dsa_expanded_set<P: rind::ml_dsa::ParameterSet>(
@@ -256,6 +282,23 @@ fn ml_dsa_expanded_set<P: rind::ml_dsa::ParameterSet>(
     independent("ML-DSA expanded load", expanded, |der| {
         drop(MlDsaKeyPair::<P>::from_pkcs8(der).unwrap())
     });
+}
+
+/// Argon2id's memory is as good as the password to an attacker, who could
+/// finish the hash from it without paying for the memory.
+#[test]
+fn argon2() {
+    let params = rind::argon2::Params::new(32, 2, 2).unwrap();
+    independent(
+        "Argon2id",
+        [*b"password one", *b"password two"],
+        |password| {
+            let mut out = [0u8; 32];
+            rind::argon2::derive(params, password, b"saltsalt", &mut out).unwrap();
+            // Verifying derives its key on the heap.
+            black_box(rind::argon2::verify(params, password, b"saltsalt", &out).is_ok())
+        },
+    );
 }
 
 /// The key `seed` expands to, as PKCS#8 in RFC 9881's expanded form, which
@@ -367,17 +410,22 @@ fn spake2plus() {
 }
 
 #[test]
-fn mlkem768() {
-    use rind::kem::{DecapsulationKey, ML_KEM_768};
-    zeroed("ML-KEM key generation", || {
-        DecapsulationKey::generate(&ML_KEM_768).unwrap()
-    });
-    let keys = [(); 2].map(|()| {
-        let key = DecapsulationKey::generate(&ML_KEM_768).unwrap();
-        let (ciphertext, _) = key.public_key().encapsulate().unwrap();
-        (key, ciphertext)
-    });
-    independent("ML-KEM decapsulation", keys, |(key, ciphertext)| {
-        key.decapsulate(ciphertext.as_ref()).unwrap()
-    });
+fn mlkem() {
+    use rind::kem::{Algorithm, DecapsulationKey, MlKem512, MlKem768, MlKem1024};
+    fn check<A: Algorithm>() {
+        zeroed("ML-KEM key generation", || {
+            DecapsulationKey::<A>::generate().unwrap()
+        });
+        let keys = [(); 2].map(|()| {
+            let key = DecapsulationKey::<A>::generate().unwrap();
+            let (ciphertext, _) = key.public_key().encapsulate().unwrap();
+            (key, ciphertext)
+        });
+        independent("ML-KEM decapsulation", keys, |(key, ciphertext)| {
+            key.decapsulate(ciphertext)
+        });
+    }
+    check::<MlKem512>();
+    check::<MlKem768>();
+    check::<MlKem1024>();
 }

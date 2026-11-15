@@ -130,14 +130,15 @@ fn hmac() {
 
 #[test]
 fn kem() {
-    use rind::kem::{DecapsulationKey, ML_KEM_768};
-    assert_eq!(format!("{ML_KEM_768:?}"), "MlKem768");
-    let key = DecapsulationKey::generate(&ML_KEM_768).unwrap();
+    use rind::kem::{DecapsulationKey, MlKem768};
+    let key = DecapsulationKey::<MlKem768>::generate().unwrap();
     assert_eq!(format!("{key:?}"), "DecapsulationKey { .. }");
     let public = key.public_key();
     let shown = format!("{:?}", public.as_ref());
     assert_eq!(format!("{public:?}"), format!("EncapsulationKey({shown})"));
-    let (_, secret) = public.encapsulate().unwrap();
+    let (ciphertext, secret) = public.encapsulate().unwrap();
+    let shown = format!("{:?}", ciphertext.as_ref());
+    assert_eq!(format!("{ciphertext:?}"), format!("Ciphertext({shown})"));
     assert_eq!(format!("{secret:?}"), "SharedSecret(..)");
 }
 
@@ -241,6 +242,30 @@ fn signature() {
     assert_eq!(format!("{signature:?}"), format!("Signature({bytes})"));
     assert_eq!(format!("{:?}", pair.to_seed().unwrap()), "Seed(..)");
     assert_eq!(format!("{:?}", pair.to_pkcs8()), "Pkcs8(..)");
+
+    use rind::slh_dsa::{self, SlhDsaShake128f};
+    let pair = slh_dsa::KeyPair::<SlhDsaShake128f>::generate().unwrap();
+    assert_eq!(
+        format!("{pair:?}"),
+        "KeyPair { algorithm: SLH-DSA-SHAKE-128f, .. }"
+    );
+    let public = pair.public_key();
+    let bytes = format!("{:?}", public.as_ref());
+    assert_eq!(
+        format!("{public:?}"),
+        format!("PublicKey {{ algorithm: SLH-DSA-SHAKE-128f, bytes: {bytes} }}")
+    );
+    assert_eq!(format!("{:?}", pair.to_pkcs8()), "Pkcs8(..)");
+    // A signature takes Miri half an hour; the native runs sign.
+    if cfg!(miri) {
+        return;
+    }
+    let signature = pair.sign(b"").unwrap();
+    let bytes = format!("{:?}", signature.as_ref());
+    assert_eq!(
+        format!("{signature:?}"),
+        format!("Signature({bytes})")
+    );
 }
 
 #[test]

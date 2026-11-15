@@ -24,6 +24,7 @@
 //! # Ok(())
 //! # }
 //! ```
+#![cfg_attr(docsrs, feature(doc_cfg))]
 
 use core::fmt;
 

@@ -34,7 +34,7 @@ rind (DIT held) times rind with `rind::cpu::Dit::hold()` held across the timed l
 
 Measured 2026-11-06 at [`f95b91da`](https://github.com/kixel-ai/rind/commit/f95b91da886bee265dbd836192a7ade2f9158c47), noisy, on NixOS 26.11 (Zokor) (Linux 6.18.56) with rustc 1.98.1 (48a229cea 2026-09-01).
 
-Not timed on `nixos`: full handshake, X25519, every logical CPU, resumed handshake, X25519, every logical CPU, SHA3-256, 64 B, SHA3-256, 1350 B, SHA3-256, 16 KB, SHA3-512, 64 B, SHA3-512, 1350 B, SHA3-512, 16 KB, ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verify, ML-DSA-65 load and verify, HPKE X25519 sender setup, HPKE X25519 recipient setup, HPKE AES-128-GCM seal, 1350 B, HPKE AES-128-GCM open, 1350 B, Blind RSA-2048 blind, Blind RSA-2048 sign, Blind RSA-2048 finalize, Blind RSA-2048 verify, OPRF ristretto255 blind, OPRF ristretto255 evaluate, OPRF ristretto255 finalize, VOPRF P-384 blind, VOPRF P-384 evaluate, VOPRF P-384 finalize, ECVRF edwards25519 prove, ECVRF edwards25519 verify, ECVRF P-256 prove, ECVRF P-256 verify, SPAKE2+ P-256 prover share, SPAKE2+ P-256 verifier share and confirmation, SPAKE2+ P-256 prover confirmation and key, SPAKE2+ P-256 verifier key.
+Not timed on `nixos`: full handshake, X25519, every logical CPU, resumed handshake, X25519, every logical CPU, SHA3-256, 64 B, SHA3-256, 1350 B, SHA3-256, 16 KB, SHA3-512, 64 B, SHA3-512, 1350 B, SHA3-512, 16 KB, ML-KEM-1024 key generation, ML-KEM-1024 encapsulate, ML-KEM-1024 decapsulate, ML-KEM-512 key generation, ML-KEM-512 encapsulate, ML-KEM-512 decapsulate, ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verify, ML-DSA-65 load and verify, HPKE X25519 sender setup, HPKE X25519 recipient setup, HPKE AES-128-GCM seal, 1350 B, HPKE AES-128-GCM open, 1350 B, Blind RSA-2048 blind, Blind RSA-2048 sign, Blind RSA-2048 finalize, Blind RSA-2048 verify, OPRF ristretto255 blind, OPRF ristretto255 evaluate, OPRF ristretto255 finalize, VOPRF P-384 blind, VOPRF P-384 evaluate, VOPRF P-384 finalize, ECVRF edwards25519 prove, ECVRF edwards25519 verify, ECVRF P-256 prove, ECVRF P-256 verify, SPAKE2+ P-256 prover share, SPAKE2+ P-256 verifier share and confirmation, SPAKE2+ P-256 prover confirmation and key, SPAKE2+ P-256 verifier key, Argon2id 16 MiB t=1 p=1, Argon2id 64 MiB t=3 p=4.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="benchmarks/nixos-dark.svg">
@@ -80,16 +80,16 @@ Not timed on `nixos`: full handshake, X25519, every logical CPU, resumed handsha
 | ChaCha20 header protection | 61 ns ✓ | 82 ns | 74 ns | - | - | - | - |
 | X25519 | 23.97 µs ✓ | 24.61 µs | 46.72 µs | 52.09 µs | 23.94 µs | 64.60 µs ✓ | 49.70 µs |
 | P-256 ECDH | 42.82 µs | 42.60 µs | 46.05 µs | 268.62 µs | 47.87 µs | 268.70 µs ✓ | 71.25 µs |
-| Ed25519 sign | 5.72 µs | 6.13 µs | 17.23 µs | 13.30 µs | 5.83 µs | 41.37 µs ✓ | 23.38 µs |
+| Ed25519 sign | 5.72 µs ✓ | 6.13 µs | 17.23 µs | 13.30 µs | 5.83 µs | 41.37 µs ✓ | 23.38 µs |
 | Ed25519 verify | 27.15 µs | 27.03 µs | 34.76 µs | 24.83 µs | 27.08 µs | 54.52 µs ✓ | 79.25 µs |
 | P-256 ECDSA sign | 9.62 µs | 12.66 µs | 13.68 µs | 70.62 µs | 11.49 µs | 95.47 µs ✓ | 18.04 µs |
 | P-256 ECDSA verify | 39.25 µs | 40.24 µs | 41.25 µs | 226.27 µs | 41.92 µs | 215.83 µs ✓ | 60.27 µs |
 | SHA-256, 64 B | 69 ns | 96 ns | 78 ns | 59 ns | 67 ns | 385 ns ✓ | 244 ns |
 | SHA-256, 1350 B | 620 ns | 740 ns | 637 ns | 618 ns | 637 ns | 3.71 µs ✓ | 815 ns |
 | SHA-256, 16 KB | 6.86 µs | 6.88 µs | 6.97 µs | 7.22 µs | 7.08 µs | 43.12 µs ✓ | 7.37 µs |
-| SHA-512, 64 B | 138 ns | 224 ns | 198 ns | 192 ns | 206 ns | 246 ns ✓ | 355 ns |
-| SHA-512, 1350 B | 1.77 µs | 1.90 µs | 1.87 µs | 1.92 µs | 1.98 µs | 2.94 µs ✓ | 1.76 µs |
-| SHA-512, 16 KB | 16.28 µs | 25.17 µs | 25.38 µs | 24.12 µs | 21.04 µs | 29.75 µs ✓ | 15.14 µs |
+| SHA-512, 64 B | 138 ns ✓ | 224 ns | 198 ns | 192 ns | 206 ns | 246 ns ✓ | 355 ns |
+| SHA-512, 1350 B | 1.77 µs ✓ | 1.90 µs | 1.87 µs | 1.92 µs | 1.98 µs | 2.94 µs ✓ | 1.76 µs |
+| SHA-512, 16 KB | 16.28 µs ✓ | 25.17 µs | 25.38 µs | 24.12 µs | 21.04 µs | 29.75 µs ✓ | 15.14 µs |
 | SHA3-256, 64 B | - | - | - | - | - | - | - |
 | SHA3-256, 1350 B | - | - | - | - | - | - | - |
 | SHA3-256, 16 KB | - | - | - | - | - | - | - |
@@ -107,6 +107,12 @@ Not timed on `nixos`: full handshake, X25519, every logical CPU, resumed handsha
 | ML-KEM-768 key generation | 8.43 µs | 9.41 µs | - | 60.18 µs | 9.28 µs | 18.15 µs | 26.82 µs |
 | ML-KEM-768 encapsulate | 8.53 µs | 10.41 µs | - | 72.03 µs | 10.95 µs | 16.03 µs | 30.02 µs |
 | ML-KEM-768 decapsulate | 6.07 µs | 11.96 µs | - | 95.17 µs | 7.72 µs | 16.22 µs | 24.64 µs |
+| ML-KEM-1024 key generation | - | - | - | - | - | - | - |
+| ML-KEM-1024 encapsulate | - | - | - | - | - | - | - |
+| ML-KEM-1024 decapsulate | - | - | - | - | - | - | - |
+| ML-KEM-512 key generation | - | - | - | - | - | - | - |
+| ML-KEM-512 encapsulate | - | - | - | - | - | - | - |
+| ML-KEM-512 decapsulate | - | - | - | - | - | - | - |
 | ML-DSA-65 key generation | - | - | - | - | - | - | - |
 | ML-DSA-65 sign | - | - | - | - | - | - | - |
 | ML-DSA-65 verify | - | - | - | - | - | - | - |
@@ -139,6 +145,8 @@ Not timed on `nixos`: full handshake, X25519, every logical CPU, resumed handsha
 | SPAKE2+ P-256 verifier share and confirmation | - | - | - | - | - | - | - |
 | SPAKE2+ P-256 prover confirmation and key | - | - | - | - | - | - | - |
 | SPAKE2+ P-256 verifier key | - | - | - | - | - | - | - |
+| Argon2id 16 MiB t=1 p=1 | - | - | - | - | - | - | - |
+| Argon2id 64 MiB t=3 p=4 | - | - | - | - | - | - | - |
 
 </details>
 
@@ -146,7 +154,7 @@ Not timed on `nixos`: full handshake, X25519, every logical CPU, resumed handsha
 
 Measured 2026-11-07 at [`9e7f6a5a`](https://github.com/kixel-ai/rind/commit/9e7f6a5a9ea59a0cf1251c24af6c5d4f21c2b0fd), on Ubuntu 26.04.1 LTS (Linux 7.0.0-42-generic) with rustc 1.98.1 (48a229cea 2026-09-01).
 
-Not timed on `desktop`: full handshake, X25519, every logical CPU, resumed handshake, X25519, every logical CPU, SHA3-256, 64 B, SHA3-256, 1350 B, SHA3-256, 16 KB, SHA3-512, 64 B, SHA3-512, 1350 B, SHA3-512, 16 KB, ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verify, ML-DSA-65 load and verify, HPKE X25519 sender setup, HPKE X25519 recipient setup, HPKE AES-128-GCM seal, 1350 B, HPKE AES-128-GCM open, 1350 B, Blind RSA-2048 blind, Blind RSA-2048 sign, Blind RSA-2048 finalize, Blind RSA-2048 verify, OPRF ristretto255 blind, OPRF ristretto255 evaluate, OPRF ristretto255 finalize, VOPRF P-384 blind, VOPRF P-384 evaluate, VOPRF P-384 finalize, ECVRF edwards25519 prove, ECVRF edwards25519 verify, ECVRF P-256 prove, ECVRF P-256 verify, SPAKE2+ P-256 prover share, SPAKE2+ P-256 verifier share and confirmation, SPAKE2+ P-256 prover confirmation and key, SPAKE2+ P-256 verifier key.
+Not timed on `desktop`: full handshake, X25519, every logical CPU, resumed handshake, X25519, every logical CPU, SHA3-256, 64 B, SHA3-256, 1350 B, SHA3-256, 16 KB, SHA3-512, 64 B, SHA3-512, 1350 B, SHA3-512, 16 KB, ML-KEM-1024 key generation, ML-KEM-1024 encapsulate, ML-KEM-1024 decapsulate, ML-KEM-512 key generation, ML-KEM-512 encapsulate, ML-KEM-512 decapsulate, ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verify, ML-DSA-65 load and verify, HPKE X25519 sender setup, HPKE X25519 recipient setup, HPKE AES-128-GCM seal, 1350 B, HPKE AES-128-GCM open, 1350 B, Blind RSA-2048 blind, Blind RSA-2048 sign, Blind RSA-2048 finalize, Blind RSA-2048 verify, OPRF ristretto255 blind, OPRF ristretto255 evaluate, OPRF ristretto255 finalize, VOPRF P-384 blind, VOPRF P-384 evaluate, VOPRF P-384 finalize, ECVRF edwards25519 prove, ECVRF edwards25519 verify, ECVRF P-256 prove, ECVRF P-256 verify, SPAKE2+ P-256 prover share, SPAKE2+ P-256 verifier share and confirmation, SPAKE2+ P-256 prover confirmation and key, SPAKE2+ P-256 verifier key, Argon2id 16 MiB t=1 p=1, Argon2id 64 MiB t=3 p=4.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="benchmarks/desktop-dark.svg">
@@ -219,6 +227,12 @@ Not timed on `desktop`: full handshake, X25519, every logical CPU, resumed hands
 | ML-KEM-768 key generation | 6.35 µs | 8.13 µs | - | 39.63 µs | 7.37 µs | 15.02 µs | 19.81 µs |
 | ML-KEM-768 encapsulate | 6.50 µs | 8.48 µs | - | 41.38 µs | 9.00 µs | 12.80 µs | 18.77 µs |
 | ML-KEM-768 decapsulate | 4.64 µs | 8.90 µs | - | 54.87 µs | 6.54 µs | 13.44 µs | 15.77 µs |
+| ML-KEM-1024 key generation | - | - | - | - | - | - | - |
+| ML-KEM-1024 encapsulate | - | - | - | - | - | - | - |
+| ML-KEM-1024 decapsulate | - | - | - | - | - | - | - |
+| ML-KEM-512 key generation | - | - | - | - | - | - | - |
+| ML-KEM-512 encapsulate | - | - | - | - | - | - | - |
+| ML-KEM-512 decapsulate | - | - | - | - | - | - | - |
 | ML-DSA-65 key generation | - | - | - | - | - | - | - |
 | ML-DSA-65 sign | - | - | - | - | - | - | - |
 | ML-DSA-65 verify | - | - | - | - | - | - | - |
@@ -251,6 +265,8 @@ Not timed on `desktop`: full handshake, X25519, every logical CPU, resumed hands
 | SPAKE2+ P-256 verifier share and confirmation | - | - | - | - | - | - | - |
 | SPAKE2+ P-256 prover confirmation and key | - | - | - | - | - | - | - |
 | SPAKE2+ P-256 verifier key | - | - | - | - | - | - | - |
+| Argon2id 16 MiB t=1 p=1 | - | - | - | - | - | - | - |
+| Argon2id 64 MiB t=3 p=4 | - | - | - | - | - | - | - |
 
 </details>
 
@@ -258,7 +274,7 @@ Not timed on `desktop`: full handshake, X25519, every logical CPU, resumed hands
 
 Measured 2026-11-06 at [`f95b91da`](https://github.com/kixel-ai/rind/commit/f95b91da886bee265dbd836192a7ade2f9158c47), on NixOS 26.11 (Zokor) (Linux 6.18.56) with rustc 1.98.1 (48a229cea 2026-09-01).
 
-Not timed on `nixos2`: full handshake, X25519, every logical CPU, resumed handshake, X25519, every logical CPU, SHA3-256, 64 B, SHA3-256, 1350 B, SHA3-256, 16 KB, SHA3-512, 64 B, SHA3-512, 1350 B, SHA3-512, 16 KB, ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verify, ML-DSA-65 load and verify, HPKE X25519 sender setup, HPKE X25519 recipient setup, HPKE AES-128-GCM seal, 1350 B, HPKE AES-128-GCM open, 1350 B, Blind RSA-2048 blind, Blind RSA-2048 sign, Blind RSA-2048 finalize, Blind RSA-2048 verify, OPRF ristretto255 blind, OPRF ristretto255 evaluate, OPRF ristretto255 finalize, VOPRF P-384 blind, VOPRF P-384 evaluate, VOPRF P-384 finalize, ECVRF edwards25519 prove, ECVRF edwards25519 verify, ECVRF P-256 prove, ECVRF P-256 verify, SPAKE2+ P-256 prover share, SPAKE2+ P-256 verifier share and confirmation, SPAKE2+ P-256 prover confirmation and key, SPAKE2+ P-256 verifier key.
+Not timed on `nixos2`: full handshake, X25519, every logical CPU, resumed handshake, X25519, every logical CPU, SHA3-256, 64 B, SHA3-256, 1350 B, SHA3-256, 16 KB, SHA3-512, 64 B, SHA3-512, 1350 B, SHA3-512, 16 KB, ML-KEM-1024 key generation, ML-KEM-1024 encapsulate, ML-KEM-1024 decapsulate, ML-KEM-512 key generation, ML-KEM-512 encapsulate, ML-KEM-512 decapsulate, ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verify, ML-DSA-65 load and verify, HPKE X25519 sender setup, HPKE X25519 recipient setup, HPKE AES-128-GCM seal, 1350 B, HPKE AES-128-GCM open, 1350 B, Blind RSA-2048 blind, Blind RSA-2048 sign, Blind RSA-2048 finalize, Blind RSA-2048 verify, OPRF ristretto255 blind, OPRF ristretto255 evaluate, OPRF ristretto255 finalize, VOPRF P-384 blind, VOPRF P-384 evaluate, VOPRF P-384 finalize, ECVRF edwards25519 prove, ECVRF edwards25519 verify, ECVRF P-256 prove, ECVRF P-256 verify, SPAKE2+ P-256 prover share, SPAKE2+ P-256 verifier share and confirmation, SPAKE2+ P-256 prover confirmation and key, SPAKE2+ P-256 verifier key, Argon2id 16 MiB t=1 p=1, Argon2id 64 MiB t=3 p=4.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="benchmarks/nixos2-dark.svg">
@@ -304,16 +320,16 @@ Not timed on `nixos2`: full handshake, X25519, every logical CPU, resumed handsh
 | ChaCha20 header protection | 84 ns ✓ | 104 ns | 98 ns | - | - | - | - |
 | X25519 | 25.00 µs ✓ | 30.89 µs | 53.60 µs | 56.59 µs | 24.95 µs | 72.34 µs ✓ | 55.20 µs |
 | P-256 ECDH | 42.80 µs | 51.71 µs | 47.10 µs | 233.70 µs | 46.44 µs | 280.52 µs ✓ | 81.68 µs |
-| Ed25519 sign | 7.13 µs | 7.81 µs | 22.26 µs | 17.40 µs | 7.22 µs | 53.66 µs ✓ | 31.01 µs |
+| Ed25519 sign | 7.13 µs ✓ | 7.81 µs | 22.26 µs | 17.40 µs | 7.22 µs | 53.66 µs ✓ | 31.01 µs |
 | Ed25519 verify | 31.81 µs | 31.62 µs | 42.48 µs | 29.88 µs | 32.22 µs | 69.12 µs ✓ | 93.09 µs |
 | P-256 ECDSA sign | 13.11 µs | 19.80 µs | 14.86 µs | 69.11 µs | 19.89 µs | 102.03 µs ✓ | 20.35 µs |
 | P-256 ECDSA verify | 41.56 µs | 43.27 µs | 43.93 µs | 197.15 µs | 44.30 µs | 236.87 µs ✓ | 68.34 µs |
 | SHA-256, 64 B | 244 ns | 307 ns | 277 ns | 473 ns | 576 ns | 485 ns ✓ | 505 ns |
 | SHA-256, 1350 B | 2.46 µs | 2.79 µs | 2.82 µs | 5.11 µs | 6.07 µs | 5.23 µs ✓ | 2.68 µs |
 | SHA-256, 16 KB | 28.06 µs | 31.46 µs | 32.37 µs | 58.17 µs | 69.84 µs | 61.68 µs ✓ | 28.83 µs |
-| SHA-512, 64 B | 198 ns | 228 ns ✓ | 203 ns | 270 ns | 236 ns | 289 ns ✓ | 430 ns |
-| SHA-512, 1350 B | 1.65 µs | 1.97 µs ✓ | 1.93 µs | 2.67 µs | 2.35 µs | 3.08 µs ✓ | 1.90 µs |
-| SHA-512, 16 KB | 18.53 µs | 21.92 µs ✓ | 21.75 µs | 30.73 µs | 27.16 µs | 35.45 µs ✓ | 18.99 µs |
+| SHA-512, 64 B | 198 ns ✓ | 228 ns ✓ | 203 ns | 270 ns | 236 ns | 289 ns ✓ | 430 ns |
+| SHA-512, 1350 B | 1.65 µs ✓ | 1.97 µs ✓ | 1.93 µs | 2.67 µs | 2.35 µs | 3.08 µs ✓ | 1.90 µs |
+| SHA-512, 16 KB | 18.53 µs ✓ | 21.92 µs ✓ | 21.75 µs | 30.73 µs | 27.16 µs | 35.45 µs ✓ | 18.99 µs |
 | SHA3-256, 64 B | - | - | - | - | - | - | - |
 | SHA3-256, 1350 B | - | - | - | - | - | - | - |
 | SHA3-256, 16 KB | - | - | - | - | - | - | - |
@@ -331,6 +347,12 @@ Not timed on `nixos2`: full handshake, X25519, every logical CPU, resumed handsh
 | ML-KEM-768 key generation | 10.24 µs | 18.44 µs | - | 59.97 µs | 10.41 µs | 20.05 µs | 40.63 µs |
 | ML-KEM-768 encapsulate | 10.61 µs | 18.73 µs | - | 67.03 µs | 11.12 µs | 18.13 µs | 41.18 µs |
 | ML-KEM-768 decapsulate | 7.07 µs | 16.01 µs | - | 84.37 µs | 7.42 µs | 19.04 µs | 31.67 µs |
+| ML-KEM-1024 key generation | - | - | - | - | - | - | - |
+| ML-KEM-1024 encapsulate | - | - | - | - | - | - | - |
+| ML-KEM-1024 decapsulate | - | - | - | - | - | - | - |
+| ML-KEM-512 key generation | - | - | - | - | - | - | - |
+| ML-KEM-512 encapsulate | - | - | - | - | - | - | - |
+| ML-KEM-512 decapsulate | - | - | - | - | - | - | - |
 | ML-DSA-65 key generation | - | - | - | - | - | - | - |
 | ML-DSA-65 sign | - | - | - | - | - | - | - |
 | ML-DSA-65 verify | - | - | - | - | - | - | - |
@@ -363,6 +385,8 @@ Not timed on `nixos2`: full handshake, X25519, every logical CPU, resumed handsh
 | SPAKE2+ P-256 verifier share and confirmation | - | - | - | - | - | - | - |
 | SPAKE2+ P-256 prover confirmation and key | - | - | - | - | - | - | - |
 | SPAKE2+ P-256 verifier key | - | - | - | - | - | - | - |
+| Argon2id 16 MiB t=1 p=1 | - | - | - | - | - | - | - |
+| Argon2id 64 MiB t=3 p=4 | - | - | - | - | - | - | - |
 
 </details>
 
@@ -372,7 +396,7 @@ Measured 2026-11-07 at [`9e7f6a5a`](https://github.com/kixel-ai/rind/commit/9e7f
 
 The maintainer's MacBook, in daily use. Its cores have DIT, which rind sets around each call that handles a secret and the other libraries never set; Known gaps gives its cost.
 
-Not timed on `kixtop`: full handshake, X25519, every logical CPU, resumed handshake, X25519, every logical CPU, SHA3-256, 64 B, SHA3-256, 1350 B, SHA3-256, 16 KB, SHA3-512, 64 B, SHA3-512, 1350 B, SHA3-512, 16 KB, ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verify, ML-DSA-65 load and verify, HPKE X25519 sender setup, HPKE X25519 recipient setup, HPKE AES-128-GCM seal, 1350 B, HPKE AES-128-GCM open, 1350 B, Blind RSA-2048 blind, Blind RSA-2048 sign, Blind RSA-2048 finalize, Blind RSA-2048 verify, OPRF ristretto255 blind, OPRF ristretto255 evaluate, OPRF ristretto255 finalize, VOPRF P-384 blind, VOPRF P-384 evaluate, VOPRF P-384 finalize, ECVRF edwards25519 prove, ECVRF edwards25519 verify, ECVRF P-256 prove, ECVRF P-256 verify, SPAKE2+ P-256 prover share, SPAKE2+ P-256 verifier share and confirmation, SPAKE2+ P-256 prover confirmation and key, SPAKE2+ P-256 verifier key.
+Not timed on `kixtop`: full handshake, X25519, every logical CPU, resumed handshake, X25519, every logical CPU, SHA3-256, 64 B, SHA3-256, 1350 B, SHA3-256, 16 KB, SHA3-512, 64 B, SHA3-512, 1350 B, SHA3-512, 16 KB, ML-KEM-1024 key generation, ML-KEM-1024 encapsulate, ML-KEM-1024 decapsulate, ML-KEM-512 key generation, ML-KEM-512 encapsulate, ML-KEM-512 decapsulate, ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verify, ML-DSA-65 load and verify, HPKE X25519 sender setup, HPKE X25519 recipient setup, HPKE AES-128-GCM seal, 1350 B, HPKE AES-128-GCM open, 1350 B, Blind RSA-2048 blind, Blind RSA-2048 sign, Blind RSA-2048 finalize, Blind RSA-2048 verify, OPRF ristretto255 blind, OPRF ristretto255 evaluate, OPRF ristretto255 finalize, VOPRF P-384 blind, VOPRF P-384 evaluate, VOPRF P-384 finalize, ECVRF edwards25519 prove, ECVRF edwards25519 verify, ECVRF P-256 prove, ECVRF P-256 verify, SPAKE2+ P-256 prover share, SPAKE2+ P-256 verifier share and confirmation, SPAKE2+ P-256 prover confirmation and key, SPAKE2+ P-256 verifier key, Argon2id 16 MiB t=1 p=1, Argon2id 64 MiB t=3 p=4.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="benchmarks/kixtop-dark.svg">
@@ -445,6 +469,12 @@ Not timed on `kixtop`: full handshake, X25519, every logical CPU, resumed handsh
 | ML-KEM-768 key generation | 6.11 µs | - | 7.31 µs | - | 26.29 µs | 6.11 µs | 11.77 µs | 24.90 µs |
 | ML-KEM-768 encapsulate | 6.77 µs | - | 7.91 µs | - | 27.87 µs | 6.32 µs | 9.25 µs | 23.89 µs |
 | ML-KEM-768 decapsulate | 4.12 µs | - | 7.67 µs | - | 33.92 µs | 4.02 µs | 9.48 µs | 24.66 µs |
+| ML-KEM-1024 key generation | - | - | - | - | - | - | - | - |
+| ML-KEM-1024 encapsulate | - | - | - | - | - | - | - | - |
+| ML-KEM-1024 decapsulate | - | - | - | - | - | - | - | - |
+| ML-KEM-512 key generation | - | - | - | - | - | - | - | - |
+| ML-KEM-512 encapsulate | - | - | - | - | - | - | - | - |
+| ML-KEM-512 decapsulate | - | - | - | - | - | - | - | - |
 | ML-DSA-65 key generation | - | - | - | - | - | - | - | - |
 | ML-DSA-65 sign | - | - | - | - | - | - | - | - |
 | ML-DSA-65 verify | - | - | - | - | - | - | - | - |
@@ -477,6 +507,8 @@ Not timed on `kixtop`: full handshake, X25519, every logical CPU, resumed handsh
 | SPAKE2+ P-256 verifier share and confirmation | - | - | - | - | - | - | - | - |
 | SPAKE2+ P-256 prover confirmation and key | - | - | - | - | - | - | - | - |
 | SPAKE2+ P-256 verifier key | - | - | - | - | - | - | - | - |
+| Argon2id 16 MiB t=1 p=1 | - | - | - | - | - | - | - | - |
+| Argon2id 64 MiB t=3 p=4 | - | - | - | - | - | - | - | - |
 
 </details>
 
@@ -486,7 +518,7 @@ Measured 2026-11-06 at [`6b185382`](https://github.com/kixel-ai/rind/commit/6b18
 
 OVH VPS in Virginia, 4 shared vCPUs: other tenants add noise that a dedicated host's times lack.
 
-Not timed on `ovh-iad`: full handshake, X25519, every logical CPU, resumed handshake, X25519, every logical CPU, SHA3-256, 64 B, SHA3-256, 1350 B, SHA3-256, 16 KB, SHA3-512, 64 B, SHA3-512, 1350 B, SHA3-512, 16 KB, ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verify, ML-DSA-65 load and verify, HPKE X25519 sender setup, HPKE X25519 recipient setup, HPKE AES-128-GCM seal, 1350 B, HPKE AES-128-GCM open, 1350 B, Blind RSA-2048 blind, Blind RSA-2048 sign, Blind RSA-2048 finalize, Blind RSA-2048 verify, OPRF ristretto255 blind, OPRF ristretto255 evaluate, OPRF ristretto255 finalize, VOPRF P-384 blind, VOPRF P-384 evaluate, VOPRF P-384 finalize, ECVRF edwards25519 prove, ECVRF edwards25519 verify, ECVRF P-256 prove, ECVRF P-256 verify, SPAKE2+ P-256 prover share, SPAKE2+ P-256 verifier share and confirmation, SPAKE2+ P-256 prover confirmation and key, SPAKE2+ P-256 verifier key.
+Not timed on `ovh-iad`: full handshake, X25519, every logical CPU, resumed handshake, X25519, every logical CPU, SHA3-256, 64 B, SHA3-256, 1350 B, SHA3-256, 16 KB, SHA3-512, 64 B, SHA3-512, 1350 B, SHA3-512, 16 KB, ML-KEM-1024 key generation, ML-KEM-1024 encapsulate, ML-KEM-1024 decapsulate, ML-KEM-512 key generation, ML-KEM-512 encapsulate, ML-KEM-512 decapsulate, ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verify, ML-DSA-65 load and verify, HPKE X25519 sender setup, HPKE X25519 recipient setup, HPKE AES-128-GCM seal, 1350 B, HPKE AES-128-GCM open, 1350 B, Blind RSA-2048 blind, Blind RSA-2048 sign, Blind RSA-2048 finalize, Blind RSA-2048 verify, OPRF ristretto255 blind, OPRF ristretto255 evaluate, OPRF ristretto255 finalize, VOPRF P-384 blind, VOPRF P-384 evaluate, VOPRF P-384 finalize, ECVRF edwards25519 prove, ECVRF edwards25519 verify, ECVRF P-256 prove, ECVRF P-256 verify, SPAKE2+ P-256 prover share, SPAKE2+ P-256 verifier share and confirmation, SPAKE2+ P-256 prover confirmation and key, SPAKE2+ P-256 verifier key, Argon2id 16 MiB t=1 p=1, Argon2id 64 MiB t=3 p=4.
 
 graviola isn't timed on `ovh-iad`: it requires ADX, which this CPU lacks.
 
@@ -534,16 +566,16 @@ graviola isn't timed on `ovh-iad`: it requires ADX, which this CPU lacks.
 | ChaCha20 header protection | 126 ns ✓ | 160 ns | 145 ns | - | - | - |
 | X25519 | 51.79 µs ✓ | 55.09 µs | 79.18 µs | 92.76 µs | 118.60 µs ✓ | 108.87 µs |
 | P-256 ECDH | 80.93 µs | 90.86 µs | 86.47 µs | 379.56 µs | 448.99 µs ✓ | 144.90 µs |
-| Ed25519 sign | 14.51 µs | 12.85 µs | 29.90 µs | 25.23 µs | 92.43 µs ✓ | 49.77 µs |
+| Ed25519 sign | 14.51 µs ✓ | 12.85 µs | 29.90 µs | 25.23 µs | 92.43 µs ✓ | 49.77 µs |
 | Ed25519 verify | 60.71 µs | 60.32 µs | 61.26 µs | 46.55 µs | 98.92 µs ✓ | 140.95 µs |
 | P-256 ECDSA sign | 22.42 µs | 24.53 µs | 26.21 µs | 107.76 µs | 163.02 µs ✓ | 32.70 µs |
 | P-256 ECDSA verify | 81.50 µs | 77.59 µs | 79.97 µs | 324.89 µs | 389.47 µs ✓ | 115.24 µs |
 | SHA-256, 64 B | 399 ns | 491 ns | 449 ns | 762 ns | 764 ns ✓ | 813 ns |
 | SHA-256, 1350 B | 3.87 µs | 4.74 µs | 4.47 µs | 8.13 µs | 8.43 µs ✓ | 4.34 µs |
 | SHA-256, 16 KB | 45.11 µs | 50.68 µs | 50.70 µs | 93.30 µs | 96.58 µs ✓ | 45.56 µs |
-| SHA-512, 64 B | 321 ns | 389 ns ✓ | 321 ns | 435 ns | 462 ns ✓ | 699 ns |
-| SHA-512, 1350 B | 2.60 µs | 3.12 µs ✓ | 3.02 µs | 4.26 µs | 4.91 µs ✓ | 3.10 µs |
-| SHA-512, 16 KB | 33.08 µs | 35.17 µs ✓ | 35.28 µs | 53.82 µs | 59.59 µs ✓ | 32.22 µs |
+| SHA-512, 64 B | 321 ns ✓ | 389 ns ✓ | 321 ns | 435 ns | 462 ns ✓ | 699 ns |
+| SHA-512, 1350 B | 2.60 µs ✓ | 3.12 µs ✓ | 3.02 µs | 4.26 µs | 4.91 µs ✓ | 3.10 µs |
+| SHA-512, 16 KB | 33.08 µs ✓ | 35.17 µs ✓ | 35.28 µs | 53.82 µs | 59.59 µs ✓ | 32.22 µs |
 | SHA3-256, 64 B | - | - | - | - | - | - |
 | SHA3-256, 1350 B | - | - | - | - | - | - |
 | SHA3-256, 16 KB | - | - | - | - | - | - |
@@ -561,6 +593,12 @@ graviola isn't timed on `ovh-iad`: it requires ADX, which this CPU lacks.
 | ML-KEM-768 key generation | 18.79 µs | 25.06 µs | - | 100.59 µs | 36.95 µs | 69.54 µs |
 | ML-KEM-768 encapsulate | 18.94 µs | 25.08 µs | - | 104.24 µs | 32.18 µs | 66.54 µs |
 | ML-KEM-768 decapsulate | 12.89 µs | 28.78 µs | - | 148.48 µs | 35.04 µs | 49.78 µs |
+| ML-KEM-1024 key generation | - | - | - | - | - | - |
+| ML-KEM-1024 encapsulate | - | - | - | - | - | - |
+| ML-KEM-1024 decapsulate | - | - | - | - | - | - |
+| ML-KEM-512 key generation | - | - | - | - | - | - |
+| ML-KEM-512 encapsulate | - | - | - | - | - | - |
+| ML-KEM-512 decapsulate | - | - | - | - | - | - |
 | ML-DSA-65 key generation | - | - | - | - | - | - |
 | ML-DSA-65 sign | - | - | - | - | - | - |
 | ML-DSA-65 verify | - | - | - | - | - | - |
@@ -593,6 +631,8 @@ graviola isn't timed on `ovh-iad`: it requires ADX, which this CPU lacks.
 | SPAKE2+ P-256 verifier share and confirmation | - | - | - | - | - | - |
 | SPAKE2+ P-256 prover confirmation and key | - | - | - | - | - | - |
 | SPAKE2+ P-256 verifier key | - | - | - | - | - | - |
+| Argon2id 16 MiB t=1 p=1 | - | - | - | - | - | - |
+| Argon2id 64 MiB t=3 p=4 | - | - | - | - | - | - |
 
 </details>
 
@@ -602,7 +642,7 @@ Measured 2026-11-06 at [`6b185382`](https://github.com/kixel-ai/rind/commit/6b18
 
 OVH VPS in Oregon, 4 shared vCPUs: other tenants add noise that a dedicated host's times lack.
 
-Not timed on `ovh-sea`: full handshake, X25519, every logical CPU, resumed handshake, X25519, every logical CPU, SHA3-256, 64 B, SHA3-256, 1350 B, SHA3-256, 16 KB, SHA3-512, 64 B, SHA3-512, 1350 B, SHA3-512, 16 KB, ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verify, ML-DSA-65 load and verify, HPKE X25519 sender setup, HPKE X25519 recipient setup, HPKE AES-128-GCM seal, 1350 B, HPKE AES-128-GCM open, 1350 B, Blind RSA-2048 blind, Blind RSA-2048 sign, Blind RSA-2048 finalize, Blind RSA-2048 verify, OPRF ristretto255 blind, OPRF ristretto255 evaluate, OPRF ristretto255 finalize, VOPRF P-384 blind, VOPRF P-384 evaluate, VOPRF P-384 finalize, ECVRF edwards25519 prove, ECVRF edwards25519 verify, ECVRF P-256 prove, ECVRF P-256 verify, SPAKE2+ P-256 prover share, SPAKE2+ P-256 verifier share and confirmation, SPAKE2+ P-256 prover confirmation and key, SPAKE2+ P-256 verifier key.
+Not timed on `ovh-sea`: full handshake, X25519, every logical CPU, resumed handshake, X25519, every logical CPU, SHA3-256, 64 B, SHA3-256, 1350 B, SHA3-256, 16 KB, SHA3-512, 64 B, SHA3-512, 1350 B, SHA3-512, 16 KB, ML-KEM-1024 key generation, ML-KEM-1024 encapsulate, ML-KEM-1024 decapsulate, ML-KEM-512 key generation, ML-KEM-512 encapsulate, ML-KEM-512 decapsulate, ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verify, ML-DSA-65 load and verify, HPKE X25519 sender setup, HPKE X25519 recipient setup, HPKE AES-128-GCM seal, 1350 B, HPKE AES-128-GCM open, 1350 B, Blind RSA-2048 blind, Blind RSA-2048 sign, Blind RSA-2048 finalize, Blind RSA-2048 verify, OPRF ristretto255 blind, OPRF ristretto255 evaluate, OPRF ristretto255 finalize, VOPRF P-384 blind, VOPRF P-384 evaluate, VOPRF P-384 finalize, ECVRF edwards25519 prove, ECVRF edwards25519 verify, ECVRF P-256 prove, ECVRF P-256 verify, SPAKE2+ P-256 prover share, SPAKE2+ P-256 verifier share and confirmation, SPAKE2+ P-256 prover confirmation and key, SPAKE2+ P-256 verifier key, Argon2id 16 MiB t=1 p=1, Argon2id 64 MiB t=3 p=4.
 
 graviola isn't timed on `ovh-sea`: it requires ADX, which this CPU lacks.
 
@@ -650,16 +690,16 @@ graviola isn't timed on `ovh-sea`: it requires ADX, which this CPU lacks.
 | ChaCha20 header protection | 122 ns ✓ | 152 ns | 139 ns | - | - | - |
 | X25519 | 51.10 µs ✓ | 51.15 µs | 76.22 µs | 87.59 µs | 113.85 µs ✓ | 94.95 µs |
 | P-256 ECDH | 78.75 µs | 83.71 µs | 83.41 µs | 363.81 µs | 431.73 µs ✓ | 135.76 µs |
-| Ed25519 sign | 11.68 µs | 12.65 µs | 28.95 µs | 23.74 µs | 73.35 µs ✓ | 41.96 µs |
+| Ed25519 sign | 11.68 µs ✓ | 12.65 µs | 28.95 µs | 23.74 µs | 73.35 µs ✓ | 41.96 µs |
 | Ed25519 verify | 58.97 µs | 57.63 µs | 59.24 µs | 45.80 µs | 93.99 µs ✓ | 136.50 µs |
 | P-256 ECDSA sign | 21.44 µs | 23.93 µs | 24.84 µs | 107.39 µs | 156.95 µs ✓ | 31.82 µs |
 | P-256 ECDSA verify | 77.75 µs | 74.54 µs | 78.73 µs | 305.79 µs | 363.17 µs ✓ | 111.98 µs |
 | SHA-256, 64 B | 386 ns | 481 ns | 432 ns | 734 ns | 760 ns ✓ | 801 ns |
 | SHA-256, 1350 B | 3.85 µs | 4.75 µs | 4.31 µs | 8.29 µs | 8.24 µs ✓ | 4.22 µs |
 | SHA-256, 16 KB | 43.51 µs | 49.41 µs | 51.35 µs | 92.84 µs | 97.66 µs ✓ | 43.72 µs |
-| SHA-512, 64 B | 304 ns | 362 ns ✓ | 331 ns | 424 ns | 443 ns ✓ | 682 ns |
-| SHA-512, 1350 B | 2.54 µs | 3.04 µs ✓ | 2.97 µs | 4.17 µs | 4.66 µs ✓ | 2.99 µs |
-| SHA-512, 16 KB | 29.12 µs | 34.42 µs ✓ | 33.89 µs | 47.69 µs | 54.80 µs ✓ | 29.59 µs |
+| SHA-512, 64 B | 304 ns ✓ | 362 ns ✓ | 331 ns | 424 ns | 443 ns ✓ | 682 ns |
+| SHA-512, 1350 B | 2.54 µs ✓ | 3.04 µs ✓ | 2.97 µs | 4.17 µs | 4.66 µs ✓ | 2.99 µs |
+| SHA-512, 16 KB | 29.12 µs ✓ | 34.42 µs ✓ | 33.89 µs | 47.69 µs | 54.80 µs ✓ | 29.59 µs |
 | SHA3-256, 64 B | - | - | - | - | - | - |
 | SHA3-256, 1350 B | - | - | - | - | - | - |
 | SHA3-256, 16 KB | - | - | - | - | - | - |
@@ -677,6 +717,12 @@ graviola isn't timed on `ovh-sea`: it requires ADX, which this CPU lacks.
 | ML-KEM-768 key generation | 17.44 µs | 23.21 µs | - | 92.84 µs | 34.54 µs | 62.78 µs |
 | ML-KEM-768 encapsulate | 18.36 µs | 23.94 µs | - | 101.88 µs | 31.26 µs | 63.41 µs |
 | ML-KEM-768 decapsulate | 12.15 µs | 27.57 µs | - | 130.57 µs | 33.12 µs | 48.94 µs |
+| ML-KEM-1024 key generation | - | - | - | - | - | - |
+| ML-KEM-1024 encapsulate | - | - | - | - | - | - |
+| ML-KEM-1024 decapsulate | - | - | - | - | - | - |
+| ML-KEM-512 key generation | - | - | - | - | - | - |
+| ML-KEM-512 encapsulate | - | - | - | - | - | - |
+| ML-KEM-512 decapsulate | - | - | - | - | - | - |
 | ML-DSA-65 key generation | - | - | - | - | - | - |
 | ML-DSA-65 sign | - | - | - | - | - | - |
 | ML-DSA-65 verify | - | - | - | - | - | - |
@@ -709,6 +755,8 @@ graviola isn't timed on `ovh-sea`: it requires ADX, which this CPU lacks.
 | SPAKE2+ P-256 verifier share and confirmation | - | - | - | - | - | - |
 | SPAKE2+ P-256 prover confirmation and key | - | - | - | - | - | - |
 | SPAKE2+ P-256 verifier key | - | - | - | - | - | - |
+| Argon2id 16 MiB t=1 p=1 | - | - | - | - | - | - |
+| Argon2id 64 MiB t=3 p=4 | - | - | - | - | - | - |
 
 </details>
 
@@ -1159,9 +1207,11 @@ A ✓ means a published, machine-checked proof shows that all the code computing
 | rind | `x25519-ecdh` | x86_64 | [rind's Lean proof, through Aeneas and a hand model of the function-pointer dispatch Aeneas cannot translate, which assumes each key's dispatch table holds its own curve's functions, the only table rind builds, of its agreement API's X25519 down to s2n-bignum's routines, composed with s2n-bignum's HOL Light proofs of curve25519_x25519, curve25519_x25519base, their _alt forms without BMI2 and ADX, and bignum_eq, of s2n-bignum's own object code, which rind transliterates](https://github.com/kixel-ai/rind/blob/main/proofs/Rind/X86_64/X25519.lean) |
 | rind | `rsa2048-pkcs1-sha256-verify` | x86_64 with bmi2, adx | [rind's Lean proof, through Aeneas and a hand model of the function-pointer dispatch Aeneas cannot translate, of its signature API's RSASSA-PKCS1-v1_5 SHA-256 verification against RFC 8017, key loading's checks, R^2 mod n, and -n^-1 mod 2^64 included, down to s2n-bignum's routines, composed with s2n-bignum's HOL Light proofs of bignum_kmul_16_32, bignum_kmul_32_64, bignum_ksqr_16_32, bignum_ksqr_32_64, bignum_emontredc_8n, bignum_optsub, bignum_cmp_lt, bignum_bitsize, and bignum_negmodinv, of s2n-bignum's own object code, which rind transliterates](https://github.com/kixel-ai/rind/blob/main/proofs/Rind/X86_64/RsaDispatch.lean) |
 | rind | `x25519-ecdh` | aarch64 | [rind's Lean proof, through Aeneas and a hand model of the function-pointer dispatch Aeneas cannot translate, which assumes each key's dispatch table holds its own curve's functions, the only table rind builds, of its agreement API's X25519 down to s2n-bignum's routines, composed with s2n-bignum's HOL Light proofs of curve25519_x25519_byte_alt and curve25519_x25519base_byte_alt, of s2n-bignum's own object code, which rind transliterates, and rind's HOL Light proof of bignum_eq, of the object code rind's build emits](https://github.com/kixel-ai/rind/blob/main/proofs/Rind/X86_64/X25519.lean) |
-| rind | `sha512/*` | x86_64 with intel, avx, ssse3 without avx2 | [rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch Aeneas cannot translate, of its digest API's SHA-512, padding included, down to aws-lc's sha512_block_data_order_avx, which rind runs only on Intel's CPUs without AVX2, composed with aws-lc-verification's SAW proof of that routine, of aws-lc c21d40da, whose SHA-512 code rind's copy from 91c93a8e keeps](https://github.com/kixel-ai/rind/blob/main/proofs/Rind/X86_64/Sha512.lean) |
-| rind | `sha512/*` | aarch64 | [rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch Aeneas cannot translate, of its digest API's SHA-512, padding included, down to aws-lc's sha512_block_data_order_hw, which rind runs with the SHA-512 instructions, and sha512_block_data_order_nohw, which it runs without them, composed with rind's HOL Light proof of the first, of the object code rind's build emits, against s2n-bignum's FIPS 180-4 spec from awslabs/s2n-bignum#420, unmerged, which rind pins at 7ef7ba7c and proves FIPS 180-4's, and aws-lc-verification's NSym proof of the second, with its ArmSpecGap caveat, of aws-lc c21d40da, whose SHA-512 code rind's copy from 91c93a8e keeps](https://github.com/kixel-ai/rind/blob/main/proofs/Rind/X86_64/Sha512.lean) |
-| rind | `ed25519-sign`, `ed25519-verify` | x86_64 with intel, avx, ssse3 without avx2 | [rind's Lean proof, through Aeneas and a hand model of the function-pointer dispatch Aeneas cannot translate, of its signature API's Ed25519 key loading, signing, and verification, small-order key refusal included, down to s2n-bignum's routines and its SHA-512 down to aws-lc's sha512_block_data_order_avx, which rind runs only on Intel's CPUs without AVX2, composed with s2n-bignum's HOL Light proofs of edwards25519_decode, edwards25519_scalarmulbase, edwards25519_scalarmuldouble, bignum_madd_n25519, their _alt forms without BMI2 and ADX, bignum_mod_n25519, bignum_neg_p25519, bignum_lt, and bignum_eq, of s2n-bignum's own object code, which rind transliterates, and aws-lc-verification's SAW proof of that SHA-512 routine](https://github.com/kixel-ai/rind/blob/main/proofs/Rind/X86_64/Ed25519.lean) |
+| rind | `sha512/*` | x86_64 with intel, avx, ssse3 without avx2 | [rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch Aeneas cannot translate, of its digest API's SHA-512, padding included, down to aws-lc's sha512_block_data_order_avx, which rind runs only on Intel's CPUs without AVX2, composed with aws-lc-verification's SAW proof of that routine, of aws-lc c21d40da, whose SHA-512 code rind's copy from 5ed12cce keeps](https://github.com/kixel-ai/rind/blob/main/proofs/Rind/X86_64/Sha512.lean) |
+| rind | `sha512/*` | x86_64 with avx, avx2, bmi1, bmi2, popcnt, ssse3 without sha512 | [rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch Aeneas cannot translate, of its digest API's SHA-512, padding included, down to OpenSSL's sha512_block_data_order_avx2, which rind runs on CPUs with AVX2, BMI1, BMI2, POPCNT, and SSSE3 but without the SHA512 instructions, composed with rind's HOL Light proof of that routine, of the object code rind's build emits, on s2n-bignum's x86 model with the instructions rind adds to it, which rind cosimulates against the CPU, against s2n-bignum's FIPS 180-4 spec from awslabs/s2n-bignum#420, unmerged, which rind pins at 7ef7ba7c and proves FIPS 180-4's](https://github.com/kixel-ai/rind/blob/main/proofs/Rind/X86_64/Sha512.lean) |
+| rind | `sha512/*` | aarch64 | [rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch Aeneas cannot translate, of its digest API's SHA-512, padding included, down to aws-lc's sha512_block_data_order_hw, which rind runs with the SHA-512 instructions, and sha512_block_data_order_nohw, which it runs without them, composed with rind's HOL Light proof of the first, of the object code rind's build emits, against s2n-bignum's FIPS 180-4 spec from awslabs/s2n-bignum#420, unmerged, which rind pins at 7ef7ba7c and proves FIPS 180-4's, and aws-lc-verification's NSym proof of the second, with its ArmSpecGap caveat, of aws-lc c21d40da, whose SHA-512 code rind's copy from 5ed12cce keeps](https://github.com/kixel-ai/rind/blob/main/proofs/Rind/X86_64/Sha512.lean) |
+| rind | `ed25519-sign` | x86_64 with intel, avx, ssse3 without avx2 | [rind's Lean proof, through Aeneas and a hand model of the function-pointer dispatch Aeneas cannot translate, of its signature API's Ed25519 key pair generation, loading, and signing, down to s2n-bignum's routines and its SHA-512 down to aws-lc's sha512_block_data_order_avx, which rind runs only on Intel's CPUs without AVX2, composed with s2n-bignum's HOL Light proofs of edwards25519_scalarmulbase, bignum_madd_n25519, their _alt forms without BMI2 and ADX, and bignum_mod_n25519, of s2n-bignum's own object code, which rind transliterates, and aws-lc-verification's SAW proof of that SHA-512 routine. Verification checks a multiple of RFC 8032's equation with half-size scalars, which nothing proves yet](https://github.com/kixel-ai/rind/blob/main/proofs/Rind/X86_64/Ed25519.lean) |
+| rind | `ed25519-sign` | x86_64 with avx, avx2, bmi1, bmi2, popcnt, ssse3 without sha512 | [rind's Lean proof, through Aeneas and a hand model of the function-pointer dispatch Aeneas cannot translate, of its signature API's Ed25519 key pair generation, loading, and signing, down to s2n-bignum's routines and its SHA-512 down to OpenSSL's sha512_block_data_order_avx2, which rind runs on CPUs with AVX2, BMI1, BMI2, POPCNT, and SSSE3 but without the SHA512 instructions, composed with s2n-bignum's HOL Light proofs of edwards25519_scalarmulbase, bignum_madd_n25519, their _alt forms without BMI2 and ADX, and bignum_mod_n25519, of s2n-bignum's own object code, which rind transliterates, and rind's HOL Light proof of that SHA-512 routine, of the object code rind's build emits, on s2n-bignum's x86 model with the instructions rind adds to it, which rind cosimulates against the CPU, against s2n-bignum's FIPS 180-4 spec from awslabs/s2n-bignum#420, unmerged, which rind pins at 7ef7ba7c and proves FIPS 180-4's. Verification checks a multiple of RFC 8032's equation with half-size scalars, which nothing proves yet](https://github.com/kixel-ai/rind/blob/main/proofs/Rind/X86_64/Ed25519.lean) |
 | rind | `ed25519-sign`, `ed25519-verify` | aarch64 | [rind's Lean proof, through Aeneas and a hand model of the function-pointer dispatch Aeneas cannot translate, of its signature API's Ed25519 key loading, signing, and verification, small-order key refusal included, down to s2n-bignum's routines and its SHA-512 down to aws-lc's sha512_block_data_order_hw, which rind runs with the SHA-512 instructions, and sha512_block_data_order_nohw, which it runs without them, composed with s2n-bignum's HOL Light proofs of edwards25519_decode_alt, edwards25519_scalarmulbase_alt, edwards25519_scalarmuldouble_alt, bignum_madd_n25519_alt, bignum_mod_n25519, bignum_neg_p25519, and bignum_lt, of s2n-bignum's own object code, which rind transliterates, rind's HOL Light proofs of bignum_eq and of the first SHA-512 routine, of the object code rind's build emits, the latter against s2n-bignum's FIPS 180-4 spec from awslabs/s2n-bignum#420, unmerged, which rind pins at 7ef7ba7c and proves FIPS 180-4's, and aws-lc-verification's NSym proof of the second, with its ArmSpecGap caveat](https://github.com/kixel-ai/rind/blob/main/proofs/Rind/X86_64/Ed25519.lean) |
 | rind | `p256-ecdh` | aarch64 | [rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch and of key generation's draws through a dyn RandomSource, which Aeneas cannot translate, of its agreement API's P-256 key generation, public key, and agreement down to s2n-bignum's routines, composed with s2n-bignum's HOL Light proofs of p256_scalarmulbase_alt, p256_scalarmul_alt, bignum_tomont_p256, bignum_demont_p256, bignum_add_p256, bignum_montmul_p256, bignum_montsqr_p256, and bignum_mod_n256_4, of s2n-bignum's own object code, which rind transliterates, and rind's HOL Light proof of bignum_eq, of the object code rind's build emits, with rind's generator table proven to hold the multiples of G that s2n-bignum's proof assumes](https://github.com/kixel-ai/rind/blob/main/proofs/Rind/X86_64/P256.lean) |
 | rind | `p256-ecdsa-sign`, `p256-ecdsa-verify` | aarch64 | [rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch and of the nonces' draws through a dyn RandomSource, which Aeneas cannot translate, of its signature API's P-256 ECDSA with SHA-256 and fixed-length signatures, key generation and loading, signing, and verification, down to s2n-bignum's routines, composed with s2n-bignum's HOL Light proofs of p256_scalarmulbase_alt, p256_montjadd_alt, p256_montjdouble_alt, p256_montjmixadd_alt, bignum_inv_p256, bignum_neg_p256, bignum_tomont_p256, bignum_demont_p256, bignum_add_p256, bignum_montmul_p256, bignum_montsqr_p256, bignum_mod_n256_4, bignum_modadd, bignum_montmul, bignum_demont, and bignum_modinv, of s2n-bignum's own object code, which rind transliterates, and rind's HOL Light proof of bignum_eq, of the object code rind's build emits, with the group laws its twin multiplication relies on proven from Mathlib's, the generator's order n proven, and HOL Light's P256_GROUP_ELEMENT_ORDER, that every finite point has order n, proven by counting the curve's points, and proving a signature right when signing returns, as its nonce loop has no bound](https://github.com/kixel-ai/rind/blob/main/proofs/Rind/X86_64/P256Signature.lean) |
@@ -1199,6 +1249,7 @@ shares it with other gated work, so its numbers are noisier than the weekly
 `.tmp/bench-report/`. `admin/bench-report weekly` saves the latest weekly
 `bench` run's results, and `admin/bench-report render --from DIR` copies a
 collection's measured hosts into `benchmarks/data/` and writes
-`BENCHMARKS.md` and its SVGs, which the README shows too, from them, `benchmarks/verified.toml`, and
+`BENCHMARKS.md`, its SVGs, which the README shows too, and the README's comparison table from them,
+`benchmarks/verified.toml`, and
 `benchmarks/gaps.toml`, which must hold a quest or a reason for every gap
 over 10%.

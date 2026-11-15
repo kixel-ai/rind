@@ -5,12 +5,15 @@ run time. [MIGRATING.md][migrating] maps each ring and aws-lc-rs item to it.
 
 - Each module takes an algorithm as a `&'static` constant, such as
   `aead::AES_128_GCM` or `ecdsa::verify::P256_SHA256_ASN1`, and has one key
-  type per role.
+  type per role. KEMs and signing key pairs instead take a type per
+  parameter set, such as `kem::DecapsulationKey<MlKem768>`, so a ciphertext or
+  key of one set fails to compile against another's.
 - Each signature algorithm is a module of its own, `ecdsa`, `ed25519`,
-  `ml_dsa`, and `rsa`, with a `KeyPair`, a `PublicKey`, and a `Signature`, so
-  a key of one algorithm cannot reach another's call, and a program links
-  only the algorithms it names. A caller that picks the algorithm at run
-  time, such as a TLS stack, holds an enum of the modules' public keys.
+  `ml_dsa`, `rsa`, and `slh_dsa`, with a `KeyPair`, a `PublicKey`, and a
+  `Signature`, so a key of one algorithm cannot reach another's call, and a
+  program links only the algorithms it names. A caller that picks the
+  algorithm at run time, such as a TLS stack, holds an enum of the modules'
+  public keys.
 - Algorithms only old protocols should use sit in `legacy` submodules, such
   as `digest::legacy::SHA1`.
 - Key pairs name the DER format they load or encode (`from_pkcs8`,
@@ -40,7 +43,7 @@ The modules:
   load from a scalar, PKCS#8, or SEC1, and export as a scalar or PKCS#8, and
   peer keys parsed from a point, compressed or not, or a
   `SubjectPublicKeyInfo`.
-- `kem`: ML-KEM-768.
+- `kem`: ML-KEM-512, ML-KEM-768, and ML-KEM-1024.
 - `hpke`: RFC 9180's base mode and secret export, over DHKEM with X25519,
   P-256, P-384, and P-521, HKDF, and the AEADs: a recipient's keys, and
   sender, recipient, and export-only contexts.
@@ -69,11 +72,15 @@ The modules:
   context), whose parameter set is a type, so a key of one set fails to
   compile where another's is expected and a signature is a fixed-size
   array.
+- `slh_dsa`: SLH-DSA's twelve parameter sets (FIPS 205, pure, with the empty
+  context), whose parameter set is a type, as in `ml_dsa`. A signature, up
+  to 49,856 bytes, lives on the heap.
 - `digest`: MD5 and SHA-1 (legacy only), SHA-256, SHA-384, SHA-512,
   SHA-512/256, SHA3-256, SHA3-384, and SHA3-512.
 - `hmac`: HMAC over SHA-1 and SHA-2, keyed once and reused.
 - `hkdf`: HKDF over those HMACs, whose output becomes an `aead`, QUIC header-protection, or `hmac` key.
 - `pbkdf2`: PBKDF2 over those HMACs, deriving or verifying a key from a password.
+- `argon2`: Argon2id, deriving or verifying a key from a password at a memory and time cost.
 - `spake2plus`: SPAKE2+ on P-256 (RFC 9383, and Matter PASE's draft-01
   schedule), a password-authenticated key exchange whose suite is a type.
 - `encoding`: the PKCS#8, SEC1, and `SubjectPublicKeyInfo` encodings key

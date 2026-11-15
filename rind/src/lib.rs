@@ -114,7 +114,10 @@ pub mod agreement {
     };
 }
 
-/// Key encapsulation: ML-KEM-768.
+/// Key encapsulation: ML-KEM-512, ML-KEM-768, and ML-KEM-1024.
+///
+/// Each type names its parameter set, so a ciphertext of one set fails to
+/// compile against a key of another.
 ///
 /// ```
 /// # fn main() -> Result<(), rind::Error> {
@@ -122,16 +125,18 @@ pub mod agreement {
 ///
 /// // The recipient generates a key pair, and sends the encapsulation key to
 /// // the sender.
-/// let decapsulation_key = DecapsulationKey::generate(&ML_KEM_768)?;
+/// let decapsulation_key = DecapsulationKey::<MlKem768>::generate()?;
 /// let encapsulation_key = decapsulation_key.public_key();
 ///
 /// // The sender parses the encapsulation key, encapsulates a fresh secret,
 /// // and sends the ciphertext back to the recipient.
-/// let peer_key = EncapsulationKey::new(&ML_KEM_768, encapsulation_key.as_ref())?;
+/// let peer_key = EncapsulationKey::<MlKem768>::new(encapsulation_key.as_ref())?;
 /// let (ciphertext, sender_secret) = peer_key.encapsulate()?;
 ///
-/// // The recipient decapsulates the ciphertext, recovering the same secret.
-/// let recipient_secret = decapsulation_key.decapsulate(ciphertext.as_ref())?;
+/// // The recipient parses the ciphertext and decapsulates it, recovering the
+/// // same secret.
+/// let ciphertext = Ciphertext::<MlKem768>::new(ciphertext.as_ref())?;
+/// let recipient_secret = decapsulation_key.decapsulate(&ciphertext);
 ///
 /// // Each side derives its keys from the secret with a KDF.
 /// let salt = rind::hkdf::Salt::new(&rind::hkdf::HKDF_SHA256, b"session salt");
@@ -149,7 +154,8 @@ pub mod agreement {
 /// ```
 pub mod kem {
     pub use crate::high::kem::{
-        Algorithm, Ciphertext, DecapsulationKey, EncapsulationKey, ML_KEM_768, SharedSecret,
+        Algorithm, Ciphertext, DecapsulationKey, EncapsulationKey, MlKem512, MlKem768, MlKem1024,
+        SharedSecret,
     };
 }
 
@@ -505,6 +511,34 @@ pub mod ml_dsa {
     pub use crate::mid::mldsa::{MlDsa44, MlDsa65, MlDsa87};
 }
 
+/// SLH-DSA signatures (FIPS 205): all twelve parameter sets, pure with the
+/// empty context, as X.509 signs (RFC 9909).
+///
+/// The parameter set is a type, so a key of one set fails to compile where
+/// another's is expected. A signature, up to 49,856 bytes, lives on the
+/// heap.
+///
+/// ```
+/// # fn main() -> Result<(), rind::Error> {
+/// use rind::slh_dsa::{KeyPair, PublicKey, SlhDsaSha2_128f};
+///
+/// let key_pair = KeyPair::<SlhDsaSha2_128f>::generate()?;
+/// let signature = key_pair.sign(b"hello")?;
+///
+/// let public_key = PublicKey::<SlhDsaSha2_128f>::new(key_pair.public_key().as_ref())?;
+/// public_key.verify(b"hello", signature.as_ref())?;
+/// # Ok(())
+/// # }
+/// ```
+pub mod slh_dsa {
+    pub use crate::high::signature::slh_dsa::{KeyPair, ParameterSet, PublicKey, Signature};
+    pub use crate::mid::slhdsa::{
+        SlhDsaSha2_128f, SlhDsaSha2_128s, SlhDsaSha2_192f, SlhDsaSha2_192s, SlhDsaSha2_256f,
+        SlhDsaSha2_256s, SlhDsaShake128f, SlhDsaShake128s, SlhDsaShake192f, SlhDsaShake192s,
+        SlhDsaShake256f, SlhDsaShake256s,
+    };
+}
+
 /// Cryptographic hash functions.
 ///
 /// ```
@@ -677,6 +711,32 @@ pub mod pbkdf2 {
     pub mod legacy {
         pub use crate::high::pbkdf2::PBKDF2_HMAC_SHA1;
     }
+}
+
+/// Password hashing and key derivation with Argon2id.
+///
+/// [`argon2::derive`] derives a key from a password and salt at the memory
+/// and time [`argon2::Params`] sets, and [`argon2::verify`] checks one
+/// derived before. This example takes RFC 9106's second recommendation,
+/// 64 MiB over three passes, so it is not run as a test.
+///
+/// ```no_run
+/// use rind::argon2;
+///
+/// let params = argon2::Params::SECOND_RECOMMENDED;
+/// let mut stored = [0u8; 32];
+/// // Each account's salt is its own, stored beside its key.
+/// argon2::derive(params, b"password", b"per-user salt", &mut stored).unwrap();
+///
+/// argon2::verify(params, b"password", b"per-user salt", &stored).unwrap();
+/// ```
+///
+/// After the first half of its first pass, Argon2id reads memory at offsets
+/// that depend on the password, so an attacker who can watch the cache learns
+/// something about the password. That is the price of its resistance to
+/// trading memory for time, which RFC 9106 accepts.
+pub mod argon2 {
+    pub use super::high::argon2::{Params, derive, verify};
 }
 
 /// Authenticated encryption.

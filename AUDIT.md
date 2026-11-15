@@ -99,16 +99,16 @@ The pins, as `admin/audit` renders them from the files that hold them, so
 <!-- admin/audit pins: begin -->
 | Upstream | Pin | Pinned in | What rind takes at it |
 |---|---|---|---|
-| aws-lc | `91c93a8eb860` | `admin/import-aws-lc` | copied and ported code |
-| BoringSSL | `ed9209cff8b5` | `admin/import-boringssl` | copied code |
+| aws-lc | `5ed12cce0fd4` | `admin/import-aws-lc` | copied and ported code |
+| BoringSSL | `8f2554dc344d` | `admin/import-boringssl` | copied code |
 | OpenSSL | `2f4e3a5fec05` | `admin/import-openssl` | copied code |
 | HACL\* | `f557259007db` | `admin/import-hacl` | Vale's x86_64 AES-GCM |
 | s2n-bignum | `3f01260ff1bd` | `thirdparty/s2n-bignum/RIND.md` | assembly and the HOL Light proofs of it |
 | aws-lc | `c21d40da4bbe` | `admin/prove-bytes` | the routines aws-lc-verification's SHA-384/512 proofs are about |
 | ACVP-Server | `975de31eb83d` | `admin/sync-acvp` | test vectors |
-| aws-lc | `2f9a0e95cc2c` | `admin/sync-vectors` | test vectors |
-| BoringSSL | `0131ae9d78e4` | `admin/sync-vectors` | test vectors |
-| Wycheproof | `dab4ea2ed021` | `admin/sync-vectors` | test vectors |
+| aws-lc | `5ed12cce0fd4` | `admin/sync-vectors` | test vectors |
+| BoringSSL | `8f2554dc344d` | `admin/sync-vectors` | test vectors |
+| Wycheproof | `65ca494727a5` | `admin/sync-vectors` | test vectors |
 | CAVP | `0220357e399b` | `admin/sync-vectors` | test vectors |
 | CCTV | `b88c4b206254` | `admin/sync-vectors` | test vectors |
 | RFC 9180 | `b1f7cb0cdeab` | `admin/sync-vectors` | HPKE test vectors |

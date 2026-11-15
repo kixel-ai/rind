@@ -2286,29 +2286,47 @@ mod rsa {
     }
 }
 
-mod mlkem768 {
-    use aws_lc_rs::kem::{Ciphertext, DecapsulationKey, ML_KEM_768};
+mod mlkem {
+    use aws_lc_rs::kem::{
+        Algorithm, AlgorithmId, Ciphertext, DecapsulationKey, ML_KEM_512, ML_KEM_768, ML_KEM_1024,
+    };
     use proptest::prelude::*;
     use rind::kem;
+
+    // aws-lc-rs decapsulates what we encapsulate to its key.
+    fn encapsulated_by_ours<A: kem::Algorithm>(
+        algorithm: &'static Algorithm<AlgorithmId>,
+    ) -> Result<(), TestCaseError> {
+        let theirs = DecapsulationKey::generate(algorithm).unwrap();
+        let theirs_public = theirs.encapsulation_key().unwrap().key_bytes().unwrap();
+        let (ciphertext, secret) = kem::EncapsulationKey::<A>::new(theirs_public.as_ref())
+            .unwrap()
+            .encapsulate()
+            .unwrap();
+        let theirs_secret = theirs
+            .decapsulate(Ciphertext::from(ciphertext.as_ref()))
+            .unwrap();
+        prop_assert_eq!(secret.as_ref(), theirs_secret.as_ref());
+        Ok(())
+    }
 
     // Each case generates a key, which is slow under emulation.
     proptest! {
         #![proptest_config(ProptestConfig::with_cases(32))]
 
-        // aws-lc-rs decapsulates what we encapsulate to its key.
         #[test]
-        fn encapsulated_by_ours(_case in any::<u8>()) {
-            let theirs = DecapsulationKey::generate(&ML_KEM_768).unwrap();
-            let theirs_public = theirs.encapsulation_key().unwrap().key_bytes().unwrap();
-            let (ciphertext, secret) =
-                kem::EncapsulationKey::new(&kem::ML_KEM_768, theirs_public.as_ref())
-                    .unwrap()
-                    .encapsulate()
-                    .unwrap();
-            let theirs_secret = theirs
-                .decapsulate(Ciphertext::from(ciphertext.as_ref()))
-                .unwrap();
-            prop_assert_eq!(secret.as_ref(), theirs_secret.as_ref());
+        fn encapsulated_by_ours_512(_case in any::<u8>()) {
+            encapsulated_by_ours::<kem::MlKem512>(&ML_KEM_512)?;
+        }
+
+        #[test]
+        fn encapsulated_by_ours_768(_case in any::<u8>()) {
+            encapsulated_by_ours::<kem::MlKem768>(&ML_KEM_768)?;
+        }
+
+        #[test]
+        fn encapsulated_by_ours_1024(_case in any::<u8>()) {
+            encapsulated_by_ours::<kem::MlKem1024>(&ML_KEM_1024)?;
         }
     }
 }
@@ -3020,6 +3038,196 @@ mod ml_dsa_65 {
 
 mod ml_dsa_87 {
     ml_dsa_crosschecks!(MlDsa87, ML_DSA_87_SIGNING, ML_DSA_87);
+}
+
+// aws-lc-rs has no SLH-DSA, so RustCrypto's and integritychain's `fips205`
+// stand in for it. Signing is randomized, so each verifies the others'
+// signatures rather than matching their bytes; the ACVP vectors match bytes.
+macro_rules! slh_dsa_crosschecks {
+    ($set:ident, $rustcrypto:ident, $fips205:ident, $n:literal) => {
+        use fips205::traits::{KeyGen, SerDes, Signer as _, Verifier as _};
+        use pkcs8::{EncodePrivateKey, EncodePublicKey};
+        use proptest::collection::vec;
+        use proptest::prelude::*;
+        use proptest::sample::Index;
+        use rind::slh_dsa::{KeyPair, PublicKey, $set};
+        use slh_dsa::signature::Verifier;
+
+        type Theirs = slh_dsa::SigningKey<slh_dsa::$rustcrypto>;
+
+        // RustCrypto's is generic, so it compiles into this test at the
+        // test's own optimisation level, and unoptimised it signs for
+        // minutes. The release run, which every tier makes, takes these.
+        proptest! {
+            #![proptest_config(ProptestConfig::with_cases(4))]
+
+            #[test]
+            #[cfg_attr(debug_assertions, ignore = "RustCrypto signs for minutes unoptimised")]
+            fn sign_verify(
+                seeds in any::<[[u8; $n]; 3]>(),
+                addrnd in any::<[u8; $n]>(),
+                message in vec(any::<u8>(), 0..300),
+                flip in any::<Option<Index>>(),
+            ) {
+                // The same seeds give all three the same key and encodings.
+                let [sk_seed, sk_prf, pk_seed] = seeds;
+                let theirs = Theirs::slh_keygen_internal(&sk_seed, &sk_prf, &pk_seed);
+                let (fips_public, fips_private) =
+                    fips205::$fips205::KG::keygen_from_seed(&sk_seed, &sk_prf, &pk_seed);
+                prop_assert_eq!(
+                    &fips_private.clone().into_bytes()[..],
+                    &theirs.to_bytes()[..]
+                );
+                let pkcs8 = theirs.to_pkcs8_der().unwrap();
+                let ours = KeyPair::<$set>::from_pkcs8(pkcs8.as_bytes()).unwrap();
+                let ours_pkcs8 = ours.to_pkcs8();
+                prop_assert_eq!(ours_pkcs8.as_ref(), pkcs8.as_bytes());
+                let spki = theirs.as_ref().to_public_key_der().unwrap();
+                let ours_spki = ours.public_key().to_spki();
+                prop_assert_eq!(ours_spki.as_ref(), spki.as_bytes());
+
+                // Each verifies the others' signatures.
+                let ours_signature = ours.sign(&message).unwrap();
+                let parsed = slh_dsa::Signature::try_from(ours_signature.as_ref()).unwrap();
+                theirs.as_ref().verify(&message, &parsed).unwrap();
+                prop_assert!(fips_public.verify(
+                    &message,
+                    ours_signature.as_ref().try_into().unwrap(),
+                    b""
+                ));
+                let verifier = PublicKey::<$set>::from_spki(spki.as_bytes()).unwrap();
+                let mut signature = theirs
+                    .try_sign_with_context(&message, b"", Some(&addrnd))
+                    .unwrap()
+                    .to_vec();
+                verifier.verify(&message, &signature).unwrap();
+                let fips_signature = fips_private.try_sign(&message, b"", true).unwrap();
+                verifier.verify(&message, &fips_signature).unwrap();
+
+                // All refuse it with any one bit flipped.
+                if let Some(flip) = flip {
+                    let bit = flip.index(signature.len() * 8);
+                    signature[bit / 8] ^= 1 << (bit % 8);
+                    prop_assert!(verifier.verify(&message, &signature).is_err());
+                    let parsed = slh_dsa::Signature::try_from(signature.as_slice()).unwrap();
+                    prop_assert!(theirs.as_ref().verify(&message, &parsed).is_err());
+                    prop_assert!(!fips_public.verify(
+                        &message,
+                        signature.as_slice().try_into().unwrap(),
+                        b""
+                    ));
+                }
+            }
+        }
+    };
+}
+
+mod slh_dsa_sha2_128s {
+    slh_dsa_crosschecks!(
+        SlhDsaSha2_128s,
+        Sha2_128s,
+        slh_dsa_sha2_128s,
+        16
+    );
+}
+
+mod slh_dsa_sha2_128f {
+    slh_dsa_crosschecks!(
+        SlhDsaSha2_128f,
+        Sha2_128f,
+        slh_dsa_sha2_128f,
+        16
+    );
+}
+
+mod slh_dsa_sha2_192s {
+    slh_dsa_crosschecks!(
+        SlhDsaSha2_192s,
+        Sha2_192s,
+        slh_dsa_sha2_192s,
+        24
+    );
+}
+
+mod slh_dsa_sha2_192f {
+    slh_dsa_crosschecks!(
+        SlhDsaSha2_192f,
+        Sha2_192f,
+        slh_dsa_sha2_192f,
+        24
+    );
+}
+
+mod slh_dsa_sha2_256s {
+    slh_dsa_crosschecks!(
+        SlhDsaSha2_256s,
+        Sha2_256s,
+        slh_dsa_sha2_256s,
+        32
+    );
+}
+
+mod slh_dsa_sha2_256f {
+    slh_dsa_crosschecks!(
+        SlhDsaSha2_256f,
+        Sha2_256f,
+        slh_dsa_sha2_256f,
+        32
+    );
+}
+
+mod slh_dsa_shake_128s {
+    slh_dsa_crosschecks!(
+        SlhDsaShake128s,
+        Shake128s,
+        slh_dsa_shake_128s,
+        16
+    );
+}
+
+mod slh_dsa_shake_128f {
+    slh_dsa_crosschecks!(
+        SlhDsaShake128f,
+        Shake128f,
+        slh_dsa_shake_128f,
+        16
+    );
+}
+
+mod slh_dsa_shake_192s {
+    slh_dsa_crosschecks!(
+        SlhDsaShake192s,
+        Shake192s,
+        slh_dsa_shake_192s,
+        24
+    );
+}
+
+mod slh_dsa_shake_192f {
+    slh_dsa_crosschecks!(
+        SlhDsaShake192f,
+        Shake192f,
+        slh_dsa_shake_192f,
+        24
+    );
+}
+
+mod slh_dsa_shake_256s {
+    slh_dsa_crosschecks!(
+        SlhDsaShake256s,
+        Shake256s,
+        slh_dsa_shake_256s,
+        32
+    );
+}
+
+mod slh_dsa_shake_256f {
+    slh_dsa_crosschecks!(
+        SlhDsaShake256f,
+        Shake256f,
+        slh_dsa_shake_256f,
+        32
+    );
 }
 
 /// Each side of RFC 9474's protocol against blind-rsa-signatures' other
