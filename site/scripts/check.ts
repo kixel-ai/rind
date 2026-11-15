@@ -44,9 +44,10 @@ const ids = (file: string) =>
 // GitHub's anchor for each heading of a repository Markdown file, and each id
 // or name its HTML gives, such as `<a name="x">`.
 function anchors(file: string): Set<string> {
+	// A heading's text, without the tags of any HTML in it, as GitHub reads it.
 	const plain = (tokens: Token[]): string =>
 		tokens
-			.map((t) => ("tokens" in t && t.tokens ? plain(t.tokens) : "text" in t ? t.text : ""))
+			.map((t) => (t.type === "html" ? "" : "tokens" in t && t.tokens ? plain(t.tokens) : "text" in t ? t.text : ""))
 			.join("");
 	// A repeated slug takes the next `-n` no earlier anchor holds, as github-slugger does,
 	// so `Foo`, `Foo`, `Foo-1` are `foo`, `foo-1`, `foo-1-1`.
