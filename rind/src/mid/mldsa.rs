@@ -101,7 +101,32 @@ pub trait Params: fmt::Debug + Send + Sync + Unpin + UnwindSafe + RefUnwindSafe 
     /// `sigma`, FIPS 204's signature encoding.
     #[doc(hidden)]
     type Signature: Array;
+
+    // The algorithms at this parameter set. As methods of each set's impl,
+    // they compile in rind, not in each generic caller, so `admin/ct-vartime`
+    // sees them, and the MXCSR mitigation they hold, from what rind exports.
+    // They trust their buffers' lengths, so each takes an `Internal`, which
+    // only rind can make.
+    #[doc(hidden)]
+    fn keygen(_: Internal, seed: &[u8; SEED_LEN], pk: &mut [u8], sk: &mut [u8]);
+    #[doc(hidden)]
+    fn public_key_from_secret(_: Internal, sk: &[u8], pk: &mut [u8]) -> bool;
+    #[doc(hidden)]
+    fn sign(
+        _: Internal,
+        sk: &[u8],
+        mu: &[u8; MU_LEN],
+        rnd: &[u8; RND_LEN],
+    ) -> Result<Self::Signature, Error>;
+    #[doc(hidden)]
+    fn verify(_: Internal, pk: &[u8], mu: &[u8; MU_LEN], signature: &[u8]) -> Result<(), Error>;
 }
+
+/// Proof that a call to a [`Params`] method comes from rind: no other crate
+/// can make one, though a generic caller can name the methods.
+#[doc(hidden)]
+#[derive(Clone, Copy)]
+pub struct Internal(());
 
 /// A byte array of a parameter set's length.
 pub trait Array:
@@ -145,6 +170,32 @@ macro_rules! params {
             type PublicKey = [u8; $pk];
             type SecretKey = [u8; $sk];
             type Signature = [u8; $sig];
+
+            fn keygen(_: Internal, seed: &[u8; SEED_LEN], pk: &mut [u8], sk: &mut [u8]) {
+                keygen::<Self>(seed, pk, sk)
+            }
+
+            fn public_key_from_secret(_: Internal, sk: &[u8], pk: &mut [u8]) -> bool {
+                public_key_from_secret::<Self>(sk, pk)
+            }
+
+            fn sign(
+                _: Internal,
+                sk: &[u8],
+                mu: &[u8; MU_LEN],
+                rnd: &[u8; RND_LEN],
+            ) -> Result<Self::Signature, Error> {
+                sign_internal::<Self>(sk, mu, rnd)
+            }
+
+            fn verify(
+                _: Internal,
+                pk: &[u8],
+                mu: &[u8; MU_LEN],
+                signature: &[u8],
+            ) -> Result<(), Error> {
+                verify_internal::<Self>(pk, mu, signature)
+            }
         }
 
         // FIPS 204's table 2, from table 1.
@@ -252,7 +303,12 @@ impl<P: Params> KeyPair<P> {
             secret_key: P::SecretKey::zeroed(),
         };
         let mut public_key = PublicKey::<P>::zeroed();
-        keygen::<P>(&seed, public_key.bytes.as_mut(), key.secret_key.as_mut());
+        P::keygen(
+            Internal(()),
+            &seed,
+            public_key.bytes.as_mut(),
+            key.secret_key.as_mut(),
+        );
         public_key.tr = low::ct::into_public(*key.tr());
         (key, public_key)
     }
@@ -273,7 +329,11 @@ impl<P: Params> KeyPair<P> {
         key.secret_key.as_mut().copy_from_slice(sk);
         low::ct::secret_slice(key.secret_key.as_ref());
         let mut public_key = PublicKey::<P>::zeroed();
-        match public_key_from_secret::<P>(key.secret_key.as_ref(), public_key.bytes.as_mut()) {
+        match P::public_key_from_secret(
+            Internal(()),
+            key.secret_key.as_ref(),
+            public_key.bytes.as_mut(),
+        ) {
             true => {
                 public_key.tr = low::ct::into_public(*key.tr());
                 Ok((key, public_key))
@@ -306,7 +366,7 @@ impl<P: Params> KeyPair<P> {
         let mut rnd = [0u8; RND_LEN];
         SystemRandom.fill(&mut rnd)?;
         low::ct::secret_slice(&rnd);
-        sign_internal::<P>(self.secret_key.as_ref(), &mu, &rnd)
+        P::sign(Internal(()), self.secret_key.as_ref(), &mu, &rnd)
     }
 
     /// `mu`, the message representative this key signs for `message` under
@@ -324,7 +384,7 @@ impl<P: Params> KeyPair<P> {
         rnd: &[u8; RND_LEN],
     ) -> Result<P::Signature, Error> {
         let _entry = Entry::new_secret();
-        sign_internal::<P>(self.secret_key.as_ref(), mu, rnd)
+        P::sign(Internal(()), self.secret_key.as_ref(), mu, rnd)
     }
 }
 
@@ -376,7 +436,7 @@ pub(crate) fn verify<P: Params>(
 ) -> Result<(), Error> {
     let _entry = Entry::new_public();
     let mu = mu(tr, context, message).map_err(|_| Error::BadSignature)?;
-    verify_internal::<P>(pk, &mu, signature)
+    P::verify(Internal(()), pk, &mu, signature)
 }
 
 /// Polynomials on the heap, wiped before they are freed under the `wipe`
@@ -396,7 +456,10 @@ impl Drop for Scratch {
 }
 
 /// FIPS 204's `ML-DSA.KeyGen_internal`, writing `pk` and `sk`.
+#[inline(never)]
 fn keygen<P: Params>(seed: &[u8; SEED_LEN], pk: &mut [u8], sk: &mut [u8]) {
+    // Its arithmetic runs multiplies Intel's MXCSR mitigation covers.
+    let _mcdt = low::Mcdt::enter();
     let mut expanded = [0u8; 2 * SEED_LEN + 64];
     let mut h = Shake256Sponge::new();
     h.absorb(seed);
@@ -471,12 +534,14 @@ fn compute_t<P: Params>(
     t0_packed: &mut [u8],
 ) {
     let mut t = Poly::ZERO;
-    for (((row, s2), t1_packed), t0_packed) in a
-        .chunks_exact(P::L)
-        .zip(s2)
+    // Slices `a` by index, since zipping `chunks_exact` divides.
+    for (i, ((s2, t1_packed), t0_packed)) in s2
+        .iter()
         .zip(t1_packed.as_chunks_mut::<T1_PACKED>().0)
         .zip(t0_packed.as_chunks_mut::<T0_PACKED>().0)
+        .enumerate()
     {
+        let row = &a[i * P::L..(i + 1) * P::L];
         low::mldsa_pointwise_acc(&mut t.0, row, s1_hat);
         low::mldsa_intt(&mut t.0);
         add(&mut t, s2);
@@ -497,7 +562,10 @@ fn compute_t<P: Params>(
 /// mldsa-native's `mld_sign_pk_from_sk`: writes the public key expanded
 /// private key `sk` computes into `pk`, returning whether `sk` is
 /// consistent. Its time does not depend on `sk`.
+#[inline(never)]
 fn public_key_from_secret<P: Params>(sk: &[u8], pk: &mut [u8]) -> bool {
+    // Its arithmetic runs multiplies Intel's MXCSR mitigation covers.
+    let _mcdt = low::Mcdt::enter();
     let layout = SecretKeyLayout::<P>::new();
     let rho: &[u8; SEED_LEN] = sk[..SEED_LEN].try_into().unwrap();
     low::ct::public_slice(rho);
@@ -538,11 +606,14 @@ fn public_key_from_secret<P: Params>(sk: &[u8], pk: &mut [u8]) -> bool {
 
 /// FIPS 204's `ML-DSA.Sign_internal`: signs `mu` with expanded private key
 /// `sk` and randomness `rnd`.
+#[inline(never)]
 fn sign_internal<P: Params>(
     sk: &[u8],
     mu: &[u8; MU_LEN],
     rnd: &[u8; RND_LEN],
 ) -> Result<P::Signature, Error> {
+    // Its arithmetic runs multiplies Intel's MXCSR mitigation covers.
+    let _mcdt = low::Mcdt::enter();
     let layout = SecretKeyLayout::<P>::new();
     let rho: &[u8; SEED_LEN] = sk[..SEED_LEN].try_into().unwrap();
     low::ct::public_slice(rho);
@@ -594,15 +665,17 @@ fn sign_internal<P: Params>(
             low::mldsa_ntt(&mut y.0);
         }
 
-        // w = A * y, split into high bits w1 and low bits w0.
-        for ((row, w0), w1) in a.chunks_exact(l).zip(w0.iter_mut()).zip(w1.iter_mut()) {
+        // w = A * y, split into high bits w1 and low bits w0. This slices by
+        // index, as verification does, since zipping `chunks_exact` divides.
+        for (i, (w0, w1)) in w0.iter_mut().zip(w1.iter_mut()).enumerate() {
+            let row = &a[i * l..(i + 1) * l];
             low::mldsa_pointwise_acc(&mut w0.0, row, y_hat);
             low::mldsa_intt(&mut w0.0);
             low::mldsa_caddq(&mut w0.0);
             decompose::<P>(w1, w0);
         }
-        for (w1, packed) in w1.iter().zip(w1_packed.chunks_exact_mut(P::W1_PACKED)) {
-            pack_w1::<P>(packed, w1);
+        for (i, w1) in w1.iter().enumerate() {
+            pack_w1::<P>(&mut w1_packed[i * P::W1_PACKED..(i + 1) * P::W1_PACKED], w1);
         }
 
         let mut h = Shake256Sponge::new();
@@ -615,11 +688,8 @@ fn sign_internal<P: Params>(
 
         // z = y + c * s1
         let z_packed = &mut signature.as_mut()[P::CTILDE_LEN..P::CTILDE_LEN + l * P::Z_PACKED];
-        for ((s1, y), packed) in s1
-            .iter()
-            .zip(y.iter())
-            .zip(z_packed.chunks_exact_mut(P::Z_PACKED))
-        {
+        for (i, (s1, y)) in s1.iter().zip(y.iter()).enumerate() {
+            let packed = &mut z_packed[i * P::Z_PACKED..(i + 1) * P::Z_PACKED];
             low::mldsa_pointwise(&mut tmp.0, &c.0, &s1.0);
             low::mldsa_intt(&mut tmp.0);
             add(&mut tmp, y);
@@ -676,7 +746,10 @@ fn rejected(check: u64) -> bool {
 
 /// FIPS 204's `ML-DSA.Verify_internal`: verifies `signature` over `mu` under
 /// public key `pk`.
+#[inline(never)]
 fn verify_internal<P: Params>(pk: &[u8], mu: &[u8; MU_LEN], signature: &[u8]) -> Result<(), Error> {
+    // Its arithmetic runs multiplies Intel's MXCSR mitigation covers.
+    let _mcdt = low::Mcdt::enter();
     if pk.len() != public_key_len::<P>() || signature.len() != signature_len::<P>() {
         return Err(Error::BadSignature);
     }

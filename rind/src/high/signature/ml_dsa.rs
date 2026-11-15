@@ -146,6 +146,12 @@ impl<P: ParameterSet> KeyPair<P> {
         self.pair.seed().map(|seed| Seed(*seed))
     }
 
+    /// Whether the key pair has its seed, which it lacks when loaded from its
+    /// expanded form.
+    pub fn has_seed(&self) -> bool {
+        self.pair.seed().is_some()
+    }
+
     /// Loads a PKCS#8 ML-DSA key (RFC 9881), refused if it carries a public
     /// key (v2, RFC 5958) that does not match.
     ///
