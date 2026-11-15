@@ -211,7 +211,7 @@ fn hpke() {
         &DHKEM_P521_HKDF_SHA512,
     ] {
         let key = PrivateKey::generate(kem).unwrap();
-        let (enc, sender) = Sender::new(suite, &key.public_key(), b"info").unwrap();
+        let (enc, sender) = Sender::new(suite, key.public_key(), b"info").unwrap();
         check_zeroed_on_drop(Box::pin(sender));
         check_zeroed_on_drop(Box::pin(
             Recipient::new(suite, &key, enc.as_ref(), b"info").unwrap(),

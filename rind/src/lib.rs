@@ -730,13 +730,19 @@ pub mod cipher;
 /// let mut wrapped = [0u8; 24];
 /// kek.wrap_key(Mode::Kw, &key, &mut wrapped).unwrap();
 /// let mut unwrapped = [0u8; 16];
-/// assert_eq!(kek.unwrap_key(Mode::Kw, &wrapped, &mut unwrapped).unwrap(), key);
+/// assert_eq!(
+///     kek.unwrap_key(Mode::Kw, &wrapped, &mut unwrapped).unwrap(),
+///     key
+/// );
 ///
 /// let key = [0x24; 20];
 /// let mut wrapped = [0u8; 32];
 /// kek.wrap_key(Mode::Kwp, &key, &mut wrapped).unwrap();
 /// let mut unwrapped = [0u8; 24];
-/// assert_eq!(kek.unwrap_key(Mode::Kwp, &wrapped, &mut unwrapped).unwrap(), key);
+/// assert_eq!(
+///     kek.unwrap_key(Mode::Kwp, &wrapped, &mut unwrapped).unwrap(),
+///     key
+/// );
 /// ```
 pub mod key_wrap {
     pub use crate::cipher::{AES_128, AES_192, AES_256};
