@@ -114,7 +114,10 @@ pub mod agreement {
     };
 }
 
-/// Key encapsulation: ML-KEM-768.
+/// Key encapsulation: ML-KEM-512, ML-KEM-768, and ML-KEM-1024.
+///
+/// Each type names its parameter set, so a ciphertext of one set fails to
+/// compile against a key of another.
 ///
 /// ```
 /// # fn main() -> Result<(), rind::Error> {
@@ -122,16 +125,18 @@ pub mod agreement {
 ///
 /// // The recipient generates a key pair, and sends the encapsulation key to
 /// // the sender.
-/// let decapsulation_key = DecapsulationKey::generate(&ML_KEM_768)?;
+/// let decapsulation_key = DecapsulationKey::<MlKem768>::generate()?;
 /// let encapsulation_key = decapsulation_key.public_key();
 ///
 /// // The sender parses the encapsulation key, encapsulates a fresh secret,
 /// // and sends the ciphertext back to the recipient.
-/// let peer_key = EncapsulationKey::new(&ML_KEM_768, encapsulation_key.as_ref())?;
+/// let peer_key = EncapsulationKey::<MlKem768>::new(encapsulation_key.as_ref())?;
 /// let (ciphertext, sender_secret) = peer_key.encapsulate()?;
 ///
-/// // The recipient decapsulates the ciphertext, recovering the same secret.
-/// let recipient_secret = decapsulation_key.decapsulate(ciphertext.as_ref())?;
+/// // The recipient parses the ciphertext and decapsulates it, recovering the
+/// // same secret.
+/// let ciphertext = Ciphertext::<MlKem768>::new(ciphertext.as_ref())?;
+/// let recipient_secret = decapsulation_key.decapsulate(&ciphertext);
 ///
 /// // Each side derives its keys from the secret with a KDF.
 /// let salt = rind::hkdf::Salt::new(&rind::hkdf::HKDF_SHA256, b"session salt");
@@ -147,7 +152,8 @@ pub mod agreement {
 /// ```
 pub mod kem {
     pub use crate::high::kem::{
-        Algorithm, Ciphertext, DecapsulationKey, EncapsulationKey, ML_KEM_768, SharedSecret,
+        Algorithm, Ciphertext, DecapsulationKey, EncapsulationKey, MlKem512, MlKem768, MlKem1024,
+        SharedSecret,
     };
 }
 
@@ -399,11 +405,11 @@ pub mod signature {
         VerificationAlgorithm,
     };
 
-    /// Algorithms a key pair signs with, and ML-DSA's key pair, whose
-    /// parameter set is a type.
+    /// Algorithms a key pair signs with, and ML-DSA's and SLH-DSA's key
+    /// pairs, whose parameter set is a type.
     ///
     /// Each signs as the [`verify`] algorithm of the same name verifies:
-    /// [`MlDsaKeyPair<MlDsa65>`] as [`verify::ML_DSA_65`].
+    /// [`MlDsaKeyPair<MlDsa65>`](sign::MlDsaKeyPair) as [`verify::ML_DSA_65`].
     ///
     /// ```
     /// use rind::signature::sign::{MlDsa65, MlDsaKeyPair};
@@ -423,9 +429,15 @@ pub mod signature {
             RSA_PSS_SHA512,
         };
         pub use crate::high::signature::{
-            MlDsaKeyPair, MlDsaParameterSet, MlDsaSeed, MlDsaSignature,
+            MlDsaKeyPair, MlDsaParameterSet, MlDsaSeed, MlDsaSignature, SlhDsaKeyPair,
+            SlhDsaParameterSet, SlhDsaSignature,
         };
         pub use crate::mid::mldsa::{MlDsa44, MlDsa65, MlDsa87};
+        pub use crate::mid::slhdsa::{
+            SlhDsaSha2_128f, SlhDsaSha2_128s, SlhDsaSha2_192f, SlhDsaSha2_192s, SlhDsaSha2_256f,
+            SlhDsaSha2_256s, SlhDsaShake128f, SlhDsaShake128s, SlhDsaShake192f, SlhDsaShake192s,
+            SlhDsaShake256f, SlhDsaShake256s,
+        };
     }
 
     /// Algorithms a public key verifies with.
@@ -439,7 +451,10 @@ pub mod signature {
             ECDSA_P521_SHA384_ASN1, ECDSA_P521_SHA512_ASN1, ECDSA_P521_SHA512_FIXED, ED25519,
             ML_DSA_44, ML_DSA_65, ML_DSA_87, RSA_PKCS1_SHA256, RSA_PKCS1_SHA384, RSA_PKCS1_SHA512,
             RSA_PSS_SHA256, RSA_PSS_SHA256_ANY_SALT, RSA_PSS_SHA384, RSA_PSS_SHA384_ANY_SALT,
-            RSA_PSS_SHA512, RSA_PSS_SHA512_ANY_SALT,
+            RSA_PSS_SHA512, RSA_PSS_SHA512_ANY_SALT, SLH_DSA_SHA2_128F, SLH_DSA_SHA2_128S,
+            SLH_DSA_SHA2_192F, SLH_DSA_SHA2_192S, SLH_DSA_SHA2_256F, SLH_DSA_SHA2_256S,
+            SLH_DSA_SHAKE_128F, SLH_DSA_SHAKE_128S, SLH_DSA_SHAKE_192F, SLH_DSA_SHAKE_192S,
+            SLH_DSA_SHAKE_256F, SLH_DSA_SHAKE_256S,
         };
 
         /// RSA algorithms with another modulus floor, or SHA-1, for old keys
@@ -629,6 +644,32 @@ pub mod pbkdf2 {
     pub mod legacy {
         pub use crate::high::pbkdf2::PBKDF2_HMAC_SHA1;
     }
+}
+
+/// Password hashing and key derivation with Argon2id.
+///
+/// [`argon2::derive`] derives a key from a password and salt at the memory
+/// and time [`argon2::Params`] sets, and [`argon2::verify`] checks one
+/// derived before. This example takes RFC 9106's second recommendation,
+/// 64 MiB over three passes, so it is not run as a test.
+///
+/// ```no_run
+/// use rind::argon2;
+///
+/// let params = argon2::Params::SECOND_RECOMMENDED;
+/// let mut stored = [0u8; 32];
+/// // Each account's salt is its own, stored beside its key.
+/// argon2::derive(params, b"password", b"per-user salt", &mut stored).unwrap();
+///
+/// argon2::verify(params, b"password", b"per-user salt", &stored).unwrap();
+/// ```
+///
+/// After the first half of its first pass, Argon2id reads memory at offsets
+/// that depend on the password, so an attacker who can watch the cache learns
+/// something about the password. That is the price of its resistance to
+/// trading memory for time, which RFC 9106 accepts.
+pub mod argon2 {
+    pub use super::high::argon2::{Params, derive, verify};
 }
 
 /// Authenticated encryption.

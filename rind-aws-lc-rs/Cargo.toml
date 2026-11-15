@@ -11,6 +11,10 @@ readme = "README.md"
 # aws-lc-rs's own tests and test vectors, under their own licenses.
 exclude = ["tests/aws-lc-rs"]
 
+# Every feature, so docs.rs shows the items each gates, labeled with it.
+[package.metadata.docs.rs]
+all-features = true
+
 # The aws-lc-rs version whose API this crate offers, which its own version
 # tracks (sh/adapter-versions.sh), since it implements aws-lc-rs rather than
 # depending on it.
@@ -56,10 +60,6 @@ omitted = [
   "digest::SHA224*",
   "hmac::HMAC_SHA224",
   "encoding::PqdsaPrivateKeyRaw",
-  "kem::AlgorithmId::MlKem512",
-  "kem::AlgorithmId::MlKem1024",
-  "kem::ML_KEM_512",
-  "kem::ML_KEM_1024",
   "kem::DecapsulationKey::new",
   "kem::DecapsulationKey::key_bytes",
   "kem::DecapsulationKeyBytes",
