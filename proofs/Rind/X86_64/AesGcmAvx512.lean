@@ -741,6 +741,10 @@ def tailGctr (icb : Quad32) (alg : Algorithm) (kw : List (BitVec 32)) (T : List 
   (List.range 16).flatMap fun q => low.x86_64.aes_gcm.bytes (gctrEncryptBlock icb
     (loadBytes (((T ++ List.replicate 256 0#u8).drop (16 * q)).take 16)) alg kw (i0 + q))
 
+theorem length_tailGctr (icb : Quad32) (alg : Algorithm) (kw : List (BitVec 32)) (T : List U8) (i0 : Nat) :
+    (tailGctr icb alg kw T i0).length = 256 := by
+  simp [tailGctr, List.range_succ, length_bytes]
+
 theorem tailOut_eq (hk : low.x86_64.aes.HwKey) (alg : Algorithm) (kw : List (BitVec 32)) (hkey : HwKeyIs alg kw hk)
     (icb : Quad32) (i0 : Nat) (T : List U8) (v : Nat) (hv : v < 4) :
     tailOut hk.round_keys.2.2 (tailKeys hk icb i0 v) ((T.drop (64 * v)).take 64) =
@@ -841,6 +845,88 @@ theorem cipher_avx512_spec (ENC : Bool) (hk : low.x86_64.aes.HwKey) (alg : Algor
     · simp only [Bool.false_eq_true, ite_false]
       conv_rhs => rw [← flatten_chunksOf_rest 256 (by omega) inout.val, hT0, List.append_nil]
     · simp only [ite_true, Slice.from_val]
-  · sorry
+  · have hTe : (chunksRest 256 inout.val).isEmpty = false := by simpa using hT0
+    have h8 : ∀ x : Nat, x + 4 + 4 = x + 8 := fun x => by omega
+    have h12 : ∀ x : Nat, x + 8 + 4 = x + 12 := fun x => by omega
+    simp only [hTe, Bool.false_eq_true, ite_false, next4_eq, bind_ok, uncurry_apply_pair]
+    generalize hi0 : 0 + 16 * (chunksOf 256 inout.val).length = i0
+    have hmap : List.mapM (fun k => low.x86_64.aes_gcm.rounds512 k (ofLanes128 fun _ => hk.round_keys.1)
+          (hk.round_keys.2.1.map fun k => ofLanes128 fun _ => k))
+        [ofLanes128 fun b => reverseBytesQuad32 (inc32 (inc32 j0 1) (i0 + b)),
+          ofLanes128 fun b => reverseBytesQuad32 (inc32 (inc32 j0 1) (i0 + 4 + b)),
+          ofLanes128 fun b => reverseBytesQuad32 (inc32 (inc32 j0 1) (i0 + 4 + 4 + b)),
+          ofLanes128 fun b => reverseBytesQuad32 (inc32 (inc32 j0 1) (i0 + 4 + 4 + 4 + b))] =
+        ok (((List.range 4).map (tailKeys hk (inc32 j0 1) i0)).map ofLanes128) := by
+      simp only [List.mapM_cons, List.mapM_nil, rounds512_eq, bind_tc_ok, pure_bind, List.range_succ,
+        List.range_zero, List.nil_append, List.map_cons, List.map_append, List.map_nil, List.cons_append]
+      refine congrArg ok ?_
+      simp only [List.cons.injEq, and_true]
+      refine ⟨?_, ?_, ?_, ?_⟩ <;> apply ofLanes128_ext <;> intro j _ <;> simp only [tailKeys] <;>
+        rw [show ∀ x y : Nat, x = y → reverseBytesQuad32 (inc32 (inc32 j0 1) x) = reverseBytesQuad32 (inc32 (inc32 j0 1) y)
+          from fun x y h => by rw [h]] <;> omega
+    rw [hmap, bind_ok]
+    generalize hT : chunksRest 256 inout.val = T at hT0 ⊢
+    have hTl : T.length < 256 := by rw [← hT, chunksRest_length]; omega
+    have hTp : 0 < T.length := List.length_pos_iff.2 hT0
+    have hm : (T.length + 63) / 64 ≤ 4 := by omega
+    have hloop := tail_loop_eq ENC hk.round_keys.2.2 ((List.range 4).map (tailKeys hk (inc32 j0 1) i0))
+      (chunksUpTo 64 T) (by rw [chunksUpTo_range]; simp; omega)
+      (fun C hC => by
+        rw [chunksUpTo_range] at hC
+        obtain ⟨v, -, rfl⟩ := List.mem_map.1 hC
+        simp)
+    rw [hloop, bind_ok, uncurry_apply_pair, chunksUpTo_range, zip_range_map _ _ 4 _ hm, List.map_map,
+      List.flatMap_map]
+    dsimp only
+    have hFL : ((tailGctr (inc32 j0 1) alg kw T i0).take T.length).length = T.length := by
+      rw [List.length_take, length_tailGctr]; omega
+    have hto : ∀ v ∈ List.range ((T.length + 63) / 64),
+        tailOut hk.round_keys.2.2 (tailKeys hk (inc32 j0 1) i0 v) ((T.drop (64 * v)).take 64) =
+          (((tailGctr (inc32 j0 1) alg kw T i0).take T.length).drop (64 * v)).take 64 := fun v hv =>
+      tailOut_eq hk alg kw hkey (inc32 j0 1) i0 T v (by have := List.mem_range.1 hv; omega)
+    have htail : (List.range ((T.length + 63) / 64)).flatMap (fun v =>
+        tailOut hk.round_keys.2.2 (tailKeys hk (inc32 j0 1) i0 v) ((T.drop (64 * v)).take 64)) =
+        (tailGctr (inc32 j0 1) alg kw T i0).take T.length := by
+      rw [List.flatMap_congr hto, List.flatMap_def]
+      have := flatten_chunks ((tailGctr (inc32 j0 1) alg kw T i0).take T.length)
+      rw [hFL] at this
+      exact this
+    have hout : ((gctrEncryptRecursive (inc32 j0 1) alg kw (blocksAll (chunksOf 256 inout.val)) 0).flatMap
+        low.x86_64.aes_gcm.bytes ++ (tailGctr (inc32 j0 1) alg kw T i0).take T.length).map (·.bv) =
+        gctrEncrypt (inc32 j0 1) (inout.val.map (·.bv)) alg kw := by
+      have := by16_out (inc32 j0 1) alg kw inout.val
+      rw [hT, hi0, ← tail_gctr (inc32 j0 1) alg kw T hTl i0] at this
+      exact this
+    rw [htail]
+    have hinout : inout.val = (chunksOf 256 inout.val).flatten ++ T := by
+      rw [← hT, flatten_chunksOf_rest 256 (by omega)]
+    cases ENC
+    · simp only [Function.comp_def, Bool.false_eq_true, ite_false, List.length_map, List.length_range]
+      obtain ⟨y3, hy3, hy3p⟩ := tail_hash H hH t ht T hTp hTl y2
+      rw [hy3, bind_ok, bind_ok, uncurry_apply_pair, dite_eq_left (hout_len _ hout)]
+      refine ⟨_, _, rfl, rfl, by rw [Slice.from_val]; exact hout, ?_⟩
+      dsimp only
+      rw [hy3p, hy2p, hy1p]
+      simp only [Bool.false_eq_true, ↓reduceIte]
+      rw [← ghashPoly_append, ← List.map_append,
+        ← ghashPoly_append, ← List.map_append, ← padBlocks_append _ _ (length_flatten_chunksOf256 _), ← hinout]
+    · have hts : (List.range ((T.length + 63) / 64)).map (fun v => tailVec
+          (tailOut hk.round_keys.2.2 (tailKeys hk (inc32 j0 1) i0 v) ((T.drop (64 * v)).take 64))) =
+          (List.range ((((tailGctr (inc32 j0 1) alg kw T i0).take T.length).length + 63) / 64)).map fun v =>
+            tailVec ((((tailGctr (inc32 j0 1) alg kw T i0).take T.length).drop (64 * v)).take 64) := by
+        rw [hFL]
+        exact List.map_congr_left fun v hv => by rw [hto v hv]
+      simp only [Function.comp_def, ite_true, List.length_map, List.length_range]
+      rw [hts]
+      obtain ⟨y3, hy3, hy3p⟩ := tail_hash H hH t ht ((tailGctr (inc32 j0 1) alg kw T i0).take T.length)
+        (by rw [hFL]; exact hTp) (by rw [hFL]; exact hTl) y2
+      rw [hFL] at hy3
+      rw [hFL, hy3, bind_ok, bind_ok, uncurry_apply_pair, dite_eq_left (hout_len _ hout)]
+      refine ⟨_, _, rfl, rfl, by rw [Slice.from_val]; exact hout, ?_⟩
+      dsimp only
+      rw [hy3p, hy2p, hy1p, Slice.from_val]
+      simp only [↓reduceIte]
+      rw [← ghashPoly_append, ← List.map_append,
+        ← ghashPoly_append, ← List.map_append, padBlocks_append _ _ hheadl]
 
 end rind.x86_64
