@@ -99,9 +99,6 @@ type has one role, so misuse fails to compile:
 use rind::signature::{EcdsaKeyPair, PublicKey, sign, verify};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // An error naming the missing CPU feature, rather than a panic later.
-    rind::cpu::check()?;
-
     let key_pair = EcdsaKeyPair::generate(&sign::ECDSA_P256_SHA256_ASN1)?;
     let signature = key_pair.sign(b"hello")?;
 
@@ -183,12 +180,39 @@ portable Rust on any other architecture. CI tests Linux (glibc and musl),
 macOS, and Windows on x86_64 and aarch64, Linux and Windows on 32-bit x86, iOS
 in the simulator, Android on aarch64, armv7, ARMv5TE, x86_64, and 32-bit x86,
 and Linux on armv7, ARMv6, big-endian s390x, riscv64gc (glibc and musl),
-loongarch64, powerpc64le, and big-endian powerpc64 and powerpc. Any x86_64 CPU
-runs it, little-endian aarch64 needs NEON, and every operation panics on a CPU
-missing a feature rind requires: call `rind::cpu::check()` at startup to get an
-error naming it instead.
+loongarch64, powerpc64le, and big-endian powerpc64 and powerpc. rind needs only
+what each target enables at compile time, so it runs on every CPU the target
+does.
 [PLATFORMS.md][platforms] lists what each architecture runs without each
 feature.
+
+## Versions
+
+rind is below 1.0, so a minor release is its breaking one. There is no date
+for 1.0: it comes once the API takes one shape, every key type loading,
+exporting, and naming things the same way, and no breaking change is planned.
+
+- A patch release, such as 0.3.1 to 0.3.2, adds API and fixes bugs: code
+  that built against an earlier patch of the same minor still builds. A fix
+  can make rind refuse input it wrongly accepted.
+- A minor release, such as 0.3 to 0.4, may break the API. rind batches
+  breaking changes so that few minor releases are needed, the changelog
+  marks each as **breaking**, and [MIGRATING.md][migrating] maps ring's and
+  aws-lc-rs's names onto the API as it now stands.
+- The minimum supported Rust version is each crate's `rust-version`, shown on
+  its crates.io page. rind's is 1.90, and CI checks rind and every crate that
+  shares it on 1.90. It rises only in a minor release, and only to a Rust at
+  least nine releases (about a year) older than the latest stable, the window
+  rustls allows itself. Correcting a `rust-version` the code never built on
+  is a fix, which a patch can ship.
+- Each adapter's version follows the upstream it adapts, as
+  [CONTRIBUTING.md][releases] says. rind is not part of an adapter's API, so
+  an adapter's patch release may move it to rind's next minor, and to that
+  minor's `rust-version`. An adapter whose upstream needs a newer Rust than
+  rind declares that one, as rind-openmls declares OpenMLS's 1.91, and CI
+  does not yet check such a crate on its own `rust-version`.
+- [SECURITY.md][supported-versions] says which releases get security fixes,
+  and [PLATFORMS.md][platforms] which targets and CPUs rind supports.
 
 ## Contributing
 
@@ -196,7 +220,8 @@ AI reviews and contributions are welcome. rind plans its work as quests,
 Markdown files under [`quest/`][quests], with skills for Claude Code and
 Codex. With [quest][quest-setup] installed, have your agent run
 `/quest-plan` to propose a change or report a finding, or `/quest-start` to
-take a quest from the backlog. [CONTRIBUTING.md][contributing] covers
+take a quest from the backlog. Report a vulnerability privately instead, as
+[SECURITY.md][security] says. [CONTRIBUTING.md][contributing] covers
 building, testing, and how a PR lands.
 
 ## Learn more
@@ -266,6 +291,9 @@ from other projects keeps its source's license, which [LICENSE] lists.
 [quests]: https://github.com/kixel-ai/rind/blob/main/quest/README.md
 [launch-post]: https://moq.dev/blog/rind/
 [contributing]: https://github.com/kixel-ai/rind/blob/main/CONTRIBUTING.md
+[releases]: https://github.com/kixel-ai/rind/blob/main/CONTRIBUTING.md#releases
+[supported-versions]: https://github.com/kixel-ai/rind/blob/main/SECURITY.md#supported-versions
+[security]: https://github.com/kixel-ai/rind/blob/main/SECURITY.md
 [migrating]: https://github.com/kixel-ai/rind/blob/main/MIGRATING.md
 [benchmarks]: https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md
 [gaps]: https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#known-gaps
