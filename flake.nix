@@ -431,66 +431,56 @@
           devShells = {
             inherit hol-light;
 
-            default =
-              assert pkgs.lib.assertMsg
-                (
-                  (builtins.fromJSON (builtins.readFile ./site/package.json)).packageManager
-                  == "bun@${pkgs.bun.version}"
-                )
-                "Bun pins disagree: site/package.json's packageManager must be bun@${pkgs.bun.version}, the Bun in the pinned nixpkgs, which CI's site job also reads. Update them together.";
-              pkgs.mkShell {
-                packages =
-                  with pkgs;
-                  [
-                    rust-toolchain
-                    just
-                    git
-                    jq
-                    # aws-lc-rs (dev-dependency, the differential-test oracle),
-                    # libfuzzer-sys, and the OpenSSL benchmarks build C.
-                    cmake
-                    pkg-config
-                    openssl
-                    cargo-deny
-                    # admin/mutants and the mutants workflow.
-                    cargo-mutants
-                    cargo-nextest
-                    cargo-semver-checks
-                    # Linters used by `just check` and `just fix`, which skip a
-                    # module whose tools aren't on $PATH. CI sets CI_STRICT=1, which
-                    # turns that skip into an error (see sh/dispatch.sh).
-                    shellcheck
-                    actionlint
-                    # sh/alert.sh reads the workflows.
-                    yq-go
-                    nixfmt
-                    # admin/bench-report-test runs the script that holds a
-                    # leased host.
-                    flock
-                    cargo-modules
-                    rustfmt-unstable
-                    quest-cli
-                    # Builds and checks site/, the landing page, running Astro
-                    # on its own runtime.
-                    bun
-                  ]
-                  ++ python-shell.packages
-                  ++ pkgs.lib.optionals (!pkgs.stdenv.hostPlatform.isDarwin) [
-                    # Marked broken on Darwin in nixpkgs.
-                    # See UPSTREAM.md, "nixpkgs marks release-plz broken on
-                    # Darwin".
-                    release-plz
-                    # admin/ctgrind's constant-time checks.
-                    valgrind
-                  ];
+            default = pkgs.mkShell {
+              packages =
+                with pkgs;
+                [
+                  rust-toolchain
+                  just
+                  git
+                  jq
+                  # aws-lc-rs (dev-dependency, the differential-test oracle),
+                  # libfuzzer-sys, and the OpenSSL benchmarks build C.
+                  cmake
+                  pkg-config
+                  openssl
+                  cargo-deny
+                  # admin/mutants and the mutants workflow.
+                  cargo-mutants
+                  cargo-nextest
+                  cargo-semver-checks
+                  # Linters used by `just check` and `just fix`, which skip a
+                  # module whose tools aren't on $PATH. CI sets CI_STRICT=1, which
+                  # turns that skip into an error (see sh/dispatch.sh).
+                  shellcheck
+                  actionlint
+                  # sh/alert.sh reads the workflows.
+                  yq-go
+                  nixfmt
+                  # admin/bench-report-test runs the script that holds a
+                  # leased host.
+                  flock
+                  cargo-modules
+                  rustfmt-unstable
+                  quest-cli
+                ]
+                ++ python-shell.packages
+                ++ pkgs.lib.optionals (!pkgs.stdenv.hostPlatform.isDarwin) [
+                  # Marked broken on Darwin in nixpkgs.
+                  # See UPSTREAM.md, "nixpkgs marks release-plz broken on
+                  # Darwin".
+                  release-plz
+                  # admin/ctgrind's constant-time checks.
+                  valgrind
+                ];
 
-                env = python-shell.env // {
-                  # What sh/dispatch.sh checks before a scoped `just check` or
-                  # `just fix`. IN_NIX_SHELL would also pass inside another
-                  # project's shell.
-                  IN_RIND_DEV_SHELL = "1";
-                };
+              env = python-shell.env // {
+                # What sh/dispatch.sh checks before a scoped `just check` or
+                # `just fix`. IN_NIX_SHELL would also pass inside another
+                # project's shell.
+                IN_RIND_DEV_SHELL = "1";
               };
+            };
 
             # dudect needs only Rust, without Marvin's Python and toolkit fetches.
             dudect = pkgs.mkShell timing-shell;
@@ -609,6 +599,26 @@
 
               shellHook = pkgs.lib.optionalString (system == "x86_64-linux") sde-certs;
             };
+
+            # `just check` runs `sh/site.sh` in it, which builds site/, the
+            # landing page, with Bun, and loads it in headless Chromium. Its own
+            # shell, since Chromium would add hundreds of MB to the closure
+            # every CI job downloads.
+            site =
+              assert pkgs.lib.assertMsg
+                (
+                  (builtins.fromJSON (builtins.readFile ./site/package.json)).packageManager
+                  == "bun@${pkgs.bun.version}"
+                )
+                "Bun pins disagree: site/package.json's packageManager must be bun@${pkgs.bun.version}, the Bun in the pinned nixpkgs, which CI's site job also reads. Update them together.";
+              pkgs.mkShell {
+                packages = [ pkgs.bun ];
+                # Bun.WebView takes this browser over any on $PATH. nixpkgs has
+                # no Chromium for Darwin, where Bun finds an installed Chrome.
+                env = pkgs.lib.optionalAttrs (!pkgs.stdenv.hostPlatform.isDarwin) {
+                  BUN_CHROME_PATH = pkgs.lib.getExe pkgs.chromium;
+                };
+              };
 
             # `just check` runs `sh/openssl.sh` in it, which builds rind-openssl
             # and runs OpenSSL's `evp_test` with it.

@@ -10,10 +10,8 @@ if (!existsSync(path.join(root, "site", "package.json"))) {
 // Where the repository's files are on GitHub, as the README links them.
 export const repoUrl = "https://github.com/kixel-ai/rind";
 
-// The files the build reads, each through `read`: scripts/check.ts fails any
-// other source file that touches the file system or imports from outside site/.
-// sh/dispatch.sh's `site` scope must match each, which scripts/check.ts also
-// verifies, so the merge queue rebuilds the site when one changes.
+// The repository files the build reads, each through `read`, which the dev
+// server watches so an edit to one reloads the page.
 export const sources = ["README.md", "admin/wordmark.svg", "admin/wordmark-light.svg"] as const;
 
 // Read one of `sources`.

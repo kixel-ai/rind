@@ -1,6 +1,7 @@
 ---
 // The shell every page shares: light and dark from the reader's setting, no
-// request to a third party, and a link to the page's Markdown twin.
+// request to a third party (the Content-Security-Policy in astro.config.ts
+// refuses one), and a link to the page's Markdown twin.
 import { type Page, origin, twinPath } from "../lib/pages";
 
 interface Props {

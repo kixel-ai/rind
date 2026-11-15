@@ -1,14 +1,13 @@
 // Checks the built site in dist/, offline: every page has its Markdown twin, a
-// line in llms.txt, and a sitemap entry; every link into the site or the
-// repository resolves, anchors included; nothing loads from a third party; and
-// the merge queue rebuilds the site when any repository file it reads or links
-// changes.
+// line in llms.txt, and a sitemap entry; every page carries the
+// Content-Security-Policy that keeps it to its own origin; and every link into
+// the site or the repository resolves, anchors included.
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { Lexer, type Token } from "marked";
 import { hrefs, lex } from "../src/lib/markdown";
 import { origin, pages, twinPath } from "../src/lib/pages";
-import { repoUrl, root, sources } from "../src/lib/repo";
+import { repoUrl, root } from "../src/lib/repo";
 
 const dist = path.resolve("dist");
 const errors = new Set<string>();
@@ -69,97 +68,44 @@ function anchors(file: string): Set<string> {
 	return out;
 }
 
-// The merge queue's scope for the site, from sh/dispatch.sh.
-const dispatch = readFileSync(path.join(root, "sh/dispatch.sh"), "utf8").match(/^\s*\[site\]='([^']+)'/m);
-if (!dispatch) throw new Error("sh/dispatch.sh has no [site] scope");
-const scope = new RegExp(dispatch[1]);
-const repoFiles = new Set<string>(sources);
-
-// The build reads repository files only through repo.ts's `read`, which takes
-// one of `sources`, so the scope check above sees every file it reads: no other
-// source file may touch the file system or import from outside site/.
-const site = path.join(root, "site");
-for (const file of walk(path.join(site, "src"))) {
-	const rel = path.relative(site, file);
-	const body = readFileSync(file, "utf8");
-	for (const m of body.matchAll(/\b(?:from|import)\s*\(?\s*["']([^"']+)["']/g)) {
-		if (/^(?:node:)?fs(?:\/|$)/.test(m[1]) && rel !== path.join("src", "lib", "repo.ts")) {
-			fail(`${rel}: imports ${m[1]}; read repository files through repo.ts's read() instead`);
-		}
-		if (m[1].startsWith(".") && path.relative(site, path.resolve(path.dirname(file), m[1])).startsWith("..")) {
-			fail(`${rel}: imports ${m[1]}, outside site/; read it through repo.ts's read() instead`);
-		}
-	}
-}
-
 const blob = new RegExp(`^${repoUrl}/(?:blob|tree)/main/([^#?]+)`);
 const raw = /^https:\/\/raw\.githubusercontent\.com\/kixel-ai\/rind\/main\/([^#?]+)/;
 
-// Check one URL found in `from`, resolved against it as a browser would. A
-// resource is fetched by the page itself, so it must be served from the site;
-// a link the reader follows may go anywhere.
-function check(from: string, url: string, resource: boolean) {
+// Check one link found in `from`, resolved against it as a browser would.
+function check(from: string, url: string) {
 	let u: URL;
+	let target: string;
 	let fragment: string;
 	try {
 		u = new URL(url, `${origin}${from}`);
+		target = decodeURIComponent(u.pathname);
 		fragment = decodeURIComponent(u.hash.slice(1));
 	} catch {
 		return fail(`${from}: ${url} is not a valid URL`);
 	}
-	if (u.protocol === "data:") return;
 	if (u.origin === origin) {
-		const target = decodeURIComponent(u.pathname);
 		const file = target.endsWith("/") ? `${target}index.html` : target;
 		const found = [file, `${file}.html`].find((f) => files.includes(f));
 		if (!found) return fail(`${from}: ${url} is not in the build`);
 		if (fragment && !ids(found).has(fragment)) fail(`${from}: ${found} has no id "${fragment}"`);
 		return;
 	}
+	if (u.protocol === "data:") return;
 	if (u.protocol !== "https:") return fail(`${from}: ${url} is neither on this site nor https`);
-	if (resource) return fail(`${from}: ${url} loads from a third party`);
 	const located = `${u.origin}${u.pathname}`;
 	const repoPath = located.match(blob)?.[1] ?? located.match(raw)?.[1];
 	if (repoPath === undefined) return;
 	const file = decodeURIComponent(repoPath).replace(/\/$/, "");
-	repoFiles.add(file);
 	if (!existsSync(path.join(root, file))) return fail(`${from}: ${url} names ${file}, which the repository lacks`);
 	if (fragment && !(file.endsWith(".md") && anchors(file).has(fragment))) {
 		fail(`${from}: ${url} names an anchor ${file} lacks`);
 	}
 }
 
-// Stylesheets, inline or built, load through url() and a quoted @import, in
-// any case, since CSS names are ASCII case-insensitive.
-function css(file: string, body: string) {
-	for (const m of body.matchAll(/url\(\s*['"]?([^'")]+)/gi)) check(file, m[1], true);
-	for (const m of body.matchAll(/@import\s+['"]([^'"]+)/gi)) check(file, m[1], true);
-}
-
 // A numeric character reference's character, or U+FFFD where HTML gives one
 // for zero, a surrogate, or a value past Unicode.
 const codePoint = (n: number) =>
 	n === 0 || n > 0x10ffff || (n >= 0xd800 && n <= 0xdfff) ? "\ufffd" : String.fromCodePoint(n);
-
-// The URLs of a srcset's candidates. A URL may hold commas, as a data: URL
-// does, so a candidate ends at whitespace, or at a comma closing the URL.
-function srcset(value: string): string[] {
-	const urls: string[] = [];
-	let rest = value;
-	for (;;) {
-		rest = rest.replace(/^[\s,]+/, "");
-		if (rest === "") return urls;
-		const url = rest.match(/^\S+/)?.[0] ?? "";
-		rest = rest.slice(url.length);
-		if (url.endsWith(",")) {
-			urls.push(url.replace(/,+$/, ""));
-			continue;
-		}
-		urls.push(url);
-		// Skip the descriptors, up to the comma that ends the candidate.
-		rest = rest.replace(/^(?:[^,(]|\([^)]*\))*/, "");
-	}
-}
 
 // Each start tag's lowercased name and attributes, however their values are
 // quoted, with character references in the values decoded.
@@ -185,61 +131,56 @@ function* tags(html: string): Generator<[string, [string, string][]]> {
 	}
 }
 
-// Scripts, inline or built, load every module specifier, local ones included:
-// `import "x"`, `import("x")` or ``import(`x`)``, and the `from "x"` of named
-// imports and re-exports, minified or not.
-function js(file: string, body: string) {
-	for (const m of body.matchAll(/\b(?:import\s*\(?|from)\s*(["'`])((?:(?!\1).)+)\1/g)) {
-		// A template literal with a substitution names no one module to check.
-		if (m[1] !== "`" || !m[2].includes("${")) check(file, m[2], true);
-	}
+// The browser refuses whatever a page's policy does not allow, so each page
+// must carry one that allows its own origin and the inline code whose hashes
+// Astro adds, and nothing else. It covers only what follows it, and Astro puts
+// it after the layout's own head tags, so those may only be ones that load
+// nothing from off the page.
+const allowed = /^(?:'self'|'none'|'sha(?:256|384|512)-[A-Za-z0-9+/]+={0,2}')$/;
+function inert(tag: string, attr: Map<string, string>): boolean {
+	const rel = attr.get("rel")?.toLowerCase();
+	if (["html", "head", "title"].includes(tag)) return true;
+	if (tag === "meta") return !attr.has("http-equiv");
+	if (tag !== "link") return false;
+	return rel === "canonical" || rel === "alternate" || (rel === "icon" && !!attr.get("href")?.startsWith("data:"));
 }
-
-// A page's markup, or an iframe's `srcdoc`, which the browser renders as one.
-function page(file: string, html: string) {
+function policy(file: string, html: string) {
 	for (const [tag, attrs] of tags(html)) {
-		for (const [name, value] of attrs) {
-			if (tag === "base" && name === "href") {
-				fail(`${file}: <base href> changes how every URL resolves, which this check does not follow`);
-			} else if (name === "srcset" || name === "imagesrcset") {
-				for (const url of srcset(value)) check(file, url, true);
-			} else if (name === "href" && (tag === "a" || tag === "area")) {
-				check(file, value, false);
-			} else if (["href", "xlink:href", "src", "poster", "data", "ping", "component-url", "renderer-url"].includes(name)) {
-				check(file, value, true);
-			} else if (name === "style") {
-				css(file, value);
-			} else if (name === "srcdoc") {
-				page(file, value);
+		const attr = new Map(attrs);
+		if (tag === "meta" && attr.get("http-equiv")?.toLowerCase() === "content-security-policy") {
+			const directives = (attr.get("content") ?? "").split(";").map((d) => d.trim().split(/\s+/));
+			if (!directives.some(([name, ...sources]) => name === "default-src" && sources.join(" ") === "'self'")) {
+				fail(`${file}: its Content-Security-Policy lacks default-src 'self'`);
 			}
+			for (const [name, ...sources] of directives) {
+				for (const source of sources) {
+					if (!allowed.test(source)) fail(`${file}: its Content-Security-Policy lets ${name} load ${source}`);
+				}
+			}
+			return;
+		}
+		if (!inert(tag, attr)) {
+			return fail(`${file}: <${tag}> comes before the Content-Security-Policy, which covers only what follows it`);
 		}
 	}
-	for (const m of html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style\s*>/gi)) css(file, m[1]);
-	for (const m of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)) {
-		const type = m[1].match(/\btype\s*=\s*["']?([^"'\s>]+)/i)?.[1].toLowerCase();
-		if (type === undefined || type === "module" || type.endsWith("javascript")) js(file, m[2]);
-	}
+	fail(`${file}: has no Content-Security-Policy`);
 }
 
 for (const file of files) {
 	if (file.endsWith(".html")) {
-		page(file, text(file));
-	} else if (file.endsWith(".css")) {
-		css(file, text(file));
-	} else if (file.endsWith(".js")) {
-		js(file, text(file));
+		const html = text(file);
+		policy(file, html);
+		for (const [, attrs] of tags(html)) {
+			for (const [name, value] of attrs) if (name === "href") check(file, value);
+		}
 	} else if (file.endsWith(".md") || file.endsWith(".txt")) {
 		// Links, and URLs quoted as text, such as the prompt's.
 		const body = text(file);
-		for (const href of hrefs(lex(body))) check(file, href, false);
-		for (const m of body.matchAll(/https?:\/\/[^\s)<>"'`\]]+/g)) check(file, m[0], false);
+		for (const href of hrefs(lex(body))) check(file, href);
+		for (const m of body.matchAll(/https?:\/\/[^\s)<>"'`\]]+/g)) check(file, m[0]);
 	}
 }
-for (const m of sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)) check("/sitemap.xml", m[1], false);
-
-for (const file of repoFiles) {
-	if (!scope.test(file)) fail(`sh/dispatch.sh's [site] scope misses ${file}, which the site reads or links`);
-}
+for (const m of sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)) check("/sitemap.xml", m[1]);
 
 if (errors.size > 0) {
 	for (const e of errors) console.error(`error: ${e}`);

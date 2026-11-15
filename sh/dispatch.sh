@@ -97,9 +97,9 @@ declare -A scope=(
     # OpenSSL's own tests with rind-openssl loaded, against the OpenSSL the
     # flake pins. rind's own changes reach the provider through its tests.
     [openssl]='^(rind-openssl/|sh/openssl\.sh$|flake\.(nix|lock)$)'
-    # The landing page, and every repository file it reads or links, which
-    # site/scripts/check.ts holds this pattern to.
-    [site]='^(site/|sh/site\.sh$|README\.md$|BENCHMARKS\.md$|MIGRATING\.md$|MIGRATE\.md$|proofs/README\.md$|admin/wordmark(-light)?\.svg$)'
+    # The landing page reads and links files across the repository, and its
+    # build takes seconds, so it runs on every diff rather than keep a list.
+    [site]=''
     # Quest documents form one graph, so any change validates the whole tree,
     # as does a bump of the flake-pinned validator.
     [quest]='^(quest/|flake\.lock$)'
@@ -136,7 +136,7 @@ declare -A tools=(
     [py]='cargo jq maturin python3'
     [dart]='nix'
     [openssl]='nix'
-    [site]='bun'
+    [site]='nix'
     [quest]='quest'
     [gh]='actionlint yq jq'
     [shell]='shellcheck'
@@ -346,7 +346,7 @@ for module in "${selected[@]}"; do
         check:py) sh/python.sh test ;;
         check:dart) nix develop .#dart --command sh/dart.sh check ;;
         check:openssl) nix develop .#openssl --command sh/openssl.sh ;;
-        check:site) sh/site.sh ;;
+        check:site) nix develop .#site --command sh/site.sh ;;
         fix:dart) nix develop .#dart --command sh/dart.sh fix ;;
         fix:patch) cargo fmt --manifest-path patch/fixture/Cargo.toml ;;
         check:gh)

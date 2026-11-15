@@ -11,6 +11,13 @@ export default defineConfig({
 	build: { format: "file" },
 	integrations: [svelte()],
 	devToolbar: { enabled: false },
+	// The browser refuses anything not from the site itself. Astro writes the
+	// policy as a <meta> on each page, adding the hashes of its inline scripts
+	// and styles; scripts/check.ts holds every page to it, and
+	// scripts/browser.ts loads each under it.
+	security: {
+		csp: { directives: ["default-src 'self'", "base-uri 'none'", "form-action 'none'"] },
+	},
 	vite: {
 		plugins: [
 			{
