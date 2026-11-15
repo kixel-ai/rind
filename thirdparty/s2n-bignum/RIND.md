@@ -73,7 +73,8 @@ What aws-lc's x86_64 ChaCha20-Poly1305 and ChaCha20 routines need,
 `ChaCha20_ctr32_ssse3_4x` (maintainer, 2026-11-11, on
 [kixel-ai/rind#627](https://github.com/kixel-ai/rind/pull/627)), and its
 AES-CTR and AES-CBC routines, `aes_hw_ctr32_encrypt_blocks` and
-`aes_hw_cbc_encrypt`. With them every instruction of those routines, as rind's release build emits them,
+`aes_hw_cbc_encrypt`, and its P-256 mixed additions,
+`ecp_nistz256_point_add_affine` and `ecp_nistz256_point_add_affinex`. With them every instruction of those routines, as rind's release build emits them,
 decodes. Posting them to awslabs/s2n-bignum needs the maintainer's approval
 ([kixel-ai/rind#448](https://github.com/kixel-ai/rind/pull/448)).
 
@@ -88,8 +89,12 @@ decodes. Posting them to awslabs/s2n-bignum needs the maintainer's approval
 | `PEXTRB r32/m8, xmm, imm8` | 66 0F 3A 14 /r ib | REX.W refused |
 | `PEXTRQ r/m64, xmm, imm8` | 66 REX.W 0F 3A 16 /r ib | |
 | `POR xmm, xmm/m128` | 66 0F EB /r | |
+| `PANDN xmm, xmm/m128` | 66 0F DF /r | |
+| `PCMPEQD xmm, xmm/m128` | 66 0F 76 /r | |
 | `PUNPCKLDQ xmm, xmm/m128` | 66 0F 62 /r | |
 | `PUNPCKHDQ xmm, xmm/m128` | 66 0F 6A /r | |
+| `SHLX r32/r64, r/m32/m64, r32/r64` | VEX.LZ.66.0F38.W0/W1 F7 /r | BMI2; the count masked to the width, flags unchanged |
+| `SHRX r32/r64, r/m32/m64, r32/r64` | VEX.LZ.F2.0F38.W0/W1 F7 /r | BMI2; the count masked to the width, flags unchanged |
 | `VBROADCASTI128 ymm, m128` | VEX.256.66.0F38.W0 5A /r | |
 | `RET` with the F3 prefix | F3 C3 | aws-lc's `rep ret`, which every CPU runs as `RET` |
 | `XORPS xmm, xmm/m128` | 0F 57 /r | decoded as `PXOR`, the same bitwise XOR of the low 128 bits |
