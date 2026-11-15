@@ -12,6 +12,10 @@ terms of `Rind.Ed25519`'s spec, through the dispatch
 `Rind.X86_64.SignatureDispatch` models, and SHA-512 as `Rind.X86_64.Sha512`
 proves it. `admin/prove` writes the aarch64 proof from this file by renaming
 the target.
+
+Verification is proven only on aarch64, in `Rind.Aarch64.Ed25519Verify`:
+x86_64's checks a multiple of the equation with half-size scalars, which
+nothing proves yet.
 -/
 
 namespace rind.x86_64

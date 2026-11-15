@@ -10,8 +10,9 @@ under the files they change.
 
 # Building and testing
 
-`thirdparty/vectors` holds aws-lc's and BoringSSL's vector files, which
-`admin/sync-vectors` copies from the revisions it pins. `SLOW_TESTS=1` adds
+`thirdparty/vectors` holds the aws-lc, BoringSSL, Wycheproof, CAVP, and CCTV
+vector files the tests read, which `admin/sync-vectors` copies from the
+revisions it pins, so a plain clone runs every test. `SLOW_TESTS=1` adds
 the large sets, such as CCTV's million ML-KEM vectors, which the nightly
 `build` workflow runs on every CPU tier.
 
@@ -23,8 +24,9 @@ cargo bench
 [BENCHMARKS.md](BENCHMARKS.md#updating-this-report) says how to refresh the benchmark report.
 
 With [Nix](https://nixos.org), `nix develop` (or direnv) provides CI's
-toolchain, and `just check` runs CI's gate over what the branch changed; the
-nightly tools are in [TESTING.md](TESTING.md#running-the-tools).
+toolchain, and `just check` runs CI's gate over what the branch changed,
+three modules at a time (`sh/dispatch.sh` lists the `CHECK_*` variables that
+change that); the scheduled workflows' tools are in [TESTING.md](TESTING.md#running-the-tools).
 
 # Commits
 
@@ -46,7 +48,7 @@ Have at least these sections:
 
 Run `just ci` before every push.
 
-The scheduled workflows run nightly (`timing`, `ctgrind-debug`, and `mutants` weekly) or on demand with `gh workflow run <name> --ref <branch>`, and some on a pull request that touches their inputs: ctgrind's x86_64 release row and its BINSEC rows, the armv7, portable, Dart, and openmls jobs of `build`, a timing build, the fuzz targets' builds, aarch64 clippy, and all of `x86-cpu`, `prove`, and `regenerate`. `mutants` never runs on a pull request; mutate its diff with `admin/mutants --in-diff`, and dispatch a whole campaign, which `admin/mutants` runs only on GitHub-hosted runners. These runs are advisory, since a path-filtered workflow cannot be a required check, but fix a red one before merging.
+The scheduled workflows run as [TESTING.md](TESTING.md#scheduled-workflows) lists, or on demand with `gh workflow run <name> --ref <branch>`, and some on a pull request that touches their inputs: ctgrind's x86_64 release row and its BINSEC rows, the armv7, portable, Dart, and openmls jobs of `build`, a timing build, the fuzz targets' builds, aarch64 clippy, and all of `x86-cpu`, `prove`, and `regenerate`. `mutants` never runs on a pull request; mutate its diff with `admin/mutants --in-diff`, and dispatch a whole campaign, which `admin/mutants` runs only on GitHub-hosted runners. These runs are advisory, since a path-filtered workflow cannot be a required check, but fix a red one before merging.
 PRs land on `main` through GitHub's merge queue, one PR at a time, as squash commits.
 Queue the reviewed head with `quest merge <pr> --land <sha>` (`/quest-merge` does this).
 The required `Queue build / Build` check skips on pull requests; the merge group runs `just ci` against the merge group's base on the self-hosted runner, and that job's own result decides the group.
@@ -85,6 +87,8 @@ A PR that adds such a workaround adds its entry there and names the entry in the
 
 release-plz opens a release PR from `main`, and publishing happens only when that PR merges.
 release-plz owns crate versions.
+It creates a GitHub Release for each tag it pushes, with its changelog entry as the body, and only rind's marked latest.
+If creating one fails, the release job stops there and alerts, leaving later crates and pyrind's PyPI upload undone. Rerun the failed `Release` run, which finishes them but skips the tag already pushed, then create that tag's Release by hand with `gh release create <tag> --verify-tag --latest=false --title <tag> --notes-file <its CHANGELOG.md entry>`, passing `--latest` for rind's.
 
 A release PR merges only after `just release-check` passes at its head, so nothing publishes that the full suite has not passed.
 It dispatches every scheduled workflow but `bench` and `dart-libraries` on the PR's branch, so each runs its whole scheduled matrix on the head, and waits for them all, which takes as long as the slowest. Mutation testing covers every change since the previous release.

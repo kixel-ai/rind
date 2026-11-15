@@ -13,9 +13,9 @@ Each upstream rind changes, with where its fork is vendored and where the list o
 
 ### s2n-bignum
 
-- **Breaks:** s2n-bignum's HOL Light x86_64 model cannot decode some instructions of aws-lc's ChaCha20-Poly1305 and ChaCha20 routines, or the SHA extensions rind's SHA-256 blocks run, and its SHA-256 and SHA-512 specs are in pull requests not yet merged, so those routines cannot be proven on it.
+- **Breaks:** s2n-bignum's HOL Light x86_64 model cannot decode some instructions of aws-lc's ChaCha20-Poly1305 and ChaCha20 routines, or the SHA extensions rind's SHA-256 blocks run, its SHA-256 and SHA-512 specs are in pull requests not yet merged, and it has no AArch32 model, so those routines and armv7's assembly cannot be proven on it.
 - **Fork:** `thirdparty/s2n-bignum`, upstream's whole tree at the base its `RIND.md` names (maintainer, 2026-11-13, on [kixel-ai/rind#701](https://github.com/kixel-ai/rind/pull/701)).
-- **Changes:** listed in [its `RIND.md`](/thirdparty/s2n-bignum/RIND.md), which `admin/regenerate` checks lists every file that differs from upstream's: the model additions of [awslabs/s2n-bignum#450](https://github.com/awslabs/s2n-bignum/pull/450), the SHA extensions among them, rind's own additions, both cosimulated against the CPU, rind's ChaCha20-Poly1305 spec, and the specs of [awslabs/s2n-bignum#415](https://github.com/awslabs/s2n-bignum/pull/415) and [#420](https://github.com/awslabs/s2n-bignum/pull/420).
+- **Changes:** listed in [its `RIND.md`](/thirdparty/s2n-bignum/RIND.md), which `admin/regenerate` checks lists every file that differs from upstream's: the model additions of [awslabs/s2n-bignum#450](https://github.com/awslabs/s2n-bignum/pull/450), the SHA extensions among them, rind's own additions, both cosimulated against the CPU, rind's AArch32 model in `aarch32/`, cosimulated against qemu-arm, rind's ChaCha20-Poly1305 spec, and the specs of [awslabs/s2n-bignum#415](https://github.com/awslabs/s2n-bignum/pull/415) and [#420](https://github.com/awslabs/s2n-bignum/pull/420).
 - **Offered:** no. #415, #420, and #450 are upstream's own open pull requests; rind's own changes need the maintainer's approval to post ([kixel-ai/rind#448](https://github.com/kixel-ai/rind/pull/448)), which [upstream-reports](/quest/m2/upstream-reports.md) asks for.
 - **Goes when:** s2n-bignum merges each change and the fork's base moves past it.
 
@@ -62,6 +62,14 @@ Each upstream rind changes, with where its fork is vendored and where the list o
 - **Reported:** [KDE bug 494162](https://bugs.kde.org/show_bug.cgi?id=494162).
 - **Goes when:** the flake's valgrind reports ADX.
 
+### Valgrind models only MXCSR's rounding mode
+
+- **Breaks:** valgrind's x86_64 guest keeps only MXCSR's rounding mode, so `stmxcsr` reads `0x1F80` after `ldmxcsr 0x1FBF`, and the `low::mcdt` tests that read back Intel's MXCSR mitigation fail. The guard itself still loads and restores MXCSR there.
+- **Reproduce:** `admin/ctgrind unit low::mcdt` fails `holds_and_restores` with `left: 8064, right: 8127`.
+- **Workaround:** `rind/src/low/mcdt.rs` ignores those two tests in `__ctgrind` builds; plain `cargo test` and x86-cpu.yml's SDE rows still run them.
+- **Reported:** no.
+- **Goes when:** valgrind keeps MXCSR's other bits.
+
 ### Valgrind cannot run x86_64's newest extensions
 
 - **Breaks:** valgrind (through 3.27) decodes no AVX-512, VAES, VPCLMULQDQ, or SHA instruction and hides them from `cpuid`, so ctgrind never reaches the code that uses them.
@@ -101,9 +109,9 @@ Each upstream rind changes, with where its fork is vendored and where the list o
 
 ### BINSEC cannot decode instructions `admin/ct-binsec` stubs
 
-- **Breaks:** BINSEC 0.11.3 stops with `uninterpreted` at these instructions rind's code or glibc runs: on x86_64, `stc` (`f9`), `clc` (`f8`), `movmskps` and VEX `vmovmskps`, `vinsertf128` (VEX.256 0F3A 18), `vpermpd` (VEX.256.W1 0F3A 01), `vmovshdup` (VEX F3 0F 16), and the `syscall` in glibc's `mprotect`; on aarch64, `mrs xN, tpidr_el0` (glibc's `malloc`), `tbl` with one to four table registers (8B and 16B), and `cnt` (8B and 16B).
+- **Breaks:** BINSEC 0.11.3 stops with `uninterpreted` at these instructions rind's code or glibc runs: on x86_64, `stc` (`f9`), `clc` (`f8`), `movmskps` and VEX `vmovmskps`, `vinsertf128` (VEX.256 0F3A 18), `vpermpd` (VEX.256.W1 0F3A 01), `vmovshdup` (VEX F3 0F 16), `stmxcsr` and `ldmxcsr` (0F AE /3 and /2, which Intel's MXCSR mitigation runs on a CPU that needs it), and the `syscall` in glibc's `mprotect`; on aarch64, `mrs xN, tpidr_el0` (glibc's `malloc`), `tbl` with one to four table registers (8B and 16B), and `cnt` (8B and 16B).
 - **Reproduce:** `admin/ct-binsec` with `STUBS` emptied stops at the first one its harnesses reach, such as `stc` in `ct_binsec_ecdh_p521` on x86_64 or `tbl` in `ct_binsec_aes` on aarch64.
-- **Workaround:** `admin/ct-binsec`'s `STUBS` gives each its effect in BINSEC's script language, generated per encoding from objdump's disassembly of the test binary and glibc, since `replace opcode` matches exact bytes; `tbl`, a constant-time table lookup, becomes a shift of the whole table, which needs no branch. Its script makes `mprotect` succeed without its system call.
+- **Workaround:** `admin/ct-binsec`'s `STUBS` gives each its effect in BINSEC's script language, generated per encoding from objdump's disassembly of the test binary and glibc, since `replace opcode` matches exact bytes; `tbl`, a constant-time table lookup, becomes a shift of the whole table, which needs no branch; `stmxcsr` stores MXCSR's default, and `ldmxcsr` does nothing, since BINSEC models no floating-point state. Its script makes `mprotect` succeed without its system call.
 - **Reported:** no.
 - **Goes when:** a BINSEC release decodes them, or `replace opcode` matches an encoding by mask, so one stub covers every encoding of an instruction.
 
@@ -138,6 +146,14 @@ Each upstream rind changes, with where its fork is vendored and where the list o
 - **Workaround:** `admin/prove` renames the second to `markerCopyInst1` with `sed`.
 - **Reported:** no.
 - **Goes when:** Aeneas names the clauses apart.
+
+### Charon panics on HACL*'s unrolled SHA-2
+
+- **Breaks:** libcrux-macros' `unroll_for!` unrolls the 64 or 80 rounds of libcrux-sha2's `sha256_update_nblocks` and `sha512_update_nblocks` into one body whose blocks nest past Charon's fixed `MAX_STACK_DEPTH` of 1024, and Charon panics rebuilding its control flow.
+- **Reproduce:** add `--include 'libcrux_sha2::hacl::sha256_update_nblocks' --extract-opaque-bodies` to `admin/prove`'s portable pass and run `admin/prove lean`: Charon panics with "stack depth limit exceeded" in `transform/control_flow/ullbc_to_llbc.rs` translating `sha256_update`.
+- **Workaround:** the portable pass leaves both functions opaque, as Charon leaves other crates' bodies, and `proofs/Rind/Portable/Hacl.lean` states each as an axiom restating HACL*'s F* theorem about it. Found in [kixel-ai/rind#649](https://github.com/kixel-ai/rind/pull/649).
+- **Reported:** not yet; filing is approved, and [its quest](/quest/m4/verified/hacl-sha2-lean.md) holds the draft issue awaiting the maintainer's approval of its text.
+- **Goes when:** Charon translates both, and that quest proves them in Lean.
 
 ### Lean cannot compile P-384's comb as one literal
 
@@ -202,6 +218,14 @@ Each upstream rind changes, with where its fork is vendored and where the list o
 - **Reported:** no.
 - **Goes when:** the debug JIT runs under the translation.
 
+### LeakSanitizer deadlocks under Intel SDE
+
+- **Breaks:** at exit, LeakSanitizer clones a thread that ptrace-stops the program's threads to scan them. Under SDE that tracer sometimes waits forever on a futex with the main thread stopped, so a replay that printed libFuzzer's `Done` never exits, and `fuzz.yml`'s SDE replays ran into their 60-minute timeout.
+- **Reproduce:** replay any ASan fuzz target's corpus with `sde -dmr -- TARGET -runs=0 CORPUS` in `nix develop .#sde` a few dozen times; about one run in eight hangs, its main thread in `ptrace_stop` and traced by its own clone.
+- **Workaround:** `sh/fuzz-replay.sh` sets `ASAN_OPTIONS=detect_leaks=0` for the `x86_64-sde` tiers; the native x86_64 fuzzing and replay still check leaks. Diagnosed in [kixel-ai/rind#743](https://github.com/kixel-ai/rind/pull/743).
+- **Reported:** no (Intel SDE has no public tracker; LLVM documents that LeakSanitizer does not work under ptrace).
+- **Goes when:** an SDE release runs LeakSanitizer's stop-the-world without hanging.
+
 ## Dependencies
 
 ### aws-lc cannot deny 32-bit ARM features at run time
@@ -226,26 +250,12 @@ Each upstream rind changes, with where its fork is vendored and where the list o
 - **Reported:** no; offering it needs the maintainer's approval, which [upstream-reports](/quest/m2/upstream-reports.md) asks for.
 - **Goes when:** a blind-rsa-signatures release builds on `rsa` 0.10.0.
 
-### nixpkgs' Rust crashes cargo-llvm-cov's tests
-
-- **Breaks:** cargo-llvm-cov's tests build with nixpkgs' rustc, whose instrumented binaries crash on exit, so cache.nixos.org has no build of it.
-- **Workaround:** `flake.nix`'s `coverage` shell overrides cargo-llvm-cov with `doCheck = false`; rind's coverage builds with the pinned toolchain, not nixpkgs'.
-- **Reported:** no.
-- **Goes when:** nixpkgs builds cargo-llvm-cov.
-
 ### nixpkgs' Lean cannot read Mathlib's cache
 
 - **Breaks:** Mathlib's prebuilt cache is read by the `leantar` bundled with the Lean toolchain, which nixpkgs' Lean lacks.
 - **Workaround:** `flake.nix`'s `prove` shell takes `elan`, which fetches the toolchain `proofs/lean-toolchain` names.
 - **Reported:** no.
 - **Goes when:** nixpkgs' Lean reads Mathlib's cache.
-
-### nixpkgs marks release-plz broken on Darwin
-
-- **Breaks:** nixpkgs marks release-plz broken on Darwin, so the default shell cannot evaluate with it there.
-- **Workaround:** `flake.nix`'s default shell adds release-plz only off Darwin.
-- **Reported:** no.
-- **Goes when:** nixpkgs builds release-plz on Darwin.
 
 ## CI tools
 

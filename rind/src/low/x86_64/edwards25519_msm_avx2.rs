@@ -48,6 +48,10 @@ pub(crate) fn edwards25519_msm(
 /// reduced.
 #[target_feature(enable = "avx,avx2")]
 fn msm(base: &[u64; 4], scalars: &[[u64; 4]; 2], points: &[[[u64; 4]; 4]; 2]) -> [[u64; 4]; 3] {
+    // Its operands are public, but `admin/ct-vartime` holds every `vpmuludq`
+    // to Intel's MXCSR mitigation alike. `target_feature` keeps this from
+    // inlining into its caller, so the mitigation covers only the vector work.
+    let _mcdt = crate::low::Mcdt::enter();
     let nafs = [
         non_adjacent_form(&[base[0], base[1], 0, 0], 8),
         non_adjacent_form(&[base[2], base[3], 0, 0], 8),
