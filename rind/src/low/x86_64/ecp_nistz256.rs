@@ -13,7 +13,7 @@
 //! for coordinates below p, as s2n-bignum's `p256_montjmixadd` states it, and
 //! returns either input for the other's infinity. The proofs assume the
 //! System V ABI's 16-byte stack alignment at the call, which the routines'
-//! `movdqa` spills need.
+//! `movdqa` spills need, and `POLY`'s, which two `pand`s that read it need.
 
 use super::cpu::HaveBmi2Adx;
 

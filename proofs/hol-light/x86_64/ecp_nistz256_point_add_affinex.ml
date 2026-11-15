@@ -1285,10 +1285,12 @@ let NISTZ256_X_POLY = prove
    result; the doubling between them is inline. The masks that select the
    result for the two infinities are computed at s52 and applied at the end,
    where the three cases split. The stack frame, at stackpointer, must be
-   16-byte aligned, since the body's MOVDQA stores and loads require it. *)
+   16-byte aligned, since the body's MOVDQA stores and loads require it,
+   and so must the table, which two PANDs read. *)
 let ECP_NISTZ256_POINT_ADD_AFFINEX_BODY = time prove_steps
  (`!p1 p2 x1 y1 z1 x2 y2 pc tbl stackpointer.
      aligned 16 stackpointer /\
+     aligned 16 (word tbl:int64) /\
      riprel32_within_bounds tbl (pc + 886) /\
      riprel32_within_bounds tbl (pc + 878) /\
      riprel32_within_bounds tbl (pc + 1875) /\
@@ -1417,7 +1419,12 @@ let ECP_NISTZ256_POINT_ADD_AFFINEX_BODY = time prove_steps
   (NISTZ256_STEPS_TAC ECP_NISTZ256_POINT_ADD_AFFINEX_EXEC (193--194));
   (NISTZ256_CALL_TAC ECP_NISTZ256_POINT_ADD_AFFINEX_EXEC ECP_NISTZ256_SUB_FROMX_CORRECT 195 [`R12`;`R13`;`R8`;`R9`] "resy" THEN NISTZ256_NORM_TAC);
   (NISTZ256_STACK_MERGE_TAC "s196" [224;240;256;272;288;304]);
-  (RIPREL_TAC 1014 886 THEN RIPREL_TAC 1022 878);
+  (SUBGOAL_THEN `aligned 16 (word(tbl + 128):int64) /\ aligned 16 (word(tbl + 144):int64)`
+     STRIP_ASSUME_TAC THENL
+    [REWRITE_TAC[WORD_ADD] THEN CONV_TAC(ONCE_DEPTH_CONV NORMALIZE_ALIGNED_WORD_CONV) THEN
+     ASM_REWRITE_TAC[];
+     ALL_TAC] THEN
+   RIPREL_TAC 1014 886 THEN RIPREL_TAC 1022 878);
   (NISTZ256_STEPS_TAC ECP_NISTZ256_POINT_ADD_AFFINEX_EXEC (197--263));
   (RULE_ASSUM_TAC(REWRITE_RULE[YMM0_SSE; YMM1_SSE; YMM2_SSE; YMM3_SSE; YMM4_SSE; YMM5_SSE]) THEN
   ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[]);
@@ -1515,10 +1522,12 @@ let ECP_NISTZ256_POINT_ADD_AFFINEX_BODY = time prove_steps
    - otherwise a Jacobian triple for the sum of the points they represent,
      unless those are equal, which these formulas cannot double.
    Its stack frame, 544 bytes below the return address, is 16-byte aligned
-   whenever the caller's stack is, as the ABI requires at a call. *)
+   whenever the caller's stack is, as the ABI requires at a call. The table,
+   rind's `POLY`, is 16-byte aligned too. *)
 let ECP_NISTZ256_POINT_ADD_AFFINEX_SUBROUTINE_CORRECT = time prove_steps
  (`!p1 p2 x1 y1 z1 x2 y2 pc tbl stackpointer returnaddress.
      aligned 16 (word_add stackpointer (word 8)) /\
+     aligned 16 (word tbl:int64) /\
      riprel32_within_bounds tbl (pc + 886) /\
      riprel32_within_bounds tbl (pc + 878) /\
      riprel32_within_bounds tbl (pc + 1875) /\

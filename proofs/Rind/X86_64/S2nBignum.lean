@@ -364,7 +364,8 @@ is all zeros, the affine infinity; `p2` with a Montgomery-form z of one when
 `p1`'s z is zero, the Jacobian infinity; and otherwise the sum of the points
 they represent, unless those are equal, which it cannot double. The
 theorems also assume what the wrapper and the System V ABI give and Lean
-cannot state, which is trusted: the stack is 16-byte aligned at the call;
+cannot state, which is trusted: the stack is 16-byte aligned at the call,
+and the `POLY` table is too, as its `align(16)` makes it;
 the routine's code, its 200-byte `POLY` table, `p1`, `p2`, and its 544-byte
 frame do not overlap; and the table's rip-relative displacements reach it. -/
 @[step]

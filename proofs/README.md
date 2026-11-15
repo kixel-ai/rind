@@ -131,7 +131,7 @@ those inputs, in any worktree, restores in under a second.
   to them, with s2n-bignum's field algebra. They assume a 16-byte aligned
   stack at the call, as the System V ABI gives, since the body's MOVDQA
   stores require it, and read the field constants from the static
-  `POLY`.
+  `POLY`, whose `align(16)` the body's two PANDs from it require.
 
 The fork adds what these proofs need to s2n-bignum: specs from s2n-bignum
 pull requests not yet merged, rind's own RFC 8439 spec of ChaCha20,
