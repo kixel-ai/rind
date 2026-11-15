@@ -436,7 +436,7 @@ class Api:
             # Its fields are listed as children.
             sig["kind"] = {"tuple": len(sig["kind"]["tuple"])}
         if through is not None:
-            # A supertrait's item, read through the bounds that reach it.
+            # A supertrait's item, read with its trait's arguments.
             sig = {"through": self.sig(through), "item": sig}
         if impl is not None:
             # A method's callers also meet its impl block's bounds and target.
@@ -493,33 +493,39 @@ class Api:
         # though the supertraits it extends in turn may be callable.
         # The bounds they carry, such as `Send`, hold for this
         # trait's implementors too, so they are compared under it.
-        # Each comes with the arguments of the bounds that reach it,
-        # as `A<u8>`'s items differ from `A<u16>`'s.
-        todo, done, implied, inherited = [(b, ()) for b in self.bounds(item["id"])], set(), {}, []
+        # Each comes with its trait's arguments, as `A<u8>`'s items
+        # differ from `A<u16>`'s.
+        todo, done, implied, inherited = [(b, {}) for b in self.bounds(item["id"])], set(), {}, []
         while todo:
-            bound, through = todo.pop()
+            bound, outer = todo.pop()
             if not self.unnameable(bound):
                 continue
             id = bound["trait_bound"]["trait"]["id"]
-            through += (bound["trait_bound"]["trait"]["args"],)
-            key = (id, json.dumps(through, sort_keys=True))
+            # Its arguments as callers of this trait see them, however many
+            # hidden steps lie between.
+            args = substitute(bound["trait_bound"]["trait"]["args"], outer)
+            key = (id, json.dumps(args, sort_keys=True))
             if key in done:
                 continue
             done.add(key)
+            trait = self.index[str(id)]["inner"]["trait"]
             if self.index[str(id)]["visibility"] == "public":
-                inherited += [(i, through) for i in self.index[str(id)]["inner"]["trait"]["items"]]
+                inherited += [(i, args) for i in trait["items"]]
+            given = [a.get("type", a.get("const")) for a in ((args or {}).get("angle_bracketed") or {}).get("args", []) if "lifetime" not in a]
+            params = [p["name"] for p in trait["generics"]["params"] if "lifetime" not in p["kind"]]
+            inner = dict(zip(params, given))
             for b in self.bounds(id):
                 if self.unnameable(b):
                     # Its own supertraits' methods stay callable through this bound.
-                    todo.append((b, through))
+                    todo.append((b, inner))
                 else:
-                    b = {"through": list(through), "bound": b}
+                    b = substitute(b, inner)
                     implied.setdefault(json.dumps(b, sort_keys=True), b)
         if implied:
             self.add(path + ("{supertraits}",), "bounds", Unordered(self.sig(list(implied.values()))))
-        for id, through in inherited:
+        for id, args in inherited:
             child = self.index[str(id)]
-            self.visit(child, path + (child["name"],), seen, through=list(through))
+            self.visit(child, path + (child["name"],), seen, through=args)
 
     def walk_fields(self, kind, inner, path, seen):
         """Visits a struct's or union's public fields, returning whether it has any."""
@@ -721,6 +727,17 @@ def assoc_item(inner):
     if const is None or const.get("value") is None or LITERAL.fullmatch(const["value"]):
         return inner
     return {"assoc_const": dict(const, value=None)}
+
+
+def substitute(value, params):
+    """`value` with each generic parameter named in `params` replaced by its argument."""
+    if isinstance(value, dict):
+        if value.keys() == {"generic"} and value["generic"] in params:
+            return params[value["generic"]]
+        return {k: substitute(v, params) for k, v in value.items()}
+    if isinstance(value, list):
+        return [substitute(v, params) for v in value]
+    return value
 
 
 def gone(impl):
