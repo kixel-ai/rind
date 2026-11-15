@@ -880,7 +880,7 @@
                 openssl
                 python3
                 sde
-                # x86-cpu.yml answers ACVP's sets on Sapphire Rapids with it.
+                # x86-cpu.yml answers ACVP's sets on Diamond Rapids with it.
                 acvptool
                 # `admin/ct-sde` runs SDE without ASLR by its `setarch`.
                 util-linux

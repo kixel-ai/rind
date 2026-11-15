@@ -16,6 +16,7 @@ use crate::high::signature::MlDsaParameterSet;
 use crate::low::Entry;
 use crate::mid::mldsa::{self, KeyPair};
 use crate::mid::mlkem768::{Ciphertext, DecapKey, EncapKey, Message};
+use crate::mid::sha3::Sha3_256Context;
 
 /// One prediction-resistant generate's inputs: the entropy it reseeds with,
 /// and the additional input it reseeds with.
@@ -46,6 +47,7 @@ impl Drbg<'_> {
     /// input, then generates with none (SP 800-90A section 9.3.1, step 7),
     /// as the module's every draw does.
     pub fn run(&self, out: &mut [u8]) {
+        let _entry = Entry::new_secret();
         let mut drbg = HmacDrbg::<Sha512>::new(self.entropy, self.nonce, self.personalization);
         for generate in &self.generates {
             drbg.reseed(generate.entropy, generate.additional_input);
@@ -103,8 +105,21 @@ pub fn ml_kem_768_check_encapsulation_key(ek: &[u8]) -> Result<(), Error> {
 
 /// FIPS 203's decapsulation input check of an ML-KEM-768 expanded
 /// decapsulation key: its length and its hash check.
+///
+/// The check is the hash's alone: an embedded encapsulation key that fails
+/// its own modulus check still passes, as section 7.3 has it.
 pub fn ml_kem_768_check_decapsulation_key(dk: &[u8]) -> Result<(), Error> {
-    decapsulation_key(dk).map(drop)
+    let _entry = Entry::new_public();
+    if dk.len() != ML_KEM_768_DECAPSULATION_KEY_LEN {
+        return Err(KeyFormatError::WrongLength.into());
+    }
+    let (ek, h) = dk[1152..2368].split_at(ML_KEM_768_ENCAPSULATION_KEY_LEN);
+    let mut hash = Sha3_256Context::new();
+    hash.update(ek);
+    if hash.finish() != *h {
+        return Err(KeyFormatError::MismatchedPublicKey.into());
+    }
+    Ok(())
 }
 
 fn encapsulation_key(ek: &[u8]) -> Result<EncapKey, Error> {
@@ -165,6 +180,7 @@ pub fn ml_dsa_sign<P: MlDsaParameterSet>(
     message: MlDsaMessage<'_>,
     rnd: &[u8; 32],
 ) -> Result<P::Signature, Error> {
+    let _entry = Entry::new_secret();
     let key = KeyPair::<P>::from_secret_key(sk)?;
     let mu = message.mu(key.tr())?;
     key.sign_internal(&mu, rnd)
@@ -177,6 +193,7 @@ pub fn ml_dsa_verify<P: MlDsaParameterSet>(
     message: MlDsaMessage<'_>,
     signature: &[u8],
 ) -> Result<(), Error> {
+    let _entry = Entry::new_public();
     if pk.len() != mldsa::public_key_len::<P>() {
         return Err(Error::BadSignature);
     }

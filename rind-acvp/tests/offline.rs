@@ -443,13 +443,13 @@ fn sets() -> Vec<Set> {
         "EDDSA-KeyVer-1.0",
         "EDDSA-SigVer-1.0",
         "ML-KEM-keyGen-FIPS203",
-        "ML-KEM-encapDecap-FIPS203-tr1",
         "ML-DSA-keyGen-FIPS204",
         "ML-DSA-sigGen-FIPS204",
         "ML-DSA-sigVer-FIPS204",
     ] {
         sets.push(sample(name, |_, _| true));
     }
+    sets.push(ml_kem_encap_decap());
     sets.push(kda_hkdf());
     // CTR's whole-byte payloads, the only ones rind registers.
     sets.push(sample("ACVP-AES-CTR-1.0", |_, test| {
@@ -468,7 +468,20 @@ fn sets() -> Vec<Set> {
     sets.push(generated("ECDSA-SigGen-FIPS186-5", ecdsa_sig_gen));
     sets.push(generated("EDDSA-KeyGen-1.0", ed25519_key_gen));
     sets.push(generated("EDDSA-SigGen-1.0", ed25519_sig_gen));
-    sets.push(generated("RSA-KeyGen-FIPS186-5", rsa_key_gen));
+    // NIST's one probable-prime group asks for a random exponent, CRT form,
+    // and prime residues mod 8; rind registers what its module generates,
+    // 65537 and the standard form with no residue, which `rsa_key_gen`
+    // checks.
+    let mut key_gen = generated("RSA-KeyGen-FIPS186-5", rsa_key_gen);
+    for group in key_gen.prompt["testGroups"].as_array_mut().unwrap() {
+        let group = group.as_object_mut().unwrap();
+        group.insert("keyFormat".into(), json!("standard"));
+        group.insert("pubExp".into(), json!("fixed"));
+        group.insert("fixedPubExp".into(), json!("010001"));
+        group.insert("pMod8".into(), json!(0));
+        group.insert("qMod8".into(), json!(0));
+    }
+    sets.push(key_gen);
     sets.push(generated("RSA-SigGen-FIPS186-5", rsa_sig_gen));
     sets.extend(kas_ecc_ssc());
     sets.push(pbkdf());
@@ -543,6 +556,49 @@ fn sample(name: &str, keep: impl Fn(&Value, &Value) -> bool) -> Set {
         prompt,
         check: Check::Answers(expected),
     }
+}
+
+/// ML-KEM's encapsulation and decapsulation sample, plus a decapsulation
+/// key whose embedded encapsulation key fails its modulus check, a
+/// coefficient of q, yet carries that key's hash: FIPS 203's section 7.3
+/// checks the hash alone, so it passes.
+fn ml_kem_encap_decap() -> Set {
+    let mut set = sample("ML-KEM-encapDecap-FIPS203-tr1", |_, _| true);
+    let Check::Answers(expected) = &mut set.check else {
+        unreachable!()
+    };
+    let tc_id = 1 + expected["testGroups"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|group| tests(group).iter().map(|test| id(test, "tcId")))
+        .max()
+        .unwrap();
+    for set in [&mut set.prompt, expected] {
+        let group = set["testGroups"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|group| group["function"] == "decapsulationKeyCheck")
+            .unwrap();
+        let tests = group["tests"].as_array_mut().unwrap();
+        let mut test = tests
+            .iter()
+            .find(|test| test["testPassed"] == true)
+            .unwrap()
+            .clone();
+        let mut dk = hex(&test["dk"]);
+        // Coefficient 0 of `t_hat`, 12 bits little-endian, becomes 3329.
+        dk[1152] = 0x01;
+        dk[1153] = dk[1153] & 0xf0 | 0x0d;
+        let h = aws_lc_rs::digest::digest(&aws_lc_rs::digest::SHA3_256, &dk[1152..2336]);
+        dk[2336..2368].copy_from_slice(h.as_ref());
+        test["tcId"] = json!(tc_id);
+        test["dk"] = json!(hex::encode_upper(&dk));
+        test["ek"] = json!(hex::encode_upper(&dk[1152..2336]));
+        tests.push(test);
+    }
+    set
 }
 
 /// KDA's HKDF sample, every group of which has a hybrid shared secret, as
@@ -712,6 +768,12 @@ fn rsa_sig_gen(prompt: &Value, group: &Value) -> Result<(), String> {
         n: hex(&group["n"]),
         e: hex(&group["e"]),
     };
+    // The algorithms take any modulus from 2048 bits, so the size asked is
+    // checked here.
+    let bits = BigUint::from_bytes_be(&key.n).bits();
+    if bits != prompt["modulo"].as_u64().unwrap() {
+        return Err(format!("a {bits}-bit modulus, not {}", prompt["modulo"]));
+    }
     for test in tests(group) {
         key.verify(
             algorithm,
