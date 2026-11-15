@@ -194,12 +194,13 @@ for (const file of files) {
 		}
 	} else if (file.endsWith(".md") || file.endsWith(".txt")) {
 		// Links, which include URLs written bare in prose, as GFM autolinks them,
-		// and URLs quoted in code, such as the prompt, as a reader copies them.
+		// and URLs quoted in code, such as the prompt, as a reader copies them, up
+		// to whitespace or a quote.
 		const tokens = lex(text(file));
 		for (const href of hrefs(tokens)) check(file, href);
 		walkTokens(tokens, (t) => {
 			if (t.type !== "code" && t.type !== "codespan") return;
-			for (const m of t.text.matchAll(/https?:\/\/[^\s)<>"'`\]]+/g)) check(file, m[0]);
+			for (const m of t.text.matchAll(/https?:\/\/[^\s"'`<>]+/g)) check(file, m[0]);
 		});
 	}
 }

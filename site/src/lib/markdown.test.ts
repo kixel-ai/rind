@@ -22,12 +22,16 @@ test.each([
 	"- [ ] todo",
 	"````text\n```\n````",
 	"    value  ",
+	// A definition between two lists keeps them apart.
+	"- a\n\n[r]: /r\n\n- b",
+	// One the fragment repeats, nested, loses to the document's first.
+	"> [r]: /wrong\n\n[Guide][r]",
 ])("%s", (body) => {
 	const doc = lex(
-		`> [n]: /nested\n\n## S\n\n${body}\n\n## T\n\n[r]: https://example.com/r\n[multi word]: </m (x)> "t"\n[a\\]b]: /guide\n[e]: <>\n`,
+		`[r]: https://example.com/r\n[multi word]: </m (x)> "t"\n[a\\]b]: /guide\n[e]: <>\n\n> [n]: /nested\n\n## S\n\n${body}\n\n## T\n`,
 	);
 	const quoted = section(doc, "S");
-	const twin = `${blocks(quoted)}\n\n${definitions(quoted, doc)}`;
+	const twin = `${definitions(quoted, doc)}\n\n${blocks(quoted)}`;
 	expect(html(lex(twin))).toBe(html(quoted));
 });
 

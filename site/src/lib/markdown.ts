@@ -19,10 +19,10 @@ export const html = (blocks: Token[]): string => Parser.parse(blocks);
 export const inlineHtml = (inline: Token[]): string => Parser.parseInline(inline);
 
 // Blocks as their source wrote them, so a fragment of a document says exactly
-// what the document does. Reference definitions are left to `definitions`.
+// what the document does.
 export const blocks = (tokens: Token[]): string =>
 	tokens
-		.filter((t) => t.type !== "space" && t.type !== "def")
+		.filter((t) => t.type !== "space")
 		.map((t) => t.raw.replace(/\n+$/, ""))
 		.join("\n\n");
 
@@ -35,7 +35,9 @@ export const spans = (tokens: Token[]): string =>
 
 // The definitions in `source`, wherever it nests them, of the links `tokens`
 // resolve, so a fragment of it reads on its own. They are matched by target, so
-// no label needs parsing; one an inline link happens to share is harmless.
+// no label needs parsing; one an inline link happens to share is harmless. They
+// are the definitions that won in `source`, so they go before the fragment,
+// since the first of a label's definitions wins over any the fragment repeats.
 export function definitions(tokens: Token[], source: TokensList): string {
 	const targets = new Set(links(tokens).map((t) => target(t.href, t.title)));
 	return Object.entries(source.links)

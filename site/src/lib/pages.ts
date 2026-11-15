@@ -27,6 +27,7 @@ export const home: Page = {
 		// The README's own words, with the definitions of the reference links they use.
 		const quoted = [...landing.claims.flatMap((c) => c.body), ...landing.agent, ...landing.candor];
 		return `${[
+			definitions(quoted, landing.readme),
 			"# rind",
 			`**${landing.headline}**\n${landing.subline}`,
 			...landing.claims.map((c) => `## ${c.icon} ${link(c.title, c.proof)}\n\n${spans(c.body)}`),
@@ -37,7 +38,6 @@ export const home: Page = {
 			"## Links",
 			landing.footer.map((l) => `- ${link(l.label, l.href)}`).join("\n"),
 			`Built by ${link(landing.builtBy.label, landing.builtBy.href)}.`,
-			definitions(quoted, landing.readme),
 		]
 			.filter((b) => b !== "")
 			.join("\n\n")}\n`;
