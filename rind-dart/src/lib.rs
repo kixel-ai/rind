@@ -2,7 +2,7 @@
 //! The C ABI that the `rind` Dart package's `dart:ffi` bindings call.
 //!
 //! Every function returns an `isize`: a byte count or zero on success, or a
-//! negative [`Status`] code. Keys and streaming states are boxed handles that
+//! negative `Status` code. Keys and streaming states are boxed handles that
 //! the Dart side frees, through a `NativeFinalizer`, with the matching
 //! `*_free` function; dropping one frees it without wiping, as this build
 //! leaves rind's `wipe` feature off. Algorithms are
@@ -29,7 +29,7 @@ use rind::{Error, aead, agreement, cipher, digest, hkdf, hmac, kem, pbkdf2, rsa}
 mod ctgrind;
 
 /// The negative codes a call returns on failure, one per [`Error`] variant
-/// and two of the binding's own.
+/// and one of the binding's own.
 #[repr(isize)]
 enum Status {
     WrongLength = -1,
@@ -40,8 +40,6 @@ enum Status {
     NotEqual = -6,
     Fault = -7,
     Unsupported = -8,
-    /// The CPU lacks a feature rind requires; the message names it.
-    MissingCpuFeature = -9,
     /// An argument the Dart side should never pass, such as an unknown
     /// algorithm id.
     Misuse = -10,
@@ -93,12 +91,8 @@ impl From<Misuse> for Failure {
     }
 }
 
-/// Runs `f` on a CPU rind supports, which otherwise panics, and folds its
-/// result into a return value.
+/// Runs `f` and folds its result into a return value.
 fn run(f: impl FnOnce() -> Result<usize, Failure>) -> isize {
-    if let Err(missing) = rind::cpu::check() {
-        return fail(Status::MissingCpuFeature, missing);
-    }
     match f() {
         // A length never exceeds isize::MAX: it is the length of a slice.
         Ok(len) => len as isize,
@@ -182,8 +176,8 @@ free! {
     rind_dart_ed25519_key_pair_free: Ed25519KeyPair;
     rind_dart_rsa_key_pair_free: RsaKeyPair;
     rind_dart_public_key_free: PublicKey;
-    rind_dart_decapsulation_key_free: kem::DecapsulationKey;
-    rind_dart_encapsulation_key_free: kem::EncapsulationKey;
+    rind_dart_decapsulation_key_free: kem::DecapsulationKey<kem::MlKem768>;
+    rind_dart_encapsulation_key_free: kem::EncapsulationKey<kem::MlKem768>;
     rind_dart_decrypting_key_free: rsa::DecryptingKey;
     rind_dart_encrypting_key_free: rsa::EncryptingKey;
 }
@@ -350,9 +344,10 @@ fn rsa_key_size(id: u32) -> Result<rsa::KeySize, Misuse> {
     })
 }
 
-fn kem_algorithm(id: u32) -> Result<&'static kem::Algorithm, Misuse> {
+/// Checks that `id` names ML-KEM-768, the one set these bindings offer.
+fn kem_algorithm(id: u32) -> Result<(), Misuse> {
     match id {
-        0 => Ok(&kem::ML_KEM_768),
+        0 => Ok(()),
         _ => Err(Misuse("unknown KEM algorithm")),
     }
 }
@@ -1435,10 +1430,11 @@ pub unsafe extern "C" fn rind_dart_public_key_export(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rind_dart_decapsulation_key_generate(
     algorithm: u32,
-    out: *mut *mut kem::DecapsulationKey,
+    out: *mut *mut kem::DecapsulationKey<kem::MlKem768>,
 ) -> isize {
     run(|| {
-        let key = kem::DecapsulationKey::generate(kem_algorithm(algorithm)?)?;
+        kem_algorithm(algorithm)?;
+        let key = kem::DecapsulationKey::generate()?;
         // SAFETY: forwarded from the caller.
         Ok(unsafe { store(out, key) })
     })
@@ -1446,7 +1442,7 @@ pub unsafe extern "C" fn rind_dart_decapsulation_key_generate(
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rind_dart_decapsulation_key_public_key(
-    key: *const kem::DecapsulationKey,
+    key: *const kem::DecapsulationKey<kem::MlKem768>,
     out: *mut u8,
     out_len: usize,
 ) -> isize {
@@ -1459,7 +1455,7 @@ pub unsafe extern "C" fn rind_dart_decapsulation_key_public_key(
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rind_dart_decapsulate(
-    key: *const kem::DecapsulationKey,
+    key: *const kem::DecapsulationKey<kem::MlKem768>,
     ciphertext: *const u8,
     ciphertext_len: usize,
     out: *mut u8,
@@ -1474,7 +1470,8 @@ pub unsafe extern "C" fn rind_dart_decapsulate(
                 output(out, out_len),
             )
         };
-        write(out, key.decapsulate(ciphertext)?.as_ref())
+        let ciphertext = kem::Ciphertext::new(ciphertext)?;
+        write(out, key.decapsulate(&ciphertext).as_ref())
     })
 }
 
@@ -1483,12 +1480,12 @@ pub unsafe extern "C" fn rind_dart_encapsulation_key_new(
     algorithm: u32,
     bytes: *const u8,
     bytes_len: usize,
-    out: *mut *mut kem::EncapsulationKey,
+    out: *mut *mut kem::EncapsulationKey<kem::MlKem768>,
 ) -> isize {
     run(|| {
-        let algorithm = kem_algorithm(algorithm)?;
+        kem_algorithm(algorithm)?;
         // SAFETY: forwarded from the caller.
-        let key = kem::EncapsulationKey::new(algorithm, unsafe { input(bytes, bytes_len) })?;
+        let key = kem::EncapsulationKey::new(unsafe { input(bytes, bytes_len) })?;
         // SAFETY: forwarded from the caller.
         Ok(unsafe { store(out, key) })
     })
@@ -1498,7 +1495,7 @@ pub unsafe extern "C" fn rind_dart_encapsulation_key_new(
 /// returning the ciphertext's length.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rind_dart_encapsulate(
-    key: *const kem::EncapsulationKey,
+    key: *const kem::EncapsulationKey<kem::MlKem768>,
     ciphertext: *mut u8,
     ciphertext_len: usize,
     secret: *mut u8,
@@ -1688,4 +1685,18 @@ pub unsafe extern "C" fn rind_dart_encrypting_key_max_message_len(
 ) -> isize {
     // SAFETY: forwarded from the caller.
     run(|| Ok(unsafe { handle(key) }.max_message_len()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn kem_refuses_an_unknown_algorithm() {
+        let mut key = std::ptr::null_mut();
+        // SAFETY: `key` is a writable handle slot.
+        let status = unsafe { rind_dart_decapsulation_key_generate(1, &mut key) };
+        assert_eq!(status, Status::Misuse as isize);
+        assert!(key.is_null());
+    }
 }
