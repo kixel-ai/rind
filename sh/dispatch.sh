@@ -199,13 +199,6 @@ for module in "${selected[@]}"; do
     echo "==> $action $module" >&2
     case "$verb:$module" in
         check:rs)
-            # The tests read these vectors, and otherwise fail partway through.
-            # s2n-bignum only feeds admin/parse-asm, so it is not required.
-            # Only uninitialized ones, so a local submodule bump stays put.
-            mapfile -t unfetched < <(git submodule status -- thirdparty/cavp thirdparty/cctv thirdparty/wycheproof | sed -n 's/^-[0-9a-f]* //p')
-            if ((${#unfetched[@]} > 0)); then
-                git submodule update --init --depth 1 -- "${unfetched[@]}"
-            fi
             mapfile -t packages < <(sh/select.sh "$changed" "$all")
             cargo fmt --all --check
             RUSTFMT=rustfmt-unstable cargo fmt --all --check -- --config-path=.rustfmt.unstable.toml
@@ -294,7 +287,8 @@ for module in "${selected[@]}"; do
                 done
             fi
             # The FIPS module's source rides along: its cfg touches only where
-            # randomness comes from, which no backend changes.
+            # randomness comes from, which no backend changes, and the CPU
+            # check, which only the backends it builds on have.
             CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS="$portable --cfg rind_fips" \
                 cargo clippy -p rind --lib --locked --target x86_64-unknown-linux-gnu -- --deny warnings
             # And on a 32-bit target, whose Poly1305 and GHASH differ.
