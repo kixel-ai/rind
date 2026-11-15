@@ -216,6 +216,10 @@ impl fmt::Debug for RsaVerificationAlgorithm {
 ///
 /// Its bytes are its encoding, as [`PublicKey::new`] takes it, but an RSA
 /// key's are always its PKCS#1 `RSAPublicKey` DER.
+///
+/// An ML-DSA key keeps its encoding's expansion on the heap from its second
+/// verification on, so a key used once never holds it: 20 KiB for
+/// ML-DSA-44, 36 KiB for ML-DSA-65, and 64 KiB for ML-DSA-87.
 pub struct PublicKey {
     key: Parsed,
     encoding: Buffer<MAX_PUBLIC_KEY_LEN>,
@@ -1648,9 +1652,9 @@ pub struct MlDsaAlgorithm {
     verify: MlDsaVerify,
 }
 
-/// Verifies with an ML-DSA public key and its hash `tr`:
-/// `(key, tr, message, signature)`.
-type MlDsaVerify = fn(&[u8], &[u8; mldsa::TR_LEN], &[u8], &[u8]) -> Result<(), Error>;
+/// Verifies with an ML-DSA public key and its encoding:
+/// `(key, encoding, message, signature)`.
+type MlDsaVerify = fn(&mldsa::VerifyingKey, &[u8], &[u8], &[u8]) -> Result<(), Error>;
 
 impl MlDsaAlgorithm {
     const fn new<P: MlDsaParams>(name: &'static str, oid: &'static asn1::ObjectId) -> Self {
@@ -1659,9 +1663,7 @@ impl MlDsaAlgorithm {
             oid,
             public_key_len: mldsa::public_key_len::<P>(),
             // Pure ML-DSA with the empty context, as TLS and X.509 sign.
-            verify: |pk, tr, message, signature| {
-                mldsa::verify::<P>(pk, tr, &[], message, signature)
-            },
+            verify: |key, pk, message, signature| key.verify::<P>(pk, &[], message, signature),
         }
     }
 
@@ -1670,23 +1672,23 @@ impl MlDsaAlgorithm {
         match bytes.len() == self.public_key_len {
             true => Ok(Parsed::MlDsa(MlDsaVerifier {
                 algorithm: self,
-                tr: mldsa::tr(bytes),
+                key: mldsa::VerifyingKey::new(mldsa::tr(bytes)),
             })),
             false => Err(KeyFormatError::WrongLength.into()),
         }
     }
 }
 
-/// An ML-DSA public key's algorithm and hash `tr`, which every signature it
-/// verifies binds in. Its encoding is the [`PublicKey`]'s.
+/// An ML-DSA public key's algorithm, its hash, and the expansion its second
+/// verification keeps. Its encoding is the [`PublicKey`]'s.
 struct MlDsaVerifier {
     algorithm: MlDsaAlgorithm,
-    tr: [u8; mldsa::TR_LEN],
+    key: mldsa::VerifyingKey,
 }
 
 impl MlDsaVerifier {
     fn verify(&self, public_key: &[u8], message: &[u8], signature: &[u8]) -> Result<(), Error> {
-        (self.algorithm.verify)(public_key, &self.tr, message, signature)
+        (self.algorithm.verify)(&self.key, public_key, message, signature)
     }
 }
 
@@ -1700,8 +1702,9 @@ const MAX_ML_DSA_PRIVATE_KEY_LEN: usize = mldsa::secret_key_len::<MlDsa87>() + 4
 /// use it, hedged with fresh randomness, as [`verify::ML_DSA_44`],
 /// [`verify::ML_DSA_65`], and [`verify::ML_DSA_87`] verify.
 ///
-/// It keeps FIPS 204's encodings, expanding them as each signature needs, as
-/// mldsa-native and aws-lc do.
+/// Loading it expands its encodings once, so that no signature repeats that
+/// work, and keeps the expansion on the heap: 28 KiB for ML-DSA-44, 47 KiB
+/// for ML-DSA-65, and 79 KiB for ML-DSA-87.
 pub struct MlDsaKeyPair<P: MlDsaParameterSet>(mldsa::KeyPair<P>);
 
 impl<P: MlDsaParameterSet> MlDsaKeyPair<P> {
@@ -1721,6 +1724,12 @@ impl<P: MlDsaParameterSet> MlDsaKeyPair<P> {
     /// none.
     pub fn to_seed(&self) -> Option<MlDsaSeed> {
         self.0.seed().map(|seed| MlDsaSeed(*seed))
+    }
+
+    /// Whether the key pair has its seed, which it lacks when loaded from its
+    /// expanded form.
+    pub fn has_seed(&self) -> bool {
+        self.0.seed().is_some()
     }
 
     /// Loads a PKCS#8 ML-DSA key (RFC 9881), refused if it carries a public
@@ -1791,7 +1800,7 @@ impl<P: MlDsaParameterSet> MlDsaKeyPair<P> {
         PublicKey {
             key: Parsed::MlDsa(MlDsaVerifier {
                 algorithm: P::ALGORITHM,
-                tr,
+                key: mldsa::VerifyingKey::new(tr),
             }),
             encoding: Buffer::encode(|output| {
                 let public_key = self.0.public_key().as_ref();
@@ -2628,6 +2637,7 @@ mod tests {
                 let key = load(&der).unwrap();
                 assert_eq!(key.public_key().as_ref(), pk);
                 assert_eq!(key.to_seed().is_some(), has_seed);
+                assert_eq!(key.has_seed(), has_seed);
                 let written = key.to_pkcs8();
                 let want = if has_seed { &seed_form } else { &expanded_form };
                 assert_eq!(written.as_ref(), want);

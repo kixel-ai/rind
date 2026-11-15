@@ -23,7 +23,7 @@ Planned with the maintainer on 2026-11-13: ✅ recurring, every 2 weeks by date 
   - BoringSSL `8f2554dc`, for `admin/import-boringssl` and `admin/sync-vectors`.
   - OpenSSL `2f4e3a5f`, tag `openssl-4.1.0`: the imported perlasm is the same on master and `openssl-4.1`. 4.1.1 was announced but not yet tagged on GitHub; take its tag next run if the files still match.
   - HACL\* `f5572590`, still its head.
-  - s2n-bignum: [kixel-ai/rind#782](https://github.com/kixel-ai/rind/pull/782) moves the base from `b4f17ee7` to `3f01260f`, which holds every upstream commit to 2026-11-14 but `421518d` (#462, AVX-512 decoding for routines rind doesn't run). Start from whatever base RIND.md names; #462 edits the three x86 model files rind changes, so take it with the next routine change rather than alone. #415, #420, #439, and #450 were still open.
+  - s2n-bignum `3f01260f`, the base [kixel-ai/rind#782](https://github.com/kixel-ai/rind/pull/782) moved to from `b4f17ee7`, which holds every upstream commit to 2026-11-14 but `421518d` (#462, AVX-512 decoding for routines rind doesn't run). Start from whatever base RIND.md names; #462 edits the three x86 model files rind changes, so take it with the next routine change rather than alone. #415, #420, #439, and #450 were still open.
   - mlkem-native `d1b2fe78` and mldsa-native v2.0.0, each still its newest release.
   - libcrux: libcrux-hacl-rs 0.0.6, libcrux-macros 0.0.4, libcrux-poly1305 0.0.7, libcrux-sha2 0.0.9, and the 0.0.10 ChaCha20 rounds, each still its newest, and the copied source unchanged to `124d5987`.
   - curve25519-dalek 5.0.0 and fiat-crypto 0.3.0, each still its newest; dalek's unreleased `cb0d157` speeds up its serial squaring, which rind's portable build gets with 5.1.
