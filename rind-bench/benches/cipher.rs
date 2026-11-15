@@ -139,9 +139,16 @@ fn bench_aes_cbc(c: &mut Criterion) {
                                 .unwrap()
                                 .decrypt(buf)
                                 .unwrap();
-                            let pad = buf[buf.len() - 1] as usize;
-                            assert!((1..=16).contains(&pad));
-                            buf.truncate(buf.len() - pad);
+                            // Every padding byte, without branching on them, as
+                            // rind checks it.
+                            let last = &buf[buf.len() - 16..];
+                            let pad = last[15];
+                            let mut bad = u8::from(pad == 0) | u8::from(pad > 16);
+                            for (i, &byte) in last.iter().enumerate() {
+                                bad |= u8::from(15 - i < usize::from(pad)) & u8::from(byte != pad);
+                            }
+                            assert_eq!(bad, 0);
+                            buf.truncate(buf.len() - usize::from(pad));
                         }
                     };
                     let mut expect = input.clone();

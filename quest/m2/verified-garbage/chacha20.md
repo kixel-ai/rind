@@ -2,7 +2,7 @@
 
 ## Goal
 
-On each tier below where pyca/verified-garbage (VG) measures at least as fast as rind at every size, the bare `cipher::ChaCha20` stream cipher runs VG's routine under rind's glue and behavior.
+For each cell below, an operation on a tier, where pyca/verified-garbage (VG) measures at least as fast as rind at every size, the bare `cipher::ChaCha20` stream cipher runs VG's routine under rind's glue and behavior.
 
 ## Plan
 

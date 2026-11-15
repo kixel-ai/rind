@@ -2,7 +2,7 @@
 
 ## Goal
 
-On each tier below where pyca/verified-garbage (VG) measured at least as fast as rind at every size, RSA on x86_64 with AVX-512 IFMA runs VG's routine under rind's glue and behavior.
+For each cell below, an operation on a tier, where pyca/verified-garbage (VG) measured at least as fast as rind at every size, RSA on x86_64 with AVX-512 IFMA runs VG's routine under rind's glue and behavior.
 
 ## Plan
 

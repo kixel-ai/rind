@@ -2,7 +2,7 @@
 
 ## Goal
 
-On each tier below where pyca/verified-garbage (VG) measured at least as fast as rind at every size, AES-128 QUIC header protection on AVX2 CPUs without VAES runs VG's routine under rind's glue and behavior.
+For each cell below, an operation on a tier, where pyca/verified-garbage (VG) measured at least as fast as rind at every size, AES-128 QUIC header protection on AVX2 CPUs without VAES runs VG's routine under rind's glue and behavior.
 
 ## Plan
 
