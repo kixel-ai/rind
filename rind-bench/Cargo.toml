@@ -12,6 +12,7 @@ codspeed-criterion-compat = { optional = true, version = "6" }
 
 [dev-dependencies]
 aes-gcm = "0.11"
+argon2 = { version = "0.6", default-features = false, features = ["alloc"] }
 aws-lc-rs = { version = "1.19", features = ["non-fips"], default-features = false }
 # For XChaCha20-Poly1305, which aws-lc-rs does not expose.
 aws-lc-sys = { version = "0.47", default-features = false }
@@ -19,6 +20,7 @@ blind-rsa-signatures = "0.18"
 chacha20poly1305 = "0.11"
 criterion = "0.8"
 ed25519-dalek = { version = "3", features = ["alloc", "pkcs8", "rand_core"] }
+fips205 = "0.5"
 getrandom = { version = "0.4", features = ["sys_rng"] }
 hkdf = "0.13"
 hex = { version = "0.4", features = ["serde"] }
@@ -55,6 +57,7 @@ serde_json = "1"
 sha1 = "0.11"
 sha2 = "0.11"
 sha3 = "0.12"
+slh-dsa = "=0.2.0-rc.5"
 spake2plus = "0.1"
 # The release on RustCrypto's current curves; 0.5 is on the previous ones.
 voprf = { version = "=0.6.0-pre.2", default-features = false, features = ["ristretto255-ciphersuite"] }
@@ -79,6 +82,10 @@ rustls-openssl = { version = "0.4", default-features = false }
 [features]
 __bench_openssl = []
 __bench_codspeed = ["dep:codspeed-criterion-compat"]
+
+[[bench]]
+name = "argon2"
+harness = false
 
 [[bench]]
 name = "x25519"
@@ -142,6 +149,10 @@ harness = false
 
 [[bench]]
 name = "mldsa"
+harness = false
+
+[[bench]]
+name = "slhdsa"
 harness = false
 
 [[bench]]

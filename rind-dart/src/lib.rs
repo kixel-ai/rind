@@ -2,7 +2,7 @@
 //! The C ABI that the `rind` Dart package's `dart:ffi` bindings call.
 //!
 //! Every function returns an `isize`: a byte count or zero on success, or a
-//! negative [`Status`] code. Keys and streaming states are boxed handles that
+//! negative `Status` code. Keys and streaming states are boxed handles that
 //! the Dart side frees, through a `NativeFinalizer`, with the matching
 //! `*_free` function; dropping one frees it without wiping, as this build
 //! leaves rind's `wipe` feature off. Algorithms are
