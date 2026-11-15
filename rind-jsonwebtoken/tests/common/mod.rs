@@ -72,6 +72,13 @@ pub fn all() -> Vec<Key> {
             EncodingKey::from_ec_der(pair.to_pkcs8().as_ref()),
             DecodingKey::from_ec_der(pair.public_key().as_ref()),
         ));
+        // aws-lc-rs's verifier also takes the key as SPKI.
+        keys.push(Key::new(
+            algorithm,
+            "rind, SPKI",
+            EncodingKey::from_ec_der(pair.to_pkcs8().as_ref()),
+            DecodingKey::from_ec_der(pair.public_key().to_spki().as_ref()),
+        ));
     }
     keys.push(aws_lc_ecdsa(
         Algorithm::ES256,
@@ -88,6 +95,12 @@ pub fn all() -> Vec<Key> {
         "rind",
         EncodingKey::from_ed_der(ed_pair.to_pkcs8().as_ref()),
         DecodingKey::from_ed_der(ed_pair.public_key().as_ref()),
+    ));
+    keys.push(Key::new(
+        Algorithm::EdDSA,
+        "rind, SPKI",
+        EncodingKey::from_ed_der(ed_pair.to_pkcs8().as_ref()),
+        DecodingKey::from_ed_der(ed_pair.public_key().to_spki().as_ref()),
     ));
     // aws-lc-rs writes PKCS#8 v2, which carries the public key too.
     let pkcs8 = Ed25519KeyPair::generate_pkcs8(&SystemRandom::new()).unwrap();

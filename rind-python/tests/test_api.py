@@ -546,6 +546,9 @@ class Signature(unittest.TestCase):
         key = signature.RsaKeyPair.generate(rsa.KeySize.RSA_2048)
         public = signature.PublicKey.from_spki(verify.RSA_PSS_SHA256, key.to_spki())
         public.verify(b"m", key.sign(sign.RSA_PSS_SHA256, b"m"))
+        # The constructor takes SPKI as well as PKCS#1.
+        spki = signature.PublicKey(verify.RSA_PSS_SHA256, key.to_spki())
+        self.assertEqual(bytes(spki), bytes(public))
         if PYCA:
             loaded = serialization.load_der_private_key(key.to_pkcs8(), None)
             self.assertEqual(loaded.key_size, 2048)
