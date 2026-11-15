@@ -63,9 +63,25 @@ impl AnyVerificationAlgorithm<'_> {
                 Verification::Ecdsa(algorithm) => ecdsa(algorithm).map(Key::Ecdsa),
                 Verification::Ed25519 => ed25519().map(Key::Ed25519),
             },
-            Self::Rsa(algorithm) => rsa().map(|key| Key::Rsa(key, algorithm.get().inner)),
+            Self::Rsa(algorithm) => rsa().and_then(|key| rsa_key(key, algorithm.get().inner)),
         };
         key.map(Box::new).map(PublicKey).map_err(error)
+    }
+}
+
+/// Binds an RSA key to `algorithm`, refusing it at load, as pyrind always
+/// has, if its modulus is below the algorithm's floor.
+///
+/// rind's `rsa::PublicKey::verify` checks the floor before it reads the
+/// signature, and refuses an empty signature by its length alone, so the only
+/// key it refuses here is one below the floor.
+fn rsa_key(
+    key: rsa::PublicKey,
+    algorithm: &'static rsa::VerificationAlgorithm,
+) -> Result<Key, rind::Error> {
+    match key.verify(algorithm, &[], &[]) {
+        Err(error @ rind::Error::KeyRejected(_)) => Err(error),
+        _ => Ok(Key::Rsa(key, algorithm)),
     }
 }
 
@@ -82,7 +98,7 @@ enum Key {
 /// Ed25519, and a PKCS#1 `RSAPublicKey` for RSA.
 ///
 /// An RSA key with a modulus below the algorithm's floor raises
-/// `KeyRejected` as it verifies.
+/// `KeyRejected` as it loads.
 #[pyclass(frozen, module = "pyrind.signature")]
 struct PublicKey(Box<Key>);
 
@@ -120,7 +136,8 @@ impl PublicKey {
     ) -> PyResult<Self> {
         let components = rsa::PublicKeyComponents { n: &*n, e: &*e };
         rsa::PublicKey::from_components(&components)
-            .map(|key| Self(Box::new(Key::Rsa(key, algorithm.get().inner))))
+            .and_then(|key| rsa_key(key, algorithm.get().inner))
+            .map(|key| Self(Box::new(key)))
             .map_err(error)
     }
 
