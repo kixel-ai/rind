@@ -47,16 +47,18 @@ type Tiers = (&'static [&'static [&'static str]], fn(&str) -> bool);
 #[test]
 fn every_cpu_path_answers_every_set() {
     let acvptool = acvptool();
+    let runner = std::env::var("RIND_ACVP_WRAPPER_RUNNER").ok();
+    let wrapper = wrapper(runner.as_deref());
     let sets = sets();
     let mut ran = 0;
-    for mask in cpu_paths() {
+    for mask in cpu_paths(runner.is_some()) {
         let label = if mask.is_empty() {
             "every feature".to_owned()
         } else {
             format!("without {}", mask.join(", "))
         };
         eprintln!("rind-acvp: {} sets, {label}", sets.len());
-        let responses = run(&acvptool, &sets, &mask);
+        let responses = run(&acvptool, &wrapper, &sets, &mask);
         let failures: Vec<String> = sets
             .iter()
             .zip(&responses)
@@ -90,11 +92,35 @@ fn acvptool() -> PathBuf {
     found.expect("acvptool is not on $PATH: run in `nix develop`, or set $ACVPTOOL")
 }
 
+/// The wrapper `acvptool` runs: `rind-acvp`, or, with
+/// `$RIND_ACVP_WRAPPER_RUNNER` set, a script running it under that command,
+/// such as Intel SDE's emulator. Only the module needs the emulated CPU, so
+/// the test and `acvptool` run natively; Intel SDE instrumenting the Go
+/// `acvptool` sometimes aborts it on AMD hosts.
+fn wrapper(runner: Option<&str>) -> PathBuf {
+    let exe = PathBuf::from(env!("CARGO_BIN_EXE_rind-acvp"));
+    let Some(runner) = runner else {
+        return exe;
+    };
+    let script = Path::new(env!("CARGO_TARGET_TMPDIR")).join("rind-acvp-wrapper");
+    fs::write(
+        &script,
+        format!("#!/bin/sh\nexec {runner} '{}'\n", exe.display()),
+    )
+    .unwrap();
+    let mut permissions = fs::metadata(&script).unwrap().permissions();
+    std::os::unix::fs::PermissionsExt::set_mode(&mut permissions, 0o755);
+    fs::set_permissions(&script, permissions).unwrap();
+    script
+}
+
 /// The `RIND_CPU_DISABLE_*` masks that reach each of the module's paths, of
 /// the ones this CPU can take: every feature, then without AVX-512, then
 /// the baseline the module requires. A mask that denies only features this
-/// CPU lacks repeats the path before it, so it is skipped.
-fn cpu_paths() -> Vec<Vec<&'static str>> {
+/// CPU lacks repeats the path before it, so it is skipped. Under a
+/// `runner`, the wrapper's CPU is the emulated one, taken to have every
+/// feature, as SDE's newest models do, so every mask runs.
+fn cpu_paths(runner: bool) -> Vec<Vec<&'static str>> {
     #[cfg(target_arch = "x86_64")]
     let (tiers, has): Tiers = (
         &[
@@ -141,7 +167,7 @@ fn cpu_paths() -> Vec<Vec<&'static str>> {
     let mut mask = Vec::new();
     for (i, tier) in tiers.iter().enumerate() {
         mask.extend_from_slice(tier);
-        if i == 0 || tier.iter().any(|&feature| has(feature)) {
+        if i == 0 || runner || tier.iter().any(|&feature| has(feature)) {
             masks.push(mask.clone());
         }
     }
@@ -150,7 +176,7 @@ fn cpu_paths() -> Vec<Vec<&'static str>> {
 
 /// Runs `acvptool` on every set at once, with `mask` denied, returning each
 /// set's response in order.
-fn run(acvptool: &Path, sets: &[Set], mask: &[&str]) -> Vec<Value> {
+fn run(acvptool: &Path, wrapper: &Path, sets: &[Set], mask: &[&str]) -> Vec<Value> {
     let mut input = vec![json!({"acvVersion": "1.0"})];
     input.extend(sets.iter().enumerate().map(|(i, set)| {
         let mut prompt = set.prompt.clone();
@@ -162,11 +188,7 @@ fn run(acvptool: &Path, sets: &[Set], mask: &[&str]) -> Vec<Value> {
     fs::write(&file, serde_json::to_vec(&input).unwrap()).unwrap();
 
     let mut command = Command::new(acvptool);
-    command
-        .arg("-wrapper")
-        .arg(env!("CARGO_BIN_EXE_rind-acvp"))
-        .arg("-json")
-        .arg(&file);
+    command.arg("-wrapper").arg(wrapper).arg("-json").arg(&file);
     for feature in mask {
         command.env(format!("RIND_CPU_DISABLE_{feature}"), "1");
     }
