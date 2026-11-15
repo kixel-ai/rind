@@ -78,14 +78,9 @@ pub(crate) fn edwards25519_scalarmuldouble(
             res, scalar, point, bscalar,
         ),
         None => match HaveAvx2::check() {
-            Some(token) => {
-                // Its operands are public, but `admin/ct-vartime` holds every
-                // `vpmuludq` to the mitigation alike.
-                let _mcdt = crate::low::Mcdt::enter();
-                super::edwards25519_scalarmuldouble_avx2::edwards25519_scalarmuldouble(
-                    res, scalar, point, bscalar, token,
-                )
-            }
+            Some(token) => super::edwards25519_scalarmuldouble_avx2::edwards25519_scalarmuldouble(
+                res, scalar, point, bscalar, token,
+            ),
             None => super::edwards25519_scalarmuldouble_alt::edwards25519_scalarmuldouble_alt(
                 res, scalar, point, bscalar,
             ),

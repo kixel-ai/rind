@@ -24,8 +24,13 @@
 # exports, which is all its callers can call, holds an instruction in MCDT
 # without passing through a function that enters Intel's MXCSR mitigation,
 # `rind::low::Mcdt`. Everything such a function calls counts as mitigated,
-# and so does the function itself, so it must enter the mitigation before its
-# own work, as rind does at its top. Nothing in `admin/ct-vartime.toml`
+# and so does all of the function itself, so it enters the mitigation first,
+# holds it to its end, and is `#[inline(never)]` or `target_feature`, so it
+# never inlines into a caller whose own work the scan would then skip. The
+# scan does not check that order: LLVM lays out the path for a CPU that
+# needs no mitigation, which never calls `enter`, beside the one that does,
+# so an instruction's address says nothing about whether the mitigation is
+# held there. Nothing in `admin/ct-vartime.toml`
 # excuses these, public operands included: the mitigation costs little
 # beside the arithmetic that runs them. A generic function compiles in its
 # caller, which exports what it calls, so the mitigation goes in code that

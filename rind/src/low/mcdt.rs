@@ -15,6 +15,10 @@
 //! with every exception flag already set, so it changes nothing rind computes:
 //! rind does no floating-point arithmetic, as `admin/ct-vartime` checks, which
 //! also checks that every instruction Intel lists runs under an `Mcdt`.
+//!
+//! A function holding an `Mcdt` enters it first, holds it to its end, and is
+//! `#[inline(never)]` or `target_feature`: the scan counts all of a function
+//! that calls [`enter`] as covered, so it must not inline into a caller.
 
 #[cfg(target_arch = "x86")]
 use core::arch::x86::{__cpuid, __cpuid_count};
@@ -33,7 +37,9 @@ pub(crate) struct Mcdt(Option<u32>);
 
 impl Mcdt {
     /// Loads the mitigating value, where the CPU needs it.
-    #[inline]
+    // Always inlined, so the guarded function itself calls `enter`, which
+    // `admin/ct-vartime` looks for, even from a `target_feature` function.
+    #[inline(always)]
     pub(crate) fn enter() -> Self {
         Self(if needed() { enter() } else { None })
     }
@@ -160,28 +166,56 @@ fn denied() -> bool {
 mod tests {
     use super::*;
 
+    // See UPSTREAM.md, "Valgrind models only MXCSR's rounding mode".
     #[test]
+    #[cfg_attr(
+        feature = "__ctgrind",
+        ignore = "valgrind models only MXCSR's rounding mode"
+    )]
     fn holds_and_restores() {
         let before = mxcsr();
         assert_ne!(before, MITIGATED);
-        let saved = enter();
-        assert_eq!(saved, Some(before));
+        // Held whether or not this CPU needs it.
+        let guard = Mcdt(enter());
+        assert_eq!(guard.0, Some(before));
         assert_eq!(mxcsr(), MITIGATED);
         // An inner guard leaves the outer one's value alone.
         assert_eq!(enter(), None);
         assert_eq!(mxcsr(), MITIGATED);
-        leave(before);
+        drop(guard);
         assert_eq!(mxcsr(), before);
     }
 
     #[test]
-    fn guard_follows_cpuid() {
+    #[cfg_attr(
+        feature = "__ctgrind",
+        ignore = "valgrind models only MXCSR's rounding mode"
+    )]
+    fn guard_follows_detection() {
         let before = mxcsr();
         let guard = Mcdt::enter();
-        let needed = is_intel() && !reports_mcdt_no();
-        assert_eq!(guard.0.is_some(), needed);
-        assert_eq!(mxcsr() == MITIGATED, needed);
+        assert_eq!(guard.0.is_some(), needed());
+        assert_eq!(mxcsr() == MITIGATED, needed());
         drop(guard);
         assert_eq!(mxcsr(), before);
+    }
+
+    #[test]
+    fn reads_the_vendor() {
+        // `__cpuid` is safe from Rust 1.94 but `unsafe` on the 1.90 MSRV.
+        #[allow(unused_unsafe)]
+        // SAFETY: every CPU that runs SSE2 has `cpuid`.
+        let id = unsafe { __cpuid(0) };
+        let vendor = [id.ebx, id.edx, id.ecx].map(u32::to_le_bytes);
+        assert_eq!(is_intel(), vendor.as_flattened() == b"GenuineIntel");
+    }
+
+    // x86-cpu.yml names whether each CPU model it emulates needs the
+    // mitigation, since nothing else on a host reports `MCDT_NO`.
+    #[test]
+    fn detects_the_expected_cpu() {
+        if let Some(expected) = std::env::var_os("RIND_TEST_X86_MCDT") {
+            assert_eq!(needed(), expected == "1");
+        }
     }
 }

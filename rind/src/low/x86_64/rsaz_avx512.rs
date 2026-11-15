@@ -56,6 +56,7 @@ impl RsazAvx512 {
     ///
     /// The instruction trace and memory addresses depend on none of their
     /// values.
+    #[inline(never)]
     pub(crate) fn mod_exp(self, z: [&mut [u64]; 2], operands: [Operands<'_>; 2]) {
         for (z, o) in z.iter().zip(&operands) {
             assert!([z.len(), o.x.len(), o.e.len(), o.m.len(), o.rr.len()] == [self.words; 5]);

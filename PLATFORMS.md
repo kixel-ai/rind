@@ -170,8 +170,13 @@ Intel guarantees the timing of the instructions it lists as data-independent
   rind loads `0x1FBF` around its x86_64 ML-KEM, ML-DSA, RSA exponentiation
   with AVX2 or AVX-512, and Ed25519 verification with AVX2, and around every
   call on 32-bit `x86`, whose compiled arithmetic may use them anywhere, then
-  restores the caller's MXCSR. `admin/ct-vartime` checks that the x86_64
-  backend runs none outside it. aws-lc and BoringSSL do not mitigate this.
+  restores the caller's MXCSR. On the x86_64 backend, `admin/ct-vartime`
+  checks that nothing rind exports reaches one except through a function that
+  enters the mitigation. It counts all of such a function as covered, so each
+  enters first, holds it to its end, and never inlines into its caller. On
+  32-bit `x86` and the portable backend, coverage rests on every call's
+  `Entry`, which the scan does not check. aws-lc and BoringSSL do not
+  mitigate this.
 
 [COMPATIBILITY.md](COMPATIBILITY.md) lists the features of each Intel CPU
 family since 2004, and of some AMD cores.

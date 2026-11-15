@@ -46,6 +46,7 @@ fn planted_mcdt(secret: __m128i, by: __m128i) -> __m128i {
 
 /// The same multiply under the mitigation, which the scan must not report.
 #[cfg(rind_backend = "x86_64")]
+#[inline(never)]
 fn planted_mcdt_mitigated(secret: __m128i, by: __m128i) -> __m128i {
     let _mcdt = super::Mcdt::enter();
     mitigated_mcdt(secret, by)

@@ -42,6 +42,7 @@ impl Rsaz {
     ///
     /// The instruction trace and memory addresses depend on none of their
     /// values.
+    #[inline(never)]
     pub(crate) fn mod_exp(
         self,
         z: &mut [u64; 16],

@@ -80,6 +80,7 @@ impl DecapKey {
         })
     }
 
+    #[inline(never)]
     pub(crate) fn keygen_internal(seed: &[u8; 64]) -> Self {
         // Its arithmetic runs multiplies Intel's MXCSR mitigation covers.
         let _mcdt = low::Mcdt::enter();
@@ -100,6 +101,7 @@ impl DecapKey {
         }
     }
 
+    #[inline(never)]
     fn decaps_internal(&self, c: &Ciphertext) -> SharedSecret {
         // Its arithmetic runs multiplies Intel's MXCSR mitigation covers.
         let _mcdt = low::Mcdt::enter();
@@ -224,6 +226,7 @@ pub(crate) struct EncapKey {
 
 impl EncapKey {
     /// Create a new [`EncapKey`] from bytes.
+    #[inline(never)]
     pub(crate) fn from_bytes(input: &[u8; K * 384 + 32]) -> Result<Self, Error> {
         let _entry = low::Entry::new_public();
         // Its arithmetic runs multiplies Intel's MXCSR mitigation covers.
@@ -275,6 +278,7 @@ impl EncapKey {
         out
     }
 
+    #[inline(never)]
     pub(crate) fn encaps_internal(&self, m: Message) -> (SharedSecret, Ciphertext) {
         // Its arithmetic runs multiplies Intel's MXCSR mitigation covers.
         let _mcdt = low::Mcdt::enter();

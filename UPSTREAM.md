@@ -62,6 +62,14 @@ Each upstream rind changes, with where its fork is vendored and where the list o
 - **Reported:** [KDE bug 494162](https://bugs.kde.org/show_bug.cgi?id=494162).
 - **Goes when:** the flake's valgrind reports ADX.
 
+### Valgrind models only MXCSR's rounding mode
+
+- **Breaks:** valgrind's x86_64 guest keeps only MXCSR's rounding mode, so `stmxcsr` reads `0x1F80` after `ldmxcsr 0x1FBF`, and the `low::mcdt` tests that read back Intel's MXCSR mitigation fail. The guard itself still loads and restores MXCSR there.
+- **Reproduce:** `admin/ctgrind unit low::mcdt` fails `holds_and_restores` with `left: 8064, right: 8127`.
+- **Workaround:** `rind/src/low/mcdt.rs` ignores those two tests in `__ctgrind` builds; plain `cargo test` and x86-cpu.yml's SDE rows still run them.
+- **Reported:** no.
+- **Goes when:** valgrind keeps MXCSR's other bits.
+
 ### Valgrind cannot run x86_64's newest extensions
 
 - **Breaks:** valgrind (through 3.27) decodes no AVX-512, VAES, VPCLMULQDQ, or SHA instruction and hides them from `cpuid`, so ctgrind never reaches the code that uses them.

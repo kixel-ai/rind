@@ -413,6 +413,7 @@ impl Drop for Scratch {
 }
 
 /// FIPS 204's `ML-DSA.KeyGen_internal`, writing `pk` and `sk`.
+#[inline(never)]
 fn keygen<P: Params>(seed: &[u8; SEED_LEN], pk: &mut [u8], sk: &mut [u8]) {
     // Its arithmetic runs multiplies Intel's MXCSR mitigation covers.
     let _mcdt = low::Mcdt::enter();
@@ -518,6 +519,7 @@ fn compute_t<P: Params>(
 /// mldsa-native's `mld_sign_pk_from_sk`: writes the public key expanded
 /// private key `sk` computes into `pk`, returning whether `sk` is
 /// consistent. Its time does not depend on `sk`.
+#[inline(never)]
 fn public_key_from_secret<P: Params>(sk: &[u8], pk: &mut [u8]) -> bool {
     // Its arithmetic runs multiplies Intel's MXCSR mitigation covers.
     let _mcdt = low::Mcdt::enter();
@@ -561,6 +563,7 @@ fn public_key_from_secret<P: Params>(sk: &[u8], pk: &mut [u8]) -> bool {
 
 /// FIPS 204's `ML-DSA.Sign_internal`: signs `mu` with expanded private key
 /// `sk` and randomness `rnd`.
+#[inline(never)]
 fn sign_internal<P: Params>(
     sk: &[u8],
     mu: &[u8; MU_LEN],
@@ -700,6 +703,7 @@ fn rejected(check: u64) -> bool {
 
 /// FIPS 204's `ML-DSA.Verify_internal`: verifies `signature` over `mu` under
 /// public key `pk`.
+#[inline(never)]
 fn verify_internal<P: Params>(pk: &[u8], mu: &[u8; MU_LEN], signature: &[u8]) -> Result<(), Error> {
     // Its arithmetic runs multiplies Intel's MXCSR mitigation covers.
     let _mcdt = low::Mcdt::enter();
