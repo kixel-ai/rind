@@ -128,6 +128,10 @@ module dart '^rind-dart/' \
 # pins. rind's own changes reach them in the nightly wheels workflow instead.
 module py '^(rind-python/|sh/python\.sh$|flake\.lock$)' \
     tools='cargo jq maturin python3' compiles
+# OpenSSL's own tests with rind-openssl loaded, against the OpenSSL the flake
+# pins. rind's own changes reach the provider through its tests.
+module openssl '^(rind-openssl/|sh/openssl\.sh$|flake\.(nix|lock)$)' \
+    tools='nix' compiles
 # The fixture builds this checkout's rind-ring under the rind-patch shim.
 module patch '^(patch/|rind-ring/|(rind/)?Cargo\.toml$|sh/patch\.sh$)' \
     tools='cargo jq git' compiles fix
@@ -145,10 +149,6 @@ module deny '(^|/)Cargo\.(toml|lock)$|^deny\.toml$' \
 # so moving code can leave one matching nothing.
 module mutants '^(rind[^/]*/src/|\.cargo/mutants\.toml$|admin/mutants$)' \
     tools='cargo-mutants python3'
-# s2n-bignum's proofs assume separate input and output, so the kernels rind
-# runs in place are walked, after planting faults in each.
-module inplace '^(rind/src/low/|admin/parse-asm/)' \
-    tools='python3'
 # An adapter's manifest holds both its version and its upstream requirement.
 module versions '^(rind-[^/]+/Cargo\.toml$|sh/adapter-versions\.sh$)' \
     tools='cargo jq'
@@ -499,8 +499,6 @@ step() {
             run admin/mutants --pins
             run admin/mutants --expand-diff-self-test
             ;;
-        # It finds the generated kernels relative to its own directory.
-        check:inplace) (cd admin/parse-asm && run python3 inplace.py) ;;
         check:testing) run python3 admin/testing ;;
         check:compat)
             run python3 admin/x86-cpu markdown-table >"$logs/compat.md"
@@ -520,6 +518,7 @@ step() {
         fix:patch) run cargo fmt --manifest-path patch/fixture/Cargo.toml ;;
         check:py) run sh/python.sh test ;;
         check:dart) run nix develop .#dart --command sh/dart.sh check ;;
+        check:openssl) run nix develop .#openssl --command sh/openssl.sh ;;
         fix:dart) run nix develop .#dart --command sh/dart.sh fix ;;
         check:gh)
             run actionlint
@@ -558,21 +557,6 @@ limit=${CHECK_JOBS:-3}
 if [[ ! "$limit" =~ ^[1-9][0-9]*$ ]]; then
     echo "error: CHECK_JOBS must be a positive integer, not '$limit'" >&2
     exit 2
-fi
-
-# rs's and py's tests read these vectors, and otherwise fail partway through,
-# so they are fetched before either lane starts. s2n-bignum only feeds
-# admin/parse-asm, so it is not required. Only uninitialized ones, so a local
-# submodule bump stays put.
-if [[ "$verb" == check ]]; then
-    for module in "${selected[@]}"; do
-        [[ "$module" == rs || "$module" == py ]] || continue
-        mapfile -t unfetched < <(git submodule status -- thirdparty/cavp thirdparty/cctv thirdparty/wycheproof | sed -n 's/^-[0-9a-f]* //p')
-        if ((${#unfetched[@]} > 0)); then
-            git submodule update --init --depth 1 -- "${unfetched[@]}"
-        fi
-        break
-    done
 fi
 
 lanes=()

@@ -465,6 +465,16 @@ opaque low.x86_64.bignum_mod_n384.bignum_mod_n384
   Array Std.U64 6#usize → Array Std.U64 6#usize → Result (Array Std.U64
     6#usize)
 
+opaque low.x86_64.p384_montjadd.p384_montjadd
+  :
+  Array Std.U64 18#usize → Array Std.U64 18#usize → Array Std.U64 18#usize
+    → Result (Array Std.U64 18#usize)
+
+opaque low.x86_64.p384_montjadd_alt.p384_montjadd_alt
+  :
+  Array Std.U64 18#usize → Array Std.U64 18#usize → Array Std.U64 18#usize
+    → Result (Array Std.U64 18#usize)
+
 opaque high.curve.P256.Insts.RindHighCurveCurveStaticPrivateKeyVerifyingKeyScalar.oid
   : Result high.asn1.ObjectId
 
@@ -475,6 +485,11 @@ opaque high.curve.P256.Insts.RindHighCurveCurveStaticPrivateKeyVerifyingKeyScala
 
 opaque high.curve.P384.Insts.RindHighCurveCurveStaticPrivateKeyVerifyingKeyScalar.oid
   : Result high.asn1.ObjectId
+
+/-- P-384's ECDSA key generation, which the signing theorems model. -/
+opaque high.curve.P384.Insts.RindHighCurveCurveStaticPrivateKeyVerifyingKeyScalar.generate_random_key
+  {T0 : Type _} (midrngRandomSourceInst : mid.rng.RandomSource T0) :
+  T0 → Result ((core.result.Result mid.p384.StaticPrivateKey error.Error) × T0)
 
 /-! P-256's s2n-bignum routines. -/
 
@@ -596,8 +611,7 @@ signing key's of its encoded public key, which the ECDSA theorems take what
 they need of as a hypothesis. -/
 
 opaque low.generic.reuse_cache.ReuseCache.new
-  {T : Type _} (coremarkerCopyInst : core.marker.Copy T)
-  (coredefaultDefaultInst : core.default.Default T) :
+  {T : Type _} (coredefaultDefaultInst : core.default.Default T) :
   Result (low.generic.reuse_cache.ReuseCache T)
 
 opaque low.generic.reuse_cache.ReuseCache.get_or_build_now
@@ -607,8 +621,7 @@ opaque low.generic.reuse_cache.ReuseCache.get_or_build_now
   low.generic.reuse_cache.ReuseCache T → T1 → Result T
 
 opaque low.generic.reuse_cache.ReuseCache.get_or_build
-  {T : Type _} {T1 : Type _} (coremarkerCopyInst : core.marker.Copy T)
-  (coredefaultDefaultInst : core.default.Default T)
+  {T : Type _} {T1 : Type _} (coredefaultDefaultInst : core.default.Default T)
   (coreopsfunctionFnOnceT1TupleTInst : core.ops.function.FnOnce T1 Unit T) :
   low.generic.reuse_cache.ReuseCache T → T1 → Result (Option T)
 

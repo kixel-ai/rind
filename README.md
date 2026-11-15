@@ -126,6 +126,7 @@ Each crate's README shows its setup.
 | [rind-jsonwebtoken][] | JWTs through [jsonwebtoken](https://github.com/Keats/jsonwebtoken) |
 | [rind-object-store][] | S3, Azure, and GCS request signing through [object_store](https://github.com/apache/arrow-rs-object-store) |
 | [rind-rcgen][] | certificates through [rcgen](https://github.com/rustls/rcgen) |
+| [rind-openssl][] | X25519 and Ed25519 for whatever links OpenSSL 3, as a provider its configuration loads; built from source |
 | [rind-dart][] | Dart and Flutter, through FFI, as the `rind` package on [pub.dev](https://pub.dev/packages/rind) |
 | [rind_cryptography][] | Dart and Flutter, as the `rind_cryptography` package, with the `cryptography` package's API on rind |
 | [rind-python][] | Python, as the `pyrind` package on PyPI, with rind's own API |
@@ -185,6 +186,34 @@ what each target enables at compile time, so it runs on every CPU the target
 does.
 [PLATFORMS.md][platforms] lists what each architecture runs without each
 feature.
+
+## Versions
+
+rind is below 1.0, so a minor release is its breaking one. There is no date
+for 1.0: it comes once the API takes one shape, every key type loading,
+exporting, and naming things the same way, and no breaking change is planned.
+
+- A patch release, such as 0.3.1 to 0.3.2, adds API and fixes bugs: code
+  that built against an earlier patch of the same minor still builds. A fix
+  can make rind refuse input it wrongly accepted.
+- A minor release, such as 0.3 to 0.4, may break the API. rind batches
+  breaking changes so that few minor releases are needed, the changelog
+  marks each as **breaking**, and [MIGRATING.md][migrating] maps ring's and
+  aws-lc-rs's names onto the API as it now stands.
+- The minimum supported Rust version is each crate's `rust-version`, shown on
+  its crates.io page. rind's is 1.90, and CI checks rind and every crate that
+  shares it on 1.90. It rises only in a minor release, and only to a Rust at
+  least nine releases (about a year) older than the latest stable, the window
+  rustls allows itself. Correcting a `rust-version` the code never built on
+  is a fix, which a patch can ship.
+- Each adapter's version follows the upstream it adapts, as
+  [CONTRIBUTING.md][releases] says. rind is not part of an adapter's API, so
+  an adapter's patch release may move it to rind's next minor, and to that
+  minor's `rust-version`. An adapter whose upstream needs a newer Rust than
+  rind declares that one, as rind-openmls declares OpenMLS's 1.91, and CI
+  does not yet check such a crate on its own `rust-version`.
+- [SECURITY.md][supported-versions] says which releases get security fixes,
+  and [PLATFORMS.md][platforms] which targets and CPUs rind supports.
 
 ## Contributing
 
@@ -254,6 +283,7 @@ from other projects keeps its source's license, which [LICENSE] lists.
 [rind-str0m]: https://github.com/kixel-ai/rind/tree/main/rind-str0m
 [rind-openmls]: https://github.com/kixel-ai/rind/tree/main/rind-openmls
 [rind-jsonwebtoken]: https://github.com/kixel-ai/rind/tree/main/rind-jsonwebtoken
+[rind-openssl]: https://github.com/kixel-ai/rind/tree/main/rind-openssl
 [rind-object-store]: https://github.com/kixel-ai/rind/tree/main/rind-object-store
 [rind-rcgen]: https://github.com/kixel-ai/rind/tree/main/rind-rcgen
 [rind-dart]: https://github.com/kixel-ai/rind/tree/main/rind-dart
@@ -263,6 +293,8 @@ from other projects keeps its source's license, which [LICENSE] lists.
 [quests]: https://github.com/kixel-ai/rind/blob/main/quest/README.md
 [launch-post]: https://moq.dev/blog/rind/
 [contributing]: https://github.com/kixel-ai/rind/blob/main/CONTRIBUTING.md
+[releases]: https://github.com/kixel-ai/rind/blob/main/CONTRIBUTING.md#releases
+[supported-versions]: https://github.com/kixel-ai/rind/blob/main/SECURITY.md#supported-versions
 [security]: https://github.com/kixel-ai/rind/blob/main/SECURITY.md
 [migrating]: https://github.com/kixel-ai/rind/blob/main/MIGRATING.md
 [benchmarks]: https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md
