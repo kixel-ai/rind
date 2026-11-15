@@ -96,10 +96,14 @@ impl crate::sealed::Sealed for AlgorithmId {}
 
 /// One of rind's keys, of each parameter set: rind types a key by its set,
 /// where aws-lc-rs picks the set at run time.
+///
+/// Each set's key has its own allocation: held inline, a smaller set's key
+/// would sit in the largest's space, whose slack a move fills with stale
+/// stack bytes, a seed among them, that the key's wipe never reaches.
 enum BySet<T512, T768, T1024> {
-    MlKem512(T512),
-    MlKem768(T768),
-    MlKem1024(T1024),
+    MlKem512(Box<T512>),
+    MlKem768(Box<T768>),
+    MlKem1024(Box<T1024>),
 }
 
 /// Rind's key type `$ty` of whichever set.
@@ -113,9 +117,18 @@ macro_rules! by_set {
 macro_rules! each {
     ($value:expr, $key:ident => $body:expr) => {
         match $value {
-            BySet::MlKem512($key) => $body,
-            BySet::MlKem768($key) => $body,
-            BySet::MlKem1024($key) => $body,
+            BySet::MlKem512(key) => {
+                let $key = &**key;
+                $body
+            }
+            BySet::MlKem768(key) => {
+                let $key = &**key;
+                $body
+            }
+            BySet::MlKem1024(key) => {
+                let $key = &**key;
+                $body
+            }
         }
     };
 }
@@ -128,15 +141,15 @@ macro_rules! for_set {
         match $alg.id.nid() {
             NID_MLKEM512 => {
                 type $set = MlKem512;
-                BySet::MlKem512($body)
+                BySet::MlKem512(Box::new($body))
             }
             NID_MLKEM768 => {
                 type $set = MlKem768;
-                BySet::MlKem768($body)
+                BySet::MlKem768(Box::new($body))
             }
             NID_MLKEM1024 => {
                 type $set = MlKem1024;
-                BySet::MlKem1024($body)
+                BySet::MlKem1024(Box::new($body))
             }
             nid => unreachable!("no KEM has NID {nid}"),
         }
@@ -170,9 +183,9 @@ impl<Id: AlgorithmIdentifier> DecapsulationKey<Id> {
     /// The key's encapsulation key.
     pub fn encapsulation_key(&self) -> Result<EncapsulationKey<Id>, Unspecified> {
         let key = match &self.key {
-            BySet::MlKem512(key) => BySet::MlKem512(key.public_key()),
-            BySet::MlKem768(key) => BySet::MlKem768(key.public_key()),
-            BySet::MlKem1024(key) => BySet::MlKem1024(key.public_key()),
+            BySet::MlKem512(key) => BySet::MlKem512(Box::new(key.public_key())),
+            BySet::MlKem768(key) => BySet::MlKem768(Box::new(key.public_key())),
+            BySet::MlKem1024(key) => BySet::MlKem1024(Box::new(key.public_key())),
         };
         Ok(EncapsulationKey {
             algorithm: self.algorithm,
