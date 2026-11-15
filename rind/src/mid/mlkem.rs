@@ -37,7 +37,9 @@ pub enum MlKem1024 {}
 ///
 /// Its bounds, like [`Array`]'s, let a generic caller rely on the auto
 /// traits every key and ciphertext has.
-pub trait Params: fmt::Debug + Send + Sync + Unpin + UnwindSafe + RefUnwindSafe + 'static {
+pub trait Params:
+    fmt::Debug + Sized + Send + Sync + Unpin + UnwindSafe + RefUnwindSafe + 'static
+{
     #[doc(hidden)]
     const K: usize;
     #[doc(hidden)]
@@ -64,6 +66,67 @@ pub trait Params: fmt::Debug + Send + Sync + Unpin + UnwindSafe + RefUnwindSafe 
     /// FIPS-203's name for the set.
     #[cfg(test)]
     const NAME: &'static str;
+
+    // The algorithms at this parameter set. As methods of each set's impl,
+    // they compile in rind, not in each generic caller, so `admin/ct-vartime`
+    // sees them, and the MXCSR mitigation they hold, from what rind exports.
+    // Each takes an `Internal`, which only rind can make.
+    #[doc(hidden)]
+    fn keygen(_: Internal, seed: &[u8; 64]) -> DecapKey<Self>;
+    #[doc(hidden)]
+    fn decaps(_: Internal, key: &DecapKey<Self>, c: &Ciphertext<Self>) -> SharedSecret;
+    #[doc(hidden)]
+    fn parse(_: Internal, input: &Self::EncapKeyBytes) -> Result<EncapKey<Self>, Error>;
+    #[doc(hidden)]
+    fn encaps(_: Internal, key: &EncapKey<Self>, m: Message) -> (SharedSecret, Ciphertext<Self>);
+    #[doc(hidden)]
+    fn encode(_: Internal, key: &EncapKey<Self>) -> Self::EncapKeyBytes;
+}
+
+/// Proof that a call to a [`Params`] method comes from rind: no other crate
+/// can make one, though a generic caller can name the methods.
+#[doc(hidden)]
+#[derive(Clone, Copy)]
+pub struct Internal(());
+
+// Each set's `Params` methods, each holding Intel's MXCSR mitigation over the
+// arithmetic it runs.
+macro_rules! algorithms {
+    () => {
+        #[inline(never)]
+        fn keygen(_: Internal, seed: &[u8; 64]) -> DecapKey<Self> {
+            let _mcdt = low::Mcdt::enter();
+            DecapKey::keygen_mitigated(seed)
+        }
+
+        #[inline(never)]
+        fn decaps(_: Internal, key: &DecapKey<Self>, c: &Ciphertext<Self>) -> SharedSecret {
+            let _mcdt = low::Mcdt::enter();
+            key.decaps_mitigated(c)
+        }
+
+        #[inline(never)]
+        fn parse(_: Internal, input: &Self::EncapKeyBytes) -> Result<EncapKey<Self>, Error> {
+            let _mcdt = low::Mcdt::enter();
+            EncapKey::parse_mitigated(input)
+        }
+
+        #[inline(never)]
+        fn encaps(
+            _: Internal,
+            key: &EncapKey<Self>,
+            m: Message,
+        ) -> (SharedSecret, Ciphertext<Self>) {
+            let _mcdt = low::Mcdt::enter();
+            key.encaps_mitigated(m)
+        }
+
+        #[inline(never)]
+        fn encode(_: Internal, key: &EncapKey<Self>) -> Self::EncapKeyBytes {
+            let _mcdt = low::Mcdt::enter();
+            key.encode_mitigated()
+        }
+    };
 }
 
 impl Params for MlKem512 {
@@ -79,6 +142,7 @@ impl Params for MlKem512 {
     type DecapKeyBytes = [u8; 1632];
     #[cfg(test)]
     const NAME: &'static str = "ML-KEM-512";
+    algorithms!();
 }
 
 impl Params for MlKem768 {
@@ -94,6 +158,7 @@ impl Params for MlKem768 {
     type DecapKeyBytes = [u8; 2400];
     #[cfg(test)]
     const NAME: &'static str = "ML-KEM-768";
+    algorithms!();
 }
 
 impl Params for MlKem1024 {
@@ -109,6 +174,7 @@ impl Params for MlKem1024 {
     type DecapKeyBytes = [u8; 3168];
     #[cfg(test)]
     const NAME: &'static str = "ML-KEM-1024";
+    algorithms!();
 }
 
 /// A fixed-size array, of a length a [`Params`] picks.
@@ -175,7 +241,8 @@ impl Vector for [Poly; 4] {
 type Encoded<P> = <<P as Params>::Vector as Vector>::Encoded;
 
 /// An ML-KEM decapsulation key.
-pub(crate) struct DecapKey<P: Params> {
+#[doc(hidden)]
+pub struct DecapKey<P: Params> {
     ek_pke: EncapKey<P>,
     dk_pke: Encoded<P>,
     z: [u8; 32],
@@ -195,7 +262,7 @@ impl<P: Params> DecapKey<P> {
     /// Decapsulate ciphertext `c`, yielding a [`SharedSecret`].
     pub(crate) fn decaps(&self, c: &Ciphertext<P>) -> SharedSecret {
         let _entry = low::Entry::new_secret();
-        self.decaps_internal(c)
+        P::decaps(Internal(()), self, c)
     }
 
     /// Return the corresponding [`EncapKey`].
@@ -241,6 +308,11 @@ impl<P: Params> DecapKey<P> {
     }
 
     pub(crate) fn keygen_internal(seed: &[u8; 64]) -> Self {
+        P::keygen(Internal(()), seed)
+    }
+
+    /// [`Self::keygen_internal`], under the caller's MXCSR mitigation.
+    fn keygen_mitigated(seed: &[u8; 64]) -> Self {
         // Preliminaries: split seed into d and z.
         let (d, z) = seed.split_at(32);
         let d = low::ct::into_secret(d.try_into().unwrap());
@@ -258,7 +330,8 @@ impl<P: Params> DecapKey<P> {
         }
     }
 
-    fn decaps_internal(&self, c: &Ciphertext<P>) -> SharedSecret {
+    /// [`Self::decaps`], under the caller's MXCSR mitigation.
+    fn decaps_mitigated(&self, c: &Ciphertext<P>) -> SharedSecret {
         // Steps 1. - 4. are not relevant for us.
         // 5. m' <- K-PKE.Decrypt(dkPKE, c)
         let m_prime = self.kpke_decrypt(c);
@@ -384,7 +457,8 @@ impl<P: Params> Drop for DecapKey<P> {
 impl<P: Params> low::Zeroable for DecapKey<P> {}
 
 /// An ML-KEM encapsulation key.
-pub(crate) struct EncapKey<P: Params> {
+#[doc(hidden)]
+pub struct EncapKey<P: Params> {
     /// `H(ek)`, which both encapsulation and decapsulation hash in.
     h_ek: [u8; 32],
     rho: [u8; 32],
@@ -436,6 +510,11 @@ impl<P: Params> EncapKey<P> {
     /// Create a new [`EncapKey`] from bytes.
     pub(crate) fn from_bytes(input: &P::EncapKeyBytes) -> Result<Self, Error> {
         let _entry = low::Entry::new_public();
+        P::parse(Internal(()), input)
+    }
+
+    /// [`Self::from_bytes`], under the caller's MXCSR mitigation.
+    fn parse_mitigated(input: &P::EncapKeyBytes) -> Result<Self, Error> {
         let (t_hat, rho) = input.as_ref().split_at(P::K * 384);
 
         // 2. (Modulus check) Perform the computation
@@ -469,6 +548,11 @@ impl<P: Params> EncapKey<P> {
     /// Encode the [`EncapKey`] as bytes.
     pub(crate) fn as_bytes(&self) -> P::EncapKeyBytes {
         let _entry = low::Entry::new_public();
+        P::encode(Internal(()), self)
+    }
+
+    /// [`Self::as_bytes`], under the caller's MXCSR mitigation.
+    fn encode_mitigated(&self) -> P::EncapKeyBytes {
         let mut out = P::EncapKeyBytes::filled(0);
         let (t_hat, rho) = out.as_mut().split_at_mut(P::K * 384);
         t_hat.copy_from_slice(self.t_hat_coeffs.to_bytes().as_ref().as_flattened());
@@ -477,6 +561,11 @@ impl<P: Params> EncapKey<P> {
     }
 
     pub(crate) fn encaps_internal(&self, m: Message) -> (SharedSecret, Ciphertext<P>) {
+        P::encaps(Internal(()), self, m)
+    }
+
+    /// [`Self::encaps_internal`], under the caller's MXCSR mitigation.
+    fn encaps_mitigated(&self, m: Message) -> (SharedSecret, Ciphertext<P>) {
         low::ct::secret_slice(&m.0);
 
         // 1. (K, r) <- G(m || H(ek))
@@ -579,7 +668,8 @@ fn rank(len: usize) -> usize {
 }
 
 /// An ML-KEM ciphertext.
-pub(crate) struct Ciphertext<P: Params>(P::CiphertextBytes);
+#[doc(hidden)]
+pub struct Ciphertext<P: Params>(P::CiphertextBytes);
 
 impl<P: Params> Ciphertext<P> {
     /// The ciphertext `bytes`, if they are the parameter set's length.
@@ -607,13 +697,15 @@ impl<P: Params> AsRef<[u8]> for Ciphertext<P> {
 }
 
 /// A K-PKE message.
-pub(crate) struct Message(pub(crate) [u8; 32]);
+#[doc(hidden)]
+pub struct Message(pub(crate) [u8; 32]);
 
 /// K-PKE randomness input: `sigma` for key generation, `r` for encryption.
 struct KpkeRandomness([u8; 32]);
 
 /// An ML-KEM shared secret.
-pub(crate) struct SharedSecret([u8; 32]);
+#[doc(hidden)]
+pub struct SharedSecret([u8; 32]);
 
 impl AsRef<[u8; 32]> for SharedSecret {
     fn as_ref(&self) -> &[u8; 32] {
