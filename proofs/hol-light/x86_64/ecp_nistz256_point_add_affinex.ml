@@ -15,13 +15,13 @@
    ECP_NISTZ256_POINT_ADD_AFFINE_SUBROUTINE_CORRECT states of the mulq one.
    Its body is that one's, instruction for instruction, but for the
    registers and offsets its helpers take, so the proof is that one's with
-   these helpers' lemmas, and it reuses that file's lemmas and tactics:
-   admin/prove loads this file after it. *)
+   these helpers' lemmas, and it reuses that file's lemmas and tactics. *)
 
 needs "x86/proofs/base.ml";;
 needs "common/ecencoding.ml";;
 needs "EC/jacobian.ml";;
 needs "EC/nistp256.ml";;
+needs "x86_64/ecp_nistz256_point_add_affine.ml";;
 
 (* admin/prove writes the function's object, as rind's release build emits
    it, to x86_64/ecp_nistz256_point_add_affinex.o: its section as .text, with
