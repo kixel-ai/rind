@@ -568,7 +568,9 @@ mod tests {
     #[test]
     fn secret_message() {
         // Under `admin/ctgrind`, nothing may branch on or index by the
-        // message, which ends in a partial block of each hash.
+        // message, which ends in a partial block of each hash. 31-byte
+        // updates copy into the buffer in every lane size, from offsets 0
+        // and 31, as well as filling blocks.
         for algorithm in [
             &MD5,
             &SHA1,
@@ -587,6 +589,12 @@ mod tests {
             let mut ctx = Context::new(algorithm);
             ctx.update(&message[..100]);
             ctx.update(&message[100..]);
+            let got = ct::into_public(ctx.finish());
+            assert_eq!(got.as_ref(), wanted.as_ref());
+            let mut ctx = Context::new(algorithm);
+            for chunk in message.chunks(31) {
+                ctx.update(chunk);
+            }
             let got = ct::into_public(ctx.finish());
             assert_eq!(got.as_ref(), wanted.as_ref());
             let got = ct::into_public(digest(algorithm, &message));
