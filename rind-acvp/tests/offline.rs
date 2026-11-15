@@ -699,10 +699,10 @@ fn hmac_drbg_registered() -> Set {
     }
 }
 
-/// ML-KEM's encapsulation and decapsulation sample, plus a decapsulation
-/// key whose embedded encapsulation key fails its modulus check, a
-/// coefficient of q, yet carries that key's hash: FIPS 203's section 7.3
-/// checks the hash alone, so it passes.
+/// ML-KEM's encapsulation and decapsulation sample, plus an ML-KEM-768
+/// decapsulation key whose embedded encapsulation key fails its modulus
+/// check, a coefficient of q, yet carries that key's hash: FIPS 203's
+/// section 7.3 checks the hash alone, so it passes.
 fn ml_kem_encap_decap() -> Set {
     let mut set = sample("ML-KEM-encapDecap-FIPS203-tr1", |_, _| true);
     let Check::Answers(expected) = &mut set.check else {
@@ -720,7 +720,10 @@ fn ml_kem_encap_decap() -> Set {
             .as_array_mut()
             .unwrap()
             .iter_mut()
-            .find(|group| group["function"] == "decapsulationKeyCheck")
+            .find(|group| {
+                group["function"] == "decapsulationKeyCheck"
+                    && group["parameterSet"] == "ML-KEM-768"
+            })
             .unwrap();
         let tests = group["tests"].as_array_mut().unwrap();
         let mut test = tests

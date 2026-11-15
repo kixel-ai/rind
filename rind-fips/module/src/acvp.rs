@@ -104,34 +104,40 @@ fn drbg(args: &[&[u8]], len: usize) -> Result<Vec<u8>, Error> {
     Ok(out)
 }
 
-/// ML-KEM, as `ids::acvp` documents each operation.
+/// ML-KEM of parameter set `param`, as `ids::acvp` documents each operation.
 fn ml_kem(op: u32, param: u32, args: &[&[u8]]) -> Result<Vec<u8>, Error> {
-    if param != kem::ML_KEM_768 {
-        return Err(Error::Unsupported);
+    match param {
+        kem::ML_KEM_512 => ml_kem_set::<rind::kem::MlKem512>(op, args),
+        kem::ML_KEM_768 => ml_kem_set::<rind::kem::MlKem768>(op, args),
+        kem::ML_KEM_1024 => ml_kem_set::<rind::kem::MlKem1024>(op, args),
+        _ => Err(Error::Unsupported),
     }
+}
+
+fn ml_kem_set<P: rind::kem::Algorithm>(op: u32, args: &[&[u8]]) -> Result<Vec<u8>, Error> {
     Ok(match op {
         op::ML_KEM_KEY_GEN => {
             let [d, z] = take(args)?;
-            let (ek, dk) = acvp::ml_kem_768_key_gen(array(d)?, array(z)?);
-            [&ek[..], &dk[..]].concat()
+            let (ek, dk) = acvp::ml_kem_key_gen::<P>(array(d)?, array(z)?);
+            [ek.as_ref(), dk.as_ref()].concat()
         }
         op::ML_KEM_ENCAP => {
             let [ek, m] = take(args)?;
-            let (ciphertext, secret) = acvp::ml_kem_768_encap(ek, array(m)?)?;
-            [&ciphertext[..], &secret[..]].concat()
+            let (ciphertext, secret) = acvp::ml_kem_encap::<P>(ek, array(m)?)?;
+            [ciphertext.as_ref(), &secret[..]].concat()
         }
         op::ML_KEM_DECAP => {
             let [dk, ciphertext] = take(args)?;
-            acvp::ml_kem_768_decap(dk, ciphertext)?.to_vec()
+            acvp::ml_kem_decap::<P>(dk, ciphertext)?.to_vec()
         }
         op::ML_KEM_CHECK_ENCAPSULATION_KEY => {
             let [ek] = take(args)?;
-            acvp::ml_kem_768_check_encapsulation_key(ek)?;
+            acvp::ml_kem_check_encapsulation_key::<P>(ek)?;
             Vec::new()
         }
         _ => {
             let [dk] = take(args)?;
-            acvp::ml_kem_768_check_decapsulation_key(dk)?;
+            acvp::ml_kem_check_decapsulation_key::<P>(dk)?;
             Vec::new()
         }
     })

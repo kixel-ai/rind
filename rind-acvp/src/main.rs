@@ -944,38 +944,43 @@ impl<'a> Der<'a> {
 
 /// `ML-KEM/<set>/<operation>`.
 fn ml_kem(set: &str, operation: &str, args: &[Vec<u8>]) -> Result<Reply> {
-    let algorithm = match set {
-        "ML-KEM-768" => &kem::ML_KEM_768,
-        _ => return Err(format!("no {set}").into()),
-    };
+    match set {
+        "ML-KEM-512" => ml_kem_set::<kem::MlKem512>(operation, args),
+        "ML-KEM-768" => ml_kem_set::<kem::MlKem768>(operation, args),
+        "ML-KEM-1024" => ml_kem_set::<kem::MlKem1024>(operation, args),
+        _ => Err(format!("no {set}").into()),
+    }
+}
+
+fn ml_kem_set<A: kem::Algorithm>(operation: &str, args: &[Vec<u8>]) -> Result<Reply> {
     match operation {
         // Seeds `d` and `z`, to the encapsulation and decapsulation keys.
         "keyGen" => {
             let [d, z] = take(args)?;
-            let (ek, dk) = acvp::ml_kem_key_gen(algorithm, d, z)?;
+            let (ek, dk) = acvp::ml_kem_key_gen::<A>(d, z)?;
             Ok(vec![ek, dk])
         }
         // An encapsulation key and message `m`, to the ciphertext and the
         // shared secret.
         "encap" => {
             let [ek, m] = take(args)?;
-            let (ciphertext, secret) = acvp::ml_kem_encap(algorithm, ek, m)?;
+            let (ciphertext, secret) = acvp::ml_kem_encap::<A>(ek, m)?;
             Ok(vec![ciphertext, secret])
         }
         // A decapsulation key and ciphertext, to the shared secret.
         "decap" => {
             let [dk, ciphertext] = take(args)?;
-            Ok(vec![acvp::ml_kem_decap(algorithm, dk, ciphertext)?])
+            Ok(vec![acvp::ml_kem_decap::<A>(dk, ciphertext)?])
         }
         // A key, to whether it passes FIPS 203's input check.
         "encapKeyCheck" => {
             let [ek] = take(args)?;
-            let valid = acvp::ml_kem_check_encapsulation_key(algorithm, ek).is_ok();
+            let valid = acvp::ml_kem_check_encapsulation_key::<A>(ek).is_ok();
             Ok(vec![flag(valid)])
         }
         "decapKeyCheck" => {
             let [dk] = take(args)?;
-            let valid = acvp::ml_kem_check_decapsulation_key(algorithm, dk).is_ok();
+            let valid = acvp::ml_kem_check_decapsulation_key::<A>(dk).is_ok();
             Ok(vec![flag(valid)])
         }
         _ => Err("not an operation rind's module registers".into()),

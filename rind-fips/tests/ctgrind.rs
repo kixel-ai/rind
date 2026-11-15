@@ -273,9 +273,15 @@ fn agreement_and_kem() {
     public(theirs.as_ref());
     assert_eq!(shared.as_ref(), theirs.as_ref());
 
-    let key = kem::DecapsulationKey::generate(&kem::ML_KEM_768).unwrap();
+    kem_set::<kem::MlKem512>();
+    kem_set::<kem::MlKem768>();
+    kem_set::<kem::MlKem1024>();
+}
+
+fn kem_set<A: kem::Algorithm>() {
+    let key = kem::DecapsulationKey::<A>::generate().unwrap();
     let (ciphertext, sent) = key.public_key().encapsulate().unwrap();
-    let received = key.decapsulate(ciphertext.as_ref()).unwrap();
+    let received = key.decapsulate(&ciphertext);
     public(sent.as_ref());
     public(received.as_ref());
     assert_eq!(sent.as_ref(), received.as_ref());
@@ -478,27 +484,26 @@ fn acvp() {
 
     // An ML-KEM-768 expanded decapsulation key is `dk_pke`, then the
     // encapsulation key, its hash, and `z`; `dk_pke` and `z` are secret.
-    let algorithm = &kem::ML_KEM_768;
     let (d, z, m) = ([0x88u8; 32], [0x99u8; 32], [0xaau8; 32]);
     secret(&d);
     secret(&z);
     secret(&m);
-    let (ek, mut dk) = acvp::ml_kem_key_gen(algorithm, &d, &z).unwrap();
+    let (ek, mut dk) = acvp::ml_kem_key_gen::<kem::MlKem768>(&d, &z).unwrap();
     public(&ek[..]);
     public(&dk[..]);
     secret(&dk[..1152]);
     secret(&dk[2368..]);
-    acvp::ml_kem_check_decapsulation_key(algorithm, &dk).unwrap();
-    let (mut ciphertext, sent) = acvp::ml_kem_encap(algorithm, &ek, &m).unwrap();
+    acvp::ml_kem_check_decapsulation_key::<kem::MlKem768>(&dk).unwrap();
+    let (mut ciphertext, sent) = acvp::ml_kem_encap::<kem::MlKem768>(&ek, &m).unwrap();
     public(&ciphertext[..]);
-    let received = acvp::ml_kem_decap(algorithm, &dk, &ciphertext).unwrap();
+    let received = acvp::ml_kem_decap::<kem::MlKem768>(&dk, &ciphertext).unwrap();
     public(&sent[..]);
     public(&received[..]);
     assert_eq!(sent, received);
     // Implicit rejection: a corrupted ciphertext decapsulates to a secret
     // derived from `z`.
     ciphertext[0] ^= 1;
-    let rejected = acvp::ml_kem_decap(algorithm, &dk, &ciphertext).unwrap();
+    let rejected = acvp::ml_kem_decap::<kem::MlKem768>(&dk, &ciphertext).unwrap();
     public(&rejected[..]);
     assert_ne!(rejected, sent);
     dk.fill(0);

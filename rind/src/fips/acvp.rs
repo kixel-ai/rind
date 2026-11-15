@@ -13,9 +13,10 @@ use crate::error::KeyFormatError;
 use crate::high::hash::Sha512;
 use crate::high::hmac_drbg::HmacDrbg;
 use crate::high::signature::MlDsaParameterSet;
+use crate::kem::Algorithm;
 use crate::low::Entry;
 use crate::mid::mldsa::{self, KeyPair};
-use crate::mid::mlkem768::{Ciphertext, DecapKey, EncapKey, Message};
+use crate::mid::mlkem::{Array, Ciphertext, DecapKey, EncapKey, Message};
 use crate::mid::sha3::Sha3_256Context;
 
 /// One prediction-resistant generate's inputs: the entropy it reseeds with,
@@ -56,64 +57,61 @@ impl Drbg<'_> {
     }
 }
 
-/// An ML-KEM-768 encapsulation key's length.
-pub const ML_KEM_768_ENCAPSULATION_KEY_LEN: usize = 1184;
-
-/// An ML-KEM-768 expanded decapsulation key's length.
-pub const ML_KEM_768_DECAPSULATION_KEY_LEN: usize = 2400;
-
-/// An ML-KEM-768 ciphertext's length.
-pub const ML_KEM_768_CIPHERTEXT_LEN: usize = 1088;
-
-/// FIPS 203's `ML-KEM.KeyGen_internal` for ML-KEM-768 from seeds `d` and
-/// `z`: the encapsulation key and the expanded decapsulation key.
-pub fn ml_kem_768_key_gen(d: &[u8; 32], z: &[u8; 32]) -> ([u8; 1184], [u8; 2400]) {
+/// FIPS 203's `ML-KEM.KeyGen_internal` of parameter set `P`, such as
+/// [`crate::kem::MlKem768`], from seeds `d` and `z`: the encapsulation key
+/// and the expanded decapsulation key.
+pub fn ml_kem_key_gen<P: Algorithm>(
+    d: &[u8; 32],
+    z: &[u8; 32],
+) -> (P::EncapKeyBytes, P::DecapKeyBytes) {
     let _entry = Entry::new_secret();
     let mut seed = [0u8; 64];
     seed[..32].copy_from_slice(d);
     seed[32..].copy_from_slice(z);
-    let key = DecapKey::keygen_internal(&seed);
+    let key = DecapKey::<P>::keygen_internal(&seed);
     crate::low::zeroise(&mut seed);
     (key.encapsulation_key().as_bytes(), key.as_bytes())
 }
 
-/// FIPS 203's `ML-KEM.Encaps_internal` of message `m` to ML-KEM-768
-/// encapsulation key `ek`, after its input checks: the ciphertext and the
+/// FIPS 203's `ML-KEM.Encaps_internal` of message `m` to encapsulation key
+/// `ek` of parameter set `P`, after its input checks: the ciphertext and the
 /// shared secret.
-pub fn ml_kem_768_encap(ek: &[u8], m: &[u8; 32]) -> Result<([u8; 1088], [u8; 32]), Error> {
-    let ek = encapsulation_key(ek)?;
+pub fn ml_kem_encap<P: Algorithm>(
+    ek: &[u8],
+    m: &[u8; 32],
+) -> Result<(P::CiphertextBytes, [u8; 32]), Error> {
+    let ek = encapsulation_key::<P>(ek)?;
     let _entry = Entry::new_secret();
     let (secret, ciphertext) = ek.encaps_internal(Message(*m));
-    Ok((*ciphertext.as_ref(), *secret.as_ref()))
+    let ciphertext = P::CiphertextBytes::from_slice(ciphertext.as_ref()).unwrap();
+    Ok((ciphertext, *secret.as_ref()))
 }
 
-/// FIPS 203's `ML-KEM.Decaps_internal` of `ciphertext` with ML-KEM-768
-/// expanded decapsulation key `dk`, after their input checks: the shared
-/// secret, or the implicit rejection's.
-pub fn ml_kem_768_decap(dk: &[u8], ciphertext: &[u8]) -> Result<[u8; 32], Error> {
-    let key = decapsulation_key(dk)?;
-    let ciphertext: [u8; ML_KEM_768_CIPHERTEXT_LEN] =
-        ciphertext.try_into().map_err(|_| Error::WrongLength)?;
-    Ok(*key.decaps(&Ciphertext::from(ciphertext)).as_ref())
+/// FIPS 203's `ML-KEM.Decaps_internal` of `ciphertext` with expanded
+/// decapsulation key `dk` of parameter set `P`, after their input checks:
+/// the shared secret, or the implicit rejection's.
+pub fn ml_kem_decap<P: Algorithm>(dk: &[u8], ciphertext: &[u8]) -> Result<[u8; 32], Error> {
+    let key = decapsulation_key::<P>(dk)?;
+    let ciphertext = Ciphertext::<P>::from_slice(ciphertext).ok_or(Error::WrongLength)?;
+    Ok(*key.decaps(&ciphertext).as_ref())
 }
 
-/// FIPS 203's encapsulation input check of an ML-KEM-768 encapsulation key:
-/// its length and its modulus check.
-pub fn ml_kem_768_check_encapsulation_key(ek: &[u8]) -> Result<(), Error> {
-    encapsulation_key(ek).map(drop)
+/// FIPS 203's encapsulation input check of an encapsulation key of parameter
+/// set `P`: its length and its modulus check.
+pub fn ml_kem_check_encapsulation_key<P: Algorithm>(ek: &[u8]) -> Result<(), Error> {
+    encapsulation_key::<P>(ek).map(drop)
 }
 
-/// FIPS 203's decapsulation input check of an ML-KEM-768 expanded
-/// decapsulation key: its length and its hash check.
+/// FIPS 203's decapsulation input check of an expanded decapsulation key of
+/// parameter set `P`: its length and its hash check.
 ///
 /// The check is the hash's alone: an embedded encapsulation key that fails
 /// its own modulus check still passes, as section 7.3 has it.
-pub fn ml_kem_768_check_decapsulation_key(dk: &[u8]) -> Result<(), Error> {
+pub fn ml_kem_check_decapsulation_key<P: Algorithm>(dk: &[u8]) -> Result<(), Error> {
     let _entry = Entry::new_public();
-    if dk.len() != ML_KEM_768_DECAPSULATION_KEY_LEN {
-        return Err(KeyFormatError::WrongLength.into());
-    }
-    let (ek, h) = dk[1152..2368].split_at(ML_KEM_768_ENCAPSULATION_KEY_LEN);
+    let dk =
+        P::DecapKeyBytes::from_slice(dk).ok_or_else(|| Error::from(KeyFormatError::WrongLength))?;
+    let (ek, h) = dk.as_ref()[P::K * 384..P::K * 768 + 64].split_at(P::K * 384 + 32);
     let mut hash = Sha3_256Context::new();
     hash.update(ek);
     if hash.finish() != *h {
@@ -122,18 +120,16 @@ pub fn ml_kem_768_check_decapsulation_key(dk: &[u8]) -> Result<(), Error> {
     Ok(())
 }
 
-fn encapsulation_key(ek: &[u8]) -> Result<EncapKey, Error> {
-    let ek = ek
-        .try_into()
-        .map_err(|_| Error::from(KeyFormatError::WrongLength))?;
-    EncapKey::from_bytes(ek)
+fn encapsulation_key<P: Algorithm>(ek: &[u8]) -> Result<EncapKey<P>, Error> {
+    let ek =
+        P::EncapKeyBytes::from_slice(ek).ok_or_else(|| Error::from(KeyFormatError::WrongLength))?;
+    EncapKey::from_bytes(&ek)
 }
 
-fn decapsulation_key(dk: &[u8]) -> Result<DecapKey, Error> {
-    let dk = dk
-        .try_into()
-        .map_err(|_| Error::from(KeyFormatError::WrongLength))?;
-    DecapKey::from_bytes(dk).ok_or_else(|| KeyFormatError::MismatchedPublicKey.into())
+fn decapsulation_key<P: Algorithm>(dk: &[u8]) -> Result<DecapKey<P>, Error> {
+    let dk =
+        P::DecapKeyBytes::from_slice(dk).ok_or_else(|| Error::from(KeyFormatError::WrongLength))?;
+    DecapKey::from_bytes(&dk).ok_or_else(|| KeyFormatError::MismatchedPublicKey.into())
 }
 
 /// What an ML-DSA signature is over, by the interface ACVP tests.
