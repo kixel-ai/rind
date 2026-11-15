@@ -1,4 +1,4 @@
-# [S] `dart-ios` finishes its simulator tests instead of hanging to its timeout
+# [S] The dart-ios job finishes its simulator tests instead of hanging to its timeout
 
 ## Goal
 
