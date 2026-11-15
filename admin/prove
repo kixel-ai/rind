@@ -1101,7 +1101,6 @@ extract x86_64 X86_64 \
     --include crate::low::x86_64::adx_mux::curve25519_x25519base \
     --include crate::low::x86_64::adx_mux::edwards25519_decode \
     --include crate::low::x86_64::adx_mux::edwards25519_scalarmulbase \
-    --include crate::low::x86_64::adx_mux::edwards25519_scalarmuldouble \
     --include crate::low::x86_64::adx_mux::bignum_madd_n25519 \
     --include crate::low::x86_64::sha1_mux \
     --opaque crate::low::x86_64::sha1_mux::path \

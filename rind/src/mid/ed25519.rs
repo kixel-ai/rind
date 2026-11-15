@@ -2,6 +2,7 @@
 
 use crate::error::{Error, KeyFormatError};
 use crate::low;
+#[cfg(rind_backend = "x86_64")]
 use crate::mid::half_size;
 use crate::mid::sha2::Sha512Context;
 use crate::mid::util;
@@ -138,11 +139,6 @@ impl VerifyingKey {
         // S must be in the range [0, order) to prevent signature malleability.
         let s = Scalar::try_from_le_bytes(s).ok_or(Error::BadSignature)?;
 
-        // `R` must be a point's canonical encoding, since RFC 8032 5.1.7.3
-        // compares `[S]B - [k]A`'s encoding with it.
-        let r = EdwardsPoint::decompress_from(r_sig.try_into().unwrap())
-            .map_err(|_| Error::BadSignature)?;
-
         // Step: rfc8032 5.1.7.2
         // Compute the challenge `k := SHA512(dom2(F, C) || R || A || msg)`
         let k = {
@@ -151,8 +147,40 @@ impl VerifyingKey {
         };
 
         // Step: rfc8032 5.1.7.3
-        // `R = [S]B - [k]A`, checked as `[v S]B - [v]R - [u]A = O` for the
-        // half-size `u ≡ v k (mod 8L)` of `half_size`, which accepts the same.
+        #[cfg(rind_backend = "x86_64")]
+        {
+            match self.commits(r_sig.try_into().unwrap(), &k, &s) {
+                true => Ok(()),
+                false => Err(Error::BadSignature),
+            }
+        }
+
+        // aarch64 keeps s2n-bignum's proven full-size multiplication until
+        // the half-size one measures faster there.
+        // Compute `R := [S]B - [k]A`.
+        #[cfg(rind_backend = "aarch64")]
+        {
+            let r = EdwardsPoint::scalarmuldouble(&k, &self.point.negate(), &s).compress();
+
+            if r_sig == r.0 {
+                Ok(())
+            } else {
+                Err(Error::BadSignature)
+            }
+        }
+    }
+
+    /// Whether `r` encodes `[s]B - [k]A`, checked as `[v s]B - [v]R - [u]A
+    /// = O` for the half-size `u ≡ v k (mod 8L)` of `half_size`, which
+    /// accepts the same.
+    #[cfg(rind_backend = "x86_64")]
+    fn commits(&self, r: &[u8; 32], k: &Scalar, s: &Scalar) -> bool {
+        // Only a canonical encoding can equal `[s]B - [k]A`'s, so one that
+        // does not decode commits to nothing.
+        let Ok(r) = EdwardsPoint::decompress_from(r) else {
+            return false;
+        };
+
         let split = half_size::split(&k.0);
         let vs = Scalar::madd_n25519(&split.v, &s.0, &[0; 4]);
         let a = match split.u_negative {
@@ -163,11 +191,11 @@ impl VerifyingKey {
         low::edwards25519_msm(&mut q, &vs.0, &[split.v, split.u], &[r.negate().extended(), a]);
 
         // The identity is (0 : Z : Z), and the coordinates are reduced.
-        if q[..4] == [0; 4] && q[4..8] == q[8..12] {
-            Ok(())
-        } else {
-            Err(Error::BadSignature)
-        }
+        q[0] | q[1] | q[2] | q[3] == 0
+            && q[4] == q[8]
+            && q[5] == q[9]
+            && q[6] == q[10]
+            && q[7] == q[11]
     }
 
     pub(crate) fn as_bytes(&self) -> [u8; 32] {
@@ -217,13 +245,27 @@ impl EdwardsPoint {
         0x0000000000000000,
     ]);
 
+    /// Compute `A := [scalar]Point + [bscalar]B`.
+    #[cfg(rind_backend = "aarch64")]
+    fn scalarmuldouble(scalar: &Scalar, point: &Self, bscalar: &Scalar) -> Self {
+        let mut out = Self([0u64; 8]);
+        low::edwards25519_scalarmuldouble(&mut out.0, &scalar.0, &point.0, &bscalar.0);
+        out
+    }
+
     /// `(x, y, 1, x y)`, the point in extended coordinates.
+    #[cfg(rind_backend = "x86_64")]
     fn extended(&self) -> [u64; 16] {
+        let mut t = [0u64; 4];
+        low::bignum_mul_p25519(
+            &mut t,
+            self.0[..4].try_into().unwrap(),
+            self.0[4..].try_into().unwrap(),
+        );
         let mut out = [0u64; 16];
         out[..8].copy_from_slice(&self.0);
         out[8] = 1;
-        let (x, y) = (self.0[..4].try_into().unwrap(), self.0[4..].try_into().unwrap());
-        low::bignum_mul_p25519(out[12..].as_mut().try_into().unwrap(), x, y);
+        out[12..].copy_from_slice(&t);
         out
     }
 
@@ -393,9 +435,11 @@ mod test {
     /// Keys and commitments with every torsion component, whose
     /// signatures the plain check accepts exactly when the torsion of `R`
     /// cancels `[k]`'s of `A`, as `half_size`'s argument says the half-size
-    /// check must too.
+    /// check must too, and as aws-lc does.
     #[test]
+    #[cfg(not(any(miri, target_family = "wasm")))]
     fn half_size_check_matches_the_plain_one_with_torsion() {
+        use aws_lc_rs::signature::{ED25519, UnparsedPublicKey};
         use mid::edwards25519::{Point, Scalar as S};
         let _entry = low::Entry::new_public();
         let mut rng = TestRng::new(202611131);
@@ -437,6 +481,8 @@ mod test {
 
             let want = verify_reference(&vk, &sig, &msg);
             assert_eq!(vk.verify(&sig, &msg).is_ok(), want, "{i} {j} {sig:x?}");
+            let aws_lc = UnparsedPublicKey::new(&ED25519, &a_bytes).verify(&msg, &sig);
+            assert_eq!(aws_lc.is_ok(), want, "{i} {j} {sig:x?}");
             accepted += u32::from(want);
             torsion_accepted += u32::from(want && (i, j) != (0, 0));
 
@@ -446,6 +492,8 @@ mod test {
             flipped[bit / 8] ^= 1 << (bit % 8);
             let want = verify_reference(&vk, &flipped, &msg);
             assert_eq!(vk.verify(&flipped, &msg).is_ok(), want, "{i} {j} {flipped:x?}");
+            let aws_lc = UnparsedPublicKey::new(&ED25519, &a_bytes).verify(&msg, &flipped);
+            assert_eq!(aws_lc.is_ok(), want, "{i} {j} {flipped:x?}");
         }
         assert!(accepted > 64 && torsion_accepted > 0, "{accepted} {torsion_accepted}");
     }

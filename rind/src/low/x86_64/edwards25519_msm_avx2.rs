@@ -38,7 +38,7 @@ pub(crate) fn edwards25519_msm(
 
     // SAFETY: `_token` proves the `avx` and `avx2` cpu features
     let q = unsafe { msm(base, scalars, &points.each_ref().map(coordinates)) };
-    for (out, coordinate) in res.chunks_exact_mut(4).zip(q) {
+    for (out, coordinate) in res.as_chunks_mut::<4>().0.iter_mut().zip(q) {
         out.copy_from_slice(&coordinate);
     }
 }

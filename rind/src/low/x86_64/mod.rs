@@ -28,7 +28,6 @@ pub(crate) mod bignum_demont_p384_alt;
 pub(crate) mod bignum_digitsize;
 pub(crate) mod bignum_emontredc_8n;
 pub(crate) mod bignum_eq;
-pub(crate) mod bignum_inv_p25519;
 pub(crate) mod bignum_inv_p256;
 pub(crate) mod bignum_inv_p384;
 pub(crate) mod bignum_inv_p521;
@@ -101,8 +100,6 @@ pub(crate) mod edwards25519_pdouble;
 pub(crate) mod edwards25519_pdouble_alt;
 pub(crate) mod edwards25519_scalarmulbase;
 pub(crate) mod edwards25519_scalarmulbase_alt;
-pub(crate) mod edwards25519_scalarmuldouble;
-pub(crate) mod edwards25519_scalarmuldouble_alt;
 pub(crate) mod edwards25519_msm_avx2;
 pub(crate) mod ghash;
 #[path = "../generic/ghash_nohw.rs"]
