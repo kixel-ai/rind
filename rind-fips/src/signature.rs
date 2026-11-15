@@ -30,6 +30,7 @@ unsafe extern "C" {
         out: *mut *mut PublicKeyHandle,
     ) -> Status;
     fn rind_fips_public_key_bytes(key: *const PublicKeyHandle, len: *mut usize) -> *const u8;
+    fn rind_fips_public_key_clone(key: *const PublicKeyHandle) -> *mut PublicKeyHandle;
     fn rind_fips_public_key_to_spki(key: *const PublicKeyHandle) -> *mut ffi::Encoded;
     fn rind_fips_public_key_verify(
         key: *const PublicKeyHandle,
@@ -115,6 +116,13 @@ impl Key {
                 signature.len(),
             )
         })
+    }
+}
+
+impl Clone for Key {
+    fn clone(&self) -> Self {
+        // SAFETY: the handle is live.
+        Self::from_handle(unsafe { rind_fips_public_key_clone(self.ptr()) })
     }
 }
 

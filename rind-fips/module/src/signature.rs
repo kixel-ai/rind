@@ -55,6 +55,7 @@ fn unsupported() -> Status {
 
 /// A public key a handle holds, in its algorithm's module.
 #[allow(clippy::large_enum_variant)]
+#[derive(Clone)]
 pub(crate) enum PublicKey {
     Ecdsa(ecdsa::PublicKey),
     Ed25519(ed25519::PublicKey),
@@ -370,6 +371,16 @@ pub unsafe extern "C" fn rind_fips_public_key_verify_digest(
     let (key, value, signature) =
         unsafe { (&*key, bytes(value, len), bytes(signature, signature_len)) };
     status(digest(hash, value).and_then(|digest| key.verify_digest(&digest, signature)))
+}
+
+/// A copy of `key`.
+///
+/// # Safety
+/// `key` must be live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rind_fips_public_key_clone(key: *const PublicKey) -> *mut PublicKey {
+    // SAFETY: the caller's contract.
+    handle(unsafe { (*key).clone() })
 }
 
 free!(rind_fips_public_key_free, PublicKey);

@@ -1009,3 +1009,37 @@ fn ml_dsa_key_pairs_match_rind() {
     ml_dsa_matches_rind::<MlDsa65, rind::ml_dsa::MlDsa65>();
     ml_dsa_matches_rind::<MlDsa87, rind::ml_dsa::MlDsa87>();
 }
+
+#[test]
+fn cloned_public_keys_outlive_their_key_pairs() {
+    // A clone holds a handle of its own, as rind's owned copy is a value of
+    // its own, so it verifies once its key pair is gone.
+    let (key, signature) = {
+        let pair = ecdsa::KeyPair::from_pkcs8(&ecdsa::sign::P256_SHA256_ASN1, P256).unwrap();
+        (pair.public_key().clone(), pair.sign(MESSAGE).unwrap())
+    };
+    same_debug(&key, &key.clone());
+    key.verify(MESSAGE, signature.as_ref()).unwrap();
+
+    let (key, signature) = {
+        let pair = rsa::KeyPair::from_pkcs8(RSA2048).unwrap();
+        let signature = pair.sign(&rsa::sign::PSS_SHA256, MESSAGE).unwrap();
+        (pair.public_key().clone(), signature)
+    };
+    assert_eq!(key.modulus_len(), 256);
+    key.verify(&rsa::verify::PSS_SHA256, MESSAGE, signature.as_ref())
+        .unwrap();
+
+    let (key, signature) = {
+        let pair = ed25519::KeyPair::from_seed(&[1; 32]).unwrap();
+        (pair.public_key().clone(), pair.sign(MESSAGE))
+    };
+    key.verify(MESSAGE, signature.as_ref()).unwrap();
+
+    let (key, signature) = {
+        let pair = ml_dsa::KeyPair::<ml_dsa::MlDsa44>::from_seed(&[1; 32]).unwrap();
+        (pair.public_key().clone(), pair.sign(MESSAGE).unwrap())
+    };
+    assert_eq!(key.clone().as_ref(), key.as_ref());
+    key.verify(MESSAGE, signature.as_ref()).unwrap();
+}

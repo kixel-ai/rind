@@ -110,6 +110,7 @@ impl fmt::Debug for VerificationAlgorithm {
 /// with.
 ///
 /// Its bytes are its X9.62 uncompressed point.
+#[derive(Clone)]
 pub struct PublicKey {
     key: Key,
     algorithm: Ecdsa,

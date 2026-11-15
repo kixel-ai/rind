@@ -177,6 +177,7 @@ impl fmt::Debug for SigningAlgorithm {
 /// whose floor it meets.
 ///
 /// Its bytes are its PKCS#1 `RSAPublicKey` DER, however it was loaded.
+#[derive(Clone)]
 pub struct PublicKey(Key);
 
 impl PublicKey {

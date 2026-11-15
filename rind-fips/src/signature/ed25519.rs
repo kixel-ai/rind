@@ -42,6 +42,7 @@ unsafe extern "C" {
 }
 
 /// An Ed25519 public key: its 32-byte encoding.
+#[derive(Clone)]
 pub struct PublicKey(Key);
 
 impl PublicKey {

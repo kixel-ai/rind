@@ -157,6 +157,12 @@ impl<P: ParameterSet> PublicKey<P> {
     }
 }
 
+impl<P: ParameterSet> Clone for PublicKey<P> {
+    fn clone(&self) -> Self {
+        Self::from_key(self.key.clone())
+    }
+}
+
 impl<P: ParameterSet> AsRef<[u8]> for PublicKey<P> {
     fn as_ref(&self) -> &[u8] {
         self.key.bytes()
