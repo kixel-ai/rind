@@ -119,7 +119,7 @@ function hasLines(file: string, fragment: string): boolean {
 	const range = fragment.match(/^L(\d+)(?:-L(\d+))?$/);
 	if (range === null || statSync(full).isDirectory()) return false;
 	const text = readFileSync(full, "utf8");
-	const count = text.split("\n").length - (text.endsWith("\n") ? 1 : 0);
+	const count = text === "" ? 0 : text.split("\n").length - (text.endsWith("\n") ? 1 : 0);
 	return range.slice(1).every((n) => n === undefined || (Number(n) >= 1 && Number(n) <= count));
 }
 
