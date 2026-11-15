@@ -29,8 +29,10 @@ or skip those cases where a test covers more:
   OpenSSH ChaCha20-Poly1305 AEAD test.
 - `cmac_tests.rs` and `src/cmac.rs` (CMAC), `kdf_test.rs` and `src/kdf.rs`
   (KBKDF and SSKDF), and `src/tls_prf.rs` (the TLS 1.2 PRF).
-- `pqdsa_test.rs`, `src/pqdsa.rs`, `src/pqdsa/key_pair.rs`, and the ML-DSA
-  cases of `src/signature/parsed_public_key_tests.rs`.
+- ML-DSA's `PqdsaPrivateKey::as_raw_bytes`, and the tests that need it:
+  `test_mldsa_seed_functional_equivalence`, and `src/pqdsa/key_pair.rs`'s
+  `test_private_key_serialization`, `test_from_seed_raw_private_key_roundtrip`,
+  `test_from_seed_pkcs8_is_seed_form`, and `test_expanded_key_pkcs8_unavailable`.
 - `unsealed_rand_test.rs`, which needs the `dev-tests-only` feature's
   `rand::unsealed`.
 - AES-GCM-SIV; AES in ECB, CFB, and OFB modes; ISO 10126 padding; DES
@@ -50,9 +52,10 @@ Tests of aws-lc-rs's private code, which no public item reaches the same way,
 are left out too:
 
 - The tests in `src/buffer.rs`, `src/cbb.rs`, `src/endian.rs`,
-  `src/evp_pkey.rs`, `src/ptr.rs`, `src/io/der.rs`, `src/aead/poly1305.rs`,
-  `src/cipher/aes.rs`, `src/cipher/block.rs`, `src/cipher/chacha.rs`, and
-  `src/cipher/key.rs`, and those of the harness itself in `src/test.rs`.
+  `src/evp_pkey.rs`, `src/pqdsa.rs`, `src/ptr.rs`, `src/io/der.rs`,
+  `src/aead/poly1305.rs`, `src/cipher/aes.rs`, `src/cipher/block.rs`,
+  `src/cipher/chacha.rs`, and `src/cipher/key.rs`, and those of the harness
+  itself in `src/test.rs`.
 - `src/digest.rs`'s `max_input` tests, which build a `Context` from its
   private fields; `src/hmac.rs`'s `hmac_internal_sign_too_small_buffer`;
   `src/lib.rs`'s `test_dump`; `src/kem.rs`'s `shared_secret`; and

@@ -9,13 +9,12 @@ use aws_lc_rs::rsa::KeySize;
 use aws_lc_rs::signature::{
     ECDSA_P256_SHA256_ASN1, ECDSA_P256_SHA256_ASN1_SIGNING, ECDSA_P256_SHA256_FIXED,
     ECDSA_P256_SHA256_FIXED_SIGNING, ECDSA_P384_SHA384_ASN1, ECDSA_P384_SHA384_ASN1_SIGNING,
-    ED25519, EcdsaKeyPair, Ed25519KeyPair, KeyPair, ParsedPublicKey, RSA_PKCS1_2048_8192_SHA256,
-    RSA_PSS_2048_8192_SHA256, RsaKeyPair, UnparsedPublicKey,
+    ED25519, EcdsaKeyPair, Ed25519KeyPair, KeyPair, ML_DSA_44, ML_DSA_44_SIGNING, ML_DSA_65,
+    ML_DSA_65_SIGNING, ML_DSA_87, ML_DSA_87_SIGNING, ParsedPublicKey, PqdsaKeyPair,
+    RSA_PKCS1_2048_8192_SHA256, RSA_PSS_2048_8192_SHA256, RsaKeyPair, UnparsedPublicKey,
 };
 
 use crate::test;
-
-// rind-aws-lc-rs: ML-DSA is not offered, so its tests are left out.
 
 #[test]
 fn test_parsed_public_key_ed25519() {
@@ -372,4 +371,141 @@ fn test_parsed_public_key_cross_verification() {
             parsed.verify_sig(wrong_message, signature.as_ref()).is_ok()
         );
     }
+}
+
+#[test]
+fn test_parsed_public_key_ml_dsa_44() {
+    let key_pair = PqdsaKeyPair::generate(&ML_DSA_44_SIGNING).unwrap();
+    let public_key_bytes = key_pair.public_key().as_ref();
+
+    let parsed = ParsedPublicKey::new(&ML_DSA_44, public_key_bytes).unwrap();
+
+    assert_eq!(parsed.algorithm().type_id(), ML_DSA_44.type_id());
+
+    let message = b"test message";
+    let mut signature = vec![0; ML_DSA_44_SIGNING.signature_len()];
+    let signature_len = key_pair.sign(message, &mut signature).unwrap();
+    signature.truncate(signature_len);
+
+    assert!(parsed.verify_sig(message, &signature).is_ok());
+    assert!(parsed.verify_sig(b"wrong message", &signature).is_err());
+}
+
+#[test]
+fn test_parsed_public_key_ml_dsa_65() {
+    let key_pair = PqdsaKeyPair::generate(&ML_DSA_65_SIGNING).unwrap();
+    let public_key_bytes = key_pair.public_key().as_ref();
+
+    let parsed = ParsedPublicKey::new(&ML_DSA_65, public_key_bytes).unwrap();
+
+    assert_eq!(parsed.algorithm().type_id(), ML_DSA_65.type_id());
+
+    let message = b"test message";
+    let mut signature = vec![0; ML_DSA_65_SIGNING.signature_len()];
+    let signature_len = key_pair.sign(message, &mut signature).unwrap();
+    signature.truncate(signature_len);
+
+    assert!(parsed.verify_sig(message, &signature).is_ok());
+    assert!(parsed.verify_sig(b"wrong message", &signature).is_err());
+}
+
+#[test]
+fn test_parsed_public_key_ml_dsa_87() {
+    let key_pair = PqdsaKeyPair::generate(&ML_DSA_87_SIGNING).unwrap();
+    let public_key_bytes = key_pair.public_key().as_ref();
+
+    let parsed = ParsedPublicKey::new(&ML_DSA_87, public_key_bytes).unwrap();
+
+    assert_eq!(parsed.algorithm().type_id(), ML_DSA_87.type_id());
+
+    let message = b"test message";
+    let mut signature = vec![0; ML_DSA_87_SIGNING.signature_len()];
+    let signature_len = key_pair.sign(message, &mut signature).unwrap();
+    signature.truncate(signature_len);
+
+    assert!(parsed.verify_sig(message, &signature).is_ok());
+    assert!(parsed.verify_sig(b"wrong message", &signature).is_err());
+}
+
+#[test]
+fn test_parsed_public_key_pqdsa_with_x509_der() {
+    use aws_lc_rs::encoding::AsDer;
+
+    let key_pair = PqdsaKeyPair::generate(&ML_DSA_44_SIGNING).unwrap();
+    let x509_der = key_pair.public_key().as_der().unwrap();
+
+    let parsed = ParsedPublicKey::new(&ML_DSA_44, x509_der.as_ref()).unwrap();
+
+    let message = b"test message";
+    let mut signature = vec![0; ML_DSA_44_SIGNING.signature_len()];
+    let signature_len = key_pair.sign(message, &mut signature).unwrap();
+    signature.truncate(signature_len);
+
+    assert!(parsed.verify_sig(message, &signature).is_ok());
+}
+
+#[test]
+fn test_parsed_public_key_pqdsa_invalid_key() {
+    // Test with wrong size key for ML-DSA-44 (expects 1312 bytes)
+    let invalid_key = [0u8; 1311];
+    assert!(ParsedPublicKey::new(&ML_DSA_44, invalid_key).is_err());
+
+    let invalid_key = [0u8; 1313];
+    assert!(ParsedPublicKey::new(&ML_DSA_44, invalid_key).is_err());
+}
+
+#[test]
+fn test_parsed_public_key_pqdsa_algorithm_mismatch() {
+    let key_pair = PqdsaKeyPair::generate(&ML_DSA_44_SIGNING).unwrap();
+    let public_key_bytes = key_pair.public_key().as_ref();
+
+    // Try to parse ML-DSA-44 key with ML-DSA-65 algorithm - should fail
+    assert!(ParsedPublicKey::new(&ML_DSA_65, public_key_bytes).is_err());
+
+    // Try to parse ML-DSA-44 key with Ed25519 algorithm - should fail
+    assert!(ParsedPublicKey::new(&ED25519, public_key_bytes).is_err());
+}
+
+#[test]
+fn test_parsed_public_key_pqdsa_cross_verification() {
+    let key_pair = PqdsaKeyPair::generate(&ML_DSA_44_SIGNING).unwrap();
+    let public_key_bytes = key_pair.public_key().as_ref();
+    let message = b"test message";
+    let mut signature = vec![0; ML_DSA_44_SIGNING.signature_len()];
+    let signature_len = key_pair.sign(message, &mut signature).unwrap();
+    signature.truncate(signature_len);
+
+    let unparsed = UnparsedPublicKey::new(&ML_DSA_44, public_key_bytes);
+    let parsed = ParsedPublicKey::new(&ML_DSA_44, public_key_bytes).unwrap();
+
+    // Both should succeed with correct message
+    assert_eq!(
+        unparsed.verify(message, &signature).is_ok(),
+        parsed.verify_sig(message, &signature).is_ok()
+    );
+
+    // Both should fail with wrong message
+    let wrong_message = b"wrong message";
+    assert_eq!(
+        unparsed.verify(wrong_message, &signature).is_ok(),
+        parsed.verify_sig(wrong_message, &signature).is_ok()
+    );
+}
+
+#[test]
+fn test_parsed_public_key_pqdsa_verify_digest() {
+    let key_pair = PqdsaKeyPair::generate(&ML_DSA_44_SIGNING).unwrap();
+    let public_key_bytes = key_pair.public_key().as_ref();
+
+    let parsed = ParsedPublicKey::new(&ML_DSA_44, public_key_bytes).unwrap();
+
+    let message = b"test message";
+    let digest_value = digest(&SHA256, message);
+    let mut signature = vec![0; ML_DSA_44_SIGNING.signature_len()];
+    let signature_len = key_pair.sign(message, &mut signature).unwrap();
+    signature.truncate(signature_len);
+
+    // PQDSA should return an error for digest verification
+    let result = parsed.verify_digest_sig(&digest_value, &signature);
+    assert!(result.is_err());
 }
