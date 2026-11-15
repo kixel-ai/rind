@@ -131,8 +131,9 @@ impl<Id: AlgorithmIdentifier> DecapsulationKey<Id> {
     }
 }
 
-// SAFETY: `AlgorithmIdentifier` is sealed, and its only implementor,
-// `AlgorithmId`, is `Send` and `Sync`, as rind's keys are (checked below).
+// SAFETY: `AlgorithmIdentifier` is sealed, and for its only implementor,
+// `AlgorithmId`, the `Algorithm` the keys point to is `Send` and `Sync`, as
+// rind's keys are (checked below).
 // aws-lc-rs bounds these impls by `AlgorithmIdentifier`, not by `Id: Sync` as
 // the inferred ones would be, so these match its API.
 unsafe impl<Id: AlgorithmIdentifier> Send for DecapsulationKey<Id> {}
@@ -145,7 +146,7 @@ unsafe impl<Id: AlgorithmIdentifier> Sync for EncapsulationKey<Id> {}
 
 const _: () = {
     const fn send_sync<T: Send + Sync>() {}
-    send_sync::<AlgorithmId>();
+    send_sync::<Algorithm<AlgorithmId>>();
     send_sync::<rind::kem::DecapsulationKey>();
     send_sync::<rind::kem::EncapsulationKey>();
 };

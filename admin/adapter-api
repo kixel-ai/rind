@@ -613,9 +613,11 @@ def compare(adapter, cfg, mirror, adapter_features, upstream_features, label, de
         adapter["name"]: {
             "path": str(Path(adapter["manifest_path"]).parent),
             "default-features": default,
-            # Each feature the upstream ones turn on, as rustls's `brotli`
-            # turns on `std`, so the adapter offers what upstream then does.
-            "features": sorted(f for f in implied(upstream_features, up_features, default) if f in adapter_features),
+            # Each feature the upstream ones turn on through features the
+            # adapter lacks, as rustls's `brotli` turns on `std`. A feature the
+            # adapter declares implies only what its own table says, so a
+            # missing implication there shows up as a difference.
+            "features": sorted(f for f in implied(upstream_features, up_features, default, adapter_features) if f in adapter_features),
         }
     }
     if mirror:
@@ -640,14 +642,16 @@ def compare(adapter, cfg, mirror, adapter_features, upstream_features, label, de
     return diffs
 
 
-def implied(table, features, default):
-    """`features`, with `default` if set, and every feature they turn on in `table`."""
+def implied(table, features, default, own):
+    """`features`, with `default` if set, and every feature they turn on in `table` through features not in `own`."""
     out, todo = set(), list(features) + (["default"] if default else [])
     while todo:
         f = todo.pop()
         if f in out or f not in table:
             continue
         out.add(f)
+        if f in own:
+            continue
         # `dep:x` and `x/y` reach other packages, not this one's features.
         todo += [g for g in table[f] if ":" not in g and "/" not in g]
     return out
