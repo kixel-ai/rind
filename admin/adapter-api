@@ -218,7 +218,7 @@ class Api:
                 if id not in self.supertraits:
                     self.supertraits.add(id)
                     todo.append(id)
-        self.entries, self.public, self.exposed = {}, {}, {}
+        self.entries, self.public, self.exposed, self.origins = {}, {}, {}, {}
         for name in module:
             root = self.find(root, name)
         seen = set()
@@ -233,6 +233,8 @@ class Api:
         while pending := sorted((path, id) for id, paths in self.exposed.items() for path in paths if (id, path) not in walked):
             for path, id in pending:
                 walked.add((id, path))
+                if all(o is not None and gone(o) for o in self.origins[(id, path)]):
+                    continue
                 # Listed under every path that hands it out, which both sides
                 # share when they match, whatever order rustdoc finds them in.
                 self.chain = self.exposed[id][path]
@@ -244,18 +246,27 @@ class Api:
                 self.walk_impls(impls[id], path, seen, id)
         self.chain = frozenset()
 
-    def supers(self, id):
-        """The traits trait `id` extends directly, including through `where Self:`."""
+    def bounds(self, id):
+        """Trait `id`'s bounds on `Self`, including through `where Self:`."""
         trait = self.index[str(id)]["inner"]["trait"]
         bounds = list(trait["bounds"])
         for pred in trait["generics"]["where_predicates"]:
             pred = pred.get("bound_predicate")
             if pred and pred["type"] == {"generic": "Self"}:
                 bounds += pred["bounds"]
-        for bound in bounds:
+        return bounds
+
+    def supers(self, id):
+        """The traits in this crate that trait `id` extends directly."""
+        for bound in self.bounds(id):
             id = (bound.get("trait_bound") or {}).get("trait", {}).get("id")
             if id is not None and str(id) in self.index:
                 yield id
+
+    def unnameable(self, bound):
+        """Whether `bound` is on a trait in this crate callers cannot name, or the other side omits."""
+        id = (bound.get("trait_bound") or {}).get("trait", {}).get("id")
+        return id is not None and str(id) in self.index and self.name(id, None) in ("$private", "$omitted")
 
     def number(self, item):
         """Records each variant's discriminant, implicit ones only where a caller sees them."""
@@ -340,6 +351,9 @@ class Api:
                 # between two of them still differ.
                 route = tuple(path) + ("{private}" if n == 0 else f"{{private {n}}}",)
                 self.exposed.setdefault(id, {})[route] = self.chain | {id}
+                # Which impls hand it out there, known to be omitted or not
+                # only once the walk has found every public path.
+                self.origins.setdefault((id, route), []).append(sig if kind == "impl" else None)
         self.entries.setdefault("::".join(path), []).append((kind, sig, owner, needs))
 
     def hidden(self, value, bounds=True):
@@ -439,15 +453,25 @@ class Api:
                 # omits, so they are compared here; not a `pub(crate)` or
                 # narrower one's, which are uncallable outside the crate,
                 # though the supertraits it extends in turn may be callable.
-                todo, done = list(self.supers(item["id"])), set()
+                # The bounds they carry, such as `Send`, hold for this
+                # trait's implementors too, so they are compared under it.
+                todo, done, implied = list(self.bounds(item["id"])), set(), {}
                 while todo:
-                    id = todo.pop()
-                    if id not in done and self.name(id, None) in ("$private", "$omitted"):
-                        done.add(id)
-                        if self.index[str(id)]["visibility"] == "public":
-                            items += self.index[str(id)]["inner"]["trait"]["items"]
-                        # Its own supertraits' methods stay callable through this bound.
-                        todo += self.supers(id)
+                    bound = todo.pop()
+                    id = bound["trait_bound"]["trait"]["id"] if self.unnameable(bound) else None
+                    if id is None or id in done:
+                        continue
+                    done.add(id)
+                    if self.index[str(id)]["visibility"] == "public":
+                        items += self.index[str(id)]["inner"]["trait"]["items"]
+                    for b in self.bounds(id):
+                        if self.unnameable(b):
+                            # Its own supertraits' methods stay callable through this bound.
+                            todo.append(b)
+                        else:
+                            implied.setdefault(json.dumps(b, sort_keys=True), b)
+                if implied:
+                    self.add(path + ("{supertraits}",), "bounds", Unordered(self.sig(list(implied.values()))))
             for id in items:
                 child = self.index[str(id)]
                 self.visit(child, path + (child["name"],), seen)
@@ -593,10 +617,9 @@ class Api:
         return out
 
     def render(self, kind, sig, owner, needs):
-        sig = plain(sig)
-        if kind == "impl" and "$omitted" in (sig["for"].get("resolved_path", {}).get("path"), sig["trait"]["path"]):
-            # An impl of a type or trait the other side omits goes with it.
+        if kind == "impl" and gone(sig):
             return None
+        sig = plain(sig)
         text = json.dumps(sig, sort_keys=True).replace('"$omitted"', '"$private"')
         if owner is not None:
             # A method may name its own type or `Self`.
@@ -657,6 +680,12 @@ def assoc_item(inner):
     if const is None or const.get("value") is None or LITERAL.fullmatch(const["value"]):
         return inner
     return {"assoc_const": dict(const, value=None)}
+
+
+def gone(impl):
+    """Whether an impl names an item the other side omits, such as aws-lc-rs's
+    `AsRawBytes<PqdsaPrivateKeyRaw>`, so goes with it, along with the types it hands out."""
+    return "$omitted" in json.dumps(plain({"for": impl["for"], "trait": impl["trait"]}))
 
 
 def plain(value, render=str):
