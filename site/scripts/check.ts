@@ -193,20 +193,14 @@ for (const file of files) {
 			for (const [name, value] of attrs) if (name === "href") check(file, value);
 		}
 	} else if (file.endsWith(".md") || file.endsWith(".txt")) {
-		// Links, and URLs quoted as text: in code, such as the prompt, as a reader
-		// copies them; in prose, without the trailing punctuation GFM leaves out
-		// of an autolink.
-		const body = text(file);
-		const tokens = lex(body);
-		const urls = /https?:\/\/[^\s)<>"'`\]]+/g;
-		let prose = body;
+		// Links, which include URLs written bare in prose, as GFM autolinks them,
+		// and URLs quoted in code, such as the prompt, as a reader copies them.
+		const tokens = lex(text(file));
 		for (const href of hrefs(tokens)) check(file, href);
 		walkTokens(tokens, (t) => {
 			if (t.type !== "code" && t.type !== "codespan") return;
-			for (const m of t.text.matchAll(urls)) check(file, m[0]);
-			prose = prose.replace(t.raw, "");
+			for (const m of t.text.matchAll(/https?:\/\/[^\s)<>"'`\]]+/g)) check(file, m[0]);
 		});
-		for (const m of prose.matchAll(urls)) check(file, m[0].replace(/[?!.,:*_~]+$/, ""));
 	}
 }
 for (const m of sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)) check("/sitemap.xml", m[1]);
