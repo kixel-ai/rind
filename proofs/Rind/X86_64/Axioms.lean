@@ -32,12 +32,11 @@ constant-time compares in `Rind.X86_64.CtEqual` for HMAC's and PBKDF2's
 tag checks, RSASSA-PSS's hash compare, and key wrap's `unwrap` and
 `unwrap_padded` checks, and nothing else.
 ChaCha20-Poly1305's theorems also take aws-lc's one-pass routines as the
-hypothesis `RunsChaCha20Poly1305`, and P-384's key generation its table
-select as `AffSelect`, which no axiom states. P-256's generator table selects
-rest on no axiom, only on the hand model in `Rind.X86_64.PointSelectModel`.
-P-256's generator multiplication also rests on a placeholder in
-`Rind.X86_64.S2nBignum`, `p256_point_add_affine_spec`, until the mixed
-addition's HOL Light proof replaces it. A change here is a
+hypothesis `RunsChaCha20Poly1305`, which no axiom states. The generator
+tables' point selects rest on no axiom, only on the hand model in
+`Rind.X86_64.PointSelectModel`. P-256's generator multiplication also rests
+on a placeholder in `Rind.X86_64.S2nBignum`, `p256_point_add_affine_spec`,
+until the mixed addition's HOL Light proof replaces it. A change here is a
 change to the trust base.
 -/
 
