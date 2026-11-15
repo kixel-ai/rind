@@ -40,7 +40,7 @@ qemu. iOS devices' code is only built.
   that hide it, [s2n-bignum]'s `_alt` routines replace those that use it,
   and [aws-lc]'s Montgomery multiplication replaces its Karatsuba routines
   for RSA; with `avx2` there, as on Haswell, RSA-2048 signing runs aws-lc's
-  RSAZ exponentiation, and Ed25519 verification a port of
+  RSAZ exponentiation, and Ed25519 verification's multiplication a port of
   [curve25519-dalek]'s AVX2 backend. With `avx512ifma`, as on Ice Lake,
   Sapphire Rapids, and AMD's Zen 4 and 5, RSA-2048, 3072, and 4096 signing
   runs aws-lc's dual AVX-512 RSAZ.
