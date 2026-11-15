@@ -60,10 +60,12 @@ enum Ours {
     MlDsa44,
     MlDsa65,
     MlDsa87,
-    /// Whether a key of an SLH-DSA parameter set verifies a signature, or
-    /// an error if rind refuses the key.
-    SlhDsa(fn(&[u8], &[u8], &[u8]) -> Result<bool, Error>),
+    SlhDsa(OurSlhDsa),
 }
+
+/// Whether a key of an SLH-DSA parameter set verifies a signature over a
+/// message, `(key, message, signature)`, or an error if rind refuses the key.
+type OurSlhDsa = fn(&[u8], &[u8], &[u8]) -> Result<bool, Error>;
 
 impl Ours {
     /// Whether `signature` verifies over `message`, or an error if rind
