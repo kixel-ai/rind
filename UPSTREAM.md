@@ -249,13 +249,6 @@ Each upstream rind changes, with where its fork is vendored and where the list o
 - **Reported:** no.
 - **Goes when:** nixpkgs' Lean reads Mathlib's cache.
 
-### nixpkgs marks release-plz broken on Darwin
-
-- **Breaks:** nixpkgs marks release-plz broken on Darwin, so the default shell cannot evaluate with it there.
-- **Workaround:** `flake.nix`'s default shell adds release-plz only off Darwin.
-- **Reported:** no.
-- **Goes when:** nixpkgs builds release-plz on Darwin.
-
 ## CI tools
 
 ### actionlint rejects `concurrency.queue`

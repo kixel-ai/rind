@@ -463,13 +463,10 @@
                   cargo-modules
                   rustfmt-unstable
                   quest-cli
+                  release-plz
                 ]
                 ++ python-shell.packages
                 ++ pkgs.lib.optionals (!pkgs.stdenv.hostPlatform.isDarwin) [
-                  # Marked broken on Darwin in nixpkgs.
-                  # See UPSTREAM.md, "nixpkgs marks release-plz broken on
-                  # Darwin".
-                  release-plz
                   # admin/ctgrind's constant-time checks.
                   valgrind
                 ];
