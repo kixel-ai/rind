@@ -66,11 +66,16 @@ fuzz_target!(|input: Input| {
     }
     assert_eq!(ours_out, theirs_out);
 
-    // A key of another length differs, since the length is hashed in.
+    // An edited tag verifies exactly when it is the derivation of its own
+    // length, which an edit that also changes the length can still be.
     let mut stored = ours_out.clone();
     input.edit.apply(&mut stored);
-    assert_eq!(
-        secret.verify(ours_params, salt, &stored).is_ok(),
-        stored == ours_out
-    );
+    let expected = match stored.len() == len {
+        true => stored == ours_out,
+        false => {
+            let mut again = vec![0; stored.len()];
+            secret.derive(ours_params, salt, &mut again).is_ok() && stored == again
+        }
+    };
+    assert_eq!(secret.verify(ours_params, salt, &stored).is_ok(), expected);
 });
