@@ -47,6 +47,15 @@ fn rsa_key_generation(c: &mut Criterion) {
             })
         });
 
+        // Checked once per size: criterion runs the closure for every sample,
+        // and each key costs a generation.
+        let vg_generate = || {
+            use verified_garbage::rsa::{BigUint, keygen};
+            keygen::generate(bits, BigUint::from_be_bytes(&[1, 0, 1])).unwrap()
+        };
+        assert_eq!(vg_generate().modulus_len(), bits / 8);
+        group.bench_function("verified-garbage", |b| b.iter(|| black_box(vg_generate())));
+
         // RustCrypto takes seconds per 4096-bit key.
         if bits == 2048 {
             group.bench_function("rustcrypto", |b| {

@@ -94,6 +94,9 @@ declare -A scope=(
     [py]='^(rind-python/|sh/python\.sh$|flake\.lock$)'
     # rind-dart's Dart package, whose build hook compiles the crate.
     [dart]='^rind-dart/'
+    # OpenSSL's own tests with rind-openssl loaded, against the OpenSSL the
+    # flake pins. rind's own changes reach the provider through its tests.
+    [openssl]='^(rind-openssl/|sh/openssl\.sh$|flake\.(nix|lock)$)'
     # Quest documents form one graph, so any change validates the whole tree,
     # as does a bump of the flake-pinned validator.
     [quest]='^(quest/|flake\.lock$)'
@@ -129,6 +132,7 @@ declare -A tools=(
     [patch]='cargo jq git'
     [py]='cargo jq maturin python3'
     [dart]='nix'
+    [openssl]='nix'
     [quest]='quest'
     [gh]='actionlint yq jq'
     [shell]='shellcheck'
@@ -139,7 +143,7 @@ verb=$action
 [[ "$verb" != ci ]] || verb=check
 
 case "$verb" in
-    check) modules=(rs structure msrv cross vartime deny versions adapters license inplace mutants testing compat bench fixtures patch py dart quest gh shell nix) ;;
+    check) modules=(rs structure msrv cross vartime deny versions adapters license inplace mutants testing compat bench fixtures patch py dart openssl quest gh shell nix) ;;
     fix) modules=(rs compat patch dart nix) ;;
 esac
 
@@ -199,13 +203,6 @@ for module in "${selected[@]}"; do
     echo "==> $action $module" >&2
     case "$verb:$module" in
         check:rs)
-            # The tests read these vectors, and otherwise fail partway through.
-            # s2n-bignum only feeds admin/parse-asm, so it is not required.
-            # Only uninitialized ones, so a local submodule bump stays put.
-            mapfile -t unfetched < <(git submodule status -- thirdparty/cavp thirdparty/cctv thirdparty/wycheproof | sed -n 's/^-[0-9a-f]* //p')
-            if ((${#unfetched[@]} > 0)); then
-                git submodule update --init --depth 1 -- "${unfetched[@]}"
-            fi
             mapfile -t packages < <(sh/select.sh "$changed" "$all")
             cargo fmt --all --check
             RUSTFMT=rustfmt-unstable cargo fmt --all --check -- --config-path=.rustfmt.unstable.toml
@@ -294,7 +291,8 @@ for module in "${selected[@]}"; do
                 done
             fi
             # The FIPS module's source rides along: its cfg touches only where
-            # randomness comes from, which no backend changes.
+            # randomness comes from, which no backend changes, and the CPU
+            # check, which only the backends it builds on have.
             CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS="$portable --cfg rind_fips" \
                 cargo clippy -p rind --lib --locked --target x86_64-unknown-linux-gnu -- --deny warnings
             # And on a 32-bit target, whose Poly1305 and GHASH differ.
@@ -343,6 +341,7 @@ for module in "${selected[@]}"; do
         check:patch) sh/patch.sh ;;
         check:py) sh/python.sh test ;;
         check:dart) nix develop .#dart --command sh/dart.sh check ;;
+        check:openssl) nix develop .#openssl --command sh/openssl.sh ;;
         fix:dart) nix develop .#dart --command sh/dart.sh fix ;;
         fix:patch) cargo fmt --manifest-path patch/fixture/Cargo.toml ;;
         check:gh)

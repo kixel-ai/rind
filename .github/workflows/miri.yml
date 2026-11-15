@@ -34,8 +34,6 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: ./.github/actions/vectors
-
       - uses: ./.github/actions/nix
 
       - name: Miri tests
