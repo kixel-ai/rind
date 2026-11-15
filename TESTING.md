@@ -7,8 +7,8 @@ and [ALGORITHMS.md](ALGORITHMS.md) whose code each tier runs.
 A primitive is checked five ways:
 
 - **Vectors**: published known-answer tests, from [Wycheproof] (each file's
-  name below, in `thirdparty/wycheproof/testvectors_v1/`), NIST's CAVP
-  (`thirdparty/cavp/`) and [ACVP](thirdparty/acvp/README.md) samples, the RFCs, [CCTV], and the [aws-lc and BoringSSL
+  name below, in `thirdparty/vectors/wycheproof/testvectors_v1/`), NIST's CAVP
+  (`thirdparty/vectors/cavp/`) and [ACVP](thirdparty/acvp/README.md) samples, the RFCs, [CCTV], and the [aws-lc and BoringSSL
   files](thirdparty/vectors/README.md), run by `cargo test`.
 - **Fuzz target**: a `fuzz/fuzzer/` target that compares rind with aws-lc-rs
   on fuzzed input. `fuzz.yml` runs each nightly, then replays its corpus on
@@ -213,11 +213,11 @@ secret names a zeroing test, or says why it has none.
 | ML-DSA verification | `signature::{PublicKey, VerificationAlgorithm}`, `signature::verify::{ML_DSA_44, ML_DSA_65, ML_DSA_87}` | `mldsa_*_verify_test`, ACVP: `mid::mldsa::acvp_sig_ver` | `fuzz::verify`, `fuzz::keys` | `crosschecks::ml_dsa_44::sign_verify` and its twins, both ways | | |
 | RSA-OAEP | `rsa::{Ciphertext, DecryptingKey, EncryptingKey, OaepAlgorithm, Plaintext, OAEP_SHA256, OAEP_SHA384, OAEP_SHA512}`, `rsa::legacy::OAEP_SHA1` | `rsa_oaep_*_test`, `aws_lc::evp`, ACVP's decryption primitive: `mid::rsa_priv::acvp_decryption_primitive` | `fuzz::oaep` | `crosschecks::rsa::encrypt_decrypt`, `crosschecks::rsa::decrypt_agrees` | ctgrind: private keys are marked when loaded, `high::oaep::stays_secret`, `high::pkcs1::encode_oaep`; SDE: as RSA signing; BINSEC of loading the key and decrypting, at 2048 bits: `test::binsec::ct_binsec_rsa2048_oaep`, and the rest as RSA signing | `zeroing::rsa_oaep` |
 | RSA blind signatures | `blind_rsa::{Algorithm, BlindSignature, BlindedMessage, Blinding, KeyPair, PublicKey, Signature, RSABSSA_SHA384_PSS_DETERMINISTIC, RSABSSA_SHA384_PSS_RANDOMIZED, RSABSSA_SHA384_PSSZERO_DETERMINISTIC, RSABSSA_SHA384_PSSZERO_RANDOMIZED}` | `rsa_pss_2048_sha384_mgf1_48_test`, `rsa_pss_4096_sha384_mgf1_48_test`, RFC 9474: `high::blind_rsa::rfc9474_vectors`, RFC 9578's token: `high::blind_rsa::rfc9578_token` | `fuzz::blind_rsa`, against itself, as no reference runs on aws-lc | `crosschecks::blind_rsa::matches_blind_rsa_signatures`, against blind-rsa-signatures, as aws-lc-rs has no blind RSA | ctgrind: private keys are marked when loaded, `high::blind_rsa::stays_secret`; SDE and BINSEC: as RSA signing | `zeroing::blind_rsa` |
-| Key encodings | `encoding::{Pkcs8, Sec1, Spki}` | `aws_lc::evp` (PKCS#8, SPKI); the other keys in the files above | `fuzz::keys` | `crosschecks::encodings` | none: a key is marked once parsed, and its DER's lengths are not secret | `zeroing::ecdh`, `zeroing::ecdsa`, `zeroing::ed25519`, `zeroing::rsa` |
+| Key encodings | `encoding::{Pkcs8, Sec1, Spki}` | `aws_lc::evp` (PKCS#8, SPKI); the other keys in the files above | `fuzz::keys` | `crosschecks::encodings`, `crosschecks::pkcs8_attributes::v2_without_public_key` | none: a key is marked once parsed, and its DER's lengths are not secret | `zeroing::ecdh`, `zeroing::ecdsa`, `zeroing::ed25519`, `zeroing::rsa` |
 | Constant-time comparison | `constant_time::verify` | none: no published set | none: it returns whether two slices are equal, which the differential test covers | `crosschecks::slice_comparison_matches_aws_lc_rs` | ctgrind: `high::constant_time::contents_stay_secret`, `low::generic::ct_equal::equiv`; BINSEC: `test::binsec::ct_binsec_constant_time_verify` | none: it keeps nothing |
 | Random bytes | `rand::fill` | none: the operating system's generator, which no vector can check | none, as for vectors | none, as for vectors | none: rind passes the bytes on | none: rind keeps no copy of the bytes |
 
-Exports that are not primitives: `Error`, `KeyRejected`, `doc::inline_assembly_safety`, `cpu::Dit`, `cpu::MissingFeature`, `cpu::check`, `cpu::has_aes_hardware`, and the hooks the FIPS module builds on: `fips::DrbgHold`, `fips::SelfTest`, `fips::broken`, `fips::check_rsa_modulus`, `fips::digest`, `fips::error_code`, `fips::error_from_code`, `fips::fail`, `fips::hold_drbgs`, `fips::missing_cpu_feature`, `fips::zeroise_drbgs`.
+Exports that are not primitives: `Error`, `KeyRejected`, `doc::inline_assembly_safety`, `cpu::Dit`, `cpu::has_aes_hardware`, and the hooks the FIPS module builds on: `fips::DrbgHold`, `fips::SelfTest`, `fips::broken`, `fips::check_rsa_modulus`, `fips::digest`, `fips::error_code`, `fips::error_from_code`, `fips::fail`, `fips::hold_drbgs`, `fips::missing_cpu_feature`, `fips::zeroise_drbgs`.
 
 ## Adapters
 
@@ -229,7 +229,13 @@ edited in flight. A panic, a hang, or an answer that differs from aws-lc-rs's
 fails the run, as does a failed open that leaves plaintext in the caller's
 buffer.
 
-Adapter fuzz targets: `fuzz::rustls`, `fuzz::dimpl`, `fuzz::str0m`.
+rind-openssl's target calls its C ABI as OpenSSL does, through
+`OSSL_provider_init` and the dispatch tables it returns, with parameter
+arrays of any names, types, and sizes and output buffers of any length. Each
+answer must match rind's own API, and each error must reach OpenSSL's core
+with a known reason and a format that reads no arguments.
+
+Adapter fuzz targets: `fuzz::rustls`, `fuzz::dimpl`, `fuzz::str0m`, `fuzz::openssl`.
 
 ## Coverage
 
@@ -238,9 +244,9 @@ published code its own tests run: the `rind` crate and its adapters under
 `cargo test`, rind-dart under `dart test`, and pyrind under
 `sh/python.sh test`, leaving out the tools (rind-bench, rind-cpuid,
 rind-timing, and the fuzzer). A function it lists as never run is published
-code no test reaches. It runs the suites as the nightly jobs do, with the
-vector submodules, `SLOW_TESTS=1`, and again with CPU features denied (on
-x86_64, under Intel SDE too), so a plain `cargo llvm-cov` reports less. The
+code no test reaches. It runs the suites as the nightly jobs do, with
+`SLOW_TESTS=1`, and again with CPU features denied (on x86_64, under Intel
+SDE too), so a plain `cargo llvm-cov` reports less. The
 nightly `coverage` workflow runs it on Linux and macOS; the summary table in
 its "Measure coverage" step's log is the report.
 
@@ -270,7 +276,9 @@ sees divisions, can see an instruction whose timing depends on its
 operands, so `admin/ct-vartime`, which `just check` runs when rind changes,
 scans its release builds for every architecture it builds for, and its
 portable backend's on x86_64 and armv7, for divisions and floating-point arithmetic, and fails on one that `admin/ct-vartime.toml` does
-not list as taking only public operands.
+not list as taking only public operands. On the x86_64 backend it also fails
+on a multiply Intel's MXCSR configuration dependent timing affects that any
+function rind exports reaches outside `rind::low::Mcdt`, Intel's mitigation.
 `nix develop .#dudect --command admin/timing dudect` times each secret
 operation whose secret the API lets it set (not key generation, encapsulation,
 or varied ML-KEM decapsulation keys) on two classes of secret, as dudect does,

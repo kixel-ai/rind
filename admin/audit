@@ -5,8 +5,7 @@
 # `check` fails unless AUDIT.md's pins table, between its two markers, is the
 # one this renders from the pins themselves, and `fix` rewrites it: each
 # importer's and vector sync's revision, the base of rind's s2n-bignum fork,
-# the vector submodules' commits, and the version Cargo.lock resolves for
-# each crate the `rind` crate's own code links. `check` also fails on a link
+# and the version Cargo.lock resolves for each crate the `rind` crate's own code links. `check` also fails on a link
 # to a quest that no longer exists, since finishing it changes the gap
 # AUDIT.md describes there.
 #
@@ -24,8 +23,7 @@ SHA = r"([0-9a-f]{40})"
 REV = rf'^REV = "{SHA}"$'
 
 # Each pin: the upstream, what rind takes from it at that pin, the file that
-# pins it, and the pattern whose group is the pin there. A file of `None`
-# names a submodule, pinned by its gitlink.
+# pins it, and the pattern whose group is the pin there.
 PINS = [
     ("aws-lc", "copied and ported code", "admin/import-aws-lc", REV),
     ("BoringSSL", "copied code", "admin/import-boringssl", REV),
@@ -43,12 +41,12 @@ PINS = [
         "admin/prove-bytes",
         rf'^AWS_LC_REVISION = "{SHA}"$',
     ),
-    ("Wycheproof", "test vectors", "thirdparty/wycheproof", None),
-    ("CAVP", "test vectors", "thirdparty/cavp", None),
-    ("CCTV", "test vectors", "thirdparty/cctv", None),
     ("ACVP-Server", "test vectors", "admin/sync-acvp", rf"^ACVP_SERVER={SHA}$"),
     ("aws-lc", "test vectors", "admin/sync-vectors", rf"^AWS_LC={SHA}$"),
     ("BoringSSL", "test vectors", "admin/sync-vectors", rf"^BORINGSSL={SHA}$"),
+    ("Wycheproof", "test vectors", "admin/sync-vectors", rf"^WYCHEPROOF={SHA}$"),
+    ("CAVP", "test vectors", "admin/sync-vectors", rf"^CAVP={SHA}$"),
+    ("CCTV", "test vectors", "admin/sync-vectors", rf"^CCTV={SHA}$"),
     ("RFC 9180", "HPKE test vectors", "admin/sync-vectors", rf"^HPKE={SHA}$"),
     ("RFC 9380", "hash-to-curve test vectors", "admin/sync-vectors", rf"^HASH_TO_CURVE={SHA}$"),
     ("blind-rsa-signatures", "RFC 9474 test vectors", "admin/sync-vectors", rf"^BLIND_RSA={SHA}$"),
@@ -72,14 +70,6 @@ CRATES = {
 
 
 def pin(path, pattern):
-    if pattern is None:
-        out = subprocess.run(
-            ["git", "-C", str(ROOT), "ls-files", "--stage", "--", path],
-            capture_output=True, text=True, check=True,
-        ).stdout.split()
-        if len(out) < 2 or out[0] != "160000":
-            sys.exit(f"error: {path} is not a submodule")
-        return out[1]
     found = re.findall(pattern, (ROOT / path).read_text(), re.M)
     if len(found) != 1:
         sys.exit(f"error: {path} has {len(found)} lines matching {pattern}, not one")

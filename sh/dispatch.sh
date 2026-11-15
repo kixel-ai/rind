@@ -70,9 +70,6 @@ declare -A scope=(
     # Variable-time instructions in rind's release builds, which a change to
     # its code, dependencies, toolchain, or the scan itself can bring.
     [vartime]='^(rind/(src/|Cargo\.toml$|build\.rs$)|Cargo\.(toml|lock)$|flake\.(nix|lock)$|admin/ct-vartime)'
-    # s2n-bignum's proofs assume separate input and output, so the kernels
-    # rind runs in place are walked, after planting faults in each.
-    [inplace]='^(rind/src/low/|admin/parse-asm/)'
     # .cargo/mutants.toml's exclusions name mutants by file, line, and
     # function, so moving code can leave one matching nothing.
     [mutants]='^(rind[^/]*/src/|\.cargo/mutants\.toml$|admin/mutants$)'
@@ -80,7 +77,7 @@ declare -A scope=(
     [testing]='^(TESTING\.md$|admin/testing$|rind/(src|tests)/|fuzz/)'
     # AUDIT.md's pins table is generated from the files that hold the pins,
     # and the quests it links name gaps that finishing them closes.
-    [audit]='^(AUDIT\.md$|admin/(audit|import-[a-z-]+|prove-bytes|sync-(acvp|vectors))$|thirdparty/(s2n-bignum/RIND\.md|wycheproof|cavp|cctv)$|(rind/)?Cargo\.(toml|lock)$|quest/)'
+    [audit]='^(AUDIT\.md$|admin/(audit|import-[a-z-]+|prove-bytes|sync-(acvp|vectors))$|thirdparty/s2n-bignum/RIND\.md$|(rind/)?Cargo\.(toml|lock)$|quest/)'
     # COMPATIBILITY.md is generated from the CPU scans.
     [compat]='^(COMPATIBILITY\.md$|admin/x86-cpus?(/|$))'
     # BENCHMARKS.md is generated from the results, the verified-code table,
@@ -97,6 +94,9 @@ declare -A scope=(
     [py]='^(rind-python/|sh/python\.sh$|flake\.lock$)'
     # rind-dart's Dart package, whose build hook compiles the crate.
     [dart]='^rind-dart/'
+    # OpenSSL's own tests with rind-openssl loaded, against the OpenSSL the
+    # flake pins. rind's own changes reach the provider through its tests.
+    [openssl]='^(rind-openssl/|sh/openssl\.sh$|flake\.(nix|lock)$)'
     # Quest documents form one graph, so any change validates the whole tree,
     # as does a bump of the flake-pinned validator.
     [quest]='^(quest/|flake\.lock$)'
@@ -123,7 +123,6 @@ declare -A tools=(
     [msrv]='nix cargo jq'
     [cross]='cargo'
     [vartime]='nix'
-    [inplace]='python3'
     [mutants]='cargo-mutants python3'
     [testing]='python3'
     [audit]='python3 git'
@@ -133,6 +132,7 @@ declare -A tools=(
     [patch]='cargo jq git'
     [py]='cargo jq maturin python3'
     [dart]='nix'
+    [openssl]='nix'
     [quest]='quest'
     [gh]='actionlint yq jq'
     [shell]='shellcheck'
@@ -143,7 +143,7 @@ verb=$action
 [[ "$verb" != ci ]] || verb=check
 
 case "$verb" in
-    check) modules=(rs structure msrv cross vartime deny versions adapters license inplace mutants testing audit compat bench fixtures patch py dart quest gh shell nix) ;;
+    check) modules=(rs structure msrv cross vartime deny versions adapters license mutants testing audit compat bench fixtures patch py dart openssl quest gh shell nix) ;;
     fix) modules=(rs audit compat patch dart nix) ;;
 esac
 
@@ -203,13 +203,6 @@ for module in "${selected[@]}"; do
     echo "==> $action $module" >&2
     case "$verb:$module" in
         check:rs)
-            # The tests read these vectors, and otherwise fail partway through.
-            # s2n-bignum only feeds admin/parse-asm, so it is not required.
-            # Only uninitialized ones, so a local submodule bump stays put.
-            mapfile -t unfetched < <(git submodule status -- thirdparty/cavp thirdparty/cctv thirdparty/wycheproof | sed -n 's/^-[0-9a-f]* //p')
-            if ((${#unfetched[@]} > 0)); then
-                git submodule update --init --depth 1 -- "${unfetched[@]}"
-            fi
             mapfile -t packages < <(sh/select.sh "$changed" "$all")
             cargo fmt --all --check
             RUSTFMT=rustfmt-unstable cargo fmt --all --check -- --config-path=.rustfmt.unstable.toml
@@ -298,7 +291,8 @@ for module in "${selected[@]}"; do
                 done
             fi
             # The FIPS module's source rides along: its cfg touches only where
-            # randomness comes from, which no backend changes.
+            # randomness comes from, which no backend changes, and the CPU
+            # check, which only the backends it builds on have.
             CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS="$portable --cfg rind_fips" \
                 cargo clippy -p rind --lib --locked --target x86_64-unknown-linux-gnu -- --deny warnings
             # And on a 32-bit target, whose Poly1305 and GHASH differ.
@@ -329,9 +323,7 @@ for module in "${selected[@]}"; do
             ;;
         check:quest) quest check ;;
         check:license) bash admin/scan-license ;;
-        check:mutants) admin/mutants --pins ;;
-        # It finds the generated kernels relative to its own directory.
-        check:inplace) (cd admin/parse-asm && python3 inplace.py) ;;
+        check:mutants) admin/mutants --pins && admin/mutants --expand-diff-self-test ;;
         check:testing) python3 admin/testing ;;
         check:audit) python3 admin/audit check ;;
         fix:audit) python3 admin/audit fix ;;
@@ -349,6 +341,7 @@ for module in "${selected[@]}"; do
         check:patch) sh/patch.sh ;;
         check:py) sh/python.sh test ;;
         check:dart) nix develop .#dart --command sh/dart.sh check ;;
+        check:openssl) nix develop .#openssl --command sh/openssl.sh ;;
         fix:dart) nix develop .#dart --command sh/dart.sh fix ;;
         fix:patch) cargo fmt --manifest-path patch/fixture/Cargo.toml ;;
         check:gh)

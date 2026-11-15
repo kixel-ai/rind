@@ -24,11 +24,14 @@ what counts as a vulnerability. The code under review:
   `admin/adapter-api` fails on a public item that differs from upstream's.
 - The language bindings: `rind-dart`, a C ABI for Dart's FFI, and
   `rind-python` (pyrind), on PyO3.
+- `rind-openssl`, an OpenSSL 3 provider: a C ABI that OpenSSL loads, backing
+  X25519 and Ed25519.
 
 [ALGORITHMS.md](ALGORITHMS.md) says whose code runs each algorithm on each
 CPU tier, and [PLATFORMS.md](PLATFORMS.md) which CPU features each tier
-needs: `rind::cpu::check()` returns an error naming a missing one, and every
-operation panics on a CPU without it.
+needs. A backend requires only what its target enables at compile time, so
+rind runs on every CPU its target does, and each other feature only picks a
+faster path.
 
 ## Threat model
 
@@ -68,9 +71,14 @@ Outside the model:
 - A compiler or flags other than CI's: constant time is checked on the
   builds CI makes for Linux, so a user's own toolchain, a non-Linux target,
   or a wasm engine may emit code no check has seen.
-- A CPU whose multiplier takes time by its operands, which
-  [PLATFORMS.md](PLATFORMS.md) lists, and Intel's MXCSR-dependent timing,
-  which [its quest](/quest/m2/confidence/intel-mcdt.md) addresses.
+- A CPU whose multiplier takes time by its operands, and an Intel CPU whose
+  operating system leaves DOITM unset, as Linux does, both of which
+  [PLATFORMS.md](PLATFORMS.md) describes. Intel's data-independent list also
+  omits the `VSHA512` instructions, which SHA-384 and SHA-512 run where the
+  CPU has them, until [their quest](/quest/m2/confidence/intel-vsha512.md)
+  drops them. Intel's MXCSR-dependent timing is in the model: rind loads
+  `0x1FBF` around the x86_64 code that reaches an affected multiply, and
+  around every call on 32-bit x86.
 - The operating system's random source, which rind trusts through
   `getrandom`, and an attacker who reads the process's memory while it runs.
 - A caller's misuse the API permits, such as repeating a nonce it passes.
@@ -95,14 +103,14 @@ The pins, as `admin/audit` renders them from the files that hold them, so
 | BoringSSL | `ed9209cff8b5` | `admin/import-boringssl` | copied code |
 | OpenSSL | `2f4e3a5fec05` | `admin/import-openssl` | copied code |
 | HACL\* | `f557259007db` | `admin/import-hacl` | Vale's x86_64 AES-GCM |
-| s2n-bignum | `b4f17ee743eb` | `thirdparty/s2n-bignum/RIND.md` | assembly and the HOL Light proofs of it |
+| s2n-bignum | `3f01260ff1bd` | `thirdparty/s2n-bignum/RIND.md` | assembly and the HOL Light proofs of it |
 | aws-lc | `c21d40da4bbe` | `admin/prove-bytes` | the routines aws-lc-verification's SHA-384/512 proofs are about |
-| Wycheproof | `dab4ea2ed021` | `thirdparty/wycheproof` | test vectors |
-| CAVP | `0220357e399b` | `thirdparty/cavp` | test vectors |
-| CCTV | `b88c4b206254` | `thirdparty/cctv` | test vectors |
 | ACVP-Server | `975de31eb83d` | `admin/sync-acvp` | test vectors |
 | aws-lc | `2f9a0e95cc2c` | `admin/sync-vectors` | test vectors |
 | BoringSSL | `0131ae9d78e4` | `admin/sync-vectors` | test vectors |
+| Wycheproof | `dab4ea2ed021` | `admin/sync-vectors` | test vectors |
+| CAVP | `0220357e399b` | `admin/sync-vectors` | test vectors |
+| CCTV | `b88c4b206254` | `admin/sync-vectors` | test vectors |
 | RFC 9180 | `b1f7cb0cdeab` | `admin/sync-vectors` | HPKE test vectors |
 | RFC 9380 | `664b13592116` | `admin/sync-vectors` | hash-to-curve test vectors |
 | blind-rsa-signatures | `45d0abfa829c` | `admin/sync-vectors` | RFC 9474 test vectors |
@@ -186,9 +194,11 @@ establishes, and what it does not:
   sides are empty.
 - **`admin/ct-vartime`**, in `just ci`, scans the release builds of every
   Linux target rind builds for divisions and floating point, against an
-  allowlist of public operands. It does not look for the vector multiplies
-  whose timing depends on MXCSR, and it takes the integer multiplier to run
-  in constant time.
+  allowlist of public operands. On the x86_64 backend it also fails on a
+  multiply whose timing depends on MXCSR that an export reaches outside
+  `rind::low::Mcdt`, the mitigation; on 32-bit x86 and the portable backend,
+  that every call enters it is unchecked. It takes the integer multiplier to
+  run in constant time, and does not refuse `VSHA512`.
 - **s2n-bignum's `_SAFE` theorems** prove the routines
   [ALGORITHMS.md](ALGORITHMS.md#s2n-bignums-constant-time-theorems) lists
   constant time for every input, variable-time instructions included, but
@@ -225,15 +235,18 @@ establishes, and what it does not:
   big-endian s390x, failing on undefined behavior. It runs no assembly, and
   skips the slow tests `sh/miri.sh` lists.
 - **Mutation testing** (`admin/mutants`) fails on a mutant of rind's Rust
-  that no test catches. Nightly, it mutates only the Rust that changed in the
-  last day; a campaign over the whole workspace runs only when dispatched. It
-  skips generated assembly, which proofs and differential tests own.
+  that no test catches. Weekly, on native x86_64 and aarch64 Linux runners
+  and the portable backend, it mutates only the Rust that changed in the
+  last week; a campaign over the whole workspace runs only when dispatched.
+  It skips generated assembly, which proofs and differential tests own.
 - **Coverage** (`admin/coverage`, nightly on Linux and macOS) reports the
   published functions no test runs, under `cargo test`, `dart test`, and
   pyrind's tests, on each runner's tiers, but not under fuzzing.
 - **Adapter fuzz targets**, for rind-rustls, rind-dimpl, and rind-str0m,
   feed a hostile peer's bytes and whole handshakes edited in flight, against
-  upstream's aws-lc-rs provider. The other adapters have none.
+  upstream's aws-lc-rs provider, and rind-openssl's calls its C ABI as
+  OpenSSL does, with parameters and buffers of any shape, against rind's own
+  API. The other adapters have none.
 
 ## Where the checks are thinnest
 
@@ -299,22 +312,24 @@ closes them. The report's "Measure coverage" step lists each file.
 ## `unsafe`
 
 `unsafe` appears only in `low`, the FIPS build's DRBG handle, the bindings,
-and test code. Every block in `rind` and rind-dart carries a `SAFETY:`
-comment, which clippy's `undocumented_unsafe_blocks` lint enforces in CI.
-Counted outside comments and literals by `admin/audit unsafe` at `5bf369f7`:
+rind-openssl, and test code. Every block in `rind`, rind-dart, and
+rind-openssl carries a `SAFETY:` comment, which clippy's
+`undocumented_unsafe_blocks` lint enforces in CI.
+Counted outside comments and literals by `admin/audit unsafe` at `c3356fec`:
 
 | Area | `unsafe` | What it is | What justifies it |
 |---|---|---|---|
 | `rind/src/low/x86_64` | 453 | `asm!`, naked functions, and intrinsics | [`rind::doc::inline_assembly_safety`](rind/src/low/inline_assembly_safety.rs), with the calling-convention, bounds, and `admin/prove bytes` checks above |
-| `rind/src/low/aarch64` | 315 | the same | the same |
+| `rind/src/low/aarch64` | 304 | the same | the same |
 | `rind/src/low/arm` | 89 | `global_asm!` and the calls into it | the same |
 | `rind/src/low/generic` | 22 | SSE2 intrinsics in `aes_nohw`, `ReuseCache`'s one-time initialization, the volatile wipe, a cast between same-layout arrays, and MD5's empty `asm!` barrier | each block's `SAFETY:` comment; Miri checks `ReuseCache` and the wipe |
 | `rind/src/low/portable` | 3 | volatile writes and reads for the wipe and the constant-time compare | the same |
-| other `rind/src/low` files | 79 | test harnesses (`abi`, `guard_pages`, `ct_binsec`, `tests`), and the `asm_call!` macro | test code, but for the macro |
+| other `rind/src/low` files | 89 | test harnesses (`abi`, `guard_pages`, `ct_binsec`, `tests`, `vartime_planted`), the `asm_call!` macro, and `Mcdt`'s MXCSR loads and `cpuid` | test code, but for the macro and `Mcdt`, which `SAFETY:` comments and `admin/ct-vartime` cover |
 | `rind/src/mid` | 2 | a test's call into aws-lc | test code |
-| `rind/src` | 6 | the FIPS build's DRBG handle, and a test helper | `SAFETY:` comments |
+| `rind/src` | 10 | the FIPS build's DRBG handle, its test's `fork`, and a test helper | `SAFETY:` comments |
 | `rind-dart` | 235 | the C ABI Dart's FFI calls | `SAFETY:` comments, `dart test`, and ctgrind over its exports |
 | `rind-python` | 6 | Python's buffer protocol | `SAFETY:` comments |
+| `rind-openssl` | 245 | the C ABI OpenSSL's core calls, and the `OSSL_PARAM` arrays it passes | `SAFETY:` comments, `fuzz::openssl`, and OpenSSL's own tests with it loaded |
 | `rind-fips` | 583 | the unpublished FIPS module's C ABI | out of scope until published |
 
 The rest, in `rind/tests`, rind-rcgen's tests, the fuzz targets, `admin`,
