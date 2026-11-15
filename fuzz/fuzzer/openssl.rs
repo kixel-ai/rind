@@ -27,8 +27,7 @@ fuzz_target!(|input: Input| {
             let key = keymgmt.import(selection.into(), &params);
             if !key.is_null() {
                 let public = keymgmt.check(key);
-                // A key holding nothing, such as a private key imported
-                // beside another's public key, fails each use.
+                // A key holding nothing fails each use.
                 assert_eq!(provider.begins(ed25519, key), public);
                 keymgmt.free(key);
             }
@@ -47,6 +46,30 @@ fuzz_target!(|input: Input| {
                 assert_eq!(provider.begins(ed25519, key), public);
                 keymgmt.free(key);
             }
+        }
+        Input::Pair {
+            ed25519,
+            private,
+            mut public,
+            matching,
+        } => {
+            let derived = public_of(ed25519, &private);
+            if matching {
+                public.copy_from_slice(&derived);
+            }
+            let keymgmt = provider.keymgmt(ed25519);
+            let key = keymgmt.import(
+                KEYPAIR,
+                &[Arg::octets(c"priv", &private), Arg::octets(c"pub", &public)],
+            );
+            // A mismatched pair imports too, so that OpenSSL never reruns its
+            // use on the provider it came from, and holds nothing, so that
+            // each use fails.
+            assert!(!key.is_null());
+            let held = public[..] == derived[..];
+            assert_eq!(keymgmt.check(key), held);
+            assert_eq!(provider.begins(ed25519, key), held);
+            keymgmt.free(key);
         }
         Input::Sign {
             seed,
@@ -125,6 +148,14 @@ enum Input {
         ed25519: bool,
         selection: u8,
         params: Vec<Arg>,
+    },
+    /// Imports a private key beside a public key, its own when `matching`,
+    /// as OpenSSL moves a key another provider holds.
+    Pair {
+        ed25519: bool,
+        private: [u8; 32],
+        public: [u8; 32],
+        matching: bool,
     },
     /// Signs as `EVP_DigestSign` does, with any digest name and parameters.
     Sign {
@@ -569,6 +600,23 @@ impl Provider {
     }
 }
 
+/// The public key of a 32-byte private key, by rind's own API.
+fn public_of(ed25519: bool, private: &[u8]) -> Vec<u8> {
+    if ed25519 {
+        Ed25519KeyPair::from_seed(private)
+            .unwrap()
+            .public_key()
+            .as_ref()
+            .to_vec()
+    } else {
+        PrivateKey::from_scalar(&X25519, private)
+            .unwrap()
+            .public_key()
+            .as_ref()
+            .to_vec()
+    }
+}
+
 /// A key's halves, as `export` gives them.
 #[derive(Default, Debug, PartialEq)]
 struct Exported {
@@ -670,19 +718,7 @@ impl Keymgmt {
             (public, private)
         );
         if let Some(private) = &exported.private {
-            let derived = if self.ed25519 {
-                Ed25519KeyPair::from_seed(private)
-                    .unwrap()
-                    .public_key()
-                    .as_ref()
-                    .to_vec()
-            } else {
-                PrivateKey::from_scalar(&X25519, private)
-                    .unwrap()
-                    .public_key()
-                    .as_ref()
-                    .to_vec()
-            };
+            let derived = public_of(self.ed25519, private);
             assert_eq!(exported.public.as_deref(), Some(&derived[..]));
         }
 

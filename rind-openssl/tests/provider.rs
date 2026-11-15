@@ -106,7 +106,7 @@ fn config() -> &'static Path {
 
 fn write_config() -> PathBuf {
     let documented = include_str!("../openssl.cnf");
-    let module = format!("module = {}", library().display());
+    let module = format!("module = {}", conf_value(&library()));
     let config: String = documented
         .lines()
         .map(|line| {
@@ -128,6 +128,20 @@ fn write_config() -> PathBuf {
         .join(format!("rind-openssl-{}.cnf", std::process::id()));
     std::fs::write(&path, config).unwrap();
     path
+}
+
+/// `path` as an `openssl.cnf` value: each ASCII character but a letter,
+/// digit, or `/._-` escaped, as a `#` would start a comment and a `$` a
+/// variable.
+fn conf_value(path: &Path) -> String {
+    let mut out = String::new();
+    for c in path.display().to_string().chars() {
+        if c.is_ascii() && !(c.is_ascii_alphanumeric() || "/._-".contains(c)) {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out
 }
 
 /// The errors OpenSSL holds for this thread, taken off its queue.

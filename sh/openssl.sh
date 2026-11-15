@@ -27,8 +27,11 @@ fi
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
-sed "s|^module = .*|module = $library|" rind-openssl/openssl.cnf >"$work/openssl.cnf"
-grep -qxF "module = $library" "$work/openssl.cnf"
+# Escaped, as `openssl.cnf` reads a `#` as a comment and a `$` as a variable.
+module=$(printf '%s' "$library" | sed 's|[^A-Za-z0-9/._-]|\\&|g')
+MODULE="module = $module" awk '/^module = /{ print ENVIRON["MODULE"]; next } { print }' \
+    rind-openssl/openssl.cnf >"$work/openssl.cnf"
+grep -qxF "module = $module" "$work/openssl.cnf"
 
 skipped=0
 for file in "$OPENSSL_EVP_TEST"/share/evp_test/*.txt; do

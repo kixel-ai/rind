@@ -11,7 +11,7 @@
 #![allow(clippy::undocumented_unsafe_blocks)]
 
 use std::ffi::{CStr, CString, c_char, c_int};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::ptr::{null, null_mut};
 use std::sync::OnceLock;
 
@@ -105,7 +105,7 @@ fn write_config() -> CString {
     let config: String = include_str!("../openssl.cnf")
         .lines()
         .map(|line| match line.starts_with("module = ") {
-            true => format!("module = {}\n", library.display()),
+            true => format!("module = {}\n", conf_value(&library)),
             false => format!("{line}\n"),
         })
         .collect();
@@ -113,6 +113,20 @@ fn write_config() -> CString {
         .join(format!("rind-openssl-ctgrind-{}.cnf", std::process::id()));
     std::fs::write(&path, config).unwrap();
     CString::new(path.into_os_string().into_encoded_bytes()).unwrap()
+}
+
+/// `path` as an `openssl.cnf` value: each ASCII character but a letter,
+/// digit, or `/._-` escaped, as a `#` would start a comment and a `$` a
+/// variable.
+fn conf_value(path: &Path) -> String {
+    let mut out = String::new();
+    for c in path.display().to_string().chars() {
+        if c.is_ascii() && !(c.is_ascii_alphanumeric() || "/._-".contains(c)) {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out
 }
 
 fn private_key(ctx: *mut OSSL_LIB_CTX, algorithm: &CStr, private: &[u8; 32]) -> *mut EVP_PKEY {
