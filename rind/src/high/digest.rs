@@ -215,7 +215,15 @@ struct Ops<C> {
 
 impl<C: Variant> Hashing<C> {
     fn start() -> State {
-        C::STATE
+        C::state(Self {
+            ops: const {
+                &Ops {
+                    update: C::update,
+                    finish: C::finish_reset,
+                }
+            },
+            context: C::NEW,
+        })
     }
 
     fn update(&mut self, data: &[u8]) {
@@ -234,12 +242,7 @@ trait Variant: HashContext + 'static {
     // copies it from read-only memory instead of building it on the stack.
     const NEW: Self;
 
-    /// A [`State`] holding [`Self::NEW`].
-    // The whole `State`, so starting one copies all its cache lines with a
-    // `memcpy`'s whole-line stores: a `Box` or another move of it then loads
-    // each line from one store, which it can take its bytes from, rather than
-    // from the eight that copying this variant alone would make.
-    const STATE: State;
+    fn state(hashing: Hashing<Self>) -> State;
 
     /// The digest of the message so far, leaving `self` as [`Self::NEW`].
     fn finish_reset(&mut self) -> Digest {
@@ -254,13 +257,9 @@ macro_rules! variant {
         impl Variant for $context {
             const NEW: Self = $new;
 
-            const STATE: State = State::$variant(Hashing {
-                ops: &Ops {
-                    update: Self::update,
-                    finish: Self::finish_reset,
-                },
-                context: Self::NEW,
-            });
+            fn state(hashing: Hashing<Self>) -> State {
+                State::$variant(hashing)
+            }
         }
     };
 }
