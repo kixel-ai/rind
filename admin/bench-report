@@ -870,6 +870,11 @@ ALGORITHMS = [
     ("RSA", r"rsa\d+-"),
     ("ML-KEM", r"mlkem768-"),
     ("ML-DSA", r"mldsa65-"),
+    ("HPKE", r"hpke-"),
+    ("Blind RSA", r"blind-rsa\d+-"),
+    ("OPRF", r"v?oprf-"),
+    ("VRF", r"vrf-"),
+    ("SPAKE2+", r"spake2plus-"),
 ]
 
 # Rows that time an integration rather than an algorithm, which the
