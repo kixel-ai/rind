@@ -270,7 +270,9 @@ sees divisions, can see an instruction whose timing depends on its
 operands, so `admin/ct-vartime`, which `just check` runs when rind changes,
 scans its release builds for every architecture it builds for, and its
 portable backend's on x86_64 and armv7, for divisions and floating-point arithmetic, and fails on one that `admin/ct-vartime.toml` does
-not list as taking only public operands.
+not list as taking only public operands. On the x86_64 backend it also fails
+on a multiply Intel's MXCSR configuration dependent timing affects that any
+function rind exports reaches outside `rind::low::Mcdt`, Intel's mitigation.
 `nix develop .#dudect --command admin/timing dudect` times each secret
 operation whose secret the API lets it set (not key generation, encapsulation,
 or varied ML-KEM decapsulation keys) on two classes of secret, as dudect does,

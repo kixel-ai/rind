@@ -73,7 +73,7 @@ exclude_re = [
   'rind/src/low/x86_64/cpu\.rs:402:\d+: replace \| with \^$',
   'rind/src/low/x86_64/cpu\.rs:407:\d+: replace \| with \^$',
   'rind/src/low/x86_64/cpu\.rs:\d+:\d+: replace \| with \^ in (HaveAesHardware::check|HaveAvx::check|HaveAvxMovbeForAesGcm::check|HaveBmi2Adx::check|HaveSha1::check|HaveSha256::check|HaveSha512::check|HaveSse41::check|HaveVaesAvx2ForAesGcm::check|detect|detect_once)$',
-  'rind/src/low/x86_64/edwards25519_scalarmuldouble_avx2\.rs:21[678]:\d+: replace \| with \^$',
+  'rind/src/low/x86_64/edwards25519_scalarmuldouble_avx2\.rs:(220|221|222):\d+: replace \| with \^$',
   'rind/src/low/x86_64/edwards25519_scalarmuldouble_avx2\.rs:\d+:\d+: replace \| with \^ in (Fe4::diff_sum|Fe4::split|non_adjacent_form)$',
   'rind/src/low/x86_64/ghash\.rs:340:\d+: replace \| with \^ in Ghash<\x27a>::add_lengths$',
   'rind/src/low/x86_64/ghash\.rs:606:22: replace \| with \^ in load_partial$',
@@ -103,7 +103,7 @@ exclude_re = [
   'rind/src/high/signature\.rs:(229|1683):\d+: replace \+ with \*$',
   'rind/src/low/generic/mont\.rs:167:\d+: replace \+ with \* in mont_mul$',
   'rind/src/low/x86_64/mlkem_sample_poly_ntt_8x\.rs:229:\d+: replace \+ with \* in _squeeze_rate_and_reject$',
-  'rind/src/mid/mldsa\.rs:(367|462|509):\d+: replace \+ with \* in (keygen|public_key_from_secret|sign_internal)$',
+  'rind/src/mid/mldsa\.rs:(430|530|580):\d+: replace \+ with \* in (keygen|public_key_from_secret|sign_internal)$',
   'rind/src/mid/rsa_priv\.rs:311:\d+: replace / with \*$',
   'rind/src/mid/rsa_priv\.rs:296:44: replace \+ with \*$',
   'rind/src/mid/rsa_priv\.rs:298:\d+: replace \+ with \*$',
@@ -139,7 +139,7 @@ exclude_re = [
   'rind/src/low/x86_64/chacha20\.rs:\d+:\d+: replace > with >= in core_2x$',
   'rind/src/low/x86_64/edwards25519_scalarmuldouble_avx2\.rs:\d+:\d+: replace > with >= in double_base$',
   'rind/src/low/x86_64/edwards25519_scalarmuldouble_avx2\.rs:\d+:\d+: replace < with <= in non_adjacent_form$',
-  'rind/src/low/x86_64/edwards25519_scalarmuldouble_avx2\.rs:109:\d+: replace - with / in non_adjacent_form$',
+  'rind/src/low/x86_64/edwards25519_scalarmuldouble_avx2\.rs:113:\d+: replace - with / in non_adjacent_form$',
   'rind/src/low/x86_64/ghash\.rs:641:41: replace / with % in store_partial$',
   'rind/src/low/x86_64/mldsa\.rs:\d+:\d+: replace < with <= in rej_uniform_table$',
   'rind/src/low/x86_64/rsaz\.rs:\d+:\d+: replace < with <= in mod_exp$',
@@ -149,7 +149,7 @@ exclude_re = [
   'rind/src/low/x86_64/sha1\.rs:\d+:\d+: replace match guard i == pairs\.len\(\) with true in sha1_avx2$',
   'rind/src/mid/aes\.rs:\d+:\d+: replace < with <= in AesCtr::apply_keystream$',
   'rind/src/mid/aes_kw\.rs:190:\d+: replace - with / in AesKek::unwrap_padded$',
-  'rind/src/mid/mldsa\.rs:841:\d+: replace < with <= in expand_s$',
+  'rind/src/mid/mldsa\.rs:914:\d+: replace < with <= in expand_s$',
   'rind/src/mid/p256\.rs:\d+:\d+: replace < with <= in (JacobianMontPoint::public_twin_multiply|public_below_p)$',
   'rind/src/mid/p384\.rs:\d+:\d+: replace < with <= in JacobianMontPoint::public_twin_multiply$',
   'rind/src/low/generic/p521\.rs:\d+:\d+: replace < with <= in p521_public_twin_multiply$',
@@ -165,9 +165,9 @@ exclude_re = [
   'rind/src/low/generic/mldsa_poly\.rs:206:\d+: replace - with [+/] in decompose$',
   'rind/src/low/x86_64/mldsa\.rs:(209|211|213|215|237|239|241|243|245|247|249|251|257|259|269|277|283|285|287|293|295|537|539|541|543|549|551|565|569|571|575|577|579|581|583|587):5: delete -$',
   'rind/src/mid/mldsa\.rs:89:52: replace - with [+/]$',
-  'rind/src/mid/mldsa\.rs:(713|720):\d+: replace - with [+/] in (decompose|use_hint)$',
-  'rind/src/mid/mldsa\.rs:773:\d+: replace \* with / in expand_a$',
-  'rind/src/mid/mldsa\.rs:777:\d+: replace - with [+/] in expand_a$',
+  'rind/src/mid/mldsa\.rs:(786|793):\d+: replace - with [+/] in (decompose|use_hint)$',
+  'rind/src/mid/mldsa\.rs:846:\d+: replace \* with / in expand_a$',
+  'rind/src/mid/mldsa\.rs:850:\d+: replace - with [+/] in expand_a$',
   # Speed only: which of several implementations runs, or how far ahead it
   # prefetches. Each implementation is tested on its own against the others.
   'rind/src/low/x86_64/mldsa\.rs:\d+:\d+: delete match arm \(Some\(_\), [457]\) in mldsa_pointwise_acc$',
@@ -217,13 +217,13 @@ exclude_re = [
   'rind/src/low/x86_64/mont_exp\.rs:95:\d+: replace % with / in mont_exp_by$',
   'rind/src/low/x86_64/mont_exp\.rs:95:\d+: replace % with \+ in mont_exp_by$',
   'rind/src/low/x86_64/mont_exp\.rs:\d+:\d+: replace \|\| with && in mont_exp_by$',
-  'rind/src/low/x86_64/rsaz\.rs:101:\d+: replace & with \^ in mod_exp$',
-  'rind/src/low/x86_64/rsaz\.rs:101:\d+: replace & with \| in mod_exp$',
+  'rind/src/low/x86_64/rsaz\.rs:104:\d+: replace & with \^ in mod_exp$',
+  'rind/src/low/x86_64/rsaz\.rs:104:\d+: replace & with \| in mod_exp$',
   'rind/src/low/x86_64/rsaz\.rs:\d+:\d+: replace > with < in mod_exp$',
   'rind/src/low/x86_64/rsaz\.rs:\d+:\d+: replace > with == in mod_exp$',
   'rind/src/low/x86_64/rsaz\.rs:\d+:\d+: replace > with >= in mod_exp$',
   'rind/src/low/x86_64/rsaz\.rs:34:\d+: replace Rsaz::check -> Option<Self> with None$',
-  'rind/src/low/x86_64/rsaz\.rs:101:\d+: replace \+ with \* in mod_exp$',
+  'rind/src/low/x86_64/rsaz\.rs:104:\d+: replace \+ with \* in mod_exp$',
   'rind/src/low/x86_64/sha1_mux\.rs:\d+:\d+: delete match arm Path::Shaext\(token\) in sha1_compress_padded$',
   'rind/src/low/x86_64/sha256_mux\.rs:\d+:\d+: delete match arm Path::Shaext\(token\) in sha256_finish$',
   'rind/src/low/x86_64/sha3_keccak_nof4_f1600\.rs:\d+:\d+: replace > with < in sha3_keccak_nof4_f1600$',
@@ -241,6 +241,11 @@ exclude_re = [
   # module and the portable AES-GCM's crypto-extension half.
   'rind/src/low/abi\.rs:(895|897|898|904|905|911|914|924):\d+: ',
   'rind/src/mid/portable/aes_gcm\.rs:\d+:\d+: (replace (<impl Ghash for GhashTable>::ghash|<impl Parts for Hw>::\w+)( -> .*)? with .*|.* in <impl Parts for Hw>::\w+)$',
+  # Whether this CPU needs Intel's MXCSR mitigation: no campaign's runner
+  # can know what it should find, since nothing outside `cpuid` reports
+  # `MCDT_NO`. x86-cpu.yml's SDE rows check `needed` on every model, and
+  # `reads_the_vendor` checks `is_intel` on any host.
+  'rind/src/low/mcdt\.rs:\d+:\d+: (replace (needed|detect_once|reports_mcdt_no|denied) -> bool with (true|false)|.* in (needed|detect_once|reports_mcdt_no|denied))$',
   # DIT, which rind sets only on Apple's cores, where no campaign runs:
   # elsewhere `enter_cpu_state` changes nothing for `Dit`, `Entry`, and
   # `leave_cpu_state` to restore, and `dit` compiles only for Apple.
@@ -304,12 +309,12 @@ exclude_re = [
   'rind/src/fips_rng\.rs:\d+:\d+: replace cast -> bool with true$',
   'rind/src/high/hmac_drbg\.rs:\d+:\d+: replace \+= with \*= in HmacDrbg<H>::generate$',
   'rind/src/high/rsa\.rs:\d+:\d+: delete match arm Error::Fault in SigningKey::decrypt_oaep$',
-  'rind/src/mid/mldsa\.rs:547:\d+: replace - with [+/] in sign_internal$',
-  'rind/src/mid/mldsa\.rs:789:\d+: replace < with > in expand_a$',
+  'rind/src/mid/mldsa\.rs:618:\d+: replace - with [+/] in sign_internal$',
+  'rind/src/mid/mldsa\.rs:862:\d+: replace < with > in expand_a$',
   'rind/src/low/aarch64/sha1\.rs:\d+:\d+: replace match guard blocks\.is_empty\(\) with false in sha1_compress_blocks$',
   'rind/src/low/entry\.rs:\d+:\d+: replace - with / in <impl Drop for Entry>::drop$',
   'rind/src/low/entry\.rs:\d+:\d+: replace - with \+ in <impl Drop for Entry>::drop$',
-  'rind/src/low/entry\.rs:58:\d+: replace Entry::assert_held with \(\)$',
+  'rind/src/low/entry\.rs:77:\d+: replace Entry::assert_held with \(\)$',
   'rind/src/low/generic/blockwise\.rs:154:24: replace \* with / in pad$',
   'rind/src/low/posint\.rs:149:\d+: replace PosInt<N>::debug with \(\)$',
   'rind/src/mid/rsa_priv/exponents\.rs:\d+:\d+: replace >= with < in Exponents::derive$',
