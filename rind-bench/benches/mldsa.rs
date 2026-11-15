@@ -57,6 +57,7 @@ macro_rules! ml_dsa {
         aws_lc_rs: $aws_signing:ident, $aws_verify:ident,
         libcrux: $libcrux:ident,
         rustcrypto: $rustcrypto:ident,
+        verified_garbage: $vg:ident, $vg_signing:ident, $vg_verifying:ident,
         openssl: $openssl:literal, $openssl_type:ident $(,)?
     ) => {
         fn $bench(c: &mut Criterion) {
@@ -106,6 +107,31 @@ macro_rules! ml_dsa {
                 b.iter(|| {
                     let key = MlDsaKeyPair::<$rind>::generate().unwrap();
                     black_box(key.public_key());
+                })
+            });
+
+            // verified-garbage generates a key only from a seed: drawn here,
+            // as rind draws its own. Both expand a seed alike.
+            group.bench_function("verified-garbage", |b| {
+                use rind::signature::sign::{MlDsaKeyPair, $rind};
+                use verified_garbage::$vg::$vg_signing;
+                let seed = [7u8; 32];
+                assert_eq!(
+                    $vg_signing::from_seed(&seed)
+                        .unwrap()
+                        .verifying_key()
+                        .as_bytes(),
+                    MlDsaKeyPair::<$rind>::from_seed(&seed)
+                        .unwrap()
+                        .public_key()
+                        .as_ref()
+                );
+
+                b.iter(|| {
+                    let mut seed = [0u8; 32];
+                    getrandom::fill(&mut seed).unwrap();
+                    let key = $vg_signing::from_seed(&seed).unwrap();
+                    black_box(key.verifying_key().as_bytes());
                 })
             });
             group.finish();
@@ -173,6 +199,24 @@ macro_rules! ml_dsa {
 
                 b.iter(|| {
                     black_box(key.sign(MESSAGE).unwrap());
+                })
+            });
+
+            // The key as rind holds it, the expanded private key encoding,
+            // not the larger one `prepare` makes for many signatures.
+            group.bench_function("verified-garbage", |b| {
+                use rind::signature::{PublicKey, verify};
+                use verified_garbage::$vg::$vg_signing;
+                let mut seed = [0u8; 32];
+                getrandom::fill(&mut seed).unwrap();
+                let key = $vg_signing::from_seed(&seed).unwrap();
+                PublicKey::new(&verify::$rind_verify, key.verifying_key().as_bytes())
+                    .unwrap()
+                    .verify(MESSAGE, &key.sign(MESSAGE, b"").unwrap())
+                    .unwrap();
+
+                b.iter(|| {
+                    black_box(key.sign(MESSAGE, b"").unwrap());
                 })
             });
             group.finish();
@@ -252,6 +296,17 @@ macro_rules! ml_dsa {
                     key.verify(MESSAGE, &signature).unwrap();
                 })
             });
+
+            // Not `prepare`d, as above.
+            group.bench_function("verified-garbage", |b| {
+                use verified_garbage::$vg::$vg_verifying;
+                let key = $vg_verifying::from_bytes(public_key.as_slice().try_into().unwrap());
+
+                b.iter(|| {
+                    let signature = signature.as_slice().try_into().unwrap();
+                    key.verify(MESSAGE, b"", signature).unwrap();
+                })
+            });
             group.finish();
         }
     };
@@ -263,6 +318,7 @@ ml_dsa!(
     aws_lc_rs: ML_DSA_44_SIGNING, ML_DSA_44,
     libcrux: ml_dsa_44,
     rustcrypto: MlDsa44,
+    verified_garbage: mldsa44, SigningKey44, VerifyingKey44,
     openssl: c"ML-DSA-44", ML_DSA_44,
 );
 
@@ -272,6 +328,7 @@ ml_dsa!(
     aws_lc_rs: ML_DSA_65_SIGNING, ML_DSA_65,
     libcrux: ml_dsa_65,
     rustcrypto: MlDsa65,
+    verified_garbage: mldsa65, SigningKey65, VerifyingKey65,
     openssl: c"ML-DSA-65", ML_DSA_65,
 );
 
@@ -281,6 +338,7 @@ ml_dsa!(
     aws_lc_rs: ML_DSA_87_SIGNING, ML_DSA_87,
     libcrux: ml_dsa_87,
     rustcrypto: MlDsa87,
+    verified_garbage: mldsa87, SigningKey87, VerifyingKey87,
     openssl: c"ML-DSA-87", ML_DSA_87,
 );
 
