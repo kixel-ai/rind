@@ -690,4 +690,71 @@ theorem by16_out (icb : Quad32) (alg : Algorithm) (kw : List (BitVec 32)) (b : L
       show 16 * (b.length / 16) / 16 = b.length / 16 by omega]
     rw [List.map_take, bytes_bv, ← hk, chunksOf_take16]
 
+/-! ## The tail's output and hash -/
+
+theorem zip_range_map {α β : Type} (A : Nat → α) (B : Nat → β) (a m : Nat) (h : m ≤ a) :
+    ((List.range a).map A).zip ((List.range m).map B) = (List.range m).map fun v => (A v, B v) := by
+  apply List.ext_getElem (by simp; omega)
+  intro k h1 h2
+  simp
+
+/-- The tail's 16 blocks' GCTR, four to a vector. -/
+theorem tail_vectors (G : Nat → BitVec 128) :
+    (List.range 16).flatMap (fun q => low.x86_64.aes_gcm.bytes (G q)) =
+      (List.range 4).flatMap fun v => bytes512 (ofLanes128 fun j => G (4 * v + j)) := by
+  simp [List.range_succ, bytes512_four, List.append_assoc]
+
+theorem take_chunk (F : List U8) (L v : Nat) :
+    ((F.take L).drop (64 * v)).take 64 = ((F.drop (64 * v)).take 64).take (min 64 (L - 64 * v)) := by
+  rw [List.drop_take, List.take_take, List.take_take]
+  congr 1; omega
+
+/-- The tail's vector of blocks `b`, its lane `b % 4`: block `b` of `X`, zero-extended. -/
+theorem lane_tailVec (X : List U8) (b : Nat) (hb : b < 16) :
+    lane128 (tailVec ((X.drop (64 * (b / 4))).take 64)) (b % 4) =
+      blockBE (((X ++ List.replicate 256 0#u8).drop (16 * b)).take 16) := by
+  rw [tailVec, lane128_ofLanes128 _ _ (Nat.mod_lt _ (by omega))]
+  rw [slice_chunk X 256 (b / 4) (b % 4) (Nat.mod_lt _ (by omega)) (by omega), show 4 * (b / 4) + b % 4 = b by omega]
+
+/-! ## `_cipher_avx512` -/
+
+theorem flatten_chunksOf_rest {α : Type} (k : Nat) (hk : 0 < k) (l : List α) :
+    (chunksOf k l).flatten ++ chunksRest k l = l := by
+  induction h : l.length using Nat.strong_induction_on generalizing l with
+  | _ n ih =>
+    by_cases hl : l.length < k
+    · simp [chunksOf_of_lt hl, chunksRest_of_lt hl]
+    · rw [chunksOf_cons hk (by omega), chunksRest_cons hk (by omega), List.flatten_cons, List.append_assoc,
+        ih (l.drop k).length (by simp; omega) (l.drop k) rfl, List.take_append_drop]
+
+theorem length_flatten_chunksOf256 (l : List U8) : ((chunksOf 256 l).flatten.length) % 16 = 0 := by
+  have h := congrArg List.length (flatten_chunksOf_rest 256 (by omega) l)
+  rw [List.length_append, chunksRest_length] at h
+  omega
+
+/-- The tail's counters before the last AES round, for the vector `v`. -/
+def tailKeys (hk : low.x86_64.aes.HwKey) (icb : Quad32) (i0 v : Nat) : Nat → BitVec 128 :=
+  fun j => hk.round_keys.2.1.foldl encRound (reverseBytesQuad32 (inc32 icb (i0 + 4 * v + j)) ^^^ hk.round_keys.1)
+
+/-- The tail's 16 blocks' GCTR, from the block `i0`, the tail zero-extended. -/
+def tailGctr (icb : Quad32) (alg : Algorithm) (kw : List (BitVec 32)) (T : List U8) (i0 : Nat) : List U8 :=
+  (List.range 16).flatMap fun q => low.x86_64.aes_gcm.bytes (gctrEncryptBlock icb
+    (loadBytes (((T ++ List.replicate 256 0#u8).drop (16 * q)).take 16)) alg kw (i0 + q))
+
+theorem tailOut_eq (hk : low.x86_64.aes.HwKey) (alg : Algorithm) (kw : List (BitVec 32)) (hkey : HwKeyIs alg kw hk)
+    (icb : Quad32) (i0 : Nat) (T : List U8) (v : Nat) (hv : v < 4) :
+    tailOut hk.round_keys.2.2 (tailKeys hk icb i0 v) ((T.drop (64 * v)).take 64) =
+      (((tailGctr icb alg kw T i0).take T.length).drop (64 * v)).take 64 := by
+  have hK : (ofLanes128 fun j => subBytes (shiftRows (tailKeys hk icb i0 v j)) ^^^ hk.round_keys.2.2) ^^^
+      loadBytes512 ((T.drop (64 * v)).take 64 ++ List.replicate (64 - ((T.drop (64 * v)).take 64).length) 0#u8) =
+      ofLanes128 fun j => gctrEncryptBlock icb (loadBytes (((T ++ List.replicate 256 0#u8).drop (16 * (4 * v + j))).take 16))
+        alg kw (i0 + (4 * v + j)) := by
+    rw [loadBytes512, xor_ofLanes128]
+    apply ofLanes128_ext; intro j hj
+    rw [tailKeys, ← aesEncrypt_rounds hk alg kw hkey, slice_chunk T 256 v j hj (by omega), gctrEncryptBlock,
+      BitVec.xor_comm, Nat.add_assoc]
+  rw [tailOut, hK, take_chunk, tailGctr, tail_vectors, flatMap_range_slice _ 64 (fun _ => length_bytes512 _) 4 v hv]
+  congr 1
+  simp only [List.length_take, List.length_drop]
+
 end rind.x86_64
