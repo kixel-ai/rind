@@ -44,6 +44,8 @@ async function copies() {
 		observer.observe(button, { childList: true, characterData: true, subtree: true });
 		setTimeout(() => resolve(button.textContent), 5000);
 	}))`);
+	// Empty the clipboard first, so what it holds after is this click's doing.
+	await view.evaluate(`navigator.clipboard.writeText("")`);
 	await view.click("button", { timeout: 5000 });
 	const label = await view.evaluate("window.__label");
 	if (label !== "Copied") throw new Error(`the copy button says "${label}"`);

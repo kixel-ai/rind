@@ -41,7 +41,8 @@ for (const page of pages) {
 const ids = (file: string) =>
 	new Set([...tags(text(file))].flatMap(([, attrs]) => attrs.filter(([name]) => name === "id").map(([, value]) => value)));
 
-// GitHub's anchor for each heading of a repository Markdown file.
+// GitHub's anchor for each heading of a repository Markdown file, and each id
+// or name its HTML gives, such as `<a name="x">`.
 function anchors(file: string): Set<string> {
 	const plain = (tokens: Token[]): string =>
 		tokens
@@ -51,7 +52,8 @@ function anchors(file: string): Set<string> {
 	// so `Foo`, `Foo`, `Foo-1` are `foo`, `foo-1`, `foo-1-1`.
 	const counts = new Map<string, number>();
 	const out = new Set<string>();
-	for (const t of Lexer.lex(readFileSync(path.join(root, file), "utf8"))) {
+	const tokens = Lexer.lex(readFileSync(path.join(root, file), "utf8"));
+	for (const t of tokens) {
 		if (t.type !== "heading") continue;
 		const base = plain(t.tokens ?? [])
 			.toLowerCase()
@@ -65,6 +67,12 @@ function anchors(file: string): Set<string> {
 		}
 		out.add(slug);
 	}
+	walkTokens(tokens, (t) => {
+		if (t.type !== "html") return;
+		for (const [, attrs] of tags(t.raw)) {
+			for (const [name, value] of attrs) if (name === "id" || name === "name") out.add(value);
+		}
+	});
 	return out;
 }
 
