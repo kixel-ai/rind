@@ -633,4 +633,61 @@ theorem tail_gctr (icb : Quad32) (alg : Algorithm) (kw : List (BitVec 32)) (T : 
       show T.length - 16 * n = T.length % 16 by omega,
       low.x86_64.ghash.loadPadded, ← slice_partial T 256 (by omega), ← hn]
 
+/-! ## GCTR on the whole input -/
+
+theorem length_blocksAll256 : ∀ (chunks : List (List U8)), (∀ c ∈ chunks, c.length = 256) →
+    (blocksAll chunks).length = 16 * chunks.length
+  | [], _ => rfl
+  | c :: cs, h => by
+    rw [blocksAll, List.flatMap_cons, ← blocksAll, List.length_append, List.length_map, chunksOf_length,
+      h c (by simp), length_blocksAll256 cs (fun c hc => h c (by simp [hc])), List.length_cons]
+    omega
+
+theorem blocks_split256 (b : List U8) :
+    (chunksOf 16 b).map loadBytes =
+      blocksAll (chunksOf 256 b) ++ (chunksOf 16 (chunksRest 256 b)).map loadBytes := by
+  rw [(chunks_256 b).1, List.map_append, List.map_flatMap, blocksAll]
+
+/-- `_cipher_avx512`'s output, the 256-byte chunks', then the tail's whole
+blocks', then its partial block's, is Vale's GCTR. -/
+theorem by16_out (icb : Quad32) (alg : Algorithm) (kw : List (BitVec 32)) (b : List U8) :
+    ((gctrEncryptRecursive icb alg kw (blocksAll (chunksOf 256 b)) 0).flatMap low.x86_64.aes_gcm.bytes ++
+      ((gctrEncryptRecursive icb alg kw ((chunksOf 16 (chunksRest 256 b)).map loadBytes)
+          (0 + 16 * (chunksOf 256 b).length)).flatMap low.x86_64.aes_gcm.bytes ++
+        if (chunksRest 16 (chunksRest 256 b)).isEmpty = true then []
+        else List.take (chunksRest 16 (chunksRest 256 b)).length (low.x86_64.aes_gcm.bytes
+          (gctrEncryptBlock icb (low.x86_64.ghash.loadPadded (chunksRest 16 (chunksRest 256 b))) alg kw
+            (0 + 16 * (chunksOf 256 b).length +
+              ((chunksOf 16 (chunksRest 256 b)).map loadBytes).length))))).map (·.bv) =
+      gctrEncrypt icb (b.map (·.bv)) alg kw := by
+  have hch : ∀ c ∈ chunksOf 256 b, c.length = 256 := fun c h => chunksOf_length_mem h
+  have hB := length_blocksAll256 _ hch
+  have hall : (chunksOf 16 b).map loadBytes =
+      blocksAll (chunksOf 256 b) ++ (chunksOf 16 (chunksRest 256 b)).map loadBytes := blocks_split256 b
+  have hidx : 0 + 16 * (chunksOf 256 b).length + ((chunksOf 16 (chunksRest 256 b)).map loadBytes).length =
+      b.length / 16 := by
+    rw [← hB, Nat.zero_add, ← List.length_append, ← hall, List.length_map, chunksOf_length]
+  rw [← (chunks_256 b).2, hidx, show 0 + 16 * (chunksOf 256 b).length = 0 + (blocksAll (chunksOf 256 b)).length by
+    rw [hB], ← List.append_assoc, ← List.flatMap_append, ← gctr_append, ← hall]
+  have hr := chunksRest_length 16 b
+  simp only [gctrEncrypt, List.length_map]
+  by_cases h0 : b.length % 16 = 0
+  · have ht : chunksRest 16 b = [] := List.eq_nil_of_length_eq_zero (by omega)
+    simp only [ht, List.isEmpty_nil, ite_true, h0, List.append_nil, flatMap_bytes_bv, leBytesToSeqQuad32_load]
+  · have ht : (chunksRest 16 b).isEmpty = false := by
+      rw [List.isEmpty_eq_false_iff]; intro h; rw [h] at hr; simp at hr; omega
+    have hk : b.length - b.length % 16 = 16 * (b.length / 16) := by omega
+    have hd : b.drop (16 * (b.length / 16)) = chunksRest 16 b := rfl
+    have hpad : padTo128Bits ((chunksRest 16 b).map (·.bv)) =
+        (chunksRest 16 b).map (·.bv) ++ List.replicate (16 - b.length % 16) 0 := by
+      rw [padTo128Bits, List.length_map, hr, Nat.mod_mod, ite_eq_right h0]
+    have hlp : low.x86_64.ghash.loadPadded (chunksRest 16 b) =
+        leBytesToQuad32 ((chunksRest 16 b).map (·.bv) ++ List.replicate (16 - b.length % 16) 0) := by
+      rw [low.x86_64.ghash.loadPadded, loadBytes, List.map_append, List.map_replicate, hr]
+      rfl
+    simp only [ht, Bool.false_eq_true, ite_false, h0, List.map_append, flatMap_bytes_bv,
+      hk, ← List.map_take, ← List.map_drop, hd, leBytesToSeqQuad32_load, hpad, hlp, hr,
+      show 16 * (b.length / 16) / 16 = b.length / 16 by omega]
+    rw [List.map_take, bytes_bv, ← hk, chunksOf_take16]
+
 end rind.x86_64
