@@ -290,6 +290,15 @@ fn pkcs8_private_key(input: &[u8]) -> Option<&[u8]> {
     (tag == 0x04).then_some(private_key)
 }
 
+/// Whether the PKCS#8 document `input` is version 2 with no `publicKey`.
+fn pkcs8_v2_without_public_key(input: &[u8]) -> bool {
+    let Some(contents) = sequence(input) else {
+        return false;
+    };
+    let mut fields = elements(contents);
+    fields.next() == Some((0x02, &[1][..])) && !fields.any(|(tag, _)| tag == 0x81)
+}
+
 /// The public key of the SEC1 `ECPrivateKey` `input`.
 fn sec1_public_key(input: &[u8]) -> Option<&[u8]> {
     let (_, field) = elements(sequence(input)?).find(|(tag, _)| *tag == 0xa1)?;
@@ -949,7 +958,15 @@ fn slh_dsa_pkcs8<P: sign::SlhDsaParameterSet, R: slh_dsa::ParameterSet>(
     use pkcs8::{DecodePrivateKey, EncodePrivateKey};
     use slh_dsa::signature::Verifier;
     let ours = sign::SlhDsaKeyPair::<P>::from_pkcs8(input);
-    let theirs = slh_dsa::SigningKey::<R>::from_pkcs8_der(input);
+    // RustCrypto refuses a version 2 document without its public key, which
+    // RFC 5958 allows and rind takes, so it reads rind's version 1 export of
+    // that key instead.
+    let theirs = match &ours {
+        Ok(ours) if pkcs8_v2_without_public_key(input) => {
+            slh_dsa::SigningKey::<R>::from_pkcs8_der(ours.to_pkcs8().as_ref())
+        }
+        _ => slh_dsa::SigningKey::<R>::from_pkcs8_der(input),
+    };
     // RustCrypto takes what rind refuses: a `PK.root` that the seeds do not
     // make, a version 2 document's public key, and attributes.
     agree(&ours, &theirs, Expect::Stricter);
