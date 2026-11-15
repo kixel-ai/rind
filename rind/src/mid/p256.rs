@@ -565,7 +565,7 @@ impl AffineMontPoint {
     #[cfg(not(rind_backend = "x86_64"))]
     fn base_multiply(scalar: &Scalar) -> Self {
         let mut xy = [0; 8];
-        low::p256_scalarmulbase(&mut xy, &scalar.0, &precomp::CURVE_GENERATOR_PRECOMP);
+        low::p256_scalarmulbase(&mut xy, &scalar.0, &precomp::CURVE_GENERATOR_PRECOMP.0);
         let x = FieldElement(xy[Self::X].try_into().unwrap());
         let y = FieldElement(xy[Self::Y].try_into().unwrap());
         Self::from_xy(x.as_mont(), y.as_mont())
@@ -752,7 +752,7 @@ impl JacobianMontPoint {
 
         // The first point is infinity, with a zero `z`, when its digit is zero.
         let (digit, sign) = windows[0];
-        point.select_w7(&precomp::CURVE_GENERATOR_PRECOMP[0], digit, sign);
+        point.select_w7(&precomp::CURVE_GENERATOR_PRECOMP.0[0], digit, sign);
         let mut result = Self::from_affine(&point);
         low::bignum_mux(
             digit.into(),
@@ -764,7 +764,7 @@ impl JacobianMontPoint {
         #[allow(clippy::needless_range_loop)]
         for w in 1..37 {
             let (digit, sign) = windows[w];
-            point.select_w7(&precomp::CURVE_GENERATOR_PRECOMP[w], digit, sign);
+            point.select_w7(&precomp::CURVE_GENERATOR_PRECOMP.0[w], digit, sign);
             low::p256_point_add_affine(&mut result.xyz, &point.xy);
         }
         result
@@ -790,7 +790,7 @@ impl JacobianMontPoint {
             None => p.public_naf::<5>(),
             Some(_) => p.public_naf::<6>(),
         };
-        let g_multiples = &precomp::CURVE_GENERATOR_PRECOMP[0][..];
+        let g_multiples = &generator_table()[0][..];
 
         let mut result = Self::infinity();
         for i in (0..g_digits.len()).rev() {
@@ -1389,6 +1389,11 @@ type AffineMontPointTable = [[u64; 512]; 37];
 #[cfg(not(rind_backend = "x86_64"))]
 type AffineMontPointTable = [[u64; 256]; 43];
 
+/// The generator table's rows on either backend layout.
+fn generator_table() -> &'static AffineMontPointTable {
+    &precomp::CURVE_GENERATOR_PRECOMP.0
+}
+
 const CURVE_A_MONT: FieldElement = FieldElement([
     0xffff_ffff_ffff_fffc,
     0x0000_0003_ffff_ffff,
@@ -1594,7 +1599,7 @@ mod tests {
             assert_eq!(sum[..32], bytes[..], "{words:x?}");
             assert_eq!(sum[32], 0, "{words:x?}");
             // One window for each row of the generator table.
-            assert_eq!(windows, precomp::CURVE_GENERATOR_PRECOMP.len());
+            assert_eq!(windows, generator_table().len());
         }
     }
 
@@ -1720,8 +1725,10 @@ mod tests {
 
     #[test]
     fn base_point_precomp() {
+        assert_eq!(align_of_val(&precomp::CURVE_GENERATOR_PRECOMP), 64);
+        assert_eq!(generator_table().as_ptr() as usize % 64, 0);
         let mut base = JacobianMontPoint::from_affine(&CURVE_GENERATOR);
-        for row in &precomp::CURVE_GENERATOR_PRECOMP {
+        for row in generator_table().iter() {
             let mut multiple = base;
             for (i, entry) in (1..).zip(row.as_chunks::<8>().0) {
                 assert_eq!(&multiple.as_affine().xy, entry);

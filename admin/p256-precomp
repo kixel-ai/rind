@@ -62,17 +62,18 @@ def table(cfg, window, row_type):
         for _ in range(window):
             base = add(base, base)
     out.append(f"#[cfg({cfg})]")
-    out.append("pub(super) static CURVE_GENERATOR_PRECOMP: super::AffineMontPointTable = [")
+    out.append("pub(super) static CURVE_GENERATOR_PRECOMP: super::super::AlignedTable<super::AffineMontPointTable> =")
+    out.append("    super::super::AlignedTable([")
     # Packed as rustfmt packs them.
-    line = "   "
+    line = "       "
     for j in range(rows):
         item = f" ROW_{j},"
         if len(line) + len(item) > 100:
             out.append(line)
-            line = "   "
+            line = "       "
         line += item
     out.append(line)
-    out.append("];")
+    out.append("    ]);")
     return out
 
 
