@@ -1073,3 +1073,163 @@ let ECP_NISTZ256_SQR_MONTQ_CORRECT = time prove
   ACCUMULATOR_POP_ASSUM_LIST(MP_TAC o end_itlist CONJ o DESUM_RULE) THEN
   ASM_REWRITE_TAC[BITVAL_CLAUSES; VAL_WORD_BITVAL] THEN
   DISCH_THEN(fun th -> REWRITE_TAC[th]) THEN REAL_INTEGER_TAC);;
+
+let ECP_NISTZ256_SUB_FROMQ_CORRECT = time prove
+ (`!z py x0 x1 x2 x3 y0 y1 y2 y3 pc tbl stackpointer returnaddress.
+     nonoverlapping (word pc,0x9fe) (z,32) /\
+     nonoverlapping (stackpointer,8) (z,32)
+     ==> ensures x86
+          (\s. bytes_loaded s (word pc) (ecp_nistz256_point_add_affine_mc pc tbl) /\
+               read RIP s = word(pc + 0x960) /\
+               read RSP s = stackpointer /\
+               read (memory :> bytes64 stackpointer) s = returnaddress /\
+               read RDI s = z /\ read RBX s = py /\
+               read R14 s = word 0xffffffff /\
+               read R15 s = word 0xffffffff00000001 /\
+               read R12 s = x0 /\ read R13 s = x1 /\ read R8 s = x2 /\ read R9 s = x3 /\
+               read (memory :> bytes64 py) s = y0 /\
+               read (memory :> bytes64 (word_add py (word 8))) s = y1 /\
+               read (memory :> bytes64 (word_add py (word 16))) s = y2 /\
+               read (memory :> bytes64 (word_add py (word 24))) s = y3)
+          (\s. read RIP s = returnaddress /\
+               read RSP s = word_add stackpointer (word 8) /\
+               (bignum_of_wordlist [x0;x1;x2;x3] < p_256 /\
+                bignum_of_wordlist [y0;y1;y2;y3] < p_256
+                ==> &(bignum_from_memory (z,4) s) =
+                      (&(bignum_of_wordlist [x0;x1;x2;x3]) -
+                       &(bignum_of_wordlist [y0;y1;y2;y3])) rem &p_256 /\
+                    bignum_of_wordlist [read R12 s; read R13 s; read R8 s; read R9 s] =
+                      bignum_from_memory (z,4) s))
+          (MAYCHANGE [RIP; RSP; RAX; RCX; RBP; R8; R9; R10; R11; R12; R13] ,,
+           MAYCHANGE SOME_FLAGS ,, MAYCHANGE [events] ,,
+           MAYCHANGE [memory :> bytes(z,8 * 4)])`,
+  MAP_EVERY X_GEN_TAC
+   [`z:int64`; `py:int64`; `x0:int64`; `x1:int64`; `x2:int64`; `x3:int64`;
+    `y0:int64`; `y1:int64`; `y2:int64`; `y3:int64`;
+    `pc:num`; `tbl:num`; `stackpointer:int64`; `returnaddress:int64`] THEN
+  REWRITE_TAC[C_ARGUMENTS; C_RETURN; SOME_FLAGS; NONOVERLAPPING_CLAUSES] THEN
+  DISCH_THEN(REPEAT_TCL CONJUNCTS_THEN ASSUME_TAC) THEN
+  MAP_EVERY ABBREV_TAC
+   [`m = bignum_of_wordlist [x0;x1;x2;x3]`; `n = bignum_of_wordlist [y0;y1;y2;y3]`] THEN
+  ENSURES_INIT_TAC "s0" THEN
+  X86_ACCSTEPS_TAC ECP_NISTZ256_POINT_ADD_AFFINE_EXEC [1;2;4;5] (1--5) THEN
+  SUBGOAL_THEN `carry_s5 <=> m:num < n` SUBST_ALL_TAC THENL
+   [MATCH_MP_TAC FLAG_FROM_CARRY_LT THEN EXISTS_TAC `256` THEN
+    MAP_EVERY EXPAND_TAC ["m"; "n"] THEN
+    REWRITE_TAC[bignum_of_wordlist; GSYM REAL_OF_NUM_CLAUSES] THEN
+    ACCUMULATOR_ASSUM_LIST(MP_TAC o end_itlist CONJ o DECARRY_RULE) THEN
+    DISCH_THEN(fun th -> REWRITE_TAC[th]) THEN BOUNDER_TAC[];
+    ALL_TAC] THEN
+  X86_ACCSTEPS_TAC ECP_NISTZ256_POINT_ADD_AFFINE_EXEC [8;10;11;13] (6--23) THEN
+  ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN STRIP_TAC THEN
+  CONV_TAC(ONCE_DEPTH_CONV BIGNUM_LEXPAND_CONV) THEN
+  ASM_REWRITE_TAC[WORD_ADD_0] THEN
+  REWRITE_TAC[VAL_EQ_0; WORD_NEG_EQ_0; WORD_BITVAL_EQ_0; COND_SWAP] THEN
+  CONV_TAC SYM_CONV THEN MATCH_MP_TAC INT_REM_UNIQ THEN
+  EXISTS_TAC `--(&(bitval(m:num < n))):int` THEN REWRITE_TAC[INT_ABS_NUM] THEN
+  REWRITE_TAC[INT_ARITH `m - n:int = --b * p + z <=> z = b * p + m - n`] THEN
+  REWRITE_TAC[int_eq; int_le; int_lt] THEN
+  REWRITE_TAC[int_add_th; int_mul_th; int_of_num_th; int_sub_th] THEN
+  REWRITE_TAC[GSYM REAL_OF_NUM_ADD; GSYM REAL_OF_NUM_MUL;
+              GSYM REAL_OF_NUM_POW] THEN
+  MATCH_MP_TAC(REAL_ARITH
+  `!t:real. p < t /\
+            (&0 <= a /\ a < p) /\
+            (&0 <= z /\ z < t) /\
+            ((&0 <= z /\ z < t) /\ (&0 <= a /\ a < t) ==> z = a)
+            ==> z = a /\ &0 <= z /\ z < p`) THEN
+  EXISTS_TAC `(&2:real) pow 256` THEN
+  CONJ_TAC THENL [REWRITE_TAC[p_256] THEN REAL_ARITH_TAC; ALL_TAC] THEN
+  CONJ_TAC THENL
+   [MAP_EVERY UNDISCH_TAC [`m:num < p_256`; `n:num < p_256`] THEN
+    REWRITE_TAC[GSYM REAL_OF_NUM_LT] THEN
+    ASM_CASES_TAC `&m:real < &n` THEN ASM_REWRITE_TAC[BITVAL_CLAUSES] THEN
+    POP_ASSUM MP_TAC THEN REWRITE_TAC[p_256] THEN REAL_ARITH_TAC;
+    ALL_TAC] THEN
+  CONJ_TAC THENL
+   [REWRITE_TAC[bignum_of_wordlist; GSYM REAL_OF_NUM_CLAUSES] THEN BOUNDER_TAC[];
+    STRIP_TAC] THEN
+  MATCH_MP_TAC EQUAL_FROM_CONGRUENT_REAL THEN
+  MAP_EVERY EXISTS_TAC [`256`; `&0:real`] THEN
+  ASM_REWRITE_TAC[] THEN
+  CONJ_TAC THENL [REAL_INTEGER_TAC; ALL_TAC] THEN
+  ACCUMULATOR_POP_ASSUM_LIST(MP_TAC o end_itlist CONJ o DESUM_RULE) THEN
+  COND_CASES_TAC THEN ASM_REWRITE_TAC[BITVAL_CLAUSES] THEN
+  CONV_TAC WORD_REDUCE_CONV THEN
+  MAP_EVERY EXPAND_TAC ["m"; "n"] THEN
+  REWRITE_TAC[bignum_of_wordlist; GSYM REAL_OF_NUM_CLAUSES; p_256] THEN
+  DISCH_THEN(fun th -> REWRITE_TAC[th]) THEN REAL_INTEGER_TAC);;
+
+let ECP_NISTZ256_SUBQ_CORRECT = time prove
+ (`!x0 x1 x2 x3 y0 y1 y2 y3 pc tbl stackpointer returnaddress.
+     ensures x86
+          (\s. bytes_loaded s (word pc) (ecp_nistz256_point_add_affine_mc pc tbl) /\
+               read RIP s = word(pc + 0x9c0) /\
+               read RSP s = stackpointer /\
+               read (memory :> bytes64 stackpointer) s = returnaddress /\
+               read R14 s = word 0xffffffff /\
+               read R15 s = word 0xffffffff00000001 /\
+               read RAX s = x0 /\ read RBP s = x1 /\ read RCX s = x2 /\ read R10 s = x3 /\
+               read R12 s = y0 /\ read R13 s = y1 /\ read R8 s = y2 /\ read R9 s = y3)
+          (\s. read RIP s = returnaddress /\
+               read RSP s = word_add stackpointer (word 8) /\
+               (bignum_of_wordlist [x0;x1;x2;x3] < p_256 /\
+                bignum_of_wordlist [y0;y1;y2;y3] < p_256
+                ==> &(bignum_of_wordlist [read R12 s; read R13 s; read R8 s; read R9 s]) =
+                      (&(bignum_of_wordlist [x0;x1;x2;x3]) -
+                       &(bignum_of_wordlist [y0;y1;y2;y3])) rem &p_256))
+          (MAYCHANGE [RIP; RSP; RAX; RCX; RBP; R8; R9; R10; R11; R12; R13] ,,
+           MAYCHANGE SOME_FLAGS ,, MAYCHANGE [events])`,
+  MAP_EVERY X_GEN_TAC
+   [`x0:int64`; `x1:int64`; `x2:int64`; `x3:int64`;
+    `y0:int64`; `y1:int64`; `y2:int64`; `y3:int64`;
+    `pc:num`; `tbl:num`; `stackpointer:int64`; `returnaddress:int64`] THEN
+  REWRITE_TAC[SOME_FLAGS] THEN
+  MAP_EVERY ABBREV_TAC
+   [`m = bignum_of_wordlist [x0;x1;x2;x3]`; `n = bignum_of_wordlist [y0;y1;y2;y3]`] THEN
+  ENSURES_INIT_TAC "s0" THEN
+  X86_ACCSTEPS_TAC ECP_NISTZ256_POINT_ADD_AFFINE_EXEC [1;2;4;5] (1--5) THEN
+  SUBGOAL_THEN `carry_s5 <=> m:num < n` SUBST_ALL_TAC THENL
+   [MATCH_MP_TAC FLAG_FROM_CARRY_LT THEN EXISTS_TAC `256` THEN
+    MAP_EVERY EXPAND_TAC ["m"; "n"] THEN
+    REWRITE_TAC[bignum_of_wordlist; GSYM REAL_OF_NUM_CLAUSES] THEN
+    ACCUMULATOR_ASSUM_LIST(MP_TAC o end_itlist CONJ o DECARRY_RULE) THEN
+    DISCH_THEN(fun th -> REWRITE_TAC[th]) THEN BOUNDER_TAC[];
+    ALL_TAC] THEN
+  X86_ACCSTEPS_TAC ECP_NISTZ256_POINT_ADD_AFFINE_EXEC [8;10;11;13] (6--19) THEN
+  ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN STRIP_TAC THEN
+  REWRITE_TAC[VAL_EQ_0; WORD_NEG_EQ_0; WORD_BITVAL_EQ_0] THEN
+  CONV_TAC SYM_CONV THEN MATCH_MP_TAC INT_REM_UNIQ THEN
+  EXISTS_TAC `--(&(bitval(m:num < n))):int` THEN REWRITE_TAC[INT_ABS_NUM] THEN
+  REWRITE_TAC[INT_ARITH `m - n:int = --b * p + z <=> z = b * p + m - n`] THEN
+  REWRITE_TAC[int_eq; int_le; int_lt] THEN
+  REWRITE_TAC[int_add_th; int_mul_th; int_of_num_th; int_sub_th] THEN
+  REWRITE_TAC[GSYM REAL_OF_NUM_ADD; GSYM REAL_OF_NUM_MUL;
+              GSYM REAL_OF_NUM_POW] THEN
+  MATCH_MP_TAC(REAL_ARITH
+  `!t:real. p < t /\
+            (&0 <= a /\ a < p) /\
+            (&0 <= z /\ z < t) /\
+            ((&0 <= z /\ z < t) /\ (&0 <= a /\ a < t) ==> z = a)
+            ==> z = a /\ &0 <= z /\ z < p`) THEN
+  EXISTS_TAC `(&2:real) pow 256` THEN
+  CONJ_TAC THENL [REWRITE_TAC[p_256] THEN REAL_ARITH_TAC; ALL_TAC] THEN
+  CONJ_TAC THENL
+   [MAP_EVERY UNDISCH_TAC [`m:num < p_256`; `n:num < p_256`] THEN
+    REWRITE_TAC[GSYM REAL_OF_NUM_LT] THEN
+    ASM_CASES_TAC `&m:real < &n` THEN ASM_REWRITE_TAC[BITVAL_CLAUSES] THEN
+    POP_ASSUM MP_TAC THEN REWRITE_TAC[p_256] THEN REAL_ARITH_TAC;
+    ALL_TAC] THEN
+  CONJ_TAC THENL
+   [REWRITE_TAC[bignum_of_wordlist; GSYM REAL_OF_NUM_CLAUSES] THEN BOUNDER_TAC[];
+    STRIP_TAC] THEN
+  MATCH_MP_TAC EQUAL_FROM_CONGRUENT_REAL THEN
+  MAP_EVERY EXISTS_TAC [`256`; `&0:real`] THEN
+  ASM_REWRITE_TAC[] THEN
+  CONJ_TAC THENL [REAL_INTEGER_TAC; ALL_TAC] THEN
+  ACCUMULATOR_POP_ASSUM_LIST(MP_TAC o end_itlist CONJ o DESUM_RULE) THEN
+  COND_CASES_TAC THEN ASM_REWRITE_TAC[BITVAL_CLAUSES] THEN
+  CONV_TAC WORD_REDUCE_CONV THEN
+  MAP_EVERY EXPAND_TAC ["m"; "n"] THEN
+  REWRITE_TAC[bignum_of_wordlist; GSYM REAL_OF_NUM_CLAUSES; p_256] THEN
+  DISCH_THEN(fun th -> REWRITE_TAC[th]) THEN REAL_INTEGER_TAC);;
