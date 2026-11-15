@@ -14,8 +14,8 @@ in [kixel-ai/rind#789](https://github.com/kixel-ai/rind/pull/789). What
 remains:
 
 - Register and answer AES-GCM sealing with internal IVs (`ivGen:
-  internal`), which [the IV quest](/quest/m4/fips/gcm-iv.md) adds to the
-  module: aws-lc's `acvptool` asks `AES-GCM/seal` with an empty nonce, and
+  internal`), which the module offers since
+  [kixel-ai/rind#771](https://github.com/kixel-ai/rind/pull/771): aws-lc's `acvptool` asks `AES-GCM/seal` with an empty nonce, and
   reads the ciphertext, tag, and 12-byte IV back in one string.
 - Register and answer ML-KEM-512 and ML-KEM-1024 once
   [kixel-ai/rind#606](https://github.com/kixel-ai/rind/pull/606) adds them
@@ -24,10 +24,6 @@ remains:
 - Once a credential exists, run fresh demo sets for every registered
   algorithm, once per CPU mask, in a scheduled job, as the offline test
   runs the samples.
-
-## Required
-
-- [AES-GCM with internal IVs](/quest/m4/fips/gcm-iv.md) - the module's sealing service
 
 ## Waiting
 
