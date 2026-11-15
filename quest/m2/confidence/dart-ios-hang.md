@@ -1,28 +1,11 @@
-# [S] rind-dart's iOS simulator job never hangs
+# [S] The dart-ios check finishes instead of hanging
 
 ## Goal
 
-`build.yml`'s `dart-ios` job finishes, passing or failing, well inside its
-30 minute limit on every run. Today it sometimes builds, then sits silent
-until GitHub cancels it.
+`build.yml`'s `dart-ios` job runs the Flutter integration tests on the iOS simulator and reports a result every time. On 2026-11-12 it hung on several unrelated branches (moq-dev/rind#634's three runs, one of the ML-KEM quest's, and one of release-plz's), each time silent from `Xcode build done` until the job's 30-minute timeout, while other runs on the same `macos-26-arm64` image printed the test results about 45 seconds after the build.
 
 ## Plan
 
-- Found 2026-11-15 on
-  [kixel-ai/rind#606](https://github.com/kixel-ai/rind/pull/606): its run
-  [43684431110](https://github.com/kixel-ai/rind/actions/runs/43684431110)
-  finished the Xcode build in 382 s, then printed nothing for 15 minutes
-  until the cancel. `main`'s `build` runs 42733808737 (2026-11-10),
-  43124199406 (2026-11-12), and 43645517003 (2026-11-14) ended the same
-  job at about 30.5 minutes, while passing runs take about 4.
-- First find where it waits: after `Xcode build done.`, `flutter test`
-  installs the app and attaches to it on the simulator `xcrun simctl boot`
-  started. Run it with `--verbose`, and on a hang dump
-  `xcrun simctl spawn "$udid" log show --last 5m` and the simulator's
-  process list, so a cancelled run shows whether the install, the launch, or
-  the attach stalled.
-- Suspects: the simulator still finishing first-boot work after
-  `bootstatus` returns, and `flutter test` waiting on a VM service URL the
-  app never prints. Fix the cause, such as waiting for the device to settle
-  or pinning a runtime that boots clean; a longer timeout or a retry is not a
-  fix.
+- Reproduce on a hosted `macos-latest` runner, or on the Mac mini once [its runner quest](/quest/m0/mac-mini-runner.md) lands, with the job's own command run verbosely (`flutter test integration_test -d "$udid" -v`) and the simulator's log (`xcrun simctl spawn <udid> log stream`) to find where it stops: installing the app, launching it, or attaching to its VM service.
+- Fix that cause. Raising the timeout or retrying the job only hides it.
+- Recommendation: add `-v` to the job's `flutter test` if the cause is intermittent, so the next hang names its step.
