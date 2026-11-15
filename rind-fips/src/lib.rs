@@ -161,7 +161,8 @@ pub mod pbkdf2;
 /// [`aead::RandomizedNonceKey`] draws each from the module's DRBG, and a
 /// [`aead::TlsRecordSealingKey`] seals TLS 1.3 records, whose sequence
 /// numbers it checks. An [`aead::Key`] opens what a peer sealed under its
-/// nonces.
+/// nonces, TLS 1.3 records included: opening one checks nothing more, so
+/// there is no `TlsRecordOpeningKey`.
 ///
 /// ```
 /// use rind_fips::aead::*;

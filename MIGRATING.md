@@ -100,7 +100,7 @@ reuses it. `verify` refuses a stored value shorter than the HMAC output with
 | `RandomizedNonceKey::new(&AES_256_GCM, key)`, with 96-bit random nonces | `RandomizedNonceKey::new(&key)`, XChaCha20-Poly1305 with 192-bit random nonces, which never collide in practice; rind-fips's keeps aws-lc-rs's AES-GCM, sealing at most 2^32 messages |
 | `RandomizedNonceKey::{seal_in_place_append_tag, open_in_place}` | the same, with the nonce a `RandomNonce` |
 | `RandomizedNonceKey::seal_in_place_separate_tag` | none; rind-fips's has it |
-| `TlsRecordSealingKey`, `TlsRecordOpeningKey`, `TlsProtocolId` | `Key`, since rind checks no nonce rules; rind-fips's `TlsRecordSealingKey` and `TlsProtocolId` seal TLS 1.3 records, which its `Key` opens |
+| `TlsRecordSealingKey`, `TlsRecordOpeningKey`, `TlsProtocolId` | `Key`, since rind checks no nonce rules; rind-fips's `TlsRecordSealingKey` and `TlsProtocolId` seal TLS 1.3 records, which its `Key` opens; it has no `TlsRecordOpeningKey`, since opening a TLS 1.3 record checks nothing that opening any AES-GCM message doesn't |
 | `open_separate_gather`, `seal_in_place_scatter`, `seal_out_of_place_scatter`, `prepare_nonce`, `SealingKeyPreparedNonce`, `OpeningKeyPreparedNonce`, `seal_in_place` (deprecated) | none |
 | `chacha20_poly1305_openssh::{SealingKey, OpeningKey, KEY_LEN, TAG_LEN}` | none: only SSH transports use it, and rind has no SSH consumer |
 

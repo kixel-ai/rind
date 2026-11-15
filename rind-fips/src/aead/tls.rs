@@ -40,7 +40,9 @@ pub enum TlsProtocolId {
 
 /// An AES-GCM key that seals TLS records, each only under a nonce whose
 /// sequence number is above the last one's; held in the module, which wipes
-/// it on drop. Open them with a [`super::Key`].
+/// it on drop. Open them with a [`super::Key`]: there is no
+/// `TlsRecordOpeningKey`, since opening a TLS 1.3 record checks nothing that
+/// opening any AES-GCM message doesn't.
 ///
 /// This is FIPS 140-3's TLS 1.3 IV construction (IG C.H scenario 5):
 /// the module manages the sequence number. Its first nonce must be the

@@ -70,3 +70,8 @@ These are in `rind` but not here, since FIPS 140-3 does not approve them:
   generates, so `aead::RandomizedNonceKey` seals under random 96-bit nonces
   from the DRBG, rather than XChaCha20-Poly1305 as rind's does, and
   `aead::TlsRecordSealingKey` seals TLS 1.3 records
+
+Nor is there a `TlsRecordOpeningKey`, as aws-lc-rs has: opening a TLS 1.3
+record checks nothing that opening any AES-GCM message doesn't, so
+`aead::Key` opens them, and a FIPS build of rind-aws-lc-rs wraps it to back
+aws-lc-rs's type.
