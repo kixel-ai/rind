@@ -489,7 +489,7 @@ impl VerifyingKey {
 
     /// FIPS 204's `ML-DSA.Verify_internal`, which ACVP tests: verifies
     /// `signature` over `mu` under this key, whose encoding is `pk`.
-    #[cfg(rind_fips)]
+    #[cfg(any(test, rind_fips))]
     pub(crate) fn verify_mu<P: Params>(
         &self,
         pk: &[u8],
