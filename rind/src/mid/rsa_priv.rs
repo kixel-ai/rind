@@ -44,8 +44,11 @@ impl RsaPrivateKey {
         if n.len_bits() < MIN_MODULUS_BITS {
             return Err(KeyFormatError::RsaModulus.into());
         }
-        // The primes are secret, but their bit lengths follow from n's and
-        // their parity is fixed in any valid key, so these are revealed.
+        // The primes are secret, but their bit lengths are revealed, as
+        // aws-lc treats them as public: n's fixes only their sum, yet the
+        // DER framing already reveals each one's byte length, and hiding the
+        // rest would run every CRT at the encoding's wider width. Their
+        // parity is fixed in any valid key.
         let (p_bits, q_bits) = (
             low::ct::into_public(p.len_bits()),
             low::ct::into_public(q.len_bits()),
