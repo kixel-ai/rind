@@ -284,7 +284,8 @@
           # its release with the decoders it takes from unisim-archisec and
           # the Bitwuzla solver it links. nixpkgs packages neither BINSEC nor
           # its `mula` dependency. BINSEC loads its plugins through findlib,
-          # so the wrapper points OCAMLPATH at its own.
+          # so the wrapper points OCAMLPATH at its own, and its library stays
+          # in `out`: a split `dev` output would reference `out` and back.
           binsec =
             let
               ocaml = pkgs.ocamlPackages;
@@ -300,6 +301,7 @@
             ocaml.buildDunePackage rec {
               pname = "binsec";
               version = "0.11.3";
+              outputs = [ "out" ];
               src = pkgs.fetchurl {
                 url = "https://github.com/binsec/binsec/releases/download/${version}/binsec-${version}.tbz";
                 hash = "sha256-k/b+Q51IaxZgYu9t2SxM46oJR7Xhixw6p94vwwA6ptk=";
@@ -494,15 +496,12 @@
                   cargo-modules
                   rustfmt-unstable
                   quest-cli
+                  release-plz
                   # rind-acvp's tests answer ACVP's vector sets through it.
                   acvptool
                 ]
                 ++ python-shell.packages
                 ++ pkgs.lib.optionals (!pkgs.stdenv.hostPlatform.isDarwin) [
-                  # Marked broken on Darwin in nixpkgs.
-                  # See UPSTREAM.md, "nixpkgs marks release-plz broken on
-                  # Darwin".
-                  release-plz
                   # admin/ctgrind's constant-time checks.
                   valgrind
                 ];
@@ -611,12 +610,7 @@
             coverage = pkgs.mkShell {
               packages = [
                 (rust-stable.minimal.override { extensions = [ "llvm-tools" ]; })
-                # Its tests build with nixpkgs' rustc, whose instrumented
-                # binaries crash on exit, so the cache has no build. rind's
-                # coverage builds with the toolchain above instead.
-                # See UPSTREAM.md, "nixpkgs' Rust crashes cargo-llvm-cov's
-                # tests".
-                (pkgs.cargo-llvm-cov.overrideAttrs { doCheck = false; })
+                pkgs.cargo-llvm-cov
                 # aws-lc-rs builds C.
                 pkgs.cmake
                 pkgs.pkg-config
