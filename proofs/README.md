@@ -67,6 +67,14 @@ those inputs, in any worktree, restores in under a second.
   the SHA-512 instructions, computes s2n-bignum's FIPS 180-4 spec,
   `sha512_hash_blocks`, and stores it to the state, as `sha256`'s above; the
   proof checks its round constants against FIPS 180-4's.
+- `x86_64/sha512_block_data_order_avx2.ml`:
+  `SHA512_AVX2_SUBROUTINE_CORRECT`, rind's proof that the naked function
+  `low::x86_64::sha512::sha512_block_data_order_avx2`, OpenSSL's routine for
+  AVX2, computes s2n-bignum's FIPS 180-4 spec, `sha512_hash_blocks`, and
+  stores it to the state, as `sha256`'s above, on s2n-bignum's x86 model with
+  the instructions rind's fork adds (`thirdparty/s2n-bignum/RIND.md`); the proof checks its round
+  constants against FIPS 180-4's. Its stack frame, which the routine aligns
+  down to 2048 bytes, lies in the 3440 bytes below the stack pointer.
 - `aarch64/bn_mul_mont.ml`: `BN_MUL_MONT_GENERIC_SUBROUTINE_CORRECT`, rind's
   proof that the naked function `low::aarch64::mont::bn_mul_mont`, aws-lc's
   Montgomery multiplication, writes the Montgomery product
@@ -105,23 +113,31 @@ those inputs, in any worktree, restores in under a second.
   the byte-swap mask through rcx from the static `low::x86_64::sha256::K`,
   whose bytes `admin/prove` extracts and the proof checks against FIPS
   180-4's.
-- `<arch>/ct_compare_16.ml` and `<arch>/ct_compare_bytes.ml`, on x86_64 and
-  aarch64: `CT_COMPARE_16_CORRECT` and `CT_COMPARE_BYTES_CORRECT`, that the
-  blocks in `low::<arch>::cpu::ct_compare_16` and `ct_compare_bytes` return
-  zero exactly when their inputs are equal, and `CT_COMPARE_16_SAFE` and
-  `CT_COMPARE_BYTES_SAFE`, in s2n-bignum's style, that their trace of loads
-  and branches is a function of the addresses and length alone, each load in
-  bounds. Both functions are `#[inline(never)]` with fixed registers, so the
-  proof covers their one copy.
+- `<arch>/ct_compare_16.ml` and `<arch>/ct_compare_bytes.ml`, on x86_64,
+  aarch64, and armv7: `CT_COMPARE_16_CORRECT` and `CT_COMPARE_BYTES_CORRECT`,
+  that the blocks in `low::<arch>::cpu::ct_compare_16` and `ct_compare_bytes`,
+  `low::arm::cpu` on armv7, return zero exactly when their inputs are equal,
+  and `CT_COMPARE_16_SAFE` and `CT_COMPARE_BYTES_SAFE`, in s2n-bignum's style,
+  that their trace of loads and branches is a function of the addresses and
+  length alone, each load in bounds. Both functions are `#[inline(never)]`
+  with fixed registers, so the proof covers their one copy. armv7's are on
+  the fork's AArch32 model below, which is A32 only, so they cover the
+  targets that build A32, such as `armv7-unknown-linux-gnueabihf`, whose
+  bytes `admin/prove` checks. `armv7-linux-androideabi` and the `thumbv7`
+  targets build these functions as Thumb-2, which no proof covers; rustc
+  refuses `#[instruction_set(arm::a32)]` on armv7's Linux and Android
+  targets, which would otherwise force A32.
 
 The fork adds what these proofs need to s2n-bignum: specs from s2n-bignum
 pull requests not yet merged, rind's own RFC 8439 spec of ChaCha20,
 Poly1305, and ChaCha20-Poly1305, `common/chacha20poly1305.ml`, whose
 known-answer tests `admin/prove hol-light` runs, the SHA extensions and
-other instructions an s2n-bignum pull request adds to the x86 model, and
-rind's own additions to it, which `x86/proofs/rind_cosim.ml` checks against
-the CPU with the pull request's. `nix develop .#hol-light --command
-admin/prove cosim` runs the cosimulation, on an x86_64 CPU with AVX2.
+other instructions an s2n-bignum pull request adds to the x86 model, rind's
+own additions to it, which `x86/proofs/rind_cosim.ml` checks against the CPU
+with the pull request's, and `aarch32/`, an AArch32 model of the A32
+instructions armv7's proofs need, which `aarch32/proofs/simulator.ml` checks
+against qemu-arm. `nix develop .#hol-light --command admin/prove cosim` runs
+both cosimulations, on an x86_64 CPU with AVX2.
 
 ## What is proven
 
@@ -427,13 +443,15 @@ The hash is cryptol-specs' FIPS 180-4 SHA-512, in `Rind/Sha2.lean`, with its
 block compression `processBlock_Common` transliterated from FIPS 180-4 and
 checked by `Rind/Sha2Test.lean` against its examples. Each theorem assumes
 `RunsSha512`: on x86_64 that rind picks aws-lc's AVX routine, on an Intel CPU
-with AVX but without AVX2, the routine whose proof states its result; on
-aarch64 only that rind's checks pass, as both of aws-lc's routines there have
-proofs: aws-lc-verification's of its scalar routine, and rind's HOL Light proof
-above of its routine for the SHA-512 instructions, which
-`Rind/Aarch64/AwsLc.lean` restates as the axiom
-`sha512_block_data_order_hw_spec` and `Rind/S2nSha512.lean` proves
-`Rind/Sha2.lean`'s. The
+with AVX but without AVX2, or OpenSSL's AVX2 routine, on a CPU with AVX2 but
+without the SHA512 instructions, whose proof is rind's HOL Light proof above,
+which `Rind/X86_64/AwsLc.lean` restates as the axiom
+`sha512_block_data_order_avx2_spec`; on aarch64 only that rind's checks pass,
+as both of aws-lc's routines there have proofs: aws-lc-verification's of its
+scalar routine, and rind's HOL Light proof above of its routine for the
+SHA-512 instructions, which `Rind/Aarch64/AwsLc.lean` restates as the axiom
+`sha512_block_data_order_hw_spec`. For both HOL Light proofs,
+`Rind/S2nSha512.lean` proves s2n-bignum's spec `Rind/Sha2.lean`'s. The
 digest API reaches each hash through function pointers too, which
 `Rind/X86_64/DigestDispatch.lean` models, and `Rind/X86_64/DigestAlgorithm.lean`
 models the `Algorithm` statics that hold them, and `Digest`, whose
@@ -500,7 +518,10 @@ which has [its quest](/quest/m4/verified/mlkem-construction.md):
 
 Ed25519 on x86_64 and aarch64, from the signature API's `Ed25519KeyPair` and
 `PublicKey` to s2n-bignum's routines and the SHA-512 proof above, in
-`Rind/X86_64/Ed25519.lean`, which `admin/prove` also writes for aarch64:
+`Rind/X86_64/Ed25519.lean`, which `admin/prove` also writes for aarch64, and
+for aarch64's verification in `Rind/Aarch64/Ed25519Verify.lean`. x86_64's
+verification checks a multiple of RFC 8032's equation with half-size
+scalars, which nothing proves yet, so the last two are aarch64's only:
 
 - `ed25519_generate`: the key pair's seed is the 32 drawn bytes, and a failed
   draw is refused;
@@ -524,12 +545,10 @@ The spec, in `Rind/Ed25519.lean`, is RFC 8032 over HOL Light's
 `edwards25519_group`, whose multiplication and power stay opaque, with
 s2n-bignum's `ed25519_encode` and `ed25519_decode` of its points. Each theorem
 assumes `Runs` and `RunsSha512`, and each with a message bounds it at
-2^64 - 64 bytes. The two that verify also assume `RunsDouble`: on x86_64
-that a CPU without ADX lacks AVX2 too, since with it rind runs a port of
-curve25519-dalek's AVX2 backend, which nothing proves, and on aarch64
-nothing. That a multiple of the base point is a point of the group,
-which `ed25519_key_pair_verify` assumes, is the group's theory, which these
-theorems do not import. `PublicKey` reaches each algorithm's key parser, and
+2^64 - 64 bytes. The two that verify also assume `RunsDouble`, which
+holds on every aarch64 CPU. That a multiple of the base point is a point of
+the group, which `ed25519_key_pair_verify` assumes, is the group's theory,
+which these theorems do not import. `PublicKey` reaches each algorithm's key parser, and
 each parsed key its verification, through function pointers, which
 `Rind/X86_64/SignatureDispatch.lean` models.
 

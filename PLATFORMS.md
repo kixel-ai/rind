@@ -42,8 +42,11 @@ qemu. iOS devices' code is only built.
   that hide it, [s2n-bignum]'s `_alt` routines replace those that use it,
   and [aws-lc]'s Montgomery multiplication replaces its Karatsuba routines
   for RSA; with `avx2` there, as on Haswell, RSA-2048 signing runs aws-lc's
-  RSAZ exponentiation, and Ed25519 verification a port of
-  [curve25519-dalek]'s AVX2 backend. With `avx512ifma`, as on Ice Lake,
+  RSAZ exponentiation, and Ed25519 verification's multiplication a port of
+  [curve25519-dalek]'s AVX2 backend. With `avx2` but without `sha`, as on
+  Intel's cores before Ice Lake and AMD's before Zen, SLH-DSA's SHA-2
+  parameter sets hash eight SHA-256 inputs at once with a port of the
+  SPHINCS+ team's AVX2 code. With `avx512ifma`, as on Ice Lake,
   Sapphire Rapids, and AMD's Zen 4 and 5, RSA-2048, 3072, and 4096 signing
   runs aws-lc's dual AVX-512 RSAZ.
 - 32-bit `arm` from ARMv7 on (tested on `armv7-unknown-linux-gnueabihf` and
@@ -60,6 +63,11 @@ qemu. iOS devices' code is only built.
   CPU has it, as do SHA-1 and SHA-256 without the crypto extension, and with
   NEON, X25519's shared secret runs [BoringSSL]'s assembly. SHA-3's, ML-KEM's,
   and ML-DSA's Keccak-f runs [OpenSSL]'s assembly, on NEON where the CPU has it.
+  That assembly is A32 on every target, but `armv7-linux-androideabi` and
+  the `thumbv7` targets build Rust as Thumb-2, the inline assembly of the
+  constant-time compares included, so the compares' proofs (see
+  [proofs/README.md](proofs/README.md)) cover only targets that build A32,
+  such as `armv7-unknown-linux-gnueabihf`.
 
 - Builds with `-Z cf-protection=branch` or `-Z branch-protection=bti`, both
   unstable, are unsupported: rind calls aws-lc's x86_64 and aarch64 routines
@@ -168,8 +176,9 @@ Intel guarantees the timing of the instructions it lists as data-independent
   vector integer multiplies, such as `vpmuludq` and `vpmullw`, may take a cycle
   longer for some values ([Intel MCDT]), and SGX enclaves are no exception.
   rind loads `0x1FBF` around its x86_64 ML-KEM, ML-DSA, RSA exponentiation
-  with AVX2 or AVX-512, and Ed25519 verification with AVX2, and around every
-  call on 32-bit `x86`, whose compiled arithmetic may use them anywhere, then
+  with AVX2 or AVX-512, and Ed25519 verification with AVX2 but without ADX,
+  and around every call on 32-bit `x86`, whose compiled arithmetic may use
+  them anywhere, then
   restores the caller's MXCSR. On the x86_64 backend, `admin/ct-vartime`
   checks that nothing rind exports reaches one except through a function that
   enters the mitigation. It counts all of such a function as covered, so each

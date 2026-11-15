@@ -47,6 +47,39 @@ binary size.
 The [launch post][launch-post] tells why rind exists and what building it
 cost in AI tokens.
 
+## Compared with the alternatives
+
+<!-- comparison: `admin/bench-report render` writes this table -->
+| Library | Build tools beyond rustc | Lacks, of the 14 algorithms benchmarked | Formally verified | Fastest, or within 10% |
+|---|---|---|---|---|
+| rind | [none](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#build-cost) | none | [aarch64: SHA-256 (some CPUs), SHA-512, SHA-3, HMAC (some CPUs), HKDF (some CPUs), X25519, Ed25519, P-256, P-384 (some operations); portable: SHA-256, SHA-512, HMAC, HKDF; x86_64: AES-GCM (some CPUs), SHA-512 (some CPUs), SHA-3, X25519, Ed25519 (some CPUs, some operations), P-384 (some operations), RSA (some CPUs, some operations)](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#verified-code) | [331 of its 354 times](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#speed) |
+| [aws-lc-rs](https://github.com/aws/aws-lc-rs) | [cc](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#build-cost) | XChaCha20-Poly1305 (aws-lc has it, through aws-lc-sys) | [x86_64: SHA-512 (some CPUs)](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#verified-code) | [127 of its 354 times](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#speed) |
+| [ring](https://github.com/briansmith/ring) | [cc](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#build-cost) | XChaCha20-Poly1305, P-521, ML-KEM | [none](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#verified-code) | [94 of its 294 times](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#speed) |
+| [RustCrypto + dalek](https://github.com/RustCrypto) | [none](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#build-cost) | none | [none](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#verified-code) | [27 of its 282 times](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#speed) |
+<!-- end comparison -->
+
+Build tools are what a minimal binary needs, algorithms count only what
+[BENCHMARKS.md][benchmarks] times, a proof counts only when it covers an
+operation's whole computation, and the last column counts each library's
+times against the fastest library's on the same machine.
+
+What the table leaves out favors the others:
+
+- **FIPS 140-3.** aws-lc-rs's `fips` feature builds against an
+  AWS-LC-FIPS module. Its newest releases build
+  [AWS-LC-FIPS 4.x][aws-lc-rs-fips], which an accredited lab has tested and
+  NIST is still reviewing, and older releases build earlier modules that
+  hold [NIST certificates][aws-lc-fips]. rind has no FIPS validation.
+- **Audits.** ring was in scope of [Cure53's 2020 audit of
+  rustls][rustls-audit]. RustCrypto's [aes-gcm][rustcrypto-aes-gcm] and
+  [chacha20poly1305][rustcrypto-chacha] have had an audit by NCC Group, and
+  its [rsa][rustcrypto-rsa] crate an earlier one its code has since diverged
+  from, it says; its p256, ml-kem, and ml-dsa crates say they have had none.
+  rind has had no third-party audit.
+- **Maturity and reach.** ring has run in production for years, and
+  RustCrypto covers far more algorithms. Both build without `std`, which
+  rind does not yet.
+
 ## Switch in one line
 
 rind is new, so exercise due caution.
@@ -90,9 +123,9 @@ ring and aws-lc-rs item to rind's.
 ### Directly
 
 The `rind` crate's own API covers AES-GCM, ChaCha20-Poly1305, and
-XChaCha20-Poly1305, QUIC header protection, X25519 and ECDH, ML-KEM-768,
-HPKE, ECDSA, Ed25519, ML-DSA, and RSA signatures, RSA blind signatures, ECVRF, OPRFs, RSA-OAEP, SHA-1, SHA-2, and SHA-3,
-HMAC, HKDF, PBKDF2, SPAKE2+, and AES key wrap. Each algorithm is a constant and each key
+XChaCha20-Poly1305, QUIC header protection, X25519 and ECDH, ML-KEM,
+HPKE, ECDSA, Ed25519, ML-DSA, SLH-DSA, and RSA signatures, RSA blind signatures, ECVRF, OPRFs, RSA-OAEP, SHA-1, SHA-2, and SHA-3,
+HMAC, HKDF, PBKDF2, Argon2id, SPAKE2+, and AES key wrap. Each algorithm is a constant or a type and each key
 type has one role, so misuse fails to compile:
 
 ```rust
@@ -135,16 +168,9 @@ Each crate's README shows its setup.
 ## Before you depend on it
 
 rind was written with AI coding agents, and no one outside the project has
-audited it. It is not FIPS 140-3 validated. The established libraries each
-have something it lacks:
-
-- **aws-lc-rs** has a FIPS 140-3 validated module behind its `fips` feature.
-- **ring** has run in production for years, and builds without `std`.
-- **RustCrypto** builds without `std`, covers far more algorithms, and some
-  of its crates have had independent audits.
-
-Where another library is faster, [Known gaps][gaps] says why and what closes
-it.
+audited it. It is not FIPS 140-3 validated. [The comparison][comparison]
+lists what the established libraries have that rind lacks, and where another
+library is faster, [Known gaps][gaps] says why and what closes it.
 
 ## Wiping keys
 
@@ -286,6 +312,12 @@ from other projects keeps its source's license, which [LICENSE] lists.
 [graviola-logo]: https://github.com/ctz/graviola/blob/main/admin/picture.png
 [rind-wordmark]: https://raw.githubusercontent.com/kixel-ai/rind/main/admin/wordmark.svg
 [aws-lc-rs]: https://github.com/aws/aws-lc-rs
+[aws-lc-rs-fips]: https://github.com/aws/aws-lc-rs/blob/main/aws-lc-rs/README.md#fips
+[aws-lc-fips]: https://github.com/aws/aws-lc/blob/main/crypto/fipsmodule/FIPS.md#validations
+[rustls-audit]: https://github.com/rustls/rustls/blob/main/audit/TLS-01-report.pdf
+[rustcrypto-aes-gcm]: https://github.com/RustCrypto/AEADs/tree/master/aes-gcm#security-notes
+[rustcrypto-chacha]: https://github.com/RustCrypto/AEADs/tree/master/chacha20poly1305#security-notes
+[rustcrypto-rsa]: https://github.com/RustCrypto/RSA#readme
 [s2n-bignum]: https://github.com/awslabs/s2n-bignum
 [HACL\*]: https://github.com/hacl-star/hacl-star
 [libcrux]: https://github.com/cryspen/libcrux
@@ -316,6 +348,7 @@ from other projects keeps its source's license, which [LICENSE] lists.
 [migrating]: https://github.com/kixel-ai/rind/blob/main/MIGRATING.md
 [benchmarks]: https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md
 [gaps]: https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#known-gaps
+[comparison]: https://github.com/kixel-ai/rind/blob/main/README.md#compared-with-the-alternatives
 [build-cost]: https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#build-cost
 [verified]: https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#verified-code
 [testing]: https://github.com/kixel-ai/rind/blob/main/TESTING.md#primitives

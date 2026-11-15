@@ -13,9 +13,9 @@ Each upstream rind changes, with where its fork is vendored and where the list o
 
 ### s2n-bignum
 
-- **Breaks:** s2n-bignum's HOL Light x86_64 model cannot decode some instructions of aws-lc's ChaCha20-Poly1305 and ChaCha20 routines, or the SHA extensions rind's SHA-256 blocks run, and its SHA-256 and SHA-512 specs are in pull requests not yet merged, so those routines cannot be proven on it.
+- **Breaks:** s2n-bignum's HOL Light x86_64 model cannot decode some instructions of aws-lc's ChaCha20-Poly1305 and ChaCha20 routines, or the SHA extensions rind's SHA-256 blocks run, its SHA-256 and SHA-512 specs are in pull requests not yet merged, and it has no AArch32 model, so those routines and armv7's assembly cannot be proven on it.
 - **Fork:** `thirdparty/s2n-bignum`, upstream's whole tree at the base its `RIND.md` names (maintainer, 2026-11-13, on [kixel-ai/rind#701](https://github.com/kixel-ai/rind/pull/701)).
-- **Changes:** listed in [its `RIND.md`](/thirdparty/s2n-bignum/RIND.md), which `admin/regenerate` checks lists every file that differs from upstream's: the model additions of [awslabs/s2n-bignum#450](https://github.com/awslabs/s2n-bignum/pull/450), the SHA extensions among them, rind's own additions, both cosimulated against the CPU, rind's ChaCha20-Poly1305 spec, and the specs of [awslabs/s2n-bignum#415](https://github.com/awslabs/s2n-bignum/pull/415) and [#420](https://github.com/awslabs/s2n-bignum/pull/420).
+- **Changes:** listed in [its `RIND.md`](/thirdparty/s2n-bignum/RIND.md), which `admin/regenerate` checks lists every file that differs from upstream's: the model additions of [awslabs/s2n-bignum#450](https://github.com/awslabs/s2n-bignum/pull/450), the SHA extensions among them, rind's own additions, both cosimulated against the CPU, rind's AArch32 model in `aarch32/`, cosimulated against qemu-arm, rind's ChaCha20-Poly1305 spec, and the specs of [awslabs/s2n-bignum#415](https://github.com/awslabs/s2n-bignum/pull/415) and [#420](https://github.com/awslabs/s2n-bignum/pull/420).
 - **Offered:** no. #415, #420, and #450 are upstream's own open pull requests; rind's own changes need the maintainer's approval to post ([kixel-ai/rind#448](https://github.com/kixel-ai/rind/pull/448)), which [upstream-reports](/quest/m2/upstream-reports.md) asks for.
 - **Goes when:** s2n-bignum merges each change and the fork's base moves past it.
 
@@ -250,26 +250,12 @@ Each upstream rind changes, with where its fork is vendored and where the list o
 - **Reported:** no; offering it needs the maintainer's approval, which [upstream-reports](/quest/m2/upstream-reports.md) asks for.
 - **Goes when:** a blind-rsa-signatures release builds on `rsa` 0.10.0.
 
-### nixpkgs' Rust crashes cargo-llvm-cov's tests
-
-- **Breaks:** cargo-llvm-cov's tests build with nixpkgs' rustc, whose instrumented binaries crash on exit, so cache.nixos.org has no build of it.
-- **Workaround:** `flake.nix`'s `coverage` shell overrides cargo-llvm-cov with `doCheck = false`; rind's coverage builds with the pinned toolchain, not nixpkgs'.
-- **Reported:** no.
-- **Goes when:** nixpkgs builds cargo-llvm-cov.
-
 ### nixpkgs' Lean cannot read Mathlib's cache
 
 - **Breaks:** Mathlib's prebuilt cache is read by the `leantar` bundled with the Lean toolchain, which nixpkgs' Lean lacks.
 - **Workaround:** `flake.nix`'s `prove` shell takes `elan`, which fetches the toolchain `proofs/lean-toolchain` names.
 - **Reported:** no.
 - **Goes when:** nixpkgs' Lean reads Mathlib's cache.
-
-### nixpkgs marks release-plz broken on Darwin
-
-- **Breaks:** nixpkgs marks release-plz broken on Darwin, so the default shell cannot evaluate with it there.
-- **Workaround:** `flake.nix`'s default shell adds release-plz only off Darwin.
-- **Reported:** no.
-- **Goes when:** nixpkgs builds release-plz on Darwin.
 
 ## CI tools
 

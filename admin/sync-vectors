@@ -9,8 +9,8 @@
 # here.
 set -euo pipefail
 
-AWS_LC=2f9a0e95cc2c29235d9b98db8cf86e22b271b35a
-BORINGSSL=0131ae9d78e42fcc2c1811315e62410ad96d8230
+AWS_LC=5ed12cce0fd4453f2f63300d44325ed14f845d6f
+BORINGSSL=8f2554dc344d403fd6d628773d39637c323eb801
 # RFC 9180's repository. hpkewg/hpke's revision of it repeats these vectors
 # unchanged.
 HPKE=b1f7cb0cdeab6906c61b3d6574e8bdfdbe1cd3fb
@@ -19,7 +19,7 @@ HASH_TO_CURVE=664b13592116cecc9e52fb192dcde0ade36f904e
 # blind-rsa-signatures 0.18.0, whose JSON holds all four of RFC 9474's
 # vectors; the CFRG draft's repository holds stale ones.
 BLIND_RSA=45d0abfa829c3623389daae30bc35e9b2f3b550c
-WYCHEPROOF=dab4ea2ed021eb633874959ca601004f3457d911
+WYCHEPROOF=65ca494727a52944c204441c860b039e6786b99b
 # ctz/cavp mirrors NIST's CAVP sample responses.
 CAVP=0220357e399badc6e9b87e237c428463a00d0992
 CCTV=b88c4b206254ac543df240097e0f1fcc6a664821
@@ -59,6 +59,11 @@ boringssl_files=(
     crypto/evp/test/mlkem_tests.txt
     crypto/evp/test/rsa_tests.txt
     crypto/evp/test/x25519_tests.txt
+    crypto/mlkem/mlkem1024_decap_tests.txt
+    crypto/mlkem/mlkem1024_encap_tests.txt
+    crypto/mlkem/mlkem1024_keygen_tests.txt
+    crypto/mlkem/mlkem1024_nist_decap_tests.txt
+    crypto/mlkem/mlkem1024_nist_keygen_tests.txt
     crypto/mlkem/mlkem768_decap_tests.txt
     crypto/mlkem/mlkem768_encap_tests.txt
     crypto/mlkem/mlkem768_keygen_tests.txt
@@ -114,8 +119,17 @@ wycheproof_files=(
     testvectors_v1/mldsa_87_sign_noseed_test.json
     testvectors_v1/mldsa_87_sign_seed_test.json
     testvectors_v1/mldsa_87_verify_test.json
+    testvectors_v1/mlkem_1024_encaps_test.json
+    testvectors_v1/mlkem_1024_keygen_seed_test.json
+    testvectors_v1/mlkem_1024_semi_expanded_decaps_test.json
+    testvectors_v1/mlkem_1024_test.json
+    testvectors_v1/mlkem_512_encaps_test.json
+    testvectors_v1/mlkem_512_keygen_seed_test.json
+    testvectors_v1/mlkem_512_semi_expanded_decaps_test.json
+    testvectors_v1/mlkem_512_test.json
     testvectors_v1/mlkem_768_encaps_test.json
     testvectors_v1/mlkem_768_keygen_seed_test.json
+    testvectors_v1/mlkem_768_semi_expanded_decaps_test.json
     testvectors_v1/mlkem_768_test.json
     testvectors_v1/pbkdf2_hmacsha1_test.json
     testvectors_v1/pbkdf2_hmacsha256_test.json
@@ -221,9 +235,17 @@ cavp_files=(
 cctv_files=(
     ML-KEM/README.md
     ed25519/LICENSE
+    ML-KEM/intermediate/ML-KEM-1024.txt
+    ML-KEM/intermediate/ML-KEM-512.txt
     ML-KEM/intermediate/ML-KEM-768.txt
+    ML-KEM/modulus/ML-KEM-1024.txt.gz
+    ML-KEM/modulus/ML-KEM-512.txt.gz
     ML-KEM/modulus/ML-KEM-768.txt.gz
+    ML-KEM/strcmp/ML-KEM-1024.txt
+    ML-KEM/strcmp/ML-KEM-512.txt
     ML-KEM/strcmp/ML-KEM-768.txt
+    ML-KEM/unluckysample/ML-KEM-1024.txt
+    ML-KEM/unluckysample/ML-KEM-512.txt
     ML-KEM/unluckysample/ML-KEM-768.txt
     ed25519/ed25519vectors.json
 )

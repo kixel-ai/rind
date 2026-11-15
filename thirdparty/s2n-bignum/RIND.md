@@ -29,6 +29,9 @@ Each bullet names one file.
 - `x86/proofs/instruction.ml`: the two sets of instructions below.
 - `x86/proofs/decode.ml`: their decoders.
 - `x86/proofs/x86.ml`: their semantics.
+- `x86/proofs/simulator.ml`: the CPU features `ANDN` and `RORX` need, BMI1
+  and BMI2, so cosimulation skips them on a CPU without those, as it does
+  upstream's other instructions.
 - `x86/proofs/utils/sha256_spec.ml`: SHA-256's FIPS 180-4 spec, from
   [awslabs/s2n-bignum#415](https://github.com/awslabs/s2n-bignum/pull/415) at
   `79120e64ed55e37c9652565ff272b7ef17f76738`, unchanged.
@@ -52,6 +55,20 @@ Each bullet names one file.
   #450's SHA-256 operations on constants, which the simulator's
   simplification leaves folded. Offered upstream, its encodings would join
   `x86/proofs/simulator.ml`'s, as s2n-bignum's own additions do.
+- `aarch32/proofs/instruction.ml`: rind's. The AArch32 model's state and the
+  semantics of the instructions below, from the Arm Architecture Reference
+  Manual's AArch32 pseudocode (DDI 0487, part F).
+- `aarch32/proofs/decode.ml`: rind's. Their A32 encodings.
+- `aarch32/proofs/aarch32.ml`: rind's. The step relation, symbolic-execution
+  tactics, and AAPCS argument and clobber lists.
+- `aarch32/proofs/consttime.ml`: rind's. s2n-bignum's safety tactics
+  specialized to the model.
+- `aarch32/proofs/base.ml`: rind's. What a proof on the model loads.
+- `aarch32/proofs/simulator.ml`: rind's. The model's cosimulation against
+  qemu-arm.
+- `aarch32/proofs/cosim_runner.c`: rind's. The cosimulation's executor, a
+  static armv7 program.
+- `aarch32/proofs/cosim_start.S`: rind's. That program's entry point.
 
 ### Instructions from awslabs/s2n-bignum#450
 
@@ -74,9 +91,11 @@ requires a 16-byte memory source to be aligned.
 What aws-lc's x86_64 ChaCha20-Poly1305 and ChaCha20 routines need,
 `chacha20_poly1305_{seal,open}`, `poly_hash_ad_internal`, and
 `ChaCha20_ctr32_ssse3_4x` (maintainer, 2026-11-11, on
-[kixel-ai/rind#627](https://github.com/kixel-ai/rind/pull/627)), and its
+[kixel-ai/rind#627](https://github.com/kixel-ai/rind/pull/627)), its
 AES-CTR and AES-CBC routines, `aes_hw_ctr32_encrypt_blocks` and
-`aes_hw_cbc_encrypt`. With them every instruction of those routines, as rind's release build emits them,
+`aes_hw_cbc_encrypt`, and what OpenSSL's `sha512_block_data_order_avx2` adds
+to them: BMI1's `ANDN`, BMI2's `RORX`, and `PUSH m64`. With them every
+instruction of those routines, as rind's release build emits them,
 decodes. Posting them to awslabs/s2n-bignum needs the maintainer's approval
 ([kixel-ai/rind#448](https://github.com/kixel-ai/rind/pull/448)).
 
@@ -94,6 +113,9 @@ decodes. Posting them to awslabs/s2n-bignum needs the maintainer's approval
 | `PUNPCKLDQ xmm, xmm/m128` | 66 0F 62 /r | |
 | `PUNPCKHDQ xmm, xmm/m128` | 66 0F 6A /r | |
 | `VBROADCASTI128 ymm, m128` | VEX.256.66.0F38.W0 5A /r | |
+| `ANDN r32/64, r32/64, r/m32/64` | VEX.LZ.0F38.W0/W1 F2 /r | sets SF and ZF, clears OF and CF, AF and PF undefined |
+| `RORX r32/64, r/m32/64, imm8` | VEX.LZ.F2.0F3A.W0/W1 F0 /r ib | leaves the flags |
+| `PUSH r/m64` | FF /6 | the memory form; the model already decodes the register one |
 | `RET` with the F3 prefix | F3 C3 | aws-lc's `rep ret`, which every CPU runs as `RET` |
 | `XORPS xmm, xmm/m128` | 0F 57 /r | decoded as `PXOR`, the same bitwise XOR of the low 128 bits |
 | `PREFETCHT0 m8` | 0F 18 /1 | decoded as `NOP_N`: a prefetch changes no architectural state |
@@ -106,3 +128,37 @@ without it, and, as
 upstream's own since `64e533b`, take a 16-byte memory source only aligned.
 `OPERAND_SIZE_CASES` gains the 32-or-8-bit operand case `PINSRB` and
 `PEXTRB` dispatch on. `rind_cosim.ml` checks every row but `RET` and `STOSB`.
+
+### rind's AArch32 model
+
+`aarch32/proofs/` models the A32 instructions armv7's proofs need, after
+s2n-bignum's RV32IM model in `riscv/proofs/` and on the 32-bit infrastructure
+[awslabs/s2n-bignum#452](https://github.com/awslabs/s2n-bignum/pull/452)
+added. The state is R0-R12, SP, LR, PC, the N, Z, C, and V flags, memory, and
+the event trace s2n-bignum's safety proofs read.
+
+| Instructions | Forms |
+| --- | --- |
+| `AND`, `EOR`, `SUB`, `RSB`, `ADD`, `ADC`, `SBC`, `RSC`, `ORR`, `BIC`, and their `S` forms | register with an immediate shift, or a modified immediate |
+| `TST`, `TEQ`, `CMP`, `CMN` | the same operands |
+| `MOV`, `MVN`, and their `S` forms | the same operands |
+| `MOVW`, `MOVT` | 16-bit immediate |
+| `LDR`, `LDRB`, `STR`, `STRB` | 12-bit immediate offset, pre-indexed, or post-indexed |
+| `B` | 24-bit offset |
+
+Each takes any condition but the unconditional space. The decoder refuses
+everything else: Thumb, register-shifted registers, PC as an operand or
+destination, `LDRT` and the other unprivileged forms, write-back to the
+transferred register, and every other encoding. Loads and stores may be
+unaligned, as Linux and Android leave them.
+
+`simulator.ml` cosimulates the model as s2n-bignum's
+`riscv/proofs/simulator.ml` does its own: directed cases at the shifts' and
+carries' edges, a backward branch, and unaligned word loads and stores, then
+random instructions from every row above, each with a random condition and
+state, branches forward and back and word offsets unaligned, which
+`cosim_runner.c` and `cosim_start.S` run under qemu-arm, and the model must
+prove reach the same state. `admin/prove cosim` runs 1000 random cases,
+printing the seed, which
+`S2N_BIGNUM_SEMATEST_SEED` repeats. Offering the model upstream is also a
+post to awslabs/s2n-bignum, which needs the maintainer's approval.

@@ -24,8 +24,9 @@ cargo bench
 [BENCHMARKS.md](BENCHMARKS.md#updating-this-report) says how to refresh the benchmark report.
 
 With [Nix](https://nixos.org), `nix develop` (or direnv) provides CI's
-toolchain, and `just check` runs CI's gate over what the branch changed; the
-scheduled workflows' tools are in [TESTING.md](TESTING.md#running-the-tools).
+toolchain, and `just check` runs CI's gate over what the branch changed,
+three modules at a time (`sh/dispatch.sh` lists the `CHECK_*` variables that
+change that); the scheduled workflows' tools are in [TESTING.md](TESTING.md#running-the-tools).
 
 # Commits
 
@@ -86,6 +87,8 @@ A PR that adds such a workaround adds its entry there and names the entry in the
 
 release-plz opens a release PR from `main`, and publishing happens only when that PR merges.
 release-plz owns crate versions.
+It creates a GitHub Release for each tag it pushes, with its changelog entry as the body, and only rind's marked latest.
+If creating one fails, the release job stops there and alerts, leaving later crates and pyrind's PyPI upload undone. Rerun the failed `Release` run, which finishes them but skips the tag already pushed, then create that tag's Release by hand with `gh release create <tag> --verify-tag --latest=false --title <tag> --notes-file <its CHANGELOG.md entry>`, passing `--latest` for rind's.
 
 A release PR merges only after `just release-check` passes at its head, so nothing publishes that the full suite has not passed.
 It dispatches every scheduled workflow but `bench` and `dart-libraries` on the PR's branch, so each runs its whole scheduled matrix on the head, and waits for them all, which takes as long as the slowest. Mutation testing covers every change since the previous release.
