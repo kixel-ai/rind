@@ -793,4 +793,54 @@ theorem tail_hash (H : P) (hH : Small H) (t : low.x86_64.ghash.GhashTableAvx512)
     simp [xor_zero']
   rw [hk, hl, sumPow_tailInputs H current _ (by simp)]
 
+/-- `_cipher_avx512`: Vale's GCTR from the counter after `j0`, and GHASH over
+the AAD's and the ciphertext's padded blocks, for tables of `H`'s powers. -/
+theorem cipher_avx512_spec (ENC : Bool) (hk : low.x86_64.aes.HwKey) (alg : Algorithm) (kw : List (BitVec 32))
+    (hkey : HwKeyIs alg kw hk) (H : P) (hH : Small H) (t : low.x86_64.ghash.GhashTableAvx512)
+    (ht : Avx512Powers H t) (htc : TableFor H t.clmul) (ghash : low.x86_64.ghash.Ghash)
+    (hg : ghash.table = .Avx512 t) (j0 : Quad32) (y0 : Std.Array U8 16#usize)
+    (hy : loadBytes y0.val = reverseBytesQuad32 j0) (aad inout : Slice U8)
+    (tok : low.x86_64.cpu.HaveAvx512ForAesGcm) :
+    ∃ g out, low.x86_64.aes_gcm._cipher_avx512 ENC hk ghash y0 aad inout tok = ok (g, out) ∧
+      g.table = ghash.table ∧
+      out.val.map (·.bv) = gctrEncrypt (inc32 j0 1) (inout.val.map (·.bv)) alg kw ∧
+      toPoly g.current = ghashPoly H (toPoly ghash.current)
+        ((padBlocks aad.val ++ padBlocks (if ENC then out.val else inout.val)).map toPoly) := by
+  obtain ⟨y1, hy1, hy1p⟩ := avx512_add_spec H hH t ht htc aad.val ghash.current
+  have hadd : low.x86_64.ghash.Ghash.addBytes ghash aad.val = ok { ghash with current := y1 } := by
+    obtain ⟨tb, cur⟩ := ghash
+    simp only at hg
+    subst hg
+    simp only [low.x86_64.ghash.Ghash.addBytes, hy1, bind_ok]
+  have hch : ∀ c ∈ chunksOf 256 inout.val, c.length = 256 := fun c h => chunksOf_length_mem h
+  obtain ⟨y2, hy2, hy2p⟩ := by16_loop_eq hkey ENC H hH t ht (inc32 j0 1) (chunksOf 256 inout.val) hch 0 y1
+  have hheadl : ((gctrEncryptRecursive (inc32 j0 1) alg kw (blocksAll (chunksOf 256 inout.val)) 0).flatMap
+      low.x86_64.aes_gcm.bytes).length % 16 = 0 := by rw [length_flatMap_bytes]; omega
+  have hout_len : ∀ out : List U8, out.map (·.bv) = gctrEncrypt (inc32 j0 1) (inout.val.map (·.bv)) alg kw →
+      out.length ≤ Usize.max := fun out h => by
+    have := congrArg List.length h
+    rw [List.length_map, length_gctrEncrypt, List.length_map] at this
+    rw [this]; exact inout.property
+  unfold low.x86_64.aes_gcm._cipher_avx512
+  simp only [hadd, bind_ok, round_keys_512_eq, uncurry_apply_pair, counter512_new j0 y0 hy, hg, hy2]
+  by_cases hT0 : chunksRest 256 inout.val = []
+  · have hout : ((gctrEncryptRecursive (inc32 j0 1) alg kw (blocksAll (chunksOf 256 inout.val)) 0).flatMap
+        low.x86_64.aes_gcm.bytes).map (·.bv) = gctrEncrypt (inc32 j0 1) (inout.val.map (·.bv)) alg kw := by
+      have := by16_out (inc32 j0 1) alg kw inout.val
+      rw [hT0] at this
+      simp only [show chunksOf 16 ([] : List U8) = [] from rfl, show chunksRest 16 ([] : List U8) = [] from rfl,
+        List.map_nil, gctrEncryptRecursive, List.flatMap_nil, List.isEmpty_nil, ite_true, List.append_nil] at this
+      exact this
+    simp only [hT0, List.isEmpty_nil, ite_true, bind_ok, uncurry_apply_pair]
+    rw [dite_eq_left (hout_len _ hout)]
+    refine ⟨_, _, rfl, rfl, by rw [Slice.from_val]; exact hout, ?_⟩
+    dsimp only
+    rw [hy2p, hy1p, List.map_append, ghashPoly_append]
+    congr 2
+    cases ENC
+    · simp only [Bool.false_eq_true, ite_false]
+      conv_rhs => rw [← flatten_chunksOf_rest 256 (by omega) inout.val, hT0, List.append_nil]
+    · simp only [ite_true, Slice.from_val]
+  · sorry
+
 end rind.x86_64
