@@ -97,9 +97,20 @@ function check(from: string, url: string) {
 	if (repoPath === undefined) return;
 	const file = decodeURIComponent(repoPath).replace(/\/$/, "");
 	if (!existsSync(path.join(root, file))) return fail(`${from}: ${url} names ${file}, which the repository lacks`);
-	if (fragment && !(file.endsWith(".md") && anchors(file).has(fragment))) {
+	if (fragment && !(file.endsWith(".md") ? anchors(file).has(fragment) : hasLines(file, fragment))) {
 		fail(`${from}: ${url} names an anchor ${file} lacks`);
 	}
+}
+
+// Whether a file GitHub shows as source has the line, or range, `#L5` or
+// `#L5-L9` names.
+function hasLines(file: string, fragment: string): boolean {
+	const full = path.join(root, file);
+	const range = fragment.match(/^L(\d+)(?:-L(\d+))?$/);
+	if (range === null || statSync(full).isDirectory()) return false;
+	const text = readFileSync(full, "utf8");
+	const count = text.split("\n").length - (text.endsWith("\n") ? 1 : 0);
+	return range.slice(1).every((n) => n === undefined || (Number(n) >= 1 && Number(n) <= count));
 }
 
 // A numeric character reference's character, or U+FFFD where HTML gives one

@@ -21,6 +21,7 @@ test.each([
 	"10. parent\n    - child",
 	"- [ ] todo",
 	"````text\n```\n````",
+	"    value  ",
 ])("%s", (body) => {
 	const doc = lex(
 		`> [n]: /nested\n\n## S\n\n${body}\n\n## T\n\n[r]: https://example.com/r\n[multi word]: </m (x)> "t"\n[a\\]b]: /guide\n[e]: <>\n`,

@@ -67,9 +67,15 @@ try {
 		if (response.status >= 400) errors.push(`${current}: ${response.url} returned ${response.status}`);
 	});
 	const urls = new Map<string, string>();
+	// The policy's hashes would also admit a third-party script carrying a matching
+	// `integrity`, so every request, each redirect included, must stay on the site.
 	view.addEventListener("Network.requestWillBeSent", (e) => {
 		const { requestId, request } = (e as MessageEvent).data;
 		urls.set(requestId, request.url);
+		const url = new URL(request.url);
+		if (url.protocol !== "data:" && url.origin !== server.url.origin) {
+			errors.push(`${current}: ${request.url} loads from a third party`);
+		}
 	});
 	view.addEventListener("Network.loadingFailed", (e) => {
 		const { requestId, errorText, blockedReason, canceled } = (e as MessageEvent).data;

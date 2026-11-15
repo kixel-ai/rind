@@ -23,7 +23,7 @@ export const inlineHtml = (inline: Token[]): string => Parser.parseInline(inline
 export const blocks = (tokens: Token[]): string =>
 	tokens
 		.filter((t) => t.type !== "space" && t.type !== "def")
-		.map((t) => t.raw.trimEnd())
+		.map((t) => t.raw.replace(/\n+$/, ""))
 		.join("\n\n");
 
 // Spans as their source wrote them.
