@@ -75,6 +75,10 @@ The modules:
 - `slh_dsa`: SLH-DSA's twelve parameter sets (FIPS 205, pure, with the empty
   context), whose parameter set is a type, as in `ml_dsa`. A signature, up
   to 49,856 bytes, lives on the heap.
+- `frost`: RFC 9591's FROST threshold signatures over Ed25519, ristretto255,
+  and P-256: a trusted dealer's shares and commitment, each signer's
+  single-use nonces and signature share, and a coordinator's signing package
+  that aggregates the shares and verifies each, under a group public key.
 - `digest`: MD5 and SHA-1 (legacy only), SHA-256, SHA-384, SHA-512,
   SHA-512/256, SHA3-256, SHA3-384, and SHA3-512.
 - `hmac`: HMAC over SHA-1 and SHA-2, keyed once and reused.

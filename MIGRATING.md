@@ -59,11 +59,12 @@ renames [rind-aws-lc-rs](#rind-aws-lc-rs) to `aws-lc-rs` the same way.
 | `Salt::none(alg)` | `Salt::new(&alg, &[])`, which extracts the same key as RFC 5869's absent salt |
 | `HKDF_SHA256`, `HKDF_SHA384`, `HKDF_SHA512` | the same |
 | `HKDF_SHA1_FOR_LEGACY_USE_ONLY` | `legacy::HKDF_SHA1` |
-| `prk.expand(info, len)?` | the same, failing with `Error::WrongLength` beyond 255 hash outputs; rind-fips also refuses an empty `info` |
-| your own `KeyType` | none: it is sealed, for a `usize` byte length or an `aead`, `aead::quic`, `hmac`, or `hkdf` algorithm |
+| `Prk::new_less_safe(HKDF_SHA256, prk)` | `Prk::new(&HKDF_SHA256, prk)` |
+| `prk.expand(info, alg)?`, for a key | the same, which never fails in rind; rind-fips refuses an empty `info` |
+| `prk.expand(info, len)?.fill(out)?`, with your own `KeyType` for `len` | `prk.fill(info, out)?`, failing with `Error::WrongLength` beyond 255 hash outputs; rind-fips also refuses an empty `info` |
+| your own `KeyType` | none: it is sealed, for an `aead`, `aead::quic`, `hmac`, or `hkdf` algorithm |
 | `UnboundKey::from(okm)`, `HeaderProtectionKey::from(okm)`, `hmac::Key::from(okm)`, `Prk::from(okm)` | `aead::Key::from(okm)`, `HeaderProtectionKey::from(okm)`, `hmac::Key::from(okm)`, `Prk::from(okm)` with `&HKDF_SHA256` |
-| `Okm::fill(out)` | the same, for a `usize` length only |
-| `Salt::from(okm)`, `Prk::new_less_safe` | none |
+| `Salt::from(okm)` | none |
 | `Salt::algorithm()`, `Okm::len()`, `Algorithm::hmac_algorithm()` | none |
 
 ## pbkdf2
@@ -581,7 +582,7 @@ install ring's if nothing is installed first.
 | rcgen 0.14 | default `ring`, or `aws_lc_rs`, gates `KeyPair` | **rind-rcgen**: ECDSA P-256 and P-384, Ed25519, and loaded RSA keys. Without rcgen's `crypto` feature, set each certificate's serial number, and its `key_identifier_method` or the key identifiers are empty |
 | instant-acme | 0.8 calls aws-lc-rs or ring; the unreleased 0.9 takes a `CryptoProvider` | Unsupported: 0.8 has no provider hook, and 0.9 is unreleased |
 | rustls-acme 0.15, tokio-rustls-acme 0.9 | account keys and CSRs call ring or aws-lc-rs | **Patch**: rustls-acme's `ring` without its default `aws-lc-rs` |
-| x509-parser 0.18 | `verify` is ring, `verify-aws` aws-lc-rs | **Patch**: `verify`, or verify `tbs_certificate` with `rind::signature` |
+| x509-parser 0.18 | `verify` is ring, `verify-aws` aws-lc-rs | **Patch**: `verify`, or verify `tbs_certificate` with the key's module, such as `rind::ecdsa::PublicKey::verify` |
 | x509-certificate 0.25, cryptographic-message-syntax 0.28 | ring types in their public API | **Patch** |
 | sigstore 0.14, tough 0.24 | aws-lc-rs, unconditionally | Unsupported |
 | jsonwebtoken 11 | optional `aws_lc_rs` | **rind-jsonwebtoken**, every algorithm. `rust_crypto` is the pure-Rust alternative |
