@@ -925,23 +925,26 @@ fn verify_internal<P: Params>(
 
     // A use that keeps nothing expands only `A`, and transforms `t1` a row
     // at a time, as an unkept `t1 * 2^d` would only cost memory traffic.
-    // Always initialised, so its drop needs no flag: aarch64 builds tested
-    // a deferred one's unset capacity first, which valgrind flags.
-    let mut unkept = Vec::new();
-    let kept = expanded.get_or_build(|| Some(expand_public::<P>(pk)));
-    let (a, kept_t1) = match kept.and_then(Option::as_deref) {
+    let kept = expanded
+        .get_or_build(|| Some(expand_public::<P>(pk)))
+        .and_then(Option::as_deref);
+    // Bound on every path, empty when kept, so its drop needs no flag: an
+    // aarch64 build tested a deferred one's unset capacity before its flag,
+    // a branch valgrind flags.
+    let unkept = match kept {
+        Some(_) => Vec::new(),
+        None => {
+            let mut a = vec![Poly::ZERO; k * l];
+            expand_a::<P>(pk[..SEED_LEN].try_into().unwrap(), &mut a);
+            a
+        }
+    };
+    let (a, kept_t1) = match kept {
         Some(expanded) => {
             let (a, t1_hat) = expanded.split_at(k * l);
             (a, Some(t1_hat))
         }
-        None => {
-            unkept = {
-                let mut a = vec![Poly::ZERO; k * l];
-                expand_a::<P>(pk[..SEED_LEN].try_into().unwrap(), &mut a);
-                a
-            };
-            (&unkept[..], None)
-        }
+        None => (&unkept[..], None),
     };
     let t1_packed = pk[SEED_LEN..].as_chunks::<T1_PACKED>().0;
     let mut c = Poly::ZERO;
