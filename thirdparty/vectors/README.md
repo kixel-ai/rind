@@ -31,6 +31,11 @@ pins: the `expand_message_xmd` files and the P-256, P-384, and P-521
 `_RO_` suites, named without the colons Windows cannot check out. They are
 IETF contributions too.
 
+`rfc9909/` holds [RFC 9909]'s appendix C examples, an SLH-DSA-SHA2-128s
+public key, private key, and self-signed certificate, decoded from the RFC's
+PEM to DER by hand, since no repository publishes them. They too are IETF
+contributions, under [BCP 78].
+
 `rfc9474/test-vectors.json` holds [RFC 9474]'s four RSABSSA vectors, from
 [blind-rsa-signatures] at the revision `admin/sync-vectors` pins, as the
 CFRG draft's repository holds stale ones. They are IETF contributions, under
@@ -42,6 +47,11 @@ pins: the OPRF and VOPRF modes of the ristretto255, P-256, P-384, and P-521
 suites, without decaf448 and the POPRF mode, which rind does not offer.
 They are IETF contributions, under [BCP 78].
 
+`rfc9591/` holds [RFC 9591]'s FROST vectors, its Appendix E, from the CFRG
+draft's `poc` at the revision `admin/sync-vectors` pins: the Ed25519,
+ristretto255, and P-256 suites, without Ed448 and secp256k1, which rind does
+not offer. They are IETF contributions, under [BCP 78].
+
 [aws-lc]: https://github.com/aws/aws-lc
 [Wycheproof]: https://github.com/C2SP/wycheproof
 [CAVP]: https://csrc.nist.gov/projects/cryptographic-algorithm-validation-program
@@ -50,8 +60,10 @@ They are IETF contributions, under [BCP 78].
 [BoringSSL]: https://boringssl.googlesource.com/boringssl
 [RFC 9180]: https://www.rfc-editor.org/rfc/rfc9180.html
 [RFC 9380]: https://www.rfc-editor.org/rfc/rfc9380.html
+[RFC 9909]: https://www.rfc-editor.org/rfc/rfc9909.html
 [hpkewg/hpke]: https://github.com/hpkewg/hpke
 [RFC 9474]: https://www.rfc-editor.org/rfc/rfc9474.html
 [RFC 9497]: https://www.rfc-editor.org/rfc/rfc9497.html
+[RFC 9591]: https://www.rfc-editor.org/rfc/rfc9591.html
 [blind-rsa-signatures]: https://github.com/jedisct1/rust-blind-rsa-signatures
 [BCP 78]: https://www.rfc-editor.org/info/bcp78

@@ -985,6 +985,26 @@ let x86_AND = new_definition
  *** moderately recent extensions.
  ***)
 
+(*** ANDN (BMI1) and RORX (BMI2). ANDN sets SF and ZF from its result and
+ *** clears OF and CF, leaving AF and PF undefined; RORX leaves the flags.
+ ***)
+
+let x86_ANDN = new_definition
+ `x86_ANDN dest src1 src2 s =
+        let x = read src1 s and y = read src2 s in
+        let z = word_and (word_not x) y in
+        (dest := (z:N word) ,,
+         ZF := (val z = 0) ,,
+         SF := (ival z < &0) ,,
+         CF := F ,,
+         OF := F ,,
+         UNDEFINED_VALUES[AF;PF]) s`;;
+
+let x86_RORX = new_definition
+ `x86_RORX dest src c s =
+        let x = read src s in
+        (dest := (word_ror x c:N word)) s`;;
+
 (*** On a zero input the destination is undefined. The "destx" argument
  *** is the whole 64-bit register even for 32-bit operands, since some
  *** implementations leave the top half alone and others may clear it.
@@ -1422,6 +1442,21 @@ let x86_PBLENDW = new_definition
      let res = msimd8 fn imm8 x y in
      (dest := res) s`;;
 
+let x86_PANDN = new_definition
+  `x86_PANDN dest src s =
+    let x = read dest s in
+    let y = read src s in
+    (dest := word_and (word_not x) y) s`;;
+
+let x86_PCMPEQD = new_definition
+  `x86_PCMPEQD dest src s =
+    let x = read dest s in
+    let y = read src s in
+    let res:(128)word = simd4 (\(x:32 word) (y:32 word).
+        if x = y then (word 0xffffffff) else (word 0))
+        x y in
+    (dest := res) s`;;
+
 let x86_PCMPGTD = new_definition
   `x86_PCMPGTD dest src s =
     let x = read dest s in
@@ -1830,6 +1865,18 @@ let x86_SHL = new_definition
        (if c = 0 then
           AF := read AF s
         else UNDEFINED_VALUES[AF])) s`;;
+
+(*** BMI2's flagless shifts by a register, its count masked to the width. ***)
+
+let x86_SHLX = new_definition
+ `x86_SHLX dest src c (s:x86state) =
+      let x:N word = read src s in
+      (dest := word_shl x c) s`;;
+
+let x86_SHRX = new_definition
+ `x86_SHRX dest src c (s:x86state) =
+      let x:N word = read src s in
+      (dest := word_ushr x c) s`;;
 
 (*** With masked counts > dimindex(:N) (only possible for 16-bit operands
  *** since the count is masked to 5 bits) the result and all flags are
@@ -3130,6 +3177,13 @@ let x86_execute = define
         (\s. (x86_AESKEYGENASSIST (OPERAND128_SSE dest s) (OPERAND128_SSE src s)
                                   (OPERAND8 imm8 s)) s)) s
         else (\s'. F)
+    | ANDN dest src1 src2 ->
+       (add_load_event src1 s ,, add_load_event src2 s ,,
+        add_store_event dest s ,,
+       (\s. (match operand_size dest with
+          64 -> x86_ANDN (OPERAND64 dest s) (OPERAND64 src1 s) (OPERAND64 src2 s)
+        | 32 -> x86_ANDN (OPERAND32 dest s) (OPERAND32 src1 s) (OPERAND32 src2 s))
+          s)) s
     | AND dest src ->
         (add_load_event src s ,, add_load_event dest s ,,
          add_store_event dest s ,,
@@ -3462,6 +3516,18 @@ let x86_execute = define
        (\s. x86_PBLENDW (OPERAND128_SSE dest s) (OPERAND128_SSE src s)
                         (OPERAND8 imm8 s) s)) s
        else (\s'. F)
+    | PANDN dest src ->
+       if aligned_OPERAND128 src s then
+       (add_load_event dest s ,, add_load_event src s ,,
+        add_store_event dest s ,,
+       (\s. x86_PANDN (OPERAND128_SSE dest s) (OPERAND128_SSE src s) s)) s
+       else (\s'. F)
+    | PCMPEQD dest src ->
+       if aligned_OPERAND128 src s then
+       (add_load_event dest s ,, add_load_event src s ,,
+        add_store_event dest s ,,
+       (\s. x86_PCMPEQD (OPERAND128_SSE dest s) (OPERAND128_SSE src s) s)) s
+       else (\s'. F)
     | PCMPGTD dest src ->
        if aligned_OPERAND128 src s then
        (add_load_event dest s ,, add_load_event src s ,,
@@ -3638,6 +3704,13 @@ let x86_execute = define
                         (val(read (OPERAND8 src s) s) MOD 32)
          | 8 -> x86_ROL (OPERAND8 dest s)
                         (val(read (OPERAND8 src s) s) MOD 32)) s)) s
+    | RORX dest src imm8 ->
+       (add_load_event src s ,, add_store_event dest s ,,
+       (\s. (match operand_size dest with
+           64 -> x86_RORX (OPERAND64 dest s) (OPERAND64 src s)
+                          (val(read (OPERAND8 imm8 s) s) MOD 64)
+         | 32 -> x86_RORX (OPERAND32 dest s) (OPERAND32 src s)
+                          (val(read (OPERAND8 imm8 s) s) MOD 32)) s)) s
     | ROR dest src ->
        (add_load_event dest s ,, add_load_event src s ,,
         add_store_event dest s ,,
@@ -3687,6 +3760,22 @@ let x86_execute = define
                         (val(read (OPERAND8 src s) s) MOD 32)
          | 8 -> x86_SHL (OPERAND8 dest s)
                         (val(read (OPERAND8 src s) s) MOD 32)) s)) s
+    | SHLX dest src cnt ->
+       (add_load_event src s ,, add_load_event cnt s ,,
+        add_store_event dest s ,,
+       (\s. (match operand_size dest with
+           64 -> x86_SHLX (OPERAND64 dest s) (OPERAND64 src s)
+                          (val(read (OPERAND64 cnt s) s) MOD 64)
+         | 32 -> x86_SHLX (OPERAND32 dest s) (OPERAND32 src s)
+                          (val(read (OPERAND32 cnt s) s) MOD 32)) s)) s
+    | SHRX dest src cnt ->
+       (add_load_event src s ,, add_load_event cnt s ,,
+        add_store_event dest s ,,
+       (\s. (match operand_size dest with
+           64 -> x86_SHRX (OPERAND64 dest s) (OPERAND64 src s)
+                          (val(read (OPERAND64 cnt s) s) MOD 64)
+         | 32 -> x86_SHRX (OPERAND32 dest s) (OPERAND32 src s)
+                          (val(read (OPERAND32 cnt s) s) MOD 32)) s)) s
     | SHLD dest src c ->
         (add_load_event dest s ,, add_load_event src s ,,
          add_store_event dest s ,,
@@ -5067,6 +5156,7 @@ let EXPAND_SIMD_RULE =
 let x86_PADDD_ALT = EXPAND_SIMD_RULE x86_PADDD;;
 let x86_PADDQ_ALT = EXPAND_SIMD_RULE x86_PADDQ;;
 let x86_PBLENDW_ALT = EXPAND_SIMD_RULE x86_PBLENDW;;
+let x86_PCMPEQD_ALT = EXPAND_SIMD_RULE x86_PCMPEQD;;
 let x86_PCMPGTD_ALT = EXPAND_SIMD_RULE x86_PCMPGTD;;
 let x86_PCMPGTW_ALT = EXPAND_SIMD_RULE x86_PCMPGTW;;
 
@@ -5196,22 +5286,22 @@ let X86_OPERATION_CLAUSES =
        CONV_RULE(TOP_DEPTH_CONV let_CONV) o SPEC_ALL)
    [x86_ADC_ALT; x86_ADCX_ALT; x86_ADOX_ALT; x86_ADD_ALT;
     x86_AESDEC; x86_AESDECLAST; x86_AESENC; x86_AESENCLAST;
-    x86_AESKEYGENASSIST; x86_AND;
+    x86_AESKEYGENASSIST; x86_AND; x86_ANDN;
     x86_BSF; x86_BSR; x86_BSWAP; x86_BT; x86_BTC_ALT; x86_BTR_ALT; x86_BTS_ALT;
     x86_CALL_ALT; x86_CLC; x86_CLD; x86_CMC; x86_CMOV; x86_CMP_ALT; x86_DEC;
     x86_ENDBR64; x86_IMUL; x86_IMUL2; x86_IMUL3; x86_INC; x86_LEA; x86_LZCNT;
     x86_MOV; x86_MOVAPS; x86_MOVDQA; x86_MOVDQU; x86_MOVD; x86_MOVQ; x86_VMOVD; x86_VMOVQ;
     x86_VMOVHPD; x86_MOVSX; x86_MOVUPS; x86_MOVSB_ALT;
     x86_MOVZX; x86_MUL2; x86_MULX4; x86_NEG; x86_NOP; x86_NOP_N; x86_NOT; x86_OR;
-    x86_PADDD_ALT; x86_PADDQ_ALT; x86_PALIGNR; x86_PAND; x86_PBLENDW_ALT; x86_PCMPGTD_ALT; x86_PCMPGTW_ALT;
+    x86_PADDD_ALT; x86_PADDQ_ALT; x86_PALIGNR; x86_PAND; x86_PANDN; x86_PBLENDW_ALT; x86_PCMPEQD_ALT; x86_PCMPGTD_ALT; x86_PCMPGTW_ALT;
     x86_PEXT_ALT; x86_PEXTRB; x86_PEXTRQ; x86_PINSRB; x86_PINSRD; x86_PINSRQ; x86_PMOVMSKB_ALT; x86_POP_ALT; x86_POPCNT;
     x86_POR; x86_PSHUFB_ALT; x86_PSHUFD_ALT; x86_PSLLD_ALT; x86_PSLLDQ; x86_PSRAD_ALT;
     x86_PSRLD_ALT; x86_PSRLDQ; x86_PSRLW_ALT;
     x86_PUNPCKHDQ; x86_PUNPCKHQDQ; x86_PUNPCKLDQ; x86_PUNPCKLQDQ; x86_PUSH_ALT; x86_PXOR;
-    x86_RCL; x86_RCR; x86_RET; x86_ROL; x86_ROR;
+    x86_RCL; x86_RCR; x86_RET; x86_ROL; x86_ROR; x86_RORX;
     x86_SAR; x86_SBB_ALT; x86_SET;
     x86_SHA256RNDS2; x86_SHA256MSG1; x86_SHA256MSG2;
-    x86_SHL_ALT; x86_SHLD_ALT; x86_SHR_ALT; x86_SHRD_ALT;
+    x86_SHL_ALT; x86_SHLD_ALT; x86_SHLX; x86_SHR_ALT; x86_SHRD_ALT; x86_SHRX;
     x86_STC; x86_STD; x86_SUB_ALT; x86_TEST; x86_TZCNT; x86_XCHG; x86_XOR;
     (*** AVX2 instructions ***)
     x86_VBROADCASTI128; x86_VPALIGNR_ALT;

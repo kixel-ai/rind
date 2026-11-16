@@ -99,22 +99,23 @@ The pins, as `admin/audit` renders them from the files that hold them, so
 <!-- admin/audit pins: begin -->
 | Upstream | Pin | Pinned in | What rind takes at it |
 |---|---|---|---|
-| aws-lc | `91c93a8eb860` | `admin/import-aws-lc` | copied and ported code |
-| BoringSSL | `ed9209cff8b5` | `admin/import-boringssl` | copied code |
+| aws-lc | `5ed12cce0fd4` | `admin/import-aws-lc` | copied and ported code |
+| BoringSSL | `8f2554dc344d` | `admin/import-boringssl` | copied code |
 | OpenSSL | `2f4e3a5fec05` | `admin/import-openssl` | copied code |
 | HACL\* | `f557259007db` | `admin/import-hacl` | Vale's x86_64 AES-GCM |
 | s2n-bignum | `3f01260ff1bd` | `thirdparty/s2n-bignum/RIND.md` | assembly and the HOL Light proofs of it |
 | aws-lc | `c21d40da4bbe` | `admin/prove-bytes` | the routines aws-lc-verification's SHA-384/512 proofs are about |
 | ACVP-Server | `975de31eb83d` | `admin/sync-acvp` | test vectors |
-| aws-lc | `2f9a0e95cc2c` | `admin/sync-vectors` | test vectors |
-| BoringSSL | `0131ae9d78e4` | `admin/sync-vectors` | test vectors |
-| Wycheproof | `dab4ea2ed021` | `admin/sync-vectors` | test vectors |
+| aws-lc | `5ed12cce0fd4` | `admin/sync-vectors` | test vectors |
+| BoringSSL | `8f2554dc344d` | `admin/sync-vectors` | test vectors |
+| Wycheproof | `65ca494727a5` | `admin/sync-vectors` | test vectors |
 | CAVP | `0220357e399b` | `admin/sync-vectors` | test vectors |
 | CCTV | `b88c4b206254` | `admin/sync-vectors` | test vectors |
 | RFC 9180 | `b1f7cb0cdeab` | `admin/sync-vectors` | HPKE test vectors |
 | RFC 9380 | `664b13592116` | `admin/sync-vectors` | hash-to-curve test vectors |
 | blind-rsa-signatures | `45d0abfa829c` | `admin/sync-vectors` | RFC 9474 test vectors |
 | RFC 9497 | `5d7d94c8dc75` | `admin/sync-vectors` | OPRF test vectors |
+| RFC 9591 | `127452b93acb` | `admin/sync-vectors` | FROST test vectors |
 | cfg-if | 1.0.5 | `Cargo.lock` | a macro for `cfg` blocks |
 | curve25519-dalek | 5.0.0 | `Cargo.lock` | X25519, Ed25519, and ristretto255 on armv7 and the portable backend |
 | fiat-crypto | 0.3.0 | `Cargo.lock` | the NIST curves' field arithmetic on armv7 and the portable backend |
@@ -282,13 +283,15 @@ Hand-written arithmetic no proof covers, by where it came from:
   on armv7 and the portable backend. There ristretto255's differential test
   compares dalek with itself, so only RFC 9496's and RFC 9497's vectors
   check it.
-- **x86_64 P-256's mixed addition**, aws-lc's, on which rind's proofs of
-  generator multiplication rest as an unproven axiom.
+- **x86_64 P-256's mixed addition on macOS**, aws-lc's: rind's HOL Light
+  proofs check the Linux build's object, and Apple's text can place the
+  routines' helpers at other offsets.
 
 Primitives whose reference is weak: ECVRF, OPRF, VOPRF, blind RSA, SPAKE2+,
-and HPKE have no aws-lc-rs counterpart, so their differential tests compare
-with other Rust crates, and their fuzz targets with rind itself, except
-HPKE's, against rustls's aws-lc-rs provider. SPAKE2+ has no fuzz target.
+FROST, and HPKE have no aws-lc-rs counterpart, so their differential tests
+compare with other Rust crates, and their fuzz targets with rind itself,
+except HPKE's, against rustls's aws-lc-rs provider. SPAKE2+ and FROST have no
+fuzz target.
 
 Constant time is checked by no tool on:
 

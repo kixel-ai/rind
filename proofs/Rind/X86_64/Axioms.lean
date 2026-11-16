@@ -22,9 +22,12 @@ open rind.x86_64
 The axioms each theorem rests on, beyond Lean's own: s2n-bignum's contracts
 in `Rind.X86_64.S2nBignum` for X25519, P-256 key generation, ECDH, and
 ECDSA, P-384, Ed25519, RSA verification, and the Keccak-f of SHA-3 and
-ML-KEM's SHAKE, aws-lc's in
-`Rind.X86_64.AwsLc` for the SHA-512 family, for HMAC, HKDF, and PBKDF2, which
-cover SHA-384 and SHA-512, and for Ed25519's hashes, Vale's in
+ML-KEM's SHAKE; for the SHA-512 family, for HMAC, HKDF, and PBKDF2, which
+cover SHA-384 and SHA-512, and for Ed25519's hashes, aws-lc's AVX routine's in
+`Rind.X86_64.AwsLc` and rind's HOL Light proof there of OpenSSL's AVX2
+routine; for SHA-256, which the theorems over every HMAC algorithm cover,
+rind's HOL Light proofs of its routines for the SHA extensions in
+`Rind.X86_64.Sha256Shaext`; Vale's in
 `Rind.X86_64.ValeAesGcm` for AES-GCM, rind's HOL Light proofs of its
 constant-time compares in `Rind.X86_64.CtEqual` for HMAC's and PBKDF2's
 `verify`, AES-GCM's tag check, ChaCha20-Poly1305's and XChaCha20-Poly1305's
@@ -34,8 +37,8 @@ ChaCha20-Poly1305's theorems also take aws-lc's one-pass routines as the
 hypothesis `RunsChaCha20Poly1305`, which no axiom states. The generator
 tables' point selects rest on no axiom, only on the hand model in
 `Rind.X86_64.PointSelectModel`. P-256's generator multiplication also rests
-on a placeholder in `Rind.X86_64.S2nBignum`, `p256_point_add_affine_spec`,
-until the mixed addition's HOL Light proof replaces it. A change here is a
+on `p256_point_add_affine_spec` in `Rind.X86_64.S2nBignum`, which restates
+rind's HOL Light proofs of aws-lc's mixed addition. A change here is a
 change to the trust base.
 -/
 
@@ -215,19 +218,39 @@ change to the trust base.
 #guard_msgs in
 #print axioms p384_shared_secret
 
-/-- info: 'rind.x86_64.sha512_family_digest' depends on axioms: [propext, Classical.choice, Quot.sound, compress_avx_spec] -/
+/-- info: 'rind.x86_64.sha512_family_digest' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ compress_avx_spec,
+ sha512_block_data_order_avx2_spec] -/
 #guard_msgs in
 #print axioms sha512_family_digest
 
-/-- info: 'rind.x86_64.sha512_family_context' depends on axioms: [propext, Classical.choice, Quot.sound, compress_avx_spec] -/
+/-- info: 'rind.x86_64.sha512_family_context' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ compress_avx_spec,
+ sha512_block_data_order_avx2_spec] -/
 #guard_msgs in
 #print axioms sha512_family_context
 
-/-- info: 'rind.x86_64.key_new_spec' depends on axioms: [propext, Classical.choice, Quot.sound, compress_avx_spec] -/
+/-- info: 'rind.x86_64.key_new_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ compress_avx_spec,
+ finish_padded_spec,
+ sha256_compress_blocks_shaext_spec,
+ sha512_block_data_order_avx2_spec] -/
 #guard_msgs in
 #print axioms key_new_spec
 
-/-- info: 'rind.x86_64.sign_spec' depends on axioms: [propext, Classical.choice, Quot.sound, compress_avx_spec] -/
+/-- info: 'rind.x86_64.sign_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ compress_avx_spec,
+ finish_padded_spec,
+ sha256_compress_blocks_shaext_spec,
+ sha512_block_data_order_avx2_spec] -/
 #guard_msgs in
 #print axioms sign_spec
 
@@ -236,35 +259,90 @@ change to the trust base.
  Quot.sound,
  compress_avx_spec,
  ct_compare_16_spec,
- ct_compare_bytes_spec] -/
+ ct_compare_bytes_spec,
+ finish_padded_spec,
+ sha256_compress_blocks_shaext_spec,
+ sha512_block_data_order_avx2_spec] -/
 #guard_msgs in
 #print axioms verify_spec
 
-/-- info: 'rind.x86_64.context_with_key_spec' depends on axioms: [propext, Classical.choice, Quot.sound, compress_avx_spec] -/
+/-- info: 'rind.x86_64.context_with_key_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ compress_avx_spec,
+ finish_padded_spec,
+ sha256_compress_blocks_shaext_spec,
+ sha512_block_data_order_avx2_spec] -/
 #guard_msgs in
 #print axioms context_with_key_spec
 
-/-- info: 'rind.x86_64.context_update_spec'' depends on axioms: [propext, Classical.choice, Quot.sound, compress_avx_spec] -/
+/-- info: 'rind.x86_64.context_update_spec'' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ compress_avx_spec,
+ finish_padded_spec,
+ sha256_compress_blocks_shaext_spec,
+ sha512_block_data_order_avx2_spec] -/
 #guard_msgs in
 #print axioms context_update_spec'
 
-/-- info: 'rind.x86_64.context_sign_spec' depends on axioms: [propext, Classical.choice, Quot.sound, compress_avx_spec] -/
+/-- info: 'rind.x86_64.context_sign_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ compress_avx_spec,
+ finish_padded_spec,
+ sha256_compress_blocks_shaext_spec,
+ sha512_block_data_order_avx2_spec] -/
 #guard_msgs in
 #print axioms context_sign_spec
 
-/-- info: 'rind.x86_64.kdf.salt_extract_spec' depends on axioms: [propext, Classical.choice, Quot.sound, compress_avx_spec] -/
+/-- info: 'rind.x86_64.kdf.salt_extract_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ compress_avx_spec,
+ finish_padded_spec,
+ sha256_compress_blocks_shaext_spec,
+ sha512_block_data_order_avx2_spec] -/
 #guard_msgs in
 #print axioms kdf.salt_extract_spec
 
-/-- info: 'rind.x86_64.kdf.okm_fill_spec' depends on axioms: [propext, Classical.choice, Quot.sound, compress_avx_spec] -/
+/-- info: 'rind.x86_64.kdf.prk_fill_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ compress_avx_spec,
+ finish_padded_spec,
+ sha256_compress_blocks_shaext_spec,
+ sha512_block_data_order_avx2_spec] -/
 #guard_msgs in
-#print axioms kdf.okm_fill_spec
+#print axioms kdf.prk_fill_spec
 
-/-- info: 'rind.x86_64.kdf.hkdf_fill' depends on axioms: [propext, Classical.choice, Quot.sound, compress_avx_spec] -/
+/-- info: 'rind.x86_64.kdf.hkdf_fill' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ compress_avx_spec,
+ finish_padded_spec,
+ sha256_compress_blocks_shaext_spec,
+ sha512_block_data_order_avx2_spec] -/
 #guard_msgs in
 #print axioms kdf.hkdf_fill
 
-/-- info: 'rind.x86_64.kdf.derive_spec' depends on axioms: [propext, Classical.choice, Quot.sound, compress_avx_spec] -/
+/-- info: 'rind.x86_64.kdf.prk_new_fill' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ compress_avx_spec,
+ finish_padded_spec,
+ sha256_compress_blocks_shaext_spec,
+ sha512_block_data_order_avx2_spec] -/
+#guard_msgs in
+#print axioms kdf.prk_new_fill
+
+/-- info: 'rind.x86_64.kdf.derive_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ compress_avx_spec,
+ finish_padded_spec,
+ sha256_compress_blocks_shaext_spec,
+ sha512_block_data_order_avx2_spec] -/
 #guard_msgs in
 #print axioms kdf.derive_spec
 
@@ -273,7 +351,10 @@ change to the trust base.
  Quot.sound,
  compress_avx_spec,
  ct_compare_16_spec,
- ct_compare_bytes_spec] -/
+ ct_compare_bytes_spec,
+ finish_padded_spec,
+ sha256_compress_blocks_shaext_spec,
+ sha512_block_data_order_avx2_spec] -/
 #guard_msgs in
 #print axioms kdf.verify_spec
 
@@ -451,7 +532,8 @@ change to the trust base.
  Quot.sound,
  compress_avx_spec,
  edwards25519_scalarmulbase_alt_spec,
- edwards25519_scalarmulbase_spec] -/
+ edwards25519_scalarmulbase_spec,
+ sha512_block_data_order_avx2_spec] -/
 #guard_msgs in
 #print axioms ed25519_generate
 
@@ -460,7 +542,8 @@ change to the trust base.
  Quot.sound,
  compress_avx_spec,
  edwards25519_scalarmulbase_alt_spec,
- edwards25519_scalarmulbase_spec] -/
+ edwards25519_scalarmulbase_spec,
+ sha512_block_data_order_avx2_spec] -/
 #guard_msgs in
 #print axioms ed25519_from_seed_and_public_key
 
@@ -472,7 +555,8 @@ change to the trust base.
  bignum_mod_n25519_spec,
  compress_avx_spec,
  edwards25519_scalarmulbase_alt_spec,
- edwards25519_scalarmulbase_spec] -/
+ edwards25519_scalarmulbase_spec,
+ sha512_block_data_order_avx2_spec] -/
 #guard_msgs in
 #print axioms ed25519_sign
 
@@ -480,38 +564,24 @@ change to the trust base.
 #guard_msgs in
 #print axioms ed25519_key_pair_public_key
 
-/-- info: 'rind.x86_64.ed25519_key_pair_verify' depends on axioms: [propext,
- Classical.choice,
- Quot.sound,
- bignum_cmp_lt_spec,
- bignum_mod_n25519_spec,
- bignum_neg_p25519_spec,
- compress_avx_spec,
- edwards25519_scalarmuldouble_alt_spec,
- edwards25519_scalarmuldouble_spec] -/
-#guard_msgs in
-#print axioms ed25519_key_pair_verify
-
-/-- info: 'rind.x86_64.ed25519_public_key_new' depends on axioms: [propext,
- Classical.choice,
- Quot.sound,
- bignum_cmp_lt_spec,
- bignum_eq_spec,
- bignum_mod_n25519_spec,
- bignum_neg_p25519_spec,
- compress_avx_spec,
- edwards25519_decode_alt_spec,
- edwards25519_decode_spec,
- edwards25519_scalarmuldouble_alt_spec,
- edwards25519_scalarmuldouble_spec] -/
-#guard_msgs in
-#print axioms ed25519_public_key_new
-
 /-- info: 'rind.x86_64.p256_ecdsa_generate' depends on axioms: [propext,
  Classical.choice,
  Quot.sound,
+ bignum_add_p256_spec,
+ bignum_demont_p256_alt_spec,
+ bignum_demont_p256_spec,
  bignum_eq_spec,
- bignum_mod_n256_spec] -/
+ bignum_inv_p256_spec,
+ bignum_mod_n256_spec,
+ bignum_montmul_p256_alt_spec,
+ bignum_montmul_p256_spec,
+ bignum_montsqr_p256_alt_spec,
+ bignum_montsqr_p256_spec,
+ bignum_mux_spec,
+ bignum_neg_p256_spec,
+ bignum_tomont_p256_alt_spec,
+ bignum_tomont_p256_spec,
+ p256_point_add_affine_spec] -/
 #guard_msgs in
 #print axioms p256_ecdsa_generate
 
@@ -557,34 +627,19 @@ change to the trust base.
  bignum_neg_p256_spec,
  bignum_tomont_p256_alt_spec,
  bignum_tomont_p256_spec,
- p256_point_add_affine_spec] -/
+ finish_padded_spec,
+ p256_point_add_affine_spec,
+ sha256_compress_blocks_shaext_spec] -/
 #guard_msgs in
 #print axioms p256_ecdsa_sign
 
-/-- info: 'rind.x86_64.p256_ecdsa_key_pair_public_key' depends on axioms: [propext,
- Classical.choice,
- Quot.sound,
- bignum_add_p256_spec,
- bignum_demont_p256_alt_spec,
- bignum_demont_p256_spec,
- bignum_eq_spec,
- bignum_inv_p256_spec,
- bignum_montmul_p256_alt_spec,
- bignum_montmul_p256_spec,
- bignum_montsqr_p256_alt_spec,
- bignum_montsqr_p256_spec,
- bignum_mux_spec,
- bignum_neg_p256_spec,
- bignum_tomont_p256_alt_spec,
- bignum_tomont_p256_spec,
- p256_point_add_affine_spec] -/
+/-- info: 'rind.x86_64.p256_ecdsa_key_pair_public_key' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms p256_ecdsa_key_pair_public_key
 
 /-- info: 'rind.x86_64.p256_ecdsa_key_pair_verify' depends on axioms: [propext,
  Classical.choice,
  Quot.sound,
- bignum_add_p256_spec,
  bignum_demont_p256_alt_spec,
  bignum_demont_p256_spec,
  bignum_demont_spec,
@@ -597,17 +652,17 @@ change to the trust base.
  bignum_montmul_spec,
  bignum_montsqr_p256_alt_spec,
  bignum_montsqr_p256_spec,
- bignum_mux_spec,
  bignum_neg_p256_spec,
  bignum_tomont_p256_alt_spec,
  bignum_tomont_p256_spec,
+ finish_padded_spec,
  p256_montjadd_alt_spec,
  p256_montjadd_spec,
  p256_montjdouble_alt_spec,
  p256_montjdouble_spec,
  p256_montjmixadd_alt_spec,
  p256_montjmixadd_spec,
- p256_point_add_affine_spec] -/
+ sha256_compress_blocks_shaext_spec] -/
 #guard_msgs in
 #print axioms p256_ecdsa_key_pair_verify
 
@@ -630,54 +685,64 @@ change to the trust base.
  bignum_neg_p256_spec,
  bignum_tomont_p256_alt_spec,
  bignum_tomont_p256_spec,
+ finish_padded_spec,
  p256_montjadd_alt_spec,
  p256_montjadd_spec,
  p256_montjdouble_alt_spec,
  p256_montjdouble_spec,
  p256_montjmixadd_alt_spec,
- p256_montjmixadd_spec] -/
+ p256_montjmixadd_spec,
+ sha256_compress_blocks_shaext_spec] -/
 #guard_msgs in
 #print axioms p256_ecdsa_public_key_new
 
-/-- info: 'rind.x86_64.rsa_pkcs1_sha256_new_spec' depends on axioms: [propext,
+/-- info: 'rind.x86_64.rsa_signature_new_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ bignum_bitsize_spec,
+ bignum_negmodinv_spec] -/
+#guard_msgs in
+#print axioms rsa_signature_new_spec
+
+/-- info: 'rind.x86_64.rsa_signature_from_spki_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ bignum_bitsize_spec,
+ bignum_negmodinv_spec] -/
+#guard_msgs in
+#print axioms rsa_signature_from_spki_spec
+
+/-- info: 'rind.x86_64.rsa_signature_from_components_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ bignum_bitsize_spec,
+ bignum_negmodinv_spec] -/
+#guard_msgs in
+#print axioms rsa_signature_from_components_spec
+
+/-- info: 'rind.x86_64.rsa_pkcs1_sha256_verify_spec' depends on axioms: [propext,
  Classical.choice,
  Quot.sound,
  bignum_bitsize_spec,
  bignum_cmp_lt_spec,
- bignum_negmodinv_spec] -/
+ bignum_negmodinv_spec,
+ finish_padded_spec,
+ sha256_compress_blocks_shaext_spec] -/
 #guard_msgs in
-#print axioms rsa_pkcs1_sha256_new_spec
+#print axioms rsa_pkcs1_sha256_verify_spec
 
-/-- info: 'rind.x86_64.rsa_pss_sha256_new_spec' depends on axioms: [propext,
+/-- info: 'rind.x86_64.rsa_pss_sha256_verify_spec' depends on axioms: [propext,
  Classical.choice,
  Quot.sound,
  bignum_bitsize_spec,
  bignum_cmp_lt_spec,
  bignum_negmodinv_spec,
  ct_compare_16_spec,
- ct_compare_bytes_spec] -/
+ ct_compare_bytes_spec,
+ finish_padded_spec,
+ sha256_compress_blocks_shaext_spec] -/
 #guard_msgs in
-#print axioms rsa_pss_sha256_new_spec
-
-/-- info: 'rind.x86_64.rsa_pkcs1_sha256_from_components_spec' depends on axioms: [propext,
- Classical.choice,
- Quot.sound,
- bignum_bitsize_spec,
- bignum_cmp_lt_spec,
- bignum_negmodinv_spec] -/
-#guard_msgs in
-#print axioms rsa_pkcs1_sha256_from_components_spec
-
-/-- info: 'rind.x86_64.rsa_pss_sha256_from_components_spec' depends on axioms: [propext,
- Classical.choice,
- Quot.sound,
- bignum_bitsize_spec,
- bignum_cmp_lt_spec,
- bignum_negmodinv_spec,
- ct_compare_16_spec,
- ct_compare_bytes_spec] -/
-#guard_msgs in
-#print axioms rsa_pss_sha256_from_components_spec
+#print axioms rsa_pss_sha256_verify_spec
 
 /-- info: 'rind.x86_64.rsa2048_mont_products' depends on axioms: [propext,
  Classical.choice,
@@ -771,6 +836,18 @@ change to the trust base.
  ct_compare_bytes_spec] -/
 #guard_msgs in
 #print axioms kek_unwrap_padded_spec
+
+/-- info: 'rind.x86_64.kek_wrap_key_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms kek_wrap_key_spec
+
+/-- info: 'rind.x86_64.kek_unwrap_key_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ ct_compare_16_spec,
+ ct_compare_bytes_spec] -/
+#guard_msgs in
+#print axioms kek_unwrap_key_spec
 
 /-- info: 'rind.x86_64.bignum_aff_point_select_p256_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in

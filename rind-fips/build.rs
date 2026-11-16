@@ -85,6 +85,9 @@ fn main() {
 
     println!("cargo::rustc-link-search=native={}", lib.display());
     println!("cargo::rustc-link-lib=dylib=rind_fips_module");
+    // A dependent's build script reads it as `DEP_RIND_FIPS_MODULE_LIB`, as
+    // `rind-acvp`'s does to find the module outside cargo.
+    println!("cargo::metadata=lib={}", lib.display());
     // Tests find the module to tamper with a copy of it.
     println!("cargo::rustc-env=RIND_FIPS_MODULE={}", module.display());
 }
@@ -101,6 +104,15 @@ fn build(manifest: &Path, out: &Path, target: &str) -> PathBuf {
     // match inlined frames.
     let ctgrind = env::var_os("CARGO_FEATURE___CTGRIND").is_some();
     let debug = if ctgrind { "line-tables-only" } else { "false" };
+    let mut features = Vec::new();
+    if ctgrind {
+        features.push("rind/__ctgrind");
+    }
+    // `rind-acvp`'s build: the deterministic forms of the randomized
+    // services, for testing only.
+    if env::var_os("CARGO_FEATURE___ACVP").is_some() {
+        features.push("acvp");
+    }
 
     let mut command = Command::new(env::var_os("CARGO").unwrap());
     command
@@ -131,8 +143,8 @@ fn build(manifest: &Path, out: &Path, target: &str) -> PathBuf {
         .env_remove("RUSTC_WORKSPACE_WRAPPER")
         .env_remove("CARGO_TARGET_DIR")
         .env_remove("CARGO_BUILD_TARGET");
-    if ctgrind {
-        command.args(["--features", "rind/__ctgrind"]);
+    if !features.is_empty() {
+        command.args(["--features", &features.join(",")]);
     }
     // Cargo sets these for this script from the caller's cfgs and features,
     // and sets them again for each nested build script only where they hold

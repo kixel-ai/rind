@@ -1578,9 +1578,9 @@ let x86_required_features instr =
   match name with
     "POPCNT" -> ["popcnt"]
   | "LZCNT" -> ["abm"]
-  | "TZCNT" -> ["bmi1"]
+  | "TZCNT" | "ANDN" -> ["bmi1"]
   | "ADCX" | "ADOX" -> ["adx"]
-  | "MULX4" | "PEXT" -> ["bmi2"]
+  | "MULX4" | "PEXT" | "RORX" | "SHLX" | "SHRX" -> ["bmi2"]
   | "AESENC" | "AESENCLAST" | "AESDEC" | "AESDECLAST"
   | "AESKEYGENASSIST" -> ["aes"]
   | "PSHUFB" -> ["ssse3"]
