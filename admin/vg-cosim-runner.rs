@@ -465,8 +465,9 @@ mod arch {
     /// window, its start 512 bytes into the data, at the end of a case (an
     /// `alloc` moves it at most 4095 bytes down, and an access through it is
     /// at most 3824 bytes above it, VG's largest offset), so the exit's
-    /// stores, 4096 bytes below that, land in these 16 KB.
-    const SCRATCH: usize = 0x4000;
+    /// stores, 4096 bytes below that, land in it. 64 KiB, so its start is
+    /// page-aligned under 64-KiB pages too, as a fixed mapping needs.
+    const SCRATCH: usize = 0x10000;
 
     // `DIT` is
     // `S3_3_C4_C2_5` (DDI 0601, "DIT, Data Independent Timing"), which needs

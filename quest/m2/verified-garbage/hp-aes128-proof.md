@@ -12,3 +12,4 @@ Every VG routine [the switch](/quest/m2/verified-garbage/hp-aes128.md) adopts is
 ## Required
 
 - [AES-128 header protection on Haswell runs pyca/verified-garbage's code where it is faster](/quest/m2/verified-garbage/hp-aes128.md) - the routines this proves
+- [No ✓ rests on VG's model keeping a freed stack slot's bytes](/quest/m2/verified-garbage/stack-reuse.md) - the frame model's gap, checked for the routines this proves

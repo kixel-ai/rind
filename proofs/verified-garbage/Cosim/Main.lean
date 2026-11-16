@@ -67,10 +67,10 @@ def main (args : List String) : IO UInt32 := do
         for f in lacks do
           missing := missing.insert f (missing.getD f 0 + 1)
         let (some e, some h) := (emulator, emuH) | continue
-        let both := lacks.filter (!e.contains ·)
-        if !both.isEmpty then
-          errors := errors.push s!"{b.text} needs {", ".intercalate both}, \
-            which neither this CPU nor the emulator has"
+        let absent := req.filter (!e.contains ·)
+        if !absent.isEmpty then
+          errors := errors.push s!"{b.text} needs {", ".intercalate absent}, \
+            which this CPU lacks some of and the emulator lacks"
           continue
         h.write b.encode
         counts := (counts.1, counts.2.1, counts.2.2.1 + 1, counts.2.2.2 + b.cases.size)
