@@ -375,8 +375,9 @@ and RFC 8018 as `Rind/HashSpec.lean` transliterates them:
 - `key_new_spec`, `sign_spec`, `verify_spec`, `context_with_key_spec`,
   `context_update_spec'`, `context_sign_spec` (`Rind/X86_64/HmacApi.lean`):
   `hmac::Key`, `sign`, `verify`, and `Context`;
-- `kdf.salt_extract_spec`, `kdf.okm_fill_spec`, `kdf.hkdf_fill`
-  (`Rind/X86_64/Hkdf.lean`): HKDF's extract and expand;
+- `kdf.salt_extract_spec`, `kdf.prk_fill_spec`, `kdf.hkdf_fill`,
+  `kdf.prk_new_fill` (`Rind/X86_64/Hkdf.lean`): HKDF's extract and expand,
+  and expand from a PRK loaded from bytes;
 - `kdf.derive_spec`, `kdf.verify_spec` (`Rind/X86_64/Pbkdf2.lean`): PBKDF2's
   `Secret::derive` and `Secret::verify`.
 

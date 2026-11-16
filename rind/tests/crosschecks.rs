@@ -638,21 +638,33 @@ mod hkdf {
             };
             let info: Vec<&[u8]> = info.iter().map(Vec::as_slice).collect();
 
-            let mut ours_out = vec![0u8; len];
-            let prk = hkdf::Salt::new(ours, &salt).extract(&ikm).unwrap();
-            let result = prk.expand(&info, len).and_then(|okm| okm.fill(&mut ours_out));
-
-            let prk = theirs::Salt::new(their_alg, &salt).extract(&ikm);
-            match prk.expand(&info, Len(len)) {
-                Ok(okm) => {
-                    result.unwrap();
-                    let mut theirs_out = vec![0u8; len];
-                    okm.fill(&mut theirs_out).unwrap();
-                    prop_assert_eq!(ours_out, theirs_out);
-                }
-                Err(_) => {
-                    prop_assert_eq!(result, Err(Error::WrongLength));
-                    prop_assert!(ours_out.iter().all(|b| *b == 0));
+            // An extracted PRK, then the salt taken as a PRK as it is, up to
+            // the 64 bytes aws-lc-rs's `new_less_safe` holds before it panics.
+            let prk = &salt[..salt.len().min(64)];
+            let pairs = [
+                (
+                    hkdf::Salt::new(ours, &salt).extract(&ikm).unwrap(),
+                    theirs::Salt::new(their_alg, &salt).extract(&ikm),
+                ),
+                (
+                    hkdf::Prk::new(ours, prk),
+                    theirs::Prk::new_less_safe(their_alg, prk),
+                ),
+            ];
+            for (ours, theirs) in pairs {
+                let mut ours_out = vec![0u8; len];
+                let result = ours.fill(&info, &mut ours_out);
+                match theirs.expand(&info, Len(len)) {
+                    Ok(okm) => {
+                        result.unwrap();
+                        let mut theirs_out = vec![0u8; len];
+                        okm.fill(&mut theirs_out).unwrap();
+                        prop_assert_eq!(ours_out, theirs_out);
+                    }
+                    Err(_) => {
+                        prop_assert_eq!(result, Err(Error::WrongLength));
+                        prop_assert!(ours_out.iter().all(|b| *b == 0));
+                    }
                 }
             }
         }
@@ -716,7 +728,7 @@ mod hkdf {
             let ours = hkdf::Prk::from(ours.expand(&info, ours_prk_alg).unwrap());
             let theirs = theirs::Prk::from(theirs.expand(&info, theirs_prk_alg).unwrap());
             let mut ours_out = [0u8; 100];
-            ours.expand(&info, ours_out.len()).unwrap().fill(&mut ours_out).unwrap();
+            ours.fill(&info, &mut ours_out).unwrap();
             let mut theirs_out = [0u8; 100];
             theirs.expand(&info, Len(theirs_out.len())).unwrap().fill(&mut theirs_out).unwrap();
             prop_assert_eq!(ours_out, theirs_out);
