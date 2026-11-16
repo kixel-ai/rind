@@ -165,6 +165,15 @@ impl<const N: usize> PosInt<N> {
         Ok(out)
     }
 
+    /// Writes the low `out.len()` bytes of the value to `out`, big-endian,
+    /// reading the same words whatever the value.
+    pub(crate) fn to_bytes_fixed(&self, out: &mut [u8]) {
+        for (i, byte) in out.iter_mut().rev().enumerate() {
+            let word = self.words.get(i / 8).copied().unwrap_or(0);
+            *byte = (word >> (8 * (i % 8))) as u8;
+        }
+    }
+
     /// Like `to_bytes`, but guarantees a zero byte prefix.
     ///
     /// This means, if the result is used in an ASN.1 encoded integer, the encoding

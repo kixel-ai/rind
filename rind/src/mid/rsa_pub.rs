@@ -63,6 +63,11 @@ impl RsaPublicKey {
         }
         c.expand(&self.n);
 
+        #[cfg(rind_backend = "x86_64")]
+        if let Some(ifma) = low::RsaIfma::check() {
+            return self.public_op_ifma(ifma, &c);
+        }
+
         // bring c into montgomery domain, c_mont = c * M^2 * M^-1 mod n
         let c_mont = c.to_montgomery(&self.montifier, &self.n);
 
@@ -97,6 +102,36 @@ impl RsaPublicKey {
         }
 
         Ok(if in_a { a } else { b })
+    }
+
+    /// [`Self::public_op`] by pyca/verified-garbage's routine, for `c`
+    /// below `n` and at its width.
+    #[cfg(rind_backend = "x86_64")]
+    fn public_op_ifma(&self, ifma: low::RsaIfma, c: &RsaPosInt) -> Result<RsaPosInt, Error> {
+        let k = self.modulus_len_bytes();
+        let mut pre = [0u64; 2 * MAX_PUBLIC_MODULUS_WORDS];
+        let pre = self.precomputed(&mut pre);
+        let e = self.e.to_be_bytes();
+        let e = &e[self.e.leading_zeros() as usize / 8..];
+        let mut x = [0u8; MAX_PUBLIC_MODULUS_BYTES];
+        c.to_bytes_fixed(&mut x[..k]);
+        let mut m = [0u8; MAX_PUBLIC_MODULUS_BYTES];
+        // `new` checked `n` and `e` as the routine does, and the caller `c`.
+        if !ifma.public(&mut m[..k], pre, e, &x[..k]) {
+            return Err(Error::WrongLength);
+        }
+        // As wide as `n`, without reading `m`'s value.
+        RsaPosInt::from_secret_bytes(&m[..k])
+    }
+
+    /// Writes `n` and then `2^(128w) mod n`, `w` words each for `n`'s `w`, to
+    /// the front of `pre`: pyca/verified-garbage's precomputed values of `n`.
+    #[cfg(rind_backend = "x86_64")]
+    pub(crate) fn precomputed<'a>(&self, pre: &'a mut [u64]) -> &'a mut [u64] {
+        let w = self.n.as_words().len();
+        pre[..w].copy_from_slice(self.n.as_words());
+        pre[w..2 * w].copy_from_slice(self.montifier.as_words());
+        &mut pre[..2 * w]
     }
 
     /// a * b mod n, for `a` and `b` below `n`. Constant time in both.
