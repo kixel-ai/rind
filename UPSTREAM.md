@@ -87,9 +87,9 @@ Each upstream rind changes, with where its fork is vendored and where the list o
 
 ### Memcheck blames a public flag on a secret carry
 
-- **Breaks:** on armv7 without NEON, memcheck flags the `beq` at `sha512_block_data_order_nohw+460` in aws-lc's integer SHA-512, which reads only the Z flag of a `tst` on the public round-constant pointer. The `tst` keeps the carry of the secret `adds` before it, and memcheck counts that carry against the branch when a superblock boundary falls between them, which the caller's code layout decides.
-- **Reproduce:** the `no-neon` armv7 ctgrind row with `--vex-guest-max-insns=1` flags it, along with every branch on a `tst` of a public value.
-- **Workaround:** the `aws-lc-sha512-armv4-nohw-flags` suppression in `admin/ctgrind.supp`.
+- **Breaks:** on armv7, memcheck flags a branch or predicated instruction that reads only the Z flag of a logical op on public values, such as a `tst` or `ands`, when that op keeps the carry of a secret `adds` before it and a superblock boundary falls between them, which code layout decides. It flags the `beq` at `sha512_block_data_order_nohw+460` in aws-lc's integer SHA-512 without NEON, which tests the public round-constant pointer. It flagged the portable P-384 scalar inverse's `step_by(4).rev()` loop, whose `ands r0, r0, #3` follows the inlined reduction of the secret, and whose `movweq` then poisons the loop counter and the table index.
+- **Reproduce:** the `no-neon` armv7 ctgrind row with `--vex-guest-max-insns=1` flags the SHA-512 branch, along with every branch on a `tst` of a public value. At main's d0e8e97f1, `admin/ctgrind unit --target armv7-unknown-linux-gnueabihf --release -- high::ecdsa::tests::digest_signing_matches_message_signing` flags `fs_pow` at the default 50 instructions per superblock and at 30, and passes at 100.
+- **Workaround:** the `aws-lc-sha512-armv4-nohw-flags` suppression in `admin/ctgrind.supp`; the portable P-256 and P-384 scalar inverses count nibbles with a plain range, whose loop armv7 tests with `cmp`, which sets every flag.
 - **Reported:** no.
 - **Goes when:** memcheck tracks the Z flag apart from the carry.
 

@@ -304,11 +304,14 @@ fn fs_pow(x: &Fs, e: &[u64; 6]) -> Fs {
 
     let mut acc = one;
     for word in e.iter().rev() {
-        for shift in (0..64).step_by(4).rev() {
+        // Not `step_by(4).rev()`, which armv7 steps with an `ands` that keeps
+        // the reduction's secret carry: see UPSTREAM.md, "Memcheck blames a
+        // public flag on a secret carry".
+        for nibble in (0..16).rev() {
             for _ in 0..4 {
                 acc = fs_sqr(&acc);
             }
-            acc = fs_mul(&acc, &table[((word >> shift) & 0xf) as usize]);
+            acc = fs_mul(&acc, &table[((word >> (4 * nibble)) & 0xf) as usize]);
         }
     }
     acc

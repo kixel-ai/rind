@@ -417,8 +417,9 @@ fn fs_invert(x: &Fs) -> Fs {
     let r = fs_mul(&sqr_n(&x32, 64), &x32);
     let mut r = fs_mul(&sqr_n(&r, 32), &x32);
     for word in N_MINUS_2[..2].iter().rev() {
-        for shift in (0..64).step_by(4).rev() {
-            let digit = (word >> shift) & 0xf;
+        // A plain counter, as in `p384::fs_pow`.
+        for nibble in (0..16).rev() {
+            let digit = (word >> (4 * nibble)) & 0xf;
             r = fs_mul(&sqr_n(&r, 4), &table[digit as usize - 1]);
         }
     }
