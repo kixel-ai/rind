@@ -5,11 +5,11 @@ use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 use rind::rsa;
 
-use crate::{Bytes, algorithm, bytes, constants, error, submodule};
+use crate::{Bytes, PublicKeyCell, algorithm, bytes, constants, error, submodule};
 
 /// An RSA modulus size for key generation.
-#[pyclass(frozen, eq, eq_int, from_py_object, module = "pyrind.rsa")]
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[pyclass(frozen, eq, eq_int, hash, from_py_object, module = "pyrind.rsa")]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum KeySize {
     #[pyo3(name = "RSA_2048")]
     Rsa2048,
@@ -115,15 +115,16 @@ impl PublicKey {
 #[pyclass(frozen, module = "pyrind.rsa")]
 struct KeyPair {
     inner: Box<rsa::KeyPair>,
-    public_key: Py<PublicKey>,
+    public_key: PublicKeyCell<PublicKey>,
 }
 
 impl KeyPair {
     /// Wraps `key_pair`, with the one `PublicKey` its `public_key` returns.
-    fn wrap(py: Python<'_>, key_pair: Result<rsa::KeyPair, rind::Error>) -> PyResult<Self> {
-        let inner = Box::new(key_pair.map_err(error)?);
-        let public_key = Py::new(py, PublicKey(Box::new(inner.public_key().clone())))?;
-        Ok(Self { inner, public_key })
+    fn wrap(key_pair: Result<rsa::KeyPair, rind::Error>) -> PyResult<Self> {
+        Ok(Self {
+            inner: Box::new(key_pair.map_err(error)?),
+            public_key: PublicKeyCell::new(),
+        })
     }
 }
 
@@ -134,25 +135,26 @@ impl KeyPair {
     #[staticmethod]
     fn generate(py: Python<'_>, size: KeySize) -> PyResult<Self> {
         let key_pair = py.detach(|| rsa::KeyPair::generate(size.into()));
-        Self::wrap(py, key_pair)
+        Self::wrap(key_pair)
     }
 
     /// Loads a PKCS#8 RSA private key.
     #[staticmethod]
-    fn from_pkcs8(py: Python<'_>, der: Bytes<'_>) -> PyResult<Self> {
-        Self::wrap(py, rsa::KeyPair::from_pkcs8(&der))
+    fn from_pkcs8(der: Bytes<'_>) -> PyResult<Self> {
+        Self::wrap(rsa::KeyPair::from_pkcs8(&der))
     }
 
     /// Loads a PKCS#1 `RSAPrivateKey`.
     #[staticmethod]
-    fn from_pkcs1(py: Python<'_>, der: Bytes<'_>) -> PyResult<Self> {
-        Self::wrap(py, rsa::KeyPair::from_pkcs1(&der))
+    fn from_pkcs1(der: Bytes<'_>) -> PyResult<Self> {
+        Self::wrap(rsa::KeyPair::from_pkcs1(&der))
     }
 
     /// The public key, the same object each call, which verifies what this
     /// key pair signs with the verification algorithm of the same name.
-    fn public_key(&self, py: Python<'_>) -> Py<PublicKey> {
-        self.public_key.clone_ref(py)
+    fn public_key(&self, py: Python<'_>) -> PyResult<Py<PublicKey>> {
+        self.public_key
+            .get(py, || PublicKey(Box::new(self.inner.public_key().clone())))
     }
 
     /// Signs `message` with `algorithm`, releasing the GIL.
@@ -184,15 +186,16 @@ algorithm!(
 #[pyclass(frozen, module = "pyrind.rsa")]
 struct DecryptingKey {
     inner: Box<rsa::DecryptingKey>,
-    public_key: Py<EncryptingKey>,
+    public_key: PublicKeyCell<EncryptingKey>,
 }
 
 impl DecryptingKey {
     /// Wraps `key`, with the one `EncryptingKey` its `public_key` returns.
-    fn wrap(py: Python<'_>, key: Result<rsa::DecryptingKey, rind::Error>) -> PyResult<Self> {
-        let inner = Box::new(key.map_err(error)?);
-        let public_key = Py::new(py, EncryptingKey(Box::new(inner.public_key().clone())))?;
-        Ok(Self { inner, public_key })
+    fn wrap(key: Result<rsa::DecryptingKey, rind::Error>) -> PyResult<Self> {
+        Ok(Self {
+            inner: Box::new(key.map_err(error)?),
+            public_key: PublicKeyCell::new(),
+        })
     }
 }
 
@@ -208,39 +211,27 @@ impl DecryptingKey {
     ) -> PyResult<Self> {
         let algorithm = algorithm.get().inner;
         let key = py.detach(|| rsa::DecryptingKey::generate(algorithm, size.into()));
-        Self::wrap(py, key)
+        Self::wrap(key)
     }
 
     /// Loads a PKCS#8 RSA private key for `algorithm`.
     #[staticmethod]
-    fn from_pkcs8(
-        py: Python<'_>,
-        algorithm: &Bound<'_, OaepAlgorithm>,
-        der: Bytes<'_>,
-    ) -> PyResult<Self> {
-        Self::wrap(
-            py,
-            rsa::DecryptingKey::from_pkcs8(algorithm.get().inner, &der),
-        )
+    fn from_pkcs8(algorithm: &Bound<'_, OaepAlgorithm>, der: Bytes<'_>) -> PyResult<Self> {
+        Self::wrap(rsa::DecryptingKey::from_pkcs8(algorithm.get().inner, &der))
     }
 
     /// Loads a PKCS#1 `RSAPrivateKey` for `algorithm`.
     #[staticmethod]
-    fn from_pkcs1(
-        py: Python<'_>,
-        algorithm: &Bound<'_, OaepAlgorithm>,
-        der: Bytes<'_>,
-    ) -> PyResult<Self> {
-        Self::wrap(
-            py,
-            rsa::DecryptingKey::from_pkcs1(algorithm.get().inner, &der),
-        )
+    fn from_pkcs1(algorithm: &Bound<'_, OaepAlgorithm>, der: Bytes<'_>) -> PyResult<Self> {
+        Self::wrap(rsa::DecryptingKey::from_pkcs1(algorithm.get().inner, &der))
     }
 
     /// The public key, the same object each call, which encrypts to this key
     /// with its algorithm.
-    fn public_key(&self, py: Python<'_>) -> Py<EncryptingKey> {
-        self.public_key.clone_ref(py)
+    fn public_key(&self, py: Python<'_>) -> PyResult<Py<EncryptingKey>> {
+        self.public_key.get(py, || {
+            EncryptingKey(Box::new(self.inner.public_key().clone()))
+        })
     }
 
     /// Decrypts `ciphertext`, encrypted with `label`, releasing the GIL.
@@ -264,11 +255,6 @@ impl DecryptingKey {
     /// Encodes the private key as PKCS#8 DER.
     fn to_pkcs8<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
         bytes(py, self.inner.to_pkcs8())
-    }
-
-    /// Encodes the public key as `SubjectPublicKeyInfo` DER.
-    fn to_spki<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
-        bytes(py, self.inner.public_key().to_spki())
     }
 }
 

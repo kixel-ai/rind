@@ -96,8 +96,6 @@ class DecryptingKey:
         """Decrypts `ciphertext`, encrypted with `label`, releasing the GIL; every malformed ciphertext raises the same `DecryptFailed`."""
     def to_pkcs8(self) -> bytes:
         """Encodes the private key as PKCS#8 DER."""
-    def to_spki(self) -> bytes:
-        """Encodes the public key as `SubjectPublicKeyInfo` DER."""
 
 @final
 class EncryptingKey:

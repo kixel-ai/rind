@@ -45,6 +45,9 @@ class Package(unittest.TestCase):
         self.assertEqual(repr(rsa.verify.legacy.PKCS1_SHA1), "pyrind.rsa.verify.legacy.PKCS1_SHA1")
         self.assertEqual(repr(ecdsa.sign.P256_SHA256_ASN1), "pyrind.ecdsa.sign.P256_SHA256_ASN1")
         self.assertEqual(repr(key_wrap.Mode.KWP), "Mode.KWP")
+        # Enum constants hash, so they key a dict or fill a set.
+        self.assertEqual(len({key_wrap.Mode.KW, key_wrap.Mode.KWP, key_wrap.Mode.KW}), 2)
+        self.assertEqual(len({rsa.KeySize.RSA_2048, rsa.KeySize.RSA_2048}), 1)
         self.assertEqual(aead.Key.__module__, "pyrind.aead")
         for cls, module in (
             (ecdsa.KeyPair, "pyrind.ecdsa"),
@@ -580,6 +583,7 @@ class Signature(unittest.TestCase):
         self.assertFalse(hasattr(ecdsa.KeyPair, "to_spki"))
         self.assertFalse(hasattr(rind_ed25519.KeyPair, "to_spki"))
         self.assertFalse(hasattr(rsa.KeyPair, "to_spki"))
+        self.assertFalse(hasattr(rsa.DecryptingKey, "to_spki"))
 
     @requires_pyca
     def test_rsa_against_pyca(self):
@@ -684,12 +688,13 @@ class Rsa(unittest.TestCase):
         ours = rsa.DecryptingKey.from_pkcs8(rsa.OAEP_SHA256, der)
         pad = padding.OAEP(padding.MGF1(hashes.SHA256()), hashes.SHA256(), b"label")
         self.assertEqual(ours.decrypt(theirs.public_key().encrypt(b"secret", pad), label=b"label"), b"secret")
-        encrypting = rsa.EncryptingKey.from_spki(rsa.OAEP_SHA256, ours.to_spki())
+        spki = ours.public_key().to_spki()
+        encrypting = rsa.EncryptingKey.from_spki(rsa.OAEP_SHA256, spki)
         pkcs1 = theirs.public_key().public_bytes(serialization.Encoding.DER, serialization.PublicFormat.PKCS1)
-        self.assertEqual(rsa.EncryptingKey(rsa.OAEP_SHA256, pkcs1).to_spki(), ours.to_spki())
+        self.assertEqual(rsa.EncryptingKey(rsa.OAEP_SHA256, pkcs1).to_spki(), spki)
         # The constructor takes PKCS#1 only, and `from_spki` SPKI only.
         with self.assertRaises(pyrind.KeyRejected):
-            rsa.EncryptingKey(rsa.OAEP_SHA256, ours.to_spki())
+            rsa.EncryptingKey(rsa.OAEP_SHA256, spki)
         with self.assertRaises(pyrind.KeyRejected):
             rsa.EncryptingKey.from_spki(rsa.OAEP_SHA256, pkcs1)
         self.assertEqual(theirs.decrypt(encrypting.encrypt(b"secret", label=b"label"), pad), b"secret")

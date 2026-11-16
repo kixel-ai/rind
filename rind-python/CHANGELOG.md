@@ -18,11 +18,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   public key. An RSA public key takes PKCS#1, is bound to no algorithm, and
   verifies with any `rsa.verify` algorithm whose modulus floor it meets,
   raising `KeyRejected` at `verify` for a smaller key rather than as it
-  loads. A key pair's `public_key()` returns the same object each call.
+  loads. A key pair's `public_key()`, and `rsa.DecryptingKey`'s, returns
+  the same object each call, made on the first.
+- **Breaking:** `rsa.DecryptingKey.to_spki()` is gone, as `to_spki` is only
+  on public keys; call `public_key().to_spki()`.
 - **Breaking:** `rsa.EncryptingKey(algorithm, der)` takes only PKCS#1; load a
   `SubjectPublicKeyInfo` with `rsa.EncryptingKey.from_spki`.
 - **Breaking:** `key_wrap.AesKek`'s four methods are two, each naming a
   `key_wrap.Mode`, `KW` or `KWP`.
+
+### Added
+
+- `rsa.PublicKey.modulus_len()`, and hashing for `rsa.KeySize` and
+  `key_wrap.Mode`, so they key a dict.
 
 Each name in 0.1 and its replacement:
 
@@ -52,6 +60,7 @@ Each name in 0.1 and its replacement:
 | none | `rsa.PublicKey.modulus_len()` |
 | `RsaKeyPair.public_key(algorithm)` | `rsa.KeyPair.public_key()` |
 | `EcdsaKeyPair.to_spki()`, `Ed25519KeyPair.to_spki()`, `RsaKeyPair.to_spki()` | `key_pair.public_key().to_spki()` |
+| `rsa.DecryptingKey.to_spki()` | `decrypting_key.public_key().to_spki()` |
 | `rsa.EncryptingKey(algorithm, der)`, PKCS#1 or SPKI | `rsa.EncryptingKey(algorithm, der)`, PKCS#1 only, or `rsa.EncryptingKey.from_spki(algorithm, der)` |
 | `key_wrap.AesKek.wrap(key)`, `unwrap(wrapped)` | `wrap_key(key_wrap.Mode.KW, key)`, `unwrap_key(key_wrap.Mode.KW, wrapped)` |
 | `key_wrap.AesKek.wrap_padded(key)`, `unwrap_padded(wrapped)` | `wrap_key(key_wrap.Mode.KWP, key)`, `unwrap_key(key_wrap.Mode.KWP, wrapped)` |

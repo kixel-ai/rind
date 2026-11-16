@@ -8,7 +8,7 @@ from pyrind.rsa import sign as _sign
 from pyrind.rsa import verify as _verify
 
 from pyrind_cryptography import _der
-from pyrind_cryptography.exceptions import _Reasons, unsupported
+from pyrind_cryptography.exceptions import InvalidSignature, _Reasons, unsupported
 from pyrind_cryptography.hazmat.primitives import _keys, hashes
 from pyrind_cryptography.hazmat.primitives.asymmetric import padding as _padding
 from pyrind_cryptography.hazmat.primitives.asymmetric import utils as _utils
@@ -245,7 +245,13 @@ class RSAPublicKey(metaclass=abc.ABCMeta):
         """Checks `signature` over `data`; raises `InvalidSignature` if it does not verify."""
         chosen = self._verification_algorithm(padding, algorithm)
         with _keys.verifying():
-            self._key.verify(chosen, data, signature)
+            try:
+                self._key.verify(chosen, data, signature)
+            except pyrind.KeyRejected:
+                # The size checks above keep every key within the chosen
+                # algorithm's floor, so this is a mismatch with rind's, which
+                # verifies nothing.
+                raise InvalidSignature from None
 
     def recover_data_from_signature(self, signature, padding, algorithm):
         """Recovers the signed digest; rind only verifies."""

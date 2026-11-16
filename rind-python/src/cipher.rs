@@ -87,11 +87,12 @@ impl AesCbcDecryptingKey {
     frozen,
     eq,
     eq_int,
+    hash,
     from_py_object,
     module = "pyrind.key_wrap",
     name = "Mode"
 )]
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 enum KeyWrapMode {
     #[pyo3(name = "KW")]
     Kw,

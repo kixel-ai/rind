@@ -20,6 +20,7 @@ use pyo3::create_exception;
 use pyo3::exceptions::{PyException, PyMemoryError};
 use pyo3::ffi;
 use pyo3::prelude::*;
+use pyo3::sync::PyOnceLock;
 use pyo3::types::{PyBytes, PyDict};
 
 mod aead;
@@ -210,6 +211,27 @@ pub(crate) fn bytes_with<'py>(
         core::ptr::write_bytes(buffer.add(prefix.len()), 0, len - prefix.len());
         fill(core::slice::from_raw_parts_mut(buffer, len))?;
         Ok(bytes)
+    }
+}
+
+/// A key's public key as a Python object, made on the first `get` and the
+/// same object every call after, so a key loaded only to sign or decrypt
+/// never copies its public key.
+pub(crate) struct PublicKeyCell<T>(PyOnceLock<Py<T>>);
+
+impl<T: pyo3::PyClass> PublicKeyCell<T> {
+    pub(crate) const fn new() -> Self {
+        Self(PyOnceLock::new())
+    }
+
+    /// The public key, which `make` builds on the first call.
+    pub(crate) fn get(&self, py: Python<'_>, make: impl FnOnce() -> T) -> PyResult<Py<T>>
+    where
+        T: Into<pyo3::PyClassInitializer<T>>,
+    {
+        self.0
+            .get_or_try_init(py, || Py::new(py, make()))
+            .map(|key| key.clone_ref(py))
     }
 }
 

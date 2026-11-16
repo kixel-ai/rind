@@ -5,7 +5,7 @@ use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 use rind::ecdsa;
 
-use crate::{Bytes, algorithm, bytes, constants, error, submodule};
+use crate::{Bytes, PublicKeyCell, algorithm, bytes, constants, error, submodule};
 
 algorithm!(
     /// An algorithm a `KeyPair` signs with.
@@ -63,15 +63,16 @@ impl PublicKey {
 #[pyclass(frozen, module = "pyrind.ecdsa")]
 struct KeyPair {
     inner: Box<ecdsa::KeyPair>,
-    public_key: Py<PublicKey>,
+    public_key: PublicKeyCell<PublicKey>,
 }
 
 impl KeyPair {
     /// Wraps `key_pair`, with the one `PublicKey` its `public_key` returns.
-    fn wrap(py: Python<'_>, key_pair: Result<ecdsa::KeyPair, rind::Error>) -> PyResult<Self> {
-        let inner = Box::new(key_pair.map_err(error)?);
-        let public_key = Py::new(py, PublicKey(Box::new(inner.public_key().clone())))?;
-        Ok(Self { inner, public_key })
+    fn wrap(key_pair: Result<ecdsa::KeyPair, rind::Error>) -> PyResult<Self> {
+        Ok(Self {
+            inner: Box::new(key_pair.map_err(error)?),
+            public_key: PublicKeyCell::new(),
+        })
     }
 }
 
@@ -79,28 +80,20 @@ impl KeyPair {
 impl KeyPair {
     /// Generates a key pair for `algorithm`.
     #[staticmethod]
-    fn generate(py: Python<'_>, algorithm: &Bound<'_, SigningAlgorithm>) -> PyResult<Self> {
-        Self::wrap(py, ecdsa::KeyPair::generate(algorithm.get().inner))
+    fn generate(algorithm: &Bound<'_, SigningAlgorithm>) -> PyResult<Self> {
+        Self::wrap(ecdsa::KeyPair::generate(algorithm.get().inner))
     }
 
     /// Loads a key pair for `algorithm` from PKCS#8 DER.
     #[staticmethod]
-    fn from_pkcs8(
-        py: Python<'_>,
-        algorithm: &Bound<'_, SigningAlgorithm>,
-        der: Bytes<'_>,
-    ) -> PyResult<Self> {
-        Self::wrap(py, ecdsa::KeyPair::from_pkcs8(algorithm.get().inner, &der))
+    fn from_pkcs8(algorithm: &Bound<'_, SigningAlgorithm>, der: Bytes<'_>) -> PyResult<Self> {
+        Self::wrap(ecdsa::KeyPair::from_pkcs8(algorithm.get().inner, &der))
     }
 
     /// Loads a key pair for `algorithm` from SEC1 `ECPrivateKey` DER.
     #[staticmethod]
-    fn from_sec1(
-        py: Python<'_>,
-        algorithm: &Bound<'_, SigningAlgorithm>,
-        der: Bytes<'_>,
-    ) -> PyResult<Self> {
-        Self::wrap(py, ecdsa::KeyPair::from_sec1(algorithm.get().inner, &der))
+    fn from_sec1(algorithm: &Bound<'_, SigningAlgorithm>, der: Bytes<'_>) -> PyResult<Self> {
+        Self::wrap(ecdsa::KeyPair::from_sec1(algorithm.get().inner, &der))
     }
 
     /// Loads a key pair for `algorithm` from its big-endian scalar and its
@@ -108,22 +101,23 @@ impl KeyPair {
     /// refused unless they match.
     #[staticmethod]
     fn from_scalar_and_public_key(
-        py: Python<'_>,
         algorithm: &Bound<'_, SigningAlgorithm>,
         scalar: Bytes<'_>,
         public_key: Bytes<'_>,
     ) -> PyResult<Self> {
         let algorithm = algorithm.get().inner;
-        Self::wrap(
-            py,
-            ecdsa::KeyPair::from_scalar_and_public_key(algorithm, &scalar, &public_key),
-        )
+        Self::wrap(ecdsa::KeyPair::from_scalar_and_public_key(
+            algorithm,
+            &scalar,
+            &public_key,
+        ))
     }
 
     /// The public key, the same object each call, which verifies with the
     /// verification algorithm of the same name.
-    fn public_key(&self, py: Python<'_>) -> Py<PublicKey> {
-        self.public_key.clone_ref(py)
+    fn public_key(&self, py: Python<'_>) -> PyResult<Py<PublicKey>> {
+        self.public_key
+            .get(py, || PublicKey(Box::new(self.inner.public_key().clone())))
     }
 
     /// Signs `message`.

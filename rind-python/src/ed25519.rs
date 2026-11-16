@@ -5,7 +5,7 @@ use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 use rind::ed25519;
 
-use crate::{Bytes, bytes, error};
+use crate::{Bytes, PublicKeyCell, bytes, error};
 
 /// An Ed25519 public key, whose `bytes` are its 32-byte encoding.
 #[pyclass(frozen, module = "pyrind.ed25519")]
@@ -52,15 +52,16 @@ impl PublicKey {
 #[pyclass(frozen, module = "pyrind.ed25519")]
 struct KeyPair {
     inner: Box<ed25519::KeyPair>,
-    public_key: Py<PublicKey>,
+    public_key: PublicKeyCell<PublicKey>,
 }
 
 impl KeyPair {
     /// Wraps `key_pair`, with the one `PublicKey` its `public_key` returns.
-    fn wrap(py: Python<'_>, key_pair: Result<ed25519::KeyPair, rind::Error>) -> PyResult<Self> {
-        let inner = Box::new(key_pair.map_err(error)?);
-        let public_key = Py::new(py, PublicKey(Box::new(inner.public_key().clone())))?;
-        Ok(Self { inner, public_key })
+    fn wrap(key_pair: Result<ed25519::KeyPair, rind::Error>) -> PyResult<Self> {
+        Ok(Self {
+            inner: Box::new(key_pair.map_err(error)?),
+            public_key: PublicKeyCell::new(),
+        })
     }
 }
 
@@ -68,40 +69,37 @@ impl KeyPair {
 impl KeyPair {
     /// Generates a key pair.
     #[staticmethod]
-    fn generate(py: Python<'_>) -> PyResult<Self> {
-        Self::wrap(py, ed25519::KeyPair::generate())
+    fn generate() -> PyResult<Self> {
+        Self::wrap(ed25519::KeyPair::generate())
     }
 
     /// Loads a key pair from PKCS#8 v1 or v2 DER, refused if a v2 key's
     /// public key does not match.
     #[staticmethod]
-    fn from_pkcs8(py: Python<'_>, der: Bytes<'_>) -> PyResult<Self> {
-        Self::wrap(py, ed25519::KeyPair::from_pkcs8(&der))
+    fn from_pkcs8(der: Bytes<'_>) -> PyResult<Self> {
+        Self::wrap(ed25519::KeyPair::from_pkcs8(&der))
     }
 
     /// Loads a 32-byte seed, as a JWK's `d` holds it, deriving its public
     /// key.
     #[staticmethod]
-    fn from_seed(py: Python<'_>, seed: Bytes<'_>) -> PyResult<Self> {
-        Self::wrap(py, ed25519::KeyPair::from_seed(&seed))
+    fn from_seed(seed: Bytes<'_>) -> PyResult<Self> {
+        Self::wrap(ed25519::KeyPair::from_seed(&seed))
     }
 
     /// Loads a 32-byte seed, refused unless `public_key` is its public key.
     #[staticmethod]
-    fn from_seed_and_public_key(
-        py: Python<'_>,
-        seed: Bytes<'_>,
-        public_key: Bytes<'_>,
-    ) -> PyResult<Self> {
-        Self::wrap(
-            py,
-            ed25519::KeyPair::from_seed_and_public_key(&seed, &public_key),
-        )
+    fn from_seed_and_public_key(seed: Bytes<'_>, public_key: Bytes<'_>) -> PyResult<Self> {
+        Self::wrap(ed25519::KeyPair::from_seed_and_public_key(
+            &seed,
+            &public_key,
+        ))
     }
 
     /// The public key, the same object each call.
-    fn public_key(&self, py: Python<'_>) -> Py<PublicKey> {
-        self.public_key.clone_ref(py)
+    fn public_key(&self, py: Python<'_>) -> PyResult<Py<PublicKey>> {
+        self.public_key
+            .get(py, || PublicKey(Box::new(self.inner.public_key().clone())))
     }
 
     /// Signs `message`.
