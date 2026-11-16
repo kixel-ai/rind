@@ -2,13 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 // AVX2 kernel inspired by YuriMyakotin/ChaCha20-SIMD
 
-//! ChaCha20. Where the CPU has AVX2: pyca/verified-garbage's AVX2 routine
-//! from 256 bytes, or its AVX-512 VL one from 128 bytes where the CPU has
-//! that too, imported by `admin/import-vg`; below those, rind's two-block
-//! AVX2 kernel from two blocks, and HACL*'s verified rounds in
-//! general-purpose registers for one. The AVX2 routine takes what follows
-//! its eight-block loop one block at a time, so a tail of two to four blocks
-//! runs on the kernel. Where the CPU has SSSE3 but not AVX2, aws-lc's
+//! ChaCha20. Where the CPU has AVX2: from 256 bytes, pyca/verified-garbage's
+//! AVX2 routine, or its AVX-512 VL one where the CPU has that too, imported
+//! by `admin/import-vg`; below that, rind's two-block AVX2 kernel from two
+//! blocks, and HACL*'s verified rounds in general-purpose registers for one.
+//! VG takes what follows its eight-block loop one block at a time, so a tail
+//! of two to four blocks runs on the kernel. Where the CPU has SSSE3 but not AVX2, aws-lc's
 //! `chacha-x86_64` SSSE3 routine, four blocks at a time, above 128 bytes, as
 //! aws-lc runs it, imported by `admin/import-aws-lc`; otherwise HACL*'s
 //! rounds, where aws-lc runs integer code.
@@ -65,15 +64,11 @@ impl ChaCha20 {
     /// with `mid::chacha20::check_counter`.
     pub(crate) fn cipher(&mut self, buffer: &mut [u8]) {
         match (self.vg, self.ssse3, buffer.len()) {
-            (Some(vg @ Vg::Avx512Vl(_)), _, VG_AVX512_MIN_LEN..) => {
-                cipher_vg(vg, &self.key, &self.counter_nonce, buffer)
-            }
-            (Some(vg @ Vg::Avx2(_)), _, len @ VG_AVX2_MIN_LEN..) => {
-                // VG's routine takes what follows its eight-block loop one
-                // block at a time, which loses to the two-block kernel when
-                // that tail is two to four blocks long.
+            (Some(vg), _, len @ VG_MIN_LEN..) => {
+                // VG takes what follows its eight-block loop one block at
+                // a time, which loses to the kernel for two to four blocks.
                 let tail = match len % 512 {
-                    tail @ 65..VG_AVX2_MIN_LEN => tail,
+                    tail @ 65..VG_MIN_LEN => tail,
                     _ => 0,
                 };
                 let (whole, rest) = buffer.split_at_mut(len - tail);
@@ -81,11 +76,11 @@ impl ChaCha20 {
                 if !rest.is_empty() {
                     let mut counter_nonce = self.counter_nonce;
                     counter_nonce[0] = counter_nonce[0].wrapping_add((whole.len() / 64) as u32);
-                    // SAFETY: the token proves the `avx2` cpu feature.
+                    // SAFETY: either of VG's tokens proves the `avx2` cpu feature.
                     unsafe { cipher_avx2(&self.key, &counter_nonce, rest) };
                 }
             }
-            // SAFETY: the token proves the `avx2` cpu feature.
+            // SAFETY: either of VG's tokens proves the `avx2` cpu feature.
             (Some(_), _, 65..) => unsafe { cipher_avx2(&self.key, &self.counter_nonce, buffer) },
             (None, Some(_), len @ SSSE3_4X_MIN_LEN..) => {
                 let ptr = buffer.as_mut_ptr();
@@ -162,17 +157,11 @@ fn words<const B: usize, const W: usize>(bytes: &[u8; B]) -> [u32; W] {
     words
 }
 
-/// From this length verified-garbage's AVX-512 VL routine runs. Below it,
-/// HACL*'s rounds in general-purpose registers take one block faster than
-/// VG's setup of its streaming state, and two faster than VG's one block at
-/// a time, on Zen 5.
-const VG_AVX512_MIN_LEN: usize = 128;
-
-/// From this length verified-garbage's AVX2 routine runs, and from it on, a
-/// tail shorter than this after its eight-block loop runs on the two-block
-/// kernel instead. Below it, the kernel computes two blocks at once where
-/// VG computes one at a time after its setup, on Arrow Lake.
-const VG_AVX2_MIN_LEN: usize = 256;
+/// From this length verified-garbage's routines run, and from it on, a tail
+/// of two to four blocks after their eight-block loop runs on the two-block
+/// kernel instead: VG takes those blocks one at a time, which lost to the
+/// kernel by up to 1.73x on Arrow Lake.
+const VG_MIN_LEN: usize = 256;
 
 /// From this length aws-lc runs its SSSE3 routine, which computes four
 /// blocks at a time, rather than its integer one.
@@ -248,7 +237,7 @@ macro_rules! rotate_left {
 }
 
 /// The kernel, two blocks at a time, for the lengths below verified-garbage's
-/// routines and the AVX2 routine's short tails.
+/// routines and their short tails.
 #[target_feature(enable = "ssse3,avx2")]
 fn cipher_avx2(key: &[u32; 8], counter_nonce: &[u32; 4], buffer: &mut [u8]) {
     // SAFETY: `SIGMA`, `key`, and `counter_nonce` are all readable
