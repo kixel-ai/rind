@@ -103,8 +103,10 @@ SHA-512.
   states it keeps transposed, measured 7% faster per call (see
   [SLH-DSA](#slh-dsa)).
 
-aarch64 runs with the crypto extension and the SHA-512 and SHA-3
-instructions; no crypto denies them, as a Raspberry Pi 4 lacks them. armv7
+aarch64 runs with the crypto extension, the SHA-512 and SHA-3
+instructions, and SVE2; no crypto denies them, as a Raspberry Pi 4 lacks
+them. Without SVE2 alone, as on Apple's cores and Neoverse N1 and V1,
+ChaCha20-Poly1305 runs the no crypto column's aws-lc ⚡. armv7
 runs in 32-bit mode, with NEON and the crypto extension; without them it runs
 the code [Symmetric cryptography](#symmetric-cryptography) names. portable is
 the backend for every other architecture, for big-endian aarch64 and arm, and
@@ -118,7 +120,7 @@ with portable Rust in place of the assembly armv7 runs regardless.
 | AES block, AES-CTR | Graviola + rind | aws-lc |  | aws-lc |
 | AES-KW, AES-KWP, AES-CBC | Graviola + rind | aws-lc + rind |  | aws-lc + rind |
 | ChaCha20 (header protection) | HACL* ✓ + rind |  |  |  |
-| ChaCha20-Poly1305, XChaCha20-Poly1305 | aws-lc ⚡ |  |  | HACL* ✓ + Graviola |
+| ChaCha20-Poly1305, XChaCha20-Poly1305 | verified-garbage | aws-lc ⚡ |  | HACL* ✓ + Graviola |
 | MD5 | rind |  |  |  |
 | SHA-1 | rind | aws-lc |  | rind |
 | SHA-256 | aws-lc ⚡ | aws-lc |  | HACL* ✓ |
@@ -191,6 +193,7 @@ tests use [Wycheproof]'s vectors.
 | [OpenSSL] | copied, by `admin/import-openssl`: its x86_64 AVX2 SHA-256 and SHA-512 assembly and its SHA-512 assembly for the SHA512 instructions, from `sha512-x86_64`, as Rust naked functions; its 32-bit ARM Keccak-f assembly, integer and NEON, `keccak1600-armv4`, in Rust `global_asm!` | Apache-2.0 | nothing |
 | [SPHINCS+] | ported: the SPHINCS+ team's FIPS 205 code (`sign.c`, `fors.c`, `wots.c`, `merkle.c`, and its AVX2 builds' `treehashx4` and `treehashx8`, generalised over the lane count) on every CPU, and its x86_64 AVX2 eight-way SHA-256 (`sha256avx.c`), to Rust, from the `bas/fips205` branch | public domain, or CC0-1.0, 0BSD, or MIT-0 | nothing: no SLH-DSA implementation carries a proof of functional correctness |
 | [curve25519-dalek] | dependency, with its serial backend, for armv7 and the portable backend; ported: its AVX2 backend's field arithmetic, point formulas, and base point table, to Rust intrinsics, for Ed25519 verification's four-point multiplication on x86_64 CPUs with AVX2 but without ADX | BSD-3-Clause | nothing: that backend's field arithmetic is hand-written, as is the AVX2 backend's. Its `fiat` backend would run [fiat-crypto]'s verified field arithmetic instead, but only a `--cfg` flag for the whole build selects it, so rind refuses it rather than let the build pick. |
+| [verified-garbage] | copied, by `admin/import-vg`: its aarch64 SVE2 ChaCha20-Poly1305 seal and open and the ChaCha20 and Poly1305 routines they call, as Rust naked functions, byte for byte | Apache-2.0 OR BSD-3-Clause | [Lean proofs](https://github.com/pyca/verified-garbage/tree/e7b0fe8a82b7777958e078573771d51415f105bb/lean) that each routine's machine code meets its RFC 8439 contract, is memory safe, and takes the same branches and memory addresses whatever its secrets, over VG's own models of the instructions. Nothing yet checks those models against a CPU, so rind claims no ✓ for this code until they are cosimulated. |
 | [fiat-crypto] | dependency | MIT OR Apache-2.0 OR BSD-1-Clause | [Coq proofs](https://github.com/mit-plv/fiat-crypto/tree/67316f05d771f7f2db62beede59e9b56406a9efd) that each generated field operation is correct. rind's point formulas, inversion, and table lookup over them are not covered. |
 
 rind's own code is licensed under Apache-2.0 OR ISC OR MIT-0. Copied code
@@ -889,11 +892,16 @@ in [run 41550703300].
 ChaCha20-Poly1305, and XChaCha20-Poly1305 after HChaCha20, run aws-lc's
 `chacha20_poly1305` assembly, which interleaves ChaCha20 with Poly1305 in one
 pass: on x86_64, its AVX2 half where the CPU has AVX2 and BMI2 and its SSE4.1
-half otherwise, as aws-lc picks them, and on aarch64, its NEON routine.
-aws-lc's x86_64 routine reads its pick from `OPENSSL_ia32cap_P`; rind's copy
-reads the same bits from the block rind passes it, so the path is decided
-once per process like rind's others. Without SSE4.1, ChaCha20 and Poly1305
-run in separate passes, as in aws-lc.
+half otherwise, as aws-lc picks them, and on aarch64 without SVE2, its NEON
+routine. aws-lc's x86_64 routine reads its pick from `OPENSSL_ia32cap_P`;
+rind's copy reads the same bits from the block rind passes it, so the path
+is decided once per process like rind's others. Without SSE4.1, ChaCha20 and
+Poly1305 run in separate passes, as in aws-lc. aarch64 CPUs with SVE2 run
+[verified-garbage]'s one-pass routines instead, which rotate with SVE2's
+`xar`: on a Neoverse N2 they took 0.60 to 0.92 of aws-lc's time at every
+size. Its NEON routines took up to 1.06 of aws-lc's time at 32 to 512 bytes
+on Apple's M4, though 0.65 to 0.82 opening 256 bytes and up, so CPUs
+without SVE2 keep aws-lc's.
 
 Elsewhere, 32-bit `arm` runs ChaCha20 on aws-lc's `chacha-armv4` assembly,
 switching from its integer routine to its NEON one at 192 bytes as aws-lc
@@ -911,6 +919,7 @@ HACL*'s verified Poly1305 without NEON.
 [mldsa-native]: https://github.com/pq-code-package/mldsa-native
 [aws-lc]: https://github.com/aws/aws-lc
 [fiat-crypto]: https://github.com/mit-plv/fiat-crypto
+[verified-garbage]: https://github.com/pyca/verified-garbage
 [BoringSSL]: https://boringssl.googlesource.com/boringssl
 [OpenSSL]: https://github.com/openssl/openssl
 [SPHINCS+]: https://github.com/sphincs/sphincsplus/tree/bas/fips205
