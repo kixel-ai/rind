@@ -13,8 +13,8 @@ functions with rustc, as rind does, assembles the text with nixpkgs' LLVM
 (`llvm-mc`, not rustc's), and fails unless every instruction of every
 routine is the same bytes, or for a branch or call, which the assembler lays
 out, goes to the same instruction or function. With `--rind`, it also checks
-every `vg_*` naked function rind vendors under a `vg` module against VG's
-routine of that name.
+every function of rind's named as one of VG's routines against that routine's
+compiled code, byte for byte, since those are the bytes the cosimulation runs.
 
 It writes `<out>/groups.tsv`, the instructions of VG's code for `vg-cosim`,
 one line per distinct instruction of the model: its kind (`insn`, `branch`,
@@ -261,16 +261,20 @@ def branch_form(text):
     return re.sub(r"\s*#?0x[0-9a-f]+( <[^>]*>)?$", "", text)
 
 
-def compare(arch, name, text, got, want, what):
+def compare(arch, name, text, got, want, what, exact=False):
     """Fails unless `got`'s instructions are `want`'s and `text`'s: the same
     bytes and relocations, or for a branch or call, the same instruction to
-    the same target. Returns the text's instructions and `got`'s, padding
-    dropped."""
+    the same target. Another encoding of the same instruction passes, unless
+    `exact`, which requires every instruction's bytes to be `want`'s.
+    Returns the text's instructions and `got`'s, padding dropped."""
     lines = [t for t in text if not t.startswith(".") and not t.endswith(":")]
     got = instructions(arch, name, text, got, what)
     want = instructions(arch, name, text, want, "the assembled text")
     for i, (g, w, t) in enumerate(zip(got, want, lines)):
         mnemonic = t.split()[0]
+        if exact and g.raw != w.raw:
+            fail(f"{name}: instruction {i}, {t!r}, is {g.raw} ({g.text}) in {what} "
+                 f"but {w.raw} ({w.text}) in VG's compiled code")
         if g.relocs != w.relocs:
             fail(f"{name}: instruction {i}, {t!r}, refers to {g.relocs} in {what} "
                  f"but {w.relocs} assembled")
@@ -371,13 +375,14 @@ def main():
                     counts["align"] += 1
                     seen.setdefault(("insn", t), ("insn", [t], NOP))
     rind_checked = 0
+    # rind's copies must be VG's compiled code byte for byte, the bytes the
+    # cosimulation runs, so an encoding of the same instruction that differs
+    # from VG's, which may need another CPU feature, fails here. A routine
+    # is VG's by its name alone, wherever rind puts it.
     for obj in a.rind:
-        vendored = disassemble(a.arch, obj,
-                               lambda path, name: "::vg::" in path and name.startswith("vg_"))
+        vendored = disassemble(a.arch, obj, lambda path, name: name in text)
         for name, insns in vendored.items():
-            if name not in text:
-                fail(f"rind's {name} is not a routine of VG's text at this commit")
-            compare(a.arch, name, text[name], insns, assembled[name], "rind's build")
+            compare(a.arch, name, text[name], insns, compiled[name], "rind's build", exact=True)
             rind_checked += 1
 
     for (t, vg_raw, llvm_raw), k in sorted(ENCODINGS.items()):

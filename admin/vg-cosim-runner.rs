@@ -775,7 +775,7 @@ fn main() {
     map(CODE, 0x10000, PROT_RWX);
     map(DATA, DATA_LEN, PROT_RW);
     let t = arch::tramp();
-    for sig in [4, 7, 8, 11] {
+    for sig in [4, 5, 7, 8, 11] {
         // SAFETY: `fault` only writes to stderr and exits.
         unsafe { signal(sig, fault as *const () as usize) };
     }

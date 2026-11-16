@@ -339,6 +339,17 @@ def tblOf : Instr → Option (Reg × Nat × Nat)
   | .ldrTbl _ _ n off .. => some (n, off, 1)
   | _ => none
 
+/-- Whether a table instruction's offset is one its load encodes, which the
+model requires of a table load: for `ldrqTbl` a multiple of 16 below 65536,
+for `ldrTbl` a multiple of the access size below 4096 times it (DDI 0487
+C7.2 and C6.2, the scaled 12-bit immediate). The text of a load at any other
+offset is not a table load VG's code can hold, so that reading of the text
+has no case. -/
+def tblEncodes : Instr → Bool
+  | .ldrqTbl _ _ off .. => off % 16 == 0 && off < 65536
+  | .ldrTbl sz _ _ off .. => off % sz.bytes == 0 && off < 4096 * sz.bytes
+  | _ => true
+
 def withWords (i : Instr) (ws : List (BitVec 64)) : Instr :=
   match i with
   | .ldrqTbl t n off name _ => .ldrqTbl t n off name ws
@@ -479,17 +490,13 @@ def blocks (kind : String) (lines : List String) (code : ByteArray) (n : Nat) :
           cases := cases.push (caseBytes img o false)
         out := out ++ [({ text := text ++ "; ret", kind := .call, code, cases }, [])]
         continue
+      if !tblEncodes i then continue
       let mut cases := #[]
       for _ in [0:n] do
-        match ← insnCase i with
-        | some (_, img, o) => cases := cases.push (caseBytes img o false)
-        | none =>
-          -- A table instruction whose offset is never one of a table's
-          -- words is not one VG's code can hold.
-          if (tblOf i).isSome then break
-          return .error s!"{text}: the model faults in every state tried ({repr i})"
-      if cases.size == n then
-        out := out ++ [({ text, kind := .insn, code, cases }, i.requires)]
+        let some (_, img, o) ← insnCase i
+          | return .error s!"{text}: the model faults in every state tried ({repr i})"
+        cases := cases.push (caseBytes img o false)
+      out := out ++ [({ text, kind := .insn, code, cases }, i.requires)]
     if out.isEmpty then return .error s!"{text}: the model faults in every state tried"
     return .ok out
   | _, _ => return .error s!"{text}: unknown kind {kind}"

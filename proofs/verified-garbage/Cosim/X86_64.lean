@@ -443,23 +443,29 @@ def placeMem (img : Img) (m : MemOp) : Gen Img := do
     | none => 0
   return img.setReg m.base (((a : Int) - m.disp - idx) % 2 ^ 64).toNat
 
+/-- The offsets into its table a table instruction's operand `m` can read
+a word at: a non-negative multiple of 8, from its displacement and, with an
+index other than its base, the index scaled, up to 32 words past the
+displacement. None for any other operand, which is not one VG's code can
+hold, so that reading of the text has no case. -/
+def tblOffsets (m : MemOp) : List Nat :=
+  match m.index with
+  | none => if m.disp ≥ 0 ∧ m.disp % 8 = 0 then [m.disp.toNat] else []
+  | some r =>
+    if r == m.base then [] else
+    let first := (max m.disp 0).toNat / 8 * 8
+    ((List.range 34).map fun j => first + 8 * j).filter fun (o : Nat) =>
+      decide ((o : Int) ≥ m.disp) && ((o : Int) - m.disp) % (m.scale : Int) == 0
+
 /-- The words of a table instruction's static, at `m`'s base: random, and
 in memory at the address read, so the CPU reads what the model does. -/
 def placeTbl (img : Img) (m : MemOp) (need : Nat) : Gen (Option (Img × List (BitVec 64))) := do
-  -- The index, if any, small enough that the offset is in a short table.
+  let offs := tblOffsets m
+  if offs.isEmpty then return none
+  let off := offs[← below offs.length]!
   let mut img := img
   if let some r := m.index then
-    -- An index that puts the offset at a multiple of 8, from the
-    -- displacement's to 32 words past it.
-    let first := (max m.disp 0).toNat / 8 * 8
-    let offs := ((List.range 34).map fun j => first + 8 * j).filter fun (o : Nat) =>
-      decide ((o : Int) ≥ m.disp) && ((o : Int) - m.disp) % (m.scale : Int) == 0
-    if offs.isEmpty then return none
-    let o := offs[← below offs.length]!
-    img := img.setReg r (((o : Int) - m.disp) / (m.scale : Int)).toNat
-  let off := m.disp + (match m.index with | some r => (img.gpr[r.idx]!).toNat * m.scale | none => 0)
-  if off < 0 || off % 8 != 0 || m.index == some m.base then return none
-  let off := off.toNat
+    img := img.setReg r (((off : Int) - m.disp) / (m.scale : Int)).toNat
   let a := windowBase + 8 * (← below ((windowLen - 64) / 8))
   let words := off / 8 + need + (← below 4)
   let mut ws := #[]
@@ -591,17 +597,14 @@ def blocks (kind : String) (lines : List String) (code : ByteArray) (n : Nat) :
           cases := cases.push (caseBytes img o false 15)
         out := out ++ [({ text := text ++ "; ret", kind := .call, code, cases }, [])]
         continue
+      if let some (m, _) := tblOf i then
+        if (tblOffsets m).isEmpty then continue
       let mut cases := #[]
       for _ in [0:n] do
-        match ← insnCase i with
-        | some (_, img, o, mask) => cases := cases.push (caseBytes img o false mask)
-        | none =>
-          -- A table instruction whose offset is never a word of a table
-          -- (not a multiple of 8) is not one VG's code can hold.
-          if (tblOf i).isSome then break
-          return .error s!"{text}: the model faults in every state tried ({repr i})"
-      if cases.size == n then
-        out := out ++ [({ text, kind := .insn, code, cases }, i.requires)]
+        let some (_, img, o, mask) ← insnCase i
+          | return .error s!"{text}: the model faults in every state tried ({repr i})"
+        cases := cases.push (caseBytes img o false mask)
+      out := out ++ [({ text, kind := .insn, code, cases }, i.requires)]
     if out.isEmpty then return .error s!"{text}: the model faults in every state tried"
     return .ok out
   | _, _ => return .error s!"{text}: unknown kind {kind}"
