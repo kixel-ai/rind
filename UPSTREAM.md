@@ -93,6 +93,14 @@ Each upstream rind changes, with where its fork is vendored and where the list o
 - **Reported:** no.
 - **Goes when:** memcheck tracks the Z flag apart from the carry.
 
+### Valgrind cannot unwind std's frame-pointer entries on armv7
+
+- **Breaks:** valgrind unwinds armv7 code through its `.ARM.exidx` entries, and can rebuild the stack pointer from `r7`, Thumb's frame pointer, but not from `r11`, ARM's (`readexidx.c`, 3.22 through 3.27). Rust's prebuilt std keeps frame pointers, so its entries begin `vsp = r11`. A debug build calls std's shared `<[u8]>::starts_with` rather than inlining it, so a memcheck stack in it stops there, and a suppression that names the caller never matches: rind-dimpl's `pem_signing` reported rustls-pki-types' PEM boundary test, which `rustls-pki-types-pem-line-compare` covers.
+- **Reproduce:** at main's d0e8e97f1, on an arm64 host, `cargo test -p rind-dimpl --test ctgrind --features rind/__ctgrind --target armv7-unknown-linux-gnueabihf -- pem_signing` under `admin/ctgrind --run` reports `bcmp` called by `<[u8]>::starts_with` with no frame above it.
+- **Workaround:** `admin/ctgrind` passes `--unw-stack-scan-thresh=3`, which recovers `rustls_pki_types::pem::read` from the stack when an unwind stops within three frames. Scanned frames below the first can be stale return addresses.
+- **Reported:** no.
+- **Goes when:** valgrind's EXIDX reader takes `vsp = r11`.
+
 ### Valgrind on ARM does not fault guard pages
 
 - **Breaks:** under valgrind on ARM, reading a `PROT_NONE` guard page does not fault, so `low::guard_pages`'s `planted_over_read_faults` fails.
