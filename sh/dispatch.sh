@@ -488,8 +488,7 @@ step() {
             run cargo clippy -p rind-rustls -p rind-ring --lib --tests --locked --target wasm32-wasip2 -- --deny warnings
             # The browser: admin/wasm-fixture adds what a caller adds, and
             # rind-ring also takes ring's own feature for it.
-            CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUSTFLAGS='--cfg getrandom_backend="wasm_js"' \
-                run cargo clippy -p wasm-fixture "${adapters[@]}" --lib --locked --target wasm32-unknown-unknown -- --deny warnings
+            run cargo clippy -p wasm-fixture "${adapters[@]}" --lib --locked --target wasm32-unknown-unknown -- --deny warnings
             run cargo clippy -p rind-ring --lib --locked --target wasm32-unknown-unknown \
                 --features wasm32_unknown_unknown_js -- --deny warnings
             ;;
