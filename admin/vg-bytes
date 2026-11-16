@@ -136,8 +136,9 @@ class Insn:
 
 def disassemble(arch, obj, keep):
     """The instructions of each function of `obj` that `keep` takes, by the
-    demangled path's last component, with the relocations at each: its type,
-    its symbol's last component, and its addend."""
+    demangled path's last component, with the relocations at each: its offset
+    in the instruction, its type, its symbol's last component, and its
+    addend."""
     flags = ["-M", "intel"] if arch == "x86_64" else ["--mattr=+all"]
     # `-z`: llvm-objdump otherwise prints a run of zero bytes as `...`.
     dis = run(["llvm-objdump", "-d", "-z", "-r", "-C", *flags, str(obj)])
@@ -160,7 +161,10 @@ def disassemble(arch, obj, keep):
             continue
         m = re.match(r"^\s*([0-9a-f]+):\s+(R_\S+)\s+(\S+)", line)
         if m:
-            cur[-1].relocs.append((m.group(2), *relocation_target(m.group(3))))
+            # Its offset in the instruction, so a relocation of the same bytes
+            # that patches other bytes of them differs.
+            off = int(m.group(1), 16) - cur[-1].addr
+            cur[-1].relocs.append((off, m.group(2), *relocation_target(m.group(3))))
             continue
         m = re.match(r"^\s*([0-9a-f]+):\s(.*)$", line)
         if m:
@@ -239,7 +243,7 @@ def target_of(insn, insns):
     function a call goes to, by name. Each function is in a section of its
     own, so an address is its offset in the function."""
     if insn.relocs:
-        return ("fn", insn.relocs[0][1], insn.relocs[0][2])
+        return ("fn", insn.relocs[0][2], insn.relocs[0][3])
     m = re.search(r"0x([0-9a-f]+) <", insn.text)
     if not m:
         return ("?", insn.text)
