@@ -975,9 +975,8 @@ mod tests {
     struct EdgeVector {
         name: &'static str,
         kem_id: u16,
-        /// Base mode, which rind runs end to end. The PSK vector's KEM half
-        /// is still checked.
-        base: bool,
+        kdf_id: u16,
+        aead_id: u16,
         info: &'static str,
         ikm_e: &'static str,
         ikm_r: &'static str,
@@ -985,7 +984,12 @@ mod tests {
         pk_rm: &'static str,
         enc: &'static str,
         shared_secret: &'static str,
-        base_nonce: &'static str,
+        /// The key schedule's `base_nonce`, for a base-mode vector, which rind
+        /// runs end to end; `None` for the PSK vector, whose KEM half alone is
+        /// checked, as rind offers no PSK mode. The draft's `key`
+        /// and `exporter_secret` are opaque here, so the ciphertexts and
+        /// exported values check them.
+        base_nonce: Option<&'static str>,
         /// `(pt, aad, ct)` for sequence numbers 0, 1, ...
         encryptions: &'static [(&'static str, &'static str, &'static str)],
         /// `(exporter_context, exported_value)`, each 32 bytes.
@@ -1008,7 +1012,8 @@ mod tests {
         EdgeVector {
             name: "KEM Key Derivation with Rejection Sampling",
             kem_id: 0x0010,
-            base: true,
+            kdf_id: 0x0001,
+            aead_id: 0x0001,
             info: INFO,
             ikm_e: "4270e54ffd08d79d5928020af4686d8f6b7d35dbe470265f1f5aa22816ce860e",
             ikm_r: "68706b652d656467652d703235362d72656a656374696f6e00000001c6be4ce7",
@@ -1018,7 +1023,7 @@ mod tests {
             enc: "04a92719c6195d5085104f469a8b9814d5838ff72b60501e2c4466e5e67b325ac98536\
                   d7b61a1af4b78e5b7f951c0900be863c403ce65c9bfcb9382657222d18c4",
             shared_secret: "1f38c13d9156ad1439d1edf648a12bf9c62cecb95cbb2087e16683636744251a",
-            base_nonce: "d4967824655d4887a04b3d87",
+            base_nonce: Some("d4967824655d4887a04b3d87"),
             encryptions: &[(
                 PT,
                 AAD,
@@ -1033,7 +1038,8 @@ mod tests {
         EdgeVector {
             name: "Empty and Zero-Byte AEAD Inputs",
             kem_id: 0x0020,
-            base: true,
+            kdf_id: 0x0001,
+            aead_id: 0x0001,
             info: INFO,
             ikm_e: X25519_IKM_E,
             ikm_r: X25519_IKM_R,
@@ -1041,7 +1047,7 @@ mod tests {
             pk_rm: X25519_PK_RM,
             enc: X25519_ENC,
             shared_secret: X25519_SHARED,
-            base_nonce: "56d890e5accaaf011cff4b7d",
+            base_nonce: Some("56d890e5accaaf011cff4b7d"),
             encryptions: &[
                 ("", AAD, "3f431133aa05608a56675bec51d03e0f"),
                 (
@@ -1080,7 +1086,8 @@ mod tests {
         EdgeVector {
             name: "Empty info",
             kem_id: 0x0020,
-            base: true,
+            kdf_id: 0x0001,
+            aead_id: 0x0001,
             info: "",
             ikm_e: X25519_IKM_E,
             ikm_r: X25519_IKM_R,
@@ -1088,7 +1095,7 @@ mod tests {
             pk_rm: X25519_PK_RM,
             enc: X25519_ENC,
             shared_secret: X25519_SHARED,
-            base_nonce: "0816b7f1635cce3ee2a7f611",
+            base_nonce: Some("0816b7f1635cce3ee2a7f611"),
             encryptions: &[(
                 PT,
                 AAD,
@@ -1103,7 +1110,8 @@ mod tests {
         EdgeVector {
             name: "info with Embedded Zero Bytes",
             kem_id: 0x0020,
-            base: true,
+            kdf_id: 0x0001,
+            aead_id: 0x0001,
             info: "f0000f00ff",
             ikm_e: X25519_IKM_E,
             ikm_r: X25519_IKM_R,
@@ -1111,7 +1119,7 @@ mod tests {
             pk_rm: X25519_PK_RM,
             enc: X25519_ENC,
             shared_secret: X25519_SHARED,
-            base_nonce: "626c42fcd01b1690bf10cb44",
+            base_nonce: Some("626c42fcd01b1690bf10cb44"),
             encryptions: &[(
                 PT,
                 AAD,
@@ -1129,7 +1137,8 @@ mod tests {
         EdgeVector {
             name: "psk and psk_id with Embedded Zero Bytes",
             kem_id: 0x0020,
-            base: false,
+            kdf_id: 0x0001,
+            aead_id: 0x0001,
             info: INFO,
             ikm_e: "78628c354e46f3e169bd231be7b2ff1c77aa302460a26dbfa15515684c00130b",
             ikm_r: "d4a09d09f575fef425905d2ab396c1449141463f698f8efdb7accfaff8995098",
@@ -1137,7 +1146,7 @@ mod tests {
             pk_rm: "9fed7e8c17387560e92cc6462a68049657246a09bfa8ade7aefe589672016366",
             enc: "0ad0950d9fb9588e59690b74f1237ecdf1d775cd60be2eca57af5a4b0471c91b",
             shared_secret: "727699f009ffe3c076315019c69648366b69171439bd7dd0807743bde76986cd",
-            base_nonce: "a8cf850e9bdd7d73155a5243",
+            base_nonce: None,
             encryptions: &[],
             exports: &[],
         },
@@ -1152,6 +1161,12 @@ mod tests {
         };
         for v in &EDGE_VECTORS {
             let kem = kem(v.kem_id).unwrap();
+            assert_eq!(
+                (v.kdf_id, v.aead_id),
+                (suite.kdf.id, suite.aead.id),
+                "{}",
+                v.name
+            );
             let (info, ikm_e, enc) = (h(v.info), h(v.ikm_e), h(v.enc));
 
             let private_key = PrivateKey::derive(kem, &h(v.ikm_r)).unwrap();
@@ -1172,14 +1187,17 @@ mod tests {
             assert_eq!(public(secret.as_ref()), h(v.shared_secret), "{}", v.name);
             let received = loaded.decapsulate(&enc).unwrap();
             assert_eq!(public(received.as_ref()), h(v.shared_secret), "{}", v.name);
-            if !v.base {
+            let Some(base_nonce) = v.base_nonce else {
                 continue;
-            }
+            };
 
-            let (sealing, _) = schedule(suite, &secret, &info);
-            assert_eq!(public(&sealing.base_nonce), h(v.base_nonce), "{}", v.name);
-
-            let (_, mut sender) = sender_with(suite, &public_key, &ikm_e, &info).unwrap();
+            let mut sender = Sender::schedule(suite, &secret, &info);
+            assert_eq!(
+                public(&sender.sealing.base_nonce),
+                h(base_nonce),
+                "{}",
+                v.name
+            );
             let mut recipient = Recipient::new(suite, &loaded, &enc, &info).unwrap();
             for (pt, aad, ct) in v.encryptions {
                 let (pt, aad, ct) = (h(pt), h(aad), h(ct));
@@ -1191,8 +1209,10 @@ mod tests {
             for (context, value) in v.exports {
                 let context = h(context);
                 let value = h(value);
-                assert_eq!(exported(|out| sender.export(&context, out), 32), value);
-                assert_eq!(exported(|out| recipient.export(&context, out), 32), value);
+                let sent = exported(|out| sender.export(&context, out), 32);
+                assert_eq!(sent, value, "{}", v.name);
+                let received = exported(|out| recipient.export(&context, out), 32);
+                assert_eq!(received, value, "{}", v.name);
             }
         }
     }
@@ -1200,10 +1220,13 @@ mod tests {
     #[test]
     fn derive_rejects_a_candidate_at_or_above_the_order() {
         // The rejection-sampling vector's ikmR: its counter 0 candidate is
-        // above P-256's order, so `DeriveKeyPair` keeps counter 1's.
-        let kem = &DHKEM_P256_HKDF_SHA256;
-        let ikm = hex::decode("68706b652d656467652d703235362d72656a656374696f6e00000001c6be4ce7")
-            .unwrap();
+        // above P-256's order, so `DeriveKeyPair` keeps counter 1's. Both
+        // candidates are the draft's: counter 0's is its published
+        // `rejected_candidate`, and counter 1's its `skRm`.
+        let v = &EDGE_VECTORS[0];
+        let kem = kem(v.kem_id).unwrap();
+        assert_eq!(kem.id, DHKEM_P256_HKDF_SHA256.id);
+        let ikm = hex::decode(v.ikm_r).unwrap();
         let labels = Labels::kem(kem);
         let dkp_prk = labels.extract_prk(b"", b"dkp_prk", &ikm);
         let mut candidate = [0u8; 32];
