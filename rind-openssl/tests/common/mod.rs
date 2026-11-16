@@ -89,7 +89,7 @@ fn conf_value(path: &Path) -> String {
 
 /// A shared library some test build made: beside the test binary where
 /// Cargo puts it there, else the newest in the sibling unit directories of
-/// Cargo's build layout since 1.101. Not necessarily this build's, as the
+/// Cargo's newer build layout. Not necessarily this build's, as the
 /// module comment says.
 pub fn library() -> PathBuf {
     let name = format!(
