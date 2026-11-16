@@ -6,6 +6,10 @@ name: PR check
 # requires only `Queue build / Build`, which no job here replaces. check.yml
 # runs the unscoped suite on main; queue-build.yml runs the group on the queue's
 # own runner.
+#
+# It leaves no module out: `just ci --all` took 14 minutes on a hosted runner
+# with main's Rust cache (rs 10, vartime 5, dart 4, cross 3, the rest in
+# parallel), and a diff reaches fewer.
 on:
   pull_request:
     branches: [main]
@@ -23,7 +27,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
-      BASE: --all # TEMPORARY: measure every module
+      BASE: origin/${{ github.base_ref }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
