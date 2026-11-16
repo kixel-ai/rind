@@ -328,34 +328,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          fetch-depth: ${{ github.event_name == 'pull_request' && '0' || '1' }}
-
-      # A pull request runs a row only when its diff reaches the row's
-      # backend, as sh/backends.sh decides and RIND_SCOPE does for `build`,
-      # or changes admin/ct-binsec.
-      - name: Scope
-        id: scope
-        shell: bash
-        run: |
-          set -euo pipefail
-          run=true
-          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
-            changed=$(sh/changed.sh)
-            if ! grep -qx 'admin/ct-binsec' <<<"$changed"; then
-              reach=$(sh/backends.sh - <<<"$changed")
-              echo "Backends the diff reaches: $(paste -sd' ' <<<"$reach")"
-              grep -qxE "all|$BACKEND" <<<"$reach" || run=false
-            fi
-          fi
-          echo "run=$run" | tee -a "$GITHUB_OUTPUT"
-        env:
-          BACKEND: ${{ matrix.backend }}
 
       - uses: ./.github/actions/nix
-        if: steps.scope.outputs.run == 'true'
 
       - name: ct-binsec
-        if: steps.scope.outputs.run == 'true'
         run: nix develop .#binsec --command admin/ct-binsec --timeout 480
         env:
           RUSTFLAGS: ${{ matrix.rustflags }}
