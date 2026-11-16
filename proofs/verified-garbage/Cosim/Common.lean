@@ -75,9 +75,9 @@ compared after each case. The model may access only the middle half,
 `window`, so a CPU access the model does not make shows as a changed byte
 outside it. -/
 def dataBase : Nat := 0x2000000000
-def dataLen : Nat := 1024
-def windowBase : Nat := dataBase + 256
-def windowLen : Nat := 512
+def dataLen : Nat := 2048
+def windowBase : Nat := dataBase + 512
+def windowLen : Nat := 1024
 
 /-- What a case runs: `insn` falls through, `branch` reports whether it went
 to `targetAddr`, and `call` returns from the `ret` there. -/

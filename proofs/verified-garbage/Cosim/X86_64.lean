@@ -416,7 +416,7 @@ def randomImg : Gen Img := do
   for _ in [0:32] do
     zmm := zmm.push (← bits 512)
   -- Within the window, so a push, a call or a stack access stays in it.
-  gpr := gpr.set! (Reg.idx .rsp) (BitVec.ofNat 64 (dataBase + 512 + 8 * (← below 16) - 64))
+  gpr := gpr.set! (Reg.idx .rsp) (BitVec.ofNat 64 (windowBase + windowLen / 2 + 8 * (← below 16) - 64))
   return { gpr, cf := ← bool, zf := ← bool, sf := ← bool, of := ← bool
            mxcsr := BitVec.ofNat 32 ((← below 65536))
            zmm, data := ← bytes dataLen }
@@ -508,6 +508,11 @@ def insnCase (i : Instr) : Gen (Option (Instr × Img × Img × Nat)) := do
     | none =>
       for m in memOps i do
         img ← placeMem img m
+    -- A frame's pushes from the top of the window, its pops from the bottom.
+    match i with
+    | .push _ => img := img.setReg .rsp (windowBase + windowLen - 8 * (← below 4))
+    | .pop _ _ => img := img.setReg .rsp (windowBase + 8 * (← below 4))
+    | _ => pure ()
     if let .ldmxcsr m := i then
       -- A value with its reserved bits clear, which the model loads.
       img := img.poke ((img.state.ea m).toNat) (← below 65536) 4
