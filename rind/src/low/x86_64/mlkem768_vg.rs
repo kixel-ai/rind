@@ -43,16 +43,7 @@ impl Encaps {
     /// FIPS 203's encapsulation key check (section 7.2): whether every
     /// coefficient `ek` encodes is below q.
     pub(crate) fn check_ek(self, ek: &[u8; 1184]) -> bool {
-        // SAFETY: `ek` is valid for reads of its size, and a Rust object, so
-        // it neither overlaps the stack nor wraps around the address space.
-        // The AVX2 variant runs only where the CPU has AVX and AVX2.
-        let ok = unsafe {
-            match HaveAvx2::check() {
-                Some(_) => vg::vg_mlkem768_check_ek_avx2::vg_mlkem768_check_ek_avx2(ek),
-                None => vg::vg_mlkem768_check_ek::vg_mlkem768_check_ek(ek),
-            }
-        };
-        ok == 1
+        check_ek(HaveAvx2::check(), ek)
     }
 
     /// `ML-KEM.Encaps_internal(ek, m)` (FIPS 203 Algorithm 17): the shared
@@ -65,57 +56,92 @@ impl Encaps {
         h: Option<&[u8; 32]>,
         m: &[u8; 32],
     ) -> Option<([u8; 32], [u8; 1088])> {
-        let mut key = [0u8; 32];
-        let mut ct = [0u8; 1088];
-        let mut scratch = Scratch::new();
-        let (key_ptr, ct_ptr, s) = (&mut key, &mut ct, scratch.as_mut_ptr());
-        // SAFETY: every pointer is to a distinct Rust object valid for its
-        // size, so none overlaps another, the stack, or the end of the
-        // address space. The caller checked `ek` and that `h` is its hash.
-        // Each variant runs only where the CPU has its features: the AVX-512
-        // one AVX-512 F, BW, and VL with AVX2, the AVX2 one AVX and AVX2, and
-        // the AVX one AVX.
-        let ok = unsafe {
-            match (
-                h,
-                HaveAvx512ForVgMlKem::check(),
-                HaveAvx2::check(),
-                HaveAvx::check(),
-            ) {
-                (Some(h), Some(_), _, _) => {
-                    vg::vg_mlkem768_encaps_h_avx512::vg_mlkem768_encaps_h_avx512(
-                        ek, h, m, key_ptr, ct_ptr, s,
-                    )
-                }
-                (Some(h), None, Some(_), _) => {
-                    vg::vg_mlkem768_encaps_h_avx2::vg_mlkem768_encaps_h_avx2(
-                        ek, h, m, key_ptr, ct_ptr, s,
-                    )
-                }
-                (Some(h), None, None, Some(_)) => {
-                    vg::vg_mlkem768_encaps_h_avx::vg_mlkem768_encaps_h_avx(
-                        ek, h, m, key_ptr, ct_ptr, s,
-                    )
-                }
-                (Some(h), None, None, None) => {
-                    vg::vg_mlkem768_encaps_h::vg_mlkem768_encaps_h(ek, h, m, key_ptr, ct_ptr, s)
-                }
-                (None, Some(_), _, _) => vg::vg_mlkem768_encaps_avx512::vg_mlkem768_encaps_avx512(
-                    ek, m, key_ptr, ct_ptr, s,
-                ),
-                (None, None, Some(_), _) => {
-                    vg::vg_mlkem768_encaps_avx2::vg_mlkem768_encaps_avx2(ek, m, key_ptr, ct_ptr, s)
-                }
-                (None, None, None, Some(_)) => {
-                    vg::vg_mlkem768_encaps_avx::vg_mlkem768_encaps_avx(ek, m, key_ptr, ct_ptr, s)
-                }
-                (None, None, None, None) => {
-                    vg::vg_mlkem768_encaps::vg_mlkem768_encaps(ek, m, key_ptr, ct_ptr, s)
-                }
-            }
-        };
-        (ok == 1).then_some((key, ct))
+        encaps(Width::best(), ek, h, m)
     }
+}
+
+/// The variants of VG's encapsulation, each with proof that the CPU has its
+/// features.
+#[derive(Clone, Copy, Debug)]
+enum Width {
+    Base,
+    Avx(HaveAvx),
+    Avx2(HaveAvx2),
+    Avx512(HaveAvx512ForVgMlKem),
+}
+
+impl Width {
+    /// The widest the CPU runs, as VG's dispatcher picks.
+    fn best() -> Self {
+        let all = Self::all();
+        all.into_iter().flatten().last().unwrap()
+    }
+
+    /// Each, if the CPU runs it, narrowest first.
+    fn all() -> [Option<Self>; 4] {
+        [
+            Some(Self::Base),
+            HaveAvx::check().map(Self::Avx),
+            HaveAvx2::check().map(Self::Avx2),
+            HaveAvx512ForVgMlKem::check().map(Self::Avx512),
+        ]
+    }
+}
+
+/// [`Encaps::check_ek`], on VG's AVX2 variant given proof the CPU has it.
+fn check_ek(avx2: Option<HaveAvx2>, ek: &[u8; 1184]) -> bool {
+    // SAFETY: `ek` is valid for reads of its size, and a Rust object, so it
+    // neither overlaps the stack nor wraps around the address space. The
+    // AVX2 variant runs only where the CPU has AVX and AVX2.
+    let ok = unsafe {
+        match avx2 {
+            Some(_) => vg::vg_mlkem768_check_ek_avx2::vg_mlkem768_check_ek_avx2(ek),
+            None => vg::vg_mlkem768_check_ek::vg_mlkem768_check_ek(ek),
+        }
+    };
+    ok == 1
+}
+
+/// [`Encaps::encaps`], on the variant `width`.
+fn encaps(
+    width: Width,
+    ek: &[u8; 1184],
+    h: Option<&[u8; 32]>,
+    m: &[u8; 32],
+) -> Option<([u8; 32], [u8; 1088])> {
+    use vg::*;
+    let mut key = [0u8; 32];
+    let mut ct = [0u8; 1088];
+    let mut scratch = Scratch::new();
+    let (k, c, s) = (&mut key, &mut ct, scratch.as_mut_ptr());
+    // SAFETY: every pointer is to a distinct Rust object valid for its size,
+    // so none overlaps another, the stack, or the end of the address space.
+    // The caller checked `ek` and that `h` is its hash. `width` proves the
+    // CPU has its variant's features: AVX-512 F, BW, and VL with AVX2 for
+    // the AVX-512 one, AVX and AVX2 for the AVX2 one, and AVX for the AVX one.
+    let ok = unsafe {
+        match (width, h) {
+            (Width::Base, None) => vg_mlkem768_encaps::vg_mlkem768_encaps(ek, m, k, c, s),
+            (Width::Avx(_), None) => vg_mlkem768_encaps_avx::vg_mlkem768_encaps_avx(ek, m, k, c, s),
+            (Width::Avx2(_), None) => {
+                vg_mlkem768_encaps_avx2::vg_mlkem768_encaps_avx2(ek, m, k, c, s)
+            }
+            (Width::Avx512(_), None) => {
+                vg_mlkem768_encaps_avx512::vg_mlkem768_encaps_avx512(ek, m, k, c, s)
+            }
+            (Width::Base, Some(h)) => vg_mlkem768_encaps_h::vg_mlkem768_encaps_h(ek, h, m, k, c, s),
+            (Width::Avx(_), Some(h)) => {
+                vg_mlkem768_encaps_h_avx::vg_mlkem768_encaps_h_avx(ek, h, m, k, c, s)
+            }
+            (Width::Avx2(_), Some(h)) => {
+                vg_mlkem768_encaps_h_avx2::vg_mlkem768_encaps_h_avx2(ek, h, m, k, c, s)
+            }
+            (Width::Avx512(_), Some(h)) => {
+                vg_mlkem768_encaps_h_avx512::vg_mlkem768_encaps_h_avx512(ek, h, m, k, c, s)
+            }
+        }
+    };
+    (ok == 1).then_some((key, ct))
 }
 
 /// Proof that VG's key generation and decapsulation run here: with
@@ -167,5 +193,56 @@ impl KeyPair {
             )
         };
         (ok == 1).then_some(key)
+    }
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod tests {
+    use super::*;
+    use crate::low::ct;
+    use crate::mid::sha3::Sha3_256Context;
+    use crate::test::{Acvp, acvp};
+
+    // The CPU's widest variant hides the others from every other test, so
+    // each variant it runs, with the key's hash and without, is checked
+    // against ACVP's ML-KEM-768 encapsulations here, with a message
+    // `admin/ctgrind` keeps secret; and both key checks against its
+    // encapsulation key checks.
+    #[test]
+    fn widths_match_acvp() {
+        let mut ran = 0;
+        for group in acvp("ML-KEM-encapDecap-FIPS203-tr1") {
+            if group.str("parameterSet") != "ML-KEM-768" {
+                continue;
+            }
+            for test in group.tests() {
+                let ek: [u8; 1184] = test.hex("ek").try_into().unwrap();
+                match group.str("function") {
+                    "encapsulation" => {
+                        let m: [u8; 32] = test.hex("m").try_into().unwrap();
+                        ct::secret_slice(&m);
+                        let mut h = Sha3_256Context::new();
+                        h.update(&ek);
+                        let h = h.finish();
+                        for width in Width::all().into_iter().flatten() {
+                            for h in [None, Some(&h)] {
+                                let (k, c) = ct::into_public(encaps(width, &ek, h, &m).unwrap());
+                                assert_eq!(k, &test.hex("k")[..], "{width:?}");
+                                assert_eq!(c, &test.hex("c")[..], "{width:?}");
+                                ran += 1;
+                            }
+                        }
+                    }
+                    "encapsulationKeyCheck" => {
+                        for avx2 in [None, HaveAvx2::check()] {
+                            assert_eq!(check_ek(avx2, &ek), test.flag("testPassed"));
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        assert!(ran > 0);
     }
 }

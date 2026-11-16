@@ -4,9 +4,11 @@
 //! rind's: proofs no CPU can give, so callers keep rind's arithmetic.
 
 /// Proof that VG's encapsulation runs here, which it never does.
+#[cfg(not(rind_backend = "aarch64"))]
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum Encaps {}
 
+#[cfg(not(rind_backend = "aarch64"))]
 impl Encaps {
     pub(crate) fn check() -> Option<Self> {
         None

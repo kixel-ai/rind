@@ -50,28 +50,79 @@ impl Encaps {
         h: Option<&[u8; 32]>,
         m: &[u8; 32],
     ) -> Option<([u8; 32], [u8; 1088])> {
+        // Apple's cores take the variant that also runs Keccak on the SHA-3
+        // instructions, as VG's dispatcher picks; it measured slower on
+        // Neoverse N2.
+        self.encaps_with(cfg!(target_vendor = "apple"), ek, h, m)
+    }
+
+    /// [`Self::encaps`], on the variant that runs Keccak on the SHA-3
+    /// instructions if `keccak_sha3`, or on NEON otherwise.
+    fn encaps_with(
+        self,
+        keccak_sha3: bool,
+        ek: &[u8; 1184],
+        h: Option<&[u8; 32]>,
+        m: &[u8; 32],
+    ) -> Option<([u8; 32], [u8; 1088])> {
+        use vg::*;
         let mut key = [0u8; 32];
         let mut ct = [0u8; 1088];
         let mut scratch = Scratch(MaybeUninit::uninit());
-        let (key_ptr, ct_ptr, s) = (&mut key, &mut ct, scratch.0.as_mut_ptr());
+        let (k, c, s) = (&mut key, &mut ct, scratch.0.as_mut_ptr());
         // SAFETY: every pointer is to a distinct Rust object valid for its
         // size, so none overlaps another, the stack, or the end of the
         // address space. The caller checked `ek` and that `h` is its hash.
         // `self` proves the CPU has the SHA-3 instructions both variants
-        // need. Apple's cores take the variant that also runs Keccak on them,
-        // as VG's dispatcher picks.
+        // need.
         let ok = unsafe {
-            match h {
-                #[cfg(target_vendor = "apple")]
-                Some(h) => vg::vg_mlkem768_encaps_h_x2_sha3_keccak_sha3::vg_mlkem768_encaps_h_x2_sha3_keccak_sha3(ek, h, m, key_ptr, ct_ptr, s),
-                #[cfg(target_vendor = "apple")]
-                None => vg::vg_mlkem768_encaps_x2_sha3_keccak_sha3::vg_mlkem768_encaps_x2_sha3_keccak_sha3(ek, m, key_ptr, ct_ptr, s),
-                #[cfg(not(target_vendor = "apple"))]
-                Some(h) => vg::vg_mlkem768_encaps_h_x2_sha3::vg_mlkem768_encaps_h_x2_sha3(ek, h, m, key_ptr, ct_ptr, s),
-                #[cfg(not(target_vendor = "apple"))]
-                None => vg::vg_mlkem768_encaps_x2_sha3::vg_mlkem768_encaps_x2_sha3(ek, m, key_ptr, ct_ptr, s),
+            match (keccak_sha3, h) {
+                (false, None) => vg_mlkem768_encaps_x2_sha3::vg_mlkem768_encaps_x2_sha3(ek, m, k, c, s),
+                (true, None) => vg_mlkem768_encaps_x2_sha3_keccak_sha3::vg_mlkem768_encaps_x2_sha3_keccak_sha3(ek, m, k, c, s),
+                (false, Some(h)) => vg_mlkem768_encaps_h_x2_sha3::vg_mlkem768_encaps_h_x2_sha3(ek, h, m, k, c, s),
+                (true, Some(h)) => vg_mlkem768_encaps_h_x2_sha3_keccak_sha3::vg_mlkem768_encaps_h_x2_sha3_keccak_sha3(ek, h, m, k, c, s),
             }
         };
         (ok == 1).then_some((key, ct))
+    }
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod tests {
+    use super::*;
+    use crate::mid::sha3::Sha3_256Context;
+    use crate::test::{Acvp, acvp};
+
+    // The CPU runs one variant, so each, with the key's hash and without,
+    // is checked against ACVP's ML-KEM-768 encapsulations here.
+    #[test]
+    fn variants_match_acvp() {
+        let Some(vg) = Encaps::check() else {
+            return;
+        };
+        let mut ran = 0;
+        for group in acvp("ML-KEM-encapDecap-FIPS203-tr1") {
+            if group.str("parameterSet") != "ML-KEM-768" || group.str("function") != "encapsulation"
+            {
+                continue;
+            }
+            for test in group.tests() {
+                let ek: [u8; 1184] = test.hex("ek").try_into().unwrap();
+                let m: [u8; 32] = test.hex("m").try_into().unwrap();
+                let mut h = Sha3_256Context::new();
+                h.update(&ek);
+                let h = h.finish();
+                for keccak_sha3 in [false, true] {
+                    for h in [None, Some(&h)] {
+                        let (k, c) = vg.encaps_with(keccak_sha3, &ek, h, &m).unwrap();
+                        assert_eq!(k, &test.hex("k")[..]);
+                        assert_eq!(c, &test.hex("c")[..]);
+                        ran += 1;
+                    }
+                }
+            }
+        }
+        assert!(ran > 0);
     }
 }

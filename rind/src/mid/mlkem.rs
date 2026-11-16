@@ -1595,5 +1595,56 @@ mod tests {
         check::<MlKem512>(&seed);
         check::<MlKem768>(&seed);
         check::<MlKem1024>(&seed);
+
+        // pyca/verified-garbage's ML-KEM-768 encapsulation, which runs with
+        // SHA3, to a key pair's public key, with its hash, and to a parsed
+        // one, without.
+        assert!(vg_encaps::<MlKem768>().is_some());
+        let dk = DecapKey::<MlKem768>::keygen_internal(&[0x5a; 64]);
+        let m = || Message(core::array::from_fn(|i| seed[i % seed.len()]));
+        let ek = dk.encapsulation_key();
+        ct_qemu::traced(|| ek.encaps_internal(m()));
+        let ek = EncapKey::<MlKem768>::from_bytes(ek.as_bytes()).unwrap();
+        ct_qemu::traced(|| ek.encaps_internal(m()));
+    }
+
+    // Valgrind runs no AVX-512, so `admin/ctgrind` never reaches
+    // pyca/verified-garbage's ML-KEM-768 key generation and decapsulation,
+    // nor its AVX-512 encapsulation; `admin/ct-sde` traces them here, under
+    // Sapphire Rapids, as `ct_qemu_mlkem` traces aarch64's. Encapsulating a
+    // secret message to a fixed key, with the key's hash and without, then
+    // decapsulating the ciphertext and a tampered copy. A second key then
+    // takes its implicit-rejection secret `z` from the seed, as its
+    // generation is traced: `𝜌` comes from the rest, so it stays fixed.
+    #[cfg(rind_backend = "x86_64")]
+    #[test]
+    #[ignore = "admin/ct-sde runs it under Intel SDE"]
+    fn ct_sde_mlkem768() {
+        use crate::low::ct_sde;
+
+        assert!(vg_key_pair::<MlKem768>().is_some(), "AVX-512 F, BW, and VL");
+        let seed = ct_sde::seed().to_le_bytes();
+        let m = || Message(core::array::from_fn(|i| seed[i % seed.len()]));
+        let dk = DecapKey::<MlKem768>::keygen_internal(&[0x5a; 64]);
+        let ek = dk.encapsulation_key();
+        let (_, c) = ct_sde::traced(|| ek.encaps_internal(m()));
+        let ek = EncapKey::<MlKem768>::from_bytes(ek.as_bytes()).unwrap();
+        ct_sde::traced(|| ek.encaps_internal(m()));
+        ct_sde::traced(|| dk.decaps(&c));
+        let mut c = c.0;
+        c[0] ^= 1;
+        ct_sde::traced(|| dk.decaps(&Ciphertext(c)));
+
+        let dk = ct_sde::traced(|| {
+            DecapKey::<MlKem768>::keygen_internal(&core::array::from_fn(|i| match i {
+                ..32 => 0x5a,
+                _ => seed[i % seed.len()],
+            }))
+        });
+        let (_, c) = dk.encapsulation_key().encaps_internal(Message([0xa5; 32]));
+        ct_sde::traced(|| dk.decaps(&c));
+        let mut c = c.0;
+        c[0] ^= 1;
+        ct_sde::traced(|| dk.decaps(&Ciphertext(c)));
     }
 }
