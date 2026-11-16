@@ -135,7 +135,9 @@ The `acvp_...` unit tests read NIST's ACVP sample sets in `thirdparty/acvp/`,
 which `admin/sync-acvp` trims to the groups rind runs; a group a test does not
 expect fails it. The SHA-2 and SHA-3 sets' 1 to 8 GiB messages run only with
 `SLOW_TESTS=1`. HMAC_DRBG and ECDH read CAVP's files, as ACVP's samples test
-neither as rind uses them.
+neither as rind uses them. [rind-acvp](rind-acvp/README.md)'s offline test
+answers the sets for rind-fips's module through aws-lc's `acvptool`, on each
+CPU path, with the sets it builds for what the samples lack.
 
 These suites run wherever the [tier table](#tiers) runs `cargo test`, including
 the forced portable backend. The nightly `build.yml` runs the million-case
@@ -221,7 +223,7 @@ secret names a zeroing test, or says why it has none.
 | Constant-time comparison | `constant_time::verify` | none: no published set | none: it returns whether two slices are equal, which the differential test covers | `crosschecks::slice_comparison_matches_aws_lc_rs` | ctgrind: `high::constant_time::contents_stay_secret`, `low::generic::ct_equal::equiv`; BINSEC: `test::binsec::ct_binsec_constant_time_verify` | none: it keeps nothing |
 | Random bytes | `rand::fill` | none: the operating system's generator, which no vector can check | none, as for vectors | none, as for vectors | none: rind passes the bytes on | none: rind keeps no copy of the bytes |
 
-Exports that are not primitives: `Error`, `KeyRejected`, `doc::inline_assembly_safety`, `cpu::Dit`, `cpu::has_aes_hardware`, and the hooks the FIPS module builds on: `fips::DrbgHold`, `fips::SelfTest`, `fips::broken`, `fips::check_rsa_modulus`, `fips::digest`, `fips::error_code`, `fips::error_from_code`, `fips::fail`, `fips::hold_drbgs`, `fips::missing_cpu_feature`, `fips::zeroise_drbgs`.
+Exports that are not primitives: `Error`, `KeyRejected`, `doc::inline_assembly_safety`, `cpu::Dit`, `cpu::has_aes_hardware`, and the hooks the FIPS module builds on: `fips::DrbgHold`, `fips::SelfTest`, `fips::broken`, `fips::check_rsa_modulus`, `fips::digest`, `fips::error_code`, `fips::error_from_code`, `fips::fail`, `fips::hold_drbgs`, `fips::missing_cpu_feature`, `fips::zeroise_drbgs`, and the deterministic forms of its randomized services that only its ACVP build exports, which the rind-acvp crate's offline test checks against ACVP's answers: `fips::acvp::{Drbg, Generate, MlDsaMessage, ml_dsa_key_gen, ml_dsa_sign, ml_dsa_verify, ml_kem_check_decapsulation_key, ml_kem_check_encapsulation_key, ml_kem_decap, ml_kem_encap, ml_kem_key_gen}`.
 
 ## Adapters
 

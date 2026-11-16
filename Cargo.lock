@@ -4651,6 +4651,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "rind-acvp"
+version = "0.1.0"
+dependencies = [
+ "aws-lc-rs",
+ "hex",
+ "num-bigint 0.4.8",
+ "rind-fips",
+ "serde_json",
+]
+
+[[package]]
 name = "rind-aws-lc-rs"
 version = "1.0.3"
 dependencies = [
