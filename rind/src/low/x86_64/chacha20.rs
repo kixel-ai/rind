@@ -2,66 +2,117 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 // AVX2 by-8 implementation inspired by YuriMyakotin/ChaCha20-SIMD
 
-//! ChaCha20: where the CPU has AVX2, rind's AVX2 kernels from two blocks;
-//! where it has SSSE3, aws-lc's `chacha-x86_64` SSSE3 routine, four blocks at
-//! a time, above 128 bytes, as aws-lc runs it, imported by
-//! `admin/import-aws-lc`; otherwise HACL*'s verified rounds in
+//! ChaCha20: where the CPU has AVX2, pyca/verified-garbage's AVX2 routine,
+//! or its AVX-512 VL one where the CPU has that too, imported by
+//! `admin/import-vg`; where it has SSSE3, aws-lc's `chacha-x86_64` SSSE3
+//! routine, four blocks at a time, above 128 bytes, as aws-lc runs it,
+//! imported by `admin/import-aws-lc`; otherwise HACL*'s verified rounds in
 //! general-purpose registers, where aws-lc runs integer code.
 //!
-//! The aws-lc assembly is not formally verified: its correctness rests on its
-//! use and testing in OpenSSL, BoringSSL, and aws-lc, and on rind's tests of
-//! it against RFC 8439, Wycheproof, aws-lc-rs, and HACL*'s rounds.
+//! verified-garbage proves its routines correct and constant time in Lean,
+//! over its own models of the instructions, which rind does not yet check
+//! (see ALGORITHMS.md). The aws-lc assembly is not formally verified: its
+//! correctness rests on its use and testing in OpenSSL, BoringSSL, and
+//! aws-lc, and on rind's tests of it against RFC 8439, Wycheproof,
+//! aws-lc-rs, and HACL*'s rounds.
 
 use core::arch::x86_64::*;
+use core::mem::MaybeUninit;
 
-use super::cpu::{HaveAvx2, HaveSsse3};
+use super::cpu::{HaveAvx2, HaveAvx512Vl, HaveSsse3};
+use super::vg;
 use crate::low::generic::chacha20;
 
 pub(crate) struct ChaCha20 {
-    key: [u32; 8],
-    /// The block counter, then the 96-bit nonce.
-    counter_nonce: [u32; 4],
-    avx2: Option<HaveAvx2>,
+    key: [u8; 32],
+    /// The little-endian block counter, then the 96-bit nonce.
+    counter_nonce: [u8; 16],
+    vg: Option<Vg>,
     ssse3: Option<HaveSsse3>,
+}
+
+/// Which of verified-garbage's routines the CPU runs.
+#[derive(Clone, Copy)]
+enum Vg {
+    Avx2(HaveAvx2),
+    Avx512Vl(HaveAvx512Vl),
 }
 
 impl ChaCha20 {
     /// `nonce` is the little-endian block counter followed by the 96-bit nonce.
     pub(crate) fn new(key: &[u8; 32], nonce: &[u8; 16]) -> Self {
         Self {
-            key: words(key),
-            counter_nonce: words(nonce),
-            avx2: HaveAvx2::check(),
+            key: *key,
+            counter_nonce: *nonce,
+            vg: match (HaveAvx512Vl::check(), HaveAvx2::check()) {
+                (Some(t), _) => Some(Vg::Avx512Vl(t)),
+                (None, Some(t)) => Some(Vg::Avx2(t)),
+                (None, None) => None,
+            },
             ssse3: HaveSsse3::check(),
         }
     }
 
     /// XORs the keystream into `buffer`, starting at the current block, then
     /// moves the counter past every block it touched.
+    ///
+    /// The 32-bit counter must not pass 2^32 - 1, which callers rule out
+    /// with `mid::chacha20::check_counter`.
     pub(crate) fn cipher(&mut self, buffer: &mut [u8]) {
-        match (self.avx2, self.ssse3, buffer.len()) {
-            // SAFETY: the token proves the `avx2` cpu feature
-            (Some(_), _, 65..) => unsafe { cipher_avx2(&self.key, &self.counter_nonce, buffer) },
+        match (self.vg, self.ssse3, buffer.len()) {
+            (Some(vg), _, _) => cipher_vg(vg, &self.key, &self.counter_nonce, buffer),
             (None, Some(_), len @ SSSE3_4X_MIN_LEN..) => {
                 let ptr = buffer.as_mut_ptr();
+                let (key, counter_nonce) = (words(&self.key), words(&self.counter_nonce));
                 // SAFETY: `buffer` is `len` readable and writable bytes, which
                 // the routine allows to alias exactly, and `key` and
                 // `counter_nonce` are 8 and 4 words. The token proves the
                 // `ssse3` cpu feature. Its 32-bit counter wraps unspecified
-                // past 2^32 blocks, which callers rule out with
-                // `mid::chacha20::check_counter`.
+                // past 2^32 blocks, which callers rule out.
                 unsafe {
-                    asm_call!(unsafe extern "sysv64" chacha20_ctr32_ssse3_4x(ptr, ptr, len, &self.key, &self.counter_nonce))
+                    asm_call!(unsafe extern "sysv64" chacha20_ctr32_ssse3_4x(ptr, ptr, len, &key, &counter_nonce))
                 }
             }
-            // As in aws-lc, which runs integer code here. The AVX2 kernels
-            // compute one block as a single serial chain, which Zen 5's
-            // two-cycle vector latency makes slower than this.
-            _ => chacha20::cipher(&self.key, &self.counter_nonce, buffer),
+            // As in aws-lc, which runs integer code here.
+            _ => chacha20::cipher(&words(&self.key), &words(&self.counter_nonce), buffer),
         }
-        self.counter_nonce[0] =
-            self.counter_nonce[0].wrapping_add(buffer.len().div_ceil(64) as u32);
+        let counter = u32::from_le_bytes(self.counter_nonce[..4].try_into().unwrap())
+            .wrapping_add(buffer.len().div_ceil(64) as u32);
+        self.counter_nonce[..4].copy_from_slice(&counter.to_le_bytes());
     }
+}
+
+/// verified-garbage's streaming state, which only its routines read or
+/// write, and which they read only where they have written: 768 bytes,
+/// aligned to a cache line as VG's own wrapper aligns it.
+#[repr(C, align(64))]
+struct VgState(MaybeUninit<[u64; 96]>);
+
+/// XORs the keystream for `key` and `counter_nonce` into `buffer` on
+/// verified-garbage's routines: `init` starts the keystream at the block
+/// counter, and `apply` XORs it in.
+fn cipher_vg(vg: Vg, key: &[u8; 32], counter_nonce: &[u8; 16], buffer: &mut [u8]) {
+    let mut state = VgState(MaybeUninit::uninit());
+    let state = state.0.as_mut_ptr();
+    let (data, len) = (buffer.as_mut_ptr(), buffer.len());
+    // SAFETY: `state` is 768 writable bytes, `key` 32 readable bytes, and
+    // `counter_nonce` 16; they are distinct objects, so none overlaps
+    // another or the return address, or wraps the address space.
+    unsafe { asm_call!(unsafe extern "sysv64" (vg::vg_chacha20_init::vg_chacha20_init)(state, key, counter_nonce)) };
+    // SAFETY: `state` is 768 readable and writable bytes, of which `apply`
+    // reads only those `init` wrote, and `buffer` is `len`; they are
+    // distinct objects, so neither overlaps the other, the return address,
+    // or the stack below it, or wraps the address space. The token proves
+    // the routine's CPU features.
+    let ok = unsafe {
+        match vg {
+            Vg::Avx2(_) => asm_call!(unsafe extern "sysv64" (vg::vg_chacha20_apply_avx2::vg_chacha20_apply_avx2)(state, data, len)),
+            Vg::Avx512Vl(_) => asm_call!(unsafe extern "sysv64" (vg::vg_chacha20_apply_avx512vl::vg_chacha20_apply_avx512vl)(state, data, len)),
+        }
+    };
+    // `apply` refuses, leaving `buffer` as it was, only a keystream past
+    // block 2^32 - 1, which the callers rule out: never pass on plaintext.
+    assert_eq!(ok, 1, "ChaCha20 block counter would overflow");
 }
 
 /// `bytes` as little-endian words.
@@ -534,51 +585,83 @@ mod tests {
     use crate::low::{ct, hchacha20};
 
     // The CPU's fastest path hides the others from every other test, so
-    // HACL*'s rounds and aws-lc's SSSE3 routine are checked against it
-    // directly, under a key `admin/ctgrind` keeps secret: every length
-    // through the paths' boundaries and two four-block batches, each
-    // continued by a second call, which a whole number of blocks leaves
-    // contiguous.
+    // each path the CPU can run, verified-garbage's AVX2 and AVX-512 VL
+    // routines, aws-lc's SSSE3 routine, and HACL*'s rounds, is checked
+    // against HACL*'s rounds directly, under a key `admin/ctgrind` keeps
+    // secret: every length through the paths' boundaries and past VG's
+    // eight- and sixteen-block batches, each continued by a second call,
+    // which a whole number of blocks leaves contiguous.
     #[test]
     fn paths_match() {
         let key = core::array::from_fn(|i| i as u8);
         ct::secret_slice(&key);
         let nonce = core::array::from_fn(|i| (i * 7) as u8);
-        for len in 0..=600 {
-            let mut want = vec![0x5a; len + 200];
-            let mut fastest = ChaCha20::new(&key, &nonce);
-            let (first, second) = want.split_at_mut(len);
-            fastest.cipher(first);
-            fastest.cipher(second);
-            ct::public_slice(&want);
-
-            let mut ssse3 = ChaCha20 {
-                avx2: None,
+        let paths = [
+            HaveAvx512Vl::check().map(|t| ChaCha20 {
+                vg: Some(Vg::Avx512Vl(t)),
                 ..ChaCha20::new(&key, &nonce)
-            };
-            let mut got = vec![0x5a; len + 200];
-            let (first, second) = got.split_at_mut(len);
-            ssse3.cipher(first);
-            ssse3.cipher(second);
-            ct::public_slice(&got);
-            assert_eq!(got, want, "SSSE3, {len} bytes, then 200");
-
-            let mut got = vec![0x5a; len + 200];
-            let (first, second) = got.split_at_mut(len);
+            }),
+            HaveAvx2::check().map(|t| ChaCha20 {
+                vg: Some(Vg::Avx2(t)),
+                ..ChaCha20::new(&key, &nonce)
+            }),
+            HaveSsse3::check().map(|t| ChaCha20 {
+                vg: None,
+                ssse3: Some(t),
+                ..ChaCha20::new(&key, &nonce)
+            }),
+            Some(ChaCha20 {
+                vg: None,
+                ssse3: None,
+                ..ChaCha20::new(&key, &nonce)
+            }),
+        ];
+        for len in 0..=1100 {
+            let mut want = vec![0x5a; len + 200];
+            let (first, second) = want.split_at_mut(len);
             let mut counter_nonce = words(&nonce);
             chacha20::cipher(&words(&key), &counter_nonce, first);
             counter_nonce[0] += len.div_ceil(64) as u32;
             chacha20::cipher(&words(&key), &counter_nonce, second);
-            ct::public_slice(&got);
-            assert_eq!(got, want, "HACL*, {len} bytes, then 200");
+            ct::public_slice(&want);
 
-            if len % 64 == 0 {
-                let mut whole = vec![0x5a; len + 200];
-                ChaCha20::new(&key, &nonce).cipher(&mut whole);
-                ct::public_slice(&whole);
-                assert_eq!(whole, want, "{len} bytes, then 200, at once");
+            for (i, path) in paths.iter().enumerate() {
+                let Some(path) = path else { continue };
+                let mut c = ChaCha20 { ..*path };
+                let mut got = vec![0x5a; len + 200];
+                let (first, second) = got.split_at_mut(len);
+                c.cipher(first);
+                c.cipher(second);
+                ct::public_slice(&got);
+                assert_eq!(got, want, "path {i}, {len} bytes, then 200");
+
+                if len % 64 == 0 {
+                    let mut whole = vec![0x5a; len + 200];
+                    ChaCha20 { ..*path }.cipher(&mut whole);
+                    ct::public_slice(&whole);
+                    assert_eq!(whole, want, "path {i}, {len} bytes, then 200, at once");
+                }
             }
         }
+    }
+
+    /// verified-garbage's routines refuse a keystream past block 2^32 - 1,
+    /// which rind's callers never ask for, so the call panics rather than
+    /// return the buffer unencrypted; the last block itself is allowed.
+    #[test]
+    fn vg_counter_limit() {
+        let Some(t) = HaveAvx2::check() else { return };
+        let mut nonce = [0u8; 16];
+        nonce[..4].copy_from_slice(&u32::MAX.to_le_bytes());
+        let mut last = [0u8; 64];
+        cipher_vg(Vg::Avx2(t), &[0; 32], &nonce, &mut last);
+        assert_ne!(last, [0; 64]);
+        let mut past = [0u8; 65];
+        let refused = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            cipher_vg(Vg::Avx2(t), &[0; 32], &nonce, &mut past)
+        }));
+        assert!(refused.is_err());
+        assert_eq!(past, [0; 65]);
     }
 
     #[test]
