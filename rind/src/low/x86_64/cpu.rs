@@ -229,6 +229,17 @@ impl HaveAvx512ForMlKem {
     }
 }
 
+/// Proof that the CPU has what pyca/verified-garbage's AVX-512 ML-KEM-768
+/// runs: AVX-512 F, BW, and VL, with AVX and AVX2.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct HaveAvx512ForVgMlKem(());
+
+impl HaveAvx512ForVgMlKem {
+    pub(crate) fn check() -> Option<Self> {
+        has(AVX | AVX2 | AVX512F | AVX512BW | AVX512VL).then_some(Self(()))
+    }
+}
+
 /// Proof that the CPU has AVX-512 IFMA, with the F, DQ, BW, and VL that
 /// aws-lc's `CRYPTO_is_AVX512IFMA_capable` also asks for, and BMI2: what
 /// aws-lc's dual RSAZ exponentiation runs.
@@ -660,6 +671,10 @@ mod tests {
                 HaveAvx512ForMlKem::check().is_some(),
                 available!("avx", "avx2", "bmi1", "bmi2", "popcnt", "ssse3")
                     && available!("avx512f", "avx512bw", "avx512vbmi", "avx512vbmi2"),
+            ),
+            (
+                HaveAvx512ForVgMlKem::check().is_some(),
+                available!("avx", "avx2", "avx512f", "avx512bw", "avx512vl"),
             ),
             (
                 HaveAvx512ForRsa::check().is_some(),
