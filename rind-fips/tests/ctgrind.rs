@@ -18,9 +18,12 @@ use std::num::NonZeroU32;
 
 use crabgrind::memcheck::{self, MemState};
 use crabgrind::valgrind::{self, RunningMode};
-use rind_fips::signature::sign::{self, MlDsa65, MlDsaKeyPair};
-use rind_fips::signature::{EcdsaKeyPair, Ed25519KeyPair, RsaKeyPair};
-use rind_fips::{aead, agreement, cipher, hkdf, hmac, kem, key_wrap, pbkdf2, rand};
+use rind_fips::ecdsa::{KeyPair as EcdsaKeyPair, sign};
+use rind_fips::ed25519::KeyPair as Ed25519KeyPair;
+use rind_fips::key_wrap::{self, Mode};
+use rind_fips::ml_dsa::{KeyPair as MlDsaKeyPair, MlDsa65};
+use rind_fips::rsa::KeyPair as RsaKeyPair;
+use rind_fips::{aead, agreement, cipher, hkdf, hmac, kem, pbkdf2, rand};
 
 /// Marks `value` secret: memcheck flags any branch or index that depends on it.
 fn secret<T: ?Sized>(value: &T) {
@@ -72,9 +75,11 @@ fn hmac_hkdf_and_pbkdf2() {
         .extract(&ikm)
         .unwrap();
     let mut okm = [0u8; 42];
-    prk.expand(&[b"info"], okm.len())
-        .unwrap()
-        .fill(&mut okm)
+    prk.fill(&[b"info"], &mut okm).unwrap();
+    public(&okm);
+    hkdf::Prk::new(&hkdf::HKDF_SHA256, &ikm)
+        .clone()
+        .fill(&[b"info"], &mut okm)
         .unwrap();
     public(&okm);
     let key = hmac::Key::from(prk.expand(&[b"info"], &hmac::HMAC_SHA256).unwrap());
@@ -228,15 +233,16 @@ fn aes() {
     let wrapped_key = [0x24u8; 32];
     secret(&wrapped_key);
     let mut wrapped = [0u8; 40];
-    kek.wrap(&wrapped_key, &mut wrapped).unwrap();
+    kek.wrap_key(Mode::Kw, &wrapped_key, &mut wrapped).unwrap();
     public(&wrapped);
     let mut unwrapped = [0u8; 32];
-    kek.unwrap(&wrapped, &mut unwrapped).unwrap();
+    kek.unwrap_key(Mode::Kw, &wrapped, &mut unwrapped).unwrap();
     public(&unwrapped);
     assert_eq!(unwrapped, [0x24; 32]);
     wrapped[9] ^= 1;
     assert_eq!(
-        kek.unwrap(&wrapped, &mut unwrapped),
+        kek.unwrap_key(Mode::Kw, &wrapped, &mut unwrapped)
+            .map(|_| ()),
         Err(rind_fips::Error::DecryptFailed)
     );
 
@@ -246,15 +252,15 @@ fn aes() {
         let wrapped_key = vec![0x42u8; len];
         secret(&wrapped_key[..]);
         let mut wrapped = vec![0u8; len.next_multiple_of(8) + 8];
-        kek.wrap_padded(&wrapped_key, &mut wrapped).unwrap();
+        kek.wrap_key(Mode::Kwp, &wrapped_key, &mut wrapped).unwrap();
         public(&wrapped[..]);
         let mut unwrapped = vec![0u8; wrapped.len() - 8];
-        let key = kek.unwrap_padded(&wrapped, &mut unwrapped).unwrap();
+        let key = kek.unwrap_key(Mode::Kwp, &wrapped, &mut unwrapped).unwrap();
         public(key);
         assert_eq!(key, &vec![0x42; len][..], "{len}");
         wrapped[9] ^= 1;
         assert_eq!(
-            kek.unwrap_padded(&wrapped, &mut unwrapped).err(),
+            kek.unwrap_key(Mode::Kwp, &wrapped, &mut unwrapped).err(),
             Some(rind_fips::Error::DecryptFailed),
             "{len}"
         );
@@ -289,16 +295,13 @@ fn kem_set<A: kem::Algorithm>() {
 
 #[test]
 fn signatures() {
-    let ecdsa = EcdsaKeyPair::generate(&sign::ECDSA_P256_SHA256_ASN1).unwrap();
+    let ecdsa = EcdsaKeyPair::generate(&sign::P256_SHA256_ASN1).unwrap();
     let mut scalar = ecdsa.to_scalar().as_ref().to_vec();
     let public_key = ecdsa.public_key().as_ref().to_vec();
     secret(&scalar[..]);
-    let loaded = EcdsaKeyPair::from_scalar_and_public_key(
-        &sign::ECDSA_P256_SHA256_ASN1,
-        &scalar,
-        &public_key,
-    )
-    .unwrap();
+    let loaded =
+        EcdsaKeyPair::from_scalar_and_public_key(&sign::P256_SHA256_ASN1, &scalar, &public_key)
+            .unwrap();
     scalar.fill(0);
     let signature = loaded.sign(MESSAGE).unwrap();
     public(signature.as_ref());
@@ -341,11 +344,17 @@ fn signatures() {
     public(signature.as_ref());
 
     let rsa = RsaKeyPair::generate(rind_fips::rsa::KeySize::Rsa2048).unwrap();
-    let signature = rsa.sign(&sign::RSA_PSS_SHA256, MESSAGE).unwrap();
+    let signature = rsa
+        .sign(&rind_fips::rsa::sign::PSS_SHA256, MESSAGE)
+        .unwrap();
     public(signature.as_ref());
     assert!(
-        rsa.public_key(&sign::RSA_PSS_SHA256)
-            .verify(MESSAGE, signature.as_ref())
+        rsa.public_key()
+            .verify(
+                &rind_fips::rsa::verify::PSS_SHA256,
+                MESSAGE,
+                signature.as_ref()
+            )
             .is_ok()
     );
 }
@@ -396,7 +405,7 @@ fn rsa_with_secret(der: &[u8]) -> Vec<u8> {
 /// key and public in their framing and public key.
 #[test]
 fn key_imports() {
-    let algorithm = &sign::ECDSA_P256_SHA256_ASN1;
+    let algorithm = &sign::P256_SHA256_ASN1;
     let ecdsa = EcdsaKeyPair::generate(algorithm).unwrap();
     let scalar = ecdsa.to_scalar().as_ref().to_vec();
     let public_key = ecdsa.public_key().as_ref().to_vec();
@@ -439,7 +448,7 @@ fn key_imports() {
     // PKCS#1's `RSAPrivateKey` is the OCTET STRING that ends PKCS#8's
     // 26-byte framing for a 2048-bit key.
     let rsa = RsaKeyPair::generate(rind_fips::rsa::KeySize::Rsa2048).unwrap();
-    let public_key = rsa.to_spki();
+    let public_key = rsa.public_key().to_spki();
     let pkcs8 = rsa.to_pkcs8();
     let pkcs8 = [
         &pkcs8.as_ref()[..26],
@@ -450,7 +459,10 @@ fn key_imports() {
         RsaKeyPair::from_pkcs8(&pkcs8),
         RsaKeyPair::from_pkcs1(&pkcs8[26..]),
     ] {
-        assert_eq!(loaded.unwrap().to_spki().as_ref(), public_key.as_ref());
+        assert_eq!(
+            loaded.unwrap().public_key().to_spki().as_ref(),
+            public_key.as_ref()
+        );
     }
 }
 
@@ -461,4 +473,73 @@ fn random() {
     public(&out);
     rand::fill(&mut out).unwrap();
     public(&out);
+}
+
+/// The ACVP build's deterministic services, with the randomness ACVP passes
+/// in and every private part of an expanded key marked secret.
+#[cfg(feature = "__acvp")]
+#[test]
+fn acvp() {
+    use rind_fips::acvp::{self, Generate, MlDsaMessage};
+
+    let entropy = [0x55u8; 32];
+    let reseed = [0x66u8; 32];
+    secret(&entropy);
+    secret(&reseed);
+    let generate = Generate {
+        additional_input: b"",
+        entropy: &reseed,
+    };
+    let mut out = [0u8; 256];
+    acvp::drbg(&entropy, &[0x77; 16], b"", [generate; 2], &mut out).unwrap();
+    public(&out);
+
+    // An ML-KEM-768 expanded decapsulation key is `dk_pke`, then the
+    // encapsulation key, its hash, and `z`; `dk_pke` and `z` are secret.
+    let (d, z, m) = ([0x88u8; 32], [0x99u8; 32], [0xaau8; 32]);
+    secret(&d);
+    secret(&z);
+    secret(&m);
+    let (ek, mut dk) = acvp::ml_kem_key_gen::<kem::MlKem768>(&d, &z).unwrap();
+    public(&ek[..]);
+    public(&dk[..]);
+    secret(&dk[..1152]);
+    secret(&dk[2368..]);
+    acvp::ml_kem_check_decapsulation_key::<kem::MlKem768>(&dk).unwrap();
+    let (mut ciphertext, sent) = acvp::ml_kem_encap::<kem::MlKem768>(&ek, &m).unwrap();
+    public(&ciphertext[..]);
+    let received = acvp::ml_kem_decap::<kem::MlKem768>(&dk, &ciphertext).unwrap();
+    public(&sent[..]);
+    public(&received[..]);
+    assert_eq!(sent, received);
+    // Implicit rejection: a corrupted ciphertext decapsulates to a secret
+    // derived from `z`.
+    ciphertext[0] ^= 1;
+    let rejected = acvp::ml_kem_decap::<kem::MlKem768>(&dk, &ciphertext).unwrap();
+    public(&rejected[..]);
+    assert_ne!(rejected, sent);
+    dk.fill(0);
+
+    // An ML-DSA expanded private key is `rho`, `K`, `tr`, then `s1`, `s2`,
+    // and `t0`; all but `rho` and `tr` are secret.
+    let (seed, rnd) = ([0xbbu8; 32], [0xccu8; 32]);
+    secret(&seed);
+    secret(&rnd);
+    let (pk, sk) = acvp::ml_dsa_key_gen::<MlDsa65>(&seed).unwrap();
+    public(&pk[..]);
+    public(&sk[..]);
+    secret(&sk[32..64]);
+    secret(&sk[128..]);
+    for message in [
+        MlDsaMessage::External {
+            context: b"context",
+            message: MESSAGE,
+        },
+        MlDsaMessage::Internal(MESSAGE),
+        MlDsaMessage::Mu(&[0xdd; 64]),
+    ] {
+        let signature = acvp::ml_dsa_sign::<MlDsa65>(&sk, message, &rnd).unwrap();
+        public(&signature[..]);
+        acvp::ml_dsa_verify::<MlDsa65>(&pk, message, &signature).unwrap();
+    }
 }

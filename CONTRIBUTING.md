@@ -35,7 +35,7 @@ wasm run with `SLOW_TESTS=1`. aws-lc-rs does not build for wasm, so the live
 differential tests stay on `just portable`. Ed25519's CCTV verdicts are
 compared with a file recorded from aws-lc, and a native test checks that
 file against aws-lc. `ReuseCache`'s threaded test does not run on wasm.
-`wasm32-unknown-unknown` stays a compile check. The cross lane clippy-checks
+`wasm32-unknown-unknown` stays a compile check. The wasm lane clippy-checks
 `rind-ring` there with `wasm32_unknown_unknown_js`.
 
 # Commits

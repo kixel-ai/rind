@@ -103,12 +103,15 @@ module rs '^(rind[^/]*/|fuzz/|thirdparty/|Cargo\.(toml|lock)$|\.rustfmt(\.unstab
 # build skips, and which a toolchain bump can break. A change under one
 # backend's low/ directory checks only the builds of that backend (see
 # `reach`), so an x86_64 kernel selects none of them. On Linux its aarch64 and
-# armv7 builds run in nix's cross shells. rind-ring's browser feature is one
-# of the wasm32 builds.
+# armv7 builds run in nix's cross shells.
 cross_tools=cargo
 [[ $(uname -s) != Linux ]] || cross_tools='cargo nix'
-module cross '^(rind/(src/|tests/|Cargo\.toml$|build\.rs$)|rind-ring/(src/|Cargo\.toml$)|Cargo\.(toml|lock)$|flake\.(nix|lock)$)' \
+module cross '^(rind/(src/|tests/|Cargo\.toml$|build\.rs$)|Cargo\.(toml|lock)$|flake\.(nix|lock)$)' \
     tools="$cross_tools" compiles
+# The published adapters' wasm32 builds, and the tests the nightly runs there.
+# rind's manifest picks the random source rind-ring's browser feature reaches.
+module wasm '^(rind/Cargo\.toml$|rind-(aws-lc-rs|ring|rustls|rcgen|jsonwebtoken|dimpl|str0m|openmls|object-store)/(src/|tests/|Cargo\.toml$)|admin/wasm-fixture/|Cargo\.(toml|lock)$|flake\.(nix|lock)$)' \
+    tools='cargo jq' compiles
 # Dependents may build with the workspace's declared rust-version. Plain
 # `cargo check` covers the lib and bin targets, all a dependent builds, so a
 # crate's tests, benches, and docs cannot break it. A Rust crate nested in
@@ -372,13 +375,25 @@ step() {
             # workspace build leaves off, and only for glibc Linux on x86_64
             # and aarch64, where rind-fips is not empty. Its break build
             # checks, on every call, the stack each service zeroes, and fails
-            # each self-test.
-            if printf '%s\n' "${packages[@]}" | grep -qxE 'rind-fips|--workspace' &&
+            # each self-test. Its ACVP build adds the deterministic forms
+            # rind-acvp answers ACVP with, and rind-acvp compiles only with
+            # the `module` feature that builds it; its offline run answers
+            # every vector set on each of this CPU's paths, with the dev
+            # shell's acvptool.
+            if { names rind-fips "${packages[@]}" || names rind-acvp "${packages[@]}"; } &&
                 [[ "$(rustc -vV | sed -n 's/^host: //p')" =~ ^(x86_64|aarch64)-unknown-linux-gnu$ ]]; then
-                RUSTFLAGS='--cfg rind_fips --cfg rind_cpu_disable' run cargo clippy -p rind-fips-module \
-                    --locked --target-dir target/fips-module -- --deny warnings
+                for features in '' acvp; do
+                    RUSTFLAGS='--cfg rind_fips --cfg rind_cpu_disable' run cargo clippy -p rind-fips-module \
+                        --features "$features" --locked --target-dir target/fips-module -- --deny warnings
+                done
+                run cargo clippy -p rind-acvp --features module --all-targets --locked -- --deny warnings
                 if [[ -n "$all" ]] || grep -q '^rind-fips/' "$changed"; then
                     run cargo nextest run -p rind-fips --features __break_tests --locked
+                fi
+                # Selected whenever rind or the module it builds changes,
+                # since its answers come from rind's services.
+                if names rind-acvp "${packages[@]}"; then
+                    run cargo nextest run -p rind-acvp --features module --locked
                 fi
             fi
             # Doc tests need a library. No packages at all means the workspace.
@@ -509,42 +524,21 @@ step() {
                             --target x86_64-unknown-linux-gnu -- rsa_generate
                     fi
                 fi
-                # The nightly wasm job runs `just wasm`, which tests rind and not
-                # rind-ring. Clippy-check rind-ring here:
-                # `wasm32_unknown_unknown_js` selects getrandom's JavaScript
-                # backend, and the host build never compiles that target.
-                run cargo clippy -p rind-ring --lib --locked --target wasm32-unknown-unknown \
-                    --features wasm32_unknown_unknown_js -- --deny warnings
-                # clippy type-checks only. Fail if the library's getrandom does not
-                # unify, or if wasm_js never reaches it. `-e normal` leaves out
-                # dev-dependencies (proptest, aws-lc-rs): they are not in the
-                # library, and a getrandom they pull must not fail this gate.
-                # Duplicates first. `-i getrandom` errors once that name is
-                # ambiguous, and `set -e` would stop before the message below.
-                # The status is checked explicitly: a failure inside `$(...)`
-                # must not look like an empty listing.
-                local dups tree
-                if ! dups=$(cargo tree -p rind-ring --locked --target wasm32-unknown-unknown \
-                    --features wasm32_unknown_unknown_js -e normal -d --depth 0 --prefix none); then
-                    echo "error: cargo tree failed while checking duplicated getrandom" >&2
-                    return 1
-                fi
-                if grep -q '^getrandom v' <<<"$dups"; then
-                    echo "error: rind-ring's wasm32_unknown_unknown_js resolved more than one getrandom" >&2
-                    echo "$dups" >&2
-                    return 1
-                fi
-                if ! tree=$(cargo tree -p rind-ring --locked --target wasm32-unknown-unknown \
-                    --features wasm32_unknown_unknown_js -e normal,features -i getrandom@0.4); then
-                    echo "error: rind-ring's wasm32_unknown_unknown_js did not resolve getrandom 0.4" >&2
-                    return 1
-                fi
-                if ! grep -q 'wasm_js' <<<"$tree"; then
-                    echo "error: rind-ring's wasm32_unknown_unknown_js did not enable getrandom's wasm_js" >&2
-                    echo "$tree" >&2
-                    return 1
-                fi
             fi
+            ;;
+        check:wasm)
+            # Each published adapter, as sh/adapter-versions.sh finds them.
+            local adapters
+            mapfile -t adapters < <(cargo metadata --format-version 1 --no-deps --locked |
+                jq -r '.packages[] | select((.name | startswith("rind-")) and .publish == null) | "-p", .name')
+            run cargo clippy "${adapters[@]}" --lib --locked --target wasm32-wasip2 -- --deny warnings
+            # The tests `just wasm` runs, without the differential ones.
+            run cargo clippy -p rind-rustls -p rind-ring --lib --tests --locked --target wasm32-wasip2 -- --deny warnings
+            # The browser: admin/wasm-fixture adds what a caller adds, and
+            # rind-ring also takes ring's own feature for it.
+            run cargo clippy -p wasm-fixture "${adapters[@]}" --lib --locked --target wasm32-unknown-unknown -- --deny warnings
+            run cargo clippy -p rind-ring --lib --locked --target wasm32-unknown-unknown \
+                --features wasm32_unknown_unknown_js -- --deny warnings
             ;;
         check:vartime)
             # Each backend's targets, as admin/ct-vartime names them; no
