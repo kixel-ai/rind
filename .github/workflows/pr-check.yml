@@ -1,0 +1,55 @@
+name: PR check
+
+# `just ci` over the PR's diff against its base, the same selection and modules
+# the merge queue runs, so a check that fails in the queue (an unstable-rustfmt
+# import order, stale mutants pins) fails here first. Advisory: main's ruleset
+# requires only `Queue build / Build`, which no job here replaces. check.yml
+# runs the unscoped suite on main; queue-build.yml runs the group on the queue's
+# own runner.
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      BASE: --all # TEMPORARY: measure every module
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # The diff against the base needs its merge-base.
+          fetch-depth: 0
+
+      - uses: ./.github/actions/just
+
+      # A query failure fails this job.
+      - name: Select work
+        id: scope
+        run: just ci-select "$BASE" >> "$GITHUB_OUTPUT"
+
+      - uses: ./.github/actions/nix
+        if: steps.scope.outputs.needed == 'true'
+
+      - name: Rust cache
+        if: steps.scope.outputs.rust == 'true'
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          # Restore main's cache (same job id as check.yml's) without a PR's
+          # own copy crowding it out of the repository's cache quota.
+          save-if: false
+
+      - name: Check
+        if: steps.scope.outputs.needed == 'true'
+        run: nix develop --command just ci "$BASE"
