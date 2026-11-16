@@ -5,7 +5,7 @@
 #![cfg(unix)]
 #![allow(clippy::undocumented_unsafe_blocks)]
 
-use std::ffi::{CStr, CString, c_char, c_int, c_long, c_void};
+use std::ffi::{CStr, CString, c_char, c_int, c_long, c_uint, c_void};
 use std::process::Command;
 use std::ptr::{null, null_mut};
 
@@ -17,6 +17,13 @@ mod common;
 unsafe extern "C" {
     fn OSSL_LIB_CTX_load_config(ctx: *mut OSSL_LIB_CTX, file: *const c_char) -> c_int;
     fn OSSL_PROVIDER_get0_name(provider: *const OSSL_PROVIDER) -> *const c_char;
+    fn OSSL_PARAM_get_uint(param: *const OSSL_PARAM, value: *mut c_uint) -> c_int;
+    fn OSSL_PROVIDER_get_capabilities(
+        provider: *const OSSL_PROVIDER,
+        capability: *const c_char,
+        callback: unsafe extern "C" fn(*const OSSL_PARAM, *mut c_void) -> c_int,
+        arg: *mut c_void,
+    ) -> c_int;
     fn EVP_PKEY_get0_provider(pkey: *const EVP_PKEY) -> *const OSSL_PROVIDER;
     fn EVP_PKEY_CTX_get0_provider(ctx: *const EVP_PKEY_CTX) -> *const OSSL_PROVIDER;
     fn EVP_PKEY_CTX_new_from_pkey(
@@ -335,6 +342,55 @@ fn rind_backs_only_x25519_and_ed25519() {
     assert_eq!(ctx.generate(c"X448").provider(), "default");
     assert_eq!(ctx.generate(c"ED448").provider(), "default");
     assert_eq!(ctx.generate(c"RSA").provider(), "default");
+}
+
+/// Collects each TLS group a provider offers, as OpenSSL's TLS stack reads
+/// them: its name, and its id, which `ssl/t1_lib.c` takes as `uint`.
+unsafe extern "C" fn collect_group(params: *const OSSL_PARAM, groups: *mut c_void) -> c_int {
+    let (mut name, mut id) = (null(), 0);
+    unsafe {
+        let found = OSSL_PARAM_locate_const(params, c"tls-group-name".as_ptr());
+        assert!(!found.is_null());
+        assert_eq!(OSSL_PARAM_get_utf8_string_ptr(found, &mut name), 1);
+        let found = OSSL_PARAM_locate_const(params, c"tls-group-id".as_ptr());
+        assert!(!found.is_null());
+        assert_eq!(OSSL_PARAM_get_uint(found, &mut id), 1);
+        let groups = &mut *groups.cast::<Vec<(String, u32)>>();
+        groups.push((CStr::from_ptr(name).to_str().unwrap().into(), id));
+    }
+    1
+}
+
+/// Through OpenSSL 3.4 a TLS group is offered only when the provider that
+/// lists it also backs its algorithm, and the README's configuration makes
+/// that rind for X25519. Only the TLS handshake test below shows that on
+/// those releases; this one shows it on every release.
+#[test]
+fn rind_offers_the_x25519_tls_group() {
+    let ctx = Context::new();
+    let provider = non_null(unsafe { OSSL_PROVIDER_try_load(ctx.0, c"rind".as_ptr(), 1) });
+    let mut groups: Vec<(String, u32)> = Vec::new();
+    check(unsafe {
+        OSSL_PROVIDER_get_capabilities(
+            provider,
+            c"TLS-GROUP".as_ptr(),
+            collect_group,
+            (&raw mut groups).cast(),
+        )
+    });
+    // IANA's id for x25519, RFC 8446 section 4.2.7.
+    assert_eq!(groups, [("x25519".to_string(), 29)]);
+    // Any other capability is one rind has nothing for, not a failure.
+    let mut none: Vec<(String, u32)> = Vec::new();
+    check(unsafe {
+        OSSL_PROVIDER_get_capabilities(
+            provider,
+            c"TLS-SIGALG".as_ptr(),
+            collect_group,
+            (&raw mut none).cast(),
+        )
+    });
+    assert!(none.is_empty());
 }
 
 #[test]
