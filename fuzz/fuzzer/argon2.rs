@@ -66,15 +66,18 @@ fuzz_target!(|input: Input| {
     }
     assert_eq!(ours_out, theirs_out);
 
-    // An edited tag verifies exactly when it is the derivation of its own
-    // length, which an edit that also changes the length can still be.
+    // An edited tag verifies exactly when it is RustCrypto's derivation of
+    // its own length, which an edit that also cuts bytes can still be.
     let mut stored = ours_out.clone();
     input.edit.apply(&mut stored);
     let expected = match stored.len() == len {
-        true => stored == ours_out,
+        true => stored == theirs_out,
         false => {
             let mut again = vec![0; stored.len()];
-            secret.derive(ours_params, salt, &mut again).is_ok() && stored == again
+            theirs
+                .hash_password_into(password, salt, &mut again)
+                .is_ok()
+                && stored == again
         }
     };
     assert_eq!(secret.verify(ours_params, salt, &stored).is_ok(), expected);
