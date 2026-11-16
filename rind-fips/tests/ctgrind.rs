@@ -446,7 +446,7 @@ fn key_imports() {
     // PKCS#1's `RSAPrivateKey` is the OCTET STRING that ends PKCS#8's
     // 26-byte framing for a 2048-bit key.
     let rsa = RsaKeyPair::generate(rind_fips::rsa::KeySize::Rsa2048).unwrap();
-    let public_key = rsa.to_spki();
+    let public_key = rsa.public_key().to_spki();
     let pkcs8 = rsa.to_pkcs8();
     let pkcs8 = [
         &pkcs8.as_ref()[..26],
@@ -457,7 +457,10 @@ fn key_imports() {
         RsaKeyPair::from_pkcs8(&pkcs8),
         RsaKeyPair::from_pkcs1(&pkcs8[26..]),
     ] {
-        assert_eq!(loaded.unwrap().to_spki().as_ref(), public_key.as_ref());
+        assert_eq!(
+            loaded.unwrap().public_key().to_spki().as_ref(),
+            public_key.as_ref()
+        );
     }
 }
 
