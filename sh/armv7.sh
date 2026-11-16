@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Build, lint, and test the armv7 targets, as `just armv7` runs it inside the
-# flake's `armv7` dev shell. The gnueabihf tests run under qemu-user three
-# times, to cover each of rind's armv7 tiers.
+# flake's `armv7` dev shell. The gnueabihf tests run three times, to cover
+# each of rind's armv7 tiers, under qemu-user or, for the crypto extension's
+# tier on an aarch64 host, natively.
 set -euo pipefail
 
 if [[ -z "${CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_RUNNER:-}" ]]; then
@@ -28,12 +29,20 @@ cargo clippy "${packages[@]}" --locked --target "$target" --all-targets -- --den
 export CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS=true
 export CARGO_PROFILE_RELEASE_OVERFLOW_CHECKS=true
 
-# `max` has the ARMv8 crypto extension, and so NEON; the Cortex-A15 is ARMv7
-# with NEON but without the extension, and denying its NEON leaves only the
-# scalar paths. RIND_TEST_ARM_* fails the run that lands on the wrong path.
-QEMU_CPU=max RIND_TEST_ARM_NEON=1 RIND_TEST_ARM_CRYPTO_EXT=1 cargo test "${packages[@]}" --locked --release --target "$target"
+# The crypto extension's runs take qemu's `max` CPU, which has it and so
+# NEON, except on an aarch64 host, such as GitHub's arm64 runners, which runs
+# them natively; a host without AArch32 or its crypto extension fails them.
+# The Cortex-A15 is ARMv7 with NEON but without the extension, and denying
+# its NEON leaves only the scalar paths; those runs stay under qemu on every
+# host, since a fault on an instruction that CPU lacks is what they check.
+# RIND_TEST_ARM_* fails the run that lands on the wrong path.
+crypto=(env QEMU_CPU=max)
+if [[ "$(uname -m)" == aarch64 ]]; then
+    crypto=(env -u CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_RUNNER)
+fi
+"${crypto[@]}" RIND_TEST_ARM_NEON=1 RIND_TEST_ARM_CRYPTO_EXT=1 cargo test "${packages[@]}" --locked --release --target "$target"
 QEMU_CPU=cortex-a15 RIND_TEST_ARM_NEON=1 RIND_TEST_ARM_CRYPTO_EXT=0 cargo test "${packages[@]}" --locked --release --target "$target"
 QEMU_CPU=cortex-a15 RIND_CPU_DISABLE_neon=1 RIND_TEST_ARM_NEON=0 RIND_TEST_ARM_CRYPTO_EXT=0 cargo test "${packages[@]}" --locked --release --target "$target"
-QEMU_CPU=max RIND_TEST_ARM_NEON=1 RIND_TEST_ARM_CRYPTO_EXT=1 cargo test -p rind --features wipe --test zeroing --test heap_scratch --locked --release --target "$target"
+"${crypto[@]}" RIND_TEST_ARM_NEON=1 RIND_TEST_ARM_CRYPTO_EXT=1 cargo test -p rind --features wipe --test zeroing --test heap_scratch --locked --release --target "$target"
 QEMU_CPU=cortex-a15 RIND_TEST_ARM_NEON=1 RIND_TEST_ARM_CRYPTO_EXT=0 cargo test -p rind --features wipe --test zeroing --test heap_scratch --locked --release --target "$target"
 QEMU_CPU=cortex-a15 RIND_CPU_DISABLE_neon=1 RIND_TEST_ARM_NEON=0 RIND_TEST_ARM_CRYPTO_EXT=0 cargo test -p rind --features wipe --test zeroing --test heap_scratch --locked --release --target "$target"
