@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
-// Status mapping for a native call. This library holds no key pointer: the
-// library that owns a handle keeps that pointer private.
+// Status mapping for a native call. This library holds no key pointer:
+// `newHandle` returns the pointer its caller's own native call stored, and
+// `nativeCopy` copies the caller's own bytes. The library that owns a handle
+// keeps that pointer private.
 //
 // `hook/build.dart` registers one code asset. The annotation names it,
 // because this library's own URI is not that asset.
@@ -11,6 +13,8 @@ library;
 import 'dart:convert';
 import 'dart:ffi';
 import 'dart:typed_data';
+
+import 'package:ffi/ffi.dart';
 
 import 'error.dart';
 
@@ -44,6 +48,36 @@ Uint8List output(int length, int Function(Uint8List out) call) {
 
 /// The longest key export, an RSA-8192 PKCS#8 key, fits in this many bytes.
 const exportLength = 8192;
+
+/// Runs [call] with a slot for the handle it stores, and returns that pointer.
+///
+/// The pointer is the one [call] just wrote. This holds no key of its own.
+Pointer<Void> newHandle(int Function(Pointer<Pointer<Void>> slot) call) {
+  final slot = malloc<Pointer<Void>>();
+  try {
+    check(call(slot));
+    return slot.value;
+  } finally {
+    malloc.free(slot);
+  }
+}
+
+/// Copies [data] into zeroed native memory for a non-leaf call, then frees it.
+///
+/// A non-leaf call can let the garbage collector move a [Uint8List], so the
+/// bytes have to live in native memory. The allocation is zeroed first
+/// because Rust may borrow it as `&mut [u8]`. A copy inside a call stays
+/// unwiped, as rind's own do.
+T nativeCopy<T>(Uint8List data, T Function(Pointer<Uint8> pointer) call) {
+  final pointer = calloc<Uint8>(data.isEmpty ? 1 : data.length);
+  final view = pointer.asTypedList(data.length);
+  try {
+    view.setAll(0, data);
+    return call(pointer);
+  } finally {
+    malloc.free(pointer);
+  }
+}
 
 /// Frees one native handle.
 typedef HandleFree = Void Function(Pointer<Void>);

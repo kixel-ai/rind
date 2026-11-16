@@ -50,7 +50,7 @@ final class AeadKey extends _Handle {
   /// it is [AeadAlgorithm.keyLength] bytes.
   AeadKey(AeadAlgorithm algorithm, Uint8List key)
     : super(
-        _newHandle(
+        newHandle(
           (out) => _aeadKeyNew(algorithm._id, key.address, key.length, out),
         ),
         _aeadKeyFinalizer,
@@ -101,7 +101,7 @@ final class RandomizedNonceKey extends _Handle {
   /// Makes a key from 32 bytes of key material.
   RandomizedNonceKey(Uint8List key)
     : super(
-        _newHandle(
+        newHandle(
           (out) => _randomizedNonceKeyNew(key.address, key.length, out),
         ),
         _randomizedNonceKeyFinalizer,

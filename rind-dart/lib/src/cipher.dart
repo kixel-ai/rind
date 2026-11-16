@@ -56,7 +56,7 @@ final class AesCbcEncryptingKey extends _Handle {
   /// it is [CipherAlgorithm.keyLength] bytes.
   AesCbcEncryptingKey(CipherAlgorithm algorithm, Uint8List key)
     : super(
-        _newHandle(
+        newHandle(
           (out) => _aesCbcEncryptingKeyNew(
             algorithm._id,
             key.address,
@@ -104,7 +104,7 @@ final class AesCbcDecryptingKey extends _Handle {
   /// it is [CipherAlgorithm.keyLength] bytes.
   AesCbcDecryptingKey(CipherAlgorithm algorithm, Uint8List key)
     : super(
-        _newHandle(
+        newHandle(
           (out) => _aesCbcDecryptingKeyNew(
             algorithm._id,
             key.address,
@@ -155,7 +155,7 @@ final class AesCtr extends _Handle {
   /// [RangeError] for a [counterBits] that is negative or over 32 bits.
   AesCtr(CipherAlgorithm algorithm, Uint8List key, int counterBits)
     : super(
-        _newHandle(
+        newHandle(
           (out) => _aesCtrNew(
             algorithm._id,
             key.address,
@@ -194,7 +194,7 @@ final class ChaCha20 extends _Handle {
   /// Makes a key from 32 bytes of key material.
   ChaCha20(Uint8List key)
     : super(
-        _newHandle((out) => _chacha20New(key.address, key.length, out)),
+        newHandle((out) => _chacha20New(key.address, key.length, out)),
         _chacha20Finalizer,
       );
 

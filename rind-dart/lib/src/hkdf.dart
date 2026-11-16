@@ -30,7 +30,7 @@ final class HkdfSalt extends _Handle {
   HkdfSalt(HkdfAlgorithm algorithm, Uint8List value)
     : _hashLength = algorithm._hmac.tagLength,
       super(
-        _newHandle(
+        newHandle(
           (out) => _hkdfSaltNew(
             algorithm._hmac._id,
             value.address,
@@ -46,7 +46,7 @@ final class HkdfSalt extends _Handle {
   /// Extracts a pseudorandom key from [secret] (HKDF-Extract).
   HkdfPrk extract(Uint8List secret) => HkdfPrk._(
     _hashLength,
-    _newHandle(
+    newHandle(
       (out) => _hkdfExtract(_pointer, secret.address, secret.length, out),
     ),
   );

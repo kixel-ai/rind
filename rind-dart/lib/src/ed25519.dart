@@ -8,8 +8,6 @@ library;
 import 'dart:ffi';
 import 'dart:typed_data';
 
-import 'package:ffi/ffi.dart';
-
 import 'error.dart';
 import 'status.dart';
 
@@ -20,7 +18,7 @@ final class PublicKey extends _Handle {
 
   PublicKey._parse(int spki, Uint8List bytes)
     : this._(
-        _newHandle(
+        newHandle(
           (out) => _ed25519PublicKeyNew(spki, bytes.address, bytes.length, out),
         ),
       );
@@ -68,7 +66,7 @@ final class KeyPair extends _Handle {
       );
 
   static Pointer<Void> _new(int source, Uint8List bytes, Uint8List publicKey) =>
-      _newHandle(
+      newHandle(
         (out) => _ed25519KeyPairNew(
           source,
           bytes.address,
@@ -96,7 +94,7 @@ final class KeyPair extends _Handle {
 
   /// The public key, which verifies the key pair's signatures.
   late final PublicKey publicKey = PublicKey._(
-    _newHandle((out) => _ed25519KeyPairPublicKey(_pointer, out)),
+    newHandle((out) => _ed25519KeyPairPublicKey(_pointer, out)),
   );
 
   /// Signs [message].
@@ -223,18 +221,8 @@ external int _ed25519PublicKeyExport(
   int outLen,
 );
 
-// `_newHandle` returns the pointer and `_Handle` stores it. A shared name
-// for either would publish a native key pointer.
-
-Pointer<Void> _newHandle(int Function(Pointer<Pointer<Void>> slot) call) {
-  final slot = malloc<Pointer<Void>>();
-  try {
-    check(call(slot));
-    return slot.value;
-  } finally {
-    malloc.free(slot);
-  }
-}
+// `_Handle` stores the native key pointer, so it stays in this library.
+// `newHandle` only returns the pointer this library's own call stored.
 
 abstract base class _Handle implements Finalizable {
   _Handle(this._pointer, NativeFinalizer finalizer) {

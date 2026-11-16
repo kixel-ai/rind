@@ -2,8 +2,9 @@
 
 // One library, so these native handles stay private to it. The signature
 // libraries are separate and keep their own handles private the same way.
-// Public libraries export their names from here. Status mapping, which
-// holds no key pointer, lives in status.dart.
+// Public libraries export their names from here. Status mapping, and the
+// helpers that only return or copy the caller's own pointer, live in
+// status.dart. The handle class stays here.
 //
 // `hook/build.dart` registers one code asset, this library's URI. Naming it
 // keeps that id if this file moves.
@@ -12,8 +13,6 @@ library;
 
 import 'dart:ffi';
 import 'dart:typed_data';
-
-import 'package:ffi/ffi.dart';
 
 import 'error.dart';
 import 'status.dart';

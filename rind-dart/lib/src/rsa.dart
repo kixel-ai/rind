@@ -165,7 +165,7 @@ final class PublicKey extends _Handle {
     : this._(_new(source, bytes, exponent ?? Uint8List(0)));
 
   static Pointer<Void> _new(int source, Uint8List bytes, Uint8List exponent) =>
-      _newHandle(
+      newHandle(
         (out) => _rsaPublicKeyNew(
           source,
           bytes.address,
@@ -233,16 +233,16 @@ final class PublicKey extends _Handle {
 final class KeyPair extends _Handle {
   KeyPair._(Pointer<Void> pointer) : super(pointer, _rsaKeyPairFinalizer);
 
-  static Pointer<Void> _parse(int source, Uint8List der) => _native(
+  static Pointer<Void> _parse(int source, Uint8List der) => nativeCopy(
     der,
     (bytes) =>
-        _newHandle((out) => _rsaKeyPairNew(source, 0, bytes, der.length, out)),
+        newHandle((out) => _rsaKeyPairNew(source, 0, bytes, der.length, out)),
   );
 
   /// Generates a random key pair of [size].
   KeyPair.generate(KeySize size)
     : this._(
-        _newHandle((out) => _rsaKeyPairNew(0, size.index, nullptr, 0, out)),
+        newHandle((out) => _rsaKeyPairNew(0, size.index, nullptr, 0, out)),
       );
 
   /// Parses a PKCS#8 private key, throwing [RindError.keyRejected] for a
@@ -255,12 +255,12 @@ final class KeyPair extends _Handle {
 
   /// The public key, which verifies the key pair's signatures.
   late final PublicKey publicKey = PublicKey._(
-    _newHandle((out) => _rsaKeyPairPublicKey(_pointer, out)),
+    newHandle((out) => _rsaKeyPairPublicKey(_pointer, out)),
   );
 
   /// Signs [message] with [algorithm].
   Uint8List sign(SigningAlgorithm algorithm, Uint8List message) =>
-      _native(message, (input) {
+      nativeCopy(message, (input) {
         return _modulusOut(
           (out) => _rsaSign(
             _pointer,
@@ -310,9 +310,9 @@ const oaepSha1 = OaepAlgorithm._(100, 'RSA-OAEP-SHA1');
 final class DecryptingKey extends _Handle {
   DecryptingKey._(this.algorithm, int source, int size, Uint8List der)
     : super(
-        _native(
+        nativeCopy(
           der,
-          (bytes) => _newHandle(
+          (bytes) => newHandle(
             (out) => _decryptingKeyNew(
               algorithm._id,
               source,
@@ -346,15 +346,15 @@ final class DecryptingKey extends _Handle {
   /// The public key, which encrypts to this key.
   late final EncryptingKey publicKey = EncryptingKey._(
     algorithm,
-    _newHandle((out) => _decryptingKeyPublicKey(_pointer, out)),
+    newHandle((out) => _decryptingKeyPublicKey(_pointer, out)),
   );
 
   /// Decrypts [ciphertext] sealed with [label], throwing
   /// [RindError.decryptFailed] if it does not decrypt.
   Uint8List decrypt(Uint8List ciphertext, {Uint8List? label}) {
     label ??= Uint8List(0);
-    return _native(ciphertext, (input) {
-      return _native(label!, (labelPointer) {
+    return nativeCopy(ciphertext, (input) {
+      return nativeCopy(label!, (labelPointer) {
         return _modulusOut(
           (out) => _decrypt(
             _pointer,
@@ -397,7 +397,7 @@ final class EncryptingKey extends _Handle {
     int source,
     Uint8List bytes,
     Uint8List exponent,
-  ) => _newHandle(
+  ) => newHandle(
     (out) => _encryptingKeyNew(
       algorithm._id,
       source,
@@ -712,29 +712,9 @@ external int _encryptingKeyExport(
 )
 external int _encryptingKeyMaxMessageLen(Pointer<Void> key);
 
-// `_newHandle` returns the pointer and `_Handle` stores it. A shared name
-// for either would publish a native key pointer.
-
-Pointer<Void> _newHandle(int Function(Pointer<Pointer<Void>> slot) call) {
-  final slot = malloc<Pointer<Void>>();
-  try {
-    check(call(slot));
-    return slot.value;
-  } finally {
-    malloc.free(slot);
-  }
-}
-
-T _native<T>(Uint8List data, T Function(Pointer<Uint8> pointer) call) {
-  final pointer = calloc<Uint8>(data.isEmpty ? 1 : data.length);
-  final view = pointer.asTypedList(data.length);
-  try {
-    view.setAll(0, data);
-    return call(pointer);
-  } finally {
-    malloc.free(pointer);
-  }
-}
+// `_Handle` stores the native key pointer, so it stays in this library.
+// `newHandle` only returns the pointer this library's own call stored, and
+// `nativeCopy` only copies the caller's own bytes.
 
 // The modulus-sized output of a signature or a decryption. Zeroed: Rust
 // borrows it as `&mut [u8]`, which has to already be initialized.

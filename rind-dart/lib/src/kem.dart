@@ -19,7 +19,7 @@ final class DecapsulationKey extends _Handle {
   /// Generates a random key for [algorithm].
   DecapsulationKey.generate(this.algorithm)
     : super(
-        _newHandle((out) => _decapsulationKeyGenerate(algorithm._id, out)),
+        newHandle((out) => _decapsulationKeyGenerate(algorithm._id, out)),
         _decapsulationKeyFinalizer,
       );
 
@@ -58,7 +58,7 @@ final class EncapsulationKey extends _Handle {
   EncapsulationKey(this.algorithm, Uint8List bytes)
     : _bytes = Uint8List.fromList(bytes),
       super(
-        _newHandle(
+        newHandle(
           (out) => _encapsulationKeyNew(
             algorithm._id,
             bytes.address,

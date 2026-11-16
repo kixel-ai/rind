@@ -60,7 +60,7 @@ final class DigestContext extends _Handle {
   /// Starts hashing a message with [algorithm].
   DigestContext(this.algorithm)
     : super(
-        _newHandle((out) => _digestContextNew(algorithm._id, out)),
+        newHandle((out) => _digestContextNew(algorithm._id, out)),
         _digestContextFinalizer,
       );
 

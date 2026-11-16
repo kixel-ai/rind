@@ -34,7 +34,7 @@ final class HmacKey extends _Handle {
   /// Keys [algorithm] with [key], which may be any length.
   HmacKey(this.algorithm, Uint8List key)
     : super(
-        _newHandle(
+        newHandle(
           (out) => _hmacKeyNew(algorithm._id, key.address, key.length, out),
         ),
         _hmacKeyFinalizer,
@@ -65,7 +65,7 @@ final class HmacContext extends _Handle {
   HmacContext(HmacKey key)
     : _tagLength = key.algorithm.tagLength,
       super(
-        _newHandle((out) => _hmacContextNew(key._pointer, out)),
+        newHandle((out) => _hmacContextNew(key._pointer, out)),
         _hmacContextFinalizer,
       );
 

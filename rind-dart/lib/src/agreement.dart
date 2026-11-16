@@ -26,7 +26,7 @@ enum AgreementAlgorithm {
 final class AgreementPrivateKey extends _Handle {
   AgreementPrivateKey._(this.algorithm, int source, Uint8List bytes)
     : super(
-        _newHandle(
+        newHandle(
           (out) => _agreementPrivateKeyNew(
             algorithm._id,
             source,
