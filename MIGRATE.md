@@ -57,10 +57,11 @@ the old backend's feature in otherwise the same command.
    library's are the targets its CI builds, and those its users build, such
    as every architecture ring or aws-lc-rs supports. rind runs assembly on
    x86_64, aarch64, and ARMv7, and portable Rust on every other
-   architecture; [PLATFORMS.md] lists those its CI tests, the adapters on
-   `wasm32-wasip2` included, and those it only builds, such as
-   `wasm32-unknown-unknown`. A target rind's CI
-   does not test may still fail: Verify builds each one. Distribution packages
+   architecture; [PLATFORMS.md] lists those its CI tests, such as
+   rind-rustls's and rind-ring's tests on `wasm32-wasip2`, and those it only
+   builds, such as every other adapter on `wasm32-wasip2` and everything on
+   `wasm32-unknown-unknown`. A target rind's CI does not test may still
+   fail: Verify builds each one. Distribution packages
    and `cargo install` build where the project does not; list what they lose
    under Breaking changes rather than stopping.
 
