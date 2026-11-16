@@ -21,7 +21,7 @@ one line per distinct instruction of the model: its kind (`insn`, `branch`,
 `call`), its text (the lines of an instruction the printer prints as more
 than one, joined by `; `), and its machine code in hex.
 
-Usage: admin/vg-bytes <vg-checkout> <x86_64|aarch64> <out-dir> [--rind <rind-object>]
+Usage: admin/vg-bytes <vg-checkout> <x86_64|aarch64> <out-dir> [--rind <rind-object>...]
 """
 
 import argparse
@@ -268,7 +268,8 @@ def main():
     p.add_argument("vg", type=Path)
     p.add_argument("arch", choices=sorted(TRIPLE))
     p.add_argument("out", type=Path)
-    p.add_argument("--rind", type=Path, help="rind's release object, whose vendored routines to check")
+    p.add_argument("--rind", type=Path, nargs="+", default=[],
+                   help="the objects of rind's release build, whose vendored routines to check")
     a = p.parse_args()
     a.vg, a.out = a.vg.resolve(), a.out.resolve()
     a.out.mkdir(parents=True, exist_ok=True)
@@ -293,8 +294,8 @@ def main():
                 key = (kind, "; ".join(ls), code)
             seen.setdefault(key, (kind, ls, code))
     rind_checked = 0
-    if a.rind:
-        vendored = disassemble(a.arch, a.rind,
+    for obj in a.rind:
+        vendored = disassemble(a.arch, obj,
                                lambda path, name: "::vg::" in path and name.startswith("vg_"))
         for name, insns in vendored.items():
             if name not in text:

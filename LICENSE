@@ -233,6 +233,16 @@ curve25519-dalek <https://github.com/dalek-cryptography/curve25519-dalek>
   Copyright (c) 2016-2021 Henry de Valence. All rights reserved.
   License: BSD-3-Clause.
 
+pyca/verified-garbage <https://github.com/pyca/verified-garbage>
+
+  What: the Lean ISA models under proofs/verified-garbage/VerifiedGarbage,
+  which admin/import-vg-models copies byte for byte from verified-garbage
+  at commit e7b0fe8a82b7777958e078573771d51415f105bb, so they carry no
+  SPDX comment; this entry names their license.
+  Copyright (c) Individual contributors.
+  License: Apache-2.0 OR BSD-3-Clause, taken under Apache-2.0.
+  verified-garbage has no NOTICE file.
+
 SPHINCS+ <https://github.com/sphincs/sphincsplus>
 
   What: rind/src/mid/slhdsa.rs, a port of the SPHINCS+ team's FIPS 205
