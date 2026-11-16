@@ -15,11 +15,35 @@ void main() {
   final sealed = aead.seal(nonce, utf8.encode('hello'));
   print(utf8.decode(aead.open(nonce, sealed)));
 
-  final pair = EcdsaKeyPair.generate(EcdsaSigningAlgorithm.p256Sha256Asn1);
-  final signature = pair.sign(utf8.encode('hello'));
-  final verifier = PublicKey(
-    VerificationAlgorithm.ecdsaP256Sha256Asn1,
-    pair.publicKey.bytes,
+  // Each signature algorithm has a key pair and a public key; the peer
+  // parses the public key from its encoding or its SubjectPublicKeyInfo.
+  final ecdsa = EcdsaKeyPair.generate(EcdsaSigningAlgorithm.p256Sha256Asn1);
+  EcdsaPublicKey(
+    EcdsaVerificationAlgorithm.p256Sha256Asn1,
+    ecdsa.publicKey.bytes,
+  ).verify(utf8.encode('hello'), ecdsa.sign(utf8.encode('hello')));
+
+  final ed25519 = Ed25519KeyPair.generate();
+  Ed25519PublicKey.fromSpki(
+    ed25519.publicKey.toSpki(),
+  ).verify(utf8.encode('hello'), ed25519.sign(utf8.encode('hello')));
+
+  // An RSA public key verifies with any algorithm whose modulus floor it
+  // meets.
+  final rsa = RsaKeyPair.generate(RsaKeySize.rsa2048);
+  RsaPublicKey(rsa.publicKey.bytes).verify(
+    RsaVerificationAlgorithm.pssSha256,
+    utf8.encode('hello'),
+    rsa.sign(RsaSigningAlgorithm.pssSha256, utf8.encode('hello')),
   );
-  verifier.verify(utf8.encode('hello'), signature);
+
+  final oaep = RsaDecryptingKey.generate(
+    OaepAlgorithm.sha256,
+    RsaKeySize.rsa2048,
+  );
+  final ciphertext = RsaEncryptingKey.fromSpki(
+    OaepAlgorithm.sha256,
+    oaep.publicKey.toSpki(),
+  ).encrypt(utf8.encode('hello'));
+  print(utf8.decode(oaep.decrypt(ciphertext)));
 }

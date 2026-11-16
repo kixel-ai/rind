@@ -20,7 +20,7 @@ final class _Curve {
 
   final rind.AgreementAlgorithm agreement;
   final rind.EcdsaSigningAlgorithm signing;
-  final rind.VerificationAlgorithm verification;
+  final rind.EcdsaVerificationAlgorithm verification;
 
   /// Whether [algorithm] is the hash ECDSA uses on this curve, the only one
   /// rind signs with.
@@ -67,7 +67,7 @@ final _p256 = _Curve(
   32,
   rind.AgreementAlgorithm.ecdhP256,
   rind.EcdsaSigningAlgorithm.p256Sha256Fixed,
-  rind.VerificationAlgorithm.ecdsaP256Sha256Fixed,
+  rind.EcdsaVerificationAlgorithm.p256Sha256Fixed,
   (h) => h is Sha256,
 );
 
@@ -76,7 +76,7 @@ final _p384 = _Curve(
   48,
   rind.AgreementAlgorithm.ecdhP384,
   rind.EcdsaSigningAlgorithm.p384Sha384Fixed,
-  rind.VerificationAlgorithm.ecdsaP384Sha384Fixed,
+  rind.EcdsaVerificationAlgorithm.p384Sha384Fixed,
   (h) => h is Sha384,
 );
 
@@ -85,7 +85,7 @@ final _p521 = _Curve(
   66,
   rind.AgreementAlgorithm.ecdhP521,
   rind.EcdsaSigningAlgorithm.p521Sha512Fixed,
-  rind.VerificationAlgorithm.ecdsaP521Sha512Fixed,
+  rind.EcdsaVerificationAlgorithm.p521Sha512Fixed,
   (h) => h is Sha512,
 );
 

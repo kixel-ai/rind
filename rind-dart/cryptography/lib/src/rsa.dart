@@ -85,8 +85,7 @@ bool _rsaVerify(
   final key = _keyArgument(
     'signature.publicKey',
     publicKey,
-    () => rind.PublicKey.fromComponents(
-      algorithm,
+    () => rind.RsaPublicKey.fromComponents(
       n: _bytes(publicKey.n),
       e: _bytes(publicKey.e),
     ),
@@ -95,7 +94,9 @@ bool _rsaVerify(
   return _keyArgument(
     'signature.publicKey',
     publicKey,
-    () => _verifies(key, message, signature.bytes),
+    () => _verifies(
+      () => key.verify(algorithm, _bytes(message), _bytes(signature.bytes)),
+    ),
   );
 }
 
@@ -109,9 +110,9 @@ final class _RsaPkcs1 extends RsaSsaPkcs1v15 {
       },
       _verification = switch (hashAlgorithm) {
         Sha1() => rind.rsaPkcs1Sha1,
-        Sha256() => rind.VerificationAlgorithm.rsaPkcs1Sha256,
-        Sha384() => rind.VerificationAlgorithm.rsaPkcs1Sha384,
-        Sha512() => rind.VerificationAlgorithm.rsaPkcs1Sha512,
+        Sha256() => rind.RsaVerificationAlgorithm.pkcs1Sha256,
+        Sha384() => rind.RsaVerificationAlgorithm.pkcs1Sha384,
+        Sha512() => rind.RsaVerificationAlgorithm.pkcs1Sha512,
         _ => throw _unsupported('RSA PKCS#1 v1.5 with $hashAlgorithm'),
       },
       super.constructor();
@@ -161,14 +162,14 @@ final class _RsaPss extends RsaPss {
       },
       _verification = nonceLengthInBytes == hashAlgorithm.hashLengthInBytes
           ? switch (hashAlgorithm) {
-              Sha256() => rind.VerificationAlgorithm.rsaPssSha256,
-              Sha384() => rind.VerificationAlgorithm.rsaPssSha384,
-              _ => rind.VerificationAlgorithm.rsaPssSha512,
+              Sha256() => rind.RsaVerificationAlgorithm.pssSha256,
+              Sha384() => rind.RsaVerificationAlgorithm.pssSha384,
+              _ => rind.RsaVerificationAlgorithm.pssSha512,
             }
           : switch (hashAlgorithm) {
-              Sha256() => rind.VerificationAlgorithm.rsaPssSha256AnySalt,
-              Sha384() => rind.VerificationAlgorithm.rsaPssSha384AnySalt,
-              _ => rind.VerificationAlgorithm.rsaPssSha512AnySalt,
+              Sha256() => rind.RsaVerificationAlgorithm.pssSha256AnySalt,
+              Sha384() => rind.RsaVerificationAlgorithm.pssSha384AnySalt,
+              _ => rind.RsaVerificationAlgorithm.pssSha512AnySalt,
             },
       super.constructor() {
     if (nonceLengthInBytes < 0) {

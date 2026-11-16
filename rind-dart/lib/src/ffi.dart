@@ -775,24 +775,117 @@ external int _rsaKeyPairExport(
   int outLen,
 );
 
-@Native<IntPtr Function(Uint32, Pointer<Void>, Uint32, Pointer<Pointer<Void>>)>(
-  symbol: 'rind_dart_key_pair_public_key',
+@Native<IntPtr Function(Pointer<Void>, Pointer<Pointer<Void>>)>(
+  symbol: 'rind_dart_ecdsa_key_pair_public_key',
   isLeaf: true,
 )
-external int _keyPairPublicKey(
-  int kind,
+external int _ecdsaKeyPairPublicKey(
   Pointer<Void> pair,
-  int algorithm,
   Pointer<Pointer<Void>> out,
 );
 
-@Native<_Free>(symbol: 'rind_dart_public_key_free')
-external void _publicKeyFree(Pointer<Void> key);
-final _publicKeyFinalizer = _finalizer(Native.addressOf(_publicKeyFree));
+@Native<_Free>(symbol: 'rind_dart_ecdsa_public_key_free')
+external void _ecdsaPublicKeyFree(Pointer<Void> key);
+final _ecdsaPublicKeyFinalizer = _finalizer(
+  Native.addressOf(_ecdsaPublicKeyFree),
+);
+
+@Native<
+  IntPtr Function(Uint32, Uint32, Pointer<Uint8>, Size, Pointer<Pointer<Void>>)
+>(symbol: 'rind_dart_ecdsa_public_key_new', isLeaf: true)
+external int _ecdsaPublicKeyNew(
+  int algorithm,
+  int spki,
+  Pointer<Uint8> bytes,
+  int bytesLen,
+  Pointer<Pointer<Void>> out,
+);
+
+@Native<
+  IntPtr Function(Pointer<Void>, Pointer<Uint8>, Size, Pointer<Uint8>, Size)
+>(symbol: 'rind_dart_ecdsa_public_key_verify', isLeaf: true)
+external int _ecdsaPublicKeyVerify(
+  Pointer<Void> key,
+  Pointer<Uint8> message,
+  int messageLen,
+  Pointer<Uint8> signature,
+  int signatureLen,
+);
+
+@Native<IntPtr Function(Pointer<Void>, Uint32, Pointer<Uint8>, Size)>(
+  symbol: 'rind_dart_ecdsa_public_key_export',
+  isLeaf: true,
+)
+external int _ecdsaPublicKeyExport(
+  Pointer<Void> key,
+  int spki,
+  Pointer<Uint8> out,
+  int outLen,
+);
+
+@Native<IntPtr Function(Pointer<Void>, Pointer<Pointer<Void>>)>(
+  symbol: 'rind_dart_ed25519_key_pair_public_key',
+  isLeaf: true,
+)
+external int _ed25519KeyPairPublicKey(
+  Pointer<Void> pair,
+  Pointer<Pointer<Void>> out,
+);
+
+@Native<_Free>(symbol: 'rind_dart_ed25519_public_key_free')
+external void _ed25519PublicKeyFree(Pointer<Void> key);
+final _ed25519PublicKeyFinalizer = _finalizer(
+  Native.addressOf(_ed25519PublicKeyFree),
+);
+
+@Native<IntPtr Function(Uint32, Pointer<Uint8>, Size, Pointer<Pointer<Void>>)>(
+  symbol: 'rind_dart_ed25519_public_key_new',
+  isLeaf: true,
+)
+external int _ed25519PublicKeyNew(
+  int spki,
+  Pointer<Uint8> bytes,
+  int bytesLen,
+  Pointer<Pointer<Void>> out,
+);
+
+@Native<
+  IntPtr Function(Pointer<Void>, Pointer<Uint8>, Size, Pointer<Uint8>, Size)
+>(symbol: 'rind_dart_ed25519_public_key_verify', isLeaf: true)
+external int _ed25519PublicKeyVerify(
+  Pointer<Void> key,
+  Pointer<Uint8> message,
+  int messageLen,
+  Pointer<Uint8> signature,
+  int signatureLen,
+);
+
+@Native<IntPtr Function(Pointer<Void>, Uint32, Pointer<Uint8>, Size)>(
+  symbol: 'rind_dart_ed25519_public_key_export',
+  isLeaf: true,
+)
+external int _ed25519PublicKeyExport(
+  Pointer<Void> key,
+  int spki,
+  Pointer<Uint8> out,
+  int outLen,
+);
+
+@Native<IntPtr Function(Pointer<Void>, Pointer<Pointer<Void>>)>(
+  symbol: 'rind_dart_rsa_key_pair_public_key',
+  isLeaf: true,
+)
+external int _rsaKeyPairPublicKey(
+  Pointer<Void> pair,
+  Pointer<Pointer<Void>> out,
+);
+
+@Native<_Free>(symbol: 'rind_dart_rsa_public_key_free')
+external void _rsaPublicKeyFree(Pointer<Void> key);
+final _rsaPublicKeyFinalizer = _finalizer(Native.addressOf(_rsaPublicKeyFree));
 
 @Native<
   IntPtr Function(
-    Uint32,
     Uint32,
     Pointer<Uint8>,
     Size,
@@ -800,9 +893,8 @@ final _publicKeyFinalizer = _finalizer(Native.addressOf(_publicKeyFree));
     Size,
     Pointer<Pointer<Void>>,
   )
->(symbol: 'rind_dart_public_key_new', isLeaf: true)
-external int _publicKeyNew(
-  int algorithm,
+>(symbol: 'rind_dart_rsa_public_key_new', isLeaf: true)
+external int _rsaPublicKeyNew(
   int source,
   Pointer<Uint8> bytes,
   int bytesLen,
@@ -812,10 +904,18 @@ external int _publicKeyNew(
 );
 
 @Native<
-  IntPtr Function(Pointer<Void>, Pointer<Uint8>, Size, Pointer<Uint8>, Size)
->(symbol: 'rind_dart_public_key_verify', isLeaf: true)
-external int _publicKeyVerify(
+  IntPtr Function(
+    Pointer<Void>,
+    Uint32,
+    Pointer<Uint8>,
+    Size,
+    Pointer<Uint8>,
+    Size,
+  )
+>(symbol: 'rind_dart_rsa_public_key_verify', isLeaf: true)
+external int _rsaPublicKeyVerify(
   Pointer<Void> key,
+  int algorithm,
   Pointer<Uint8> message,
   int messageLen,
   Pointer<Uint8> signature,
@@ -823,15 +923,21 @@ external int _publicKeyVerify(
 );
 
 @Native<IntPtr Function(Pointer<Void>, Uint32, Pointer<Uint8>, Size)>(
-  symbol: 'rind_dart_public_key_export',
+  symbol: 'rind_dart_rsa_public_key_export',
   isLeaf: true,
 )
-external int _publicKeyExport(
+external int _rsaPublicKeyExport(
   Pointer<Void> key,
   int spki,
   Pointer<Uint8> out,
   int outLen,
 );
+
+@Native<IntPtr Function(Pointer<Void>)>(
+  symbol: 'rind_dart_rsa_public_key_modulus_len',
+  isLeaf: true,
+)
+external int _rsaPublicKeyModulusLen(Pointer<Void> key);
 
 // --- Key encapsulation ---
 
