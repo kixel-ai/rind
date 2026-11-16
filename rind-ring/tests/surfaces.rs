@@ -2,6 +2,9 @@
 //! equality, `Debug`, and `Display`. Checked against ring, which rind-ring
 //! offers. aws-lc-rs has changed some of those `Debug` strings.
 
+// aws-lc-rs and ring do not build for wasm.
+#![cfg(not(target_family = "wasm"))]
+
 use core::num::NonZeroU32;
 
 use rind_ring as ours;

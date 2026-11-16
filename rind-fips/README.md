@@ -56,6 +56,14 @@ the crypto extension; it refuses to load without them, naming the first
 missing. `RIND_CPU_DISABLE_<feature>` masks a feature at load, which is how
 each CPU path is reached for its ACVP run.
 
+## ACVP
+
+[rind-acvp](../rind-acvp/README.md) answers ACVP's test sets for the module,
+as aws-lc's `acvptool` asks. The hidden `__acvp` feature builds it a module
+with one more symbol, `rind_fips_acvp`: the deterministic forms of the
+randomized services, which FIPS 203 and 204 allow only for testing. Nothing
+else may turn it on.
+
 ## What it does not offer
 
 These are in `rind` but not here, since FIPS 140-3 does not approve them:
@@ -64,7 +72,8 @@ These are in `rind` but not here, since FIPS 140-3 does not approve them:
 - MD5 and SHA-1 hashing; SHA-1 remains for HMAC, HKDF, PBKDF2, and
   verifying legacy signatures
 - HPKE, RSA-OAEP, RSA blind signatures, and ECVRF
-- RSA-PSS verification of any salt length (`RSA_PSS_*_ANY_SALT`)
+- RSA-PSS with a salt of another length than the hash's (`rsa::PssSaltLength`),
+  or verification of any salt length (`rsa::verify::PSS_*_ANY_SALT`)
 - AES-GCM sealing with a caller's nonce (`aead::Key` and `aead::gcm::Key`
   only open): FIPS 140-3 approves sealing only under an IV the module
   generates, so `aead::RandomizedNonceKey` seals under random 96-bit nonces

@@ -14,8 +14,8 @@ fn upper_vector_state_left_clean() {
     use rind::aead::{AES_128_GCM, AES_256_GCM, CHACHA20_POLY1305, Key, Nonce};
     use rind::agreement::{self, X25519};
     use rind::digest::{SHA256, SHA512, digest, legacy::SHA1};
-    use rind::kem::{DecapsulationKey, EncapsulationKey, ML_KEM_768};
-    use rind::signature::{EcdsaKeyPair, RsaKeyPair, sign};
+    use rind::kem::{self, Ciphertext, DecapsulationKey, EncapsulationKey};
+    use rind::{ecdsa, rsa};
 
     fn dirty() -> bool {
         let xinuse: u32;
@@ -75,22 +75,35 @@ fn upper_vector_state_left_clean() {
         check(&format!("{algorithm:?} key drop"), || drop(key));
     }
 
-    let dk = check("ML-KEM-768 generate", || {
-        DecapsulationKey::generate(&ML_KEM_768).unwrap()
-    });
-    let ek = EncapsulationKey::new(&ML_KEM_768, dk.public_key().as_ref()).unwrap();
-    let (ciphertext, secret) = check("ML-KEM-768 encapsulate", || ek.encapsulate().unwrap());
-    let decapsulated = check("ML-KEM-768 decapsulate", || {
-        dk.decapsulate(ciphertext.as_ref()).unwrap()
-    });
-    check("ML-KEM-768 secret drop", || drop((secret, decapsulated)));
+    // Each set's compression widths take their own routines.
+    fn mlkem<A: kem::Algorithm>(name: &str) {
+        let dk = check(&format!("{name} generate"), || {
+            DecapsulationKey::<A>::generate().unwrap()
+        });
+        let ek = EncapsulationKey::<A>::new(dk.public_key().as_ref()).unwrap();
+        let (ciphertext, secret) =
+            check(&format!("{name} encapsulate"), || ek.encapsulate().unwrap());
+        let ciphertext = Ciphertext::<A>::new(ciphertext.as_ref()).unwrap();
+        let decapsulated = check(&format!("{name} decapsulate"), || {
+            dk.decapsulate(&ciphertext)
+        });
+        check(&format!("{name} secret drop"), || {
+            drop((secret, decapsulated))
+        });
+    }
+    mlkem::<kem::MlKem512>("ML-KEM-512");
+    mlkem::<kem::MlKem768>("ML-KEM-768");
+    mlkem::<kem::MlKem1024>("ML-KEM-1024");
 
     for algorithm in [&SHA1, &SHA256, &SHA512] {
         check(&format!("{algorithm:?}"), || digest(algorithm, &[3; 4096]));
     }
-    for algorithm in [&sign::ECDSA_P256_SHA256_ASN1, &sign::ECDSA_P384_SHA384_ASN1] {
+    for algorithm in [
+        &ecdsa::sign::P256_SHA256_ASN1,
+        &ecdsa::sign::P384_SHA384_ASN1,
+    ] {
         let key = check(&format!("{algorithm:?} generate"), || {
-            EcdsaKeyPair::generate(algorithm).unwrap()
+            ecdsa::KeyPair::generate(algorithm).unwrap()
         });
         check(&format!("{algorithm:?} sign"), || {
             key.sign(b"message").unwrap()
@@ -104,8 +117,9 @@ fn upper_vector_state_left_clean() {
         .public_key()
         .clone();
     check("X25519 agree", || ours.agree(theirs.as_ref()).unwrap());
-    let rsa = RsaKeyPair::from_pkcs8(include_bytes!("../src/high/rsa/rsa2048.pkcs8.der")).unwrap();
+    let rsa =
+        rsa::KeyPair::from_pkcs8(include_bytes!("../src/high/rsa/rsa2048.pkcs8.der")).unwrap();
     check("RSA-2048 sign", || {
-        rsa.sign(&sign::RSA_PKCS1_SHA256, b"message").unwrap()
+        rsa.sign(&rsa::sign::PKCS1_SHA256, b"message").unwrap()
     });
 }

@@ -40,6 +40,9 @@ sets=(
     HMAC-SHA2-256-2.0 'true'
     HMAC-SHA2-384-2.0 'true'
     HMAC-SHA2-512-2.0 'true'
+    # rind-fips's DRBG, HMAC_DRBG over SHA-512 with prediction resistance;
+    # only rind-acvp's offline test reads it.
+    hmacDRBG-1.0 '.mode == "SHA2-512" and .predResistance'
     KDA-HKDF-Sp800-56Cr2 ".multiExpansion == false and (.kdfConfiguration.hmacAlg | $sha2)"
     ECDSA-KeyGen-FIPS186-5 "$prime_curves"
     ECDSA-KeyVer-FIPS186-5 "$prime_curves"
@@ -53,12 +56,15 @@ sets=(
     XECDH-keyGen-RFC7748 '.curve == "Curve25519"'
     XECDH-keyVer-RFC7748 '.curve == "Curve25519"'
     XECDH-SSC-RFC7748 '.curve == "Curve25519"'
+    # Keys the module generates (GDT) from probable primes; only rind-acvp's
+    # offline test reads it.
+    RSA-KeyGen-FIPS186-5 '.infoGeneratedByServer == false and .randPQ == "probable"'
     RSA-SigGen-FIPS186-5 "$rsa_signatures"
     RSA-SigVer-FIPS186-5 "$rsa_signatures"
     RSA-DecryptionPrimitive-Sp800-56Br2 'true'
     RSA-SignaturePrimitive-2.0 'true'
-    ML-KEM-keyGen-FIPS203 '.parameterSet == "ML-KEM-768"'
-    ML-KEM-encapDecap-FIPS203-tr1 '.parameterSet == "ML-KEM-768"'
+    ML-KEM-keyGen-FIPS203 'true'
+    ML-KEM-encapDecap-FIPS203-tr1 'true'
     # Pure ML-DSA; HashML-DSA waits for a consumer.
     ML-DSA-keyGen-FIPS204 'true'
     ML-DSA-sigGen-FIPS204 '.preHash != "preHash"'
