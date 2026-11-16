@@ -520,6 +520,22 @@ void main() {
           throwsRind(RindError.keyRejected),
         );
       }
+      // The identity, a point of small order.
+      expect(
+        () => ed25519.PublicKey(
+          hex(
+            '01000000000000000000000000000000'
+            '00000000000000000000000000000000',
+          ),
+        ),
+        throwsA(
+          isA<ed25519.RindException>().having(
+            (e) => e.error,
+            'error',
+            ed25519.RindError.keyRejected,
+          ),
+        ),
+      );
     });
 
     test('ECDSA signs and round-trips its encodings', () {
@@ -538,11 +554,17 @@ void main() {
             ecdsa.VerificationAlgorithm.p521Sha512Fixed,
       };
       final message = ascii('hello');
+      expect(
+        ecdsa.VerificationAlgorithm.p256Sha256Asn1.toString(),
+        'VerificationAlgorithm.p256Sha256Asn1',
+      );
       verifiers.forEach((algorithm, verification) {
         final pair = ecdsa.KeyPair.generate(algorithm);
         final signature = pair.sign(message);
         pair.publicKey.verify(message, signature);
         final verifier = ecdsa.PublicKey(verification, pair.publicKey.bytes);
+        expect(pair.publicKey.algorithm, verification);
+        expect(verifier.algorithm, verification);
         verifier.verify(message, signature);
         expect(
           () => verifier.verify(flipped(message), signature),
@@ -566,6 +588,7 @@ void main() {
         );
         expect(fromSpki.bytes, pair.publicKey.bytes);
         expect(fromSpki.toSpki(), pair.publicKey.toSpki());
+        expect(fromSpki.algorithm, verification);
       });
       expect(
         () => ecdsa.KeyPair.fromPkcs8(
@@ -614,6 +637,30 @@ void main() {
           ed25519.KeyPair.generate().publicKey.toSpki(),
         ),
         throwsRind(RindError.keyRejected),
+      );
+      final p384Point = ecdsa.KeyPair.generate(
+        ecdsa.SigningAlgorithm.p384Sha384Asn1,
+      ).publicKey.bytes;
+      expect(
+        () =>
+            ecdsa.PublicKey(ecdsa.VerificationAlgorithm.p384Sha384Asn1, point),
+        throwsA(
+          isA<ecdsa.RindException>().having(
+            (e) => e.error,
+            'error',
+            ecdsa.RindError.keyRejected,
+          ),
+        ),
+      );
+      expect(
+        () => ecdsa.PublicKey(p256, p384Point),
+        throwsA(
+          isA<ecdsa.RindException>().having(
+            (e) => e.error,
+            'error',
+            ecdsa.RindError.keyRejected,
+          ),
+        ),
       );
     });
 
@@ -687,7 +734,16 @@ void main() {
       final pkcs1 = publicKey.bytes;
       final spki = publicKey.toSpki();
       for (final der in [spki, Uint8List(0), pkcs1.sublist(1)]) {
-        expect(() => rsa.PublicKey(der), throwsRind(RindError.keyRejected));
+        expect(
+          () => rsa.PublicKey(der),
+          throwsA(
+            isA<rsa.RindException>().having(
+              (e) => e.error,
+              'error',
+              rsa.RindError.keyRejected,
+            ),
+          ),
+        );
       }
       final ecdsaSpki = ecdsa.KeyPair.generate(
         ecdsa.SigningAlgorithm.p256Sha256Asn1,

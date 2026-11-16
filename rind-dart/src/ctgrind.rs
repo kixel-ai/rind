@@ -352,6 +352,15 @@ fn signatures() {
             out(|o, n| rind_dart_ed25519_sign(reloaded, b"msg".as_ptr(), 3, o, n)),
             signature
         );
+        let public_key = new(|out| rind_dart_ed25519_key_pair_public_key(reloaded, out));
+        ok(rind_dart_ed25519_public_key_verify(
+            public_key,
+            b"msg".as_ptr(),
+            3,
+            signature.as_ptr(),
+            signature.len(),
+        ));
+        rind_dart_ed25519_public_key_free(public_key);
         rind_dart_ed25519_key_pair_free(reloaded);
         rind_dart_ed25519_key_pair_free(pair);
 
