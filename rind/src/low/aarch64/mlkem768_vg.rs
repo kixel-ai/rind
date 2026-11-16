@@ -18,7 +18,10 @@ pub(crate) use crate::low::generic::mlkem768_vg::KeyPair;
 
 /// The 32 KiB of working space each routine takes, aligned to a cache line
 /// as VG's own API aligns it. The routines accept any initial contents, and
-/// leave each byte unchanged or zero.
+/// leave each byte unchanged or zero: each zeroes it before returning, with
+/// or without the `wipe` feature. VG proves no variant without that wipe, so rind keeps
+/// it, as AGENTS.md's exception for imported routines allows; the measured
+/// speed includes its cost.
 #[repr(C, align(64))]
 struct Scratch(MaybeUninit<[u64; 4096]>);
 
