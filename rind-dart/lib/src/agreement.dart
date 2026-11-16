@@ -59,7 +59,7 @@ final class AgreementPrivateKey extends _Handle {
   final AgreementAlgorithm algorithm;
 
   Uint8List _export(int what) => output(
-    exportLength,
+    what == 0 ? _maxPointLength : exportLength,
     (out) =>
         _agreementPrivateKeyExport(_pointer, what, out.address, out.length),
   );
@@ -128,7 +128,7 @@ final class AgreementPublicKey {
     Uint8List bytes,
     int export,
   ) => output(
-    exportLength,
+    export == 0 ? _maxPointLength : _maxSpkiLength,
     (out) => _agreementPublicKey(
       algorithm._id,
       spki,
@@ -140,3 +140,9 @@ final class AgreementPublicKey {
     ),
   );
 }
+
+// X25519's public key is 32 bytes and its SubjectPublicKeyInfo is 44.
+// A NIST curve's uncompressed point is at most 133 bytes, on P-521, and
+// its SubjectPublicKeyInfo (id-ecPublicKey and the curve) is at most 158.
+const _maxPointLength = 133;
+const _maxSpkiLength = 158;

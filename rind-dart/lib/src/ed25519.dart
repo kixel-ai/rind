@@ -52,7 +52,7 @@ final class PublicKey extends _Handle {
   Uint8List toSpki() => _export(1);
 
   Uint8List _export(int spki) => output(
-    exportLength,
+    spki == 0 ? _rawPublicKeyLength : _spkiLength,
     (out) => _ed25519PublicKeyExport(_pointer, spki, out.address, out.length),
   );
 }
@@ -220,6 +220,12 @@ external int _ed25519PublicKeyExport(
   Pointer<Uint8> out,
   int outLen,
 );
+
+// Ed25519's public key is 32 bytes. Its SubjectPublicKeyInfo is 44: a
+// 12-byte AlgorithmIdentifier for id-Ed25519 and a BIT STRING of those
+// 32 bytes.
+const _rawPublicKeyLength = 32;
+const _spkiLength = 44;
 
 // `_Handle` stores the native key pointer, so it stays in this library.
 // `newHandle` only returns the pointer this library's own call stored.

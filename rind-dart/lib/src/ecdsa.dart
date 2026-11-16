@@ -149,7 +149,7 @@ final class PublicKey extends _Handle {
   Uint8List toSpki() => _export(1);
 
   Uint8List _export(int spki) => output(
-    exportLength,
+    spki == 0 ? _maxPointLength : _maxSpkiLength,
     (out) => _ecdsaPublicKeyExport(_pointer, spki, out.address, out.length),
   );
 }
@@ -334,6 +334,13 @@ external int _ecdsaPublicKeyExport(
   Pointer<Uint8> out,
   int outLen,
 );
+
+// An X9.62 uncompressed point is 65, 97, or 133 bytes on P-256, P-384, and
+// P-521: a 0x04 tag and two coordinates, 66 bytes each on P-521. The
+// SubjectPublicKeyInfo, id-ecPublicKey and the curve OID around that point,
+// is 158 bytes on P-521 and shorter on the others.
+const _maxPointLength = 133;
+const _maxSpkiLength = 158;
 
 // The longest ECDSA signature, a P-521 DER value: rind's `SIGNATURE_MAX_LEN`.
 // A sequence length of two bytes plus two INTEGERs, each a sign byte and a
