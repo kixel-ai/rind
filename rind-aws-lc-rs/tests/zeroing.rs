@@ -169,7 +169,7 @@ fn kem_slack() {
 #[inline(never)]
 fn paint_stack(stale: &[u8; NEEDLE_LEN]) {
     let mut stack = [0u8; 64 * 1024];
-    for chunk in stack.chunks_exact_mut(NEEDLE_LEN) {
+    for chunk in stack.as_chunks_mut::<NEEDLE_LEN>().0 {
         chunk.copy_from_slice(stale);
     }
     core::hint::black_box(&mut stack);
