@@ -502,10 +502,8 @@ vg() {
     for pid in "${pids[@]}"; do
         wait "$pid" || failed=1
     done
-    for part in "$dir"/part.??; do
-        "$dir/runner" <"$part.cpu" || failed=1
-        "${emu[@]}" "$dir/runner" <"$part.emu" || failed=1
-    done
+    "$dir/runner" "$dir"/part.??.cpu || failed=1
+    "${emu[@]}" "$dir/runner" "$dir"/part.??.emu || failed=1
     return $failed
 }
 

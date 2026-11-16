@@ -3,8 +3,9 @@
 //! compares the state it leaves with the one VG's model says it does.
 //!
 //! `vg-cosim-runner --features` prints the CPU features this CPU has, by their
-//! Rust `target_feature` names, comma-separated. `vg-cosim-runner` reads the
-//! stream of cases from stdin and fails if any case differs, printing each.
+//! Rust `target_feature` names, comma-separated. `vg-cosim-runner [<stream>...]`
+//! reads each stream of cases, or stdin, and fails if any case differs,
+//! printing the first three of each instruction.
 //!
 //! The instruction's machine code runs at a fixed address, `INSN`, in a page of
 //! its own, between a prologue that loads every register the model has from
@@ -609,13 +610,31 @@ fn main() {
         // SAFETY: `fault` only writes to stderr and exits.
         unsafe { signal(sig, fault as *const () as usize) };
     }
-    let mut r = BufReader::with_capacity(1 << 20, std::io::stdin().lock());
+    let paths: Vec<String> = std::env::args().skip(1).collect();
+    let (mut blocks, mut cases, mut failed) = (0usize, 0usize, 0usize);
+    let mut streams: Vec<Box<dyn Read>> = Vec::new();
+    if paths.is_empty() {
+        streams.push(Box::new(std::io::stdin().lock()));
+    }
+    for p in &paths {
+        streams.push(Box::new(std::fs::File::open(p).unwrap_or_else(|e| panic!("vg-cosim-runner: {p}: {e}"))));
+    }
+    for s in streams {
+        run_stream(BufReader::with_capacity(1 << 20, s), &t, &mut blocks, &mut cases, &mut failed);
+    }
+    eprintln!("vg-cosim-runner: {blocks} instructions, {cases} cases, {failed} differ from the model");
+    if failed > 0 {
+        std::process::exit(1);
+    }
+}
+
+/// Runs the cases of one stream, adding to the counts.
+fn run_stream(mut r: impl Read, t: &arch::Tramp, blocks: &mut usize, cases: &mut usize, failed: &mut usize) {
     let magic = read_vec(&mut r, 4);
     assert_eq!(magic, b"VGCS", "vg-cosim-runner: not a stream of cases");
     assert_eq!(read_u8(&mut r), arch::ARCH, "vg-cosim-runner: the cases are for another target");
     let state_len = read_u32(&mut r);
     assert_eq!(state_len, arch::REGS_LEN + DATA_LEN, "vg-cosim-runner: the cases' states differ from this runner's");
-    let (mut blocks, mut cases, mut failed) = (0usize, 0usize, 0usize);
     let stderr = std::io::stderr();
     while read_u8(&mut r) == 1 {
         let len = read_u16(&mut r);
@@ -653,8 +672,8 @@ fn main() {
             // SAFETY: the data page is this program's, mapped above.
             let data = unsafe { std::slice::from_raw_parts_mut(DATA as *mut u8, DATA_LEN) };
             data.copy_from_slice(&start[arch::REGS_LEN..]);
-            let (got, got_marker) = arch::run(&t, &start[..arch::REGS_LEN]);
-            let mut d = arch::diff(&t, &got, &want[..arch::REGS_LEN], mask);
+            let (got, got_marker) = arch::run(t, &start[..arch::REGS_LEN]);
+            let mut d = arch::diff(t, &got, &want[..arch::REGS_LEN], mask);
             if kind == BRANCH_KIND && got_marker != marker {
                 d.push(format!("branch: {} (model {})", if got_marker == 1 { "taken" } else { "not taken" },
                     if marker == 1 { "taken" } else { "not taken" }));
@@ -664,9 +683,9 @@ fn main() {
                     d.push(format!("data[{o}]: {g:02x} (model {w:02x})"));
                 }
             }
-            cases += 1;
+            *cases += 1;
             if !d.is_empty() {
-                failed += 1;
+                *failed += 1;
                 if shown < 3 {
                     shown += 1;
                     let mut e = stderr.lock();
@@ -678,10 +697,6 @@ fn main() {
                 }
             }
         }
-        blocks += 1;
-    }
-    eprintln!("vg-cosim-runner: {blocks} instructions, {cases} cases, {failed} differ from the model");
-    if failed > 0 {
-        std::process::exit(1);
+        *blocks += 1;
     }
 }
