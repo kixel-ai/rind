@@ -437,9 +437,12 @@ jobs:
           toolchain: stable
           targets: aarch64-apple-ios-sim
 
+      # Beta, not stable: stable 3.50.0's `flutter test` sometimes misses the
+      # app's VM service URL and hangs. See UPSTREAM.md, "Flutter's iOS
+      # simulator test run hangs when its log stream attaches late".
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
-          channel: stable
+          channel: beta
 
       - name: Create the iOS project
         run: flutter create --platforms ios .

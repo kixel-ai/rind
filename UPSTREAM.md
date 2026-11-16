@@ -211,6 +211,14 @@ Each upstream rind changes, with where its fork is vendored and where the list o
 - **Reported:** no.
 - **Goes when:** the image runs i686 binaries natively, as its x86_64 one does.
 
+### Flutter's iOS simulator test run hangs when its log stream attaches late
+
+- **Breaks:** `flutter test integration_test -d <simulator>` reads the app's Dart VM service URL from a `log stream` process it starts as it launches the app, and `log stream` drops what was logged before it attached, about two seconds after the launch. When the app logs the URL first, as it did in roughly one `dart-ios` run in four on stable 3.50.0, the tool waits for it forever: silent after `Xcode build done` until the job's timeout.
+- **Reproduce:** run `flutter test integration_test -d <simulator> -v` on `rind-dart/integration` on a hosted `macos-latest` runner a few dozen times, with `xcrun simctl spawn <udid> log stream` running beside it. A hung run's verbose log ends at `Waiting for VM Service port to be available...`, and the simulator's log has the app's `The Dart VM service is listening on` line a fraction of a second before the `log` process's `Sending stream request to diagnosticd`; a passing run has them the other way round.
+- **Workaround:** `build.yml`'s `dart-ios` job runs Flutter's beta channel, whose 3.51.0-0.1.pre has the fix. Diagnosed in [kixel-ai/rind#810](https://github.com/kixel-ai/rind/pull/810).
+- **Reported:** [flutter/flutter#181771](https://github.com/flutter/flutter/issues/181771), fixed by [flutter/flutter#193142](https://github.com/flutter/flutter/pull/193142), which makes the tool wait for `log stream`'s first line before launching the app.
+- **Goes when:** a stable Flutter release has that fix, and the job returns to `channel: stable`.
+
 ### Flutter's debug JIT crashes under the Android emulator's ARM translation
 
 - **Breaks:** the x86_64 Android emulator runs armv7 apps through its ARM translation, in which Flutter's debug JIT crashes.
