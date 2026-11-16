@@ -56,12 +56,21 @@ impl<const N: usize> Blockwise<N> {
         self.used = rest.len();
     }
 
-    // Only Poly1305 uses it.
-    #[cfg(any(
-        rind_backend = "x86_64",
-        all(rind_backend = "portable", target_pointer_width = "64"),
-        all(rind_backend = "aarch64", test)
-    ))]
+    /// The bytes [`Self::update`] holds, up to one whole block.
+    pub(crate) fn buffered(&self) -> &[u8] {
+        &self.buffer[..self.used]
+    }
+}
+
+// Poly1305's partial blocks, one cfg for every method. `test` compiles the
+// 26-bit module on every backend. aarch64's AEAD does not use them.
+#[cfg(any(
+    rind_backend = "x86_64",
+    rind_backend = "portable",
+    rind_backend = "arm",
+    test
+))]
+impl<const N: usize> Blockwise<N> {
     pub(crate) fn add_leading<'a>(&mut self, bytes: &'a [u8]) -> &'a [u8] {
         if self.used == 0 {
             return bytes;
@@ -75,12 +84,6 @@ impl<const N: usize> Blockwise<N> {
         returned
     }
 
-    // Only Poly1305 uses it.
-    #[cfg(any(
-        rind_backend = "x86_64",
-        all(rind_backend = "portable", target_pointer_width = "64"),
-        all(rind_backend = "aarch64", test)
-    ))]
     pub(crate) fn take(&mut self) -> Option<[u8; N]> {
         if self.used == N {
             self.used = 0;
@@ -90,12 +93,6 @@ impl<const N: usize> Blockwise<N> {
         }
     }
 
-    // Only Poly1305's tail reads it.
-    #[cfg(any(
-        rind_backend = "x86_64",
-        all(rind_backend = "portable", target_pointer_width = "64"),
-        all(rind_backend = "aarch64", test)
-    ))]
     pub(crate) fn peek_remaining(&self) -> Option<&[u8]> {
         if self.used > 0 {
             Some(&self.buffer[..self.used])
@@ -104,18 +101,11 @@ impl<const N: usize> Blockwise<N> {
         }
     }
 
-    /// The bytes [`Self::update`] holds, up to one whole block.
-    pub(crate) fn buffered(&self) -> &[u8] {
-        &self.buffer[..self.used]
-    }
-
-    // Only Poly1305 uses it.
-    #[cfg(any(
-        rind_backend = "x86_64",
-        all(rind_backend = "portable", target_pointer_width = "64"),
-        all(rind_backend = "aarch64", test)
-    ))]
+    // Callers append only when the buffer is empty: a non-empty buffer was
+    // just completed and taken, or the leading bytes were consumed whole.
+    // The slice index rejects a tail longer than the block.
     pub(crate) fn add_trailing(&mut self, trailing: &[u8]) {
+        debug_assert!(self.used == 0 || trailing.is_empty());
         self.buffer[..trailing.len()].copy_from_slice(trailing);
         self.used += trailing.len();
     }

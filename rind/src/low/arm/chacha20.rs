@@ -1,56 +1,24 @@
-// Copyright (c) 2016-2022 INRIA, CMU and Microsoft Corporation
-// Copyright (c) 2022-2023 HACL* Contributors
-// Copyright 2023 Cryspen Sarl
-// SPDX-License-Identifier: Apache-2.0
-//
-// ChaCha20's state setup, from HACL*'s verified `Hacl_Chacha20` as
-// libcrux-chacha20poly1305 0.0.10 ships it (`src/hacl/chacha20.rs`), less
-// the module paths, since libcrux does not export them. The keystream is
-// aws-lc's, in `chacha_armv4`, which measured faster than HACL*'s block
-// function at every message length. QUIC header protection's lone block
-// skips this setup and runs HACL*'s rounds in `generic::chacha20`, which took
-// 0.79 of `chacha_armv4`'s time for it on a Neoverse-N2.
+// SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
-#![allow(non_snake_case)]
-#![allow(non_upper_case_globals)]
-#![allow(non_camel_case_types)]
-#![allow(unused_assignments)]
-#![allow(unreachable_patterns)]
-
-use libcrux_hacl_rs::prelude::*;
-use libcrux_macros as krml;
+//! ChaCha20 on armv7. The state words are RFC 8439 §2.3: the constants, the
+//! key, the block counter, and the nonce, each little-endian. The keystream
+//! is aws-lc's, in `chacha_armv4`. QUIC header protection's lone block skips
+//! this setup and runs the rounds in `generic::chacha20`.
 
 use super::chacha_armv4::chacha20_ctr32;
 use super::cpu::HaveNeon;
 
-pub(crate) const chacha20_constants: [u32; 4] =
-    [0x61707865u32, 0x3320646eu32, 0x79622d32u32, 0x6b206574u32];
+const CONSTANTS: [u32; 4] = [0x61707865, 0x3320646e, 0x79622d32, 0x6b206574];
 
-fn chacha20_init(ctx: &mut [u32], k: &[u8], n: &[u8], ctr: u32) {
-    krml::unroll_for!(4, "i", 0u32, 1u32, {
-        let x: u32 = (&chacha20_constants)[i as usize];
-        let os: &mut [u32] = &mut (&mut ctx[0usize..])[0usize..];
-        os[i as usize] = x
-    });
-    let uu____0: (&mut [u32], &mut [u32]) = ctx.split_at_mut(4usize);
-    krml::unroll_for!(8, "i", 0u32, 1u32, {
-        let bj: (&[u8], &[u8]) = k.split_at(i.wrapping_mul(4u32) as usize);
-        let u: u32 = lowstar::endianness::load32_le(bj.1);
-        let r: u32 = u;
-        let x: u32 = r;
-        let os: (&mut [u32], &mut [u32]) = uu____0.1.split_at_mut(0usize);
-        os.1[i as usize] = x
-    });
-    ctx[12usize] = ctr;
-    let uu____1: (&mut [u32], &mut [u32]) = ctx.split_at_mut(13usize);
-    krml::unroll_for!(3, "i", 0u32, 1u32, {
-        let bj: (&[u8], &[u8]) = n.split_at(i.wrapping_mul(4u32) as usize);
-        let u: u32 = lowstar::endianness::load32_le(bj.1);
-        let r: u32 = u;
-        let x: u32 = r;
-        let os: (&mut [u32], &mut [u32]) = uu____1.1.split_at_mut(0usize);
-        os.1[i as usize] = x
-    })
+fn chacha20_init(ctx: &mut [u32; 16], key: &[u8; 32], nonce: &[u8; 12], counter: u32) {
+    ctx[0..4].copy_from_slice(&CONSTANTS);
+    for (i, word) in key.as_chunks::<4>().0.iter().enumerate() {
+        ctx[4 + i] = u32::from_le_bytes(*word);
+    }
+    ctx[12] = counter;
+    for (i, word) in nonce.as_chunks::<4>().0.iter().enumerate() {
+        ctx[13 + i] = u32::from_le_bytes(*word);
+    }
 }
 
 pub(crate) struct ChaCha20 {
@@ -62,13 +30,10 @@ impl ChaCha20 {
     /// `nonce` is the little-endian block counter followed by the 96-bit nonce.
     pub(crate) fn new(key: &[u8; 32], nonce: &[u8; 16]) -> Self {
         let mut ctx = [0u32; 16];
-        let (counter, nonce) = nonce.split_at(4);
-        chacha20_init(
-            &mut ctx,
-            key,
-            nonce,
-            u32::from_le_bytes([counter[0], counter[1], counter[2], counter[3]]),
-        );
+        // `nonce` is 16 bytes: a 32-bit counter, then 12 nonce bytes.
+        let counter = u32::from_le_bytes(*nonce.first_chunk::<4>().unwrap());
+        let n: &[u8; 12] = nonce.last_chunk::<12>().unwrap();
+        chacha20_init(&mut ctx, key, n, counter);
         Self {
             ctx,
             neon: HaveNeon::check(),
@@ -80,5 +45,31 @@ impl ChaCha20 {
     pub(crate) fn cipher(&mut self, buffer: &mut [u8]) {
         chacha20_ctr32(&self.ctx, buffer, self.neon);
         self.ctx[12] = self.ctx[12].wrapping_add(buffer.len().div_ceil(64) as u32);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // RFC 8439 §2.3.2's initial state. Replacing HACL*'s loader dropped the
+    // only check of these words; this is that check, with no CPU feature.
+    #[test]
+    fn state_matches_rfc8439() {
+        let key: [u8; 32] = core::array::from_fn(|i| i as u8);
+        // Block counter 1, then the 96-bit nonce 00000009 0000004a 00000000.
+        let nonce = [
+            0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x09, 0x00, 0x00, 0x00, 0x4a, 0x00, 0x00,
+            0x00, 0x00,
+        ];
+        let state = ChaCha20::new(&key, &nonce);
+        assert_eq!(
+            state.ctx,
+            [
+                0x61707865, 0x3320646e, 0x79622d32, 0x6b206574, 0x03020100, 0x07060504, 0x0b0a0908,
+                0x0f0e0d0c, 0x13121110, 0x17161514, 0x1b1a1918, 0x1f1e1d1c, 0x00000001, 0x09000000,
+                0x4a000000, 0x00000000,
+            ]
+        );
     }
 }
