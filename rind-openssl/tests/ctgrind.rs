@@ -11,7 +11,6 @@
 #![allow(clippy::undocumented_unsafe_blocks)]
 
 use std::ffi::{CStr, CString, c_char, c_int};
-use std::path::{Path, PathBuf};
 use std::ptr::{null, null_mut};
 use std::sync::OnceLock;
 
@@ -19,7 +18,7 @@ use crabgrind::memcheck::{self, MemState};
 use crabgrind::valgrind::{self, RunningMode};
 use openssl_sys::*;
 
-mod library;
+mod common;
 
 unsafe extern "C" {
     fn OSSL_LIB_CTX_load_config(ctx: *mut OSSL_LIB_CTX, file: *const c_char) -> c_int;
@@ -83,46 +82,20 @@ fn assert_rind(provider: *const OSSL_PROVIDER) {
     );
 }
 
-/// A library context with the README's configuration, loading the library
-/// this build made.
+/// A library context with the README's configuration, activating the
+/// provider this test binary links.
 fn context() -> *mut OSSL_LIB_CTX {
     static CONFIG: OnceLock<CString> = OnceLock::new();
-    let path = CONFIG.get_or_init(write_config);
+    let path = CONFIG.get_or_init(|| {
+        CString::new(common::config(None).into_os_string().into_encoded_bytes()).unwrap()
+    });
     unsafe {
         let ctx = OSSL_LIB_CTX_new();
         assert!(!ctx.is_null());
+        common::add_builtin(ctx);
         assert_eq!(OSSL_LIB_CTX_load_config(ctx, path.as_ptr()), 1);
         ctx
     }
-}
-
-/// Writes the configuration once, since the tests run in parallel.
-fn write_config() -> CString {
-    let config: String = include_str!("../openssl.cnf")
-        .lines()
-        .map(|line| match line.starts_with("module = ") {
-            true => format!("module = {}\n", conf_value(&library::find())),
-            false => format!("{line}\n"),
-        })
-        .collect();
-    let path = PathBuf::from(env!("CARGO_TARGET_TMPDIR"))
-        .join(format!("rind-openssl-ctgrind-{}.cnf", std::process::id()));
-    std::fs::write(&path, config).unwrap();
-    CString::new(path.into_os_string().into_encoded_bytes()).unwrap()
-}
-
-/// `path` as an `openssl.cnf` value: each ASCII character but a letter,
-/// digit, or `/._-` escaped, as a `#` would start a comment and a `$` a
-/// variable.
-fn conf_value(path: &Path) -> String {
-    let mut out = String::new();
-    for c in path.display().to_string().chars() {
-        if c.is_ascii() && !(c.is_ascii_alphanumeric() || "/._-".contains(c)) {
-            out.push('\\');
-        }
-        out.push(c);
-    }
-    out
 }
 
 fn private_key(ctx: *mut OSSL_LIB_CTX, algorithm: &CStr, private: &[u8; 32]) -> *mut EVP_PKEY {

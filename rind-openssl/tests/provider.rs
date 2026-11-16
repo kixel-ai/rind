@@ -6,14 +6,12 @@
 #![allow(clippy::undocumented_unsafe_blocks)]
 
 use std::ffi::{CStr, CString, c_char, c_int, c_long, c_void};
-use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::ptr::{null, null_mut};
-use std::sync::OnceLock;
 
 use openssl_sys::*;
 
-mod library;
+mod common;
 
 // What `openssl-sys` does not bind, all in OpenSSL 3.0.
 unsafe extern "C" {
@@ -89,52 +87,6 @@ unsafe extern "C" {
 
 const OPENSSL_INIT_LOAD_CONFIG: u64 = 0x40;
 
-/// The README's configuration, loading the library this build made.
-fn config() -> &'static Path {
-    static CONFIG: OnceLock<PathBuf> = OnceLock::new();
-    CONFIG.get_or_init(write_config)
-}
-
-fn write_config() -> PathBuf {
-    let documented = include_str!("../openssl.cnf");
-    let module = format!("module = {}", conf_value(&library::find()));
-    let config: String = documented
-        .lines()
-        .map(|line| {
-            if line.starts_with("module = ") {
-                module.as_str()
-            } else {
-                line
-            }
-        })
-        .map(|line| format!("{line}\n"))
-        .collect();
-    assert!(
-        config.contains(&module),
-        "the documented configuration names no module"
-    );
-    // Each test runs in a process of its own under nextest, so each writes
-    // its own file.
-    let path = PathBuf::from(env!("CARGO_TARGET_TMPDIR"))
-        .join(format!("rind-openssl-{}.cnf", std::process::id()));
-    std::fs::write(&path, config).unwrap();
-    path
-}
-
-/// `path` as an `openssl.cnf` value: each ASCII character but a letter,
-/// digit, or `/._-` escaped, as a `#` would start a comment and a `$` a
-/// variable.
-fn conf_value(path: &Path) -> String {
-    let mut out = String::new();
-    for c in path.display().to_string().chars() {
-        if c.is_ascii() && !(c.is_ascii_alphanumeric() || "/._-".contains(c)) {
-            out.push('\\');
-        }
-        out.push(c);
-    }
-    out
-}
-
 /// The errors OpenSSL holds for this thread, taken off its queue.
 fn errors() -> String {
     let mut out = String::new();
@@ -168,13 +120,16 @@ fn non_null<T>(ptr: *mut T) -> *mut T {
     ptr
 }
 
-/// A library context configured as the README says.
+/// A library context configured as the README says, with the provider this
+/// test binary links.
 struct Context(*mut OSSL_LIB_CTX);
 
 impl Context {
     fn new() -> Self {
         let ctx = non_null(unsafe { OSSL_LIB_CTX_new() });
-        let config = CString::new(config().as_os_str().as_encoded_bytes()).unwrap();
+        common::add_builtin(ctx);
+        let config = common::config(None);
+        let config = CString::new(config.as_os_str().as_encoded_bytes()).unwrap();
         check(unsafe { OSSL_LIB_CTX_load_config(ctx, config.as_ptr()) });
         Self(ctx)
     }
@@ -810,7 +765,7 @@ fn documented_config_loads_rind() {
     let mut child = Command::new(std::env::current_exe().unwrap());
     child
         .args(["--exact", "documented_config_loads_rind", "--nocapture"])
-        .env("OPENSSL_CONF", config())
+        .env("OPENSSL_CONF", common::config(Some(&common::library())))
         .env("RIND_OPENSSL_CHILD", "1");
     let output = child.output().unwrap();
     let stdout = String::from_utf8_lossy(&output.stdout);
