@@ -93,7 +93,7 @@ final class AgreementPrivateKey extends _Handle {
 
 /// A public key for key agreement.
 final class AgreementPublicKey {
-  AgreementPublicKey._(this.algorithm, this.bytes);
+  AgreementPublicKey._(this.algorithm, this._bytes);
 
   /// Parses a peer's public key for [algorithm]: X25519's 32 bytes, any
   /// value, or a NIST curve's X9.62 point, uncompressed or compressed,
@@ -112,10 +112,15 @@ final class AgreementPublicKey {
 
   /// The key as [AgreementPrivateKey.agree] takes it: X25519's 32 bytes, or
   /// a NIST curve's uncompressed point.
-  final Uint8List bytes;
+  ///
+  /// Each read is a new list. The key keeps its own copy, so changing the
+  /// list a caller holds leaves the key, and [toSpki], as they were.
+  Uint8List get bytes => Uint8List.fromList(_bytes);
+
+  final Uint8List _bytes;
 
   /// Encodes the key as a `SubjectPublicKeyInfo`.
-  Uint8List toSpki() => _parse(algorithm, 0, bytes, 1);
+  Uint8List toSpki() => _parse(algorithm, 0, _bytes, 1);
 
   static Uint8List _parse(
     AgreementAlgorithm algorithm,

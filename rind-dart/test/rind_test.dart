@@ -828,7 +828,9 @@ void main() {
         rsa.OaepAlgorithm.sha256,
         rsaPair.toPkcs8(),
       );
-      final agreement = AgreementPrivateKey.generate(AgreementAlgorithm.x25519);
+      final agreement = AgreementPrivateKey.generate(
+        AgreementAlgorithm.ecdhP256,
+      );
       final kem = DecapsulationKey.generate(KemAlgorithm.mlKem768);
       expect(identical(ecdsaPair.publicKey, ecdsaPair.publicKey), isTrue);
       expect(ecdsaPair.publicKey.runtimeType, ecdsa.PublicKey);
@@ -842,6 +844,42 @@ void main() {
       expect(identical(oaep.publicKey, oaep.publicKey), isTrue);
       expect(identical(agreement.publicKey, agreement.publicKey), isTrue);
       expect(identical(kem.publicKey, kem.publicKey), isTrue);
+
+      // The object is cached. Its bytes are not: a caller who wipes the list
+      // it was given must not change the next read or the encoding.
+      void keepsItsBytes(
+        Uint8List Function() read, [
+        Uint8List Function()? encoded,
+      ]) {
+        final returned = read();
+        final original = Uint8List.fromList(returned);
+        final copy = encoded == null ? null : Uint8List.fromList(encoded());
+        returned.fillRange(0, returned.length, 0);
+        expect(read(), original);
+        if (copy != null) expect(encoded!(), copy);
+      }
+
+      keepsItsBytes(
+        () => agreement.publicKey.bytes,
+        () => agreement.publicKey.toSpki(),
+      );
+      keepsItsBytes(
+        () => ecdsaPair.publicKey.bytes,
+        () => ecdsaPair.publicKey.toSpki(),
+      );
+      keepsItsBytes(
+        () => ed25519Pair.publicKey.bytes,
+        () => ed25519Pair.publicKey.toSpki(),
+      );
+      keepsItsBytes(
+        () => rsaPair.publicKey.bytes,
+        () => rsaPair.publicKey.toSpki(),
+      );
+      keepsItsBytes(
+        () => oaep.publicKey.bytes,
+        () => oaep.publicKey.toSpki(),
+      );
+      keepsItsBytes(() => kem.publicKey.bytes);
     });
   });
 

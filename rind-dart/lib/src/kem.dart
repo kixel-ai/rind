@@ -56,7 +56,7 @@ final class DecapsulationKey extends _Handle {
 final class EncapsulationKey extends _Handle {
   /// Parses an encapsulation key for [algorithm].
   EncapsulationKey(this.algorithm, Uint8List bytes)
-    : bytes = Uint8List.fromList(bytes),
+    : _bytes = Uint8List.fromList(bytes),
       super(
         _newHandle(
           (out) => _encapsulationKeyNew(
@@ -73,7 +73,12 @@ final class EncapsulationKey extends _Handle {
   final KemAlgorithm algorithm;
 
   /// The key's encoding.
-  final Uint8List bytes;
+  ///
+  /// Each read is a new list. The key keeps its own copy, so changing the
+  /// list a caller holds leaves the key as it was.
+  Uint8List get bytes => Uint8List.fromList(_bytes);
+
+  final Uint8List _bytes;
 
   /// Encapsulates a fresh random secret, returning the ciphertext to send to
   /// the key's holder and the secret.
