@@ -3,8 +3,8 @@
 //! ChaCha20-Poly1305 in one pass: pyca/verified-garbage's SVE2 routines,
 //! imported by `admin/import-vg`, where the CPU has SVE2, and otherwise
 //! aws-lc's `chacha20_poly1305_armv8`, which interleaves NEON ChaCha20 with
-//! scalar Poly1305, imported by `admin/import-aws-lc`. VG's NEON routines
-//! are slower than aws-lc's for messages up to 512 bytes on Apple's M4.
+//! scalar Poly1305, imported by `admin/import-aws-lc`, since VG's NEON
+//! routines took up to 1.06 of its time at 32 to 512 bytes on Apple's M4.
 //!
 //! VG proves in Lean that its routines meet RFC 8439 and take the same
 //! branches and memory addresses whatever the key, nonce, and data. Those
