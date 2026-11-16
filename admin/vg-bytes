@@ -348,7 +348,15 @@ def main():
 
     text = read_text(a.vg / "crates" / f"verified-garbage-asm-{a.arch}" / "assembly")
     assembled = disassemble(a.arch, assemble_text(a.arch, text, a.out), lambda path, name: name in text)
-    compiled = disassemble(a.arch, compile_vg(a.vg, a.arch, a.out), lambda path, name: name in text)
+    # Every naked function of VG's crate, which is each `vg_*` function but
+    # the Rust dispatchers of its `dispatch` module, must be a routine of the
+    # text, so none goes unchecked.
+    compiled = disassemble(a.arch, compile_vg(a.vg, a.arch, a.out),
+                           lambda path, name: name in text
+                           or (name.startswith("vg_") and "::dispatch::" not in path))
+    for name in compiled:
+        if name not in text:
+            fail(f"VG's compiled {name} is not a routine of its text")
 
     seen = {}
     counts = collections.Counter()

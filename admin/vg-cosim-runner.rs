@@ -902,7 +902,12 @@ fn run_stream(
         "vg-cosim-runner: the cases' states differ from this runner's"
     );
     let stderr = std::io::stderr();
-    while read_u8(&mut r) == 1 {
+    loop {
+        match read_u8(&mut r) {
+            0 => break,
+            1 => {}
+            tag => panic!("vg-cosim-runner: a block's tag is {tag}, not 0 or 1"),
+        }
         let len = read_u16(&mut r);
         let text = read_vec(&mut r, len);
         let kind = read_u8(&mut r);
@@ -978,4 +983,10 @@ fn run_stream(
         }
         *blocks += 1;
     }
+    let mut rest = [0u8; 1];
+    assert_eq!(
+        r.read(&mut rest).unwrap(),
+        0,
+        "vg-cosim-runner: bytes follow the stream's end"
+    );
 }

@@ -492,10 +492,20 @@ vg() {
     rustc --edition 2024 -O -o "$dir/runner" admin/vg-cosim-runner.rs
     # A case that faults must name its instruction and fail the run, on the
     # CPU and under the emulator.
-    local runner fault
-    for runner in "$dir/runner" "${emu[*]} $dir/runner"; do
-        if fault=$($runner --fault-test 2>&1) || ! grep -q "the CPU faulted (signal 11) in" <<<"$fault"; then
-            echo "admin/prove: $runner --fault-test did not report its fault: $fault" >&2
+    local fault status want under
+    case $arch in
+    x86_64) want="the CPU faulted (signal 11) in mov rax, QWORD PTR [rbx]" ;;
+    aarch64) want="the CPU faulted (signal 11) in ldr x0, [x1]" ;;
+    esac
+    for under in cpu emulator; do
+        status=0
+        if [[ $under == emulator ]]; then
+            fault=$("${emu[@]}" "$dir/runner" --fault-test 2>&1) || status=$?
+        else
+            fault=$("$dir/runner" --fault-test 2>&1) || status=$?
+        fi
+        if [[ $status != 1 || $fault != "vg-cosim-runner: $want" ]]; then
+            echo "admin/prove: the runner's fault test on the $under exited $status with: $fault" >&2
             return 1
         fi
     done

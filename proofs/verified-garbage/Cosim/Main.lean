@@ -29,6 +29,7 @@ def main (args : List String) : IO UInt32 := do
         [<emulator-features> <emulator-out>]"
       return 2
   let some n := n.toNat? | IO.eprintln "vg-cosim: cases is not a number"; return 2
+  if n == 0 then IO.eprintln "vg-cosim: cases must be at least 1"; return 2
   let some seed := seed.toNat? | IO.eprintln "vg-cosim: seed is not a number"; return 2
   unless arch == "x86_64" || arch == "aarch64" do
     IO.eprintln s!"vg-cosim: no model of {arch}"; return 2
