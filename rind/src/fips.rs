@@ -181,6 +181,9 @@ errors! {
         MismatchedSec1Curve,
         MismatchedSec1PublicKey,
         MismatchedSpkiAlgorithm,
+        DuplicateIdentifier,
+        UnknownIdentifier,
+        MismatchedCommitments,
     ],
     asn1: [
         UnexpectedTag,
