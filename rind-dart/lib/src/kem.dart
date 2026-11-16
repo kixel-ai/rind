@@ -27,7 +27,7 @@ final class DecapsulationKey extends _Handle {
   final KemAlgorithm algorithm;
 
   /// The encapsulation key to send to the peer.
-  EncapsulationKey get publicKey => EncapsulationKey(
+  late final EncapsulationKey publicKey = EncapsulationKey(
     algorithm,
     _output(
       algorithm._publicKeyLength,

@@ -74,10 +74,6 @@ abstract base class _Handle implements Finalizable {
 // The longest key export, an RSA-8192 PKCS#8 key, fits in this many bytes.
 const _exportLength = 8192;
 
-// RSA-8192's modulus, which bounds RSA's signatures, ciphertexts, and
-// plaintexts. Not a key's own modulus length.
-const _maxModulusLength = 1024;
-
 NativeFinalizer _finalizer(Pointer<NativeFunction<_Free>> free) =>
     NativeFinalizer(free);
 

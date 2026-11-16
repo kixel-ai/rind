@@ -1,13 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
-part of 'bindings.dart';
+library;
+
+import 'dart:convert';
+import 'dart:ffi';
+import 'dart:typed_data';
+
+import 'package:ffi/ffi.dart';
+
+import 'error.dart';
 
 /// An Ed25519 public key.
-final class Ed25519PublicKey extends _Handle {
-  Ed25519PublicKey._(Pointer<Void> pointer)
+final class PublicKey extends _Handle {
+  PublicKey._(Pointer<Void> pointer)
     : super(pointer, _ed25519PublicKeyFinalizer);
 
-  Ed25519PublicKey._parse(int spki, Uint8List bytes)
+  PublicKey._parse(int spki, Uint8List bytes)
     : this._(
         _newHandle(
           (out) => _ed25519PublicKeyNew(spki, bytes.address, bytes.length, out),
@@ -16,11 +24,11 @@ final class Ed25519PublicKey extends _Handle {
 
   /// Parses a key's 32 [bytes], throwing [RindError.keyRejected] for
   /// another length, a point off the curve, or one of small order.
-  Ed25519PublicKey(Uint8List bytes) : this._parse(0, bytes);
+  PublicKey(Uint8List bytes) : this._parse(0, bytes);
 
   /// Parses a `SubjectPublicKeyInfo`, throwing [RindError.keyRejected] for a
   /// malformed one or one naming another algorithm.
-  Ed25519PublicKey.fromSpki(Uint8List der) : this._parse(1, der);
+  PublicKey.fromSpki(Uint8List der) : this._parse(1, der);
 
   /// Checks that [signature] is the key's signature of [message], throwing
   /// [RindError.badSignature] if not.
@@ -36,7 +44,7 @@ final class Ed25519PublicKey extends _Handle {
     );
   }
 
-  /// The key's 32 bytes, as [Ed25519PublicKey.new] takes them.
+  /// The key's 32 bytes, as [PublicKey.new] takes them.
   Uint8List get bytes => _export(0);
 
   /// Encodes the key as a `SubjectPublicKeyInfo`.
@@ -49,8 +57,8 @@ final class Ed25519PublicKey extends _Handle {
 }
 
 /// An Ed25519 key pair.
-final class Ed25519KeyPair extends _Handle {
-  Ed25519KeyPair._(int source, Uint8List bytes, [Uint8List? publicKey])
+final class KeyPair extends _Handle {
+  KeyPair._(int source, Uint8List bytes, [Uint8List? publicKey])
     : super(
         _new(source, bytes, publicKey ?? Uint8List(0)),
         _ed25519KeyPairFinalizer,
@@ -69,22 +77,22 @@ final class Ed25519KeyPair extends _Handle {
       );
 
   /// Generates a random key pair.
-  Ed25519KeyPair.generate() : this._(0, Uint8List(0));
+  KeyPair.generate() : this._(0, Uint8List(0));
 
   /// Parses a PKCS#8 v1 or v2 private key, throwing [RindError.keyRejected]
   /// for a malformed one.
-  Ed25519KeyPair.fromPkcs8(Uint8List der) : this._(1, der);
+  KeyPair.fromPkcs8(Uint8List der) : this._(1, der);
 
   /// Loads a key pair from its 32-byte seed.
-  Ed25519KeyPair.fromSeed(Uint8List seed) : this._(2, seed);
+  KeyPair.fromSeed(Uint8List seed) : this._(2, seed);
 
   /// Loads a key pair from its 32-byte seed, refused unless [publicKey] is
   /// its public key.
-  Ed25519KeyPair.fromSeedAndPublicKey(Uint8List seed, Uint8List publicKey)
+  KeyPair.fromSeedAndPublicKey(Uint8List seed, Uint8List publicKey)
     : this._(3, seed, publicKey);
 
   /// The public key, which verifies the key pair's signatures.
-  late final Ed25519PublicKey publicKey = Ed25519PublicKey._(
+  late final PublicKey publicKey = PublicKey._(
     _newHandle((out) => _ed25519KeyPairPublicKey(_pointer, out)),
   );
 
@@ -211,3 +219,60 @@ external int _ed25519PublicKeyExport(
   Pointer<Uint8> out,
   int outLen,
 );
+
+// The handle stays in this library, so its pointer is not part of the
+// public API. The same helpers back the other libraries that hold a handle.
+
+typedef _Free = Void Function(Pointer<Void>);
+
+Pointer<Void> _newHandle(int Function(Pointer<Pointer<Void>> slot) call) {
+  final slot = malloc<Pointer<Void>>();
+  try {
+    _check(call(slot));
+    return slot.value;
+  } finally {
+    malloc.free(slot);
+  }
+}
+
+int _check(int status) {
+  if (status >= 0) return status;
+  if (status == -10) throw StateError('rind binding bug: ${_lastMessage()}');
+  throw RindException(
+    RindError.values[-status - 1],
+    status == -2 ? _lastMessage() : null,
+  );
+}
+
+String _lastMessage() {
+  final out = Uint8List(256);
+  final len = _message(out.address, out.length);
+  return utf8.decode(
+    out.sublist(0, len < out.length ? len : out.length),
+    allowMalformed: true,
+  );
+}
+
+Uint8List _output(int length, int Function(Uint8List out) call) {
+  final out = Uint8List(length);
+  return out.sublist(0, _check(call(out)));
+}
+
+abstract base class _Handle implements Finalizable {
+  _Handle(this._pointer, NativeFinalizer finalizer) {
+    finalizer.attach(this, _pointer, detach: this);
+  }
+
+  final Pointer<Void> _pointer;
+}
+
+const _exportLength = 8192;
+
+NativeFinalizer _finalizer(Pointer<NativeFunction<_Free>> free) =>
+    NativeFinalizer(free);
+
+@Native<IntPtr Function(Pointer<Uint8>, Size)>(
+  symbol: 'rind_dart_message',
+  isLeaf: true,
+)
+external int _message(Pointer<Uint8> out, int outLen);

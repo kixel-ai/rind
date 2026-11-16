@@ -5,12 +5,15 @@
   `package:rind/rsa.dart`, imported `as ecdsa`, `as ed25519`, and `as rsa`,
   with a `KeyPair` and a `PublicKey` of its own, as rind 0.4's `ecdsa`,
   `ed25519`, and `rsa` modules do, in place of one `PublicKey` for every
-  algorithm. `package:rind/rind.dart` no longer exports them. A public key's
-  constructor takes the algorithm's own encoding, `fromSpki` a
+  algorithm. Those names are the classes, so `runtimeType` and the
+  documentation use them. `package:rind/rind.dart` no longer exports them. A
+  public key's constructor takes the algorithm's own encoding, `fromSpki` a
   `SubjectPublicKeyInfo`, and `toSpki` lives only on the public key. An RSA
   public key takes PKCS#1, is bound to no algorithm, and refuses a modulus
-  below the algorithm's floor at `verify`. Each key pair's `publicKey`
-  returns the same object each time.
+  below the algorithm's floor at `verify`. A signature key pair, an
+  agreement private key, and an ML-KEM decapsulation key each return the
+  same `publicKey` every time it is read, as does an RSA-OAEP decrypting
+  key.
 - Breaking: RSA-OAEP moves to `package:rind/rsa.dart` too, and
   `rsa.EncryptingKey(algorithm, der)` takes PKCS#1 only, and
   `rsa.EncryptingKey.fromSpki` a `SubjectPublicKeyInfo`.
@@ -35,7 +38,10 @@
 | `PublicKey` | `ecdsa.PublicKey`, `ed25519.PublicKey`, or `rsa.PublicKey` |
 | `VerificationAlgorithm` | `ecdsa.VerificationAlgorithm` or `rsa.VerificationAlgorithm`; Ed25519 takes none |
 | `VerificationAlgorithm.ecdsaP256Sha256Asn1`, and each `ecdsa…` constant | `ecdsa.VerificationAlgorithm.p256Sha256Asn1`, without `ecdsa` |
-| `VerificationAlgorithm.ecdsaP256Sha256Asn1.toString()`, `ECDSA_P256_SHA256_ASN1`, and each ECDSA constant | `ecdsa.VerificationAlgorithm.p256Sha256Asn1.toString()`, `VerificationAlgorithm.p256Sha256Asn1` |
+| `VerificationAlgorithm.ecdsaP256Sha256Asn1.toString()`, `ECDSA_P256_SHA256_ASN1`, and each ECDSA constant | `ecdsa.VerificationAlgorithm.p256Sha256Asn1.toString()`, `ecdsa.VerificationAlgorithm.p256Sha256Asn1` |
+| `VerificationAlgorithm.rsaPkcs1Sha256.toString()`, `RSA_PKCS1_SHA256`, and each RSA constant | `rsa.VerificationAlgorithm.pkcs1Sha256.toString()`, `rsa.VerificationAlgorithm.pkcs1Sha256` |
+| `EcdsaSigningAlgorithm.p256Sha256Asn1.toString()`, and each signing constant | `ecdsa.SigningAlgorithm.p256Sha256Asn1.toString()`, `ecdsa.SigningAlgorithm.p256Sha256Asn1`, and `rsa.SigningAlgorithm.pssSha256` for RSA |
+| `rsaPkcs1Sha1.toString()`, `RSA_PKCS1_SHA1`, and the other legacy RSA constants | `rsa.pkcs1Sha1.toString()`, `rsa.pkcs1Sha1` |
 | `VerificationAlgorithm.ed25519` | none |
 | `VerificationAlgorithm.rsaPkcs1Sha256`, and each `rsa…` constant | `rsa.VerificationAlgorithm.pkcs1Sha256`, without `rsa` |
 | `RsaVerificationAlgorithm`, a `VerificationAlgorithm` | `rsa.VerificationAlgorithm`, a class of its own |
@@ -54,6 +60,8 @@
 | `Ed25519KeyPair.publicKey`, a new `PublicKey` each time | `ed25519.KeyPair.publicKey`, the same `ed25519.PublicKey` each time |
 | `RsaKeyPair.publicKey(algorithm)` | `rsa.KeyPair.publicKey`, the same `rsa.PublicKey` each time |
 | `RsaDecryptingKey.publicKey`, a new `RsaEncryptingKey` each time | `rsa.DecryptingKey.publicKey`, the same `rsa.EncryptingKey` each time |
+| `AgreementPrivateKey.publicKey`, a new key each time | the same `AgreementPublicKey` each time |
+| `DecapsulationKey.publicKey`, a new key each time | the same `EncapsulationKey` each time |
 | `EcdsaKeyPair.toSpki()`, `Ed25519KeyPair.toSpki()`, `RsaKeyPair.toSpki()`, `RsaDecryptingKey.toSpki()` | `publicKey.toSpki()` |
 | `RsaEncryptingKey(algorithm, der)`, PKCS#1 or SPKI | `rsa.EncryptingKey(algorithm, der)`, PKCS#1, or `rsa.EncryptingKey.fromSpki(algorithm, der)` |
 

@@ -1,6 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
-part of 'bindings.dart';
+library;
+
+import 'dart:convert';
+import 'dart:ffi';
+import 'dart:typed_data';
+
+import 'package:ffi/ffi.dart';
+
+import 'error.dart';
 
 /// The modulus size of a generated RSA key.
 enum KeySize {
@@ -20,8 +28,8 @@ enum KeySize {
   rsa8192,
 }
 
-/// An algorithm an [RsaKeyPair] signs with: a padding and a hash.
-enum RsaSigningAlgorithm {
+/// An algorithm a [KeyPair] signs with: a padding and a hash.
+enum SigningAlgorithm {
   /// RSASSA-PKCS1-v1_5 with SHA-256.
   pkcs1Sha256(0),
 
@@ -40,60 +48,81 @@ enum RsaSigningAlgorithm {
   /// RSASSA-PSS with SHA-512, MGF1-SHA-512, and a salt as long as the hash.
   pssSha512(5);
 
-  const RsaSigningAlgorithm(this._id);
+  const SigningAlgorithm(this._id);
 
   final int _id;
 
-  // Callers import this enum as SigningAlgorithm.
   @override
-  String toString() => 'SigningAlgorithm.$name';
+  String toString() => 'rsa.SigningAlgorithm.$name';
 }
 
-/// An algorithm an [RsaPublicKey] verifies with: a padding, a hash, and the
+/// An algorithm a [PublicKey] verifies with: a padding, a hash, and the
 /// smallest modulus it accepts.
 ///
-/// Each verifies what the [RsaSigningAlgorithm] of the same name signs, and
-/// accepts moduli of 2048 to 8192 bits.
-final class RsaVerificationAlgorithm {
-  const RsaVerificationAlgorithm._(this._id, this._name);
+/// [pkcs1Sha256], [pkcs1Sha384], [pkcs1Sha512], [pssSha256], [pssSha384],
+/// and [pssSha512] verify what the [SigningAlgorithm] of the same name
+/// signs. [pssSha256AnySalt], [pssSha384AnySalt], and [pssSha512AnySalt]
+/// verify a PSS signature of that hash with a salt of any length, which
+/// includes the salt the signer of that hash produces. Each accepts a
+/// modulus of 2048 to 8192 bits.
+final class VerificationAlgorithm {
+  const VerificationAlgorithm._(this._id, this._name);
 
   final int _id;
   final String _name;
 
   /// RSASSA-PKCS1-v1_5 with SHA-256.
-  static const pkcs1Sha256 = RsaVerificationAlgorithm._(0, 'RSA_PKCS1_SHA256');
+  static const pkcs1Sha256 = VerificationAlgorithm._(
+    0,
+    'rsa.VerificationAlgorithm.pkcs1Sha256',
+  );
 
   /// RSASSA-PKCS1-v1_5 with SHA-384.
-  static const pkcs1Sha384 = RsaVerificationAlgorithm._(1, 'RSA_PKCS1_SHA384');
+  static const pkcs1Sha384 = VerificationAlgorithm._(
+    1,
+    'rsa.VerificationAlgorithm.pkcs1Sha384',
+  );
 
   /// RSASSA-PKCS1-v1_5 with SHA-512.
-  static const pkcs1Sha512 = RsaVerificationAlgorithm._(2, 'RSA_PKCS1_SHA512');
+  static const pkcs1Sha512 = VerificationAlgorithm._(
+    2,
+    'rsa.VerificationAlgorithm.pkcs1Sha512',
+  );
 
   /// RSASSA-PSS with SHA-256 and a salt as long as the hash.
-  static const pssSha256 = RsaVerificationAlgorithm._(3, 'RSA_PSS_SHA256');
+  static const pssSha256 = VerificationAlgorithm._(
+    3,
+    'rsa.VerificationAlgorithm.pssSha256',
+  );
 
   /// RSASSA-PSS with SHA-384 and a salt as long as the hash.
-  static const pssSha384 = RsaVerificationAlgorithm._(4, 'RSA_PSS_SHA384');
+  static const pssSha384 = VerificationAlgorithm._(
+    4,
+    'rsa.VerificationAlgorithm.pssSha384',
+  );
 
   /// RSASSA-PSS with SHA-512 and a salt as long as the hash.
-  static const pssSha512 = RsaVerificationAlgorithm._(5, 'RSA_PSS_SHA512');
+  static const pssSha512 = VerificationAlgorithm._(
+    5,
+    'rsa.VerificationAlgorithm.pssSha512',
+  );
 
   /// RSASSA-PSS with SHA-256 and a salt of any length.
-  static const pssSha256AnySalt = RsaVerificationAlgorithm._(
+  static const pssSha256AnySalt = VerificationAlgorithm._(
     6,
-    'RSA_PSS_SHA256_ANY_SALT',
+    'rsa.VerificationAlgorithm.pssSha256AnySalt',
   );
 
   /// RSASSA-PSS with SHA-384 and a salt of any length.
-  static const pssSha384AnySalt = RsaVerificationAlgorithm._(
+  static const pssSha384AnySalt = VerificationAlgorithm._(
     7,
-    'RSA_PSS_SHA384_ANY_SALT',
+    'rsa.VerificationAlgorithm.pssSha384AnySalt',
   );
 
   /// RSASSA-PSS with SHA-512 and a salt of any length.
-  static const pssSha512AnySalt = RsaVerificationAlgorithm._(
+  static const pssSha512AnySalt = VerificationAlgorithm._(
     8,
-    'RSA_PSS_SHA512_ANY_SALT',
+    'rsa.VerificationAlgorithm.pssSha512AnySalt',
   );
 
   @override
@@ -101,36 +130,35 @@ final class RsaVerificationAlgorithm {
 }
 
 /// RSASSA-PKCS1-v1_5 with SHA-1, for old signatures.
-const pkcs1Sha1 = RsaVerificationAlgorithm._(100, 'RSA_PKCS1_SHA1');
+const pkcs1Sha1 = VerificationAlgorithm._(100, 'rsa.pkcs1Sha1');
 
 /// RSASSA-PKCS1-v1_5 with SHA-1, for old keys of 1024 bits or more.
-const pkcs1Min1024Sha1 = RsaVerificationAlgorithm._(101, 'RSA_PKCS1_1024_SHA1');
+const pkcs1Min1024Sha1 = VerificationAlgorithm._(101, 'rsa.pkcs1Min1024Sha1');
 
 /// RSASSA-PKCS1-v1_5 with SHA-256, for old keys of 1024 bits or more.
-const pkcs1Min1024Sha256 = RsaVerificationAlgorithm._(
+const pkcs1Min1024Sha256 = VerificationAlgorithm._(
   102,
-  'RSA_PKCS1_1024_SHA256',
+  'rsa.pkcs1Min1024Sha256',
 );
 
 /// RSASSA-PKCS1-v1_5 with SHA-512, for old keys of 1024 bits or more.
-const pkcs1Min1024Sha512 = RsaVerificationAlgorithm._(
+const pkcs1Min1024Sha512 = VerificationAlgorithm._(
   103,
-  'RSA_PKCS1_1024_SHA512',
+  'rsa.pkcs1Min1024Sha512',
 );
 
 /// RSASSA-PKCS1-v1_5 with SHA-384, for keys of 3072 bits or more only.
-const pkcs1Min3072Sha384 = RsaVerificationAlgorithm._(
+const pkcs1Min3072Sha384 = VerificationAlgorithm._(
   104,
-  'RSA_PKCS1_3072_SHA384',
+  'rsa.pkcs1Min3072Sha384',
 );
 
-/// An RSA public key, which verifies with any [RsaVerificationAlgorithm]
+/// An RSA public key, which verifies with any [VerificationAlgorithm]
 /// whose modulus floor it meets.
-final class RsaPublicKey extends _Handle {
-  RsaPublicKey._(Pointer<Void> pointer)
-    : super(pointer, _rsaPublicKeyFinalizer);
+final class PublicKey extends _Handle {
+  PublicKey._(Pointer<Void> pointer) : super(pointer, _rsaPublicKeyFinalizer);
 
-  RsaPublicKey._parse(int source, Uint8List bytes, [Uint8List? exponent])
+  PublicKey._parse(int source, Uint8List bytes, [Uint8List? exponent])
     : this._(_new(source, bytes, exponent ?? Uint8List(0)));
 
   static Pointer<Void> _new(int source, Uint8List bytes, Uint8List exponent) =>
@@ -147,23 +175,23 @@ final class RsaPublicKey extends _Handle {
 
   /// Parses a PKCS#1 `RSAPublicKey`, throwing [RindError.keyRejected] for a
   /// malformed one or a `SubjectPublicKeyInfo`, which
-  /// [RsaPublicKey.fromSpki] takes.
-  RsaPublicKey(Uint8List der) : this._parse(0, der);
+  /// [PublicKey.fromSpki] takes.
+  PublicKey(Uint8List der) : this._parse(0, der);
 
   /// Parses a `SubjectPublicKeyInfo`, throwing [RindError.keyRejected] for a
   /// malformed one or one naming another algorithm.
-  RsaPublicKey.fromSpki(Uint8List der) : this._parse(1, der);
+  PublicKey.fromSpki(Uint8List der) : this._parse(1, der);
 
   /// Loads a key from its big-endian modulus [n] and exponent [e], as a JWK
   /// carries them, throwing [RindError.keyRejected] for a malformed one.
-  RsaPublicKey.fromComponents({required Uint8List n, required Uint8List e})
+  PublicKey.fromComponents({required Uint8List n, required Uint8List e})
     : this._parse(2, n, e);
 
   /// Checks that [signature] is the key's signature of [message] under
   /// [algorithm], throwing [RindError.badSignature] if not, or
   /// [RindError.keyRejected] if the modulus is below [algorithm]'s floor.
   void verify(
-    RsaVerificationAlgorithm algorithm,
+    VerificationAlgorithm algorithm,
     Uint8List message,
     Uint8List signature,
   ) {
@@ -182,7 +210,7 @@ final class RsaPublicKey extends _Handle {
   /// The modulus's length in bytes, which is also its signatures' length.
   int get modulusLength => _check(_rsaPublicKeyModulusLen(_pointer));
 
-  /// The key's PKCS#1 `RSAPublicKey` encoding, as [RsaPublicKey.new] takes
+  /// The key's PKCS#1 `RSAPublicKey` encoding, as [PublicKey.new] takes
   /// it.
   Uint8List get bytes => _export(0);
 
@@ -199,8 +227,8 @@ final class RsaPublicKey extends _Handle {
 ///
 /// Generating a key and signing take milliseconds to seconds, so run them
 /// off the UI isolate, as with `Isolate.run`.
-final class RsaKeyPair extends _Handle {
-  RsaKeyPair._(Pointer<Void> pointer) : super(pointer, _rsaKeyPairFinalizer);
+final class KeyPair extends _Handle {
+  KeyPair._(Pointer<Void> pointer) : super(pointer, _rsaKeyPairFinalizer);
 
   static Pointer<Void> _parse(int source, Uint8List der) => _native(
     der,
@@ -209,40 +237,37 @@ final class RsaKeyPair extends _Handle {
   );
 
   /// Generates a random key pair of [size].
-  RsaKeyPair.generate(KeySize size)
+  KeyPair.generate(KeySize size)
     : this._(
         _newHandle((out) => _rsaKeyPairNew(0, size.index, nullptr, 0, out)),
       );
 
   /// Parses a PKCS#8 private key, throwing [RindError.keyRejected] for a
   /// malformed one.
-  RsaKeyPair.fromPkcs8(Uint8List der) : this._(_parse(1, der));
+  KeyPair.fromPkcs8(Uint8List der) : this._(_parse(1, der));
 
   /// Parses a PKCS#1 `RSAPrivateKey`, throwing [RindError.keyRejected] for a
   /// malformed one.
-  RsaKeyPair.fromPkcs1(Uint8List der) : this._(_parse(2, der));
+  KeyPair.fromPkcs1(Uint8List der) : this._(_parse(2, der));
 
   /// The public key, which verifies the key pair's signatures.
-  late final RsaPublicKey publicKey = RsaPublicKey._(
+  late final PublicKey publicKey = PublicKey._(
     _newHandle((out) => _rsaKeyPairPublicKey(_pointer, out)),
   );
 
   /// Signs [message] with [algorithm].
-  Uint8List sign(RsaSigningAlgorithm algorithm, Uint8List message) =>
+  Uint8List sign(SigningAlgorithm algorithm, Uint8List message) =>
       _native(message, (input) {
-        return _native(Uint8List(_maxModulusLength), (out) {
-          final len = _check(
-            _rsaSign(
-              _pointer,
-              algorithm._id,
-              input,
-              message.length,
-              out,
-              _maxModulusLength,
-            ),
-          );
-          return Uint8List.fromList(out.asTypedList(len));
-        });
+        return _modulusOut(
+          (out) => _rsaSign(
+            _pointer,
+            algorithm._id,
+            input,
+            message.length,
+            out,
+            _maxModulusLength,
+          ),
+        );
       });
 
   /// Encodes the private key as PKCS#8.
@@ -327,20 +352,17 @@ final class DecryptingKey extends _Handle {
     label ??= Uint8List(0);
     return _native(ciphertext, (input) {
       return _native(label!, (labelPointer) {
-        return _native(Uint8List(_maxModulusLength), (out) {
-          final len = _check(
-            _decrypt(
-              _pointer,
-              input,
-              ciphertext.length,
-              labelPointer,
-              label!.length,
-              out,
-              _maxModulusLength,
-            ),
-          );
-          return Uint8List.fromList(out.asTypedList(len));
-        });
+        return _modulusOut(
+          (out) => _decrypt(
+            _pointer,
+            input,
+            ciphertext.length,
+            labelPointer,
+            label!.length,
+            out,
+            _maxModulusLength,
+          ),
+        );
       });
     });
   }
@@ -690,3 +712,87 @@ external int _encryptingKeyExport(
   isLeaf: true,
 )
 external int _encryptingKeyMaxMessageLen(Pointer<Void> key);
+
+// The handle stays in this library, so its pointer is not part of the
+// public API. The same helpers back the other libraries that hold a handle.
+
+typedef _Free = Void Function(Pointer<Void>);
+
+Pointer<Void> _newHandle(int Function(Pointer<Pointer<Void>> slot) call) {
+  final slot = malloc<Pointer<Void>>();
+  try {
+    _check(call(slot));
+    return slot.value;
+  } finally {
+    malloc.free(slot);
+  }
+}
+
+int _check(int status) {
+  if (status >= 0) return status;
+  if (status == -10) throw StateError('rind binding bug: ${_lastMessage()}');
+  throw RindException(
+    RindError.values[-status - 1],
+    status == -2 ? _lastMessage() : null,
+  );
+}
+
+String _lastMessage() {
+  final out = Uint8List(256);
+  final len = _message(out.address, out.length);
+  return utf8.decode(
+    out.sublist(0, len < out.length ? len : out.length),
+    allowMalformed: true,
+  );
+}
+
+Uint8List _output(int length, int Function(Uint8List out) call) {
+  final out = Uint8List(length);
+  return out.sublist(0, _check(call(out)));
+}
+
+T _native<T>(Uint8List data, T Function(Pointer<Uint8> pointer) call) {
+  final pointer = malloc<Uint8>(data.isEmpty ? 1 : data.length);
+  final view = pointer.asTypedList(data.length);
+  try {
+    view.setAll(0, data);
+    return call(pointer);
+  } finally {
+    malloc.free(pointer);
+  }
+}
+
+// Allocates the modulus-sized output of a signature or a decryption. The
+// native call overwrites it, so the bytes are not a copied zero-filled list.
+Uint8List _modulusOut(int Function(Pointer<Uint8> out) write) {
+  final out = malloc<Uint8>(_maxModulusLength);
+  try {
+    final len = _check(write(out));
+    return Uint8List.fromList(out.asTypedList(len));
+  } finally {
+    malloc.free(out);
+  }
+}
+
+abstract base class _Handle implements Finalizable {
+  _Handle(this._pointer, NativeFinalizer finalizer) {
+    finalizer.attach(this, _pointer, detach: this);
+  }
+
+  final Pointer<Void> _pointer;
+}
+
+const _exportLength = 8192;
+
+// RSA-8192's modulus, which bounds RSA's signatures, ciphertexts, and
+// plaintexts. Not a key's own modulus length.
+const _maxModulusLength = 1024;
+
+NativeFinalizer _finalizer(Pointer<NativeFunction<_Free>> free) =>
+    NativeFinalizer(free);
+
+@Native<IntPtr Function(Pointer<Uint8>, Size)>(
+  symbol: 'rind_dart_message',
+  isLeaf: true,
+)
+external int _message(Pointer<Uint8> out, int outLen);

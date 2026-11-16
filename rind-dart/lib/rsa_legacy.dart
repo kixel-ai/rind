@@ -5,7 +5,7 @@
 /// `package:rind/rsa.dart`.
 library;
 
-export 'src/bindings.dart'
+export 'src/rsa.dart'
     show
         oaepSha1,
         pkcs1Min1024Sha1,

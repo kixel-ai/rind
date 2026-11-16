@@ -1,46 +1,54 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
-part of 'bindings.dart';
+library;
 
-/// An algorithm an [EcdsaKeyPair] signs with: a curve, a hash, and a
-/// signature encoding, ASN.1 DER or fixed-length `r || s`.
-enum EcdsaSigningAlgorithm {
+import 'dart:convert';
+import 'dart:ffi';
+import 'dart:typed_data';
+
+import 'package:ffi/ffi.dart';
+
+import 'error.dart';
+
+/// An algorithm a [KeyPair] signs with: a curve, a hash, and a signature
+/// encoding, ASN.1 DER or fixed-length `r || s`.
+enum SigningAlgorithm {
   /// ECDSA on P-256 with SHA-256, DER-encoded.
-  p256Sha256Asn1(0),
+  p256Sha256Asn1(0, VerificationAlgorithm.p256Sha256Asn1),
 
   /// ECDSA on P-256 with SHA-256, fixed-length, as JWS's ES256.
-  p256Sha256Fixed(1),
+  p256Sha256Fixed(1, VerificationAlgorithm.p256Sha256Fixed),
 
   /// ECDSA on P-384 with SHA-384, DER-encoded.
-  p384Sha384Asn1(2),
+  p384Sha384Asn1(2, VerificationAlgorithm.p384Sha384Asn1),
 
   /// ECDSA on P-384 with SHA-384, fixed-length, as JWS's ES384.
-  p384Sha384Fixed(3),
+  p384Sha384Fixed(3, VerificationAlgorithm.p384Sha384Fixed),
 
   /// ECDSA on P-521 with SHA-512, DER-encoded.
-  p521Sha512Asn1(4),
+  p521Sha512Asn1(4, VerificationAlgorithm.p521Sha512Asn1),
 
   /// ECDSA on P-521 with SHA-512, fixed-length, as JWS's ES512.
-  p521Sha512Fixed(5);
+  p521Sha512Fixed(5, VerificationAlgorithm.p521Sha512Fixed);
 
-  const EcdsaSigningAlgorithm(this._id);
+  const SigningAlgorithm(this._id, this._verification);
 
   final int _id;
 
   // The verification algorithm of the same curve, hash, and encoding.
-  EcdsaVerificationAlgorithm get _verification =>
-      EcdsaVerificationAlgorithm.values.byName(name);
+  final VerificationAlgorithm _verification;
 
-  // Callers import this enum as SigningAlgorithm.
   @override
-  String toString() => 'SigningAlgorithm.$name';
+  String toString() => 'ecdsa.SigningAlgorithm.$name';
 }
 
-/// An algorithm an [EcdsaPublicKey] verifies with: a curve, a hash, and a
+/// An algorithm a [PublicKey] verifies with: a curve, a hash, and a
 /// signature encoding.
 ///
-/// Each verifies what the [EcdsaSigningAlgorithm] of the same name signs.
-enum EcdsaVerificationAlgorithm {
+/// A value verifies what the [SigningAlgorithm] of the same name signs.
+/// The other hashes verify a signature over that hash; no signer here
+/// produces one.
+enum VerificationAlgorithm {
   /// ECDSA on P-256 with SHA-256, DER-encoded.
   p256Sha256Asn1(0),
 
@@ -77,25 +85,21 @@ enum EcdsaVerificationAlgorithm {
   /// ECDSA on P-521 with SHA-512, fixed-length.
   p521Sha512Fixed(11);
 
-  const EcdsaVerificationAlgorithm(this._id);
+  const VerificationAlgorithm(this._id);
 
   final int _id;
 
-  // Callers import this enum as VerificationAlgorithm.
   @override
-  String toString() => 'VerificationAlgorithm.$name';
+  String toString() => 'ecdsa.VerificationAlgorithm.$name';
 }
 
 /// An ECDSA public key, bound to the one algorithm it verifies with.
-final class EcdsaPublicKey extends _Handle {
-  EcdsaPublicKey._(this.algorithm, Pointer<Void> pointer)
+final class PublicKey extends _Handle {
+  PublicKey._(this.algorithm, Pointer<Void> pointer)
     : super(pointer, _ecdsaPublicKeyFinalizer);
 
-  EcdsaPublicKey._parse(
-    EcdsaVerificationAlgorithm algorithm,
-    int spki,
-    Uint8List bytes,
-  ) : this._(
+  PublicKey._parse(VerificationAlgorithm algorithm, int spki, Uint8List bytes)
+    : this._(
         algorithm,
         _newHandle(
           (out) => _ecdsaPublicKeyNew(
@@ -111,17 +115,17 @@ final class EcdsaPublicKey extends _Handle {
   /// Parses an X9.62 uncompressed [point] for [algorithm], throwing
   /// [RindError.keyRejected] for a malformed one, a compressed one, or one
   /// off the curve.
-  EcdsaPublicKey(EcdsaVerificationAlgorithm algorithm, Uint8List point)
+  PublicKey(VerificationAlgorithm algorithm, Uint8List point)
     : this._parse(algorithm, 0, point);
 
   /// Parses a `SubjectPublicKeyInfo` for [algorithm], throwing
   /// [RindError.keyRejected] for a malformed one or one naming another
   /// algorithm or curve.
-  EcdsaPublicKey.fromSpki(EcdsaVerificationAlgorithm algorithm, Uint8List der)
+  PublicKey.fromSpki(VerificationAlgorithm algorithm, Uint8List der)
     : this._parse(algorithm, 1, der);
 
   /// The algorithm the key verifies with.
-  final EcdsaVerificationAlgorithm algorithm;
+  final VerificationAlgorithm algorithm;
 
   /// Checks that [signature] is the key's signature of [message], throwing
   /// [RindError.badSignature] if not.
@@ -137,7 +141,7 @@ final class EcdsaPublicKey extends _Handle {
     );
   }
 
-  /// The key's X9.62 uncompressed point, as [EcdsaPublicKey.new] takes it.
+  /// The key's X9.62 uncompressed point, as [PublicKey.new] takes it.
   Uint8List get bytes => _export(0);
 
   /// Encodes the key as a `SubjectPublicKeyInfo`.
@@ -150,19 +154,15 @@ final class EcdsaPublicKey extends _Handle {
 }
 
 /// An ECDSA key pair, bound to the one algorithm it signs with.
-final class EcdsaKeyPair extends _Handle {
-  EcdsaKeyPair._(
-    this.algorithm,
-    int source,
-    Uint8List bytes, [
-    Uint8List? publicKey,
-  ]) : super(
-         _new(algorithm, source, bytes, publicKey ?? Uint8List(0)),
-         _ecdsaKeyPairFinalizer,
-       );
+final class KeyPair extends _Handle {
+  KeyPair._(this.algorithm, int source, Uint8List bytes, [Uint8List? publicKey])
+    : super(
+        _new(algorithm, source, bytes, publicKey ?? Uint8List(0)),
+        _ecdsaKeyPairFinalizer,
+      );
 
   static Pointer<Void> _new(
-    EcdsaSigningAlgorithm algorithm,
+    SigningAlgorithm algorithm,
     int source,
     Uint8List bytes,
     Uint8List publicKey,
@@ -179,40 +179,40 @@ final class EcdsaKeyPair extends _Handle {
   );
 
   /// Generates a random key pair for [algorithm].
-  EcdsaKeyPair.generate(EcdsaSigningAlgorithm algorithm)
+  KeyPair.generate(SigningAlgorithm algorithm)
     : this._(algorithm, 0, Uint8List(0));
 
   /// Parses a PKCS#8 private key for [algorithm]'s curve, throwing
   /// [RindError.keyRejected] for a malformed one or one on another curve.
-  EcdsaKeyPair.fromPkcs8(EcdsaSigningAlgorithm algorithm, Uint8List der)
+  KeyPair.fromPkcs8(SigningAlgorithm algorithm, Uint8List der)
     : this._(algorithm, 1, der);
 
   /// Parses a SEC1 `ECPrivateKey` for [algorithm]'s curve, throwing
   /// [RindError.keyRejected] for a malformed one or one on another curve.
-  EcdsaKeyPair.fromSec1(EcdsaSigningAlgorithm algorithm, Uint8List der)
+  KeyPair.fromSec1(SigningAlgorithm algorithm, Uint8List der)
     : this._(algorithm, 2, der);
 
   /// Loads a fixed-length big-endian [scalar], refused unless [publicKey],
   /// an X9.62 point, is its public key, as a JWK's `d` and `x`/`y` carry
   /// them.
-  EcdsaKeyPair.fromScalarAndPublicKey(
-    EcdsaSigningAlgorithm algorithm,
+  KeyPair.fromScalarAndPublicKey(
+    SigningAlgorithm algorithm,
     Uint8List scalar,
     Uint8List publicKey,
   ) : this._(algorithm, 3, scalar, publicKey);
 
   /// The algorithm the key pair signs with.
-  final EcdsaSigningAlgorithm algorithm;
+  final SigningAlgorithm algorithm;
 
   /// The public key, which verifies the key pair's signatures.
-  late final EcdsaPublicKey publicKey = EcdsaPublicKey._(
+  late final PublicKey publicKey = PublicKey._(
     algorithm._verification,
     _newHandle((out) => _ecdsaKeyPairPublicKey(_pointer, out)),
   );
 
   /// Signs [message].
   Uint8List sign(Uint8List message) => _output(
-    _maxModulusLength,
+    _maxSignatureLength,
     (out) => _ecdsaSign(
       _pointer,
       message.address,
@@ -333,3 +333,65 @@ external int _ecdsaPublicKeyExport(
   Pointer<Uint8> out,
   int outLen,
 );
+
+// The longest ECDSA signature, a P-521 DER value: rind's `SIGNATURE_MAX_LEN`.
+// A sequence length of two bytes plus two INTEGERs, each a sign byte and a
+// 66-byte scalar. Fixed-length signatures are shorter.
+const _maxSignatureLength = 3 + 2 * (2 + 66 + 1);
+
+// The handle stays in this library, so its pointer is not part of the
+// public API. The same helpers back the other libraries that hold a handle.
+
+typedef _Free = Void Function(Pointer<Void>);
+
+Pointer<Void> _newHandle(int Function(Pointer<Pointer<Void>> slot) call) {
+  final slot = malloc<Pointer<Void>>();
+  try {
+    _check(call(slot));
+    return slot.value;
+  } finally {
+    malloc.free(slot);
+  }
+}
+
+int _check(int status) {
+  if (status >= 0) return status;
+  if (status == -10) throw StateError('rind binding bug: ${_lastMessage()}');
+  throw RindException(
+    RindError.values[-status - 1],
+    status == -2 ? _lastMessage() : null,
+  );
+}
+
+String _lastMessage() {
+  final out = Uint8List(256);
+  final len = _message(out.address, out.length);
+  return utf8.decode(
+    out.sublist(0, len < out.length ? len : out.length),
+    allowMalformed: true,
+  );
+}
+
+Uint8List _output(int length, int Function(Uint8List out) call) {
+  final out = Uint8List(length);
+  return out.sublist(0, _check(call(out)));
+}
+
+abstract base class _Handle implements Finalizable {
+  _Handle(this._pointer, NativeFinalizer finalizer) {
+    finalizer.attach(this, _pointer, detach: this);
+  }
+
+  final Pointer<Void> _pointer;
+}
+
+const _exportLength = 8192;
+
+NativeFinalizer _finalizer(Pointer<NativeFunction<_Free>> free) =>
+    NativeFinalizer(free);
+
+@Native<IntPtr Function(Pointer<Uint8>, Size)>(
+  symbol: 'rind_dart_message',
+  isLeaf: true,
+)
+external int _message(Pointer<Uint8> out, int outLen);

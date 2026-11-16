@@ -555,8 +555,12 @@ void main() {
       };
       final message = ascii('hello');
       expect(
+        ecdsa.SigningAlgorithm.p256Sha256Asn1.toString(),
+        'ecdsa.SigningAlgorithm.p256Sha256Asn1',
+      );
+      expect(
         ecdsa.VerificationAlgorithm.p256Sha256Asn1.toString(),
-        'VerificationAlgorithm.p256Sha256Asn1',
+        'ecdsa.VerificationAlgorithm.p256Sha256Asn1',
       );
       verifiers.forEach((algorithm, verification) {
         final pair = ecdsa.KeyPair.generate(algorithm);
@@ -675,6 +679,19 @@ void main() {
         rsa.SigningAlgorithm.pssSha384: rsa.VerificationAlgorithm.pssSha384,
         rsa.SigningAlgorithm.pssSha512: rsa.VerificationAlgorithm.pssSha512,
       };
+      expect(
+        rsa.SigningAlgorithm.pssSha256.toString(),
+        'rsa.SigningAlgorithm.pssSha256',
+      );
+      expect(
+        rsa.VerificationAlgorithm.pkcs1Sha256.toString(),
+        'rsa.VerificationAlgorithm.pkcs1Sha256',
+      );
+      expect(
+        rsa.VerificationAlgorithm.pssSha256AnySalt.toString(),
+        'rsa.VerificationAlgorithm.pssSha256AnySalt',
+      );
+      expect(rsa.pkcs1Sha1.toString(), 'rsa.pkcs1Sha1');
       final publicKey = pair.publicKey;
       expect(publicKey.modulusLength, 256);
       final (:n, :e) = rsaComponents(publicKey.bytes);
@@ -811,10 +828,20 @@ void main() {
         rsa.OaepAlgorithm.sha256,
         rsaPair.toPkcs8(),
       );
+      final agreement = AgreementPrivateKey.generate(AgreementAlgorithm.x25519);
+      final kem = DecapsulationKey.generate(KemAlgorithm.mlKem768);
       expect(identical(ecdsaPair.publicKey, ecdsaPair.publicKey), isTrue);
+      expect(ecdsaPair.publicKey.runtimeType, ecdsa.PublicKey);
+      expect(ecdsaPair.runtimeType, ecdsa.KeyPair);
       expect(identical(ed25519Pair.publicKey, ed25519Pair.publicKey), isTrue);
+      expect(ed25519Pair.publicKey.runtimeType, ed25519.PublicKey);
+      expect(ed25519Pair.runtimeType, ed25519.KeyPair);
       expect(identical(rsaPair.publicKey, rsaPair.publicKey), isTrue);
+      expect(rsaPair.publicKey.runtimeType, rsa.PublicKey);
+      expect(rsaPair.runtimeType, rsa.KeyPair);
       expect(identical(oaep.publicKey, oaep.publicKey), isTrue);
+      expect(identical(agreement.publicKey, agreement.publicKey), isTrue);
+      expect(identical(kem.publicKey, kem.publicKey), isTrue);
     });
   });
 

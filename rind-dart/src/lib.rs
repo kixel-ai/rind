@@ -117,6 +117,16 @@ unsafe fn output<'a>(data: *mut u8, len: usize) -> &'a mut [u8] {
     }
 }
 
+/// `selector` 0 is the algorithm's own encoding and 1 is a
+/// `SubjectPublicKeyInfo`. Any other value is a bug in the binding.
+fn own_or_spki(selector: u32) -> Result<bool, Misuse> {
+    match selector {
+        0 => Ok(false),
+        1 => Ok(true),
+        _ => Err(Misuse("unknown public key encoding")),
+    }
+}
+
 /// Copies `bytes` to the front of `out`, refusing an `out` too short.
 fn write(out: &mut [u8], bytes: &[u8]) -> Result<usize, Failure> {
     out.get_mut(..bytes.len())
@@ -1083,8 +1093,8 @@ pub unsafe extern "C" fn rind_dart_agreement_agree(
 }
 
 /// Parses a peer's public key, from its bytes when `spki` is 0 or its
-/// `SubjectPublicKeyInfo` otherwise, and writes its bytes when `export` is 0
-/// or its `SubjectPublicKeyInfo` otherwise.
+/// `SubjectPublicKeyInfo` when `spki` is 1, and writes its bytes when
+/// `export` is 0 or its `SubjectPublicKeyInfo` when `export` is 1.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rind_dart_agreement_public_key(
     algorithm: u32,
@@ -1098,15 +1108,19 @@ pub unsafe extern "C" fn rind_dart_agreement_public_key(
     use agreement::PublicKey;
     run(|| {
         let algorithm = agreement_algorithm(algorithm)?;
+        let from_spki = own_or_spki(spki)?;
+        let as_spki = own_or_spki(export)?;
         // SAFETY: forwarded from the caller.
         let (bytes, out) = unsafe { (input(bytes, bytes_len), output(out, out_len)) };
-        let key = match spki {
-            0 => PublicKey::new(algorithm, bytes),
-            _ => PublicKey::from_spki(algorithm, bytes),
+        let key = if from_spki {
+            PublicKey::from_spki(algorithm, bytes)
+        } else {
+            PublicKey::new(algorithm, bytes)
         }?;
-        match export {
-            0 => write(out, key.as_ref()),
-            _ => write(out, key.to_spki().as_ref()),
+        if as_spki {
+            write(out, key.to_spki().as_ref())
+        } else {
+            write(out, key.as_ref())
         }
     })
 }
@@ -1199,7 +1213,7 @@ pub unsafe extern "C" fn rind_dart_ecdsa_key_pair_public_key(
 }
 
 /// Parses an ECDSA public key for `algorithm`, from its X9.62 point when
-/// `spki` is 0 or its `SubjectPublicKeyInfo` otherwise.
+/// `spki` is 0 or its `SubjectPublicKeyInfo` when `spki` is 1.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rind_dart_ecdsa_public_key_new(
     algorithm: u32,
@@ -1211,11 +1225,13 @@ pub unsafe extern "C" fn rind_dart_ecdsa_public_key_new(
     use ecdsa::PublicKey;
     run(|| {
         let algorithm = ecdsa_verification_algorithm(algorithm)?;
+        let from_spki = own_or_spki(spki)?;
         // SAFETY: forwarded from the caller.
         let bytes = unsafe { input(bytes, bytes_len) };
-        let key = match spki {
-            0 => PublicKey::new(algorithm, bytes),
-            _ => PublicKey::from_spki(algorithm, bytes),
+        let key = if from_spki {
+            PublicKey::from_spki(algorithm, bytes)
+        } else {
+            PublicKey::new(algorithm, bytes)
         }?;
         // SAFETY: forwarded from the caller.
         Ok(unsafe { store(out, key) })
@@ -1245,7 +1261,7 @@ pub unsafe extern "C" fn rind_dart_ecdsa_public_key_verify(
 }
 
 /// Writes the public key's X9.62 point when `spki` is 0, or its
-/// `SubjectPublicKeyInfo` otherwise.
+/// `SubjectPublicKeyInfo` when `spki` is 1.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rind_dart_ecdsa_public_key_export(
     key: *const ecdsa::PublicKey,
@@ -1254,11 +1270,13 @@ pub unsafe extern "C" fn rind_dart_ecdsa_public_key_export(
     out_len: usize,
 ) -> isize {
     run(|| {
+        let from_spki = own_or_spki(spki)?;
         // SAFETY: forwarded from the caller.
         let (key, out) = unsafe { (handle(key), output(out, out_len)) };
-        match spki {
-            0 => write(out, key.as_ref()),
-            _ => write(out, key.to_spki().as_ref()),
+        if from_spki {
+            write(out, key.to_spki().as_ref())
+        } else {
+            write(out, key.as_ref())
         }
     })
 }
@@ -1347,7 +1365,7 @@ pub unsafe extern "C" fn rind_dart_ed25519_key_pair_public_key(
 }
 
 /// Parses an Ed25519 public key, from its 32 bytes when `spki` is 0 or its
-/// `SubjectPublicKeyInfo` otherwise.
+/// `SubjectPublicKeyInfo` when `spki` is 1.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rind_dart_ed25519_public_key_new(
     spki: u32,
@@ -1357,11 +1375,13 @@ pub unsafe extern "C" fn rind_dart_ed25519_public_key_new(
 ) -> isize {
     use ed25519::PublicKey;
     run(|| {
+        let from_spki = own_or_spki(spki)?;
         // SAFETY: forwarded from the caller.
         let bytes = unsafe { input(bytes, bytes_len) };
-        let key = match spki {
-            0 => PublicKey::new(bytes),
-            _ => PublicKey::from_spki(bytes),
+        let key = if from_spki {
+            PublicKey::from_spki(bytes)
+        } else {
+            PublicKey::new(bytes)
         }?;
         // SAFETY: forwarded from the caller.
         Ok(unsafe { store(out, key) })
@@ -1391,7 +1411,7 @@ pub unsafe extern "C" fn rind_dart_ed25519_public_key_verify(
 }
 
 /// Writes the public key's 32 bytes when `spki` is 0, or its
-/// `SubjectPublicKeyInfo` otherwise.
+/// `SubjectPublicKeyInfo` when `spki` is 1.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rind_dart_ed25519_public_key_export(
     key: *const ed25519::PublicKey,
@@ -1400,11 +1420,13 @@ pub unsafe extern "C" fn rind_dart_ed25519_public_key_export(
     out_len: usize,
 ) -> isize {
     run(|| {
+        let from_spki = own_or_spki(spki)?;
         // SAFETY: forwarded from the caller.
         let (key, out) = unsafe { (handle(key), output(out, out_len)) };
-        match spki {
-            0 => write(out, key.as_ref()),
-            _ => write(out, key.to_spki().as_ref()),
+        if from_spki {
+            write(out, key.to_spki().as_ref())
+        } else {
+            write(out, key.as_ref())
         }
     })
 }
@@ -1543,7 +1565,7 @@ pub unsafe extern "C" fn rind_dart_rsa_public_key_verify(
 }
 
 /// Writes the public key's PKCS#1 encoding when `spki` is 0, or its
-/// `SubjectPublicKeyInfo` otherwise.
+/// `SubjectPublicKeyInfo` when `spki` is 1.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rind_dart_rsa_public_key_export(
     key: *const rsa::PublicKey,
@@ -1552,11 +1574,13 @@ pub unsafe extern "C" fn rind_dart_rsa_public_key_export(
     out_len: usize,
 ) -> isize {
     run(|| {
+        let from_spki = own_or_spki(spki)?;
         // SAFETY: forwarded from the caller.
         let (key, out) = unsafe { (handle(key), output(out, out_len)) };
-        match spki {
-            0 => write(out, key.as_ref()),
-            _ => write(out, key.to_spki().as_ref()),
+        if from_spki {
+            write(out, key.to_spki().as_ref())
+        } else {
+            write(out, key.as_ref())
         }
     })
 }
@@ -1802,7 +1826,7 @@ pub unsafe extern "C" fn rind_dart_encrypt(
 }
 
 /// Writes the key's PKCS#1 encoding when `spki` is 0, or its
-/// `SubjectPublicKeyInfo` otherwise.
+/// `SubjectPublicKeyInfo` when `spki` is 1.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rind_dart_encrypting_key_export(
     key: *const rsa::EncryptingKey,
@@ -1811,11 +1835,13 @@ pub unsafe extern "C" fn rind_dart_encrypting_key_export(
     out_len: usize,
 ) -> isize {
     run(|| {
+        let from_spki = own_or_spki(spki)?;
         // SAFETY: forwarded from the caller.
         let (key, out) = unsafe { (handle(key), output(out, out_len)) };
-        match spki {
-            0 => write(out, key.as_ref()),
-            _ => write(out, key.to_spki().as_ref()),
+        if from_spki {
+            write(out, key.to_spki().as_ref())
+        } else {
+            write(out, key.as_ref())
         }
     })
 }
@@ -1839,5 +1865,52 @@ mod tests {
         let status = unsafe { rind_dart_decapsulation_key_generate(1, &mut key) };
         assert_eq!(status, Status::Misuse as isize);
         assert!(key.is_null());
+    }
+
+    #[test]
+    fn an_unknown_public_key_encoding_is_misuse() {
+        let mut ecdsa = std::ptr::null_mut();
+        let mut ed25519 = std::ptr::null_mut();
+        // SAFETY: length zero, so the null pointers are not read, and each
+        // selector is rejected before a handle is.
+        let status =
+            unsafe { rind_dart_ecdsa_public_key_new(0, 2, std::ptr::null(), 0, &mut ecdsa) };
+        assert_eq!(status, Status::Misuse as isize);
+        assert!(ecdsa.is_null());
+        // SAFETY: as above.
+        let status =
+            unsafe { rind_dart_ed25519_public_key_new(2, std::ptr::null(), 0, &mut ed25519) };
+        assert_eq!(status, Status::Misuse as isize);
+        assert!(ed25519.is_null());
+        // SAFETY: as above.
+        let status = unsafe {
+            rind_dart_ecdsa_public_key_export(std::ptr::null(), 2, std::ptr::null_mut(), 0)
+        };
+        assert_eq!(status, Status::Misuse as isize);
+        // SAFETY: as above.
+        let status = unsafe {
+            rind_dart_ed25519_public_key_export(std::ptr::null(), 2, std::ptr::null_mut(), 0)
+        };
+        assert_eq!(status, Status::Misuse as isize);
+        // SAFETY: as above.
+        let status = unsafe {
+            rind_dart_rsa_public_key_export(std::ptr::null(), 2, std::ptr::null_mut(), 0)
+        };
+        assert_eq!(status, Status::Misuse as isize);
+        // SAFETY: as above.
+        let status = unsafe {
+            rind_dart_encrypting_key_export(std::ptr::null(), 2, std::ptr::null_mut(), 0)
+        };
+        assert_eq!(status, Status::Misuse as isize);
+        // SAFETY: as above.
+        let status = unsafe {
+            rind_dart_agreement_public_key(0, 2, std::ptr::null(), 0, 0, std::ptr::null_mut(), 0)
+        };
+        assert_eq!(status, Status::Misuse as isize);
+        // SAFETY: as above.
+        let status = unsafe {
+            rind_dart_agreement_public_key(0, 0, std::ptr::null(), 0, 2, std::ptr::null_mut(), 0)
+        };
+        assert_eq!(status, Status::Misuse as isize);
     }
 }

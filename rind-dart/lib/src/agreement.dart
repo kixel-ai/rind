@@ -65,8 +65,10 @@ final class AgreementPrivateKey extends _Handle {
   );
 
   /// The public key to send to the peer.
-  AgreementPublicKey get publicKey =>
-      AgreementPublicKey._(algorithm, _export(0));
+  late final AgreementPublicKey publicKey = AgreementPublicKey._(
+    algorithm,
+    _export(0),
+  );
 
   /// Agrees on a shared secret with [peer], the peer's public key bytes as
   /// [AgreementPublicKey.new] parses them, throwing [RindError.keyRejected]
