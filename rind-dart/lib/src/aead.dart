@@ -45,12 +45,12 @@ final class Nonce {
 ///
 /// Sealing two messages with one nonce and key loses confidentiality and
 /// lets anyone forge messages.
-final class AeadKey extends Handle {
+final class AeadKey extends _Handle {
   /// Expands [key] for [algorithm], throwing [RindError.wrongLength] unless
   /// it is [AeadAlgorithm.keyLength] bytes.
   AeadKey(AeadAlgorithm algorithm, Uint8List key)
     : super(
-        newHandle(
+        _newHandle(
           (out) => _aeadKeyNew(algorithm._id, key.address, key.length, out),
         ),
         _aeadKeyFinalizer,
@@ -60,7 +60,7 @@ final class AeadKey extends Handle {
   Uint8List seal(Nonce nonce, Uint8List plaintext, {Uint8List? aad}) {
     aad ??= Uint8List(0);
     final inOut = Uint8List(plaintext.length + 16)..setAll(0, plaintext);
-    check(
+    _check(
       _aeadSeal(
         _pointer,
         nonce._bytes.address,
@@ -80,7 +80,7 @@ final class AeadKey extends Handle {
   Uint8List open(Nonce nonce, Uint8List sealed, {Uint8List? aad}) {
     aad ??= Uint8List(0);
     final inOut = Uint8List.fromList(sealed);
-    final len = check(
+    final len = _check(
       _aeadOpen(
         _pointer,
         nonce._bytes.address,
@@ -97,11 +97,11 @@ final class AeadKey extends Handle {
 
 /// An XChaCha20-Poly1305 key that picks a random 192-bit nonce for every
 /// seal, long enough that random nonces never collide in practice.
-final class RandomizedNonceKey extends Handle {
+final class RandomizedNonceKey extends _Handle {
   /// Makes a key from 32 bytes of key material.
   RandomizedNonceKey(Uint8List key)
     : super(
-        newHandle(
+        _newHandle(
           (out) => _randomizedNonceKeyNew(key.address, key.length, out),
         ),
         _randomizedNonceKeyFinalizer,
@@ -116,7 +116,7 @@ final class RandomizedNonceKey extends Handle {
     aad ??= Uint8List(0);
     final inOut = Uint8List(plaintext.length + 16)..setAll(0, plaintext);
     final nonce = Uint8List(24);
-    check(
+    _check(
       _randomizedNonceKeySeal(
         _pointer,
         aad.address,
@@ -134,7 +134,7 @@ final class RandomizedNonceKey extends Handle {
   Uint8List open(Uint8List nonce, Uint8List sealed, {Uint8List? aad}) {
     aad ??= Uint8List(0);
     final inOut = Uint8List.fromList(sealed);
-    final len = check(
+    final len = _check(
       _randomizedNonceKeyOpen(
         _pointer,
         nonce.address,

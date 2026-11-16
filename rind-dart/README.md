@@ -142,10 +142,10 @@ role. ECDSA, Ed25519, and RSA each have a library, imported under its name,
 with a `KeyPair` and a `PublicKey`, as rind's `ecdsa`, `ed25519`, and `rsa`
 modules do: a public key's constructor takes the algorithm's own encoding (an
 X9.62 point, 32 bytes, or PKCS#1), and `fromSpki` a `SubjectPublicKeyInfo`.
-RSA-OAEP is in `package:rind/rsa.dart` too. [rind_cryptography](cryptography) offers the
-`cryptography` package's API on it instead. Failures throw a `RindException`
-whose `error` says what failed, as rind's `Error` does, and a refused key says
-why in its `reason`.
+RSA-OAEP is in `package:rind/rsa.dart` too.
+[rind_cryptography](cryptography) offers the `cryptography` package's API on
+it instead. Failures throw a `RindException` whose `error` says what failed,
+as rind's `Error` does, and a refused key says why in its `reason`.
 SHA-1 and MD5 are in `package:rind/legacy.dart`, and RSA's SHA-1 algorithms
 and other modulus floors in `package:rind/rsa_legacy.dart`, imported `as rsa`
 beside `package:rind/rsa.dart`.

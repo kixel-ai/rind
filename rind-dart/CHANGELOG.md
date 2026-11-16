@@ -35,6 +35,7 @@
 | `PublicKey` | `ecdsa.PublicKey`, `ed25519.PublicKey`, or `rsa.PublicKey` |
 | `VerificationAlgorithm` | `ecdsa.VerificationAlgorithm` or `rsa.VerificationAlgorithm`; Ed25519 takes none |
 | `VerificationAlgorithm.ecdsaP256Sha256Asn1`, and each `ecdsa…` constant | `ecdsa.VerificationAlgorithm.p256Sha256Asn1`, without `ecdsa` |
+| `VerificationAlgorithm.ecdsaP256Sha256Asn1.toString()`, `ECDSA_P256_SHA256_ASN1`, and each ECDSA constant | `ecdsa.VerificationAlgorithm.p256Sha256Asn1.toString()`, `VerificationAlgorithm.p256Sha256Asn1` |
 | `VerificationAlgorithm.ed25519` | none |
 | `VerificationAlgorithm.rsaPkcs1Sha256`, and each `rsa…` constant | `rsa.VerificationAlgorithm.pkcs1Sha256`, without `rsa` |
 | `RsaVerificationAlgorithm`, a `VerificationAlgorithm` | `rsa.VerificationAlgorithm`, a class of its own |

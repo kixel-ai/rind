@@ -15,11 +15,11 @@ enum KemAlgorithm {
 }
 
 /// A private key that decapsulates the secrets its [publicKey] encapsulates.
-final class DecapsulationKey extends Handle {
+final class DecapsulationKey extends _Handle {
   /// Generates a random key for [algorithm].
   DecapsulationKey.generate(this.algorithm)
     : super(
-        newHandle((out) => _decapsulationKeyGenerate(algorithm._id, out)),
+        _newHandle((out) => _decapsulationKeyGenerate(algorithm._id, out)),
         _decapsulationKeyFinalizer,
       );
 
@@ -29,7 +29,7 @@ final class DecapsulationKey extends Handle {
   /// The encapsulation key to send to the peer.
   EncapsulationKey get publicKey => EncapsulationKey(
     algorithm,
-    output(
+    _output(
       algorithm._publicKeyLength,
       (out) => _decapsulationKeyPublicKey(_pointer, out.address, out.length),
     ),
@@ -40,7 +40,7 @@ final class DecapsulationKey extends Handle {
   /// A ciphertext of the wrong length throws [RindError.wrongLength]. Any
   /// other tampering yields an unrelated secret (FIPS 203's implicit
   /// rejection), so the peer learns nothing until the secret is used.
-  Uint8List decapsulate(Uint8List ciphertext) => output(
+  Uint8List decapsulate(Uint8List ciphertext) => _output(
     32,
     (out) => _decapsulate(
       _pointer,
@@ -53,12 +53,12 @@ final class DecapsulationKey extends Handle {
 }
 
 /// A peer's public key, which encapsulates secrets to it.
-final class EncapsulationKey extends Handle {
+final class EncapsulationKey extends _Handle {
   /// Parses an encapsulation key for [algorithm].
   EncapsulationKey(this.algorithm, Uint8List bytes)
     : bytes = Uint8List.fromList(bytes),
       super(
-        newHandle(
+        _newHandle(
           (out) => _encapsulationKeyNew(
             algorithm._id,
             bytes.address,
@@ -80,7 +80,7 @@ final class EncapsulationKey extends Handle {
   ({Uint8List ciphertext, Uint8List sharedSecret}) encapsulate() {
     final ciphertext = Uint8List(algorithm._ciphertextLength);
     final secret = Uint8List(32);
-    check(
+    _check(
       _encapsulate(
         _pointer,
         ciphertext.address,

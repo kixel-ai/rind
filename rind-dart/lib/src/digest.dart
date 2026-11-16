@@ -44,7 +44,7 @@ const digestSha1 = DigestAlgorithm._(100, 20, 'SHA-1');
 const digestMd5 = DigestAlgorithm._(101, 16, 'MD5');
 
 /// Hashes [data] with [algorithm].
-Uint8List digest(DigestAlgorithm algorithm, Uint8List data) => output(
+Uint8List digest(DigestAlgorithm algorithm, Uint8List data) => _output(
   algorithm.outputLength,
   (out) => _digest(
     algorithm._id,
@@ -56,11 +56,11 @@ Uint8List digest(DigestAlgorithm algorithm, Uint8List data) => output(
 );
 
 /// A hash of a message given in parts.
-final class DigestContext extends Handle {
+final class DigestContext extends _Handle {
   /// Starts hashing a message with [algorithm].
   DigestContext(this.algorithm)
     : super(
-        newHandle((out) => _digestContextNew(algorithm._id, out)),
+        _newHandle((out) => _digestContextNew(algorithm._id, out)),
         _digestContextFinalizer,
       );
 
@@ -69,11 +69,11 @@ final class DigestContext extends Handle {
 
   /// Adds [data] to the message.
   void update(Uint8List data) {
-    check(_digestContextUpdate(_pointer, data.address, data.length));
+    _check(_digestContextUpdate(_pointer, data.address, data.length));
   }
 
   /// Returns the message's digest, and starts a new message.
-  Uint8List finish() => output(
+  Uint8List finish() => _output(
     algorithm.outputLength,
     (out) => _digestContextFinish(_pointer, out.address, out.length),
   );

@@ -10,5 +10,30 @@
 library;
 
 export 'src/bindings.dart'
-    hide digestMd5, digestSha1, hkdfSha1, hmacSha1, pbkdf2HmacSha1;
+    hide
+        DecryptingKey,
+        EcdsaKeyPair,
+        EcdsaPublicKey,
+        EcdsaSigningAlgorithm,
+        EcdsaVerificationAlgorithm,
+        Ed25519KeyPair,
+        Ed25519PublicKey,
+        EncryptingKey,
+        KeySize,
+        OaepAlgorithm,
+        RsaKeyPair,
+        RsaPublicKey,
+        RsaSigningAlgorithm,
+        RsaVerificationAlgorithm,
+        digestMd5,
+        digestSha1,
+        hkdfSha1,
+        hmacSha1,
+        oaepSha1,
+        pbkdf2HmacSha1,
+        pkcs1Min1024Sha1,
+        pkcs1Min1024Sha256,
+        pkcs1Min1024Sha512,
+        pkcs1Min3072Sha384,
+        pkcs1Sha1;
 export 'src/error.dart';

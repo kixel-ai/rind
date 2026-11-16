@@ -6,11 +6,25 @@
 /// `package:rind/rsa_legacy.dart`.
 library;
 
-export 'src/rsa.dart'
-    hide
-        oaepSha1,
-        pkcs1Min1024Sha1,
-        pkcs1Min1024Sha256,
-        pkcs1Min1024Sha512,
-        pkcs1Min3072Sha384,
-        pkcs1Sha1;
+import 'src/bindings.dart'
+    show
+        RsaKeyPair,
+        RsaPublicKey,
+        RsaSigningAlgorithm,
+        RsaVerificationAlgorithm;
+
+export 'src/bindings.dart'
+    show DecryptingKey, EncryptingKey, KeySize, OaepAlgorithm;
+export 'src/error.dart' show RindError, RindException;
+
+/// An RSA signing algorithm: a padding and a hash.
+typedef SigningAlgorithm = RsaSigningAlgorithm;
+
+/// An RSA verification algorithm: a padding, a hash, and a modulus floor.
+typedef VerificationAlgorithm = RsaVerificationAlgorithm;
+
+/// An RSA public key, which verifies with any algorithm whose floor it meets.
+typedef PublicKey = RsaPublicKey;
+
+/// An RSA key pair.
+typedef KeyPair = RsaKeyPair;

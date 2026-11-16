@@ -1,26 +1,28 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
-// Everything `package:rind/rind.dart` exports, in one library so its handles
-// stay private to it.
+// One library, so the native handles and helpers stay private to it.
+// The public libraries export their own names from it.
 library;
 
+import 'dart:convert';
 import 'dart:ffi';
 import 'dart:typed_data';
 
+import 'package:ffi/ffi.dart';
+
 import 'error.dart';
-import 'native.dart';
 
 part 'aead.dart';
 part 'agreement.dart';
 part 'cipher.dart';
 part 'digest.dart';
+part 'ecdsa.dart';
+part 'ed25519.dart';
 part 'ffi.dart';
 part 'hkdf.dart';
 part 'hmac.dart';
 part 'kem.dart';
+part 'native.dart';
 part 'pbkdf2.dart';
 part 'rand.dart';
-
-extension on Handle {
-  Pointer<Void> get _pointer => pointerOf(this);
-}
+part 'rsa.dart';
