@@ -38,6 +38,8 @@ LABEL = re.compile(r"^(vg_[a-z0-9_]+):$")
 # `{k1}` or `{z}`.
 SYM = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)\}")
 DECORATIONS = {"z", "k1"}
+# An aarch64 NOP, `HINT #0`, little-endian (DDI 0487 C6.2, "NOP").
+NOP = "1f2003d5"
 # The mnemonics that transfer control, which the assembler lays out.
 BRANCHES = {
     "x86_64": {"je", "jne", "jb", "jae", "jmp", "call"},
@@ -166,7 +168,12 @@ def disassemble(arch, obj, keep):
             text = " ".join(text.split())
             if text.split(" ")[0] in ("nop", "int3", "hint"):
                 continue
-            cur.append(Insn(int(m.group(1), 16), raw.replace(" ", ""), text))
+            raw = raw.replace(" ", "")
+            if arch == "aarch64":
+                # llvm-objdump prints an A64 instruction as its word; the
+                # bytes, as x86-64's are, are little-endian.
+                raw = bytes.fromhex(raw)[::-1].hex()
+            cur.append(Insn(int(m.group(1), 16), raw, text))
     return fns
 
 
@@ -293,6 +300,15 @@ def main():
             else:
                 key = (kind, "; ".join(ls), code)
             seen.setdefault(key, (kind, ls, code))
+        if a.arch == "aarch64":
+            # A `.p2align k` in a routine is the model's `align k`, which it
+            # runs as a NOP, and the assembler pads with NOPs (`HINT #0`,
+            # D503201F), which are filtered from the disassembly above as
+            # padding: one NOP runs for it.
+            for t in text[name]:
+                if t.startswith(".p2align "):
+                    counts["align"] += 1
+                    seen.setdefault(("insn", t), ("insn", [t], NOP))
     rind_checked = 0
     for obj in a.rind:
         vendored = disassemble(a.arch, obj,

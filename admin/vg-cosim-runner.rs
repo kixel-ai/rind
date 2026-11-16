@@ -98,6 +98,9 @@ mod arch {
 
     pub const ARCH: u8 = 0;
     pub const REGS_LEN: usize = 16 * 8 + 4 + 4 + 32 * 64;
+    /// The general-purpose registers, flags and MXCSR, which a mismatch
+    /// prints.
+    pub const START_SHOWN: usize = 136;
     const FLAGS: usize = 128;
     const MXCSR: usize = 132;
     const VEC: usize = 136;
@@ -236,7 +239,7 @@ mod arch {
     }
 
     /// `jmp qword ptr [rip]` and the address: to `to`, from anywhere.
-    pub fn jump(to: usize) -> Vec<u8> {
+    pub fn jump(_from: usize, to: usize) -> Vec<u8> {
         let mut v = vec![0xFF, 0x25, 0, 0, 0, 0];
         v.extend_from_slice(&(to as u64).to_le_bytes());
         v
@@ -244,6 +247,10 @@ mod arch {
 
     /// `ret`.
     pub const RET: &[u8] = &[0xC3];
+
+    /// x86-64 keeps instruction fetch coherent with stores (SDM Vol. 3,
+    /// 11.6, "Self-Modifying Code"), and the jump to the code serializes.
+    pub fn sync(_addr: usize, _len: usize) {}
 
     /// Runs the code at `INSN` from `regs`, giving the registers it leaves and
     /// the branch marker.
@@ -303,14 +310,301 @@ mod arch {
     }
 }
 
+#[cfg(target_arch = "aarch64")]
+mod arch {
+    //! AArch64: `x0`–`x30` by number (`x18` and `x29`, which the model does
+    //! not have, are compared with what they were), `sp`, NZCV (bit 3 N, 2 Z, 1
+    //! C, 0 V: the register's bits 31–28), PSTATE.DIT, and `v0`–`v31`.
+    //!
+    //! No register is free here: the model has every one but `x18` and `x29`,
+    //! and a branch needs one unless it is PC-relative, which reaches only
+    //! ±128 MB. So the trampoline is copied into the code page, before `INSN`,
+    //! where `b` reaches the instruction and the instruction's exits reach the
+    //! trampoline's; it finds its data with `movz`/`movk`, at `VARS`, also in
+    //! that page. Its exit has no register to put that address in, so it
+    //! first moves `sp`, which the cases keep 16-byte aligned (AAPCS64; Linux
+    //! sets SCTLR_EL1.SA0, which checks it at each access through `sp`), 4096
+    //! bytes down, into `SCRATCH` below the data, which no case compares, and
+    //! stores `x0` and `x1` there. `sub sp, sp, #imm` leaves NZCV as it is.
+
+    pub const ARCH: u8 = 1;
+    pub const REGS_LEN: usize = 31 * 8 + 8 + 4 + 4 + 32 * 16;
+    /// The general-purpose registers, `sp`, NZCV and DIT, which a mismatch
+    /// prints.
+    pub const START_SHOWN: usize = VEC;
+    const SP: usize = 248;
+    const NZCV: usize = 256;
+    const DIT: usize = 260;
+    const VEC: usize = 264;
+    /// The trampoline's data: the registers to load (`IN`), those it stores
+    /// (`OUT`), the host's `sp` and the branch marker.
+    const VARS: usize = super::CODE + 0x8000;
+    const IN: usize = VARS;
+    const OUT: usize = VARS + 0x400;
+    const MARKER: usize = VARS + 0x808;
+    /// Below the data. `vg-cosim` leaves `sp` at most 4096 bytes below the
+    /// window, its start 512 bytes into the data, at the end of a case (an
+    /// `alloc` moves it at most 4095 bytes down, and an access through it is
+    /// at most 3824 bytes above it, VG's largest offset), so the exit's
+    /// stores, 4096 bytes below that, land in these 16 KB.
+    const SCRATCH: usize = 0x4000;
+
+    // `DIT` is
+    // `S3_3_C4_C2_5` (DDI 0601, "DIT, Data Independent Timing"), which needs
+    // FEAT_DIT, so only one variant loads and stores it.
+    macro_rules! trampoline {
+        ($enter:literal, $go:literal, $leave0:literal, $leave1:literal, $end:literal,
+         $load_dit:literal, $store_dit:literal) => {
+            core::arch::global_asm!(
+                ".p2align 4",
+                concat!(".globl ", $enter),
+                concat!($enter, ":"),
+                "stp x29, x30, [sp, #-16]!",
+                "stp x27, x28, [sp, #-16]!", "stp x25, x26, [sp, #-16]!", "stp x23, x24, [sp, #-16]!",
+                "stp x21, x22, [sp, #-16]!", "stp x19, x20, [sp, #-16]!", "stp x17, x18, [sp, #-16]!",
+                "stp d14, d15, [sp, #-16]!", "stp d12, d13, [sp, #-16]!", "stp d10, d11, [sp, #-16]!",
+                "stp d8, d9, [sp, #-16]!",
+                "mov x1, sp",
+                "movz x0, #({vars} & 0xffff)",
+                "movk x0, #(({vars} >> 16) & 0xffff), lsl #16",
+                "movk x0, #(({vars} >> 32) & 0xffff), lsl #32",
+                "str x1, [x0, #2048]",
+                "add x1, x0, #264",
+                "ldp q0, q1, [x1, #0]", "ldp q2, q3, [x1, #32]", "ldp q4, q5, [x1, #64]", "ldp q6, q7, [x1, #96]",
+                "ldp q8, q9, [x1, #128]", "ldp q10, q11, [x1, #160]", "ldp q12, q13, [x1, #192]", "ldp q14, q15, [x1, #224]",
+                "ldp q16, q17, [x1, #256]", "ldp q18, q19, [x1, #288]", "ldp q20, q21, [x1, #320]", "ldp q22, q23, [x1, #352]",
+                "ldp q24, q25, [x1, #384]", "ldp q26, q27, [x1, #416]", "ldp q28, q29, [x1, #448]", "ldp q30, q31, [x1, #480]",
+                "ldr w2, [x0, #256]",
+                "lsl x2, x2, #28",
+                "msr nzcv, x2",
+                $load_dit,
+                "ldr x1, [x0, #248]",
+                "mov sp, x1",
+                "ldp x2, x3, [x0, #16]", "ldp x4, x5, [x0, #32]", "ldp x6, x7, [x0, #48]", "ldp x8, x9, [x0, #64]",
+                "ldp x10, x11, [x0, #80]", "ldp x12, x13, [x0, #96]", "ldp x14, x15, [x0, #112]", "ldp x16, x17, [x0, #128]",
+                "ldp x18, x19, [x0, #144]", "ldp x20, x21, [x0, #160]", "ldp x22, x23, [x0, #176]", "ldp x24, x25, [x0, #192]",
+                "ldp x26, x27, [x0, #208]", "ldp x28, x29, [x0, #224]",
+                "ldr x30, [x0, #240]",
+                "ldp x0, x1, [x0]",
+                // `b INSN`, which the runner writes once the code is in place.
+                concat!(".globl ", $go),
+                concat!($go, ":"),
+                ".inst 0",
+                // Fallthrough, or a branch not taken.
+                concat!(".globl ", $leave0),
+                concat!($leave0, ":"),
+                "sub sp, sp, #4096",
+                "stp x0, x1, [sp]",
+                "movz x0, #0",
+                "b 1f",
+                concat!(".globl ", $leave1),
+                concat!($leave1, ":"),
+                "sub sp, sp, #4096",
+                "stp x0, x1, [sp]",
+                "movz x0, #1",
+                "1:",
+                "movz x1, #(({vars} + 0x400) & 0xffff)",
+                "movk x1, #((({vars} + 0x400) >> 16) & 0xffff), lsl #16",
+                "movk x1, #((({vars} + 0x400) >> 32) & 0xffff), lsl #32",
+                "str x0, [x1, #1032]",
+                "stp x2, x3, [x1, #16]", "stp x4, x5, [x1, #32]", "stp x6, x7, [x1, #48]", "stp x8, x9, [x1, #64]",
+                "stp x10, x11, [x1, #80]", "stp x12, x13, [x1, #96]", "stp x14, x15, [x1, #112]", "stp x16, x17, [x1, #128]",
+                "stp x18, x19, [x1, #144]", "stp x20, x21, [x1, #160]", "stp x22, x23, [x1, #176]", "stp x24, x25, [x1, #192]",
+                "stp x26, x27, [x1, #208]", "stp x28, x29, [x1, #224]",
+                "str x30, [x1, #240]",
+                "ldp x2, x3, [sp]",
+                "stp x2, x3, [x1]",
+                "add sp, sp, #4096",
+                "mov x2, sp",
+                "str x2, [x1, #248]",
+                "mrs x2, nzcv",
+                "lsr x2, x2, #28",
+                "str w2, [x1, #256]",
+                $store_dit,
+                "add x3, x1, #264",
+                "stp q0, q1, [x3, #0]", "stp q2, q3, [x3, #32]", "stp q4, q5, [x3, #64]", "stp q6, q7, [x3, #96]",
+                "stp q8, q9, [x3, #128]", "stp q10, q11, [x3, #160]", "stp q12, q13, [x3, #192]", "stp q14, q15, [x3, #224]",
+                "stp q16, q17, [x3, #256]", "stp q18, q19, [x3, #288]", "stp q20, q21, [x3, #320]", "stp q22, q23, [x3, #352]",
+                "stp q24, q25, [x3, #384]", "stp q26, q27, [x3, #416]", "stp q28, q29, [x3, #448]", "stp q30, q31, [x3, #480]",
+                "movz x0, #({vars} & 0xffff)",
+                "movk x0, #(({vars} >> 16) & 0xffff), lsl #16",
+                "movk x0, #(({vars} >> 32) & 0xffff), lsl #32",
+                "ldr x1, [x0, #2048]",
+                "mov sp, x1",
+                "ldp d8, d9, [sp], #16", "ldp d10, d11, [sp], #16", "ldp d12, d13, [sp], #16",
+                "ldp d14, d15, [sp], #16",
+                "ldp x17, x18, [sp], #16", "ldp x19, x20, [sp], #16", "ldp x21, x22, [sp], #16",
+                "ldp x23, x24, [sp], #16", "ldp x25, x26, [sp], #16", "ldp x27, x28, [sp], #16",
+                "ldp x29, x30, [sp], #16",
+                "ret",
+                concat!(".globl ", $end),
+                concat!($end, ":"),
+                vars = const VARS,
+            );
+        };
+    }
+
+    trampoline!("vg_enter_dit", "vg_go_dit", "vg_leave0_dit", "vg_leave1_dit", "vg_end_dit",
+        "ldr w2, [x0, #260]\nlsl x2, x2, #24\nmsr S3_3_C4_C2_5, x2",
+        "mrs x2, S3_3_C4_C2_5\nlsr x2, x2, #24\nstr w2, [x1, #260]\nmsr S3_3_C4_C2_5, xzr");
+    trampoline!("vg_enter", "vg_go", "vg_leave0", "vg_leave1", "vg_end", "", "");
+
+    unsafe extern "C" {
+        fn vg_enter_dit();
+        fn vg_go_dit();
+        fn vg_leave0_dit();
+        fn vg_leave1_dit();
+        fn vg_end_dit();
+        fn vg_enter();
+        fn vg_go();
+        fn vg_leave0();
+        fn vg_leave1();
+        fn vg_end();
+    }
+
+    /// The trampoline, in the code page: its exits, and whether it loads and
+    /// stores DIT.
+    pub struct Tramp {
+        pub leave0: usize,
+        pub leave1: usize,
+        dit: bool,
+    }
+
+    /// Copies the trampoline for this CPU into the code page, at `CODE`, and
+    /// maps the scratch below the data.
+    pub fn tramp() -> Tramp {
+        let dit = std::arch::is_aarch64_feature_detected!("dit");
+        let [enter, go, leave0, leave1, end] = if dit {
+            [vg_enter_dit as *const (), vg_go_dit as *const (), vg_leave0_dit as *const (),
+                vg_leave1_dit as *const (), vg_end_dit as *const ()]
+        } else {
+            [vg_enter as *const (), vg_go as *const (), vg_leave0 as *const (), vg_leave1 as *const (),
+                vg_end as *const ()]
+        }
+        .map(|p| p as usize);
+        let len = end - enter;
+        assert!(len <= super::INSN - super::CODE, "vg-cosim-runner: the trampoline does not fit");
+        let at = |p: usize| super::CODE + (p - enter);
+        // SAFETY: the code page is mapped, and the trampoline's bytes are
+        // this program's text.
+        unsafe {
+            std::ptr::copy_nonoverlapping(enter as *const u8, super::CODE as *mut u8, len);
+            let b = jump(at(go), super::INSN);
+            std::ptr::copy_nonoverlapping(b.as_ptr(), at(go) as *mut u8, 4);
+        }
+        sync(super::CODE, len);
+        super::map(super::DATA - SCRATCH, SCRATCH, super::PROT_RW);
+        Tramp { leave0: at(leave0), leave1: at(leave1), dit }
+    }
+
+    pub fn features() -> Vec<&'static str> {
+        macro_rules! has {
+            ($($f:tt),*) => { [$(($f, std::arch::is_aarch64_feature_detected!($f))),*] };
+        }
+        has!("aes", "sha2", "sha3", "sm4", "sve2", "dit", "sb")
+            .into_iter().filter(|(_, on)| *on).map(|(f, _)| f).collect()
+    }
+
+    /// `b to` at `from` (DDI 0487 C6.2, "B": `0 00101 imm26`, the offset
+    /// `imm26 * 4`, ±128 MB).
+    pub fn jump(from: usize, to: usize) -> Vec<u8> {
+        let off = (to as isize - from as isize) / 4;
+        assert!((-(1 << 25)..1 << 25).contains(&off), "vg-cosim-runner: {to:#x} is out of reach of {from:#x}");
+        (0x1400_0000u32 | (off as u32 & 0x03FF_FFFF)).to_le_bytes().to_vec()
+    }
+
+    /// `ret`.
+    pub const RET: &[u8] = &0xD65F_03C0u32.to_le_bytes();
+
+    /// Makes instruction fetch see the code written at `addr`: each data cache
+    /// line cleaned to the point of unification, each instruction cache line
+    /// invalidated, by the line sizes CTR_EL0 gives (DDI 0487 B2.4.4, the
+    /// sequence for self-modifying code).
+    pub fn sync(addr: usize, len: usize) {
+        // SAFETY: cache maintenance by address on this program's own mapped
+        // code, which EL0 may do (SCTLR_EL1.UCI, which Linux sets).
+        unsafe {
+            let ctr: u64;
+            core::arch::asm!("mrs {}, ctr_el0", out(reg) ctr);
+            let dline = 4usize << ((ctr >> 16) & 0xF);
+            let iline = 4usize << (ctr & 0xF);
+            let mut a = addr & !(dline - 1);
+            while a < addr + len {
+                core::arch::asm!("dc cvau, {}", in(reg) a);
+                a += dline;
+            }
+            core::arch::asm!("dsb ish");
+            let mut a = addr & !(iline - 1);
+            while a < addr + len {
+                core::arch::asm!("ic ivau, {}", in(reg) a);
+                a += iline;
+            }
+            core::arch::asm!("dsb ish", "isb");
+        }
+    }
+
+    /// Runs the code at `INSN` from `regs`, giving the registers it leaves and
+    /// the branch marker.
+    pub fn run(_t: &Tramp, regs: &[u8]) -> (Vec<u8>, u8) {
+        // SAFETY: the trampoline in the code page reads `IN` and writes `OUT`
+        // and `MARKER` only while it runs, and this thread is the only one;
+        // it saves and restores every callee-saved register and the host's
+        // `sp`, as a call to an `extern "C" fn()` may assume.
+        unsafe {
+            std::ptr::copy_nonoverlapping(regs.as_ptr(), IN as *mut u8, REGS_LEN);
+            std::ptr::write_bytes(OUT as *mut u8, 0, REGS_LEN);
+            let enter: extern "C" fn() = std::mem::transmute(super::CODE);
+            enter();
+            let out = std::slice::from_raw_parts(OUT as *const u8, REGS_LEN).to_vec();
+            (out, *(MARKER as *const u64) as u8)
+        }
+    }
+
+    /// The fields of the register state in which `got` differs from `want`,
+    /// comparing the flags `mask` says are defined, and DIT only where the
+    /// trampoline loads it.
+    pub fn diff(t: &Tramp, got: &[u8], want: &[u8], mask: u8) -> Vec<String> {
+        let mut d = vec![];
+        for i in 0..31 {
+            let (g, w) = (&got[8 * i..8 * i + 8], &want[8 * i..8 * i + 8]);
+            if g != w {
+                d.push(format!("x{i}: {} (model {})", super::hex(&rev(g)), super::hex(&rev(w))));
+            }
+        }
+        if got[SP..SP + 8] != want[SP..SP + 8] {
+            d.push(format!("sp: {} (model {})", super::hex(&rev(&got[SP..SP + 8])),
+                super::hex(&rev(&want[SP..SP + 8]))));
+        }
+        let (g, w) = (got[NZCV] & mask, want[NZCV] & mask);
+        if g != w {
+            d.push(format!("nzcv (defined {mask:04b}): {g:04b} (model {w:04b})"));
+        }
+        if t.dit && got[DIT] != want[DIT] {
+            d.push(format!("dit: {} (model {})", got[DIT], want[DIT]));
+        }
+        for i in 0..32 {
+            let o = VEC + 16 * i;
+            if got[o..o + 16] != want[o..o + 16] {
+                d.push(format!("v{i}: {} (model {})", super::hex(&rev(&got[o..o + 16])),
+                    super::hex(&rev(&want[o..o + 16]))));
+            }
+        }
+        d
+    }
+
+    fn rev(b: &[u8]) -> Vec<u8> {
+        b.iter().rev().copied().collect()
+    }
+}
+
 fn main() {
     if std::env::args().nth(1).as_deref() == Some("--features") {
         println!("{}", arch::features().join(","));
         return;
     }
-    let t = arch::tramp();
     map(CODE, 0x10000, PROT_RWX);
     map(DATA, DATA_LEN, PROT_RW);
+    let t = arch::tramp();
     for sig in [4, 7, 8, 11] {
         // SAFETY: `fault` only writes to stderr and exits.
         unsafe { signal(sig, fault as *const () as usize) };
@@ -339,15 +633,16 @@ fn main() {
             let page = std::slice::from_raw_parts_mut(INSN as *mut u8, 0x1000);
             page.fill(0xCC);
             page[..code.len()].copy_from_slice(&code);
-            let after = arch::jump(t.leave0);
+            let after = arch::jump(INSN + code.len(), t.leave0);
             page[code.len()..code.len() + after.len()].copy_from_slice(&after);
             let target: &[u8] = match kind {
-                BRANCH_KIND => &arch::jump(t.leave1),
+                BRANCH_KIND => &arch::jump(TARGET, t.leave1),
                 CALL_KIND => arch::RET,
                 INSN_KIND => &[],
                 _ => panic!("vg-cosim-runner: unknown kind {kind}"),
             };
             page[TARGET - INSN..TARGET - INSN + target.len()].copy_from_slice(target);
+            arch::sync(INSN, 0x1000);
         }
         let mut shown = 0;
         for c in 0..n {
@@ -376,7 +671,7 @@ fn main() {
                     shown += 1;
                     let mut e = stderr.lock();
                     writeln!(e, "vg-cosim-runner: {} ({}), case {c}:", String::from_utf8_lossy(&text), hex(&code)).unwrap();
-                    writeln!(e, "  start: {}", hex(&start[..arch::REGS_LEN.min(136)])).unwrap();
+                    writeln!(e, "  start: {}", hex(&start[..arch::START_SHOWN])).unwrap();
                     for l in d.iter().take(12) {
                         writeln!(e, "  {l}").unwrap();
                     }

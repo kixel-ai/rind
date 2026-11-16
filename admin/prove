@@ -472,7 +472,7 @@ vg() {
     arch=$(uname -m)
     case $arch in
     x86_64) emu=(sde -future --) ;;
-    aarch64) emu=(qemu-aarch64 -cpu max) ;;
+    aarch64) emu=(qemu-aarch64 -cpu max,sve-default-vector-length=16) ;;
     *)
         echo "admin/prove: vg needs an x86_64 or aarch64 CPU" >&2
         return 1

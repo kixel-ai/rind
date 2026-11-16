@@ -1,4 +1,5 @@
 import Cosim.X86_64
+import Cosim.AArch64
 import Std.Data.HashMap
 
 /-!
@@ -29,12 +30,14 @@ def main (args : List String) : IO UInt32 := do
       return 2
   let some n := n.toNat? | IO.eprintln "vg-cosim: cases is not a number"; return 2
   let some seed := seed.toNat? | IO.eprintln "vg-cosim: seed is not a number"; return 2
+  unless arch == "x86_64" || arch == "aarch64" do
+    IO.eprintln s!"vg-cosim: no model of {arch}"; return 2
   let split (s : String) := (s.splitOn ",").filter (· != "")
   let host := split feats
   let emulator := emu.map (split ·.1)
   let (archByte, stateLen) := match arch with
     | "x86_64" => ((0 : UInt8), X86_64.stateLen)
-    | _ => (1, 0)
+    | _ => (1, AArch64.stateLen)
   let cpu ← IO.FS.Handle.mk cpuOut .write
   let emuH ← emu.mapM (IO.FS.Handle.mk ·.2 .write)
   cpu.write (header archByte stateLen)
@@ -49,7 +52,7 @@ def main (args : List String) : IO UInt32 := do
     let lines := text.splitOn "; "
     let gen := match arch with
       | "x86_64" => X86_64.blocks kind lines code n
-      | _ => pure (.error s!"vg-cosim: no model for {arch}")
+      | _ => AArch64.blocks kind lines code n
     let (res, rng') := gen.run rng
     rng := rng'
     match res with
