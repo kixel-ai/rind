@@ -28,7 +28,7 @@ pub(crate) struct RsaPrivateKey {
 
     /// pyca/verified-garbage's values for its IFMA CRT, where it runs.
     #[cfg(rind_backend = "x86_64")]
-    ifma: Option<low::IfmaCrt>,
+    ifma: low::IfmaCrt,
 }
 
 impl RsaPrivateKey {
@@ -219,9 +219,9 @@ impl RsaPrivateKey {
         }
 
         #[cfg(rind_backend = "x86_64")]
-        let m = match &self.ifma {
-            Some(ifma) => self.crt_ifma(ifma, c)?,
-            None => self.crt(c),
+        let m = match self.ifma.runs() {
+            true => self.crt_ifma(c)?,
+            false => self.crt(c),
         };
         #[cfg(not(rind_backend = "x86_64"))]
         let m = self.crt(c);
@@ -237,7 +237,7 @@ impl RsaPrivateKey {
 
     /// The CRT by pyca/verified-garbage's IFMA routine, for `c` below `n`.
     #[cfg(rind_backend = "x86_64")]
-    fn crt_ifma(&self, ifma: &low::IfmaCrt, c: &RsaPosIntModN) -> Result<RsaPosIntModN, Error> {
+    fn crt_ifma(&self, c: &RsaPosIntModN) -> Result<RsaPosIntModN, Error> {
         let k = self.modulus_len_bytes();
         let p_len = self.p.as_words().len() * 8;
         let mut x = [0u8; MAX_PUBLIC_MODULUS_BYTES];
@@ -249,7 +249,7 @@ impl RsaPrivateKey {
         let [dp, dq, qinv] = &parts;
         let mut m = [0u8; MAX_PUBLIC_MODULUS_BYTES];
         // `new` and the caller ruled out each input it refuses.
-        if !ifma.crt(
+        if !self.ifma.crt(
             &mut m[..k],
             &x[..k],
             &dp[..p_len],
@@ -266,8 +266,7 @@ impl RsaPrivateKey {
     /// the former runs.
     #[cfg(all(test, rind_backend = "x86_64"))]
     pub(crate) fn crt_both(&self, c: &RsaPosIntModN) -> Option<[RsaPosIntModN; 2]> {
-        let ifma = self.ifma.as_ref()?;
-        Some([self.crt_ifma(ifma, c).unwrap(), self.crt(c)])
+        self.ifma.runs().then(|| [self.crt_ifma(c).unwrap(), self.crt(c)])
     }
 
     /// The CRT, by rind's exponentiations.

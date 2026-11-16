@@ -30,9 +30,13 @@ pub(crate) struct RsaIfma(HaveAvx512ForRsa);
 /// A private key's values for VG's CRT, which its contract requires be
 /// exactly what `vg_rsa_private_precompute` writes for `n`, `p`, and `q`,
 /// so only this computes them, from `n`, `p`, and `q`, which it keeps.
+///
+/// It holds no `Option` or CPU token, so that all-zero bytes, which its drop
+/// leaves, are a valid value: one for no key, which [`IfmaCrt::runs`]
+/// refuses.
 pub(crate) struct IfmaCrt {
-    token: HaveAvx512ForRsa,
-    /// The words of each prime, 16, 24, or 32: half of `n`'s.
+    /// The words of each prime, 16, 24, or 32: half of `n`'s. Zero where
+    /// VG's CRT does not run.
     w: usize,
     /// `n` and `2^(128 * 2w) mod n`, at `2w` words each, then `2^(128w)`
     /// modulo `p` and modulo `q`, at `w` words each.
@@ -41,7 +45,7 @@ pub(crate) struct IfmaCrt {
     q: [u64; MAX_PRIME_WORDS],
 }
 
-// Every field is words, a length, or a zero-sized token, all valid at zero.
+// Every field is words or a length, valid at zero.
 impl low::Zeroable for IfmaCrt {}
 
 impl Drop for IfmaCrt {
@@ -116,8 +120,8 @@ impl RsaIfma {
         let w = k.div_ceil(8);
         assert!((64..=MAX_WORDS * 8).contains(&k));
         assert!(pre.len() == 2 * w && x.len() == k && (1..=k).contains(&e.len()));
-        let mut scratch = [0u64; 8 * MAX_WORDS + 48];
-        let scratch = &mut scratch[..8 * w + 48];
+        let mut scratch = [Line([0; 8]); (8 * MAX_WORDS + 48) / 8];
+        let scratch = &mut Line::words(&mut scratch)[..8 * w + 48];
         // SAFETY: VG declares its internal functions without parameters, as
         // only its own code calls them, and `PublicFn` is the signature its
         // contract gives this one.
@@ -157,9 +161,19 @@ impl IfmaCrt {
     /// The values VG's CRT takes for the key of `n`, `p`, and `q`, little-endian
     /// words: if the CPU runs it, and it is the fastest there, for 2048-,
     /// 3072-, and 4096-bit moduli of primes as wide as each other, as aws-lc's
-    /// dual RSAZ requires. `None` otherwise, or if `n` is even or not `p q`.
-    pub(crate) fn new(n: &[u64], p: &[u64], q: &[u64]) -> Option<Self> {
-        let token = HaveAvx512ForRsa::check()?;
+    /// dual RSAZ requires. Otherwise, or if `n` is even or not `p q`, a value
+    /// that [`IfmaCrt::runs`] refuses.
+    pub(crate) fn new(n: &[u64], p: &[u64], q: &[u64]) -> Self {
+        Self::try_new(n, p, q).unwrap_or(Self {
+            w: 0,
+            pre: [0; 6 * MAX_PRIME_WORDS],
+            p: [0; MAX_PRIME_WORDS],
+            q: [0; MAX_PRIME_WORDS],
+        })
+    }
+
+    fn try_new(n: &[u64], p: &[u64], q: &[u64]) -> Option<Self> {
+        HaveAvx512ForRsa::check()?;
         let w = p.len();
         if !matches!(w, 16 | 24 | 32) || q.len() != w || n.len() != 2 * w {
             return None;
@@ -180,7 +194,6 @@ impl IfmaCrt {
         }
 
         let mut ifma = Self {
-            token,
             w,
             pre: [0; 6 * MAX_PRIME_WORDS],
             p: [0; MAX_PRIME_WORDS],
@@ -196,15 +209,24 @@ impl IfmaCrt {
         Some(ifma)
     }
 
+    /// Whether VG's CRT runs for this key on this CPU.
+    pub(crate) fn runs(&self) -> bool {
+        self.w != 0
+    }
+
     /// Writes `x^d mod n` to `out` by the CRT, for big-endian `x`, `dp`,
     /// `dq`, and `qinv`, `x` and `out` as long as `n` and the others as `p`'s
     /// words make.
     ///
     /// Returns whether it did: it refuses, writing zeros, an `x` not below
-    /// `n` and a `qinv` not below `p`, revealing only that. Constant time in
-    /// all but `n`.
+    /// `n` and a `qinv` not below `p`, revealing only that, and does nothing
+    /// unless [`IfmaCrt::runs`]. Constant time in all but `n`.
     pub(crate) fn crt(&self, out: &mut [u8], x: &[u8], dp: &[u8], dq: &[u8], qinv: &[u8]) -> bool {
         let w = self.w;
+        // `new` checked the CPU wherever `w` is nonzero.
+        let Some(token) = HaveAvx512ForRsa::check().filter(|_| w != 0) else {
+            return false;
+        };
         let (n, pre) = (&self.pre[..2 * w], &self.pre[..6 * w]);
         let k = low::bignum_bitsize(n).div_ceil(8);
         let p_len = 8 * w;
@@ -219,8 +241,9 @@ impl IfmaCrt {
         be_bytes(&self.q[..w], q);
         // On the heap, at up to 64 KiB, and wiped, as it holds values of the
         // private key.
-        let mut scratch = vec![0u64; 16 * k + 32];
-        let f: CrtFn = match self.token.fp16() {
+        let mut lines = vec![Line([0; 8]); (16 * k + 32).div_ceil(8)];
+        let scratch = &mut Line::words(&mut lines)[..16 * k + 32];
+        let f: CrtFn = match token.fp16() {
             // SAFETY: VG declares its internal functions without parameters,
             // as only its own code calls them, and `CrtFn` is the signature
             // its contract gives this one.
@@ -271,8 +294,23 @@ impl IfmaCrt {
                 pre.len(),
             ))
         };
-        low::zeroise(&mut scratch);
+        low::zeroise(scratch);
         low::ct::into_public(r) == 1
+    }
+}
+
+/// A cache line of VG's scratch, which starts on one: VG measured its IFMA
+/// CRT a sixth slower at 3072 and 4096 bits on scratch aligned to 8 bytes.
+#[derive(Clone, Copy)]
+#[repr(C, align(64))]
+struct Line([u64; 8]);
+
+impl Line {
+    fn words(lines: &mut [Self]) -> &mut [u64] {
+        // SAFETY: `Line` is `repr(C)` of 8 `u64`s with no padding, so `lines`
+        // is `8 * lines.len()` contiguous initialized words, which this
+        // borrows exclusively for as long as `lines`.
+        unsafe { core::slice::from_raw_parts_mut(lines.as_mut_ptr().cast(), 8 * lines.len()) }
     }
 }
 
@@ -353,8 +391,10 @@ mod tests {
         let pi = low::PosInt::<MAX_PRIME_WORDS>::from_words(&p[..w]).unwrap();
         let qi = low::PosInt::<MAX_PRIME_WORDS>::from_words(&q[..w]).unwrap();
         let n: low::PosInt<{ 2 * MAX_PRIME_WORDS }> = low::PosInt::mul(&pi, &qi);
-        let ifma = IfmaCrt::new(n.as_words(), &p[..w], &q[..w]).expect("AVX-512 IFMA");
-        assert_eq!(ifma.token.fp16(), fp16, "the SDE model takes the other routine");
+        let ifma = IfmaCrt::new(n.as_words(), &p[..w], &q[..w]);
+        assert!(ifma.runs(), "AVX-512 IFMA");
+        let token = HaveAvx512ForRsa::check().unwrap();
+        assert_eq!(token.fp16(), fp16, "the SDE model takes the other routine");
         let mut below_top = |bits| {
             let mut v: [u64; 2 * MAX_PRIME_WORDS] = rng.words(bits);
             v[bits as usize / 64 - 1] >>= 1;
