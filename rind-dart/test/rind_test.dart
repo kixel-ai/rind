@@ -881,10 +881,7 @@ void main() {
         () => rsaPair.publicKey.bytes,
         () => rsaPair.publicKey.toSpki(),
       );
-      keepsItsBytes(
-        () => oaep.publicKey.bytes,
-        () => oaep.publicKey.toSpki(),
-      );
+      keepsItsBytes(() => oaep.publicKey.bytes, () => oaep.publicKey.toSpki());
       keepsItsBytes(() => kem.publicKey.bytes);
     });
   });
