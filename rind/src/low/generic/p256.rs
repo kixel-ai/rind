@@ -951,7 +951,11 @@ mod tests {
         for k in scalars {
             let mut ours = [0; 8];
             p256_scalarmulbase(&mut ours, &into_secret(k), &table);
-            assert_eq!(into_public(ours), into_public(s2n_multiply(&k, &GENERATOR)), "{k:x?}");
+            assert_eq!(
+                into_public(ours),
+                into_public(s2n_multiply(&k, &GENERATOR)),
+                "{k:x?}"
+            );
         }
     }
 
