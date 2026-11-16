@@ -109,12 +109,12 @@ those inputs, in any worktree, restores in under a second.
   or two, that it builds from the tail's whole 16-byte lanes in memory, the
   lane where the message ends as r10 and r11, and the length's word in r8.
   Both run one round body, which `x86_64/sha256_shaext_rounds.ml` proves
-  once, `SHA256_SHAEXT_ROUNDS_CORRECT`. `Rind/X86_64/Sha256Shaext.lean`
-  restates the two as axioms and proves that the finish's padding, plain Rust
-  above its block, builds the block, or two, that FIPS 180-4 pads. They read the round constants and
+  once, `SHA256_SHAEXT_ROUNDS_CORRECT`. They read the round constants and
   the byte-swap mask through rcx from the static `low::x86_64::sha256::K`,
   whose bytes `admin/prove` extracts and the proof checks against FIPS
-  180-4's.
+  180-4's. `Rind/X86_64/Sha256Shaext.lean` restates the two as axioms and
+  proves that the finish's padding, plain Rust above its block, builds the
+  block, or two, that FIPS 180-4 pads.
 - `<arch>/ct_compare_16.ml` and `<arch>/ct_compare_bytes.ml`, on x86_64,
   aarch64, and armv7: `CT_COMPARE_16_CORRECT` and `CT_COMPARE_BYTES_CORRECT`,
   that the blocks in `low::<arch>::cpu::ct_compare_16` and `ct_compare_bytes`,
