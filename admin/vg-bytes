@@ -139,7 +139,8 @@ def disassemble(arch, obj, keep):
     demangled path's last component, with the relocations at each: its type,
     its symbol's last component, and its addend."""
     flags = ["-M", "intel"] if arch == "x86_64" else ["--mattr=+all"]
-    dis = run(["llvm-objdump", "-d", "-r", "-C", *flags, str(obj)])
+    # `-z`: llvm-objdump otherwise prints a run of zero bytes as `...`.
+    dis = run(["llvm-objdump", "-d", "-z", "-r", "-C", *flags, str(obj)])
     fns, names = {}, {}
     cur = None
     for line in dis.splitlines():
@@ -153,6 +154,7 @@ def disassemble(arch, obj, keep):
                     fail(f"{obj}: two functions named {name}: {names[name]} and {path}")
                 cur = fns[name] = []
                 names[name] = path
+                start = int(m.group(1), 16)
             continue
         if cur is None:
             continue
@@ -169,7 +171,11 @@ def disassemble(arch, obj, keep):
                 # llvm-objdump prints an A64 instruction as its word; the
                 # bytes, as x86-64's are, are little-endian.
                 raw = bytes.fromhex(raw)[::-1].hex()
-            cur.append(Insn(int(m.group(1), 16), raw, text))
+            addr = int(m.group(1), 16)
+            if (cur[-1].addr + len(cur[-1].raw) // 2 if cur else start) != addr:
+                fail(f"{obj}: {names[name]} has bytes llvm-objdump does not disassemble "
+                     f"before {addr:#x}")
+            cur.append(Insn(addr, raw, text))
     return fns
 
 
@@ -188,8 +194,8 @@ def is_nop(arch, insn):
 
 def is_padding(arch, insn):
     """Whether `insn` is padding a linker or assembler puts between
-    functions: a NOP, or on x86-64 `int3`."""
-    return is_nop(arch, insn) or (arch == "x86_64" and insn.text == "int3")
+    functions: a NOP, or a trap, x86-64's `int3` or aarch64's zero word."""
+    return is_nop(arch, insn) or insn.text in ("int3", "udf #0x0")
 
 
 def instructions(arch, name, text, insns, what):
