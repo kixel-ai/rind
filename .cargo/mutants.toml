@@ -32,7 +32,11 @@ exclude_globs = [
   "rind-fips/**",
 ]
 
-# Each surviving mutant no test can catch, with why.
+# Each surviving mutant no test can catch, with why. Match one by its file,
+# function, mutation, and if needed column, never its line, which any edit
+# above it moves; pin a line only where nothing else tells it from a caught
+# mutant, saying so. `admin/mutants --pins` checks that each entry, and each
+# alternative in it, still matches a mutant.
 exclude_re = [
   # Test helpers, in `tests` modules whose `cfg` also names an architecture.
   # See UPSTREAM.md, "cargo-mutants misses compound `cfg(test)`s".
