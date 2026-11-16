@@ -86,7 +86,10 @@ rind's arm64 build enables NEON, which every Android and Apple device has; a sou
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:rind/ecdsa.dart' as ecdsa;
+import 'package:rind/ed25519.dart' as ed25519;
 import 'package:rind/rind.dart';
+import 'package:rind/rsa.dart' as rsa;
 
 void main() {
   final key = Uint8List(32);
@@ -100,32 +103,34 @@ void main() {
 
   // Each signature algorithm has a key pair and a public key; the peer
   // parses the public key from its encoding or its SubjectPublicKeyInfo.
-  final ecdsa = EcdsaKeyPair.generate(EcdsaSigningAlgorithm.p256Sha256Asn1);
-  EcdsaPublicKey(
-    EcdsaVerificationAlgorithm.p256Sha256Asn1,
-    ecdsa.publicKey.bytes,
-  ).verify(utf8.encode('hello'), ecdsa.sign(utf8.encode('hello')));
+  final ecdsaPair = ecdsa.KeyPair.generate(
+    ecdsa.SigningAlgorithm.p256Sha256Asn1,
+  );
+  ecdsa.PublicKey(
+    ecdsa.VerificationAlgorithm.p256Sha256Asn1,
+    ecdsaPair.publicKey.bytes,
+  ).verify(utf8.encode('hello'), ecdsaPair.sign(utf8.encode('hello')));
 
-  final ed25519 = Ed25519KeyPair.generate();
-  Ed25519PublicKey.fromSpki(
-    ed25519.publicKey.toSpki(),
-  ).verify(utf8.encode('hello'), ed25519.sign(utf8.encode('hello')));
+  final ed25519Pair = ed25519.KeyPair.generate();
+  ed25519.PublicKey.fromSpki(
+    ed25519Pair.publicKey.toSpki(),
+  ).verify(utf8.encode('hello'), ed25519Pair.sign(utf8.encode('hello')));
 
   // An RSA public key verifies with any algorithm whose modulus floor it
   // meets.
-  final rsa = RsaKeyPair.generate(RsaKeySize.rsa2048);
-  RsaPublicKey(rsa.publicKey.bytes).verify(
-    RsaVerificationAlgorithm.pssSha256,
+  final rsaPair = rsa.KeyPair.generate(rsa.KeySize.rsa2048);
+  rsa.PublicKey(rsaPair.publicKey.bytes).verify(
+    rsa.VerificationAlgorithm.pssSha256,
     utf8.encode('hello'),
-    rsa.sign(RsaSigningAlgorithm.pssSha256, utf8.encode('hello')),
+    rsaPair.sign(rsa.SigningAlgorithm.pssSha256, utf8.encode('hello')),
   );
 
-  final oaep = RsaDecryptingKey.generate(
-    OaepAlgorithm.sha256,
-    RsaKeySize.rsa2048,
+  final oaep = rsa.DecryptingKey.generate(
+    rsa.OaepAlgorithm.sha256,
+    rsa.KeySize.rsa2048,
   );
-  final ciphertext = RsaEncryptingKey.fromSpki(
-    OaepAlgorithm.sha256,
+  final ciphertext = rsa.EncryptingKey.fromSpki(
+    rsa.OaepAlgorithm.sha256,
     oaep.publicKey.toSpki(),
   ).encrypt(utf8.encode('hello'));
   print(utf8.decode(oaep.decrypt(ciphertext)));
@@ -133,14 +138,17 @@ void main() {
 ```
 
 The API is rind's own: each algorithm is a constant, and each key type has one
-role. ECDSA, Ed25519, and RSA each have a key pair and a public key, as rind's
-`ecdsa`, `ed25519`, and `rsa` modules do: a public key's constructor takes the
-algorithm's own encoding (an X9.62 point, 32 bytes, or PKCS#1), and `fromSpki`
-a `SubjectPublicKeyInfo`. [rind_cryptography](cryptography) offers the
+role. ECDSA, Ed25519, and RSA each have a library, imported under its name,
+with a `KeyPair` and a `PublicKey`, as rind's `ecdsa`, `ed25519`, and `rsa`
+modules do: a public key's constructor takes the algorithm's own encoding (an
+X9.62 point, 32 bytes, or PKCS#1), and `fromSpki` a `SubjectPublicKeyInfo`.
+RSA-OAEP is in `package:rind/rsa.dart` too. [rind_cryptography](cryptography) offers the
 `cryptography` package's API on it instead. Failures throw a `RindException`
 whose `error` says what failed, as rind's `Error` does, and a refused key says
 why in its `reason`.
-SHA-1, MD5, and RSA keys below 2048 bits are in `package:rind/legacy.dart`.
+SHA-1 and MD5 are in `package:rind/legacy.dart`, and RSA's SHA-1 algorithms
+and other modulus floors in `package:rind/rsa_legacy.dart`, imported `as rsa`
+beside `package:rind/rsa.dart`.
 
 Keys live in native memory, which Dart frees without wiping: this package
 builds rind without its `wipe` feature. To wipe keys, use rind from Rust with
