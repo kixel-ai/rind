@@ -50,7 +50,7 @@ final class Pbkdf2Secret extends _Handle {
     _checkIterations(iterations);
     return _native(salt, (saltPointer) {
       return _native(Uint8List(length), (out) {
-        _check(
+        check(
           _pbkdf2Derive(
             _pointer,
             iterations,
@@ -74,7 +74,7 @@ final class Pbkdf2Secret extends _Handle {
     _checkIterations(iterations);
     _native(salt, (saltPointer) {
       _native(previouslyDerived, (previous) {
-        _check(
+        check(
           _pbkdf2Verify(
             _pointer,
             iterations,

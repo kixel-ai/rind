@@ -79,7 +79,7 @@ final class AesCbcEncryptingKey extends _Handle {
 
   Uint8List _encrypt(CbcIv iv, Uint8List plaintext, int length, int pad) {
     final inOut = Uint8List(length)..setAll(0, plaintext);
-    _check(
+    check(
       _aesCbcEncrypt(
         _pointer,
         iv.bytes.address,
@@ -131,7 +131,7 @@ final class AesCbcDecryptingKey extends _Handle {
 
   Uint8List _decrypt(Uint8List iv, Uint8List ciphertext, int pad) {
     final inOut = Uint8List.fromList(ciphertext);
-    final len = _check(
+    final len = check(
       _aesCbcDecrypt(
         _pointer,
         iv.address,
@@ -175,7 +175,7 @@ final class AesCtr extends _Handle {
   /// repeating keystream.
   Uint8List applyKeystream(Uint8List counterBlock, Uint8List data) {
     final inOut = Uint8List.fromList(data);
-    _check(
+    check(
       _aesCtrApplyKeystream(
         _pointer,
         counterBlock.address,
@@ -207,7 +207,7 @@ final class ChaCha20 extends _Handle {
   /// [RangeError] unless [counter] fits in 32 bits.
   Uint8List applyKeystream(Uint8List nonce, int counter, Uint8List data) {
     final inOut = Uint8List.fromList(data);
-    _check(
+    check(
       _chacha20ApplyKeystream(
         _pointer,
         nonce.address,

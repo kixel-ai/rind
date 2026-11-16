@@ -1,14 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
+// Natives resolve against the one code asset `hook/build.dart` registers.
+// The default would be this library's URI, which is not registered.
+@DefaultAsset('package:rind/src/bindings.dart')
 library;
 
-import 'dart:convert';
 import 'dart:ffi';
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 
 import 'error.dart';
+import 'status.dart';
 
 /// An algorithm a [KeyPair] signs with: a curve, a hash, and a signature
 /// encoding, ASN.1 DER or fixed-length `r || s`.
@@ -130,7 +133,7 @@ final class PublicKey extends _Handle {
   /// Checks that [signature] is the key's signature of [message], throwing
   /// [RindError.badSignature] if not.
   void verify(Uint8List message, Uint8List signature) {
-    _check(
+    check(
       _ecdsaPublicKeyVerify(
         _pointer,
         message.address,
@@ -147,8 +150,8 @@ final class PublicKey extends _Handle {
   /// Encodes the key as a `SubjectPublicKeyInfo`.
   Uint8List toSpki() => _export(1);
 
-  Uint8List _export(int spki) => _output(
-    _exportLength,
+  Uint8List _export(int spki) => output(
+    exportLength,
     (out) => _ecdsaPublicKeyExport(_pointer, spki, out.address, out.length),
   );
 }
@@ -211,7 +214,7 @@ final class KeyPair extends _Handle {
   );
 
   /// Signs [message].
-  Uint8List sign(Uint8List message) => _output(
+  Uint8List sign(Uint8List message) => output(
     _maxSignatureLength,
     (out) => _ecdsaSign(
       _pointer,
@@ -222,8 +225,8 @@ final class KeyPair extends _Handle {
     ),
   );
 
-  Uint8List _export(int what) => _output(
-    _exportLength,
+  Uint8List _export(int what) => output(
+    exportLength,
     (out) => _ecdsaKeyPairExport(_pointer, what, out.address, out.length),
   );
 
@@ -239,9 +242,9 @@ final class KeyPair extends _Handle {
 
 // --- Native functions ---
 
-@Native<_Free>(symbol: 'rind_dart_ecdsa_key_pair_free')
+@Native<HandleFree>(symbol: 'rind_dart_ecdsa_key_pair_free')
 external void _ecdsaKeyPairFree(Pointer<Void> pair);
-final _ecdsaKeyPairFinalizer = _finalizer(Native.addressOf(_ecdsaKeyPairFree));
+final _ecdsaKeyPairFinalizer = finalizer(Native.addressOf(_ecdsaKeyPairFree));
 
 @Native<
   IntPtr Function(
@@ -295,9 +298,9 @@ external int _ecdsaKeyPairPublicKey(
   Pointer<Pointer<Void>> out,
 );
 
-@Native<_Free>(symbol: 'rind_dart_ecdsa_public_key_free')
+@Native<HandleFree>(symbol: 'rind_dart_ecdsa_public_key_free')
 external void _ecdsaPublicKeyFree(Pointer<Void> key);
-final _ecdsaPublicKeyFinalizer = _finalizer(
+final _ecdsaPublicKeyFinalizer = finalizer(
   Native.addressOf(_ecdsaPublicKeyFree),
 );
 
@@ -339,42 +342,17 @@ external int _ecdsaPublicKeyExport(
 // 66-byte scalar. Fixed-length signatures are shorter.
 const _maxSignatureLength = 3 + 2 * (2 + 66 + 1);
 
-// The handle stays in this library, so its pointer is not part of the
-// public API. The same helpers back the other libraries that hold a handle.
-
-typedef _Free = Void Function(Pointer<Void>);
+// `_newHandle` returns the pointer and `_Handle` stores it. A shared name
+// for either would publish a native key pointer.
 
 Pointer<Void> _newHandle(int Function(Pointer<Pointer<Void>> slot) call) {
   final slot = malloc<Pointer<Void>>();
   try {
-    _check(call(slot));
+    check(call(slot));
     return slot.value;
   } finally {
     malloc.free(slot);
   }
-}
-
-int _check(int status) {
-  if (status >= 0) return status;
-  if (status == -10) throw StateError('rind binding bug: ${_lastMessage()}');
-  throw RindException(
-    RindError.values[-status - 1],
-    status == -2 ? _lastMessage() : null,
-  );
-}
-
-String _lastMessage() {
-  final out = Uint8List(256);
-  final len = _message(out.address, out.length);
-  return utf8.decode(
-    out.sublist(0, len < out.length ? len : out.length),
-    allowMalformed: true,
-  );
-}
-
-Uint8List _output(int length, int Function(Uint8List out) call) {
-  final out = Uint8List(length);
-  return out.sublist(0, _check(call(out)));
 }
 
 abstract base class _Handle implements Finalizable {
@@ -384,14 +362,3 @@ abstract base class _Handle implements Finalizable {
 
   final Pointer<Void> _pointer;
 }
-
-const _exportLength = 8192;
-
-NativeFinalizer _finalizer(Pointer<NativeFunction<_Free>> free) =>
-    NativeFinalizer(free);
-
-@Native<IntPtr Function(Pointer<Uint8>, Size)>(
-  symbol: 'rind_dart_message',
-  isLeaf: true,
-)
-external int _message(Pointer<Uint8> out, int outLen);

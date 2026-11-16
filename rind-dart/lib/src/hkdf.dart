@@ -70,7 +70,7 @@ final class HkdfPrk extends _Handle {
     final joined = BytesBuilder(copy: false);
     info.forEach(joined.add);
     final infoBytes = joined.takeBytes();
-    return _output(
+    return output(
       length,
       (out) => _hkdfExpand(
         _pointer,

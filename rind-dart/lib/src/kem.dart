@@ -29,7 +29,7 @@ final class DecapsulationKey extends _Handle {
   /// The encapsulation key to send to the peer.
   late final EncapsulationKey publicKey = EncapsulationKey(
     algorithm,
-    _output(
+    output(
       algorithm._publicKeyLength,
       (out) => _decapsulationKeyPublicKey(_pointer, out.address, out.length),
     ),
@@ -40,7 +40,7 @@ final class DecapsulationKey extends _Handle {
   /// A ciphertext of the wrong length throws [RindError.wrongLength]. Any
   /// other tampering yields an unrelated secret (FIPS 203's implicit
   /// rejection), so the peer learns nothing until the secret is used.
-  Uint8List decapsulate(Uint8List ciphertext) => _output(
+  Uint8List decapsulate(Uint8List ciphertext) => output(
     32,
     (out) => _decapsulate(
       _pointer,
@@ -80,7 +80,7 @@ final class EncapsulationKey extends _Handle {
   ({Uint8List ciphertext, Uint8List sharedSecret}) encapsulate() {
     final ciphertext = Uint8List(algorithm._ciphertextLength);
     final secret = Uint8List(32);
-    _check(
+    check(
       _encapsulate(
         _pointer,
         ciphertext.address,

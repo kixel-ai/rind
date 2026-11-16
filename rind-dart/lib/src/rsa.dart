@@ -1,14 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
+// Natives resolve against the one code asset `hook/build.dart` registers.
+// The default would be this library's URI, which is not registered.
+@DefaultAsset('package:rind/src/bindings.dart')
 library;
 
-import 'dart:convert';
 import 'dart:ffi';
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 
 import 'error.dart';
+import 'status.dart';
 
 /// The modulus size of a generated RSA key.
 enum KeySize {
@@ -195,7 +198,7 @@ final class PublicKey extends _Handle {
     Uint8List message,
     Uint8List signature,
   ) {
-    _check(
+    check(
       _rsaPublicKeyVerify(
         _pointer,
         algorithm._id,
@@ -208,7 +211,7 @@ final class PublicKey extends _Handle {
   }
 
   /// The modulus's length in bytes, which is also its signatures' length.
-  int get modulusLength => _check(_rsaPublicKeyModulusLen(_pointer));
+  int get modulusLength => check(_rsaPublicKeyModulusLen(_pointer));
 
   /// The key's PKCS#1 `RSAPublicKey` encoding, as [PublicKey.new] takes
   /// it.
@@ -217,8 +220,8 @@ final class PublicKey extends _Handle {
   /// Encodes the key as a `SubjectPublicKeyInfo`.
   Uint8List toSpki() => _export(1);
 
-  Uint8List _export(int spki) => _output(
-    _exportLength,
+  Uint8List _export(int spki) => output(
+    exportLength,
     (out) => _rsaPublicKeyExport(_pointer, spki, out.address, out.length),
   );
 }
@@ -271,8 +274,8 @@ final class KeyPair extends _Handle {
       });
 
   /// Encodes the private key as PKCS#8.
-  Uint8List toPkcs8() => _output(
-    _exportLength,
+  Uint8List toPkcs8() => output(
+    exportLength,
     (out) => _rsaKeyPairExport(_pointer, 1, out.address, out.length),
   );
 }
@@ -368,8 +371,8 @@ final class DecryptingKey extends _Handle {
   }
 
   /// Encodes the private key as PKCS#8.
-  Uint8List toPkcs8() => _output(
-    _exportLength,
+  Uint8List toPkcs8() => output(
+    exportLength,
     (out) => _decryptingKeyExport(_pointer, 1, out.address, out.length),
   );
 }
@@ -435,7 +438,7 @@ final class EncryptingKey extends _Handle {
   /// than [maxMessageLength].
   Uint8List encrypt(Uint8List message, {Uint8List? label}) {
     label ??= Uint8List(0);
-    return _output(
+    return output(
       _maxModulusLength,
       (out) => _encrypt(
         _pointer,
@@ -450,7 +453,7 @@ final class EncryptingKey extends _Handle {
   }
 
   /// The longest message the key encrypts, in bytes.
-  int get maxMessageLength => _check(_encryptingKeyMaxMessageLen(_pointer));
+  int get maxMessageLength => check(_encryptingKeyMaxMessageLen(_pointer));
 
   /// The key's PKCS#1 `RSAPublicKey` encoding, as [EncryptingKey.new]
   /// takes it.
@@ -459,17 +462,17 @@ final class EncryptingKey extends _Handle {
   /// Encodes the key as a `SubjectPublicKeyInfo`.
   Uint8List toSpki() => _export(1);
 
-  Uint8List _export(int spki) => _output(
-    _exportLength,
+  Uint8List _export(int spki) => output(
+    exportLength,
     (out) => _encryptingKeyExport(_pointer, spki, out.address, out.length),
   );
 }
 
 // --- Native functions ---
 
-@Native<_Free>(symbol: 'rind_dart_rsa_key_pair_free')
+@Native<HandleFree>(symbol: 'rind_dart_rsa_key_pair_free')
 external void _rsaKeyPairFree(Pointer<Void> pair);
-final _rsaKeyPairFinalizer = _finalizer(Native.addressOf(_rsaKeyPairFree));
+final _rsaKeyPairFinalizer = finalizer(Native.addressOf(_rsaKeyPairFree));
 
 // Not a leaf call: generating a key takes up to seconds.
 @Native<
@@ -522,9 +525,9 @@ external int _rsaKeyPairPublicKey(
   Pointer<Pointer<Void>> out,
 );
 
-@Native<_Free>(symbol: 'rind_dart_rsa_public_key_free')
+@Native<HandleFree>(symbol: 'rind_dart_rsa_public_key_free')
 external void _rsaPublicKeyFree(Pointer<Void> key);
-final _rsaPublicKeyFinalizer = _finalizer(Native.addressOf(_rsaPublicKeyFree));
+final _rsaPublicKeyFinalizer = finalizer(Native.addressOf(_rsaPublicKeyFree));
 
 @Native<
   IntPtr Function(
@@ -581,11 +584,9 @@ external int _rsaPublicKeyExport(
 )
 external int _rsaPublicKeyModulusLen(Pointer<Void> key);
 
-@Native<_Free>(symbol: 'rind_dart_decrypting_key_free')
+@Native<HandleFree>(symbol: 'rind_dart_decrypting_key_free')
 external void _decryptingKeyFree(Pointer<Void> key);
-final _decryptingKeyFinalizer = _finalizer(
-  Native.addressOf(_decryptingKeyFree),
-);
+final _decryptingKeyFinalizer = finalizer(Native.addressOf(_decryptingKeyFree));
 
 // Not a leaf call: generating a key takes up to seconds.
 @Native<
@@ -648,11 +649,9 @@ external int _decryptingKeyExport(
   int outLen,
 );
 
-@Native<_Free>(symbol: 'rind_dart_encrypting_key_free')
+@Native<HandleFree>(symbol: 'rind_dart_encrypting_key_free')
 external void _encryptingKeyFree(Pointer<Void> key);
-final _encryptingKeyFinalizer = _finalizer(
-  Native.addressOf(_encryptingKeyFree),
-);
+final _encryptingKeyFinalizer = finalizer(Native.addressOf(_encryptingKeyFree));
 
 @Native<
   IntPtr Function(
@@ -713,42 +712,17 @@ external int _encryptingKeyExport(
 )
 external int _encryptingKeyMaxMessageLen(Pointer<Void> key);
 
-// The handle stays in this library, so its pointer is not part of the
-// public API. The same helpers back the other libraries that hold a handle.
-
-typedef _Free = Void Function(Pointer<Void>);
+// `_newHandle` returns the pointer and `_Handle` stores it. A shared name
+// for either would publish a native key pointer.
 
 Pointer<Void> _newHandle(int Function(Pointer<Pointer<Void>> slot) call) {
   final slot = malloc<Pointer<Void>>();
   try {
-    _check(call(slot));
+    check(call(slot));
     return slot.value;
   } finally {
     malloc.free(slot);
   }
-}
-
-int _check(int status) {
-  if (status >= 0) return status;
-  if (status == -10) throw StateError('rind binding bug: ${_lastMessage()}');
-  throw RindException(
-    RindError.values[-status - 1],
-    status == -2 ? _lastMessage() : null,
-  );
-}
-
-String _lastMessage() {
-  final out = Uint8List(256);
-  final len = _message(out.address, out.length);
-  return utf8.decode(
-    out.sublist(0, len < out.length ? len : out.length),
-    allowMalformed: true,
-  );
-}
-
-Uint8List _output(int length, int Function(Uint8List out) call) {
-  final out = Uint8List(length);
-  return out.sublist(0, _check(call(out)));
 }
 
 T _native<T>(Uint8List data, T Function(Pointer<Uint8> pointer) call) {
@@ -767,7 +741,7 @@ T _native<T>(Uint8List data, T Function(Pointer<Uint8> pointer) call) {
 Uint8List _modulusOut(int Function(Pointer<Uint8> out) write) {
   final out = malloc<Uint8>(_maxModulusLength);
   try {
-    final len = _check(write(out));
+    final len = check(write(out));
     return Uint8List.fromList(out.asTypedList(len));
   } finally {
     malloc.free(out);
@@ -782,17 +756,6 @@ abstract base class _Handle implements Finalizable {
   final Pointer<Void> _pointer;
 }
 
-const _exportLength = 8192;
-
 // RSA-8192's modulus, which bounds RSA's signatures, ciphertexts, and
 // plaintexts. Not a key's own modulus length.
 const _maxModulusLength = 1024;
-
-NativeFinalizer _finalizer(Pointer<NativeFunction<_Free>> free) =>
-    NativeFinalizer(free);
-
-@Native<IntPtr Function(Pointer<Uint8>, Size)>(
-  symbol: 'rind_dart_message',
-  isLeaf: true,
-)
-external int _message(Pointer<Uint8> out, int outLen);

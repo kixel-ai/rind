@@ -44,7 +44,7 @@ final class HmacKey extends _Handle {
   final HmacAlgorithm algorithm;
 
   /// Returns the tag of [data].
-  Uint8List sign(Uint8List data) => _output(
+  Uint8List sign(Uint8List data) => output(
     algorithm.tagLength,
     (out) =>
         _hmacSign(_pointer, data.address, data.length, out.address, out.length),
@@ -53,7 +53,7 @@ final class HmacKey extends _Handle {
   /// Checks in constant time that [tag] is the tag of [data], throwing
   /// [RindError.badSignature] if not.
   void verify(Uint8List data, Uint8List tag) {
-    _check(
+    check(
       _hmacVerify(_pointer, data.address, data.length, tag.address, tag.length),
     );
   }
@@ -75,7 +75,7 @@ final class HmacContext extends _Handle {
   /// Adds [data] to the message.
   void update(Uint8List data) {
     _live();
-    _check(_hmacContextUpdate(_pointer, data.address, data.length));
+    check(_hmacContextUpdate(_pointer, data.address, data.length));
   }
 
   /// Returns the message's tag. The context is spent after.
@@ -83,7 +83,7 @@ final class HmacContext extends _Handle {
     _live();
     _signed = true;
     _hmacContextFinalizer.detach(this);
-    return _output(
+    return output(
       _tagLength,
       (out) => _hmacContextSign(_pointer, out.address, out.length),
     );

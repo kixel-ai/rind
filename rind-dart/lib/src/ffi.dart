@@ -29,9 +29,9 @@ external int _constantTimeVerify(
 
 // --- AEAD ---
 
-@Native<_Free>(symbol: 'rind_dart_aead_key_free')
+@Native<HandleFree>(symbol: 'rind_dart_aead_key_free')
 external void _aeadKeyFree(Pointer<Void> key);
-final _aeadKeyFinalizer = _finalizer(Native.addressOf(_aeadKeyFree));
+final _aeadKeyFinalizer = finalizer(Native.addressOf(_aeadKeyFree));
 
 @Native<IntPtr Function(Uint32, Pointer<Uint8>, Size, Pointer<Pointer<Void>>)>(
   symbol: 'rind_dart_aead_key_new',
@@ -86,9 +86,9 @@ external int _aeadOpen(
   int len,
 );
 
-@Native<_Free>(symbol: 'rind_dart_randomized_nonce_key_free')
+@Native<HandleFree>(symbol: 'rind_dart_randomized_nonce_key_free')
 external void _randomizedNonceKeyFree(Pointer<Void> key);
-final _randomizedNonceKeyFinalizer = _finalizer(
+final _randomizedNonceKeyFinalizer = finalizer(
   Native.addressOf(_randomizedNonceKeyFree),
 );
 
@@ -144,9 +144,9 @@ external int _randomizedNonceKeyOpen(
 
 // --- Ciphers ---
 
-@Native<_Free>(symbol: 'rind_dart_aes_cbc_encrypting_key_free')
+@Native<HandleFree>(symbol: 'rind_dart_aes_cbc_encrypting_key_free')
 external void _aesCbcEncryptingKeyFree(Pointer<Void> key);
-final _aesCbcEncryptingKeyFinalizer = _finalizer(
+final _aesCbcEncryptingKeyFinalizer = finalizer(
   Native.addressOf(_aesCbcEncryptingKeyFree),
 );
 
@@ -182,9 +182,9 @@ external int _aesCbcEncrypt(
   int len,
 );
 
-@Native<_Free>(symbol: 'rind_dart_aes_cbc_decrypting_key_free')
+@Native<HandleFree>(symbol: 'rind_dart_aes_cbc_decrypting_key_free')
 external void _aesCbcDecryptingKeyFree(Pointer<Void> key);
-final _aesCbcDecryptingKeyFinalizer = _finalizer(
+final _aesCbcDecryptingKeyFinalizer = finalizer(
   Native.addressOf(_aesCbcDecryptingKeyFree),
 );
 
@@ -218,9 +218,9 @@ external int _aesCbcDecrypt(
   int len,
 );
 
-@Native<_Free>(symbol: 'rind_dart_aes_ctr_free')
+@Native<HandleFree>(symbol: 'rind_dart_aes_ctr_free')
 external void _aesCtrFree(Pointer<Void> key);
-final _aesCtrFinalizer = _finalizer(Native.addressOf(_aesCtrFree));
+final _aesCtrFinalizer = finalizer(Native.addressOf(_aesCtrFree));
 
 @Native<
   IntPtr Function(Uint32, Pointer<Uint8>, Size, Uint32, Pointer<Pointer<Void>>)
@@ -244,9 +244,9 @@ external int _aesCtrApplyKeystream(
   int len,
 );
 
-@Native<_Free>(symbol: 'rind_dart_chacha20_free')
+@Native<HandleFree>(symbol: 'rind_dart_chacha20_free')
 external void _chacha20Free(Pointer<Void> key);
-final _chacha20Finalizer = _finalizer(Native.addressOf(_chacha20Free));
+final _chacha20Finalizer = finalizer(Native.addressOf(_chacha20Free));
 
 @Native<IntPtr Function(Pointer<Uint8>, Size, Pointer<Pointer<Void>>)>(
   symbol: 'rind_dart_chacha20_new',
@@ -291,11 +291,9 @@ external int _digest(
   int outLen,
 );
 
-@Native<_Free>(symbol: 'rind_dart_digest_context_free')
+@Native<HandleFree>(symbol: 'rind_dart_digest_context_free')
 external void _digestContextFree(Pointer<Void> context);
-final _digestContextFinalizer = _finalizer(
-  Native.addressOf(_digestContextFree),
-);
+final _digestContextFinalizer = finalizer(Native.addressOf(_digestContextFree));
 
 @Native<IntPtr Function(Uint32, Pointer<Pointer<Void>>)>(
   symbol: 'rind_dart_digest_context_new',
@@ -325,9 +323,9 @@ external int _digestContextFinish(
 
 // --- HMAC ---
 
-@Native<_Free>(symbol: 'rind_dart_hmac_key_free')
+@Native<HandleFree>(symbol: 'rind_dart_hmac_key_free')
 external void _hmacKeyFree(Pointer<Void> key);
-final _hmacKeyFinalizer = _finalizer(Native.addressOf(_hmacKeyFree));
+final _hmacKeyFinalizer = finalizer(Native.addressOf(_hmacKeyFree));
 
 @Native<IntPtr Function(Uint32, Pointer<Uint8>, Size, Pointer<Pointer<Void>>)>(
   symbol: 'rind_dart_hmac_key_new',
@@ -362,9 +360,9 @@ external int _hmacVerify(
   int tagLen,
 );
 
-@Native<_Free>(symbol: 'rind_dart_hmac_context_free')
+@Native<HandleFree>(symbol: 'rind_dart_hmac_context_free')
 external void _hmacContextFree(Pointer<Void> context);
-final _hmacContextFinalizer = _finalizer(Native.addressOf(_hmacContextFree));
+final _hmacContextFinalizer = finalizer(Native.addressOf(_hmacContextFree));
 
 @Native<IntPtr Function(Pointer<Void>, Pointer<Pointer<Void>>)>(
   symbol: 'rind_dart_hmac_context_new',
@@ -394,13 +392,13 @@ external int _hmacContextSign(
 
 // --- HKDF ---
 
-@Native<_Free>(symbol: 'rind_dart_hkdf_salt_free')
+@Native<HandleFree>(symbol: 'rind_dart_hkdf_salt_free')
 external void _hkdfSaltFree(Pointer<Void> salt);
-final _hkdfSaltFinalizer = _finalizer(Native.addressOf(_hkdfSaltFree));
+final _hkdfSaltFinalizer = finalizer(Native.addressOf(_hkdfSaltFree));
 
-@Native<_Free>(symbol: 'rind_dart_hkdf_prk_free')
+@Native<HandleFree>(symbol: 'rind_dart_hkdf_prk_free')
 external void _hkdfPrkFree(Pointer<Void> prk);
-final _hkdfPrkFinalizer = _finalizer(Native.addressOf(_hkdfPrkFree));
+final _hkdfPrkFinalizer = finalizer(Native.addressOf(_hkdfPrkFree));
 
 @Native<IntPtr Function(Uint32, Pointer<Uint8>, Size, Pointer<Pointer<Void>>)>(
   symbol: 'rind_dart_hkdf_salt_new',
@@ -436,9 +434,9 @@ external int _hkdfExpand(
 
 // --- PBKDF2 ---
 
-@Native<_Free>(symbol: 'rind_dart_pbkdf2_secret_free')
+@Native<HandleFree>(symbol: 'rind_dart_pbkdf2_secret_free')
 external void _pbkdf2SecretFree(Pointer<Void> secret);
-final _pbkdf2SecretFinalizer = _finalizer(Native.addressOf(_pbkdf2SecretFree));
+final _pbkdf2SecretFinalizer = finalizer(Native.addressOf(_pbkdf2SecretFree));
 
 @Native<IntPtr Function(Uint32, Pointer<Uint8>, Size, Pointer<Pointer<Void>>)>(
   symbol: 'rind_dart_pbkdf2_secret_new',
@@ -491,9 +489,9 @@ external int _pbkdf2Verify(
 
 // --- Key agreement ---
 
-@Native<_Free>(symbol: 'rind_dart_agreement_private_key_free')
+@Native<HandleFree>(symbol: 'rind_dart_agreement_private_key_free')
 external void _agreementPrivateKeyFree(Pointer<Void> key);
-final _agreementPrivateKeyFinalizer = _finalizer(
+final _agreementPrivateKeyFinalizer = finalizer(
   Native.addressOf(_agreementPrivateKeyFree),
 );
 
@@ -553,9 +551,9 @@ external int _agreementPublicKey(
 
 // --- Key encapsulation ---
 
-@Native<_Free>(symbol: 'rind_dart_decapsulation_key_free')
+@Native<HandleFree>(symbol: 'rind_dart_decapsulation_key_free')
 external void _decapsulationKeyFree(Pointer<Void> key);
-final _decapsulationKeyFinalizer = _finalizer(
+final _decapsulationKeyFinalizer = finalizer(
   Native.addressOf(_decapsulationKeyFree),
 );
 
@@ -589,9 +587,9 @@ external int _decapsulate(
   int outLen,
 );
 
-@Native<_Free>(symbol: 'rind_dart_encapsulation_key_free')
+@Native<HandleFree>(symbol: 'rind_dart_encapsulation_key_free')
 external void _encapsulationKeyFree(Pointer<Void> key);
-final _encapsulationKeyFinalizer = _finalizer(
+final _encapsulationKeyFinalizer = finalizer(
   Native.addressOf(_encapsulationKeyFree),
 );
 
