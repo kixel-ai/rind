@@ -12,10 +12,10 @@ use crate::Error;
 use crate::error::KeyFormatError;
 use crate::high::hash::Sha512;
 use crate::high::hmac_drbg::HmacDrbg;
-use crate::high::signature::MlDsaParameterSet;
+use crate::high::signature::ml_dsa::ParameterSet;
 use crate::kem::Algorithm;
 use crate::low::Entry;
-use crate::mid::mldsa::{self, KeyPair};
+use crate::mid::mldsa::{self, Array as _, KeyPair};
 use crate::mid::mlkem::{Array, Ciphertext, DecapKey, EncapKey, Message};
 use crate::mid::sha3::Sha3_256Context;
 
@@ -163,28 +163,30 @@ impl MlDsaMessage<'_> {
 
 /// FIPS 204's `ML-DSA.KeyGen_internal` from `seed`: the public key and the
 /// expanded private key.
-pub fn ml_dsa_key_gen<P: MlDsaParameterSet>(seed: &[u8; 32]) -> (P::PublicKey, P::SecretKey) {
-    let key = KeyPair::<P>::from_seed(seed);
+pub fn ml_dsa_key_gen<P: ParameterSet>(seed: &[u8; 32]) -> (P::PublicKey, P::SecretKey) {
+    let (key, public_key) = KeyPair::<P>::from_seed(seed);
     let secret_key = crate::low::ct::into_public(key.secret_key().clone());
-    (key.public_key().clone(), secret_key)
+    let mut pk = P::PublicKey::zeroed();
+    pk.as_mut().copy_from_slice(public_key.as_ref());
+    (pk, secret_key)
 }
 
 /// FIPS 204's `ML-DSA.Sign_internal` with expanded private key `sk` over
 /// `message`, with randomness `rnd`, all zeros for the deterministic variant.
-pub fn ml_dsa_sign<P: MlDsaParameterSet>(
+pub fn ml_dsa_sign<P: ParameterSet>(
     sk: &[u8],
     message: MlDsaMessage<'_>,
     rnd: &[u8; 32],
 ) -> Result<P::Signature, Error> {
     let _entry = Entry::new_secret();
-    let key = KeyPair::<P>::from_secret_key(sk)?;
+    let (key, _) = KeyPair::<P>::from_secret_key(sk)?;
     let mu = message.mu(key.tr())?;
     key.sign_internal(&mu, rnd)
 }
 
 /// FIPS 204's `ML-DSA.Verify_internal` of `signature` over `message` under
 /// public key `pk`.
-pub fn ml_dsa_verify<P: MlDsaParameterSet>(
+pub fn ml_dsa_verify<P: ParameterSet>(
     pk: &[u8],
     message: MlDsaMessage<'_>,
     signature: &[u8],

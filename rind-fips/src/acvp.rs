@@ -13,7 +13,7 @@ use ids::acvp as op;
 use crate::Error;
 use crate::ffi::{Bytes, Status, check, ids};
 use crate::kem;
-use crate::signature::sign::MlDsaParameterSet;
+use crate::ml_dsa::ParameterSet;
 
 unsafe extern "C" {
     fn rind_fips_acvp(
@@ -174,7 +174,7 @@ impl<'a> MlDsaMessage<'a> {
 }
 
 /// The public key, expanded private key, and signature lengths of `P`.
-fn ml_dsa_lens<P: MlDsaParameterSet>() -> [usize; 3] {
+fn ml_dsa_lens<P: ParameterSet>() -> [usize; 3] {
     match P::ID {
         ids::ml_dsa::ML_DSA_44 => [1312, 2560, 2420],
         ids::ml_dsa::ML_DSA_65 => [1952, 4032, 3309],
@@ -184,7 +184,7 @@ fn ml_dsa_lens<P: MlDsaParameterSet>() -> [usize; 3] {
 
 /// FIPS 204's `ML-DSA.KeyGen_internal` from `seed`: the public key and the
 /// expanded private key.
-pub fn ml_dsa_key_gen<P: MlDsaParameterSet>(seed: &[u8]) -> Result<(Vec<u8>, Vec<u8>), Error> {
+pub fn ml_dsa_key_gen<P: ParameterSet>(seed: &[u8]) -> Result<(Vec<u8>, Vec<u8>), Error> {
     let [pk, sk, _] = ml_dsa_lens::<P>();
     let out = call_vec(op::ML_DSA_KEY_GEN, P::ID, &[seed], pk + sk)?;
     Ok(split(out, pk))
@@ -192,7 +192,7 @@ pub fn ml_dsa_key_gen<P: MlDsaParameterSet>(seed: &[u8]) -> Result<(Vec<u8>, Vec
 
 /// FIPS 204's `ML-DSA.Sign_internal` with expanded private key `sk` over
 /// `message`, with randomness `rnd`, all zeros for the deterministic variant.
-pub fn ml_dsa_sign<P: MlDsaParameterSet>(
+pub fn ml_dsa_sign<P: ParameterSet>(
     sk: &[u8],
     message: MlDsaMessage<'_>,
     rnd: &[u8],
@@ -209,7 +209,7 @@ pub fn ml_dsa_sign<P: MlDsaParameterSet>(
 
 /// FIPS 204's `ML-DSA.Verify_internal` of `signature` over `message` under
 /// public key `pk`.
-pub fn ml_dsa_verify<P: MlDsaParameterSet>(
+pub fn ml_dsa_verify<P: ParameterSet>(
     pk: &[u8],
     message: MlDsaMessage<'_>,
     signature: &[u8],

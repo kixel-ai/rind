@@ -11,7 +11,7 @@
 
 use rind::Error;
 use rind::fips::acvp::{self, MlDsaMessage};
-use rind::signature::sign::{MlDsa44, MlDsa65, MlDsa87};
+use rind::ml_dsa::{MlDsa44, MlDsa65, MlDsa87, ParameterSet};
 
 use crate::abi::{Bytes, Status, byte_list, copy_out, status};
 use crate::ids::{acvp as op, kem, ml_dsa};
@@ -153,10 +153,7 @@ fn ml_dsa(op: u32, set: u32, args: &[&[u8]]) -> Result<Vec<u8>, Error> {
     }
 }
 
-fn ml_dsa_with<P: rind::signature::sign::MlDsaParameterSet>(
-    op: u32,
-    args: &[&[u8]],
-) -> Result<Vec<u8>, Error> {
+fn ml_dsa_with<P: ParameterSet>(op: u32, args: &[&[u8]]) -> Result<Vec<u8>, Error> {
     Ok(match op {
         op::ML_DSA_KEY_GEN => {
             let [seed] = take(args)?;

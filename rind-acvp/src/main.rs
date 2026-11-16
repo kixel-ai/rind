@@ -29,13 +29,10 @@ use rind_fips::hkdf;
 use rind_fips::hmac;
 use rind_fips::kem;
 use rind_fips::key_wrap::{self, AesKek};
+use rind_fips::ml_dsa::{MlDsa44, MlDsa65, MlDsa87, ParameterSet};
 use rind_fips::pbkdf2;
 use rind_fips::rsa::{KeySize, PublicKeyComponents};
-use rind_fips::signature::sign::{self, MlDsa44, MlDsa65, MlDsa87, MlDsaParameterSet};
-use rind_fips::signature::{
-    EcdsaKeyPair, EcdsaSigningAlgorithm, Ed25519KeyPair, PublicKey, RsaKeyPair,
-    RsaSigningAlgorithm, RsaVerificationAlgorithm, VerificationAlgorithm, verify,
-};
+use rind_fips::{ecdsa, ed25519, rsa};
 
 /// The capabilities rind's module registers, which `getConfig` returns.
 const CONFIG: &str = include_str!("config.json");
@@ -134,10 +131,10 @@ fn write_reply(output: &mut impl Write, reply: &[Vec<u8>]) -> io::Result<()> {
 struct Wrapper {
     /// ECDSA keys from `ECDSA/keyGen`, by curve and private scalar, which
     /// `ECDSA/sigGen` names.
-    ecdsa: HashMap<(String, Vec<u8>), EcdsaKeyPair>,
+    ecdsa: HashMap<(String, Vec<u8>), ecdsa::KeyPair>,
     /// The RSA key of each modulus size `RSA/sigGen` signs with, which
     /// every test of a group must share.
-    rsa: HashMap<u32, RsaKeyPair>,
+    rsa: HashMap<u32, rsa::KeyPair>,
 }
 
 impl Wrapper {
@@ -194,7 +191,7 @@ impl Wrapper {
     fn ecdsa_key_gen(&mut self, args: &[Vec<u8>]) -> Result<Reply> {
         let [name] = take(args)?;
         let curve = Curve::named(name)?;
-        let key = EcdsaKeyPair::generate(curve.signing)?;
+        let key = ecdsa::KeyPair::generate(curve.signing)?;
         let d = key.to_scalar().as_ref().to_vec();
         let (x, y) = curve.coordinates(key.public_key().as_ref())?;
         self.ecdsa.insert((curve.name.to_owned(), d.clone()), key);
@@ -228,7 +225,7 @@ impl Wrapper {
         let key = match self.rsa.entry(bits) {
             std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
             std::collections::hash_map::Entry::Vacant(entry) => {
-                entry.insert(RsaKeyPair::generate(rsa_size(bits)?)?)
+                entry.insert(rsa::KeyPair::generate(rsa_size(bits)?)?)
             }
         };
         let signature = key.sign(algorithm, message)?;
@@ -627,7 +624,7 @@ struct Curve {
     len: usize,
     /// The hash the module signs with on this curve.
     hash: &'static str,
-    signing: &'static EcdsaSigningAlgorithm,
+    signing: &'static ecdsa::SigningAlgorithm,
     ecdh: &'static agreement::Algorithm,
 }
 
@@ -638,21 +635,21 @@ impl Curve {
                 name: "P-256",
                 len: 32,
                 hash: "SHA2-256",
-                signing: &sign::ECDSA_P256_SHA256_FIXED,
+                signing: &ecdsa::sign::P256_SHA256_FIXED,
                 ecdh: &agreement::ECDH_P256,
             },
             "P-384" => Self {
                 name: "P-384",
                 len: 48,
                 hash: "SHA2-384",
-                signing: &sign::ECDSA_P384_SHA384_FIXED,
+                signing: &ecdsa::sign::P384_SHA384_FIXED,
                 ecdh: &agreement::ECDH_P384,
             },
             "P-521" => Self {
                 name: "P-521",
                 len: 66,
                 hash: "SHA2-512",
-                signing: &sign::ECDSA_P521_SHA512_FIXED,
+                signing: &ecdsa::sign::P521_SHA512_FIXED,
                 ecdh: &agreement::ECDH_P521,
             },
             name => return Err(format!("no curve {name}").into()),
@@ -660,17 +657,17 @@ impl Curve {
     }
 
     /// The ASN.1 verification algorithm with hash `name`.
-    fn verification(&self, hash: &[u8]) -> Result<&'static VerificationAlgorithm> {
+    fn verification(&self, hash: &[u8]) -> Result<&'static ecdsa::VerificationAlgorithm> {
         Ok(match (self.name, utf8(hash)?) {
-            ("P-256", "SHA2-256") => &verify::ECDSA_P256_SHA256_ASN1,
-            ("P-256", "SHA2-384") => &verify::ECDSA_P256_SHA384_ASN1,
-            ("P-256", "SHA2-512") => &verify::ECDSA_P256_SHA512_ASN1,
-            ("P-384", "SHA2-256") => &verify::ECDSA_P384_SHA256_ASN1,
-            ("P-384", "SHA2-384") => &verify::ECDSA_P384_SHA384_ASN1,
-            ("P-384", "SHA2-512") => &verify::ECDSA_P384_SHA512_ASN1,
-            ("P-521", "SHA2-256") => &verify::ECDSA_P521_SHA256_ASN1,
-            ("P-521", "SHA2-384") => &verify::ECDSA_P521_SHA384_ASN1,
-            ("P-521", "SHA2-512") => &verify::ECDSA_P521_SHA512_ASN1,
+            ("P-256", "SHA2-256") => &ecdsa::verify::P256_SHA256_ASN1,
+            ("P-256", "SHA2-384") => &ecdsa::verify::P256_SHA384_ASN1,
+            ("P-256", "SHA2-512") => &ecdsa::verify::P256_SHA512_ASN1,
+            ("P-384", "SHA2-256") => &ecdsa::verify::P384_SHA256_ASN1,
+            ("P-384", "SHA2-384") => &ecdsa::verify::P384_SHA384_ASN1,
+            ("P-384", "SHA2-512") => &ecdsa::verify::P384_SHA512_ASN1,
+            ("P-521", "SHA2-256") => &ecdsa::verify::P521_SHA256_ASN1,
+            ("P-521", "SHA2-384") => &ecdsa::verify::P521_SHA384_ASN1,
+            ("P-521", "SHA2-512") => &ecdsa::verify::P521_SHA512_ASN1,
             (curve, hash) => return Err(format!("no ECDSA on {curve} with {hash}").into()),
         })
     }
@@ -704,7 +701,7 @@ fn ecdsa_key_ver(args: &[Vec<u8>]) -> Result<Reply> {
     let algorithm = curve.verification(curve.hash.as_bytes())?;
     let valid = curve
         .point(x, y)
-        .is_some_and(|point| PublicKey::new(algorithm, &point).is_ok());
+        .is_some_and(|point| ecdsa::PublicKey::new(algorithm, &point).is_ok());
     Ok(vec![flag(valid)])
 }
 
@@ -715,7 +712,7 @@ fn ecdsa_sig_ver(args: &[Vec<u8>]) -> Result<Reply> {
     let curve = Curve::named(name)?;
     let algorithm = curve.verification(hash)?;
     let valid = curve.point(x, y).is_some_and(|point| {
-        PublicKey::new(algorithm, &point)
+        ecdsa::PublicKey::new(algorithm, &point)
             .and_then(|key| key.verify(message, &der_signature(r, s)))
             .is_ok()
     });
@@ -779,7 +776,7 @@ fn ed25519(operation: &str, args: &[Vec<u8>]) -> Result<Reply> {
         // To the seed and the public key.
         "keyGen" => {
             take::<0>(args)?;
-            let key = Ed25519KeyPair::generate()?;
+            let key = ed25519::KeyPair::generate()?;
             Ok(vec![
                 key.to_seed().as_ref().to_vec(),
                 key.public_key().as_ref().to_vec(),
@@ -788,18 +785,18 @@ fn ed25519(operation: &str, args: &[Vec<u8>]) -> Result<Reply> {
         // A public key, to whether the module takes it.
         "keyVer" => {
             let [q] = take(args)?;
-            Ok(vec![flag(PublicKey::new(&verify::ED25519, q).is_ok())])
+            Ok(vec![flag(ed25519::PublicKey::new(q).is_ok())])
         }
         // A seed and message, to the signature.
         "sigGen" => {
             let [seed, message] = take(args)?;
-            let key = Ed25519KeyPair::from_seed(seed)?;
+            let key = ed25519::KeyPair::from_seed(seed)?;
             Ok(vec![key.sign(message).as_ref().to_vec()])
         }
         // Message, public key, and signature, to whether it verifies.
         "sigVer" => {
             let [message, q, signature] = take(args)?;
-            let valid = PublicKey::new(&verify::ED25519, q)
+            let valid = ed25519::PublicKey::new(q)
                 .and_then(|key| key.verify(message, signature))
                 .is_ok();
             Ok(vec![flag(valid)])
@@ -821,14 +818,14 @@ fn rsa_size(bits: u32) -> Result<KeySize> {
     })
 }
 
-fn rsa_signing(hash: &str, scheme: &str) -> Result<&'static RsaSigningAlgorithm> {
+fn rsa_signing(hash: &str, scheme: &str) -> Result<&'static rsa::SigningAlgorithm> {
     Ok(match (scheme, hash) {
-        ("pkcs1v1.5", "SHA2-256") => &sign::RSA_PKCS1_SHA256,
-        ("pkcs1v1.5", "SHA2-384") => &sign::RSA_PKCS1_SHA384,
-        ("pkcs1v1.5", "SHA2-512") => &sign::RSA_PKCS1_SHA512,
-        ("pss", "SHA2-256") => &sign::RSA_PSS_SHA256,
-        ("pss", "SHA2-384") => &sign::RSA_PSS_SHA384,
-        ("pss", "SHA2-512") => &sign::RSA_PSS_SHA512,
+        ("pkcs1v1.5", "SHA2-256") => &rsa::sign::PKCS1_SHA256,
+        ("pkcs1v1.5", "SHA2-384") => &rsa::sign::PKCS1_SHA384,
+        ("pkcs1v1.5", "SHA2-512") => &rsa::sign::PKCS1_SHA512,
+        ("pss", "SHA2-256") => &rsa::sign::PSS_SHA256,
+        ("pss", "SHA2-384") => &rsa::sign::PSS_SHA384,
+        ("pss", "SHA2-512") => &rsa::sign::PSS_SHA512,
         _ => return Err(format!("no RSA {scheme} signing with {hash}").into()),
     })
 }
@@ -839,19 +836,19 @@ fn rsa_verification(
     hash: &str,
     scheme: &str,
     bits: usize,
-) -> Result<&'static RsaVerificationAlgorithm> {
-    use verify::legacy;
+) -> Result<&'static rsa::VerificationAlgorithm> {
+    use rsa::verify::{self, legacy};
     Ok(match (scheme, hash, bits == 1024) {
-        ("pkcs1v1.5", "SHA-1", true) => &legacy::RSA_PKCS1_1024_SHA1,
-        ("pkcs1v1.5", "SHA2-256", true) => &legacy::RSA_PKCS1_1024_SHA256,
-        ("pkcs1v1.5", "SHA2-512", true) => &legacy::RSA_PKCS1_1024_SHA512,
-        ("pkcs1v1.5", "SHA-1", false) => &legacy::RSA_PKCS1_SHA1,
-        ("pkcs1v1.5", "SHA2-256", false) => &verify::RSA_PKCS1_SHA256,
-        ("pkcs1v1.5", "SHA2-384", false) => &verify::RSA_PKCS1_SHA384,
-        ("pkcs1v1.5", "SHA2-512", false) => &verify::RSA_PKCS1_SHA512,
-        ("pss", "SHA2-256", false) => &verify::RSA_PSS_SHA256,
-        ("pss", "SHA2-384", false) => &verify::RSA_PSS_SHA384,
-        ("pss", "SHA2-512", false) => &verify::RSA_PSS_SHA512,
+        ("pkcs1v1.5", "SHA-1", true) => &legacy::PKCS1_1024_SHA1,
+        ("pkcs1v1.5", "SHA2-256", true) => &legacy::PKCS1_1024_SHA256,
+        ("pkcs1v1.5", "SHA2-512", true) => &legacy::PKCS1_1024_SHA512,
+        ("pkcs1v1.5", "SHA-1", false) => &legacy::PKCS1_SHA1,
+        ("pkcs1v1.5", "SHA2-256", false) => &verify::PKCS1_SHA256,
+        ("pkcs1v1.5", "SHA2-384", false) => &verify::PKCS1_SHA384,
+        ("pkcs1v1.5", "SHA2-512", false) => &verify::PKCS1_SHA512,
+        ("pss", "SHA2-256", false) => &verify::PSS_SHA256,
+        ("pss", "SHA2-384", false) => &verify::PSS_SHA384,
+        ("pss", "SHA2-512", false) => &verify::PSS_SHA512,
         _ => return Err(format!("no RSA {scheme} verification with {hash} at {bits} bits").into()),
     })
 }
@@ -860,7 +857,7 @@ fn rsa_verification(
 /// modulus, and the private exponent.
 fn rsa_key_gen(args: &[Vec<u8>]) -> Result<Reply> {
     let [bits] = take(args)?;
-    let key = RsaKeyPair::generate(rsa_size(u32_le(bits)?)?)?;
+    let key = rsa::KeyPair::generate(rsa_size(u32_le(bits)?)?)?;
     let pkcs8 = key.to_pkcs8();
     let private = RsaPrivateKey::parse(pkcs8.as_ref())?;
     Ok([private.e, private.p, private.q, private.n, private.d]
@@ -877,8 +874,8 @@ fn rsa_sig_ver(hash: &str, scheme: &str, args: &[Vec<u8>]) -> Result<Reply> {
         .first()
         .map_or(0, |b| n.len() * 8 - b.leading_zeros() as usize);
     let algorithm = rsa_verification(hash, scheme, bits)?;
-    let valid = PublicKey::from_components(algorithm, &PublicKeyComponents { n, e })
-        .and_then(|key| key.verify(message, signature))
+    let valid = rsa::PublicKey::from_components(&PublicKeyComponents { n, e })
+        .and_then(|key| key.verify(algorithm, message, signature))
         .is_ok();
     Ok(vec![flag(valid)])
 }
@@ -1005,7 +1002,7 @@ fn ml_dsa_message<'a>(
 }
 
 /// `ML-DSA/<set>/<operation>`.
-fn ml_dsa<P: MlDsaParameterSet>(operation: &str, args: &[Vec<u8>]) -> Result<Reply> {
+fn ml_dsa<P: ParameterSet>(operation: &str, args: &[Vec<u8>]) -> Result<Reply> {
     match operation {
         // A seed, to the public key and the expanded private key.
         "keyGen" => {
