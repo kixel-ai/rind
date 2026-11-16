@@ -283,9 +283,7 @@ fn rsa_signing_algorithm(id: u32) -> Result<&'static rsa::SigningAlgorithm, Misu
     })
 }
 
-fn ecdsa_verification_algorithm(
-    id: u32,
-) -> Result<&'static ecdsa::VerificationAlgorithm, Misuse> {
+fn ecdsa_verification_algorithm(id: u32) -> Result<&'static ecdsa::VerificationAlgorithm, Misuse> {
     Ok(match id {
         0 => &ecdsa::verify::P256_SHA256_ASN1,
         1 => &ecdsa::verify::P256_SHA384_ASN1,
