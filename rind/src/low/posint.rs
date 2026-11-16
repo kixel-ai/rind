@@ -459,7 +459,7 @@ impl<const N: usize> PosInt<N> {
 
     /// Computes each of `pair`, as [`Self::mod_exp`] does: two at once by
     /// aws-lc's dual RSAZ where it is the fastest, on x86_64 CPUs with
-    /// AVX-512 IFMA, for moduli of 16, 24, or 32 words each, and exponents
+    /// AVX-512 IFMA, for moduli of 24 or 32 words each, and exponents
     /// no wider.
     pub(crate) fn mod_exp_pair(pair: [ModExp<'_, N>; 2]) -> [Self; 2] {
         #[cfg(rind_backend = "x86_64")]

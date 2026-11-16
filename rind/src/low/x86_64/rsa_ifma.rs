@@ -191,6 +191,14 @@ impl IfmaCrt {
         if !sized || q.len() != w || n.len() != 2 * w {
             return None;
         }
+        Self::precompute(n, p, q)
+    }
+
+    /// [`IfmaCrt::try_new`] past its CPU and size checks, for `p` and `q` of
+    /// `w` words and `n` of `2 w`. It runs on any CPU, so `admin/ctgrind`
+    /// checks it, as Valgrind hides AVX-512 IFMA from `try_new`.
+    fn precompute(n: &[u64], p: &[u64], q: &[u64]) -> Option<Self> {
+        let w = p.len();
         let n = low::PosInt::<{ 2 * MAX_PRIME_WORDS }>::from_words(n).ok()?;
         let p = low::PosInt::<MAX_PRIME_WORDS>::from_words(p).ok()?;
         let q = low::PosInt::<MAX_PRIME_WORDS>::from_words(q).ok()?;
@@ -342,6 +350,36 @@ mod tests {
     use super::super::adx_mux::tests::Rng;
     use super::super::ct_sde;
     use super::*;
+
+    /// Under `admin/ctgrind`, VG's CRT values are computed from the primes
+    /// without branching on them or indexing by them; only the public `n`
+    /// may be, and whether `p q = n`.
+    #[test]
+    fn precompute_on_secret_primes() {
+        for w in [16, 24, 32] {
+            let mut rng = Rng(w as u64);
+            let mut prime = || {
+                let mut p: [u64; MAX_PRIME_WORDS] = rng.words(64 * w as u32);
+                p[0] |= 1;
+                p[w - 1] |= 1 << 63;
+                p
+            };
+            let (p, q) = (prime(), prime());
+            let pi = low::PosInt::<MAX_PRIME_WORDS>::from_words(&p[..w]).unwrap();
+            let qi = low::PosInt::<MAX_PRIME_WORDS>::from_words(&q[..w]).unwrap();
+            let n: low::PosInt<{ 2 * MAX_PRIME_WORDS }> = low::PosInt::mul(&pi, &qi);
+            low::ct::secret_slice(&p);
+            low::ct::secret_slice(&q);
+            let ifma = IfmaCrt::precompute(n.as_words(), &p[..w], &q[..w]).unwrap();
+            assert_eq!(ifma.w, w);
+            let pre = low::ct::into_public(ifma.pre);
+            assert_eq!(&pre[..2 * w], n.as_words());
+            assert_eq!(
+                &pre[4 * w..5 * w],
+                low::ct::into_public(pi.montifier()).as_words()
+            );
+        }
+    }
 
     /// `words` as `bytes` big-endian bytes.
     fn be(words: &[u64], bytes: usize) -> Vec<u8> {
