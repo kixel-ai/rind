@@ -124,7 +124,11 @@ impl RsaIfma {
     /// even, outside 512 to 8192 bits, or longer than `out`, an `e` that is
     /// even, below 3, or of more than 33 bits, and an `x` not below `n`.
     /// Constant time in `x`.
+    // Never inlined, holding its `Mcdt` throughout, as `low::mcdt` requires.
+    #[inline(never)]
     pub(crate) fn public(self, out: &mut [u8], pre: &[u64], e: &[u8], x: &[u8]) -> bool {
+        // `vpmadd52luq` and `vpmadd52huq` multiply `x`, which may be secret.
+        let _mcdt = low::Mcdt::enter();
         let k = out.len();
         let w = k.div_ceil(8);
         assert!((64..=MAX_WORDS * 8).contains(&k));
@@ -139,8 +143,6 @@ impl RsaIfma {
                 vg::vg_rsa_public_precomputed_checked_ifma::vg_rsa_public_precomputed_checked_ifma,
             )
         };
-        // `vpmadd52luq` and `vpmadd52huq` multiply `x`, which may be secret.
-        let _mcdt = low::Mcdt::enter();
         // SAFETY: `out` is `k` writable bytes, `pre` `2w` readable words,
         // `e` and `x` `e.len()` and `k` readable bytes, and `scratch`
         // `8w + 48` writable words, with `64 <= k <= 1024` and
@@ -232,7 +234,11 @@ impl IfmaCrt {
     /// Returns whether it did: it refuses, writing zeros, an `x` not below
     /// `n` and a `qinv` not below `p`, revealing only that, and does nothing
     /// unless [`IfmaCrt::runs`]. Constant time in all but `n`.
+    // Never inlined, holding its `Mcdt` throughout, as `low::mcdt` requires.
+    #[inline(never)]
     pub(crate) fn crt(&self, out: &mut [u8], x: &[u8], dp: &[u8], dq: &[u8], qinv: &[u8]) -> bool {
+        // `vpmadd52luq` and `vpmadd52huq` multiply the secrets.
+        let _mcdt = low::Mcdt::enter();
         let w = self.w;
         // `new` checked the CPU wherever `w` is nonzero.
         let Some(token) = HaveAvx512ForRsa::check().filter(|_| w != 0) else {
@@ -270,8 +276,6 @@ impl IfmaCrt {
                 )
             },
         };
-        // `vpmadd52luq` and `vpmadd52huq` multiply the secrets.
-        let _mcdt = low::Mcdt::enter();
         // SAFETY: `out` is `k` writable bytes, `n_bytes` and `x` `k` readable
         // bytes, `p`, `dp`, `qinv`, `q`, and `dq` `p_len`, `scratch` `16k + 32`
         // writable words, and `pre` `2 * ⌈k / 8⌉ + 2 * max(2, ⌈p_len / 8⌉)`
