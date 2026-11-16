@@ -4,7 +4,7 @@
 
 (* ========================================================================= *)
 (* aws-lc's P-256 mixed addition with BMI2 and ADX on x86_64, as rind's      *)
-(* build emits it.                                                           *)
+(* Linux build emits it.                                                     *)
 (* ========================================================================= *)
 
 (* rind's naked function low::x86_64::ecp_nistz256::ecp_nistz256_point_add_affinex

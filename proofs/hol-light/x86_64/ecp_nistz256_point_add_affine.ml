@@ -3,8 +3,8 @@
  *)
 
 (* ========================================================================= *)
-(* aws-lc's P-256 mixed addition with mulq on x86_64, as rind's build emits  *)
-(* it.                                                                       *)
+(* aws-lc's P-256 mixed addition with mulq on x86_64, as rind's Linux build  *)
+(* emits it.                                                                 *)
 (* ========================================================================= *)
 
 (* rind's naked function low::x86_64::ecp_nistz256::ecp_nistz256_point_add_affine
@@ -25,7 +25,10 @@
    - ECP_NISTZ256_POINT_ADD_AFFINE_SUBROUTINE_CORRECT adds the prologue and
      the epilogue.
    The field algebra that ties the helpers' results to the group law is
-   s2n-bignum's, from x86/proofs/p256_montjmixadd.ml. *)
+   s2n-bignum's, from x86/proofs/p256_montjmixadd.ml. The bytes are the
+   Linux build's: Apple's text aligns the helpers to 32 bytes but not the
+   entry, so its calls can reach them at other offsets, which this does not
+   cover. *)
 
 needs "x86/proofs/base.ml";;
 needs "common/ecencoding.ml";;
