@@ -65,14 +65,13 @@ Pointer<Void> newHandle(int Function(Pointer<Pointer<Void>> slot) call) {
   }
 }
 
-/// Copies [data] into zeroed native memory for a non-leaf call, then frees it.
+/// Copies [data] into native memory for a non-leaf call, then frees it.
 ///
 /// A non-leaf call can let the garbage collector move a [Uint8List], so the
-/// bytes have to live in native memory. The allocation is zeroed first
-/// because Rust may borrow it as `&mut [u8]`. A copy inside a call stays
-/// unwiped, as rind's own do.
+/// bytes have to live in native memory. [setAll] writes every byte before the
+/// call. A copy inside a call stays unwiped, as rind's own do.
 T nativeCopy<T>(Uint8List data, T Function(Pointer<Uint8> pointer) call) {
-  final pointer = calloc<Uint8>(data.isEmpty ? 1 : data.length);
+  final pointer = malloc<Uint8>(data.isEmpty ? 1 : data.length);
   final view = pointer.asTypedList(data.length);
   try {
     view.setAll(0, data);

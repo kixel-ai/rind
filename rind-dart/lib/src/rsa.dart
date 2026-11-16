@@ -727,7 +727,7 @@ Uint8List _modulusOut(int Function(Pointer<Uint8> out) write) {
     final len = check(write(out));
     return Uint8List.fromList(out.asTypedList(len));
   } finally {
-    malloc.free(out);
+    calloc.free(out);
   }
 }
 
