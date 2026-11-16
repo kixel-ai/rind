@@ -98,7 +98,9 @@ fn cipher_vg(vg: Vg, key: &[u8; 32], counter_nonce: &[u8; 16], buffer: &mut [u8]
     // SAFETY: `state` is 768 writable bytes, `key` 32 readable bytes, and
     // `counter_nonce` 16; they are distinct objects, so none overlaps
     // another or the return address, or wraps the address space.
-    unsafe { asm_call!(unsafe extern "sysv64" (vg::vg_chacha20_init::vg_chacha20_init)(state, key, counter_nonce)) };
+    unsafe {
+        asm_call!(unsafe extern "sysv64" (vg::vg_chacha20_init::vg_chacha20_init)(state, key, counter_nonce))
+    };
     // SAFETY: `state` is 768 readable and writable bytes, of which `apply`
     // reads only those `init` wrote, and `buffer` is `len`; they are
     // distinct objects, so neither overlaps the other, the return address,
@@ -106,8 +108,12 @@ fn cipher_vg(vg: Vg, key: &[u8; 32], counter_nonce: &[u8; 16], buffer: &mut [u8]
     // the routine's CPU features.
     let ok = unsafe {
         match vg {
-            Vg::Avx2(_) => asm_call!(unsafe extern "sysv64" (vg::vg_chacha20_apply_avx2::vg_chacha20_apply_avx2)(state, data, len)),
-            Vg::Avx512Vl(_) => asm_call!(unsafe extern "sysv64" (vg::vg_chacha20_apply_avx512vl::vg_chacha20_apply_avx512vl)(state, data, len)),
+            Vg::Avx2(_) => {
+                asm_call!(unsafe extern "sysv64" (vg::vg_chacha20_apply_avx2::vg_chacha20_apply_avx2)(state, data, len))
+            }
+            Vg::Avx512Vl(_) => {
+                asm_call!(unsafe extern "sysv64" (vg::vg_chacha20_apply_avx512vl::vg_chacha20_apply_avx512vl)(state, data, len))
+            }
         }
     };
     // `apply` refuses, leaving `buffer` as it was, only a keystream past
@@ -582,6 +588,8 @@ const SIGMA: [u8; 16] = *b"expand 32-byte k";
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
+    use crate::low::x86_64::adx_mux::tests::Rng;
+    use crate::low::x86_64::ct_sde;
     use crate::low::{ct, hchacha20};
 
     // The CPU's fastest path hides the others from every other test, so
@@ -662,6 +670,24 @@ mod tests {
         }));
         assert!(refused.is_err());
         assert_eq!(past, [0; 65]);
+    }
+
+    // verified-garbage's AVX-512 VL routine, which valgrind cannot run, with
+    // a secret key, nonce, and message, for `admin/ct-sde`: its wide loop
+    // and a tail of single blocks and a partial one. The block counter is
+    // public, and VG's contract lets the time depend on it.
+    #[test]
+    #[ignore = "admin/ct-sde runs it under Intel SDE"]
+    fn ct_sde_chacha20() {
+        let mut rng = Rng(ct_sde::seed());
+        let t = HaveAvx512Vl::check().expect("AVX-512 VL");
+        let key: [u8; 32] = core::array::from_fn(|_| rng.next() as u8);
+        let mut nonce: [u8; 16] = core::array::from_fn(|_| rng.next() as u8);
+        nonce[..4].copy_from_slice(&1u32.to_le_bytes());
+        let mut msg: Vec<u8> = (0..1024 + 512 + 3 * 64 + 9)
+            .map(|_| rng.next() as u8)
+            .collect();
+        ct_sde::traced(|| cipher_vg(Vg::Avx512Vl(t), &key, &nonce, &mut msg));
     }
 
     #[test]

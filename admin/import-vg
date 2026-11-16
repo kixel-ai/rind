@@ -186,7 +186,7 @@ def import_arch(vg, arch, roots):
         "//! pyca/verified-garbage's verified routines that rind runs, and the",
         "//! routines and tables they reach: see admin/import-vg.",
         "",
-        "#![allow(dead_code, unused_macros, clippy::all)]",
+        "#![allow(dead_code, unreachable_pub, unused_macros, clippy::all)]",
         "",
     ]
     if uses_macros:

@@ -5,7 +5,7 @@
 //! pyca/verified-garbage's verified routines that rind runs, and the
 //! routines and tables they reach: see admin/import-vg.
 
-#![allow(dead_code, unused_macros, clippy::all)]
+#![allow(dead_code, unreachable_pub, unused_macros, clippy::all)]
 
 #[rustfmt::skip]
 pub(crate) mod vg_chacha20_apply_avx2;
