@@ -13,6 +13,8 @@ use std::sync::OnceLock;
 
 use openssl_sys::*;
 
+mod library;
+
 // What `openssl-sys` does not bind, all in OpenSSL 3.0.
 unsafe extern "C" {
     fn OSSL_LIB_CTX_load_config(ctx: *mut OSSL_LIB_CTX, file: *const c_char) -> c_int;
@@ -87,17 +89,6 @@ unsafe extern "C" {
 
 const OPENSSL_INIT_LOAD_CONFIG: u64 = 0x40;
 
-/// The shared library this build made, beside the test binary.
-fn library() -> PathBuf {
-    let exe = std::env::current_exe().unwrap();
-    let name = format!(
-        "{}rind_openssl{}",
-        std::env::consts::DLL_PREFIX,
-        std::env::consts::DLL_SUFFIX
-    );
-    exe.with_file_name(name)
-}
-
 /// The README's configuration, loading the library this build made.
 fn config() -> &'static Path {
     static CONFIG: OnceLock<PathBuf> = OnceLock::new();
@@ -106,7 +97,7 @@ fn config() -> &'static Path {
 
 fn write_config() -> PathBuf {
     let documented = include_str!("../openssl.cnf");
-    let module = format!("module = {}", conf_value(&library()));
+    let module = format!("module = {}", conf_value(&library::find()));
     let config: String = documented
         .lines()
         .map(|line| {

@@ -19,6 +19,8 @@ use crabgrind::memcheck::{self, MemState};
 use crabgrind::valgrind::{self, RunningMode};
 use openssl_sys::*;
 
+mod library;
+
 unsafe extern "C" {
     fn OSSL_LIB_CTX_load_config(ctx: *mut OSSL_LIB_CTX, file: *const c_char) -> c_int;
     fn OSSL_PROVIDER_get0_name(provider: *const OSSL_PROVIDER) -> *const c_char;
@@ -96,16 +98,10 @@ fn context() -> *mut OSSL_LIB_CTX {
 
 /// Writes the configuration once, since the tests run in parallel.
 fn write_config() -> CString {
-    let exe = std::env::current_exe().unwrap();
-    let library = exe.with_file_name(format!(
-        "{}rind_openssl{}",
-        std::env::consts::DLL_PREFIX,
-        std::env::consts::DLL_SUFFIX
-    ));
     let config: String = include_str!("../openssl.cnf")
         .lines()
         .map(|line| match line.starts_with("module = ") {
-            true => format!("module = {}\n", conf_value(&library)),
+            true => format!("module = {}\n", conf_value(&library::find())),
             false => format!("{line}\n"),
         })
         .collect();
