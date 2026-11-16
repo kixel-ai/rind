@@ -378,10 +378,13 @@ def main():
     # rind's copies must be VG's compiled code byte for byte, the bytes the
     # cosimulation runs, so an encoding of the same instruction that differs
     # from VG's, which may need another CPU feature, fails here. A routine
-    # is VG's by its name alone, wherever rind puts it.
+    # is VG's by its name, wherever rind puts it; any function of a `vg`
+    # module must be one, so a routine an older pin had fails here.
     for obj in a.rind:
-        vendored = disassemble(a.arch, obj, lambda path, name: name in text)
+        vendored = disassemble(a.arch, obj, lambda path, name: name in text or "::vg::" in path)
         for name, insns in vendored.items():
+            if name not in text:
+                fail(f"rind's {name} is not a routine of VG's text at this commit")
             compare(a.arch, name, text[name], insns, compiled[name], "rind's build", exact=True)
             rind_checked += 1
 
