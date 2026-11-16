@@ -925,7 +925,9 @@ fn verify_internal<P: Params>(
 
     // A use that keeps nothing expands only `A`, and transforms `t1` a row
     // at a time, as an unkept `t1 * 2^d` would only cost memory traffic.
-    let unkept;
+    // Always initialised, so its drop needs no flag: aarch64 builds tested
+    // a deferred one's unset capacity first, which valgrind flags.
+    let mut unkept = Vec::new();
     let kept = expanded.get_or_build(|| Some(expand_public::<P>(pk)));
     let (a, kept_t1) = match kept.and_then(Option::as_deref) {
         Some(expanded) => {
