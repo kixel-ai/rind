@@ -395,7 +395,12 @@ mod tests {
             v[bits as usize / 64 - 1] >>= 1;
             v
         };
-        let (dp, dq, qinv, x) = (below_top(bits), below_top(bits), below_top(bits), below_top(2 * bits));
+        let (dp, dq, qinv, x) = (
+            below_top(bits),
+            below_top(bits),
+            below_top(bits),
+            below_top(2 * bits),
+        );
         let (dp, dq, qinv) = (be(&dp, 8 * w), be(&dq, 8 * w), be(&qinv, 8 * w));
         let x = be(&x, 16 * w);
         let mut out = vec![0; 16 * w];
@@ -434,6 +439,7 @@ mod tests {
         let x = be(&x, 8 * k);
         let mut out = vec![0; 8 * k];
         let ifma = RsaIfma::check(&ni, 65537).expect("AVX-512 IFMA");
-        assert!(ct_sde::traced(|| ifma.public(&mut out, &pre, &[1, 0, 1], &x)));
+        let e = [1, 0, 1];
+        assert!(ct_sde::traced(|| ifma.public(&mut out, &pre, &e, &x)));
     }
 }

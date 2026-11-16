@@ -266,7 +266,9 @@ impl RsaPrivateKey {
     /// the former runs.
     #[cfg(all(test, rind_backend = "x86_64"))]
     pub(crate) fn crt_both(&self, c: &RsaPosIntModN) -> Option<[RsaPosIntModN; 2]> {
-        self.ifma.runs().then(|| [self.crt_ifma(c).unwrap(), self.crt(c)])
+        self.ifma
+            .runs()
+            .then(|| [self.crt_ifma(c).unwrap(), self.crt(c)])
     }
 
     /// The CRT, by rind's exponentiations.
