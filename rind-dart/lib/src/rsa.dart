@@ -1,9 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
-part of 'bindings.dart';
+library;
+
+import 'dart:ffi';
+import 'dart:typed_data';
+
+import 'error.dart';
+import 'native.dart';
+
+extension on Handle {
+  Pointer<Void> get _pointer => pointerOf(this);
+}
 
 /// The modulus size of a generated RSA key.
-enum RsaKeySize {
+enum KeySize {
   /// A 2048-bit modulus.
   rsa2048,
 
@@ -20,8 +30,8 @@ enum RsaKeySize {
   rsa8192,
 }
 
-/// An algorithm an [RsaKeyPair] signs with: a padding and a hash.
-enum RsaSigningAlgorithm {
+/// An algorithm a [KeyPair] signs with: a padding and a hash.
+enum SigningAlgorithm {
   /// RSASSA-PKCS1-v1_5 with SHA-256.
   pkcs1Sha256(0),
 
@@ -40,54 +50,54 @@ enum RsaSigningAlgorithm {
   /// RSASSA-PSS with SHA-512, MGF1-SHA-512, and a salt as long as the hash.
   pssSha512(5);
 
-  const RsaSigningAlgorithm(this._id);
+  const SigningAlgorithm(this._id);
 
   final int _id;
 }
 
-/// An algorithm an [RsaPublicKey] verifies with: a padding, a hash, and the
+/// An algorithm a [PublicKey] verifies with: a padding, a hash, and the
 /// smallest modulus it accepts.
 ///
-/// Each verifies what the [RsaSigningAlgorithm] of the same name signs, and
+/// Each verifies what the [SigningAlgorithm] of the same name signs, and
 /// accepts moduli of 2048 to 8192 bits.
-final class RsaVerificationAlgorithm {
-  const RsaVerificationAlgorithm._(this._id, this._name);
+final class VerificationAlgorithm {
+  const VerificationAlgorithm._(this._id, this._name);
 
   final int _id;
   final String _name;
 
   /// RSASSA-PKCS1-v1_5 with SHA-256.
-  static const pkcs1Sha256 = RsaVerificationAlgorithm._(0, 'RSA_PKCS1_SHA256');
+  static const pkcs1Sha256 = VerificationAlgorithm._(0, 'RSA_PKCS1_SHA256');
 
   /// RSASSA-PKCS1-v1_5 with SHA-384.
-  static const pkcs1Sha384 = RsaVerificationAlgorithm._(1, 'RSA_PKCS1_SHA384');
+  static const pkcs1Sha384 = VerificationAlgorithm._(1, 'RSA_PKCS1_SHA384');
 
   /// RSASSA-PKCS1-v1_5 with SHA-512.
-  static const pkcs1Sha512 = RsaVerificationAlgorithm._(2, 'RSA_PKCS1_SHA512');
+  static const pkcs1Sha512 = VerificationAlgorithm._(2, 'RSA_PKCS1_SHA512');
 
   /// RSASSA-PSS with SHA-256 and a salt as long as the hash.
-  static const pssSha256 = RsaVerificationAlgorithm._(3, 'RSA_PSS_SHA256');
+  static const pssSha256 = VerificationAlgorithm._(3, 'RSA_PSS_SHA256');
 
   /// RSASSA-PSS with SHA-384 and a salt as long as the hash.
-  static const pssSha384 = RsaVerificationAlgorithm._(4, 'RSA_PSS_SHA384');
+  static const pssSha384 = VerificationAlgorithm._(4, 'RSA_PSS_SHA384');
 
   /// RSASSA-PSS with SHA-512 and a salt as long as the hash.
-  static const pssSha512 = RsaVerificationAlgorithm._(5, 'RSA_PSS_SHA512');
+  static const pssSha512 = VerificationAlgorithm._(5, 'RSA_PSS_SHA512');
 
   /// RSASSA-PSS with SHA-256 and a salt of any length.
-  static const pssSha256AnySalt = RsaVerificationAlgorithm._(
+  static const pssSha256AnySalt = VerificationAlgorithm._(
     6,
     'RSA_PSS_SHA256_ANY_SALT',
   );
 
   /// RSASSA-PSS with SHA-384 and a salt of any length.
-  static const pssSha384AnySalt = RsaVerificationAlgorithm._(
+  static const pssSha384AnySalt = VerificationAlgorithm._(
     7,
     'RSA_PSS_SHA384_ANY_SALT',
   );
 
   /// RSASSA-PSS with SHA-512 and a salt of any length.
-  static const pssSha512AnySalt = RsaVerificationAlgorithm._(
+  static const pssSha512AnySalt = VerificationAlgorithm._(
     8,
     'RSA_PSS_SHA512_ANY_SALT',
   );
@@ -97,43 +107,39 @@ final class RsaVerificationAlgorithm {
 }
 
 /// RSASSA-PKCS1-v1_5 with SHA-1, for old signatures.
-const rsaPkcs1Sha1 = RsaVerificationAlgorithm._(100, 'RSA_PKCS1_SHA1');
+const pkcs1Sha1 = VerificationAlgorithm._(100, 'RSA_PKCS1_SHA1');
 
 /// RSASSA-PKCS1-v1_5 with SHA-1, for old keys of 1024 bits or more.
-const rsaPkcs1Min1024Sha1 = RsaVerificationAlgorithm._(
-  101,
-  'RSA_PKCS1_1024_SHA1',
-);
+const pkcs1Min1024Sha1 = VerificationAlgorithm._(101, 'RSA_PKCS1_1024_SHA1');
 
 /// RSASSA-PKCS1-v1_5 with SHA-256, for old keys of 1024 bits or more.
-const rsaPkcs1Min1024Sha256 = RsaVerificationAlgorithm._(
+const pkcs1Min1024Sha256 = VerificationAlgorithm._(
   102,
   'RSA_PKCS1_1024_SHA256',
 );
 
 /// RSASSA-PKCS1-v1_5 with SHA-512, for old keys of 1024 bits or more.
-const rsaPkcs1Min1024Sha512 = RsaVerificationAlgorithm._(
+const pkcs1Min1024Sha512 = VerificationAlgorithm._(
   103,
   'RSA_PKCS1_1024_SHA512',
 );
 
 /// RSASSA-PKCS1-v1_5 with SHA-384, for keys of 3072 bits or more only.
-const rsaPkcs1Min3072Sha384 = RsaVerificationAlgorithm._(
+const pkcs1Min3072Sha384 = VerificationAlgorithm._(
   104,
   'RSA_PKCS1_3072_SHA384',
 );
 
-/// An RSA public key, which verifies with any [RsaVerificationAlgorithm]
+/// An RSA public key, which verifies with any [VerificationAlgorithm]
 /// whose modulus floor it meets.
-final class RsaPublicKey extends _Handle {
-  RsaPublicKey._(Pointer<Void> pointer)
-    : super(pointer, _rsaPublicKeyFinalizer);
+final class PublicKey extends Handle {
+  PublicKey._(Pointer<Void> pointer) : super(pointer, _rsaPublicKeyFinalizer);
 
-  RsaPublicKey._parse(int source, Uint8List bytes, [Uint8List? exponent])
+  PublicKey._parse(int source, Uint8List bytes, [Uint8List? exponent])
     : this._(_new(source, bytes, exponent ?? Uint8List(0)));
 
   static Pointer<Void> _new(int source, Uint8List bytes, Uint8List exponent) =>
-      _newHandle(
+      newHandle(
         (out) => _rsaPublicKeyNew(
           source,
           bytes.address,
@@ -146,27 +152,27 @@ final class RsaPublicKey extends _Handle {
 
   /// Parses a PKCS#1 `RSAPublicKey`, throwing [RindError.keyRejected] for a
   /// malformed one or a `SubjectPublicKeyInfo`, which
-  /// [RsaPublicKey.fromSpki] takes.
-  RsaPublicKey(Uint8List der) : this._parse(0, der);
+  /// [PublicKey.fromSpki] takes.
+  PublicKey(Uint8List der) : this._parse(0, der);
 
   /// Parses a `SubjectPublicKeyInfo`, throwing [RindError.keyRejected] for a
   /// malformed one or one naming another algorithm.
-  RsaPublicKey.fromSpki(Uint8List der) : this._parse(1, der);
+  PublicKey.fromSpki(Uint8List der) : this._parse(1, der);
 
   /// Loads a key from its big-endian modulus [n] and exponent [e], as a JWK
   /// carries them, throwing [RindError.keyRejected] for a malformed one.
-  RsaPublicKey.fromComponents({required Uint8List n, required Uint8List e})
+  PublicKey.fromComponents({required Uint8List n, required Uint8List e})
     : this._parse(2, n, e);
 
   /// Checks that [signature] is the key's signature of [message] under
   /// [algorithm], throwing [RindError.badSignature] if not, or
   /// [RindError.keyRejected] if the modulus is below [algorithm]'s floor.
   void verify(
-    RsaVerificationAlgorithm algorithm,
+    VerificationAlgorithm algorithm,
     Uint8List message,
     Uint8List signature,
   ) {
-    _check(
+    check(
       _rsaPublicKeyVerify(
         _pointer,
         algorithm._id,
@@ -179,17 +185,17 @@ final class RsaPublicKey extends _Handle {
   }
 
   /// The modulus's length in bytes, which is also its signatures' length.
-  int get modulusLength => _check(_rsaPublicKeyModulusLen(_pointer));
+  int get modulusLength => check(_rsaPublicKeyModulusLen(_pointer));
 
-  /// The key's PKCS#1 `RSAPublicKey` encoding, as [RsaPublicKey.new] takes
+  /// The key's PKCS#1 `RSAPublicKey` encoding, as [PublicKey.new] takes
   /// it.
   Uint8List get bytes => _export(0);
 
   /// Encodes the key as a `SubjectPublicKeyInfo`.
   Uint8List toSpki() => _export(1);
 
-  Uint8List _export(int spki) => _output(
-    _exportLength,
+  Uint8List _export(int spki) => output(
+    exportLength,
     (out) => _rsaPublicKeyExport(_pointer, spki, out.address, out.length),
   );
 }
@@ -198,46 +204,46 @@ final class RsaPublicKey extends _Handle {
 ///
 /// Generating a key and signing take milliseconds to seconds, so run them
 /// off the UI isolate, as with `Isolate.run`.
-final class RsaKeyPair extends _Handle {
-  RsaKeyPair._(Pointer<Void> pointer) : super(pointer, _rsaKeyPairFinalizer);
+final class KeyPair extends Handle {
+  KeyPair._(Pointer<Void> pointer) : super(pointer, _rsaKeyPairFinalizer);
 
-  static Pointer<Void> _parse(int source, Uint8List der) => _native(
+  static Pointer<Void> _parse(int source, Uint8List der) => native(
     der,
     (bytes) =>
-        _newHandle((out) => _rsaKeyPairNew(source, 0, bytes, der.length, out)),
+        newHandle((out) => _rsaKeyPairNew(source, 0, bytes, der.length, out)),
   );
 
   /// Generates a random key pair of [size].
-  RsaKeyPair.generate(RsaKeySize size)
+  KeyPair.generate(KeySize size)
     : this._(
-        _newHandle((out) => _rsaKeyPairNew(0, size.index, nullptr, 0, out)),
+        newHandle((out) => _rsaKeyPairNew(0, size.index, nullptr, 0, out)),
       );
 
   /// Parses a PKCS#8 private key, throwing [RindError.keyRejected] for a
   /// malformed one.
-  RsaKeyPair.fromPkcs8(Uint8List der) : this._(_parse(1, der));
+  KeyPair.fromPkcs8(Uint8List der) : this._(_parse(1, der));
 
   /// Parses a PKCS#1 `RSAPrivateKey`, throwing [RindError.keyRejected] for a
   /// malformed one.
-  RsaKeyPair.fromPkcs1(Uint8List der) : this._(_parse(2, der));
+  KeyPair.fromPkcs1(Uint8List der) : this._(_parse(2, der));
 
   /// The public key, which verifies the key pair's signatures.
-  late final RsaPublicKey publicKey = RsaPublicKey._(
-    _newHandle((out) => _rsaKeyPairPublicKey(_pointer, out)),
+  late final PublicKey publicKey = PublicKey._(
+    newHandle((out) => _rsaKeyPairPublicKey(_pointer, out)),
   );
 
   /// Signs [message] with [algorithm].
-  Uint8List sign(RsaSigningAlgorithm algorithm, Uint8List message) =>
-      _native(message, (input) {
-        return _native(Uint8List(_modulusLength), (out) {
-          final len = _check(
+  Uint8List sign(SigningAlgorithm algorithm, Uint8List message) =>
+      native(message, (input) {
+        return native(Uint8List(modulusLength), (out) {
+          final len = check(
             _rsaSign(
               _pointer,
               algorithm._id,
               input,
               message.length,
               out,
-              _modulusLength,
+              modulusLength,
             ),
           );
           return Uint8List.fromList(out.asTypedList(len));
@@ -245,8 +251,8 @@ final class RsaKeyPair extends _Handle {
       });
 
   /// Encodes the private key as PKCS#8.
-  Uint8List toPkcs8() => _output(
-    _exportLength,
+  Uint8List toPkcs8() => output(
+    exportLength,
     (out) => _rsaKeyPairExport(_pointer, 1, out.address, out.length),
   );
 }
@@ -278,12 +284,12 @@ const oaepSha1 = OaepAlgorithm._(100, 'RSA-OAEP-SHA1');
 ///
 /// Generating a key and decrypting take milliseconds to seconds, so run
 /// them off the UI isolate, as with `Isolate.run`.
-final class RsaDecryptingKey extends _Handle {
-  RsaDecryptingKey._(this.algorithm, int source, int size, Uint8List der)
+final class DecryptingKey extends Handle {
+  DecryptingKey._(this.algorithm, int source, int size, Uint8List der)
     : super(
-        _native(
+        native(
           der,
-          (bytes) => _newHandle(
+          (bytes) => newHandle(
             (out) => _decryptingKeyNew(
               algorithm._id,
               source,
@@ -298,36 +304,36 @@ final class RsaDecryptingKey extends _Handle {
       );
 
   /// Generates a random key of [size] for [algorithm].
-  RsaDecryptingKey.generate(OaepAlgorithm algorithm, RsaKeySize size)
+  DecryptingKey.generate(OaepAlgorithm algorithm, KeySize size)
     : this._(algorithm, 0, size.index, Uint8List(0));
 
   /// Parses a PKCS#8 private key for [algorithm], throwing
   /// [RindError.keyRejected] for a malformed one.
-  RsaDecryptingKey.fromPkcs8(OaepAlgorithm algorithm, Uint8List der)
+  DecryptingKey.fromPkcs8(OaepAlgorithm algorithm, Uint8List der)
     : this._(algorithm, 1, 0, der);
 
   /// Parses a PKCS#1 `RSAPrivateKey` for [algorithm], throwing
   /// [RindError.keyRejected] for a malformed one.
-  RsaDecryptingKey.fromPkcs1(OaepAlgorithm algorithm, Uint8List der)
+  DecryptingKey.fromPkcs1(OaepAlgorithm algorithm, Uint8List der)
     : this._(algorithm, 2, 0, der);
 
   /// The algorithm the key decrypts with.
   final OaepAlgorithm algorithm;
 
   /// The public key, which encrypts to this key.
-  late final RsaEncryptingKey publicKey = RsaEncryptingKey._(
+  late final EncryptingKey publicKey = EncryptingKey._(
     algorithm,
-    _newHandle((out) => _decryptingKeyPublicKey(_pointer, out)),
+    newHandle((out) => _decryptingKeyPublicKey(_pointer, out)),
   );
 
   /// Decrypts [ciphertext] sealed with [label], throwing
   /// [RindError.decryptFailed] if it does not decrypt.
   Uint8List decrypt(Uint8List ciphertext, {Uint8List? label}) {
     label ??= Uint8List(0);
-    return _native(ciphertext, (input) {
-      return _native(label!, (labelPointer) {
-        return _native(Uint8List(_modulusLength), (out) {
-          final len = _check(
+    return native(ciphertext, (input) {
+      return native(label!, (labelPointer) {
+        return native(Uint8List(modulusLength), (out) {
+          final len = check(
             _decrypt(
               _pointer,
               input,
@@ -335,7 +341,7 @@ final class RsaDecryptingKey extends _Handle {
               labelPointer,
               label!.length,
               out,
-              _modulusLength,
+              modulusLength,
             ),
           );
           return Uint8List.fromList(out.asTypedList(len));
@@ -345,18 +351,18 @@ final class RsaDecryptingKey extends _Handle {
   }
 
   /// Encodes the private key as PKCS#8.
-  Uint8List toPkcs8() => _output(
-    _exportLength,
+  Uint8List toPkcs8() => output(
+    exportLength,
     (out) => _decryptingKeyExport(_pointer, 1, out.address, out.length),
   );
 }
 
 /// An RSA public key that encrypts with RSA-OAEP.
-final class RsaEncryptingKey extends _Handle {
-  RsaEncryptingKey._(this.algorithm, Pointer<Void> _pointer)
+final class EncryptingKey extends Handle {
+  EncryptingKey._(this.algorithm, Pointer<Void> _pointer)
     : super(_pointer, _encryptingKeyFinalizer);
 
-  RsaEncryptingKey._parse(
+  EncryptingKey._parse(
     this.algorithm,
     int source,
     Uint8List bytes, [
@@ -371,7 +377,7 @@ final class RsaEncryptingKey extends _Handle {
     int source,
     Uint8List bytes,
     Uint8List exponent,
-  ) => _newHandle(
+  ) => newHandle(
     (out) => _encryptingKeyNew(
       algorithm._id,
       source,
@@ -385,20 +391,20 @@ final class RsaEncryptingKey extends _Handle {
 
   /// Parses a PKCS#1 `RSAPublicKey` for [algorithm], throwing
   /// [RindError.keyRejected] for a malformed one, a modulus below 2048 bits,
-  /// or a `SubjectPublicKeyInfo`, which [RsaEncryptingKey.fromSpki] takes.
-  RsaEncryptingKey(OaepAlgorithm algorithm, Uint8List der)
+  /// or a `SubjectPublicKeyInfo`, which [EncryptingKey.fromSpki] takes.
+  EncryptingKey(OaepAlgorithm algorithm, Uint8List der)
     : this._parse(algorithm, 0, der);
 
   /// Parses a `SubjectPublicKeyInfo` for [algorithm], throwing
   /// [RindError.keyRejected] for a malformed one, one naming another
   /// algorithm, or a modulus below 2048 bits.
-  RsaEncryptingKey.fromSpki(OaepAlgorithm algorithm, Uint8List der)
+  EncryptingKey.fromSpki(OaepAlgorithm algorithm, Uint8List der)
     : this._parse(algorithm, 1, der);
 
   /// Loads a key for [algorithm] from its big-endian modulus [n] and
   /// exponent [e], as a JWK carries them, throwing [RindError.keyRejected]
   /// for a malformed one or a modulus below 2048 bits.
-  RsaEncryptingKey.fromComponents(
+  EncryptingKey.fromComponents(
     OaepAlgorithm algorithm, {
     required Uint8List n,
     required Uint8List e,
@@ -412,8 +418,8 @@ final class RsaEncryptingKey extends _Handle {
   /// than [maxMessageLength].
   Uint8List encrypt(Uint8List message, {Uint8List? label}) {
     label ??= Uint8List(0);
-    return _output(
-      _modulusLength,
+    return output(
+      modulusLength,
       (out) => _encrypt(
         _pointer,
         message.address,
@@ -427,17 +433,261 @@ final class RsaEncryptingKey extends _Handle {
   }
 
   /// The longest message the key encrypts, in bytes.
-  int get maxMessageLength => _check(_encryptingKeyMaxMessageLen(_pointer));
+  int get maxMessageLength => check(_encryptingKeyMaxMessageLen(_pointer));
 
-  /// The key's PKCS#1 `RSAPublicKey` encoding, as [RsaEncryptingKey.new]
+  /// The key's PKCS#1 `RSAPublicKey` encoding, as [EncryptingKey.new]
   /// takes it.
   Uint8List get bytes => _export(0);
 
   /// Encodes the key as a `SubjectPublicKeyInfo`.
   Uint8List toSpki() => _export(1);
 
-  Uint8List _export(int spki) => _output(
-    _exportLength,
+  Uint8List _export(int spki) => output(
+    exportLength,
     (out) => _encryptingKeyExport(_pointer, spki, out.address, out.length),
   );
 }
+
+// --- Native functions ---
+
+@Native<Free>(symbol: 'rind_dart_rsa_key_pair_free')
+external void _rsaKeyPairFree(Pointer<Void> pair);
+final _rsaKeyPairFinalizer = finalizer(Native.addressOf(_rsaKeyPairFree));
+
+// Not a leaf call: generating a key takes up to seconds.
+@Native<
+  IntPtr Function(Uint32, Uint32, Pointer<Uint8>, Size, Pointer<Pointer<Void>>)
+>(symbol: 'rind_dart_rsa_key_pair_new')
+external int _rsaKeyPairNew(
+  int source,
+  int size,
+  Pointer<Uint8> bytes,
+  int bytesLen,
+  Pointer<Pointer<Void>> out,
+);
+
+@Native<
+  IntPtr Function(
+    Pointer<Void>,
+    Uint32,
+    Pointer<Uint8>,
+    Size,
+    Pointer<Uint8>,
+    Size,
+  )
+>(symbol: 'rind_dart_rsa_sign')
+external int _rsaSign(
+  Pointer<Void> pair,
+  int algorithm,
+  Pointer<Uint8> message,
+  int messageLen,
+  Pointer<Uint8> out,
+  int outLen,
+);
+
+@Native<IntPtr Function(Pointer<Void>, Uint32, Pointer<Uint8>, Size)>(
+  symbol: 'rind_dart_rsa_key_pair_export',
+  isLeaf: true,
+)
+external int _rsaKeyPairExport(
+  Pointer<Void> pair,
+  int what,
+  Pointer<Uint8> out,
+  int outLen,
+);
+
+@Native<IntPtr Function(Pointer<Void>, Pointer<Pointer<Void>>)>(
+  symbol: 'rind_dart_rsa_key_pair_public_key',
+  isLeaf: true,
+)
+external int _rsaKeyPairPublicKey(
+  Pointer<Void> pair,
+  Pointer<Pointer<Void>> out,
+);
+
+@Native<Free>(symbol: 'rind_dart_rsa_public_key_free')
+external void _rsaPublicKeyFree(Pointer<Void> key);
+final _rsaPublicKeyFinalizer = finalizer(Native.addressOf(_rsaPublicKeyFree));
+
+@Native<
+  IntPtr Function(
+    Uint32,
+    Pointer<Uint8>,
+    Size,
+    Pointer<Uint8>,
+    Size,
+    Pointer<Pointer<Void>>,
+  )
+>(symbol: 'rind_dart_rsa_public_key_new', isLeaf: true)
+external int _rsaPublicKeyNew(
+  int source,
+  Pointer<Uint8> bytes,
+  int bytesLen,
+  Pointer<Uint8> exponent,
+  int exponentLen,
+  Pointer<Pointer<Void>> out,
+);
+
+@Native<
+  IntPtr Function(
+    Pointer<Void>,
+    Uint32,
+    Pointer<Uint8>,
+    Size,
+    Pointer<Uint8>,
+    Size,
+  )
+>(symbol: 'rind_dart_rsa_public_key_verify', isLeaf: true)
+external int _rsaPublicKeyVerify(
+  Pointer<Void> key,
+  int algorithm,
+  Pointer<Uint8> message,
+  int messageLen,
+  Pointer<Uint8> signature,
+  int signatureLen,
+);
+
+@Native<IntPtr Function(Pointer<Void>, Uint32, Pointer<Uint8>, Size)>(
+  symbol: 'rind_dart_rsa_public_key_export',
+  isLeaf: true,
+)
+external int _rsaPublicKeyExport(
+  Pointer<Void> key,
+  int spki,
+  Pointer<Uint8> out,
+  int outLen,
+);
+
+@Native<IntPtr Function(Pointer<Void>)>(
+  symbol: 'rind_dart_rsa_public_key_modulus_len',
+  isLeaf: true,
+)
+external int _rsaPublicKeyModulusLen(Pointer<Void> key);
+
+@Native<Free>(symbol: 'rind_dart_decrypting_key_free')
+external void _decryptingKeyFree(Pointer<Void> key);
+final _decryptingKeyFinalizer = finalizer(Native.addressOf(_decryptingKeyFree));
+
+// Not a leaf call: generating a key takes up to seconds.
+@Native<
+  IntPtr Function(
+    Uint32,
+    Uint32,
+    Uint32,
+    Pointer<Uint8>,
+    Size,
+    Pointer<Pointer<Void>>,
+  )
+>(symbol: 'rind_dart_decrypting_key_new')
+external int _decryptingKeyNew(
+  int algorithm,
+  int source,
+  int size,
+  Pointer<Uint8> bytes,
+  int bytesLen,
+  Pointer<Pointer<Void>> out,
+);
+
+@Native<IntPtr Function(Pointer<Void>, Pointer<Pointer<Void>>)>(
+  symbol: 'rind_dart_decrypting_key_public_key',
+  isLeaf: true,
+)
+external int _decryptingKeyPublicKey(
+  Pointer<Void> key,
+  Pointer<Pointer<Void>> out,
+);
+
+@Native<
+  IntPtr Function(
+    Pointer<Void>,
+    Pointer<Uint8>,
+    Size,
+    Pointer<Uint8>,
+    Size,
+    Pointer<Uint8>,
+    Size,
+  )
+>(symbol: 'rind_dart_decrypt')
+external int _decrypt(
+  Pointer<Void> key,
+  Pointer<Uint8> ciphertext,
+  int ciphertextLen,
+  Pointer<Uint8> label,
+  int labelLen,
+  Pointer<Uint8> out,
+  int outLen,
+);
+
+@Native<IntPtr Function(Pointer<Void>, Uint32, Pointer<Uint8>, Size)>(
+  symbol: 'rind_dart_decrypting_key_export',
+  isLeaf: true,
+)
+external int _decryptingKeyExport(
+  Pointer<Void> key,
+  int what,
+  Pointer<Uint8> out,
+  int outLen,
+);
+
+@Native<Free>(symbol: 'rind_dart_encrypting_key_free')
+external void _encryptingKeyFree(Pointer<Void> key);
+final _encryptingKeyFinalizer = finalizer(Native.addressOf(_encryptingKeyFree));
+
+@Native<
+  IntPtr Function(
+    Uint32,
+    Uint32,
+    Pointer<Uint8>,
+    Size,
+    Pointer<Uint8>,
+    Size,
+    Pointer<Pointer<Void>>,
+  )
+>(symbol: 'rind_dart_encrypting_key_new', isLeaf: true)
+external int _encryptingKeyNew(
+  int algorithm,
+  int source,
+  Pointer<Uint8> bytes,
+  int bytesLen,
+  Pointer<Uint8> exponent,
+  int exponentLen,
+  Pointer<Pointer<Void>> out,
+);
+
+@Native<
+  IntPtr Function(
+    Pointer<Void>,
+    Pointer<Uint8>,
+    Size,
+    Pointer<Uint8>,
+    Size,
+    Pointer<Uint8>,
+    Size,
+  )
+>(symbol: 'rind_dart_encrypt', isLeaf: true)
+external int _encrypt(
+  Pointer<Void> key,
+  Pointer<Uint8> message,
+  int messageLen,
+  Pointer<Uint8> label,
+  int labelLen,
+  Pointer<Uint8> out,
+  int outLen,
+);
+
+@Native<IntPtr Function(Pointer<Void>, Uint32, Pointer<Uint8>, Size)>(
+  symbol: 'rind_dart_encrypting_key_export',
+  isLeaf: true,
+)
+external int _encryptingKeyExport(
+  Pointer<Void> key,
+  int spki,
+  Pointer<Uint8> out,
+  int outLen,
+);
+
+@Native<IntPtr Function(Pointer<Void>)>(
+  symbol: 'rind_dart_encrypting_key_max_message_len',
+  isLeaf: true,
+)
+external int _encryptingKeyMaxMessageLen(Pointer<Void> key);

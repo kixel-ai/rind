@@ -29,11 +29,11 @@ final class _Ed25519 extends Ed25519 {
     );
   }
 
-  static rind.Ed25519KeyPair _key(List<int> seed) {
+  static ed25519.KeyPair _key(List<int> seed) {
     if (seed.length != 32) {
       throw ArgumentError.value(seed.length, 'seed', 'Must be 32 bytes');
     }
-    return rind.Ed25519KeyPair.fromSeed(_bytes(seed));
+    return ed25519.KeyPair.fromSeed(_bytes(seed));
   }
 
   @override
@@ -71,9 +71,9 @@ final class _Ed25519 extends Ed25519 {
     }
     KeyPairType.ed25519.checkPublicKeyBytesFormat(publicKey.bytes);
     Ed25519.checkSignatureLength(signature.bytes.length);
-    final rind.Ed25519PublicKey key;
+    final ed25519.PublicKey key;
     try {
-      key = rind.Ed25519PublicKey(_bytes(publicKey.bytes));
+      key = ed25519.PublicKey(_bytes(publicKey.bytes));
     } on rind.RindException catch (e) {
       // The Dart implementation, too, verifies nothing under a public key
       // that is no point, rather than throwing.
@@ -103,7 +103,7 @@ final class _Ecdsa extends Ecdsa {
 
   @override
   Future<EcKeyPair> newKeyPair() async {
-    final key = rind.EcdsaKeyPair.generate(_curve.signing);
+    final key = ecdsa.KeyPair.generate(_curve.signing);
     return _curve.pair(key.toScalar(), key.publicKey.bytes);
   }
 
@@ -118,7 +118,7 @@ final class _Ecdsa extends Ecdsa {
     final key = _keyArgument(
       'keyPair',
       data,
-      () => rind.EcdsaKeyPair.fromScalarAndPublicKey(
+      () => ecdsa.KeyPair.fromScalarAndPublicKey(
         _curve.signing,
         parts.d,
         parts.point,
@@ -141,7 +141,7 @@ final class _Ecdsa extends Ecdsa {
     final key = _keyArgument(
       'signature.publicKey',
       publicKey,
-      () => rind.EcdsaPublicKey(_curve.verification, point),
+      () => ecdsa.PublicKey(_curve.verification, point),
     );
     return _verifies(
       () => key.verify(_bytes(message), _bytes(signature.bytes)),

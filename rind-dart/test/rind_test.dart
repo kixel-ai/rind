@@ -3,8 +3,12 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:rind/ecdsa.dart' as ecdsa;
+import 'package:rind/ed25519.dart' as ed25519;
 import 'package:rind/legacy.dart';
 import 'package:rind/rind.dart';
+import 'package:rind/rsa.dart' as rsa;
+import 'package:rind/rsa_legacy.dart' as rsa;
 import 'package:test/test.dart';
 
 Uint8List hex(String s) {
@@ -446,7 +450,7 @@ void main() {
   group('signatures', () {
     test('Ed25519 known answer', () {
       // RFC 8032 section 7.1, test 1.
-      final pair = Ed25519KeyPair.fromSeed(
+      final pair = ed25519.KeyPair.fromSeed(
         hex('9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60'),
       );
       final publicKey = hex(
@@ -458,7 +462,7 @@ void main() {
       );
       expect(pair.publicKey.bytes, publicKey);
       expect(pair.sign(Uint8List(0)), signature);
-      final verifier = Ed25519PublicKey(publicKey);
+      final verifier = ed25519.PublicKey(publicKey);
       verifier.verify(Uint8List(0), signature);
       expect(
         () => verifier.verify(Uint8List(1), signature),
@@ -466,32 +470,32 @@ void main() {
       );
 
       expect(
-        Ed25519KeyPair.fromPkcs8(pair.toPkcs8()).publicKey.bytes,
+        ed25519.KeyPair.fromPkcs8(pair.toPkcs8()).publicKey.bytes,
         publicKey,
       );
       expect(
-        Ed25519KeyPair.fromPkcs8(pair.toPkcs8v1()).publicKey.bytes,
+        ed25519.KeyPair.fromPkcs8(pair.toPkcs8v1()).publicKey.bytes,
         publicKey,
       );
       expect(
-        Ed25519KeyPair.fromSeedAndPublicKey(pair.toSeed(), publicKey).toSeed(),
+        ed25519.KeyPair.fromSeedAndPublicKey(pair.toSeed(), publicKey).toSeed(),
         pair.toSeed(),
       );
       expect(
-        () => Ed25519KeyPair.fromSeedAndPublicKey(
+        () => ed25519.KeyPair.fromSeedAndPublicKey(
           pair.toSeed(),
           flipped(publicKey),
         ),
         throwsRind(RindError.keyRejected),
       );
       expect(
-        Ed25519PublicKey.fromSpki(pair.publicKey.toSpki()).bytes,
+        ed25519.PublicKey.fromSpki(pair.publicKey.toSpki()).bytes,
         publicKey,
       );
     });
 
     test('Ed25519 public keys refuse another encoding', () {
-      final pair = Ed25519KeyPair.generate();
+      final pair = ed25519.KeyPair.generate();
       final spki = pair.publicKey.toSpki();
       for (final bytes in [
         spki,
@@ -499,12 +503,12 @@ void main() {
         pair.publicKey.bytes.sublist(1),
       ]) {
         expect(
-          () => Ed25519PublicKey(bytes),
+          () => ed25519.PublicKey(bytes),
           throwsRind(RindError.keyRejected),
         );
       }
-      final ecdsaSpki = EcdsaKeyPair.generate(
-        EcdsaSigningAlgorithm.p256Sha256Asn1,
+      final ecdsaSpki = ecdsa.KeyPair.generate(
+        ecdsa.SigningAlgorithm.p256Sha256Asn1,
       ).publicKey.toSpki();
       for (final der in [
         pair.publicKey.bytes,
@@ -512,7 +516,7 @@ void main() {
         spki.sublist(0, spki.length - 1),
       ]) {
         expect(
-          () => Ed25519PublicKey.fromSpki(der),
+          () => ed25519.PublicKey.fromSpki(der),
           throwsRind(RindError.keyRejected),
         );
       }
@@ -520,25 +524,25 @@ void main() {
 
     test('ECDSA signs and round-trips its encodings', () {
       final verifiers = {
-        EcdsaSigningAlgorithm.p256Sha256Asn1:
-            EcdsaVerificationAlgorithm.p256Sha256Asn1,
-        EcdsaSigningAlgorithm.p256Sha256Fixed:
-            EcdsaVerificationAlgorithm.p256Sha256Fixed,
-        EcdsaSigningAlgorithm.p384Sha384Asn1:
-            EcdsaVerificationAlgorithm.p384Sha384Asn1,
-        EcdsaSigningAlgorithm.p384Sha384Fixed:
-            EcdsaVerificationAlgorithm.p384Sha384Fixed,
-        EcdsaSigningAlgorithm.p521Sha512Asn1:
-            EcdsaVerificationAlgorithm.p521Sha512Asn1,
-        EcdsaSigningAlgorithm.p521Sha512Fixed:
-            EcdsaVerificationAlgorithm.p521Sha512Fixed,
+        ecdsa.SigningAlgorithm.p256Sha256Asn1:
+            ecdsa.VerificationAlgorithm.p256Sha256Asn1,
+        ecdsa.SigningAlgorithm.p256Sha256Fixed:
+            ecdsa.VerificationAlgorithm.p256Sha256Fixed,
+        ecdsa.SigningAlgorithm.p384Sha384Asn1:
+            ecdsa.VerificationAlgorithm.p384Sha384Asn1,
+        ecdsa.SigningAlgorithm.p384Sha384Fixed:
+            ecdsa.VerificationAlgorithm.p384Sha384Fixed,
+        ecdsa.SigningAlgorithm.p521Sha512Asn1:
+            ecdsa.VerificationAlgorithm.p521Sha512Asn1,
+        ecdsa.SigningAlgorithm.p521Sha512Fixed:
+            ecdsa.VerificationAlgorithm.p521Sha512Fixed,
       };
       final message = ascii('hello');
       verifiers.forEach((algorithm, verification) {
-        final pair = EcdsaKeyPair.generate(algorithm);
+        final pair = ecdsa.KeyPair.generate(algorithm);
         final signature = pair.sign(message);
         pair.publicKey.verify(message, signature);
-        final verifier = EcdsaPublicKey(verification, pair.publicKey.bytes);
+        final verifier = ecdsa.PublicKey(verification, pair.publicKey.bytes);
         verifier.verify(message, signature);
         expect(
           () => verifier.verify(flipped(message), signature),
@@ -546,9 +550,9 @@ void main() {
         );
 
         for (final reloaded in [
-          EcdsaKeyPair.fromPkcs8(algorithm, pair.toPkcs8()),
-          EcdsaKeyPair.fromSec1(algorithm, pair.toSec1()),
-          EcdsaKeyPair.fromScalarAndPublicKey(
+          ecdsa.KeyPair.fromPkcs8(algorithm, pair.toPkcs8()),
+          ecdsa.KeyPair.fromSec1(algorithm, pair.toSec1()),
+          ecdsa.KeyPair.fromScalarAndPublicKey(
             algorithm,
             pair.toScalar(),
             pair.publicKey.bytes,
@@ -556,7 +560,7 @@ void main() {
         ]) {
           expect(reloaded.publicKey.bytes, pair.publicKey.bytes);
         }
-        final fromSpki = EcdsaPublicKey.fromSpki(
+        final fromSpki = ecdsa.PublicKey.fromSpki(
           verification,
           pair.publicKey.toSpki(),
         );
@@ -564,17 +568,21 @@ void main() {
         expect(fromSpki.toSpki(), pair.publicKey.toSpki());
       });
       expect(
-        () => EcdsaKeyPair.fromPkcs8(
-          EcdsaSigningAlgorithm.p384Sha384Asn1,
-          EcdsaKeyPair.generate(EcdsaSigningAlgorithm.p256Sha256Asn1).toPkcs8(),
+        () => ecdsa.KeyPair.fromPkcs8(
+          ecdsa.SigningAlgorithm.p384Sha384Asn1,
+          ecdsa.KeyPair.generate(
+            ecdsa.SigningAlgorithm.p256Sha256Asn1,
+          ).toPkcs8(),
         ),
         throwsRind(RindError.keyRejected),
       );
     });
 
     test('ECDSA public keys refuse another encoding or curve', () {
-      const p256 = EcdsaVerificationAlgorithm.p256Sha256Asn1;
-      final pair = EcdsaKeyPair.generate(EcdsaSigningAlgorithm.p256Sha256Asn1);
+      const p256 = ecdsa.VerificationAlgorithm.p256Sha256Asn1;
+      final pair = ecdsa.KeyPair.generate(
+        ecdsa.SigningAlgorithm.p256Sha256Asn1,
+      );
       final point = pair.publicKey.bytes;
       final spki = pair.publicKey.toSpki();
       final compressed = Uint8List.fromList([
@@ -583,42 +591,42 @@ void main() {
       ]);
       for (final bytes in [spki, compressed, Uint8List(0), flipped(point, 1)]) {
         expect(
-          () => EcdsaPublicKey(p256, bytes),
+          () => ecdsa.PublicKey(p256, bytes),
           throwsRind(RindError.keyRejected),
         );
       }
       for (final der in [point, spki.sublist(0, spki.length - 1)]) {
         expect(
-          () => EcdsaPublicKey.fromSpki(p256, der),
+          () => ecdsa.PublicKey.fromSpki(p256, der),
           throwsRind(RindError.keyRejected),
         );
       }
       expect(
-        () => EcdsaPublicKey.fromSpki(
-          EcdsaVerificationAlgorithm.p384Sha384Asn1,
+        () => ecdsa.PublicKey.fromSpki(
+          ecdsa.VerificationAlgorithm.p384Sha384Asn1,
           spki,
         ),
         throwsRind(RindError.keyRejected),
       );
       expect(
-        () => EcdsaPublicKey.fromSpki(
+        () => ecdsa.PublicKey.fromSpki(
           p256,
-          Ed25519KeyPair.generate().publicKey.toSpki(),
+          ed25519.KeyPair.generate().publicKey.toSpki(),
         ),
         throwsRind(RindError.keyRejected),
       );
     });
 
     test('RSA signs, verifies, and round-trips its encodings', () {
-      final pair = RsaKeyPair.generate(RsaKeySize.rsa2048);
+      final pair = rsa.KeyPair.generate(rsa.KeySize.rsa2048);
       final message = ascii('hello');
       final verifiers = {
-        RsaSigningAlgorithm.pkcs1Sha256: RsaVerificationAlgorithm.pkcs1Sha256,
-        RsaSigningAlgorithm.pkcs1Sha384: RsaVerificationAlgorithm.pkcs1Sha384,
-        RsaSigningAlgorithm.pkcs1Sha512: RsaVerificationAlgorithm.pkcs1Sha512,
-        RsaSigningAlgorithm.pssSha256: RsaVerificationAlgorithm.pssSha256,
-        RsaSigningAlgorithm.pssSha384: RsaVerificationAlgorithm.pssSha384,
-        RsaSigningAlgorithm.pssSha512: RsaVerificationAlgorithm.pssSha512,
+        rsa.SigningAlgorithm.pkcs1Sha256: rsa.VerificationAlgorithm.pkcs1Sha256,
+        rsa.SigningAlgorithm.pkcs1Sha384: rsa.VerificationAlgorithm.pkcs1Sha384,
+        rsa.SigningAlgorithm.pkcs1Sha512: rsa.VerificationAlgorithm.pkcs1Sha512,
+        rsa.SigningAlgorithm.pssSha256: rsa.VerificationAlgorithm.pssSha256,
+        rsa.SigningAlgorithm.pssSha384: rsa.VerificationAlgorithm.pssSha384,
+        rsa.SigningAlgorithm.pssSha512: rsa.VerificationAlgorithm.pssSha512,
       };
       final publicKey = pair.publicKey;
       expect(publicKey.modulusLength, 256);
@@ -626,9 +634,9 @@ void main() {
       // One key verifies with every algorithm.
       final keys = [
         publicKey,
-        RsaPublicKey(publicKey.bytes),
-        RsaPublicKey.fromSpki(publicKey.toSpki()),
-        RsaPublicKey.fromComponents(n: n, e: e),
+        rsa.PublicKey(publicKey.bytes),
+        rsa.PublicKey.fromSpki(publicKey.toSpki()),
+        rsa.PublicKey.fromComponents(n: n, e: e),
       ];
       for (final key in keys) {
         expect(key.bytes, publicKey.bytes);
@@ -646,73 +654,73 @@ void main() {
         );
       });
       publicKey.verify(
-        RsaVerificationAlgorithm.pssSha256AnySalt,
+        rsa.VerificationAlgorithm.pssSha256AnySalt,
         message,
-        pair.sign(RsaSigningAlgorithm.pssSha256, message),
+        pair.sign(rsa.SigningAlgorithm.pssSha256, message),
       );
       // A PKCS#1 v1.5 signature is no PSS signature.
       expect(
         () => publicKey.verify(
-          RsaVerificationAlgorithm.pssSha256,
+          rsa.VerificationAlgorithm.pssSha256,
           message,
-          pair.sign(RsaSigningAlgorithm.pkcs1Sha256, message),
+          pair.sign(rsa.SigningAlgorithm.pkcs1Sha256, message),
         ),
         throwsRind(RindError.badSignature),
       );
 
-      final reloaded = RsaKeyPair.fromPkcs8(pair.toPkcs8());
+      final reloaded = rsa.KeyPair.fromPkcs8(pair.toPkcs8());
       expect(reloaded.publicKey.toSpki(), publicKey.toSpki());
       expect(
-        () => RsaKeyPair.fromPkcs8(flipped(pair.toPkcs8(), 1)),
+        () => rsa.KeyPair.fromPkcs8(flipped(pair.toPkcs8(), 1)),
         throwsRind(RindError.keyRejected),
       );
       // Legacy verification takes the same keys.
       publicKey.verify(
-        rsaPkcs1Min1024Sha256,
+        rsa.pkcs1Min1024Sha256,
         message,
-        pair.sign(RsaSigningAlgorithm.pkcs1Sha256, message),
+        pair.sign(rsa.SigningAlgorithm.pkcs1Sha256, message),
       );
     });
 
     test('RSA public keys refuse another encoding', () {
-      final publicKey = RsaKeyPair.generate(RsaKeySize.rsa2048).publicKey;
+      final publicKey = rsa.KeyPair.generate(rsa.KeySize.rsa2048).publicKey;
       final pkcs1 = publicKey.bytes;
       final spki = publicKey.toSpki();
       for (final der in [spki, Uint8List(0), pkcs1.sublist(1)]) {
-        expect(() => RsaPublicKey(der), throwsRind(RindError.keyRejected));
+        expect(() => rsa.PublicKey(der), throwsRind(RindError.keyRejected));
       }
-      final ecdsaSpki = EcdsaKeyPair.generate(
-        EcdsaSigningAlgorithm.p256Sha256Asn1,
+      final ecdsaSpki = ecdsa.KeyPair.generate(
+        ecdsa.SigningAlgorithm.p256Sha256Asn1,
       ).publicKey.toSpki();
       for (final der in [pkcs1, ecdsaSpki, spki.sublist(1)]) {
         expect(
-          () => RsaPublicKey.fromSpki(der),
+          () => rsa.PublicKey.fromSpki(der),
           throwsRind(RindError.keyRejected),
         );
       }
       expect(
-        () => RsaPublicKey.fromComponents(n: Uint8List(0), e: Uint8List(0)),
+        () => rsa.PublicKey.fromComponents(n: Uint8List(0), e: Uint8List(0)),
         throwsRind(RindError.keyRejected),
       );
     });
 
     test('RSA refuses a modulus below the algorithm floor at verify', () {
-      final pair = RsaKeyPair.generate(RsaKeySize.rsa2048);
+      final pair = rsa.KeyPair.generate(rsa.KeySize.rsa2048);
       final message = ascii('hello');
-      final signature = pair.sign(RsaSigningAlgorithm.pkcs1Sha384, message);
+      final signature = pair.sign(rsa.SigningAlgorithm.pkcs1Sha384, message);
       pair.publicKey.verify(
-        RsaVerificationAlgorithm.pkcs1Sha384,
+        rsa.VerificationAlgorithm.pkcs1Sha384,
         message,
         signature,
       );
       expect(
-        () => pair.publicKey.verify(rsaPkcs1Min3072Sha384, message, signature),
+        () => pair.publicKey.verify(rsa.pkcs1Min3072Sha384, message, signature),
         throwsRind(RindError.keyRejected),
       );
 
       // A 1024-bit key parses, verifies nothing under a 2048-bit floor, and
       // reaches the signature check under a 1024-bit one.
-      final small = RsaPublicKey.fromComponents(
+      final small = rsa.PublicKey.fromComponents(
         n: Uint8List(128)
           ..[0] = 0xc0
           ..[127] = 1,
@@ -721,9 +729,9 @@ void main() {
       expect(small.modulusLength, 128);
       final forged = Uint8List(128)..[127] = 2;
       for (final algorithm in [
-        RsaVerificationAlgorithm.pkcs1Sha256,
-        RsaVerificationAlgorithm.pssSha256,
-        RsaVerificationAlgorithm.pssSha256AnySalt,
+        rsa.VerificationAlgorithm.pkcs1Sha256,
+        rsa.VerificationAlgorithm.pssSha256,
+        rsa.VerificationAlgorithm.pssSha256AnySalt,
       ]) {
         expect(
           () => small.verify(algorithm, message, forged),
@@ -732,22 +740,24 @@ void main() {
         );
       }
       expect(
-        () => small.verify(rsaPkcs1Min1024Sha256, message, forged),
+        () => small.verify(rsa.pkcs1Min1024Sha256, message, forged),
         throwsRind(RindError.badSignature),
       );
     });
 
     test('a key pair returns the same public key each time', () {
-      final ecdsa = EcdsaKeyPair.generate(EcdsaSigningAlgorithm.p256Sha256Asn1);
-      final ed25519 = Ed25519KeyPair.generate();
-      final rsa = RsaKeyPair.generate(RsaKeySize.rsa2048);
-      final oaep = RsaDecryptingKey.fromPkcs8(
-        OaepAlgorithm.sha256,
-        rsa.toPkcs8(),
+      final ecdsaPair = ecdsa.KeyPair.generate(
+        ecdsa.SigningAlgorithm.p256Sha256Asn1,
       );
-      expect(identical(ecdsa.publicKey, ecdsa.publicKey), isTrue);
-      expect(identical(ed25519.publicKey, ed25519.publicKey), isTrue);
-      expect(identical(rsa.publicKey, rsa.publicKey), isTrue);
+      final ed25519Pair = ed25519.KeyPair.generate();
+      final rsaPair = rsa.KeyPair.generate(rsa.KeySize.rsa2048);
+      final oaep = rsa.DecryptingKey.fromPkcs8(
+        rsa.OaepAlgorithm.sha256,
+        rsaPair.toPkcs8(),
+      );
+      expect(identical(ecdsaPair.publicKey, ecdsaPair.publicKey), isTrue);
+      expect(identical(ed25519Pair.publicKey, ed25519Pair.publicKey), isTrue);
+      expect(identical(rsaPair.publicKey, rsaPair.publicKey), isTrue);
       expect(identical(oaep.publicKey, oaep.publicKey), isTrue);
     });
   });
@@ -775,13 +785,13 @@ void main() {
   });
 
   test('RSA-OAEP', () {
-    final key = RsaDecryptingKey.generate(
-      OaepAlgorithm.sha256,
-      RsaKeySize.rsa2048,
+    final key = rsa.DecryptingKey.generate(
+      rsa.OaepAlgorithm.sha256,
+      rsa.KeySize.rsa2048,
     );
     final label = ascii('label');
-    final encrypting = RsaEncryptingKey(
-      OaepAlgorithm.sha256,
+    final encrypting = rsa.EncryptingKey(
+      rsa.OaepAlgorithm.sha256,
       key.publicKey.bytes,
     );
     expect(encrypting.maxMessageLength, 256 - 2 * 32 - 2);
@@ -794,42 +804,42 @@ void main() {
     );
 
     final spki = key.publicKey.toSpki();
-    final fromSpki = RsaEncryptingKey.fromSpki(OaepAlgorithm.sha256, spki);
+    final fromSpki = rsa.EncryptingKey.fromSpki(rsa.OaepAlgorithm.sha256, spki);
     expect(fromSpki.bytes, key.publicKey.bytes);
     final (:n, :e) = rsaComponents(key.publicKey.bytes);
-    final fromComponents = RsaEncryptingKey.fromComponents(
-      OaepAlgorithm.sha256,
+    final fromComponents = rsa.EncryptingKey.fromComponents(
+      rsa.OaepAlgorithm.sha256,
       n: n,
       e: e,
     );
     expect(fromComponents.toSpki(), spki);
-    final reloaded = RsaDecryptingKey.fromPkcs8(
-      OaepAlgorithm.sha256,
+    final reloaded = rsa.DecryptingKey.fromPkcs8(
+      rsa.OaepAlgorithm.sha256,
       key.toPkcs8(),
     );
     expect(reloaded.decrypt(fromComponents.encrypt(ascii('hi'))), ascii('hi'));
     expect(reloaded.decrypt(fromSpki.encrypt(ascii('hi'))), ascii('hi'));
 
-    final legacy = RsaDecryptingKey.fromPkcs8(oaepSha1, key.toPkcs8());
+    final legacy = rsa.DecryptingKey.fromPkcs8(rsa.oaepSha1, key.toPkcs8());
     expect(legacy.decrypt(legacy.publicKey.encrypt(ascii('hi'))), ascii('hi'));
   });
 
   test('RSA-OAEP encrypting keys refuse another encoding', () {
-    final key = RsaDecryptingKey.generate(
-      OaepAlgorithm.sha256,
-      RsaKeySize.rsa2048,
+    final key = rsa.DecryptingKey.generate(
+      rsa.OaepAlgorithm.sha256,
+      rsa.KeySize.rsa2048,
     );
     final pkcs1 = key.publicKey.bytes;
     final spki = key.publicKey.toSpki();
     for (final der in [spki, Uint8List(0), pkcs1.sublist(1)]) {
       expect(
-        () => RsaEncryptingKey(OaepAlgorithm.sha256, der),
+        () => rsa.EncryptingKey(rsa.OaepAlgorithm.sha256, der),
         throwsRind(RindError.keyRejected),
       );
     }
     for (final der in [pkcs1, spki.sublist(1)]) {
       expect(
-        () => RsaEncryptingKey.fromSpki(OaepAlgorithm.sha256, der),
+        () => rsa.EncryptingKey.fromSpki(rsa.OaepAlgorithm.sha256, der),
         throwsRind(RindError.keyRejected),
       );
     }

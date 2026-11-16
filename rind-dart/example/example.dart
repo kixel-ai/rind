@@ -3,7 +3,10 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:rind/ecdsa.dart' as ecdsa;
+import 'package:rind/ed25519.dart' as ed25519;
 import 'package:rind/rind.dart';
+import 'package:rind/rsa.dart' as rsa;
 
 void main() {
   final key = Uint8List(32);
@@ -17,32 +20,34 @@ void main() {
 
   // Each signature algorithm has a key pair and a public key; the peer
   // parses the public key from its encoding or its SubjectPublicKeyInfo.
-  final ecdsa = EcdsaKeyPair.generate(EcdsaSigningAlgorithm.p256Sha256Asn1);
-  EcdsaPublicKey(
-    EcdsaVerificationAlgorithm.p256Sha256Asn1,
-    ecdsa.publicKey.bytes,
-  ).verify(utf8.encode('hello'), ecdsa.sign(utf8.encode('hello')));
+  final ecdsaPair = ecdsa.KeyPair.generate(
+    ecdsa.SigningAlgorithm.p256Sha256Asn1,
+  );
+  ecdsa.PublicKey(
+    ecdsa.VerificationAlgorithm.p256Sha256Asn1,
+    ecdsaPair.publicKey.bytes,
+  ).verify(utf8.encode('hello'), ecdsaPair.sign(utf8.encode('hello')));
 
-  final ed25519 = Ed25519KeyPair.generate();
-  Ed25519PublicKey.fromSpki(
-    ed25519.publicKey.toSpki(),
-  ).verify(utf8.encode('hello'), ed25519.sign(utf8.encode('hello')));
+  final ed25519Pair = ed25519.KeyPair.generate();
+  ed25519.PublicKey.fromSpki(
+    ed25519Pair.publicKey.toSpki(),
+  ).verify(utf8.encode('hello'), ed25519Pair.sign(utf8.encode('hello')));
 
   // An RSA public key verifies with any algorithm whose modulus floor it
   // meets.
-  final rsa = RsaKeyPair.generate(RsaKeySize.rsa2048);
-  RsaPublicKey(rsa.publicKey.bytes).verify(
-    RsaVerificationAlgorithm.pssSha256,
+  final rsaPair = rsa.KeyPair.generate(rsa.KeySize.rsa2048);
+  rsa.PublicKey(rsaPair.publicKey.bytes).verify(
+    rsa.VerificationAlgorithm.pssSha256,
     utf8.encode('hello'),
-    rsa.sign(RsaSigningAlgorithm.pssSha256, utf8.encode('hello')),
+    rsaPair.sign(rsa.SigningAlgorithm.pssSha256, utf8.encode('hello')),
   );
 
-  final oaep = RsaDecryptingKey.generate(
-    OaepAlgorithm.sha256,
-    RsaKeySize.rsa2048,
+  final oaep = rsa.DecryptingKey.generate(
+    rsa.OaepAlgorithm.sha256,
+    rsa.KeySize.rsa2048,
   );
-  final ciphertext = RsaEncryptingKey.fromSpki(
-    OaepAlgorithm.sha256,
+  final ciphertext = rsa.EncryptingKey.fromSpki(
+    rsa.OaepAlgorithm.sha256,
     oaep.publicKey.toSpki(),
   ).encrypt(utf8.encode('hello'));
   print(utf8.decode(oaep.decrypt(ciphertext)));

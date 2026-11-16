@@ -28,11 +28,11 @@ const pbkdf2HmacSha1 = Pbkdf2Algorithm._(hmacSha1);
 ///
 /// Deriving takes as long as its iteration count asks, so run it off the
 /// UI isolate, as with `Isolate.run`.
-final class Pbkdf2Secret extends _Handle {
+final class Pbkdf2Secret extends Handle {
   /// Keys [algorithm] with [secret], which may be any length.
   Pbkdf2Secret(Pbkdf2Algorithm algorithm, Uint8List secret)
     : super(
-        _newHandle(
+        newHandle(
           (out) => _pbkdf2SecretNew(
             algorithm._hmac._id,
             secret.address,
@@ -48,9 +48,9 @@ final class Pbkdf2Secret extends _Handle {
   /// PBKDF2 allows.
   Uint8List derive(int iterations, Uint8List salt, int length) {
     _checkIterations(iterations);
-    return _native(salt, (saltPointer) {
-      return _native(Uint8List(length), (out) {
-        _check(
+    return native(salt, (saltPointer) {
+      return native(Uint8List(length), (out) {
+        check(
           _pbkdf2Derive(
             _pointer,
             iterations,
@@ -72,9 +72,9 @@ final class Pbkdf2Secret extends _Handle {
   /// the HMAC output, which is easier to match.
   void verify(int iterations, Uint8List salt, Uint8List previouslyDerived) {
     _checkIterations(iterations);
-    _native(salt, (saltPointer) {
-      _native(previouslyDerived, (previous) {
-        _check(
+    native(salt, (saltPointer) {
+      native(previouslyDerived, (previous) {
+        check(
           _pbkdf2Verify(
             _pointer,
             iterations,

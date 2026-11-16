@@ -23,10 +23,10 @@ enum AgreementAlgorithm {
 }
 
 /// A private key for key agreement.
-final class AgreementPrivateKey extends _Handle {
+final class AgreementPrivateKey extends Handle {
   AgreementPrivateKey._(this.algorithm, int source, Uint8List bytes)
     : super(
-        _newHandle(
+        newHandle(
           (out) => _agreementPrivateKeyNew(
             algorithm._id,
             source,
@@ -58,8 +58,8 @@ final class AgreementPrivateKey extends _Handle {
   /// The algorithm the key is for.
   final AgreementAlgorithm algorithm;
 
-  Uint8List _export(int what) => _output(
-    _exportLength,
+  Uint8List _export(int what) => output(
+    exportLength,
     (out) =>
         _agreementPrivateKeyExport(_pointer, what, out.address, out.length),
   );
@@ -71,7 +71,7 @@ final class AgreementPrivateKey extends _Handle {
   /// Agrees on a shared secret with [peer], the peer's public key bytes as
   /// [AgreementPublicKey.new] parses them, throwing [RindError.keyRejected]
   /// for a key it refuses.
-  Uint8List agree(Uint8List peer) => _output(
+  Uint8List agree(Uint8List peer) => output(
     algorithm._secretLength,
     (out) => _agreementAgree(
       _pointer,
@@ -120,8 +120,8 @@ final class AgreementPublicKey {
     int spki,
     Uint8List bytes,
     int export,
-  ) => _output(
-    _exportLength,
+  ) => output(
+    exportLength,
     (out) => _agreementPublicKey(
       algorithm._id,
       spki,
