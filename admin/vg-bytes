@@ -136,10 +136,8 @@ class Insn:
 
 def disassemble(arch, obj, keep):
     """The instructions of each function of `obj` that `keep` takes, by the
-    demangled path's last component, with the relocations at each, and the
-    padding (`nop`, `int3`) dropped: VG's text has none, and a `.p2align`
-    in a routine pads with NOPs that the model runs as `align`, so they are
-    the alignment's, not an instruction's."""
+    demangled path's last component, with the relocations at each: its type,
+    its symbol's last component, and its addend."""
     flags = ["-M", "intel"] if arch == "x86_64" else ["--mattr=+all"]
     dis = run(["llvm-objdump", "-d", "-r", "-C", *flags, str(obj)])
     fns, names = {}, {}
@@ -160,14 +158,12 @@ def disassemble(arch, obj, keep):
             continue
         m = re.match(r"^\s*([0-9a-f]+):\s+(R_\S+)\s+(\S+)", line)
         if m:
-            cur[-1].relocs.append((m.group(2), demangle_tail(m.group(3))))
+            cur[-1].relocs.append((m.group(2), *relocation_target(m.group(3))))
             continue
         m = re.match(r"^\s*([0-9a-f]+):\s(.*)$", line)
         if m:
             raw, _, text = m.group(2).partition("\t")
             text = " ".join(text.split())
-            if text.split(" ")[0] in ("nop", "int3", "hint"):
-                continue
             raw = raw.replace(" ", "")
             if arch == "aarch64":
                 # llvm-objdump prints an A64 instruction as its word; the
@@ -177,10 +173,59 @@ def disassemble(arch, obj, keep):
     return fns
 
 
-def demangle_tail(sym):
-    """A relocation's symbol, by its name's last component."""
-    base = re.sub(r"[+-]0x[0-9a-f]+$", "", sym)
-    return base.split("::")[-1]
+def relocation_target(sym):
+    """A relocation's symbol, by its name's last component, and its addend."""
+    m = re.match(r"^(.*?)([+-]0x[0-9a-f]+)?$", sym)
+    return m.group(1).split("::")[-1], int(m.group(2) or "0", 16)
+
+
+def is_nop(arch, insn):
+    """Whether `insn` is a NOP an assembler pads code with."""
+    if arch == "aarch64":
+        return insn.text == "nop"
+    return "nop" in insn.text.split() or insn.text == "xchg ax, ax"
+
+
+def is_padding(arch, insn):
+    """Whether `insn` is padding a linker or assembler puts between
+    functions: a NOP, or on x86-64 `int3`."""
+    return is_nop(arch, insn) or (arch == "x86_64" and insn.text == "int3")
+
+
+def instructions(arch, name, text, insns, what):
+    """`insns`, the disassembly of routine `name`, without its padding: the
+    NOPs from each `.p2align k` of `text` to the next multiple of 2^k, and
+    after the routine's last instruction, which must then be one that never
+    falls through, NOPs or `int3` to the next function. Fails unless each
+    line of `text` that is an instruction has one of `insns`: an `int3` or
+    NOP in place of an instruction is not padding. Each function is in a
+    section of its own, aligned to more than any `.p2align` in it, so an
+    address is aligned when its offset in the section is."""
+    out = []
+    i = 0
+    for t in text:
+        if t.startswith(".p2align "):
+            align = 1 << int(t.split()[1])
+            while i < len(insns) and insns[i].addr % align and is_nop(arch, insns[i]):
+                i += 1
+            if i < len(insns) and insns[i].addr % align:
+                fail(f"{name}: {what} has {insns[i].text!r} at {insns[i].addr:#x}, where "
+                     f"{t!r} pads with NOPs")
+        elif t.startswith(".") or t.endswith(":"):
+            continue
+        elif i == len(insns):
+            fail(f"{name}: {what} ends before {t!r}")
+        else:
+            out.append(insns[i])
+            i += 1
+    rest = insns[i:]
+    if rest:
+        if not all(is_padding(arch, x) for x in rest):
+            fail(f"{name}: {what} has {rest[0].text!r} after the text's last instruction")
+        last = out[-1].text.split()[0] if out else None
+        if last not in ("ret", "jmp", "b"):
+            fail(f"{name}: {what} pads after {last!r}, which falls through into the padding")
+    return out
 
 
 def target_of(insn, insns):
@@ -188,7 +233,7 @@ def target_of(insn, insns):
     function a call goes to, by name. Each function is in a section of its
     own, so an address is its offset in the function."""
     if insn.relocs:
-        return ("fn", insn.relocs[0][1])
+        return ("fn", insn.relocs[0][1], insn.relocs[0][2])
     m = re.search(r"0x([0-9a-f]+) <", insn.text)
     if not m:
         return ("?", insn.text)
@@ -204,22 +249,32 @@ def target_of(insn, insns):
 ENCODINGS = collections.Counter()
 
 
+def branch_form(text):
+    """A branch's or call's disassembly without its target, which the
+    assembler lays out: `je`, `cbz x0,`, `call`."""
+    return re.sub(r"\s*#?0x[0-9a-f]+( <[^>]*>)?$", "", text)
+
+
 def compare(arch, name, text, got, want, what):
     """Fails unless `got`'s instructions are `want`'s and `text`'s: the same
-    bytes, or for a branch or call, the same target."""
+    bytes and relocations, or for a branch or call, the same instruction to
+    the same target. Returns the text's instructions and `got`'s, padding
+    dropped."""
     lines = [t for t in text if not t.startswith(".") and not t.endswith(":")]
-    if not len(got) == len(want) == len(lines):
-        fail(f"{name}: {what} has {len(got)} instructions, the assembled text {len(want)}, "
-             f"VG's text {len(lines)}")
+    got = instructions(arch, name, text, got, what)
+    want = instructions(arch, name, text, want, "the assembled text")
     for i, (g, w, t) in enumerate(zip(got, want, lines)):
         mnemonic = t.split()[0]
+        if g.relocs != w.relocs:
+            fail(f"{name}: instruction {i}, {t!r}, refers to {g.relocs} in {what} "
+                 f"but {w.relocs} assembled")
         if mnemonic in BRANCHES[arch]:
+            if branch_form(g.text) != branch_form(w.text):
+                fail(f"{name}: instruction {i}, {t!r}, is {g.text!r} in {what} "
+                     f"but {w.text!r} assembled")
             if target_of(g, got) != target_of(w, want):
                 fail(f"{name}: instruction {i}, {t!r}, goes to {target_of(g, got)} in {what} "
                      f"but {target_of(w, want)} in the text")
-        elif [r[1] for r in g.relocs] != [r[1] for r in w.relocs]:
-            fail(f"{name}: instruction {i}, {t!r}, refers to {g.relocs} in {what} "
-                 f"but {w.relocs} assembled")
         elif g.raw != w.raw:
             # Another encoding of the same instruction, as VG's EVEX form of
             # a `vpbroadcastq` LLVM encodes with VEX: LLVM's disassembler
@@ -228,7 +283,7 @@ def compare(arch, name, text, got, want, what):
                 fail(f"{name}: instruction {i}, {t!r}, is {g.raw} ({g.text}) in {what} "
                      f"but {w.raw} ({w.text}) assembled")
             ENCODINGS[(t, g.raw, w.raw)] += 1
-    return lines
+    return lines, got
 
 
 def groups(arch, lines, insns):
@@ -290,8 +345,8 @@ def main():
     for name, lines in text.items():
         if name not in compiled:
             fail(f"{name} is in VG's text but not its compiled code")
-        lines = compare(a.arch, name, lines, compiled[name], assembled[name], "VG's compiled code")
-        for kind, ls, code in groups(a.arch, lines, compiled[name]):
+        lines, insns = compare(a.arch, name, lines, compiled[name], assembled[name], "VG's compiled code")
+        for kind, ls, code in groups(a.arch, lines, insns):
             counts[kind] += 1
             if kind in ("branch",):
                 key = (kind, ls[0].split()[0] + (" " + ls[0].split()[1] if a.arch == "aarch64" else ""))
@@ -303,8 +358,8 @@ def main():
         if a.arch == "aarch64":
             # A `.p2align k` in a routine is the model's `align k`, which it
             # runs as a NOP, and the assembler pads with NOPs (`HINT #0`,
-            # D503201F), which are filtered from the disassembly above as
-            # padding: one NOP runs for it.
+            # D503201F), which `instructions` drops as padding: one NOP runs
+            # for it.
             for t in text[name]:
                 if t.startswith(".p2align "):
                     counts["align"] += 1
