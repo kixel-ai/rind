@@ -26,12 +26,13 @@ mod aead;
 mod agreement;
 mod cipher;
 mod digest;
+mod ecdsa;
+mod ed25519;
 mod hkdf;
 mod hmac;
 mod kem;
 mod pbkdf2;
 mod rsa;
-mod signature;
 
 create_exception!(pyrind, Error, PyException, "A rind call failed.");
 create_exception!(
@@ -263,12 +264,13 @@ fn pyrind(m: &Bound<'_, PyModule>) -> PyResult<()> {
         cpu.add_function(wrap_pyfunction!(has_aes_hardware, cpu)?)
     })?;
     submodule(m, "pyrind.digest", digest::register)?;
+    submodule(m, "pyrind.ecdsa", ecdsa::register)?;
+    submodule(m, "pyrind.ed25519", ed25519::register)?;
     submodule(m, "pyrind.hkdf", hkdf::register)?;
     submodule(m, "pyrind.hmac", hmac::register)?;
     submodule(m, "pyrind.kem", kem::register)?;
     submodule(m, "pyrind.key_wrap", cipher::register_key_wrap)?;
     submodule(m, "pyrind.pbkdf2", pbkdf2::register)?;
     submodule(m, "pyrind.rsa", rsa::register)?;
-    submodule(m, "pyrind.signature", signature::register)?;
     Ok(())
 }
