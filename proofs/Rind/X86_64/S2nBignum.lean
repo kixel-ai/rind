@@ -78,20 +78,6 @@ axiom edwards25519_scalarmulbase_spec (res : Std.Array U64 8#usize)
     low.x86_64.edwards25519_scalarmulbase.edwards25519_scalarmulbase res scalar ⦃ r =>
       pairNat r.val = edModEncodePair (edPow edB (wordsNat scalar.val)) ⦄
 
-/-- `EDWARDS25519_SCALARMULDOUBLE_SUBROUTINE_CORRECT`, whose `tables`
-preconditions hold because rind links s2n-bignum's constant table, which the
-routine addresses PC-relative,
-https://github.com/awslabs/s2n-bignum/blob/3f01260ff1bd2577abf0117ce45aa008bc243a80/x86/proofs/edwards25519_scalarmuldouble.ml#L11800 -/
-@[step]
-axiom edwards25519_scalarmuldouble_spec (res : Std.Array U64 8#usize)
-    (scalar : Std.Array U64 4#usize) (point : Std.Array U64 8#usize)
-    (bscalar : Std.Array U64 4#usize) :
-    low.x86_64.edwards25519_scalarmuldouble.edwards25519_scalarmuldouble res scalar point
-      bscalar ⦃ r =>
-      ∀ P, edOnCurve P → edModDecodePair (pairNat point.val) = P →
-        pairNat r.val =
-          edModEncodePair (edMul (edPow P (wordsNat scalar.val)) (edPow edB (wordsNat bscalar.val))) ⦄
-
 /-- `BIGNUM_MADD_N25519_SUBROUTINE_CORRECT`,
 https://github.com/awslabs/s2n-bignum/blob/3f01260ff1bd2577abf0117ce45aa008bc243a80/x86/proofs/bignum_madd_n25519.ml#L964 -/
 @[step]
@@ -117,20 +103,6 @@ axiom edwards25519_scalarmulbase_alt_spec (res : Std.Array U64 8#usize)
     (scalar : Std.Array U64 4#usize) :
     low.x86_64.edwards25519_scalarmulbase_alt.edwards25519_scalarmulbase_alt res scalar ⦃ r =>
       pairNat r.val = edModEncodePair (edPow edB (wordsNat scalar.val)) ⦄
-
-/-- `EDWARDS25519_SCALARMULDOUBLE_ALT_SUBROUTINE_CORRECT`, whose `tables`
-preconditions hold because rind links s2n-bignum's constant table, which the
-routine addresses PC-relative,
-https://github.com/awslabs/s2n-bignum/blob/3f01260ff1bd2577abf0117ce45aa008bc243a80/x86/proofs/edwards25519_scalarmuldouble_alt.ml#L11872 -/
-@[step]
-axiom edwards25519_scalarmuldouble_alt_spec (res : Std.Array U64 8#usize)
-    (scalar : Std.Array U64 4#usize) (point : Std.Array U64 8#usize)
-    (bscalar : Std.Array U64 4#usize) :
-    low.x86_64.edwards25519_scalarmuldouble_alt.edwards25519_scalarmuldouble_alt res scalar point
-      bscalar ⦃ r =>
-      ∀ P, edOnCurve P → edModDecodePair (pairNat point.val) = P →
-        pairNat r.val =
-          edModEncodePair (edMul (edPow P (wordsNat scalar.val)) (edPow edB (wordsNat bscalar.val))) ⦄
 
 /-- `BIGNUM_MADD_N25519_ALT_SUBROUTINE_CORRECT`,
 https://github.com/awslabs/s2n-bignum/blob/3f01260ff1bd2577abf0117ce45aa008bc243a80/x86/proofs/bignum_madd_n25519_alt.ml#L939 -/
@@ -350,13 +322,25 @@ axiom bignum_mux_spec (p : U64) (z x y : Slice U64) (hx : x.length = z.length)
 
 /-! ### P-256's generator multiplication
 
-PLACEHOLDER until the HOL Light proof of aws-lc's mixed addition lands. -/
+aws-lc's mixed addition, which rind imports rather than takes from s2n-bignum,
+is proven in HOL Light, of the bytes rind's Linux build emits, in
+`proofs/hol-light/x86_64/`. Apple's text aligns its helpers but not its entry,
+so its calls can reach them at other offsets, which no proof covers. -/
 
-/-- What aws-lc's `ecp_nistz256_point_add_affine` and `_affinex` compute,
-in place, for coordinates below p: `p1` itself when `p2` is all zeros, the
-affine infinity; `p2` with a Montgomery-form z of one when `p1`'s z is zero,
-the Jacobian infinity; and otherwise the sum of the points they represent,
-unless those are equal, which it cannot double. -/
+/-- `ECP_NISTZ256_POINT_ADD_AFFINE_SUBROUTINE_CORRECT`, in
+`proofs/hol-light/x86_64/ecp_nistz256_point_add_affine.ml`, and
+`ECP_NISTZ256_POINT_ADD_AFFINEX_SUBROUTINE_CORRECT`, in
+`proofs/hol-light/x86_64/ecp_nistz256_point_add_affinex.ml`, for the routine
+the wrapper picks: what aws-lc's `ecp_nistz256_point_add_affine` and
+`_affinex` compute, in place, for coordinates below p: `p1` itself when `p2`
+is all zeros, the affine infinity; `p2` with a Montgomery-form z of one when
+`p1`'s z is zero, the Jacobian infinity; and otherwise the sum of the points
+they represent, unless those are equal, which it cannot double. The
+theorems also assume what the wrapper and the System V ABI give and Lean
+cannot state, which is trusted: the stack is 16-byte aligned at the call,
+and the `POLY` table is too, as its `align(16)` makes it;
+the routine's code, its 200-byte `POLY` table, `p1`, `p2`, and its 544-byte
+frame do not overlap; and the table's rip-relative displacements reach it. -/
 @[step]
 axiom p256_point_add_affine_spec (p1 : Std.Array U64 12#usize) (p2 : Std.Array U64 8#usize) :
     low.x86_64.ecp_nistz256.p256_point_add_affine p1 p2 ⦃ r =>
@@ -645,12 +629,6 @@ def Runs : Prop :=
   (∃ e, low.entry.Entry.new_secret = ok e) ∧ (∃ e, low.entry.Entry.new_public = ok e) ∧
     (∃ t, low.x86_64.cpu.HaveBmi2Adx.check = ok t) ∧ ∃ t, low.x86_64.cpu.HaveAvx2.check = ok t
 
-/-- Ed25519 verification's double scalar multiplication runs one of
-s2n-bignum's routines: a CPU without ADX lacks AVX2 too, since with it rind
-runs a port of curve25519-dalek's AVX2 backend, which nothing proves. -/
-def RunsDouble : Prop :=
-  low.x86_64.cpu.HaveBmi2Adx.check = ok none → low.x86_64.cpu.HaveAvx2.check = ok none
-
 @[step]
 theorem new_secret_spec (h : Runs) : low.entry.Entry.new_secret ⦃ _ => True ⦄ := by
   obtain ⟨⟨e, he⟩, -⟩ := h
@@ -700,22 +678,6 @@ theorem edwards25519_scalarmulbase_mux_spec (h : Runs) (res : Std.Array U64 8#us
   unfold low.x86_64.adx_mux.edwards25519_scalarmulbase
   rw [ht]
   cases t <;> step*
-
-@[step]
-theorem edwards25519_scalarmuldouble_mux_spec (h : Runs) (hd : RunsDouble)
-    (res : Std.Array U64 8#usize) (scalar : Std.Array U64 4#usize)
-    (point : Std.Array U64 8#usize) (bscalar : Std.Array U64 4#usize) :
-    low.x86_64.adx_mux.edwards25519_scalarmuldouble res scalar point bscalar ⦃ r =>
-      ∀ P, edOnCurve P → edModDecodePair (pairNat point.val) = P →
-        pairNat r.val =
-          edModEncodePair (edMul (edPow P (wordsNat scalar.val)) (edPow edB (wordsNat bscalar.val))) ⦄ := by
-  obtain ⟨-, -, ⟨t, ht⟩, -⟩ := h
-  unfold low.x86_64.adx_mux.edwards25519_scalarmuldouble
-  rw [ht]
-  cases t
-  · rw [hd ht]
-    step*
-  · step*
 
 @[step]
 theorem bignum_madd_n25519_mux_spec (h : Runs) (z x y c : Std.Array U64 4#usize) :

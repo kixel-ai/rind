@@ -191,6 +191,37 @@
               };
             };
 
+          # aws-lc's ACVP client, of the aws-lc release nixpkgs pins. Its
+          # `-json` mode answers vector sets offline through a module wrapper,
+          # as `rind-acvp`'s tests run it on rind's FIPS module.
+          acvptool = pkgs.buildGoModule {
+            pname = "acvptool";
+            inherit (pkgs.aws-lc) version src;
+            subPackages = [ "util/fipstools/acvp/acvptool" ];
+            vendorHash = "sha256-495bUr3Cuo7kuhuNLMVhrVg9NXTAXyFmnXRmBrCHovA=";
+            # It forwards ML-DSA's `externalMu` from external-interface groups
+            # too, which a wrapper then reads as the internal interface.
+            # See UPSTREAM.md, "acvptool sends ML-DSA's externalMu for the
+            # external interface".
+            postPatch = ''
+              file=util/fipstools/acvp/acvptool/subprocess/ml_dsa.go
+              substituteInPlace $file --replace-fail \
+                'boolToBytes(group.ExternalMu))' \
+                'boolToBytes(internalOnly(group.SignatureInterface, group.ExternalMu)))'
+              cat >>$file <<'EOF'
+
+              // internalOnly is externalMu for the internal interface, the only
+              // one it applies to, and absent for the external one.
+              func internalOnly(signatureInterface string, externalMu *bool) *bool {
+              	if !strings.EqualFold(signatureInterface, "internal") {
+              		return nil
+              	}
+              	return externalMu
+              }
+              EOF
+            '';
+          };
+
           # The tracer `admin/ct-qemu` loads into qemu-arm or qemu-aarch64,
           # built against the plugin API of the qemu-user its shells run.
           ct-qemu-plugin = pkgs.stdenv.mkDerivation {
@@ -480,6 +511,8 @@
                   rustfmt-unstable
                   quest-cli
                   release-plz
+                  # rind-acvp's tests answer ACVP's vector sets through it.
+                  acvptool
                 ]
                 ++ python-shell.packages
                 ++ pkgs.lib.optionals (!pkgs.stdenv.hostPlatform.isDarwin) [
@@ -608,6 +641,26 @@
               shellHook = pkgs.lib.optionalString (system == "x86_64-linux") sde-certs;
             };
 
+            # `just check` runs `sh/site.sh` in it, which builds site/, the
+            # landing page, with Bun, and loads it in headless Chromium. Its own
+            # shell, since Chromium would add hundreds of MB to the closure
+            # every CI job downloads.
+            site =
+              assert pkgs.lib.assertMsg
+                (
+                  (builtins.fromJSON (builtins.readFile ./site/package.json)).packageManager
+                  == "bun@${pkgs.bun.version}"
+                )
+                "Bun pins disagree: site/package.json's packageManager must be bun@${pkgs.bun.version}, the Bun in the pinned nixpkgs, which CI's site job also reads. Update them together.";
+              pkgs.mkShell {
+                packages = [ pkgs.bun ];
+                # Bun.WebView takes this browser over any on $PATH. nixpkgs has
+                # no Chromium for Darwin, where Bun finds an installed Chrome.
+                env = pkgs.lib.optionalAttrs (!pkgs.stdenv.hostPlatform.isDarwin) {
+                  BUN_CHROME_PATH = pkgs.lib.getExe pkgs.chromium;
+                };
+              };
+
             # `just check` runs `sh/openssl.sh` in it, which builds rind-openssl
             # and runs OpenSSL's `evp_test` with it.
             openssl = pkgs.mkShell {
@@ -673,6 +726,17 @@
               ];
 
               env.LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
+            };
+
+            # build.yml's nightly ACVP job answers ACVP's sets in it, with
+            # the large-data hash tests, on x86_64 and aarch64.
+            acvp = pkgs.mkShell {
+              packages = [
+                rust-stable.minimal
+                acvptool
+                # The aws-lc-rs dev-dependency builds C.
+                pkgs.cmake
+              ];
             };
 
             # `just wasm` runs the portable backend's tests on wasm32-wasip2
@@ -844,6 +908,8 @@
                 openssl
                 python3
                 sde
+                # x86-cpu.yml answers ACVP's sets on Diamond Rapids with it.
+                acvptool
                 # `admin/ct-sde` runs SDE without ASLR by its `setarch`.
                 util-linux
               ];
