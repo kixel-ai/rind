@@ -2633,10 +2633,10 @@ let BN_MUL_MONT_GENERIC_SUBROUTINE_CORRECT = prove
    selected value is (a * b / 2^(64k)) mod n when a * b <= 2^(64k) * n.
 
    The code needs x + 32 and m + 32 not to wrap: a row's first ADC reads
-   the carry of an ADDS adding 32 to m's pointer (the first row) or to x's
-   (the later rows). Width four has no other chunks or later rows, so its
-   only row ends at 0xd34 and goes straight to the final subtraction
-   (M4_FINAL4). *)
+   the carry of an ADDS adding 32 to m's pointer (the first two rows, at
+   0xc80 and 0xe74) or to x's (the rows after, at 0x10a0). Width four has
+   no other chunks or later rows, so its only row ends at 0xd34 and goes
+   straight to the final subtraction (M4_FINAL4). *)
 
 let m4_win = new_definition
  `m4_win s = val(read X19 s) + 2 EXP 64 * val(read X20 s) + 2 EXP 128 * val(read X21 s) +
