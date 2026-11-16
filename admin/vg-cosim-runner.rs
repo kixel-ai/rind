@@ -22,9 +22,29 @@ const TARGET: usize = INSN + 0x100;
 const DATA: usize = 0x20_0000_0000;
 const DATA_LEN: usize = 2048;
 
+/// glibc's `struct sigaction` on Linux, the same on x86_64 and aarch64.
+#[repr(C)]
+struct SigAction {
+    handler: usize,
+    mask: [u64; 16],
+    flags: i32,
+    restorer: usize,
+}
+
+/// `stack_t`.
+#[repr(C)]
+struct StackT {
+    sp: *mut u8,
+    flags: i32,
+    size: usize,
+}
+
+const SA_ONSTACK: i32 = 0x0800_0000;
+
 unsafe extern "C" {
     fn mmap(addr: *mut u8, len: usize, prot: i32, flags: i32, fd: i32, off: i64) -> *mut u8;
-    fn signal(sig: i32, handler: usize) -> usize;
+    fn sigaction(sig: i32, act: *const SigAction, old: *mut SigAction) -> i32;
+    fn sigaltstack(ss: *const StackT, old: *mut StackT) -> i32;
     fn write(fd: i32, buf: *const u8, len: usize) -> isize;
     fn _exit(code: i32) -> !;
 }
@@ -776,9 +796,34 @@ fn main() {
     map(CODE, 0x10000, PROT_RWX);
     map(DATA, DATA_LEN, PROT_RW);
     let t = arch::tramp();
+    // A case runs on the model's stack pointer, inside the data, where the
+    // kernel cannot write a signal frame, so `fault` runs on a stack of its
+    // own, which lives as long as the program.
+    let alt: &'static mut [u8] = Box::leak(vec![0u8; 1 << 16].into_boxed_slice());
+    let ss = StackT {
+        sp: alt.as_mut_ptr(),
+        flags: 0,
+        size: alt.len(),
+    };
+    // SAFETY: the stack is leaked, so valid for the rest of the program.
+    assert_eq!(
+        unsafe { sigaltstack(&ss, std::ptr::null_mut()) },
+        0,
+        "vg-cosim-runner: sigaltstack"
+    );
+    let act = SigAction {
+        handler: fault as *const () as usize,
+        mask: [0; 16],
+        flags: SA_ONSTACK,
+        restorer: 0,
+    };
     for sig in [4, 5, 7, 8, 11] {
         // SAFETY: `fault` only writes to stderr and exits.
-        unsafe { signal(sig, fault as *const () as usize) };
+        assert_eq!(
+            unsafe { sigaction(sig, &act, std::ptr::null_mut()) },
+            0,
+            "vg-cosim-runner: sigaction"
+        );
     }
     let paths: Vec<String> = std::env::args().skip(1).collect();
     let (mut blocks, mut cases, mut failed) = (0usize, 0usize, 0usize);
