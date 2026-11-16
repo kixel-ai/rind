@@ -16,7 +16,7 @@ pub(crate) fn seal(key: &[u8; 32], nonce: &[u8; 12], aad: &[u8], inout: &mut [u8
 
 /// Decrypts `inout` in place, and returns whether `tag` is its tag over
 /// `aad` and the ciphertext, a secret.
-// aarch64 tests compare only `seal` with VG's routines.
+// aarch64 tests compare only `seal` with the one-pass routines.
 #[cfg(not(rind_backend = "aarch64"))]
 pub(crate) fn open(
     key: &[u8; 32],

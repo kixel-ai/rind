@@ -69,7 +69,7 @@ exclude_re = [
   'rind/src/low/(portable|x86_64)/\.\./generic/ghash_nohw\.rs:\d+:\d+: replace \| with \^ in (NohwTable::ghash|gcm_mul32_nohw)$',
   'rind/src/low/x86_64/aes\.rs:\d+:\d+: replace \| with \^ in store$',
   'rind/src/low/x86_64/aes_gcm\.rs:\d+:\d+: replace \| with \^ in counter_block$',
-  'rind/src/low/x86_64/chacha20poly1305\.rs:48:\d+: replace \| with \^$',
+  'rind/src/low/x86_64/chacha20poly1305\.rs:58:\d+: replace \| with \^$',
   'rind/src/low/x86_64/cpu\.rs:378:\d+: replace << with >>$',
   'rind/src/low/x86_64/cpu\.rs:402:\d+: replace \| with \^$',
   'rind/src/low/x86_64/cpu\.rs:407:\d+: replace \| with \^$',
@@ -188,7 +188,7 @@ exclude_re = [
   'rind/src/low/aarch64/aes_gcm\.rs:\d+:\d+: replace <= with > in tagged_from$',
   'rind/src/low/aarch64/aes_gcm\.rs:\d+:\d+: replace \+ with \* in tagged_from$',
   'rind/src/low/aarch64/bignum_copy_row_from_table_mux\.rs:\d+:\d+: replace match guard width\.is_multiple_of\(8\) with false in bignum_copy_row_from_table$',
-  'rind/src/low/aarch64/cpu\.rs:298:\d+: replace prefetch_ro with \(\)$',
+  'rind/src/low/aarch64/cpu\.rs:314:\d+: replace prefetch_ro with \(\)$',
   # Invisible to a test: whether the speculation barrier after setting DIT
   # runs, and which one.
   'rind/src/low/aarch64/cpu\.rs:\d+:\d+: (replace dit::speculation_barrier with \(\)|replace (!= with ==|& with [|^]) in dit::write)$',
@@ -218,8 +218,8 @@ exclude_re = [
   'rind/src/low/x86_64/bignum_point_select\.rs:74:\d+: replace \* with \+ in _select_avx2$',
   'rind/src/low/x86_64/chacha20\.rs:\d+:\d+: delete match arm \(None, Some\(_\), len @SSSE3_4X_MIN_LEN\.\.\) in ChaCha20::cipher$',
   'rind/src/low/x86_64/chacha20\.rs:\d+:\d+: delete match arm \(Some\(_\), _, 65\.\.\) in ChaCha20::cipher$',
-  'rind/src/low/x86_64/chacha20poly1305\.rs:48:\d+: replace << with >>$',
-  'rind/src/low/x86_64/chacha20poly1305\.rs:48:\d+: replace \| with &$',
+  'rind/src/low/x86_64/chacha20poly1305\.rs:58:\d+: replace << with >>$',
+  'rind/src/low/x86_64/chacha20poly1305\.rs:58:\d+: replace \| with &$',
   'rind/src/low/x86_64/cpu\.rs:524:\d+: replace prefetch with \(\)$',
   'rind/src/low/x86_64/mont\.rs:\d+:\d+: delete match arm \(Some\(_\), 16 \| 32\) in (mont_mul|mont_sqr)$',
   'rind/src/low/x86_64/mont\.rs:40:\d+: replace >= with < in mont_sqr$',
@@ -271,9 +271,9 @@ exclude_re = [
   # denial row in `admin/mutants` denies alone, only in a release build,
   # which tests never are, or only off Linux.
   'rind/src/low/aarch64/cpu\.rs:\d+:\d+: replace && with \|\| in detect$',
-  'rind/src/low/aarch64/cpu\.rs:153:\d+: replace << with >>$',
-  'rind/src/low/aarch64/cpu\.rs:276:\d+: replace test_toggle -> bool with false$',
-  'rind/src/low/aarch64/cpu\.rs:276:\d+: replace test_toggle -> bool with true$',
+  'rind/src/low/aarch64/cpu\.rs:166:\d+: replace << with >>$',
+  'rind/src/low/aarch64/cpu\.rs:292:\d+: replace test_toggle -> bool with false$',
+  'rind/src/low/aarch64/cpu\.rs:292:\d+: replace test_toggle -> bool with true$',
   # The portable backend has no CPU state to save, so `leave_cpu_state`
   # ignores it.
   'rind/src/low/portable/cpu\.rs:\d+:\d+: replace enter_cpu_state -> u32 with 1$',
