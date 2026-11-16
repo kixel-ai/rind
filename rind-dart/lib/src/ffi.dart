@@ -5,7 +5,7 @@
 
 part of 'bindings.dart';
 
-// --- Errors, CPU, randomness, comparison ---
+// --- CPU, randomness, comparison ---
 
 @Native<IntPtr Function()>(symbol: 'rind_dart_has_aes_hardware', isLeaf: true)
 external int _hasAesHardware();
