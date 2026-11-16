@@ -29,9 +29,9 @@ Each bullet names one file.
 - `x86/proofs/instruction.ml`: the two sets of instructions below.
 - `x86/proofs/decode.ml`: their decoders.
 - `x86/proofs/x86.ml`: their semantics.
-- `x86/proofs/simulator.ml`: the CPU features `ANDN` and `RORX` need, BMI1
-  and BMI2, so cosimulation skips them on a CPU without those, as it does
-  upstream's other instructions.
+- `x86/proofs/simulator.ml`: the CPU features `ANDN`, `RORX`, `SHLX`, and
+  `SHRX` need, BMI1 and BMI2, so cosimulation skips them on a CPU without
+  those, as it does upstream's other instructions.
 - `x86/proofs/utils/sha256_spec.ml`: SHA-256's FIPS 180-4 spec, from
   [awslabs/s2n-bignum#415](https://github.com/awslabs/s2n-bignum/pull/415) at
   `79120e64ed55e37c9652565ff272b7ef17f76738`, unchanged.
