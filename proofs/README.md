@@ -139,7 +139,10 @@ those inputs, in any worktree, restores in under a second.
   to them, with s2n-bignum's field algebra. They assume a 16-byte aligned
   stack at the call, as the System V ABI gives, since the body's MOVDQA
   stores require it, and read the field constants from the static
-  `POLY`, whose `align(16)` the body's two PANDs from it require.
+  `POLY`, whose `align(16)` the body's two PANDs from it require. They
+  are of the Linux build's object: Apple's text aligns the helpers to 32
+  bytes but not the entry, so its calls can reach them at other offsets,
+  and no proof covers it.
 
 The fork adds what these proofs need to s2n-bignum: specs from s2n-bignum
 pull requests not yet merged, rind's own RFC 8439 spec of ChaCha20,
@@ -345,7 +348,7 @@ holds j·2⁷ⁱ·G. Its table select is rind's Rust, which
 `Rind/X86_64/PointSelect.lean` proves on both the AVX2 and SSE2 paths, under
 `RunsSelect`, that `HaveAvx2::check` returns, which `Runs` includes. aws-lc's
 mixed addition, both its mulq and its BMI2 and ADX routines, is proven in
-HOL Light of the object code rind's build emits, in
+HOL Light of the object code rind's Linux build emits, in
 `proofs/hol-light/x86_64/ecp_nistz256_point_add_affine.ml` and
 `ecp_nistz256_point_add_affinex.ml`, which `p256_point_add_affine_spec` in
 `Rind/X86_64/S2nBignum.lean` restates. The proofs reuse s2n-bignum's

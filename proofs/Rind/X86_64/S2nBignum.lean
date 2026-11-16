@@ -323,8 +323,9 @@ axiom bignum_mux_spec (p : U64) (z x y : Slice U64) (hx : x.length = z.length)
 /-! ### P-256's generator multiplication
 
 aws-lc's mixed addition, which rind imports rather than takes from s2n-bignum,
-is proven in HOL Light, of the bytes rind's build emits, in
-`proofs/hol-light/x86_64/`. -/
+is proven in HOL Light, of the bytes rind's Linux build emits, in
+`proofs/hol-light/x86_64/`. Apple's text aligns its helpers but not its entry,
+so its calls can reach them at other offsets, which no proof covers. -/
 
 /-- `ECP_NISTZ256_POINT_ADD_AFFINE_SUBROUTINE_CORRECT`, in
 `proofs/hol-light/x86_64/ecp_nistz256_point_add_affine.ml`, and
