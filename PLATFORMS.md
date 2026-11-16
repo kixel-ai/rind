@@ -50,7 +50,8 @@ qemu. iOS devices' code is only built.
   Sapphire Rapids, and AMD's Zen 4 and 5, RSA-2048 and 4096 signing and
   the public operation at 2048 to 4096 bits run [verified-garbage]'s
   routines, and RSA-3072 signing too with `avx512fp16`, as on Intel's
-  since Sapphire Rapids, and aws-lc's dual AVX-512 RSAZ without it.
+  since Sapphire Rapids, and aws-lc's dual AVX-512 RSAZ without it, as
+  for the 3969- to 4032-bit keys VG's CRT does not take.
 - 32-bit `arm` from ARMv7 on (tested on `armv7-unknown-linux-gnueabihf` and
   `armv7-linux-androideabi`) runs portable Rust instead, mostly from
   [libcrux] (see [ALGORITHMS.md](ALGORITHMS.md)), and needs no CPU features. RSA's

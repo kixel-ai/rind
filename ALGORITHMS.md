@@ -454,6 +454,8 @@ multipliers, as VG's own dispatch does, which also runs 1536-bit primes, at
 `BN_mod_exp_mont_consttime_x2` does there: almost Montgomery
 products on 256-bit vectors over 52-bit limbs, two moduli at a time, and a
 5-bit fixed window whose table entries are gathered by masking all 32.
+The dual RSAZ also runs the keys of 2048-bit-class primes whose modulus has
+63 words (3969 to 4032 bits), which neither form of VG's CRT takes.
 Valgrind runs no AVX-512, so `admin/ct-sde` checks each of these under Intel
 SDE instead.
 

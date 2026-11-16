@@ -406,7 +406,9 @@ mod tests {
         assert_eq!(token.fp16(), fp16, "the SDE model takes the other routine");
         let mut below_top = |bits| {
             let mut v: [u64; 2 * MAX_PRIME_WORDS] = rng.words(bits);
-            v[bits as usize / 64 - 1] >>= 1;
+            // Two top bits clear, so `x < 2^(2 bits - 2) <= n`, as VG's CRT
+            // refuses a larger one, and each CRT value is below its prime.
+            v[bits as usize / 64 - 1] >>= 2;
             v
         };
         let (dp, dq, qinv, x) = (

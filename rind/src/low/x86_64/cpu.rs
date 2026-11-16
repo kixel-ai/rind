@@ -229,14 +229,17 @@ impl HaveAvx512ForMlKem {
     }
 }
 
-/// Proof that the CPU has what pyca/verified-garbage's RSA with AVX-512
-/// IFMA runs: AVX-512 F, VL, and IFMA, AVX, BMI2, and ADX, its `_FEATURES`.
+/// Proof that the CPU has what RSA with AVX-512 IFMA runs: AVX-512 F, VL,
+/// and IFMA, AVX, BMI2, and ADX, pyca/verified-garbage's `_FEATURES`, and the
+/// DQ and BW that aws-lc's `CRYPTO_is_AVX512IFMA_capable` also asks for, as
+/// its dual RSAZ runs `kmovb`. Every CPU with IFMA has them all.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct HaveAvx512ForRsa(());
 
 impl HaveAvx512ForRsa {
     pub(crate) fn check() -> Option<Self> {
-        has(AVX | AVX512F | AVX512VL | AVX512IFMA | BMI2 | ADX).then_some(Self(()))
+        has(AVX | AVX512F | AVX512DQ | AVX512BW | AVX512VL | AVX512IFMA | BMI2 | ADX)
+            .then_some(Self(()))
     }
 
     /// Whether the CPU has AVX-512 FP16 too, as Intel's cores with two
@@ -670,7 +673,15 @@ mod tests {
             ),
             (
                 HaveAvx512ForRsa::check().is_some(),
-                adx && available!("avx", "avx512f", "avx512vl", "avx512ifma", "bmi2"),
+                adx && available!(
+                    "avx",
+                    "avx512f",
+                    "avx512dq",
+                    "avx512bw",
+                    "avx512vl",
+                    "avx512ifma",
+                    "bmi2"
+                ),
             ),
             (
                 HaveAvx512ForRsa::check().is_some_and(HaveAvx512ForRsa::fp16),
