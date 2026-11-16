@@ -692,6 +692,12 @@ void main() {
         'rsa.VerificationAlgorithm.pssSha256AnySalt',
       );
       expect(rsa.pkcs1Sha1.toString(), 'rsa.pkcs1Sha1');
+      expect(rsa.OaepAlgorithm.sha256.toString(), 'rsa.OaepAlgorithm.sha256');
+      expect(rsa.OaepAlgorithm.sha384.toString(), 'rsa.OaepAlgorithm.sha384');
+      expect(rsa.OaepAlgorithm.sha512.toString(), 'rsa.OaepAlgorithm.sha512');
+      expect(rsa.oaepSha1.toString(), 'rsa.oaepSha1');
+      expect(rsa.KeySize.rsa2048.toString(), 'rsa.KeySize.rsa2048');
+      expect(rsa.KeySize.rsa8192.toString(), 'rsa.KeySize.rsa8192');
       final publicKey = pair.publicKey;
       expect(publicKey.modulusLength, 256);
       final (:n, :e) = rsaComponents(publicKey.bytes);

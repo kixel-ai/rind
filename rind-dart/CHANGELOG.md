@@ -41,6 +41,9 @@
 | `VerificationAlgorithm.ecdsaP256Sha256Asn1.toString()`, `ECDSA_P256_SHA256_ASN1`, and each ECDSA constant | `ecdsa.VerificationAlgorithm.p256Sha256Asn1.toString()`, `ecdsa.VerificationAlgorithm.p256Sha256Asn1` |
 | `VerificationAlgorithm.rsaPkcs1Sha256.toString()`, `RSA_PKCS1_SHA256`, and each RSA constant | `rsa.VerificationAlgorithm.pkcs1Sha256.toString()`, `rsa.VerificationAlgorithm.pkcs1Sha256` |
 | `EcdsaSigningAlgorithm.p256Sha256Asn1.toString()`, and each signing constant | `ecdsa.SigningAlgorithm.p256Sha256Asn1.toString()`, `ecdsa.SigningAlgorithm.p256Sha256Asn1`, and `rsa.SigningAlgorithm.pssSha256` for RSA |
+| `OaepAlgorithm.sha256.toString()`, `RSA-OAEP-SHA256`, and each OAEP constant | `rsa.OaepAlgorithm.sha256.toString()`, `rsa.OaepAlgorithm.sha256` |
+| `oaepSha1.toString()`, `RSA-OAEP-SHA1` | `rsa.oaepSha1.toString()`, `rsa.oaepSha1` |
+| `RsaKeySize.rsa2048.toString()`, `RsaKeySize.rsa2048`, and each size | `rsa.KeySize.rsa2048.toString()`, `rsa.KeySize.rsa2048` |
 | `rsaPkcs1Sha1.toString()`, `RSA_PKCS1_SHA1`, and the other legacy RSA constants | `rsa.pkcs1Sha1.toString()`, `rsa.pkcs1Sha1` |
 | `VerificationAlgorithm.ed25519` | none |
 | `VerificationAlgorithm.rsaPkcs1Sha256`, and each `rsa…` constant | `rsa.VerificationAlgorithm.pkcs1Sha256`, without `rsa` |

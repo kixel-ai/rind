@@ -28,7 +28,10 @@ enum KeySize {
   rsa6144,
 
   /// An 8192-bit modulus.
-  rsa8192,
+  rsa8192;
+
+  @override
+  String toString() => 'rsa.KeySize.$name';
 }
 
 /// An algorithm a [KeyPair] signs with: a padding and a hash.
@@ -288,20 +291,20 @@ final class OaepAlgorithm {
   final String _name;
 
   /// RSA-OAEP with SHA-256.
-  static const sha256 = OaepAlgorithm._(0, 'RSA-OAEP-SHA256');
+  static const sha256 = OaepAlgorithm._(0, 'rsa.OaepAlgorithm.sha256');
 
   /// RSA-OAEP with SHA-384.
-  static const sha384 = OaepAlgorithm._(1, 'RSA-OAEP-SHA384');
+  static const sha384 = OaepAlgorithm._(1, 'rsa.OaepAlgorithm.sha384');
 
   /// RSA-OAEP with SHA-512.
-  static const sha512 = OaepAlgorithm._(2, 'RSA-OAEP-SHA512');
+  static const sha512 = OaepAlgorithm._(2, 'rsa.OaepAlgorithm.sha512');
 
   @override
   String toString() => _name;
 }
 
 /// RSA-OAEP with SHA-1, for protocols that still require it.
-const oaepSha1 = OaepAlgorithm._(100, 'RSA-OAEP-SHA1');
+const oaepSha1 = OaepAlgorithm._(100, 'rsa.oaepSha1');
 
 /// An RSA private key that decrypts RSA-OAEP ciphertexts.
 ///
