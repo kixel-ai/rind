@@ -338,9 +338,10 @@ theorem mont_neg_inverse_spec (n : RsaInt) (hk : 1 ≤ n.used.val) (hk' : n.used
   simpa [Nat.add_mod, Nat.mul_mod] using h
 
 /-- The CPU lacks the AVX-512 IFMA features with which `public_op` runs
-pyca/verified-garbage's public operation, which Lean proves in that project
-and not here, so `public_op` runs the square-and-multiply below. -/
-def NoIfma : Prop := low.x86_64.rsa_ifma.RsaIfma.check = ok none
+pyca/verified-garbage's public operation for some keys, which Lean proves in
+that project and not here, so `public_op` runs the square-and-multiply below
+for every key. -/
+def NoIfma : Prop := ∀ n : RsaInt, ∀ e : U64, low.x86_64.rsa_ifma.RsaIfma.check n e = ok none
 
 /-- What `RsaPublicKey::new` establishes about a key: the modulus `n` of
 `k` words is odd, `n0` is `-n⁻¹ mod 2^64`, the montifier is `R² mod n` for
@@ -384,7 +385,7 @@ theorem public_op_spec (key : mid.rsa_pub.RsaPublicKey) (hinv : PubKeyInv key)
       coprime_two_pow_odd hodd _
     -- `expand` keeps `c`'s value, which its words above `used` hold none of.
     unfold low.posint.PosInt.expand
-    simp only [show low.x86_64.rsa_ifma.RsaIfma.check = ok none from hifma, bind_ok]
+    simp only [hifma key.n key.e, bind_ok]
     have hcw : wordsNat c.words.val = wordsNat (lowWords c c.used) := by
       rw [wordsNat_take_drop c.words.val c.used, hcz, Nat.mul_zero, Nat.add_zero]; rfl
     have hc1 : wordsNat (lowWords ({ c with used := key.n.used } : RsaInt) key.n.used) =

@@ -1047,9 +1047,11 @@ mod tests {
         ];
         let mut drbg = HmacDrbg::<hash::Sha256>::new(b"ifma_matches_rind", b"", b"");
         let (mut public_ran, mut crt_ran) = (0, 0);
+        let mut cpu = false;
         for key in keys {
             let key = key.unwrap();
             let n = key.0.public_key().n;
+            cpu |= crate::low::RsaIfma::check(&n, 65537).is_some();
             let k = n.len_bytes();
             let n_1 = n.sub(&PosInt::one());
             let mut inputs = vec![PosInt::zero(), PosInt::one(), n_1];
@@ -1079,11 +1081,12 @@ mod tests {
                 crt_ran += 1;
             }
         }
-        if crate::low::RsaIfma::check().is_some() {
-            assert_eq!(public_ran, 11 * 4 * 11);
+        if cpu {
             // The 2048-, 3072-, and 4096-bit keys, and the 2048-bit one whose
-            // q is above p.
-            assert_eq!(crt_ran, 4 * 11);
+            // q is above p, each with e = 65537 alone, for the public
+            // operation; all but the 3072-bit key for the CRT.
+            assert_eq!(public_ran, 4 * 11);
+            assert_eq!(crt_ran, 3 * 11);
         }
     }
 

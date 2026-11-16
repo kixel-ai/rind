@@ -5,10 +5,12 @@
 //!
 //! The public operation runs radix-2^52 almost-Montgomery products on
 //! AVX-512 IFMA for 2048-, 3072-, and 4096-bit moduli with `e = 65537`, and
-//! 64-bit Montgomery products on BMI2 and ADX for the rest. The CRT runs the
-//! exponentiations modulo `p` and `q` at once on IFMA for 2048-, 3072-, and
-//! 4096-bit keys of balanced primes, by a fixed window of 4 or 5 bits whose
-//! table entry is gathered by masking every entry.
+//! 64-bit Montgomery products on BMI2 and ADX for the rest, which rind
+//! leaves to its own code: VG's measured slower at 2056 bits. The CRT runs the
+//! exponentiations modulo `p` and `q` at once on IFMA for 2048- and 4096-bit
+//! keys of balanced primes, by a fixed window of 4 or 5 bits whose table entry
+//! is gathered by masking every entry. VG's takes 3072-bit keys too, but
+//! measured slower there than aws-lc's dual RSAZ on Zen 5, which they keep.
 //!
 //! VG proves each correct and constant time in Lean, over its own models of
 //! the instructions, which rind does not yet check: the public operation by
@@ -23,7 +25,7 @@ use super::cpu::HaveAvx512ForRsa;
 use super::vg;
 use crate::low;
 
-/// Proof that the CPU runs VG's AVX-512 IFMA RSA.
+/// Proof that the CPU runs VG's AVX-512 IFMA public operation for a key.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct RsaIfma(HaveAvx512ForRsa);
 
@@ -35,7 +37,7 @@ pub(crate) struct RsaIfma(HaveAvx512ForRsa);
 /// leaves, are a valid value: one for no key, which [`IfmaCrt::runs`]
 /// refuses.
 pub(crate) struct IfmaCrt {
-    /// The words of each prime, 16, 24, or 32: half of `n`'s. Zero where
+    /// The words of each prime, 16 or 32: half of `n`'s. Zero where
     /// VG's CRT does not run.
     w: usize,
     /// `n` and `2^(128 * 2w) mod n`, at `2w` words each, then `2^(128w)`
@@ -103,7 +105,12 @@ const MAX_WORDS: usize = 128;
 const MAX_PRIME_WORDS: usize = 32;
 
 impl RsaIfma {
-    pub(crate) fn check() -> Option<Self> {
+    /// For a key of modulus `n` and exponent `e`, where VG's routine takes
+    /// its IFMA path: a 2048-, 3072-, or 4096-bit `n` and `e = 65537`.
+    pub(crate) fn check<const N: usize>(n: &low::PosInt<N>, e: u64) -> Option<Self> {
+        if e != 65537 || !matches!(n.len_bytes(), 256 | 384 | 512) {
+            return None;
+        }
         HaveAvx512ForRsa::check().map(Self)
     }
 
@@ -159,9 +166,9 @@ impl RsaIfma {
 
 impl IfmaCrt {
     /// The values VG's CRT takes for the key of `n`, `p`, and `q`, little-endian
-    /// words: if the CPU runs it, and it is the fastest there, for 2048-,
-    /// 3072-, and 4096-bit moduli of primes as wide as each other, as aws-lc's
-    /// dual RSAZ requires. Otherwise, or if `n` is even or not `p q`, a value
+    /// words: if the CPU runs it, and it is the fastest there, for 2048- and
+    /// 4096-bit moduli of primes as wide as each other, as aws-lc's dual RSAZ
+    /// requires. Otherwise, or if `n` is even or not `p q`, a value
     /// that [`IfmaCrt::runs`] refuses.
     pub(crate) fn new(n: &[u64], p: &[u64], q: &[u64]) -> Self {
         Self::try_new(n, p, q).unwrap_or(Self {
@@ -175,7 +182,7 @@ impl IfmaCrt {
     fn try_new(n: &[u64], p: &[u64], q: &[u64]) -> Option<Self> {
         HaveAvx512ForRsa::check()?;
         let w = p.len();
-        if !matches!(w, 16 | 24 | 32) || q.len() != w || n.len() != 2 * w {
+        if !matches!(w, 16 | 32) || q.len() != w || n.len() != 2 * w {
             return None;
         }
         let n = low::PosInt::<{ 2 * MAX_PRIME_WORDS }>::from_words(n).ok()?;
@@ -346,12 +353,6 @@ mod tests {
 
     #[test]
     #[ignore = "admin/ct-sde runs it under Intel SDE"]
-    fn ct_sde_crt_ifma_3072() {
-        trace_crt(24, false);
-    }
-
-    #[test]
-    #[ignore = "admin/ct-sde runs it under Intel SDE"]
     fn ct_sde_crt_ifma_4096() {
         trace_crt(32, false);
     }
@@ -360,12 +361,6 @@ mod tests {
     #[ignore = "admin/ct-sde runs it under Intel SDE"]
     fn ct_sde_crt_ifma512_2048() {
         trace_crt(16, true);
-    }
-
-    #[test]
-    #[ignore = "admin/ct-sde runs it under Intel SDE"]
-    fn ct_sde_crt_ifma512_3072() {
-        trace_crt(24, true);
     }
 
     #[test]
@@ -438,7 +433,7 @@ mod tests {
         x[k - 1] >>= 1;
         let x = be(&x, 8 * k);
         let mut out = vec![0; 8 * k];
-        let ifma = RsaIfma::check().expect("AVX-512 IFMA");
+        let ifma = RsaIfma::check(&ni, 65537).expect("AVX-512 IFMA");
         assert!(ct_sde::traced(|| ifma.public(&mut out, &pre, &[1, 0, 1], &x)));
     }
 }

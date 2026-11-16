@@ -64,7 +64,7 @@ impl RsaPublicKey {
         c.expand(&self.n);
 
         #[cfg(rind_backend = "x86_64")]
-        if let Some(ifma) = low::RsaIfma::check() {
+        if let Some(ifma) = low::RsaIfma::check(&self.n, self.e) {
             return self.public_op_ifma(ifma, &c);
         }
 
@@ -128,7 +128,7 @@ impl RsaPublicKey {
     /// multiply on [`Self::mul`], for `c` below `n`, where the former runs.
     #[cfg(all(test, rind_backend = "x86_64"))]
     pub(crate) fn public_op_both(&self, c: &RsaPosInt) -> Option<[RsaPosInt; 2]> {
-        let ifma = low::RsaIfma::check()?;
+        let ifma = low::RsaIfma::check(&self.n, self.e)?;
         let mut c = c.clone();
         c.expand(&self.n);
         let mut want = c.clone();
