@@ -44,14 +44,19 @@ void main() {
   test(
     'a fresh process resolves each signature library on its first rind call',
     () async {
-      for (final name in ['ed25519', 'ecdsa', 'rsa']) {
-        final result = await Process.run(Platform.resolvedExecutable, [
-          'test/first_call/$name.dart',
-        ]);
+      const names = ['ed25519', 'ecdsa', 'rsa'];
+      final results = await Future.wait([
+        for (final name in names)
+          Process.run(Platform.resolvedExecutable, [
+            'test/first_call/$name.dart',
+          ]),
+      ]);
+      for (var i = 0; i < names.length; i++) {
+        final result = results[i];
         expect(
           result.exitCode,
           0,
-          reason: '$name\n${result.stdout}\n${result.stderr}',
+          reason: '${names[i]}\n${result.stdout}\n${result.stderr}',
         );
       }
     },
