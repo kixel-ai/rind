@@ -6,6 +6,7 @@ import Rind.Aarch64.Pbkdf2
 import Rind.Aarch64.P256
 import Rind.Aarch64.ChaCha20
 import Rind.Aarch64.Ed25519
+import Rind.Aarch64.Ed25519Verify
 import Rind.Aarch64.Sha3
 import Rind.Aarch64.P256Signature
 import Rind.Aarch64.AesModesLow
@@ -245,14 +246,14 @@ A change here is a change to the trust base.
 #guard_msgs in
 #print axioms kdf.salt_extract_spec
 
-/-- info: 'rind.aarch64.kdf.okm_fill_spec' depends on axioms: [propext,
+/-- info: 'rind.aarch64.kdf.prk_fill_spec' depends on axioms: [propext,
  Classical.choice,
  Quot.sound,
  compress_nohw_spec,
  sha256_block_data_order_hw_spec,
  sha512_block_data_order_hw_spec] -/
 #guard_msgs in
-#print axioms kdf.okm_fill_spec
+#print axioms kdf.prk_fill_spec
 
 /-- info: 'rind.aarch64.kdf.hkdf_fill' depends on axioms: [propext,
  Classical.choice,
@@ -262,6 +263,15 @@ A change here is a change to the trust base.
  sha512_block_data_order_hw_spec] -/
 #guard_msgs in
 #print axioms kdf.hkdf_fill
+
+/-- info: 'rind.aarch64.kdf.prk_new_fill' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ compress_nohw_spec,
+ sha256_block_data_order_hw_spec,
+ sha512_block_data_order_hw_spec] -/
+#guard_msgs in
+#print axioms kdf.prk_new_fill
 
 /-- info: 'rind.aarch64.kdf.derive_spec' depends on axioms: [propext,
  Classical.choice,
@@ -353,8 +363,14 @@ A change here is a change to the trust base.
 /-- info: 'rind.aarch64.p256_ecdsa_generate' depends on axioms: [propext,
  Classical.choice,
  Quot.sound,
+ bignum_add_p256_spec,
+ bignum_demont_p256_spec,
  bignum_eq_spec,
- bignum_mod_n256_spec] -/
+ bignum_mod_n256_spec,
+ bignum_montmul_p256_spec,
+ bignum_montsqr_p256_spec,
+ bignum_tomont_p256_spec,
+ p256_scalarmulbase_spec] -/
 #guard_msgs in
 #print axioms p256_ecdsa_generate
 
@@ -391,23 +407,13 @@ A change here is a change to the trust base.
 #guard_msgs in
 #print axioms p256_ecdsa_sign
 
-/-- info: 'rind.aarch64.p256_ecdsa_key_pair_public_key' depends on axioms: [propext,
- Classical.choice,
- Quot.sound,
- bignum_add_p256_spec,
- bignum_demont_p256_spec,
- bignum_eq_spec,
- bignum_montmul_p256_spec,
- bignum_montsqr_p256_spec,
- bignum_tomont_p256_spec,
- p256_scalarmulbase_spec] -/
+/-- info: 'rind.aarch64.p256_ecdsa_key_pair_public_key' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms p256_ecdsa_key_pair_public_key
 
 /-- info: 'rind.aarch64.p256_ecdsa_key_pair_verify' depends on axioms: [propext,
  Classical.choice,
  Quot.sound,
- bignum_add_p256_spec,
  bignum_demont_p256_spec,
  bignum_demont_spec,
  bignum_eq_spec,
@@ -422,7 +428,6 @@ A change here is a change to the trust base.
  p256_montjadd_spec,
  p256_montjdouble_spec,
  p256_montjmixadd_spec,
- p256_scalarmulbase_spec,
  sha256_block_data_order_hw_spec] -/
 #guard_msgs in
 #print axioms p256_ecdsa_key_pair_verify
@@ -567,6 +572,18 @@ A change here is a change to the trust base.
  ct_compare_bytes_spec] -/
 #guard_msgs in
 #print axioms kek_unwrap_padded_spec
+
+/-- info: 'rind.aarch64.kek_wrap_key_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms kek_wrap_key_spec
+
+/-- info: 'rind.aarch64.kek_unwrap_key_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ ct_compare_16_spec,
+ ct_compare_bytes_spec] -/
+#guard_msgs in
+#print axioms kek_unwrap_key_spec
 
 /-- info: 'rind.aarch64.aes_ctr_new_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in

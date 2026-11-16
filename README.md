@@ -17,8 +17,8 @@
 </p>
 
 - 🏎️ **As fast as aws-lc-rs and ring.** rind matches or beats both on
-  nearly every operation TLS and QUIC run, from the handshake to each
-  packet's AEAD.
+  [nearly every operation][benchmarks] TLS and QUIC run, from the handshake
+  to each packet's AEAD.
 - 🛡️ **Verified where it counts.** On x86_64 and aarch64, rind's
   elliptic-curve, RSA, ML-KEM, and ML-DSA arithmetic builds on [s2n-bignum]'s
   formally verified assembly, and rind's own [Lean proofs][proofs] carry
@@ -52,7 +52,7 @@ cost in AI tokens.
 <!-- comparison: `admin/bench-report render` writes this table -->
 | Library | Build tools beyond rustc | Lacks, of the 14 algorithms benchmarked | Formally verified | Fastest, or within 10% |
 |---|---|---|---|---|
-| rind | [none](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#build-cost) | none | [aarch64: SHA-256 (some CPUs), SHA-512, SHA-3, HMAC (some CPUs), HKDF (some CPUs), X25519, Ed25519, P-256, P-384 (some operations); portable: SHA-256, SHA-512, HMAC, HKDF; x86_64: AES-GCM (some CPUs), SHA-512 (some CPUs), SHA-3, X25519, Ed25519 (some CPUs), P-384 (some operations), RSA (some CPUs, some operations)](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#verified-code) | [331 of its 354 times](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#speed) |
+| rind | [none](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#build-cost) | none | [aarch64: SHA-256 (some CPUs), SHA-512, SHA-3, HMAC (some CPUs), HKDF (some CPUs), X25519, Ed25519, P-256, P-384 (some operations); portable: SHA-256, SHA-512, HMAC, HKDF; x86_64: AES-GCM (some CPUs), SHA-512 (some CPUs), SHA-3, X25519, Ed25519 (some CPUs, some operations), P-256 (some CPUs), P-384 (some operations), RSA (some CPUs, some operations)](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#verified-code) | [331 of its 354 times](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#speed) |
 | [aws-lc-rs](https://github.com/aws/aws-lc-rs) | [cc](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#build-cost) | XChaCha20-Poly1305 (aws-lc has it, through aws-lc-sys) | [x86_64: SHA-512 (some CPUs)](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#verified-code) | [127 of its 354 times](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#speed) |
 | [ring](https://github.com/briansmith/ring) | [cc](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#build-cost) | XChaCha20-Poly1305, P-521, ML-KEM | [none](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#verified-code) | [94 of its 294 times](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#speed) |
 | [RustCrypto + dalek](https://github.com/RustCrypto) | [none](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#build-cost) | none | [none](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#verified-code) | [27 of its 282 times](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#speed) |
@@ -76,6 +76,9 @@ What the table leaves out favors the others:
   its [rsa][rustcrypto-rsa] crate an earlier one its code has since diverged
   from, it says; its p256, ml-kem, and ml-dsa crates say they have had none.
   rind has had no third-party audit.
+- **Maturity and reach.** ring has run in production for years, and
+  RustCrypto covers far more algorithms. Both build without `std`, which
+  rind does not yet.
 
 ## Switch in one line
 
@@ -120,20 +123,20 @@ ring and aws-lc-rs item to rind's.
 ### Directly
 
 The `rind` crate's own API covers AES-GCM, ChaCha20-Poly1305, and
-XChaCha20-Poly1305, QUIC header protection, X25519 and ECDH, ML-KEM-768,
-HPKE, ECDSA, Ed25519, ML-DSA, SLH-DSA, and RSA signatures, RSA blind signatures, ECVRF, OPRFs, RSA-OAEP, SHA-1, SHA-2, and SHA-3,
-HMAC, HKDF, PBKDF2, Argon2id, SPAKE2+, and AES key wrap. Each algorithm is a constant and each key
+XChaCha20-Poly1305, QUIC header protection, X25519 and ECDH, ML-KEM,
+HPKE, ECDSA, Ed25519, ML-DSA, SLH-DSA, and RSA signatures, RSA blind signatures, FROST threshold signatures, ECVRF, OPRFs, RSA-OAEP, SHA-1, SHA-2, and SHA-3,
+HMAC, HKDF, PBKDF2, Argon2id, SPAKE2+, and AES key wrap. Each algorithm is a constant or a type and each key
 type has one role, so misuse fails to compile:
 
 ```rust
-use rind::signature::{EcdsaKeyPair, PublicKey, sign, verify};
+use rind::ecdsa::{KeyPair, PublicKey, sign, verify};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let key_pair = EcdsaKeyPair::generate(&sign::ECDSA_P256_SHA256_ASN1)?;
+    let key_pair = KeyPair::generate(&sign::P256_SHA256_ASN1)?;
     let signature = key_pair.sign(b"hello")?;
 
-    let encoded = key_pair.public_key();
-    let public_key = PublicKey::new(&verify::ECDSA_P256_SHA256_ASN1, encoded.as_ref())?;
+    let encoded = key_pair.public_key().as_ref();
+    let public_key = PublicKey::new(&verify::P256_SHA256_ASN1, encoded)?;
     public_key.verify(b"hello", signature.as_ref())?;
     Ok(())
 }
@@ -161,6 +164,13 @@ Each crate's README shows its setup.
 | [rind_cryptography][] | Dart and Flutter, as the `rind_cryptography` package, with the `cryptography` package's API on rind |
 | [rind-python][] | Python, as the `pyrind` package on PyPI, with rind's own API |
 | [pyrind-cryptography][] | Python, as the `pyrind-cryptography` package on PyPI, with pyca/cryptography's `hazmat` API on pyrind |
+
+## Before you depend on it
+
+rind was written with AI coding agents, and no one outside the project has
+audited it. It is not FIPS 140-3 validated. [The comparison][comparison]
+lists what the established libraries have that rind lacks, and where another
+library is faster, [Known gaps][gaps] says why and what closes it.
 
 ## Wiping keys
 
@@ -338,6 +348,7 @@ from other projects keeps its source's license, which [LICENSE] lists.
 [migrating]: https://github.com/kixel-ai/rind/blob/main/MIGRATING.md
 [benchmarks]: https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md
 [gaps]: https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#known-gaps
+[comparison]: https://github.com/kixel-ai/rind/blob/main/README.md#compared-with-the-alternatives
 [build-cost]: https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#build-cost
 [verified]: https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#verified-code
 [testing]: https://github.com/kixel-ai/rind/blob/main/TESTING.md#primitives

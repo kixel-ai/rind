@@ -157,11 +157,16 @@ fn ct_binsec_aes_kw() {
         for algorithm in [&AES_128, &AES_192, &AES_256] {
             let kek = AesKek::new(algorithm, &secret::<32>(1)[..algorithm.key_len]).unwrap();
             let (mut wrapped, mut key) = ([0; 24], [0; 16]);
-            kek.wrap(&secret::<16>(2), &mut wrapped).unwrap();
-            black_box(kek.unwrap(&wrapped, &mut key).is_ok());
-            let (mut wrapped, mut key) = ([0; 32], [0; 20]);
-            kek.wrap_padded(&secret::<20>(2), &mut wrapped).unwrap();
-            black_box(kek.unwrap_padded(&wrapped, &mut key).is_ok());
+            kek.wrap_key(Mode::Kw, &secret::<16>(2), &mut wrapped)
+                .unwrap();
+            black_box(kek.unwrap_key(Mode::Kw, &wrapped, &mut key).is_ok());
+            // The key buffer is 8 bytes shorter than the wrapped key, as
+            // unwrapping requires, so the unwrap runs rather than refusing
+            // the length.
+            let (mut wrapped, mut key) = ([0; 32], [0; 24]);
+            kek.wrap_key(Mode::Kwp, &secret::<20>(2), &mut wrapped)
+                .unwrap();
+            black_box(kek.unwrap_key(Mode::Kwp, &wrapped, &mut key).is_ok());
         }
     });
 }
@@ -205,9 +210,9 @@ fn ct_binsec_hkdf() {
             .extract(&secret::<32>(2))
             .unwrap();
         let mut okm = [0; 80];
-        prk.expand(&[b"info"], okm.len())
-            .unwrap()
-            .fill(&mut okm)
+        prk.fill(&[b"info"], &mut okm).unwrap();
+        Prk::new(&HKDF_SHA256, &secret::<32>(3))
+            .fill(&[b"info"], &mut okm)
             .unwrap();
     });
 }
@@ -241,9 +246,10 @@ fn ct_binsec_argon2() {
     // exception to the constant-time rule allows.
     let params = Params::new(8, 2, 1).unwrap();
     checked(|| {
+        let password = Secret::new(&secret::<20>(1));
         let mut out = [0; 32];
-        derive(params, &secret::<20>(1), &[2; 16], &mut out).unwrap();
-        black_box(verify(params, &secret::<20>(1), &[2; 16], &out).is_ok());
+        password.derive(params, &[2; 16], &mut out).unwrap();
+        black_box(password.verify(params, &[2; 16], &out).is_ok());
     });
 }
 
@@ -292,34 +298,52 @@ fn ct_binsec_ecdh_p521() {
     ecdh(&crate::agreement::ECDH_P521, 66);
 }
 
-#[test]
-#[ignore = "admin/ct-binsec runs it under BINSEC"]
-fn ct_binsec_mlkem768() {
-    use crate::mid::mlkem768::DecapKey;
+fn mlkem<P: crate::mid::mlkem::Params>() {
+    use crate::mid::mlkem::DecapKey;
 
-    let (_, ciphertext) = DecapKey::keygen_internal(&[1; 64])
+    let (_, ciphertext) = DecapKey::<P>::keygen_internal(&[1; 64])
         .encapsulation_key()
         .encaps()
         .unwrap();
-    checked(|| DecapKey::keygen_internal(&[1; 64]).decaps(&ciphertext));
+    checked(|| DecapKey::<P>::keygen_internal(&[1; 64]).decaps(&ciphertext));
+}
+
+// ML-KEM-512 samples its key's noise with `eta1 = 3`, and ML-KEM-1024
+// compresses its re-encryption to 11 and 5 bits.
+#[test]
+#[ignore = "admin/ct-binsec runs it under BINSEC"]
+fn ct_binsec_mlkem512() {
+    mlkem::<crate::mid::mlkem::MlKem512>();
+}
+
+#[test]
+#[ignore = "admin/ct-binsec runs it under BINSEC"]
+fn ct_binsec_mlkem768() {
+    mlkem::<crate::mid::mlkem::MlKem768>();
+}
+
+#[test]
+#[ignore = "admin/ct-binsec runs it under BINSEC"]
+fn ct_binsec_mlkem1024() {
+    mlkem::<crate::mid::mlkem::MlKem1024>();
 }
 
 #[test]
 #[ignore = "admin/ct-binsec runs it under BINSEC"]
 fn ct_binsec_ed25519() {
-    use crate::signature::*;
+    use crate::ed25519::*;
 
     checked(|| {
-        let key = Ed25519KeyPair::from_seed(&[1; 32]).unwrap();
+        let key = KeyPair::from_seed(&[1; 32]).unwrap();
         key.sign(&secret::<40>(2))
     });
 }
 
-fn ecdsa(algorithm: &'static crate::signature::EcdsaSigningAlgorithm, pkcs8: &[u8]) {
-    use crate::signature::*;
+fn ecdsa(algorithm: &'static crate::ecdsa::SigningAlgorithm, pkcs8: &[u8]) {
+    use crate::ecdsa::*;
 
     checked(|| {
-        let key = EcdsaKeyPair::from_pkcs8(algorithm, pkcs8).unwrap();
+        let key = KeyPair::from_pkcs8(algorithm, pkcs8).unwrap();
         black_box(key.sign(&secret::<40>(1)).is_ok());
     });
 }
@@ -327,9 +351,9 @@ fn ecdsa(algorithm: &'static crate::signature::EcdsaSigningAlgorithm, pkcs8: &[u
 #[test]
 #[ignore = "admin/ct-binsec runs it under BINSEC"]
 fn ct_binsec_ecdsa_p256() {
-    use crate::signature::sign::ECDSA_P256_SHA256_FIXED;
+    use crate::ecdsa::sign::P256_SHA256_FIXED;
     ecdsa(
-        &ECDSA_P256_SHA256_FIXED,
+        &P256_SHA256_FIXED,
         include_bytes!("../high/ecdsa/secp256r1.pkcs8.der"),
     );
 }
@@ -337,9 +361,9 @@ fn ct_binsec_ecdsa_p256() {
 #[test]
 #[ignore = "admin/ct-binsec runs it under BINSEC"]
 fn ct_binsec_ecdsa_p384() {
-    use crate::signature::sign::ECDSA_P384_SHA384_FIXED;
+    use crate::ecdsa::sign::P384_SHA384_FIXED;
     ecdsa(
-        &ECDSA_P384_SHA384_FIXED,
+        &P384_SHA384_FIXED,
         include_bytes!("../high/ecdsa/secp384r1.pkcs8.der"),
     );
 }
@@ -347,9 +371,9 @@ fn ct_binsec_ecdsa_p384() {
 #[test]
 #[ignore = "admin/ct-binsec runs it under BINSEC"]
 fn ct_binsec_ecdsa_p521() {
-    use crate::signature::sign::ECDSA_P521_SHA512_FIXED;
+    use crate::ecdsa::sign::P521_SHA512_FIXED;
     ecdsa(
-        &ECDSA_P521_SHA512_FIXED,
+        &P521_SHA512_FIXED,
         include_bytes!("../high/ecdsa/secp521r1.pkcs8.der"),
     );
 }
@@ -392,11 +416,11 @@ fn ct_binsec_constant_time_verify() {
 // the padding. RSA-2048's 16-word primes take x86_64's Karatsuba products
 // and AVX2 gather, and RSA-3072's 24 its `bn_power5`.
 fn rsa_sign(pkcs8: &[u8]) {
-    use crate::signature::*;
+    use crate::rsa::*;
 
     checked(|| {
-        let key = RsaKeyPair::from_pkcs8(pkcs8).unwrap();
-        black_box(key.sign(&sign::RSA_PKCS1_SHA256, &[1; 40]).is_ok());
+        let key = KeyPair::from_pkcs8(pkcs8).unwrap();
+        black_box(key.sign(&sign::PKCS1_SHA256, &[1; 40]).is_ok());
     });
 }
 
@@ -433,10 +457,10 @@ fn ct_binsec_rsa2048_oaep() {
 #[test]
 #[ignore = "admin/ct-binsec runs it under BINSEC"]
 fn ct_binsec_mldsa() {
-    use crate::signature::sign::*;
+    use crate::ml_dsa::*;
 
-    fn sign<P: MlDsaParameterSet>() {
-        let key = MlDsaKeyPair::<P>::from_seed(&secret::<32>(1)).unwrap();
+    fn sign<P: ParameterSet>() {
+        let key = KeyPair::<P>::from_seed(&secret::<32>(1)).unwrap();
         black_box(key.sign(&[2; 40]).is_ok());
     }
 

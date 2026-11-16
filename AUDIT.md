@@ -115,6 +115,7 @@ The pins, as `admin/audit` renders them from the files that hold them, so
 | RFC 9380 | `664b13592116` | `admin/sync-vectors` | hash-to-curve test vectors |
 | blind-rsa-signatures | `45d0abfa829c` | `admin/sync-vectors` | RFC 9474 test vectors |
 | RFC 9497 | `5d7d94c8dc75` | `admin/sync-vectors` | OPRF test vectors |
+| RFC 9591 | `127452b93acb` | `admin/sync-vectors` | FROST test vectors |
 | cfg-if | 1.0.5 | `Cargo.lock` | a macro for `cfg` blocks |
 | curve25519-dalek | 5.0.0 | `Cargo.lock` | X25519, Ed25519, and ristretto255 on armv7 and the portable backend |
 | fiat-crypto | 0.3.0 | `Cargo.lock` | the NIST curves' field arithmetic on armv7 and the portable backend |
@@ -282,13 +283,15 @@ Hand-written arithmetic no proof covers, by where it came from:
   on armv7 and the portable backend. There ristretto255's differential test
   compares dalek with itself, so only RFC 9496's and RFC 9497's vectors
   check it.
-- **x86_64 P-256's mixed addition**, aws-lc's, on which rind's proofs of
-  generator multiplication rest as an unproven axiom.
+- **x86_64 P-256's mixed addition on macOS**, aws-lc's: rind's HOL Light
+  proofs check the Linux build's object, and Apple's text can place the
+  routines' helpers at other offsets.
 
 Primitives whose reference is weak: ECVRF, OPRF, VOPRF, blind RSA, SPAKE2+,
-and HPKE have no aws-lc-rs counterpart, so their differential tests compare
-with other Rust crates, and their fuzz targets with rind itself, except
-HPKE's, against rustls's aws-lc-rs provider. SPAKE2+ has no fuzz target.
+FROST, and HPKE have no aws-lc-rs counterpart, so their differential tests
+compare with other Rust crates, and their fuzz targets with rind itself,
+except HPKE's, against rustls's aws-lc-rs provider. SPAKE2+ and FROST have no
+fuzz target.
 
 Constant time is checked by no tool on:
 
