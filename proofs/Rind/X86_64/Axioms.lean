@@ -330,6 +330,8 @@ change to the trust base.
  Classical.choice,
  Quot.sound,
  compress_avx_spec,
+ finish_padded_spec,
+ sha256_compress_blocks_shaext_spec,
  sha512_block_data_order_avx2_spec] -/
 #guard_msgs in
 #print axioms kdf.prk_new_fill
