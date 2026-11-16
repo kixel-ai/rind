@@ -14,6 +14,11 @@
 //! correctness rests on its use and testing in BoringSSL and aws-lc. rind
 //! tests both against RFC 8439, Wycheproof, aws-lc-rs, and separate
 //! ChaCha20 and Poly1305 passes.
+//!
+//! VG's routines zero their stack scratch before returning, with or without
+//! the `wipe` feature: VG defines each routine with that wipe, offers none
+//! without it, and its proofs are of the instructions as emitted. They
+//! outrun aws-lc's code at every size with that cost included.
 
 use super::cpu::HaveSve2;
 use super::vg::vg_chacha20_poly1305_open_sve2::vg_chacha20_poly1305_open_sve2;
