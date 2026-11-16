@@ -291,6 +291,60 @@ pub mod blind_rsa {
     };
 }
 
+/// FROST threshold Schnorr signatures ([RFC 9591]) over Ed25519,
+/// ristretto255, and P-256.
+///
+/// A trusted dealer splits a signing key into shares, any threshold of
+/// which sign together. Each signer commits to fresh nonces, the
+/// coordinator gathers the commitments and the message into a
+/// [`SigningPackage`](frost::SigningPackage) every signer builds the same
+/// way, each signer returns its signature share, and the coordinator sums
+/// them into one signature under the group's key, verifying each share to
+/// name a participant whose share is bad. A
+/// [`FROST(Ed25519, SHA-512)`](frost::ED25519_SHA512) signature is an
+/// Ed25519 signature.
+///
+/// Dealing and signing run in constant time. Distributed key generation is
+/// not offered.
+///
+/// ```
+/// # fn main() -> Result<(), rind::Error> {
+/// use rind::frost::*;
+///
+/// // The dealer gives each of three participants a share, any two of which
+/// // sign, and publishes its commitment.
+/// let (shares, commitment) = deal(&ED25519_SHA512, 2, 3)?;
+///
+/// // Two participants commit to nonces and send the coordinator their
+/// // commitments.
+/// let (nonces_1, commitments_1) = SigningNonces::commit(&shares[0])?;
+/// let (nonces_3, commitments_3) = SigningNonces::commit(&shares[2])?;
+///
+/// // The coordinator sends the commitments and the message to both, and
+/// // each builds the same package and signs it.
+/// let public_key = commitment.public_key();
+/// let package = SigningPackage::new(public_key, &[commitments_1, commitments_3], b"hello")?;
+/// let share_1 = nonces_1.sign(&shares[0], &package)?;
+/// let share_3 = nonces_3.sign(&shares[2], &package)?;
+///
+/// // The coordinator checks each share and sums them into the signature.
+/// package.verify_share(&share_1, &commitment)?;
+/// package.verify_share(&share_3, &commitment)?;
+/// let signature = package.aggregate(&[share_1, share_3])?;
+/// public_key.verify(b"hello", signature.as_ref())?;
+/// # Ok(())
+/// # }
+/// ```
+///
+/// [RFC 9591]: https://www.rfc-editor.org/rfc/rfc9591.html
+pub mod frost {
+    pub use crate::high::frost::{
+        Commitments, ED25519_SHA512, Identifier, P256_SHA256, PublicKey, RISTRETTO255_SHA512,
+        Scalar, Signature, SignatureShare, SigningNonces, SigningPackage, SigningShare, Suite,
+        VssCommitment, deal,
+    };
+}
+
 /// Oblivious pseudorandom functions ([RFC 9497]) over ristretto255, P-256,
 /// P-384, and P-521.
 ///
