@@ -5,7 +5,8 @@
 //! `vg-cosim-runner --features` prints the CPU features this CPU has, by their
 //! Rust `target_feature` names, comma-separated. `vg-cosim-runner [<stream>...]`
 //! reads each stream of cases, or stdin, and fails if any case differs,
-//! printing the first three of each instruction.
+//! printing the first three of each instruction. `vg-cosim-runner --fault-test`
+//! runs one case that faults, which must print its instruction and exit 1.
 //!
 //! The instruction's machine code runs at a fixed address, `INSN`, in a page of
 //! its own, between a prologue that loads every register the model has from
@@ -139,6 +140,8 @@ mod arch {
     //! `zmm0`–`zmm31`, or as much of them as the CPU has.
 
     pub const ARCH: u8 = 0;
+    /// `mov rax, QWORD PTR [rbx]`, which faults with every register zero.
+    pub const FAULT: (&str, &[u8]) = ("mov rax, QWORD PTR [rbx]", &[0x48, 0x8b, 0x03]);
     pub const REGS_LEN: usize = 16 * 8 + 4 + 4 + 32 * 64;
     /// The general-purpose registers, flags and MXCSR, which a mismatch
     /// prints.
@@ -467,6 +470,8 @@ mod arch {
     //! stores `x0` and `x1` there. `sub sp, sp, #imm` leaves NZCV as it is.
 
     pub const ARCH: u8 = 1;
+    /// `ldr x0, [x1]`, which faults with every register zero.
+    pub const FAULT: (&str, &[u8]) = ("ldr x0, [x1]", &[0x20, 0x00, 0x40, 0xf9]);
     pub const REGS_LEN: usize = 31 * 8 + 8 + 4 + 4 + 32 * 16;
     /// The general-purpose registers, `sp`, NZCV and DIT, which a mismatch
     /// prints.
@@ -824,6 +829,28 @@ fn main() {
             0,
             "vg-cosim-runner: sigaction"
         );
+    }
+    if std::env::args().nth(1).as_deref() == Some("--fault-test") {
+        // One case that faults, every register zero, so `admin/prove vg` can
+        // check that a fault names its instruction and fails the run.
+        let (text, code) = arch::FAULT;
+        let n = arch::REGS_LEN + DATA_LEN;
+        let mut s = b"VGCS".to_vec();
+        s.push(arch::ARCH);
+        s.extend((n as u32).to_le_bytes());
+        s.push(1);
+        s.extend((text.len() as u16).to_le_bytes());
+        s.extend(text.as_bytes());
+        s.push(INSN_KIND);
+        s.extend((code.len() as u16).to_le_bytes());
+        s.extend(code);
+        s.extend(1u32.to_le_bytes());
+        s.extend(vec![0; 2 * n + 2]);
+        s.push(0);
+        let (mut b, mut c, mut f) = (0, 0, 0);
+        run_stream(&s[..], &t, &mut b, &mut c, &mut f);
+        eprintln!("vg-cosim-runner: {text} ran without faulting");
+        std::process::exit(2);
     }
     let paths: Vec<String> = std::env::args().skip(1).collect();
     let (mut blocks, mut cases, mut failed) = (0usize, 0usize, 0usize);

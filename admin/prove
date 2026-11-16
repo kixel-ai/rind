@@ -490,6 +490,15 @@ vg() {
     release scratch
     (cd proofs/verified-garbage && lake build)
     rustc --edition 2024 -O -o "$dir/runner" admin/vg-cosim-runner.rs
+    # A case that faults must name its instruction and fail the run, on the
+    # CPU and under the emulator.
+    local runner fault
+    for runner in "$dir/runner" "${emu[*]} $dir/runner"; do
+        if fault=$($runner --fault-test 2>&1) || ! grep -q "the CPU faulted (signal 11) in" <<<"$fault"; then
+            echo "admin/prove: $runner --fault-test did not report its fault: $fault" >&2
+            return 1
+        fi
+    done
     cpu=$("$dir/runner" --features)
     emulated=$("${emu[@]}" "$dir/runner" --features)
     split -n l/$parts -d -a 2 "$dir/groups.tsv" "$dir/part."
