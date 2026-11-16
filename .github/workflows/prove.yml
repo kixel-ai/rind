@@ -104,7 +104,8 @@ jobs:
 
   # pyca/verified-garbage's code for each target against VG's Lean models,
   # on the runner's CPU and, for what it lacks, Intel SDE or qemu-aarch64.
-  # The nightly run takes its own seed, so each night tries new cases.
+  # A pull request runs the fixed seed 1; the nightly and dispatched runs take
+  # their run ID as the seed, so each tries new cases.
   vg:
     strategy:
       fail-fast: false
@@ -130,7 +131,7 @@ jobs:
       - name: Cosimulate
         run: nix develop .#vg --command admin/prove vg
         env:
-          VG_COSIM_SEED: ${{ github.event_name == 'schedule' && github.run_id || 1 }}
+          VG_COSIM_SEED: ${{ github.event_name != 'pull_request' && github.run_id || 1 }}
 
   neon:
     runs-on: ubuntu-24.04-arm

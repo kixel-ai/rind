@@ -39,7 +39,15 @@ static mut RUNNING_LEN: usize = 0;
 
 extern "C" fn fault(sig: i32) {
     let msg = b"vg-cosim-runner: the CPU faulted (signal ";
-    let digits = [b'0' + (sig / 10) as u8, b'0' + (sig % 10) as u8, b')', b' ', b'i', b'n', b' '];
+    let digits = [
+        b'0' + (sig / 10) as u8,
+        b'0' + (sig % 10) as u8,
+        b')',
+        b' ',
+        b'i',
+        b'n',
+        b' ',
+    ];
     // SAFETY: `RUNNING` is only written between cases, and this exits.
     unsafe {
         write(2, msg.as_ptr(), msg.len());
@@ -53,31 +61,44 @@ extern "C" fn fault(sig: i32) {
 fn map(addr: usize, len: usize, prot: i32) {
     // SAFETY: a fixed mapping at an address nothing else uses, which
     // `MAP_FIXED_NOREPLACE` refuses rather than replaces.
-    let p = unsafe { mmap(addr as *mut u8, len, prot, MAP_PRIVATE_ANON_FIXED_NOREPLACE, -1, 0) };
+    let p = unsafe {
+        mmap(
+            addr as *mut u8,
+            len,
+            prot,
+            MAP_PRIVATE_ANON_FIXED_NOREPLACE,
+            -1,
+            0,
+        )
+    };
     assert_eq!(p as usize, addr, "vg-cosim-runner: cannot map {addr:#x}");
 }
 
 fn read_u8(r: &mut impl Read) -> u8 {
     let mut b = [0; 1];
-    r.read_exact(&mut b).expect("vg-cosim-runner: truncated stream");
+    r.read_exact(&mut b)
+        .expect("vg-cosim-runner: truncated stream");
     b[0]
 }
 
 fn read_u16(r: &mut impl Read) -> usize {
     let mut b = [0; 2];
-    r.read_exact(&mut b).expect("vg-cosim-runner: truncated stream");
+    r.read_exact(&mut b)
+        .expect("vg-cosim-runner: truncated stream");
     u16::from_le_bytes(b) as usize
 }
 
 fn read_u32(r: &mut impl Read) -> usize {
     let mut b = [0; 4];
-    r.read_exact(&mut b).expect("vg-cosim-runner: truncated stream");
+    r.read_exact(&mut b)
+        .expect("vg-cosim-runner: truncated stream");
     u32::from_le_bytes(b) as usize
 }
 
 fn read_vec(r: &mut impl Read, n: usize) -> Vec<u8> {
     let mut v = vec![0; n];
-    r.read_exact(&mut v).expect("vg-cosim-runner: truncated stream");
+    r.read_exact(&mut v)
+        .expect("vg-cosim-runner: truncated stream");
     v
 }
 
@@ -139,7 +160,12 @@ mod arch {
             core::arch::global_asm!(
                 concat!(".globl ", $enter),
                 concat!($enter, ":"),
-                "push rbx", "push rbp", "push r12", "push r13", "push r14", "push r15",
+                "push rbx",
+                "push rbp",
+                "push r12",
+                "push r13",
+                "push r14",
+                "push r15",
                 "sub rsp, 8",
                 "stmxcsr [rip + VG_HOST_MXCSR]",
                 "mov [rip + VG_HOST_RSP], rsp",
@@ -148,10 +174,20 @@ mod arch {
                 "ldmxcsr [rax + 132]",
                 "push qword ptr [rip + VG_RFLAGS]",
                 "popfq",
-                "mov rcx, [rax + 8]", "mov rdx, [rax + 16]", "mov rbx, [rax + 24]",
-                "mov rbp, [rax + 40]", "mov rsi, [rax + 48]", "mov rdi, [rax + 56]",
-                "mov r8, [rax + 64]", "mov r9, [rax + 72]", "mov r10, [rax + 80]", "mov r11, [rax + 88]",
-                "mov r12, [rax + 96]", "mov r13, [rax + 104]", "mov r14, [rax + 112]", "mov r15, [rax + 120]",
+                "mov rcx, [rax + 8]",
+                "mov rdx, [rax + 16]",
+                "mov rbx, [rax + 24]",
+                "mov rbp, [rax + 40]",
+                "mov rsi, [rax + 48]",
+                "mov rdi, [rax + 56]",
+                "mov r8, [rax + 64]",
+                "mov r9, [rax + 72]",
+                "mov r10, [rax + 80]",
+                "mov r11, [rax + 88]",
+                "mov r12, [rax + 96]",
+                "mov r13, [rax + 104]",
+                "mov r14, [rax + 112]",
+                "mov r15, [rax + 120]",
                 "mov rsp, [rax + 32]",
                 "mov rax, [rax]",
                 "jmp qword ptr [rip + VG_INSN_PTR]",
@@ -172,31 +208,59 @@ mod arch {
                 "seto al",
                 "mov [rip + VG_AX], rax",
                 "lea rax, [rip + VG_OUT]",
-                "mov [rax + 8], rcx", "mov [rax + 16], rdx", "mov [rax + 24], rbx", "mov [rax + 32], rsp",
-                "mov [rax + 40], rbp", "mov [rax + 48], rsi", "mov [rax + 56], rdi",
-                "mov [rax + 64], r8", "mov [rax + 72], r9", "mov [rax + 80], r10", "mov [rax + 88], r11",
-                "mov [rax + 96], r12", "mov [rax + 104], r13", "mov [rax + 112], r14", "mov [rax + 120], r15",
+                "mov [rax + 8], rcx",
+                "mov [rax + 16], rdx",
+                "mov [rax + 24], rbx",
+                "mov [rax + 32], rsp",
+                "mov [rax + 40], rbp",
+                "mov [rax + 48], rsi",
+                "mov [rax + 56], rdi",
+                "mov [rax + 64], r8",
+                "mov [rax + 72], r9",
+                "mov [rax + 80], r10",
+                "mov [rax + 88], r11",
+                "mov [rax + 96], r12",
+                "mov [rax + 104], r13",
+                "mov [rax + 112], r14",
+                "mov [rax + 120], r15",
                 "stmxcsr [rax + 132]",
                 $store,
                 "mov rsp, [rip + VG_HOST_RSP]",
                 "ldmxcsr [rip + VG_HOST_MXCSR]",
                 "add rsp, 8",
-                "pop r15", "pop r14", "pop r13", "pop r12", "pop rbp", "pop rbx",
+                "pop r15",
+                "pop r14",
+                "pop r13",
+                "pop r12",
+                "pop rbp",
+                "pop rbx",
                 "ret",
             );
         };
     }
 
     // `.irp` repeats its body for each register, `\i` its number.
-    trampoline!("vg_enter_zmm", "vg_leave0_zmm", "vg_leave1_zmm",
+    trampoline!(
+        "vg_enter_zmm",
+        "vg_leave0_zmm",
+        "vg_leave1_zmm",
         ".irp i, 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31\nvmovdqu64 zmm\\i, [rax + 136 + \\i * 64]\n.endr",
-        ".irp i, 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31\nvmovdqu64 [rax + 136 + \\i * 64], zmm\\i\n.endr");
-    trampoline!("vg_enter_ymm", "vg_leave0_ymm", "vg_leave1_ymm",
+        ".irp i, 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31\nvmovdqu64 [rax + 136 + \\i * 64], zmm\\i\n.endr"
+    );
+    trampoline!(
+        "vg_enter_ymm",
+        "vg_leave0_ymm",
+        "vg_leave1_ymm",
         ".irp i, 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15\nvmovdqu ymm\\i, [rax + 136 + \\i * 64]\n.endr",
-        ".irp i, 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15\nvmovdqu [rax + 136 + \\i * 64], ymm\\i\n.endr");
-    trampoline!("vg_enter_xmm", "vg_leave0_xmm", "vg_leave1_xmm",
+        ".irp i, 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15\nvmovdqu [rax + 136 + \\i * 64], ymm\\i\n.endr"
+    );
+    trampoline!(
+        "vg_enter_xmm",
+        "vg_leave0_xmm",
+        "vg_leave1_xmm",
         ".irp i, 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15\nmovdqu xmm\\i, [rax + 136 + \\i * 64]\n.endr",
-        ".irp i, 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15\nmovdqu [rax + 136 + \\i * 64], xmm\\i\n.endr");
+        ".irp i, 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15\nmovdqu [rax + 136 + \\i * 64], xmm\\i\n.endr"
+    );
 
     unsafe extern "C" {
         fn vg_enter_zmm();
@@ -222,11 +286,29 @@ mod arch {
 
     pub fn tramp() -> Tramp {
         if std::arch::is_x86_feature_detected!("avx512f") {
-            Tramp { enter: vg_enter_zmm, leave0: vg_leave0_zmm as *const () as usize, leave1: vg_leave1_zmm as *const () as usize, width: 64, count: 32 }
+            Tramp {
+                enter: vg_enter_zmm,
+                leave0: vg_leave0_zmm as *const () as usize,
+                leave1: vg_leave1_zmm as *const () as usize,
+                width: 64,
+                count: 32,
+            }
         } else if std::arch::is_x86_feature_detected!("avx") {
-            Tramp { enter: vg_enter_ymm, leave0: vg_leave0_ymm as *const () as usize, leave1: vg_leave1_ymm as *const () as usize, width: 32, count: 16 }
+            Tramp {
+                enter: vg_enter_ymm,
+                leave0: vg_leave0_ymm as *const () as usize,
+                leave1: vg_leave1_ymm as *const () as usize,
+                width: 32,
+                count: 16,
+            }
         } else {
-            Tramp { enter: vg_enter_xmm, leave0: vg_leave0_xmm as *const () as usize, leave1: vg_leave1_xmm as *const () as usize, width: 16, count: 16 }
+            Tramp {
+                enter: vg_enter_xmm,
+                leave0: vg_leave0_xmm as *const () as usize,
+                leave1: vg_leave1_xmm as *const () as usize,
+                width: 16,
+                count: 16,
+            }
         }
     }
 
@@ -234,9 +316,29 @@ mod arch {
         macro_rules! has {
             ($($f:tt),*) => { [$(($f, std::arch::is_x86_feature_detected!($f))),*] };
         }
-        has!("ssse3", "sse4.1", "sha", "aes", "pclmulqdq", "avx", "avx2", "vaes", "vpclmulqdq", "bmi1",
-             "bmi2", "adx", "avx512f", "avx512vl", "avx512bw", "avx512ifma", "sha512")
-            .into_iter().filter(|(_, on)| *on).map(|(f, _)| f).collect()
+        has!(
+            "ssse3",
+            "sse4.1",
+            "sha",
+            "aes",
+            "pclmulqdq",
+            "avx",
+            "avx2",
+            "vaes",
+            "vpclmulqdq",
+            "bmi1",
+            "bmi2",
+            "adx",
+            "avx512f",
+            "avx512vl",
+            "avx512bw",
+            "avx512ifma",
+            "sha512"
+        )
+        .into_iter()
+        .filter(|(_, on)| *on)
+        .map(|(f, _)| f)
+        .collect()
     }
 
     /// `jmp qword ptr [rip]` and the address: to `to`, from anywhere.
@@ -262,7 +364,8 @@ mod arch {
             let inp = &mut *(&raw mut VG_IN);
             inp.0.copy_from_slice(regs);
             let fl = u32::from_le_bytes(regs[FLAGS..FLAGS + 4].try_into().unwrap()) as u64;
-            VG_RFLAGS = 2 | (fl & 1) | ((fl >> 1) & 1) << 6 | ((fl >> 2) & 1) << 7 | ((fl >> 3) & 1) << 11;
+            VG_RFLAGS =
+                2 | (fl & 1) | ((fl >> 1) & 1) << 6 | ((fl >> 2) & 1) << 7 | ((fl >> 3) & 1) << 11;
             let out = &mut *(&raw mut VG_OUT);
             out.0.fill(0);
             (t.enter)();
@@ -279,28 +382,43 @@ mod arch {
     /// comparing the flags `mask` says are defined, and only the vector
     /// registers the trampoline loaded.
     pub fn diff(t: &Tramp, got: &[u8], want: &[u8], mask: u8) -> Vec<String> {
-        const NAMES: [&str; 16] = ["rax", "rcx", "rdx", "rbx", "rsp", "rbp", "rsi", "rdi",
-            "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15"];
+        const NAMES: [&str; 16] = [
+            "rax", "rcx", "rdx", "rbx", "rsp", "rbp", "rsi", "rdi", "r8", "r9", "r10", "r11",
+            "r12", "r13", "r14", "r15",
+        ];
         let mut d = vec![];
         for (i, n) in NAMES.iter().enumerate() {
             let (g, w) = (&got[8 * i..8 * i + 8], &want[8 * i..8 * i + 8]);
             if g != w {
-                d.push(format!("{n}: {} (model {})", super::hex(&rev(g)), super::hex(&rev(w))));
+                d.push(format!(
+                    "{n}: {} (model {})",
+                    super::hex(&rev(g)),
+                    super::hex(&rev(w))
+                ));
             }
         }
         let (g, w) = (got[FLAGS] & mask, want[FLAGS] & mask);
         if g != w {
-            d.push(format!("flags (CF ZF SF OF, defined {mask:04b}): {g:04b} (model {w:04b})"));
+            d.push(format!(
+                "flags (CF ZF SF OF, defined {mask:04b}): {g:04b} (model {w:04b})"
+            ));
         }
         if got[MXCSR..MXCSR + 4] != want[MXCSR..MXCSR + 4] {
-            d.push(format!("mxcsr: {} (model {})", super::hex(&rev(&got[MXCSR..MXCSR + 4])),
-                super::hex(&rev(&want[MXCSR..MXCSR + 4]))));
+            d.push(format!(
+                "mxcsr: {} (model {})",
+                super::hex(&rev(&got[MXCSR..MXCSR + 4])),
+                super::hex(&rev(&want[MXCSR..MXCSR + 4]))
+            ));
         }
         for i in 0..t.count {
             let o = VEC + 64 * i;
             if got[o..o + t.width] != want[o..o + t.width] {
-                d.push(format!("zmm{i}[{}:0]: {} (model {})", 8 * t.width - 1,
-                    super::hex(&rev(&got[o..o + t.width])), super::hex(&rev(&want[o..o + t.width]))));
+                d.push(format!(
+                    "zmm{i}[{}:0]: {} (model {})",
+                    8 * t.width - 1,
+                    super::hex(&rev(&got[o..o + t.width])),
+                    super::hex(&rev(&want[o..o + t.width]))
+                ));
             }
         }
         d
@@ -445,10 +563,24 @@ mod arch {
         };
     }
 
-    trampoline!("vg_enter_dit", "vg_go_dit", "vg_leave0_dit", "vg_leave1_dit", "vg_end_dit",
+    trampoline!(
+        "vg_enter_dit",
+        "vg_go_dit",
+        "vg_leave0_dit",
+        "vg_leave1_dit",
+        "vg_end_dit",
         "ldr w2, [x0, #260]\nlsl x2, x2, #24\nmsr S3_3_C4_C2_5, x2",
-        "mrs x2, S3_3_C4_C2_5\nlsr x2, x2, #24\nstr w2, [x1, #260]\nmsr S3_3_C4_C2_5, xzr");
-    trampoline!("vg_enter", "vg_go", "vg_leave0", "vg_leave1", "vg_end", "", "");
+        "mrs x2, S3_3_C4_C2_5\nlsr x2, x2, #24\nstr w2, [x1, #260]\nmsr S3_3_C4_C2_5, xzr"
+    );
+    trampoline!(
+        "vg_enter",
+        "vg_go",
+        "vg_leave0",
+        "vg_leave1",
+        "vg_end",
+        "",
+        ""
+    );
 
     unsafe extern "C" {
         fn vg_enter_dit();
@@ -476,15 +608,28 @@ mod arch {
     pub fn tramp() -> Tramp {
         let dit = std::arch::is_aarch64_feature_detected!("dit");
         let [enter, go, leave0, leave1, end] = if dit {
-            [vg_enter_dit as *const (), vg_go_dit as *const (), vg_leave0_dit as *const (),
-                vg_leave1_dit as *const (), vg_end_dit as *const ()]
+            [
+                vg_enter_dit as *const (),
+                vg_go_dit as *const (),
+                vg_leave0_dit as *const (),
+                vg_leave1_dit as *const (),
+                vg_end_dit as *const (),
+            ]
         } else {
-            [vg_enter as *const (), vg_go as *const (), vg_leave0 as *const (), vg_leave1 as *const (),
-                vg_end as *const ()]
+            [
+                vg_enter as *const (),
+                vg_go as *const (),
+                vg_leave0 as *const (),
+                vg_leave1 as *const (),
+                vg_end as *const (),
+            ]
         }
         .map(|p| p as usize);
         let len = end - enter;
-        assert!(len <= super::INSN - super::CODE, "vg-cosim-runner: the trampoline does not fit");
+        assert!(
+            len <= super::INSN - super::CODE,
+            "vg-cosim-runner: the trampoline does not fit"
+        );
         let at = |p: usize| super::CODE + (p - enter);
         // SAFETY: the code page is mapped, and the trampoline's bytes are
         // this program's text.
@@ -495,7 +640,11 @@ mod arch {
         }
         sync(super::CODE, len);
         super::map(super::DATA - SCRATCH, SCRATCH, super::PROT_RW);
-        Tramp { leave0: at(leave0), leave1: at(leave1), dit }
+        Tramp {
+            leave0: at(leave0),
+            leave1: at(leave1),
+            dit,
+        }
     }
 
     pub fn features() -> Vec<&'static str> {
@@ -503,15 +652,23 @@ mod arch {
             ($($f:tt),*) => { [$(($f, std::arch::is_aarch64_feature_detected!($f))),*] };
         }
         has!("aes", "sha2", "sha3", "sm4", "sve2", "dit", "sb")
-            .into_iter().filter(|(_, on)| *on).map(|(f, _)| f).collect()
+            .into_iter()
+            .filter(|(_, on)| *on)
+            .map(|(f, _)| f)
+            .collect()
     }
 
     /// `b to` at `from` (DDI 0487 C6.2, "B": `0 00101 imm26`, the offset
     /// `imm26 * 4`, ±128 MB).
     pub fn jump(from: usize, to: usize) -> Vec<u8> {
         let off = (to as isize - from as isize) / 4;
-        assert!((-(1 << 25)..1 << 25).contains(&off), "vg-cosim-runner: {to:#x} is out of reach of {from:#x}");
-        (0x1400_0000u32 | (off as u32 & 0x03FF_FFFF)).to_le_bytes().to_vec()
+        assert!(
+            (-(1 << 25)..1 << 25).contains(&off),
+            "vg-cosim-runner: {to:#x} is out of reach of {from:#x}"
+        );
+        (0x1400_0000u32 | (off as u32 & 0x03FF_FFFF))
+            .to_le_bytes()
+            .to_vec()
     }
 
     /// `ret`.
@@ -569,16 +726,25 @@ mod arch {
         for i in 0..31 {
             let (g, w) = (&got[8 * i..8 * i + 8], &want[8 * i..8 * i + 8]);
             if g != w {
-                d.push(format!("x{i}: {} (model {})", super::hex(&rev(g)), super::hex(&rev(w))));
+                d.push(format!(
+                    "x{i}: {} (model {})",
+                    super::hex(&rev(g)),
+                    super::hex(&rev(w))
+                ));
             }
         }
         if got[SP..SP + 8] != want[SP..SP + 8] {
-            d.push(format!("sp: {} (model {})", super::hex(&rev(&got[SP..SP + 8])),
-                super::hex(&rev(&want[SP..SP + 8]))));
+            d.push(format!(
+                "sp: {} (model {})",
+                super::hex(&rev(&got[SP..SP + 8])),
+                super::hex(&rev(&want[SP..SP + 8]))
+            ));
         }
         let (g, w) = (got[NZCV] & mask, want[NZCV] & mask);
         if g != w {
-            d.push(format!("nzcv (defined {mask:04b}): {g:04b} (model {w:04b})"));
+            d.push(format!(
+                "nzcv (defined {mask:04b}): {g:04b} (model {w:04b})"
+            ));
         }
         if t.dit && got[DIT] != want[DIT] {
             d.push(format!("dit: {} (model {})", got[DIT], want[DIT]));
@@ -586,8 +752,11 @@ mod arch {
         for i in 0..32 {
             let o = VEC + 16 * i;
             if got[o..o + 16] != want[o..o + 16] {
-                d.push(format!("v{i}: {} (model {})", super::hex(&rev(&got[o..o + 16])),
-                    super::hex(&rev(&want[o..o + 16]))));
+                d.push(format!(
+                    "v{i}: {} (model {})",
+                    super::hex(&rev(&got[o..o + 16])),
+                    super::hex(&rev(&want[o..o + 16]))
+                ));
             }
         }
         d
@@ -617,24 +786,48 @@ fn main() {
         streams.push(Box::new(std::io::stdin().lock()));
     }
     for p in &paths {
-        streams.push(Box::new(std::fs::File::open(p).unwrap_or_else(|e| panic!("vg-cosim-runner: {p}: {e}"))));
+        streams.push(Box::new(
+            std::fs::File::open(p).unwrap_or_else(|e| panic!("vg-cosim-runner: {p}: {e}")),
+        ));
     }
     for s in streams {
-        run_stream(BufReader::with_capacity(1 << 20, s), &t, &mut blocks, &mut cases, &mut failed);
+        run_stream(
+            BufReader::with_capacity(1 << 20, s),
+            &t,
+            &mut blocks,
+            &mut cases,
+            &mut failed,
+        );
     }
-    eprintln!("vg-cosim-runner: {blocks} instructions, {cases} cases, {failed} differ from the model");
+    eprintln!(
+        "vg-cosim-runner: {blocks} instructions, {cases} cases, {failed} differ from the model"
+    );
     if failed > 0 {
         std::process::exit(1);
     }
 }
 
 /// Runs the cases of one stream, adding to the counts.
-fn run_stream(mut r: impl Read, t: &arch::Tramp, blocks: &mut usize, cases: &mut usize, failed: &mut usize) {
+fn run_stream(
+    mut r: impl Read,
+    t: &arch::Tramp,
+    blocks: &mut usize,
+    cases: &mut usize,
+    failed: &mut usize,
+) {
     let magic = read_vec(&mut r, 4);
     assert_eq!(magic, b"VGCS", "vg-cosim-runner: not a stream of cases");
-    assert_eq!(read_u8(&mut r), arch::ARCH, "vg-cosim-runner: the cases are for another target");
+    assert_eq!(
+        read_u8(&mut r),
+        arch::ARCH,
+        "vg-cosim-runner: the cases are for another target"
+    );
     let state_len = read_u32(&mut r);
-    assert_eq!(state_len, arch::REGS_LEN + DATA_LEN, "vg-cosim-runner: the cases' states differ from this runner's");
+    assert_eq!(
+        state_len,
+        arch::REGS_LEN + DATA_LEN,
+        "vg-cosim-runner: the cases' states differ from this runner's"
+    );
     let stderr = std::io::stderr();
     while read_u8(&mut r) == 1 {
         let len = read_u16(&mut r);
@@ -675,8 +868,15 @@ fn run_stream(mut r: impl Read, t: &arch::Tramp, blocks: &mut usize, cases: &mut
             let (got, got_marker) = arch::run(t, &start[..arch::REGS_LEN]);
             let mut d = arch::diff(t, &got, &want[..arch::REGS_LEN], mask);
             if kind == BRANCH_KIND && got_marker != marker {
-                d.push(format!("branch: {} (model {})", if got_marker == 1 { "taken" } else { "not taken" },
-                    if marker == 1 { "taken" } else { "not taken" }));
+                d.push(format!(
+                    "branch: {} (model {})",
+                    if got_marker == 1 {
+                        "taken"
+                    } else {
+                        "not taken"
+                    },
+                    if marker == 1 { "taken" } else { "not taken" }
+                ));
             }
             for (o, (g, w)) in data.iter().zip(&want[arch::REGS_LEN..]).enumerate() {
                 if g != w {
@@ -689,7 +889,13 @@ fn run_stream(mut r: impl Read, t: &arch::Tramp, blocks: &mut usize, cases: &mut
                 if shown < 3 {
                     shown += 1;
                     let mut e = stderr.lock();
-                    writeln!(e, "vg-cosim-runner: {} ({}), case {c}:", String::from_utf8_lossy(&text), hex(&code)).unwrap();
+                    writeln!(
+                        e,
+                        "vg-cosim-runner: {} ({}), case {c}:",
+                        String::from_utf8_lossy(&text),
+                        hex(&code)
+                    )
+                    .unwrap();
                     writeln!(e, "  start: {}", hex(&start[..arch::START_SHOWN])).unwrap();
                     for l in d.iter().take(12) {
                         writeln!(e, "  {l}").unwrap();
