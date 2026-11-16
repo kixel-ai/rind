@@ -259,7 +259,7 @@ exclude_re = [
   # Run only on AVX-512 CPUs, which no campaign's runner is: the x86_64
   # campaign skips the files only they run, and these are the rest.
   # x86-cpu.yml's SDE tiers test them.
-  'rind/src/low/x86_64/(aes|aes_gcm|aes_gcm_vaes|cpu|ghash)\.rs:\d+:\d+: (replace (HwKey::round_keys_512|RoundKeys512::split|_cipher_avx512|Counter512::\w+|VaesKernel::avx512|HaveAvx512For\w+::check|GhashTableAvx512::\w+|_mul16|_mul_tail)( -> .*)? with .*|.* in (_cipher_avx512|Counter512::\w+|HaveAvx512For\w+::check|GhashTableAvx512::\w+|_mul16|_mul_tail))$',
+  'rind/src/low/x86_64/(aes|aes_gcm|aes_gcm_vaes|cpu|ghash)\.rs:\d+:\d+: (replace (HwKey::round_keys_512|RoundKeys512::split|_cipher_avx512|Counter512::\w+|VaesKernel::avx512|HaveAvx512For\w+::check|GhashTableAvx512::\w+|_mul16|_mul_tail)( -> .*)? with .*|.* in (_cipher_avx512|HaveAvx512For\w+::check|_mul_tail))$',
   'rind/src/low/x86_64/aes_gcm\.rs:\d+:45: replace \* with (\+|/)$',
   'rind/src/low/posint\.rs:\d+:\d+: (replace PosInt<N>::mod_exp_pair_rsaz -> .*|.* in PosInt<N>::mod_exp_pair_rsaz)$',
   # Compiled only for armv7, which no campaign runs: the portable AES-GCM's
