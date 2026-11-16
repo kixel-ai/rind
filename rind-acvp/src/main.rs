@@ -28,7 +28,7 @@ use rind_fips::digest;
 use rind_fips::hkdf;
 use rind_fips::hmac;
 use rind_fips::kem;
-use rind_fips::key_wrap::{self, AesKek};
+use rind_fips::key_wrap::{self, AesKek, Mode};
 use rind_fips::ml_dsa::{MlDsa44, MlDsa65, MlDsa87, ParameterSet};
 use rind_fips::pbkdf2;
 use rind_fips::rsa::{KeySize, PublicKeyComponents};
@@ -162,10 +162,10 @@ impl Wrapper {
                 aes_ctr(args)
             }
             ["AES-GCM", "open"] => aes_gcm_open(args),
-            ["AES-KW", "seal"] => aes_kw_seal(false, args),
-            ["AES-KW", "open"] => aes_kw_open(false, args),
-            ["AES-KWP", "seal"] => aes_kw_seal(true, args),
-            ["AES-KWP", "open"] => aes_kw_open(true, args),
+            ["AES-KW", "seal"] => aes_kw_seal(Mode::Kw, args),
+            ["AES-KW", "open"] => aes_kw_open(Mode::Kw, args),
+            ["AES-KWP", "seal"] => aes_kw_seal(Mode::Kwp, args),
+            ["AES-KWP", "open"] => aes_kw_open(Mode::Kwp, args),
             ["KDA", "HKDF", name] => hkdf_kda(name, args),
             ["PBKDF"] => pbkdf(args),
             ["hmacDRBG-pr", "SHA2-512"] => drbg(args),
@@ -499,33 +499,21 @@ fn kek(key: &[u8]) -> Result<AesKek> {
 
 /// `AES-KW/seal` and `AES-KWP/seal`: an unused tag length, key, key data,
 /// and unused IV and AAD, to the wrapped key.
-fn aes_kw_seal(padded: bool, args: &[Vec<u8>]) -> Result<Reply> {
+fn aes_kw_seal(mode: Mode, args: &[Vec<u8>]) -> Result<Reply> {
     let [_, key, input, _, _] = take(args)?;
-    let kek = kek(key)?;
-    if padded {
-        let mut out = vec![0; input.len().div_ceil(8) * 8 + 8];
-        kek.wrap_padded(input, &mut out)?;
-        Ok(vec![out])
-    } else {
-        let mut out = vec![0; input.len() + 8];
-        kek.wrap(input, &mut out)?;
-        Ok(vec![out])
-    }
+    let mut out = vec![0; input.len().div_ceil(8) * 8 + 8];
+    kek(key)?.wrap_key(mode, input, &mut out)?;
+    Ok(vec![out])
 }
 
 /// `AES-KW/open` and `AES-KWP/open`: as for sealing, to whether it
 /// unwrapped, and the key data.
-fn aes_kw_open(padded: bool, args: &[Vec<u8>]) -> Result<Reply> {
+fn aes_kw_open(mode: Mode, args: &[Vec<u8>]) -> Result<Reply> {
     let [_, key, wrapped, _, _] = take(args)?;
     let kek = kek(key)?;
     let mut out = vec![0; wrapped.len().saturating_sub(8)];
-    let unwrapped = if padded {
-        kek.unwrap_padded(wrapped, &mut out).map(|key| key.to_vec())
-    } else {
-        kek.unwrap(wrapped, &mut out).map(|()| out)
-    };
-    Ok(match unwrapped {
-        Ok(key) => vec![flag(true), key],
+    Ok(match kek.unwrap_key(mode, wrapped, &mut out) {
+        Ok(key) => vec![flag(true), key.to_vec()],
         Err(_) => vec![flag(false), Vec::new()],
     })
 }
@@ -536,19 +524,21 @@ fn aes_kw_open(padded: bool, args: &[Vec<u8>]) -> Result<Reply> {
 /// bytes, to the derived key: SP 800-56C's one-step extract and expand.
 fn hkdf_kda(name: &str, args: &[Vec<u8>]) -> Result<Reply> {
     let [z, salt, info, len] = take(args)?;
-    let algorithm = match name {
-        "SHA2-256" => &hkdf::HKDF_SHA256,
-        "SHA2-384" => &hkdf::HKDF_SHA384,
-        "SHA2-512" => &hkdf::HKDF_SHA512,
+    let (algorithm, hash_len) = match name {
+        "SHA2-256" => (&hkdf::HKDF_SHA256, 32),
+        "SHA2-384" => (&hkdf::HKDF_SHA384, 48),
+        "SHA2-512" => (&hkdf::HKDF_SHA512, 64),
         _ => return Err(format!("no HKDF over {name}").into()),
     };
+    // HKDF expands to at most 255 hash outputs: refuse more before
+    // allocating for them.
     let len = u32_le(len)? as usize;
+    if len > 255 * hash_len {
+        return Err(format!("{len} bytes of HKDF over {name}").into());
+    }
     let prk = hkdf::Salt::new(algorithm, salt).extract(z)?;
-    // `expand` bounds the length before anything is allocated for it.
-    let info = [info];
-    let okm = prk.expand(&info, len)?;
     let mut out = vec![0; len];
-    okm.fill(&mut out)?;
+    prk.fill(&[info], &mut out)?;
     Ok(vec![out])
 }
 
