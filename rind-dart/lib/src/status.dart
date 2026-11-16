@@ -5,9 +5,9 @@
 // `nativeCopy` copies the caller's own bytes. The library that owns a handle
 // keeps that pointer private.
 //
-// `hook/build.dart` registers one code asset. The annotation names it,
-// because this library's own URI is not that asset.
-@DefaultAsset('package:rind/src/bindings.dart')
+// `hook/build.dart` registers one code asset, [nativeAssetId]. The annotation
+// names it, because this library's own URI is not that asset.
+@DefaultAsset(nativeAssetId)
 library;
 
 import 'dart:convert';
@@ -17,6 +17,9 @@ import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
 
 import 'error.dart';
+
+/// The code asset `hook/build.dart` registers, which every `@Native` resolves.
+const nativeAssetId = 'package:rind/src/bindings.dart';
 
 /// Returns a non-negative [status], or throws for a negative one.
 int check(int status) {

@@ -2,7 +2,7 @@
 
 // Natives resolve against the one code asset `hook/build.dart` registers.
 // The default would be this library's URI, which is not registered.
-@DefaultAsset('package:rind/src/bindings.dart')
+@DefaultAsset(nativeAssetId)
 library;
 
 import 'dart:ffi';

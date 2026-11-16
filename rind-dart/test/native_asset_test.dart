@@ -2,13 +2,13 @@
 
 import 'dart:io';
 
+import 'package:rind/src/status.dart';
 import 'package:test/test.dart';
-
-/// The only code asset `hook/build.dart` registers.
-const _registeredAsset = 'package:rind/src/bindings.dart';
 
 void main() {
   test('every @Native resolves against the registered code asset', () {
+    final registered = _hookAssetId();
+    expect(nativeAssetId, registered, reason: 'hook/build.dart');
     final nativeLibraries = <String>[];
     for (final file in Directory(
       'lib',
@@ -19,14 +19,14 @@ void main() {
       final library = _libraryFile(file, text);
       nativeLibraries.add(library.path);
       expect(
-        _assetId(library),
-        _registeredAsset,
+        _defaultAssetArgument(library),
+        'nativeAssetId',
         reason:
             '${file.path} points @Native at an asset the build hook '
             'does not register',
       );
       for (final id in _explicitAssetIds(text)) {
-        expect(id, _registeredAsset, reason: file.path);
+        expect(id, nativeAssetId, reason: file.path);
       }
     }
     expect(
@@ -68,16 +68,26 @@ File _libraryFile(File file, String text) {
   return File('${file.parent.path}/${part.group(1)}');
 }
 
-// The asset id @Native uses when it sets no assetId: the library's
-// DefaultAsset, or the library URI when that annotation is absent.
-String _assetId(File library) {
-  final text = library.readAsStringSync();
+// The asset id `hook/build.dart` registers: `package:<name>/<CodeAsset name>`.
+String _hookAssetId() {
+  final package = RegExp(
+    r'^name:\s*(\S+)',
+    multiLine: true,
+  ).firstMatch(File('pubspec.yaml').readAsStringSync())!.group(1)!;
+  final name = RegExp(
+    r'''CodeAsset\(\s*package:\s*input\.packageName\s*,\s*name:\s*['"]([^'"]+)['"]''',
+  ).firstMatch(File('hook/build.dart').readAsStringSync())!.group(1)!;
+  return 'package:$package/$name';
+}
+
+// The argument of the library's @DefaultAsset. Every native library names
+// [nativeAssetId], so the id string lives in one place.
+String _defaultAssetArgument(File library) {
   final annotation = RegExp(
-    r'''@DefaultAsset\(\s*['"]([^'"]+)['"]\s*\)''',
-  ).firstMatch(text);
-  if (annotation != null) return annotation.group(1)!;
-  final relative = library.path.replaceAll('\\', '/').split('lib/').last;
-  return 'package:rind/$relative';
+    r'''@DefaultAsset\(\s*([^\s)]+)\s*\)''',
+  ).firstMatch(library.readAsStringSync());
+  expect(annotation, isNotNull, reason: '${library.path} has no @DefaultAsset');
+  return annotation!.group(1)!;
 }
 
 Iterable<String> _explicitAssetIds(String text) => RegExp(

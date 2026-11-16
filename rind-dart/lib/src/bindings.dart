@@ -8,7 +8,7 @@
 //
 // `hook/build.dart` registers one code asset, this library's URI. Naming it
 // keeps that id if this file moves.
-@DefaultAsset('package:rind/src/bindings.dart')
+@DefaultAsset(nativeAssetId)
 library;
 
 import 'dart:ffi';
