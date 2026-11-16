@@ -282,3 +282,123 @@ fn be_bytes(words: &[u64], out: &mut [u8]) {
         *byte = (words.get(i / 8).copied().unwrap_or(0) >> (8 * (i % 8))) as u8;
     }
 }
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod tests {
+    use super::super::adx_mux::tests::Rng;
+    use super::super::ct_sde;
+    use super::*;
+
+    /// `words` as `bytes` big-endian bytes.
+    fn be(words: &[u64], bytes: usize) -> Vec<u8> {
+        let mut out = vec![0; bytes];
+        be_bytes(words, &mut out);
+        out
+    }
+
+    // `admin/ct-sde` runs the `_ifma_` tests on Ice Lake, which lacks
+    // AVX512_FP16, and the others on Sapphire Rapids, which has it.
+
+    #[test]
+    #[ignore = "admin/ct-sde runs it under Intel SDE"]
+    fn ct_sde_crt_ifma_2048() {
+        trace_crt(16, false);
+    }
+
+    #[test]
+    #[ignore = "admin/ct-sde runs it under Intel SDE"]
+    fn ct_sde_crt_ifma_3072() {
+        trace_crt(24, false);
+    }
+
+    #[test]
+    #[ignore = "admin/ct-sde runs it under Intel SDE"]
+    fn ct_sde_crt_ifma_4096() {
+        trace_crt(32, false);
+    }
+
+    #[test]
+    #[ignore = "admin/ct-sde runs it under Intel SDE"]
+    fn ct_sde_crt_ifma512_2048() {
+        trace_crt(16, true);
+    }
+
+    #[test]
+    #[ignore = "admin/ct-sde runs it under Intel SDE"]
+    fn ct_sde_crt_ifma512_3072() {
+        trace_crt(24, true);
+    }
+
+    #[test]
+    #[ignore = "admin/ct-sde runs it under Intel SDE"]
+    fn ct_sde_crt_ifma512_4096() {
+        trace_crt(32, true);
+    }
+
+    /// The CRT of a key of odd `w`-word `p` and `q` with their top bits set,
+    /// and `dp`, `dq`, `qinv`, and `x` below `p`, `q`, `p`, and `n`, all
+    /// from the seed. The exponentiations need no primes to take their
+    /// path.
+    fn trace_crt(w: usize, fp16: bool) {
+        let mut rng = Rng(ct_sde::seed());
+        let bits = 64 * w as u32;
+        let mut prime = || {
+            let mut p: [u64; MAX_PRIME_WORDS] = rng.words(bits);
+            p[0] |= 1;
+            p[w - 1] |= 1 << 63;
+            p
+        };
+        let (p, q) = (prime(), prime());
+        let pi = low::PosInt::<MAX_PRIME_WORDS>::from_words(&p[..w]).unwrap();
+        let qi = low::PosInt::<MAX_PRIME_WORDS>::from_words(&q[..w]).unwrap();
+        let n: low::PosInt<{ 2 * MAX_PRIME_WORDS }> = low::PosInt::mul(&pi, &qi);
+        let ifma = IfmaCrt::new(n.as_words(), &p[..w], &q[..w]).expect("AVX-512 IFMA");
+        assert_eq!(ifma.token.fp16(), fp16, "the SDE model takes the other routine");
+        let mut below_top = |bits| {
+            let mut v: [u64; 2 * MAX_PRIME_WORDS] = rng.words(bits);
+            v[bits as usize / 64 - 1] >>= 1;
+            v
+        };
+        let (dp, dq, qinv, x) = (below_top(bits), below_top(bits), below_top(bits), below_top(2 * bits));
+        let (dp, dq, qinv) = (be(&dp, 8 * w), be(&dq, 8 * w), be(&qinv, 8 * w));
+        let x = be(&x, 16 * w);
+        let mut out = vec![0; 16 * w];
+        assert!(ct_sde::traced(|| ifma.crt(&mut out, &x, &dp, &dq, &qinv)));
+    }
+
+    #[test]
+    #[ignore = "admin/ct-sde runs it under Intel SDE"]
+    fn ct_sde_public_ifma_2048() {
+        trace_public(32);
+    }
+
+    #[test]
+    #[ignore = "admin/ct-sde runs it under Intel SDE"]
+    fn ct_sde_public_ifma_3072() {
+        trace_public(48);
+    }
+
+    #[test]
+    #[ignore = "admin/ct-sde runs it under Intel SDE"]
+    fn ct_sde_public_ifma_4096() {
+        trace_public(64);
+    }
+
+    /// The public operation with `e = 65537` on an `x` from the seed, below a
+    /// `k`-word `n` the same for every seed: it is constant time only in `x`.
+    fn trace_public(k: usize) {
+        let mut n: [u64; MAX_WORDS] = Rng(1).words(64 * k as u32);
+        n[0] |= 1;
+        n[k - 1] |= 1 << 63;
+        let ni = low::PosInt::<MAX_WORDS>::from_words(&n[..k]).unwrap();
+        let mut pre = n[..k].to_vec();
+        pre.extend_from_slice(ni.pub_montifier().as_words());
+        let mut x: [u64; MAX_WORDS] = Rng(ct_sde::seed()).words(64 * k as u32);
+        x[k - 1] >>= 1;
+        let x = be(&x, 8 * k);
+        let mut out = vec![0; 8 * k];
+        let ifma = RsaIfma::check().expect("AVX-512 IFMA");
+        assert!(ct_sde::traced(|| ifma.public(&mut out, &pre, &[1, 0, 1], &x)));
+    }
+}
