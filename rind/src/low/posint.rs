@@ -167,10 +167,12 @@ impl<const N: usize> PosInt<N> {
 
     /// Writes the low `out.len()` bytes of the value to `out`, big-endian,
     /// reading the same words whatever the value.
+    // Indexes, as `to_bytes` does, which Aeneas can translate.
     pub(crate) fn to_bytes_fixed(&self, out: &mut [u8]) {
-        for (i, byte) in out.iter_mut().rev().enumerate() {
-            let word = self.words.get(i / 8).copied().unwrap_or(0);
-            *byte = (word >> (8 * (i % 8))) as u8;
+        let len = out.len();
+        for i in 0..len {
+            let word = if i / 8 < N { self.words[i / 8] } else { 0 };
+            out[len - 1 - i] = (word >> (8 * (i % 8))) as u8;
         }
     }
 

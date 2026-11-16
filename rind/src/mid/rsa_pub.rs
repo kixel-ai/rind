@@ -124,6 +124,23 @@ impl RsaPublicKey {
         RsaPosInt::from_secret_bytes(&m[..k])
     }
 
+    /// `c^e mod n` by pyca/verified-garbage's routine, and by square and
+    /// multiply on [`Self::mul`], for `c` below `n`, where the former runs.
+    #[cfg(all(test, rind_backend = "x86_64"))]
+    pub(crate) fn public_op_both(&self, c: &RsaPosInt) -> Option<[RsaPosInt; 2]> {
+        let ifma = low::RsaIfma::check()?;
+        let mut c = c.clone();
+        c.expand(&self.n);
+        let mut want = c.clone();
+        for bit in (0..self.e.ilog2()).rev() {
+            want = self.mul(&want, &want);
+            if self.e >> bit & 1 == 1 {
+                want = self.mul(&want, &c);
+            }
+        }
+        Some([self.public_op_ifma(ifma, &c).unwrap(), want])
+    }
+
     /// Writes `n` and then `2^(128w) mod n`, `w` words each for `n`'s `w`, to
     /// the front of `pre`: pyca/verified-garbage's precomputed values of `n`.
     #[cfg(rind_backend = "x86_64")]

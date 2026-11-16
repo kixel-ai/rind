@@ -1270,6 +1270,7 @@ extract x86_64 X86_64 "${hashes[@]}" "${assembly[@]}" \
     --opaque crate::high::rsa::pkcs1_components \
     --opaque crate::high::rsa::spki_components \
     --opaque 'crate::high::rsa::_::to_pkcs1_der' \
+    --opaque 'crate::mid::rsa_pub::_::public_op_ifma' \
     --include crate::low::posint \
     --include crate::low::x86_64::mont::mont_mul \
     --include crate::low::x86_64::mont::mont_sqr \

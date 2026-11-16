@@ -262,6 +262,14 @@ impl RsaPrivateKey {
         RsaPosIntModN::from_secret_bytes(&m[..k])
     }
 
+    /// The CRT by pyca/verified-garbage's IFMA routine and by rind's, where
+    /// the former runs.
+    #[cfg(all(test, rind_backend = "x86_64"))]
+    pub(crate) fn crt_both(&self, c: &RsaPosIntModN) -> Option<[RsaPosIntModN; 2]> {
+        let ifma = self.ifma.as_ref()?;
+        Some([self.crt_ifma(ifma, c).unwrap(), self.crt(c)])
+    }
+
     /// The CRT, by rind's exponentiations.
     fn crt(&self, c: &RsaPosIntModN) -> RsaPosIntModN {
         // A note about blinding:
