@@ -157,6 +157,42 @@ instructions armv7's proofs need, which `aarch32/proofs/simulator.ml` checks
 against qemu-arm. `nix develop .#hol-light --command admin/prove cosim` runs
 both cosimulations, on an x86_64 CPU with AVX2.
 
+## verified-garbage's models
+
+[pyca/verified-garbage](https://github.com/pyca/verified-garbage) (VG)
+proves its routines in Lean against its own models of x86_64 and aarch64,
+and prints each routine from the same Lean code twice: as assembly text, and
+as a Rust naked function of machine code from its own encoder. Those models
+are VG's trusted base, and VG's CI checks its encoder only against golden
+tests, so before a routine rind takes from VG counts as proven, rind checks
+both against hardware. `verified-garbage/` holds the models, which
+`admin/import-vg-models` copies byte for byte from VG at the commit it pins,
+and the cosimulation over them, a Lake package of its own, since the models
+import only Lean core. `nix develop .#vg --command admin/prove vg` checks,
+for this CPU's target:
+
+- that every instruction of VG's compiled naked functions, and of each `vg_*`
+  routine rind vendors, is the instruction its assembly text gives, which
+  `admin/vg-bytes` assembles with nixpkgs' LLVM; a branch or call need only
+  reach the same instruction or function, since the assembler lays those
+  out, and an encoding that differs but disassembles the same is reported;
+- that each distinct instruction of VG's code ends, from random states, in
+  the state VG's model gives. `Cosim/` parses each instruction's text back to
+  every instruction of the model that prints as exactly that text, runs the
+  model on random states, weighted toward edge values, with each memory
+  operand in a window of the runner's data, and `admin/vg-cosim-runner.rs`
+  runs VG's machine code for it on the CPU, or under Intel SDE or
+  qemu-aarch64 for an instruction that needs a feature the CPU lacks, and
+  compares every register, flag the model defines, and byte of the data.
+  A conditional branch is checked for whether it is taken, and a call or
+  indirect call with the `ret` that returns from it. A table load is checked
+  with random table words at the address it reads.
+
+Not cosimulated: the `jmp`/`b` and the address of a static (`lea`, or
+`adrp` and `add`), which the assembler and linker resolve and the bytes
+check covers, and `ret` alone, which each call's case runs. The `prove`
+workflow runs it on x86_64 and aarch64, nightly with a new seed.
+
 ## What is proven
 
 X25519 on x86_64 and aarch64, from the agreement API's `PrivateKey` to
@@ -932,6 +968,9 @@ proof after those.
 
 - `hol-light/<arch>/`: rind's HOL Light proofs, one file per routine, on
   rind's fork of s2n-bignum in `thirdparty/s2n-bignum`.
+- `verified-garbage/VerifiedGarbage/`: VG's ISA models, copied, and
+  `verified-garbage/Cosim/`, the cosimulation of them, which
+  [verified-garbage's models](#verified-garbages-models) describes.
 - `Rind/<Arch>/{Types,Funs}.lean`: Aeneas's translation, which `admin/prove`
   writes and git ignores.
 - `Rind/<Arch>/{Types,Funs}External.lean` and `Rind/Core.lean`: what the

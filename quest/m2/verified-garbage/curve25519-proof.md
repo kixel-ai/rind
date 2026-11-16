@@ -12,4 +12,3 @@ Every VG routine [the switch](/quest/m2/verified-garbage/curve25519.md) adopts i
 ## Required
 
 - [X25519 and Ed25519 on AVX-512 runs pyca/verified-garbage's code where it is faster](/quest/m2/verified-garbage/curve25519.md) - the routines this proves
-- [VG's ISA models are cosimulated](/quest/m2/verified-garbage/cosim.md) - the instructions those routines run, checked against the CPU

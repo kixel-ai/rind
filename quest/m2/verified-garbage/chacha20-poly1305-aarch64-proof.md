@@ -12,4 +12,3 @@ Every VG routine [the switch](/quest/m2/verified-garbage/chacha20-poly1305-aarch
 ## Required
 
 - [ChaCha20-Poly1305 on aarch64 runs pyca/verified-garbage's code where it is faster](/quest/m2/verified-garbage/chacha20-poly1305-aarch64.md) - the routines this proves
-- [VG's ISA models are cosimulated](/quest/m2/verified-garbage/cosim.md) - the instructions those routines run, checked against the CPU

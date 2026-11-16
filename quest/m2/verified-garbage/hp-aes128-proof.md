@@ -12,4 +12,3 @@ Every VG routine [the switch](/quest/m2/verified-garbage/hp-aes128.md) adopts is
 ## Required
 
 - [AES-128 header protection on Haswell runs pyca/verified-garbage's code where it is faster](/quest/m2/verified-garbage/hp-aes128.md) - the routines this proves
-- [VG's ISA models are cosimulated](/quest/m2/verified-garbage/cosim.md) - the instructions those routines run, checked against the CPU

@@ -12,4 +12,3 @@ Every VG routine [the switch](/quest/m2/verified-garbage/mldsa-sign.md) adopts i
 ## Required
 
 - [ML-DSA signing without AVX2 runs pyca/verified-garbage's code where it is faster](/quest/m2/verified-garbage/mldsa-sign.md) - the routines this proves
-- [VG's ISA models are cosimulated](/quest/m2/verified-garbage/cosim.md) - the instructions those routines run, checked against the CPU
