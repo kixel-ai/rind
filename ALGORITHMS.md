@@ -67,8 +67,8 @@ SHA-512.
   s2n-bignum's verified `bignum_copy_row_from_table` rather than, at widths
   that aren't a multiple of eight words, `bn_mul_mont_gather5`, which fuses
   a faster gather into the product. With AVX-512 IFMA, the public operation
-  and the 2048- and 4096-bit private operation run [verified-garbage]'s
-  routines (see [RSA](#rsa)).
+  and the 2048- and 4096-bit private operation, and the 3072-bit one with
+  AVX512_FP16, run [verified-garbage]'s routines (see [RSA](#rsa)).
 - MD5: rind's portable Rust runs on every target, as no CPU has MD5
   instructions. On an i7-8700 it measured level with [aws-lc]'s x86_64
   assembly at 16 KB and 8% faster at 1350 B.
@@ -444,12 +444,14 @@ e = 65537 runs its almost Montgomery products over 52-bit limbs, at 0.49 to
 0.56× rind's time on Zen 4; other moduli and exponents keep rind's, as VG
 falls back to 64-bit products there that measured 1.15 to 1.54× slower at
 2056 bits. Both exponentiations of the CRT for 1024- or 2048-bit primes run
-at once by its CRT, at 0.96 and 0.98× the dual RSAZ's time on Zen 4 and about
-0.9 on Zen 5, by a fixed window whose entries are gathered by masking all of
-them; it takes the form for two 512-bit multipliers on CPUs with
-AVX512_FP16, as VG's own dispatch does. Its 1536-bit primes measured 1.2 to
-1.5× slower on Zen 5, so a 3072-bit key's CRT runs aws-lc's dual RSAZ, as
-aws-lc's `BN_mod_exp_mont_consttime_x2` does there: almost Montgomery
+at once by its CRT, at 0.96 and 0.98× the dual RSAZ's time on Zen 4, about
+0.9 on Zen 5, and 0.74 and 0.96 on a Granite Rapids Xeon, by a fixed window
+whose entries are gathered by masking all of them. On CPUs with AVX512_FP16
+(Intel's since Sapphire Rapids) it takes its form for two 512-bit
+multipliers, as VG's own dispatch does, which also runs 1536-bit primes, at
+0.92× on that Xeon. Its other form measured 1.2 to 1.5× slower there on Zen
+5, so elsewhere a 3072-bit key's CRT runs aws-lc's dual RSAZ, as aws-lc's
+`BN_mod_exp_mont_consttime_x2` does there: almost Montgomery
 products on 256-bit vectors over 52-bit limbs, two moduli at a time, and a
 5-bit fixed window whose table entries are gathered by masking all 32.
 Valgrind runs no AVX-512, so `admin/ct-sde` checks each of these under Intel

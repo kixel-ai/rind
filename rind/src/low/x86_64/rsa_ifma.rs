@@ -9,8 +9,10 @@
 //! leaves to its own code: VG's measured slower at 2056 bits. The CRT runs the
 //! exponentiations modulo `p` and `q` at once on IFMA for 2048- and 4096-bit
 //! keys of balanced primes, by a fixed window of 4 or 5 bits whose table entry
-//! is gathered by masking every entry. VG's takes 3072-bit keys too, but
-//! measured slower there than aws-lc's dual RSAZ on Zen 5, which they keep.
+//! is gathered by masking every entry, and for 3072-bit keys on CPUs with
+//! AVX512_FP16, where it runs its form for two 512-bit multipliers. Its other
+//! form measured slower than aws-lc's dual RSAZ at 3072 bits on Zen 5, so
+//! other CPUs keep that there.
 //!
 //! VG proves each correct and constant time in Lean, over its own models of
 //! the instructions, which rind does not yet check: the public operation by
@@ -37,7 +39,7 @@ pub(crate) struct RsaIfma(HaveAvx512ForRsa);
 /// leaves, are a valid value: one for no key, which [`IfmaCrt::runs`]
 /// refuses.
 pub(crate) struct IfmaCrt {
-    /// The words of each prime, 16 or 32: half of `n`'s. Zero where
+    /// The words of each prime, 16, 24, or 32: half of `n`'s. Zero where
     /// VG's CRT does not run.
     w: usize,
     /// `n` and `2^(128 * 2w) mod n`, at `2w` words each, then `2^(128w)`
@@ -168,7 +170,8 @@ impl IfmaCrt {
     /// The values VG's CRT takes for the key of `n`, `p`, and `q`, little-endian
     /// words: if the CPU runs it, and it is the fastest there, for 2048- and
     /// 4096-bit moduli of primes as wide as each other, as aws-lc's dual RSAZ
-    /// requires. Otherwise, or if `n` is even or not `p q`, a value
+    /// requires, and 3072-bit ones on CPUs with AVX512_FP16. Otherwise, or if
+    /// `n` is even or not `p q`, a value
     /// that [`IfmaCrt::runs`] refuses.
     pub(crate) fn new(n: &[u64], p: &[u64], q: &[u64]) -> Self {
         Self::try_new(n, p, q).unwrap_or(Self {
@@ -180,9 +183,10 @@ impl IfmaCrt {
     }
 
     fn try_new(n: &[u64], p: &[u64], q: &[u64]) -> Option<Self> {
-        HaveAvx512ForRsa::check()?;
+        let token = HaveAvx512ForRsa::check()?;
         let w = p.len();
-        if !matches!(w, 16 | 32) || q.len() != w || n.len() != 2 * w {
+        let sized = matches!(w, 16 | 32) || (w == 24 && token.fp16());
+        if !sized || q.len() != w || n.len() != 2 * w {
             return None;
         }
         let n = low::PosInt::<{ 2 * MAX_PRIME_WORDS }>::from_words(n).ok()?;
@@ -361,6 +365,12 @@ mod tests {
     #[ignore = "admin/ct-sde runs it under Intel SDE"]
     fn ct_sde_crt_ifma512_2048() {
         trace_crt(16, true);
+    }
+
+    #[test]
+    #[ignore = "admin/ct-sde runs it under Intel SDE"]
+    fn ct_sde_crt_ifma512_3072() {
+        trace_crt(24, true);
     }
 
     #[test]

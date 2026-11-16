@@ -2,7 +2,7 @@
 
 ## Goal
 
-Every VG routine rind runs for RSA on x86_64 with AVX-512 IFMA since [kixel-ai/rind#814](https://github.com/kixel-ai/rind/pull/814) is imported as a theorem, so RSA there earns the ✓ on the tiers that run it: the public operation of 2048-, 3072-, and 4096-bit moduli with e = 65537 (`vg_rsa_public_precomputed_checked_ifma`, VG's `checked_correct` against `pdChkContract`), and the CRT of 2048- and 4096-bit keys (`vg_rsa_private_crt_precomputed_ifma` and `_ifma512`, VG's `codeP_inlined` against `crtContractP`), both reaching `vg_rsa_mont_mul_adx`.
+Every VG routine rind runs for RSA on x86_64 with AVX-512 IFMA since [kixel-ai/rind#814](https://github.com/kixel-ai/rind/pull/814) is imported as a theorem, so RSA there earns the ✓ on the tiers that run it: the public operation of 2048-, 3072-, and 4096-bit moduli with e = 65537 (`vg_rsa_public_precomputed_checked_ifma`, VG's `checked_correct` against `pdChkContract`), and the CRT of 2048- and 4096-bit keys, and of 3072-bit keys with AVX512_FP16 (`vg_rsa_private_crt_precomputed_ifma` and `_ifma512`, VG's `codeP_inlined` against `crtContractP`), both reaching `vg_rsa_mont_mul_adx`.
 
 ## Plan
 

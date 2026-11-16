@@ -1046,7 +1046,7 @@ mod tests {
             SigningKey::from_pkcs1_der(include_bytes!("rsa/rsa8192.der")),
         ];
         let mut drbg = HmacDrbg::<hash::Sha256>::new(b"ifma_matches_rind", b"", b"");
-        let (mut public_ran, mut crt_ran) = (0, 0);
+        let (mut public_ran, mut crt_ran, mut crt_3072) = (0, 0, false);
         let mut cpu = false;
         for key in keys {
             let key = key.unwrap();
@@ -1079,14 +1079,16 @@ mod tests {
                 };
                 assert!(got.pub_equals(&want), "{k}-byte modulus");
                 crt_ran += 1;
+                crt_3072 |= k == 384;
             }
         }
         if cpu {
             // The 2048-, 3072-, and 4096-bit keys, and the 2048-bit one whose
             // q is above p, each with e = 65537 alone, for the public
-            // operation; all but the 3072-bit key for the CRT.
+            // operation; for the CRT too, but for the 3072-bit key on CPUs
+            // without AVX512_FP16.
             assert_eq!(public_ran, 4 * 11);
-            assert_eq!(crt_ran, 3 * 11);
+            assert_eq!(crt_ran, (3 + usize::from(crt_3072)) * 11);
         }
     }
 

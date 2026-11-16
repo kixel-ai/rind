@@ -12,9 +12,9 @@
 //! which Sergey Kirillov and Andrey Matyukov wrote for OpenSSL. aws-lc runs
 //! it for the CRT of RSA-2048, 3072, and 4096 on CPUs with AVX-512 IFMA,
 //! where it signed 1.85, 3.09, and 3.56 times as fast as rind's
-//! exponentiations one at a time. rind runs it for RSA-3072's alone:
-//! pyca/verified-garbage's CRT runs the other two (`rsa_ifma.rs`), and
-//! measured slower than this at 3072 bits on Zen 5. It takes `rr` to its own
+//! exponentiations one at a time. rind runs it for RSA-3072's alone, on CPUs
+//! without AVX512_FP16: pyca/verified-garbage's CRT runs the rest
+//! (`rsa_ifma.rs`), and measured slower than this at 3072 bits on Zen 5. It takes `rr` to its own
 //! `R` by the dual product, not aws-lc's single one, which rind then has no
 //! use for. The struct and its products stay generic over the width, as
 //! aws-lc's are, so another width is one more import.

@@ -369,8 +369,8 @@ IMPORTS_64 = [
         ],
     },
     # RSAZ's dual exponentiation, which aws-lc runs for the CRT of RSA-2048,
-    # 3072, and 4096 with AVX-512 IFMA, and rind for RSA-3072's alone, where
-    # pyca/verified-garbage's measured slower: products on 256-bit vectors
+    # 3072, and 4096 with AVX-512 IFMA, and rind for RSA-3072's alone without
+    # AVX512_FP16, where pyca/verified-garbage's measured slower: products on 256-bit vectors
     # over 52-bit limbs, two moduli at once, and the gather of a table entry
     # for each. `ones` runs on through `zeros`.
     {
