@@ -1019,12 +1019,12 @@ mod tests {
             n.words[k - 1] |= 1 << 63;
             n
         };
-        let moduli = [odd(16), odd(16), odd(15)];
+        let moduli = [odd(24), odd(24), odd(23)];
         let montifiers = moduli.each_ref().map(PosInt::montifier);
-        // Each below every modulus, as a 15-word value is.
-        let base = random(15);
-        // Exponents of 16 and 17 words.
-        let exponents = [random(16), random(17)];
+        // Each below every modulus, as a 23-word value is.
+        let base = random(23);
+        // Exponents of 24 and 25 words.
+        let exponents = [random(24), random(25)];
         let pair = |[i, j]: [usize; 2], [ei, ej]: [usize; 2]| {
             [(i, ei), (j, ej)].map(|(i, e)| ModExp {
                 base: &base,
@@ -1035,7 +1035,7 @@ mod tests {
             })
         };
 
-        let rsaz = low::RsazAvx512::check(16).is_some();
+        let rsaz = low::RsazAvx512::check(24).is_some();
         assert_eq!(
             PosInt::mod_exp_pair_rsaz(&pair([0, 1], [0, 0])).is_some(),
             rsaz
