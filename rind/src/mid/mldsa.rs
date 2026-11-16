@@ -14,6 +14,7 @@
 // A parameter set's dimensions are associated constants, which stable Rust
 // cannot pass as `as_chunks`'s const argument in generic code.
 #![allow(clippy::chunks_exact_to_as_chunks)]
+use crate::low as _;
 
 use core::fmt;
 use core::panic::{RefUnwindSafe, UnwindSafe};
