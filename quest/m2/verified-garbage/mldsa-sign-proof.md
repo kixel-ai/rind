@@ -8,8 +8,8 @@ Every VG routine [the switch](/quest/m2/verified-garbage/mldsa-sign.md) adopts i
 
 - Import each routine's VG theorem as one axiom about rind's opaque wrapper, under [the m3 epic's composition rule](/quest/m3/verified/README.md), as [the epic](/quest/m2/verified-garbage/README.md)'s Plan settles, and add the `benchmarks/verified.toml` entries for the switched tiers.
 - Prove rind's glue around it as the m3 and m4 epics prove rind's other glue.
+- Check its routines' stack reads as [the epic](/quest/m2/verified-garbage/README.md)'s Plan says, under Stack frames.
 
 ## Required
 
 - [ML-DSA signing without AVX2 runs pyca/verified-garbage's code where it is faster](/quest/m2/verified-garbage/mldsa-sign.md) - the routines this proves
-- [No ✓ rests on VG's model keeping a freed stack slot's bytes](/quest/m2/verified-garbage/stack-reuse.md) - the frame model's gap, checked for the routines this proves
