@@ -134,7 +134,10 @@ fn find_self() -> Option<Loaded> {
         u64::from_le_bytes(word)
     };
     let (phoff, phentsize, phnum) = (read(0x20, 8), read(0x36, 2), read(0x38, 2));
-    if phentsize != 56 {
+    // Every linker places the program headers right after the 64-byte ELF
+    // header, and the page holding the header is mapped, so a table that
+    // ends within that page is readable whatever else the header says.
+    if phoff != 64 || phentsize != 56 || phoff + phnum * phentsize > 4096 {
         return None;
     }
     let segments: Vec<Segment> = (0..phnum)
