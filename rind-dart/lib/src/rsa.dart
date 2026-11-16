@@ -726,7 +726,7 @@ Pointer<Void> _newHandle(int Function(Pointer<Pointer<Void>> slot) call) {
 }
 
 T _native<T>(Uint8List data, T Function(Pointer<Uint8> pointer) call) {
-  final pointer = malloc<Uint8>(data.isEmpty ? 1 : data.length);
+  final pointer = calloc<Uint8>(data.isEmpty ? 1 : data.length);
   final view = pointer.asTypedList(data.length);
   try {
     view.setAll(0, data);
@@ -736,10 +736,10 @@ T _native<T>(Uint8List data, T Function(Pointer<Uint8> pointer) call) {
   }
 }
 
-// Allocates the modulus-sized output of a signature or a decryption. The
-// native call overwrites it, so the bytes are not a copied zero-filled list.
+// The modulus-sized output of a signature or a decryption. Zeroed: Rust
+// borrows it as `&mut [u8]`, which has to already be initialized.
 Uint8List _modulusOut(int Function(Pointer<Uint8> out) write) {
-  final out = malloc<Uint8>(_maxModulusLength);
+  final out = calloc<Uint8>(_maxModulusLength);
   try {
     final len = check(write(out));
     return Uint8List.fromList(out.asTypedList(len));

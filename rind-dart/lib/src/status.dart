@@ -33,7 +33,10 @@ String _lastMessage() {
   );
 }
 
-/// Allocates [length] bytes and returns what [call] wrote into them.
+/// Allocates [length] zeroed bytes and returns what [call] wrote into them.
+///
+/// [Uint8List.new] zeroes the buffer. Rust borrows it as `&mut [u8]`, which
+/// has to already be initialized.
 Uint8List output(int length, int Function(Uint8List out) call) {
   final out = Uint8List(length);
   return out.sublist(0, check(call(out)));

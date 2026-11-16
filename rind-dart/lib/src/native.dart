@@ -25,10 +25,12 @@ Pointer<Void> _newHandle(int Function(Pointer<Pointer<Void>> slot) call) {
   }
 }
 
-// Copies [data] to native memory for a non-leaf call, freeing it after. A
-// copy inside a call stays unwiped, as rind's own do.
+// Copies [data] into zeroed native memory for a non-leaf call, freeing it
+// after. `calloc` initializes the allocation: Rust borrows the pointer as
+// `&mut [u8]`, including when the copy is an output buffer. A copy inside a
+// call stays unwiped, as rind's own do.
 T _native<T>(Uint8List data, T Function(Pointer<Uint8> pointer) call) {
-  final pointer = malloc<Uint8>(data.isEmpty ? 1 : data.length);
+  final pointer = calloc<Uint8>(data.isEmpty ? 1 : data.length);
   final view = pointer.asTypedList(data.length);
   try {
     view.setAll(0, data);
