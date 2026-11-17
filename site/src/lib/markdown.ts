@@ -1,4 +1,4 @@
-import { decodeHTML } from "entities";
+import { decodeHTMLStrict } from "entities";
 import { Lexer, Parser, Renderer, type Token, type Tokens, type TokensList, walkTokens } from "marked";
 
 // Parse a Markdown document, resolving its reference links.
@@ -82,7 +82,7 @@ const plain = (tokens: Token[]): string =>
 			if (t.type === "html") return "";
 			if ("tokens" in t && t.tokens) return plain(t.tokens);
 			if (!("text" in t)) return "";
-			return t.type === "text" ? decodeHTML(t.text) : t.text;
+			return t.type === "text" ? decodeHTMLStrict(t.text) : t.text;
 		})
 		.join("");
 

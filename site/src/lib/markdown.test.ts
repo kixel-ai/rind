@@ -68,6 +68,8 @@ test("a heading's anchor decodes character references outside code", () => {
 	const html = (segments(lex("## A &amp; B\n\n## `&amp;` &eacute;\n"))[0] as { html: string }).html;
 	expect(html).toContain('id="a--b"');
 	expect(html).toContain('id="amp-é"');
+	// An unterminated reference is literal text.
+	expect((segments(lex("## &copycat\n"))[0] as { html: string }).html).toContain('id="copycat"');
 });
 
 // Each heading's id is GitHub's anchor for it.
