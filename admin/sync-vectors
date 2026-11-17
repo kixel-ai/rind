@@ -332,8 +332,8 @@ swap rfc9591
 # X-Wing's three vectors, as the draft's repository holds them.
 fetch dconnolly/draft-connolly-cfrg-xwing-kem "$XWING" xwing spec/test-vectors.json
 
-# draft-ietf-hpke-pq's base mode of MLKEM768-X25519 (KEM 0x647A, X-Wing), one
-# vector per line, short of the KEMs `rind::kem` does not yet offer to HPKE.
+# draft-ietf-hpke-pq's vectors for MLKEM768-X25519 (KEM 0x647A, X-Wing) in the
+# base mode, one per line: the only KEM of that draft that `rind::kem` offers.
 stage hpke-pq
 curl --fail --silent --show-error --location \
     "https://raw.githubusercontent.com/hpkewg/hpke-pq/$HPKE_PQ/test-vectors.json" |

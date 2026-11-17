@@ -114,10 +114,19 @@ pub mod agreement {
     };
 }
 
-/// Key encapsulation: ML-KEM-512, ML-KEM-768, and ML-KEM-1024.
+/// Key encapsulation: ML-KEM-512, ML-KEM-768, ML-KEM-1024, and X-Wing.
 ///
 /// Each type names its parameter set, so a ciphertext of one set fails to
-/// compile against a key of another.
+/// compile against a key of another. [`XWing`](kem::XWing) is the hybrid of X25519 and
+/// ML-KEM-768 that draft-connolly-cfrg-xwing-kem specifies (HPKE's
+/// MLKEM768-X25519, KEM 0x647A), and its keys work as ML-KEM's do. Its
+/// private key is a 32-byte [`Seed`](kem::Seed), which `DecapsulationKey::<XWing>`
+/// exports with `to_seed` and loads with `from_seed`.
+///
+/// X-Wing takes the draft's text on an all-zero X25519 secret, from an
+/// encapsulation key or a ciphertext whose X25519 half has a small order:
+/// the combiner hashes it as any other, and decapsulation cannot fail. The
+/// CFRG has not settled whether implementations should refuse it instead.
 ///
 /// ```
 /// # fn main() -> Result<(), rind::Error> {
