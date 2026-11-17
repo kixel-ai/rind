@@ -274,10 +274,11 @@ mod tests {
     // `admin/ct-qemu` traces them here instead, under qemu-aarch64's `max`
     // CPU, with a secret key, nonce, AAD, message, and tag, opening under
     // the right tag and a wrong one, which only the result may tell apart.
-    // Each routine picks a kernel by length: 1 to 320 bytes, 321 to 511, 513
-    // to 704, at least 512 with 257 to 511 left over a multiple of 512 (256
-    // to 511 for open), and the rest. The lengths reach each kernel, with
-    // whole and partial last blocks, and 768 splits seal's from open's.
+    // The routines branch on the lengths into size-specialized kernels and
+    // tails. These lengths reach every basic block, of both routines and
+    // their callees, that qemu's exec log saw in 3,471 sampled pairs of
+    // lengths (messages to 8 KiB, AAD to 600 bytes), sealed, opened, and
+    // forged.
     #[test]
     #[ignore = "admin/ct-qemu runs it under qemu"]
     fn ct_qemu_chacha20poly1305() {
@@ -290,15 +291,19 @@ mod tests {
         let nonce = bytes(12).try_into().unwrap();
         let wrong = bytes(16).try_into().unwrap();
         for (aad_len, msg_len) in [
-            (0, 0),
-            (13, 100),
-            (7, 401),
-            (16, 512),
-            (300, 64 * 9 + 5),
-            (13, 717),
-            (0, 768),
-            (16, 803),
-            (13, 1024),
+            (29, 43),
+            (4, 262),
+            (13, 322),
+            (2, 459),
+            (3, 520),
+            (13, 768),
+            (13, 769),
+            (13, 896),
+            (13, 960),
+            (9, 1028),
+            (13, 1088),
+            (13, 1090),
+            (3, 1351),
         ] {
             let aad = bytes(aad_len);
             let mut msg = bytes(msg_len);
