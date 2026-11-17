@@ -5,6 +5,10 @@ import { lex, link, section } from "./markdown";
 import type { Page } from "./pages";
 import { read, repoUrl } from "./repo";
 
+// A proof's index in `verified`; the same for a proof limited to an OS other
+// than the host's; or why there is none.
+export type VerifiedCell = number | { other_os: number } | "unproven" | "untimed" | "refused";
+
 // A time as the report writes it, its speed bin, and its time over the fastest's.
 export type Cell = [time: string, bin: number, ratio: number] | null;
 
@@ -34,6 +38,10 @@ export interface Host extends Times {
 	refused: Record<string, string[]>;
 	// The index into `verified` of each proof, by row and library.
 	proofs: Record<string, Record<string, number>>;
+	// The host's OS, as a proof's `os` names it.
+	os_kind: "linux" | "macos";
+	// What each library's code shows for every operation here, timed or not, for the verified page.
+	grid: Record<string, Record<string, VerifiedCell>>;
 	build?: Build | { reason: string };
 }
 
@@ -61,6 +69,8 @@ export interface Tier extends Times {
 	// The tier's name, as benchmarks/gaps.toml names it.
 	tier: string;
 	cpu: string;
+	// The libraries its fastest is drawn from, which it may not have timed.
+	rivals: string[];
 }
 
 export interface Gap {
@@ -78,6 +88,8 @@ export interface Gap {
 export interface Report {
 	schema: 1;
 	slower: number;
+	// What earns a ✓, which BENCHMARKS.md and the verified page both state.
+	rule: string;
 	bins: { to: number | null; label: string; color: string }[];
 	// rind's times that are the fastest or within 10%, and of how many.
 	standing: [number, number];
@@ -86,7 +98,7 @@ export interface Report {
 	hosts: Host[];
 	unmeasured: string[];
 	tiers: {
-		// The libraries each tier's fastest is drawn from.
+		// The libraries any tier's fastest is drawn from.
 		rivals: string[];
 		run: number;
 		url: string;
@@ -96,7 +108,14 @@ export interface Report {
 		groups: { name: string; benchmarks: string[] }[];
 	} | null;
 	gaps: Gap[];
-	verified: { library: string; operations: string[]; platform: string; proof: string; link: string }[];
+	verified: {
+		library: string;
+		operations: string[];
+		platform: string;
+		os?: "linux" | "macos";
+		proof: string;
+		link: string;
+	}[];
 }
 
 export const report = JSON.parse(read("benchmarks/report.json")) as Report;
@@ -173,7 +192,7 @@ export function untimed(host: Host): string[] {
 	return report.sections.flatMap((s) => s.operations.filter((o) => !(o.id in host.times)).map((o) => o.label));
 }
 
-// The libraries each weekly tier's fastest is drawn from, in prose.
+// The libraries any weekly tier's fastest is drawn from, in prose; the portable tier leaves verified-garbage out, as the paragraph quoted below says.
 const tierLibraries = tiers.rivals.map(libraryName);
 const tierNames = `${tierLibraries.slice(0, -1).join(", ")}, and ${tierLibraries.at(-1)}`;
 
