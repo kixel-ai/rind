@@ -485,11 +485,20 @@ step() {
             # A target with no `std` for each architecture rind has assembly
             # for; x86_64's, which disables SSE2, runs the portable backend.
             # Without an OS getrandom has no source but the one its caller
-            # supplies, which a library build need not link.
+            # supplies, which a library build need not link. Built as well as
+            # linted, since codegen can fail where a check passes: on
+            # x86_64-unknown-none, curve25519-dalek picks its AVX2 backend,
+            # which crashes LLVM there, unless the caller picks `serial`, as
+            # PLATFORMS.md says.
+            local rustflags
             for target in aarch64:aarch64-unknown-none arm:armv7a-none-eabi portable:x86_64-unknown-none; do
                 if reaches "$backends" "${target%%:*}"; then
-                    RUSTFLAGS='--cfg getrandom_backend="custom"' \
+                    rustflags='--cfg getrandom_backend="custom"'
+                    [[ $target != *x86_64* ]] || rustflags+=' --cfg curve25519_dalek_backend="serial"'
+                    RUSTFLAGS="$rustflags" \
                         run cargo clippy -p rind --lib --locked --target "${target#*:}" -- --deny warnings
+                    RUSTFLAGS="$rustflags --deny warnings" \
+                        run cargo build -p rind --lib --locked --target "${target#*:}"
                 fi
             done
             ;;

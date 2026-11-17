@@ -77,8 +77,7 @@ What the table leaves out favors the others:
   from, it says; its p256, ml-kem, and ml-dsa crates say they have had none.
   rind has had no third-party audit.
 - **Maturity and reach.** ring has run in production for years, and
-  RustCrypto covers far more algorithms. Both build without `std`, which
-  rind does not yet.
+  RustCrypto covers far more algorithms.
 
 ## Switch in one line
 
