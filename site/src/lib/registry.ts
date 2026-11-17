@@ -34,6 +34,8 @@ async function get(url: string): Promise<{ status: number; body: Uint8Array }> {
 		} catch (e) {
 			failure = `failed: ${e instanceof Error ? e.message : e}`;
 		}
+		// A rate limit or a short outage outlasts an immediate retry.
+		if (attempt < 3) await Bun.sleep(1000 * attempt);
 	}
 	throw new Error(`${url} ${failure}`);
 }

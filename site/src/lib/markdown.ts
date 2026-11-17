@@ -121,6 +121,9 @@ export type Segment = { html: string } | { code: string; lang: string };
 export function segments(tokens: Token[]): Segment[] {
 	const slug = slugger();
 	const renderer = new Renderer();
+	// A README read from crates.io is not ours: its raw HTML shows as text, never
+	// as markup (the page's policy would stop a script, but not a forged form).
+	renderer.html = ({ text }) => text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 	renderer.heading = function (heading) {
 		return `<h${heading.depth} id="${slug(heading)}">${this.parser.parseInline(heading.tokens)}</h${heading.depth}>\n`;
 	};
