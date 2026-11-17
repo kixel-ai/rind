@@ -870,6 +870,7 @@ BUILDS = {
     "rustcrypto": "RustCrypto + dalek",
     "graviola": "graviola",
     "libcrux": "libcrux",
+    "verified-garbage": "verified-garbage",
     "openssl": "OpenSSL, the system's, linked dynamically",
     "openssl-vendored": "OpenSSL, vendored",
     "rustls-rind": "rustls + rind-rustls",
@@ -969,10 +970,10 @@ TIERS = [
 # The libraries the weekly bench times rind against.
 BASELINES = ["aws-lc-rs", "ring"]
 
-# Libraries the weekly bench also times and the tiers keep, but that neither the
-# tier heatmap nor the gate counts. A cell where pyca/verified-garbage's
-# proven code is faster gets a quest that switches rind to it, not an alert;
-# the hosts' report counts it like any other library.
+# Libraries the weekly bench also times, which the tier heatmap ranks rind
+# against like the baselines but the gate never counts: a cell where
+# pyca/verified-garbage's proven code is faster gets a quest that switches
+# rind to it, not an alert. The hosts' report counts it like any other library.
 TIMED = ["verified-garbage"]
 
 # The CPU-tier rows, as patterns over a weekly benchmark ID with `*` in the
@@ -982,7 +983,7 @@ TIER_ROWS = [
     ("AES block, AES-CTR", r"(aes(128|192|256)-ctr|quic-header-protection/aes(128|256))/"),
     ("AES-CBC", r"aes(128|192|256)-cbc-"),
     ("AES-KW, AES-KWP", r"aes(128|256)-kwp?-"),
-    ("ChaCha20 (header protection)", r"quic-header-protection/chacha20/"),
+    ("ChaCha20", r"(quic-header-protection/)?chacha20/"),
     ("ChaCha20-Poly1305, XChaCha20-Poly1305", r"x?chacha20poly1305(-open)?/"),
     ("SHA-1", r"sha1/"),
     ("SHA-256", r"sha256(-updates)?/"),
@@ -1016,7 +1017,7 @@ UNRANKED = [
         r"(blind-rsa\d+|v?oprf|vrf|spake2plus|argon2id)-",
         "neither aws-lc-rs nor ring offers the protocol, so no baseline; the report's hosts compare it",
     ),
-    (r"chacha20/", "neither aws-lc-rs nor ring offers ChaCha20 without Poly1305, so no baseline"),
+    (r"slhdsa-", "neither aws-lc-rs nor ring offers SLH-DSA, so no baseline"),
 ]
 
 # rind's time over the fastest library's above which benchmarks/gaps.toml
@@ -1027,7 +1028,10 @@ SLOWER = 1.1
 SPEED_BINS = [SLOWER, 1.25, 1.5, 2, 4, 8]
 SPEED_LABELS = ["fastest, or within 10%", "to 1.25×", "to 1.5×", "to 2×", "to 4×", "to 8×", "over 8×"]
 
-# rind's time over the fastest baseline's, binned around the ~2% noise.
+# The tier heatmap's title.
+TIERS_TITLE = "rind's time over the fastest of aws-lc-rs, ring, and verified-garbage, by CPU tier"
+
+# rind's time over the fastest rival's, binned around the ~2% noise.
 TIER_BINS = [0.8, 0.9, 0.98, 1.02, 1.1, 1.25]
 TIER_LABELS = ["under 0.8", "to 0.9", "to 0.98", "even", "to 1.1", "to 1.25", "over 1.25"]
 
@@ -1143,15 +1147,22 @@ def times(host):
     return out
 
 
-def tier_rows(tier):
-    """rind's time over the fastest baseline's, per benchmark of a tier."""
+def tier_rows(tier, rivals):
+    """rind's time over the fastest of `rivals`, per benchmark of a tier."""
     out = {}
     for key, libs in tier["benchmarks"].items():
-        base = {lib: ns for lib, ns in libs.items() if lib in BASELINES}
+        base = {lib: ns for lib, ns in libs.items() if lib in rivals}
         if "rind" in libs and base:
             best = min(base, key=base.get)
             out[key] = (libs["rind"] / base[best], libs["rind"], best, base[best])
     return out
+
+
+def heatmap_rivals(tier):
+    """The libraries the tier heatmap ranks rind against. The portable tier
+    leaves out verified-garbage, which runs its baseline assembly there, code
+    rind's portable backend can never take."""
+    return BASELINES + ([] if tier_name(tier) == "portable" else TIMED)
 
 
 def tier_name(tier):
@@ -1194,7 +1205,7 @@ def tier_cells(tiers):
     cells = {}
     for t in tiers["tiers"]:
         column = tier_column(t)
-        for key, value in tier_rows(t).items():
+        for key, value in tier_rows(t, heatmap_rivals(t)).items():
             row = tier_row(key)
             if row is None:
                 continue
@@ -1223,7 +1234,7 @@ def gaps_of(hosts, tiers):
                     out[(row, name)] = (libs["rind"] / others[best], best)
     for t in tiers["tiers"] if tiers else []:
         column = tier_name(t)
-        for key, (ratio, _, best, _) in tier_rows(t).items():
+        for key, (ratio, _, best, _) in tier_rows(t, BASELINES).items():
             if ratio > SLOWER and tier_row(key):
                 out[(key, column)] = (ratio, best)
     return out
@@ -1531,7 +1542,7 @@ def host_svg(name, host, verified, theme):
 
 
 def tiers_svg(tiers, theme):
-    """rind's time over the fastest baseline's per CPU tier, in the benchmark
+    """rind's time over the fastest rival's per CPU tier, in the benchmark
     of each row where rind trails most."""
     svg = Svg(theme)
     cells = tier_cells(tiers)
@@ -1561,7 +1572,7 @@ def tiers_svg(tiers, theme):
             svg.rect(x, y + 1, cell - 4, ROW - 2, fill, title)
             svg.text(x + (cell - 4) / 2, y + 14, f"{ratio:.2f}", size=11, anchor="middle", color=ink_on(fill))
         y += ROW
-    return svg.render(width, y + 12, "rind's time over the fastest of aws-lc-rs and ring, by CPU tier")
+    return svg.render(width, y + 12, TIERS_TITLE)
 
 
 def and_list(words):
@@ -1760,7 +1771,7 @@ def tier_table(tiers):
     by_key = {}
     for t in tiers["tiers"]:
         column = tier_column(t)
-        for key, (ratio, *_) in tier_rows(t).items():
+        for key, (ratio, *_) in tier_rows(t, heatmap_rivals(t)).items():
             by_key.setdefault(key, {})[column] = ratio
     lines = ["| Benchmark | " + " | ".join(columns) + " |", "|---|" + "---|" * len(columns)]
     for key in sorted(by_key):
@@ -1865,13 +1876,14 @@ def site_data(hosts, tiers, verified, gaps):
             "tier": name,
             "cpu": t["cpu"],
             "libraries": [lib for lib in ["rind", *BASELINES, *TIMED] if lib in timed],
+            # The libraries its fastest is drawn from.
+            "rivals": ["rind", *heatmap_rivals(t)],
             "times": {},
             "fastest": {},
             "gaps": {},
         }
         for key, libs in t["benchmarks"].items():
-            # The tier's rule: rind against the fastest of it and the baselines.
-            rivals = {lib: ns for lib, ns in libs.items() if lib == "rind" or lib in BASELINES}
+            rivals = {lib: ns for lib, ns in libs.items() if lib in out["rivals"]}
             if not rivals:
                 continue
             best = min(rivals, key=rivals.get)
@@ -1925,8 +1937,8 @@ def site_data(hosts, tiers, verified, gaps):
     if tiers is not None:
         order = tier_columns(tiers)
         data["tiers"] = {
-            # The libraries a tier's fastest is drawn from.
-            "rivals": ["rind", *BASELINES],
+            # The libraries any tier's fastest is drawn from.
+            "rivals": ["rind", *BASELINES, *TIMED],
             "run": tiers["run"],
             "url": tiers["url"],
             "date": tiers["date"][:10],
@@ -2057,7 +2069,8 @@ def report(hosts, tiers, verified, gaps):
             "and X25519) and of a rustls client per provider, by `admin/build-cost`: the median of three builds with an empty target directory and a warm "
             "download cache, their CPU time, the stripped binary's size, the build tools it needs beyond rustc "
             "and a linker, and the crates it compiles. The system OpenSSL build leaves the library itself out of "
-            "its size; the vendored build is the static figure.",
+            "its size; the vendored build is the static figure. verified-garbage has no P-256 key generation, so "
+            "its binary imports a random scalar instead, and no rustls provider, so it has no rustls build.",
             "",
         ]
     for name in shown:
@@ -2090,15 +2103,16 @@ def report(hosts, tiers, verified, gaps):
             "no SHA-3 without the SHA-512 and SHA-3 instructions, no crypto without any of them, armv7 in 32-bit "
             "mode on the same core, and armv7 NEON there without the crypto extension. portable times rind's portable "
             "backend, forced with `--cfg rind_portable`, against aws-lc's C built without assembly; ring has no "
-            "such build, so it sits that column out. Each cell is rind's time over "
-            "the fastest of aws-lc-rs and ring (aws-lc-rs alone where a feature is denied, since ring can't "
-            "be denied one), in the row's benchmark where rind trails most. An empty cell runs the same code "
-            "as the one to its left, so it isn't timed.",
+            "such build, and verified-garbage runs its assembly there, so both sit that column out. Each cell is "
+            "rind's time over the fastest of aws-lc-rs, ring, and verified-garbage (without ring where a feature "
+            "is denied, since ring can't be denied one), in the row's benchmark where rind trails most. A cell "
+            "verified-garbage wins gets a quest that switches rind to its proven code, not an entry under "
+            "Known gaps. An empty cell runs the same code as the one to its left, so it isn't timed.",
             "",
             f"From [run {tiers['run']}]({tiers['url']}), {tiers['date'][:10]} at {commit_link(tiers['commit'])}, "
             f"on {', '.join(cpus)}.",
             "",
-            *picture("tiers", "rind's time over the fastest of aws-lc-rs and ring, by CPU tier"),
+            *picture("tiers", TIERS_TITLE),
             "",
             "<details>",
             "<summary>Every benchmark</summary>",
@@ -2251,12 +2265,14 @@ def gate(args):
     tiers = run_tiers(args.dir)
     previous = gaps_of({}, run_tiers(args.previous)) if args.previous else None
     entries = gap_entries(GAPS)
+    # A benchmark only TIMED libraries rival, such as ChaCha20 without
+    # Poly1305, is ranked for the heatmap alone, so it goes unmentioned.
     unbaselined = sorted(
         {
             f"{key} on {tier_column(t)}"
             for t in tiers["tiers"]
             for key, libs in t["benchmarks"].items()
-            if tier_row(key) and not set(libs) & set(BASELINES)
+            if tier_row(key) and not set(libs) & set(BASELINES + TIMED)
         }
     )
     undecided, once = [], []
