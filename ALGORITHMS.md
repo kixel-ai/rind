@@ -29,7 +29,8 @@ SHA-512. CPUs with AVX2 but without AVX-512 run ML-KEM-768's key generation
 and decapsulation as ML-KEM-512's, on s2n-bignum ✓ + mlkem-native ✓, and only
 its encapsulation on [verified-garbage] (see [ML-KEM](#ml-kem)). CPUs
 without AVX-512 IFMA run X25519 and Ed25519 on s2n-bignum ✓ and rind's
-glue, not verified-garbage (see [ECC](#ecc)).
+glue, not verified-garbage (see [ECC](#ecc)), except that without ADX
+Ed25519 verification's multiplication runs curve25519-dalek ⚡, as above.
 
 | Algorithm | x86_64 | no AVX2 | no AVX | no AES-NI | SSE2 |
 |---|---|---|---|---|---|
