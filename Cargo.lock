@@ -4787,7 +4787,6 @@ dependencies = [
 name = "rind-fips-module"
 version = "0.1.0"
 dependencies = [
- "libc",
  "rind",
 ]
 
