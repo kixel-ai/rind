@@ -75,10 +75,10 @@ Outside the model:
   operating system leaves DOITM unset, as Linux does, both of which
   [PLATFORMS.md](PLATFORMS.md) describes. Intel's data-independent list omits
   the `VSHA512` instructions; rind does not run them, and `admin/ct-vartime`
-  refuses them. [Their quest](/quest/m2/confidence/intel-vsha512.md) measures
-  the SHA-512 loss on Arrow Lake. Intel's MXCSR-dependent timing is in the
-  model: rind loads
-  `0x1FBF` around the x86_64 code that reaches an affected multiply, and
+  refuses them. On a Core Ultra 9 275HX (Arrow Lake), SHA-512 takes 2.0 to
+  2.2× its former time at 32 and 64 B and 4.4 to 4.7× from 1200 B, still 0.81
+  to 0.86× aws-lc-rs's. Intel's MXCSR-dependent timing is in the model: rind
+  loads `0x1FBF` around the x86_64 code that reaches an affected multiply, and
   around every call on 32-bit x86.
 - The operating system's random source, which rind trusts through
   `getrandom`, and an attacker who reads the process's memory while it runs.
