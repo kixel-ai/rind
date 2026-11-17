@@ -30,7 +30,7 @@ says which features of each such crate avoid it.
 
 ## What rind cannot back
 
-- ML-DSA: `default_provider()` neither verifies nor signs with it.
+Nothing: it backs every item of rustls's `crypto::aws_lc_rs` provider.
 
 ## Behaves differently
 

@@ -377,7 +377,7 @@ fn ticket(plain: &[u8], edit: &Edit) {
 }
 
 /// The certificates and keys for each type of key rind-rustls verifies.
-const KEYS: [(&str, &str, &str); 5] = [
+const KEYS: [(&str, &str, &str); 8] = [
     (
         include_str!("../../rind-rustls/tests/keys/ecdsa-p256/end.fullchain"),
         include_str!("../../rind-rustls/tests/keys/ecdsa-p256/end.key"),
@@ -402,6 +402,21 @@ const KEYS: [(&str, &str, &str); 5] = [
         include_str!("../../rind-rustls/tests/keys/rsa-2048/end.fullchain"),
         include_str!("../../rind-rustls/tests/keys/rsa-2048/end.key"),
         include_str!("../../rind-rustls/tests/keys/rsa-2048/ca.cert"),
+    ),
+    (
+        include_str!("../../rind-rustls/tests/keys/ml-dsa-44/end.fullchain"),
+        include_str!("../../rind-rustls/tests/keys/ml-dsa-44/end.key"),
+        include_str!("../../rind-rustls/tests/keys/ml-dsa-44/ca.cert"),
+    ),
+    (
+        include_str!("../../rind-rustls/tests/keys/ml-dsa-65/end.fullchain"),
+        include_str!("../../rind-rustls/tests/keys/ml-dsa-65/end.key"),
+        include_str!("../../rind-rustls/tests/keys/ml-dsa-65/ca.cert"),
+    ),
+    (
+        include_str!("../../rind-rustls/tests/keys/ml-dsa-87/end.fullchain"),
+        include_str!("../../rind-rustls/tests/keys/ml-dsa-87/end.key"),
+        include_str!("../../rind-rustls/tests/keys/ml-dsa-87/ca.cert"),
     ),
 ];
 

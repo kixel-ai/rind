@@ -11,8 +11,7 @@
 //!
 //! And then use rustls as normal.
 //!
-//! Its API is rustls's `crypto::aws_lc_rs` provider's, item for item, short of
-//! ML-DSA, which it does not back yet.
+//! Its API is rustls's `crypto::aws_lc_rs` provider's, item for item.
 
 use std::sync::Arc;
 
@@ -49,7 +48,7 @@ pub use ticketer::Ticketer;
 ///
 /// This offers the same cipher suites and key exchange groups as the rustls
 /// aws-lc-rs provider's defaults, and verifies and signs the same signature
-/// schemes, short of ML-DSA.
+/// schemes.
 /// It prefers ChaCha20-Poly1305 where rind runs AES without CPU instructions.
 pub fn default_provider() -> CryptoProvider {
     let cipher_suites = if rind::cpu::has_aes_hardware() {
@@ -151,6 +150,9 @@ static SUPPORTED_SIG_ALGS: WebPkiSupportedAlgorithms = WebPkiSupportedAlgorithms
         verify::RSA_PKCS1_SHA512_ABSENT_PARAMS,
         verify::RSA_PKCS1_SHA384_ABSENT_PARAMS,
         verify::RSA_PKCS1_SHA256_ABSENT_PARAMS,
+        verify::ML_DSA_44,
+        verify::ML_DSA_65,
+        verify::ML_DSA_87,
     ],
     // TLS 1.2 lets any curve sign with any of these hashes, so each lists
     // every curve; TLS 1.3 binds the curve and uses only the first.
@@ -195,6 +197,9 @@ static SUPPORTED_SIG_ALGS: WebPkiSupportedAlgorithms = WebPkiSupportedAlgorithms
             SignatureScheme::RSA_PKCS1_SHA256,
             &[verify::RSA_PKCS1_SHA256],
         ),
+        (SignatureScheme::ML_DSA_44, &[verify::ML_DSA_44]),
+        (SignatureScheme::ML_DSA_65, &[verify::ML_DSA_65]),
+        (SignatureScheme::ML_DSA_87, &[verify::ML_DSA_87]),
     ],
 };
 
@@ -241,17 +246,15 @@ mod tests {
         assert_eq!(default_provider().cipher_suites, expected);
     }
 
-    // rustls's aws-lc-rs provider offers ML-DSA, which this crate does not back
-    // yet; everything else it offers, this crate offers too.
+    // Everything rustls's aws-lc-rs provider offers, this crate offers too.
     // Tests build rustls with `tls12`, so its TLS 1.2 suites are there to
     // compare.
     // aws-lc-rs does not build for wasm.
     #[cfg(all(feature = "tls12", not(target_family = "wasm")))]
     #[test]
     fn aws_lc_rs_parity() {
-        use rustls::SignatureScheme;
         use rustls::crypto::aws_lc_rs;
-        use rustls::pki_types::{SignatureVerificationAlgorithm, alg_id};
+        use rustls::pki_types::SignatureVerificationAlgorithm;
 
         fn sorted<T: Ord>(items: impl IntoIterator<Item = T>) -> Vec<T> {
             let mut items = items.into_iter().collect::<Vec<_>>();
@@ -289,14 +292,7 @@ mod tests {
 
         let ours = default_provider().signature_verification_algorithms;
         let theirs = aws_lc_rs::default_provider().signature_verification_algorithms;
-        let ml_dsa = [alg_id::ML_DSA_44, alg_id::ML_DSA_65, alg_id::ML_DSA_87];
-        let theirs_all = theirs
-            .all
-            .iter()
-            .copied()
-            .filter(|alg| !ml_dsa.contains(&alg.public_key_alg_id()))
-            .collect::<Vec<_>>();
-        assert_eq!(ids(ours.all), ids(&theirs_all));
+        assert_eq!(ids(ours.all), ids(theirs.all));
 
         let hpke_suites = |suites: &[&dyn rustls::crypto::hpke::Hpke]| {
             suites.iter().map(|suite| suite.suite()).collect::<Vec<_>>()
@@ -308,18 +304,8 @@ mod tests {
 
         // Each scheme verifies with the same algorithms, the first for the
         // scheme's own curve, which is the only one TLS 1.3 uses.
-        let ml_dsa = [
-            SignatureScheme::ML_DSA_44,
-            SignatureScheme::ML_DSA_65,
-            SignatureScheme::ML_DSA_87,
-        ];
-        let theirs = theirs
-            .mapping
-            .iter()
-            .filter(|(scheme, _)| !ml_dsa.contains(scheme))
-            .collect::<Vec<_>>();
-        assert_eq!(ours.mapping.len(), theirs.len());
-        for (scheme, theirs) in theirs {
+        assert_eq!(ours.mapping.len(), theirs.mapping.len());
+        for (scheme, theirs) in theirs.mapping {
             let (_, ours) = ours
                 .mapping
                 .iter()

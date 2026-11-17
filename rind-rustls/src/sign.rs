@@ -1,8 +1,10 @@
 use core::fmt;
+use core::marker::PhantomData;
 use std::sync::Arc;
 
 use rind::ecdsa::{KeyPair as EcdsaKeyPair, SigningAlgorithm as EcdsaSigningAlgorithm};
 use rind::ed25519::KeyPair as Ed25519KeyPair;
+use rind::ml_dsa::{KeyPair as MlDsaKeyPair, MlDsa44, MlDsa65, MlDsa87, ParameterSet};
 use rind::rsa::{KeyPair as RsaKeyPair, SigningAlgorithm as RsaSigningAlgorithm};
 use rind::{ecdsa, rsa};
 use rustls::SignatureScheme;
@@ -19,6 +21,9 @@ pub fn any_supported_type(der: &PrivateKeyDer<'_>) -> Result<Arc<dyn SigningKey>
             &ECDSA_P384_KEYS,
             &ECDSA_P521_KEYS,
             &Ed25519Keys,
+            &ML_DSA_44_KEYS,
+            &ML_DSA_65_KEYS,
+            &ML_DSA_87_KEYS,
         ],
         der,
     )
@@ -139,6 +144,43 @@ impl Load for Ed25519Keys {
             Ok(key) => Ok(Arc::new(Ed25519(Arc::new(key)))),
             Err(err) => Err(format!("as Ed25519: {err}")),
         })
+    }
+}
+
+/// Each ML-DSA parameter set's one scheme, which only a PKCS#8 key (RFC 9881)
+/// comes in. Like aws-lc-rs's provider, only `any_supported_type` loads them.
+static ML_DSA_44_KEYS: MlDsaKeys<MlDsa44> = MlDsaKeys::new(SignatureScheme::ML_DSA_44);
+static ML_DSA_65_KEYS: MlDsaKeys<MlDsa65> = MlDsaKeys::new(SignatureScheme::ML_DSA_65);
+static ML_DSA_87_KEYS: MlDsaKeys<MlDsa87> = MlDsaKeys::new(SignatureScheme::ML_DSA_87);
+
+struct MlDsaKeys<P> {
+    scheme: SignatureScheme,
+    set: PhantomData<fn() -> P>,
+}
+
+impl<P> MlDsaKeys<P> {
+    const fn new(scheme: SignatureScheme) -> Self {
+        Self {
+            scheme,
+            set: PhantomData,
+        }
+    }
+}
+
+impl<P: ParameterSet> Load for MlDsaKeys<P> {
+    fn load(&self, der: &PrivateKeyDer<'_>) -> Option<Result<Arc<dyn SigningKey>, String>> {
+        let PrivateKeyDer::Pkcs8(der) = der else {
+            return None;
+        };
+        Some(
+            match MlDsaKeyPair::<P>::from_pkcs8(der.secret_pkcs8_der()) {
+                Ok(key) => Ok(Arc::new(MlDsa {
+                    key: Arc::new(key),
+                    scheme: self.scheme,
+                })),
+                Err(err) => Err(format!("as {:?}: {err}", self.scheme)),
+            },
+        )
     }
 }
 
@@ -345,6 +387,62 @@ impl sign::Signer for Ed25519 {
 impl fmt::Debug for Ed25519 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         f.debug_struct("Ed25519").finish_non_exhaustive()
+    }
+}
+
+/// An ML-DSA key, which signs only with its parameter set's scheme.
+struct MlDsa<P: ParameterSet> {
+    key: Arc<MlDsaKeyPair<P>>,
+    scheme: SignatureScheme,
+}
+
+impl<P: ParameterSet> sign::SigningKey for MlDsa<P> {
+    fn choose_scheme(
+        &self,
+        schemes: &[SignatureScheme],
+    ) -> Option<Box<dyn sign::Signer + 'static>> {
+        if schemes.contains(&self.scheme) {
+            Some(Box::new(Self {
+                key: Arc::clone(&self.key),
+                scheme: self.scheme,
+            }))
+        } else {
+            None
+        }
+    }
+
+    // As aws-lc-rs's provider answers: TLS has no `SignatureAlgorithm` for ML-DSA.
+    fn algorithm(&self) -> rustls::SignatureAlgorithm {
+        rustls::SignatureAlgorithm::Unknown(0)
+    }
+
+    fn public_key(&self) -> Option<SubjectPublicKeyInfoDer<'static>> {
+        Some(SubjectPublicKeyInfoDer::from(
+            self.key.public_key().to_spki().as_ref().to_vec(),
+        ))
+    }
+}
+
+impl<P: ParameterSet> sign::Signer for MlDsa<P> {
+    fn sign(&self, message: &[u8]) -> Result<Vec<u8>, rustls::Error> {
+        let sig = self
+            .key
+            .sign(message)
+            .map_err(|err| rustls::Error::General(format!("signing failed: {err}")))?;
+
+        Ok(sig.as_ref().to_vec())
+    }
+
+    fn scheme(&self) -> SignatureScheme {
+        self.scheme
+    }
+}
+
+impl<P: ParameterSet> fmt::Debug for MlDsa<P> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        f.debug_struct("MlDsa")
+            .field("scheme", &self.scheme)
+            .finish_non_exhaustive()
     }
 }
 
@@ -619,6 +717,279 @@ mod tests {
             // TLS carries ECDSA signatures ASN.1-encoded.
             let signer = ecdsa.choose_scheme(&[scheme]).unwrap();
             assert!(signer.sign(b"hello").unwrap().starts_with(&[0x30]));
+        }
+    }
+
+    /// Each ML-DSA parameter set's scheme, public key and signature lengths,
+    /// and a test key that OpenSSL made.
+    fn ml_dsa_test_keys() -> [(SignatureScheme, usize, usize, PrivateKeyDer<'static>); 3] {
+        let pem = |pem: &[u8]| PrivateKeyDer::from_pem_slice(pem).unwrap();
+        [
+            (
+                SignatureScheme::ML_DSA_44,
+                1312,
+                2420,
+                pem(include_bytes!("../tests/keys/ml-dsa-44/end.key")),
+            ),
+            (
+                SignatureScheme::ML_DSA_65,
+                1952,
+                3309,
+                pem(include_bytes!("../tests/keys/ml-dsa-65/end.key")),
+            ),
+            (
+                SignatureScheme::ML_DSA_87,
+                2592,
+                4627,
+                pem(include_bytes!("../tests/keys/ml-dsa-87/end.key")),
+            ),
+        ]
+    }
+
+    // Every scheme TLS names, which a key chooses only if it is its own.
+    const ALL_SCHEMES: [SignatureScheme; 15] = [
+        SignatureScheme::RSA_PKCS1_SHA1,
+        SignatureScheme::ECDSA_SHA1_Legacy,
+        SignatureScheme::RSA_PKCS1_SHA256,
+        SignatureScheme::ECDSA_NISTP256_SHA256,
+        SignatureScheme::RSA_PKCS1_SHA384,
+        SignatureScheme::ECDSA_NISTP384_SHA384,
+        SignatureScheme::RSA_PKCS1_SHA512,
+        SignatureScheme::ECDSA_NISTP521_SHA512,
+        SignatureScheme::RSA_PSS_SHA256,
+        SignatureScheme::RSA_PSS_SHA384,
+        SignatureScheme::RSA_PSS_SHA512,
+        SignatureScheme::ED25519,
+        SignatureScheme::ML_DSA_44,
+        SignatureScheme::ML_DSA_65,
+        SignatureScheme::ML_DSA_87,
+    ];
+
+    #[test]
+    fn test_ml_dsa_signing_key() {
+        fn check<P: ParameterSet>(
+            scheme: SignatureScheme,
+            signature_len: usize,
+            der: &PrivateKeyDer<'_>,
+            pair: &MlDsaKeyPair<P>,
+        ) {
+            let key = any_supported_type(der).unwrap();
+            assert_eq!(
+                format!("{key:?}"),
+                format!("MlDsa {{ scheme: {scheme:?}, .. }}")
+            );
+            assert_eq!(key.algorithm(), rustls::SignatureAlgorithm::Unknown(0));
+            assert_eq!(
+                key.public_key().unwrap().as_ref(),
+                pair.public_key().to_spki().as_ref()
+            );
+
+            // Choose only its own scheme.
+            assert!(key.choose_scheme(&[]).is_none());
+            let others = ALL_SCHEMES
+                .into_iter()
+                .filter(|other| *other != scheme)
+                .collect::<Vec<_>>();
+            assert!(key.choose_scheme(&others).is_none());
+            for offered in [
+                &[scheme][..],
+                &[
+                    SignatureScheme::RSA_PSS_SHA256,
+                    scheme,
+                    SignatureScheme::ED25519,
+                ],
+                &ALL_SCHEMES,
+            ] {
+                let signer = key.choose_scheme(offered).unwrap();
+                assert_eq!(signer.scheme(), scheme);
+                assert_eq!(
+                    format!("{signer:?}"),
+                    format!("MlDsa {{ scheme: {scheme:?}, .. }}")
+                );
+
+                // The signature is the parameter set's size, and its key
+                // verifies it.
+                let signature = signer.sign(b"hello").unwrap();
+                assert_eq!(signature.len(), signature_len);
+                pair.public_key().verify(b"hello", &signature).unwrap();
+                assert!(pair.public_key().verify(b"hullo", &signature).is_err());
+            }
+        }
+
+        for (scheme, _, signature_len, der) in ml_dsa_test_keys() {
+            let PrivateKeyDer::Pkcs8(pkcs8) = &der else {
+                unreachable!("a PKCS#8 PEM")
+            };
+            let pkcs8 = pkcs8.secret_pkcs8_der();
+            match scheme {
+                SignatureScheme::ML_DSA_44 => check(
+                    scheme,
+                    signature_len,
+                    &der,
+                    &MlDsaKeyPair::<MlDsa44>::from_pkcs8(pkcs8).unwrap(),
+                ),
+                SignatureScheme::ML_DSA_65 => check(
+                    scheme,
+                    signature_len,
+                    &der,
+                    &MlDsaKeyPair::<MlDsa65>::from_pkcs8(pkcs8).unwrap(),
+                ),
+                _ => check(
+                    scheme,
+                    signature_len,
+                    &der,
+                    &MlDsaKeyPair::<MlDsa87>::from_pkcs8(pkcs8).unwrap(),
+                ),
+            }
+        }
+
+        // A key rind made loads too.
+        let pair = MlDsaKeyPair::<MlDsa65>::generate().unwrap();
+        let der = PrivateKeyDer::Pkcs8(pair.to_pkcs8().as_ref().to_vec().into());
+        check(SignatureScheme::ML_DSA_65, 3309, &der, &pair);
+    }
+
+    // Like aws-lc-rs's provider, only `any_supported_type` loads an ML-DSA
+    // key, and only from PKCS#8.
+    #[test]
+    fn test_ml_dsa_key_loading() {
+        for (_, _, _, der) in ml_dsa_test_keys() {
+            let PrivateKeyDer::Pkcs8(pkcs8) = &der else {
+                unreachable!("a PKCS#8 PEM")
+            };
+            assert!(any_supported_type(&der).is_ok());
+            assert!(any_ecdsa_type(&der).is_err());
+            assert!(any_eddsa_type(pkcs8).is_err());
+            assert!(RsaSigningKey::new(&der).is_err());
+
+            // No other encoding carries one.
+            let bytes = pkcs8.secret_pkcs8_der().to_vec();
+            for other in [
+                PrivateKeyDer::Pkcs1(bytes.clone().into()),
+                PrivateKeyDer::Sec1(bytes.clone().into()),
+            ] {
+                assert!(any_supported_type(&other).is_err());
+            }
+
+            // A refused key says which types refused it, ML-DSA's by scheme.
+            let mut truncated = bytes.clone();
+            truncated.pop();
+            let err = any_supported_type(&PrivateKeyDer::Pkcs8(truncated.into())).unwrap_err();
+            let err = err.to_string();
+            assert!(err.contains("unsupported PKCS#8 key: "), "{err}");
+            for scheme in [
+                SignatureScheme::ML_DSA_44,
+                SignatureScheme::ML_DSA_65,
+                SignatureScheme::ML_DSA_87,
+            ] {
+                assert!(
+                    err.contains(&format!("as {scheme:?}: ")),
+                    "{scheme:?}: {err}"
+                );
+            }
+        }
+
+        // Every other type's key is refused by ML-DSA's loaders, and each
+        // loader skips an encoding no ML-DSA key comes in.
+        let keys: [&dyn Load; 3] = [&ML_DSA_44_KEYS, &ML_DSA_65_KEYS, &ML_DSA_87_KEYS];
+        let rsa = PrivateKeyDer::Pkcs8(
+            include_bytes!("../../rind/src/high/rsa/rsa2048.pkcs8.der")
+                .to_vec()
+                .into(),
+        );
+        let ecdsa = PrivateKeyDer::Pkcs8(
+            include_bytes!("../../rind/src/high/ecdsa/secp256r1.pkcs8.der")
+                .to_vec()
+                .into(),
+        );
+        let sec1 = PrivateKeyDer::Sec1(
+            include_bytes!("../../rind/src/high/ecdsa/secp256r1.der")
+                .to_vec()
+                .into(),
+        );
+        for keys in keys {
+            assert!(matches!(keys.load(&rsa), Some(Err(_))));
+            assert!(matches!(keys.load(&ecdsa), Some(Err(_))));
+            assert!(keys.load(&sec1).is_none());
+        }
+    }
+
+    // Each key loads, names its scheme, signs, and verifies as aws-lc-rs's
+    // provider's does, with its signatures and by its public key.
+    // aws-lc-rs does not build for wasm.
+    #[cfg(not(target_family = "wasm"))]
+    #[test]
+    fn test_ml_dsa_signing_key_matches_aws_lc_rs() {
+        use rustls::crypto::aws_lc_rs;
+
+        let provider = aws_lc_rs::default_provider();
+        let theirs_verify = |scheme| {
+            let (_, algorithms) = provider
+                .signature_verification_algorithms
+                .mapping
+                .iter()
+                .find(|(theirs, _)| *theirs == scheme)
+                .unwrap();
+            algorithms[0]
+        };
+        let ours_verify = |scheme| {
+            let (_, algorithms) = crate::SUPPORTED_SIG_ALGS
+                .mapping
+                .iter()
+                .find(|(ours, _)| *ours == scheme)
+                .unwrap();
+            algorithms[0]
+        };
+
+        for (scheme, key_len, signature_len, der) in ml_dsa_test_keys() {
+            let ours = any_supported_type(&der).unwrap();
+            let theirs = aws_lc_rs::sign::any_supported_type(&der).unwrap();
+            assert_eq!(ours.algorithm(), theirs.algorithm());
+            let (ours_spki, theirs_spki) =
+                (ours.public_key().unwrap(), theirs.public_key().unwrap());
+            assert_eq!(ours_spki.as_ref(), theirs_spki.as_ref());
+
+            for offered in [
+                &[][..],
+                &[scheme],
+                &ALL_SCHEMES,
+                &[SignatureScheme::ED25519, scheme],
+                &[SignatureScheme::ED25519],
+            ] {
+                assert_eq!(
+                    ours.choose_scheme(offered).map(|signer| signer.scheme()),
+                    theirs.choose_scheme(offered).map(|signer| signer.scheme()),
+                    "{offered:?}"
+                );
+            }
+
+            // The key's raw bytes, which end its `SubjectPublicKeyInfo`.
+            let public_key = &ours_spki.as_ref()[ours_spki.as_ref().len() - key_len..];
+            let message = b"hello world";
+            let ours_signature = ours
+                .choose_scheme(&[scheme])
+                .unwrap()
+                .sign(message)
+                .unwrap();
+            let theirs_signature = theirs
+                .choose_scheme(&[scheme])
+                .unwrap()
+                .sign(message)
+                .unwrap();
+            assert_eq!(ours_signature.len(), signature_len);
+            assert_eq!(theirs_signature.len(), signature_len);
+            for verify in [ours_verify(scheme), theirs_verify(scheme)] {
+                for signature in [&ours_signature, &theirs_signature] {
+                    verify
+                        .verify_signature(public_key, message, signature)
+                        .unwrap();
+                    assert!(
+                        verify
+                            .verify_signature(public_key, b"other", signature)
+                            .is_err()
+                    );
+                }
+            }
         }
     }
 
