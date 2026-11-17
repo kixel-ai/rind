@@ -85,10 +85,14 @@ those inputs, in any worktree, restores in under a second.
   stack pointer, and `z` and the stack frame disjoint from the code and the
   inputs, so `z` may not alias `x`. The theorem covers the dispatch,
   the stack frame of up to `8k + 72` bytes below the stack pointer, and the
-  callee-saved registers it restores. The widths that run `__bn_mul4x_mont`
-  and `__bn_sqr8x_mont`, which include every standard RSA size and its CRT
-  primes, are not proven yet, and no axiom in `Rind/` restates the theorem
-  yet. The function has no relocations.
+  callee-saved registers it restores. `BN_MUL_MONT_MUL4X_SUBROUTINE_CORRECT`
+  states the same for every multiple of four from four up, through
+  `__bn_mul4x_mont`, except a multiple of eight with `x = y`: the squarings
+  `__bn_sqr8x_mont` runs, which are not proven yet. It also needs
+  `x + 32` and `m + 32` not to wrap past `2^64`, since the code reads the
+  carry of adding 32 to those pointers, and its stack frame is the
+  `8k + 160` bytes below the stack pointer, saving `x19` to `x28`. No axiom
+  in `Rind/` restates either theorem yet. The function has no relocations.
 - `x86_64/bn_mul_mont_nohw.ml`: `BN_MUL_MONT_NOHW_SUBROUTINE_CORRECT`, rind's
   proof that the naked function `low::x86_64::mont::bn_mul_mont_nohw`,
   aws-lc's word-serial Montgomery multiplication, writes the Montgomery
@@ -1164,6 +1168,6 @@ Beyond Lean's kernel:
   own theorems, with the fork's additions to the x86 model, from
   awslabs/s2n-bignum#450 and rind's own, which
   `admin/prove cosim` checks against the CPU as s2n-bignum checks its own.
-- The translation ignores drops, which here wipe keys and keyed state under
-  the `wipe` feature and restore CPU state, and computes nothing an output
+- The translation ignores drops, which here wipe keys and keyed state and
+  restore CPU state, and computes nothing an output
   depends on.
