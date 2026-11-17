@@ -475,6 +475,12 @@ macro_rules! named {
         /// Those the target enables at compile time, which every CPU that
         /// runs the binary has, as `is_x86_feature_detected!` also reports.
         const ENABLED: u32 = 0 $(| if cfg!(target_feature = $name) { $bit } else { 0 })+;
+
+        /// What `std` detects, which `detect` must match.
+        #[cfg(test)]
+        fn std_detected() -> u32 {
+            0 $(| if is_x86_feature_detected!($name) { $bit } else { 0 })+
+        }
     };
 }
 
@@ -515,7 +521,7 @@ fn detect() -> u32 {
     } else {
         0
     };
-    let found = cpuid() | ENABLED | valgrind;
+    let found = decode(registers()) | ENABLED | valgrind;
     let intel = if found & INTEL != 0 && !super::super::cpu_denied("intel") {
         INTEL
     } else {
@@ -527,87 +533,107 @@ fn detect() -> u32 {
         .fold(intel, |features, &(bit, _)| features | bit)
 }
 
-/// What `cpuid` and `xgetbv` say the CPU has and the OS saves the registers
-/// of, read as `std`'s `is_x86_feature_detected!` reads them (its
-/// `std_detect/src/detect/os/x86.rs`), so a hosted build picks the same
-/// paths it did with `std`, and a build without an OS can ask too. A
-/// kernel that never enabled the AVX or AVX-512 state in XCR0 gets no
-/// AVX tier, rather than a fault on its first `vmovdqu`.
-#[allow(unused_unsafe, clippy::similar_names)]
-fn cpuid() -> u32 {
+/// The `cpuid` and `xgetbv` registers that name the features rind tests for.
+#[derive(Clone, Copy, Default)]
+struct Registers {
+    intel: bool,
+    /// Leaf 1's ECX, or zero where the CPU has no leaf 1.
+    ecx1: u32,
+    /// Leaf 7's EBX, ECX, and EDX, and subleaf 1's EAX, or zero where the
+    /// CPU has no leaf 7.
+    ebx7: u32,
+    ecx7: u32,
+    edx7: u32,
+    eax7_1: u32,
+    /// XCR0, or `None` where the OS has not enabled `xgetbv`.
+    xcr0: Option<u64>,
+}
+
+/// Reads the registers `decode` reads.
+#[allow(unused_unsafe)]
+fn registers() -> Registers {
+    let mut found = Registers::default();
     // An SGX enclave cannot trust `cpuid`, so `std` reports nothing there.
     if cfg!(target_env = "sgx") {
-        return 0;
+        return found;
     }
-    let bit = |register: u32, at: u32| register >> at & 1 != 0;
-
     // `__cpuid` is safe from Rust 1.94 but `unsafe` on the 1.90 MSRV.
     // SAFETY: every x86_64 CPU has `cpuid`, and no leaf past the highest it
     // reports is read.
     let leaf0 = unsafe { __cpuid(0) };
     // "GenuineIntel", spread over ebx, edx, and ecx.
-    let intel = (leaf0.ebx, leaf0.edx, leaf0.ecx) == (0x756e_6547, 0x4965_6e69, 0x6c65_746e);
-    let mut features = if intel { INTEL } else { 0 };
-    if leaf0.eax < 1 {
-        return features;
+    found.intel = (leaf0.ebx, leaf0.edx, leaf0.ecx) == (0x756e_6547, 0x4965_6e69, 0x6c65_746e);
+    if leaf0.eax >= 1 {
+        // SAFETY: as above.
+        found.ecx1 = unsafe { __cpuid(1) }.ecx;
     }
-    // SAFETY: as above.
-    let leaf1 = unsafe { __cpuid(1) };
-    let (ebx7, ecx7, edx7, eax7_1) = if leaf0.eax >= 7 {
+    if leaf0.eax >= 7 {
         // SAFETY: as above.
         let (leaf7, leaf7_1) = unsafe { (__cpuid_count(7, 0), __cpuid_count(7, 1)) };
-        (leaf7.ebx, leaf7.ecx, leaf7.edx, leaf7_1.eax)
-    } else {
-        (0, 0, 0, 0)
-    };
+        (found.ebx7, found.ecx7, found.edx7, found.eax7_1) =
+            (leaf7.ebx, leaf7.ecx, leaf7.edx, leaf7_1.eax);
+    }
+    // XSAVE, and OSXSAVE: the OS has enabled `xgetbv`.
+    if found.ecx1 & (1 << 26 | 1 << 27) == 1 << 26 | 1 << 27 {
+        // SAFETY: the CPU has XSAVE, and the OS has enabled it.
+        found.xcr0 = Some(unsafe { _xgetbv(0) });
+    }
+    found
+}
 
+/// What the registers say the CPU has and the OS saves the state of, read
+/// as `std`'s `is_x86_feature_detected!` reads them (its
+/// `std_detect/src/detect/os/x86.rs`), so a hosted build picks the paths it
+/// did with `std`, and a build without an OS can ask too: `cpuid` and
+/// `xgetbv` need none. A kernel that never enabled the AVX or AVX-512 state
+/// in XCR0 gets no AVX tier, rather than a fault on its first `vmovdqu`.
+fn decode(r: Registers) -> u32 {
+    let bit = |register: u32, at: u32| register >> at & 1 != 0;
+    let mut features = 0;
     let mut set = |on: bool, feature: u32| {
         if on {
             features |= feature;
         }
     };
-    set(bit(leaf1.ecx, 1), PCLMULQDQ);
-    set(bit(leaf1.ecx, 9), SSSE3);
-    set(bit(leaf1.ecx, 19), SSE41);
-    set(bit(leaf1.ecx, 22), MOVBE);
-    set(bit(leaf1.ecx, 23), POPCNT);
-    set(bit(leaf1.ecx, 25), AES);
-    set(bit(ebx7, 3), BMI1);
-    set(bit(ebx7, 8), BMI2);
-    set(bit(ebx7, 19), ADX);
-    set(bit(ebx7, 29), SHA);
-    set(bit(ecx7, 9), VAES);
-    set(bit(ecx7, 10), VPCLMULQDQ);
+    set(r.intel, INTEL);
+    set(bit(r.ecx1, 1), PCLMULQDQ);
+    set(bit(r.ecx1, 9), SSSE3);
+    set(bit(r.ecx1, 19), SSE41);
+    set(bit(r.ecx1, 22), MOVBE);
+    set(bit(r.ecx1, 23), POPCNT);
+    set(bit(r.ecx1, 25), AES);
+    set(bit(r.ebx7, 3), BMI1);
+    set(bit(r.ebx7, 8), BMI2);
+    set(bit(r.ebx7, 19), ADX);
+    set(bit(r.ebx7, 29), SHA);
+    set(bit(r.ecx7, 9), VAES);
+    set(bit(r.ecx7, 10), VPCLMULQDQ);
 
-    // XSAVE, and OSXSAVE: the OS has turned on `xgetbv`.
-    if bit(leaf1.ecx, 26) && bit(leaf1.ecx, 27) {
-        // SAFETY: the CPU has XSAVE, and the OS has enabled it.
-        let xcr0 = unsafe { _xgetbv(0) };
-        // The OS saves the SSE and AVX state.
-        if xcr0 & 0b110 == 0b110 {
-            set(bit(leaf1.ecx, 28), AVX);
-            set(bit(ebx7, 5), AVX2);
-            set(bit(eax7_1, 0), SHA512);
-            // And the AVX-512 state. Rust's `avx512f` implies FMA and F16C,
-            // which Intel does not promise with it, so `std` requires them.
-            let (fma, f16c) = (bit(leaf1.ecx, 12), bit(leaf1.ecx, 29));
-            if xcr0 & 0b1110_0000 == 0b1110_0000 && fma && f16c {
-                set(bit(ebx7, 16), AVX512F);
-                set(bit(ebx7, 17), AVX512DQ);
-                set(bit(ebx7, 21), AVX512IFMA);
-                set(bit(ebx7, 30), AVX512BW);
-                set(bit(ebx7, 31), AVX512VL);
-                set(bit(ecx7, 1), AVX512VBMI);
-                set(bit(ecx7, 6), AVX512VBMI2);
-                set(bit(edx7, 23), AVX512FP16);
-            }
+    let xcr0 = r.xcr0.unwrap_or(0);
+    // The OS saves the SSE and AVX state.
+    if xcr0 & 0b110 == 0b110 {
+        set(bit(r.ecx1, 28), AVX);
+        set(bit(r.ebx7, 5), AVX2);
+        set(bit(r.eax7_1, 0), SHA512);
+        // And the AVX-512 state. Rust's `avx512f` implies FMA and F16C,
+        // which Intel does not promise with it, so `std` requires them.
+        let (fma, f16c) = (bit(r.ecx1, 12), bit(r.ecx1, 29));
+        if xcr0 & 0b1110_0000 == 0b1110_0000 && fma && f16c {
+            set(bit(r.ebx7, 16), AVX512F);
+            set(bit(r.ebx7, 17), AVX512DQ);
+            set(bit(r.ebx7, 21), AVX512IFMA);
+            set(bit(r.ebx7, 30), AVX512BW);
+            set(bit(r.ebx7, 31), AVX512VL);
+            set(bit(r.ecx7, 1), AVX512VBMI);
+            set(bit(r.ecx7, 6), AVX512VBMI2);
+            set(bit(r.edx7, 23), AVX512FP16);
         }
     }
 
     // Some Skylakes report BMI1 and BMI2 without them (Intel's erratum
     // SKL052); all of those lack AVX, so `std` drops both on Intel's CPUs
     // without it.
-    if intel && features & AVX == 0 {
+    if r.intel && features & AVX == 0 {
         features &= !(BMI1 | BMI2);
     }
     features
@@ -690,6 +716,123 @@ mod tests {
     fn denied(name: &str) -> bool {
         cfg!(any(debug_assertions, rind_cpu_disable))
             && std::env::var(format!("RIND_CPU_DISABLE_{}", name.replace('.', ""))).is_ok()
+    }
+
+    /// The registers decode as `std` reads them on this host.
+    #[test]
+    fn detects_what_std_does() {
+        assert_eq!((decode(registers()) | ENABLED) & !INTEL, std_detected());
+    }
+
+    /// Where each feature's bit is, and the registers `decode` needs before
+    /// it reads any bit that hangs on AVX-512 support: the OS saving every
+    /// vector state, and FMA and F16C.
+    const FMA_F16C: u32 = 1 << 12 | 1 << 29;
+    const BITS: &[(fn(&mut Registers) -> &mut u32, u32, u32)] = &[
+        (|r| &mut r.ecx1, 1, PCLMULQDQ),
+        (|r| &mut r.ecx1, 9, SSSE3),
+        (|r| &mut r.ecx1, 19, SSE41),
+        (|r| &mut r.ecx1, 22, MOVBE),
+        (|r| &mut r.ecx1, 23, POPCNT),
+        (|r| &mut r.ecx1, 25, AES),
+        (|r| &mut r.ecx1, 28, AVX),
+        (|r| &mut r.ebx7, 3, BMI1),
+        (|r| &mut r.ebx7, 5, AVX2),
+        (|r| &mut r.ebx7, 8, BMI2),
+        (|r| &mut r.ebx7, 16, AVX512F),
+        (|r| &mut r.ebx7, 17, AVX512DQ),
+        (|r| &mut r.ebx7, 19, ADX),
+        (|r| &mut r.ebx7, 21, AVX512IFMA),
+        (|r| &mut r.ebx7, 29, SHA),
+        (|r| &mut r.ebx7, 30, AVX512BW),
+        (|r| &mut r.ebx7, 31, AVX512VL),
+        (|r| &mut r.ecx7, 1, AVX512VBMI),
+        (|r| &mut r.ecx7, 6, AVX512VBMI2),
+        (|r| &mut r.ecx7, 9, VAES),
+        (|r| &mut r.ecx7, 10, VPCLMULQDQ),
+        (|r| &mut r.edx7, 23, AVX512FP16),
+        (|r| &mut r.eax7_1, 0, SHA512),
+    ];
+
+    /// Each feature is read from its own bit, and from no other.
+    #[test]
+    fn decodes_each_bit() {
+        let base = Registers {
+            ecx1: FMA_F16C,
+            xcr0: Some(u64::MAX),
+            ..Registers::default()
+        };
+        assert_eq!(decode(base), 0);
+        for &(register, at, feature) in BITS {
+            let mut r = base;
+            *register(&mut r) |= 1 << at;
+            assert_eq!(decode(r), feature, "bit {at}");
+        }
+        assert_eq!(BITS.len(), NAMED.len());
+    }
+
+    /// The AVX features need the OS to save the AVX state, and the AVX-512
+    /// ones its AVX-512 state, FMA, and F16C, as `std` requires.
+    #[test]
+    fn decodes_vector_features_only_where_the_os_saves_them() {
+        let all = Registers {
+            intel: false,
+            ecx1: u32::MAX,
+            ebx7: u32::MAX,
+            ecx7: u32::MAX,
+            edx7: u32::MAX,
+            eax7_1: u32::MAX,
+            xcr0: Some(u64::MAX),
+        };
+        let named = NAMED.iter().fold(0, |all, &(bit, _)| all | bit);
+        assert_eq!(decode(all), named);
+        assert_eq!(decode(Registers { intel: true, ..all }), named | INTEL);
+
+        let avx512 = AVX512F
+            | AVX512DQ
+            | AVX512IFMA
+            | AVX512BW
+            | AVX512VL
+            | AVX512VBMI
+            | AVX512VBMI2
+            | AVX512FP16;
+        let avx = AVX | AVX2 | SHA512 | avx512;
+        for xcr0 in [None, Some(0), Some(0b010), Some(0b100), Some(!0b110)] {
+            assert_eq!(decode(Registers { xcr0, ..all }), named & !avx, "{xcr0:?}");
+        }
+        for xcr0 in [0b110, 0b0110_0110, 0b1010_0110, 0b1100_0110] {
+            let r = Registers {
+                xcr0: Some(xcr0),
+                ..all
+            };
+            assert_eq!(decode(r), named & !avx512, "{xcr0:#x}");
+        }
+        for missing in [1 << 12, 1 << 29] {
+            let r = Registers {
+                ecx1: !missing,
+                ..all
+            };
+            assert_eq!(decode(r), named & !avx512);
+        }
+    }
+
+    /// Intel's CPUs without AVX lose BMI1 and BMI2 (erratum SKL052); other
+    /// vendors' keep them.
+    #[test]
+    fn drops_bmi_on_intel_without_avx() {
+        let r = Registers {
+            ebx7: 1 << 3 | 1 << 8,
+            ..Registers::default()
+        };
+        assert_eq!(decode(r), BMI1 | BMI2);
+        assert_eq!(decode(Registers { intel: true, ..r }), INTEL);
+        let avx = Registers {
+            intel: true,
+            ecx1: 1 << 28,
+            xcr0: Some(0b110),
+            ..r
+        };
+        assert_eq!(decode(avx), INTEL | AVX | BMI1 | BMI2);
     }
 
     // Each feature has a bit of its own, so no check can pass for one

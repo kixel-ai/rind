@@ -160,6 +160,7 @@ pub(crate) fn cpu_denied(id: &str) -> bool {
 pub(crate) fn cpu_denied(_id: &str) -> bool {
     false
 }
+
 // Intel's MXCSR mitigation, where the instructions it covers exist: on x86
 // and x86_64 targets with SSE2, outside Miri, which runs no assembly.
 #[cfg_attr(
