@@ -16,6 +16,7 @@
 #![allow(clippy::chunks_exact_to_as_chunks)]
 
 use core::fmt;
+use core::mem::ManuallyDrop;
 use core::panic::{RefUnwindSafe, UnwindSafe};
 
 use crate::Error;
@@ -265,8 +266,11 @@ const fn signature_len<P: Params>() -> usize {
 pub(crate) struct KeyPair<P: Params> {
     seed: Option<[u8; SEED_LEN]>,
     secret_key: P::SecretKey,
-    /// `A`, then `s1`, `s2`, and `t0`, all in the NTT domain.
-    expanded: Polys,
+    /// `A`, then `s1`, `s2`, and `t0`, all in the NTT domain. The drop
+    /// frees it before the wipe, and no drop glue runs after: `Polys`'s
+    /// own drop would write `None` over the wiped value, whose other word
+    /// the compiler may fill with the freed pointer.
+    expanded: ManuallyDrop<Polys>,
 }
 
 /// The polynomials a key pair's expansion holds: `A`, then `s1`, `s2`, and
@@ -359,7 +363,7 @@ impl<P: Params> KeyPair<P> {
         let mut key = Self {
             seed: Some(seed),
             secret_key: P::SecretKey::zeroed(),
-            expanded: Polys::new(secret_expansion_len::<P>()),
+            expanded: ManuallyDrop::new(Polys::new(secret_expansion_len::<P>())),
         };
         let mut public_key = P::PublicKey::zeroed();
         P::keygen(
@@ -385,7 +389,7 @@ impl<P: Params> KeyPair<P> {
         let mut key = Self {
             seed: None,
             secret_key: P::SecretKey::zeroed(),
-            expanded: Polys::new(secret_expansion_len::<P>()),
+            expanded: ManuallyDrop::new(Polys::new(secret_expansion_len::<P>())),
         };
         key.secret_key.as_mut().copy_from_slice(sk);
         low::ct::secret_slice(key.secret_key.as_ref());
