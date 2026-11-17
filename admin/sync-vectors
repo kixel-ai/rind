@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Copy the vector files rind's tests read from aws-lc, BoringSSL,
 # Wycheproof, CAVP, and CCTV, and RFC 9180's HPKE, RFC 9380's hash-to-curve,
-# RFC 9474's blind RSA, and RFC 9497's OPRF vectors, into thirdparty/vectors,
+# RFC 9474's blind RSA, RFC 9497's OPRF, and the X-Wing and HPKE
+# post-quantum drafts' vectors, into thirdparty/vectors,
 # from the revisions pinned here. The tests read a small part of each
 # repository, so rind keeps copies of those files rather than submodules.
 # Bump a revision and rerun to update them; each test opens its files by name
@@ -27,6 +28,11 @@ CCTV=b88c4b206254ac543df240097e0f1fcc6a664821
 VOPRF=5d7d94c8dc7589dc3baa116c1b9c169a7c33ac4e
 # RFC 9591's repository, whose `poc/frost-*.json` are its Appendix E.
 FROST=127452b93acb3094a6f659d059550df5618c2714
+# draft-connolly-cfrg-xwing-kem's repository, whose `spec/test-vectors.json`
+# is the draft's Appendix C.
+XWING=984c2f7a93b8f8d8f8073ebb53f9f4ce50b5babd
+# draft-ietf-hpke-pq's repository, whose `test-vectors.json` is its Appendix A.
+HPKE_PQ=6433c8fce0b8b749dfc86c1095081a88698ccfab
 
 # aws-lc's copy of each file BoringSSL also has holds every BoringSSL vector
 # for rind's algorithms, so BoringSSL contributes only its own files.
@@ -322,3 +328,14 @@ for suite in ed25519-sha512 ristretto255-sha512 p256-sha256; do
         "https://raw.githubusercontent.com/cfrg/draft-irtf-cfrg-frost/$FROST/poc/frost-$suite.json"
 done
 swap rfc9591
+
+# X-Wing's three vectors, as the draft's repository holds them.
+fetch dconnolly/draft-connolly-cfrg-xwing-kem "$XWING" xwing spec/test-vectors.json
+
+# draft-ietf-hpke-pq's base mode of MLKEM768-X25519 (KEM 0x647A, X-Wing), one
+# vector per line, short of the KEMs `rind::kem` does not yet offer to HPKE.
+stage hpke-pq
+curl --fail --silent --show-error --location \
+    "https://raw.githubusercontent.com/hpkewg/hpke-pq/$HPKE_PQ/test-vectors.json" |
+    jq -c '.[] | select(.mode == 0 and .kem_id == 25722)' >hpke-pq.new/test-vectors.json
+swap hpke-pq

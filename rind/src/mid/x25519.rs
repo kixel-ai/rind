@@ -23,6 +23,12 @@ impl PrivateKey {
             .ok_or(KeyFormatError::WrongLength.into())
     }
 
+    /// Load a private key from its 32 bytes, as [`Self::from_bytes`] does.
+    pub(crate) fn from_array(b: &[u8; Self::BYTES]) -> Self {
+        let _entry = low::Entry::new_secret();
+        Self(low::ct::into_secret(util::little_endian_to_u64x4(b)))
+    }
+
     /// Return the 32 bytes [`Self::from_bytes`] loaded, still secret.
     pub(crate) fn secret_bytes(&self) -> [u8; Self::BYTES] {
         util::u64x4_to_little_endian(&self.0)
@@ -70,6 +76,20 @@ impl PrivateKey {
     }
 }
 
+impl PrivateKey {
+    /// Do the Diffie-Hellman operation as [`Self::diffie_hellman`] does, but
+    /// return a zero result from a small-order `peer` as it is.
+    ///
+    /// X-Wing's combiner takes this as the draft computes it, so that a
+    /// ciphertext's decapsulation cannot fail.
+    pub(crate) fn diffie_hellman_unchecked(&self, peer: &PublicKey) -> SharedSecret {
+        let _entry = low::Entry::new_secret();
+        let mut res = [0u64; 4];
+        low::curve25519_x25519(&mut res, &self.0, &peer.0);
+        SharedSecret(util::u64x4_to_little_endian(&res))
+    }
+}
+
 const ZERO: [u64; 4] = [0; 4];
 
 /// An X25519 public key.
@@ -89,7 +109,6 @@ impl PublicKey {
     }
 
     /// Create an X25519 [`PublicKey`] from a byte array.
-    #[cfg(test)]
     pub(crate) fn from_array(b: &[u8; Self::BYTES]) -> Self {
         let _entry = low::Entry::new_public();
         Self(util::little_endian_to_u64x4(b))

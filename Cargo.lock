@@ -4632,6 +4632,7 @@ dependencies = [
  "hpke-rs 0.8.0",
  "libc",
  "libcrux-hacl-rs 0.0.6",
+ "libcrux-kem 0.0.10",
  "libcrux-macros 0.0.4",
  "libcrux-poly1305 0.0.7",
  "libcrux-sha2 0.0.9",
@@ -4652,6 +4653,7 @@ dependencies = [
  "slh-dsa",
  "voprf 0.5.0",
  "vrf-rfc9381",
+ "x-wing",
 ]
 
 [[package]]
