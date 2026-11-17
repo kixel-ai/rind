@@ -11,9 +11,12 @@ Build object_store with its `aws-base`, `azure-base`, or `gcp-base` features rat
 
 ```toml
 [dependencies]
-object_store = { version = "0.14", default-features = false, features = ["gcp-base"] }
+object_store = { version = "0.14", default-features = false, features = ["gcp-base", "reqwest"] }
+reqwest = { version = "0.13", default-features = false, features = ["native-tls"] }
 rind-object-store = "0.14"
 ```
+
+The `-base` features bring no HTTP transport: `reqwest` supplies one, and its `native-tls` feature keeps it off aws-lc-rs.
 
 Then hand the provider to each store's builder:
 

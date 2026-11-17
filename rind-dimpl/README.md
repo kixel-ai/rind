@@ -14,6 +14,8 @@ dimpl = { version = "0.9", default-features = false }
 rind-dimpl = "0.9"
 ```
 
+That also removes dimpl's `rcgen` feature, which enables `aws-lc-rs`, and with it `dimpl::certificate::generate_self_signed_certificate()`: bring your own certificate.
+
 Then hand the provider to each config, where dimpl's `crypto::aws_lc_rs::default_provider()` went:
 
 ```rust

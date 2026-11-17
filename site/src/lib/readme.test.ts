@@ -68,6 +68,22 @@ test("a release whose README holds raw HTML is not quoted", () => {
 	expect(() => choose("rind-x", main(hostile), null)).toThrow("its body holds raw HTML");
 });
 
+test("a release whose README is malformed falls back to main and says so", () => {
+	const bad = [
+		readme(`rind-x = { path = "." }`),
+		readme(`rind-x = "0.17"`).replace("rind-x = ", "rind-x = = "),
+	];
+	for (const text of bad) {
+		const { note, readme: got } = choose("rind-x", main(readme(`rind-x = "0.17"`)), { version: "0.17.3", readme: text });
+		expect(note).toContain("rind-x 0.17.3's README is malformed (");
+		expect(note).toContain("so this page does not quote it.");
+		expect(got.text).toBe(readme(`rind-x = "0.17"`));
+	}
+	// One that merely predates the structure is not called malformed.
+	const old = `${head}Intro.\n`;
+	expect(choose("rind-x", main(readme(`rind-x = "0.17"`)), { version: "0.17.3", readme: old }).note).not.toContain("malformed");
+});
+
 test("main's README must carry the structure", () => {
 	expect(() => choose("rind-x", main(readme(`other = "1"`)), null)).toThrow("no toml block in it depends on rind-x");
 	expect(() => choose("rind-x", main(`${head}Intro.\n`), null)).toThrow('no "## What rind cannot back" section');

@@ -79,7 +79,7 @@ async function fetchNewest(name: string): Promise<Release | null> {
 // One file from a tar archive, as `cargo package` writes them, with GNU or
 // POSIX headers. A GNU long name, which a README's short path never needs, is
 // an entry of its own and skipped over.
-function untar(tar: Uint8Array, want: string): string | undefined {
+export function untar(tar: Uint8Array, want: string): string | undefined {
 	const field = (block: Uint8Array, start: number, len: number) => {
 		const bytes = block.subarray(start, start + len);
 		const end = bytes.indexOf(0);
@@ -88,7 +88,12 @@ function untar(tar: Uint8Array, want: string): string | undefined {
 	for (let at = 0; at + 512 <= tar.length; ) {
 		const header = tar.subarray(at, at + 512);
 		if (header.every((b) => b === 0)) return undefined;
-		const size = Number.parseInt(field(header, 124, 12).trim() || "0", 8);
+		const sizeField = field(header, 124, 12).trim() || "0";
+		// A size is octal digits; a GNU archive writes a huge one in base 256, which a README never needs.
+		if (!/^[0-7]+$/.test(sizeField)) {
+			throw new Error(`the crate archive is corrupt: ${JSON.stringify(sizeField)} is not an entry's octal size`);
+		}
+		const size = Number.parseInt(sizeField, 8);
 		// Only POSIX ustar keeps a path prefix there; GNU keeps times.
 		const prefix = field(header, 257, 6) === "ustar" ? field(header, 345, 155) : "";
 		const name = prefix ? `${prefix}/${field(header, 0, 100)}` : field(header, 0, 100);

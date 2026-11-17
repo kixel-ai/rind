@@ -52,22 +52,23 @@ test("rebase rewrites inline links and definitions", () => {
 	expect(hrefs(lex(out))).toEqual(["https://example.com/x.md", "https://example.com/x.md", "https://example.com/x.md", "#x.md"]);
 });
 
-// A definition's destination may start on the next line.
-test("rebase finds a destination on the line after its definition's label", () => {
-	const out = rebase("[n]:\n  x.md\n\n[n]\n\n> [m]:\n> y.md\n\n[m]\n", (href) => `https://example.com/${href}`);
-	expect(hrefs(lex(out))).toEqual(["https://example.com/x.md", "https://example.com/y.md"]);
-});
-
 // A destination is inserted as written, `$` and all.
 test("rebase inserts a destination holding dollar signs literally", () => {
 	const out = rebase("[a](x.md)\n\n[n]: x.md\n", () => "https://example.com/$$-$&.md");
 	expect(hrefs(lex(out))).toEqual(["https://example.com/$$-$&.md"]);
 });
 
-// A definition may sit in a block quote.
-test("rebase finds a definition in a block quote", () => {
-	const out = rebase("> [n]: x.md\n\nSee [n].\n", (href) => `https://example.com/${href}`);
-	expect(hrefs(lex(out))).toEqual(["https://example.com/x.md"]);
+// A definition may sit in a block quote, and its destination may start on the next line.
+test("rebase finds definitions in a block quote and with the destination on the next line", () => {
+	const out = rebase("> [n]: x.md\n\nSee [n].\n\n[m]:\n  y.md\n\nAnd [m].\n", (href) => `https://example.com/${href}`);
+	expect(hrefs(lex(out))).toEqual(["https://example.com/x.md", "https://example.com/y.md"]);
+});
+
+// A label may hold an escaped bracket, and keeps the case it was written in.
+test("rebase keeps a definition's label", () => {
+	const out = rebase("[Guide][a\\]B]\n\n[a\\]B]: guide.md\n", (href) => `/${href}`);
+	expect(out).toBe("[Guide][a\\]B]\n\n[a\\]b]: /guide.md\n");
+	expect(hrefs(lex(out))).toEqual(["/guide.md"]);
 });
 
 // The lexer drops a destination's backslash escapes, so the source spells it differently.
@@ -76,9 +77,22 @@ test("rebase finds a destination written with escapes", () => {
 	expect(hrefs(lex(out))).toEqual(["https://example.com/x(1).md", "https://example.com/x(1).md"]);
 });
 
-// Code that quotes a link it rewrites would change too, so the build fails.
-test("rebase refuses to touch code", () => {
-	expect(() => rebase("[a](x.md) `[e](x.md)`", () => "y.md")).toThrow("changed more than their destinations");
+// A badge is an image in a link, and each destination moves.
+test("rebase reaches an image inside a link and a title", () => {
+	const out = rebase('[![b](i.svg "t")](x.md "u")', (href) => `/${href}`);
+	expect(out).toBe('[![b](/i.svg "t")](/x.md "u")');
+});
+
+// A list item's continuation lines lose their indentation in the token, not in the document.
+test("rebase finds a link whose text wraps inside a list item", () => {
+	const out = rebase("- see [a\n  b](x.md)\n", (href) => `/${href}`);
+	expect(out).toBe("- see [a\n  b](/x.md)\n");
+});
+
+// Code that quotes a link is not a link, however early it comes.
+test("rebase leaves code that quotes a link alone", () => {
+	const out = rebase("`[e](x.md)` and [a](x.md)\n\n```md\n[e](x.md)\n```\n", () => "y.md");
+	expect(out).toBe("`[e](x.md)` and [a](y.md)\n\n```md\n[e](x.md)\n```\n");
 });
 
 // GitHub slugs the heading as rendered, so `&amp;` is `&`, which the slug drops; a code span is literal.

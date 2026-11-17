@@ -10,7 +10,7 @@ Turn off rustls's default features, which compile aws-lc-rs, and add this crate:
 
 ```toml
 [dependencies]
-rustls = { version = "0.23", default-features = false, features = ["std", "tls12"] }
+rustls = { version = "0.23", default-features = false, features = ["std", "tls12", "logging"] }
 rind-rustls = "0.23"
 ```
 

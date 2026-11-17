@@ -9,6 +9,10 @@ import type { Release } from "./registry";
 // The heading every adapter README gives the list of what rind cannot back.
 export const cannotBack = "What rind cannot back";
 
+// What `parse` says first of a README that has the structure but is broken, as
+// against one that lacks it.
+const malformed = "it is malformed: ";
+
 // The parts of an adapter README a page needs.
 export interface Readme {
 	// The README as its source wrote it.
@@ -44,13 +48,18 @@ export function parse(text: string, crate: string): Readme | string {
 	// released), and a page shows it only as Markdown, never as markup.
 	let markup = false;
 	walkTokens(body, (t) => void (t.type === "html" && (markup = true)));
-	if (markup) return "its body holds raw HTML";
+	if (markup) return `${malformed}its body holds raw HTML`;
 	if (!body.some((t) => t.type === "heading" && t.depth === 2 && t.text === cannotBack)) {
 		return `it has no "## ${cannotBack}" section`;
 	}
-	const requirements = body
-		.filter((t): t is Tokens.Code => t.type === "code" && t.lang === "toml")
-		.flatMap((t) => requirementsOn(Bun.TOML.parse(t.text), crate));
+	let requirements: string[];
+	try {
+		requirements = body
+			.filter((t): t is Tokens.Code => t.type === "code" && t.lang === "toml")
+			.flatMap((t) => requirementsOn(Bun.TOML.parse(t.text), crate));
+	} catch (e) {
+		return `${malformed}${e instanceof Error ? e.message : e}`;
+	}
 	if (requirements.length === 0) return `no toml block in it depends on ${crate}`;
 	return { text, tokens, body, requirements };
 }
@@ -122,9 +131,15 @@ export function choose(crate: string, main: Main, release: Release | null): { re
 	const lead = release
 		? `This page describes ${crate} as \`main\` has it, ahead of ${link(`${crate} ${release.version}`, `https://crates.io/crates/${crate}/${release.version}`)} on crates.io. Until its next release, take it from git at the commit this page describes`
 		: `${crate} is unreleased: this page describes it as \`main\` has it. Until its first release, take it from git at the commit this page describes`;
+	// A release README that has the structure but is broken is said to be, so a
+	// page that falls back to `main` does not look as if it only predates it.
+	const flaw =
+		release && typeof published === "string" && published.startsWith(malformed)
+			? ` ${crate} ${release.version}'s README is malformed (${published.slice(malformed.length)}), so this page does not quote it.`
+			: "";
 	return {
 		readme: ours,
 		ref: main.commit,
-		note: `${lead}. Beside the lines below, ${steps}`,
+		note: `${lead}.${flaw} Beside the lines below, ${steps}`,
 	};
 }

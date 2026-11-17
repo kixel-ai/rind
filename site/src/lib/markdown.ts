@@ -141,23 +141,65 @@ export function segments(tokens: Token[]): Segment[] {
 }
 
 // `source` with each link destination `resolve` changes rewritten, inline and
-// in definitions. The result must render as `source` does with its links
-// resolved, so a rewrite that touched anything else, such as code that quotes
-// a link, fails rather than ships.
+// in definitions. The parser that renders the document finds them: each link,
+// image, and definition is located by its token, and only its destination is
+// spliced, so code that quotes a link is left alone. A token the document does
+// not hold contiguously, such as a link whose text wraps inside an indented
+// list item, fails rather than ships, as does a rewrite that changes more than
+// the destinations.
 export function rebase(source: string, resolve: (href: string) => string): string {
-	const before = lex(source);
+	const edits: { start: number; end: number; text: string }[] = [];
+	// Tokens come in document order, and a link holds the tokens inside it, so a
+	// search for each starts where the last token claimed. The lexer drops the
+	// indentation inside a token, so a match takes any run of whitespace for the
+	// one the token's raw keeps.
+	let cursor = 0;
+	const place = (raw: string): { at: number; end: number } | undefined => {
+		const exact = source.indexOf(raw, cursor);
+		if (exact >= 0) return { at: exact, end: exact + raw.length };
+		const loose = new RegExp(raw.split(/\s+/).map(escapeRegExp).join("\\s+"), "g");
+		loose.lastIndex = cursor;
+		const m = loose.exec(source);
+		return m && { at: m.index, end: m.index + m[0].length };
+	};
+	const must = (raw: string) => {
+		const found = place(raw);
+		if (!found) throw new Error(`cannot place ${JSON.stringify(raw)} in the document it came from`);
+		return found;
+	};
+	walkTokens(lex(source), (t) => {
+		if (t.type === "code" || t.type === "codespan" || t.type === "html") {
+			const found = place(t.raw);
+			if (found) cursor = found.end;
+			return;
+		}
+		if (t.type === "def") {
+			const def = t as Tokens.Generic;
+			const { at, end } = must(def.raw);
+			cursor = end;
+			const to = resolve(def.href);
+			// Trailing blank lines stay; the label is the definition's own, which
+			// matches however it is cased.
+			if (to !== def.href) {
+				edits.push({ start: at, end: at + source.slice(at, end).trimEnd().length, text: `[${def.tag}]: ${target(to, def.title)}` });
+			}
+			return;
+		}
+		if (t.type !== "link" && t.type !== "image") return;
+		const l = t as Tokens.Link | Tokens.Image;
+		const { at, end } = must(l.raw);
+		// An image is a leaf, so it is claimed whole; a link stays open for what it holds.
+		cursor = l.type === "image" ? end : at + 1;
+		const to = resolve(l.href);
+		// A reference's destination is its definition's, which is rewritten there.
+		if (to === l.href || !l.raw.endsWith(")")) return;
+		const open =
+			l.type === "image" ? l.raw.lastIndexOf("](") + 2 : 1 + l.tokens.reduce((n, c) => n + c.raw.length, 0) + 2;
+		if (l.raw.slice(open - 2, open) !== "](") throw new Error(`cannot find the destination of ${JSON.stringify(l.raw)}`);
+		edits.push({ start: end - (l.raw.length - open), end: end - 1, text: target(to, l.title) });
+	});
 	let out = source;
-	const all = [...links(before).map((t) => t.href), ...Object.values(before.links).map((l) => l.href)];
-	for (const href of new Set(all)) {
-		const to = resolve(href);
-		if (to === href) continue;
-		const from = spelled(href);
-		// Callbacks, since a replacement string would read `$` in a destination.
-		const dest = target(to);
-		out = out
-			.replace(new RegExp(`(\\]\\(\\s*)(?:<${from}>|${from})(?=[\\s)])`, "g"), (_, head: string) => head + dest)
-			.replace(new RegExp(`(^(?: {0,3}>[ \\t]?)* {0,3}\\[[^\\]\\n]+\\]:[ \\t]*(?:\\n(?: {0,3}>[ \\t]?)*[ \\t]*)?)(?:<${from}>|${from})(?=\\s|$)`, "gm"), (_, head: string) => head + dest);
-	}
+	for (const e of edits.sort((a, b) => b.start - a.start)) out = out.slice(0, e.start) + e.text + out.slice(e.end);
 	const expected = lex(source);
 	for (const t of links(expected)) t.href = resolve(t.href);
 	if (html(lex(out)) !== html(expected)) {
@@ -165,10 +207,5 @@ export function rebase(source: string, resolve: (href: string) => string): strin
 	}
 	return out;
 }
-
-// A pattern for `href` as the source may spell it: Markdown lets a backslash
-// escape any ASCII punctuation, which the lexer drops from the destination.
-const spelled = (href: string) =>
-	[...href].map((c) => (/[!-/:-@[-`{-~]/.test(c) ? `\\\\?${escapeRegExp(c)}` : escapeRegExp(c))).join("");
 
 const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
