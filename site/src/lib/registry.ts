@@ -1,0 +1,85 @@
+// What crates.io has published, read when the site builds, so a page names
+// only a version the registry lists and quotes the README that version shipped.
+import { createHash } from "node:crypto";
+import { gunzipSync } from "node:zlib";
+
+export interface Release {
+	version: string;
+	// The README.md inside the published crate.
+	readme: string;
+}
+
+// The crate's file in the sparse index, laid out as Cargo's registry docs say
+// (https://doc.rust-lang.org/cargo/reference/registry-index.html#index-files).
+function indexPath(name: string): string {
+	const n = name.toLowerCase();
+	if (n.length <= 2) return `${n.length}/${n}`;
+	if (n.length === 3) return `3/${n[0]}/${n}`;
+	return `${n.slice(0, 2)}/${n.slice(2, 4)}/${n}`;
+}
+
+async function get(url: string): Promise<Response> {
+	const res = await fetch(url);
+	if (!res.ok && res.status !== 404) throw new Error(`${url} answered ${res.status}`);
+	return res;
+}
+
+const cache = new Map<string, Promise<Release | null>>();
+
+// The newest version of `name` that is neither yanked nor a pre-release, with
+// its README, or null when crates.io has none.
+export function newest(name: string): Promise<Release | null> {
+	let found = cache.get(name);
+	if (!found) {
+		found = fetchNewest(name);
+		cache.set(name, found);
+	}
+	return found;
+}
+
+async function fetchNewest(name: string): Promise<Release | null> {
+	const index = await get(`https://index.crates.io/${indexPath(name)}`);
+	if (index.status === 404) return null;
+	const entries: { vers: string; cksum: string; yanked: boolean }[] = (await index.text())
+		.trim()
+		.split("\n")
+		.map((line) => JSON.parse(line));
+	const live = entries.filter((e) => !e.yanked && !e.vers.includes("-"));
+	if (live.length === 0) return null;
+	const top = live.reduce((a, b) => (Bun.semver.order(a.vers, b.vers) >= 0 ? a : b));
+
+	const url = `https://static.crates.io/crates/${name}/${name}-${top.vers}.crate`;
+	const res = await get(url);
+	if (res.status === 404) throw new Error(`${url} is missing, though the index lists ${name} ${top.vers}`);
+	const crate = new Uint8Array(await res.arrayBuffer());
+	const sum = createHash("sha256").update(crate).digest("hex");
+	if (sum !== top.cksum) throw new Error(`${url} hashes to ${sum}, not the index's ${top.cksum}`);
+	const readme = untar(gunzipSync(crate), `${name}-${top.vers}/README.md`);
+	if (readme === undefined) throw new Error(`${name} ${top.vers} published no README.md`);
+	return { version: top.vers, readme };
+}
+
+// One file from a tar archive, as `cargo package` writes them, with GNU or
+// POSIX headers. A GNU long name, which a README's short path never needs, is
+// an entry of its own and skipped over.
+function untar(tar: Uint8Array, want: string): string | undefined {
+	const field = (block: Uint8Array, start: number, len: number) => {
+		const bytes = block.subarray(start, start + len);
+		const end = bytes.indexOf(0);
+		return new TextDecoder().decode(end < 0 ? bytes : bytes.subarray(0, end));
+	};
+	for (let at = 0; at + 512 <= tar.length; ) {
+		const header = tar.subarray(at, at + 512);
+		if (header.every((b) => b === 0)) return undefined;
+		const size = Number.parseInt(field(header, 124, 12).trim() || "0", 8);
+		// Only POSIX ustar keeps a path prefix there; GNU keeps times.
+		const prefix = field(header, 257, 6) === "ustar" ? field(header, 345, 155) : "";
+		const name = prefix ? `${prefix}/${field(header, 0, 100)}` : field(header, 0, 100);
+		const body = at + 512;
+		if (name === want && (header[156] === 0x30 || header[156] === 0)) {
+			return new TextDecoder().decode(tar.subarray(body, body + size));
+		}
+		at = body + Math.ceil(size / 512) * 512;
+	}
+	return undefined;
+}

@@ -1,0 +1,119 @@
+// Which README an adapter's page quotes: the one its newest crates.io release
+// shipped, so the page's steps and dependency lines describe the same code, or
+// `main`'s, with the line that takes the crate from git, where that release
+// predates the structure a page needs or there is no release.
+import type { Tokens, TokensList } from "marked";
+import { blocks, lex, link } from "./markdown";
+import type { Release } from "./registry";
+
+// The heading every adapter README gives the list of what rind cannot back.
+export const cannotBack = "What rind cannot back";
+
+// The parts of an adapter README a page needs.
+export interface Readme {
+	tokens: TokensList;
+	// The blocks after the README's title, logo, and badges, up to its license line.
+	body: Tokens.Generic[];
+	// Each version requirement its `toml` blocks put on the crate.
+	requirements: string[];
+}
+
+// An adapter README's parts, or what it lacks that a page needs.
+export function parse(text: string, crate: string): Readme | string {
+	const tokens = lex(text);
+	const all = tokens.filter((t) => t.type !== "space");
+	let start = 0;
+	while (all[start]?.type === "html") start++;
+	// The badges: a paragraph of linked images alone.
+	const badges = all[start];
+	if (
+		badges?.type === "paragraph" &&
+		(badges as Tokens.Paragraph).tokens.every(
+			(t) => (t.type === "link" && t.tokens?.every((i) => i.type === "image")) || /^\s*$/.test(t.raw),
+		)
+	) {
+		start++;
+	}
+	if (start === 0) return "it opens with no title or badges";
+	let end = all.length;
+	if (all[end - 1]?.type === "paragraph" && all[end - 1].raw.startsWith("License:")) end--;
+	const body = all.slice(start, end);
+	if (!body.some((t) => t.type === "heading" && t.depth === 2 && t.text === cannotBack)) {
+		return `it has no "## ${cannotBack}" section`;
+	}
+	const requirements = body
+		.filter((t): t is Tokens.Code => t.type === "code" && t.lang === "toml")
+		.flatMap((t) => requirementsOn(Bun.TOML.parse(t.text), crate));
+	if (requirements.length === 0) return `no toml block in it depends on ${crate}`;
+	return { tokens, body, requirements };
+}
+
+// The version requirements a Cargo.toml fragment puts on `crate`, under any
+// table, renamed or not. One with no version, such as a path, is refused.
+function requirementsOn(toml: unknown, crate: string): string[] {
+	if (typeof toml !== "object" || toml === null) return [];
+	return Object.entries(toml).flatMap(([key, spec]) => {
+		const named = typeof spec === "object" && spec !== null && "package" in spec ? spec.package === crate : key === crate;
+		if (!named) return requirementsOn(spec, crate);
+		const version = typeof spec === "string" ? spec : (spec as { version?: unknown }).version;
+		if (typeof version !== "string") throw new Error(`a toml block names ${crate} without a version`);
+		return [version];
+	});
+}
+
+// Whether `version` meets a Cargo requirement, where a bare version means `^`.
+export function meets(version: string, requirement: string): boolean {
+	const range = requirement
+		.split(",")
+		.map((part) => part.trim())
+		.map((part) => (/^\d/.test(part) ? `^${part}` : part))
+		.join(" ");
+	return Bun.semver.satisfies(version, range);
+}
+
+function requireMet(crate: string, version: string, readme: Readme, which: string) {
+	for (const req of readme.requirements) {
+		if (!meets(version, req)) throw new Error(`${which} README asks for ${crate} "${req}", which ${version} does not meet`);
+	}
+}
+
+export interface Main {
+	readme: string;
+	// The version `main`'s manifest gives the crate.
+	version: string;
+	// The commit the build reads.
+	commit: string;
+	repo: string;
+}
+
+// The README a page quotes, and the note that opens the page saying which
+// code it describes.
+export function choose(crate: string, main: Main, release: Release | null): { readme: Readme; note: string } {
+	const ours = parse(main.readme, crate);
+	if (typeof ours === "string") throw new Error(`${crate}/README.md cannot make its page: ${ours}`);
+	// The patch reaches the README's requirements only where `main`'s version meets them.
+	requireMet(crate, main.version, ours, "main's");
+	const fromGit = ["```toml", "[patch.crates-io]", `${crate} = { git = "${main.repo}", rev = "${main.commit}" }`, "```"].join(
+		"\n",
+	);
+	const toml = "your workspace's root `Cargo.toml`";
+
+	const published = release ? parse(release.readme, crate) : "there is no release";
+	if (release && typeof published !== "string") {
+		requireMet(crate, release.version, published, `${crate} ${release.version}'s`);
+		const note = `This page is the README of ${crate} ${release.version}, its newest release on crates.io.`;
+		if (blocks(published.body) === blocks(ours.body)) return { readme: published, note };
+		const there = link("its README", `${main.repo}/blob/main/${crate}/README.md`);
+		return {
+			readme: published,
+			note: `${note} \`main\` has changed it since. To build against \`main\`, as ${there} describes it, add this to ${toml}:\n\n${fromGit}`,
+		};
+	}
+	const lead = release
+		? `This page describes ${crate} as \`main\` has it, ahead of ${link(`${crate} ${release.version}`, `https://crates.io/crates/${crate}/${release.version}`)} on crates.io. Until its next release, take it from git`
+		: `${crate} is unreleased: this page describes it as \`main\` has it. Until its first release, take it from git`;
+	return {
+		readme: ours,
+		note: `${lead} at the commit this page describes by adding this to ${toml}, which moves every crate in your tree that depends on it:\n\n${fromGit}`,
+	};
+}

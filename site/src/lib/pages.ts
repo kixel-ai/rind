@@ -1,8 +1,10 @@
 // Every page the site has. Each gets a Markdown twin at its path with `.md`, a
 // line in llms.txt, and a sitemap entry; scripts/check.ts fails a built page
 // that is missing from here.
+import { fromPages } from "./from";
 import * as landing from "./landing";
 import { blocks, definitions, link, spans } from "./markdown";
+import { picker } from "./routes";
 
 export const origin = "https://rind.kixel.ai";
 
@@ -31,6 +33,8 @@ export const home: Page = {
 			"# rind",
 			`**${landing.headline}**\n${landing.subline}`,
 			...landing.claims.map((c) => `## ${c.icon} ${link(c.title, c.proof)}\n\n${spans(c.body)}`),
+			`## ${picker.title}`,
+			picker.links.map((l) => `- ${link(l.label, l.href)}`).join("\n"),
 			"## Switch with an agent",
 			blocks(landing.agent),
 			`## ${landing.candorTitle}`,
@@ -44,4 +48,4 @@ export const home: Page = {
 	},
 };
 
-export const pages: Page[] = [home];
+export const pages: Page[] = [home, ...fromPages];

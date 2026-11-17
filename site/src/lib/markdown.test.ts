@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { blocks, definitions, hrefs, html, lex, section, spans } from "./markdown";
+import { blocks, definitions, hrefs, html, lex, rebase, section, segments, spans } from "./markdown";
 
 // A section quoted with its definitions renders as it does inside its document.
 test.each([
@@ -43,4 +43,26 @@ test("spans quote inline source as written", () => {
 // Links in table cells, header and body, are found like any other.
 test("hrefs reads table cells", () => {
 	expect(hrefs(lex("| [Head](/head) |\n| --- |\n| [Missing](/missing) |"))).toEqual(["/head", "/missing"]);
+});
+
+// A rewritten link goes where it was sent, in each form Markdown writes one.
+test("rebase rewrites inline links and definitions", () => {
+	const source = '[a](x.md) [b](<x.md> "t") [c][d] [f](#x.md)\n\n[d]: x.md\n';
+	const out = rebase(source, (href) => (href === "x.md" ? "https://example.com/x.md" : href));
+	expect(hrefs(lex(out))).toEqual(["https://example.com/x.md", "https://example.com/x.md", "https://example.com/x.md", "#x.md"]);
+});
+
+// Code that quotes a link it rewrites would change too, so the build fails.
+test("rebase refuses to touch code", () => {
+	expect(() => rebase("[a](x.md) `[e](x.md)`", () => "y.md")).toThrow("changed more than their destinations");
+});
+
+// Each heading's id is GitHub's anchor for it.
+test("segments give headings GitHub's anchors and set code apart", () => {
+	const parts = segments(lex("# A b\n\n## A b\n\n```toml\nx = 1\n```\n\n## Ä_c?\n"));
+	expect(parts).toEqual([
+		{ html: '<h1 id="a-b">A b</h1>\n<h2 id="a-b-1">A b</h2>\n' },
+		{ code: "x = 1", lang: "toml" },
+		{ html: '<h2 id="ä_c">Ä_c?</h2>\n' },
+	]);
 });

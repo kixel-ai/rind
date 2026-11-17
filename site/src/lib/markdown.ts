@@ -1,4 +1,4 @@
-import { Lexer, Parser, type Token, type Tokens, type TokensList, walkTokens } from "marked";
+import { Lexer, Parser, Renderer, type Token, type Tokens, type TokensList, walkTokens } from "marked";
 
 // Parse a Markdown document, resolving its reference links.
 export function lex(source: string): TokensList {
@@ -72,3 +72,86 @@ export const hrefs = (tokens: Token[]): string[] =>
 	links(tokens)
 		.filter((t) => t.type === "link")
 		.map((t) => t.href);
+
+// A heading's text, without the tags of any HTML in it, as GitHub reads it.
+const plain = (tokens: Token[]): string =>
+	tokens
+		.map((t) => (t.type === "html" ? "" : "tokens" in t && t.tokens ? plain(t.tokens) : "text" in t ? t.text : ""))
+		.join("");
+
+// GitHub's anchor for each heading of one document, called in document order.
+// A repeated slug takes the next `-n` no earlier anchor holds, as
+// github-slugger does, so `Foo`, `Foo`, `Foo-1` are `foo`, `foo-1`, `foo-1-1`.
+export function slugger(): (heading: Tokens.Heading) => string {
+	const counts = new Map<string, number>();
+	const taken = new Set<string>();
+	return (heading) => {
+		const base = plain(heading.tokens)
+			.toLowerCase()
+			.replace(/[^\p{L}\p{M}\p{N}\p{Pc} -]/gu, "")
+			.replaceAll(" ", "-");
+		let slug = base;
+		while (taken.has(slug)) {
+			const n = (counts.get(base) ?? 0) + 1;
+			counts.set(base, n);
+			slug = `${base}-${n}`;
+		}
+		taken.add(slug);
+		return slug;
+	};
+}
+
+// A run of a document's blocks as HTML, a code block apart so the page can add
+// a copy button.
+export type Segment = { html: string } | { code: string; lang: string };
+
+// A whole document as HTML segments, each heading carrying GitHub's anchor as
+// its id, so a link to `#section` lands as it does on GitHub.
+export function segments(tokens: Token[]): Segment[] {
+	const slug = slugger();
+	const renderer = new Renderer();
+	renderer.heading = function (heading) {
+		return `<h${heading.depth} id="${slug(heading)}">${this.parser.parseInline(heading.tokens)}</h${heading.depth}>\n`;
+	};
+	const out: Segment[] = [];
+	let run: Token[] = [];
+	const flush = () => {
+		if (run.length > 0) out.push({ html: Parser.parse(run, { renderer }) });
+		run = [];
+	};
+	for (const t of tokens) {
+		if (t.type === "code") {
+			flush();
+			out.push({ code: (t as Tokens.Code).text, lang: (t as Tokens.Code).lang ?? "" });
+		} else run.push(t);
+	}
+	flush();
+	return out;
+}
+
+// `source` with each link destination `resolve` changes rewritten, inline and
+// in definitions. The result must render as `source` does with its links
+// resolved, so a rewrite that touched anything else, such as code that quotes
+// a link, fails rather than ships.
+export function rebase(source: string, resolve: (href: string) => string): string {
+	const before = lex(source);
+	let out = source;
+	const all = [...links(before).map((t) => t.href), ...Object.values(before.links).map((l) => l.href)];
+	for (const href of new Set(all)) {
+		const to = resolve(href);
+		if (to === href) continue;
+		const from = escapeRegExp(href);
+		const dest = target(to);
+		out = out
+			.replace(new RegExp(`(\\]\\(\\s*)(?:<${from}>|${from})(?=[\\s)])`, "g"), `$1${dest}`)
+			.replace(new RegExp(`(^ {0,3}\\[[^\\]\\n]+\\]:[ \\t]*)(?:<${from}>|${from})(?=\\s|$)`, "gm"), `$1${dest}`);
+	}
+	const expected = lex(source);
+	for (const t of links(expected)) t.href = resolve(t.href);
+	if (html(lex(out)) !== html(expected)) {
+		throw new Error(`rewriting the links in a document changed more than their destinations:\n${out}`);
+	}
+	return out;
+}
+
+const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
