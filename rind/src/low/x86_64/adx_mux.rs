@@ -68,7 +68,7 @@ mux! {
 #[inline]
 pub(crate) fn curve25519_x25519(res: &mut [u64; 4], scalar: &[u64; 4], point: &[u64; 4]) {
     match (Curve25519Ifma::check(), HaveBmi2Adx::check()) {
-        (Some(ifma), _) => *res = words(&ifma.x25519(&bytes(scalar), &bytes(point))),
+        (Some(ifma), _) => ifma.x25519(res, scalar, point),
         (None, Some(_)) => super::curve25519_x25519::curve25519_x25519(res, scalar, point),
         (None, None) => super::curve25519_x25519_alt::curve25519_x25519_alt(res, scalar, point),
     }
@@ -78,26 +78,10 @@ pub(crate) fn curve25519_x25519(res: &mut [u64; 4], scalar: &[u64; 4], point: &[
 #[inline]
 pub(crate) fn curve25519_x25519base(res: &mut [u64; 4], scalar: &[u64; 4]) {
     match (Curve25519Ifma::check(), HaveBmi2Adx::check()) {
-        (Some(ifma), _) => *res = words(&ifma.x25519_base(&bytes(scalar))),
+        (Some(ifma), _) => ifma.x25519_base(res, scalar),
         (None, Some(_)) => super::curve25519_x25519base::curve25519_x25519base(res, scalar),
         (None, None) => super::curve25519_x25519base_alt::curve25519_x25519base_alt(res, scalar),
     }
-}
-
-fn bytes(words: &[u64; 4]) -> [u8; 32] {
-    let mut out = [0u8; 32];
-    for (b, w) in out.as_chunks_mut::<8>().0.iter_mut().zip(words) {
-        *b = w.to_le_bytes();
-    }
-    out
-}
-
-fn words(bytes: &[u8; 32]) -> [u64; 4] {
-    let mut out = [0u64; 4];
-    for (w, b) in out.iter_mut().zip(bytes.as_chunks::<8>().0) {
-        *w = u64::from_le_bytes(*b);
-    }
-    out
 }
 
 /// Ed25519 verification's `[base]B + [s0]P0 + [s1]P1`. Without ADX, CPUs

@@ -32,7 +32,6 @@ impl SigningKey {
         // Mark rind's own copy secret, never the caller's buffer.
         let seed = &low::ct::into_secret(*seed);
 
-        #[cfg(rind_backend = "x86_64")]
         if let Some(ifma) = low::Curve25519Ifma::check() {
             let (expanded, bytes) = ifma.ed25519_key_pair(seed);
             return Self {
@@ -59,7 +58,7 @@ impl SigningKey {
 
         // Step: rfc8032 5.1.5.2, 5.1.5.3, 5.1.5.4
         // Compute `[s]B` and compress to get the public key bytes
-        let point = UnreducedScalar::clamp_from_digest(&expanded).base_mul();
+        let point = UnreducedScalar::from_expanded(&expanded).base_mul();
         let bytes = point.compress().0;
 
         Self {
@@ -75,7 +74,6 @@ impl SigningKey {
     /// `PureEd25519` signing
     pub(crate) fn sign(&self, msg: &[u8]) -> [u8; 64] {
         match &self.verifying_key.path {
-            #[cfg(rind_backend = "x86_64")]
             Path::Ifma(ifma) => low::ct::into_public(ifma.ed25519_sign(
                 &self.expanded,
                 &self.verifying_key.bytes,
@@ -89,7 +87,7 @@ impl SigningKey {
     fn sign_rind(&self, msg: &[u8]) -> [u8; 64] {
         // Step: rfc8032 5.1.5.2
         // `s := ed25519-clamp(h[0..32])`, `prefix := h[32..64]`
-        let s = UnreducedScalar::clamp_from_digest(&self.expanded);
+        let s = UnreducedScalar::from_expanded(&self.expanded);
         let prefix = &self.expanded[32..];
 
         // Step: rfc8032 5.1.6.2
@@ -150,6 +148,8 @@ pub(crate) struct VerifyingKey {
 /// What a key verifies and signs on, picked once from the CPU: on x86_64
 /// with AVX-512 IFMA, pyca/verified-garbage's whole operations, which take
 /// the encoded key; otherwise rind's own arithmetic, on the decoded point.
+/// aarch64 has the variant too, which it never builds, so the two targets'
+/// code, and the proofs `admin/prove` writes from one for the other, match.
 ///
 /// `repr(u8)` puts `Rind` at tag zero, so all-bits-zero is a valid value,
 /// which [`SigningKey`]'s drop leaves.
@@ -157,7 +157,6 @@ pub(crate) struct VerifyingKey {
 #[repr(u8)]
 enum Path {
     Rind(EdwardsPoint) = 0,
-    #[cfg(rind_backend = "x86_64")]
     Ifma(low::Curve25519Ifma),
 }
 
@@ -171,7 +170,6 @@ impl VerifyingKey {
         // Decoded on every CPU, so a key that is no point's is refused when
         // it is loaded.
         let point = EdwardsPoint::decompress_from(bytes)?;
-        #[cfg(rind_backend = "x86_64")]
         if let Some(ifma) = low::Curve25519Ifma::check() {
             return Ok(Self {
                 bytes: *bytes,
@@ -187,7 +185,6 @@ impl VerifyingKey {
     /// `PureEd25519` signature verification
     pub(crate) fn verify(&self, sig: &[u8; 64], msg: &[u8]) -> Result<(), Error> {
         let ok = match &self.path {
-            #[cfg(rind_backend = "x86_64")]
             Path::Ifma(ifma) => ifma.ed25519_verify(&self.bytes, msg, sig),
             Path::Rind(point) => self.verify_rind(point, sig, msg),
         };
@@ -398,12 +395,16 @@ impl EdwardsPoint {
 struct UnreducedScalar([u64; 4]);
 
 impl UnreducedScalar {
-    /// The clamped scalar of a seed's SHA-512 digest `h`, from its first 32
-    /// bytes (RFC 8032 section 5.1.5, step 2).
-    fn clamp_from_digest(h: &[u8; 64]) -> Self {
+    /// The secret scalar of a seed's SHA-512 digest: its first 32 bytes,
+    /// clamped (RFC 8032 section 5.1.5, steps 2 and 3).
+    fn from_expanded(expanded: &[u8; 64]) -> Self {
+        Self::clamp_from_le_bytes(expanded[0..32].try_into().unwrap())
+    }
+
+    /// Read a uniformly random 32-byte little-endian string, and clamp it.
+    fn clamp_from_le_bytes(x: &[u8; 32]) -> Self {
         // Clamp the words, saving a byte copy.
-        let h = util::little_endian_to_u64x8(h);
-        let mut x = [h[0], h[1], h[2], h[3]];
+        let mut x = util::little_endian_to_u64x4(x);
 
         // Clamp the scalar:
         // <https://mailarchive.ietf.org/arch/msg/cfrg/pt2bt3fGQbNF8qdEcorp-rJSJrc/>
@@ -622,7 +623,6 @@ mod test {
     /// commitment that encodes no point canonically, and with `S` of `L` or
     /// above.
     #[test]
-    #[cfg(rind_backend = "x86_64")]
     fn ifma_matches_rind() {
         let _entry = low::Entry::new_public();
         if low::Curve25519Ifma::check().is_none() {
@@ -757,7 +757,7 @@ mod test {
 
         let mut rng = TestRng::new(202505192346);
         for _ in 0..100 {
-            let scalar = UnreducedScalar::clamp_from_digest(&rng.next::<64>());
+            let scalar = UnreducedScalar::clamp_from_le_bytes(&rng.next::<32>());
             let point = scalar.base_mul();
             let compressed = point.compress();
             let decompressed = EdwardsPoint::decompress_from(&compressed.0).unwrap();

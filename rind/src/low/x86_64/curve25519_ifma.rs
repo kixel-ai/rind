@@ -46,13 +46,16 @@ impl Curve25519Ifma {
         HaveIfmaForCurve25519::check().map(Self)
     }
 
-    /// `X25519(scalar, point)` (RFC 7748 section 5), the scalar clamped and
-    /// the point's top bit masked.
+    /// `X25519(scalar, point)` (RFC 7748 section 5) into `res`, each
+    /// little-endian words, as s2n-bignum's `curve25519_x25519` takes them:
+    /// the scalar clamped, the point's top bit masked, and `res` zero for a
+    /// point of small order.
     // Never inlined, holding its `Mcdt` throughout, as `low::mcdt` requires:
     // `vpmadd52luq` and `vpmadd52huq` multiply the secret scalar's ladder.
     #[inline(never)]
-    pub(crate) fn x25519(self, scalar: &[u8; 32], point: &[u8; 32]) -> [u8; 32] {
+    pub(crate) fn x25519(self, res: &mut [u64; 4], scalar: &[u64; 4], point: &[u64; 4]) {
         let _mcdt = low::Mcdt::enter();
+        let (scalar, point) = (bytes(scalar), bytes(point));
         let mut out = [0u8; 32];
         let mut scratch = Scratch::<512>::new();
         // SAFETY: `out`, `scalar`, and `point` are 32 bytes and `scratch`
@@ -62,21 +65,24 @@ impl Curve25519Ifma {
         unsafe {
             asm_call!(unsafe extern "sysv64" (vg::vg_x25519_exchange_ifma::vg_x25519_exchange_ifma)(
                 &mut out,
-                scalar,
-                point,
+                &scalar,
+                &point,
                 scratch.as_mut_ptr()
             ))
         };
         // Its return value says whether `out` is zero, which the caller
         // checks itself, as on every other CPU.
-        out
+        *res = words(&out);
     }
 
-    /// `X25519(scalar, 9)`, the public key of `scalar` (RFC 7748 section 6.1).
+    /// `X25519(scalar, 9)`, the public key of `scalar` (RFC 7748 section
+    /// 6.1), into `res`, each little-endian words, as s2n-bignum's
+    /// `curve25519_x25519base` takes them.
     // Never inlined, holding its `Mcdt`, as `Self::x25519`.
     #[inline(never)]
-    pub(crate) fn x25519_base(self, scalar: &[u8; 32]) -> [u8; 32] {
+    pub(crate) fn x25519_base(self, res: &mut [u64; 4], scalar: &[u64; 4]) {
         let _mcdt = low::Mcdt::enter();
+        let scalar = bytes(scalar);
         let mut out = [0u8; 32];
         let mut scratch = Scratch::<1024>::new();
         // SAFETY: `out` and `scalar` are 32 bytes and `scratch` 8192,
@@ -86,11 +92,11 @@ impl Curve25519Ifma {
         unsafe {
             asm_call!(unsafe extern "sysv64" (vg::vg_x25519_base_ifma::vg_x25519_base_ifma)(
                 &mut out,
-                scalar,
+                &scalar,
                 scratch.as_mut_ptr()
             ))
         };
-        out
+        *res = words(&out);
     }
 
     /// Ed25519's key pair for `seed` (RFC 8032 section 5.1.5): the seed's
@@ -180,6 +186,24 @@ impl Curve25519Ifma {
     }
 }
 
+/// Little-endian words as bytes.
+fn bytes(words: &[u64; 4]) -> [u8; 32] {
+    let mut out = [0u8; 32];
+    for (b, w) in out.as_chunks_mut::<8>().0.iter_mut().zip(words) {
+        *b = w.to_le_bytes();
+    }
+    out
+}
+
+/// Bytes as little-endian words.
+fn words(bytes: &[u8; 32]) -> [u64; 4] {
+    let mut out = [0u64; 4];
+    for (w, b) in out.iter_mut().zip(bytes.as_chunks::<8>().0) {
+        *w = u64::from_le_bytes(*b);
+    }
+    out
+}
+
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
@@ -187,26 +211,19 @@ mod tests {
     use super::super::ct_sde;
     use super::*;
 
-    fn bytes(rng: &mut Rng) -> [u8; 32] {
-        let words: [u64; 4] = rng.words(256);
-        let mut out = [0u8; 32];
-        for (b, w) in out.as_chunks_mut::<8>().0.iter_mut().zip(words) {
-            *b = w.to_le_bytes();
-        }
-        out
-    }
-
-    fn words(bytes: &[u8; 32]) -> [u64; 4] {
-        core::array::from_fn(|i| u64::from_le_bytes(bytes[8 * i..][..8].try_into().unwrap()))
+    fn random(rng: &mut Rng) -> [u8; 32] {
+        bytes(&rng.words(256))
     }
 
     /// `2^255 - 19 + d`, the non-canonical encodings of `d`, and with the
     /// top bit, which X25519 masks, set too.
-    fn p_plus(d: u8, top: bool) -> [u8; 32] {
-        let mut e = [0xff; 32];
-        e[0] = 0xed + d;
-        e[31] = if top { 0xff } else { 0x7f };
-        e
+    fn p_plus(d: u64, top: bool) -> [u64; 4] {
+        [
+            0xffff_ffff_ffff_ffed + d,
+            !0,
+            !0,
+            (!0 >> 1) | (u64::from(top) << 63),
+        ]
     }
 
     // X25519 on VG's routines against s2n-bignum's, on random points and
@@ -219,30 +236,24 @@ mod tests {
             return;
         };
         let mut rng = Rng(0x2551_9000_0000_0001);
-        let mut points = vec![[0u8; 32], [0xff; 32]];
+        let mut points = vec![[0; 4], [1, 0, 0, 0], [!0; 4]];
         for d in 0..19 {
             points.push(p_plus(d, false));
             points.push(p_plus(d, true));
         }
-        let mut one = [0u8; 32];
-        one[0] = 1;
-        points.push(one);
         for _ in 0..256 {
-            points.push(bytes(&mut rng));
+            points.push(rng.words(256));
         }
         for point in points {
-            let scalar = bytes(&mut rng);
-            let mut want = [0u64; 4];
-            super::super::curve25519_x25519::curve25519_x25519(
-                &mut want,
-                &words(&scalar),
-                &words(&point),
-            );
-            assert_eq!(words(&ifma.x25519(&scalar, &point)), want, "{point:x?}");
+            let scalar = rng.words(256);
+            let (mut want, mut got) = ([0; 4], [0; 4]);
+            super::super::curve25519_x25519::curve25519_x25519(&mut want, &scalar, &point);
+            ifma.x25519(&mut got, &scalar, &point);
+            assert_eq!(got, want, "{point:x?}");
 
-            let mut want = [0u64; 4];
-            super::super::curve25519_x25519base::curve25519_x25519base(&mut want, &words(&scalar));
-            assert_eq!(words(&ifma.x25519_base(&scalar)), want, "{scalar:x?}");
+            super::super::curve25519_x25519base::curve25519_x25519base(&mut want, &scalar);
+            ifma.x25519_base(&mut got, &scalar);
+            assert_eq!(got, want, "{scalar:x?}");
         }
     }
 
@@ -253,10 +264,9 @@ mod tests {
     fn ct_sde_x25519() {
         let mut rng = Rng(ct_sde::seed());
         let ifma = Curve25519Ifma::check().expect("AVX-512 IFMA");
-        let scalar = bytes(&mut rng);
-        let mut point = [0u8; 32];
-        point[0] = 9;
-        ct_sde::traced(|| ifma.x25519(&scalar, &point));
+        let scalar = rng.words(256);
+        let mut res = [0; 4];
+        ct_sde::traced(|| ifma.x25519(&mut res, &scalar, &[9, 0, 0, 0]));
     }
 
     #[test]
@@ -264,8 +274,9 @@ mod tests {
     fn ct_sde_x25519_base() {
         let mut rng = Rng(ct_sde::seed());
         let ifma = Curve25519Ifma::check().expect("AVX-512 IFMA");
-        let scalar = bytes(&mut rng);
-        ct_sde::traced(|| ifma.x25519_base(&scalar));
+        let scalar = rng.words(256);
+        let mut res = [0; 4];
+        ct_sde::traced(|| ifma.x25519_base(&mut res, &scalar));
     }
 
     // A secret seed, then its signature of a public message, for
@@ -275,7 +286,7 @@ mod tests {
     fn ct_sde_ed25519_key_pair() {
         let mut rng = Rng(ct_sde::seed());
         let ifma = Curve25519Ifma::check().expect("AVX-512 IFMA");
-        let seed = bytes(&mut rng);
+        let seed = random(&mut rng);
         ct_sde::traced(|| ifma.ed25519_key_pair(&seed));
     }
 
@@ -284,7 +295,7 @@ mod tests {
     fn ct_sde_ed25519_sign() {
         let mut rng = Rng(ct_sde::seed());
         let ifma = Curve25519Ifma::check().expect("AVX-512 IFMA");
-        let (expanded, public) = ifma.ed25519_key_pair(&bytes(&mut rng));
+        let (expanded, public) = ifma.ed25519_key_pair(&random(&mut rng));
         let msg = [0x5a; 200];
         ct_sde::traced(|| ifma.ed25519_sign(&expanded, &public, &msg));
     }
