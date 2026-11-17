@@ -1351,7 +1351,8 @@ mod tests {
     // Where a VG routine reaches its `SampleNTT` bound, rind's arithmetic
     // computes the same key, ciphertext, and secret: for a key pair VG or
     // rind generated, an encapsulation key with its hash, and one VG parsed,
-    // which has none.
+    // which has none. Where VG runs no routine, both sides are rind's, so it
+    // asserts that VG generated and parsed the keys wherever it runs.
     #[test]
     fn fallback_matches_vg() {
         let seed = core::array::from_fn(|i| i as u8);
@@ -1360,12 +1361,19 @@ mod tests {
         let dk = DecapKey::<MlKem768>::keygen_internal(&seed);
         let ek = dk.encapsulation_key();
         let parsed = EncapKey::<MlKem768>::from_bytes(ek.as_bytes()).unwrap();
+        // Only VG's routines leave a key without its decoded form.
+        assert_eq!(
+            dk.ek_pke.decoded.is_none(),
+            vg_key_pair::<MlKem768>().is_some()
+        );
+        assert_eq!(parsed.decoded.is_none(), vg_encaps::<MlKem768>().is_some());
         let (k, c) = ek.encaps_internal(m());
         let k = secret(k);
         assert_eq!(secret(dk.decaps(&c)), k);
 
         FORCE_FALLBACK.set(true);
         let rind = DecapKey::<MlKem768>::keygen_internal(&seed);
+        assert!(rind.ek_pke.decoded.is_some());
         assert_eq!(
             low::ct::into_public(rind.as_bytes()),
             low::ct::into_public(dk.as_bytes())
@@ -1666,7 +1674,9 @@ mod tests {
     // Fixing `d` also fixes the secret vectors it derives, and key generation
     // cannot vary them without varying `𝜌`, so the last key decapsulates
     // with the fixed key's `ek` but the `dkPKE` of a key generated from a
-    // seeded `d`. Each field is one VG's key generation wrote, and in range.
+    // seeded `d`. VG's contract asks for a whole key its key generation
+    // wrote, and none varies `dkPKE` with `𝜌` fixed; each field here is one
+    // VG's key generation wrote, so every coefficient is in range.
     #[cfg(rind_backend = "x86_64")]
     #[test]
     #[ignore = "admin/ct-sde runs it under Intel SDE"]
