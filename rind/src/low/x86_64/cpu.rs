@@ -728,30 +728,52 @@ mod tests {
     /// it reads any bit that hangs on AVX-512 support: the OS saving every
     /// vector state, and FMA and F16C.
     const FMA_F16C: u32 = 1 << 12 | 1 << 29;
-    const BITS: &[(fn(&mut Registers) -> &mut u32, u32, u32)] = &[
-        (|r| &mut r.ecx1, 1, PCLMULQDQ),
-        (|r| &mut r.ecx1, 9, SSSE3),
-        (|r| &mut r.ecx1, 19, SSE41),
-        (|r| &mut r.ecx1, 22, MOVBE),
-        (|r| &mut r.ecx1, 23, POPCNT),
-        (|r| &mut r.ecx1, 25, AES),
-        (|r| &mut r.ecx1, 28, AVX),
-        (|r| &mut r.ebx7, 3, BMI1),
-        (|r| &mut r.ebx7, 5, AVX2),
-        (|r| &mut r.ebx7, 8, BMI2),
-        (|r| &mut r.ebx7, 16, AVX512F),
-        (|r| &mut r.ebx7, 17, AVX512DQ),
-        (|r| &mut r.ebx7, 19, ADX),
-        (|r| &mut r.ebx7, 21, AVX512IFMA),
-        (|r| &mut r.ebx7, 29, SHA),
-        (|r| &mut r.ebx7, 30, AVX512BW),
-        (|r| &mut r.ebx7, 31, AVX512VL),
-        (|r| &mut r.ecx7, 1, AVX512VBMI),
-        (|r| &mut r.ecx7, 6, AVX512VBMI2),
-        (|r| &mut r.ecx7, 9, VAES),
-        (|r| &mut r.ecx7, 10, VPCLMULQDQ),
-        (|r| &mut r.edx7, 23, AVX512FP16),
-        (|r| &mut r.eax7_1, 0, SHA512),
+    /// The registers `BITS` names.
+    #[derive(Clone, Copy)]
+    enum Leaf {
+        Ecx1,
+        Ebx7,
+        Ecx7,
+        Edx7,
+        Eax7Sub1,
+    }
+
+    impl Leaf {
+        fn of(self, r: &mut Registers) -> &mut u32 {
+            match self {
+                Self::Ecx1 => &mut r.ecx1,
+                Self::Ebx7 => &mut r.ebx7,
+                Self::Ecx7 => &mut r.ecx7,
+                Self::Edx7 => &mut r.edx7,
+                Self::Eax7Sub1 => &mut r.eax7_1,
+            }
+        }
+    }
+
+    const BITS: &[(Leaf, u32, u32)] = &[
+        (Leaf::Ecx1, 1, PCLMULQDQ),
+        (Leaf::Ecx1, 9, SSSE3),
+        (Leaf::Ecx1, 19, SSE41),
+        (Leaf::Ecx1, 22, MOVBE),
+        (Leaf::Ecx1, 23, POPCNT),
+        (Leaf::Ecx1, 25, AES),
+        (Leaf::Ecx1, 28, AVX),
+        (Leaf::Ebx7, 3, BMI1),
+        (Leaf::Ebx7, 5, AVX2),
+        (Leaf::Ebx7, 8, BMI2),
+        (Leaf::Ebx7, 16, AVX512F),
+        (Leaf::Ebx7, 17, AVX512DQ),
+        (Leaf::Ebx7, 19, ADX),
+        (Leaf::Ebx7, 21, AVX512IFMA),
+        (Leaf::Ebx7, 29, SHA),
+        (Leaf::Ebx7, 30, AVX512BW),
+        (Leaf::Ebx7, 31, AVX512VL),
+        (Leaf::Ecx7, 1, AVX512VBMI),
+        (Leaf::Ecx7, 6, AVX512VBMI2),
+        (Leaf::Ecx7, 9, VAES),
+        (Leaf::Ecx7, 10, VPCLMULQDQ),
+        (Leaf::Edx7, 23, AVX512FP16),
+        (Leaf::Eax7Sub1, 0, SHA512),
     ];
 
     /// Each feature is read from its own bit, and from no other.
@@ -763,9 +785,9 @@ mod tests {
             ..Registers::default()
         };
         assert_eq!(decode(base), 0);
-        for &(register, at, feature) in BITS {
+        for &(leaf, at, feature) in BITS {
             let mut r = base;
-            *register(&mut r) |= 1 << at;
+            *leaf.of(&mut r) |= 1 << at;
             assert_eq!(decode(r), feature, "bit {at}");
         }
         assert_eq!(BITS.len(), NAMED.len());
