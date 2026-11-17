@@ -453,7 +453,9 @@ and RFC 8018 as `Rind/HashSpec.lean` transliterates them:
   `kdf.prk_new_fill` (`Rind/X86_64/Hkdf.lean`): HKDF's extract and expand,
   and expand from a PRK loaded from bytes;
 - `kdf.derive_spec`, `kdf.verify_spec` (`Rind/X86_64/Pbkdf2.lean`): PBKDF2's
-  `Secret::derive` and `Secret::verify`.
+  `Secret::derive` and `Secret::verify` on rind's loop. On aarch64 with the
+  instructions it takes, a `Secret` runs pyca/verified-garbage's routine
+  instead, through `mid::pbkdf2_vg`, which the second pass leaves opaque.
 
 HKDF's `From<Okm>` conversions, each filling the key's length of HKDF-Expand
 into a zeroed buffer and keying it, in `Rind/X86_64/Hkdf.lean` and

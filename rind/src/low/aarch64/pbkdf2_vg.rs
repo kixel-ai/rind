@@ -74,7 +74,13 @@ impl Pbkdf2 {
         iterations: NonZeroU32,
         out: &mut [u8],
     ) {
-        assert!(out.len().div_ceil(self.hash_len) <= u32::MAX as usize);
+        // By multiplying, not dividing, so `admin/ct-vartime` finds no
+        // division.
+        assert!(
+            self.hash_len
+                .checked_mul(u32::MAX as usize)
+                .is_none_or(|most| out.len() <= most)
+        );
         // SAFETY: each slice is a distinct Rust object valid for its length,
         // so none overlaps another, the stack, or the end of the address
         // space; `iterations` is positive and `out` at most 2^32 - 1 blocks,

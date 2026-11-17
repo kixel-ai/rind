@@ -8,22 +8,15 @@ use core::fmt;
 use core::num::NonZeroU32;
 
 use super::digest::Digest;
-use super::hash::{Hash, LegacySha1, Sha256, Sha384, Sha512};
 use super::hmac;
 use crate::Error;
-use crate::low::pbkdf2_vg::Pbkdf2;
-use crate::low::{Entry, Zeroable, ZeroableRef, ct, ct_equal, zeroise, zeroise_value};
+use crate::low::{Entry, Zeroable, ZeroableRef, ct, ct_equal, zeroise_value};
+use crate::mid::pbkdf2_vg;
 
 /// A PBKDF2 algorithm, chosen by one of this module's constants.
 pub struct Algorithm {
     hmac: &'static hmac::Algorithm,
-    // pyca/verified-garbage's routine, where this CPU runs it and it
-    // measured faster than rind's loop: see `low::pbkdf2_vg`.
-    vg: fn() -> Option<&'static Pbkdf2>,
-    // The hash HMAC shortens a key longer than its block with, for VG's
-    // routine, which takes HMAC's key; and that block's length.
-    hash: fn(&[u8]) -> Digest,
-    block_len: usize,
+    vg: &'static pbkdf2_vg::Algorithm,
 }
 
 impl fmt::Debug for Algorithm {
@@ -38,33 +31,25 @@ impl fmt::Debug for Algorithm {
 /// such as WPA2 and older PKCS#12 files still require it.
 pub static PBKDF2_HMAC_SHA1: Algorithm = Algorithm {
     hmac: &hmac::HMAC_SHA1,
-    vg: Pbkdf2::sha1,
-    hash: LegacySha1::hash,
-    block_len: 64,
+    vg: &pbkdf2_vg::SHA1,
 };
 
 /// PBKDF2-HMAC-SHA256.
 pub static PBKDF2_HMAC_SHA256: Algorithm = Algorithm {
     hmac: &hmac::HMAC_SHA256,
-    vg: Pbkdf2::sha256,
-    hash: Sha256::hash,
-    block_len: 64,
+    vg: &pbkdf2_vg::SHA256,
 };
 
 /// PBKDF2-HMAC-SHA384.
 pub static PBKDF2_HMAC_SHA384: Algorithm = Algorithm {
     hmac: &hmac::HMAC_SHA384,
-    vg: Pbkdf2::sha384,
-    hash: Sha384::hash,
-    block_len: 128,
+    vg: &pbkdf2_vg::SHA384,
 };
 
 /// PBKDF2-HMAC-SHA512.
 pub static PBKDF2_HMAC_SHA512: Algorithm = Algorithm {
     hmac: &hmac::HMAC_SHA512,
-    vg: Pbkdf2::sha512,
-    hash: Sha512::hash,
-    block_len: 128,
+    vg: &pbkdf2_vg::SHA512,
 };
 
 /// A secret, such as a password, keyed once for every salt it derives with; wiped on drop.
@@ -74,8 +59,11 @@ pub struct Secret(Keyed);
 // type allows, as `Vg`'s fields do.
 #[repr(u8)]
 enum Keyed {
+    // rind's loop over its HMAC, keyed once.
     Rind(Rind),
-    Vg(Vg),
+    // pyca/verified-garbage's routine, where this CPU runs it and it
+    // measured faster: see `mid::pbkdf2_vg`. The algorithm is for `Debug`.
+    Vg(ZeroableRef<hmac::Algorithm>, pbkdf2_vg::Key),
 }
 
 impl Zeroable for Secret {}
@@ -92,7 +80,7 @@ impl fmt::Debug for Secret {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let algorithm = match &self.0 {
             Keyed::Rind(rind) => rind.0.id(),
-            Keyed::Vg(vg) => vg.algorithm.get().hmac.id(),
+            Keyed::Vg(algorithm, _) => algorithm.get().id(),
         };
         f.debug_struct("Secret")
             .field("algorithm", &algorithm)
@@ -103,8 +91,8 @@ impl fmt::Debug for Secret {
 impl Secret {
     /// Keys `algorithm` with `secret`, which may be any length.
     pub fn new(algorithm: &'static Algorithm, secret: &[u8]) -> Self {
-        Self(match (algorithm.vg)() {
-            Some(routine) => Keyed::Vg(Vg::new(algorithm, routine, secret)),
+        Self(match pbkdf2_vg::Key::new(algorithm.vg, secret) {
+            Some(key) => Keyed::Vg(ZeroableRef::new(algorithm.hmac), key),
             None => Keyed::Rind(Rind(hmac::Key::new(algorithm.hmac, secret))),
         })
     }
@@ -122,7 +110,7 @@ impl Secret {
     pub fn derive(&self, iterations: NonZeroU32, salt: &[u8], out: &mut [u8]) -> Result<(), Error> {
         match &self.0 {
             Keyed::Rind(rind) => rind.derive(iterations, salt, out),
-            Keyed::Vg(vg) => vg.derive(iterations, salt, out),
+            Keyed::Vg(_, vg) => vg.derive(iterations, salt, out),
         }
     }
 
@@ -141,7 +129,7 @@ impl Secret {
     ) -> Result<(), Error> {
         match &self.0 {
             Keyed::Rind(rind) => rind.verify(iterations, salt, previously_derived),
-            Keyed::Vg(vg) => vg.verify(iterations, salt, previously_derived),
+            Keyed::Vg(_, vg) => vg.verify(iterations, salt, previously_derived),
         }
     }
 }
@@ -236,81 +224,6 @@ impl Rind {
     }
 }
 
-// VG's routine, which keys HMAC itself on every call, with HMAC's key: the
-// secret, or its hash where it is longer than a block.
-struct Vg {
-    algorithm: ZeroableRef<Algorithm>,
-    routine: ZeroableRef<Pbkdf2>,
-    key: [u8; 128],
-    len: usize,
-}
-
-impl Vg {
-    fn new(algorithm: &'static Algorithm, routine: &'static Pbkdf2, secret: &[u8]) -> Self {
-        let _entry = Entry::new_secret();
-        let mut key = [0u8; 128];
-        let len = if secret.len() > algorithm.block_len {
-            let hash = (algorithm.hash)(secret);
-            key[..hash.as_ref().len()].copy_from_slice(hash.as_ref());
-            hash.as_ref().len()
-        } else {
-            key[..secret.len()].copy_from_slice(secret);
-            secret.len()
-        };
-        Self {
-            algorithm: ZeroableRef::new(algorithm),
-            routine: ZeroableRef::new(routine),
-            key,
-            len,
-        }
-    }
-
-    // As `Rind::derive`.
-    fn derive(&self, iterations: NonZeroU32, salt: &[u8], out: &mut [u8]) -> Result<(), Error> {
-        let _entry = Entry::new_secret();
-        self.check_len(out.len())?;
-        self.routine
-            .get()
-            .derive(&self.key[..self.len], salt, iterations, out);
-        Ok(())
-    }
-
-    // As `Rind::verify`, but over the whole derived key, since VG's routine
-    // derives no block alone; that key is wiped, as derived from the secret.
-    fn verify(
-        &self,
-        iterations: NonZeroU32,
-        salt: &[u8],
-        previously_derived: &[u8],
-    ) -> Result<(), Error> {
-        let _entry = Entry::new_secret();
-        if previously_derived.len() < self.algorithm.get().hmac.tag_len() {
-            return Err(Error::WrongLength);
-        }
-        self.check_len(previously_derived.len())?;
-        let mut derived = vec![0u8; previously_derived.len()];
-        self.routine
-            .get()
-            .derive(&self.key[..self.len], salt, iterations, &mut derived);
-        let equal = ct_equal(&derived, previously_derived);
-        zeroise(&mut derived);
-        match ct::into_public(equal) {
-            true => Ok(()),
-            false => Err(Error::BadSignature),
-        }
-    }
-
-    // As `Rind::check_len`.
-    fn check_len(&self, len: usize) -> Result<(), Error> {
-        let blocks = len.div_ceil(self.algorithm.get().hmac.tag_len());
-        if blocks == 0 || blocks > u32::MAX as usize {
-            Err(Error::WrongLength)
-        } else {
-            Ok(())
-        }
-    }
-}
-
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
@@ -328,15 +241,15 @@ mod tests {
     // `secret` keyed on rind's loop, and on VG's routine where it runs.
     fn secrets(algorithm: &'static Algorithm, secret: &[u8]) -> Vec<Secret> {
         let rind = Secret(Keyed::Rind(Rind(hmac::Key::new(algorithm.hmac, secret))));
-        let vg =
-            (algorithm.vg)().map(|routine| Secret(Keyed::Vg(Vg::new(algorithm, routine, secret))));
+        let vg = pbkdf2_vg::Key::new(algorithm.vg, secret)
+            .map(|key| Secret(Keyed::Vg(ZeroableRef::new(algorithm.hmac), key)));
         [Some(rind), vg].into_iter().flatten().collect()
     }
 
     fn check_len(secret: &Secret, len: usize) -> Result<(), Error> {
         match &secret.0 {
             Keyed::Rind(rind) => rind.check_len(len),
-            Keyed::Vg(vg) => vg.check_len(len),
+            Keyed::Vg(_, vg) => vg.check_len(len),
         }
     }
 
@@ -412,7 +325,10 @@ mod tests {
         // secret around HMAC's block, where rind passes it whole or hashed,
         // with salts and outputs around a block and a hash length.
         for algorithm in ALGORITHMS {
-            let block = algorithm.block_len;
+            let block = match algorithm.hmac.tag_len() {
+                20 | 32 => 64,
+                _ => 128,
+            };
             let hash_len = algorithm.hmac.tag_len();
             for secret_len in [0, 1, block - 1, block, block + 1, 3 * block] {
                 let secret: Vec<u8> = (0..secret_len).map(|i| i as u8).collect();
@@ -464,6 +380,31 @@ mod tests {
                     assert_eq!(got, wanted);
                     assert_eq!(secret.verify(iterations, b"salt", &wanted), Ok(()));
                 }
+            }
+        }
+    }
+
+    // What valgrind hides, for `admin/ct-qemu`: PBKDF2-HMAC-SHA384 and
+    // PBKDF2-HMAC-SHA512 on VG's routine, which takes aarch64's SHA-512
+    // instructions, which rind takes only with SHA3.
+    #[cfg(rind_backend = "aarch64")]
+    #[test]
+    #[ignore = "admin/ct-qemu runs it under qemu"]
+    fn ct_qemu_pbkdf2() {
+        use crate::low::ct_qemu;
+
+        assert!(std::arch::is_aarch64_feature_detected!("sha3"), "SHA3");
+        let seed = ct_qemu::seed().to_le_bytes();
+        let bytes = |n| seed.iter().cycle().take(n).copied().collect::<Vec<u8>>();
+        let iterations = NonZeroU32::new(3).unwrap();
+        for algorithm in [&PBKDF2_HMAC_SHA384, &PBKDF2_HMAC_SHA512] {
+            for password_len in [16, 200] {
+                let password = bytes(password_len);
+                let secret = ct_qemu::traced(|| Secret::new(algorithm, &password));
+                assert!(matches!(secret.0, Keyed::Vg(..)));
+                let mut key = [0u8; 100];
+                ct_qemu::traced(|| secret.derive(iterations, b"salt", &mut key)).unwrap();
+                ct_qemu::traced(|| secret.verify(iterations, b"salt", &key)).unwrap();
             }
         }
     }
