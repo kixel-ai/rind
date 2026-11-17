@@ -69,6 +69,8 @@ export interface Tier extends Times {
 	// The tier's name, as benchmarks/gaps.toml names it.
 	tier: string;
 	cpu: string;
+	// The libraries its fastest is drawn from, which it may not have timed.
+	rivals: string[];
 }
 
 export interface Gap {
@@ -96,7 +98,7 @@ export interface Report {
 	hosts: Host[];
 	unmeasured: string[];
 	tiers: {
-		// The libraries each tier's fastest is drawn from.
+		// The libraries any tier's fastest is drawn from.
 		rivals: string[];
 		run: number;
 		url: string;
@@ -190,7 +192,7 @@ export function untimed(host: Host): string[] {
 	return report.sections.flatMap((s) => s.operations.filter((o) => !(o.id in host.times)).map((o) => o.label));
 }
 
-// The libraries each weekly tier's fastest is drawn from, in prose.
+// The libraries any weekly tier's fastest is drawn from, in prose; the portable tier leaves verified-garbage out, as the paragraph quoted below says.
 const tierLibraries = tiers.rivals.map(libraryName);
 const tierNames = `${tierLibraries.slice(0, -1).join(", ")}, and ${tierLibraries.at(-1)}`;
 

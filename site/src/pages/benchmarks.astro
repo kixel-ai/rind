@@ -49,6 +49,7 @@ const groups = [
 	{ label: "GitHub runners, by CPU tier", cpus: cpus.filter((c) => c.kind === "tier") },
 ];
 const percent = Math.round((report.slower - 1) * 100);
+const list = new Intl.ListFormat("en");
 ---
 
 <Base page={benchmarks} title={`rind: ${title}`}>
@@ -144,8 +145,10 @@ const percent = Math.round((report.slower - 1) * 100);
 								<p>
 									On {cpu.tier.cpu}, from <a href={tiers.url}>run {tiers.run}</a>, {tiers.date} at{" "}
 									<a href={commitUrl(tiers.commit)}><code>{tiers.commit.slice(0, 8)}</code></a>. Here rind is timed against{" "}
-									{cpu.tier.libraries.filter((l) => l !== "rind").map(libraryName).join(" and ")} alone, by the weekly
-									benchmark's own IDs. A benchmark this tier lacks runs the same code
+									{list.format(cpu.tier.libraries.filter((l) => l !== "rind").map(libraryName))}, by the weekly
+									benchmark's own IDs, and its time over the fastest of{" "}
+									{list.format(cpu.tier.libraries.filter((l) => cpu.tier.rivals.includes(l)).map(libraryName))}.
+									A benchmark this tier lacks runs the same code
 									as the tier before it, so it isn't timed.
 								</p>
 								<Times times={cpu.tier} groups={tierRows} />
