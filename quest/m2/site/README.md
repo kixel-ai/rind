@@ -1,4 +1,4 @@
-# rind.kixel.ai gets a developer from a first visit to a first build
+# [S] rind.kixel.ai gets a developer from a first visit to a first build
 
 ## Goal
 
