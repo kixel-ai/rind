@@ -184,7 +184,7 @@ opaque low.generic.chacha20poly1305.seal
 
 opaque low.generic.chacha20poly1305.open
   : Std.Array Std.U8 32#usize → Std.Array Std.U8 12#usize → Slice Std.U8 → Slice Std.U8 →
-    Result ((Std.Array Std.U8 16#usize) × (Slice Std.U8))
+    Std.Array Std.U8 16#usize → Result (Bool × (Slice Std.U8))
 
 /-! s2n-bignum's Ed25519 routines, transliterated to inline assembly. -/
 
@@ -268,6 +268,16 @@ opaque low.x86_64.sha512.path : Result low.x86_64.sha512.Path
 
 opaque low.x86_64.cpu.HaveBmi2Adx.check
   : Result (Option low.x86_64.cpu.HaveBmi2Adx)
+
+/-- Whether the CPU runs pyca/verified-garbage's AVX-512 IFMA public
+operation for a key's modulus and exponent, and that operation, which the
+proofs of RSA verification take as not running. -/
+opaque low.x86_64.rsa_ifma.RsaIfma.check
+  {N : Std.Usize} : low.posint.PosInt N → Std.U64 → Result (Option low.x86_64.rsa_ifma.RsaIfma)
+
+opaque mid.rsa_pub.RsaPublicKey.public_op_ifma
+  : mid.rsa_pub.RsaPublicKey → low.x86_64.rsa_ifma.RsaIfma → low.posint.PosInt 128#usize →
+    Result (core.result.Result (low.posint.PosInt 128#usize) error.Error)
 
 opaque low.x86_64.cpu.HaveAvx2.check : Result (Option low.x86_64.cpu.HaveAvx2)
 

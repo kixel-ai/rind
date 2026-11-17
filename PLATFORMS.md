@@ -16,7 +16,10 @@ qemu. iOS devices' code is only built.
   instructions. Without it, as on the Raspberry Pi 4, CM4, and Zero 2 W, they
   run [aws-lc]'s NEON and scalar assembly instead (see
   [ALGORITHMS.md](ALGORITHMS.md)), `rind::cpu::has_aes_hardware()` is false, and
-  rind-rustls and rind-dimpl prefer ChaCha20-Poly1305. On Apple's platforms,
+  rind-rustls and rind-dimpl prefer ChaCha20-Poly1305. Where the CPU has
+  SVE2, as Armv9 cores from Neoverse N2 and Cortex-A710 on do,
+  ChaCha20-Poly1305 runs [verified-garbage]'s SVE2 assembly, and aws-lc's
+  NEON assembly otherwise. On Apple's platforms,
   secret-dependent code runs with data-independent timing (DIT), set and
   cleared in each call unless `rind::cpu::Dit::hold()` holds it across a batch
   of calls. rind sets no DIT on other aarch64 platforms, where Arm says it
@@ -30,7 +33,8 @@ qemu. iOS devices' code is only built.
   SHA256 its SSSE3 assembly, or for SHA its AVX assembly on Intel's cores,
   SHA-512 its scalar assembly on other vendors' cores,
   ML-KEM's and ML-DSA's arithmetic runs Rust ports of [mlkem-native]'s and
-  [mldsa-native]'s portable C, and
+  [mldsa-native]'s portable C, but for ML-KEM-768's encapsulation, which runs
+  [verified-garbage]'s assembly, and
   table lookups use SSE2 (see [ALGORITHMS.md](ALGORITHMS.md)). Without `sse4.1`,
   as on the first Core 2s and Atoms and AMD's Bobcat, ChaCha20 and Poly1305
   run in separate passes.
@@ -47,8 +51,11 @@ qemu. iOS devices' code is only built.
   Intel's cores before Ice Lake and AMD's before Zen, SLH-DSA's SHA-2
   parameter sets hash eight SHA-256 inputs at once with a port of the
   SPHINCS+ team's AVX2 code. With `avx512ifma`, as on Ice Lake,
-  Sapphire Rapids, and AMD's Zen 4 and 5, RSA-2048, 3072, and 4096 signing
-  runs aws-lc's dual AVX-512 RSAZ.
+  Sapphire Rapids, and AMD's Zen 4 and 5, RSA-2048 and 4096 signing and
+  the public operation of 2048-, 3072-, and 4096-bit moduli with
+  e = 65537 run [verified-garbage]'s routines, and RSA-3072 signing too with `avx512fp16`, as on Intel's
+  since Sapphire Rapids, and aws-lc's dual AVX-512 RSAZ without it, as
+  for the 3969- to 4032-bit keys VG's CRT does not take.
 - 32-bit `arm` from ARMv7 on (tested on `armv7-unknown-linux-gnueabihf` and
   `armv7-linux-androideabi`) runs portable Rust instead, mostly from
   [libcrux] (see [ALGORITHMS.md](ALGORITHMS.md)), and needs no CPU features. RSA's
@@ -205,6 +212,7 @@ family since 2004, and of some AMD cores.
 [curve25519-dalek]: https://github.com/dalek-cryptography/curve25519-dalek
 [HACL\*]: https://github.com/hacl-star/hacl-star
 [mlkem-native]: https://github.com/pq-code-package/mlkem-native
+[verified-garbage]: https://github.com/pyca/verified-garbage
 [mldsa-native]: https://github.com/pq-code-package/mldsa-native
 [libcrux]: https://github.com/cryspen/libcrux
 [aws-lc]: https://github.com/aws/aws-lc
