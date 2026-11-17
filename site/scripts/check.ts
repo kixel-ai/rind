@@ -37,18 +37,17 @@ for (const page of pages) {
 	if (!sitemap.includes(`<loc>${origin}${page.path}</loc>`)) fail(`sitemap.xml does not list ${page.path}`);
 }
 
-// The ids a built page's anchors can name: an HTML page's ids, or a Markdown
-// twin's headings' anchors.
+// The ids a built page's anchors can name: the ids in its HTML, or in a
+// Markdown twin's, plus the anchors of the twin's headings.
 function ids(file: string): Set<string> {
-	if (file.endsWith(".md")) {
-		const slug = slugger();
-		const out = new Set<string>();
-		walkTokens(lex(text(file)), (t) => void (t.type === "heading" && out.add(slug(t as Tokens.Heading))));
-		return out;
-	}
-	return new Set(
+	const out = new Set(
 		[...tags(text(file))].flatMap(([, attrs]) => attrs.filter(([name]) => name === "id").map(([, value]) => value)),
 	);
+	if (file.endsWith(".md")) {
+		const slug = slugger();
+		walkTokens(lex(text(file)), (t) => void (t.type === "heading" && out.add(slug(t as Tokens.Heading))));
+	}
+	return out;
 }
 
 // GitHub's anchor for each heading of a repository Markdown file, and each id
