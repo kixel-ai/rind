@@ -532,7 +532,9 @@ modulo `L`. On a Zen 4 EPYC 9V74, VG took 0.52-0.67 of rind's time for
 X25519, and 0.66, 0.68, and 0.55 for Ed25519 key generation, signing, and
 verification, in [run 43531095881]; on Zen 5 (a Ryzen 9 9950X), against
 the code it replaced, 0.62-0.72 for X25519 and 0.61, 0.67, and 0.85 for
-Ed25519, in [kixel-ai/rind#845](https://github.com/kixel-ai/rind/pull/845). Without
+Ed25519, in [kixel-ai/rind#845](https://github.com/kixel-ai/rind/pull/845); and on a
+Xeon 6975P-C, 0.66-0.72 for X25519 and 0.69, 0.66, and 0.90 for Ed25519,
+in [run 44171095372] against [run 43881997679] before the switch. Without
 IFMA, VG lost at some operation on every CPU measured: on a Zen 4 EPYC 9V74
 whose VM hid AVX-512, 0.92-0.97 but 1.07 for verification, in [run
 44169300257]; 1.10-1.77 on that run's tiers that deny ADX or AVX2; 1.09 for
@@ -1002,6 +1004,8 @@ HACL*'s verified Poly1305 without NEON.
 [run 43881997679]: https://github.com/kixel-ai/rind/actions/runs/43881997679
 [run 43531095881]: https://github.com/kixel-ai/rind/actions/runs/43531095881
 [run 44169300257]: https://github.com/kixel-ai/rind/actions/runs/44169300257
+[run 44171095372]: https://github.com/kixel-ai/rind/actions/runs/44171095372
+[run 43881997679]: https://github.com/kixel-ai/rind/actions/runs/43881997679
 [run 41585945720]: https://github.com/kixel-ai/rind/actions/runs/41585945720
 [run 41657617706]: https://github.com/kixel-ai/rind/actions/runs/41657617706
 [run 41678532920]: https://github.com/kixel-ai/rind/actions/runs/41678532920
