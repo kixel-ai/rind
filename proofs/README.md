@@ -203,9 +203,9 @@ cosimulating one instruction at a time can catch. Reviewers found one: a
 freed frame's bytes kept their values in the models, so a proof could read
 back a value a signal handler may have overwritten on hardware
 ([pyca/verified-garbage#5321](https://github.com/pyca/verified-garbage/issues/5321)).
-The AArch64 model at the pin loses them, but x86-64's still keeps them
-([pyca/verified-garbage#5378](https://github.com/pyca/verified-garbage/pull/5378)),
-so that gap holds every x86_64 VG ✓.
+The AArch64 and x86-64 models at the pin lose them
+([pyca/verified-garbage#5391](https://github.com/pyca/verified-garbage/pull/5391)
+and [#5378](https://github.com/pyca/verified-garbage/pull/5378)).
 
 `Rind/VgOutcome.lean` and `Rind/<Arch>/VgMlKem.lean` restate VG's contracts
 for the ML-KEM-768 routines rind runs as one axiom per wrapper in
