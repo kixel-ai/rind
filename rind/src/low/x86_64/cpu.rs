@@ -221,8 +221,10 @@ pub(crate) struct HaveAvx512ForMlKem(());
 
 impl HaveAvx512ForMlKem {
     pub(crate) fn check() -> Option<Self> {
-        // It runs inside rind's AVX2 ML-KEM.
-        match has(AVX2_KERNELS | AVX512F | AVX512BW | AVX512VBMI | AVX512VBMI2) {
+        // It runs inside rind's AVX2 ML-KEM. It needs no VL, which every CPU
+        // with VBMI2 has, but asking for it keeps ML-KEM-768 off this sampler
+        // wherever VG's AVX-512 key generation does not run.
+        match has(AVX2_KERNELS | AVX512F | AVX512BW | AVX512VL | AVX512VBMI | AVX512VBMI2) {
             true => Some(Self(())),
             false => None,
         }
@@ -680,7 +682,13 @@ mod tests {
             (
                 HaveAvx512ForMlKem::check().is_some(),
                 available!("avx", "avx2", "bmi1", "bmi2", "popcnt", "ssse3")
-                    && available!("avx512f", "avx512bw", "avx512vbmi", "avx512vbmi2"),
+                    && available!(
+                        "avx512f",
+                        "avx512bw",
+                        "avx512vl",
+                        "avx512vbmi",
+                        "avx512vbmi2"
+                    ),
             ),
             (
                 HaveAvx512ForVgMlKem::check().is_some(),
