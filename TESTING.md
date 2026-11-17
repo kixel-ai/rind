@@ -256,6 +256,23 @@ SDE too), so a plain `cargo llvm-cov` reports less. The
 nightly `coverage` workflow runs it on Linux and macOS; the summary table in
 its "Measure coverage" step's log is the report.
 
+A function only one architecture compiles counts as run when that
+architecture's report runs it. These stay unrun, each for a reason:
+
+- Functions only constant evaluation runs, such as a table builder behind a
+  `const`, are marked `coverage(off)` with a comment saying so, as are
+  test-only modules.
+- pyca/verified-garbage's SVE2 ChaCha20-Poly1305 (`seal_sve2` and
+  `open_sve2` in `low/aarch64/chacha20poly1305.rs`): macOS's Apple cores
+  lack SVE2. build.yml's arm64 job tests it natively, and `admin/ct-qemu`
+  traces it.
+- Error mappings for a failure no test can cause: the system random source
+  failing, signing failing with a key that loaded, a message past a cipher's
+  length limit or `isize::MAX`, and rind-object-store's arm for an
+  algorithm a later object_store adds.
+- The unpublished crates, rind-fips and rind-openssl, and the `fips` modules
+  only rind-fips compiles in.
+
 ## Running the tools
 
 On Linux, `just armv7` runs the nightly armv7 job: it builds and lints for

@@ -31,13 +31,19 @@ cargo llvm-cov clean --workspace
 tests=(--workspace --exclude rind-bench --exclude rind-cpuid --exclude rind-fuzz --exclude rind-timing)
 env SLOW_TESTS=1 cargo test --locked "${tests[@]}"
 
+# The older-CPU tiers of build.yml reach only rind's own fallbacks, so they
+# run rind's tests alone: AVX without AVX2, then no AES, CLMUL, AVX, or
+# SSE4.1 on x86_64, and no AES, PMULL, or SHA-2 on aarch64.
 case $(uname -m) in
     x86_64)
         env RIND_CPU_DISABLE_sha=1 RIND_CPU_DISABLE_intel=1 RIND_CPU_DISABLE_avx512bw=1 RIND_CPU_DISABLE_avx512f=1 RIND_CPU_DISABLE_vaes=1 cargo test --locked "${tests[@]}"
+        env RIND_CPU_DISABLE_avx2=1 RIND_CPU_DISABLE_sha=1 cargo test --locked -p rind
+        env RIND_CPU_DISABLE_aes=1 RIND_CPU_DISABLE_pclmulqdq=1 RIND_CPU_DISABLE_avx=1 RIND_CPU_DISABLE_sse41=1 cargo test --locked -p rind
         env CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER="sde -dmr --" cargo test --locked "${tests[@]}"
         ;;
     arm|arm64|aarch64)
         env RIND_CPU_DISABLE_sha3=1 cargo test --locked "${tests[@]}"
+        env RIND_CPU_DISABLE_aes=1 RIND_CPU_DISABLE_pmull=1 RIND_CPU_DISABLE_sha2=1 cargo test --locked -p rind
         ;;
 esac
 
