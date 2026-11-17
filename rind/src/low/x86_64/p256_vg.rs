@@ -4,16 +4,24 @@
 //!
 //! Each routine is a whole operation on encoded keys: a public key's
 //! derivation, ECDH with the peer's key validated, and ECDSA verification of
-//! a hash. They measured faster than rind's on CPUs with BMI2 and ADX, and
-//! ECDH and verification faster still with AVX-512 IFMA, so those are what
-//! rind takes; without ADX, rind's own measured faster. VG signs only
-//! deterministically, so signing takes its public key derivation for the
-//! nonce's point and keeps rind's hedged nonce and arithmetic.
+//! a hash. ECDH and verification measured faster than rind's on CPUs with
+//! BMI2 and ADX, and faster still with AVX-512 IFMA, so those are what rind
+//! takes; without ADX, rind's own measured faster. The public key's
+//! derivation, which has no IFMA variant, measured faster on Intel and on
+//! CPUs with IFMA, but 6% slower on AMD's Zen 3, so
+//! [`P256::check_public_key`] leaves AMD without AVX-512 on rind's. VG signs
+//! only deterministically, so signing takes its public key derivation for
+//! the nonce's point and keeps rind's hedged nonce and arithmetic.
+//!
+//! Each routine's return code says only whether its inputs were valid: the
+//! private key's range, which rind's `Scalar` already holds it to, and the
+//! peer's point, which is public. So it is declassified for `admin/ctgrind`.
 
 use core::mem::MaybeUninit;
 
-use super::cpu::{HaveAdxForVgP256, HaveIfmaForVgP256};
+use super::cpu::{HaveAdxForVgP256, HaveIfmaForVgP256, is_intel};
 use super::vg;
+use crate::low::ct;
 
 /// The 8 KiB of working space each routine takes, aligned to a cache line
 /// as VG's own API aligns it. The routines accept any initial contents.
@@ -48,6 +56,12 @@ impl P256 {
         })
     }
 
+    /// [`Self::check`], where VG's public key derivation measured faster
+    /// than rind's too: on Intel, and with AVX-512 IFMA (AMD's Zen 4 and 5).
+    pub(crate) fn check_public_key() -> Option<Self> {
+        Self::check().filter(|vg| vg.ifma.is_some() || is_intel())
+    }
+
     /// The public key `dG` of the private key `d`, big-endian, as an X9.62
     /// uncompressed point, or `None` if `d` is not in [1, n).
     pub(crate) fn public_key(self, d: &[u8; 32]) -> Option<[u8; 65]> {
@@ -64,7 +78,7 @@ impl P256 {
                 scratch.as_mut_ptr(),
             )
         };
-        (ok == 1).then_some(out)
+        (ct::into_public(ok) == 1).then_some(out)
     }
 
     /// The x-coordinate of `dQ`, big-endian, for the private key `d` and the
@@ -113,7 +127,7 @@ fn ecdh(width: Width, d: &[u8; 32], peer: &[u8; 65]) -> Option<[u8; 32]> {
             Width::Ifma(_) => vg_ecdh_p256_ifma::vg_ecdh_p256_ifma(o, d, peer, s),
         }
     };
-    (ok == 1).then_some(out)
+    (ct::into_public(ok) == 1).then_some(out)
 }
 
 /// [`P256::verify`], on the variant `width`.
@@ -139,7 +153,6 @@ fn verify(width: Width, public: &[u8; 65], e: &[u8; 32], sig: &[u8; 64]) -> bool
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
-    use crate::low::ct;
     use crate::test::p256_vg::{check_ecdh, check_verify};
 
     // The CPU's widest variant hides the narrower from every other test, so
@@ -154,5 +167,22 @@ mod tests {
             check_ecdh(|d, peer| ct::into_public(ecdh(width, d, peer)));
             check_verify(|public, e, sig| verify(width, public, e, sig));
         }
+    }
+
+    // VG's AVX-512 IFMA ECDH runs no instruction valgrind can, so
+    // `admin/ct-sde` checks it: a private key from the seed, with G as the
+    // peer. Verification takes no secret.
+    #[test]
+    #[ignore = "admin/ct-sde runs it under Intel SDE"]
+    fn ct_sde_p256_ifma_ecdh() {
+        use crate::low::ct_sde;
+
+        let ifma = HaveIfmaForVgP256::check().expect("AVX-512 IFMA");
+        let mut d = [0x5a; 32];
+        d[24..].copy_from_slice(&ct_sde::seed().to_be_bytes());
+        let g = *b"\x04\
+\x6b\x17\xd1\xf2\xe1\x2c\x42\x47\xf8\xbc\xe6\xe5\x63\xa4\x40\xf2\x77\x03\x7d\x81\x2d\xeb\x33\xa0\xf4\xa1\x39\x45\xd8\x98\xc2\x96\
+\x4f\xe3\x42\xe2\xfe\x1a\x7f\x9b\x8e\xe7\xeb\x4a\x7c\x0f\x9e\x16\x2b\xce\x33\x57\x6b\x31\x5e\xce\xcb\xb6\x40\x68\x37\xbf\x51\xf5";
+        assert!(ct_sde::traced(|| ecdh(Width::Ifma(ifma), &d, &g)).is_some());
     }
 }

@@ -130,7 +130,7 @@ impl PrivateKey {
     /// X9.62 uncompressed encoding.
     pub(crate) fn public_key_uncompressed(&self) -> [u8; PublicKey::BYTES] {
         let _entry = low::Entry::new_secret();
-        if let Some(vg) = low::p256_vg::P256::check() {
+        if let Some(vg) = low::p256_vg::P256::check_public_key() {
             return self.vg_public_key(vg);
         }
         self.public_point().as_bytes_uncompressed()
@@ -160,7 +160,10 @@ impl PrivateKey {
     fn vg_public_key(&self, vg: low::p256_vg::P256) -> [u8; PublicKey::BYTES] {
         // It fails only for a scalar outside [1, n), which `Scalar`'s
         // checked decoding refuses.
-        match low::ct::into_public(vg.public_key(&self.scalar.as_bytes())) {
+        match vg
+            .public_key(&self.scalar.as_bytes())
+            .map(low::ct::into_public)
+        {
             Some(encoded) => encoded,
             None => panic!("internal fault"),
         }
@@ -174,10 +177,9 @@ impl PrivateKey {
         vg: low::p256_vg::P256,
         peer: &PublicKey,
     ) -> Result<SharedSecret, Error> {
-        let shared = vg.ecdh(&self.scalar.as_bytes(), &peer.point.as_bytes_uncompressed());
-        match low::ct::into_public(shared.is_some()) {
-            true => Ok(SharedSecret(shared.unwrap_or_default())),
-            false => Err(Error::Fault),
+        match vg.ecdh(&self.scalar.as_bytes(), &peer.point.as_bytes_uncompressed()) {
+            Some(shared) => Ok(SharedSecret(shared)),
+            None => Err(Error::Fault),
         }
     }
 
@@ -256,7 +258,7 @@ impl StaticPrivateKey {
     /// X9.62 uncompressed encoding.
     pub(crate) fn public_key_uncompressed(&self) -> [u8; PublicKey::BYTES] {
         let _entry = low::Entry::new_secret();
-        if let Some(vg) = low::p256_vg::P256::check() {
+        if let Some(vg) = low::p256_vg::P256::check_public_key() {
             return self.0.vg_public_key(vg);
         }
         self.0.public_point().as_bytes_uncompressed()
@@ -297,7 +299,7 @@ impl StaticPrivateKey {
 
     pub(crate) fn public_key_x_scalar(&self) -> Scalar {
         let _entry = low::Entry::new_secret();
-        if let Some(vg) = low::p256_vg::P256::check() {
+        if let Some(vg) = low::p256_vg::P256::check_public_key() {
             let encoded = self.0.vg_public_key(vg);
             return Scalar::from_bytes_reduced(&encoded[1..1 + Scalar::BYTES]).unwrap();
         }

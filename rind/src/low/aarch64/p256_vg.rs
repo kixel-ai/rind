@@ -8,10 +8,15 @@
 //! takes them everywhere. VG signs only deterministically, so signing takes
 //! its public key derivation for the nonce's point and keeps rind's hedged
 //! nonce and arithmetic.
+//!
+//! Each routine's return code says only whether its inputs were valid: the
+//! private key's range, which rind's `Scalar` already holds it to, and the
+//! peer's point, which is public. So it is declassified for `admin/ctgrind`.
 
 use core::mem::MaybeUninit;
 
 use super::vg;
+use crate::low::ct;
 
 /// The 8 KiB of working space each routine takes, aligned to a cache line
 /// as VG's own API aligns it. The routines accept any initial contents.
@@ -39,6 +44,12 @@ impl P256 {
         Some(Self(()))
     }
 
+    /// [`Self::check`], for the public key's derivation, which measured
+    /// faster than rind's too.
+    pub(crate) fn check_public_key() -> Option<Self> {
+        Self::check()
+    }
+
     /// The public key `dG` of the private key `d`, big-endian, as an X9.62
     /// uncompressed point, or `None` if `d` is not in [1, n).
     pub(crate) fn public_key(self, d: &[u8; 32]) -> Option<[u8; 65]> {
@@ -50,7 +61,7 @@ impl P256 {
         let ok = unsafe {
             vg::vg_ec_p256_public_key::vg_ec_p256_public_key(&mut out, d, scratch.as_mut_ptr())
         };
-        (ok == 1).then_some(out)
+        (ct::into_public(ok) == 1).then_some(out)
     }
 
     /// The x-coordinate of `dQ`, big-endian, for the private key `d` and the
@@ -61,7 +72,7 @@ impl P256 {
         let mut scratch = Scratch::new();
         // SAFETY: as for `public_key`.
         let ok = unsafe { vg::vg_ecdh_p256::vg_ecdh_p256(&mut out, d, peer, scratch.as_mut_ptr()) };
-        (ok == 1).then_some(out)
+        (ct::into_public(ok) == 1).then_some(out)
     }
 
     /// Whether `sig`, `r` then `s`, is a valid ECDSA signature of the
@@ -88,7 +99,6 @@ impl P256 {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
-    use crate::low::ct;
     use crate::test::p256_vg::{check_ecdh, check_verify};
 
     #[test]
