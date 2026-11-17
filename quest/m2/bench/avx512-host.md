@@ -2,7 +2,7 @@
 
 ## Goal
 
-Keep rules that need an AVX-512 core GitHub's runners do not reliably provide are settled on a contributor-held AVX-512 host (chip recorded at measurement time), held and measured by steelhead99x. Each kernel such a rule gates is turned on where it wins on the cores its rule names and stays off where it does not, with the numbers published either way.
+Keep rules that need an AVX-512 core GitHub's runners do not reliably provide are settled on a contributor-held AVX-512 host (chip recorded at measurement time), hosted by @steelhead99x and run by the maintainer. Each kernel such a rule gates is turned on where it wins on the cores its rule names and stays off where it does not, with the numbers published either way.
 
 ## Plan
 
@@ -22,8 +22,8 @@ Keep rules that need an AVX-512 core GitHub's runners do not reliably provide ar
 
 ## Waiting
 
-- Maintainer: approve using a contributor-held AVX-512 host for these measurements, before it is used. Options: approve (recommended: it settles rules no reachable host can), approve for Argon2id only, or decline and rely on `fedora` and GitHub's runners. An agent cannot decide whether rind accepts numbers from a host the maintainer does not hold. Check for the maintainer's answer on this quest's PR.
-- steelhead99x: once approved, makes the host reachable to the measuring agent and runs `lscpu`. Until then nothing touches it. Check with the recorded `lscpu` output.
+- Maintainer: approve using a contributor-held AVX-512 host for these measurements, before it is used. Options: approve (recommended: it settles rules no reachable host can), approve for Argon2id only, or decline and rely on `fedora` and GitHub's runners. Once approved, the host is the maintainer's to run; @steelhead99x helps. An agent cannot decide whether rind accepts a contributor-held host. Check for the maintainer's answer on this quest's PR.
+- steelhead99x: the host is hosted by @steelhead99x and run by the maintainer. After approval, helps with whatever the maintainer wants, including recording `lscpu`. Check with the recorded `lscpu` output.
 
 ## Related
 
