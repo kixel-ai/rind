@@ -13,8 +13,8 @@
 //! rounds, where aws-lc runs integer code.
 //!
 //! verified-garbage proves its routines correct and constant time in Lean,
-//! over its own models of the instructions, which rind does not yet check
-//! (see ALGORITHMS.md). The kernel and the aws-lc assembly are not formally
+//! over its own models of the instructions, which `admin/prove vg`
+//! cosimulates; rind imports no theorem yet (see ALGORITHMS.md). The kernel and the aws-lc assembly are not formally
 //! verified: their correctness rests on rind's tests of them against RFC
 //! 8439, Wycheproof, aws-lc-rs, and HACL*'s rounds, and aws-lc's on its use
 //! in OpenSSL, BoringSSL, and aws-lc.

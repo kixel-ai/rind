@@ -101,6 +101,14 @@ Each upstream rind changes, with where its fork is vendored and where the list o
 - **Reported:** no.
 - **Goes when:** memcheck tracks the Z flag apart from the carry.
 
+### Valgrind cannot unwind std's frame-pointer entries on armv7
+
+- **Breaks:** valgrind unwinds armv7 code through its `.ARM.exidx` entries, and can rebuild the stack pointer from `r7`, Thumb's frame pointer, but not from `r11`, ARM's (`readexidx.c`, 3.22 through 3.27). Rust's prebuilt std keeps frame pointers, so its entries begin `vsp = r11`. A debug build calls std's shared `<[u8]>::starts_with` rather than inlining it, so a memcheck stack in it stops there, and a suppression that names the caller never matches: rind-dimpl's `pem_signing` reported rustls-pki-types' PEM boundary test, which `rustls-pki-types-pem-line-compare` covers.
+- **Reproduce:** at main's d0e8e97f1, on an arm64 host, `cargo test -p rind-dimpl --test ctgrind --features rind/__ctgrind --target armv7-unknown-linux-gnueabihf -- pem_signing` under `admin/ctgrind --run` reports `bcmp` called by `<[u8]>::starts_with` with no frame above it.
+- **Workaround:** `admin/ctgrind` passes `--unw-stack-scan-thresh=3`, which recovers `rustls_pki_types::pem::read` from the stack when an unwind stops within three frames. Scanned frames below the first can be stale return addresses.
+- **Reported:** no.
+- **Goes when:** valgrind's EXIDX reader takes `vsp = r11`.
+
 ### Valgrind on ARM does not fault guard pages
 
 - **Breaks:** under valgrind on ARM, reading a `PROT_NONE` guard page does not fault, so `low::guard_pages`'s `planted_over_read_faults` fails.
@@ -218,6 +226,14 @@ Each upstream rind changes, with where its fork is vendored and where the list o
 - **Workaround:** `Cross.toml` leaves that target on cross's qemu runner, whose Atom N270 model serves the portable backend.
 - **Reported:** no.
 - **Goes when:** the image runs i686 binaries natively, as its x86_64 one does.
+
+### Flutter's iOS simulator test run hangs when its log stream attaches late
+
+- **Breaks:** `flutter test integration_test -d <simulator>` reads the app's Dart VM service URL from a `log stream` process it starts as it launches the app, and `log stream` drops what was logged before it attached, about two seconds after the launch. When the app logs the URL first, as it did in roughly one `dart-ios` run in four on stable 3.50.0, the tool waits for it forever: silent after `Xcode build done` until the job's timeout.
+- **Reproduce:** run `flutter test integration_test -d <simulator> -v` on `rind-dart/integration` on a hosted `macos-latest` runner a few dozen times, with `xcrun simctl spawn <udid> log stream` running beside it. A hung run's verbose log ends at `Waiting for VM Service port to be available...`, and the simulator's log has the app's `The Dart VM service is listening on` line a fraction of a second before the `log` process's `Sending stream request to diagnosticd`; a passing run has them the other way round.
+- **Workaround:** `build.yml`'s `dart-ios` job runs Flutter's beta channel, whose 3.51.0-0.1.pre has the fix. Diagnosed in [kixel-ai/rind#810](https://github.com/kixel-ai/rind/pull/810).
+- **Reported:** [flutter/flutter#181771](https://github.com/flutter/flutter/issues/181771), fixed by [flutter/flutter#193142](https://github.com/flutter/flutter/pull/193142), which makes the tool wait for `log stream`'s first line before launching the app.
+- **Goes when:** a stable Flutter release has that fix, and the job returns to `channel: stable`.
 
 ### Flutter's debug JIT crashes under the Android emulator's ARM translation
 
