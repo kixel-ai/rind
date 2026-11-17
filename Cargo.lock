@@ -1811,8 +1811,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ff2abc00be7fca6ebc474524697ae276ad847ad0a6b3faa4bcb027e9a4614ad0"
 dependencies = [
  "cfg-if",
+ "js-sys",
  "libc",
  "wasi",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -1822,9 +1824,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "899def5c37c4fd7b2664648c28120ecec138e4d395b459e5ca34f9cce2dd77fd"
 dependencies = [
  "cfg-if",
+ "js-sys",
  "libc",
  "r-efi 5.3.0",
  "wasip2",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -4651,8 +4655,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "rind-acvp"
+version = "0.1.0"
+dependencies = [
+ "aws-lc-rs",
+ "hex",
+ "num-bigint 0.4.8",
+ "rind-fips",
+ "serde_json",
+]
+
+[[package]]
 name = "rind-aws-lc-rs"
-version = "1.0.3"
+version = "1.0.4"
 dependencies = [
  "aws-lc-rs",
  "crabgrind 0.4.0",
@@ -4772,7 +4787,6 @@ dependencies = [
 name = "rind-fips-module"
 version = "0.1.0"
 dependencies = [
- "libc",
  "rind",
 ]
 
@@ -4861,7 +4875,7 @@ dependencies = [
 
 [[package]]
 name = "rind-rcgen"
-version = "0.14.4"
+version = "0.14.5"
 dependencies = [
  "base64ct",
  "crabgrind 0.4.0",
@@ -4875,10 +4889,11 @@ dependencies = [
 
 [[package]]
 name = "rind-ring"
-version = "0.17.4"
+version = "0.17.5"
 dependencies = [
  "aws-lc-rs",
  "crabgrind 0.4.0",
+ "getrandom 0.4.3",
  "hex",
  "proptest",
  "rind",
@@ -5080,6 +5095,7 @@ version = "1.15.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2f4925028c7eb5d1fcdaf196971378ed9d2c1c4efc7dc5d011256f76c99c0a96"
 dependencies = [
+ "web-time",
  "zeroize",
 ]
 
@@ -5987,7 +6003,7 @@ checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
 [[package]]
 name = "verified-garbage"
 version = "0.0.0"
-source = "git+https://github.com/pyca/verified-garbage?rev=d004ffaeb3c226c377a59f9f824386246d73ca5d#d004ffaeb3c226c377a59f9f824386246d73ca5d"
+source = "git+https://github.com/pyca/verified-garbage?rev=e7b0fe8a82b7777958e078573771d51415f105bb#e7b0fe8a82b7777958e078573771d51415f105bb"
 dependencies = [
  "getrandom 0.4.3",
  "verified-garbage-asm-aarch64",
@@ -6002,7 +6018,7 @@ dependencies = [
 [[package]]
 name = "verified-garbage-asm-aarch64"
 version = "0.0.0"
-source = "git+https://github.com/pyca/verified-garbage?rev=d004ffaeb3c226c377a59f9f824386246d73ca5d#d004ffaeb3c226c377a59f9f824386246d73ca5d"
+source = "git+https://github.com/pyca/verified-garbage?rev=e7b0fe8a82b7777958e078573771d51415f105bb#e7b0fe8a82b7777958e078573771d51415f105bb"
 dependencies = [
  "verified-garbage-cpu",
 ]
@@ -6010,7 +6026,7 @@ dependencies = [
 [[package]]
 name = "verified-garbage-asm-arm"
 version = "0.0.0"
-source = "git+https://github.com/pyca/verified-garbage?rev=d004ffaeb3c226c377a59f9f824386246d73ca5d#d004ffaeb3c226c377a59f9f824386246d73ca5d"
+source = "git+https://github.com/pyca/verified-garbage?rev=e7b0fe8a82b7777958e078573771d51415f105bb#e7b0fe8a82b7777958e078573771d51415f105bb"
 dependencies = [
  "verified-garbage-cpu",
 ]
@@ -6018,7 +6034,7 @@ dependencies = [
 [[package]]
 name = "verified-garbage-asm-powerpc64le"
 version = "0.0.0"
-source = "git+https://github.com/pyca/verified-garbage?rev=d004ffaeb3c226c377a59f9f824386246d73ca5d#d004ffaeb3c226c377a59f9f824386246d73ca5d"
+source = "git+https://github.com/pyca/verified-garbage?rev=e7b0fe8a82b7777958e078573771d51415f105bb#e7b0fe8a82b7777958e078573771d51415f105bb"
 dependencies = [
  "verified-garbage-cpu",
 ]
@@ -6026,7 +6042,7 @@ dependencies = [
 [[package]]
 name = "verified-garbage-asm-riscv64"
 version = "0.0.0"
-source = "git+https://github.com/pyca/verified-garbage?rev=d004ffaeb3c226c377a59f9f824386246d73ca5d#d004ffaeb3c226c377a59f9f824386246d73ca5d"
+source = "git+https://github.com/pyca/verified-garbage?rev=e7b0fe8a82b7777958e078573771d51415f105bb#e7b0fe8a82b7777958e078573771d51415f105bb"
 dependencies = [
  "verified-garbage-cpu",
 ]
@@ -6034,7 +6050,7 @@ dependencies = [
 [[package]]
 name = "verified-garbage-asm-x86"
 version = "0.0.0"
-source = "git+https://github.com/pyca/verified-garbage?rev=d004ffaeb3c226c377a59f9f824386246d73ca5d#d004ffaeb3c226c377a59f9f824386246d73ca5d"
+source = "git+https://github.com/pyca/verified-garbage?rev=e7b0fe8a82b7777958e078573771d51415f105bb#e7b0fe8a82b7777958e078573771d51415f105bb"
 dependencies = [
  "verified-garbage-cpu",
 ]
@@ -6042,7 +6058,7 @@ dependencies = [
 [[package]]
 name = "verified-garbage-asm-x86_64"
 version = "0.0.0"
-source = "git+https://github.com/pyca/verified-garbage?rev=d004ffaeb3c226c377a59f9f824386246d73ca5d#d004ffaeb3c226c377a59f9f824386246d73ca5d"
+source = "git+https://github.com/pyca/verified-garbage?rev=e7b0fe8a82b7777958e078573771d51415f105bb#e7b0fe8a82b7777958e078573771d51415f105bb"
 dependencies = [
  "verified-garbage-cpu",
 ]
@@ -6050,7 +6066,7 @@ dependencies = [
 [[package]]
 name = "verified-garbage-cpu"
 version = "0.0.0"
-source = "git+https://github.com/pyca/verified-garbage?rev=d004ffaeb3c226c377a59f9f824386246d73ca5d#d004ffaeb3c226c377a59f9f824386246d73ca5d"
+source = "git+https://github.com/pyca/verified-garbage?rev=e7b0fe8a82b7777958e078573771d51415f105bb#e7b0fe8a82b7777958e078573771d51415f105bb"
 
 [[package]]
 name = "version_check"
@@ -6260,6 +6276,16 @@ name = "wasm-bindgen-test-shared"
 version = "0.2.130"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9ab365ce29ba0232367502b2894556ae77a9c214d33dbf453fdba7f586905918"
+
+[[package]]
+name = "wasm-fixture"
+version = "0.0.0"
+dependencies = [
+ "getrandom 0.2.17",
+ "getrandom 0.3.4",
+ "getrandom 0.4.3",
+ "rustls-pki-types",
+]
 
 [[package]]
 name = "web-sys"

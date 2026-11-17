@@ -127,7 +127,9 @@
               })
               armv7-cc
               pkgs.qemu-user
-            ];
+            ]
+            # sh/armv7.sh asks setarch whether the host runs AArch32 code.
+            ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.util-linux ];
 
             env = {
               CC_armv7_unknown_linux_gnueabihf = "${armv7-prefix}cc";
@@ -190,6 +192,37 @@
                 RUSTDOCFLAGS = rustflags;
               };
             };
+
+          # aws-lc's ACVP client, of the aws-lc release nixpkgs pins. Its
+          # `-json` mode answers vector sets offline through a module wrapper,
+          # as `rind-acvp`'s tests run it on rind's FIPS module.
+          acvptool = pkgs.buildGoModule {
+            pname = "acvptool";
+            inherit (pkgs.aws-lc) version src;
+            subPackages = [ "util/fipstools/acvp/acvptool" ];
+            vendorHash = "sha256-495bUr3Cuo7kuhuNLMVhrVg9NXTAXyFmnXRmBrCHovA=";
+            # It forwards ML-DSA's `externalMu` from external-interface groups
+            # too, which a wrapper then reads as the internal interface.
+            # See UPSTREAM.md, "acvptool sends ML-DSA's externalMu for the
+            # external interface".
+            postPatch = ''
+              file=util/fipstools/acvp/acvptool/subprocess/ml_dsa.go
+              substituteInPlace $file --replace-fail \
+                'boolToBytes(group.ExternalMu))' \
+                'boolToBytes(internalOnly(group.SignatureInterface, group.ExternalMu)))'
+              cat >>$file <<'EOF'
+
+              // internalOnly is externalMu for the internal interface, the only
+              // one it applies to, and absent for the external one.
+              func internalOnly(signatureInterface string, externalMu *bool) *bool {
+              	if !strings.EqualFold(signatureInterface, "internal") {
+              		return nil
+              	}
+              	return externalMu
+              }
+              EOF
+            '';
+          };
 
           # The tracer `admin/ct-qemu` loads into qemu-arm or qemu-aarch64,
           # built against the plugin API of the qemu-user its shells run.
@@ -480,6 +513,8 @@
                   rustfmt-unstable
                   quest-cli
                   release-plz
+                  # rind-acvp's tests answer ACVP's vector sets through it.
+                  acvptool
                 ]
                 ++ python-shell.packages
                 ++ pkgs.lib.optionals (!pkgs.stdenv.hostPlatform.isDarwin) [
@@ -679,6 +714,35 @@
               ];
             };
 
+            # `admin/prove vg` and the prove workflow's `vg` jobs run in it:
+            # the Rust that compiles VG's naked functions and rind's, with the
+            # targets the bytes check reads; nixpkgs' LLVM, whose `llvm-mc`
+            # assembles VG's text with an assembler other than rustc's; elan,
+            # for the Lean that `proofs/lean-toolchain` names, which builds
+            # VG's models; and the emulator that runs the instructions this
+            # CPU lacks: Intel SDE on x86_64, qemu-aarch64 on aarch64.
+            vg = pkgs.mkShell {
+              packages = [
+                (rust-stable.minimal.override {
+                  extensions = [ "llvm-tools" ];
+                  targets = [
+                    "x86_64-unknown-linux-gnu"
+                    "aarch64-unknown-linux-gnu"
+                  ];
+                })
+                pkgs.llvmPackages_21.llvm
+                pkgs.elan
+                pkgs.git
+                pkgs.curl
+                pkgs.python3
+                pkgs.flock
+              ]
+              ++ pkgs.lib.optionals (system == "x86_64-linux") [ sde ]
+              ++ pkgs.lib.optionals (system == "aarch64-linux") [ pkgs.qemu-user ];
+
+              shellHook = pkgs.lib.optionalString (system == "x86_64-linux") sde-certs;
+            };
+
             # `admin/ctgrind` and the ctgrind workflow run in it. A separate
             # shell because crabgrind's bindgen needs libclang, which no other
             # job does.
@@ -693,6 +757,17 @@
               ];
 
               env.LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
+            };
+
+            # build.yml's nightly ACVP job answers ACVP's sets in it, with
+            # the large-data hash tests, on x86_64 and aarch64.
+            acvp = pkgs.mkShell {
+              packages = [
+                rust-stable.minimal
+                acvptool
+                # The aws-lc-rs dev-dependency builds C.
+                pkgs.cmake
+              ];
             };
 
             # `just wasm` runs the portable backend's tests on wasm32-wasip2
@@ -864,6 +939,8 @@
                 openssl
                 python3
                 sde
+                # x86-cpu.yml answers ACVP's sets on Diamond Rapids with it.
+                acvptool
                 # `admin/ct-sde` runs SDE without ASLR by its `setarch`.
                 util-linux
               ];

@@ -11,6 +11,8 @@ use crate::Error;
 use crate::error::{KeyFormatError, KeyRejected};
 use crate::high::asn1;
 
+pub mod acvp;
+
 /// A known-answer self-test of one algorithm, covering each of its
 /// functions (encrypt and decrypt, sign and verify, encapsulate and
 /// decapsulate) at its smallest approved size.
@@ -563,7 +565,7 @@ mod kat {
         let ek = key.encapsulation_key();
         check(
             "ml_kem_keygen",
-            sha256_of(&ek.as_bytes())[..] == hex(ML_KEM_EK_SHA256)
+            sha256_of(ek.as_bytes())[..] == hex(ML_KEM_EK_SHA256)
                 && sha256_of(&key.as_bytes())[..] == hex(ML_KEM_DK_SHA256),
         )?;
 

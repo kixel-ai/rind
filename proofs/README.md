@@ -85,10 +85,14 @@ those inputs, in any worktree, restores in under a second.
   stack pointer, and `z` and the stack frame disjoint from the code and the
   inputs, so `z` may not alias `x`. The theorem covers the dispatch,
   the stack frame of up to `8k + 72` bytes below the stack pointer, and the
-  callee-saved registers it restores. The widths that run `__bn_mul4x_mont`
-  and `__bn_sqr8x_mont`, which include every standard RSA size and its CRT
-  primes, are not proven yet, and no axiom in `Rind/` restates the theorem
-  yet. The function has no relocations.
+  callee-saved registers it restores. `BN_MUL_MONT_MUL4X_SUBROUTINE_CORRECT`
+  states the same for every multiple of four from four up, through
+  `__bn_mul4x_mont`, except a multiple of eight with `x = y`: the squarings
+  `__bn_sqr8x_mont` runs, which are not proven yet. It also needs
+  `x + 32` and `m + 32` not to wrap past `2^64`, since the code reads the
+  carry of adding 32 to those pointers, and its stack frame is the
+  `8k + 160` bytes below the stack pointer, saving `x19` to `x28`. No axiom
+  in `Rind/` restates either theorem yet. The function has no relocations.
 - `x86_64/bn_mul_mont_nohw.ml`: `BN_MUL_MONT_NOHW_SUBROUTINE_CORRECT`, rind's
   proof that the naked function `low::x86_64::mont::bn_mul_mont_nohw`,
   aws-lc's word-serial Montgomery multiplication, writes the Montgomery
@@ -129,6 +133,22 @@ those inputs, in any worktree, restores in under a second.
   targets build these functions as Thumb-2, which no proof covers; rustc
   refuses `#[instruction_set(arm::a32)]` on armv7's Linux and Android
   targets, which would otherwise force A32.
+- `x86_64/ecp_nistz256_point_add_affine.ml` and
+  `x86_64/ecp_nistz256_point_add_affinex.ml`:
+  `ECP_NISTZ256_POINT_ADD_AFFINE_SUBROUTINE_CORRECT` and
+  `ECP_NISTZ256_POINT_ADD_AFFINEX_SUBROUTINE_CORRECT`, rind's proofs that
+  aws-lc's mixed additions in `low::x86_64::ecp_nistz256`, its mulq routine
+  and its BMI2 and ADX one, called in place, add an affine point to a
+  Jacobian one in Montgomery form, as s2n-bignum's `p256_montjmixadd`
+  states it, and return either input for the other's infinity. Each proves
+  its four field helpers from entry to return, then the body over 17 calls
+  to them, with s2n-bignum's field algebra. They assume a 16-byte aligned
+  stack at the call, as the System V ABI gives, since the body's MOVDQA
+  stores require it, and read the field constants from the static
+  `POLY`, whose `align(16)` the body's two PANDs from it require. They
+  are of the Linux build's object: Apple's text aligns the helpers to 32
+  bytes but not the entry, so its calls can reach them at other offsets,
+  and no proof covers it.
 
 The fork adds what these proofs need to s2n-bignum: specs from s2n-bignum
 pull requests not yet merged, rind's own RFC 8439 spec of ChaCha20,
@@ -140,6 +160,49 @@ with the pull request's, and `aarch32/`, an AArch32 model of the A32
 instructions armv7's proofs need, which `aarch32/proofs/simulator.ml` checks
 against qemu-arm. `nix develop .#hol-light --command admin/prove cosim` runs
 both cosimulations, on an x86_64 CPU with AVX2.
+
+## verified-garbage's models
+
+[pyca/verified-garbage](https://github.com/pyca/verified-garbage) (VG)
+proves its routines in Lean against its own models of x86_64 and aarch64,
+and prints each routine from the same Lean code twice: as assembly text, and
+as a Rust naked function of machine code from its own encoder. Those models
+are VG's trusted base, and VG's CI checks its encoder only against golden
+tests, so before a routine rind takes from VG counts as proven, rind checks
+both against hardware. `verified-garbage/` holds the models, which
+`admin/import-vg-models` copies byte for byte from VG at the commit
+`admin/import-vg` pins for VG's code,
+and the cosimulation over them, a Lake package of its own, since the models
+import only Lean core. `nix develop .#vg --command admin/prove vg` checks,
+for this CPU's target:
+
+- that every instruction of VG's compiled naked functions, and of each `vg_*`
+  routine rind vendors, is the instruction its assembly text gives, which
+  `admin/vg-bytes` assembles with nixpkgs' LLVM; a branch or call need only
+  reach the same instruction or function, since the assembler lays those
+  out, and an encoding that differs but disassembles the same is reported;
+- that each distinct instruction of VG's code ends, from random states, in
+  the state VG's model gives. `Cosim/` parses each instruction's text back to
+  every instruction of the model that prints as exactly that text, runs the
+  model on random states, weighted toward edge values, with each memory
+  operand in a window of the runner's data, and `admin/vg-cosim-runner.rs`
+  runs VG's machine code for it on the CPU, or under Intel SDE or
+  qemu-aarch64 for an instruction that needs a feature the CPU lacks, and
+  compares every register, flag the model defines, and byte of the data.
+  A conditional branch is checked for whether it is taken, and a call or
+  indirect call with the `ret` that returns from it. A table load is checked
+  with random table words at the address it reads.
+
+Not cosimulated: the `jmp`/`b` and the address of a static (`lea`, or
+`adrp` and `add`), which the assembler and linker resolve and the bytes
+check covers, and `ret` alone, which each call's case runs. The `prove`
+workflow runs it on x86_64 and aarch64, nightly with a new seed.
+
+A gap in what the models allow across instructions is beyond what
+cosimulating one instruction at a time can catch. Reviewers found one that
+holds every VG ✓: a freed frame's bytes keep their values in the models, so
+a proof can read back a value a signal handler may have overwritten on
+hardware ([pyca/verified-garbage#5321](https://github.com/pyca/verified-garbage/issues/5321)).
 
 ## What is proven
 
@@ -166,8 +229,8 @@ routines, in `Rind/X86_64/P256Agree.lean` and `Rind/X86_64/P256.lean`, which
 generator as each target's `Rind/<Arch>/P256Base.lean` states it: aarch64 by
 s2n-bignum's `p256_scalarmulbase`, and x86_64 by rind's Booth driver, which
 selects each table row's point by rind's Rust select and adds it by aws-lc's
-mixed addition, `ecp_nistz256_point_add_affine`, which a placeholder axiom
-states until rind's HOL Light proof of it lands:
+mixed addition, `ecp_nistz256_point_add_affine` or its BMI2 and ADX form,
+which rind proves in HOL Light:
 
 - `p256_generate`: the key's scalar is the first of up to 64 draws whose
   bytes, read big-endian, are in [1, n), it holds its public key, and the key
@@ -335,10 +398,13 @@ no addition doubles, and `Rind/X86_64/P256Table.lean` that its 37-row table
 holds j·2⁷ⁱ·G. Its table select is rind's Rust, which
 `Rind/X86_64/PointSelect.lean` proves on both the AVX2 and SSE2 paths, under
 `RunsSelect`, that `HaveAvx2::check` returns, which `Runs` includes. aws-lc's
-mixed addition is the placeholder axiom `p256_point_add_affine_spec` in
-`Rind/X86_64/S2nBignum.lean`, which no proof covers yet, so x86_64's P-256
-theorems rest on it and earn no ✓ until rind's HOL Light proof of the
-addition lands.
+mixed addition, both its mulq and its BMI2 and ADX routines, is proven in
+HOL Light of the object code rind's Linux build emits, in
+`proofs/hol-light/x86_64/ecp_nistz256_point_add_affine.ml` and
+`ecp_nistz256_point_add_affinex.ml`, which `p256_point_add_affine_spec` in
+`Rind/X86_64/S2nBignum.lean` restates. The proofs reuse s2n-bignum's
+`p256_montjmixadd` field algebra and also cover the two infinities the
+driver starts from.
 `Rind/<Arch>/Axioms.lean` checks the axioms each theorem rests on.
 
 SHA-1 and SHA-256's padding and finalization, and HMAC's keyed states over
@@ -503,8 +569,9 @@ which `Rind/Keccak.lean` proves SymCrypt's KECCAK-f[1600].
 `Rind/<Arch>/KeccakDispatch.lean` proves what rind's dispatch to the one-,
 two-, and four-state routines computes, from those theorems. Each theorem
 assumes `RunsSha3`: rind's entry guard and CPU checks pass. x86_64's AVX-512
-eight-way Keccak, which ML-KEM's sampler runs, has
-[its own quest](/quest/m4/verified/mlkem-avx512-sampler.md).
+eight-way Keccak, which ML-KEM-512's and ML-KEM-1024's sampler runs, is not
+proven; ML-KEM-768 runs pyca/verified-garbage's code there instead, and the
+sampler only when a VG routine reaches its `SampleNTT` bound.
 
 The portable backend's Keccak-f, which its SHA-3, ML-KEM, and ML-DSA run, in
 `Rind/Portable/Keccak.lean`, over a translation of `low/portable/keccak.rs`
@@ -830,7 +897,9 @@ those return without saying which encodings they accept. The loaders assume
 that the entry guard holds, `from_components` also `Runs`, and each `verify`
 theorem `Runs`, `Sha256Blocks`, messages of at most `maxInput` bytes, and
 `MontProducts k`, that `low::x86_64::mont`'s products
-return their results at the modulus's width of k words.
+return their results at the modulus's width of k words, and `NoIfma`, that
+the CPU lacks the AVX-512 IFMA on which the public operation runs
+pyca/verified-garbage's instead, whose Lean proof lives in that project.
 `Rind/X86_64/RsaMont.lean`'s `mont_products` proves it at 16 and 32 words
 with BMI2 and ADX, from s2n-bignum's theorems, and from `AwsLcMont`, that
 aws-lc's unproven routines return theirs, at every other width and CPU.
@@ -913,6 +982,9 @@ proof after those.
 
 - `hol-light/<arch>/`: rind's HOL Light proofs, one file per routine, on
   rind's fork of s2n-bignum in `thirdparty/s2n-bignum`.
+- `verified-garbage/VerifiedGarbage/`: VG's ISA models, copied, and
+  `verified-garbage/Cosim/`, the cosimulation of them, which
+  [verified-garbage's models](#verified-garbages-models) describes.
 - `Rind/<Arch>/{Types,Funs}.lean`: Aeneas's translation, which `admin/prove`
   writes and git ignores.
 - `Rind/<Arch>/{Types,Funs}External.lean` and `Rind/Core.lean`: what the
@@ -1040,9 +1112,6 @@ proof after those.
 
 Beyond Lean's kernel:
 
-- x86_64 P-256's mixed addition, `p256_point_add_affine_spec`, which no
-  proof covers yet.
-
 - Charon and Aeneas's translation, and Aeneas's models of `core`, with
   `Rind/Core.lean`'s.
 - That each hand model computes what the Rust it quotes does. They add no
@@ -1109,6 +1178,6 @@ Beyond Lean's kernel:
   own theorems, with the fork's additions to the x86 model, from
   awslabs/s2n-bignum#450 and rind's own, which
   `admin/prove cosim` checks against the CPU as s2n-bignum checks its own.
-- The translation ignores drops, which here wipe keys and keyed state under
-  the `wipe` feature and restore CPU state, and computes nothing an output
+- The translation ignores drops, which here wipe keys and keyed state and
+  restore CPU state, and computes nothing an output
   depends on.
