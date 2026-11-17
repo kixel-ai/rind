@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# cargo-mutants invokes this as $CARGO. `.cargo/mutants.toml` turns on
-# `rind/wipe` for every package. rind-rcgen's own `wipe` and `zeroize` cannot
-# live in that list: a package that does not depend on rind-rcgen fails to
-# resolve them.
+# cargo-mutants invokes this as $CARGO. rind-rcgen's `zeroize` cannot live in
+# a `features` setting in `.cargo/mutants.toml`: cargo-mutants passes that list
+# to every package, and a package that does not depend on rind-rcgen fails to
+# resolve it.
 #
-# Add those two when this invocation builds only rind-rcgen. A workspace or
-# mixed-package command cannot take them, because cargo requires every
+# Add it when this invocation builds only rind-rcgen. A workspace or
+# mixed-package command cannot take it, because cargo requires every
 # selected package to define a feature it is given. That command runs as
-# given, and rind-rcgen is then built again with the two features, so its
-# wipe tests are not compiled out and a wipe mutant is not reported missed.
+# given, and rind-rcgen is then built again with the feature, so its
+# zeroize tests are not compiled out and a zeroize mutant is not reported missed.
 # `--exclude` is not copied onto that second build: cargo accepts it only
 # with `--workspace`. Excluding rind-rcgen skips the follow-up, so the
 # wrapper does not build the package the caller left out.
@@ -28,7 +28,7 @@ case $1 in
     *) exec "$real" "$@" ;;
 esac
 
-features=(--features=wipe --features=zeroize)
+features=(--features=zeroize)
 
 # Words after the first `--` belong to the test binary, not to cargo.
 cargo_args=()
@@ -77,7 +77,7 @@ if [[ ${#packages[@]} -eq 0 ]]; then
     workspace=1
 fi
 
-# Only rind-rcgen: one command, with the features on it.
+# Only rind-rcgen: one command, with the feature on it.
 if [[ -n $rcgen_spec && $others -eq 0 && $workspace -eq 0 ]]; then
     args=()
     inserted=0
@@ -101,7 +101,7 @@ if [[ $workspace -eq 0 && -z $rcgen_spec ]]; then
 fi
 
 # Workspace or mixed packages. The first command is the one cargo-mutants
-# asked for. The second builds rind-rcgen alone, with the features, and
+# asked for. The second builds rind-rcgen alone, with the feature, and
 # forwards the same test-binary arguments. `--exclude` and its spec are
 # dropped: the follow-up has no `--workspace`, and cargo rejects `--exclude`
 # on its own. An exclusion of rind-rcgen means there is no second command.
