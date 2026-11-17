@@ -12,8 +12,10 @@ runs:
     # A pull request restores the newest cache main saved for the same job,
     # since GitHub lets a branch read its base's caches, and saves none: the
     # repository's 10 GB of caches would otherwise fill with pull requests'
-    # and evict main's.
+    # and evict main's. The workflow's name joins the job id in the key, so
+    # x86-cpu's `check` never shares check.yml's and pr-check.yml's cache.
     - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       with:
+        key: ${{ github.workflow }}
         cmd-format: nix develop ${{ inputs.shell }} --command {0}
         save-if: ${{ github.ref == 'refs/heads/main' }}
