@@ -25,6 +25,7 @@ export const subline = intro[2];
 // The site's page for a claim's proof, where it has one; the rest stay in BENCHMARKS.md.
 const proofPages: Record<string, string> = {
 	[`${repoUrl}/blob/main/BENCHMARKS.md`]: "/benchmarks",
+	[`${repoUrl}/blob/main/BENCHMARKS.md#verified-code`]: "/verified",
 };
 
 export interface Claim {

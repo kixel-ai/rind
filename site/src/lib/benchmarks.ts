@@ -5,6 +5,10 @@ import { lex, link, section } from "./markdown";
 import type { Page } from "./pages";
 import { read, repoUrl } from "./repo";
 
+// A proof's index in `verified`; the same for a proof limited to an OS other
+// than the host's; or why there is none.
+export type VerifiedCell = number | { other_os: number } | "unproven" | "untimed" | "refused";
+
 // A time as the report writes it, its speed bin, and its time over the fastest's.
 export type Cell = [time: string, bin: number, ratio: number] | null;
 
@@ -34,6 +38,10 @@ export interface Host extends Times {
 	refused: Record<string, string[]>;
 	// The index into `verified` of each proof, by row and library.
 	proofs: Record<string, Record<string, number>>;
+	// The host's OS, as a proof's `os` names it.
+	os_kind: "linux" | "macos";
+	// What each library's code shows for every operation here, timed or not, for the verified page.
+	grid: Record<string, Record<string, VerifiedCell>>;
 	build?: Build | { reason: string };
 }
 
@@ -80,6 +88,8 @@ export interface Gap {
 export interface Report {
 	schema: 1;
 	slower: number;
+	// What earns a ✓, which BENCHMARKS.md and the verified page both state.
+	rule: string;
 	bins: { to: number | null; label: string; color: string }[];
 	// rind's times that are the fastest or within 10%, and of how many.
 	standing: [number, number];
@@ -98,7 +108,14 @@ export interface Report {
 		groups: { name: string; benchmarks: string[] }[];
 	} | null;
 	gaps: Gap[];
-	verified: { library: string; operations: string[]; platform: string; proof: string; link: string }[];
+	verified: {
+		library: string;
+		operations: string[];
+		platform: string;
+		os?: "linux" | "macos";
+		proof: string;
+		link: string;
+	}[];
 }
 
 export const report = JSON.parse(read("benchmarks/report.json")) as Report;

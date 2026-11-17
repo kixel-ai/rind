@@ -1251,7 +1251,7 @@ shares it with other gated work, so its numbers are noisier than the weekly
 `.tmp/bench-report/`. `admin/bench-report weekly` saves the latest weekly
 `bench` run's results, and `admin/bench-report render --from DIR` copies a
 collection's measured hosts into `benchmarks/data/` and writes
-`BENCHMARKS.md`, its SVGs, which the README shows too, and the README's comparison table from them,
+`BENCHMARKS.md`, its SVGs, which the README shows too, the README's comparison table, and
 `benchmarks/verified.toml`, and
 `benchmarks/gaps.toml`, which must hold a quest or a reason for every gap
 over 10%.
