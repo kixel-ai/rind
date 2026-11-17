@@ -3,7 +3,7 @@
 //! P-384 on pyca/verified-garbage's proven routines (`super::vg`): `d·G`,
 //! which ECDSA's key generation and signing take, and ECDSA verification.
 //! Each measured faster than rind's; verification only on a key's first use,
-//! as rind's keeps a reused key's multiples.
+//! as rind's over the multiples it keeps for a reused key measured faster.
 
 use core::mem::MaybeUninit;
 
@@ -30,25 +30,37 @@ pub(crate) fn public_key(d: &[u8; 48]) -> Option<[u8; 97]> {
     (crate::low::ct::into_public(ok) == 1).then_some(out)
 }
 
-/// FIPS 186-5's ECDSA verification (section 6.4.2) of the signature `sig`,
-/// `r` then `s` big endian, of the message representative `e`, big endian,
-/// under the X9.62 uncompressed key `public`. False for a key off the curve
-/// or a coordinate not below p, and for `r` or `s` outside [1, n).
-pub(crate) fn ecdsa_verify(public: &[u8; 97], e: &[u8; 48], sig: &[u8; 96]) -> bool {
-    let mut scratch = Scratch(MaybeUninit::uninit());
-    // SAFETY: every pointer is to a distinct Rust object valid for its size,
-    // `e` for its length, so none overlaps another, the stack, or the end of
-    // the address space.
-    let ok = unsafe {
-        vg::vg_ecdsa_p384_verify::vg_ecdsa_p384_verify(
-            public,
-            e.as_ptr(),
-            e.len(),
-            sig,
-            scratch.0.as_mut_ptr(),
-        )
-    };
-    ok == 1
+/// Proof that VG's ECDSA verification runs here, as it does on every aarch64
+/// CPU.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Verify(());
+
+impl Verify {
+    pub(crate) fn check() -> Option<Self> {
+        Some(Self(()))
+    }
+
+    /// FIPS 186-5's ECDSA verification (section 6.4.2) of the signature
+    /// `sig`, `r` then `s` big endian, of the message representative `e`, big
+    /// endian, under the X9.62 uncompressed key `public`. False for a key off
+    /// the curve or a coordinate not below p, and for `r` or `s` outside
+    /// [1, n).
+    pub(crate) fn ecdsa_verify(self, public: &[u8; 97], e: &[u8; 48], sig: &[u8; 96]) -> bool {
+        let mut scratch = Scratch(MaybeUninit::uninit());
+        // SAFETY: every pointer is to a distinct Rust object valid for its
+        // size, `e` for its length, so none overlaps another, the stack, or
+        // the end of the address space.
+        let ok = unsafe {
+            vg::vg_ecdsa_p384_verify::vg_ecdsa_p384_verify(
+                public,
+                e.as_ptr(),
+                e.len(),
+                sig,
+                scratch.0.as_mut_ptr(),
+            )
+        };
+        ok == 1
+    }
 }
 
 #[cfg(test)]
@@ -64,10 +76,11 @@ mod tests {
         let public = crate::low::ct::into_public(public_key(&d).unwrap());
         assert_eq!(public[0], 4);
         let (public, e, sig) = crate::test::p384_ecdsa_case();
-        assert!(ecdsa_verify(&public, &e, &sig));
+        let vg = Verify::check().unwrap();
+        assert!(vg.ecdsa_verify(&public, &e, &sig));
         let mut bad = sig;
         bad[95] ^= 1;
-        assert!(!ecdsa_verify(&public, &e, &bad));
+        assert!(!vg.ecdsa_verify(&public, &e, &bad));
         assert_eq!(public_key(&[0; 48]), None);
         assert_eq!(public_key(&[0xff; 48]), None);
     }

@@ -456,12 +456,17 @@ opaque low.x86_64.p384_montjmixadd_alt.p384_montjmixadd_alt
 opaque low.x86_64.p384_vg.public_key
   : Array Std.U8 48#usize → Result (Option (Array Std.U8 97#usize))
 
+/-- Whether pyca/verified-garbage's P-384 ECDSA verification runs on this
+CPU, opaque as `low.x86_64.p384_vg.public_key` is. -/
+opaque low.x86_64.p384_vg.Verify.check
+  : Result (Option low.x86_64.p384_vg.Verify)
+
 /-- pyca/verified-garbage's P-384 ECDSA verification, opaque as
 `low.x86_64.p384_vg.public_key` is. -/
-opaque low.x86_64.p384_vg.ecdsa_verify
+opaque low.x86_64.p384_vg.Verify.ecdsa_verify
   :
-  Array Std.U8 97#usize → Array Std.U8 48#usize → Array Std.U8 96#usize
-    → Result Bool
+  low.x86_64.p384_vg.Verify → Array Std.U8 97#usize → Array Std.U8 48#usize →
+    Array Std.U8 96#usize → Result Bool
 
 opaque low.x86_64.p384_montjscalarmul.p384_montjscalarmul
   :

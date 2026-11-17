@@ -16,6 +16,10 @@ namespace rind.aarch64
 /-- The entry guard every operation holds, which changes no value. -/
 opaque low.entry.Entry : Type
 
+/-- The token proving the CPU runs pyca/verified-garbage's P-384 ECDSA
+verification, which no proof here covers. -/
+opaque low.aarch64.p384_vg.Verify : Type
+
 /-- The token proving the CPU has the SHA-512 instructions. -/
 opaque low.aarch64.cpu.HaveSha3 : Type
 

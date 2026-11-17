@@ -440,4 +440,7 @@ exclude_re = [
   # Discarding a VG routine's result runs rind's fallback, which computes the
   # same result, as `fallback_matches_vg` checks; only the time differs.
   'rind/src/mid/mlkem\.rs:\d+:\d+: replace vg_ran -> Option<T> with None$',
+  # Either verification gives the same verdict, as `vg_verify_matches_rind`
+  # checks; which one a reused key takes changes only the time.
+  'rind/src/mid/p384\.rs:\d+:\d+: replace \|\| with && in VerifyingKey::raw_ecdsa_verify$',
 ]

@@ -49,11 +49,12 @@ impl PublicKey {
 
 /// A P-384 public key for ECDSA verification.
 ///
-/// It builds the point's multiples on its second verification and keeps
-/// them, so verifying again skips computing them, and a key verified with
-/// once or never, such as an ECDSA key pair's, never pays for them. On x86_64
-/// and aarch64, a key's first verification runs pyca/verified-garbage's
-/// routine; elsewhere, the multiples are built on the first.
+/// Where pyca/verified-garbage's verification runs (`low::p384_vg::Verify`),
+/// on x86_64 CPUs with ADX and on aarch64, it takes a key's first
+/// verification, and on x86_64 every one. Otherwise this builds the point's
+/// multiples on the key's first verification by rind's code and keeps them,
+/// so verifying again skips computing them, and a key never verified with,
+/// such as an ECDSA key pair's, never pays for them.
 #[derive(Clone, Debug)]
 pub(crate) struct VerifyingKey {
     point: AffineMontPoint,
@@ -80,17 +81,23 @@ impl VerifyingKey {
     /// and `s` in [1, n).
     ///
     /// pyca/verified-garbage's routine measured faster than rind's for a
-    /// key's first verification, and rind's over the multiples it keeps as
-    /// fast or faster for a reused key, on aarch64 and on some x86_64 CPUs.
+    /// key's first verification wherever it runs, and on x86_64 for a reused
+    /// key too; rind's over the multiples it keeps measured faster for a
+    /// reused key on aarch64.
     pub(crate) fn raw_ecdsa_verify(&self, r: &Scalar, s: &Scalar, e: &Scalar) -> Result<(), Error> {
         #[cfg(any(rind_backend = "x86_64", rind_backend = "aarch64"))]
-        let Some(odd_multiples) = self
-            .odd_multiples
-            .get_or_build(|| self.point.public_odd_multiples())
-        else {
-            return self.vg_ecdsa_verify(r, s, e);
-        };
-        #[cfg(not(any(rind_backend = "x86_64", rind_backend = "aarch64")))]
+        if let Some(vg) = low::p384_vg::Verify::check() {
+            let first = || {
+                self.odd_multiples
+                    .get_or_build(|| self.point.public_odd_multiples())
+                    .is_none()
+            };
+            // rind's over the multiples it keeps measured faster for a reused
+            // key on aarch64, and VG's on x86_64.
+            if cfg!(rind_backend = "x86_64") || first() {
+                return self.vg_ecdsa_verify(vg, r, s, e);
+            }
+        }
         let odd_multiples = &self
             .odd_multiples
             .get_or_build_now(|| self.point.public_odd_multiples());
@@ -124,13 +131,19 @@ impl VerifyingKey {
     /// takes `e` as the digest whose leftmost 384 bits it reads: `e` itself,
     /// below n.
     #[cfg(any(rind_backend = "x86_64", rind_backend = "aarch64"))]
-    fn vg_ecdsa_verify(&self, r: &Scalar, s: &Scalar, e: &Scalar) -> Result<(), Error> {
+    fn vg_ecdsa_verify(
+        &self,
+        vg: low::p384_vg::Verify,
+        r: &Scalar,
+        s: &Scalar,
+        e: &Scalar,
+    ) -> Result<(), Error> {
         let mut sig = [0u8; 2 * Scalar::BYTES];
         let (sig_r, sig_s) = sig.split_at_mut(Scalar::BYTES);
         sig_r.copy_from_slice(&r.as_bytes());
         sig_s.copy_from_slice(&s.as_bytes());
         let public = self.point.as_bytes_uncompressed();
-        match low::p384_vg::ecdsa_verify(&public, &e.as_bytes(), &sig) {
+        match vg.ecdsa_verify(&public, &e.as_bytes(), &sig) {
             true => Ok(()),
             false => Err(Error::BadSignature),
         }
@@ -1420,7 +1433,9 @@ mod tests {
                     let x = point.as_affine().as_bytes_uncompressed();
                     Scalar::from_bytes_reduced(&x[1..49]).unwrap().as_bytes() == r.as_bytes()
                 };
-                assert_eq!(key.vg_ecdsa_verify(r, s, e).is_ok(), rind);
+                if let Some(vg) = low::p384_vg::Verify::check() {
+                    assert_eq!(key.vg_ecdsa_verify(vg, r, s, e).is_ok(), rind);
+                }
                 for _ in 0..3 {
                     assert_eq!(key.raw_ecdsa_verify(r, s, e).is_ok(), rind);
                 }

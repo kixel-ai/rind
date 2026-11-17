@@ -18,6 +18,10 @@ namespace rind.x86_64
 /-- The entry guard every operation holds, which changes no value. -/
 opaque low.entry.Entry : Type
 
+/-- The token proving the CPU runs pyca/verified-garbage's P-384 ECDSA
+verification, which no proof here covers. -/
+opaque low.x86_64.p384_vg.Verify : Type
+
 /-- The token proving the CPU has BMI2 and ADX. -/
 opaque low.x86_64.cpu.HaveBmi2Adx : Type
 

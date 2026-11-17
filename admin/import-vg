@@ -64,11 +64,10 @@ ROOTS = {
         # keys, and its twin for CPUs with two 512-bit multipliers.
         "vg_rsa_private_crt_precomputed_ifma",
         "vg_rsa_private_crt_precomputed_ifma512",
-        # P-384's k·G, for ECDSA's keys and nonces, and its ECDSA
-        # verification, with BMI2 and ADX and without.
+        # P-384's k·G, for ECDSA's keys and nonces, with BMI2 and ADX and
+        # without, and its ECDSA verification with them.
         "vg_ec_p384_public_key",
         "vg_ec_p384_public_key_adx",
-        "vg_ecdsa_p384_verify",
         "vg_ecdsa_p384_verify_adx",
     ],
     "aarch64": [

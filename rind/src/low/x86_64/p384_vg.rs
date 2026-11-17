@@ -2,9 +2,9 @@
 
 //! P-384 on pyca/verified-garbage's proven routines (`super::vg`): `d·G`,
 //! which ECDSA's key generation and signing take, and ECDSA verification.
-//! Each measured faster than rind's on every x86_64 CPU. Each picks VG's BMI2
+//! `d·G` measured faster than rind's on every x86_64 CPU, and takes VG's BMI2
 //! and ADX variant where the CPU has its features, as VG's own dispatcher
-//! does.
+//! does; verification only with BMI2 and ADX.
 
 use core::mem::MaybeUninit;
 
@@ -54,36 +54,34 @@ fn public_key_with(adx: Option<HaveAvx2Adx>, d: &[u8; 48]) -> Option<[u8; 97]> {
     (crate::low::ct::into_public(ok) == 1).then_some(out)
 }
 
-/// FIPS 186-5's ECDSA verification (section 6.4.2) of the signature `sig`,
-/// `r` then `s` big endian, of the message representative `e`, big endian,
-/// under the X9.62 uncompressed key `public`. False for a key off the curve
-/// or a coordinate not below p, and for `r` or `s` outside [1, n).
-pub(crate) fn ecdsa_verify(public: &[u8; 97], e: &[u8; 48], sig: &[u8; 96]) -> bool {
-    ecdsa_verify_with(HaveBmi2Adx::check(), public, e, sig)
-}
+/// Proof that VG's ECDSA verification runs here: the CPU has BMI2 and ADX.
+/// Without them, VG's baseline routine measured slower than rind's on AMD's
+/// cores, so rind's runs instead.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Verify(HaveBmi2Adx);
 
-/// [`ecdsa_verify`] on the BMI2 and ADX variant if `adx` holds proof the CPU
-/// has its features, or on the baseline one otherwise.
-fn ecdsa_verify_with(
-    adx: Option<HaveBmi2Adx>,
-    public: &[u8; 97],
-    e: &[u8; 48],
-    sig: &[u8; 96],
-) -> bool {
-    use vg::{vg_ecdsa_p384_verify::*, vg_ecdsa_p384_verify_adx::*};
-    let mut scratch = Scratch::new();
-    let (e, len, s) = (e.as_ptr(), e.len(), scratch.as_mut_ptr());
-    // SAFETY: every pointer is to a distinct Rust object valid for its size,
-    // `e` for `len` bytes, so none overlaps another, the stack, or the end of
-    // the address space. `adx` proves the CPU has the ADX variant's
-    // features.
-    let ok = unsafe {
-        match adx {
-            Some(_) => vg_ecdsa_p384_verify_adx(public, e, len, sig, s),
-            None => vg_ecdsa_p384_verify(public, e, len, sig, s),
-        }
-    };
-    ok == 1
+impl Verify {
+    pub(crate) fn check() -> Option<Self> {
+        HaveBmi2Adx::check().map(Self)
+    }
+
+    /// FIPS 186-5's ECDSA verification (section 6.4.2) of the signature
+    /// `sig`, `r` then `s` big endian, of the message representative `e`, big
+    /// endian, under the X9.62 uncompressed key `public`. False for a key off
+    /// the curve or a coordinate not below p, and for `r` or `s` outside
+    /// [1, n).
+    pub(crate) fn ecdsa_verify(self, public: &[u8; 97], e: &[u8; 48], sig: &[u8; 96]) -> bool {
+        let mut scratch = Scratch::new();
+        let (e, len, s) = (e.as_ptr(), e.len(), scratch.as_mut_ptr());
+        // SAFETY: every pointer is to a distinct Rust object valid for its
+        // size, `e` for `len` bytes, so none overlaps another, the stack, or
+        // the end of the address space. `self` proves the CPU has BMI2 and
+        // ADX.
+        let ok = unsafe {
+            vg::vg_ecdsa_p384_verify_adx::vg_ecdsa_p384_verify_adx(public, e, len, sig, s)
+        };
+        ok == 1
+    }
 }
 
 #[cfg(test)]
@@ -105,12 +103,12 @@ mod tests {
         assert_eq!(public_key_with(None, &[0; 48]), None);
         assert_eq!(public_key_with(HaveAvx2Adx::check(), &[0xff; 48]), None);
 
-        let (public, e, sig) = crate::test::p384_ecdsa_case();
-        for adx in [None, HaveBmi2Adx::check()] {
-            assert!(ecdsa_verify_with(adx, &public, &e, &sig));
+        if let Some(vg) = Verify::check() {
+            let (public, e, sig) = crate::test::p384_ecdsa_case();
+            assert!(vg.ecdsa_verify(&public, &e, &sig));
             let mut bad = sig;
             bad[95] ^= 1;
-            assert!(!ecdsa_verify_with(adx, &public, &e, &bad));
+            assert!(!vg.ecdsa_verify(&public, &e, &bad));
         }
     }
 }
