@@ -213,10 +213,8 @@ family since 2004, and of some AMD cores.
 [mldsa-native]: https://github.com/pq-code-package/mldsa-native
 [libcrux]: https://github.com/cryspen/libcrux
 [aws-lc]: https://github.com/aws/aws-lc
-[verified-garbage]: https://github.com/pyca/verified-garbage
 [BoringSSL]: https://boringssl.googlesource.com/boringssl
 [OpenSSL]: https://github.com/openssl/openssl
-[verified-garbage]: https://github.com/pyca/verified-garbage
 [MPC603EUM]: https://www.nxp.com/docs/en/reference-manual/MPC603EUM.pdf
 [MPC604EUM]: https://www.nxp.com/docs/en/reference-manual/MPC604EUM.pdf
 [MPC750UM]: https://www.nxp.com/docs/en/reference-manual/MPC750UM.pdf
