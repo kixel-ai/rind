@@ -203,10 +203,9 @@ cosimulating one instruction at a time can catch. Reviewers found one: a
 freed frame's bytes kept their values in the models, so a proof could read
 back a value a signal handler may have overwritten on hardware
 ([pyca/verified-garbage#5321](https://github.com/pyca/verified-garbage/issues/5321)).
-The AArch64 model at the pin loses them, but x86-64's still keeps them until
-a re-pin past its fix
-([pyca/verified-garbage#5378](https://github.com/pyca/verified-garbage/pull/5378)),
-so that gap holds every x86_64 VG ✓.
+The AArch64 and x86-64 models at the pin lose them
+([pyca/verified-garbage#5391](https://github.com/pyca/verified-garbage/pull/5391)
+and [#5378](https://github.com/pyca/verified-garbage/pull/5378)).
 
 `Rind/VgChaCha20.lean` transliterates VG's RFC 8439 spec, `Spec/ChaCha20.lean`,
 over the bytes of its streaming state, and proves its keystream is
@@ -892,9 +891,7 @@ kernel's contract, which no proof covers yet;
 [the x86_64 cipher quest](/quest/m4/verified/chacha20-poly1305-x86/cipher.md)
 owns it. It also assumes `RunsVg`: the entry guard admits the call, and the
 CPU-feature checks find AVX2 or AVX-512 VL. VG's code earns its ✓ on this
-path once `admin/import-vg` re-pins past
-[pyca/verified-garbage#5378](https://github.com/pyca/verified-garbage/pull/5378),
-as the stack-slot gap above holds it.
+path from its theorems; the kernel's is the cipher quest's.
 
 RSASSA-PKCS1-v1_5 and RSASSA-PSS verification with SHA-256 on x86_64, from
 the signature API's `rsa::PublicKey` to the Montgomery products, in

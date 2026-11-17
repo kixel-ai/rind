@@ -37,7 +37,11 @@ What was there on entry (all of the registers, and the memory outside the
 buffers) is taken as given: a secret the caller passed in a register, or
 left in one, is the caller's. So are the return addresses the code's calls
 push (`State.unknowns`), which the two runs share: they are where the code
-is, not data.
+is, not data. So is what replaces the bytes of a frame the function released
+(`lose`, `TCB/X86_64/Isa.lean`): the unknowns say which bytes are replaced
+and by what, the same in both runs, so a byte that is not replaced is
+compared as the function left it, and a frame that held a secret must
+still be wiped.
 
 Not covered, because the model does not have them: the opmask register `k1`
 (which the masked AVX-512 moves set from a general-purpose register), the

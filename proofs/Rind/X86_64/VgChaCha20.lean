@@ -49,8 +49,8 @@ it, or wraps the address space, and the token proves the CPU features. A
 slice's length is its own, which no call changes. -/
 
 /-- VG's `vg_chacha20_init` on x86_64 meets `VG.Spec.ChaCha20.initContract`
-([`Stream.init_verified`](https://github.com/pyca/verified-garbage/blob/9eed89c28d3cc1edaf004160319878b49199cdbd/lean/VerifiedGarbage/Proof/ChaCha20/X86_64/Stream/Init.lean),
-which [`Artifacts/ChaCha20/X86_64.lean`](https://github.com/pyca/verified-garbage/blob/9eed89c28d3cc1edaf004160319878b49199cdbd/lean/VerifiedGarbage/Artifacts/ChaCha20/X86_64.lean)
+([`Stream.init_verified`](https://github.com/pyca/verified-garbage/blob/0aa40d6c21fd02943fe5b38a5b69b6213d07764d/lean/VerifiedGarbage/Proof/ChaCha20/X86_64/Stream/Init.lean),
+which [`Artifacts/ChaCha20/X86_64.lean`](https://github.com/pyca/verified-garbage/blob/0aa40d6c21fd02943fe5b38a5b69b6213d07764d/lean/VerifiedGarbage/Artifacts/ChaCha20/X86_64.lean)
 registers as `initReg`, of the code VG emits): the state holds the key and
 the whole keystream for the counter and nonce. -/
 @[step]
@@ -60,9 +60,9 @@ axiom vg_chacha20_init_spec (st : VgState) (key : Std.Array U32 8#usize) (counte
       vg.restAt (bvs st'.val) = vg.keystreamOf (wordBytes key.val) (wordBytes counter_nonce.val) ⦄
 
 /-- VG's `vg_chacha20_apply_avx2` on x86_64 meets
-`VG.Spec.ChaCha20.applyContract` ([`Stream.apply_verified`](https://github.com/pyca/verified-garbage/blob/9eed89c28d3cc1edaf004160319878b49199cdbd/lean/VerifiedGarbage/Proof/ChaCha20/X86_64/Stream/ApplyCT.lean)
+`VG.Spec.ChaCha20.applyContract` ([`Stream.apply_verified`](https://github.com/pyca/verified-garbage/blob/0aa40d6c21fd02943fe5b38a5b69b6213d07764d/lean/VerifiedGarbage/Proof/ChaCha20/X86_64/Stream/ApplyCT.lean)
 for its AVX2 `vg_chacha20_xor`, which
-[`Artifacts/ChaCha20/X86_64.lean`](https://github.com/pyca/verified-garbage/blob/9eed89c28d3cc1edaf004160319878b49199cdbd/lean/VerifiedGarbage/Artifacts/ChaCha20/X86_64.lean)
+[`Artifacts/ChaCha20/X86_64.lean`](https://github.com/pyca/verified-garbage/blob/0aa40d6c21fd02943fe5b38a5b69b6213d07764d/lean/VerifiedGarbage/Artifacts/ChaCha20/X86_64.lean)
 registers as `applyReg avx2`, of the code VG emits): if at least the data's
 length of keystream is left, it XORs the next bytes of it into the data,
 keeps the rest, and returns 1; otherwise it returns 0 and changes neither. -/
