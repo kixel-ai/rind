@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Build, lint, and test the armv7 targets, as `just armv7` runs it inside the
 # flake's `armv7` dev shell. The gnueabihf tests run three times, to cover
-# each of rind's armv7 tiers, under qemu-user or, for the crypto extension's
-# tier on an aarch64 host, natively.
+# each of rind's armv7 tiers, under qemu-user or, on an aarch64 host that runs
+# AArch32 code, natively for all but the Cortex-A15's.
 set -euo pipefail
 
 if [[ -z "${CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_RUNNER:-}" ]]; then
@@ -29,17 +29,21 @@ cargo clippy "${packages[@]}" --locked --target "$target" --all-targets -- --den
 export CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS=true
 export CARGO_PROFILE_RELEASE_OVERFLOW_CHECKS=true
 
-# The crypto extension's runs take qemu's `max` CPU, which has it and so
-# NEON, except on an aarch64 host, such as GitHub's arm64 runners, which runs
-# them natively; a host without AArch32 or its crypto extension fails them.
-# The Cortex-A15 is ARMv7 with NEON but without the extension, and denying
-# its NEON leaves only the scalar paths; those runs stay under qemu on every
-# host, since a fault on an instruction that CPU lacks is what they check.
-# RIND_TEST_ARM_* fails the run that lands on the wrong path.
+# The crypto extension's tier takes qemu's `max` CPU, which has it and so
+# NEON. The NEON-denied tier hides NEON, and with it the extension, behind
+# rind's software mask, leaving only the scalar paths. Both run natively on an
+# aarch64 host that runs AArch32 code, such as GitHub's arm64 runners; the
+# kernel refuses the 32-bit personality on one that can't, such as Graviton 4
+# or a VM on Apple silicon. The Cortex-A15 is ARMv7 with NEON but without the
+# extension: its tier stays under qemu on every host, where an instruction
+# from the extension faults. RIND_TEST_ARM_* fails a run on the wrong path.
 crypto=(env QEMU_CPU=max)
-if [[ "$(uname -m)" == aarch64 ]]; then
+denied=(env QEMU_CPU=cortex-a15)
+if [[ "$(uname -m)" == aarch64 ]] && setarch linux32 true 2>/dev/null; then
+    echo "armv7: the crypto-extension and NEON-denied tiers run natively" >&2
     crypto=(env -u CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_RUNNER)
+    denied=("${crypto[@]}")
 fi
 "${crypto[@]}" RIND_TEST_ARM_NEON=1 RIND_TEST_ARM_CRYPTO_EXT=1 cargo test "${packages[@]}" --locked --release --target "$target"
 QEMU_CPU=cortex-a15 RIND_TEST_ARM_NEON=1 RIND_TEST_ARM_CRYPTO_EXT=0 cargo test "${packages[@]}" --locked --release --target "$target"
-QEMU_CPU=cortex-a15 RIND_CPU_DISABLE_neon=1 RIND_TEST_ARM_NEON=0 RIND_TEST_ARM_CRYPTO_EXT=0 cargo test "${packages[@]}" --locked --release --target "$target"
+"${denied[@]}" RIND_CPU_DISABLE_neon=1 RIND_TEST_ARM_NEON=0 RIND_TEST_ARM_CRYPTO_EXT=0 cargo test "${packages[@]}" --locked --release --target "$target"
