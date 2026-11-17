@@ -155,6 +155,11 @@ mod tests {
     use super::*;
     use crate::test::p256_vg::{check_ecdh, check_verify};
 
+    /// The generator G, as an X9.62 uncompressed point.
+    const G: [u8; 65] = *b"\x04\
+\x6b\x17\xd1\xf2\xe1\x2c\x42\x47\xf8\xbc\xe6\xe5\x63\xa4\x40\xf2\x77\x03\x7d\x81\x2d\xeb\x33\xa0\xf4\xa1\x39\x45\xd8\x98\xc2\x96\
+\x4f\xe3\x42\xe2\xfe\x1a\x7f\x9b\x8e\xe7\xeb\x4a\x7c\x0f\x9e\x16\x2b\xce\x33\x57\x6b\x31\x5e\xce\xcb\xb6\x40\x68\x37\xbf\x51\xf5";
+
     // The CPU's widest variant hides the narrower from every other test, so
     // each variant the CPU runs is checked against Wycheproof here.
     #[test]
@@ -169,6 +174,32 @@ mod tests {
         }
     }
 
+    // `check_public_key` keeps rind's own on AMD without IFMA, as on the
+    // ctgrind runners, so the public key's derivation is checked here, on
+    // secret private keys: 1 gives G, others agree with ECDH against G, and
+    // 0 and n are refused.
+    #[test]
+    fn public_key_matches_ecdh() {
+        let Some(vg) = P256::check() else {
+            return;
+        };
+        let mut one = [0u8; 32];
+        one[31] = 1;
+        let g = vg.public_key(&ct::into_secret(one)).map(ct::into_public);
+        assert_eq!(g, Some(G));
+        for byte in [0x01, 0x5a, 0xa5, 0xfe] {
+            let d = ct::into_secret([byte; 32]);
+            let public = vg.public_key(&d).map(ct::into_public).unwrap();
+            let shared = ecdh(vg.width(), &d, &G).map(ct::into_public).unwrap();
+            assert_eq!(public[0], 4);
+            assert_eq!(public[1..33], shared);
+        }
+        let n = *b"\xff\xff\xff\xff\x00\x00\x00\x00\xff\xff\xff\xff\xff\xff\xff\xff\
+\xbc\xe6\xfa\xad\xa7\x17\x9e\x84\xf3\xb9\xca\xc2\xfc\x63\x25\x51";
+        assert_eq!(vg.public_key(&[0; 32]), None);
+        assert_eq!(vg.public_key(&n), None);
+    }
+
     // VG's AVX-512 IFMA ECDH runs no instruction valgrind can, so
     // `admin/ct-sde` checks it: a private key from the seed, with G as the
     // peer. Verification takes no secret.
@@ -180,9 +211,6 @@ mod tests {
         let ifma = HaveIfmaForVgP256::check().expect("AVX-512 IFMA");
         let mut d = [0x5a; 32];
         d[24..].copy_from_slice(&ct_sde::seed().to_be_bytes());
-        let g = *b"\x04\
-\x6b\x17\xd1\xf2\xe1\x2c\x42\x47\xf8\xbc\xe6\xe5\x63\xa4\x40\xf2\x77\x03\x7d\x81\x2d\xeb\x33\xa0\xf4\xa1\x39\x45\xd8\x98\xc2\x96\
-\x4f\xe3\x42\xe2\xfe\x1a\x7f\x9b\x8e\xe7\xeb\x4a\x7c\x0f\x9e\x16\x2b\xce\x33\x57\x6b\x31\x5e\xce\xcb\xb6\x40\x68\x37\xbf\x51\xf5";
-        assert!(ct_sde::traced(|| ecdh(Width::Ifma(ifma), &d, &g)).is_some());
+        assert!(ct_sde::traced(|| ecdh(Width::Ifma(ifma), &d, &G)).is_some());
     }
 }
