@@ -94,6 +94,18 @@ async function picks(base: string) {
 	await view.navigate(`${base}?cpu=${first}&libs=${shown.join(",")}`);
 	await view.evaluate(hydrated);
 	await expect({ views: [`view-${first}`], libs: shown, search: `?cpu=${first}&libs=${shown.join(",")}` });
+	// Back within the page restores the controls with the address: an in-page
+	// link pushes an entry, a pick rewrites that entry, and Back returns to the
+	// earlier one.
+	await view.evaluate(`location.hash = "times"`);
+	await view.scrollTo(`#cpu-${second}`, { timeout: 5000 });
+	await view.click(`#cpu-${second}`, { timeout: 5000 });
+	await expect({ views: [`view-${second}`], libs: shown, search: `?cpu=${second}&libs=${shown.join(",")}` });
+	await view.evaluate(`new Promise((resolve) => {
+		addEventListener("popstate", () => setTimeout(resolve, 100), { once: true });
+		history.back();
+	})`);
+	await expect({ views: [`view-${first}`], libs: shown, search: `?cpu=${first}&libs=${shown.join(",")}` });
 	await view.scrollTo(`#cpu-${second}`, { timeout: 5000 });
 	await view.click(`#cpu-${second}`, { timeout: 5000 });
 	await expect({ views: [`view-${second}`], libs: shown, search: `?cpu=${second}&libs=${shown.join(",")}` });

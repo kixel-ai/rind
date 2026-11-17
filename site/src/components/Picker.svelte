@@ -23,15 +23,20 @@
 	// The address is read before it is written, so a linked view isn't lost.
 	let ready = $state(false);
 
-	onMount(() => {
+	// Sets the view from the address, with the defaults for what it omits.
+	const read = () => {
 		const query = new URLSearchParams(location.search);
 		const picked = query.get("cpu");
-		if (picked !== null && cpuIds.includes(picked)) cpu = picked;
+		cpu = picked !== null && cpuIds.includes(picked) ? picked : cpuIds[0];
 		// An empty list shows none; one naming no library this page has, such as
 		// a renamed one, shows them all rather than an empty table.
 		const listed = query.get("libs");
 		const known = libIds.filter((id) => listed?.split(",").includes(id));
-		if (listed === "" || known.length > 0) libs = known;
+		libs = listed === "" || known.length > 0 ? known : [...libIds];
+	};
+
+	onMount(() => {
+		read();
 		ready = true;
 		// A label elsewhere on the page for one of the CPUs, such as a gap's
 		// host, picks it by itself; this brings the view it shows into sight.
@@ -48,9 +53,13 @@
 		};
 		document.addEventListener("click", follow);
 		document.addEventListener("keydown", press);
+		// Back and Forward within the page, such as after a gap's link, restore
+		// the address but not the controls.
+		window.addEventListener("popstate", read);
 		return () => {
 			document.removeEventListener("click", follow);
 			document.removeEventListener("keydown", press);
+			window.removeEventListener("popstate", read);
 		};
 	});
 
