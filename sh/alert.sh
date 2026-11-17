@@ -5,11 +5,11 @@
 # timed_out). A Release or Dart release cancellation posts when a job started.
 # release.yml's concurrency group leaves an in-progress publish running, but a
 # newer push cancels the pending one behind it, and that run never starts a
-# job. Check stays off that path: cancel-in-progress replaces an in-progress
-# run on the next push to main, so a Check cancellation does not post. When
-# the jobs API cannot classify a cancellation, the embed still posts and says
-# so: no workflow watches Alert, so a failed classification would otherwise
-# vanish.
+# job. Site deploy stays off that path: a deploy waiting behind another is
+# replaced by a newer one and ends cancelled, so its cancellation does not
+# post. When the jobs API cannot classify a cancellation, the embed still posts
+# and says so: no workflow watches Alert, so a failed classification would
+# otherwise vanish.
 # Usage:
 #   sh/alert.sh discord   Post this workflow_run when it should alert.
 #   sh/alert.sh check     Verify alert.yml's watch list and its if.
@@ -42,12 +42,13 @@ release_names=(
     "Dart release"
 )
 
-# Check alerts on failure and timed_out only. A newer push cancels the
-# in-progress run after its job has started, and that is not a hung publish.
+# Site deploy alerts on failure and timed_out only. A deploy waiting behind
+# another is replaced by a newer one and ends cancelled, and that is not a hung
+# deploy.
 # alert.yml's failure/timed_out arm lists these plus the release names. judge
-# reads this array, and is_check reads it too.
-check_names=(
-    Check
+# reads this array, and is_deploy reads it too.
+deploy_names=(
+    "Site deploy"
 )
 
 # Either sentence GitHub writes when a job hits a time limit. timeout-minutes
@@ -59,7 +60,7 @@ check_names=(
 timeout_re='has exceeded the maximum execution time of .+'
 
 # Posts one embed. A scheduled cancellation posts only for a job time limit.
-# A release cancellation posts once a job has started. A Check cancellation
+# A release cancellation posts once a job has started. A Site deploy cancellation
 # does not post. A cancellation that cannot be classified still posts, with
 # that fact in the title.
 discord() {
@@ -79,8 +80,8 @@ discord() {
     if ! should_post "${RUN_CONCLUSION:-}" "${RUN_NAME:-}" "$class"; then
         if is_release "${RUN_NAME:-}"; then
             echo "sh/alert.sh: not posting ${RUN_NAME:-workflow}; a release cancellation posts only after a job has started"
-        elif is_check "${RUN_NAME:-}"; then
-            echo "sh/alert.sh: not posting ${RUN_NAME:-workflow}; a Check cancellation does not alert"
+        elif is_deploy "${RUN_NAME:-}"; then
+            echo "sh/alert.sh: not posting ${RUN_NAME:-workflow}; a Site deploy cancellation does not alert"
         else
             echo "sh/alert.sh: not posting ${RUN_NAME:-workflow} conclusion ${RUN_CONCLUSION:-}; a scheduled cancellation posts only when a job exceeded its time limit"
         fi
@@ -138,9 +139,9 @@ is_release() {
     return 1
 }
 
-is_check() {
+is_deploy() {
     local name="$1" each
-    for each in "${check_names[@]}"; do
+    for each in "${deploy_names[@]}"; do
         [[ $name == "$each" ]] && return 0
     done
     return 1
@@ -149,10 +150,10 @@ is_check() {
 # should_post <conclusion> <workflow name> <class>
 # class is timeout, started, or never, from classify_run. A failure or
 # timed_out always posts. A release cancellation posts unless no job started,
-# which is a pending run a newer push replaced. A Check cancellation does not
-# post, including a time-limit annotation. Check uses cancel-in-progress, so
-# the ordinary cancellation is a newer push, and alert.yml does not start
-# this job for that conclusion. Any other cancellation posts only when a job
+# which is a pending run a newer push replaced. A Site deploy cancellation does
+# not post, including a time-limit annotation. A deploy waiting behind another
+# is replaced by a newer one, so the ordinary cancellation is a superseded
+# deploy, and alert.yml does not start this job for that conclusion. Any other cancellation posts only when a job
 # annotation is a time limit.
 should_post() {
     local conclusion="$1" name="$2" class="$3"
@@ -163,7 +164,7 @@ should_post() {
                 [[ $class != never ]]
                 return
             fi
-            if is_check "$name"; then
+            if is_deploy "$name"; then
                 return 1
             fi
             [[ $class == timeout ]]
@@ -310,9 +311,9 @@ alertable='
 # order and list order do not matter. A predicate outside this shape, such as
 # `&& false`, is rejected. The schedule arm alerts on failure, timed_out, and
 # cancelled, so a time-limit kill starts this job. The push arm names the
-# release workflows and Check, and alerts on failure and timed_out. The
+# release workflows and Site deploy, and alerts on failure and timed_out. The
 # release arm names the release workflows and alerts on cancelled, because a
-# newer push does not cancel Release or Dart release. Check is not on it.
+# newer push does not cancel Release or Dart release. Site deploy is not on it.
 # shellcheck disable=SC2016 # A jq program, not a shell expansion.
 form='
 def squeeze:
@@ -456,7 +457,7 @@ def want($release; $check):
 judge() {
     local release check
     release=$(jq -nc --args '$ARGS.positional' -- "${release_names[@]}")
-    check=$(jq -nc --args '$ARGS.positional' -- "${check_names[@]}")
+    check=$(jq -nc --args '$ARGS.positional' -- "${deploy_names[@]}")
     jq -nr --arg expr "$1" --argjson release "$release" --argjson check "$check" "$form"
 }
 
@@ -554,50 +555,50 @@ expect_fail() {
 # the checker is wrong, not that alert.yml is.
 prove_form() {
     local good swapped loose dot disabled
-    # Check is on the failure/timed_out arm and off the cancelled arm.
+    # Site deploy is on the failure/timed_out arm and off the cancelled arm.
     good=$(cat <<'EOF'
-(github.event.workflow_run.event == 'schedule' && contains(fromJSON('["failure", "timed_out", "cancelled"]'), github.event.workflow_run.conclusion)) || (contains(fromJSON('["failure", "timed_out"]'), github.event.workflow_run.conclusion) && contains(fromJSON('["Release", "Check", "Dart release"]'), github.event.workflow_run.name)) || (contains(fromJSON('["cancelled"]'), github.event.workflow_run.conclusion) && contains(fromJSON('["Release", "Dart release"]'), github.event.workflow_run.name))
+(github.event.workflow_run.event == 'schedule' && contains(fromJSON('["failure", "timed_out", "cancelled"]'), github.event.workflow_run.conclusion)) || (contains(fromJSON('["failure", "timed_out"]'), github.event.workflow_run.conclusion) && contains(fromJSON('["Release", "Dart release", "Site deploy"]'), github.event.workflow_run.name)) || (contains(fromJSON('["cancelled"]'), github.event.workflow_run.conclusion) && contains(fromJSON('["Release", "Dart release"]'), github.event.workflow_run.name))
 EOF
 )
     swapped=$(cat <<'EOF'
-(contains(fromJSON('["Dart release", "Release"]'), github.event.workflow_run.name) && contains(fromJSON('["cancelled"]'), github.event.workflow_run.conclusion)) || (contains(fromJSON('["Check", "Dart release", "Release"]'), github.event.workflow_run.name) && contains(fromJSON('["timed_out", "failure"]'), github.event.workflow_run.conclusion)) || (github.event.workflow_run.event == "schedule" && contains(fromJSON('["timed_out", "cancelled", "failure"]'), github.event.workflow_run.conclusion))
+(contains(fromJSON('["Dart release", "Release"]'), github.event.workflow_run.name) && contains(fromJSON('["cancelled"]'), github.event.workflow_run.conclusion)) || (contains(fromJSON('["Dart release", "Release", "Site deploy"]'), github.event.workflow_run.name) && contains(fromJSON('["timed_out", "failure"]'), github.event.workflow_run.conclusion)) || (github.event.workflow_run.event == "schedule" && contains(fromJSON('["timed_out", "cancelled", "failure"]'), github.event.workflow_run.conclusion))
 EOF
 )
     expect_ok "supported form" "$good"
     expect_ok "reordered arms and operands" "$swapped"
     expect_fail "schedule arm without cancelled" "$(cat <<'EOF'
-(github.event.workflow_run.event == 'schedule' && contains(fromJSON('["failure", "timed_out"]'), github.event.workflow_run.conclusion)) || (contains(fromJSON('["failure", "timed_out"]'), github.event.workflow_run.conclusion) && contains(fromJSON('["Release", "Check", "Dart release"]'), github.event.workflow_run.name)) || (contains(fromJSON('["cancelled"]'), github.event.workflow_run.conclusion) && contains(fromJSON('["Release", "Dart release"]'), github.event.workflow_run.name))
+(github.event.workflow_run.event == 'schedule' && contains(fromJSON('["failure", "timed_out"]'), github.event.workflow_run.conclusion)) || (contains(fromJSON('["failure", "timed_out"]'), github.event.workflow_run.conclusion) && contains(fromJSON('["Release", "Dart release", "Site deploy"]'), github.event.workflow_run.name)) || (contains(fromJSON('["cancelled"]'), github.event.workflow_run.conclusion) && contains(fromJSON('["Release", "Dart release"]'), github.event.workflow_run.name))
 EOF
 )" "not the supported form"
     expect_fail "release arm without cancelled" "$(cat <<'EOF'
-(github.event.workflow_run.event == 'schedule' && contains(fromJSON('["failure", "timed_out", "cancelled"]'), github.event.workflow_run.conclusion)) || (contains(fromJSON('["failure", "timed_out"]'), github.event.workflow_run.conclusion) && contains(fromJSON('["Release", "Check", "Dart release"]'), github.event.workflow_run.name))
+(github.event.workflow_run.event == 'schedule' && contains(fromJSON('["failure", "timed_out", "cancelled"]'), github.event.workflow_run.conclusion)) || (contains(fromJSON('["failure", "timed_out"]'), github.event.workflow_run.conclusion) && contains(fromJSON('["Release", "Dart release", "Site deploy"]'), github.event.workflow_run.name))
 EOF
 )" "not the supported form"
-    expect_fail "Check on the cancelled arm" "$(cat <<'EOF'
-(github.event.workflow_run.event == 'schedule' && contains(fromJSON('["failure", "timed_out", "cancelled"]'), github.event.workflow_run.conclusion)) || (contains(fromJSON('["failure", "timed_out", "cancelled"]'), github.event.workflow_run.conclusion) && contains(fromJSON('["Release", "Check", "Dart release"]'), github.event.workflow_run.name))
+    expect_fail "Site deploy on the cancelled arm" "$(cat <<'EOF'
+(github.event.workflow_run.event == 'schedule' && contains(fromJSON('["failure", "timed_out", "cancelled"]'), github.event.workflow_run.conclusion)) || (contains(fromJSON('["failure", "timed_out", "cancelled"]'), github.event.workflow_run.conclusion) && contains(fromJSON('["Release", "Dart release", "Site deploy"]'), github.event.workflow_run.name))
 EOF
 )" "not the supported form"
-    expect_fail "Check missing from the failure arm" "$(cat <<'EOF'
+    expect_fail "Site deploy missing from the failure arm" "$(cat <<'EOF'
 (github.event.workflow_run.event == 'schedule' && contains(fromJSON('["failure", "timed_out", "cancelled"]'), github.event.workflow_run.conclusion)) || (contains(fromJSON('["failure", "timed_out"]'), github.event.workflow_run.conclusion) && contains(fromJSON('["Release", "Dart release"]'), github.event.workflow_run.name)) || (contains(fromJSON('["cancelled"]'), github.event.workflow_run.conclusion) && contains(fromJSON('["Release", "Dart release"]'), github.event.workflow_run.name))
 EOF
 )" "not the supported form"
     disabled=$(cat <<'EOF'
-(github.event.workflow_run.event == 'schedule' && contains(fromJSON('["failure", "timed_out", "cancelled"]'), github.event.workflow_run.conclusion) && false) || (contains(fromJSON('["failure", "timed_out"]'), github.event.workflow_run.conclusion) && contains(fromJSON('["Release", "Check", "Dart release"]'), github.event.workflow_run.name)) || (contains(fromJSON('["cancelled"]'), github.event.workflow_run.conclusion) && contains(fromJSON('["Release", "Dart release"]'), github.event.workflow_run.name))
+(github.event.workflow_run.event == 'schedule' && contains(fromJSON('["failure", "timed_out", "cancelled"]'), github.event.workflow_run.conclusion) && false) || (contains(fromJSON('["failure", "timed_out"]'), github.event.workflow_run.conclusion) && contains(fromJSON('["Release", "Dart release", "Site deploy"]'), github.event.workflow_run.name)) || (contains(fromJSON('["cancelled"]'), github.event.workflow_run.conclusion) && contains(fromJSON('["Release", "Dart release"]'), github.event.workflow_run.name))
 EOF
 )
     expect_fail "added && false" "$disabled" "unsupported predicate: false"
     loose=$(cat <<'EOF'
-(github.event.workflow_run.event == xschedulex && contains(fromJSON('["failure", "timed_out", "cancelled"]'), github.event.workflow_run.conclusion)) || (contains(fromJSON('["failure", "timed_out"]'), github.event.workflow_run.conclusion) && contains(fromJSON('["Release", "Check", "Dart release"]'), github.event.workflow_run.name)) || (contains(fromJSON('["cancelled"]'), github.event.workflow_run.conclusion) && contains(fromJSON('["Release", "Dart release"]'), github.event.workflow_run.name))
+(github.event.workflow_run.event == xschedulex && contains(fromJSON('["failure", "timed_out", "cancelled"]'), github.event.workflow_run.conclusion)) || (contains(fromJSON('["failure", "timed_out"]'), github.event.workflow_run.conclusion) && contains(fromJSON('["Release", "Dart release", "Site deploy"]'), github.event.workflow_run.name)) || (contains(fromJSON('["cancelled"]'), github.event.workflow_run.conclusion) && contains(fromJSON('["Release", "Dart release"]'), github.event.workflow_run.name))
 EOF
 )
     expect_fail "unquoted event" "$loose" "unsupported predicate"
     dot=$(cat <<'EOF'
-(github.event.workflow_run.event == .schedule. && contains(fromJSON('["failure", "timed_out", "cancelled"]'), github.event.workflow_run.conclusion)) || (contains(fromJSON('["failure", "timed_out"]'), github.event.workflow_run.conclusion) && contains(fromJSON('["Release", "Check", "Dart release"]'), github.event.workflow_run.name)) || (contains(fromJSON('["cancelled"]'), github.event.workflow_run.conclusion) && contains(fromJSON('["Release", "Dart release"]'), github.event.workflow_run.name))
+(github.event.workflow_run.event == .schedule. && contains(fromJSON('["failure", "timed_out", "cancelled"]'), github.event.workflow_run.conclusion)) || (contains(fromJSON('["failure", "timed_out"]'), github.event.workflow_run.conclusion) && contains(fromJSON('["Release", "Dart release", "Site deploy"]'), github.event.workflow_run.name)) || (contains(fromJSON('["cancelled"]'), github.event.workflow_run.conclusion) && contains(fromJSON('["Release", "Dart release"]'), github.event.workflow_run.name))
 EOF
 )
     expect_fail "dot standing in for a quote" "$dot" "unsupported predicate"
     expect_fail "quoted event that merely contains schedule" "$(cat <<'EOF'
-(github.event.workflow_run.event == 'xschedulex' && contains(fromJSON('["failure", "timed_out", "cancelled"]'), github.event.workflow_run.conclusion)) || (contains(fromJSON('["failure", "timed_out"]'), github.event.workflow_run.conclusion) && contains(fromJSON('["Release", "Check", "Dart release"]'), github.event.workflow_run.name)) || (contains(fromJSON('["cancelled"]'), github.event.workflow_run.conclusion) && contains(fromJSON('["Release", "Dart release"]'), github.event.workflow_run.name))
+(github.event.workflow_run.event == 'xschedulex' && contains(fromJSON('["failure", "timed_out", "cancelled"]'), github.event.workflow_run.conclusion)) || (contains(fromJSON('["failure", "timed_out"]'), github.event.workflow_run.conclusion) && contains(fromJSON('["Release", "Dart release", "Site deploy"]'), github.event.workflow_run.name)) || (contains(fromJSON('["cancelled"]'), github.event.workflow_run.conclusion) && contains(fromJSON('["Release", "Dart release"]'), github.event.workflow_run.name))
 EOF
 )" "xschedulex"
 }
@@ -632,13 +633,13 @@ prove_post() {
     expect_post cancelled "Dart release" never no
     expect_post failure Release started yes
     expect_post timed_out "Dart release" started yes
-    # Check keeps failure and timed_out. A cancellation does not post, including
-    # a time-limit annotation: cancel-in-progress is the ordinary case.
-    expect_post failure Check started yes
-    expect_post timed_out Check started yes
-    expect_post cancelled Check started no
-    expect_post cancelled Check never no
-    expect_post cancelled Check timeout no
+    # Site deploy keeps failure and timed_out. A cancellation does not post,
+    # including a time-limit annotation: a superseded deploy is the ordinary case.
+    expect_post failure "Site deploy" started yes
+    expect_post timed_out "Site deploy" started yes
+    expect_post cancelled "Site deploy" started no
+    expect_post cancelled "Site deploy" never no
+    expect_post cancelled "Site deploy" timeout no
     expect_post cancelled asan timeout yes
     # conclusion values other than failure, timed_out, and cancelled do not post.
     expect_post skipped coverage started no

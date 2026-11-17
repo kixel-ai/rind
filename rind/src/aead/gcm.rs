@@ -18,6 +18,7 @@ use crate::mid::aes_gcm::AesGcm;
 /// unless a protocol fixes a shorter tag; SP 800-38D's Appendix C bounds how
 /// much one key may open under 32- and 64-bit tags.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 #[repr(u8)]
 pub enum TagLength {
     /// The whole 128-bit tag.
@@ -73,7 +74,7 @@ impl fmt::Debug for Iv<'_> {
 }
 
 /// An AES-GCM key that takes an IV of any length and makes tags of one
-/// [`TagLength`], as WebCrypto's AES-GCM does; wiped on drop under the `wipe` feature.
+/// [`TagLength`], as WebCrypto's AES-GCM does; wiped on drop.
 ///
 /// Prefer [`super::Key`], whose 96-bit nonces and full tags are what
 /// protocols use; GCM hashes an IV of any other length into its counter,

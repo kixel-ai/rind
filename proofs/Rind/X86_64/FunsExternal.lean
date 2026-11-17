@@ -189,7 +189,7 @@ opaque low.generic.chacha20poly1305.seal
 
 opaque low.generic.chacha20poly1305.open
   : Std.Array Std.U8 32#usize → Std.Array Std.U8 12#usize → Slice Std.U8 → Slice Std.U8 →
-    Result ((Std.Array Std.U8 16#usize) × (Slice Std.U8))
+    Std.Array Std.U8 16#usize → Result (Bool × (Slice Std.U8))
 
 /-! s2n-bignum's Ed25519 routines, transliterated to inline assembly. -/
 
@@ -274,6 +274,16 @@ opaque low.x86_64.sha512.path : Result low.x86_64.sha512.Path
 opaque low.x86_64.cpu.HaveBmi2Adx.check
   : Result (Option low.x86_64.cpu.HaveBmi2Adx)
 
+/-- Whether the CPU runs pyca/verified-garbage's AVX-512 IFMA public
+operation for a key's modulus and exponent, and that operation, which the
+proofs of RSA verification take as not running. -/
+opaque low.x86_64.rsa_ifma.RsaIfma.check
+  {N : Std.Usize} : low.posint.PosInt N → Std.U64 → Result (Option low.x86_64.rsa_ifma.RsaIfma)
+
+opaque mid.rsa_pub.RsaPublicKey.public_op_ifma
+  : mid.rsa_pub.RsaPublicKey → low.x86_64.rsa_ifma.RsaIfma → low.posint.PosInt 128#usize →
+    Result (core.result.Result (low.posint.PosInt 128#usize) error.Error)
+
 opaque low.x86_64.cpu.HaveAvx2.check : Result (Option low.x86_64.cpu.HaveAvx2)
 
 /-! The table selects, over `Rind.X86_64.PointSelectModel`'s model of
@@ -326,9 +336,10 @@ opaque low.x86_64.sha1_mux.path : Result low.x86_64.sha1_mux.Path
 
 opaque low.x86_64.sha256_mux.path : Result low.x86_64.sha256_mux.Path
 
-/-! SHA-1 and SHA-256's block and finishing functions, whose contracts `Rind.X86_64.ShaBlocks`
-states as hypotheses. SHA-1's block function is its whole dispatch, which `Sha1Blocks` states
-as one. -/
+/-! SHA-1 and SHA-256's block and finishing functions. `Rind.X86_64.ShaBlocks` states SHA-1's
+contracts as hypotheses, and `Rind.X86_64.Sha256Shaext` SHA-256's as axioms restating their
+HOL Light proofs. SHA-1's block function is its whole dispatch, which `Sha1Blocks` states as
+one. `finish_padded` is `sha256_finish_shaext`'s `asm!` block, below its padding. -/
 
 opaque low.x86_64.sha1_mux.sha1_compress_blocks
   : Array Std.U32 5#usize → Slice Std.U8 → Result (Array Std.U32 5#usize)
@@ -341,8 +352,8 @@ opaque low.x86_64.sha256.sha256_compress_blocks_shaext
   : Array Std.U32 8#usize → Slice Std.U8 → low.x86_64.cpu.HaveSha256 →
     Result (Array Std.U32 8#usize)
 
-opaque low.x86_64.sha256.sha256_finish_shaext
-  : Array Std.U32 8#usize → Slice Std.U8 → Array Std.U8 8#usize → low.x86_64.cpu.HaveSha256 →
+opaque low.x86_64.sha256.finish_padded
+  : Array Std.U32 8#usize → Slice Std.U8 → low.x86_64.sha256.Padded → low.x86_64.cpu.HaveSha256 →
     Result (Array Std.U8 32#usize)
 
 opaque low.x86_64.sha256.sha256_compress_blocks_avx
@@ -774,7 +785,12 @@ opaque low.x86_64.mont.sqr8x
 
 /-! RSA's DER parsing and encoding, which the ✓ leaves out. -/
 
-opaque high.rsa.der_components
+opaque high.rsa.pkcs1_components
+  :
+  Slice Std.U8 → Result (core.result.Result ((Slice Std.U8) × (Slice
+    Std.U8)) error.Error)
+
+opaque high.rsa.spki_components
   :
   Slice Std.U8 → Result (core.result.Result ((Slice Std.U8) × (Slice
     Std.U8)) error.Error)

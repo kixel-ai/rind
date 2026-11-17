@@ -7,8 +7,8 @@ use core::fmt;
 
 use super::{
     Bytes, ClientState, Group, Key, KeyInner, MAX_ELEMENT, MAX_OUTPUT, MAX_SCALAR, Mode, Output,
-    P256, P384, P521, Pick, Ristretto255, ServerKeyBytes, Suite, SuiteId, decode, derive_scalar,
-    dispatch, encode, hash_to_scalar, identity, len_prefix, scalar_bytes, scalar_from_key, suited,
+    P256, P384, P521, Pick, Ristretto255, Scalar, Suite, SuiteId, decode, derive_scalar, dispatch,
+    encode, hash_to_scalar, identity, len_prefix, scalar_bytes, scalar_from_key, suited,
     with_group,
 };
 use crate::error::Error;
@@ -78,8 +78,7 @@ suited!(
 );
 
 /// The server's key in the VOPRF mode, which evaluates blinded elements
-/// for clients and proves it used the key it published, wiped on drop
-/// under the `wipe` feature.
+/// for clients and proves it used the key it published, wiped on drop.
 ///
 /// It keeps its public key, computed once when it is generated or loaded.
 /// Its outputs differ from an [`oprf::ServerKey`](super::ServerKey)'s with
@@ -109,11 +108,11 @@ impl ServerKey {
         })))
     }
 
-    /// Loads a key for `suite` from its `SerializeScalar` encoding, refused
+    /// Loads a key for `suite` from its scalar, `SerializeScalar`'s encoding, refused
     /// unless it is from 1 to the group order less one.
-    pub fn from_bytes(suite: &'static Suite, bytes: &[u8]) -> Result<Self, Error> {
+    pub fn from_scalar(suite: &'static Suite, scalar: &[u8]) -> Result<Self, Error> {
         let _entry = Entry::new_secret();
-        with_group!(suite, G => Ok(Self::new(Key::<G> { k: scalar_from_key::<G>(bytes)? })))
+        with_group!(suite, G => Ok(Self::new(Key::<G> { k: scalar_from_key::<G>(scalar)? })))
     }
 
     fn new<G: Group>(key: Key<G>) -> Self
@@ -128,9 +127,9 @@ impl ServerKey {
         }
     }
 
-    /// Encodes the key as [`Self::from_bytes`] loads it.
-    pub fn to_bytes(&self) -> ServerKeyBytes {
-        dispatch!(KeyInner, &self.key, key => key.to_bytes())
+    /// Encodes the key as the scalar [`Self::from_scalar`] loads.
+    pub fn to_scalar(&self) -> Scalar {
+        dispatch!(KeyInner, &self.key, key => key.to_scalar())
     }
 
     /// Returns the key's public key, which clients verify proofs with.
@@ -271,7 +270,7 @@ impl fmt::Debug for PublicKey {
 
 /// A client's secret for one input in the VOPRF mode, which verifies the
 /// server's proof and turns its evaluated element into the output, wiped
-/// on drop under the `wipe` feature.
+/// on drop.
 pub struct Blind(BlindInner);
 
 impl Blind {

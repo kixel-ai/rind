@@ -158,8 +158,7 @@ macro_rules! for_set {
 
 generated_encodings!((EncapsulationKeyBytes, EncapsulationKeyBytesType, false));
 
-/// A decapsulation key, which decapsulates any number of ciphertexts, wiped
-/// on drop under the `wipe` feature.
+/// A decapsulation key, which decapsulates any number of ciphertexts, wiped on drop.
 pub struct DecapsulationKey<Id = AlgorithmId>
 where
     Id: AlgorithmIdentifier,
@@ -183,9 +182,9 @@ impl<Id: AlgorithmIdentifier> DecapsulationKey<Id> {
     /// The key's encapsulation key.
     pub fn encapsulation_key(&self) -> Result<EncapsulationKey<Id>, Unspecified> {
         let key = match &self.key {
-            BySet::MlKem512(key) => BySet::MlKem512(Box::new(key.public_key())),
-            BySet::MlKem768(key) => BySet::MlKem768(Box::new(key.public_key())),
-            BySet::MlKem1024(key) => BySet::MlKem1024(Box::new(key.public_key())),
+            BySet::MlKem512(key) => BySet::MlKem512(Box::new(key.public_key().clone())),
+            BySet::MlKem768(key) => BySet::MlKem768(Box::new(key.public_key().clone())),
+            BySet::MlKem1024(key) => BySet::MlKem1024(Box::new(key.public_key().clone())),
         };
         Ok(EncapsulationKey {
             algorithm: self.algorithm,
@@ -319,8 +318,7 @@ impl<'a> From<&'a [u8]> for Ciphertext<'a> {
     }
 }
 
-/// The shared secret encapsulation and decapsulation agree on, wiped on drop
-/// under the `wipe` feature.
+/// The shared secret encapsulation and decapsulation agree on, wiped on drop.
 pub struct SharedSecret(Wiped<Box<[u8]>>);
 
 impl AsRef<[u8]> for SharedSecret {

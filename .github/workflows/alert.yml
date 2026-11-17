@@ -1,10 +1,10 @@
 name: Alert
 
-# Posts to Discord #alerts when a scheduled run, the landing check, or a
-# release stops and nobody is watching. Reads the kixel-ai organization's
-# DISCORD_WEBHOOK secret. A job that runs past its time limit ends cancelled,
-# not timed_out. Release and Dart release set no timeout-minutes, so a hung
-# publish dies at GitHub's 360-minute default.
+# Posts scheduled, landing, release, and deploy failures to the Discord #alerts channel,
+# since those runs have no pull request to turn red. Reads the kixel-ai
+# organization's DISCORD_WEBHOOK secret. A job that runs past its time limit
+# ends cancelled, not timed_out. Release and Dart release set no
+# timeout-minutes, so a hung publish dies at GitHub's 360-minute default.
 
 permissions:
   contents: read
@@ -36,6 +36,7 @@ on:
       - python
       - quality lints
       - regenerate
+      - Site deploy
       - Release
       - timing
       - x86-cpu
@@ -54,22 +55,24 @@ jobs:
     # running on runner ... has exceeded the maximum execution time of ..."
     # form. A hand cancel, or a dispatch that replaces the nightly (these
     # workflows share one concurrency group per ref, with cancel-in-progress),
-    # does not post. Release and Dart release post on failure, timed_out, and
-    # a cancelled run that started a job, however they ran. release.yml sets
-    # cancel-in-progress to false, so a newer push leaves an in-progress
-    # publish running and cancels only a pending one, which never starts a
-    # job and does not post. Dart release has no concurrency group. A
-    # cancellation the jobs API cannot classify still posts, and the embed
-    # says so. Check posts on failure and timed_out only. It sets
-    # cancel-in-progress, so a newer push cancels an in-progress run after
-    # the job has started, and that is the ordinary cancellation. A job that
-    # hits Check's timeout-minutes also ends cancelled; posting that one
-    # would start this job for every superseded Check.
+    # does not post. Release alerts however it ran: it follows the queue's
+    # pushes to main, which nobody watches. So does Dart release, which a tag
+    # push starts with nobody watching. Both post on failure, timed_out, and a
+    # cancelled run that started a job. release.yml sets cancel-in-progress to
+    # false, so a newer push leaves an in-progress publish running and cancels
+    # only a pending one, which never starts a job and does not post. Dart
+    # release has no concurrency group. A cancellation the jobs API cannot
+    # classify still posts, and the embed says so. Site deploy, which a merge
+    # to main starts, posts on failure and timed_out only: a deploy waiting
+    # behind another is replaced by a newer one and ends cancelled, and so
+    # does a job that hits its timeout-minutes, so posting either would start
+    # this job for every superseded deploy. Queue failures stay on the PR and
+    # go to the queue watcher and fixer.
     if: >-
       (github.event.workflow_run.event == 'schedule' &&
       contains(fromJSON('["failure", "timed_out", "cancelled"]'), github.event.workflow_run.conclusion)) ||
       (contains(fromJSON('["failure", "timed_out"]'), github.event.workflow_run.conclusion) &&
-      contains(fromJSON('["Release", "Check", "Dart release"]'), github.event.workflow_run.name)) ||
+      contains(fromJSON('["Release", "Dart release", "Site deploy"]'), github.event.workflow_run.name)) ||
       (contains(fromJSON('["cancelled"]'), github.event.workflow_run.conclusion) &&
       contains(fromJSON('["Release", "Dart release"]'), github.event.workflow_run.name))
     runs-on: ubuntu-latest
