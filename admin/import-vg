@@ -41,6 +41,15 @@ ROOTS = {
         "vg_chacha20_poly1305_seal_sve2",
         "vg_chacha20_poly1305_open_sve2",
     ],
+    "x86_64": [
+        # RSA's public operation, with AVX512_IFMA for 2048-, 3072-, and
+        # 4096-bit moduli and e = 65537 and with ADX for the rest.
+        "vg_rsa_public_precomputed_checked_ifma",
+        # RSA's CRT with AVX512_IFMA for balanced 2048-, 3072-, and 4096-bit
+        # keys, and its twin for CPUs with two 512-bit multipliers.
+        "vg_rsa_private_crt_precomputed_ifma",
+        "vg_rsa_private_crt_precomputed_ifma512",
+    ],
 }
 
 HEADER = """\
