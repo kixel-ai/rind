@@ -87,11 +87,19 @@ Each upstream rind changes, with where its fork is vendored and where the list o
 
 ### Memcheck blames a public flag on a secret carry
 
-- **Breaks:** on armv7 without NEON, memcheck flags the `beq` at `sha512_block_data_order_nohw+460` in aws-lc's integer SHA-512, which reads only the Z flag of a `tst` on the public round-constant pointer. The `tst` keeps the carry of the secret `adds` before it, and memcheck counts that carry against the branch when a superblock boundary falls between them, which the caller's code layout decides.
-- **Reproduce:** the `no-neon` armv7 ctgrind row with `--vex-guest-max-insns=1` flags it, along with every branch on a `tst` of a public value.
-- **Workaround:** the `aws-lc-sha512-armv4-nohw-flags` suppression in `admin/ctgrind.supp`.
+- **Breaks:** on armv7, memcheck flags a branch or predicated instruction that reads only the Z flag of a logical op on public values, such as a `tst` or `ands`, when that op keeps the carry of a secret `adds` before it and a superblock boundary falls between them, which code layout decides. It flags the `beq` at `sha512_block_data_order_nohw+460` in aws-lc's integer SHA-512 without NEON, which tests the public round-constant pointer. It flagged the portable P-384 scalar inverse's `step_by(4).rev()` loop, whose `ands r0, r0, #3` follows the inlined reduction of the secret, and whose `movweq` then poisons the loop counter and the table index. On x86_64, VEX builds `stc`'s flags from the previous op's, so s2n-bignum's `bignum_add_p521`, which begins `stc` then `adc`, returned an undefined sum of two defined inputs right after the generic backend's secret arithmetic in `low::generic::limb64::p521::tests::field_ops`.
+- **Reproduce:** the `no-neon` armv7 ctgrind row with `--vex-guest-max-insns=1` flags the SHA-512 branch, along with every branch on a `tst` of a public value. At main's d0e8e97f1, `admin/ctgrind unit --target armv7-unknown-linux-gnueabihf --release -- high::ecdsa::tests::digest_signing_matches_message_signing` flags `fs_pow` at the default 50 instructions per superblock and at 30, and passes at 100. At 0470f9956 (kixel-ai/rind#817's first head), x86_64's `admin/ctgrind unit --release -- low::generic::limb64::p521::tests::field_ops` reports 2313 errors, and main passes it.
+- **Workaround:** the `aws-lc-sha512-armv4-nohw-flags` suppression in `admin/ctgrind.supp`; the portable P-256 and P-384 scalar inverses count nibbles with a plain range, whose loop armv7 tests with `cmp`, which sets every flag. The generic backend's tests mark their reference results public before comparing.
 - **Reported:** no.
 - **Goes when:** memcheck tracks the Z flag apart from the carry.
+
+### Valgrind cannot unwind std's frame-pointer entries on armv7
+
+- **Breaks:** valgrind unwinds armv7 code through its `.ARM.exidx` entries, and can rebuild the stack pointer from `r7`, Thumb's frame pointer, but not from `r11`, ARM's (`readexidx.c`, 3.22 through 3.27). Rust's prebuilt std keeps frame pointers, so its entries begin `vsp = r11`. A debug build calls std's shared `<[u8]>::starts_with` rather than inlining it, so a memcheck stack in it stops there, and a suppression that names the caller never matches: rind-dimpl's `pem_signing` reported rustls-pki-types' PEM boundary test, which `rustls-pki-types-pem-line-compare` covers.
+- **Reproduce:** at main's d0e8e97f1, on an arm64 host, `cargo test -p rind-dimpl --test ctgrind --features rind/__ctgrind --target armv7-unknown-linux-gnueabihf -- pem_signing` under `admin/ctgrind --run` reports `bcmp` called by `<[u8]>::starts_with` with no frame above it.
+- **Workaround:** `admin/ctgrind` passes `--unw-stack-scan-thresh=3`, which recovers `rustls_pki_types::pem::read` from the stack when an unwind stops within three frames. Scanned frames below the first can be stale return addresses.
+- **Reported:** no.
+- **Goes when:** valgrind's EXIDX reader takes `vsp = r11`.
 
 ### Valgrind on ARM does not fault guard pages
 
