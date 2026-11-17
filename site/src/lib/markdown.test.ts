@@ -52,6 +52,12 @@ test("rebase rewrites inline links and definitions", () => {
 	expect(hrefs(lex(out))).toEqual(["https://example.com/x.md", "https://example.com/x.md", "https://example.com/x.md", "#x.md"]);
 });
 
+// A destination is inserted as written, `$` and all.
+test("rebase inserts a destination holding dollar signs literally", () => {
+	const out = rebase("[a](x.md)\n\n[n]: x.md\n", () => "https://example.com/$$-$&.md");
+	expect(hrefs(lex(out))).toEqual(["https://example.com/$$-$&.md"]);
+});
+
 // A definition may sit in a block quote.
 test("rebase finds a definition in a block quote", () => {
 	const out = rebase("> [n]: x.md\n\nSee [n].\n", (href) => `https://example.com/${href}`);

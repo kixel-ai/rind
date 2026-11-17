@@ -152,10 +152,11 @@ export function rebase(source: string, resolve: (href: string) => string): strin
 		const to = resolve(href);
 		if (to === href) continue;
 		const from = spelled(href);
+		// Callbacks, since a replacement string would read `$` in a destination.
 		const dest = target(to);
 		out = out
-			.replace(new RegExp(`(\\]\\(\\s*)(?:<${from}>|${from})(?=[\\s)])`, "g"), `$1${dest}`)
-			.replace(new RegExp(`(^(?: {0,3}>[ \\t]?)* {0,3}\\[[^\\]\\n]+\\]:[ \\t]*)(?:<${from}>|${from})(?=\\s|$)`, "gm"), `$1${dest}`);
+			.replace(new RegExp(`(\\]\\(\\s*)(?:<${from}>|${from})(?=[\\s)])`, "g"), (_, head: string) => head + dest)
+			.replace(new RegExp(`(^(?: {0,3}>[ \\t]?)* {0,3}\\[[^\\]\\n]+\\]:[ \\t]*)(?:<${from}>|${from})(?=\\s|$)`, "gm"), (_, head: string) => head + dest);
 	}
 	const expected = lex(source);
 	for (const t of links(expected)) t.href = resolve(t.href);
