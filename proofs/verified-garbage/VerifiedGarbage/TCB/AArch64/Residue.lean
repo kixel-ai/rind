@@ -40,7 +40,11 @@ buffers) is taken as given: a secret the caller passed in a register, or
 left in one, is the caller's. So are the return addresses the code's calls
 leave in `x30`, and what a linker veneer may leave in `x16`, `x17` and the
 flags (`State.unknowns`), which the two runs share: they are where the code
-is, not data.
+is, not data. So is what replaces the bytes of a frame the function released
+(`lose`, `TCB/AArch64/Isa.lean`): the unknowns say which bytes are replaced
+and by what, the same in both runs, so a byte that is not replaced is
+compared as the function left it, and a frame that held a secret must
+still be wiped.
 
 Not covered, because the model does not have them: `x18` and `x29` (which
 no modelled instruction changes, see `TCB/AArch64/Target.lean`), FPCR and
