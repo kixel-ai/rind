@@ -29,6 +29,7 @@ PINS = [
     ("BoringSSL", "copied code", "admin/import-boringssl", REV),
     ("OpenSSL", "copied code", "admin/import-openssl", REV),
     ("HACL\\*", "Vale's x86_64 AES-GCM", "admin/import-hacl", REV),
+    ("pyca/verified-garbage", "copied code and the Lean ISA models its proofs rest on", "admin/import-vg", REV),
     (
         "s2n-bignum",
         "assembly and the HOL Light proofs of it",
@@ -51,6 +52,7 @@ PINS = [
     ("RFC 9380", "hash-to-curve test vectors", "admin/sync-vectors", rf"^HASH_TO_CURVE={SHA}$"),
     ("blind-rsa-signatures", "RFC 9474 test vectors", "admin/sync-vectors", rf"^BLIND_RSA={SHA}$"),
     ("RFC 9497", "OPRF test vectors", "admin/sync-vectors", rf"^VOPRF={SHA}$"),
+    ("RFC 9591", "FROST test vectors", "admin/sync-vectors", rf"^FROST={SHA}$"),
 ]
 
 

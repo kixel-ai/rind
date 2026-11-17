@@ -16,7 +16,10 @@ qemu. iOS devices' code is only built.
   instructions. Without it, as on the Raspberry Pi 4, CM4, and Zero 2 W, they
   run [aws-lc]'s NEON and scalar assembly instead (see
   [ALGORITHMS.md](ALGORITHMS.md)), `rind::cpu::has_aes_hardware()` is false, and
-  rind-rustls and rind-dimpl prefer ChaCha20-Poly1305. On Apple's platforms,
+  rind-rustls and rind-dimpl prefer ChaCha20-Poly1305. Where the CPU has
+  SVE2, as Armv9 cores from Neoverse N2 and Cortex-A710 on do,
+  ChaCha20-Poly1305 runs [verified-garbage]'s SVE2 assembly, and aws-lc's
+  NEON assembly otherwise. On Apple's platforms,
   secret-dependent code runs with data-independent timing (DIT), set and
   cleared in each call unless `rind::cpu::Dit::hold()` holds it across a batch
   of calls. rind sets no DIT on other aarch64 platforms, where Arm says it
@@ -30,7 +33,8 @@ qemu. iOS devices' code is only built.
   SHA256 its SSSE3 assembly, or for SHA its AVX assembly on Intel's cores,
   SHA-512 its scalar assembly on other vendors' cores,
   ML-KEM's and ML-DSA's arithmetic runs Rust ports of [mlkem-native]'s and
-  [mldsa-native]'s portable C, and
+  [mldsa-native]'s portable C, but for ML-KEM-768's encapsulation, which runs
+  [verified-garbage]'s assembly, and
   table lookups use SSE2 (see [ALGORITHMS.md](ALGORITHMS.md)). Without `sse4.1`,
   as on the first Core 2s and Atoms and AMD's Bobcat, ChaCha20 and Poly1305
   run in separate passes.
@@ -42,13 +46,16 @@ qemu. iOS devices' code is only built.
   that hide it, [s2n-bignum]'s `_alt` routines replace those that use it,
   and [aws-lc]'s Montgomery multiplication replaces its Karatsuba routines
   for RSA; with `avx2` there, as on Haswell, RSA-2048 signing runs aws-lc's
-  RSAZ exponentiation, and Ed25519 verification a port of
+  RSAZ exponentiation, and Ed25519 verification's multiplication a port of
   [curve25519-dalek]'s AVX2 backend. With `avx2` but without `sha`, as on
   Intel's cores before Ice Lake and AMD's before Zen, SLH-DSA's SHA-2
   parameter sets hash eight SHA-256 inputs at once with a port of the
   SPHINCS+ team's AVX2 code. With `avx512ifma`, as on Ice Lake,
-  Sapphire Rapids, and AMD's Zen 4 and 5, RSA-2048, 3072, and 4096 signing
-  runs aws-lc's dual AVX-512 RSAZ.
+  Sapphire Rapids, and AMD's Zen 4 and 5, RSA-2048 and 4096 signing and
+  the public operation of 2048-, 3072-, and 4096-bit moduli with
+  e = 65537 run [verified-garbage]'s routines, and RSA-3072 signing too with `avx512fp16`, as on Intel's
+  since Sapphire Rapids, and aws-lc's dual AVX-512 RSAZ without it, as
+  for the 3969- to 4032-bit keys VG's CRT does not take.
 - 32-bit `arm` from ARMv7 on (tested on `armv7-unknown-linux-gnueabihf` and
   `armv7-linux-androideabi`) runs portable Rust instead, mostly from
   [libcrux] (see [ALGORITHMS.md](ALGORITHMS.md)), and needs no CPU features. RSA's
@@ -92,13 +99,21 @@ qemu. iOS devices' code is only built.
   ARMv5TE, on `powerpc64le` and big-endian `powerpc64` and `powerpc` Linux,
   and on `x86_64`,
   where `--cfg rind_portable` forces it. `just ci` also compiles the library
-  for `wasm32-wasip2` and `wasm32-unknown-unknown`, with and without `wipe`,
+  for `wasm32-wasip2` and `wasm32-unknown-unknown`
   when a change touches rind, the workspace manifest or lockfile, or the
-  flake, and `just gate` always does. `wasm32-unknown-unknown` enables
-  `getrandom/wasm_js` for JavaScript randomness; the WASI target uses its
-  system random source. The nightly `build.yml` runs the vector tests
-  on `wasm32-wasip2` under wasmtime (`just wasm`), without the differential
-  tests, since aws-lc does not build for wasm. `wasm32-unknown-unknown` stays
+  flake, and `just gate` always does. It compiles every published adapter
+  for both, and rind-rustls's and rind-ring's tests for `wasm32-wasip2`, when
+  a change touches an adapter, rind's manifest, the workspace manifest or
+  lockfile, or the flake. `wasm32-unknown-unknown` enables `getrandom/wasm_js`
+  for JavaScript randomness, as rind-ring's `wasm32_unknown_unknown_js` does
+  for a ring caller; the WASI target uses its system random source. There the
+  adapters' upstreams need what they need with any backend, which
+  [admin/wasm-fixture](admin/wasm-fixture/Cargo.toml) adds: rustls's clock
+  (`rustls-pki-types/web`) and the random sources of jsonwebtoken and str0m.
+  The nightly `build.yml` runs rind's vector tests and rind-rustls's and
+  rind-ring's tests on `wasm32-wasip2` under wasmtime (`just wasm`), without
+  the differential tests, since aws-lc does not build for wasm; the adapters'
+  handshakes run rind against itself. `wasm32-unknown-unknown` stays
   compile-only: its tests need a JavaScript host. Constant time is unchecked on
   wasm: ctgrind and the trace checks inspect native code, and a wasm engine
   compiles rind again, so its JIT may turn a select into a branch.
@@ -116,7 +131,7 @@ Linux on `x86_64` and `aarch64`, and runs only the fastest paths there: on
 `movbe`, `avx`, `avx2`, `bmi1`, `bmi2`, and `adx`, as on Broadwell, Zen, and
 later cores, and on `aarch64` the crypto extension. It refuses to load on a
 CPU without them, naming the first missing, so each path it can take gets its
-own ACVP run and no other path is in it.
+own ACVP run ([rind-acvp](rind-acvp/README.md)) and no other path is in it.
 
 rind's secret-dependent code divides no secret and does no floating-point
 arithmetic on any architecture, as `admin/ct-vartime` checks, but it multiplies
@@ -176,8 +191,9 @@ Intel guarantees the timing of the instructions it lists as data-independent
   vector integer multiplies, such as `vpmuludq` and `vpmullw`, may take a cycle
   longer for some values ([Intel MCDT]), and SGX enclaves are no exception.
   rind loads `0x1FBF` around its x86_64 ML-KEM, ML-DSA, RSA exponentiation
-  with AVX2 or AVX-512, and Ed25519 verification with AVX2, and around every
-  call on 32-bit `x86`, whose compiled arithmetic may use them anywhere, then
+  with AVX2 or AVX-512, and Ed25519 verification with AVX2 but without ADX,
+  and around every call on 32-bit `x86`, whose compiled arithmetic may use
+  them anywhere, then
   restores the caller's MXCSR. On the x86_64 backend, `admin/ct-vartime`
   checks that nothing rind exports reaches one except through a function that
   enters the mitigation. It counts all of such a function as covered, so each
@@ -193,6 +209,7 @@ family since 2004, and of some AMD cores.
 [curve25519-dalek]: https://github.com/dalek-cryptography/curve25519-dalek
 [HACL\*]: https://github.com/hacl-star/hacl-star
 [mlkem-native]: https://github.com/pq-code-package/mlkem-native
+[verified-garbage]: https://github.com/pyca/verified-garbage
 [mldsa-native]: https://github.com/pq-code-package/mldsa-native
 [libcrux]: https://github.com/cryspen/libcrux
 [aws-lc]: https://github.com/aws/aws-lc

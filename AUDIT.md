@@ -49,8 +49,8 @@ rind assumes an attacker who:
 rind's defenses are the rules [AGENTS.md](AGENTS.md#required) sets: hostile
 input returns an error, never a panic, and its cost is bounded by design;
 secret-dependent code runs in constant time; and a key type wipes its whole
-value on drop, with keyed state and heap scratch derived from a private key,
-under the `wipe` feature ([Wiping keys](README.md#wiping-keys)). Wiping is a
+value on drop, with keyed state and heap scratch derived from a private key
+([Wiping keys](README.md#wiping-keys)). Wiping is a
 second layer against an attacker who later reads freed memory, as in a heap
 dump; it does not wipe digest contexts, decrypted messages, or stack
 temporaries.
@@ -103,6 +103,7 @@ The pins, as `admin/audit` renders them from the files that hold them, so
 | BoringSSL | `8f2554dc344d` | `admin/import-boringssl` | copied code |
 | OpenSSL | `2f4e3a5fec05` | `admin/import-openssl` | copied code |
 | HACL\* | `f557259007db` | `admin/import-hacl` | Vale's x86_64 AES-GCM |
+| pyca/verified-garbage | `e7b0fe8a82b7` | `admin/import-vg` | copied code and the Lean ISA models its proofs rest on |
 | s2n-bignum | `3f01260ff1bd` | `thirdparty/s2n-bignum/RIND.md` | assembly and the HOL Light proofs of it |
 | aws-lc | `c21d40da4bbe` | `admin/prove-bytes` | the routines aws-lc-verification's SHA-384/512 proofs are about |
 | ACVP-Server | `975de31eb83d` | `admin/sync-acvp` | test vectors |
@@ -115,6 +116,7 @@ The pins, as `admin/audit` renders them from the files that hold them, so
 | RFC 9380 | `664b13592116` | `admin/sync-vectors` | hash-to-curve test vectors |
 | blind-rsa-signatures | `45d0abfa829c` | `admin/sync-vectors` | RFC 9474 test vectors |
 | RFC 9497 | `5d7d94c8dc75` | `admin/sync-vectors` | OPRF test vectors |
+| RFC 9591 | `127452b93acb` | `admin/sync-vectors` | FROST test vectors |
 | cfg-if | 1.0.5 | `Cargo.lock` | a macro for `cfg` blocks |
 | curve25519-dalek | 5.0.0 | `Cargo.lock` | X25519, Ed25519, and ristretto255 on armv7 and the portable backend |
 | fiat-crypto | 0.3.0 | `Cargo.lock` | the NIST curves' field arithmetic on armv7 and the portable backend |
@@ -138,8 +140,9 @@ only for crates.
 How copied code is regenerated and checked:
 
 - `admin/import-aws-lc`, `admin/import-boringssl`, `admin/import-openssl`,
-  and `admin/import-hacl` fetch their upstream at its `REV` and write its
-  assembly under `rind/src/low` as Rust naked functions or `global_asm!`.
+  `admin/import-hacl`, and `admin/import-vg` fetch their upstream at its
+  `REV` and write its assembly under `rind/src/low` as Rust naked functions
+  or `global_asm!`.
 - `admin/parse-asm` transliterates s2n-bignum's assembly, from rind's fork
   in `thirdparty/s2n-bignum`, into Rust `asm!`. The fork's
   [RIND.md](thirdparty/s2n-bignum/RIND.md) lists every file that differs
@@ -219,8 +222,8 @@ establishes, and what it does not:
   compiled from HACL\*'s verified C by an unverified step.
 - **Zeroing**: `rind/tests/zeroing.rs` drops each value holding a secret and
   fails on any byte left nonzero, and `rind/tests/heap_scratch.rs` fails on a
-  freed heap block that differs between two keys. Both run only under the
-  `wipe` feature, and see only the value itself and the heap blocks it frees.
+  freed heap block that differs between two keys. Both see only the value
+  itself and the heap blocks it frees.
 - **Bounds**: `low::guard_pages` runs each kernel that takes a caller's
   slice against `PROT_NONE` pages, at lengths up to 1100 bytes and, for the
   AEADs, 2000 to 2600, on Unix. It is the only bounds check on the assembly
@@ -282,13 +285,15 @@ Hand-written arithmetic no proof covers, by where it came from:
   on armv7 and the portable backend. There ristretto255's differential test
   compares dalek with itself, so only RFC 9496's and RFC 9497's vectors
   check it.
-- **x86_64 P-256's mixed addition**, aws-lc's, on which rind's proofs of
-  generator multiplication rest as an unproven axiom.
+- **x86_64 P-256's mixed addition on macOS**, aws-lc's: rind's HOL Light
+  proofs check the Linux build's object, and Apple's text can place the
+  routines' helpers at other offsets.
 
 Primitives whose reference is weak: ECVRF, OPRF, VOPRF, blind RSA, SPAKE2+,
-and HPKE have no aws-lc-rs counterpart, so their differential tests compare
-with other Rust crates, and their fuzz targets with rind itself, except
-HPKE's, against rustls's aws-lc-rs provider. SPAKE2+ has no fuzz target.
+FROST, and HPKE have no aws-lc-rs counterpart, so their differential tests
+compare with other Rust crates, and their fuzz targets with rind itself,
+except HPKE's, against rustls's aws-lc-rs provider. SPAKE2+ and FROST have no
+fuzz target.
 
 Constant time is checked by no tool on:
 

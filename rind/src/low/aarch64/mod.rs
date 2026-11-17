@@ -103,7 +103,10 @@ pub(crate) mod mldsa_rej_uniform_eta2_vartime;
 pub(crate) mod mldsa_rej_uniform_eta4_vartime;
 pub(crate) mod mldsa_rej_uniform_vartime;
 pub(crate) mod mlkem;
+pub(crate) mod mlkem768_vg;
+pub(crate) mod mlkem_basemul_k2;
 pub(crate) mod mlkem_basemul_k3;
+pub(crate) mod mlkem_basemul_k4;
 pub(crate) mod mlkem_intt;
 pub(crate) mod mlkem_mulcache_compute;
 pub(crate) mod mlkem_ntt;
@@ -134,4 +137,6 @@ pub(crate) mod sha3_keccak_f1600_alt;
 pub(crate) mod sha3_keccak_f1600_mux;
 pub(crate) mod sha3_keccak_nof4_f1600;
 pub(crate) mod sha512;
+// pyca/verified-garbage's routines, as admin/import-vg vendors them.
+pub(crate) mod vg;
 pub(crate) mod vpaes_armv8;

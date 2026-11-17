@@ -225,14 +225,37 @@ OpenSSL <https://github.com/openssl/openssl>
 
 curve25519-dalek <https://github.com/dalek-cryptography/curve25519-dalek>
 
-  What: rind/src/low/x86_64/edwards25519_scalarmuldouble_avx2.rs, a port
-  of curve25519-dalek 5.0.0's AVX2 backend (its field arithmetic, point
-  formulas, and table of the base point's odd multiples) and its scalars'
-  non-adjacent forms, for Ed25519 verification on x86_64 CPUs with AVX2 but
-  without ADX.
+  What: rind/src/low/x86_64/edwards25519_msm_avx2.rs, a port of
+  curve25519-dalek 5.0.0's AVX2 backend (its field arithmetic, point
+  formulas, and table of the base point's odd multiples), for Ed25519
+  verification on x86_64 CPUs with AVX2 but without ADX.
   Copyright (c) 2016-2021 isis agora lovecruft. All rights reserved.
   Copyright (c) 2016-2021 Henry de Valence. All rights reserved.
   License: BSD-3-Clause.
+
+pyca/verified-garbage <https://github.com/pyca/verified-garbage>
+
+  What: the files under rind/src/low/*/vg, which admin/import-vg
+  takes from the Rust that verified-garbage generates from its Lean
+  sources, at commit e7b0fe8a82b7777958e078573771d51415f105bb:
+  ChaCha20-Poly1305 on aarch64 with SVE2, and the ChaCha20 and
+  Poly1305 routines it calls; ChaCha20 on x86_64 with AVX2 and with
+  AVX-512 VL; RSA's public operation and CRT on x86_64 with AVX-512
+  IFMA, and the Montgomery product they call; ML-KEM-768's
+  encapsulation key check and encapsulation on x86_64 and on aarch64
+  with the SHA-3 instructions, its key generation and decapsulation
+  on x86_64 with AVX-512, and the Keccak and arithmetic routines they
+  call.
+  Copyright (c) Individual contributors.
+  License: Apache-2.0 OR BSD-3-Clause, which the files keep.
+
+  What: the Lean ISA models under proofs/verified-garbage/VerifiedGarbage,
+  which admin/import-vg-models copies byte for byte from verified-garbage
+  at the same commit, so they carry no SPDX comment; this entry names
+  their license.
+  Copyright (c) Individual contributors.
+  License: Apache-2.0 OR BSD-3-Clause, taken under Apache-2.0.
+  verified-garbage has no NOTICE file.
 
 SPHINCS+ <https://github.com/sphincs/sphincsplus>
 

@@ -5,10 +5,6 @@
 //! one records the blocks freed while the values that held a secret are
 //! dropped, and checks none still holds it. Inline values are boxed so they
 //! live on the heap too.
-//!
-//! The wipe is opt-in, so these tests build only with the `wipe` feature.
-
-#![cfg(feature = "wipe")]
 
 #[path = "../../rind/tests/freed/mod.rs"]
 mod freed;
@@ -151,6 +147,38 @@ fn kem() {
     secret.copy_from_slice(sent.as_ref());
     assert_eq!(received.as_ref(), secret);
     assert_eq!(leaks(&secret, || drop((sent, received))), 0);
+}
+
+/// A smaller set's decapsulation key leaves no stale stack bytes on the heap:
+/// held inline in space sized for ML-KEM-1024, its slack would carry what the
+/// stack last held, such as another key's seed, past the key's own wipe.
+#[test]
+fn kem_slack() {
+    let stale: [u8; NEEDLE_LEN] = distinct(7);
+    for alg in [&kem::ML_KEM_512, &kem::ML_KEM_768] {
+        let leaked = leaks(&stale, || {
+            paint_stack(&stale);
+            drop(boxed_decapsulation_key(alg));
+        });
+        assert_eq!(leaked, 0, "{alg:?}");
+    }
+}
+
+/// Fills the stack the next call will use with `stale`, as a secret a
+/// returned function left behind.
+#[inline(never)]
+fn paint_stack(stale: &[u8; NEEDLE_LEN]) {
+    let mut stack = [0u8; 64 * 1024];
+    for chunk in stack.as_chunks_mut::<NEEDLE_LEN>().0 {
+        chunk.copy_from_slice(stale);
+    }
+    core::hint::black_box(&mut stack);
+}
+
+/// A decapsulation key for `alg`, moved to the heap through the stack.
+#[inline(never)]
+fn boxed_decapsulation_key(alg: &'static kem::Algorithm) -> Box<kem::DecapsulationKey> {
+    Box::new(kem::DecapsulationKey::generate(alg).unwrap())
 }
 
 /// An ML-DSA seed and public key, and the PKCS#8 documents holding the seed.
