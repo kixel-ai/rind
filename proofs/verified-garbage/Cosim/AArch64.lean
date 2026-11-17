@@ -371,12 +371,15 @@ def placeTbl (img : Img) (n : Reg) (off need : Nat) : Gen (Img × List (BitVec 6
   return (img.setReg n (((a : Int) - 8 * (off / 8 : Nat)) % 2 ^ 64).toNat, ws.toList)
 
 /-- What the model says `i` leaves, run from `s` (the frame instructions by
-the push and pop of a frame, which also check the frame's bookkeeping). -/
+the push and pop of a frame, which also check the frame's bookkeeping). A
+released frame's bytes are `lose`'s, one outcome per choice of unknowns: zero
+loss masks pick the one where each keeps its value, what the CPU does with no
+signal taken, rather than the call unknowns `Img.state` sets. -/
 def run (i : Instr) (s : State) : Option State :=
   match i with
   | .push _ | .alloc _ => push i s
-  | .pop _ => let s₁ := { s with wr := ⟨s.sp, 16⟩ :: s.wr }; pop i s₁ s₁
-  | .free n => let s₁ := { s with wr := ⟨s.sp, n⟩ :: s.wr }; pop i s₁ s₁
+  | .pop _ => let s₁ := { s with wr := ⟨s.sp, 16⟩ :: s.wr, unknowns := fun _ => 0 }; pop i s₁ s₁
+  | .free n => let s₁ := { s with wr := ⟨s.sp, n⟩ :: s.wr, unknowns := fun _ => 0 }; pop i s₁ s₁
   | _ => exec i s
 
 /-- A case of the straight-line instruction `i`: a start image and the
