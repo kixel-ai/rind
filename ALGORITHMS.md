@@ -89,8 +89,9 @@ SHA-512.
   verified in 0.72 to 0.73× aws-lc-rs's time against 0.89 to 0.92×, 0.77 to
   0.83× against 0.86 to 0.88× with ADX denied, and 0.93× against 1.10× with
   AVX2 denied as well. aarch64 runs the same half-size check, over the Neon
-  forms of those point routines. `edwards25519_scalarmuldouble_alt` stays
-  imported until a measurement against it decides.
+  forms of those point routines. Whether that is faster than
+  `edwards25519_scalarmuldouble_alt` is not measured yet, and that routine
+  is no longer imported.
 - ChaCha20-Poly1305 without AES-NI and on SSE2, which lack SSE4.1: rind runs
   Graviola's scalar Poly1305 there, and aws-lc BoringSSL's SSE2
   `poly1305_vec.c`, which rind doesn't port for CPUs older than Westmere.
@@ -334,7 +335,6 @@ BINSEC.
 | `edwards25519_pdouble_alt` | `edwards25519_pdouble_alt`: none | not imported |
 | `edwards25519_scalarmulbase` | `edwards25519_scalarmulbase`: `EDWARDS25519_SCALARMULBASE_SUBROUTINE_SAFE` | `edwards25519_scalarmulbase_alt`: `EDWARDS25519_SCALARMULBASE_ALT_SUBROUTINE_SAFE` |
 | `edwards25519_scalarmulbase_alt` | `edwards25519_scalarmulbase_alt`: `EDWARDS25519_SCALARMULBASE_ALT_SUBROUTINE_SAFE` | not imported |
-| `edwards25519_scalarmuldouble` | not imported | `edwards25519_scalarmuldouble_alt`: `EDWARDS25519_SCALARMULDOUBLE_ALT_SUBROUTINE_SAFE` |
 | `mldsa_caddq` | `mldsa_caddq`: `MLDSA_CADDQ_SUBROUTINE_SAFE` | `mldsa_caddq`: `MLDSA_CADDQ_SUBROUTINE_SAFE` |
 | `mldsa_chknorm` | `mldsa_chknorm`: `MLDSA_CHKNORM_SUBROUTINE_SAFE` | `mldsa_chknorm`: `MLDSA_CHKNORM_SUBROUTINE_SAFE` |
 | `mldsa_decompose_32` | `mldsa_decompose_32`: `MLDSA_DECOMPOSE_32_SUBROUTINE_SAFE` | `mldsa_decompose_32`: `MLDSA_DECOMPOSE_32_SUBROUTINE_SAFE` |

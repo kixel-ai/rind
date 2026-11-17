@@ -445,14 +445,6 @@ cfg_if::cfg_if! {
         pub(crate) use aarch64::edwards25519_epdouble::edwards25519_epdouble;
         pub(crate) use aarch64::edwards25519_pdouble::edwards25519_pdouble;
         pub(crate) use aarch64::edwards25519_scalarmulbase::edwards25519_scalarmulbase;
-        // Kept until a measurement against the half-size check drops or
-        // restores it. Verification no longer calls it.
-        #[allow(
-            dead_code,
-            unused_imports,
-            reason = "kept until the half-size measurement drops or restores it"
-        )]
-        pub(crate) use aarch64::edwards25519_scalarmuldouble::edwards25519_scalarmuldouble;
         pub(crate) use generic::edwards25519_msm::edwards25519_msm;
         pub(crate) use aarch64::mldsa::{
             mldsa_ntt, mldsa_intt, mldsa_nttunpack, mldsa_pointwise, mldsa_pointwise_acc,
