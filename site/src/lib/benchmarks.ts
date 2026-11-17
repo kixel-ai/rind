@@ -190,7 +190,10 @@ export const reportUrl = `${repoUrl}/blob/main/BENCHMARKS.md`;
 
 // --- The Markdown twin -------------------------------------------------------
 
-const row = (cells: string[]) => `| ${cells.map((c) => c.replace(/\|/g, "\\|")).join(" | ")} |`;
+// A table cell's Markdown with each pipe it hasn't escaped escaped, so the cell holds it.
+export const escapeCell = (c: string) =>
+	c.replace(/(\\*)\|/g, (_, slashes: string) => (slashes.length % 2 ? `${slashes}|` : `${slashes}\\|`));
+const row = (cells: string[]) => `| ${cells.map(escapeCell).join(" | ")} |`;
 const table = (head: string[], rows: string[][]) =>
 	[row(head), `|${"---|".repeat(head.length)}`, ...rows.map(row)].join("\n");
 

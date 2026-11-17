@@ -1283,6 +1283,12 @@ def quest_title(path):
         return re.sub(r"^# (\[\w+\] )?", "", f.readline().strip())
 
 
+def cell_text(markdown):
+    """Markdown for a table cell: each pipe it hasn't escaped, after an even
+    run of backslashes, escaped, so the cell holds it."""
+    return re.sub(r"(\\*)\|", lambda m: m.group(1) + ("|" if len(m.group(1)) % 2 else "\\|"), markdown)
+
+
 def gap_table(gaps):
     rows = {row_name(op) for op in OPERATIONS}
     lines = ["| Operation | On | rind's time over the fastest | Decision |", "|---|---|---|---|"]
@@ -1292,7 +1298,7 @@ def gap_table(gaps):
         ratios = [ratio for ratio, _ in covered.values()]
         spread = f"{min(ratios):.2f}×" + (f" to {max(ratios):.2f}×" if max(ratios) - min(ratios) >= 0.005 else "")
         fastest = ", ".join(sorted({COLUMNS[lib] for _, lib in covered.values()}))
-        decision = f"[{quest_title(e['quest'])}]({e['quest'][1:]})" if "quest" in e else e["reason"].replace("|", "\\|")
+        decision = f"[{quest_title(e['quest'])}]({e['quest'][1:]})" if "quest" in e else cell_text(e["reason"])
         lines.append(f"| {ops} | {on} | {spread} ({fastest}) | {decision} |")
     return lines
 

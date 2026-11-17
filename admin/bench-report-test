@@ -337,6 +337,7 @@ class Gaps(unittest.TestCase):
         # A reason's pipe stays inside its cell.
         piped = self.load(self.X25519, {**self.SHA256, "reason": '"- a | b"'})
         self.assertIn("| - a \\| b |", "\n".join(br.gap_table(piped)))
+        self.assertEqual(br.cell_text(r"a \| b \\| c"), r"a \| b \\\| c")
         for entries in [[self.X25519], [self.SHA256], []]:
             with self.subTest(entries=entries), self.assertRaises(SystemExit):
                 self.load(*entries)
