@@ -619,9 +619,9 @@ mod tests {
         }
     }
 
-    // HMAC-SHA1 and HMAC-SHA256 on the SHA extensions, and HMAC-SHA384 and
-    // HMAC-SHA512 on the SHA512 instructions, which valgrind cannot run, with
-    // a secret key and message, for `admin/ct-sde`. The longer key is hashed
+    // HMAC-SHA1 and HMAC-SHA256 on the SHA extensions, which valgrind cannot
+    // run, with a secret key and message, for `admin/ct-sde`. HMAC-SHA384 and
+    // HMAC-SHA512 take the AVX2 routine on this CPU. The longer key is hashed
     // first, and the messages end in a block that pads within itself, fills
     // it exactly, pads into another, or follows a whole one, both in one call
     // and through a context's buffer.
