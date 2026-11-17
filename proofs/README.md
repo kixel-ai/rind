@@ -85,10 +85,14 @@ those inputs, in any worktree, restores in under a second.
   stack pointer, and `z` and the stack frame disjoint from the code and the
   inputs, so `z` may not alias `x`. The theorem covers the dispatch,
   the stack frame of up to `8k + 72` bytes below the stack pointer, and the
-  callee-saved registers it restores. The widths that run `__bn_mul4x_mont`
-  and `__bn_sqr8x_mont`, which include every standard RSA size and its CRT
-  primes, are not proven yet, and no axiom in `Rind/` restates the theorem
-  yet. The function has no relocations.
+  callee-saved registers it restores. `BN_MUL_MONT_MUL4X_SUBROUTINE_CORRECT`
+  states the same for every multiple of four from four up, through
+  `__bn_mul4x_mont`, except a multiple of eight with `x = y`: the squarings
+  `__bn_sqr8x_mont` runs, which are not proven yet. It also needs
+  `x + 32` and `m + 32` not to wrap past `2^64`, since the code reads the
+  carry of adding 32 to those pointers, and its stack frame is the
+  `8k + 160` bytes below the stack pointer, saving `x19` to `x28`. No axiom
+  in `Rind/` restates either theorem yet. The function has no relocations.
 - `x86_64/bn_mul_mont_nohw.ml`: `BN_MUL_MONT_NOHW_SUBROUTINE_CORRECT`, rind's
   proof that the naked function `low::x86_64::mont::bn_mul_mont_nohw`,
   aws-lc's word-serial Montgomery multiplication, writes the Montgomery
@@ -849,7 +853,9 @@ those return without saying which encodings they accept. The loaders assume
 that the entry guard holds, `from_components` also `Runs`, and each `verify`
 theorem `Runs`, `Sha256Blocks`, messages of at most `maxInput` bytes, and
 `MontProducts k`, that `low::x86_64::mont`'s products
-return their results at the modulus's width of k words.
+return their results at the modulus's width of k words, and `NoIfma`, that
+the CPU lacks the AVX-512 IFMA on which the public operation runs
+pyca/verified-garbage's instead, whose Lean proof lives in that project.
 `Rind/X86_64/RsaMont.lean`'s `mont_products` proves it at 16 and 32 words
 with BMI2 and ADX, from s2n-bignum's theorems, and from `AwsLcMont`, that
 aws-lc's unproven routines return theirs, at every other width and CPU.
