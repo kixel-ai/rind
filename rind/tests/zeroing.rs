@@ -240,6 +240,16 @@ fn mlkem() {
     check::<MlKem512>();
     check::<MlKem768>();
     check::<MlKem1024>();
+    check::<XWing>();
+}
+
+#[test]
+fn xwing_seed() {
+    use rind::kem::*;
+    let key = DecapsulationKey::<XWing>::generate().unwrap();
+    check_zeroed_on_drop(Box::pin(key.to_seed()));
+    let loaded = DecapsulationKey::<XWing>::from_seed(key.to_seed().as_ref()).unwrap();
+    check_zeroed_on_drop(Box::pin(loaded));
 }
 
 #[test]

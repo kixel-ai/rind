@@ -316,3 +316,12 @@ fn vrf_algorithms_differ() {
     assert_eq!(ECVRF_EDWARDS25519_SHA512_TAI, ECVRF_EDWARDS25519_SHA512_TAI);
     assert_ne!(ECVRF_EDWARDS25519_SHA512_TAI, ECVRF_P256_SHA256_TAI);
 }
+
+#[test]
+fn xwing_seed() {
+    use rind::kem::{DecapsulationKey, XWing};
+    let key = DecapsulationKey::<XWing>::generate().unwrap();
+    assert_eq!(format!("{key:?}"), "DecapsulationKey { .. }");
+    let seed = key.to_seed();
+    assert!(!format!("{seed:?}").contains(&format!("{:?}", seed.as_ref())));
+}

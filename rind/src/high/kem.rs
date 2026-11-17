@@ -1048,6 +1048,7 @@ mod tests {
     // carry its combiner: libcrux-kem and RustCrypto's x-wing (aws-lc-rs has
     // none). Both are fed our seeds and our `eseed`s, and what each makes of
     // them is compared byte for byte, in both directions.
+    #[cfg(not(any(miri, target_family = "wasm")))]
     mod xwing_crosscheck {
         use libcrux_kem::Algorithm as LibcruxAlgorithm;
         use x_wing::{Decapsulate, Decapsulator, KeyExport, TryDecapsulate};
