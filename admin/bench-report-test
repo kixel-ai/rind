@@ -193,6 +193,14 @@ class Render(unittest.TestCase):
         self.assertIn(held, br.report(everyone, None, VERIFIED, [])[br.REPORT])
         self.assertNotIn(held, br.report(hosts(), None, VERIFIED, [])[br.REPORT])
 
+    def test_site_data_never_counts_a_variant_as_the_fastest(self):
+        everyone = hosts()
+        everyone["kixtop"]["results"].append({"operation": "x25519-ecdh/{lib}", "library": "rind-dit-held", "ns": 10000.0})
+        kixtop = next(h for h in br.site_data(everyone, None, VERIFIED, [])["hosts"] if h["name"] == "kixtop")
+        self.assertEqual(kixtop["libraries"], ["rind", "rind-dit-held", "ring"])
+        self.assertEqual(kixtop["fastest"], {"x25519-ecdh": "rind"})
+        self.assertEqual(kixtop["times"]["x25519-ecdh"][1], ["10.00 µs", 0, 0.5])
+
     def test_fastest_bin_holds_within_ten_percent(self):
         self.assertEqual(br.bin_of(1.0, br.SPEED_BINS), 0)
         self.assertEqual(br.bin_of(1.1, br.SPEED_BINS), 0)
@@ -241,23 +249,25 @@ class Render(unittest.TestCase):
         md = br.report(everyone, None, VERIFIED, [])[br.REPORT]
         self.assertIn("graviola isn't timed on `nixos2`: it requires BMI1 and ADX, which this CPU lacks.", md)
 
-    def test_verified_grid_marks_each_cell(self):
+    def test_site_data_grid_marks_each_cell(self):
         h = hosts()
         h["nixos2"]["refused"] = {"openssl": ["adx"]}
-        grid = json.loads(br.verified_grid(h, VERIFIED))
-        self.assertEqual([x["name"] for x in grid["hosts"]], ["nixos", "nixos2", "kixtop"])
-        self.assertEqual([lib["id"] for lib in grid["libraries"]], ["rind", "aws-lc-rs", "ring", "openssl"])
-        rows = {r["label"]: r["cells"] for s in grid["sections"] for r in s["rows"]}
-        self.assertEqual(len(rows), len(br.OPERATIONS))
+        data = br.site_data(h, None, VERIFIED, [])
+        self.assertEqual([x["name"] for x in data["hosts"]], ["nixos", "nixos2", "kixtop"])
+        self.assertEqual([x["os_kind"] for x in data["hosts"]], ["linux", "linux", "macos"])
+        grid = {x["name"]: x["grid"] for x in data["hosts"]}
+        self.assertEqual(set(grid["nixos"]), {br.row_name(op) for op in br.OPERATIONS})
+        self.assertEqual(set(grid["nixos"]["x25519-ecdh"]), {"rind", "aws-lc-rs", "ring", "openssl"})
+        cells = lambda row, lib: [grid[n][row][lib] for n in ["nixos", "nixos2", "kixtop"]]
         # Both x86_64 hosts have ADX, nixos2 without timing it; kixtop's
         # proof holds only on Linux.
-        self.assertEqual(rows["X25519"]["rind"], [0, 0, {"other_os": 3}])
+        self.assertEqual(cells("x25519-ecdh", "rind"), [0, 0, {"other_os": 3}])
         # A proof shows where the host timed nothing, since it covers the code.
-        self.assertEqual(rows["X25519"]["ring"], [2, 2, 2])
-        self.assertEqual(rows["X25519"]["openssl"], ["unproven", "refused", "untimed"])
-        self.assertEqual(rows["AES-256-GCM seal, 16 KB"]["rind"], ["unproven", 1, "untimed"])
-        self.assertEqual(grid["proofs"][3]["os"], "linux")
-        self.assertEqual(grid["proofs"][3]["platform"], "aarch64 on Linux")
+        self.assertEqual(cells("x25519-ecdh", "ring"), [2, 2, 2])
+        self.assertEqual(cells("x25519-ecdh", "openssl"), ["unproven", "refused", "untimed"])
+        self.assertEqual(data["verified"][3]["os"], "linux")
+        self.assertEqual(data["verified"][3]["platform"], "aarch64 on Linux")
+        self.assertEqual(data["rule"], br.VERIFIED_RULE)
 
     def test_svgs_are_well_formed(self):
         import xml.etree.ElementTree as ET
@@ -344,9 +354,28 @@ class Gaps(unittest.TestCase):
         table = "\n".join(br.gap_table(gaps))
         self.assertIn("| X25519 | `nixos` | 1.50× (ring) | [m3: deferred](quest/m3/README.md) |", table)
         self.assertIn("| `sha256/*/64B` | x86_64 tier | 1.25× (ring) | r |", table)
+        # A reason's pipe stays inside its cell.
+        piped = self.load(self.X25519, {**self.SHA256, "reason": '"- a | b"'})
+        self.assertIn("| - a \\| b |", "\n".join(br.gap_table(piped)))
+        self.assertEqual(br.cell_text(r"a \| b \\| c"), r"a \| b \\\| c")
         for entries in [[self.X25519], [self.SHA256], []]:
             with self.subTest(entries=entries), self.assertRaises(SystemExit):
                 self.load(*entries)
+
+    def test_site_data_marks_each_gap_where_it_shows(self):
+        gaps = self.load(self.X25519, self.SHA256)
+        data = br.site_data(self.hosts, self.tiers, VERIFIED, gaps)
+        nixos = next(h for h in data["hosts"] if h["name"] == "nixos")
+        self.assertEqual(nixos["libraries"], ["rind", "aws-lc-rs", "ring", "openssl"])
+        self.assertEqual(nixos["times"]["x25519-ecdh"], [["30.00 µs", 2, 1.5], None, ["20.00 µs", 0, 1.0], ["300.00 µs", 6, 15.0]])
+        self.assertEqual(nixos["fastest"]["x25519-ecdh"], "ring")
+        self.assertEqual(nixos["gaps"], {"x25519-ecdh": 0})
+        # Proofs by their index in the verified table: rind's needs ADX, ring's holds anywhere.
+        self.assertEqual(nixos["proofs"]["x25519-ecdh"], {"rind": 0, "ring": 2})
+        tier = data["tiers"]["columns"][0]
+        self.assertEqual(tier["gaps"], {"sha256/*/64B": 1})
+        self.assertEqual([g["quest"] and g["quest"]["path"] for g in data["gaps"]], ["/quest/m3/README.md", None])
+        self.assertEqual(data["gaps"][1]["reason"], "r")
 
     def test_gate_fails_only_on_an_undecided_gap_two_runs_show(self):
         def run(directory, sha256, chacha, avx512):
@@ -403,6 +432,8 @@ class Gaps(unittest.TestCase):
             {"quest": None},
             {"on": None},
             {"host": '"nixos"'},
+            {"quest": None, "reason": '"one\\n\\ntwo"'},
+            {"quest": None, "reason": '"one\\rtwo"'},
         ]:
             entry = {k: v for k, v in {**self.X25519, **fields}.items() if v is not None}
             with self.subTest(fields=fields), self.assertRaises(SystemExit):

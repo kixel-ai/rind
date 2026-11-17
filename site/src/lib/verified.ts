@@ -1,13 +1,14 @@
 // The verified page's data: which operations run proven code on which of the
 // benchmark hosts, for each library. `admin/bench-report render` matches
-// benchmarks/verified.toml's proofs to the hosts and writes the result, so the
-// rule is written once, in Python, and the page only draws it.
+// benchmarks/verified.toml's proofs to the hosts and writes the result into
+// benchmarks/report.json, beside the benchmarks page's data, so the rule is
+// written once, in Python, and the page only draws it.
+import type { Host as ReportHost, VerifiedCell as Cell } from "./benchmarks";
+import { report } from "./benchmarks";
 import { link } from "./markdown";
-import { read, repoUrl } from "./repo";
+import { repoUrl } from "./repo";
 
-// A proof's index in `proofs`; the same for a proof limited to an OS other
-// than the host's; or why there is none.
-export type Cell = number | { other_os: number } | "unproven" | "untimed" | "refused";
+export type { Cell };
 
 export interface Host {
 	name: string;
@@ -28,19 +29,34 @@ export interface Proof {
 	link: string;
 }
 
-interface Grid {
-	schema: number;
-	rule: string;
-	hosts: Host[];
-	libraries: { id: string; name: string }[];
-	sections: { title: string; rows: { label: string; cells: Record<string, Cell[]> }[] }[];
-	proofs: Proof[];
-}
+export const { rule } = report;
 
-const grid: Grid = JSON.parse(read("benchmarks/site/verified.json"));
-if (grid.schema !== 1) throw new Error(`benchmarks/site/verified.json has schema ${grid.schema}; the page reads 1`);
+const measured: ReportHost[] = report.hosts;
+export const hosts: Host[] = measured.map((h) => ({
+	name: h.name,
+	cpu: h.cpu,
+	arch: h.arch,
+	os: h.os_kind,
+	os_name: h.os,
+	refused: h.refused,
+}));
 
-export const { rule, hosts, libraries, sections, proofs } = grid;
+// A library has a column when some host's grid has a cell for it; a variant of another library shares its column.
+export const libraries = report.libraries.filter(
+	(l) => l.variant_of === null && measured.some((h) => Object.values(h.grid).some((cells) => l.id in cells)),
+);
+const names = new Map(report.libraries.map((l) => [l.id, l.name]));
+
+export const sections: { title: string; rows: { label: string; cells: Record<string, Cell[]> }[] }[] =
+	report.sections.map((s) => ({
+		title: s.name,
+		rows: s.operations.map((op) => ({
+			label: op.label,
+			cells: Object.fromEntries(libraries.map((l) => [l.id, measured.map((h) => h.grid[op.id][l.id])])),
+		})),
+	}));
+
+export const proofs: Proof[] = report.verified.map((p) => ({ ...p, library: names.get(p.library) ?? p.library }));
 
 export const osName = { linux: "Linux", macos: "macOS" } as const;
 

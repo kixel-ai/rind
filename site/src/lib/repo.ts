@@ -14,9 +14,10 @@ export const repoUrl = "https://github.com/kixel-ai/rind";
 // server watches so an edit to one reloads the page.
 export const sources = [
 	"README.md",
+	"BENCHMARKS.md",
+	"benchmarks/report.json",
 	"admin/wordmark.svg",
 	"admin/wordmark-light.svg",
-	"benchmarks/site/verified.json",
 ] as const;
 
 // Read one of `sources`.
