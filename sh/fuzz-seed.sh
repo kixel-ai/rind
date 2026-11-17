@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Seed the fuzz corpora that take encoded input: `keys` from the test keys,
 # each seed the loader's selector byte (see fuzz/fuzzer/keys.rs) followed by a
-# key, and `verify` from Wycheproof's signatures (see fuzz/fuzzer/verify.rs).
+# key, `verify` from Wycheproof's signatures (see fuzz/fuzzer/verify.rs), and
+# `dimpl` from the NIST key-share inputs in
+# quest/m2/confidence/dimpl-nist-share.md.
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
@@ -218,3 +220,11 @@ jq -r '
     esac
     { printf %b "\\x$(printf %02x "$selector")"; basenc --base16 -d <<<"$seed"; } >"$corpus/$selector-slhdsa-$id"
 done
+
+# dimpl key shares. Each input is a KeyShare whose Edit rewrites a fresh NIST
+# public key's SEC1 prefix from uncompressed 0x04 to hybrid form. The bytes
+# are the fuzzer input, not the share: the share is that edited public key.
+corpus=fuzz/corpus/dimpl
+mkdir -p "$corpus"
+printf '%s' '09a0ff97fbffffff970100000340002b01db0d250c0c06' | unhex >"$corpus/secp384r1-hybrid"
+printf '%s' 'Av9paRCkAHn///cAAP8AAAIK' | base64 -d >"$corpus/secp256r1-hybrid"

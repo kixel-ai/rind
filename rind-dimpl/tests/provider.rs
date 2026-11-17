@@ -189,6 +189,85 @@ fn invalid_key_shares_are_refused() {
     }
 }
 
+/// Applies the dimpl fuzzer's `Edit` to `share`: XOR, then cut from the end.
+fn edit_share(share: &mut Vec<u8>, flips: &[(u16, u8)], cut: u8) {
+    if !share.is_empty() {
+        for &(index, xor) in flips {
+            let index = usize::from(index) % share.len();
+            share[index] ^= xor;
+        }
+    }
+    share.truncate(share.len().saturating_sub(usize::from(cut)));
+}
+
+fn accepts(provider: &CryptoProvider, group: NamedGroup, share: &[u8]) -> bool {
+    provider
+        .kx_groups
+        .iter()
+        .find(|kx| kx.name() == group)
+        .unwrap()
+        .start_exchange(Buf::new())
+        .unwrap()
+        .complete(share, &mut Buf::new())
+        .is_ok()
+}
+
+/// A fresh aws-lc public key, edited as the fuzzer does, whose hybrid prefix
+/// matches `y`. aws-lc accepts that point and refuses the other parity.
+fn matching_hybrid(group: NamedGroup, flips: &[(u16, u8)]) -> Vec<u8> {
+    let aws = aws_lc_rs::default_provider();
+    let kx = aws.kx_groups.iter().find(|kx| kx.name() == group).unwrap();
+    for _ in 0..64 {
+        let mut share = kx.start_exchange(Buf::new()).unwrap().pub_key().to_vec();
+        assert_eq!(share[0], 0x04, "{group:?} publishes an uncompressed point");
+        edit_share(&mut share, flips, 0);
+        if (share[0] & 1) == (share[share.len() - 1] & 1) {
+            return share;
+        }
+    }
+    panic!("{group:?} produced no parity-matching hybrid share");
+}
+
+/// The dimpl fuzzer inputs `Av9paRCkAHn///cAAP8AAAIK` (P-256) and
+/// `09a0ff97fbffffff970100000340002b01db0d250c0c06` (P-384) are `KeyShare`
+/// edits of a fresh uncompressed point: P-256 XORs index 247 with 0 and index
+/// 0 with 2, and P-384 XORs index 0 with 3. Neither cuts. The prefix becomes
+/// SEC1 hybrid `0x06` or `0x07`, and the coordinates stay. aws-lc-rs accepts
+/// that point when the prefix's low bit matches `y`; rind's `agree` refuses
+/// every prefix but `0x04`.
+#[test]
+#[ignore = "rind-dimpl refuses the hybrid NIST shares aws-lc-rs accepts"]
+fn nist_hybrid_key_shares_match_aws_lc() {
+    let aws = aws_lc_rs::default_provider();
+    let rind = rind();
+    let cases = [
+        (NamedGroup::Secp256r1, &[(247u16, 0u8), (0, 2)][..]),
+        (NamedGroup::Secp384r1, &[(0, 3)][..]),
+    ];
+    for (group, flips) in cases {
+        let share = matching_hybrid(group, flips);
+        assert_eq!(
+            accepts(&rind, group, &share),
+            accepts(&aws, group, &share),
+            "{group:?} hybrid {:02x}",
+            share[0]
+        );
+
+        // Flip only the prefix (`0x06` / `0x07`). `y` stays on the curve, and
+        // its parity no longer matches the prefix.
+        let mut mismatched = share.clone();
+        mismatched[0] ^= 1;
+        assert!(
+            !accepts(&rind, group, &mismatched),
+            "{group:?} accepted a hybrid point whose prefix parity does not match y"
+        );
+        assert!(
+            !accepts(&aws, group, &mismatched),
+            "{group:?} aws-lc-rs accepted a hybrid point whose prefix parity does not match y"
+        );
+    }
+}
+
 #[test]
 fn signatures_are_checked_against_the_certificate() {
     let provider = rind();
