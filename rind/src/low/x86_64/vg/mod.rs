@@ -8,6 +8,20 @@
 #![allow(dead_code, unused_macros, clippy::all)]
 
 #[rustfmt::skip]
+pub(crate) mod vg_chacha20_apply_avx2;
+#[rustfmt::skip]
+pub(crate) mod vg_chacha20_apply_avx512vl;
+#[rustfmt::skip]
+pub(crate) mod vg_chacha20_block;
+#[rustfmt::skip]
+pub(crate) mod vg_chacha20_init;
+#[rustfmt::skip]
+pub(crate) mod vg_chacha20_xor;
+#[rustfmt::skip]
+pub(crate) mod vg_chacha20_xor_avx2;
+#[rustfmt::skip]
+pub(crate) mod vg_chacha20_xor_avx512vl;
+#[rustfmt::skip]
 pub(crate) mod vg_rsa_mont_mul_adx;
 #[rustfmt::skip]
 pub(crate) mod vg_rsa_private_crt_precomputed_ifma;
