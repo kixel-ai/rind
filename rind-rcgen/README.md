@@ -7,7 +7,7 @@
 This crate provides rcgen's `KeyPair` for [rcgen](https://github.com/rustls/rcgen), backed by [rind](https://github.com/kixel-ai/rind/), a fork of [Graviola](https://github.com/ctz/graviola/).
 It generates and loads ECDSA P-256 and P-384 and Ed25519 keys, and loads RSA keys.
 
-Build rcgen with `default-features = false` so it compiles no other crypto backend,
+Build rcgen with `default-features = false` so it compiles no other crypto backend:
 
 ```toml
 [dependencies]
@@ -15,7 +15,7 @@ rcgen = { version = "0.14", default-features = false }
 rind-rcgen = "0.14"
 ```
 
-and use `rind_rcgen::KeyPair` where rcgen's `crypto` feature would give `rcgen::KeyPair`.
+Then use `rind_rcgen::KeyPair` where rcgen's `crypto` feature would give `rcgen::KeyPair`.
 Without that feature, rcgen needs each certificate's serial number set explicitly,
 and leaves its key identifiers empty unless `key_identifier_method` is set.
 

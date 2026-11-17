@@ -96,11 +96,9 @@ export function choose(crate: string, main: Main, release: Release | null): { re
 	if (typeof ours === "string") throw new Error(`${crate}/README.md cannot make its page: ${ours}`);
 	// The patch reaches the README's requirements only where `main`'s version meets them.
 	requireMet(crate, main.version, ours, "main's");
-	const fromGit = ["```toml", "[patch.crates-io]", `${crate} = { git = "${main.repo}", rev = "${main.commit}" }`, "```"].join(
-		"\n",
-	);
+	const fromGit = ["```toml", `${crate} = { git = "${main.repo}", rev = "${main.commit}" }`, "```"].join("\n");
 	// A lockfile that already holds the release keeps it until the crate is updated.
-	const steps = `add this to your workspace's root \`Cargo.toml\`, then run \`cargo update -p ${crate}\`:\n\n${fromGit}\n\nThat moves every crate in your tree that depends on ${crate}, and \`cargo tree -i ${crate}\` then shows it from \`git+${main.repo}\`.`;
+	const steps = `add this line under the \`[patch.crates-io]\` table of your workspace's root \`Cargo.toml\` (add the table if it has none), then run \`cargo update -p ${crate}\`:\n\n${fromGit}\n\nThat moves every crate in your tree that depends on ${crate}, and \`cargo tree -i ${crate}\` then shows it from \`git+${main.repo}\`.`;
 
 	const published = release ? parse(release.readme, crate) : "there is no release";
 	if (release && typeof published !== "string") {

@@ -40,7 +40,10 @@ test("a release that predates the structure gives main's README from git", () =>
 	const { readme: got, note } = choose("rind-x", main(readme(`rind-x = "0.17"`)), { version: "0.17.3", readme: old });
 	expect(got.body.some((t) => t.type === "heading")).toBe(true);
 	expect(note).toStartWith("This page describes rind-x as `main` has it, ahead of [rind-x 0.17.3]");
-	expect(note).toContain("[patch.crates-io]\nrind-x = {");
+	// Only the entry line, to go under the reader's own table: a second header would repeat it.
+	expect(note).toContain("under the `[patch.crates-io]` table");
+	expect(note).toContain("```toml\nrind-x = {");
+	expect(note).not.toContain("```toml\n[patch.crates-io]");
 });
 
 test("an unreleased crate is called unreleased", () => {
