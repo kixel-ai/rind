@@ -46,6 +46,12 @@ macro_rules! vg_sym_pageoff {
 pub struct Table<const N: usize>(pub [u8; N]);
 
 #[rustfmt::skip]
+pub(crate) mod vg_ec_p256_public_key;
+#[rustfmt::skip]
+pub(crate) mod vg_ecdh_p256;
+#[rustfmt::skip]
+pub(crate) mod vg_ecdsa_p256_verify;
+#[rustfmt::skip]
 pub(crate) mod vg_keccak_f1600;
 #[rustfmt::skip]
 pub(crate) mod vg_keccak_f1600_sha3;
@@ -93,5 +99,11 @@ pub(crate) mod vg_mlkem_decode_decompress;
 pub(crate) mod vg_mlkem_gamma;
 #[rustfmt::skip]
 pub(crate) mod vg_mlkem_rej_shuffle;
+#[rustfmt::skip]
+pub(crate) mod vg_p256_check_point;
+#[rustfmt::skip]
+pub(crate) mod vg_p256_comb;
+#[rustfmt::skip]
+pub(crate) mod vg_p256_gtab;
 #[rustfmt::skip]
 pub(crate) mod vg_zeroize;
