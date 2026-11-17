@@ -35,12 +35,23 @@
 		ready = true;
 		// A label elsewhere on the page for one of the CPUs, such as a gap's
 		// host, picks it by itself; this brings the view it shows into sight.
+		// A keyboard picks it too, as the label's click would.
 		const follow = (e: MouseEvent) => {
 			const label = (e.target as Element | null)?.closest("label.place");
 			if (label) document.getElementById("times")?.scrollIntoView();
 		};
+		const press = (e: KeyboardEvent) => {
+			const label = (e.target as Element | null)?.closest<HTMLLabelElement>("label.place");
+			if (!label || (e.key !== "Enter" && e.key !== " ")) return;
+			e.preventDefault();
+			label.click();
+		};
 		document.addEventListener("click", follow);
-		return () => document.removeEventListener("click", follow);
+		document.addEventListener("keydown", press);
+		return () => {
+			document.removeEventListener("click", follow);
+			document.removeEventListener("keydown", press);
+		};
 	});
 
 	$effect(() => {
@@ -65,7 +76,14 @@
 				<span class="group-label">{group.label}</span>
 				{#each group.cpus as option (option.id)}
 					<label>
-						<input type="radio" name="cpu" id={`cpu-${option.id}`} value={option.id} bind:group={cpu} />
+						<input
+							type="radio"
+							name="cpu"
+							id={`cpu-${option.id}`}
+							value={option.id}
+							bind:group={cpu}
+							aria-label={`${option.label}, ${option.detail}`}
+						/>
 						<span>{option.label}</span>
 						<small>{option.detail}</small>
 					</label>

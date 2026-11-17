@@ -112,6 +112,14 @@ async function picks(base: string) {
 	await view.scrollTo(place, { timeout: 5000 });
 	await view.click(place, { timeout: 5000 });
 	await expect({ views: [`view-${target.id}`], libs: timed, search: `?cpu=${target.id}&libs=${more.join(",")}` });
+	// And from the keyboard: Enter on the place picks it again after another pick.
+	await view.click(`#cpu-${second}`, { timeout: 5000 });
+	await view.evaluate(`document.querySelector(${JSON.stringify(place)}).focus()`);
+	await view.cdp("Input.dispatchKeyEvent", { type: "keyDown", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13 });
+	await view.cdp("Input.dispatchKeyEvent", { type: "keyUp", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13 });
+	await expect({ views: [`view-${target.id}`], libs: timed, search: `?cpu=${target.id}&libs=${more.join(",")}` });
+	const name = await view.evaluate(`document.querySelector("#cpu-${target.id}").getAttribute("aria-label")`);
+	if (typeof name !== "string" || name.length === 0) throw new Error(`#cpu-${target.id} has no accessible name of its own`);
 
 	// With JavaScript off, the CSS alone shows what the inputs pick.
 	// WebView's click waits on the page's scripts, so these click through

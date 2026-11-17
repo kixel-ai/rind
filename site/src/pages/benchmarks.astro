@@ -195,7 +195,7 @@ const percent = Math.round((report.slower - 1) * 100);
 												const cpu = placeCpu(p);
 												// A label for the CPU's radio picks it in place, keeping the
 												// libraries, with or without JavaScript.
-												return cpu ? <label for={`cpu-${cpu.id}`} class="place">{label}</label> : label;
+												return cpu ? <label for={`cpu-${cpu.id}`} class="place" tabindex="0">{label}</label> : label;
 											})()}
 										</>
 									))}</td>
