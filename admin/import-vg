@@ -31,7 +31,7 @@ import re
 import subprocess
 import sys
 
-REV = "e7b0fe8a82b7777958e078573771d51415f105bb"
+REV = "9eed89c28d3cc1edaf004160319878b49199cdbd"
 
 ROOT = os.path.join(os.path.dirname(__file__), "..", "rind", "src", "low")
 
