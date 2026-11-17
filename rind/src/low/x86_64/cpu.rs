@@ -275,6 +275,22 @@ impl HaveSha256 {
     }
 }
 
+/// Proof that the CPU has AVX-512F, which Argon2's AVX-512 fill uses and
+/// nothing wider.
+///
+/// Dispatch does not select that fill unless the build passes
+/// `--cfg rind_argon2_avx512`.
+#[cfg(any(test, rind_argon2_avx512))]
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct HaveAvx512ForArgon2(());
+
+#[cfg(any(test, rind_argon2_avx512))]
+impl HaveAvx512ForArgon2 {
+    pub(crate) fn check() -> Option<Self> {
+        has(AVX512F).then_some(Self(()))
+    }
+}
+
 /// Proof that the CPU has AVX2, and the BMI1, BMI2, POPCNT, and SSSE3 that
 /// rind's AVX2 kernels also use: ChaCha20, SHA-1, SHA-2, ML-KEM, the 4-way
 /// Keccak-f, and the constant-time table selects.
@@ -691,6 +707,10 @@ mod tests {
             (
                 HaveAesHardware::check().is_some(),
                 available!("aes", "pclmulqdq", "ssse3", "sse4.1"),
+            ),
+            (
+                HaveAvx512ForArgon2::check().is_some(),
+                available!("avx512f"),
             ),
             (HaveAvx::check().is_some(), available!("avx", "ssse3")),
             (HaveSsse3::check().is_some(), available!("ssse3")),

@@ -21,6 +21,9 @@ impl crate::low::Zeroable for Argon2Block {}
 /// Sets `out` to G(`x`, `y`), or xors G(`x`, `y`) into it when `xor` is set,
 /// as passes after the first do.
 #[inline(always)]
+// Unused on aarch64 when `--cfg rind_argon2_neon` selects the NEON fill.
+// The tests still compare that fill to this one.
+#[cfg_attr(all(not(test), rind_argon2_neon), allow(dead_code))]
 pub(crate) fn argon2_compress(x: &Argon2Block, y: &Argon2Block, out: &mut Argon2Block, xor: bool) {
     let mut r = Argon2Block::ZERO;
     for i in 0..128 {
@@ -51,6 +54,7 @@ pub(crate) fn argon2_compress(x: &Argon2Block, y: &Argon2Block, out: &mut Argon2
 // RFC 9106's P, over the sixteen words of `block` that `at` maps 0 through
 // 15 to.
 #[inline(always)]
+#[cfg_attr(all(not(test), rind_argon2_neon), allow(dead_code))]
 fn permute(block: &mut Argon2Block, at: impl Fn(usize) -> usize) {
     let words = &mut block.0;
     let mut v = [0u64; 16];
@@ -73,6 +77,7 @@ fn permute(block: &mut Argon2Block, at: impl Fn(usize) -> usize) {
 // RFC 9106's GB: BLAKE2b's G with each addition `a + b` replaced by
 // `a + b + 2 * lo(a) * lo(b)`, and no message words.
 #[inline(always)]
+#[cfg_attr(all(not(test), rind_argon2_neon), allow(dead_code))]
 fn gb(v: &mut [u64; 16], a: usize, b: usize, c: usize, d: usize) {
     v[a] = fbla(v[a], v[b]);
     v[d] = (v[d] ^ v[a]).rotate_right(32);
@@ -85,7 +90,36 @@ fn gb(v: &mut [u64; 16], a: usize, b: usize, c: usize, d: usize) {
 }
 
 #[inline(always)]
+#[cfg_attr(all(not(test), rind_argon2_neon), allow(dead_code))]
 fn fbla(x: u64, y: u64) -> u64 {
     let product = (x as u32 as u64) * (y as u32 as u64);
     x.wrapping_add(y).wrapping_add(product.wrapping_mul(2))
+}
+
+/// Compares `compress` to the portable permutation on sixty-four blocks
+/// and both XOR modes.
+#[cfg(test)]
+pub(crate) fn assert_matches_portable(
+    compress: impl Fn(&Argon2Block, &Argon2Block, &mut Argon2Block, bool),
+) {
+    let mut seed = 0x9E37_79B9_7F4A_7C15u64;
+    for _ in 0..64 {
+        seed = seed
+            .wrapping_mul(0x6C62_272E_07BB_0142)
+            .wrapping_add(0x9E37);
+        let mut x = Argon2Block::ZERO;
+        let mut y = Argon2Block::ZERO;
+        let mut old = Argon2Block::ZERO;
+        for i in 0..128 {
+            x.0[i] = (i as u64).wrapping_mul(seed);
+            y.0[i] = (i as u64).wrapping_mul(seed ^ 0x1234_5678_9ABC_DEF0) ^ 0x00FF;
+            old.0[i] = 0xFFFF_0000_FFFF_0000 ^ seed.wrapping_add(i as u64);
+        }
+        for xor in [false, true] {
+            let (mut ours, mut theirs) = (old.clone(), old.clone());
+            compress(&x, &y, &mut ours, xor);
+            argon2_compress(&x, &y, &mut theirs, xor);
+            assert_eq!(ours.0, theirs.0, "seed={seed:#x} xor={xor}");
+        }
+    }
 }

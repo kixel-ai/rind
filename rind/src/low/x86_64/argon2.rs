@@ -16,14 +16,34 @@ use core::arch::x86_64::*;
 
 use super::super::generic::argon2::{Argon2Block, argon2_compress as portable};
 use super::cpu::HaveAvx2;
+#[cfg(rind_argon2_avx512)]
+use super::cpu::HaveAvx512ForArgon2;
+#[cfg(rind_argon2_ssse3)]
+use super::cpu::HaveSsse3;
 
 /// Argon2's compression function, as `low::generic::argon2` defines it.
+///
+/// AVX2 where the CPU has it, and the portable permutation otherwise. The
+/// AVX-512F and SSSE3 fills are built for the tests and selected only with
+/// `--cfg rind_argon2_avx512` and `--cfg rind_argon2_ssse3`.
 pub(crate) fn argon2_compress(x: &Argon2Block, y: &Argon2Block, out: &mut Argon2Block, xor: bool) {
-    match HaveAvx2::check() {
-        // SAFETY: the token proves AVX2
-        Some(_) => unsafe { compress_avx2(x, y, out, xor) },
-        None => portable(x, y, out, xor),
+    // Off until it wins on Zen 4 or 5 and on Sapphire Rapids.
+    #[cfg(rind_argon2_avx512)]
+    if HaveAvx512ForArgon2::check().is_some() {
+        // SAFETY: the token proves AVX-512F, and the blocks are 1024 bytes.
+        return unsafe { super::argon2_avx512::compress(x, y, out, xor) };
     }
+    if HaveAvx2::check().is_some() {
+        // SAFETY: the token proves AVX2, and the blocks are 1024 bytes.
+        return unsafe { compress_avx2(x, y, out, xor) };
+    }
+    // Off until it beats the portable permutation on a CPU without AVX2.
+    #[cfg(rind_argon2_ssse3)]
+    if HaveSsse3::check().is_some() {
+        // SAFETY: the token proves SSSE3, and the blocks are 1024 bytes.
+        return unsafe { super::argon2_ssse3::compress(x, y, out, xor) };
+    }
+    portable(x, y, out, xor)
 }
 
 #[target_feature(enable = "avx2")]
@@ -191,5 +211,13 @@ mod tests {
             portable(&x, &y, &mut theirs, xor);
             assert_eq!(ours.0, theirs.0);
         }
+    }
+
+    /// The build's `--cfg` gates select a fill, and that fill matches the
+    /// portable permutation.
+    #[cfg(any(rind_argon2_avx512, rind_argon2_ssse3))]
+    #[test]
+    fn configured_dispatch_matches_portable() {
+        crate::low::generic::argon2::assert_matches_portable(argon2_compress);
     }
 }
