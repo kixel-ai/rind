@@ -19,7 +19,7 @@ import {
 	report,
 	reportUrl,
 	standingLine,
-	tierParagraph,
+	tierMarkdown,
 	tiers,
 	title,
 	untimed,
@@ -160,7 +160,7 @@ const percent = Math.round((report.slower - 1) * 100);
 
 		<section>
 			<h2 id="cpu-tiers">CPU tiers</h2>
-			<Fragment set:html={html([tierParagraph])} />
+			<Fragment set:html={html(lex(tierMarkdown))} />
 		</section>
 
 		<section>

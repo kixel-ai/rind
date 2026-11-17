@@ -86,6 +86,8 @@ export interface Report {
 	hosts: Host[];
 	unmeasured: string[];
 	tiers: {
+		// The libraries each tier's fastest is drawn from.
+		rivals: string[];
 		run: number;
 		url: string;
 		date: string;
@@ -171,11 +173,18 @@ export function untimed(host: Host): string[] {
 	return report.sections.flatMap((s) => s.operations.filter((o) => !(o.id in host.times)).map((o) => o.label));
 }
 
-// The report's paragraph on what each weekly tier denies, quoted.
+// The libraries each weekly tier's fastest is drawn from, in prose.
+const tierLibraries = tiers.rivals.map(libraryName);
+const tierNames = `${tierLibraries.slice(0, -1).join(", ")}, and ${tierLibraries.at(-1)}`;
+
+// The report's paragraph on what each weekly tier denies, quoted up to where
+// it turns to its own heatmap, which the page draws as a table per tier instead.
 const benchmarksMd = lex(read("BENCHMARKS.md"));
 const tierIntro = section(benchmarksMd, "CPU tiers").find((t) => t.type === "paragraph");
 if (!tierIntro) throw new Error("BENCHMARKS.md's CPU tiers section has no paragraph");
-export const tierParagraph = tierIntro;
+const heatmapStart = tierIntro.raw.indexOf(" Each cell is ");
+if (heatmapStart < 0) throw new Error("BENCHMARKS.md's CPU tiers paragraph no longer says where its cells begin");
+export const tierMarkdown = `${tierIntro.raw.slice(0, heatmapStart).trim()} Each tier's table times every benchmark it runs, colored by its time over the fastest of ${tierNames}; a benchmark a tier lacks runs the same code as the tier before it, so it isn't timed.`;
 
 export const reportUrl = `${repoUrl}/blob/main/BENCHMARKS.md`;
 
@@ -217,7 +226,7 @@ export const gapRatio = (g: Gap) =>
 	`${ratio(g.low)}${g.high - g.low >= 0.005 ? ` to ${ratio(g.high)}` : ""} (${g.fastest.join(", ")})`;
 
 export const title = "Benchmarks";
-export const lead = `How long rind and the usual Rust crypto libraries take for the same operations, on ${report.hosts.length} machines and ${tiers.columns.length} CPU tiers of GitHub's runners. Each library runs its native path on each CPU. A time within ${Math.round((report.slower - 1) * 100)}% of the fastest library's counts as the fastest; every other time says how far it trails.`;
+export const lead = `How long rind and the usual Rust crypto libraries take for the same operations, on ${report.hosts.length} machines and ${tiers.columns.length} CPU tiers of GitHub's runners. Each library runs its native path on each CPU. The fastest time is in bold, every other says how far it trails, and one within ${Math.round((report.slower - 1) * 100)}% of the fastest counts as level with it, in the fastest's colour.`;
 export const standingLine = `rind is the fastest, or within ${Math.round((report.slower - 1) * 100)}% of it, in ${report.standing[0]} of its ${report.standing[1]} timings on the hosts that another library also times.`;
 
 function markdown(): string {
@@ -279,7 +288,7 @@ function markdown(): string {
 		...(report.unmeasured.length ? [`Not measured yet: ${report.unmeasured.map((n) => `\`${n}\``).join(", ")}.`] : []),
 		...hosts,
 		"## CPU tiers",
-		tierParagraph.raw.trim(),
+		tierMarkdown,
 		`From ${link(`run ${tiers.run}`, tiers.url)}, ${tiers.date} at ${link(tiers.commit.slice(0, 8), commitUrl(tiers.commit))}.`,
 		...tierTables,
 		"## Known gaps",

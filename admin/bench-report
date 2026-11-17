@@ -1915,6 +1915,8 @@ def site_data(hosts, tiers, verified, gaps):
     if tiers is not None:
         order = tier_columns(tiers)
         data["tiers"] = {
+            # The libraries a tier's fastest is drawn from.
+            "rivals": ["rind", *BASELINES],
             "run": tiers["run"],
             "url": tiers["url"],
             "date": tiers["date"][:10],
