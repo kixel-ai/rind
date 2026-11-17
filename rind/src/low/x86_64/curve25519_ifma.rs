@@ -10,10 +10,12 @@
 //! are the ones it picks on CPUs without the SHA-512 instructions, as every
 //! CPU with IFMA measured so far lacks them.
 //!
-//! VG proves each correct and constant time in Lean, over its own models of
-//! the instructions, which `admin/prove vg` cosimulates, against the
-//! contracts in its `Spec/X25519` and `Spec/Ed25519`; the `# Safety` items
-//! below restate their preconditions.
+//! VG proves each correct in Lean, over its own models of the instructions,
+//! which `admin/prove vg` cosimulates, against the contracts in its
+//! `Spec/X25519` and `Spec/Ed25519`; the `# Safety` items below restate their
+//! preconditions. It proves X25519, key generation, and signing constant time
+//! too; verification's contract lets its timing depend on its inputs, which
+//! are all public.
 
 use core::mem::MaybeUninit;
 
