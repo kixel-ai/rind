@@ -1,0 +1,17 @@
+name: probe-tmp
+on:
+  push:
+    branches: [quest/m0/catch-on-pr/openssl-ctgrind-aarch64]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/nix
+      - name: probe
+        run: |
+          nix develop .#ctgrind --command sh -c 'export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUNNER="$PWD/admin/ctgrind --run" VALGRIND_BUG_494162=1 CARGO_PROFILE_RELEASE_DEBUG=line-tables-only; cargo test -p rind-openssl --test ctgrind --features rind/__ctgrind --release'
