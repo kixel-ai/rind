@@ -90,6 +90,10 @@ mod generic {
     // rest only in tests, to check its routines against.
     #[cfg_attr(all(rind_backend = "aarch64", not(test)), allow(dead_code))]
     pub(crate) mod mldsa_poly;
+    // pyca/verified-garbage's ML-DSA signing where it does not run: every
+    // backend but x86_64.
+    #[cfg(not(rind_backend = "x86_64"))]
+    pub(crate) mod mldsa_vg;
     pub(crate) mod mlkem;
     // pyca/verified-garbage's ML-KEM-768 where it does not run: aarch64's
     // key generation and decapsulation, and every operation elsewhere.
@@ -336,6 +340,7 @@ cfg_if::cfg_if! {
             mldsa_polyz_unpack_19, mldsa_rej_uniform_vartime, mldsa_rej_uniform_eta2_vartime,
             mldsa_rej_uniform_eta4_vartime,
         };
+        pub(crate) use x86_64::mldsa_vg;
         pub(crate) use x86_64::mlkem768_vg;
         pub(crate) use x86_64::mlkem::{
             mlkem_ntt,
@@ -459,6 +464,7 @@ cfg_if::cfg_if! {
             mldsa_polyz_unpack_19, mldsa_rej_uniform_vartime, mldsa_rej_uniform_eta2_vartime,
             mldsa_rej_uniform_eta4_vartime,
         };
+        pub(crate) use generic::mldsa_vg;
         pub(crate) use aarch64::mlkem768_vg;
         pub(crate) use aarch64::mlkem::{
             mlkem_ntt,
@@ -523,6 +529,7 @@ cfg_if::cfg_if! {
             sha1_compress_blocks, sha1_compress_padded, sha256_compress_blocks, sha256_finish,
             sha512_compress_blocks,
         };
+        pub(crate) use generic::mldsa_vg;
         pub(crate) use generic::mlkem768_vg;
         pub(crate) use generic::sha256x8::sha256_finish_x8;
     } else if #[cfg(rind_backend = "portable")] {
@@ -540,6 +547,7 @@ cfg_if::cfg_if! {
             sha1_compress_blocks, sha1_compress_padded, sha256_compress_blocks, sha256_finish,
             sha512_compress_blocks,
         };
+        pub(crate) use generic::mldsa_vg;
         pub(crate) use generic::mlkem768_vg;
         pub(crate) use generic::sha256x8::sha256_finish_x8;
     } else {

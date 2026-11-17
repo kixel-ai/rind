@@ -170,7 +170,8 @@ macro_rules! params {
     ($(
         $set:ident: K = $k:literal, L = $l:literal, ETA = $eta:literal, TAU = $tau:literal,
         GAMMA1 = 2^$gamma1:literal, GAMMA2 = (Q - 1) / $gamma2:literal, OMEGA = $omega:literal,
-        LAMBDA = $lambda:literal, pk = $pk:literal, sk = $sk:literal, sig = $sig:literal;
+        LAMBDA = $lambda:literal, pk = $pk:literal, sk = $sk:literal, sig = $sig:literal,
+        vg = $vg:ident;
     )*) => {$(
         impl Params for $set {
             const K: usize = $k;
@@ -204,6 +205,9 @@ macro_rules! params {
                 public_key_from_secret::<Self>(sk, pk, expanded.polys_mut())
             }
 
+            // Never inlined, holding its `Mcdt` throughout, as `low::mcdt`
+            // requires of the code that calls a VG routine.
+            #[inline(never)]
             fn sign(
                 _: Internal,
                 sk: &[u8],
@@ -211,7 +215,17 @@ macro_rules! params {
                 mu: &[u8; MU_LEN],
                 rnd: &[u8; RND_LEN],
             ) -> Result<Self::Signature, Error> {
-                sign_internal::<Self>(sk, expanded.polys(), mu, rnd)
+                let _mcdt = low::Mcdt::enter();
+                match low::mldsa_vg::Sign::check() {
+                    // The key pair kept no expansion: see `vg_signs`.
+                    Some(vg) => {
+                        let sk = sk.try_into().expect("a key of the set's length");
+                        vg.$vg(sk, mu, rnd)
+                            .map(low::ct::into_public)
+                            .ok_or(Error::Fault)
+                    }
+                    None => sign_internal::<Self>(sk, expanded.polys(), mu, rnd),
+                }
             }
 
             fn verify(
@@ -236,11 +250,11 @@ macro_rules! params {
 
 params! {
     MlDsa44: K = 4, L = 4, ETA = 2, TAU = 39, GAMMA1 = 2^17, GAMMA2 = (Q - 1) / 88,
-        OMEGA = 80, LAMBDA = 128, pk = 1312, sk = 2560, sig = 2420;
+        OMEGA = 80, LAMBDA = 128, pk = 1312, sk = 2560, sig = 2420, vg = sign44;
     MlDsa65: K = 6, L = 5, ETA = 4, TAU = 49, GAMMA1 = 2^19, GAMMA2 = (Q - 1) / 32,
-        OMEGA = 55, LAMBDA = 192, pk = 1952, sk = 4032, sig = 3309;
+        OMEGA = 55, LAMBDA = 192, pk = 1952, sk = 4032, sig = 3309, vg = sign65;
     MlDsa87: K = 8, L = 7, ETA = 2, TAU = 60, GAMMA1 = 2^19, GAMMA2 = (Q - 1) / 32,
-        OMEGA = 75, LAMBDA = 256, pk = 2592, sk = 4896, sig = 4627;
+        OMEGA = 75, LAMBDA = 256, pk = 2592, sk = 4896, sig = 4627, vg = sign87;
 }
 
 /// The length of a parameter set's public key encoding, which [`verify`]
@@ -271,6 +285,13 @@ pub(crate) struct KeyPair<P: Params> {
     /// own drop would write `None` over the wiped value, whose other word
     /// the compiler may fill with the freed pointer.
     expanded: ManuallyDrop<Polys>,
+}
+
+/// Whether signing runs pyca/verified-garbage's routine, which expands the
+/// private key itself: see `low::mldsa_vg`. A key pair then keeps no
+/// expansion.
+fn vg_signs() -> bool {
+    low::mldsa_vg::Sign::check().is_some()
 }
 
 /// The polynomials a key pair's expansion holds: `A`, then `s1`, `s2`, and
@@ -373,6 +394,9 @@ impl<P: Params> KeyPair<P> {
             key.secret_key.as_mut(),
             &mut key.expanded,
         );
+        if vg_signs() {
+            key.expanded.free();
+        }
         let tr = low::ct::into_public(*key.tr());
         (key, PublicKey::with_tr(public_key, tr))
     }
@@ -401,6 +425,9 @@ impl<P: Params> KeyPair<P> {
             &mut key.expanded,
         ) {
             true => {
+                if vg_signs() {
+                    key.expanded.free();
+                }
                 let tr = low::ct::into_public(*key.tr());
                 Ok((key, PublicKey::with_tr(public_key, tr)))
             }
@@ -1479,6 +1506,44 @@ mod tests {
                 by_set!(group.str("parameterSet"), check(&group, test));
             }
         }
+    }
+
+    // The CPU's widest signing hides VG's routines from every other test on
+    // a CPU with AVX2, so each runs against ACVP's signatures here, which
+    // `admin/ctgrind` keeps secret, and for a loaded key.
+    #[cfg(rind_backend = "x86_64")]
+    #[test]
+    fn vg_sig_gen_matches_acvp() {
+        fn check<P: Params>(group: &serde_json::Value, test: &serde_json::Value) {
+            let (key, _) = KeyPair::<P>::from_secret_key(&test.hex("sk")).unwrap();
+            let rnd = match group.flag("deterministic") {
+                true => [0; RND_LEN],
+                false => test.hex("rnd").try_into().unwrap(),
+            };
+            let mu = acvp_mu(group, test, key.tr());
+            let _entry = Entry::new_secret();
+            let vg = low::mldsa_vg::Sign::forced();
+            let sk = key.secret_key().as_ref();
+            let signature = match P::K {
+                4 => vg.sign44(sk.try_into().unwrap(), &mu, &rnd).map(|s| s.to_vec()),
+                6 => vg.sign65(sk.try_into().unwrap(), &mu, &rnd).map(|s| s.to_vec()),
+                _ => vg.sign87(sk.try_into().unwrap(), &mu, &rnd).map(|s| s.to_vec()),
+            };
+            assert_eq!(
+                low::ct::into_public(signature.unwrap()),
+                test.hex("signature"),
+                "tcId {}",
+                test.int("tcId")
+            );
+        }
+        let mut ran = 0;
+        for group in acvp("ML-DSA-sigGen-FIPS204") {
+            for test in group.tests() {
+                by_set!(group.str("parameterSet"), check(&group, test));
+                ran += 1;
+            }
+        }
+        assert!(ran > 0);
     }
 
     #[test]

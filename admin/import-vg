@@ -64,6 +64,10 @@ ROOTS = {
         # keys, and its twin for CPUs with two 512-bit multipliers.
         "vg_rsa_private_crt_precomputed_ifma",
         "vg_rsa_private_crt_precomputed_ifma512",
+        # ML-DSA signing on CPUs without AVX2.
+        "vg_mldsa44_sign",
+        "vg_mldsa65_sign",
+        "vg_mldsa87_sign",
     ],
     "aarch64": [
         # ML-KEM-768's encapsulation key check, and encapsulation with the
