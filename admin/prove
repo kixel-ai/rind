@@ -1145,7 +1145,11 @@ extract_kdf() {
 # nightly Rust and standard library sysroots by store path, so its resolved
 # path, with the compiler's `-vV` for a Charon outside Nix, changes with any of
 # them. The directories of other keys are removed, so the cache does not grow.
-toolchain=$(printf '%s\n' "$(realpath -e "$(command -v charon)")" "$(rustc -vV)" | sha256sum)
+# Each on its own line, so that a missing Charon or a failing rustc stops the
+# script before the cache of the working toolchain is pruned.
+charon_path=$(realpath -e "$(command -v charon)")
+rustc_version=$(rustc -vV)
+toolchain=$(printf '%s\n' "$charon_path" "$rustc_version" | sha256sum)
 prove_target=$PWD/target/prove-${toolchain:0:16}
 mkdir -p target
 find "$PWD/target" -mindepth 1 -maxdepth 1 -name 'prove*' ! -name "prove-${toolchain:0:16}" ! -name "prove-${toolchain:0:16}-portable" -exec rm -rf {} +
