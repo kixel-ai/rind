@@ -1044,6 +1044,224 @@ mod tests {
     // Exporting our decapsulation key needs crate access, so this
     // differential test lives here rather than in `tests/crosschecks.rs`.
     #[cfg(not(any(miri, target_family = "wasm")))]
+    // X-Wing against the two other Rust implementations of the draft that
+    // carry its combiner: libcrux-kem and RustCrypto's x-wing (aws-lc-rs has
+    // none). Both are fed our seeds and our `eseed`s, and what each makes of
+    // them is compared byte for byte, in both directions.
+    mod xwing_crosscheck {
+        use libcrux_kem::Algorithm as LibcruxAlgorithm;
+        use x_wing::{Decapsulate, Decapsulator, KeyExport, TryDecapsulate};
+
+        use super::*;
+
+        const ROUNDS: usize = 24;
+
+        fn random_bytes<const N: usize>() -> [u8; N] {
+            let mut bytes = [0; N];
+            for chunk in bytes.chunks_mut(32) {
+                let seed = DecapsulationKey::<XWing>::generate().unwrap().to_seed();
+                chunk.copy_from_slice(&seed.as_ref()[..chunk.len()]);
+            }
+            low::ct::public_slice(&bytes);
+            bytes
+        }
+
+        fn rustcrypto_ciphertext(bytes: &[u8]) -> x_wing::Ciphertext {
+            bytes.try_into().unwrap()
+        }
+
+        // Keys, ciphertexts, and secrets from our seed and `eseed` equal
+        // libcrux-kem's and x-wing's, and each decapsulates the others'.
+        #[test]
+        fn xwing_matches_libcrux_and_rustcrypto() {
+            for _ in 0..ROUNDS {
+                let seed = random_bytes::<32>();
+                let eseed = random_bytes::<64>();
+
+                let ours = DecapsulationKey::<XWing>::from_seed(&seed).unwrap();
+                let (libcrux_sk, libcrux_pk) =
+                    libcrux_kem::key_gen_derand(LibcruxAlgorithm::XWingKemDraft06, &seed).unwrap();
+                let rustcrypto = x_wing::DecapsulationKey::from(seed);
+                let rustcrypto_pk = rustcrypto.encapsulation_key();
+
+                let pk = ours.public_key().as_ref().to_vec();
+                assert_eq!(pk, libcrux_pk.encode());
+                assert_eq!(pk, rustcrypto_pk.to_bytes().as_slice());
+                assert_eq!(libcrux_sk.encode(), seed);
+                assert_eq!(rustcrypto.as_bytes(), &seed);
+
+                let (secret, ciphertext) = xwing_encaps(ours.public_key(), &eseed);
+                let (libcrux_ss, libcrux_ct) = libcrux_pk.encapsulate_derand(&eseed).unwrap();
+                let (rustcrypto_ct, rustcrypto_ss) =
+                    rustcrypto_pk.encapsulate_deterministic(&(&eseed[..]).try_into().unwrap());
+                assert_eq!(ciphertext.as_ref(), libcrux_ct.encode());
+                assert_eq!(ciphertext.as_ref(), rustcrypto_ct.as_slice());
+                assert_eq!(secret, libcrux_ss.encode());
+                assert_eq!(secret, rustcrypto_ss.as_slice());
+
+                let theirs =
+                    libcrux_kem::Ct::decode(LibcruxAlgorithm::XWingKemDraft06, ciphertext.as_ref())
+                        .unwrap();
+                assert_eq!(theirs.decapsulate(&libcrux_sk).unwrap().encode(), secret);
+                assert_eq!(
+                    rustcrypto
+                        .decapsulate(&rustcrypto_ciphertext(ciphertext.as_ref()))
+                        .as_slice(),
+                    secret
+                );
+                assert_eq!(decapsulate(&ours, ciphertext.as_ref()).unwrap(), secret);
+            }
+        }
+
+        // The public API in both directions: what libcrux-kem and x-wing
+        // encapsulate to our key we decapsulate, and what we encapsulate to
+        // their keys they decapsulate.
+        #[test]
+        fn xwing_interoperates() {
+            for _ in 0..ROUNDS {
+                let ours = DecapsulationKey::<XWing>::generate().unwrap();
+                let seed = seed_bytes(&ours);
+                let pk = ours.public_key().as_ref().to_vec();
+
+                // Theirs to ours.
+                let libcrux_pk =
+                    libcrux_kem::PublicKey::decode(LibcruxAlgorithm::XWingKemDraft06, &pk).unwrap();
+                let (ss, ct) = libcrux_pk
+                    .encapsulate_derand(&random_bytes::<64>())
+                    .unwrap();
+                assert_eq!(decapsulate(&ours, &ct.encode()).unwrap(), ss.encode());
+                let rustcrypto_pk = x_wing::EncapsulationKey::try_from(&pk[..]).unwrap();
+                let (ct, ss) =
+                    rustcrypto_pk.encapsulate_deterministic(&random_bytes::<64>().into());
+                assert_eq!(decapsulate(&ours, ct.as_slice()).unwrap(), ss.as_slice());
+
+                // Ours to theirs.
+                let (ciphertext, secret) = ours.public_key().encapsulate().unwrap();
+                let secret = secret_bytes(&secret);
+                let (libcrux_sk, _) =
+                    libcrux_kem::key_gen_derand(LibcruxAlgorithm::XWingKemDraft06, &seed).unwrap();
+                let theirs =
+                    libcrux_kem::Ct::decode(LibcruxAlgorithm::XWingKemDraft06, ciphertext.as_ref())
+                        .unwrap();
+                assert_eq!(theirs.decapsulate(&libcrux_sk).unwrap().encode(), secret);
+                let rustcrypto =
+                    x_wing::DecapsulationKey::from(<[u8; 32]>::try_from(&seed[..]).unwrap());
+                assert_eq!(
+                    rustcrypto
+                        .decapsulate(&rustcrypto_ciphertext(ciphertext.as_ref()))
+                        .as_slice(),
+                    secret
+                );
+            }
+        }
+
+        // A ciphertext with one byte altered in its ML-KEM or X25519 part
+        // decapsulates to the same secret in all three: the implicit
+        // rejection of FIPS 203 for the first, the changed X25519 point for
+        // the second.
+        #[test]
+        fn xwing_matches_on_altered_ciphertexts() {
+            for i in 0..ROUNDS {
+                let ours = DecapsulationKey::<XWing>::generate().unwrap();
+                let seed = seed_bytes(&ours);
+                let (ciphertext, _) = ours.public_key().encapsulate().unwrap();
+                let (libcrux_sk, _) =
+                    libcrux_kem::key_gen_derand(LibcruxAlgorithm::XWingKemDraft06, &seed).unwrap();
+                let rustcrypto =
+                    x_wing::DecapsulationKey::from(<[u8; 32]>::try_from(&seed[..]).unwrap());
+
+                let mut bytes = ciphertext.as_ref().to_vec();
+                // Both ends of each part, and the middle of the first.
+                let at = [0, 1, 500, 1087, 1088, 1100, 1118, 1119][i % 8];
+                bytes[at] ^= 1 << (i % 8);
+
+                let secret = decapsulate(&ours, &bytes).unwrap();
+                let theirs =
+                    libcrux_kem::Ct::decode(LibcruxAlgorithm::XWingKemDraft06, &bytes).unwrap();
+                assert_eq!(
+                    theirs.decapsulate(&libcrux_sk).unwrap().encode(),
+                    secret,
+                    "{at}"
+                );
+                assert_eq!(
+                    rustcrypto
+                        .decapsulate(&rustcrypto_ciphertext(&bytes))
+                        .as_slice(),
+                    secret,
+                    "{at}"
+                );
+            }
+        }
+
+        // A key whose ML-KEM half fails the modulus check is refused by all
+        // three; one with any X25519 half (here, zero) is taken by all three.
+        #[test]
+        fn xwing_matches_on_malformed_keys() {
+            let key = DecapsulationKey::<XWing>::generate().unwrap();
+            let pk = key.public_key().as_ref().to_vec();
+
+            let mut bad = pk.clone();
+            bad[..2].copy_from_slice(&[0xff, 0x0f]);
+            assert!(EncapsulationKey::<XWing>::new(&bad).is_err());
+            assert!(
+                libcrux_kem::PublicKey::decode(LibcruxAlgorithm::XWingKemDraft06, &bad).is_err()
+            );
+            assert!(x_wing::EncapsulationKey::try_from(&bad[..]).is_err());
+
+            let mut zero = pk.clone();
+            zero[1184..].fill(0);
+            assert!(EncapsulationKey::<XWing>::new(&zero).is_ok());
+            assert!(
+                libcrux_kem::PublicKey::decode(LibcruxAlgorithm::XWingKemDraft06, &zero).is_ok()
+            );
+            assert!(x_wing::EncapsulationKey::try_from(&zero[..]).is_ok());
+
+            for len in [0, 1215, 1217] {
+                let mut wrong = pk.clone();
+                wrong.resize(len, 0);
+                assert!(EncapsulationKey::<XWing>::new(&wrong).is_err());
+                assert!(
+                    libcrux_kem::PublicKey::decode(LibcruxAlgorithm::XWingKemDraft06, &wrong)
+                        .is_err()
+                );
+                assert!(x_wing::EncapsulationKey::try_from(&wrong[..]).is_err());
+            }
+        }
+
+        // The draft leaves a ciphertext whose X25519 share gives the zero
+        // secret open. We follow its text as x-wing's plain key does: the
+        // secret is derived with the zero. libcrux-kem and x-wing's
+        // `RejectNonContrib` key refuse it instead.
+        #[test]
+        fn xwing_non_contributory_shares() {
+            let ours = DecapsulationKey::<XWing>::generate().unwrap();
+            let seed = seed_bytes(&ours);
+            let (ciphertext, _) = ours.public_key().encapsulate().unwrap();
+            let mut bytes = ciphertext.as_ref().to_vec();
+            bytes[1088..].fill(0);
+
+            let plain = x_wing::DecapsulationKey::from(<[u8; 32]>::try_from(&seed[..]).unwrap());
+            assert_eq!(
+                decapsulate(&ours, &bytes).unwrap(),
+                plain.decapsulate(&rustcrypto_ciphertext(&bytes)).as_slice()
+            );
+
+            let strict = x_wing::DecapsulationKeyRejectNonContrib::from(
+                <[u8; 32]>::try_from(&seed[..]).unwrap(),
+            );
+            assert!(
+                strict
+                    .try_decapsulate(&rustcrypto_ciphertext(&bytes))
+                    .is_err()
+            );
+            let (libcrux_sk, _) =
+                libcrux_kem::key_gen_derand(LibcruxAlgorithm::XWingKemDraft06, &seed).unwrap();
+            let theirs =
+                libcrux_kem::Ct::decode(LibcruxAlgorithm::XWingKemDraft06, &bytes).unwrap();
+            assert!(theirs.decapsulate(&libcrux_sk).is_err());
+        }
+    }
+
     mod crosscheck {
         use aws_lc_rs::kem::{self, AlgorithmId, ML_KEM_512, ML_KEM_768, ML_KEM_1024};
         use proptest::prelude::*;
