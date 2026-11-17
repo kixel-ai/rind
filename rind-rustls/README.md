@@ -45,6 +45,8 @@ Nothing: it backs every item of rustls's `crypto::aws_lc_rs` provider.
   public or encapsulated key, as rind does everywhere; upstream takes one.
 - `Ticketer` seals tickets with XChaCha20-Poly1305, where upstream's uses
   RFC 5077's AES-256-CBC and HMAC-SHA256.
+- `sign::any_supported_type` refuses a PKCS#8 private key with bytes after its
+  structure, where upstream's takes it.
 
 ## WebAssembly
 
