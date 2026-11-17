@@ -128,4 +128,29 @@ mod tests {
         }
         assert!(ran > 0);
     }
+
+    // `mid::mlkem::ct_qemu_mlkem` traces the variant this target picks,
+    // never Apple's on Linux, so this traces both under `admin/ct-qemu`,
+    // with the key's hash and without: a secret message to a fixed key.
+    #[test]
+    #[ignore = "admin/ct-qemu runs it under qemu"]
+    fn ct_qemu_mlkem768_variants() {
+        use crate::low::ct_qemu;
+        use crate::mid::mlkem::{DecapKey, MlKem768};
+
+        let vg = Encaps::check().expect("SHA3");
+        let seed = ct_qemu::seed().to_le_bytes();
+        let m = core::array::from_fn(|i| seed[i % seed.len()]);
+        let ek = *DecapKey::<MlKem768>::keygen_internal(&[0x5a; 64])
+            .encapsulation_key()
+            .as_bytes();
+        let mut h = Sha3_256Context::new();
+        h.update(&ek);
+        let h = h.finish();
+        for keccak_sha3 in [false, true] {
+            for h in [None, Some(&h)] {
+                ct_qemu::traced(|| vg.encaps_with(keccak_sha3, &ek, h, &m));
+            }
+        }
+    }
 }
