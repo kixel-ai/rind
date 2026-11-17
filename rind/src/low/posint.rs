@@ -107,6 +107,48 @@ impl<const N: usize> PosInt<N> {
         Ok(r)
     }
 
+    /// Like `from_bytes`, for secret `bytes`: it reads none of them through
+    /// a branch or an index, so the value is as wide as `bytes`, leading
+    /// zeroes included, and `fit` sets the width it needs.
+    pub(crate) fn from_secret_bytes(bytes: &[u8]) -> Result<Self, Error> {
+        // A DER integer this wide fits only with a zero sign byte, so the
+        // check reveals only whether it is too wide to be valid.
+        let bytes = match bytes.split_first() {
+            Some((&sign, rest)) if bytes.len() == N * 8 + 1 => {
+                if !low::ct::into_public(sign == 0) {
+                    return Err(Error::WrongLength);
+                }
+                rest
+            }
+            _ if bytes.len() > N * 8 => return Err(Error::WrongLength),
+            _ => bytes,
+        };
+
+        let mut r = Self::zero();
+        for (word, chunk) in r.words.iter_mut().zip(bytes.rchunks(8)) {
+            let mut be = [0; 8];
+            be[8 - chunk.len()..].copy_from_slice(chunk);
+            *word = u64::from_be_bytes(be);
+        }
+        r.used = bytes.len().div_ceil(8);
+        Ok(r)
+    }
+
+    /// Sets the width to `words`, returning whether the value fits in it,
+    /// without branching on the value. A value that does not fit loses its
+    /// words above `words`.
+    #[must_use]
+    pub(crate) fn fit(&mut self, words: usize) -> bool {
+        assert!(words <= N);
+        let mut high = 0;
+        for word in self.words.iter_mut().take(self.used).skip(words) {
+            high |= *word;
+            *word = 0;
+        }
+        self.used = words;
+        high == 0
+    }
+
     // Indexes rather than zipping reversed `as_chunks_mut`, which Aeneas
     // cannot translate, so `proofs/` can prove RSA's encoding.
     pub(crate) fn to_bytes<'a>(&self, out: &'a mut [u8]) -> Result<&'a [u8], Error> {
@@ -121,6 +163,18 @@ impl<const N: usize> PosInt<N> {
         }
 
         Ok(out)
+    }
+
+    /// Writes the low `out.len()` bytes of the value to `out`, big-endian,
+    /// reading the same words whatever the value.
+    // Indexes, as `to_bytes` does, which Aeneas can translate.
+    #[cfg(rind_backend = "x86_64")]
+    pub(crate) fn to_bytes_fixed(&self, out: &mut [u8]) {
+        let len = out.len();
+        for i in 0..len {
+            let word = if i / 8 < N { self.words[i / 8] } else { 0 };
+            out[len - 1 - i] = (word >> (8 * (i % 8))) as u8;
+        }
     }
 
     /// Like `to_bytes`, but guarantees a zero byte prefix.
@@ -405,7 +459,7 @@ impl<const N: usize> PosInt<N> {
 
     /// Computes each of `pair`, as [`Self::mod_exp`] does: two at once by
     /// aws-lc's dual RSAZ where it is the fastest, on x86_64 CPUs with
-    /// AVX-512 IFMA, for moduli of 16, 24, or 32 words each, and exponents
+    /// AVX-512 IFMA, for moduli of 24 or 32 words each, and exponents
     /// no wider.
     pub(crate) fn mod_exp_pair(pair: [ModExp<'_, N>; 2]) -> [Self; 2] {
         #[cfg(rind_backend = "x86_64")]
@@ -965,12 +1019,12 @@ mod tests {
             n.words[k - 1] |= 1 << 63;
             n
         };
-        let moduli = [odd(16), odd(16), odd(15)];
+        let moduli = [odd(24), odd(24), odd(23)];
         let montifiers = moduli.each_ref().map(PosInt::montifier);
-        // Each below every modulus, as a 15-word value is.
-        let base = random(15);
-        // Exponents of 16 and 17 words.
-        let exponents = [random(16), random(17)];
+        // Each below every modulus, as a 23-word value is.
+        let base = random(23);
+        // Exponents of 24 and 25 words.
+        let exponents = [random(24), random(25)];
         let pair = |[i, j]: [usize; 2], [ei, ej]: [usize; 2]| {
             [(i, ei), (j, ej)].map(|(i, e)| ModExp {
                 base: &base,
@@ -981,7 +1035,7 @@ mod tests {
             })
         };
 
-        let rsaz = low::RsazAvx512::check(16).is_some();
+        let rsaz = low::RsazAvx512::check(24).is_some();
         assert_eq!(
             PosInt::mod_exp_pair_rsaz(&pair([0, 1], [0, 0])).is_some(),
             rsaz
@@ -1016,6 +1070,51 @@ mod tests {
         ] {
             super::mul_word_mod(&mut u, &d);
             assert_eq!(u, want, "{why}");
+        }
+    }
+
+    /// `from_secret_bytes` reads the value `from_bytes` does, as wide as its
+    /// input, and `fit` narrows it to any width it fits in. Under
+    /// `admin/ctgrind` neither branches on the bytes.
+    #[test]
+    fn from_secret_bytes_and_fit() {
+        for len in 0..=17 {
+            for zeroes in 0..=len {
+                let mut bytes = vec![0u8; len];
+                for (i, b) in bytes.iter_mut().enumerate().skip(zeroes) {
+                    // Nonzero first, then zero every third byte.
+                    *b = if i == zeroes {
+                        0x80
+                    } else {
+                        (i % 3) as u8 * 0x55
+                    };
+                }
+                let want = PosInt::<2>::from_bytes(&bytes);
+                low::ct::secret_slice(&bytes);
+                let got = PosInt::<2>::from_secret_bytes(&bytes);
+                let (want, mut got) = match (want, got) {
+                    (Ok(want), Ok(got)) => (want, got),
+                    (want, got) => {
+                        // Only a nonzero byte above two words is refused.
+                        assert_eq!(len, 17, "{len} bytes, {zeroes} leading zeroes");
+                        assert_eq!(want.is_err(), zeroes == 0);
+                        assert_eq!(got.is_err(), zeroes == 0);
+                        continue;
+                    }
+                };
+                assert_eq!(got.used, len.min(16).div_ceil(8));
+                for words in 0..=2 {
+                    let mut fitted = got.clone();
+                    let fits = low::ct::into_public(fitted.fit(words));
+                    assert_eq!(fits, want.used <= words, "{len} bytes, {zeroes} zeroes");
+                    assert_eq!(fitted.used, words);
+                    if fits {
+                        assert!(low::ct::into_public(fitted).pub_equals(&want));
+                    }
+                }
+                assert!(low::ct::into_public(got.fit(2)));
+                assert!(low::ct::into_public(got).pub_equals(&want));
+            }
         }
     }
 

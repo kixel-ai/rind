@@ -19,8 +19,8 @@ whose arithmetic `Rind.P256Booth` proves), selects each digit's multiple of
 2⁷ʷ·G from row w of the generator table, which `Rind.X86_64.P256Table` checks,
 and adds it with aws-lc's mixed addition, which never doubles (`booth_ne`).
 The select is rind's Rust, which `Rind.X86_64.PointSelect` proves; the addition
-is opaque, and `S2nBignum.lean`'s placeholder `p256_point_add_affine_spec`
-states what it computes until its HOL Light proof lands.
+is opaque, and `S2nBignum.lean`'s `p256_point_add_affine_spec` restates
+rind's HOL Light proofs of what it computes.
 -/
 
 set_option exponentiation.threshold 400
@@ -69,7 +69,7 @@ theorem select_row_spec (hc : RunsSelect) (z : Std.Array U64 8#usize) (table : S
   apply WP.spec_mono (bignum_aff_point_select_p256_spec hc z table index (by rw [ht]; norm_num))
   intro r hr
   have hl : table.val.length = 512 := ht
-  rw [hr, tableRow, hl]
+  rw [hr, rind.select.tableRow, hl]
 
 /-- What `bignum_aff_point_select_p256` selects from a 64-entry row: entry
 `d`, counting from 1, or zeros for any other `d`. -/
