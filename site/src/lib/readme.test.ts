@@ -61,6 +61,13 @@ test("a requirement the quoted version does not meet fails the build", () => {
 	);
 });
 
+test("a release whose README holds raw HTML is not quoted", () => {
+	const hostile = readme(`rind-x = "0.17"`, "\n<form/action=//attacker.invalid/x>\n\nA <code>b</code>.\n");
+	const { note } = choose("rind-x", main(readme(`rind-x = "0.17"`)), { version: "0.17.3", readme: hostile });
+	expect(note).toStartWith("This page describes rind-x as `main` has it");
+	expect(() => choose("rind-x", main(hostile), null)).toThrow("its body holds raw HTML");
+});
+
 test("main's README must carry the structure", () => {
 	expect(() => choose("rind-x", main(readme(`other = "1"`)), null)).toThrow("no toml block in it depends on rind-x");
 	expect(() => choose("rind-x", main(`${head}Intro.\n`), null)).toThrow('no "## What rind cannot back" section');

@@ -2,7 +2,7 @@
 // shipped, so the page's steps and dependency lines describe the same code, or
 // `main`'s, with the line that takes the crate from git, where that release
 // predates the structure a page needs or there is no release.
-import type { Tokens, TokensList } from "marked";
+import { type Tokens, type TokensList, walkTokens } from "marked";
 import { blocks, lex, link } from "./markdown";
 import type { Release } from "./registry";
 
@@ -40,6 +40,11 @@ export function parse(text: string, crate: string): Readme | string {
 	let end = all.length;
 	if (all[end - 1]?.type === "paragraph" && all[end - 1].raw.startsWith("License:")) end--;
 	const body = all.slice(start, end);
+	// A release's README is a stranger's text (anyone may publish a crate not yet
+	// released), and a page shows it only as Markdown, never as markup.
+	let markup = false;
+	walkTokens(body, (t) => void (t.type === "html" && (markup = true)));
+	if (markup) return "its body holds raw HTML";
 	if (!body.some((t) => t.type === "heading" && t.depth === 2 && t.text === cannotBack)) {
 		return `it has no "## ${cannotBack}" section`;
 	}

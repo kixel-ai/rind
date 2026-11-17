@@ -52,6 +52,12 @@ test("rebase rewrites inline links and definitions", () => {
 	expect(hrefs(lex(out))).toEqual(["https://example.com/x.md", "https://example.com/x.md", "https://example.com/x.md", "#x.md"]);
 });
 
+// A definition's destination may start on the next line.
+test("rebase finds a destination on the line after its definition's label", () => {
+	const out = rebase("[n]:\n  x.md\n\n[n]\n\n> [m]:\n> y.md\n\n[m]\n", (href) => `https://example.com/${href}`);
+	expect(hrefs(lex(out))).toEqual(["https://example.com/x.md", "https://example.com/y.md"]);
+});
+
 // A destination is inserted as written, `$` and all.
 test("rebase inserts a destination holding dollar signs literally", () => {
 	const out = rebase("[a](x.md)\n\n[n]: x.md\n", () => "https://example.com/$$-$&.md");
@@ -82,15 +88,6 @@ test("a heading's anchor decodes character references outside code", () => {
 	expect(html).toContain('id="amp-é"');
 	// An unterminated reference is literal text.
 	expect((segments(lex("## &copycat\n"))[0] as { html: string }).html).toContain('id="copycat"');
-});
-
-// A README is untrusted input: HTML in it, block or inline, is text on the page.
-test("segments show raw HTML as text", () => {
-	const out = segments(lex('<script>alert(1)</script>\n\nA <img src=x onerror="y"> b.\n'));
-	const html = (out[0] as { html: string }).html;
-	expect(html).not.toContain("<script");
-	expect(html).not.toContain("<img");
-	expect(html).toContain("&lt;img src=x onerror=&quot;y&quot;&gt;");
 });
 
 // Each heading's id is GitHub's anchor for it.
