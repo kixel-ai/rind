@@ -189,7 +189,7 @@ opaque low.generic.chacha20poly1305.seal
 
 opaque low.generic.chacha20poly1305.open
   : Std.Array Std.U8 32#usize → Std.Array Std.U8 12#usize → Slice Std.U8 → Slice Std.U8 →
-    Result ((Std.Array Std.U8 16#usize) × (Slice Std.U8))
+    Std.Array Std.U8 16#usize → Result (Bool × (Slice Std.U8))
 
 /-! `cipher::ChaCha20`'s routines: pyca/verified-garbage's, behind one
 wrapper each, whose contracts `Rind.X86_64.VgChaCha20` restates; the
