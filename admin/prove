@@ -1369,7 +1369,11 @@ extract x86_64 X86_64 "${hashes[@]}" "${assembly[@]}" \
     --include crate::low::x86_64::mont::mont_sqr \
     --include crate::low::x86_64::mont::karatsuba_mul \
     --include crate::low::x86_64::mont::karatsuba_sqr \
-    --include crate::low::x86_64::mont::redc_8n
+    --include crate::low::x86_64::mont::redc_8n \
+    --start-from crate::low::x86_64::mlkem768_vg::Encaps::check_ek \
+    --start-from crate::low::x86_64::mlkem768_vg::Encaps::encaps \
+    --start-from crate::low::x86_64::mlkem768_vg::KeyPair::keygen \
+    --start-from crate::low::x86_64::mlkem768_vg::KeyPair::decaps
 extract aarch64 Aarch64 "${hashes[@]}" "${assembly[@]}" \
     --include crate::low::aarch64::sha512::sha512_compress_blocks \
     --start-from crate::mid::p256::PrivateKey::from_bytes \
@@ -1418,7 +1422,9 @@ extract aarch64 Aarch64 "${hashes[@]}" "${assembly[@]}" \
     --include crate::low::aarch64::aes_cbc \
     --start-from crate::low::aarch64::aes_cbc::encrypt \
     --start-from crate::low::aarch64::aes_cbc::decrypt \
-    --opaque crate::low::aarch64::aes_cbc::aese_chained
+    --opaque crate::low::aarch64::aes_cbc::aese_chained \
+    --start-from crate::low::aarch64::mlkem768_vg::Encaps::check_ek \
+    --start-from crate::low::aarch64::mlkem768_vg::Encaps::encaps
 
 # The AEAD key's conversion is x86_64's alone: the AEAD API's model and proofs
 # are x86_64's, as AES-GCM's are.
