@@ -19,15 +19,16 @@ function indexPath(name: string): string {
 }
 
 // A GET that gives up on a stalled connection, and tries three times where the
-// registry or the network fails for a moment (a 429, a 5xx, or no answer), so
-// one blip does not fail a deploy of a site that did not change. Any other
-// status, a 404 apart, fails at once.
-async function get(url: string): Promise<Response> {
+// registry or the network fails for a moment (a 429, a 5xx, no answer, or a
+// body cut short), so one blip does not fail a deploy of a site that did not
+// change. Any other status, a 404 apart, fails at once. A 404 has no body.
+async function get(url: string): Promise<{ status: number; body: Uint8Array }> {
 	let failure = "";
 	for (let attempt = 1; attempt <= 3; attempt++) {
 		try {
 			const res = await fetch(url, { signal: AbortSignal.timeout(30_000) });
-			if (res.ok || res.status === 404) return res;
+			if (res.status === 404) return { status: 404, body: new Uint8Array() };
+			if (res.ok) return { status: res.status, body: new Uint8Array(await res.arrayBuffer()) };
 			failure = `answered ${res.status}`;
 			if (res.status < 500 && res.status !== 429) break;
 		} catch (e) {
@@ -53,7 +54,8 @@ export function newest(name: string): Promise<Release | null> {
 async function fetchNewest(name: string): Promise<Release | null> {
 	const index = await get(`https://index.crates.io/${indexPath(name)}`);
 	if (index.status === 404) return null;
-	const entries: { vers: string; cksum: string; yanked: boolean }[] = (await index.text())
+	const entries: { vers: string; cksum: string; yanked: boolean }[] = new TextDecoder()
+		.decode(index.body)
 		.trim()
 		.split("\n")
 		.map((line) => JSON.parse(line));
@@ -64,7 +66,7 @@ async function fetchNewest(name: string): Promise<Release | null> {
 	const url = `https://static.crates.io/crates/${name}/${name}-${top.vers}.crate`;
 	const res = await get(url);
 	if (res.status === 404) throw new Error(`${url} is missing, though the index lists ${name} ${top.vers}`);
-	const crate = new Uint8Array(await res.arrayBuffer());
+	const crate = res.body;
 	const sum = createHash("sha256").update(crate).digest("hex");
 	if (sum !== top.cksum) throw new Error(`${url} hashes to ${sum}, not the index's ${top.cksum}`);
 	const readme = untar(gunzipSync(crate), `${name}-${top.vers}/README.md`);
