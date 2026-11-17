@@ -337,6 +337,7 @@ cfg_if::cfg_if! {
             mldsa_rej_uniform_eta4_vartime,
         };
         pub(crate) use x86_64::mlkem768_vg;
+        pub(crate) use x86_64::p384_vg;
         pub(crate) use x86_64::mlkem::{
             mlkem_ntt,
             mlkem_intt,
@@ -460,6 +461,7 @@ cfg_if::cfg_if! {
             mldsa_rej_uniform_eta4_vartime,
         };
         pub(crate) use aarch64::mlkem768_vg;
+        pub(crate) use aarch64::p384_vg;
         pub(crate) use aarch64::mlkem::{
             mlkem_ntt,
             mlkem_intt,

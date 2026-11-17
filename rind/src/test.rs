@@ -299,3 +299,32 @@ pub(crate) fn aws_lc_hash_to_curve(bits: u16, msg: &[u8], dst: &[u8]) -> Vec<u8>
         out
     }
 }
+
+/// A P-384 ECDSA signature with SHA-384 that verifies, as its routines take
+/// it: the X9.62 uncompressed key, the message's digest, and `r` then `s`.
+#[cfg(any(rind_backend = "x86_64", rind_backend = "aarch64"))]
+pub(crate) fn p384_ecdsa_case() -> ([u8; 97], [u8; 48], [u8; 96]) {
+    let hex = |s: &str| hex::decode(s).unwrap();
+    (
+        hex(concat!(
+            "042da57dda1089276a543f9ffdac0bff0d976cad71eb7280e7d9bfd9fee4bdb2f2",
+            "0f47ff888274389772d98cc5752138aa4b6d054d69dcf3e25ec49df870715e34",
+            "883b1836197d76f8ad962e78f6571bbc7407b0d6091f9e4d88f014274406174f",
+        ))
+        .try_into()
+        .unwrap(),
+        hex(concat!(
+            "f9b127f0d81ebcd17b7ba0ea131c660d340b05ce557c82160e0f793de07d3817",
+            "9023942871acb7002dfafdfffc8deace",
+        ))
+        .try_into()
+        .unwrap(),
+        hex(concat!(
+            "12b30abef6b5476fe6b612ae557c0425661e26b44b1bfe19daf2ca28e3113083",
+            "ba8e4ae4cc45a0320abd3394f1c548d71840da9fc1d2f8f8900cf485d5413b8c",
+            "2574ee3a8d4ca03995ca30240e09513805bf6209b58ac7aa9cff54eecd82b9f1",
+        ))
+        .try_into()
+        .unwrap(),
+    )
+}

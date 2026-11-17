@@ -46,6 +46,10 @@ macro_rules! vg_sym_pageoff {
 pub struct Table<const N: usize>(pub [u8; N]);
 
 #[rustfmt::skip]
+pub(crate) mod vg_ec_p384_public_key;
+#[rustfmt::skip]
+pub(crate) mod vg_ecdsa_p384_verify;
+#[rustfmt::skip]
 pub(crate) mod vg_keccak_f1600;
 #[rustfmt::skip]
 pub(crate) mod vg_keccak_f1600_sha3;
@@ -93,5 +97,21 @@ pub(crate) mod vg_mlkem_decode_decompress;
 pub(crate) mod vg_mlkem_gamma;
 #[rustfmt::skip]
 pub(crate) mod vg_mlkem_rej_shuffle;
+#[rustfmt::skip]
+pub(crate) mod vg_p384_check_point;
+#[rustfmt::skip]
+pub(crate) mod vg_p384_comb;
+#[rustfmt::skip]
+pub(crate) mod vg_p384_gtab;
+#[rustfmt::skip]
+pub(crate) mod vg_p384_inv_mod_n;
+#[rustfmt::skip]
+pub(crate) mod vg_p384_inv_mod_p;
+#[rustfmt::skip]
+pub(crate) mod vg_p384_mul_mod_n;
+#[rustfmt::skip]
+pub(crate) mod vg_p384_mul_mod_p;
+#[rustfmt::skip]
+pub(crate) mod vg_p384_sqr_mod_p;
 #[rustfmt::skip]
 pub(crate) mod vg_zeroize;

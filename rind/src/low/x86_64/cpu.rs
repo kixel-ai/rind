@@ -401,6 +401,18 @@ impl HaveBmi2Adx {
     }
 }
 
+/// Proof that the CPU has AVX, AVX2, BMI2, and ADX: what
+/// pyca/verified-garbage's ADX P-384 key derivation needs, which also
+/// selects its table rows with AVX2.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct HaveAvx2Adx(());
+
+impl HaveAvx2Adx {
+    pub(crate) fn check() -> Option<Self> {
+        has(AVX | AVX2 | BMI2 | ADX).then_some(Self(()))
+    }
+}
+
 /// Whether the CPU is Intel's, for code that is fastest on one vendor's cores.
 pub(crate) fn is_intel() -> bool {
     has(INTEL)
@@ -758,6 +770,10 @@ mod tests {
             (HaveSsse3::check().is_some(), available!("ssse3")),
             (HaveSse41::check().is_some(), available!("ssse3", "sse4.1")),
             (HaveBmi2Adx::check().is_some(), available!("bmi2") && adx),
+            (
+                HaveAvx2Adx::check().is_some(),
+                available!("avx", "avx2", "bmi2") && adx,
+            ),
         ];
         for (i, (check, expected)) in checks.into_iter().enumerate() {
             assert_eq!(check, expected, "check {i}");
