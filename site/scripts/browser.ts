@@ -74,10 +74,21 @@ async function picks(base: string) {
 			throw new Error(`the benchmarks page shows ${JSON.stringify(got)}, not ${JSON.stringify(want)}`);
 		}
 	};
-	// The island applies a linked view once it hydrates, when Astro drops its `ssr` attribute.
-	const hydrated = `new Promise((resolve) => {
-		const done = () => !document.querySelector("astro-island[ssr]") && resolve(true);
-		new MutationObserver(done).observe(document, { attributes: true, subtree: true });
+	// The island applies a linked view once it hydrates, when Astro drops its
+	// `ssr` attribute; one that never does fails the check rather than stall it.
+	const hydrated = `new Promise((resolve, reject) => {
+		const observer = new MutationObserver(() => done());
+		const timer = setTimeout(() => {
+			observer.disconnect();
+			reject(new Error("the picker never hydrated"));
+		}, 5000);
+		const done = () => {
+			if (document.querySelector("astro-island[ssr]")) return;
+			clearTimeout(timer);
+			observer.disconnect();
+			resolve(true);
+		};
+		observer.observe(document, { attributes: true, subtree: true });
 		done();
 	})`;
 	await view.navigate(`${base}?cpu=${first}&libs=${shown.join(",")}`);
