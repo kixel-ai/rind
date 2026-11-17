@@ -4712,6 +4712,7 @@ dependencies = [
  "libcrux-ed25519",
  "libcrux-hkdf 0.0.9",
  "libcrux-hmac 0.0.9",
+ "libcrux-kem 0.0.10",
  "libcrux-ml-dsa",
  "libcrux-ml-kem 0.0.11",
  "libcrux-rsa",
@@ -4744,6 +4745,7 @@ dependencies = [
  "verified-garbage",
  "voprf 0.6.0-pre.2",
  "vrf-rfc9381",
+ "x-wing",
  "x25519-dalek 3.0.0",
 ]
 
