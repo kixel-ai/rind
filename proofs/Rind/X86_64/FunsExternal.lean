@@ -451,6 +451,18 @@ opaque low.x86_64.p384_montjmixadd_alt.p384_montjmixadd_alt
   Array Std.U64 18#usize → Array Std.U64 18#usize → Array Std.U64 12#usize
     → Result (Array Std.U64 18#usize)
 
+/-- pyca/verified-garbage's `d·G` for ECDSA's keys and nonces, which
+`admin/prove` leaves opaque: it calls VG's assembly. -/
+opaque low.x86_64.p384_vg.public_key
+  : Array Std.U8 48#usize → Result (Option (Array Std.U8 97#usize))
+
+/-- pyca/verified-garbage's P-384 ECDSA verification, opaque as
+`low.x86_64.p384_vg.public_key` is. -/
+opaque low.x86_64.p384_vg.ecdsa_verify
+  :
+  Array Std.U8 97#usize → Array Std.U8 48#usize → Array Std.U8 96#usize
+    → Result Bool
+
 opaque low.x86_64.p384_montjscalarmul.p384_montjscalarmul
   :
   Array Std.U64 18#usize → Array Std.U64 6#usize → Array Std.U64 18#usize
