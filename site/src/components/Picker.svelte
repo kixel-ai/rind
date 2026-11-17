@@ -33,15 +33,11 @@
 		const known = libIds.filter((id) => listed?.split(",").includes(id));
 		if (listed === "" || known.length > 0) libs = known;
 		ready = true;
-		// A link to a CPU elsewhere on the page, such as a gap's host, switches
-		// to it in place, keeping the libraries picked.
+		// A label elsewhere on the page for one of the CPUs, such as a gap's
+		// host, picks it by itself; this brings the view it shows into sight.
 		const follow = (e: MouseEvent) => {
-			const link = (e.target as Element | null)?.closest<HTMLAnchorElement>("a[data-cpu]");
-			if (!link || !cpuIds.includes(link.dataset.cpu ?? "") || e.button !== 0) return;
-			if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-			e.preventDefault();
-			cpu = link.dataset.cpu as string;
-			document.getElementById("times")?.scrollIntoView();
+			const label = (e.target as Element | null)?.closest("label.place");
+			if (label) document.getElementById("times")?.scrollIntoView();
 		};
 		document.addEventListener("click", follow);
 		return () => document.removeEventListener("click", follow);

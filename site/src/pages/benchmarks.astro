@@ -193,9 +193,9 @@ const percent = Math.round((report.slower - 1) * 100);
 											{(() => {
 												const label = p.host ? <code>{p.name}</code> : `${p.name} tier`;
 												const cpu = placeCpu(p);
-												// The picker switches to it in place, keeping the libraries; without
-												// JavaScript, the address loads it.
-												return cpu ? <a href={`?cpu=${cpu.id}#times`} data-cpu={cpu.id}>{label}</a> : label;
+												// A label for the CPU's radio picks it in place, keeping the
+												// libraries, with or without JavaScript.
+												return cpu ? <label for={`cpu-${cpu.id}`} class="place">{label}</label> : label;
 											})()}
 										</>
 									))}</td>
@@ -321,6 +321,11 @@ const percent = Math.round((report.slower - 1) * 100);
 	}
 	.gaps td:last-child {
 		min-width: 24rem;
+	}
+	.place {
+		color: var(--accent);
+		text-decoration: underline;
+		cursor: pointer;
 	}
 	tr:target {
 		background: var(--surface);
