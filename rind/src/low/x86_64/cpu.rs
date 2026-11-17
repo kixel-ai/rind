@@ -466,82 +466,151 @@ fn detect_once() -> u32 {
     features
 }
 
+/// The features rind tests for, with `std`'s name for each, which
+/// `RIND_CPU_DISABLE_<name>` takes without its dots.
+macro_rules! named {
+    ($($bit:ident: $name:tt),+ $(,)?) => {
+        const NAMED: &[(u32, &str)] = &[$(($bit, $name)),+];
+
+        /// Those the target enables at compile time, which every CPU that
+        /// runs the binary has, as `is_x86_feature_detected!` also reports.
+        const ENABLED: u32 = 0 $(| if cfg!(target_feature = $name) { $bit } else { 0 })+;
+    };
+}
+
+named! {
+    AES: "aes",
+    VAES: "vaes",
+    PCLMULQDQ: "pclmulqdq",
+    VPCLMULQDQ: "vpclmulqdq",
+    BMI1: "bmi1",
+    BMI2: "bmi2",
+    ADX: "adx",
+    POPCNT: "popcnt",
+    SSSE3: "ssse3",
+    SSE41: "sse4.1",
+    AVX: "avx",
+    AVX2: "avx2",
+    AVX512F: "avx512f",
+    AVX512DQ: "avx512dq",
+    AVX512IFMA: "avx512ifma",
+    AVX512BW: "avx512bw",
+    AVX512VL: "avx512vl",
+    AVX512VBMI: "avx512vbmi",
+    AVX512VBMI2: "avx512vbmi2",
+    AVX512FP16: "avx512fp16",
+    SHA: "sha",
+    SHA512: "sha512",
+    MOVBE: "movbe",
+}
+
 fn detect() -> u32 {
-    macro_rules! detect {
-        ($name:tt, $bit:expr) => {
-            if test_toggle($name, is_x86_feature_detected!($name)) {
-                $bit
-            } else {
-                0
-            }
-        };
-    }
-
-    // "GenuineIntel", spread over ebx, edx, and ecx.
-    // `__cpuid` is safe from Rust 1.94 but `unsafe` on the 1.90 MSRV.
-    #[allow(unused_unsafe)]
-    // SAFETY: every x86_64 CPU has `cpuid`.
-    let id = unsafe { __cpuid(0) };
-    let intel = (id.ebx, id.edx, id.ecx) == (0x756e_6547, 0x4965_6e69, 0x6c65_746e);
-
     // Valgrind runs ADX instructions but hides them from `cpuid`
     // (https://bugs.kde.org/show_bug.cgi?id=494162), so `admin/ctgrind` builds
     // with this switch to check the ADX routines rather than their `_alt`
     // twins.
     // See UPSTREAM.md, "Valgrind hides ADX from `cpuid`".
-    let adx = is_x86_feature_detected!("adx") || option_env!("VALGRIND_BUG_494162").is_some();
-
-    (if test_toggle("intel", intel) {
+    let valgrind = if option_env!("VALGRIND_BUG_494162").is_some() {
+        ADX
+    } else {
+        0
+    };
+    let found = cpuid() | ENABLED | valgrind;
+    let intel = if found & INTEL != 0 && !super::super::cpu_denied("intel") {
         INTEL
     } else {
         0
-    }) | (if test_toggle("adx", adx) { ADX } else { 0 })
-        | detect!("aes", AES)
-        | detect!("vaes", VAES)
-        | detect!("pclmulqdq", PCLMULQDQ)
-        | detect!("vpclmulqdq", VPCLMULQDQ)
-        | detect!("bmi1", BMI1)
-        | detect!("bmi2", BMI2)
-        | detect!("popcnt", POPCNT)
-        | detect!("ssse3", SSSE3)
-        | detect!("sse4.1", SSE41)
-        | detect!("avx", AVX)
-        | detect!("avx2", AVX2)
-        | detect!("avx512f", AVX512F)
-        | detect!("avx512dq", AVX512DQ)
-        | detect!("avx512ifma", AVX512IFMA)
-        | detect!("avx512bw", AVX512BW)
-        | detect!("avx512vl", AVX512VL)
-        | detect!("avx512vbmi", AVX512VBMI)
-        | detect!("avx512vbmi2", AVX512VBMI2)
-        | detect!("avx512fp16", AVX512FP16)
-        | detect!("sha", SHA)
-        | detect!("sha512", SHA512)
-        | detect!("movbe", MOVBE)
+    };
+    NAMED
+        .iter()
+        .filter(|&&(bit, name)| found & bit != 0 && !super::super::cpu_denied(name))
+        .fold(intel, |features, &(bit, _)| features | bit)
 }
 
-#[cfg(not(any(debug_assertions, rind_cpu_disable)))]
-fn test_toggle(_id: &str, detected: bool) -> bool {
-    detected
-}
-
-/// Lets a debug build deny a feature with `RIND_CPU_DISABLE_<id>`, so a CPU
-/// with it also tests the code for one without. `--cfg rind_cpu_disable`
-/// does the same for a release build, so benches and ctgrind time and check
-/// the code that ships; only `RUSTFLAGS` sets it, never a dependent crate.
-/// The variable drops the dot from `sse4.1`, since shells drop variables
-/// whose names have one.
-#[cfg(any(debug_assertions, rind_cpu_disable))]
-fn test_toggle(id: &str, detected: bool) -> bool {
-    if std::env::var(format!("RIND_CPU_DISABLE_{}", id.replace('.', ""))).is_ok() {
-        // The FIPS module honours the mask in its release build, where its
-        // caller's stdout is not its own.
-        #[cfg(not(rind_fips))]
-        println!("DEBUG: denying cpuid {id:?}");
-        false
-    } else {
-        detected
+/// What `cpuid` and `xgetbv` say the CPU has and the OS saves the registers
+/// of, read as `std`'s `is_x86_feature_detected!` reads them (its
+/// `std_detect/src/detect/os/x86.rs`), so a hosted build picks the same
+/// paths it did with `std`, and a build without an OS can ask too. A
+/// kernel that never enabled the AVX or AVX-512 state in XCR0 gets no
+/// AVX tier, rather than a fault on its first `vmovdqu`.
+#[allow(unused_unsafe, clippy::similar_names)]
+fn cpuid() -> u32 {
+    // An SGX enclave cannot trust `cpuid`, so `std` reports nothing there.
+    if cfg!(target_env = "sgx") {
+        return 0;
     }
+    let bit = |register: u32, at: u32| register >> at & 1 != 0;
+
+    // `__cpuid` is safe from Rust 1.94 but `unsafe` on the 1.90 MSRV.
+    // SAFETY: every x86_64 CPU has `cpuid`, and no leaf past the highest it
+    // reports is read.
+    let leaf0 = unsafe { __cpuid(0) };
+    // "GenuineIntel", spread over ebx, edx, and ecx.
+    let intel = (leaf0.ebx, leaf0.edx, leaf0.ecx) == (0x756e_6547, 0x4965_6e69, 0x6c65_746e);
+    let mut features = if intel { INTEL } else { 0 };
+    if leaf0.eax < 1 {
+        return features;
+    }
+    // SAFETY: as above.
+    let leaf1 = unsafe { __cpuid(1) };
+    let (ebx7, ecx7, edx7, eax7_1) = if leaf0.eax >= 7 {
+        // SAFETY: as above.
+        let (leaf7, leaf7_1) = unsafe { (__cpuid_count(7, 0), __cpuid_count(7, 1)) };
+        (leaf7.ebx, leaf7.ecx, leaf7.edx, leaf7_1.eax)
+    } else {
+        (0, 0, 0, 0)
+    };
+
+    let mut set = |on: bool, feature: u32| {
+        if on {
+            features |= feature;
+        }
+    };
+    set(bit(leaf1.ecx, 1), PCLMULQDQ);
+    set(bit(leaf1.ecx, 9), SSSE3);
+    set(bit(leaf1.ecx, 19), SSE41);
+    set(bit(leaf1.ecx, 22), MOVBE);
+    set(bit(leaf1.ecx, 23), POPCNT);
+    set(bit(leaf1.ecx, 25), AES);
+    set(bit(ebx7, 3), BMI1);
+    set(bit(ebx7, 8), BMI2);
+    set(bit(ebx7, 19), ADX);
+    set(bit(ebx7, 29), SHA);
+    set(bit(ecx7, 9), VAES);
+    set(bit(ecx7, 10), VPCLMULQDQ);
+
+    // XSAVE, and OSXSAVE: the OS has turned on `xgetbv`.
+    if bit(leaf1.ecx, 26) && bit(leaf1.ecx, 27) {
+        // SAFETY: the CPU has XSAVE, and the OS has enabled it.
+        let xcr0 = unsafe { _xgetbv(0) };
+        // The OS saves the SSE and AVX state.
+        if xcr0 & 0b110 == 0b110 {
+            set(bit(leaf1.ecx, 28), AVX);
+            set(bit(ebx7, 5), AVX2);
+            set(bit(eax7_1, 0), SHA512);
+            // And the AVX-512 state. Rust's `avx512f` implies FMA and F16C,
+            // which Intel does not promise with it, so `std` requires them.
+            let (fma, f16c) = (bit(leaf1.ecx, 12), bit(leaf1.ecx, 29));
+            if xcr0 & 0b1110_0000 == 0b1110_0000 && fma && f16c {
+                set(bit(ebx7, 16), AVX512F);
+                set(bit(ebx7, 17), AVX512DQ);
+                set(bit(ebx7, 21), AVX512IFMA);
+                set(bit(ebx7, 30), AVX512BW);
+                set(bit(ebx7, 31), AVX512VL);
+                set(bit(ecx7, 1), AVX512VBMI);
+                set(bit(ecx7, 6), AVX512VBMI2);
+                set(bit(edx7, 23), AVX512FP16);
+            }
+        }
+    }
+
+    // Some Skylakes report BMI1 and BMI2 without them (Intel's erratum
+    // SKL052); all of those lack AVX, so `std` drops both on Intel's CPUs
+    // without it.
+    if intel && features & AVX == 0 {
+        features &= !(BMI1 | BMI2);
+    }
+    features
 }
 
 // --- Safe abstractions over common intrinsics operations ---

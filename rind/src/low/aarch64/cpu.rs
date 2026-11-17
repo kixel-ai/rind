@@ -173,7 +173,21 @@ fn detect_once() -> u8 {
 }
 
 fn detect() -> u8 {
+    // `std` asks the OS, which alone may read the CPU's ID registers. Without
+    // one there is no portable way to ask, so a target with no OS runs what
+    // it enables at compile time, as `std` does on an OS it cannot ask.
+    #[cfg(rind_std)]
     use std::arch::is_aarch64_feature_detected as detected;
+    #[cfg(not(rind_std))]
+    macro_rules! detected {
+        // Rust's `aes` target feature covers PMULL too.
+        ("pmull") => {
+            cfg!(target_feature = "aes")
+        };
+        ($feature:tt) => {
+            cfg!(target_feature = $feature)
+        };
+    }
 
     let crypto_ext = test_toggle("aes", detected!("aes"))
         && test_toggle("pmull", detected!("pmull"))
@@ -271,25 +285,10 @@ mod dit {
     }
 }
 
-#[cfg(not(any(debug_assertions, rind_cpu_disable)))]
-fn test_toggle(_id: &str, detected: bool) -> bool {
-    detected
-}
-
-/// Lets a debug build, or a release one with `--cfg rind_cpu_disable`, deny a
-/// feature with `RIND_CPU_DISABLE_<id>`, as on x86_64, so a CPU with the
+/// `detected`, unless `RIND_CPU_DISABLE_<id>` denies it, so a CPU with the
 /// crypto extension also tests the code for one without.
-#[cfg(any(debug_assertions, rind_cpu_disable))]
 fn test_toggle(id: &str, detected: bool) -> bool {
-    if std::env::var(format!("RIND_CPU_DISABLE_{id}")).is_ok() {
-        // The FIPS module honours the mask in its release build, where its
-        // caller's stdout is not its own.
-        #[cfg(not(rind_fips))]
-        println!("DEBUG: denying cpuid {id:?}");
-        false
-    } else {
-        detected
-    }
+    detected && !crate::low::cpu_denied(id)
 }
 
 /// Read-only prefetch hint.

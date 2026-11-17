@@ -482,6 +482,16 @@ step() {
                 run cargo clippy -p rind --lib --locked --target wasm32-unknown-unknown \
                     --features getrandom/wasm_js -- --deny warnings
             fi
+            # A target with no `std` for each architecture rind has assembly
+            # for; x86_64's, which disables SSE2, runs the portable backend.
+            # Without an OS getrandom has no source but the one its caller
+            # supplies, which a library build need not link.
+            for target in aarch64:aarch64-unknown-none arm:armv7a-none-eabi portable:x86_64-unknown-none; do
+                if reaches "$backends" "${target%%:*}"; then
+                    RUSTFLAGS='--cfg getrandom_backend="custom"' \
+                        run cargo clippy -p rind --lib --locked --target "${target#*:}" -- --deny warnings
+                fi
+            done
             ;;
         check:wasm)
             # Each published adapter, as sh/adapter-versions.sh finds them.

@@ -157,8 +157,7 @@ fn reports_mcdt_no() -> bool {
 /// ignore `MCDT_NO` with `RIND_CPU_DISABLE_mcdt_no`, so a CPU that reports
 /// it also runs and times the mitigation.
 fn denied() -> bool {
-    cfg!(any(debug_assertions, rind_cpu_disable))
-        && std::env::var_os("RIND_CPU_DISABLE_mcdt_no").is_some()
+    super::cpu_denied("mcdt_no")
 }
 
 #[cfg(test)]
