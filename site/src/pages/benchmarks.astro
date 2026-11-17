@@ -32,11 +32,11 @@ const tierRows = tiers.groups.map((g) => ({
 	name: g.name,
 	rows: g.benchmarks.map((id) => ({ id, label: id, code: true })),
 }));
-// Markdown in a table cell: one paragraph inline, anything more as blocks.
+// A table cell's Markdown, one paragraph, as admin/bench-report holds a gap's reason to.
 const md = (text: string) => {
 	const blocks = lex(text).filter((t) => t.type !== "space");
-	const [only] = blocks;
-	return blocks.length === 1 && only.type === "paragraph" ? inlineHtml(only.tokens ?? []) : html(blocks);
+	if (blocks.length !== 1 || blocks[0].type !== "paragraph") throw new Error(`a table cell's Markdown is not one paragraph: ${text}`);
+	return inlineHtml(blocks[0].tokens ?? []);
 };
 
 // What the picker picks, shown by CSS alone, so it works with JavaScript off:

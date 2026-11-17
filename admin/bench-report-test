@@ -408,6 +408,7 @@ class Gaps(unittest.TestCase):
             {"quest": None},
             {"on": None},
             {"host": '"nixos"'},
+            {"quest": None, "reason": '"one\\n\\ntwo"'},
         ]:
             entry = {k: v for k, v in {**self.X25519, **fields}.items() if v is not None}
             with self.subTest(fields=fields), self.assertRaises(SystemExit):

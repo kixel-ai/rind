@@ -1252,6 +1252,9 @@ def load_gaps(hosts, tiers, path=GAPS):
             fail(f"{where}: needs operations and on")
         if ("quest" in e) == ("reason" in e):
             fail(f"{where}: needs a quest or a reason, not both")
+        # The report's gap table, and the site's, hold the reason in one cell.
+        if "\n" in e.get("reason", ""):
+            fail(f"{where}: the reason must be one line, since a table cell holds it")
         if "quest" in e and not (e["quest"].startswith("/quest/") and os.path.isfile(ROOT + e["quest"])):
             fail(f"{where}: no quest at {e['quest']}")
         for place in e["on"]:
