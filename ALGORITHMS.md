@@ -59,7 +59,7 @@ SHA-512.
 | ML-KEM | s2n-bignum ✓ + mlkem-native ✓ + Graviola ⚡ | mlkem-native ⚡ + s2n-bignum ✓ |  |  |  |
 | ML-DSA-44, ML-DSA-65, ML-DSA-87 | s2n-bignum ✓ + mldsa-native ⚡ | mldsa-native ⚡ + s2n-bignum ✓ |  |  |  |
 | SLH-DSA, over the SHA-2 and SHA-3 rows it builds on | SPHINCS+ |  |  |  |  |
-| RSA signatures, OAEP, blind signatures, key generation | s2n-bignum ✓ + aws-lc ⚡ + rind ⚡ | s2n-bignum ✓ + aws-lc ⚡ |  |  |  |
+| RSA signatures, OAEP, blind signatures, key generation | s2n-bignum ✓ + aws-lc ⚡ + rind ⚡ + verified-garbage | s2n-bignum ✓ + aws-lc ⚡ |  |  |  |
 
 - RSA: x86_64 with ADX multiplies 1024- and 2048-bit moduli by
   [s2n-bignum]'s verified Karatsuba routines, as [#224] decided, rather than
@@ -67,7 +67,9 @@ SHA-512.
   on Zen 3 and Zen 5. Without AVX2, it gathers each window entry by
   s2n-bignum's verified `bignum_copy_row_from_table` rather than, at widths
   that aren't a multiple of eight words, `bn_mul_mont_gather5`, which fuses
-  a faster gather into the product.
+  a faster gather into the product. With AVX-512 IFMA, the public operation
+  and the 2048- and 4096-bit private operation, and the 3072-bit one with
+  AVX512_FP16, run [verified-garbage]'s routines (see [RSA](#rsa)).
 - MD5: rind's portable Rust runs on every target, as no CPU has MD5
   instructions. On an i7-8700 it measured level with [aws-lc]'s x86_64
   assembly at 16 KB and 8% faster at 1350 B.
@@ -189,12 +191,12 @@ tests use [Wycheproof]'s vectors.
 | [mlkem-native] | ported: its portable C polynomial arithmetic (the NTT, inverse NTT, base multiplication, reductions, byte encoding, and rejection sampling), to Rust, for armv7 and x86_64 CPUs without AVX2; copied, by `admin/import-aws-lc` from aws-lc's copy: its x86_64 AVX2 ciphertext compression at 4, 5, 10, and 11 bits, which rind ends with `vzeroupper` | Apache-2.0 OR ISC OR MIT | [CBMC proofs](https://github.com/pq-code-package/mlkem-native/tree/d1b2fe782888bdb761a50336012923180be7f502/proofs/cbmc) of memory safety and coefficient bounds for its C. They do not cover rind's port. [HOL Light proofs](https://github.com/pq-code-package/mlkem-native/tree/d1b2fe782888bdb761a50336012923180be7f502/proofs/hol_light/x86_64) that its AVX2 compression's object code computes its specified result for all inputs, of mlkem-native's own build, at the revision aws-lc's copy takes. |
 | [mldsa-native] | ported: its C FIPS 204 construction (`sign.c`, `packing.c`, `poly.c`, and `poly_kl.c`) on every CPU, and its portable C polynomial arithmetic for armv7, the portable backend, and x86_64 CPUs without AVX2, to Rust, at v2.0.0 | Apache-2.0 OR ISC OR MIT | [CBMC proofs](https://github.com/pq-code-package/mldsa-native/tree/834a90d5e846ffa1e1611bd24e160bb2e9b86d35/proofs/cbmc) of memory safety and coefficient bounds for its C. They do not cover rind's port, which rind's tests check against s2n-bignum's routines, [Wycheproof], ACVP, and aws-lc-rs. |
 | [aws-lc] | copied, by `admin/import-aws-lc`: its SHA-384/512 assembly for x86_64 and aarch64, its x86_64 AVX SHA-256 routine and its aarch64 one for the SHA-256 instructions, Montgomery multiplication and the x86_64 exponentiation's `bn_power5` (with one deliberate change: rind's `bn_sqr8x_mont` and `bn_powerx5` zero two scratch words their `mulx` squaring reads unwritten, which valgrind reports though results and timing do not depend on them), AVX2 and dual AVX-512 RSAZ exponentiation, AES-NI AES-CTR, P-256's mixed addition for its generator multiplication (with one deliberate change: rind's BMI2 and ADX copy drops the `.byte 0x67` address-size prefixes aws-lc pads two of its squaring's register-only `mulx` with, which the CPU ignores and s2n-bignum's x86 model does not decode), and SSE4.1 and AVX2 ChaCha20-Poly1305 (with one deliberate change: rind's copy reads the choice of AVX2 from the block rind passes it rather than aws-lc's `OPENSSL_ia32cap_P`), its aarch64 NEON ChaCha20-Poly1305 and eight-way AES-192-GCM, its x86_64 assembly for CPUs without AVX2 (SSSE3 ChaCha20, SSSE3 and AVX SHA-1, and SSSE3 SHA-256) without AES-NI (SSSE3 AES and GHASH), and without SSSE3 (integer SHA-1 and SHA-256), its aarch64 Montgomery multiplication, and its aarch64 assembly for CPUs without the crypto extension (NEON AES, NEON GHASH, and scalar SHA-1 and SHA-256), as Rust naked functions; its 32-bit ARM assembly for ChaCha20, SHA-1 and SHA-256 (NEON and integer), SHA-384/512, Montgomery multiplication, the ARMv8 crypto extension (AES, GHASH, SHA-1, SHA-256), and NEON Poly1305, in Rust `global_asm!`; and the C that drives that Poly1305, RSAZ, and `bn_power5`, that sets up its x86_64 SSSE3 GHASH table, and that computes its constant-time SSE2 AES and integer GHASH for x86_64 CPUs without SSSE3, ported to Rust, both also for armv7 without the crypto extension and the portable backend. aws-lc takes its Poly1305, ChaCha20-Poly1305, SSSE3 GHASH, and constant-time AES and GHASH from BoringSSL and the rest from OpenSSL | Apache-2.0; Poly1305, ChaCha20-Poly1305, SSSE3 and integer GHASH, and constant-time AES ISC | [SAW and NSym proofs](https://github.com/awslabs/aws-lc-verification/tree/797302470c1703cbb1a3a6fa98daffef0bfd3d80) that its x86_64 AVX and aarch64 scalar SHA-384/512 routines compute their specified result for all inputs. Their proof of its aarch64 routine for the SHA-512 instructions ends with the result in registers, before the routine stores it, so rind's own HOL Light proof covers that routine, of the object code rind's build emits, against s2n-bignum's FIPS 180-4 spec, and rind's own HOL Light proofs cover both forms of P-256's mixed addition, of the object code rind's Linux build emits, against s2n-bignum's P-256 group law. `admin/prove bytes` checks that rind's copies of the first two routines assemble to the instructions of aws-lc's text at the revision the proofs pin, so the proofs are of rind's code. They do not cover its 32-bit ARM code. [`proofs/`](proofs/README.md) proves rind's SHA-384/512 around the AVX and both aarch64 routines. |
-| [verified-garbage] | copied, by `admin/import-vg`: the Rust naked functions it generates from its Lean sources, for x86_64's ChaCha20 from 256 bytes on AVX2 and on AVX-512 VL, with each `.base64` directive written as `.byte` directives of the same bytes, which rind's MSRV assembles | Apache-2.0 OR BSD-3-Clause | [Lean proofs](https://github.com/pyca/verified-garbage/tree/e7b0fe8a82b7777958e078573771d51415f105bb/lean) that each routine's machine code meets its contract, its result, memory safety, and that its branches and memory addresses depend on no secret, over verified-garbage's own Lean models of each instruction set. Those models are LLM-written and checked only against vendor manuals and golden values, so rind gives its routines no ✓ until [their instructions are cosimulated](/quest/m2/verified-garbage/cosim.md) against the CPU and [their theorems are imported](/quest/m2/verified-garbage/chacha20-proof.md). |
 | [BoringSSL] | copied, by `admin/import-boringssl`: its x86_64 VAES AES-GCM assembly, `aes-gcm-avx2-x86_64` and `aes-gcm-avx512-x86_64`, as Rust naked functions; its 32-bit ARM NEON X25519 assembly, in Rust `global_asm!`, which BoringSSL takes from [SUPERCOP]'s `neon2`, public domain | Apache-2.0 | nothing |
 | [OpenSSL] | copied, by `admin/import-openssl`: its x86_64 AVX2 SHA-256 and SHA-512 assembly and its SHA-512 assembly for the SHA512 instructions, from `sha512-x86_64`, as Rust naked functions; its 32-bit ARM Keccak-f assembly, integer and NEON, `keccak1600-armv4`, in Rust `global_asm!` | Apache-2.0 | nothing |
 | [SPHINCS+] | ported: the SPHINCS+ team's FIPS 205 code (`sign.c`, `fors.c`, `wots.c`, `merkle.c`, and its AVX2 builds' `treehashx4` and `treehashx8`, generalised over the lane count) on every CPU, and its x86_64 AVX2 eight-way SHA-256 (`sha256avx.c`), to Rust, from the `bas/fips205` branch | public domain, or CC0-1.0, 0BSD, or MIT-0 | nothing: no SLH-DSA implementation carries a proof of functional correctness |
 | [curve25519-dalek] | dependency, with its serial backend, for armv7 and the portable backend; ported: its AVX2 backend's field arithmetic, point formulas, and base point table, to Rust intrinsics, for Ed25519 verification's four-point multiplication on x86_64 CPUs with AVX2 but without ADX | BSD-3-Clause | nothing: that backend's field arithmetic is hand-written, as is the AVX2 backend's. Its `fiat` backend would run [fiat-crypto]'s verified field arithmetic instead, but only a `--cfg` flag for the whole build selects it, so rind refuses it rather than let the build pick. |
 | [fiat-crypto] | dependency | MIT OR Apache-2.0 OR BSD-1-Clause | [Coq proofs](https://github.com/mit-plv/fiat-crypto/tree/67316f05d771f7f2db62beede59e9b56406a9efd) that each generated field operation is correct. rind's point formulas, inversion, and table lookup over them are not covered. |
+| [verified-garbage] | copied, by `admin/import-vg`: its x86_64 ChaCha20 from 256 bytes on AVX2 and on AVX-512 VL, and its x86_64 RSA public operation and CRT for AVX-512 IFMA, with the Montgomery product they call, as Rust naked functions, byte for byte but for `.base64` directives written out as `.byte`, which rind's minimum Rust cannot assemble | Apache-2.0 OR BSD-3-Clause | [Lean proofs](https://github.com/pyca/verified-garbage/tree/e7b0fe8a82b7777958e078573771d51415f105bb/lean) that each routine's machine code meets its contract, is memory safe, and takes the same branches and memory addresses whatever its secrets, over VG's own models of the instructions. The RSA routines rind runs are internal to VG, so their contracts are in its proofs rather than its trusted specification. Nothing yet checks those models against a CPU, so rind claims no ✓ for this code until [they are cosimulated](/quest/m2/verified-garbage/cosim.md) and its theorems imported ([ChaCha20's](/quest/m2/verified-garbage/chacha20-proof.md), [RSA's](/quest/m2/verified-garbage/rsa-avx512-proof.md)). |
 
 rind's own code is licensed under Apache-2.0 OR ISC OR MIT-0. Copied code
 keeps its source's copyright and license, which [LICENSE] lists with the
@@ -436,12 +438,28 @@ routine, which reads every entry. For moduli of a
 multiple of 512 bits other than 1024 and 2048 bits with ADX, it runs aws-lc's
 `bn_power5` instead: five squarings and the product by an entry gathered by
 masking all 32, in one call.
-On x86_64 CPUs with AVX-512 IFMA, both exponentiations of the CRT for primes
-of 1024, 1536, or 2048 bits run at once by aws-lc's dual RSAZ, as aws-lc's
-`BN_mod_exp_mont_consttime_x2` does there: almost Montgomery products on
-256-bit vectors over 52-bit limbs, two moduli at a time, and a 5-bit fixed
-window whose table entries are gathered by masking all 32. Valgrind runs no
-AVX-512, so `admin/ct-sde` checks it under Intel SDE instead.
+On x86_64 CPUs with AVX-512 IFMA (with F, VL, BMI2, and ADX), RSA runs
+[verified-garbage]'s routines where they measured faster than rind's at
+every size they cover, under rind's key types, checks, padding, and fault
+check. The public operation of a 2048-, 3072-, or 4096-bit modulus with
+e = 65537 runs its almost Montgomery products over 52-bit limbs, at 0.49 to
+0.56× rind's time on Zen 4; other moduli and exponents keep rind's, as VG
+falls back to 64-bit products there that measured 1.15 to 1.54× slower at
+2056 bits. Both exponentiations of the CRT for 1024- or 2048-bit primes run
+at once by its CRT, at 0.96 and 0.98× the dual RSAZ's time on Zen 4, about
+0.9 on Zen 5, and 0.74 and 0.96 on a Granite Rapids Xeon, by a fixed window
+whose entries are gathered by masking all of them. On CPUs with AVX512_FP16
+(Intel's since Sapphire Rapids) it takes its form for two 512-bit
+multipliers, as VG's own dispatch does, which also runs 1536-bit primes, at
+0.92× on that Xeon. Its other form measured 1.2 to 1.5× slower there on Zen
+5, so elsewhere a 3072-bit key's CRT runs aws-lc's dual RSAZ, as aws-lc's
+`BN_mod_exp_mont_consttime_x2` does there: almost Montgomery
+products on 256-bit vectors over 52-bit limbs, two moduli at a time, and a
+5-bit fixed window whose table entries are gathered by masking all 32.
+The dual RSAZ also runs the keys of 2048-bit-class primes whose modulus has
+63 words (3969 to 4032 bits), which neither form of VG's CRT takes.
+Valgrind runs no AVX-512, so `admin/ct-sde` checks each of these under Intel
+SDE instead.
 
 The RSA private operation always uses the CRT optimisation.
 
@@ -923,9 +941,9 @@ HACL*'s verified Poly1305 without NEON.
 [mlkem-native]: https://github.com/pq-code-package/mlkem-native
 [mldsa-native]: https://github.com/pq-code-package/mldsa-native
 [aws-lc]: https://github.com/aws/aws-lc
+[verified-garbage]: https://github.com/pyca/verified-garbage
 [fiat-crypto]: https://github.com/mit-plv/fiat-crypto
 [BoringSSL]: https://boringssl.googlesource.com/boringssl
-[verified-garbage]: https://github.com/pyca/verified-garbage
 [OpenSSL]: https://github.com/openssl/openssl
 [SPHINCS+]: https://github.com/sphincs/sphincsplus/tree/bas/fips205
 [SUPERCOP]: https://bench.cr.yp.to/supercop.html

@@ -5,7 +5,7 @@
 //! pyca/verified-garbage's verified routines that rind runs, and the
 //! routines and tables they reach: see admin/import-vg.
 
-#![allow(dead_code, unreachable_pub, unused_macros, clippy::all)]
+#![allow(dead_code, unused_macros, clippy::all)]
 
 #[rustfmt::skip]
 pub(crate) mod vg_chacha20_apply_avx2;
@@ -21,3 +21,11 @@ pub(crate) mod vg_chacha20_xor;
 pub(crate) mod vg_chacha20_xor_avx2;
 #[rustfmt::skip]
 pub(crate) mod vg_chacha20_xor_avx512vl;
+#[rustfmt::skip]
+pub(crate) mod vg_rsa_mont_mul_adx;
+#[rustfmt::skip]
+pub(crate) mod vg_rsa_private_crt_precomputed_ifma;
+#[rustfmt::skip]
+pub(crate) mod vg_rsa_private_crt_precomputed_ifma512;
+#[rustfmt::skip]
+pub(crate) mod vg_rsa_public_precomputed_checked_ifma;
