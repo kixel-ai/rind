@@ -11,9 +11,7 @@ Found by the 2026-11-14 [upstream-updates](/quest/m2/upstream-updates.md) run. G
 - Bench `rind-bench`'s ChaCha20 against aws-lc-rs before and after on each aarch64 host available.
 - [ChaCha20-Poly1305 is proven on aarch64](/quest/m4/verified/chacha20-poly1305-aarch64.md) plans to prove this routine; a port changes what it proves.
 
-## Groundwork
-
-Checked 2026-11-17. No port remains, and `main` against this branch times the same code.
+Groundwork, checked 2026-11-17: No port remains, and `main` against this branch times the same code.
 
 Graviola `bdad1050` (`bdad1050e90bdaa6bb601bfab8ed1638e9fb87ae`, Brian Pane, author date 2026-10-23, committed 2026-10-26) rewrites only `core_x4` in `graviola/src/low/aarch64/chacha20.rs`. Its parent `a060b65b` keeps four blocks side by side, one `uint32x4_t` row per block (`a0`..`d3`), and rotates lanes with `vextq_u32` between the column quarter-rounds and the diagonal ones, then rotates them back. `bdad1050` stripes each of the 16 state words down a column (`vdupq_n_u32` for the constant words, the block counter in the four lanes of `col_d_0`), runs the diagonal round by crossing columns (`col_a_0` with `col_b_1`, `col_c_2`, `col_d_3`, and so on), and transposes the columns back to rows with `vzip1q`/`vzip2q` after the 20 rounds. The scalar one-block `core`, `rotate_left`, and the 256-byte dispatch are unchanged in that commit.
 
@@ -21,7 +19,7 @@ Graviola `bdad1050` (`bdad1050e90bdaa6bb601bfab8ed1638e9fb87ae`, Brian Pane, aut
 
 `admin/parse-asm` has no ChaCha20 entry. Its drivers transliterate s2n-bignum assembly; this routine is NEON intrinsics. The aarch64 proof quest already names `low/aarch64/chacha20.rs` as the `cipher::ChaCha20` routine it proves with Aeneas over modelled NEON intrinsics, so this quest does not change that target. The kernel it will model is the vertical one: column state and the `vzip` transpose, with no `vextq` between rounds. ChaCha20-Poly1305 on aarch64 stays aws-lc's NEON seal/open and is outside this file.
 
-`aws-lc-rs` 1.19's `cipher` module has no ChaCha20. `rind-bench`'s `chacha20` group times `rind` and `verified-garbage` only (`rind-bench/benches/cipher.rs`). `chacha20poly1305` and `quic-header-protection/chacha20` do time aws-lc-rs, and neither calls this `core_x4`: the AEAD is aws-lc's one-pass NEON, and header protection is HACL*'s one block. A main-versus-branch bench of `^chacha20/` is the comparison that would have shown a port; it should tie.
+`aws-lc-rs` 1.19's `cipher` module has no ChaCha20. `rind-bench`'s `chacha20` group times `rind` and `verified-garbage` only (`rind-bench/benches/cipher.rs`). `chacha20poly1305` and `quic-header-protection/chacha20` do time aws-lc-rs, and neither calls this `core_x4`: the AEAD is aws-lc's one-pass NEON, and header protection is HACL*'s one block. A main-versus-branch bench of `^chacha20/` is the comparison that would have shown a port. Graviola's earlier horizontal kernel (`a060b65b`) measures 3-6% slower than rind's on an Apple M1 Pro, so the layout rind runs is the faster one. Beyond that layout, this branch adds `core_x8` (two independent four-block groups) and `core_x9` (a ninth block in general-purpose registers); the commits carry the M1 Pro numbers, and the Neoverse host and aarch64 ctgrind are still to run.
 
 ## Related
 
