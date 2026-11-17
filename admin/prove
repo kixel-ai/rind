@@ -1148,7 +1148,7 @@ extract_kdf() {
 toolchain=$(printf '%s\n' "$(realpath -e "$(command -v charon)")" "$(rustc -vV)" | sha256sum)
 prove_target=$PWD/target/prove-${toolchain:0:16}
 mkdir -p target
-find "$PWD/target" -mindepth 1 -maxdepth 1 -name 'prove*' ! -path "$prove_target" ! -path "$prove_target-portable" -exec rm -rf {} +
+find "$PWD/target" -mindepth 1 -maxdepth 1 -name 'prove*' ! -name "prove-${toolchain:0:16}" ! -name "prove-${toolchain:0:16}-portable" -exec rm -rf {} +
 export CARGO_TARGET_DIR=$prove_target
 
 extract x86_64 X86_64 "${hashes[@]}" "${assembly[@]}" \
