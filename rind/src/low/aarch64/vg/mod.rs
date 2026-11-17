@@ -46,6 +46,14 @@ macro_rules! vg_sym_pageoff {
 pub struct Table<const N: usize>(pub [u8; N]);
 
 #[rustfmt::skip]
+pub(crate) mod vg_chacha20_block;
+#[rustfmt::skip]
+pub(crate) mod vg_chacha20_poly1305_open_sve2;
+#[rustfmt::skip]
+pub(crate) mod vg_chacha20_poly1305_seal_sve2;
+#[rustfmt::skip]
+pub(crate) mod vg_chacha20_xor_sve2;
+#[rustfmt::skip]
 pub(crate) mod vg_ec_p256_public_key;
 #[rustfmt::skip]
 pub(crate) mod vg_ecdh_p256;
@@ -105,5 +113,11 @@ pub(crate) mod vg_p256_check_point;
 pub(crate) mod vg_p256_comb;
 #[rustfmt::skip]
 pub(crate) mod vg_p256_gtab;
+#[rustfmt::skip]
+pub(crate) mod vg_poly1305_blocks;
+#[rustfmt::skip]
+pub(crate) mod vg_poly1305_finalize_scratch;
+#[rustfmt::skip]
+pub(crate) mod vg_poly1305_init;
 #[rustfmt::skip]
 pub(crate) mod vg_zeroize;
