@@ -1876,13 +1876,14 @@ def site_data(hosts, tiers, verified, gaps):
             "tier": name,
             "cpu": t["cpu"],
             "libraries": [lib for lib in ["rind", *BASELINES, *TIMED] if lib in timed],
+            # The libraries its fastest is drawn from.
+            "rivals": ["rind", *heatmap_rivals(t)],
             "times": {},
             "fastest": {},
             "gaps": {},
         }
         for key, libs in t["benchmarks"].items():
-            # The tier's rule: rind against the fastest of it and the baselines.
-            rivals = {lib: ns for lib, ns in libs.items() if lib == "rind" or lib in BASELINES}
+            rivals = {lib: ns for lib, ns in libs.items() if lib in out["rivals"]}
             if not rivals:
                 continue
             best = min(rivals, key=rivals.get)
@@ -1936,8 +1937,8 @@ def site_data(hosts, tiers, verified, gaps):
     if tiers is not None:
         order = tier_columns(tiers)
         data["tiers"] = {
-            # The libraries a tier's fastest is drawn from.
-            "rivals": ["rind", *BASELINES],
+            # The libraries any tier's fastest is drawn from.
+            "rivals": ["rind", *BASELINES, *TIMED],
             "run": tiers["run"],
             "url": tiers["url"],
             "date": tiers["date"][:10],
