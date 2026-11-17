@@ -33,6 +33,8 @@ hex = "0.4"
 # Requests reach valgrind only once `rind/__ctgrind` turns on crabgrind's default
 # features, as `admin/ctgrind` does; otherwise they build as no-ops.
 crabgrind = { version = "0.4", default-features = false }
+# The ML-DSA differential tests need aws-lc-rs's own key API, to expand a seed.
+aws-lc-rs = { version = "1.19", default-features = false, features = ["alloc", "prebuilt-nasm", "non-fips"] }
 http = "1"
 http-body-util = "0.1"
 hyper = { version = "1", default-features = false }

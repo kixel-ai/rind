@@ -109,10 +109,21 @@ const INVALID_KEY_SHARE: Error = Error::PeerMisbehaved(PeerMisbehaved::InvalidKe
 
 #[cfg(test)]
 mod tests {
+    use crabgrind::memcheck::{self, MemState};
+    use crabgrind::valgrind::{self, RunningMode};
     use rustls::ProtocolVersion;
 
     use super::*;
     use crate::kx_group::{MLKEM768, MLKEM1024};
+
+    /// Marks a shared secret public under `admin/ctgrind`'s valgrind, so a
+    /// test may compare it: these tests check agreement, which a handshake
+    /// never branches on.
+    fn public(value: &[u8]) {
+        if let RunningMode::Valgrind = valgrind::running_mode() {
+            memcheck::mark_memory(value.as_ptr().cast(), value.len(), MemState::Defined).unwrap();
+        }
+    }
 
     /// Each group with its name and its public key and ciphertext lengths.
     fn groups() -> [(&'static dyn SupportedKxGroup, NamedGroup, usize, usize); 2] {
@@ -150,6 +161,8 @@ mod tests {
             assert_eq!(server.group, name);
             assert_eq!(server.pub_key.len(), ciphertext_len);
             let secret = client.complete(&server.pub_key).unwrap();
+            public(secret.secret_bytes());
+            public(server.secret.secret_bytes());
             assert_eq!(secret.secret_bytes().len(), 32);
             assert_eq!(secret.secret_bytes(), server.secret.secret_bytes());
         }
@@ -182,6 +195,8 @@ mod tests {
             let mut server = key.start_and_complete(client.pub_key()).unwrap();
             server.pub_key[0] ^= 1;
             let secret = client.complete(&server.pub_key).unwrap();
+            public(secret.secret_bytes());
+            public(server.secret.secret_bytes());
             assert_ne!(secret.secret_bytes(), server.secret.secret_bytes());
         }
     }
@@ -207,6 +222,8 @@ mod tests {
                 let server = server.start_and_complete(client.pub_key()).unwrap();
                 assert_eq!(server.pub_key.len(), ciphertext_len);
                 let secret = client.complete(&server.pub_key).unwrap();
+                public(secret.secret_bytes());
+                public(server.secret.secret_bytes());
                 assert_eq!(secret.secret_bytes(), server.secret.secret_bytes());
             }
 
