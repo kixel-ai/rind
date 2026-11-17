@@ -50,9 +50,6 @@ struct Exchange {
     pub_key: Buf,
 }
 
-/// Uncompressed P-384, the longest NIST share these groups use.
-const MAX_NIST_SHARE: usize = 97;
-
 impl fmt::Debug for Exchange {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Exchange")
@@ -61,34 +58,8 @@ impl fmt::Debug for Exchange {
     }
 }
 
-impl ActiveKeyExchange for Exchange {
-    fn pub_key(&self) -> &[u8] {
-        &self.pub_key
-    }
-
-    fn complete(self: Box<Self>, peer_pub: &[u8], out: &mut Buf) -> Result<(), CryptoError> {
-        // Covers a malformed or off-curve point, and X25519's all-zero output
-        // from a low-order point (RFC 7748 section 6.1).
-        //
-        // aws-lc-rs also accepts a NIST point's SEC1 compressed form, and its
-        // hybrid form when the prefix's low bit matches `y`. `agree` takes
-        // only the uncompressed point.
-        let mut canonical = [0u8; MAX_NIST_SHARE];
-        let peer = nist_share(&self, peer_pub, &mut canonical)
-            .map_err(|_| CryptoError::InvalidPublicKey(self.group))?;
-        let secret = self
-            .key
-            .agree(peer)
-            .map_err(|_| CryptoError::InvalidPublicKey(self.group))?;
-        out.clear();
-        out.extend_from_slice(secret.as_ref());
-        Ok(())
-    }
-
-    fn group(&self) -> NamedGroup {
-        self.group
-    }
-}
+/// Uncompressed P-384, the longest NIST share these groups use.
+const MAX_NIST_SHARE: usize = 97;
 
 /// `peer` as the uncompressed point [`PrivateKey::agree`] takes.
 ///
@@ -129,5 +100,34 @@ fn nist_share<'a>(
             Ok(&buf[..peer.len()])
         }
         _ => Ok(peer),
+    }
+}
+
+impl ActiveKeyExchange for Exchange {
+    fn pub_key(&self) -> &[u8] {
+        &self.pub_key
+    }
+
+    fn complete(self: Box<Self>, peer_pub: &[u8], out: &mut Buf) -> Result<(), CryptoError> {
+        // Covers a malformed or off-curve point, and X25519's all-zero output
+        // from a low-order point (RFC 7748 section 6.1).
+        //
+        // aws-lc-rs also accepts a NIST point's SEC1 compressed form, and its
+        // hybrid form when the prefix's low bit matches `y`. `agree` takes
+        // only the uncompressed point.
+        let mut canonical = [0u8; MAX_NIST_SHARE];
+        let peer = nist_share(&self, peer_pub, &mut canonical)
+            .map_err(|_| CryptoError::InvalidPublicKey(self.group))?;
+        let secret = self
+            .key
+            .agree(peer)
+            .map_err(|_| CryptoError::InvalidPublicKey(self.group))?;
+        out.clear();
+        out.extend_from_slice(secret.as_ref());
+        Ok(())
+    }
+
+    fn group(&self) -> NamedGroup {
+        self.group
     }
 }
