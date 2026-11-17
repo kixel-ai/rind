@@ -260,6 +260,10 @@ routines!(A a B b C c D d E e F f G g H h I i J j K k L l M m N n);
 routines!(A a B b C c D d E e F f G g H h I i J j K k L l M m N n O o);
 routines!(A a B b C c D d E e F f G g H h I i J j K k L l M m N n O o P p);
 routines!(A a B b C c D d E e F f G g H h I i J j K k L l M m N n O o P p Q q);
+// `R` names the return type.
+routines!(A a B b C c D d E e F f G g H h I i J j K k L l M m N n O o P p Q q S s);
+routines!(A a B b C c D d E e F f G g H h I i J j K k L l M m N n O o P p Q q S s T t);
+routines!(A a B b C c D d E e F f G g H h I i J j K k L l M m N n O o P p Q q S s T t U u);
 
 /// Calls `f` with the arguments after it through the trampoline, and panics
 /// if it breaks its ABI. Prefix `unsafe` for an `unsafe fn` or one with
