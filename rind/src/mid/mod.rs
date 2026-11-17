@@ -45,6 +45,7 @@ pub(super) mod p256;
 pub(super) mod p384;
 pub(super) mod p521;
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod ristretto255_tests;
 pub(super) mod rng;
 pub(super) mod rsa_key_size;

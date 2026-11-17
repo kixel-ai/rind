@@ -196,6 +196,7 @@ impl Sha512_256Context {
     ]);
 
     /// Start a new SHA512/256 hash computation.
+    #[cfg_attr(coverage_nightly, coverage(off))] // const-evaluated only
     pub(crate) const fn new() -> Self {
         Self {
             inner: Sha512Context::resume(Self::INITIAL),

@@ -1394,6 +1394,7 @@ fn pack_w1<P: Params>(r: &mut [u8], a: &Poly) {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
     use crate::test::{Acvp, Expected, acvp, wycheproof_groups};

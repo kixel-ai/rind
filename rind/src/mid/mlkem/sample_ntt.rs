@@ -34,12 +34,12 @@ pub(super) fn sample_ntt(rho: &[u8; 32], transposed: bool, out: &mut [Poly]) {
     let (eights, rest) = out.as_chunks_mut::<8>();
     for outputs in eights {
         let inputs = core::array::from_fn(|_| next());
-        low::mlkem_sample_poly_ntt_8x(
-            &inputs,
-            outputs.as_flattened_mut().try_into().unwrap(),
-            _sample_poly_ntt_8x,
-            _sample_poly_ntt_tail,
-        );
+        let outputs = outputs.as_flattened_mut().try_into().unwrap();
+        // Only x86_64 has an eight-way sampler, which hands back the tails.
+        #[cfg(rind_backend = "x86_64")]
+        low::mlkem_sample_poly_ntt_8x(&inputs, outputs, _sample_poly_ntt_8x, _sample_poly_ntt_tail);
+        #[cfg(not(rind_backend = "x86_64"))]
+        _sample_poly_ntt_8x(&inputs, outputs);
     }
 
     let (fours, rest) = rest.as_chunks_mut::<4>();
@@ -80,6 +80,7 @@ fn sample_poly_ntt_4x(inputs: &[[u8; 40]; 4], outputs: &mut [Poly; 4]) {
     }
 }
 
+#[cfg(rind_backend = "x86_64")]
 fn _sample_poly_ntt_tail(tail_sponge: &mut [u64; 25], tail: &mut [i16]) {
     Shake128ForMlKem {
         sponge: SqueezingSponge::new(*tail_sponge),

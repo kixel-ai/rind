@@ -112,4 +112,24 @@ mod tests {
         let hardware = false;
         assert_eq!(super::has_aes_hardware(), hardware);
     }
+
+    /// Nested guards count up and back down to none, on every backend, and
+    /// rind runs while they are held.
+    #[test]
+    fn dit_guards_nest() {
+        let guards = || super::DIT_GUARDS.get().0;
+        let outer = super::Dit::hold();
+        let inner = super::Dit::hold();
+        assert_eq!(guards(), 2);
+        assert_eq!(
+            crate::digest::digest(&crate::digest::SHA256, b"")
+                .as_ref()
+                .len(),
+            32
+        );
+        drop(outer);
+        assert_eq!(guards(), 1);
+        drop(inner);
+        assert_eq!(guards(), 0);
+    }
 }
