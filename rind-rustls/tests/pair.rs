@@ -79,6 +79,7 @@ fn all_key_exchanges() {
         rind_rustls::kx_group::X25519MLKEM768,
         rind_rustls::kx_group::SECP256R1MLKEM768,
         rind_rustls::kx_group::MLKEM768,
+        rind_rustls::kx_group::MLKEM1024,
     ] {
         for other in OtherProvider::NOT_RING {
             test_key_exchange(group, tls13, *other);

@@ -30,7 +30,6 @@ says which features of each such crate avoid it.
 
 ## What rind cannot back
 
-- `kx_group::MLKEM1024`, which `ALL_KX_GROUPS` leaves out.
 - ML-DSA: `default_provider()` neither verifies nor signs with it.
 
 ## Behaves differently

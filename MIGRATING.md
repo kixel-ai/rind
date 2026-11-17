@@ -454,7 +454,6 @@ what rind cannot back yet; see [rustls provider parity](quest/m3/parity/rustls.m
 
 | rustls `crypto::aws_lc_rs` | rind-rustls |
 |---|---|
-| `kx_group::MLKEM1024`, in `ALL_KX_GROUPS` | none |
 | ML-DSA, which `default_provider()` verifies and signs with | none |
 
 Its [README](rind-rustls/README.md) lists where it behaves differently, such

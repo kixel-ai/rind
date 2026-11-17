@@ -15,10 +15,6 @@ crate = "rustls"
 module = "crypto::aws_lc_rs"
 features = ["aws_lc_rs"]
 skip = { fips = "builds AWS-LC's FIPS module, which rind does not offer" }
-# Items rind cannot back, which the README names.
-omitted = [
-  "kx_group::MLKEM1024",
-]
 
 [dependencies]
 rind = { version = "0.3.2", path = "../rind" }

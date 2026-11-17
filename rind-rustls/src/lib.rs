@@ -12,7 +12,7 @@
 //! And then use rustls as normal.
 //!
 //! Its API is rustls's `crypto::aws_lc_rs` provider's, item for item, short of
-//! the ML-KEM-1024 key exchange group and ML-DSA, which it does not back yet.
+//! ML-DSA, which it does not back yet.
 
 use std::sync::Arc;
 
@@ -125,6 +125,7 @@ pub static ALL_KX_GROUPS: &[&dyn SupportedKxGroup] = &[
     kx_group::SECP256R1,
     kx_group::SECP384R1,
     kx_group::MLKEM768,
+    kx_group::MLKEM1024,
 ];
 
 /// Every signature verification algorithm this crate supports, in the order
@@ -240,17 +241,17 @@ mod tests {
         assert_eq!(default_provider().cipher_suites, expected);
     }
 
-    // rustls's aws-lc-rs provider offers ML-KEM-1024 and ML-DSA, which this crate
-    // does not back yet; everything else it offers, this crate offers too.
+    // rustls's aws-lc-rs provider offers ML-DSA, which this crate does not back
+    // yet; everything else it offers, this crate offers too.
     // Tests build rustls with `tls12`, so its TLS 1.2 suites are there to
     // compare.
     // aws-lc-rs does not build for wasm.
     #[cfg(all(feature = "tls12", not(target_family = "wasm")))]
     #[test]
     fn aws_lc_rs_parity() {
+        use rustls::SignatureScheme;
         use rustls::crypto::aws_lc_rs;
         use rustls::pki_types::{SignatureVerificationAlgorithm, alg_id};
-        use rustls::{NamedGroup, SignatureScheme};
 
         fn sorted<T: Ord>(items: impl IntoIterator<Item = T>) -> Vec<T> {
             let mut items = items.into_iter().collect::<Vec<_>>();
@@ -284,12 +285,7 @@ mod tests {
             groups(DEFAULT_KX_GROUPS),
             groups(aws_lc_rs::DEFAULT_KX_GROUPS)
         );
-        let expected = aws_lc_rs::ALL_KX_GROUPS
-            .iter()
-            .map(|group| group.name())
-            .filter(|name| *name != NamedGroup::MLKEM1024)
-            .map(u16::from);
-        assert_eq!(groups(ALL_KX_GROUPS), sorted(expected));
+        assert_eq!(groups(ALL_KX_GROUPS), groups(aws_lc_rs::ALL_KX_GROUPS));
 
         let ours = default_provider().signature_verification_algorithms;
         let theirs = aws_lc_rs::default_provider().signature_verification_algorithms;
@@ -335,8 +331,8 @@ mod tests {
     }
 
     // Every public item of rustls's aws-lc-rs provider, doc-hidden ones
-    // included, short of `kx_group::MLKEM1024`, has the same name and type
-    // here. This fails to compile on a divergence.
+    // included, has the same name and type here. This fails to compile on a
+    // divergence.
     // aws-lc-rs does not build for wasm.
     #[cfg(all(feature = "std", feature = "tls12", not(target_family = "wasm")))]
     #[test]
@@ -370,6 +366,7 @@ mod tests {
             kx_group::X25519MLKEM768,
             kx_group::SECP256R1MLKEM768,
             kx_group::MLKEM768,
+            kx_group::MLKEM1024,
             sign::any_supported_type,
             sign::any_ecdsa_type,
             sign::any_eddsa_type,
