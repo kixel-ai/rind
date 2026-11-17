@@ -279,7 +279,8 @@ jobs:
 
       # Cannon Lake adds SHA and AVX-512 IFMA, but lacks VAES and AVX-512
       # VBMI2, so it runs Skylake server's paths with SHA-1 and SHA-256 on the
-      # SHA extensions, and RSA on aws-lc's dual AVX-512 RSAZ.
+      # SHA extensions, and RSA on pyca/verified-garbage's IFMA routines, but
+      # 3072-bit signing on aws-lc's dual AVX-512 RSAZ.
       - name: Check Cannon Lake
         run: nix develop .#sde --command cargo test --release --workspace --exclude rind-fips
         env:
