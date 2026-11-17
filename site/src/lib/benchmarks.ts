@@ -184,7 +184,7 @@ const tierIntro = section(benchmarksMd, "CPU tiers").find((t) => t.type === "par
 if (!tierIntro) throw new Error("BENCHMARKS.md's CPU tiers section has no paragraph");
 const heatmapStart = tierIntro.raw.indexOf(" Each cell is ");
 if (heatmapStart < 0) throw new Error("BENCHMARKS.md's CPU tiers paragraph no longer says where its cells begin");
-export const tierMarkdown = `${tierIntro.raw.slice(0, heatmapStart).trim()} Each tier's table gives every benchmark it runs, each time with its time over the fastest of ${tierNames} (aws-lc-rs alone where a feature is denied, since ring can't be denied one); a benchmark a tier lacks runs the same code as the tier before it, so it isn't timed.`;
+export const tierMarkdown = `${tierIntro.raw.slice(0, heatmapStart).trim()} Each tier's table gives every benchmark it runs, each time with its time over the fastest of ${tierNames}; ring sits out a tier that denies a feature, since it can't be denied one; a benchmark a tier lacks runs the same code as the tier before it, so it isn't timed.`;
 
 export const reportUrl = `${repoUrl}/blob/main/BENCHMARKS.md`;
 

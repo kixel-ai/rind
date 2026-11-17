@@ -32,7 +32,12 @@ const tierRows = tiers.groups.map((g) => ({
 	name: g.name,
 	rows: g.benchmarks.map((id) => ({ id, label: id, code: true })),
 }));
-const md = (text: string) => inlineHtml(lex(text).flatMap((t) => ("tokens" in t && t.tokens ? t.tokens : [t])));
+// Markdown in a table cell: one paragraph inline, anything more as blocks.
+const md = (text: string) => {
+	const blocks = lex(text).filter((t) => t.type !== "space");
+	const [only] = blocks;
+	return blocks.length === 1 && only.type === "paragraph" ? inlineHtml(only.tokens ?? []) : html(blocks);
+};
 
 // What the picker picks, shown by CSS alone, so it works with JavaScript off:
 // the checked CPU's view, each unchecked library's cells hidden, and the
