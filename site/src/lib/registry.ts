@@ -18,10 +18,23 @@ function indexPath(name: string): string {
 	return `${n.slice(0, 2)}/${n.slice(2, 4)}/${n}`;
 }
 
+// A GET that gives up on a stalled connection, and tries three times where the
+// registry or the network fails for a moment (a 429, a 5xx, or no answer), so
+// one blip does not fail a deploy of a site that did not change. Any other
+// status, a 404 apart, fails at once.
 async function get(url: string): Promise<Response> {
-	const res = await fetch(url);
-	if (!res.ok && res.status !== 404) throw new Error(`${url} answered ${res.status}`);
-	return res;
+	let failure = "";
+	for (let attempt = 1; attempt <= 3; attempt++) {
+		try {
+			const res = await fetch(url, { signal: AbortSignal.timeout(30_000) });
+			if (res.ok || res.status === 404) return res;
+			failure = `answered ${res.status}`;
+			if (res.status < 500 && res.status !== 429) break;
+		} catch (e) {
+			failure = `failed: ${e instanceof Error ? e.message : e}`;
+		}
+	}
+	throw new Error(`${url} ${failure}`);
 }
 
 const cache = new Map<string, Promise<Release | null>>();
