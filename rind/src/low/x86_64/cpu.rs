@@ -685,8 +685,15 @@ mod tests {
             ),
             (
                 HaveAvx512ForRsa::check().is_some_and(HaveAvx512ForRsa::fp16),
-                adx && available!("avx", "avx512f", "avx512vl", "avx512ifma", "bmi2")
-                    && available!("avx512fp16"),
+                adx && available!(
+                    "avx",
+                    "avx512f",
+                    "avx512dq",
+                    "avx512bw",
+                    "avx512vl",
+                    "avx512ifma",
+                    "bmi2"
+                ) && available!("avx512fp16"),
             ),
             (
                 HaveSha1::check().is_some(),
