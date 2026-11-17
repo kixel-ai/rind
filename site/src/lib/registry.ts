@@ -72,8 +72,9 @@ async function fetchNewest(name: string): Promise<Release | null> {
 	const sum = createHash("sha256").update(crate).digest("hex");
 	if (sum !== top.cksum) throw new Error(`${url} hashes to ${sum}, not the index's ${top.cksum}`);
 	const readme = untar(gunzipSync(crate), `${name}-${top.vers}/README.md`);
-	if (readme === undefined) throw new Error(`${name} ${top.vers} published no README.md`);
-	return { version: top.vers, readme };
+	// A release with no README is the stranger's or the maintainer's to fix, not a
+	// reason to stop the site: an empty one has no structure, so the page falls back to `main`.
+	return { version: top.vers, readme: readme ?? "" };
 }
 
 // One file from a tar archive, as `cargo package` writes them, with GNU or
