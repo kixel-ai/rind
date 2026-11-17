@@ -93,7 +93,9 @@ impl ChaCha20 {
                     asm_call!(unsafe extern "sysv64" chacha20_ctr32_ssse3_4x(ptr, ptr, len, &self.key, &self.counter_nonce))
                 }
             }
-            // As in aws-lc, which runs integer code here.
+            // As in aws-lc, which runs integer code here. The kernel computes
+            // one block as a single serial chain, which Zen 5's two-cycle
+            // vector latency makes slower than this.
             _ => chacha20::cipher(&self.key, &self.counter_nonce, buffer),
         }
         self.counter_nonce[0] =
