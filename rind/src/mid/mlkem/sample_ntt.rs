@@ -2,10 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
 use super::{N, Poly, Q};
-use crate::{
-    low,
-    mid::sha3::{self, SqueezingSponge},
-};
+use crate::{low, mid::sha3};
 
 /// FIPS-203's `SampleNTT` of each polynomial of a `K` by `K` matrix into
 /// `out`, row by row, or of its transpose: eight at a time where the CPU
@@ -83,7 +80,7 @@ fn sample_poly_ntt_4x(inputs: &[[u8; 40]; 4], outputs: &mut [Poly; 4]) {
 #[cfg(rind_backend = "x86_64")]
 fn _sample_poly_ntt_tail(tail_sponge: &mut [u64; 25], tail: &mut [i16]) {
     Shake128ForMlKem {
-        sponge: SqueezingSponge::new(*tail_sponge),
+        sponge: sha3::SqueezingSponge::new(*tail_sponge),
     }
     .tail_case(tail);
 }
@@ -212,7 +209,7 @@ mod tests {
                 [(x & 0xfff) as i16, (x >> 12) as i16]
             })
             .collect();
-        let got: Vec<i16> = Shake128TwelveBitIterator::new(SqueezingSponge::new(state))
+        let got: Vec<i16> = Shake128TwelveBitIterator::new(sha3::SqueezingSponge::new(state))
             .take(want.len())
             .collect();
         assert_eq!(got, want);
