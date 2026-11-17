@@ -1285,6 +1285,7 @@ extract x86_64 X86_64 "${hashes[@]}" "${assembly[@]}" \
     --include crate::low::x86_64::adx_mux::p384_montjdouble \
     --include crate::low::x86_64::adx_mux::p384_montjmixadd \
     --include crate::low::x86_64::adx_mux::p384_montjscalarmul \
+    --opaque crate::low::x86_64::p384_vg \
     --include crate::low::x86_64::adx_mux::curve25519_x25519 \
     --include crate::low::x86_64::adx_mux::curve25519_x25519base \
     --include crate::low::x86_64::adx_mux::edwards25519_decode \
@@ -1401,6 +1402,7 @@ extract aarch64 Aarch64 "${hashes[@]}" "${assembly[@]}" \
     --opaque 'crate::high::curve::_::generate_random_key' \
     --opaque 'crate::mid::p256::_::generate' \
     --opaque 'crate::mid::p256::_::new_random' \
+    --opaque crate::low::aarch64::p384_vg \
     --include crate::low::aarch64::sha1::sha1_compress_padded \
     --include crate::low::aarch64::sha3_keccak_f1600_mux \
     --include crate::low::aarch64::sha3_keccak4_f1600_mux \

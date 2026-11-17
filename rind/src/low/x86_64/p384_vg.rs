@@ -97,9 +97,10 @@ mod tests {
     #[test]
     fn variants_agree() {
         let d = crate::low::ct::into_secret([0x5a; 48]);
-        let base = public_key_with(None, &d).unwrap();
+        let base = crate::low::ct::into_public(public_key_with(None, &d).unwrap());
         if let Some(adx) = HaveAvx2Adx::check() {
-            assert_eq!(public_key_with(Some(adx), &d), Some(base));
+            let adx = public_key_with(Some(adx), &d).map(crate::low::ct::into_public);
+            assert_eq!(adx, Some(base));
         }
         assert_eq!(public_key_with(None, &[0; 48]), None);
         assert_eq!(public_key_with(HaveAvx2Adx::check(), &[0xff; 48]), None);

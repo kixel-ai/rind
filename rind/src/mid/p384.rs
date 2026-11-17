@@ -1422,11 +1422,12 @@ mod tests {
         for _ in 0..16 {
             let d = StaticPrivateKey::new_random().unwrap();
             let key = VerifyingKey::from_x962_uncompressed(&d.public_key_uncompressed()).unwrap();
-            let e = Scalar::random().unwrap();
+            // Public, as rind's verification takes them.
+            let e = low::ct::into_public(Scalar::random().unwrap());
             let k = StaticPrivateKey::new_random().unwrap();
             let r = k.public_key_x_scalar();
             let s = d.raw_ecdsa_sign(&k, &e, &r);
-            let other = Scalar::random().unwrap();
+            let other = low::ct::into_public(Scalar::random().unwrap());
             for (r, s, e) in [
                 (&r, &s, &e),
                 (&other, &s, &e),
