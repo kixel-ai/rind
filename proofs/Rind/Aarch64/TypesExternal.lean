@@ -35,6 +35,10 @@ opaque high.hmac_drbg.HmacDrbg (H : Type _) (Clause0_Context : Type _) (Clause0_
 opaque low.aarch64.vpaes_armv8.VpaesKey : Type
 opaque low.aarch64.vpaes_armv8.VpaesDecKey : Type
 
+/-- The token proving pyca/verified-garbage's ML-KEM-768 encapsulation runs
+here: the CPU has the SHA-3 instructions. -/
+opaque low.aarch64.mlkem768_vg.Encaps : Type
+
 /-- MD5's chaining state, which no proof covers. -/
 opaque mid.md5.Md5State : Type
 
