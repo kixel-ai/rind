@@ -852,7 +852,9 @@ mod tests {
     /// The draft's `EncapsulateDerand` of `eseed` to `key`: its secret and
     /// ciphertext.
     fn xwing_encaps(key: &EncapsulationKey<XWing>, eseed: &[u8]) -> (Vec<u8>, Ciphertext<XWing>) {
-        let (secret, ciphertext) = key.key.encaps_internal(eseed.try_into().unwrap());
+        // A copy, since encapsulation marks its randomness secret in place.
+        let eseed: [u8; 64] = eseed.try_into().unwrap();
+        let (secret, ciphertext) = key.key.encaps_internal(&eseed);
         (
             secret_bytes(&SharedSecret::<XWing>(secret)),
             Ciphertext(ciphertext),
