@@ -1006,9 +1006,12 @@ only_quoted rind/src/aead.rs "$out/AeadDispatch.rs" '= Algorithm \{'
 # `Key` and `Context`, which hold function pointers, are not.
 # On x86_64, RSA verification is translated from `high::rsa::VerifyingKey`
 # down to `low::posint` and the Montgomery products' dispatch in
-# `low::x86_64::mont`, whose s2n-bignum and aws-lc routines are opaque. Its
-# DER parsing and encoding, which the ✓ leaves out, are opaque too, and
-# `RsaDispatch.lean` models `signature::rsa::PublicKey` above it.
+# `low::x86_64::mont`, whose s2n-bignum and aws-lc routines are opaque, and
+# to `RsaIfma::check`, over its opaque CPU check. pyca/verified-garbage's
+# AVX-512 IFMA public operation and CRT are opaque behind `RsaIfma::public`
+# and `IfmaCrt::crt`, which `VgRsa.lean`'s axioms state. Its DER parsing and
+# encoding, which the ✓ leaves out, are opaque too, and `RsaDispatch.lean`
+# models `signature::rsa::PublicKey` above it.
 # x86_64's RSA reaches `Digest::ct_equal`, so every target starts from it,
 # for the HMAC model all share.
 # See UPSTREAM.md, "Aeneas cannot translate several kinds of Rust".
@@ -1363,7 +1366,10 @@ extract x86_64 X86_64 "${hashes[@]}" "${assembly[@]}" \
     --opaque crate::high::rsa::pkcs1_components \
     --opaque crate::high::rsa::spki_components \
     --opaque 'crate::high::rsa::_::to_pkcs1_der' \
-    --opaque 'crate::mid::rsa_pub::_::public_op_ifma' \
+    --include crate::low::x86_64::rsa_ifma::RsaIfma \
+    --include 'crate::low::x86_64::rsa_ifma::_::check' \
+    --include crate::low::x86_64::rsa_ifma::IfmaCrt \
+    --start-from crate::low::x86_64::rsa_ifma::IfmaCrt::crt \
     --include crate::low::posint \
     --include crate::low::x86_64::mont::mont_mul \
     --include crate::low::x86_64::mont::mont_sqr \
