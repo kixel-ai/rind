@@ -1,6 +1,6 @@
 // Loads each built page in headless Chrome under its Content-Security-Policy
-// and fails if the policy refuses anything, a request fails, or the landing
-// page's copy button does not put the prompt on the clipboard.
+// and fails if the policy refuses anything, a request fails, or a copy button
+// does not put its code block, on the landing page the prompt, on the clipboard.
 import path from "node:path";
 import { cpus, libraries } from "../src/lib/benchmarks";
 import { prompt } from "../src/lib/landing";
@@ -31,14 +31,14 @@ const errors: string[] = [];
 // The page whose requests the network listeners are seeing.
 let current = "about:blank";
 
-// Click the copy button and read back what it put on the clipboard.
-async function copies() {
+// Click one copy button and check that it put `expected` on the clipboard.
+async function copies(button: string, expected: string) {
 	// The button appears once its island hydrates, which the policy must allow.
-	await view.scrollTo("button", { timeout: 5000 });
+	await view.scrollTo(button, { timeout: 5000 });
 	// Watch the label from before the click: the button resets it to "Copy" two
 	// seconds after, so a check that starts late would miss the result.
 	await view.evaluate(`void (window.__label = new Promise((resolve) => {
-		const button = document.querySelector("button");
+		const button = document.querySelector(${JSON.stringify(button)});
 		const observer = new MutationObserver(() => {
 			if (button.textContent !== "Copy") resolve(button.textContent);
 		});
@@ -47,11 +47,25 @@ async function copies() {
 	}))`);
 	// Empty the clipboard first, so what it holds after is this click's doing.
 	await view.evaluate(`navigator.clipboard.writeText("")`);
-	await view.click("button", { timeout: 5000 });
+	await view.click(button, { timeout: 5000 });
 	const label = await view.evaluate("window.__label");
-	if (label !== "Copied") throw new Error(`the copy button says "${label}"`);
+	if (label !== "Copied") throw new Error(`${button} says "${label}"`);
 	const copied = await view.evaluate("navigator.clipboard.readText()");
-	if (copied !== prompt) throw new Error(`the copy button copied ${JSON.stringify(copied)}`);
+	if (copied !== expected) throw new Error(`${button} copied ${JSON.stringify(copied)}, not ${JSON.stringify(expected)}`);
+}
+
+// Every copy button on the page, each of which must copy the code beside it,
+// and on the landing page the prompt.
+async function copiesAll(path: string) {
+	// Buttons hydrate after the page loads, so count the blocks they sit beside.
+	const blocks = (await view.evaluate(`[...document.querySelectorAll(".code pre, .prompt pre")].map((pre, i) => {
+		pre.parentElement.dataset.copy = i;
+		return pre.textContent;
+	})`)) as string[];
+	if (path === "/" && (blocks.length !== 1 || blocks[0] !== prompt)) {
+		throw new Error(`the landing page's one code block is not the prompt: ${JSON.stringify(blocks)}`);
+	}
+	for (const [i, text] of blocks.entries()) await copies(`[data-copy="${i}"] button`, text);
 }
 
 // The benchmarks page shows the view its address links, and a pick rewrites
@@ -211,7 +225,8 @@ try {
 			current = `${page.path} (${scheme})`;
 			await view.navigate(new URL(page.path, server.url).href);
 			try {
-				if (page.path === "/") await copies();
+				// The buttons once, in the first scheme: they draw nothing a scheme changes.
+				if (scheme === "light") await copiesAll(page.path);
 				if (page.path === "/benchmarks") await picks(new URL(page.path, server.url).href);
 			} catch (e) {
 				errors.push(`${current}: ${e instanceof Error ? e.message : e}`);
@@ -231,5 +246,5 @@ if (errors.length > 0) {
 	process.exit(1);
 }
 console.log(
-	`site: ${pages.length} page(s) load in both colour schemes under their policy, the copy button copies the prompt, and the benchmarks page shows what its address and picks name`,
+	`site: ${pages.length} page(s) load in both colour schemes under their policy, each copy button copies its block, and the benchmarks page shows what its address and picks name`,
 );
