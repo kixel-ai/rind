@@ -95,10 +95,10 @@ mod generic {
     // key generation and decapsulation, and every operation elsewhere.
     #[cfg(not(rind_backend = "x86_64"))]
     pub(crate) mod mlkem768_vg;
-    // pyca/verified-garbage's PBKDF2 where it does not run: every backend
-    // but aarch64's.
     #[cfg(not(rind_backend = "x86_64"))]
     pub(crate) mod mlkem_sample;
+    // pyca/verified-garbage's PBKDF2 where it does not run: every backend
+    // but aarch64's.
     #[cfg(not(rind_backend = "aarch64"))]
     pub(crate) mod pbkdf2_vg;
     // ML-KEM arithmetic for the portable backend and x86_64 CPUs without
