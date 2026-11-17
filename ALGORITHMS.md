@@ -88,8 +88,9 @@ SHA-512.
   curve25519-dalek's AVX2 backend. On an Arrow Lake core under load, it
   verified in 0.72 to 0.73× aws-lc-rs's time against 0.89 to 0.92×, 0.77 to
   0.83× against 0.86 to 0.88× with ADX denied, and 0.93× against 1.10× with
-  AVX2 denied as well. aarch64 keeps `edwards25519_scalarmuldouble_alt` until
-  the half-size check measures faster there.
+  AVX2 denied as well. aarch64 runs the same half-size check, over the Neon
+  forms of those point routines. `edwards25519_scalarmuldouble_alt` stays
+  imported until a measurement against it decides.
 - ChaCha20-Poly1305 without AES-NI and on SSE2, which lack SSE4.1: rind runs
   Graviola's scalar Poly1305 there, and aws-lc BoringSSL's SSE2
   `poly1305_vec.c`, which rind doesn't port for CPUs older than Westmere.
