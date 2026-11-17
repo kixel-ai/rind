@@ -2,6 +2,7 @@
 // and fails if the policy refuses anything, a request fails, or the landing
 // page's copy button does not put the prompt on the clipboard.
 import path from "node:path";
+import { cpus, libraries } from "../src/lib/benchmarks";
 import { prompt } from "../src/lib/landing";
 import { pages } from "../src/lib/pages";
 
@@ -53,6 +54,43 @@ async function copies() {
 	if (copied !== prompt) throw new Error(`the copy button copied ${JSON.stringify(copied)}`);
 }
 
+// The benchmarks page shows the view its address links, and a pick rewrites
+// the address: only the picked CPU's view, and only the picked libraries'
+// columns, are displayed.
+async function picks(base: string) {
+	const [first, second] = cpus.filter((c) => c.kind === "host").map((c) => c.id);
+	const shown = ["rind", "aws-lc-rs"];
+	const more = [...shown, "ring"];
+	for (const id of more) if (!libraries.some((l) => l.id === id)) throw new Error(`the benchmarks page has no library ${id}`);
+	const displayed = `({
+		views: [...document.querySelectorAll(".view")].filter((v) => getComputedStyle(v).display !== "none").map((v) => v.id),
+		libs: [...new Set([...document.querySelectorAll(".view th[data-lib]")]
+			.filter((th) => th.offsetParent !== null).map((th) => th.dataset.lib))],
+		search: location.search,
+	})`;
+	const expect = async (want: { views: string[]; libs: string[]; search: string }) => {
+		const got = await view.evaluate(displayed);
+		if (JSON.stringify(got) !== JSON.stringify(want)) {
+			throw new Error(`the benchmarks page shows ${JSON.stringify(got)}, not ${JSON.stringify(want)}`);
+		}
+	};
+	// The island applies a linked view once it hydrates, when Astro drops its `ssr` attribute.
+	const hydrated = `new Promise((resolve) => {
+		const done = () => !document.querySelector("astro-island[ssr]") && resolve(true);
+		new MutationObserver(done).observe(document, { attributes: true, subtree: true });
+		done();
+	})`;
+	await view.navigate(`${base}?cpu=${first}&libs=${shown.join(",")}`);
+	await view.evaluate(hydrated);
+	await expect({ views: [`view-${first}`], libs: shown, search: `?cpu=${first}&libs=${shown.join(",")}` });
+	await view.scrollTo(`#cpu-${second}`, { timeout: 5000 });
+	await view.click(`#cpu-${second}`, { timeout: 5000 });
+	await expect({ views: [`view-${second}`], libs: shown, search: `?cpu=${second}&libs=${shown.join(",")}` });
+	await view.scrollTo("#lib-ring", { timeout: 5000 });
+	await view.click("#lib-ring", { timeout: 5000 });
+	await expect({ views: [`view-${second}`], libs: more, search: `?cpu=${second}&libs=${more.join(",")}` });
+}
+
 try {
 	await view.navigate("about:blank");
 	// Recorded by a script the policy does not govern, before the page's own.
@@ -99,12 +137,11 @@ try {
 		for (const page of pages) {
 			current = `${page.path} (${scheme})`;
 			await view.navigate(new URL(page.path, server.url).href);
-			if (page.path === "/") {
-				try {
-					await copies();
-				} catch (e) {
-					errors.push(`${current}: ${e instanceof Error ? e.message : e}`);
-				}
+			try {
+				if (page.path === "/") await copies();
+				if (page.path === "/benchmarks") await picks(new URL(page.path, server.url).href);
+			} catch (e) {
+				errors.push(`${current}: ${e instanceof Error ? e.message : e}`);
 			}
 			for (const v of (await view.evaluate("window.__violations")) as string[]) {
 				errors.push(`${current}: the Content-Security-Policy's ${v}`);
@@ -120,4 +157,6 @@ if (errors.length > 0) {
 	for (const e of errors) console.error(`error: ${e}`);
 	process.exit(1);
 }
-console.log(`site: ${pages.length} page(s) load in both colour schemes under their policy, and the copy button copies the prompt`);
+console.log(
+	`site: ${pages.length} page(s) load in both colour schemes under their policy, the copy button copies the prompt, and the benchmarks page shows what its address and picks name`,
+);

@@ -19,7 +19,8 @@ never measured. DIR (default `.tmp/bench-report/<commit>`) gets one
 
 `weekly` saves the latest weekly `bench` run's results on main, with gh, as
 the report's CPU tiers. `render` writes BENCHMARKS.md and its SVGs, among
-them the overview the README shows, from benchmarks/data, the verified code in
+them the overview the README shows, and benchmarks/report.json, the same
+report as data for the site's benchmarks page, from benchmarks/data, the verified code in
 benchmarks/verified.toml, and the decision on each gap in
 benchmarks/gaps.toml, first importing each measured host of a collection
 given by `--from`. It fails on a gap over 10% without a
@@ -748,6 +749,8 @@ REPORT_DIR = os.path.join(ROOT, "benchmarks")
 DATA_DIR = os.path.join(REPORT_DIR, "data")
 VERIFIED = os.path.join(REPORT_DIR, "verified.toml")
 GAPS = os.path.join(REPORT_DIR, "gaps.toml")
+# The report as data, which the site's benchmarks page draws.
+SITE_DATA = os.path.join(REPORT_DIR, "report.json")
 REPO = "kixel-ai/rind"
 
 # The report's columns, in order, by library.
@@ -1757,8 +1760,185 @@ def tier_table(tiers):
     return lines
 
 
+def site_data(hosts, tiers, verified, gaps):
+    """The report as data for the site's benchmarks page, which reads nothing
+    else, so it never decides for itself what counts as the fastest, a proof,
+    or a gap. A row's times are one cell per library of its host or tier, in
+    that `libraries` order, each [its time as the report writes it, its
+    SPEED_BINS bin, its time over the fastest's] or null where untimed, all
+    from the full-precision times, so the page shows what the report does."""
+
+    def cells(libraries, libs, best):
+        return [
+            [human(libs[lib]), bin_of(libs[lib] / libs[best], SPEED_BINS), round(libs[lib] / libs[best], 2)]
+            if lib in libs
+            else None
+            for lib in libraries
+        ]
+
+    gap_of = {place: i for i, (_, covered) in enumerate(gaps) for place in covered}
+    proof_index = {id(e): i for i, e in enumerate(verified)}
+    rows = {row_name(op) for op in OPERATIONS}
+
+    def host_data(name):
+        h = hosts[name]
+        out = {
+            "name": name,
+            "cpu": h["cpu"]["model"],
+            "arch": host_arch(h),
+            "logical_cpus": h["cpu"]["logical_cpus"],
+            "os": h["os"],
+            "rustc": h["toolchain"]["rustc"],
+            "date": h["started"][:10],
+            "commit": h["commit"],
+            "noisy": bool(h.get("load", {}).get("noisy")),
+            "note": HOSTS[name].get("note"),
+            "scaling": " ".join(scaling(h)).strip() or None,
+            "refused": {lib: [f.upper() for f in missing] for lib, missing in h.get("refused", {}).items()},
+            "libraries": columns(h),
+            "times": {},
+            "fastest": {},
+            "proofs": {},
+            "gaps": {},
+        }
+        for row, libs in times(h).items():
+            if row not in rows:
+                continue
+            others = [lib for lib in libs if lib not in VARIANTS]
+            best = fastest(libs)
+            out["times"][row] = cells(out["libraries"], libs, best)
+            # One library alone has no rival, so no fastest.
+            if len(others) > 1:
+                out["fastest"][row] = best
+            proofs = {
+                lib: proof_index[id(p)]
+                for lib in libs
+                if (p := proof_for(verified, VARIANTS.get(lib, lib), row, h)) is not None
+            }
+            if proofs:
+                out["proofs"][row] = proofs
+            if (row, name) in gap_of:
+                out["gaps"][row] = gap_of[row, name]
+        cost = h.get("build_cost")
+        if cost and cost["status"] == "ok":
+            out["build"] = {
+                "date": cost["started"][:10],
+                "rustc": cost["host"]["rustc"],
+                "cc": cost["host"]["cc"],
+                "jobs": cost["host"]["jobs"],
+                "builds": [
+                    {
+                        "name": BUILDS.get(b["name"], b["name"]),
+                        # The library each build is of, so the page shows it beside that library.
+                        "library": b["name"].removeprefix("rustls-").removesuffix("-vendored"),
+                        "seconds": round(b["median_seconds"], 1),
+                        "low": round(min(b["seconds"]), 1),
+                        "high": round(max(b["seconds"]), 1),
+                        "cpu_seconds": round(b["median_cpu_seconds"]),
+                        "stripped_mb": round(b["stripped_bytes"] / 1e6, 2),
+                        "tools": b["tools"],
+                        "crates": len(b["packages"]),
+                    }
+                    for b in cost["builds"]
+                ],
+            }
+        elif cost:
+            out["build"] = {"reason": cost["reason"]}
+        return out
+
+    def tier_data(t):
+        column, name = tier_column(t), tier_name(t)
+        timed = {lib for libs in t["benchmarks"].values() for lib in libs}
+        out = {
+            "name": column,
+            "cpu": t["cpu"],
+            "libraries": [lib for lib in ["rind", *BASELINES, *TIMED] if lib in timed],
+            "times": {},
+            "fastest": {},
+            "gaps": {},
+        }
+        for key, libs in t["benchmarks"].items():
+            # The tier's rule: rind against the fastest of it and the baselines.
+            rivals = {lib: ns for lib, ns in libs.items() if lib == "rind" or lib in BASELINES}
+            if not rivals:
+                continue
+            best = min(rivals, key=rivals.get)
+            out["times"][key] = cells(out["libraries"], libs, best)
+            if len(rivals) > 1:
+                out["fastest"][key] = best
+            if (key, name) in gap_of:
+                out["gaps"][key] = gap_of[key, name]
+        return out
+
+    def tier_groups(tiers):
+        """The tiers' benchmarks by TIER_ROWS row, then those UNRANKED keeps
+        apart, by its reason."""
+        keys = sorted({key for t in tiers["tiers"] for key in t["benchmarks"]})
+        groups = [{"name": name, "benchmarks": [k for k in keys if re.match(p, k)]} for name, p in TIER_ROWS]
+        unranked = [k for k in keys if tier_row(k) is None]
+        for pattern, why in UNRANKED:
+            group = [k for k in unranked if re.match(pattern, k)]
+            unranked = [k for k in unranked if k not in group]
+            groups.append({"name": f"Not ranked: {why}", "benchmarks": group})
+        return [g for g in groups if g["benchmarks"]]
+
+    data = {
+        "schema": 1,
+        "slower": SLOWER,
+        "bins": [
+            {"to": edge, "label": text, "color": color}
+            for edge, text, color in zip(SPEED_BINS + [None], SPEED_LABELS, SPEED)
+        ],
+        "standing": standing(hosts),
+        "libraries": [{"id": lib, "name": COLUMNS[lib], "variant_of": VARIANTS.get(lib)} for lib in COLUMNS],
+        "sections": [
+            {"name": section, "operations": [{"id": row_name(op), "label": label(row_name(op))} for op in ops]}
+            for section, ops in SECTIONS
+        ],
+        "hosts": [host_data(name) for name in HOSTS if name in hosts],
+        "unmeasured": [name for name in HOSTS if name not in hosts],
+        "tiers": None,
+        "gaps": [],
+        "verified": [
+            {
+                "library": e["library"],
+                "operations": e["operations"],
+                "platform": platform_of(e),
+                "proof": e["proof"],
+                "link": e["link"],
+            }
+            for e in verified
+        ],
+    }
+    if tiers is not None:
+        order = tier_columns(tiers)
+        data["tiers"] = {
+            "run": tiers["run"],
+            "url": tiers["url"],
+            "date": tiers["date"][:10],
+            "commit": tiers["commit"],
+            "columns": [tier_data(t) for t in sorted(tiers["tiers"], key=lambda t: order.index(tier_column(t)))],
+            "groups": tier_groups(tiers),
+        }
+    for e, covered in gaps:
+        ratios = [ratio for ratio, _ in covered.values()]
+        data["gaps"].append(
+            {
+                "operations": [{"id": op, "label": label(op) if op in rows else None} for op in e["operations"]],
+                "on": [{"name": p, "host": p in HOSTS} for p in e["on"]],
+                "low": round(min(ratios), 2),
+                "high": round(max(ratios), 2),
+                "fastest": sorted({COLUMNS[lib] for _, lib in covered.values()}),
+                "quest": {"path": e["quest"], "title": quest_title(e["quest"])} if "quest" in e else None,
+                "reason": e.get("reason"),
+            }
+        )
+    return data
+
+
 def report(hosts, tiers, verified, gaps):
-    """BENCHMARKS.md, its SVGs, and the README with its comparison, by path."""
+    """BENCHMARKS.md, its SVGs, the site's data, and the README with its
+    comparison, by path."""
     files = {}
     shown = [name for name in HOSTS if name in hosts]
     missing = [f"`{name}`" for name in HOSTS if name not in hosts]
@@ -1963,6 +2143,7 @@ def report(hosts, tiers, verified, gaps):
     ]
     files = {os.path.join(REPORT_DIR, k): v for k, v in files.items()}
     files[REPORT] = "\n".join(md)
+    files[SITE_DATA] = json.dumps(site_data(hosts, tiers, verified, gaps), ensure_ascii=False, separators=(",", ":")) + "\n"
     files[README] = readme_with_comparison(comparison_table(hosts, verified))
     return files
 

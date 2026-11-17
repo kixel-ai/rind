@@ -193,6 +193,14 @@ class Render(unittest.TestCase):
         self.assertIn(held, br.report(everyone, None, VERIFIED, [])[br.REPORT])
         self.assertNotIn(held, br.report(hosts(), None, VERIFIED, [])[br.REPORT])
 
+    def test_site_data_never_counts_a_variant_as_the_fastest(self):
+        everyone = hosts()
+        everyone["kixtop"]["results"].append({"operation": "x25519-ecdh/{lib}", "library": "rind-dit-held", "ns": 10000.0})
+        kixtop = next(h for h in br.site_data(everyone, None, VERIFIED, [])["hosts"] if h["name"] == "kixtop")
+        self.assertEqual(kixtop["libraries"], ["rind", "rind-dit-held", "ring"])
+        self.assertEqual(kixtop["fastest"], {"x25519-ecdh": "rind"})
+        self.assertEqual(kixtop["times"]["x25519-ecdh"][1], ["10.00 µs", 0, 0.5])
+
     def test_fastest_bin_holds_within_ten_percent(self):
         self.assertEqual(br.bin_of(1.0, br.SPEED_BINS), 0)
         self.assertEqual(br.bin_of(1.1, br.SPEED_BINS), 0)
@@ -329,6 +337,21 @@ class Gaps(unittest.TestCase):
         for entries in [[self.X25519], [self.SHA256], []]:
             with self.subTest(entries=entries), self.assertRaises(SystemExit):
                 self.load(*entries)
+
+    def test_site_data_marks_each_gap_where_it_shows(self):
+        gaps = self.load(self.X25519, self.SHA256)
+        data = br.site_data(self.hosts, self.tiers, VERIFIED, gaps)
+        nixos = next(h for h in data["hosts"] if h["name"] == "nixos")
+        self.assertEqual(nixos["libraries"], ["rind", "aws-lc-rs", "ring", "openssl"])
+        self.assertEqual(nixos["times"]["x25519-ecdh"], [["30.00 µs", 2, 1.5], None, ["20.00 µs", 0, 1.0], ["300.00 µs", 6, 15.0]])
+        self.assertEqual(nixos["fastest"]["x25519-ecdh"], "ring")
+        self.assertEqual(nixos["gaps"], {"x25519-ecdh": 0})
+        # Proofs by their index in the verified table: rind's needs ADX, ring's holds anywhere.
+        self.assertEqual(nixos["proofs"]["x25519-ecdh"], {"rind": 0, "ring": 2})
+        tier = data["tiers"]["columns"][0]
+        self.assertEqual(tier["gaps"], {"sha256/*/64B": 1})
+        self.assertEqual([g["quest"] and g["quest"]["path"] for g in data["gaps"]], ["/quest/m3/README.md", None])
+        self.assertEqual(data["gaps"][1]["reason"], "r")
 
     def test_gate_fails_only_on_an_undecided_gap_two_runs_show(self):
         def run(directory, sha256, chacha, avx512):
