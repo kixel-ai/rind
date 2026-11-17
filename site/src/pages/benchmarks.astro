@@ -25,20 +25,13 @@ import {
 	untimed,
 } from "../lib/benchmarks";
 import { builtBy } from "../lib/landing";
-import { html, inlineHtml, lex } from "../lib/markdown";
+import { cell as md, html, lex } from "../lib/markdown";
 
 const hostRows = report.sections.map((s) => ({ name: s.name, rows: s.operations }));
 const tierRows = tiers.groups.map((g) => ({
 	name: g.name,
 	rows: g.benchmarks.map((id) => ({ id, label: id, code: true })),
 }));
-// A table cell's Markdown, one paragraph, as admin/bench-report holds a gap's reason to.
-const md = (text: string) => {
-	const blocks = lex(text).filter((t) => t.type !== "space");
-	if (blocks.length !== 1 || blocks[0].type !== "paragraph") throw new Error(`a table cell's Markdown is not one paragraph: ${text}`);
-	return inlineHtml(blocks[0].tokens ?? []);
-};
-
 // What the picker picks, shown by CSS alone, so it works with JavaScript off:
 // the checked CPU's view, each unchecked library's cells hidden, and the
 // report's colors for its speed bins. The policy in astro.config.ts allows

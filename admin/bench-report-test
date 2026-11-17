@@ -334,6 +334,9 @@ class Gaps(unittest.TestCase):
         table = "\n".join(br.gap_table(gaps))
         self.assertIn("| X25519 | `nixos` | 1.50× (ring) | [m3: deferred](quest/m3/README.md) |", table)
         self.assertIn("| `sha256/*/64B` | x86_64 tier | 1.25× (ring) | r |", table)
+        # A reason's pipe stays inside its cell.
+        piped = self.load(self.X25519, {**self.SHA256, "reason": '"- a | b"'})
+        self.assertIn("| - a \\| b |", "\n".join(br.gap_table(piped)))
         for entries in [[self.X25519], [self.SHA256], []]:
             with self.subTest(entries=entries), self.assertRaises(SystemExit):
                 self.load(*entries)
@@ -409,6 +412,7 @@ class Gaps(unittest.TestCase):
             {"on": None},
             {"host": '"nixos"'},
             {"quest": None, "reason": '"one\\n\\ntwo"'},
+            {"quest": None, "reason": '"one\\rtwo"'},
         ]:
             entry = {k: v for k, v in {**self.X25519, **fields}.items() if v is not None}
             with self.subTest(fields=fields), self.assertRaises(SystemExit):

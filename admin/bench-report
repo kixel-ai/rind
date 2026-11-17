@@ -1252,8 +1252,9 @@ def load_gaps(hosts, tiers, path=GAPS):
             fail(f"{where}: needs operations and on")
         if ("quest" in e) == ("reason" in e):
             fail(f"{where}: needs a quest or a reason, not both")
-        # The report's gap table, and the site's, hold the reason in one cell.
-        if "\n" in e.get("reason", ""):
+        # The report's gap table, and the site's, hold the reason in one cell
+        # as inline Markdown.
+        if re.search(r"[\r\n]", e.get("reason", "")):
             fail(f"{where}: the reason must be one line, since a table cell holds it")
         if "quest" in e and not (e["quest"].startswith("/quest/") and os.path.isfile(ROOT + e["quest"])):
             fail(f"{where}: no quest at {e['quest']}")
@@ -1291,7 +1292,7 @@ def gap_table(gaps):
         ratios = [ratio for ratio, _ in covered.values()]
         spread = f"{min(ratios):.2f}×" + (f" to {max(ratios):.2f}×" if max(ratios) - min(ratios) >= 0.005 else "")
         fastest = ", ".join(sorted({COLUMNS[lib] for _, lib in covered.values()}))
-        decision = f"[{quest_title(e['quest'])}]({e['quest'][1:]})" if "quest" in e else e["reason"]
+        decision = f"[{quest_title(e['quest'])}]({e['quest'][1:]})" if "quest" in e else e["reason"].replace("|", "\\|")
         lines.append(f"| {ops} | {on} | {spread} ({fastest}) | {decision} |")
     return lines
 

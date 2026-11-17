@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { blocks, definitions, hrefs, html, lex, section, spans } from "./markdown";
+import { blocks, cell, definitions, hrefs, html, lex, section, spans } from "./markdown";
 
 // A section quoted with its definitions renders as it does inside its document.
 test.each([
@@ -43,4 +43,10 @@ test("spans quote inline source as written", () => {
 // Links in table cells, header and body, are found like any other.
 test("hrefs reads table cells", () => {
 	expect(hrefs(lex("| [Head](/head) |\n| --- |\n| [Missing](/missing) |"))).toEqual(["/head", "/missing"]);
+});
+
+// A cell's Markdown is inline, whatever it starts with.
+test("cell reads one line inline", () => {
+	expect(cell("- not [a](/a) `b`")).toBe('- not <a href="/a">a</a> <code>b</code>');
+	expect(cell("# a | b")).toBe("# a | b");
 });
