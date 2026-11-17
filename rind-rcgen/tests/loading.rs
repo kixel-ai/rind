@@ -11,6 +11,7 @@ const ALGORITHMS: [&SignatureAlgorithm; 3] = [
     &PKCS_ED25519,
 ];
 
+#[cfg(feature = "pem")]
 #[test]
 fn pem_keys_load_for_their_algorithm() {
     for alg in ALGORITHMS {
@@ -29,6 +30,7 @@ fn pem_keys_load_for_their_algorithm() {
 }
 
 /// Malformed PEM gives rcgen's error.
+#[cfg(feature = "pem")]
 #[test]
 fn malformed_pem_is_refused_as_rcgen_refuses_it() {
     let key = KeyPair::generate_for(&PKCS_ECDSA_P256_SHA256).unwrap();

@@ -181,6 +181,7 @@ fn errors_convert_as_aws_lc_rs_does() {
         ours::error::Unspecified::from(too_big),
         ours::error::Unspecified
     );
+    #[cfg(any(feature = "ring-io", feature = "ring-sig-verify"))]
     assert_eq!(
         ours::error::Unspecified::from(untrusted::EndOfInput),
         ours::error::Unspecified
@@ -230,6 +231,7 @@ fn fips_entropy_is_refused() {
     );
 }
 
+#[cfg(feature = "ring-io")]
 #[test]
 fn rsa_public_keys_match_aws_lc_rs() {
     use ours::signature::KeyPair as _;
