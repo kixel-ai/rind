@@ -12,4 +12,4 @@ publish = false
 # generator for.
 getrandom = "0.4"
 # Not on crates.io: the commit rind-bench pins.
-verified-garbage = { git = "https://github.com/pyca/verified-garbage", rev = "d004ffaeb3c226c377a59f9f824386246d73ca5d" }
+verified-garbage = { git = "https://github.com/pyca/verified-garbage", rev = "e7b0fe8a82b7777958e078573771d51415f105bb" }
