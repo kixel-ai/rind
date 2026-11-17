@@ -1,6 +1,7 @@
 // Every page the site has. Each gets a Markdown twin at its path with `.md`, a
 // line in llms.txt, and a sitemap entry; scripts/check.ts fails a built page
 // that is missing from here.
+import { benchmarks } from "./benchmarks";
 import * as landing from "./landing";
 import { blocks, definitions, link, spans } from "./markdown";
 
@@ -44,4 +45,4 @@ export const home: Page = {
 	},
 };
 
-export const pages: Page[] = [home];
+export const pages: Page[] = [home, benchmarks];
