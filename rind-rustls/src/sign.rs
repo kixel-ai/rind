@@ -993,6 +993,115 @@ mod tests {
         }
     }
 
+    // RFC 9881's three private key forms (the seed, the expanded key, and both),
+    // and their mismatches, load or fail as aws-lc-rs's loader does, and a key
+    // that loads has the same public key. The expanded key comes from aws-lc-rs
+    // expanding each fixture's seed.
+    // aws-lc-rs does not build for wasm.
+    #[cfg(not(target_family = "wasm"))]
+    #[test]
+    fn test_ml_dsa_key_forms_match_aws_lc_rs() {
+        use ::aws_lc_rs::encoding::AsRawBytes;
+        use ::aws_lc_rs::signature::{
+            ML_DSA_44_SIGNING, ML_DSA_65_SIGNING, ML_DSA_87_SIGNING, PqdsaKeyPair,
+        };
+        use rustls::crypto::aws_lc_rs as theirs_provider;
+
+        fn tlv(tag: u8, content: &[u8]) -> Vec<u8> {
+            let mut out = vec![tag];
+            match content.len() {
+                len @ 0..=0x7f => out.push(len as u8),
+                len @ 0x80..=0xff => out.extend([0x81, len as u8]),
+                len => out.extend([0x82, (len >> 8) as u8, len as u8]),
+            }
+            out.extend_from_slice(content);
+            out
+        }
+
+        let signing = [&ML_DSA_44_SIGNING, &ML_DSA_65_SIGNING, &ML_DSA_87_SIGNING];
+        for ((_, _, _, der), algorithm) in ml_dsa_test_keys().into_iter().zip(signing) {
+            let PrivateKeyDer::Pkcs8(pkcs8) = &der else {
+                unreachable!()
+            };
+            let pkcs8 = pkcs8.secret_pkcs8_der();
+            // `SEQUENCE { INTEGER 0, AlgorithmIdentifier, OCTET STRING { [0] seed } }`.
+            assert_eq!(
+                (pkcs8.len(), &pkcs8[18..22]),
+                (54, &[0x04, 0x22, 0x80, 0x20][..])
+            );
+            let (algorithm_id, seed) = (&pkcs8[5..18], &pkcs8[22..]);
+            let expanded = PqdsaKeyPair::from_seed(algorithm, seed)
+                .unwrap()
+                .private_key()
+                .as_raw_bytes()
+                .unwrap();
+            let expanded = expanded.as_ref();
+
+            let key = |private_key: Vec<u8>| {
+                let mut body = vec![0x02, 0x01, 0x00];
+                body.extend_from_slice(algorithm_id);
+                body.extend(tlv(0x04, &private_key));
+                PrivateKeyDer::Pkcs8(tlv(0x30, &body).into())
+            };
+            let both = |seed: &[u8], expanded: &[u8]| {
+                let mut inner = tlv(0x04, seed);
+                inner.extend(tlv(0x04, expanded));
+                tlv(0x30, &inner)
+            };
+            let flipped = |bytes: &[u8], at: usize| {
+                let mut bytes = bytes.to_vec();
+                bytes[at] ^= 1;
+                bytes
+            };
+
+            let cases = [
+                ("seed", key(tlv(0x80, seed)), true),
+                ("expanded", key(tlv(0x04, expanded)), true),
+                ("both", key(both(seed, expanded)), true),
+                (
+                    "both, other seed",
+                    key(both(&flipped(seed, 0), expanded)),
+                    false,
+                ),
+                (
+                    "both, other expanded key",
+                    key(both(seed, &flipped(expanded, expanded.len() - 1))),
+                    false,
+                ),
+                (
+                    "expanded, flipped first byte",
+                    key(tlv(0x04, &flipped(expanded, 0))),
+                    false,
+                ),
+                (
+                    "expanded, flipped last byte",
+                    key(tlv(0x04, &flipped(expanded, expanded.len() - 1))),
+                    false,
+                ),
+                (
+                    "expanded, one byte short",
+                    key(tlv(0x04, &expanded[..expanded.len() - 1])),
+                    false,
+                ),
+                ("seed, one byte short", key(tlv(0x80, &seed[..31])), false),
+            ];
+            for (name, der, loads) in cases {
+                let ours = any_supported_type(&der);
+                let theirs = theirs_provider::sign::any_supported_type(&der);
+                assert_eq!(ours.is_ok(), theirs.is_ok(), "{algorithm:?}: {name}");
+                if loads {
+                    let (ours, theirs) = (ours.unwrap(), theirs.unwrap());
+                    assert_eq!(ours.algorithm(), theirs.algorithm(), "{name}");
+                    assert_eq!(
+                        ours.public_key().unwrap().as_ref(),
+                        theirs.public_key().unwrap().as_ref(),
+                        "{name}"
+                    );
+                }
+            }
+        }
+    }
+
     #[test]
     fn test_ed25519_signing_key() {
         let signing_key = Arc::new(Ed25519KeyPair::generate().unwrap());
