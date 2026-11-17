@@ -35,8 +35,8 @@ jobs:
   #
   # A job each, not one job for all: SDE's speed depends on the host, and on
   # GitHub's AMD EPYC 7763 runners a model with the SHA extensions runs the
-  # suite several times slower than on their Intel ones, which took a single
-  # job for every model past four hours.
+  # suite several times slower than on the other hosted runners, which took a
+  # single job for every model past four hours.
   check:
     name: check (${{ matrix.model }})
     runs-on: ubuntu-latest
@@ -343,19 +343,17 @@ jobs:
       - name: Host CPU
         run: grep -m1 'model name' /proc/cpuinfo
 
-      # `wipe` adds the zeroing tests to the run; it only changes what a drop
-      # writes, which the native runners test without it. rind-fips is left
-      # out: its module refuses CPUs below its baseline, as most of these
-      # models are.
+      # rind-fips is left out: its module refuses CPUs below its baseline,
+      # as most of these models are.
       - name: Build (release)
-        run: nix develop .#sde --command cargo build --release --tests --workspace --exclude rind-fips --features rind/wipe
+        run: nix develop .#sde --command cargo build --release --tests --workspace --exclude rind-fips
 
       # This skips aws-lc-rs's `large_digest` tests, which hash 8 GiB per
-      # hash and took up to 25 minutes per model under SDE. They check the
+      # hash and took 21 to 28 minutes per SHA model under SDE. They check the
       # length counter, which no CPU path changes, and run natively in
       # build.yml.
       - name: Check ${{ matrix.model }}
-        run: nix develop .#sde --command cargo test --release --workspace --exclude rind-fips --features rind/wipe -- --skip large_digest
+        run: nix develop .#sde --command cargo test --release --workspace --exclude rind-fips -- --skip large_digest
         env:
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sde -${{ matrix.sde }} --"
           RIND_TEST_X86_SSSE3: ${{ matrix.paths.SSSE3 }}
