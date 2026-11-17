@@ -18,7 +18,6 @@ use crate::mid::xwing;
 #[derive(Debug)]
 pub enum XWing {}
 
-
 mod sealed {
     pub trait Sealed {}
     impl<P: super::Params> Sealed for P {}
@@ -987,7 +986,7 @@ mod tests {
         let rejected = decapsulate(&key, &tampered).unwrap();
         assert_ne!(rejected, secret);
         assert_eq!(decapsulate(&key, &tampered).unwrap(), rejected);
-        // The order-two point, 1 and its twin p + 1.
+        // u = 1, another small-order point, also gives the zero X25519 secret.
         tampered[1088] = 1;
         assert_ne!(decapsulate(&key, &tampered).unwrap(), rejected);
 
@@ -1205,7 +1204,8 @@ mod tests {
         }
 
         // A key whose ML-KEM half fails the modulus check is refused by all
-        // three; one with any X25519 half (here, zero) is taken by all three.
+        // three; one with any X25519 half (here, zero) is taken by all three,
+        // and encapsulating to it agrees with x-wing's.
         #[test]
         fn xwing_matches_on_malformed_keys() {
             let key = DecapsulationKey::<XWing>::generate().unwrap();
@@ -1226,6 +1226,16 @@ mod tests {
                 libcrux_kem::PublicKey::decode(LibcruxAlgorithm::XWingKemDraft06, &zero).is_ok()
             );
             assert!(x_wing::EncapsulationKey::try_from(&zero[..]).is_ok());
+            // Encapsulating to it gives x-wing's ciphertext and secret, the
+            // latter from the zero X25519 secret.
+            let eseed = random_bytes::<64>();
+            let (secret, ciphertext) =
+                xwing_encaps(&EncapsulationKey::<XWing>::new(&zero).unwrap(), &eseed);
+            let (theirs_ct, theirs_ss) = x_wing::EncapsulationKey::try_from(&zero[..])
+                .unwrap()
+                .encapsulate_deterministic(&eseed.into());
+            assert_eq!(ciphertext.as_ref(), theirs_ct.as_slice());
+            assert_eq!(secret, theirs_ss.as_slice());
 
             for len in [0, 1215, 1217] {
                 let mut wrong = pk.clone();
