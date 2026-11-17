@@ -44,8 +44,9 @@ test("a release that predates the structure gives main's README from git", () =>
 });
 
 test("an unreleased crate is called unreleased", () => {
-	const { note } = choose("rind-x", main(readme(`rind-x = "0.6"`), "0.6.0"), null);
+	const { note, ref } = choose("rind-x", main(readme(`rind-x = "0.6"`), "0.6.0"), null);
 	expect(note).toStartWith("rind-x is unreleased");
+	expect(ref).toBe("c0ffee");
 	expect(note).toContain("run `cargo update -p rind-x`");
 });
 

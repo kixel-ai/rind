@@ -88,7 +88,7 @@ export interface Main {
 	repo: string;
 }
 
-// The README a page quotes, the git ref its relative links point into, and the
+// The README a page quotes, the git ref (a tag, or the build's commit) its relative links point into, and the
 // note that opens the page saying which code it describes. The two READMEs are
 // compared as written, since the links in each would differ by ref alone.
 export function choose(crate: string, main: Main, release: Release | null): { readme: Readme; ref: string; note: string } {
@@ -121,7 +121,7 @@ export function choose(crate: string, main: Main, release: Release | null): { re
 		: `${crate} is unreleased: this page describes it as \`main\` has it. Until its first release, take it from git at the commit this page describes`;
 	return {
 		readme: ours,
-		ref: "main",
+		ref: main.commit,
 		note: `${lead}. Beside the lines below, ${steps}`,
 	};
 }

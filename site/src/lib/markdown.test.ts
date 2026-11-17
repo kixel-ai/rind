@@ -52,6 +52,12 @@ test("rebase rewrites inline links and definitions", () => {
 	expect(hrefs(lex(out))).toEqual(["https://example.com/x.md", "https://example.com/x.md", "https://example.com/x.md", "#x.md"]);
 });
 
+// A definition may sit in a block quote.
+test("rebase finds a definition in a block quote", () => {
+	const out = rebase("> [n]: x.md\n\nSee [n].\n", (href) => `https://example.com/${href}`);
+	expect(hrefs(lex(out))).toEqual(["https://example.com/x.md"]);
+});
+
 // The lexer drops a destination's backslash escapes, so the source spells it differently.
 test("rebase finds a destination written with escapes", () => {
 	const out = rebase("[a](x\\(1\\).md) [b](<x\\(1\\).md>)", (href) => `https://example.com/${href}`);
