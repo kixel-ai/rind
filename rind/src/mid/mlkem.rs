@@ -257,6 +257,16 @@ fn vg_array<const L: usize>(bytes: &[u8]) -> &[u8; L] {
         .expect("only ML-KEM-768 runs VG's routines")
 }
 
+/// A VG routine's result, or `None`, as when the routine reached its
+/// `SampleNTT` bound, in a test that forces rind's fallback.
+fn vg_ran<T>(result: Option<T>) -> Option<T> {
+    #[cfg(test)]
+    if tests::FORCE_FALLBACK.get() {
+        return None;
+    }
+    result
+}
+
 /// An ML-KEM decapsulation key: the fields of FIPS 203's encoding,
 /// `dkPKE || ek || H(ek) || z`.
 ///
@@ -377,7 +387,7 @@ impl<P: Params> DecapKey<P> {
             low::ct::secret_slice(seed);
             // `None` with probability below 2^-261: rind's arithmetic then
             // computes the same key.
-            if let Some(dk) = vg.keygen(seed) {
+            if let Some(dk) = vg_ran(vg.keygen(seed)) {
                 // The encapsulation key and its hash are public.
                 low::ct::public_slice(&dk[P::K * 384..P::K * 768 + 64]);
                 return Self::decode(&P::DecapKeyBytes::from_slice(&dk).unwrap(), false);
@@ -412,7 +422,7 @@ impl<P: Params> DecapKey<P> {
             // Never `None`: VG's key generation sampled the same matrix
             // without reaching its bound. rind's arithmetic would compute the
             // same secret.
-            if let Some(k) = vg.decaps(vg_array(dk.as_ref()), vg_array(c.0.as_ref())) {
+            if let Some(k) = vg_ran(vg.decaps(vg_array(dk.as_ref()), vg_array(c.0.as_ref()))) {
                 return SharedSecret(k);
             }
         }
@@ -783,7 +793,7 @@ impl<P: Params> EncapKey<P> {
             let h_ek = self.hashed.then_some(&self.h_ek);
             // `None` with probability below 2^-261: rind's arithmetic then
             // computes the same secret.
-            if let Some((k, c)) = vg.encaps(vg_array(self.bytes.as_ref()), h_ek, &m.0) {
+            if let Some((k, c)) = vg_ran(vg.encaps(vg_array(self.bytes.as_ref()), h_ek, &m.0)) {
                 let c = P::CiphertextBytes::from_slice(&c).unwrap();
                 return (SharedSecret(k), Ciphertext(low::ct::into_public(c)));
             }
@@ -1332,6 +1342,43 @@ const N: usize = 256;
 mod tests {
     use super::*;
     use crate::test::{Acvp, acvp};
+
+    std::thread_local! {
+        /// Whether [`vg_ran`] discards this thread's VG results.
+        pub(super) static FORCE_FALLBACK: core::cell::Cell<bool> = const { core::cell::Cell::new(false) };
+    }
+
+    // Where a VG routine reaches its `SampleNTT` bound, rind's arithmetic
+    // computes the same key, ciphertext, and secret: for a key pair VG or
+    // rind generated, an encapsulation key with its hash, and one VG parsed,
+    // which has none.
+    #[test]
+    fn fallback_matches_vg() {
+        let seed = core::array::from_fn(|i| i as u8);
+        let m = || Message([0xa5; 32]);
+        let secret = |k: SharedSecret| low::ct::into_public(*k.as_ref());
+        let dk = DecapKey::<MlKem768>::keygen_internal(&seed);
+        let ek = dk.encapsulation_key();
+        let parsed = EncapKey::<MlKem768>::from_bytes(ek.as_bytes()).unwrap();
+        let (k, c) = ek.encaps_internal(m());
+        let k = secret(k);
+        assert_eq!(secret(dk.decaps(&c)), k);
+
+        FORCE_FALLBACK.set(true);
+        let rind = DecapKey::<MlKem768>::keygen_internal(&seed);
+        assert_eq!(
+            low::ct::into_public(rind.as_bytes()),
+            low::ct::into_public(dk.as_bytes())
+        );
+        assert_eq!(rind.encapsulation_key().as_bytes(), ek.as_bytes());
+        for ek in [&ek, &parsed] {
+            let (k_ek, c_ek) = ek.encaps_internal(m());
+            assert_eq!((secret(k_ek), c_ek.as_ref()), (k, c.as_ref()));
+        }
+        assert_eq!(secret(dk.decaps(&c)), k);
+        assert_eq!(secret(rind.decaps(&c)), k);
+        FORCE_FALLBACK.set(false);
+    }
 
     fn acvp_seed(test: &serde_json::Value) -> [u8; 64] {
         [test.hex("d"), test.hex("z")].concat().try_into().unwrap()

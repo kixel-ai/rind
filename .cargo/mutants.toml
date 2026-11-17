@@ -422,4 +422,7 @@ exclude_re = [
   'rind-rustls/src/ticketer\.rs:\d+:\d+: replace > with < in <impl ProducesTickets for XChaCha20Ticketer>::decrypt$',
   'rind-rustls/src/ticketer\.rs:133:\d+: replace \* with /$',
   'rind-rustls/src/ticketer\.rs:133:\d+: replace \* with \+$',
+  # Discarding a VG routine's result runs rind's fallback, which computes the
+  # same result, as `fallback_matches_vg` checks; only the time differs.
+  'rind/src/mid/mlkem\.rs:\d+:\d+: replace vg_ran -> Option<T> with None$',
 ]
