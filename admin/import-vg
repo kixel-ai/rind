@@ -71,6 +71,9 @@ ROOTS = {
         "vg_ecdsa_p384_verify_adx",
     ],
     "aarch64": [
+        # ChaCha20-Poly1305 with SVE2.
+        "vg_chacha20_poly1305_seal_sve2",
+        "vg_chacha20_poly1305_open_sve2",
         # ML-KEM-768's encapsulation key check, and encapsulation with the
         # SHA-3 instructions: Apple's cores take VG's variant that also runs
         # Keccak on them, as VG's dispatcher picks.
