@@ -51,7 +51,6 @@
 						{#each libraries as lib (lib)}
 							<td data-lib={lib} class={lib === "rind" ? "me" : undefined}>
 								{#each hosts as host (host.name)}
-									{@const c = cell(host, op.id, lib)}
 									<i class={square(host, op.id, lib)} title={title(host, op.id, lib)}></i>
 								{/each}
 							</td>

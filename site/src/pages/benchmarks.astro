@@ -12,6 +12,7 @@ import {
 	gapOperations,
 	gapRatio,
 	lead,
+	placeCpu,
 	libraries,
 	libraryName,
 	questUrl,
@@ -62,7 +63,7 @@ const percent = Math.round((report.slower - 1) * 100);
 	</header>
 
 	<main>
-		<section class="bench" aria-label="Times">
+		<section class="bench" id="times" aria-label="Times">
 			<Picker client:load groups={groups.map((g) => ({ label: g.label, cpus: g.cpus.map(({ id, label, detail }) => ({ id, label, detail })) }))} libraries={libraries.map((l) => ({ id: l.id, name: l.name }))} />
 
 			<ul class="legend" aria-label="Time over the fastest library's">
@@ -189,7 +190,13 @@ const percent = Math.round((report.slower - 1) * 100);
 									<td>{g.on.map((p, j) => (
 										<>
 											{j > 0 && ", "}
-											{p.host ? <a href={`?cpu=${p.name}`}><code>{p.name}</code></a> : `${p.name} tier`}
+											{(() => {
+												const label = p.host ? <code>{p.name}</code> : `${p.name} tier`;
+												const cpu = placeCpu(p);
+												// The picker switches to it in place, keeping the libraries; without
+												// JavaScript, the address loads it.
+												return cpu ? <a href={`?cpu=${cpu.id}#times`} data-cpu={cpu.id}>{label}</a> : label;
+											})()}
 										</>
 									))}</td>
 									<td>{gapRatio(g)}</td>

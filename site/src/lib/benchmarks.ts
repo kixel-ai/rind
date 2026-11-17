@@ -56,7 +56,10 @@ export interface Build {
 }
 
 export interface Tier extends Times {
+	// The column's name, which names the AES-GCM path the runner drew.
 	name: string;
+	// The tier's name, as benchmarks/gaps.toml names it.
+	tier: string;
 	cpu: string;
 }
 
@@ -143,6 +146,10 @@ export const cpus: Cpu[] = [
 	})),
 ];
 if (new Set(cpus.map((c) => c.id)).size !== cpus.length) throw new Error("two CPUs on the benchmarks page share an id");
+
+// The CPU a gap's place names, if the page shows it.
+export const placeCpu = (place: Gap["on"][number]) =>
+	cpus.find((c) => (place.host ? c.kind === "host" && c.host.name === place.name : c.kind === "tier" && c.tier.tier === place.name));
 
 export const commitUrl = (sha: string) => `${repoUrl}/commit/${sha}`;
 export const questUrl = (path: string) => `${repoUrl}/blob/main${path}`;

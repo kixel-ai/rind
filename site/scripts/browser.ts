@@ -89,6 +89,22 @@ async function picks(base: string) {
 	await view.scrollTo("#lib-ring", { timeout: 5000 });
 	await view.click("#lib-ring", { timeout: 5000 });
 	await expect({ views: [`view-${second}`], libs: more, search: `?cpu=${second}&libs=${more.join(",")}` });
+
+	// A gap's place switches to its CPU in place, keeping the libraries.
+	const id = await view.evaluate(`[...document.querySelectorAll(".gaps a[data-cpu]")].map((a) => a.dataset.cpu).find((c) => c !== ${JSON.stringify(second)})`);
+	const target = cpus.find((c) => c.id === id);
+	if (!target || target.kind === "all") throw new Error(`the benchmarks page's gaps link no CPU but ${second}`);
+	const timed = (target.kind === "host" ? target.host : target.tier).libraries.filter((l) => more.includes(l));
+	await view.scrollTo(`.gaps a[data-cpu="${target.id}"]`, { timeout: 5000 });
+	await view.click(`.gaps a[data-cpu="${target.id}"]`, { timeout: 5000 });
+	await expect({ views: [`view-${target.id}`], libs: timed, search: `?cpu=${target.id}&libs=${more.join(",")}` });
+
+	// A list naming no library the page has, such as a renamed one, shows them all.
+	await view.navigate(`${base}?cpu=${first}&libs=renamed`);
+	await view.evaluate(hydrated);
+	const host = cpus.find((c) => c.id === first);
+	if (host?.kind !== "host") throw new Error(`${first} is not a host`);
+	await expect({ views: [`view-${first}`], libs: host.host.libraries, search: `?cpu=${first}` });
 }
 
 try {

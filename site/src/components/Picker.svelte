@@ -27,9 +27,24 @@
 		const query = new URLSearchParams(location.search);
 		const picked = query.get("cpu");
 		if (picked !== null && cpuIds.includes(picked)) cpu = picked;
+		// An empty list shows none; one naming no library this page has, such as
+		// a renamed one, shows them all rather than an empty table.
 		const listed = query.get("libs");
-		if (listed !== null) libs = libIds.filter((id) => listed.split(",").includes(id));
+		const known = libIds.filter((id) => listed?.split(",").includes(id));
+		if (listed === "" || known.length > 0) libs = known;
 		ready = true;
+		// A link to a CPU elsewhere on the page, such as a gap's host, switches
+		// to it in place, keeping the libraries picked.
+		const follow = (e: MouseEvent) => {
+			const link = (e.target as Element | null)?.closest<HTMLAnchorElement>("a[data-cpu]");
+			if (!link || !cpuIds.includes(link.dataset.cpu ?? "") || e.button !== 0) return;
+			if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+			e.preventDefault();
+			cpu = link.dataset.cpu as string;
+			document.getElementById("times")?.scrollIntoView();
+		};
+		document.addEventListener("click", follow);
+		return () => document.removeEventListener("click", follow);
 	});
 
 	$effect(() => {

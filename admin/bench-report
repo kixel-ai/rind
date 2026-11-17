@@ -1851,6 +1851,8 @@ def site_data(hosts, tiers, verified, gaps):
         timed = {lib for libs in t["benchmarks"].values() for lib in libs}
         out = {
             "name": column,
+            # The TIERS name benchmarks/gaps.toml decides on.
+            "tier": name,
             "cpu": t["cpu"],
             "libraries": [lib for lib in ["rind", *BASELINES, *TIMED] if lib in timed],
             "times": {},
