@@ -8,11 +8,11 @@
 
 Planned with the maintainer on 2026-11-17, from the `/quest-run` of 2026-11-16 and 2026-11-17: ✅ find and fix the cause (rejected: not planning it, since rerunning a two-in-seventy advisory failure is cheap; raising the timeout, which hides the hang).
 
-- What failed: ctgrind's `binsec (portable)` job, `admin/ct-binsec --timeout 480`, twice in about 70 runs, both on pull requests whose diff doesn't reach the portable ML-KEM code:
-  - `ct_binsec_mlkem1024`, [run 43884518954](https://github.com/kixel-ai/rind/actions/runs/43884518954) on kixel-ai/rind#812.
-  - `ct_binsec_mlkem512`, [run 43941913029](https://github.com/kixel-ai/rind/actions/runs/43941913029) on kixel-ai/rind#811.
-- Each timed out at 480 s with "0 visited path" and "timeout has left (at least) 1 pending paths", and every check it reached passed. The same tests pass in 6 to 8 s in other runs, so the cause is something that varies by run, not slowness. Candidates: a path whose length depends on input the harness doesn't pin, such as SampleNTT's rejection loop or the harness's random seed, and nondeterminism in BINSEC's solver.
-- Reproduce it first, for example by looping the one test locally or in a dispatched run, then fix the cause in the harness or the test's setup.
+- What failed: ctgrind's `binsec (portable)` job, `admin/ct-binsec --timeout 480`, twice in at least 135 completed runs since 2026-11-15, on two pull requests:
+  - `ct_binsec_mlkem1024`, [run 43884518954](https://github.com/kixel-ai/rind/actions/runs/43884518954), a manual dispatch on kixel-ai/rind#812's branch. That head rewrote `mid/mlkem.rs`, the code `ct_binsec_mlkem*` checks, so this one may be that PR's regression, not a flake.
+  - `ct_binsec_mlkem512`, [run 43941913029](https://github.com/kixel-ai/rind/actions/runs/43941913029) on kixel-ai/rind#811, which touches no portable code (its `rind/src/test/binsec.rs` change is a comment), so this is the clean case.
+- Each timed out at 480 s on one pending path, every check it reached passing, with zero SMT queries: BINSEC never asked its solver anything, so the stall is not the solver. The harness pins its input, `DecapKey::keygen_internal(&[1; 64])` and one ciphertext (`rind/src/test/binsec.rs:301`), so a path whose length depends on input is not the cause either. The same tests pass in 6 to 9 s in the other runs, so the cause is something that varies by run. Candidates: the core dump BINSEC starts from, which holds the process's memory as the runner's glibc and kernel left it; the runner's CPU, which picks glibc's `memcpy` and `memset` variants and which the log never names; the runner itself being starved.
+- Reproduce it first, for example by looping the one test in a dispatched run that logs the runner's CPU, then fix the cause in the harness or the test's setup.
 
 ## Related
 
