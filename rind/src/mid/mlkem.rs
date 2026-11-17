@@ -1616,8 +1616,10 @@ mod tests {
     // decapsulating the ciphertext and a tampered copy. A second key then
     // takes its implicit-rejection secret `z` from the seed, as its
     // generation is traced: `𝜌` comes from the rest, so it stays fixed.
-    // Fixing `d` also fixes the secret vectors it derives, so these traces
-    // cannot catch an access that depends on those alone.
+    // Fixing `d` also fixes the secret vectors it derives, and key generation
+    // cannot vary them without varying `𝜌`, so the last key decapsulates
+    // with the fixed key's `ek` but the `dkPKE` of a key generated from a
+    // seeded `d`. Each field is one VG's key generation wrote, and in range.
     #[cfg(rind_backend = "x86_64")]
     #[test]
     #[ignore = "admin/ct-sde runs it under Intel SDE"]
@@ -1648,5 +1650,16 @@ mod tests {
         let mut c = c.0;
         c[0] ^= 1;
         ct_sde::traced(|| dk.decaps(&Ciphertext(c)));
+
+        let fixed = DecapKey::<MlKem768>::keygen_internal(&[0x5a; 64]).encode();
+        let seeded = DecapKey::<MlKem768>::keygen_internal(&core::array::from_fn(|i| {
+            seed[i % seed.len()] ^ i as u8
+        }))
+        .encode();
+        let mut spliced = fixed;
+        spliced[..3 * 384].copy_from_slice(&seeded[..3 * 384]);
+        let dk = DecapKey::<MlKem768>::decode(&spliced, false);
+        let (_, c) = dk.encapsulation_key().encaps_internal(Message([0xa5; 32]));
+        ct_sde::traced(|| dk.decaps(&c));
     }
 }
