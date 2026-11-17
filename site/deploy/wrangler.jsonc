@@ -1,6 +1,6 @@
 // The Worker that serves rind.kixel.ai: site/'s build as static assets, with
 // no script of its own, so no request runs code and none sets a cookie.
-// .github/workflows/site.yml's deploy job runs `wrangler deploy` from here,
+// .github/workflows/site-deploy.yml's deploy job runs `wrangler deploy` from here,
 // with the account ID and token from the `site` environment.
 {
 	"$schema": "./node_modules/wrangler/config-schema.json",
