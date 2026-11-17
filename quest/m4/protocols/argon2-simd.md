@@ -21,7 +21,7 @@ Published numbers are in `steelhead99x/rind-results`, branches `results/argon2-a
 
 ### Still open against the keep rules
 
-- NEON stays only if it beats this tree's portable permutation on an Apple core and a Neoverse core. The M1 Pro is the Apple core: SHA3 and interleaved NEON beat RustCrypto there, and the scalar rider stays off the SHA3 fill (about 6% slower at 64 MiB). Still to measure: this portable permutation, with the commands below. On the Neoverse core (below), the gate as written loses: it picks the SHA3 fill, which is slower than the portable permutation, while plain NEON with the scalar rider wins by about 6%.
+- NEON stays only if it beats this tree's portable permutation on an Apple core and a Neoverse core. The M1 Pro is the Apple core: SHA3 and interleaved NEON beat RustCrypto there, and the scalar rider stays off the SHA3 fill (about 6% slower at 64 MiB). Against this portable permutation (below), on the M1 Pro the SHA3 fill is 1.76x and 1.65x and plain NEON 1.55x and 1.31x. On the Neoverse core the gate as written loses: it picks the SHA3 fill, 0.90x and 0.96x, while plain NEON with the scalar rider is 1.07x and 1.06x. So the gate stays off. Only plain NEON wins on both cores. Turning NEON on needs a selection that runs plain NEON on Neoverse-N2 and the SHA3 fill on Apple, and that choice is still open.
 - Pi 5 (Cortex-A76), Pixel 9 Pro, and Jetson are separate from that Neoverse core. On the Pi the scalar-rider NEON fill was about 0.83× the previous NEON fill and about 0.61–0.71× RustCrypto. Still to measure: this portable permutation.
 - AVX-512 stays only where it wins on Zen 4 or 5 and on Sapphire Rapids. Neither is measured. A 5th-gen Xeon is Emerald Rapids, and the Xeon 6975P-C GitHub runner (below) is Granite Rapids, so neither number closes the rule.
 - AVX-512 constant time is `admin/ct-sde argon2` (Sapphire Rapids model, test `ct_sde_argon2_avx512`), from `nix develop .#sde`. Not run on this branch.
@@ -38,6 +38,15 @@ Neoverse-N2 GitHub runner (`ubuntu-24.04-arm`, 4 CPUs, has `sha3`). `default` is
 | SHA3 (`rind_argon2_neon`) | 7.98 | 2.1% | 0.897x | 135.04 | 3.6% | 0.960x |
 | plain NEON + rider | 6.72 | 2.4% | 1.066x | 122.84 | 1.7% | 1.055x |
 | RustCrypto (in the `default` runs) | 7.12 | 6.2% | 1.005x | 136.10 | 2.4% | 0.952x |
+
+Apple M1 Pro (macOS 14, has `sha3`), rustc 1.98.1, not pinned (macOS has no `taskset`), each round under the machine's bench lock while no other build or bench ran. Load rose during rounds 2 and 3 from work outside the lock, hence the wider 64 MiB spread. Every NEON run still beats every portable run. `neon_matches_scalar` passes with and without the gate.
+
+| rind fill | 16MiB-t1-p1 | spread | vs portable | 64MiB-t3-p4 | spread | vs portable |
+|---|---|---|---|---|---|---|
+| portable (`default`) | 6.20 | 5.9% | 1.000x | 99.76 | 15.6% | 1.000x |
+| SHA3 (`rind_argon2_neon`) | 3.52 | 2.9% | 1.760x | 60.58 | 17.8% | 1.647x |
+| plain NEON + rider | 4.00 | 10.3% | 1.547x | 76.46 | 25.1% | 1.305x |
+| RustCrypto (in the `default` runs) | 6.08 | 7.1% | 1.020x | 96.29 | 18.4% | 1.036x |
 
 Intel Xeon 6975P-C GitHub runner (`ubuntu-24.04`, Granite Rapids, 4 vCPUs, has `avx512f`). `portable` and `ssse3` deny AVX2 with `RIND_CPU_DISABLE_avx2=1`. `matches_portable` passes for the AVX2, AVX-512, and SSSE3 fills, and `configured_dispatch_matches_portable` passes under `rind_argon2_avx512`.
 
