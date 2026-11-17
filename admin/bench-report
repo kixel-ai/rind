@@ -1611,11 +1611,11 @@ def verified_grid(hosts, verified):
             return "refused"
         if entry := proof_for(verified, lib, row, host):
             return verified.index(entry)
-        if lib not in timed[name].get(row, {}):
-            return "untimed"
         # A proof limited to another OS, which the page names.
         if entry := proof_for(verified, lib, row, host, any_os=True):
             return {"other_os": verified.index(entry)}
+        if lib not in timed[name].get(row, {}):
+            return "untimed"
         return "unproven"
 
     grid = {
