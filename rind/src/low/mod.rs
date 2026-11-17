@@ -46,6 +46,7 @@ mod vartime_planted;
 pub mod inline_assembly_safety;
 
 mod generic {
+    pub(crate) mod argon2;
     // The portable backend's RSA arithmetic, which armv7 shares, also built
     // in tests elsewhere to check it against s2n-bignum.
     #[cfg(any(rind_backend = "arm", rind_backend = "portable", test))]
@@ -59,6 +60,10 @@ mod generic {
     pub(super) mod ct_copy;
     pub(super) mod ct_equal;
     pub(super) mod ctr;
+    // Ed25519 verification's multi-scalar multiplication over s2n-bignum's
+    // point routines.
+    #[cfg(rind_backend = "x86_64")]
+    pub(crate) mod edwards25519_msm;
     #[cfg(test)]
     pub(crate) mod ghash;
     // The portable backend's public-key arithmetic on limbs of `rind_limb`
@@ -86,8 +91,12 @@ mod generic {
     #[cfg_attr(all(rind_backend = "aarch64", not(test)), allow(dead_code))]
     pub(crate) mod mldsa_poly;
     pub(crate) mod mlkem;
+    // pyca/verified-garbage's ML-KEM-768 where it does not run: aarch64's
+    // key generation and decapsulation, and every operation elsewhere.
     #[cfg(not(rind_backend = "x86_64"))]
-    pub(crate) mod mlkem768;
+    pub(crate) mod mlkem768_vg;
+    #[cfg(not(rind_backend = "x86_64"))]
+    pub(crate) mod mlkem_sample;
     // ML-KEM arithmetic for the portable backend and x86_64 CPUs without
     // AVX2.
     #[cfg(not(rind_backend = "aarch64"))]
@@ -114,14 +123,33 @@ mod generic {
     pub(super) mod sha1;
     #[cfg(all(test, any(rind_backend = "arm", rind_backend = "x86_64")))]
     pub(super) mod sha256;
+    // SLH-DSA's SHA-256 lanes one at a time, which x86_64 runs with the SHA
+    // extensions or without AVX2.
+    pub(super) mod sha256x8;
     pub(super) mod zeroise;
 }
 
 pub(crate) mod cpu;
 mod entry;
+// Intel's MXCSR mitigation, where the instructions it covers exist: on x86
+// with SSE2, outside Miri, which runs no assembly.
+#[cfg_attr(
+    not(all(
+        any(
+            target_arch = "x86_64",
+            all(target_arch = "x86", target_feature = "sse2")
+        ),
+        not(miri)
+    )),
+    path = "mcdt_none.rs"
+)]
+mod mcdt;
 mod posint;
 
 pub(crate) use entry::Entry;
+pub(crate) use generic::argon2::Argon2Block;
+#[cfg(not(rind_backend = "x86_64"))]
+pub(crate) use generic::argon2::argon2_compress;
 pub(crate) use generic::blockwise::{Blockwise, UpdateBlocks, pad, sha256_digest, split_tail};
 pub(crate) use generic::chacha20::{chacha20_block, hchacha20};
 pub(crate) use generic::ct_copy::{ct_copy, ct_select_i16};
@@ -133,6 +161,7 @@ pub(crate) use generic::md5::md5_compress_blocks;
 pub(crate) use generic::poly1305;
 pub(crate) use generic::reuse_cache::ReuseCache;
 pub(crate) use generic::zeroise::{Zeroable, ZeroableRef, zeroise, zeroise_value};
+pub(crate) use mcdt::Mcdt;
 #[cfg(rind_backend = "portable")]
 pub(crate) use portable::poly1305;
 pub(crate) use posint::{ModExp, PosInt, SecretPosInt};
@@ -185,9 +214,9 @@ pub(crate) use generic::{
         p384_montjmixadd,
     },
     limbs::p521::{
-        bignum_add_p521, bignum_aff_point_select_p521, bignum_inv_p521, bignum_mod_n521,
-        bignum_mul_p521, bignum_neg_p521, bignum_sqr_p521, p521_jadd, p521_jdouble, p521_jmixadd,
-        p521_jscalarmul,
+        Naf as P521Naf, bignum_add_p521, bignum_aff_point_select_p521, bignum_inv_p521,
+        bignum_mod_n521, bignum_mul_p521, bignum_neg_p521, bignum_sqr_p521, p521_jadd,
+        p521_jdouble, p521_jmixadd, p521_jscalarmul, p521_public_twin_multiply,
     },
     mldsa_poly::{
         mldsa_caddq, mldsa_chknorm, mldsa_decompose_32, mldsa_decompose_88, mldsa_intt, mldsa_ntt,
@@ -195,12 +224,15 @@ pub(crate) use generic::{
         mldsa_poly_use_hint_88, mldsa_polyz_unpack_17, mldsa_polyz_unpack_19, mldsa_reduce,
         mldsa_rej_uniform_eta2_vartime, mldsa_rej_uniform_eta4_vartime, mldsa_rej_uniform_vartime,
     },
-    mlkem::{mlkem_compress_d4, mlkem_compress_d10, mlkem_frombytes, mlkem_unpack},
-    mlkem_poly::{
-        mlkem_basemul_k3, mlkem_intt, mlkem_mulcache_compute, mlkem_ntt, mlkem_reduce,
-        mlkem_rej_uniform_vartime, mlkem_tobytes, mlkem_tomont,
+    mlkem::{
+        mlkem_compress_d4, mlkem_compress_d5, mlkem_compress_d10, mlkem_compress_d11,
+        mlkem_frombytes, mlkem_unpack,
     },
-    mlkem768::mlkem768_sample_poly_ntt_8x,
+    mlkem_poly::{
+        mlkem_basemul_k2, mlkem_basemul_k3, mlkem_basemul_k4, mlkem_intt, mlkem_mulcache_compute,
+        mlkem_ntt, mlkem_reduce, mlkem_rej_uniform_vartime, mlkem_tobytes, mlkem_tomont,
+    },
+    mlkem_sample::mlkem_sample_poly_ntt_8x,
     // libcrux's P-256 runs 64-bit limbs and recomputes the nonce's point to
     // sign, it exports P-384 only as ECDH, and it has no P-521, so rind
     // composes their arithmetic itself.
@@ -223,7 +255,10 @@ mod x86_64;
 
 cfg_if::cfg_if! {
     if #[cfg(rind_backend = "x86_64")] {
-        pub(in crate::low) use x86_64::cpu::{enter_cpu_state, zero_bytes, ct_compare_bytes, ct_compare_16, leave_cpu_state, missing_cpu_feature};
+        pub(in crate::low) use x86_64::cpu::{enter_cpu_state, zero_bytes, ct_compare_bytes, ct_compare_16, leave_cpu_state};
+        pub(crate) use x86_64::argon2::argon2_compress;
+        #[cfg(rind_fips)]
+        pub(crate) use x86_64::cpu::missing_cpu_feature;
         pub(crate) use x86_64::chacha20;
         pub(crate) use x86_64::chacha20poly1305;
         pub(crate) use x86_64::aes::{AesDecKey, AesKey};
@@ -244,7 +279,9 @@ cfg_if::cfg_if! {
         pub(crate) use x86_64::bignum_copy_row_from_table::bignum_copy_row_from_table;
         pub(crate) use x86_64::bignum_ctz::bignum_ctz;
         pub(crate) use x86_64::bignum_demont::bignum_demont;
-        pub(crate) use x86_64::bignum_point_select::{bignum_aff_point_select_p384, bignum_aff_point_select_p521};
+        pub(crate) use x86_64::bignum_point_select::{
+            bignum_aff_point_select_p256, bignum_aff_point_select_p384, bignum_aff_point_select_p521,
+        };
         pub(crate) use x86_64::adx_mux::bignum_demont_p256;
         pub(crate) use x86_64::adx_mux::bignum_demont_p384;
         pub(crate) use x86_64::bignum_digitsize::bignum_digitsize;
@@ -290,7 +327,7 @@ cfg_if::cfg_if! {
         pub(crate) use x86_64::adx_mux::edwards25519_epdouble;
         pub(crate) use x86_64::adx_mux::edwards25519_pdouble;
         pub(crate) use x86_64::adx_mux::edwards25519_scalarmulbase;
-        pub(crate) use x86_64::adx_mux::edwards25519_scalarmuldouble;
+        pub(crate) use x86_64::adx_mux::edwards25519_msm;
         pub(crate) use x86_64::ghash;
         pub(crate) use x86_64::mldsa::{
             mldsa_ntt, mldsa_intt, mldsa_nttunpack, mldsa_pointwise, mldsa_pointwise_acc,
@@ -299,15 +336,20 @@ cfg_if::cfg_if! {
             mldsa_polyz_unpack_19, mldsa_rej_uniform_vartime, mldsa_rej_uniform_eta2_vartime,
             mldsa_rej_uniform_eta4_vartime,
         };
+        pub(crate) use x86_64::mlkem768_vg;
         pub(crate) use x86_64::mlkem::{
             mlkem_ntt,
             mlkem_intt,
             mlkem_mulcache_compute,
             mlkem_rej_uniform_vartime,
+            mlkem_basemul_k2,
             mlkem_basemul_k3,
+            mlkem_basemul_k4,
             mlkem_reduce,
             mlkem_compress_d4,
+            mlkem_compress_d5,
             mlkem_compress_d10,
+            mlkem_compress_d11,
             mlkem_frombytes,
             mlkem_tobytes,
             mlkem_tomont,
@@ -317,13 +359,14 @@ cfg_if::cfg_if! {
         pub(crate) use x86_64::mont_exp::mont_exp;
         pub(crate) use x86_64::rsaz::Rsaz;
         pub(crate) use x86_64::rsaz_avx512::{Operands, RsazAvx512};
-        pub(crate) use x86_64::mlkem768_sample_poly_ntt_8x::mlkem768_sample_poly_ntt_8x;
+        pub(crate) use x86_64::rsa_ifma::{IfmaCrt, RsaIfma};
+        pub(crate) use x86_64::mlkem_sample_poly_ntt_8x::mlkem_sample_poly_ntt_8x;
 
         pub(crate) use x86_64::adx_mux::p256_montjadd;
         pub(crate) use x86_64::adx_mux::p256_montjdouble;
         pub(crate) use x86_64::adx_mux::p256_montjmixadd;
         pub(crate) use x86_64::adx_mux::p256_scalarmul;
-        pub(crate) use x86_64::ecp_nistz256::{P256GeneratorRow, p256_point_add_affine, p256_select_w7};
+        pub(crate) use x86_64::ecp_nistz256::p256_point_add_affine;
         pub(crate) use x86_64::adx_mux::p384_montjadd;
         pub(crate) use x86_64::adx_mux::p384_montjmixadd;
         pub(crate) use x86_64::adx_mux::p384_montjdouble;
@@ -334,13 +377,16 @@ cfg_if::cfg_if! {
         pub(crate) use x86_64::adx_mux::p521_jscalarmul;
         pub(crate) use x86_64::sha1_mux::{sha1_compress_blocks, sha1_compress_padded};
         pub(crate) use x86_64::sha256_mux::{sha256_compress_blocks, sha256_finish};
+        pub(crate) use x86_64::sha256x8::sha256_finish_x8;
         pub(crate) use x86_64::sha512::sha512_compress_blocks;
         pub(crate) use x86_64::sha3_keccak_f1600::sha3_keccak_f1600;
         pub(crate) use x86_64::sha3_keccak4_f1600_shim::sha3_keccak4_f1600;
         pub(crate) use x86_64::sha3_keccak_nof4_f1600::sha3_keccak_nof4_f1600;
 
     } else if #[cfg(rind_backend = "aarch64")] {
-        pub(in crate::low) use aarch64::cpu::{enter_cpu_state, zero_bytes, ct_compare_bytes, ct_compare_16, leave_cpu_state, missing_cpu_feature};
+        pub(in crate::low) use aarch64::cpu::{enter_cpu_state, zero_bytes, ct_compare_bytes, ct_compare_16, leave_cpu_state};
+        #[cfg(rind_fips)]
+        pub(crate) use aarch64::cpu::missing_cpu_feature;
         pub(crate) use aarch64::aes::{AesDecKey, AesKey};
         pub(crate) use aarch64::aes_cbc;
         pub(crate) use aarch64::aes_ctr;
@@ -413,13 +459,16 @@ cfg_if::cfg_if! {
             mldsa_polyz_unpack_19, mldsa_rej_uniform_vartime, mldsa_rej_uniform_eta2_vartime,
             mldsa_rej_uniform_eta4_vartime,
         };
+        pub(crate) use aarch64::mlkem768_vg;
         pub(crate) use aarch64::mlkem::{
             mlkem_ntt,
             mlkem_intt,
             mlkem_mulcache_compute,
             mlkem_rej_uniform_vartime,
         };
+        pub(crate) use aarch64::mlkem_basemul_k2::mlkem_basemul_k2;
         pub(crate) use aarch64::mlkem_basemul_k3::mlkem_basemul_k3;
+        pub(crate) use aarch64::mlkem_basemul_k4::mlkem_basemul_k4;
         pub(crate) use aarch64::mlkem_reduce::mlkem_reduce;
         pub(crate) use aarch64::mlkem_tobytes::mlkem_tobytes;
         pub(crate) use aarch64::mlkem_tomont::mlkem_tomont;
@@ -440,6 +489,7 @@ cfg_if::cfg_if! {
         pub(crate) use aarch64::p521_jscalarmul::p521_jscalarmul;
         pub(crate) use aarch64::sha1::{sha1_compress_blocks, sha1_compress_padded};
         pub(crate) use aarch64::sha256::{sha256_compress_blocks, sha256_finish};
+        pub(crate) use generic::sha256x8::sha256_finish_x8;
         pub(crate) use aarch64::sha3_keccak_f1600_mux::sha3_keccak_f1600;
         pub(crate) use aarch64::sha3_keccak4_f1600_mux::sha3_keccak4_f1600;
         pub(crate) use aarch64::sha3_keccak_nof4_f1600::sha3_keccak_nof4_f1600;
@@ -447,10 +497,10 @@ cfg_if::cfg_if! {
 
         pub(crate) use aarch64::chacha20;
         pub(crate) use aarch64::chacha20poly1305;
-        pub(crate) use generic::mlkem::{mlkem_compress_d4, mlkem_compress_d10, mlkem_frombytes, mlkem_unpack};
-        pub(crate) use generic::mlkem768::mlkem768_sample_poly_ntt_8x;
+        pub(crate) use generic::mlkem::{mlkem_compress_d4, mlkem_compress_d5, mlkem_compress_d10, mlkem_compress_d11, mlkem_frombytes, mlkem_unpack};
+        pub(crate) use generic::mlkem_sample::mlkem_sample_poly_ntt_8x;
     } else if #[cfg(rind_backend = "arm")] {
-        pub(in crate::low) use arm::cpu::{enter_cpu_state, zero_bytes, ct_compare_bytes, ct_compare_16, leave_cpu_state, missing_cpu_feature};
+        pub(in crate::low) use arm::cpu::{enter_cpu_state, zero_bytes, ct_compare_bytes, ct_compare_16, leave_cpu_state};
         pub(crate) use arm::aes::{AesDecKey, AesKey};
         pub(crate) use arm::aes_cbc;
         pub(crate) use arm::aes_ctr;
@@ -473,8 +523,10 @@ cfg_if::cfg_if! {
             sha1_compress_blocks, sha1_compress_padded, sha256_compress_blocks, sha256_finish,
             sha512_compress_blocks,
         };
+        pub(crate) use generic::mlkem768_vg;
+        pub(crate) use generic::sha256x8::sha256_finish_x8;
     } else if #[cfg(rind_backend = "portable")] {
-        pub(in crate::low) use portable::cpu::{enter_cpu_state, zero_bytes, ct_compare_bytes, ct_compare_16, leave_cpu_state, missing_cpu_feature};
+        pub(in crate::low) use portable::cpu::{enter_cpu_state, zero_bytes, ct_compare_bytes, ct_compare_16, leave_cpu_state};
         pub(crate) use portable::aes::{AesDecKey, AesKey};
         pub(crate) use portable::aes_cbc;
         pub(crate) use portable::aes_ctr;
@@ -488,6 +540,8 @@ cfg_if::cfg_if! {
             sha1_compress_blocks, sha1_compress_padded, sha256_compress_blocks, sha256_finish,
             sha512_compress_blocks,
         };
+        pub(crate) use generic::mlkem768_vg;
+        pub(crate) use generic::sha256x8::sha256_finish_x8;
     } else {
         compile_error!("build.rs sets rind_backend");
     }

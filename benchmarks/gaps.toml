@@ -1,19 +1,19 @@
 # The decision on every gap: each operation where another library beats rind
-# by more than 10%, on a host in benchmarks/data or a CPU tier of the nightly
+# by more than 10%, on a host in benchmarks/data or a CPU tier of the weekly
 # bench. BENCHMARKS.md lists them under Known gaps. `admin/bench-report
 # render` refuses a gap without an entry, and an entry that covers no gap, so
 # a refresh that opens or closes one must update this file.
 #
 # Each entry:
 #   operations  report rows on a host, as admin/bench-report's OPERATIONS
-#               without the library; nightly benchmark IDs on a tier, as the
+#               without the library; weekly benchmark IDs on a tier, as the
 #               report's tier table shows them. Either may be a glob, where
 #               `*` also matches the library's own `*`
 #   on          hosts, or CPU tiers as the report's tier columns name them;
 #               the entry must cover some gap where the report's data
 #               measures any of them
 #
-# The nightly bench's `gate` job fails on a gap over 10% that two scheduled
+# The weekly bench's `gate` job fails on a gap over 10% that two scheduled
 # runs in a row show without an entry here.
 #   quest       the quest that closes it, or
 #   reason      why it stays
@@ -58,56 +58,44 @@ operations = [
   "sha3-512/64B",
 ]
 on = ["kixtop"]
-reason = "DIT: the M4 has it, and rind turns it on and off around every call that handles a secret, which costs about 30 to 55 ns a call there; the other libraries never set it. Keeping it per call was decided with the maintainer from [#387](https://github.com/moq-dev/rind/pull/387)'s findings. Holding `rind::cpu::Dit::hold()` ([#431](https://github.com/moq-dev/rind/pull/431)) across a batch of calls, as MoQ does, pays it once and closes nearly all of these gaps: the rind (DIT held) column times that, and on [`0d2e74b4`](https://github.com/moq-dev/rind/commit/0d2e74b489c1067beeab373f9de75d24574b4bc5), the run this report shows, every one measured within 10% of the fastest library except QUIC's AES header protection, at 1.18 to 1.28× aws-lc-rs's time (3.5 ns against 2.8 ns, the indirect call ALGORITHMS.md notes). SHA3-256 and SHA3-512 at 64 B have no held row; they trail RustCrypto by 38 and 32 ns, the toggle's cost."
+reason = "DIT: the M4 has it, and rind turns it on and off around every call that handles a secret, which costs about 30 to 55 ns a call there; the other libraries never set it. Keeping it per call was decided with the maintainer from [#387](https://github.com/kixel-ai/rind/pull/387)'s findings. Holding `rind::cpu::Dit::hold()` ([#431](https://github.com/kixel-ai/rind/pull/431)) across a batch of calls, as MoQ does, pays it once and closes nearly all of these gaps: the rind (DIT held) column times that, and on [`0d2e74b4`](https://github.com/kixel-ai/rind/commit/0d2e74b489c1067beeab373f9de75d24574b4bc5), the run this report shows, every one measured within 10% of the fastest library except QUIC's AES header protection, at 1.18 to 1.28× aws-lc-rs's time (3.5 ns against 2.8 ns, the indirect call ALGORITHMS.md notes). SHA3-256 and SHA3-512 at 64 B have no held row; they trail RustCrypto by 38 and 32 ns, the toggle's cost."
 
 [[gap]]
 operations = ["p521-ecdsa-verify*", "rustls-full-handshake-key/ecdsa-p521*"]
 on = ["portable"]
-quest = "/quest/m3/cold-speed/portable-p521-verify.md"
-
-[[gap]]
-operations = [
-  "rsa3072-pkcs1-sha256-verify*",
-  "rsa4096-*",
-  "rsa6144-*",
-  "rsa8192-*",
-  "rustls-full-handshake-key/rsa-3072*",
-  "rustls-full-handshake-key/rsa-4096*",
-]
-on = ["portable"]
-quest = "/quest/m3/cold-speed/portable-rsa-karatsuba.md"
+reason = "Closed by [#700](https://github.com/kixel-ai/rind/pull/700), after this data, which keeps the portable backend's verification in fiat-crypto's limbs across the whole twin multiplication, converts between them and words by shifts, and compares x without an inversion: on an otherwise idle Ryzen 9 5900XT under `--cfg rind_portable`, verification measured 0.80 to 0.97× aws-lc's C time, from 1.07 to 1.16× before, and every other P-521 benchmark at most 0.95×. The next refresh drops this entry."
 
 [[gap]]
 operations = ["p[0-9]*", "rsa*", "jwt-*", "rustls-full-handshake-*"]
 on = ["portable"]
-reason = "Closed in part by [#614](https://github.com/moq-dev/rind/pull/614), after this data, which runs RSA and the NIST curves on 64-bit limbs on 64-bit targets. On a shared x86_64 host it measured, against aws-lc-rs's C without assembly: P-256 and P-384 at 0.44 to 0.76× its time, P-521 ECDH, key generation, and signing at 0.91 to 1.03×, RSA-2048 through 3072 signing at 0.88 to 1.01× and verification at 1.07×, the rustls handshakes at 0.64 to 0.96× but those the entries above name, and every ranked JWT benchmark at 0.55 to 1.06×. The next refresh drops this entry."
+reason = "Closed in part by [#614](https://github.com/kixel-ai/rind/pull/614), after this data, which runs RSA and the NIST curves on 64-bit limbs on 64-bit targets. On a shared x86_64 host it measured, against aws-lc-rs's C without assembly: P-256 and P-384 at 0.44 to 0.76× its time, P-521 ECDH, key generation, and signing at 0.91 to 1.03×, the rustls handshakes at 0.64 to 0.96× but those the entry above names, and every ranked JWT benchmark at 0.55 to 1.06×. RSA's rows are closed by [#702](https://github.com/kixel-ai/rind/pull/702), which adds two rows a pass in two carry chains and splits wide products by Karatsuba's method: the median of nine runs on a shared x86_64 host measured PKCS#1 signing and verification at 2048 through 8192 bits at 0.85 to 0.97× aws-lc-rs's time, and three runs the rustls handshakes on RSA-3072 and RSA-4096 keys at 0.63 to 0.99×. The next refresh drops this entry."
 
 [[gap]]
 operations = ["aes*-gcm*", "rustls-bulk/*", "aes*-ctr/*", "aes*-cbc-*"]
 on = ["portable"]
-reason = "Narrowed by [#621](https://github.com/moq-dev/rind/pull/621), after this data, which runs aws-lc's `aes_nohw.c` in its 64-bit configuration, four blocks a pass, in place of the one-block libcrux cipher: on a shared x86_64 host under `--cfg rind_portable` AES-GCM measured 0.18× its previous time and 0.93 to 1.11× aws-lc's from 1200 B, and 0.5 to 0.9× below that, and CBC encryption 0.55 to 0.67×. AES-CTR and CBC decryption remain 1.08 to 1.23× aws-lc's: this row builds aws-lc's C for x86_64, where it bitslices eight blocks into SSE2 registers, while rind's portable backend runs the configuration aws-lc itself runs on the other 64-bit targets the backend is for. The next refresh rechecks it."
+reason = "Narrowed by [#621](https://github.com/kixel-ai/rind/pull/621), after this data, which runs aws-lc's `aes_nohw.c` in its 64-bit configuration, four blocks a pass, in place of the one-block libcrux cipher: on a shared x86_64 host under `--cfg rind_portable` AES-GCM measured 0.18× its previous time and 0.93 to 1.11× aws-lc's from 1200 B, and 0.5 to 0.9× below that, and CBC encryption 0.55 to 0.67×. AES-CTR and CBC decryption remain 1.08 to 1.23× aws-lc's: this row builds aws-lc's C for x86_64, where it bitslices eight blocks into SSE2 registers, while rind's portable backend runs the configuration aws-lc itself runs on the other 64-bit targets the backend is for. The next refresh rechecks it."
 
 [[gap]]
 operations = ["sha1/*", "hmac-sha1/*"]
 on = ["portable"]
-reason = "rind's portable SHA-1 trails aws-lc's C by 1.1 to 1.25× from 1200 B up, as it still did in [run 43282064559](https://github.com/moq-dev/rind/actions/runs/43282064559) on a later main. SHA-1 survives only for legacy signatures and HMAC-SHA-1, which are rare on targets without assembly, so it stays rather than take aws-lc's integer `sha1_block_data_order_nohw`, which armv7 without NEON already runs, as a speed quest."
+reason = "rind's portable SHA-1 trails aws-lc's C by 1.1 to 1.25× from 1200 B up, as it still did in [run 43282064559](https://github.com/kixel-ai/rind/actions/runs/43282064559) on a later main. SHA-1 survives only for legacy signatures and HMAC-SHA-1, which are rare on targets without assembly, so it stays rather than take aws-lc's integer `sha1_block_data_order_nohw`, which armv7 without NEON already runs, as a speed quest."
 
 [[gap]]
 operations = ["sha512*", "pbkdf2-sha384/*"]
 on = ["portable"]
-reason = "HACL*'s SHA-512 block function, through libcrux-sha2, measured as fast as aws-lc's C in [run 43282064559](https://github.com/moq-dev/rind/actions/runs/43282064559) on a later main, 0.89 to 0.98× its time from 32 B to 16 KB, and PBKDF2-SHA-384 0.89×; the ~10% this data shows did not repeat on that run's CPU. SHA-512/256 below 128 B is the exception, 1.31× there (274 ns against SHA-512's 184 ns at 32 B), a per-call cost outside the block function that the report-refresh PR lists as a follow-up."
+reason = "HACL*'s SHA-512 block function, through libcrux-sha2, measured as fast as aws-lc's C in [run 43282064559](https://github.com/kixel-ai/rind/actions/runs/43282064559) on a later main, 0.89 to 0.98× its time from 32 B to 16 KB, and PBKDF2-SHA-384 0.89×; the ~10% this data shows did not repeat on that run's CPU. SHA-512/256 below 128 B is the exception, 1.31× there (274 ns against SHA-512's 184 ns at 32 B), a per-call cost outside the block function that the report-refresh PR lists as a follow-up."
 
 [[gap]]
 operations = ["aes256-cbc-decrypt/*/32B"]
 on = ["no AVX2"]
-reason = "Noise: 1.10× aws-lc-rs's time in one benchmark, while AES-128-CBC decryption at 32 B on the same runner measured 0.65×, and AES-256's took twice its time on the other tiers of that night's EPYC 7763. [Run 43282064559](https://github.com/moq-dev/rind/actions/runs/43282064559) measured it at 0.63× on a later main."
+reason = "Noise: 1.10× aws-lc-rs's time in one benchmark, while AES-128-CBC decryption at 32 B on the same runner measured 0.65×, and AES-256's took twice its time on the other tiers of that night's EPYC 7763. [Run 43282064559](https://github.com/kixel-ai/rind/actions/runs/43282064559) measured it at 0.63× on a later main."
 
 [[gap]]
 operations = ["sha1/*", "sha256/*", "sha256-updates/*", "hmac-*", "hkdf-*", "pbkdf2-*", "jwt-hs256-*"]
 on = ["armv7 NEON"]
-reason = "Closed by [moq-dev/rind#620](https://github.com/moq-dev/rind/pull/620), after this data, which runs aws-lc's NEON SHA-1 and SHA-256 without the crypto extension: [run 43282064559](https://github.com/moq-dev/rind/actions/runs/43282064559) measured every SHA-1, SHA-256, HMAC, HKDF, PBKDF2, and HS256 benchmark on this tier at 0.59 to 0.97× aws-lc-rs's time. The next refresh drops this entry."
+reason = "Closed by [kixel-ai/rind#620](https://github.com/kixel-ai/rind/pull/620), after this data, which runs aws-lc's NEON SHA-1 and SHA-256 without the crypto extension: [run 43282064559](https://github.com/kixel-ai/rind/actions/runs/43282064559) measured every SHA-1, SHA-256, HMAC, HKDF, PBKDF2, and HS256 benchmark on this tier at 0.59 to 0.97× aws-lc-rs's time. The next refresh drops this entry."
 
 [[gap]]
 operations = ["aes*", "quic-header-protection/aes*", "rustls-bulk/aes*"]
 on = ["armv7 NEON"]
-reason = "Without the crypto extension rind runs aws-lc's constant-time `aes_nohw` and integer GHASH, ported to Rust, where aws-lc-rs runs its NEON assembly: bitsliced `bsaes-armv7` for CTR and CBC decryption, `vpaes-armv7` for single blocks, and `ghash-armv4`'s NEON GHASH. [moq-dev/rind#621](https://github.com/moq-dev/rind/pull/621), after this data, narrowed it: [run 43282064559](https://github.com/moq-dev/rind/actions/runs/43282064559) measured AES-CTR and CBC decryption at 1.1 to 1.5× aws-lc-rs's time, CBC encryption and AES-KW at 2.0 to 2.3×, and AES-GCM at 1.4 to 3.5×, 3.4× at 16 KB. Running aws-lc's NEON routines is the report-refresh PR's suggested follow-up."
+reason = "Without the crypto extension rind runs aws-lc's constant-time `aes_nohw` and integer GHASH, ported to Rust, where aws-lc-rs runs its NEON assembly: bitsliced `bsaes-armv7` for CTR and CBC decryption, `vpaes-armv7` for single blocks, and `ghash-armv4`'s NEON GHASH. [kixel-ai/rind#621](https://github.com/kixel-ai/rind/pull/621), after this data, narrowed it: [run 43282064559](https://github.com/kixel-ai/rind/actions/runs/43282064559) measured AES-CTR and CBC decryption at 1.1 to 1.5× aws-lc-rs's time, CBC encryption and AES-KW at 2.0 to 2.3×, and AES-GCM at 1.4 to 3.5×, 3.4× at 16 KB. Running aws-lc's NEON routines is the report-refresh PR's suggested follow-up."

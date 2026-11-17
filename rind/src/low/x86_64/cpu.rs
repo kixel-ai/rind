@@ -221,25 +221,45 @@ pub(crate) struct HaveAvx512ForMlKem(());
 
 impl HaveAvx512ForMlKem {
     pub(crate) fn check() -> Option<Self> {
-        // It runs inside rind's AVX2 ML-KEM.
-        match has(AVX2_KERNELS | AVX512F | AVX512BW | AVX512VBMI | AVX512VBMI2) {
+        // It runs inside rind's AVX2 ML-KEM. It needs no VL, which every CPU
+        // with VBMI2 has, but asking for it keeps ML-KEM-768 off this sampler
+        // wherever VG's AVX-512 key generation does not run.
+        match has(AVX2_KERNELS | AVX512F | AVX512BW | AVX512VL | AVX512VBMI | AVX512VBMI2) {
             true => Some(Self(())),
             false => None,
         }
     }
 }
 
-/// Proof that the CPU has AVX-512 IFMA, with the F, DQ, BW, and VL that
-/// aws-lc's `CRYPTO_is_AVX512IFMA_capable` also asks for, and BMI2: what
-/// aws-lc's dual RSAZ exponentiation runs.
-///
-/// Without it, RSA's CRT runs its two exponentiations one at a time.
+/// Proof that the CPU has what pyca/verified-garbage's AVX-512 ML-KEM-768
+/// runs: AVX-512 F, BW, and VL, with AVX and AVX2.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct HaveAvx512ForVgMlKem(());
+
+impl HaveAvx512ForVgMlKem {
+    pub(crate) fn check() -> Option<Self> {
+        has(AVX | AVX2 | AVX512F | AVX512BW | AVX512VL).then_some(Self(()))
+    }
+}
+
+/// Proof that the CPU has what RSA with AVX-512 IFMA runs: AVX-512 F, VL,
+/// and IFMA, AVX, BMI2, and ADX, pyca/verified-garbage's `_FEATURES`, and the
+/// DQ and BW that aws-lc's `CRYPTO_is_AVX512IFMA_capable` also asks for, as
+/// its dual RSAZ runs `kmovb`. Every CPU with IFMA has them all.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct HaveAvx512ForRsa(());
 
 impl HaveAvx512ForRsa {
     pub(crate) fn check() -> Option<Self> {
-        has(AVX512F | AVX512DQ | AVX512IFMA | AVX512BW | AVX512VL | BMI2).then_some(Self(()))
+        has(AVX | AVX512F | AVX512DQ | AVX512BW | AVX512VL | AVX512IFMA | BMI2 | ADX)
+            .then_some(Self(()))
+    }
+
+    /// Whether the CPU has AVX-512 FP16 too, as Intel's cores with two
+    /// 512-bit multipliers do and AMD's Zen 4 and 5 do not: VG picks its
+    /// 512-bit CRT for 2048-bit keys by it.
+    pub(crate) fn fp16(self) -> bool {
+        has(AVX512FP16)
     }
 }
 
@@ -288,6 +308,17 @@ pub(crate) struct HaveAvx2(());
 impl HaveAvx2 {
     pub(crate) fn check() -> Option<Self> {
         has(AVX2_KERNELS).then_some(Self(()))
+    }
+}
+
+/// Proof that the CPU has AVX-512 F and VL, with what `HaveAvx2` proves:
+/// what pyca/verified-garbage's "AVX-512 VL" ChaCha20 needs, on zmm vectors.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct HaveAvx512Vl(());
+
+impl HaveAvx512Vl {
+    pub(crate) fn check() -> Option<Self> {
+        has(AVX2_KERNELS | AVX512F | AVX512VL).then_some(Self(()))
     }
 }
 
@@ -397,6 +428,7 @@ const AVX512DQ: u32 = 1 << 18;
 const AVX512IFMA: u32 = 1 << 19;
 const BMI1: u32 = 1 << 20;
 const SHA512: u32 = 1 << 21;
+const AVX512FP16: u32 = 1 << 22;
 const INTEL: u32 = 1 << 30;
 /// What rind's AVX2 kernels use, for [`HaveAvx2`].
 const AVX2_KERNELS: u32 = AVX | AVX2 | BMI1 | BMI2 | POPCNT | SSSE3;
@@ -482,6 +514,7 @@ fn detect() -> u32 {
         | detect!("avx512vl", AVX512VL)
         | detect!("avx512vbmi", AVX512VBMI)
         | detect!("avx512vbmi2", AVX512VBMI2)
+        | detect!("avx512fp16", AVX512FP16)
         | detect!("sha", SHA)
         | detect!("sha512", SHA512)
         | detect!("movbe", MOVBE)
@@ -501,19 +534,14 @@ fn test_toggle(_id: &str, detected: bool) -> bool {
 #[cfg(any(debug_assertions, rind_cpu_disable))]
 fn test_toggle(id: &str, detected: bool) -> bool {
     if std::env::var(format!("RIND_CPU_DISABLE_{}", id.replace('.', ""))).is_ok() {
+        // The FIPS module honours the mask in its release build, where its
+        // caller's stdout is not its own.
+        #[cfg(not(rind_fips))]
         println!("DEBUG: denying cpuid {id:?}");
         false
     } else {
         detected
     }
-}
-
-/// Returns the first CPU feature we require unconditionally that this CPU lacks.
-///
-/// Every feature beyond SSE2, which every x86_64 CPU has, only picks a faster
-/// path, so this refuses no x86_64 CPU.
-pub(crate) fn missing_cpu_feature() -> Option<&'static str> {
-    None
 }
 
 // --- Safe abstractions over common intrinsics operations ---
@@ -532,6 +560,31 @@ pub(crate) fn prefetch<T>(table: &[T], stride: usize) {
         _mm_prefetch(table.as_ptr().cast(), _MM_HINT_T0);
         _mm_prefetch(table.as_ptr().wrapping_add(stride).cast(), _MM_HINT_T0);
     }
+}
+
+/// The first CPU feature the FIPS module requires that this CPU lacks.
+///
+/// The module requires what every x86_64 server since Broadwell and Zen has,
+/// so the paths for older CPUs, which no tested CPU runs, need no ACVP run of
+/// their own: the SSE2 and vpaes AES, the integer and SSSE3 GHASH, and
+/// s2n-bignum's `_alt` routines for CPUs without ADX.
+#[cfg(rind_fips)]
+pub(crate) fn missing_cpu_feature() -> Option<&'static str> {
+    [
+        (AES, "aes"),
+        (PCLMULQDQ, "pclmulqdq"),
+        (SSSE3, "ssse3"),
+        (SSE41, "sse4.1"),
+        (POPCNT, "popcnt"),
+        (MOVBE, "movbe"),
+        (AVX, "avx"),
+        (AVX2, "avx2"),
+        (BMI1, "bmi1"),
+        (BMI2, "bmi2"),
+        (ADX, "adx"),
+    ]
+    .into_iter()
+    .find_map(|(bit, name)| (!has(bit)).then_some(name))
 }
 
 #[cfg(test)]
@@ -598,6 +651,7 @@ mod tests {
             AVX512IFMA,
             BMI1,
             SHA512,
+            AVX512FP16,
             INTEL,
             DETECTED,
         ];
@@ -639,18 +693,41 @@ mod tests {
             (
                 HaveAvx512ForMlKem::check().is_some(),
                 available!("avx", "avx2", "bmi1", "bmi2", "popcnt", "ssse3")
-                    && available!("avx512f", "avx512bw", "avx512vbmi", "avx512vbmi2"),
+                    && available!(
+                        "avx512f",
+                        "avx512bw",
+                        "avx512vl",
+                        "avx512vbmi",
+                        "avx512vbmi2"
+                    ),
+            ),
+            (
+                HaveAvx512ForVgMlKem::check().is_some(),
+                available!("avx", "avx2", "avx512f", "avx512bw", "avx512vl"),
             ),
             (
                 HaveAvx512ForRsa::check().is_some(),
-                available!(
+                adx && available!(
+                    "avx",
                     "avx512f",
                     "avx512dq",
-                    "avx512ifma",
                     "avx512bw",
                     "avx512vl",
+                    "avx512ifma",
                     "bmi2"
                 ),
+            ),
+            (
+                HaveAvx512ForRsa::check().is_some_and(HaveAvx512ForRsa::fp16),
+                adx && available!(
+                    "avx",
+                    "avx512f",
+                    "avx512dq",
+                    "avx512bw",
+                    "avx512vl",
+                    "avx512ifma",
+                    "bmi2"
+                ) && available!("avx512fp16"),
             ),
             (
                 HaveSha1::check().is_some(),
@@ -663,6 +740,11 @@ mod tests {
             (
                 HaveAvx2::check().is_some(),
                 available!("avx", "avx2", "bmi1", "bmi2", "popcnt", "ssse3"),
+            ),
+            (
+                HaveAvx512Vl::check().is_some(),
+                available!("avx", "avx2", "bmi1", "bmi2", "popcnt", "ssse3")
+                    && available!("avx512f", "avx512vl"),
             ),
             (
                 HaveSha512::check().is_some(),

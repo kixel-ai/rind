@@ -1,0 +1,1054 @@
+(*
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
+ *)
+
+(* ------------------------------------------------------------------------- *)
+(* Encoding the registers and flags as a 32-element list of numbers.         *)
+(* ------------------------------------------------------------------------- *)
+
+(*** Runtime configuration is documented centrally in common/cosim.ml.
+ *** This campaign runs until a failure or its configured limit.
+ ***)
+
+needs "common/cosim.ml";;
+needs "common/sematest.ml";;
+needs "arm/proofs/base.ml";;
+
+let regfile = new_definition
+ `regfile s =
+   [val(read X0 s); val(read X1 s); val(read X2 s); val(read X3 s);
+    val(read X4 s); val(read X5 s); val(read X6 s); val(read X7 s);
+    val(read X8 s); val(read X9 s); val(read X10 s); val(read X11 s);
+    val(read X12 s); val(read X13 s); val(read X14 s); val(read X15 s);
+    val(read X16 s); val(read X17 s); val(read X18 s); val(read X19 s);
+    val(read X20 s); val(read X21 s); val(read X22 s); val(read X23 s);
+    val(read X24 s); val(read X25 s); val(read X26 s); val(read X27 s);
+    val(read X28 s); val(read X29 s); val(read X30 s);
+    bitval(read VF s) + 2 * bitval(read CF s) +
+    4 * bitval(read ZF s) + 8 * bitval(read NF s);
+    val(read Q0 s); val(read Q1 s); val(read Q2 s); val(read Q3 s);
+    val(read Q4 s); val(read Q5 s); val(read Q6 s); val(read Q7 s);
+    val(read Q8 s); val(read Q9 s); val(read Q10 s); val(read Q11 s);
+    val(read Q12 s); val(read Q13 s); val(read Q14 s); val(read Q15 s);
+    val(read Q16 s); val(read Q17 s); val(read Q18 s); val(read Q19 s);
+    val(read Q20 s); val(read Q21 s); val(read Q22 s); val(read Q23 s);
+    val(read Q24 s); val(read Q25 s); val(read Q26 s); val(read Q27 s);
+    val(read Q28 s); val(read Q29 s); val(read Q30 s); val(read Q31 s);
+    val(read (memory :> bytes128(read SP s)) s);
+    val(read (memory :> bytes128(word_add (read SP s) (word 16))) s);
+    val(read (memory :> bytes128(word_add (read SP s) (word 32))) s);
+    val(read (memory :> bytes128(word_add (read SP s) (word 48))) s);
+    val(read (memory :> bytes128(word_add (read SP s) (word 64))) s);
+    val(read (memory :> bytes128(word_add (read SP s) (word 80))) s);
+    val(read (memory :> bytes128(word_add (read SP s) (word 96))) s);
+    val(read (memory :> bytes128(word_add (read SP s) (word 112))) s);
+    val(read (memory :> bytes128(word_add (read SP s) (word 128))) s);
+    val(read (memory :> bytes128(word_add (read SP s) (word 144))) s);
+    val(read (memory :> bytes128(word_add (read SP s) (word 160))) s);
+    val(read (memory :> bytes128(word_add (read SP s) (word 176))) s);
+    val(read (memory :> bytes128(word_add (read SP s) (word 192))) s);
+    val(read (memory :> bytes128(word_add (read SP s) (word 208))) s);
+    val(read (memory :> bytes128(word_add (read SP s) (word 224))) s);
+    val(read (memory :> bytes128(word_add (read SP s) (word 240))) s)]`;;
+
+let FLAGENCODING_11 = prove
+ (`bitval b0 + 2 * bitval b1 + 4 * bitval b2 + 8 * bitval b3 = n <=>
+   n < 16 /\
+   (b0 <=> ODD n) /\
+   (b1 <=> ODD(n DIV 2)) /\
+   (b2 <=> ODD(n DIV 4)) /\
+   (b3 <=> ODD(n DIV 8))`,
+  REWRITE_TAC[bitval] THEN REPEAT(COND_CASES_TAC THEN ASM_REWRITE_TAC[]) THEN
+  (EQ_TAC THENL
+    [DISCH_THEN(SUBST1_TAC o SYM) THEN CONV_TAC NUM_REDUCE_CONV; ALL_TAC]) THEN
+  REWRITE_TAC[IMP_CONJ] THEN SPEC_TAC(`n:num`,`n:num`) THEN
+  CONV_TAC EXPAND_CASES_CONV THEN CONV_TAC NUM_REDUCE_CONV);;
+
+(* ------------------------------------------------------------------------- *)
+(* Random numbers with random bit density, random state for simulating.      *)
+(* ------------------------------------------------------------------------- *)
+
+let random_boold d = Random.int 64 < d;;
+
+let randomnd n density =
+    funpow n (fun n ->
+      (if random_boold density then num_1 else num_0) +/ num_2 */ n) num_0;;
+
+let random64() = randomnd 64 (Random.int 65);;
+
+let random_regstate () =
+  let d = Random.int 65 in
+  map (fun _ -> randomnd 64 d) (0--30) @
+  [mod_num (random64()) (num 16)] @
+  map (fun _ -> randomnd 128 d) (0--31) @
+  map (fun _ -> randomnd 128 d) (0--15);;
+
+(*** The HOL-side executor client is shared in common/cosim.ml. This file
+ *** selects the AArch64 executor and supplies the state-vector shape.
+ ***
+ *** A session starts with READY 1 aarch64 128. The client sends
+ *** RUN <hex-instruction-bytes> <decimal-state-word> ... and receives
+ *** OK with the resulting 128 words, or TRAP/ERROR.
+ ***
+ *** The AArch64 executor and state-vector shape are selected below.
+ ***)
+
+(* ------------------------------------------------------------------------- *)
+(* Generate random instance of instruction class itself.                     *)
+(* ------------------------------------------------------------------------- *)
+
+let classbit s =
+  match s with
+   "0" -> num_0
+  | "1" -> num_1
+  | _ -> if Random.bool() then num_1 else num_0;;
+
+let random_iclass s =
+  if String.length s <> 32 then failwith "random_iclass: malformed string"
+  else itlist (fun c n -> classbit c +/ num 2 */ n) (rev(explode s)) num_0;;
+
+let random_instruction iclasses =
+  let iclass = el (Random.int (length iclasses)) iclasses in
+  random_iclass iclass;;
+
+(* ------------------------------------------------------------------------- *)
+(* Load iclasses.                                                            *)
+(* ------------------------------------------------------------------------- *)
+
+loadt "arm/proofs/simulator_iclasses.ml";;
+
+check_insns();;
+
+(* ------------------------------------------------------------------------- *)
+(* Run a random example.                                                     *)
+(* ------------------------------------------------------------------------- *)
+
+let template =
+ `aligned 16 stackpointer /\
+  nonoverlapping (word pc,LENGTH ibytes) (stackpointer,256)
+  ==> ensures arm
+       (\s. aligned_bytes_loaded s (word pc) ibytes /\
+            read PC s = word pc /\
+            read SP s = stackpointer /\
+            regfile s = input_state)
+       (\s. read PC s = word(pc + ibytes_length) /\
+            read SP s = stackpointer /\
+            regfile s = output_state)
+       (MAYCHANGE [PC; SP; X0; X1; X2; X3; X4; X5; X6; X7; X8; X9;
+                   X10; X11; X12; X13; X14; X15; X16; X17; X18; X19;
+                   X20; X21; X22; X23; X24; X25; X26; X27; X28; X29; X30] ,,
+        MAYCHANGE [Q0; Q1; Q2; Q3; Q4; Q5; Q6; Q7; Q8; Q9;
+                   Q10; Q11; Q12; Q13; Q14; Q15; Q16; Q17; Q18; Q19;
+                   Q20; Q21; Q22; Q23; Q24; Q25; Q26; Q27; Q28; Q29;
+                   Q30; Q31] ,,
+        MAYCHANGE [memory :> bytes(stackpointer,256)] ,,
+        MAYCHANGE SOME_FLAGS ,, MAYCHANGE [events])`;;
+
+let num_two_to_64 = Num.num_of_string "18446744073709551616";;
+
+(* This makes MESON quiet. *)
+verbose := false;;
+
+(*** Before and after tactics for goals that either do or don't involve
+ *** memory operations (memop = they do). Non-memory ones are simpler and
+ *** quicker; the memory ones do some more elaborate fiddling with format
+ *** of memory assumptions to maximize their usability.
+ ***)
+
+let extra_simp_tac =
+  REWRITE_TAC[WORD_RULE `word_sub x (word_add x y):N word = word_neg y`;
+              WORD_RULE `word_sub y (word_add x y):N word = word_neg x`;
+              WORD_RULE `word_sub (word_add x y) x:N word = y`;
+              WORD_RULE `word_sub (word_add x y) y:N word = x`;
+              (* SP minus an immediate cancels, as in cosimulate_sp_arith *)
+              WORD_RULE `word_add (word_sub x y) y:N word = x`;
+              WORD_RULE `word_sub x (word_sub x y):N word = y`;
+              (* Code addresses cancel, as in the call sequences *)
+              WORD_RULE `word_sub (word(x + a)) (word(x + b)):N word =
+                         word_sub (word a) (word b)`;
+              WORD_ADD_0; WORD_SUB_0] THEN
+  CONV_TAC(DEPTH_CONV
+   (WORD_NUM_RED_CONV ORELSEC apply_extra_word_convs)) THEN REWRITE_TAC[];;
+
+let tac_before memop =
+  REWRITE_TAC[NONOVERLAPPING_CLAUSES] THEN STRIP_TAC THEN
+  REWRITE_TAC[regfile; CONS_11; FLAGENCODING_11; VAL_WORD_GALOIS] THEN
+  REWRITE_TAC[DIMINDEX_64; DIMINDEX_128] THEN CONV_TAC NUM_REDUCE_CONV THEN
+  REWRITE_TAC[SOME_FLAGS] THEN ONCE_REWRITE_TAC[MESON[]
+   `read SP s = stackpointer /\ P (read SP s) s <=>
+    read SP s = stackpointer /\ P stackpointer s`] THEN
+  ENSURES_INIT_TAC "s0" THEN
+  (if memop then
+    MAP_EVERY MEMORY_SPLIT_TAC (1--4) THEN
+          (* Remove non-"memory :> bytes8" reads because they are not necessary :) *)
+    let non_byte_read_list = [
+      `read (memory :> bytes16 x) s = y`;
+      `read (memory :> bytes32 x) s = y`;
+      `read (memory :> bytes64 x) s = y`;
+      `read (memory :> bytes128 x) s = y`
+    ] in
+    DISCARD_MATCHING_ASSUMPTIONS non_byte_read_list
+  else ALL_TAC)
+and tac_main (memopidx: int option) mc states =
+  begin match memopidx with
+  | Some idx ->
+    let states1, states2 = chop_list idx states in
+    (if states1 <> [] then ARM_STEPS_TAC mc states1 else ALL_TAC) THEN
+    (if states2 <> [] then ARM_VSTEPS_TAC mc states2 else ALL_TAC)
+  | None -> ARM_STEPS_TAC mc states
+  end
+and tac_after memop =
+  (if memop then MAP_EVERY MEMORY_SPLIT_TAC (0--4) else ALL_TAC) THEN
+  ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
+  (if memop then CONV_TAC(ONCE_DEPTH_CONV READ_MEMORY_FULLMERGE_CONV)
+   else ALL_TAC) THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[CONJUNCT1 WORD_ADD_0; WORD_SUB_0]) THEN
+  ASM_REWRITE_TAC[CONJUNCT1 WORD_ADD_0; WORD_SUB_0] THEN
+  extra_simp_tac THEN
+  PRINT_GOAL_TAC THEN NO_TAC;;
+
+(*** Cosimulate a list of ARM instruction codes against hardware.
+ *** To pass, the formal simulation has to agree with the hardware,
+ *** only modify the 256-byte buffer [SP,..,SP+255] and also
+ *** leave the final SP value the same as the initial value, though
+ *** it can be modified in between. It must also end with PC just
+ *** after the code, as the hardware does, so that a branch to a wrong
+ *** target fails even if the registers agree. The code length, 4
+ *** bytes per instruction word, is given as a numeral, the form of n
+ *** in the word(pc + n) to which the step tactics reduce PC.
+ ***)
+
+let arm_cosim_executor = lazy
+  (start_cosim_executor "S2N_BIGNUM_AARCH64_EXECUTOR"
+    "tools/simulate-persistent arm" "aarch64" 128);;
+
+(*** The CPU features beyond the baseline that an instruction needs, so that
+ *** a case can be skipped without being run if the executor reports that
+ *** it lacks them (see common/cosim.ml). ***)
+
+let arm_executor_features =
+  lazy (cosim_executor_features (Lazy.force arm_cosim_executor));;
+
+let arm_required_features instr =
+  let name = try fst(dest_const(fst(strip_comb instr))) with Failure _ -> "" in
+  match name with
+    "arm_AESE" | "arm_AESD" | "arm_AESMC" | "arm_AESIMC" -> ["aes"]
+  | "arm_PMULL_VEC" | "arm_PMULL2_VEC" ->
+      if (try dest_small_numeral (rand instr) = 64 with Failure _ -> false)
+      then ["pmull"] else []
+  | "arm_SHA256H" | "arm_SHA256H2" | "arm_SHA256SU0" | "arm_SHA256SU1" ->
+      ["sha2"]
+  | "arm_SHA512H" | "arm_SHA512H2" | "arm_SHA512SU0" | "arm_SHA512SU1" ->
+      ["sha512"]
+  | "arm_EOR3" | "arm_BCAX" | "arm_RAX1" | "arm_XAR" -> ["sha3"]
+  | _ -> [];;
+
+(*** The instructions are normally simulated one step each. With a branch
+ *** they need not all run, so nsteps can give the number of steps instead.
+ ***)
+
+let cosimulate_instructions_steps (nsteps: int option)
+      (memopidx: int option) icodes =
+  let icodestring =
+    end_itlist (fun s t -> s^","^t) (map string_of_num_hex icodes) in
+  let _ =
+    (Format.print_string("Cosimulating "^icodestring);
+     Format.print_newline()) in
+
+  let ibytes = itlist
+    (fun c s ->
+     mod_num c (num 256) ::
+     mod_num (quo_num c (num 256)) (num 256) ::
+     mod_num (quo_num c (num 65536)) (num 256) ::
+     quo_num c (num 16777216) :: s) icodes [] in
+
+  let ibyteterm =
+    mk_flist(map (curry mk_comb `word:num->byte` o mk_numeral) ibytes) in
+
+  let input_state = random_regstate() in
+
+  (*** Decode first, so that a case that needs a CPU feature the executor
+   *** lacks can be skipped without being run (see common/cosim.ml).
+   ***)
+
+  let execth_opt =
+    try Some(ARM_MK_EXEC_RULE(REFL ibyteterm)) with Failure _ -> None in
+  let instrs_of execth =
+    map (rand o rand o snd o strip_forall o concl o option_get)
+        (filter option_is_some (Array.to_list (snd execth))) in
+  let skip =
+    match execth_opt with
+      Some execth ->
+        cosim_skip_lacking (Lazy.force arm_executor_features)
+          (itlist ((@) o arm_required_features) (instrs_of execth) [])
+    | None -> false in
+  if skip then mk_flist (instrs_of (option_get execth_opt)),true else
+
+  let command_arg =
+    (* Split q registers that are 128 bits to 64 + 64 bits *)
+    let xregs, qmem = chop_list 32 input_state in
+    xregs @
+    List.concat (map (fun n ->
+      [Num.mod_num n num_two_to_64; Num.quo_num n num_two_to_64]) qmem) in
+
+  let execution =
+    cosim_execute (Lazy.force arm_cosim_executor)
+      (cosim_hex_of_bytes (map Num.int_of_num ibytes))
+      (map string_of_num command_arg) in
+
+  (*** This branch determines whether the actual simulation worked ***)
+  (*** In each branch we try to confirm that we likewise do or don't ***)
+
+  match execution with
+  | Cosim_ok output_words ->
+    let output_state_raw =
+      map num_of_string output_words in
+
+    (* Synthesize q registers from two 64 ints *)
+    let output_state =
+      let xregs, qmem = chop_list 32 output_state_raw in
+      xregs @ snd (List.fold_left (fun (prev_num, ls) n ->
+        (* prev_num is None on 0, 2, 4, ..th item
+           and Some n' on 1, 3, ..th item *)
+        match prev_num with
+        | None -> (Some n, ls)
+        | Some n' -> (None, ls @ [num_two_to_64 */ n +/ n']))
+       (None, []) qmem) in
+
+    let goal = subst
+      [ibyteterm,`ibytes:byte list`;
+       mk_small_numeral(4 * length icodes),`ibytes_length:num`;
+       mk_flist(map mk_numeral input_state),`input_state:num list`;
+       mk_flist(map mk_numeral output_state),`output_state:num list`]
+      template in
+
+    let execth =
+      match execth_opt with
+        Some th -> th
+      | None -> ARM_MK_EXEC_RULE(REFL ibyteterm) in
+
+    let decoded = mk_flist (instrs_of execth)
+    and result =
+    can prove
+     (goal,
+      PURE_REWRITE_TAC [fst execth] THEN
+      (tac_before (memopidx <> None) THEN
+       tac_main memopidx execth
+         (1--(match nsteps with Some n -> n | None -> length icodes)) THEN
+       tac_after (memopidx <> None))) in
+    (decoded,result)
+  | Cosim_trap _ ->
+    let decoded = mk_flist(map mk_numeral icodes) in
+    (match execth_opt with None -> decoded,true | Some _ -> decoded,false);;
+
+let cosimulate_instructions = cosimulate_instructions_steps None;;
+
+(*** Pick random instances from register-to-register iclasses and run ***)
+
+let run_random_regsimulation () =
+  let icode:num = random_instruction iclasses in
+  cosimulate_instructions None [icode];;
+
+(* ------------------------------------------------------------------------- *)
+(* Branches. In each sequence both outcomes of a conditional branch run the  *)
+(* same number of instructions, returned with the sequence, so that it can   *)
+(* be simulated a fixed number of steps; W0 tells which way the branch went. *)
+(* The flags and the tested registers come from the random input state.     *)
+(* ------------------------------------------------------------------------- *)
+
+let cosimulate_branch() =
+  let movz_w0 n = num(0x52800000 + 32 * n)
+  and b_rel d = num(0x14000000 + (d + 0x4000000) mod 0x4000000)
+  and nop = num 0xd503201f in
+  (* A random conditional branch of d instructions (d may be negative):
+     B.cond, CBZ/CBNZ or TBZ/TBNZ, testing a random register 1-31.
+     A random register is seldom zero, so CBZ/CBNZ is usually preceded
+     by ubfx Xt,Xt,#b,#1 (giving 0 or 1) or lsl Xt,Xt,#32 (zero low half).
+     The result is the list of those instructions and the branch. *)
+  let cond_rel d =
+    let rt = 1 + Random.int 31 and op = Random.int 2 in
+    match Random.int 3 with
+      0 -> [],num(0x54000000 + 32 * ((d + 0x80000) mod 0x80000) + Random.int 16)
+    | 1 -> let sf = Random.int 2 and b = Random.int 64 in
+           (match Random.int 4 with
+              0 | 1 -> [num(0xd3400000 + 0x10400 * b + 33 * rt)]
+            | 2 -> [num(0xd3607c00 + 33 * rt)]
+            | _ -> []),
+           num(0x80000000 * sf + 0x34000000 + 0x1000000 * op +
+               32 * ((d + 0x80000) mod 0x80000) + rt)
+    | _ -> let b = Random.int 64 in
+           [],num(0x80000000 * (b / 32) + 0x36000000 + 0x1000000 * op +
+                  0x80000 * (b mod 32) + 32 * ((d + 0x4000) mod 0x4000) + rt) in
+  match Random.int 4 with
+    0 -> (* Forward: br L; movz w0,#1; b E; L: movz w0,#2; nop; E: *)
+         let pre,br = cond_rel 3 in
+         pre @ [br; movz_w0 1; b_rel 3; movz_w0 2; nop],length pre + 3
+  | 1 -> (* Backward: b A; B: movz w0,#2; b E; A: br B; movz w0,#1; b E; E: *)
+         let pre,br = cond_rel (-2) in
+         pre @ [b_rel 3; movz_w0 2; b_rel 4; br; movz_w0 1; b_rel 1],
+         length pre + 4
+  | 2 -> (* Forward B: b L; movz w0,#1; L: movz w0,#2 *)
+         [b_rel 2; movz_w0 1; movz_w0 2],2
+  | _ -> (* Backward B: b A; B: b E; A: b B; E: *)
+         [b_rel 2; b_rel 2; b_rel (-1)],3;;
+
+(* ------------------------------------------------------------------------- *)
+(* Calls. The return address that BL leaves in X30 and the result of ADR     *)
+(* both depend on the code address, so the sequence keeps only their        *)
+(* difference, in Xt for a random t in 0-29, and then clears X30.           *)
+(* ------------------------------------------------------------------------- *)
+
+let cosimulate_call() =
+  let t = Random.int 30 and imm = Random.int 0x200000 in
+  let adr = num(0x10000000 + 0x20000000 * (imm mod 4) + 32 * (imm / 4) + t)
+  and sub = num(0xcb1e0000 + 33 * t)
+  and movz_x30 = num 0xd280001e
+  and bl_rel d = num(0x94000000 + (d + 0x4000000) mod 0x4000000)
+  and b_rel d = num(0x14000000 + (d + 0x4000000) mod 0x4000000)
+  and bti_c = num 0xd503245f and ret = num 0xd65f03c0 in
+  if Random.bool() then
+    (* Forward: bl F; adr xt,#imm; sub xt,xt,x30; movz x30,#0; b E;
+                F: bti c; ret; E: *)
+    [bl_rel 5; adr; sub; movz_x30; b_rel 3; bti_c; ret],7
+  else
+    (* Backward: b S; F: ret; S: bl F; adr xt,#imm; sub xt,xt,x30;
+                 movz x30,#0; E: *)
+    [b_rel 2; ret; bl_rel (-1); adr; sub; movz_x30],6;;
+
+let run_random_branchsimulation () =
+  let icodes,nsteps =
+    if Random.int 4 = 0 then cosimulate_call() else cosimulate_branch() in
+  cosimulate_instructions_steps (Some nsteps) None icodes;;
+
+(* ------------------------------------------------------------------------- *)
+(* Setting up safe self-contained tests for load-store instructions.         *)
+(* ------------------------------------------------------------------------- *)
+
+let add_Xn_SP_imm rn imm =
+  pow2 22 */ num_of_string "0b1001000100" +/
+  pow2 10 */ (mod_num (num imm) (pow2 12)) +/
+  pow2 5 */ num_of_string "0b11111" +/
+  num rn;;
+
+let sub_Xn_SP_imm rn imm =
+  pow2 22 */ num_of_string "0b1101000100" +/
+  pow2 10 */ (mod_num (num imm) (pow2 12)) +/
+  pow2 5 */ num_of_string "0b11111" +/
+  num rn;;
+
+let sub_Xn_SP_Xn rn =
+  pow2 21 */ num 0b11001011001 +/
+  pow2 16 */ num rn +/
+  pow2 10 */ num 0b011000 +/
+  pow2 5 */ num 0b11111 +/
+  num rn;;
+
+(*** Base registers for some of the load-store generators below. SP (31)
+ *** is drawn more often than 1 in 32, since stack frames use it a lot. ***)
+
+let random_base_reg() = if Random.int 4 = 0 then 31 else Random.int 32;;
+
+(*** An offset or data register for such a base: never the base itself,
+ *** except that with an SP base 31 is the zero register, which is then
+ *** allowed and drawn 1 in 8 times. ***)
+
+let other_reg rn =
+  if rn = 31 then (if Random.int 8 = 0 then 31 else Random.int 31)
+  else (rn + 1 + Random.int 31) mod 32;;
+
+let movz_Xn_imm rd imm =
+  pow2 21 */ num_of_string "0b11010010100" +/
+  pow2 5 */ num(imm mod 65536) +/
+  num rd;;
+
+(*** This covers scalar (32-bit or 64-bit) and simd (128-bit only)
+ *** LDR and STR with either a register or shifted register offset,
+ *** but no non-trivial register extensions, only UXTX.
+ ***)
+
+let cosimulate_ldstr() =
+  let simd = Random.int 2
+  and rn = random_base_reg()
+  and isld = Random.int 2 in
+  let full = if simd = 1 then 1 else Random.int 2 in
+  let rm = other_reg rn
+  and rt = if simd = 1 then Random.int 32 else other_reg rn in
+  let headroom =
+    if simd = 1 then 16
+    else if full = 1 then 8 else 4 in
+  let rawstackoff = Random.int (256 - headroom) in
+  let stackoff =
+    if rn = 31 then 16 * (rawstackoff / 16)
+    else rawstackoff in
+  let shift =
+    if Random.bool() then 0
+    else if simd = 1 then 4
+    else if full = 1 then 3 else 2 in
+  let shifted = if shift = 0 then 0 else 1 in
+  let extraoff = Random.int (256-headroom-stackoff) in
+  let regoff = extraoff lsr shift in
+  let code =
+    pow2 30 */ num(if simd = 1 then 0b00 else 0b10 + full) +/
+    pow2 24 */ num 0b111000 +/
+    pow2 23 */ num (9 * simd) +/
+    pow2 22 */ num isld +/
+    pow2 21 +/
+    pow2 16 */ num rm +/
+    pow2 13 */ num 0b011 +/
+    pow2 12 */ num shifted +/
+    pow2 10 */ num 0b10 +/
+    pow2 5 */ num rn +/
+    num rt in
+  if rn = 31 then
+    [add_Xn_SP_imm 31 stackoff; movz_Xn_imm rm regoff; code; sub_Xn_SP_imm 31 stackoff]
+  else
+    [add_Xn_SP_imm rn stackoff; movz_Xn_imm rm regoff; code; sub_Xn_SP_Xn rn];;
+
+(*** This covers simd (128-bit or 64-bit) LDP and STP with
+ *** post-index, pre-index and signed offset.
+ ***)
+
+let cosimulate_ldstp() =
+  let size_rd = Random.int 2 in
+  let size = if size_rd = 0 then 0b01 else 0b10 in
+  let scale = 2 + size in
+  let index_rd = Random.int 3 in
+  let index_mode =
+    if index_rd = 0 then 0b001 else if index_rd = 1 then 0b011 else 0b010 in
+  let isld = Random.int 2 in
+  let rt2 = Random.int 32 in
+  let rt = (rt2 + 1 + Random.int 31) mod 32 in
+  let rn = random_base_reg() in
+  let headroom = if size_rd = 0 then 8*2 else 16*2 in
+  let rawstackoff = Random.int (256 - headroom) in
+  let stackoff =
+    if rn = 31 then 16 * (rawstackoff / 16)
+    else rawstackoff in
+  (* immediate could be negative or positive *)
+  let extraoff_neg = if stackoff = 0 then 0 else - (Random.int stackoff) in
+  let extraoff_pos = Random.int (256-headroom-stackoff) in
+  let extraoff_rd = Random.int 2 in
+  let extraoff = if extraoff_rd = 0 then extraoff_neg else extraoff_pos in
+  let regoff = extraoff / Num.int_of_num (pow2 scale) in
+  let unsigned_regoff = if regoff < 0 then 128 + regoff else regoff in
+  (* signed offset doesn't write back *)
+  let postinc = if index_rd = 2 then 0 else regoff lsl scale in
+  let code =
+    pow2 30 */ num size +/
+    pow2 26 */ num 0b1011 +/
+    pow2 23 */ num index_mode +/
+    pow2 22 */ num isld +/
+    pow2 15 */ num unsigned_regoff +/
+    pow2 10 */ num rt2 +/
+    pow2 5 */ num rn +/
+    num rt in
+  if rn = 31 then
+    [add_Xn_SP_imm 31 stackoff; code; sub_Xn_SP_imm 31 (stackoff + postinc)]
+  else
+    [add_Xn_SP_imm rn stackoff; code; sub_Xn_SP_Xn rn];;
+
+(*** This covers general-register (32-bit or 64-bit) LDP and STP with
+ *** post-index, pre-index and signed offset. Register 31 is the zero
+ *** register for Rt and Rt2. The registers avoid the CONSTRAINED
+ *** UNPREDICTABLE cases (LDP with Rt = Rt2, writeback with Rt or Rt2 =
+ *** Rn) and, because the base address is only known relative to SP, any
+ *** use of Rn as Rt or Rt2.
+ ***)
+
+let cosimulate_ldstp_gpr() =
+  let x = Random.int 2 in
+  let scale = 2 + x in
+  let index_rd = Random.int 3 in
+  let index_mode =
+    if index_rd = 0 then 0b001 else if index_rd = 1 then 0b011 else 0b010 in
+  let isld = Random.int 2 in
+  let rn = random_base_reg() in
+  (* XZR (31) is drawn more often than 1 in 32, as the library uses it *)
+  let rec pick avoid =
+    let r = if Random.int 8 = 0 then 31 else Random.int 32 in
+    if List.mem r avoid then pick avoid else r in
+  let rt2 = pick (if rn = 31 then [] else [rn]) in
+  let rt =
+    pick ((if rn = 31 then [] else [rn]) @ (if isld = 1 then [rt2] else [])) in
+  let headroom = if x = 0 then 4*2 else 8*2 in
+  let rawstackoff = Random.int (256 - headroom) in
+  let stackoff =
+    if rn = 31 then 16 * (rawstackoff / 16)
+    else rawstackoff in
+  (* immediate could be negative or positive *)
+  let extraoff_neg = if stackoff = 0 then 0 else - (Random.int stackoff) in
+  let extraoff_pos = Random.int (256-headroom-stackoff) in
+  let extraoff_rd = Random.int 2 in
+  let extraoff = if extraoff_rd = 0 then extraoff_neg else extraoff_pos in
+  let regoff = extraoff / Num.int_of_num (pow2 scale) in
+  let unsigned_regoff = if regoff < 0 then 128 + regoff else regoff in
+  (* signed offset doesn't write back *)
+  let postinc = if index_rd = 2 then 0 else regoff lsl scale in
+  let code =
+    pow2 31 */ num x +/
+    pow2 26 */ num 0b1010 +/
+    pow2 23 */ num index_mode +/
+    pow2 22 */ num isld +/
+    pow2 15 */ num unsigned_regoff +/
+    pow2 10 */ num rt2 +/
+    pow2 5 */ num rn +/
+    num rt in
+  if rn = 31 then
+    [add_Xn_SP_imm 31 stackoff; code; sub_Xn_SP_imm 31 (stackoff + postinc)]
+  else
+    [add_Xn_SP_imm rn stackoff; code; sub_Xn_SP_Xn rn];;
+
+
+(*** The post-register and no-offset modes are exercised only for LD1/ST1
+ *** since they are not currently supported for LD2/ST2.
+ ***
+ *** The register field is forced to 0 in the no-offset case to unify
+ *** the encoding scheme, and is forced to 31 (i.e. post-immediate in
+ *** place of post-register) if any of these are true:
+ ***
+ ***  - it is LD2/ST2 (since post-register is not supported there)
+ ***  - the offset register is the same as the base (confuses test harness)
+ ***  - or just on a 50-50 probability, to avoid biasing to register case
+ ***
+ *** With an SP base, the post-register increment is set by a MOVZ and
+ *** taken back off SP at the end, as in cosimulate_ldst_1_2reg.
+ ***)
+
+let cosimulate_ldst_12() =
+  let datasize = Random.int 2
+  and isld = Random.int 2
+  and esize = Random.int 4
+  and rn = random_base_reg()
+  and rt = Random.int 32 in
+  let ldst2 = Random.int 2 in
+  let someoffset = if ldst2 = 1 then 1 else Random.int 2 in
+  let regoffr = Random.int 32 in
+  let regoff =
+    if someoffset = 0 then 0
+    else if ldst2 = 1 || regoffr = rn || Random.bool() then 31
+    else regoffr in
+  let stackoff =
+    if rn = 31 then Random.int 14 * 16
+    else Random.int 224 in
+  let postreg = someoffset = 1 && regoff <> 31 in
+  let regpostinc = 1 + Random.int 64 in
+  let postinc =
+    if postreg then regpostinc
+    else someoffset * 8 * (datasize + 1) * (ldst2 + 1) in
+  let code =
+    pow2 30 */ num datasize +/
+    pow2 24 */ num 0b001100 +/
+    pow2 23 */ num someoffset +/
+    pow2 22 */ num isld +/
+    pow2 16 */ num regoff +/
+    pow2 12 */ num(if ldst2 = 1 then 0b1000 else 0b0111) +/
+    pow2 10 */ num esize +/
+    pow2 5 */ num rn +/
+    num rt in
+  if rn = 31 then
+    [add_Xn_SP_imm 31 stackoff] @
+    (if postreg then [movz_Xn_imm regoff regpostinc] else []) @
+    [code; sub_Xn_SP_imm 31 (stackoff + postinc)]
+  else
+    [add_Xn_SP_imm rn stackoff; code; sub_Xn_SP_Xn rn];;
+
+
+(*** This covers LD1 and ST1 with two registers, with the addressing modes
+ *** no-offset, post-immediate offset and post-register offset.
+ ***)
+
+let cosimulate_ldst_1_2reg() =
+  let mode = Random.int 3
+  and rn = Random.int 32
+  and isld = Random.int 2
+  and rt = Random.int 32
+  and esize = Random.int 4 in
+  let someoffset = if mode = 0 then 0 else 1 in
+  let rm =
+    if mode = 0 then 0
+    else if mode = 1 then 31
+    else
+      let candidate = Random.int 31 in
+      if candidate = rn then (candidate + 1) mod 31 else candidate in
+  let regoff = if mode = 2 then 1 + Random.int 64 else 0 in
+  let stackoff =
+    if rn = 31 then Random.int 14 * 16
+    else Random.int 224 in
+  let postinc = if mode = 1 then 32 else regoff in
+  let code =
+    pow2 24 */ num 0b01001100 +/
+    pow2 23 */ num someoffset +/
+    pow2 22 */ num isld +/
+    pow2 16 */ num rm +/
+    pow2 12 */ num 0b1010 +/
+    pow2 10 */ num esize +/
+    pow2 5 */ num rn +/
+    num rt in
+  let setoffset = if mode = 2 then [movz_Xn_imm rm regoff] else [] in
+  if rn = 31 then
+    [add_Xn_SP_imm 31 stackoff] @ setoffset @
+    [code; sub_Xn_SP_imm 31 (stackoff + postinc)]
+  else
+    [add_Xn_SP_imm rn stackoff] @ setoffset @
+    [code; sub_Xn_SP_Xn rn];;
+
+(*** This covers LDRB and STRB with unshifted register
+ *** There are several more supported addressing modes to cover.
+ ***)
+
+let cosimulate_ldstrb() =
+  let rn = random_base_reg()
+  and isld = Random.int 2 in
+  let rm = other_reg rn
+  and rt = other_reg rn in
+  let stackoff =
+    if rn = 31 then Random.int 15 * 16
+    else Random.int 256 in
+  let regoff = Random.int (256-stackoff) in
+  let code =
+    pow2 23 */ num 0b001110000 +/
+    pow2 22 */ num isld +/
+    pow2 21 +/
+    pow2 16 */ num rm +/
+    pow2 10 */ num 0b011010 +/
+    pow2 5 */ num rn +/
+    num rt in
+  if rn = 31 then
+    [add_Xn_SP_imm 31 stackoff; movz_Xn_imm rm regoff; code; sub_Xn_SP_imm 31 stackoff]
+  else
+    [add_Xn_SP_imm rn stackoff; movz_Xn_imm rm regoff; code; sub_Xn_SP_Xn rn];;
+
+(*** This covers LDURB/STURB, and LDUR/STUR for 64-bit and 32-bit values ***)
+let cosimulate_ldstu() =
+  let is_not_b = Random.int 2 in
+  let x = if is_not_b = 1 then Random.int 2 else 0 in
+  let isld = Random.int 2
+  and rn = random_base_reg() in
+  let rt = other_reg rn in
+  let stackoff =
+    if rn = 31 then Random.int 15 * 16
+    else Random.int 249 in
+    (* May load/store at most 8 bytes. 256 - 8 + 1 = 249 *)
+  let off = Random.int (249-stackoff) in
+  let code =
+    pow2 31 */ num is_not_b +/
+    pow2 30 */ num x +/
+    pow2 23 */ num 0b1110000 +/
+    pow2 22 */ num isld +/
+    pow2 12 */ num off +/
+    pow2 5 */ num rn +/
+    num rt in
+  if rn = 31 then
+    [add_Xn_SP_imm 31 stackoff; code; sub_Xn_SP_imm 31 stackoff]
+  else
+    [add_Xn_SP_imm rn stackoff; code; sub_Xn_SP_Xn rn];;
+
+(*** This covers LD1R ***)
+
+let cosimulate_ld1r() =
+  let q = Random.int 2
+  and size = Random.int 4
+  and rn = Random.int 32
+  and rt = Random.int 32 in
+  let stackoff =
+    if rn = 31 then Random.int 14 * 16
+    else Random.int 224 in
+  let stackoff' = (8 lsl size)/8 + stackoff in
+  let code =
+    pow2 30 */ num q +/
+    pow2 12 */ num 0b001101110111111100 +/
+    pow2 10 */ num size +/
+    pow2 5 */ num rn +/
+    num rt in
+  if rn = 31 then
+    [add_Xn_SP_imm 31 stackoff; code; sub_Xn_SP_imm 31 stackoff']
+  else
+    [add_Xn_SP_imm rn stackoff; code; sub_Xn_SP_Xn rn];;
+
+let cosimulate_ldst3() =
+  let datasize = Random.int 2
+  and isld = Random.int 2
+  and esize = Random.int 4
+  and rn = random_base_reg()
+  and rt = Random.int 32 in
+  let someoffset = 1 in
+  let regoffr = Random.int 32 in
+  let regoff =
+    if regoffr = rn || Random.bool() then 31
+    else regoffr in
+  let stackoff =
+    if rn = 31 then Random.int 13 * 16
+    else Random.int 208 in
+  let postreg = regoff <> 31 in
+  let regpostinc = 1 + Random.int 64 in
+  let postinc = if postreg then regpostinc else 24 * (datasize + 1) in
+  let code =
+    pow2 30 */ num datasize +/
+    pow2 24 */ num 0b001100 +/
+    pow2 23 */ num someoffset +/
+    pow2 22 */ num isld +/
+    pow2 16 */ num regoff +/
+    pow2 12 */ num 0b0100 +/
+    pow2 10 */ num esize +/
+    pow2 5 */ num rn +/
+    num rt in
+  if rn = 31 then
+    [add_Xn_SP_imm 31 stackoff] @
+    (if postreg then [movz_Xn_imm regoff regpostinc] else []) @
+    [code; sub_Xn_SP_imm 31 (stackoff + postinc)]
+  else
+    [add_Xn_SP_imm rn stackoff; code; sub_Xn_SP_Xn rn];;
+
+(*** This covers LD1/ST1 (multiple structures), 4 registers, for datasizes
+ *** 64 and 128, addressing modes no-offset, post-immediate and post-register.
+ *** The four consecutive registers span 32 bytes (datasize 64) or 64 bytes
+ *** (datasize 128); the post-immediate writeback is exactly that span.
+ ***)
+
+let cosimulate_ldst1_4reg() =
+  let datasize = Random.int 2
+  and isld = Random.int 2
+  and esize = Random.int 4
+  and rn = random_base_reg()
+  and rt = Random.int 32 in
+  let someoffset = Random.int 2 in
+  let regoffr = Random.int 32 in
+  (* No-offset form has Rm = 0 and bit23 = 0; the post forms set bit23 = 1,
+     with Rm = 31 selecting post-immediate and Rm = Xm post-register. As in
+     cosimulate_ldst3, avoid Rm aliasing the base for the post-register
+     form; with an SP base, a MOVZ sets the increment. *)
+  let regoff =
+    if someoffset = 0 then 0
+    else if regoffr = rn || Random.bool() then 31
+    else regoffr in
+  let stackoff =
+    if rn = 31 then Random.int 12 * 16
+    else Random.int 192 in
+  (* Four 8- or 16-byte registers span 32 or 64 bytes. The post-immediate
+     form (Rm = 31) writes the base back by that span. *)
+  let postreg = someoffset = 1 && regoff <> 31 in
+  let regpostinc = 1 + Random.int 64 in
+  let postinc =
+    if postreg then regpostinc
+    else if someoffset = 1 then 32 * (datasize + 1) else 0 in
+  let code =
+    pow2 30 */ num datasize +/
+    pow2 24 */ num 0b001100 +/
+    pow2 23 */ num someoffset +/
+    pow2 22 */ num isld +/
+    pow2 16 */ num regoff +/
+    pow2 12 */ num 0b0010 +/
+    pow2 10 */ num esize +/
+    pow2 5 */ num rn +/
+    num rt in
+  if rn = 31 then
+    [add_Xn_SP_imm 31 stackoff] @
+    (if postreg then [movz_Xn_imm regoff regpostinc] else []) @
+    [code; sub_Xn_SP_imm 31 (stackoff + postinc)]
+  else
+    [add_Xn_SP_imm rn stackoff; code; sub_Xn_SP_Xn rn];;
+
+(*** This covers LDR/STR (immediate) of 64-bit, 32-bit and byte general
+ *** registers and of 128-bit and 64-bit SIMD&FP registers, with an
+ *** unsigned (scaled) offset, pre-index or post-index, and LDUR/STUR of
+ *** 128-bit registers. Register 31 is the zero register for a general
+ *** register Rt. Rt is never the same register as Rn: with writeback
+ *** that is CONSTRAINED UNPREDICTABLE, and in any case the harness only
+ *** knows the base address relative to SP.
+ ***)
+
+let cosimulate_ldst_imm() =
+  (* kind: 0 = X, 1 = W, 2 = byte, 3 = Q, 4 = D *)
+  let kind = Random.int 5 and isld = Random.int 2 and rn = random_base_reg() in
+  (* mode: 0 = unsigned offset, 1 = pre-index, 2 = post-index,
+           3 = unscaled offset (LDUR/STUR, Q only) *)
+  let mode = Random.int (if kind = 3 then 4 else 3) in
+  let bytes = el kind [8; 4; 1; 16; 8] in
+  let rt =
+    if kind >= 3 || rn = 31 then Random.int 32
+    else (rn + 1 + Random.int 31) mod 32 in
+  let stackoff =
+    if rn = 31 then 16 * Random.int ((256 - bytes) / 16 + 1)
+    else Random.int (256 - bytes + 1) in
+  (* imm12 for the unsigned offset, imm9 for the others. The access stays
+     inside [SP,SP+256) and a writeback never moves the base below SP. *)
+  let imm12 = Random.int ((256 - bytes - stackoff) / bytes + 1) in
+  let imm9 =
+    if mode = 2 then Random.int (256 + stackoff) - stackoff
+    else
+      let lo = - stackoff and hi = min 255 (256 - bytes - stackoff) in
+      lo + Random.int (hi - lo + 1) in
+  let postinc = if mode = 1 || mode = 2 then imm9 else 0 in
+  let idx = num((imm9 + 512) mod 512) in
+  let idxmode = num(el mode [0; 3; 1; 0]) in
+  let code =
+    (if mode = 0 then
+       (match kind with
+          0 | 1 -> pow2 31 */ num 1 +/ pow2 30 */ num (1 - kind) +/
+                   pow2 23 */ num 0b1110010
+        | 2 -> pow2 23 */ num 0b001110010
+        | 3 -> pow2 24 */ num 0b111101 +/ pow2 23
+        | _ -> pow2 30 */ num 0b11 +/ pow2 24 */ num 0b111101) +/
+       pow2 10 */ num imm12
+     else
+       (match kind with
+          0 | 1 -> pow2 31 */ num 1 +/ pow2 30 */ num (1 - kind) +/
+                   pow2 23 */ num 0b1110000
+        | 2 -> pow2 23 */ num 0b001110000
+        | 3 -> pow2 23 */ num 0b1111001
+        | _ -> pow2 30 */ num 0b11 +/ pow2 23 */ num 0b1111000) +/
+       pow2 12 */ idx +/ pow2 10 */ idxmode) +/
+    pow2 22 */ num isld +/
+    pow2 5 */ num rn +/
+    num rt in
+  if rn = 31 then
+    [add_Xn_SP_imm 31 stackoff; code; sub_Xn_SP_imm 31 (stackoff + postinc)]
+  else
+    [add_Xn_SP_imm rn stackoff; code; sub_Xn_SP_Xn rn];;
+
+(*** ADD and SUB (immediate) with SP, which the generators above use only
+ *** with small unshifted immediates. The stack address cancels as there:
+ ***   add/sub xd, sp, #imm{, lsl #12}; sub xd, sp, xd
+ ***   add/sub sp, sp, #imm{, lsl #12}; sub/add sp, sp, #imm{, lsl #12}
+ ***   mov x29, sp; sub sp, sp, #imm{, lsl #12}; mov sp, x29; sub x29, sp, x29
+ ***)
+
+let cosimulate_sp_arith() =
+  let addsub op d n imm sh =
+    num(0x91000000 + 0x40000000 * op + 0x400000 * sh + 0x400 * imm +
+        32 * n + d) in
+  let imm = Random.int 4096 and sh = Random.int 2 and op = Random.int 2 in
+  match Random.int 3 with
+    0 -> let rd = Random.int 31 in
+         [addsub op rd 31 imm sh; sub_Xn_SP_Xn rd]
+  | 1 -> [addsub op 31 31 imm sh; addsub (1 - op) 31 31 imm sh]
+  | _ -> [addsub 0 29 31 0 0; addsub 1 31 31 imm sh; addsub 0 31 29 0 0;
+          sub_Xn_SP_Xn 29];;
+
+(*** Instructions that use SP as an ordinary register, run with SP set to a
+ *** random register's value so that all their results can be compared,
+ *** flags and 32-bit WSP values included:
+ ***   mov x29, sp; mov sp, xs; <instruction>; mov x28, sp; mov sp, x29;
+ ***   sub x29, sp, x29
+ *** The instruction is ADD, ADDS, SUB or SUBS (extended register or
+ *** immediate) with SP as Rn, Rd or both, where with S set Rd = 31 is the
+ *** zero register (CMN, CMP), or AND, ORR or EOR (immediate) with a valid
+ *** bit mask and SP as Rd. Its other registers are never x29, which holds
+ *** the real SP, and it does not write x28.
+ ***)
+
+let cosimulate_sp_subst() =
+  let addsub op d n imm sh =
+    num(0x91000000 + 0x40000000 * op + 0x400000 * sh + 0x400 * imm +
+        32 * n + d) in
+  let src() = let r = Random.int 30 in if r = 29 then 30 else r in
+  let dst() = let r = Random.int 29 in if r = 28 then 30 else r in
+  let sf = Random.int 2 in
+  let code =
+    match Random.int 3 with
+      2 -> let opc = Random.int 3 in
+           let rn = if Random.int 4 = 0 then 31 else src() in
+           let len = 1 + Random.int (5 + sf) in
+           let esize = 1 lsl len in
+           let ones = Random.int (esize - 1) in
+           let rot = Random.int esize in
+           let imms = ((0b111111 lsl (len + 1)) land 0b111111) lor ones in
+           num(0x12000000 + 0x80000000 * sf + 0x20000000 * opc +
+               0x400000 * (if len = 6 then 1 else 0) + 0x10000 * rot +
+               0x400 * imms + 32 * rn + 31)
+    | k -> let op = Random.int 2 in
+           let s = Random.int 2 in
+           let rn,rd,s =
+             match Random.int 3 with
+               0 -> 31,dst(),s
+             | 1 -> 31,31,s
+             | _ -> src(),31,0 in
+           if k = 0 then
+             let rm = if Random.int 4 = 0 then 31 else src() in
+             let option = Random.int 8 in
+             let imm3 = Random.int 5 in
+             num(0x0b200000 + 0x80000000 * sf + 0x40000000 * op +
+                 0x20000000 * s + 0x10000 * rm + 0x2000 * option +
+                 0x400 * imm3 + 32 * rn + rd)
+           else
+             let sh = Random.int 2 in
+             let imm = Random.int 4096 in
+             num(0x11000000 + 0x80000000 * sf + 0x40000000 * op +
+                 0x20000000 * s + 0x400000 * sh + 0x400 * imm +
+                 32 * rn + rd) in
+  let xs = src() in
+  [addsub 0 29 31 0 0; addsub 0 31 xs 0 0; code;
+   addsub 0 28 31 0 0; addsub 0 31 29 0 0; sub_Xn_SP_Xn 29];;
+
+let memclasses =
+   [cosimulate_ldstr; cosimulate_ldstp; cosimulate_ldstp_gpr; cosimulate_ldst_12;
+    cosimulate_ldst_1_2reg; cosimulate_ldstrb; cosimulate_ld1r;
+    cosimulate_ldst3; cosimulate_ldstu; cosimulate_ldst1_4reg;
+    cosimulate_ldst_imm; cosimulate_sp_arith; cosimulate_sp_subst
+    ];;
+
+let run_random_memopsimulation() =
+  let icodes = el (Random.int (length memclasses)) memclasses () in
+  let _ = assert (length icodes >= 2) in
+  let memop_index = length icodes - 2 in
+  cosimulate_instructions (Some memop_index) icodes;;
+
+(* ------------------------------------------------------------------------- *)
+(* Keep running tests till a failure happens then return it.                 *)
+(* ------------------------------------------------------------------------- *)
+
+let run_random_simulation() =
+  let rn = Random.int 100 in
+  if rn < 85 then
+    let decoded, result = run_random_regsimulation() in
+    decoded,result,0
+  else if rn < 90 then
+    let decoded, result = run_random_branchsimulation() in
+    decoded,result,2
+  else
+    let decoded, result = run_random_memopsimulation() in
+    decoded,result,1;;
+
+let time_limit_sec = sematest_seconds 2400.0;;
+let case_limit = sematest_case_limit ();;
+let tested_reg_instances = ref 0;;
+let tested_mem_instances = ref 0;;
+let tested_br_instances = ref 0;;
+let skipped_instances = ref 0;;
+
+let rec run_random_simulations start_t =
+  let decoded,result,simty = run_random_simulation() in
+  let missing = cosim_take_skipped () in
+  if result then begin
+    if missing <> [] then begin
+      skipped_instances := !skipped_instances + 1;
+      cosim_report_skipped missing decoded
+    end else begin
+      tested_reg_instances := !tested_reg_instances + (if simty = 0 then 1 else 0);
+      tested_mem_instances := !tested_mem_instances + (if simty = 1 then 1 else 0);
+      tested_br_instances := !tested_br_instances + (if simty = 2 then 1 else 0);
+      let fey = if is_numeral (lhand decoded)
+                then " (fails correctly) instruction codes " else " " in
+      Format.print_string("OK:" ^ fey ^ string_of_term decoded);
+      Format.print_newline()
+    end;
+    let total = !tested_reg_instances + !tested_mem_instances +
+                !tested_br_instances in
+    if sematest_finished time_limit_sec case_limit start_t total then
+      let _ = Printf.printf "Finished (time limit: %fs, tested reg instances: %d, tested mem instances: %d, tested branch instances: %d, total: %d, skipped instances: %d)\n"
+          time_limit_sec !tested_reg_instances !tested_mem_instances
+          !tested_br_instances total !skipped_instances in
+      cosim_warn_skipped !skipped_instances total;
+      None
+    else run_random_simulations start_t
+  end
+  else Some (decoded,result);;
+
+sematest_random_init ();;
+
+let start_t = Unix.gettimeofday() (* unit is sec *) in
+  match run_random_simulations start_t with
+  | Some (t,_) -> Printf.printf "Error: term `%s`" (string_of_term t);
+                  failwith "simulator"
+  | None -> ();;

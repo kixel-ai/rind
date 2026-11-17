@@ -1,5 +1,5 @@
-//! Verification that, under the `wipe` feature, heap scratch derived from a
-//! private key is wiped before it is freed.
+//! Verification that heap scratch derived from a private key is wiped before
+//! it is freed.
 //!
 //! `tests/zeroing.rs` checks the bytes of each key value; this checks the
 //! blocks an operation frees while it holds one. Messages, public values,
@@ -12,8 +12,6 @@
 //!
 //! The allocator covers the whole binary, so this is a test binary of its
 //! own. RSA key generation is slow, so it runs only under `SLOW_TESTS`.
-
-#![cfg(feature = "wipe")]
 
 mod freed;
 
@@ -74,7 +72,7 @@ fn detects_a_leak_in_key_generation() {
 
 /// Two distinct PKCS#8 RSA keys of each size.
 fn rsa_keys() -> impl Iterator<Item = [Vec<u8>; 2]> {
-    use rind::signature::RsaKeyPair;
+    use rind::rsa::KeyPair as RsaKeyPair;
     [
         (
             &include_bytes!("../src/high/rsa/rsa2048.pkcs8.der")[..],
@@ -101,8 +99,12 @@ fn rsa_keys() -> impl Iterator<Item = [Vec<u8>; 2]> {
     .map(|(pkcs8, pkcs1)| {
         let pkcs1 = RsaKeyPair::from_pkcs1(pkcs1).unwrap();
         assert_ne!(
-            RsaKeyPair::from_pkcs8(pkcs8).unwrap().to_spki().as_ref(),
-            pkcs1.to_spki().as_ref(),
+            RsaKeyPair::from_pkcs8(pkcs8)
+                .unwrap()
+                .public_key()
+                .to_spki()
+                .as_ref(),
+            pkcs1.public_key().to_spki().as_ref(),
         );
         [pkcs8.to_vec(), pkcs1.to_pkcs8().as_ref().to_vec()]
     })
@@ -110,14 +112,14 @@ fn rsa_keys() -> impl Iterator<Item = [Vec<u8>; 2]> {
 
 #[test]
 fn rsa() {
-    use rind::signature::{RsaKeyPair, sign};
+    use rind::rsa::{KeyPair as RsaKeyPair, sign};
     for pkcs8 in rsa_keys() {
         independent("RSA load", pkcs8.clone(), |der| {
             RsaKeyPair::from_pkcs8(der).unwrap()
         });
         let keys = pkcs8.map(|der| RsaKeyPair::from_pkcs8(&der).unwrap());
         independent("RSA export", keys.each_ref(), |key| key.to_pkcs8());
-        for algorithm in [&sign::RSA_PKCS1_SHA256, &sign::RSA_PSS_SHA256] {
+        for algorithm in [&sign::PKCS1_SHA256, &sign::PSS_SHA256] {
             independent("RSA signing", keys.each_ref(), |key| {
                 key.sign(algorithm, b"message").unwrap()
             });
@@ -142,8 +144,8 @@ fn rsa_oaep() {
 
 #[test]
 fn rsa_generate() {
+    use rind::rsa::KeyPair as RsaKeyPair;
     use rind::rsa::KeySize;
-    use rind::signature::RsaKeyPair;
     if std::env::var_os("SLOW_TESTS").is_none() {
         return;
     }
@@ -155,11 +157,11 @@ fn rsa_generate() {
 
 #[test]
 fn ecdsa() {
-    use rind::signature::{EcdsaKeyPair, sign};
+    use rind::ecdsa::{KeyPair as EcdsaKeyPair, sign};
     for algorithm in [
-        &sign::ECDSA_P256_SHA256_ASN1,
-        &sign::ECDSA_P384_SHA384_ASN1,
-        &sign::ECDSA_P521_SHA512_ASN1,
+        &sign::P256_SHA256_ASN1,
+        &sign::P384_SHA384_ASN1,
+        &sign::P521_SHA512_ASN1,
     ] {
         zeroed("ECDSA key generation", || {
             EcdsaKeyPair::generate(algorithm).unwrap()
@@ -181,7 +183,7 @@ fn ecdsa() {
 
 #[test]
 fn ed25519() {
-    use rind::signature::Ed25519KeyPair;
+    use rind::ed25519::KeyPair as Ed25519KeyPair;
     zeroed("Ed25519 key generation", || {
         Ed25519KeyPair::generate().unwrap()
     });
@@ -201,17 +203,26 @@ fn ed25519() {
 
 #[test]
 fn ml_dsa() {
-    use aws_lc_rs::signature::{ML_DSA_44_SIGNING, ML_DSA_65_SIGNING, ML_DSA_87_SIGNING};
-    use rind::signature::sign::{MlDsa44, MlDsa65, MlDsa87};
-    ml_dsa_set::<MlDsa44>(&ML_DSA_44_SIGNING);
-    ml_dsa_set::<MlDsa65>(&ML_DSA_65_SIGNING);
-    ml_dsa_set::<MlDsa87>(&ML_DSA_87_SIGNING);
+    use rind::ml_dsa::{MlDsa44, MlDsa65, MlDsa87};
+    ml_dsa_set::<MlDsa44>();
+    ml_dsa_set::<MlDsa65>();
+    ml_dsa_set::<MlDsa87>();
 }
 
-fn ml_dsa_set<P: rind::signature::sign::MlDsaParameterSet>(
-    theirs: &'static aws_lc_rs::signature::PqdsaSigningAlgorithm,
-) {
-    use rind::signature::sign::MlDsaKeyPair;
+/// The expanded-form load, whose key aws-lc-rs expands, so builds without
+/// aws-lc (Miri, wasm) leave it out.
+#[test]
+#[cfg(not(any(miri, target_family = "wasm")))]
+fn ml_dsa_expanded() {
+    use aws_lc_rs::signature::{ML_DSA_44_SIGNING, ML_DSA_65_SIGNING, ML_DSA_87_SIGNING};
+    use rind::ml_dsa::{MlDsa44, MlDsa65, MlDsa87};
+    ml_dsa_expanded_set::<MlDsa44>(&ML_DSA_44_SIGNING);
+    ml_dsa_expanded_set::<MlDsa65>(&ML_DSA_65_SIGNING);
+    ml_dsa_expanded_set::<MlDsa87>(&ML_DSA_87_SIGNING);
+}
+
+fn ml_dsa_set<P: rind::ml_dsa::ParameterSet>() {
+    use rind::ml_dsa::KeyPair as MlDsaKeyPair;
     zeroed("ML-DSA key generation", || {
         MlDsaKeyPair::<P>::generate().unwrap()
     });
@@ -219,13 +230,12 @@ fn ml_dsa_set<P: rind::signature::sign::MlDsaParameterSet>(
     independent("ML-DSA seed load", seeds, |seed| {
         MlDsaKeyPair::<P>::from_seed(seed).unwrap()
     });
+    // A key pair's expansion is as good as its key, so its drop wipes it.
+    independent("ML-DSA key pair drop", seeds, |seed| {
+        drop(MlDsaKeyPair::<P>::from_seed(seed).unwrap())
+    });
     let keys = seeds.map(|seed| MlDsaKeyPair::<P>::from_seed(&seed).unwrap());
     independent("ML-DSA export", keys.each_ref(), |key| key.to_pkcs8());
-    // The expanded form, whose load checks the key.
-    let expanded = seeds.map(|seed| ml_dsa_expanded_pkcs8(theirs, &seed));
-    independent("ML-DSA expanded load", expanded, |der| {
-        MlDsaKeyPair::<P>::from_pkcs8(der).unwrap()
-    });
     // Signing is hedged, so even under one key its randomness varies: every
     // block it frees must be wiped.
     for key in &keys {
@@ -233,8 +243,67 @@ fn ml_dsa_set<P: rind::signature::sign::MlDsaParameterSet>(
     }
 }
 
+#[test]
+fn slh_dsa() {
+    use rind::slh_dsa::{SlhDsaSha2_128f, SlhDsaShake128f};
+    slh_dsa_set::<SlhDsaSha2_128f>();
+    slh_dsa_set::<SlhDsaShake128f>();
+}
+
+fn slh_dsa_set<P: rind::slh_dsa::ParameterSet>() {
+    use rind::slh_dsa::KeyPair;
+    zeroed("SLH-DSA key generation", || {
+        KeyPair::<P>::generate().unwrap()
+    });
+    let keys = [(); 2].map(|()| KeyPair::<P>::generate().unwrap());
+    independent("SLH-DSA export", keys.each_ref(), |key| key.to_pkcs8());
+    let pkcs8 = keys.each_ref().map(|key| key.to_pkcs8().as_ref().to_vec());
+    // Loading checks the key by making it again.
+    independent("SLH-DSA load", pkcs8, |der| {
+        KeyPair::<P>::from_pkcs8(der).unwrap()
+    });
+    // Signing is randomized, so even under one key it varies: every block
+    // it frees must be wiped.
+    for key in &keys {
+        zeroed("SLH-DSA signing", || key.sign(b"message").unwrap());
+    }
+}
+
+/// The expanded form, whose load checks the key.
+#[cfg(not(any(miri, target_family = "wasm")))]
+fn ml_dsa_expanded_set<P: rind::ml_dsa::ParameterSet>(
+    theirs: &'static aws_lc_rs::signature::PqdsaSigningAlgorithm,
+) {
+    use rind::ml_dsa::KeyPair as MlDsaKeyPair;
+    let seeds = [[1u8; 32], [2u8; 32]];
+    let expanded = seeds.map(|seed| ml_dsa_expanded_pkcs8(theirs, &seed));
+    independent("ML-DSA expanded load", expanded, |der| {
+        drop(MlDsaKeyPair::<P>::from_pkcs8(der).unwrap())
+    });
+}
+
+/// Argon2id's memory is as good as the password to an attacker, who could
+/// finish the hash from it without paying for the memory.
+#[test]
+fn argon2() {
+    let params = rind::argon2::Params::new(32, 2, 2).unwrap();
+    independent(
+        "Argon2id",
+        [*b"password one", *b"password two"],
+        |password| {
+            // The secret keeps its password on the heap.
+            let secret = rind::argon2::Secret::new(password);
+            let mut out = [0u8; 32];
+            secret.derive(params, b"saltsalt", &mut out).unwrap();
+            // Verifying derives its key on the heap.
+            black_box(secret.verify(params, b"saltsalt", &out).is_ok())
+        },
+    );
+}
+
 /// The key `seed` expands to, as PKCS#8 in RFC 9881's expanded form, which
 /// rind writes only for a key loaded from it, so aws-lc-rs expands it.
+#[cfg(not(any(miri, target_family = "wasm")))]
 fn ml_dsa_expanded_pkcs8(
     algorithm: &'static aws_lc_rs::signature::PqdsaSigningAlgorithm,
     seed: &[u8; 32],
@@ -252,6 +321,7 @@ fn ml_dsa_expanded_pkcs8(
 }
 
 /// A DER element of `tag` holding `body`, under 64 KiB.
+#[cfg(not(any(miri, target_family = "wasm")))]
 fn der(tag: u8, body: &[u8]) -> Vec<u8> {
     let len = match body.len() {
         len @ 0..=0x7f => vec![len as u8],
@@ -285,17 +355,77 @@ fn ecdh() {
 }
 
 #[test]
-fn mlkem768() {
-    use rind::kem::{DecapsulationKey, ML_KEM_768};
-    zeroed("ML-KEM key generation", || {
-        DecapsulationKey::generate(&ML_KEM_768).unwrap()
+fn spake2plus() {
+    use rind::spake2plus::{ProverSecrets, RFC9383, Session, VerifierRecord};
+    // SPAKE2+ allocates nothing today; this holds it to wiping if it starts
+    // to. A handshake's heap scratch would derive from the password or the
+    // ephemeral scalars, so a block freed unwiped differs between the runs
+    // and fails, even one only the randomness reached.
+    //
+    // Varying only `w0` misses scratch that depends on `w1` alone, including
+    // `L = w1*G`. Each constructor is run both ways. The handshake's two runs
+    // use different pairs, so scratch from either scalar differs.
+    let w0s = [[0x11u8; 40], [0x22u8; 40]];
+    let w1s = [[0x33u8; 40], [0x44u8; 40]];
+    independent("SPAKE2+ prover w0", w0s, |w0| {
+        ProverSecrets::new(w0, &[0x33; 40]).unwrap()
     });
-    let keys = [(); 2].map(|()| {
-        let key = DecapsulationKey::generate(&ML_KEM_768).unwrap();
-        let (ciphertext, _) = key.public_key().encapsulate().unwrap();
-        (key, ciphertext)
+    independent("SPAKE2+ prover w1", w1s, |w1| {
+        ProverSecrets::new(&[0x11; 40], w1).unwrap()
     });
-    independent("ML-KEM decapsulation", keys, |(key, ciphertext)| {
-        key.decapsulate(ciphertext.as_ref()).unwrap()
+    independent("SPAKE2+ verifier w0", w0s, |w0| {
+        VerifierRecord::from_w1(w0, &[0x33; 40]).unwrap()
     });
+    independent("SPAKE2+ verifier w1", w1s, |w1| {
+        VerifierRecord::from_w1(&[0x11; 40], w1).unwrap()
+    });
+    let handshakes = [(w0s[0], w1s[0]), (w0s[1], w1s[1])];
+    independent("SPAKE2+ handshake", handshakes, |(w0, w1)| {
+        let prover = ProverSecrets::new(w0, w1).unwrap();
+        let record = VerifierRecord::from_w1(w0, w1).unwrap();
+        let (share_p, prover) = prover
+            .start(
+                &RFC9383,
+                &Session {
+                    context: b"ctx",
+                    id_prover: b"a",
+                    id_verifier: b"b",
+                },
+            )
+            .unwrap();
+        let (share_v, confirm_v, verifier) = record
+            .start(
+                &RFC9383,
+                &Session {
+                    context: b"ctx",
+                    id_prover: b"a",
+                    id_verifier: b"b",
+                },
+                &share_p,
+            )
+            .unwrap();
+        let (confirm_p, key) = prover.finish(&share_v, &confirm_v).unwrap();
+        (key, verifier.finish(&confirm_p).unwrap())
+    });
+}
+
+#[test]
+fn mlkem() {
+    use rind::kem::{Algorithm, DecapsulationKey, MlKem512, MlKem768, MlKem1024};
+    fn check<A: Algorithm>() {
+        zeroed("ML-KEM key generation", || {
+            DecapsulationKey::<A>::generate().unwrap()
+        });
+        let keys = [(); 2].map(|()| {
+            let key = DecapsulationKey::<A>::generate().unwrap();
+            let (ciphertext, _) = key.public_key().encapsulate().unwrap();
+            (key, ciphertext)
+        });
+        independent("ML-KEM decapsulation", keys, |(key, ciphertext)| {
+            key.decapsulate(ciphertext)
+        });
+    }
+    check::<MlKem512>();
+    check::<MlKem768>();
+    check::<MlKem1024>();
 }

@@ -1,7 +1,7 @@
 //! <h1 align="center">rind-ring</h1>
-//! <img width="40%" align="right" src="https://raw.githubusercontent.com/moq-dev/rind/main/admin/logo.png">
+//! <img width="40%" align="right" src="https://raw.githubusercontent.com/kixel-ai/rind/main/admin/logo.png">
 //!
-//! This crate offers [ring](https://github.com/briansmith/ring) 0.17's API, name for name, backed by [rind](https://github.com/moq-dev/rind/), a fork of [Graviola](https://github.com/ctz/graviola/).
+//! This crate offers [ring](https://github.com/briansmith/ring) 0.17's API, name for name, backed by [rind](https://github.com/kixel-ai/rind/), a fork of [Graviola](https://github.com/ctz/graviola/).
 //! A crate on ring swaps it in by renaming its dependency, with no code
 //! changes:
 //!
@@ -10,7 +10,8 @@
 //! ring = { package = "rind-ring", version = "0.17" }
 //! ```
 //!
-//! Every ring feature is accepted and changes nothing.
+//! Every ring feature is accepted. As in ring, `alloc` gates RSA and `std` the
+//! errors' `std::error::Error` impls; the rest change nothing.
 //!
 //! The rename reaches only the crate that makes it. A binary moves every crate
 //! in its tree on ring 0.17 to rind, including dependencies that name ring such
@@ -19,11 +20,11 @@
 //!
 //! ```toml
 //! [patch.crates-io]
-//! ring = { git = "https://github.com/moq-dev/rind-patch" }
+//! ring = { git = "https://github.com/kixel-ai/rind-patch" }
 //! ```
 //!
 //! Cargo builds the crate named `ring` in
-//! [rind-patch](https://github.com/moq-dev/rind-patch), a small repository of
+//! [rind-patch](https://github.com/kixel-ai/rind-patch), a small repository of
 //! its own, which re-exports rind-ring and accepts every ring feature.
 //! crates.io has the name, so that crate is never published. Its version, 0.17.999, meets every ring
 //! 0.17 requirement. Where the patch is not used, such as for an exact
@@ -56,6 +57,8 @@
 //!   [`rand::SystemRandom`], the only `SecureRandom`, does.
 //! - An Ed25519 public key of small order verifies no signature, where
 //!   ring verifies some that nobody made on it.
+//! - A secret or private key wipes its memory on drop, which ring never
+//!   does; a public key on its own is not wiped.
 //! - A [`error::KeyRejected`]'s `Display` gives rind's reason, not ring's
 //!   name for it, which ring documents as changing between releases.
 
@@ -78,6 +81,7 @@ pub mod hmac;
 pub mod pbkdf2;
 pub mod pkcs8;
 pub mod rand;
+#[cfg(feature = "alloc")]
 pub mod rsa;
 pub mod signature;
 

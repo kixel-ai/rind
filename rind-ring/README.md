@@ -1,10 +1,10 @@
 <h1 align="center">rind-ring</h1>
-<img width="40%" align="right" src="https://raw.githubusercontent.com/moq-dev/rind/main/admin/logo.png">
+<img width="40%" align="right" src="https://raw.githubusercontent.com/kixel-ai/rind/main/admin/logo.png">
 
 [![Latest release](https://img.shields.io/crates/v/rind-ring)](https://crates.io/crates/rind-ring)
 [![Documentation](https://img.shields.io/docsrs/rind-ring)](https://docs.rs/rind-ring/)
 
-This crate offers [ring](https://github.com/briansmith/ring) 0.17's API, name for name, backed by [rind](https://github.com/moq-dev/rind/), a fork of [Graviola](https://github.com/ctz/graviola/).
+This crate offers [ring](https://github.com/briansmith/ring) 0.17's API, name for name, backed by [rind](https://github.com/kixel-ai/rind/), a fork of [Graviola](https://github.com/ctz/graviola/).
 A crate on ring swaps it in by renaming its dependency, with no code
 changes:
 
@@ -13,7 +13,10 @@ changes:
 ring = { package = "rind-ring", version = "0.17" }
 ```
 
-Every ring feature is accepted and changes nothing.
+Every ring feature is accepted. As in ring, `alloc` gates RSA, `std` the
+errors' `std::error::Error` impls, and `wasm32_unknown_unknown_js` the
+browser's random source (see [WebAssembly](#webassembly)); the rest change
+nothing.
 
 The rename reaches only the crate that makes it. A binary moves every crate
 in its tree on ring 0.17 to rind, including dependencies that name ring such
@@ -22,11 +25,11 @@ workspace's root `Cargo.toml` and then running `cargo update -p ring`:
 
 ```toml
 [patch.crates-io]
-ring = { git = "https://github.com/moq-dev/rind-patch" }
+ring = { git = "https://github.com/kixel-ai/rind-patch" }
 ```
 
 Cargo builds the crate named `ring` in
-[rind-patch](https://github.com/moq-dev/rind-patch), a small repository of
+[rind-patch](https://github.com/kixel-ai/rind-patch), a small repository of
 its own, which re-exports rind-ring and accepts every ring feature.
 crates.io has the name, so that crate is never published. Its version, 0.17.999, meets every ring
 0.17 requirement. Where the patch is not used, such as for an exact
@@ -41,6 +44,8 @@ output over (2^32 - 1) hash outputs, so its signatures match ring's
 exactly (maintainer, 2026-10-31). rind itself never panics on caller
 input.
 
+## What rind cannot back
+
 These items are not offered, so code using them, in a patched dependency
 too, fails to build:
 
@@ -51,15 +56,28 @@ too, fails to build:
 - `io`, `test`, `deprecated_test`, and `test_file!`: ring's DER reader and
   test harness, which are no cryptography. `test::rand`'s fixed random
   sources could not work, since rind draws its own randomness.
+- `signature::RsaEncoding::encode`: ring's hidden, deprecated internal
+  method, which takes a type callers cannot name.
 
-And these behave differently:
+## Behaves differently
+
 
 - Where ring takes a `rand::SecureRandom` to generate a key or sign,
   rind draws from the system random source itself, as
   `rand::SystemRandom`, the only `SecureRandom`, does.
 - An Ed25519 public key of small order verifies no signature, where
   ring verifies some that nobody made on it.
+- A secret or private key wipes its memory on drop, which ring never
+  does; a public key on its own is not wiped.
 - A `error::KeyRejected`'s `Display` gives rind's reason, not ring's
   name for it, which ring documents as changing between releases.
+
+## WebAssembly
+
+rind-ring builds for `wasm32-wasip2`, where CI runs its tests under wasmtime,
+and for `wasm32-unknown-unknown`, the browser, where its
+`wasm32_unknown_unknown_js` feature takes the JavaScript random source, as
+ring's does. Neither needs the C compiler targeting wasm that ring needs.
+rind's constant-time checks do not cover wasm; [PLATFORMS.md](https://github.com/kixel-ai/rind/blob/main/PLATFORMS.md) says why.
 
 License: Apache-2.0 OR ISC OR MIT-0

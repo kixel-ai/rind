@@ -2,13 +2,14 @@ module
 public import Aeneas
 public import Rind.X86_64.Types
 public import Rind.X86_64.AesGcmModel
+public import Rind.X86_64.PointSelectModel
 @[expose] public section
 open Aeneas Aeneas.Std Result
 set_option linter.dupNamespace false
 
 /-!
 The rind functions the x86_64 translation leaves opaque, beside those
-`Rind.X86_64.AesGcmModel` models. No proof assumes anything about them beyond what
+`Rind.X86_64.AesGcmModel` and `Rind.X86_64.PointSelectModel` model. No proof assumes anything about them beyond what
 `Rind.X86_64.S2nBignum`, `Rind.X86_64.AwsLc`, and `Rind.X86_64.ValeAesGcm`
 state for s2n-bignum's, aws-lc's, and Vale's routines, what
 `Rind.X86_64.CtEqual` states for the constant-time compares, and what each theorem
@@ -111,6 +112,48 @@ opaque low.x86_64.aes_nohw.NohwKey.decrypt_block
 opaque low.x86_64.aes_nohw.NohwKey.encrypt_block
   : low.x86_64.aes_nohw.NohwKey → Std.Array Std.U8 16#usize → Result (Std.Array Std.U8 16#usize)
 
+opaque low.x86_64.aes_nohw.NohwKey.ctr32
+  : low.x86_64.aes_nohw.NohwKey → Std.Array Std.U8 16#usize → Slice (Std.Array Std.U8 16#usize) →
+    Result (Slice (Std.Array Std.U8 16#usize))
+
+opaque low.x86_64.aes_nohw.NohwKey.cbc_encrypt
+  : low.x86_64.aes_nohw.NohwKey → Std.Array Std.U8 16#usize → Slice (Std.Array Std.U8 16#usize) →
+    Result (Slice (Std.Array Std.U8 16#usize))
+
+opaque low.x86_64.aes_nohw.NohwKey.cbc_decrypt
+  : low.x86_64.aes_nohw.NohwKey → Std.Array Std.U8 16#usize → Slice (Std.Array Std.U8 16#usize) →
+    Result (Slice (Std.Array Std.U8 16#usize))
+
+opaque low.x86_64.vpaes_x86_64.VpaesKey.ctr32
+  : low.x86_64.vpaes_x86_64.VpaesKey → Std.Array Std.U8 16#usize → Slice (Std.Array Std.U8 16#usize) →
+    Result (Slice (Std.Array Std.U8 16#usize))
+
+opaque low.x86_64.vpaes_x86_64.VpaesKey.cbc_encrypt
+  : low.x86_64.vpaes_x86_64.VpaesKey → Std.Array Std.U8 16#usize → Slice (Std.Array Std.U8 16#usize) →
+    Result (Slice (Std.Array Std.U8 16#usize))
+
+opaque low.x86_64.vpaes_x86_64.VpaesDecKey.cbc_decrypt
+  : low.x86_64.vpaes_x86_64.VpaesDecKey → Std.Array Std.U8 16#usize → Slice (Std.Array Std.U8 16#usize) →
+    Result (Slice (Std.Array Std.U8 16#usize))
+
+/-- aws-lc's AES-NI CTR32 routine on whole blocks; `Rind.X86_64.AesModesLow`
+assumes its pending HOL Light theorem. -/
+opaque low.x86_64.aes_ctr.hw_ctr32
+  : low.x86_64.aes.HwKey → Std.Array Std.U8 16#usize → Slice (Std.Array Std.U8 16#usize) →
+    Result (Slice (Std.Array Std.U8 16#usize))
+
+/-- aws-lc's AES-NI CBC routine, encrypting; `Rind.X86_64.AesModesLow` restates
+its HOL Light theorem. -/
+opaque low.x86_64.aes_cbc.hw_encrypt
+  : low.x86_64.aes.HwKey → Std.Array Std.U8 16#usize → Slice (Std.Array Std.U8 16#usize) →
+    Result (Slice (Std.Array Std.U8 16#usize))
+
+/-- aws-lc's AES-NI CBC routine, decrypting; `Rind.X86_64.AesModesLow` assumes
+its pending HOL Light theorem. -/
+opaque low.x86_64.aes_cbc.hw_decrypt
+  : low.x86_64.aes.HwDecKey → Std.Array Std.U8 16#usize → Slice (Std.Array Std.U8 16#usize) →
+    Result (Slice (Std.Array Std.U8 16#usize))
+
 opaque low.x86_64.ghash_ssse3_x86_64.Ssse3Table.new
   : Std.Array Std.U8 16#usize → low.x86_64.cpu.HaveSsse3 → Result low.x86_64.ghash_ssse3_x86_64.Ssse3Table
 
@@ -119,9 +162,6 @@ opaque low.x86_64.ghash_nohw.NohwTable.new
 
 opaque low.x86_64.ghash.ClmulTable.from_powers
   : Slice core.core_arch.x86.__m128i → low.x86_64.cpu.HaveAesHardware → Result low.x86_64.ghash.ClmulTable
-
-opaque low.x86_64.aes_gcm_vaes.VaesKernel.powers
-  : low.x86_64.aes_gcm_vaes.VaesKernel → Result (Slice core.core_arch.x86.__m128i)
 
 opaque low.x86_64.aes_gcm_vaes.VaesKernel.avx512
   : Std.U128 → low.x86_64.cpu.HaveAvx512ForAesGcm → Result low.x86_64.aes_gcm_vaes.VaesKernel
@@ -163,11 +203,6 @@ opaque low.x86_64.edwards25519_scalarmulbase.edwards25519_scalarmulbase
   Array Std.U64 8#usize → Array Std.U64 4#usize → Result (Array Std.U64
     8#usize)
 
-opaque low.x86_64.edwards25519_scalarmuldouble.edwards25519_scalarmuldouble
-  :
-  Array Std.U64 8#usize → Array Std.U64 4#usize → Array Std.U64 8#usize →
-    Array Std.U64 4#usize → Result (Array Std.U64 8#usize)
-
 opaque low.x86_64.bignum_madd_n25519.bignum_madd_n25519
   :
   Array Std.U64 4#usize → Array Std.U64 4#usize → Array Std.U64 4#usize →
@@ -182,16 +217,6 @@ opaque low.x86_64.edwards25519_scalarmulbase_alt.edwards25519_scalarmulbase_alt
   :
   Array Std.U64 8#usize → Array Std.U64 4#usize → Result (Array Std.U64
     8#usize)
-
-opaque low.x86_64.edwards25519_scalarmuldouble_alt.edwards25519_scalarmuldouble_alt
-  :
-  Array Std.U64 8#usize → Array Std.U64 4#usize → Array Std.U64 8#usize →
-    Array Std.U64 4#usize → Result (Array Std.U64 8#usize)
-
-opaque low.x86_64.edwards25519_scalarmuldouble_avx2.edwards25519_scalarmuldouble
-  :
-  Array Std.U64 8#usize → Array Std.U64 4#usize → Array Std.U64 8#usize →
-    Array Std.U64 4#usize → low.x86_64.cpu.HaveAvx2 → Result (Array Std.U64 8#usize)
 
 opaque low.x86_64.bignum_madd_n25519_alt.bignum_madd_n25519_alt
   :
@@ -208,6 +233,20 @@ opaque low.x86_64.bignum_neg_p25519.bignum_neg_p25519
 
 opaque low.x86_64.bignum_cmp_lt.bignum_cmp_lt
   : Slice Std.U64 → Slice Std.U64 → Result Std.U64
+
+/-! Ed25519 verification's half-size check, which no theorem covers yet:
+the multi-scalar multiplication's dispatch and the field product it needs. -/
+
+opaque low.x86_64.adx_mux.edwards25519_msm
+  :
+  Array Std.U64 12#usize → Array Std.U64 4#usize → Array (Array Std.U64
+    4#usize) 2#usize → Array (Array Std.U64 16#usize) 2#usize → Result
+    (Array Std.U64 12#usize)
+
+opaque low.x86_64.adx_mux.bignum_mul_p25519
+  :
+  Array Std.U64 4#usize → Array Std.U64 4#usize → Array Std.U64 4#usize →
+    Result (Array Std.U64 4#usize)
 
 /-! The wipe a drop runs, which no theorem calls. -/
 
@@ -235,7 +274,44 @@ opaque low.x86_64.sha512.path : Result low.x86_64.sha512.Path
 opaque low.x86_64.cpu.HaveBmi2Adx.check
   : Result (Option low.x86_64.cpu.HaveBmi2Adx)
 
+/-- Whether the CPU runs pyca/verified-garbage's AVX-512 IFMA public
+operation for a key's modulus and exponent, and that operation, which the
+proofs of RSA verification take as not running. -/
+opaque low.x86_64.rsa_ifma.RsaIfma.check
+  {N : Std.Usize} : low.posint.PosInt N → Std.U64 → Result (Option low.x86_64.rsa_ifma.RsaIfma)
+
+opaque mid.rsa_pub.RsaPublicKey.public_op_ifma
+  : mid.rsa_pub.RsaPublicKey → low.x86_64.rsa_ifma.RsaIfma → low.posint.PosInt 128#usize →
+    Result (core.result.Result (low.posint.PosInt 128#usize) error.Error)
+
 opaque low.x86_64.cpu.HaveAvx2.check : Result (Option low.x86_64.cpu.HaveAvx2)
+
+/-! The table selects, over `Rind.X86_64.PointSelectModel`'s model of
+`select_avx2` and `select_sse2`, which quotes them. -/
+
+/-- `bignum_aff_point_select_p256`. -/
+def low.x86_64.bignum_point_select.bignum_aff_point_select_p256 (z : Array Std.U64 8#usize)
+    (table : Slice Std.U64) (index : Std.U8) : Result (Array Std.U64 8#usize) := do
+  let o ← low.x86_64.cpu.HaveAvx2.check
+  match o with
+  | some token => low.x86_64.bignum_point_select.select_avx2 8#usize 2 z table index token
+  | none => low.x86_64.bignum_point_select.select_sse2 8#usize 4 z table index
+
+/-- `bignum_aff_point_select_p384`. -/
+def low.x86_64.bignum_point_select.bignum_aff_point_select_p384 (z : Array Std.U64 12#usize)
+    (table : Slice Std.U64) (index : Std.U8) : Result (Array Std.U64 12#usize) := do
+  let o ← low.x86_64.cpu.HaveAvx2.check
+  match o with
+  | some token => low.x86_64.bignum_point_select.select_avx2 12#usize 3 z table index token
+  | none => low.x86_64.bignum_point_select.select_sse2 12#usize 6 z table index
+
+/-- `bignum_aff_point_select_p521`. -/
+def low.x86_64.bignum_point_select.bignum_aff_point_select_p521 (z : Array Std.U64 18#usize)
+    (table : Slice Std.U64) (index : Std.U8) : Result (Array Std.U64 18#usize) := do
+  let o ← low.x86_64.cpu.HaveAvx2.check
+  match o with
+  | some token => low.x86_64.bignum_point_select.select_avx2 18#usize 4 z table index token
+  | none => low.x86_64.bignum_point_select.select_sse2 18#usize 9 z table index
 
 opaque low.x86_64.cpu.HaveAesHardware.check : Result (Option low.x86_64.cpu.HaveAesHardware)
 
@@ -260,9 +336,10 @@ opaque low.x86_64.sha1_mux.path : Result low.x86_64.sha1_mux.Path
 
 opaque low.x86_64.sha256_mux.path : Result low.x86_64.sha256_mux.Path
 
-/-! SHA-1 and SHA-256's block and finishing functions, whose contracts `Rind.X86_64.ShaBlocks`
-states as hypotheses. SHA-1's block function is its whole dispatch, which `Sha1Blocks` states
-as one. -/
+/-! SHA-1 and SHA-256's block and finishing functions. `Rind.X86_64.ShaBlocks` states SHA-1's
+contracts as hypotheses, and `Rind.X86_64.Sha256Shaext` SHA-256's as axioms restating their
+HOL Light proofs. SHA-1's block function is its whole dispatch, which `Sha1Blocks` states as
+one. `finish_padded` is `sha256_finish_shaext`'s `asm!` block, below its padding. -/
 
 opaque low.x86_64.sha1_mux.sha1_compress_blocks
   : Array Std.U32 5#usize → Slice Std.U8 → Result (Array Std.U32 5#usize)
@@ -275,8 +352,8 @@ opaque low.x86_64.sha256.sha256_compress_blocks_shaext
   : Array Std.U32 8#usize → Slice Std.U8 → low.x86_64.cpu.HaveSha256 →
     Result (Array Std.U32 8#usize)
 
-opaque low.x86_64.sha256.sha256_finish_shaext
-  : Array Std.U32 8#usize → Slice Std.U8 → Array Std.U8 8#usize → low.x86_64.cpu.HaveSha256 →
+opaque low.x86_64.sha256.finish_padded
+  : Array Std.U32 8#usize → Slice Std.U8 → low.x86_64.sha256.Padded → low.x86_64.cpu.HaveSha256 →
     Result (Array Std.U8 32#usize)
 
 opaque low.x86_64.sha256.sha256_compress_blocks_avx
@@ -292,7 +369,7 @@ opaque low.x86_64.sha256.sha256_compress_blocks_ssse3
 opaque low.x86_64.sha256.sha256_compress_blocks_nohw
   : Array Std.U32 8#usize → Slice Std.U8 → Result (Array Std.U32 8#usize)
 
-/-! P-384's s2n-bignum routines, its table select, and `bignum_mux`. -/
+/-! P-384's s2n-bignum routines and `bignum_mux`. -/
 
 opaque low.x86_64.bignum_add_p384.bignum_add_p384
   :
@@ -343,11 +420,6 @@ opaque low.x86_64.bignum_neg_p384.bignum_neg_p384
   :
   Array Std.U64 6#usize → Array Std.U64 6#usize → Result (Array Std.U64
     6#usize)
-
-opaque low.x86_64.bignum_point_select.bignum_aff_point_select_p384
-  :
-  Array Std.U64 12#usize → Slice Std.U64 → Std.U8 → Result (Array Std.U64
-    12#usize)
 
 opaque low.x86_64.bignum_tomont_p384.bignum_tomont_p384
   :
@@ -400,11 +472,31 @@ opaque low.x86_64.bignum_mod_n384.bignum_mod_n384
   Array Std.U64 6#usize → Array Std.U64 6#usize → Result (Array Std.U64
     6#usize)
 
+opaque low.x86_64.p384_montjadd.p384_montjadd
+  :
+  Array Std.U64 18#usize → Array Std.U64 18#usize → Array Std.U64 18#usize
+    → Result (Array Std.U64 18#usize)
+
+opaque low.x86_64.p384_montjadd_alt.p384_montjadd_alt
+  :
+  Array Std.U64 18#usize → Array Std.U64 18#usize → Array Std.U64 18#usize
+    → Result (Array Std.U64 18#usize)
+
 opaque high.curve.P256.Insts.RindHighCurveCurveStaticPrivateKeyVerifyingKeyScalar.oid
   : Result high.asn1.ObjectId
 
+/-- P-256's ECDSA key generation, which the signing theorems model. -/
+opaque high.curve.P256.Insts.RindHighCurveCurveStaticPrivateKeyVerifyingKeyScalar.generate_random_key
+  {T0 : Type _} (midrngRandomSourceInst : mid.rng.RandomSource T0) :
+  T0 → Result ((core.result.Result mid.p256.StaticPrivateKey error.Error) × T0)
+
 opaque high.curve.P384.Insts.RindHighCurveCurveStaticPrivateKeyVerifyingKeyScalar.oid
   : Result high.asn1.ObjectId
+
+/-- P-384's ECDSA key generation, which the signing theorems model. -/
+opaque high.curve.P384.Insts.RindHighCurveCurveStaticPrivateKeyVerifyingKeyScalar.generate_random_key
+  {T0 : Type _} (midrngRandomSourceInst : mid.rng.RandomSource T0) :
+  T0 → Result ((core.result.Result mid.p384.StaticPrivateKey error.Error) × T0)
 
 /-! P-256's s2n-bignum routines. -/
 
@@ -454,11 +546,97 @@ opaque low.x86_64.p256_scalarmul_alt.p256_scalarmul_alt
   Array Std.U64 8#usize → Array Std.U64 4#usize → Array Std.U64 8#usize →
     Result (Array Std.U64 8#usize)
 
-/-! P-256's generator multiplication, aws-lc's on x86_64, which no proof
-covers yet. -/
+opaque low.x86_64.bignum_inv_p256.bignum_inv_p256
+  : Array Std.U64 4#usize → Array Std.U64 4#usize → Result (Array Std.U64 4#usize)
 
-opaque mid.p256.AffineMontPoint.base_multiply
-  : mid.p256.Scalar → Result mid.p256.AffineMontPoint
+opaque low.x86_64.bignum_neg_p256.bignum_neg_p256
+  : Array Std.U64 4#usize → Array Std.U64 4#usize → Result (Array Std.U64 4#usize)
+
+opaque low.x86_64.p256_montjadd.p256_montjadd
+  :
+  Array Std.U64 12#usize → Array Std.U64 12#usize → Array Std.U64 12#usize
+    → Result (Array Std.U64 12#usize)
+
+opaque low.x86_64.p256_montjadd_alt.p256_montjadd_alt
+  :
+  Array Std.U64 12#usize → Array Std.U64 12#usize → Array Std.U64 12#usize
+    → Result (Array Std.U64 12#usize)
+
+opaque low.x86_64.p256_montjdouble.p256_montjdouble
+  : Array Std.U64 12#usize → Array Std.U64 12#usize → Result (Array Std.U64 12#usize)
+
+opaque low.x86_64.p256_montjdouble_alt.p256_montjdouble_alt
+  : Array Std.U64 12#usize → Array Std.U64 12#usize → Result (Array Std.U64 12#usize)
+
+opaque low.x86_64.p256_montjmixadd.p256_montjmixadd
+  :
+  Array Std.U64 12#usize → Array Std.U64 12#usize → Array Std.U64 8#usize
+    → Result (Array Std.U64 12#usize)
+
+opaque low.x86_64.p256_montjmixadd_alt.p256_montjmixadd_alt
+  :
+  Array Std.U64 12#usize → Array Std.U64 12#usize → Array Std.U64 8#usize
+    → Result (Array Std.U64 12#usize)
+
+/-! ECDSA's scalar arithmetic mod n, s2n-bignum's generic routines. -/
+
+opaque low.x86_64.bignum_modadd.bignum_modadd
+  :
+  Slice Std.U64 → Slice Std.U64 → Slice Std.U64 → Slice Std.U64 →
+    Result (Slice Std.U64)
+
+opaque low.x86_64.bignum_demont.bignum_demont
+  : Slice Std.U64 → Slice Std.U64 → Slice Std.U64 → Result (Slice Std.U64)
+
+opaque low.x86_64.bignum_modinv.bignum_modinv
+  :
+  Slice Std.U64 → Slice Std.U64 → Slice Std.U64 → Slice Std.U64 →
+    Result ((Slice Std.U64) × (Slice Std.U64))
+
+/-! P-256's generator multiplication's mixed addition, aws-lc's. -/
+
+opaque low.x86_64.ecp_nistz256.p256_point_add_affine
+  : Array Std.U64 12#usize → Array Std.U64 8#usize → Result (Array Std.U64 12#usize)
+
+/-! The HMAC-DRBG an ECDSA signature draws its nonces from. -/
+
+opaque high.hmac_drbg.HmacDrbg.new
+  {H : Type _} {Clause0_Context : Type _} {Clause0_State : Type _}
+  (hashHashInst : high.hash.Hash H Clause0_Context Clause0_State) :
+  Slice Std.U8 → Slice Std.U8 → Slice Std.U8 →
+    Result (high.hmac_drbg.HmacDrbg H Clause0_Context Clause0_State)
+
+opaque high.hmac_drbg.HmacDrbg.Insts.RindMidRngRandomSource.fill
+  {H : Type _} {Clause0_Context : Type _} {Clause0_State : Type _}
+  (hashHashInst : high.hash.Hash H Clause0_Context Clause0_State) :
+  high.hmac_drbg.HmacDrbg H Clause0_Context Clause0_State → Slice Std.U8 →
+    Result ((core.result.Result Unit error.Error) × (high.hmac_drbg.HmacDrbg H
+    Clause0_Context Clause0_State) × (Slice Std.U8))
+
+/-! The verifying key's caches of P, ..., 15P and 17P, ..., 31P, and the
+signing key's of its encoded public key, which the ECDSA theorems take what
+they need of as a hypothesis. -/
+
+opaque low.generic.reuse_cache.ReuseCache.new
+  {T : Type _} (coredefaultDefaultInst : core.default.Default T) :
+  Result (low.generic.reuse_cache.ReuseCache T)
+
+opaque low.generic.reuse_cache.ReuseCache.get_or_build_now
+  {T : Type _} {T1 : Type _} (coremarkerCopyInst : core.marker.Copy T)
+  (coredefaultDefaultInst : core.default.Default T)
+  (coreopsfunctionFnOnceT1TupleTInst : core.ops.function.FnOnce T1 Unit T) :
+  low.generic.reuse_cache.ReuseCache T → T1 → Result T
+
+opaque low.generic.reuse_cache.ReuseCache.get_or_build
+  {T : Type _} {T1 : Type _} (coredefaultDefaultInst : core.default.Default T)
+  (coreopsfunctionFnOnceT1TupleTInst : core.ops.function.FnOnce T1 Unit T) :
+  low.generic.reuse_cache.ReuseCache T → T1 → Result (Option T)
+
+opaque low.generic.reuse_cache.ReuseCache.Insts.CoreCloneClone.clone
+  {T : Type _} (coremarkerCopyInst : core.marker.Copy T)
+  (coredefaultDefaultInst : core.default.Default T) :
+  low.generic.reuse_cache.ReuseCache T → Result
+    (low.generic.reuse_cache.ReuseCache T)
 
 /-! P-256's key generation, which draws through a `dyn RandomSource`:
 `Rind.X86_64.P256Dispatch` models it. -/
@@ -607,7 +785,12 @@ opaque low.x86_64.mont.sqr8x
 
 /-! RSA's DER parsing and encoding, which the ✓ leaves out. -/
 
-opaque high.rsa.der_components
+opaque high.rsa.pkcs1_components
+  :
+  Slice Std.U8 → Result (core.result.Result ((Slice Std.U8) × (Slice
+    Std.U8)) error.Error)
+
+opaque high.rsa.spki_components
   :
   Slice Std.U8 → Result (core.result.Result ((Slice Std.U8) × (Slice
     Std.U8)) error.Error)

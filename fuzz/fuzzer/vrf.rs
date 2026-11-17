@@ -16,8 +16,8 @@ mod edit;
 
 const ALGORITHMS: [&Algorithm; 2] = [&ECVRF_EDWARDS25519_SHA512_TAI, &ECVRF_P256_SHA256_TAI];
 
-static KEYS: LazyLock<[SecretKey; 2]> = LazyLock::new(|| {
-    ALGORITHMS.map(|algorithm| SecretKey::from_bytes(algorithm, &[0x42; 32]).unwrap())
+static KEYS: LazyLock<[KeyPair; 2]> = LazyLock::new(|| {
+    ALGORITHMS.map(|algorithm| KeyPair::from_seed(algorithm, &[0x42; 32]).unwrap())
 });
 
 #[derive(Arbitrary, Debug)]
@@ -32,7 +32,9 @@ struct Input {
 fuzz_target!(|input: Input| {
     let index = usize::from(input.algorithm % 2);
     let secret_key = &KEYS[index];
-    let (proof, output) = secret_key.prove(&input.alpha);
+    let (proof, output) = secret_key
+        .prove(&input.alpha)
+        .expect("try-and-increment finds a point");
 
     let mut public_key = secret_key.public_key().as_ref().to_vec();
     let mut changed = input.public_key.apply(&mut public_key);

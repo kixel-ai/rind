@@ -308,10 +308,12 @@ pub(super) mod tests {
     use crate::low::ct::{into_public, into_secret, public_slice, secret_slice};
     use crate::test::bignum::{below, words};
 
-    /// An odd modulus above one, with its top word random, one, zero, or
-    /// full, and two values below it.
-    pub(in super::super) fn modulus() -> impl Strategy<Value = (Vec<u64>, Vec<u64>, Vec<u64>)> {
-        (1..=20usize, 0..4u8, any::<u64>()).prop_flat_map(|(k, top, seed)| {
+    /// An odd modulus above one of up to `max` words, with its top word
+    /// random, one, zero, or full, and two values below it.
+    pub(in super::super) fn modulus(
+        max: usize,
+    ) -> impl Strategy<Value = (Vec<u64>, Vec<u64>, Vec<u64>)> {
+        (1..=max, 0..4u8, any::<u64>()).prop_flat_map(|(k, top, seed)| {
             let m = prop::collection::vec(any::<u64>(), k).prop_map(move |mut m| {
                 match top {
                     0 if k > 1 => m[k - 1] = 1,
@@ -342,6 +344,11 @@ pub(super) mod tests {
         x.to_vec()
     }
 
+    // The reference results are public but marked so anyway: memcheck can
+    // count the secret arithmetic's stale flags against a flag a reference
+    // routine sets itself, such as the `stc` before `bignum_add_p521`'s
+    // `adc` chain on x86_64. See UPSTREAM.md, "Memcheck blames a public
+    // flag on a secret carry".
     proptest! {
         #[test]
         fn plain(x in words(0, 8), y in words(0, 8), p in 0..12usize, index in 0..4u64) {
@@ -373,7 +380,7 @@ pub(super) mod tests {
         }
 
         #[test]
-        fn modular((m, x, y) in modulus()) {
+        fn modular((m, x, y) in modulus(20)) {
             let k = m.len();
             let (sm, sx, sy) = (secret(&m), secret(&x), secret(&y));
             let (mut ours, mut theirs) = (vec![0; k], vec![0; k]);
@@ -389,15 +396,15 @@ pub(super) mod tests {
             let (mut ours, mut theirs) = ([0], [0]);
             bignum_negmodinv(&mut ours, &sm[..1]);
             low::bignum_negmodinv(&mut theirs, &m[..1]);
-            prop_assert_eq!(into_public(ours), theirs);
+            prop_assert_eq!(into_public(ours), into_public(theirs));
         }
 
         #[test]
-        fn gcd(x in words(0, 6), y in words(0, 6), (m, a, _) in modulus()) {
+        fn gcd(x in words(0, 6), y in words(0, 6), (m, a, _) in modulus(20)) {
             let w = x.len().max(y.len());
             let ours = bignum_coprime(&secret(&x), &secret(&y), &mut vec![0; 2 * w]);
             let theirs = low::bignum_coprime(&x, &y, &mut vec![0; 2 * w]);
-            prop_assert_eq!(into_public(ours), theirs);
+            prop_assert_eq!(into_public(ours), into_public(theirs));
 
             let k = m.len();
             if low::bignum_coprime(&a, &m, &mut vec![0; 2 * k]) {
