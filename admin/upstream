@@ -34,7 +34,7 @@ fi
 # A directory that is not its own repository resolves to rind's.
 if [[ "$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null)" != "$PWD/$dir" ||
     "$(git -C "$dir" rev-parse HEAD)" != "$rev" ||
-    -n "$(git -C "$dir" status --porcelain)" ]]; then
+    -n "$(git -C "$dir" status --porcelain --untracked-files=all --ignored)" ]]; then
     rm -rf "$dir"
     git init -q "$dir"
     git -C "$dir" fetch -q --depth 1 "$url" "$rev"

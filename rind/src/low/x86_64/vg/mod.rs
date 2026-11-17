@@ -12,6 +12,20 @@
 pub struct Table<const N: usize>(pub [u8; N]);
 
 #[rustfmt::skip]
+pub(crate) mod vg_chacha20_apply_avx2;
+#[rustfmt::skip]
+pub(crate) mod vg_chacha20_apply_avx512vl;
+#[rustfmt::skip]
+pub(crate) mod vg_chacha20_block;
+#[rustfmt::skip]
+pub(crate) mod vg_chacha20_init;
+#[rustfmt::skip]
+pub(crate) mod vg_chacha20_xor;
+#[rustfmt::skip]
+pub(crate) mod vg_chacha20_xor_avx2;
+#[rustfmt::skip]
+pub(crate) mod vg_chacha20_xor_avx512vl;
+#[rustfmt::skip]
 pub(crate) mod vg_keccak_absorb_scratch;
 #[rustfmt::skip]
 pub(crate) mod vg_keccak_f1600;

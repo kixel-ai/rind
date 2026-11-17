@@ -16,6 +16,10 @@ export function section(tokens: Token[], title: string): Token[] {
 }
 
 export const html = (blocks: Token[]): string => Parser.parse(blocks);
+
+// One line of Markdown in a table cell, such as a gap's reason, read as
+// inline text, as GitHub reads a cell: a leading `-` is no list.
+export const cell = (text: string): string => Parser.parseInline(Lexer.lexInline(text, { gfm: true }));
 export const inlineHtml = (inline: Token[]): string => Parser.parseInline(inline);
 
 // Blocks as their source wrote them, so a fragment of a document says exactly
