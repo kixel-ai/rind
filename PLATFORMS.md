@@ -30,7 +30,8 @@ qemu. iOS devices' code is only built.
   SHA256 its SSSE3 assembly, or for SHA its AVX assembly on Intel's cores,
   SHA-512 its scalar assembly on other vendors' cores,
   ML-KEM's and ML-DSA's arithmetic runs Rust ports of [mlkem-native]'s and
-  [mldsa-native]'s portable C, and
+  [mldsa-native]'s portable C, but for ML-KEM-768's encapsulation, which runs
+  [verified-garbage]'s assembly, and
   table lookups use SSE2 (see [ALGORITHMS.md](ALGORITHMS.md)). Without `sse4.1`,
   as on the first Core 2s and Atoms and AMD's Bobcat, ChaCha20 and Poly1305
   run in separate passes.
@@ -205,6 +206,7 @@ family since 2004, and of some AMD cores.
 [curve25519-dalek]: https://github.com/dalek-cryptography/curve25519-dalek
 [HACL\*]: https://github.com/hacl-star/hacl-star
 [mlkem-native]: https://github.com/pq-code-package/mlkem-native
+[verified-garbage]: https://github.com/pyca/verified-garbage
 [mldsa-native]: https://github.com/pq-code-package/mldsa-native
 [libcrux]: https://github.com/cryspen/libcrux
 [aws-lc]: https://github.com/aws/aws-lc
