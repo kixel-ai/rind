@@ -16,6 +16,14 @@ test("a release with the structure is quoted as published", () => {
 	expect(got.body[0].raw).toStartWith("Intro.");
 });
 
+test("a release whose README matches main's is quoted whatever its relative links", () => {
+	const text = readme(`rind-x = "0.17"`, "\nSee [the guide](../README.md).\n");
+	const { note, ref } = choose("rind-x", main(text), { version: "0.17.3", readme: text });
+	expect(note).toBe("This page is the README of rind-x 0.17.3, its newest release on crates.io.");
+	// The links in it point into the release's tag.
+	expect(ref).toBe("rind-x-v0.17.3");
+});
+
 test("a release main has moved past says how to build against main", () => {
 	const { readme: got, note } = choose("rind-x", main(readme(`rind-x = "0.17"`, "\nNew.\n")), {
 		version: "0.17.3",

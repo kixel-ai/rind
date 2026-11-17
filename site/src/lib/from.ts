@@ -5,7 +5,7 @@ import { type Token, type Tokens, walkTokens } from "marked";
 import * as landing from "./landing";
 import { blocks, definitions, lex, link, rebase, section, slugger } from "./markdown";
 import type { Page } from "./pages";
-import { choose } from "./readme";
+import { choose, parse } from "./readme";
 import { newest } from "./registry";
 import { commit, read, repoUrl } from "./repo";
 import { type Route, routes } from "./routes";
@@ -21,12 +21,12 @@ const absolute = (readme: string, crate: string, ref: string) =>
 async function source(route: Route) {
 	const { crate } = route;
 	const manifest = Bun.TOML.parse(read(`${crate}/Cargo.toml`)) as { package: { version: string } };
-	const readme = absolute(read(`${crate}/README.md`), crate, "main");
-	const main = { readme, version: manifest.package.version, commit, repo: repoUrl };
-	const release = await newest(crate);
-	// release-plz tags each crate's release `<crate>-v<version>`.
-	const published = release && { ...release, readme: absolute(release.readme, crate, `${crate}-v${release.version}`) };
-	return choose(crate, main, published);
+	const main = { readme: read(`${crate}/README.md`), version: manifest.package.version, commit, repo: repoUrl };
+	const chosen = choose(crate, main, await newest(crate));
+	const readme = parse(absolute(chosen.readme.text, crate, chosen.ref), crate);
+	// `choose` accepted this README, and only link destinations have changed.
+	if (typeof readme === "string") throw new Error(`${crate}'s README lost its structure when its links were resolved: ${readme}`);
+	return { readme, note: chosen.note };
 }
 
 // A link on a page to another page of the site.

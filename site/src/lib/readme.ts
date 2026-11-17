@@ -11,6 +11,8 @@ export const cannotBack = "What rind cannot back";
 
 // The parts of an adapter README a page needs.
 export interface Readme {
+	// The README as its source wrote it.
+	text: string;
 	tokens: TokensList;
 	// The blocks after the README's title, logo, and badges, up to its license line.
 	body: Tokens.Generic[];
@@ -45,7 +47,7 @@ export function parse(text: string, crate: string): Readme | string {
 		.filter((t): t is Tokens.Code => t.type === "code" && t.lang === "toml")
 		.flatMap((t) => requirementsOn(Bun.TOML.parse(t.text), crate));
 	if (requirements.length === 0) return `no toml block in it depends on ${crate}`;
-	return { tokens, body, requirements };
+	return { text, tokens, body, requirements };
 }
 
 // The version requirements a Cargo.toml fragment puts on `crate`, under any
@@ -86,9 +88,10 @@ export interface Main {
 	repo: string;
 }
 
-// The README a page quotes, and the note that opens the page saying which
-// code it describes.
-export function choose(crate: string, main: Main, release: Release | null): { readme: Readme; note: string } {
+// The README a page quotes, the git ref its relative links point into, and the
+// note that opens the page saying which code it describes. The two READMEs are
+// compared as written, since the links in each would differ by ref alone.
+export function choose(crate: string, main: Main, release: Release | null): { readme: Readme; ref: string; note: string } {
 	const ours = parse(main.readme, crate);
 	if (typeof ours === "string") throw new Error(`${crate}/README.md cannot make its page: ${ours}`);
 	// The patch reaches the README's requirements only where `main`'s version meets them.
@@ -103,10 +106,13 @@ export function choose(crate: string, main: Main, release: Release | null): { re
 	if (release && typeof published !== "string") {
 		requireMet(crate, release.version, published, `${crate} ${release.version}'s`);
 		const note = `This page is the README of ${crate} ${release.version}, its newest release on crates.io.`;
-		if (blocks(published.body) === blocks(ours.body)) return { readme: published, note };
+		// release-plz tags each crate's release `<crate>-v<version>`.
+		const ref = `${crate}-v${release.version}`;
+		if (blocks(published.body) === blocks(ours.body)) return { readme: published, ref, note };
 		const there = link("its README", `${main.repo}/blob/main/${crate}/README.md`);
 		return {
 			readme: published,
+			ref,
 			note: `${note} \`main\` has changed it since. To build against \`main\`, as ${there} describes it, ${steps}`,
 		};
 	}
@@ -115,6 +121,7 @@ export function choose(crate: string, main: Main, release: Release | null): { re
 		: `${crate} is unreleased: this page describes it as \`main\` has it. Until its first release, take it from git at the commit this page describes`;
 	return {
 		readme: ours,
+		ref: "main",
 		note: `${lead}. Beside the lines below, ${steps}`,
 	};
 }

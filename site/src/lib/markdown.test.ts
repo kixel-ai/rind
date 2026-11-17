@@ -52,9 +52,22 @@ test("rebase rewrites inline links and definitions", () => {
 	expect(hrefs(lex(out))).toEqual(["https://example.com/x.md", "https://example.com/x.md", "https://example.com/x.md", "#x.md"]);
 });
 
+// The lexer drops a destination's backslash escapes, so the source spells it differently.
+test("rebase finds a destination written with escapes", () => {
+	const out = rebase("[a](x\\(1\\).md) [b](<x\\(1\\).md>)", (href) => `https://example.com/${href}`);
+	expect(hrefs(lex(out))).toEqual(["https://example.com/x(1).md", "https://example.com/x(1).md"]);
+});
+
 // Code that quotes a link it rewrites would change too, so the build fails.
 test("rebase refuses to touch code", () => {
 	expect(() => rebase("[a](x.md) `[e](x.md)`", () => "y.md")).toThrow("changed more than their destinations");
+});
+
+// GitHub slugs the heading as rendered, so `&amp;` is `&`, which the slug drops; a code span is literal.
+test("a heading's anchor decodes character references outside code", () => {
+	const html = (segments(lex("## A &amp; B\n\n## `&amp;` &eacute;\n"))[0] as { html: string }).html;
+	expect(html).toContain('id="a--b"');
+	expect(html).toContain('id="amp-é"');
 });
 
 // Each heading's id is GitHub's anchor for it.

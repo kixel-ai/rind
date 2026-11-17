@@ -1,3 +1,4 @@
+import { decodeHTML } from "entities";
 import { Lexer, Parser, Renderer, type Token, type Tokens, type TokensList, walkTokens } from "marked";
 
 // Parse a Markdown document, resolving its reference links.
@@ -73,10 +74,16 @@ export const hrefs = (tokens: Token[]): string[] =>
 		.filter((t) => t.type === "link")
 		.map((t) => t.href);
 
-// A heading's text, without the tags of any HTML in it, as GitHub reads it.
+// A heading's text, without the tags of any HTML in it and with its character
+// references decoded, as GitHub reads it. A code span keeps its own text.
 const plain = (tokens: Token[]): string =>
 	tokens
-		.map((t) => (t.type === "html" ? "" : "tokens" in t && t.tokens ? plain(t.tokens) : "text" in t ? t.text : ""))
+		.map((t) => {
+			if (t.type === "html") return "";
+			if ("tokens" in t && t.tokens) return plain(t.tokens);
+			if (!("text" in t)) return "";
+			return t.type === "text" ? decodeHTML(t.text) : t.text;
+		})
 		.join("");
 
 // GitHub's anchor for each heading of one document, called in document order.
@@ -140,7 +147,7 @@ export function rebase(source: string, resolve: (href: string) => string): strin
 	for (const href of new Set(all)) {
 		const to = resolve(href);
 		if (to === href) continue;
-		const from = escapeRegExp(href);
+		const from = spelled(href);
 		const dest = target(to);
 		out = out
 			.replace(new RegExp(`(\\]\\(\\s*)(?:<${from}>|${from})(?=[\\s)])`, "g"), `$1${dest}`)
@@ -153,5 +160,10 @@ export function rebase(source: string, resolve: (href: string) => string): strin
 	}
 	return out;
 }
+
+// A pattern for `href` as the source may spell it: Markdown lets a backslash
+// escape any ASCII punctuation, which the lexer drops from the destination.
+const spelled = (href: string) =>
+	[...href].map((c) => (/[!-/:-@[-`{-~]/.test(c) ? `\\\\?${escapeRegExp(c)}` : escapeRegExp(c))).join("");
 
 const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
