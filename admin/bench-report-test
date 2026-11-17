@@ -241,6 +241,24 @@ class Render(unittest.TestCase):
         md = br.report(everyone, None, VERIFIED, [])[br.REPORT]
         self.assertIn("graviola isn't timed on `nixos2`: it requires BMI1 and ADX, which this CPU lacks.", md)
 
+    def test_verified_grid_marks_each_cell(self):
+        h = hosts()
+        h["nixos2"]["refused"] = {"openssl": ["adx"]}
+        grid = json.loads(br.verified_grid(h, VERIFIED))
+        self.assertEqual([x["name"] for x in grid["hosts"]], ["nixos", "nixos2", "kixtop"])
+        self.assertEqual([lib["id"] for lib in grid["libraries"]], ["rind", "aws-lc-rs", "ring", "openssl"])
+        rows = {r["label"]: r["cells"] for s in grid["sections"] for r in s["rows"]}
+        self.assertEqual(len(rows), len(br.OPERATIONS))
+        # Both x86_64 hosts have ADX, nixos2 without timing it; kixtop's
+        # proof holds only on Linux.
+        self.assertEqual(rows["X25519"]["rind"], [0, 0, {"other_os": 3}])
+        # A proof shows where the host timed nothing, since it covers the code.
+        self.assertEqual(rows["X25519"]["ring"], [2, 2, 2])
+        self.assertEqual(rows["X25519"]["openssl"], ["unproven", "refused", "untimed"])
+        self.assertEqual(rows["AES-256-GCM seal, 16 KB"]["rind"], ["unproven", 1, "untimed"])
+        self.assertEqual(grid["proofs"][3]["os"], "linux")
+        self.assertEqual(grid["proofs"][3]["platform"], "aarch64 on Linux")
+
     def test_svgs_are_well_formed(self):
         import xml.etree.ElementTree as ET
 

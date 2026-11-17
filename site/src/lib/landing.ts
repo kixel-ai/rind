@@ -26,10 +26,13 @@ export interface Claim {
 	// The emoji the README opens the claim with.
 	icon: string;
 	title: string;
-	// The claim's one link into BENCHMARKS.md.
+	// The claim's one link into BENCHMARKS.md, or the site's page for it.
 	proof: string;
 	body: Token[];
 }
+
+// The site's page for a claim's proof in BENCHMARKS.md, where it has one.
+const onSite: Record<string, string> = { [`${repoUrl}/blob/main/BENCHMARKS.md#verified-code`]: "/verified" };
 
 // The README's three claims: its first list, each item an emoji, a bold title, and the rest.
 const list = readme.find((t): t is Tokens.List => t.type === "list");
@@ -49,7 +52,7 @@ export const claims: Claim[] = list.items.map((item) => {
 	if (proofs.length !== 1) {
 		throw new Error(`a README claim must link BENCHMARKS.md once, as its proof: ${item.raw}`);
 	}
-	return { icon: lead.text.trim(), title: strong.text, proof: proofs[0], body };
+	return { icon: lead.text.trim(), title: strong.text, proof: onSite[proofs[0]] ?? proofs[0], body };
 });
 if (claims.length !== 3) throw new Error(`the README makes ${claims.length} claims; the page lays out three`);
 

@@ -19,7 +19,8 @@ never measured. DIR (default `.tmp/bench-report/<commit>`) gets one
 
 `weekly` saves the latest weekly `bench` run's results on main, with gh, as
 the report's CPU tiers. `render` writes BENCHMARKS.md and its SVGs, among
-them the overview the README shows, from benchmarks/data, the verified code in
+them the overview the README shows, and the site's map of verified code
+(benchmarks/site/verified.json), from benchmarks/data, the verified code in
 benchmarks/verified.toml, and the decision on each gap in
 benchmarks/gaps.toml, first importing each measured host of a collection
 given by `--from`. It fails on a gap over 10% without a
@@ -1107,13 +1108,14 @@ def load_verified(path=VERIFIED):
     return entries
 
 
-def proof_for(verified, library, row, host):
-    """The entry that verifies a library's code for an operation on a host."""
+def proof_for(verified, library, row, host, any_os=False):
+    """The entry that verifies a library's code for an operation on a host,
+    or with `any_os`, on the same CPU under any OS."""
     cpuid = host.get("rind_cpu", {}).get("cpuid", {})
     for e in verified:
         if e["library"] != library or e.get("arch", host_arch(host)) != host_arch(host):
             continue
-        if e.get("os", host_os(host)) != host_os(host):
+        if not any_os and e.get("os", host_os(host)) != host_os(host):
             continue
         if not all(cpuid.get(f.removeprefix("!")) == (0 if f.startswith("!") else 1) for f in e.get("cpu", [])):
             continue
@@ -1576,6 +1578,99 @@ def measured(host):
     return f"{host['started'][:10]} at {commit_link(host['commit'])}{noisy}"
 
 
+# What a ✓ means, which the report and the site's verified page both state.
+VERIFIED_RULE = (
+    "A ✓ means a published, machine-checked proof shows that all the code computing the operation, as "
+    "that library runs it on that host, gives the specified result for every input: the cipher and its "
+    "mode, the hash over every block with its padding, the whole scalar multiplication or exponentiation, "
+    "and the glue around them, such as clamping, byte conversion, and point encoding. Parsing DER key and "
+    "signature containers, randomness, and the message hash a signature takes are left out. Proofs of "
+    "memory safety alone, or of only some of the code, earn no ✓."
+)
+
+# The site's verified page, which draws this grid rather than match proofs
+# to CPUs itself.
+VERIFIED_GRID = os.path.join(REPORT_DIR, "site", "verified.json")
+
+
+def verified_grid(hosts, verified):
+    """Each library's cell for each operation on each host, for the site's
+    verified page: the index in `proofs` of the proof that covers it,
+    `{"other_os": index}` for a proof limited to another OS, `unproven`, or
+    `refused` where the library refuses to start on the host's CPU. A proof
+    shows whether or not the host timed the operation, since it covers the
+    code; a cell with neither is `untimed`, as the library may not offer the
+    operation or the host's results may predate its benchmark."""
+    names = [n for n in HOSTS if n in hosts]
+    libs = [lib for lib in columns(*hosts.values()) if lib not in VARIANTS]
+    timed = {name: times(hosts[name]) for name in names}
+
+    def cell(lib, row, name):
+        host = hosts[name]
+        if lib in host.get("refused", {}):
+            return "refused"
+        if entry := proof_for(verified, lib, row, host):
+            return verified.index(entry)
+        if lib not in timed[name].get(row, {}):
+            return "untimed"
+        # A proof limited to another OS, which the page names.
+        if entry := proof_for(verified, lib, row, host, any_os=True):
+            return {"other_os": verified.index(entry)}
+        return "unproven"
+
+    grid = {
+        "schema": 1,
+        "rule": VERIFIED_RULE,
+        "hosts": [
+            {
+                "name": n,
+                "cpu": hosts[n]["cpu"]["model"],
+                "arch": host_arch(hosts[n]),
+                "os": host_os(hosts[n]),
+                "os_name": hosts[n]["os"],
+                "refused": hosts[n].get("refused", {}),
+            }
+            for n in names
+        ],
+        "libraries": [{"id": lib, "name": COLUMNS[lib]} for lib in libs],
+        "sections": [
+            {
+                "title": title,
+                "rows": [
+                    {
+                        "label": label(row_name(op)),
+                        "cells": {lib: [cell(lib, row_name(op), n) for n in names] for lib in libs},
+                    }
+                    for op in ops
+                ],
+            }
+            for title, ops in SECTIONS
+        ],
+        "proofs": [
+            {
+                "library": COLUMNS[e["library"]],
+                "operations": e["operations"],
+                "platform": platform_of(e),
+                **({"os": e["os"]} if "os" in e else {}),
+                "proof": e["proof"],
+                "link": e["link"],
+            }
+            for e in verified
+        ],
+    }
+    # One line per host, row, and proof, so a change diffs as what it moves.
+    def dump(value, depth=0):
+        pad = " " * (depth + 1)
+        if isinstance(value, dict) and (depth < 2 or "rows" in value):
+            items = [f"{pad}{json.dumps(k)}: {dump(v, depth + 1)}" for k, v in value.items()]
+            return "{\n" + ",\n".join(items) + "\n" + pad[1:] + "}"
+        if isinstance(value, list) and depth < 4 and any(isinstance(v, dict) for v in value):
+            return "[\n" + ",\n".join(pad + dump(v, depth + 1) for v in value) + "\n" + pad[1:] + "]"
+        return json.dumps(value, ensure_ascii=False)
+
+    return dump(grid) + "\n"
+
+
 def platform_of(entry):
     words = [entry.get("arch", "any architecture")]
     has = [f for f in entry.get("cpu", []) if not f.startswith("!")]
@@ -1929,13 +2024,7 @@ def report(hosts, tiers, verified, gaps):
         "",
         "## Verified code",
         "",
-        "A ✓ means a published, machine-checked proof shows that all the code computing the operation, as "
-        "that library runs it on that host, gives the specified result for every input: the cipher and its "
-        "mode, the hash over every block with its padding, the whole scalar multiplication or exponentiation, "
-        "and the glue around them, such as clamping, byte conversion, and point encoding. Parsing DER key and "
-        "signature containers, randomness, and the message hash a signature takes are left out. Proofs of "
-        "memory safety alone, or of only some of the code, earn no ✓. `benchmarks/verified.toml` holds this "
-        "table.",
+        f"{VERIFIED_RULE} `benchmarks/verified.toml` holds this table.",
         "",
         "| Library | Operations | Platform | Proof |",
         "|---|---|---|---|",
@@ -1955,7 +2044,8 @@ def report(hosts, tiers, verified, gaps):
         "`.tmp/bench-report/`. `admin/bench-report weekly` saves the latest weekly",
         "`bench` run's results, and `admin/bench-report render --from DIR` copies a",
         "collection's measured hosts into `benchmarks/data/` and writes",
-        "`BENCHMARKS.md`, its SVGs, which the README shows too, and the README's comparison table from them,",
+        "`BENCHMARKS.md`, its SVGs, which the README shows too, the README's comparison table, and",
+        "`benchmarks/site/verified.json`, the site's map of verified code, from them,",
         "`benchmarks/verified.toml`, and",
         "`benchmarks/gaps.toml`, which must hold a quest or a reason for every gap",
         "over 10%.",
@@ -1963,6 +2053,7 @@ def report(hosts, tiers, verified, gaps):
     ]
     files = {os.path.join(REPORT_DIR, k): v for k, v in files.items()}
     files[REPORT] = "\n".join(md)
+    files[VERIFIED_GRID] = verified_grid(hosts, verified)
     files[README] = readme_with_comparison(comparison_table(hosts, verified))
     return files
 
@@ -1995,6 +2086,8 @@ def render(args):
     generated = sorted(glob.glob(os.path.join(REPORT_DIR, "*.svg")))
     if os.path.exists(REPORT):
         generated.append(REPORT)
+    if os.path.exists(VERIFIED_GRID):
+        generated.append(VERIFIED_GRID)
     if not hosts and tiers is None:
         if args.check and generated:
             fail("BENCHMARKS.md and its SVGs exist without results in benchmarks/data")
@@ -2011,8 +2104,8 @@ def render(args):
     for path in generated:
         if path not in files:
             os.remove(path)
-    os.makedirs(REPORT_DIR, exist_ok=True)
     for path, content in files.items():
+        os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w") as f:
             f.write(content)
     print(os.path.relpath(REPORT, ROOT))

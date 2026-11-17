@@ -12,7 +12,12 @@ export const repoUrl = "https://github.com/kixel-ai/rind";
 
 // The repository files the build reads, each through `read`, which the dev
 // server watches so an edit to one reloads the page.
-export const sources = ["README.md", "admin/wordmark.svg", "admin/wordmark-light.svg"] as const;
+export const sources = [
+	"README.md",
+	"admin/wordmark.svg",
+	"admin/wordmark-light.svg",
+	"benchmarks/site/verified.json",
+] as const;
 
 // Read one of `sources`.
 export function read(file: (typeof sources)[number]): string {

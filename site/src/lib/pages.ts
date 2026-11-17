@@ -3,6 +3,7 @@
 // that is missing from here.
 import * as landing from "./landing";
 import { blocks, definitions, link, spans } from "./markdown";
+import * as verified from "./verified";
 
 export const origin = "https://rind.kixel.ai";
 
@@ -44,4 +45,11 @@ export const home: Page = {
 	},
 };
 
-export const pages: Page[] = [home];
+export const verifiedPage: Page = {
+	path: "/verified",
+	title: verified.title,
+	answers: "Which operations run code a published formal proof covers, on which CPU, for rind and the libraries it is compared with, with a link to each proof.",
+	markdown: verified.markdown,
+};
+
+export const pages: Page[] = [home, verifiedPage];
