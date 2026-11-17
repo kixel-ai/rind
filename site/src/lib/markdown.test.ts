@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { blocks, definitions, hrefs, html, lex, rebase, section, segments, spans } from "./markdown";
+import { blocks, cell, definitions, hrefs, html, lex, rebase, section, segments, spans } from "./markdown";
 
 // A section quoted with its definitions renders as it does inside its document.
 test.each([
@@ -86,4 +86,10 @@ test("segments give headings GitHub's anchors and set code apart", () => {
 		{ code: "x = 1", lang: "toml" },
 		{ html: '<h2 id="ä_c">Ä_c?</h2>\n' },
 	]);
+});
+
+// A cell's Markdown is inline, whatever it starts with.
+test("cell reads one line inline", () => {
+	expect(cell("- not [a](/a) `b`")).toBe('- not <a href="/a">a</a> <code>b</code>');
+	expect(cell("# a | b")).toBe("# a | b");
 });

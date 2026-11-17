@@ -16,7 +16,9 @@ export const repoUrl = "https://github.com/kixel-ai/rind";
 // server watches so an edit to one reloads the page.
 export const sources = [
 	"README.md",
+	"BENCHMARKS.md",
 	"MIGRATING.md",
+	"benchmarks/report.json",
 	"admin/wordmark.svg",
 	"admin/wordmark-light.svg",
 	...routes.flatMap((r) => [`${r.crate}/README.md`, `${r.crate}/Cargo.toml`]),

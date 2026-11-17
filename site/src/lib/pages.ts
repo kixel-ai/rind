@@ -2,6 +2,7 @@
 // line in llms.txt, and a sitemap entry; scripts/check.ts fails a built page
 // that is missing from here.
 import { fromPages } from "./from";
+import { benchmarks } from "./benchmarks";
 import * as landing from "./landing";
 import { blocks, definitions, link, spans } from "./markdown";
 import { picker } from "./routes";
@@ -48,4 +49,4 @@ export const home: Page = {
 	},
 };
 
-export const pages: Page[] = [home, ...fromPages];
+export const pages: Page[] = [home, benchmarks, ...fromPages];
