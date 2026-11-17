@@ -1,0 +1,18 @@
+rind/src/mid/mldsa.rs:294:5: replace vg_signs -> bool with true
+rind/src/mid/mldsa.rs:294:5: replace vg_signs -> bool with false
+rind/src/low/x86_64/mldsa_vg.rs:24:9: replace Sign::check -> Option<Self> with None
+rind/src/low/x86_64/mldsa_vg.rs:45:9: replace Sign::sign44 -> Option<[u8; 2420]> with None
+rind/src/low/x86_64/mldsa_vg.rs:45:9: replace Sign::sign44 -> Option<[u8; 2420]> with Some([0; 2420])
+rind/src/low/x86_64/mldsa_vg.rs:45:9: replace Sign::sign44 -> Option<[u8; 2420]> with Some([1; 2420])
+rind/src/low/x86_64/mldsa_vg.rs:55:9: replace Sign::sign65 -> Option<[u8; 3309]> with None
+rind/src/low/x86_64/mldsa_vg.rs:55:9: replace Sign::sign65 -> Option<[u8; 3309]> with Some([0; 3309])
+rind/src/low/x86_64/mldsa_vg.rs:55:9: replace Sign::sign65 -> Option<[u8; 3309]> with Some([1; 3309])
+rind/src/low/x86_64/mldsa_vg.rs:65:9: replace Sign::sign87 -> Option<[u8; 4627]> with None
+rind/src/low/x86_64/mldsa_vg.rs:65:9: replace Sign::sign87 -> Option<[u8; 4627]> with Some([0; 4627])
+rind/src/low/x86_64/mldsa_vg.rs:65:9: replace Sign::sign87 -> Option<[u8; 4627]> with Some([1; 4627])
+rind/src/low/x86_64/mldsa_vg.rs:94:5: replace sign -> Option<[u8; SIG]> with None
+rind/src/low/x86_64/mldsa_vg.rs:94:5: replace sign -> Option<[u8; SIG]> with Some([0; SIG])
+rind/src/low/x86_64/mldsa_vg.rs:94:5: replace sign -> Option<[u8; SIG]> with Some([1; SIG])
+rind/src/low/x86_64/mldsa_vg.rs:98:38: replace + with - in sign
+rind/src/low/x86_64/mldsa_vg.rs:98:38: replace + with * in sign
+rind/src/low/x86_64/mldsa_vg.rs:107:31: replace == with != in sign

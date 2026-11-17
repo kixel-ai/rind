@@ -1,0 +1,2499 @@
+{
+  "outcomes": [
+    {
+      "scenario": "Baseline",
+      "summary": "Success",
+      "log_path": "log/baseline.log",
+      "diff_path": null,
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 19.597877962,
+          "process_status": "Success",
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--no-run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 140.331960872,
+          "process_status": "Success",
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "rind/src/low/generic/mldsa_vg.rs:12:9: replace Sign::check -> Option<Self> with Some(Default::default())",
+          "package": "rind",
+          "file": "rind/src/low/generic/mldsa_vg.rs",
+          "function": {
+            "function_name": "Sign::check",
+            "return_type": "-> Option<Self>",
+            "span": {
+              "start": {
+                "line": 11,
+                "column": 5
+              },
+              "end": {
+                "line": 13,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 12,
+              "column": 9
+            },
+            "end": {
+              "line": 12,
+              "column": 13
+            }
+          },
+          "replacement": "Some(Default::default())",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/rind__src__low__generic__mldsa_vg.rs_line_12_col_9.log",
+      "diff_path": "diff/rind__src__low__generic__mldsa_vg.rs_line_12_col_9.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.753484155,
+          "process_status": "Success",
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--no-run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 103.879781546,
+          "process_status": "Success",
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "rind/src/low/generic/mldsa_vg.rs:16:9: replace Sign::sign44 -> Option<[u8; 2420]> with None",
+          "package": "rind",
+          "file": "rind/src/low/generic/mldsa_vg.rs",
+          "function": {
+            "function_name": "Sign::sign44",
+            "return_type": "-> Option<[u8; 2420]>",
+            "span": {
+              "start": {
+                "line": 15,
+                "column": 5
+              },
+              "end": {
+                "line": 17,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 16,
+              "column": 9
+            },
+            "end": {
+              "line": 16,
+              "column": 22
+            }
+          },
+          "replacement": "None",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/rind__src__low__generic__mldsa_vg.rs_line_16_col_9.log",
+      "diff_path": "diff/rind__src__low__generic__mldsa_vg.rs_line_16_col_9.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.603786848,
+          "process_status": "Success",
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--no-run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 125.786946284,
+          "process_status": "Success",
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "rind/src/low/generic/mldsa_vg.rs:16:9: replace Sign::sign44 -> Option<[u8; 2420]> with Some([0; 2420])",
+          "package": "rind",
+          "file": "rind/src/low/generic/mldsa_vg.rs",
+          "function": {
+            "function_name": "Sign::sign44",
+            "return_type": "-> Option<[u8; 2420]>",
+            "span": {
+              "start": {
+                "line": 15,
+                "column": 5
+              },
+              "end": {
+                "line": 17,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 16,
+              "column": 9
+            },
+            "end": {
+              "line": 16,
+              "column": 22
+            }
+          },
+          "replacement": "Some([0; 2420])",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/rind__src__low__generic__mldsa_vg.rs_line_16_col_9_001.log",
+      "diff_path": "diff/rind__src__low__generic__mldsa_vg.rs_line_16_col_9_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.503107815,
+          "process_status": "Success",
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--no-run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 101.257578855,
+          "process_status": "Success",
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "rind/src/low/generic/mldsa_vg.rs:16:9: replace Sign::sign44 -> Option<[u8; 2420]> with Some([1; 2420])",
+          "package": "rind",
+          "file": "rind/src/low/generic/mldsa_vg.rs",
+          "function": {
+            "function_name": "Sign::sign44",
+            "return_type": "-> Option<[u8; 2420]>",
+            "span": {
+              "start": {
+                "line": 15,
+                "column": 5
+              },
+              "end": {
+                "line": 17,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 16,
+              "column": 9
+            },
+            "end": {
+              "line": 16,
+              "column": 22
+            }
+          },
+          "replacement": "Some([1; 2420])",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/rind__src__low__generic__mldsa_vg.rs_line_16_col_9_002.log",
+      "diff_path": "diff/rind__src__low__generic__mldsa_vg.rs_line_16_col_9_002.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.452164035,
+          "process_status": "Success",
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--no-run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 104.265852716,
+          "process_status": "Success",
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "rind/src/low/generic/mldsa_vg.rs:20:9: replace Sign::sign65 -> Option<[u8; 3309]> with None",
+          "package": "rind",
+          "file": "rind/src/low/generic/mldsa_vg.rs",
+          "function": {
+            "function_name": "Sign::sign65",
+            "return_type": "-> Option<[u8; 3309]>",
+            "span": {
+              "start": {
+                "line": 19,
+                "column": 5
+              },
+              "end": {
+                "line": 21,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 20,
+              "column": 9
+            },
+            "end": {
+              "line": 20,
+              "column": 22
+            }
+          },
+          "replacement": "None",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/rind__src__low__generic__mldsa_vg.rs_line_20_col_9.log",
+      "diff_path": "diff/rind__src__low__generic__mldsa_vg.rs_line_20_col_9.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.762694833,
+          "process_status": "Success",
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--no-run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 106.796093216,
+          "process_status": "Success",
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "rind/src/low/generic/mldsa_vg.rs:20:9: replace Sign::sign65 -> Option<[u8; 3309]> with Some([0; 3309])",
+          "package": "rind",
+          "file": "rind/src/low/generic/mldsa_vg.rs",
+          "function": {
+            "function_name": "Sign::sign65",
+            "return_type": "-> Option<[u8; 3309]>",
+            "span": {
+              "start": {
+                "line": 19,
+                "column": 5
+              },
+              "end": {
+                "line": 21,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 20,
+              "column": 9
+            },
+            "end": {
+              "line": 20,
+              "column": 22
+            }
+          },
+          "replacement": "Some([0; 3309])",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/rind__src__low__generic__mldsa_vg.rs_line_20_col_9_001.log",
+      "diff_path": "diff/rind__src__low__generic__mldsa_vg.rs_line_20_col_9_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.608226342,
+          "process_status": "Success",
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--no-run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 111.396235259,
+          "process_status": "Success",
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "rind/src/low/generic/mldsa_vg.rs:20:9: replace Sign::sign65 -> Option<[u8; 3309]> with Some([1; 3309])",
+          "package": "rind",
+          "file": "rind/src/low/generic/mldsa_vg.rs",
+          "function": {
+            "function_name": "Sign::sign65",
+            "return_type": "-> Option<[u8; 3309]>",
+            "span": {
+              "start": {
+                "line": 19,
+                "column": 5
+              },
+              "end": {
+                "line": 21,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 20,
+              "column": 9
+            },
+            "end": {
+              "line": 20,
+              "column": 22
+            }
+          },
+          "replacement": "Some([1; 3309])",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/rind__src__low__generic__mldsa_vg.rs_line_20_col_9_002.log",
+      "diff_path": "diff/rind__src__low__generic__mldsa_vg.rs_line_20_col_9_002.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.602820315,
+          "process_status": "Success",
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--no-run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 114.067592051,
+          "process_status": "Success",
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "rind/src/low/generic/mldsa_vg.rs:24:9: replace Sign::sign87 -> Option<[u8; 4627]> with None",
+          "package": "rind",
+          "file": "rind/src/low/generic/mldsa_vg.rs",
+          "function": {
+            "function_name": "Sign::sign87",
+            "return_type": "-> Option<[u8; 4627]>",
+            "span": {
+              "start": {
+                "line": 23,
+                "column": 5
+              },
+              "end": {
+                "line": 25,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 24,
+              "column": 9
+            },
+            "end": {
+              "line": 24,
+              "column": 22
+            }
+          },
+          "replacement": "None",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/rind__src__low__generic__mldsa_vg.rs_line_24_col_9.log",
+      "diff_path": "diff/rind__src__low__generic__mldsa_vg.rs_line_24_col_9.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 1.9476981530000002,
+          "process_status": "Success",
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--no-run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 132.336337199,
+          "process_status": "Success",
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "rind/src/low/generic/mldsa_vg.rs:24:9: replace Sign::sign87 -> Option<[u8; 4627]> with Some([0; 4627])",
+          "package": "rind",
+          "file": "rind/src/low/generic/mldsa_vg.rs",
+          "function": {
+            "function_name": "Sign::sign87",
+            "return_type": "-> Option<[u8; 4627]>",
+            "span": {
+              "start": {
+                "line": 23,
+                "column": 5
+              },
+              "end": {
+                "line": 25,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 24,
+              "column": 9
+            },
+            "end": {
+              "line": 24,
+              "column": 22
+            }
+          },
+          "replacement": "Some([0; 4627])",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/rind__src__low__generic__mldsa_vg.rs_line_24_col_9_001.log",
+      "diff_path": "diff/rind__src__low__generic__mldsa_vg.rs_line_24_col_9_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.753569982,
+          "process_status": "Success",
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--no-run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 108.593039161,
+          "process_status": "Success",
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "rind/src/low/generic/mldsa_vg.rs:24:9: replace Sign::sign87 -> Option<[u8; 4627]> with Some([1; 4627])",
+          "package": "rind",
+          "file": "rind/src/low/generic/mldsa_vg.rs",
+          "function": {
+            "function_name": "Sign::sign87",
+            "return_type": "-> Option<[u8; 4627]>",
+            "span": {
+              "start": {
+                "line": 23,
+                "column": 5
+              },
+              "end": {
+                "line": 25,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 24,
+              "column": 9
+            },
+            "end": {
+              "line": 24,
+              "column": 22
+            }
+          },
+          "replacement": "Some([1; 4627])",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/rind__src__low__generic__mldsa_vg.rs_line_24_col_9_002.log",
+      "diff_path": "diff/rind__src__low__generic__mldsa_vg.rs_line_24_col_9_002.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.608982297,
+          "process_status": "Success",
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--no-run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 122.846054099,
+          "process_status": "Success",
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "rind/src/mid/mldsa.rs:294:5: replace vg_signs -> bool with true",
+          "package": "rind",
+          "file": "rind/src/mid/mldsa.rs",
+          "function": {
+            "function_name": "vg_signs",
+            "return_type": "-> bool",
+            "span": {
+              "start": {
+                "line": 290,
+                "column": 1
+              },
+              "end": {
+                "line": 295,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 294,
+              "column": 5
+            },
+            "end": {
+              "line": 294,
+              "column": 43
+            }
+          },
+          "replacement": "true",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/rind__src__mid__mldsa.rs_line_294_col_5.log",
+      "diff_path": "diff/rind__src__mid__mldsa.rs_line_294_col_5.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 9.419202559,
+          "process_status": "Success",
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--no-run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 6.263013281,
+          "process_status": {
+            "Failure": 100
+          },
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "rind/src/mid/mldsa.rs:294:5: replace vg_signs -> bool with false",
+          "package": "rind",
+          "file": "rind/src/mid/mldsa.rs",
+          "function": {
+            "function_name": "vg_signs",
+            "return_type": "-> bool",
+            "span": {
+              "start": {
+                "line": 290,
+                "column": 1
+              },
+              "end": {
+                "line": 295,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 294,
+              "column": 5
+            },
+            "end": {
+              "line": 294,
+              "column": 43
+            }
+          },
+          "replacement": "false",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/rind__src__mid__mldsa.rs_line_294_col_5_001.log",
+      "diff_path": "diff/rind__src__mid__mldsa.rs_line_294_col_5_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 10.420444484,
+          "process_status": "Success",
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--no-run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 105.126475652,
+          "process_status": "Success",
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "rind/src/mid/mldsa.rs:382:9: replace KeyPair<P>::from_seed -> (Self, PublicKey<P>) with (Default::default(), PublicKey::new())",
+          "package": "rind",
+          "file": "rind/src/mid/mldsa.rs",
+          "function": {
+            "function_name": "KeyPair<P>::from_seed",
+            "return_type": "-> (Self, PublicKey<P>)",
+            "span": {
+              "start": {
+                "line": 379,
+                "column": 5
+              },
+              "end": {
+                "line": 402,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 382,
+              "column": 9
+            },
+            "end": {
+              "line": 401,
+              "column": 50
+            }
+          },
+          "replacement": "(Default::default(), PublicKey::new())",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "Unviable",
+      "log_path": "log/rind__src__mid__mldsa.rs_line_382_col_9.log",
+      "diff_path": "diff/rind__src__mid__mldsa.rs_line_382_col_9.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 11.373382572,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--no-run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "rind/src/mid/mldsa.rs:382:9: replace KeyPair<P>::from_seed -> (Self, PublicKey<P>) with (Default::default(), PublicKey::from_iter([Default::default()]))",
+          "package": "rind",
+          "file": "rind/src/mid/mldsa.rs",
+          "function": {
+            "function_name": "KeyPair<P>::from_seed",
+            "return_type": "-> (Self, PublicKey<P>)",
+            "span": {
+              "start": {
+                "line": 379,
+                "column": 5
+              },
+              "end": {
+                "line": 402,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 382,
+              "column": 9
+            },
+            "end": {
+              "line": 401,
+              "column": 50
+            }
+          },
+          "replacement": "(Default::default(), PublicKey::from_iter([Default::default()]))",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "Unviable",
+      "log_path": "log/rind__src__mid__mldsa.rs_line_382_col_9_001.log",
+      "diff_path": "diff/rind__src__mid__mldsa.rs_line_382_col_9_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 11.432251815,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--no-run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "rind/src/mid/mldsa.rs:382:9: replace KeyPair<P>::from_seed -> (Self, PublicKey<P>) with (Default::default(), PublicKey::new(Default::default()))",
+          "package": "rind",
+          "file": "rind/src/mid/mldsa.rs",
+          "function": {
+            "function_name": "KeyPair<P>::from_seed",
+            "return_type": "-> (Self, PublicKey<P>)",
+            "span": {
+              "start": {
+                "line": 379,
+                "column": 5
+              },
+              "end": {
+                "line": 402,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 382,
+              "column": 9
+            },
+            "end": {
+              "line": 401,
+              "column": 50
+            }
+          },
+          "replacement": "(Default::default(), PublicKey::new(Default::default()))",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "Unviable",
+      "log_path": "log/rind__src__mid__mldsa.rs_line_382_col_9_002.log",
+      "diff_path": "diff/rind__src__mid__mldsa.rs_line_382_col_9_002.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 7.872841565,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--no-run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "rind/src/mid/mldsa.rs:382:9: replace KeyPair<P>::from_seed -> (Self, PublicKey<P>) with (Default::default(), PublicKey::from(Default::default()))",
+          "package": "rind",
+          "file": "rind/src/mid/mldsa.rs",
+          "function": {
+            "function_name": "KeyPair<P>::from_seed",
+            "return_type": "-> (Self, PublicKey<P>)",
+            "span": {
+              "start": {
+                "line": 379,
+                "column": 5
+              },
+              "end": {
+                "line": 402,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 382,
+              "column": 9
+            },
+            "end": {
+              "line": 401,
+              "column": 50
+            }
+          },
+          "replacement": "(Default::default(), PublicKey::from(Default::default()))",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "Unviable",
+      "log_path": "log/rind__src__mid__mldsa.rs_line_382_col_9_003.log",
+      "diff_path": "diff/rind__src__mid__mldsa.rs_line_382_col_9_003.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 8.155951291,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--no-run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "rind/src/mid/mldsa.rs:409:9: replace KeyPair<P>::from_secret_key -> Result<(Self, PublicKey<P>), Error> with Ok((Default::default(), PublicKey::new()))",
+          "package": "rind",
+          "file": "rind/src/mid/mldsa.rs",
+          "function": {
+            "function_name": "KeyPair<P>::from_secret_key",
+            "return_type": "-> Result<(Self, PublicKey<P>), Error>",
+            "span": {
+              "start": {
+                "line": 404,
+                "column": 5
+              },
+              "end": {
+                "line": 436,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 409,
+              "column": 9
+            },
+            "end": {
+              "line": 435,
+              "column": 10
+            }
+          },
+          "replacement": "Ok((Default::default(), PublicKey::new()))",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "Unviable",
+      "log_path": "log/rind__src__mid__mldsa.rs_line_409_col_9.log",
+      "diff_path": "diff/rind__src__mid__mldsa.rs_line_409_col_9.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 10.18826474,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--no-run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "rind/src/mid/mldsa.rs:409:9: replace KeyPair<P>::from_secret_key -> Result<(Self, PublicKey<P>), Error> with Ok((Default::default(), PublicKey::from_iter([Default::default()])))",
+          "package": "rind",
+          "file": "rind/src/mid/mldsa.rs",
+          "function": {
+            "function_name": "KeyPair<P>::from_secret_key",
+            "return_type": "-> Result<(Self, PublicKey<P>), Error>",
+            "span": {
+              "start": {
+                "line": 404,
+                "column": 5
+              },
+              "end": {
+                "line": 436,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 409,
+              "column": 9
+            },
+            "end": {
+              "line": 435,
+              "column": 10
+            }
+          },
+          "replacement": "Ok((Default::default(), PublicKey::from_iter([Default::default()])))",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "Unviable",
+      "log_path": "log/rind__src__mid__mldsa.rs_line_409_col_9_001.log",
+      "diff_path": "diff/rind__src__mid__mldsa.rs_line_409_col_9_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 12.2687308,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--no-run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "rind/src/mid/mldsa.rs:409:9: replace KeyPair<P>::from_secret_key -> Result<(Self, PublicKey<P>), Error> with Ok((Default::default(), PublicKey::new(Default::default())))",
+          "package": "rind",
+          "file": "rind/src/mid/mldsa.rs",
+          "function": {
+            "function_name": "KeyPair<P>::from_secret_key",
+            "return_type": "-> Result<(Self, PublicKey<P>), Error>",
+            "span": {
+              "start": {
+                "line": 404,
+                "column": 5
+              },
+              "end": {
+                "line": 436,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 409,
+              "column": 9
+            },
+            "end": {
+              "line": 435,
+              "column": 10
+            }
+          },
+          "replacement": "Ok((Default::default(), PublicKey::new(Default::default())))",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "Unviable",
+      "log_path": "log/rind__src__mid__mldsa.rs_line_409_col_9_002.log",
+      "diff_path": "diff/rind__src__mid__mldsa.rs_line_409_col_9_002.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 8.38613035,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--no-run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "rind/src/mid/mldsa.rs:409:9: replace KeyPair<P>::from_secret_key -> Result<(Self, PublicKey<P>), Error> with Ok((Default::default(), PublicKey::from(Default::default())))",
+          "package": "rind",
+          "file": "rind/src/mid/mldsa.rs",
+          "function": {
+            "function_name": "KeyPair<P>::from_secret_key",
+            "return_type": "-> Result<(Self, PublicKey<P>), Error>",
+            "span": {
+              "start": {
+                "line": 404,
+                "column": 5
+              },
+              "end": {
+                "line": 436,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 409,
+              "column": 9
+            },
+            "end": {
+              "line": 435,
+              "column": 10
+            }
+          },
+          "replacement": "Ok((Default::default(), PublicKey::from(Default::default())))",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "Unviable",
+      "log_path": "log/rind__src__mid__mldsa.rs_line_409_col_9_003.log",
+      "diff_path": "diff/rind__src__mid__mldsa.rs_line_409_col_9_003.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 6.663609812,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--no-run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "rind/src/low/x86_64/mldsa_vg.rs:24:9: replace Sign::check -> Option<Self> with None",
+          "package": "rind",
+          "file": "rind/src/low/x86_64/mldsa_vg.rs",
+          "function": {
+            "function_name": "Sign::check",
+            "return_type": "-> Option<Self>",
+            "span": {
+              "start": {
+                "line": 23,
+                "column": 5
+              },
+              "end": {
+                "line": 28,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 24,
+              "column": 9
+            },
+            "end": {
+              "line": 27,
+              "column": 10
+            }
+          },
+          "replacement": "None",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/rind__src__low__x86_64__mldsa_vg.rs_line_24_col_9.log",
+      "diff_path": "diff/rind__src__low__x86_64__mldsa_vg.rs_line_24_col_9.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 9.618246866,
+          "process_status": "Success",
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--no-run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 152.862282746,
+          "process_status": "Success",
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "rind/src/low/x86_64/mldsa_vg.rs:24:9: replace Sign::check -> Option<Self> with Some(Default::default())",
+          "package": "rind",
+          "file": "rind/src/low/x86_64/mldsa_vg.rs",
+          "function": {
+            "function_name": "Sign::check",
+            "return_type": "-> Option<Self>",
+            "span": {
+              "start": {
+                "line": 23,
+                "column": 5
+              },
+              "end": {
+                "line": 28,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 24,
+              "column": 9
+            },
+            "end": {
+              "line": 27,
+              "column": 10
+            }
+          },
+          "replacement": "Some(Default::default())",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "Unviable",
+      "log_path": "log/rind__src__low__x86_64__mldsa_vg.rs_line_24_col_9_001.log",
+      "diff_path": "diff/rind__src__low__x86_64__mldsa_vg.rs_line_24_col_9_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 20.004333012,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--no-run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "rind/src/low/x86_64/mldsa_vg.rs:45:9: replace Sign::sign44 -> Option<[u8; 2420]> with None",
+          "package": "rind",
+          "file": "rind/src/low/x86_64/mldsa_vg.rs",
+          "function": {
+            "function_name": "Sign::sign44",
+            "return_type": "-> Option<[u8; 2420]>",
+            "span": {
+              "start": {
+                "line": 36,
+                "column": 5
+              },
+              "end": {
+                "line": 46,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 45,
+              "column": 9
+            },
+            "end": {
+              "line": 45,
+              "column": 84
+            }
+          },
+          "replacement": "None",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/rind__src__low__x86_64__mldsa_vg.rs_line_45_col_9.log",
+      "diff_path": "diff/rind__src__low__x86_64__mldsa_vg.rs_line_45_col_9.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 24.89526829,
+          "process_status": "Success",
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--no-run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 18.17247603,
+          "process_status": {
+            "Failure": 100
+          },
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "rind/src/low/x86_64/mldsa_vg.rs:45:9: replace Sign::sign44 -> Option<[u8; 2420]> with Some([0; 2420])",
+          "package": "rind",
+          "file": "rind/src/low/x86_64/mldsa_vg.rs",
+          "function": {
+            "function_name": "Sign::sign44",
+            "return_type": "-> Option<[u8; 2420]>",
+            "span": {
+              "start": {
+                "line": 36,
+                "column": 5
+              },
+              "end": {
+                "line": 46,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 45,
+              "column": 9
+            },
+            "end": {
+              "line": 45,
+              "column": 84
+            }
+          },
+          "replacement": "Some([0; 2420])",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/rind__src__low__x86_64__mldsa_vg.rs_line_45_col_9_001.log",
+      "diff_path": "diff/rind__src__low__x86_64__mldsa_vg.rs_line_45_col_9_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 28.983349513,
+          "process_status": "Success",
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--no-run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 9.338193584,
+          "process_status": {
+            "Failure": 100
+          },
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "rind/src/low/x86_64/mldsa_vg.rs:45:9: replace Sign::sign44 -> Option<[u8; 2420]> with Some([1; 2420])",
+          "package": "rind",
+          "file": "rind/src/low/x86_64/mldsa_vg.rs",
+          "function": {
+            "function_name": "Sign::sign44",
+            "return_type": "-> Option<[u8; 2420]>",
+            "span": {
+              "start": {
+                "line": 36,
+                "column": 5
+              },
+              "end": {
+                "line": 46,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 45,
+              "column": 9
+            },
+            "end": {
+              "line": 45,
+              "column": 84
+            }
+          },
+          "replacement": "Some([1; 2420])",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/rind__src__low__x86_64__mldsa_vg.rs_line_45_col_9_002.log",
+      "diff_path": "diff/rind__src__low__x86_64__mldsa_vg.rs_line_45_col_9_002.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 10.071853965,
+          "process_status": "Success",
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--no-run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 6.312450279,
+          "process_status": {
+            "Failure": 100
+          },
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "rind/src/low/x86_64/mldsa_vg.rs:55:9: replace Sign::sign65 -> Option<[u8; 3309]> with None",
+          "package": "rind",
+          "file": "rind/src/low/x86_64/mldsa_vg.rs",
+          "function": {
+            "function_name": "Sign::sign65",
+            "return_type": "-> Option<[u8; 3309]>",
+            "span": {
+              "start": {
+                "line": 48,
+                "column": 5
+              },
+              "end": {
+                "line": 56,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 55,
+              "column": 9
+            },
+            "end": {
+              "line": 55,
+              "column": 85
+            }
+          },
+          "replacement": "None",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/rind__src__low__x86_64__mldsa_vg.rs_line_55_col_9.log",
+      "diff_path": "diff/rind__src__low__x86_64__mldsa_vg.rs_line_55_col_9.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 9.818183491,
+          "process_status": "Success",
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--no-run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 68.660050339,
+          "process_status": {
+            "Failure": 100
+          },
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "rind/src/low/x86_64/mldsa_vg.rs:55:9: replace Sign::sign65 -> Option<[u8; 3309]> with Some([0; 3309])",
+          "package": "rind",
+          "file": "rind/src/low/x86_64/mldsa_vg.rs",
+          "function": {
+            "function_name": "Sign::sign65",
+            "return_type": "-> Option<[u8; 3309]>",
+            "span": {
+              "start": {
+                "line": 48,
+                "column": 5
+              },
+              "end": {
+                "line": 56,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 55,
+              "column": 9
+            },
+            "end": {
+              "line": 55,
+              "column": 85
+            }
+          },
+          "replacement": "Some([0; 3309])",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/rind__src__low__x86_64__mldsa_vg.rs_line_55_col_9_001.log",
+      "diff_path": "diff/rind__src__low__x86_64__mldsa_vg.rs_line_55_col_9_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 10.929341926,
+          "process_status": "Success",
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--no-run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 52.645132532,
+          "process_status": {
+            "Failure": 100
+          },
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "rind/src/low/x86_64/mldsa_vg.rs:55:9: replace Sign::sign65 -> Option<[u8; 3309]> with Some([1; 3309])",
+          "package": "rind",
+          "file": "rind/src/low/x86_64/mldsa_vg.rs",
+          "function": {
+            "function_name": "Sign::sign65",
+            "return_type": "-> Option<[u8; 3309]>",
+            "span": {
+              "start": {
+                "line": 48,
+                "column": 5
+              },
+              "end": {
+                "line": 56,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 55,
+              "column": 9
+            },
+            "end": {
+              "line": 55,
+              "column": 85
+            }
+          },
+          "replacement": "Some([1; 3309])",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/rind__src__low__x86_64__mldsa_vg.rs_line_55_col_9_002.log",
+      "diff_path": "diff/rind__src__low__x86_64__mldsa_vg.rs_line_55_col_9_002.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 14.723782864,
+          "process_status": "Success",
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--no-run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 62.931134864,
+          "process_status": {
+            "Failure": 100
+          },
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "rind/src/low/x86_64/mldsa_vg.rs:65:9: replace Sign::sign87 -> Option<[u8; 4627]> with None",
+          "package": "rind",
+          "file": "rind/src/low/x86_64/mldsa_vg.rs",
+          "function": {
+            "function_name": "Sign::sign87",
+            "return_type": "-> Option<[u8; 4627]>",
+            "span": {
+              "start": {
+                "line": 58,
+                "column": 5
+              },
+              "end": {
+                "line": 66,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 65,
+              "column": 9
+            },
+            "end": {
+              "line": 65,
+              "column": 85
+            }
+          },
+          "replacement": "None",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/rind__src__low__x86_64__mldsa_vg.rs_line_65_col_9.log",
+      "diff_path": "diff/rind__src__low__x86_64__mldsa_vg.rs_line_65_col_9.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 10.793597104,
+          "process_status": "Success",
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--no-run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 59.898898068,
+          "process_status": {
+            "Failure": 100
+          },
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "rind/src/low/x86_64/mldsa_vg.rs:65:9: replace Sign::sign87 -> Option<[u8; 4627]> with Some([0; 4627])",
+          "package": "rind",
+          "file": "rind/src/low/x86_64/mldsa_vg.rs",
+          "function": {
+            "function_name": "Sign::sign87",
+            "return_type": "-> Option<[u8; 4627]>",
+            "span": {
+              "start": {
+                "line": 58,
+                "column": 5
+              },
+              "end": {
+                "line": 66,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 65,
+              "column": 9
+            },
+            "end": {
+              "line": 65,
+              "column": 85
+            }
+          },
+          "replacement": "Some([0; 4627])",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/rind__src__low__x86_64__mldsa_vg.rs_line_65_col_9_001.log",
+      "diff_path": "diff/rind__src__low__x86_64__mldsa_vg.rs_line_65_col_9_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 20.857592064,
+          "process_status": "Success",
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--no-run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 76.736264825,
+          "process_status": {
+            "Failure": 100
+          },
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "rind/src/low/x86_64/mldsa_vg.rs:65:9: replace Sign::sign87 -> Option<[u8; 4627]> with Some([1; 4627])",
+          "package": "rind",
+          "file": "rind/src/low/x86_64/mldsa_vg.rs",
+          "function": {
+            "function_name": "Sign::sign87",
+            "return_type": "-> Option<[u8; 4627]>",
+            "span": {
+              "start": {
+                "line": 58,
+                "column": 5
+              },
+              "end": {
+                "line": 66,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 65,
+              "column": 9
+            },
+            "end": {
+              "line": 65,
+              "column": 85
+            }
+          },
+          "replacement": "Some([1; 4627])",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/rind__src__low__x86_64__mldsa_vg.rs_line_65_col_9_002.log",
+      "diff_path": "diff/rind__src__low__x86_64__mldsa_vg.rs_line_65_col_9_002.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 9.530469437,
+          "process_status": "Success",
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--no-run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 52.837688654,
+          "process_status": {
+            "Failure": 100
+          },
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "rind/src/low/x86_64/mldsa_vg.rs:80:25: replace / with %",
+          "package": "rind",
+          "file": "rind/src/low/x86_64/mldsa_vg.rs",
+          "function": null,
+          "span": {
+            "start": {
+              "line": 80,
+              "column": 25
+            },
+            "end": {
+              "line": 80,
+              "column": 26
+            }
+          },
+          "replacement": "%",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/rind__src__low__x86_64__mldsa_vg.rs_line_80_col_25.log",
+      "diff_path": "diff/rind__src__low__x86_64__mldsa_vg.rs_line_80_col_25.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 9.468627566,
+          "process_status": "Success",
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--no-run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 6.364547718,
+          "process_status": {
+            "Failure": 100
+          },
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "rind/src/low/x86_64/mldsa_vg.rs:80:25: replace / with *",
+          "package": "rind",
+          "file": "rind/src/low/x86_64/mldsa_vg.rs",
+          "function": null,
+          "span": {
+            "start": {
+              "line": 80,
+              "column": 25
+            },
+            "end": {
+              "line": 80,
+              "column": 26
+            }
+          },
+          "replacement": "*",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/rind__src__low__x86_64__mldsa_vg.rs_line_80_col_25_001.log",
+      "diff_path": "diff/rind__src__low__x86_64__mldsa_vg.rs_line_80_col_25_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 15.923777935,
+          "process_status": "Success",
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--no-run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 117.137597132,
+          "process_status": "Success",
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "rind/src/low/x86_64/mldsa_vg.rs:93:5: replace sign -> Option<[u8; SIG]> with None",
+          "package": "rind",
+          "file": "rind/src/low/x86_64/mldsa_vg.rs",
+          "function": {
+            "function_name": "sign",
+            "return_type": "-> Option<[u8; SIG]>",
+            "span": {
+              "start": {
+                "line": 82,
+                "column": 1
+              },
+              "end": {
+                "line": 107,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 93,
+              "column": 5
+            },
+            "end": {
+              "line": 106,
+              "column": 51
+            }
+          },
+          "replacement": "None",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/rind__src__low__x86_64__mldsa_vg.rs_line_93_col_5.log",
+      "diff_path": "diff/rind__src__low__x86_64__mldsa_vg.rs_line_93_col_5.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 10.02522804,
+          "process_status": "Success",
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--no-run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 6.41262115,
+          "process_status": {
+            "Failure": 100
+          },
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "rind/src/low/x86_64/mldsa_vg.rs:93:5: replace sign -> Option<[u8; SIG]> with Some([0; SIG])",
+          "package": "rind",
+          "file": "rind/src/low/x86_64/mldsa_vg.rs",
+          "function": {
+            "function_name": "sign",
+            "return_type": "-> Option<[u8; SIG]>",
+            "span": {
+              "start": {
+                "line": 82,
+                "column": 1
+              },
+              "end": {
+                "line": 107,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 93,
+              "column": 5
+            },
+            "end": {
+              "line": 106,
+              "column": 51
+            }
+          },
+          "replacement": "Some([0; SIG])",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/rind__src__low__x86_64__mldsa_vg.rs_line_93_col_5_001.log",
+      "diff_path": "diff/rind__src__low__x86_64__mldsa_vg.rs_line_93_col_5_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 10.259421943,
+          "process_status": "Success",
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--no-run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 7.230013062,
+          "process_status": {
+            "Failure": 100
+          },
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "rind/src/low/x86_64/mldsa_vg.rs:93:5: replace sign -> Option<[u8; SIG]> with Some([1; SIG])",
+          "package": "rind",
+          "file": "rind/src/low/x86_64/mldsa_vg.rs",
+          "function": {
+            "function_name": "sign",
+            "return_type": "-> Option<[u8; SIG]>",
+            "span": {
+              "start": {
+                "line": 82,
+                "column": 1
+              },
+              "end": {
+                "line": 107,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 93,
+              "column": 5
+            },
+            "end": {
+              "line": 106,
+              "column": 51
+            }
+          },
+          "replacement": "Some([1; SIG])",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/rind__src__low__x86_64__mldsa_vg.rs_line_93_col_5_002.log",
+      "diff_path": "diff/rind__src__low__x86_64__mldsa_vg.rs_line_93_col_5_002.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 12.844344203,
+          "process_status": "Success",
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--no-run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 7.485025793,
+          "process_status": {
+            "Failure": 100
+          },
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "rind/src/low/x86_64/mldsa_vg.rs:97:38: replace + with - in sign",
+          "package": "rind",
+          "file": "rind/src/low/x86_64/mldsa_vg.rs",
+          "function": {
+            "function_name": "sign",
+            "return_type": "-> Option<[u8; SIG]>",
+            "span": {
+              "start": {
+                "line": 82,
+                "column": 1
+              },
+              "end": {
+                "line": 107,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 97,
+              "column": 38
+            },
+            "end": {
+              "line": 97,
+              "column": 39
+            }
+          },
+          "replacement": "-",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/rind__src__low__x86_64__mldsa_vg.rs_line_97_col_38.log",
+      "diff_path": "diff/rind__src__low__x86_64__mldsa_vg.rs_line_97_col_38.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 10.334276202,
+          "process_status": "Success",
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--no-run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 7.549151082,
+          "process_status": {
+            "Failure": 100
+          },
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "rind/src/low/x86_64/mldsa_vg.rs:97:38: replace + with * in sign",
+          "package": "rind",
+          "file": "rind/src/low/x86_64/mldsa_vg.rs",
+          "function": {
+            "function_name": "sign",
+            "return_type": "-> Option<[u8; SIG]>",
+            "span": {
+              "start": {
+                "line": 82,
+                "column": 1
+              },
+              "end": {
+                "line": 107,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 97,
+              "column": 38
+            },
+            "end": {
+              "line": 97,
+              "column": 39
+            }
+          },
+          "replacement": "*",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/rind__src__low__x86_64__mldsa_vg.rs_line_97_col_38_001.log",
+      "diff_path": "diff/rind__src__low__x86_64__mldsa_vg.rs_line_97_col_38_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 10.84397427,
+          "process_status": "Success",
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--no-run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 6.754823972,
+          "process_status": {
+            "Failure": 100
+          },
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "rind/src/low/x86_64/mldsa_vg.rs:106:31: replace == with != in sign",
+          "package": "rind",
+          "file": "rind/src/low/x86_64/mldsa_vg.rs",
+          "function": {
+            "function_name": "sign",
+            "return_type": "-> Option<[u8; SIG]>",
+            "span": {
+              "start": {
+                "line": 82,
+                "column": 1
+              },
+              "end": {
+                "line": 107,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 106,
+              "column": 31
+            },
+            "end": {
+              "line": 106,
+              "column": 33
+            }
+          },
+          "replacement": "!=",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/rind__src__low__x86_64__mldsa_vg.rs_line_106_col_31.log",
+      "diff_path": "diff/rind__src__low__x86_64__mldsa_vg.rs_line_106_col_31.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 11.250070555,
+          "process_status": "Success",
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--no-run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 7.044975384,
+          "process_status": {
+            "Failure": 100
+          },
+          "argv": [
+            "/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo",
+            "nextest",
+            "run",
+            "--verbose",
+            "--package=rind@0.3.2"
+          ]
+        }
+      ]
+    }
+  ],
+  "total_mutants": 39,
+  "missed": 13,
+  "caught": 17,
+  "timeout": 0,
+  "unviable": 9,
+  "success": 0,
+  "start_time": "2026-11-17T22:34:53.389532473Z",
+  "end_time": "2026-11-17T23:16:33.845945545Z",
+  "cargo_mutants_version": "27.1.0"
+}

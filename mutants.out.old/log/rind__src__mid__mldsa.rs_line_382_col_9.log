@@ -1,0 +1,131 @@
+
+*** rind/src/mid/mldsa.rs:382:9: replace KeyPair<P>::from_seed -> (Self, PublicKey<P>) with (Default::default(), PublicKey::new())
+
+*** mutation diff:
+--- rind/src/mid/mldsa.rs
++++ replace KeyPair<P>::from_seed -> (Self, PublicKey<P>) with (Default::default(), PublicKey::new())
+@@ -374,36 +374,17 @@
+         let mut seed = [0u8; SEED_LEN];
+         SystemRandom.fill(&mut seed)?;
+         Ok(Self::from_seed(&seed))
+     }
+ 
+     /// FIPS 204's `ML-DSA.KeyGen_internal`: the key pair seed `xi` expands
+     /// to, and its public key.
+     pub(crate) fn from_seed(seed: &[u8; SEED_LEN]) -> (Self, PublicKey<P>) {
+-        let _entry = Entry::new_secret();
+-        let seed = low::ct::into_secret(*seed);
+-        let mut key = Self {
+-            seed: Some(seed),
+-            secret_key: P::SecretKey::zeroed(),
+-            expanded: ManuallyDrop::new(Polys::new(secret_expansion_len::<P>())),
+-        };
+-        let mut public_key = P::PublicKey::zeroed();
+-        P::keygen(
+-            Internal(()),
+-            &seed,
+-            public_key.as_mut(),
+-            key.secret_key.as_mut(),
+-            &mut key.expanded,
+-        );
+-        if vg_signs() {
+-            key.expanded.free();
+-        }
+-        let tr = low::ct::into_public(*key.tr());
+-        (key, PublicKey::with_tr(public_key, tr))
++        (Default::default(), PublicKey::new()) /* ~ changed by cargo-mutants ~ */
+     }
+ 
+     /// Loads the expanded private key `sk`, checking it as mldsa-native's
+     /// `mld_sign_pk_from_sk` does: its `s1` and `s2` must be in range, and its
+     /// `t0` and `tr` must be those its other parts compute. Returns its
+     /// public key too.
+     pub(crate) fn from_secret_key(sk: &[u8]) -> Result<(Self, PublicKey<P>), Error> {
+         let _entry = Entry::new_secret();
+
+
+*** /nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo nextest run --no-run --verbose --package=rind@0.3.2
+warning: ignoring --test-threads because --no-run is specified
+   Compiling rind v0.3.2 (/tmp/agent-1000/claude-0n11ged6/nix-shell.BW5LBj/cargo-mutants-t3-8b33eb91-05148dcd7402764e-Mq7x3l.tmp/rind)
+error[E0277]: the trait bound `mid::mldsa::KeyPair<P>: Default` is not satisfied
+   --> rind/src/mid/mldsa.rs:382:10
+    |
+382 |         (Default::default(), PublicKey::new()) /* ~ changed by cargo-mutants ~ */
+    |          ^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
+    |
+help: the trait `Default` is not implemented for `mid::mldsa::KeyPair<P>`
+   --> rind/src/mid/mldsa.rs:280:1
+    |
+280 | pub(crate) struct KeyPair<P: Params> {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no associated function or constant named `new` found for struct `mid::mldsa::PublicKey<P>` in the current scope
+   --> rind/src/mid/mldsa.rs:382:41
+    |
+311 | pub(crate) struct PublicKey<P: Params> {
+    | -------------------------------------- associated function or constant `new` not found for this struct
+...
+382 |         (Default::default(), PublicKey::new()) /* ~ changed by cargo-mutants ~ */
+    |                                         ^^^ associated function or constant not found in `mid::mldsa::PublicKey<_>`
+    |
+note: if you're trying to build a new `mid::mldsa::PublicKey<_>` consider using one of the following associated functions:
+      mid::mldsa::PublicKey::<P>::with_tr
+      mid::mldsa::PublicKey::<P>::from_bytes
+   --> rind/src/mid/mldsa.rs:318:5
+    |
+318 |     fn with_tr(bytes: P::PublicKey, tr: [u8; TR_LEN]) -> Self {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+326 |     pub(crate) fn from_bytes(bytes: &[u8]) -> Result<Self, Error> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = help: items from traits can only be used if the trait is implemented and in scope
+    = note: the following traits define an item `new`, perhaps you need to implement one of them:
+            candidate #1: `Cipher`
+            candidate #2: `Xmd`
+            candidate #3: `high::hash::Hash`
+
+Some errors have detailed explanations: E0277, E0599.
+For more information about an error, try `rustc --explain E0277`.
+error: could not compile `rind` (lib) due to 2 previous errors
+warning: build failed, waiting for other jobs to finish...
+error[E0599]: no associated function or constant named `new` found for struct `mid::mldsa::PublicKey<P>` in the current scope
+   --> rind/src/mid/mldsa.rs:382:41
+    |
+311 | pub(crate) struct PublicKey<P: Params> {
+    | -------------------------------------- associated function or constant `new` not found for this struct
+...
+382 |         (Default::default(), PublicKey::new()) /* ~ changed by cargo-mutants ~ */
+    |                                         ^^^ associated function or constant not found in `mid::mldsa::PublicKey<_>`
+    |
+note: if you're trying to build a new `mid::mldsa::PublicKey<_>` consider using one of the following associated functions:
+      mid::mldsa::PublicKey::<P>::with_tr
+      mid::mldsa::PublicKey::<P>::from_bytes
+   --> rind/src/mid/mldsa.rs:318:5
+    |
+318 |     fn with_tr(bytes: P::PublicKey, tr: [u8; TR_LEN]) -> Self {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+326 |     pub(crate) fn from_bytes(bytes: &[u8]) -> Result<Self, Error> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = help: items from traits can only be used if the trait is implemented and in scope
+    = note: the following traits define an item `new`, perhaps you need to implement one of them:
+            candidate #1: `aead::Cipher`
+            candidate #2: `high::hash::Hash`
+            candidate #3: `mid::hash_to_curve::Xmd`
+            candidate #4: `Bit`
+            candidate #5: `BoundKey`
+            candidate #6: `KeyInit`
+            candidate #7: `KeyIvInit`
+            candidate #8: `MontyForm`
+            candidate #9: `TryKeyInit`
+            candidate #10: `VariableOutputCore`
+            candidate #11: `VartimePrecomputedMultiscalarMul`
+            candidate #12: `blake2::Digest`
+            candidate #13: `pakery_core::crypto::hash::Hash`
+            candidate #14: `rand::distr::uniform::UniformSampler`
+            candidate #15: `ring::aead::BoundKey`
+
+error: could not compile `rind` (lib test) due to 2 previous errors
+error: command `/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo '--color=auto' test --no-run --message-format json-render-diagnostics --package rind@0.3.2` exited with code 101
+
+*** result: Failure(101)

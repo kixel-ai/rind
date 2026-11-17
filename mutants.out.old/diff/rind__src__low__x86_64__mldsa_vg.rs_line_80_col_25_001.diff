@@ -1,0 +1,21 @@
+--- rind/src/low/x86_64/mldsa_vg.rs
++++ replace / with *
+@@ -72,17 +72,17 @@
+         sk: *const [u8; SK],
+         mu: *const [u8; 64],
+         rnd: *const [u8; 32],
+         sig: *mut [u8; SIG],
+         scratch: *mut [u64; SCRATCH],
+     ) -> u32;
+ 
+ /// A cache line, which VG's own API aligns its working space to.
+-const ALIGN: usize = 64 / size_of::<u64>();
++const ALIGN: usize = 64 * /* ~ changed by cargo-mutants ~ */ size_of::<u64>();
+ 
+ /// Runs `routine` on a key `sk` that rind loaded: its `s1` and `s2` were in
+ /// range, and its `t0` and `tr` were those its other parts compute.
+ ///
+ /// The working space holds values derived from the key when the routine
+ /// returns, so it is wiped before it is freed.
+ fn sign<const SK: usize, const SIG: usize, const SCRATCH: usize>(
+     routine: Routine<SK, SIG, SCRATCH>,

@@ -1,0 +1,301 @@
+
+*** rind/src/low/x86_64/mldsa_vg.rs:93:5: replace sign -> Option<[u8; SIG]> with Some([1; SIG])
+
+*** mutation diff:
+--- rind/src/low/x86_64/mldsa_vg.rs
++++ replace sign -> Option<[u8; SIG]> with Some([1; SIG])
+@@ -85,23 +85,10 @@
+ /// The working space holds values derived from the key when the routine
+ /// returns, so it is wiped before it is freed.
+ fn sign<const SK: usize, const SIG: usize, const SCRATCH: usize>(
+     routine: Routine<SK, SIG, SCRATCH>,
+     sk: &[u8; SK],
+     mu: &[u8; 64],
+     rnd: &[u8; 32],
+ ) -> Option<[u8; SIG]> {
+-    let mut sig = [0u8; SIG];
+-    // On the heap, since ML-DSA-87's is 141 KiB, and over-allocated to align.
+-    let mut space = vec![0u64; SCRATCH + ALIGN];
+-    let start = space.as_ptr().align_offset(64);
+-    let scratch = space[start..start + SCRATCH]
+-        .as_mut_ptr()
+-        .cast::<[u64; SCRATCH]>();
+-    // SAFETY: every pointer is to a distinct Rust object valid for its size,
+-    // so none overlaps another, the stack, or the end of the address space.
+-    // The routine needs no CPU feature, and `sk` is a loaded key.
+-    let ok = unsafe { routine(sk, mu, rnd, &mut sig, scratch) };
+-    low::zeroise(&mut space);
+-    // Whether the loop reached its bound is public, as which attempt signs is.
+-    (low::ct::into_public(ok) == 1).then_some(sig)
++    Some([1; SIG]) /* ~ changed by cargo-mutants ~ */
+ }
+
+
+*** /nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo nextest run --no-run --verbose --package=rind@0.3.2
+warning: ignoring --test-threads because --no-run is specified
+   Compiling rind v0.3.2 (/tmp/agent-1000/claude-0n11ged6/nix-shell.BW5LBj/cargo-mutants-t3-8b33eb91-05148dcd7402764e-Mq7x3l.tmp/rind)
+warning: unused import: `crate::low`
+  --> rind/src/low/x86_64/mldsa_vg.rs:16:5
+   |
+16 | use crate::low;
+   |     ^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `routine`
+  --> rind/src/low/x86_64/mldsa_vg.rs:88:5
+   |
+88 |     routine: Routine<SK, SIG, SCRATCH>,
+   |     ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_routine`
+   |
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `sk`
+  --> rind/src/low/x86_64/mldsa_vg.rs:89:5
+   |
+89 |     sk: &[u8; SK],
+   |     ^^ help: if this is intentional, prefix it with an underscore: `_sk`
+
+warning: unused variable: `mu`
+  --> rind/src/low/x86_64/mldsa_vg.rs:90:5
+   |
+90 |     mu: &[u8; 64],
+   |     ^^ help: if this is intentional, prefix it with an underscore: `_mu`
+
+warning: unused variable: `rnd`
+  --> rind/src/low/x86_64/mldsa_vg.rs:91:5
+   |
+91 |     rnd: &[u8; 32],
+   |     ^^^ help: if this is intentional, prefix it with an underscore: `_rnd`
+
+warning: constant `ALIGN` is never used
+  --> rind/src/low/x86_64/mldsa_vg.rs:80:7
+   |
+80 | const ALIGN: usize = 64 / size_of::<u64>();
+   |       ^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `rind` (lib) generated 6 warnings (run `cargo fix --lib -p rind` to apply 5 suggestions)
+warning: `rind` (lib test) generated 6 warnings (6 duplicates)
+    Finished `test` profile [unoptimized] target(s) in 12.39s
+info: using target runner `/home/kixelated/worktrees/rind/t3-8b33eb91-05148dcd7402764e/admin/mutants --run` defined by environment variable `CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER`
+
+*** result: Success
+
+*** /nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo nextest run --verbose --package=rind@0.3.2
+warning: unused import: `crate::low`
+  --> rind/src/low/x86_64/mldsa_vg.rs:16:5
+   |
+16 | use crate::low;
+   |     ^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `routine`
+  --> rind/src/low/x86_64/mldsa_vg.rs:88:5
+   |
+88 |     routine: Routine<SK, SIG, SCRATCH>,
+   |     ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_routine`
+   |
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `sk`
+  --> rind/src/low/x86_64/mldsa_vg.rs:89:5
+   |
+89 |     sk: &[u8; SK],
+   |     ^^ help: if this is intentional, prefix it with an underscore: `_sk`
+
+warning: unused variable: `mu`
+  --> rind/src/low/x86_64/mldsa_vg.rs:90:5
+   |
+90 |     mu: &[u8; 64],
+   |     ^^ help: if this is intentional, prefix it with an underscore: `_mu`
+
+warning: unused variable: `rnd`
+  --> rind/src/low/x86_64/mldsa_vg.rs:91:5
+   |
+91 |     rnd: &[u8; 32],
+   |     ^^^ help: if this is intentional, prefix it with an underscore: `_rnd`
+
+warning: constant `ALIGN` is never used
+  --> rind/src/low/x86_64/mldsa_vg.rs:80:7
+   |
+80 | const ALIGN: usize = 64 / size_of::<u64>();
+   |       ^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `rind` (lib) generated 6 warnings (run `cargo fix --lib -p rind` to apply 5 suggestions)
+warning: `rind` (lib test) generated 6 warnings (6 duplicates)
+    Finished `test` profile [unoptimized] target(s) in 0.23s
+info: using target runner `/home/kixelated/worktrees/rind/t3-8b33eb91-05148dcd7402764e/admin/mutants --run` defined by environment variable `CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER`
+────────────
+ Nextest run ID 0b4f373c-2db1-4fa6-9b30-6bc571b24b1a with nextest profile: default
+    Starting 999 tests across 10 binaries (63 tests skipped)
+       START [         ] (  1/999) rind aead::gcm::tests::acvp
+             command: /home/kixelated/worktrees/rind/t3-8b33eb91-05148dcd7402764e/admin/mutants --run /tmp/agent-1000/claude-0n11ged6/nix-shell.BW5LBj/cargo-mutants-t3-8b33eb91-05148dcd7402764e-Mq7x3l.tmp/target/debug/deps/rind-e5647ec39c1a9545 --exact aead::gcm::tests::acvp --nocapture
+       START [         ] (  1/999) rind aead::gcm::tests::tags_are_prefixes
+             command: /home/kixelated/worktrees/rind/t3-8b33eb91-05148dcd7402764e/admin/mutants --run /tmp/agent-1000/claude-0n11ged6/nix-shell.BW5LBj/cargo-mutants-t3-8b33eb91-05148dcd7402764e-Mq7x3l.tmp/target/debug/deps/rind-e5647ec39c1a9545 --exact aead::gcm::tests::tags_are_prefixes --nocapture
+       START [         ] (  1/999) rind aead::gcm::tests::cavp
+             command: /home/kixelated/worktrees/rind/t3-8b33eb91-05148dcd7402764e/admin/mutants --run /tmp/agent-1000/claude-0n11ged6/nix-shell.BW5LBj/cargo-mutants-t3-8b33eb91-05148dcd7402764e-Mq7x3l.tmp/target/debug/deps/rind-e5647ec39c1a9545 --exact aead::gcm::tests::cavp --nocapture
+       START [         ] (  1/999) rind aead::quic::tests::rfc9001
+             command: /home/kixelated/worktrees/rind/t3-8b33eb91-05148dcd7402764e/admin/mutants --run /tmp/agent-1000/claude-0n11ged6/nix-shell.BW5LBj/cargo-mutants-t3-8b33eb91-05148dcd7402764e-Mq7x3l.tmp/target/debug/deps/rind-e5647ec39c1a9545 --exact aead::quic::tests::rfc9001 --nocapture
+       START [         ] (  1/999) rind aead::quic::tests::key_length_must_match_algorithm
+             command: /home/kixelated/worktrees/rind/t3-8b33eb91-05148dcd7402764e/admin/mutants --run /tmp/agent-1000/claude-0n11ged6/nix-shell.BW5LBj/cargo-mutants-t3-8b33eb91-05148dcd7402764e-Mq7x3l.tmp/target/debug/deps/rind-e5647ec39c1a9545 --exact aead::quic::tests::key_length_must_match_algorithm --nocapture
+       START [         ] (  1/999) rind aead::gcm::tests::refuses_malformed_input
+             command: /home/kixelated/worktrees/rind/t3-8b33eb91-05148dcd7402764e/admin/mutants --run /tmp/agent-1000/claude-0n11ged6/nix-shell.BW5LBj/cargo-mutants-t3-8b33eb91-05148dcd7402764e-Mq7x3l.tmp/target/debug/deps/rind-e5647ec39c1a9545 --exact aead::gcm::tests::refuses_malformed_input --nocapture
+       START [         ] (  1/999) rind aead::tests::from_sequence
+             command: /home/kixelated/worktrees/rind/t3-8b33eb91-05148dcd7402764e/admin/mutants --run /tmp/agent-1000/claude-0n11ged6/nix-shell.BW5LBj/cargo-mutants-t3-8b33eb91-05148dcd7402764e-Mq7x3l.tmp/target/debug/deps/rind-e5647ec39c1a9545 --exact aead::tests::from_sequence --nocapture
+       START [         ] (  1/999) rind aead::tests::from_sequence_rfc9180
+             command: /home/kixelated/worktrees/rind/t3-8b33eb91-05148dcd7402764e/admin/mutants --run /tmp/agent-1000/claude-0n11ged6/nix-shell.BW5LBj/cargo-mutants-t3-8b33eb91-05148dcd7402764e-Mq7x3l.tmp/target/debug/deps/rind-e5647ec39c1a9545 --exact aead::tests::from_sequence_rfc9180 --nocapture
+       START [         ] (  1/999) rind aead::tests::open_refuses_input_shorter_than_tag
+             command: /home/kixelated/worktrees/rind/t3-8b33eb91-05148dcd7402764e/admin/mutants --run /tmp/agent-1000/claude-0n11ged6/nix-shell.BW5LBj/cargo-mutants-t3-8b33eb91-05148dcd7402764e-Mq7x3l.tmp/target/debug/deps/rind-e5647ec39c1a9545 --exact aead::tests::open_refuses_input_shorter_than_tag --nocapture
+       START [         ] (  1/999) rind aead::tests::key_length_must_match_algorithm
+             command: /home/kixelated/worktrees/rind/t3-8b33eb91-05148dcd7402764e/admin/mutants --run /tmp/agent-1000/claude-0n11ged6/nix-shell.BW5LBj/cargo-mutants-t3-8b33eb91-05148dcd7402764e-Mq7x3l.tmp/target/debug/deps/rind-e5647ec39c1a9545 --exact aead::tests::key_length_must_match_algorithm --nocapture
+       START [         ] (  1/999) rind aead::tests::seal_and_open
+             command: /home/kixelated/worktrees/rind/t3-8b33eb91-05148dcd7402764e/admin/mutants --run /tmp/agent-1000/claude-0n11ged6/nix-shell.BW5LBj/cargo-mutants-t3-8b33eb91-05148dcd7402764e-Mq7x3l.tmp/target/debug/deps/rind-e5647ec39c1a9545 --exact aead::tests::seal_and_open --nocapture
+       START [         ] (  1/999) rind aead::tests::randomized_nonce_key
+             command: /home/kixelated/worktrees/rind/t3-8b33eb91-05148dcd7402764e/admin/mutants --run /tmp/agent-1000/claude-0n11ged6/nix-shell.BW5LBj/cargo-mutants-t3-8b33eb91-05148dcd7402764e-Mq7x3l.tmp/target/debug/deps/rind-e5647ec39c1a9545 --exact aead::tests::randomized_nonce_key --nocapture
+       START [         ] (  1/999) rind error::tests::key_rejected_displays_its_reason
+             command: /home/kixelated/worktrees/rind/t3-8b33eb91-05148dcd7402764e/admin/mutants --run /tmp/agent-1000/claude-0n11ged6/nix-shell.BW5LBj/cargo-mutants-t3-8b33eb91-05148dcd7402764e-Mq7x3l.tmp/target/debug/deps/rind-e5647ec39c1a9545 --exact error::tests::key_rejected_displays_its_reason --nocapture
+       START [         ] (  1/999) rind aead::tests::tag_must_be_whole
+             command: /home/kixelated/worktrees/rind/t3-8b33eb91-05148dcd7402764e/admin/mutants --run /tmp/agent-1000/claude-0n11ged6/nix-shell.BW5LBj/cargo-mutants-t3-8b33eb91-05148dcd7402764e-Mq7x3l.tmp/target/debug/deps/rind-e5647ec39c1a9545 --exact aead::tests::tag_must_be_whole --nocapture
+       START [         ] (  1/999) rind fips::tests::ml_kem_and_ml_dsa_keys_match_acvp
+             command: /home/kixelated/worktrees/rind/t3-8b33eb91-05148dcd7402764e/admin/mutants --run /tmp/agent-1000/claude-0n11ged6/nix-shell.BW5LBj/cargo-mutants-t3-8b33eb91-05148dcd7402764e-Mq7x3l.tmp/target/debug/deps/rind-e5647ec39c1a9545 --exact fips::tests::ml_kem_and_ml_dsa_keys_match_acvp --nocapture
+       START [         ] (  1/999) rind fips::tests::error_codes_round_trip
+             command: /home/kixelated/worktrees/rind/t3-8b33eb91-05148dcd7402764e/admin/mutants --run /tmp/agent-1000/claude-0n11ged6/nix-shell.BW5LBj/cargo-mutants-t3-8b33eb91-05148dcd7402764e-Mq7x3l.tmp/target/debug/deps/rind-e5647ec39c1a9545 --exact fips::tests::error_codes_round_trip --nocapture
+       START [         ] (  1/999) rind fips::tests::self_tests_pass
+             command: /home/kixelated/worktrees/rind/t3-8b33eb91-05148dcd7402764e/admin/mutants --run /tmp/agent-1000/claude-0n11ged6/nix-shell.BW5LBj/cargo-mutants-t3-8b33eb91-05148dcd7402764e-Mq7x3l.tmp/target/debug/deps/rind-e5647ec39c1a9545 --exact fips::tests::self_tests_pass --nocapture
+       START [         ] (  1/999) rind fips::tests::rsa_and_ecdsa_answers_match_aws_lc
+             command: /home/kixelated/worktrees/rind/t3-8b33eb91-05148dcd7402764e/admin/mutants --run /tmp/agent-1000/claude-0n11ged6/nix-shell.BW5LBj/cargo-mutants-t3-8b33eb91-05148dcd7402764e-Mq7x3l.tmp/target/debug/deps/rind-e5647ec39c1a9545 --exact fips::tests::rsa_and_ecdsa_answers_match_aws_lc --nocapture
+       START [         ] (  1/999) rind fips_rng::tests::fills_across_requests
+             command: /home/kixelated/worktrees/rind/t3-8b33eb91-05148dcd7402764e/admin/mutants --run /tmp/agent-1000/claude-0n11ged6/nix-shell.BW5LBj/cargo-mutants-t3-8b33eb91-05148dcd7402764e-Mq7x3l.tmp/target/debug/deps/rind-e5647ec39c1a9545 --exact fips_rng::tests::fills_across_requests --nocapture
+       START [         ] (  1/999) rind fips_rng::tests::cast_passes
+             command: /home/kixelated/worktrees/rind/t3-8b33eb91-05148dcd7402764e/admin/mutants --run /tmp/agent-1000/claude-0n11ged6/nix-shell.BW5LBj/cargo-mutants-t3-8b33eb91-05148dcd7402764e-Mq7x3l.tmp/target/debug/deps/rind-e5647ec39c1a9545 --exact fips_rng::tests::cast_passes --nocapture
+       START [         ] (  1/999) rind fips_rng::tests::threads_draw_independently
+             command: /home/kixelated/worktrees/rind/t3-8b33eb91-05148dcd7402764e/admin/mutants --run /tmp/agent-1000/claude-0n11ged6/nix-shell.BW5LBj/cargo-mutants-t3-8b33eb91-05148dcd7402764e-Mq7x3l.tmp/target/debug/deps/rind-e5647ec39c1a9545 --exact fips_rng::tests::threads_draw_independently --nocapture
+       START [         ] (  1/999) rind fips_rng::tests::fork_during_self_test
+             command: /home/kixelated/worktrees/rind/t3-8b33eb91-05148dcd7402764e/admin/mutants --run /tmp/agent-1000/claude-0n11ged6/nix-shell.BW5LBj/cargo-mutants-t3-8b33eb91-05148dcd7402764e-Mq7x3l.tmp/target/debug/deps/rind-e5647ec39c1a9545 --exact fips_rng::tests::fork_during_self_test --nocapture
+       START [         ] (  1/999) rind high::agreement::tests::acvp_x25519_key_gen
+             command: /home/kixelated/worktrees/rind/t3-8b33eb91-05148dcd7402764e/admin/mutants --run /tmp/agent-1000/claude-0n11ged6/nix-shell.BW5LBj/cargo-mutants-t3-8b33eb91-05148dcd7402764e-Mq7x3l.tmp/target/debug/deps/rind-e5647ec39c1a9545 --exact high::agreement::tests::acvp_x25519_key_gen --nocapture
+       START [         ] (  1/999) rind high::agreement::tests::acvp_x25519
+             command: /home/kixelated/worktrees/rind/t3-8b33eb91-05148dcd7402764e/admin/mutants --run /tmp/agent-1000/claude-0n11ged6/nix-shell.BW5LBj/cargo-mutants-t3-8b33eb91-05148dcd7402764e-Mq7x3l.tmp/target/debug/deps/rind-e5647ec39c1a9545 --exact high::agreement::tests::acvp_x25519 --nocapture
+        PASS [   0.042s] (  1/999) rind fips::tests::error_codes_round_trip
+       START [         ] (  2/999) rind high::agreement::tests::acvp_x25519_key_ver
+             command: /home/kixelated/worktrees/rind/t3-8b33eb91-05148dcd7402764e/admin/mutants --run /tmp/agent-1000/claude-0n11ged6/nix-shell.BW5LBj/cargo-mutants-t3-8b33eb91-05148dcd7402764e-Mq7x3l.tmp/target/debug/deps/rind-e5647ec39c1a9545 --exact high::agreement::tests::acvp_x25519_key_ver --nocapture
+        PASS [   0.064s] (  2/999) rind aead::tests::key_length_must_match_algorithm
+       START [         ] (  3/999) rind high::agreement::tests::agrees
+             command: /home/kixelated/worktrees/rind/t3-8b33eb91-05148dcd7402764e/admin/mutants --run /tmp/agent-1000/claude-0n11ged6/nix-shell.BW5LBj/cargo-mutants-t3-8b33eb91-05148dcd7402764e-Mq7x3l.tmp/target/debug/deps/rind-e5647ec39c1a9545 --exact high::agreement::tests::agrees --nocapture
+        PASS [   0.070s] (  3/999) rind aead::tests::tag_must_be_whole
+       START [         ] (  4/999) rind high::agreement::tests::cavp_ecdh
+             command: /home/kixelated/worktrees/rind/t3-8b33eb91-05148dcd7402764e/admin/mutants --run /tmp/agent-1000/claude-0n11ged6/nix-shell.BW5LBj/cargo-mutants-t3-8b33eb91-05148dcd7402764e-Mq7x3l.tmp/target/debug/deps/rind-e5647ec39c1a9545 --exact high::agreement::tests::cavp_ecdh --nocapture
+        PASS [   0.071s] (  4/999) rind aead::quic::tests::key_length_must_match_algorithm
+       START [         ] (  5/999) rind high::agreement::tests::decompresses_points
+             command: /home/kixelated/worktrees/rind/t3-8b33eb91-05148dcd7402764e/admin/mutants --run /tmp/agent-1000/claude-0n11ged6/nix-shell.BW5LBj/cargo-mutants-t3-8b33eb91-05148dcd7402764e-Mq7x3l.tmp/target/debug/deps/rind-e5647ec39c1a9545 --exact high::agreement::tests::decompresses_points --nocapture
+        PASS [   0.078s] (  5/999) rind aead::quic::tests::rfc9001
+       START [         ] (  6/999) rind high::agreement::tests::loads_ecdsa_keys
+             command: /home/kixelated/worktrees/rind/t3-8b33eb91-05148dcd7402764e/admin/mutants --run /tmp/agent-1000/claude-0n11ged6/nix-shell.BW5LBj/cargo-mutants-t3-8b33eb91-05148dcd7402764e-Mq7x3l.tmp/target/debug/deps/rind-e5647ec39c1a9545 --exact high::agreement::tests::loads_ecdsa_keys --nocapture
+        PASS [   0.079s] (  6/999) rind aead::tests::seal_and_open
+       START [         ] (  7/999) rind high::agreement::tests::loads_in_constant_time
+             command: /home/kixelated/worktrees/rind/t3-8b33eb91-05148dcd7402764e/admin/mutants --run /tmp/agent-1000/claude-0n11ged6/nix-shell.BW5LBj/cargo-mutants-t3-8b33eb91-05148dcd7402764e-Mq7x3l.tmp/target/debug/deps/rind-e5647ec39c1a9545 --exact high::agreement::tests::loads_in_constant_time --nocapture
+        PASS [   0.084s] (  7/999) rind aead::tests::randomized_nonce_key
+        PASS [   0.084s] (  8/999) rind high::agreement::tests::acvp_x25519
+        PASS [   0.084s] (  9/999) rind aead::tests::open_refuses_input_shorter_than_tag
+       START [         ] ( 10/999) rind high::agreement::tests::refuses_scalars
+             command: /home/kixelated/worktrees/rind/t3-8b33eb91-05148dcd7402764e/admin/mutants --run /tmp/agent-1000/claude-0n11ged6/nix-shell.BW5LBj/cargo-mutants-t3-8b33eb91-05148dcd7402764e-Mq7x3l.tmp/target/debug/deps/rind-e5647ec39c1a9545 --exact high::agreement::tests::refuses_scalars --nocapture
+       START [         ] ( 10/999) rind high::agreement::tests::public_keys_round_trip
+             command: /home/kixelated/worktrees/rind/t3-8b33eb91-05148dcd7402764e/admin/mutants --run /tmp/agent-1000/claude-0n11ged6/nix-shell.BW5LBj/cargo-mutants-t3-8b33eb91-05148dcd7402764e-Mq7x3l.tmp/target/debug/deps/rind-e5647ec39c1a9545 --exact high::agreement::tests::public_keys_round_trip --nocapture
+       START [         ] ( 10/999) rind high::agreement::tests::round_trips
+             command: /home/kixelated/worktrees/rind/t3-8b33eb91-05148dcd7402764e/admin/mutants --run /tmp/agent-1000/claude-0n11ged6/nix-shell.BW5LBj/cargo-mutants-t3-8b33eb91-05148dcd7402764e-Mq7x3l.tmp/target/debug/deps/rind-e5647ec39c1a9545 --exact high::agreement::tests::round_trips --nocapture
+        PASS [   0.083s] ( 10/999) rind fips_rng::tests::threads_draw_independently
+        PASS [   0.083s] ( 11/999) rind aead::gcm::tests::refuses_malformed_input
+        PASS [   0.083s] ( 12/999) rind high::agreement::tests::acvp_x25519_key_gen
+       START [         ] ( 13/999) rind high::agreement::tests::wycheproof_p521
+             command: /home/kixelated/worktrees/rind/t3-8b33eb91-05148dcd7402764e/admin/mutants --run /tmp/agent-1000/claude-0n11ged6/nix-shell.BW5LBj/cargo-mutants-t3-8b33eb91-05148dcd7402764e-Mq7x3l.tmp/target/debug/deps/rind-e5647ec39c1a9545 --exact high::agreement::tests::wycheproof_p521 --nocapture
+       START [         ] ( 13/999) rind high::agreement::tests::wycheproof_p256
+             command: /home/kixelated/worktrees/rind/t3-8b33eb91-05148dcd7402764e/admin/mutants --run /tmp/agent-1000/claude-0n11ged6/nix-shell.BW5LBj/cargo-mutants-t3-8b33eb91-05148dcd7402764e-Mq7x3l.tmp/target/debug/deps/rind-e5647ec39c1a9545 --exact high::agreement::tests::wycheproof_p256 --nocapture
+       START [         ] ( 13/999) rind high::agreement::tests::wycheproof_p384
+             command: /home/kixelated/worktrees/rind/t3-8b33eb91-05148dcd7402764e/admin/mutants --run /tmp/agent-1000/claude-0n11ged6/nix-shell.BW5LBj/cargo-mutants-t3-8b33eb91-05148dcd7402764e-Mq7x3l.tmp/target/debug/deps/rind-e5647ec39c1a9545 --exact high::agreement::tests::wycheproof_p384 --nocapture
+        PASS [   0.091s] ( 13/999) rind aead::tests::from_sequence
+       START [         ] ( 14/999) rind high::agreement::tests::wycheproof_x25519
+             command: /home/kixelated/worktrees/rind/t3-8b33eb91-05148dcd7402764e/admin/mutants --run /tmp/agent-1000/claude-0n11ged6/nix-shell.BW5LBj/cargo-mutants-t3-8b33eb91-05148dcd7402764e-Mq7x3l.tmp/target/debug/deps/rind-e5647ec39c1a9545 --exact high::agreement::tests::wycheproof_x25519 --nocapture
+        PASS [   0.095s] ( 14/999) rind aead::gcm::tests::tags_are_prefixes
+       START [         ] ( 15/999) rind high::agreement::tests::wycheproof_x25519_pkcs8
+             command: /home/kixelated/worktrees/rind/t3-8b33eb91-05148dcd7402764e/admin/mutants --run /tmp/agent-1000/claude-0n11ged6/nix-shell.BW5LBj/cargo-mutants-t3-8b33eb91-05148dcd7402764e-Mq7x3l.tmp/target/debug/deps/rind-e5647ec39c1a9545 --exact high::agreement::tests::wycheproof_x25519_pkcs8 --nocapture
+        PASS [   0.097s] ( 15/999) rind fips_rng::tests::cast_passes
+       START [         ] ( 16/999) rind high::agreement::tests::x25519_pkcs8
+             command: /home/kixelated/worktrees/rind/t3-8b33eb91-05148dcd7402764e/admin/mutants --run /tmp/agent-1000/claude-0n11ged6/nix-shell.BW5LBj/cargo-mutants-t3-8b33eb91-05148dcd7402764e-Mq7x3l.tmp/target/debug/deps/rind-e5647ec39c1a9545 --exact high::agreement::tests::x25519_pkcs8 --nocapture
+        PASS [   0.097s] ( 16/999) rind error::tests::key_rejected_displays_its_reason
+       START [         ] ( 17/999) rind high::argon2::tests::lengths
+             command: /home/kixelated/worktrees/rind/t3-8b33eb91-05148dcd7402764e/admin/mutants --run /tmp/agent-1000/claude-0n11ged6/nix-shell.BW5LBj/cargo-mutants-t3-8b33eb91-05148dcd7402764e-Mq7x3l.tmp/target/debug/deps/rind-e5647ec39c1a9545 --exact high::argon2::tests::lengths --nocapture
+        FAIL [   0.106s] ( 17/999) rind fips::tests::self_tests_pass
+  stdout ───
+
+    running 1 test
+    test fips::tests::self_tests_pass ... ok
+
+    test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 885 filtered out; finished in 0.02s
+
+
+    running 1 test
+    DEBUG: denying cpuid "adx"
+    DEBUG: denying cpuid "vaes"
+    test fips::tests::self_tests_pass ... ok
+
+    test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 885 filtered out; finished in 0.03s
+
+
+    running 1 test
+    DEBUG: denying cpuid "intel"
+    DEBUG: denying cpuid "adx"
+    DEBUG: denying cpuid "avx"
+    DEBUG: denying cpuid "sha"
+    test fips::tests::self_tests_pass ... FAILED
+
+    failures:
+
+    failures:
+        fips::tests::self_tests_pass
+
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 885 filtered out; finished in 0.01s
+
+  stderr ───
+
+    thread 'fips::tests::self_tests_pass' (4150208) panicked at rind/src/fips.rs:669:13:
+    assertion `left == right` failed: MlDsa
+      left: Err("ml_dsa_sign")
+     right: Ok(())
+    note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+  Cancelling due to test failure: 23 tests still running
+        PASS [   0.123s] ( 18/999) rind aead::gcm::tests::acvp
+        PASS [   0.122s] ( 19/999) rind fips_rng::tests::fork_during_self_test
+        PASS [   0.137s] ( 20/999) rind fips_rng::tests::fills_across_requests
+        PASS [   0.090s] ( 21/999) rind high::agreement::tests::acvp_x25519_key_ver
+        PASS [   0.046s] ( 22/999) rind high::agreement::tests::x25519_pkcs8
+        PASS [   0.078s] ( 23/999) rind high::agreement::tests::agrees
+        PASS [   0.062s] ( 24/999) rind high::agreement::tests::public_keys_round_trip
+        PASS [   0.065s] ( 25/999) rind high::agreement::tests::refuses_scalars
+        PASS [   0.052s] ( 26/999) rind high::argon2::tests::lengths
+        PASS [   0.076s] ( 27/999) rind high::agreement::tests::loads_ecdsa_keys
+        PASS [   0.092s] ( 28/999) rind high::agreement::tests::round_trips
+        PASS [   0.123s] ( 29/999) rind high::agreement::tests::loads_in_constant_time
+        PASS [   0.221s] ( 30/999) rind fips::tests::rsa_and_ecdsa_answers_match_aws_lc
+        PASS [   0.251s] ( 31/999) rind aead::tests::from_sequence_rfc9180
+        PASS [   0.181s] ( 32/999) rind high::agreement::tests::decompresses_points
+        PASS [   0.220s] ( 33/999) rind high::agreement::tests::wycheproof_x25519
+        PASS [   0.321s] ( 34/999) rind fips::tests::ml_kem_and_ml_dsa_keys_match_acvp
+        PASS [   0.241s] ( 35/999) rind high::agreement::tests::wycheproof_x25519_pkcs8
+        PASS [   0.303s] ( 36/999) rind high::agreement::tests::cavp_ecdh
+        PASS [   1.518s] ( 37/999) rind high::agreement::tests::wycheproof_p256
+        PASS [   3.467s] ( 38/999) rind high::agreement::tests::wycheproof_p384
+        PASS [   4.675s] ( 39/999) rind high::agreement::tests::wycheproof_p521
+        PASS [   6.674s] ( 40/999) rind aead::gcm::tests::cavp
+────────────
+     Summary [   6.678s] 40/999 tests run: 39 passed, 1 failed, 63 skipped
+        FAIL [   0.106s] ( 17/999) rind fips::tests::self_tests_pass
+warning: 959/999 tests were not run due to test failure (run with --no-fail-fast to run all tests, or run with --max-fail)
+error: test run failed
+
+*** result: Failure(100)

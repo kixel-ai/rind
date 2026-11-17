@@ -1,0 +1,32 @@
+--- rind/src/mid/mldsa.rs
++++ replace KeyPair<P>::sign -> Result<P::Signature, Error> with Ok(Default::default())
+@@ -449,28 +449,17 @@
+     /// `tr`, the public key's hash, which the expanded private key stores.
+     pub(crate) fn tr(&self) -> &[u8; TR_LEN] {
+         tr_of::<P>(self.secret_key.as_ref())
+     }
+ 
+     /// Signs `message` under context `context` with fresh randomness: FIPS
+     /// 204's hedged `ML-DSA.Sign`.
+     pub(crate) fn sign(&self, context: &[u8], message: &[u8]) -> Result<P::Signature, Error> {
+-        let _entry = Entry::new_secret();
+-        let mu = self.mu(context, message)?;
+-        let mut rnd = [0u8; RND_LEN];
+-        SystemRandom.fill(&mut rnd)?;
+-        low::ct::secret_slice(&rnd);
+-        P::sign(
+-            Internal(()),
+-            self.secret_key.as_ref(),
+-            &self.expanded,
+-            &mu,
+-            &rnd,
+-        )
++        Ok(Default::default()) /* ~ changed by cargo-mutants ~ */
+     }
+ 
+     /// `mu`, the message representative this key signs for `message` under
+     /// `context`.
+     pub(crate) fn mu(&self, context: &[u8], message: &[u8]) -> Result<[u8; MU_LEN], Error> {
+         mu(self.tr(), context, message)
+     }
+ 

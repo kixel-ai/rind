@@ -1,0 +1,21 @@
+--- rind/src/low/x86_64/mldsa_vg.rs
++++ replace + with - in sign
+@@ -89,17 +89,17 @@
+     sk: &[u8; SK],
+     mu: &[u8; 64],
+     rnd: &[u8; 32],
+ ) -> Option<[u8; SIG]> {
+     let mut sig = [0u8; SIG];
+     // On the heap, since ML-DSA-87's is 141 KiB, and over-allocated to align.
+     let mut space = vec![0u64; SCRATCH + ALIGN];
+     let start = space.as_ptr().align_offset(64);
+-    let scratch = space[start..start + SCRATCH]
++    let scratch = space[start..start - /* ~ changed by cargo-mutants ~ */ SCRATCH]
+         .as_mut_ptr()
+         .cast::<[u64; SCRATCH]>();
+     // SAFETY: every pointer is to a distinct Rust object valid for its size,
+     // so none overlaps another, the stack, or the end of the address space.
+     // The routine needs no CPU feature, and `sk` is a loaded key.
+     let ok = unsafe { routine(sk, mu, rnd, &mut sig, scratch) };
+     low::zeroise(&mut space);
+     // Whether the loop reached its bound is public, as which attempt signs is.

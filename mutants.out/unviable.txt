@@ -1,0 +1,2 @@
+rind/src/mid/mldsa.rs:457:9: replace KeyPair<P>::sign -> Result<P::Signature, Error> with Ok(Default::default())
+rind/src/low/x86_64/mldsa_vg.rs:24:9: replace Sign::check -> Option<Self> with Some(Default::default())

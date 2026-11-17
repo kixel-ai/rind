@@ -1,0 +1,61 @@
+
+*** rind/src/low/x86_64/mldsa_vg.rs:24:9: replace Sign::check -> Option<Self> with Some(Default::default())
+
+*** mutation diff:
+--- rind/src/low/x86_64/mldsa_vg.rs
++++ replace Sign::check -> Option<Self> with Some(Default::default())
+@@ -16,20 +16,17 @@
+ use crate::low;
+ 
+ /// Proof that VG's signing runs here: the CPU has no AVX2.
+ #[derive(Clone, Copy, Debug)]
+ pub(crate) struct Sign(());
+ 
+ impl Sign {
+     pub(crate) fn check() -> Option<Self> {
+-        match HaveAvx2::check() {
+-            Some(_) => None,
+-            None => Some(Self(())),
+-        }
++        Some(Default::default()) /* ~ changed by cargo-mutants ~ */
+     }
+ 
+     /// Proof for a test, which runs VG's routines on a CPU with AVX2 too.
+     #[cfg(test)]
+     pub(crate) fn forced() -> Self {
+         Self(())
+     }
+ 
+
+
+*** /nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo nextest run --no-run --verbose --package=rind@0.3.2
+warning: ignoring --test-threads because --no-run is specified
+   Compiling rind v0.3.2 (/tmp/agent-1000/claude-0n11ged6/nix-shell.yJXsdK/cargo-mutants-t3-8b33eb91-05148dcd7402764e-8FSrBy.tmp/rind)
+warning: unused import: `super::cpu::HaveAvx2`
+  --> rind/src/low/x86_64/mldsa_vg.rs:14:5
+   |
+14 | use super::cpu::HaveAvx2;
+   |     ^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+error[E0277]: the trait bound `mldsa_vg::Sign: Default` is not satisfied
+  --> rind/src/low/x86_64/mldsa_vg.rs:24:14
+   |
+24 |         Some(Default::default()) /* ~ changed by cargo-mutants ~ */
+   |              ^^^^^^^^^^^^^^^^^^ the trait `Default` is not implemented for `mldsa_vg::Sign`
+   |
+help: consider annotating `mldsa_vg::Sign` with `#[derive(Default)]`
+   |
+20 + #[derive(Default)]
+21 | pub(crate) struct Sign(());
+   |
+
+For more information about this error, try `rustc --explain E0277`.
+warning: `rind` (lib) generated 1 warning
+error: could not compile `rind` (lib) due to 1 previous error; 1 warning emitted
+warning: build failed, waiting for other jobs to finish...
+error: could not compile `rind` (lib test) due to 1 previous error
+error: command `/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo '--color=auto' test --no-run --message-format json-render-diagnostics --package rind@0.3.2` exited with code 101
+
+*** result: Failure(101)

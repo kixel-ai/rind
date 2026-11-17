@@ -1,0 +1,24 @@
+--- rind/src/low/x86_64/mldsa_vg.rs
++++ replace Sign::check -> Option<Self> with Some(Default::default())
+@@ -16,20 +16,17 @@
+ use crate::low;
+ 
+ /// Proof that VG's signing runs here: the CPU has no AVX2.
+ #[derive(Clone, Copy, Debug)]
+ pub(crate) struct Sign(());
+ 
+ impl Sign {
+     pub(crate) fn check() -> Option<Self> {
+-        match HaveAvx2::check() {
+-            Some(_) => None,
+-            None => Some(Self(())),
+-        }
++        Some(Default::default()) /* ~ changed by cargo-mutants ~ */
+     }
+ 
+     /// Proof for a test, which runs VG's routines on a CPU with AVX2 too.
+     #[cfg(test)]
+     pub(crate) fn forced() -> Self {
+         Self(())
+     }
+ 

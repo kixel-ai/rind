@@ -67,16 +67,18 @@ impl Sign {
 }
 
 /// A routine's signature, for the lengths of one parameter set.
-type Routine<const SK: usize, const SIG: usize, const SCRATCH: usize> = unsafe extern "sysv64" fn(
-    sk: *const [u8; SK],
-    mu: *const [u8; 64],
-    rnd: *const [u8; 32],
-    sig: *mut [u8; SIG],
-    scratch: *mut [u64; SCRATCH],
-) -> u32;
+type Routine<const SK: usize, const SIG: usize, const SCRATCH: usize> =
+    unsafe extern "sysv64" fn(
+        sk: *const [u8; SK],
+        mu: *const [u8; 64],
+        rnd: *const [u8; 32],
+        sig: *mut [u8; SIG],
+        scratch: *mut [u64; SCRATCH],
+    ) -> u32;
 
-/// A cache line, which VG's own API aligns its working space to.
-const ALIGN: usize = 64 / size_of::<u64>();
+/// The words that pad working space so a cache line, which VG's own API
+/// aligns it to, starts in it: a `Vec<u64>` is aligned to 8 bytes.
+const PAD: usize = 7;
 
 /// Runs `routine` on a key `sk` that rind loaded: its `s1` and `s2` were in
 /// range, and its `t0` and `tr` were those its other parts compute.
@@ -91,13 +93,28 @@ fn sign<const SK: usize, const SIG: usize, const SCRATCH: usize>(
 ) -> Option<[u8; SIG]> {
     let mut sig = [0u8; SIG];
     // On the heap, since ML-DSA-87's is 141 KiB, and over-allocated to align.
-    let mut space = vec![0u64; SCRATCH + ALIGN];
+    let mut space = vec![0u64; SCRATCH + PAD];
     let start = space.as_ptr().align_offset(64);
-    let scratch = space[start..start + SCRATCH].as_mut_ptr().cast::<[u64; SCRATCH]>();
+    let scratch = space[start..start + SCRATCH]
+        .as_mut_ptr()
+        .cast::<[u64; SCRATCH]>();
     // SAFETY: every pointer is to a distinct Rust object valid for its size,
     // so none overlaps another, the stack, or the end of the address space.
     // The routine needs no CPU feature, and `sk` is a loaded key.
     let ok = unsafe { routine(sk, mu, rnd, &mut sig, scratch) };
     low::zeroise(&mut space);
-    (ok == 1).then_some(sig)
+    // Whether the loop reached its bound is public, as which attempt signs is.
+    (low::ct::into_public(ok) == 1).then_some(sig)
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod tests {
+    use super::*;
+
+    // VG's signing is for the CPUs without AVX2, and only them.
+    #[test]
+    fn runs_without_avx2() {
+        assert_eq!(Sign::check().is_some(), HaveAvx2::check().is_none());
+    }
 }

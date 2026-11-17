@@ -189,3 +189,34 @@
    fun:read_until
    fun:*10rind_rcgen3pem6decode*
 }
+
+# pyca/verified-garbage's ML-DSA signing, which rind runs on CPUs without
+# AVX2, branches on what FIPS 204's security argument makes public: whether
+# each attempt's `z`, `r0`, `ct0`, and hints pass their checks, and the
+# commitment hash `c_tilde`, whose bytes `SampleInBall` branches on and
+# indexes by. Memcheck cannot tell them from the secrets they derive from,
+# and the routine's code is not rind's to mark. VG's Lean proof states the
+# same leak (`signLeak`: `rho`, each attempt's `c_tilde` and failed check,
+# and the hint) and proves the rest constant time, and memcheck still
+# checks every other branch and address in these routines, and every use of
+# the key outside them.
+{
+   verified-garbage-mldsa-sign-rejection
+   Memcheck:Cond
+   fun:*vg_mldsa*_sign_with_cache*
+}
+{
+   verified-garbage-mldsa-hint-bit-pack
+   Memcheck:Cond
+   fun:*vg_mldsa_hint_bit_pack*
+}
+{
+   verified-garbage-mldsa-sample-in-ball-branch
+   Memcheck:Cond
+   fun:*vg_mldsa_sample_in_ball*
+}
+{
+   verified-garbage-mldsa-sample-in-ball-index
+   Memcheck:Value8
+   fun:*vg_mldsa_sample_in_ball*
+}

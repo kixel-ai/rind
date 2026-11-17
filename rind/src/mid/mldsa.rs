@@ -1525,12 +1525,20 @@ mod tests {
             let vg = low::mldsa_vg::Sign::forced();
             let sk = key.secret_key().as_ref();
             let signature = match P::K {
-                4 => vg.sign44(sk.try_into().unwrap(), &mu, &rnd).map(|s| s.to_vec()),
-                6 => vg.sign65(sk.try_into().unwrap(), &mu, &rnd).map(|s| s.to_vec()),
-                _ => vg.sign87(sk.try_into().unwrap(), &mu, &rnd).map(|s| s.to_vec()),
+                4 => vg
+                    .sign44(sk.try_into().unwrap(), &mu, &rnd)
+                    .map(|s| s.to_vec()),
+                6 => vg
+                    .sign65(sk.try_into().unwrap(), &mu, &rnd)
+                    .map(|s| s.to_vec()),
+                _ => vg
+                    .sign87(sk.try_into().unwrap(), &mu, &rnd)
+                    .map(|s| s.to_vec()),
             };
+            let signature = signature.unwrap();
+            low::ct::public_slice(&signature);
             assert_eq!(
-                low::ct::into_public(signature.unwrap()),
+                signature,
                 test.hex("signature"),
                 "tcId {}",
                 test.int("tcId")
@@ -1714,6 +1722,24 @@ mod tests {
 
     /// The heap a loaded key holds, as `MlDsaKeyPair` and `PublicKey`
     /// document it, in KiB.
+    // A key pair keeps its expansion only where signing reads it.
+    #[test]
+    fn expansion_follows_signer() {
+        fn check<P: Params>() {
+            let (key, _) = KeyPair::<P>::from_seed(&[7; SEED_LEN]);
+            let (loaded, _) = KeyPair::<P>::from_secret_key(key.secret_key().as_ref()).unwrap();
+            for key in [key, loaded] {
+                assert_eq!(
+                    key.expanded.polys().is_empty(),
+                    low::mldsa_vg::Sign::check().is_some()
+                );
+            }
+        }
+        check::<MlDsa44>();
+        check::<MlDsa65>();
+        check::<MlDsa87>();
+    }
+
     #[test]
     fn expansion_sizes() {
         fn kib<P: Params>() -> [usize; 2] {

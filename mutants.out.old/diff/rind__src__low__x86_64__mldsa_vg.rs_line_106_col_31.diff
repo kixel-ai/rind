@@ -1,0 +1,14 @@
+--- rind/src/low/x86_64/mldsa_vg.rs
++++ replace == with != in sign
+@@ -98,10 +98,10 @@
+         .as_mut_ptr()
+         .cast::<[u64; SCRATCH]>();
+     // SAFETY: every pointer is to a distinct Rust object valid for its size,
+     // so none overlaps another, the stack, or the end of the address space.
+     // The routine needs no CPU feature, and `sk` is a loaded key.
+     let ok = unsafe { routine(sk, mu, rnd, &mut sig, scratch) };
+     low::zeroise(&mut space);
+     // Whether the loop reached its bound is public, as which attempt signs is.
+-    (low::ct::into_public(ok) == 1).then_some(sig)
++    (low::ct::into_public(ok) != /* ~ changed by cargo-mutants ~ */ 1).then_some(sig)
+ }

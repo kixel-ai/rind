@@ -1,0 +1,15 @@
+--- rind/src/low/generic/mldsa_vg.rs
++++ replace Sign::sign87 -> Option<[u8; 4627]> with Some([0; 4627])
+@@ -16,11 +16,11 @@
+         match self {}
+     }
+ 
+     pub(crate) fn sign65(self, _: &[u8; 4032], _: &[u8; 64], _: &[u8; 32]) -> Option<[u8; 3309]> {
+         match self {}
+     }
+ 
+     pub(crate) fn sign87(self, _: &[u8; 4896], _: &[u8; 64], _: &[u8; 32]) -> Option<[u8; 4627]> {
+-        match self {}
++        Some([0; 4627]) /* ~ changed by cargo-mutants ~ */
+     }
+ }

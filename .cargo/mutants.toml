@@ -440,4 +440,7 @@ exclude_re = [
   # Discarding a VG routine's result runs rind's fallback, which computes the
   # same result, as `fallback_matches_vg` checks; only the time differs.
   'rind/src/mid/mlkem\.rs:\d+:\d+: replace vg_ran -> Option<T> with None$',
+  # Where VG's ML-DSA signing never runs, its proof of that has no value to
+  # call a method on, so no test reaches them.
+  'rind/src/low/generic/mldsa_vg\.rs:\d+:\d+: replace Sign::(check|sign44|sign65|sign87) -> ',
 ]

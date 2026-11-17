@@ -1,0 +1,21 @@
+--- rind/src/mid/mldsa.rs
++++ replace vg_signs -> bool with false
+@@ -286,17 +286,17 @@
+     /// the compiler may fill with the freed pointer.
+     expanded: ManuallyDrop<Polys>,
+ }
+ 
+ /// Whether signing runs pyca/verified-garbage's routine, which expands the
+ /// private key itself: see `low::mldsa_vg`. A key pair then keeps no
+ /// expansion.
+ fn vg_signs() -> bool {
+-    low::mldsa_vg::Sign::check().is_some()
++    false /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ /// The polynomials a key pair's expansion holds: `A`, then `s1`, `s2`, and
+ /// `t0`.
+ const fn secret_expansion_len<P: Params>() -> usize {
+     P::K * P::L + P::L + 2 * P::K
+ }
+ 

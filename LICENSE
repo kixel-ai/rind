@@ -242,8 +242,9 @@ pyca/verified-garbage <https://github.com/pyca/verified-garbage>
   operation and CRT on x86_64 with AVX-512 IFMA, and the Montgomery
   product they call; ML-KEM-768's encapsulation key check and
   encapsulation on x86_64 and on aarch64 with the SHA-3 instructions,
-  its key generation and decapsulation on x86_64 with AVX-512, and the
-  Keccak and arithmetic routines they call.
+  its key generation and decapsulation on x86_64 with AVX-512, and
+  ML-DSA signing on x86_64 without AVX2, and the Keccak and arithmetic
+  routines they call.
   Copyright (c) Individual contributors.
   License: Apache-2.0 OR BSD-3-Clause, which the files keep.
 

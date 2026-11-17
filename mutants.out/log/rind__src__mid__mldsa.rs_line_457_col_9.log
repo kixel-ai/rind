@@ -1,0 +1,59 @@
+
+*** rind/src/mid/mldsa.rs:457:9: replace KeyPair<P>::sign -> Result<P::Signature, Error> with Ok(Default::default())
+
+*** mutation diff:
+--- rind/src/mid/mldsa.rs
++++ replace KeyPair<P>::sign -> Result<P::Signature, Error> with Ok(Default::default())
+@@ -449,28 +449,17 @@
+     /// `tr`, the public key's hash, which the expanded private key stores.
+     pub(crate) fn tr(&self) -> &[u8; TR_LEN] {
+         tr_of::<P>(self.secret_key.as_ref())
+     }
+ 
+     /// Signs `message` under context `context` with fresh randomness: FIPS
+     /// 204's hedged `ML-DSA.Sign`.
+     pub(crate) fn sign(&self, context: &[u8], message: &[u8]) -> Result<P::Signature, Error> {
+-        let _entry = Entry::new_secret();
+-        let mu = self.mu(context, message)?;
+-        let mut rnd = [0u8; RND_LEN];
+-        SystemRandom.fill(&mut rnd)?;
+-        low::ct::secret_slice(&rnd);
+-        P::sign(
+-            Internal(()),
+-            self.secret_key.as_ref(),
+-            &self.expanded,
+-            &mu,
+-            &rnd,
+-        )
++        Ok(Default::default()) /* ~ changed by cargo-mutants ~ */
+     }
+ 
+     /// `mu`, the message representative this key signs for `message` under
+     /// `context`.
+     pub(crate) fn mu(&self, context: &[u8], message: &[u8]) -> Result<[u8; MU_LEN], Error> {
+         mu(self.tr(), context, message)
+     }
+ 
+
+
+*** /nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo nextest run --no-run --verbose --package=rind@0.3.2
+warning: ignoring --test-threads because --no-run is specified
+   Compiling rind v0.3.2 (/tmp/agent-1000/claude-0n11ged6/nix-shell.yJXsdK/cargo-mutants-t3-8b33eb91-05148dcd7402764e-8FSrBy.tmp/rind)
+error[E0277]: the trait bound `<P as mid::mldsa::Params>::Signature: Default` is not satisfied
+   --> rind/src/mid/mldsa.rs:457:12
+    |
+457 |         Ok(Default::default()) /* ~ changed by cargo-mutants ~ */
+    |            ^^^^^^^^^^^^^^^^^^ the trait `Default` is not implemented for `<P as mid::mldsa::Params>::Signature`
+    |
+help: consider further restricting the associated type
+    |
+456 |     pub(crate) fn sign(&self, context: &[u8], message: &[u8]) -> Result<P::Signature, Error> where <P as mid::mldsa::Params>::Signature: Default {
+    |                                                                                              +++++++++++++++++++++++++++++++++++++++++++++++++++
+
+For more information about this error, try `rustc --explain E0277`.
+error: could not compile `rind` (lib) due to 1 previous error
+warning: build failed, waiting for other jobs to finish...
+error: could not compile `rind` (lib test) due to 1 previous error
+error: command `/nix/store/aa12cxnxswf80dqkihsb2pmblh1c5v89-cargo-1.98.1-x86_64-unknown-linux-gnu/bin/cargo '--color=auto' test --no-run --message-format json-render-diagnostics --package rind@0.3.2` exited with code 101
+
+*** result: Failure(101)

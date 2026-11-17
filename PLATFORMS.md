@@ -30,8 +30,8 @@ qemu. iOS devices' code is only built.
   SHA256 its SSSE3 assembly, or for SHA its AVX assembly on Intel's cores,
   SHA-512 its scalar assembly on other vendors' cores,
   ML-KEM's and ML-DSA's arithmetic runs Rust ports of [mlkem-native]'s and
-  [mldsa-native]'s portable C, but for ML-KEM-768's encapsulation, which runs
-  [verified-garbage]'s assembly, and
+  [mldsa-native]'s portable C, but for ML-KEM-768's encapsulation and ML-DSA's
+  signing, which run [verified-garbage]'s assembly, and
   table lookups use SSE2 (see [ALGORITHMS.md](ALGORITHMS.md)). Without `sse4.1`,
   as on the first Core 2s and Atoms and AMD's Bobcat, ChaCha20 and Poly1305
   run in separate passes.

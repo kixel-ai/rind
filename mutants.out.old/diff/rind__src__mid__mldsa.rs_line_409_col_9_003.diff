@@ -1,0 +1,47 @@
+--- rind/src/mid/mldsa.rs
++++ replace KeyPair<P>::from_secret_key -> Result<(Self, PublicKey<P>), Error> with Ok((Default::default(), PublicKey::from(Default::default())))
+@@ -401,43 +401,17 @@
+         (key, PublicKey::with_tr(public_key, tr))
+     }
+ 
+     /// Loads the expanded private key `sk`, checking it as mldsa-native's
+     /// `mld_sign_pk_from_sk` does: its `s1` and `s2` must be in range, and its
+     /// `t0` and `tr` must be those its other parts compute. Returns its
+     /// public key too.
+     pub(crate) fn from_secret_key(sk: &[u8]) -> Result<(Self, PublicKey<P>), Error> {
+-        let _entry = Entry::new_secret();
+-        if sk.len() != secret_key_len::<P>() {
+-            return Err(KeyFormatError::WrongLength.into());
+-        }
+-        let mut key = Self {
+-            seed: None,
+-            secret_key: P::SecretKey::zeroed(),
+-            expanded: ManuallyDrop::new(Polys::new(secret_expansion_len::<P>())),
+-        };
+-        key.secret_key.as_mut().copy_from_slice(sk);
+-        low::ct::secret_slice(key.secret_key.as_ref());
+-        let mut public_key = P::PublicKey::zeroed();
+-        match P::public_key_from_secret(
+-            Internal(()),
+-            key.secret_key.as_ref(),
+-            public_key.as_mut(),
+-            &mut key.expanded,
+-        ) {
+-            true => {
+-                if vg_signs() {
+-                    key.expanded.free();
+-                }
+-                let tr = low::ct::into_public(*key.tr());
+-                Ok((key, PublicKey::with_tr(public_key, tr)))
+-            }
+-            false => Err(KeyFormatError::MlDsaSecretKey.into()),
+-        }
++        Ok((Default::default(), PublicKey::from(Default::default()))) /* ~ changed by cargo-mutants ~ */
+     }
+ 
+     /// The seed this key pair was generated from, unless it was loaded from
+     /// its expanded form.
+     pub(crate) fn seed(&self) -> Option<&[u8; SEED_LEN]> {
+         self.seed.as_ref()
+     }
+ 

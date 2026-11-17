@@ -1,0 +1,13 @@
+rind/src/low/generic/mldsa_vg.rs:12:9: replace Sign::check -> Option<Self> with Some(Default::default())
+rind/src/low/generic/mldsa_vg.rs:16:9: replace Sign::sign44 -> Option<[u8; 2420]> with None
+rind/src/low/generic/mldsa_vg.rs:16:9: replace Sign::sign44 -> Option<[u8; 2420]> with Some([0; 2420])
+rind/src/low/generic/mldsa_vg.rs:16:9: replace Sign::sign44 -> Option<[u8; 2420]> with Some([1; 2420])
+rind/src/low/generic/mldsa_vg.rs:20:9: replace Sign::sign65 -> Option<[u8; 3309]> with None
+rind/src/low/generic/mldsa_vg.rs:20:9: replace Sign::sign65 -> Option<[u8; 3309]> with Some([0; 3309])
+rind/src/low/generic/mldsa_vg.rs:20:9: replace Sign::sign65 -> Option<[u8; 3309]> with Some([1; 3309])
+rind/src/low/generic/mldsa_vg.rs:24:9: replace Sign::sign87 -> Option<[u8; 4627]> with None
+rind/src/low/generic/mldsa_vg.rs:24:9: replace Sign::sign87 -> Option<[u8; 4627]> with Some([0; 4627])
+rind/src/low/generic/mldsa_vg.rs:24:9: replace Sign::sign87 -> Option<[u8; 4627]> with Some([1; 4627])
+rind/src/mid/mldsa.rs:294:5: replace vg_signs -> bool with false
+rind/src/low/x86_64/mldsa_vg.rs:24:9: replace Sign::check -> Option<Self> with None
+rind/src/low/x86_64/mldsa_vg.rs:80:25: replace / with *
