@@ -37,7 +37,11 @@ jobs:
   # Valgrind hides SHA3 from aarch64 programs, so the arm64 rows check the
   # code for cores with the crypto extension but without SHA3, and say so;
   # `aarch64-qemu` checks the SHA3 paths. x86_64 ignores the variables.
+  # release-plz's release PR, which only bumps versions and changelogs, runs
+  # neither this nor `binsec`: a `release-plz-` branch that moq-bot,
+  # release.yml's app, opened.
   build:
+    if: ${{ !(startsWith(github.head_ref, 'release-plz-') && github.event.pull_request.user.login == 'moq-bot[bot]') }}
     strategy:
       matrix:
         os: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || '["ubuntu-latest", "ubuntu-24.04-arm"]') }}
@@ -56,6 +60,12 @@ jobs:
           fetch-depth: 0
 
       - uses: ./.github/actions/nix
+
+      # Only for the row pull requests run.
+      - uses: ./.github/actions/rust-cache
+        if: matrix.os == 'ubuntu-latest' && matrix.build == '--release'
+        with:
+          shell: .#ctgrind
 
       - name: ctgrind tests
         run: nix develop .#ctgrind --command admin/ctgrind ${{ matrix.build }}
@@ -302,6 +312,7 @@ jobs:
   # table lookups or crypto extension.
   binsec:
     name: binsec (${{ matrix.backend }})
+    if: ${{ !(startsWith(github.head_ref, 'release-plz-') && github.event.pull_request.user.login == 'moq-bot[bot]') }}
     strategy:
       fail-fast: false
       matrix:
