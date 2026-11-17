@@ -363,14 +363,6 @@ step() {
             # `cargo test`, it passes a selection with no tests, such as the
             # benches alone.
             run cargo nextest run "${packages[@]}" --locked --no-tests=warn
-            # Only the zeroing and heap scratch tests see the opt-in wipe,
-            # which the default build turns into no-ops.
-            if names rind "${packages[@]}"; then
-                run cargo nextest run -p rind --features wipe --test zeroing --test heap_scratch --locked
-            fi
-            if names rind-aws-lc-rs "${packages[@]}"; then
-                run cargo nextest run -p rind-aws-lc-rs --features wipe --test zeroing --locked
-            fi
             # The FIPS module's own code compiles only under its cfg, which a
             # workspace build leaves off, and only for glibc Linux on x86_64
             # and aarch64, where rind-fips is not empty. Its break build
@@ -486,18 +478,15 @@ step() {
                     run cargo clippy -p rind --lib --locked --target armv7-unknown-linux-gnueabihf -- --deny warnings
                 # wasm32 compiles on the portable backend; the browser target
                 # needs getrandom's JavaScript source, WASI has its own.
-                local features
-                for features in "" wipe; do
-                    run cargo clippy -p rind --lib --locked --target wasm32-wasip2 --features "$features" -- --deny warnings
-                    run cargo clippy -p rind --lib --locked --target wasm32-unknown-unknown \
-                        --features "$features,getrandom/wasm_js" -- --deny warnings
-                done
+                run cargo clippy -p rind --lib --locked --target wasm32-wasip2 -- --deny warnings
+                run cargo clippy -p rind --lib --locked --target wasm32-unknown-unknown \
+                    --features getrandom/wasm_js -- --deny warnings
                 # The recorded ML-DSA wipe and the Ed25519 verdict comparison
                 # are cfg'd to wasm, so the library clippy never builds them.
                 # The nightly build.yml runs `just wasm`, which is not part of
                 # `just ci`. This lane runs these tests so the merge queue
                 # covers them.
-                run cargo clippy -p rind --test heap_scratch --test cctv --features wipe --locked \
+                run cargo clippy -p rind --test heap_scratch --test cctv --locked \
                     --target wasm32-wasip2 -- --deny warnings
                 if [[ $(uname -s) == Linux ]]; then
                     # `wasm_runner` is the one `just wasm` uses. Cargo does not run
@@ -510,7 +499,7 @@ step() {
                     wasm_runner
                     run nix develop .#wasm --command env \
                         "CARGO_TARGET_WASM32_WASIP2_RUNNER=${CARGO_TARGET_WASM32_WASIP2_RUNNER}" \
-                        cargo test -p rind --features wipe --locked \
+                        cargo test -p rind --locked \
                         --target wasm32-wasip2 --test cctv --test heap_scratch
                     if [[ $(uname -m) == x86_64 ]]; then
                         # RSA-3072 and RSA-4096 on the 32-bit limbs wasm uses.
@@ -520,7 +509,7 @@ step() {
                             CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-target}/rind-limb32" \
                             CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS="$portable --cfg rind_limb=\"32\"" \
                             SLOW_TESTS=1 \
-                            cargo test -p rind --features wipe --test heap_scratch --locked --release \
+                            cargo test -p rind --test heap_scratch --locked --release \
                             --target x86_64-unknown-linux-gnu -- rsa_generate
                     fi
                 fi

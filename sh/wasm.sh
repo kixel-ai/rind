@@ -30,7 +30,7 @@ if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
     export CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS=true
     export CARGO_PROFILE_RELEASE_OVERFLOW_CHECKS=true
     wasm_runner
-    SLOW_TESTS=1 cargo test -p rind --features wipe --locked --release --target wasm32-wasip2
+    SLOW_TESTS=1 cargo test -p rind --locked --release --target wasm32-wasip2
     # Without the examples, whose tokio needs the threads and sockets wasm lacks.
     cargo test -p rind-rustls -p rind-ring --lib --tests --locked --release --target wasm32-wasip2
 fi
