@@ -29,6 +29,7 @@ on:
       - quality lints
       - Queue
       - regenerate
+      - Site deploy
       - Release
       - timing
       - x86-cpu
