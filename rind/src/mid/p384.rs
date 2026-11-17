@@ -49,24 +49,18 @@ impl PublicKey {
 
 /// A P-384 public key for ECDSA verification.
 ///
-/// Where pyca/verified-garbage's verification runs (`low::p384_vg`), on
-/// x86_64 always and on aarch64 for a key's first verification, it takes
-/// the key's encoding. Otherwise this builds the point's multiples on the
-/// key's first verification by rind's code and keeps them, so verifying
-/// again skips computing them, and a key never verified with, such as an
-/// ECDSA key pair's, never pays for them.
+/// It builds the point's multiples on its second verification and keeps
+/// them, so verifying again skips computing them, and a key verified with
+/// once or never, such as an ECDSA key pair's, never pays for them. On x86_64
+/// and aarch64, a key's first verification runs pyca/verified-garbage's
+/// routine; elsewhere, the multiples are built on the first.
 #[derive(Clone, Debug)]
 pub(crate) struct VerifyingKey {
-    #[cfg(not(rind_backend = "x86_64"))]
     point: AffineMontPoint,
-    #[cfg(any(rind_backend = "x86_64", rind_backend = "aarch64"))]
-    encoding: [u8; PublicKey::BYTES],
     /// P, 3P, ..., 15P.
-    #[cfg(not(rind_backend = "x86_64"))]
     odd_multiples: low::ReuseCache<[AffineMontPoint; 8]>,
     /// 17P, 19P, ..., 31P, which widen P's digits but pay for building
     /// only once a key is reused.
-    #[cfg(not(rind_backend = "x86_64"))]
     more_odd_multiples: low::ReuseCache<[AffineMontPoint; 8]>,
 }
 
@@ -76,41 +70,27 @@ impl VerifyingKey {
         low::Entry::assert_held();
         let PublicKey { point } = PublicKey::from_x962_uncompressed(bytes)?;
         Ok(Self {
-            #[cfg(not(rind_backend = "x86_64"))]
             point,
-            #[cfg(any(rind_backend = "x86_64", rind_backend = "aarch64"))]
-            encoding: point.as_bytes_uncompressed(),
-            #[cfg(not(rind_backend = "x86_64"))]
             odd_multiples: low::ReuseCache::new(),
-            #[cfg(not(rind_backend = "x86_64"))]
             more_odd_multiples: low::ReuseCache::new(),
         })
     }
 
     /// FIPS 186-5's ECDSA verification (section 6.4.2) from step 4, for `r`
-    /// and `s` in [1, n), by pyca/verified-garbage's routine, which measured
-    /// faster than rind's on every x86_64 CPU, reused key or not.
-    #[cfg(rind_backend = "x86_64")]
-    pub(crate) fn raw_ecdsa_verify(&self, r: &Scalar, s: &Scalar, e: &Scalar) -> Result<(), Error> {
-        self.vg_ecdsa_verify(r, s, e)
-    }
-
-    /// FIPS 186-5's ECDSA verification (section 6.4.2) from step 4, for `r`
     /// and `s` in [1, n).
     ///
-    /// On aarch64, pyca/verified-garbage's routine measured faster for a
-    /// key's first verification, and rind's over the multiples it keeps for
-    /// a reused key.
-    #[cfg(not(rind_backend = "x86_64"))]
+    /// pyca/verified-garbage's routine measured faster than rind's for a
+    /// key's first verification, and rind's over the multiples it keeps as
+    /// fast or faster for a reused key, on aarch64 and on some x86_64 CPUs.
     pub(crate) fn raw_ecdsa_verify(&self, r: &Scalar, s: &Scalar, e: &Scalar) -> Result<(), Error> {
-        #[cfg(rind_backend = "aarch64")]
+        #[cfg(any(rind_backend = "x86_64", rind_backend = "aarch64"))]
         let Some(odd_multiples) = self
             .odd_multiples
             .get_or_build(|| self.point.public_odd_multiples())
         else {
             return self.vg_ecdsa_verify(r, s, e);
         };
-        #[cfg(not(rind_backend = "aarch64"))]
+        #[cfg(not(any(rind_backend = "x86_64", rind_backend = "aarch64")))]
         let odd_multiples = &self
             .odd_multiples
             .get_or_build_now(|| self.point.public_odd_multiples());
@@ -149,7 +129,8 @@ impl VerifyingKey {
         let (sig_r, sig_s) = sig.split_at_mut(Scalar::BYTES);
         sig_r.copy_from_slice(&r.as_bytes());
         sig_s.copy_from_slice(&s.as_bytes());
-        match low::p384_vg::ecdsa_verify(&self.encoding, &e.as_bytes(), &sig) {
+        let public = self.point.as_bytes_uncompressed();
+        match low::p384_vg::ecdsa_verify(&public, &e.as_bytes(), &sig) {
             true => Ok(()),
             false => Err(Error::BadSignature),
         }
@@ -582,9 +563,6 @@ impl AffineMontPoint {
     ///
     /// Each is 16P = 15P + P plus one of those, so no sum adds equal points,
     /// as `p384_montjmixadd` requires, and none is at infinity.
-    // x86_64 verifies by pyca/verified-garbage's routine, so only its tests
-    // take these.
-    #[cfg_attr(all(rind_backend = "x86_64", not(test)), allow(dead_code))]
     fn public_more_odd_multiples(odd_multiples: &[Self; 8]) -> [Self; 8] {
         let p16 = JacobianMontPoint::from_affine(&odd_multiples[7]).add_affine(&odd_multiples[0]);
         let multiples = odd_multiples.map(|multiple| p16.add_affine(&multiple));
@@ -870,7 +848,6 @@ impl JacobianMontPoint {
     /// x = X / z², so this checks X = r * z², and (r + n) * z² when that is
     /// below p, the only other x that reduces to `r`. Unlike computing x,
     /// that needs no inversion.
-    #[cfg(not(rind_backend = "x86_64"))]
     fn public_x_is(&self, r: &Scalar) -> bool {
         let z2 = self.z().mont_sqr();
         let is = |x: [u64; 6]| FieldElement(x).as_mont().mont_mul(&z2).public_eq(&self.x());
@@ -1415,7 +1392,7 @@ mod tests {
 
     // pyca/verified-garbage's verification against rind's, for signatures
     // that verify and ones with each input changed, on a key verified with
-    // more than once, so aarch64 runs both.
+    // more than once, so it runs both.
     #[cfg(any(rind_backend = "x86_64", rind_backend = "aarch64"))]
     #[test]
     fn vg_verify_matches_rind() {
@@ -1434,9 +1411,7 @@ mod tests {
                 (&r, &other, &e),
                 (&r, &s, &other),
             ] {
-                let odd_multiples = AffineMontPoint::from_x962_uncompressed(&key.encoding)
-                    .unwrap()
-                    .public_odd_multiples();
+                let odd_multiples = key.point.public_odd_multiples();
                 let s_inv = s.inv().as_mont();
                 let u1 = s_inv.mont_mul(&e.as_mont()).demont();
                 let u2 = s_inv.mont_mul(&r.as_mont()).demont();
