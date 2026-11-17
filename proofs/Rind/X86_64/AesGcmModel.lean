@@ -2,6 +2,7 @@ module
 public import Aeneas
 public import Rind.X86_64.Types
 public import Rind.X86_64.Simd
+public import Rind.GhashSpec
 @[expose] public section
 open Aeneas Aeneas.Std Result
 set_option linter.dupNamespace false
@@ -848,13 +849,6 @@ The model departs from the Rust in these ways, and adds no axiom:
 namespace rind.x86_64
 
 open rind.vale rind.simd
-
-/-- `as_chunks`: the whole chunks of `k` elements, in order. -/
-def chunksOf {α : Type} (k : Nat) (l : List α) : List (List α) :=
-  (List.range (l.length / k)).map fun i => (l.drop (k * i)).take k
-
-/-- What `as_chunks` leaves after the whole chunks of `k` elements. -/
-def chunksRest {α : Type} (k : Nat) (l : List α) : List α := l.drop (k * (l.length / k))
 
 /-- `ghash::BYTESWAP`. -/
 def low.x86_64.ghash.BYTESWAP : Result core.core_arch.x86.__m128i :=
