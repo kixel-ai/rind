@@ -77,7 +77,7 @@ an Intel SDE CPU model, as `x86-cpu.yml` names them.
 
 | Backend | Tier | Vectors and differential tests | Fuzz targets | Constant time |
 |---|---|---|---|---|
-| x86_64 | AVX-512 (Ice Lake and later, Zen 4 and 5) | SDE: Cannon Lake (RSA only), Granite Rapids, Diamond Rapids | SDE: Diamond Rapids; the runner's tier, when it has AVX-512 | `admin/ct-sde`: AES-GCM and RSA; ML-KEM's AVX-512 code reads only the public matrix |
+| x86_64 | AVX-512 (Ice Lake and later, Zen 4 and 5) | SDE: Cannon Lake (RSA only), Granite Rapids, Diamond Rapids | SDE: Diamond Rapids; the runner's tier, when it has AVX-512 | `admin/ct-sde`: AES-GCM, RSA, and ChaCha20; ML-KEM's AVX-512 code reads only the public matrix |
 | x86_64 | SHA512 instructions (Arrow Lake, Diamond Rapids) | SDE: Arrow Lake, Diamond Rapids | SDE: Diamond Rapids | `admin/ct-sde`: HMAC |
 | x86_64 | VAES without AVX-512 (Alder Lake, Zen 3) | SDE: Alder Lake, Granite Rapids at 256 bits; the runner, when Zen 3 | SDE: Diamond Rapids, denied; the runner's tier, when Zen 3; denied, when it has AVX-512 | `admin/ct-sde`: AES-GCM |
 | x86_64 | SHA extensions (Goldmont, Cannon Lake and later, Zen) | SDE: Goldmont and later | SDE: Diamond Rapids; the runner's tier | `admin/ct-sde`: HMAC |
@@ -90,9 +90,9 @@ an Intel SDE CPU model, as `x86-cpu.yml` names them.
 | aarch64 | crypto extension, SHA-512 and SHA-3 instructions (Graviton 3, Apple M, Cobalt 100) | `build.yml` on the arm64 runners | the arm64 runner | `admin/ct-qemu`: AES-GCM, HMAC-SHA384 and HMAC-SHA512, and ML-KEM, for SHA3's Keccak kernels; ctgrind for the rest, as the next row |
 | aarch64 | crypto extension without SHA-3 (Graviton 2, Raspberry Pi 5) | denied | denied | ctgrind on the arm64 runner, which valgrind hides SHA3 from |
 | aarch64 | no crypto extension (Raspberry Pi 4) | denied | denied | ctgrind: denied (`aarch64-portable`); `admin/ct-binsec`: denied |
-| armv7 | crypto extension (most 32-bit Android) | `just armv7`: qemu `max` | the arm64 runner, which runs armv7 natively | `admin/ct-qemu`: AES, AES-CBC, AES-KW, AES-GCM, HMAC |
+| armv7 | crypto extension (most 32-bit Android) | `just armv7`: natively on an aarch64 host whose AArch32 has the extension, such as `build.yml`'s arm64 runner, else qemu `max` | the arm64 runner, which runs armv7 natively | `admin/ct-qemu`: AES, AES-CBC, AES-KW, AES-GCM, HMAC |
 | armv7 | NEON without the crypto extension | `just armv7`: qemu Cortex-A15 | denied | ctgrind on the arm64 runner, which valgrind hides the crypto extension from |
-| armv7 | no NEON | `just armv7`: qemu Cortex-A15, denied | denied | ctgrind: denied (`no-neon`) |
+| armv7 | no NEON | `just armv7`: denied, natively on an aarch64 host that runs AArch32 code, else on qemu Cortex-A15 | denied | ctgrind: denied (`no-neon`) |
 | portable | forced on x86_64 (`--cfg rind_portable`) | `just portable`: clippy and release vectors and differential tests | `fuzz.yml`'s `fuzz-portable` job: every target, from the x86_64 corpus and a corpus of its own | ctgrind: the `portable` job forces this backend |
 | portable | 32-bit x86 (`i686`) | `just qemu i686`: clippy and release vectors and differential tests, natively on an x86_64 host; `build.yml`'s `i686-windows` and `android` jobs | the forced run's, of the same code built for x86_64 | ctgrind's forced run, of the same code built for x86_64 |
 | portable | big-endian s390x | `just qemu s390x`: clippy and release vectors and differential tests under qemu | as above | ctgrind's forced run, of the same code built for x86_64 |
@@ -188,7 +188,7 @@ secret names a zeroing test, or says why it has none.
 | AES block | `cipher::{Aes, Algorithm, AES_128, AES_192, AES_256}` | `cavp/aes`, `aws_lc::aes`, `aws_lc::cipher`, ACVP: `mid::aes::acvp_ecb` | `fuzz::cipher` | `crosschecks::cipher::aes_block` | ctgrind: `mid::aes::expand_key`, `mid::aes::encrypt_block`; qemu: `mid::aes::ct_qemu_aes`; BINSEC: `test::binsec::ct_binsec_aes` | `zeroing::cipher` |
 | AES-CTR | `cipher::AesCtr` | SP 800-38A: `mid::aes::sp800_38a`, RFC 3686: `mid::aes::rfc3686`, RFC 3711: `mid::aes::srtp_aes_cm`, `aws_lc::cipher`, ACVP: `mid::aes::acvp_ctr` | `fuzz::cipher` | `crosschecks::cipher::aes_ctr` | ctgrind: `mid::aes::expand_key`, `mid::aes::apply_keystream`; qemu: `mid::aes::ct_qemu_aes`; BINSEC: `test::binsec::ct_binsec_aes` | `zeroing::cipher` |
 | AES-CBC | `cipher::{AesCbcDecryptingKey, AesCbcEncryptingKey, CbcIv}` | `aes_cbc_pkcs5_test`, SP 800-38A: `mid::aes_cbc::sp800_38a`, `aws_lc::cipher`, ACVP: `mid::aes_cbc::acvp` | `fuzz::aes_cbc` | `crosschecks::cipher::aes_cbc_pkcs7`, `crosschecks::cipher::aes_cbc_unpadded` | ctgrind: the key `mid::aes_cbc::new`; qemu: `mid::aes_cbc::ct_qemu_aes_cbc`; BINSEC: `test::binsec::ct_binsec_aes_cbc` | `zeroing::cipher` |
-| ChaCha20 | `cipher::ChaCha20` | `chacha20_counter_test`, RFC 8439: `mid::chacha20::rfc8439` | `fuzz::cipher` | `crosschecks::cipher::chacha20_keystream`, `crosschecks::cipher::chacha20_every_length` | ctgrind: the key `mid::chacha20::new`, `low::x86_64::chacha20::paths_match`, `low::arm::chacha_armv4::neon_matches_nohw`; BINSEC: `test::binsec::ct_binsec_chacha20` | `zeroing::cipher` |
+| ChaCha20 | `cipher::ChaCha20` | `chacha20_counter_test`, RFC 8439: `mid::chacha20::rfc8439` | `fuzz::cipher` | `crosschecks::cipher::chacha20_keystream`, `crosschecks::cipher::chacha20_every_length` | ctgrind: the key `mid::chacha20::new`, `low::x86_64::chacha20::paths_match`, `low::arm::chacha_armv4::neon_matches_nohw`; SDE: `low::x86_64::chacha20::ct_sde_chacha20`; BINSEC: `test::binsec::ct_binsec_chacha20` | `zeroing::cipher` |
 | AES-KW, AES-KWP | `key_wrap::{AesKek, Mode, AES_128, AES_192, AES_256}` | `aes_wrap_test`, `aes_kwp_test`, RFC 3394: `mid::aes_kw::rfc3394`, RFC 5649: `mid::aes_kw::rfc5649`, `aws_lc::aes`, ACVP: `mid::aes_kw::acvp_kw`, `mid::aes_kw::acvp_kwp` | `fuzz::key_wrap` | `crosschecks::key_wrap::wrap_and_unwrap`, `crosschecks::key_wrap::wrap_and_unwrap_padded` | ctgrind: the key `mid::aes_kw::new`; qemu: `mid::aes_kw::ct_qemu_aes_kw`; BINSEC: `test::binsec::ct_binsec_aes_kw` | `zeroing::key_wrap` |
 | MD5 | `digest::legacy::MD5` | RFC 1321: `mid::md5::rfc1321` | `fuzz::legacy` | `crosschecks::hashes_match_aws_lc_rs`, `crosschecks::hashes_every_length` | ctgrind: `high::digest::secret_message`; BINSEC: `test::binsec::ct_binsec_digest` | none: a digest context is not wiped |
 | SHA-1 | `digest::legacy::SHA1` | `cavp-sha1` | `fuzz::legacy` | `crosschecks::hashes_match_aws_lc_rs`, `crosschecks::hashes_every_length` | ctgrind: `high::digest::secret_message`, each x86_64 path `low::x86_64::sha1::paths_match_generic`; SDE and qemu: through HMAC; BINSEC: `test::binsec::ct_binsec_digest` | none: a digest context is not wiped |
@@ -259,8 +259,9 @@ its "Measure coverage" step's log is the report.
 ## Running the tools
 
 On Linux, `just armv7` runs the nightly armv7 job: it builds and lints for
-32-bit ARM, then runs the tests under qemu with the ARMv8 crypto extension,
-with NEON alone, and with NEON denied. `just qemu <shell>` runs an entry of
+32-bit ARM, then runs the tests with the ARMv8 crypto extension and with NEON
+denied, each natively on an aarch64 host whose AArch32 can run it and under
+qemu elsewhere, and under qemu's Cortex-A15 with NEON alone. `just qemu <shell>` runs an entry of
 the nightly `qemu` job, which lints and tests the portable backend: `s390x`
 (big-endian), `riscv64`, `riscv64-musl`, `loongarch64`, `armv6` and
 `armv6-softfloat` (the Raspberry Pi 1's core), or `powerpc64le`, `powerpc64`,
@@ -306,10 +307,15 @@ The heavy suites run weekly on GitHub's hosted runners: `fuzz`, `ctgrind`,
 each hours from the others, as their `cron:` lines set, so no two fill the
 organization's 60 concurrent hosted jobs together, and off the hour, which
 GitHub delays most. `build`, `asan`, `coverage`, `lints`, `prove`,
-`python`, `dart-libraries`, and `regenerate` run daily. Each runs on demand with
-`gh workflow run <name> --ref <branch>`. `alert.yml` posts a scheduled run
-that fails, times out, or is cancelled to Discord: a job past its timeout
-ends cancelled, so a suite that stops finishing alerts like one that fails.
+`python`, `dart-libraries`, and `regenerate` run daily, and `Check` runs
+`just ci --all` on main's head daily as the backstop for the merge queue's
+diff-scoped selection. Each runs on demand with
+`gh workflow run <name> --ref <branch>`; a dispatched `bench` measures every
+bench target unless `-f benches='aes_gcm sha2'` names the ones to measure,
+and each CPU-tier row then times only those of them it covers. `alert.yml`
+posts a scheduled run that fails, times out, or is cancelled to Discord: a
+job past its timeout ends cancelled, so a suite that stops finishing alerts
+like one that fails.
 
 [Wycheproof]: https://github.com/C2SP/wycheproof
 [CCTV]: https://github.com/C2SP/CCTV

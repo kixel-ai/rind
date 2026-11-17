@@ -13,6 +13,7 @@ on:
       - Cargo.lock
       - flake.nix
       - flake.lock
+      - admin/x86-cpu
       - .github/workflows/x86-cpu.yml
 
 permissions:
@@ -26,6 +27,43 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # A pull request runs the models only when sh/backends.sh says its diff can
+  # reach x86_64 code, and always when it changes this workflow or
+  # admin/x86-cpu. Every model or none: each selects its own set of dispatch
+  # paths, and no map from a changed file to the paths that run it is kept.
+  # release-plz's release PR, which only bumps versions and changelogs, runs
+  # none: a `release-plz-` branch that moq-bot, release.yml's app, opened.
+  scope:
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.reach.outputs.run }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event_name == 'pull_request' && !(startsWith(github.head_ref, 'release-plz-') && github.event.pull_request.user.login == 'moq-bot[bot]')
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - id: reach
+        shell: bash
+        env:
+          RELEASE_PR: ${{ startsWith(github.head_ref, 'release-plz-') && github.event.pull_request.user.login == 'moq-bot[bot]' }}
+        run: |
+          set -euo pipefail
+          run=true
+          if [ "$RELEASE_PR" = true ]; then
+            echo "A release PR bumps only versions and changelogs."
+            run=false
+          elif [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            changed=$(sh/changed.sh)
+            if ! grep -qE '^(\.github/workflows/x86-cpu\.yml|admin/x86-cpu)$' <<<"$changed"; then
+              reach=$(sh/backends.sh - <<<"$changed")
+              echo "Backends the diff reaches: $(paste -sd' ' <<<"$reach")"
+              grep -qxE 'all|x86_64' <<<"$reach" || run=false
+            fi
+          fi
+          echo "run=$run" | tee -a "$GITHUB_OUTPUT"
+
   # One job per SDE model, for each distinct set of dispatch paths that
   # `rind/src/low/x86_64/cpu.rs` picks from cpuid; each asserts its set with
   # `RIND_TEST_X86_*`. Its comment names the other models that select the
@@ -39,6 +77,8 @@ jobs:
   # single job for every model past four hours.
   check:
     name: check (${{ matrix.model }})
+    needs: scope
+    if: needs.scope.outputs.run == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -344,6 +384,11 @@ jobs:
       - name: Host CPU
         run: grep -m1 'model name' /proc/cpuinfo
 
+      # Every model's job builds the same workspace, so they share one cache.
+      - uses: ./.github/actions/rust-cache
+        with:
+          shell: .#sde
+
       # rind-fips is left out: its module refuses CPUs below its baseline,
       # as most of these models are.
       - name: Build (release)
@@ -377,6 +422,8 @@ jobs:
   # test's CPU masks reach its paths without AVX-512, then the baseline the
   # module requires. The large-data hash tests run natively, in build.yml.
   acvp:
+    needs: scope
+    if: needs.scope.outputs.run == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -387,6 +434,10 @@ jobs:
 
       - name: Allow user namespaces
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+      - uses: ./.github/actions/rust-cache
+        with:
+          shell: .#sde
 
       - name: Check Diamond Rapids
         run: nix develop .#sde --command cargo test --release -p rind-acvp --features module --locked
