@@ -60,8 +60,11 @@ test("rebase inserts a destination holding dollar signs literally", () => {
 
 // A definition may sit in a block quote, and its destination may start on the next line.
 test("rebase finds definitions in a block quote and with the destination on the next line", () => {
-	const out = rebase("> [n]: x.md\n\nSee [n].\n\n[m]:\n  y.md\n\nAnd [m].\n", (href) => `https://example.com/${href}`);
-	expect(hrefs(lex(out))).toEqual(["https://example.com/x.md", "https://example.com/y.md"]);
+	const out = rebase(
+		"> [n]: x.md\n\nSee [n].\n\n[m]:\n  y.md\n\nAnd [m].\n\n> [k]:\n> z.md\n\n[k]\n",
+		(href) => `https://example.com/${href}`,
+	);
+	expect(hrefs(lex(out))).toEqual(["https://example.com/x.md", "https://example.com/y.md", "https://example.com/z.md"]);
 });
 
 // A label may hold an escaped bracket, and keeps the case it was written in.
@@ -75,6 +78,11 @@ test("rebase keeps a definition's label", () => {
 test("rebase finds a destination written with escapes", () => {
 	const out = rebase("[a](x\\(1\\).md) [b](<x\\(1\\).md>)", (href) => `https://example.com/${href}`);
 	expect(hrefs(lex(out))).toEqual(["https://example.com/x(1).md", "https://example.com/x(1).md"]);
+});
+
+// The label's escapes are the document's, not the token's.
+test("rebase finds the destination after a label with an escaped bracket", () => {
+	expect(rebase("[a\\]b](x.md)", (href) => `/${href}`)).toBe("[a\\]b](/x.md)");
 });
 
 // A badge is an image in a link, and each destination moves.

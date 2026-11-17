@@ -151,13 +151,13 @@ export function rebase(source: string, resolve: (href: string) => string): strin
 	const edits: { start: number; end: number; text: string }[] = [];
 	// Tokens come in document order, and a link holds the tokens inside it, so a
 	// search for each starts where the last token claimed. The lexer drops the
-	// indentation inside a token, so a match takes any run of whitespace for the
-	// one the token's raw keeps.
+	// indentation and block-quote markers inside a token, so a match takes any
+	// run of whitespace and `>` for the whitespace the token's raw keeps.
 	let cursor = 0;
 	const place = (raw: string): { at: number; end: number } | undefined => {
 		const exact = source.indexOf(raw, cursor);
 		if (exact >= 0) return { at: exact, end: exact + raw.length };
-		const loose = new RegExp(raw.split(/\s+/).map(escapeRegExp).join("\\s+"), "g");
+		const loose = new RegExp(raw.split(/\s+/).map(escapeRegExp).join("[\\s>]+"), "g");
 		loose.lastIndex = cursor;
 		const m = loose.exec(source);
 		return m && { at: m.index, end: m.index + m[0].length };
@@ -193,9 +193,9 @@ export function rebase(source: string, resolve: (href: string) => string): strin
 		const to = resolve(l.href);
 		// A reference's destination is its definition's, which is rewritten there.
 		if (to === l.href || !l.raw.endsWith(")")) return;
-		const open =
-			l.type === "image" ? l.raw.lastIndexOf("](") + 2 : 1 + l.tokens.reduce((n, c) => n + c.raw.length, 0) + 2;
-		if (l.raw.slice(open - 2, open) !== "](") throw new Error(`cannot find the destination of ${JSON.stringify(l.raw)}`);
+		// The destination follows the last `](`: a label may hold links and images,
+		// and the final check rejects a destination that holds one itself.
+		const open = l.raw.lastIndexOf("](") + 2;
 		edits.push({ start: end - (l.raw.length - open), end: end - 1, text: target(to, l.title) });
 	});
 	let out = source;
