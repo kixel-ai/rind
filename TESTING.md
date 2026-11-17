@@ -90,9 +90,9 @@ an Intel SDE CPU model, as `x86-cpu.yml` names them.
 | aarch64 | crypto extension, SHA-512 and SHA-3 instructions (Graviton 3, Apple M, Cobalt 100) | `build.yml` on the arm64 runners | the arm64 runner | `admin/ct-qemu`: AES-GCM, HMAC-SHA384 and HMAC-SHA512, and ML-KEM, for SHA3's Keccak kernels; ctgrind for the rest, as the next row |
 | aarch64 | crypto extension without SHA-3 (Graviton 2, Raspberry Pi 5) | denied | denied | ctgrind on the arm64 runner, which valgrind hides SHA3 from |
 | aarch64 | no crypto extension (Raspberry Pi 4) | denied | denied | ctgrind: denied (`aarch64-portable`); `admin/ct-binsec`: denied |
-| armv7 | crypto extension (most 32-bit Android) | `just armv7`: natively on an aarch64 host that runs AArch32 code, such as `build.yml`'s arm64 runner, else qemu `max` | the arm64 runner, which runs armv7 natively | `admin/ct-qemu`: AES, AES-CBC, AES-KW, AES-GCM, HMAC |
+| armv7 | crypto extension (most 32-bit Android) | `just armv7`: natively on an aarch64 host whose AArch32 has the extension, such as `build.yml`'s arm64 runner, else qemu `max` | the arm64 runner, which runs armv7 natively | `admin/ct-qemu`: AES, AES-CBC, AES-KW, AES-GCM, HMAC |
 | armv7 | NEON without the crypto extension | `just armv7`: qemu Cortex-A15 | denied | ctgrind on the arm64 runner, which valgrind hides the crypto extension from |
-| armv7 | no NEON | `just armv7`: denied, natively where the crypto extension's tier is, else on qemu Cortex-A15 | denied | ctgrind: denied (`no-neon`) |
+| armv7 | no NEON | `just armv7`: denied, natively on an aarch64 host that runs AArch32 code, else on qemu Cortex-A15 | denied | ctgrind: denied (`no-neon`) |
 | portable | forced on x86_64 (`--cfg rind_portable`) | `just portable`: clippy and release vectors and differential tests | `fuzz.yml`'s `fuzz-portable` job: every target, from the x86_64 corpus and a corpus of its own | ctgrind: the `portable` job forces this backend |
 | portable | 32-bit x86 (`i686`) | `just qemu i686`: clippy and release vectors and differential tests, natively on an x86_64 host; `build.yml`'s `i686-windows` and `android` jobs | the forced run's, of the same code built for x86_64 | ctgrind's forced run, of the same code built for x86_64 |
 | portable | big-endian s390x | `just qemu s390x`: clippy and release vectors and differential tests under qemu | as above | ctgrind's forced run, of the same code built for x86_64 |
@@ -260,8 +260,8 @@ its "Measure coverage" step's log is the report.
 
 On Linux, `just armv7` runs the nightly armv7 job: it builds and lints for
 32-bit ARM, then runs the tests with the ARMv8 crypto extension and with NEON
-denied, natively on an aarch64 host that runs AArch32 code and under qemu
-elsewhere, and under qemu's Cortex-A15 with NEON alone. `just qemu <shell>` runs an entry of
+denied, each natively on an aarch64 host whose AArch32 can run it and under
+qemu elsewhere, and under qemu's Cortex-A15 with NEON alone. `just qemu <shell>` runs an entry of
 the nightly `qemu` job, which lints and tests the portable backend: `s390x`
 (big-endian), `riscv64`, `riscv64-musl`, `loongarch64`, `armv6` and
 `armv6-softfloat` (the Raspberry Pi 1's core), or `powerpc64le`, `powerpc64`,
