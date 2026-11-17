@@ -199,10 +199,22 @@ check covers, and `ret` alone, which each call's case runs. The `prove`
 workflow runs it on x86_64 and aarch64, nightly with a new seed.
 
 A gap in what the models allow across instructions is beyond what
-cosimulating one instruction at a time can catch. Reviewers found one that
-holds every VG ✓: a freed frame's bytes keep their values in the models, so
-a proof can read back a value a signal handler may have overwritten on
-hardware ([pyca/verified-garbage#5321](https://github.com/pyca/verified-garbage/issues/5321)).
+cosimulating one instruction at a time can catch. Reviewers found one: a
+freed frame's bytes kept their values in the models, so a proof could read
+back a value a signal handler may have overwritten on hardware
+([pyca/verified-garbage#5321](https://github.com/pyca/verified-garbage/issues/5321)).
+The AArch64 model at the pin loses them, but x86-64's still keeps them until
+a re-pin past its fix
+([pyca/verified-garbage#5378](https://github.com/pyca/verified-garbage/pull/5378)),
+so that gap holds every x86_64 VG ✓.
+
+`Rind/VgChaCha20.lean` transliterates VG's RFC 8439 spec, `Spec/ChaCha20.lean`,
+over the bytes of its streaming state, and proves its keystream is
+`Rind/Spec.lean`'s. `Rind/X86_64/VgChaCha20.lean` restates VG's theorems
+about the x86_64 ChaCha20 routines rind runs, `Stream.init_verified` and
+`Stream.apply_verified` for AVX2 and AVX-512 VL, as one axiom per wrapper in
+`low::x86_64::chacha20`, and proves `cipher::ChaCha20` from them, as
+"What is proven" lists.
 
 ## What is proven
 
@@ -861,6 +873,28 @@ and Poly1305 passes, which the model leaves opaque. `AeadDispatch` models
 `RandomizedNonceKey`, which reaches the system's random source, and
 `Rind/ChaCha20Poly1305Test.lean` checks `Rind/Spec.lean`'s transliterations
 against RFC 8439's and draft-irtf-cfrg-xchacha-03's test vectors.
+
+ChaCha20 on x86_64 CPUs with AVX2, from 256 bytes, from `cipher::ChaCha20`
+down to pyca/verified-garbage's AVX2 and AVX-512 VL routines, in
+`Rind/X86_64/VgChaCha20.lean`:
+
+- `chacha20_apply_keystream`: a buffer that needs more blocks than remain
+  before the 32-bit block counter wraps is refused with `WrongLength` and
+  left as it is, and otherwise it becomes RFC 8439's encryption of it under
+  the key, the block counter, and the nonce.
+
+It rests on the axioms `vg_chacha20_init_spec`,
+`vg_chacha20_apply_avx2_spec`, and `vg_chacha20_apply_avx512vl_spec`, which
+restate VG's theorems, and composes them as `cipher` does: VG's routines over
+whole 512-byte groups, and rind's two-block AVX2 kernel over a tail of two to
+four blocks from the block counter past them. It assumes `Kernel`, that
+kernel's contract, which no proof covers yet;
+[the x86_64 cipher quest](/quest/m4/verified/chacha20-poly1305-x86/cipher.md)
+owns it. It also assumes `RunsVg`: the entry guard admits the call, and the
+CPU-feature checks find AVX2 or AVX-512 VL. VG's code earns its ✓ on this
+path once `admin/import-vg` re-pins past
+[pyca/verified-garbage#5378](https://github.com/pyca/verified-garbage/pull/5378),
+as the stack-slot gap above holds it.
 
 RSASSA-PKCS1-v1_5 and RSASSA-PSS verification with SHA-256 on x86_64, from
 the signature API's `rsa::PublicKey` to the Montgomery products, in

@@ -222,7 +222,7 @@ exclude_re = [
   'rind/src/low/x86_64/bignum_point_select\.rs:\d+:14: replace > with >= in _select_avx2$',
   'rind/src/low/x86_64/bignum_point_select\.rs:\d+:18: replace \* with / in _select_avx2$',
   'rind/src/low/x86_64/bignum_point_select\.rs:\d+:18: replace \* with \+ in _select_avx2$',
-  'rind/src/low/x86_64/chacha20\.rs:\d+:\d+: delete match arm \(None, Some\(_\), len @SSSE3_4X_MIN_LEN\.\.\) in ChaCha20::cipher$',
+  'rind/src/low/x86_64/chacha20\.rs:\d+:\d+: delete match arm \(None, Some\(t\), SSSE3_4X_MIN_LEN\.\.\) in ChaCha20::cipher$',
   'rind/src/low/x86_64/chacha20\.rs:\d+:\d+: delete match arm \(Some\(_\), _, 65\.\.\) in ChaCha20::cipher$',
   'rind/src/low/x86_64/chacha20poly1305\.rs:\d+:\d+: replace << with >>$',
   'rind/src/low/x86_64/chacha20poly1305\.rs:\d+:\d+: replace \| with &$',
