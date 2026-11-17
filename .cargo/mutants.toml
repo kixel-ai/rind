@@ -4,10 +4,6 @@
 # Runs each mutant's tests in parallel, in about half `cargo test`'s time.
 test_tool = "nextest"
 
-# Turns on the zeroing and heap scratch tests, without which a wiping `Drop`
-# does nothing a test can see.
-features = ["rind/wipe"]
-
 exclude_globs = [
   # Constants imported with aws-lc's, BoringSSL's, and OpenSSL's assembly,
   # which proofs and differential tests own.
@@ -310,7 +306,7 @@ exclude_re = [
   # rind-fips's `tests/cpu.rs` covers it.
   'rind/src/(fips|low/(aarch64|x86_64)/cpu)\.rs:\d+:\d+: .*missing_cpu_feature',
   # Wipes a thread's DRBG as the thread exits, where no test can read it;
-  # `high::hmac_drbg::tests::zeroise_wipes_the_state_under_wipe` checks the wipe.
+  # `high::hmac_drbg::tests::zeroise_wipes_the_state` checks the wipe.
   'rind/src/fips_rng\.rs:\d+:\d+: replace <impl Drop for ThreadDrbg>::drop with \(\)$',
   # Wipes a key inside a type whose own `Drop` wipes all of it, which
   # rind/tests/zeroing.rs checks.
