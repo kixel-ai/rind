@@ -243,7 +243,9 @@ pyca/verified-garbage <https://github.com/pyca/verified-garbage>
   product they call; ML-KEM-768's encapsulation key check and
   encapsulation on x86_64 and on aarch64 with the SHA-3 instructions,
   its key generation and decapsulation on x86_64 with AVX-512, and the
-  Keccak and arithmetic routines they call.
+  Keccak and arithmetic routines they call; P-384's d·G and ECDSA
+  verification on x86_64 and aarch64, and the field, scalar, and
+  point routines and the generator table they call.
   Copyright (c) Individual contributors.
   License: Apache-2.0 OR BSD-3-Clause, which the files keep.
 

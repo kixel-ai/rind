@@ -56,7 +56,7 @@ its encapsulation on [verified-garbage] (see [ML-KEM](#ml-kem)).
 | Ed25519 | s2n-bignum ✓ + Graviola + rind ⚡ |  |  |  |  |
 | ristretto255 | s2n-bignum ✓ + rind |  |  |  |  |
 | P-256 ECDH, ECDSA | s2n-bignum ✓ + aws-lc + Graviola ⚡ |  |  |  |  |
-| P-384 ECDH, ECDSA | s2n-bignum ✓ + rind ⚡ + Graviola ⚡ |  |  |  |  |
+| P-384 ECDH, ECDSA | s2n-bignum ✓ + rind ⚡ + Graviola ⚡ + verified-garbage |  |  |  |  |
 | P-521 ECDH, ECDSA | s2n-bignum ✓ + rind ⚡ |  |  |  |  |
 | ML-KEM-512, ML-KEM-1024 | s2n-bignum ✓ + mlkem-native ✓ + Graviola ⚡ | mlkem-native ⚡ + s2n-bignum ✓ |  |  |  |
 | ML-KEM-768 | verified-garbage | mlkem-native ⚡ + s2n-bignum ✓ + verified-garbage |  |  |  |
@@ -144,7 +144,7 @@ with portable Rust in place of the assembly armv7 runs regardless.
 | Ed25519 | s2n-bignum ✓ + Graviola |  | curve25519-dalek ⚡ + rind ⚡ |  |
 | ristretto255 | s2n-bignum ✓ + rind |  | curve25519-dalek | curve25519-dalek |
 | P-256 ECDH, ECDSA | s2n-bignum ✓ + Graviola |  | fiat-crypto ✓ + rind ⚡ + Graviola ⚡ | fiat-crypto ✓ + rind + Graviola ⚡ |
-| P-384 ECDH, ECDSA | s2n-bignum ✓ + rind ⚡ + Graviola ⚡ |  | fiat-crypto ✓ + rind ⚡ | fiat-crypto ✓ + rind |
+| P-384 ECDH, ECDSA | s2n-bignum ✓ + rind ⚡ + Graviola ⚡ + verified-garbage |  | fiat-crypto ✓ + rind ⚡ | fiat-crypto ✓ + rind |
 | P-521 ECDH, ECDSA | s2n-bignum ✓ + rind ⚡ |  | fiat-crypto ✓ + rind ⚡ |  |
 | ML-KEM-512, ML-KEM-1024 | s2n-bignum ✓ + Graviola ⚡ |  | mlkem-native ⚡ + OpenSSL ⚡ + Graviola ⚡ | mlkem-native ⚡ + rind + Graviola ⚡ |
 | ML-KEM-768 | s2n-bignum ✓ + Graviola ⚡ + verified-garbage | s2n-bignum ✓ + Graviola ⚡ | mlkem-native ⚡ + OpenSSL ⚡ + Graviola ⚡ | mlkem-native ⚡ + rind + Graviola ⚡ |
@@ -200,7 +200,7 @@ tests use [Wycheproof]'s vectors.
 | [SPHINCS+] | ported: the SPHINCS+ team's FIPS 205 code (`sign.c`, `fors.c`, `wots.c`, `merkle.c`, and its AVX2 builds' `treehashx4` and `treehashx8`, generalised over the lane count) on every CPU, and its x86_64 AVX2 eight-way SHA-256 (`sha256avx.c`), to Rust, from the `bas/fips205` branch | public domain, or CC0-1.0, 0BSD, or MIT-0 | nothing: no SLH-DSA implementation carries a proof of functional correctness |
 | [curve25519-dalek] | dependency, with its serial backend, for armv7 and the portable backend; ported: its AVX2 backend's field arithmetic, point formulas, and base point table, to Rust intrinsics, for Ed25519 verification's four-point multiplication on x86_64 CPUs with AVX2 but without ADX | BSD-3-Clause | nothing: that backend's field arithmetic is hand-written, as is the AVX2 backend's. Its `fiat` backend would run [fiat-crypto]'s verified field arithmetic instead, but only a `--cfg` flag for the whole build selects it, so rind refuses it rather than let the build pick. |
 | [fiat-crypto] | dependency | MIT OR Apache-2.0 OR BSD-1-Clause | [Coq proofs](https://github.com/mit-plv/fiat-crypto/tree/67316f05d771f7f2db62beede59e9b56406a9efd) that each generated field operation is correct. rind's point formulas, inversion, and table lookup over them are not covered. |
-| [verified-garbage] | copied, by `admin/import-vg`: its x86_64 ChaCha20 from 256 bytes on AVX2 and on AVX-512 VL, its x86_64 RSA public operation and CRT for AVX-512 IFMA, with the Montgomery product they call, and its ML-KEM-768 encapsulation key check and encapsulation on x86_64 and on aarch64 with the SHA-3 instructions, and key generation and decapsulation on x86_64 with AVX-512, with the Keccak and arithmetic routines they call, as Rust naked functions, byte for byte but for `.base64` directives written out as `.byte`, which rind's minimum Rust cannot assemble; and, by `admin/import-vg-models` at the same commit, its Lean x86_64 and aarch64 ISA models, printers, and encoders, under `proofs/verified-garbage/` | Apache-2.0 OR BSD-3-Clause; the models taken under Apache-2.0 | [Lean proofs](https://github.com/pyca/verified-garbage/tree/e7b0fe8a82b7777958e078573771d51415f105bb/lean) that each routine's machine code meets its contract (FIPS 203's, for ML-KEM-768), is memory safe, and takes the same branches and memory addresses whatever its secrets, over VG's own models of the instructions. The RSA routines rind runs are internal to VG, so their contracts are in its proofs rather than its trusted specification. `admin/prove vg` cosimulates those models for each instruction of VG's code, on the CPU or, where it lacks a feature, under Intel SDE or qemu-aarch64, but for `jmp`/`b`, static addresses, and a lone `ret`, which its bytes check covers, and checks that rind's copies are VG's text. rind claims no ✓ for this code until it imports the theorems, which waits on VG fixing [a gap in its stack model](https://github.com/pyca/verified-garbage/issues/5321). |
+| [verified-garbage] | copied, by `admin/import-vg`: its x86_64 ChaCha20 from 256 bytes on AVX2 and on AVX-512 VL, its x86_64 RSA public operation and CRT for AVX-512 IFMA, with the Montgomery product they call, and its ML-KEM-768 encapsulation key check and encapsulation on x86_64 and on aarch64 with the SHA-3 instructions, and key generation and decapsulation on x86_64 with AVX-512, with the Keccak and arithmetic routines they call, and its P-384 `d·G` and ECDSA verification on x86_64 and aarch64, with the field, scalar, and point routines and the generator table they call, as Rust naked functions, byte for byte but for `.base64` directives written out as `.byte`, which rind's minimum Rust cannot assemble; and, by `admin/import-vg-models` at the same commit, its Lean x86_64 and aarch64 ISA models, printers, and encoders, under `proofs/verified-garbage/` | Apache-2.0 OR BSD-3-Clause; the models taken under Apache-2.0 | [Lean proofs](https://github.com/pyca/verified-garbage/tree/e7b0fe8a82b7777958e078573771d51415f105bb/lean) that each routine's machine code meets its contract (FIPS 203's, for ML-KEM-768), is memory safe, and takes the same branches and memory addresses whatever its secrets, over VG's own models of the instructions. The RSA routines rind runs are internal to VG, so their contracts are in its proofs rather than its trusted specification. `admin/prove vg` cosimulates those models for each instruction of VG's code, on the CPU or, where it lacks a feature, under Intel SDE or qemu-aarch64, but for `jmp`/`b`, static addresses, and a lone `ret`, which its bytes check covers, and checks that rind's copies are VG's text. rind claims no ✓ for this code until it imports the theorems, which waits on VG fixing [a gap in its stack model](https://github.com/pyca/verified-garbage/issues/5321). |
 
 rind's own code is licensed under Apache-2.0 OR ISC OR MIT-0. Copied code
 keeps its source's copyright and license, which [LICENSE] lists with the
@@ -579,6 +579,14 @@ ECDSA follows RFC6979 for generation of `k`, but adds additional non-critical ra
 We do this to avoid the theoretical fragility of RFC6979 under fault conditions.
 This is allowed for by RFC6979, and the HMAC-DRBG that it builds on.
 The code is structured such that we pass the RFC6979 test vectors.
+
+On x86_64 and aarch64, P-384 ECDSA runs [verified-garbage]'s routines where
+they measured faster: its `d·G` for key generation and for each signature's
+`k G`, under rind's hedged nonce and its own `s`, and its verification, on
+x86_64 for every key and on aarch64 for a key's first verification only, as
+rind's twin multiplication over a reused key's multiples measured faster
+there. P-384 ECDH keeps s2n-bignum's ✓ code: VG's agreement measured slower
+than rind's on every tier.
 
 The code which selects a term from a table of points is non-verified,
 and is written in AVX2, SSE2, or Neon intrinsics, or for P256 on x86_64 is
