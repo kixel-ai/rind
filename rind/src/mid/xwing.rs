@@ -19,11 +19,6 @@ use crate::mid::rng::{RandomSource, SystemRandom};
 use crate::mid::sha3::{Sha3_256Context, Shake256Sponge};
 use crate::mid::x25519;
 
-/// X-Wing: X25519 and ML-KEM-768, as draft-connolly-cfrg-xwing-kem defines
-/// it.
-#[derive(Debug)]
-pub enum XWing {}
-
 /// The private key: the 32-byte seed the rest expands from.
 pub(crate) const SEED_LEN: usize = 32;
 /// An encapsulation key: ML-KEM-768's, then X25519's.

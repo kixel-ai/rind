@@ -16,6 +16,13 @@ use crate::high::signature::ml_dsa::ParameterSet;
 use crate::low::Entry;
 use crate::mid::mldsa::{self, Array as _, KeyPair};
 use crate::mid::mlkem::{Array, Ciphertext, DecapKey, EncapKey, Message, Params};
+
+/// An ML-KEM parameter set, [`crate::kem::MlKem512`], [`crate::kem::MlKem768`],
+/// or [`crate::kem::MlKem1024`]: the sets the ML-KEM functions below take.
+/// [`crate::kem::Algorithm`] also covers X-Wing, which FIPS 203 does not.
+pub trait MlKemSet: Params {}
+
+impl<P: Params> MlKemSet for P {}
 use crate::mid::sha3::Sha3_256Context;
 
 /// One prediction-resistant generate's inputs: the entropy it reseeds with,
@@ -59,7 +66,7 @@ impl Drbg<'_> {
 /// FIPS 203's `ML-KEM.KeyGen_internal` of parameter set `P`, such as
 /// [`crate::kem::MlKem768`], from seeds `d` and `z`: the encapsulation key
 /// and the expanded decapsulation key.
-pub fn ml_kem_key_gen<P: Params>(
+pub fn ml_kem_key_gen<P: MlKemSet>(
     d: &[u8; 32],
     z: &[u8; 32],
 ) -> (P::EncapKeyBytes, P::DecapKeyBytes) {
@@ -75,7 +82,7 @@ pub fn ml_kem_key_gen<P: Params>(
 /// FIPS 203's `ML-KEM.Encaps_internal` of message `m` to encapsulation key
 /// `ek` of parameter set `P`, after its input checks: the ciphertext and the
 /// shared secret.
-pub fn ml_kem_encap<P: Params>(
+pub fn ml_kem_encap<P: MlKemSet>(
     ek: &[u8],
     m: &[u8; 32],
 ) -> Result<(P::CiphertextBytes, [u8; 32]), Error> {
@@ -89,7 +96,7 @@ pub fn ml_kem_encap<P: Params>(
 /// FIPS 203's `ML-KEM.Decaps_internal` of `ciphertext` with expanded
 /// decapsulation key `dk` of parameter set `P`, after their input checks:
 /// the shared secret, or the implicit rejection's.
-pub fn ml_kem_decap<P: Params>(dk: &[u8], ciphertext: &[u8]) -> Result<[u8; 32], Error> {
+pub fn ml_kem_decap<P: MlKemSet>(dk: &[u8], ciphertext: &[u8]) -> Result<[u8; 32], Error> {
     let key = decapsulation_key::<P>(dk)?;
     let ciphertext = Ciphertext::<P>::from_slice(ciphertext).ok_or(Error::WrongLength)?;
     Ok(*key.decaps(&ciphertext).as_ref())
@@ -97,7 +104,7 @@ pub fn ml_kem_decap<P: Params>(dk: &[u8], ciphertext: &[u8]) -> Result<[u8; 32],
 
 /// FIPS 203's encapsulation input check of an encapsulation key of parameter
 /// set `P`: its length and its modulus check.
-pub fn ml_kem_check_encapsulation_key<P: Params>(ek: &[u8]) -> Result<(), Error> {
+pub fn ml_kem_check_encapsulation_key<P: MlKemSet>(ek: &[u8]) -> Result<(), Error> {
     encapsulation_key::<P>(ek).map(drop)
 }
 
@@ -106,7 +113,7 @@ pub fn ml_kem_check_encapsulation_key<P: Params>(ek: &[u8]) -> Result<(), Error>
 ///
 /// The check is the hash's alone: an embedded encapsulation key that fails
 /// its own modulus check still passes, as section 7.3 has it.
-pub fn ml_kem_check_decapsulation_key<P: Params>(dk: &[u8]) -> Result<(), Error> {
+pub fn ml_kem_check_decapsulation_key<P: MlKemSet>(dk: &[u8]) -> Result<(), Error> {
     let _entry = Entry::new_public();
     let dk =
         P::DecapKeyBytes::from_slice(dk).ok_or_else(|| Error::from(KeyFormatError::WrongLength))?;

@@ -114,7 +114,7 @@ fn ml_kem(op: u32, param: u32, args: &[&[u8]]) -> Result<Vec<u8>, Error> {
     }
 }
 
-fn ml_kem_set<P: rind::kem::Algorithm>(op: u32, args: &[&[u8]]) -> Result<Vec<u8>, Error> {
+fn ml_kem_set<P: acvp::MlKemSet>(op: u32, args: &[&[u8]]) -> Result<Vec<u8>, Error> {
     Ok(match op {
         op::ML_KEM_KEY_GEN => {
             let [d, z] = take(args)?;

@@ -9,7 +9,15 @@ use crate::low;
 use crate::mid::mlkem::{self, Array, Params};
 pub use crate::mid::mlkem::{MlKem512, MlKem768, MlKem1024};
 use crate::mid::xwing;
-pub use crate::mid::xwing::XWing;
+
+// The marker is defined here rather than in `mid::xwing`, so that its
+// `Algorithm` implementation, which names `high` items, stays in `high`, as
+// `admin/structure` requires.
+/// X-Wing: X25519 and ML-KEM-768, as draft-connolly-cfrg-xwing-kem defines
+/// it.
+#[derive(Debug)]
+pub enum XWing {}
+
 
 mod sealed {
     pub trait Sealed {}
