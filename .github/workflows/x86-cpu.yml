@@ -32,24 +32,26 @@ jobs:
   # admin/x86-cpu. Every model or none: each selects its own set of dispatch
   # paths, and no map from a changed file to the paths that run it is kept.
   # release-plz's release PR, which only bumps versions and changelogs, runs
-  # none.
+  # none: a `release-plz-` branch that moq-bot, release.yml's app, opened.
   scope:
     runs-on: ubuntu-latest
     outputs:
       run: ${{ steps.reach.outputs.run }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        if: github.event_name == 'pull_request' && !startsWith(github.head_ref, 'release-plz-')
+        if: github.event_name == 'pull_request' && !(startsWith(github.head_ref, 'release-plz-') && github.event.pull_request.user.login == 'moq-bot[bot]')
         with:
           persist-credentials: false
           fetch-depth: 0
 
       - id: reach
         shell: bash
+        env:
+          RELEASE_PR: ${{ startsWith(github.head_ref, 'release-plz-') && github.event.pull_request.user.login == 'moq-bot[bot]' }}
         run: |
           set -euo pipefail
           run=true
-          if [[ "$GITHUB_HEAD_REF" == release-plz-* ]]; then
+          if [ "$RELEASE_PR" = true ]; then
             echo "A release PR bumps only versions and changelogs."
             run=false
           elif [ "$GITHUB_EVENT_NAME" = pull_request ]; then
