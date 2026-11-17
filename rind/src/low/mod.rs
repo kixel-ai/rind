@@ -322,6 +322,7 @@ cfg_if::cfg_if! {
         pub(crate) use x86_64::adx_mux::bignum_tomont_p384;
         pub(crate) use x86_64::adx_mux::curve25519_x25519;
         pub(crate) use x86_64::adx_mux::curve25519_x25519base;
+        pub(crate) use x86_64::curve25519_ifma::Curve25519Ifma;
         pub(crate) use x86_64::adx_mux::edwards25519_decode;
         pub(crate) use x86_64::adx_mux::edwards25519_epadd;
         pub(crate) use x86_64::adx_mux::edwards25519_epdouble;
