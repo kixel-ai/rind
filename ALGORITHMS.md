@@ -33,6 +33,7 @@ SHA-512.
 | AES block, AES-CTR | Graviola + aws-lc |  |  | aws-lc |  |
 | AES-KW, AES-KWP | Graviola + rind |  |  | aws-lc + rind |  |
 | AES-CBC | Graviola + aws-lc + rind |  |  | aws-lc + rind |  |
+| ChaCha20 | verified-garbage + Graviola + HACL* ✓ | aws-lc + HACL* ✓ |  |  | HACL* ✓ |
 | ChaCha20 (header protection) | HACL* ✓ + rind |  |  |  |  |
 | ChaCha20-Poly1305, XChaCha20-Poly1305 | aws-lc ⚡ |  |  | HACL* ✓ + aws-lc ⚡ + Graviola ⚡ | HACL* ✓ + Graviola ⚡ |
 | MD5 | rind |  |  |  |  |
@@ -121,6 +122,7 @@ with portable Rust in place of the assembly armv7 runs regardless.
 | AES-GCM | s2n-bignum + Graviola + rind | aws-lc + rind |  | aws-lc + rind |
 | AES block, AES-CTR | Graviola + rind | aws-lc |  | aws-lc |
 | AES-KW, AES-KWP, AES-CBC | Graviola + rind | aws-lc + rind |  | aws-lc + rind |
+| ChaCha20 | Graviola |  | aws-lc + HACL* ✓ | HACL* ✓ |
 | ChaCha20 (header protection) | HACL* ✓ + rind |  |  |  |
 | ChaCha20-Poly1305, XChaCha20-Poly1305 | verified-garbage | aws-lc ⚡ |  | HACL* ✓ + Graviola |
 | MD5 | rind |  |  |  |
@@ -197,7 +199,7 @@ tests use [Wycheproof]'s vectors.
 | [curve25519-dalek] | dependency, with its serial backend, for armv7 and the portable backend; ported: its AVX2 backend's field arithmetic, point formulas, and base point table, to Rust intrinsics, for Ed25519 verification's four-point multiplication on x86_64 CPUs with AVX2 but without ADX | BSD-3-Clause | nothing: that backend's field arithmetic is hand-written, as is the AVX2 backend's. Its `fiat` backend would run [fiat-crypto]'s verified field arithmetic instead, but only a `--cfg` flag for the whole build selects it, so rind refuses it rather than let the build pick. |
 | [verified-garbage] | copied, by `admin/import-vg`: its aarch64 SVE2 ChaCha20-Poly1305 seal and open and the ChaCha20 and Poly1305 routines they call, as Rust naked functions, byte for byte | Apache-2.0 OR BSD-3-Clause | [Lean proofs](https://github.com/pyca/verified-garbage/tree/e7b0fe8a82b7777958e078573771d51415f105bb/lean) that each routine's machine code meets its RFC 8439 contract, is memory safe, and takes the same branches and memory addresses whatever its secrets, over VG's own models of the instructions. Nothing yet checks those models against a CPU, so rind claims no ✓ for this code until they are cosimulated. |
 | [fiat-crypto] | dependency | MIT OR Apache-2.0 OR BSD-1-Clause | [Coq proofs](https://github.com/mit-plv/fiat-crypto/tree/67316f05d771f7f2db62beede59e9b56406a9efd) that each generated field operation is correct. rind's point formulas, inversion, and table lookup over them are not covered. |
-| [verified-garbage] | copied, by `admin/import-vg`: its x86_64 RSA public operation and CRT for AVX-512 IFMA, with the Montgomery product they call, as Rust naked functions, byte for byte but for `.base64` directives written out as `.byte`, which rind's minimum Rust cannot assemble; and, by `admin/import-vg-models` at the same commit, its Lean x86_64 and aarch64 ISA models, printers, and encoders, under `proofs/verified-garbage/` | Apache-2.0 OR BSD-3-Clause; the models taken under Apache-2.0 | [Lean proofs](https://github.com/pyca/verified-garbage/tree/e7b0fe8a82b7777958e078573771d51415f105bb/lean) that each routine's machine code meets its contract, is memory safe, and takes the same branches and memory addresses whatever its secrets, over VG's own models of the instructions. The RSA routines rind runs are internal to VG, so their contracts are in its proofs rather than its trusted specification. `admin/prove vg` cosimulates those models for each instruction of VG's code, on the CPU or, where it lacks a feature, under Intel SDE or qemu-aarch64, but for `jmp`/`b`, static addresses, and a lone `ret`, which its bytes check covers, and checks that rind's copies are VG's text. rind claims no ✓ for this code until it imports the theorems, which waits on VG fixing [a gap in its stack model](https://github.com/pyca/verified-garbage/issues/5321). |
+| [verified-garbage] | copied, by `admin/import-vg`: its x86_64 ChaCha20 from 256 bytes on AVX2 and on AVX-512 VL, and its x86_64 RSA public operation and CRT for AVX-512 IFMA, with the Montgomery product they call, as Rust naked functions, byte for byte but for `.base64` directives written out as `.byte`, which rind's minimum Rust cannot assemble; and, by `admin/import-vg-models` at the same commit, its Lean x86_64 and aarch64 ISA models, printers, and encoders, under `proofs/verified-garbage/` | Apache-2.0 OR BSD-3-Clause; the models taken under Apache-2.0 | [Lean proofs](https://github.com/pyca/verified-garbage/tree/e7b0fe8a82b7777958e078573771d51415f105bb/lean) that each routine's machine code meets its contract, is memory safe, and takes the same branches and memory addresses whatever its secrets, over VG's own models of the instructions. The RSA routines rind runs are internal to VG, so their contracts are in its proofs rather than its trusted specification. `admin/prove vg` cosimulates those models for each instruction of VG's code, on the CPU or, where it lacks a feature, under Intel SDE or qemu-aarch64, but for `jmp`/`b`, static addresses, and a lone `ret`, which its bytes check covers, and checks that rind's copies are VG's text. rind claims no ✓ for this code until it imports the theorems, which waits on VG fixing [a gap in its stack model](https://github.com/pyca/verified-garbage/issues/5321). |
 
 rind's own code is licensed under Apache-2.0 OR ISC OR MIT-0. Copied code
 keeps its source's copyright and license, which [LICENSE] lists with the
@@ -872,18 +874,28 @@ routine, and 0.90-1.02x on Apple M1 and 0.92-0.99x on M4 from 1200 bytes
 with `rind::cpu::Dit::hold()` held, 1.01-1.21x without it.
 AES-192-CTR and CBC measured as AES-128 did on each.
 
-x86_64 CPUs with AVX2 run ChaCha20 on Graviola's AVX2 kernels from two
-blocks, and on HACL*'s verified rounds in general-purpose registers for one
-block, as QUIC header protection takes and as aws-lc runs its integer routine
-there: the kernels compute even one block as a single serial chain, which Zen
-5's two-cycle vector latency doubles, so header protection on them took 1.89
-of aws-lc-rs's time on an EPYC 9V45 in [run 41585945720]. On HACL*'s rounds
-it takes 0.89 on an EPYC 9V74 (Zen 4) in [run 41678532920], against 0.83 on
-the kernels in [run 41657617706]. No run has drawn Zen 5 since; the fix is
-expected to hold there because HChaCha20, below, measured the same cause and
-fix on it. For one block, the kernels measured 1.05-1.3x faster than HACL*'s
-rounds on Coffee Lake, Arrow Lake, and Zen 3, where HACL*'s rounds are within
-10% of aws-lc's integer routine.
+x86_64 CPUs with AVX2 run ChaCha20 from 256 bytes on [verified-garbage]'s
+routines, its AVX-512 VL one where the CPU has AVX-512 VL and its AVX2 one
+otherwise, without a ✓ until rind imports VG's theorems (see
+[Sources](#sources)). It runs no slower than the code it replaced at any
+length measured from 32 bytes to 16 KiB, and from 256 bytes took 0.54-0.97
+of its time on Arrow Lake (AVX2) and 0.36-0.96 on Zen 5 (AVX-512) in
+[kixel-ai/rind#811](https://github.com/kixel-ai/rind/pull/811), and 0.43-0.62
+at the benchmark's sizes from 1200 bytes on a Xeon 6975P in [run
+43881997679]. Below 256 bytes, Graviola's two-block AVX2 kernel runs from
+two blocks and HACL*'s verified rounds in general-purpose registers for one,
+as QUIC header protection takes and as aws-lc runs its integer routine
+there: VG's routines set up a 768-byte streaming state, and take what
+follows their eight-block loop one block at a time, which lost to the
+kernel by up to 1.73x on Arrow Lake, so a tail of two to four blocks after
+that loop runs on the kernel too. Graviola's kernels compute even one block
+as a single serial chain, which Zen 5's two-cycle vector latency doubles,
+so header protection on them took 1.89 of aws-lc-rs's time on an EPYC 9V45
+in [run 41585945720]. On HACL*'s rounds it takes 0.89 on an EPYC 9V74 (Zen
+4) in [run 41678532920], against 0.83 on the kernels in [run 41657617706].
+For one block, the kernels measured 1.05-1.3x faster than HACL*'s rounds on
+Coffee Lake, Arrow Lake, and Zen 3, where HACL*'s rounds are within 10% of
+aws-lc's integer routine.
 
 x86_64 CPUs without AVX2 run ChaCha20 above 128 bytes on aws-lc's
 `chacha-x86_64` SSSE3 routine, four blocks at a time, as aws-lc picks it,
@@ -947,6 +959,7 @@ HACL*'s verified Poly1305 without NEON.
 [curve25519-dalek]: https://github.com/dalek-cryptography/curve25519-dalek
 [Wycheproof]: https://github.com/C2SP/wycheproof
 [run 41550703300]: https://github.com/kixel-ai/rind/actions/runs/41550703300
+[run 43881997679]: https://github.com/kixel-ai/rind/actions/runs/43881997679
 [run 41585945720]: https://github.com/kixel-ai/rind/actions/runs/41585945720
 [run 41657617706]: https://github.com/kixel-ai/rind/actions/runs/41657617706
 [run 41678532920]: https://github.com/kixel-ai/rind/actions/runs/41678532920

@@ -45,6 +45,14 @@ Each upstream rind changes, with where its fork is vendored and where the list o
 - **Reported:** no.
 - **Goes when:** the `v7` target feature is stable.
 
+### Rust 1.90's assembler cannot read verified-garbage's `.base64`
+
+- **Breaks:** pyca/verified-garbage prints its x86_64 machine code as `.base64` directives, which LLVM's assembler reads only from LLVM 22 (Rust 1.95); Rust 1.94 (LLVM 21.1) and rind's 1.90 MSRV stop at the first one.
+- **Reproduce:** a `naked_asm!` holding `.base64 "uAEAAADD"` builds on Rust 1.95 and fails at the directive on 1.94, as `nix shell --inputs-from . 'rust-overlay#rust_1_94_0'` runs it.
+- **Workaround:** `admin/import-vg` writes each `.base64` line as `.byte` lines of the same bytes, so rind's copy assembles to verified-garbage's machine code. Found in [kixel-ai/rind#811](https://github.com/kixel-ai/rind/pull/811).
+- **Reported:** no; verified-garbage requires Rust 1.95, so this is rind's MSRV, not its bug.
+- **Goes when:** rind's MSRV reaches Rust 1.95.
+
 ### No AddressSanitizer for 32-bit ARM Linux
 
 - **Breaks:** rustc has no AddressSanitizer for `armv7-unknown-linux-gnueabihf`.

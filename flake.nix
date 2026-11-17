@@ -127,7 +127,9 @@
               })
               armv7-cc
               pkgs.qemu-user
-            ];
+            ]
+            # sh/armv7.sh asks setarch whether the host runs AArch32 code.
+            ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.util-linux ];
 
             env = {
               CC_armv7_unknown_linux_gnueabihf = "${armv7-prefix}cc";

@@ -15,7 +15,7 @@
 //! other CPUs keep that there.
 //!
 //! VG proves each correct and constant time in Lean, over its own models of
-//! the instructions, which rind does not yet check: the public operation by
+//! the instructions, which `admin/prove vg` cosimulates: the public operation by
 //! `checked_correct` in `Proof/Variants/RsaPublicPrecomputed/X86_64/Ifma.lean`
 //! against `pdChkContract`, the CRT by `codeP_inlined` in
 //! `Proof/Variants/RsaPrivateCrt/X86_64/Ifma.lean` against `crtContractP`.

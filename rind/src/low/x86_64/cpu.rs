@@ -298,6 +298,17 @@ impl HaveAvx2 {
     }
 }
 
+/// Proof that the CPU has AVX-512 F and VL, with what `HaveAvx2` proves:
+/// what pyca/verified-garbage's "AVX-512 VL" ChaCha20 needs, on zmm vectors.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct HaveAvx512Vl(());
+
+impl HaveAvx512Vl {
+    pub(crate) fn check() -> Option<Self> {
+        has(AVX2_KERNELS | AVX512F | AVX512VL).then_some(Self(()))
+    }
+}
+
 /// Proof that the CPU has the SHA512 instructions, and the AVX2 that
 /// OpenSSL's routine for them also uses.
 #[derive(Clone, Copy, Debug)]
@@ -706,6 +717,11 @@ mod tests {
             (
                 HaveAvx2::check().is_some(),
                 available!("avx", "avx2", "bmi1", "bmi2", "popcnt", "ssse3"),
+            ),
+            (
+                HaveAvx512Vl::check().is_some(),
+                available!("avx", "avx2", "bmi1", "bmi2", "popcnt", "ssse3")
+                    && available!("avx512f", "avx512vl"),
             ),
             (
                 HaveSha512::check().is_some(),

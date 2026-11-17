@@ -182,7 +182,8 @@ key that is no longer in use stays in memory, in freed blocks a later
 allocation reuses, in swap, in core dumps and crash reports taken later, and
 in memory read after the fact; copies already written out stay. It does not wipe stack copies, digest contexts, or
 messages, except that pyca/verified-garbage's routines, which rind runs
-where they are fastest, zero their own stack scratch, a wipe built into the code VG proves. The adapters wipe their own copies of secrets too, such as
+where they are fastest, zero their own stack scratch, a wipe built into
+the code VG proves. The adapters wipe their own copies of secrets too, such as
 rind-aws-lc-rs's PKCS#8 documents.
 
 ## Data-independent timing
