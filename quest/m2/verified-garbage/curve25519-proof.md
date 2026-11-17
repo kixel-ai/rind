@@ -12,7 +12,7 @@ Every VG routine [the switch](/quest/m2/verified-garbage/curve25519.md) adopts i
 
 ## Waiting
 
-- pyca/verified-garbage: fix the stack-slot model, [pyca/verified-garbage#5321](https://github.com/pyca/verified-garbage/issues/5321) (a freed frame's bytes keep their values in the model, so a proof can read back a value hardware may have lost); then re-pin VG's models and code to a commit with the fix (`admin/import-vg-models`, and `admin/import-vg` once a switch adds it). Check: the issue is closed by a merged fix.
+- pyca/verified-garbage: fix the stack-slot model, [pyca/verified-garbage#5321](https://github.com/pyca/verified-garbage/issues/5321) (a freed frame's bytes keep their values in the model, so a proof can read back a value hardware may have lost); then re-pin `admin/import-vg`'s `REV`, which `admin/import-vg-models` also reads, to a commit with the fix. Check: the issue is closed by a merged fix.
 
 ## Required
 

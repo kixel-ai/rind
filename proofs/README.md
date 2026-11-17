@@ -170,7 +170,8 @@ as a Rust naked function of machine code from its own encoder. Those models
 are VG's trusted base, and VG's CI checks its encoder only against golden
 tests, so before a routine rind takes from VG counts as proven, rind checks
 both against hardware. `verified-garbage/` holds the models, which
-`admin/import-vg-models` copies byte for byte from VG at the commit it pins,
+`admin/import-vg-models` copies byte for byte from VG at the commit
+`admin/import-vg` pins for VG's code,
 and the cosimulation over them, a Lake package of its own, since the models
 import only Lean core. `nix develop .#vg --command admin/prove vg` checks,
 for this CPU's target:
@@ -196,6 +197,12 @@ Not cosimulated: the `jmp`/`b` and the address of a static (`lea`, or
 `adrp` and `add`), which the assembler and linker resolve and the bytes
 check covers, and `ret` alone, which each call's case runs. The `prove`
 workflow runs it on x86_64 and aarch64, nightly with a new seed.
+
+A gap in what the models allow across instructions is beyond what
+cosimulating one instruction at a time can catch. Reviewers found one that
+holds every VG ✓: a freed frame's bytes keep their values in the models, so
+a proof can read back a value a signal handler may have overwritten on
+hardware ([pyca/verified-garbage#5321](https://github.com/pyca/verified-garbage/issues/5321)).
 
 ## What is proven
 
@@ -889,7 +896,9 @@ those return without saying which encodings they accept. The loaders assume
 that the entry guard holds, `from_components` also `Runs`, and each `verify`
 theorem `Runs`, `Sha256Blocks`, messages of at most `maxInput` bytes, and
 `MontProducts k`, that `low::x86_64::mont`'s products
-return their results at the modulus's width of k words.
+return their results at the modulus's width of k words, and `NoIfma`, that
+the CPU lacks the AVX-512 IFMA on which the public operation runs
+pyca/verified-garbage's instead, whose Lean proof lives in that project.
 `Rind/X86_64/RsaMont.lean`'s `mont_products` proves it at 16 and 32 words
 with BMI2 and ADX, from s2n-bignum's theorems, and from `AwsLcMont`, that
 aws-lc's unproven routines return theirs, at every other width and CPU.

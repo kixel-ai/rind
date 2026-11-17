@@ -12,6 +12,8 @@ the modules the cosimulation needs, `ROOTS` and every module they import,
 byte for byte, and deletes any other file there, so the copy is VG's at REV.
 `--check` changes nothing and fails unless the copy is already that.
 
+REV is `admin/import-vg`'s, the commit rind's VG code comes from, so moving
+that pin fails `--check` until the models move with it.
 `admin/upstream verified-garbage` checks out VG at REV.
 """
 
@@ -19,9 +21,11 @@ import os
 import re
 import sys
 
-REV = "e7b0fe8a82b7777958e078573771d51415f105bb"
+ADMIN = os.path.dirname(os.path.abspath(__file__))
+with open(os.path.join(ADMIN, "import-vg")) as f:
+    REV = re.search(r'^REV = "([0-9a-f]{40})"$', f.read(), re.M).group(1)
 
-DEST = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "proofs", "verified-garbage")
+DEST = os.path.join(ADMIN, "..", "proofs", "verified-garbage")
 
 # The modules the cosimulation imports: each target's ISA, its printer, which
 # turns an instruction into the text `admin/vg-bytes` reads, its encoder, and
