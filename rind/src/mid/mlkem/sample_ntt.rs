@@ -31,7 +31,14 @@ pub(super) fn sample_ntt(rho: &[u8; 32], transposed: bool, out: &mut [Poly]) {
     });
     let mut next = || inputs.next().unwrap_or(buf);
 
-    let (eights, rest) = out.as_chunks_mut::<8>();
+    // ML-KEM-768 samples four at a time: wherever the eight-way sampler runs,
+    // so do pyca/verified-garbage's routines, and rind's arithmetic only when
+    // one reaches its `SampleNTT` bound, so only the proven four-way sampler
+    // is on its path.
+    let (eights, rest) = match k {
+        3 => (&mut [][..], out),
+        _ => out.as_chunks_mut::<8>(),
+    };
     for outputs in eights {
         let inputs = core::array::from_fn(|_| next());
         low::mlkem_sample_poly_ntt_8x(
