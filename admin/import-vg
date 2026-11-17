@@ -52,6 +52,13 @@ ROOTS = {
         "vg_mlkem768_encaps_h_avx512",
         "vg_mlkem768_keygen_avx512",
         "vg_mlkem768_decaps_avx512",
+        # RSA's public operation, with AVX512_IFMA for 2048-, 3072-, and
+        # 4096-bit moduli and e = 65537 and with ADX for the rest.
+        "vg_rsa_public_precomputed_checked_ifma",
+        # RSA's CRT with AVX512_IFMA for balanced 2048-, 3072-, and 4096-bit
+        # keys, and its twin for CPUs with two 512-bit multipliers.
+        "vg_rsa_private_crt_precomputed_ifma",
+        "vg_rsa_private_crt_precomputed_ifma512",
     ],
     "aarch64": [
         # ML-KEM-768's encapsulation key check, and encapsulation with the
@@ -228,6 +235,12 @@ def main():
     ).stdout.strip()
     if rev != REV:
         sys.exit(f"verified-garbage is at {rev}, expected {REV}")
+    # The routines are read from the working tree, so it must be REV's.
+    dirty = subprocess.run(
+        ["git", "-C", vg, "status", "--porcelain"], capture_output=True, text=True, check=True
+    ).stdout
+    if dirty:
+        sys.exit(f"verified-garbage's checkout differs from {REV}:\n{dirty}")
     for arch, roots in ROOTS.items():
         import_arch(vg, arch, roots)
 

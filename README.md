@@ -181,7 +181,8 @@ could: the key is still there to read. What it does is shorten how long a
 key that is no longer in use stays in memory, in freed blocks a later
 allocation reuses, in swap, in core dumps and crash reports taken later, and
 in memory read after the fact; copies already written out stay. It does not wipe stack copies, digest contexts, or
-messages. The adapters wipe their own copies of secrets too, such as
+messages, except that pyca/verified-garbage's ML-KEM-768 routines wipe
+their own stack scratch, a property their proofs include. The adapters wipe their own copies of secrets too, such as
 rind-aws-lc-rs's PKCS#8 documents.
 
 ## Data-independent timing

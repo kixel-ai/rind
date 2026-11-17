@@ -1616,6 +1616,8 @@ mod tests {
     // decapsulating the ciphertext and a tampered copy. A second key then
     // takes its implicit-rejection secret `z` from the seed, as its
     // generation is traced: `𝜌` comes from the rest, so it stays fixed.
+    // Fixing `d` also fixes the secret vectors it derives, so these traces
+    // cannot catch an access that depends on those alone.
     #[cfg(rind_backend = "x86_64")]
     #[test]
     #[ignore = "admin/ct-sde runs it under Intel SDE"]

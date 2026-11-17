@@ -168,6 +168,7 @@ pub(crate) mod p521_jmixadd;
 pub(crate) mod p521_jmixadd_alt;
 pub(crate) mod p521_jscalarmul;
 pub(crate) mod p521_jscalarmul_alt;
+pub(crate) mod rsa_ifma;
 pub(crate) mod rsaz;
 pub(crate) mod rsaz_avx512;
 pub(crate) mod sha1;
@@ -181,6 +182,5 @@ pub(crate) mod sha3_keccak_f1600;
 pub(crate) mod sha3_keccak_nof4_f1600;
 pub(crate) mod sha512;
 mod sha_tail;
-// pyca/verified-garbage's routines, as admin/import-vg vendors them.
 pub(crate) mod vg;
 pub(crate) mod vpaes_x86_64;

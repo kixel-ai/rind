@@ -92,6 +92,14 @@ pub(crate) mod vg_mlkem_sample_tbl;
 #[rustfmt::skip]
 pub(crate) mod vg_mlkem_yconsts;
 #[rustfmt::skip]
+pub(crate) mod vg_rsa_mont_mul_adx;
+#[rustfmt::skip]
+pub(crate) mod vg_rsa_private_crt_precomputed_ifma;
+#[rustfmt::skip]
+pub(crate) mod vg_rsa_private_crt_precomputed_ifma512;
+#[rustfmt::skip]
+pub(crate) mod vg_rsa_public_precomputed_checked_ifma;
+#[rustfmt::skip]
 pub(crate) mod vg_zeroize_avx_core;
 #[rustfmt::skip]
 pub(crate) mod vg_zeroize_core;
