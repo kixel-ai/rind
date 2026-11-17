@@ -853,7 +853,9 @@ those return without saying which encodings they accept. The loaders assume
 that the entry guard holds, `from_components` also `Runs`, and each `verify`
 theorem `Runs`, `Sha256Blocks`, messages of at most `maxInput` bytes, and
 `MontProducts k`, that `low::x86_64::mont`'s products
-return their results at the modulus's width of k words.
+return their results at the modulus's width of k words, and `NoIfma`, that
+the CPU lacks the AVX-512 IFMA on which the public operation runs
+pyca/verified-garbage's instead, whose Lean proof lives in that project.
 `Rind/X86_64/RsaMont.lean`'s `mont_products` proves it at 16 and 32 words
 with BMI2 and ADX, from s2n-bignum's theorems, and from `AwsLcMont`, that
 aws-lc's unproven routines return theirs, at every other width and CPU.
