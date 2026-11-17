@@ -228,15 +228,23 @@ fn matching_hybrid(group: NamedGroup, flips: &[(u16, u8)]) -> Vec<u8> {
     panic!("{group:?} produced no parity-matching hybrid share");
 }
 
+/// `point`, an uncompressed NIST point, in SEC1 compressed form.
+fn compress(point: &[u8]) -> Vec<u8> {
+    let (x, y) = point[1..].split_at(point.len() / 2);
+    let mut compressed = vec![2 | (y[y.len() - 1] & 1)];
+    compressed.extend_from_slice(x);
+    compressed
+}
+
 /// The dimpl fuzzer inputs `Av9paRCkAHn///cAAP8AAAIK` (P-256) and
 /// `09a0ff97fbffffff970100000340002b01db0d250c0c06` (P-384) are `KeyShare`
 /// edits of a fresh uncompressed point: P-256 XORs index 247 with 0 and index
 /// 0 with 2, and P-384 XORs index 0 with 3. Neither cuts. The prefix becomes
 /// SEC1 hybrid `0x06` or `0x07`, and the coordinates stay. aws-lc-rs accepts
-/// that point when the prefix's low bit matches `y`; rind's `agree` refuses
-/// every prefix but `0x04`.
+/// that point when the prefix's low bit matches `y`, and accepts the same
+/// point compressed. Both refuse a hybrid prefix whose parity does not match,
+/// and the point at infinity.
 #[test]
-#[ignore = "rind-dimpl refuses the hybrid NIST shares aws-lc-rs accepts"]
 fn nist_hybrid_key_shares_match_aws_lc() {
     let aws = aws_lc_rs::default_provider();
     let rind = rind();
@@ -257,14 +265,37 @@ fn nist_hybrid_key_shares_match_aws_lc() {
         // its parity no longer matches the prefix.
         let mut mismatched = share.clone();
         mismatched[0] ^= 1;
-        assert!(
-            !accepts(&rind, group, &mismatched),
-            "{group:?} accepted a hybrid point whose prefix parity does not match y"
+        assert_eq!(
+            accepts(&rind, group, &mismatched),
+            accepts(&aws, group, &mismatched),
+            "{group:?} hybrid prefix parity"
         );
         assert!(
             !accepts(&aws, group, &mismatched),
             "{group:?} aws-lc-rs accepted a hybrid point whose prefix parity does not match y"
         );
+
+        let mut uncompressed = share.clone();
+        uncompressed[0] = 0x04;
+        let compressed = compress(&uncompressed);
+        assert_eq!(
+            accepts(&rind, group, &compressed),
+            accepts(&aws, group, &compressed),
+            "{group:?} compressed"
+        );
+        assert!(
+            accepts(&aws, group, &compressed),
+            "{group:?} aws-lc-rs refused a compressed point"
+        );
+
+        for peer in [&[0u8][..], &compressed[..compressed.len() - 1]] {
+            assert_eq!(
+                accepts(&rind, group, peer),
+                accepts(&aws, group, peer),
+                "{group:?} {peer:?}"
+            );
+            assert!(!accepts(&aws, group, peer), "{group:?} {peer:?}");
+        }
     }
 }
 
