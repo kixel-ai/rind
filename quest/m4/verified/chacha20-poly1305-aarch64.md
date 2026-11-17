@@ -2,7 +2,7 @@
 
 ## Goal
 
-ChaCha20-Poly1305, XChaCha20-Poly1305, and `cipher::ChaCha20` earn the ✓ on aarch64, with and without the crypto extension, on CPUs without SVE2; with SVE2, ChaCha20-Poly1305's one pass runs pyca/verified-garbage's routines, which [their own quest](/quest/m2/verified-garbage/chacha20-poly1305-aarch64-proof.md) proves.
+ChaCha20-Poly1305 and XChaCha20-Poly1305 earn the ✓ on aarch64 CPUs without SVE2, with and without the crypto extension, and `cipher::ChaCha20`, whose NEON code runs with or without SVE2, earns it on every aarch64 CPU. On SVE2 CPUs the two AEADs' one pass runs pyca/verified-garbage's routines instead, which [their own quest](/quest/m2/verified-garbage/chacha20-poly1305-aarch64-proof.md) proves; the glue around either, HChaCha20 included, is the same code on every CPU, and this quest proves it.
 
 ## Plan
 

@@ -215,6 +215,15 @@ def main():
     ).stdout.strip()
     if rev != REV:
         sys.exit(f"verified-garbage is at {rev}, expected {REV}")
+    # The files read must be REV's, since each output's header names it.
+    dirty = subprocess.run(
+        ["git", "-C", vg, "status", "--porcelain", "--", "crates"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    if dirty:
+        sys.exit(f"verified-garbage has changes under crates/:\n{dirty}")
     for arch, roots in ROOTS.items():
         import_arch(vg, arch, roots)
 
