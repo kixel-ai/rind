@@ -92,6 +92,7 @@ const index: Page = {
 		"Which page says how to move each library to rind, and which crates, such as reqwest, quinn, and sqlx, pick a crypto backend for you and how each moves.",
 	markdown: () =>
 		`${[
+			definitions(landing.agent, landing.readme),
 			"# Move to rind from the library you use",
 			"Each page gives the change for one library: the `Cargo.toml` lines, the code that changes, and what rind cannot back.",
 			routes.map((r) => `- ${pageLink(r)}`).join("\n"),

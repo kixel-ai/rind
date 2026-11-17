@@ -96,7 +96,8 @@ export function choose(crate: string, main: Main, release: Release | null): { re
 	const fromGit = ["```toml", "[patch.crates-io]", `${crate} = { git = "${main.repo}", rev = "${main.commit}" }`, "```"].join(
 		"\n",
 	);
-	const toml = "your workspace's root `Cargo.toml`";
+	// A lockfile that already holds the release keeps it until the crate is updated.
+	const steps = `add this to your workspace's root \`Cargo.toml\`, then run \`cargo update -p ${crate}\`:\n\n${fromGit}\n\nThat moves every crate in your tree that depends on ${crate}, and \`cargo tree -i ${crate}\` then shows it from \`git+${main.repo}\`.`;
 
 	const published = release ? parse(release.readme, crate) : "there is no release";
 	if (release && typeof published !== "string") {
@@ -106,14 +107,14 @@ export function choose(crate: string, main: Main, release: Release | null): { re
 		const there = link("its README", `${main.repo}/blob/main/${crate}/README.md`);
 		return {
 			readme: published,
-			note: `${note} \`main\` has changed it since. To build against \`main\`, as ${there} describes it, add this to ${toml}:\n\n${fromGit}`,
+			note: `${note} \`main\` has changed it since. To build against \`main\`, as ${there} describes it, ${steps}`,
 		};
 	}
 	const lead = release
-		? `This page describes ${crate} as \`main\` has it, ahead of ${link(`${crate} ${release.version}`, `https://crates.io/crates/${crate}/${release.version}`)} on crates.io. Until its next release, take it from git`
-		: `${crate} is unreleased: this page describes it as \`main\` has it. Until its first release, take it from git`;
+		? `This page describes ${crate} as \`main\` has it, ahead of ${link(`${crate} ${release.version}`, `https://crates.io/crates/${crate}/${release.version}`)} on crates.io. Until its next release, take it from git at the commit this page describes`
+		: `${crate} is unreleased: this page describes it as \`main\` has it. Until its first release, take it from git at the commit this page describes`;
 	return {
 		readme: ours,
-		note: `${lead} at the commit this page describes by adding this to ${toml}, which moves every crate in your tree that depends on it:\n\n${fromGit}`,
+		note: `${lead}. Beside the lines below, ${steps}`,
 	};
 }

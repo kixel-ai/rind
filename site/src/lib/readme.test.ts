@@ -24,6 +24,7 @@ test("a release main has moved past says how to build against main", () => {
 	expect(got.body.map((t) => t.raw).join("")).not.toContain("New.");
 	expect(note).toContain("`main` has changed it since");
 	expect(note).toContain('rind-x = { git = "https://example.com/r", rev = "c0ffee" }');
+	expect(note).toContain("run `cargo update -p rind-x`");
 });
 
 test("a release that predates the structure gives main's README from git", () => {
@@ -37,6 +38,7 @@ test("a release that predates the structure gives main's README from git", () =>
 test("an unreleased crate is called unreleased", () => {
 	const { note } = choose("rind-x", main(readme(`rind-x = "0.6"`), "0.6.0"), null);
 	expect(note).toStartWith("rind-x is unreleased");
+	expect(note).toContain("run `cargo update -p rind-x`");
 });
 
 test("a requirement the quoted version does not meet fails the build", () => {
