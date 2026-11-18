@@ -4,23 +4,11 @@ Delete this file before merging into `quest/m4/pq/slh-dsa-shake-x86`. It is note
 
 ## Claim
 
+Upstream claim: https://github.com/kixel-ai/rind/pull/872 (draft). Head is `steelhead99x:quest/m4/pq/slh-dsa-shake-x86`, base is kixel-ai/rind `main`. Its body links this handoff.
+
 Fork handoff: https://github.com/steelhead99x/rind/pull/143
 
-The claim branch is `quest/m4/pq/slh-dsa-shake-x86` on `steelhead99x/rind`, empty commit `1f473cb7c7511391e15dd4329fc87818a9a1c5f1` (`chore(quest): claim quest/m4/pq/slh-dsa-shake-x86.md`, `Quest-Claim: 7869b23a8f326c95`) whose tree matches its parent, kixel-ai/rind `main` at `fdeaebc2a0a46f01656f2c164dfdbff0f945a8e9`.
-
-No open kixel-ai/rind pull request used that head when the branch was pushed. This agent could not open the draft on kixel-ai/rind: its GitHub credential is an installation token for `steelhead99x/rind`, and `POST /repos/kixel-ai/rind/pulls` returns 403 `Resource not accessible by integration`. Open the claim from an account that can, and keep it a draft:
-
-```sh
-gh pr create --repo kixel-ai/rind \
-  --head steelhead99x:quest/m4/pq/slh-dsa-shake-x86 \
-  --base main --draft \
-  --title "SLH-DSA's SHAKE sets on x86_64 match the SPHINCS+ AVX2 C" \
-  --body "Claims [quest/m4/pq/slh-dsa-shake-x86.md](https://github.com/kixel-ai/rind/blob/main/quest/m4/pq/slh-dsa-shake-x86.md)."
-```
-
-Compare URL: https://github.com/kixel-ai/rind/compare/main...steelhead99x:rind:quest/m4/pq/slh-dsa-shake-x86?expand=1
-
-Title and body are what `quest start` writes (the `[M]` size tag stripped). After it exists, add this fork pull request's URL to that body. `steelhead99x/rind#142` was opened against the fork's `main` by mistake and is closed. Leave it closed.
+The claim branch on `steelhead99x/rind` is empty commit `1f473cb7c7511391e15dd4329fc87818a9a1c5f1` (`chore(quest): claim quest/m4/pq/slh-dsa-shake-x86.md`, `Quest-Claim: 7869b23a8f326c95`). Its tree matches its parent, kixel-ai/rind `main` at `fdeaebc2a0a46f01656f2c164dfdbff0f945a8e9`.
 
 ## Goal
 
