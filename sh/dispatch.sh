@@ -37,6 +37,14 @@ fi
 
 cd "$(git rev-parse --show-toplevel)"
 
+# Inside the dev shell, Cargo can still run a host rustup's rustfmt and clippy
+# from $CARGO_HOME/bin. The shell hook points CARGO_HOME at a directory with
+# no shims (UPSTREAM.md, "Cargo runs $CARGO_HOME/bin's subcommands before
+# PATH's"); sh/toolchain.sh stops before any check if a shim still wins.
+if [[ -z "$query" && -n "${IN_RIND_DEV_SHELL:-}" && -z "${ALLOW_HOST_TOOLCHAIN:-}" ]]; then
+    sh/toolchain.sh
+fi
+
 changed=$(mktemp)
 trap 'rm -f "$changed"' EXIT
 
@@ -193,6 +201,9 @@ module gh '^(\.github/|sh/(alert|pins|release-check)\.sh$)' \
     tools='actionlint yq jq'
 module shell '' \
     tools='shellcheck'
+# Cargo's fmt and clippy are the shell's toolchain, not a host rustup's.
+module toolchain '^(sh/(dev-cargo-home|toolchain)\.sh|flake\.nix)$' \
+    tools='bash grep'
 module nix '' \
     tools='nixfmt' fix
 
@@ -563,6 +574,10 @@ step() {
         check:shell)
             files 'sh/*.sh'
             run xargs -0 shellcheck <"$listed"
+            ;;
+        check:toolchain)
+            run sh/toolchain.sh --self-test
+            run sh/dev-cargo-home.sh --self-test
             ;;
         check:nix)
             files '*.nix'

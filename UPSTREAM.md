@@ -60,6 +60,14 @@ Each upstream rind changes, with where its fork is vendored and where the list o
 - **Reported:** no.
 - **Goes when:** rustc supports `-Zsanitizer=address` there.
 
+### Cargo runs $CARGO_HOME/bin's subcommands before PATH's
+
+- **Breaks:** Cargo looks up an external subcommand such as `cargo-fmt` or `cargo-clippy` in `$CARGO_HOME/bin` before `PATH`, unless that directory is itself on `PATH`. On a host with rustup there, `cargo fmt` and `cargo clippy` inside a dev shell run rustup's default toolchain, not the flake's, while `command -v cargo-fmt` names the flake's. A newer rustfmt then reformats files CI accepts, and a toolchain without a cross target's standard library fails clippy with `can't find crate for core`.
+- **Reproduce:** `nix develop --command cargo fmt --version` on a host whose `$CARGO_HOME/bin/cargo-fmt` is a rustup shim and whose `$CARGO_HOME/bin` is not on `PATH` reports rustup's rustfmt. GitHub's ubuntu-24.04 image prepends `$HOME/.cargo/bin` to `PATH`, so CI does not hit this: Cargo skips the `$CARGO_HOME/bin`-first lookup when that directory is already on `PATH`, and the flake's bin is ahead of it.
+- **Workaround:** every dev shell sources `sh/dev-cargo-home.sh`, which points `CARGO_HOME` at a per-checkout directory under the XDG cache whose `bin/` is not copied from the host, and symlinks `registry/` and `git/` to the host cargo home's when those directories exist and are writable. The script never writes to the host home. Host-installed subcommands stay on `PATH` after the flake's, so `cargo-zigbuild` and other `cargo install` tools still run, and a rustup shim loses to the flake's binary of the same name. `sh/toolchain.sh`, which `sh/dispatch.sh` runs inside the dev shell before any check, stops unless `cargo fmt --version` and `cargo clippy --version` name the build `rustc --version` does.
+- **Reported:** no.
+- **Goes when:** Cargo prefers `PATH`'s subcommands.
+
 ## Constant-time analysis
 
 ### Valgrind hides ADX from `cpuid`
