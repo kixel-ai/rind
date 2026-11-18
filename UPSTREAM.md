@@ -124,6 +124,52 @@ Each upstream rind changes, with where its fork is vendored and where the list o
 - **Reported:** no.
 - **Goes when:** valgrind faults the read on ARM, if the bounds tests are ever wanted under ctgrind.
 
+### nixpkgs' valgrind cannot be cross-built for s390x
+
+- **Breaks:** `pkgsCross.s390x.valgrind` fails to assemble VEX's `guest_s390_helpers.c` (`Unrecognized opcode: ldgr`): the cross compiler's default s390x CPU predates the z196 instructions valgrind's own code uses.
+- **Reproduce:** `nix build nixpkgs#pkgsCross.s390x.valgrind`.
+- **Workaround:** `flake.nix`'s `ctgrind-shell` builds s390x's with `-march=z196`.
+- **Reported:** no (NixOS/nixpkgs).
+- **Goes when:** nixpkgs' valgrind cross-builds for s390x.
+
+### Memcheck blames an s390x condition read on a register's stale bits
+
+- **Breaks:** LLVM reads an s390x compare's result with `ipm`, which keeps the register's other bits, then adds `0xF0000000` and shifts out bit 31. Memcheck's default addition rule spreads any undefined low bit up through the sum, so a stale, never-written register makes the result look undefined, and a branch on it is flagged with no origin, though no secret reaches it. ML-KEM's `sample_poly_cbd2` reported 604 such errors.
+- **Reproduce:** `admin/ctgrind unit --target s390x-unknown-linux-gnu --release -- mlkem` in `nix develop .#ctgrind-s390x`, without `--expensive-definedness-checks=yes`.
+- **Workaround:** `admin/ctgrind` passes `--expensive-definedness-checks=yes`, which models additions exactly, on every target.
+- **Reported:** no.
+- **Goes when:** memcheck's default instrumentation of s390x additions is exact where the addend's low bits are zero.
+
+### Memcheck flags a byte atomic's neighbours on riscv64 and s390x
+
+- **Breaks:** neither riscv64gc nor s390x has byte-wide atomics, so Rust's `AtomicU8` operations load-reserve the surrounding word and compare it under a mask; memcheck flags the loop's branch when the neighbouring bytes are uninitialised padding.
+- **Workaround:** `low::generic::reuse_cache::ReuseCache` keeps its state in an `AtomicU32`.
+- **Reported:** no.
+- **Goes when:** memcheck tracks a masked compare's definedness bit by bit on both.
+
+### Memcheck's origin tracking asserts on ppc32
+
+- **Breaks:** with `--track-origins=yes`, memcheck for 32-bit PowerPC stops with `the 'impossible' happened` in `get_otrack_shadow_offset_wrk` (`off=1936,sz=4`), so `admin/ctgrind`'s rerun of a failed test names no origin there. The first run's report stands.
+- **Reproduce:** a planted secret branch, under `admin/ctgrind unit --target powerpc-unknown-linux-gnu --release` in `nix develop .#ctgrind-powerpc`.
+- **Workaround:** none needed: the rerun only explains a failure the first run already reported.
+- **Reported:** no.
+- **Goes when:** memcheck maps that guest state offset on ppc32.
+
+### Valgrind's ARM port crashes under qemu-arm
+
+- **Breaks:** memcheck for armhf run by qemu-arm on an x86_64 host faults in the program's dynamic loader, writing below its stack pointer, for any armv6 or armv7 program, so ARM cannot be checked under emulation as s390x and riscv64 are.
+- **Reproduce:** memcheck from `pkgsCross.armv7l-hf-multiplatform.valgrind`, run as `flake.nix`'s `ctgrind-shell` runs s390x's, on any armhf C program.
+- **Workaround:** `ctgrind.yml`'s `armv6` and `armv7` jobs run Ubuntu's armhf valgrind natively on the arm64 runner.
+- **Reported:** no.
+- **Goes when:** the pair runs, if an ARM row is ever wanted off an ARM host.
+
+### Valgrind has no LoongArch port
+
+- **Breaks:** valgrind (through 3.27) does not run on loongarch64, so `admin/ctgrind` cannot check the portable backend built for it.
+- **Workaround:** none yet: [ct-loongarch64](/quest/m2/confidence/ct-loongarch64.md) plans a trace check under qemu, as `admin/ct-qemu`'s.
+- **Reported:** no.
+- **Goes when:** valgrind merges a LoongArch port; then loongarch64 joins `ctgrind.yml`'s `portable-targets`.
+
 ### BINSEC cannot decode much of what rind runs
 
 - **Breaks:** BINSEC 0.11.3 stops at instructions it cannot decode: on x86_64, AES-NI, VAES, the SHA512 instructions, and every EVEX encoding; on aarch64, the crypto extension's AES, PMULL, and SHA instructions, SHA3's, every SVE encoding, such as SVE2's `xar`, and the `msr` that sets DIT; on armv7, the NEON table lookups and the crypto extension.

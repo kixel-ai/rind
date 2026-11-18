@@ -3,20 +3,23 @@
 use core::cell::UnsafeCell;
 use core::fmt;
 use core::panic::{RefUnwindSafe, UnwindSafe};
-use core::sync::atomic::{AtomicU8, Ordering};
+use core::sync::atomic::{AtomicU32, Ordering};
 
 // Each use only raises the state. Zero is a fresh cache, so a wiped one is too.
-const UNUSED: u8 = 0;
-const USED_ONCE: u8 = 1;
-const BUILDING: u8 = 2;
-const READY: u8 = 3;
+// A word rather than a byte: where the CPU has no byte atomics, such as
+// riscv64 and s390x, a byte's read-modify-write reads the bytes around it, which
+// memcheck flags when they are uninitialised padding.
+const UNUSED: u32 = 0;
+const USED_ONCE: u32 = 1;
+const BUILDING: u32 = 2;
+const READY: u32 = 3;
 
 /// A public value its owner builds once and keeps: on the first use that
 /// needs it, or on the second use, so an owner used once never pays for it.
 ///
 /// No use waits: one built on another thread is not there yet.
 pub(crate) struct ReuseCache<T> {
-    state: AtomicU8,
+    state: AtomicU32,
     value: UnsafeCell<T>,
 }
 
@@ -31,7 +34,7 @@ impl<T: RefUnwindSafe + UnwindSafe> RefUnwindSafe for ReuseCache<T> {}
 impl<T: Default> ReuseCache<T> {
     pub(crate) fn new() -> Self {
         Self {
-            state: AtomicU8::new(UNUSED),
+            state: AtomicU32::new(UNUSED),
             value: UnsafeCell::new(T::default()),
         }
     }
@@ -96,7 +99,7 @@ impl<T: Copy + Default> Clone for ReuseCache<T> {
     fn clone(&self) -> Self {
         match self.get() {
             Some(value) => Self {
-                state: AtomicU8::new(READY),
+                state: AtomicU32::new(READY),
                 value: UnsafeCell::new(*value),
             },
             None => Self::new(),

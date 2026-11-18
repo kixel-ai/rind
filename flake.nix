@@ -149,7 +149,8 @@
           # builds with; rind itself needs none. `cpu`, if set, is the core
           # qemu emulates, so it traps any newer instruction. `rustflags`, if
           # set, is passed to every build for `target`, its doctests included.
-          qemu-shell =
+          qemu-shell = args: pkgs.mkShell (qemu-shell-attrs args);
+          qemu-shell-attrs =
             {
               target,
               cross,
@@ -163,7 +164,7 @@
               lower = builtins.replaceStrings [ "-" ] [ "_" ] target;
               native = pkgs.stdenv.hostPlatform.canExecute cross.stdenv.hostPlatform;
             in
-            pkgs.mkShell {
+            {
               packages = [
                 (rust-stable.minimal.override {
                   extensions = [ "clippy" ];
@@ -192,6 +193,90 @@
                 RUSTDOCFLAGS = rustflags;
               };
             };
+
+          # The targets with no rind assembly that `just qemu` tests and
+          # valgrind runs under qemu-user or natively, so `admin/ctgrind`
+          # checks their portable backend too, in `ctgrind-<name>`.
+          portable = {
+            s390x = {
+              target = "s390x-unknown-linux-gnu";
+              cross = pkgs.pkgsCross.s390x;
+            };
+            i686 = {
+              target = "i686-unknown-linux-gnu";
+              cross = pkgs.pkgsCross.gnu32;
+            };
+            riscv64 = {
+              target = "riscv64gc-unknown-linux-gnu";
+              cross = pkgs.pkgsCross.riscv64;
+            };
+            powerpc64le = {
+              target = "powerpc64le-unknown-linux-gnu";
+              cross = pkgs.pkgsCross.powernv;
+            };
+            powerpc64 = {
+              target = "powerpc64-unknown-linux-gnu";
+              cross = pkgs.pkgsCross.ppc64-elfv1;
+              rustflags = "-C link-arg=-fuse-ld=bfd";
+            };
+            powerpc = {
+              target = "powerpc-unknown-linux-gnu";
+              cross = pkgs.pkgsCross.ppc32;
+              rustflags = "-C link-arg=-fuse-ld=bfd";
+            };
+          };
+
+          # `qemu-shell`'s, with the valgrind `admin/ctgrind` runs the
+          # target's tests under: the target's own, run through qemu-user
+          # when the host cannot run it, which valgrind's JIT survives.
+          # nixpkgs caches no valgrind for these targets, and its own pulls
+          # in gdb and perl built for the target, so this one leaves them,
+          # and its self-tests, out. s390x's needs z196 instructions, which
+          # the cross compiler's default CPU lacks (see UPSTREAM.md, "nixpkgs'
+          # valgrind cannot be cross-built for s390x"). Valgrind's header is
+          # the same on every architecture, so crabgrind takes the host's
+          # rather than its own stub, whose requests do nothing.
+          ctgrind-shell =
+            args@{ cross, ... }:
+            let
+              base = qemu-shell-attrs args;
+              native = pkgs.stdenv.hostPlatform.canExecute cross.stdenv.hostPlatform;
+              built = (cross.valgrind.override { gdb = null; }).overrideAttrs (
+                {
+                  buildInputs = [ ];
+                  doCheck = false;
+                  separateDebugInfo = false;
+                  outputs = [ "out" ];
+                  postInstall = "";
+                }
+                // pkgs.lib.optionalAttrs cross.stdenv.hostPlatform.isS390x {
+                  env.NIX_CFLAGS_COMPILE = "-march=z196";
+                }
+              );
+              # qemu-user cannot follow the launcher's exec of the tool, so
+              # this runs memcheck's tool directly, telling it the launcher
+              # it would have come from.
+              emulated = pkgs.runCommand "valgrind-qemu" { } ''
+                tool=$(echo ${built}/libexec/valgrind/memcheck-*-linux)
+                mkdir -p $out/bin
+                cat >$out/bin/valgrind <<EOF
+                #!${pkgs.runtimeShell}
+                export VALGRIND_LIB=${built}/libexec/valgrind VALGRIND_LAUNCHER=${built}/bin/valgrind
+                exec ${pkgs.qemu-user}/bin/qemu-${cross.stdenv.hostPlatform.qemuArch} $tool --vgdb=no "\$@"
+                EOF
+                chmod +x $out/bin/valgrind
+              '';
+            in
+            pkgs.mkShell (
+              base
+              // {
+                packages = base.packages ++ [ (if native then built else emulated) ];
+                env = base.env // {
+                  LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
+                  VALGRIND_INCLUDE = "${pkgs.valgrind.dev}/include";
+                };
+              }
+            );
 
           # aws-lc's ACVP client, of the aws-lc release nixpkgs pins. Its
           # `-json` mode answers vector sets offline through a module wrapper,
@@ -819,24 +904,18 @@
 
             # `just qemu s390x` tests the portable backend on big-endian
             # s390x in it.
-            s390x = qemu-shell {
-              target = "s390x-unknown-linux-gnu";
-              cross = pkgs.pkgsCross.s390x;
-            };
+            s390x = qemu-shell portable.s390x;
+            ctgrind-s390x = ctgrind-shell portable.s390x;
 
             # `just qemu i686` tests the portable backend on 32-bit x86 in it,
             # natively on an x86_64 host.
-            i686 = qemu-shell {
-              target = "i686-unknown-linux-gnu";
-              cross = pkgs.pkgsCross.gnu32;
-            };
+            i686 = qemu-shell portable.i686;
+            ctgrind-i686 = ctgrind-shell portable.i686;
 
             # `just qemu riscv64` and `just qemu riscv64-musl` test the
             # portable backend on riscv64gc Linux, glibc and musl, in them.
-            riscv64 = qemu-shell {
-              target = "riscv64gc-unknown-linux-gnu";
-              cross = pkgs.pkgsCross.riscv64;
-            };
+            riscv64 = qemu-shell portable.riscv64;
+            ctgrind-riscv64 = ctgrind-shell portable.riscv64;
             riscv64-musl = qemu-shell {
               target = "riscv64gc-unknown-linux-musl";
               cross = pkgs.pkgsCross.riscv64-musl;
@@ -876,20 +955,12 @@
             # the last `-fuse-ld`, so a trailing one picks GNU ld.
             # See UPSTREAM.md, "rust-lld cannot link ELFv1" and "lld links
             # BSS-PLT objects into a crashing ppc32 binary".
-            powerpc64le = qemu-shell {
-              target = "powerpc64le-unknown-linux-gnu";
-              cross = pkgs.pkgsCross.powernv;
-            };
-            powerpc64 = qemu-shell {
-              target = "powerpc64-unknown-linux-gnu";
-              cross = pkgs.pkgsCross.ppc64-elfv1;
-              rustflags = "-C link-arg=-fuse-ld=bfd";
-            };
-            powerpc = qemu-shell {
-              target = "powerpc-unknown-linux-gnu";
-              cross = pkgs.pkgsCross.ppc32;
-              rustflags = "-C link-arg=-fuse-ld=bfd";
-            };
+            powerpc64le = qemu-shell portable.powerpc64le;
+            ctgrind-powerpc64le = ctgrind-shell portable.powerpc64le;
+            powerpc64 = qemu-shell portable.powerpc64;
+            ctgrind-powerpc64 = ctgrind-shell portable.powerpc64;
+            powerpc = qemu-shell portable.powerpc;
+            ctgrind-powerpc = ctgrind-shell portable.powerpc;
 
             # `admin/ct-binsec` runs in it: the release tests under gdb, which
             # dumps each at its region, and BINSEC on the dump.

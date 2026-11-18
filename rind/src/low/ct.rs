@@ -102,3 +102,17 @@ cfg_if::cfg_if! {
         pub(crate) fn into_public<T>(v: T) -> T { v }
     }
 }
+
+#[cfg(all(test, feature = "__ctgrind"))]
+mod tests {
+    use crabgrind::valgrind::{RunningMode, running_mode};
+
+    /// Only `admin/ctgrind` builds `__ctgrind`, to run under valgrind. Run
+    /// any other way, as by a target runner it did not replace, or built
+    /// against crabgrind's stub header, whose requests do nothing, the
+    /// suite would pass with no secret checked.
+    #[test]
+    fn runs_under_valgrind() {
+        assert!(matches!(running_mode(), RunningMode::Valgrind));
+    }
+}
