@@ -18,12 +18,16 @@ namespace rind.x86_64
 /-- The entry guard every operation holds, which changes no value. -/
 opaque low.entry.Entry : Type
 
+/-- The token proving the CPU runs pyca/verified-garbage's AVX-512 IFMA X25519
+and Ed25519, which no proof here covers. -/
+opaque low.x86_64.curve25519_ifma.Curve25519Ifma : Type
+
 /-- The token proving the CPU has BMI2 and ADX. -/
 opaque low.x86_64.cpu.HaveBmi2Adx : Type
 
-/-- The token proving the CPU runs pyca/verified-garbage's AVX-512 IFMA RSA,
-whose public operation no proof here covers. -/
-opaque low.x86_64.rsa_ifma.RsaIfma : Type
+/-- The token proving the CPU has the AVX-512 IFMA, BMI2, and ADX that
+pyca/verified-garbage's RSA routines need. -/
+opaque low.x86_64.cpu.HaveAvx512ForRsa : Type
 
 /-- The tokens proving the CPU has what each SHA-1, SHA-256, SHA-512, and
 ChaCha20-Poly1305 routine needs: the SHA extensions, AVX and SSSE3, AVX2,
