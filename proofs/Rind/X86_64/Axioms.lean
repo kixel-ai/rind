@@ -17,6 +17,7 @@ import Rind.X86_64.Sha3
 import Rind.X86_64.AesKw
 import Rind.X86_64.P256Signature
 import Rind.X86_64.PointSelect
+import Rind.X86_64.MlKemCoding
 open rind.x86_64
 
 /-!
@@ -33,8 +34,10 @@ rind's HOL Light proofs of its routines for the SHA extensions in
 constant-time compares in `Rind.X86_64.CtEqual` for HMAC's and PBKDF2's
 `verify`, AES-GCM's tag check, ChaCha20-Poly1305's and XChaCha20-Poly1305's
 tag checks, RSASSA-PSS's hash compare, and key wrap's `unwrap` and
-`unwrap_padded` checks, pyca/verified-garbage's for ChaCha20's
-`apply_keystream` in `Rind.X86_64.VgChaCha20`, and nothing else.
+`unwrap_padded` checks; for RSA verification's public operation on AVX-512
+IFMA, pyca/verified-garbage's Lean proof of its routine, which
+`Rind.X86_64.VgRsa` restates; pyca/verified-garbage's for ChaCha20's
+`apply_keystream` in `Rind.X86_64.VgChaCha20`; and nothing else.
 ChaCha20-Poly1305's theorems also take aws-lc's one-pass routines as the
 hypothesis `RunsChaCha20Poly1305`, which no axiom states. ChaCha20's
 `apply_keystream` on a CPU without AVX2 takes aws-lc's SSSE3 routine as the
@@ -758,6 +761,7 @@ change to the trust base.
  bignum_cmp_lt_spec,
  bignum_negmodinv_spec,
  finish_padded_spec,
+ rsa_ifma_public_spec,
  sha256_compress_blocks_shaext_spec] -/
 #guard_msgs in
 #print axioms rsa_pkcs1_sha256_verify_spec
@@ -771,6 +775,7 @@ change to the trust base.
  ct_compare_16_spec,
  ct_compare_bytes_spec,
  finish_padded_spec,
+ rsa_ifma_public_spec,
  sha256_compress_blocks_shaext_spec] -/
 #guard_msgs in
 #print axioms rsa_pss_sha256_verify_spec
@@ -930,3 +935,15 @@ change to the trust base.
  p256_point_add_affine_spec] -/
 #guard_msgs in
 #print axioms P256Base.base_multiply_spec
+
+/-- info: 'rind.x86_64.MlKemCoding.decompress_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms MlKemCoding.decompress_spec
+
+/-- info: 'rind.x86_64.MlKemCoding.from_message_bits_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms MlKemCoding.from_message_bits_spec
+
+/-- info: 'rind.x86_64.MlKemCoding.to_message_bits_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms MlKemCoding.to_message_bits_spec

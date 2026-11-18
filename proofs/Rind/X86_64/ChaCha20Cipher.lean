@@ -6,7 +6,8 @@ open Aeneas Aeneas.Std Result rind.spec
 
 `ChaCha20::cipher` picks one of four routines by the CPU and the buffer's
 length: pyca/verified-garbage's (VG's) from 256 bytes where the CPU has AVX2,
-with rind's two-block kernel over a tail of two to four blocks;
+with rind's two-block kernel over a remainder of 65 to 255 bytes after the
+last whole 512-byte group;
 the kernel alone from 65 bytes; aws-lc's `ChaCha20_ctr32_ssse3_4x` from 129
 bytes where the CPU has SSSE3 but not AVX2; and HACL*'s rounds, in rind's
 loop, otherwise. `Rind.X86_64.VgChaCha20` proves VG's path over its imported
@@ -283,9 +284,10 @@ theorem apply_keystream_spec (he : ∃ e, low.entry.Entry.new_secret = ok e)
   · rw [Slice.len_val] at r_post
     split_ifs at r_post ⊢ <;> subst r_post <;> simp_all
 
-/-- ChaCha20 on a CPU with AVX2: RFC 8439's encryption of the buffer under the
-key, the block counter, and the nonce, if the counter covers it before it
-wraps; otherwise `WrongLength`, with the buffer unchanged. -/
+/-- ChaCha20 where the CPU-feature checks find AVX2 or AVX-512 VL: RFC 8439's
+encryption of the buffer under the key, the block counter, and the nonce, if
+the counter covers it before it wraps; otherwise `WrongLength`, with the
+buffer unchanged. -/
 theorem chacha20_apply_keystream (h : RunsVg) (k : mid.chacha20.ChaCha20)
     (nonce : Std.Array U8 12#usize) (counter : U32) (inout : Slice U8) :
     k.apply_keystream nonce counter inout ⦃ r inout' =>

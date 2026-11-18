@@ -6,9 +6,10 @@ open Aeneas Aeneas.Std Result rind.spec
 /-!
 # `cipher::ChaCha20` on pyca/verified-garbage's routines, from 256 bytes on x86_64
 
-Where the CPU has AVX2, `cipher::ChaCha20` runs pyca/verified-garbage's (VG's)
-AVX2 routine, or its AVX-512 VL one, from 256 bytes, and a tail of two to four
-blocks after their eight-block loop on rind's two-block kernel. The axioms
+Where the CPU-feature checks find AVX2 or AVX-512 VL,
+`cipher::ChaCha20` runs pyca/verified-garbage's (VG's) AVX2 routine, or its
+AVX-512 VL one, from 256 bytes, and a remainder of 65 to 255 bytes after the
+last whole 512-byte group on rind's two-block kernel. The axioms
 below restate VG's Lean theorems about `vg_chacha20_init`,
 `vg_chacha20_apply_avx2`, and `vg_chacha20_apply_avx512vl` about the Rust
 wrappers that call them, `VgState::init`, `VgState::apply_avx2`, and
@@ -25,8 +26,10 @@ Trusted: each restatement, that `Rind.VgChaCha20` is VG's spec, and that each
 wrapper passes the routine its state's 768 bytes, which
 `Rind.X86_64.TypesExternal` models as the state, and the key's and counter
 and nonce's words as the little-endian bytes VG reads. VG's theorems rest on
-its models of the instructions, which `admin/prove vg` cosimulates against the
-CPU for every instruction of VG's code rind runs, and on its own Lean kernel
+its models of the instructions, which `admin/prove vg` cosimulates for each
+instruction of VG's code rind runs, on the CPU or, where it lacks a feature,
+under Intel SDE, but for `jmp`, static addresses, and a lone `ret`, which its
+check that rind's copies are VG's text covers; and on VG's own Lean kernel
 check, at the commit `admin/import-vg` pins.
 -/
 
@@ -43,15 +46,20 @@ VG's contracts (`Spec/ChaCha20/Contract.lean`) are over its model's memory
 `m` before the call and `m'` after: each axiom reads the state's bytes `st`
 for `m` at the state, the key's and counter and nonce's words for theirs,
 and the data's bytes for `m` at the data. Each precondition holds for every
-call safe Rust makes: the state is 768 bytes, the arguments are distinct
-objects, so none overlaps another, the return address, or the stack below
-it, or wraps the address space, and the token proves the CPU features. A
-slice's length is its own, which no call changes. -/
+call safe Rust makes: the state is 768 bytes; the state and the data, which
+the routines write, are objects distinct from every other argument, so
+neither overlaps another argument, the return address, or the stack below it;
+no argument wraps the address space; and the token proves the CPU features.
+VG's contracts hold for any bytes of the state, so these do too, and need no
+premise that `init` has run. A slice's length is its own, which no call
+changes. -/
 
 /-- VG's `vg_chacha20_init` on x86_64 meets `VG.Spec.ChaCha20.initContract`
 ([`Stream.init_verified`](https://github.com/pyca/verified-garbage/blob/0aa40d6c21fd02943fe5b38a5b69b6213d07764d/lean/VerifiedGarbage/Proof/ChaCha20/X86_64/Stream/Init.lean),
 which [`Artifacts/ChaCha20/X86_64.lean`](https://github.com/pyca/verified-garbage/blob/0aa40d6c21fd02943fe5b38a5b69b6213d07764d/lean/VerifiedGarbage/Artifacts/ChaCha20/X86_64.lean)
-registers as `initReg`, of the code VG emits): the state holds the key and
+registers as `Scrub.initReg`
+([`ScrubInit.lean`](https://github.com/pyca/verified-garbage/blob/0aa40d6c21fd02943fe5b38a5b69b6213d07764d/lean/VerifiedGarbage/Proof/ChaCha20/X86_64/ScrubInit.lean)), which wraps it with `withScrub`, of
+the code VG emits): the state holds the key and
 the whole keystream for the counter and nonce. -/
 @[step]
 axiom vg_chacha20_init_spec (st : VgState) (key : Std.Array U32 8#usize) (counter_nonce : Std.Array U32 4#usize) :
@@ -63,7 +71,9 @@ axiom vg_chacha20_init_spec (st : VgState) (key : Std.Array U32 8#usize) (counte
 `VG.Spec.ChaCha20.applyContract` ([`Stream.apply_verified`](https://github.com/pyca/verified-garbage/blob/0aa40d6c21fd02943fe5b38a5b69b6213d07764d/lean/VerifiedGarbage/Proof/ChaCha20/X86_64/Stream/ApplyCT.lean)
 for its AVX2 `vg_chacha20_xor`, which
 [`Artifacts/ChaCha20/X86_64.lean`](https://github.com/pyca/verified-garbage/blob/0aa40d6c21fd02943fe5b38a5b69b6213d07764d/lean/VerifiedGarbage/Artifacts/ChaCha20/X86_64.lean)
-registers as `applyReg avx2`, of the code VG emits): if at least the data's
+registers as `Scrub.applyReg avx2`
+([`Scrub.lean`](https://github.com/pyca/verified-garbage/blob/0aa40d6c21fd02943fe5b38a5b69b6213d07764d/lean/VerifiedGarbage/Proof/ChaCha20/X86_64/Scrub.lean)), which wraps it with `withScrub`, of the
+code VG emits): if at least the data's
 length of keystream is left, it XORs the next bytes of it into the data,
 keeps the rest, and returns 1; otherwise it returns 0 and changes neither. -/
 @[step]
@@ -80,7 +90,7 @@ axiom vg_chacha20_apply_avx2_spec (st : VgState) (t : low.x86_64.cpu.HaveAvx2) (
 
 /-- VG's `vg_chacha20_apply_avx512vl` on x86_64 meets
 `VG.Spec.ChaCha20.applyContract`, as `vg_chacha20_apply_avx2_spec` states, for its AVX-512
-VL `vg_chacha20_xor` (`applyReg avx512Vl`). -/
+VL `vg_chacha20_xor` (`Scrub.applyReg avx512Vl`). -/
 @[step]
 axiom vg_chacha20_apply_avx512vl_spec (st : VgState) (t : low.x86_64.cpu.HaveAvx512Vl) (data : Slice U8) :
     VgState.apply_avx512vl st t data ⦃ r st' data' =>
@@ -268,8 +278,10 @@ theorem new_spec (key : Std.Array U8 32#usize) (counter_nonce : Std.Array U8 16#
 /-! ## The cipher's VG path, `ChaCha20::cipher` -/
 
 /-- From 256 bytes, on a CPU where `new` picked a VG routine, `cipher` XORs
-RFC 8439's keystream into the buffer: VG's routines over whole blocks, and the
-kernel over the tail, from the block counter past them. -/
+RFC 8439's keystream into the buffer: VG's routines over the whole buffer,
+partial final block included, unless `len % 512` is 65 to 255, when they take
+the bytes before that remainder and the kernel takes the remainder, from the
+block counter past them. -/
 theorem cipher_spec (hu : ∃ s, VgState.uninit = ok s) (hk : Kernel) (c : low.x86_64.chacha20.ChaCha20)
     (hv : c.vg.isSome) (buffer : Slice U8) (h256 : 256 ≤ buffer.length)
     (hl : c.counter_nonce.val[0]!.val + (buffer.length + 63) / 64 ≤ 2 ^ 32) :
