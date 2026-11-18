@@ -21,8 +21,7 @@
 //! backend's public-key arithmetic runs on: 64 where a 64-bit product is
 //! one or two instructions, on 64-bit targets and on wasm32 with the
 //! `wide-arithmetic` feature, and 32 elsewhere, where it would be a library
-//! call. `--cfg rind_limb="32"` forces 32-bit limbs on a 64-bit target, so
-//! CI checks both widths on x86_64; like `rind_portable`, it is for testing.
+//! call.
 
 use std::env;
 
@@ -51,10 +50,8 @@ fn main() {
         || (arch == "wasm32"
             && env::var("CARGO_CFG_TARGET_FEATURE")
                 .is_ok_and(|f| f.split(',').any(|f| f == "wide-arithmetic")));
-    if env::var_os("CARGO_CFG_RIND_LIMB").is_none() {
-        let limb = if wide { 64 } else { 32 };
-        println!(r#"cargo::rustc-cfg=rind_limb="{limb}""#);
-    }
+    let limb = if wide { 64 } else { 32 };
+    println!(r#"cargo::rustc-cfg=rind_limb="{limb}""#);
 }
 
 /// Whether the 32-bit ARM target's triple names ARMv7 or later, as in
