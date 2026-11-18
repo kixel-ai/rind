@@ -216,9 +216,11 @@ about the x86_64 ChaCha20 routines rind runs, `Stream.init_verified` and
 `verified-garbage/` also holds the `Spec` modules whose definitions the
 axioms restating VG's theorems state, such as `VerifiedGarbage.Spec.Rsa`,
 which `Rind/X86_64/VgRsa.lean` imports, and `VerifiedGarbage.Spec.ChaCha20`
-with its contracts, which `Rind/VgChaCha20.lean` adapts, so a pin that
-changes them shows the change in its diff, against which that re-pin must
-review the adaptation.
+with its contracts, which `Rind/VgChaCha20.lean` adapts and
+`Rind/X86_64/VgChaCha20.lean`'s axioms restate, so a pin that changes them
+shows the change in its diff, against which that re-pin must review the
+adaptation, for a change to the spec, and the axioms, for one to the
+contracts.
 
 ## What is proven
 
