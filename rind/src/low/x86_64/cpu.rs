@@ -413,6 +413,29 @@ impl HaveBmi2Adx {
     }
 }
 
+/// Proof that the CPU has what pyca/verified-garbage's BMI2 and ADX P-256
+/// routines run: BMI2, ADX, AVX, and AVX2.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct HaveAdxForVgP256(());
+
+impl HaveAdxForVgP256 {
+    pub(crate) fn check() -> Option<Self> {
+        has(BMI2 | ADX | AVX | AVX2).then_some(Self(()))
+    }
+}
+
+/// Proof that the CPU has what pyca/verified-garbage's AVX-512 IFMA P-256
+/// ECDH and ECDSA verification run: AVX-512 F, VL, and IFMA, with what
+/// [`HaveAdxForVgP256`] proves.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct HaveIfmaForVgP256(());
+
+impl HaveIfmaForVgP256 {
+    pub(crate) fn check() -> Option<Self> {
+        has(BMI2 | ADX | AVX | AVX2 | AVX512F | AVX512VL | AVX512IFMA).then_some(Self(()))
+    }
+}
+
 /// Whether the CPU is Intel's, for code that is fastest on one vendor's cores.
 pub(crate) fn is_intel() -> bool {
     has(INTEL)
@@ -1011,6 +1034,15 @@ mod tests {
             (HaveSsse3::check().is_some(), available!("ssse3")),
             (HaveSse41::check().is_some(), available!("ssse3", "sse4.1")),
             (HaveBmi2Adx::check().is_some(), available!("bmi2") && adx),
+            (
+                HaveAdxForVgP256::check().is_some(),
+                adx && available!("bmi2", "avx", "avx2"),
+            ),
+            (
+                HaveIfmaForVgP256::check().is_some(),
+                adx && available!("bmi2", "avx", "avx2")
+                    && available!("avx512f", "avx512vl", "avx512ifma"),
+            ),
         ];
         for (i, (check, expected)) in checks.into_iter().enumerate() {
             assert_eq!(check, expected, "check {i}");
