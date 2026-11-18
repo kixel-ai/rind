@@ -71,3 +71,21 @@ sh/python.sh test
 install -m 755 "$target"/pyrind/site/pyrind/_rind.*.so "$objects/"
 
 cargo llvm-cov report $OPTIONS "$@"
+
+# The table counts the functions no test ran; this names where each starts,
+# one `path:line` each, counting a generic or a closure as run when any copy
+# of it ran.
+cargo llvm-cov report $OPTIONS --json --output-path "$out/report.json"
+echo "Functions no test ran:"
+python3 - "$out/report.json" "$PWD/" <<'EOF'
+import collections, json, sys
+
+runs = collections.Counter()
+for function in json.load(open(sys.argv[1]))["data"][0]["functions"]:
+    path = function["filenames"][0].removeprefix(sys.argv[2])
+    runs[path, function["regions"][0][0]] += function["count"]
+for (path, line), count in sorted(runs.items()):
+    published = not path.startswith("/") and path.split("/")[1] == "src"
+    if count == 0 and published:
+        print(f"  {path}:{line}")
+EOF

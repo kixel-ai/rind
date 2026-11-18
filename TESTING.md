@@ -254,7 +254,8 @@ code no test reaches. It runs the suites as the nightly jobs do, with
 `SLOW_TESTS=1`, and again with CPU features denied (on x86_64, under Intel
 SDE too), so a plain `cargo llvm-cov` reports less. The
 nightly `coverage` workflow runs it on Linux and macOS; the summary table in
-its "Measure coverage" step's log is the report.
+its "Measure coverage" step's log is the report, and the list after it
+names where each function no test ran starts.
 
 A function only one architecture compiles counts as run when that
 architecture's report runs it. These stay unrun, each for a reason:
@@ -270,8 +271,10 @@ architecture's report runs it. These stay unrun, each for a reason:
   failing, signing failing with a key that loaded, a message past a cipher's
   length limit or `isize::MAX`, and rind-object-store's arm for an
   algorithm a later object_store adds.
-- The unpublished crates, rind-fips and rind-openssl, and the `fips` modules
-  only rind-fips compiles in.
+- The unpublished crates, rind-fips and rind-openssl, and `rind`'s FIPS
+  code (`fips`, `fips_rng`, and what only they call, such as
+  `rsa::PublicKey::modulus_bits`), which its unit tests compile but only
+  rind-fips runs.
 
 ## Running the tools
 

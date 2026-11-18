@@ -13,20 +13,14 @@ macro_rules! debug_eq {
 
 struct Counter(u64);
 
-macro_rules! counter {
-    ($c:ident) => {
-        impl $c::aead::NonceSequence for Counter {
-            fn advance(&mut self) -> Result<$c::aead::Nonce, $c::error::Unspecified> {
-                self.0 += 1;
-                let mut nonce = [0; 12];
-                nonce[4..].copy_from_slice(&self.0.to_be_bytes());
-                Ok($c::aead::Nonce::assume_unique_for_key(nonce))
-            }
-        }
-    };
+impl ours::aead::NonceSequence for Counter {
+    fn advance(&mut self) -> Result<ours::aead::Nonce, ours::error::Unspecified> {
+        self.0 += 1;
+        let mut nonce = [0; 12];
+        nonce[4..].copy_from_slice(&self.0.to_be_bytes());
+        Ok(ours::aead::Nonce::assume_unique_for_key(nonce))
+    }
 }
-counter!(ours);
-counter!(theirs);
 
 #[test]
 fn nonces_convert_as_aws_lc_rs_does() {
