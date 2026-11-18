@@ -9,6 +9,7 @@ import Rind.X86_64.Pbkdf2
 import Rind.X86_64.ChaCha20
 import Rind.X86_64.AesGcm
 import Rind.X86_64.ChaCha20Poly1305
+import Rind.X86_64.VgChaCha20
 import Rind.X86_64.GcmKey
 import Rind.X86_64.Ed25519
 import Rind.X86_64.RsaDispatch
@@ -16,6 +17,7 @@ import Rind.X86_64.Sha3
 import Rind.X86_64.AesKw
 import Rind.X86_64.P256Signature
 import Rind.X86_64.PointSelect
+import Rind.X86_64.MlKemCoding
 open rind.x86_64
 
 /-!
@@ -32,9 +34,13 @@ rind's HOL Light proofs of its routines for the SHA extensions in
 constant-time compares in `Rind.X86_64.CtEqual` for HMAC's and PBKDF2's
 `verify`, AES-GCM's tag check, ChaCha20-Poly1305's and XChaCha20-Poly1305's
 tag checks, RSASSA-PSS's hash compare, and key wrap's `unwrap` and
-`unwrap_padded` checks, and nothing else.
+`unwrap_padded` checks; for RSA verification's public operation on AVX-512
+IFMA, pyca/verified-garbage's Lean proof of its routine, which
+`Rind.X86_64.VgRsa` restates; pyca/verified-garbage's for ChaCha20's
+`apply_keystream` in `Rind.X86_64.VgChaCha20`; and nothing else.
 ChaCha20-Poly1305's theorems also take aws-lc's one-pass routines as the
-hypothesis `RunsChaCha20Poly1305`, which no axiom states. The generator
+hypothesis `RunsChaCha20Poly1305`, which no axiom states, and ChaCha20's
+`apply_keystream` takes rind's two-block kernel as the hypothesis `Kernel`. The generator
 tables' point selects rest on no axiom, only on the hand model in
 `Rind.X86_64.PointSelectModel`. P-256's generator multiplication also rests
 on `p256_point_add_affine_spec` in `Rind.X86_64.S2nBignum`, which restates
@@ -365,6 +371,15 @@ change to the trust base.
 /-- info: 'rind.x86_64.chacha20_mask' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms chacha20_mask
+
+/-- info: 'rind.x86_64.chacha20_apply_keystream' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ vg_chacha20_apply_avx2_spec,
+ vg_chacha20_apply_avx512vl_spec,
+ vg_chacha20_init_spec] -/
+#guard_msgs in
+#print axioms chacha20_apply_keystream
 
 /-- info: 'rind.x86_64.chacha20_poly1305_new' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
@@ -727,6 +742,7 @@ change to the trust base.
  bignum_cmp_lt_spec,
  bignum_negmodinv_spec,
  finish_padded_spec,
+ rsa_ifma_public_spec,
  sha256_compress_blocks_shaext_spec] -/
 #guard_msgs in
 #print axioms rsa_pkcs1_sha256_verify_spec
@@ -740,6 +756,7 @@ change to the trust base.
  ct_compare_16_spec,
  ct_compare_bytes_spec,
  finish_padded_spec,
+ rsa_ifma_public_spec,
  sha256_compress_blocks_shaext_spec] -/
 #guard_msgs in
 #print axioms rsa_pss_sha256_verify_spec
@@ -899,3 +916,15 @@ change to the trust base.
  p256_point_add_affine_spec] -/
 #guard_msgs in
 #print axioms P256Base.base_multiply_spec
+
+/-- info: 'rind.x86_64.MlKemCoding.decompress_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms MlKemCoding.decompress_spec
+
+/-- info: 'rind.x86_64.MlKemCoding.from_message_bits_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms MlKemCoding.from_message_bits_spec
+
+/-- info: 'rind.x86_64.MlKemCoding.to_message_bits_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms MlKemCoding.to_message_bits_spec
