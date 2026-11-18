@@ -145,15 +145,9 @@ mod entry;
 #[cfg(all(rind_std, any(debug_assertions, rind_cpu_disable)))]
 #[cfg_attr(any(rind_backend = "portable", rind_backend = "arm"), allow(dead_code))]
 pub(crate) fn cpu_denied(id: &str) -> bool {
-    let denied =
-        std::env::var_os(std::format!("RIND_CPU_DISABLE_{}", id.replace('.', ""))).is_some();
-    // The FIPS module honours the mask in its release build, where its
-    // caller's stdout is not its own.
-    #[cfg(not(rind_fips))]
-    if denied {
-        std::println!("DEBUG: denying cpuid {id:?}");
-    }
-    denied
+    // Set is enough, whatever the value. Silent, since detection runs inside
+    // any call, where the caller may hold stdout's lock or have closed it.
+    std::env::var_os(std::format!("RIND_CPU_DISABLE_{}", id.replace('.', ""))).is_some()
 }
 
 /// Denies nothing, in a release build or without an OS. The portable backend

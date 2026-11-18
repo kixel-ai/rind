@@ -721,13 +721,8 @@ mod tests {
     /// denies.
     macro_rules! available {
         ($($name:tt),+) => {
-            true $(&& is_x86_feature_detected!($name) && !denied($name))+
+            true $(&& is_x86_feature_detected!($name) && !crate::low::cpu_denied($name))+
         };
-    }
-
-    fn denied(name: &str) -> bool {
-        cfg!(any(debug_assertions, rind_cpu_disable))
-            && std::env::var(format!("RIND_CPU_DISABLE_{}", name.replace('.', ""))).is_ok()
     }
 
     /// The registers decode as `std` reads them on this host.
@@ -913,7 +908,7 @@ mod tests {
     #[test]
     fn checks_need_their_features() {
         let adx = (is_x86_feature_detected!("adx") || option_env!("VALGRIND_BUG_494162").is_some())
-            && !denied("adx");
+            && !crate::low::cpu_denied("adx");
         let gcm = available!(
             "aes",
             "pclmulqdq",
@@ -1027,7 +1022,7 @@ mod tests {
         let vendor = [id.ebx, id.edx, id.ecx].map(u32::to_le_bytes);
         assert_eq!(
             is_intel(),
-            vendor.as_flattened() == b"GenuineIntel" && !denied("intel")
+            vendor.as_flattened() == b"GenuineIntel" && !crate::low::cpu_denied("intel")
         );
     }
 

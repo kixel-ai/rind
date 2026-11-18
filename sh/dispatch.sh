@@ -488,8 +488,8 @@ step() {
             # supplies, which a library build need not link. Built as well as
             # linted, since codegen can fail where a check passes: on
             # x86_64-unknown-none, curve25519-dalek picks its AVX2 backend,
-            # which crashes LLVM there, unless the caller picks `serial`, as
-            # PLATFORMS.md says.
+            # which crashes LLVM there, unless the caller picks `serial`.
+            # See UPSTREAM.md, "curve25519-dalek cannot compile without SSE".
             local rustflags
             for target in aarch64:aarch64-unknown-none arm:armv7a-none-eabi portable:x86_64-unknown-none; do
                 if reaches "$backends" "${target%%:*}"; then

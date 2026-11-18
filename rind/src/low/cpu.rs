@@ -83,13 +83,15 @@ impl Dit {
     }
 }
 
-#[cfg(all(rind_backend = "aarch64", target_vendor = "apple"))]
 impl Drop for Dit {
     fn drop(&mut self) {
-        let (guards, cpu_state) = DIT_GUARDS.get();
-        DIT_GUARDS.set((guards.saturating_sub(1), cpu_state));
-        if guards == 1 {
-            super::leave_cpu_state(cpu_state);
+        #[cfg(all(rind_backend = "aarch64", target_vendor = "apple"))]
+        {
+            let (guards, cpu_state) = DIT_GUARDS.get();
+            DIT_GUARDS.set((guards.saturating_sub(1), cpu_state));
+            if guards == 1 {
+                super::leave_cpu_state(cpu_state);
+            }
         }
     }
 }

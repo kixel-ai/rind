@@ -290,6 +290,14 @@ Each upstream rind changes, with where its fork is vendored and where the list o
 - **Reported:** no.
 - **Goes when:** aws-lc-sys builds for the deployment target rustc uses.
 
+### curve25519-dalek cannot compile without SSE
+
+- **Breaks:** curve25519-dalek picks its AVX2 backend on every x86_64 target, which LLVM fails to compile where SSE is off, as on `x86_64-unknown-none` and `x86_64-unknown-uefi`.
+- **Reproduce:** `cargo build -p rind --lib --target x86_64-unknown-none` with `RUSTFLAGS='--cfg getrandom_backend="custom"'`.
+- **Workaround:** `sh/dispatch.sh`'s `no_std` builds pass `--cfg curve25519_dalek_backend="serial"` for `x86_64-unknown-none`, and [PLATFORMS.md](PLATFORMS.md) tells callers to do the same.
+- **Reported:** [curve25519-dalek#601](https://github.com/dalek-cryptography/curve25519-dalek/issues/601).
+- **Goes when:** curve25519-dalek falls back to its serial backend where the target lacks SSE.
+
 ### blind-rsa-signatures 0.18 does not build on rsa 0.10.0
 
 - **Breaks:** blind-rsa-signatures 0.18.0, the latest release, accepts `rsa` `^0.10.0-rc.18` but implements the release candidates' `PrivateKeyParts`, so it fails to compile against 0.10.0, the first release patched for RUSTSEC-2023-0071. A workspace holds one `rsa` 0.10, so rind-bench's 0.10.0 breaks rind's tests, which check blind RSA against it.

@@ -132,22 +132,33 @@ global allocator. CI builds it for `x86_64-unknown-none`,
 `aarch64-unknown-none`, and `armv7a-none-eabi`. Without an OS:
 
 - rind draws random bytes from [getrandom], which has no source there until
-  the caller supplies one: build with `--cfg getrandom_backend="custom"` and
-  define `__getrandom_v03_custom`, as getrandom's documentation says.
+  the caller supplies one: pass `--cfg getrandom_backend="custom"` to every
+  crate, through `RUSTFLAGS` or the target's `rustflags` in
+  `.cargo/config.toml` rather than `cargo rustc`, and define
+  `__getrandom_v03_custom` in the application, as getrandom's documentation
+  says.
 - x86_64 reads `cpuid` and XCR0 itself, as `std` does, so it takes a vector
-  path only where the CPU has it and the kernel saves its registers. aarch64
-  and 32-bit `arm` cannot ask without an OS, so they run what the target
-  enables at compile time: `-C target-feature=+aes,+sha2` turns on aarch64's
-  crypto extension paths, and `+sha3` its SHA-3 ones. 32-bit `arm` runs the
-  code for a core with neither NEON nor the crypto extension.
+  path only where the CPU has it and XCR0 says its registers are saved.
+  Without a kernel, the code that switches contexts must save every state
+  XCR0 enables, or leave XCR0's AVX bit clear, and every core must report the
+  same XCR0, since rind detects once for all of them. aarch64 and 32-bit
+  `arm` cannot ask without an OS, so they run what the target enables at
+  compile time: `-C target-feature=+aes,+sha2` turns on aarch64's crypto
+  extension paths, `+sha3` those that use the SHA3 extension, such as
+  SHA-512's (Keccak-f1600 runs on it only on Apple's cores, so not here), and
+  `+sve2` the SVE2 ChaCha20-Poly1305. 32-bit `arm` runs the code for a
+  core with neither NEON nor the crypto extension.
 - curve25519-dalek, which the portable backend runs X25519 and Ed25519 on,
   picks its AVX2 backend on every x86_64 target, which LLVM fails to compile
   where SSE is off, as on `x86_64-unknown-none` and `x86_64-unknown-uefi`
   ([curve25519-dalek#601]): build with
-  `--cfg curve25519_dalek_backend="serial"` there.
-- The aarch64 and `arm` assembly makes unaligned loads and stores, so it
-  needs what an OS sets up for its code: the MMU on, buffers in Normal
-  memory, and alignment checking off (SCTLR.A clear). The `*-none` targets
+  `--cfg curve25519_dalek_backend="serial"` there, as UPSTREAM.md's
+  "curve25519-dalek cannot compile without SSE" says.
+- The aarch64 and `arm` assembly makes unaligned loads and stores and runs
+  vector instructions, so it needs what an OS sets up for its code: the MMU
+  on, buffers in Normal memory, alignment checking off (SCTLR.A clear), and
+  Advanced SIMD, and SVE in a `+sve2` build, untrapped at every exception
+  level that runs rind. The `*-none` targets
   build Rust with `strict-align` for code that runs before that.
 - `RIND_CPU_DISABLE_*` does nothing, and `rind::cpu::Dit::hold()` holds
   nothing, since rind sets DIT only on Apple's platforms.
