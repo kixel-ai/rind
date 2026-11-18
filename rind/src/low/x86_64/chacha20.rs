@@ -88,9 +88,10 @@ impl ChaCha20 {
             }
             // SAFETY: either of VG's tokens proves the `avx2` cpu feature.
             (Some(_), _, 65..) => unsafe { cipher_avx2(&self.key, &self.counter_nonce, buffer) },
-            (None, Some(t), SSSE3_4X_MIN_LEN..) => {
+            // SAFETY: the buffer is at least `SSSE3_4X_MIN_LEN` bytes.
+            (None, Some(t), SSSE3_4X_MIN_LEN..) => unsafe {
                 cipher_ssse3_4x(t, &self.key, &self.counter_nonce, buffer)
-            }
+            },
             // As in aws-lc, which runs integer code here. The kernel computes
             // one block as a single serial chain, which Zen 5's two-cycle
             // vector latency makes slower than this.
@@ -177,12 +178,23 @@ fn cipher_vg(vg: Vg, key: &[u32; 8], counter_nonce: &[u32; 4], buffer: &mut [u8]
 }
 
 /// aws-lc's SSSE3 routine, four blocks at a time.
-fn cipher_ssse3_4x(_: HaveSsse3, key: &[u32; 8], counter_nonce: &[u32; 4], buffer: &mut [u8]) {
+///
+/// # Safety
+///
+/// `buffer` must not be empty: given no bytes, the routine's byte loop
+/// counts its length down past zero, out of the buffer.
+unsafe fn cipher_ssse3_4x(
+    _: HaveSsse3,
+    key: &[u32; 8],
+    counter_nonce: &[u32; 4],
+    buffer: &mut [u8],
+) {
     let (ptr, len) = (buffer.as_mut_ptr(), buffer.len());
-    // SAFETY: `buffer` is `len` readable and writable bytes, which the
-    // routine allows to alias exactly, and `key` and `counter_nonce` are 8
-    // and 4 words. The token proves the `ssse3` cpu feature. Its 32-bit
-    // counter wraps unspecified past 2^32 blocks, which callers rule out.
+    // SAFETY: `buffer` is `len` readable and writable bytes, at least one as
+    // the caller ensures, which the routine allows to alias exactly, and
+    // `key` and `counter_nonce` are 8 and 4 words. The token proves the
+    // `ssse3` cpu feature. Its 32-bit counter wraps unspecified past 2^32
+    // blocks, which callers rule out.
     unsafe {
         asm_call!(unsafe extern "sysv64" chacha20_ctr32_ssse3_4x(ptr, ptr, len, key, counter_nonce))
     }

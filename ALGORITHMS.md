@@ -966,10 +966,10 @@ at the benchmark's sizes from 1200 bytes on a Xeon 6975P in [run
 43881997679]. Below 256 bytes, Graviola's two-block AVX2 kernel runs from
 two blocks and HACL*'s verified rounds in general-purpose registers for one,
 as QUIC header protection takes and as aws-lc runs its integer routine
-there: VG's routines set up a 768-byte streaming state, and take what
-follows their eight-block loop one block at a time, which lost to the
-kernel by up to 1.73x on Arrow Lake, so a tail of two to four blocks after
-that loop runs on the kernel too. Graviola's kernels compute even one block
+there: VG's routines set up a 768-byte streaming state. VG's AVX2 routine
+runs what follows its eight-block loop on narrower paths, which lost to the
+kernel by up to 1.73x on Arrow Lake, so on either routine a remainder of 65
+to 255 bytes after the last whole 512-byte group runs on the kernel too. Graviola's kernels compute even one block
 as a single serial chain, which Zen 5's two-cycle vector latency doubles,
 so header protection on them took 1.89 of aws-lc-rs's time on an EPYC 9V45
 in [run 41585945720]. On HACL*'s rounds it takes 0.89 on an EPYC 9V74 (Zen
