@@ -71,32 +71,26 @@ fi
 : "${GH_TOKEN:?GH_TOKEN is required}"
 echo "queue-checks: waiting for ${selected[*]}"
 
-# A check's jobs are the job named NAME, or its jobs as `NAME / job`, in the
-# latest attempt that has any. Every attempt is read, since a rerun of only the
-# failed jobs may leave a passed check in an earlier one. Only the latest
-# counts, and none older than the selecting job's latest: rerunning that job
-# reruns the checks after it, so an older attempt's result, such as a call it
-# skipped, is stale. A selected check's jobs appear only once GitHub expands
-# its call, after the selecting job; a check that never runs leaves this
-# waiting until the build's timeout fails the group.
+# A check's jobs are the job named NAME, or its jobs as `NAME / job`, in this
+# attempt only. A rerun can never land a group: a failed build ejects it and
+# the queue retries the PR as a new group, at attempt 1. A selected check's
+# jobs appear only once GitHub expands its call, after the selecting job; a
+# check that never runs leaves this waiting until the build's timeout fails
+# the group.
 # shellcheck disable=SC2016 # A jq program, not a shell expansion.
 verdict='
     .jobs as $all
-    | def jobs($name; $since): [$all[] | select(.run_attempt >= $since)
-            | select(.name == $name or (.name | startswith($name + " / ")))]
-        | (map(.run_attempt) | max) as $a | map(select(.run_attempt == $a));
-    def state($js): if $js == [] then "missing"
-        elif any($js[]; .status == "completed" and .conclusion != "success") then "failed"
-        elif all($js[]; .status == "completed") then "passed"
+    | def state($name): [$all[] | select(.name == $name or (.name | startswith($name + " / ")))]
+        | if . == [] then "missing"
+        elif any(.[]; .status == "completed" and .conclusion != "success") then "failed"
+        elif all(.[]; .status == "completed") then "passed"
         else "running" end;
-    jobs($select; 0) as $s
-    | ([$s[].run_attempt] | max // 0) as $since
-    | [{name: $select, state: state($s)}, ($names[] | {name: ., state: state(jobs(.; $since))})] as $c
+    [{name: $select, state: state($select)}, ($names[] | {name: ., state: state(.)})] as $c
     | if any($c[]; .state == "failed") then "failed: \([$c[] | select(.state == "failed") | .name] | join(", "))"
     elif all($c[1:][]; .state == "passed") then "passed"
     else "running" end'
 names=$(for check in "${selected[@]}"; do echo "${job[$check]}"; done | jq -R . | jq -s .)
-url="$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?filter=all&per_page=100"
+url="$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs?per_page=100"
 while :; do
     state=$(curl -sS --fail-with-body --connect-timeout 5 --max-time 30 \
         -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "$url" |
