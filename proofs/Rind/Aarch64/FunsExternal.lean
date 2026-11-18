@@ -3,13 +3,14 @@ public import Aeneas
 public import Rind.Aarch64.Types
 public import Rind.Aarch64.Neon
 public import Rind.Aarch64.PointSelectModel
+public import Rind.Aarch64.AesGcmModel
 @[expose] public section
 open Aeneas Aeneas.Std Result
 set_option linter.dupNamespace false
 
 /-!
 The rind functions the aarch64 translation leaves opaque, beside those
-`Rind.Aarch64.PointSelectModel` models. No proof assumes anything about them
+`Rind.Aarch64.PointSelectModel` and `Rind.Aarch64.AesGcmModel` model. No proof assumes anything about them
 beyond what `Rind.Aarch64.S2nBignum` and `Rind.Aarch64.AwsLc` state for
 s2n-bignum's and aws-lc's routines and what each theorem takes as a hypothesis.
 -/
@@ -457,6 +458,16 @@ opaque low.aarch64.cpu.ct_compare_16
   : Array Std.U8 16#usize → Array Std.U8 16#usize → Result Std.Usize
 
 opaque low.aarch64.cpu.ct_compare_bytes : Slice Std.U8 → Slice Std.U8 → Result Std.U8
+
+/-! AES-GCM's stitched kernels and the separate passes around them, which no
+proof covers yet, and aws-lc's NEON GHASH table. -/
+
+opaque low.aarch64.aes_gcm.cipher
+  : Bool → low.aarch64.aes.AesKey → low.aarch64.ghash.Ghash → Array Std.U8 16#usize → Slice Std.U8 →
+    Slice Std.U8 → Result (low.aarch64.ghash.Ghash × Slice Std.U8)
+
+opaque low.aarch64.ghash_neon_armv8.NeonTable.new
+  : Array Std.U8 16#usize → Result low.aarch64.ghash_neon_armv8.NeonTable
 
 /-- x86_64's AVX-512 IFMA X25519 and Ed25519, which no aarch64 CPU runs, and
 which the proofs here take as not running. -/
