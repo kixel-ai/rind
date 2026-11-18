@@ -9,8 +9,9 @@ As `Rind/X86_64/VgMlKem.lean`, for the wrappers in
 `low::aarch64::mlkem768_vg`: the encapsulation key check, and encapsulation
 with the SHA-3 instructions, whose token the wrapper holds. Encapsulation runs
 VG's variant over the two-state SHA-3 Keccak, with its one-state Keccak on the
-SHA-3 instructions on Apple's cores and in plain instructions elsewhere, as
-VG's dispatcher picks; each states the one contract.
+SHA-3 instructions on Apple's cores and on NEON elsewhere: the wrapper picks
+it by target, as VG's dispatcher would, and calls it directly. Each states the
+one contract.
 -/
 
 namespace rind.aarch64

@@ -21,9 +21,11 @@ that a given `h` is `H(ek)`, is the axiom's hypothesis. The postcondition is VG'
 VG's specs read them, `vgBytes`. VG's wipe of its scratch, which rind keeps
 as `AGENTS.md` allows, and what each routine may leak, are left out.
 
-Trusted: the restatement, that rind's `vg_*` items are VG's at the pin, which
-`admin/prove vg` checks along with VG's models of the instructions they run,
-and VG's proofs and models.
+Trusted: the restatement; that rind's `vg_*` routines are VG's at the pin,
+whose instructions and relocation targets `admin/prove vg` checks along with
+VG's models of the instructions they run; that the constant tables
+`admin/import-vg` generates beside them are VG's at the pin, which no check
+reads back; and VG's proofs and models.
 -/
 
 namespace rind.x86_64

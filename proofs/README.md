@@ -592,7 +592,7 @@ which `Rind/Keccak.lean` proves SymCrypt's KECCAK-f[1600].
 `Rind/<Arch>/KeccakDispatch.lean` proves what rind's dispatch to the one-,
 two-, and four-state routines computes, from those theorems. Each theorem
 assumes `RunsSha3`: rind's entry guard and CPU checks pass. x86_64's AVX-512
-eight-way Keccak, which ML-KEM-512's and ML-KEM-1024's sampler runs, is not
+eight-way Keccak, which ML-KEM-1024's sampler runs, is not
 proven; ML-KEM-768 runs pyca/verified-garbage's code there instead, and
 when a VG routine reaches its `SampleNTT` bound, samples eight of its nine
 polynomials four at a time and the ninth alone, never eight at a time.

@@ -31,11 +31,12 @@ pub(super) fn sample_ntt(rho: &[u8; 32], transposed: bool, out: &mut [Poly]) {
     });
     let mut next = || inputs.next().unwrap_or(buf);
 
-    // ML-KEM-768 never samples eight at a time: wherever the eight-way
-    // sampler runs, so do pyca/verified-garbage's routines, and rind's
-    // arithmetic only when one reaches its `SampleNTT` bound, so only the
-    // proven four-way sampler, for eight of its nine polynomials, and the
-    // one-way sampler, for the ninth, are on its path.
+    // ML-KEM-768 never samples eight at a time: it takes eight of its nine
+    // polynomials four at a time, over the four-way SHAKE128 `proofs/`
+    // proves, and the ninth alone, so Graviola's unproven eight-way Keccak is
+    // off its path. Where that would run, so do pyca/verified-garbage's
+    // routines, and ML-KEM-768 reaches this only when one reaches its
+    // `SampleNTT` bound, or in test and FIPS builds' `DecapKey::from_bytes`.
     let (eights, rest) = match k {
         3 => (&mut [][..], out),
         _ => out.as_chunks_mut::<8>(),
