@@ -630,17 +630,6 @@
   {
    "operation": "aes128-gcm/{lib}/32B",
    "library": "rind",
-   "id": "aes128-gcm/rind/32B",
-   "ns": 58.67269984254215,
-   "ns_low": 58.40637837799847,
-   "ns_high": 59.021170280442455,
-   "throughput": {
-    "Bytes": 32
-   }
-  },
-  {
-   "operation": "aes128-gcm/{lib}/32B",
-   "library": "rind-dit-held",
    "id": "aes128-gcm/rind-dit-held/32B",
    "ns": 11.801575929351095,
    "ns_low": 11.674091652547672,
@@ -718,17 +707,6 @@
   {
    "operation": "aes128-gcm/{lib}/1350B",
    "library": "rind",
-   "id": "aes128-gcm/rind/1350B",
-   "ns": 213.6115569207021,
-   "ns_low": 212.64130114563957,
-   "ns_high": 214.9136193411019,
-   "throughput": {
-    "Bytes": 1350
-   }
-  },
-  {
-   "operation": "aes128-gcm/{lib}/1350B",
-   "library": "rind-dit-held",
    "id": "aes128-gcm/rind-dit-held/1350B",
    "ns": 163.34074584279287,
    "ns_low": 162.80264730202603,
@@ -806,17 +784,6 @@
   {
    "operation": "aes128-gcm/{lib}/16KB",
    "library": "rind",
-   "id": "aes128-gcm/rind/16KB",
-   "ns": 1478.8700033405437,
-   "ns_low": 1474.8169689306694,
-   "ns_high": 1483.7557853629942,
-   "throughput": {
-    "Bytes": 16384
-   }
-  },
-  {
-   "operation": "aes128-gcm/{lib}/16KB",
-   "library": "rind-dit-held",
    "id": "aes128-gcm/rind-dit-held/16KB",
    "ns": 1434.0635348583528,
    "ns_low": 1429.088593655183,
@@ -894,17 +861,6 @@
   {
    "operation": "aes128-gcm-open/{lib}/32B",
    "library": "rind",
-   "id": "aes128-gcm-open/rind/32B",
-   "ns": 49.2485101709898,
-   "ns_low": 49.0329637230411,
-   "ns_high": 49.45145236340849,
-   "throughput": {
-    "Bytes": 32
-   }
-  },
-  {
-   "operation": "aes128-gcm-open/{lib}/32B",
-   "library": "rind-dit-held",
    "id": "aes128-gcm-open/rind-dit-held/32B",
    "ns": 13.724462812397402,
    "ns_low": 13.688317252499427,
@@ -982,17 +938,6 @@
   {
    "operation": "aes128-gcm-open/{lib}/1350B",
    "library": "rind",
-   "id": "aes128-gcm-open/rind/1350B",
-   "ns": 218.6968223191248,
-   "ns_low": 217.62377675670712,
-   "ns_high": 219.97025578395866,
-   "throughput": {
-    "Bytes": 1350
-   }
-  },
-  {
-   "operation": "aes128-gcm-open/{lib}/1350B",
-   "library": "rind-dit-held",
    "id": "aes128-gcm-open/rind-dit-held/1350B",
    "ns": 179.6143362242054,
    "ns_low": 179.17337613651844,
@@ -1070,17 +1015,6 @@
   {
    "operation": "aes128-gcm-open/{lib}/16KB",
    "library": "rind",
-   "id": "aes128-gcm-open/rind/16KB",
-   "ns": 1591.3096184851145,
-   "ns_low": 1587.194367519937,
-   "ns_high": 1595.8590583528887,
-   "throughput": {
-    "Bytes": 16384
-   }
-  },
-  {
-   "operation": "aes128-gcm-open/{lib}/16KB",
-   "library": "rind-dit-held",
    "id": "aes128-gcm-open/rind-dit-held/16KB",
    "ns": 1562.0254291491992,
    "ns_low": 1556.7406643008396,
@@ -1158,17 +1092,6 @@
   {
    "operation": "aes256-gcm/{lib}/32B",
    "library": "rind",
-   "id": "aes256-gcm/rind/32B",
-   "ns": 61.453691991112876,
-   "ns_low": 61.14067080472063,
-   "ns_high": 61.74517777405766,
-   "throughput": {
-    "Bytes": 32
-   }
-  },
-  {
-   "operation": "aes256-gcm/{lib}/32B",
-   "library": "rind-dit-held",
    "id": "aes256-gcm/rind-dit-held/32B",
    "ns": 12.00534777125204,
    "ns_low": 11.979958536523466,
@@ -1246,17 +1169,6 @@
   {
    "operation": "aes256-gcm/{lib}/1350B",
    "library": "rind",
-   "id": "aes256-gcm/rind/1350B",
-   "ns": 241.49626827009322,
-   "ns_low": 240.7097057749782,
-   "ns_high": 242.2246797662586,
-   "throughput": {
-    "Bytes": 1350
-   }
-  },
-  {
-   "operation": "aes256-gcm/{lib}/1350B",
-   "library": "rind-dit-held",
    "id": "aes256-gcm/rind-dit-held/1350B",
    "ns": 189.39173736647967,
    "ns_low": 187.02753797770538,
@@ -1334,17 +1246,6 @@
   {
    "operation": "aes256-gcm/{lib}/16KB",
    "library": "rind",
-   "id": "aes256-gcm/rind/16KB",
-   "ns": 1753.3040817647075,
-   "ns_low": 1747.6919949488095,
-   "ns_high": 1758.719509212782,
-   "throughput": {
-    "Bytes": 16384
-   }
-  },
-  {
-   "operation": "aes256-gcm/{lib}/16KB",
-   "library": "rind-dit-held",
    "id": "aes256-gcm/rind-dit-held/16KB",
    "ns": 1693.7289159373026,
    "ns_low": 1689.8905670106076,
@@ -1422,17 +1323,6 @@
   {
    "operation": "aes256-gcm-open/{lib}/32B",
    "library": "rind",
-   "id": "aes256-gcm-open/rind/32B",
-   "ns": 50.2052021859486,
-   "ns_low": 50.05360695179503,
-   "ns_high": 50.3721191833005,
-   "throughput": {
-    "Bytes": 32
-   }
-  },
-  {
-   "operation": "aes256-gcm-open/{lib}/32B",
-   "library": "rind-dit-held",
    "id": "aes256-gcm-open/rind-dit-held/32B",
    "ns": 14.40051179258052,
    "ns_low": 14.302321761289278,
@@ -1510,17 +1400,6 @@
   {
    "operation": "aes256-gcm-open/{lib}/1350B",
    "library": "rind",
-   "id": "aes256-gcm-open/rind/1350B",
-   "ns": 235.21997418947686,
-   "ns_low": 234.45176158771363,
-   "ns_high": 236.00451381169813,
-   "throughput": {
-    "Bytes": 1350
-   }
-  },
-  {
-   "operation": "aes256-gcm-open/{lib}/1350B",
-   "library": "rind-dit-held",
    "id": "aes256-gcm-open/rind-dit-held/1350B",
    "ns": 200.92224437231448,
    "ns_low": 199.71186406980502,
@@ -1598,17 +1477,6 @@
   {
    "operation": "aes256-gcm-open/{lib}/16KB",
    "library": "rind",
-   "id": "aes256-gcm-open/rind/16KB",
-   "ns": 1846.7841723581832,
-   "ns_low": 1839.800154442663,
-   "ns_high": 1853.2308527532375,
-   "throughput": {
-    "Bytes": 16384
-   }
-  },
-  {
-   "operation": "aes256-gcm-open/{lib}/16KB",
-   "library": "rind-dit-held",
    "id": "aes256-gcm-open/rind-dit-held/16KB",
    "ns": 1846.741505536209,
    "ns_low": 1830.4896727476084,
@@ -1686,17 +1554,6 @@
   {
    "operation": "chacha20poly1305/{lib}/32B",
    "library": "rind",
-   "id": "chacha20poly1305/rind/32B",
-   "ns": 182.8905025498068,
-   "ns_low": 181.91641823165043,
-   "ns_high": 184.0292492957885,
-   "throughput": {
-    "Bytes": 32
-   }
-  },
-  {
-   "operation": "chacha20poly1305/{lib}/32B",
-   "library": "rind-dit-held",
    "id": "chacha20poly1305/rind-dit-held/32B",
    "ns": 149.9584009526131,
    "ns_low": 149.2024357707695,
@@ -1774,17 +1631,6 @@
   {
    "operation": "chacha20poly1305/{lib}/1350B",
    "library": "rind",
-   "id": "chacha20poly1305/rind/1350B",
-   "ns": 785.8778650713871,
-   "ns_low": 782.6617463751655,
-   "ns_high": 789.1129908309509,
-   "throughput": {
-    "Bytes": 1350
-   }
-  },
-  {
-   "operation": "chacha20poly1305/{lib}/1350B",
-   "library": "rind-dit-held",
    "id": "chacha20poly1305/rind-dit-held/1350B",
    "ns": 752.6026089118263,
    "ns_low": 748.7443202742262,
@@ -1862,17 +1708,6 @@
   {
    "operation": "chacha20poly1305/{lib}/16KB",
    "library": "rind",
-   "id": "chacha20poly1305/rind/16KB",
-   "ns": 7618.86448147685,
-   "ns_low": 7597.878708627968,
-   "ns_high": 7642.597794036226,
-   "throughput": {
-    "Bytes": 16384
-   }
-  },
-  {
-   "operation": "chacha20poly1305/{lib}/16KB",
-   "library": "rind-dit-held",
    "id": "chacha20poly1305/rind-dit-held/16KB",
    "ns": 7643.771394985981,
    "ns_low": 7603.307711727664,
@@ -2080,15 +1915,6 @@
   {
    "operation": "quic-header-protection/aes128/{lib}",
    "library": "rind",
-   "id": "quic-header-protection/aes128/rind",
-   "ns": 36.26983713992166,
-   "ns_low": 36.17926018925429,
-   "ns_high": 36.37185631145156,
-   "throughput": null
-  },
-  {
-   "operation": "quic-header-protection/aes128/{lib}",
-   "library": "rind-dit-held",
    "id": "quic-header-protection/aes128/rind-dit-held",
    "ns": 3.6442687753963123,
    "ns_low": 3.6057926541566294,
@@ -2116,15 +1942,6 @@
   {
    "operation": "quic-header-protection/aes256/{lib}",
    "library": "rind",
-   "id": "quic-header-protection/aes256/rind",
-   "ns": 39.596847416110776,
-   "ns_low": 39.46492671673789,
-   "ns_high": 39.73018959318042,
-   "throughput": null
-  },
-  {
-   "operation": "quic-header-protection/aes256/{lib}",
-   "library": "rind-dit-held",
    "id": "quic-header-protection/aes256/rind-dit-held",
    "ns": 3.549406592968673,
    "ns_low": 3.5187755728030385,
@@ -2152,15 +1969,6 @@
   {
    "operation": "quic-header-protection/chacha20/{lib}",
    "library": "rind",
-   "id": "quic-header-protection/chacha20/rind",
-   "ns": 86.36055819349706,
-   "ns_low": 86.08829701976032,
-   "ns_high": 86.62696061243605,
-   "throughput": null
-  },
-  {
-   "operation": "quic-header-protection/chacha20/{lib}",
-   "library": "rind-dit-held",
    "id": "quic-header-protection/chacha20/rind-dit-held",
    "ns": 58.29967846750398,
    "ns_low": 58.0686314511329,
@@ -2685,17 +2493,6 @@
   {
    "operation": "sha256/{lib}/64B",
    "library": "rind",
-   "id": "sha256/rind/64B",
-   "ns": 94.50675518209957,
-   "ns_low": 93.75201172795994,
-   "ns_high": 95.6329713524827,
-   "throughput": {
-    "Bytes": 64
-   }
-  },
-  {
-   "operation": "sha256/{lib}/64B",
-   "library": "rind-dit-held",
    "id": "sha256/rind-dit-held/64B",
    "ns": 37.39993487792987,
    "ns_low": 37.27844692801583,
@@ -2773,17 +2570,6 @@
   {
    "operation": "sha256/{lib}/1350B",
    "library": "rind",
-   "id": "sha256/rind/1350B",
-   "ns": 485.9890541088328,
-   "ns_low": 484.54940382379874,
-   "ns_high": 487.9716508716313,
-   "throughput": {
-    "Bytes": 1350
-   }
-  },
-  {
-   "operation": "sha256/{lib}/1350B",
-   "library": "rind-dit-held",
    "id": "sha256/rind-dit-held/1350B",
    "ns": 408.0504480516678,
    "ns_low": 406.5129657405107,
@@ -2861,17 +2647,6 @@
   {
    "operation": "sha256/{lib}/16KB",
    "library": "rind",
-   "id": "sha256/rind/16KB",
-   "ns": 4939.586032874658,
-   "ns_low": 4923.322674345562,
-   "ns_high": 4960.383533984954,
-   "throughput": {
-    "Bytes": 16384
-   }
-  },
-  {
-   "operation": "sha256/{lib}/16KB",
-   "library": "rind-dit-held",
    "id": "sha256/rind-dit-held/16KB",
    "ns": 4848.13261586297,
    "ns_low": 4835.079060117894,
@@ -2949,17 +2724,6 @@
   {
    "operation": "sha512/{lib}/64B",
    "library": "rind",
-   "id": "sha512/rind/64B",
-   "ns": 113.88065055660674,
-   "ns_low": 113.3497999762489,
-   "ns_high": 114.55091597818219,
-   "throughput": {
-    "Bytes": 64
-   }
-  },
-  {
-   "operation": "sha512/{lib}/64B",
-   "library": "rind-dit-held",
    "id": "sha512/rind-dit-held/64B",
    "ns": 78.18289872406291,
    "ns_low": 77.85083914805503,
@@ -3037,17 +2801,6 @@
   {
    "operation": "sha512/{lib}/1350B",
    "library": "rind",
-   "id": "sha512/rind/1350B",
-   "ns": 821.829568924755,
-   "ns_low": 814.2472581665321,
-   "ns_high": 832.7878228400307,
-   "throughput": {
-    "Bytes": 1350
-   }
-  },
-  {
-   "operation": "sha512/{lib}/1350B",
-   "library": "rind-dit-held",
    "id": "sha512/rind-dit-held/1350B",
    "ns": 734.1420366735865,
    "ns_low": 731.2245259044178,
@@ -3125,17 +2878,6 @@
   {
    "operation": "sha512/{lib}/16KB",
    "library": "rind",
-   "id": "sha512/rind/16KB",
-   "ns": 8776.789992524275,
-   "ns_low": 8735.848796620296,
-   "ns_high": 8827.704539535625,
-   "throughput": {
-    "Bytes": 16384
-   }
-  },
-  {
-   "operation": "sha512/{lib}/16KB",
-   "library": "rind-dit-held",
    "id": "sha512/rind-dit-held/16KB",
    "ns": 8733.640125288324,
    "ns_low": 8681.730248226344,
@@ -3477,17 +3219,6 @@
   {
    "operation": "hmac-sha256/{lib}/64B",
    "library": "rind",
-   "id": "hmac-sha256/rind/64B",
-   "ns": 198.06969486344607,
-   "ns_low": 197.1625959839314,
-   "ns_high": 198.9782670309286,
-   "throughput": {
-    "Bytes": 64
-   }
-  },
-  {
-   "operation": "hmac-sha256/{lib}/64B",
-   "library": "rind-dit-held",
    "id": "hmac-sha256/rind-dit-held/64B",
    "ns": 106.287181785971,
    "ns_low": 105.78607622297734,
@@ -3565,17 +3296,6 @@
   {
    "operation": "hmac-sha256/{lib}/1350B",
    "library": "rind",
-   "id": "hmac-sha256/rind/1350B",
-   "ns": 563.4646482260166,
-   "ns_low": 561.3679519750625,
-   "ns_high": 566.1001211669571,
-   "throughput": {
-    "Bytes": 1350
-   }
-  },
-  {
-   "operation": "hmac-sha256/{lib}/1350B",
-   "library": "rind-dit-held",
    "id": "hmac-sha256/rind-dit-held/1350B",
    "ns": 477.02661099058054,
    "ns_low": 476.03320144438544,
@@ -3636,15 +3356,6 @@
   {
    "operation": "hkdf-sha256/extract-expand/{lib}",
    "library": "rind",
-   "id": "hkdf-sha256/extract-expand/rind",
-   "ns": 346.72329252170954,
-   "ns_low": 345.26394524733405,
-   "ns_high": 348.11682008430716,
-   "throughput": null
-  },
-  {
-   "operation": "hkdf-sha256/extract-expand/{lib}",
-   "library": "rind-dit-held",
    "id": "hkdf-sha256/extract-expand/rind-dit-held",
    "ns": 213.37966025233894,
    "ns_low": 211.91550802199137,
@@ -3699,15 +3410,6 @@
   {
    "operation": "hkdf-sha256/expand/{lib}",
    "library": "rind",
-   "id": "hkdf-sha256/expand/rind",
-   "ns": 106.78242514910939,
-   "ns_low": 106.37318308622201,
-   "ns_high": 107.19879232431333,
-   "throughput": null
-  },
-  {
-   "operation": "hkdf-sha256/expand/{lib}",
-   "library": "rind-dit-held",
    "id": "hkdf-sha256/expand/rind-dit-held",
    "ns": 74.2961943361111,
    "ns_low": 74.02591415616952,
