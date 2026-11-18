@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
+
 //! Wycheproof's P-256 vectors for each variant of pyca/verified-garbage's
 //! routines, which the CPU's widest variant hides from rind's other tests.
 

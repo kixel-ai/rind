@@ -113,6 +113,8 @@ enum Width {
 }
 
 /// [`P256::ecdh`], on the variant `width`.
+// Never inlined, holding its `Mcdt` throughout, as `low::mcdt` requires.
+#[inline(never)]
 fn ecdh(width: Width, d: &[u8; 32], peer: &[u8; 65]) -> Option<[u8; 32]> {
     use vg::*;
     let mut out = [0u8; 32];
@@ -124,13 +126,19 @@ fn ecdh(width: Width, d: &[u8; 32], peer: &[u8; 65]) -> Option<[u8; 32]> {
     let ok = unsafe {
         match width {
             Width::Adx(_) => vg_ecdh_p256_adx::vg_ecdh_p256_adx(o, d, peer, s),
-            Width::Ifma(_) => vg_ecdh_p256_ifma::vg_ecdh_p256_ifma(o, d, peer, s),
+            Width::Ifma(_) => {
+                // `vpmadd52luq` and `vpmadd52huq` multiply the secret `d`.
+                let _mcdt = crate::low::Mcdt::enter();
+                vg_ecdh_p256_ifma::vg_ecdh_p256_ifma(o, d, peer, s)
+            }
         }
     };
     (ct::into_public(ok) == 1).then_some(out)
 }
 
 /// [`P256::verify`], on the variant `width`.
+// Never inlined, holding its `Mcdt` throughout, as `low::mcdt` requires.
+#[inline(never)]
 fn verify(width: Width, public: &[u8; 65], e: &[u8; 32], sig: &[u8; 64]) -> bool {
     use vg::*;
     let mut scratch = Scratch::new();
@@ -142,6 +150,9 @@ fn verify(width: Width, public: &[u8; 65], e: &[u8; 32], sig: &[u8; 64]) -> bool
                 vg_ecdsa_p256_verify_adx::vg_ecdsa_p256_verify_adx(public, p, e.len(), sig, s)
             }
             Width::Ifma(_) => {
+                // Its inputs are public, but `admin/ct-vartime` holds every
+                // `vpmadd52luq` to the mitigation, as for RSA's public IFMA.
+                let _mcdt = crate::low::Mcdt::enter();
                 vg_ecdsa_p256_verify_ifma::vg_ecdsa_p256_verify_ifma(public, p, e.len(), sig, s)
             }
         }
