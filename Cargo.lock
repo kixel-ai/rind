@@ -4632,6 +4632,7 @@ dependencies = [
  "hpke-rs 0.8.0",
  "libc",
  "libcrux-hacl-rs 0.0.6",
+ "libcrux-kem 0.0.10",
  "libcrux-macros 0.0.4",
  "libcrux-poly1305 0.0.7",
  "libcrux-sha2 0.0.9",
@@ -4652,6 +4653,7 @@ dependencies = [
  "slh-dsa",
  "voprf 0.5.0",
  "vrf-rfc9381",
+ "x-wing",
 ]
 
 [[package]]
@@ -4710,6 +4712,7 @@ dependencies = [
  "libcrux-ed25519",
  "libcrux-hkdf 0.0.9",
  "libcrux-hmac 0.0.9",
+ "libcrux-kem 0.0.10",
  "libcrux-ml-dsa",
  "libcrux-ml-kem 0.0.11",
  "libcrux-rsa",
@@ -4742,6 +4745,7 @@ dependencies = [
  "verified-garbage",
  "voprf 0.6.0-pre.2",
  "vrf-rfc9381",
+ "x-wing",
  "x25519-dalek 3.0.0",
 ]
 
@@ -4813,6 +4817,7 @@ dependencies = [
  "slh-dsa",
  "str0m",
  "str0m-aws-lc-rs",
+ "x-wing",
 ]
 
 [[package]]

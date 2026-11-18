@@ -25,6 +25,13 @@ mode's, one per line, for the KEMs rind offers. The revision in
 [hpkewg/hpke] repeats them unchanged. They are IETF contributions, under
 [BCP 78].
 
+`xwing/spec/test-vectors.json` holds the three vectors of
+[draft-connolly-cfrg-xwing-kem]'s Appendix C, from the draft's repository at
+the revision `admin/sync-vectors` pins. `hpke-pq/test-vectors.json` holds
+[draft-ietf-hpke-pq]'s base-mode vectors for MLKEM768-X25519 (KEM 0x647A),
+one per line, from its repository at the revision `admin/sync-vectors` pins.
+They are IETF contributions, under [BCP 78].
+
 `rfc9380/` holds [RFC 9380]'s hash-to-curve vectors, its Appendix J and K,
 from the CFRG draft's `poc/vectors` at the revision `admin/sync-vectors`
 pins: the `expand_message_xmd` files and the P-256, P-384, and P-521
@@ -66,4 +73,6 @@ not offer. They are IETF contributions, under [BCP 78].
 [RFC 9497]: https://www.rfc-editor.org/rfc/rfc9497.html
 [RFC 9591]: https://www.rfc-editor.org/rfc/rfc9591.html
 [blind-rsa-signatures]: https://github.com/jedisct1/rust-blind-rsa-signatures
+[draft-connolly-cfrg-xwing-kem]: https://datatracker.ietf.org/doc/draft-connolly-cfrg-xwing-kem/
+[draft-ietf-hpke-pq]: https://datatracker.ietf.org/doc/draft-ietf-hpke-pq/
 [BCP 78]: https://www.rfc-editor.org/info/bcp78

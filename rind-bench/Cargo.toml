@@ -35,6 +35,7 @@ libcrux-ecdsa = "0.0.9"
 libcrux-ed25519 = { version = "0.0.10", features = ["rand"] }
 libcrux-hkdf = "0.0.9"
 libcrux-hmac = "0.0.9"
+libcrux-kem = { version = "0.0.10", default-features = false }
 libcrux-ml-dsa = "0.0.11"
 libcrux-ml-kem = { version = "0.0.11", default-features = false, features = ["mlkem512", "mlkem768", "mlkem1024", "alloc"] }
 libcrux-rsa = "0.0.9"
@@ -66,6 +67,7 @@ vrf-rfc9381 = { version = "0.0.7", features = ["edwards25519", "p256"] }
 # its generated assembly is checked in. `cpu-features-env` lets the weekly bench's
 # tiers deny it what they deny rind, through `VG_CPU_FEATURES`.
 verified-garbage = { git = "https://github.com/pyca/verified-garbage", rev = "e7b0fe8a82b7777958e078573771d51415f105bb", features = ["cpu-features-env"] }
+x-wing = { version = "0.1.1", features = ["getrandom"] }
 x25519-dalek = { version = "3", features = ["getrandom"] }
 
 # Graviola supports only these.
@@ -89,6 +91,10 @@ harness = false
 
 [[bench]]
 name = "x25519"
+harness = false
+
+[[bench]]
+name = "xwing"
 harness = false
 
 [[bench]]

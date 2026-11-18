@@ -57,3 +57,4 @@ pub(super) mod slhdsa;
 pub(super) mod util;
 pub(super) mod x25519;
 pub(super) mod xchacha20poly1305;
+pub(super) mod xwing;

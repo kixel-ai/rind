@@ -1,36 +1,207 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
 use core::fmt;
-use core::marker::PhantomData;
+use core::panic::{RefUnwindSafe, UnwindSafe};
 
 use crate::Error;
 use crate::error::KeyFormatError;
 use crate::low;
 use crate::mid::mlkem::{self, Array, Params};
 pub use crate::mid::mlkem::{MlKem512, MlKem768, MlKem1024};
+use crate::mid::xwing;
 
-/// An ML-KEM parameter set: [`MlKem512`], [`MlKem768`], or [`MlKem1024`].
+// The marker is defined here rather than in `mid::xwing`, so that its
+// `Algorithm` implementation, which names `high` items, stays in `high`, as
+// `admin/structure` requires.
+/// X-Wing: X25519 and ML-KEM-768, as draft-connolly-cfrg-xwing-kem defines
+/// it.
+#[derive(Debug)]
+pub enum XWing {}
+
+mod sealed {
+    pub trait Sealed {}
+    impl<P: super::Params> Sealed for P {}
+    impl Sealed for super::XWing {}
+}
+
+/// A key encapsulation algorithm: an ML-KEM parameter set, [`MlKem512`],
+/// [`MlKem768`], or [`MlKem1024`], or [`XWing`], the hybrid of X25519 and
+/// ML-KEM-768.
 ///
-/// Each key, ciphertext, and secret names its set, so a ciphertext of one
-/// set fails to compile against a key of another.
-pub trait Algorithm: Params {}
+/// Each key, ciphertext, and secret names its algorithm, so a ciphertext of
+/// one fails to compile against a key of another.
+pub trait Algorithm: sealed::Sealed + fmt::Debug + Sized + Plain {
+    /// A decapsulation key.
+    #[doc(hidden)]
+    type DecapKey: Plain;
+    /// An encapsulation key.
+    #[doc(hidden)]
+    type EncapKey: Plain + Clone;
+    /// A ciphertext.
+    #[doc(hidden)]
+    type Ciphertext: Plain + Clone + fmt::Debug + AsRef<[u8]>;
+    /// A shared secret.
+    #[doc(hidden)]
+    type SharedSecret: Plain + AsRef<[u8; 32]>;
+    /// A decapsulation key's seed.
+    #[doc(hidden)]
+    type Seed: Array<u8>;
 
-impl Algorithm for MlKem512 {}
-impl Algorithm for MlKem768 {}
-impl Algorithm for MlKem1024 {}
+    // The operations, each taking an `Internal`, which only rind can make, so
+    // that no other crate calls them. Each set's compile in rind, not in each
+    // generic caller, as `Params`'s do.
+    #[doc(hidden)]
+    fn generate(_: Internal) -> Result<Self::DecapKey, Error>;
+    #[doc(hidden)]
+    fn public_key(_: Internal, key: &Self::DecapKey) -> Self::EncapKey;
+    #[doc(hidden)]
+    fn decapsulate(
+        _: Internal,
+        key: &Self::DecapKey,
+        ciphertext: &Self::Ciphertext,
+    ) -> Self::SharedSecret;
+    #[doc(hidden)]
+    fn parse_encapsulation_key(_: Internal, bytes: &[u8]) -> Result<Self::EncapKey, Error>;
+    #[doc(hidden)]
+    fn encapsulation_key_bytes(_: Internal, key: &Self::EncapKey) -> &[u8];
+    #[doc(hidden)]
+    fn encapsulate(
+        _: Internal,
+        key: &Self::EncapKey,
+    ) -> Result<(Self::SharedSecret, Self::Ciphertext), Error>;
+    #[doc(hidden)]
+    fn parse_ciphertext(_: Internal, bytes: &[u8]) -> Option<Self::Ciphertext>;
+    /// Wipes and frees what a key holds only decoded, so that its holder's
+    /// drop can wipe the rest of its value.
+    #[doc(hidden)]
+    fn free_decoded(_: Internal, key: &mut Self::EncapKey);
+}
+
+/// The auto traits every key, ciphertext, and secret has, which a generic
+/// caller may rely on.
+#[doc(hidden)]
+pub trait Plain: Send + Sync + Unpin + UnwindSafe + RefUnwindSafe + 'static {}
+
+impl<T: Send + Sync + Unpin + UnwindSafe + RefUnwindSafe + 'static> Plain for T {}
+
+/// Proof that a call to an [`Algorithm`] method comes from rind: no other
+/// crate can make one, though a generic caller can name the methods.
+#[doc(hidden)]
+#[derive(Clone, Copy)]
+pub struct Internal(());
+
+// Each ML-KEM parameter set, whose operations run under `Params`'s MXCSR
+// mitigation.
+impl<P: Params> Algorithm for P {
+    type DecapKey = mlkem::DecapKey<P>;
+    type EncapKey = mlkem::EncapKey<P>;
+    type Ciphertext = mlkem::Ciphertext<P>;
+    type SharedSecret = mlkem::SharedSecret;
+    // `d || z`, which no key here exports yet.
+    type Seed = [u8; 64];
+
+    fn generate(_: Internal) -> Result<Self::DecapKey, Error> {
+        mlkem::DecapKey::generate()
+    }
+
+    fn public_key(_: Internal, key: &Self::DecapKey) -> Self::EncapKey {
+        key.encapsulation_key()
+    }
+
+    fn decapsulate(
+        _: Internal,
+        key: &Self::DecapKey,
+        ciphertext: &Self::Ciphertext,
+    ) -> Self::SharedSecret {
+        key.decaps(ciphertext)
+    }
+
+    fn parse_encapsulation_key(_: Internal, bytes: &[u8]) -> Result<Self::EncapKey, Error> {
+        let bytes = P::EncapKeyBytes::from_slice(bytes).ok_or(KeyFormatError::WrongLength)?;
+        mlkem::EncapKey::from_bytes(&bytes)
+    }
+
+    fn encapsulation_key_bytes(_: Internal, key: &Self::EncapKey) -> &[u8] {
+        key.as_bytes().as_ref()
+    }
+
+    fn encapsulate(
+        _: Internal,
+        key: &Self::EncapKey,
+    ) -> Result<(Self::SharedSecret, Self::Ciphertext), Error> {
+        key.encaps()
+    }
+
+    fn parse_ciphertext(_: Internal, bytes: &[u8]) -> Option<Self::Ciphertext> {
+        mlkem::Ciphertext::from_slice(bytes)
+    }
+
+    fn free_decoded(_: Internal, key: &mut Self::EncapKey) {
+        key.free_decoded();
+    }
+}
+
+// X-Wing: the draft's key generation, encapsulation, and decapsulation over
+// ML-KEM-768 and X25519, which `mid::xwing` composes.
+impl Algorithm for XWing {
+    type DecapKey = xwing::DecapKey;
+    type EncapKey = xwing::EncapKey;
+    type Ciphertext = xwing::Ciphertext;
+    type SharedSecret = xwing::SharedSecret;
+    type Seed = [u8; xwing::SEED_LEN];
+
+    fn generate(_: Internal) -> Result<Self::DecapKey, Error> {
+        xwing::DecapKey::generate()
+    }
+
+    fn public_key(_: Internal, key: &Self::DecapKey) -> Self::EncapKey {
+        key.encapsulation_key()
+    }
+
+    fn decapsulate(
+        _: Internal,
+        key: &Self::DecapKey,
+        ciphertext: &Self::Ciphertext,
+    ) -> Self::SharedSecret {
+        key.decaps(ciphertext)
+    }
+
+    fn parse_encapsulation_key(_: Internal, bytes: &[u8]) -> Result<Self::EncapKey, Error> {
+        xwing::EncapKey::from_bytes(bytes)
+    }
+
+    fn encapsulation_key_bytes(_: Internal, key: &Self::EncapKey) -> &[u8] {
+        key.as_bytes()
+    }
+
+    fn encapsulate(
+        _: Internal,
+        key: &Self::EncapKey,
+    ) -> Result<(Self::SharedSecret, Self::Ciphertext), Error> {
+        key.encaps()
+    }
+
+    fn parse_ciphertext(_: Internal, bytes: &[u8]) -> Option<Self::Ciphertext> {
+        xwing::Ciphertext::from_slice(bytes)
+    }
+
+    fn free_decoded(_: Internal, key: &mut Self::EncapKey) {
+        key.free_decoded();
+    }
+}
 
 /// A decapsulation key, which decapsulates any number of ciphertexts, and
 /// its encapsulation key; wiped on drop.
 pub struct DecapsulationKey<A: Algorithm> {
-    key: mlkem::DecapKey<A>,
+    key: A::DecapKey,
     public: EncapsulationKey<A>,
 }
 
 impl<A: Algorithm> DecapsulationKey<A> {
-    fn new(key: mlkem::DecapKey<A>) -> Self {
+    fn new(key: A::DecapKey) -> Self {
         Self {
             public: EncapsulationKey {
-                key: key.encapsulation_key(),
+                key: A::public_key(Internal(()), &key),
             },
             key,
         }
@@ -38,7 +209,7 @@ impl<A: Algorithm> DecapsulationKey<A> {
 
     /// Generates a decapsulation key from the system random source.
     pub fn generate() -> Result<Self, Error> {
-        mlkem::DecapKey::generate().map(Self::new)
+        A::generate(Internal(())).map(Self::new)
     }
 
     /// Returns the encapsulation key to send to the peer.
@@ -48,10 +219,29 @@ impl<A: Algorithm> DecapsulationKey<A> {
 
     /// Recovers the secret the peer encapsulated in `ciphertext`.
     ///
-    /// A tampered ciphertext yields an unrelated secret (FIPS-203's implicit
-    /// rejection), so the peer learns nothing until the secret is used.
+    /// A tampered ciphertext yields an unrelated secret (ML-KEM's implicit
+    /// rejection, which X-Wing keeps), so the peer learns nothing until the
+    /// secret is used.
     pub fn decapsulate(&self, ciphertext: &Ciphertext<A>) -> SharedSecret<A> {
-        SharedSecret::new(self.key.decaps(&ciphertext.0))
+        SharedSecret(A::decapsulate(Internal(()), &self.key, &ciphertext.0))
+    }
+}
+
+impl DecapsulationKey<XWing> {
+    /// Loads X-Wing's private key, its 32-byte seed, which the key expands
+    /// on load: the draft's `GenerateKeyPairDerand`.
+    ///
+    /// Fails with [`Error::KeyRejected`] unless `seed` is 32 bytes.
+    pub fn from_seed(seed: &[u8]) -> Result<Self, Error> {
+        let seed: [u8; xwing::SEED_LEN] =
+            seed.try_into().map_err(|_| KeyFormatError::WrongLength)?;
+        Ok(Self::new(xwing::DecapKey::from_seed(&seed)))
+    }
+
+    /// Returns the private key's 32-byte seed, which is what
+    /// [`Self::from_seed`] loads and the draft stores as the key.
+    pub fn to_seed(&self) -> Seed<XWing> {
+        Seed(self.key.seed())
     }
 }
 
@@ -59,7 +249,7 @@ impl<A: Algorithm> Drop for DecapsulationKey<A> {
     // The private key's own drop wipes it, so this wipes the encapsulation
     // key, once it frees its decoded form.
     fn drop(&mut self) {
-        self.public.key.free_decoded();
+        A::free_decoded(Internal(()), &mut self.public.key);
         low::zeroise_value(&mut self.public);
     }
 }
@@ -73,27 +263,46 @@ impl<A: Algorithm> fmt::Debug for DecapsulationKey<A> {
     }
 }
 
+/// A decapsulation key's seed, wiped on drop.
+pub struct Seed<A: Algorithm>(A::Seed);
+
+impl<A: Algorithm> AsRef<[u8]> for Seed<A> {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
+    }
+}
+
+impl<A: Algorithm> fmt::Debug for Seed<A> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("Seed").finish_non_exhaustive()
+    }
+}
+
+impl<A: Algorithm> Drop for Seed<A> {
+    fn drop(&mut self) {
+        low::zeroise(self.0.as_mut());
+    }
+}
+
 /// An encapsulation key, which anyone may encapsulate a secret to.
 pub struct EncapsulationKey<A: Algorithm> {
-    key: mlkem::EncapKey<A>,
+    key: A::EncapKey,
 }
 
 impl<A: Algorithm> EncapsulationKey<A> {
     /// Parses a peer's encapsulation key.
     ///
-    /// Fails with [`Error::KeyRejected`] for the wrong length, or if it fails
-    /// FIPS-203's modulus check.
+    /// Fails with [`Error::KeyRejected`] for the wrong length, or if its
+    /// ML-KEM key fails FIPS-203's modulus check.
     pub fn new(bytes: &[u8]) -> Result<Self, Error> {
-        let bytes = A::EncapKeyBytes::from_slice(bytes).ok_or(KeyFormatError::WrongLength)?;
-        let key = mlkem::EncapKey::from_bytes(&bytes)?;
-        Ok(Self { key })
+        A::parse_encapsulation_key(Internal(()), bytes).map(|key| Self { key })
     }
 
     /// Encapsulates a fresh random secret, returning the ciphertext to send
     /// to the key's holder and the secret.
     pub fn encapsulate(&self) -> Result<(Ciphertext<A>, SharedSecret<A>), Error> {
-        let (secret, ciphertext) = self.key.encaps()?;
-        Ok((Ciphertext(ciphertext), SharedSecret::new(secret)))
+        let (secret, ciphertext) = A::encapsulate(Internal(()), &self.key)?;
+        Ok((Ciphertext(ciphertext), SharedSecret(secret)))
     }
 }
 
@@ -107,7 +316,7 @@ impl<A: Algorithm> Clone for EncapsulationKey<A> {
 
 impl<A: Algorithm> AsRef<[u8]> for EncapsulationKey<A> {
     fn as_ref(&self) -> &[u8] {
-        self.key.as_bytes().as_ref()
+        A::encapsulation_key_bytes(Internal(()), &self.key)
     }
 }
 
@@ -131,19 +340,19 @@ const _: () = {
             assert!(size_of::<Result<DecapsulationKey<$a>, Error>>() < 8192);
         )*};
     }
-    small!(MlKem512, MlKem768, MlKem1024);
+    small!(MlKem512, MlKem768, MlKem1024, XWing);
 };
 
 /// A ciphertext carrying an encapsulated secret, to send to the key's holder.
-pub struct Ciphertext<A: Algorithm>(mlkem::Ciphertext<A>);
+pub struct Ciphertext<A: Algorithm>(A::Ciphertext);
 
 impl<A: Algorithm> Ciphertext<A> {
     /// Takes a ciphertext the peer sent.
     ///
-    /// Fails with [`Error::WrongLength`] unless it is the parameter set's
+    /// Fails with [`Error::WrongLength`] unless it is the algorithm's
     /// length.
     pub fn new(bytes: &[u8]) -> Result<Self, Error> {
-        mlkem::Ciphertext::from_slice(bytes)
+        A::parse_ciphertext(Internal(()), bytes)
             .map(Self)
             .ok_or(Error::WrongLength)
     }
@@ -168,13 +377,7 @@ impl<A: Algorithm> AsRef<[u8]> for Ciphertext<A> {
 }
 
 /// The secret both parties share, wiped on drop.
-pub struct SharedSecret<A: Algorithm>(mlkem::SharedSecret, PhantomData<A>);
-
-impl<A: Algorithm> SharedSecret<A> {
-    fn new(secret: mlkem::SharedSecret) -> Self {
-        Self(secret, PhantomData)
-    }
-}
+pub struct SharedSecret<A: Algorithm>(A::SharedSecret);
 
 impl<A: Algorithm> AsRef<[u8]> for SharedSecret<A> {
     fn as_ref(&self) -> &[u8] {
@@ -229,7 +432,7 @@ mod tests {
 
     /// The parameter set's size, as file names spell it: `512`, `768`, or
     /// `1024`.
-    fn size<A: Algorithm>() -> &'static str {
+    fn size<A: Params>() -> &'static str {
         A::NAME.trim_start_matches("ML-KEM-")
     }
 
@@ -239,17 +442,17 @@ mod tests {
         bytes
     }
 
-    fn keygen<A: Algorithm>(seed: &[u8]) -> mlkem::DecapKey<A> {
+    fn keygen<A: Params>(seed: &[u8]) -> mlkem::DecapKey<A> {
         mlkem::DecapKey::keygen_internal(&seed.try_into().unwrap())
     }
 
     /// The encapsulation of `m` to `key`: its secret and ciphertext.
-    fn encaps<A: Algorithm>(key: &EncapsulationKey<A>, m: &[u8]) -> (Vec<u8>, Ciphertext<A>) {
+    fn encaps<A: Params>(key: &EncapsulationKey<A>, m: &[u8]) -> (Vec<u8>, Ciphertext<A>) {
         let (secret, ciphertext) = key
             .key
             .encaps_internal(mlkem::Message(m.try_into().unwrap()));
         (
-            secret_bytes(&SharedSecret::<A>::new(secret)),
+            secret_bytes(&SharedSecret::<A>(secret)),
             Ciphertext(ciphertext),
         )
     }
@@ -257,7 +460,7 @@ mod tests {
     /// The expanded decapsulation key `dk`, or `None` where rind would never
     /// hold it: the wrong length, a coefficient of `s` not below q, or the
     /// wrong `H(ek)`.
-    fn expanded<A: Algorithm>(dk: &[u8]) -> Option<DecapsulationKey<A>> {
+    fn expanded<A: Params>(dk: &[u8]) -> Option<DecapsulationKey<A>> {
         A::DecapKeyBytes::from_slice(dk)
             .filter(|dk| reduced(&dk.as_ref()[..384 * A::K]))
             .and_then(|dk| mlkem::DecapKey::from_bytes(&dk))
@@ -270,13 +473,13 @@ mod tests {
 
     #[test]
     fn wycheproof_keygen() {
-        fn check<A: Algorithm>() {
+        fn check<A: Params>() {
             let file = format!("mlkem_{}_keygen_seed_test.json", size::<A>());
             for test in wycheproof::<KemTest>(&file) {
                 assert_eq!(test.result, Expected::Valid, "{}", test.id);
                 let key = keygen::<A>(&test.seed);
                 assert_eq!(low::ct::into_public(key.as_bytes()).as_ref(), &test.dk);
-                let key = DecapsulationKey::new(key);
+                let key = DecapsulationKey::<A>::new(key);
                 assert_eq!(key.public_key().as_ref(), &test.ek);
             }
         }
@@ -285,7 +488,7 @@ mod tests {
 
     #[test]
     fn wycheproof_encaps() {
-        fn check<A: Algorithm>() {
+        fn check<A: Params>() {
             let file = format!("mlkem_{}_encaps_test.json", size::<A>());
             for test in wycheproof::<KemTest>(&file) {
                 let result = EncapsulationKey::<A>::new(&test.ek).map(|key| encaps(&key, &test.m));
@@ -304,7 +507,7 @@ mod tests {
 
     #[test]
     fn wycheproof_decaps() {
-        fn check<A: Algorithm>() {
+        fn check<A: Params>() {
             let file = format!("mlkem_{}_test.json", size::<A>());
             for test in wycheproof::<KemTest>(&file) {
                 // Generation never makes a seed of another length.
@@ -313,7 +516,7 @@ mod tests {
                     continue;
                 }
 
-                let key = DecapsulationKey::new(keygen::<A>(&test.seed));
+                let key = DecapsulationKey::<A>::new(keygen::<A>(&test.seed));
                 assert_eq!(key.public_key().as_ref(), &test.ek, "{}", test.id);
                 let result = decapsulate(&key, &test.c);
                 match (test.result, &result) {
@@ -330,7 +533,7 @@ mod tests {
     // here.
     #[test]
     fn wycheproof_semi_expanded_decaps() {
-        fn check<A: Algorithm>() {
+        fn check<A: Params>() {
             let file = format!("mlkem_{}_semi_expanded_decaps_test.json", size::<A>());
             for test in wycheproof::<KemTest>(&file) {
                 let Some(key) = expanded::<A>(&test.dk) else {
@@ -352,7 +555,7 @@ mod tests {
     // CCTV's keys come from FIPS 203's draft, whose key generation lacked
     // `k` in `G(d || k)`, so these check encapsulation and decapsulation,
     // which the final standard kept, from the encoded keys.
-    fn cctv_encaps_decaps<A: Algorithm>(record: &[(String, Vec<u8>)]) {
+    fn cctv_encaps_decaps<A: Params>(record: &[(String, Vec<u8>)]) {
         let ek = EncapsulationKey::<A>::new(cctv_value(record, "ek")).unwrap();
         let (secret, ciphertext) = encaps(&ek, cctv_value(record, "m"));
         assert_eq!(ciphertext.as_ref(), cctv_value(record, "c"));
@@ -367,7 +570,7 @@ mod tests {
     // One key's every intermediate value, of which we check the results.
     #[test]
     fn cctv_intermediate() {
-        fn check<A: Algorithm>() {
+        fn check<A: Params>() {
             for record in cctv_records(&format!("ML-KEM/intermediate/{}.txt", A::NAME)) {
                 cctv_encaps_decaps::<A>(&record);
             }
@@ -378,7 +581,7 @@ mod tests {
     // Keys whose matrix needs over 575 bytes of SHAKE-128 to sample.
     #[test]
     fn cctv_unlucky_sample() {
-        fn check<A: Algorithm>() {
+        fn check<A: Params>() {
             for record in cctv_records(&format!("ML-KEM/unluckysample/{}.txt", A::NAME)) {
                 cctv_encaps_decaps::<A>(&record);
             }
@@ -390,7 +593,7 @@ mod tests {
     // `strcmp` comparison would accept.
     #[test]
     fn cctv_strcmp() {
-        fn check<A: Algorithm>() {
+        fn check<A: Params>() {
             for record in cctv_records(&format!("ML-KEM/strcmp/{}.txt", A::NAME)) {
                 let key = expanded::<A>(cctv_value(&record, "dk")).unwrap();
                 let secret = decapsulate(&key, cctv_value(&record, "c")).unwrap();
@@ -404,7 +607,7 @@ mod tests {
     // and position.
     #[test]
     fn cctv_modulus() {
-        fn check<A: Algorithm>(want: usize) {
+        fn check<A: Params>(want: usize) {
             use std::io::{BufRead, BufReader};
 
             let path = cctv(&format!("ML-KEM/modulus/{}.txt.gz", A::NAME));
@@ -454,7 +657,7 @@ mod tests {
             rng.read(&mut m);
             rng.read(&mut ct);
 
-            let key = DecapsulationKey::new(keygen::<MlKem768>(&seed));
+            let key = DecapsulationKey::<MlKem768>::new(keygen::<MlKem768>(&seed));
             let (secret, ciphertext) = encaps(key.public_key(), &m);
             assert_eq!(decapsulate(&key, ciphertext.as_ref()).unwrap(), secret);
             let rejected = decapsulate(&key, &ct).unwrap();
@@ -495,7 +698,7 @@ mod tests {
     fn boringssl() {
         use crate::test::file_test::tests;
 
-        fn check<A: Algorithm>() {
+        fn check<A: Params>() {
             let file =
                 |name: &str| format!("boringssl/crypto/mlkem/mlkem{}_{name}.txt", size::<A>());
 
@@ -557,7 +760,7 @@ mod tests {
     fn boringssl_evp() {
         use crate::test::file_test::tests;
 
-        fn check<A: Algorithm>() {
+        fn check<A: Params>() {
             let mut keys = std::collections::HashMap::new();
             for test in tests("boringssl/crypto/evp/test/mlkem_tests.txt") {
                 if test.get("Algorithm").is_some_and(|alg| alg != A::NAME) {
@@ -572,7 +775,7 @@ mod tests {
                         // A seed-only PKCS#8 key ends in its 64-byte seed.
                         None => test.bytes("PKCS8")[22..].to_vec(),
                     };
-                    let key = DecapsulationKey::new(keygen::<A>(&seed));
+                    let key = DecapsulationKey::<A>::new(keygen::<A>(&seed));
                     if test.get("RawPublic").is_some() {
                         assert_eq!(key.public_key().as_ref(), test.bytes("RawPublic"), "{test}");
                     }
@@ -618,9 +821,468 @@ mod tests {
         check::<MlKem1024>();
     }
 
+    // draft-connolly-cfrg-xwing-kem's Appendix C, as its repository holds it.
+    #[derive(Deserialize)]
+    struct XWingVector {
+        #[serde(with = "hex::serde")]
+        seed: Vec<u8>,
+        #[serde(with = "hex::serde")]
+        sk: Vec<u8>,
+        #[serde(with = "hex::serde")]
+        pk: Vec<u8>,
+        #[serde(with = "hex::serde")]
+        eseed: Vec<u8>,
+        #[serde(with = "hex::serde")]
+        ct: Vec<u8>,
+        #[serde(with = "hex::serde")]
+        ss: Vec<u8>,
+    }
+
+    // draft-ietf-hpke-pq's MLKEM768-X25519 vectors: the KEM's part of each.
+    // `ikmR` goes through the draft's `DeriveKeyPair` to `skRm`, which HPKE's
+    // quest implements; `ikmE` is the encapsulation's `eseed`.
+    #[derive(Deserialize)]
+    struct HpkePqVector {
+        kem_id: u16,
+        #[serde(rename = "ikmE", with = "hex::serde")]
+        ikm_e: Vec<u8>,
+        #[serde(rename = "skRm", with = "hex::serde")]
+        sk_rm: Vec<u8>,
+        #[serde(rename = "pkRm", with = "hex::serde")]
+        pk_rm: Vec<u8>,
+        #[serde(with = "hex::serde")]
+        enc: Vec<u8>,
+        #[serde(with = "hex::serde")]
+        shared_secret: Vec<u8>,
+    }
+
+    /// The draft's `EncapsulateDerand` of `eseed` to `key`: its secret and
+    /// ciphertext.
+    fn xwing_encaps(key: &EncapsulationKey<XWing>, eseed: &[u8]) -> (Vec<u8>, Ciphertext<XWing>) {
+        // A copy, since encapsulation marks its randomness secret in place.
+        let eseed: [u8; 64] = eseed.try_into().unwrap();
+        let (secret, ciphertext) = key.key.encaps_internal(&eseed);
+        (
+            secret_bytes(&SharedSecret::<XWing>(secret)),
+            Ciphertext(ciphertext),
+        )
+    }
+
+    /// The bytes of the seed `key` exports.
+    fn seed_bytes(key: &DecapsulationKey<XWing>) -> Vec<u8> {
+        let bytes = key.to_seed().as_ref().to_vec();
+        low::ct::public_slice(&bytes);
+        bytes
+    }
+
+    fn thirdparty(path: &str) -> std::fs::File {
+        let path = format!(
+            "{}/../thirdparty/vectors/{path}",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        std::fs::File::open(&path).unwrap_or_else(|_| panic!("cannot open {path}"))
+    }
+
+    // The draft's three vectors: key generation from the seed, then
+    // encapsulation of the `eseed`, then decapsulation of its ciphertext.
+    #[test]
+    fn xwing_draft_vectors() {
+        let vectors: Vec<XWingVector> =
+            serde_json::from_reader(thirdparty("xwing/spec/test-vectors.json")).unwrap();
+        assert_eq!(vectors.len(), 3);
+        for (i, v) in vectors.iter().enumerate() {
+            assert_eq!(v.seed, v.sk, "{i}");
+            let key = DecapsulationKey::<XWing>::from_seed(&v.sk).unwrap();
+            assert_eq!(key.public_key().as_ref(), v.pk, "{i}");
+            assert_eq!(seed_bytes(&key), v.seed, "{i}");
+
+            let ek = EncapsulationKey::<XWing>::new(&v.pk).unwrap();
+            let (secret, ciphertext) = xwing_encaps(&ek, &v.eseed);
+            assert_eq!(ciphertext.as_ref(), v.ct, "{i}");
+            assert_eq!(secret, v.ss, "{i}");
+            assert_eq!(decapsulate(&key, &v.ct).unwrap(), v.ss, "{i}");
+        }
+    }
+
+    // draft-ietf-hpke-pq-05's two vectors for KEM 0x647A: the recipient's key
+    // from `skRm`, the encapsulation of `ikmE` to it, and decapsulating `enc`.
+    #[test]
+    fn xwing_hpke_pq_vectors() {
+        let file = std::io::BufReader::new(thirdparty("hpke-pq/test-vectors.json"));
+        let mut count = 0;
+        for vector in serde_json::Deserializer::from_reader(file).into_iter::<HpkePqVector>() {
+            let v = vector.unwrap();
+            assert_eq!(v.kem_id, 0x647a);
+            count += 1;
+
+            let key = DecapsulationKey::<XWing>::from_seed(&v.sk_rm).unwrap();
+            assert_eq!(key.public_key().as_ref(), v.pk_rm);
+            assert_eq!(seed_bytes(&key), v.sk_rm);
+
+            let ek = EncapsulationKey::<XWing>::new(&v.pk_rm).unwrap();
+            let (secret, ciphertext) = xwing_encaps(&ek, &v.ikm_e);
+            assert_eq!(ciphertext.as_ref(), v.enc);
+            assert_eq!(secret, v.shared_secret);
+            assert_eq!(decapsulate(&key, &v.enc).unwrap(), v.shared_secret);
+        }
+        assert_eq!(count, 2);
+    }
+
+    // What X-Wing refuses: a key, ciphertext, or seed of the wrong length,
+    // and an ML-KEM key that fails FIPS 203's modulus check. The X25519 half
+    // of a key is any 32 bytes.
+    #[test]
+    fn xwing_refuses_malformed() {
+        let key = DecapsulationKey::<XWing>::from_seed(&[7; 32]).unwrap();
+        let pk = key.public_key().as_ref().to_vec();
+        let (ciphertext, _) = key.public_key().encapsulate().unwrap();
+
+        for len in [0, 31, 1184, 1215, 1217, 1248] {
+            let mut bytes = pk.clone();
+            bytes.resize(len, 0);
+            assert_eq!(
+                EncapsulationKey::<XWing>::new(&bytes).err(),
+                Some(KeyFormatError::WrongLength.into()),
+                "{len}"
+            );
+        }
+        let mut bytes = pk.clone();
+        bytes[..2].copy_from_slice(&[0xff, 0x0f]);
+        assert_eq!(
+            EncapsulationKey::<XWing>::new(&bytes).err(),
+            Some(KeyFormatError::MlKemModulus.into())
+        );
+        let mut bytes = pk.clone();
+        bytes[1184..].fill(0xff);
+        assert!(EncapsulationKey::<XWing>::new(&bytes).is_ok());
+
+        for len in [0, 1088, 1119, 1121] {
+            let mut bytes = ciphertext.as_ref().to_vec();
+            bytes.resize(len, 0);
+            assert_eq!(
+                Ciphertext::<XWing>::new(&bytes).err(),
+                Some(Error::WrongLength)
+            );
+        }
+        for len in [0, 31, 33, 64] {
+            assert_eq!(
+                DecapsulationKey::<XWing>::from_seed(&vec![7; len]).err(),
+                Some(KeyFormatError::WrongLength.into()),
+                "{len}"
+            );
+        }
+    }
+
+    // A ciphertext whose X25519 share has a small order gives the zero X25519
+    // secret, which the draft's combiner takes as it is: decapsulation cannot
+    // fail, and the secret still binds the ciphertext and both public keys.
+    #[test]
+    fn xwing_decapsulates_small_order_shares() {
+        let key = DecapsulationKey::<XWing>::from_seed(&[9; 32]).unwrap();
+        let (ciphertext, secret) = key.public_key().encapsulate().unwrap();
+        let secret = secret_bytes(&secret);
+        let mut tampered = ciphertext.as_ref().to_vec();
+        tampered[1088..].fill(0);
+        let rejected = decapsulate(&key, &tampered).unwrap();
+        assert_ne!(rejected, secret);
+        assert_eq!(decapsulate(&key, &tampered).unwrap(), rejected);
+        // u = 1, another small-order point, also gives the zero X25519 secret.
+        tampered[1088] = 1;
+        assert_ne!(decapsulate(&key, &tampered).unwrap(), rejected);
+
+        // Encapsulating to a key with a zero X25519 half works too.
+        let mut zero_half = key.public_key().as_ref().to_vec();
+        zero_half[1184..].fill(0);
+        let ek = EncapsulationKey::<XWing>::new(&zero_half).unwrap();
+        let (ciphertext, secret) = ek.encapsulate().unwrap();
+        assert_eq!(ciphertext.as_ref().len(), 1120);
+        assert_eq!(secret_bytes(&secret).len(), 32);
+    }
+
+    // Under `admin/ctgrind`, memcheck fails this if X-Wing's key generation,
+    // seed export and load, encapsulation, or decapsulation (with a ciphertext
+    // it accepts and one it rejects) branches on or indexes by the seed or a
+    // secret derived from it. Nothing secret is compared until the end.
+    #[test]
+    fn xwing_stays_secret() {
+        let key = DecapsulationKey::<XWing>::generate().unwrap();
+        let (ciphertext, secret) = key.public_key().encapsulate().unwrap();
+        let decapsulated = key.decapsulate(&ciphertext);
+
+        let seed = key.to_seed();
+        let loaded = DecapsulationKey::<XWing>::from_seed(seed.as_ref()).unwrap();
+        let again = loaded.decapsulate(&ciphertext);
+
+        let mut bytes = ciphertext.as_ref().to_vec();
+        bytes[0] ^= 1;
+        let rejected = key.decapsulate(&Ciphertext::new(&bytes).unwrap());
+        let mut bytes = ciphertext.as_ref().to_vec();
+        bytes[1100] ^= 1;
+        let altered = key.decapsulate(&Ciphertext::new(&bytes).unwrap());
+
+        let secret = secret_bytes(&secret);
+        assert_eq!(secret_bytes(&decapsulated), secret);
+        assert_eq!(secret_bytes(&again), secret);
+        assert_ne!(secret_bytes(&rejected), secret);
+        assert_ne!(secret_bytes(&altered), secret);
+        assert_eq!(loaded.public_key().as_ref(), key.public_key().as_ref());
+        assert_eq!(seed_bytes(&loaded), seed_bytes(&key));
+    }
+
+    // X-Wing's key pair and secrets agree with each other on random inputs.
+    #[test]
+    fn xwing_round_trips() {
+        for _ in 0..8 {
+            let key = DecapsulationKey::<XWing>::generate().unwrap();
+            let ek = EncapsulationKey::<XWing>::new(key.public_key().as_ref()).unwrap();
+            let (ciphertext, secret) = ek.encapsulate().unwrap();
+            let ciphertext = Ciphertext::<XWing>::new(ciphertext.as_ref()).unwrap();
+            assert_eq!(
+                secret_bytes(&key.decapsulate(&ciphertext)),
+                secret_bytes(&secret)
+            );
+            let again = DecapsulationKey::<XWing>::from_seed(key.to_seed().as_ref()).unwrap();
+            assert_eq!(again.public_key().as_ref(), key.public_key().as_ref());
+            assert_eq!(
+                secret_bytes(&again.decapsulate(&ciphertext)),
+                secret_bytes(&secret)
+            );
+        }
+    }
+
     // Exporting our decapsulation key needs crate access, so this
     // differential test lives here rather than in `tests/crosschecks.rs`.
     #[cfg(not(any(miri, target_family = "wasm")))]
+    // X-Wing against the two other Rust implementations of the draft that
+    // carry its combiner: libcrux-kem and RustCrypto's x-wing (aws-lc-rs has
+    // none). Both are fed our seeds and our `eseed`s, and what each makes of
+    // them is compared byte for byte, in both directions.
+    #[cfg(not(any(miri, target_family = "wasm")))]
+    mod xwing_crosscheck {
+        use libcrux_kem::Algorithm as LibcruxAlgorithm;
+        use x_wing::{Decapsulate, Decapsulator, KeyExport, TryDecapsulate};
+
+        use super::*;
+
+        const ROUNDS: usize = 24;
+
+        fn random_bytes<const N: usize>() -> [u8; N] {
+            let mut bytes = [0; N];
+            for chunk in bytes.chunks_mut(32) {
+                let seed = DecapsulationKey::<XWing>::generate().unwrap().to_seed();
+                chunk.copy_from_slice(&seed.as_ref()[..chunk.len()]);
+            }
+            low::ct::public_slice(&bytes);
+            bytes
+        }
+
+        fn rustcrypto_ciphertext(bytes: &[u8]) -> x_wing::Ciphertext {
+            bytes.try_into().unwrap()
+        }
+
+        // Keys, ciphertexts, and secrets from our seed and `eseed` equal
+        // libcrux-kem's and x-wing's, and each decapsulates the others'.
+        #[test]
+        fn xwing_matches_libcrux_and_rustcrypto() {
+            for _ in 0..ROUNDS {
+                let seed = random_bytes::<32>();
+                let eseed = random_bytes::<64>();
+
+                let ours = DecapsulationKey::<XWing>::from_seed(&seed).unwrap();
+                let (libcrux_sk, libcrux_pk) =
+                    libcrux_kem::key_gen_derand(LibcruxAlgorithm::XWingKemDraft06, &seed).unwrap();
+                let rustcrypto = x_wing::DecapsulationKey::from(seed);
+                let rustcrypto_pk = rustcrypto.encapsulation_key();
+
+                let pk = ours.public_key().as_ref().to_vec();
+                assert_eq!(pk, libcrux_pk.encode());
+                assert_eq!(pk, rustcrypto_pk.to_bytes().as_slice());
+                assert_eq!(libcrux_sk.encode(), seed);
+                assert_eq!(rustcrypto.as_bytes(), &seed);
+
+                let (secret, ciphertext) = xwing_encaps(ours.public_key(), &eseed);
+                let (libcrux_ss, libcrux_ct) = libcrux_pk.encapsulate_derand(&eseed).unwrap();
+                let (rustcrypto_ct, rustcrypto_ss) =
+                    rustcrypto_pk.encapsulate_deterministic(&(&eseed[..]).try_into().unwrap());
+                assert_eq!(ciphertext.as_ref(), libcrux_ct.encode());
+                assert_eq!(ciphertext.as_ref(), rustcrypto_ct.as_slice());
+                assert_eq!(secret, libcrux_ss.encode());
+                assert_eq!(secret, rustcrypto_ss.as_slice());
+
+                let theirs =
+                    libcrux_kem::Ct::decode(LibcruxAlgorithm::XWingKemDraft06, ciphertext.as_ref())
+                        .unwrap();
+                assert_eq!(theirs.decapsulate(&libcrux_sk).unwrap().encode(), secret);
+                assert_eq!(
+                    rustcrypto
+                        .decapsulate(&rustcrypto_ciphertext(ciphertext.as_ref()))
+                        .as_slice(),
+                    secret
+                );
+                assert_eq!(decapsulate(&ours, ciphertext.as_ref()).unwrap(), secret);
+            }
+        }
+
+        // The public API in both directions: what libcrux-kem and x-wing
+        // encapsulate to our key we decapsulate, and what we encapsulate to
+        // their keys they decapsulate.
+        #[test]
+        fn xwing_interoperates() {
+            for _ in 0..ROUNDS {
+                let ours = DecapsulationKey::<XWing>::generate().unwrap();
+                let seed = seed_bytes(&ours);
+                let pk = ours.public_key().as_ref().to_vec();
+
+                // Theirs to ours.
+                let libcrux_pk =
+                    libcrux_kem::PublicKey::decode(LibcruxAlgorithm::XWingKemDraft06, &pk).unwrap();
+                let (ss, ct) = libcrux_pk
+                    .encapsulate_derand(&random_bytes::<64>())
+                    .unwrap();
+                assert_eq!(decapsulate(&ours, &ct.encode()).unwrap(), ss.encode());
+                let rustcrypto_pk = x_wing::EncapsulationKey::try_from(&pk[..]).unwrap();
+                let (ct, ss) =
+                    rustcrypto_pk.encapsulate_deterministic(&random_bytes::<64>().into());
+                assert_eq!(decapsulate(&ours, ct.as_slice()).unwrap(), ss.as_slice());
+
+                // Ours to theirs.
+                let (ciphertext, secret) = ours.public_key().encapsulate().unwrap();
+                let secret = secret_bytes(&secret);
+                let (libcrux_sk, _) =
+                    libcrux_kem::key_gen_derand(LibcruxAlgorithm::XWingKemDraft06, &seed).unwrap();
+                let theirs =
+                    libcrux_kem::Ct::decode(LibcruxAlgorithm::XWingKemDraft06, ciphertext.as_ref())
+                        .unwrap();
+                assert_eq!(theirs.decapsulate(&libcrux_sk).unwrap().encode(), secret);
+                let rustcrypto =
+                    x_wing::DecapsulationKey::from(<[u8; 32]>::try_from(&seed[..]).unwrap());
+                assert_eq!(
+                    rustcrypto
+                        .decapsulate(&rustcrypto_ciphertext(ciphertext.as_ref()))
+                        .as_slice(),
+                    secret
+                );
+            }
+        }
+
+        // A ciphertext with one byte altered in its ML-KEM or X25519 part
+        // decapsulates to the same secret in all three: the implicit
+        // rejection of FIPS 203 for the first, the changed X25519 point for
+        // the second.
+        #[test]
+        fn xwing_matches_on_altered_ciphertexts() {
+            for i in 0..ROUNDS {
+                let ours = DecapsulationKey::<XWing>::generate().unwrap();
+                let seed = seed_bytes(&ours);
+                let (ciphertext, _) = ours.public_key().encapsulate().unwrap();
+                let (libcrux_sk, _) =
+                    libcrux_kem::key_gen_derand(LibcruxAlgorithm::XWingKemDraft06, &seed).unwrap();
+                let rustcrypto =
+                    x_wing::DecapsulationKey::from(<[u8; 32]>::try_from(&seed[..]).unwrap());
+
+                let mut bytes = ciphertext.as_ref().to_vec();
+                // Both ends of each part, and the middle of the first.
+                let at = [0, 1, 500, 1087, 1088, 1100, 1118, 1119][i % 8];
+                bytes[at] ^= 1 << (i % 8);
+
+                let secret = decapsulate(&ours, &bytes).unwrap();
+                let theirs =
+                    libcrux_kem::Ct::decode(LibcruxAlgorithm::XWingKemDraft06, &bytes).unwrap();
+                assert_eq!(
+                    theirs.decapsulate(&libcrux_sk).unwrap().encode(),
+                    secret,
+                    "{at}"
+                );
+                assert_eq!(
+                    rustcrypto
+                        .decapsulate(&rustcrypto_ciphertext(&bytes))
+                        .as_slice(),
+                    secret,
+                    "{at}"
+                );
+            }
+        }
+
+        // A key whose ML-KEM half fails the modulus check is refused by all
+        // three; one with any X25519 half (here, zero) is taken by all three,
+        // and encapsulating to it agrees with x-wing's.
+        #[test]
+        fn xwing_matches_on_malformed_keys() {
+            let key = DecapsulationKey::<XWing>::generate().unwrap();
+            let pk = key.public_key().as_ref().to_vec();
+
+            let mut bad = pk.clone();
+            bad[..2].copy_from_slice(&[0xff, 0x0f]);
+            assert!(EncapsulationKey::<XWing>::new(&bad).is_err());
+            assert!(
+                libcrux_kem::PublicKey::decode(LibcruxAlgorithm::XWingKemDraft06, &bad).is_err()
+            );
+            assert!(x_wing::EncapsulationKey::try_from(&bad[..]).is_err());
+
+            let mut zero = pk.clone();
+            zero[1184..].fill(0);
+            assert!(EncapsulationKey::<XWing>::new(&zero).is_ok());
+            assert!(
+                libcrux_kem::PublicKey::decode(LibcruxAlgorithm::XWingKemDraft06, &zero).is_ok()
+            );
+            assert!(x_wing::EncapsulationKey::try_from(&zero[..]).is_ok());
+            // Encapsulating to it gives x-wing's ciphertext and secret, the
+            // latter from the zero X25519 secret.
+            let eseed = random_bytes::<64>();
+            let (secret, ciphertext) =
+                xwing_encaps(&EncapsulationKey::<XWing>::new(&zero).unwrap(), &eseed);
+            let (theirs_ct, theirs_ss) = x_wing::EncapsulationKey::try_from(&zero[..])
+                .unwrap()
+                .encapsulate_deterministic(&eseed.into());
+            assert_eq!(ciphertext.as_ref(), theirs_ct.as_slice());
+            assert_eq!(secret, theirs_ss.as_slice());
+
+            for len in [0, 1215, 1217] {
+                let mut wrong = pk.clone();
+                wrong.resize(len, 0);
+                assert!(EncapsulationKey::<XWing>::new(&wrong).is_err());
+                assert!(
+                    libcrux_kem::PublicKey::decode(LibcruxAlgorithm::XWingKemDraft06, &wrong)
+                        .is_err()
+                );
+                assert!(x_wing::EncapsulationKey::try_from(&wrong[..]).is_err());
+            }
+        }
+
+        // The draft leaves a ciphertext whose X25519 share gives the zero
+        // secret open. We follow its text as x-wing's plain key does: the
+        // secret is derived with the zero. libcrux-kem and x-wing's
+        // `RejectNonContrib` key refuse it instead.
+        #[test]
+        fn xwing_non_contributory_shares() {
+            let ours = DecapsulationKey::<XWing>::generate().unwrap();
+            let seed = seed_bytes(&ours);
+            let (ciphertext, _) = ours.public_key().encapsulate().unwrap();
+            let mut bytes = ciphertext.as_ref().to_vec();
+            bytes[1088..].fill(0);
+
+            let plain = x_wing::DecapsulationKey::from(<[u8; 32]>::try_from(&seed[..]).unwrap());
+            assert_eq!(
+                decapsulate(&ours, &bytes).unwrap(),
+                plain.decapsulate(&rustcrypto_ciphertext(&bytes)).as_slice()
+            );
+
+            let strict = x_wing::DecapsulationKeyRejectNonContrib::from(
+                <[u8; 32]>::try_from(&seed[..]).unwrap(),
+            );
+            assert!(
+                strict
+                    .try_decapsulate(&rustcrypto_ciphertext(&bytes))
+                    .is_err()
+            );
+            let (libcrux_sk, _) =
+                libcrux_kem::key_gen_derand(LibcruxAlgorithm::XWingKemDraft06, &seed).unwrap();
+            let theirs =
+                libcrux_kem::Ct::decode(LibcruxAlgorithm::XWingKemDraft06, &bytes).unwrap();
+            assert!(theirs.decapsulate(&libcrux_sk).is_err());
+        }
+    }
+
     mod crosscheck {
         use aws_lc_rs::kem::{self, AlgorithmId, ML_KEM_512, ML_KEM_768, ML_KEM_1024};
         use proptest::prelude::*;
@@ -628,7 +1290,7 @@ mod tests {
 
         use super::*;
 
-        fn algorithm<A: Algorithm>() -> &'static kem::Algorithm<AlgorithmId> {
+        fn algorithm<A: Params>() -> &'static kem::Algorithm<AlgorithmId> {
             match A::K {
                 2 => &ML_KEM_512,
                 3 => &ML_KEM_768,
@@ -640,7 +1302,7 @@ mod tests {
         // We decapsulate what aws-lc-rs encapsulates to our key, and so
         // does aws-lc-rs holding our serialized key. With one byte of the
         // ciphertext altered, both give the same implicit-rejection secret.
-        fn encapsulated_by_theirs<A: Algorithm>(
+        fn encapsulated_by_theirs<A: Params>(
             alter: Option<(Index, u8)>,
         ) -> Result<(), TestCaseError> {
             let ours = DecapsulationKey::<A>::generate().unwrap();

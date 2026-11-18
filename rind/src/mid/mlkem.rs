@@ -298,6 +298,12 @@ impl<P: Params> DecapKey<P> {
         P::decaps(Internal(()), self, c)
     }
 
+    /// Wipes and frees the encapsulation key's decoded form, so that a
+    /// holder's drop can wipe the rest of the key's value.
+    pub(crate) fn free_decoded(&mut self) {
+        self.ek_pke.free_decoded();
+    }
+
     /// Return the corresponding [`EncapKey`]: without its decoded form where
     /// VG encapsulates, which needs none.
     pub(crate) fn encapsulation_key(&self) -> EncapKey<P> {
