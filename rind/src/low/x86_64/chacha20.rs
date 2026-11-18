@@ -6,9 +6,10 @@
 //! AVX2 routine, or its AVX-512 VL one where the CPU has that too, imported
 //! by `admin/import-vg`; below that, rind's two-block AVX2 kernel from two
 //! blocks, and HACL*'s verified rounds in general-purpose registers for one.
-//! VG's AVX2 routine takes what follows its eight-block loop one block at a
-//! time, so on either routine a remainder of two to four blocks after the
-//! last whole 512-byte group runs on the kernel. Where the CPU has SSSE3 but
+//! VG's AVX2 routine runs what follows its eight-block loop on four-, two-,
+//! and one-block paths, which lost to the kernel, so on either routine a
+//! remainder of two to four blocks after the last whole 512-byte group runs
+//! on the kernel. Where the CPU has SSSE3 but
 //! not AVX2, aws-lc's `chacha-x86_64` SSSE3 routine, four blocks at a time,
 //! above 128 bytes, as aws-lc runs it, imported by `admin/import-aws-lc`;
 //! otherwise HACL*'s rounds, where aws-lc runs integer code.
@@ -69,8 +70,8 @@ impl ChaCha20 {
     pub(crate) fn cipher(&mut self, buffer: &mut [u8]) {
         match (self.vg, self.ssse3, buffer.len()) {
             (Some(vg), _, len @ VG_MIN_LEN..) => {
-                // VG's AVX2 routine takes what follows its eight-block loop
-                // one block at a time, which loses to the kernel for two to
+                // VG's AVX2 routine runs what follows its eight-block loop
+                // on narrower paths, which lose to the kernel for two to
                 // four blocks.
                 let tail = match len % 512 {
                     tail @ 65..VG_MIN_LEN => tail,
@@ -138,10 +139,10 @@ impl VgState {
     #[inline(always)]
     fn apply_avx2(&mut self, _: HaveAvx2, buffer: &mut [u8]) -> u32 {
         // SAFETY: `self` is 768 readable and writable bytes, of which the
-        // routine reads only those `init` wrote, and `buffer` is `len`; they
-        // are distinct objects, so neither overlaps the other, the return
-        // address, or the stack below it, or wraps the address space. The
-        // token proves the `avx` and `avx2` cpu features.
+        // routine reads only those `init` or the routine itself wrote, and
+        // `buffer` is `len`; they are distinct objects, so neither overlaps
+        // the other, the return address, or the stack below it, or wraps the
+        // address space. The token proves the `avx` and `avx2` cpu features.
         unsafe {
             asm_call!(unsafe extern "sysv64" (vg::vg_chacha20_apply_avx2::vg_chacha20_apply_avx2)(self.0.as_mut_ptr(), buffer.as_mut_ptr(), buffer.len()))
         }
@@ -207,8 +208,9 @@ fn words<const B: usize, const W: usize>(bytes: &[u8; B]) -> [u32; W] {
 
 /// From this length verified-garbage's routines run, and from it on, a tail
 /// of two to four blocks after the last whole 512-byte group runs on the
-/// two-block kernel instead: VG's AVX2 routine takes those blocks one at a
-/// time, which lost to the kernel by up to 1.73x on Arrow Lake.
+/// two-block kernel instead: VG's AVX2 routine runs them on narrower paths
+/// than its eight-block loop, which lost to the kernel by up to 1.73x on
+/// Arrow Lake.
 const VG_MIN_LEN: usize = 256;
 
 /// From this length aws-lc runs its SSSE3 routine, which computes four
