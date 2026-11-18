@@ -8,7 +8,7 @@ open Aeneas Aeneas.Std Result VG.Spec.MlKem
 Each axiom restates the contract in VG's `Spec/MlKem/Contract.lean` (or
 `Spec/MlKem/EncapsH.lean`) that VG's theorems prove of the routines one of
 rind's wrappers in `low::x86_64::mlkem768_vg` calls, at the revision
-`admin/import-vg` pins (9eed89c2). The wrappers call VG's routines through
+`admin/import-vg` pins (0aa40d6c). The wrappers call VG's routines through
 raw pointers to a scratch buffer, which Aeneas cannot translate, so each axiom
 is about the opaque wrapper, and covers every routine it may call, which all
 state the one contract. Their preconditions hold for every call from safe
@@ -27,8 +27,8 @@ namespace rind.x86_64
 
 /-- `vg_mlkem768_check_ek`'s and `vg_mlkem768_check_ek_avx2`'s
 `checkEkContract`, whose 1 the wrapper returns as `true`:
-https://github.com/pyca/verified-garbage/blob/9eed89c28d3cc1edaf004160319878b49199cdbd/lean/VerifiedGarbage/Proof/MlKem/X86_64/CheckEk.lean#L209 (`checkEk_verified`) and
-https://github.com/pyca/verified-garbage/blob/9eed89c28d3cc1edaf004160319878b49199cdbd/lean/VerifiedGarbage/Proof/MlKem/X86_64/CheckEkAvx2.lean#L297 (`checkEkAvx2_verified`). -/
+https://github.com/pyca/verified-garbage/blob/0aa40d6c21fd02943fe5b38a5b69b6213d07764d/lean/VerifiedGarbage/Proof/MlKem/X86_64/CheckEk.lean#L209 (`checkEk_verified`) and
+https://github.com/pyca/verified-garbage/blob/0aa40d6c21fd02943fe5b38a5b69b6213d07764d/lean/VerifiedGarbage/Proof/MlKem/X86_64/CheckEkAvx2.lean#L297 (`checkEkAvx2_verified`). -/
 @[step]
 axiom vg_mlkem768_check_ek_spec (self : low.x86_64.mlkem768_vg.Encaps)
     (ek : Std.Array U8 1184#usize) :
@@ -38,8 +38,8 @@ axiom vg_mlkem768_check_ek_spec (self : low.x86_64.mlkem768_vg.Encaps)
 /-- `vg_mlkem768_encaps`'s `encapsContract` and, where the wrapper is given
 `h`, which must then be `H(ek)`, `vg_mlkem768_encaps_h`'s
 `encapsHContract`, each with its AVX, AVX2, and AVX-512 variants:
-https://github.com/pyca/verified-garbage/blob/9eed89c28d3cc1edaf004160319878b49199cdbd/lean/VerifiedGarbage/Proof/MlKem/X86_64/CallWipe.lean#L750 (`encapsW_verified`) and
-https://github.com/pyca/verified-garbage/blob/9eed89c28d3cc1edaf004160319878b49199cdbd/lean/VerifiedGarbage/Proof/MlKem/X86_64/CallWipe.lean#L700 (`encapsHW_verified`). Both hold
+https://github.com/pyca/verified-garbage/blob/0aa40d6c21fd02943fe5b38a5b69b6213d07764d/lean/VerifiedGarbage/Proof/MlKem/X86_64/CallWipe.lean#L750 (`encapsW_verified`) and
+https://github.com/pyca/verified-garbage/blob/0aa40d6c21fd02943fe5b38a5b69b6213d07764d/lean/VerifiedGarbage/Proof/MlKem/X86_64/CallWipe.lean#L700 (`encapsHW_verified`). Both hold
 for any `ek`. -/
 @[step]
 axiom vg_mlkem768_encaps_spec (self : low.x86_64.mlkem768_vg.Encaps)
@@ -52,7 +52,7 @@ axiom vg_mlkem768_encaps_spec (self : low.x86_64.mlkem768_vg.Encaps)
 
 /-- `vg_mlkem768_keygen_avx512`'s `keyGenContract`, of whose `ek` and `dk`
 the wrapper returns `dk`, which holds `ek`:
-https://github.com/pyca/verified-garbage/blob/9eed89c28d3cc1edaf004160319878b49199cdbd/lean/VerifiedGarbage/Proof/MlKem/X86_64/CallWipe.lean#L642 (`keyGenW_verified`). -/
+https://github.com/pyca/verified-garbage/blob/0aa40d6c21fd02943fe5b38a5b69b6213d07764d/lean/VerifiedGarbage/Proof/MlKem/X86_64/CallWipe.lean#L642 (`keyGenW_verified`). -/
 @[step]
 axiom vg_mlkem768_keygen_spec (self : low.x86_64.mlkem768_vg.KeyPair)
     (seed : Std.Array U8 64#usize) :
@@ -61,7 +61,7 @@ axiom vg_mlkem768_keygen_spec (self : low.x86_64.mlkem768_vg.KeyPair)
           ((vgBytes seed).drop 32)).map Prod.snd) vgBytes r ⦄
 
 /-- `vg_mlkem768_decaps_avx512`'s `decapsContract`, which holds for any
-`dk`: https://github.com/pyca/verified-garbage/blob/9eed89c28d3cc1edaf004160319878b49199cdbd/lean/VerifiedGarbage/Proof/MlKem/X86_64/CallWipe.lean#L799 (`decapsW_verified`). -/
+`dk`: https://github.com/pyca/verified-garbage/blob/0aa40d6c21fd02943fe5b38a5b69b6213d07764d/lean/VerifiedGarbage/Proof/MlKem/X86_64/CallWipe.lean#L799 (`decapsW_verified`). -/
 @[step]
 axiom vg_mlkem768_decaps_spec (self : low.x86_64.mlkem768_vg.KeyPair)
     (dk : Std.Array U8 2400#usize) (c : Std.Array U8 1088#usize) :

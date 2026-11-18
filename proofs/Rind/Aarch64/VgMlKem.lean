@@ -16,7 +16,7 @@ VG's dispatcher picks; each states the one contract.
 namespace rind.aarch64
 
 /-- `vg_mlkem768_check_ek`'s `checkEkContract`, whose 1 the wrapper returns
-as `true`: https://github.com/pyca/verified-garbage/blob/9eed89c28d3cc1edaf004160319878b49199cdbd/lean/VerifiedGarbage/Proof/MlKem/AArch64/Residue.lean#L36
+as `true`: https://github.com/pyca/verified-garbage/blob/0aa40d6c21fd02943fe5b38a5b69b6213d07764d/lean/VerifiedGarbage/Proof/MlKem/AArch64/Residue.lean#L36
 (`checkEk768Cleared_verified`). -/
 @[step]
 axiom vg_mlkem768_check_ek_spec (self : low.aarch64.mlkem768_vg.Encaps)
@@ -27,9 +27,9 @@ axiom vg_mlkem768_check_ek_spec (self : low.aarch64.mlkem768_vg.Encaps)
 /-- `vg_mlkem768_encaps_x2_sha3`'s and
 `vg_mlkem768_encaps_x2_sha3_keccak_sha3`'s `encapsContract` and, where the
 wrapper is given `h`, which must then be `H(ek)`, their `_h` twins'
-`encapsHContract`: https://github.com/pyca/verified-garbage/blob/9eed89c28d3cc1edaf004160319878b49199cdbd/lean/VerifiedGarbage/Proof/MlKem/AArch64/CallWipe.lean#L1095
+`encapsHContract`: https://github.com/pyca/verified-garbage/blob/0aa40d6c21fd02943fe5b38a5b69b6213d07764d/lean/VerifiedGarbage/Proof/MlKem/AArch64/CallWipe.lean#L1095
 (`Wipe.encapsP768_verified`) and
-https://github.com/pyca/verified-garbage/blob/9eed89c28d3cc1edaf004160319878b49199cdbd/lean/VerifiedGarbage/Proof/MlKem/AArch64/CallWipe.lean#L1085 (`Wipe.encapsHP768_verified`).
+https://github.com/pyca/verified-garbage/blob/0aa40d6c21fd02943fe5b38a5b69b6213d07764d/lean/VerifiedGarbage/Proof/MlKem/AArch64/CallWipe.lean#L1085 (`Wipe.encapsHP768_verified`).
 Both hold for any `ek`. -/
 @[step]
 axiom vg_mlkem768_encaps_spec (self : low.aarch64.mlkem768_vg.Encaps)
