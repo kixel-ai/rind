@@ -674,11 +674,11 @@ have some different options depending on CPU features:
   verified-garbage's routines. This is Graviola's, and not verified.
 - We have s2n-bignum's verified 4-wide Keccak-f using AVX2 on x86-64, and its
   single-state Keccak-f otherwise.
-- We have s2n-bignum's verified 2-wide Keccak-f using Neon+SHA3 on Apple's
-  aarch64 cores.
+- We have s2n-bignum's verified 2-wide Keccak-f using Neon+SHA3 on Apple
+  targets.
 - We have s2n-bignum's verified single-state Keccak-f on aarch64, using the
-  SHA3 instructions on Apple's cores, which run them on every SIMD unit, and
-  scalar code on others. On Neoverse N2 the scalar code measured 2.1x faster
+  SHA3 instructions on Apple targets, whose cores run them on every SIMD
+  unit, and scalar code on others. On Neoverse N2 the scalar code measured 2.1x faster
   than the SHA3 instructions for SHA-3, and 1.1-1.3x for ML-KEM and ML-DSA,
   which run it one state at a time; mlkem-native and verified-garbage make
   the same choice.

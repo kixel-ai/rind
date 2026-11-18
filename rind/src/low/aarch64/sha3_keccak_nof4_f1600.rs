@@ -56,7 +56,7 @@ mod tests {
         })
     }
 
-    // Only Apple's cores run the SHA3 kernels, so this checks them against
+    // Only Apple targets run the SHA3 kernels, so this checks them against
     // the scalar code on any CPU with the instructions.
     #[test]
     fn sha3_kernels_match_scalar() {
@@ -82,7 +82,7 @@ mod tests {
         }
     }
 
-    // Valgrind hides SHA3, and only Apple's cores run these kernels, so
+    // Valgrind hides SHA3, and only Apple targets run these kernels, so
     // `admin/ct-qemu` traces them here, on secret states.
     #[test]
     #[ignore = "admin/ct-qemu runs it under qemu"]

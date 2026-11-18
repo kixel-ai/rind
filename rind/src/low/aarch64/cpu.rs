@@ -143,10 +143,11 @@ impl HaveSha3 {
         (features() & SHA3 != 0).then_some(Self(()))
     }
 
-    /// The token where Keccak-f runs on the SHA3 instructions: only Apple's
-    /// cores, which run them on every SIMD unit. Other cores, such as
+    /// The token where Keccak-f runs on the SHA3 instructions: only on Apple
+    /// targets, whose cores run them on every SIMD unit. Other cores, such as
     /// Neoverse N2, run them on fewer, so scalar Keccak-f measured twice as
-    /// fast there; mlkem-native and verified-garbage choose the same way.
+    /// fast there; mlkem-native and verified-garbage choose the same way, by
+    /// target, so Linux on Apple's cores runs scalar code too.
     pub(crate) fn check_keccak() -> Option<Self> {
         if cfg!(target_vendor = "apple") {
             Self::check()
