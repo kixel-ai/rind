@@ -37,7 +37,9 @@ tag checks, RSASSA-PSS's hash compare, and key wrap's `unwrap` and
 `unwrap_padded` checks; for RSA verification's public operation on AVX-512
 IFMA, pyca/verified-garbage's Lean proof of its routine, which
 `Rind.X86_64.VgRsa` restates; pyca/verified-garbage's for ChaCha20's
-`apply_keystream` in `Rind.X86_64.VgChaCha20`; and nothing else.
+`apply_keystream` in `Rind.X86_64.VgChaCha20`; pyca/verified-garbage's for
+P-256's public key, ECDH, and ECDSA verification in `Rind.X86_64.VgP256`; and
+nothing else.
 ChaCha20-Poly1305's theorems also take aws-lc's one-pass routines as the
 hypothesis `RunsChaCha20Poly1305`, which no axiom states, and ChaCha20's
 `apply_keystream` takes rind's two-block kernel as the hypothesis `Kernel`. The generator
@@ -98,7 +100,8 @@ change to the trust base.
  bignum_neg_p256_spec,
  bignum_tomont_p256_alt_spec,
  bignum_tomont_p256_spec,
- p256_point_add_affine_spec] -/
+ p256_point_add_affine_spec,
+ vg_p256_public_key_spec] -/
 #guard_msgs in
 #print axioms p256_generate
 
@@ -119,7 +122,8 @@ change to the trust base.
  bignum_neg_p256_spec,
  bignum_tomont_p256_alt_spec,
  bignum_tomont_p256_spec,
- p256_point_add_affine_spec] -/
+ p256_point_add_affine_spec,
+ vg_p256_public_key_spec] -/
 #guard_msgs in
 #print axioms p256_from_scalar
 
@@ -141,7 +145,8 @@ change to the trust base.
  bignum_tomont_p256_alt_spec,
  bignum_tomont_p256_spec,
  p256_scalarmul_alt_spec,
- p256_scalarmul_spec] -/
+ p256_scalarmul_spec,
+ vg_p256_ecdh_spec] -/
 #guard_msgs in
 #print axioms p256_agree
 
@@ -596,7 +601,8 @@ change to the trust base.
  bignum_neg_p256_spec,
  bignum_tomont_p256_alt_spec,
  bignum_tomont_p256_spec,
- p256_point_add_affine_spec] -/
+ p256_point_add_affine_spec,
+ vg_p256_public_key_spec] -/
 #guard_msgs in
 #print axioms p256_ecdsa_generate
 
@@ -617,7 +623,8 @@ change to the trust base.
  bignum_neg_p256_spec,
  bignum_tomont_p256_alt_spec,
  bignum_tomont_p256_spec,
- p256_point_add_affine_spec] -/
+ p256_point_add_affine_spec,
+ vg_p256_public_key_spec] -/
 #guard_msgs in
 #print axioms p256_ecdsa_from_scalar_and_public_key
 
@@ -644,7 +651,8 @@ change to the trust base.
  bignum_tomont_p256_spec,
  finish_padded_spec,
  p256_point_add_affine_spec,
- sha256_compress_blocks_shaext_spec] -/
+ sha256_compress_blocks_shaext_spec,
+ vg_p256_public_key_spec] -/
 #guard_msgs in
 #print axioms p256_ecdsa_sign
 
@@ -677,7 +685,8 @@ change to the trust base.
  p256_montjdouble_spec,
  p256_montjmixadd_alt_spec,
  p256_montjmixadd_spec,
- sha256_compress_blocks_shaext_spec] -/
+ sha256_compress_blocks_shaext_spec,
+ vg_p256_verify_spec] -/
 #guard_msgs in
 #print axioms p256_ecdsa_key_pair_verify
 
@@ -707,7 +716,8 @@ change to the trust base.
  p256_montjdouble_spec,
  p256_montjmixadd_alt_spec,
  p256_montjmixadd_spec,
- sha256_compress_blocks_shaext_spec] -/
+ sha256_compress_blocks_shaext_spec,
+ vg_p256_verify_spec] -/
 #guard_msgs in
 #print axioms p256_ecdsa_public_key_new
 

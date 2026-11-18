@@ -61,9 +61,9 @@ https://github.com/pyca/verified-garbage/blob/0aa40d6c21fd02943fe5b38a5b69b6213d
 registered at
 https://github.com/pyca/verified-garbage/blob/0aa40d6c21fd02943fe5b38a5b69b6213d07764d/lean/VerifiedGarbage/Artifacts/EcdsaP256/AArch64.lean#L168. -/
 @[step]
-axiom vg_p256_verify_spec (self : low.aarch64.p256_vg.P256) (public : Std.Array U8 65#usize)
+axiom vg_p256_verify_spec (self : low.aarch64.p256_vg.P256) (pub : Std.Array U8 65#usize)
     (e : Std.Array U8 32#usize) (sig : Std.Array U8 64#usize) :
-    low.aarch64.p256_vg.P256.verify self public e sig ⦃ b =>
-      b = VG.Spec.Ecdsa.verify C (vgBytes public) (VG.Spec.Ecdsa.hashToInt C (vgBytes e)) (vgBytes sig) ⦄
+    low.aarch64.p256_vg.P256.verify self pub e sig ⦃ b =>
+      b = VG.Spec.Ecdsa.verify C (vgBytes pub) (VG.Spec.Ecdsa.hashToInt C (vgBytes e)) (vgBytes sig) ⦄
 
 end rind.aarch64

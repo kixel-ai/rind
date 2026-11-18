@@ -219,7 +219,9 @@ theorem onCurve_ofVg_mul {P : Point C} (hP : p256OnCurve (ofVg P)) (k : Nat) :
 theorem pow_onCurve (P : P256Point) (hP : p256OnCurve P) (k : Nat) : p256OnCurve (p256Pow P k) := by
   obtain ⟨X, hX⟩ := exists_fromM _ hP
   rw [← hX]
-  exact (nist.pow_fromM X k).symm ▸ nist.onCurve_fromM _
+  show p256OnCurve (nist.pow p256 (nist.fromM X) k)
+  rw [nist.pow_fromM]
+  exact nist.onCurve_fromM _
 
 theorem ofVg_G_onCurve : p256OnCurve (ofVg (G C)) := ofVg_G ▸ p256OnCurve_G
 

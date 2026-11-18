@@ -588,9 +588,9 @@ to 0.85 to 0.97 for every P-256 row on Neoverse N2. On an Arrow Lake core a publ
 0.92 on Zen 5, but 1.02 to 1.06 on Zen 3, so AMD CPUs without IFMA keep
 rind's for it. VG signs only by RFC 6979, so signing keeps rind's hedged
 nonce and arithmetic and takes VG's derivation only for the nonce's point.
-Without ADX VG measured slower, so rind's code runs there. rind claims no ✓
-for VG's P-256 until [its quest](quest/m2/verified-garbage/p256-proof.md)
-imports VG's theorems.
+Without ADX VG measured slower, so rind's code runs there. rind's P-256
+proofs cover both: they compose VG's theorems about its routines with
+rind's proof of the glue around them, as `proofs/README.md` describes.
 
 P384 base point multiplication uses a comb of 20 tables of 16 affine points
 (a 30KB constant table) over 5-bit Booth windows, as aws-lc does. Variable
