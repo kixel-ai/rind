@@ -75,24 +75,26 @@ those inputs, in any worktree, restores in under a second.
   the instructions rind's fork adds (`thirdparty/s2n-bignum/RIND.md`); the proof checks its round
   constants against FIPS 180-4's. Its stack frame, which the routine aligns
   down to 2048 bytes, lies in the 3440 bytes below the stack pointer.
-- `aarch64/bn_mul_mont.ml`: `BN_MUL_MONT_GENERIC_SUBROUTINE_CORRECT`, rind's
+- `aarch64/bn_mul_mont.ml`: `BN_MUL_MONT_SUBROUTINE_CORRECT`, rind's
   proof that the naked function `low::aarch64::mont::bn_mul_mont`, aws-lc's
   Montgomery multiplication, writes the Montgomery product
   `x * y / 2^(64k) mod m` of its `k`-word operands, as s2n-bignum's
   `bignum_montmul` states it, given `-m^-1 mod 2^64` and
-  `x * y <= 2^(64k) * m`, for every width from two up that is not a multiple
-  of four: those its width-generic path runs, for `k < 2^58`, a 16-aligned
-  stack pointer, and `z` and the stack frame disjoint from the code and the
-  inputs, so `z` may not alias `x`. The theorem covers the dispatch,
-  the stack frame of up to `8k + 72` bytes below the stack pointer, and the
-  callee-saved registers it restores. `BN_MUL_MONT_MUL4X_SUBROUTINE_CORRECT`
-  states the same for every multiple of four from four up, through
-  `__bn_mul4x_mont`, except a multiple of eight with `x = y`: the squarings
-  `__bn_sqr8x_mont` runs, which are not proven yet. It also needs
-  `x + 32` and `m + 32` not to wrap past `2^64`, since the code reads the
-  carry of adding 32 to those pointers, and its stack frame is the
-  `8k + 160` bytes below the stack pointer, saving `x19` to `x28`. No axiom
-  in `Rind/` restates either theorem yet. The function has no relocations.
+  `x * y <= 2^(64k) * m`, for every width from two words up: for `k < 2^58`,
+  a 16-aligned stack pointer, and `z` and the `16k + 128` bytes below the
+  stack pointer disjoint from the code and the inputs, so `z` may not alias
+  `x`. At a multiple of four it also needs `x + 32` and `m + 32` not to wrap
+  past `2^64`, since the 4x path reads the carry of adding 32 to those
+  pointers. The theorem covers the dispatch, the stack frame, and the
+  callee-saved registers the function restores. It joins one theorem for
+  each routine the dispatch reaches, each with that routine's own frame:
+  `BN_MUL_MONT_GENERIC_SUBROUTINE_CORRECT` for a width that is not a multiple
+  of four, which the width-generic path runs in up to `8k + 72` bytes;
+  `BN_MUL_MONT_MUL4X_SUBROUTINE_CORRECT` for a multiple of four, through
+  `__bn_mul4x_mont` in `8k + 160` bytes, except a multiple of eight with
+  `x = y`; and `BN_MUL_MONT_SQR8X_SUBROUTINE_CORRECT` for that case, the
+  squarings `__bn_sqr8x_mont` runs in `16k + 128` bytes. No axiom in `Rind/`
+  restates any of them yet. The function has no relocations.
 - `x86_64/bn_mul_mont_nohw.ml`: `BN_MUL_MONT_NOHW_SUBROUTINE_CORRECT`, rind's
   proof that the naked function `low::x86_64::mont::bn_mul_mont_nohw`,
   aws-lc's word-serial Montgomery multiplication, writes the Montgomery
