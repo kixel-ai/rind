@@ -220,7 +220,9 @@ with its contracts, which `Rind/VgChaCha20.lean` adapts and
 `Rind/X86_64/VgChaCha20.lean`'s axioms restate, so a pin that changes them
 shows the change in its diff, against which that re-pin must review the
 adaptation, for a change to the spec, and the axioms, for one to the
-contracts.
+contracts. Every re-pin also moves the axioms' links to VG's theorems and
+checks that the registrations they cite still emit the routines rind runs:
+`admin/vg-bytes` checks the code, not which theorem covers it.
 
 ## What is proven
 
