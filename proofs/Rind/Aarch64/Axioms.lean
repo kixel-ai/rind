@@ -506,6 +506,8 @@ A change here is a change to the trust base.
  Classical.choice,
  Quot.sound,
  sha3_keccak2_f1600_spec,
+ sha3_keccak4_f1600_alt_spec,
+ sha3_keccak4_f1600_spec,
  sha3_keccak_f1600_alt_spec,
  sha3_keccak_f1600_spec] -/
 #guard_msgs in
@@ -515,6 +517,8 @@ A change here is a change to the trust base.
  Classical.choice,
  Quot.sound,
  sha3_keccak2_f1600_spec,
+ sha3_keccak4_f1600_alt_spec,
+ sha3_keccak4_f1600_spec,
  sha3_keccak_f1600_alt_spec,
  sha3_keccak_f1600_spec] -/
 #guard_msgs in
@@ -524,6 +528,8 @@ A change here is a change to the trust base.
  Classical.choice,
  Quot.sound,
  sha3_keccak2_f1600_spec,
+ sha3_keccak4_f1600_alt_spec,
+ sha3_keccak4_f1600_spec,
  sha3_keccak_f1600_alt_spec,
  sha3_keccak_f1600_spec] -/
 #guard_msgs in

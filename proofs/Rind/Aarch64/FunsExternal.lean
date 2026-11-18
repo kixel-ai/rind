@@ -39,6 +39,14 @@ opaque low.aarch64.sha3_keccak2_f1600.sha3_keccak2_f1600
   : Array (Array Std.U64 25#usize) 2#usize → Array Std.U64 24#usize →
     Result (Array (Array Std.U64 25#usize) 2#usize)
 
+opaque low.aarch64.sha3_keccak4_f1600.sha3_keccak4_f1600
+  : Array (Array Std.U64 25#usize) 4#usize → Array Std.U64 24#usize →
+    Result (Array (Array Std.U64 25#usize) 4#usize)
+
+opaque low.aarch64.sha3_keccak4_f1600_alt.sha3_keccak4_f1600
+  : Array (Array Std.U64 25#usize) 4#usize → Array Std.U64 24#usize →
+    Result (Array (Array Std.U64 25#usize) 4#usize)
+
 opaque low.aarch64.bignum_eq.bignum_eq
   : Slice Std.U64 → Slice Std.U64 → Result Bool
 
