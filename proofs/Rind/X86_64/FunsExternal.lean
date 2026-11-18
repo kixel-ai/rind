@@ -832,4 +832,27 @@ opaque high.rsa.VerifyingKey.to_pkcs1_der
   high.rsa.VerifyingKey → Slice Std.U8 → Result ((core.result.Result (Slice
     Std.U8) error.Error) × (Slice Std.U8))
 
+/-- Whether the CPU runs pyca/verified-garbage's AVX-512 IFMA X25519 and
+Ed25519, and those routines, which the proofs here take as not running. -/
+opaque low.x86_64.curve25519_ifma.Curve25519Ifma.check : Result (Option low.x86_64.curve25519_ifma.Curve25519Ifma)
+
+opaque low.x86_64.curve25519_ifma.Curve25519Ifma.x25519
+  : low.x86_64.curve25519_ifma.Curve25519Ifma → Array Std.U64 4#usize → Array Std.U64 4#usize → Array Std.U64 4#usize →
+    Result (Array Std.U64 4#usize)
+
+opaque low.x86_64.curve25519_ifma.Curve25519Ifma.x25519_base
+  : low.x86_64.curve25519_ifma.Curve25519Ifma → Array Std.U64 4#usize → Array Std.U64 4#usize → Result (Array Std.U64 4#usize)
+
+opaque low.x86_64.curve25519_ifma.Curve25519Ifma.ed25519_key_pair
+  : low.x86_64.curve25519_ifma.Curve25519Ifma → Array Std.U8 32#usize → Result (Array Std.U8 64#usize × Array Std.U8 32#usize)
+
+opaque low.x86_64.curve25519_ifma.Curve25519Ifma.ed25519_sign
+  : low.x86_64.curve25519_ifma.Curve25519Ifma → Array Std.U8 64#usize → Array Std.U8 32#usize → Slice Std.U8 →
+    Result (Array Std.U8 64#usize)
+
+opaque low.x86_64.curve25519_ifma.Curve25519Ifma.ed25519_verify
+  : low.x86_64.curve25519_ifma.Curve25519Ifma → Array Std.U8 32#usize → Slice Std.U8 → Array Std.U8 64#usize → Result Bool
+
+opaque low.x86_64.curve25519_ifma.Curve25519Ifma.Insts.CoreCloneClone.clone : low.x86_64.curve25519_ifma.Curve25519Ifma → Result low.x86_64.curve25519_ifma.Curve25519Ifma
+
 end rind.x86_64
