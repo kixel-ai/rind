@@ -14,10 +14,12 @@
 //!
 //! verified-garbage proves its routines correct and constant time in Lean,
 //! over its own models of the instructions, which `admin/prove vg`
-//! cosimulates; rind imports no theorem yet (see ALGORITHMS.md). The kernel and the aws-lc assembly are not formally
-//! verified: their correctness rests on rind's tests of them against RFC
-//! 8439, Wycheproof, aws-lc-rs, and HACL*'s rounds, and aws-lc's on its use
-//! in OpenSSL, BoringSSL, and aws-lc.
+//! cosimulates. `proofs/Rind/X86_64/VgChaCha20.lean` imports VG's theorems
+//! and proves the glue around them, with the kernel's contract as a
+//! hypothesis. The kernel and the aws-lc assembly are not formally verified:
+//! their correctness rests on rind's tests of them against RFC 8439,
+//! Wycheproof, aws-lc-rs, and HACL*'s rounds, and aws-lc's on its use in
+//! OpenSSL, BoringSSL, and aws-lc.
 
 use core::arch::x86_64::*;
 use core::mem::MaybeUninit;
@@ -82,16 +84,8 @@ impl ChaCha20 {
             }
             // SAFETY: either of VG's tokens proves the `avx2` cpu feature.
             (Some(_), _, 65..) => unsafe { cipher_avx2(&self.key, &self.counter_nonce, buffer) },
-            (None, Some(_), len @ SSSE3_4X_MIN_LEN..) => {
-                let ptr = buffer.as_mut_ptr();
-                // SAFETY: `buffer` is `len` readable and writable bytes, which
-                // the routine allows to alias exactly, and `key` and
-                // `counter_nonce` are 8 and 4 words. The token proves the
-                // `ssse3` cpu feature. Its 32-bit counter wraps unspecified
-                // past 2^32 blocks, which callers rule out.
-                unsafe {
-                    asm_call!(unsafe extern "sysv64" chacha20_ctr32_ssse3_4x(ptr, ptr, len, &self.key, &self.counter_nonce))
-                }
+            (None, Some(t), SSSE3_4X_MIN_LEN..) => {
+                cipher_ssse3_4x(t, &self.key, &self.counter_nonce, buffer)
             }
             // As in aws-lc, which runs integer code here. The kernel computes
             // one block as a single serial chain, which Zen 5's two-cycle
@@ -109,52 +103,101 @@ impl ChaCha20 {
 #[repr(C, align(64))]
 struct VgState(MaybeUninit<[u64; 96]>);
 
+// One wrapper per routine, each a single call, so that a proof can state
+// each routine's contract about its own wrapper.
+impl VgState {
+    /// A state for `init` to start.
+    #[inline(always)]
+    fn uninit() -> Self {
+        Self(MaybeUninit::uninit())
+    }
+
+    /// verified-garbage's `vg_chacha20_init`: starts the keystream for `key`
+    /// at the block counter and nonce `counter_nonce`.
+    #[inline(always)]
+    fn init(&mut self, key: &[u32; 8], counter_nonce: &[u32; 4]) {
+        // Little-endian words are the bytes VG reads.
+        let (key, counter_nonce) = (
+            key.as_ptr().cast::<[u8; 32]>(),
+            counter_nonce.as_ptr().cast::<[u8; 16]>(),
+        );
+        // SAFETY: `self` is 768 writable bytes, `key` 32 readable bytes, and
+        // `counter_nonce` 16; they are distinct objects, so none overlaps
+        // another or the return address, or wraps the address space.
+        unsafe {
+            asm_call!(unsafe extern "sysv64" (vg::vg_chacha20_init::vg_chacha20_init)(self.0.as_mut_ptr(), key, counter_nonce))
+        }
+    }
+
+    /// verified-garbage's `vg_chacha20_apply_avx2`: XORs the next
+    /// `buffer.len()` bytes of the keystream into `buffer` and returns 1, or
+    /// returns 0 and changes nothing if fewer are left.
+    #[inline(always)]
+    fn apply_avx2(&mut self, _: HaveAvx2, buffer: &mut [u8]) -> u32 {
+        // SAFETY: `self` is 768 readable and writable bytes, of which the
+        // routine reads only those `init` wrote, and `buffer` is `len`; they
+        // are distinct objects, so neither overlaps the other, the return
+        // address, or the stack below it, or wraps the address space. The
+        // token proves the `avx` and `avx2` cpu features.
+        unsafe {
+            asm_call!(unsafe extern "sysv64" (vg::vg_chacha20_apply_avx2::vg_chacha20_apply_avx2)(self.0.as_mut_ptr(), buffer.as_mut_ptr(), buffer.len()))
+        }
+    }
+
+    /// verified-garbage's `vg_chacha20_apply_avx512vl`, as `apply_avx2`.
+    #[inline(always)]
+    fn apply_avx512vl(&mut self, _: HaveAvx512Vl, buffer: &mut [u8]) -> u32 {
+        // SAFETY: as `apply_avx2`'s; the token proves the routine's cpu
+        // features.
+        unsafe {
+            asm_call!(unsafe extern "sysv64" (vg::vg_chacha20_apply_avx512vl::vg_chacha20_apply_avx512vl)(self.0.as_mut_ptr(), buffer.as_mut_ptr(), buffer.len()))
+        }
+    }
+}
+
 /// XORs the keystream for `key` and `counter_nonce` into `buffer` on
 /// verified-garbage's routines: `init` starts the keystream at the block
 /// counter, and `apply` XORs it in. Out of line, so the paths that don't
 /// run it don't set up its 768-byte, cache-aligned frame.
 #[inline(never)]
 fn cipher_vg(vg: Vg, key: &[u32; 8], counter_nonce: &[u32; 4], buffer: &mut [u8]) {
-    let mut state = VgState(MaybeUninit::uninit());
-    let state = state.0.as_mut_ptr();
-    // Little-endian words are the bytes VG reads.
-    let (key, counter_nonce) = (
-        key.as_ptr().cast::<[u8; 32]>(),
-        counter_nonce.as_ptr().cast::<[u8; 16]>(),
-    );
-    let (data, len) = (buffer.as_mut_ptr(), buffer.len());
-    // SAFETY: `state` is 768 writable bytes, `key` 32 readable bytes, and
-    // `counter_nonce` 16; they are distinct objects, so none overlaps
-    // another or the return address, or wraps the address space.
-    unsafe {
-        asm_call!(unsafe extern "sysv64" (vg::vg_chacha20_init::vg_chacha20_init)(state, key, counter_nonce))
-    };
-    // SAFETY: `state` is 768 readable and writable bytes, of which `apply`
-    // reads only those `init` wrote, and `buffer` is `len`; they are
-    // distinct objects, so neither overlaps the other, the return address,
-    // or the stack below it, or wraps the address space. The token proves
-    // the routine's CPU features.
-    let ok = unsafe {
-        match vg {
-            Vg::Avx2(_) => {
-                asm_call!(unsafe extern "sysv64" (vg::vg_chacha20_apply_avx2::vg_chacha20_apply_avx2)(state, data, len))
-            }
-            Vg::Avx512Vl(_) => {
-                asm_call!(unsafe extern "sysv64" (vg::vg_chacha20_apply_avx512vl::vg_chacha20_apply_avx512vl)(state, data, len))
-            }
-        }
+    let mut state = VgState::uninit();
+    state.init(key, counter_nonce);
+    let ok = match vg {
+        Vg::Avx2(t) => state.apply_avx2(t, buffer),
+        Vg::Avx512Vl(t) => state.apply_avx512vl(t, buffer),
     };
     // `apply` refuses, leaving `buffer` as it was, only a keystream past
     // block 2^32 - 1, which the callers rule out: never pass on plaintext.
     assert_eq!(ok, 1, "ChaCha20 block counter would overflow");
 }
 
+/// aws-lc's SSSE3 routine, four blocks at a time.
+fn cipher_ssse3_4x(_: HaveSsse3, key: &[u32; 8], counter_nonce: &[u32; 4], buffer: &mut [u8]) {
+    let (ptr, len) = (buffer.as_mut_ptr(), buffer.len());
+    // SAFETY: `buffer` is `len` readable and writable bytes, which the
+    // routine allows to alias exactly, and `key` and `counter_nonce` are 8
+    // and 4 words. The token proves the `ssse3` cpu feature. Its 32-bit
+    // counter wraps unspecified past 2^32 blocks, which callers rule out.
+    unsafe {
+        asm_call!(unsafe extern "sysv64" chacha20_ctr32_ssse3_4x(ptr, ptr, len, key, counter_nonce))
+    }
+}
+
 /// `bytes` as little-endian words.
+//
+// Indexes rather than splitting into chunks, which Aeneas cannot translate,
+// so `proofs/` can prove `cipher`.
 fn words<const B: usize, const W: usize>(bytes: &[u8; B]) -> [u32; W] {
     const { assert!(B == 4 * W) };
     let mut words = [0; W];
-    for (w, b) in words.iter_mut().zip(bytes.as_chunks::<4>().0) {
-        *w = u32::from_le_bytes(*b);
+    for i in 0..W {
+        words[i] = u32::from_le_bytes([
+            bytes[4 * i],
+            bytes[4 * i + 1],
+            bytes[4 * i + 2],
+            bytes[4 * i + 3],
+        ]);
     }
     words
 }
