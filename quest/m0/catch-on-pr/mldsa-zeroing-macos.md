@@ -9,7 +9,7 @@
 Found by [the uncovered-functions quest](https://github.com/kixel-ai/rind/pull/862) while reading main's red nightlies.
 
 - What failed: the nightly `coverage` workflow's macOS job, [run 43997727786](https://github.com/kixel-ai/rind/actions/runs/43997727786) (2026-11-17), `byte 3968 (0x1) was not cleared after drop` for a 4016-byte value, the ML-DSA-44 `KeyPair::from_seed` the test checks third. It passed in the other macOS runs and on a local M-series Mac.
-- The test drops in place and reads the memory before freeing it, so another allocation cannot have reused the bytes: a nonzero byte is a field the wipe missed, or a write after it, such as a lazily filled cache or a once-cell's state in the public key, set or dropped after the wipe.
+- The test drops in place and reads the memory before freeing it, so another allocation cannot have reused the bytes. `mid::mldsa::KeyPair`'s drop wipes all `size_of::<Self>()` bytes, padding included, so a nonzero byte is either outside the value that drop wipes (a field of a wrapping type, such as the public key) or a write after the wipe, such as a field's drop glue or a lazily filled cache.
 - Reproduce it first, for example by looping the test on macOS with and without `RIND_CPU_DISABLE_sha3=1` (the coverage job runs both), and print which field sits at that offset, then fix the wipe at its root.
 
 ## Related

@@ -45,7 +45,7 @@ pub(crate) fn decode(pem: &str) -> Result<Vec<u8>, Error> {
     }
 
     // `data` lies between ASCII delimiters, so it is a slice of `pem` at
-    // character boundaries, and taking it as one reads none of its bytes.
+    // character boundaries; taking it as one checks only its first byte.
     let at = data.as_ptr().addr() - pem.as_ptr().addr();
     let data = pem.get(at..at + data.len()).ok_or_else(malformed)?;
     let der = Base64::decode_vec(&strip_whitespace(data))
