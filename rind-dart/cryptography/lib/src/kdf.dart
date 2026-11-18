@@ -89,3 +89,70 @@ final class _Pbkdf2 extends Pbkdf2 {
     return SecretKeyData(derived, overwriteWhenDestroyed: true);
   }
 }
+
+final class _Argon2id extends Argon2id {
+  _Argon2id(this.memory, this.parallelism, this.iterations, this.hashLength)
+    : super.constructor() {
+    RangeError.checkValueInInterval(hashLength, 4, 0xffffffff, 'hashLength');
+    // Builds the cost once here only to refuse a bad one where it is
+    // constructed, as the package does.
+    try {
+      rind.Argon2Params(memory, iterations, parallelism);
+    } on rind.RindException catch (e) {
+      if (e.error != rind.RindError.unsupported) rethrow;
+      throw ArgumentError(
+        'Argon2id needs at least one iteration, one lane, and 8 KiB per '
+        'lane, and fewer than 2^24 lanes',
+      );
+    }
+  }
+
+  @override
+  final int memory;
+
+  @override
+  final int parallelism;
+
+  @override
+  final int iterations;
+
+  @override
+  final int hashLength;
+
+  @override
+  Future<SecretKey> deriveKey({
+    required SecretKey secretKey,
+    required List<int> nonce,
+    List<int> optionalSecret = const <int>[],
+    List<int> associatedData = const <int>[],
+  }) async {
+    if (optionalSecret.isNotEmpty || associatedData.isNotEmpty) {
+      throw _unsupported('Argon2id with a secret or associated data');
+    }
+    if (nonce.length < 8) {
+      throw ArgumentError.value(
+        nonce,
+        'nonce',
+        'rind takes Argon2id salts of 8 bytes or more',
+      );
+    }
+    final password = _bytes(await secretKey.extractBytes());
+    final salt = _bytes(nonce);
+    final (memory, iterations, parallelism, hashLength) = (
+      this.memory,
+      this.iterations,
+      this.parallelism,
+      this.hashLength,
+    );
+    // Off this isolate, since Argon2id is built to take long: a handle
+    // cannot cross isolates, so the cost and password are rebuilt there.
+    final derived = await Isolate.run(
+      () => rind.Argon2Secret(password).derive(
+        rind.Argon2Params(memory, iterations, parallelism),
+        salt,
+        hashLength,
+      ),
+    );
+    return SecretKeyData(derived, overwriteWhenDestroyed: true);
+  }
+}

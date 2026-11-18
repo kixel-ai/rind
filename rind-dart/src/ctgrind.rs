@@ -245,6 +245,25 @@ fn macs_and_key_derivation() {
             derived.len(),
         ));
         rind_dart_pbkdf2_secret_free(password);
+
+        // 16 KiB over two passes and two lanes reaches every kind of
+        // reference, as rind's own Argon2id ctgrind test explains.
+        let params = new(|out| rind_dart_argon2_params_new(16, 2, 2, out));
+        let password = new(|out| rind_dart_argon2_secret_new(key.as_ptr(), key.len(), out));
+        let salt = b"saltsalt";
+        let derived =
+            out(|o, _| rind_dart_argon2_derive(password, params, salt.as_ptr(), 8, o, 32));
+        secret(&derived[..]);
+        ok(rind_dart_argon2_verify(
+            password,
+            params,
+            salt.as_ptr(),
+            8,
+            derived.as_ptr(),
+            derived.len(),
+        ));
+        rind_dart_argon2_secret_free(password);
+        rind_dart_argon2_params_free(params);
     }
 
     let other = [3u8; 40];

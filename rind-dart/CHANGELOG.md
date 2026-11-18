@@ -3,6 +3,8 @@
 - The unauthenticated ciphers: AES-CBC (`AesCbcEncryptingKey`,
   `AesCbcDecryptingKey`, `CbcIv`), AES-CTR (`AesCtr`), and ChaCha20
   (`ChaCha20`), sized by `CipherAlgorithm`.
+- Argon2id (`Argon2Params`, `Argon2Secret`), and `RindError.outOfMemory` for
+  a cost whose memory cannot be allocated.
 
 ## 0.1.0
 

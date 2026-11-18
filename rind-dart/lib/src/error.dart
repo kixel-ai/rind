@@ -12,7 +12,7 @@ enum RindError {
   /// its length; [RindException.reason] says why.
   keyRejected,
 
-  /// A signature, MAC tag, or PBKDF2 output did not verify.
+  /// A signature, MAC tag, or PBKDF2 or Argon2id output did not verify.
   badSignature,
 
   /// An AEAD ciphertext, its tag, or its associated data did not
@@ -29,8 +29,12 @@ enum RindError {
   /// bug, which the caller cannot fix.
   fault,
 
-  /// A call was given an algorithm it does not take.
+  /// A call was given an algorithm it does not take, or an Argon2id cost
+  /// below RFC 9106's minimums.
   unsupported,
+
+  /// The memory an Argon2id cost asks for could not be allocated.
+  outOfMemory,
 }
 
 /// A failed rind call.

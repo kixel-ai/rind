@@ -91,6 +91,24 @@ Future<void> main() async {
     'rind': () => edVerifier.verify(message, edRindSignature),
   });
 
+  // The cost the package's documentation suggests: 19 MiB, two passes, and
+  // one lane.
+  final salt = Uint8List(16);
+  final argon2Params = rind.Argon2Params(19 * 1024, 2, 1);
+  final argon2Secret = rind.Argon2Secret(key);
+  await bench('Argon2id 19 MiB, t = 2, p = 1', {
+    for (final MapEntry(:key, :value) in backends.entries)
+      key: () => value
+          .argon2id(
+            memory: 19 * 1024,
+            parallelism: 1,
+            iterations: 2,
+            hashLength: 32,
+          )
+          .deriveKey(secretKey: secretKey, nonce: salt),
+    'rind': () => argon2Secret.derive(argon2Params, salt, 32),
+  });
+
   // The Dart implementation has no ECDSA.
   final ecdsa = rindCryptography.ecdsaP256(rindCryptography.sha256());
   final ecdsaPair = await ecdsa.newKeyPair();

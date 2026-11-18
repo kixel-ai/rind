@@ -3,6 +3,7 @@
 // One library, so the algorithm classes stay private to it.
 library;
 
+import 'dart:isolate';
 import 'dart:math';
 import 'dart:typed_data';
 
@@ -57,7 +58,7 @@ final class RindCryptography extends Cryptography {
     required int parallelism,
     required int iterations,
     required int hashLength,
-  }) => throw _unsupported('Argon2id');
+  }) => _Argon2id(memory, parallelism, iterations, hashLength);
 
   @override
   Blake2b blake2b({int hashLengthInBytes = 64}) =>
