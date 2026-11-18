@@ -87,6 +87,7 @@ pub(crate) mod cpu;
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 pub(crate) mod ct_sde;
+pub(crate) mod curve25519_ifma;
 pub(crate) mod curve25519_x25519;
 pub(crate) mod curve25519_x25519_alt;
 pub(crate) mod curve25519_x25519base;

@@ -75,6 +75,7 @@ pub(crate) mod cpu;
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[path = "../arm/ct_qemu.rs"]
 pub(crate) mod ct_qemu;
+pub(crate) mod curve25519_ifma;
 pub(crate) mod curve25519_x25519;
 pub(crate) mod curve25519_x25519base;
 pub(crate) mod edwards25519_decode;
@@ -129,6 +130,7 @@ pub(crate) mod p521_jadd;
 pub(crate) mod p521_jdouble;
 pub(crate) mod p521_jmixadd;
 pub(crate) mod p521_jscalarmul;
+pub(crate) mod pbkdf2_vg;
 pub(crate) mod sha1;
 pub(crate) mod sha256;
 pub(crate) mod sha3_keccak2_f1600;
