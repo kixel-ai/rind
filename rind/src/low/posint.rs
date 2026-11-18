@@ -110,27 +110,29 @@ impl<const N: usize> PosInt<N> {
     /// Like `from_bytes`, for secret `bytes`: it reads none of them through
     /// a branch or an index, so the value is as wide as `bytes`, leading
     /// zeroes included, and `fit` sets the width it needs.
+    // Indexes, as `to_bytes_fixed` does, which Aeneas can translate, so
+    // `proofs/` can prove RSA's public operation on AVX-512 IFMA.
     pub(crate) fn from_secret_bytes(bytes: &[u8]) -> Result<Self, Error> {
         // A DER integer this wide fits only with a zero sign byte, so the
         // check reveals only whether it is too wide to be valid.
-        let bytes = match bytes.split_first() {
-            Some((&sign, rest)) if bytes.len() == N * 8 + 1 => {
-                if !low::ct::into_public(sign == 0) {
-                    return Err(Error::WrongLength);
-                }
-                rest
+        let bytes = if bytes.len() == N * 8 + 1 {
+            // `eq`, a `bool`, where Aeneas reads `==` as a proposition.
+            if !low::ct::into_public(bytes[0].eq(&0)) {
+                return Err(Error::WrongLength);
             }
-            _ if bytes.len() > N * 8 => return Err(Error::WrongLength),
-            _ => bytes,
+            &bytes[1..]
+        } else if bytes.len() > N * 8 {
+            return Err(Error::WrongLength);
+        } else {
+            bytes
         };
 
         let mut r = Self::zero();
-        for (word, chunk) in r.words.iter_mut().zip(bytes.rchunks(8)) {
-            let mut be = [0; 8];
-            be[8 - chunk.len()..].copy_from_slice(chunk);
-            *word = u64::from_be_bytes(be);
+        let len = bytes.len();
+        for i in 0..len {
+            r.words[i / 8] |= (bytes[len - 1 - i] as u64) << (8 * (i % 8));
         }
-        r.used = bytes.len().div_ceil(8);
+        r.used = len.div_ceil(8);
         Ok(r)
     }
 
@@ -235,7 +237,7 @@ impl<const N: usize> PosInt<N> {
     ///
     /// This is safe assuming `len.used` is in range (a fundamental invariant in this type)
     /// because `len` and `self` share the same type.
-    fn as_words_with_len_of(&self, len: &Self) -> &[u64] {
+    pub(crate) fn as_words_with_len_of(&self, len: &Self) -> &[u64] {
         &self.words[..len.used]
     }
 

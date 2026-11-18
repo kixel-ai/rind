@@ -252,10 +252,12 @@ def Img.encode (i : Img) : ByteArray := Id.run do
 def window : Region := ⟨BitVec.ofNat 64 windowBase, windowLen⟩
 
 /-- The model's state of `i`, which may access only the window. A call's
-unknowns are what the CPU leaves: the return address `ret`, after the call
-instruction, and in `x16`, `x17` and NZCV their values before the call,
-which no veneer changes here (`call`'s order: C, N, Z, V from bit 0). -/
-def Img.state (i : Img) (ret : Nat := 0) : State :=
+(`ret`) unknowns are what the CPU leaves: the return address `ret`, after
+the call instruction, and in `x16`, `x17` and NZCV their values before the
+call, which no veneer changes here (`call`'s order: C, N, Z, V from bit 0).
+Any other case's are zero, so a frame's release (`lose`) keeps every byte
+of the frame, as the CPU does with no signal handler between. -/
+def Img.state (i : Img) (ret : Option Nat := none) : State :=
   let data := i.data
   let flags := ((i.nzcv >>> 1) &&& 1) + 2 * ((i.nzcv >>> 3) &&& 1) + 4 * ((i.nzcv >>> 2) &&& 1) +
     8 * (i.nzcv &&& 1)
@@ -269,12 +271,12 @@ def Img.state (i : Img) (ret : Nat := 0) : State :=
       if o < dataLen then BitVec.ofNat 8 (data.get! o).toNat else 0
     rd := []
     wr := [window]
-    unknowns := fun n => match n with
-      | 0 => BitVec.ofNat 64 ret
-      | 1 => i.gpr[16]!
-      | 2 => i.gpr[17]!
-      | 3 => BitVec.ofNat 64 flags
-      | _ => 0
+    unknowns := fun n => match ret, n with
+      | some ret, 0 => BitVec.ofNat 64 ret
+      | some _, 1 => i.gpr[16]!
+      | some _, 2 => i.gpr[17]!
+      | some _, 3 => BitVec.ofNat 64 flags
+      | _, _ => 0
     syms := fun _ => 0 }
 
 /-- The image of the model's state `s`, which ran from `start`. -/
@@ -423,7 +425,7 @@ def callCase (code : ByteArray) (r : Option Reg) : Gen (Option (Img × Img)) := 
   let mut img ← randomImg
   if let some r := r then
     img := img.setReg r targetAddr
-  let s := img.state (insnAddr + code.size)
+  let s := img.state (some (insnAddr + code.size))
   if let some r := r then
     if icall (.blr r) s != some (BitVec.ofNat 64 targetAddr) then return none
   let some s₁ := call s | return none
