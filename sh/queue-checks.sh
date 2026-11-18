@@ -71,20 +71,27 @@ fi
 : "${GH_TOKEN:?GH_TOKEN is required}"
 echo "queue-checks: waiting for ${selected[*]}"
 
-# A job named NAME, or NAME's jobs as `NAME / job`, each at its latest attempt:
-# every attempt's jobs are read, since a rerun of only the failed jobs may leave
-# a passed check's result in an earlier one. A selected check's jobs
-# appear only once GitHub expands its call, after the selecting job; a check
-# that never runs leaves this waiting until the build's timeout fails the group.
+# A check's jobs are the job named NAME, or its jobs as `NAME / job`, in the
+# latest attempt that has any. Every attempt is read, since a rerun of only the
+# failed jobs may leave a passed check in an earlier one. Only the latest
+# counts, and none older than the selecting job's latest: rerunning that job
+# reruns the checks after it, so an older attempt's result, such as a call it
+# skipped, is stale. A selected check's jobs appear only once GitHub expands
+# its call, after the selecting job; a check that never runs leaves this
+# waiting until the build's timeout fails the group.
 # shellcheck disable=SC2016 # A jq program, not a shell expansion.
 verdict='
-    [.jobs | group_by(.name)[] | max_by(.run_attempt)] as $latest
-    | def jobs($name): [$latest[] | select(.name == $name or (.name | startswith($name + " / ")))];
+    .jobs as $all
+    | def jobs($name; $since): [$all[] | select(.run_attempt >= $since)
+            | select(.name == $name or (.name | startswith($name + " / ")))]
+        | (map(.run_attempt) | max) as $a | map(select(.run_attempt == $a));
     def state($js): if $js == [] then "missing"
         elif any($js[]; .status == "completed" and .conclusion != "success") then "failed"
         elif all($js[]; .status == "completed") then "passed"
         else "running" end;
-    [($select, $names[]) | {name: ., state: state(jobs(.))}] as $c
+    jobs($select; 0) as $s
+    | ([$s[].run_attempt] | max // 0) as $since
+    | [{name: $select, state: state($s)}, ($names[] | {name: ., state: state(jobs(.; $since))})] as $c
     | if any($c[]; .state == "failed") then "failed: \([$c[] | select(.state == "failed") | .name] | join(", "))"
     elif all($c[1:][]; .state == "passed") then "passed"
     else "running" end'
