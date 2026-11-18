@@ -343,18 +343,12 @@ mod tests {
 
         RELEASE.store(true, Ordering::Release);
         drawer.join().unwrap();
+        // Waits as long as the child takes, which under valgrind on an
+        // emulated target can be minutes: a child that hangs keeps the test
+        // running, which libtest reports after a minute.
         let mut status = 0;
-        for _ in 0..1000 {
-            // SAFETY: `pid` is our child and `status` a valid out pointer.
-            let done = unsafe { libc::waitpid(pid, &mut status, libc::WNOHANG) };
-            if done == pid {
-                assert!(libc::WIFEXITED(status) && libc::WEXITSTATUS(status) == 0);
-                return;
-            }
-            std::thread::sleep(core::time::Duration::from_millis(10));
-        }
-        // SAFETY: `pid` is our child, still running.
-        unsafe { libc::kill(pid, libc::SIGKILL) };
-        panic!("the forked child hung instantiating");
+        // SAFETY: `pid` is our child and `status` a valid out pointer.
+        assert_eq!(unsafe { libc::waitpid(pid, &mut status, 0) }, pid);
+        assert!(libc::WIFEXITED(status) && libc::WEXITSTATUS(status) == 0);
     }
 }
