@@ -186,7 +186,7 @@ Intel guarantees the timing of the instructions it lists as data-independent
   guests, and rind knows of no other kernel that does. Intel's list leaves out
   the `VSHA512` instructions (`VSHA512RNDS2`, `VSHA512MSG1`, and
   `VSHA512MSG2`). SHA-384 and SHA-512 do not run them, including on Arrow Lake
-  and Lunar Lake: they take OpenSSL's AVX2 routine on every CPU with AVX2,
+  and Lunar Lake: they take OpenSSL's AVX2 routine on every CPU with AVX2, BMI1, BMI2, POPCNT, and SSSE3,
   and `admin/ct-vartime` refuses `vsha512*`. Should Intel add them to its
   list, the SHA512-extension routine is worth importing again.
 - On Intel processors that do not report `MCDT_NO`, such as its Core processors
