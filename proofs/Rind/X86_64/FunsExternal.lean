@@ -213,15 +213,9 @@ opaque low.x86_64.chacha20.VgState.apply_avx512vl
   : low.x86_64.chacha20.VgState → low.x86_64.cpu.HaveAvx512Vl → Slice Std.U8 →
     Result (Std.U32 × low.x86_64.chacha20.VgState × (Slice Std.U8))
 
-opaque low.x86_64.chacha20.cipher_avx2
-  : Std.Array Std.U32 8#usize → Std.Array Std.U32 4#usize → Slice Std.U8 → Result (Slice Std.U8)
-
 opaque low.x86_64.chacha20.cipher_ssse3_4x
   : low.x86_64.cpu.HaveSsse3 → Std.Array Std.U32 8#usize → Std.Array Std.U32 4#usize →
     Slice Std.U8 → Result (Slice Std.U8)
-
-opaque low.generic.chacha20.cipher
-  : Std.Array Std.U32 8#usize → Std.Array Std.U32 4#usize → Slice Std.U8 → Result (Slice Std.U8)
 
 /-! s2n-bignum's Ed25519 routines, transliterated to inline assembly. -/
 

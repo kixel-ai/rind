@@ -321,7 +321,7 @@ def core.core_arch.x86.avx2._mm256_permute2x128_si256 (IMM8 : Std.I32)
     (a b : core.core_arch.x86.__m256i) : Result core.core_arch.x86.__m256i :=
   ok (ofHalves fun j =>
     let sel := IMM8.bv.toNat / 16 ^ j % 16
-    if sel / 8 % 2 = 1 then 0 else half (b ++ a) (sel % 4))
+    if sel / 8 % 2 = 1 then 0 else [half a 0, half a 1, half b 0, half b 1][sel % 4]!)
 
 /-! ## 512-bit vectors
 

@@ -353,7 +353,7 @@ fn core_2x(key: &[u32; 8], counter_nonce: &[u32; 4], counter: u32, xor_out: &mut
     let mut c = save_c;
     let mut d = save_d;
 
-    for _ in 0..10 {
+    for _ in 0..10usize {
         a = _mm256_add_epi32(a, b);
         d = _mm256_xor_si256(d, a);
         d = rotate_left!(d, 16);
