@@ -55,6 +55,51 @@ expect $'test --workspace -- --exclude rind-rcgen\ntest --package=rind-rcgen --f
 expect $'check --tests --package=rind-rcgen@0.14.4 --package=rind@0.3.2\ncheck --tests --package=rind-rcgen@0.14.4 --features=zeroize' \
     check --tests --package=rind-rcgen@0.14.4 --package=rind@0.3.2
 expect 'build -p rind-rcgen' build -p rind-rcgen
+# A glob in `--exclude` that matches rind-rcgen skips the follow-up.
+expect "test --workspace --exclude rind-*" \
+    test --workspace --exclude 'rind-*'
+expect "test --workspace --exclude=rind-r?gen" \
+    test --workspace --exclude=rind-r?gen
+expect $'test --workspace --exclude rind-r*s\ntest --package=rind-rcgen --features=zeroize' \
+    test --workspace --exclude 'rind-r*s'
+# The follow-up keeps only the features rind-rcgen declares.
+expect $'check --tests --workspace --features=tls12\ncheck --tests --package=rind-rcgen --features=zeroize' \
+    check --tests --workspace --features=tls12
+expect $'check --tests --workspace --features pem,tls12 -F zeroize\ncheck --tests --features=pem --features=zeroize --package=rind-rcgen --features=zeroize' \
+    check --tests --workspace --features pem,tls12 -F zeroize
+expect $'check --tests --workspace -Ftls12\ncheck --tests --package=rind-rcgen --features=zeroize' \
+    check --tests --workspace -Ftls12
 expect ''
+
+# The wrapper's exit status, with a stand-in cargo that exits with each status
+# in turn, one per invocation, the last one repeating.
+stub=$(mktemp)
+trap 'rm -f "$stub" "$stub.n"' EXIT
+cat >"$stub" <<'EOF'
+#!/usr/bin/env bash
+n=$(cat "$0.n" 2>/dev/null || echo 0)
+echo $((n + 1)) >"$0.n"
+statuses=($STUB_STATUSES)
+last=$((${#statuses[@]} - 1))
+exit "${statuses[$((n > last ? last : n))]}"
+EOF
+chmod +x "$stub"
+expect_status() {
+    local want=$1 statuses=$2 got=0
+    shift 2
+    rm -f "$stub.n"
+    RIND_REAL_CARGO=$stub STUB_STATUSES=$statuses "$here/mutants-cargo" "$@" || got=$?
+    if [[ $got -ne $want ]]; then
+        printf 'admin/mutants-cargo %s with statuses %s\n  want: %s\n  got:  %s\n' "$*" "$statuses" "$want" "$got" >&2
+        failed=1
+    fi
+}
+
+# An empty follow-up selection under nextest is not a failure, a real failure
+# is, and cargo's own exit 4 is not tolerated.
+expect_status 0 "0 4" nextest run --workspace --no-tests=fail
+expect_status 101 "0 101" nextest run --workspace
+expect_status 4 "4" nextest run --workspace
+expect_status 4 "0 4" test --workspace
 
 exit "$failed"
