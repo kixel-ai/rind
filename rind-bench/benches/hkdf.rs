@@ -59,6 +59,7 @@ fn bench<V: verified_garbage::hmac::HmacHash>(
         })
     });
     group.bench_function("extract-expand/rind", |b| {
+        let _dit = criterion::rind_dit();
         b.iter(|| {
             let mut out = [0u8; 32];
             rind::hkdf::Salt::new(ours, b"salt")
@@ -113,6 +114,7 @@ fn bench<V: verified_garbage::hmac::HmacHash>(
         .extract(&secret)
         .unwrap();
     group.bench_function("expand/rind", |b| {
+        let _dit = criterion::rind_dit();
         b.iter(|| {
             let mut out = [0u8; 32];
             prk.fill(&info, &mut out).unwrap();
@@ -120,6 +122,7 @@ fn bench<V: verified_garbage::hmac::HmacHash>(
         })
     });
     group.bench_function("expand-aes-256-gcm-key/rind", |b| {
+        let _dit = criterion::rind_dit();
         b.iter(|| {
             black_box(rind::aead::Key::from(
                 prk.expand(&info, &rind::aead::AES_256_GCM).unwrap(),

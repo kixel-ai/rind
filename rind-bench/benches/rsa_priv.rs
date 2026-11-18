@@ -483,6 +483,7 @@ fn rsa_load(c: &mut Criterion) {
         });
 
         group.bench_function("rind-sign", |b| {
+            let _dit = criterion::rind_dit();
             use rind::rsa::{KeyPair, sign};
             let key = KeyPair::from_pkcs1(private_key).unwrap();
             b.iter(|| black_box(key.sign(&sign::PKCS1_SHA256, b"hello")).unwrap())
