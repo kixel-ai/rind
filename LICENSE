@@ -248,8 +248,10 @@ pyca/verified-garbage <https://github.com/pyca/verified-garbage>
   and its key generation and decapsulation on x86_64 with AVX-512;
   PBKDF2 on aarch64 over HMAC-SHA1 and HMAC-SHA256 with the crypto
   extension and over HMAC-SHA384 and HMAC-SHA512 with the SHA-512
-  instructions; and the Keccak, hash, and arithmetic routines they
-  call.
+  instructions; P-256's public key derivation, ECDH, and ECDSA
+  verification on x86_64 with BMI2 and ADX, ECDH and verification
+  also with AVX-512 IFMA, and on aarch64; and the Keccak, hash,
+  arithmetic, and point routines and tables they call.
   Copyright (c) Individual contributors.
   License: Apache-2.0 OR BSD-3-Clause, which the files keep.
 
