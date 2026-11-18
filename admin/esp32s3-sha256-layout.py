@@ -155,8 +155,10 @@ def check_ssai(insns):
     A rotate is `ssai` of 2, 6, 7, 11, 13, 17, 18, 19, 22, or 25, then
     `src`. The byte swap is `l32i`, `ssai 8`, `srli` or `extui` by 16,
     then three `src`. Pairing alone would accept `ssai 12` or an `src`
-    that consumes an older SAR.
+    that consumes an older SAR, so every `src` must also belong to one of
+    those two sequences.
     """
+    consumed = set()
     i = 0
     while i < len(insns):
         _addr, mnem, rest = insns[i]
@@ -170,6 +172,7 @@ def check_ssai(insns):
         window = insns[i + 1 : i + 5]
         mnems = [item[1] for item in window]
         if n in ROTATE_SAR and mnems[:1] == ["src"]:
+            consumed.add(i + 1)
             i += 2
             continue
         # The byte swap's `srli` by 16 is the same extract the Xtensa
@@ -184,10 +187,14 @@ def check_ssai(insns):
             and 16 in shift
             and mnems[1:4] == ["src", "src", "src"]
         ):
+            consumed.update((i + 2, i + 3, i + 4))
             i += 5
             continue
         shown = " ".join(f"{item[1]} {item[2]}".strip() for item in insns[max(0, i - 1) : i + 5])
         raise Fail(f"ssai {n} is not a FIPS rotate or the byte swap: {shown}")
+    for index, (addr, mnem, rest) in enumerate(insns):
+        if mnem == "src" and index not in consumed:
+            raise Fail(f"src at {addr:#x} {rest} does not follow its own ssai")
     return None
 
 
@@ -197,11 +204,24 @@ def check_no_calls(insns, what):
             raise Fail(f"{what} contains {mnem} at {addr:#x} {rest}")
 
 
-def l32r_address(insns, call_index):
-    """Address in the comment of the l32r that feeds this call, if printed."""
-    for addr, mnem, rest in reversed(insns[:call_index]):
-        if mnem != "l32r":
+# Mnemonics whose first register operand is read, not written.
+NO_DEST = re.compile(r"^(?:s(?:8|16|32)\w*|b\w*)$")
+
+
+def l32r_address(insns, call_index, reg):
+    """Address in the comment of the l32r that defines `reg` for this call.
+
+    The nearest earlier instruction that writes `reg` must be an `l32r`
+    with a printed address; any other writer, or none, is unresolved.
+    """
+    for _addr, mnem, rest in reversed(insns[:call_index]):
+        if NO_DEST.match(mnem):
             continue
+        regs = re.findall(r"\ba\d+\b", rest)
+        if not regs or regs[0] != reg:
+            continue
+        if mnem != "l32r":
+            return None
         # `l32r a6, ADDR <sym>` or `l32r a6, off <lit> (ADDR <sym>)`.
         paren = re.search(r"\(([0-9a-fA-F]+)\b", rest)
         if paren:
@@ -228,9 +248,10 @@ def check_driver_calls(insns, block_addr, block_size, linked):
         if mnem.startswith("callx"):
             if not linked:
                 continue
-            target = l32r_address(insns, i)
+            operand = re.findall(r"\ba\d+\b", rest)
+            target = l32r_address(insns, i, operand[0]) if operand else None
             if target is None:
-                raise Fail(f"driver {mnem} at {addr:#x} has no resolved literal")
+                raise Fail(f"driver {mnem} at {addr:#x} {rest} has no resolved literal")
             if not covers(block_addr, block_size, target):
                 raise Fail(f"driver calls {target:#x}, outside the block")
             continue
