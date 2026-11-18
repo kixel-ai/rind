@@ -62,6 +62,8 @@ final class Argon2Secret extends _Handle {
   /// [RindError.outOfMemory] if the memory [params] asks for cannot be
   /// allocated.
   Uint8List derive(Argon2Params params, Uint8List salt, int length) {
+    // Refused before allocating, so a huge length cannot exhaust memory.
+    if (length > 0xffffffff) throw const RindException(RindError.wrongLength);
     return _native(salt, (saltPointer) {
       return _native(Uint8List(length), (out) {
         _check(

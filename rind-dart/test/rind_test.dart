@@ -191,6 +191,10 @@ void main() {
         () => secret.derive(params, ascii('somesalt'), 3),
         throwsRind(RindError.wrongLength),
       );
+      expect(
+        () => secret.derive(params, ascii('somesalt'), 1 << 40),
+        throwsRind(RindError.wrongLength),
+      );
     });
 
     test('refuses costs below RFC 9106', () {
