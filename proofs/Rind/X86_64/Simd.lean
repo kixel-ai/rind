@@ -273,16 +273,11 @@ def core.core_arch.x86.avx._mm256_set_epi8
     e21.bv ++ e20.bv ++ e19.bv ++ e18.bv ++ e17.bv ++ e16.bv ++ e15.bv ++ e14.bv ++ e13.bv ++ e12.bv ++
     e11.bv ++ e10.bv ++ e9.bv ++ e8.bv ++ e7.bv ++ e6.bv ++ e5.bv ++ e4.bv ++ e3.bv ++ e2.bv ++ e1.bv ++ e0.bv)
 
-/-- `_mm256_setr_epi8`: the bytes in order, the first lowest. -/
-def core.core_arch.x86.avx._mm256_setr_epi8
-    (e0 e1 e2 e3 e4 e5 e6 e7 e8 e9 e10 e11 e12 e13 e14 e15 e16 e17 e18 e19 e20 e21 e22 e23 e24 e25 e26 e27 e28 e29 e30 e31 : Std.I8) : Result core.core_arch.x86.__m256i :=
-  ok (e31.bv ++ e30.bv ++ e29.bv ++ e28.bv ++ e27.bv ++ e26.bv ++ e25.bv ++ e24.bv ++ e23.bv ++ e22.bv ++ e21.bv ++ e20.bv ++ e19.bv ++ e18.bv ++ e17.bv ++ e16.bv ++ e15.bv ++ e14.bv ++ e13.bv ++ e12.bv ++ e11.bv ++ e10.bv ++ e9.bv ++ e8.bv ++ e7.bv ++ e6.bv ++ e5.bv ++ e4.bv ++ e3.bv ++ e2.bv ++ e1.bv ++ e0.bv)
-
-/-- `_mm256_extract_epi64::<INDEX>`, `VPEXTRQ` after `VEXTRACTI128`: the
-64-bit lane bits 0 and 1 of `INDEX` select. -/
-def core.core_arch.x86_64.avx._mm256_extract_epi64 (INDEX : Std.I32) (a : core.core_arch.x86.__m256i) :
-    Result Std.I64 :=
-  ok ⟨a.extractLsb' (64 * (INDEX.bv.toNat % 4)) 64⟩
+/-- `_mm256_extract_epi32::<INDEX>`, `VPEXTRD` after `VEXTRACTI128`: the
+32-bit lane bits 0 to 2 of `INDEX` select. -/
+def core.core_arch.x86.avx._mm256_extract_epi32 (INDEX : Std.I32) (a : core.core_arch.x86.__m256i) :
+    Result Std.I32 :=
+  ok ⟨lane32x8 a (INDEX.bv.toNat % 8)⟩
 
 /-- `_mm256_or_si256`, `VPOR`. -/
 def core.core_arch.x86.avx2._mm256_or_si256 (a b : core.core_arch.x86.__m256i) :

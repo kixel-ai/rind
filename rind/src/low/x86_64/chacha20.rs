@@ -408,73 +408,15 @@ fn core_2x(key: &[u32; 8], counter_nonce: &[u32; 4], counter: u32, xor_out: &mut
     let k2 = _mm256_permute2x128_si256(a, b, 0x31);
     let k3 = _mm256_permute2x128_si256(c, d, 0x31);
 
-    if xor_out.len() == 128 {
-        xor_32(&mut xor_out[0..32], k0);
-        xor_32(&mut xor_out[32..64], k1);
-        xor_32(&mut xor_out[64..96], k2);
-        xor_32(&mut xor_out[96..128], k3);
-    } else if xor_out.len() == 32 {
-        xor_32(xor_out, k0);
-    } else {
-        // slow path
-        let mut ks = [0u8; 128];
-        ks[0..32].copy_from_slice(&store_256(k0));
-        ks[32..64].copy_from_slice(&store_256(k1));
-        ks[64..96].copy_from_slice(&store_256(k2));
-        ks[96..128].copy_from_slice(&store_256(k3));
-        for i in 0..xor_out.len() {
-            xor_out[i] ^= ks[i];
-        }
+    let mut ks = [0u8; 128];
+    ks[0..32].copy_from_slice(&store_256(k0));
+    ks[32..64].copy_from_slice(&store_256(k1));
+    ks[64..96].copy_from_slice(&store_256(k2));
+    ks[96..128].copy_from_slice(&store_256(k3));
+    let ks = &ks[..xor_out.len()];
+    for i in 0..ks.len() {
+        xor_out[i] ^= ks[i];
     }
-}
-
-/// XORs `ks` into the 32 bytes of `xor_out`.
-#[target_feature(enable = "avx2")]
-#[inline]
-fn xor_32(xor_out: &mut [u8], ks: __m256i) {
-    let x = _mm256_xor_si256(load_256((&*xor_out).try_into().unwrap()), ks);
-    xor_out.copy_from_slice(&store_256(x));
-}
-
-/// `bytes` as a vector, its first byte lowest, as `_mm256_loadu_si256`
-/// loads it.
-#[target_feature(enable = "avx2")]
-#[inline]
-fn load_256(bytes: &[u8; 32]) -> __m256i {
-    _mm256_setr_epi8(
-        bytes[0] as i8,
-        bytes[1] as i8,
-        bytes[2] as i8,
-        bytes[3] as i8,
-        bytes[4] as i8,
-        bytes[5] as i8,
-        bytes[6] as i8,
-        bytes[7] as i8,
-        bytes[8] as i8,
-        bytes[9] as i8,
-        bytes[10] as i8,
-        bytes[11] as i8,
-        bytes[12] as i8,
-        bytes[13] as i8,
-        bytes[14] as i8,
-        bytes[15] as i8,
-        bytes[16] as i8,
-        bytes[17] as i8,
-        bytes[18] as i8,
-        bytes[19] as i8,
-        bytes[20] as i8,
-        bytes[21] as i8,
-        bytes[22] as i8,
-        bytes[23] as i8,
-        bytes[24] as i8,
-        bytes[25] as i8,
-        bytes[26] as i8,
-        bytes[27] as i8,
-        bytes[28] as i8,
-        bytes[29] as i8,
-        bytes[30] as i8,
-        bytes[31] as i8,
-    )
 }
 
 /// `v`'s bytes, the lowest first, as `_mm256_storeu_si256` stores them.
@@ -482,10 +424,14 @@ fn load_256(bytes: &[u8; 32]) -> __m256i {
 #[inline]
 fn store_256(v: __m256i) -> [u8; 32] {
     let mut bytes = [0u8; 32];
-    bytes[0..8].copy_from_slice(&(_mm256_extract_epi64(v, 0) as u64).to_le_bytes());
-    bytes[8..16].copy_from_slice(&(_mm256_extract_epi64(v, 1) as u64).to_le_bytes());
-    bytes[16..24].copy_from_slice(&(_mm256_extract_epi64(v, 2) as u64).to_le_bytes());
-    bytes[24..32].copy_from_slice(&(_mm256_extract_epi64(v, 3) as u64).to_le_bytes());
+    bytes[0..4].copy_from_slice(&(_mm256_extract_epi32(v, 0) as u32).to_le_bytes());
+    bytes[4..8].copy_from_slice(&(_mm256_extract_epi32(v, 1) as u32).to_le_bytes());
+    bytes[8..12].copy_from_slice(&(_mm256_extract_epi32(v, 2) as u32).to_le_bytes());
+    bytes[12..16].copy_from_slice(&(_mm256_extract_epi32(v, 3) as u32).to_le_bytes());
+    bytes[16..20].copy_from_slice(&(_mm256_extract_epi32(v, 4) as u32).to_le_bytes());
+    bytes[20..24].copy_from_slice(&(_mm256_extract_epi32(v, 5) as u32).to_le_bytes());
+    bytes[24..28].copy_from_slice(&(_mm256_extract_epi32(v, 6) as u32).to_le_bytes());
+    bytes[28..32].copy_from_slice(&(_mm256_extract_epi32(v, 7) as u32).to_le_bytes());
     bytes
 }
 

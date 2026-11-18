@@ -310,34 +310,25 @@ fn main() {
     }
     for w in inputs.windows(2) {
         let a = v256(w[0], w[1]);
-        let b: [i8; 32] = unsafe { transmute(a) };
-        let r = unsafe {
-            _mm256_setr_epi8(
-                b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7], b[8], b[9], b[10], b[11], b[12],
-                b[13], b[14], b[15], b[16], b[17], b[18], b[19], b[20], b[21], b[22], b[23], b[24],
-                b[25], b[26], b[27], b[28], b[29], b[30], b[31],
-            )
-        };
-        let args: Vec<String> = b.iter().map(|x| format!("⟨{}#8⟩", *x as u8)).collect();
-        guard(
-            format!("core.core_arch.x86.avx._mm256_setr_epi8 {}", args.join(" ")),
-            q256(r),
-        );
         let x = unsafe {
             [
-                _mm256_extract_epi64::<0>(a),
-                _mm256_extract_epi64::<1>(a),
-                _mm256_extract_epi64::<2>(a),
-                _mm256_extract_epi64::<3>(a),
+                _mm256_extract_epi32::<0>(a),
+                _mm256_extract_epi32::<1>(a),
+                _mm256_extract_epi32::<2>(a),
+                _mm256_extract_epi32::<3>(a),
+                _mm256_extract_epi32::<4>(a),
+                _mm256_extract_epi32::<5>(a),
+                _mm256_extract_epi32::<6>(a),
+                _mm256_extract_epi32::<7>(a),
             ]
         };
         for (i, x) in x.iter().enumerate() {
             guard(
                 format!(
-                    "((·.bv) <$> core.core_arch.x86_64.avx._mm256_extract_epi64 ⟨{i}#32⟩ {})",
+                    "((·.bv) <$> core.core_arch.x86.avx._mm256_extract_epi32 ⟨{i}#32⟩ {})",
                     q256(a)
                 ),
-                format!("{}#64", *x as u64),
+                format!("{}#32", *x as u32),
             );
         }
         let d: [i32; 8] = unsafe { transmute(a) };

@@ -158,7 +158,8 @@ pub(crate) fn cipher(key: &[u32; 8], counter_nonce: &[u32; 4], buffer: &mut [u8]
             64
         };
         let block = &mut buffer[done..done + n];
-        for i in 0..block.len() {
+        let ks = &ks[..n];
+        for i in 0..ks.len() {
             block[i] ^= ks[i];
         }
         input[12] = input[12].wrapping_add(1);
