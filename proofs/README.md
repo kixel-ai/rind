@@ -229,7 +229,9 @@ checks that the registrations they cite still emit the routines rind runs:
 `Rind/VgOutcome.lean` and `Rind/<Arch>/VgMlKem.lean` restate VG's contracts
 for the ML-KEM-768 routines rind runs as one axiom per wrapper in
 `low::<arch>::mlkem768_vg`. Each states only what the wrapper returns,
-not VG's wipe of its scratch or what the routine may leak. No theorem rests
+not VG's wipe of its scratch or what the routine may leak. The contracts
+they restate, VG's `Spec/MlKem/Contract.lean` and `Spec/MlKem/EncapsH.lean`,
+are not vendored, so a re-pin compares them at VG's new commit. No theorem rests
 on them yet: the ✓ also needs rind's glue in `mid/mlkem.rs` proven, and its
 fallback to rind's arithmetic.
 
@@ -610,9 +612,7 @@ assumes `RunsSha3`: rind's entry guard and CPU checks pass. x86_64's AVX-512
 eight-way Keccak, which ML-KEM-1024's sampler runs, is not
 proven; ML-KEM-768 runs pyca/verified-garbage's code there instead.
 Wherever rind's sampler runs for ML-KEM-768, it samples eight of its nine
-polynomials four at a time and the ninth alone, never eight at a time; on
-that tier it runs only when a VG routine reaches its `SampleNTT` bound, or
-when test and FIPS builds' `DecapKey::from_bytes` imports an expanded key.
+polynomials four at a time and the ninth alone, never eight at a time.
 
 The portable backend's Keccak-f, which its SHA-3, ML-KEM, and ML-DSA run, in
 `Rind/Portable/Keccak.lean`, over a translation of `low/portable/keccak.rs`

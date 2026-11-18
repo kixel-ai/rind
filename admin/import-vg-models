@@ -72,7 +72,7 @@ def main():
         if module in want:
             continue
         want[module] = subprocess.run(
-            ["git", "-C", clone, "show", f"{REV}:lean/{path_of(module)}"],
+            ["git", "--no-replace-objects", "-C", clone, "show", f"{REV}:lean/{path_of(module)}"],
             check=True, stdout=subprocess.PIPE,
         ).stdout
         todo += IMPORT.findall(want[module].decode())
