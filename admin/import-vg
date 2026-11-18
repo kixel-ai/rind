@@ -84,6 +84,12 @@ ROOTS = {
         "vg_mlkem768_encaps_x2_sha3_keccak_sha3",
         "vg_mlkem768_encaps_h_x2_sha3",
         "vg_mlkem768_encaps_h_x2_sha3_keccak_sha3",
+        # PBKDF2 over HMAC-SHA1 and HMAC-SHA256 with the crypto extension,
+        # and over HMAC-SHA384 and HMAC-SHA512 with the SHA-512 instructions.
+        "vg_pbkdf2_hmac_sha1_sha2",
+        "vg_pbkdf2_hmac_sha256_sha2",
+        "vg_pbkdf2_hmac_sha384_sha512",
+        "vg_pbkdf2_hmac_sha512_sha512",
     ],
 }
 
