@@ -6,9 +6,10 @@ open Aeneas Aeneas.Std Result rind.spec
 /-!
 # `cipher::ChaCha20` on pyca/verified-garbage's routines, from 256 bytes on x86_64
 
-Where the CPU has AVX2, `cipher::ChaCha20` runs pyca/verified-garbage's (VG's)
-AVX2 routine, or its AVX-512 VL one, from 256 bytes, and a tail of two to four
-blocks after their eight-block loop on rind's two-block kernel. The axioms
+Where the CPU-feature checks find AVX2 or AVX-512 VL (`RunsVg`),
+`cipher::ChaCha20` runs pyca/verified-garbage's (VG's) AVX2 routine, or its
+AVX-512 VL one, from 256 bytes, and a remainder of 65 to 255 bytes after the
+last whole 512-byte group on rind's two-block kernel. The axioms
 below restate VG's Lean theorems about `vg_chacha20_init`,
 `vg_chacha20_apply_avx2`, and `vg_chacha20_apply_avx512vl` about the Rust
 wrappers that call them, `VgState::init`, `VgState::apply_avx2`, and
@@ -25,8 +26,10 @@ Trusted: each restatement, that `Rind.VgChaCha20` is VG's spec, and that each
 wrapper passes the routine its state's 768 bytes, which
 `Rind.X86_64.TypesExternal` models as the state, and the key's and counter
 and nonce's words as the little-endian bytes VG reads. VG's theorems rest on
-its models of the instructions, which `admin/prove vg` cosimulates against the
-CPU for every instruction of VG's code rind runs, and on its own Lean kernel
+its models of the instructions, which `admin/prove vg` cosimulates for each
+instruction of VG's code rind runs, on the CPU or, where it lacks a feature,
+under Intel SDE, but for `jmp`, static addresses, and a lone `ret`, which its
+check that rind's copies are VG's text covers; and on VG's own Lean kernel
 check, at the commit `admin/import-vg` pins.
 -/
 
@@ -54,7 +57,9 @@ changes. -/
 /-- VG's `vg_chacha20_init` on x86_64 meets `VG.Spec.ChaCha20.initContract`
 ([`Stream.init_verified`](https://github.com/pyca/verified-garbage/blob/0aa40d6c21fd02943fe5b38a5b69b6213d07764d/lean/VerifiedGarbage/Proof/ChaCha20/X86_64/Stream/Init.lean),
 which [`Artifacts/ChaCha20/X86_64.lean`](https://github.com/pyca/verified-garbage/blob/0aa40d6c21fd02943fe5b38a5b69b6213d07764d/lean/VerifiedGarbage/Artifacts/ChaCha20/X86_64.lean)
-registers as `initReg`, of the code VG emits): the state holds the key and
+registers as `Scrub.initReg`
+([`ScrubInit.lean`](https://github.com/pyca/verified-garbage/blob/0aa40d6c21fd02943fe5b38a5b69b6213d07764d/lean/VerifiedGarbage/Proof/ChaCha20/X86_64/ScrubInit.lean)), which wraps it with `withScrub`, of
+the code VG emits): the state holds the key and
 the whole keystream for the counter and nonce. -/
 @[step]
 axiom vg_chacha20_init_spec (st : VgState) (key : Std.Array U32 8#usize) (counter_nonce : Std.Array U32 4#usize) :
@@ -66,7 +71,9 @@ axiom vg_chacha20_init_spec (st : VgState) (key : Std.Array U32 8#usize) (counte
 `VG.Spec.ChaCha20.applyContract` ([`Stream.apply_verified`](https://github.com/pyca/verified-garbage/blob/0aa40d6c21fd02943fe5b38a5b69b6213d07764d/lean/VerifiedGarbage/Proof/ChaCha20/X86_64/Stream/ApplyCT.lean)
 for its AVX2 `vg_chacha20_xor`, which
 [`Artifacts/ChaCha20/X86_64.lean`](https://github.com/pyca/verified-garbage/blob/0aa40d6c21fd02943fe5b38a5b69b6213d07764d/lean/VerifiedGarbage/Artifacts/ChaCha20/X86_64.lean)
-registers as `applyReg avx2`, of the code VG emits): if at least the data's
+registers as `Scrub.applyReg avx2`
+([`Scrub.lean`](https://github.com/pyca/verified-garbage/blob/0aa40d6c21fd02943fe5b38a5b69b6213d07764d/lean/VerifiedGarbage/Proof/ChaCha20/X86_64/Scrub.lean)), which wraps it with `withScrub`, of the
+code VG emits): if at least the data's
 length of keystream is left, it XORs the next bytes of it into the data,
 keeps the rest, and returns 1; otherwise it returns 0 and changes neither. -/
 @[step]
@@ -83,7 +90,7 @@ axiom vg_chacha20_apply_avx2_spec (st : VgState) (t : low.x86_64.cpu.HaveAvx2) (
 
 /-- VG's `vg_chacha20_apply_avx512vl` on x86_64 meets
 `VG.Spec.ChaCha20.applyContract`, as `vg_chacha20_apply_avx2_spec` states, for its AVX-512
-VL `vg_chacha20_xor` (`applyReg avx512Vl`). -/
+VL `vg_chacha20_xor` (`Scrub.applyReg avx512Vl`). -/
 @[step]
 axiom vg_chacha20_apply_avx512vl_spec (st : VgState) (t : low.x86_64.cpu.HaveAvx512Vl) (data : Slice U8) :
     VgState.apply_avx512vl st t data ⦃ r st' data' =>
@@ -379,7 +386,8 @@ def RunsVg : Prop :=
   ∃ a b s, low.x86_64.cpu.HaveAvx512Vl.check = ok a ∧ low.x86_64.cpu.HaveAvx2.check = ok b ∧
     low.x86_64.cpu.HaveSsse3.check = ok s ∧ (a.isSome ∨ b.isSome)
 
-/-- ChaCha20 over at least 256 bytes on a CPU with AVX2: RFC 8439's
+/-- ChaCha20 over at least 256 bytes where the CPU-feature checks find AVX2
+or AVX-512 VL (`RunsVg`): RFC 8439's
 encryption of the buffer under the key, the block counter, and the nonce, if
 the counter covers it before it wraps; otherwise `WrongLength`, with the
 buffer unchanged. -/

@@ -38,6 +38,10 @@ ROOTS = [
 ] + [
     # The specs whose functions rind's axioms about VG's routines state.
     "VerifiedGarbage.Spec.Rsa.PrivatePrecompute",
+    # ChaCha20's spec and contracts, which proofs/Rind/VgChaCha20.lean
+    # adapts rather than imports: a pin that changes them fails `--check`,
+    # so that adaptation is reviewed against the new text.
+    "VerifiedGarbage.Spec.ChaCha20.Contract",
 ]
 
 IMPORT = re.compile(r"^(?:public )?(?:meta )?import (VerifiedGarbage\.[A-Za-z0-9_.]+)\b", re.M)

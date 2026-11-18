@@ -12,7 +12,9 @@ open rind.spec
 The RFC 8439 spec of ChaCha20 in pyca/verified-garbage's (VG's)
 `Spec/ChaCha20.lean`, which VG's theorems about its streaming routines state
 their results against (`Spec/ChaCha20/Contract.lean`), at the commit
-`admin/import-vg` pins. VG's spec is Lean already, so the cipher's definitions
+`admin/import-vg` pins. `admin/import-vg-models` vendors both under
+`proofs/verified-garbage/`, so a pin that changes them fails its `--check`
+until this file is reviewed against the new text. VG's spec is Lean already, so the cipher's definitions
 are its text. Those over memory read the streaming state's 768 bytes `st`
 instead: VG's `m (p + i)`, for the state at `p`, is `st[i]!`, and its
 little-endian `Mem.read` and `Mem.readW` read `st` from an offset. The
@@ -103,7 +105,8 @@ def read (st : List (BitVec 8)) (a : Nat) : (n : Nat) → BitVec (8 * n)
   | 0 => 0#0
   | n + 1 => (read st (a + 1) n ++ st[a]! : BitVec (8 * n + 8))
 
-/-- `Mem.readW`: the little-endian read of a `w`-bit value from offset `a`. -/
+/-- `Mem.readW`: the little-endian read of a `w`-bit value from offset `a`
+(`w` a multiple of 8). -/
 def readW (st : List (BitVec 8)) (a w : Nat) : BitVec w := (read st a (w / 8)).setWidth w
 
 /-- `stateAt`: the 16-word state at the start of the streaming state. -/

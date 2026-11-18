@@ -6,11 +6,12 @@
 //! AVX2 routine, or its AVX-512 VL one where the CPU has that too, imported
 //! by `admin/import-vg`; below that, rind's two-block AVX2 kernel from two
 //! blocks, and HACL*'s verified rounds in general-purpose registers for one.
-//! VG takes what follows its eight-block loop one block at a time, so a tail
-//! of two to four blocks runs on the kernel. Where the CPU has SSSE3 but not AVX2, aws-lc's
-//! `chacha-x86_64` SSSE3 routine, four blocks at a time, above 128 bytes, as
-//! aws-lc runs it, imported by `admin/import-aws-lc`; otherwise HACL*'s
-//! rounds, where aws-lc runs integer code.
+//! VG's AVX2 routine takes what follows its eight-block loop one block at a
+//! time, so on either routine a remainder of two to four blocks after the
+//! last whole 512-byte group runs on the kernel. Where the CPU has SSSE3 but
+//! not AVX2, aws-lc's `chacha-x86_64` SSSE3 routine, four blocks at a time,
+//! above 128 bytes, as aws-lc runs it, imported by `admin/import-aws-lc`;
+//! otherwise HACL*'s rounds, where aws-lc runs integer code.
 //!
 //! verified-garbage proves its routines correct and constant time in Lean,
 //! over its own models of the instructions, which `admin/prove vg`
@@ -68,8 +69,9 @@ impl ChaCha20 {
     pub(crate) fn cipher(&mut self, buffer: &mut [u8]) {
         match (self.vg, self.ssse3, buffer.len()) {
             (Some(vg), _, len @ VG_MIN_LEN..) => {
-                // VG takes what follows its eight-block loop one block at
-                // a time, which loses to the kernel for two to four blocks.
+                // VG's AVX2 routine takes what follows its eight-block loop
+                // one block at a time, which loses to the kernel for two to
+                // four blocks.
                 let tail = match len % 512 {
                     tail @ 65..VG_MIN_LEN => tail,
                     _ => 0,
@@ -204,9 +206,9 @@ fn words<const B: usize, const W: usize>(bytes: &[u8; B]) -> [u32; W] {
 }
 
 /// From this length verified-garbage's routines run, and from it on, a tail
-/// of two to four blocks after their eight-block loop runs on the two-block
-/// kernel instead: VG takes those blocks one at a time, which lost to the
-/// kernel by up to 1.73x on Arrow Lake.
+/// of two to four blocks after the last whole 512-byte group runs on the
+/// two-block kernel instead: VG's AVX2 routine takes those blocks one at a
+/// time, which lost to the kernel by up to 1.73x on Arrow Lake.
 const VG_MIN_LEN: usize = 256;
 
 /// From this length aws-lc runs its SSSE3 routine, which computes four
