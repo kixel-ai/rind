@@ -1,3 +1,7 @@
+-- Adapted from pyca/verified-garbage (https://github.com/pyca/verified-garbage),
+-- `lean/VerifiedGarbage/Spec/ChaCha20.lean` at 0aa40d6c21fd02943fe5b38a5b69b6213d07764d.
+-- Copyright (c) Individual contributors.
+-- SPDX-License-Identifier: Apache-2.0 OR BSD-3-Clause
 import Rind.S2nChaCha20Poly1305
 import Rind.AesKw
 open rind.spec
@@ -16,8 +20,6 @@ theorems here prove what rind's proof of the routines' Rust needs: that the
 keystream VG's `init` sets up, XORed into a message, is `Rind.Spec`'s
 `chacha20.encrypt`, and that the state holds as many bytes of keystream as
 its count says.
-
-VG's spec is Apache-2.0 OR BSD-3-Clause, as its code is.
 -/
 
 namespace rind.spec.vg

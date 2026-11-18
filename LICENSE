@@ -259,6 +259,12 @@ pyca/verified-garbage <https://github.com/pyca/verified-garbage>
   their license.
   Copyright (c) Individual contributors.
   License: Apache-2.0 OR BSD-3-Clause, taken under Apache-2.0.
+
+  What: proofs/Rind/VgChaCha20.lean, which adapts verified-garbage's
+  Lean ChaCha20 spec, Spec/ChaCha20.lean, at the same commit, to read
+  its streaming state's bytes.
+  Copyright (c) Individual contributors.
+  License: Apache-2.0 OR BSD-3-Clause, which the file keeps.
   verified-garbage has no NOTICE file.
 
 SPHINCS+ <https://github.com/sphincs/sphincsplus>

@@ -903,8 +903,9 @@ down to pyca/verified-garbage's AVX2 and AVX-512 VL routines, in
 It rests on the axioms `vg_chacha20_init_spec`,
 `vg_chacha20_apply_avx2_spec`, and `vg_chacha20_apply_avx512vl_spec`, which
 restate VG's theorems, and composes them as `cipher` does: VG's routines over
-whole 512-byte groups, and rind's two-block AVX2 kernel over a tail of two to
-four blocks from the block counter past them. It assumes `Kernel`, that
+the whole buffer, or, when what follows its last whole 512-byte group is two
+to four blocks, over the groups, and rind's two-block AVX2 kernel over that
+tail from the block counter past them. It assumes `Kernel`, that
 kernel's contract, which no proof covers yet;
 [the x86_64 cipher quest](/quest/m4/verified/chacha20-poly1305-x86/cipher.md)
 owns it. It also assumes `RunsVg`: the entry guard admits the call, and the

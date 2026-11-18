@@ -43,10 +43,13 @@ VG's contracts (`Spec/ChaCha20/Contract.lean`) are over its model's memory
 `m` before the call and `m'` after: each axiom reads the state's bytes `st`
 for `m` at the state, the key's and counter and nonce's words for theirs,
 and the data's bytes for `m` at the data. Each precondition holds for every
-call safe Rust makes: the state is 768 bytes, the arguments are distinct
-objects, so none overlaps another, the return address, or the stack below
-it, or wraps the address space, and the token proves the CPU features. A
-slice's length is its own, which no call changes. -/
+call safe Rust makes: the state is 768 bytes; the state and the data, which
+the routines write, are objects distinct from every other argument, so
+neither overlaps another argument, the return address, or the stack below it;
+no argument wraps the address space; and the token proves the CPU features.
+VG's contracts hold for any bytes of the state, so these do too, and need no
+premise that `init` has run. A slice's length is its own, which no call
+changes. -/
 
 /-- VG's `vg_chacha20_init` on x86_64 meets `VG.Spec.ChaCha20.initContract`
 ([`Stream.init_verified`](https://github.com/pyca/verified-garbage/blob/0aa40d6c21fd02943fe5b38a5b69b6213d07764d/lean/VerifiedGarbage/Proof/ChaCha20/X86_64/Stream/Init.lean),

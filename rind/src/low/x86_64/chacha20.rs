@@ -14,12 +14,13 @@
 //!
 //! verified-garbage proves its routines correct and constant time in Lean,
 //! over its own models of the instructions, which `admin/prove vg`
-//! cosimulates. `proofs/Rind/X86_64/VgChaCha20.lean` imports VG's theorems
-//! and proves the glue around them, with the kernel's contract as a
-//! hypothesis. The kernel and the aws-lc assembly are not formally verified:
-//! their correctness rests on rind's tests of them against RFC 8439,
-//! Wycheproof, aws-lc-rs, and HACL*'s rounds, and aws-lc's on its use in
-//! OpenSSL, BoringSSL, and aws-lc.
+//! cosimulates. `proofs/Rind/X86_64/VgChaCha20.lean` restates VG's theorems
+//! as axioms and proves the glue around them for requests from 256 bytes,
+//! assuming the kernel's contract (`Kernel`) and that the CPU-feature checks
+//! find AVX2 or AVX-512 VL (`RunsVg`). The kernel and the aws-lc assembly
+//! are not formally verified: their correctness rests on rind's tests of them
+//! against RFC 8439, Wycheproof, aws-lc-rs, and HACL*'s rounds, and aws-lc's
+//! on its use in OpenSSL, BoringSSL, and aws-lc.
 
 use core::arch::x86_64::*;
 use core::mem::MaybeUninit;

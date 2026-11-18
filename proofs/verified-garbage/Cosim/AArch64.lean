@@ -375,8 +375,9 @@ def placeTbl (img : Img) (n : Reg) (off need : Nat) : Gen (Img × List (BitVec 6
 /-- What the model says `i` leaves, run from `s` (the frame instructions by
 the push and pop of a frame, which also check the frame's bookkeeping). A
 frame's release takes its unknowns all zero, the outcome where every
-released byte keeps its value (`lose`), as it does here: the stack is the
-window, which nothing else writes between two instructions. -/
+released byte keeps its value (`lose`), as each does on the CPU, where nothing
+else writes memory between two instructions; a `free` may release bytes
+outside the window. -/
 def run (i : Instr) (s : State) : Option State :=
   match i with
   | .push _ | .alloc _ => push i s
