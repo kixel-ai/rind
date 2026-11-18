@@ -40,6 +40,7 @@ ROOTS = [
     for m in ["Isa", "Print", "Encode", "Target"]
 ] + [
     # The specs whose functions rind's axioms about VG's routines state.
+    "VerifiedGarbage.Spec.ChaCha20Poly1305",
     "VerifiedGarbage.Spec.MlKem",
     "VerifiedGarbage.Spec.Rsa.PrivatePrecompute",
     # ChaCha20's spec and contracts, which proofs/Rind/VgChaCha20.lean

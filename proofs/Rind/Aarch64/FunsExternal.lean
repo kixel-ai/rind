@@ -418,6 +418,28 @@ opaque low.aarch64.mlkem768_vg.Encaps.encaps
     Std.U8 32#usize) → Array Std.U8 32#usize → Result (Option ((Array
     Std.U8 32#usize) × (Array Std.U8 1088#usize)))
 
+/-! ChaCha20-Poly1305's one pass: pyca/verified-garbage's SVE2 routines,
+behind one wrapper each, whose contracts `Rind.Aarch64.VgChaCha20Poly1305`
+restates, and aws-lc's NEON routines, which no proof covers yet. -/
+
+opaque low.aarch64.cpu.HaveSve2.check : Result (Option low.aarch64.cpu.HaveSve2)
+
+opaque low.aarch64.chacha20poly1305.seal_sve2
+  : low.aarch64.cpu.HaveSve2 → Std.Array Std.U8 32#usize → Std.Array Std.U8 12#usize →
+    Slice Std.U8 → Slice Std.U8 → Result ((Std.Array Std.U8 16#usize) × (Slice Std.U8))
+
+opaque low.aarch64.chacha20poly1305.open_sve2
+  : low.aarch64.cpu.HaveSve2 → Std.Array Std.U8 32#usize → Std.Array Std.U8 12#usize →
+    Slice Std.U8 → Slice Std.U8 → Std.Array Std.U8 16#usize → Result (Bool × (Slice Std.U8))
+
+opaque low.aarch64.chacha20poly1305.seal_neon
+  : Std.Array Std.U8 32#usize → Std.Array Std.U8 12#usize → Slice Std.U8 → Slice Std.U8 →
+    Result ((Std.Array Std.U8 16#usize) × (Slice Std.U8))
+
+opaque low.aarch64.chacha20poly1305.open_neon
+  : Std.Array Std.U8 32#usize → Std.Array Std.U8 12#usize → Slice Std.U8 → Slice Std.U8 →
+    Result ((Std.Array Std.U8 16#usize) × (Slice Std.U8))
+
 /-! MD5, which no proof covers. -/
 
 opaque mid.md5.Md5State.new : Result mid.md5.Md5State
