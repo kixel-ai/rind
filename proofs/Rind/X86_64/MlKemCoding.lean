@@ -11,6 +11,27 @@ namespace MlKemCoding
 /-- A counted loop: its body, run from an index below `n` on a state the
 invariant holds of, yields the next index and a state it holds of, and at `n`
 stops with one. -/
+theorem range_loop' {σ τ : Type} (n : ℕ) (inv : ℕ → σ → Prop) (post : τ → Prop)
+    (body : core.ops.range.Range Usize × σ → Result (ControlFlow (core.ops.range.Range Usize × σ) τ))
+    (hbody : ∀ (it : core.ops.range.Range Usize) (s : σ), it.end.val = n → it.start.val ≤ n →
+      inv it.start.val s →
+      body (it, s) ⦃ r => match r with
+        | .done y => post y
+        | .cont x => x.1.end.val = n ∧ x.1.start.val = it.start.val + 1 ∧ it.start.val < n ∧
+            inv x.1.start.val x.2 ⦄)
+    (it : core.ops.range.Range Usize) (s : σ) (he : it.end.val = n) (hs : it.start.val ≤ n)
+    (hinv : inv it.start.val s) :
+    loop body (it, s) ⦃ y => post y ⦄ := by
+  apply loop.spec_decr_nat (fun x => n - x.1.start.val)
+    (fun x => x.1.end.val = n ∧ x.1.start.val ≤ n ∧ inv x.1.start.val x.2)
+  · rintro ⟨it, s⟩ ⟨he, hs, hinv⟩
+    apply WP.spec_mono (hbody it s he hs hinv)
+    rintro (x | y) h
+    · obtain ⟨h1, h2, h3, h4⟩ := h
+      exact ⟨⟨h1, by omega, h4⟩, by simp only; omega⟩
+    · exact h
+  · exact ⟨he, hs, hinv⟩
+
 theorem range_loop {σ : Type} (n : ℕ) (inv : ℕ → σ → Prop)
     (body : core.ops.range.Range Usize × σ → Result (ControlFlow (core.ops.range.Range Usize × σ) σ))
     (hbody : ∀ (it : core.ops.range.Range Usize) (s : σ), it.end.val = n → it.start.val ≤ n →
@@ -307,6 +328,363 @@ theorem decompress_spec (D : Usize) {L : Usize} (hD : 1 ≤ D.val ∧ D.val ≤ 
   step as ⟨i1, hi1⟩
   have h8 : i1.val = 32 := by rw [hi1]; simp [mid.mlkem.N]
   exact decompress_loop_spec D hD bytes _ _ out h8 rfl
+
+/-- `ct_select_i16` on a bit: the half modulus if it is set, and zero if not,
+as `Decompress_1` takes it. -/
+theorem ct_select_half_spec (b : U8) (hb : b.val ≤ 1) :
+    low.generic.ct_copy.ct_select_i16 b 1665#i16 0#i16 ⦃ r => r.val = (decompVal 1 b.val : ℤ) ⦄ := by
+  have hb' : b = 0#u8 ∨ b = 1#u8 := by
+    rcases Nat.le_one_iff_eq_zero_or_eq_one.mp hb with h | h
+    · left; exact UScalar.eq_of_val_eq h
+    · right; exact UScalar.eq_of_val_eq h
+  unfold low.generic.ct_copy.ct_select_i16 core.hint.black_box core.num.I32.wrapping_neg
+  rcases hb' with rfl | rfl
+  · simp [decompVal, lift]
+    step as ⟨i3, hv, hbv⟩
+    have h3 : i3 = 0#i32 := by
+      apply IScalar.eq_of_val_eq; rw [hv]; decide
+    subst h3
+    decide
+  · simp [decompVal, lift]
+    step as ⟨i3, hv, hbv⟩
+    have h3 : i3 = (-1)#i32 := by
+      apply IScalar.eq_of_val_eq; rw [hv]; decide
+    subst h3
+    decide
+
+set_option maxRecDepth 100000 in
+/-- The multiply and shift `compress_1` divides by: `Compress_1`'s rounded
+quotient, for each coefficient. -/
+theorem compress_1_exact : ∀ v < 3329, (2 * v + 1665) * 80635 / 2 ^ 28 % 2 = (2 * (2 ^ 1 * v) + 3329) / (2 * 3329) % 2 := by
+  intro v hv
+  have e : (2 : ℕ) ^ 28 = 268435456 := by norm_num
+  rw [e]
+  rcases Nat.lt_or_ge v 833 with h | h
+  · have h1 : (2 * v + 1665) * 80635 / 268435456 = 0 := by omega
+    have h2 : (2 * (2 ^ 1 * v) + 3329) / (2 * 3329) = 0 := by omega
+    rw [h1, h2]
+  rcases Nat.lt_or_ge v 2497 with h' | h'
+  · have h1 : (2 * v + 1665) * 80635 / 268435456 = 1 := by omega
+    have h2 : (2 * (2 ^ 1 * v) + 3329) / (2 * 3329) = 1 := by omega
+    rw [h1, h2]
+  · have h1 : (2 * v + 1665) * 80635 / 268435456 = 2 := by omega
+    have h2 : (2 * (2 ^ 1 * v) + 3329) / (2 * 3329) = 2 := by omega
+    rw [h1, h2]
+
+theorem Q_HALF_spec : mid.mlkem.Q_HALF ⦃ r => r = 1665#i16 ⦄ := by
+  unfold mid.mlkem.Q_HALF
+  simp only [mid.mlkem.Q]
+  step as ⟨i, hi⟩
+  step as ⟨r, hr⟩
+  apply IScalar.eq_of_val_eq
+  rw [hr, hi]
+  decide
+
+theorem from_message_inner_spec (i : Usize) (hi : i.val < 32) (m : mid.mlkem.Message)
+    (r : mid.mlkem.Coeffs (Array I16 256#usize) mid.mlkem.Normal)
+    (iter : core.ops.range.Range Usize) (he : iter.end.val = 8) (hs : iter.start.val = 0) :
+    mid.mlkem.CoeffsArrayI16256Normal.from_message_bits_loop0_loop0 iter m r i ⦃ s =>
+      s.1 = m ∧
+      (∀ p, 8 * i.val ≤ p → p < 8 * i.val + 8 →
+        (s.2.1.val[p]!).val = (decompVal 1 ((m.val[i.val]!).val / 2 ^ (p - 8 * i.val) % 2 ^ 1) : ℤ)) ∧
+      ∀ p, ¬ (8 * i.val ≤ p ∧ p < 8 * i.val + 8) → s.2.1.val[p]! = r.1.val[p]! ⦄ := by
+  unfold mid.mlkem.CoeffsArrayI16256Normal.from_message_bits_loop0_loop0
+  apply range_loop 8 (fun j (s : mid.mlkem.Message × mid.mlkem.Coeffs (Array I16 256#usize) mid.mlkem.Normal) =>
+    s.1 = m ∧
+    (∀ p, 8 * i.val ≤ p → p < 8 * i.val + j →
+      (s.2.1.val[p]!).val = (decompVal 1 ((m.val[i.val]!).val / 2 ^ (p - 8 * i.val) % 2 ^ 1) : ℤ)) ∧
+    ∀ p, ¬ (8 * i.val ≤ p ∧ p < 8 * i.val + j) → s.2.1.val[p]! = r.1.val[p]!) _ _ iter (m, r) he (by omega)
+  · rw [hs]
+    exact ⟨rfl, fun p h1 h2 => by omega, fun p _ => rfl⟩
+  · intro it s he hs hinv
+    obtain ⟨m', a, pd⟩ := s
+    obtain ⟨hm, hin, hout⟩ := hinv
+    simp only at hm hin hout
+    subst hm
+    simp only
+    unfold mid.mlkem.CoeffsArrayI16256Normal.from_message_bits_loop0_loop0.body
+    step as ⟨o', it1, ho, he1⟩
+    split_ifs at ho with hlt
+    · obtain ⟨rfl, hst⟩ := ho
+      simp only
+      step as ⟨i1, hi1⟩
+      step as ⟨i2, hi2, _⟩
+      step as ⟨i3, hi3⟩
+      have hi3v : i3.val = (m'.val[i.val]!).val / 2 ^ it.start.val % 2 ^ 1 := by
+        have h1 : (1#u8).val = 2 ^ 1 - 1 := by decide
+        have hget : m'.val[i.val]! = i1 := by
+          rw [hi1]; exact getElem!_pos m'.val i.val (by scalar_tac)
+        rw [hget, hi3, UScalar.val_and, hi2, Nat.shiftRight_eq_div_pow, h1, Nat.and_two_pow_sub_one_eq_mod]
+      step with Q_HALF_spec as ⟨i4, hi4⟩
+      subst hi4
+      step with ct_select_half_spec as ⟨i5, hi5⟩
+      step as ⟨i6, hi6⟩
+      step as ⟨i7, hi7⟩
+      step as ⟨a1, ha1⟩
+      have hidx : i7.val = 8 * i.val + it.start.val := by rw [hi7, hi6]; omega
+      have hlen : 8 * i.val + it.start.val < a.val.length := by simp; omega
+      refine ⟨by rw [he1]; exact he, hst, by omega, fun p h1 h2 => ?_, fun p hp => ?_⟩
+      · rw [ha1, Array.set_val_eq, hidx]
+        by_cases hp : p = 8 * i.val + it.start.val
+        · subst hp
+          rw [getElem!_set_self _ _ _ hlen, hi5, hi3v,
+            show 8 * i.val + it.start.val - 8 * i.val = it.start.val by omega]
+        · rw [getElem!_set_ne _ _ _ _ (Ne.symm hp)]
+          exact hin p h1 (by omega)
+      · rw [ha1, Array.set_val_eq, hidx, getElem!_set_ne _ _ _ _ (by omega)]
+        exact hout p (by omega)
+    · obtain ⟨rfl, hst⟩ := ho
+      simp only [WP.spec_ok]
+      have : it.start.val = 8 := by omega
+      rw [this] at hin hout
+      exact ⟨trivial, hin, hout⟩
+
+theorem from_message_loop_spec (m : mid.mlkem.Message)
+    (r : mid.mlkem.Coeffs (Array I16 256#usize) mid.mlkem.Normal)
+    (iter : core.ops.range.Range Usize) (he : iter.end.val = 32) (hs : iter.start.val = 0) :
+    mid.mlkem.CoeffsArrayI16256Normal.from_message_bits_loop0 iter m r ⦃ s =>
+      Holds 0 3328 256 s.1.val
+        (Polynomial.Decompress 1 (ByteDecode (toVec (32 * 1) m.val m.property) (by omega)) (by omega)) ⦄ := by
+  have final : ∀ a : Array I16 256#usize,
+      (∀ p, p < 8 * 32 → (a.val[p]!).val = (decompVal 1 ((m.val[p / 8]!).val / 2 ^ (p % 8) % 2 ^ 1) : ℤ)) →
+      Holds 0 3328 256 a.val
+        (Polynomial.Decompress 1 (ByteDecode (toVec (32 * 1) m.val m.property) (by omega)) (by omega)) := by
+    intro a h p hp
+    have hv := h p (by omega)
+    have hlt := decompVal_lt 1 ((m.val[p / 8]!).val / 2 ^ (p % 8) % 2 ^ 1) (by omega)
+      (Nat.mod_lt _ (by norm_num))
+    refine ⟨by rw [hv]; positivity, by rw [hv]; omega, ?_⟩
+    rw [hv, decompress_field (d := 1) _ (by omega) p hp ((m.val[p / 8]!).val / 2 ^ (p % 8))]
+    · simp
+    · intro t ht
+      obtain rfl : t = 0 := by omega
+      rw [bit_toVec, Nat.testBit_div_two_pow]
+      simp
+  unfold mid.mlkem.CoeffsArrayI16256Normal.from_message_bits_loop0
+  apply range_loop' 32 (fun j (s : mid.mlkem.Message × mid.mlkem.Coeffs (Array I16 256#usize) mid.mlkem.Normal) =>
+    s.1 = m ∧ ∀ p, p < 8 * j →
+      (s.2.1.val[p]!).val = (decompVal 1 ((m.val[p / 8]!).val / 2 ^ (p % 8) % 2 ^ 1) : ℤ)) _ _ _ iter (m, r) he
+    (by omega)
+  · rw [hs]
+    exact ⟨rfl, fun p h => by omega⟩
+  · intro it s he hs hinv
+    obtain ⟨m', r'⟩ := s
+    obtain ⟨hm, hin⟩ := hinv
+    simp only at hm hin
+    subst hm
+    simp only
+    unfold mid.mlkem.CoeffsArrayI16256Normal.from_message_bits_loop0.body
+    step as ⟨o', it1, ho, he1⟩
+    split_ifs at ho with hlt
+    · obtain ⟨rfl, hst⟩ := ho
+      simp only
+      step with from_message_inner_spec as ⟨m1, r1, hsm, hsin, hsout⟩
+      refine ⟨by rw [he1]; exact he, hst, by omega, hsm, fun p hp => ?_⟩
+      rw [hst] at hp
+      by_cases hlo : 8 * it.start.val ≤ p
+      · rw [hsin p hlo (by omega), show p / 8 = it.start.val by omega,
+          show p - 8 * it.start.val = p % 8 by omega]
+      · rw [hsout p (by omega)]
+        exact hin p (by omega)
+    · obtain ⟨rfl, hst⟩ := ho
+      simp only [WP.spec_ok]
+      have : it.start.val = 32 := by omega
+      rw [this] at hin
+      exact final _ hin
+
+theorem spec_bind_ok {α β : Type} (x : α) (f : α → Result β) (P : β → Prop) (h : f x ⦃ P ⦄) :
+    (do let r ← ok x; f r) ⦃ P ⦄ := by
+  simpa using h
+
+/-- `from_message_bits` is FIPS 203's `Decompress_1(ByteDecode_1(m))`, each
+coefficient in `[0, q)`. -/
+theorem from_message_bits_spec (m : mid.mlkem.Message) :
+    mid.mlkem.CoeffsArrayI16256Normal.from_message_bits m ⦃ r =>
+      Holds 0 3328 256 r.1.val
+        (Polynomial.Decompress 1 (ByteDecode (toVec (32 * 1) m.val m.property) (by omega)) (by omega)) ⦄ := by
+  unfold mid.mlkem.CoeffsArrayI16256Normal.from_message_bits mid.mlkem.CoeffsArrayI16256D.zero
+  apply spec_bind_ok (Array.repeat 256#usize 0#i16, ())
+  exact from_message_loop_spec m _ { start := 0#usize, «end» := 32#usize } rfl rfl
+
+/-- `compress_1` is FIPS 203's `Compress_1`, of a coefficient in `[0, q)`. -/
+theorem compress_1_spec (x : I16) (h0 : 0 ≤ x.val) (h1 : x.val < 3329) :
+    mid.mlkem.compress_1 x ⦃ r => r.val = (2 * (2 ^ 1 * x.val.toNat) + 3329) / (2 * 3329) % 2 ⦄ := by
+  unfold mid.mlkem.compress_1 low.ct.into_public
+  have hle : 0#i16 ≤ x := by scalar_tac
+  have hlt : x < mid.mlkem.Q := by simp [mid.mlkem.Q]; scalar_tac
+  apply spec_bind_ok x
+  simp only [massert, hle, hlt, ite_true]
+  step as ⟨i, hi⟩
+  step as ⟨x1, hx1, _⟩
+  step with Q_HALF_spec as ⟨i1, hi1⟩
+  subst hi1
+  step as ⟨i2, hi2⟩
+  step as ⟨x2, hx2⟩
+  step as ⟨x3, hx3⟩
+  step as ⟨x4, hx4, _⟩
+  step as ⟨i3, hi3⟩
+  have hv : (x.val.toNat : ℤ) = x.val := Int.toNat_of_nonneg h0
+  have hvlt : x.val.toNat < 3329 := by omega
+  generalize x.val.toNat = v at hv hvlt ⊢
+  have hiv : i.val = v := by
+    rw [hi, IScalar.hcast_val_eq, ← hv]
+    simp [UScalarTy.numBits]
+    omega
+  have hi2v : i2.val = 1665 := by
+    rw [hi2]; decide
+  have hx1v : x1.val = 2 * v := by
+    rw [hx1, hiv, Nat.shiftLeft_eq, Nat.mod_eq_of_lt (by simp [U64.size, U64.numBits]; omega)]
+    omega
+  have hx2v : x2.val = 2 * v + 1665 := by
+    rw [hx2, core.num.U64.wrapping_add_val_eq, hx1v, hi2v]
+    exact Nat.mod_eq_of_lt (by simp [U64.size, U64.numBits]; omega)
+  have hx3v : x3.val = (2 * v + 1665) * 80635 := by
+    rw [hx3, core.num.U64.wrapping_mul_val_eq, hx2v, show (80635#u64).val = 80635 by decide]
+    exact Nat.mod_eq_of_lt (by simp [U64.size, U64.numBits]; omega)
+  have hi3v : i3.val = (2 * v + 1665) * 80635 / 2 ^ 28 % 2 := by
+    have h1 : (1#u64).val = 2 ^ 1 - 1 := by decide
+    rw [hi3, UScalar.val_and, hx4, hx3v, Nat.shiftRight_eq_div_pow, h1, Nat.and_two_pow_sub_one_eq_mod]
+  rw [UScalar.cast_val_eq, hi3v, compress_1_exact v hvlt]
+  exact Nat.mod_eq_of_lt (by simp [UScalarTy.numBits]; omega)
+
+theorem spec_bind_ret {α : Type} (x : Result α) (P : α → Prop) (h : x ⦃ P ⦄) :
+    (do let r ← x; ok r) ⦃ P ⦄ := by
+  step with h as ⟨r, hr⟩
+  exact hr
+
+/-- `Compress_1` of coefficient `p` of `a`, as a number. -/
+def comp1 (a : List I16) (p : ℕ) : ℕ := (2 * (2 ^ 1 * (a[p]!).val.toNat) + 3329) / (2 * 3329) % 2
+
+theorem to_message_inner_spec (self : mid.mlkem.Coeffs (Array I16 256#usize) mid.mlkem.Normal)
+    (hself : ∀ p < 256, 0 ≤ (self.1.val[p]!).val ∧ (self.1.val[p]!).val < 3329)
+    (i : Usize) (hi : i.val < 32) (byte : U8) (hbyte : byte.val = 0)
+    (iter : core.ops.range.Range Usize) (he : iter.end.val = 8) (hs : iter.start.val = 0) :
+    mid.mlkem.CoeffsArrayI16256Normal.to_message_bits_loop0_loop0 iter self i byte ⦃ r =>
+      r.1 = self ∧ ∀ t, r.2.val.testBit t = (decide (t < 8) && (comp1 self.1.val (8 * i.val + t)).testBit 0) ⦄ := by
+  unfold mid.mlkem.CoeffsArrayI16256Normal.to_message_bits_loop0_loop0
+  apply range_loop' 8 (fun j (b : U8) =>
+    ∀ t, b.val.testBit t = (decide (t < j) && (comp1 self.1.val (8 * i.val + t)).testBit 0)) _ _ _ iter byte he
+    (by omega)
+  · rw [hs, hbyte]
+    intro t
+    simp
+  · intro it b he hs hinv
+    simp only
+    unfold mid.mlkem.CoeffsArrayI16256Normal.to_message_bits_loop0_loop0.body
+    step as ⟨o', it1, ho, he1⟩
+    split_ifs at ho with hlt
+    · obtain ⟨rfl, hst⟩ := ho
+      simp only
+      step as ⟨i1, hi1⟩
+      step as ⟨i2, hi2⟩
+      obtain ⟨a, pd⟩ := self
+      simp only at hself hinv ⊢
+      step as ⟨i3, hi3⟩
+      have hidx : i2.val = 8 * i.val + it.start.val := by rw [hi2, hi1]; omega
+      have hget : a.val[8 * i.val + it.start.val]! = i3 := by
+        rw [hi3]; simp only [hidx]; exact getElem!_pos a.val _ (by simp; omega)
+      have hr := hself (8 * i.val + it.start.val) (by omega)
+      rw [hget] at hr
+      step with compress_1_spec as ⟨i4, hi4⟩
+      step as ⟨i5, hi5, _⟩
+      step as ⟨b1, hb1⟩
+      refine ⟨by rw [he1]; exact he, hst, by omega, fun t => ?_⟩
+      have hi4' : i4.val = comp1 a.val (8 * i.val + it.start.val) := by rw [hi4, comp1, hget]
+      have hc : comp1 a.val (8 * i.val + it.start.val) < 2 := Nat.mod_lt _ (by norm_num)
+      have hpow : 2 ^ it.start.val ≤ 2 ^ 7 := Nat.pow_le_pow_right (by norm_num) (by omega)
+      have hi5v : i5.val = comp1 a.val (8 * i.val + it.start.val) * 2 ^ it.start.val := by
+        rw [hi5, hi4', Nat.shiftLeft_eq]
+        exact Nat.mod_eq_of_lt (by
+          simp [U8.size, U8.numBits]
+          calc _ ≤ 1 * 2 ^ 7 := Nat.mul_le_mul (by omega) hpow
+            _ < 256 := by norm_num)
+      rw [hb1, UScalar.val_or, Nat.testBit_or, hinv t, hi5v, hst]
+      rcases Nat.lt_or_ge t it.start.val with h | h
+      · have : (comp1 a.val (8 * i.val + it.start.val) * 2 ^ it.start.val).testBit t = false := by
+          rw [Nat.mul_comm, Nat.testBit_two_pow_mul]; simp; omega
+        simp [this, h, show t < it.start.val + 1 by omega]
+      · rcases Nat.eq_or_lt_of_le h with h' | h'
+        · subst h'
+          have : (comp1 a.val (8 * i.val + it.start.val) * 2 ^ it.start.val).testBit it.start.val =
+              (comp1 a.val (8 * i.val + it.start.val)).testBit 0 := by
+            rw [Nat.mul_comm, Nat.testBit_two_pow_mul]; simp
+          simp [this]
+        · have : (comp1 a.val (8 * i.val + it.start.val) * 2 ^ it.start.val).testBit t = false := by
+            rw [Nat.mul_comm, Nat.testBit_two_pow_mul]
+            simp only [ge_iff_le, h, decide_true, Bool.true_and]
+            exact Nat.testBit_lt_two_pow (lt_of_lt_of_le hc (by
+              calc 2 = 2 ^ 1 := by norm_num
+                _ ≤ 2 ^ (t - it.start.val) := Nat.pow_le_pow_right (by norm_num) (by omega)))
+          simp [this, show ¬ t < it.start.val by omega, show ¬ t < it.start.val + 1 by omega]
+    · obtain ⟨rfl, hst⟩ := ho
+      simp only [WP.spec_ok]
+      have : it.start.val = 8 := by omega
+      rw [this] at hinv
+      exact ⟨trivial, hinv⟩
+
+/-- `to_message_bits` is FIPS 203's `ByteEncode_1(Compress_1(f))`, of a
+polynomial `f` with coefficients in `[0, q)`. -/
+theorem to_message_bits_spec (self : mid.mlkem.Coeffs (Array I16 256#usize) mid.mlkem.Normal) (f : Polynomial)
+    (hself : Holds 0 3328 256 self.1.val f) :
+    mid.mlkem.CoeffsArrayI16256Normal.to_message_bits self ⦃ r =>
+      toVec (32 * 1) r.val r.property = ByteEncode 1 (Polynomial.Compress 1 f (by omega)) (by omega) ⦄ := by
+  have hrange : ∀ p < 256, 0 ≤ (self.1.val[p]!).val ∧ (self.1.val[p]!).val < 3329 := fun p hp => by
+    obtain ⟨h0, h1, _⟩ := hself p hp
+    exact ⟨h0, by omega⟩
+  have final : ∀ a : Array U8 32#usize,
+      (∀ i' < 32, ∀ t, (a.val[i']!).val.testBit t = (decide (t < 8) && (comp1 self.1.val (8 * i' + t)).testBit 0)) →
+      toVec (32 * 1) a.val a.property = ByteEncode 1 (Polynomial.Compress 1 f (by omega)) (by omega) := by
+    intro a h
+    apply eq_of_bit
+    intro k hk
+    rw [bit_toVec, h (k / 8) (by omega), ByteEncode_bit _ _ k (by omega)]
+    obtain ⟨h0, h1, hf⟩ := hself k (by omega)
+    simp only [Nat.div_one, Nat.mod_one, show k % 8 < 8 by omega, decide_true, Bool.true_and,
+      show 8 * (k / 8) + k % 8 = k by omega]
+    unfold Polynomial.Compress
+    rw [Vector.getElem!_map_eq _ _ _ (by omega), Compress_val, ← hf]
+    have hval : ((((self.1.val[k]!).val : ℤ) : Zq)).val = (self.1.val[k]!).val.toNat := by
+      rw [← Int.toNat_of_nonneg h0, Int.cast_natCast, ZMod.val_natCast, Int.toNat_natCast]
+      exact Nat.mod_eq_of_lt (by rw [show q = 3329 from rfl]; omega)
+    rw [hval, ZMod.val_natCast]
+    simp [comp1, m, q]
+  unfold mid.mlkem.CoeffsArrayI16256Normal.to_message_bits
+  simp only
+  apply spec_bind_ret
+  · unfold mid.mlkem.CoeffsArrayI16256Normal.to_message_bits_loop0
+    apply range_loop' 32 (fun j (s : mid.mlkem.Coeffs (Array I16 256#usize) mid.mlkem.Normal × Array U8 32#usize) =>
+      s.1 = self ∧ ∀ i' < j, ∀ t,
+        (s.2.val[i']!).val.testBit t = (decide (t < 8) && (comp1 self.1.val (8 * i' + t)).testBit 0))
+      (fun a : Array U8 32#usize => toVec (32 * 1) a.val a.property =
+        ByteEncode 1 (Polynomial.Compress 1 f (by omega)) (by omega)) _ _
+      { start := 0#usize, «end» := 32#usize } (self, Array.repeat 32#usize 0#u8) rfl (by decide)
+    · exact ⟨rfl, fun i' h => by simp at h⟩
+    · intro it s he hs hinv
+      obtain ⟨self', a⟩ := s
+      obtain ⟨hm, hin⟩ := hinv
+      simp only at hm hin
+      subst hm
+      simp only
+      unfold mid.mlkem.CoeffsArrayI16256Normal.to_message_bits_loop0.body
+      step as ⟨o', it1, ho, he1⟩
+      split_ifs at ho with hlt
+      · obtain ⟨rfl, hst⟩ := ho
+        simp only
+        step with to_message_inner_spec as ⟨self1, byte, hs1, hbyte⟩
+        step as ⟨a1, ha1⟩
+        refine ⟨by rw [he1]; exact he, hst, by omega, hs1, fun i' hi' t => ?_⟩
+        rw [ha1, Array.set_val_eq]
+        by_cases hp : i' = it.start.val
+        · subst hp
+          rw [getElem!_set_self _ _ _ (by simp; omega)]
+          exact hbyte t
+        · rw [getElem!_set_ne _ _ _ _ (Ne.symm hp)]
+          exact hin i' (by omega) t
+      · obtain ⟨rfl, hst⟩ := ho
+        simp only [WP.spec_ok]
+        have : it.start.val = 32 := by omega
+        rw [this] at hin
+        exact final _ hin
 
 end MlKemCoding
 

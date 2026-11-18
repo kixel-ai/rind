@@ -257,4 +257,21 @@ theorem Compress_val (d : ℕ) (x : Zq) (h : 1 ≤ d ∧ d < 12) :
     push_cast; ring
   rw [e, rat_round_div _ _ (by decide), Int.cast_natCast]
 
+/-- Byte strings with the same bits are the same. -/
+theorem eq_of_bit {n : ℕ} (B B' : 𝔹 n) (h : ∀ k < 8 * n, bit B k = bit B' k) : B = B' := by
+  apply Vector.ext
+  intro i hi
+  apply BitVec.eq_of_toNat_eq
+  apply Nat.eq_of_testBit_eq
+  intro t
+  by_cases ht : t < 8
+  · have := h (8 * i + t) (by omega)
+    simp only [bit] at this
+    rw [show (8 * i + t) / 8 = i by omega, show (8 * i + t) % 8 = t by omega, getElem!_pos B i hi,
+      getElem!_pos B' i hi] at this
+    exact this
+  · have hlt : ∀ b : Byte, b.toNat < 2 ^ t := fun b =>
+      lt_of_lt_of_le b.isLt (Nat.pow_le_pow_right (by norm_num) (by omega))
+    rw [Nat.testBit_lt_two_pow (hlt _), Nat.testBit_lt_two_pow (hlt _)]
+
 end rind.spec.mlkem
