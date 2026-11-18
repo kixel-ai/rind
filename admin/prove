@@ -1120,6 +1120,12 @@ assembly=(
     --opaque 'crate::mid::p384::_::new_random'
     --opaque 'crate::mid::p521::_::_'
     --include 'crate::mid::p521::_::BYTES'
+    --start-from crate::mid::mlkem::sample_cbd2
+    --start-from crate::mid::mlkem::sample_cbd3
+    --start-from crate::mid::mlkem::decompress
+    --start-from 'crate::mid::mlkem::_::from_message_bits'
+    --start-from 'crate::mid::mlkem::_::to_message_bits'
+    --include crate::low::generic::ct_copy::ct_select_i16
 )
 extract() {
     local arch=$1 dir=$2
@@ -1418,7 +1424,13 @@ extract aarch64 Aarch64 "${hashes[@]}" "${assembly[@]}" \
     --include crate::low::aarch64::aes_cbc \
     --start-from crate::low::aarch64::aes_cbc::encrypt \
     --start-from crate::low::aarch64::aes_cbc::decrypt \
-    --opaque crate::low::aarch64::aes_cbc::aese_chained
+    --opaque crate::low::aarch64::aes_cbc::aese_chained \
+    --include crate::low::generic::mlkem \
+    --start-from crate::low::generic::mlkem::mlkem_frombytes \
+    --start-from crate::low::generic::mlkem::mlkem_compress_d4 \
+    --start-from crate::low::generic::mlkem::mlkem_compress_d5 \
+    --start-from crate::low::generic::mlkem::mlkem_compress_d10 \
+    --start-from crate::low::generic::mlkem::mlkem_compress_d11
 
 # The AEAD key's conversion is x86_64's alone: the AEAD API's model and proofs
 # are x86_64's, as AES-GCM's are.
