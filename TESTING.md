@@ -94,11 +94,12 @@ an Intel SDE CPU model, as `x86-cpu.yml` names them.
 | armv7 | NEON without the crypto extension | `just armv7`: qemu Cortex-A15 | denied | ctgrind on the arm64 runner, which valgrind hides the crypto extension from |
 | armv7 | no NEON | `just armv7`: denied, natively on an aarch64 host that runs AArch32 code, else on qemu Cortex-A15 | denied | ctgrind: denied (`no-neon`) |
 | portable | forced on x86_64 (`--cfg rind_portable`) | `just portable`: clippy and release vectors and differential tests | `fuzz.yml`'s `fuzz-portable` job: every target, from the x86_64 corpus and a corpus of its own | ctgrind: the `portable` job forces this backend |
-| portable | 32-bit x86 (`i686`) | `just qemu i686`: clippy and release vectors and differential tests, natively on an x86_64 host; `build.yml`'s `i686-windows` and `android` jobs | the forced run's, of the same code built for x86_64 | ctgrind's forced run, of the same code built for x86_64 |
-| portable | big-endian s390x | `just qemu s390x`: clippy and release vectors and differential tests under qemu | as above | ctgrind's forced run, of the same code built for x86_64 |
-| portable | riscv64gc Linux, glibc and musl | `just qemu riscv64` and `just qemu riscv64-musl`: as s390x | as above | as s390x |
+| portable | 32-bit x86 (`i686`) | `just qemu i686`: clippy and release vectors and differential tests, natively on an x86_64 host; `build.yml`'s `i686-windows` and `android` jobs | the forced run's, of the same code built for x86_64 | ctgrind's unit suite, natively (`portable-targets`) |
+| portable | big-endian s390x | `just qemu s390x`: clippy and release vectors and differential tests under qemu | as above | ctgrind's unit suite, under the target's own valgrind on qemu (`portable-targets`) |
+| portable | riscv64gc Linux, glibc and musl | `just qemu riscv64` and `just qemu riscv64-musl`: as s390x | as above | as s390x, on glibc |
 | portable | PowerPC Linux: powerpc64le, big-endian powerpc64 and powerpc | `just qemu powerpc64le`, `just qemu powerpc64`, and `just qemu powerpc`: as s390x | as above | as s390x |
-| portable | ARM before ARMv7 (Raspberry Pi 1 and Zero) | `just qemu armv6` and `just qemu armv6-softfloat`: as s390x, on qemu's ARM1176; `build.yml`'s `android` job: ARMv5TE Android | as above | as s390x |
+| portable | loongarch64 Linux | `just qemu loongarch64`: as s390x | as above | unchecked: valgrind has no LoongArch port ([ct-loongarch64](quest/m2/confidence/ct-loongarch64.md)) |
+| portable | ARM before ARMv7 (Raspberry Pi 1 and Zero) | `just qemu armv6` and `just qemu armv6-softfloat`: as s390x, on qemu's ARM1176; `build.yml`'s `android` job: ARMv5TE Android | as above | ctgrind's unit suite on the hard-float ARMv6 build, natively on the arm64 runner (`armv6`), which the soft-float build matches but for its calling convention; ARMv5TE unchecked |
 | portable | wasm32-wasip2 | `just wasm`: release vectors, and rind-rustls's and rind-ring's tests, under wasmtime, in the nightly `build.yml`; no differential tests, since aws-lc does not build for wasm, and `just portable` runs the same Rust against it | as above | unchecked: a wasm engine compiles rind again, and its JIT may turn a select into a branch |
 
 ## Vector suites
@@ -274,7 +275,11 @@ run when nothing the branch changed since BASE reaches the backend it builds,
 as `sh/backends.sh` decides, and otherwise runs in full; pull requests'
 ctgrind job sets it.
 `nix develop .#ctgrind --command admin/ctgrind` runs the weekly
-constant-time checks under valgrind, `nix develop .#sde --command
+constant-time checks under valgrind, and `nix develop .#ctgrind-<shell>
+--command sh -c 'admin/ctgrind unit --target "$RIND_QEMU_TARGET" --release'`
+those of the portable backend built for `i686`, `s390x`, `riscv64`,
+`powerpc64le`, `powerpc64`, or `powerpc`, under that target's valgrind on
+qemu, or natively for `i686`; `nix develop .#sde --command
 admin/ct-sde` those of the AVX-512, VAES, SHA extension, and SHA512 code
 valgrind cannot run, under Intel SDE, and `nix develop .#ct-qemu --command
 admin/ct-qemu` those of the armv7 crypto extension code valgrind hides, under

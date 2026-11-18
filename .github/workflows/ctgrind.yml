@@ -133,16 +133,11 @@ jobs:
           RIND_TEST_X86_BMI2_ADX: 0
 
   # The portable backend, forced on x86_64 as `just portable` forces it, with
-  # dalek's serial backend, which the architectures that need it run. Its
-  # public-key arithmetic runs on 64-bit limbs there, so the `32` row forces
-  # the 32-bit limbs 32-bit targets run.
+  # dalek's serial backend, which the architectures that need it run, on the
+  # 64-bit limbs 64-bit targets run. `portable-targets` checks the 32-bit
+  # limbs, on i686.
   portable:
-    name: portable (${{ matrix.limb }}-bit limbs)
     if: github.event_name != 'pull_request'
-    strategy:
-      fail-fast: false
-      matrix:
-        limb: ["64", "32"]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -154,7 +149,45 @@ jobs:
       - name: ctgrind tests
         run: nix develop .#ctgrind --command admin/ctgrind --release
         env:
-          RUSTFLAGS: --cfg rind_portable --cfg curve25519_dalek_backend="serial" --cfg rind_limb="${{ matrix.limb }}"
+          RUSTFLAGS: --cfg rind_portable --cfg curve25519_dalek_backend="serial"
+
+  # The portable backend built for each target that runs nothing else and
+  # valgrind runs, since its compiler can turn a mask select into a branch
+  # where the target has no conditional move, as LLVM does on riscv64gc and
+  # s390x: i686 natively, and the rest under qemu-user, which runs the
+  # target's own valgrind (see `flake.nix`'s `ctgrind-shell`). Only the unit
+  # suite marks secrets in rind's code; the forced `portable` row runs the
+  # rest. Valgrind runs each test binary's threads on one core, and under
+  # qemu the suite takes hours, so each target's runs as three jobs, by the
+  # tests' top-level module. `armv6` checks ARM before ARMv7.
+  portable-targets:
+    name: ${{ matrix.shell }} (${{ matrix.shard }})
+    if: github.event_name != 'pull_request'
+    strategy:
+      fail-fast: false
+      matrix:
+        shell: [i686, s390x, riscv64, powerpc64le, powerpc64, powerpc]
+        shard: [high, mid, rest]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/nix
+
+      # The shell names its target in `RIND_QEMU_TARGET`.
+      - name: ctgrind tests
+        run: |
+          case "$SHARD" in
+            high | mid) filter="$SHARD:: runs_under_valgrind" ;;
+            rest) filter="--skip high:: --skip mid::" ;;
+          esac
+          nix develop ".#ctgrind-$SHELL_NAME" --command sh -c \
+            "admin/ctgrind unit --target \"\$RIND_QEMU_TARGET\" --release -- $filter"
+        env:
+          SHELL_NAME: ${{ matrix.shell }}
+          SHARD: ${{ matrix.shard }}
 
   # Valgrind runs no AVX-512, VAES, VPCLMULQDQ, or SHA instruction, so
   # `admin/ct-sde` compares Intel SDE traces of those paths for two secrets
@@ -272,6 +305,39 @@ jobs:
           CXX_armv7_unknown_linux_gnueabihf: arm-linux-gnueabihf-g++
           RIND_TEST_ARM_NEON: ${{ matrix.neon }}
           RIND_TEST_ARM_CRYPTO_EXT: 0
+
+  # ARM before ARMv7 runs the portable backend. Valgrind's ARM port runs the
+  # ARMv7 superset of what this build uses, natively on the arm64 runner as
+  # `armv7` does: under qemu-arm on an x86_64 host it crashes in the dynamic
+  # loader. The ARMv6 soft-float target compiles the same integer code, since
+  # rind uses no floating point (`admin/ct-vartime`), and only the calling
+  # convention differs, which valgrind's armhf build cannot load.
+  armv6:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: stable
+          targets: arm-unknown-linux-gnueabihf
+
+      - name: Install armhf toolchain and valgrind
+        run: |
+          sudo dpkg --add-architecture armhf
+          sudo apt-get update
+          sudo apt-get install -y gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf libc6:armhf valgrind:armhf
+
+      - name: ctgrind tests
+        run: admin/ctgrind unit --target arm-unknown-linux-gnueabihf --release
+        env:
+          CARGO_TARGET_ARM_UNKNOWN_LINUX_GNUEABIHF_LINKER: arm-linux-gnueabihf-gcc
+          CC_arm_unknown_linux_gnueabihf: arm-linux-gnueabihf-gcc
+          CXX_arm_unknown_linux_gnueabihf: arm-linux-gnueabihf-g++
 
   # Valgrind hides armv7's crypto extension, so `admin/ct-qemu` compares
   # qemu-arm traces of its AES, GHASH, SHA-1, and SHA-256 for two secrets

@@ -10,6 +10,14 @@ set -e
 #
 # Set `RUSTFLAGS='--cfg rind_portable --cfg curve25519_dalek_backend="serial"'`
 # on x86_64 to check the portable backend, as `just portable` tests it.
+# Check it as each target that runs only it builds it with `unit --target
+# "$RIND_QEMU_TARGET"` in `nix develop .#ctgrind-<shell>`, whose `valgrind`
+# is that target's, under qemu-user where the host cannot run it.
+#
+# `--expensive-definedness-checks=yes` models additions exactly, without
+# which memcheck flags how LLVM reads an s390x compare's result.
+# See UPSTREAM.md, "Memcheck blames an s390x condition read on a register's
+# stale bits".
 #
 # Pass `--target armv7-unknown-linux-gnueabihf` on a host that executes
 # 32-bit ARM natively, such as an arm64 one, with an armhf valgrind.
@@ -42,7 +50,7 @@ set -e
 # See UPSTREAM.md, "Valgrind cannot unwind std's frame-pointer entries on
 # armv7".
 self="$(cd "$(dirname "$0")" && pwd)/ctgrind"
-valgrind="valgrind --error-exitcode=99 --unw-stack-scan-thresh=3 --suppressions=$(dirname "$self")/ctgrind.supp"
+valgrind="valgrind --error-exitcode=99 --expensive-definedness-checks=yes --unw-stack-scan-thresh=3 --suppressions=$(dirname "$self")/ctgrind.supp"
 
 # Cargo runs each test binary through this script. `--track-origins=yes`
 # roughly doubles memcheck's cost, so only a binary memcheck failed reruns
@@ -74,37 +82,38 @@ esac
 export VALGRIND_BUG_494162=1
 export CARGO_PROFILE_RELEASE_DEBUG=line-tables-only
 
-export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER="$self --run"
-export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUNNER="$self --run"
-export CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_RUNNER="$self --run"
+# Cargo builds every `--target` it is given (`host-tuple` is the host), else
+# `CARGO_BUILD_TARGET`, else the host, and runs each test binary through this
+# script.
+host=$(rustc -vV | sed -n 's/^host: //p')
+targets=
+prev=
+for arg in "$@"; do
+    case "$prev:$arg" in
+        --target:*) targets="$targets $arg" ;;
+        *:--target=*) targets="$targets ${arg#--target=}" ;;
+    esac
+    prev=$arg
+done
+targets=$(echo "${targets:-${CARGO_BUILD_TARGET:-$host}}" | sed "s/host-tuple/$host/g")
+for target in $targets; do
+    export "CARGO_TARGET_$(echo "$target" | tr a-z.- A-Z__)_RUNNER=$self --run"
+done
 
 # RIND_SCOPE=BASE skips the run when nothing the branch changed since BASE
 # reaches a backend this run builds, as `sh/backends.sh` decides: the one
-# rind/build.rs picks for each `--target` (`host-tuple` is the host), else
-# `CARGO_BUILD_TARGET`, else the host, or the portable one under
+# rind/build.rs picks for each target, or the portable one under
 # `--cfg rind_portable`. Which of Cargo's
 # `*RUSTFLAGS` variables wins depends on precedence and target, so when any
 # names `rind_portable`, the run checks both backends it could build. The fips
 # suite's module build replaces the caller's flags (rind-fips/build.rs), so it
 # always takes the target's.
 if [ -n "${RIND_SCOPE:-}" ]; then
-    # Cargo builds every `--target` it is given.
-    targets=
-    prev=
-    for arg in "$@"; do
-        case "$prev:$arg" in
-            --target:*) targets="$targets $arg" ;;
-            *:--target=*) targets="$targets ${arg#--target=}" ;;
-        esac
-        prev=$arg
-    done
-    [ -n "$targets" ] || targets=${CARGO_BUILD_TARGET:-$(uname -m)}
     backend=
     for target in $targets; do
-        [ "$target" != host-tuple ] || target=$(uname -m)
         case "$target" in
             x86_64*) backend="$backend|x86_64" ;;
-            aarch64* | arm64*) backend="$backend|aarch64" ;;
+            aarch64*) backend="$backend|aarch64" ;;
             armv7*) backend="$backend|arm" ;;
             *) backend="$backend|portable" ;;
         esac

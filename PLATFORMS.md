@@ -98,7 +98,11 @@ qemu. iOS devices' code is only built.
   Raspberry Pi 1 and Zero), on `arm-linux-androideabi`, which Rust builds for
   ARMv5TE, on `powerpc64le` and big-endian `powerpc64` and `powerpc` Linux,
   and on `x86_64`,
-  where `--cfg rind_portable` forces it. `just ci` also compiles the library
+  where `--cfg rind_portable` forces it. ctgrind checks its constant time as
+  each of these but `loongarch64` and the ARMv5TE and soft-float builds
+  compiles it, since a compiler can turn a mask select into a branch where
+  the target has no conditional move ([TESTING.md](TESTING.md#tiers)).
+  `just ci` also compiles the library
   for `wasm32-wasip2` and `wasm32-unknown-unknown`
   when a change touches rind, the workspace manifest or lockfile, or the
   flake, and `just gate` always does. It compiles every published adapter
