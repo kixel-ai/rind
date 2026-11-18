@@ -60,6 +60,22 @@ pub(crate) mod vg_ecdh_p256;
 #[rustfmt::skip]
 pub(crate) mod vg_ecdsa_p256_verify;
 #[rustfmt::skip]
+pub(crate) mod vg_hmac_sha1_finalize_scratch_sha2;
+#[rustfmt::skip]
+pub(crate) mod vg_hmac_sha1_init_scratch_sha2;
+#[rustfmt::skip]
+pub(crate) mod vg_hmac_sha256_finalize_scratch_sha2;
+#[rustfmt::skip]
+pub(crate) mod vg_hmac_sha256_init_scratch_sha2;
+#[rustfmt::skip]
+pub(crate) mod vg_hmac_sha384_finalize_scratch_sha512;
+#[rustfmt::skip]
+pub(crate) mod vg_hmac_sha384_init_scratch_sha512;
+#[rustfmt::skip]
+pub(crate) mod vg_hmac_sha512_finalize_scratch_sha512;
+#[rustfmt::skip]
+pub(crate) mod vg_hmac_sha512_init_scratch_sha512;
+#[rustfmt::skip]
 pub(crate) mod vg_keccak_f1600;
 #[rustfmt::skip]
 pub(crate) mod vg_keccak_f1600_sha3;
@@ -114,10 +130,58 @@ pub(crate) mod vg_p256_comb;
 #[rustfmt::skip]
 pub(crate) mod vg_p256_gtab;
 #[rustfmt::skip]
+pub(crate) mod vg_pbkdf2_hmac_sha1_iterate_sha2;
+#[rustfmt::skip]
+pub(crate) mod vg_pbkdf2_hmac_sha1_sha2;
+#[rustfmt::skip]
+pub(crate) mod vg_pbkdf2_hmac_sha256_iterate_sha2;
+#[rustfmt::skip]
+pub(crate) mod vg_pbkdf2_hmac_sha256_sha2;
+#[rustfmt::skip]
+pub(crate) mod vg_pbkdf2_hmac_sha384_iterate_sha512;
+#[rustfmt::skip]
+pub(crate) mod vg_pbkdf2_hmac_sha384_sha512;
+#[rustfmt::skip]
+pub(crate) mod vg_pbkdf2_hmac_sha512_iterate_sha512;
+#[rustfmt::skip]
+pub(crate) mod vg_pbkdf2_hmac_sha512_sha512;
+#[rustfmt::skip]
 pub(crate) mod vg_poly1305_blocks;
 #[rustfmt::skip]
 pub(crate) mod vg_poly1305_finalize_scratch;
 #[rustfmt::skip]
 pub(crate) mod vg_poly1305_init;
+#[rustfmt::skip]
+pub(crate) mod vg_sha1_compress_sha2;
+#[rustfmt::skip]
+pub(crate) mod vg_sha1_finalize_scratch_sha2;
+#[rustfmt::skip]
+pub(crate) mod vg_sha1_init;
+#[rustfmt::skip]
+pub(crate) mod vg_sha1_update_scratch_sha2;
+#[rustfmt::skip]
+pub(crate) mod vg_sha256_compress_sha2;
+#[rustfmt::skip]
+pub(crate) mod vg_sha256_finalize_scratch_sha2;
+#[rustfmt::skip]
+pub(crate) mod vg_sha256_h0;
+#[rustfmt::skip]
+pub(crate) mod vg_sha256_init;
+#[rustfmt::skip]
+pub(crate) mod vg_sha256_k;
+#[rustfmt::skip]
+pub(crate) mod vg_sha256_update_scratch_sha2;
+#[rustfmt::skip]
+pub(crate) mod vg_sha384_init;
+#[rustfmt::skip]
+pub(crate) mod vg_sha512_compress_sha512;
+#[rustfmt::skip]
+pub(crate) mod vg_sha512_finalize_scratch_sha512;
+#[rustfmt::skip]
+pub(crate) mod vg_sha512_init;
+#[rustfmt::skip]
+pub(crate) mod vg_sha512_k;
+#[rustfmt::skip]
+pub(crate) mod vg_sha512_update_scratch_sha512;
 #[rustfmt::skip]
 pub(crate) mod vg_zeroize;

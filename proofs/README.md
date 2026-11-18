@@ -465,7 +465,9 @@ and RFC 8018 as `Rind/HashSpec.lean` transliterates them:
   `kdf.prk_new_fill` (`Rind/X86_64/Hkdf.lean`): HKDF's extract and expand,
   and expand from a PRK loaded from bytes;
 - `kdf.derive_spec`, `kdf.verify_spec` (`Rind/X86_64/Pbkdf2.lean`): PBKDF2's
-  `Secret::derive` and `Secret::verify`.
+  `Secret::derive` and `Secret::verify` on rind's loop. On aarch64 with the
+  instructions it takes, a `Secret` runs pyca/verified-garbage's routine
+  instead, through `mid::pbkdf2_vg`, which the second pass leaves opaque.
 
 HKDF's `From<Okm>` conversions, each filling the key's length of HKDF-Expand
 into a zeroed buffer and keying it, in `Rind/X86_64/Hkdf.lean` and
@@ -787,6 +789,20 @@ CPU-feature checks pick Vale's tier (`RunsValeAesGcm`) or the SSE tier
 (`Algorithm`'s `expand` and `Sealer`'s `Ops`), and `seal_in_place_append_tag`,
 which is generic over its buffer.
 
+On aarch64, AES-GCM is not yet proven; its GHASH key setup and hashing on
+CPUs with the crypto extension are. `Rind/Aarch64/GhashPmull.lean` proves
+that `GhashTable::new` builds the PMULL table of H to H^8, each shifted as
+Vale's `shift_key_1` does (`ghash_table_new_spec`), and that `Ghash::add` on
+it is the Horner rule on the padded blocks, Vale's `ghash_LE`
+(`ghash_add_spec`): its `mul!` is the x86 Karatsuba step with the key's
+halves stored swapped, its `reduce!` the same reduction, and its eight-block
+loop the same sum of descending powers, the target-independent lemmas shared
+in `Rind/GhashSpec.lean`. `Rind/Aarch64/AesGcmModel.lean` models by hand
+what Aeneas cannot translate, the NEON transmutes, `Ghash::add`'s slice
+chunking, and the one-pass short path with its `Aggregate`, quoting the
+Rust; the short path, the s2n-bignum kernels' composition, and the AEAD API
+above them remain to prove.
+
 `aead::gcm::Key`, which takes an IV of any length and tags of any
 `TagLength`, is proven on the same tiers, in `Rind/X86_64/GcmKey.lean`, a
 hand model over `AeadDispatch` that quotes `rind/src/aead/gcm.rs`. Its `new`
@@ -1060,8 +1076,10 @@ proof after those.
   `Rind/<Arch>/{AesModesLow,AesModesApi,AesKw}.lean`, their proofs;
   `hol-light/x86_64/aes_hw_spec.ml`, AES on the AES-NI instructions and CTR32's
   counter blocks, for the x86_64 routines' HOL Light proofs; and
+  `Rind/GhashSpec.lean` and
   `Rind/X86_64/{Ghash,PartialBlock,AesGcmGlue,AesGcm,GhashClmul,AesGcmBy8,AesGcmClmul,AesGcmAead,AesGcmAny,GhashAvx512,AesGcmAvx512}.lean`:
-  the AES-GCM proof, on x86_64 alone; `Rind/X86_64/GcmKey.lean`, the hand model
+  the AES-GCM proof, on x86_64 alone; `Rind/Aarch64/{AesGcmModel,GhashPmull}.lean`,
+  aarch64's hand model and its PMULL GHASH proof; `Rind/X86_64/GcmKey.lean`, the hand model
   of `aead::gcm::Key` and its proofs; `Rind/X86_64/ChaCha20Poly1305.lean`, the
   ChaCha20-Poly1305 and XChaCha20-Poly1305 proof above aws-lc's routines.
 - `Rind/Rsa.lean` and `Rind/RsaLemmas.lean`: RFC 8017's verification,

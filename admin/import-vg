@@ -95,6 +95,12 @@ ROOTS = {
         "vg_ec_p256_public_key",
         "vg_ecdh_p256",
         "vg_ecdsa_p256_verify",
+        # PBKDF2 over HMAC-SHA1 and HMAC-SHA256 with the crypto extension,
+        # and over HMAC-SHA384 and HMAC-SHA512 with the SHA-512 instructions.
+        "vg_pbkdf2_hmac_sha1_sha2",
+        "vg_pbkdf2_hmac_sha256_sha2",
+        "vg_pbkdf2_hmac_sha384_sha512",
+        "vg_pbkdf2_hmac_sha512_sha512",
     ],
 }
 
