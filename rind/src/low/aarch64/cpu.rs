@@ -142,6 +142,19 @@ impl HaveSha3 {
     pub(crate) fn check() -> Option<Self> {
         (features() & SHA3 != 0).then_some(Self(()))
     }
+
+    /// The token where Keccak-f runs on the SHA3 instructions: only on Apple
+    /// targets, whose cores run them on every SIMD unit. Other cores, such as
+    /// Neoverse N2, run them on fewer, so scalar Keccak-f measured twice as
+    /// fast there; mlkem-native and verified-garbage choose the same way, by
+    /// target, so Linux on Apple's cores runs scalar code too.
+    pub(crate) fn check_keccak() -> Option<Self> {
+        if cfg!(target_vendor = "apple") {
+            Self::check()
+        } else {
+            None
+        }
+    }
 }
 
 /// Proof that the CPU has SVE2, which pyca/verified-garbage's fastest
@@ -382,6 +395,10 @@ mod tests {
             available!("aes", "pmull", "sha2")
         );
         assert_eq!(HaveSha3::check().is_some(), available!("sha3"));
+        assert_eq!(
+            HaveSha3::check_keccak().is_some(),
+            cfg!(target_vendor = "apple") && available!("sha3")
+        );
         assert_eq!(HaveSve2::check().is_some(), available!("sve2"));
         #[cfg(target_vendor = "apple")]
         assert_eq!(features() & SB != 0, available!("sb"));
