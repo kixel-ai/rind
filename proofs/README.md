@@ -626,8 +626,9 @@ given FIPS 202's round constants and nothing of the CPU. Each round is
 `keccak_round` written out, which `round_spec` proves by unfolding.
 
 ML-KEM's polynomial arithmetic, against FIPS 203 as SymCrypt's Lean spec
-(`Rind/SymCrypt/MlKem.lean`, MIT) states it, though not yet rind's Rust,
-which has [its quest](/quest/m4/verified/mlkem-construction.md):
+(`Rind/SymCrypt/MlKem.lean`, MIT) states it, and of rind's Rust only the
+coding below it; the rest has
+[its quest](/quest/m4/verified/mlkem-construction.md):
 
 - `NTT_get`, `NTTInv_get` (`Rind/MlKem.lean`): Algorithms 9 and 10 compute
   the residues FIPS 203's Equations (4.12) and (4.13) define, and back;
@@ -638,6 +639,31 @@ which has [its quest](/quest/m4/verified/mlkem-construction.md):
 - `avx2ForwardNtt_eq`, `avx2InverseNtt_eq`, `avx2Mulcache_eq`, and
   `pmulaccred0K3_eq` and its siblings: the same for the x86_64 routines, which
   keep FIPS 203's coefficients in the AVX2 order.
+
+ML-KEM's decompression and message coding, on x86_64 and aarch64, in
+`Rind/X86_64/MlKemCoding.lean`, which `admin/prove` also writes for aarch64.
+They are the same Rust for ML-KEM-512, 768, and 1024, and rest on no axiom:
+
+- `decompress_spec`: `mid::mlkem::decompress::<D, L>` writes FIPS 203's
+  `Decompress_D(ByteDecode_D(bytes))`, each coefficient in `[0, q)`, for
+  every `D` from 1 to 11 and `L = 32 * D` bytes, so for the 4, 5, 10, and 11
+  bits a ciphertext's halves take;
+- `from_message_bits_spec`: K-PKE's message, as a polynomial, is
+  `Decompress_1(ByteDecode_1(m))`;
+- `to_message_bits_spec`: the message K-PKE decrypts is
+  `ByteEncode_1(Compress_1(f))` of a polynomial `f`, given Rust coefficients
+  each in `[0, q)` and equal to `f`'s modulo `q` (`Holds 0 3328`), so its
+  caller must show the coefficients canonical, not only congruent: `-1`
+  stands for the same element as 3328 but does not meet it.
+
+`Rind/MlKemCoding.lean` states what they need of the spec, with no Rust:
+`ByteEncode_bit`, `ByteDecode_get`, and `SamplePolyCBD_get` give each bit or
+coefficient of FIPS 203's `ByteEncode`, `ByteDecode`, and `SamplePolyCBD`,
+which the spec writes as loops, and `Compress_val` and `Decompress_val` give
+`Compress` and `Decompress`, which it writes as rounded rationals, as
+quotients of naturals. Nothing above these three calls them yet: K-PKE, the
+Fujisaki-Okamoto transform, the samplers, and the other encodings are the
+quest's.
 
 Ed25519 on x86_64 and aarch64, from the signature API's `ed25519::KeyPair`
 and `ed25519::PublicKey` to s2n-bignum's routines and the SHA-512 proof above, in
@@ -1152,7 +1178,10 @@ proof after those.
   SymCrypt's Lean FIPS 203 spec and its NTT lemmas, vendored;
   `Rind/MlKem.lean`: FIPS 203's NTT and inverse NTT in closed form;
   `Rind/S2nMlKem.lean`: s2n-bignum's ML-KEM specs, transliterated, and their
-  proofs that they are FIPS 203's.
+  proofs that they are FIPS 203's; `Rind/MlKemCoding.lean`: FIPS 203's byte
+  coding, compression, and CBD sampling bit by bit and coefficient by
+  coefficient; `Rind/X86_64/MlKemCoding.lean`, on both targets: that rind's
+  decompression and message coding are FIPS 203's.
 - `Rind/<Arch>/ShaBlocks.lean`: SHA-1 and SHA-256's block functions on each
   target, SHA-1's padded last blocks, and SHA-256's padded last blocks and
   finish; `Rind/Aarch64/Sha256Hw.lean`, the axiom for aarch64's routine with
