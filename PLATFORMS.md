@@ -140,17 +140,20 @@ global allocator. CI builds it for `x86_64-unknown-none`,
 - The x86_64 backend, which a target needs SSE2 for (`x86_64-unknown-none`
   runs the portable one), reads `cpuid` and XCR0 itself, as `std` does, so it
   takes a vector path only where the CPU has it and XCR0 says its registers
-  are saved. Without a kernel, the firmware must enable every vector state
-  the target enables at compile time, the code that switches contexts must
-  save every state XCR0 enables (or, where the target leaves AVX off, XCR0's
-  AVX bit can stay clear), and every core must report the same XCR0, since
-  rind detects once for all of them. aarch64 and 32-bit
-  `arm` cannot ask without an OS, so they run what the target enables at
-  compile time: `-C target-feature=+aes,+sha2` turns on aarch64's crypto
-  extension paths, `+sha3` those that use the SHA3 extension, such as
-  SHA-512's (Keccak-f1600 runs on it only on Apple's cores, so not here), and
-  `+sve2` the SVE2 ChaCha20-Poly1305. 32-bit `arm` runs the code for a
-  core with neither NEON nor the crypto extension.
+  are saved. It detects once, at its first call, for every core and every
+  later call. So without a kernel, before that call the firmware must enable
+  every vector state the target enables at compile time, and the state XCR0
+  then enables must stay enabled; every core that runs rind must report the
+  same features and XCR0; and the code that switches contexts must save
+  every state XCR0 enables (or, where the target leaves AVX off, XCR0's AVX
+  bit can stay clear throughout).
+- aarch64 cannot ask without an OS, so it runs what the target enables at
+  compile time: `-C target-feature=+aes,+sha2` turns on its crypto extension
+  paths, `+sha3` those that use the SHA3 extension, such as SHA-512's
+  (Keccak-f1600 runs on it only on Apple's cores, so not here), and `+sve2`
+  the SVE2 ChaCha20-Poly1305. 32-bit `arm` asks only Linux and Android, so
+  elsewhere it runs the code for a core with neither NEON nor the crypto
+  extension, whatever the target enables.
 - curve25519-dalek, which the portable backend runs X25519 and Ed25519 on,
   compiles its AVX2 backend on every x86_64 target, which LLVM fails to do
   where SSE is off, as on `x86_64-unknown-none` and `x86_64-unknown-uefi`
