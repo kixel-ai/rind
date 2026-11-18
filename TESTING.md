@@ -263,10 +263,12 @@ architecture's report runs it. These stay unrun, each for a reason:
 - Functions only constant evaluation runs, such as a table builder behind a
   `const`, are marked `coverage(off)` with a comment saying so, as are
   test-only modules.
-- pyca/verified-garbage's SVE2 ChaCha20-Poly1305 (`seal_sve2` and
-  `open_sve2` in `low/aarch64/chacha20poly1305.rs`): macOS's Apple cores
-  lack SVE2. build.yml's arm64 job tests it natively, and `admin/ct-qemu`
-  traces it.
+- What only a CPU neither runner has reaches: pyca/verified-garbage's SVE2
+  ChaCha20-Poly1305 (`seal_sve2` and `open_sve2` in
+  `low/aarch64/chacha20poly1305.rs`), since macOS's Apple cores lack SVE2,
+  which build.yml's arm64 job tests natively and `admin/ct-qemu` traces;
+  and `mcdt::denied`, which only an Intel CPU reporting `MCDT_NO` asks,
+  a bit SDE sets for no model.
 - `VpaesDecKey`'s wipe on x86_64 and aarch64: only `AesDecKey` holds one,
   and its drop wipes the whole enum first, so drop glue then finds another
   variant. The key keeps its own wipe, as every key type does.

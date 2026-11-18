@@ -28,7 +28,9 @@ cargo llvm-cov show-env --sh $OPTIONS > "$out/env.sh"
 source "$out/env.sh"
 cargo llvm-cov clean --workspace
 
-tests=(--workspace --exclude rind-bench --exclude rind-cpuid --exclude rind-fuzz --exclude rind-timing)
+# rind-python has no Rust tests, and the debug copy `cargo test` would build
+# conflicts with the wheel's, so the report would drop the wheel's counts.
+tests=(--workspace --exclude rind-bench --exclude rind-cpuid --exclude rind-fuzz --exclude rind-timing --exclude rind-python)
 env SLOW_TESTS=1 cargo test --locked "${tests[@]}"
 
 # The older-CPU tiers of build.yml reach only rind's own fallbacks, so they
