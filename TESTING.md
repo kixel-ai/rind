@@ -47,8 +47,9 @@ A primitive is checked five ways:
   and fails on a freed block whose bytes differ between them, since those
   vary with the key, and fails on any nonzero block key generation frees.
   It runs wherever the zeroing tests do. RSA key generation runs in the
-  nightly native and portable runs, at every size, and on wasm for RSA-2048
-  only; the portable run also checks RSA-3072 and RSA-4096 on 32-bit limbs.
+  nightly native and portable runs for RSA-2048, RSA-3072, and RSA-4096, and
+  on wasm for RSA-2048 only; the portable run also checks RSA-3072 and
+  RSA-4096 on 32-bit limbs.
 
 Separately, `low::guard_pages` checks buffer bounds. It runs each kernel
 that takes a caller's slice (AES-GCM, ChaCha20-Poly1305, AES-CTR, AES-CBC,

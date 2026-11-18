@@ -11,14 +11,16 @@
 # `sh/dispatch.sh` sources this file for `wasm_runner` and does not run the
 # suite below. Sourcing stops after the function.
 
-# Point Cargo's wasm32-wasip2 runner at wasmtime and preopen the checkout at
-# the absolute path the tests use to open fixtures. wasmtime passes the guest
-# no host environment unless asked, so SLOW_TESTS is forwarded. When the host
-# has not set it, the guest does not see it either.
+# Point Cargo's wasm32-wasip2 runner at wasmtime through `sh/wasm-runner.sh`,
+# which preopens the checkout at the absolute path the tests use to open
+# fixtures. wasmtime passes the guest no host environment unless asked, so
+# SLOW_TESTS is forwarded. When the host has not set it, the guest does not
+# see it either. Cargo splits a string runner on whitespace, so the runner is
+# the script's path from the checkout root, which has no spaces, and the
+# script finds the root itself. Run Cargo from the checkout root, as the
+# callers do, so Cargo resolves that path.
 wasm_runner() {
-    local root
-    root=$(pwd)
-    export CARGO_TARGET_WASM32_WASIP2_RUNNER="wasmtime run --dir ${root}::${root} --env SLOW_TESTS"
+    export CARGO_TARGET_WASM32_WASIP2_RUNNER="sh/wasm-runner.sh"
 }
 
 if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
