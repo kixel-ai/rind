@@ -152,9 +152,9 @@ jobs:
           RUSTFLAGS: --cfg rind_portable --cfg curve25519_dalek_backend="serial"
 
   # The portable backend built for each target that runs nothing else and
-  # valgrind runs, since its compiler can turn a mask select into a branch
-  # where the target has no conditional move, as LLVM does on riscv64gc and
-  # s390x: i686 natively, and the rest under qemu-user, which runs the
+  # valgrind runs, since a compiler can turn a mask select into a branch
+  # where the target has no conditional move: i686 natively, and the rest
+  # under qemu-user, which runs the
   # target's own valgrind (see `flake.nix`'s `ctgrind-shell`). Only the unit
   # suite marks secrets in rind's code; the forced `portable` row runs the
   # rest. Valgrind runs each test binary's threads on one core, and under
