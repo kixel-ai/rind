@@ -267,6 +267,9 @@ architecture's report runs it. These stay unrun, each for a reason:
   `open_sve2` in `low/aarch64/chacha20poly1305.rs`): macOS's Apple cores
   lack SVE2. build.yml's arm64 job tests it natively, and `admin/ct-qemu`
   traces it.
+- `VpaesDecKey`'s wipe on x86_64 and aarch64: only `AesDecKey` holds one,
+  and its drop wipes the whole enum first, so drop glue then finds another
+  variant. The key keeps its own wipe, as every key type does.
 - Error mappings for a failure no test can cause: the system random source
   failing, signing failing with a key that loaded, a message past a cipher's
   length limit or `isize::MAX`, and rind-object-store's arm for an

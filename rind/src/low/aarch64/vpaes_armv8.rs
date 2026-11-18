@@ -92,7 +92,7 @@ impl Drop for VpaesKey {
 impl low::generic::zeroise::Zeroable for VpaesKey {}
 
 /// An expanded AES-128, AES-192, or AES-256 decryption key, in vpaes's own format:
-/// aws-lc's `AES_KEY`. Only `AesDecKey` holds one, and its drop wipes it.
+/// aws-lc's `AES_KEY`.
 #[repr(C, align(16))]
 pub(crate) struct VpaesDecKey {
     rd_key: [u32; 60],
@@ -133,6 +133,14 @@ impl VpaesDecKey {
         unsafe { cbc(blocks, (self as *const Self).cast(), iv, 0) }
     }
 }
+
+impl Drop for VpaesDecKey {
+    fn drop(&mut self) {
+        low::zeroise_value(self);
+    }
+}
+
+impl low::generic::zeroise::Zeroable for VpaesDecKey {}
 
 /// Runs `vpaes_cbc_encrypt` over `blocks` in place, encrypting under a
 /// [`VpaesKey`] if `enc` is 1 or decrypting under a [`VpaesDecKey`] if 0.
