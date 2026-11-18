@@ -32,7 +32,9 @@ rind's HOL Light proofs of its routines for the SHA extensions in
 constant-time compares in `Rind.X86_64.CtEqual` for HMAC's and PBKDF2's
 `verify`, AES-GCM's tag check, ChaCha20-Poly1305's and XChaCha20-Poly1305's
 tag checks, RSASSA-PSS's hash compare, and key wrap's `unwrap` and
-`unwrap_padded` checks, and nothing else.
+`unwrap_padded` checks; for RSA verification's public operation on AVX-512
+IFMA, pyca/verified-garbage's Lean proof of its routine, which
+`Rind.X86_64.VgRsa` restates; and nothing else.
 ChaCha20-Poly1305's theorems also take aws-lc's one-pass routines as the
 hypothesis `RunsChaCha20Poly1305`, which no axiom states. The generator
 tables' point selects rest on no axiom, only on the hand model in
@@ -727,6 +729,7 @@ change to the trust base.
  bignum_cmp_lt_spec,
  bignum_negmodinv_spec,
  finish_padded_spec,
+ rsa_ifma_public_spec,
  sha256_compress_blocks_shaext_spec] -/
 #guard_msgs in
 #print axioms rsa_pkcs1_sha256_verify_spec
@@ -740,6 +743,7 @@ change to the trust base.
  ct_compare_16_spec,
  ct_compare_bytes_spec,
  finish_padded_spec,
+ rsa_ifma_public_spec,
  sha256_compress_blocks_shaext_spec] -/
 #guard_msgs in
 #print axioms rsa_pss_sha256_verify_spec

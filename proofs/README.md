@@ -199,10 +199,15 @@ check covers, and `ret` alone, which each call's case runs. The `prove`
 workflow runs it on x86_64 and aarch64, nightly with a new seed.
 
 A gap in what the models allow across instructions is beyond what
-cosimulating one instruction at a time can catch. Reviewers found one that
-holds every VG ✓: a freed frame's bytes keep their values in the models, so
-a proof can read back a value a signal handler may have overwritten on
-hardware ([pyca/verified-garbage#5321](https://github.com/pyca/verified-garbage/issues/5321)).
+cosimulating one instruction at a time can catch. Reviewers found one: a
+freed frame's bytes kept their values in the models, so a proof could read
+back a value a signal handler may have overwritten on hardware
+([pyca/verified-garbage#5321](https://github.com/pyca/verified-garbage/issues/5321)).
+VG fixed it in both models before the commit `admin/import-vg` pins.
+
+`verified-garbage/` also holds the `Spec` modules whose definitions the
+axioms restating VG's theorems state, such as `VerifiedGarbage.Spec.Rsa`,
+which `Rind/X86_64/VgRsa.lean` imports.
 
 ## What is proven
 
@@ -895,8 +900,12 @@ modulus of 1024 to 8192 bits, and an odd exponent from 3 to below 2^33 load,
 and a loaded key holds them, with an odd modulus of 1024 to 8192 bits, an
 odd exponent of at least 3, `pub_montifier`'s R^2 mod N, and
 `mont_neg_inverse`'s -N^-1 mod 2^64.
-`Rind/X86_64/RsaPublic.lean` proves the public operation's square-and-multiply
-(`public_op_spec`), `Rind/X86_64/RsaBytes.lean` the conversions between
+`Rind/X86_64/RsaPublic.lean` proves the public operation's square-and-multiply,
+`Rind/X86_64/RsaIfma.lean` the public operation (`public_op_spec`), which
+runs pyca/verified-garbage's AVX-512 IFMA routine for the exponent 65537 and
+2048-, 3072-, and 4096-bit moduli on a CPU with it, through the axiom
+`Rind/X86_64/VgRsa.lean` restates from that project's Lean proof,
+`Rind/X86_64/RsaBytes.lean` the conversions between
 bytes and words, and `Rind/X86_64/{RsaVerify,RsaPss}.lean`
 EMSA-PKCS1-v1_5's encoding check and EMSA-PSS-VERIFY. DER is opaque, as the ✓
 leaves it out, so the `new` and `from_spki` theorems hold for every key
@@ -904,9 +913,8 @@ those return without saying which encodings they accept. The loaders assume
 that the entry guard holds, `from_components` also `Runs`, and each `verify`
 theorem `Runs`, `Sha256Blocks`, messages of at most `maxInput` bytes, and
 `MontProducts k`, that `low::x86_64::mont`'s products
-return their results at the modulus's width of k words, and `NoIfma`, that
-the CPU lacks the AVX-512 IFMA on which the public operation runs
-pyca/verified-garbage's instead, whose Lean proof lives in that project.
+return their results at the modulus's width of k words, and
+`IfmaCheckReturns`, that the CPU check for AVX-512 IFMA returns.
 `Rind/X86_64/RsaMont.lean`'s `mont_products` proves it at 16 and 32 words
 with BMI2 and ADX, from s2n-bignum's theorems, and from `AwsLcMont`, that
 aws-lc's unproven routines return theirs, at every other width and CPU.
@@ -989,7 +997,8 @@ proof after those.
 
 - `hol-light/<arch>/`: rind's HOL Light proofs, one file per routine, on
   rind's fork of s2n-bignum in `thirdparty/s2n-bignum`.
-- `verified-garbage/VerifiedGarbage/`: VG's ISA models, copied, and
+- `verified-garbage/VerifiedGarbage/`: VG's ISA models and the `Spec`
+  modules its theorems state, copied, and
   `verified-garbage/Cosim/`, the cosimulation of them, which
   [verified-garbage's models](#verified-garbages-models) describes.
 - `Rind/<Arch>/{Types,Funs}.lean`: Aeneas's translation, which `admin/prove`
