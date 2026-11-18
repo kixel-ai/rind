@@ -8,48 +8,168 @@ use core::arch::aarch64::{
     vreinterpretq_u32_u64, vreinterpretq_u64_u32, vrev32q_u16, vshlq_n_u32, vshrq_n_u32,
     vzip1q_u32, vzip1q_u64, vzip2q_u32, vzip2q_u64,
 };
-use core::mem;
+use core::mem::{self, MaybeUninit};
+
+use super::cpu::HaveSve2;
+use super::vg::vg_chacha20_apply_neon::vg_chacha20_apply_neon;
+use super::vg::vg_chacha20_apply_sve2::vg_chacha20_apply_sve2;
+use super::vg::vg_chacha20_init::vg_chacha20_init;
 
 pub(crate) struct ChaCha20 {
-    key0: [u32; 4],
-    key1: [u32; 4],
+    /// As little-endian words, which on aarch64 are also the bytes VG reads.
+    key: [u32; 8],
+    /// The block counter, then the 96-bit nonce.
     nonce: [u32; 4],
+    sve2: Option<HaveSve2>,
 }
 
-fn four(b: &[u8; 16]) -> [u32; 4] {
-    [
-        u32::from_le_bytes(b[0..4].try_into().unwrap()),
-        u32::from_le_bytes(b[4..8].try_into().unwrap()),
-        u32::from_le_bytes(b[8..12].try_into().unwrap()),
-        u32::from_le_bytes(b[12..16].try_into().unwrap()),
-    ]
+/// `bytes` as little-endian words.
+fn words<const B: usize, const W: usize>(bytes: &[u8; B]) -> [u32; W] {
+    const { assert!(B == 4 * W) };
+    core::array::from_fn(|i| u32::from_le_bytes(bytes[4 * i..4 * i + 4].try_into().unwrap()))
 }
 
 impl ChaCha20 {
+    /// `nonce` is the little-endian block counter followed by the 96-bit nonce.
     pub(crate) fn new(key: &[u8; 32], nonce: &[u8; 16]) -> Self {
         Self {
-            key0: four(key[0..16].try_into().unwrap()),
-            key1: four(key[16..32].try_into().unwrap()),
-            nonce: four(nonce),
+            key: words(key),
+            nonce: words(nonce),
+            sve2: HaveSve2::check(),
         }
     }
 
+    /// XORs the keystream into `buffer`, starting at the current block, then
+    /// moves the counter past every block it touched.
+    ///
+    /// The 32-bit counter must not pass 2^32 - 1, which callers rule out
+    /// with `mid::chacha20::check_counter`.
     pub(crate) fn cipher(&mut self, buffer: &mut [u8]) {
-        let (by4, remainder) = buffer.as_chunks_mut::<256>();
-        for block_x4 in by4 {
-            // SAFETY: this crate depends on the `neon` cpu feature.
-            unsafe { core_x4(&self.key0, &self.key1, &self.nonce, block_x4) };
-            self.nonce[0] = self.nonce[0].wrapping_add(4);
+        #[cfg(rind_sweep)]
+        match SWEEP.load(core::sync::atomic::Ordering::Relaxed) {
+            1 => cipher_neon(&self.key, &self.nonce, buffer),
+            2 => cipher_vg(self.sve2, &self.key, &self.nonce, buffer),
+            3 => cipher_vg(None, &self.key, &self.nonce, buffer),
+            _ => self.cipher_policy(buffer),
         }
-        for block in remainder.chunks_mut(64) {
-            let mut stream = [0u8; 64];
-            core(&self.key0, &self.key1, &self.nonce, &mut stream);
-            for (out, key) in block.iter_mut().zip(stream.iter()) {
-                *out ^= *key;
-            }
-            self.nonce[0] = self.nonce[0].wrapping_add(1);
+        #[cfg(not(rind_sweep))]
+        self.cipher_policy(buffer);
+        self.nonce[0] = self.nonce[0].wrapping_add(buffer.len().div_ceil(64) as u32);
+    }
+
+    fn cipher_policy(&self, buffer: &mut [u8]) {
+        cipher_neon(&self.key, &self.nonce, buffer);
+    }
+}
+
+/// Temporary: which path `cipher` takes, for timing them against each other.
+#[cfg(rind_sweep)]
+pub(crate) static SWEEP: core::sync::atomic::AtomicU8 = core::sync::atomic::AtomicU8::new(0);
+
+
+/// rind's NEON code: four blocks at a time, then one at a time in
+/// general-purpose registers.
+fn cipher_neon(key: &[u32; 8], nonce: &[u32; 4], buffer: &mut [u8]) {
+    let (key0, key1) = (key[..4].try_into().unwrap(), key[4..].try_into().unwrap());
+    let mut nonce = *nonce;
+    let (by4, remainder) = buffer.as_chunks_mut::<256>();
+    for block_x4 in by4 {
+        // SAFETY: this crate depends on the `neon` cpu feature.
+        unsafe { core_x4(key0, key1, &nonce, block_x4) };
+        nonce[0] = nonce[0].wrapping_add(4);
+    }
+    for block in remainder.chunks_mut(64) {
+        let mut stream = [0u8; 64];
+        core(key0, key1, &nonce, &mut stream);
+        for (out, key) in block.iter_mut().zip(stream.iter()) {
+            *out ^= *key;
+        }
+        nonce[0] = nonce[0].wrapping_add(1);
+    }
+}
+
+/// verified-garbage's streaming state, which only its routines read or
+/// write, and which they read only where they have written: 768 bytes,
+/// aligned to a cache line as VG's own wrapper aligns it.
+#[repr(C, align(64))]
+struct VgState(MaybeUninit<[u64; 96]>);
+
+// One wrapper per routine, each a single call, so that a proof can state
+// each routine's contract about its own wrapper.
+impl VgState {
+    /// A state for `init` to start.
+    #[inline(always)]
+    fn uninit() -> Self {
+        Self(MaybeUninit::uninit())
+    }
+
+    /// verified-garbage's `vg_chacha20_init`: starts the keystream for the
+    /// key at the block counter and nonce `nonce`.
+    #[inline(always)]
+    fn init(&mut self, key: &[u32; 8], nonce: &[u32; 4]) {
+        // Little-endian words are the bytes VG reads.
+        let (key, nonce) = (
+            key.as_ptr().cast::<[u8; 32]>(),
+            nonce.as_ptr().cast::<[u8; 16]>(),
+        );
+        // SAFETY: `self` is 768 writable bytes, `key` 32 readable bytes, and
+        // `nonce` 16. `self` is exclusively borrowed, so it overlaps neither
+        // input, and no object wraps the address space.
+        unsafe { asm_call!(unsafe extern "C" vg_chacha20_init(self.0.as_mut_ptr(), key, nonce)) }
+    }
+
+    /// verified-garbage's `vg_chacha20_apply_neon`: XORs the next
+    /// `buffer.len()` bytes of the keystream into `buffer` and returns 1, or
+    /// returns 0 and changes nothing if fewer are left.
+    ///
+    /// # Safety
+    ///
+    /// `init` must have started the state: the routine branches on the count
+    /// of keystream left that `init` writes.
+    #[inline(always)]
+    unsafe fn apply_neon(&mut self, buffer: &mut [u8]) -> u32 {
+        // SAFETY: `self` is 768 readable and writable bytes, of which the
+        // routine reads only those `init`, which the caller ensures has run,
+        // or the routine itself wrote, and `buffer` is `len`; they are
+        // distinct objects, so neither overlaps the other, and no object
+        // wraps the address space. rind requires NEON.
+        unsafe {
+            asm_call!(unsafe extern "C" vg_chacha20_apply_neon(self.0.as_mut_ptr(), buffer.as_mut_ptr(), buffer.len()))
         }
     }
+
+    /// verified-garbage's `vg_chacha20_apply_sve2`, as `apply_neon`.
+    ///
+    /// # Safety
+    ///
+    /// As `apply_neon`'s.
+    #[inline(always)]
+    unsafe fn apply_sve2(&mut self, _: HaveSve2, buffer: &mut [u8]) -> u32 {
+        // SAFETY: as `apply_neon`'s; the token proves SVE2.
+        unsafe {
+            asm_call!(unsafe extern "C" vg_chacha20_apply_sve2(self.0.as_mut_ptr(), buffer.as_mut_ptr(), buffer.len()))
+        }
+    }
+}
+
+/// XORs the keystream for `key` and `nonce` into `buffer` on
+/// verified-garbage's routines: `init` starts the keystream at the block
+/// counter, and `apply` XORs it in, on SVE2 where `sve2` proves it and on
+/// NEON otherwise. Out of line, so the paths that don't run it don't set
+/// up its 768-byte, cache-aligned frame.
+#[inline(never)]
+fn cipher_vg(sve2: Option<HaveSve2>, key: &[u32; 8], nonce: &[u32; 4], buffer: &mut [u8]) {
+    let mut state = VgState::uninit();
+    state.init(key, nonce);
+    let ok = match sve2 {
+        // SAFETY: `init` has started the state.
+        Some(t) => unsafe { state.apply_sve2(t, buffer) },
+        // SAFETY: `init` has started the state.
+        None => unsafe { state.apply_neon(buffer) },
+    };
+    // `apply` refuses, leaving `buffer` as it was, only a keystream past
+    // block 2^32 - 1, which the callers rule out: never pass on plaintext.
+    assert_eq!(ok, 1, "ChaCha20 block counter would overflow");
 }
 
 // Rotate each element of a uint32x4_t left by a specified number of bits.
