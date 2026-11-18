@@ -1337,10 +1337,15 @@ mod tests {
     /// so generates the same key.
     #[test]
     fn key_generation_known_answer() {
+        // Collected and joined rather than `flat_map`ped: on s390x, which
+        // has no conditional move at its baseline, `FlatMap`'s size hint
+        // branches on its empty slot's uninitialised length, which memcheck
+        // flags.
         let candidates = include_str!("../testdata/rsa.bench.2048.txt")
             .split_whitespace()
-            .flat_map(|line| hex::decode(line).unwrap())
-            .collect::<Vec<_>>();
+            .map(|line| hex::decode(line).unwrap())
+            .collect::<Vec<_>>()
+            .concat();
         let key = SigningKey(
             rsa_priv::RsaPrivateKey::generate(
                 RsaKeySize::Rsa2048,
