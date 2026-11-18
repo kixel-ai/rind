@@ -27,11 +27,3 @@ pub(crate) fn aes(key_len: usize) -> &'static Algorithm {
         _ => &AES_256,
     }
 }
-
-/// Temporary: picks `ChaCha20`'s path on aarch64 (0 the policy, 1 rind's
-/// NEON, 2 VG's best, 3 VG's NEON), for timing them against each other.
-#[cfg(all(rind_sweep, rind_backend = "aarch64"))]
-#[doc(hidden)]
-pub fn __sweep(path: u8) {
-    crate::low::chacha20::SWEEP.store(path, core::sync::atomic::Ordering::Relaxed);
-}

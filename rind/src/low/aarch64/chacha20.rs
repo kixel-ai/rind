@@ -2,6 +2,21 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 // Originally from cifra
 
+//! ChaCha20. Where the CPU has SVE2, pyca/verified-garbage's SVE2 routine
+//! from 128 bytes; otherwise its NEON routine from three blocks to four and
+//! from 448 bytes, both imported by `admin/import-vg`. Elsewhere, rind's
+//! NEON code, four blocks at a time, then one at a time in general-purpose
+//! registers. VG's NEON routine takes what follows its wide loops one block
+//! at a time, XORing byte by byte, which lost to rind's code by up to 1.14x
+//! on Neoverse N2 between 257 and 447 bytes, and both routines set up a
+//! 768-byte streaming state, which lost by up to 1.31x below 128 bytes.
+//!
+//! verified-garbage proves its routines correct and constant time in Lean,
+//! over its own models of the instructions, which `admin/prove vg`
+//! cosimulates. rind's NEON code is not formally verified: its correctness
+//! rests on rind's tests of it against RFC 8439, Wycheproof, aws-lc-rs, and
+//! HACL*'s rounds.
+
 use core::arch::aarch64::{
     uint8x16_t, uint32x4_t, vaddq_u32, vdupq_n_u32, veorq_u32, vorrq_u32, vqtbl1q_u8,
     vreinterpretq_u8_u32, vreinterpretq_u16_u32, vreinterpretq_u32_u8, vreinterpretq_u32_u16,
@@ -45,38 +60,20 @@ impl ChaCha20 {
     /// The 32-bit counter must not pass 2^32 - 1, which callers rule out
     /// with `mid::chacha20::check_counter`.
     pub(crate) fn cipher(&mut self, buffer: &mut [u8]) {
-        #[cfg(rind_sweep)]
-        match SWEEP.load(core::sync::atomic::Ordering::Relaxed) {
-            1 => cipher_neon(&self.key, &self.nonce, buffer),
-            2 => cipher_vg(self.sve2, &self.key, &self.nonce, buffer),
-            3 => cipher_vg(None, &self.key, &self.nonce, buffer),
-            4 => ChaCha20 { sve2: None, ..*self }.cipher_policy(buffer),
-            _ => self.cipher_policy(buffer),
-        }
-        #[cfg(not(rind_sweep))]
-        self.cipher_policy(buffer);
-        self.nonce[0] = self.nonce[0].wrapping_add(buffer.len().div_ceil(64) as u32);
-    }
-
-    fn cipher_policy(&self, buffer: &mut [u8]) {
         match (self.sve2, buffer.len()) {
             (Some(_), VG_SVE2_MIN_LEN..) | (None, 192..=256 | VG_NEON_MIN_LEN..) => {
                 cipher_vg(self.sve2, &self.key, &self.nonce, buffer)
             }
             _ => cipher_neon(&self.key, &self.nonce, buffer),
         }
+        self.nonce[0] = self.nonce[0].wrapping_add(buffer.len().div_ceil(64) as u32);
     }
 }
 
-/// Temporary: which path `cipher` takes, for timing them against each other.
-#[cfg(rind_sweep)]
-pub(crate) static SWEEP: core::sync::atomic::AtomicU8 = core::sync::atomic::AtomicU8::new(0);
-
-
-/// The lengths from which VG's SVE2 routine runs.
+/// The length from which VG's SVE2 routine runs.
 const VG_SVE2_MIN_LEN: usize = 128;
-/// The lengths from which VG's NEON routine runs; it also runs from three
-/// blocks to four.
+/// The length from which VG's NEON routine runs; it also runs from three
+/// blocks to four, past which its one-block tail loses.
 const VG_NEON_MIN_LEN: usize = 448;
 
 /// rind's NEON code: four blocks at a time, then one at a time in

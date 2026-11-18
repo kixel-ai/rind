@@ -111,7 +111,6 @@ unexpected_cfgs = { level = "warn", check-cfg = [
   "cfg(coverage_nightly)",
   # Lets an optimised build honour `RIND_CPU_DISABLE_*`, for benches and ctgrind.
   "cfg(rind_cpu_disable)",
-  "cfg(rind_sweep)",
   # Plants the variable-time operations `admin/ct-vartime` must find.
   "cfg(rind_vartime_planted)",
   # Forces the portable backend, for testing it on x86_64 (see build.rs).
