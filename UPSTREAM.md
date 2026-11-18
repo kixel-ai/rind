@@ -154,6 +154,14 @@ Each upstream rind changes, with where its fork is vendored and where the list o
 - **Reported:** no.
 - **Goes when:** gdb's core dumps skip or read through guard regions.
 
+### BINSEC stalls on some ML-KEM ciphertexts
+
+- **Breaks:** `ct_binsec_mlkem*` decapsulates a ciphertext, and for about one in a hundred of them BINSEC 0.11.3 stops making progress inside `kpke_encrypt`'s re-encryption: it sends the solver no query and visits no more than a few hundred thousand instructions in 480 s, where the others finish in under ten seconds. `gdb` shows it inside `Term.sizeof`, building a term. A given ciphertext always stalls, so it is the input, not the runner, and swapping one half of a stalling ciphertext for another's makes it finish.
+- **Reproduce:** run `admin/ct-binsec --timeout 60 ct_binsec_mlkem512` on the portable backend a few hundred times with a random `encaps()` message, as the check did before it pinned one.
+- **Workaround:** the harness encapsulates a fixed message, so every run explores a ciphertext that finishes on every backend.
+- **Reported:** no.
+- **Goes when:** BINSEC builds that term without the stall; the harness may then draw random messages again.
+
 ## Proofs
 
 ### Aeneas cannot translate several kinds of Rust
