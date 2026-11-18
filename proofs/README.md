@@ -635,8 +635,10 @@ They are the same Rust for ML-KEM-512, 768, and 1024, and rest on no axiom:
 - `from_message_bits_spec`: K-PKE's message, as a polynomial, is
   `Decompress_1(ByteDecode_1(m))`;
 - `to_message_bits_spec`: the message K-PKE decrypts is
-  `ByteEncode_1(Compress_1(f))` of a polynomial `f` with coefficients in
-  `[0, q)`.
+  `ByteEncode_1(Compress_1(f))` of a polynomial `f`, given Rust coefficients
+  each in `[0, q)` and equal to `f`'s modulo `q` (`Holds 0 3328`), so its
+  caller must show the coefficients canonical, not only congruent: `-1`
+  stands for the same element as 3328 but does not meet it.
 
 `Rind/MlKemCoding.lean` states what they need of the spec, with no Rust:
 `ByteEncode_bit`, `ByteDecode_get`, and `SamplePolyCBD_get` give each bit or
