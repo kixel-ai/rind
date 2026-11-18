@@ -2,27 +2,25 @@
 
 ## Goal
 
-`digest::Context::new`, `update`, and `finish` for SHA-256 run within noise of one-shot `digest::digest` at 16 B and 64 B on x86_64 and aarch64.
+`digest::Context::new`, `update`, and `finish` for SHA-256 run within noise of one-shot `digest::digest` at 16 B and 64 B on x86_64 and aarch64, and `hmac::Context` within noise of one-shot `hmac::sign`.
 
 ## Plan
 
 Found on 2026-11-12, benchmarking pyca/verified-garbage against rind on a Ryzen 9 9950X: SHA-256 through the context took about 36 ns at 16 to 64 B, against 19 ns one-shot. Decided with the maintainer the same day: ✅ a quest in m2. TLS and QUIC hash many short transcripts through the context.
 
-[kixel-ai/rind#764](https://github.com/kixel-ai/rind/pull/764) removed the largest cost, a store-to-load forwarding stall: `finish` loaded the buffer `update` had just written with 16-byte loads spanning two of memcpy's overlapping stores, and waited for them to reach the cache. At 64 B on Zen 5 the context fell from 59.7 to 41.0 ns. What remains, measured on 2026-11-14 with each row pinned to one core, best of three:
+[kixel-ai/rind#764](https://github.com/kixel-ai/rind/pull/764) removed a store-to-load forwarding stall in `finish`. [kixel-ai/rind#864](https://github.com/kixel-ai/rind/pull/864) made a new context 16 bytes (`Fresh`, started in place by the first update), aligned it to 16 rather than 64 bytes, made a clone one copy, and inlined the buffered update into the start, which closed the `Box`ed and cloned rows. What remains, in user cycles per iteration on x86_64 (`perf stat`, pinned, averaged over four stack offsets, since a cloned context's cost swings by up to 70 cycles with the stack's alignment) and in ns on the M4 (best of five, unpinned), measured on 2026-11-17:
 
-| | one-shot | context | `Box`ed context | cloned, then finished |
-|---|---:|---:|---:|---:|
-| Zen 5, 16 B | 19.5 ns | 23.5 ns | 40.2 ns | 37.7 ns |
-| Zen 5, 64 B | 36.5 ns | 41.0 ns | 65.7 ns | 59.3 ns |
-| Arrow Lake, 16 B | 13.4 ns | 16.8 ns | 37.6 ns | 33.2 ns |
-| Arrow Lake, 64 B | 24.0 ns | 26.3 ns | 49.5 ns | 44.1 ns |
-| Apple M4, 16 B | 57.0 ns | 65.3 ns | 89.6 ns | 62.7 ns |
-| Apple M4, 64 B | 75.8 ns | 84.3 ns | 110.8 ns | 81.5 ns |
+| | one-shot | context | `Box`ed context | HMAC one-shot | HMAC context |
+|---|---:|---:|---:|---:|---:|
+| Zen 5, 16 B | 112 | 114 | 129 | 290 | 416 |
+| Zen 5, 64 B | 198 | 220 | 235 | 410 | 547 |
+| Arrow Lake, 16 B | 66 | 81 | 93 | 178 | 354 |
+| Arrow Lake, 64 B | 123 | 130 | 142 | 246 | 404 |
+| Apple M4, 16 B | 56.1 ns | 61.1 ns | 80.8 ns | 88.1 ns | 111.1 ns |
+| Apple M4, 64 B | 74.9 ns | 80.1 ns | 100.6 ns | 105.4 ns | 131.6 ns |
 
-The M4 rows, measured on `kixtop` on 2026-11-14 (best of three, unpinned), show the same 8 ns context gap before and after #764, and a `Box`ed context about 5 ns slower after it: macOS allocates the now 64-byte-aligned context through its slower aligned path.
-
-- Close the last 3 to 4 ns: three indirect calls (the `State` enum's match, the backend's `OnceLock` path, the finish routine) and `finish` resetting the context it consumes.
-- The `Box`ed row is the shape rind-rustls' `start` uses. Moving the 256-byte context through glibc's `memcpy` writes it in stores the next update's loads span, bringing the stall back. Build the context in its box, and win back the M4's 5 ns of aligned allocation, such as by aligning the context less where that keeps x86_64's gain.
-- Keep one consuming `finish`, decided with the maintainer on 2026-11-15: ✅ one consuming `finish` (rejected: a non-consuming `finish(&self)`). rind-rustls clones only in `fork_finish`, a few times per handshake, about 0.2 µs against a 77 µs resumed handshake, so the cloned row is not worth a second way to finish.
-- HMAC-SHA256's context runs about 20 ns over one-shot on Zen 5 (71.0 against 50.0 ns at 16 B), mostly moves of the keyed state in `with_key`. Same fix as the box.
+- The plain context's last 15 cycles on Arrow Lake and 5 ns on the M4: about 97 more instructions than one-shot at 16 B, from copying the message into the block buffer and finishing from it, and reaching the hash through `ops` and the backend's dispatch. A streaming API pays the buffer copy, so what is left to win is the dispatch, which the no-std quest's atomics change too.
+- The M4's `Box`ed row is about 20 ns over the plain context: macOS's `malloc` and `free`, which `Box` pays whatever the context's layout.
+- HMAC's context runs 130 to 180 cycles over one-shot on x86_64. Most of it, about 157 of Arrow Lake's 176 cycles at 16 B, is `hmac::Context::sign(self)` moving the 320-byte keyed state and wiping it on drop. Closing it needs a `sign` that does not move the context, which changes the API (see #864's Waiting); rind-rustls' `sign_concat` could instead hash `first`, `middle`, and `last` into one buffer and call `hmac::sign`.
+- Keep one consuming `finish`, decided with the maintainer on 2026-11-15: ✅ one consuming `finish` (rejected: a non-consuming `finish(&self)`).
 - Prove nothing is lost: the digest proofs in `proofs/` cover the context path, so a change there keeps `admin/prove` passing.

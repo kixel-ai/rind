@@ -355,9 +355,11 @@ impl Zeroable for Keyed {}
 #[derive(Clone)]
 pub(super) struct Streaming(Tagged);
 
-// As `Keyed`, with all-zero hash contexts too. Aligned to a cache line,
-// with each `Hmac` 16 bytes in on 64-bit targets, for the reason
-// `digest::Context` is.
+// As `Keyed`, with all-zero hash contexts too. Each `Hmac` sits 16 bytes
+// in on 64-bit targets, so, as in `digest::Context`, no 16-byte lane of its
+// contexts crosses a cache line. Aligned to a cache line rather than 16
+// bytes: `Context::sign` moves the whole value, and measured 2 to 6 cycles
+// faster so on Arrow Lake.
 #[derive(Clone)]
 #[repr(u8, align(64))]
 enum Tagged {
@@ -523,7 +525,7 @@ mod tests {
     use crate::test::*;
 
     // Each inner context starts on a 16-byte boundary of a
-    // cache-line-aligned `Context`, as `digest::Context`'s do.
+    // cache-line-aligned `Context`.
     #[cfg(target_pointer_width = "64")]
     #[test]
     fn layout() {
