@@ -156,6 +156,62 @@ void main() {
     });
   });
 
+  group('Argon2id', () {
+    // The reference implementation's test.c: 256 KiB, two passes, one lane.
+    final params = Argon2Params(1 << 8, 2, 1);
+    final expected = hex(
+      '9dfeb910e80bad0311fee20f9c0e2b12c17987b4cac90c2ef54d5b3021c68bfe',
+    );
+
+    test('derives and verifies', () {
+      final secret = Argon2Secret(ascii('password'));
+      expect(secret.derive(params, ascii('somesalt'), 32), expected);
+      secret.verify(params, ascii('somesalt'), expected);
+      expect(
+        () => secret.verify(params, ascii('somesalt'), flipped(expected, 31)),
+        throwsRind(RindError.badSignature),
+      );
+      expect(
+        () => secret.verify(
+          Argon2Params(1 << 8, 3, 1),
+          ascii('somesalt'),
+          expected,
+        ),
+        throwsRind(RindError.badSignature),
+      );
+    });
+
+    test('refuses short salts and keys', () {
+      final secret = Argon2Secret(ascii('password'));
+      expect(
+        () => secret.derive(params, ascii('salt'), 32),
+        throwsRind(RindError.wrongLength),
+      );
+      expect(
+        () => secret.derive(params, ascii('somesalt'), 3),
+        throwsRind(RindError.wrongLength),
+      );
+    });
+
+    test('refuses costs below RFC 9106', () {
+      Argon2Params(8, 1, 1);
+      for (final (memory, passes, lanes) in [
+        (7, 1, 1),
+        (8, 0, 1),
+        (8, 1, 0),
+        (15, 1, 2),
+        (0xffffffff, 1, 1 << 24),
+      ]) {
+        expect(
+          () => Argon2Params(memory, passes, lanes),
+          throwsRind(RindError.unsupported),
+        );
+      }
+      expect(() => Argon2Params(1 << 32, 1, 1), throwsRangeError);
+      expect(() => Argon2Params(8, -1, 1), throwsRangeError);
+    });
+  });
+
   group('AEAD', () {
     test('AES-128-GCM known answer', () {
       // The GCM specification's test case 2.

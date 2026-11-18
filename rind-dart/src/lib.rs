@@ -21,7 +21,9 @@ use std::num::NonZeroU32;
 use rind::ecdsa::KeyPair as EcdsaKeyPair;
 use rind::ed25519::KeyPair as Ed25519KeyPair;
 use rind::rsa::KeyPair as RsaKeyPair;
-use rind::{Error, aead, agreement, cipher, digest, ecdsa, ed25519, hkdf, hmac, kem, pbkdf2, rsa};
+use rind::{
+    Error, aead, agreement, argon2, cipher, digest, ecdsa, ed25519, hkdf, hmac, kem, pbkdf2, rsa,
+};
 
 #[cfg(test)]
 mod ctgrind;
@@ -38,6 +40,7 @@ enum Status {
     NotEqual = -6,
     Fault = -7,
     Unsupported = -8,
+    OutOfMemory = -9,
     /// An argument the Dart side should never pass, such as an unknown
     /// algorithm id.
     Misuse = -10,
@@ -65,6 +68,7 @@ fn status(error: Error) -> isize {
         Error::NotEqual => Status::NotEqual as isize,
         Error::Fault => Status::Fault as isize,
         Error::Unsupported => Status::Unsupported as isize,
+        Error::OutOfMemory => Status::OutOfMemory as isize,
         other => fail(Status::Fault, format!("{other:?}")),
     }
 }
@@ -169,6 +173,8 @@ free! {
     rind_dart_hkdf_salt_free: hkdf::Salt;
     rind_dart_hkdf_prk_free: hkdf::Prk;
     rind_dart_pbkdf2_secret_free: pbkdf2::Secret;
+    rind_dart_argon2_params_free: argon2::Params;
+    rind_dart_argon2_secret_free: argon2::Secret;
     rind_dart_agreement_private_key_free: agreement::PrivateKey;
     rind_dart_ecdsa_key_pair_free: EcdsaKeyPair;
     rind_dart_ed25519_key_pair_free: Ed25519KeyPair;
@@ -1054,6 +1060,85 @@ pub unsafe extern "C" fn rind_dart_pbkdf2_verify(
             )
         };
         secret.verify(iterations(rounds)?, salt, previous)?;
+        Ok(0)
+    })
+}
+
+// --- Argon2id ---
+
+/// Builds an Argon2id cost: `memory_kib` KiB, `passes`, and `lanes`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rind_dart_argon2_params_new(
+    memory_kib: u32,
+    passes: u32,
+    lanes: u32,
+    out: *mut *mut argon2::Params,
+) -> isize {
+    run(|| {
+        let params = argon2::Params::new(memory_kib, passes, lanes)?;
+        // SAFETY: forwarded from the caller.
+        Ok(unsafe { store(out, params) })
+    })
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rind_dart_argon2_secret_new(
+    password: *const u8,
+    password_len: usize,
+    out: *mut *mut argon2::Secret,
+) -> isize {
+    run(|| {
+        // SAFETY: forwarded from the caller.
+        let secret = argon2::Secret::new(unsafe { input(password, password_len) });
+        // SAFETY: forwarded from the caller.
+        Ok(unsafe { store(out, secret) })
+    })
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rind_dart_argon2_derive(
+    secret: *const argon2::Secret,
+    params: *const argon2::Params,
+    salt: *const u8,
+    salt_len: usize,
+    out: *mut u8,
+    out_len: usize,
+) -> isize {
+    run(|| {
+        // SAFETY: forwarded from the caller.
+        let (secret, params, salt, out) = unsafe {
+            (
+                handle(secret),
+                handle(params),
+                input(salt, salt_len),
+                output(out, out_len),
+            )
+        };
+        secret.derive(*params, salt, out)?;
+        Ok(out_len)
+    })
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rind_dart_argon2_verify(
+    secret: *const argon2::Secret,
+    params: *const argon2::Params,
+    salt: *const u8,
+    salt_len: usize,
+    previous: *const u8,
+    previous_len: usize,
+) -> isize {
+    run(|| {
+        // SAFETY: forwarded from the caller.
+        let (secret, params, salt, previous) = unsafe {
+            (
+                handle(secret),
+                handle(params),
+                input(salt, salt_len),
+                input(previous, previous_len),
+            )
+        };
+        secret.verify(*params, salt, previous)?;
         Ok(0)
     })
 }

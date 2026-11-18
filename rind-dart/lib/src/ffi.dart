@@ -5,7 +5,7 @@
 //
 // Calls that finish in microseconds are leaf calls, which read Dart's typed
 // data in place. Those that can run for milliseconds or more (RSA key
-// generation and private-key operations, and PBKDF2) are not, since a leaf
+// generation and private-key operations, PBKDF2, and Argon2id) are not, since a leaf
 // call holds up garbage collection; they take copies in native memory.
 
 part of 'bindings.dart';
@@ -565,6 +565,75 @@ external int _pbkdf2Derive(
 external int _pbkdf2Verify(
   Pointer<Void> secret,
   int iterations,
+  Pointer<Uint8> salt,
+  int saltLen,
+  Pointer<Uint8> previous,
+  int previousLen,
+);
+
+// --- Argon2id ---
+
+@Native<_Free>(symbol: 'rind_dart_argon2_params_free')
+external void _argon2ParamsFree(Pointer<Void> params);
+final _argon2ParamsFinalizer = _finalizer(Native.addressOf(_argon2ParamsFree));
+
+@Native<IntPtr Function(Uint32, Uint32, Uint32, Pointer<Pointer<Void>>)>(
+  symbol: 'rind_dart_argon2_params_new',
+  isLeaf: true,
+)
+external int _argon2ParamsNew(
+  int memoryKib,
+  int passes,
+  int lanes,
+  Pointer<Pointer<Void>> out,
+);
+
+@Native<_Free>(symbol: 'rind_dart_argon2_secret_free')
+external void _argon2SecretFree(Pointer<Void> secret);
+final _argon2SecretFinalizer = _finalizer(Native.addressOf(_argon2SecretFree));
+
+@Native<IntPtr Function(Pointer<Uint8>, Size, Pointer<Pointer<Void>>)>(
+  symbol: 'rind_dart_argon2_secret_new',
+  isLeaf: true,
+)
+external int _argon2SecretNew(
+  Pointer<Uint8> password,
+  int passwordLen,
+  Pointer<Pointer<Void>> out,
+);
+
+@Native<
+  IntPtr Function(
+    Pointer<Void>,
+    Pointer<Void>,
+    Pointer<Uint8>,
+    Size,
+    Pointer<Uint8>,
+    Size,
+  )
+>(symbol: 'rind_dart_argon2_derive')
+external int _argon2Derive(
+  Pointer<Void> secret,
+  Pointer<Void> params,
+  Pointer<Uint8> salt,
+  int saltLen,
+  Pointer<Uint8> out,
+  int outLen,
+);
+
+@Native<
+  IntPtr Function(
+    Pointer<Void>,
+    Pointer<Void>,
+    Pointer<Uint8>,
+    Size,
+    Pointer<Uint8>,
+    Size,
+  )
+>(symbol: 'rind_dart_argon2_verify')
+external int _argon2Verify(
+  Pointer<Void> secret,
+  Pointer<Void> params,
   Pointer<Uint8> salt,
   int saltLen,
   Pointer<Uint8> previous,

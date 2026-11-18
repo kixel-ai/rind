@@ -50,12 +50,6 @@ void main() {
     final hmac = _rind.hmac(_rind.sha256());
     final constructors = <Object Function()>[
       () => _rind.aesGcm(nonceLength: 16),
-      () => _rind.argon2id(
-        memory: 1,
-        parallelism: 1,
-        iterations: 1,
-        hashLength: 32,
-      ),
       () => _rind.blake2b(),
       () => _rind.blake2s(),
       () => _rind.hchacha20(),
@@ -228,6 +222,96 @@ void main() {
           bits: 256,
         ),
         throwsRangeError,
+      );
+    });
+  });
+
+  group('Argon2id', () {
+    test('matches the Dart implementation', () async {
+      for (final (memory, parallelism, iterations, hashLength) in [
+        (8, 1, 1, 4),
+        (64, 2, 1, 32),
+        (64, 1, 2, 24),
+        (100, 3, 3, 100),
+      ]) {
+        final argon2 = _rind.argon2id(
+          memory: memory,
+          parallelism: parallelism,
+          iterations: iterations,
+          hashLength: hashLength,
+        );
+        final dart = DartArgon2id(
+          memory: memory,
+          parallelism: parallelism,
+          iterations: iterations,
+          hashLength: hashLength,
+        );
+        final password = SecretKey(_bytes(12));
+        final salt = _bytes(16, 1);
+        final expected = await dart.deriveKey(secretKey: password, nonce: salt);
+        final derived = await argon2.deriveKey(
+          secretKey: password,
+          nonce: salt,
+        );
+        expect(await derived.extractBytes(), await expected.extractBytes());
+      }
+    });
+
+    test('refuses invalid costs where it is constructed', () {
+      for (final (memory, parallelism, iterations) in [
+        (7, 1, 1),
+        (15, 2, 1),
+        (8, 0, 1),
+        (8, 1, 0),
+      ]) {
+        expect(
+          () => _rind.argon2id(
+            memory: memory,
+            parallelism: parallelism,
+            iterations: iterations,
+            hashLength: 32,
+          ),
+          throwsArgumentError,
+        );
+      }
+      expect(
+        () => _rind.argon2id(
+          memory: 8,
+          parallelism: 1,
+          iterations: 1,
+          hashLength: 3,
+        ),
+        throwsRangeError,
+      );
+    });
+
+    test('refuses short salts, secrets, and associated data', () async {
+      final argon2 = _rind.argon2id(
+        memory: 8,
+        parallelism: 1,
+        iterations: 1,
+        hashLength: 32,
+      );
+      final password = SecretKey(_bytes(12));
+      expect(
+        argon2.deriveKey(secretKey: password, nonce: _bytes(7)),
+        throwsArgumentError,
+      );
+      expect(
+        argon2.deriveKey(
+          secretKey: password,
+          nonce: _bytes(8),
+          optionalSecret: [1],
+        ),
+        _throwsUnsupported,
+      );
+      expect(
+        argon2.deriveKey(
+          secretKey: password,
+          nonce: _bytes(8),
+          associatedData: [1],
+        ),
+        _throwsUnsupported,
       );
     });
   });

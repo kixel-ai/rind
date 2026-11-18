@@ -3,9 +3,9 @@
 Fast, misuse-resistant cryptography for Dart and Flutter, through FFI to
 [rind](https://github.com/kixel-ai/rind), a pure-Rust library: AES-GCM,
 ChaCha20-Poly1305, and XChaCha20-Poly1305, SHA-2 and SHA-3, HMAC, HKDF,
-PBKDF2, X25519 and ECDH, Ed25519, ECDSA, and RSA signatures, RSA-OAEP, and
-ML-KEM-768, and the unauthenticated AES-CBC, AES-CTR, and ChaCha20 for
-protocols that pair them with their own MAC.
+PBKDF2, Argon2id, X25519 and ECDH, Ed25519, ECDSA, and RSA signatures,
+RSA-OAEP, and ML-KEM-768, and the unauthenticated AES-CBC, AES-CTR, and
+ChaCha20 for protocols that pair them with their own MAC.
 
 It is 7 to 2800 times faster than pure-Dart cryptography. On an
 Intel i7-8700, in microseconds per operation (`dart run
@@ -117,8 +117,8 @@ SHA-1, MD5, and RSA keys below 2048 bits are in `package:rind/legacy.dart`.
 Keys live in native memory, and rind wipes that native copy when Dart frees
 the key. It does not wipe a `Uint8List` you passed in; clear that yourself.
 
-Generating RSA keys, RSA's private-key operations, and PBKDF2 take
-milliseconds to seconds, so call them off the UI isolate, as with
+Generating RSA keys, RSA's private-key operations, PBKDF2, and Argon2id
+take milliseconds to seconds, so call them off the UI isolate, as with
 `Isolate.run`.
 
 License: Apache-2.0 OR ISC OR MIT-0

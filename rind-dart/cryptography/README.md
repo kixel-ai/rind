@@ -55,6 +55,7 @@ Future<void> main() async {
 | `Sha1`, `Sha256`, `Sha384`, `Sha512` | all of it |
 | `Hmac` | over SHA-1, SHA-256, SHA-384, SHA-512 |
 | `Hkdf`, `Pbkdf2` | with those HMACs |
+| `Argon2id` | salts of 8 bytes or more, without a secret or associated data |
 | `AesGcm` | 128, 192, and 256-bit keys, 12-byte nonces |
 | `Chacha20.poly1305Aead`, `Xchacha20.poly1305Aead` | all of it, but XChaCha20-Poly1305 picks its own nonces |
 | `AesCbc`, `AesCtr` | 128, 192, and 256-bit keys, with any MAC and padding |
@@ -66,7 +67,7 @@ Future<void> main() async {
 
 Everything else throws `UnsupportedError` where it is constructed, never
 falling back to the package's Dart implementation: XChaCha20 without
-Poly1305, Poly1305 and HChaCha20 alone, BLAKE2, Argon2id, and SHA-224, as does an unsupported pairing such as
+Poly1305, Poly1305 and HChaCha20 alone, BLAKE2, and SHA-224, as does an unsupported pairing such as
 `Ecdsa.p256(Sha512())`. `toSync()` still returns the package's Dart
 implementation, as it does under every backend.
 
@@ -89,7 +90,11 @@ these ways:
   rind refuses, such as an X25519 key of small order or a point off its
   curve.
 - Each operation is one native call, which never yields to the event loop:
-  seal large messages off the UI isolate, as with `Isolate.run`.
+  seal large messages off the UI isolate, as with `Isolate.run`. `Argon2id`
+  alone derives on an isolate of its own, since it is built to take long.
+- `Argon2id` throws `ArgumentError` for a salt under 8 bytes, the reference
+  implementation's minimum, and `UnsupportedError` for an `optionalSecret`
+  or `associatedData`.
 
 `AesCbc`, `AesCtr`, and `Chacha20` pass the ciphertext and nonce to their
 MAC, as the package does, keyed with the cipher's own secret key. `Hmac`

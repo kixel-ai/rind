@@ -2,6 +2,8 @@
 
 - `AesCbc`, `AesCtr`, and `Chacha20` with a MAC, such as `Hmac`, on rind's
   ciphers, which need the rind release after 0.1.0.
+- `Argon2id` on rind's, which needs the same release, deriving off the
+  calling isolate.
 
 ## 0.1.0
 
