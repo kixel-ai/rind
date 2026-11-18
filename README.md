@@ -42,8 +42,9 @@ Green is the fastest library on that machine, or within 10% of it, and
 red is over 8× slower. A shield marks formally verified code. Where
 another library leads, [Known gaps][gaps] says why and what closes it.
 On Apple silicon, rind's times assume the caller holds DIT across its
-calls. [BENCHMARKS.md][benchmarks] has every time, build time, and
-binary size.
+calls, except rows the M4's last run timed with rind's per-call DIT,
+which its host note lists. [BENCHMARKS.md][benchmarks] has every time,
+build time, and binary size.
 
 The [launch post][launch-post] tells why rind exists and what building it
 cost in AI tokens, and [rind.kixel.ai](https://rind.kixel.ai) lets you pick a

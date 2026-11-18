@@ -67,8 +67,12 @@ HOSTS = {
     "desktop": {"jobs": 12},
     "kixtop": {
         "jobs": 4,
-        "note": "The maintainer's MacBook, in daily use. Its cores have DIT, so rind's times here assume the "
-        "caller holds `rind::cpu::Dit::hold()` across its calls, as MoQ does.",
+        "note": "The maintainer's MacBook, in daily use. Its cores have DIT, so rind's times here assume the caller holds"
+        " `rind::cpu::Dit::hold()` across its calls, as MoQ does. This run held it only for the AES-GCM, "
+        "ChaCha20-Poly1305, header protection, SHA-2, HMAC, and HKDF rows. rind's other rows set DIT around each "
+        "call, which cost 20 to 120 ns a call in the run before, so those times overstate rind's and understate "
+        "its lead. In the rustls rows, holding DIT would also run rustls' own code with it on, a cost not yet "
+        "measured.",
     },
     "ovh-iad": {
         "jobs": 4,
