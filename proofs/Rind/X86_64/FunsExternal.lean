@@ -649,6 +649,25 @@ opaque low.generic.reuse_cache.ReuseCache.Insts.CoreCloneClone.clone
 opaque mid.p256.PrivateKey.new_random
   : Result (core.result.Result mid.p256.PrivateKey error.Error)
 
+/-! Whether the CPU runs pyca/verified-garbage's P-256, and rind's calls of it,
+which the P-256 proofs take as not running: Lean proves VG's routines in that
+project, not here. -/
+
+opaque low.x86_64.p256_vg.P256.check : Result (Option low.x86_64.p256_vg.P256)
+
+opaque low.x86_64.p256_vg.P256.check_public_key : Result (Option low.x86_64.p256_vg.P256)
+
+opaque mid.p256.PrivateKey.vg_public_key
+  : mid.p256.PrivateKey → low.x86_64.p256_vg.P256 → Result (Array Std.U8 65#usize)
+
+opaque mid.p256.PrivateKey.vg_diffie_hellman
+  : mid.p256.PrivateKey → low.x86_64.p256_vg.P256 → mid.p256.PublicKey →
+    Result (core.result.Result mid.p256.SharedSecret error.Error)
+
+opaque mid.p256.vg_verify
+  : low.x86_64.p256_vg.P256 → mid.p256.AffineMontPoint → mid.p256.Scalar → mid.p256.Scalar →
+    mid.p256.Scalar → Result (core.result.Result Unit error.Error)
+
 /-! The other curves, which X25519's results never depend on. -/
 
 opaque mid.p521.PrivateKey.new_random

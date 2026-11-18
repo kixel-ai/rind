@@ -251,6 +251,13 @@ which rind proves in HOL Light:
   that point, or a fault unless that is a finite point on the curve;
 - `p256_shared_secret`: the secret's bytes are those.
 
+Every P-256 theorem, ECDSA's below included, assumes `NoVgP256`: the CPU
+does not run pyca/verified-garbage's P-256, which rind takes on x86_64 with
+BMI2, ADX, AVX, and AVX2 and on every aarch64 CPU, and whose Lean proof lives
+in that project, not here. So on x86_64 they cover CPUs without those
+features, and on aarch64 no CPU, until
+[their quest](/quest/m2/verified-garbage/p256-proof.md) imports VG's theorems.
+
 `p256Pow` is HOL Light's `group_pow p256_group`, defined as HOL Light does
 once for the NIST curves in `Rind/Spec.lean`, and `Rind/NistGroup.lean`
 proves it is multiplication in Mathlib's group of points on such a curve. `Rind/P256Multiples.lean` proves G's order n: the kernel
