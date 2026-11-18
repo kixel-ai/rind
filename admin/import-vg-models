@@ -47,6 +47,12 @@ ROOTS = [
     # axioms restate: a pin that changes them shows the change in its diff,
     # against which that re-pin must review the adaptation and the axioms.
     "VerifiedGarbage.Spec.ChaCha20.Contract",
+    # P-256's specs and the contracts of its public key, ECDH, and ECDSA
+    # verification, which proofs/Rind/X86_64/VgP256.lean's axioms restate:
+    # a re-pin that changes them shows the change in its diff.
+    "VerifiedGarbage.Spec.EcKey.P256",
+    "VerifiedGarbage.Spec.Ecdh.P256",
+    "VerifiedGarbage.Spec.Ecdsa.Verify.P256",
 ]
 
 IMPORT = re.compile(r"^(?:public )?(?:meta )?import (VerifiedGarbage\.[A-Za-z0-9_.]+)\b", re.M)
