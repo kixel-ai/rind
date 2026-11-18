@@ -103,11 +103,14 @@ its encapsulation on [verified-garbage] (see [ML-KEM](#ml-kem)).
   Rust port of [mldsa-native]'s C, outside its CBMC proofs, rather than
   [libcrux]'s ML-DSA, which measured slower at every parameter set, with
   AVX2 and on the portable backend (see [ML-DSA](#ml-dsa)).
-- SLH-DSA: its SHAKE sets trail the [SPHINCS+] team's AVX2 C by up to 1.2x,
-  as their four-way Keccak-f is s2n-bignum's verified one, which transposes
-  its four states in and out on each call; XKCP's, which SPHINCS+ runs on
-  states it keeps transposed, measured 7% faster per call (see
-  [SLH-DSA](#slh-dsa)).
+- SLH-DSA: its SHAKE sets run a Rust port of [XKCP]'s four-way Keccak-f on
+  states they keep interleaved, in place of s2n-bignum's, whose proof rind
+  has not imported. With AVX-512 VL it rotates with `vprolq` and holds the
+  state in 32 registers, which on an AVX-512 Xeon took 0.6x the time of
+  s2n-bignum's for signing and 0.7-0.8x for verifying; with AVX2 alone it
+  measured the same as s2n-bignum's there. They still trail the
+  [SPHINCS+] team's C built with `-march=native`, about 1.4x on that Xeon
+  (see [SLH-DSA](#slh-dsa)).
 
 aarch64 runs with the crypto extension, the SHA-512 and SHA-3
 instructions, and SVE2; no crypto denies them, as a Raspberry Pi 4 lacks
@@ -199,6 +202,7 @@ tests use [Wycheproof]'s vectors.
 | [aws-lc] | copied, by `admin/import-aws-lc`: its SHA-384/512 assembly for x86_64 and aarch64, its x86_64 AVX SHA-256 routine and its aarch64 one for the SHA-256 instructions, Montgomery multiplication and the x86_64 exponentiation's `bn_power5` (with one deliberate change: rind's `bn_sqr8x_mont` and `bn_powerx5` zero two scratch words their `mulx` squaring reads unwritten, which valgrind reports though results and timing do not depend on them), AVX2 and dual AVX-512 RSAZ exponentiation, AES-NI AES-CTR, P-256's mixed addition for its generator multiplication (with one deliberate change: rind's BMI2 and ADX copy drops the `.byte 0x67` address-size prefixes aws-lc pads two of its squaring's register-only `mulx` with, which the CPU ignores and s2n-bignum's x86 model does not decode), and SSE4.1 and AVX2 ChaCha20-Poly1305 (with one deliberate change: rind's copy reads the choice of AVX2 from the block rind passes it rather than aws-lc's `OPENSSL_ia32cap_P`), its aarch64 NEON ChaCha20-Poly1305 and eight-way AES-192-GCM, its x86_64 assembly for CPUs without AVX2 (SSSE3 ChaCha20, SSSE3 and AVX SHA-1, and SSSE3 SHA-256) without AES-NI (SSSE3 AES and GHASH), and without SSSE3 (integer SHA-1 and SHA-256), its aarch64 Montgomery multiplication, and its aarch64 assembly for CPUs without the crypto extension (NEON AES, NEON GHASH, and scalar SHA-1 and SHA-256), as Rust naked functions; its 32-bit ARM assembly for ChaCha20, SHA-1 and SHA-256 (NEON and integer), SHA-384/512, Montgomery multiplication, the ARMv8 crypto extension (AES, GHASH, SHA-1, SHA-256), and NEON Poly1305, in Rust `global_asm!`; and the C that drives that Poly1305, RSAZ, and `bn_power5`, that sets up its x86_64 SSSE3 GHASH table, and that computes its constant-time SSE2 AES and integer GHASH for x86_64 CPUs without SSSE3, ported to Rust, both also for armv7 without the crypto extension and the portable backend. aws-lc takes its Poly1305, ChaCha20-Poly1305, SSSE3 GHASH, and constant-time AES and GHASH from BoringSSL and the rest from OpenSSL | Apache-2.0; Poly1305, ChaCha20-Poly1305, SSSE3 and integer GHASH, and constant-time AES ISC | [SAW and NSym proofs](https://github.com/awslabs/aws-lc-verification/tree/797302470c1703cbb1a3a6fa98daffef0bfd3d80) that its x86_64 AVX and aarch64 scalar SHA-384/512 routines compute their specified result for all inputs. Their proof of its aarch64 routine for the SHA-512 instructions ends with the result in registers, before the routine stores it, so rind's own HOL Light proof covers that routine, of the object code rind's build emits, against s2n-bignum's FIPS 180-4 spec, and rind's own HOL Light proofs cover both forms of P-256's mixed addition, of the object code rind's Linux build emits, against s2n-bignum's P-256 group law. `admin/prove bytes` checks that rind's copies of the first two routines assemble to the instructions of aws-lc's text at the revision the proofs pin, so the proofs are of rind's code. They do not cover its 32-bit ARM code. [`proofs/`](proofs/README.md) proves rind's SHA-384/512 around the AVX and both aarch64 routines. |
 | [BoringSSL] | copied, by `admin/import-boringssl`: its x86_64 VAES AES-GCM assembly, `aes-gcm-avx2-x86_64` and `aes-gcm-avx512-x86_64`, as Rust naked functions; its 32-bit ARM NEON X25519 assembly, in Rust `global_asm!`, which BoringSSL takes from [SUPERCOP]'s `neon2`, public domain | Apache-2.0 | nothing |
 | [OpenSSL] | copied, by `admin/import-openssl`: its x86_64 AVX2 SHA-256 and SHA-512 assembly and its SHA-512 assembly for the SHA512 instructions, from `sha512-x86_64`, as Rust naked functions; its 32-bit ARM Keccak-f assembly, integer and NEON, `keccak1600-armv4`, in Rust `global_asm!` | Apache-2.0 | nothing |
+| [XKCP] | ported: its AVX2 four-way Keccak-f, `KeccakP1600times4_PermuteAll_24rounds` in `KeccakP-1600-times4-SIMD256.c`, to Rust intrinsics, one row of the output state at a time as its `thetaRhoPiChiIotaPrepareTheta` computes it, and again with AVX-512 VL rotations, for SLH-DSA's SHAKE sets on x86_64 with AVX2 | CC0-1.0 | nothing |
 | [SPHINCS+] | ported: the SPHINCS+ team's FIPS 205 code (`sign.c`, `fors.c`, `wots.c`, `merkle.c`, and its AVX2 builds' `treehashx4` and `treehashx8`, generalised over the lane count) on every CPU, and its x86_64 AVX2 eight-way SHA-256 (`sha256avx.c`), to Rust, from the `bas/fips205` branch | public domain, or CC0-1.0, 0BSD, or MIT-0 | nothing: no SLH-DSA implementation carries a proof of functional correctness |
 | [curve25519-dalek] | dependency, with its serial backend, for armv7 and the portable backend; ported: its AVX2 backend's field arithmetic, point formulas, and base point table, to Rust intrinsics, for Ed25519 verification's four-point multiplication on x86_64 CPUs with AVX2 but without ADX | BSD-3-Clause | nothing: that backend's field arithmetic is hand-written, as is the AVX2 backend's. Its `fiat` backend would run [fiat-crypto]'s verified field arithmetic instead, but only a `--cfg` flag for the whole build selects it, so rind refuses it rather than let the build pick. |
 | [fiat-crypto] | dependency | MIT OR Apache-2.0 OR BSD-1-Clause | [Coq proofs](https://github.com/mit-plv/fiat-crypto/tree/67316f05d771f7f2db62beede59e9b56406a9efd) that each generated field operation is correct. rind's point formulas, inversion, and table lookup over them are not covered. |
@@ -719,10 +723,23 @@ AVX2 builds' multi-lane tree hashing (`treehashx4` and `treehashx8`)
 generalised over the lane count, so that each tree's leaves, WOTS+ chains,
 and FORS nodes hash several at a time on every CPU.
 
-- The SHAKE sets hash four lanes at once on rind's four-way Keccak-f, as
-  ML-KEM does (see [ML-KEM-768](#ml-kem-768)), absorbing `PK.seed`, the
-  address, and the message where they lie, without copying them together.
+- The SHAKE sets hash four lanes at once, absorbing `PK.seed`, the
+  address, and the message where they lie, without copying them together,
+  into four states kept interleaved, one vector per lane, as [SPHINCS+]'s
+  AVX2 build keeps them. On x86_64 with AVX2 they run a Rust port of
+  [XKCP]'s `KeccakP1600times4_PermuteAll_24rounds` on those vectors, so no
+  call transposes them, compiled a second time for AVX-512 VL, whose
+  `vprolq` rotates a lane in one instruction and whose 32 registers hold
+  the state with few spills; elsewhere they move into four states around the
+  backend's four-way Keccak-f, as ML-KEM's (see [ML-KEM-768](#ml-kem-768)).
   A single lane, as verification's paths up each tree hash, runs one state.
+  The port has no proof yet. The plan: model the instructions it runs
+  (xor, and-not, 64-bit shifts and rotates, and byte shuffles) in Lean, translate the
+  port with Aeneas as `proofs/` translates `mid::sha3`, and prove it
+  computes FIPS 202's Keccak-f on each of the four states against the same
+  spec as the single-state proofs; its constant time follows from having no
+  branch or address that depends on the state, which ctgrind checks of the
+  AVX2 copy (valgrind decodes no AVX-512).
 - The SHA-2 sets hash eight lanes, each continuing SHA-256 from the state
   after the block `PK.seed || 0`, which every F, PRF, and category 1 H and
   `T_l` start with. With SHA-NI they run one at a time, which on an Arrow
@@ -971,6 +988,7 @@ HACL*'s verified Poly1305 without NEON.
 [BoringSSL]: https://boringssl.googlesource.com/boringssl
 [OpenSSL]: https://github.com/openssl/openssl
 [SPHINCS+]: https://github.com/sphincs/sphincsplus/tree/bas/fips205
+[XKCP]: https://github.com/XKCP/XKCP
 [SUPERCOP]: https://bench.cr.yp.to/supercop.html
 [curve25519-dalek]: https://github.com/dalek-cryptography/curve25519-dalek
 [Wycheproof]: https://github.com/C2SP/wycheproof

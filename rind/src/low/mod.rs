@@ -60,6 +60,8 @@ mod generic {
     pub(super) mod ct_copy;
     pub(super) mod ct_equal;
     pub(super) mod ctr;
+    // SLH-DSA's four-way SHAKE, on states it keeps interleaved.
+    pub(super) mod keccak4x;
     // Ed25519 verification's multi-scalar multiplication over s2n-bignum's
     // point routines.
     #[cfg(rind_backend = "x86_64")]
@@ -148,6 +150,7 @@ mod posint;
 
 pub(crate) use entry::Entry;
 pub(crate) use generic::argon2::Argon2Block;
+pub(crate) use generic::keccak4x::sha3_keccak4x_f1600;
 #[cfg(not(rind_backend = "x86_64"))]
 pub(crate) use generic::argon2::argon2_compress;
 pub(crate) use generic::blockwise::{Blockwise, UpdateBlocks, pad, sha256_digest, split_tail};
