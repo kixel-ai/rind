@@ -720,10 +720,10 @@ have some different options depending on CPU features:
 
 - We have a `SampleNTT()` which does 8-wide Keccak-f permutation followed by
   rejection sampling using AVX-512 (F, BW, VL, VBMI, VBMI2) on x86-64, for
-  ML-KEM-1024. ML-KEM-512's four polynomials and ML-KEM-768's nine never
-  fill a batch of eight: ML-KEM-768, including when it falls back from
-  verified-garbage's routines, samples eight four at a time and the ninth
-  alone. This is Graviola's, and not verified.
+  ML-KEM-1024. ML-KEM-512's four polynomials never fill a batch of eight.
+  ML-KEM-768's nine could, but rind skips it for ML-KEM-768, including when
+  it falls back from verified-garbage's routines, and samples eight four at
+  a time and the ninth alone. This is Graviola's, and not verified.
 - We have s2n-bignum's verified 4-wide Keccak-f using AVX2 on x86-64, and its
   single-state Keccak-f otherwise.
 - We have s2n-bignum's verified 2-wide Keccak-f using Neon+SHA3 on Apple

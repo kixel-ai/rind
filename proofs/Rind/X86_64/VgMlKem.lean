@@ -69,7 +69,9 @@ axiom vg_mlkem768_keygen_spec (self : low.x86_64.mlkem768_vg.KeyPair)
           ((vgBytes seed).drop 32)).map Prod.snd) vgBytes r ⦄
 
 /-- `vg_mlkem768_decaps_avx512`'s `decapsContract`, which holds for any
-`dk`: https://github.com/pyca/verified-garbage/blob/0aa40d6c21fd02943fe5b38a5b69b6213d07764d/lean/VerifiedGarbage/Proof/MlKem/X86_64/CallWipe.lean#L799 (`decapsW_verified`). -/
+`dk`: https://github.com/pyca/verified-garbage/blob/0aa40d6c21fd02943fe5b38a5b69b6213d07764d/lean/VerifiedGarbage/Proof/MlKem/X86_64/CallWipe.lean#L799 (`decapsW_verified`).
+The wrapper's callers must still pass a `dk` from `keygen`, as VG's API and
+`KeyPair::decaps` ask; this axiom neither assumes nor establishes that. -/
 @[step]
 axiom vg_mlkem768_decaps_spec (self : low.x86_64.mlkem768_vg.KeyPair)
     (dk : Std.Array U8 2400#usize) (c : Std.Array U8 1088#usize) :
