@@ -11,10 +11,13 @@ rind's wrappers in `low::x86_64::mlkem768_vg` calls, at the revision
 `admin/import-vg` pins (0aa40d6c). The wrappers call VG's routines through
 raw pointers to a scratch buffer, which Aeneas cannot translate, so each axiom
 is about the opaque wrapper, and covers every routine it may call, which all
-state the one contract. Their preconditions hold for every call from safe
-Rust: the arrays are distinct Rust objects, which neither overlap one another
-nor the stack, and the wrapper's token proves the CPU has its routine's
-features. The postcondition is VG's `Outcome` over the wrapper's arrays as
+state the one contract. Their preconditions on memory hold for every call
+from safe Rust: each array a routine writes is the wrapper's own, which
+overlaps no other argument nor the stack, and the arrays it only reads, which
+may alias one another, overlap neither. The CPU features are the wrapper's
+to prove: its `KeyPair` token for key generation and decapsulation, and the
+check it runs for the variant it picks otherwise, `Width` for encapsulation. What safe Rust cannot show, such as
+that a given `h` is `H(ek)`, is the axiom's hypothesis. The postcondition is VG's `Outcome` over the wrapper's arrays as
 VG's specs read them, `vgBytes`. VG's wipe of its scratch, which rind keeps
 as `AGENTS.md` allows, and what each routine may leak, are left out.
 
@@ -37,7 +40,10 @@ axiom vg_mlkem768_check_ek_spec (self : low.x86_64.mlkem768_vg.Encaps)
 
 /-- `vg_mlkem768_encaps`'s `encapsContract` and, where the wrapper is given
 `h`, which must then be `H(ek)`, `vg_mlkem768_encaps_h`'s
-`encapsHContract`, each with its AVX, AVX2, and AVX-512 variants:
+`encapsHContract`, each with its AVX, AVX2, and AVX-512 variants,
+`vg_mlkem768_encaps_avx`, `vg_mlkem768_encaps_avx2`,
+`vg_mlkem768_encaps_avx512`, `vg_mlkem768_encaps_h_avx`,
+`vg_mlkem768_encaps_h_avx2`, and `vg_mlkem768_encaps_h_avx512`:
 https://github.com/pyca/verified-garbage/blob/0aa40d6c21fd02943fe5b38a5b69b6213d07764d/lean/VerifiedGarbage/Proof/MlKem/X86_64/CallWipe.lean#L750 (`encapsW_verified`) and
 https://github.com/pyca/verified-garbage/blob/0aa40d6c21fd02943fe5b38a5b69b6213d07764d/lean/VerifiedGarbage/Proof/MlKem/X86_64/CallWipe.lean#L700 (`encapsHW_verified`). Both hold
 for any `ek`. -/

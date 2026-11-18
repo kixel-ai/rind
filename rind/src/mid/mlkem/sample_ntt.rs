@@ -9,7 +9,7 @@ use crate::{
 
 /// FIPS-203's `SampleNTT` of each polynomial of a `K` by `K` matrix into
 /// `out`, row by row, or of its transpose: eight at a time where the CPU
-/// samples eight at once, then four, then one.
+/// samples eight at once (but for ML-KEM-768), then four, then one.
 pub(super) fn sample_ntt(rho: &[u8; 32], transposed: bool, out: &mut [Poly]) {
     let k = super::rank(out.len());
     let mut buf = [0; 40];
@@ -31,10 +31,11 @@ pub(super) fn sample_ntt(rho: &[u8; 32], transposed: bool, out: &mut [Poly]) {
     });
     let mut next = || inputs.next().unwrap_or(buf);
 
-    // ML-KEM-768 samples four at a time: wherever the eight-way sampler runs,
-    // so do pyca/verified-garbage's routines, and rind's arithmetic only when
-    // one reaches its `SampleNTT` bound, so only the proven four-way sampler
-    // is on its path.
+    // ML-KEM-768 never samples eight at a time: wherever the eight-way
+    // sampler runs, so do pyca/verified-garbage's routines, and rind's
+    // arithmetic only when one reaches its `SampleNTT` bound, so only the
+    // proven four-way sampler, for eight of its nine polynomials, and the
+    // one-way sampler, for the ninth, are on its path.
     let (eights, rest) = match k {
         3 => (&mut [][..], out),
         _ => out.as_chunks_mut::<8>(),

@@ -699,8 +699,9 @@ have some different options depending on CPU features:
 
 - We have a `SampleNTT()` which does 8-wide Keccak-f permutation followed by
   rejection sampling using AVX-512 (F, BW, VL, VBMI, VBMI2) on x86-64, for
-  ML-KEM-512 and ML-KEM-1024, and for ML-KEM-768 only when it falls back from
-  verified-garbage's routines. This is Graviola's, and not verified.
+  ML-KEM-512 and ML-KEM-1024. ML-KEM-768 samples four at a time, including
+  when it falls back from verified-garbage's routines. This is Graviola's,
+  and not verified.
 - We have s2n-bignum's verified 4-wide Keccak-f using AVX2 on x86-64, and its
   single-state Keccak-f otherwise.
 - We have s2n-bignum's verified 2-wide Keccak-f using Neon+SHA3 on aarch64.

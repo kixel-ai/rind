@@ -9,8 +9,9 @@ models, and encodes it. `admin/prove vg` checks each instruction of VG's code
 that rind can run against the CPU through those models, so a proof of VG's
 about a routine rind vendors rests on a model this has checked. This copies
 the modules the cosimulation and those theorems need, `ROOTS` and every
-module they import, byte for byte, and deletes any other file there, so the
-copy is VG's at REV.
+module they import, byte for byte, and deletes any other file under
+`proofs/verified-garbage/VerifiedGarbage`, so the copy is VG's at REV; the
+cosimulation beside it, `Cosim/`, is rind's own and left alone.
 `--check` changes nothing and fails unless the copy is already that.
 
 REV is `admin/import-vg`'s, the commit rind's VG code comes from, so moving

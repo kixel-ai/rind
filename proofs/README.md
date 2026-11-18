@@ -206,13 +206,16 @@ back a value a signal handler may have overwritten on hardware
 VG fixed it in both models before the commit `admin/import-vg` pins.
 
 `verified-garbage/` also holds the `Spec` modules whose definitions the
-axioms restating VG's theorems state: `VerifiedGarbage.Spec.Rsa`, which
-`Rind/X86_64/VgRsa.lean` imports, and VG's FIPS 203 spec,
-`VerifiedGarbage.Spec.MlKem`, which `Rind/VgOutcome.lean` imports.
+axioms restating VG's theorems state: `VerifiedGarbage.Spec.Rsa.PrivatePrecompute`,
+which `Rind/X86_64/VgRsa.lean` imports, with `VerifiedGarbage.Spec.Rsa`
+through it, and VG's FIPS 203 spec, `VerifiedGarbage.Spec.MlKem`, which
+`Rind/VgOutcome.lean` imports.
 
 `Rind/VgOutcome.lean` and `Rind/<Arch>/VgMlKem.lean` restate VG's contracts
 for the ML-KEM-768 routines rind runs as one axiom per wrapper in
-`low::<arch>::mlkem768_vg`. No theorem rests on them yet: the ✓ also needs
+`low::<arch>::mlkem768_vg`. Each states only what the wrapper returns,
+not VG's wipe of its scratch or what the routine may leak. No theorem rests
+on them yet: the ✓ also needs
 rind's glue in `mid/mlkem.rs` proven, and its fallback to rind's arithmetic.
 
 ## What is proven
@@ -584,7 +587,8 @@ two-, and four-state routines computes, from those theorems. Each theorem
 assumes `RunsSha3`: rind's entry guard and CPU checks pass. x86_64's AVX-512
 eight-way Keccak, which ML-KEM-512's and ML-KEM-1024's sampler runs, is not
 proven; ML-KEM-768 runs pyca/verified-garbage's code there instead, and
-samples four at a time when a VG routine reaches its `SampleNTT` bound.
+when a VG routine reaches its `SampleNTT` bound, samples eight of its nine
+polynomials four at a time and the ninth alone, never eight at a time.
 
 The portable backend's Keccak-f, which its SHA-3, ML-KEM, and ML-DSA run, in
 `Rind/Portable/Keccak.lean`, over a translation of `low/portable/keccak.rs`
