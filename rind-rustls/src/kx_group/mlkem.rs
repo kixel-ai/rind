@@ -144,6 +144,11 @@ mod tests {
         for (key, name, encaps_len, ciphertext_len) in groups() {
             // Create a private key and verify its metadata.
             assert_eq!(key.name(), name);
+            // `MlKem`'s `Debug` is hand-written, so a test has to format it.
+            assert_eq!(
+                format!("{key:?}"),
+                format!("MlKem {{ group: {name:?}, .. }}")
+            );
             assert_eq!(key.ffdhe_group(), None);
             assert!(!key.usable_for_version(ProtocolVersion::TLSv1_2));
             assert!(key.usable_for_version(ProtocolVersion::TLSv1_3));

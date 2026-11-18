@@ -721,7 +721,8 @@ mod tests {
     }
 
     /// Each ML-DSA parameter set's scheme, public key and signature lengths,
-    /// and a test key that OpenSSL made.
+    /// and its `tests/keys/ml-dsa-*` files. pyca/cryptography 50.0.1 over
+    /// OpenSSL 4.0.2 made those keys and certificates.
     fn ml_dsa_test_keys() -> [(SignatureScheme, usize, usize, PrivateKeyDer<'static>); 3] {
         let pem = |pem: &[u8]| PrivateKeyDer::from_pem_slice(pem).unwrap();
         [

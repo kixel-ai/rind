@@ -253,9 +253,15 @@ mod tests {
     #[cfg(all(feature = "tls12", not(target_family = "wasm")))]
     #[test]
     fn aws_lc_rs_parity() {
+        use rustls::NamedGroup;
         use rustls::crypto::aws_lc_rs;
         use rustls::pki_types::SignatureVerificationAlgorithm;
+        use rustls::pki_types::alg_id;
 
+        // Compared as sets. rind lists AES-128-GCM before AES-256-GCM,
+        // post-quantum groups first, and SHA-512 before SHA-256, where
+        // aws-lc-rs's default build does not, so a positional compare would
+        // fail on differences this crate keeps on purpose.
         fn sorted<T: Ord>(items: impl IntoIterator<Item = T>) -> Vec<T> {
             let mut items = items.into_iter().collect::<Vec<_>>();
             items.sort();
@@ -289,6 +295,23 @@ mod tests {
             groups(aws_lc_rs::DEFAULT_KX_GROUPS)
         );
         assert_eq!(groups(ALL_KX_GROUPS), groups(aws_lc_rs::ALL_KX_GROUPS));
+        // Pure ML-KEM stays last, and out of the defaults, on both providers.
+        // The sorted compare above would still pass if one of them moved.
+        let pure_mlkem = [NamedGroup::MLKEM768, NamedGroup::MLKEM1024];
+        for listed in [ALL_KX_GROUPS, aws_lc_rs::ALL_KX_GROUPS] {
+            let tail = listed[listed.len() - pure_mlkem.len()..]
+                .iter()
+                .map(|group| group.name())
+                .collect::<Vec<_>>();
+            assert_eq!(tail, pure_mlkem);
+        }
+        for listed in [DEFAULT_KX_GROUPS, aws_lc_rs::DEFAULT_KX_GROUPS] {
+            assert!(
+                listed
+                    .iter()
+                    .all(|group| !pure_mlkem.contains(&group.name()))
+            );
+        }
 
         let ours = default_provider().signature_verification_algorithms;
         let theirs = aws_lc_rs::default_provider().signature_verification_algorithms;
@@ -313,6 +336,26 @@ mod tests {
                 .unwrap();
             assert_eq!(ids(&ours[..1]), ids(&theirs[..1]), "{scheme:?}");
             assert_eq!(ids(ours), ids(theirs), "{scheme:?}");
+        }
+
+        // ML-DSA is last in `all` and in `mapping`, in this order, on both.
+        let ml_dsa_ids = [alg_id::ML_DSA_44, alg_id::ML_DSA_65, alg_id::ML_DSA_87];
+        let ml_dsa_schemes = [
+            SignatureScheme::ML_DSA_44,
+            SignatureScheme::ML_DSA_65,
+            SignatureScheme::ML_DSA_87,
+        ];
+        for algs in [ours, theirs] {
+            let id_tail = algs.all[algs.all.len() - ml_dsa_ids.len()..]
+                .iter()
+                .map(|alg| alg.public_key_alg_id())
+                .collect::<Vec<_>>();
+            assert_eq!(id_tail, ml_dsa_ids);
+            let scheme_tail = algs.mapping[algs.mapping.len() - ml_dsa_schemes.len()..]
+                .iter()
+                .map(|(scheme, _)| *scheme)
+                .collect::<Vec<_>>();
+            assert_eq!(scheme_tail, ml_dsa_schemes);
         }
     }
 
