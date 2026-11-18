@@ -9,8 +9,10 @@ namespace rind.x86_64
 namespace MlKemCoding
 
 /-- A counted loop: its body, run from an index below `n` on a state the
-invariant holds of, yields the next index and a state it holds of, and at `n`
-stops with one. -/
+invariant holds of, either continues to the next index, never past `n`, with a
+state it holds of, or stops with a result `post` holds of. Stopping may come
+before `n`: this states only that every result meets `post`, so a proof that
+needs the loop to run to `n` shows it separately. -/
 theorem range_loop' {σ τ : Type} (n : ℕ) (inv : ℕ → σ → Prop) (post : τ → Prop)
     (body : core.ops.range.Range Usize × σ → Result (ControlFlow (core.ops.range.Range Usize × σ) τ))
     (hbody : ∀ (it : core.ops.range.Range Usize) (s : σ), it.end.val = n → it.start.val ≤ n →

@@ -11,8 +11,10 @@ by coefficient and bit by bit, which is what a proof of code that packs bits
 its own way needs:
 
 * `ByteDecode_get`: coefficient `i` of `ByteDecode_d(B)` is the `d` bits of
-  `B` from bit `i * d`;
-* `ByteEncode_testBit`: bit `k` of `ByteEncode_d(F)` is bit `k % d` of
+  `B` from bit `i * d`, reduced modulo `m d`: `2^d` below 12, which leaves
+  them as they are, and `q` at 12, so a field holding 3329 or more decodes to
+  its residue, not its value;
+* `ByteEncode_bit`: bit `k` of `ByteEncode_d(F)` is bit `k % d` of
   coefficient `k / d`;
 * `SamplePolyCBD_get`: coefficient `i` of `SamplePolyCBD_η(B)` is the sum of
   the `η` bits of `B` from bit `2 * i * η`, less the sum of the next `η`;
@@ -189,7 +191,9 @@ theorem forIn'_set! {α : Type} [Inhabited α] {N : ℕ} (g : ℕ → α) (l : L
   simp
 
 /-- Algorithm 6: coefficient `i` of `ByteDecode_d(B)` is the sum of the `d`
-bits of `B` from bit `i * d`, each times its power of two. -/
+bits of `B` from bit `i * d`, each times its power of two, as an element of
+`ZMod (m d)`: unchanged below `d = 12`, and reduced modulo `q` at 12, where a
+field can hold up to 4095. -/
 theorem ByteDecode_get {d : ℕ} (B : 𝔹 (32 * d)) (h : 1 ≤ d ∧ d ≤ 12) (i : ℕ) (hi : i < 256) :
     (ByteDecode B h)[i]! = ((∑ j : Fin d, (bit B (i * d + j)).toNat * 2 ^ j.val : ℕ) : ZMod (m d)) := by
   unfold ByteDecode
