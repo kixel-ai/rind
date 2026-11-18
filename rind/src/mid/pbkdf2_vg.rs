@@ -104,7 +104,7 @@ impl Key {
             return Err(Error::WrongLength);
         }
         self.check_len(previously_derived.len())?;
-        let mut derived = vec![0u8; previously_derived.len()];
+        let mut derived = alloc::vec![0u8; previously_derived.len()];
         self.routine
             .get()
             .derive(&self.key[..self.len], salt, iterations, &mut derived);
