@@ -491,14 +491,15 @@ def withWords (i : Instr) (ws : List (BitVec 64)) : Instr :=
 
 /-- What the model says `i` leaves, run from `s` (the frame instructions by
 the push and pop of a frame, which also check the frame's bookkeeping). A
-released frame's bytes are `lose`'s, one outcome per choice of unknowns: zero
-loss masks pick the one where each keeps its value, what the CPU does with no
-signal taken. -/
+frame's release takes its unknowns all zero, the outcome where every
+released byte keeps its value (`lose`), as each does on the CPU, where nothing
+else writes memory between two instructions; a `free` may release bytes
+outside the window. -/
 def run (i : Instr) (s : State) : Option State :=
   match i with
   | .push _ | .alloc _ => push i s
-  | .pop _ k => let s₁ := { s with wr := ⟨s.gpr .rsp, 8 * k⟩ :: s.wr, unknowns := fun _ => 0 }; pop i s₁ s₁
-  | .free n => let s₁ := { s with wr := ⟨s.gpr .rsp, n⟩ :: s.wr, unknowns := fun _ => 0 }; pop i s₁ s₁
+  | .pop _ k => let s₁ := { s with unknowns := fun _ => 0, wr := ⟨s.gpr .rsp, 8 * k⟩ :: s.wr }; pop i s₁ s₁
+  | .free n => let s₁ := { s with unknowns := fun _ => 0, wr := ⟨s.gpr .rsp, n⟩ :: s.wr }; pop i s₁ s₁
   | _ => exec i s
 
 /-- A case of the straight-line instruction `i`: a start image and the

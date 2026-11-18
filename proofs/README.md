@@ -205,18 +205,33 @@ back a value a signal handler may have overwritten on hardware
 ([pyca/verified-garbage#5321](https://github.com/pyca/verified-garbage/issues/5321)).
 VG fixed it in both models before the commit `admin/import-vg` pins.
 
+`Rind/VgChaCha20.lean` transliterates VG's RFC 8439 spec, `Spec/ChaCha20.lean`,
+over the bytes of its streaming state, and proves its keystream is
+`Rind/Spec.lean`'s. `Rind/X86_64/VgChaCha20.lean` restates VG's theorems
+about the x86_64 ChaCha20 routines rind runs, `Stream.init_verified` and
+`Stream.apply_verified` for AVX2 and AVX-512 VL, as one axiom per wrapper in
+`low::x86_64::chacha20`, and proves `cipher::ChaCha20` from them, as
+"What is proven" lists.
+
 `verified-garbage/` also holds the `Spec` modules whose definitions the
-axioms restating VG's theorems state: `VerifiedGarbage.Spec.Rsa.PrivatePrecompute`,
-which `Rind/X86_64/VgRsa.lean` imports, with `VerifiedGarbage.Spec.Rsa`
-through it, and VG's FIPS 203 spec, `VerifiedGarbage.Spec.MlKem`, which
-`Rind/VgOutcome.lean` imports.
+axioms restating VG's theorems state, such as
+`VerifiedGarbage.Spec.Rsa.PrivatePrecompute`, which `Rind/X86_64/VgRsa.lean`
+imports, with `VerifiedGarbage.Spec.Rsa` through it, VG's FIPS 203 spec,
+`VerifiedGarbage.Spec.MlKem`, which `Rind/VgOutcome.lean` imports, and `VerifiedGarbage.Spec.ChaCha20` with its
+contracts, which `Rind/VgChaCha20.lean` adapts and
+`Rind/X86_64/VgChaCha20.lean`'s axioms restate, so a pin that changes them
+shows the change in its diff, against which that re-pin must review the
+adaptation, for a change to the spec, and the axioms, for one to the
+contracts. Every re-pin also moves the axioms' links to VG's theorems and
+checks that the registrations they cite still emit the routines rind runs:
+`admin/vg-bytes` checks the code, not which theorem covers it.
 
 `Rind/VgOutcome.lean` and `Rind/<Arch>/VgMlKem.lean` restate VG's contracts
 for the ML-KEM-768 routines rind runs as one axiom per wrapper in
 `low::<arch>::mlkem768_vg`. Each states only what the wrapper returns,
 not VG's wipe of its scratch or what the routine may leak. No theorem rests
-on them yet: the ✓ also needs
-rind's glue in `mid/mlkem.rs` proven, and its fallback to rind's arithmetic.
+on them yet: the ✓ also needs rind's glue in `mid/mlkem.rs` proven, and its
+fallback to rind's arithmetic.
 
 ## What is proven
 
@@ -593,9 +608,11 @@ which `Rind/Keccak.lean` proves SymCrypt's KECCAK-f[1600].
 two-, and four-state routines computes, from those theorems. Each theorem
 assumes `RunsSha3`: rind's entry guard and CPU checks pass. x86_64's AVX-512
 eight-way Keccak, which ML-KEM-1024's sampler runs, is not
-proven; ML-KEM-768 runs pyca/verified-garbage's code there instead, and
-when a VG routine reaches its `SampleNTT` bound, samples eight of its nine
-polynomials four at a time and the ninth alone, never eight at a time.
+proven; ML-KEM-768 runs pyca/verified-garbage's code there instead.
+Wherever rind's sampler runs for ML-KEM-768, it samples eight of its nine
+polynomials four at a time and the ninth alone, never eight at a time; on
+that tier it runs only when a VG routine reaches its `SampleNTT` bound, or
+when test and FIPS builds' `DecapKey::from_bytes` imports an expanded key.
 
 The portable backend's Keccak-f, which its SHA-3, ML-KEM, and ML-DSA run, in
 `Rind/Portable/Keccak.lean`, over a translation of `low/portable/keccak.rs`
@@ -899,6 +916,28 @@ and Poly1305 passes, which the model leaves opaque. `AeadDispatch` models
 `RandomizedNonceKey`, which reaches the system's random source, and
 `Rind/ChaCha20Poly1305Test.lean` checks `Rind/Spec.lean`'s transliterations
 against RFC 8439's and draft-irtf-cfrg-xchacha-03's test vectors.
+
+ChaCha20 on x86_64 CPUs with AVX2, from 256 bytes, from `cipher::ChaCha20`
+down to pyca/verified-garbage's AVX2 and AVX-512 VL routines, in
+`Rind/X86_64/VgChaCha20.lean`:
+
+- `chacha20_apply_keystream`: a buffer that needs more blocks than remain
+  before the 32-bit block counter wraps is refused with `WrongLength` and
+  left as it is, and otherwise it becomes RFC 8439's encryption of it under
+  the key, the block counter, and the nonce.
+
+It rests on the axioms `vg_chacha20_init_spec`,
+`vg_chacha20_apply_avx2_spec`, and `vg_chacha20_apply_avx512vl_spec`, which
+restate VG's theorems, and composes them as `cipher` does: VG's routines over
+the whole buffer, or, when what follows its last whole 512-byte group is 65
+to 255 bytes, over the groups, and rind's two-block AVX2 kernel over that
+remainder from the block counter past them. It assumes `Kernel`, that
+kernel's contract, which no proof covers yet;
+[the x86_64 cipher quest](/quest/m4/verified/chacha20-poly1305-x86/cipher.md)
+owns it. It also assumes `RunsVg`: the entry guard admits the call,
+constructing the VG state succeeds (the model leaves `VgState::uninit`
+opaque), and the CPU-feature checks find AVX2 or AVX-512 VL. VG's code earns its ✓ on this
+path from its theorems; the kernel's is the cipher quest's.
 
 RSASSA-PKCS1-v1_5 and RSASSA-PSS verification with SHA-256 on x86_64, from
 the signature API's `rsa::PublicKey` to the Montgomery products, in

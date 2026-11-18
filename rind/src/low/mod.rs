@@ -139,14 +139,36 @@ mod generic {
 
 pub(crate) mod cpu;
 mod entry;
+
+/// Whether `RIND_CPU_DISABLE_<id>` denies the CPU feature `id`, so a CPU with
+/// it also tests the code for one without. Only a debug build reads it, or a
+/// release one with `--cfg rind_cpu_disable`, so benches and ctgrind time and
+/// check the code that ships; only `RUSTFLAGS` sets that, never a dependent
+/// crate. The variable drops the dot from `sse4.1`, since shells drop
+/// variables whose names have one. A target without an OS has no variables.
+#[cfg(all(rind_std, any(debug_assertions, rind_cpu_disable)))]
+#[cfg_attr(any(rind_backend = "portable", rind_backend = "arm"), allow(dead_code))]
+pub(crate) fn cpu_denied(id: &str) -> bool {
+    // Set is enough, whatever the value. Silent, since detection runs inside
+    // any call, where the caller may hold stdout's lock or have closed it.
+    std::env::var_os(std::format!("RIND_CPU_DISABLE_{}", id.replace('.', ""))).is_some()
+}
+
+/// Denies nothing, in a release build or without an OS. The portable backend
+/// asks only on x86, and arm only on Linux and Android.
+#[cfg(not(all(rind_std, any(debug_assertions, rind_cpu_disable))))]
+#[cfg_attr(any(rind_backend = "portable", rind_backend = "arm"), allow(dead_code))]
+#[inline(always)]
+pub(crate) fn cpu_denied(_id: &str) -> bool {
+    false
+}
+
 // Intel's MXCSR mitigation, where the instructions it covers exist: on x86
-// with SSE2, outside Miri, which runs no assembly.
+// and x86_64 targets with SSE2, outside Miri, which runs no assembly.
 #[cfg_attr(
     not(all(
-        any(
-            target_arch = "x86_64",
-            all(target_arch = "x86", target_feature = "sse2")
-        ),
+        any(target_arch = "x86_64", target_arch = "x86"),
+        target_feature = "sse2",
         not(miri)
     )),
     path = "mcdt_none.rs"

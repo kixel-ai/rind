@@ -48,7 +48,10 @@ axiom vg_mlkem768_check_ek_spec (self : low.x86_64.mlkem768_vg.Encaps)
 `vg_mlkem768_encaps_h_avx2`, and `vg_mlkem768_encaps_h_avx512`:
 https://github.com/pyca/verified-garbage/blob/0aa40d6c21fd02943fe5b38a5b69b6213d07764d/lean/VerifiedGarbage/Proof/MlKem/X86_64/CallWipe.lean#L750 (`encapsW_verified`) and
 https://github.com/pyca/verified-garbage/blob/0aa40d6c21fd02943fe5b38a5b69b6213d07764d/lean/VerifiedGarbage/Proof/MlKem/X86_64/CallWipe.lean#L700 (`encapsHW_verified`). Both hold
-for any `ek`. -/
+for any `ek`.
+The wrapper's callers must still check `ek` first, as `Encaps::encaps`
+asks; this axiom neither assumes nor establishes that, so a proof of the
+caller discharges it from `check_ek`'s axiom. -/
 @[step]
 axiom vg_mlkem768_encaps_spec (self : low.x86_64.mlkem768_vg.Encaps)
     (ek : Std.Array U8 1184#usize) (h : Option (Std.Array U8 32#usize))
