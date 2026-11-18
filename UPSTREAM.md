@@ -292,7 +292,7 @@ Each upstream rind changes, with where its fork is vendored and where the list o
 
 ### curve25519-dalek cannot compile without SSE
 
-- **Breaks:** curve25519-dalek picks its AVX2 backend on every x86_64 target, which LLVM fails to compile where SSE is off, as on `x86_64-unknown-none` and `x86_64-unknown-uefi`.
+- **Breaks:** curve25519-dalek compiles its AVX2 backend on every x86_64 target, choosing it or the serial one at run time, and LLVM fails to compile it where SSE is off, as on `x86_64-unknown-none` and `x86_64-unknown-uefi`.
 - **Reproduce:** `cargo build -p rind --lib --target x86_64-unknown-none` with `RUSTFLAGS='--cfg getrandom_backend="custom"'`.
 - **Workaround:** `sh/dispatch.sh`'s `no_std` builds pass `--cfg curve25519_dalek_backend="serial"` for `x86_64-unknown-none`, and [PLATFORMS.md](PLATFORMS.md) tells callers to do the same.
 - **Reported:** [curve25519-dalek#601](https://github.com/dalek-cryptography/curve25519-dalek/issues/601).
