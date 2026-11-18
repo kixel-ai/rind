@@ -51,12 +51,12 @@ reason = "rind's portable SHA-1 trails aws-lc's C by 1.1 to 1.25× from 1200 B u
 [[gap]]
 operations = ["sha256/*", "sha256-updates/*", "hmac-sha256/*", "sha512*", "hmac-sha384/*"]
 on = ["portable"]
-reason = "HACL*'s verified SHA-256 and SHA-512, through libcrux-sha2, trail aws-lc's C from 1200 B up in [run 43646114817](https://github.com/kixel-ai/rind/actions/runs/43646114817): SHA-256 and HMAC-SHA-256 1.11 to 1.17×, SHA-512, SHA-512/256, and HMAC-SHA-384 1.15 to 1.22× at 8 and 16 KB. Under the source rule the portable backend runs the fastest permissive SHA-2 and plans its proof; measuring aws-lc's and Graviola's against HACL* on a 64-bit target and switching is the report-refresh PR's suggested follow-up."
+quest = "/quest/m2/speed/portable-sha2.md"
 
 [[gap]]
 operations = ["aes*", "quic-header-protection/aes*", "rustls-bulk/aes*", "hpke-*-aes128-gcm-*"]
 on = ["armv7 NEON"]
-reason = "Without the crypto extension rind runs aws-lc's constant-time `aes_nohw` and integer GHASH, ported to Rust, where aws-lc-rs runs its NEON assembly: bitsliced `bsaes-armv7` for CTR and CBC decryption, `vpaes-armv7` for single blocks, and `ghash-armv4`'s NEON GHASH. In [run 43646114817](https://github.com/kixel-ai/rind/actions/runs/43646114817), after [#621](https://github.com/kixel-ai/rind/pull/621), AES-CTR measured 1.1 to 1.2× aws-lc-rs's time, CBC decryption 1.2 to 1.5×, CBC encryption, AES-KW, and header protection 2.0 to 2.2×, and AES-GCM, HPKE's AES-128-GCM seal and open, and rustls's AES bulk 1.4 to 3.4×. Running aws-lc's NEON routines is the report-refresh PR's suggested follow-up."
+quest = "/quest/m2/speed/armv7-neon-aes.md"
 
 [[gap]]
 operations = ["aes*-kw-unwrap/*/16B", "aes*-kwp-unwrap/*/16B"]
@@ -71,7 +71,7 @@ reason = "Decided in [kixel-ai/rind#812](https://github.com/kixel-ai/rind/pull/8
 [[gap]]
 operations = ["oprf-ristretto255-blind", "oprf-ristretto255-evaluate"]
 on = ["nixos", "ovh-iad", "ovh-sea"]
-reason = "ristretto255's constant-time variable-base multiplication, a four-bit fixed window over s2n-bignum's field arithmetic, trails RustCrypto's `voprf` over curve25519-dalek's AVX2 vector backend: blinding 1.18 to 1.25× and evaluation 1.24 to 1.30× its time on these AVX2 hosts. Running dalek's AVX2 formulas there, as Ed25519 verification without ADX already does, is the report-refresh PR's suggested follow-up."
+quest = "/quest/m2/speed/ristretto255-avx2.md"
 
 [[gap]]
 operations = ["p384-ecdsa-sign"]
@@ -81,12 +81,12 @@ quest = "/quest/m2/verified-garbage/p384.md"
 [[gap]]
 operations = ["sha3-512/16KB"]
 on = ["ovh-sea"]
-quest = "/quest/m2/verified-garbage/sha3.md"
+reason = "SHA3-512 at 16 KB measured 1.16× pyca/verified-garbage's time (110.7 against 95.7 µs; aws-lc-rs 103.3), while SHA3-256 at 16 KB is level (53.7 µs both). x86_64 runs one Keccak-f on every CPU, and [kixel-ai/rind#851](https://github.com/kixel-ai/rind/pull/851) kept rind's proven one, since VG measured 1.01 to 1.05× rind's time from 1200 B on Zen 3 and Zen 4. The next refresh rechecks it."
 
 [[gap]]
 operations = ["p256-ecdsa-verify"]
 on = ["nixos"]
-quest = "/quest/m2/verified-garbage/p256.md"
+reason = "Closed after this run: pyca/verified-garbage measured 30.6 µs against rind's 38.2 µs (aws-lc-rs 38.0) on `nixos`'s Zen 3, and [kixel-ai/rind#846](https://github.com/kixel-ai/rind/pull/846), which landed after the run's commit, verifies with VG's routine on x86_64 with BMI2 and ADX. The next refresh measures it."
 
 [[gap]]
 operations = ["rsa2048-pkcs1-sha256-sign", "rustls-bulk/chacha20poly1305", "rustls-resumed-handshake/x25519", "sha3-256/16KB", "sha3-512/16KB"]
