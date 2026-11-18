@@ -467,4 +467,20 @@ opaque low.aarch64.aes_gcm.cipher
 opaque low.aarch64.ghash_neon_armv8.NeonTable.new
   : Array Std.U8 16#usize → Result low.aarch64.ghash_neon_armv8.NeonTable
 
+/-- x86_64's AVX-512 IFMA X25519 and Ed25519, which no aarch64 CPU runs, and
+which the proofs here take as not running. -/
+opaque low.aarch64.curve25519_ifma.Curve25519Ifma.check : Result (Option low.aarch64.curve25519_ifma.Curve25519Ifma)
+
+opaque low.aarch64.curve25519_ifma.Curve25519Ifma.ed25519_key_pair
+  : low.aarch64.curve25519_ifma.Curve25519Ifma → Array Std.U8 32#usize → Result (Array Std.U8 64#usize × Array Std.U8 32#usize)
+
+opaque low.aarch64.curve25519_ifma.Curve25519Ifma.ed25519_sign
+  : low.aarch64.curve25519_ifma.Curve25519Ifma → Array Std.U8 64#usize → Array Std.U8 32#usize → Slice Std.U8 →
+    Result (Array Std.U8 64#usize)
+
+opaque low.aarch64.curve25519_ifma.Curve25519Ifma.ed25519_verify
+  : low.aarch64.curve25519_ifma.Curve25519Ifma → Array Std.U8 32#usize → Slice Std.U8 → Array Std.U8 64#usize → Result Bool
+
+opaque low.aarch64.curve25519_ifma.Curve25519Ifma.Insts.CoreCloneClone.clone : low.aarch64.curve25519_ifma.Curve25519Ifma → Result low.aarch64.curve25519_ifma.Curve25519Ifma
+
 end rind.aarch64

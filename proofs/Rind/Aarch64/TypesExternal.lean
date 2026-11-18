@@ -16,6 +16,10 @@ namespace rind.aarch64
 /-- The entry guard every operation holds, which changes no value. -/
 opaque low.entry.Entry : Type
 
+/-- x86_64's AVX-512 IFMA X25519 and Ed25519 token, which no aarch64 CPU
+builds. -/
+opaque low.aarch64.curve25519_ifma.Curve25519Ifma : Type
+
 /-- The token proving the CPU has the SHA-512 instructions. -/
 opaque low.aarch64.cpu.HaveSha3 : Type
 
