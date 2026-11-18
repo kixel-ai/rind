@@ -11,8 +11,7 @@
 //!
 //! And then use rustls as normal.
 //!
-//! Its API is rustls's `crypto::aws_lc_rs` provider's, item for item, short of
-//! the ML-KEM-1024 key exchange group and ML-DSA, which it does not back yet.
+//! Its API is rustls's `crypto::aws_lc_rs` provider's, item for item.
 
 use std::sync::Arc;
 
@@ -49,7 +48,7 @@ pub use ticketer::Ticketer;
 ///
 /// This offers the same cipher suites and key exchange groups as the rustls
 /// aws-lc-rs provider's defaults, and verifies and signs the same signature
-/// schemes, short of ML-DSA.
+/// schemes.
 /// It prefers ChaCha20-Poly1305 where rind runs AES without CPU instructions.
 pub fn default_provider() -> CryptoProvider {
     let cipher_suites = if rind::cpu::has_aes_hardware() {
@@ -125,6 +124,7 @@ pub static ALL_KX_GROUPS: &[&dyn SupportedKxGroup] = &[
     kx_group::SECP256R1,
     kx_group::SECP384R1,
     kx_group::MLKEM768,
+    kx_group::MLKEM1024,
 ];
 
 /// Every signature verification algorithm this crate supports, in the order
@@ -150,6 +150,9 @@ static SUPPORTED_SIG_ALGS: WebPkiSupportedAlgorithms = WebPkiSupportedAlgorithms
         verify::RSA_PKCS1_SHA512_ABSENT_PARAMS,
         verify::RSA_PKCS1_SHA384_ABSENT_PARAMS,
         verify::RSA_PKCS1_SHA256_ABSENT_PARAMS,
+        verify::ML_DSA_44,
+        verify::ML_DSA_65,
+        verify::ML_DSA_87,
     ],
     // TLS 1.2 lets any curve sign with any of these hashes, so each lists
     // every curve; TLS 1.3 binds the curve and uses only the first.
@@ -194,6 +197,9 @@ static SUPPORTED_SIG_ALGS: WebPkiSupportedAlgorithms = WebPkiSupportedAlgorithms
             SignatureScheme::RSA_PKCS1_SHA256,
             &[verify::RSA_PKCS1_SHA256],
         ),
+        (SignatureScheme::ML_DSA_44, &[verify::ML_DSA_44]),
+        (SignatureScheme::ML_DSA_65, &[verify::ML_DSA_65]),
+        (SignatureScheme::ML_DSA_87, &[verify::ML_DSA_87]),
     ],
 };
 
@@ -240,18 +246,22 @@ mod tests {
         assert_eq!(default_provider().cipher_suites, expected);
     }
 
-    // rustls's aws-lc-rs provider offers ML-KEM-1024 and ML-DSA, which this crate
-    // does not back yet; everything else it offers, this crate offers too.
+    // Everything rustls's aws-lc-rs provider offers, this crate offers too.
     // Tests build rustls with `tls12`, so its TLS 1.2 suites are there to
     // compare.
     // aws-lc-rs does not build for wasm.
     #[cfg(all(feature = "tls12", not(target_family = "wasm")))]
     #[test]
     fn aws_lc_rs_parity() {
+        use rustls::NamedGroup;
         use rustls::crypto::aws_lc_rs;
-        use rustls::pki_types::{SignatureVerificationAlgorithm, alg_id};
-        use rustls::{NamedGroup, SignatureScheme};
+        use rustls::pki_types::SignatureVerificationAlgorithm;
+        use rustls::pki_types::alg_id;
 
+        // Compared as sets. rind lists AES-128-GCM before AES-256-GCM,
+        // post-quantum groups first, and SHA-512 before SHA-256, where
+        // aws-lc-rs's default build does not, so a positional compare would
+        // fail on differences this crate keeps on purpose.
         fn sorted<T: Ord>(items: impl IntoIterator<Item = T>) -> Vec<T> {
             let mut items = items.into_iter().collect::<Vec<_>>();
             items.sort();
@@ -284,23 +294,28 @@ mod tests {
             groups(DEFAULT_KX_GROUPS),
             groups(aws_lc_rs::DEFAULT_KX_GROUPS)
         );
-        let expected = aws_lc_rs::ALL_KX_GROUPS
-            .iter()
-            .map(|group| group.name())
-            .filter(|name| *name != NamedGroup::MLKEM1024)
-            .map(u16::from);
-        assert_eq!(groups(ALL_KX_GROUPS), sorted(expected));
+        assert_eq!(groups(ALL_KX_GROUPS), groups(aws_lc_rs::ALL_KX_GROUPS));
+        // Pure ML-KEM stays last, and out of the defaults, on both providers.
+        // The sorted compare above would still pass if one of them moved.
+        let pure_mlkem = [NamedGroup::MLKEM768, NamedGroup::MLKEM1024];
+        for listed in [ALL_KX_GROUPS, aws_lc_rs::ALL_KX_GROUPS] {
+            let tail = listed[listed.len() - pure_mlkem.len()..]
+                .iter()
+                .map(|group| group.name())
+                .collect::<Vec<_>>();
+            assert_eq!(tail, pure_mlkem);
+        }
+        for listed in [DEFAULT_KX_GROUPS, aws_lc_rs::DEFAULT_KX_GROUPS] {
+            assert!(
+                listed
+                    .iter()
+                    .all(|group| !pure_mlkem.contains(&group.name()))
+            );
+        }
 
         let ours = default_provider().signature_verification_algorithms;
         let theirs = aws_lc_rs::default_provider().signature_verification_algorithms;
-        let ml_dsa = [alg_id::ML_DSA_44, alg_id::ML_DSA_65, alg_id::ML_DSA_87];
-        let theirs_all = theirs
-            .all
-            .iter()
-            .copied()
-            .filter(|alg| !ml_dsa.contains(&alg.public_key_alg_id()))
-            .collect::<Vec<_>>();
-        assert_eq!(ids(ours.all), ids(&theirs_all));
+        assert_eq!(ids(ours.all), ids(theirs.all));
 
         let hpke_suites = |suites: &[&dyn rustls::crypto::hpke::Hpke]| {
             suites.iter().map(|suite| suite.suite()).collect::<Vec<_>>()
@@ -312,18 +327,8 @@ mod tests {
 
         // Each scheme verifies with the same algorithms, the first for the
         // scheme's own curve, which is the only one TLS 1.3 uses.
-        let ml_dsa = [
-            SignatureScheme::ML_DSA_44,
-            SignatureScheme::ML_DSA_65,
-            SignatureScheme::ML_DSA_87,
-        ];
-        let theirs = theirs
-            .mapping
-            .iter()
-            .filter(|(scheme, _)| !ml_dsa.contains(scheme))
-            .collect::<Vec<_>>();
-        assert_eq!(ours.mapping.len(), theirs.len());
-        for (scheme, theirs) in theirs {
+        assert_eq!(ours.mapping.len(), theirs.mapping.len());
+        for (scheme, theirs) in theirs.mapping {
             let (_, ours) = ours
                 .mapping
                 .iter()
@@ -332,11 +337,31 @@ mod tests {
             assert_eq!(ids(&ours[..1]), ids(&theirs[..1]), "{scheme:?}");
             assert_eq!(ids(ours), ids(theirs), "{scheme:?}");
         }
+
+        // ML-DSA is last in `all` and in `mapping`, in this order, on both.
+        let ml_dsa_ids = [alg_id::ML_DSA_44, alg_id::ML_DSA_65, alg_id::ML_DSA_87];
+        let ml_dsa_schemes = [
+            SignatureScheme::ML_DSA_44,
+            SignatureScheme::ML_DSA_65,
+            SignatureScheme::ML_DSA_87,
+        ];
+        for algs in [ours, theirs] {
+            let id_tail = algs.all[algs.all.len() - ml_dsa_ids.len()..]
+                .iter()
+                .map(|alg| alg.public_key_alg_id())
+                .collect::<Vec<_>>();
+            assert_eq!(id_tail, ml_dsa_ids);
+            let scheme_tail = algs.mapping[algs.mapping.len() - ml_dsa_schemes.len()..]
+                .iter()
+                .map(|(scheme, _)| *scheme)
+                .collect::<Vec<_>>();
+            assert_eq!(scheme_tail, ml_dsa_schemes);
+        }
     }
 
     // Every public item of rustls's aws-lc-rs provider, doc-hidden ones
-    // included, short of `kx_group::MLKEM1024`, has the same name and type
-    // here. This fails to compile on a divergence.
+    // included, has the same name and type here. This fails to compile on a
+    // divergence.
     // aws-lc-rs does not build for wasm.
     #[cfg(all(feature = "std", feature = "tls12", not(target_family = "wasm")))]
     #[test]
@@ -370,6 +395,7 @@ mod tests {
             kx_group::X25519MLKEM768,
             kx_group::SECP256R1MLKEM768,
             kx_group::MLKEM768,
+            kx_group::MLKEM1024,
             sign::any_supported_type,
             sign::any_ecdsa_type,
             sign::any_eddsa_type,

@@ -1,3 +1,4 @@
+use rind::ml_dsa::{self, MlDsa44, MlDsa65, MlDsa87};
 use rind::{ecdsa, ed25519, rsa};
 use rustls::pki_types::{
     AlgorithmIdentifier, InvalidSignature, SignatureVerificationAlgorithm, alg_id,
@@ -145,11 +146,32 @@ pub static RSA_PKCS1_SHA512_ABSENT_PARAMS: &dyn SignatureVerificationAlgorithm =
     algorithm: Algorithm::Rsa(&rsa::verify::PKCS1_SHA512),
 };
 
+/// Verifies ML-DSA-44 signatures (FIPS 204, security category 2), pure with the empty context.
+pub static ML_DSA_44: &dyn SignatureVerificationAlgorithm = &Verify {
+    public_key_alg_id: alg_id::ML_DSA_44,
+    signature_alg_id: alg_id::ML_DSA_44,
+    algorithm: Algorithm::MlDsa44,
+};
+
+/// Verifies ML-DSA-65 signatures (FIPS 204, security category 3), pure with the empty context.
+pub static ML_DSA_65: &dyn SignatureVerificationAlgorithm = &Verify {
+    public_key_alg_id: alg_id::ML_DSA_65,
+    signature_alg_id: alg_id::ML_DSA_65,
+    algorithm: Algorithm::MlDsa65,
+};
+
+/// Verifies ML-DSA-87 signatures (FIPS 204, security category 5), pure with the empty context.
+pub static ML_DSA_87: &dyn SignatureVerificationAlgorithm = &Verify {
+    public_key_alg_id: alg_id::ML_DSA_87,
+    signature_alg_id: alg_id::ML_DSA_87,
+    algorithm: Algorithm::MlDsa87,
+};
+
 /// A webpki algorithm: its identifiers, and the rind constant that verifies it.
 ///
 /// webpki hands over the `subjectPublicKey` bit string, which is the encoding
-/// each public key's `new` takes: an X9.62 point, a PKCS#1 `RSAPublicKey`, or
-/// Ed25519's 32 bytes.
+/// each public key's `new` takes: an X9.62 point, a PKCS#1 `RSAPublicKey`,
+/// Ed25519's 32 bytes, or FIPS 204's encoding of an ML-DSA key (RFC 9881).
 #[derive(Debug)]
 struct Verify {
     public_key_alg_id: AlgorithmIdentifier,
@@ -163,6 +185,17 @@ enum Algorithm {
     Ecdsa(&'static ecdsa::VerificationAlgorithm),
     Ed25519,
     Rsa(&'static rsa::VerificationAlgorithm),
+    MlDsa44,
+    MlDsa65,
+    MlDsa87,
+}
+
+fn verify_ml_dsa<P: ml_dsa::ParameterSet>(
+    public_key: &[u8],
+    message: &[u8],
+    signature: &[u8],
+) -> Result<(), rind::Error> {
+    ml_dsa::PublicKey::<P>::new(public_key).and_then(|key| key.verify(message, signature))
 }
 
 impl SignatureVerificationAlgorithm for Verify {
@@ -188,6 +221,9 @@ impl SignatureVerificationAlgorithm for Verify {
             }
             Algorithm::Rsa(algorithm) => rsa::PublicKey::new(public_key)
                 .and_then(|key| key.verify(algorithm, message, signature)),
+            Algorithm::MlDsa44 => verify_ml_dsa::<MlDsa44>(public_key, message, signature),
+            Algorithm::MlDsa65 => verify_ml_dsa::<MlDsa65>(public_key, message, signature),
+            Algorithm::MlDsa87 => verify_ml_dsa::<MlDsa87>(public_key, message, signature),
         }
         .map_err(|_| InvalidSignature)
     }
@@ -197,6 +233,7 @@ impl SignatureVerificationAlgorithm for Verify {
 mod tests {
     use rind::ecdsa::KeyPair as EcdsaKeyPair;
     use rind::ed25519::KeyPair as Ed25519KeyPair;
+    use rind::ml_dsa::KeyPair as MlDsaKeyPair;
     use rind::rand;
     use rind::rsa::KeyPair as RsaKeyPair;
     use rustls::SignatureScheme;
@@ -274,6 +311,181 @@ mod tests {
         ED25519
             .verify_signature(key.public_key().as_ref(), &message, signature.as_ref())
             .unwrap();
+    }
+
+    // A signature verifies under its own parameter set's algorithm, and under
+    // neither other's; the key, the message, and the signature each refuse any
+    // change, and webpki's raw key bytes are the only encoding of a key.
+    #[test]
+    fn test_ml_dsa_verify() {
+        fn check<P: ml_dsa::ParameterSet>(
+            algorithm: &dyn SignatureVerificationAlgorithm,
+            id: AlgorithmIdentifier,
+            others: [&dyn SignatureVerificationAlgorithm; 2],
+            (key_len, signature_len): (usize, usize),
+        ) {
+            assert_eq!(algorithm.public_key_alg_id(), id);
+            assert_eq!(algorithm.signature_alg_id(), id);
+
+            let key = MlDsaKeyPair::<P>::generate().unwrap();
+            let message = message();
+            let signature = key.sign(&message).unwrap();
+            let (public_key, signature) = (key.public_key().as_ref(), signature.as_ref());
+            assert_eq!(
+                (public_key.len(), signature.len()),
+                (key_len, signature_len)
+            );
+            let verify = |public_key: &[u8], message: &[u8], signature: &[u8]| {
+                algorithm.verify_signature(public_key, message, signature)
+            };
+            verify(public_key, &message, signature).unwrap();
+            for other in others {
+                assert!(
+                    other
+                        .verify_signature(public_key, &message, signature)
+                        .is_err()
+                );
+            }
+
+            let mut changed = message;
+            changed[0] ^= 1;
+            assert!(verify(public_key, &changed, signature).is_err());
+            assert!(verify(public_key, &[], signature).is_err());
+
+            for at in [0, signature_len / 2, signature_len - 1] {
+                let mut changed = signature.to_vec();
+                changed[at] ^= 1;
+                assert!(verify(public_key, &message, &changed).is_err(), "{at}");
+            }
+            for len in [0, 1, signature_len - 1] {
+                assert!(verify(public_key, &message, &signature[..len]).is_err());
+            }
+            let longer = [signature, &[0]].concat();
+            assert!(verify(public_key, &message, &longer).is_err());
+
+            for at in [0, key_len / 2, key_len - 1] {
+                let mut changed = public_key.to_vec();
+                changed[at] ^= 1;
+                assert!(verify(&changed, &message, signature).is_err(), "{at}");
+            }
+            for len in [0, 1, key_len - 1] {
+                assert!(verify(&public_key[..len], &message, signature).is_err());
+            }
+            let longer = [public_key, &[0]].concat();
+            assert!(verify(&longer, &message, signature).is_err());
+
+            // webpki hands over the bit string, not the `SubjectPublicKeyInfo`.
+            let spki = key.public_key().to_spki();
+            assert!(verify(spki.as_ref(), &message, signature).is_err());
+        }
+
+        check::<MlDsa44>(
+            ML_DSA_44,
+            alg_id::ML_DSA_44,
+            [ML_DSA_65, ML_DSA_87],
+            (1312, 2420),
+        );
+        check::<MlDsa65>(
+            ML_DSA_65,
+            alg_id::ML_DSA_65,
+            [ML_DSA_44, ML_DSA_87],
+            (1952, 3309),
+        );
+        check::<MlDsa87>(
+            ML_DSA_87,
+            alg_id::ML_DSA_87,
+            [ML_DSA_44, ML_DSA_65],
+            (2592, 4627),
+        );
+    }
+
+    // Each algorithm accepts what aws-lc-rs's accepts and refuses what it
+    // refuses, whether or not the input is well formed.
+    // aws-lc-rs does not build for wasm.
+    #[cfg(not(target_family = "wasm"))]
+    #[test]
+    fn test_ml_dsa_verify_matches_aws_lc_rs() {
+        fn check<P: ml_dsa::ParameterSet>(
+            ours: &dyn SignatureVerificationAlgorithm,
+            theirs: &dyn SignatureVerificationAlgorithm,
+        ) {
+            let key = MlDsaKeyPair::<P>::generate().unwrap();
+            let message = message();
+            let signature = key.sign(&message).unwrap();
+            let (public_key, signature) = (key.public_key().as_ref(), signature.as_ref());
+
+            let mut bad_key = public_key.to_vec();
+            bad_key[0] ^= 1;
+            let mut bad_signature = signature.to_vec();
+            *bad_signature.last_mut().unwrap() ^= 1;
+            let cases = [
+                (public_key, &message[..], signature),
+                (public_key, &message[1..], signature),
+                (public_key, &message[..], &signature[1..]),
+                (public_key, &message[..], &[][..]),
+                (public_key, &message[..], &bad_signature),
+                (&public_key[1..], &message[..], signature),
+                (&[][..], &message[..], signature),
+                (&bad_key, &message[..], signature),
+            ];
+            for (i, (public_key, message, signature)) in cases.into_iter().enumerate() {
+                assert_eq!(
+                    ours.verify_signature(public_key, message, signature)
+                        .is_ok(),
+                    theirs
+                        .verify_signature(public_key, message, signature)
+                        .is_ok(),
+                    "case {i}"
+                );
+            }
+            assert!(
+                ours.verify_signature(public_key, &message, signature)
+                    .is_ok()
+            );
+        }
+
+        let theirs =
+            rustls::crypto::aws_lc_rs::default_provider().signature_verification_algorithms;
+        let theirs = |scheme| {
+            let (_, algorithms) = theirs
+                .mapping
+                .iter()
+                .find(|(theirs, _)| *theirs == scheme)
+                .unwrap();
+            algorithms[0]
+        };
+        check::<MlDsa44>(ML_DSA_44, theirs(SignatureScheme::ML_DSA_44));
+        check::<MlDsa65>(ML_DSA_65, theirs(SignatureScheme::ML_DSA_65));
+        check::<MlDsa87>(ML_DSA_87, theirs(SignatureScheme::ML_DSA_87));
+    }
+
+    // TLS 1.3 verifies a scheme with its mapping's first algorithm only, so
+    // each ML-DSA scheme names its own parameter set, and no other scheme
+    // names an ML-DSA algorithm.
+    #[test]
+    fn test_ml_dsa_scheme_mapping() {
+        for (scheme, algorithms) in crate::SUPPORTED_SIG_ALGS.mapping {
+            let expected = match scheme {
+                SignatureScheme::ML_DSA_44 => Some(alg_id::ML_DSA_44),
+                SignatureScheme::ML_DSA_65 => Some(alg_id::ML_DSA_65),
+                SignatureScheme::ML_DSA_87 => Some(alg_id::ML_DSA_87),
+                _ => None,
+            };
+            let ml_dsa = [alg_id::ML_DSA_44, alg_id::ML_DSA_65, alg_id::ML_DSA_87];
+            match expected {
+                Some(id) => {
+                    assert_eq!(algorithms.len(), 1, "{scheme:?}");
+                    assert_eq!(algorithms[0].public_key_alg_id(), id, "{scheme:?}");
+                    assert_eq!(algorithms[0].signature_alg_id(), id, "{scheme:?}");
+                }
+                None => assert!(
+                    algorithms
+                        .iter()
+                        .all(|alg| !ml_dsa.contains(&alg.public_key_alg_id())),
+                    "{scheme:?}"
+                ),
+            }
+        }
     }
 
     #[test]

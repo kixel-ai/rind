@@ -16,10 +16,6 @@ crate = "rustls"
 module = "crypto::aws_lc_rs"
 features = ["aws_lc_rs"]
 skip = { fips = "builds AWS-LC's FIPS module, which rind does not offer" }
-# Items rind cannot back, which the README names.
-omitted = [
-  "kx_group::MLKEM1024",
-]
 
 [dependencies]
 rind = { version = "0.3.2", path = "../rind" }
@@ -30,14 +26,17 @@ rustls = { version = "0.23.20", default-features = false, features = ["std"] }
 [dev-dependencies]
 env_logger = "0.11"
 hex = "0.4"
+# Requests reach valgrind only once `rind/__ctgrind` turns on crabgrind's default
+# features, as `admin/ctgrind` does. Without that feature the calls are no-ops,
+# and they compile on wasm, where the ML-KEM unit tests still name the crate.
+crabgrind = { version = "0.4", default-features = false }
 
 # aws-lc-rs does not build for wasm and ring needs a C compiler targeting it,
 # so wasm leaves out the differential tests, and the examples, whose tokio
 # needs the threads and sockets wasm lacks.
 [target.'cfg(not(target_family = "wasm"))'.dev-dependencies]
-# Requests reach valgrind only once `rind/__ctgrind` turns on crabgrind's default
-# features, as `admin/ctgrind` does; otherwise they build as no-ops.
-crabgrind = { version = "0.4", default-features = false }
+# The ML-DSA differential tests need aws-lc-rs's own key API, to expand a seed.
+aws-lc-rs = { version = "1.19", default-features = false, features = ["alloc", "prebuilt-nasm", "non-fips"] }
 http = "1"
 http-body-util = "0.1"
 hyper = { version = "1", default-features = false }

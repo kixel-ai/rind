@@ -282,6 +282,9 @@ fn signing() {
         "ecdsa-p384",
         "ecdsa-p521",
         "ed25519",
+        "ml-dsa-44",
+        "ml-dsa-65",
+        "ml-dsa-87",
     ] {
         let path = format!("{}/tests/keys/{slug}/end.key", env!("CARGO_MANIFEST_DIR"));
         let key = PrivateKeyDer::from_pem_file(path).unwrap();

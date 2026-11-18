@@ -79,6 +79,7 @@ fn all_key_exchanges() {
         rind_rustls::kx_group::X25519MLKEM768,
         rind_rustls::kx_group::SECP256R1MLKEM768,
         rind_rustls::kx_group::MLKEM768,
+        rind_rustls::kx_group::MLKEM1024,
     ] {
         for other in OtherProvider::NOT_RING {
             test_key_exchange(group, tls13, *other);
@@ -232,6 +233,9 @@ enum KeyType {
     EcdsaP384,
     EcdsaP521,
     Ed25519,
+    MlDsa44,
+    MlDsa65,
+    MlDsa87,
 }
 
 impl KeyType {
@@ -243,6 +247,9 @@ impl KeyType {
         Self::EcdsaP384,
         Self::EcdsaP521,
         Self::Ed25519,
+        Self::MlDsa44,
+        Self::MlDsa65,
+        Self::MlDsa87,
     ];
     #[cfg(feature = "tls12")]
     const RSA: &[Self] = &[Self::Rsa2048, Self::Rsa3072, Self::Rsa4096];
@@ -255,10 +262,13 @@ impl KeyType {
         Self::Ed25519,
     ];
 
-    /// The providers that can sign and verify with this key: *ring* has no P-521.
+    /// The providers that can sign and verify with this key: *ring* has no
+    /// P-521 or ML-DSA.
     fn others(self) -> &'static [OtherProvider] {
         match self {
-            Self::EcdsaP521 => OtherProvider::NOT_RING,
+            Self::EcdsaP521 | Self::MlDsa44 | Self::MlDsa65 | Self::MlDsa87 => {
+                OtherProvider::NOT_RING
+            }
             _ => OtherProvider::OTHERS,
         }
     }
@@ -272,6 +282,9 @@ impl KeyType {
             Self::EcdsaP384 => "ecdsa-p384",
             Self::EcdsaP521 => "ecdsa-p521",
             Self::Ed25519 => "ed25519",
+            Self::MlDsa44 => "ml-dsa-44",
+            Self::MlDsa65 => "ml-dsa-65",
+            Self::MlDsa87 => "ml-dsa-87",
         }
     }
 
@@ -324,7 +337,7 @@ impl OtherProvider {
 
     #[cfg(not(target_family = "wasm"))]
     const OTHERS: &[Self] = &[Self::BaselineRing, Self::BaselineAwsLcRs];
-    /// Those with P-521 and ML-KEM, which *ring* lacks.
+    /// Those with P-521, ML-KEM, and ML-DSA, which *ring* lacks.
     #[cfg(not(target_family = "wasm"))]
     const NOT_RING: &[Self] = &[Self::BaselineAwsLcRs, Self::SelfTest];
 

@@ -51,7 +51,10 @@ pub static SECP256R1MLKEM768: &dyn SupportedKxGroup = &hybrid::Hybrid {
 };
 
 /// Key exchange with ML-KEM-768 alone, for TLS 1.3 only.
-pub static MLKEM768: &dyn SupportedKxGroup = &mlkem::MlKem768;
+pub static MLKEM768: &dyn SupportedKxGroup = &mlkem::MlKem768::new(rustls::NamedGroup::MLKEM768);
+
+/// Key exchange with ML-KEM-1024 alone, for TLS 1.3 only.
+pub static MLKEM1024: &dyn SupportedKxGroup = &mlkem::MlKem1024::new(rustls::NamedGroup::MLKEM1024);
 
 /// An elliptic-curve key exchange group.
 #[derive(Debug)]
