@@ -4449,7 +4449,10 @@ let BN_MUL_MONT_MUL4X_SUBROUTINE_CORRECT = prove(m4_subroutine_tm,
      (S8_MUL8_TAIL). After g rounds, 2^(512g) times what is left is a^2 plus
      n times the g blocks of q.
    - S8_FIN, 0xa38 to 0xbf0: the subtraction of n (S8_SUB) and the selection
-     (S8_SEL), which also wipes the frame; S8_FINAL_ARITH is the 4x path's
+     (S8_SEL), which also zeroes most of the frame: its stores through x2
+     clear the lower k words, but those through x1 start 32 bytes past
+     sp + 8k, so the four words there keep their values (S8_ONE's path, below,
+     clears its whole scratch area); S8_FINAL_ARITH is the 4x path's
      M4_FINAL_ARITH on their result.
    - S8_ONE, 0x7e4 to 0xbf0, for kk = 1, where the code reduces, subtracts
      and selects in registers.

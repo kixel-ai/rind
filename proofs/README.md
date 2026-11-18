@@ -83,7 +83,9 @@ those inputs, in any worktree, restores in under a second.
   `x * y <= 2^(64k) * m`, for every width from two words up: for `k < 2^58`,
   a 16-aligned stack pointer, and `z` and the `16k + 128` bytes below the
   stack pointer disjoint from the code, the inputs, and each other, so `z`
-  may not alias `x`. At a multiple of four it also needs `x + 32` and `m + 32` not to wrap
+  may not alias `x`. It is of the Linux build's object: Apple's
+  `aws_lc/bn_mul_mont.apple.s` lacks the entry's `.align 5`, so its branches
+  can land at other offsets, and no proof covers it. At a multiple of four it also needs `x + 32` and `m + 32` not to wrap
   past `2^64`, since the 4x path reads the carry of adding 32 to those
   pointers. The theorem covers the dispatch, the stack frame, and the
   callee-saved registers the function restores. It joins one theorem for
