@@ -913,13 +913,14 @@ down to pyca/verified-garbage's AVX2 and AVX-512 VL routines, in
 It rests on the axioms `vg_chacha20_init_spec`,
 `vg_chacha20_apply_avx2_spec`, and `vg_chacha20_apply_avx512vl_spec`, which
 restate VG's theorems, and composes them as `cipher` does: VG's routines over
-the whole buffer, or, when what follows its last whole 512-byte group is two
-to four blocks, over the groups, and rind's two-block AVX2 kernel over that
-tail from the block counter past them. It assumes `Kernel`, that
+the whole buffer, or, when what follows its last whole 512-byte group is 65
+to 255 bytes, over the groups, and rind's two-block AVX2 kernel over that
+remainder from the block counter past them. It assumes `Kernel`, that
 kernel's contract, which no proof covers yet;
 [the x86_64 cipher quest](/quest/m4/verified/chacha20-poly1305-x86/cipher.md)
-owns it. It also assumes `RunsVg`: the entry guard admits the call, and the
-CPU-feature checks find AVX2 or AVX-512 VL. VG's code earns its ✓ on this
+owns it. It also assumes `RunsVg`: the entry guard admits the call,
+constructing the VG state succeeds (the model leaves `VgState::uninit`
+opaque), and the CPU-feature checks find AVX2 or AVX-512 VL. VG's code earns its ✓ on this
 path from its theorems; the kernel's is the cipher quest's.
 
 RSASSA-PKCS1-v1_5 and RSASSA-PSS verification with SHA-256 on x86_64, from

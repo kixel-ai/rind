@@ -8,11 +8,11 @@
 //! blocks, and HACL*'s verified rounds in general-purpose registers for one.
 //! VG's AVX2 routine runs what follows its eight-block loop on four-, two-,
 //! and one-block paths, which lost to the kernel, so on either routine a
-//! remainder of two to four blocks after the last whole 512-byte group runs
-//! on the kernel. Where the CPU has SSSE3 but
-//! not AVX2, aws-lc's `chacha-x86_64` SSSE3 routine, four blocks at a time,
-//! above 128 bytes, as aws-lc runs it, imported by `admin/import-aws-lc`;
-//! otherwise HACL*'s rounds, where aws-lc runs integer code.
+//! remainder of 65 to 255 bytes after the last whole 512-byte group runs on
+//! the kernel. Where the CPU has SSSE3 but not AVX2, aws-lc's `chacha-x86_64`
+//! SSSE3 routine, four blocks at a time, above 128 bytes, as aws-lc runs it,
+//! imported by `admin/import-aws-lc`; otherwise HACL*'s rounds, where aws-lc
+//! runs integer code.
 //!
 //! verified-garbage proves its routines correct and constant time in Lean,
 //! over its own models of the instructions, which `admin/prove vg`
@@ -137,21 +137,31 @@ impl VgState {
     /// verified-garbage's `vg_chacha20_apply_avx2`: XORs the next
     /// `buffer.len()` bytes of the keystream into `buffer` and returns 1, or
     /// returns 0 and changes nothing if fewer are left.
+    ///
+    /// # Safety
+    ///
+    /// `init` must have started the state: the routine branches on the count
+    /// of keystream left that `init` writes.
     #[inline(always)]
-    fn apply_avx2(&mut self, _: HaveAvx2, buffer: &mut [u8]) -> u32 {
+    unsafe fn apply_avx2(&mut self, _: HaveAvx2, buffer: &mut [u8]) -> u32 {
         // SAFETY: `self` is 768 readable and writable bytes, of which the
-        // routine reads only those `init` or the routine itself wrote, and
-        // `buffer` is `len`; they are distinct objects, so neither overlaps
-        // the other, the return address, or the stack below it, or wraps the
-        // address space. The token proves the `avx` and `avx2` cpu features.
+        // routine reads only those `init`, which the caller ensures has run,
+        // or the routine itself wrote, and `buffer` is `len`; they are
+        // distinct objects, so neither overlaps the other, the return
+        // address, or the stack below it, or wraps the address space. The
+        // token proves the `avx` and `avx2` cpu features.
         unsafe {
             asm_call!(unsafe extern "sysv64" (vg::vg_chacha20_apply_avx2::vg_chacha20_apply_avx2)(self.0.as_mut_ptr(), buffer.as_mut_ptr(), buffer.len()))
         }
     }
 
     /// verified-garbage's `vg_chacha20_apply_avx512vl`, as `apply_avx2`.
+    ///
+    /// # Safety
+    ///
+    /// As `apply_avx2`'s.
     #[inline(always)]
-    fn apply_avx512vl(&mut self, _: HaveAvx512Vl, buffer: &mut [u8]) -> u32 {
+    unsafe fn apply_avx512vl(&mut self, _: HaveAvx512Vl, buffer: &mut [u8]) -> u32 {
         // SAFETY: as `apply_avx2`'s; the token proves the routine's cpu
         // features.
         unsafe {
@@ -169,8 +179,10 @@ fn cipher_vg(vg: Vg, key: &[u32; 8], counter_nonce: &[u32; 4], buffer: &mut [u8]
     let mut state = VgState::uninit();
     state.init(key, counter_nonce);
     let ok = match vg {
-        Vg::Avx2(t) => state.apply_avx2(t, buffer),
-        Vg::Avx512Vl(t) => state.apply_avx512vl(t, buffer),
+        // SAFETY: `init` has started the state.
+        Vg::Avx2(t) => unsafe { state.apply_avx2(t, buffer) },
+        // SAFETY: `init` has started the state.
+        Vg::Avx512Vl(t) => unsafe { state.apply_avx512vl(t, buffer) },
     };
     // `apply` refuses, leaving `buffer` as it was, only a keystream past
     // block 2^32 - 1, which the callers rule out: never pass on plaintext.
@@ -218,9 +230,9 @@ fn words<const B: usize, const W: usize>(bytes: &[u8; B]) -> [u32; W] {
     words
 }
 
-/// From this length verified-garbage's routines run, and from it on, a tail
-/// of two to four blocks after the last whole 512-byte group runs on the
-/// two-block kernel instead: VG's AVX2 routine runs them on narrower paths
+/// From this length verified-garbage's routines run, and from it on, a
+/// remainder of 65 to 255 bytes after the last whole 512-byte group runs on
+/// the two-block kernel instead: VG's AVX2 routine runs them on narrower paths
 /// than its eight-block loop, which lost to the kernel by up to 1.73x on
 /// Arrow Lake.
 const VG_MIN_LEN: usize = 256;

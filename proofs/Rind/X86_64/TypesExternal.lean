@@ -112,8 +112,8 @@ models it: the key, since `Sealer::expand` builds every one with `C`'s own
 `seal` and `open`, which the model calls directly. -/
 @[reducible] def aead.Sealer (C : Type) : Type := C
 
-/-- The token proving the CPU has AVX-512 VL, which pyca/verified-garbage's
-AVX-512 VL ChaCha20 needs. -/
+/-- The token proving the CPU has AVX-512 F and VL, with what `HaveAvx2`
+proves: what pyca/verified-garbage's AVX-512 VL ChaCha20 needs. -/
 opaque low.x86_64.cpu.HaveAvx512Vl : Type
 
 /-- pyca/verified-garbage's ChaCha20 streaming state, as its routines see it:
