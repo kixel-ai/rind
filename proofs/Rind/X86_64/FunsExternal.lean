@@ -10,9 +10,9 @@ set_option linter.dupNamespace false
 /-!
 The rind functions the x86_64 translation leaves opaque, beside those
 `Rind.X86_64.AesGcmModel` and `Rind.X86_64.PointSelectModel` model. No proof assumes anything about them beyond what
-`Rind.X86_64.S2nBignum`, `Rind.X86_64.AwsLc`, `Rind.X86_64.ValeAesGcm`, and
-`Rind.X86_64.VgRsa` state for s2n-bignum's, aws-lc's, Vale's, and
-pyca/verified-garbage's routines, what
+`Rind.X86_64.S2nBignum`, `Rind.X86_64.AwsLc`, `Rind.X86_64.ValeAesGcm`,
+`Rind.X86_64.VgRsa`, and `Rind.X86_64.VgChaCha20` state for s2n-bignum's,
+aws-lc's, Vale's, and pyca/verified-garbage's routines, what
 `Rind.X86_64.CtEqual` states for the constant-time compares, and what each theorem
 takes as a hypothesis.
 -/
@@ -191,6 +191,38 @@ opaque low.generic.chacha20poly1305.seal
 opaque low.generic.chacha20poly1305.open
   : Std.Array Std.U8 32#usize → Std.Array Std.U8 12#usize → Slice Std.U8 → Slice Std.U8 →
     Std.Array Std.U8 16#usize → Result (Bool × (Slice Std.U8))
+
+/-! `cipher::ChaCha20`'s routines: pyca/verified-garbage's, behind one
+wrapper each, whose contracts `Rind.X86_64.VgChaCha20` restates; the
+two-block AVX2 kernel, whose contract it takes as the hypothesis `Kernel`;
+and aws-lc's SSSE3 routine and HACL*'s rounds over a message, which no
+theorem is about yet. -/
+
+opaque low.x86_64.cpu.HaveAvx512Vl.check : Result (Option low.x86_64.cpu.HaveAvx512Vl)
+
+opaque low.x86_64.chacha20.VgState.uninit : Result low.x86_64.chacha20.VgState
+
+opaque low.x86_64.chacha20.VgState.init
+  : low.x86_64.chacha20.VgState → Std.Array Std.U32 8#usize → Std.Array Std.U32 4#usize →
+    Result low.x86_64.chacha20.VgState
+
+opaque low.x86_64.chacha20.VgState.apply_avx2
+  : low.x86_64.chacha20.VgState → low.x86_64.cpu.HaveAvx2 → Slice Std.U8 →
+    Result (Std.U32 × low.x86_64.chacha20.VgState × (Slice Std.U8))
+
+opaque low.x86_64.chacha20.VgState.apply_avx512vl
+  : low.x86_64.chacha20.VgState → low.x86_64.cpu.HaveAvx512Vl → Slice Std.U8 →
+    Result (Std.U32 × low.x86_64.chacha20.VgState × (Slice Std.U8))
+
+opaque low.x86_64.chacha20.cipher_avx2
+  : Std.Array Std.U32 8#usize → Std.Array Std.U32 4#usize → Slice Std.U8 → Result (Slice Std.U8)
+
+opaque low.x86_64.chacha20.cipher_ssse3_4x
+  : low.x86_64.cpu.HaveSsse3 → Std.Array Std.U32 8#usize → Std.Array Std.U32 4#usize →
+    Slice Std.U8 → Result (Slice Std.U8)
+
+opaque low.generic.chacha20.cipher
+  : Std.Array Std.U32 8#usize → Std.Array Std.U32 4#usize → Slice Std.U8 → Result (Slice Std.U8)
 
 /-! s2n-bignum's Ed25519 routines, transliterated to inline assembly. -/
 

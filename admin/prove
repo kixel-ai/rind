@@ -866,6 +866,7 @@ aes_gcm_items() {
         'const BYTESWAP_512:' 'const BYTESWAP_512_EPI64:'
 }
 check_quote X86_64/AesGcmModel aes_gcm_items
+check_quote X86_64/TypesExternal items rind/src/low/x86_64/chacha20.rs 'struct VgState('
 aarch64_aes_gcm_items() {
     items rind/src/low/aarch64/ghash.rs 'macro_rules! mul {' 'macro_rules! reduce {' \
         '    pub(crate) fn add(&mut self, bytes: &[u8]) {' '    fn one_block(' '    fn eight_blocks(' \
@@ -1328,6 +1329,16 @@ extract x86_64 X86_64 "${hashes[@]}" "${assembly[@]}" \
     --start-from crate::mid::xchacha20poly1305::XChaCha20Poly1305::decrypt \
     --include crate::low::x86_64::chacha20poly1305::seal \
     --include crate::low::x86_64::chacha20poly1305::open \
+    --start-from crate::mid::chacha20::ChaCha20::apply_keystream \
+    --include crate::low::x86_64::chacha20 \
+    --opaque crate::low::x86_64::chacha20::VgState \
+    --opaque 'crate::low::x86_64::chacha20::_::uninit' \
+    --opaque 'crate::low::x86_64::chacha20::_::init' \
+    --opaque 'crate::low::x86_64::chacha20::_::apply_avx2' \
+    --opaque 'crate::low::x86_64::chacha20::_::apply_avx512vl' \
+    --opaque crate::low::x86_64::chacha20::cipher_ssse3_4x \
+    --opaque crate::low::x86_64::chacha20::cipher_avx2 \
+    --opaque crate::low::generic::chacha20::cipher \
     --include 'crate::mid::aes::_' \
     --include crate::low::x86_64::aes \
     --start-from crate::low::x86_64::aes::AesDecKey::new \

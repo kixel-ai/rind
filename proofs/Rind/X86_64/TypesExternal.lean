@@ -112,4 +112,22 @@ models it: the key, since `Sealer::expand` builds every one with `C`'s own
 `seal` and `open`, which the model calls directly. -/
 @[reducible] def aead.Sealer (C : Type) : Type := C
 
+/-- The token proving the CPU has AVX-512 F and VL, with what `HaveAvx2`
+proves: what pyca/verified-garbage's AVX-512 VL ChaCha20 needs. -/
+opaque low.x86_64.cpu.HaveAvx512Vl : Type
+
+/-- pyca/verified-garbage's ChaCha20 streaming state, as its routines see it:
+the 768 bytes of memory they keep it in, which `Rind.VgChaCha20` reads as VG's
+spec reads memory. Rust leaves it uninitialised: `init` writes the bytes
+`apply` reads on entry, and `apply` writes its scratch before reading it, so
+the model gives the rest any bytes.
+`admin/prove` fails unless this quote is still the type:
+
+```rust
+struct VgState(MaybeUninit<[u64; 96]>);
+
+```
+-/
+@[reducible] def low.x86_64.chacha20.VgState : Type := Std.Array Std.U8 768#usize
+
 end rind.x86_64
