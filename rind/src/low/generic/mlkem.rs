@@ -79,8 +79,11 @@ const Q_HALF: i16 = (Q + 1) / 2;
 /// (cf. KyberSlash): `(x * 2^D + q / 2) * M >> S` is `floor` of the quotient
 /// by `q` for each `D`'s `M` and `S`, which `compress_is_exact` checks over
 /// the whole input range.
+#[expect(
+    clippy::manual_range_contains,
+    reason = "Aeneas's library has no `Range::contains`"
+)]
 fn compress_one<const D: usize>(x: i16) -> u16 {
-    // Spelled without `Range::contains`, which Aeneas's library lacks.
     let public = crate::low::ct::into_public(x);
     debug_assert!(0 <= public && public < Q);
     let (m, s) = match D {

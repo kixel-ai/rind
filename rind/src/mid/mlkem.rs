@@ -1127,8 +1127,11 @@ fn decompress<const D: usize, const L: usize>(bytes: &[u8; L], out: &mut Poly) {
 }
 
 /// `Compress_1(x)`, for `x` in `[0, Q)`.
+#[expect(
+    clippy::manual_range_contains,
+    reason = "Aeneas's library has no `Range::contains`"
+)]
 fn compress_1(x: i16) -> u8 {
-    // Spelled without `Range::contains`, which Aeneas's library lacks.
     let public = low::ct::into_public(x);
     debug_assert!(0 <= public && public < Q);
     let x = (x as u64) << 1;
@@ -1559,7 +1562,7 @@ mod tests {
     // bound, `round(q / 2^(D + 1))`, and recompresses to the same bits.
     #[test]
     fn decompress_inverts_compress() {
-        fn check<const D: usize>(compress: fn(&mut [u8], &Poly)) {
+        fn check<const D: usize, const L: usize>(compress: fn(&mut [u8], &Poly)) {
             for start in (0..Q as usize + 7).step_by(N - 7) {
                 let poly = Coeffs::<Poly, Normal>(
                     core::array::from_fn(|i| ((start + i) % Q as usize) as i16),
@@ -1568,7 +1571,7 @@ mod tests {
                 let mut bytes = [0; 32 * 11];
                 compress(&mut bytes[..32 * D], &poly.0);
                 let mut out = [0; N];
-                decompress::<D>(&bytes[..32 * D], &mut out);
+                decompress::<D, L>(bytes[..32 * D].try_into().unwrap(), &mut out);
                 let mut again = [0; 32 * 11];
                 compress(&mut again[..32 * D], &out);
                 assert_eq!(bytes, again, "d{D}, from {start}");
@@ -1586,10 +1589,10 @@ mod tests {
         fn aligned(poly: &Poly) -> Coeffs<Poly, Normal> {
             Coeffs(*poly, PhantomData)
         }
-        check::<4>(|r, a| low::mlkem_compress_d4(r.try_into().unwrap(), &aligned(a).0));
-        check::<5>(|r, a| low::mlkem_compress_d5(r.try_into().unwrap(), &aligned(a).0));
-        check::<10>(|r, a| low::mlkem_compress_d10(r.try_into().unwrap(), &aligned(a).0));
-        check::<11>(|r, a| low::mlkem_compress_d11(r.try_into().unwrap(), &aligned(a).0));
+        check::<4, 128>(|r, a| low::mlkem_compress_d4(r.try_into().unwrap(), &aligned(a).0));
+        check::<5, 160>(|r, a| low::mlkem_compress_d5(r.try_into().unwrap(), &aligned(a).0));
+        check::<10, 320>(|r, a| low::mlkem_compress_d10(r.try_into().unwrap(), &aligned(a).0));
+        check::<11, 352>(|r, a| low::mlkem_compress_d11(r.try_into().unwrap(), &aligned(a).0));
     }
 
     // The two-block noise of ML-KEM-512's `eta1 = 3` matches the bitwise
