@@ -7,7 +7,9 @@
 # newer push cancels the pending one behind it, and that run never starts a
 # job. Site deploy stays off that path: a deploy waiting behind another is
 # replaced by a newer one and ends cancelled, so its cancellation does not
-# post. When the jobs API cannot classify a cancellation, the embed still posts
+# post. A scheduled Check cancellation does not post either, including its
+# 60-minute limit: its concurrency group cancels a superseded run, and the
+# check name is listed below. When the jobs API cannot classify a cancellation, the embed still posts
 # and says so: no workflow watches Alert, so a failed classification would
 # otherwise vanish.
 # Usage:
@@ -51,6 +53,13 @@ deploy_names=(
     "Site deploy"
 )
 
+# Check runs on a schedule and cancels a superseded run, so its cancellation
+# stays silent, including a job that hits its own time limit. alert.yml's
+# schedule arm still starts this job for it, and should_post then declines.
+quiet_cancel_names=(
+    Check
+)
+
 # Either sentence GitHub writes when a job hits a time limit. timeout-minutes
 # produces "The job has exceeded the maximum execution time of 360m0s". The
 # hosted runner's own 360-minute limit produces "The job running on runner
@@ -67,7 +76,7 @@ discord() {
     : "${DISCORD_WEBHOOK:?DISCORD_WEBHOOK is required}"
 
     local class="" status=0
-    if [[ ${RUN_CONCLUSION:-} == cancelled ]]; then
+    if [[ ${RUN_CONCLUSION:-} == cancelled ]] && ! is_quiet_cancel "${RUN_NAME:-}"; then
         # Do not fold this into `local`. `local x=$(...)` is always status 0,
         # which would hide a classification failure and drop the alert.
         class=$(classify_run) || status=$?
@@ -82,6 +91,8 @@ discord() {
             echo "sh/alert.sh: not posting ${RUN_NAME:-workflow}; a release cancellation posts only after a job has started"
         elif is_deploy "${RUN_NAME:-}"; then
             echo "sh/alert.sh: not posting ${RUN_NAME:-workflow}; a Site deploy cancellation does not alert"
+        elif is_quiet_cancel "${RUN_NAME:-}"; then
+            echo "sh/alert.sh: not posting ${RUN_NAME:-workflow}; a Check cancellation does not alert"
         else
             echo "sh/alert.sh: not posting ${RUN_NAME:-workflow} conclusion ${RUN_CONCLUSION:-}; a scheduled cancellation posts only when a job exceeded its time limit"
         fi
@@ -139,6 +150,14 @@ is_release() {
     return 1
 }
 
+is_quiet_cancel() {
+    local name="$1" each
+    for each in "${quiet_cancel_names[@]}"; do
+        [[ $name == "$each" ]] && return 0
+    done
+    return 1
+}
+
 is_deploy() {
     local name="$1" each
     for each in "${deploy_names[@]}"; do
@@ -153,8 +172,9 @@ is_deploy() {
 # which is a pending run a newer push replaced. A Site deploy cancellation does
 # not post, including a time-limit annotation. A deploy waiting behind another
 # is replaced by a newer one, so the ordinary cancellation is a superseded
-# deploy, and alert.yml does not start this job for that conclusion. Any other cancellation posts only when a job
-# annotation is a time limit.
+# deploy, and alert.yml does not start this job for that conclusion. A Check
+# cancellation does not post, including a time-limit annotation. Any other
+# cancellation posts only when a job annotation is a time limit.
 should_post() {
     local conclusion="$1" name="$2" class="$3"
     case $conclusion in
@@ -164,7 +184,7 @@ should_post() {
                 [[ $class != never ]]
                 return
             fi
-            if is_deploy "$name"; then
+            if is_deploy "$name" || is_quiet_cancel "$name"; then
                 return 1
             fi
             [[ $class == timeout ]]
@@ -173,9 +193,24 @@ should_post() {
     esac
 }
 
+# Classification reads many pages, one request after another, and alert.yml
+# gives this job 5 minutes. classify_run stops starting requests after this
+# many seconds and returns 2, which posts the "could not classify" embed,
+# so the webhook still has its time. Each request is cut to what is left.
+classify_budget=${CLASSIFY_BUDGET:-180}
+classify_start=$SECONDS
+
 gh_get() {
+    local left=$((classify_budget - (SECONDS - classify_start)))
+    if ((left <= 0)); then
+        echo "sh/alert.sh: classification ran past its ${classify_budget}s budget" >&2
+        return 1
+    fi
+    if ((left > 20)); then
+        left=20
+    fi
     curl -sS --fail-with-body \
-        --connect-timeout 5 --max-time 20 \
+        --connect-timeout 5 --max-time "$left" \
         -H "Authorization: Bearer ${GITHUB_TOKEN}" \
         -H "Accept: application/vnd.github+json" \
         -H "X-GitHub-Api-Version: 2022-11-28" \
@@ -235,6 +270,7 @@ require_run_ids() {
 # is how a newer push replaces a pending Release.
 classify_run() {
     require_run_ids || return $?
+    classify_start=$SECONDS
 
     local page=1 jobs total count scanned=0 started=no cancelled_ids id status
     while (( page <= 10 )); do
@@ -641,6 +677,13 @@ prove_post() {
     expect_post cancelled "Site deploy" never no
     expect_post cancelled "Site deploy" timeout no
     expect_post cancelled asan timeout yes
+    # Check is scheduled and cancels a superseded run. Its cancellation does
+    # not post, with or without a time-limit annotation, and a failure does.
+    expect_post cancelled Check timeout no
+    expect_post cancelled Check started no
+    expect_post cancelled Check never no
+    expect_post failure Check started yes
+    expect_post timed_out Check started yes
     # conclusion values other than failure, timed_out, and cancelled do not post.
     expect_post skipped coverage started no
 }
@@ -724,12 +767,31 @@ prove_ids() {
     fi
 }
 
+# Once the classification budget is spent, no request starts and
+# classify_run returns 2, so discord() posts the fallback with time to spare.
+prove_budget() {
+    local status=0 err
+    err=$(
+        RUN_REPO='kixel-ai/rind'
+        RUN_ID=1
+        RUN_ATTEMPT=1
+        GITHUB_TOKEN=t
+        classify_budget=0
+        classify_run 2>&1
+    ) || status=$?
+    if [[ $status -ne 2 || $err != *budget* ]]; then
+        echo "sh/alert.sh prove: an exhausted budget did not stop classification (status ${status}): ${err}" >&2
+        return 1
+    fi
+}
+
 prove() {
     prove_form
     prove_post
     prove_timeout
     prove_wires
     prove_ids
+    prove_budget
     echo "sh/alert.sh prove: parser, post policy, and time-limit annotation"
 }
 
