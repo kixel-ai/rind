@@ -1281,6 +1281,9 @@ extract x86_64 X86_64 "${hashes[@]}" "${assembly[@]}" \
     --opaque 'crate::high::curve::_::generate_random_key' \
     --opaque 'crate::mid::p256::_::generate' \
     --opaque 'crate::mid::p256::_::new_random' \
+    --opaque 'crate::mid::p256::_::vg_public_key' \
+    --opaque 'crate::mid::p256::_::vg_diffie_hellman' \
+    --opaque crate::mid::p256::vg_verify \
     --include crate::low::x86_64::adx_mux::p256_montjadd \
     --include crate::low::x86_64::adx_mux::p256_montjdouble \
     --include crate::low::x86_64::adx_mux::p256_montjmixadd \
@@ -1420,6 +1423,9 @@ extract aarch64 Aarch64 "${hashes[@]}" "${assembly[@]}" \
     --opaque 'crate::high::curve::_::generate_random_key' \
     --opaque 'crate::mid::p256::_::generate' \
     --opaque 'crate::mid::p256::_::new_random' \
+    --opaque 'crate::mid::p256::_::vg_public_key' \
+    --opaque 'crate::mid::p256::_::vg_diffie_hellman' \
+    --opaque crate::mid::p256::vg_verify \
     --include crate::low::aarch64::sha1::sha1_compress_padded \
     --include crate::low::aarch64::sha3_keccak_f1600_mux \
     --include crate::low::aarch64::sha3_keccak4_f1600_mux \

@@ -16,6 +16,10 @@ namespace rind.aarch64
 /-- The entry guard every operation holds, which changes no value. -/
 opaque low.entry.Entry : Type
 
+/-- The token proving the CPU runs pyca/verified-garbage's P-256, which no
+proof here covers. -/
+opaque low.aarch64.p256_vg.P256 : Type
+
 /-- x86_64's AVX-512 IFMA X25519 and Ed25519 token, which no aarch64 CPU
 builds. -/
 opaque low.aarch64.curve25519_ifma.Curve25519Ifma : Type

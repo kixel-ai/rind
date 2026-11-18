@@ -236,6 +236,8 @@ opaque low.entry.Entry.assert_held : Result Unit
 
 opaque low.aarch64.cpu.HaveSha3.check : Result (Option low.aarch64.cpu.HaveSha3)
 
+opaque low.aarch64.cpu.HaveSha3.check_keccak : Result (Option low.aarch64.cpu.HaveSha3)
+
 opaque low.aarch64.cpu.HaveCryptoExt.check : Result (Option low.aarch64.cpu.HaveCryptoExt)
 
 /-! SHA-1's block function, whose contract `Rind.Aarch64.ShaBlocks` states as a
@@ -330,6 +332,25 @@ opaque high.curve.P384.Insts.RindHighCurveCurveStaticPrivateKeyVerifyingKeyScala
 opaque high.curve.P384.Insts.RindHighCurveCurveStaticPrivateKeyVerifyingKeyScalar.generate_random_key
   {T0 : Type _} (midrngRandomSourceInst : mid.rng.RandomSource T0) :
   T0 → Result ((core.result.Result mid.p384.StaticPrivateKey error.Error) × T0)
+
+/-! Whether the CPU runs pyca/verified-garbage's P-256, and rind's calls of it,
+which the P-256 proofs take as not running: Lean proves VG's routines in that
+project, not here. -/
+
+opaque low.aarch64.p256_vg.P256.check : Result (Option low.aarch64.p256_vg.P256)
+
+opaque low.aarch64.p256_vg.P256.check_public_key : Result (Option low.aarch64.p256_vg.P256)
+
+opaque mid.p256.PrivateKey.vg_public_key
+  : mid.p256.PrivateKey → low.aarch64.p256_vg.P256 → Result (Array Std.U8 65#usize)
+
+opaque mid.p256.PrivateKey.vg_diffie_hellman
+  : mid.p256.PrivateKey → low.aarch64.p256_vg.P256 → mid.p256.PublicKey →
+    Result (core.result.Result mid.p256.SharedSecret error.Error)
+
+opaque mid.p256.vg_verify
+  : low.aarch64.p256_vg.P256 → mid.p256.AffineMontPoint → mid.p256.Scalar → mid.p256.Scalar →
+    mid.p256.Scalar → Result (core.result.Result Unit error.Error)
 
 /-! The other curves, which X25519's and P-256's results never depend on. -/
 
