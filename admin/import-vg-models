@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Copies pyca/verified-garbage's Lean ISA models into proofs/verified-garbage.
+"""Copies pyca/verified-garbage's Lean ISA models and specs into proofs/verified-garbage.
 
 Usage: admin/import-vg-models [--check] <verified-garbage checkout at REV>
 
@@ -38,6 +38,7 @@ ROOTS = [
 ] + [
     # The specs whose functions rind's axioms about VG's routines state.
     "VerifiedGarbage.Spec.MlKem",
+    "VerifiedGarbage.Spec.Rsa.PrivatePrecompute",
 ]
 
 IMPORT = re.compile(r"^(?:public )?(?:meta )?import (VerifiedGarbage\.[A-Za-z0-9_.]+)\b", re.M)

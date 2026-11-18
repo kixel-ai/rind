@@ -10,8 +10,9 @@ set_option linter.dupNamespace false
 /-!
 The rind functions the x86_64 translation leaves opaque, beside those
 `Rind.X86_64.AesGcmModel` and `Rind.X86_64.PointSelectModel` model. No proof assumes anything about them beyond what
-`Rind.X86_64.S2nBignum`, `Rind.X86_64.AwsLc`, and `Rind.X86_64.ValeAesGcm`
-state for s2n-bignum's, aws-lc's, and Vale's routines, what
+`Rind.X86_64.S2nBignum`, `Rind.X86_64.AwsLc`, `Rind.X86_64.ValeAesGcm`, and
+`Rind.X86_64.VgRsa` state for s2n-bignum's, aws-lc's, Vale's, and
+pyca/verified-garbage's routines, what
 `Rind.X86_64.CtEqual` states for the constant-time compares, and what each theorem
 takes as a hypothesis.
 -/
@@ -274,15 +275,19 @@ opaque low.x86_64.sha512.path : Result low.x86_64.sha512.Path
 opaque low.x86_64.cpu.HaveBmi2Adx.check
   : Result (Option low.x86_64.cpu.HaveBmi2Adx)
 
-/-- Whether the CPU runs pyca/verified-garbage's AVX-512 IFMA public
-operation for a key's modulus and exponent, and that operation, which the
-proofs of RSA verification take as not running. -/
-opaque low.x86_64.rsa_ifma.RsaIfma.check
-  {N : Std.Usize} : low.posint.PosInt N → Std.U64 → Result (Option low.x86_64.rsa_ifma.RsaIfma)
+opaque low.x86_64.cpu.HaveAvx512ForRsa.check
+  : Result (Option low.x86_64.cpu.HaveAvx512ForRsa)
 
-opaque mid.rsa_pub.RsaPublicKey.public_op_ifma
-  : mid.rsa_pub.RsaPublicKey → low.x86_64.rsa_ifma.RsaIfma → low.posint.PosInt 128#usize →
-    Result (core.result.Result (low.posint.PosInt 128#usize) error.Error)
+/-- pyca/verified-garbage's AVX-512 IFMA public operation and CRT, behind
+the Rust that sizes their scratch and calls them, which `Rind.X86_64.VgRsa`
+states. -/
+opaque low.x86_64.rsa_ifma.RsaIfma.public
+  : low.x86_64.rsa_ifma.RsaIfma → Slice Std.U8 → Slice Std.U64 → Slice Std.U8 → Slice Std.U8 →
+    Result (Bool × Slice Std.U8)
+
+opaque low.x86_64.rsa_ifma.IfmaCrt.crt
+  : low.x86_64.rsa_ifma.IfmaCrt → Slice Std.U8 → Slice Std.U8 → Slice Std.U8 → Slice Std.U8 →
+    Slice Std.U8 → Result (Bool × Slice Std.U8)
 
 opaque low.x86_64.cpu.HaveAvx2.check : Result (Option low.x86_64.cpu.HaveAvx2)
 
@@ -821,5 +826,28 @@ opaque high.rsa.VerifyingKey.to_pkcs1_der
   :
   high.rsa.VerifyingKey → Slice Std.U8 → Result ((core.result.Result (Slice
     Std.U8) error.Error) × (Slice Std.U8))
+
+/-- Whether the CPU runs pyca/verified-garbage's AVX-512 IFMA X25519 and
+Ed25519, and those routines, which the proofs here take as not running. -/
+opaque low.x86_64.curve25519_ifma.Curve25519Ifma.check : Result (Option low.x86_64.curve25519_ifma.Curve25519Ifma)
+
+opaque low.x86_64.curve25519_ifma.Curve25519Ifma.x25519
+  : low.x86_64.curve25519_ifma.Curve25519Ifma → Array Std.U64 4#usize → Array Std.U64 4#usize → Array Std.U64 4#usize →
+    Result (Array Std.U64 4#usize)
+
+opaque low.x86_64.curve25519_ifma.Curve25519Ifma.x25519_base
+  : low.x86_64.curve25519_ifma.Curve25519Ifma → Array Std.U64 4#usize → Array Std.U64 4#usize → Result (Array Std.U64 4#usize)
+
+opaque low.x86_64.curve25519_ifma.Curve25519Ifma.ed25519_key_pair
+  : low.x86_64.curve25519_ifma.Curve25519Ifma → Array Std.U8 32#usize → Result (Array Std.U8 64#usize × Array Std.U8 32#usize)
+
+opaque low.x86_64.curve25519_ifma.Curve25519Ifma.ed25519_sign
+  : low.x86_64.curve25519_ifma.Curve25519Ifma → Array Std.U8 64#usize → Array Std.U8 32#usize → Slice Std.U8 →
+    Result (Array Std.U8 64#usize)
+
+opaque low.x86_64.curve25519_ifma.Curve25519Ifma.ed25519_verify
+  : low.x86_64.curve25519_ifma.Curve25519Ifma → Array Std.U8 32#usize → Slice Std.U8 → Array Std.U8 64#usize → Result Bool
+
+opaque low.x86_64.curve25519_ifma.Curve25519Ifma.Insts.CoreCloneClone.clone : low.x86_64.curve25519_ifma.Curve25519Ifma → Result low.x86_64.curve25519_ifma.Curve25519Ifma
 
 end rind.x86_64

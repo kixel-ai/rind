@@ -16,6 +16,10 @@ namespace rind.aarch64
 /-- The entry guard every operation holds, which changes no value. -/
 opaque low.entry.Entry : Type
 
+/-- x86_64's AVX-512 IFMA X25519 and Ed25519 token, which no aarch64 CPU
+builds. -/
+opaque low.aarch64.curve25519_ifma.Curve25519Ifma : Type
+
 /-- The token proving the CPU has the SHA-512 instructions. -/
 opaque low.aarch64.cpu.HaveSha3 : Type
 
@@ -33,6 +37,9 @@ opaque high.hmac_drbg.HmacDrbg (H : Type _) (Clause0_Context : Type _) (Clause0_
 
 /-- The NEON AES keys aarch64 CPUs without the crypto extension run. -/
 opaque low.aarch64.vpaes_armv8.VpaesKey : Type
+
+/-- aws-lc's NEON GHASH table, which aarch64 CPUs without the crypto extension run. -/
+opaque low.aarch64.ghash_neon_armv8.NeonTable : Type
 opaque low.aarch64.vpaes_armv8.VpaesDecKey : Type
 
 /-- The token proving pyca/verified-garbage's ML-KEM-768 encapsulation runs

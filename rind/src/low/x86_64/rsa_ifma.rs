@@ -113,7 +113,9 @@ impl RsaIfma {
         if e != 65537 || !matches!(n.len_bytes(), 256 | 384 | 512) {
             return None;
         }
-        HaveAvx512ForRsa::check().map(Self)
+        // Not `map(Self)`, whose translation Lean cannot check.
+        let token = HaveAvx512ForRsa::check()?;
+        Some(Self(token))
     }
 
     /// Writes `x^e mod n` to `out`, as long as `n`, for `pre` holding `n`
