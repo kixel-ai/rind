@@ -127,8 +127,9 @@ impl VgState {
             counter_nonce.as_ptr().cast::<[u8; 16]>(),
         );
         // SAFETY: `self` is 768 writable bytes, `key` 32 readable bytes, and
-        // `counter_nonce` 16; they are distinct objects, so none overlaps
-        // another or the return address, or wraps the address space.
+        // `counter_nonce` 16. `self` is exclusively borrowed, so it overlaps
+        // neither input, which VG lets overlap each other; and none overlaps
+        // the return address or wraps the address space, as no object does.
         unsafe {
             asm_call!(unsafe extern "sysv64" (vg::vg_chacha20_init::vg_chacha20_init)(self.0.as_mut_ptr(), key, counter_nonce))
         }
