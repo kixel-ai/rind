@@ -204,7 +204,8 @@ theorem body_V (it : core.ops.range.Range Usize) (hlt : it.start.val < it.end.va
     simp (disch := omega) only [lane_V, Nat.reduceMul, Nat.reduceAdd]
     simp [chacha20.innerBlock, chacha20.quarterRound, chacha20.qr, rotLane, rotl12, rotl7]
 
-
+/-- Ten double rounds, on both blocks' states at once. -/
+@[step]
 theorem loop0_spec (it : core.ops.range.Range Usize) (hle : it.start.val ≤ it.end.val)
     (a b c d : BitVec 256) :
     low.x86_64.chacha20.core_2x_loop0 it a b c d ⦃ r =>
@@ -236,11 +237,15 @@ theorem loop0_spec (it : core.ops.range.Range Usize) (hle : it.start.val ≤ it.
       rw [h3 h hh, this]
   · exact ⟨le_refl _, hle, rfl, fun h _ => by simp⟩
 
+/-! ## Storing and XORing the keystream -/
+
 @[step]
 theorem extract_spec (k : Std.I32) (v : BitVec 256) :
     core.core_arch.x86.avx._mm256_extract_epi32 k v ⦃ x => x.bv = lane32x8 v (k.bv.toNat % 8) ⦄ := by
   simp [core.core_arch.x86.avx._mm256_extract_epi32]
 
+/-- A vector's eight lanes, stored little-endian. -/
+@[step]
 theorem store_256_spec (v : BitVec 256) :
     low.x86_64.chacha20.store_256 v ⦃ r =>
       r.val.map (·.bv) = ((List.range 8).map (lane32x8 v)).flatMap BitVec.toLEBytes ⦄ := by
@@ -250,12 +255,13 @@ theorem store_256_spec (v : BitVec 256) :
   simp only [s21_post2, s18_post2, s15_post2, s12_post2, s9_post2, s6_post2, s3_post2, s_post2,
     s23_post, s22_post, s20_post, s19_post, s17_post, s16_post, s14_post, s13_post, s11_post, s10_post,
     s8_post, s7_post, s5_post, s4_post, s2_post, s1_post, Array.val_to_slice, a_post, a1_post, a2_post,
-    a3_post, a4_post, a5_post, a6_post, a7_post, i1_post, i3_post, i5_post, i7_post, i9_post, i11_post,
+    a3_post, a4_post, a5_post, a6_post, a7_post, i1_post, i3_post, i5_post, i7_post, i9_post,
+      i11_post,
     i13_post, i15_post, IScalar.hcast_bv_eq, i_post, i2_post, i4_post, i6_post, i8_post, i10_post,
     i12_post, i14_post]
   simp [List.setSlice!, vg.toLEBytes_eq, List.range_succ]
 
-
+/-- The XOR loop, from `it.start` on. -/
 theorem loop1_spec (it : core.ops.range.Range Usize) (xs ks : Slice U8) (hlen : ks.length = xs.length)
     (he : it.end.val = ks.length) (hs : it.start.val ≤ it.end.val) :
     low.x86_64.chacha20.core_2x_loop1 it xs ks ⦃ r => r.length = xs.length ∧
@@ -303,6 +309,7 @@ theorem loop1_spec (it : core.ops.range.Range Usize) (xs ks : Slice U8) (hlen : 
   · exact ⟨rfl, le_refl _, hs, rfl, fun j _ => by simp⟩
 
 /-- The XOR loop, from the start: the bytes XORed with the keystream's. -/
+@[step]
 theorem xor_loop_spec (it : core.ops.range.Range Usize) (xs ks : Slice U8) (hlen : ks.length = xs.length)
     (hs : it.start.val = 0) (he : it.end.val = ks.length) :
     low.x86_64.chacha20.core_2x_loop1 it xs ks ⦃ r => r.length = xs.length ∧
@@ -320,6 +327,8 @@ theorem xor_loop_spec (it : core.ops.range.Range Usize) (xs ks : Slice U8) (hlen
   rw [← getElem!_pos r.val j hjr, ← getElem!_pos xs.val j (by omega),
     ← getElem!_pos ks.val j hjk, h j hj, hs]
   simp
+
+/-! ## Setting up and finishing the state -/
 
 theorem setr_eq (e0 e1 e2 e3 e4 e5 e6 e7 : Std.I32) :
     core.core_arch.x86.avx._mm256_setr_epi32 e0 e1 e2 e3 e4 e5 e6 e7 =
@@ -348,6 +357,7 @@ theorem perm49_eq (x y : BitVec 256) :
   simp only [hk, decide_true, Bool.true_and]
   interval_cases k <;> simp [lane32x8, half]
 
+/-! ## Lists -/
 
 theorem list8 {α : Type} (l : List α) (h : l.length = 8) :
     ∃ a0 a1 a2 a3 a4 a5 a6 a7, l = [a0, a1, a2, a3, a4, a5, a6, a7] := by
@@ -377,6 +387,7 @@ theorem setSlice4 {α : Type} (z l0 l1 l2 l3 : List α) (hz : z.length = 128) (h
     setSlice!_split _ _ _ (by simp only [hz, h0]; omega)]
   simp [List.take_append, List.drop_append, h0, h1, h2, h3, hz, List.take_of_length_le]
 
+/-- RFC 8439's encryption of up to two blocks: the message XOR their keystream. -/
 theorem encrypt_two (key nonce msg : List (BitVec 8)) (c : BitVec 32) (hk : key.length = 32)
     (hn : nonce.length = 12) (hm : msg.length ≤ 128) :
     chacha20.encrypt key c nonce msg =
@@ -386,7 +397,8 @@ theorem encrypt_two (key nonce msg : List (BitVec 8)) (c : BitVec 32) (hk : key.
   have h2 : chacha20.block key c nonce ++ chacha20.block key (c + 1) nonce =
       (List.range 2).flatMap fun j => chacha20.block key (c + BitVec.ofNat 32 j) nonce := by
     rw [show List.range 2 = [0, 1] from rfl]
-    simp only [List.flatMap_cons, List.flatMap_nil, List.append_nil, BitVec.add_zero, show BitVec.ofNat 32 1 = 1 from rfl]
+    simp only [List.flatMap_cons, List.flatMap_nil, List.append_nil, BitVec.add_zero,
+      show BitVec.ofNat 32 1 = 1 from rfl]
   rw [h2, s2n.zipWith_flatMap _ _ hg, chacha20.encrypt]
   set M := (msg.length + 63) / 64
   have hr : List.range 2 = List.range (M + (2 - M)) := by rw [Nat.add_sub_cancel' (by omega : M ≤ 2)]
@@ -401,8 +413,10 @@ theorem encrypt_two (key nonce msg : List (BitVec 8)) (c : BitVec 32) (hk : key.
   have : msg.length ≤ 64 * (M + k) := by omega
   simp [List.drop_eq_nil_of_le this]
 
-attribute [local step] loop0_spec store_256_spec xor_loop_spec
+/-! ## `core_2x` and `cipher_avx2` -/
 
+/-- `core_2x` encrypts up to 128 bytes from block `counter`. -/
+@[step]
 theorem core_2x_spec (key : Std.Array U32 8#usize) (cn : Std.Array U32 4#usize) (counter : U32)
     (xs : Slice U8) (hx : xs.length ≤ 128) :
     low.x86_64.chacha20.core_2x key cn counter xs ⦃ r => r.length = xs.length ∧
@@ -417,7 +431,11 @@ theorem core_2x_spec (key : Std.Array U32 8#usize) (cn : Std.Array U32 4#usize) 
   have hw : ∀ x : U32, (UScalar.hcast IScalarTy.I32 x).bv = x.bv := fun x => by simp [UScalar.hcast_bv_eq]
   have h0 := a_post 0 (by decide)
   have h1 := a_post 1 (by decide)
-  simp only [i_post, i1_post, i2_post, i3_post, i4_post, i5_post, i6_post, i7_post, i8_post, i9_post, i10_post, i11_post, i12_post, i13_post, i14_post, i15_post, i16_post, i17_post, i18_post, i19_post, i20_post, i21_post, i22_post, i23_post, i24_post, i25_post, i26_post, i27_post, i28_post, i29_post, i30_post, i31_post, i32_post, i33_post, i34_post, i35_post, hw] at h0 h1
+  simp only [i_post, i1_post, i2_post, i3_post, i4_post, i5_post, i6_post, i7_post, i8_post,
+    i9_post, i10_post, i11_post, i12_post, i13_post, i14_post, i15_post, i16_post, i17_post,
+    i18_post, i19_post, i20_post, i21_post, i22_post, i23_post, i24_post, i25_post, i26_post,
+    i27_post, i28_post, i29_post, i30_post, i31_post, i32_post, i33_post, i34_post, i35_post, hw]
+    at h0 h1
   simp only [rows, List.flatMap_cons, List.flatMap_nil, show List.range 4 = [0, 1, 2, 3] from rfl,
     List.map_cons, List.map_nil, List.cons_append, List.nil_append, List.append_nil] at h0 h1
   simp (disch := omega) only [lane_V, Nat.reduceMul, Nat.reduceAdd, hk, hn, List.getElem_cons_zero,
@@ -447,7 +465,11 @@ theorem core_2x_spec (key : Std.Array U32 8#usize) (cn : Std.Array U32 4#usize) 
   simp (disch := omega) only [show List.range 8 = [0, 1, 2, 3, 4, 5, 6, 7] from rfl, List.map_cons,
     List.map_nil, lane_V]
   simp (disch := omega) only [Nat.reduceLT, ite_true, ite_false, Nat.reduceAdd, Nat.reduceSub,
-    List.getElem!_cons_zero, List.getElem!_cons_succ, i_post, i1_post, i2_post, i3_post, i4_post, i5_post, i6_post, i7_post, i8_post, i9_post, i10_post, i11_post, i12_post, i13_post, i14_post, i15_post, i16_post, i17_post, i18_post, i19_post, i20_post, i21_post, i22_post, i23_post, i24_post, i25_post, i26_post, i27_post, i28_post, i29_post, i30_post, i31_post, i32_post, i33_post, i34_post, i35_post, hw, hk, hn, List.getElem_cons_zero,
+    List.getElem!_cons_zero, List.getElem!_cons_succ, i_post, i1_post, i2_post, i3_post, i4_post,
+      i5_post, i6_post, i7_post, i8_post, i9_post, i10_post, i11_post, i12_post, i13_post,
+      i14_post, i15_post, i16_post, i17_post, i18_post, i19_post, i20_post, i21_post, i22_post,
+      i23_post, i24_post, i25_post, i26_post, i27_post, i28_post, i29_post, i30_post, i31_post,
+      i32_post, i33_post, i34_post, i35_post, hw, hk, hn, List.getElem_cons_zero,
     List.getElem_cons_succ, show I32.bv 1634760805#i32 = (0x61707865 : BitVec 32) from rfl,
     show I32.bv 857760878#i32 = (0x3320646e : BitVec 32) from rfl,
     show I32.bv 2036477234#i32 = (0x79622d32 : BitVec 32) from rfl,
@@ -458,8 +480,6 @@ theorem core_2x_spec (key : Std.Array U32 8#usize) (cn : Std.Array U32 4#usize) 
 
 theorem encrypt_nil (key nonce : List (BitVec 8)) (c : BitVec 32) : chacha20.encrypt key c nonce [] = [] := by
   simp [chacha20.encrypt]
-
-attribute [local step] core_2x_spec
 
 /-- One chunk of `cipher_avx2`'s loop: the bytes before `d` are encrypted, the
 rest are the message's, and the chunk from `d` to `e` is encrypted from block
@@ -478,6 +498,8 @@ theorem chunk_step (K N B M S1 : List (BitVec 8)) (c0 : BitVec 32) (d e : Nat)
   · rw [List.drop_left' hA, show d + S1.length = e by omega]
     rw [show e = d + (e - d) by omega, ← List.drop_drop, h4, List.drop_drop]
 
+/-- `cipher_avx2`'s loop: if the bytes before `done` are encrypted and the rest
+are the message's, the whole buffer ends encrypted. -/
 theorem cipher_avx2_loop_spec (key : Std.Array U32 8#usize) (cn : Std.Array U32 4#usize)
     (msg : List (BitVec 8)) (buffer : Slice U8) (counter : U32) (done : Usize)
     (hm : msg.length = buffer.length) (hd : done.val ≤ buffer.length)
@@ -533,9 +555,8 @@ theorem cipher_avx2_loop_spec (key : Std.Array U32 8#usize) (cn : Std.Array U32 
       exact h3
   · exact ⟨rfl, hd, hc, hpre, hpost⟩
 
-
-
-/-- The kernel's contract, which `Rind.X86_64.VgChaCha20` takes as a hypothesis. -/
+/-- The kernel meets its contract, which `Rind.X86_64.VgChaCha20` takes as the
+hypothesis `Kernel`. -/
 theorem kernel : Kernel := by
   intro key cn buffer _
   unfold low.x86_64.chacha20.cipher_avx2

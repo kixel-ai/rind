@@ -212,8 +212,9 @@ over the bytes of its streaming state, and proves its keystream is
 `Rind/Spec.lean`'s. `Rind/X86_64/VgChaCha20.lean` restates VG's theorems
 about the x86_64 ChaCha20 routines rind runs, `Stream.init_verified` and
 `Stream.apply_verified` for AVX2 and AVX-512 VL, as one axiom per wrapper in
-`low::x86_64::chacha20`, and proves `cipher::ChaCha20` from them, as
-"What is proven" lists.
+`low::x86_64::chacha20`, and proves `cipher::ChaCha20` from them, with rind's
+own proofs of the two-block kernel and HACL*'s loop, as "What is proven"
+lists.
 
 ## What is proven
 
@@ -873,25 +874,33 @@ and Poly1305 passes, which the model leaves opaque. `AeadDispatch` models
 `Rind/ChaCha20Poly1305Test.lean` checks `Rind/Spec.lean`'s transliterations
 against RFC 8439's and draft-irtf-cfrg-xchacha-03's test vectors.
 
-ChaCha20 on x86_64 CPUs with AVX2, from 256 bytes, from `cipher::ChaCha20`
-down to pyca/verified-garbage's AVX2 and AVX-512 VL routines, in
-`Rind/X86_64/VgChaCha20.lean`:
+ChaCha20 on x86_64, at every length, from `cipher::ChaCha20` down to
+pyca/verified-garbage's AVX2 and AVX-512 VL routines, rind's two-block AVX2
+kernel, and HACL*'s rounds, in `Rind/X86_64/ChaCha20Cipher.lean`:
 
-- `chacha20_apply_keystream`: a buffer that needs more blocks than remain
-  before the 32-bit block counter wraps is refused with `WrongLength` and
-  left as it is, and otherwise it becomes RFC 8439's encryption of it under
-  the key, the block counter, and the nonce.
+- `chacha20_apply_keystream`, on a CPU with AVX2, and
+  `chacha20_apply_keystream_ssse3`, on any: a buffer that needs more blocks
+  than remain before the 32-bit block counter wraps is refused with
+  `WrongLength` and left as it is, and otherwise it becomes RFC 8439's
+  encryption of it under the key, the block counter, and the nonce.
 
-It rests on the axioms `vg_chacha20_init_spec`,
-`vg_chacha20_apply_avx2_spec`, and `vg_chacha20_apply_avx512vl_spec`, which
-restate VG's theorems, and composes them as `cipher` does: VG's routines over
-whole 512-byte groups, and rind's two-block AVX2 kernel over a tail of two to
-four blocks from the block counter past them. It assumes `Kernel`, that
-kernel's contract, which no proof covers yet;
+They rest on the axioms `vg_chacha20_init_spec`,
+`vg_chacha20_apply_avx2_spec`, and `vg_chacha20_apply_avx512vl_spec` in
+`Rind/X86_64/VgChaCha20.lean`, which restate VG's theorems, and compose them
+as `cipher` does: VG's routines from 256 bytes over whole 512-byte groups,
+and the kernel over a tail of two to four blocks from the block counter past
+them; the kernel alone from 65 bytes; and HACL*'s rounds, in rind's loop,
+below. `Rind/X86_64/ChaCha20Avx2.lean` proves the kernel, `kernel`, over
+`Rind/X86_64/Simd.lean`'s models of the AVX2 intrinsics it calls, which
+`admin/prove` tests against the CPU: each double round is RFC 8439's inner
+block on both blocks' states at once, and the stored and XORed keystream is
+the two blocks'. `chacha20_apply_keystream` assumes `RunsVg`: the entry guard
+admits the call, and the CPU-feature checks find AVX2 or AVX-512 VL.
+Without AVX2, `cipher` runs aws-lc's `ChaCha20_ctr32_ssse3_4x` from 129
+bytes, which no proof covers yet, so `chacha20_apply_keystream_ssse3` assumes
+its contract, `Ssse3`, and `RunsCipher`, the CPU facts without AVX2;
 [the x86_64 cipher quest](/quest/m4/verified/chacha20-poly1305-x86/cipher.md)
-owns it. It also assumes `RunsVg`: the entry guard admits the call, and the
-CPU-feature checks find AVX2 or AVX-512 VL. VG's code earns its ✓ on this
-path from its theorems; the kernel's is the cipher quest's.
+owns that proof.
 
 RSASSA-PKCS1-v1_5 and RSASSA-PSS verification with SHA-256 on x86_64, from
 the signature API's `rsa::PublicKey` to the Montgomery products, in
@@ -1025,8 +1034,8 @@ proof after those.
   `Rind/X86_64/ValeAesGcm.lean`: s2n-bignum's, aws-lc-verification's, and
   Vale's theorems, restated as axioms about the routines' Rust wrappers.
 - `Rind/X86_64/Simd.lean`: models of the x86_64 intrinsics rind's AES,
-  AES-GCM setup, partial blocks, by-8 and by-16 kernels, and point select
-  call;
+  AES-GCM setup, partial blocks, by-8 and by-16 kernels, point select, and
+  two-block ChaCha20 kernel call;
   `Rind/X86_64/AesGcmModel.lean`: a hand model, over those intrinsics, of its
   PCLMULQDQ GHASH, by-8 AES-GCM, and AVX-512 by-16 AES-GCM, whose raw
   pointers, `transmute` constants, `as_chunks`, and zipped iterators Aeneas

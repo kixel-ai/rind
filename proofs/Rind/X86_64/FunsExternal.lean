@@ -192,10 +192,9 @@ opaque low.generic.chacha20poly1305.open
     Std.Array Std.U8 16#usize → Result (Bool × (Slice Std.U8))
 
 /-! `cipher::ChaCha20`'s routines: pyca/verified-garbage's, behind one
-wrapper each, whose contracts `Rind.X86_64.VgChaCha20` restates; the
-two-block AVX2 kernel, whose contract it takes as the hypothesis `Kernel`;
-and aws-lc's SSSE3 routine and HACL*'s rounds over a message, which no
-theorem is about yet. -/
+wrapper each, whose contracts `Rind.X86_64.VgChaCha20` restates, and aws-lc's
+SSSE3 routine, whose contract `Rind.X86_64.ChaCha20Cipher` takes as the
+hypothesis `Ssse3`. -/
 
 opaque low.x86_64.cpu.HaveAvx512Vl.check : Result (Option low.x86_64.cpu.HaveAvx512Vl)
 
