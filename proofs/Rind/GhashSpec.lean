@@ -30,6 +30,10 @@ def chunksOf {α : Type} (k : Nat) (l : List α) : List (List α) :=
 /-- What `as_chunks` leaves after the whole chunks of `k` elements. -/
 def chunksRest {α : Type} (k : Nat) (l : List α) : List α := l.drop (k * (l.length / k))
 
+/-- `chunks(k)` and `chunks_mut(k)`: the whole chunks of `k` elements, then the rest if any. -/
+def chunksUpTo {α : Type} (k : Nat) (l : List α) : List (List α) :=
+  chunksOf k l ++ if chunksRest k l = [] then [] else [chunksRest k l]
+
 /-- GHASH from the state `c` over the blocks `bs`, each a polynomial of a
 block's bytes reversed, under the key `H`. -/
 noncomputable def ghashPoly (H c : P) (bs : List P) : P :=

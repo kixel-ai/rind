@@ -1400,10 +1400,6 @@ def low.x86_64.aes_gcm.by16_loop (ENC : Bool) (table : low.x86_64.ghash.GhashTab
       low.x86_64.aes_gcm.by16_loop ENC table rk_first rks rk_last chunks counter current
     ok (counter, current, cs.flatMap bytes512 ++ out)
 
-/-- `chunks_mut(k)`: the whole chunks of `k` elements, then the rest if any. -/
-def chunksUpTo {α : Type} (k : Nat) (l : List α) : List (List α) :=
-  chunksOf k l ++ if chunksRest k l = [] then [] else [chunksRest k l]
-
 /-- `_cipher_avx512`'s loop over the tail's chunks of up to 64 bytes, each
 zipped with its counters' AES before the last round: the vectors it hashes,
 and its output. -/
