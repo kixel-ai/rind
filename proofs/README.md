@@ -217,13 +217,22 @@ about the x86_64 ChaCha20 routines rind runs, `Stream.init_verified` and
 `low::x86_64::chacha20`, and proves `cipher::ChaCha20` from them, as
 "What is proven" lists.
 
+`Rind/X86_64/VgCurve25519.lean` restates VG's theorems about its x86_64
+AVX-512 IFMA X25519 and Ed25519 routines, one axiom per wrapper in
+`low::x86_64::curve25519_ifma`, over its specs as `Rind/VgCurve25519.lean`
+reads them. `Rind/X86_64/X25519.lean` and `Rind/X86_64/Ed25519Ifma.lean`
+prove rind's X25519 and Ed25519 from them, as "What is proven" lists.
+
 `verified-garbage/` also holds the `Spec` modules whose definitions the
 axioms restating VG's theorems state, such as
 `VerifiedGarbage.Spec.Rsa.PrivatePrecompute`, which `Rind/X86_64/VgRsa.lean`
 imports, with `VerifiedGarbage.Spec.Rsa` through it, VG's FIPS 203 spec,
 `VerifiedGarbage.Spec.MlKem`, which `Rind/VgOutcome.lean` imports, and `VerifiedGarbage.Spec.ChaCha20` with its
 contracts, which `Rind/VgChaCha20.lean` adapts and
-`Rind/X86_64/VgChaCha20.lean`'s axioms restate, so a pin that changes them
+`Rind/X86_64/VgChaCha20.lean`'s axioms restate, and VG's RFC 7748 and
+RFC 8032 specs, `VerifiedGarbage.Spec.X25519` and
+`VerifiedGarbage.Spec.Ed25519` with the SHA-512 spec it states, with the
+contracts `Rind/X86_64/VgCurve25519.lean`'s axioms restate, so a pin that changes them
 shows the change in its diff, against which that re-pin must review the
 adaptation, for a change to the spec, and the axioms, for one to the
 contracts. Every re-pin also moves the axioms' links to VG's theorems and
@@ -242,21 +251,29 @@ fallback to rind's arithmetic.
 ## What is proven
 
 X25519 on x86_64 and aarch64, from the agreement API's `PrivateKey` to
-s2n-bignum's routines, in `Rind/X86_64/X25519.lean`, which `admin/prove` also
-writes for aarch64:
+s2n-bignum's routines, and on x86_64 CPUs with AVX-512 IFMA to
+pyca/verified-garbage's, in `Rind/X86_64/X25519.lean`, which `admin/prove`
+also writes for aarch64:
 
 - `x25519_generate`: the key's scalar is the 32 drawn bytes, read
   little-endian, it holds its public key, and a failed draw is refused;
 - `x25519_from_scalar`: a loaded key's scalar is the 32 given bytes, read
   little-endian, it holds its public key, and any other length is refused;
 - `x25519_public_key`: the public key a key holds is the 32 little-endian
-  bytes of `rfcx25519(scalar, 9)`;
+  bytes of `cpuX25519 o (scalar, 9)`;
 - `x25519_agree`: a peer key that is not 32 bytes is refused, so is an
   all-zero result, and otherwise the secret is the 32 little-endian bytes of
-  `rfcx25519(scalar, u)`, for the peer's bytes `u` read little-endian;
+  `cpuX25519 o (scalar, u)`, for the peer's bytes `u` read little-endian;
 - `x25519_shared_secret`: the secret's bytes are those.
 
-`rfcx25519` is HOL Light's RFC 7748 X25519, clamping and masking included.
+`cpuX25519 o` is RFC 7748's X25519, clamping and masking included, as the
+code the CPU runs is proven against: HOL Light's `rfcx25519` where the IFMA
+check returns no token (`o = none`, and every aarch64 CPU), and VG's
+`VerifiedGarbage.Spec.X25519.x25519` of the 32 little-endian bytes, as
+`Rind/VgCurve25519.lean`'s `vgX25519` reads it, where it returns one. The two
+specs both transliterate RFC 7748, but HOL Light's stays opaque, so no proof
+equates them. On IFMA CPUs the theorems rest on the axioms
+`vg_x25519_base_spec` and `vg_x25519_exchange_spec`.
 
 P-256 ECDH on x86_64 and aarch64, from the same `PrivateKey` to s2n-bignum's
 routines, in `Rind/X86_64/P256Agree.lean` and `Rind/X86_64/P256.lean`, which
@@ -670,7 +687,8 @@ and `ed25519::PublicKey` to s2n-bignum's routines and the SHA-512 proof above, i
 `Rind/X86_64/Ed25519.lean`, which `admin/prove` also writes for aarch64, and
 for aarch64's verification in `Rind/Aarch64/Ed25519Verify.lean`. x86_64's
 verification checks a multiple of RFC 8032's equation with half-size
-scalars, which nothing proves yet, so the last two are aarch64's only:
+scalars, which nothing proves yet, so the last two are aarch64's only. On
+x86_64 these assume `NoCurveIfma`, that the CPU lacks AVX-512 IFMA:
 
 - `ed25519_generate`: the key pair's seed is the 32 drawn bytes, and a failed
   draw is refused;
@@ -699,6 +717,40 @@ holds on every aarch64 CPU. That a multiple of the base point is a point of
 the group, which `ed25519_key_pair_verify` assumes, is the group's theory,
 which these theorems do not import. The `ed25519` module calls no function
 pointer, so these theorems are about its translation, with no hand model.
+
+Ed25519 on x86_64 CPUs with AVX-512 IFMA, from the same API to
+pyca/verified-garbage's key-pair derivation, signing, and verification, in
+`Rind/X86_64/Ed25519Ifma.lean`, stated in VG's RFC 8032 spec,
+`VerifiedGarbage.Spec.Ed25519`, over bytes as VG takes them, `bvs`. Each
+assumes `CurveIfma (some t)`, that the IFMA check returns a token:
+
+- `ed25519_generate_ifma`: the key pair's seed is the 32 drawn bytes, and a
+  failed draw is refused;
+- `ed25519_from_seed_and_public_key_ifma`: a seed that is not 32 bytes is
+  refused, so is a public key that is not VG's `publicKey` of the seed, and
+  otherwise the key pair's seed is the seed;
+- `ed25519_sign_ifma`: the signature's bytes are VG's `sign` of the message
+  under the seed;
+- `ed25519_key_pair_public_key_ifma`: the public key's bytes are VG's
+  `publicKey` of the seed;
+- `ed25519_public_key_new_ifma`: a public key is refused unless it is 32
+  bytes, refused if its low 255 bits are one of libsodium's seven small-order
+  y-coordinates, refused unless it encodes a point of the group, and
+  otherwise its `verify` accepts exactly the signatures VG's `verify` accepts
+  with those bytes;
+- `ed25519_key_pair_verify_ifma`: a key pair's public key verifies the same
+  way.
+
+Each rests on the axiom of the VG routine it calls, in
+`Rind/X86_64/VgCurve25519.lean`, and proves rind's glue: that a key pair
+keeps the digest and public key VG's key-pair derivation wrote, so signing's
+precondition, that they are some seed's, holds, and key loading's checks,
+which run rind's s2n-bignum decoding on every CPU. Each with a key pair
+assumes it came from those two constructors (`VgKeyPairOf`); the
+constructors and `ed25519_public_key_new_ifma` assume `Runs`, and
+`ed25519_public_key_new_ifma` also that the entry guard holds, which
+the theorems above take from `RunsSha512`. Unlike HOL Light's, VG's spec
+takes messages of any length.
 
 AES-128, AES-192, and AES-256 on x86_64 CPUs with AES-NI and aarch64 CPUs
 with the crypto extension, from `cipher::Aes` and the header-protection API's
@@ -1141,7 +1193,10 @@ proof after those.
   `Rind/X86_64/Kdf/{TypesExternal,FunsExternal}.lean`, of what the HKDF and
   PBKDF2 pass leaves opaque.
 - `Rind/X86_64/{X25519,Sha512,ChaCha20,Ed25519}.lean`: the X25519, SHA-512,
-  ChaCha20, and Ed25519 proofs, `Rind/X86_64/{Blockwise,Sha,Hmac}.lean`,
+  ChaCha20, and Ed25519 proofs, `Rind/X86_64/Ed25519Ifma.lean`, Ed25519's on
+  pyca/verified-garbage's IFMA routines, `Rind/X86_64/VgCurve25519.lean`, the
+  axioms restating those routines' theorems, and `Rind/VgCurve25519.lean`,
+  VG's X25519 and byte encodings as those proofs read them, `Rind/X86_64/{Blockwise,Sha,Hmac}.lean`,
   SHA-1's, SHA-256's, and HMAC's, and
   `Rind/X86_64/{DigestApi,HmacApi,Hkdf,Pbkdf2}.lean`, the digest, HMAC, HKDF,
   and PBKDF2 APIs'; `Rind/X86_64/HkdfAead.lean`, HKDF's conversion to AES-GCM

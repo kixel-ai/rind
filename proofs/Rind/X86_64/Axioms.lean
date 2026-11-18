@@ -12,6 +12,7 @@ import Rind.X86_64.ChaCha20Poly1305
 import Rind.X86_64.VgChaCha20
 import Rind.X86_64.GcmKey
 import Rind.X86_64.Ed25519
+import Rind.X86_64.Ed25519Ifma
 import Rind.X86_64.RsaDispatch
 import Rind.X86_64.Sha3
 import Rind.X86_64.AesKw
@@ -37,7 +38,8 @@ tag checks, RSASSA-PSS's hash compare, and key wrap's `unwrap` and
 `unwrap_padded` checks; for RSA verification's public operation on AVX-512
 IFMA, pyca/verified-garbage's Lean proof of its routine, which
 `Rind.X86_64.VgRsa` restates; pyca/verified-garbage's for ChaCha20's
-`apply_keystream` in `Rind.X86_64.VgChaCha20`; and nothing else.
+`apply_keystream` in `Rind.X86_64.VgChaCha20`, and for X25519 and Ed25519 on
+AVX-512 IFMA in `Rind.X86_64.VgCurve25519`; and nothing else.
 ChaCha20-Poly1305's theorems also take aws-lc's one-pass routines as the
 hypothesis `RunsChaCha20Poly1305`, which no axiom states, and ChaCha20's
 `apply_keystream` takes rind's two-block kernel as the hypothesis `Kernel`. The generator
@@ -52,7 +54,8 @@ change to the trust base.
  Classical.choice,
  Quot.sound,
  curve25519_x25519base_alt_spec,
- curve25519_x25519base_spec] -/
+ curve25519_x25519base_spec,
+ vg_x25519_base_spec] -/
 #guard_msgs in
 #print axioms x25519_generate
 
@@ -60,7 +63,8 @@ change to the trust base.
  Classical.choice,
  Quot.sound,
  curve25519_x25519base_alt_spec,
- curve25519_x25519base_spec] -/
+ curve25519_x25519base_spec,
+ vg_x25519_base_spec] -/
 #guard_msgs in
 #print axioms x25519_from_scalar
 
@@ -73,7 +77,8 @@ change to the trust base.
  Quot.sound,
  bignum_eq_spec,
  curve25519_x25519_alt_spec,
- curve25519_x25519_spec] -/
+ curve25519_x25519_spec,
+ vg_x25519_exchange_spec] -/
 #guard_msgs in
 #print axioms x25519_agree
 
@@ -578,6 +583,42 @@ change to the trust base.
 /-- info: 'rind.x86_64.ed25519_key_pair_public_key' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms ed25519_key_pair_public_key
+
+/-- info: 'rind.x86_64.ed25519_generate_ifma' depends on axioms: [propext, Classical.choice, Quot.sound, vg_ed25519_key_pair_spec] -/
+#guard_msgs in
+#print axioms ed25519_generate_ifma
+
+/-- info: 'rind.x86_64.ed25519_from_seed_and_public_key_ifma' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ vg_ed25519_key_pair_spec] -/
+#guard_msgs in
+#print axioms ed25519_from_seed_and_public_key_ifma
+
+/-- info: 'rind.x86_64.ed25519_sign_ifma' depends on axioms: [propext, Classical.choice, Quot.sound, vg_ed25519_sign_spec] -/
+#guard_msgs in
+#print axioms ed25519_sign_ifma
+
+/-- info: 'rind.x86_64.ed25519_key_pair_public_key_ifma' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms ed25519_key_pair_public_key_ifma
+
+/-- info: 'rind.x86_64.ed25519_key_pair_verify_ifma' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ vg_ed25519_verify_spec] -/
+#guard_msgs in
+#print axioms ed25519_key_pair_verify_ifma
+
+/-- info: 'rind.x86_64.ed25519_public_key_new_ifma' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ bignum_eq_spec,
+ edwards25519_decode_alt_spec,
+ edwards25519_decode_spec,
+ vg_ed25519_verify_spec] -/
+#guard_msgs in
+#print axioms ed25519_public_key_new_ifma
 
 /-- info: 'rind.x86_64.p256_ecdsa_generate' depends on axioms: [propext,
  Classical.choice,
