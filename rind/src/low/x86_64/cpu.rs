@@ -263,6 +263,18 @@ impl HaveAvx512ForRsa {
     }
 }
 
+/// Proof that the CPU has what pyca/verified-garbage's X25519 and Ed25519
+/// for AVX-512 IFMA run: AVX-512 F, VL, and IFMA, with AVX, AVX2, BMI1,
+/// BMI2, and ADX, the union of their `_FEATURES`.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct HaveIfmaForCurve25519(());
+
+impl HaveIfmaForCurve25519 {
+    pub(crate) fn check() -> Option<Self> {
+        has(AVX | AVX2 | BMI1 | BMI2 | ADX | AVX512F | AVX512VL | AVX512IFMA).then_some(Self(()))
+    }
+}
+
 /// Token type reflecting the check for CPU features needed for SHA1 using SHA-NI,
 /// and the SSSE3 and SSE4.1 its rounds also use
 ///
@@ -705,7 +717,7 @@ mod tests {
         assert_ne!(call!(ct_compare_16, &[1; 16], &[2; 16]), 0);
     }
 
-    /// Whether std detects every feature named, less those `test_toggle`
+    /// Whether std detects every feature named, less those `RIND_CPU_DISABLE_<id>`
     /// denies.
     macro_rules! available {
         ($($name:tt),+) => {
@@ -964,6 +976,18 @@ mod tests {
                 ) && available!("avx512fp16"),
             ),
             (
+                HaveIfmaForCurve25519::check().is_some(),
+                adx && available!(
+                    "avx",
+                    "avx2",
+                    "bmi1",
+                    "bmi2",
+                    "avx512f",
+                    "avx512vl",
+                    "avx512ifma"
+                ),
+            ),
+            (
                 HaveSha1::check().is_some(),
                 available!("sha", "ssse3", "sse4.1"),
             ),
@@ -1050,6 +1074,11 @@ mod tests {
         }
         if let Some(expected) = std::env::var_os("RIND_TEST_X86_AVX512_RSA") {
             assert_eq!(HaveAvx512ForRsa::check().is_some(), expected == "1");
+        }
+        // Every CPU and SDE model with AVX-512 IFMA has the rest of what
+        // either needs, so RSA's tiers name X25519's and Ed25519's too.
+        if let Some(expected) = std::env::var_os("RIND_TEST_X86_AVX512_RSA") {
+            assert_eq!(HaveIfmaForCurve25519::check().is_some(), expected == "1");
         }
     }
 }
