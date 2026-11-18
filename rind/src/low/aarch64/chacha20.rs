@@ -50,6 +50,7 @@ impl ChaCha20 {
             1 => cipher_neon(&self.key, &self.nonce, buffer),
             2 => cipher_vg(self.sve2, &self.key, &self.nonce, buffer),
             3 => cipher_vg(None, &self.key, &self.nonce, buffer),
+            4 => ChaCha20 { sve2: None, ..*self }.cipher_policy(buffer),
             _ => self.cipher_policy(buffer),
         }
         #[cfg(not(rind_sweep))]
@@ -58,7 +59,12 @@ impl ChaCha20 {
     }
 
     fn cipher_policy(&self, buffer: &mut [u8]) {
-        cipher_neon(&self.key, &self.nonce, buffer);
+        match (self.sve2, buffer.len()) {
+            (Some(_), VG_SVE2_MIN_LEN..) | (None, 192..=256 | VG_NEON_MIN_LEN..) => {
+                cipher_vg(self.sve2, &self.key, &self.nonce, buffer)
+            }
+            _ => cipher_neon(&self.key, &self.nonce, buffer),
+        }
     }
 }
 
@@ -66,6 +72,12 @@ impl ChaCha20 {
 #[cfg(rind_sweep)]
 pub(crate) static SWEEP: core::sync::atomic::AtomicU8 = core::sync::atomic::AtomicU8::new(0);
 
+
+/// The lengths from which VG's SVE2 routine runs.
+const VG_SVE2_MIN_LEN: usize = 128;
+/// The lengths from which VG's NEON routine runs; it also runs from three
+/// blocks to four.
+const VG_NEON_MIN_LEN: usize = 448;
 
 /// rind's NEON code: four blocks at a time, then one at a time in
 /// general-purpose registers.
@@ -466,7 +478,104 @@ const SIGMA: [u32; 4] = [0x61707865, 0x3320646e, 0x79622d32, 0x6b206574];
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
-    use crate::low::hchacha20;
+    use crate::low::generic::chacha20::cipher as reference;
+    use crate::low::{ct, hchacha20};
+
+    type Path = fn(&ChaCha20, &mut [u8]);
+
+    /// Each of `cipher`'s paths the CPU can run, by name, on its own.
+    fn paths() -> Vec<(&'static str, Path)> {
+        let mut paths: Vec<(&'static str, Path)> = vec![
+            ("NEON", |c, b| cipher_neon(&c.key, &c.nonce, b)),
+            ("VG NEON", |c, b| cipher_vg(None, &c.key, &c.nonce, b)),
+        ];
+        if HaveSve2::check().is_some() {
+            paths.push(("VG SVE2", |c, b| {
+                cipher_vg(HaveSve2::check(), &c.key, &c.nonce, b)
+            }));
+        }
+        paths
+    }
+
+    // Every length through each routine's wide loops, narrower blocks, and
+    // partial block, on `cipher`, then 200 bytes more from the next block,
+    // and on each path alone, against the one-block reference, under a key
+    // `admin/ctgrind` keeps secret. Valgrind hides SVE2, so ctgrind checks
+    // only the NEON paths, and `ct_qemu_chacha20` VG's SVE2 routine.
+    #[test]
+    fn paths_match() {
+        let key = core::array::from_fn(|i| i as u8);
+        ct::secret_slice(&key);
+        let nonce = core::array::from_fn(|i| (i * 7) as u8);
+        let base = ChaCha20::new(&key, &nonce);
+        for len in 0..=1700 {
+            let mut want = vec![0x5a; len + 200];
+            let (first, second) = want.split_at_mut(len);
+            let mut counter_nonce = base.nonce;
+            reference(&base.key, &counter_nonce, first);
+            counter_nonce[0] += len.div_ceil(64) as u32;
+            reference(&base.key, &counter_nonce, second);
+            ct::public_slice(&want);
+
+            let mut c = ChaCha20::new(&key, &nonce);
+            let mut got = vec![0x5a; len + 200];
+            let (first, second) = got.split_at_mut(len);
+            c.cipher(first);
+            c.cipher(second);
+            ct::public_slice(&got);
+            assert_eq!(got, want, "{len} bytes, then 200");
+
+            for (name, path) in paths() {
+                let mut got = vec![0x5a; len];
+                path(&base, &mut got);
+                ct::public_slice(&got);
+                assert_eq!(got, want[..len], "{name}, {len} bytes");
+            }
+        }
+    }
+
+    /// verified-garbage's routines refuse a keystream past block 2^32 - 1,
+    /// which rind's callers never ask for, so the call panics rather than
+    /// return the buffer unencrypted; the last block itself is allowed.
+    #[test]
+    fn vg_counter_limit() {
+        let nonce = [u32::MAX, 0, 0, 0];
+        for sve2 in [None, HaveSve2::check()] {
+            let mut last = [0u8; 64];
+            cipher_vg(sve2, &[0; 8], &nonce, &mut last);
+            assert_ne!(last, [0; 64]);
+            let mut past = [0u8; 65];
+            let refused = std::panic::catch_unwind(core::panic::AssertUnwindSafe(|| {
+                cipher_vg(sve2, &[0; 8], &nonce, &mut past)
+            }));
+            assert!(refused.is_err());
+            assert_eq!(past, [0; 65]);
+        }
+    }
+
+    // Valgrind hides SVE2, so `admin/ctgrind` never reaches VG's SVE2
+    // routine; `admin/ct-qemu` traces both of VG's routines here instead,
+    // under qemu-aarch64's `max` CPU, with a secret key, nonce, and message.
+    // The block counter is public, and VG's contract lets the time depend on
+    // it. These lengths reach each routine's wide loop, its narrower blocks,
+    // and a partial block.
+    #[test]
+    #[ignore = "admin/ct-qemu runs it under qemu"]
+    fn ct_qemu_chacha20() {
+        use crate::low::aarch64::ct_qemu;
+
+        let sve2 = HaveSve2::check().expect("SVE2");
+        let seed = ct_qemu::seed().to_le_bytes();
+        let bytes = |n| seed.iter().cycle().take(n).copied().collect::<Vec<u8>>();
+        let key = words::<32, 8>(&bytes(32).try_into().unwrap());
+        let mut nonce = words::<16, 4>(&bytes(16).try_into().unwrap());
+        nonce[0] = 1;
+        for len in [37, 64, 130, 300, 520, 777, 1024 + 512 + 3 * 64 + 9] {
+            let mut msg = bytes(len);
+            ct_qemu::traced(|| cipher_vg(Some(sve2), &key, &nonce, &mut msg));
+            ct_qemu::traced(|| cipher_vg(None, &key, &nonce, &mut msg));
+        }
+    }
 
     #[test]
     fn test_vectors() {
