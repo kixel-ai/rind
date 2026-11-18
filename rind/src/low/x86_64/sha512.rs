@@ -12,8 +12,6 @@
 //! the AVX2 routine too. Intel's data-independent-timing list omits
 //! `VSHA512RNDS2`, `VSHA512MSG1`, and `VSHA512MSG2`.
 
-use std::sync::OnceLock;
-
 use super::cpu::{HaveAvx, HaveAvx2, is_intel};
 
 /// The SHA-512 routine this CPU runs, with the proof it may.
@@ -41,13 +39,9 @@ pub(crate) fn sha512_compress_blocks(state: &mut [u64; 8], blocks: &[u8]) {
     }
 }
 
+/// The routine this CPU runs: a few tests of the features `cpu` read once.
+#[inline]
 fn path() -> Path {
-    // Picked once, rather than testing several features on every compression.
-    static PATH: OnceLock<Path> = OnceLock::new();
-    *PATH.get_or_init(pick)
-}
-
-fn pick() -> Path {
     if let Some(token) = HaveAvx2::check() {
         Path::Avx2(token)
     } else if let Some(token) = HaveAvx::check().filter(|_| is_intel()) {
