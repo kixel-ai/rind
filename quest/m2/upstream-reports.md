@@ -16,6 +16,8 @@ Extended with the maintainer on 2026-11-13: ✅ once rind is complete enough, fi
 - Recheck each bug against the upstream's current release first, and search for an existing report, before drafting.
 - For each fork, drop from the offer what upstream has merged since, and group the rest the way upstream would review it, such as s2n-bignum's model additions apart from rind's specs. The issue offers PRs; it does not open them.
 
+- Decided 2026-11-18 (maintainer, /quest-complete): ✅ not yet (rejected: start reporting now); ask again once rind 0.4 ships and the benchmark report refresh lands, so reports cite a released version.
+
 ## Waiting
 
 - Maintainer: say rind is mature enough to start reporting upstream. An agent can't judge this; it is the maintainer's view of rind's standing. Clear it by removing this item.
