@@ -97,6 +97,10 @@ mod generic {
     pub(crate) mod mlkem768_vg;
     #[cfg(not(rind_backend = "x86_64"))]
     pub(crate) mod mlkem_sample;
+    // pyca/verified-garbage's PBKDF2 where it does not run: every backend
+    // but aarch64's.
+    #[cfg(not(rind_backend = "aarch64"))]
+    pub(crate) mod pbkdf2_vg;
     // ML-KEM arithmetic for the portable backend and x86_64 CPUs without
     // AVX2.
     #[cfg(not(rind_backend = "aarch64"))]
@@ -338,6 +342,7 @@ cfg_if::cfg_if! {
             mldsa_rej_uniform_eta4_vartime,
         };
         pub(crate) use x86_64::mlkem768_vg;
+        pub(crate) use generic::pbkdf2_vg;
         pub(crate) use x86_64::mlkem::{
             mlkem_ntt,
             mlkem_intt,
@@ -462,6 +467,7 @@ cfg_if::cfg_if! {
             mldsa_rej_uniform_eta4_vartime,
         };
         pub(crate) use aarch64::mlkem768_vg;
+        pub(crate) use aarch64::pbkdf2_vg;
         pub(crate) use aarch64::mlkem::{
             mlkem_ntt,
             mlkem_intt,
@@ -526,6 +532,7 @@ cfg_if::cfg_if! {
             sha512_compress_blocks,
         };
         pub(crate) use generic::mlkem768_vg;
+        pub(crate) use generic::pbkdf2_vg;
         pub(crate) use generic::sha256x8::sha256_finish_x8;
     } else if #[cfg(rind_backend = "portable")] {
         pub(in crate::low) use portable::cpu::{enter_cpu_state, zero_bytes, ct_compare_bytes, ct_compare_16, leave_cpu_state};
@@ -543,6 +550,7 @@ cfg_if::cfg_if! {
             sha512_compress_blocks,
         };
         pub(crate) use generic::mlkem768_vg;
+        pub(crate) use generic::pbkdf2_vg;
         pub(crate) use generic::sha256x8::sha256_finish_x8;
     } else {
         compile_error!("build.rs sets rind_backend");
