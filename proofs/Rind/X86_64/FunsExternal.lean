@@ -10,9 +10,9 @@ set_option linter.dupNamespace false
 /-!
 The rind functions the x86_64 translation leaves opaque, beside those
 `Rind.X86_64.AesGcmModel` and `Rind.X86_64.PointSelectModel` model. No proof assumes anything about them beyond what
-`Rind.X86_64.S2nBignum`, `Rind.X86_64.AwsLc`, `Rind.X86_64.ValeAesGcm`, and
-`Rind.X86_64.VgRsa` state for s2n-bignum's, aws-lc's, Vale's, and
-pyca/verified-garbage's routines, what
+`Rind.X86_64.S2nBignum`, `Rind.X86_64.AwsLc`, `Rind.X86_64.ValeAesGcm`,
+`Rind.X86_64.VgRsa`, and `Rind.X86_64.VgChaCha20` state for s2n-bignum's,
+aws-lc's, Vale's, and pyca/verified-garbage's routines, what
 `Rind.X86_64.CtEqual` states for the constant-time compares, and what each theorem
 takes as a hypothesis.
 -/
@@ -191,6 +191,38 @@ opaque low.generic.chacha20poly1305.seal
 opaque low.generic.chacha20poly1305.open
   : Std.Array Std.U8 32#usize → Std.Array Std.U8 12#usize → Slice Std.U8 → Slice Std.U8 →
     Std.Array Std.U8 16#usize → Result (Bool × (Slice Std.U8))
+
+/-! `cipher::ChaCha20`'s routines: pyca/verified-garbage's, behind one
+wrapper each, whose contracts `Rind.X86_64.VgChaCha20` restates; the
+two-block AVX2 kernel, whose contract it takes as the hypothesis `Kernel`;
+and aws-lc's SSSE3 routine and HACL*'s rounds over a message, which no
+theorem is about yet. -/
+
+opaque low.x86_64.cpu.HaveAvx512Vl.check : Result (Option low.x86_64.cpu.HaveAvx512Vl)
+
+opaque low.x86_64.chacha20.VgState.uninit : Result low.x86_64.chacha20.VgState
+
+opaque low.x86_64.chacha20.VgState.init
+  : low.x86_64.chacha20.VgState → Std.Array Std.U32 8#usize → Std.Array Std.U32 4#usize →
+    Result low.x86_64.chacha20.VgState
+
+opaque low.x86_64.chacha20.VgState.apply_avx2
+  : low.x86_64.chacha20.VgState → low.x86_64.cpu.HaveAvx2 → Slice Std.U8 →
+    Result (Std.U32 × low.x86_64.chacha20.VgState × (Slice Std.U8))
+
+opaque low.x86_64.chacha20.VgState.apply_avx512vl
+  : low.x86_64.chacha20.VgState → low.x86_64.cpu.HaveAvx512Vl → Slice Std.U8 →
+    Result (Std.U32 × low.x86_64.chacha20.VgState × (Slice Std.U8))
+
+opaque low.x86_64.chacha20.cipher_avx2
+  : Std.Array Std.U32 8#usize → Std.Array Std.U32 4#usize → Slice Std.U8 → Result (Slice Std.U8)
+
+opaque low.x86_64.chacha20.cipher_ssse3_4x
+  : low.x86_64.cpu.HaveSsse3 → Std.Array Std.U32 8#usize → Std.Array Std.U32 4#usize →
+    Slice Std.U8 → Result (Slice Std.U8)
+
+opaque low.generic.chacha20.cipher
+  : Std.Array Std.U32 8#usize → Std.Array Std.U32 4#usize → Slice Std.U8 → Result (Slice Std.U8)
 
 /-! s2n-bignum's Ed25519 routines, transliterated to inline assembly. -/
 
@@ -648,6 +680,25 @@ opaque low.generic.reuse_cache.ReuseCache.Insts.CoreCloneClone.clone
 
 opaque mid.p256.PrivateKey.new_random
   : Result (core.result.Result mid.p256.PrivateKey error.Error)
+
+/-! Whether the CPU runs pyca/verified-garbage's P-256, and rind's calls of it,
+which the P-256 proofs take as not running: Lean proves VG's routines in that
+project, not here. -/
+
+opaque low.x86_64.p256_vg.P256.check : Result (Option low.x86_64.p256_vg.P256)
+
+opaque low.x86_64.p256_vg.P256.check_public_key : Result (Option low.x86_64.p256_vg.P256)
+
+opaque mid.p256.PrivateKey.vg_public_key
+  : mid.p256.PrivateKey → low.x86_64.p256_vg.P256 → Result (Array Std.U8 65#usize)
+
+opaque mid.p256.PrivateKey.vg_diffie_hellman
+  : mid.p256.PrivateKey → low.x86_64.p256_vg.P256 → mid.p256.PublicKey →
+    Result (core.result.Result mid.p256.SharedSecret error.Error)
+
+opaque mid.p256.vg_verify
+  : low.x86_64.p256_vg.P256 → mid.p256.AffineMontPoint → mid.p256.Scalar → mid.p256.Scalar →
+    mid.p256.Scalar → Result (core.result.Result Unit error.Error)
 
 /-! The other curves, which X25519's results never depend on. -/
 
