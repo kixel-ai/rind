@@ -28,7 +28,10 @@ instructions run OpenSSL's SHA-384 and SHA-512 for them. Intel CPUs
 without AVX2 run [aws-lc]'s AVX SHA-1, SHA-256, and verified ✓ SHA-384 and
 SHA-512. CPUs with AVX2 but without AVX-512 run ML-KEM-768's key generation
 and decapsulation as ML-KEM-512's, on s2n-bignum ✓ + mlkem-native ✓, and only
-its encapsulation on [verified-garbage] (see [ML-KEM](#ml-kem)).
+its encapsulation on [verified-garbage] (see [ML-KEM](#ml-kem)). CPUs
+without AVX-512 IFMA run X25519 and Ed25519 on s2n-bignum ✓ and rind's
+glue, not verified-garbage (see [ECC](#ecc)), except that without ADX
+Ed25519 verification's multiplication runs curve25519-dalek ⚡, as above.
 
 | Algorithm | x86_64 | no AVX2 | no AVX | no AES-NI | SSE2 |
 |---|---|---|---|---|---|
@@ -53,8 +56,8 @@ its encapsulation on [verified-garbage] (see [ML-KEM](#ml-kem)).
 | PBKDF2 | rind |  |  |  |  |
 | Argon2id | Argon2's reference + rind | rind |  |  |  |
 | SPAKE2+ | rind, over P-256 |  |  |  |  |
-| X25519 | s2n-bignum ✓ |  |  |  |  |
-| Ed25519 | s2n-bignum ✓ + Graviola + rind ⚡ |  |  |  |  |
+| X25519 | verified-garbage |  |  |  |  |
+| Ed25519 | verified-garbage |  |  |  |  |
 | ristretto255 | s2n-bignum ✓ + rind |  |  |  |  |
 | P-256 ECDH, ECDSA | verified-garbage + s2n-bignum ✓ + aws-lc + Graviola ⚡ | s2n-bignum ✓ + aws-lc + Graviola ⚡ |  |  |  |
 | P-384 ECDH, ECDSA | s2n-bignum ✓ + rind ⚡ + Graviola ⚡ |  |  |  |  |
@@ -207,7 +210,7 @@ tests use [Wycheproof]'s vectors.
 | [SPHINCS+] | ported: the SPHINCS+ team's FIPS 205 code (`sign.c`, `fors.c`, `wots.c`, `merkle.c`, and its AVX2 builds' `treehashx4` and `treehashx8`, generalised over the lane count) on every CPU, and its x86_64 AVX2 eight-way SHA-256 (`sha256avx.c`), to Rust, from the `bas/fips205` branch | public domain, or CC0-1.0, 0BSD, or MIT-0 | nothing: no SLH-DSA implementation carries a proof of functional correctness |
 | [curve25519-dalek] | dependency, with its serial backend, for armv7 and the portable backend; ported: its AVX2 backend's field arithmetic, point formulas, and base point table, to Rust intrinsics, for Ed25519 verification's four-point multiplication on x86_64 CPUs with AVX2 but without ADX | BSD-3-Clause | nothing: that backend's field arithmetic is hand-written, as is the AVX2 backend's. Its `fiat` backend would run [fiat-crypto]'s verified field arithmetic instead, but only a `--cfg` flag for the whole build selects it, so rind refuses it rather than let the build pick. |
 | [fiat-crypto] | dependency | MIT OR Apache-2.0 OR BSD-1-Clause | [Coq proofs](https://github.com/mit-plv/fiat-crypto/tree/67316f05d771f7f2db62beede59e9b56406a9efd) that each generated field operation is correct. rind's point formulas, inversion, and table lookup over them are not covered. |
-| [verified-garbage] | copied, by `admin/import-vg`: its aarch64 SVE2 ChaCha20-Poly1305 seal and open, with the ChaCha20 and Poly1305 routines they call, its x86_64 ChaCha20 from 256 bytes on AVX2 and on AVX-512 VL, its x86_64 RSA public operation and CRT for AVX-512 IFMA, with the Montgomery product they call, and its ML-KEM-768 encapsulation key check and encapsulation on x86_64 and on aarch64 with the SHA-3 instructions, and key generation and decapsulation on x86_64 with AVX-512, and its P-256 public key derivation, ECDH, and ECDSA verification on x86_64 with BMI2 and ADX, ECDH and verification also for AVX-512 IFMA, and on aarch64, with the Keccak, arithmetic, and point routines and tables they call, as Rust naked functions, byte for byte but for `.base64` directives written out as `.byte`, which rind's minimum Rust cannot assemble; and, by `admin/import-vg-models` at the same commit, its Lean x86_64 and aarch64 ISA models, printers, and encoders, under `proofs/verified-garbage/` | Apache-2.0 OR BSD-3-Clause; the models taken under Apache-2.0 | [Lean proofs](https://github.com/pyca/verified-garbage/tree/e7b0fe8a82b7777958e078573771d51415f105bb/lean) that each routine's machine code meets its contract (RFC 8439's for ChaCha20-Poly1305, FIPS 203's for ML-KEM-768), is memory safe, and takes the same branches and memory addresses whatever its secrets, over VG's own models of the instructions. The RSA routines rind runs are internal to VG, so their contracts are in its proofs rather than its trusted specification. `admin/prove vg` cosimulates those models for each instruction of VG's code, on the CPU or, where it lacks a feature, under Intel SDE or qemu-aarch64, but for `jmp`/`b`, static addresses, and a lone `ret`, which its bytes check covers, and checks that rind's copies are VG's text. rind claims no ✓ for this code until it imports the theorems, which waits on VG fixing [a gap in its stack model](https://github.com/pyca/verified-garbage/issues/5321). |
+| [verified-garbage] | copied, by `admin/import-vg`: its aarch64 SVE2 ChaCha20-Poly1305 seal and open, with the ChaCha20 and Poly1305 routines they call, its x86_64 ChaCha20 from 256 bytes on AVX2 and on AVX-512 VL, its x86_64 X25519 and Ed25519 for AVX-512 IFMA, with the SHA-512 and field and point routines they call, its x86_64 RSA public operation and CRT for AVX-512 IFMA, with the Montgomery product they call, and its ML-KEM-768 encapsulation key check and encapsulation on x86_64 and on aarch64 with the SHA-3 instructions, and key generation and decapsulation on x86_64 with AVX-512, and its P-256 public key derivation, ECDH, and ECDSA verification on x86_64 with BMI2 and ADX, ECDH and verification also for AVX-512 IFMA, and on aarch64, with the Keccak, arithmetic, and point routines and tables they call, as Rust naked functions, byte for byte but for `.base64` directives written out as `.byte`, which rind's minimum Rust cannot assemble; and, by `admin/import-vg-models` at the same commit, its Lean x86_64 and aarch64 ISA models, printers, and encoders, under `proofs/verified-garbage/` | Apache-2.0 OR BSD-3-Clause; the models taken under Apache-2.0 | [Lean proofs](https://github.com/pyca/verified-garbage/tree/e7b0fe8a82b7777958e078573771d51415f105bb/lean) that each routine's machine code meets its contract (RFC 8439's for ChaCha20-Poly1305, RFC 7748's and RFC 8032's for X25519 and Ed25519, FIPS 203's for ML-KEM-768), is memory safe, and takes the same branches and memory addresses whatever its secrets, over VG's own models of the instructions. The RSA routines rind runs are internal to VG, so their contracts are in its proofs rather than its trusted specification. `admin/prove vg` cosimulates those models for each instruction of VG's code, on the CPU or, where it lacks a feature, under Intel SDE or qemu-aarch64, but for `jmp`/`b`, static addresses, and a lone `ret`, which its bytes check covers, and checks that rind's copies are VG's text. rind claims no ✓ for this code until it imports the theorems, which waits on VG fixing [a gap in its stack model](https://github.com/pyca/verified-garbage/issues/5321). |
 
 rind's own code is licensed under Apache-2.0 OR ISC OR MIT-0. Copied code
 keeps its source's copyright and license, which [LICENSE] lists with the
@@ -521,6 +524,29 @@ width-8 forms of `v S`'s two 128-bit halves over 10 KiB static tables each
 of `B`'s and `[2^128]B`'s, so the loop runs about 128 doublings. The rest
 of this section describes those backends.
 
+On x86_64 CPUs with AVX-512 IFMA (with F, VL, AVX2, BMI1, BMI2, and ADX),
+X25519 and Ed25519 run [verified-garbage]'s routines instead, its variants
+for CPUs without the SHA-512 instructions, as its own dispatch picks on
+every CPU with IFMA measured so far. Each is a whole RFC 7748 or RFC 8032
+operation, Ed25519's SHA-512 included, since VG's lower routines are
+internal ones without a contract of their own. rind keeps its key types,
+loading, and checks, so it still refuses small-order Ed25519 public keys,
+which VG accepts, and decodes a public key when it loads, though VG decodes
+it again to verify. VG's verification checks what rind's does: canonical
+encodings, `S < L`, and the equation without the cofactor, for `k` reduced
+modulo `L`. On a Zen 4 EPYC 9V74, VG took 0.52-0.67 of rind's time for
+X25519, and 0.66, 0.68, and 0.55 for Ed25519 key generation, signing, and
+verification, in [run 43531095881]; on Zen 5 (a Ryzen 9 9950X), against
+the code it replaced, 0.62-0.72 for X25519 and 0.61, 0.67, and 0.85 for
+Ed25519, in [kixel-ai/rind#845](https://github.com/kixel-ai/rind/pull/845); and on a
+Xeon 6975P-C, 0.66-0.72 for X25519 and 0.69, 0.66, and 0.90 for Ed25519,
+in [run 44171095372] against [run 43881997679] before the switch. Without
+IFMA, VG lost at some operation on every CPU measured: on a Zen 4 EPYC 9V74
+whose VM hid AVX-512, 0.92-0.97 but 1.07 for verification, in [run
+44169300257]; 1.10-1.77 on that run's tiers that deny ADX or AVX2; 1.09 for
+signing on a Zen 3 Ryzen 9 5900XT; and up to 1.17 for verification on Arrow
+Lake, whose SHA-512 instructions VG also runs, though under load.
+
 Where s2n-bignum ships a routine in two verified variants, aarch64 runs the
 scalar `_alt` one under the plain name: on Apple's M1 and M4 and on Neoverse
 N2 it runs every curve routine rind uses in 50-98% of the time of the
@@ -609,7 +635,8 @@ aws-lc's SSE2 and AVX2 assembly, or on armv7 is portable Rust. aarch64's P256
 base point multiplication is the exception: its selection is inside
 s2n-bignum's verified `p256_scalarmulbase`.
 
-On x86_64 and aarch64, X25519 directly uses the s2n-bignum implementation.
+On x86_64 and aarch64, X25519 directly uses the s2n-bignum implementation,
+but on x86_64 CPUs with AVX-512 IFMA, which run verified-garbage's (see above).
 
 ECVRF (RFC 9381) is rind's, over the curves' code above: on edwards25519, the
 ristretto255 code's constant-time variable-point multiplication and
@@ -996,6 +1023,10 @@ HACL*'s verified Poly1305 without NEON.
 [curve25519-dalek]: https://github.com/dalek-cryptography/curve25519-dalek
 [Wycheproof]: https://github.com/C2SP/wycheproof
 [run 41550703300]: https://github.com/kixel-ai/rind/actions/runs/41550703300
+[run 43881997679]: https://github.com/kixel-ai/rind/actions/runs/43881997679
+[run 43531095881]: https://github.com/kixel-ai/rind/actions/runs/43531095881
+[run 44169300257]: https://github.com/kixel-ai/rind/actions/runs/44169300257
+[run 44171095372]: https://github.com/kixel-ai/rind/actions/runs/44171095372
 [run 43881997679]: https://github.com/kixel-ai/rind/actions/runs/43881997679
 [run 41585945720]: https://github.com/kixel-ai/rind/actions/runs/41585945720
 [run 41657617706]: https://github.com/kixel-ai/rind/actions/runs/41657617706

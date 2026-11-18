@@ -36,6 +36,36 @@ pub(crate) mod vg_ecdsa_p256_verify_adx;
 #[rustfmt::skip]
 pub(crate) mod vg_ecdsa_p256_verify_ifma;
 #[rustfmt::skip]
+pub(crate) mod vg_ed25519_comb;
+#[rustfmt::skip]
+pub(crate) mod vg_ed25519_decode_powers_adx;
+#[rustfmt::skip]
+pub(crate) mod vg_ed25519_key_pair_avx2_ifma;
+#[rustfmt::skip]
+pub(crate) mod vg_ed25519_point_decode_adx;
+#[rustfmt::skip]
+pub(crate) mod vg_ed25519_public_key_expanded_ifma;
+#[rustfmt::skip]
+pub(crate) mod vg_ed25519_r64_add_cached_ext_adx;
+#[rustfmt::skip]
+pub(crate) mod vg_ed25519_r64_double_ext_adx;
+#[rustfmt::skip]
+pub(crate) mod vg_ed25519_scalar_base_ifma;
+#[rustfmt::skip]
+pub(crate) mod vg_ed25519_scalar_mul_add;
+#[rustfmt::skip]
+pub(crate) mod vg_ed25519_scalar_reduce;
+#[rustfmt::skip]
+pub(crate) mod vg_ed25519_sign_expanded_avx2_ifma;
+#[rustfmt::skip]
+pub(crate) mod vg_ed25519_verify_avx2_ifma;
+#[rustfmt::skip]
+pub(crate) mod vg_ed25519_verify_base;
+#[rustfmt::skip]
+pub(crate) mod vg_ed25519_verify_equation_ifma;
+#[rustfmt::skip]
+pub(crate) mod vg_gf25519_r64_invert;
+#[rustfmt::skip]
 pub(crate) mod vg_keccak_absorb_scratch;
 #[rustfmt::skip]
 pub(crate) mod vg_keccak_f1600;
@@ -135,6 +165,24 @@ pub(crate) mod vg_rsa_private_crt_precomputed_ifma;
 pub(crate) mod vg_rsa_private_crt_precomputed_ifma512;
 #[rustfmt::skip]
 pub(crate) mod vg_rsa_public_precomputed_checked_ifma;
+#[rustfmt::skip]
+pub(crate) mod vg_sha512_compress_avx2;
+#[rustfmt::skip]
+pub(crate) mod vg_sha512_digest_avx2_core;
+#[rustfmt::skip]
+pub(crate) mod vg_sha512_finalize_scratch_avx2;
+#[rustfmt::skip]
+pub(crate) mod vg_sha512_init_core;
+#[rustfmt::skip]
+pub(crate) mod vg_sha512_k;
+#[rustfmt::skip]
+pub(crate) mod vg_sha512_update_scratch_avx2;
+#[rustfmt::skip]
+pub(crate) mod vg_x25519_base_ifma;
+#[rustfmt::skip]
+pub(crate) mod vg_x25519_exchange_ifma;
+#[rustfmt::skip]
+pub(crate) mod vg_x25519_ifma;
 #[rustfmt::skip]
 pub(crate) mod vg_zeroize_avx_core;
 #[rustfmt::skip]
