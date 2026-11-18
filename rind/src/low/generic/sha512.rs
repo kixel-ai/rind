@@ -4,8 +4,8 @@
 //! 64 bits.
 //!
 //! The portable backend otherwise calls HACL*'s `sha512_update`, which is
-//! fully unrolled. On Xtensa that function is about 47 KiB — several times
-//! the ESP32-S3's 16 KiB instruction cache — so every block streams its
+//! fully unrolled. On Xtensa that function is about 47 KiB, several times
+//! the ESP32-S3's 16 KiB instruction cache, so every block streams its
 //! code from flash. On that board the rolled loop takes about 0.033×
 //! main's unrolled HACL* body, about 30×. This implementation
 //! follows [`sha256`](sha256.rs): one 16-word window and an 80-round loop,
