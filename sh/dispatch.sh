@@ -333,9 +333,11 @@ stop() {
     until wait; do :; done
 }
 
-# Writes the tracked files matching a pathspec to $listed, NUL-separated.
+# Writes the files matching a pathspec to $listed, NUL-separated: untracked
+# ones too, as sh/changed.sh counts them, so a new file is linted before it is
+# staged.
 files() {
-    run git ls-files -z -- "$@" >"$listed"
+    run git ls-files -z --cached --others --exclude-standard -- "$@" >"$listed"
 }
 
 # Whether the Cargo arguments after CRATE, as sh/select.sh prints them, name

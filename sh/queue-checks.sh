@@ -41,8 +41,8 @@ touched() {
         echo "error: ${workflow[$1]} lists no pull_request paths" >&2
         exit 1
     }
-    mapfile -t specs < <(sed 's/^/:(glob)/' <<<"$specs")
-    ! git diff --quiet "$base" "$head" -- "${specs[@]}"
+    mapfile -t specs <<<"$specs"
+    ! git diff --quiet "$base" "$head" -- "${specs[@]/#/:(glob)}"
 }
 
 selected=()
@@ -71,13 +71,15 @@ fi
 : "${GH_TOKEN:?GH_TOKEN is required}"
 echo "queue-checks: waiting for ${selected[*]}"
 
-# A job named NAME, or NAME's jobs as `NAME / job`. A selected check's jobs
+# A job named NAME, or NAME's jobs as `NAME / job`, each at its latest attempt:
+# every attempt's jobs are read, since a rerun of only the failed jobs may leave
+# a passed check's result in an earlier one. A selected check's jobs
 # appear only once GitHub expands its call, after the selecting job; a check
 # that never runs leaves this waiting until the build's timeout fails the group.
 # shellcheck disable=SC2016 # A jq program, not a shell expansion.
 verdict='
-    . as $run
-    | def jobs($name): [$run.jobs[] | select(.name == $name or (.name | startswith($name + " / ")))];
+    [.jobs | group_by(.name)[] | max_by(.run_attempt)] as $latest
+    | def jobs($name): [$latest[] | select(.name == $name or (.name | startswith($name + " / ")))];
     def state($js): if $js == [] then "missing"
         elif any($js[]; .status == "completed" and .conclusion != "success") then "failed"
         elif all($js[]; .status == "completed") then "passed"
@@ -87,7 +89,7 @@ verdict='
     elif all($c[1:][]; .state == "passed") then "passed"
     else "running" end'
 names=$(for check in "${selected[@]}"; do echo "${job[$check]}"; done | jq -R . | jq -s .)
-url="$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?filter=latest&per_page=100"
+url="$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?filter=all&per_page=100"
 while :; do
     state=$(curl -sS --fail-with-body --connect-timeout 5 --max-time 30 \
         -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "$url" |
