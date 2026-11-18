@@ -217,7 +217,8 @@ about the x86_64 ChaCha20 routines rind runs, `Stream.init_verified` and
 axioms restating VG's theorems state, such as `VerifiedGarbage.Spec.Rsa`,
 which `Rind/X86_64/VgRsa.lean` imports, and `VerifiedGarbage.Spec.ChaCha20`
 with its contracts, which `Rind/VgChaCha20.lean` adapts, so a pin that
-changes them fails `admin/import-vg-models --check`.
+changes them shows the change in its diff, against which that re-pin must
+review the adaptation.
 
 ## What is proven
 

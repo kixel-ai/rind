@@ -283,7 +283,7 @@ def Img.state (i : Img) (ret : Option Nat := none) : State :=
 def ofState (start : Img) (s : State) : Img :=
   let data := Id.run do
     let mut d := start.data
-    for o in [windowBase - dataBase:windowBase - dataBase + windowLen] do
+    for o in [0:dataLen] do
       d := d.set! o (s.mem (BitVec.ofNat 64 (dataBase + o))).toNat.toUInt8
     return d
   { gpr := Id.run do

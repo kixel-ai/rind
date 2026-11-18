@@ -277,8 +277,10 @@ theorem new_spec (key : Std.Array U8 32#usize) (counter_nonce : Std.Array U8 16#
 /-! ## The cipher's VG path, `ChaCha20::cipher` -/
 
 /-- From 256 bytes, on a CPU where `new` picked a VG routine, `cipher` XORs
-RFC 8439's keystream into the buffer: VG's routines over whole blocks, and the
-kernel over the tail, from the block counter past them. -/
+RFC 8439's keystream into the buffer: VG's routines over the whole buffer,
+partial final block included, unless `len % 512` is 65 to 255, when they take
+the bytes before that remainder and the kernel takes the remainder, from the
+block counter past them. -/
 theorem cipher_spec (hu : ∃ s, VgState.uninit = ok s) (hk : Kernel) (c : low.x86_64.chacha20.ChaCha20)
     (hv : c.vg.isSome) (buffer : Slice U8) (h256 : 256 ≤ buffer.length)
     (hl : c.counter_nonce.val[0]!.val + (buffer.length + 63) / 64 ≤ 2 ^ 32) :

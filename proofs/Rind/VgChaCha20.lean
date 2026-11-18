@@ -13,8 +13,9 @@ The RFC 8439 spec of ChaCha20 in pyca/verified-garbage's (VG's)
 `Spec/ChaCha20.lean`, which VG's theorems about its streaming routines state
 their results against (`Spec/ChaCha20/Contract.lean`), at the commit
 `admin/import-vg` pins. `admin/import-vg-models` vendors both under
-`proofs/verified-garbage/`, so a pin that changes them fails its `--check`
-until this file is reviewed against the new text. VG's spec is Lean already, so the cipher's definitions
+`proofs/verified-garbage/`, so a pin that changes them shows the change in its
+diff, and that re-pin must review this file against the new text: no check
+compares the two. VG's spec is Lean already, so the cipher's definitions
 are its text. Those over memory read the streaming state's 768 bytes `st`
 instead: VG's `m (p + i)`, for the state at `p`, is `st[i]!`, and its
 little-endian `Mem.read` and `Mem.readW` read `st` from an offset. The
