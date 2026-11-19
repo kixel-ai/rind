@@ -17,6 +17,7 @@ import Rind.Aarch64.AesModesApi
 import Rind.Aarch64.MlKemCoding
 import Rind.Aarch64.GhashPmull
 import Rind.Aarch64.AesGcm
+import Rind.Aarch64.VgChaCha20Poly1305
 open rind.aarch64
 
 /-!
@@ -40,6 +41,9 @@ AES-GCM's counter blocks and its `tagged_from` and `tagged` on short messages
 with the crypto extension's key, rest on no axiom, only on the hand model in
 `Rind.Aarch64.AesGcmModel`.
 ML-KEM's decompression and message coding rest on no axiom.
+ChaCha20-Poly1305's one pass on SVE2 rests on the axioms restating
+pyca/verified-garbage's theorems for its routines in
+`Rind.Aarch64.VgChaCha20Poly1305`.
 A change here is a change to the trust base.
 -/
 
@@ -829,3 +833,17 @@ A change here is a change to the trust base.
 /-- info: 'rind.aarch64.tagged_open_short_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms tagged_open_short_spec
+
+/-- info: 'rind.aarch64.chacha20_poly1305_seal_sve2_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ vg_chacha20_poly1305_seal_sve2_spec] -/
+#guard_msgs in
+#print axioms chacha20_poly1305_seal_sve2_spec
+
+/-- info: 'rind.aarch64.chacha20_poly1305_open_sve2_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ vg_chacha20_poly1305_open_sve2_spec] -/
+#guard_msgs in
+#print axioms chacha20_poly1305_open_sve2_spec

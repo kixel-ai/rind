@@ -275,6 +275,18 @@ are not vendored, so a re-pin compares them at VG's new commit. No theorem rests
 on them yet: the ✓ also needs rind's glue in `mid/mlkem.rs` proven, and its
 fallback to rind's arithmetic.
 
+`Rind/Aarch64/VgChaCha20Poly1305.lean` restates VG's theorems about the
+aarch64 SVE2 ChaCha20-Poly1305 routines rind runs, `seal_framed` and
+`open_framed` at the SVE2 variant, as one axiom per wrapper in
+`low::aarch64::chacha20poly1305`, over VG's AEAD spec,
+`VerifiedGarbage.Spec.ChaCha20Poly1305` with its ChaCha20 and Poly1305
+specs, which `Rind/VgChaCha20Poly1305.lean` imports and proves is
+`Rind/Spec.lean`'s, so a re-pin that changes the spec fails there. Each axiom
+states only what the wrapper returns, not VG's wipe of its stack scratch or
+what the routine may leak. The contracts they restate, VG's
+`Spec/ChaCha20Poly1305/Contract.lean`, are not vendored, so a re-pin
+compares them at VG's new commit.
+
 ## What is proven
 
 X25519 on x86_64 and aarch64, from the agreement API's `PrivateKey` to
@@ -1083,6 +1095,26 @@ and Poly1305 passes, which the model leaves opaque. `AeadDispatch` models
 `Rind/ChaCha20Poly1305Test.lean` checks `Rind/Spec.lean`'s transliterations
 against RFC 8439's and draft-irtf-cfrg-xchacha-03's test vectors.
 
+ChaCha20-Poly1305's one pass on aarch64 CPUs with SVE2, from
+`low::aarch64::chacha20poly1305`'s `seal` and `open` down to
+pyca/verified-garbage's SVE2 routines, in
+`Rind/Aarch64/VgChaCha20Poly1305.lean`:
+
+- `chacha20_poly1305_seal_sve2_spec`: the data becomes RFC 8439 section 2.8's
+  ciphertext, and the tag is its tag over the AAD and it;
+- `chacha20_poly1305_open_sve2_spec`: the result is whether RFC 8439's tag
+  over the AAD and the ciphertext is the one given, leaving the plaintext in
+  place if it is and zeros if not.
+
+They rest on the axioms `vg_chacha20_poly1305_seal_sve2_spec` and
+`vg_chacha20_poly1305_open_sve2_spec`, which restate VG's theorems, and
+assume the CPU-feature check finds SVE2. No length bound is needed: VG's
+spec and `Rind/Spec.lean`'s both wrap the 32-bit block counter, which the
+AEAD API stops short of. The glue above them, the AEAD API and HChaCha20
+included, is the same on every aarch64 CPU, and
+[the aarch64 ChaCha20-Poly1305 quest](/quest/m4/verified/chacha20-poly1305-aarch64.md)
+proves it, so the ✓ on SVE2 CPUs waits on that quest.
+
 ChaCha20 on x86_64, at every length, from `cipher::ChaCha20` down to
 pyca/verified-garbage's AVX2 and AVX-512 VL routines, rind's two-block AVX2
 kernel, and HACL*'s rounds, in `Rind/X86_64/ChaCha20Cipher.lean`:
@@ -1309,7 +1341,11 @@ proof after those.
   the AES-GCM proof, on x86_64 alone; `Rind/Aarch64/{AesGcmModel,GhashPmull}.lean`,
   aarch64's hand model and its PMULL GHASH proof; `Rind/X86_64/GcmKey.lean`, the hand model
   of `aead::gcm::Key` and its proofs; `Rind/X86_64/ChaCha20Poly1305.lean`, the
-  ChaCha20-Poly1305 and XChaCha20-Poly1305 proof above aws-lc's routines.
+  ChaCha20-Poly1305 and XChaCha20-Poly1305 proof above aws-lc's routines;
+  `Rind/VgChaCha20Poly1305.lean`, the proof that pyca/verified-garbage's
+  ChaCha20-Poly1305 spec is `Rind/Spec.lean`'s, and
+  `Rind/Aarch64/VgChaCha20Poly1305.lean`, the aarch64 one pass over its SVE2
+  routines.
 - `Rind/Rsa.lean` and `Rind/RsaLemmas.lean`: RFC 8017's verification,
   transliterated, and its lemmas; `Rind/X86_64/{RsaBytes,RsaMont,RsaPublic,RsaKey,RsaVerify,RsaPss}.lean`:
   the RSA verification proof, on x86_64 alone, and
