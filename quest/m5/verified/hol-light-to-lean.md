@@ -12,7 +12,7 @@ Decided with the maintainer on 2026-11-18 (/quest-plan): ✅ port the existing H
 - What the fork of s2n-bignum still carries for rind's own proofs, such as the x86 model additions, the AArch32 model, and `common/chacha20poly1305.ml`, leaves with the last proof that needs it. Its upstream code and theorems rind imports stay.
 - armv7's proofs run on the fork's AArch32 model. VG has an ARMv7 model too, but rind vendors only its x86_64 and aarch64 models: vendor ARMv7's through `admin/import-vg-models` and cosimulate it against qemu-arm, as `admin/prove cosim` does today.
 - A routine the trial's PR and the maintainer kept in HOL Light is ported here too: the exceptions last only until this port, so nothing needs `admin/prove hol-light` once it goes. armv7's proofs are among them.
-- Keep CI's checks as the jobs go: move `admin/prove bytes`, today a step of `hol-light-aarch64`, to a job that stays, and retire `admin/prove cosim` and its job with the AArch32 model, once VG's cosimulation covers armv7.
+- Keep CI's checks as the jobs go: move `admin/prove bytes`, today a step of `hol-light-aarch64`, to a job that stays, and retire `admin/prove cosim` and its job only once no proof rests on the AArch32 model or the fork's x86 additions it also checks, and VG's cosimulation covers armv7.
 - Retire each routine's dedicated constant-time harness as its leakage contract lands, as the trial decided.
 
 ## Required

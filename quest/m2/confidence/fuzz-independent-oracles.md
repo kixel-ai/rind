@@ -11,7 +11,7 @@ Decided with the maintainer on 2026-11-18 (/quest-plan): ✅ RustCrypto, with li
 - This replaces what cryptofuzz gave aws-lc: guidovranken/cryptofuzz is gone, OSS-Fuzz disabled its project on 2026-08-20, and MozillaSecurity's fork has no Rust modules ([the OSS-Fuzz quest](/quest/m4/oss-fuzz.md) records that cryptofuzz is not planned again without a maintained upstream).
 - Take the oracle choices from [the differential-test quest](/quest/m2/confidence/independent-oracles.md); a target can share its per-primitive comparison helpers if that is simpler. Work in either order.
 - Where an oracle refuses inputs aws-lc-rs accepts, or the reverse, follow `AGENTS.md`: aws-lc-rs decides behavior, and the independent oracle checks only the values both accept.
-- `vrf-rfc9381`, `akd_core`, `voprf`, and `blind-rsa-signatures` already serve as the differential tests' references for the three targets that compare rind with itself.
+- `vrf-rfc9381`, `akd_core`, `voprf`, and `blind-rsa-signatures` already serve as the differential tests' references for the three targets that compare rind with itself. On armv7 and the portable backend, `voprf`'s NIST suites run fiat-crypto's field arithmetic as rind does, so there the OPRF target uses the differential-test quest's `num-bigint` reference for those groups.
 - Rerun each target's corpus on every tier, as `sh/fuzz-replay.sh` does, and note in the PR any growth in run time.
 
 ## Related
