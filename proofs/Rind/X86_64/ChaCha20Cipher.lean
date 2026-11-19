@@ -5,19 +5,19 @@ open Aeneas Aeneas.Std Result rind.spec
 # `cipher::ChaCha20` on x86_64, at every length
 
 `ChaCha20::cipher` picks one of four routines by the CPU and the buffer's
-length: pyca/verified-garbage's (VG's) from 256 bytes where the CPU has AVX2,
-with rind's two-block kernel over a remainder of 65 to 255 bytes after the
-last whole 512-byte group;
-the kernel alone from 65 bytes; aws-lc's `ChaCha20_ctr32_ssse3_4x` from 129
-bytes where the CPU has SSSE3 but not AVX2; and HACL*'s rounds, in rind's
-loop, otherwise. `Rind.X86_64.VgChaCha20` proves VG's path over its imported
+length: where `new` picked a VG routine (the CPU-feature checks found AVX2 or
+AVX-512 VL), pyca/verified-garbage's (VG's) from 256 bytes, with rind's
+two-block kernel over a remainder of 65 to 255 bytes after the last whole
+512-byte group, and the kernel alone from 65 bytes; where it picked none but
+found SSSE3, aws-lc's `ChaCha20_ctr32_ssse3_4x` from 129 bytes; and HACL*'s
+rounds, in rind's loop, otherwise. `Rind.X86_64.VgChaCha20` proves VG's path over its imported
 theorems, `Rind.X86_64.ChaCha20Avx2` the kernel, and this file HACL*'s loop,
 `cipher`, and the API's `apply_keystream`, at every length.
 
 aws-lc's SSSE3 routine has no proof yet, so the theorems take its contract as
 the hypothesis `Ssse3`, which [the x86_64 cipher
-quest](/quest/m4/verified/chacha20-poly1305-x86/cipher.md) is to prove. A CPU
-with AVX2 never runs it.
+quest](/quest/m4/verified/chacha20-poly1305-x86/cipher.md) is to prove. A call
+where `new` picked a VG routine never runs it.
 -/
 
 namespace rind.x86_64.generic

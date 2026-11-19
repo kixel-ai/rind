@@ -952,8 +952,8 @@ ChaCha20 on x86_64, at every length, from `cipher::ChaCha20` down to
 pyca/verified-garbage's AVX2 and AVX-512 VL routines, rind's two-block AVX2
 kernel, and HACL*'s rounds, in `Rind/X86_64/ChaCha20Cipher.lean`:
 
-- `chacha20_apply_keystream`, on a CPU with AVX2, and
-  `chacha20_apply_keystream_ssse3`, on any: a buffer that needs more blocks
+- `chacha20_apply_keystream`, where the CPU-feature checks find AVX2 or
+  AVX-512 VL, and `chacha20_apply_keystream_ssse3`, on any: a buffer that needs more blocks
   than remain before the 32-bit block counter wraps is refused with
   `WrongLength` and left as it is, and otherwise it becomes RFC 8439's
   encryption of it under the key, the block counter, and the nonce.

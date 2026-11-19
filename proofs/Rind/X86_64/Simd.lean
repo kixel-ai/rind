@@ -264,8 +264,8 @@ def core.core_arch.x86.avx._mm256_set_epi8
     e21.bv ++ e20.bv ++ e19.bv ++ e18.bv ++ e17.bv ++ e16.bv ++ e15.bv ++ e14.bv ++ e13.bv ++ e12.bv ++
     e11.bv ++ e10.bv ++ e9.bv ++ e8.bv ++ e7.bv ++ e6.bv ++ e5.bv ++ e4.bv ++ e3.bv ++ e2.bv ++ e1.bv ++ e0.bv)
 
-/-- `_mm256_extract_epi32::<INDEX>`, `VPEXTRD` after `VEXTRACTI128`: the
-32-bit lane bits 0 to 2 of `INDEX` select. -/
+/-- `_mm256_extract_epi32::<INDEX>`: the 32-bit lane `INDEX` selects. Rust
+accepts only 0 to 7; the model reads `INDEX`'s low three bits. -/
 def core.core_arch.x86.avx._mm256_extract_epi32 (INDEX : Std.I32) (a : core.core_arch.x86.__m256i) :
     Result Std.I32 :=
   ok ⟨lane32x8 a (INDEX.bv.toNat % 8)⟩
