@@ -24,7 +24,7 @@
 //! at every length the block counter covers on those and HACL*'s rounds, taking the aws-lc SSSE3
 //! routine's contract as the hypothesis `Ssse3`. That assembly is not formally
 //! verified: its correctness rests on rind's tests of it against HACL*'s
-//! rounds at every length to 1700 bytes, and on its use in OpenSSL,
+//! rounds at each length from 129 to 1700 bytes, and on its use in OpenSSL,
 //! BoringSSL, and aws-lc.
 
 use core::arch::x86_64::*;
