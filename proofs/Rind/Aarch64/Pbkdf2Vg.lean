@@ -17,7 +17,9 @@ own, not one `admin/prove` writes from x86_64's.
 Beyond `Rind.Aarch64.Pbkdf2`'s premises, the theorems on VG's branch take the
 iteration count to be positive, which its `NonZeroU32` holds and the
 translation's `U32` forgets; `verify` takes that `zeroise`, which only wipes
-its slice, returns.
+its slice, returns. `secret_new_spec` also takes that the opaque CPU check
+returns, whatever it finds, and proves the key `Secret::new` returns on
+either branch, not which branch it picks.
 -/
 
 namespace rind.aarch64.kdf
@@ -453,8 +455,9 @@ def SecretOf (a : high.hmac.Algorithm) (P : List Byte) : high.pbkdf2.Secret → 
   | .Rind k => KeyOf a P k
   | .Vg alg key => alg = a ∧ VgKeyOf a P key
 
-/-- `Secret::new` keys `secret` under `algorithm`'s HMAC, on VG's routine
-where the CPU runs it and on rind's loop otherwise. -/
+/-- `Secret::new` keys `secret` under `algorithm`'s HMAC, on whichever of
+VG's routine and rind's loop it picks, given that the CPU check returns; it
+does not prove which it picks. -/
 theorem secret_new_spec (algorithm : high.pbkdf2.Algorithm) (a : high.hmac.Algorithm)
     (ha : algorithm.hmac = a) (hv : algorithm.vg = vgAlg a) (hr : RunsHmac a)
     (hcpu : ∃ o, low.aarch64.cpu.HaveCryptoExt.check = ok o) (secret : Slice U8)

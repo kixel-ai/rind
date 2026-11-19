@@ -22,12 +22,18 @@ iteration count. VG's contract (`VG.Spec.Hmac.Instance.pbkdf2Contract`, at
 takes a positive iteration count, which the wrapper's `NonZeroU32` holds and
 the translation's `U32` forgets, so each axiom takes it back as `hc`; and an
 output of at most `2^32 - 1` digests, which the wrapper asserts and each axiom
-takes as `hl`. The rest of its precondition holds for every call safe Rust
-makes: the output, which the routine writes, is a `&mut` borrow distinct from
-every other argument, so it overlaps neither them, the return address, nor
-the stack below it; no slice wraps the address space; and a `Pbkdf2` naming a
-hash exists only once its constructor has found the instructions that hash's
-routine runs. A slice's length is its own, which no call changes.
+takes as `hl`. It also allows an empty output, which RFC 8018 §5.2 does
+not, as VG's `pbkdf2Hmac` gives the empty key for it; `Key::derive` refuses
+one before any call. The rest of its precondition holds for every call safe
+Rust makes: the output, which the routine writes, is a `&mut` borrow distinct
+from every other argument, so it overlaps neither input; no buffer, the
+password, the salt, or the output, overlaps the stack below the stack
+pointer that VG reserves for the routine's frames, since each is a live Rust
+object the caller holds and AAPCS64 keeps those at or above the caller's
+stack pointer, while the return address is in `x30`, not memory; no slice
+wraps the address space; and a `Pbkdf2` naming a hash exists only once its
+constructor has found the instructions that hash's routine runs. A slice's
+length is its own, which no call changes.
 -/
 
 namespace rind.aarch64
@@ -138,7 +144,8 @@ theorem pbkdf2Hmac_eq (a : high.hmac.Algorithm) (P S : List Byte) (c L : Nat)
   simp only [show ¬ (2 ^ 32 - 1) * tagLen a < L by omega, ite_false]
 
 /-- `Pbkdf2::derive` with `a`'s routine writes RFC 8018's PBKDF2 under HMAC
-with `a`'s hash. -/
+with `a`'s hash, and nothing for an empty output, which VG's contract allows
+and RFC 8018 does not. -/
 theorem vg_derive_spec (a : high.hmac.Algorithm) (password salt : Slice U8) (c : U32)
     (out : Slice U8) (hc : 0 < c.val) (hl : out.length ≤ (2 ^ 32 - 1) * tagLen a) :
     low.aarch64.pbkdf2_vg.Pbkdf2.derive (vgHash a) password salt c out ⦃ r =>

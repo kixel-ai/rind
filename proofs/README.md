@@ -537,13 +537,14 @@ and RFC 8018 as `Rind/HashSpec.lean` transliterates them:
   `Secret::derive` and `Secret::verify` on rind's loop;
 - `kdf.secret_new_spec`, `kdf.secret_derive_spec`, `kdf.secret_verify_spec`
   (`Rind/Aarch64/Pbkdf2Vg.lean`, aarch64 only): `Secret::new`, which keys
-  pyca/verified-garbage's routine through `mid::pbkdf2_vg` where the CPU has
-  the instructions it takes, keeping HMAC's key, the secret or its hash past
-  a block, and rind's loop otherwise, and `Secret::derive` and
-  `Secret::verify` on either, from `Rind/Aarch64/VgPbkdf2.lean`'s axioms. VG's
-  branch also takes the iteration count to be positive, which its
-  `NonZeroU32` holds and the translation forgets, and that `low::zeroise`
-  returns. Only aarch64 translates `mid::pbkdf2_vg`; the other targets'
+  pyca/verified-garbage's routine through `mid::pbkdf2_vg`, keeping HMAC's
+  key, the secret or its hash past a block, or rind's loop, proven to key the
+  secret on whichever it picks but not that it picks by the CPU's
+  instructions, and assuming the opaque crypto-extension check returns,
+  whatever it finds; and `Secret::derive` and `Secret::verify` on either,
+  from `Rind/Aarch64/VgPbkdf2.lean`'s axioms. VG's branch also takes the
+  iteration count to be positive, which its `NonZeroU32` holds and the
+  translation forgets, and that `low::zeroise` returns. Only aarch64 translates `mid::pbkdf2_vg`; the other targets'
   second pass leaves it opaque, as no CPU of theirs runs it.
 
 HKDF's `From<Okm>` conversions, each filling the key's length of HKDF-Expand
