@@ -10,12 +10,13 @@ pyca/verified-garbage's (VG's) RFC 8439 spec, `VerifiedGarbage.Spec.ChaCha20`,
 which VG's theorems about its streaming routines state their results against
 (`Spec/ChaCha20/Contract.lean`), and which `admin/import-vg-models` vendors
 byte for byte at the commit `admin/import-vg` pins. The theorems here prove
-what rind's proof of the routines' Rust needs, over VG's own definitions, so a
-re-pin that changes them in a way these break fails here: that the keystream VG's `init` sets up,
-XORed into a message, is `Rind.Spec`'s `chacha20.encrypt`; that the state
-holds as many bytes of keystream as its count says; and that VG's view of the
-streaming state reads only its 768 bytes, so what VG's theorems say of the
-state at one address holds wherever memory holds those bytes.
+what rind's proof of the routines' Rust needs: that the keystream VG's `init`
+sets up, XORed into a message, is `Rind.Spec`'s `chacha20.encrypt`; that the
+state holds as many bytes of keystream as its count says; and that VG's view
+of the streaming state reads only its 768 bytes, so what VG's theorems say of
+the state at one address holds wherever memory holds those bytes. They are
+over VG's own definitions, so a re-pin that changes those in a way these
+proofs cannot absorb fails here.
 -/
 
 namespace rind.spec.vg
