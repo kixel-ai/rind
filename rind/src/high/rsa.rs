@@ -22,7 +22,7 @@ pub(crate) const MAX_PKCS8_LEN: usize = SigningKey::MAX_PKCS1_BUFFER_LEN + 64;
 /// The algorithms an RSA key's `SubjectPublicKeyInfo` or PKCS#8 may name,
 /// all for the same key, as aws-lc takes them: `rsaEncryption`, RFC 4055's
 /// `id-RSAES-OAEP`, and X.509's `id-ea-rsa`.
-static KEY_ALGORITHMS: [&asn1::ObjectId; 3] = [
+pub(crate) static KEY_ALGORITHMS: [&asn1::ObjectId; 3] = [
     &asn1::oid::rsaEncryption,
     &asn1::oid::id_RSAES_OAEP,
     &asn1::oid::id_ea_rsa,
@@ -1022,6 +1022,73 @@ mod tests {
             for test in group.tests() {
                 assert_ne!(acvp_verify(&group, test), Some(false));
             }
+        }
+    }
+
+    // Where the CPU runs pyca/verified-garbage's IFMA routines, they agree
+    // with rind's own arithmetic on every fixture key, each size and shape
+    // of prime, for edge and random inputs, and the public operation for
+    // exponents of each size it takes.
+    #[cfg(rind_backend = "x86_64")]
+    #[test]
+    fn ifma_matches_rind() {
+        let keys = [
+            SigningKey::from_pkcs1_der(include_bytes!("rsa/rsa2048.der")),
+            SigningKey::from_pkcs1_der(include_bytes!("rsa/rsa2048-q-above-p.der")),
+            SigningKey::from_pkcs8_der(include_bytes!("rsa/rsa2049.pkcs8.der")),
+            SigningKey::from_pkcs8_der(include_bytes!("rsa/rsa2050.pkcs8.der")),
+            SigningKey::from_pkcs8_der(include_bytes!("rsa/rsa2056.pkcs8.der")),
+            SigningKey::from_pkcs1_der(include_bytes!("rsa/rsa2086-unbalanced.der")),
+            SigningKey::from_pkcs8_der(include_bytes!("rsa/rsa2560.pkcs8.der")),
+            SigningKey::from_pkcs1_der(include_bytes!("rsa/rsa3072.der")),
+            SigningKey::from_pkcs1_der(include_bytes!("rsa/rsa4096.der")),
+            SigningKey::from_pkcs1_der(include_bytes!("rsa/rsa6144.der")),
+            SigningKey::from_pkcs1_der(include_bytes!("rsa/rsa8192.der")),
+        ];
+        let mut drbg = HmacDrbg::<hash::Sha256>::new(b"ifma_matches_rind", b"", b"");
+        let (mut public_ran, mut crt_ran, mut crt_3072) = (0, 0, false);
+        let mut cpu = false;
+        for key in keys {
+            let key = key.unwrap();
+            let n = key.0.public_key().n;
+            cpu |= crate::low::RsaIfma::check(&n, 65537).is_some();
+            let k = n.len_bytes();
+            let n_1 = n.sub(&PosInt::one());
+            let mut inputs = vec![PosInt::zero(), PosInt::one(), n_1];
+            for _ in 0..8 {
+                let mut bytes = vec![0; k - 1];
+                drbg.generate(&mut bytes, b"");
+                inputs.push(secret_int(&bytes));
+            }
+            for e in [3, 65537, (1 << 33) - 1, 0x1_2345_6789 | 1] {
+                let public = {
+                    let _entry = Entry::new_secret();
+                    rsa_pub::RsaPublicKey::new(n.clone(), e).unwrap()
+                };
+                for c in &inputs {
+                    let Some([got, want]) = public.public_op_both(c) else {
+                        continue;
+                    };
+                    assert!(got.pub_equals(&want), "{k}-byte modulus, e = {e}");
+                    public_ran += 1;
+                }
+            }
+            for c in &inputs {
+                let Some([got, want]) = key.0.crt_both(c) else {
+                    continue;
+                };
+                assert!(got.pub_equals(&want), "{k}-byte modulus");
+                crt_ran += 1;
+                crt_3072 |= k == 384;
+            }
+        }
+        if cpu {
+            // The 2048-, 3072-, and 4096-bit keys, and the 2048-bit one whose
+            // q is above p, each with e = 65537 alone, for the public
+            // operation; for the CRT too, but for the 3072-bit key on CPUs
+            // without AVX512_FP16.
+            assert_eq!(public_ran, 4 * 11);
+            assert_eq!(crt_ran, (3 + usize::from(crt_3072)) * 11);
         }
     }
 
