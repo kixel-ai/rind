@@ -2,7 +2,7 @@
 
 ## Goal
 
-Each primitive's differential test in `rind/tests/crosschecks.rs` compares rind with an implementation that shares no code with the path rind runs on that tier, besides aws-lc-rs. `AGENTS.md`'s testing rule requires it, and TESTING.md and AUDIT.md say which oracle checks each path.
+Each primitive's differential test in `rind/tests/crosschecks.rs` compares rind with an implementation that shares no code with the path rind runs on that tier, besides aws-lc-rs. `AGENTS.md`'s testing rule, reworded by this quest as the Plan says, requires it, and TESTING.md and AUDIT.md say which oracle checks each path.
 
 ## Plan
 
