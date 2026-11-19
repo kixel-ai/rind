@@ -472,12 +472,19 @@
             ];
           };
 
-          # Cargo looks up an external subcommand in $CARGO_HOME/bin before PATH,
-          # unless that directory is already on PATH. A host rustup leaves
-          # cargo-fmt and cargo-clippy there, which then shadow this shell's.
-          # See UPSTREAM.md, "Cargo runs $CARGO_HOME/bin's subcommands before PATH's".
-          dev-cargo-home = ''
-            . ${./sh/dev-cargo-home.sh}
+          # Cargo runs an external subcommand from $CARGO_HOME/bin before
+          # PATH unless that directory is on PATH, so a host rustup's
+          # cargo-fmt and cargo-clippy there would shadow this shell's.
+          # Appending it keeps host `cargo install` tools reachable behind
+          # the shell's own. See UPSTREAM.md, "Cargo runs $CARGO_HOME/bin's
+          # subcommands before PATH's".
+          dev-cargo-path = ''
+            cargo_bin=''${CARGO_HOME:-$HOME/.cargo}/bin
+            case ":$PATH:" in
+              *":$cargo_bin:"*) ;;
+              *) export PATH="$PATH:$cargo_bin" ;;
+            esac
+            unset cargo_bin
           '';
 
           mkDevShell =
@@ -485,7 +492,7 @@
             pkgs.mkShell (
               args
               // {
-                shellHook = dev-cargo-home + (args.shellHook or "");
+                shellHook = dev-cargo-path + (args.shellHook or "");
               }
             );
 
