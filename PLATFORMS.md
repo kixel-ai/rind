@@ -46,6 +46,8 @@ qemu. iOS devices' code is only built.
   its integer assembly, and ChaCha20 [HACL\*]'s verified rounds.
   Without `adx`, as on Haswell, AMD's cores before Zen, and virtual CPUs
   that hide it, [s2n-bignum]'s `_alt` routines replace those that use it,
+  P-384's `d·G`, for key generation and ECDSA signing, runs
+  [verified-garbage]'s baseline routine and its ECDSA verification rind's own,
   and [aws-lc]'s Montgomery multiplication replaces its Karatsuba routines
   for RSA; with `avx2` there, as on Haswell, RSA-2048 signing runs aws-lc's
   RSAZ exponentiation, and Ed25519 verification's multiplication a port of
