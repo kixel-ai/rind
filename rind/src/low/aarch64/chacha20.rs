@@ -516,6 +516,7 @@ mod tests {
 
             let mut c = ChaCha20::new(&key, &nonce);
             let mut got = vec![0x5a; len + 200];
+            ct::secret_slice(&got);
             let (first, second) = got.split_at_mut(len);
             c.cipher(first);
             c.cipher(second);
@@ -524,6 +525,7 @@ mod tests {
 
             for (name, path) in paths() {
                 let mut got = vec![0x5a; len];
+                ct::secret_slice(&got);
                 path(&base, &mut got);
                 ct::public_slice(&got);
                 assert_eq!(got, want[..len], "{name}, {len} bytes");
