@@ -313,8 +313,9 @@ theorem neg_of_same_x (x y1 y2 : Nat) (h1 : p384OnCurve (some (x, y1))) (h2 : p3
 
 theorem val_inj (a b : ZMod p384) : a.val = b.val ↔ a = b := ⟨fun h => ZMod.val_injective _ h, fun h => h ▸ rfl⟩
 
-/-- `public_add_affine`: the sum, for any points, which settles equal and
-opposite points before `p384_montjmixadd`, whose contract excludes them. -/
+/-- `public_add_affine`: the sum, for any points, which settles points
+sharing x, equal or opposite, before `p384_montjmixadd`, whose contract
+excludes only equal points. -/
 @[step]
 theorem add_affine_spec (_hr : Runs) (pt : mid.p384.JacobianMontPoint) (p : mid.p384.AffineMontPoint)
     (P1 P2 : nist.Point) (hc1 : p384OnCurve P1) (hc2 : p384OnCurve P2) (h1 : jrep P1 pt)
