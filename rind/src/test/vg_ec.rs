@@ -2,7 +2,7 @@
 
 //! Wycheproof's P-256 and P-384 vectors for pyca/verified-garbage's routines,
 //! which rind's other tests reach only through its own choice of variant and,
-//! for P-384 on aarch64, only on a key's first verification.
+//! for P-384 on aarch64, only until a key's multiples are ready.
 
 use super::{Expected, wycheproof, wycheproof_groups};
 use crate::low::ct;
