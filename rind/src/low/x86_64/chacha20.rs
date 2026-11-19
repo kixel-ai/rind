@@ -20,11 +20,12 @@
 //! and proves the glue around them, `proofs/Rind/X86_64/ChaCha20Avx2.lean`
 //! proves the kernel against RFC 8439 over Lean models of its intrinsics,
 //! which `admin/prove` tests against the CPU, and
-//! `proofs/Rind/X86_64/ChaCha20Cipher.lean` proves `cipher` at every length
-//! on those and HACL*'s rounds. The aws-lc assembly is not formally verified:
-//! its correctness rests on rind's tests of it against RFC 8439, Wycheproof,
-//! aws-lc-rs, and HACL*'s rounds, and on its use in OpenSSL, BoringSSL, and
-//! aws-lc.
+//! `proofs/Rind/X86_64/ChaCha20Cipher.lean` proves the bytes `cipher` writes
+//! at every length on those and HACL*'s rounds, taking the aws-lc SSSE3
+//! routine's contract as the hypothesis `Ssse3`. That assembly is not formally
+//! verified: its correctness rests on rind's tests of it against RFC 8439,
+//! Wycheproof, aws-lc-rs, and HACL*'s rounds, and on its use in OpenSSL,
+//! BoringSSL, and aws-lc.
 
 use core::arch::x86_64::*;
 use core::mem::MaybeUninit;

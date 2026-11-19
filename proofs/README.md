@@ -974,7 +974,8 @@ admits the call, constructing the VG state succeeds (the model leaves
 `VgState::uninit` opaque), and the CPU-feature checks find AVX2 or AVX-512 VL.
 Without AVX2, `cipher` runs aws-lc's `ChaCha20_ctr32_ssse3_4x` from 129
 bytes, which no proof covers yet, so `chacha20_apply_keystream_ssse3` assumes
-its contract, `Ssse3`, and `RunsCipher`, the CPU facts without AVX2;
+its contract, `Ssse3`, and `RunsCipher`: the entry guard admits the call,
+a VG state can be made, and the CPU-feature checks return, whatever they find;
 [the x86_64 cipher quest](/quest/m4/verified/chacha20-poly1305-x86/cipher.md)
 owns that proof.
 
