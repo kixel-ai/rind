@@ -8,8 +8,10 @@ name: prove
 # intrinsic models with are what an aarch64 CPU computes, and translates
 # rind's Rust under proof to Lean and checks the proofs in `proofs/`. Too slow
 # for `just ci`, so it runs nightly and on pull requests that change rind's
-# source, the proofs, the checks, rind's fork of s2n-bignum, or the flake
-# that pins their tools.
+# source or build, the proofs, the checks, rind's fork of s2n-bignum, or the
+# flake that pins their tools. A pull request skips each HOL Light target's
+# proofs, and the cosimulation, when main's nightly passed them on the same
+# inputs, as `.github/actions/prove` describes.
 on:
   schedule:
     - cron: "0 18 * * *"
@@ -18,6 +20,11 @@ on:
     branches: [main]
     paths:
       - rind/src/**
+      - rind/Cargo.toml
+      - rind/build.rs
+      - Cargo.toml
+      - Cargo.lock
+      - .cargo/config.toml
       - proofs/**
       - admin/prove
       - admin/prove-bytes
@@ -34,6 +41,8 @@ on:
       - flake.lock
       - thirdparty/s2n-bignum/**
       - .github/workflows/prove.yml
+      - .github/actions/nix/**
+      - .github/actions/prove/**
 
 permissions:
   contents: read
@@ -67,8 +76,9 @@ jobs:
       - name: Bytes
         run: nix develop .#hol-light --command admin/prove bytes
 
-      - name: Prove
-        run: nix develop .#hol-light --command admin/prove hol-light aarch64
+      - uses: ./.github/actions/prove
+        with:
+          check: hol-light aarch64
 
   hol-light-x86_64:
     runs-on: ubuntu-24.04
@@ -80,8 +90,9 @@ jobs:
 
       - uses: ./.github/actions/nix
 
-      - name: Prove
-        run: nix develop .#hol-light --command admin/prove hol-light x86_64
+      - uses: ./.github/actions/prove
+        with:
+          check: hol-light x86_64
 
   hol-light-armv7:
     runs-on: ubuntu-24.04
@@ -93,8 +104,9 @@ jobs:
 
       - uses: ./.github/actions/nix
 
-      - name: Prove
-        run: nix develop .#hol-light --command admin/prove hol-light armv7
+      - uses: ./.github/actions/prove
+        with:
+          check: hol-light armv7
 
   cosim:
     runs-on: ubuntu-24.04
@@ -106,8 +118,9 @@ jobs:
 
       - uses: ./.github/actions/nix
 
-      - name: Cosimulate
-        run: nix develop .#hol-light --command admin/prove cosim
+      - uses: ./.github/actions/prove
+        with:
+          check: cosim
 
   # pyca/verified-garbage's code for each target against VG's Lean models,
   # on the runner's CPU and, for what it lacks, Intel SDE or qemu-aarch64.

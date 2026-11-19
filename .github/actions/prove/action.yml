@@ -1,0 +1,70 @@
+name: Prove
+description: Run an `admin/prove` check that main's nightly caches, which a pull request skips when main already passed it on the same inputs.
+
+inputs:
+  check:
+    description: The check's `admin/prove` arguments, `hol-light <arch>` or `cosim`, which `admin/prove key` takes too.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # The cache is a security boundary, so only a pull request reads it and
+    # only main writes it. A pull request looks up its key without
+    # downloading anything: an entry says main passed the check with that
+    # key's inputs, which `result_key` in `admin/prove` lists. Main's nightly
+    # and dispatched runs read nothing, so a stale or planted entry never
+    # hides a failure there, and save each key once its check passes. GitHub
+    # keeps a pull request's own saves to its own ref, out of main's and
+    # other pull requests' reach, and this saves none.
+    - name: Key
+      id: key
+      if: github.event_name == 'pull_request'
+      shell: bash
+      env:
+        CHECK: ${{ inputs.check }}
+      run: |
+        nix develop .#hol-light --command admin/prove key $CHECK
+        key=$(<".tmp/prove/keys/${CHECK// /-}")
+        echo "key=$key" >>"$GITHUB_OUTPUT"
+
+    - name: Look up
+      id: cache
+      if: github.event_name == 'pull_request'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: .tmp/prove/keys
+        key: ${{ steps.key.outputs.key }}
+        lookup-only: true
+
+    - name: Skip
+      if: steps.cache.outputs.cache-hit == 'true'
+      shell: bash
+      env:
+        CHECK: ${{ inputs.check }}
+        KEY: ${{ steps.key.outputs.key }}
+      run: echo "::notice::main passed admin/prove $CHECK on these inputs, as $KEY, so this skips it"
+
+    - name: Check
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        CHECK: ${{ inputs.check }}
+      run: nix develop .#hol-light --command admin/prove $CHECK
+
+    - name: Passed
+      id: passed
+      if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+      shell: bash
+      env:
+        CHECK: ${{ inputs.check }}
+      run: |
+        key=$(<".tmp/prove/keys/${CHECK// /-}")
+        echo "key=$key" >>"$GITHUB_OUTPUT"
+
+    - name: Save
+      if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: .tmp/prove/keys
+        key: ${{ steps.passed.outputs.key }}
