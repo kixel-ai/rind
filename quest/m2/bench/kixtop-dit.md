@@ -12,7 +12,7 @@ Kept by the maintainer on 2026-11-18 ([comment](https://github.com/kixel-ai/rind
 
 - Run `admin/bench-report collect --host kixtop`.
 - Remove the per-call sentences from `kixtop`'s note in `admin/bench-report`'s `HOSTS` and the exception from the README's sentence on Apple silicon, then `render`, which writes that note into the host page.
-- Recheck the `kixtop` SHA3-256/512 at 64 B entry in `benchmarks/gaps.toml`, which blames the toggle; triage any gap the new rows show that nobody decided.
+- Recheck the `kixtop` SHA3-256/512 at 64 B entry in `benchmarks/gaps.toml`, which blames the toggle; triage any gap the new rows show that nobody decided, then `render` again, which writes those decisions into `BENCHMARKS.md`'s gap table and the site, and confirms it accepts the edited entries.
 - The rustls rows now also run rustls' own code with DIT on. Say in the PR how they moved against the per-call run.
 
 ## Hosts
