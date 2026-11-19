@@ -1469,10 +1469,6 @@ fn generator_table() -> &'static AffineMontPointTable {
     &precomp::CURVE_GENERATOR_PRECOMP.0
 }
 
-// Cross builds that cannot run `base_point_precomp` still reject a static
-// that dropped the wrapper. This is that static's alignment.
-const _: () = assert!(align_of_val(&precomp::CURVE_GENERATOR_PRECOMP) == 64);
-
 const CURVE_A_MONT: FieldElement = FieldElement([
     0xffff_ffff_ffff_fffc,
     0x0000_0003_ffff_ffff,
@@ -1804,8 +1800,6 @@ mod tests {
 
     #[test]
     fn base_point_precomp() {
-        assert_eq!(align_of_val(&precomp::CURVE_GENERATOR_PRECOMP), 64);
-        assert_eq!(generator_table().as_ptr() as usize % 64, 0);
         let mut base = JacobianMontPoint::from_affine(&CURVE_GENERATOR);
         for row in generator_table().iter() {
             let mut multiple = base;

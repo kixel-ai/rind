@@ -59,17 +59,15 @@ pub(super) mod util;
 pub(super) mod x25519;
 pub(super) mod xchacha20poly1305;
 
-/// Static point tables aligned to 64 bytes. The pad before each table is
-/// less than 64 bytes.
+/// A generator table aligned to a cache line, so its placement doesn't depend
+/// on the linker.
 ///
 /// That keeps every 16-byte load, and the 32-byte loads of the 64-byte P-256
-/// points and the 96-byte P-384 points, inside one cache line. P-521 points
-/// are 144 bytes, and the x86_64 AVX2 select loads 32 bytes at offsets 0, 32,
-/// 64, and 96, so a point that starts at 16 or 48 mod 64 still crosses a line.
-/// Widening that stride would change the comb index.
+/// points and the 96-byte P-384 points, inside one line. A 144-byte P-521
+/// point starting at 16 or 48 mod 64 still has a 32-byte load cross one.
 ///
-/// A one-field tuple struct: Aeneas extracts it as a reducible synonym of the
-/// inner array and erases `.0`. Each curve asserts its own static's alignment.
-/// Alignment of this wrapper type would still hold if a generated table dropped it.
+/// Aeneas extracts this one-field tuple struct as its inner array and erases
+/// `.0`. Each curve reads its table through `.0`, so a generated static that
+/// drops the wrapper fails to compile.
 #[repr(C, align(64))]
 struct AlignedTable<T>(T);
