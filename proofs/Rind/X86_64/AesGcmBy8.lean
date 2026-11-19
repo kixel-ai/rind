@@ -320,19 +320,7 @@ theorem padBlocks_head (b : List U8) :
   rw [padBlocks_128 c (chunksOf_length_mem hc), List.map_map]
   rfl
 
-theorem leBytesToSeqQuad32_load (b : List U8) :
-    leBytesToSeqQuad32 (b.map (·.bv)) = (chunksOf 16 b).map loadBytes := by
-  rw [leBytesToSeqQuad32_eq, chunksOf_map, List.map_map]
-  rfl
-
 /-! ## GCTR on the whole input -/
-
-theorem chunksOf_take16 (b : List U8) : chunksOf 16 (b.take (b.length - b.length % 16)) = chunksOf 16 b := by
-  have hk : b.length - b.length % 16 = 16 * (b.length / 16) := by omega
-  have hA : (b.take (b.length - b.length % 16)).length = 16 * (b.length / 16) := by simp; omega
-  conv_rhs => rw [← List.take_append_drop (b.length - b.length % 16) b]
-  rw [chunksOf_append (by omega) _ _ _ hA, chunksOf_of_lt (l := b.drop (b.length - b.length % 16)) (by simp; omega),
-    List.append_nil]
 
 /-- `by8`'s output, the whole blocks then the last partial one, is Vale's GCTR. -/
 theorem by8_out (icb : Quad32) (alg : Algorithm) (kw : List (BitVec 32)) (b : List U8) :

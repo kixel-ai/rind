@@ -165,6 +165,18 @@ theorem length_gctrEncrypt (icb : Quad32) (p : List (BitVec 8)) (alg : Algorithm
     simp only [leQuad32ToBytes, List.length_map, List.length_range]
     omega
 
+theorem leBytesToSeqQuad32_load (b : List U8) :
+    leBytesToSeqQuad32 (b.map (·.bv)) = (chunksOf 16 b).map loadBytes := by
+  rw [leBytesToSeqQuad32_eq, chunksOf_map, List.map_map]
+  rfl
+
+theorem chunksOf_take16 (b : List U8) : chunksOf 16 (b.take (b.length - b.length % 16)) = chunksOf 16 b := by
+  have hk : b.length - b.length % 16 = 16 * (b.length / 16) := by omega
+  have hA : (b.take (b.length - b.length % 16)).length = 16 * (b.length / 16) := by simp; omega
+  conv_rhs => rw [← List.take_append_drop (b.length - b.length % 16) b]
+  rw [chunksOf_append (by omega) _ _ _ hA, chunksOf_of_lt (l := b.drop (b.length - b.length % 16)) (by simp; omega),
+    List.append_nil]
+
 /-! ## The counter block, the length block, and the tag's hash -/
 
 theorem computeIvBE_96 (hLE : Quad32) (iv : List (BitVec 8)) (h : iv.length = 12) :
