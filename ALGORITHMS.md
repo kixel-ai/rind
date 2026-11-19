@@ -26,8 +26,9 @@ CPUs with AVX2 but without SHA-NI run [OpenSSL]'s AVX2 SHA-256, and SLH-DSA's
 SHA-2 sets [SPHINCS+]'s AVX2 eight-way SHA-256. CPUs with AVX2, BMI1, BMI2,
 POPCNT, and SSSE3 run [OpenSSL]'s verified ✓ AVX2 SHA-384 and SHA-512,
 including those with the SHA512 instructions, which rind does not run. Intel
-CPUs without AVX2 run [aws-lc]'s AVX SHA-1 and SHA-256, and those without that
-whole set its verified ✓ AVX SHA-384 and SHA-512. CPUs with AVX2 but without AVX-512 run ML-KEM-768's key generation
+CPUs with AVX and SSSE3 but without AVX2 run [aws-lc]'s AVX SHA-1 and SHA-256,
+and those without that whole set its verified ✓ AVX SHA-384 and SHA-512; other
+CPUs without it run aws-lc's scalar SHA-384 and SHA-512. CPUs with AVX2 but without AVX-512 run ML-KEM-768's key generation
 and decapsulation as ML-KEM-512's, on s2n-bignum ✓ + mlkem-native ✓, and only
 its encapsulation on [verified-garbage] (see [ML-KEM](#ml-kem)). CPUs
 without AVX-512 IFMA run X25519 and Ed25519 on s2n-bignum ✓ and rind's
@@ -832,7 +833,8 @@ OpenSSL's routine for them. rind's HOL Light proof covers the AVX2 routine,
 which aws-lc leaves out: 1.18x faster than aws-lc's AVX routine on an i7-8700
 and 1.15x on Arrow Lake, and 1.47x faster than its scalar one on AMD's Zen 3.
 Without that set, aws-lc's AVX
-routine runs on Intel and its scalar routine on other CPUs, as aws-lc picks:
+routine runs on Intel CPUs with AVX and SSSE3 and its scalar routine on other
+CPUs, as aws-lc picks:
 the AVX routine is 1.1x faster than the scalar one on Intel, and 1.5x slower
 on AMD's Zen. On aarch64, its routine for the SHA-512 instructions where the CPU
 has them, and its scalar routine otherwise; on 32-bit `arm`, its NEON routine
