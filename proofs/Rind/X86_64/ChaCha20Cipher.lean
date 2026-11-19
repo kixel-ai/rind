@@ -168,11 +168,11 @@ open low.x86_64.chacha20 (VgState)
 /-! ## The dispatch, `ChaCha20::cipher` -/
 
 /-- aws-lc's `ChaCha20_ctr32_ssse3_4x`, as `cipher_ssse3_4x` calls it, XORs
-RFC 8439's keystream into the buffer for as many blocks as remain before the
-block counter wraps. -/
+RFC 8439's keystream into a nonempty buffer, as its safety contract requires,
+for as many blocks as remain before the block counter wraps. -/
 def Ssse3 : Prop :=
   ∀ (t : low.x86_64.cpu.HaveSsse3) (key : Std.Array U32 8#usize) (counter_nonce : Std.Array U32 4#usize)
-    (buffer : Slice U8),
+    (buffer : Slice U8), 0 < buffer.length →
     counter_nonce.val[0]!.val + (buffer.length + 63) / 64 ≤ 2 ^ 32 →
     low.x86_64.chacha20.cipher_ssse3_4x t key counter_nonce buffer ⦃ r =>
       bvs r.val = chacha20.encrypt (wordBytes key.val) counter_nonce.val[0]!.bv
@@ -205,7 +205,7 @@ theorem cipher_all_spec (hu : ∃ s, VgState.uninit = ok s) (c : low.x86_64.chac
       split
       · rcases hs with hs | hs
         · simp [hvg] at hs
-        · exact hs t _ _ _ hl
+        · exact hs t _ _ _ (by scalar_tac) hl
       · exact generic.cipher_spec _ _ _
   · simp only
     have h256 : ¬ 256 ≤ buffer.length := fun h => hv ⟨by simp [hvg], h⟩
