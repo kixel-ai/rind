@@ -263,6 +263,7 @@ impl<const R: usize> Shake4x<R> {
 
 /// SHAKE256 of each of `inputs`, one to four, four at once, writing the
 /// first `OUT` bytes of each, at most a block, to its item of `outputs`.
+/// Items of `outputs` past the inputs stay as they were.
 /// Each input is its `P` parts in turn, and the inputs' parts agree in
 /// length, so they absorb in place, without being copied together.
 ///
@@ -310,7 +311,7 @@ pub(crate) fn shake256_x4<const OUT: usize, const P: usize>(
     }
     permute(&mut states);
 
-    for (s, output) in states.iter().zip(outputs.iter_mut()) {
+    for (s, output) in states.iter().zip(&mut outputs[..lanes]) {
         store_bytes(s, output);
     }
 }
@@ -655,8 +656,9 @@ mod tests {
                     .iter()
                     .map(|i| [&i[..len / 3], &i[len / 3..len / 2], &i[len / 2..len]])
                     .collect();
-                let mut outputs = [[0u8; 40]; 4];
+                let mut outputs = [[0xA5u8; 40]; 4];
                 shake256_x4(&inputs, &mut outputs);
+                assert!(outputs[lanes..].iter().all(|o| *o == [0xA5; 40]));
                 for (input, output) in inputs.iter().zip(&outputs) {
                     let mut sponge = Shake256Sponge::new();
                     for part in input {

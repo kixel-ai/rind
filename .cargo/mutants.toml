@@ -247,8 +247,8 @@ exclude_re = [
   'rind/src/low/x86_64/rsaz\.rs:\d+:61: replace \+ with \* in mod_exp$',
   'rind/src/low/x86_64/sha1_mux\.rs:\d+:\d+: delete match arm Path::Shaext\(token\) in sha1_compress_padded$',
   'rind/src/low/x86_64/sha256_mux\.rs:\d+:\d+: delete match arm Path::Shaext\(token\) in sha256_finish$',
-  # The scalar arm and the four-way kernels give the same states, and the
-  # kernels ignore the unused ones when N < 4.
+  # The scalar arm and the four-way kernels give the same states in the lanes
+  # in use, and no caller reads the rest.
   'rind/src/low/aarch64/sha3_keccak_nof4_f1600\.rs:\d+:\d+: replace (match guard N == 4 with (true|false)|== with !=) in sha3_keccak_nof4_f1600$',
   'rind/src/low/x86_64/sha3_keccak_nof4_f1600\.rs:\d+:\d+: replace > with < in sha3_keccak_nof4_f1600$',
   'rind/src/low/x86_64/sha3_keccak_nof4_f1600\.rs:\d+:\d+: replace > with == in sha3_keccak_nof4_f1600$',
