@@ -812,8 +812,10 @@ open P256
 /-! ## The agreement API, `high::agreement`, through the modelled dispatch -/
 
 /-- A P-256 agreement with the peer's encoded public key: `p256Agreement` of
-this key's scalar, which `hd` holds below n, as `drawKeygen_ok` and
-`from_bytes_spec` prove of every generated and loaded key. Its fault case never happens for a scalar in [1, n) if
+this key's scalar, which `hd` holds below n, as `drawKeygen_ok` proves of a
+generated key and `from_bytes_spec` of one loaded from a 32-byte scalar; a
+PKCS#8 or SEC 1 load passes other lengths through the same range check,
+which no theorem covers yet. Its fault case never happens for a scalar in [1, n) if
 every finite point has order n, which follows from the curve's group having
 n points, a count that needs more than Mathlib proves (Hasse's bound at
 least). G's order, which the kernel checks, says nothing about the peer's

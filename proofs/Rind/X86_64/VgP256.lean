@@ -16,11 +16,13 @@ routine, which discharges the curve's facts its proof takes, such as
 routines through raw pointers to a scratch buffer, which Aeneas cannot
 translate, so each axiom is about the opaque wrapper, and covers every
 routine it may call, which all state the one contract. Their preconditions on
-memory hold for every call from safe Rust: each argument is a distinct Rust
-object, overlapping no other nor the stack. The CPU features are the token's to prove: `P256::check` passed for it, which holds BMI2, ADX, AVX, and AVX2, and AVX-512 IFMA for the variant that takes it. A routine returns 1 or 0,
+memory hold for every call from safe Rust: a routine writes only its output
+and scratch, which the wrapper owns, so they overlap neither each other, its
+inputs, nor the stack the routine reserves; its inputs may overlap. The CPU features are the token's to prove: `P256::check` passed for it, which holds BMI2, ADX, AVX, and AVX2, and AVX-512 IFMA for the variant that takes it. A routine returns 1 or 0,
 and the wrapper returns `some` or `true` where it returned 1. What a routine
-leaves in its scratch buffer and registers, which the contract leaves
-unspecified and rind does not wipe, and what it may leak, are left out.
+leaves in its scratch buffer, which the contract leaves unspecified and rind
+does not wipe, what it clears from registers, and what it may leak, are left
+out.
 
 Trusted: the restatement; that rind's `vg_*` routines are VG's at the pin,
 whose instructions and relocation targets `admin/prove vg` checks along with
