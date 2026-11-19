@@ -4881,6 +4881,7 @@ dependencies = [
  "crabgrind 0.4.0",
  "rcgen",
  "rind",
+ "rind-rcgen",
  "rind-rustls",
  "rustls",
  "rustls-pki-types",
@@ -4934,6 +4935,7 @@ dependencies = [
  "str0m",
  "str0m-aws-lc-rs",
  "time",
+ "x509-parser",
 ]
 
 [[package]]

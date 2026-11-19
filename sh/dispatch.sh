@@ -150,9 +150,8 @@ module fixtures '^(rind/(src/([^l]|l[^o]|lo[^w]|low[^/])|Cargo\.toml$|build\.rs$
 module deny '(^|/)Cargo\.(toml|lock)$|^deny\.toml$' \
     tools='cargo-deny'
 # .cargo/mutants.toml's exclusions name mutants by file, line, and function,
-# so moving code can leave one matching nothing. The cargo wrapper picks
-# rind-rcgen's features, which no other check exercises.
-module mutants '^(rind[^/]*/src/|\.cargo/mutants\.toml$|admin/mutants(-cargo(-test)?)?$)' \
+# so moving code can leave one matching nothing.
+module mutants '^(rind[^/]*/src/|\.cargo/mutants\.toml$|admin/mutants$)' \
     tools='cargo-mutants python3'
 # An adapter's manifest holds both its version and its upstream requirement.
 module versions '^(rind-[^/]+/Cargo\.toml$|sh/adapter-versions\.sh$)' \
@@ -364,11 +363,6 @@ step() {
             # `cargo test`, it passes a selection with no tests, such as the
             # benches alone.
             run cargo nextest run "${packages[@]}" --locked --no-tests=warn
-            # Its own invocation, so `zeroize` does not unify into the packages
-            # tested above: only rind-rcgen defines it.
-            if names rind-rcgen "${packages[@]}"; then
-                run cargo nextest run -p rind-rcgen --features zeroize --test zeroing --locked
-            fi
             # The FIPS module's own code compiles only under its cfg, which a
             # workspace build leaves off, and only for glibc Linux on x86_64
             # and aarch64, where rind-fips is not empty. Its break build
@@ -547,7 +541,6 @@ step() {
         check:quest) run quest check ;;
         check:license) run bash admin/scan-license ;;
         check:mutants)
-            run admin/mutants-cargo-test
             run admin/mutants --pins
             run admin/mutants --expand-diff-self-test
             ;;

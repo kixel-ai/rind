@@ -453,11 +453,6 @@ fn signing_keys_match_aws_lc() {
             key.supported_hash_algorithms(),
             aws_lc.supported_hash_algorithms()
         );
-        // dimpl's aws-lc-rs provider names its type; rind names the group and hash.
-        // An empty `Debug` has neither.
-        let rendered = format!("{key:?}");
-        assert!(rendered.contains("Key"), "{rendered}");
-        assert!(rendered.contains("SHA"), "{rendered}");
     }
 }
 

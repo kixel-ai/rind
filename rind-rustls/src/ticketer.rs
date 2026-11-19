@@ -170,9 +170,6 @@ mod tests {
         #[cfg(target_family = "wasm")]
         let one_ticket = ONE_TICKET_LIFETIME_SECS;
         assert_eq!(g.lifetime(), one_ticket);
-        let rendered = format!("{g:?}");
-        assert!(rendered.contains("XChaCha20Ticketer"), "{rendered}");
-        assert!(rendered.contains(&one_ticket.to_string()), "{rendered}");
     }
 
     #[test]

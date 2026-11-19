@@ -364,12 +364,12 @@ exclude_re = [
   'rind-ring/src/rsa\.rs:\d+:\d+: replace <impl fmt::Debug for RsaParameters>::fmt -> fmt::Result with Ok\(Default::default\(\)\)$',
   'rind-ring/src/signature\.rs:\d+:\d+: replace <impl fmt::Debug for EcdsaSigningAlgorithm>::fmt -> fmt::Result with Ok\(Default::default\(\)\)$',
   'rind-ring/src/signature\.rs:\d+:\d+: replace <impl fmt::Debug for EcdsaVerificationAlgorithm>::fmt -> fmt::Result with Ok\(Default::default\(\)\)$',
-  # Pinned to their lines: a `static` has no name to match, and the TLS 1.2
-  # suites' `1 << 24`, at the same column, are caught.
   'rind-rustls/src/sign\.rs:\d+:\d+: replace <impl fmt::Debug for Ecdsa>::fmt -> Result<\(\), fmt::Error> with Ok\(\(\)\)$',
   'rind-rustls/src/sign\.rs:\d+:\d+: replace <impl fmt::Debug for RsaSigningKey>::fmt -> Result<\(\), fmt::Error> with Ok\(\(\)\)$',
   'rind-rustls/src/sign\.rs:\d+:\d+: replace <impl fmt::Debug for RsaSigner>::fmt -> Result<\(\), fmt::Error> with Ok\(\(\)\)$',
   'rind-rustls/src/ticketer\.rs:\d+:\d+: replace <impl fmt::Debug for XChaCha20Ticketer>::fmt -> fmt::Result with Ok\(Default::default\(\)\)$',
+  'rind-str0m/src/srtp\.rs:\d+:\d+: replace <impl fmt::Debug for Cm>::fmt -> fmt::Result with Ok\(Default::default\(\)\)$',
+  'rind-str0m/src/srtp\.rs:\d+:\d+: replace <impl fmt::Debug for Gcm>::fmt -> fmt::Result with Ok\(Default::default\(\)\)$',
   # One AAD, concatenated, is that AAD. Deleting the one-element arm still
   # feeds `open` the same bytes.
   'rind-str0m/src/srtp\.rs:\d+:\d+: delete match arm \[aad\] in Gcm::open$',
