@@ -84,13 +84,35 @@ def symbols(objdump, path):
     return found
 
 
+def idents(name):
+    """The names in a symbol: the whole of an unmangled one, else each
+    length-prefixed path component of a Rust mangled one (`21sha256_compress_block`)."""
+    found = {name}
+    i = 0
+    while i < len(name):
+        j = i
+        while j < len(name) and name[j].isdigit():
+            j += 1
+        if j > i and j < len(name):
+            end = j + int(name[i:j])
+            part = name[j:end]
+            if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", part):
+                found.add(part)
+                i = end
+                continue
+        i = max(j, i + 1)
+    return found
+
+
 def pick(syms, needle):
     # Section symbols are named after the section, so `.iram1...compress_block`
-    # contains the function's name. The function or object does not.
-    hits = [item for item in syms.items() if needle in item[0] and not item[0].startswith(".")]
+    # contains the function's name. The function or object does not. Match the
+    # whole identifier: `sha256_compress_blocks`, the portable function, is a
+    # different one and linking may keep both.
+    hits = [item for item in syms.items() if needle in idents(item[0]) and not item[0].startswith(".")]
     if len(hits) != 1:
         names = ", ".join(name for name, _ in hits) or "(none)"
-        raise Fail(f"expected one symbol containing {needle}, found {names}")
+        raise Fail(f"expected one symbol named {needle}, found {names}")
     return hits[0]
 
 
