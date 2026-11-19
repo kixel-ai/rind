@@ -12,5 +12,6 @@ Decided with the maintainer on 2026-11-18 (/quest-plan): ✅ cache each HOL Ligh
 - Store the keys where a pull request from a fork cannot write them, such as an artifact or the Actions cache from `main`'s nightly run only. A pull request may read the cache but never populate it, so a malicious pull request cannot plant a passing result.
 - `admin/prove hol-light` also runs the known-answer tests of `hol_light_specs`, which no proof loads. Key each on its own spec file and what it loads, `admin/prove`, and the proof environment, or run them all on every pull request if that is cheap, so a spec-only change still tests the spec.
 - Cosim's trigger covers what can change its result: the model files, `admin/prove`'s `cosim` path, the cosimulation harness and its inputs, and its environment (`flake.nix` and `flake.lock`, which give it the `hol-light` shell and `qemu-arm`).
+- `prove.yml`'s `pull_request` paths miss build inputs that can change the proven bytes: `Cargo.lock`, `Cargo.toml`, `rind/Cargo.toml`, `rind/build.rs`, and `.cargo/**`. Add them, since the cache makes a run that changes no proof cheap.
 - The Lean job stays as it is: Lake already rebuilds only the modules that changed.
 - Give the per-run machine time before and after in the PR, as the epic does.
