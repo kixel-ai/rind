@@ -94,7 +94,7 @@ impl SigningKey for Key {
         let signature = self
             .key
             .sign(data)
-            .map_err(|_| CryptoError::OperationFailed(CryptoOperation::Sign))?;
+            .or(Err(CryptoError::OperationFailed(CryptoOperation::Sign)))?;
         out.clear();
         out.extend_from_slice(signature.as_ref());
         Ok(())

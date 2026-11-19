@@ -436,3 +436,20 @@ fn stays_secret() {
         }
     }
 }
+
+/// Debug output shows the public elements and proof, and hides the blinds.
+#[test]
+fn debug_shows_no_secret() {
+    let server = ServerKey::generate(&RISTRETTO255_SHA512).unwrap();
+    let (blind, blinded) = Blind::new(&RISTRETTO255_SHA512, b"input").unwrap();
+    assert_eq!(
+        format!("{blind:?}"),
+        "Blind { suite: ristretto255-SHA512, .. }"
+    );
+    let (evaluated, proof) = server.blind_evaluate(blinded.as_ref()).unwrap();
+    assert_eq!(
+        format!("{evaluated:?}"),
+        format!("EvaluatedElements({:?})", evaluated.as_ref())
+    );
+    assert_eq!(format!("{proof:?}"), format!("Proof({:?})", proof.as_ref()));
+}

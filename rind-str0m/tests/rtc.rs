@@ -210,7 +210,21 @@ fn generated_certificate() {
     );
 }
 
-/// A caller's certificate or key that dimpl cannot use is an error, not a panic.
+/// The provider handed to callers building their own dimpl config builds one,
+/// as the one DTLS runs on does.
+#[test]
+fn dimpl_provider_builds_a_config() {
+    let provider = rind_str0m::dimpl_crypto_provider();
+    assert!(
+        dimpl::Config::builder()
+            .with_crypto_provider(provider)
+            .build()
+            .is_ok()
+    );
+}
+
+/// A caller's certificate, key, or MTU that dimpl cannot use is an error, not
+/// a panic.
 #[test]
 fn unusable_certificate_is_an_error() {
     let provider = rind_str0m::default_provider();
@@ -229,6 +243,11 @@ fn unusable_certificate_is_an_error() {
             assert!(dtls.new_dtls(&bad, Instant::now(), version, None).is_err());
         }
     }
+    // dimpl's minimum MTU is 64 bytes.
+    assert!(
+        dtls.new_dtls(&cert, Instant::now(), DtlsVersion::Auto, Some(63))
+            .is_err()
+    );
     assert!(
         dtls.new_dtls(&cert, Instant::now(), DtlsVersion::Auto, None)
             .is_ok()

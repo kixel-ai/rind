@@ -72,6 +72,7 @@ pub(crate) mod chacha20;
 pub(crate) mod chacha20poly1305;
 pub(crate) mod cpu;
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[path = "../arm/ct_qemu.rs"]
 pub(crate) mod ct_qemu;
 pub(crate) mod curve25519_ifma;
