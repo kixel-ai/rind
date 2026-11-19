@@ -483,71 +483,40 @@ fn agreement_cases(cases: &mut Vec<Case>) {
     }
 }
 
-/// Each suite's secrets: the server key, as `Evaluate` and `BlindEvaluate`
-/// take it, and VOPRF's proof with it, and the client's input, as `Blind`
-/// and `Evaluate` hash it. The blind and the proof's nonce are drawn from
-/// the system on each call, so both classes vary them alike.
+/// The input is the secret hashed to the group, in both modes and on every
+/// suite. The server scalar stays fixed, so the two classes differ only in
+/// that message.
 fn oprf_cases(cases: &mut Vec<Case>) {
-    use oprf::voprf;
-
-    for (name, suite) in [
-        ("ristretto255", &oprf::RISTRETTO255_SHA512),
-        ("p256", &oprf::P256_SHA256),
-        ("p384", &oprf::P384_SHA384),
-        ("p521", &oprf::P521_SHA512),
-    ] {
-        let scalar = move || {
-            let key = oprf::ServerKey::generate(suite).unwrap();
-            key.to_scalar().as_ref().to_vec()
-        };
-        let blinded = move || {
-            let (_, blinded) = oprf::Blind::new(suite, MESSAGE).unwrap();
-            blinded.as_ref().to_vec()
-        };
-
-        cases.push(case(format!("oprf/{name}/evaluate-key"), move |config| {
-            let scalars = classes(VALUES, fixed(scalar()), scalar);
-            let new = |s: &Vec<u8>| oprf::ServerKey::from_scalar(suite, s).unwrap();
-            measure_built(config, &scalars, new, |key| key.evaluate(MESSAGE))
+    for (name, suite, scalar_len) in OPRF_SUITES {
+        cases.push(case(format!("oprf/{name}/input"), move |config| {
+            let key = oprf::ServerKey::from_scalar(suite, &server_scalar(scalar_len)).unwrap();
+            measure(config, &secrets(32), |input| key.evaluate(input).unwrap())
         }));
-        cases.push(case(format!("oprf/{name}/evaluate-input"), move |config| {
-            let key = oprf::ServerKey::generate(suite).unwrap();
-            measure(config, &secrets(32), |input| key.evaluate(input))
-        }));
-        cases.push(case(
-            format!("oprf/{name}/blind-evaluate-key"),
-            move |config| {
-                let blinded = blinded();
-                let scalars = classes(VALUES, fixed(scalar()), scalar);
-                let new = |s: &Vec<u8>| oprf::ServerKey::from_scalar(suite, s).unwrap();
-                measure_built(config, &scalars, new, |key| key.blind_evaluate(&blinded))
-            },
-        ));
-        cases.push(case(format!("oprf/{name}/blind-input"), move |config| {
-            measure(config, &secrets(32), |input| oprf::Blind::new(suite, input))
-        }));
-        cases.push(case(
-            format!("voprf/{name}/evaluate-input"),
-            move |config| {
-                let key = voprf::ServerKey::generate(suite).unwrap();
-                measure(config, &secrets(32), |input| key.evaluate(input))
-            },
-        ));
-        cases.push(case(
-            format!("voprf/{name}/blind-evaluate-key"),
-            move |config| {
-                let blinded = blinded();
-                let scalars = classes(VALUES, fixed(scalar()), scalar);
-                let new = |s: &Vec<u8>| voprf::ServerKey::from_scalar(suite, s).unwrap();
-                measure_built(config, &scalars, new, |key| key.blind_evaluate(&blinded))
-            },
-        ));
-        cases.push(case(format!("voprf/{name}/blind-input"), move |config| {
-            measure(config, &secrets(32), |input| {
-                voprf::Blind::new(suite, input)
-            })
+        cases.push(case(format!("voprf/{name}/input"), move |config| {
+            let key =
+                oprf::voprf::ServerKey::from_scalar(suite, &server_scalar(scalar_len)).unwrap();
+            measure(config, &secrets(32), |input| key.evaluate(input).unwrap())
         }));
     }
+}
+
+const OPRF_SUITES: [(&str, &oprf::Suite, usize); 4] = [
+    ("p256", &oprf::P256_SHA256, 32),
+    ("p384", &oprf::P384_SHA384, 48),
+    ("p521", &oprf::P521_SHA512, 66),
+    ("ristretto255", &oprf::RISTRETTO255_SHA512, 32),
+];
+
+/// A fixed server scalar below every suite's order, with bits set under the
+/// top byte.
+///
+/// NIST scalars are big-endian and ristretto255's is little-endian, so both
+/// ends stay zero: the high byte is clear either way.
+fn server_scalar(len: usize) -> Vec<u8> {
+    let mut scalar = vec![0x5a; len];
+    scalar[0] = 0;
+    scalar[len - 1] = 0;
+    scalar
 }
 
 fn kem_cases(cases: &mut Vec<Case>) {
@@ -862,6 +831,20 @@ fn xor_mgf1(out: &mut [u8], seed: &[u8]) {
         let mask = digest::digest(&digest::SHA256, &[seed, &counter.to_be_bytes()].concat());
         for (out, mask) in chunk.iter_mut().zip(mask.as_ref()) {
             *out ^= mask;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{OPRF_SUITES, server_scalar};
+
+    #[test]
+    fn oprf_timing_scalar_is_in_range() {
+        for (_, suite, len) in OPRF_SUITES {
+            let scalar = server_scalar(len);
+            rind::oprf::ServerKey::from_scalar(suite, &scalar).unwrap();
+            rind::oprf::voprf::ServerKey::from_scalar(suite, &scalar).unwrap();
         }
     }
 }

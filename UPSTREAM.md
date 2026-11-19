@@ -62,11 +62,11 @@ Each upstream rind changes, with where its fork is vendored and where the list o
 
 ### Cargo runs $CARGO_HOME/bin's subcommands before PATH's
 
-- **Breaks:** Cargo looks up an external subcommand such as `cargo-fmt` or `cargo-clippy` in `$CARGO_HOME/bin` before `PATH`, unless that directory is itself on `PATH` ([the Cargo book](https://doc.rust-lang.org/cargo/reference/external-tools.html#custom-subcommands)). On a host with rustup there, `cargo fmt` and `cargo clippy` inside the dev shell run rustup's default toolchain, not the flake's, while `which cargo-fmt` names the flake's. A newer rustfmt then reformats files CI's accepts, and a toolchain without a cross target's standard library fails `check cross` with `can't find crate for core`.
-- **Reproduce:** `nix develop --command cargo fmt --version` on a host whose `$CARGO_HOME/bin/cargo-fmt` is rustup's, with `$CARGO_HOME/bin` not on `PATH`, reports rustup's rustfmt; found on [#140](https://github.com/steelhead99x/rind/pull/140).
-- **Workaround:** `sh/toolchain.sh`, which `sh/dispatch.sh` runs inside the dev shell before any check, stops unless `cargo fmt --version` and `cargo clippy --version` name the build `rustc --version` does.
+- **Breaks:** Cargo looks up an external subcommand such as `cargo-fmt` or `cargo-clippy` in `$CARGO_HOME/bin` before `PATH`, unless that directory is itself on `PATH`. On a host with rustup there, `cargo fmt` and `cargo clippy` inside a dev shell run rustup's default toolchain, not the flake's, while `command -v cargo-fmt` names the flake's. A newer rustfmt then reformats files CI accepts, and a toolchain without a cross target's standard library fails clippy with `can't find crate for core`.
+- **Reproduce:** `nix develop --command cargo fmt --version` on a host whose `$CARGO_HOME/bin/cargo-fmt` is a rustup shim and whose `$CARGO_HOME/bin` is not on `PATH` reports rustup's rustfmt. GitHub's ubuntu-24.04 image puts `$HOME/.cargo/bin` on `PATH`, so CI does not hit this.
+- **Workaround:** every dev shell's hook appends `$CARGO_HOME/bin` to `PATH` when it is missing, which turns off Cargo's lookup there first and leaves the flake's tools ahead of it.
 - **Reported:** no.
-- **Goes when:** Cargo prefers `PATH`'s subcommands, or the flake's shells put an empty `$CARGO_HOME/bin` ahead of a host's.
+- **Goes when:** Cargo prefers `PATH`'s subcommands.
 
 ## Constant-time analysis
 
