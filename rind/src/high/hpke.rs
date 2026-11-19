@@ -1752,7 +1752,41 @@ mod tests {
             kdf: &HKDF_SHA384,
             aead: &AES_256_GCM,
         };
-        let (_, sender) = Sender::new(suite, key.public_key(), b"").unwrap();
+        let (enc, sender) = Sender::new(suite, key.public_key(), b"").unwrap();
         assert_eq!(format!("{sender:?}"), "Sender { .. }");
+        let recipient = Recipient::new(suite, &key, enc.as_ref(), b"").unwrap();
+        assert_eq!(format!("{recipient:?}"), "Recipient { .. }");
+        let (_, exporter) = Exporter::sender(&HKDF_SHA384, key.public_key(), b"").unwrap();
+        assert_eq!(format!("{exporter:?}"), "Exporter { .. }");
+    }
+
+    #[test]
+    fn debug_shows_public_values() {
+        // A suite's KDF and AEAD show as the algorithms they run.
+        assert_eq!(
+            format!("{HKDF_SHA384:?}"),
+            format!("{:?}", hkdf::HKDF_SHA384)
+        );
+        assert_eq!(
+            format!("{AES_256_GCM:?}"),
+            format!("{:?}", aead::AES_256_GCM)
+        );
+        let key = PublicKey::new(&DHKEM_X25519_HKDF_SHA256, &[1; 32]).unwrap();
+        assert_eq!(
+            format!("{key:?}"),
+            format!(
+                "PublicKey {{ kem: DHKEM(X25519, HKDF-SHA256), key: {:?} }}",
+                [1u8; 32]
+            )
+        );
+        let suite = Suite {
+            kdf: &HKDF_SHA256,
+            aead: &AES_128_GCM,
+        };
+        let (enc, _) = Sender::new(suite, &key, b"").unwrap();
+        assert_eq!(
+            format!("{enc:?}"),
+            format!("EncapsulatedKey({:?})", enc.as_ref())
+        );
     }
 }
