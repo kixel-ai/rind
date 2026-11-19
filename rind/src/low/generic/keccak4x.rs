@@ -13,3 +13,21 @@ pub(crate) fn sha3_keccak4x_f1600(s: &mut [[u64; 4]; 25], rc: &[u64; 24]) {
     super::super::sha3_keccak4_f1600(&mut states, rc);
     *s = core::array::from_fn(|i| core::array::from_fn(|j| states[j][i]));
 }
+
+/// Four states that each absorb one block, `blocks[j]` (the padded SHAKE256
+/// rate of state `j`, the capacity zero), are permuted once, and the first 32
+/// bytes of each are returned: only with AVX2, which builds and unbuilds the
+/// interleaved states in registers; otherwise `None`.
+pub(crate) fn sha3_keccak4x_hash_blocks(
+    blocks: &[[u8; 136]; 4],
+    rc: &[u64; 24],
+) -> Option<[[u8; 32]; 4]> {
+    #[cfg(rind_backend = "x86_64")]
+    if let Some(avx2) = super::super::x86_64::cpu::HaveAvx2::check() {
+        return Some(
+            super::super::x86_64::sha3_keccak4x_avx2::sha3_keccak4x_hash_blocks(avx2, blocks, rc),
+        );
+    }
+    let _ = (blocks, rc);
+    None
+}

@@ -297,6 +297,43 @@ pub(crate) fn shake256_x4<const OUT: usize, const P: usize>(
         *states = core::array::from_fn(|i| core::array::from_fn(|j| apart[j][i]));
     };
     let mut states = [[0u64; 4]; 25];
+    // Inputs that fit one block, which every F, H, and PRF of SLH-DSA does:
+    // each lane's padded block is built once, in order. Lengths are public.
+    let total: usize = inputs[0].iter().map(|part| part.len()).sum();
+    if total < R {
+        let mut blocks = [[0u8; R]; 4];
+        for (block, input) in blocks.iter_mut().zip(inputs) {
+            debug_assert!(input.iter().map(|part| part.len()).sum::<usize>() == total);
+            let mut at = 0;
+            for part in input {
+                block[at..at + part.len()].copy_from_slice(part);
+                at += part.len();
+            }
+            block[at] = SHAKE_PAD_BYTE;
+            block[R - 1] |= 0x80;
+        }
+        // Three or four lanes of at most 32 output bytes: the vectors are
+        // built from the blocks and the digests read out in registers, where
+        // the states below would be stored a word at a time and loaded as
+        // vectors. A batch of three runs a fourth lane of the third's block.
+        if OUT <= 32 && lanes >= 3 {
+            blocks[3] = blocks[lanes - 1];
+            if let Some(digests) = crate::low::sha3_keccak4x_hash_blocks(&blocks, &RC) {
+                for (output, digest) in outputs.iter_mut().zip(&digests[..lanes]) {
+                    output.copy_from_slice(&digest[..OUT]);
+                }
+                return;
+            }
+        }
+        for (j, block) in blocks[..lanes].iter().enumerate() {
+            for (i, word) in block.as_chunks::<8>().0.iter().enumerate() {
+                states[i][j] = u64::from_le_bytes(*word);
+            }
+        }
+        permute(&mut states);
+        squeeze_x4(&states, &mut outputs[..lanes]);
+        return;
+    }
     // The bytes of the current block absorbed so far, under `R`.
     let mut used = 0;
     for part in 0..P {
@@ -326,7 +363,13 @@ pub(crate) fn shake256_x4<const OUT: usize, const P: usize>(
     }
     permute(&mut states);
 
-    for (j, output) in outputs[..lanes].iter_mut().enumerate() {
+    squeeze_x4(&states, &mut outputs[..lanes]);
+}
+
+/// The first `OUT` bytes of each of `outputs`' states from the interleaved
+/// `states`, state `j` into `outputs[j]`.
+fn squeeze_x4<const OUT: usize>(states: &[[u64; 4]; 25], outputs: &mut [[u8; OUT]]) {
+    for (j, output) in outputs.iter_mut().enumerate() {
         let (whole, tail) = output.as_chunks_mut::<8>();
         for (i, lane) in whole.iter_mut().enumerate() {
             *lane = states[i][j].to_le_bytes();
@@ -713,6 +756,53 @@ mod tests {
                 }
             }
         }
+    }
+
+    // The one-block path, which three or four lanes of at most 32 output
+    // bytes take through the registers on a CPU with AVX2, against the
+    // one-state sponge, at the part sizes SLH-DSA hashes and at the edges of
+    // one block.
+    #[test]
+    fn shake256_x4_one_block_matches_single() {
+        fn check<const OUT: usize>(inputs: &[[u8; 400]; 4]) {
+            let _entry = Entry::new_secret();
+            for parts in [
+                [16, 32, 16],
+                [16, 32, 32],
+                [24, 32, 48],
+                [32, 32, 64],
+                [0, 0, 0],
+                [1, 1, 1],
+                [40, 40, 54],
+                [45, 45, 45],
+            ] {
+                for lanes in 1..=4 {
+                    let inputs: Vec<[&[u8]; 3]> = inputs[..lanes]
+                        .iter()
+                        .map(|i| {
+                            let (a, b) = (parts[0], parts[0] + parts[1]);
+                            [&i[..a], &i[a..b], &i[b..b + parts[2]]]
+                        })
+                        .collect();
+                    let mut outputs = [[0u8; OUT]; 4];
+                    shake256_x4(&inputs, &mut outputs);
+                    for (input, output) in inputs.iter().zip(&outputs) {
+                        let mut sponge = Shake256Sponge::new();
+                        for part in input {
+                            sponge.absorb(part);
+                        }
+                        let mut single = [0u8; OUT];
+                        Shake::new(&sponge).read(&mut single);
+                        assert_eq!(*output, single, "{parts:?}, {lanes} lanes, {OUT} bytes");
+                    }
+                }
+            }
+        }
+        let inputs: [[u8; 400]; 4] =
+            core::array::from_fn(|n| core::array::from_fn(|i| (i * 11 + n * 37 + 5) as u8));
+        check::<16>(&inputs);
+        check::<24>(&inputs);
+        check::<32>(&inputs);
     }
 
     const SEED: &[u8; 32] = b"Damn right its better than yours";

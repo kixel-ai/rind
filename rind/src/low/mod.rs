@@ -150,7 +150,6 @@ mod posint;
 
 pub(crate) use entry::Entry;
 pub(crate) use generic::argon2::Argon2Block;
-pub(crate) use generic::keccak4x::sha3_keccak4x_f1600;
 #[cfg(not(rind_backend = "x86_64"))]
 pub(crate) use generic::argon2::argon2_compress;
 pub(crate) use generic::blockwise::{Blockwise, UpdateBlocks, pad, sha256_digest, split_tail};
@@ -159,6 +158,7 @@ pub(crate) use generic::ct_copy::{ct_copy, ct_select_i16};
 pub(crate) use generic::ct_equal::ct_equal;
 #[cfg(all(test, any(rind_backend = "arm", rind_backend = "portable")))]
 pub(crate) use generic::ghash::gcm_model;
+pub(crate) use generic::keccak4x::{sha3_keccak4x_f1600, sha3_keccak4x_hash_blocks};
 pub(crate) use generic::md5::md5_compress_blocks;
 #[cfg(any(rind_backend = "x86_64", all(rind_backend = "aarch64", test)))]
 pub(crate) use generic::poly1305;

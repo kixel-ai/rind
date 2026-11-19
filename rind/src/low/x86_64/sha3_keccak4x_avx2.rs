@@ -14,6 +14,12 @@
 //! again for AVX-512 VL, whose `vprolq` rotates in one instruction and whose
 //! 32 registers hold the state, it took 0.6x its time for SLH-DSA signing.
 //!
+//! [`sha3_keccak4x_hash_blocks`] is the same permutation behind a first
+//! block read straight from four buffers and its first 32 bytes written
+//! straight to four more, by a 4x4 transpose in registers, as the C builds its
+//! states. Storing the words of four states one at a time and loading them
+//! back as vectors waits on every store.
+//!
 //! It runs xors, and-nots, shifts, rotates, and byte shuffles, none of which
 //! take time that depends on their values. Its proof is planned in `ALGORITHMS.md`.
 
@@ -31,12 +37,67 @@ pub(crate) fn sha3_keccak4x_f1600(_: HaveAvx2, s: &mut [[u64; 4]; 25], rc: &[u64
     }
 }
 
+/// Four states that each absorb one block, `blocks[j]` (the padded rate of
+/// state `j`, the capacity zero), are permuted once, and the first 32 bytes of
+/// each are returned.
+pub(crate) fn sha3_keccak4x_hash_blocks(
+    _: HaveAvx2,
+    blocks: &[[u8; RATE]; 4],
+    rc: &[u64; 24],
+) -> [[u8; 32]; 4] {
+    match HaveAvx512Vl::check() {
+        // SAFETY: the token proves AVX-512 F and VL, with AVX2.
+        Some(_) => unsafe { hash_blocks_vl(blocks, rc) },
+        // SAFETY: the token proves AVX2.
+        None => unsafe { hash_blocks(blocks, rc) },
+    }
+}
+
+/// The 24 rounds on the 25 vectors in `$a`, in place: two a step, from `$a`
+/// into `e` and back, all twelve written out as XKCP's C is. A macro, since a
+/// function taking the vectors by reference keeps them in memory, and
+/// `#[inline(always)]` is refused with `#[target_feature]`.
+macro_rules! rounds {
+    ($round:ident, $a:ident, $rc:ident) => {{
+        let mut c = [_mm256_setzero_si256(); 5];
+        for x in 0..5 {
+            c[x] = x5($a[x], $a[x + 5], $a[x + 10], $a[x + 15], $a[x + 20]);
+        }
+        let mut e = [_mm256_setzero_si256(); 25];
+        $round(&$a, &mut e, &mut c, $rc[0]);
+        $round(&e, &mut $a, &mut c, $rc[1]);
+        $round(&$a, &mut e, &mut c, $rc[2]);
+        $round(&e, &mut $a, &mut c, $rc[3]);
+        $round(&$a, &mut e, &mut c, $rc[4]);
+        $round(&e, &mut $a, &mut c, $rc[5]);
+        $round(&$a, &mut e, &mut c, $rc[6]);
+        $round(&e, &mut $a, &mut c, $rc[7]);
+        $round(&$a, &mut e, &mut c, $rc[8]);
+        $round(&e, &mut $a, &mut c, $rc[9]);
+        $round(&$a, &mut e, &mut c, $rc[10]);
+        $round(&e, &mut $a, &mut c, $rc[11]);
+        $round(&$a, &mut e, &mut c, $rc[12]);
+        $round(&e, &mut $a, &mut c, $rc[13]);
+        $round(&$a, &mut e, &mut c, $rc[14]);
+        $round(&e, &mut $a, &mut c, $rc[15]);
+        $round(&$a, &mut e, &mut c, $rc[16]);
+        $round(&e, &mut $a, &mut c, $rc[17]);
+        $round(&$a, &mut e, &mut c, $rc[18]);
+        $round(&e, &mut $a, &mut c, $rc[19]);
+        $round(&$a, &mut e, &mut c, $rc[20]);
+        $round(&e, &mut $a, &mut c, $rc[21]);
+        $round(&$a, &mut e, &mut c, $rc[22]);
+        $round(&e, &mut $a, &mut c, $rc[23]);
+    }};
+}
+
 /// Defines `$permute`, Keccak-f1600 on the 25 vectors, and the round it runs,
 /// for the target features `$features`, rotating with `$rol`. Each gets its
 /// own copy, compiled for its features, since a routine compiled for fewer
 /// cannot inline the AVX-512 VL rotation.
 macro_rules! keccak4x {
-    ($permute:ident, $round:ident, $rol:ident, $features:literal) => {
+    ($permute:ident, $hash:ident, $round:ident, $rol:ident, $features:literal) => {
+        /// Keccak-f1600 on four states whose lane `i` of state `j` is `s[i][j]`.
         #[target_feature(enable = $features)]
         fn $permute(s: &mut [[u64; 4]; 25], rc: &[u64; 24]) {
             let mut a = [_mm256_setzero_si256(); 25];
@@ -44,20 +105,40 @@ macro_rules! keccak4x {
                 // SAFETY: `s[i]` is 32 bytes; the load needs no alignment.
                 a[i] = unsafe { _mm256_loadu_si256(s[i].as_ptr().cast()) };
             }
-            let mut c = [_mm256_setzero_si256(); 5];
-            for x in 0..5 {
-                c[x] = x5(a[x], a[x + 5], a[x + 10], a[x + 15], a[x + 20]);
-            }
-            // Two rounds a step, from `a` into `e` and back, as XKCP does.
-            let mut e = [_mm256_setzero_si256(); 25];
-            for &[even, odd] in rc.as_chunks::<2>().0 {
-                $round(&a, &mut e, &mut c, even);
-                $round(&e, &mut a, &mut c, odd);
-            }
+            rounds!($round, a, rc);
             for i in 0..25 {
                 // SAFETY: as the load, writing.
                 unsafe { _mm256_storeu_si256(s[i].as_mut_ptr().cast(), a[i]) };
             }
+        }
+
+        /// Four states each absorbing one whole block, `blocks[j]`, the padded
+        /// rate of state `j` over a zero capacity, permuted once, and the first
+        /// 32 bytes of each squeezed. The vectors are made and unmade in
+        /// registers by a 4x4 transpose, as XKCP's four-way SHAKE does: words
+        /// stored one at a time and loaded back as a vector would wait on every
+        /// store.
+        #[target_feature(enable = $features)]
+        fn $hash(blocks: &[[u8; RATE]; 4], rc: &[u64; 24]) -> [[u8; 32]; 4] {
+            let mut a = [_mm256_setzero_si256(); 25];
+            for g in 0..4 {
+                // SAFETY: each block is 136 bytes and `32 * g + 32 <= 128`.
+                let v = core::array::from_fn::<_, 4, _>(|j| unsafe {
+                    _mm256_loadu_si256(blocks[j].as_ptr().add(32 * g).cast())
+                });
+                let t = transpose(v);
+                a[4 * g..4 * g + 4].copy_from_slice(&t);
+            }
+            let last = |j: usize| i64::from_le_bytes(*blocks[j][128..].first_chunk().unwrap());
+            a[16] = _mm256_set_epi64x(last(3), last(2), last(1), last(0));
+            rounds!($round, a, rc);
+            let t = transpose([a[0], a[1], a[2], a[3]]);
+            let mut out = [[0u8; 32]; 4];
+            for j in 0..4 {
+                // SAFETY: `out[j]` is 32 bytes.
+                unsafe { _mm256_storeu_si256(out[j].as_mut_ptr().cast(), t[j]) };
+            }
+            out
         }
 
 /// One round from `a` into `e`, lane `x + 5y` at index `x + 5y`, given
@@ -159,8 +240,34 @@ macro_rules! keccak4x {
     };
 }
 
-keccak4x!(permute, round, rol, "avx2");
-keccak4x!(permute_vl, round_vl, rol_vl, "avx2,avx512f,avx512vl");
+keccak4x!(permute, hash_blocks, round, rol, "avx2");
+keccak4x!(
+    permute_vl,
+    hash_blocks_vl,
+    round_vl,
+    rol_vl,
+    "avx2,avx512f,avx512vl"
+);
+
+/// SHAKE256's rate in bytes.
+const RATE: usize = 136;
+
+/// The 4x4 transpose of 64-bit words: result `j` holds word `j` of each of
+/// `v`, in order.
+#[target_feature(enable = "avx2")]
+#[inline]
+fn transpose(v: [__m256i; 4]) -> [__m256i; 4] {
+    let lo01 = _mm256_unpacklo_epi64(v[0], v[1]);
+    let hi01 = _mm256_unpackhi_epi64(v[0], v[1]);
+    let lo23 = _mm256_unpacklo_epi64(v[2], v[3]);
+    let hi23 = _mm256_unpackhi_epi64(v[2], v[3]);
+    [
+        _mm256_permute2x128_si256::<0x20>(lo01, lo23),
+        _mm256_permute2x128_si256::<0x20>(hi01, hi23),
+        _mm256_permute2x128_si256::<0x31>(lo01, lo23),
+        _mm256_permute2x128_si256::<0x31>(hi01, hi23),
+    ]
+}
 
 /// The xor of five vectors.
 #[target_feature(enable = "avx2")]
@@ -219,6 +326,48 @@ mod tests {
     use super::*;
 
     // Each copy directly, since a CPU with AVX-512 VL runs only its own.
+    // The block entry against four separate one-block SHAKE256 absorbs, for
+    // each copy directly.
+    #[test]
+    fn hash_blocks_matches_one_state_at_a_time() {
+        if HaveAvx2::check().is_none() {
+            return;
+        }
+        let vl = HaveAvx512Vl::check().is_some();
+        for seed in 0..32u64 {
+            let blocks: [[u8; RATE]; 4] = core::array::from_fn(|j| {
+                core::array::from_fn(|i| {
+                    ((seed * 131 + (j * RATE + i) as u64).wrapping_mul(0x9e3779b97f4a7c15) >> 40)
+                        as u8
+                })
+            });
+            let want: [[u8; 32]; 4] = core::array::from_fn(|j| {
+                let mut state = [0u64; 25];
+                for (word, bytes) in state.iter_mut().zip(blocks[j].as_chunks::<8>().0) {
+                    *word = u64::from_le_bytes(*bytes);
+                }
+                super::super::sha3_keccak_f1600::sha3_keccak_f1600(
+                    &mut state,
+                    &crate::mid::sha3::RC,
+                );
+                core::array::from_fn(|i| state[i / 8].to_le_bytes()[i % 8])
+            });
+            // SAFETY: AVX2 was checked above.
+            let mut got = vec![("avx2", unsafe {
+                hash_blocks(&blocks, &crate::mid::sha3::RC)
+            })];
+            if vl {
+                // SAFETY: AVX-512 F and VL were checked above.
+                got.push(("avx512vl", unsafe {
+                    hash_blocks_vl(&blocks, &crate::mid::sha3::RC)
+                }));
+            }
+            for (name, got) in got {
+                assert_eq!(got, want, "{name} seed {seed}");
+            }
+        }
+    }
+
     #[test]
     fn matches_one_state_at_a_time() {
         if HaveAvx2::check().is_none() {
