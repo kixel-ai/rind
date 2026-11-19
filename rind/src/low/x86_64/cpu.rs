@@ -413,8 +413,8 @@ impl HaveBmi2Adx {
     }
 }
 
-/// Proof that the CPU has what pyca/verified-garbage's BMI2 and ADX P-256 and
-/// P-384 routines run: BMI2, ADX, AVX, and AVX2.
+/// Proof that the CPU has what pyca/verified-garbage's BMI2 and ADX P-256
+/// routines and P-384 `d·G` run: BMI2, ADX, AVX, and AVX2.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct HaveAdxForVg(());
 
