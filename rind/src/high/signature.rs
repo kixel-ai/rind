@@ -11,6 +11,7 @@ use crate::error::Error;
 use crate::low::{self, Zeroable};
 use crate::mid::mldsa::{self, MlDsa87};
 
+pub(crate) mod any;
 pub(crate) mod ecdsa;
 pub(crate) mod ed25519;
 pub(crate) mod ml_dsa;
