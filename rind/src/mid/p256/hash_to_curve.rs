@@ -14,10 +14,8 @@ use crate::mid::sha2::Sha256Context;
 /// Hashes `msg` to a point, by RFC 9380's `P256_XMD:SHA-256_SSWU_RO_` with
 /// the domain separation tag `dst`.
 ///
-/// The two map outputs are added in constant time. Opposite outputs would
-/// sum to infinity (`Z = 0`); no message is known to reach that. Conversion
-/// inverts a nonzero element unconditionally, then exposes only the
-/// validation verdict: infinity is refused as a small-order point.
+/// The point at infinity, which no message is known to reach, is refused as
+/// a small-order point.
 pub(crate) fn hash_to_curve(msg: &[u8], dst: &[u8]) -> Result<PublicKey, Error> {
     let _entry = low::Entry::new_secret();
     public_key(hash_to_curve::hash_to_curve::<FieldElement, Sha256Context>(

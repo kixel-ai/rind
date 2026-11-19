@@ -273,22 +273,15 @@ pub(crate) fn sum<C: Curve>(q0: &[C; 3], q1: &[C; 3]) -> [C; 3] {
     [x, y, z.select(&C::ZERO, opposite)]
 }
 
-/// The affine image of `point`, or [`KeyFormatError::SmallOrder`] at infinity.
-///
-/// Opposite hash outputs sum to `Z = 0`. That `Z` becomes [`Curve::ONE`], so
-/// `affine` inverts a nonzero element on either verdict, and only the verdict
-/// is public. A finite point keeps its `Z`. The coordinates stay secret,
-/// including the image discarded at infinity.
+/// The affine image of `point`, or [`KeyFormatError::SmallOrder`] at infinity,
+/// which no message is known to reach. Only that verdict is public.
 pub(crate) fn affine_or_small_order<C: Curve, P>(
-    mut point: [C; 3],
+    point: [C; 3],
     affine: impl FnOnce([C; 3]) -> P,
 ) -> Result<P, Error> {
-    let infinity = point[2].ct_eq(&C::ZERO);
-    point[2] = point[2].select(&C::ONE, infinity);
-    let point = affine(point);
-    match crate::low::ct::into_public(infinity) {
+    match crate::low::ct::into_public(point[2].ct_eq(&C::ZERO)) {
         true => Err(KeyFormatError::SmallOrder.into()),
-        false => Ok(point),
+        false => Ok(affine(point)),
     }
 }
 

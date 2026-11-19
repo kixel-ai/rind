@@ -14,10 +14,8 @@ use crate::mid::sha2::Sha512Context;
 /// Hashes `msg` to a point, by RFC 9380's `P521_XMD:SHA-512_SSWU_RO_` with
 /// the domain separation tag `dst`.
 ///
-/// The two map outputs are added in constant time. Opposite outputs would
-/// sum to infinity (`Z = 0`); no message is known to reach that. Conversion
-/// inverts a nonzero element unconditionally, then exposes only the
-/// validation verdict: infinity is refused as a small-order point.
+/// The point at infinity, which no message is known to reach, is refused as
+/// a small-order point.
 pub(crate) fn hash_to_curve(msg: &[u8], dst: &[u8]) -> Result<PublicKey, Error> {
     let _entry = low::Entry::new_secret();
     public_key(hash_to_curve::hash_to_curve::<FieldElement, Sha512Context>(
@@ -241,14 +239,15 @@ mod tests {
         }
     }
 
-    /// An empty DST is refused. aws-lc has no P-521 suite, so this is
-    /// only the local path.
+    /// An empty DST is refused, as RustCrypto refuses it, since aws-lc has
+    /// no P-521 suite.
     #[test]
     fn empty_dst() {
         tests::check_empty_dst(
             hash_to_curve(b"msg", b"").map(|_| ()),
             hash_to_scalar(&[b"msg"], b"").map(|_| ()),
         );
+        assert!(NistP521::hash_from_bytes(&[b"msg"], &[b""]).is_err());
     }
 
     #[test]

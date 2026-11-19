@@ -307,9 +307,7 @@ fn aws_lc_hashed_point(bits: u16, msg: &[u8], dst: &[u8]) -> Option<AwsLcPoint> 
             _ => unreachable!(),
         };
         let point = EC_POINT_new(group);
-        if point.is_null() {
-            return None;
-        }
+        assert!(!point.is_null());
         let ok = hash(
             group,
             point,
