@@ -268,7 +268,7 @@ theorem apply_keystream_spec (he : ∃ e, low.entry.Entry.new_secret = ok e)
       have hcn0 : cc.counter_nonce.val[0]!.bv = counter.bv := by
         rw [← wordLE_wordBytes _ (by simp), hB]
         conv_rhs => rw [← vg.wordLE_toLEBytes counter.bv]
-        simp only [vg.wordLE, List.getD_eq_getElem?_getD, Nat.mul_zero, Nat.zero_add]
+        simp only [VG.Spec.ChaCha20.wordLE, List.getD_eq_getElem?_getD, Nat.mul_zero, Nat.zero_add]
         rw [List.getElem?_append_left (by simp [BitVec.toLEBytes_length]),
           List.getElem?_append_left (by simp [BitVec.toLEBytes_length]),
           List.getElem?_append_left (by simp [BitVec.toLEBytes_length]),
