@@ -8,7 +8,7 @@
 
 use core::mem::MaybeUninit;
 
-use super::cpu::{HaveAvx2Adx, HaveBmi2Adx};
+use super::cpu::{HaveAdxForVg, HaveBmi2Adx};
 use super::vg;
 
 /// The 8 KiB of working space each routine takes, aligned to a cache line as
@@ -31,12 +31,12 @@ impl Scratch {
 /// `d·G` in X9.62's uncompressed encoding, in constant time, for `d` (big
 /// endian) in [1, n); `None` for any other `d`.
 pub(crate) fn public_key(d: &[u8; 48]) -> Option<[u8; 97]> {
-    public_key_with(HaveAvx2Adx::check(), d)
+    public_key_with(HaveAdxForVg::check(), d)
 }
 
 /// [`public_key`] on the BMI2 and ADX variant if `adx` holds proof the CPU
 /// has its features, or on the baseline one otherwise.
-fn public_key_with(adx: Option<HaveAvx2Adx>, d: &[u8; 48]) -> Option<[u8; 97]> {
+fn public_key_with(adx: Option<HaveAdxForVg>, d: &[u8; 48]) -> Option<[u8; 97]> {
     use vg::{vg_ec_p384_public_key::*, vg_ec_p384_public_key_adx::*};
     let mut out = [0u8; 97];
     let mut scratch = Scratch::new();
@@ -96,12 +96,12 @@ mod tests {
     fn variants_agree() {
         let d = crate::low::ct::into_secret([0x5a; 48]);
         let base = crate::low::ct::into_public(public_key_with(None, &d).unwrap());
-        if let Some(adx) = HaveAvx2Adx::check() {
+        if let Some(adx) = HaveAdxForVg::check() {
             let adx = public_key_with(Some(adx), &d).map(crate::low::ct::into_public);
             assert_eq!(adx, Some(base));
         }
         assert_eq!(public_key_with(None, &[0; 48]), None);
-        assert_eq!(public_key_with(HaveAvx2Adx::check(), &[0xff; 48]), None);
+        assert_eq!(public_key_with(HaveAdxForVg::check(), &[0xff; 48]), None);
 
         if let Some(vg) = Verify::check() {
             let (public, e, sig) = crate::test::p384_ecdsa_case();
