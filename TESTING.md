@@ -25,9 +25,9 @@ A primitive is checked five ways:
   once, on x86_64, aarch64, and the portable backend, but not on armv7,
   which stays with ctgrind and `admin/ct-qemu` since BINSEC decodes none of
   its NEON table lookups or crypto extension; it denies the CPU features
-  whose instructions BINSEC cannot decode, AES-NI, VAES, the SHA512
-  instructions, and AVX-512 on x86_64, and the crypto extension, SHA-3,
-  SVE2, and DIT on aarch64, so those paths stay with the other three, and gives it
+  whose instructions BINSEC cannot decode, AES-NI, VAES, and AVX-512 on
+  x86_64, and the crypto extension, SHA-3, SVE2, and DIT on aarch64, so those
+  paths stay with the other three, and gives it
   the effect of the few others rind and glibc run, such as aarch64's `tbl`.
   Each harness fixes its public inputs, so it checks the paths those values
   take, except that ChaCha20 and ChaCha20-Poly1305 take every message
@@ -78,8 +78,7 @@ an Intel SDE CPU model, as `x86-cpu.yml` names them.
 | Backend | Tier | Vectors and differential tests | Fuzz targets | Constant time |
 |---|---|---|---|---|
 | x86_64 | AVX-512 (Ice Lake and later, Zen 4 and 5) | SDE: Cannon Lake (RSA only), Granite Rapids, Diamond Rapids | SDE: Diamond Rapids; the runner's tier, when it has AVX-512 | `admin/ct-sde`: AES-GCM, RSA, ChaCha20, X25519, Ed25519, and verified-garbage's ML-KEM-768 and P-256 ECDH; Graviola's AVX-512 sampler reads only the public matrix |
-| x86_64 | SHA512 instructions (Arrow Lake, Diamond Rapids) | SDE: Arrow Lake, Diamond Rapids | SDE: Diamond Rapids | `admin/ct-sde`: HMAC |
-| x86_64 | VAES without AVX-512 (Alder Lake, Zen 3) | SDE: Alder Lake, Granite Rapids at 256 bits; the runner, when Zen 3 | SDE: Diamond Rapids, denied; the runner's tier, when Zen 3; denied, when it has AVX-512 | `admin/ct-sde`: AES-GCM |
+| x86_64 | VAES without AVX-512 (Alder Lake, Arrow Lake, Zen 3) | SDE: Alder Lake, Arrow Lake, Granite Rapids at 256 bits; the runner, when Zen 3 | SDE: Diamond Rapids, denied; the runner's tier, when Zen 3; denied, when it has AVX-512 | `admin/ct-sde`: AES-GCM |
 | x86_64 | SHA extensions (Goldmont, Cannon Lake and later, Zen) | SDE: Goldmont and later | SDE: Diamond Rapids; the runner's tier | `admin/ct-sde`: HMAC |
 | x86_64 | AVX2 and ADX, no SHA extensions or VAES (Broadwell to Cooper Lake) | SDE: Skylake server; denied | denied | ctgrind: valgrind hides AVX-512, VAES, and the SHA extensions, so the runner's own run lands here |
 | x86_64 | AVX2 without ADX (Haswell) | SDE: Haswell; denied | denied | ctgrind: denied (`no-adx`) |
@@ -192,7 +191,7 @@ secret names a zeroing test, or says why it has none.
 | AES-KW, AES-KWP | `key_wrap::{AesKek, Mode, AES_128, AES_192, AES_256}` | `aes_wrap_test`, `aes_kwp_test`, RFC 3394: `mid::aes_kw::rfc3394`, RFC 5649: `mid::aes_kw::rfc5649`, `aws_lc::aes`, ACVP: `mid::aes_kw::acvp_kw`, `mid::aes_kw::acvp_kwp` | `fuzz::key_wrap` | `crosschecks::key_wrap::wrap_and_unwrap`, `crosschecks::key_wrap::wrap_and_unwrap_padded` | ctgrind: the key `mid::aes_kw::new`; qemu: `mid::aes_kw::ct_qemu_aes_kw`; BINSEC: `test::binsec::ct_binsec_aes_kw` | `zeroing::key_wrap` |
 | MD5 | `digest::legacy::MD5` | RFC 1321: `mid::md5::rfc1321` | `fuzz::legacy` | `crosschecks::hashes_match_aws_lc_rs`, `crosschecks::hashes_every_length` | ctgrind: `high::digest::secret_message`; BINSEC: `test::binsec::ct_binsec_digest` | none: a digest context is not wiped |
 | SHA-1 | `digest::legacy::SHA1` | `cavp-sha1` | `fuzz::legacy` | `crosschecks::hashes_match_aws_lc_rs`, `crosschecks::hashes_every_length` | ctgrind: `high::digest::secret_message`, each x86_64 path `low::x86_64::sha1::paths_match_generic`; SDE and qemu: through HMAC; BINSEC: `test::binsec::ct_binsec_digest` | none: a digest context is not wiped |
-| SHA-2 | `digest::{Algorithm, Context, Digest, digest, SHA256, SHA384, SHA512, SHA512_256}` | `cavp/sha2`, ACVP: `high::digest::acvp_sha256`, `high::digest::acvp_sha384`, `high::digest::acvp_sha512`, `high::digest::acvp_sha512_256` | `fuzz::sha2` | `crosschecks::hashes_match_aws_lc_rs`, `crosschecks::hashes_every_length` | ctgrind: `high::digest::secret_message`, ESP-IDF Xtensa's SHA-256 on its Rust fallbacks `low::portable::sha::iram_compression_matches_references`, `low::portable::sha::fips180_sha256`, and `low::portable::sha::iram_digest_matches_aws_lc`, the microcontrollers' rolled SHA-512 `low::generic::sha512::fips180_abc`, each x86_64 path `low::x86_64::sha256::paths_match_generic`, `low::x86_64::sha512::paths_match_nohw`; SDE and qemu: through HMAC; BINSEC: `test::binsec::ct_binsec_digest` | none: a digest context is not wiped |
+| SHA-2 | `digest::{Algorithm, Context, Digest, digest, SHA256, SHA384, SHA512, SHA512_256}` | `cavp/sha2`, ACVP: `high::digest::acvp_sha256`, `high::digest::acvp_sha384`, `high::digest::acvp_sha512`, `high::digest::acvp_sha512_256` | `fuzz::sha2` | `crosschecks::hashes_match_aws_lc_rs`, `crosschecks::hashes_every_length` | ctgrind: `high::digest::secret_message`, ESP-IDF Xtensa's SHA-256 on its Rust fallbacks `low::portable::sha::iram_compression_matches_references`, `low::portable::sha::fips180_sha256`, and `low::portable::sha::iram_digest_matches_aws_lc`, the microcontrollers' rolled SHA-512 `low::generic::sha512::fips180_abc`, each x86_64 path `low::x86_64::sha256::paths_match_generic`, `low::x86_64::sha512::paths_match_nohw`; SDE: SHA-256 through HMAC; qemu: through HMAC; BINSEC: `test::binsec::ct_binsec_digest` | none: a digest context is not wiped |
 | SHA-3 | `digest::{SHA3_256, SHA3_384, SHA3_512}` | `cavp/sha3`, ACVP: `high::digest::acvp_sha3_256`, `high::digest::acvp_sha3_384`, `high::digest::acvp_sha3_512` | `fuzz::sha3` | `crosschecks::hashes_match_aws_lc_rs`, `crosschecks::hashes_every_length` | ctgrind: `high::digest::secret_message`; proof: on aarch64, s2n-bignum's _SAFE theorems, for the routines [ALGORITHMS.md](ALGORITHMS.md#s2n-bignums-constant-time-theorems) lists with one; qemu: `low::aarch64::sha3_keccak_nof4_f1600::ct_qemu_sha3_kernels`, and aarch64's SHA3 kernels through ML-KEM; BINSEC: `test::binsec::ct_binsec_digest` | none: a digest context is not wiped |
 | HMAC | `hmac::{Algorithm, Context, Key, Tag, sign, verify, HMAC_SHA256, HMAC_SHA384, HMAC_SHA512}`, `hmac::legacy::HMAC_SHA1` | `hmac_sha*_test`, `cavp/hmac`, `aws_lc::hmac`, ACVP: `high::hmac::acvp` | `fuzz::legacy`, `fuzz::sha2` | `crosschecks::hmac_matches_aws_lc_rs` | ctgrind: `high::hmac::secret_key_and_message`; SDE: `high::hmac::ct_sde_hmac`; qemu: `high::hmac::ct_qemu_hmac`; BINSEC: `test::binsec::ct_binsec_hmac` | `zeroing::hmac` |
 | HKDF | `hkdf::{Algorithm, KeyType, Okm, Prk, Salt, HKDF_SHA256, HKDF_SHA384, HKDF_SHA512}`, `hkdf::legacy::HKDF_SHA1` | `hkdf_sha*_test`, RFC 5869: `high::hkdf::rfc5869`, ACVP's SP 800-56C KDA: `high::hkdf::acvp_kda` | `fuzz::hkdf` | `crosschecks::hkdf::matches_aws_lc_rs`, `crosschecks::hkdf::keys` | ctgrind: `high::hkdf::secret_ikm`; BINSEC: `test::binsec::ct_binsec_hkdf` | `zeroing::hkdf` |
@@ -301,7 +300,7 @@ as `sh/backends.sh` decides, and otherwise runs in full; pull requests'
 ctgrind job sets it.
 `nix develop .#ctgrind --command admin/ctgrind` runs the weekly
 constant-time checks under valgrind, `nix develop .#sde --command
-admin/ct-sde` those of the AVX-512, VAES, SHA extension, and SHA512 code
+admin/ct-sde` those of the AVX-512, VAES, and SHA extension code
 valgrind cannot run, under Intel SDE, and `nix develop .#ct-qemu --command
 admin/ct-qemu` those of the armv7 crypto extension code valgrind hides, under
 qemu; on an aarch64 host, `nix develop .#ct-qemu-aarch64 --command
