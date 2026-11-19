@@ -2,8 +2,8 @@
 
 //! P-384 on pyca/verified-garbage's proven routines (`super::vg`): `d·G`,
 //! which key generation and ECDSA signing take, and ECDSA verification.
-//! Each measured faster than rind's; verification only on a key's first use,
-//! as rind's over the multiples it keeps for a reused key measured faster.
+//! Each measured faster than rind's; verification only until a key's
+//! multiples are ready, as rind's over them measured faster for a reused key.
 
 use core::mem::MaybeUninit;
 
@@ -92,7 +92,8 @@ mod tests {
         assert_eq!(base.public_key(&[0xff; 48]), None);
     }
 
-    // rind's other tests reach VG's verification only on a key's first use.
+    // rind's other tests reach VG's verification only until a key's multiples
+    // are ready.
     #[test]
     fn verify_matches_wycheproof() {
         let vg = Verify::check().unwrap();

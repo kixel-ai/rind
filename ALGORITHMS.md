@@ -633,8 +633,8 @@ The code is structured such that we pass the RFC6979 test vectors.
 On x86_64 and aarch64, P-384 runs [verified-garbage]'s routines where they
 measured faster: its `d·G` for ECDH's and ECDSA's key generation and for each
 signature's `k G`, under rind's hedged nonce and its own `s`, and its ECDSA
-verification on x86_64 CPUs with ADX and, for a key's first verification
-only, on aarch64, where rind's twin multiplication over a reused key's
+verification on x86_64 CPUs with ADX and, until a key's multiples are
+ready, on aarch64, where rind's twin multiplication over a reused key's
 multiples measured faster. Without ADX, VG's verification measured up to
 1.35× rind's on AMD's cores, so rind's runs there. ECDH's exchange keeps
 s2n-bignum's code: VG's measured slower than rind's on every tier. Until
