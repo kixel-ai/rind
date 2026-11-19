@@ -1304,7 +1304,9 @@ def gap_table(gaps):
     lines = ["| Operation | On | rind's time over the fastest | Decision |", "|---|---|---|---|"]
     for e, covered in gaps:
         ops = ", ".join(label(op) if op in rows else f"`{op}`" for op in e["operations"])
-        on = ", ".join(f"`{p}`" if p in HOSTS else f"{p} tier" for p in e["on"])
+        # Only the places that measure a gap: an entry may also cover a tier whose run came in under 10%.
+        seen = {place for _, place in covered}
+        on = ", ".join(f"`{p}`" if p in HOSTS else f"{p} tier" for p in e["on"] if p in seen)
         ratios = [ratio for ratio, _ in covered.values()]
         spread = f"{min(ratios):.2f}×" + (f" to {max(ratios):.2f}×" if max(ratios) - min(ratios) >= 0.005 else "")
         fastest = ", ".join(sorted({COLUMNS[lib] for _, lib in covered.values()}))
@@ -2130,9 +2132,9 @@ def report(hosts, tiers, verified, gaps):
             "backend, forced with `--cfg rind_portable`, against aws-lc's C built without assembly; ring has no "
             "such build, and verified-garbage runs its assembly there, so both sit that column out. Each cell is "
             "rind's time over the fastest of aws-lc-rs, ring, and verified-garbage (without ring where a feature "
-            "is denied, since ring can't be denied one), in the row's benchmark where rind trails most. A cell "
-            "verified-garbage wins gets a quest that switches rind to its proven code, not an entry under "
-            "Known gaps. An empty cell isn't timed: it runs the same code as the cell to its left, or, in a row "
+            "is denied, since ring can't be denied one), in the row's benchmark where rind trails most. Known gaps "
+            "compares a tier against aws-lc-rs and ring only, so a cell that only verified-garbage beats gets "
+            "a quest that switches rind to its proven code, not an entry there. An empty cell isn't timed: it runs the same code as the cell to its left, or, in a row "
             "built on other primitives such as `rustls-bulk/*` or HPKE, its tier times only those primitives, "
             "whose own rows show the difference.",
             "",
