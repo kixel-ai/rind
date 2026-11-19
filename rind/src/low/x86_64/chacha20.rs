@@ -21,10 +21,10 @@
 //! proves the kernel against RFC 8439 over Lean models of its intrinsics,
 //! which `admin/prove` tests against the CPU, and
 //! `proofs/Rind/X86_64/ChaCha20Cipher.lean` proves the bytes `cipher` writes
-//! at every length on those and HACL*'s rounds, taking the aws-lc SSSE3
+//! at every length the block counter covers on those and HACL*'s rounds, taking the aws-lc SSSE3
 //! routine's contract as the hypothesis `Ssse3`. That assembly is not formally
-//! verified: its correctness rests on rind's tests of it against RFC 8439,
-//! Wycheproof, aws-lc-rs, and HACL*'s rounds, and on its use in OpenSSL,
+//! verified: its correctness rests on rind's tests of it against HACL*'s
+//! rounds at every length to 1700 bytes, and on its use in OpenSSL,
 //! BoringSSL, and aws-lc.
 
 use core::arch::x86_64::*;

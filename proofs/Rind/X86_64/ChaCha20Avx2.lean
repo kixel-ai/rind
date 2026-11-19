@@ -387,7 +387,9 @@ theorem setSlice4 {α : Type} (z l0 l1 l2 l3 : List α) (hz : z.length = 128) (h
     setSlice!_split _ _ _ (by simp only [hz, h0]; omega)]
   simp [List.take_append, List.drop_append, h0, h1, h2, h3, hz, List.take_of_length_le]
 
-/-- RFC 8439's encryption of up to two blocks: the message XOR their keystream. -/
+/-- `chacha20.encrypt` of up to two blocks: the message XOR their keystream,
+the second block's counter wrapping as the model's 32-bit counter does, which
+RFC 8439 forbids and `Kernel`'s bound rules out. -/
 theorem encrypt_two (key nonce msg : List (BitVec 8)) (c : BitVec 32) (hk : key.length = 32)
     (hn : nonce.length = 12) (hm : msg.length ≤ 128) :
     chacha20.encrypt key c nonce msg =
