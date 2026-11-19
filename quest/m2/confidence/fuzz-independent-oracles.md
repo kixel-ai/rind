@@ -2,7 +2,7 @@
 
 ## Goal
 
-Each `fuzz/fuzzer/` target for a primitive compares rind, aws-lc-rs, and an implementation that shares no code with the path rind runs, and fails on any disagreement. The ECVRF, OPRF, and blind RSA targets that compare rind only with itself get an outside oracle too.
+Each `fuzz/fuzzer/` target for a primitive compares rind, aws-lc-rs, and an implementation that shares no code with the path rind runs, and fails on any disagreement. Where aws-lc-rs lacks the algorithm, as for the ECVRF, OPRF, and blind RSA targets that today compare rind only with itself, the target compares rind with that outside oracle alone, as `AGENTS.md`'s testing rule does.
 
 ## Plan
 
