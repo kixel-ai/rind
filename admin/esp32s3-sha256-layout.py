@@ -22,9 +22,10 @@ K_SECTION = ".dram1.rind_sha256_k"
 BLOCK_SECTION = ".iram1.rind_sha256_compress_block"
 DRIVER_SECTION = ".iram1.rind_sha256_nblocks"
 CALL = re.compile(r"\bcallx?(?:0|4|8|12)\b")
-INSN = re.compile(
-    r"^\s*([0-9a-fA-F]+):\s+[0-9a-fA-F ]+\s+([a-z][a-z0-9.]*)\b(.*)$"
-)
+# GNU objdump separates the address, the bytes, and the mnemonic with tabs.
+# Splitting on them keeps a mnemonic made of hex letters, such as `add`,
+# out of the bytes column.
+INSN = re.compile(r"^\s*([0-9a-fA-F]+):\t[0-9a-fA-F ]+\t([a-z][a-z0-9.]*)\b(.*)$")
 # FIPS 180-4 SHA-256 rotate distances. 8 is the byte swap, not a rotate.
 ROTATE_SAR = {2, 6, 7, 11, 13, 17, 18, 19, 22, 25}
 REG_NAME = re.compile(r"\b[a-zA-Z]+[0-9]+\b")
