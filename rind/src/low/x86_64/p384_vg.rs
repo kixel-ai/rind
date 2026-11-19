@@ -104,7 +104,9 @@ mod tests {
         let d = crate::low::ct::into_secret([0x5a; 48]);
         let base = crate::low::ct::into_public(MulBase(None).public_key(&d).unwrap());
         if let Some(adx) = HaveAdxForVg::check() {
-            let adx = MulBase(Some(adx)).public_key(&d).map(crate::low::ct::into_public);
+            let adx = MulBase(Some(adx))
+                .public_key(&d)
+                .map(crate::low::ct::into_public);
             assert_eq!(adx, Some(base));
         }
         assert_eq!(MulBase(None).public_key(&[0; 48]), None);

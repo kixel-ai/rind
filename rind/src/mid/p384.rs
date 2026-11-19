@@ -1407,7 +1407,10 @@ mod tests {
             let key = StaticPrivateKey::from_bytes(&scalar.as_bytes()).unwrap();
             let comb = key.0.public_point();
             assert_eq!(key.public_key_uncompressed(), comb.as_bytes_uncompressed());
-            assert_eq!(key.0.public_key_uncompressed(), comb.as_bytes_uncompressed());
+            assert_eq!(
+                key.0.public_key_uncompressed(),
+                comb.as_bytes_uncompressed()
+            );
             assert_eq!(key.public_key_x_scalar().as_bytes(), {
                 let x = &comb.as_bytes_uncompressed()[1..49];
                 Scalar::from_bytes_reduced(x).unwrap().as_bytes()
