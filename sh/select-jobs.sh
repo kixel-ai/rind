@@ -19,7 +19,8 @@
 # since GitHub adds back an excluded row that an `include` names.
 #
 # `--check`, which `just ci` runs, fails a job of a workflow taking a `jobs`
-# input that would run whatever the selection says.
+# input that would run whatever the selection says, or that lacks the
+# `!cancelled()` that keeps GitHub from skipping it whenever `select` skips.
 set -euo pipefail
 
 usage="usage: sh/select-jobs.sh WORKFLOW 'ENTRY...' | --check"
@@ -41,6 +42,8 @@ if [[ "${1:-}" == --check ]]; then
                 | if ([.needs // []] | flatten | index("select")) == null then "\($id) does not need select"
                   elif (.if // "" | tostring | contains("needs.select.outputs.jobs") and contains("'\''\($id)'\''") | not)
                   then "\($id) does not check needs.select.outputs.jobs for itself in its if:"
+                  elif (.if | tostring | test("!\\s*cancelled\\(\\)") | not)
+                  then "\($id) skips whenever select does: its if: needs !cancelled()"
                   else empty end
             end')
         while IFS= read -r problem; do
