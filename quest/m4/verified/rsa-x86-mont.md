@@ -12,3 +12,7 @@ Every RSA Montgomery product x86_64 runs outside s2n-bignum's Karatsuba routines
 - Import the theorems as axioms, retiring for these paths the `AwsLcMont` hypothesis `proofs/Rind/X86_64/RsaMont.lean`'s `mont_products` takes for RSA verification. `bn_mul_mont_nohw`'s can go in now: an axiom on the opaque `low.x86_64.mont.nohw` drops `AwsLcMont`'s first conjunct, once `MontArgs` bounds the width below `2^32`, which the routine's `mov r9d, r9d` needs and RSA's key-size limit gives.
 - Upstream: offering this work to awslabs/s2n-bignum is optional, and there is no standing approval: stop and ask the maintainer before posting there or anywhere outside [the orgs AGENTS.md lists](/AGENTS.md#development) (decided with the maintainer on 2026-11-07 on [kixel-ai/rind#448](https://github.com/kixel-ai/rind/pull/448)).
 - pyca/verified-garbage (VG) measured slower on 2026-11-13 wherever these routines run, at one size or more: signing with ADX but without IFMA 1.02 to 1.65 (the no-AVX-512 and no-IFMA tiers; VG won 3072, 6144, and 8192 bits on no-IFMA, 0.84 to 0.91, but lost 2048, 2056, 2560, and 4096), RSA-6144 and RSA-8192 signing with IFMA 1.06 to 1.07, and without ADX 1.4 to 2.2, so rind keeps this code ([the m2 VG epic](/quest/m2/verified-garbage/README.md)).
+
+## Required
+
+- [aarch64 SHA-256 on the SHA-2 instructions is proven in Lean, constant time included](/quest/m2/lean-assembly-trial.md) - picks this proof's route, Lean on VG's models or HOL Light

@@ -17,4 +17,5 @@ Found by the 2026-11-09 audit: [kixel-ai/rind#460](https://github.com/kixel-ai/r
 
 ## Required
 
+- [aarch64 SHA-256 on the SHA-2 instructions is proven in Lean, constant time included](/quest/m2/lean-assembly-trial.md) - picks this proof's route, Lean on VG's models or HOL Light
 - [AES-GCM on aarch64 is proven](/quest/m4/verified/aes-gcm-aarch64.md) - the Lean proof of `aes_gcm.rs` these kernels' axioms slot into

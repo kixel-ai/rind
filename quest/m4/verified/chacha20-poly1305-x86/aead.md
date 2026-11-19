@@ -10,3 +10,7 @@
 - Restate them in `Rind/X86_64/` as axioms about `one_pass` that give `OnePass`, record them in `Axioms.lean`, and add the `verified.toml` entries.
 - Seal and open are 8,138 instructions; s2n-bignum's proofs of its aarch64 AES-GCM routines run 11,000 to 14,000 lines, a guide to the scale.
 - pyca/verified-garbage (VG) measured slower on 2026-11-13 (ChaCha20-Poly1305 on x86_64 up to 1.14x rind's time with AVX-512 and 1.68x without AVX2), so rind keeps this code ([the m2 VG epic](/quest/m2/verified-garbage/README.md)).
+
+## Required
+
+- [aarch64 SHA-256 on the SHA-2 instructions is proven in Lean, constant time included](/quest/m2/lean-assembly-trial.md) - picks this proof's route, Lean on VG's models or HOL Light

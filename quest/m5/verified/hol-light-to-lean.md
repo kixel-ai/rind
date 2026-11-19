@@ -1,0 +1,18 @@
+# [XL] rind's HOL Light proofs are ported to Lean
+
+## Goal
+
+Every proof in `proofs/hol-light/` is a Lean theorem on pyca/verified-garbage's instruction models, functional correctness and a leakage contract alike, about the bytes rind's build emits. Each axiom in `proofs/Rind/<Arch>/` that restated one becomes that theorem. `admin/prove hol-light`, its CI jobs, and the DMTCP session tooling go. Upstream s2n-bignum theorems rind imports stay axioms, checked by `admin/prove bytes`.
+
+## Plan
+
+Decided with the maintainer on 2026-11-18 (/quest-plan): ✅ port the existing HOL Light proofs to Lean in m5, once the trial shows the cost (rejected: keep them in HOL Light forever; port them before measuring). Why: the goal is one Lean trust base for rind's own proofs, and porting removes the slowest jobs in `prove`, about 95 minutes of HOL Light per pull request run on 2026-11-17.
+
+- Wait for [the trial](/quest/m2/lean-assembly-trial.md): its PR resizes this quest and may split it into an epic, one child per architecture or proof family.
+- What the fork of s2n-bignum still carries for rind's own proofs, such as the x86 model additions, the AArch32 model, and `common/chacha20poly1305.ml`, leaves with the last proof that needs it. Its upstream code and theorems rind imports stay.
+- armv7's proofs run on the fork's AArch32 model. VG has an ARMv7 model too, but rind vendors only its x86_64 and aarch64 models: vendor ARMv7's through `admin/import-vg-models` and cosimulate it against qemu-arm, as `admin/prove cosim` does today.
+- Retire each routine's dedicated constant-time harness as its leakage contract lands, as the trial decided.
+
+## Required
+
+- [aarch64 SHA-256 on the SHA-2 instructions is proven in Lean, constant time included](/quest/m2/lean-assembly-trial.md) - measures the cost and sets the route

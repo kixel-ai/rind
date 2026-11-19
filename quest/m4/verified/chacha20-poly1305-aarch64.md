@@ -13,4 +13,5 @@ ChaCha20-Poly1305 and XChaCha20-Poly1305 earn the ✓ on aarch64 CPUs without SV
 
 ## Required
 
+- [aarch64 SHA-256 on the SHA-2 instructions is proven in Lean, constant time included](/quest/m2/lean-assembly-trial.md) - picks this proof's route, Lean on VG's models or HOL Light
 - [aarch64 cipher::ChaCha20 runs pyca/verified-garbage's code where it is faster](/quest/m2/verified-garbage/chacha20.md) - VG's bare ChaCha20 took 0.52 to 0.65 of rind's time on a Neoverse N2 from 1200 B but 1.22 at 32 B; this quest drops `cipher::ChaCha20` only for the lengths and tiers that switch

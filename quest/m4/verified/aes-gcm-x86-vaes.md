@@ -20,3 +20,7 @@ AES-GCM earns the ✓ on x86_64 CPUs with VAES and VPCLMULQDQ (Ice Lake and late
 - The AVX-512 tier below 2 KB is proven over two predicates this quest discharges for `gcm_init_vpclmulqdq_avx512`: `Avx512Powers H t`, that `VaesKernel::powers` gives the hash key's 16 descending powers, and `TableFor H t.clmul`, that the PCLMULQDQ table `from_powers` builds holds the first eight. Given them, `tagged_from_avx512_spec` (`proofs/Rind/X86_64/AesGcmAvx512.lean`) is `tagged_from_spec`'s ciphertext and tag under 2 KB, by-16 from 256 bytes and by-8 below, so the tier's seals and opens compose it with the kernel's proof from 2 KB, as `Rind/X86_64/AesGcmClmul.lean` composes `tagged_from_spec`.
 - Do the AVX2 kernel first: it is the whole path on Zen 3 and on cores without AVX-512.
 - Upstream: offering this work to awslabs/s2n-bignum is optional, and there is no standing approval: stop and ask the maintainer before posting there or anywhere outside [the orgs AGENTS.md lists](/AGENTS.md#development) (decided with the maintainer on 2026-11-07 on [kixel-ai/rind#448](https://github.com/kixel-ai/rind/pull/448)).
+
+## Required
+
+- [aarch64 SHA-256 on the SHA-2 instructions is proven in Lean, constant time included](/quest/m2/lean-assembly-trial.md) - picks this proof's route, Lean on VG's models or HOL Light
