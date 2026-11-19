@@ -8,7 +8,9 @@
 # so no Lean module imports both. The aarch64 hand models and its X25519,
 # SHA-512, ChaCha20, Ed25519, SHA-1, SHA-256, HMAC, digest, HKDF, and PBKDF2 proofs are the
 # x86_64 ones with the target renamed, which this writes too, all but each
-# target's own `ShaBlocks.lean` and `HashAxioms.lean`. The portable backend,
+# target's own `ShaBlocks.lean` and `HashAxioms.lean`; aarch64 alone also
+# translates `mid::pbkdf2_vg`, which only its CPUs run, and proves it in its
+# own `Pbkdf2Vg.lean`. The portable backend,
 # translated for x86_64 into `proofs/Rind/Portable/`, takes the hash, HMAC,
 # HKDF, PBKDF2, and ChaCha20 header protection proofs the same way, over
 # HACL*'s SHA-2 instead of aws-lc's. So does armv7, its header-protection model

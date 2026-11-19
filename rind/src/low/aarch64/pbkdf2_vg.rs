@@ -64,12 +64,22 @@ impl Pbkdf2 {
         iterations: NonZeroU32,
         out: &mut [u8],
     ) {
-        type Routine = unsafe extern "C" fn(*const u8, usize, *const u8, usize, u32, *mut u8, usize);
+        type Routine =
+            unsafe extern "C" fn(*const u8, usize, *const u8, usize, u32, *mut u8, usize);
         let (routine, hash_len): (Routine, usize) = match self.0 {
             Hash::Sha1 => (vg::vg_pbkdf2_hmac_sha1_sha2::vg_pbkdf2_hmac_sha1_sha2, 20),
-            Hash::Sha256 => (vg::vg_pbkdf2_hmac_sha256_sha2::vg_pbkdf2_hmac_sha256_sha2, 32),
-            Hash::Sha384 => (vg::vg_pbkdf2_hmac_sha384_sha512::vg_pbkdf2_hmac_sha384_sha512, 48),
-            Hash::Sha512 => (vg::vg_pbkdf2_hmac_sha512_sha512::vg_pbkdf2_hmac_sha512_sha512, 64),
+            Hash::Sha256 => (
+                vg::vg_pbkdf2_hmac_sha256_sha2::vg_pbkdf2_hmac_sha256_sha2,
+                32,
+            ),
+            Hash::Sha384 => (
+                vg::vg_pbkdf2_hmac_sha384_sha512::vg_pbkdf2_hmac_sha384_sha512,
+                48,
+            ),
+            Hash::Sha512 => (
+                vg::vg_pbkdf2_hmac_sha512_sha512::vg_pbkdf2_hmac_sha512_sha512,
+                64,
+            ),
         };
         // By multiplying, not dividing, so `admin/ct-vartime` finds no
         // division.

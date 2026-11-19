@@ -223,12 +223,24 @@ axioms restating VG's theorems state, such as
 imports, with `VerifiedGarbage.Spec.Rsa` through it, VG's FIPS 203 spec,
 `VerifiedGarbage.Spec.MlKem`, which `Rind/VgOutcome.lean` imports, and `VerifiedGarbage.Spec.ChaCha20` with its
 contracts, which `Rind/VgChaCha20.lean` adapts and
-`Rind/X86_64/VgChaCha20.lean`'s axioms restate, so a pin that changes them
+`Rind/X86_64/VgChaCha20.lean`'s axioms restate, and
+`VerifiedGarbage.Spec.Pbkdf2.Generic` with the hash and HMAC specs it imports,
+which `Rind/VgPbkdf2.lean` proves rind's and `Rind/Aarch64/VgPbkdf2.lean`'s
+axioms state, so a pin that changes them
 shows the change in its diff, against which that re-pin must review the
 adaptation, for a change to the spec, and the axioms, for one to the
 contracts. Every re-pin also moves the axioms' links to VG's theorems and
 checks that the registrations they cite still emit the routines rind runs:
 `admin/vg-bytes` checks the code, not which theorem covers it.
+
+`Rind/VgPbkdf2.lean` proves VG's SHA-1, SHA-256, SHA-384, SHA-512, HMAC,
+and PBKDF2 specs, which `VerifiedGarbage.Spec.Pbkdf2.Generic` imports, are
+`Rind/HashSpec.lean`'s and `Rind/Sha2.lean`'s, PBKDF2's refusing a key longer
+than `2^32 - 1` blocks as VG's does. `Rind/Aarch64/VgPbkdf2.lean` restates
+VG's theorems about the aarch64 PBKDF2 routines rind runs, each variant's
+`pbkdf2F`, as one axiom per hash about `low::aarch64::pbkdf2_vg::Pbkdf2::derive`,
+and `Rind/Aarch64/Pbkdf2Vg.lean` proves `pbkdf2::Secret` from them, as "What
+is proven" lists.
 
 `Rind/VgOutcome.lean` and `Rind/<Arch>/VgMlKem.lean` restate VG's contracts
 for the ML-KEM-768 routines rind runs as one axiom per wrapper in
@@ -495,9 +507,17 @@ and RFC 8018 as `Rind/HashSpec.lean` transliterates them:
   `kdf.prk_new_fill` (`Rind/X86_64/Hkdf.lean`): HKDF's extract and expand,
   and expand from a PRK loaded from bytes;
 - `kdf.derive_spec`, `kdf.verify_spec` (`Rind/X86_64/Pbkdf2.lean`): PBKDF2's
-  `Secret::derive` and `Secret::verify` on rind's loop. On aarch64 with the
-  instructions it takes, a `Secret` runs pyca/verified-garbage's routine
-  instead, through `mid::pbkdf2_vg`, which the second pass leaves opaque.
+  `Secret::derive` and `Secret::verify` on rind's loop;
+- `kdf.secret_new_spec`, `kdf.secret_derive_spec`, `kdf.secret_verify_spec`
+  (`Rind/Aarch64/Pbkdf2Vg.lean`, aarch64 only): `Secret::new`, which keys
+  pyca/verified-garbage's routine through `mid::pbkdf2_vg` where the CPU has
+  the instructions it takes, keeping HMAC's key, the secret or its hash past
+  a block, and rind's loop otherwise, and `Secret::derive` and
+  `Secret::verify` on either, from `Rind/Aarch64/VgPbkdf2.lean`'s axioms. VG's
+  branch also takes the iteration count to be positive, which its
+  `NonZeroU32` holds and the translation forgets, and that `low::zeroise`
+  returns. Only aarch64 translates `mid::pbkdf2_vg`; the other targets'
+  second pass leaves it opaque, as no CPU of theirs runs it.
 
 HKDF's `From<Okm>` conversions, each filling the key's length of HKDF-Expand
 into a zeroed buffer and keying it, in `Rind/X86_64/Hkdf.lean` and
@@ -1139,7 +1159,8 @@ proof after those.
   APIs' dispatch, `Rind/X86_64/SignatureBuffer.lean`, of the signature
   modules' `Buffer::write`, and of `aead::gcm::Key` over the AEAD model; `Rind/X86_64/HkdfExpand.lean` and
   `Rind/X86_64/Kdf/{TypesExternal,FunsExternal}.lean`, of what the HKDF and
-  PBKDF2 pass leaves opaque.
+  PBKDF2 pass leaves opaque, and `Rind/Aarch64/Kdf/VgExternal.lean`, of what
+  aarch64's alone does.
 - `Rind/X86_64/{X25519,Sha512,ChaCha20,Ed25519}.lean`: the X25519, SHA-512,
   ChaCha20, and Ed25519 proofs, `Rind/X86_64/{Blockwise,Sha,Hmac}.lean`,
   SHA-1's, SHA-256's, and HMAC's, and
