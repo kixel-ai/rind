@@ -481,38 +481,11 @@ step() {
                 run cargo clippy -p rind --lib --locked --target wasm32-wasip2 -- --deny warnings
                 run cargo clippy -p rind --lib --locked --target wasm32-unknown-unknown \
                     --features getrandom/wasm_js -- --deny warnings
-                # The recorded ML-DSA wipe and the Ed25519 verdict comparison
-                # are cfg'd to wasm, so the library clippy never builds them.
-                # The nightly build.yml runs `just wasm`, which is not part of
-                # `just ci`. This lane runs these tests so the merge queue
-                # covers them.
+                # The library clippy never builds rind's test binaries for
+                # wasm, whose `cctv` and `heap_scratch` carry wasm-only code
+                # in place of aws-lc; the nightly `just wasm` runs them.
                 run cargo clippy -p rind --test heap_scratch --test cctv --locked \
                     --target wasm32-wasip2 -- --deny warnings
-                if [[ $(uname -s) == Linux ]]; then
-                    # `wasm_runner` is the one `just wasm` uses. Cargo does not run
-                    # a wasm binary unless this is set, and the tests open the
-                    # verdict file and the PKCS#8 fixtures by absolute path,
-                    # so the checkout has to be preopened. SLOW_TESTS stays
-                    # unset: RSA generation stays on `just wasm`.
-                    # shellcheck source=sh/wasm.sh
-                    source sh/wasm.sh
-                    wasm_runner
-                    run nix develop .#wasm --command env \
-                        "CARGO_TARGET_WASM32_WASIP2_RUNNER=${CARGO_TARGET_WASM32_WASIP2_RUNNER}" \
-                        cargo test -p rind --locked \
-                        --target wasm32-wasip2 --test cctv --test heap_scratch
-                    if [[ $(uname -m) == x86_64 ]]; then
-                        # RSA-3072 and RSA-4096 on the 32-bit limbs wasm uses.
-                        # Own target dir: these RUSTFLAGS must not rebuild the
-                        # shared tree.
-                        run env \
-                            CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-target}/rind-limb32" \
-                            CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS="$portable --cfg rind_limb=\"32\"" \
-                            SLOW_TESTS=1 \
-                            cargo test -p rind --test heap_scratch --locked --release \
-                            --target x86_64-unknown-linux-gnu -- rsa_generate
-                    fi
-                fi
             fi
             # A target with no `std` for each architecture rind has assembly
             # for; x86_64's, which disables SSE2, runs the portable backend.

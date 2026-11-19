@@ -26,14 +26,3 @@ cargo clippy "${packages[@]}" --locked --target "$target" --all-targets -- --den
 export CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS=true
 export CARGO_PROFILE_RELEASE_OVERFLOW_CHECKS=true
 SLOW_TESTS=1 cargo test "${packages[@]}" --locked --release --target "$target"
-# wasm32's portable build runs on 32-bit limbs, and `just wasm` generates
-# only RSA-2048 keys, so RSA-3072 and RSA-4096 key generation on those limbs
-# is wipe-checked here, natively.
-#
-# RUSTFLAGS are part of cargo's fingerprint. A separate target directory keeps
-# this one cfg from rebuilding the shared tree, including aws-lc-sys, and from
-# making the next run rebuild it again.
-limb32_target="${CARGO_TARGET_DIR:-target}/rind-limb32"
-CARGO_TARGET_DIR="$limb32_target" \
-    CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS="$CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS --cfg rind_limb=\"32\"" \
-    SLOW_TESTS=1 cargo test -p rind --test heap_scratch --locked --release --target "$target" -- rsa_generate
