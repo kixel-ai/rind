@@ -480,6 +480,8 @@
           # subcommands before PATH's".
           dev-cargo-path = ''
             cargo_bin=''${CARGO_HOME:-$HOME/.cargo}/bin
+            # Cargo resolves a relative CARGO_HOME against its working directory.
+            case $cargo_bin in /*) ;; *) cargo_bin=$PWD/$cargo_bin ;; esac
             case ":$PATH:" in
               *":$cargo_bin:"*) ;;
               *) export PATH="$PATH:$cargo_bin" ;;
