@@ -111,13 +111,12 @@ mod tests {
         }
         assert_eq!(MulBase(None).public_key(&[0; 48]), None);
         assert_eq!(MulBase::check().unwrap().public_key(&[0xff; 48]), None);
+    }
 
+    #[test]
+    fn verify_matches_wycheproof() {
         if let Some(vg) = Verify::check() {
-            let (public, e, sig) = crate::test::p384_ecdsa_case();
-            assert!(vg.ecdsa_verify(&public, &e, &sig));
-            let mut bad = sig;
-            bad[95] ^= 1;
-            assert!(!vg.ecdsa_verify(&public, &e, &bad));
+            crate::test::vg_ec::check_verify_p384(|public, e, sig| vg.ecdsa_verify(public, e, sig));
         }
     }
 }

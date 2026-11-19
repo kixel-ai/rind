@@ -83,18 +83,19 @@ mod tests {
     // On a secret scalar, which `admin/ctgrind` checks it handles in
     // constant time.
     #[test]
-    fn derives_and_verifies() {
+    fn derives() {
         let d = crate::low::ct::into_secret([0x5a; 48]);
         let base = MulBase::check().unwrap();
         let public = crate::low::ct::into_public(base.public_key(&d).unwrap());
         assert_eq!(public[0], 4);
-        let (public, e, sig) = crate::test::p384_ecdsa_case();
-        let vg = Verify::check().unwrap();
-        assert!(vg.ecdsa_verify(&public, &e, &sig));
-        let mut bad = sig;
-        bad[95] ^= 1;
-        assert!(!vg.ecdsa_verify(&public, &e, &bad));
         assert_eq!(base.public_key(&[0; 48]), None);
         assert_eq!(base.public_key(&[0xff; 48]), None);
+    }
+
+    // rind's other tests reach VG's verification only on a key's first use.
+    #[test]
+    fn verify_matches_wycheproof() {
+        let vg = Verify::check().unwrap();
+        crate::test::vg_ec::check_verify_p384(|public, e, sig| vg.ecdsa_verify(public, e, sig));
     }
 }

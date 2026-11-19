@@ -164,7 +164,7 @@ fn verify(width: Width, public: &[u8; 65], e: &[u8; 32], sig: &[u8; 64]) -> bool
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
-    use crate::test::p256_vg::{check_ecdh, check_verify};
+    use crate::test::vg_ec::{check_ecdh, check_verify};
 
     /// The generator G, as an X9.62 uncompressed point.
     const G: [u8; 65] = *b"\x04\
