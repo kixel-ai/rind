@@ -177,7 +177,7 @@ mod posint;
 
 pub(crate) use entry::Entry;
 pub(crate) use generic::argon2::Argon2Block;
-#[cfg(not(rind_backend = "x86_64"))]
+#[cfg(not(any(rind_backend = "x86_64", rind_backend = "aarch64")))]
 pub(crate) use generic::argon2::argon2_compress;
 pub(crate) use generic::blockwise::{Blockwise, UpdateBlocks, pad, sha256_digest, split_tail};
 pub(crate) use generic::chacha20::{chacha20_block, hchacha20};
@@ -416,6 +416,7 @@ cfg_if::cfg_if! {
 
     } else if #[cfg(rind_backend = "aarch64")] {
         pub(in crate::low) use aarch64::cpu::{enter_cpu_state, zero_bytes, ct_compare_bytes, ct_compare_16, leave_cpu_state};
+        pub(crate) use aarch64::argon2::argon2_compress;
         #[cfg(rind_fips)]
         pub(crate) use aarch64::cpu::missing_cpu_feature;
         pub(crate) use aarch64::aes::{AesDecKey, AesKey};

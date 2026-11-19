@@ -970,6 +970,11 @@ mod tests {
             "one `aese` on registers the compiler allocates, which no ABI governs",
         ),
         (
+            "aarch64/argon2_neon.rs",
+            "blamka2_umlal",
+            "one `umlal` on registers the compiler allocates, which no ABI governs",
+        ),
+        (
             "x86_64/sha256.rs",
             "finish_padded",
             "always inlined into `sha256_finish_shaext`, whose harness call covers it",
