@@ -415,8 +415,9 @@ end P256
 /-! ## The signature API, `high::signature::ecdsa`, through the modelled dispatch -/
 
 /-- A generated key pair's private scalar is in [1, n), drawn from the system
-random source, and it holds its public key; generation is refused only if
-the draws fail. The draws themselves are outside the functional spec. -/
+random source, and it holds its public key; generation is refused only if a
+draw fails or none of its 64 draws is in [1, n). The draws themselves are
+outside the functional spec. -/
 theorem p256_ecdsa_generate (h : Runs) (hvg : NoVgP256) (hheld : Held) (hc : Cached) (hfill : Fills) :
     high.signature.ecdsa.KeyPair.generate high.signature.ecdsa.sign.P256_SHA256_FIXED ⦃ r =>
       (∀ kp, r = .Ok kp → ∃ d, EcdsaKeyPairOf kp d) ∧ ∀ e, r = .Err e → e = .RngFailed ⦄ := by

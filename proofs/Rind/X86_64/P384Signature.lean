@@ -366,7 +366,8 @@ end P384
 
 /-- A generated P-384 key pair's private scalar is in [1, n), drawn from the
 system random source, and it holds its public key; generation is refused only
-if the draws fail. The draws themselves are outside the functional spec. -/
+if a draw fails or none of its 64 draws is in [1, n). The draws themselves
+are outside the functional spec. -/
 theorem p384_ecdsa_generate (h : Runs) (hheld : Held) (hc : P384.Cached) (hfill : Fills) :
     high.signature.ecdsa.KeyPair.generate high.signature.ecdsa.sign.P384_SHA384_FIXED ⦃ r =>
       (∀ kp, r = .Ok kp → ∃ d, EcdsaKeyPairOf384 kp d) ∧ ∀ e, r = .Err e → e = .RngFailed ⦄ := by
