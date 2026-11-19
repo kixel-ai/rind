@@ -50,11 +50,11 @@ impl PublicKey {
 /// A P-384 public key for ECDSA verification.
 ///
 /// Where pyca/verified-garbage's verification runs (`low::p384_vg::Verify`),
-/// on x86_64 CPUs with ADX and on aarch64, it takes a key's first
-/// verification, and on x86_64 every one. Otherwise this builds the point's
-/// multiples on the key's first verification by rind's code and keeps them,
-/// so verifying again skips computing them, and a key never verified with,
-/// such as an ECDSA key pair's, never pays for them.
+/// on x86_64 CPUs with ADX and on aarch64, it takes every verification on
+/// x86_64, and on aarch64 each until the key's multiples are ready. Otherwise
+/// this builds the point's multiples on the key's first verification by
+/// rind's code and keeps them, so verifying again skips computing them, and a
+/// key never verified with, such as an ECDSA key pair's, never pays for them.
 #[derive(Clone, Debug)]
 pub(crate) struct VerifyingKey {
     point: AffineMontPoint,
@@ -86,8 +86,9 @@ impl VerifyingKey {
     /// reused key on aarch64.
     pub(crate) fn raw_ecdsa_verify(&self, r: &Scalar, s: &Scalar, e: &Scalar) -> Result<(), Error> {
         if let Some(vg) = low::p384_vg::Verify::check() {
-            // On aarch64, a key's first verification only: `get_or_build`
-            // builds the multiples on its second.
+            // On aarch64, only while the multiples are not ready:
+            // `get_or_build` returns `None` on a key's first verification and
+            // while another thread builds them.
             if cfg!(rind_backend = "x86_64")
                 || self
                     .odd_multiples
