@@ -368,6 +368,7 @@ exclude_re = [
   'rind-rustls/src/sign\.rs:\d+:\d+: replace <impl fmt::Debug for RsaSigningKey>::fmt -> Result<\(\), fmt::Error> with Ok\(\(\)\)$',
   'rind-rustls/src/sign\.rs:\d+:\d+: replace <impl fmt::Debug for RsaSigner>::fmt -> Result<\(\), fmt::Error> with Ok\(\(\)\)$',
   'rind-rustls/src/ticketer\.rs:\d+:\d+: replace <impl fmt::Debug for XChaCha20Ticketer>::fmt -> fmt::Result with Ok\(Default::default\(\)\)$',
+  'rind-str0m/src/dtls\.rs:\d+:\d+: replace <impl std::fmt::Debug for Dtls>::fmt -> std::fmt::Result with Ok\(Default::default\(\)\)$',
   'rind-str0m/src/srtp\.rs:\d+:\d+: replace <impl fmt::Debug for Cm>::fmt -> fmt::Result with Ok\(Default::default\(\)\)$',
   'rind-str0m/src/srtp\.rs:\d+:\d+: replace <impl fmt::Debug for Gcm>::fmt -> fmt::Result with Ok\(Default::default\(\)\)$',
   # One AAD, concatenated, is that AAD. Deleting the one-element arm still
