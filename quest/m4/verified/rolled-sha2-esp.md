@@ -13,6 +13,7 @@ Decided 2026-11-19 (maintainer): ✅ merge #793 and plan this proof (rejected: a
 - The Xtensa `asm!` blocks are not Rust Aeneas translates: each is a rotate or a byte swap, so state each as a small hand model with the Rust fallback the host tests already run (`sha256_iram.rs` on its fallbacks), and say in the proofs README that the ✓ on ESP-IDF Xtensa trusts those instructions. Cosimulating them needs Xtensa hardware or QEMU, so decide that when starting.
 - The proof covers the code, not its placement: `admin/esp32s3-sha256-layout` still checks `.iram1`, linked addresses, and the exact `ssai` sequences.
 - `admin/prove`'s portable pass extracts `x86_64-unknown-linux-gnu`, which selects neither rolled path. Have it also translate a 32-bit build, such as `armv7a-none-eabi` with `--cfg rind_portable` (`target_os = "none"`), for the rolled SHA-512, and prove the Xtensa-only SHA-256 body through its host Rust fallbacks, which `sha256_iram.rs` exposes by name.
+- The ✓ covers the whole operation, so the dispatch that picks each body on each target is proven too, not only the bodies. Translate the `target_os = "espidf"` and `"none"` selections as well: Charon cannot build `xtensa-esp32s3-espidf` without the esp toolchain, so settle at the start whether `admin/prove` gets that toolchain, or a host build with those cfgs forced (`--cfg` overrides on a 32-bit target) extracts the same dispatch, and state which in the ✓'s notes.
 - Size M: two block functions of the shape the portable backend already proves, plus the small instruction models.
 
 ## Waiting
