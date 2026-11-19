@@ -9,10 +9,11 @@ open Aeneas Aeneas.Std Result rind.simd Polynomial
 
 What rind's x86_64 and aarch64 AES-GCM proofs share: a vector's bytes stored
 and loaded back, a block's 64-bit halves swapped, Vale's `inc32` on a
-counter block's lanes, GCTR over appended blocks and on one whole block, the
-96-bit IV's counter block, the length block, and the hash `gcm_hash` takes
-as GHASH from zero of the padded AAD, the padded ciphertext, and the
-lengths. Nothing here is a target's.
+counter block's lanes, GCTR over appended blocks, on one whole block, and on
+the loads of a message's whole blocks, the counter block of a 96-bit IV and
+of any other, the length block, and the hash `gcm_hash` takes as GHASH from
+zero of the padded AAD, the padded ciphertext, and the lengths. Nothing here
+is a target's.
 -/
 
 local notation "P" => Polynomial (ZMod 2)
@@ -183,6 +184,13 @@ theorem computeIvBE_96 (hLE : Quad32) (iv : List (BitVec 8)) (h : iv.length = 12
     computeIvBE hLE iv =
       (reverseBytesQuad32 (leBytesToQuad32 (iv ++ List.replicate 4 0))).extractLsb' 32 96 ++ (1 : BitVec 32) := by
   rw [computeIvBE, ite_eq_left (by omega), padTo128Bits, ite_eq_right (by omega), h]
+
+/-- An IV other than 96 bits hashes as `gcm_hash` does with no AAD. -/
+theorem computeIvBE_other (hLE : Quad32) (iv : List (BitVec 8)) (h : iv.length ≠ 12) :
+    computeIvBE hLE iv = reverseBytesQuad32 (gcmHash hLE [] iv) := by
+  have hz : insertNat64 (mkfour 0 0 0 0) (8 * ([] : List (BitVec 8)).length) 1 = mkfour 0 0 0 0 := by decide
+  rw [computeIvBE, ite_eq_right (by omega), gcmHash, hz]
+  simp [padTo128Bits, leBytesToSeqQuad32, seqNat8ToSeqNat32LE, seqToSeqFourLE]
 
 theorem lengths_eq (A M : Nat) (hM : M < 2 ^ 64) :
     (BitVec.ofNat 128 A <<< 64) ||| BitVec.ofNat 128 M =

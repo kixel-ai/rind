@@ -30,7 +30,7 @@ theorem getLsbD_loadBytes (l : List U8) {k : Nat} (hk : k < 128) :
     (loadBytes l).getLsbD k = (decide (k / 8 < l.length) && (l[k / 8]!).bv.getLsbD (k % 8)) := by
   rw [loadBytes, getLsbD_leBytesToQuad32 _ hk]
   by_cases h : k / 8 < l.length
-  · simp [h, List.getElem!_eq_getElem?_getD]
+  · simp [h]
   · simp only [h, decide_false, Bool.false_and, List.getElem!_eq_getElem?_getD, List.getElem?_map,
       List.getElem?_eq_none (show l.length ≤ k / 8 by omega), Option.map_none, Option.getD_none]
     change (0#8).getLsbD (k % 8) = false; simp
@@ -40,11 +40,11 @@ theorem loadBytes_append_zeros (l : List U8) (n : Nat) : loadBytes (l ++ List.re
   apply BitVec.eq_of_getLsbD_eq; intro k hk
   rw [getLsbD_loadBytes _ hk, getLsbD_loadBytes _ hk]
   by_cases h : k / 8 < l.length
-  · simp [h, List.getElem!_eq_getElem?_getD, List.getElem?_append_left h, show k / 8 < l.length + n by omega]
+  · simp [h, show k / 8 < l.length + n by omega]
   · simp only [h, decide_false, Bool.false_and, List.length_append, List.length_replicate]
     by_cases h2 : k / 8 < l.length + n
     · simp [List.getElem!_eq_getElem?_getD, List.getElem?_append_right (by omega : l.length ≤ k / 8),
-        List.getElem?_replicate, show k / 8 - l.length < n by omega]
+        show k / 8 - l.length < n by omega]
     · simp [h2]
 
 theorem getLsbD_swap' (v : BitVec 128) {k : Nat} (hk : k < 128) :
@@ -72,8 +72,8 @@ theorem encrypt_eq (alg : Algorithm) (kw : List (BitVec 32)) (rk : List (BitVec 
     (hrk : rk = keyToRoundKeys alg kw) (hl : rk.length = nr alg + 1) (b : BitVec 128) :
     low.aarch64.aes_gcm.encrypt rk b = ok (aesEncrypt alg kw b) := by
   have hnr : 1 ≤ nr alg := by cases alg <;> decide
-  rw [low.aarch64.aes_gcm.encrypt, if_neg (by omega)]
-  simp only [aesmc_eq, aeseMc, foldlM_ok, bind_ok, bind_tc_ok, aese_eq, veorq_u8, aesEncrypt, ← hrk, evalCipher_fold alg rk hl,
+  rw [low.aarch64.aes_gcm.encrypt, ite_eq_right (by omega)]
+  simp only [aesmc_eq, foldlM_ok, bind_ok, aese_eq, veorq_u8, aesEncrypt, ← hrk, evalCipher_fold alg rk hl,
     hl, show nr alg + 1 - 2 = nr alg - 1 by omega, show nr alg + 1 - 1 = nr alg by omega]
   rfl
 
@@ -132,20 +132,19 @@ theorem loadParts_step (b : List U8) (pos size : Nat) (hs : size ≤ 8) (hp : po
   rw [loadBytes_append_zeros]
   apply BitVec.eq_of_getLsbD_eq; intro k hk
   rw [BitVec.getLsbD_or, BitVec.getLsbD_shiftLeft, getLsbD_loadBytes _ hk, getLsbD_loadBytes _ hk]
-  simp only [hk, decide_true, Bool.true_and, List.length_take, List.length_drop,
-    show min pos b.length = pos by omega, show min size (b.length - pos) = size by omega,
+  simp only [hk, decide_true, Bool.true_and, List.length_take, show min pos b.length = pos by omega,
     show min (pos + size) b.length = pos + size by omega]
   by_cases h1 : k < 8 * pos
   · have h2 : k / 8 < pos := by omega
-    simp [h1, h2, show k / 8 < pos + size by omega, List.getElem!_eq_getElem?_getD, List.getElem?_take]
+    simp [h1, h2, show k / 8 < pos + size by omega, List.getElem!_eq_getElem?_getD]
   · rw [getLsbD_loadBytes _ (by omega)]
     have e1 : (k - 8 * pos) / 8 = k / 8 - pos := by omega
     have e2 : (k - 8 * pos) % 8 = k % 8 := by omega
     simp only [h1, decide_false, Bool.not_false, Bool.true_and, show ¬ k / 8 < pos by omega, Bool.false_and,
       Bool.false_or, e1, e2]
     by_cases h2 : k / 8 < pos + size
-    · simp [h2, show k / 8 - pos < size by omega, List.getElem!_eq_getElem?_getD, List.getElem?_take,
-        List.getElem?_drop, show pos + (k / 8 - pos) = k / 8 by omega, show k / 8 - pos < b.length - pos by omega]
+    · simp [h2, show k / 8 - pos < size by omega, List.getElem!_eq_getElem?_getD,
+        show pos + (k / 8 - pos) = k / 8 by omega, show k / 8 - pos < b.length - pos by omega]
       rw [List.getElem?_eq_getElem (show k / 8 < b.length by omega)]; rfl
     · simp [h2, show ¬ k / 8 - pos < size by omega]
 
@@ -154,7 +153,7 @@ abbrev moved (n : Nat) (sizes : List Nat) : Nat := (sizes.filter fun s => decide
 
 theorem moved_cons (n s : Nat) (sizes : List Nat) :
     moved n (s :: sizes) = (if n &&& s ≠ 0 then s else 0) + moved n sizes := by
-  by_cases h : n &&& s ≠ 0 <;> simp [moved, List.filter_cons, h]
+  by_cases h : n &&& s ≠ 0 <;> simp [moved, h]
 
 theorem moved_all : ∀ n < 16, moved n [8, 4, 2, 1] = n := by decide
 
@@ -264,7 +263,7 @@ theorem mask_eq (v : BitVec 128) (n : Nat) (h16 : n ≤ 16) :
     show n + (16 - n) = 16 by omega, show min n 16 = n by omega, show k / 8 < 16 by omega, decide_true,
     Bool.true_and]
   by_cases h : k / 8 < n
-  · simp only [h, decide_true, Bool.true_and, List.getElem!_eq_getElem?_getD, List.getElem?_append_left
+  · simp only [decide_true, Bool.true_and, List.getElem!_eq_getElem?_getD, List.getElem?_append_left
       (by simp; omega : k / 8 < (List.replicate n 0xff#u8).length), List.getElem?_replicate, h, ite_true,
       Option.getD_some, List.getElem?_take]
     rw [← List.getElem!_eq_getElem?_getD, storeBytes_getElem! _ (by omega), getLsbD_byte _ _ (by omega),
@@ -273,11 +272,11 @@ theorem mask_eq (v : BitVec 128) (n : Nat) (h16 : n ≤ 16) :
       have hk8 : k % 8 < 8 := by omega
       interval_cases (k % 8) <;> decide
     rw [this, Bool.and_true]
-  · simp only [h, decide_false, Bool.false_and, Bool.and_false]
+  · simp only [h, decide_false, Bool.false_and]
     simp only [List.getElem!_eq_getElem?_getD, List.getElem?_append_right
       (by simp; omega : (List.replicate n 0xff#u8).length ≤ k / 8), List.getElem?_replicate, List.length_replicate,
       show k / 8 - n < 16 - n by omega, ite_true, Option.getD_some]
-    simp [show (0#u8).bv = 0#8 from rfl]
+    simp
 
 /-! ## The length block -/
 
@@ -406,7 +405,7 @@ theorem aggStep_inv (s : low.aarch64.ghash.Aggregate) (Y : P) (m : Nat) (hs : Ag
     AggInv H (aggStep p s x) (gf128MulRev (Y + toPoly x) H) m ∧ (aggStep p s x).power ≤ 7 := by
   obtain ⟨hle, hmod, ps, hacc, hsum⟩ := hs
   by_cases h0 : s.power = 0
-  · have hY : toPoly (reduceModel s.lo s.mi s.hi) = Y := by rw [reduce_inv s ps hacc, hsum, if_pos h0]
+  · have hY : toPoly (reduceModel s.lo s.mi s.hi) = Y := by rw [reduce_inv s ps hacc, hsum, ite_eq_left h0]
     refine ⟨⟨by simp [aggStep, h0], by simp [aggStep, h0]; omega,
       [(x ^^^ reduceModel s.lo s.mi s.hi, p[7]!)], by simp only [aggStep, h0, ite_true], ?_⟩, by simp [aggStep, h0]⟩
     simp only [aggStep, h0, ite_true, List.map_cons, List.map_nil, List.sum_cons, List.sum_nil, add_zero,
@@ -422,7 +421,7 @@ theorem aggStep_inv (s : low.aarch64.ghash.Aggregate) (Y : P) (m : Nat) (hs : Ag
       ← mulRev_add_left]
     by_cases hq0 : q = 0
     · subst hq0; simp [gPower_one]
-    · rw [if_neg hq0, mulRev_pow _ _ q (by omega)]
+    · rw [ite_eq_right hq0, mulRev_pow _ _ q (by omega)]
 
 theorem aggFold_inv : ∀ (bs : List (BitVec 128)) (s : low.aarch64.ghash.Aggregate) (Y : P) (m : Nat),
     AggInv H s Y (m + bs.length) →
@@ -459,7 +458,7 @@ theorem finish_eq (s : low.aarch64.ghash.Aggregate) :
 theorem finish_inv (H : P) (s : low.aarch64.ghash.Aggregate) (Y : P) (h : AggInv H s Y 0) (h7 : s.power ≤ 7) :
     toPoly (reduceModel s.lo s.mi s.hi) = Y := by
   obtain ⟨-, hmod, ps, hacc, hsum⟩ := h
-  rw [reduce_inv s ps hacc, hsum, if_pos (by omega)]
+  rw [reduce_inv s ps hacc, hsum, ite_eq_left (by omega)]
 
 /-! ## Chunks -/
 
@@ -609,7 +608,7 @@ theorem short_loop_eq (ENC : Bool) (rk : List (BitVec 128)) (hrk : rk = keyToRou
     have ih := fun g' (ht' : g'.table.htable.val = htableOf p) (hp' : g'.power ≤ 8) =>
       short_loop_eq ENC rk hrk hl y0 hy p cs (i + 1) g' hcs ht' hp'
     rw [low.aarch64.aes_gcm.short_loop]
-    simp only [vsetq_lane_u32, h3, hctr, vreinterpretq_u8_u32, bind_ok, bind_tc_ok, encrypt_eq alg kw rk hrk hl,
+    simp only [vsetq_lane_u32, h3, hctr, vreinterpretq_u8_u32, bind_ok, encrypt_eq alg kw rk hrk hl,
       load_eq c h16, veorq_u8, store_eq c _ h16]
     cases ENC
     · have e := ih (aggStep p g (reverseBytesQuad32 (loadBytes c))) (by rw [aggStep_table]; exact ht)
