@@ -166,7 +166,7 @@ Each upstream rind changes, with where its fork is vendored and where the list o
 
 - **Breaks:** `ct_binsec_mlkem*` decapsulates a ciphertext, and for about one in a hundred of them BINSEC 0.11.3 stops making progress inside `kpke_encrypt`'s re-encryption: it sends the solver no query and visits no more than a few hundred thousand instructions in 480 s, where the others finish in under ten seconds. `gdb` shows it inside `Term.sizeof`, building a term. A given ciphertext always stalls, so it is the input, not the runner, and swapping one half of a stalling ciphertext for another's makes it finish.
 - **Reproduce:** run `admin/ct-binsec --timeout 60 ct_binsec_mlkem512` on the portable backend a few hundred times with a random `encaps()` message, as the check did before it pinned one.
-- **Workaround:** the harness encapsulates a fixed message, so every run explores a ciphertext that finishes on every backend.
+- **Workaround:** the harness encapsulates a fixed message, so every run explores a ciphertext that finishes on every backend. Which ciphertexts stall moves with the compiled code: [kixel-ai/rind#870](https://github.com/kixel-ai/rind/pull/870)'s counted loops made the pinned `0x5a` message stall ML-KEM-768 on the portable backend, and `0x00` stall ML-KEM-1024, so the harness now pins `0x01`, which finishes every parameter set on x86_64 and portable in under ten seconds. A change that stalls the pinned message picks another, rather than raising the timeout.
 - **Reported:** no.
 - **Goes when:** BINSEC builds that term without the stall; the harness may then draw random messages again.
 
@@ -297,6 +297,14 @@ Each upstream rind changes, with where its fork is vendored and where the list o
 - **Workaround:** `build.yml`'s iOS job exports `rustc --print deployment-target` before building.
 - **Reported:** no.
 - **Goes when:** aws-lc-sys builds for the deployment target rustc uses.
+
+### curve25519-dalek cannot compile without SSE
+
+- **Breaks:** curve25519-dalek compiles its AVX2 backend on every x86_64 target, choosing it or the serial one at run time, and LLVM fails to compile it where SSE is off, as on `x86_64-unknown-none` and `x86_64-unknown-uefi`.
+- **Reproduce:** `cargo build -p rind --lib --target x86_64-unknown-none` with `RUSTFLAGS='--cfg getrandom_backend="custom"'`.
+- **Workaround:** `sh/dispatch.sh`'s `no_std` builds pass `--cfg curve25519_dalek_backend="serial"` for `x86_64-unknown-none`, and [PLATFORMS.md](PLATFORMS.md) tells callers to do the same.
+- **Reported:** [curve25519-dalek#601](https://github.com/dalek-cryptography/curve25519-dalek/issues/601).
+- **Goes when:** curve25519-dalek falls back to its serial backend where the target lacks SSE.
 
 ### blind-rsa-signatures 0.18 does not build on rsa 0.10.0
 
