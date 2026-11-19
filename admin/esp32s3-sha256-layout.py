@@ -244,8 +244,8 @@ def l32r_address(insns, call_index, reg):
     return None
 
 
-def check_driver_calls(insns, block_addr, block_size, linked):
-    """The driver may call only the block.
+def check_driver_calls(insns, block_addr, linked):
+    """The driver may call only the block, at its entry point.
 
     On an object the call is `callx8` through a literal. The relocation
     check is what proves that literal is the block; the address in the
@@ -263,18 +263,15 @@ def check_driver_calls(insns, block_addr, block_size, linked):
             target = l32r_address(insns, i, operand[0]) if operand else None
             if target is None:
                 raise Fail(f"driver {mnem} at {addr:#x} {rest} has no resolved literal")
-            if not covers(block_addr, block_size, target):
-                raise Fail(f"driver calls {target:#x}, outside the block")
+            if target != block_addr:
+                raise Fail(f"driver calls {target:#x}, not the block's entry {block_addr:#x}")
             continue
         match = re.search(r"([0-9a-fA-F]{6,})", rest)
-        if match is None or not covers(block_addr, block_size, int(match.group(1), 16)):
+        if match is None or int(match.group(1), 16) != block_addr:
             raise Fail(f"driver {mnem} at {addr:#x} is not the block: {rest}")
     if not saw:
         raise Fail("driver makes no call, so the block is not reached")
 
-
-def covers(start, size, addr):
-    return start <= addr < start + size
 
 
 def expect_placed_object(objdump, readelf, path):
@@ -334,7 +331,7 @@ def expect_placed_object(objdump, readelf, path):
     block_insns = disassemble(objdump, path, baddr, bsize, bsec)
     check_no_calls(block_insns, "block")
     check_ssai(block_insns)
-    check_driver_calls(disassemble(objdump, path, daddr, dsize, dsec), baddr, bsize, linked=False)
+    check_driver_calls(disassemble(objdump, path, daddr, dsize, dsec), baddr, linked=False)
     report_object(secs, len(block_insns))
 
 
@@ -450,7 +447,7 @@ def expect_image(objdump, path, map_path):
     block_insns = disassemble(objdump, path, baddr, bsize, b_out)
     check_no_calls(block_insns, "block")
     check_ssai(block_insns)
-    check_driver_calls(disassemble(objdump, path, daddr, dsize, d_out), baddr, bsize, linked=True)
+    check_driver_calls(disassemble(objdump, path, daddr, dsize, d_out), baddr, linked=True)
     # A leftover static relocation into flash text would still name that section.
     text = run([objdump, "-r", path])
     for line in text.splitlines():
