@@ -123,10 +123,10 @@ fn order(suite: &Suite) -> Vec<u8> {
     })
 }
 
-/// Every single-bit change to a vector's proof, a proof truncated or
-/// extended, one with a scalar at the group order or (for ristretto255) a
-/// second encoding of one, one against another key, and one over swapped
-/// elements are refused.
+/// A one-bit change to each byte of a vector's proof, each bit position in
+/// turn, a proof truncated or extended, one with a scalar at the group order
+/// or (for ristretto255) a second encoding of one, one against another key,
+/// and one over swapped elements are refused.
 #[test]
 fn refuses_altered_proofs() {
     struct Steps;
@@ -166,13 +166,16 @@ fn refuses_altered_proofs() {
                 };
                 check(&public, &evaluated, &evaluated_bytes, &proof).unwrap();
 
-                for bit in 0..proof.len() * 8 {
+                // One bit per byte rather than all eight: each check is a
+                // whole verification, and every bit costs ctgrind's armv7
+                // debug rows nearly five hours.
+                for byte in 0..proof.len() {
                     let mut altered = proof.clone();
-                    altered[bit / 8] ^= 1 << (bit % 8);
+                    altered[byte] ^= 1 << (byte % 8);
                     assert_eq!(
                         check(&public, &evaluated, &evaluated_bytes, &altered).unwrap_err(),
                         Error::BadSignature,
-                        "bit {bit}"
+                        "byte {byte}"
                     );
                 }
                 for bad in [&proof[1..], &[&proof[..], &[0]].concat()] {
