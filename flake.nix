@@ -479,9 +479,10 @@
           # the shell's own. See UPSTREAM.md, "Cargo runs $CARGO_HOME/bin's
           # subcommands before PATH's".
           dev-cargo-path = ''
+            # Cargo resolves a relative CARGO_HOME against each run's working
+            # directory, so pin it to the one the shell starts in.
+            case ''${CARGO_HOME-} in "" | /*) ;; *) export CARGO_HOME=$PWD/$CARGO_HOME ;; esac
             cargo_bin=''${CARGO_HOME:-$HOME/.cargo}/bin
-            # Cargo resolves a relative CARGO_HOME against its working directory.
-            case $cargo_bin in /*) ;; *) cargo_bin=$PWD/$cargo_bin ;; esac
             case ":$PATH:" in
               *":$cargo_bin:"*) ;;
               *) export PATH="$PATH:$cargo_bin" ;;
