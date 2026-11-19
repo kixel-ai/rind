@@ -18,9 +18,9 @@ translate, so each axiom is about the opaque wrapper, and covers every
 routine it may call, which all state the one contract. Their preconditions on
 memory hold for every call from safe Rust: each argument is a distinct Rust
 object, overlapping no other nor the stack. The routines need only the base AArch64 instructions. A routine returns 1 or 0,
-and the wrapper returns `some` or `true` where it returned 1. VG's wipe of its
-scratch and registers, which rind keeps as `AGENTS.md` allows, and what each
-routine may leak, are left out.
+and the wrapper returns `some` or `true` where it returned 1. What a routine
+leaves in its scratch buffer and registers, which the contract leaves
+unspecified and rind does not wipe, and what it may leak, are left out.
 
 Trusted: the restatement; that rind's `vg_*` routines are VG's at the pin,
 whose instructions and relocation targets `admin/prove vg` checks along with

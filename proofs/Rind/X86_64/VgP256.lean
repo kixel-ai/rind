@@ -18,9 +18,9 @@ translate, so each axiom is about the opaque wrapper, and covers every
 routine it may call, which all state the one contract. Their preconditions on
 memory hold for every call from safe Rust: each argument is a distinct Rust
 object, overlapping no other nor the stack. The CPU features are the token's to prove: `P256::check` passed for it, which holds BMI2, ADX, AVX, and AVX2, and AVX-512 IFMA for the variant that takes it. A routine returns 1 or 0,
-and the wrapper returns `some` or `true` where it returned 1. VG's wipe of its
-scratch and registers, which rind keeps as `AGENTS.md` allows, and what each
-routine may leak, are left out.
+and the wrapper returns `some` or `true` where it returned 1. What a routine
+leaves in its scratch buffer and registers, which the contract leaves
+unspecified and rind does not wipe, and what it may leak, are left out.
 
 Trusted: the restatement; that rind's `vg_*` routines are VG's at the pin,
 whose instructions and relocation targets `admin/prove vg` checks along with
@@ -51,7 +51,7 @@ AVX-512 IFMA:
 https://github.com/pyca/verified-garbage/blob/0aa40d6c21fd02943fe5b38a5b69b6213d07764d/lean/VerifiedGarbage/Proof/Ecdh/X86_64/VerifiedAdx.lean#L94 (`ecdh_verified_adx`) and
 https://github.com/pyca/verified-garbage/blob/0aa40d6c21fd02943fe5b38a5b69b6213d07764d/lean/VerifiedGarbage/Proof/Ecdh/X86_64/VerifiedIfma.lean#L218 (`ecdh_verified_ifma`),
 registered at
-https://github.com/pyca/verified-garbage/blob/0aa40d6c21fd02943fe5b38a5b69b6213d07764d/lean/VerifiedGarbage/Artifacts/EcdhP256/X86_64.lean#L97 and #L104. -/
+https://github.com/pyca/verified-garbage/blob/0aa40d6c21fd02943fe5b38a5b69b6213d07764d/lean/VerifiedGarbage/Artifacts/EcdhP256/X86_64.lean#L104 and #L97. -/
 @[step]
 axiom vg_p256_ecdh_spec (self : low.x86_64.p256_vg.P256) (d : Std.Array U8 32#usize)
     (peer : Std.Array U8 65#usize) :
@@ -66,7 +66,7 @@ on a CPU whose `check` passed, without and with AVX-512 IFMA:
 https://github.com/pyca/verified-garbage/blob/0aa40d6c21fd02943fe5b38a5b69b6213d07764d/lean/VerifiedGarbage/Proof/Ecdsa/Verify/X86_64/JointVerified.lean#L158 (`verifyHash_verified_adx`) and
 https://github.com/pyca/verified-garbage/blob/0aa40d6c21fd02943fe5b38a5b69b6213d07764d/lean/VerifiedGarbage/Proof/Ecdsa/Verify/X86_64/JointIfmaVerified.lean#L142 (`verifyHash_verified_ifma`),
 registered at
-https://github.com/pyca/verified-garbage/blob/0aa40d6c21fd02943fe5b38a5b69b6213d07764d/lean/VerifiedGarbage/Artifacts/EcdsaP256/X86_64.lean#L136 and #L149. -/
+https://github.com/pyca/verified-garbage/blob/0aa40d6c21fd02943fe5b38a5b69b6213d07764d/lean/VerifiedGarbage/Artifacts/EcdsaP256/X86_64.lean#L149 and #L136. -/
 @[step]
 axiom vg_p256_verify_spec (self : low.x86_64.p256_vg.P256) (pub : Std.Array U8 65#usize)
     (e : Std.Array U8 32#usize) (sig : Std.Array U8 64#usize) :
