@@ -1252,7 +1252,7 @@ Beyond Lean's kernel:
   and RFC 8018.
 - The restatement of each s2n-bignum and aws-lc-verification theorem, and of
   each of rind's own HOL Light theorems, as an axiom, under the composition rule in the
-  [verification epic](/quest/m3/verified/README.md), and on aarch64 the
+  [verification epic](/quest/m4/verified/README.md#composition-rule), and on aarch64 the
   caveats aws-lc-verification lists for its NSym proof. It lets a
   group-membership fact a proof must decide be its defining equation, so
   `group_carrier p256_group` is the curve equation that HOL Light's
