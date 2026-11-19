@@ -28,6 +28,10 @@ INSN = re.compile(
 # FIPS 180-4 SHA-256 rotate distances. 8 is the byte swap, not a rotate.
 ROTATE_SAR = {2, 6, 7, 11, 13, 17, 18, 19, 22, 25}
 REG_NAME = re.compile(r"\b[a-zA-Z]+[0-9]+\b")
+# ESP32-S3 internal SRAM on the instruction and data buses (TRM, "System
+# and Memory"). Code and data here stay reachable with the flash cache off.
+IRAM = (0x40370000, 0x403E0000)
+DRAM = (0x3FC88000, 0x3FD00000)
 
 
 class Fail(Exception):
@@ -153,7 +157,7 @@ def check_ssai(insns):
     """Every ssai is a FIPS rotate or the big-endian byte swap.
 
     A rotate is `ssai` of 2, 6, 7, 11, 13, 17, 18, 19, 22, or 25, then
-    `src`. The byte swap is `l32i`, `ssai 8`, `srli` or `extui` by 16,
+    `src`. The byte swap is `l32i`, `ssai 8`, `extui` of bits 16..32,
     then three `src`. Pairing alone would accept `ssai 12` or an `src`
     that consumes an older SAR, so every `src` must also belong to one of
     those two sequences.
@@ -175,16 +179,15 @@ def check_ssai(insns):
             consumed.add(i + 1)
             i += 2
             continue
-        # The byte swap's `srli` by 16 is the same extract the Xtensa
-        # backend prints as `extui`. Neither reads SAR.
+        # The byte swap's `extui` does not read SAR.
         shift = immediates(window[0][2]) if window else []
         if (
             n == 8
             and i > 0
             and insns[i - 1][1] == "l32i"
             and len(mnems) >= 4
-            and mnems[0] in ("srli", "extui")
-            and 16 in shift
+            and mnems[0] == "extui"
+            and shift == [16, 16]
             and mnems[1:4] == ["src", "src", "src"]
         ):
             consumed.update((i + 2, i + 3, i + 4))
@@ -205,7 +208,7 @@ def check_no_calls(insns, what):
 
 
 # Mnemonics whose first register operand is read, not written.
-NO_DEST = re.compile(r"^(?:s(?:8|16|32)\w*|b\w*)$")
+NO_DEST = re.compile(r"^(?:s(?:8|16|32)\w*|b\w*)(?:\.n)?$")
 
 
 def l32r_address(insns, call_index, reg):
@@ -405,6 +408,15 @@ def expect_image(objdump, path, map_path):
     b_out = section_at(outputs, baddr) or bsec
     d_out = section_at(outputs, daddr) or dsec
     k_out = section_at(outputs, kaddr) or ksec
+    # Addresses, not only names: an output named for IRAM could still be
+    # linked at a flash address.
+    for label, addr, size, (lo, hi) in (
+        ("block", baddr, bsize, IRAM),
+        ("driver", daddr, dsize, IRAM),
+        ("K", kaddr, ksize, DRAM),
+    ):
+        if size <= 0 or not (lo <= addr and addr + size <= hi):
+            raise Fail(f"{label} {addr:#x}+{size:#x} is outside internal RAM {lo:#x}..{hi:#x}")
     for label, out in (("block", b_out), ("driver", d_out)):
         if "iram" not in out:
             raise Fail(f"{label} is in {out}, not IRAM")

@@ -156,12 +156,18 @@ mod generic {
     // SLH-DSA's SHA-256 lanes one at a time, which x86_64 runs with the SHA
     // extensions or without AVX2.
     pub(super) mod sha256x8;
-    // Rolled SHA-512 wherever the pointer is not 64 bits. HACL*'s unrolled
-    // form is about 47 KiB in that codegen and misses a small instruction
-    // cache. 64-bit tests still compile it and check it against FIPS 180-4.
-    // `rind_limb` does not select it: a 64-bit host forced to 32-bit limbs
-    // still ships the 64-bit HACL* body.
-    #[cfg(any(all(rind_backend = "portable", not(target_pointer_width = "64")), test))]
+    // Rolled SHA-512 on 32-bit microcontrollers (ESP-IDF or no OS), whose
+    // small instruction cache HACL*'s ~47 KiB unrolled body misses. Hosted
+    // 32-bit targets keep HACL*, which took 0.71-0.78 of this loop's time
+    // on i686. Tests compile it everywhere and check it against FIPS 180-4.
+    #[cfg(any(
+        all(
+            rind_backend = "portable",
+            not(target_pointer_width = "64"),
+            any(target_os = "espidf", target_os = "none")
+        ),
+        test
+    ))]
     pub(super) mod sha512;
     pub(super) mod zeroise;
 }
