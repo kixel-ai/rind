@@ -140,8 +140,9 @@ theorem cipher_loop0_spec (key : Std.Array U32 8#usize) (cn : Std.Array U32 4#us
   · exact ⟨rfl, hd, hc, hpre, hpost⟩
 
 
-/-- HACL*'s rounds, in rind's loop, encrypt the buffer, the block counter
-wrapping as RFC 8439's encryption's does. -/
+/-- HACL*'s rounds, in rind's loop, encrypt the buffer as the Lean model's
+`chacha20.encrypt` does, the block counter wrapping past 2^32 - 1 as that
+model's does; the API refuses such a buffer before it gets here. -/
 theorem cipher_spec (key : Std.Array U32 8#usize) (cn : Std.Array U32 4#usize) (buffer : Slice U8) :
     low.generic.chacha20.cipher key cn buffer ⦃ r =>
       bvs r.val = chacha20.encrypt (wordBytes key.val) cn.val[0]!.bv (wordBytes (cn.val.drop 1))
