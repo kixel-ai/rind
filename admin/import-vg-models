@@ -47,6 +47,11 @@ ROOTS = [
     # contracts shows the change in its diff, against which that re-pin must
     # review the axioms.
     "VerifiedGarbage.Spec.ChaCha20.Contract",
+    # X25519's and Ed25519's specs, which proofs/Rind/X86_64/VgCurve25519.lean
+    # states its axioms in, and the contracts those axioms restate.
+    "VerifiedGarbage.Spec.X25519.Contract",
+    "VerifiedGarbage.Spec.Ed25519.KeyPair",
+    "VerifiedGarbage.Spec.Ed25519.ExpandedSign",
 ]
 
 IMPORT = re.compile(r"^(?:public )?(?:meta )?import (VerifiedGarbage\.[A-Za-z0-9_.]+)\b", re.M)
