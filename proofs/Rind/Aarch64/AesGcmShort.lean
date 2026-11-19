@@ -378,9 +378,10 @@ theorem add_eq (p : List (BitVec 128)) (s : low.aarch64.ghash.Aggregate) (hp : s
     simp [aggStep, h0, accum]
 
 /-- What `Aggregate` holds partway through `m` blocks short of the end of a
-GHASH whose Horner value so far is `Y`: its power is the blocks left mod 8,
-and its terms are of pairs whose products sum to `Y` times H to that power,
-or `Y` itself at a group's end. -/
+GHASH whose Horner value so far is `Y`: its power is at most 8 and
+congruent to the blocks left mod 8, so 8 rather than 0 before a whole first
+group, and its terms are of pairs whose products sum to `Y` times H to that
+power, or `Y` itself at a group's end. -/
 def AggInv (H : P) (s : low.aarch64.ghash.Aggregate) (Y : P) (m : Nat) : Prop :=
   s.power ≤ 8 ∧ s.power % 8 = m % 8 ∧ ∃ ps : List (BitVec 128 × BitVec 128),
     (s.lo, s.mi, s.hi) = accum (0, 0, 0) ps ∧
