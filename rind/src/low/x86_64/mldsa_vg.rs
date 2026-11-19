@@ -14,6 +14,7 @@
 use super::cpu::HaveAvx2;
 use super::vg;
 use crate::low;
+use alloc::vec;
 
 /// Proof that VG's signing runs here: the CPU has no AVX2.
 #[derive(Clone, Copy, Debug)]
