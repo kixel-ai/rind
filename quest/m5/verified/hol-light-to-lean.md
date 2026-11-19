@@ -14,7 +14,7 @@ Decided with the maintainer on 2026-11-18 (/quest-plan): ✅ port the existing H
 - A routine the trial's PR and the maintainer kept in HOL Light is ported here too: the exceptions last only until this port, so nothing needs `admin/prove hol-light` once it goes. armv7's proofs are among them.
 - Each ported proof keeps every check its HOL Light route had, as [the trial](/quest/m2/lean-assembly-trial.md) does: the build's instruction bytes, relocations, and statics (such as x86_64 SHA-256's `K` table) are checked against the theorem, and `admin/prove vg` cosimulates every instruction the routine runs before its old model check retires.
 - Keep CI's checks as the jobs go: move `admin/prove bytes`, today a step of `hol-light-aarch64`, to a job that stays, and retire `admin/prove cosim` and its job only once no proof rests on the AArch32 model or the fork's x86 additions it also checks, and VG's cosimulation covers armv7.
-- Retire each routine's dedicated constant-time harness as its leakage contract lands, as the trial decided.
+- Retire each routine's dedicated constant-time harness as its leakage contract lands, as the trial decided, once a check that stays traces its Rust wrapper on that path, as [the leakage-contracts quest](/quest/m2/verified-garbage/leakage-contracts.md) requires for VG's routines.
 
 ## Required
 
