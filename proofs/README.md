@@ -866,7 +866,7 @@ rounds FIPS 197's, `load` and `store` move a partial block's bytes, `KEEP`
 masks the keystream past a short ciphertext chunk before it is hashed, and
 `Aggregate` is the Horner rule, each group of up to eight blocks multiplied by
 descending powers of H and reduced once. `Rind/Aarch64/AesGcm.lean` proves
-that the counter block of a 96-bit nonce and of any other IV is
+that the counter block of a 96-bit nonce and of any other IV under 2^61 bytes is
 `compute_iv_BE`'s (`counter_block_eq`, `initial_counter_spec`), and that
 `tagged_from`, when the AAD's and the message's blocks, each rounded up,
 number at most the 15 sealing or 31 opening that `short` takes, is GCTR and

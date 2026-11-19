@@ -6,7 +6,7 @@ open Aeneas Aeneas.Std Result rind.vale rind.simd Polynomial
 # rind's AES-GCM on aarch64 with the crypto extension, short messages
 
 `low::aarch64::aes_gcm` with a crypto-extension key and a PMULL table: the
-counter block of a 96-bit nonce and of any other IV is Vale's
+counter block of a 96-bit nonce and of any other IV under 2^61 bytes is Vale's
 `compute_iv_BE`, and `tagged_from`, which takes `short` when the AAD's and
 the message's blocks, each rounded up, number at most 15 sealing or 31
 opening, is Vale's GCTR and `gcm_hash` from the counter block it is given,
