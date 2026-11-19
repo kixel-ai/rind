@@ -8,9 +8,10 @@
 # Each ENTRY is a job ID, which runs the job whole, or `job:value,...`, which
 # runs only the rows of its matrix that take each named value on that value's
 # axis, as `armv7:no-neon,debug` runs armv7's one debug no-NEON row. Entries
-# follow the workflow's job order, and a job's values its matrix's order, so
-# one selection has one spelling, and one concurrency group. Anything else,
-# such as a typo, fails, so a dispatch never quietly runs nothing.
+# are separated by single spaces and follow the workflow's job order, and a
+# job's values its matrix's order, so one selection has one spelling, and one
+# concurrency group. Anything else, such as a typo, fails, so a dispatch never
+# quietly runs nothing.
 #
 # It prints, for $GITHUB_OUTPUT, `jobs=`, a JSON array of the named job IDs,
 # and `exclude=`, a JSON object of each filtered job's matrix exclusions. A
@@ -65,8 +66,11 @@ yq -o=json . "$1" | jq -r --arg entries "$2" '
     def fail($msg): "sh/select-jobs.sh: \($msg)\n" | halt_error(1);
     (.jobs | keys_unsorted - ["select"]) as $ids
     | .jobs as $jobs
-    | ($entries | [splits("\\s+") | select(. != "")]) as $entries
-    | if $entries == [] then fail("names no job") else . end
+    | ($entries | [splits("\\s+") | select(. != "")]) as $split
+    | if $split == [] then fail("names no job")
+      elif $split | join(" ") != $entries then fail("separate entries with single spaces, as the concurrency group reads them")
+      else . end
+    | $split as $entries
     | [$entries[] | capture("^(?<id>[^:]+)(:(?<values>.+))?$") // fail("cannot read \(.)")
         | .values |= (if . == null then [] else split(",") end)
         | . as {$id}
