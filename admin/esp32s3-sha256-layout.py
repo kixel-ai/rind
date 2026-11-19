@@ -84,32 +84,17 @@ def symbols(objdump, path):
     return found
 
 
-def idents(name):
-    """The names in a symbol: the whole of an unmangled one, else each
-    length-prefixed path component of a Rust mangled one (`21sha256_compress_block`)."""
-    found = {name}
-    i = 0
-    while i < len(name):
-        j = i
-        while j < len(name) and name[j].isdigit():
-            j += 1
-        if j > i and j < len(name):
-            end = j + int(name[i:j])
-            part = name[j:end]
-            if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", part):
-                found.add(part)
-                i = end
-                continue
-        i = max(j, i + 1)
-    return found
-
-
 def pick(syms, needle):
     # Section symbols are named after the section, so `.iram1...compress_block`
     # contains the function's name. The function or object does not. Match the
     # whole identifier: `sha256_compress_blocks`, the portable function, is a
-    # different one and linking may keep both.
-    hits = [item for item in syms.items() if needle in idents(item[0]) and not item[0].startswith(".")]
+    # different one and linking may keep both. Legacy (`_ZN...E`) and v0 (`_R...`)
+    # mangling both length-prefix each path component (`21sha256_compress_block`),
+    # so the prefix plus the name pins the identifier, and `22sha256_compress_blocks`
+    # never contains it. Walking the prefixes from the start is wrong for v0: its
+    # base62 crate disambiguator holds digits that read as a length.
+    tag = f"{len(needle)}{needle}"
+    hits = [item for item in syms.items() if (item[0] == needle or tag in item[0]) and not item[0].startswith(".")]
     if len(hits) != 1:
         names = ", ".join(name for name, _ in hits) or "(none)"
         raise Fail(f"expected one symbol named {needle}, found {names}")
@@ -482,9 +467,48 @@ def expect_image(objdump, path, map_path):
     print(f"  block instructions {len(block_insns)}, no calls, ssai paired")
 
 
+# Real symbol names from rustc 1.98.1 (`-C symbol-mangling-version=v0` and
+# `legacy`, crate `rind`, module `low::portable::sha256_iram`, one build per
+# `-C metadata`). The v0 crate hashes with digits are the ones a greedy
+# length-prefix walk misread.
+V0 = "_RNvNtNtNtCs{}_4rind3low8portable11sha256_iram{}"
+LEGACY = "_ZN4rind3low8portable11sha256_iram{}17h{}E"
+V0_HASHES = ["1paxuMSCu6r", "30zkQqDHX6G", "51p7yVGAJlh", "600rUf00GRX", "70sRogeUpn8", "79wRi01wFOF"]
+LEGACY_HASHES = ["07d5edefbe545dc7", "0c48ecaf86fb867b", "131de65c6f72ccff"]
+
+
+def selftest():
+    """Check `pick` on real v0 and legacy names, with the portable `blocks` function beside."""
+    wanted = {BLOCK: "21" + BLOCK, DRIVER: "21" + DRIVER, "sha256_k": "8sha256_k"}
+    for needle, ident in wanted.items():
+        for crate in V0_HASHES:
+            names = [V0.format(crate, ident), V0.format(crate, "22sha256_compress_blocks"), V0.format(crate, "21sha256_update_nblocks")]
+            syms = {n: (0, 0, ".text") for n in names + [".iram1." + needle, "core3fmt5write"]}
+            got = pick(syms, needle)[0]
+            assert got == V0.format(crate, ident), (needle, crate, got)
+        for h in LEGACY_HASHES:
+            syms = {LEGACY.format(ident, h): (0, 0, ".text"), LEGACY.format("22sha256_compress_blocks", h): (0, 0, ".text")}
+            assert pick(syms, needle)[0] == LEGACY.format(ident, h), (needle, h)
+    # The portable `blocks` function alone is not the block, and two builds are ambiguous.
+    for syms in (
+        {V0.format("1paxuMSCu6r", "22sha256_compress_blocks"): (0, 0, ".text")},
+        {V0.format("1paxuMSCu6r", "21" + BLOCK): (0, 0, ".text"), V0.format("30zkQqDHX6G", "21" + BLOCK): (0, 0, ".text")},
+    ):
+        try:
+            pick(syms, BLOCK)
+        except Fail:
+            continue
+        raise AssertionError("pick accepted a missing or ambiguous symbol")
+    print("esp32s3-sha256-layout: selftest ok")
+
+
 def main(argv):
+    if argv == ["selftest"]:
+        selftest()
+        return 0
     if len(argv) < 2 or argv[0] not in ("object", "image"):
         raise SystemExit(
+            "usage: esp32s3-sha256-layout.py selftest\n"
             "usage: esp32s3-sha256-layout.py object OBJDUMP READELF PATH placed|ordinary\n"
             "       esp32s3-sha256-layout.py image OBJDUMP PATH MAP"
         )
