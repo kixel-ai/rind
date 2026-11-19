@@ -1220,7 +1220,7 @@ structure Cached : Prop where
     low.generic.reuse_cache.ReuseCache.get_or_build_now
       (Array.Insts.CoreMarkerCopy 8#usize mid.p384.AffineMontPoint.Insts.CoreMarkerCopy)
       (core.default.DefaultArray 8#usize mid.p384.AffineMontPoint.Insts.CoreDefaultDefault)
-      mid.p384.VerifyingKey.raw_ecdsa_verify.closure.Insts.CoreOpsFunctionFnOnceTupleArrayAffineMontPoint8
+      mid.p384.VerifyingKey.raw_ecdsa_verify.closure_1.Insts.CoreOpsFunctionFnOnceTupleArrayAffineMontPoint8
       key.odd_multiples key ⦃ P ⦄
   get_or_build : ∀ (key : mid.p384.VerifyingKey) (odd : Std.Array mid.p384.AffineMontPoint 8#usize)
       (P : Std.Array mid.p384.AffineMontPoint 8#usize → Prop),
@@ -1229,7 +1229,7 @@ structure Cached : Prop where
     mid.p384.AffineMontPoint.public_more_odd_multiples odd ⦃ P ⦄ →
     low.generic.reuse_cache.ReuseCache.get_or_build
       (core.default.DefaultArray 8#usize mid.p384.AffineMontPoint.Insts.CoreDefaultDefault)
-      mid.p384.VerifyingKey.raw_ecdsa_verify.closure_1.Insts.CoreOpsFunctionFnOnceTupleArrayAffineMontPoint8
+      mid.p384.VerifyingKey.raw_ecdsa_verify.closure_2.Insts.CoreOpsFunctionFnOnceTupleArrayAffineMontPoint8
       key.more_odd_multiples odd ⦃ r => r = none ∨ ∃ m, r = some m ∧ P m ⦄
   clone : ∀ c, ∃ c', low.generic.reuse_cache.ReuseCache.Insts.CoreCloneClone.clone
       (Array.Insts.CoreMarkerCopy 8#usize mid.p384.AffineMontPoint.Insts.CoreMarkerCopy)
