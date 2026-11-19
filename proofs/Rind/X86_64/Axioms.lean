@@ -9,7 +9,7 @@ import Rind.X86_64.Pbkdf2
 import Rind.X86_64.ChaCha20
 import Rind.X86_64.AesGcm
 import Rind.X86_64.ChaCha20Poly1305
-import Rind.X86_64.VgChaCha20
+import Rind.X86_64.ChaCha20Cipher
 import Rind.X86_64.GcmKey
 import Rind.X86_64.Ed25519
 import Rind.X86_64.Ed25519Ifma
@@ -43,8 +43,10 @@ IFMA, pyca/verified-garbage's Lean proof of its routine, which
 AVX-512 IFMA in `Rind.X86_64.VgCurve25519`, and for P-256's public key, ECDH,
 and ECDSA verification in `Rind.X86_64.VgP256`; and nothing else.
 ChaCha20-Poly1305's theorems also take aws-lc's one-pass routines as the
-hypothesis `RunsChaCha20Poly1305`, which no axiom states, and ChaCha20's
-`apply_keystream` takes rind's two-block kernel as the hypothesis `Kernel`. The generator
+hypothesis `RunsChaCha20Poly1305`, which no axiom states. ChaCha20's
+`apply_keystream` on a CPU without AVX2 takes aws-lc's SSSE3 routine as the
+hypothesis `Ssse3`; `Rind.X86_64.ChaCha20Avx2` proves rind's two-block kernel
+over `Rind.X86_64.Simd`'s models of the AVX2 intrinsics. The generator
 tables' point selects rest on no axiom, only on the hand model in
 `Rind.X86_64.PointSelectModel`. P-256's generator multiplication also rests
 on `p256_point_add_affine_spec` in `Rind.X86_64.S2nBignum`, which restates
@@ -390,6 +392,23 @@ change to the trust base.
  vg_chacha20_init_spec] -/
 #guard_msgs in
 #print axioms chacha20_apply_keystream
+
+/-- info: 'rind.x86_64.chacha20_apply_keystream_ssse3' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ vg_chacha20_apply_avx2_spec,
+ vg_chacha20_apply_avx512vl_spec,
+ vg_chacha20_init_spec] -/
+#guard_msgs in
+#print axioms chacha20_apply_keystream_ssse3
+
+/-- info: 'rind.x86_64.avx2.kernel' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms avx2.kernel
+
+/-- info: 'rind.x86_64.generic.cipher_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms generic.cipher_spec
 
 /-- info: 'rind.x86_64.chacha20_poly1305_new' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in

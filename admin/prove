@@ -1348,8 +1348,6 @@ extract x86_64 X86_64 "${hashes[@]}" "${assembly[@]}" \
     --opaque 'crate::low::x86_64::chacha20::_::apply_avx2' \
     --opaque 'crate::low::x86_64::chacha20::_::apply_avx512vl' \
     --opaque crate::low::x86_64::chacha20::cipher_ssse3_4x \
-    --opaque crate::low::x86_64::chacha20::cipher_avx2 \
-    --opaque crate::low::generic::chacha20::cipher \
     --include 'crate::mid::aes::_' \
     --include crate::low::x86_64::aes \
     --start-from crate::low::x86_64::aes::AesDecKey::new \
