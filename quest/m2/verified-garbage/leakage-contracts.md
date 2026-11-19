@@ -2,7 +2,7 @@
 
 ## Goal
 
-For each VG routine rind runs, its leakage theorem is imported beside its functional theorem, one axiom per wrapper under the composition rule: the routine's address and branch trace depends only on what its contract declares public. The dedicated constant-time harness of each such routine is removed: `ct_sde_…` for VG's ML-KEM-768 and P-256 on x86_64, `ct_qemu_…` for its aarch64 SVE2 ChaCha20-Poly1305, and any `ct_binsec_…` region over only VG code. TESTING.md's constant-time column cites the theorem instead.
+For each VG routine rind runs, its leakage theorem is imported as an axiom about the routine's artifact on VG's model, stated with the vendored `VerifiedGarbage/TCB/Artifact.lean`'s own trace definitions and citing VG's theorem at the pinned revision, with `admin/vg-bytes` checking that rind's build emits that artifact's bytes: the routine's address and branch trace depends only on what its contract declares public. It says nothing about rind's Rust wrapper, so [the composition rule](/quest/m4/verified/README.md#composition-rule)'s one functional axiom per wrapper is unchanged; `Axioms.lean` pins the new axioms too. The dedicated constant-time harness of each such routine is removed: `ct_sde_…` for VG's ML-KEM-768 and P-256 on x86_64, `ct_qemu_…` for its aarch64 SVE2 ChaCha20-Poly1305, and any `ct_binsec_…` region over only VG code. TESTING.md's constant-time column cites the theorem instead.
 
 ## Plan
 

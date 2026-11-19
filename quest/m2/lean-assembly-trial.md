@@ -15,7 +15,7 @@ Decided with the maintainer on 2026-11-18 (/quest-plan):
 
 Guidance:
 
-- Prove the bytes rind's build emits, as the HOL Light proofs do: load the object `admin/prove` already extracts into VG's model, and fail unless the build's bytes are the ones the proof lists. VG's own decoder and `admin/vg-bytes` are the tools at hand.
+- Prove the bytes rind's build emits, as the HOL Light proofs do: load the object `admin/prove` already extracts into VG's model, and fail unless the build's bytes are the ones the proof lists. The same goes for the `K256` table the routine reads: the HOL Light proof asserts its bytes, and so must this one, failing unless the build's table holds the constants the proof lists. VG's own decoder and `admin/vg-bytes` are the tools at hand.
 - `admin/prove vg` cosimulates only the instructions VG's code uses. Extend it to every instruction this proof's routine runs, such as the round constants' loads, so each model rind's proof relies on is checked against hardware.
 - Keep the FIPS 180-4 spec rind's Lean already uses (`Rind/HashSpec.lean` or `Rind/S2nSha256.lean`), so `Sha256Hw.lean`'s consumers don't change.
 - `compress_hw` stays opaque to Aeneas, so the step from the naked function's theorem to the wrapper is still a restatement under [the composition rule](/quest/m4/verified/README.md#composition-rule): one axiom about `compress_hw` stating the new theorem's postcondition over the wrapper's arguments and result, as the axiom does today and as rind's restatements of VG's theorems do. Its docstring names the Lean theorem, which the same `lake build` checks, instead of the HOL Light one. `Axioms.lean`'s pin keeps that axiom, now restating a theorem the kernel checks; the PR says so.
