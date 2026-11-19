@@ -413,6 +413,22 @@ axiom sha3_keccak2_f1600_spec (a : Std.Array (Std.Array U64 25#usize) 2#usize)
     low.aarch64.sha3_keccak2_f1600.sha3_keccak2_f1600 a rc ⦃ r =>
       r.val.map (·.val.map (·.bv)) = (a.val.map (·.val.map (·.bv))).map (keccak 24) ⦄
 
+/-- `SHA3_KECCAK4_F1600_SUBROUTINE_CORRECT`, whose four states are
+consecutive, as an array of them is,
+https://github.com/awslabs/s2n-bignum/blob/3f01260ff1bd2577abf0117ce45aa008bc243a80/arm/proofs/sha3_keccak4_f1600.ml#L1230 -/
+axiom sha3_keccak4_f1600_spec (a : Std.Array (Std.Array U64 25#usize) 4#usize)
+    (rc : Std.Array U64 24#usize) (hrc : rc.val.map (·.bv) = keccakRoundConstants) :
+    low.aarch64.sha3_keccak4_f1600.sha3_keccak4_f1600 a rc ⦃ r =>
+      r.val.map (·.val.map (·.bv)) = (a.val.map (·.val.map (·.bv))).map (keccak 24) ⦄
+
+/-- `SHA3_KECCAK4_F1600_ALT_SUBROUTINE_CORRECT`, whose four states are
+consecutive, as an array of them is,
+https://github.com/awslabs/s2n-bignum/blob/3f01260ff1bd2577abf0117ce45aa008bc243a80/arm/proofs/sha3_keccak4_f1600_alt.ml#L1416 -/
+axiom sha3_keccak4_f1600_alt_spec (a : Std.Array (Std.Array U64 25#usize) 4#usize)
+    (rc : Std.Array U64 24#usize) (hrc : rc.val.map (·.bv) = keccakRoundConstants) :
+    low.aarch64.sha3_keccak4_f1600_alt.sha3_keccak4_f1600 a rc ⦃ r =>
+      r.val.map (·.val.map (·.bv)) = (a.val.map (·.val.map (·.bv))).map (keccak 24) ⦄
+
 /-- rind runs on this CPU: its entry guards' CPU-feature checks pass. Neither
 reads an input. -/
 def Runs : Prop :=
