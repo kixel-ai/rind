@@ -108,9 +108,9 @@ its encapsulation on [verified-garbage] (see [ML-KEM](#ml-kem)).
   has not imported. With AVX-512 VL it rotates with `vprolq` and holds the
   state in 32 registers, which on an AVX-512 Xeon took 0.6x the time of
   s2n-bignum's for signing and 0.7-0.8x for verifying; with AVX2 alone it
-  measured the same as s2n-bignum's there. They still trail the
-  [SPHINCS+] team's C built with `-march=native`, about 1.4x on that Xeon
-  (see [SLH-DSA](#slh-dsa)).
+  measured the same as s2n-bignum's there. On an AVX2-only Arrow
+  Lake-HX they still trail the [SPHINCS+] team's C built with
+  `-march=haswell` by 1.03-1.18x (see [SLH-DSA](#slh-dsa)).
 
 aarch64 runs with the crypto extension, the SHA-512 and SHA-3
 instructions, and SVE2; no crypto denies them, as a Raspberry Pi 4 lacks
