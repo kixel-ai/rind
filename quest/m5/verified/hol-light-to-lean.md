@@ -2,7 +2,7 @@
 
 ## Goal
 
-Every proof in `proofs/hol-light/` is a Lean theorem on pyca/verified-garbage's instruction models, functional correctness and a leakage contract alike, about the bytes rind's build emits. Each axiom in `proofs/Rind/<Arch>/` that restated one becomes that theorem. `admin/prove hol-light`, its CI jobs, and the DMTCP session tooling go. Upstream s2n-bignum theorems rind imports stay axioms, checked by `admin/prove bytes`.
+Every proof in `proofs/hol-light/` is a Lean theorem on pyca/verified-garbage's instruction models, functional correctness and a leakage contract alike, about the bytes rind's build emits. Each axiom in `proofs/Rind/<Arch>/` that restated one restates the Lean theorem instead, still one per wrapper under the composition rule, as [the trial](/quest/m2/lean-assembly-trial.md) does for `compress_hw`. `admin/prove hol-light`, its CI jobs, and the DMTCP session tooling go. Upstream s2n-bignum theorems rind imports stay axioms, checked by `admin/prove bytes`.
 
 ## Plan
 
