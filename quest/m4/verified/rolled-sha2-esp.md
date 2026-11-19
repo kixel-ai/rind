@@ -12,7 +12,7 @@ Decided 2026-11-19 (maintainer): ✅ merge #793 and plan this proof (rejected: a
 - Prove both block functions against `Rind/HashSpec.lean`'s `sha256.compress` and `Rind/Sha2.lean`'s `processBlock`, with Aeneas's translation of the Rust, as [HACL*'s SHA-2 quest](/quest/m4/verified/hacl-sha2-lean.md) plans for HACL*'s bodies. The rolled loops are short, so they translate without that quest's Charon panic. Replace `Rind/Portable/Hacl.lean`'s axiom use on these targets with the theorems, and have `ShaBlocks.lean` and `Sha512Entry.lean` state the new contracts.
 - The Xtensa `asm!` blocks are not Rust Aeneas translates: each is a rotate or a byte swap, so state each as a small hand model with the Rust fallback the host tests already run (`sha256_iram.rs` on its fallbacks), and say in the proofs README that the ✓ on ESP-IDF Xtensa trusts those instructions. Cosimulating them needs Xtensa hardware or QEMU, so decide that when starting.
 - The proof covers the code, not its placement: `admin/esp32s3-sha256-layout` still checks `.iram1`, linked addresses, and the exact `ssai` sequences.
-- The proofs run on a host, so they check the Rust fallbacks and `target_os = "none"` builds; confirm how `admin/prove`'s portable pass selects the cfgs for `espidf` and `none`.
+- `admin/prove`'s portable pass extracts `x86_64-unknown-linux-gnu`, which selects neither rolled path. Have it also translate a 32-bit build, such as `armv7a-none-eabi` with `--cfg rind_portable` (`target_os = "none"`), for the rolled SHA-512, and prove the Xtensa-only SHA-256 body through its host Rust fallbacks, which `sha256_iram.rs` exposes by name.
 - Size M: two block functions of the shape the portable backend already proves, plus the small instruction models.
 
 ## Waiting
