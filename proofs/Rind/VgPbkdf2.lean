@@ -133,22 +133,48 @@ theorem compressList_blocks {σ τ : Type} (B : Nat) (hB : 0 < B) (c : σ → (N
 
 /-! ## Bytes and words -/
 
+/-- A bit of the little-endian word of bytes `m`. -/
+theorem getLsbD_fromLEBytes (m : List Byte) (k : Nat) :
+    (BitVec.fromLEBytes m).getLsbD k = (m[k / 8]!).getLsbD (k % 8) := by
+  have := BitVec.fromLEBytes_getElem! m k
+  rw [BitVec.getElem!_eq_testBit_toNat] at this
+  rw [← BitVec.testBit_toNat, this]
+  rfl
+
 theorem be32_eq (a b c d : Byte) : be32 a b c d = (a ++ b ++ c ++ d : BitVec 32) := by
-  show BitVec.cast rfl (BitVec.fromLEBytes [d, c, b, a]) = _
-  simp only [BitVec.fromLEBytes, BitVec.cast_eq, List.length_cons, List.length_nil]
-  bv_decide
+  apply BitVec.eq_of_getLsbD_eq
+  intro i hi
+  show (BitVec.cast rfl (BitVec.fromLEBytes [d, c, b, a])).getLsbD i = _
+  rw [BitVec.getLsbD_cast, getLsbD_fromLEBytes]
+  obtain h | h | h | h : i / 8 = 0 ∨ i / 8 = 1 ∨ i / 8 = 2 ∨ i / 8 = 3 := by omega
+  all_goals
+    simp only [h, BitVec.getLsbD_append]
+    simp
+    split_ifs <;> first | omega | (congr 1; omega)
+
+/-- A word's big-endian bytes are its bytes from the most significant. -/
+theorem toBEBytes_extract {w : Nat} (m : Nat) (hw : w = 8 * m) (x : BitVec w) :
+    x.toBEBytes = (List.range m).reverse.map fun i => x.extractLsb' (8 * i) 8 := by
+  have hl : x.toLEBytes.length = m := by simp; omega
+  apply List.ext_getElem (by simp; omega)
+  intro i h1 h2
+  have hi : i < m := by simpa using h2
+  apply BitVec.eq_of_getElem_eq
+  intro j hj
+  simp only [BitVec.toBEBytes, List.getElem_reverse, List.getElem_map, List.getElem_range,
+    List.length_range, BitVec.getElem_extractLsb']
+  rw [BitVec.getElem_toLEBytes_eq_getElem _ _ _ _ hj (by rw [hl]; omega)]
+  congr 1
+  rw [hl]
 
 theorem toBEBytes_32 (x : BitVec 32) :
     x.toBEBytes = [x.extractLsb' 24 8, x.extractLsb' 16 8, x.extractLsb' 8 8, x.extractLsb' 0 8] := by
-  simp [BitVec.toBEBytes, BitVec.toLEBytes]
-  bv_decide
+  rw [toBEBytes_extract 4 rfl]; rfl
 
 theorem toBEBytes_64 (x : BitVec 64) :
-    x.toBEBytes = (List.range 8).reverse.map fun i => x.extractLsb' (8 * i) 8 := by
-  simp [BitVec.toBEBytes, BitVec.toLEBytes, List.range_succ]
-  bv_decide
+    x.toBEBytes = (List.range 8).reverse.map fun i => x.extractLsb' (8 * i) 8 :=
+  toBEBytes_extract 8 rfl x
 
-/-- A 64-byte block's words, as `rind.spec.words` reads them, are VG's. -/
 theorem words_getElem! (p : List Byte) (hp : 64 ≤ p.length) (j : Fin 16) :
     (words (p.take 64))[j.val]! = (p.getD (4 * j) 0 ++ p.getD (4 * j + 1) 0 ++ p.getD (4 * j + 2) 0 ++
       p.getD (4 * j + 3) 0 : BitVec 32) := by
@@ -280,16 +306,22 @@ theorem sha1_eq (m : List Byte) : VG.Spec.Sha1.hash m = sha1.hash m := by
 `BitVec`. -/
 
 theorem toBEBytes_128 (x : BitVec 128) :
-    x.toBEBytes = (List.range 16).reverse.map fun i => x.extractLsb' (8 * i) 8 := by
-  simp [BitVec.toBEBytes, BitVec.toLEBytes, List.range_succ]
-  bv_decide
+    x.toBEBytes = (List.range 16).reverse.map fun i => x.extractLsb' (8 * i) 8 :=
+  toBEBytes_extract 16 rfl x
 
 theorem be64_eq (a0 a1 a2 a3 a4 a5 a6 a7 : Byte) :
     (BitVec.fromBEBytes [a0, a1, a2, a3, a4, a5, a6, a7]).setWidth 64 =
       (a0 ++ a1 ++ a2 ++ a3 ++ a4 ++ a5 ++ a6 ++ a7 : BitVec 64) := by
-  show (BitVec.cast rfl (BitVec.fromLEBytes [a7, a6, a5, a4, a3, a2, a1, a0])).setWidth 64 = _
-  simp only [BitVec.fromLEBytes, BitVec.cast_eq, List.length_cons, List.length_nil]
-  bv_decide
+  apply BitVec.eq_of_getLsbD_eq
+  intro i hi
+  rw [BitVec.getLsbD_setWidth, BitVec.fromBEBytes, BitVec.getLsbD_cast, getLsbD_fromLEBytes]
+  obtain h | h | h | h | h | h | h | h : i / 8 = 0 ∨ i / 8 = 1 ∨ i / 8 = 2 ∨ i / 8 = 3 ∨
+    i / 8 = 4 ∨ i / 8 = 5 ∨ i / 8 = 6 ∨ i / 8 = 7 := by omega
+  all_goals
+    simp only [h, BitVec.getLsbD_append, List.reverse_cons, List.reverse_nil, List.nil_append,
+      List.cons_append]
+    simp [hi]
+    split_ifs <;> first | omega | (congr 1; omega)
 
 theorem sha512Pad_map (m : List U8) :
     (sha512Pad m).map (·.bv) = VG.Spec.Sha512.pad (m.map (·.bv)) := by

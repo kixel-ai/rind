@@ -3,6 +3,7 @@ import Rind.Aarch64.P384
 import Rind.Aarch64.P384Keygen
 import Rind.Aarch64.Sha512
 import Rind.Aarch64.Pbkdf2
+import Rind.Aarch64.Pbkdf2Vg
 import Rind.Aarch64.P256
 import Rind.Aarch64.ChaCha20
 import Rind.Aarch64.Ed25519
@@ -26,7 +27,9 @@ there of aws-lc's routine for the SHA-512 instructions; rind's HOL Light proof
 of SHA-256's routine for the crypto extension in `Rind.Aarch64.Sha256Hw`, for
 the theorems over every HMAC algorithm; rind's HOL Light proofs of its
 constant-time compares in `Rind.Aarch64.CtEqual` for HMAC's and PBKDF2's
-`verify` and key wrap's `unwrap` and `unwrap_padded`; and nothing else.
+`verify` and key wrap's `unwrap` and `unwrap_padded`; for PBKDF2 on
+pyca/verified-garbage's routines, its contracts in `Rind.Aarch64.VgPbkdf2`;
+and nothing else.
 P-384's comb table select rests on no axiom, only on the hand model in
 `Rind.Aarch64.PointSelectModel`. The PMULL GHASH's table and `Ghash::add` rest on
 no axiom, only on the hand model in `Rind.Aarch64.AesGcmModel`.
@@ -296,6 +299,43 @@ A change here is a change to the trust base.
  sha512_block_data_order_hw_spec] -/
 #guard_msgs in
 #print axioms kdf.verify_spec
+
+/-- info: 'rind.aarch64.kdf.secret_new_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ compress_nohw_spec,
+ sha256_block_data_order_hw_spec,
+ sha512_block_data_order_hw_spec] -/
+#guard_msgs in
+#print axioms kdf.secret_new_spec
+
+/-- info: 'rind.aarch64.kdf.secret_derive_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ compress_nohw_spec,
+ sha256_block_data_order_hw_spec,
+ sha512_block_data_order_hw_spec,
+ vg_pbkdf2_hmac_sha1_sha2_spec,
+ vg_pbkdf2_hmac_sha256_sha2_spec,
+ vg_pbkdf2_hmac_sha384_sha512_spec,
+ vg_pbkdf2_hmac_sha512_sha512_spec] -/
+#guard_msgs in
+#print axioms kdf.secret_derive_spec
+
+/-- info: 'rind.aarch64.kdf.secret_verify_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ compress_nohw_spec,
+ ct_compare_16_spec,
+ ct_compare_bytes_spec,
+ sha256_block_data_order_hw_spec,
+ sha512_block_data_order_hw_spec,
+ vg_pbkdf2_hmac_sha1_sha2_spec,
+ vg_pbkdf2_hmac_sha256_sha2_spec,
+ vg_pbkdf2_hmac_sha384_sha512_spec,
+ vg_pbkdf2_hmac_sha512_sha512_spec] -/
+#guard_msgs in
+#print axioms kdf.secret_verify_spec
 
 /-- info: 'rind.aarch64.chacha20_new' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
