@@ -133,7 +133,7 @@ with portable Rust in place of the assembly armv7 runs regardless.
 | AES-GCM | s2n-bignum + Graviola + rind | aws-lc + rind |  | aws-lc + rind |
 | AES block, AES-CTR | Graviola + rind | aws-lc |  | aws-lc |
 | AES-KW, AES-KWP, AES-CBC | Graviola + rind | aws-lc + rind |  | aws-lc + rind |
-| ChaCha20 | Graviola |  | aws-lc + HACL* ✓ | HACL* ✓ |
+| ChaCha20 | verified-garbage + Graviola |  | aws-lc + HACL* ✓ | HACL* ✓ |
 | ChaCha20 (header protection) | HACL* ✓ + rind |  |  |  |
 | ChaCha20-Poly1305, XChaCha20-Poly1305 | verified-garbage | aws-lc ⚡ |  | HACL* ✓ + Graviola |
 | MD5 | rind |  |  |  |
@@ -1028,6 +1028,22 @@ where aws-lc runs its integer routine, they run HACL*'s verified rounds, which
 took 0.92-1.07 of that routine's time on the same CPUs. Header protection without AVX2 takes 0.91 of
 aws-lc-rs's time on an EPYC 9V74 and 0.96 on a Xeon Platinum 8573C in
 [run 41697909102].
+
+aarch64 CPUs with SVE2 run ChaCha20 from 128 bytes on [verified-garbage]'s
+SVE2 routine, and CPUs without it on VG's NEON routine from 192 to 256 bytes
+and from 448; everything else runs Graviola's NEON code, four blocks at a
+time and then one at a time in general-purpose registers. VG's ✓ waits on
+[`proofs/`](proofs/README.md) importing these routines' theorems, as it has
+x86_64's. In an interleaved sweep of every length from 1 byte to 2112, and
+4 and 16 KiB, against the code it replaced, the switch took 0.52-0.94 of its
+time from 128 bytes on a Neoverse N2 with SVE2; with NEON, 0.72-0.99 from 192
+to 256 bytes and 0.75-0.95 from 448 there, and 0.70-0.97 and 0.55-0.90 on an
+Apple M1, and lengths it leaves to Graviola's code measured within noise of
+it ([kixel-ai/rind#882](https://github.com/kixel-ai/rind/pull/882)). VG
+lost below 128 bytes, by up to 1.31x at 64 on the N2, since its routines set
+up a 768-byte streaming state, and its NEON routine lost by up to 1.14x
+between 257 and 447 bytes, where it takes the blocks after its four-block
+loop one at a time, XORing byte by byte.
 
 QUIC header protection runs HACL*'s verified rounds in general-purpose
 registers on every architecture, one block straight from the key and sample,
