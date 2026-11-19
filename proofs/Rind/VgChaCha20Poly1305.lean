@@ -9,52 +9,21 @@ pyca/verified-garbage's (VG's) RFC 8439 spec of AEAD_CHACHA20_POLY1305,
 `Spec/ChaCha20Poly1305.lean` over `Spec/ChaCha20.lean` and
 `Spec/Poly1305.lean`, which `admin/import-vg-models` vendors and its theorems
 about the one-pass routines state their results against, is `Rind.Spec`'s
-for a 32-byte key and a 12-byte nonce. Unlike `Rind.VgChaCha20`, nothing
-here is copied: the theorems are about VG's own definitions, so a re-pin
-that changes them fails here.
+for a 32-byte key and a 12-byte nonce. The theorems are about VG's own
+definitions, so a re-pin that changes them fails here.
 -/
 
 namespace rind.spec.vg
 
-/-! ## ChaCha20
-
-`Rind.VgChaCha20` copies VG's definitions word for word, so each is its copy,
-layer by layer: unfolding both at once times out on the ten rounds. -/
-
-theorem vgQuarterRound_eq : VG.Spec.ChaCha20.quarterRound = quarterRound := rfl
-
-theorem vgQround_eq : VG.Spec.ChaCha20.qround = qround := by
-  funext st x y z w
-  simp only [VG.Spec.ChaCha20.qround, qround, vgQuarterRound_eq]
-
-theorem vgInnerBlock_eq : VG.Spec.ChaCha20.innerBlock = innerBlock := by
-  funext st
-  simp only [VG.Spec.ChaCha20.innerBlock, innerBlock, vgQround_eq]
-
-theorem vgBlock_eq : VG.Spec.ChaCha20.block = block := by
-  funext st
-  simp only [VG.Spec.ChaCha20.block, block, vgInnerBlock_eq]
-
-theorem vgSerialize_eq : VG.Spec.ChaCha20.serialize = serialize := rfl
-
-theorem vgInitState_eq : VG.Spec.ChaCha20.initState = initState := by
-  funext key counter nonce
-  have hc : VG.Spec.ChaCha20.constants = constants := rfl
-  have hw : VG.Spec.ChaCha20.wordLE = wordLE := rfl
-  simp only [VG.Spec.ChaCha20.initState, initState, hc, hw]
-
-/-- VG's `chacha20_block` is the one `Rind.VgChaCha20` copies from it. -/
-theorem vgChacha20Block_eq_copy (key : List (BitVec 8)) (counter : Word) (nonce : List (BitVec 8)) :
-    VG.Spec.ChaCha20.chacha20Block key counter nonce = chacha20Block key counter nonce := by
-  simp only [VG.Spec.ChaCha20.chacha20Block, chacha20Block, vgSerialize_eq, vgBlock_eq, vgInitState_eq]
+/-! ## ChaCha20 -/
 
 /-- VG's `chacha20_encrypt` is `Rind.Spec`'s, for a 32-byte key and a 12-byte nonce. -/
-theorem vgEncrypt_eq (key : List (BitVec 8)) (counter : Word) (nonce msg : List (BitVec 8))
+theorem vgEncrypt_eq (key : List (BitVec 8)) (counter : BitVec 32) (nonce msg : List (BitVec 8))
     (hk : key.length = 32) (hn : nonce.length = 12) :
     VG.Spec.ChaCha20.encrypt key counter nonce msg = chacha20.encrypt key counter nonce msg := by
   have hg : ∀ j, (chacha20.block key (counter + BitVec.ofNat 32 j) nonce).length = 64 :=
     fun j => s2n.length_block _ _ _ hk hn
-  simp only [VG.Spec.ChaCha20.encrypt, vgChacha20Block_eq_copy, chacha20Block_eq _ _ _ hk hn]
+  simp only [VG.Spec.ChaCha20.encrypt, chacha20Block_eq _ _ _ hk hn]
   rw [s2n.zipWith_flatMap _ _ hg]
   rfl
 
@@ -115,7 +84,7 @@ theorem vgTag_eq (key nonce aad ct : List (BitVec 8)) (hk : key.length = 32) (hn
         (VG.Spec.ChaCha20Poly1305.macData aad ct) =
       poly1305.mac (chacha20poly1305.otk key nonce) (chacha20poly1305.macData aad ct) := by
   have ho : VG.Spec.ChaCha20Poly1305.polyKeyGen key nonce = chacha20poly1305.otk key nonce := by
-    rw [VG.Spec.ChaCha20Poly1305.polyKeyGen, vgChacha20Block_eq_copy, chacha20Block_eq _ _ _ hk hn]
+    rw [VG.Spec.ChaCha20Poly1305.polyKeyGen, chacha20Block_eq _ _ _ hk hn]
     rfl
   have hl : (chacha20poly1305.otk key nonce).length = 32 := by
     simp [chacha20poly1305.otk, s2n.length_block _ _ _ hk hn]
