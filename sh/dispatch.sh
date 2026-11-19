@@ -74,8 +74,10 @@ fi
 #                      and lanes run concurrently. Cargo's build directory
 #                      lock already serializes builds sharing a target.
 #   fix                `just fix` runs it too; check and ci run every module.
-#   queue              Its lane runs beyond CHECK_JOBS, since it waits on Lean
-#                      and emulators rather than competing with Cargo.
+#   queue              Its lane runs beside the CHECK_JOBS others, never in
+#                      one of their slots, since it waits on Lean and
+#                      emulators rather than competing with Cargo. Register
+#                      it first, so it starts at once.
 declare -A scope=() tools=() check_tools=() compiles=() lane=() queue=()
 checks=()
 fixes=()
@@ -673,8 +675,12 @@ if [[ ! "$limit" =~ ^[1-9][0-9]*$ ]]; then
     exit 2
 fi
 
+# Lanes stream their output only while one runs at a time, which a queue
+# module's lane beside the others rules out.
+stream=
+((limit > 1)) || stream=1
 for module in "${selected[@]}"; do
-    [[ ! -v "queue[$module]" ]] || limit=$((limit + 1))
+    [[ ! -v "queue[$module]" ]] || stream=
 done
 
 lanes=()
@@ -827,12 +833,15 @@ trap 'exit 143' TERM
 # cancels the running lanes and starts no more.
 set -m
 stopping=
+# How many queue modules' lanes run, each named after its module.
+beside=0
 while true; do
-    while [[ -z "$stopping" ]] && ((next < ${#lanes[@]} && ${#running[@]} < limit)); do
+    while [[ -z "$stopping" ]] && ((next < ${#lanes[@]} && ${#running[@]} - beside < limit)); do
         name=${lanes[next]}
         next=$((next + 1))
+        [[ ! -v "queue[$name]" ]] || beside=$((beside + 1))
         read -ra lane_modules <<<"${members[$name]}"
-        if ((limit == 1)); then
+        if [[ -n "$stream" ]]; then
             run_lane "$logs/$name.times" "${lane_modules[@]}" </dev/null 3>/dev/null &
         else
             run_lane "$logs/$name.times" "${lane_modules[@]}" </dev/null 3>&2 >"$logs/$name.log" 2>&1 &
@@ -845,6 +854,7 @@ while true; do
     wait -n -p pid "${!running[@]}" || status=$?
     name=${running[$pid]}
     unset "running[$pid]"
+    [[ ! -v "queue[$name]" ]] || beside=$((beside - 1))
     if ((status)) && [[ -z "$stopping" ]]; then
         failed+=("$name")
         ((failed_status)) || failed_status=$status
@@ -853,7 +863,7 @@ while true; do
             cancel
         fi
     fi
-    ((limit == 1)) || cat "$logs/$name.log"
+    [[ -n "$stream" ]] || cat "$logs/$name.log"
 done
 
 # Name every failed module after all independent work has completed.
