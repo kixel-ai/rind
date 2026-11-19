@@ -47,6 +47,9 @@ ROOTS = [
     # axioms restate: a pin that changes them shows the change in its diff,
     # against which that re-pin must review the adaptation and the axioms.
     "VerifiedGarbage.Spec.ChaCha20.Contract",
+    # PBKDF2-HMAC's contracts, over VG's SHA-1, SHA-2, and HMAC specs, which
+    # proofs/Rind/VgPbkdf2.lean proves rind's.
+    "VerifiedGarbage.Spec.Pbkdf2.Generic",
 ]
 
 IMPORT = re.compile(r"^(?:public )?(?:meta )?import (VerifiedGarbage\.[A-Za-z0-9_.]+)\b", re.M)
