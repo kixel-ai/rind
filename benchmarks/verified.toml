@@ -59,7 +59,7 @@
 # proves against HACL*'s theorems for its SHA-2 block functions, and ChaCha20
 # header protection. On x86_64 CPUs with the SHA512 instructions, or AMD's
 # without AVX2, rind runs OpenSSL's or aws-lc's unproven routines, which are
-# faster there, so neither SHA-512 nor Ed25519 earns the ✓ there, unless the
+# faster there, so SHA-512 does not earn the ✓ there, nor does Ed25519 unless the
 # CPU has AVX-512 IFMA; nor does Ed25519's verification on x86_64 CPUs
 # without it, which checks a multiple of RFC 8032's equation with half-size
 # scalars that nothing proves yet. With AVX-512 IFMA, X25519 and Ed25519 run
