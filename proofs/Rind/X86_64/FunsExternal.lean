@@ -881,7 +881,8 @@ opaque high.rsa.VerifyingKey.to_pkcs1_der
     Std.U8) error.Error) × (Slice Std.U8))
 
 /-- Whether the CPU runs pyca/verified-garbage's AVX-512 IFMA X25519 and
-Ed25519, and those routines, which the proofs here take as not running. -/
+Ed25519, and the wrappers of those routines, whose contracts
+`Rind.X86_64.VgCurve25519` restates. -/
 opaque low.x86_64.curve25519_ifma.Curve25519Ifma.check : Result (Option low.x86_64.curve25519_ifma.Curve25519Ifma)
 
 opaque low.x86_64.curve25519_ifma.Curve25519Ifma.x25519
@@ -900,7 +901,5 @@ opaque low.x86_64.curve25519_ifma.Curve25519Ifma.ed25519_sign
 
 opaque low.x86_64.curve25519_ifma.Curve25519Ifma.ed25519_verify
   : low.x86_64.curve25519_ifma.Curve25519Ifma → Array Std.U8 32#usize → Slice Std.U8 → Array Std.U8 64#usize → Result Bool
-
-opaque low.x86_64.curve25519_ifma.Curve25519Ifma.Insts.CoreCloneClone.clone : low.x86_64.curve25519_ifma.Curve25519Ifma → Result low.x86_64.curve25519_ifma.Curve25519Ifma
 
 end rind.x86_64

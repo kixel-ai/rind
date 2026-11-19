@@ -32,7 +32,6 @@ namespace rind.aarch64
 
 /-- `CURVE25519_X25519_BYTE_ALT_SUBROUTINE_CORRECT`,
 https://github.com/awslabs/s2n-bignum/blob/3f01260ff1bd2577abf0117ce45aa008bc243a80/arm/proofs/curve25519_x25519_byte_alt.ml#L5572 -/
-@[step]
 axiom curve25519_x25519_spec (res scalar point : Std.Array U64 4#usize) :
     low.aarch64.curve25519_x25519.curve25519_x25519 res scalar point ⦃ r =>
       wordsNat r.val = rfcx25519 (wordsNat scalar.val) (wordsNat point.val) ⦄
@@ -40,7 +39,6 @@ axiom curve25519_x25519_spec (res scalar point : Std.Array U64 4#usize) :
 /-- `CURVE25519_X25519BASE_BYTE_ALT_SUBROUTINE_CORRECT`, whose `tables`
 precondition holds because rind's copy of the constant table is s2n-bignum's,
 https://github.com/awslabs/s2n-bignum/blob/3f01260ff1bd2577abf0117ce45aa008bc243a80/arm/proofs/curve25519_x25519base_byte_alt.ml#L3868 -/
-@[step]
 axiom curve25519_x25519base_spec (res scalar : Std.Array U64 4#usize) :
     low.aarch64.curve25519_x25519base.curve25519_x25519base res scalar ⦃ r =>
       wordsNat r.val = rfcx25519 (wordsNat scalar.val) 9 ⦄
@@ -424,9 +422,34 @@ def Runs : Prop :=
 routine, as it does on every aarch64 CPU. -/
 def RunsDouble : Prop := True
 
+/-- The check for x86_64's AVX-512 IFMA X25519 and Ed25519 returned `o`, as
+on x86_64; every aarch64 CPU runs s2n-bignum's routines whatever it returns. -/
+def CurveIfma (o : Option low.aarch64.curve25519_ifma.Curve25519Ifma) : Prop :=
+  low.aarch64.curve25519_ifma.Curve25519Ifma.check = ok o
+
 /-- X25519 and Ed25519 run s2n-bignum's routines and rind's glue, as they do
 on every aarch64 CPU, which lacks the x86_64 AVX-512 IFMA routines. -/
-def NoCurveIfma : Prop := low.aarch64.curve25519_ifma.Curve25519Ifma.check = ok none
+def NoCurveIfma : Prop := CurveIfma none
+
+/-- RFC 7748's X25519 as x86_64's dispatch computes it where `CurveIfma o`,
+which on aarch64 is s2n-bignum's, HOL Light's `rfcx25519`, for any `o`. -/
+def cpuX25519 (_ : Option low.aarch64.curve25519_ifma.Curve25519Ifma) : Nat → Nat → Nat := rfcx25519
+
+/-- `curve25519_x25519_spec`, as the shared X25519 proof states it. -/
+@[step]
+theorem curve25519_x25519_cpu_spec {o : Option low.aarch64.curve25519_ifma.Curve25519Ifma}
+    (_hi : CurveIfma o) (res scalar point : Std.Array U64 4#usize) :
+    low.aarch64.curve25519_x25519.curve25519_x25519 res scalar point ⦃ r =>
+      wordsNat r.val = cpuX25519 o (wordsNat scalar.val) (wordsNat point.val) ⦄ :=
+  curve25519_x25519_spec res scalar point
+
+/-- `curve25519_x25519base_spec`, as the shared X25519 proof states it. -/
+@[step]
+theorem curve25519_x25519base_cpu_spec {o : Option low.aarch64.curve25519_ifma.Curve25519Ifma}
+    (_hi : CurveIfma o) (res scalar : Std.Array U64 4#usize) :
+    low.aarch64.curve25519_x25519base.curve25519_x25519base res scalar ⦃ r =>
+      wordsNat r.val = cpuX25519 o (wordsNat scalar.val) 9 ⦄ :=
+  curve25519_x25519base_spec res scalar
 
 @[step]
 theorem new_secret_spec (h : Runs) : low.entry.Entry.new_secret ⦃ _ => True ⦄ := by

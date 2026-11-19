@@ -754,6 +754,7 @@
               packages = [
                 rust-stable.minimal
                 pkgs.valgrind
+                pkgs.cargo-nextest
                 # crabgrind finds valgrind's headers through it, and
                 # rind-openssl's tests OpenSSL's.
                 pkgs.pkg-config

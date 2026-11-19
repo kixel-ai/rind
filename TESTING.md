@@ -254,7 +254,32 @@ code no test reaches. It runs the suites as the nightly jobs do, with
 `SLOW_TESTS=1`, and again with CPU features denied (on x86_64, under Intel
 SDE too), so a plain `cargo llvm-cov` reports less. The
 nightly `coverage` workflow runs it on Linux and macOS; the summary table in
-its "Measure coverage" step's log is the report.
+its "Measure coverage" step's log is the report, and the list after it
+names where each function no test ran starts.
+
+A function only one architecture compiles counts as run when that
+architecture's report runs it. These stay unrun, each for a reason:
+
+- Functions only constant evaluation runs, such as a table builder behind a
+  `const`, are marked `coverage(off)` with a comment saying so, as are
+  test-only modules.
+- What only a CPU neither runner has reaches: pyca/verified-garbage's SVE2
+  ChaCha20-Poly1305 (`seal_sve2` and `open_sve2` in
+  `low/aarch64/chacha20poly1305.rs`), since macOS's Apple cores lack SVE2,
+  which build.yml's arm64 job tests natively and `admin/ct-qemu` traces;
+  and `mcdt::denied`, which only an Intel CPU reporting `MCDT_NO` asks,
+  a bit SDE sets for no model.
+- `VpaesDecKey`'s wipe on x86_64 and aarch64: only `AesDecKey` holds one,
+  and its drop wipes the whole enum first, so drop glue then finds another
+  variant. The key keeps its own wipe, as every key type does.
+- Error mappings for a failure no test can cause: the system random source
+  failing, signing failing with a key that loaded, a message past a cipher's
+  length limit or `isize::MAX`, and rind-object-store's arm for an
+  algorithm a later object_store adds.
+- The unpublished crates, rind-fips and rind-openssl, and `rind`'s FIPS
+  code (`fips`, `fips_rng`, and what only they call, such as
+  `rsa::PublicKey::modulus_bits`), which its unit tests compile but only
+  rind-fips runs.
 
 ## Running the tools
 

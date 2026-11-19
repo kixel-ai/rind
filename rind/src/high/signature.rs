@@ -110,12 +110,6 @@ impl<const N: usize> Buffer<N> {
     }
 }
 
-impl<const N: usize> From<[u8; N]> for Buffer<N> {
-    fn from(bytes: [u8; N]) -> Self {
-        Self { bytes, len: N }
-    }
-}
-
 impl<const N: usize> AsRef<[u8]> for Buffer<N> {
     fn as_ref(&self) -> &[u8] {
         &self.bytes[..self.len]
@@ -139,6 +133,7 @@ const MAX_SPKI_LEN: usize = MAX_PUBLIC_KEY_LEN + 32;
 /// expanded form.
 const MAX_PKCS8_LEN: usize = max(super::rsa::MAX_PKCS8_LEN, ml_dsa::MAX_PRIVATE_KEY_LEN + 64);
 
+#[cfg_attr(coverage_nightly, coverage(off))] // const-evaluated only
 const fn max(a: usize, b: usize) -> usize {
     if a > b { a } else { b }
 }
