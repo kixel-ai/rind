@@ -6,7 +6,7 @@ For each VG routine rind runs, its leakage theorem is imported beside its functi
 
 ## Plan
 
-Follow-up from the 2026-11-18 /quest-plan on independence and Lean, which settled with the maintainer: ✅ once a routine's leakage contract is proven in Lean, its dedicated trace harness is retired, and ctgrind keeps running every test (rejected: keep every harness). VG already proves these contracts (`VerifiedGarbage/TCB/Artifact.lean`). Today rind restates only what each wrapper returns (`Rind/VgOutcome.lean`, `Rind/<Arch>/VgMlKem.lean`), so the harnesses still carry the claim.
+Follow-up from the 2026-11-18 /quest-plan on independence and Lean, which settled with the maintainer: ✅ once a routine's leakage contract is proven in Lean, its dedicated trace harness is retired, and ctgrind keeps running every test (rejected: keep every harness). VG already proves these contracts (`VerifiedGarbage/TCB/Artifact.lean`). Today rind restates only what each wrapper returns (`Rind/VgOutcome.lean`, `Rind/<Arch>/VgMlKem.lean`), so the harnesses still carry the claim. Kept as a follow-up by the maintainer on 2026-11-18, on [kixel-ai/rind#893](https://github.com/kixel-ai/rind/pull/893): ✅ keep (rejected: drop).
 
 - A contract's declared leakage, such as a rejection-sampling count, must be public in rind's call too. Check each against the Rust that calls the routine, and keep the harness for any routine whose declared leakage rind's caller treats as secret.
 - The theorems need the cosimulation that the ✓ needs, which `admin/prove vg` already runs for these instructions. The stack-slot model gap recorded in [the epic](/quest/m2/verified-garbage/README.md) holds back only the routines it holds back there.
