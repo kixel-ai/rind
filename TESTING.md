@@ -338,7 +338,7 @@ diff-scoped selection. Each runs on demand with
 `gh workflow run <name> --ref <branch>`; a dispatched `bench` measures every
 bench target unless `-f benches='aes_gcm sha2'` names the ones to measure,
 and each CPU-tier row then times only those of them it covers. A dispatched
-`ctgrind` runs every job unless `-f jobs='armv7:no-neon x86_64-sde:rsa4096'`
+`ctgrind` runs every job unless `-f jobs='x86_64-sde:rsa4096 armv7:no-neon'`
 names some, each whole or narrowed to the rows with the named matrix values,
 as `sh/select-jobs.sh` describes. `alert.yml`
 posts a scheduled run that fails, times out, or is cancelled to Discord: a

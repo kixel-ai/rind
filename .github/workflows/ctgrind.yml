@@ -5,7 +5,7 @@ on:
   schedule:
     - cron: "23 7 * * 6"
   # A dispatch runs every job the schedule runs, unless `jobs` names some,
-  # such as `-f jobs='armv7:no-neon x86_64-sde:rsa4096'`: see
+  # such as `-f jobs='x86_64-sde:rsa4096 armv7:no-neon'`: see
   # sh/select-jobs.sh.
   workflow_dispatch:
     inputs:
