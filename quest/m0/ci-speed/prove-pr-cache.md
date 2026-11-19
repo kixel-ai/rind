@@ -2,7 +2,7 @@
 
 ## Goal
 
-On a pull request, `prove.yml` reruns an architecture's HOL Light proofs only when an input of one of them, such as its object bytes, a proof file it loads, rind's s2n-bignum fork, or the proof environment, changed since a run that passed. It runs `admin/prove cosim` only when the fork's instruction-model files, the AArch32 model, or cosim's own driver and harness changed. The nightly run still checks everything.
+On a pull request, `prove.yml` reruns an architecture's HOL Light proofs only when an input of one of them, such as its object bytes, a proof file it loads, rind's s2n-bignum fork, or the proof environment, changed since a run that passed. It runs `admin/prove cosim` only when the fork's instruction-model files, the AArch32 model, or cosim's own driver and harness changed. The nightly run still checks everything and reads no cached result: it only writes the cache, so a stale or planted entry never hides a failure there (maintainer, 2026-11-19: ✅ an uncached nightly; rejected: a nightly that trusts the cache).
 
 ## Plan
 
