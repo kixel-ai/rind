@@ -37,6 +37,7 @@ mod macros;
 
 pub(crate) mod ct;
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub(crate) mod ct_binsec;
 
 #[cfg(rind_vartime_planted)]
@@ -264,7 +265,6 @@ pub(crate) use generic::{
         mlkem_basemul_k2, mlkem_basemul_k3, mlkem_basemul_k4, mlkem_intt, mlkem_mulcache_compute,
         mlkem_ntt, mlkem_reduce, mlkem_rej_uniform_vartime, mlkem_tobytes, mlkem_tomont,
     },
-    mlkem_sample::mlkem_sample_poly_ntt_8x,
     // libcrux's P-256 runs 64-bit limbs and recomputes the nonce's point to
     // sign, it exports P-384 only as ECDH, and it has no P-521, so rind
     // composes their arithmetic itself.
@@ -538,7 +538,6 @@ cfg_if::cfg_if! {
         pub(crate) use aarch64::chacha20;
         pub(crate) use aarch64::chacha20poly1305;
         pub(crate) use generic::mlkem::{mlkem_compress_d4, mlkem_compress_d5, mlkem_compress_d10, mlkem_compress_d11, mlkem_frombytes, mlkem_unpack};
-        pub(crate) use generic::mlkem_sample::mlkem_sample_poly_ntt_8x;
     } else if #[cfg(rind_backend = "arm")] {
         pub(in crate::low) use arm::cpu::{enter_cpu_state, zero_bytes, ct_compare_bytes, ct_compare_16, leave_cpu_state};
         pub(crate) use arm::aes::{AesDecKey, AesKey};

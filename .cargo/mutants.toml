@@ -124,6 +124,10 @@ exclude_re = [
   'rind/src/low/generic/edwards25519_msm\.rs:\d+:(18|21): replace < with <= in non_adjacent_form$',
   'rind/src/low/generic/edwards25519_msm\.rs:\d+:(16|20): replace (> with >=|\+ with \*) in non_adjacent_form$',
   'rind/src/mid/half_size\.rs:\d+:18: replace < with <= in split$',
+  # ChaCha20's chunk length: with a whole chunk left, both branches give it.
+  # The loop guard's `<`, at column 16, is caught.
+  'rind/src/low/generic/chacha20\.rs:\d+:40: replace < with <= in cipher$',
+  'rind/src/low/x86_64/chacha20\.rs:\d+:40: replace < with <= in cipher_avx2$',
   'rind/src/high/asn1\.rs:\d+:\d+: replace < with <= in ObjectId::from_path$',
   'rind/src/high/ecdsa\.rs:\d+:\d+: replace > with >= in hash_to_scalar$',
   'rind/src/high/rsa\.rs:\d+:\d+: replace > with >= in public_exponent$',
@@ -149,7 +153,6 @@ exclude_re = [
   'rind/src/low/posint\.rs:\d+:\d+: replace > with >= in PosInt<N>::reduce_even$',
   'rind/src/low/posint\.rs:\d+:\d+: replace \* with / in PosInt<N>::reduce_even$',
   'rind/src/low/x86_64/aes\.rs:\d+:19: replace - with / in invert_round_keys$',
-  'rind/src/low/x86_64/chacha20\.rs:\d+:\d+: replace > with >= in core_2x$',
   'rind/src/low/x86_64/edwards25519_msm_avx2\.rs:\d+:\d+: replace > with >= in msm$',
   'rind/src/low/x86_64/ghash\.rs:\d+:41: replace / with % in store_partial$',
   'rind/src/low/x86_64/mldsa\.rs:\d+:\d+: replace < with <= in rej_uniform_table$',
@@ -247,6 +250,9 @@ exclude_re = [
   'rind/src/low/x86_64/rsaz\.rs:\d+:61: replace \+ with \* in mod_exp$',
   'rind/src/low/x86_64/sha1_mux\.rs:\d+:\d+: delete match arm Path::Shaext\(token\) in sha1_compress_padded$',
   'rind/src/low/x86_64/sha256_mux\.rs:\d+:\d+: delete match arm Path::Shaext\(token\) in sha256_finish$',
+  # The scalar arm and the four-way kernels give the same states in the lanes
+  # in use, and no caller reads the rest.
+  'rind/src/low/aarch64/sha3_keccak_nof4_f1600\.rs:\d+:\d+: replace (match guard N == 4 with (true|false)|== with !=) in sha3_keccak_nof4_f1600$',
   'rind/src/low/x86_64/sha3_keccak_nof4_f1600\.rs:\d+:\d+: replace > with < in sha3_keccak_nof4_f1600$',
   'rind/src/low/x86_64/sha3_keccak_nof4_f1600\.rs:\d+:\d+: replace > with == in sha3_keccak_nof4_f1600$',
   'rind/src/low/x86_64/sha3_keccak_nof4_f1600\.rs:\d+:\d+: replace > with >= in sha3_keccak_nof4_f1600$',
