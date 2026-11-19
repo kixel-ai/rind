@@ -28,7 +28,9 @@ there of aws-lc's routine for the SHA-512 instructions; rind's HOL Light proof
 of SHA-256's routine for the crypto extension in `Rind.Aarch64.Sha256Hw`, for
 the theorems over every HMAC algorithm; rind's HOL Light proofs of its
 constant-time compares in `Rind.Aarch64.CtEqual` for HMAC's and PBKDF2's
-`verify` and key wrap's `unwrap` and `unwrap_padded`; and nothing else.
+`verify` and key wrap's `unwrap` and `unwrap_padded`; for P-256's public
+key, ECDH, and ECDSA verification, pyca/verified-garbage's Lean proofs of its
+routines, which `Rind.Aarch64.VgP256` restates; and nothing else.
 P-384's comb table select rests on no axiom, only on the hand model in
 `Rind.Aarch64.PointSelectModel`. The PMULL GHASH's table and `Ghash::add`, and
 AES-GCM's counter blocks and its `tagged_from` and `tagged` on short messages
@@ -72,7 +74,8 @@ A change here is a change to the trust base.
  bignum_montmul_p256_spec,
  bignum_montsqr_p256_spec,
  bignum_tomont_p256_spec,
- p256_scalarmulbase_spec] -/
+ p256_scalarmulbase_spec,
+ vg_p256_public_key_spec] -/
 #guard_msgs in
 #print axioms p256_generate
 
@@ -86,7 +89,8 @@ A change here is a change to the trust base.
  bignum_montmul_p256_spec,
  bignum_montsqr_p256_spec,
  bignum_tomont_p256_spec,
- p256_scalarmulbase_spec] -/
+ p256_scalarmulbase_spec,
+ vg_p256_public_key_spec] -/
 #guard_msgs in
 #print axioms p256_from_scalar
 
@@ -103,7 +107,8 @@ A change here is a change to the trust base.
  bignum_montmul_p256_spec,
  bignum_montsqr_p256_spec,
  bignum_tomont_p256_spec,
- p256_scalarmul_spec] -/
+ p256_scalarmul_spec,
+ vg_p256_ecdh_spec] -/
 #guard_msgs in
 #print axioms p256_agree
 
@@ -378,7 +383,8 @@ A change here is a change to the trust base.
  bignum_montmul_p256_spec,
  bignum_montsqr_p256_spec,
  bignum_tomont_p256_spec,
- p256_scalarmulbase_spec] -/
+ p256_scalarmulbase_spec,
+ vg_p256_public_key_spec] -/
 #guard_msgs in
 #print axioms p256_ecdsa_generate
 
@@ -392,7 +398,8 @@ A change here is a change to the trust base.
  bignum_montmul_p256_spec,
  bignum_montsqr_p256_spec,
  bignum_tomont_p256_spec,
- p256_scalarmulbase_spec] -/
+ p256_scalarmulbase_spec,
+ vg_p256_public_key_spec] -/
 #guard_msgs in
 #print axioms p256_ecdsa_from_scalar_and_public_key
 
@@ -411,7 +418,8 @@ A change here is a change to the trust base.
  bignum_montsqr_p256_spec,
  bignum_tomont_p256_spec,
  p256_scalarmulbase_spec,
- sha256_block_data_order_hw_spec] -/
+ sha256_block_data_order_hw_spec,
+ vg_p256_public_key_spec] -/
 #guard_msgs in
 #print axioms p256_ecdsa_sign
 
@@ -436,7 +444,8 @@ A change here is a change to the trust base.
  p256_montjadd_spec,
  p256_montjdouble_spec,
  p256_montjmixadd_spec,
- sha256_block_data_order_hw_spec] -/
+ sha256_block_data_order_hw_spec,
+ vg_p256_verify_spec] -/
 #guard_msgs in
 #print axioms p256_ecdsa_key_pair_verify
 
@@ -458,7 +467,8 @@ A change here is a change to the trust base.
  p256_montjadd_spec,
  p256_montjdouble_spec,
  p256_montjmixadd_spec,
- sha256_block_data_order_hw_spec] -/
+ sha256_block_data_order_hw_spec,
+ vg_p256_verify_spec] -/
 #guard_msgs in
 #print axioms p256_ecdsa_public_key_new
 

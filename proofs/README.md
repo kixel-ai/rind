@@ -242,6 +242,16 @@ for one to the contracts. Every re-pin also moves the axioms' links to VG's theo
 checks that the registrations they cite still emit the routines rind runs:
 `admin/vg-bytes` checks the code, not which theorem covers it.
 
+`Rind/<Arch>/VgP256.lean` restates VG's contracts for the P-256 public key,
+ECDH, and ECDSA verification routines rind runs, one axiom per wrapper in
+`low::<arch>::p256_vg`, over `VerifiedGarbage.Spec.EcKey`, `Spec.Ecdh`, and
+`Spec.Ecdsa`, whose contracts `admin/import-vg-models` vendors too.
+`Rind/VgP256.lean` proves those specs are rind's: VG's points add and
+multiply as `p256Add` and `p256Pow`, through Mathlib's group of points
+(`Rind/NistGroup.lean`), its key validation is `p256OnCurve`, its octet
+strings `beNat`'s, and its ECDSA verification `ecdsaP256Verifies`. The P-256
+theorems below rest on them.
+
 `Rind/VgOutcome.lean` and `Rind/<Arch>/VgMlKem.lean` restate VG's contracts
 for the ML-KEM-768 routines rind runs as one axiom per wrapper in
 `low::<arch>::mlkem768_vg`. Each states only what the wrapper returns,
@@ -301,12 +311,15 @@ which rind proves in HOL Light:
   that point, or a fault unless that is a finite point on the curve;
 - `p256_shared_secret`: the secret's bytes are those.
 
-Every P-256 theorem, ECDSA's below included, assumes `NoVgP256`: the CPU
-does not run pyca/verified-garbage's P-256, which rind takes on x86_64 with
-BMI2, ADX, AVX, and AVX2 and on every aarch64 CPU, and whose Lean proof lives
-in that project, not here. So on x86_64 they cover CPUs without those
-features, and on aarch64 no CPU, until
-[their quest](/quest/m2/verified-garbage/p256-proof.md) imports VG's theorems.
+Every P-256 theorem, ECDSA's below included, covers pyca/verified-garbage's
+P-256 too, which rind takes on x86_64 with BMI2, ADX, AVX, and AVX2 and on
+every aarch64 CPU: each assumes `RunsP256`, that VG's checks return, which
+read no input, and proves both what rind's own code and what VG's routine
+computes, the latter from `Rind/<Arch>/VgP256.lean`'s axioms, which restate
+VG's theorems, and `Rind/VgP256.lean`, which proves VG's spec of P-256 is
+the one stated here. `p256_agree` takes a scalar below n, as every key
+`p256_generate` and `p256_from_scalar` make has, since VG's ECDH refuses any
+other.
 
 `p256Pow` is HOL Light's `group_pow p256_group`, defined as HOL Light does
 once for the NIST curves in `Rind/Spec.lean`, and `Rind/NistGroup.lean`
@@ -1310,6 +1323,9 @@ proof after those.
 - `Rind/X86_64/P256Dispatch.lean`, `Rind/X86_64/P256Agree.lean`, and
   `Rind/X86_64/P256.lean`: the hand model of P-256's key generation, and the
   P-256 agreement and key generation proofs, on both targets.
+- `Rind/VgP256.lean`: that pyca/verified-garbage's P-256 specs are rind's,
+  and `Rind/<Arch>/VgP256.lean`, one per target, the axioms restating VG's
+  theorems about its P-256 routines.
 - `Rind/P256Booth.lean`: the arithmetic of x86_64's Booth-recoded generator
   multiplication.
 - `Rind/<Arch>/P256Table.lean` and `Rind/<Arch>/P256Base.lean`, one per
