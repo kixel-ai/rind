@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
 //! P-384 on pyca/verified-garbage's proven routines (`super::vg`): `d·G`,
-//! which ECDSA's key generation and signing take, and ECDSA verification.
+//! which key generation and ECDSA signing take, and ECDSA verification.
 //! `d·G` measured faster than rind's on every x86_64 CPU, and takes VG's BMI2
 //! and ADX variant where the CPU has its features, as VG's own dispatcher
 //! does; verification only with BMI2 and ADX.
@@ -28,30 +28,37 @@ impl Scratch {
     }
 }
 
-/// `d·G` in X9.62's uncompressed encoding, in constant time, for `d` (big
-/// endian) in [1, n); `None` for any other `d`.
-pub(crate) fn public_key(d: &[u8; 48]) -> Option<[u8; 97]> {
-    public_key_with(HaveAdxForVg::check(), d)
-}
+/// Proof that VG's `d·G` runs here, as it does on every x86_64 CPU, and
+/// whether the CPU has its BMI2 and ADX variant's features.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct MulBase(Option<HaveAdxForVg>);
 
-/// [`public_key`] on the BMI2 and ADX variant if `adx` holds proof the CPU
-/// has its features, or on the baseline one otherwise.
-fn public_key_with(adx: Option<HaveAdxForVg>, d: &[u8; 48]) -> Option<[u8; 97]> {
-    use vg::{vg_ec_p384_public_key::*, vg_ec_p384_public_key_adx::*};
-    let mut out = [0u8; 97];
-    let mut scratch = Scratch::new();
-    let (o, s) = (&mut out, scratch.as_mut_ptr());
-    // SAFETY: every pointer is to a distinct Rust object valid for its size,
-    // so none overlaps another, the stack, or the end of the address space.
-    // `adx` proves the CPU has the ADX variant's features.
-    let ok = unsafe {
-        match adx {
-            Some(_) => vg_ec_p384_public_key_adx(o, d, s),
-            None => vg_ec_p384_public_key(o, d, s),
-        }
-    };
-    // Whether `d` is in range is public: rind's keys and nonces always are.
-    (crate::low::ct::into_public(ok) == 1).then_some(out)
+impl MulBase {
+    pub(crate) fn check() -> Option<Self> {
+        Some(Self(HaveAdxForVg::check()))
+    }
+
+    /// `d·G` in X9.62's uncompressed encoding, in constant time, for `d`
+    /// (big endian) in [1, n); `None` for any other `d`.
+    pub(crate) fn public_key(self, d: &[u8; 48]) -> Option<[u8; 97]> {
+        use vg::{vg_ec_p384_public_key::*, vg_ec_p384_public_key_adx::*};
+        let mut out = [0u8; 97];
+        let mut scratch = Scratch::new();
+        let (o, s) = (&mut out, scratch.as_mut_ptr());
+        // SAFETY: every pointer is to a distinct Rust object valid for its
+        // size, so none overlaps another, the stack, or the end of the
+        // address space. `self.0` proves the CPU has the ADX variant's
+        // features.
+        let ok = unsafe {
+            match self.0 {
+                Some(_) => vg_ec_p384_public_key_adx(o, d, s),
+                None => vg_ec_p384_public_key(o, d, s),
+            }
+        };
+        // Whether `d` is in range is public: rind's keys and nonces always
+        // are.
+        (crate::low::ct::into_public(ok) == 1).then_some(out)
+    }
 }
 
 /// Proof that VG's ECDSA verification runs here: the CPU has BMI2 and ADX.
@@ -95,13 +102,13 @@ mod tests {
     #[test]
     fn variants_agree() {
         let d = crate::low::ct::into_secret([0x5a; 48]);
-        let base = crate::low::ct::into_public(public_key_with(None, &d).unwrap());
+        let base = crate::low::ct::into_public(MulBase(None).public_key(&d).unwrap());
         if let Some(adx) = HaveAdxForVg::check() {
-            let adx = public_key_with(Some(adx), &d).map(crate::low::ct::into_public);
+            let adx = MulBase(Some(adx)).public_key(&d).map(crate::low::ct::into_public);
             assert_eq!(adx, Some(base));
         }
-        assert_eq!(public_key_with(None, &[0; 48]), None);
-        assert_eq!(public_key_with(HaveAdxForVg::check(), &[0xff; 48]), None);
+        assert_eq!(MulBase(None).public_key(&[0; 48]), None);
+        assert_eq!(MulBase::check().unwrap().public_key(&[0xff; 48]), None);
 
         if let Some(vg) = Verify::check() {
             let (public, e, sig) = crate::test::p384_ecdsa_case();

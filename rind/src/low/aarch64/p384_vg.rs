@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
 //! P-384 on pyca/verified-garbage's proven routines (`super::vg`): `d·G`,
-//! which ECDSA's key generation and signing take, and ECDSA verification.
+//! which key generation and ECDSA signing take, and ECDSA verification.
 //! Each measured faster than rind's; verification only on a key's first use,
 //! as rind's over the multiples it keeps for a reused key measured faster.
 
@@ -16,18 +16,30 @@ use super::vg;
 #[repr(C, align(64))]
 struct Scratch(MaybeUninit<[u64; 1024]>);
 
-/// `d·G` in X9.62's uncompressed encoding, in constant time, for `d` (big
-/// endian) in [1, n); `None` for any other `d`.
-pub(crate) fn public_key(d: &[u8; 48]) -> Option<[u8; 97]> {
-    let mut out = [0u8; 97];
-    let mut scratch = Scratch(MaybeUninit::uninit());
-    // SAFETY: every pointer is to a distinct Rust object valid for its size,
-    // so none overlaps another, the stack, or the end of the address space.
-    let ok = unsafe {
-        vg::vg_ec_p384_public_key::vg_ec_p384_public_key(&mut out, d, scratch.0.as_mut_ptr())
-    };
-    // Whether `d` is in range is public: rind's keys and nonces always are.
-    (crate::low::ct::into_public(ok) == 1).then_some(out)
+/// Proof that VG's `d·G` runs here, as it does on every aarch64 CPU.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct MulBase(());
+
+impl MulBase {
+    pub(crate) fn check() -> Option<Self> {
+        Some(Self(()))
+    }
+
+    /// `d·G` in X9.62's uncompressed encoding, in constant time, for `d`
+    /// (big endian) in [1, n); `None` for any other `d`.
+    pub(crate) fn public_key(self, d: &[u8; 48]) -> Option<[u8; 97]> {
+        let mut out = [0u8; 97];
+        let mut scratch = Scratch(MaybeUninit::uninit());
+        // SAFETY: every pointer is to a distinct Rust object valid for its
+        // size, so none overlaps another, the stack, or the end of the
+        // address space.
+        let ok = unsafe {
+            vg::vg_ec_p384_public_key::vg_ec_p384_public_key(&mut out, d, scratch.0.as_mut_ptr())
+        };
+        // Whether `d` is in range is public: rind's keys and nonces always
+        // are.
+        (crate::low::ct::into_public(ok) == 1).then_some(out)
+    }
 }
 
 /// Proof that VG's ECDSA verification runs here, as it does on every aarch64
@@ -73,7 +85,8 @@ mod tests {
     #[test]
     fn derives_and_verifies() {
         let d = crate::low::ct::into_secret([0x5a; 48]);
-        let public = crate::low::ct::into_public(public_key(&d).unwrap());
+        let base = MulBase::check().unwrap();
+        let public = crate::low::ct::into_public(base.public_key(&d).unwrap());
         assert_eq!(public[0], 4);
         let (public, e, sig) = crate::test::p384_ecdsa_case();
         let vg = Verify::check().unwrap();
@@ -81,7 +94,7 @@ mod tests {
         let mut bad = sig;
         bad[95] ^= 1;
         assert!(!vg.ecdsa_verify(&public, &e, &bad));
-        assert_eq!(public_key(&[0; 48]), None);
-        assert_eq!(public_key(&[0xff; 48]), None);
+        assert_eq!(base.public_key(&[0; 48]), None);
+        assert_eq!(base.public_key(&[0xff; 48]), None);
     }
 }

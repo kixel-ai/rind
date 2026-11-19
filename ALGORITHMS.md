@@ -629,14 +629,16 @@ We do this to avoid the theoretical fragility of RFC6979 under fault conditions.
 This is allowed for by RFC6979, and the HMAC-DRBG that it builds on.
 The code is structured such that we pass the RFC6979 test vectors.
 
-On x86_64 and aarch64, P-384 ECDSA runs [verified-garbage]'s routines where
-they measured faster: its `d·G` for key generation and for each signature's
-`k G`, under rind's hedged nonce and its own `s`, and its verification on
-x86_64 CPUs with ADX and, for a key's first verification only, on aarch64,
-where rind's twin multiplication over a reused key's multiples measured
-faster. Without ADX, VG's verification measured up to 1.35× rind's on AMD's
-cores, so rind's runs there. P-384 ECDH keeps s2n-bignum's ✓ code: VG's
-agreement measured slower than rind's on every tier.
+On x86_64 and aarch64, P-384 runs [verified-garbage]'s routines where they
+measured faster: its `d·G` for ECDH's and ECDSA's key generation and for each
+signature's `k G`, under rind's hedged nonce and its own `s`, and its ECDSA
+verification on x86_64 CPUs with ADX and, for a key's first verification
+only, on aarch64, where rind's twin multiplication over a reused key's
+multiples measured faster. Without ADX, VG's verification measured up to
+1.35× rind's on AMD's cores, so rind's runs there. ECDH's exchange keeps
+s2n-bignum's code: VG's measured slower than rind's on every tier. Until
+rind imports VG's P-384 theorems, only x86_64's verification without ADX
+keeps the ✓.
 
 The code which selects a term from a table of points is non-verified,
 and is written in AVX2, SSE2, or Neon intrinsics, or for P256 on x86_64 is
