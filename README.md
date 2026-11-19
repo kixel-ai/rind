@@ -40,11 +40,10 @@ Each row is an operation and each column a library, with one square per
 machine: x86_64 from Haswell to Zen 3 and Arrow Lake, and an Apple M4.
 Green is the fastest library on that machine, or within 10% of it, and
 red is over 8× slower. A shield marks formally verified code. Where
-another library leads, [Known gaps][gaps] says why and what closes it.
-On Apple silicon, rind's times assume the caller holds DIT across its
-calls, except rows the M4's last run timed with rind's per-call DIT,
-which its host note lists. [BENCHMARKS.md][benchmarks] has every time,
-build time, and binary size.
+another library leads, mostly at short messages on Apple silicon, where
+rind alone sets DIT around each call, [Known gaps][gaps] says why and what
+closes it. [BENCHMARKS.md][benchmarks] has every time, build time, and
+binary size.
 
 The [launch post][launch-post] tells why rind exists and what building it
 cost in AI tokens, and [rind.kixel.ai](https://rind.kixel.ai) lets you pick a
@@ -56,10 +55,10 @@ per library on how to move it to rind.
 <!-- comparison: `admin/bench-report render` writes this table -->
 | Library | Build tools beyond rustc | Lacks, of the 22 algorithms benchmarked | Formally verified | Fastest, or within 10% |
 |---|---|---|---|---|
-| rind | [none](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#build-cost) | none | [aarch64: SHA-256 (some CPUs), SHA-512, SHA-3, HMAC (some CPUs), HKDF (some CPUs), X25519, Ed25519, P-384; portable: SHA-256, SHA-512, HMAC, HKDF; x86_64: AES-GCM (some CPUs), SHA-256 (some CPUs), SHA-512 (some CPUs), SHA-3, HMAC (some CPUs), HKDF (some CPUs), X25519 (some CPUs), Ed25519 (some CPUs, some operations), P-256 (some CPUs), P-384, RSA (some CPUs, some operations)](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#verified-code) | [408 of its 430 times](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#speed) |
-| [aws-lc-rs](https://github.com/aws/aws-lc-rs) | [cc](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#build-cost) | XChaCha20-Poly1305 (aws-lc has it, through aws-lc-sys), Blind RSA, OPRF, VRF, SPAKE2+, Argon2id | [x86_64: SHA-512 (some CPUs)](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#verified-code) | [121 of its 370 times](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#speed) |
-| [ring](https://github.com/briansmith/ring) | [cc](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#build-cost) | XChaCha20-Poly1305, SHA-3, P-521, ML-KEM, ML-DSA, HPKE, Blind RSA, OPRF, VRF, SPAKE2+, Argon2id | [none](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#verified-code) | [64 of its 251 times](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#speed) |
-| [RustCrypto + dalek](https://github.com/RustCrypto) | [none](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#build-cost) | none | [none](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#verified-code) | [32 of its 346 times](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#speed) |
+| rind | [none](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#build-cost) | none | [aarch64: SHA-256 (some CPUs), SHA-512, SHA-3, HMAC (some CPUs), HKDF (some CPUs), X25519, Ed25519, P-256; portable: SHA-256, SHA-512, HMAC, HKDF; x86_64: AES-GCM (some CPUs), SHA-256 (some CPUs), SHA-512 (some CPUs), SHA-3, HMAC (some CPUs), HKDF (some CPUs), X25519, Ed25519 (some CPUs), P-256 (some CPUs), P-384 (some CPUs, some operations), RSA (some CPUs, some operations)](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#verified-code) | [404 of its 426 times](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#speed) |
+| [aws-lc-rs](https://github.com/aws/aws-lc-rs) | [cc](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#build-cost) | XChaCha20-Poly1305 (aws-lc has it, through aws-lc-sys), Blind RSA, OPRF, VRF, SPAKE2+, Argon2id | [x86_64: SHA-512 (some CPUs)](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#verified-code) | [122 of its 370 times](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#speed) |
+| [ring](https://github.com/briansmith/ring) | [cc](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#build-cost) | XChaCha20-Poly1305, SHA-3, P-521, ML-KEM, ML-DSA, HPKE, Blind RSA, OPRF, VRF, SPAKE2+, Argon2id | [none](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#verified-code) | [65 of its 251 times](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#speed) |
+| [RustCrypto + dalek](https://github.com/RustCrypto) | [none](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#build-cost) | none | [none](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#verified-code) | [35 of its 346 times](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#speed) |
 <!-- end comparison -->
 
 Build tools are what a minimal binary needs, algorithms count only what

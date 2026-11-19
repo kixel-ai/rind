@@ -76,7 +76,7 @@ quest = "/quest/m2/speed/ristretto255-avx2.md"
 [[gap]]
 operations = ["p384-ecdsa-sign"]
 on = ["nixos", "ovh-sea"]
-quest = "/quest/m2/verified-garbage/p384.md"
+reason = "Closed after this run: [kixel-ai/rind#847](https://github.com/kixel-ai/rind/pull/847), which landed after the run's commit, takes pyca/verified-garbage's `d·G` for each signature's `k·G` on x86_64 and aarch64, which measured faster than rind's comb. The next refresh measures it."
 
 [[gap]]
 operations = ["sha3-512/16KB"]
