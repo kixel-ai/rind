@@ -16,8 +16,8 @@
 //!
 //! verified-garbage proves its routines correct and constant time in Lean,
 //! over its own models of the instructions, which `admin/prove vg`
-//! cosimulates. `proofs/Rind/X86_64/VgChaCha20.lean` imports VG's theorems
-//! and proves the glue around them, `proofs/Rind/X86_64/ChaCha20Avx2.lean`
+//! cosimulates. `proofs/Rind/X86_64/VgChaCha20.lean` restates VG's theorems
+//! as axioms and proves the glue around them, `proofs/Rind/X86_64/ChaCha20Avx2.lean`
 //! proves the kernel against RFC 8439 over Lean models of its intrinsics,
 //! which `admin/prove` tests against the CPU, and
 //! `proofs/Rind/X86_64/ChaCha20Cipher.lean` proves the bytes `cipher` writes

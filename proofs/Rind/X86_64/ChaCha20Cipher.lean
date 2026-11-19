@@ -10,9 +10,10 @@ AVX-512 VL), pyca/verified-garbage's (VG's) from 256 bytes, with rind's
 two-block kernel over a remainder of 65 to 255 bytes after the last whole
 512-byte group, and the kernel alone from 65 bytes; where it picked none but
 found SSSE3, aws-lc's `ChaCha20_ctr32_ssse3_4x` from 129 bytes; and HACL*'s
-rounds, in rind's loop, otherwise. `Rind.X86_64.VgChaCha20` proves VG's path over its imported
-theorems, `Rind.X86_64.ChaCha20Avx2` the kernel, and this file HACL*'s loop,
-`cipher`, and the API's `apply_keystream`, at every length.
+rounds, in rind's loop, otherwise. `Rind.X86_64.VgChaCha20` proves VG's path
+over axioms restating VG's theorems, `Rind.X86_64.ChaCha20Avx2` the kernel,
+and this file HACL*'s loop, `cipher`, and the API's `apply_keystream`, at
+every length.
 
 aws-lc's SSSE3 routine has no proof yet, so the theorems take its contract as
 the hypothesis `Ssse3`, which [the x86_64 cipher
