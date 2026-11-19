@@ -233,6 +233,12 @@ def low.generic.zeroise.ZeroableRef.new {T : Type} (value : T) :
     Result (low.generic.zeroise.ZeroableRef T) :=
   ok value
 
+/-- `ZeroableRef::get`, which panics only on a wiped value, and only a drop
+wipes one: its value. -/
+def low.generic.zeroise.ZeroableRef.get {T : Type} (r : low.generic.zeroise.ZeroableRef T) :
+    Result T :=
+  ok r
+
 /-! The entry guard and CPU dispatch, which read no input. -/
 
 opaque low.entry.Entry.new_secret : Result low.entry.Entry
@@ -427,6 +433,13 @@ opaque low.aarch64.mlkem768_vg.Encaps.encaps
   low.aarch64.mlkem768_vg.Encaps → Array Std.U8 1184#usize → Option (Array
     Std.U8 32#usize) → Array Std.U8 32#usize → Result (Option ((Array
     Std.U8 32#usize) × (Array Std.U8 1088#usize)))
+
+/-- pyca/verified-garbage's PBKDF2 routines, behind their Rust wrapper,
+`Pbkdf2::derive`, whose contracts `Rind.Aarch64.VgPbkdf2` states. The
+iteration count is the `u32` its `NonZeroU32` holds. -/
+opaque low.aarch64.pbkdf2_vg.Pbkdf2.derive
+  : low.aarch64.pbkdf2_vg.Pbkdf2 → Slice Std.U8 → Slice Std.U8 → Std.U32 → Slice Std.U8 →
+    Result (Slice Std.U8)
 
 /-! MD5, which no proof covers. -/
 

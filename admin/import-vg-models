@@ -58,6 +58,9 @@ ROOTS = [
     "VerifiedGarbage.Spec.EcKey.P256",
     "VerifiedGarbage.Spec.Ecdh.P256",
     "VerifiedGarbage.Spec.Ecdsa.Verify.P256",
+    # PBKDF2-HMAC's contracts, over VG's SHA-1, SHA-2, and HMAC specs, which
+    # proofs/Rind/VgPbkdf2.lean proves rind's.
+    "VerifiedGarbage.Spec.Pbkdf2.Generic",
 ]
 
 IMPORT = re.compile(r"^(?:public )?(?:meta )?import (VerifiedGarbage\.[A-Za-z0-9_.]+)\b", re.M)
