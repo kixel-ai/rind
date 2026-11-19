@@ -154,8 +154,9 @@ fi
 
 # The FIPS module as it ships, built with rind's hooks: its test marks the
 # secrets it hands the module. Then the ACVP build's deterministic services,
-# which only that build exports.
+# which only that build exports. A filter naming only `acvp` selects nothing
+# in the first build, which nextest otherwise fails on.
 if [ "$suite" = fips ]; then
-    cargo nextest run -p rind-fips --test ctgrind --features __ctgrind,rind/__ctgrind "$@"
+    cargo nextest run -p rind-fips --test ctgrind --features __ctgrind,rind/__ctgrind --no-tests=warn "$@"
     cargo nextest run -p rind-fips --test ctgrind --features __ctgrind,__acvp,rind/__ctgrind "$@" -- --exact acvp
 fi
