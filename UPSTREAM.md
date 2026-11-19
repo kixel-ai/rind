@@ -60,6 +60,14 @@ Each upstream rind changes, with where its fork is vendored and where the list o
 - **Reported:** no.
 - **Goes when:** rustc supports `-Zsanitizer=address` there.
 
+### Cargo runs $CARGO_HOME/bin's subcommands before PATH's
+
+- **Breaks:** Cargo looks up an external subcommand such as `cargo-fmt` or `cargo-clippy` in `$CARGO_HOME/bin` before `PATH`, unless that directory is itself on `PATH`. On a host with rustup there, `cargo fmt` and `cargo clippy` inside a dev shell run rustup's default toolchain, not the flake's, while `command -v cargo-fmt` names the flake's. A newer rustfmt then reformats files CI accepts, and a toolchain without a cross target's standard library fails clippy with `can't find crate for core`.
+- **Reproduce:** `nix develop --command cargo fmt --version` on a host whose `$CARGO_HOME/bin/cargo-fmt` is a rustup shim and whose `$CARGO_HOME/bin` is not on `PATH` reports rustup's rustfmt. GitHub's ubuntu-24.04 image puts `$HOME/.cargo/bin` on `PATH`, so CI does not hit this.
+- **Workaround:** every dev shell's hook appends `$CARGO_HOME/bin` to `PATH` when it is missing, which turns off Cargo's lookup there first and leaves the flake's tools ahead of it.
+- **Reported:** no.
+- **Goes when:** Cargo prefers `PATH`'s subcommands.
+
 ## Constant-time analysis
 
 ### Valgrind hides ADX from `cpuid`
@@ -158,7 +166,7 @@ Each upstream rind changes, with where its fork is vendored and where the list o
 
 - **Breaks:** `ct_binsec_mlkem*` decapsulates a ciphertext, and for about one in a hundred of them BINSEC 0.11.3 stops making progress inside `kpke_encrypt`'s re-encryption: it sends the solver no query and visits no more than a few hundred thousand instructions in 480 s, where the others finish in under ten seconds. `gdb` shows it inside `Term.sizeof`, building a term. A given ciphertext always stalls, so it is the input, not the runner, and swapping one half of a stalling ciphertext for another's makes it finish.
 - **Reproduce:** run `admin/ct-binsec --timeout 60 ct_binsec_mlkem512` on the portable backend a few hundred times with a random `encaps()` message, as the check did before it pinned one.
-- **Workaround:** the harness encapsulates a fixed message, so every run explores a ciphertext that finishes on every backend.
+- **Workaround:** the harness encapsulates a fixed message, so every run explores a ciphertext that finishes on every backend. Which ciphertexts stall moves with the compiled code: [kixel-ai/rind#870](https://github.com/kixel-ai/rind/pull/870)'s counted loops made the pinned `0x5a` message stall ML-KEM-768 on the portable backend, and `0x00` stall ML-KEM-1024, so the harness now pins `0x01`, which finishes every parameter set on x86_64 and portable in under ten seconds. A change that stalls the pinned message picks another, rather than raising the timeout.
 - **Reported:** no.
 - **Goes when:** BINSEC builds that term without the stall; the harness may then draw random messages again.
 
