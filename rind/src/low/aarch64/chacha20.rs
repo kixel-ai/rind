@@ -3,10 +3,11 @@
 // Originally from cifra
 
 use core::arch::aarch64::{
-    uint8x16_t, uint32x4_t, vaddq_u32, vdupq_n_u32, veorq_u32, vorrq_u32, vqtbl1q_u8,
-    vreinterpretq_u8_u32, vreinterpretq_u16_u32, vreinterpretq_u32_u8, vreinterpretq_u32_u16,
-    vreinterpretq_u32_u64, vreinterpretq_u64_u32, vrev32q_u16, vshlq_n_u32, vshrq_n_u32,
-    vzip1q_u32, vzip1q_u64, vzip2q_u32, vzip2q_u64,
+    uint8x16_t, uint32x4_t, vaddq_u32, vdupq_n_u32, veorq_u8, veorq_u32, vld1q_u8, vorrq_u32,
+    vqtbl1q_u8, vreinterpretq_u8_u32, vreinterpretq_u8_u64, vreinterpretq_u16_u32,
+    vreinterpretq_u32_u8, vreinterpretq_u32_u16, vreinterpretq_u32_u64, vreinterpretq_u64_u32,
+    vrev32q_u16, vshlq_n_u32, vshrq_n_u32, vst1q_u8, vsubq_u32, vzip1q_u32, vzip1q_u64, vzip2q_u32,
+    vzip2q_u64,
 };
 use core::mem;
 
@@ -35,13 +36,48 @@ impl ChaCha20 {
     }
 
     pub(crate) fn cipher(&mut self, buffer: &mut [u8]) {
-        let (by4, remainder) = buffer.as_chunks_mut::<256>();
+        // Up to two blocks: the one-block routine, without the wide paths'
+        // length checks in front of it.
+        if buffer.len() <= 128 {
+            self.one_block_at_a_time(buffer);
+            return;
+        }
+        let (by9, rest) = buffer.as_chunks_mut::<576>();
+        for block_x9 in by9 {
+            // SAFETY: this crate depends on the `neon` cpu feature.
+            unsafe { core_x9(&self.key0, &self.key1, &self.nonce, block_x9) };
+            self.nonce[0] = self.nonce[0].wrapping_add(9);
+        }
+        let (by8, rest) = rest.as_chunks_mut::<512>();
+        for block_x8 in by8 {
+            // SAFETY: this crate depends on the `neon` cpu feature.
+            unsafe { core_x8(&self.key0, &self.key1, &self.nonce, block_x8) };
+            self.nonce[0] = self.nonce[0].wrapping_add(8);
+        }
+        let (by4, remainder) = rest.as_chunks_mut::<256>();
         for block_x4 in by4 {
             // SAFETY: this crate depends on the `neon` cpu feature.
             unsafe { core_x4(&self.key0, &self.key1, &self.nonce, block_x4) };
             self.nonce[0] = self.nonce[0].wrapping_add(4);
         }
-        for block in remainder.chunks_mut(64) {
+        if remainder.len() > 128 {
+            // Three or four blocks: one four-block pass over a padded copy
+            // costs less than three one-block passes.
+            let mut padded = [0u8; 256];
+            padded[..remainder.len()].copy_from_slice(remainder);
+            // SAFETY: this crate depends on the `neon` cpu feature.
+            unsafe { core_x4(&self.key0, &self.key1, &self.nonce, &mut padded) };
+            remainder.copy_from_slice(&padded[..remainder.len()]);
+            // The padding holds keystream for blocks a later call will use.
+            crate::low::zeroise(&mut padded);
+            self.nonce[0] = self.nonce[0].wrapping_add(remainder.len().div_ceil(64) as u32);
+            return;
+        }
+        self.one_block_at_a_time(remainder);
+    }
+
+    fn one_block_at_a_time(&mut self, buffer: &mut [u8]) {
+        for block in buffer.chunks_mut(64) {
             let mut stream = [0u8; 64];
             core(&self.key0, &self.key1, &self.nonce, &mut stream);
             for (out, key) in block.iter_mut().zip(stream.iter()) {
@@ -266,12 +302,18 @@ fn core_x4(key0: &[u32; 4], key1: &[u32; 4], nonce: &[u32; 4], out: &mut [u8; 25
     col_d_2 = vaddq_u32(col_d_2, col_d_2_initial);
     col_d_3 = vaddq_u32(col_d_3, col_d_3_initial);
 
+    // XOR 16 bytes of keystream onto `dst` without leaving the vector registers.
+    #[target_feature(enable = "neon")]
     fn xor(value: uint32x4_t, dst: &mut [u8; 16]) {
-        // SAFETY: the memory layout of `uint32x4_t` is compatible with `u128`.
-        let value128: u128 = unsafe { mem::transmute(value) };
-        let current = u128::from_le_bytes(*dst);
-        let result = value128 ^ current;
-        dst.copy_from_slice(&result.to_le_bytes());
+        // SAFETY: `dst` is 16 bytes, valid for reads and writes, and `vld1q_u8`
+        // and `vst1q_u8` have no alignment requirement.
+        unsafe {
+            let current = vld1q_u8(dst.as_ptr());
+            vst1q_u8(
+                dst.as_mut_ptr(),
+                veorq_u8(current, vreinterpretq_u8_u32(value)),
+            );
+        }
     }
 
     // Transpose four adjacent column vectors into row vectors.
@@ -332,6 +374,243 @@ fn core_x4(key0: &[u32; 4], key1: &[u32; 4], nonce: &[u32; 4], out: &mut [u8; 25
     xor(row1, (&mut out[112..128]).try_into().unwrap());
     xor(row2, (&mut out[176..192]).try_into().unwrap());
     xor(row3, (&mut out[240..256]).try_into().unwrap());
+}
+
+// Process eight ChaCha20 blocks as two independent groups of four, in the
+// column layout `core_x4` uses, and exclusive-or the result onto `out`.
+//
+// One group of four leaves the NEON pipes waiting on each quarter-round's
+// add-xor-rotate chain; a second, independent group fills those gaps.
+#[target_feature(enable = "neon")]
+fn core_x8(key0: &[u32; 4], key1: &[u32; 4], nonce: &[u32; 4], out: &mut [u8; 512]) {
+    let counters = |first: u32| {
+        u32_slice_to_uint32x4_t(&[
+            nonce[0].wrapping_add(first),
+            nonce[0].wrapping_add(first + 1),
+            nonce[0].wrapping_add(first + 2),
+            nonce[0].wrapping_add(first + 3),
+        ])
+    };
+    // Column `i` of the state: words 0..4 are SIGMA, 4..8 key0, 8..12 key1,
+    // 12 the block counters, 13..16 the nonce.
+    let initial: [uint32x4_t; 16] = [
+        vdupq_n_u32(SIGMA[0]),
+        vdupq_n_u32(SIGMA[1]),
+        vdupq_n_u32(SIGMA[2]),
+        vdupq_n_u32(SIGMA[3]),
+        vdupq_n_u32(key0[0]),
+        vdupq_n_u32(key0[1]),
+        vdupq_n_u32(key0[2]),
+        vdupq_n_u32(key0[3]),
+        vdupq_n_u32(key1[0]),
+        vdupq_n_u32(key1[1]),
+        vdupq_n_u32(key1[2]),
+        vdupq_n_u32(key1[3]),
+        counters(0),
+        vdupq_n_u32(nonce[1]),
+        vdupq_n_u32(nonce[2]),
+        vdupq_n_u32(nonce[3]),
+    ];
+    let counters_hi = counters(4);
+    let mut x = initial;
+    let mut y = initial;
+    y[12] = counters_hi;
+
+    // One quarter-round on column words a, b, c, d of both groups.
+    macro_rules! quarter_x2 {
+        ($a:literal, $b:literal, $c:literal, $d:literal) => {
+            x[$a] = vaddq_u32(x[$a], x[$b]);
+            y[$a] = vaddq_u32(y[$a], y[$b]);
+            x[$d] = rotate_left!(veorq_u32(x[$d], x[$a]), 16);
+            y[$d] = rotate_left!(veorq_u32(y[$d], y[$a]), 16);
+            x[$c] = vaddq_u32(x[$c], x[$d]);
+            y[$c] = vaddq_u32(y[$c], y[$d]);
+            x[$b] = rotate_left!(veorq_u32(x[$b], x[$c]), 12);
+            y[$b] = rotate_left!(veorq_u32(y[$b], y[$c]), 12);
+            x[$a] = vaddq_u32(x[$a], x[$b]);
+            y[$a] = vaddq_u32(y[$a], y[$b]);
+            x[$d] = rotate_left!(veorq_u32(x[$d], x[$a]), 8);
+            y[$d] = rotate_left!(veorq_u32(y[$d], y[$a]), 8);
+            x[$c] = vaddq_u32(x[$c], x[$d]);
+            y[$c] = vaddq_u32(y[$c], y[$d]);
+            x[$b] = rotate_left!(veorq_u32(x[$b], x[$c]), 7);
+            y[$b] = rotate_left!(veorq_u32(y[$b], y[$c]), 7);
+        };
+    }
+
+    for _ in 0..10 {
+        quarter_x2!(0, 4, 8, 12);
+        quarter_x2!(1, 5, 9, 13);
+        quarter_x2!(2, 6, 10, 14);
+        quarter_x2!(3, 7, 11, 15);
+        quarter_x2!(0, 5, 10, 15);
+        quarter_x2!(1, 6, 11, 12);
+        quarter_x2!(2, 7, 8, 13);
+        quarter_x2!(3, 4, 9, 14);
+    }
+
+    for i in 0..16 {
+        x[i] = vaddq_u32(x[i], initial[i]);
+        y[i] = vaddq_u32(y[i], initial[i]);
+    }
+    y[12] = vaddq_u32(y[12], vsubq_u32(counters_hi, initial[12]));
+
+    let (lo, hi) = out.split_at_mut(256);
+    xor_columns(&x, lo.try_into().unwrap());
+    xor_columns(&y, hi.try_into().unwrap());
+}
+
+// Process nine ChaCha20 blocks, `core_x8`'s eight in NEON registers plus a
+// ninth in general-purpose registers, and exclusive-or the result onto `out`.
+//
+// The ninth block runs on the integer pipes, which the NEON rounds leave idle.
+#[target_feature(enable = "neon")]
+fn core_x9(key0: &[u32; 4], key1: &[u32; 4], nonce: &[u32; 4], out: &mut [u8; 576]) {
+    let counters = |first: u32| {
+        u32_slice_to_uint32x4_t(&[
+            nonce[0].wrapping_add(first),
+            nonce[0].wrapping_add(first + 1),
+            nonce[0].wrapping_add(first + 2),
+            nonce[0].wrapping_add(first + 3),
+        ])
+    };
+    // Column `i` of the state: words 0..4 are SIGMA, 4..8 key0, 8..12 key1,
+    // 12 the block counters, 13..16 the nonce.
+    let initial: [uint32x4_t; 16] = [
+        vdupq_n_u32(SIGMA[0]),
+        vdupq_n_u32(SIGMA[1]),
+        vdupq_n_u32(SIGMA[2]),
+        vdupq_n_u32(SIGMA[3]),
+        vdupq_n_u32(key0[0]),
+        vdupq_n_u32(key0[1]),
+        vdupq_n_u32(key0[2]),
+        vdupq_n_u32(key0[3]),
+        vdupq_n_u32(key1[0]),
+        vdupq_n_u32(key1[1]),
+        vdupq_n_u32(key1[2]),
+        vdupq_n_u32(key1[3]),
+        counters(0),
+        vdupq_n_u32(nonce[1]),
+        vdupq_n_u32(nonce[2]),
+        vdupq_n_u32(nonce[3]),
+    ];
+    let counters_hi = counters(4);
+    let scalar_initial: [u32; 16] = [
+        SIGMA[0],
+        SIGMA[1],
+        SIGMA[2],
+        SIGMA[3],
+        key0[0],
+        key0[1],
+        key0[2],
+        key0[3],
+        key1[0],
+        key1[1],
+        key1[2],
+        key1[3],
+        nonce[0].wrapping_add(8),
+        nonce[1],
+        nonce[2],
+        nonce[3],
+    ];
+    let mut s = scalar_initial;
+    let mut x = initial;
+    let mut y = initial;
+    y[12] = counters_hi;
+
+    // One quarter-round on column words a, b, c, d of both groups.
+    macro_rules! quarter_x2 {
+        ($a:literal, $b:literal, $c:literal, $d:literal) => {
+            s[$a] = s[$a].wrapping_add(s[$b]);
+            s[$d] = (s[$d] ^ s[$a]).rotate_left(16);
+            s[$c] = s[$c].wrapping_add(s[$d]);
+            s[$b] = (s[$b] ^ s[$c]).rotate_left(12);
+            s[$a] = s[$a].wrapping_add(s[$b]);
+            s[$d] = (s[$d] ^ s[$a]).rotate_left(8);
+            s[$c] = s[$c].wrapping_add(s[$d]);
+            s[$b] = (s[$b] ^ s[$c]).rotate_left(7);
+            x[$a] = vaddq_u32(x[$a], x[$b]);
+            y[$a] = vaddq_u32(y[$a], y[$b]);
+            x[$d] = rotate_left!(veorq_u32(x[$d], x[$a]), 16);
+            y[$d] = rotate_left!(veorq_u32(y[$d], y[$a]), 16);
+            x[$c] = vaddq_u32(x[$c], x[$d]);
+            y[$c] = vaddq_u32(y[$c], y[$d]);
+            x[$b] = rotate_left!(veorq_u32(x[$b], x[$c]), 12);
+            y[$b] = rotate_left!(veorq_u32(y[$b], y[$c]), 12);
+            x[$a] = vaddq_u32(x[$a], x[$b]);
+            y[$a] = vaddq_u32(y[$a], y[$b]);
+            x[$d] = rotate_left!(veorq_u32(x[$d], x[$a]), 8);
+            y[$d] = rotate_left!(veorq_u32(y[$d], y[$a]), 8);
+            x[$c] = vaddq_u32(x[$c], x[$d]);
+            y[$c] = vaddq_u32(y[$c], y[$d]);
+            x[$b] = rotate_left!(veorq_u32(x[$b], x[$c]), 7);
+            y[$b] = rotate_left!(veorq_u32(y[$b], y[$c]), 7);
+        };
+    }
+
+    for _ in 0..10 {
+        quarter_x2!(0, 4, 8, 12);
+        quarter_x2!(1, 5, 9, 13);
+        quarter_x2!(2, 6, 10, 14);
+        quarter_x2!(3, 7, 11, 15);
+        quarter_x2!(0, 5, 10, 15);
+        quarter_x2!(1, 6, 11, 12);
+        quarter_x2!(2, 7, 8, 13);
+        quarter_x2!(3, 4, 9, 14);
+    }
+
+    for i in 0..16 {
+        x[i] = vaddq_u32(x[i], initial[i]);
+        y[i] = vaddq_u32(y[i], initial[i]);
+    }
+    y[12] = vaddq_u32(y[12], vsubq_u32(counters_hi, initial[12]));
+
+    let (lo, rest) = out.split_at_mut(256);
+    let (hi, last) = rest.split_at_mut(256);
+    xor_columns(&x, lo.try_into().unwrap());
+    xor_columns(&y, hi.try_into().unwrap());
+    let (words, _) = last.as_chunks_mut::<4>();
+    for (i, word) in words.iter_mut().enumerate() {
+        let k = s[i].wrapping_add(scalar_initial[i]);
+        *word = (u32::from_le_bytes(*word) ^ k).to_le_bytes();
+    }
+}
+
+// Transpose 16 column vectors (four blocks) back into block order and
+// exclusive-or them onto 256 bytes of `out`.
+#[target_feature(enable = "neon")]
+fn xor_columns(cols: &[uint32x4_t; 16], out: &mut [u8; 256]) {
+    for word in 0..4 {
+        let (c0, c1, c2, c3) = (
+            cols[4 * word],
+            cols[4 * word + 1],
+            cols[4 * word + 2],
+            cols[4 * word + 3],
+        );
+        let zip0 = vreinterpretq_u64_u32(vzip1q_u32(c0, c1));
+        let zip1 = vreinterpretq_u64_u32(vzip1q_u32(c2, c3));
+        let zip2 = vreinterpretq_u64_u32(vzip2q_u32(c0, c1));
+        let zip3 = vreinterpretq_u64_u32(vzip2q_u32(c2, c3));
+        let rows = [
+            vzip1q_u64(zip0, zip1),
+            vzip2q_u64(zip0, zip1),
+            vzip1q_u64(zip2, zip3),
+            vzip2q_u64(zip2, zip3),
+        ];
+        for (block, row) in rows.into_iter().enumerate() {
+            let at = 64 * block + 16 * word;
+            let dst: &mut [u8; 16] = (&mut out[at..at + 16]).try_into().unwrap();
+            // SAFETY: `dst` is 16 bytes, valid for reads and writes, and
+            // `vld1q_u8` and `vst1q_u8` have no alignment requirement.
+            unsafe {
+                let current = vld1q_u8(dst.as_ptr());
+                vst1q_u8(
+                    dst.as_mut_ptr(),
+                    veorq_u8(current, vreinterpretq_u8_u64(row)),
+                );
+            }
+        }
+    }
 }
 
 const fn u32_slice_to_uint32x4_t(value: &[u32; 4]) -> uint32x4_t {
