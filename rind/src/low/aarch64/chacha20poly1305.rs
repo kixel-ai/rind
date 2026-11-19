@@ -7,8 +7,9 @@
 //! routines took up to 1.06 of its time at 32 to 512 bytes on Apple's M4.
 //!
 //! VG proves in Lean that its routines meet RFC 8439 and take the same
-//! branches and memory addresses whatever the key, nonce, and data, over its
-//! models of the instructions, which `admin/prove vg` cosimulates.
+//! branches and memory addresses whatever the key, nonce, and data, but for
+//! whether open authenticated, which its contract lets it reveal. Those proofs
+//! are over its models of the instructions, which `admin/prove vg` cosimulates.
 //! `proofs/Rind/Aarch64/VgChaCha20Poly1305.lean` takes those theorems as
 //! axioms about `seal_sve2` and `open_sve2` and proves `seal` and `open`
 //! from them on SVE2 CPUs. The aws-lc assembly is not formally verified: its

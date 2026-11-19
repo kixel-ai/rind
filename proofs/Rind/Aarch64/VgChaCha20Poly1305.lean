@@ -47,17 +47,6 @@ axiom vg_chacha20_poly1305_open_sve2_spec (t : low.aarch64.cpu.HaveSve2)
       | some pt => r.1 = true ∧ bvs r.2.val = pt
       | none => r.1 = false ∧ bvs r.2.val = List.replicate inout.length 0 ⦄
 
-theorem length_chacha20_encrypt (key : List (BitVec 8)) (counter : BitVec 32) (nonce msg : List (BitVec 8))
-    (hk : key.length = 32) (hn : nonce.length = 12) :
-    (chacha20.encrypt key counter nonce msg).length = msg.length := by
-  rw [← spec.vg.vgEncrypt_eq _ _ _ _ hk hn, VG.Spec.ChaCha20.encrypt, List.length_zipWith,
-    List.length_flatMap]
-  have hg : ∀ j, (VG.Spec.ChaCha20.chacha20Block key (counter + BitVec.ofNat 32 j) nonce).length = 64 :=
-    fun j => by rw [spec.vg.vgChacha20Block_eq_copy, spec.vg.chacha20Block_eq _ _ _ hk hn,
-      s2n.length_block _ _ _ hk hn]
-  simp [hg, List.sum_replicate]
-  omega
-
 /-- On a CPU with SVE2, the one-pass seal leaves RFC 8439's ciphertext in
 place and returns its tag over the AAD and it. -/
 theorem chacha20_poly1305_seal_sve2_spec (t : low.aarch64.cpu.HaveSve2)
@@ -76,7 +65,7 @@ theorem chacha20_poly1305_seal_sve2_spec (t : low.aarch64.cpu.HaveSve2)
   rw [spec.vg.vgSeal_eq _ _ _ _ hk hn] at hr
   refine ⟨?_, hr.symm⟩
   have hl := congrArg (fun p => p.1.length) hr
-  simp only [chacha20poly1305.seal, length_chacha20_encrypt _ _ _ _ hk hn, List.length_map] at hl
+  simp only [chacha20poly1305.seal, spec.vg.length_encrypt _ _ _ _ hk hn, List.length_map] at hl
   exact hl.symm
 
 /-- On a CPU with SVE2, the one-pass open returns whether RFC 8439's tag over
