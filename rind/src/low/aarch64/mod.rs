@@ -72,6 +72,7 @@ pub(crate) mod chacha20;
 pub(crate) mod chacha20poly1305;
 pub(crate) mod cpu;
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[path = "../arm/ct_qemu.rs"]
 pub(crate) mod ct_qemu;
 pub(crate) mod curve25519_ifma;
@@ -126,6 +127,7 @@ pub(crate) mod p384_montjadd;
 pub(crate) mod p384_montjdouble;
 pub(crate) mod p384_montjmixadd;
 pub(crate) mod p384_montjscalarmul;
+pub(crate) mod p384_vg;
 pub(crate) mod p521_jadd;
 pub(crate) mod p521_jdouble;
 pub(crate) mod p521_jmixadd;
@@ -134,6 +136,8 @@ pub(crate) mod pbkdf2_vg;
 pub(crate) mod sha1;
 pub(crate) mod sha256;
 pub(crate) mod sha3_keccak2_f1600;
+pub(crate) mod sha3_keccak4_f1600;
+pub(crate) mod sha3_keccak4_f1600_alt;
 pub(crate) mod sha3_keccak4_f1600_mux;
 pub(crate) mod sha3_keccak_f1600;
 pub(crate) mod sha3_keccak_f1600_alt;

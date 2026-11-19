@@ -37,6 +37,7 @@ mod macros;
 
 pub(crate) mod ct;
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub(crate) mod ct_binsec;
 
 #[cfg(rind_vartime_planted)]
@@ -95,12 +96,12 @@ mod generic {
     // key generation and decapsulation, and every operation elsewhere.
     #[cfg(not(rind_backend = "x86_64"))]
     pub(crate) mod mlkem768_vg;
-    // pyca/verified-garbage's P-256 where it does not run: armv7 and the
-    // portable backend.
-    #[cfg(not(rind_backend = "x86_64"))]
-    pub(crate) mod mlkem_sample;
+    // pyca/verified-garbage's P-256 and P-384 where they do not run: armv7
+    // and the portable backend.
     #[cfg(not(any(rind_backend = "x86_64", rind_backend = "aarch64")))]
     pub(crate) mod p256_vg;
+    #[cfg(not(any(rind_backend = "x86_64", rind_backend = "aarch64")))]
+    pub(crate) mod p384_vg;
     // pyca/verified-garbage's PBKDF2 where it does not run: every backend
     // but aarch64's.
     #[cfg(not(rind_backend = "aarch64"))]
@@ -290,7 +291,6 @@ pub(crate) use generic::{
         mlkem_basemul_k2, mlkem_basemul_k3, mlkem_basemul_k4, mlkem_intt, mlkem_mulcache_compute,
         mlkem_ntt, mlkem_reduce, mlkem_rej_uniform_vartime, mlkem_tobytes, mlkem_tomont,
     },
-    mlkem_sample::mlkem_sample_poly_ntt_8x,
     // libcrux's P-256 runs 64-bit limbs and recomputes the nonce's point to
     // sign, it exports P-384 only as ECDH, and it has no P-521, so rind
     // composes their arithmetic itself.
@@ -398,6 +398,7 @@ cfg_if::cfg_if! {
         pub(crate) use x86_64::mlkem768_vg;
         pub(crate) use x86_64::p256_vg;
         pub(crate) use generic::pbkdf2_vg;
+        pub(crate) use x86_64::p384_vg;
         pub(crate) use x86_64::mlkem::{
             mlkem_ntt,
             mlkem_intt,
@@ -524,6 +525,7 @@ cfg_if::cfg_if! {
         pub(crate) use aarch64::mlkem768_vg;
         pub(crate) use aarch64::p256_vg;
         pub(crate) use aarch64::pbkdf2_vg;
+        pub(crate) use aarch64::p384_vg;
         pub(crate) use aarch64::mlkem::{
             mlkem_ntt,
             mlkem_intt,
@@ -562,7 +564,6 @@ cfg_if::cfg_if! {
         pub(crate) use aarch64::chacha20;
         pub(crate) use aarch64::chacha20poly1305;
         pub(crate) use generic::mlkem::{mlkem_compress_d4, mlkem_compress_d5, mlkem_compress_d10, mlkem_compress_d11, mlkem_frombytes, mlkem_unpack};
-        pub(crate) use generic::mlkem_sample::mlkem_sample_poly_ntt_8x;
     } else if #[cfg(rind_backend = "arm")] {
         pub(in crate::low) use arm::cpu::{enter_cpu_state, zero_bytes, ct_compare_bytes, ct_compare_16, leave_cpu_state};
         pub(crate) use arm::aes::{AesDecKey, AesKey};
@@ -589,6 +590,7 @@ cfg_if::cfg_if! {
         };
         pub(crate) use generic::mlkem768_vg;
         pub(crate) use generic::p256_vg;
+        pub(crate) use generic::p384_vg;
         pub(crate) use generic::pbkdf2_vg;
         pub(crate) use generic::sha256x8::sha256_finish_x8;
     } else if #[cfg(rind_backend = "portable")] {
@@ -608,6 +610,7 @@ cfg_if::cfg_if! {
         };
         pub(crate) use generic::mlkem768_vg;
         pub(crate) use generic::p256_vg;
+        pub(crate) use generic::p384_vg;
         pub(crate) use generic::pbkdf2_vg;
         pub(crate) use generic::sha256x8::sha256_finish_x8;
     } else {
