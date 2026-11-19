@@ -19,6 +19,18 @@ impl Algorithm {
         self.0
     }
 
+    /// The module's algorithm, or `None` for SHA-1, which it does not approve.
+    #[cfg(feature = "fips")]
+    fn module(&self) -> Option<&'static rind_fips::hkdf::Algorithm> {
+        use digest::AlgorithmId::*;
+        match self.0.digest_algorithm().id {
+            SHA256 => Some(&rind_fips::hkdf::HKDF_SHA256),
+            SHA384 => Some(&rind_fips::hkdf::HKDF_SHA384),
+            SHA512 => Some(&rind_fips::hkdf::HKDF_SHA512),
+            _ => None,
+        }
+    }
+
     fn rind(&self) -> &'static rind::hkdf::Algorithm {
         use digest::AlgorithmId::*;
         match self.0.digest_algorithm().id {
@@ -53,12 +65,27 @@ impl KeyType for Algorithm {
 }
 
 /// A salt, keyed once and reused for every secret it extracts from.
-pub struct Salt(hmac::Key);
+pub struct Salt {
+    key: hmac::Key,
+    /// With `fips`, the module's salt, where the module approves extracting
+    /// with it: a non-empty salt of an algorithm it offers.
+    #[cfg(feature = "fips")]
+    module: Option<rind_fips::hkdf::Salt>,
+}
 
 impl Salt {
     /// Keys `algorithm` with `value`; an empty `value` is RFC 5869's absent salt.
     pub fn new(algorithm: Algorithm, value: &[u8]) -> Self {
-        Self(hmac::Key::new(algorithm.0, value))
+        Self {
+            key: hmac::Key::new(algorithm.0, value),
+            #[cfg(feature = "fips")]
+            module: match algorithm.module() {
+                Some(module) if !value.is_empty() => {
+                    Some(rind_fips::hkdf::Salt::new(module, value))
+                }
+                _ => None,
+            },
+        }
     }
 
     /// RFC 5869's absent salt, as [`Salt::new`] with an empty value.
@@ -68,27 +95,48 @@ impl Salt {
 
     /// Extracts a pseudorandom key from `secret` (HKDF-Extract).
     pub fn extract(&self, secret: &[u8]) -> Prk {
-        let prk = hmac::sign(&self.0, secret);
-        Prk::with_mode(self.algorithm(), prk.as_ref(), true)
+        // With `fips` and a salt the module approves, the pseudorandom key is
+        // made, and stays, in the module.
+        #[cfg(feature = "fips")]
+        if let Some(salt) = &self.module
+            && let Ok(prk) = salt.extract(secret)
+        {
+            // The empty-`info` copy is the same extraction in rind.
+            let copy = hmac::sign(&self.key, secret);
+            return Prk {
+                inner: Engine::Module(
+                    prk,
+                    rind::hkdf::Prk::new(self.algorithm().rind(), copy.as_ref()),
+                ),
+                algorithm: self.algorithm(),
+                extracted: Wiped::new(true),
+            };
+        }
+        let prk = hmac::sign(&self.key, secret);
+        Prk::with_mode(self.algorithm(), prk.as_ref(), true, false)
     }
 
     /// The algorithm this salt was made for.
     pub fn algorithm(&self) -> Algorithm {
-        Algorithm(self.0.algorithm())
+        Algorithm(self.key.algorithm())
     }
 }
 
 impl fmt::Debug for Salt {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("hkdf::Salt")
-            .field("algorithm", &self.0.algorithm())
+            .field("algorithm", &self.key.algorithm())
             .finish()
     }
 }
 
 impl From<Okm<'_, Algorithm>> for Salt {
     fn from(okm: Okm<'_, Algorithm>) -> Self {
-        Self(hmac::Key::from(okm.into_hmac()))
+        let algorithm = *okm.len();
+        let mut buffer = Wiped::new([0u8; digest::MAX_OUTPUT_LEN]);
+        let value = &mut buffer[..algorithm.len()];
+        okm.fill_exact(value);
+        Self::new(algorithm, value)
     }
 }
 
@@ -104,20 +152,68 @@ pub trait KeyType {
 // as aws-lc-rs's does; it is wiped with the key.
 #[derive(Clone)]
 pub struct Prk {
-    inner: rind::hkdf::Prk,
+    inner: Engine,
     algorithm: Algorithm,
     extracted: Wiped<bool>,
+}
+
+/// What derives from a [`Prk`]: rind, or with `fips` the module, which holds
+/// the key and derives every `info` FIPS 140-3 approves.
+///
+/// aws-lc's FIPS build derives an empty `info` too, outside its approved
+/// services (the service indicator stays unset), and this follows it. The
+/// module refuses an empty `info`, so a module key keeps a second copy in
+/// rind, wiped on drop, for that case alone: the empty `info` is derived in
+/// rind, and a key the module holds is no longer the only copy of it.
+#[derive(Clone)]
+enum Engine {
+    Rind(rind::hkdf::Prk),
+    #[cfg(feature = "fips")]
+    Module(rind_fips::hkdf::Prk, rind::hkdf::Prk),
+}
+
+impl Engine {
+    /// A key in the module where `in_module` and the module offers
+    /// `algorithm`; a key from an extraction the module did not approve stays
+    /// in rind, whose key a caller can expand with any `info`.
+    fn new(algorithm: Algorithm, value: &[u8], in_module: bool) -> Self {
+        #[cfg(feature = "fips")]
+        if let Some(module) = algorithm.module().filter(|_| in_module) {
+            return Self::Module(
+                rind_fips::hkdf::Prk::new(module, value),
+                rind::hkdf::Prk::new(algorithm.rind(), value),
+            );
+        }
+        let _ = in_module;
+        Self::Rind(rind::hkdf::Prk::new(algorithm.rind(), value))
+    }
+
+    fn fill(&self, info: &[&[u8]], out: &mut [u8]) -> Result<(), error::Unspecified> {
+        match self {
+            Self::Rind(prk) => prk.fill(info, out).map_err(|_| error::Unspecified),
+            #[cfg(feature = "fips")]
+            Self::Module(prk, rind) => {
+                // Not approved, so not the module's: aws-lc derives it, with
+                // its indicator unset, and this follows it in rind.
+                if info.iter().all(|part| part.is_empty()) {
+                    rind.fill(info, out).map_err(|_| error::Unspecified)
+                } else {
+                    prk.fill(info, out).map_err(|_| error::Unspecified)
+                }
+            }
+        }
+    }
 }
 
 impl Prk {
     /// Takes `value` as the pseudorandom key itself, skipping HKDF-Extract.
     pub fn new_less_safe(algorithm: Algorithm, value: &[u8]) -> Self {
-        Self::with_mode(algorithm, value, false)
+        Self::with_mode(algorithm, value, false, true)
     }
 
-    fn with_mode(algorithm: Algorithm, value: &[u8], extracted: bool) -> Self {
+    fn with_mode(algorithm: Algorithm, value: &[u8], extracted: bool, in_module: bool) -> Self {
         Self {
-            inner: rind::hkdf::Prk::new(algorithm.rind(), value),
+            inner: Engine::new(algorithm, value, in_module),
             algorithm,
             extracted: Wiped::new(extracted),
         }
@@ -165,8 +261,8 @@ impl fmt::Debug for Prk {
 impl From<Okm<'_, Algorithm>> for Prk {
     fn from(okm: Okm<'_, Algorithm>) -> Self {
         let algorithm = *okm.len();
-        let mut key = [0u8; digest::MAX_OUTPUT_LEN];
-        let key = &mut key[..algorithm.len()];
+        let mut buffer = Wiped::new([0u8; digest::MAX_OUTPUT_LEN]);
+        let key = &mut buffer[..algorithm.len()];
         okm.fill_exact(key);
         Self::new_less_safe(algorithm, key)
     }
@@ -197,26 +293,12 @@ impl<L: KeyType> Okm<'_, L> {
         if out.len() != self.len_cached {
             return Err(error::Unspecified);
         }
-        self.prk
-            .inner
-            .fill(self.info, out)
-            .map_err(|_| error::Unspecified)
+        self.prk.inner.fill(self.info, out)
     }
 
     /// Fills `out`, which the caller made exactly the length `L` says.
     pub(crate) fn fill_exact(self, out: &mut [u8]) {
         self.fill(out)
             .expect("`expand` held the length to 255 hash outputs");
-    }
-}
-
-impl<'a> Okm<'a, Algorithm> {
-    fn into_hmac(self) -> Okm<'a, hmac::Algorithm> {
-        Okm {
-            prk: self.prk,
-            info: self.info,
-            len: self.len.0,
-            len_cached: self.len_cached,
-        }
     }
 }

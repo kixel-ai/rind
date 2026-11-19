@@ -17,8 +17,21 @@ The rename reaches only the crate that makes it, not dependencies that use aws-l
 
 It panics wherever aws-lc-rs panics, such as `pbkdf2::derive` asked for more than PBKDF2 allows, so its signatures stay aws-lc-rs's, as rind-ring's stay ring's.
 
-Every aws-lc-rs feature but `fips` is accepted. `ring-io` and `ring-sig-verify` gate the items they gate in aws-lc-rs, and the rest change nothing.
-`fips` is refused, since rind is not FIPS validated: `try_fips_mode()` always fails and `fips_version()` is `None`.
+Every aws-lc-rs feature is accepted. `ring-io` and `ring-sig-verify` gate the items they gate in aws-lc-rs, `fips` is described below, and the rest change nothing.
+
+## FIPS
+
+With the `fips` feature, these run in [rind-fips](../rind-fips)'s FIPS 140-3 module, where the module approves the call: `digest` (SHA-1 excepted), `hmac`, `hkdf`, `pbkdf2`, `rand`, `constant_time`, `agreement` (ECDH on the NIST curves), `signature` (ECDSA, Ed25519, RSA, and ML-DSA), `kem` (ML-KEM), `cipher` (AES-CBC and AES-CTR), `key_wrap`, QUIC header protection with AES, and in `aead` the `TlsRecordSealingKey`, `TlsRecordOpeningKey` (sealing through the module's TLS 1.3 IV construction, opening through its AES-GCM key), and `RandomizedNonceKey` (the module draws each nonce). `try_fips_mode()` is `Ok(())`. The AES-GCM `UnboundKey`, `LessSafeKey`, `SealingKey`, and `OpeningKey` stay in rind and stay callable, opens included: the module seals only under IVs it generates, aws-lc-rs lets these keys seal under a caller's nonce (unapproved there too), and rind claims no approval for them. `RandomizedNonceKey` and the TLS record keys are the approved path.
+Without it, `try_fips_mode()` fails with "FIPS mode not enabled!" and every key runs in rind.
+
+- The feature builds only for glibc Linux on little-endian x86_64 and aarch64, where rind-fips builds its module, and is a compile error elsewhere, as aws-lc-rs's FIPS build is off its supported platforms.
+- The module seals only TLS 1.3 records, so `TlsRecordSealingKey::new` with `TlsProtocolId::TLS12` fails. Opening takes either version.
+- Not yet in the module, so still in rind: the AES-GCM keys other than those above (`UnboundKey`, `LessSafeKey`, `SealingKey`, `OpeningKey`). They wait on a decision about sealing under a caller's nonce, which the module refuses (it seals only under IVs it generates) and aws-lc-rs's FIPS build allows.
+- RSA: a private key lives in the module only if its modulus is an even number of bits from 2048 to 8192, so a key of another size (an odd number of bits) is refused. PSS signs in the module only with a salt the hash's length: another `RsaPssSaltLength` fails to sign, since the key cannot leave the module. A public key holds no secret, so rind validates every one, and the module verifies with those of 1024 bits (legacy algorithms) or an even 2048 to 8192; other moduli, and a PSS salt of another length, verify in rind. RSA-OAEP, which the module lacks, runs in rind.
+- Digests run in the module for every hash it approves; SHA-1 runs in rind, and a SHA-1 digest cannot be signed or verified over. X25519 runs in rind, as the module has no X25519; ChaCha20 header protection, ChaCha20-Poly1305, and SHA-1 do likewise.
+- Where the module approves only some shapes of a call, the adapter chooses from the arguments, never by trying the module and falling back: PBKDF2 runs in the module for a secret of at least 14 bytes, a salt of at least 16, at least 1000 rounds, and an output of at least 14 bytes, and in rind otherwise. HKDF keeps a key in the module when its salt is non-empty and the hash is not SHA-1; aws-lc-rs's FIPS build derives an empty `info` too (its `HKDF_expand` accepts it, and the service indicator stays unset, as `HKDF_verify_service_indicator` returns early for `info_len == 0`), and this follows it. The module refuses an empty `info`, so a module-held key also keeps a copy in rind, wiped on drop, and derives an empty `info` there; every other `info` derives in the module. That copy means such a key is not held only inside the module, and an empty-`info` derivation is not a module service, as in aws-lc-rs where it is not an approved one. An absent salt, and SHA-1, stay in rind and expand any `info`. X25519, ChaCha20-Poly1305, and the other algorithms the module leaves out stay callable, as in aws-lc-rs's FIPS build.
+- `fips_version()` is `None`: the module has no AWS-LC module number to return. `try_fips_cpu_jitter_entropy()` fails, since the module takes OS entropy. `awslc_version` and `try_fips_self_test` are not offered; the module's self-test aborts instead of returning a `Result`.
+- rind-fips is unpublished, so a rind-aws-lc-rs release cannot yet carry the feature.
 
 ## Wiping keys
 
@@ -35,7 +48,7 @@ These items are left out, so code using them fails to build:
 - `aead::chacha20_poly1305_openssh`: rind has no SSH consumer.
 - `rsa::KeyPair::from_components`, `signature::RsaKeyPair::from_components`, and `rsa::KeyPairComponents`: building a key from its private components means encoding them as DER here, which branches on their secret leading bytes. Load the key as PKCS#1 or PKCS#8.
 - `rsa::KeyPair::sign_digest`, `signature::RsaKeyPair::sign_digest`, `digest::Digest::import_less_safe`, and the PKCS#1 v1.5 encryption keys (`rsa::Pkcs1*`): rind signs only digests it computed, and refuses PKCS#1 v1.5 encryption, which invites padding-oracle attacks.
-- `io::der`, `test`, `test_file`, `unstable`, `awslc_version`, `try_fips_self_test`, the FIPS-only functions, and the items aws-lc-rs's `dev-tests-only` feature exposes to supply a key or randomness (`agreement::*::generate_for_test`, `rand::unsealed`), since rind draws its own; under that feature rind-aws-lc-rs adds only `rand::SecureRandom::mut_fill`.
+- `io::der`, `test`, `test_file`, `unstable`, `awslc_version`, `try_fips_self_test`, the FIPS-only functions it cannot back (see FIPS above), and the items aws-lc-rs's `dev-tests-only` feature exposes to supply a key or randomness (`agreement::*::generate_for_test`, `rand::unsealed`), since rind draws its own; under that feature rind-aws-lc-rs adds only `rand::SecureRandom::mut_fill`.
 
 ## Behaves differently
 
