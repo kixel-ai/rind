@@ -209,9 +209,10 @@ back a value a signal handler may have overwritten on hardware
 ([pyca/verified-garbage#5321](https://github.com/pyca/verified-garbage/issues/5321)).
 VG fixed it in both models before the commit `admin/import-vg` pins.
 
-`Rind/VgChaCha20.lean` transliterates VG's RFC 8439 spec, `Spec/ChaCha20.lean`,
-over the bytes of its streaming state, and proves its keystream is
-`Rind/Spec.lean`'s. `Rind/X86_64/VgChaCha20.lean` restates VG's theorems
+`Rind/VgChaCha20.lean` proves the keystream of VG's RFC 8439 spec,
+`VerifiedGarbage.Spec.ChaCha20`, is `Rind/Spec.lean`'s, and that the spec's
+view of the streaming state reads only its 768 bytes.
+`Rind/X86_64/VgChaCha20.lean` restates VG's theorems
 about the x86_64 ChaCha20 routines rind runs, `Stream.init_verified` and
 `Stream.apply_verified` for AVX2 and AVX-512 VL, as one axiom per wrapper in
 `low::x86_64::chacha20`, and proves `cipher::ChaCha20` from them, as
@@ -221,12 +222,13 @@ about the x86_64 ChaCha20 routines rind runs, `Stream.init_verified` and
 axioms restating VG's theorems state, such as
 `VerifiedGarbage.Spec.Rsa.PrivatePrecompute`, which `Rind/X86_64/VgRsa.lean`
 imports, with `VerifiedGarbage.Spec.Rsa` through it, VG's FIPS 203 spec,
-`VerifiedGarbage.Spec.MlKem`, which `Rind/VgOutcome.lean` imports, and `VerifiedGarbage.Spec.ChaCha20` with its
-contracts, which `Rind/VgChaCha20.lean` adapts and
-`Rind/X86_64/VgChaCha20.lean`'s axioms restate, so a pin that changes them
-shows the change in its diff, against which that re-pin must review the
-adaptation, for a change to the spec, and the axioms, for one to the
-contracts. Every re-pin also moves the axioms' links to VG's theorems and
+`VerifiedGarbage.Spec.MlKem`, which `Rind/VgOutcome.lean` imports, and `VerifiedGarbage.Spec.ChaCha20`,
+which `Rind/VgChaCha20.lean` imports, with its contracts, which
+`Rind/X86_64/VgChaCha20.lean`'s axioms restate. A pin that changes the
+ChaCha20 spec needs no review of it, since what rests on it is stated over
+`Rind/Spec.lean`, so a change its proofs cannot absorb fails the Lean build. A
+pin that changes the contracts shows the change in its diff, against which
+that re-pin must review the axioms. Every re-pin also moves the axioms' links to VG's theorems and
 checks that the registrations they cite still emit the routines rind runs:
 `admin/vg-bytes` checks the code, not which theorem covers it.
 
