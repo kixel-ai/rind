@@ -760,9 +760,10 @@ quest's.
 Ed25519 on x86_64 and aarch64, from the signature API's `ed25519::KeyPair`
 to s2n-bignum's routines and the SHA-512 proof above, in
 `Rind/X86_64/Ed25519.lean`, which `admin/prove` also writes for aarch64.
-Verification on aarch64, and on x86_64 without AVX-512 IFMA, checks a
-multiple of RFC 8032's equation with half-size scalars, which nothing proves
-yet. On x86_64 these assume `NoCurveIfma`, that the CPU lacks AVX-512 IFMA:
+Verification, which on aarch64 and on x86_64 without AVX-512 IFMA checks a
+multiple of RFC 8032's equation with half-size scalars, is [not proven
+yet](/quest/m4/verified/ed25519-half-scalar.md). On x86_64 these assume
+`NoCurveIfma`, that the CPU lacks AVX-512 IFMA:
 
 - `ed25519_generate`: the key pair's seed is the 32 drawn bytes, and a failed
   draw is refused;
@@ -778,7 +779,8 @@ The spec, in `Rind/Ed25519.lean`, is RFC 8032 over HOL Light's
 `edwards25519_group`, whose multiplication and power stay opaque, with
 s2n-bignum's `ed25519_encode` and `ed25519_decode` of its points. Each theorem
 assumes `Runs` and `RunsSha512`, and each with a message bounds it at
-2^64 - 64 bytes. The `ed25519` module calls no function pointer, so these theorems are about its translation, with no hand model.
+2^64 - 64 bytes. The `ed25519` module calls no function pointer, so these
+theorems are about its translation, with no hand model.
 
 Ed25519 on x86_64 CPUs with AVX-512 IFMA, from the same API to
 pyca/verified-garbage's key-pair derivation, signing, and verification, in
