@@ -80,6 +80,7 @@ jobs:
         id: select
         env:
           BASE: ${{ github.event.merge_group.base_sha }}
+        shell: bash
         run: sh/queue-checks.sh select "$BASE" HEAD | tee -a "$GITHUB_OUTPUT"
 
   regenerate:
