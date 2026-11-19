@@ -2,24 +2,19 @@ name: Alert
 
 # Posts scheduled, landing, release, and deploy failures to the Discord #alerts channel,
 # since those runs have no pull request to turn red. Reads the kixel-ai
-# organization's DISCORD_WEBHOOK secret. A job that runs past its time limit
-# ends cancelled, not timed_out. Release and Dart release set no
-# timeout-minutes, so a hung publish dies at GitHub's 360-minute default.
+# organization's DISCORD_WEBHOOK secret.
 
 permissions:
   contents: read
-  # Classifying a cancellation reads the run's jobs and their check annotations.
+  # Telling a time-limit cancellation from any other reads the run's jobs and
+  # their annotations.
   actions: read
   checks: read
 
 on:
   workflow_run:
-    # Matched by workflow `name:`, not filename. `sh/alert.sh check` requires
-    # every workflow whose failure can go unseen. A workflow that runs only
-    # from a pull request, as a caller, or from a manual dispatch is left out,
-    # because someone is already watching that run. Pullfrog is dispatch-only.
-    # Queue runs from a pull request, the merge queue, or a dispatch, and a
-    # failure there stays on the PR for the queue watcher.
+    # Matched by workflow `name:`, not filename. Only workflows that run outside
+    # a pull request and a manual dispatch. `sh/alert.sh check` enforces the list.
     workflows:
       - asan
       - bench
@@ -49,32 +44,18 @@ on:
 jobs:
   discord:
     name: Discord
-    # Scheduled runs start this job on failure, timed_out, or cancelled. The
-    # script posts a cancellation only when a job annotation says it exceeded
-    # its maximum execution time, including the hosted runner's "The job
-    # running on runner ... has exceeded the maximum execution time of ..."
-    # form. A hand cancel, or a dispatch that replaces the nightly (these
-    # workflows share one concurrency group per ref, with cancel-in-progress),
-    # does not post. Release alerts however it ran: it follows the queue's
-    # pushes to main, which nobody watches. So does Dart release, which a tag
-    # push starts with nobody watching. Both post on failure, timed_out, and a
-    # cancelled run that started a job. release.yml sets cancel-in-progress to
-    # false, so a newer push leaves an in-progress publish running and cancels
-    # only a pending one, which never starts a job and does not post. Dart
-    # release has no concurrency group. A cancellation the jobs API cannot
-    # classify still posts, and the embed says so. Site deploy, which a merge
-    # to main starts, posts on failure and timed_out only: a deploy waiting
-    # behind another is replaced by a newer one and ends cancelled, and so
-    # does a job that hits its timeout-minutes, so posting either would start
-    # this job for every superseded deploy. Queue failures stay on the PR and
-    # go to the queue watcher and fixer.
+    # Scheduled runs alert only when scheduled, since whoever dispatched one
+    # is already watching it. Release alerts however it ran: it follows the
+    # queue's pushes to main, which nobody watches. So do Site deploy, which a
+    # merge to main starts, and Dart release, which a tag push starts with
+    # nobody watching. A cancellation posts only when a job hit its time limit
+    # (`sh/alert.sh timed-out`), since a newer run or a hand cancel stops a run
+    # as a matter of course. Queue failures stay on the PR and go to the queue
+    # watcher and fixer.
     if: >-
-      (github.event.workflow_run.event == 'schedule' &&
-      contains(fromJSON('["failure", "timed_out", "cancelled"]'), github.event.workflow_run.conclusion)) ||
-      (contains(fromJSON('["failure", "timed_out"]'), github.event.workflow_run.conclusion) &&
-      contains(fromJSON('["Release", "Dart release", "Site deploy"]'), github.event.workflow_run.name)) ||
-      (contains(fromJSON('["cancelled"]'), github.event.workflow_run.conclusion) &&
-      contains(fromJSON('["Release", "Dart release"]'), github.event.workflow_run.name))
+      contains(fromJSON('["failure", "timed_out", "cancelled"]'), github.event.workflow_run.conclusion) &&
+      (github.event.workflow_run.event == 'schedule' ||
+      contains(fromJSON('["Release", "Dart release", "Site deploy"]'), github.event.workflow_run.name))
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
@@ -86,7 +67,7 @@ jobs:
       - name: Post to Discord
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
           RUN_ID: ${{ github.event.workflow_run.id }}
           RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
           RUN_REPO: ${{ github.repository }}
