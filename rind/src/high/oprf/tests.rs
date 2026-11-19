@@ -44,11 +44,11 @@ fn refuses_identity_hash<G: Group>() {
     for mode in [Mode::Oprf, Mode::Voprf] {
         assert_eq!(
             ClientState::<G>::blind(mode, input, scalar::<G>(&key)).err(),
-            Some(identity())
+            Some(IDENTITY_ERROR.into())
         );
         assert_eq!(
             evaluate::<G>(mode, &scalar::<G>(&key), input).err(),
-            Some(identity())
+            Some(IDENTITY_ERROR.into())
         );
     }
 }
