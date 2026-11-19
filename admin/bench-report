@@ -67,12 +67,12 @@ HOSTS = {
     "desktop": {"jobs": 12},
     "kixtop": {
         "jobs": 4,
-        "note": "The maintainer's MacBook, in daily use. Its cores have DIT, so rind's times here assume the caller holds"
-        " `rind::cpu::Dit::hold()` across its calls, as MoQ does. This run held it only for the AES-GCM, "
-        "ChaCha20-Poly1305, header protection, SHA-2, HMAC, and HKDF rows. rind's other rows set DIT around each "
-        "call, which cost 20 to 120 ns a call in the run before, so those times overstate rind's and understate "
-        "its lead. In the rustls rows, holding DIT would also run rustls' own code with it on, a cost not yet "
-        "measured.",
+        "note": "The maintainer's MacBook, in daily use. Its cores have DIT, and this run timed rind two ways. "
+        "The AES-GCM, ChaCha20-Poly1305, header protection, SHA-2, HMAC, and HKDF rows hold "
+        "`rind::cpu::Dit::hold()` across calls, as MoQ does and as the report's rind column assumes. rind's other "
+        "rows set DIT around each call. In the other primitive rows that toggle cost 20 to 120 ns a call in the "
+        "run before, so their times overstate rind's. In the rustls rows, holding DIT would also run rustls' own "
+        "code with it on, a cost not yet measured, so which way they would move is open.",
     },
     "ovh-iad": {
         "jobs": 4,
@@ -1004,13 +1004,18 @@ TIER_ROWS = [
 # The weekly benchmarks no CPU-tier row ranks, and why. Every other
 # benchmark must match a row, so a new one cannot go unwatched.
 UNRANKED = [
-    (r"rsa\d+-key-generation", "RSA key generation varies too much from run to run to rank"),
-    (r"jwt-[^/]+/\*/load$", "a token's key loading, the part of `token` spent on the key"),
+    (r"rsa\d+-key-generation", "RSA key generation: its time varies too much from run to run to rank"),
+    (
+        r"jwt-[^/]+/\*/load$",
+        "a JWT's `load` rows: aws-lc-rs's provider parses the key only when it signs or verifies, "
+        "so only `token`, which includes loading, compares",
+    ),
     (
         r"(blind-rsa\d+|v?oprf|vrf|spake2plus|argon2id)-",
-        "neither aws-lc-rs nor ring offers the protocol, so no baseline; the report's hosts compare it",
+        "blind RSA, OPRF, VRF, SPAKE2+, and Argon2id: neither aws-lc-rs nor ring offers the protocol, "
+        "so there is no baseline, and the report's hosts compare it",
     ),
-    (r"slhdsa-", "neither aws-lc-rs nor ring offers SLH-DSA, so no baseline"),
+    (r"slhdsa-", "SLH-DSA: neither aws-lc-rs nor ring offers it, so there is no baseline"),
 ]
 
 # rind's time over the fastest library's above which benchmarks/gaps.toml
@@ -2127,7 +2132,9 @@ def report(hosts, tiers, verified, gaps):
             "rind's time over the fastest of aws-lc-rs, ring, and verified-garbage (without ring where a feature "
             "is denied, since ring can't be denied one), in the row's benchmark where rind trails most. A cell "
             "verified-garbage wins gets a quest that switches rind to its proven code, not an entry under "
-            "Known gaps. An empty cell runs the same code as the one to its left, so it isn't timed.",
+            "Known gaps. An empty cell isn't timed: it runs the same code as the cell to its left, or, in a row "
+            "built on other primitives such as `rustls-bulk/*` or HPKE, its tier times only those primitives, "
+            "whose own rows show the difference.",
             "",
             f"From [run {tiers['run']}]({tiers['url']}), {tiers['date'][:10]} at {commit_link(tiers['commit'])}, "
             f"on {', '.join(cpus)}.",
@@ -2152,6 +2159,10 @@ def report(hosts, tiers, verified, gaps):
         "CPU tier, and what is decided: a quest that closes it, or the reason "
         "it stays. `benchmarks/gaps.toml` holds this table, and `admin/bench-report render` refuses a gap it "
         "lacks or an entry that is no longer a gap.",
+        "",
+        "The CPU tiers rank every weekly benchmark but these, so none of them is a gap, whatever its cell:",
+        "",
+        *(f"- {why[0].upper()}{why[1:]}." for _, why in UNRANKED),
         "",
         *(gap_table(gaps) if gaps else ["None."]),
         "",
