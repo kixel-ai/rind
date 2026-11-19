@@ -22,9 +22,10 @@ Recommendations:
 
 - Re-measure after the cuts this quest requires land, then choose per remaining workflow; many of the cancelled hours go with them.
 - Gate through the merge queue rather than a required context: a path-filtered workflow cannot be a required check, and [kixel-ai/rind#881](https://github.com/kixel-ai/rind/pull/881) adds `sh/queue-checks.sh`, which makes the queue's build wait on hosted checks the group's diff selects. Reuse it. `sde-pr-models.md` ([kixel-ai/rind#893](https://github.com/kixel-ai/rind/pull/893)) already runs every SDE model in the queue. A check moved into the queue slows the gate, so the PR says by how much and why it is worth it. `main`'s ruleset comes from dotfiles' `repo-settings`, so change it there if a required context changes.
-- Once #893 merges, add `sde-pr-models.md` and `prove-pr-cache.md` to Required here.
 
 ## Required
 
 - [Draft PRs skip the heavy checks](/quest/m0/ci-speed/draft-skip.md) - removes the drafts' share of the cancelled hours before this re-measures
 - [x86-cpu builds once](/quest/m0/ci-speed/x86-cpu-build-once.md) - shortens x86-cpu's runs, so fewer are superseded
+- [PRs run three SDE models](/quest/m0/ci-speed/sde-pr-models.md) - cuts x86-cpu's pull-request hours before this re-measures
+- [PRs re-check only changed proofs](/quest/m0/ci-speed/prove-pr-cache.md) - cuts prove's pull-request hours before this re-measures
