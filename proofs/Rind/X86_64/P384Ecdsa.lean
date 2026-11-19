@@ -1666,8 +1666,8 @@ theorem encode_spec (k : mid.p384.StaticPrivateKey) (out : Slice U8) (hl : 48 �
 
 /-- An ECDSA signature's outcome, for private key `d` and the hash's integer
 `e`: 96 bytes at the start of the output, the big-endian r and s of some
-nonce in [1, n), neither zero; refused if the output is short or the nonce
-source fails. -/
+nonce in [1, n), neither zero; refused if the output is short, a nonce draw
+fails, or none of a nonce's 64 draws is in [1, n). -/
 def ecdsaSignOutcome (d e : Nat) (outLen : Nat)
     (r : core.result.Result (Slice U8) error.Error × Slice U8) : Prop :=
   (∀ out, r.1 = .Ok out → out.length = 96 ∧ r.2.length = outLen ∧ r.2.val.take 96 = out.val ∧

@@ -471,7 +471,8 @@ theorem p256_ecdsa_from_scalar_and_public_key (h : Runs) (hvg : NoVgP256) (hheld
 /-- A signature's bytes, if signing returns: the big-endian r and s of the
 ECDSA signature of `msg`'s SHA-256 under the key pair's scalar, for some
 nonce in [1, n), neither zero. Signing is refused only if the nonce's random
-input cannot be drawn. The nonces, RFC 6979's hedged with that input, are
+input cannot be drawn, a nonce draw fails, or none of a nonce's 64 draws is
+in [1, n). The nonces, RFC 6979's hedged with that input, are
 outside the functional spec. -/
 theorem p256_ecdsa_sign (h : Runs) (hvg : NoVgP256) (hdrbg : Drbg) (hfill : Fills)
     (hsha : Sha256Blocks) (kp : high.signature.ecdsa.KeyPair) (d : Nat) (hkp : EcdsaKeyPairOf kp d)

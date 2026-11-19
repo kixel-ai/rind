@@ -423,7 +423,8 @@ theorem p384_ecdsa_from_scalar_and_public_key (h : Runs) (hheld : Held) (hc : P3
 /-- A P-384 signature's bytes, if signing returns: the big-endian r and s of
 the ECDSA signature of `msg`'s SHA-384 under the key pair's scalar, for some
 nonce in [1, n), neither zero. Signing is refused only if the nonce's random
-input cannot be drawn. The nonces, RFC 6979's hedged with that input, are
+input cannot be drawn, a nonce draw fails, or none of a nonce's 64 draws is
+in [1, n). The nonces, RFC 6979's hedged with that input, are
 outside the functional spec. -/
 theorem p384_ecdsa_sign (h : Runs) (hdrbg : Drbg) (hfill : Fills)
     (hsha : RunsSha512) (kp : high.signature.ecdsa.KeyPair) (d : Nat) (hkp : EcdsaKeyPairOf384 kp d)
