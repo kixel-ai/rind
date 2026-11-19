@@ -21,7 +21,3 @@ Guidance:
 - Test behavior a caller can see, such as an error path on malformed input or an accessor compared with the upstream crate's value. A `Debug` or `Display` impl needs a test only where callers rely on its output.
 - Where a function is unreachable from any public path, delete it rather than test it.
 - Where only a CPU feature neither runner has reaches a function, say so in [TESTING.md](/TESTING.md) instead of leaving it silent.
-
-## Related
-
-- [Adapter crates' surviving mutants](/quest/m2/confidence/mutants-adapters.md) - kills mutants in the same adapter code; tests written here may kill some

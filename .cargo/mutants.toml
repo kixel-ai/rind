@@ -348,10 +348,8 @@ exclude_re = [
   'rind/src/mid/rsa_priv/generate\.rs:\d+:\d+: replace \* with \+ in MillerRabinParams<\x27a>::random_base$',
   'rind/src/mid/rsa_priv/generate\.rs:\d+:58: replace \+ with - in MillerRabinParams<\x27a>::random_base$',
   'rind/src/mid/rsa_priv/generate\.rs:\d+:58: replace \+ with \* in MillerRabinParams<\x27a>::random_base$',
-  # Untested adapter code: quest/m2/confidence/mutants-adapters.md.
-  # `Debug` and `Display` stay excluded. The quest calls them low-value,
-  # so the campaign does not spend a run on them. Tests still check the
-  # strings those impls write.
+  # The adapters' `Debug` and `Display` impls: no caller relies on their
+  # text, so no test pins it.
   'rind-dimpl/src/digest\.rs:\d+:\d+: replace <impl fmt::Debug for Running>::fmt -> fmt::Result with Ok\(Default::default\(\)\)$',
   'rind-dimpl/src/kx\.rs:\d+:\d+: replace <impl fmt::Debug for Exchange>::fmt -> fmt::Result with Ok\(Default::default\(\)\)$',
   'rind-dimpl/src/sign\.rs:\d+:\d+: replace <impl fmt::Debug for Key>::fmt -> fmt::Result with Ok\(Default::default\(\)\)$',
