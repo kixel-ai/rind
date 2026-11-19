@@ -140,10 +140,12 @@ fn configs(
     key: &str,
     resumption: bool,
 ) -> Option<(Arc<ClientConfig>, Arc<ServerConfig>)> {
-    let dir = format!(
-        "{}/../rind-rustls/tests/keys/{key}",
-        env!("CARGO_MANIFEST_DIR")
-    );
+    // `RIND_BENCH_KEYS_DIR`, read at run time, names a copy of
+    // `rind-rustls/tests/keys`, for a binary run on a device where the
+    // build-time checkout path does not exist.
+    let keys = std::env::var("RIND_BENCH_KEYS_DIR")
+        .unwrap_or_else(|_| format!("{}/../rind-rustls/tests/keys", env!("CARGO_MANIFEST_DIR")));
+    let dir = format!("{keys}/{key}");
     let chain = CertificateDer::pem_file_iter(format!("{dir}/end.fullchain"))
         .unwrap()
         .collect::<Result<Vec<_>, _>>()
@@ -306,6 +308,10 @@ fn resumed_handshake(c: &mut Criterion) {
 /// provider sets up on first use, such as aws-lc's, is not timed.
 #[cfg(not(target_arch = "xtensa"))]
 fn threaded_handshake(c: &mut Criterion) {
+    // One client and server per logical CPU, held for the whole row.
+    if criterion::low_memory() {
+        return;
+    }
     let threads = thread::available_parallelism().unwrap().get();
     // bench-report reports these rows as running on every logical CPU, so a
     // run held to fewer, by affinity or a cgroup quota, must not pass for one.
