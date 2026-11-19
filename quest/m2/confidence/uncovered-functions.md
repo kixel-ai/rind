@@ -8,13 +8,9 @@ The nightly coverage report, on both Linux/x86_64 and macOS/aarch64, lists no fu
 
 Planned with the maintainer on 2026-11-12, with the coverage report's goal: no percentage target, just no unrun function left without a reason.
 
-[kixel-ai/rind#862](https://github.com/kixel-ai/rind/pull/862) reached every function the report listed in `rind` and the Rust adapters, other than those kixel-ai/rind#792's adapter tests reach and those TESTING.md's Coverage section lists with a reason. `admin/coverage` now ends by naming each unrun function as `path:line`. What remains is the bindings that pyrind's and rind for Dart's 0.4 reshapes rewrite. Testing their current code would only conflict with those rewrites.
+[kixel-ai/rind#862](https://github.com/kixel-ai/rind/pull/862) reached every function the report listed in `rind` and the Rust adapters, other than those kixel-ai/rind#792's adapter tests reach and those TESTING.md's Coverage section lists with a reason. `admin/coverage` now ends by naming each unrun function as `path:line`. What remains is the bindings that pyrind's and rind for Dart's 0.4 reshapes rewrote, which this fork merged as #124 and #125.
 
 - pyrind: `rsa::DecryptingKey::from_pkcs1` and `to_pkcs8`, `rsa::EncryptingKey::from_components` and `to_spki`, and `signature::Ed25519KeyPair::from_seed_and_public_key` and `to_spki`, or whatever their reshaped successors are.
 - rind for Dart: `PublicKey::to_spki` and the two closures in `rind_dart_public_key_new`, or their successors.
 - Then recount with a dispatched `coverage` run on both runners, whose list also confirms what kixel-ai/rind#792's adapter tests reach.
 
-## Required
-
-- [pyrind takes rind 0.4's shape](/quest/m2/api/pyrind-shape.md) - rewrites the pyrind functions left unrun
-- [rind for Dart takes rind 0.4's shape](/quest/m2/api/rind-dart-shape.md) - rewrites the rind-dart functions left unrun
