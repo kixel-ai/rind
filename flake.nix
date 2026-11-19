@@ -534,10 +534,8 @@
                   # turns that skip into an error (see sh/dispatch.sh).
                   shellcheck
                   actionlint
-                  # sh/alert.sh and sh/queue-checks.sh read the workflows,
-                  # and the latter the merge group's run through curl.
+                  # sh/alert.sh reads the workflows.
                   yq-go
-                  curl
                   nixfmt
                   # admin/bench-report-test runs the script that holds a
                   # leased host.

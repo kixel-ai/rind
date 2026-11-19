@@ -34,7 +34,6 @@ on:
       - flake.lock
       - thirdparty/s2n-bignum/**
       - .github/workflows/prove.yml
-      - .github/workflows/vg.yml
 
 permissions:
   contents: read
@@ -110,10 +109,36 @@ jobs:
       - name: Cosimulate
         run: nix develop .#hol-light --command admin/prove cosim
 
-  # Shared with the merge queue, which runs it when a group touches these
-  # paths.
+  # pyca/verified-garbage's code for each target against VG's Lean models,
+  # on the runner's CPU and, for what it lacks, Intel SDE or qemu-aarch64.
+  # A pull request runs the fixed seed 1; the nightly and dispatched runs take
+  # their run ID as the seed, so each tries new cases.
   vg:
-    uses: ./.github/workflows/vg.yml
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The dev shell's `sde` runs Intel's binaries in a bubblewrap sandbox,
+      # which needs the unprivileged user namespaces Ubuntu's AppArmor denies
+      # an unprofiled program.
+      # See UPSTREAM.md, "Ubuntu's AppArmor denies Intel SDE's sandbox".
+      - name: Allow user namespaces
+        if: matrix.os == 'ubuntu-24.04'
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+      - uses: ./.github/actions/nix
+
+      - name: Cosimulate
+        run: nix develop .#vg --command admin/prove vg
+        env:
+          VG_COSIM_SEED: ${{ github.event_name != 'pull_request' && github.run_id || 1 }}
 
   neon:
     runs-on: ubuntu-24.04-arm

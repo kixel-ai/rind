@@ -52,48 +52,6 @@ jobs:
     name: Queue build
     if: github.event_name != 'workflow_dispatch'
     uses: kixel-ai/rind/.github/workflows/queue-build.yml@main
-    # The build reads this run's jobs to wait for the checks below.
-    permissions:
-      contents: read
-      actions: read
-
-  # The path-filtered checks a group must also pass, `regenerate` and `vg`,
-  # selected by the paths that trigger them on a pull request. They run on
-  # GitHub-hosted runners beside the build, from the group's own workflow
-  # files, and the build waits for them only when the group touches their
-  # paths, so a group that doesn't waits on no hosted runner.
-  # `sh/queue-checks.sh` refers to these jobs by name.
-  checks:
-    name: Queue checks
-    if: github.event_name == 'merge_group'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    outputs:
-      regenerate: ${{ steps.select.outputs.regenerate }}
-      vg: ${{ steps.select.outputs.vg }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-      - name: Select
-        id: select
-        env:
-          BASE: ${{ github.event.merge_group.base_sha }}
-        shell: bash
-        run: sh/queue-checks.sh select "$BASE" HEAD | tee -a "$GITHUB_OUTPUT"
-
-  regenerate:
-    name: Regenerate
-    needs: checks
-    if: needs.checks.outputs.regenerate == 'true'
-    uses: ./.github/workflows/regenerate.yml
-
-  vg:
-    name: VG
-    needs: checks
-    if: needs.checks.outputs.vg == 'true'
-    uses: ./.github/workflows/vg.yml
 
   # The merge queue still builds every group with the job above; this only
   # satisfies the PR-side requirement, as a pull_request run's skipped job does.

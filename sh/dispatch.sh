@@ -6,6 +6,9 @@
 # CHECK_FAIL_FAST=1 stops every lane at the first failed module, for the merge
 # queue, which ejects a failing group either way and gains nothing from the
 # rest.
+# CHECK_QUEUE=1 makes ci also run the checks GitHub runs on pull requests in
+# workflows of their own, when the diff touches their paths, for the merge
+# queue (see the queue modules below).
 # CHECK_TIMES=FILE also writes each module's wall seconds, CPU milliseconds,
 # and name there, one per line, ending with the whole run's.
 # `--query` prints the selection before CI installs its toolchain and caches.
@@ -71,7 +74,9 @@ fi
 #                      and lanes run concurrently. Cargo's build directory
 #                      lock already serializes builds sharing a target.
 #   fix                `just fix` runs it too; check and ci run every module.
-declare -A scope=() tools=() check_tools=() compiles=() lane=()
+#   queue              Its lane runs beyond CHECK_JOBS, since it waits on Lean
+#                      and emulators rather than competing with Cargo.
+declare -A scope=() tools=() check_tools=() compiles=() lane=() queue=()
 checks=()
 fixes=()
 module() {
@@ -88,6 +93,7 @@ module() {
             compiles) compiles[$name]=1 ;;
             lane=*) lane[$name]=${option#lane=} ;;
             fix) fixes+=("$name") ;;
+            queue) queue[$name]=1 ;;
             *)
                 echo "error: module $name has an unknown option '$option'" >&2
                 exit 2
@@ -95,6 +101,50 @@ module() {
         esac
     done
 }
+
+# The paths that trigger a workflow on a pull request, as one anchored regex
+# over sh/changed.sh's paths: GitHub's `*` stays within a directory and `**`
+# crosses them. A glob this cannot convert is an error.
+pull_request_paths() {
+    local globs glob regex=
+    globs=$(yq '.on.pull_request.paths[]' ".github/workflows/$1")
+    [[ -n "$globs" ]] || {
+        echo "error: $1 lists no pull_request paths" >&2
+        return 1
+    }
+    while IFS= read -r glob; do
+        [[ "$glob" =~ ^[A-Za-z0-9_./*-]+$ ]] || {
+            echo "error: $1's pull_request path '$glob' uses a pattern sh/dispatch.sh cannot convert" >&2
+            return 1
+        }
+        glob=${glob//./\\.}
+        glob=${glob//\*\*\//$'\1'}
+        glob=${glob//\*\*/$'\2'}
+        glob=${glob//\*/'[^/]*'}
+        glob=${glob//$'\1'/'(.*/)?'}
+        glob=${glob//$'\2'/'.*'}
+        regex+=${regex:+|}$glob
+    done <<<"$globs"
+    echo "^($regex)$"
+}
+
+# The merge queue's build runs the checks GitHub runs on a pull request in a
+# workflow of its own, when the group touches the paths that trigger it there,
+# so two PRs that each pass one alone cannot break it together on main. Each
+# reads its paths from its workflow, so the two selections cannot drift apart.
+# The group's build is the one self-hosted job queue-build.yml runs, on x86_64,
+# so `vg` checks only x86_64's code; `prove`'s arm job and the nightly cover
+# aarch64's. Plain assignments, so a failed read stops the run instead of
+# reading as a repository-wide pattern.
+if [[ "$action" == ci && -n "${CHECK_QUEUE:-}" ]]; then
+    # pyca/verified-garbage's code against its Lean models, as `prove`'s vg
+    # job runs it, with the same fixed seed as a pull request.
+    paths=$(pull_request_paths prove.yml)
+    module vg "$paths" tools='nix yq' queue
+    # Every importer and generator at its pinned upstream revision.
+    paths=$(pull_request_paths regenerate.yml)
+    module regenerate "$paths" tools='nix yq git' queue
+fi
 
 # sh/select.sh narrows this to the changed crates and their dependents.
 module rs '^(rind[^/]*/|fuzz/|thirdparty/|Cargo\.(toml|lock)$|\.rustfmt(\.unstable)?\.toml$)' \
@@ -541,6 +591,15 @@ step() {
             fi
             run nix develop .#ct-vartime --command admin/ct-vartime "${targets[@]}"
             ;;
+        check:vg) run nix develop .#vg --command admin/prove vg ;;
+        check:regenerate)
+            # admin/regenerate rewrites rind/src/low/, which other modules
+            # build, and .tmp/upstream/, which vg reads, so it runs in a
+            # clone of its own.
+            run git clone -q --shared --no-checkout . "$logs/regenerate"
+            run git -C "$logs/regenerate" checkout -q --detach "$(git rev-parse HEAD)"
+            run nix develop "$logs/regenerate#regenerate" --command "$logs/regenerate/admin/regenerate"
+            ;;
         check:structure) run admin/structure ;;
         check:deny) run cargo deny --locked check ;;
         check:versions) run sh/adapter-versions.sh ;;
@@ -613,6 +672,10 @@ if [[ ! "$limit" =~ ^[1-9][0-9]*$ ]]; then
     echo "error: CHECK_JOBS must be a positive integer, not '$limit'" >&2
     exit 2
 fi
+
+for module in "${selected[@]}"; do
+    [[ ! -v "queue[$module]" ]] || limit=$((limit + 1))
+done
 
 lanes=()
 declare -A members=()
