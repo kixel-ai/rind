@@ -15,6 +15,7 @@ import Rind.Aarch64.AesKw
 import Rind.Aarch64.AesModesApi
 import Rind.Aarch64.MlKemCoding
 import Rind.Aarch64.GhashPmull
+import Rind.Aarch64.AesGcm
 open rind.aarch64
 
 /-!
@@ -29,8 +30,10 @@ the theorems over every HMAC algorithm; rind's HOL Light proofs of its
 constant-time compares in `Rind.Aarch64.CtEqual` for HMAC's and PBKDF2's
 `verify` and key wrap's `unwrap` and `unwrap_padded`; and nothing else.
 P-384's comb table select rests on no axiom, only on the hand model in
-`Rind.Aarch64.PointSelectModel`. The PMULL GHASH's table and `Ghash::add` rest on
-no axiom, only on the hand model in `Rind.Aarch64.AesGcmModel`.
+`Rind.Aarch64.PointSelectModel`. The PMULL GHASH's table and `Ghash::add`, and
+AES-GCM's counter blocks and its `tagged_from` and `tagged` on short messages
+with the crypto extension's key, rest on no axiom, only on the hand model in
+`Rind.Aarch64.AesGcmModel`.
 ML-KEM's decompression and message coding rest on no axiom.
 A change here is a change to the trust base.
 -/
@@ -750,3 +753,23 @@ A change here is a change to the trust base.
 /-- info: 'rind.aarch64.pmull.ghash_add_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms pmull.ghash_add_spec
+
+/-- info: 'rind.aarch64.counter_block_eq' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms counter_block_eq
+
+/-- info: 'rind.aarch64.initial_counter_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms initial_counter_spec
+
+/-- info: 'rind.aarch64.tagged_from_short_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms tagged_from_short_spec
+
+/-- info: 'rind.aarch64.tagged_seal_short_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms tagged_seal_short_spec
+
+/-- info: 'rind.aarch64.tagged_open_short_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms tagged_open_short_spec

@@ -872,8 +872,9 @@ CPU-feature checks pick Vale's tier (`RunsValeAesGcm`) or the SSE tier
 (`Algorithm`'s `expand` and `Sealer`'s `Ops`), and `seal_in_place_append_tag`,
 which is generic over its buffer.
 
-On aarch64, AES-GCM is not yet proven; its GHASH key setup and hashing on
-CPUs with the crypto extension are. `Rind/Aarch64/GhashPmull.lean` proves
+On aarch64, AES-GCM is proven on CPUs with the crypto extension for short
+messages, below the AEAD API; its GHASH key setup and hashing are proven at
+every length. `Rind/Aarch64/GhashPmull.lean` proves
 that `GhashTable::new` builds the PMULL table of H to H^8, each shifted as
 Vale's `shift_key_1` does (`ghash_table_new_spec`), and that `Ghash::add` on
 it is the Horner rule on the padded blocks, Vale's `ghash_LE`
@@ -883,8 +884,25 @@ loop the same sum of descending powers, the target-independent lemmas shared
 in `Rind/GhashSpec.lean`. `Rind/Aarch64/AesGcmModel.lean` models by hand
 what Aeneas cannot translate, the NEON transmutes, `Ghash::add`'s slice
 chunking, and the one-pass short path with its `Aggregate`, quoting the
-Rust; the short path, the s2n-bignum kernels' composition, and the AEAD API
-above them remain to prove.
+Rust. `Rind/Aarch64/AesGcmShort.lean` proves that `short` is Vale's
+`gctr_encrypt_LE` from the block after the counter block, and its tag GCTR
+from the counter block on `gcm_hash` of the AAD and the ciphertext
+(`short_spec`): its counter blocks are `inc32` of the counter block, its
+rounds FIPS 197's, `load` and `store` move a partial block's bytes, `KEEP`
+masks the keystream past a short ciphertext chunk before it is hashed, and
+`Aggregate` is the Horner rule, each group of up to eight blocks multiplied by
+descending powers of H and reduced once. `Rind/Aarch64/AesGcm.lean` proves
+that the counter block of a 96-bit nonce and of any other IV under 2^61 bytes is
+`compute_iv_BE`'s (`counter_block_eq`, `initial_counter_spec`), and that
+`tagged_from`, when the AAD's and the message's blocks, each rounded up,
+number at most the 15 sealing or 31 opening that `short` takes, is GCTR and
+the tag on `gcm_hash` from the counter block it is given
+(`tagged_from_short_spec`), so `tagged` with a 96-bit nonce is
+`gcm_encrypt_LE` and `gcm_decrypt_LE` (`tagged_seal_short_spec`,
+`tagged_open_short_spec`). The lemmas both targets' AES-GCM proofs use are in
+`Rind/GcmSpec.lean`. Longer messages, which run s2n-bignum's AES-GCM kernels,
+or for AES-192 aws-lc's stitched kernels or rind's AES-CTR and GHASH in turn,
+and the AEAD API above `tagged` remain to prove.
 
 `aead::gcm::Key`, which takes an IV of any length and tags of any
 `TagLength`, is proven on the same tiers, in `Rind/X86_64/GcmKey.lean`, a
