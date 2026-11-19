@@ -134,7 +134,7 @@ theorem compressList_blocks {σ τ : Type} (B : Nat) (hB : 0 < B) (c : σ → (N
 /-! ## Bytes and words -/
 
 /-- A bit of the little-endian word of bytes `m`. -/
-theorem getLsbD_fromLEBytes (m : List Byte) (k : Nat) :
+private theorem getLsbD_fromLEBytes (m : List Byte) (k : Nat) :
     (BitVec.fromLEBytes m).getLsbD k = (m[k / 8]!).getLsbD (k % 8) := by
   have := BitVec.fromLEBytes_getElem! m k
   rw [BitVec.getElem!_eq_testBit_toNat] at this
