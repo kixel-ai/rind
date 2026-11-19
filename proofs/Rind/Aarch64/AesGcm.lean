@@ -7,10 +7,13 @@ open Aeneas Aeneas.Std Result rind.vale rind.simd Polynomial
 
 `low::aarch64::aes_gcm` with a crypto-extension key and a PMULL table: the
 counter block of a 96-bit nonce and of any other IV is Vale's
-`compute_iv_BE`, and `tagged_from`, which takes `short` for a message of up
-to 15 blocks of AAD and message sealing or 31 opening, is Vale's GCTR and
-`gcm_hash`, so `tagged` is `gcm_encrypt_LE` and `gcm_decrypt_LE`. Longer
-messages run `cipher`'s s2n-bignum kernels, not yet covered here.
+`compute_iv_BE`, and `tagged_from`, which takes `short` when the AAD's and
+the message's blocks, each rounded up, number at most 15 sealing or 31
+opening, is Vale's GCTR and `gcm_hash` from the counter block it is given,
+so `tagged` with a 96-bit nonce is `gcm_encrypt_LE` and `gcm_decrypt_LE`.
+Longer messages, which run `cipher`'s s2n-bignum kernels or, for AES-192,
+aws-lc's stitched kernels or rind's AES-CTR and GHASH in turn, are not yet
+covered here.
 -/
 
 namespace rind.aarch64
@@ -65,7 +68,6 @@ theorem tagged_from_short_spec (ENC : Bool) (hk : low.aarch64.aes.HwKey) (alg : 
       bvs r.2.val = gctrEncrypt (inc32 j0 1) (bvs inout.val) alg kw ∧
       bvs r.1.val = gctrEncrypt j0 (leQuad32ToBytes (gcmHash (aesEncrypt alg kw (mkfour 0 0 0 0)) (bvs aad.val)
         (bvs (if ENC then r.2.val else inout.val)))) alg kw ⦄ := by
-  have hin : inout.length < 2 ^ 61 := by split at hshort <;> omega
   have hS : ∀ {N : Usize} (rk : Std.Array (BitVec 128) N), rk.val = keyToRoundKeys alg kw → N.val = nr alg + 1 →
       low.aarch64.aes_gcm.short ENC rk t y0 aad inout ⦃ r =>
         r.2.length = inout.length ∧
@@ -73,7 +75,7 @@ theorem tagged_from_short_spec (ENC : Bool) (hk : low.aarch64.aes.HwKey) (alg : 
         bvs r.1.val = gctrEncrypt j0 (leQuad32ToBytes (gcmHash (aesEncrypt alg kw (mkfour 0 0 0 0)) (bvs aad.val)
           (bvs (if ENC then r.2.val else inout.val)))) alg kw ⦄ := by
     intro N rk hrk hN
-    obtain ⟨tag, out, h, hl, ho, htag⟩ := short.short_spec ENC alg kw rk hrk hN t ht j0 y0 hy aad inout hin
+    obtain ⟨tag, out, h, hl, ho, htag⟩ := short.short_spec ENC alg kw rk hrk hN t ht j0 y0 hy aad inout hshort
     rw [h, WP.spec_ok]; exact ⟨hl, ho, htag⟩
   have h16 : ¬ (16#usize : Usize).val = 0 := by decide
   unfold low.aarch64.aes_gcm.tagged_from

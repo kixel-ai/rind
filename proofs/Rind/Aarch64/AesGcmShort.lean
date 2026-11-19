@@ -664,17 +664,19 @@ theorem foldlM_agg (p : List (BitVec 128))
 /-! ## `short` -/
 
 /-- `short`: Vale's GCTR from the block after `j0`, and the tag GCTR from
-`j0` on `gcm_hash` of the AAD and the ciphertext. -/
+`j0` on `gcm_hash` of the AAD and the ciphertext, for the AAD and message
+lengths `tagged_from` passes it. -/
 theorem short_spec (ENC : Bool) (alg : Algorithm) (kw : List (BitVec 32)) {N : Usize}
     (rk : Std.Array (BitVec 128) N) (hrk : rk.val = keyToRoundKeys alg kw) (hN : N.val = nr alg + 1)
     (t : low.aarch64.ghash.PmullTable) (ht : TableFor (polyLE (aesEncrypt alg kw (mkfour 0 0 0 0))) t)
     (j0 : Quad32) (y0 : Std.Array U8 16#usize) (hy : loadBytes y0.val = reverseBytesQuad32 j0)
-    (aad inout : Slice U8) (hin : inout.length < 2 ^ 61) :
+    (aad inout : Slice U8) (hshort : (aad.length + 15) / 16 + (inout.length + 15) / 16 ≤ if ENC then 15 else 31) :
     ∃ tag out, low.aarch64.aes_gcm.short ENC rk t y0 aad inout = ok (tag, out) ∧
       out.length = inout.length ∧
       bvs out.val = gctrEncrypt (inc32 j0 1) (bvs inout.val) alg kw ∧
       bvs tag.val = gctrEncrypt j0 (leQuad32ToBytes (gcmHash (aesEncrypt alg kw (mkfour 0 0 0 0)) (bvs aad.val)
         (bvs (if ENC then out.val else inout.val)))) alg kw := by
+  have hin : inout.length < 2 ^ 61 := by split at hshort <;> omega
   have hH : Small (polyLE (aesEncrypt alg kw (mkfour 0 0 0 0))) := small_toPoly _
   obtain ⟨p, hp, htab⟩ := ht
   have ha : aad.length = aad.val.length := rfl

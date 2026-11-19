@@ -669,7 +669,9 @@ def low.aarch64.aes_gcm.lengthsBytes (aad msg : Nat) : List U8 :=
     ⟨(BitVec.ofNat 128 (aad * 8) <<< 64) ||| BitVec.ofNat 128 (msg * 8)⟩).val
 
 /-- `short`'s loop over the message's chunks of up to 16 bytes, from the
-counter `i`: the hash and the output so far. -/
+counter `i`: the hash and the output so far. `i` is a `Nat` where Rust's
+`1u32..` overflows past `u32::MAX`, so the model holds for fewer than 2^32
+chunks, which `short_spec`'s block bound keeps. -/
 def low.aarch64.aes_gcm.short_loop (ENC : Bool) (round_keys : List core.core_arch.arm_shared.neon.uint8x16_t)
     (y0_ctr : Std.U32) (y0_words : core.core_arch.arm_shared.neon.uint32x4_t) :
     List (List U8) → Nat → low.aarch64.ghash.Aggregate → Result (low.aarch64.ghash.Aggregate × List U8)

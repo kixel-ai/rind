@@ -868,14 +868,15 @@ masks the keystream past a short ciphertext chunk before it is hashed, and
 descending powers of H and reduced once. `Rind/Aarch64/AesGcm.lean` proves
 that the counter block of a 96-bit nonce and of any other IV is
 `compute_iv_BE`'s (`counter_block_eq`, `initial_counter_spec`), and that
-`tagged_from`, for the up to 15 blocks of AAD and message that `short` takes
-sealing or 31 opening, is GCTR and the tag on `gcm_hash`
+`tagged_from`, when the AAD's and the message's blocks, each rounded up,
+number at most the 15 sealing or 31 opening that `short` takes, is GCTR and
+the tag on `gcm_hash` from the counter block it is given
 (`tagged_from_short_spec`), so `tagged` with a 96-bit nonce is
 `gcm_encrypt_LE` and `gcm_decrypt_LE` (`tagged_seal_short_spec`,
 `tagged_open_short_spec`). The lemmas both targets' AES-GCM proofs use are in
-`Rind/GcmSpec.lean`. Longer messages, which run s2n-bignum's AES-GCM kernels
-or aws-lc's AES-192 composition, and the AEAD API above `tagged` remain to
-prove.
+`Rind/GcmSpec.lean`. Longer messages, which run s2n-bignum's AES-GCM kernels,
+or for AES-192 aws-lc's stitched kernels or rind's AES-CTR and GHASH in turn,
+and the AEAD API above `tagged` remain to prove.
 
 `aead::gcm::Key`, which takes an IV of any length and tags of any
 `TagLength`, is proven on the same tiers, in `Rind/X86_64/GcmKey.lean`, a
