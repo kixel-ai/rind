@@ -8,6 +8,9 @@ on:
   # A pull request runs only the x86_64 release row of `build`, the one that
   # fails fastest, and `binsec`; the weekly run runs the rest.
   pull_request:
+    # A draft skips every job until it is marked ready, and turning a PR back
+    # into a draft cancels its ready run: see CONTRIBUTING.md.
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     branches: [main]
     paths:
       - rind/src/**
@@ -42,7 +45,7 @@ jobs:
   # neither this nor `binsec`: a `release-plz-` branch that moq-bot,
   # release.yml's app, opened.
   build:
-    if: ${{ !(startsWith(github.head_ref, 'release-plz-') && github.event.pull_request.user.login == 'moq-bot[bot]') }}
+    if: ${{ !github.event.pull_request.draft && !(startsWith(github.head_ref, 'release-plz-') && github.event.pull_request.user.login == 'moq-bot[bot]') }}
     strategy:
       matrix:
         os: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || '["ubuntu-latest", "ubuntu-24.04-arm"]') }}
@@ -319,7 +322,7 @@ jobs:
   # table lookups or crypto extension.
   binsec:
     name: binsec (${{ matrix.backend }})
-    if: ${{ !(startsWith(github.head_ref, 'release-plz-') && github.event.pull_request.user.login == 'moq-bot[bot]') }}
+    if: ${{ !github.event.pull_request.draft && !(startsWith(github.head_ref, 'release-plz-') && github.event.pull_request.user.login == 'moq-bot[bot]') }}
     strategy:
       fail-fast: false
       matrix:
