@@ -75,7 +75,13 @@ fn main() {
     println!(
         "{{ \"cpuid\": {{ \"aes\": {}, \"dit\": {}, \"neon\": {}, \"pmull\": {}, \
         \"sha2\": {}, \"sha3\": {}, \"sve2\": {}, \"wide_mul\": {} }} }}",
-        aes as u8, dit as u8, neon as u8, pmull as u8, sha2 as u8, sha3 as u8, sve2 as u8,
+        aes as u8,
+        dit as u8,
+        neon as u8,
+        pmull as u8,
+        sha2 as u8,
+        sha3 as u8,
+        sve2 as u8,
         wide_mul as u8,
     );
 }
