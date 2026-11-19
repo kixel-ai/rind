@@ -30,3 +30,14 @@ From [the scope](/quest/m4/fips/README.md), 2026-11-11.
 - Deno's FIPS build ([denoland/deno#36906](https://github.com/denoland/deno/pull/36906))
   swaps aws-lc-rs for its FIPS module through these same features, so it is
   the first test of the swap.
+- Decided 2026-11-19 (owner): ✅ an empty HKDF `info` follows aws-lc-rs, which derives it with its service indicator unset (rejected: refusing it). The module cannot derive it, so a module-held HKDF key keeps a wiped copy in rind, used only for an empty `info`, and the README says so.
+- Decided 2026-11-19 (owner): ✅ hold the `rind-fips` release; nothing is published. Until it is, a published `rind-aws-lc-rs` or `rind-rustls` cannot carry the optional `rind-fips` dependency.
+- Decided 2026-11-19 (owner): ✅ AES-GCM sealing under a caller's nonce, option (a): the `UnboundKey`, `LessSafeKey`, `SealingKey`, and `OpeningKey` stay in rind and stay callable, opens included; nothing is refused and no approval is claimed. `RandomizedNonceKey` and the TLS record keys are the approved path (rejected: opening in the module and sealing in rind, and refusing the seal).
+- Decided 2026-11-19 (owner): ✅ RSA private keys of an odd number of modulus bits, and PSS salts other than the hash's length, stay refused, as the README lists; public-key verification of any modulus or salt still works, in rind.
+- Under `fips`, `try_fips_mode()` is `Ok(())`, following the AES-GCM decision: every service the module approves runs in it, and the keys that seal under a caller's nonce are not among them.
+- The rustls provider's first cut routes hashes, HMAC, TLS 1.3 HKDF, TLS 1.3 AES-GCM, QUIC, ECDH, ML-KEM and random through the module. Signature verification and signing, and the TLS 1.2 suites, are not in it yet, so `CryptoProvider::fips()` stays false until they are.
+
+## Waiting
+
+- Maintainer: whether the TLS 1.2 AES-GCM suites report `fips()` once the module can seal TLS 1.2 records, as rustls's aws-lc-rs provider does. Clear it by recording the choice here.
+- Maintainer: publishing `rind-fips` (held 2026-11-19). Clear it by publishing it or by deciding the `fips` features stay unpublished.
