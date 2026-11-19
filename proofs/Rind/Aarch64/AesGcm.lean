@@ -150,10 +150,10 @@ theorem try_from_ne (N : Usize) (s : Slice U8) (h : s.length ≠ N.val) :
   unfold core.array.TryFromSharedArraySlice.try_from
   rw [dite_eq_right hs]
 
-/-- `lengths`: the length block, its bytes in memory order. -/
-theorem lengths_spec (a m : Usize) (hm : m.val < 2 ^ 61) :
-    low.aarch64.aes_gcm.lengths a m ⦃ r =>
-      reverseBytesQuad32 (loadBytes r.val) = insertNat64 (insertNat64 (mkfour 0 0 0 0) (8 * a.val) 1) (8 * m.val) 0 ⦄ := by
+/-- `lengths` is the model's `lengthsBytes`, which `short` hashes, so a change
+to the Rust breaks this. -/
+theorem lengths_bytes (a m : Usize) (hm : m.val < 2 ^ 61) :
+    low.aarch64.aes_gcm.lengths a m ⦃ r => r.val = low.aarch64.aes_gcm.lengthsBytes a.val m.val ⦄ := by
   unfold low.aarch64.aes_gcm.lengths
   step*
   case hmax =>
@@ -177,9 +177,18 @@ theorem lengths_spec (a m : Usize) (hm : m.val < 2 ^ 61) :
     subst i3_post
     simp only [UScalar.bv_toNat, BitVec.toNat_ofNat, i4_post, UScalar.cast_val_eq]
     scalar_tac
-  rw [short.rev_load_be]
-  simp only [i5_post1, i2_post1, h1, h4]
-  exact lengths_eq _ _ (by omega)
+  have h5 : i5 = ⟨(BitVec.ofNat 128 (a.val * 8) <<< 64) ||| BitVec.ofNat 128 (m.val * 8)⟩ := by
+    rw [UScalar.eq_equiv_bv_eq]
+    simp only [i5_post1, i2_post1, h1, h4, Nat.mul_comm a.val 8, Nat.mul_comm m.val 8]
+  rw [h5, low.aarch64.aes_gcm.lengthsBytes]
+
+/-- `lengths`: the length block, its bytes in memory order. -/
+theorem lengths_spec (a m : Usize) (hm : m.val < 2 ^ 61) :
+    low.aarch64.aes_gcm.lengths a m ⦃ r =>
+      reverseBytesQuad32 (loadBytes r.val) = insertNat64 (insertNat64 (mkfour 0 0 0 0) (8 * a.val) 1) (8 * m.val) 0 ⦄ := by
+  apply WP.spec_mono (lengths_bytes a m hm)
+  intro r hr
+  rw [hr]; exact short.lengthsBytes_load _ _ hm
 
 /-- `initial_counter` on a PMULL table is `compute_iv_BE`'s counter block, in
 memory order. -/

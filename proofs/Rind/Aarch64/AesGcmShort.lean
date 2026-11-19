@@ -662,6 +662,14 @@ theorem foldlM_agg (p : List (BitVec 128))
         (by have := aggStep_power p g (blockBE c) hp; omega)]
     rfl
 
+/-- `lengthsBytes` loads as the length block. -/
+theorem lengthsBytes_load (a m : Nat) (hm : m < 2 ^ 61) :
+    reverseBytesQuad32 (loadBytes (low.aarch64.aes_gcm.lengthsBytes a m)) =
+      insertNat64 (insertNat64 (mkfour 0 0 0 0) (8 * a) 1) (8 * m) 0 := by
+  rw [low.aarch64.aes_gcm.lengthsBytes, rev_load_be]
+  show (BitVec.ofNat 128 (a * 8) <<< 64) ||| BitVec.ofNat 128 (m * 8) = _
+  rw [lengths_eq _ _ (by omega), Nat.mul_comm 8 a, Nat.mul_comm 8 m]
+
 /-! ## `short` -/
 
 /-- `short`: Vale's GCTR from the block after `j0`, and the tag GCTR from
@@ -718,10 +726,7 @@ theorem short_spec (ENC : Bool) (alg : Algorithm) (kw : List (BitVec 32)) {N : U
   have hxl : reverseBytesQuad32 (loadBytes (low.aarch64.aes_gcm.lengthsBytes aad.length inout.length)) =
       insertNat64 (insertNat64 (mkfour 0 0 0 0) (8 * aad.val.length) 1)
         (8 * (if ENC then (loopOuts alg kw j0 (chunksUpTo 16 inout.val) 1).flatten else inout.val).length) 0 := by
-    rw [low.aarch64.aes_gcm.lengthsBytes, rev_load_be]
-    show (BitVec.ofNat 128 (aad.val.length * 8) <<< 64) ||| BitVec.ofNat 128 (inout.val.length * 8) = _
-    rw [lengths_eq _ _ (by simp only [Slice.length] at hin; omega), hclen, Nat.mul_comm 8 aad.val.length,
-      Nat.mul_comm 8 inout.val.length]
+    rw [hclen]; exact lengthsBytes_load _ _ (by simp only [Slice.length] at hin; omega)
   unfold low.aarch64.aes_gcm.short
   simp only [hs0, bind_ok, load_eq y0.val (by simp), encrypt_eq alg kw rk.val hrk hl]
   rw [foldlM_agg p _ ?hf _ s0 (fun c h => (chunksUpTo_mem h).2) ht0 hpow0]
