@@ -735,8 +735,8 @@ have some different options depending on CPU features:
   than the SHA3 instructions for SHA-3, and 1.1-1.3x for ML-KEM and ML-DSA,
   which run it one state at a time; mlkem-native and verified-garbage make
   the same choice.
-- We have s2n-bignum's verified 4-wide Keccak-f on aarch64 targets other than
-  Apple's, which runs one state in scalar code beside two NEON pairs, after
+- We have s2n-bignum's verified 4-wide Keccak-f on aarch64 cores other than
+  Apple's, and Apple's without the SHA3 instructions, which runs one state in scalar code beside two NEON pairs, after
   [Becker and Kannwischer](https://eprint.iacr.org/2022/1243), so the scalar
   pipes work while the SIMD units do: with the SHA3 instructions where the
   CPU has them, as mlkem-native's `x4_v8a_v84a_scalar`, and with NEON alone
