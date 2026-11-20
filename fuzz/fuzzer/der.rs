@@ -70,18 +70,25 @@ pub fn fixed_width(signature: &[u8], len: usize, der: bool) -> Option<Vec<u8>> {
     let (0x30, body, []) = element(signature)? else {
         return None;
     };
+    // Exactly two non-negative INTEGERs fill the body.
     let mut fixed = Vec::with_capacity(2 * len);
-    let mut count = 0;
-    for (tag, int) in elements(body) {
+    let mut rest = body;
+    for _ in 0..2 {
+        let (0x02, int @ [first, ..], after) = element(rest)? else {
+            return None;
+        };
+        if first & 0x80 != 0 {
+            return None;
+        }
         let int = &int[int.iter().take_while(|&&b| b == 0).count()..];
-        if tag != 0x02 || int.len() > len {
+        if int.len() > len {
             return None;
         }
         fixed.extend(std::iter::repeat_n(0, len - int.len()));
         fixed.extend_from_slice(int);
-        count += 1;
+        rest = after;
     }
-    (count == 2).then_some(fixed)
+    rest.is_empty().then_some(fixed)
 }
 
 /// The `subjectPublicKey` of a `SubjectPublicKeyInfo`, the BIT STRING's
