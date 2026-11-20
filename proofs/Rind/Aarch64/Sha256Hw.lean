@@ -23,8 +23,8 @@ the extension, but for the `adrp` and `add` the linker fills and the final
 `ret`, as it does VG's.
 
 The theorem's precondition holds for every call `compress_hw`'s safety
-contract allows: the routine may read `blocks` and the table and write
-`state` and the 16 bytes below the stack pointer it saves its frame to, which
+contract allows: the routine may read `blocks` and the table and read and
+write `state` and the 16 bytes below the stack pointer it saves its frame to, which
 overlap none of the others; `blocks` is a whole number of blocks, at least
 one and, as a slice, fewer than 2^64; and the ABI keeps the stack pointer
 16-byte aligned. The restatement, and that the wrapper passes the pointers

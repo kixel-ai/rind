@@ -304,8 +304,8 @@ the `adrp` and `add` the linker fills and the final `ret`, as VG's are not.
   that `low::aarch64::sha256::sha256_block_data_order_hw`, aws-lc's routine
   for the SHA-256 instructions, run from a state its `Pre` holds of (at least
   one block, a 16-byte-aligned stack pointer, reads of the blocks and `K256`
-  only, writes of the state and the frame only, a frame that overlaps none of
-  them, and `K256` holding FIPS 180-4's constants), computes s2n-bignum's FIPS 180-4 spec,
+  and reads and writes of the state and the frame only, a frame that overlaps
+  none of the others, and `K256` holding FIPS 180-4's constants), computes s2n-bignum's FIPS 180-4 spec,
   `sha256_hash_blocks`, of the blocks into the state, changing no memory but
   the state and the 16-byte frame below the stack pointer and no register
   AAPCS64 makes the callee save, and returning with `x29`, `x30`, and the

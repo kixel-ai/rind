@@ -743,8 +743,8 @@ def tableR (s : Rind.AArch64.State) : Region := ⟨s.vg.syms kName, 256⟩
 def frameR (s : Rind.AArch64.State) : Region := ⟨s.vg.sp - 16, 16⟩
 
 /-- The theorem's hypotheses: at least one block; the stack pointer 16-byte
-aligned; the routine may read the blocks and the table, and write the state
-and the frame; the frame overlaps none of the others; and the table holds
+aligned; the routine may read the blocks and the table, and read and write
+the state and the frame; the frame overlaps none of the others; and the table holds
 FIPS 180-4's constants. They are weaker than `SHA256_HW_SUBROUTINE_CORRECT`'s:
 the state may overlap the blocks or the table, since the routine writes it
 only after its last read, and the table is at a symbol's address, so no
