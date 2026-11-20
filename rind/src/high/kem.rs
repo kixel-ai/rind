@@ -706,6 +706,14 @@ mod tests {
                 prop_assert_eq!(ciphertext.as_ref(), &theirs_ciphertext[..]);
                 prop_assert_eq!(&secret[..], &theirs_secret[..]);
 
+                // Each decapsulates it to that secret, and an altered one to
+                // the same implicit rejection.
+                let ours_decapsulated = decapsulate(&ours, ciphertext.as_ref()).unwrap();
+                prop_assert_eq!(&ours_decapsulated[..], &secret[..]);
+                let theirs_decapsulated =
+                    theirs.decapsulate(ciphertext.as_ref().try_into().unwrap());
+                prop_assert_eq!(&theirs_decapsulated[..], &secret[..]);
+
                 let mut altered = ciphertext.as_ref().to_vec();
                 let index = index.index(altered.len());
                 altered[index] ^= xor;
