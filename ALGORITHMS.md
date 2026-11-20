@@ -133,9 +133,9 @@ with portable Rust in place of the assembly armv7 runs regardless.
 | AES-GCM | s2n-bignum + Graviola + rind | aws-lc + rind |  | aws-lc + rind |
 | AES block, AES-CTR | Graviola + rind | aws-lc |  | aws-lc |
 | AES-KW, AES-KWP, AES-CBC | Graviola + rind | aws-lc + rind |  | aws-lc + rind |
-| ChaCha20 | verified-garbage + Graviola |  | HACL* ✓ | HACL* ✓ |
+| ChaCha20 | verified-garbage + Graviola |  | rind | HACL* ✓ |
 | ChaCha20 (header protection) | HACL* ✓ + rind |  |  |  |
-| ChaCha20-Poly1305, XChaCha20-Poly1305 | verified-garbage | aws-lc ⚡ | HACL* rounds + 32-bit-word rind | HACL* rounds + Graviola; 26-bit rind when `rind_limb` is 32 |
+| ChaCha20-Poly1305, XChaCha20-Poly1305 | verified-garbage | aws-lc ⚡ | rind keystream (HACL* rounds only for XChaCha20's HChaCha20) + 32-bit-word rind | HACL* rounds + Graviola; 26-bit rind when `rind_limb` is 32 |
 | MD5 | rind |  |  |  |
 | SHA-1 | rind | aws-lc |  | rind |
 | SHA-256 | aws-lc ⚡ | aws-lc | aws-lc ⚡ | rind; ESP-IDF Xtensa runs the 16-round body from IRAM |
