@@ -19,6 +19,7 @@ import Rind.Aarch64.GhashPmull
 import Rind.Aarch64.AesGcm
 import Rind.Aarch64.VgChaCha20Poly1305
 import Rind.Aarch64.VgChaCha20
+import Rind.Aarch64.RsaMont
 open rind.aarch64
 
 /-!
@@ -52,6 +53,12 @@ ChaCha20's `apply_keystream` rests on the axioms restating
 pyca/verified-garbage's theorems for its routines in `Rind.Aarch64.VgChaCha20`;
 at every length it also takes rind's NEON code's contract as the hypothesis
 `Neon`, which no axiom states.
+RSA's Montgomery products rest on the axiom restating rind's HOL Light proof of
+aws-lc's `bn_mul_mont` in `Rind.Aarch64.RsaMont`, which trusts, as the
+axiom's statement over slices drops it, that a slice of at least 32 bytes does
+not end at the top of the address space, so the 4x path's `x + 32` and
+`m + 32` do not wrap. The axiom holds for the Linux build's object only:
+Apple's `bn_mul_mont.apple.s` is not covered (quest `rsa-aarch64`).
 A change here is a change to the trust base.
 -/
 
@@ -873,3 +880,15 @@ A change here is a change to the trust base.
  vg_chacha20_init_spec] -/
 #guard_msgs in
 #print axioms chacha20_apply_keystream
+
+/-- info: 'rind.aarch64.mont_mul_spec' depends on axioms: [propext, Classical.choice, Quot.sound, mul_mont_spec] -/
+#guard_msgs in
+#print axioms mont_mul_spec
+
+/-- info: 'rind.aarch64.mont_sqr_spec' depends on axioms: [propext, Classical.choice, Quot.sound, mul_mont_spec] -/
+#guard_msgs in
+#print axioms mont_sqr_spec
+
+/-- info: 'rind.aarch64.mont_products' depends on axioms: [propext, Classical.choice, Quot.sound, mul_mont_spec] -/
+#guard_msgs in
+#print axioms mont_products
