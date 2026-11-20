@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import subprocess, json, os, sys, glob, tarfile, tempfile, threading, time
+import subprocess, json, os, re, sys, glob, tarfile, tempfile, threading, time
 import concurrent.futures
 
 # Run it at the workspace root in `nix develop .#sde`, which has the Intel SDE
@@ -134,8 +134,8 @@ MODELS = [
     ("Diamond Rapids", "dmr", _AVX512 + ["MCDT"]),
 ]
 
-# The models a pull request runs; the merge queue and the weekly run run them
-# all. Prescott takes every slowest path, and Diamond Rapids every fastest.
+# The models a pull request runs; the merge queue runs every path set, and
+# the weekly run every model. Prescott takes every slowest path, and Diamond Rapids every fastest.
 # Skylake server is the AVX2 tier: its BMI2 and ADX routines, AVX AES-GCM,
 # and AVX2 SHA-256 and SHA-512 are what Broadwell to Cooper Lake run. Of the
 # paths Haswell takes instead, Prescott runs s2n-bignum's `_alt` routines and
@@ -185,7 +185,9 @@ KNOWN_CPUS = [
 
 
 def build():
-    """Builds the release tests and lists them in TESTS."""
+    """Builds the release tests and lists them in TESTS.
+
+    Returns them, the libraries they load, and rind's own unit tests."""
     # rind-fips is left out: its module refuses CPUs below its baseline, as
     # most of SDE's models are. `cargo test` also runs the doc tests, which
     # this leaves to the native runs: none asserts a CPU path, and each path
@@ -197,12 +199,14 @@ def build():
         check=True,
         encoding="utf-8",
     ).stdout
-    tests, libraries = [], []
+    tests, libraries, lib = [], [], None
     for line in out.splitlines():
         message = json.loads(line)
         if message["reason"] != "compiler-artifact":
             continue
         if message["profile"]["test"]:
+            if message["target"]["name"] == "rind" and "lib" in message["target"]["kind"]:
+                lib = os.path.relpath(message["executable"])
             tests.append(
                 (
                     os.path.relpath(message["executable"]),
@@ -218,7 +222,7 @@ def build():
             libraries += [f for f in message["filenames"] if f.endswith(".so")]
     with open(TESTS, "w") as f:
         f.writelines(f"{exe}\t{package}\n" for exe, package in tests)
-    return tests, libraries
+    return tests, libraries, lib
 
 
 def tests():
@@ -315,7 +319,7 @@ elif mode == "matrix":
         )
     )
 elif mode == "archive":
-    tests, libraries = build()
+    tests, libraries, _ = build()
     with tarfile.open(ARCHIVE, "w") as tar:
         tar.add(TESTS)
         for path in [exe for exe, _ in tests] + libraries:
@@ -325,7 +329,9 @@ elif mode == "archive":
     )
 elif mode == "test":
     flag, *args = sys.argv[2:]
-    (model,) = [m for m in MODELS if "-" + m[1] == flag]
+    model = next((m for m in MODELS if "-" + m[1] == flag), None)
+    if model is None:
+        sys.exit(f"{flag} is no model of MODELS: " + ", ".join("-" + m[1] for m in MODELS))
     with tarfile.open(ARCHIVE) as tar:
         tar.extractall(filter="tar")
     # The binaries hold their CARGO_MANIFEST_DIR as an absolute path, which
@@ -335,7 +341,37 @@ elif mode == "test":
         sys.exit("Failed: " + " ".join(failed))
 elif mode == "all":
     args = sys.argv[2:]
-    build()
+    _, _, lib = build()
+
+    def dispatch(model):
+        """The dispatch rind's unit tests report under one model."""
+        out = subprocess.run(
+            ["sde", "-" + model[1], "--", os.path.abspath(lib)]
+            + ["reports_dispatch", "--nocapture", "--test-threads", "1"],
+            cwd="rind",
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            encoding="utf-8",
+            check=True,
+        ).stdout
+        report = sorted(re.findall(r"rind dispatch: \w+ \w+", out))
+        if len(report) != 2:
+            sys.exit(f"{model[0]} reported no dispatch:\n{out}")
+        return tuple(report)
+
+    # A model that reports the same dispatch as an earlier one takes every
+    # path that one does, so it runs only rind's assertions of its own paths.
+    # The earlier model lacks instructions it has, such as Alder Lake those of
+    # Arrow Lake's SHA512 and Granite Rapids' AVX10, so its full run is the
+    # stricter. x86-cpu.yml's weekly run runs every model in full.
+    with concurrent.futures.ThreadPoolExecutor(len(MODELS)) as pool:
+        reports = list(pool.map(dispatch, MODELS))
+    first = {}
+    for model, report in zip(MODELS, reports):
+        earlier = first.setdefault(report, model)
+        if earlier is not model:
+            print(f"{model[0]} dispatches as {earlier[0]} does: {'; '.join(report)}")
+
     # Every model's run of every binary, from one pool, so the box stays
     # busy until the last one ends rather than idling behind the slowest
     # model. The largest binaries come first, and within one the newest
@@ -343,20 +379,13 @@ elif mode == "all":
     # took six times Prescott's CPU time, and crosschecks took half the
     # total. A binary uses about one and a half CPUs under SDE, so half as
     # many runs as CPUs keep the host busy beside the queue's other checks.
-    #
-    # A model whose paths match an earlier one's runs only the tests that
-    # assert its paths, which fail if its dispatch ever stops matching. The
-    # earlier model lacks instructions it has, such as Alder Lake those of
-    # Arrow Lake's SHA512 and Granite Rapids' AVX10, so its full run is the
-    # stricter. x86-cpu.yml's weekly run runs every model in full.
-    first = {}
-    for model in MODELS:
-        first.setdefault(frozenset(model[2]), model)
     jobs = []
     for exe, package in sorted(tests(), key=lambda t: -os.path.getsize(t[0])):
-        for model in reversed(MODELS):
-            only = [] if first[frozenset(model[2])] is model else ["detects_the_expected_cpu"]
-            jobs.append((model, exe, package, only))
+        for model, report in reversed(list(zip(MODELS, reports))):
+            if first[report] is model:
+                jobs.append((model, exe, package, []))
+            elif exe == lib:
+                jobs.append((model, exe, package, ["detects_the_expected_cpu"]))
     jobs.reverse()
     # Under CHECK_FAIL_FAST, as in the merge queue, the first failure starts
     # no more runs: the group fails either way.
@@ -372,14 +401,20 @@ elif mode == "all":
                     return
                 model, exe, package, only = jobs.pop()
             start = time.monotonic()
-            with tempfile.TemporaryFile("w+") as log:
-                passed = run(model, exe, package, only + args, log)
-                log.seek(0)
+            try:
+                with tempfile.TemporaryFile("w+") as log:
+                    passed = run(model, exe, package, only + args, log)
+                    log.seek(0)
+                    with lock:
+                        seconds[model[0]] += time.monotonic() - start
+                        if not passed:
+                            failed.append(f"{exe} on {model[0]}")
+                            print(log.read(), flush=True)
+            except BaseException:
+                # Recorded first, so the other workers stop under fail-fast.
                 with lock:
-                    seconds[model[0]] += time.monotonic() - start
-                    if not passed:
-                        failed.append(f"{exe} on {model[0]}")
-                        print(log.read(), flush=True)
+                    failed.append(f"{exe} on {model[0]}")
+                raise
 
     # A worker's exception, such as SDE failing to start, re-raises here, so
     # no run is left out with the exit status still 0.
