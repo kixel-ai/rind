@@ -16,11 +16,12 @@ import subprocess, json, os, sys, glob, tarfile, tempfile, threading, time
 # `matrix` prints MODELS as x86-cpu.yml's `check` matrix. `archive` builds the
 # release tests into ARCHIVE, and `test` runs them under `sde SDE_MODEL --`,
 # passing each binary TEST_ARGS, so every model's job runs one build. `all`
-# builds them in place and runs every model at once, for the merge queue's
-# build (`CHECK_QUEUE` in sh/dispatch.sh) and local runs. Not nextest: its
-# process per test starts SDE, and re-instruments the code, for each of the
-# workspace's tests, which made rind's library tests over three times slower
-# under SDE than one process for the binary, as `cargo test` runs it.
+# builds them in place and runs them under every model, many at once, for the
+# merge queue's build (`CHECK_QUEUE` in sh/dispatch.sh) and local runs. Not
+# nextest: its process per test starts SDE, and re-instruments the code, for
+# each of the workspace's tests, which made rind's library tests over three
+# times slower under SDE than one process for the binary, as `cargo test` runs
+# it.
 ARCHIVE = "target/x86-cpu-tests.tar"
 # Each test binary in ARCHIVE, a tab, and its package's directory, which
 # `cargo test` runs it in and where it finds its vector files.
