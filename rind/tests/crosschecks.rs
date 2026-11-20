@@ -1438,8 +1438,7 @@ mod oracle {
     #[cfg(not(any(rind_backend = "arm", rind_backend = "portable")))]
     pub(crate) use rustcrypto::{P256, P384, P521};
 
-    /// libcrux's P-256, HACL*'s, which rind runs nowhere. It hashes with
-    /// HACL*'s SHA-2, which the portable backend runs, so it takes digests.
+    /// libcrux's P-256, HACL*'s, which rind runs nowhere.
     #[cfg(any(rind_backend = "arm", rind_backend = "portable"))]
     pub(crate) struct P256;
 
@@ -1978,42 +1977,23 @@ mod ed25519 {
     use proptest::sample::Index;
     use rind::ed25519 as ours;
 
-    /// Ed25519's independent oracle: libcrux's, HACL*'s, except on the
-    /// portable backend, whose SHA-512 is HACL*'s too, where it is the
-    /// textbook reference.
+    /// Ed25519's independent oracle: libcrux's, HACL*'s, which rind runs
+    /// nowhere.
     pub(crate) mod oracle {
-        #[cfg(not(rind_backend = "portable"))]
         pub(crate) fn public_key(seed: &[u8; 32]) -> [u8; 32] {
             let mut public = [0u8; 32];
             libcrux_ed25519::secret_to_public(&mut public, seed);
             public
         }
 
-        #[cfg(not(rind_backend = "portable"))]
         pub(crate) fn sign(seed: &[u8; 32], message: &[u8]) -> [u8; 64] {
             libcrux_ed25519::sign(message, seed).unwrap()
         }
 
-        #[cfg(not(rind_backend = "portable"))]
         pub(crate) fn verify(public_key: &[u8; 32], message: &[u8], signature: &[u8]) -> bool {
             <&[u8; 64]>::try_from(signature).is_ok_and(|signature| {
                 libcrux_ed25519::verify(message, public_key, signature).is_ok()
             })
-        }
-
-        #[cfg(rind_backend = "portable")]
-        pub(crate) fn public_key(seed: &[u8; 32]) -> [u8; 32] {
-            crate::reference::edwards25519().ed25519_public_key(seed)
-        }
-
-        #[cfg(rind_backend = "portable")]
-        pub(crate) fn sign(seed: &[u8; 32], message: &[u8]) -> [u8; 64] {
-            crate::reference::edwards25519().ed25519_sign(seed, message)
-        }
-
-        #[cfg(rind_backend = "portable")]
-        pub(crate) fn verify(public_key: &[u8; 32], message: &[u8], signature: &[u8]) -> bool {
-            crate::reference::edwards25519().ed25519_verify(public_key, message, signature)
         }
     }
 

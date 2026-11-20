@@ -8,9 +8,10 @@
 //! assembly against it.
 //!
 //! As in aws-lc, the first sixteen rounds read the block and the other
-//! forty-eight run in a loop of sixteen, unrolled so the eight working
-//! variables rename instead of moving, over a sixteen-word window of the
-//! message schedule. Ch and Maj are the three-operation forms
+//! forty-eight run in a loop, unrolled so the eight working variables
+//! rename instead of moving, over a sixteen-word window of the message
+//! schedule. Each pass runs sixteen rounds, as aws-lc's SHA-512 does; its
+//! SHA-256 runs eight. Ch and Maj are the three-operation forms
 //! `((f ^ g) & e) ^ g` and `((a ^ b) & (b ^ c)) ^ b`, whose `a ^ b` the next
 //! round reuses as its `b ^ c`. Every operation is an add, rotate, shift, or
 //! bitwise op, and every index is a round number, so nothing branches on or
