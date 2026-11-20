@@ -147,11 +147,6 @@ opaque low.aarch64.edwards25519_scalarmulbase.edwards25519_scalarmulbase
   Array Std.U64 8#usize → Array Std.U64 4#usize → Result (Array Std.U64
     8#usize)
 
-opaque low.aarch64.edwards25519_scalarmuldouble.edwards25519_scalarmuldouble
-  :
-  Array Std.U64 8#usize → Array Std.U64 4#usize → Array Std.U64 8#usize →
-    Array Std.U64 4#usize → Result (Array Std.U64 8#usize)
-
 opaque low.aarch64.bignum_madd_n25519.bignum_madd_n25519
   :
   Array Std.U64 4#usize → Array Std.U64 4#usize → Array Std.U64 4#usize →
@@ -167,6 +162,20 @@ opaque low.aarch64.bignum_neg_p25519.bignum_neg_p25519
 
 opaque low.aarch64.bignum_cmp_lt.bignum_cmp_lt
   : Slice Std.U64 → Slice Std.U64 → Result Std.U64
+
+/-! Ed25519 verification's half-size check, which no theorem covers yet:
+the multi-scalar multiplication and the field product it needs. -/
+
+opaque low.generic.edwards25519_msm.edwards25519_msm
+  :
+  Array Std.U64 12#usize → Array Std.U64 4#usize → Array (Array Std.U64
+    4#usize) 2#usize → Array (Array Std.U64 16#usize) 2#usize → Result
+    (Array Std.U64 12#usize)
+
+opaque low.aarch64.bignum_mul_p25519.bignum_mul_p25519
+  :
+  Array Std.U64 4#usize → Array Std.U64 4#usize → Array Std.U64 4#usize →
+    Result (Array Std.U64 4#usize)
 
 /-! P-256's ECDSA key generation, which the signing theorems model, and its
 PKCS#8 OID, which none states. -/
