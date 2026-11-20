@@ -932,11 +932,6 @@ _vpaes_convert_consts:
 	vrev32.8	q0, q0
 	vst1.64	{{q0}}, [r0]
 
-	@ Wipe registers which contained key material.
-	veor	q0, q0, q0
-	veor	q1, q1, q1
-	veor	q2, q2, q2
-
 	ldmia	sp!, {{r11, pc}}	@ return
 .size	{vpaes_encrypt_key_to_bsaes},.-{vpaes_encrypt_key_to_bsaes}
 .globl	{vpaes_decrypt_key_to_bsaes}
@@ -1017,11 +1012,6 @@ _vpaes_convert_consts:
 	@ .Lvpaes_schedule_am_decrypting. Its basis is not transformed.
 	vrev32.8	q0, q0
 	vst1.64	{{q0}}, [r0]!
-
-	@ Wipe registers which contained key material.
-	veor	q0, q0, q0
-	veor	q1, q1, q1
-	veor	q2, q2, q2
 
 	ldmia	sp!, {{r11, pc}}	@ return
 .size	{vpaes_decrypt_key_to_bsaes},.-{vpaes_decrypt_key_to_bsaes}

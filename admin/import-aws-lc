@@ -15,7 +15,8 @@ flavor cut down to the routines rind calls, the tables they load, and the
 handwritten NEON Poly1305. Each routine's name is a `{name}` operand that
 rind binds to a crate-version qualified symbol; a helper keeps its local name.
 An import's `drops` delete runs of consecutive lines, each spelled as given
-and found exactly once: deliberate changes to aws-lc's code, each saying why.
+and found exactly once, optionally after lines that stay: deliberate changes
+to aws-lc's code, each saying why.
 
 x86_64 and aarch64: one file per routine and flavor, holding the routine's
 body from after its label through its return, for `naked_asm!` in a naked
@@ -134,11 +135,21 @@ ARM_IMPORTS = [
             "vpaes_decrypt_key_to_bsaes",
             "vpaes_ctr32_encrypt_blocks",
         ],
-        # The key schedule's zeroing of the registers it used: rind wipes
-        # no temporaries (AGENTS.md), and the routine is unproven.
+        # The key schedule's and the bsaes conversions' zeroing of the
+        # registers they used: rind wipes no temporaries (AGENTS.md), and the
+        # routines are unproven. Each conversion's ends after its last store.
         "drops": [
             ["@ cleanup"]
             + [f"veor q{i}, q{i}, q{i} @ vpxor %xmm{i}, %xmm{i}, %xmm{i}" for i in range(8)],
+        ]
+        + [
+            (
+                [f"vst1.64 {{q0}}, [r0]{suffix}", ""],
+                ["@ Wipe registers which contained key material."]
+                + [f"veor q{i}, q{i}, q{i}" for i in range(3)]
+                + [""],
+            )
+            for suffix in ("", "!")
         ],
     },
     {
@@ -897,13 +908,15 @@ def write(path, lines):
 
 def drop_run(text, run):
     """`text` without `run`, consecutive lines spelled as given, which must
-    occur exactly once."""
-    words = [line.split() for line in run]
+    occur exactly once. A run given as `(after, lines)` drops `lines` where
+    `after`, which stays, comes right before them."""
+    after, lines = run if isinstance(run, tuple) else ([], run)
+    words = [line.split() for line in after + lines]
     split = [line.split() for line in text]
-    at = [i for i in range(len(text)) if split[i : i + len(run)] == words]
+    at = [i + len(after) for i in range(len(text)) if split[i : i + len(words)] == words]
     if len(at) != 1:
-        sys.exit(f"expected one run of {run[0]!r} ...: found {len(at)}")
-    return text[: at[0]] + text[at[0] + len(run) :]
+        sys.exit(f"expected one run of {(after + lines)[0]!r} ...: found {len(at)}")
+    return text[: at[0]] + text[at[0] + len(lines) :]
 
 
 def import_arm(aws_lc):

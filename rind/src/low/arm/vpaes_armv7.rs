@@ -154,26 +154,32 @@ impl NeonKey {
     pub(crate) fn ctr32(&self, ivec: &[u8; 16], inout: &mut [[u8; 16]]) {
         let (bulk, rest) = inout.split_at_mut(bsaes_blocks(inout.len()));
         if !bulk.is_empty() {
-            // SAFETY: `bulk` is `bulk.len()` readable and writable blocks,
+            // One pointer for input and output, so neither reborrow
+            // invalidates the other.
+            let io = bulk.as_mut_ptr().cast::<u8>();
+            // SAFETY: `io` is `bulk.len()` readable and writable blocks,
             // which aws-lc allows to alias, at least eight. Only a `HaveNeon`
             // token builds `self`.
             unsafe {
                 asm_call!(unsafe extern "C" bsaes_ctr32_encrypt_blocks(
-                    bulk.as_ptr().cast(),
-                    bulk.as_mut_ptr().cast(),
+                    io,
+                    io,
                     bulk.len(),
                     &self.bsaes,
                     ivec,
                 ))
             }
         }
+        if rest.is_empty() {
+            return;
+        }
         let ivec = add32(ivec, bulk.len());
-        // SAFETY: as above, for `rest`; the routine returns at once for zero
-        // blocks.
+        let io = rest.as_mut_ptr().cast::<u8>();
+        // SAFETY: as above, for `rest`.
         unsafe {
             asm_call!(unsafe extern "C" vpaes_ctr32_encrypt_blocks(
-                rest.as_ptr().cast(),
-                rest.as_mut_ptr().cast(),
+                io,
+                io,
                 rest.len(),
                 &self.vpaes,
                 &ivec,
@@ -232,11 +238,10 @@ impl NeonDecKey {
 
     /// Decrypts one block in place.
     pub(crate) fn decrypt_block(&self, inout: &mut [u8; 16]) {
-        // SAFETY: `inout` is one readable and writable block, which aws-lc
+        let io = inout.as_mut_ptr();
+        // SAFETY: `io` is one readable and writable block, which aws-lc
         // allows to alias. Only a `HaveNeon` token builds `self`.
-        unsafe {
-            asm_call!(unsafe extern "C" vpaes_decrypt(inout.as_ptr(), inout.as_mut_ptr(), &self.vpaes))
-        }
+        unsafe { asm_call!(unsafe extern "C" vpaes_decrypt(io, io, &self.vpaes)) }
     }
 
     /// Decrypts whole blocks in place in CBC mode, the first chained from
@@ -246,13 +251,14 @@ impl NeonDecKey {
         // The routine leaves the next IV here: the last ciphertext block.
         let mut chain = *iv;
         if !bulk.is_empty() {
-            // SAFETY: `bulk` is `16 * bulk.len()` readable and writable
+            let io = bulk.as_mut_ptr().cast::<u8>();
+            // SAFETY: `io` is `16 * bulk.len()` readable and writable
             // bytes, which aws-lc allows to alias, and `enc` 0, as the
             // routine requires. Only a `HaveNeon` token builds `self`.
             unsafe {
                 asm_call!(unsafe extern "C" bsaes_cbc_encrypt(
-                    bulk.as_ptr().cast(),
-                    bulk.as_mut_ptr().cast(),
+                    io,
+                    io,
                     16 * bulk.len(),
                     &self.bsaes,
                     &mut chain,
