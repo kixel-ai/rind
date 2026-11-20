@@ -13,8 +13,10 @@ A primitive is checked five ways:
 - **Fuzz target**: a `fuzz/fuzzer/` target that compares rind with aws-lc-rs
   and with the row's independent oracle on fuzzed input, and fails on any
   disagreement. aws-lc-rs decides what to accept, and the oracle checks the
-  values both accept; where aws-lc-rs lacks the algorithm, the target
-  compares rind with the oracle alone. `fuzz.yml` runs each weekly, then
+  values both accept; where the standard fixes a verdict, as for a tag,
+  padding, or a key's encoding, the oracle must reach the same one. Where
+  aws-lc-rs lacks the algorithm, the target compares rind with the oracle
+  alone. `fuzz.yml` runs each weekly, then
   replays its corpus on every tier and fuzzes it again against the portable
   backend.
 - **Differential test**: a `rind/tests/crosschecks.rs` test that compares rind

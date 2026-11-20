@@ -21,7 +21,7 @@ use libfuzzer_sys::{arbitrary, arbitrary::Arbitrary, fuzz_target};
 use oracle::Nist;
 use rind::rsa::{PssSaltLength, SigningAlgorithm as RsaSigningAlgorithm};
 use rind::{ecdsa, ed25519, rsa as our_rsa};
-use rsa::pkcs1::DecodeRsaPrivateKey;
+use rsa::pkcs1::{DecodeRsaPrivateKey, DecodeRsaPublicKey};
 use rsa::pkcs8::DecodePrivateKey;
 use rsa::pss::Pss;
 
@@ -289,9 +289,11 @@ struct RsaKey {
     name: String,
     ours: our_rsa::KeyPair,
     theirs: aws_lc_rs::rsa::KeyPair,
-    /// RustCrypto's, which refuses the unbalanced key's primes, as
-    /// `PrivateKey::from_components` refuses primes of such unequal size.
-    independent: Option<rsa::PrivateKey>,
+    /// RustCrypto's public key, which verifies what rind signs. It is
+    /// loaded from the private key where RustCrypto takes it, and from the
+    /// public one for the unbalanced key, whose primes
+    /// `PrivateKey::from_components` refuses as of such unequal size.
+    independent: rsa::PublicKey,
 }
 
 static RSA_KEYS: LazyLock<Vec<RsaKey>> = LazyLock::new(|| {
@@ -299,14 +301,26 @@ static RSA_KEYS: LazyLock<Vec<RsaKey>> = LazyLock::new(|| {
         name: name.into(),
         ours: our_rsa::KeyPair::from_pkcs8(der).unwrap(),
         theirs: aws_lc_rs::rsa::KeyPair::from_pkcs8(der).unwrap(),
-        independent: Some(rsa::PrivateKey::from_pkcs8_der(der).unwrap()),
+        independent: rsa::PrivateKey::from_pkcs8_der(der)
+            .unwrap()
+            .as_public_key()
+            .clone(),
     };
-    let pkcs1 = |name: &str, der: &[u8]| RsaKey {
-        name: name.into(),
-        ours: our_rsa::KeyPair::from_pkcs1(der).unwrap(),
-        theirs: aws_lc_rs::rsa::KeyPair::from_der(der).unwrap(),
-        independent: (name != "rsa2086-unbalanced.der")
-            .then(|| rsa::PrivateKey::from_pkcs1_der(der).unwrap()),
+    let pkcs1 = |name: &str, der: &[u8]| {
+        let ours = our_rsa::KeyPair::from_pkcs1(der).unwrap();
+        let independent = match rsa::PrivateKey::from_pkcs1_der(der) {
+            Ok(key) => key.as_public_key().clone(),
+            Err(_) => {
+                assert_eq!(name, "rsa2086-unbalanced.der");
+                rsa::PublicKey::from_pkcs1_der(ours.public_key().as_ref()).unwrap()
+            }
+        };
+        RsaKey {
+            name: name.into(),
+            ours,
+            theirs: aws_lc_rs::rsa::KeyPair::from_der(der).unwrap(),
+            independent,
+        }
     };
     macro_rules! key {
         ($load:ident, $file:literal) => {
@@ -333,7 +347,7 @@ static RSA_KEYS: LazyLock<Vec<RsaKey>> = LazyLock::new(|| {
             name,
             ours: generated,
             theirs,
-            independent: Some(independent),
+            independent: independent.as_public_key().clone(),
         },
         key!(pkcs8, "rsa2048.pkcs8.der"),
         key!(pkcs8, "rsa2048-e33.pkcs8.der"),
@@ -385,20 +399,18 @@ fn rsa(key: &RsaKey, scheme: &RsaScheme, message: &[u8]) {
             // PKCS#1 v1.5 has one signature per message, so RustCrypto
             // verifying it, a public operation, is its signing the same
             // bytes, without a private one.
-            if let Some(independent) = &key.independent {
-                let public = independent.as_public_key();
-                let signature = signature.as_ref();
-                let independent = match hash {
-                    Hash::Sha256 => public.pkcs1v15_verify::<sha2::Sha256>(message, signature),
-                    Hash::Sha384 => public.pkcs1v15_verify::<sha2::Sha384>(message, signature),
-                    Hash::Sha512 => public.pkcs1v15_verify::<sha2::Sha512>(message, signature),
-                };
-                assert_eq!(
-                    independent,
-                    Ok(()),
-                    "{name}: RustCrypto refused rind's signature"
-                );
-            }
+            let public = &key.independent;
+            let signature = signature.as_ref();
+            let independent = match hash {
+                Hash::Sha256 => public.pkcs1v15_verify::<sha2::Sha256>(message, signature),
+                Hash::Sha384 => public.pkcs1v15_verify::<sha2::Sha384>(message, signature),
+                Hash::Sha512 => public.pkcs1v15_verify::<sha2::Sha512>(message, signature),
+            };
+            assert_eq!(
+                independent,
+                Ok(()),
+                "{name}: RustCrypto refused rind's signature"
+            );
             return;
         }
         RsaScheme::Pss(hash, ref salt) => (hash, salt),
@@ -455,31 +467,29 @@ fn rsa(key: &RsaKey, scheme: &RsaScheme, message: &[u8]) {
             let digest = digest::digest(theirs_hash, message);
             let digest = digest.as_ref();
             let signature = signature.as_ref();
-            if let Some(independent) = &key.independent {
-                let public = independent.as_public_key();
-                let independent = match hash {
-                    Hash::Sha256 => public.verify(
-                        Pss::<sha2::Sha256>::new_with_salt(salt_len),
-                        digest,
-                        signature,
-                    ),
-                    Hash::Sha384 => public.verify(
-                        Pss::<sha2::Sha384>::new_with_salt(salt_len),
-                        digest,
-                        signature,
-                    ),
-                    Hash::Sha512 => public.verify(
-                        Pss::<sha2::Sha512>::new_with_salt(salt_len),
-                        digest,
-                        signature,
-                    ),
-                };
-                assert_eq!(
-                    independent,
-                    Ok(()),
-                    "{name}: RustCrypto refused rind's signature"
-                );
-            }
+            let public = &key.independent;
+            let independent = match hash {
+                Hash::Sha256 => public.verify(
+                    Pss::<sha2::Sha256>::new_with_salt(salt_len),
+                    digest,
+                    signature,
+                ),
+                Hash::Sha384 => public.verify(
+                    Pss::<sha2::Sha384>::new_with_salt(salt_len),
+                    digest,
+                    signature,
+                ),
+                Hash::Sha512 => public.verify(
+                    Pss::<sha2::Sha512>::new_with_salt(salt_len),
+                    digest,
+                    signature,
+                ),
+            };
+            assert_eq!(
+                independent,
+                Ok(()),
+                "{name}: RustCrypto refused rind's signature"
+            );
             // SAFETY: each pointer is valid for its length, and `rsa` is live.
             Some(unsafe {
                 aws_lc_sys::RSA_verify_pss_mgf1(
