@@ -204,7 +204,7 @@ mod tests {
         assert_eq!(is_intel(), vendor.as_flattened() == b"GenuineIntel");
     }
 
-    // x86-cpu.yml names whether each CPU model it emulates needs the
+    // admin/x86-cpu names whether each CPU model it emulates needs the
     // mitigation, since nothing else on a host reports `MCDT_NO`.
     #[test]
     fn detects_the_expected_cpu() {
