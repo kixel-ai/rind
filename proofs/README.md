@@ -212,6 +212,11 @@ about the x86_64 ChaCha20 routines rind runs, `Stream.init_verified` and
 `low::x86_64::chacha20`, and proves `cipher::ChaCha20` from them, with rind's
 own proofs of the two-block kernel and HACL*'s loop, as "What is proven"
 lists.
+`Rind/Aarch64/VgChaCha20.lean` does the same for aarch64's,
+`Stream.initCleared_verified` and `Stream.apply_verified` at its NEON and
+SVE2 variants, about the wrappers in `low::aarch64::chacha20`. Both take what
+they share about the key's and counter and nonce's words from
+`Rind/VgChaCha20Glue.lean`.
 
 `Rind/X86_64/VgCurve25519.lean` restates VG's theorems about its x86_64
 AVX-512 IFMA X25519 and Ed25519 routines, one axiom per wrapper in
@@ -1186,6 +1191,27 @@ a VG state can be made, and the CPU-feature checks return, whatever they find;
 [the x86_64 cipher quest](/quest/m4/verified/chacha20-poly1305-x86/cipher.md)
 owns that proof.
 
+ChaCha20 on aarch64, from `cipher::ChaCha20` down to pyca/verified-garbage's
+NEON and SVE2 routines, in `Rind/Aarch64/VgChaCha20.lean`:
+
+- `chacha20_apply_keystream_vg`, on the requests VG's routines run, from 128
+  bytes where the SVE2 check finds SVE2, and otherwise from 192 to 256 bytes
+  and from 448 (`RunsVgAt`), and `chacha20_apply_keystream`, at every
+  length: a buffer that needs more blocks than remain before the 32-bit block
+  counter wraps is refused with `WrongLength` and left as it is, and
+  otherwise it becomes RFC 8439's encryption of it under the key, the block
+  counter, and the nonce.
+
+They rest on the axioms `vg_chacha20_init_spec`,
+`vg_chacha20_apply_neon_spec`, and `vg_chacha20_apply_sve2_spec`, which
+restate VG's theorems, and compose them as `cipher` does: VG runs the whole
+request, so no tail resumes on rind's code. Both assume the entry guard
+admits the call, constructing the VG state succeeds, and the SVE2 check
+returns. rind's NEON code runs every other request, which no proof covers
+yet, so `chacha20_apply_keystream` also assumes its contract, `Neon`;
+[the aarch64 ChaCha20-Poly1305 quest](/quest/m4/verified/chacha20-poly1305-aarch64.md)
+owns that proof.
+
 RSASSA-PKCS1-v1_5 and RSASSA-PSS verification with SHA-256 on x86_64, from
 the signature API's `rsa::PublicKey` to the Montgomery products, in
 `Rind/X86_64/RsaDispatch.lean`, against RFC 8017 as `Rind/Rsa.lean`
@@ -1386,6 +1412,10 @@ proof after those.
   `Rind/VgChaCha20Poly1305.lean`, the proof that pyca/verified-garbage's
   ChaCha20-Poly1305 spec is `Rind/Spec.lean`'s, and
   `Rind/Aarch64/VgChaCha20Poly1305.lean`, the aarch64 one pass over its SVE2
+  routines; `Rind/VgChaCha20.lean`, the proof that pyca/verified-garbage's
+  ChaCha20 spec is `Rind/Spec.lean`'s, `Rind/VgChaCha20Glue.lean`, what both
+  targets' `cipher::ChaCha20` proofs share, and
+  `Rind/{X86_64,Aarch64}/VgChaCha20.lean`, each target's glue over VG's
   routines.
 - `Rind/Rsa.lean` and `Rind/RsaLemmas.lean`: RFC 8017's verification,
   transliterated, and its lemmas; `Rind/X86_64/{RsaBytes,RsaMont,RsaPublic,RsaKey,RsaVerify,RsaPss}.lean`:
