@@ -23,12 +23,22 @@ runs:
         key: ${{ inputs.key }}
         lookup-only: true
 
+    # A key that differs from the one `keys` looked up would save an entry no
+    # lookup finds, so every pull request would miss without turning red.
     - name: Check
       if: steps.cache.outputs.cache-hit != 'true'
       shell: bash
       env:
         CHECK: ${{ inputs.check }}
-      run: nix develop .#hol-light --command admin/prove $CHECK
+        LOOKED_UP: ${{ inputs.key }}
+      run: |
+        nix develop .#hol-light --command admin/prove $CHECK
+        key=$(<".tmp/prove/keys/${CHECK// /-}")
+        echo "checked $key"
+        if [[ -n $LOOKED_UP && $key != "$LOOKED_UP" ]]; then
+          echo "::error::admin/prove $CHECK checked $key, but keys looked up $LOOKED_UP"
+          exit 1
+        fi
 
     # The key of what this job checked, rather than the input, so an entry
     # names the inputs that passed.
