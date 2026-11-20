@@ -31,6 +31,14 @@ TESTS = "target/x86-cpu-tests.tsv"
 # hash and took 21 to 28 minutes per SHA model under SDE. They check the
 # length counter, which no CPU path changes, and run natively in build.yml.
 SKIP = ["--skip", "large_digest"]
+# And the crosschecks of SLH-DSA's small-signature sets, which took 1186 of
+# crosschecks' 1413 seconds under Diamond Rapids on a Zen 3 host, mostly
+# RustCrypto and fips205 signing as oracles. The fast sets run the same hash
+# kernels, `mid::slhdsa`'s ACVP tests check every set's signatures byte for
+# byte on each model, and these run natively on every pull request.
+for _hash in ["sha2", "shake"]:
+    for _bits in [128, 192, 256]:
+        SKIP += ["--skip", f"slh_dsa_{_hash}_{_bits}s::sign_verify"]
 
 # The dispatch paths `rind/src/low/x86_64/cpu.rs` and `rind/src/low/mcdt.rs`
 # pick from cpuid. Each model's run asserts which it takes through
@@ -313,11 +321,20 @@ elif mode == "all":
     # took six times Prescott's CPU time, and crosschecks took half the
     # total. A binary uses about one and a half CPUs under SDE, so half as
     # many runs as CPUs keep the host busy beside the queue's other checks.
-    jobs = [
-        (model, exe, package)
-        for exe, package in sorted(tests(), key=lambda t: -os.path.getsize(t[0]))
-        for model in reversed(MODELS)
-    ]
+    #
+    # A model whose paths match an earlier one's runs only the tests that
+    # assert its paths, which fail if its dispatch ever stops matching. The
+    # earlier model lacks instructions it has, such as Alder Lake those of
+    # Arrow Lake's SHA512 and Granite Rapids' AVX10, so its full run is the
+    # stricter. x86-cpu.yml's weekly run runs every model in full.
+    first = {}
+    for model in MODELS:
+        first.setdefault(frozenset(model[2]), model)
+    jobs = []
+    for exe, package in sorted(tests(), key=lambda t: -os.path.getsize(t[0])):
+        for model in reversed(MODELS):
+            only = [] if first[frozenset(model[2])] is model else ["detects_the_expected_cpu"]
+            jobs.append((model, exe, package, only))
     jobs.reverse()
     # Under CHECK_FAIL_FAST, as in the merge queue, the first failure starts
     # no more runs: the group fails either way.
@@ -331,10 +348,10 @@ elif mode == "all":
             with lock:
                 if not jobs or (fail_fast and failed):
                     return
-                model, exe, package = jobs.pop()
+                model, exe, package, only = jobs.pop()
             start = time.monotonic()
             with tempfile.TemporaryFile("w+") as log:
-                passed = run(model, exe, package, args, log)
+                passed = run(model, exe, package, only + args, log)
                 log.seek(0)
                 with lock:
                     seconds[model[0]] += time.monotonic() - start
