@@ -12,7 +12,7 @@ import concurrent.futures
 #   admin/x86-cpu matrix [--pull-request]
 #   admin/x86-cpu archive
 #   admin/x86-cpu test SDE_MODEL [TEST_ARGS...]
-#   admin/x86-cpu all [TEST_ARGS...]
+#   admin/x86-cpu all
 #
 # `matrix` prints MODELS as x86-cpu.yml's `check` matrix, or with
 # `--pull-request` only PULL_REQUEST's. `archive` builds the
@@ -135,12 +135,13 @@ MODELS = [
 ]
 
 # The models a pull request runs; the merge queue runs every path set, and
-# the weekly run every model. Prescott takes every slowest path, and Diamond Rapids every fastest.
-# Skylake server is the AVX2 tier: its BMI2 and ADX routines, AVX AES-GCM,
-# and AVX2 SHA-256 and SHA-512 are what Broadwell to Cooper Lake run. Of the
-# paths Haswell takes instead, Prescott runs s2n-bignum's `_alt` routines and
-# aws-lc's Montgomery multiplication; only aws-lc's AVX2 RSAZ for RSA-2048,
-# which no CPU with ADX takes, waits for the merge queue.
+# the weekly run every model. Prescott takes every slowest path, and Diamond
+# Rapids every fastest. Skylake server is the AVX2 tier: its BMI2 and ADX
+# routines, AVX AES-GCM, and AVX2 SHA-256 and SHA-512 are what Broadwell to
+# Cooper Lake run. Of the paths Haswell takes instead, Prescott runs
+# s2n-bignum's `_alt` routines and aws-lc's Montgomery multiplication; only
+# aws-lc's AVX2 RSAZ for RSA-2048, which no CPU with ADX takes, waits for the
+# merge queue.
 PULL_REQUEST = ["p4p", "skx", "dmr"]
 
 # excludes 32-bit only parts
@@ -340,8 +341,9 @@ elif mode == "test":
     if failed:
         sys.exit("Failed: " + " ".join(failed))
 elif mode == "all":
-    args = sys.argv[2:]
-    _, _, lib = build()
+    if sys.argv[2:]:
+        sys.exit("usage: admin/x86-cpu all")
+    tests, _, lib = build()
 
     def dispatch(model):
         """The dispatch rind's unit tests report under one model."""
@@ -380,7 +382,7 @@ elif mode == "all":
     # total. A binary uses about one and a half CPUs under SDE, so half as
     # many runs as CPUs keep the host busy beside the queue's other checks.
     jobs = []
-    for exe, package in sorted(tests(), key=lambda t: -os.path.getsize(t[0])):
+    for exe, package in sorted(tests, key=lambda t: -os.path.getsize(t[0])):
         for model, report in reversed(list(zip(MODELS, reports))):
             if first[report] is model:
                 jobs.append((model, exe, package, []))
@@ -403,7 +405,7 @@ elif mode == "all":
             start = time.monotonic()
             try:
                 with tempfile.TemporaryFile("w+") as log:
-                    passed = run(model, exe, package, only + args, log)
+                    passed = run(model, exe, package, only, log)
                     log.seek(0)
                     with lock:
                         seconds[model[0]] += time.monotonic() - start

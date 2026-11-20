@@ -16,6 +16,9 @@ on:
   # A pull request runs only the x86_64 release row of `build`, the one that
   # fails fastest, and `binsec`; the weekly run runs the rest.
   pull_request:
+    # A draft skips every job until it is marked ready, and turning a PR back
+    # into a draft cancels its ready run: see CONTRIBUTING.md.
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     branches: [main]
     paths:
       - rind/src/**
@@ -77,7 +80,7 @@ jobs:
   # release.yml's app, opened.
   build:
     needs: select
-    if: ${{ !cancelled() && !(startsWith(github.head_ref, 'release-plz-') && github.event.pull_request.user.login == 'moq-bot[bot]') && (!inputs.jobs || contains(fromJSON(needs.select.outputs.jobs || '[]'), 'build')) }}
+    if: ${{ !cancelled() && !github.event.pull_request.draft && !(startsWith(github.head_ref, 'release-plz-') && github.event.pull_request.user.login == 'moq-bot[bot]') && (!inputs.jobs || contains(fromJSON(needs.select.outputs.jobs || '[]'), 'build')) }}
     strategy:
       matrix:
         os: [ubuntu-latest, ubuntu-24.04-arm]
@@ -362,7 +365,7 @@ jobs:
   binsec:
     name: binsec (${{ matrix.backend }})
     needs: select
-    if: ${{ !cancelled() && !(startsWith(github.head_ref, 'release-plz-') && github.event.pull_request.user.login == 'moq-bot[bot]') && (!inputs.jobs || contains(fromJSON(needs.select.outputs.jobs || '[]'), 'binsec')) }}
+    if: ${{ !cancelled() && !github.event.pull_request.draft && !(startsWith(github.head_ref, 'release-plz-') && github.event.pull_request.user.login == 'moq-bot[bot]') && (!inputs.jobs || contains(fromJSON(needs.select.outputs.jobs || '[]'), 'binsec')) }}
     strategy:
       fail-fast: false
       matrix:
