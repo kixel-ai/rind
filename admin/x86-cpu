@@ -12,7 +12,7 @@ import concurrent.futures
 #   admin/x86-cpu matrix
 #   admin/x86-cpu archive
 #   admin/x86-cpu test SDE_MODEL [TEST_ARGS...]
-#   admin/x86-cpu all [TEST_ARGS...]
+#   admin/x86-cpu all
 #
 # `matrix` prints MODELS as x86-cpu.yml's `check` matrix. `archive` builds the
 # release tests into ARCHIVE, and `test` runs them under `sde SDE_MODEL --`,
@@ -319,8 +319,9 @@ elif mode == "test":
     if failed:
         sys.exit("Failed: " + " ".join(failed))
 elif mode == "all":
-    args = sys.argv[2:]
-    _, _, lib = build()
+    if sys.argv[2:]:
+        sys.exit("usage: admin/x86-cpu all")
+    tests, _, lib = build()
 
     def dispatch(model):
         """The dispatch rind's unit tests report under one model."""
@@ -359,7 +360,7 @@ elif mode == "all":
     # total. A binary uses about one and a half CPUs under SDE, so half as
     # many runs as CPUs keep the host busy beside the queue's other checks.
     jobs = []
-    for exe, package in sorted(tests(), key=lambda t: -os.path.getsize(t[0])):
+    for exe, package in sorted(tests, key=lambda t: -os.path.getsize(t[0])):
         for model, report in reversed(list(zip(MODELS, reports))):
             if first[report] is model:
                 jobs.append((model, exe, package, []))
@@ -382,7 +383,7 @@ elif mode == "all":
             start = time.monotonic()
             try:
                 with tempfile.TemporaryFile("w+") as log:
-                    passed = run(model, exe, package, only + args, log)
+                    passed = run(model, exe, package, only, log)
                     log.seek(0)
                     with lock:
                         seconds[model[0]] += time.monotonic() - start
