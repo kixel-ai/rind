@@ -237,18 +237,29 @@ def answer (args : List String) : Except String String := do
     -- The spec drops a partial last block, which rind's theorems refuse.
     if c.length % 16 ≠ 0 then return "none"
     return opt (vale.pkcs7Unpad (vale.cbcDecrypt (← aesAlg k) k iv c))
+  -- Key wrap on the lengths `AesKek`'s theorems pass the specs, `none`
+  -- outside them: KW wraps two semiblocks or more and unwraps three or more,
+  -- KWP wraps a byte or more and unwraps two semiblocks or more.
   | ["aes-kw-wrap", k, m] =>
-    let k ← unhex k
-    return hex (vale.kwAE (← aesAlg k) k (← unhex m))
+    let (k, m) := (← unhex k, ← unhex m)
+    let alg ← aesAlg k
+    if m.length < 16 ∨ m.length % 8 ≠ 0 then return "none"
+    return hex (vale.kwAE alg k m)
   | ["aes-kw-unwrap", k, c] =>
-    let k ← unhex k
-    return opt (vale.kwAD (← aesAlg k) k (← unhex c))
+    let (k, c) := (← unhex k, ← unhex c)
+    let alg ← aesAlg k
+    if c.length < 24 ∨ c.length % 8 ≠ 0 then return "none"
+    return opt (vale.kwAD alg k c)
   | ["aes-kwp-wrap", k, m] =>
-    let k ← unhex k
-    return hex (vale.kwpAE (← aesAlg k) k (← unhex m))
+    let (k, m) := (← unhex k, ← unhex m)
+    let alg ← aesAlg k
+    if m.length < 1 then return "none"
+    return hex (vale.kwpAE alg k m)
   | ["aes-kwp-unwrap", k, c] =>
-    let k ← unhex k
-    return opt (vale.kwpAD (← aesAlg k) k (← unhex c))
+    let (k, c) := (← unhex k, ← unhex c)
+    let alg ← aesAlg k
+    if c.length < 16 ∨ c.length % 8 ≠ 0 then return "none"
+    return opt (vale.kwpAD alg k c)
   | ["ec-mul", c, d, qx, qy] =>
     let C ← curveOf c
     let (d, Q) := (beNum (← unhex d), some (beNum (← unhex qx), beNum (← unhex qy)))

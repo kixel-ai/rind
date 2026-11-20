@@ -392,6 +392,16 @@ fn hash_name(s: &str) -> Option<&'static str> {
     }
 }
 
+/// A hash's output length in bytes, by its request name.
+fn hash_len(op: &str) -> usize {
+    match op {
+        "sha1" => 20,
+        "sha256" => 32,
+        "sha384" => 48,
+        _ => 64,
+    }
+}
+
 fn macs(run: &mut Run) {
     // HMAC: CAVP, with tags truncated to Tlen.
     let rel = "cavp/hmac/HMAC.rsp";
@@ -406,7 +416,8 @@ fn macs(run: &mut Run) {
         let (k, m) = (rec.h("Key"), rec.h("Msg"));
         let got = run.ask(Vector, &["hmac", op, &k, &m]);
         let tag = rec.h("Mac");
-        if !got.starts_with(&tag) {
+        // The whole tag, of which a vector may give a prefix.
+        if got.len() != 2 * hash_len(op) || !got.starts_with(&tag) {
             run.fail(format!(
                 "{rel} {}: hmac {op} {k} {m}\n  spec: {got}\n  want: {tag}...",
                 rec.s("Count")
@@ -420,7 +431,8 @@ fn macs(run: &mut Run) {
             let (k, m) = (jh(&t, "key"), jh(&t, "msg"));
             let got = run.ask(Vector, &["hmac", op, &k, &m]);
             let tag = jh(&t, "tag");
-            let matches = got.len() >= 2 * size && got[..2 * size] == tag && tag.len() == 2 * size;
+            let matches =
+                got.len() == 2 * hash_len(op) && got[..2 * size] == tag && tag.len() == 2 * size;
             if matches != valid(&t) {
                 run.fail(format!(
                     "{}: hmac {op} {k} {m}\n  spec: {got}\n  want: {tag} {}",
@@ -732,13 +744,20 @@ fn chacha(run: &mut Run) {
     for _ in 0..run.random {
         let k: [u8; 32] = run.rng.bytes(32).try_into().unwrap();
         let n: [u8; 12] = run.rng.bytes(12).try_into().unwrap();
-        let ctr = run.rng.u64() as u32;
-        let mut c = run.rng.message(1000);
+        // Drawn again past the counter's end, which both refuse: RFC 8439's
+        // 32-bit counter covers the blocks from `ctr` to 2^32 - 1.
+        let (ctr, mut c) = loop {
+            let ctr = run.rng.u64() as u32;
+            let c = run.rng.message(1000);
+            if u64::from(ctr) + c.len().div_ceil(64) as u64 <= 1 << 32 {
+                break (ctr, c);
+            }
+        };
         let m = hex(&c);
-        if rind::cipher::ChaCha20::new(&k)
-            .apply_keystream(&n, ctr, &mut c)
-            .is_err()
-        {
+        if let Err(e) = rind::cipher::ChaCha20::new(&k).apply_keystream(&n, ctr, &mut c) {
+            run.fail(format!(
+                "random: rind's chacha20 refuses counter {ctr} for {m}: {e:?}"
+            ));
             continue;
         }
         for op in ["chacha20", "chacha20-s2n"] {
@@ -1060,19 +1079,24 @@ fn aes_modes(run: &mut Run) {
         }
     }
     for _ in 0..run.random {
-        // Drawn again until rind takes it: a narrow counter refuses a long
-        // message, which would leave the case unchecked.
-        let (k, bits, t0, m, c) = loop {
-            let k = run.rng.aes_key();
+        // Drawn again past the counter's 2^bits blocks, which both refuse.
+        let (bits, mut c) = loop {
             let bits = [32u8, 64, 128, 1 + run.rng.below(128) as u8][run.rng.below(4)];
-            let t0: [u8; 16] = run.rng.bytes(16).try_into().unwrap();
-            let mut c = run.rng.message(1000);
-            let m = hex(&c);
-            let ctr = rind::cipher::AesCtr::new(cipher_alg(k.len()), &k, bits).unwrap();
-            if ctr.apply_keystream(&t0, &mut c).is_ok() {
-                break (k, bits, t0, m, c);
+            let c = run.rng.message(1000);
+            if bits >= 64 || c.len().div_ceil(16) as u64 <= 1 << bits {
+                break (bits, c);
             }
         };
+        let k = run.rng.aes_key();
+        let t0: [u8; 16] = run.rng.bytes(16).try_into().unwrap();
+        let m = hex(&c);
+        let ctr = rind::cipher::AesCtr::new(cipher_alg(k.len()), &k, bits).unwrap();
+        if let Err(e) = ctr.apply_keystream(&t0, &mut c) {
+            run.fail(format!(
+                "random: rind's aes-ctr refuses {bits} bits for {m}: {e:?}"
+            ));
+            continue;
+        }
         run.check(
             Rind,
             "random",
@@ -1158,24 +1182,26 @@ fn aes_modes(run: &mut Run) {
     ] {
         let (wrap, unwrap) = (format!("{op}-wrap"), format!("{op}-unwrap"));
         // The lengths each spec takes, as `AesKek`'s theorems in
-        // `Rind.X86_64.AesKw` refuse the others before it runs: KW wraps
-        // whole semiblocks, two or more, and unwraps three or more; KWP
-        // wraps any length from a byte and unwraps two semiblocks or more.
-        let (wraps, unwraps) = match mode {
-            rind::key_wrap::Mode::Kw => (16, 24),
-            _ => (1, 16),
+        // `Rind.X86_64.AesKw` refuse the others before it runs, and the
+        // server answers `none` outside: KW wraps whole semiblocks, two or
+        // more, and unwraps three or more; KWP wraps any length from a byte
+        // and unwraps two semiblocks or more.
+        let wraps = match mode {
+            rind::key_wrap::Mode::Kw => 16,
+            _ => 1,
         };
         for (_, t) in wycheproof(run, file) {
             let (k, m, c) = (jh(&t, "key"), jh(&t, "msg"), jh(&t, "ct"));
-            let (ml, cl) = (unhex(js(&t, "msg")).len(), unhex(js(&t, "ct")).len());
-            let wrappable = ml >= wraps && (mode == rind::key_wrap::Mode::Kwp || ml % 8 == 0);
-            if valid(&t) && wrappable {
+            let ml = unhex(js(&t, "msg")).len();
+            let wrappable =
+                ml >= wraps && (mode == rind::key_wrap::Mode::Kwp || ml.is_multiple_of(8));
+            if !wrappable {
+                run.check(Vector, &label(file, &t), &[&wrap, &k, &m], "none");
+            } else if valid(&t) {
                 run.check(Vector, &label(file, &t), &[&wrap, &k, &m], &c);
             }
-            if cl >= unwraps && cl % 8 == 0 {
-                let want = if valid(&t) { m } else { "none".to_owned() };
-                run.check(Vector, &label(file, &t), &[&unwrap, &k, &c], &want);
-            }
+            let want = if valid(&t) { m } else { "none".to_owned() };
+            run.check(Vector, &label(file, &t), &[&unwrap, &k, &c], &want);
         }
         for _ in 0..run.random {
             let k = run.rng.aes_key();
@@ -1196,8 +1222,16 @@ fn aes_modes(run: &mut Run) {
             let mut bad = c.clone();
             let at = run.rng.below(bad.len());
             bad[at] ^= 1;
-            for c in [c, bad] {
-                let mut out = vec![0; c.len() - 8];
+            // A partial semiblock, and one semiblock too few.
+            let mut long = c.clone();
+            long.push(run.rng.u64() as u8);
+            let short = c[..c.len().min(match mode {
+                rind::key_wrap::Mode::Kw => 16,
+                _ => 8,
+            })]
+                .to_vec();
+            for c in [c, bad, long, short] {
+                let mut out = vec![0; c.len().saturating_sub(8)];
                 let want = match kek.unwrap_key(mode, &c, &mut out) {
                     Ok(m) => hex(m),
                     Err(_) => "none".to_owned(),
