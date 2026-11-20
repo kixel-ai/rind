@@ -170,12 +170,15 @@ establishes, and what it does not:
   [TESTING.md's tier table](TESTING.md#tiers) names. They check only the
   cases published, and each tier only where CI runs it, natively, under
   Intel SDE, or under qemu.
-- **Differential tests** against aws-lc-rs, or a Rust crate where aws-lc-rs
-  lacks the primitive, on the same tiers. Where rind runs aws-lc's own
-  routine, as for ChaCha20-Poly1305 on x86_64 and aarch64 or RSA's RSAZ
-  exponentiation, the test compares that routine with itself, so it
-  checks rind's glue around it, and only vectors check the routine. wasm runs
-  none, since aws-lc does not build for it.
+- **Differential tests** against aws-lc-rs, where it has the primitive, and
+  against the independent oracle [TESTING.md's primitives
+  table](TESTING.md#primitives) names, a Rust implementation that shares no
+  code with the path rind runs, on the same tiers. Where rind runs aws-lc's
+  own routine, as for ChaCha20-Poly1305 on x86_64 and aarch64 or RSA's RSAZ
+  exponentiation, aws-lc-rs compares that routine with itself, so it checks
+  rind's glue around it, and the oracle checks the routine; a row whose
+  oracle is "none" has only vectors for it. wasm runs none, since aws-lc
+  does not build for it.
 - **Fuzz targets**, weekly for twenty minutes each against aws-lc-rs,
   replayed on every tier and against the portable backend. The ECVRF, OPRF,
   and blind RSA targets compare rind with itself, so they find panics and
@@ -267,7 +270,8 @@ Hand-written arithmetic no proof covers, by where it came from:
   ✓, such as ChaCha20-Poly1305 on x86_64 and aarch64, RSAZ, Montgomery
   multiplication off ADX, the AVX2 and SHA512-instruction SHA-2, VAES
   AES-GCM, and all of armv7's. Vectors and fuzzing reach each on its tier;
-  the differential test, which runs aws-lc's code too, checks only the glue.
+  aws-lc-rs, which runs that code too, checks only the glue, and the
+  independent oracle the routine where its row names one.
 - **Graviola's** code under AES, GHASH, SHA-256, HMAC, P-256, P-384,
   ML-KEM, and RSA, wherever ALGORITHMS.md names it. Vectors, differential
   tests independent of it, and fuzzing reach each.

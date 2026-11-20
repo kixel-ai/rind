@@ -54,23 +54,66 @@ impl Theirs {
     }
 }
 
-/// Each hash rind offers, with aws-lc's and its block size.
-fn hashes() -> [(&'static rind::digest::Algorithm, Theirs, usize); 9] {
+/// RustCrypto's hash of a message.
+type Independent = fn(&[u8]) -> Vec<u8>;
+
+fn rustcrypto<D: sha2::Digest>(message: &[u8]) -> Vec<u8> {
+    D::digest(message).to_vec()
+}
+
+/// Each hash rind offers, with aws-lc's, RustCrypto's, and its block size.
+fn hashes() -> [(&'static rind::digest::Algorithm, Theirs, Independent, usize); 9] {
     use Theirs::*;
     [
-        (&rind::digest::legacy::MD5, Md5, 64),
+        (&rind::digest::legacy::MD5, Md5, rustcrypto::<md5::Md5>, 64),
         (
             &rind::digest::legacy::SHA1,
             AwsLcRs(&digest::SHA1_FOR_LEGACY_USE_ONLY),
+            rustcrypto::<sha1::Sha1>,
             64,
         ),
-        (&rind::digest::SHA256, AwsLcRs(&digest::SHA256), 64),
-        (&rind::digest::SHA384, AwsLcRs(&digest::SHA384), 128),
-        (&rind::digest::SHA512, AwsLcRs(&digest::SHA512), 128),
-        (&rind::digest::SHA512_256, AwsLcRs(&digest::SHA512_256), 128),
-        (&rind::digest::SHA3_256, AwsLcRs(&digest::SHA3_256), 136),
-        (&rind::digest::SHA3_384, AwsLcRs(&digest::SHA3_384), 104),
-        (&rind::digest::SHA3_512, AwsLcRs(&digest::SHA3_512), 72),
+        (
+            &rind::digest::SHA256,
+            AwsLcRs(&digest::SHA256),
+            rustcrypto::<sha2::Sha256>,
+            64,
+        ),
+        (
+            &rind::digest::SHA384,
+            AwsLcRs(&digest::SHA384),
+            rustcrypto::<sha2::Sha384>,
+            128,
+        ),
+        (
+            &rind::digest::SHA512,
+            AwsLcRs(&digest::SHA512),
+            rustcrypto::<sha2::Sha512>,
+            128,
+        ),
+        (
+            &rind::digest::SHA512_256,
+            AwsLcRs(&digest::SHA512_256),
+            rustcrypto::<sha2::Sha512_256>,
+            128,
+        ),
+        (
+            &rind::digest::SHA3_256,
+            AwsLcRs(&digest::SHA3_256),
+            rustcrypto::<sha3::Sha3_256>,
+            136,
+        ),
+        (
+            &rind::digest::SHA3_384,
+            AwsLcRs(&digest::SHA3_384),
+            rustcrypto::<sha3::Sha3_384>,
+            104,
+        ),
+        (
+            &rind::digest::SHA3_512,
+            AwsLcRs(&digest::SHA3_512),
+            rustcrypto::<sha3::Sha3_512>,
+            72,
+        ),
     ]
 }
 
@@ -81,10 +124,11 @@ fn hashes() -> [(&'static rind::digest::Algorithm, Theirs, usize); 9] {
 #[test]
 fn hashes_every_length() {
     let message: Vec<u8> = (0..3 * 128 + 1).map(|i| (i * 7 + 3) as u8).collect();
-    for (ours, theirs, block) in hashes() {
+    for (ours, theirs, independent, block) in hashes() {
         for len in 0..=message.len() {
             let message = &message[..len];
             let wanted = theirs.digest(message);
+            assert_eq!(independent(message), wanted, "{ours:?} RustCrypto {len}");
             let got = rind::digest::digest(ours, message);
             assert_eq!(got.as_ref(), wanted, "{ours:?} one-shot {len}");
 
@@ -97,9 +141,19 @@ fn hashes_every_length() {
     }
 }
 
+/// RustCrypto's HMAC of a message under a key.
+type Hmac = fn(&[u8], &[u8]) -> Vec<u8>;
+
+fn rustcrypto_hmac<D: ::hmac::EagerHash>(key: &[u8], message: &[u8]) -> Vec<u8> {
+    use ::hmac::{KeyInit, Mac};
+    let mut mac = ::hmac::Hmac::<D>::new_from_slice(key).unwrap();
+    mac.update(message);
+    mac.finalize().into_bytes().to_vec()
+}
+
 proptest! {
     #[test]
-    fn hashes_match_aws_lc_rs(
+    fn hashes_match(
         message in vec(any::<u8>(), 0..1024),
         splits in vec(any::<prop::sample::Index>(), 0..4),
     ) {
@@ -107,7 +161,7 @@ proptest! {
         // that fills a block exactly, or spans several, after a partial one.
         let mut splits: Vec<_> = splits.iter().map(|s| s.index(message.len() + 1)).collect();
         splits.sort();
-        for (ours, theirs, _) in hashes() {
+        for (ours, theirs, independent, _) in hashes() {
             let mut ctx = rind::digest::Context::new(ours);
             let mut start = 0;
             for &end in splits.iter().chain([&message.len()]) {
@@ -116,22 +170,23 @@ proptest! {
             }
             let got = ctx.finish();
             prop_assert_eq!(got.as_ref(), theirs.digest(&message));
+            prop_assert_eq!(got.as_ref(), independent(&message));
         }
     }
 
     #[test]
-    fn hmac_matches_aws_lc_rs(
+    fn hmac_matches(
         // Up to 300 bytes spans keys below, at, and above both block sizes (64 and 128).
         key in vec(any::<u8>(), 0..300),
         message in vec(any::<u8>(), 0..1024),
         split in any::<prop::sample::Index>(),
     ) {
         let split = split.index(message.len() + 1);
-        for (ours, theirs) in [
-            (&rind::hmac::legacy::HMAC_SHA1, hmac::HMAC_SHA1_FOR_LEGACY_USE_ONLY),
-            (&rind::hmac::HMAC_SHA256, hmac::HMAC_SHA256),
-            (&rind::hmac::HMAC_SHA384, hmac::HMAC_SHA384),
-            (&rind::hmac::HMAC_SHA512, hmac::HMAC_SHA512),
+        for (ours, theirs, independent) in [
+            (&rind::hmac::legacy::HMAC_SHA1, hmac::HMAC_SHA1_FOR_LEGACY_USE_ONLY, rustcrypto_hmac::<sha1::Sha1> as Hmac),
+            (&rind::hmac::HMAC_SHA256, hmac::HMAC_SHA256, rustcrypto_hmac::<sha2::Sha256>),
+            (&rind::hmac::HMAC_SHA384, hmac::HMAC_SHA384, rustcrypto_hmac::<sha2::Sha384>),
+            (&rind::hmac::HMAC_SHA512, hmac::HMAC_SHA512, rustcrypto_hmac::<sha2::Sha512>),
         ] {
             let ours = rind::hmac::Key::new(ours, &key);
             let mut ctx = rind::hmac::Context::with_key(&ours);
@@ -140,6 +195,7 @@ proptest! {
             let wanted = hmac::sign(&hmac::Key::new(theirs, &key), &message);
             let got = ctx.sign();
             prop_assert_eq!(got.as_ref(), wanted.as_ref());
+            prop_assert_eq!(got.as_ref(), independent(&key, &message));
             prop_assert_eq!(rind::hmac::verify(&ours, &message, wanted.as_ref()), Ok(()));
         }
     }
@@ -170,7 +226,33 @@ proptest! {
     }
 }
 
+/// Runs `$body` with `$aes` naming RustCrypto's AES type for the size of
+/// `$key`: 16, 24, or 32 bytes.
+macro_rules! rustcrypto_aes {
+    ($key:expr, $aes:ident => $body:expr) => {
+        match $key.len() {
+            16 => {
+                type $aes = aes::Aes128;
+                $body
+            }
+            24 => {
+                type $aes = aes::Aes192;
+                $body
+            }
+            _ => {
+                type $aes = aes::Aes256;
+                $body
+            }
+        }
+    };
+}
+
 mod cipher {
+    use aes::cipher::block_padding::{NoPadding, Pkcs7};
+    use aes::cipher::{
+        BlockCipherEncrypt, BlockModeDecrypt, BlockModeEncrypt, KeyInit, KeyIvInit, StreamCipher,
+        StreamCipherCore, StreamCipherSeek,
+    };
     use aws_lc_rs::aead::{Aad, CHACHA20_POLY1305, LessSafeKey, Nonce, UnboundKey, quic};
     use aws_lc_rs::cipher::{
         AES_128, AES_192, AES_256, DecryptingKey, DecryptionContext, EncryptingKey,
@@ -228,6 +310,10 @@ mod cipher {
                 .less_safe_encrypt(&mut theirs, EncryptionContext::None)
                 .unwrap();
             prop_assert_eq!(ours, theirs);
+
+            let mut independent = block.into();
+            rustcrypto_aes!(key, Aes => Aes::new_from_slice(&key).unwrap().encrypt_block(&mut independent));
+            prop_assert_eq!(ours, <[u8; 16]>::from(independent));
         }
 
         #[test]
@@ -250,7 +336,13 @@ mod cipher {
                     .less_safe_encrypt(&mut theirs, EncryptionContext::Iv128(counter_block.into()))
                     .unwrap();
             }
-            prop_assert_eq!(ours, theirs);
+            prop_assert_eq!(&ours, &theirs);
+
+            let mut independent = msg.clone();
+            rustcrypto_aes!(key, Aes => ctr::Ctr128BE::<Aes>::new_from_slices(&key, &counter_block)
+                .unwrap()
+                .apply_keystream(&mut independent));
+            prop_assert_eq!(&ours, &independent);
         }
 
         // Both ways, then a ciphertext of whole blocks with its last two
@@ -278,6 +370,10 @@ mod cipher {
                 .less_safe_encrypt(&mut theirs, EncryptionContext::Iv128(iv.into()))
                 .unwrap();
             prop_assert_eq!(&ours, &theirs);
+            let independent = rustcrypto_aes!(key, Aes => cbc::Encryptor::<Aes>::new_from_slices(&key, &iv)
+                .unwrap()
+                .encrypt_padded_vec::<Pkcs7>(&msg));
+            prop_assert_eq!(&ours, &independent);
             prop_assert_eq!(dec.decrypt(&iv, &mut ours).unwrap(), &msg[..]);
 
             // Choose the plaintext's last bytes, then encrypt it unpadded.
@@ -293,10 +389,22 @@ mod cipher {
             let theirs = theirs_dec
                 .decrypt(&mut theirs, DecryptionContext::Iv128(iv.into()))
                 .map(|pt| pt.to_vec());
-            match (ours, theirs) {
-                (Ok(ours), Ok(theirs)) => prop_assert_eq!(ours, theirs),
-                (Err(Error::DecryptFailed), Err(_)) => {}
-                (ours, theirs) => prop_assert!(false, "rind {:?}, aws-lc-rs {:?}", ours, theirs),
+            let independent = rustcrypto_aes!(key, Aes => cbc::Decryptor::<Aes>::new_from_slices(&key, &iv)
+                .unwrap()
+                .decrypt_padded_vec::<Pkcs7>(&ct));
+            match (ours, theirs, independent) {
+                (Ok(ours), Ok(theirs), Ok(independent)) => {
+                    prop_assert_eq!(&ours, &theirs);
+                    prop_assert_eq!(&ours, &independent);
+                }
+                (Err(Error::DecryptFailed), Err(_), Err(_)) => {}
+                (ours, theirs, independent) => prop_assert!(
+                    false,
+                    "rind {:?}, aws-lc-rs {:?}, RustCrypto {:?}",
+                    ours,
+                    theirs,
+                    independent
+                ),
             }
         }
 
@@ -321,6 +429,14 @@ mod cipher {
                     .unwrap();
             }
             prop_assert_eq!(&ours, &theirs);
+            let independent = rustcrypto_aes!(key, Aes => cbc::Encryptor::<Aes>::new_from_slices(&key, &iv)
+                .unwrap()
+                .encrypt_padded_vec::<NoPadding>(&msg));
+            prop_assert_eq!(&ours, &independent);
+            let decrypted = rustcrypto_aes!(key, Aes => cbc::Decryptor::<Aes>::new_from_slices(&key, &iv)
+                .unwrap()
+                .decrypt_padded_vec::<NoPadding>(&ours));
+            prop_assert_eq!(decrypted.unwrap(), &msg[..]);
 
             AesCbcDecryptingKey::new(algorithm, &key)
                 .unwrap()
@@ -338,16 +454,22 @@ mod cipher {
 
         #[test]
         fn quic_header_protection_mask(
-            algorithm in 0..3usize,
+            index in 0..3usize,
             key in any::<[u8; 32]>(),
-            sample in any::<[u8; 16]>(),
+            // Often ChaCha20's last block counter, or the one before it.
+            sample in (any::<[u8; 16]>(), 0..3u8).prop_map(|(mut sample, last)| {
+                if last > 0 {
+                    sample[..4].copy_from_slice(&(u32::MAX - u32::from(last - 1)).to_le_bytes());
+                }
+                sample
+            }),
         ) {
             use rind::aead::quic as ours;
             let (algorithm, theirs) = [
                 (&ours::AES_128, &quic::AES_128),
                 (&ours::AES_256, &quic::AES_256),
                 (&ours::CHACHA20, &quic::CHACHA20),
-            ][algorithm];
+            ][index];
             let key = &key[..algorithm.key_len()];
 
             let mask = ours::HeaderProtectionKey::new(algorithm, key).unwrap().mask(&sample);
@@ -356,6 +478,23 @@ mod cipher {
                 .new_mask(&sample)
                 .unwrap();
             prop_assert_eq!(mask, wanted);
+
+            // RFC 9001 section 5.4: AES encrypts the sample, and ChaCha20
+            // takes its first four bytes as the block counter and the rest
+            // as the nonce. The counter may be the last, which RustCrypto's
+            // `ChaCha20` refuses to seek to, so this runs its core.
+            let independent: [u8; 16] = if index == 2 {
+                let mut core = chacha20::ChaChaCore::<chacha20::R20, chacha20::variants::Ietf>::new_from_slices(key, &sample[4..]).unwrap();
+                core.set_block_pos(u32::from_le_bytes(sample[..4].try_into().unwrap()));
+                let mut block = Default::default();
+                core.write_keystream_block(&mut block);
+                block[..16].try_into().unwrap()
+            } else {
+                let mut block = sample.into();
+                rustcrypto_aes!(key, Aes => Aes::new_from_slice(key).unwrap().encrypt_block(&mut block));
+                block.into()
+            };
+            prop_assert_eq!(&mask[..], &independent[..5]);
         }
 
         // ChaCha20-Poly1305's ciphertext is the plaintext XORed with the
@@ -377,7 +516,13 @@ mod cipher {
                     &mut theirs,
                 )
                 .unwrap();
-            prop_assert_eq!(ours, theirs);
+            prop_assert_eq!(&ours, &theirs);
+
+            let mut independent = msg.clone();
+            let mut cipher = chacha20::ChaCha20::new_from_slices(&key, &nonce).unwrap();
+            cipher.seek(64);
+            cipher.apply_keystream(&mut independent);
+            prop_assert_eq!(&ours, &independent);
         }
     }
 
@@ -395,6 +540,11 @@ mod cipher {
                 &mut theirs,
             )
             .unwrap();
+        let mut independent = vec![0u8; 600];
+        let mut cipher = chacha20::ChaCha20::new_from_slices(&key, &nonce).unwrap();
+        cipher.seek(64);
+        cipher.apply_keystream(&mut independent);
+        assert_eq!(theirs, independent);
 
         let ours = ChaCha20::new(&key);
         for len in 0..=600 {
@@ -414,6 +564,7 @@ mod cipher {
 }
 
 mod key_wrap {
+    use aes_kw::KeyInit;
     use proptest::prelude::*;
     use rind::Error;
     use rind::key_wrap::{self as ours, Mode};
@@ -547,6 +698,12 @@ mod key_wrap {
             let mut wanted = vec![0u8; key.len() + 8];
             theirs(&kek).wrap(&key, &mut wanted).unwrap();
             prop_assert_eq!(&wrapped, &wanted);
+            let mut independent = vec![0u8; key.len() + 8];
+            rustcrypto_aes!(kek, Aes => aes_kw::AesKw::<Aes>::new_from_slice(&kek)
+                .unwrap()
+                .wrap_key(&key, &mut independent)
+                .unwrap());
+            prop_assert_eq!(&wrapped, &independent);
 
             let mut unwrapped = vec![0u8; key.len()];
             ours.unwrap_key(Mode::Kw, &wrapped, &mut unwrapped).unwrap();
@@ -557,6 +714,10 @@ mod key_wrap {
             wrapped[bit / 8] ^= 1 << (bit % 8);
             prop_assert_eq!(ours.unwrap_key(Mode::Kw, &wrapped, &mut unwrapped).map(|_| ()), Err(Error::DecryptFailed));
             prop_assert!(theirs(&kek).unwrap(&wrapped, &mut vec![0u8; key.len()]).is_err());
+            prop_assert!(rustcrypto_aes!(kek, Aes => aes_kw::AesKw::<Aes>::new_from_slice(&kek)
+                .unwrap()
+                .unwrap_key(&wrapped, &mut vec![0u8; key.len()])
+                .is_err()));
         }
 
         #[test]
@@ -577,6 +738,12 @@ mod key_wrap {
             let mut wanted = vec![0u8; key.len() + 15];
             let wanted = theirs(&kek).wrap_with_padding(&key, &mut wanted).unwrap();
             prop_assert_eq!(&wrapped[..], &wanted[..]);
+            let mut independent = vec![0u8; wrapped.len()];
+            rustcrypto_aes!(kek, Aes => aes_kw::AesKwp::<Aes>::new_from_slice(&kek)
+                .unwrap()
+                .wrap_key(&key, &mut independent)
+                .unwrap());
+            prop_assert_eq!(&wrapped, &independent);
 
             let mut unwrapped = vec![0u8; wrapped.len() - 8];
             prop_assert_eq!(&ours.unwrap_key(Mode::Kwp, &wrapped, &mut unwrapped).unwrap()[..], &key[..]);
@@ -586,6 +753,10 @@ mod key_wrap {
             wrapped[bit / 8] ^= 1 << (bit % 8);
             prop_assert_eq!(ours.unwrap_key(Mode::Kwp, &wrapped, &mut unwrapped).map(|_| ()), Err(Error::DecryptFailed));
             prop_assert!(theirs(&kek).unwrap_with_padding(&wrapped, &mut vec![0u8; wrapped.len()]).is_err());
+            prop_assert!(rustcrypto_aes!(kek, Aes => aes_kw::AesKwp::<Aes>::new_from_slice(&kek)
+                .unwrap()
+                .unwrap_key(&wrapped, &mut vec![0u8; wrapped.len()])
+                .is_err()));
         }
     }
 }
@@ -604,16 +775,60 @@ mod hkdf {
         }
     }
 
-    fn algorithms() -> [(&'static hkdf::Algorithm, theirs::Algorithm, usize); 4] {
+    /// RustCrypto's HKDF: `len` bytes expanded from the PRK extracted from
+    /// `ikm` under `salt`, or without `ikm` from `salt` taken as the PRK,
+    /// which RustCrypto refuses, as `None`, when shorter than the hash.
+    type Independent =
+        fn(&[u8], Option<&[u8]>, &[&[u8]], usize) -> Option<Result<Vec<u8>, ::hkdf::InvalidLength>>;
+
+    fn rustcrypto<D: ::hmac::EagerHash>(
+        salt: &[u8],
+        ikm: Option<&[u8]>,
+        info: &[&[u8]],
+        len: usize,
+    ) -> Option<Result<Vec<u8>, ::hkdf::InvalidLength>>
+    where
+        ::hmac::Hmac<D>: ::hkdf::HmacImpl,
+    {
+        let hkdf = match ikm {
+            Some(ikm) => ::hkdf::Hkdf::<D>::new(Some(salt), ikm),
+            None => ::hkdf::Hkdf::<D>::from_prk(salt).ok()?,
+        };
+        let mut okm = vec![0u8; len];
+        Some(hkdf.expand_multi_info(info, &mut okm).map(|()| okm))
+    }
+
+    fn algorithms() -> [(
+        &'static hkdf::Algorithm,
+        theirs::Algorithm,
+        Independent,
+        usize,
+    ); 4] {
         [
             (
                 &hkdf::legacy::HKDF_SHA1,
                 theirs::HKDF_SHA1_FOR_LEGACY_USE_ONLY,
+                rustcrypto::<sha1::Sha1>,
                 20,
             ),
-            (&hkdf::HKDF_SHA256, theirs::HKDF_SHA256, 32),
-            (&hkdf::HKDF_SHA384, theirs::HKDF_SHA384, 48),
-            (&hkdf::HKDF_SHA512, theirs::HKDF_SHA512, 64),
+            (
+                &hkdf::HKDF_SHA256,
+                theirs::HKDF_SHA256,
+                rustcrypto::<sha2::Sha256>,
+                32,
+            ),
+            (
+                &hkdf::HKDF_SHA384,
+                theirs::HKDF_SHA384,
+                rustcrypto::<sha2::Sha384>,
+                48,
+            ),
+            (
+                &hkdf::HKDF_SHA512,
+                theirs::HKDF_SHA512,
+                rustcrypto::<sha2::Sha512>,
+                64,
+            ),
         ]
     }
 
@@ -622,7 +837,7 @@ mod hkdf {
     // 255-block limit.
     proptest! {
         #[test]
-        fn matches_aws_lc_rs(
+        fn matches(
             algorithm in 0..4usize,
             salt in vec(any::<u8>(), 0..200),
             ikm in vec(any::<u8>(), 0..200),
@@ -630,7 +845,7 @@ mod hkdf {
             len in 0..200usize,
             at_limit in any::<bool>(),
         ) {
-            let (ours, their_alg, hash_len) = algorithms()[algorithm];
+            let (ours, their_alg, independent, hash_len) = algorithms()[algorithm];
             let len = match at_limit {
                 true => 255 * hash_len + len - 100,
                 false => len,
@@ -639,18 +854,22 @@ mod hkdf {
 
             // An extracted PRK, then the salt taken as a PRK as it is, up to
             // the 64 bytes aws-lc-rs's `new_less_safe` holds before it panics.
+            // RustCrypto expands the PRK its extract returns, and the salt
+            // as a PRK when it is at least the hash's length.
             let prk = &salt[..salt.len().min(64)];
             let pairs = [
                 (
                     hkdf::Salt::new(ours, &salt).extract(&ikm).unwrap(),
                     theirs::Salt::new(their_alg, &salt).extract(&ikm),
+                    independent(&salt, Some(&ikm), &info, len),
                 ),
                 (
                     hkdf::Prk::new(ours, prk),
                     theirs::Prk::new_less_safe(their_alg, prk),
+                    independent(prk, None, &info, len),
                 ),
             ];
-            for (ours, theirs) in pairs {
+            for (ours, theirs, independent) in pairs {
                 let mut ours_out = vec![0u8; len];
                 let result = ours.fill(&info, &mut ours_out);
                 match theirs.expand(&info, Len(len)) {
@@ -658,11 +877,17 @@ mod hkdf {
                         result.unwrap();
                         let mut theirs_out = vec![0u8; len];
                         okm.fill(&mut theirs_out).unwrap();
-                        prop_assert_eq!(ours_out, theirs_out);
+                        prop_assert_eq!(&ours_out, &theirs_out);
+                        if let Some(independent) = independent {
+                            prop_assert_eq!(&ours_out, &independent.unwrap());
+                        }
                     }
                     Err(_) => {
                         prop_assert_eq!(result, Err(Error::WrongLength));
                         prop_assert!(ours_out.iter().all(|b| *b == 0));
+                        if let Some(independent) = independent {
+                            prop_assert!(independent.is_err());
+                        }
                     }
                 }
             }
@@ -677,7 +902,7 @@ mod hkdf {
             info in vec(vec(any::<u8>(), 0..50), 0..3),
             msg in vec(any::<u8>(), 0..100),
         ) {
-            let (ours_prk_alg, theirs_prk_alg, _) = algorithms()[algorithm];
+            let (ours_prk_alg, theirs_prk_alg, _, _) = algorithms()[algorithm];
             let info: Vec<&[u8]> = info.iter().map(Vec::as_slice).collect();
             let ours = hkdf::Salt::new(ours_prk_alg, b"salt").extract(&ikm).unwrap();
             let theirs = theirs::Salt::new(theirs_prk_alg, b"salt").extract(&ikm);
@@ -738,30 +963,39 @@ mod hkdf {
 mod pbkdf2 {
     use core::num::NonZeroU32;
 
+    use ::pbkdf2::pbkdf2_hmac;
     use aws_lc_rs::pbkdf2 as theirs;
     use proptest::collection::vec;
     use proptest::prelude::*;
     use rind::{Error, pbkdf2};
+    use sha1::Sha1;
+    use sha2::{Sha256, Sha384, Sha512};
+
+    /// RustCrypto's PBKDF2: password, salt, iterations, and output.
+    type Independent = fn(&[u8], &[u8], u32, &mut [u8]);
 
     // Passwords either side of both block sizes (64 and 128), and keys of
     // several blocks with a partial last one.
     proptest! {
         #[test]
-        fn matches_aws_lc_rs(
+        fn matches(
             password in vec(any::<u8>(), 0..300),
             salt in vec(any::<u8>(), 0..200),
             iterations in 1..20u32,
             len in 1..200usize,
         ) {
             let iterations = NonZeroU32::new(iterations).unwrap();
-            for (ours, theirs, hash_len) in [
-                (&pbkdf2::legacy::PBKDF2_HMAC_SHA1, theirs::PBKDF2_HMAC_SHA1, 20),
-                (&pbkdf2::PBKDF2_HMAC_SHA256, theirs::PBKDF2_HMAC_SHA256, 32),
-                (&pbkdf2::PBKDF2_HMAC_SHA384, theirs::PBKDF2_HMAC_SHA384, 48),
-                (&pbkdf2::PBKDF2_HMAC_SHA512, theirs::PBKDF2_HMAC_SHA512, 64),
+            for (ours, theirs, independent, hash_len) in [
+                (&pbkdf2::legacy::PBKDF2_HMAC_SHA1, theirs::PBKDF2_HMAC_SHA1, pbkdf2_hmac::<Sha1> as Independent, 20),
+                (&pbkdf2::PBKDF2_HMAC_SHA256, theirs::PBKDF2_HMAC_SHA256, pbkdf2_hmac::<Sha256>, 32),
+                (&pbkdf2::PBKDF2_HMAC_SHA384, theirs::PBKDF2_HMAC_SHA384, pbkdf2_hmac::<Sha384>, 48),
+                (&pbkdf2::PBKDF2_HMAC_SHA512, theirs::PBKDF2_HMAC_SHA512, pbkdf2_hmac::<Sha512>, 64),
             ] {
                 let mut wanted = vec![0u8; len];
                 theirs::derive(theirs, iterations, &salt, &password, &mut wanted);
+                let mut independent_out = vec![0u8; len];
+                independent(&password, &salt, iterations.get(), &mut independent_out);
+                prop_assert_eq!(&independent_out, &wanted);
 
                 let secret = pbkdf2::Secret::new(ours, &password);
                 let mut got = vec![0u8; len];
@@ -779,7 +1013,13 @@ mod pbkdf2 {
 }
 
 mod aead {
+    use aes::cipher::{BlockCipherEncrypt, KeyIvInit, StreamCipher};
+    use aes_gcm::aead::consts::U12;
+    use aes_gcm::aead::{AeadInOut, KeyInit};
     use aws_lc_rs::aead as theirs;
+    use chacha20poly1305::{ChaCha20Poly1305, XChaCha20Poly1305};
+    use ghash::GHash;
+    use ghash::universal_hash::UniversalHash;
     use proptest::collection::vec;
     use proptest::prelude::*;
     use proptest::sample::Index;
@@ -800,11 +1040,81 @@ mod aead {
         gcm::TagLength::Truncated32,
     ];
 
-    /// Seals on both sides and compares, then opens aws-lc-rs's output,
+    /// RustCrypto's seal of a message: its ciphertext, then its tag.
+    type Independent = fn(&[u8], &[u8], &[u8], &[u8]) -> Vec<u8>;
+
+    fn seal<A: AeadInOut + KeyInit>(key: &[u8], nonce: &[u8], aad: &[u8], msg: &[u8]) -> Vec<u8> {
+        let mut sealed = msg.to_vec();
+        let tag = A::new_from_slice(key)
+            .unwrap()
+            .encrypt_inout_detached(nonce.try_into().unwrap(), aad, sealed.as_mut_slice().into())
+            .unwrap();
+        sealed.extend_from_slice(&tag);
+        sealed
+    }
+
+    fn rustcrypto_aes_gcm(key: &[u8], nonce: &[u8], aad: &[u8], msg: &[u8]) -> Vec<u8> {
+        rustcrypto_aes!(key, Aes => seal::<aes_gcm::AesGcm<Aes, U12>>(key, nonce, aad, msg))
+    }
+
+    /// AES-GCM under an IV and tag of any length, built from RustCrypto's
+    /// AES, GHASH, and CTR as NIST SP 800-38D section 7.1 builds it, since
+    /// RustCrypto's AES-GCM fixes both lengths in its type and takes no tag
+    /// shorter than 12 bytes.
+    fn rustcrypto_aes_gcm_any_iv(
+        key: &[u8],
+        iv: &[u8],
+        tag_len: usize,
+        aad: &[u8],
+        msg: &[u8],
+    ) -> Vec<u8> {
+        fn ghash(h: &aes::Block, parts: [&[u8]; 2]) -> [u8; 16] {
+            let mut ghash = GHash::new(h);
+            for part in parts {
+                ghash.update_padded(part);
+            }
+            let mut lengths = [0u8; 16];
+            lengths[..8].copy_from_slice(&(8 * parts[0].len() as u64).to_be_bytes());
+            lengths[8..].copy_from_slice(&(8 * parts[1].len() as u64).to_be_bytes());
+            ghash.update(&[lengths.into()]);
+            ghash.finalize().into()
+        }
+
+        rustcrypto_aes!(key, Aes => {
+            let aes = Aes::new_from_slice(key).unwrap();
+            let mut h = aes::Block::default();
+            aes.encrypt_block(&mut h);
+            let j0 = match iv.len() {
+                12 => {
+                    let mut j0 = [0u8; 16];
+                    j0[..12].copy_from_slice(iv);
+                    j0[15] = 1;
+                    j0
+                }
+                _ => ghash(&h, [&[], iv]),
+            };
+            let mut counter = j0;
+            let low = u32::from_be_bytes(j0[12..].try_into().unwrap()).wrapping_add(1);
+            counter[12..].copy_from_slice(&low.to_be_bytes());
+            let mut sealed = msg.to_vec();
+            ctr::Ctr32BE::<Aes>::new_from_slices(key, &counter)
+                .unwrap()
+                .apply_keystream(&mut sealed);
+            let mut tag = j0.into();
+            aes.encrypt_block(&mut tag);
+            let s = ghash(&h, [aad, &sealed]);
+            sealed.extend(tag.iter().zip(s).map(|(t, s)| t ^ s).take(tag_len));
+            sealed
+        })
+    }
+
+    /// Seals on all three sides and compares, then opens aws-lc-rs's output,
     /// first with one bit of its ciphertext or tag flipped if `flip` is set.
+    #[allow(clippy::too_many_arguments)]
     fn check(
         ours: &'static Algorithm,
         theirs: &'static theirs::Algorithm,
+        independent: Independent,
         key: &[u8],
         nonce: [u8; 12],
         aad: &[u8],
@@ -825,6 +1135,7 @@ mod aead {
             )
             .unwrap();
         prop_assert_eq!(&ours_sealed, &theirs_sealed);
+        prop_assert_eq!(&ours_sealed, &independent(key, &nonce, aad, msg));
 
         if let Some(flip) = flip {
             let index = flip.index(theirs_sealed.len());
@@ -851,17 +1162,18 @@ mod aead {
     #[test]
     fn aes_gcm_every_length() {
         let msg: Vec<u8> = (0..2048 + 256 + 15).map(|i| (i * 7 + 3) as u8).collect();
+        let rc: Independent = rustcrypto_aes_gcm;
         for (ours, theirs, key) in [
             (&AES_128_GCM, &theirs::AES_128_GCM, &[1u8; 16][..]),
             (&AES_192_GCM, &theirs::AES_192_GCM, &[4u8; 24][..]),
             (&AES_256_GCM, &theirs::AES_256_GCM, &[2u8; 32][..]),
         ] {
             for len in 0..=32 * 16 + 15 {
-                check(ours, theirs, key, [3; 12], b"aad", &msg[..len], None).unwrap();
-                check(ours, theirs, key, [3; 12], &msg[..len], b"msg", None).unwrap();
+                check(ours, theirs, rc, key, [3; 12], b"aad", &msg[..len], None).unwrap();
+                check(ours, theirs, rc, key, [3; 12], &msg[..len], b"msg", None).unwrap();
             }
             for len in 2048 - 16..=msg.len() {
-                check(ours, theirs, key, [3; 12], b"aad", &msg[..len], None).unwrap();
+                check(ours, theirs, rc, key, [3; 12], b"aad", &msg[..len], None).unwrap();
             }
         }
     }
@@ -881,7 +1193,7 @@ mod aead {
                 24 => (&AES_192_GCM, &theirs::AES_192_GCM),
                 _ => (&AES_256_GCM, &theirs::AES_256_GCM),
             };
-            check(ours, theirs, &key, nonce, &aad, &msg, flip)?;
+            check(ours, theirs, rustcrypto_aes_gcm, &key, nonce, &aad, &msg, flip)?;
         }
 
         #[test]
@@ -892,7 +1204,16 @@ mod aead {
             msg in vec(any::<u8>(), 0..1100),
             flip in any::<Option<Index>>(),
         ) {
-            check(&CHACHA20_POLY1305, &theirs::CHACHA20_POLY1305, &key, nonce, &aad, &msg, flip)?;
+            check(
+                &CHACHA20_POLY1305,
+                &theirs::CHACHA20_POLY1305,
+                seal::<ChaCha20Poly1305>,
+                &key,
+                nonce,
+                &aad,
+                &msg,
+                flip,
+            )?;
         }
 
         // aws-lc-rs takes only 96-bit nonces and full tags, so this seals
@@ -952,6 +1273,7 @@ mod aead {
             prop_assert_eq!((sealed, written), (1, ours.tag_len()));
             theirs_sealed.truncate(msg.len() + ours.tag_len());
             prop_assert_eq!(&ours_sealed, &theirs_sealed);
+            prop_assert_eq!(&ours_sealed, &rustcrypto_aes_gcm_any_iv(&key, &iv, ours.tag_len(), &aad, &msg));
 
             if let Some(flip) = flip {
                 let index = flip.index(theirs_sealed.len());
@@ -1014,6 +1336,7 @@ mod aead {
             };
             prop_assert_eq!((sealed, tag_len), (1, 16));
             prop_assert_eq!(&ours_sealed, &theirs_sealed);
+            prop_assert_eq!(&ours_sealed, &seal::<XChaCha20Poly1305>(&key, nonce.as_ref(), &aad, &msg));
 
             if let Some(flip) = flip {
                 let index = flip.index(theirs_sealed.len());
