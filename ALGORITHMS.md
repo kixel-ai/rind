@@ -141,7 +141,7 @@ with portable Rust in place of the assembly armv7 runs regardless.
 | MD5 | rind |  |  |  |
 | SHA-1 | rind | aws-lc |  | rind |
 | SHA-256 | aws-lc ⚡ | aws-lc | aws-lc ⚡ | rind; ESP-IDF Xtensa runs the 16-round body from IRAM |
-| SHA-384, SHA-512, SHA-512/256 | aws-lc | aws-lc ✓ | aws-lc ⚡ | rolled rind |
+| SHA-384, SHA-512, SHA-512/256 | aws-lc | aws-lc ✓ | aws-lc ⚡ | rind; unrolled on a 64-bit pointer, rolled on a 32-bit one |
 | SHA3-256, SHA3-384, SHA3-512 | s2n-bignum ✓ + Graviola |  | OpenSSL ⚡ + Graviola | rind + Graviola |
 | HMAC | Graviola ⚡ |  |  |  |
 | HKDF | rind ⚡ |  |  |  |

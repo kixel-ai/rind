@@ -15,7 +15,7 @@
 # HKDF, PBKDF2, and ChaCha20 header protection proofs the same way, over the
 # contracts in `ShaBlocks.lean` and `Sha512Entry.lean`. So does armv7, its
 # header-protection model and ChaCha20 proof. `generic::sha256` and
-# `generic::sha512`'s rolled loop stay opaque until
+# `generic::sha512` stay opaque until
 # quest/m4/verified/rolled-sha2-esp.md proves them.
 #
 # Usage: admin/prove [bytes | hol-light [<arch>] | cosim | vg | lean | session <arch> [<file>] | key <check>]
@@ -1580,7 +1580,7 @@ extract_armv7
 
 # The portable backend, which builds only under the cfg CI's portable jobs
 # build with, here on x86_64: the hashes, down to `generic::sha256` and
-# `generic::sha512`'s rolled loop. Both stay opaque with the rest of
+# `generic::sha512`. Both stay opaque with the rest of
 # `crate::low`, since this pass does not `--include` them, until
 # quest/m4/verified/rolled-sha2-esp.md proves them. The Keccak-f is included.
 # `proofs/Rind/Portable/Compare.lean` models its constant-time compares, which

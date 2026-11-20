@@ -17,7 +17,7 @@ namespace rind.portable
 guard and the debug build's check that one is held pass, and that
 `low::generic::sha512::sha512_compress_blocks` computes FIPS 180-4's block
 function over a whole number of blocks. The entry checks read no input.
-No proof covers the rolled loop. -/
+No proof covers the compressor's body. -/
 def RunsSha512 : Prop :=
   (∃ e, low.entry.Entry.new_secret = ok e) ∧ low.entry.Entry.assert_held = ok () ∧
     ∀ (state : Std.Array U64 8#usize) (blocks : Slice U8), blocks.length % 128 = 0 →
@@ -38,7 +38,7 @@ theorem assert_held_spec (h : RunsSha512) : low.entry.Entry.assert_held ⦃ _ =>
 `RunsSha512` states. -/
 theorem RunsSha512.held (h : RunsSha512) : low.entry.Entry.assert_held = ok () := h.2.1
 
-/-- SHA-512's block function, the rolled loop, over a whole number of blocks.
+/-- SHA-512's block function, the compressor, over a whole number of blocks.
 It needs nothing of the CPU; the hypothesis is the other targets' signature. -/
 @[step]
 theorem sha512_compress_blocks_spec (h : RunsSha512) (state : Std.Array U64 8#usize)

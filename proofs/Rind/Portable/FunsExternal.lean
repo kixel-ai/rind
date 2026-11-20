@@ -20,7 +20,7 @@ namespace rind.portable
 opaque low.generic.sha256.sha256_compress_blocks
   : Array Std.U32 8#usize → Slice Std.U8 → Result (Array Std.U32 8#usize)
 
-/-! `generic::sha512`'s rolled compressor. `RunsSha512` assumes its contract.
+/-! `generic::sha512`'s compressor (unrolled on a 64-bit pointer). `RunsSha512` assumes its contract.
 This body has no theorem. -/
 
 opaque low.generic.sha512.sha512_compress_blocks
