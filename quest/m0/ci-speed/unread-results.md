@@ -27,4 +27,3 @@ Recommendations:
 
 - [Draft PRs skip the heavy checks](/quest/m0/ci-speed/draft-skip.md) - removes the drafts' share of the cancelled hours before this re-measures
 - [PRs run three SDE models](/quest/m0/ci-speed/sde-pr-models.md) - cuts x86-cpu's pull-request hours before this re-measures
-- [PRs re-check only changed proofs](/quest/m0/ci-speed/prove-pr-cache.md) - cuts prove's pull-request hours before this re-measures
