@@ -2,8 +2,9 @@
 
 //! 32-bit ARM: the portable ChaCha20 and Poly1305 bodies, with aws-lc's
 //! assembly for SHA-1, SHA-256, SHA-512, and RSA's Montgomery multiplication
-//! (the ARMv8 crypto extension where the CPU has it), BoringSSL's for X25519
-//! where the CPU has NEON, and OpenSSL's for Keccak-f.
+//! (the ARMv8 crypto extension where the CPU has it), for AES and GHASH where
+//! the CPU has NEON, BoringSSL's for X25519 where the CPU has NEON, and
+//! OpenSSL's for Keccak-f.
 
 /// The symbol for an aws-lc routine, qualified by rind's version so two
 /// semver-incompatible copies of rind can link into one binary.
@@ -32,8 +33,10 @@ pub(crate) mod cpu;
 #[cfg_attr(coverage_nightly, coverage(off))]
 pub(crate) mod ct_qemu;
 pub(crate) mod curve25519;
+pub(crate) mod ghash_armv4;
 pub(crate) mod ghashv8_armx;
 pub(crate) mod keccak1600_armv4;
 pub(crate) mod mont;
 pub(crate) mod poly1305;
 pub(crate) mod sha_armv4;
+pub(crate) mod vpaes_armv7;
