@@ -10,14 +10,23 @@
 //! compares the implicit-rejection secret.
 
 use aws_lc_rs::kem as theirs;
+use libfuzzer_sys::arbitrary::{Arbitrary, Unstructured};
 use libfuzzer_sys::fuzz_target;
 use ml_kem::{Decapsulate, KeyExport};
 use rind::kem as ours;
+use sha2::Digest;
 
 mod edit;
 
-fuzz_target!(|input: (u8, edit::Edit, [u8; 32], [u8; 64])| {
-    let (set, edit, m, seed) = input;
+// The input is the parameter set and the edit alone, so corpora from before
+// the independent oracle still decode alike; its message and seed are
+// hashed from it, since any value exercises the same constant-time code.
+fuzz_target!(|data: &[u8]| {
+    let Ok((set, edit)) = <(u8, edit::Edit)>::arbitrary_take_rest(Unstructured::new(data)) else {
+        return;
+    };
+    let m: [u8; 32] = sha2::Sha256::digest(data).into();
+    let seed: [u8; 64] = sha2::Sha512::digest(data).into();
     match set % 3 {
         0 => check!(
             ours::MlKem512,

@@ -171,8 +171,17 @@ fn rustcrypto<A: AeadInOut + KeyInit>(
 }
 
 /// AES-GCM under an IV and tag of any length, built from RustCrypto's AES,
-/// GHASH, and CTR as NIST SP 800-38D section 7.1 builds it.
-fn rustcrypto_gcm_any(key: &[u8], iv: &[u8], tag_len: usize, aad: &[u8], msg: &[u8]) -> Vec<u8> {
+/// GHASH, and CTR as NIST SP 800-38D sections 7.1 and 7.2 build it: the
+/// sealed input with its tag of `tag_len` bytes, or the opened input, or
+/// `None` if its tag does not authenticate it.
+fn rustcrypto_gcm_any(
+    op: Op,
+    key: &[u8],
+    iv: &[u8],
+    tag_len: usize,
+    aad: &[u8],
+    input: &[u8],
+) -> Option<Vec<u8>> {
     fn ghash(h: &::aes::Block, parts: [&[u8]; 2]) -> [u8; 16] {
         let mut ghash = GHash::new(h);
         for part in parts {
@@ -201,15 +210,33 @@ fn rustcrypto_gcm_any(key: &[u8], iv: &[u8], tag_len: usize, aad: &[u8], msg: &[
         let mut counter = j0;
         let low = u32::from_be_bytes(j0[12..].try_into().unwrap()).wrapping_add(1);
         counter[12..].copy_from_slice(&low.to_be_bytes());
-        let mut sealed = msg.to_vec();
+        let mut mask = j0.into();
+        aes.encrypt_block(&mut mask);
+        let tag = |ciphertext: &[u8]| -> Vec<u8> {
+            let s = ghash(&h, [aad, ciphertext]);
+            mask.iter().zip(s).map(|(t, s)| t ^ s).take(tag_len).collect()
+        };
+        let (mut out, expected) = match op {
+            Op::Seal => (input.to_vec(), None),
+            Op::Open => {
+                let (ciphertext, expected) =
+                    input.split_at_checked(input.len().checked_sub(tag_len)?)?;
+                (ciphertext.to_vec(), Some(expected))
+            }
+        };
+        if let Some(expected) = expected {
+            if tag(&out) != expected {
+                return None;
+            }
+        }
         ctr::Ctr32BE::<Aes>::new_from_slices(key, &counter)
             .unwrap()
-            .apply_keystream(&mut sealed);
-        let mut tag = j0.into();
-        aes.encrypt_block(&mut tag);
-        let s = ghash(&h, [aad, &sealed]);
-        sealed.extend(tag.iter().zip(s).map(|(t, s)| t ^ s).take(tag_len));
-        sealed
+            .apply_keystream(&mut out);
+        if expected.is_none() {
+            let tag = tag(&out);
+            out.extend(tag);
+        }
+        Some(out)
     })
 }
 
@@ -284,12 +311,18 @@ fn gcm_any(
     let theirs = aws_lc_gcm(Op::Seal, key, ours.tag_len(), iv, aad, plain);
     assert_eq!(Some(&sealed), theirs.as_ref());
     assert_eq!(
-        sealed,
-        rustcrypto_gcm_any(key, iv, ours.tag_len(), aad, plain)
+        Some(&sealed),
+        rustcrypto_gcm_any(Op::Seal, key, iv, ours.tag_len(), aad, plain).as_ref()
     );
 
+    // The tag fixes whether an edited message opens, so RustCrypto's GCM
+    // must reach aws-lc's verdict.
     let changed = edit.apply(&mut sealed);
     let theirs = aws_lc_gcm(Op::Open, key, ours.tag_len(), iv, aad, &sealed);
+    assert_eq!(
+        rustcrypto_gcm_any(Op::Open, key, iv, ours.tag_len(), aad, &sealed),
+        theirs
+    );
     let ours = ours
         .open_in_place(
             gcm::Iv::assume_unique_for_key(iv).unwrap(),

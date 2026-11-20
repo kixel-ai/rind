@@ -2,8 +2,8 @@
 
 //! RFC 3394 and RFC 5649 key wrap against aws-lc's, through aws-lc-sys since
 //! aws-lc-rs offers no AES-192 KEK, and RustCrypto's. RustCrypto wraps keys
-//! the RFCs refuse, such as an empty one, so it checks only what aws-lc
-//! accepts.
+//! the RFCs refuse, such as an empty one, so it checks only the wraps aws-lc
+//! accepts, and every unwrap of a length the RFCs allow.
 
 use ::aes::cipher::KeyInit;
 use aes_kw::{AesKw, AesKwp};
@@ -51,14 +51,17 @@ fuzz_target!(|input: (Operation, edit::Edit)| {
             theirs.unwrap_padded(&wrapped).as_ref()
         );
         assert_eq!(ours_result.is_err(), changed);
-        if let Ok(key) = &ours_result {
+        // The integrity check fixes the verdict, so RustCrypto must reach
+        // it too, but for the one-block input RFC 5649 refuses and
+        // RustCrypto unwraps to an empty key.
+        if wrapped.len() >= 16 {
             let mut independent = vec![0u8; wrapped.len()];
             let independent = rustcrypto_aes!(kek, Aes => AesKwp::<Aes>::new_from_slice(kek)
                 .unwrap()
                 .unwrap_key(&wrapped, &mut independent)
-                .unwrap()
-                .to_vec());
-            assert_eq!(key, &independent);
+                .ok()
+                .map(<[u8]>::to_vec));
+            assert_eq!(independent.as_ref(), ours_result.as_ref().ok());
         }
     }
 
@@ -87,14 +90,16 @@ fuzz_target!(|input: (Operation, edit::Edit)| {
         .map(|k| k.to_vec());
     assert_eq!(ours_result.as_ref().ok(), theirs.unwrap(&wrapped).as_ref());
     assert_eq!(ours_result.is_err(), changed);
-    if let Ok(key) = &ours_result {
-        let mut independent = vec![0u8; wrapped.len() - 8];
+    // As above, but RFC 3394 refuses inputs of fewer than three blocks,
+    // which RustCrypto unwraps.
+    if wrapped.len() >= 24 {
+        let mut independent = vec![0u8; wrapped.len()];
         let independent = rustcrypto_aes!(kek, Aes => AesKw::<Aes>::new_from_slice(kek)
             .unwrap()
             .unwrap_key(&wrapped, &mut independent)
-            .unwrap()
-            .to_vec());
-        assert_eq!(key, &independent);
+            .ok()
+            .map(<[u8]>::to_vec));
+        assert_eq!(independent.as_ref(), ours_result.as_ref().ok());
     }
 });
 
