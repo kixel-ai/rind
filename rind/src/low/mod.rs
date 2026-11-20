@@ -61,6 +61,8 @@ mod generic {
     pub(super) mod ct_copy;
     pub(super) mod ct_equal;
     pub(super) mod ctr;
+    // SLH-DSA's four-way SHAKE, on states it keeps interleaved.
+    pub(super) mod keccak4x;
     // Ed25519 verification's multi-scalar multiplication over s2n-bignum's
     // point routines.
     #[cfg(rind_backend = "x86_64")]
@@ -222,6 +224,12 @@ pub(crate) use generic::ct_copy::{ct_copy, ct_select_i16};
 pub(crate) use generic::ct_equal::ct_equal;
 #[cfg(all(test, any(rind_backend = "arm", rind_backend = "portable")))]
 pub(crate) use generic::ghash::gcm_model;
+#[cfg(all(test, rind_backend = "x86_64"))]
+pub(crate) use generic::keccak4x::with_keccak8x_forced;
+pub(crate) use generic::keccak4x::{
+    sha3_keccak4x_f1600, sha3_keccak4x_hash_blocks, sha3_keccak8x_available,
+    sha3_keccak8x_hash_blocks,
+};
 pub(crate) use generic::md5::md5_compress_blocks;
 #[cfg(any(rind_backend = "x86_64", all(rind_backend = "aarch64", test)))]
 pub(crate) use generic::poly1305;
