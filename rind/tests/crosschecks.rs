@@ -12,6 +12,12 @@ fn ed25519_key_generation() {
         let key_enc = key.to_pkcs8();
         let key_enc = key_enc.as_ref();
 
+        let seed: [u8; 32] = key.to_seed().as_ref().try_into().unwrap();
+        assert_eq!(
+            key.public_key().as_ref(),
+            ed25519::oracle::public_key(&seed),
+            "the independent oracle derived another public key"
+        );
         let aws = Ed25519KeyPair::from_pkcs8(key_enc)
             .expect("aws-lc-rs rejected an ed25519 key we generated");
         assert_eq!(
@@ -1354,10 +1360,208 @@ mod aead {
     }
 }
 
+#[cfg(any(rind_backend = "arm", rind_backend = "portable"))]
+#[path = "../src/test/reference.rs"]
+mod reference;
+
+/// The curves' independent oracles, each sharing no code with the path rind
+/// runs on this tier: on x86_64 and aarch64, RustCrypto's NIST curves; on
+/// armv7 and the portable backend, where rind, aws-lc-rs, and RustCrypto's
+/// `p521` run fiat-crypto's field arithmetic, libcrux's P-256 and the
+/// textbook reference's P-384 and P-521. RustCrypto's `p256`, and `p384`
+/// without its optional fiat backend, would share nothing there either.
+mod oracle {
+    /// ECDH and ECDSA on one NIST curve, over big-endian scalars, SEC 1
+    /// points, and fixed-width signatures.
+    pub(crate) trait Nist {
+        /// The uncompressed public key of a private scalar.
+        fn public_key(&self, scalar: &[u8]) -> Vec<u8>;
+        /// The ECDH secret with a peer's point, uncompressed or compressed,
+        /// or `None` where the oracle refuses the point.
+        fn agree(&self, scalar: &[u8], peer: &[u8]) -> Option<Vec<u8>>;
+        /// A signature over a digest of the curve's own hash.
+        fn sign(&self, scalar: &[u8], digest: &[u8]) -> Vec<u8>;
+        /// Whether a signature is over the digest.
+        fn verify(&self, public_key: &[u8], digest: &[u8], signature: &[u8]) -> bool;
+    }
+
+    #[cfg(not(any(rind_backend = "arm", rind_backend = "portable")))]
+    macro_rules! rustcrypto {
+        ($name:ident, $curve:ident) => {
+            /// RustCrypto's curve.
+            pub(crate) struct $name;
+
+            impl Nist for $name {
+                fn public_key(&self, scalar: &[u8]) -> Vec<u8> {
+                    use $curve::elliptic_curve::sec1::ToSec1Point;
+                    let key = $curve::SecretKey::from_slice(scalar).unwrap();
+                    key.public_key().to_sec1_point(false).as_bytes().to_vec()
+                }
+
+                fn agree(&self, scalar: &[u8], peer: &[u8]) -> Option<Vec<u8>> {
+                    let peer = $curve::PublicKey::from_sec1_bytes(peer).ok()?;
+                    let key = $curve::SecretKey::from_slice(scalar).unwrap();
+                    let secret =
+                        $curve::ecdh::diffie_hellman(key.to_nonzero_scalar(), peer.as_affine());
+                    Some(secret.raw_secret_bytes().to_vec())
+                }
+
+                fn sign(&self, scalar: &[u8], digest: &[u8]) -> Vec<u8> {
+                    use $curve::ecdsa::signature::hazmat::PrehashSigner;
+                    let key = $curve::ecdsa::SigningKey::from_slice(scalar).unwrap();
+                    let signature: $curve::ecdsa::Signature = key.sign_prehash(digest).unwrap();
+                    signature.to_bytes().to_vec()
+                }
+
+                fn verify(&self, public_key: &[u8], digest: &[u8], signature: &[u8]) -> bool {
+                    use $curve::ecdsa::signature::hazmat::PrehashVerifier;
+                    let (Ok(key), Ok(signature)) = (
+                        $curve::ecdsa::VerifyingKey::from_sec1_bytes(public_key),
+                        $curve::ecdsa::Signature::from_slice(signature),
+                    ) else {
+                        return false;
+                    };
+                    key.verify_prehash(digest, &signature).is_ok()
+                }
+            }
+        };
+    }
+
+    #[cfg(not(any(rind_backend = "arm", rind_backend = "portable")))]
+    mod rustcrypto {
+        use super::Nist;
+        rustcrypto!(P256, p256);
+        rustcrypto!(P384, p384);
+        rustcrypto!(P521, p521);
+    }
+
+    #[cfg(not(any(rind_backend = "arm", rind_backend = "portable")))]
+    pub(crate) use rustcrypto::{P256, P384, P521};
+
+    /// libcrux's P-256, HACL*'s, which rind runs nowhere. It hashes with
+    /// HACL*'s SHA-2, which the portable backend runs, so it takes digests.
+    #[cfg(any(rind_backend = "arm", rind_backend = "portable"))]
+    pub(crate) struct P256;
+
+    #[cfg(any(rind_backend = "arm", rind_backend = "portable"))]
+    impl Nist for P256 {
+        fn public_key(&self, scalar: &[u8]) -> Vec<u8> {
+            let mut raw = [0u8; 64];
+            assert!(libcrux_p256::dh_initiator(&mut raw, scalar));
+            [&[4][..], &raw].concat()
+        }
+
+        fn agree(&self, scalar: &[u8], peer: &[u8]) -> Option<Vec<u8>> {
+            let mut raw = [0u8; 64];
+            let parsed = match peer.len() {
+                65 => libcrux_p256::uncompressed_to_raw(peer, &mut raw),
+                33 => libcrux_p256::compressed_to_raw(peer, &mut raw),
+                _ => false,
+            };
+            let mut secret = [0u8; 64];
+            (parsed && libcrux_p256::dh_responder(&mut secret, &raw, scalar))
+                .then(|| secret[..32].to_vec())
+        }
+
+        fn sign(&self, scalar: &[u8], digest: &[u8]) -> Vec<u8> {
+            use sha2::Digest;
+            let mut signature = [0u8; 64];
+            for counter in 0u8.. {
+                let nonce = sha2::Sha256::digest([scalar, digest, &[counter]].concat());
+                if libcrux_p256::ecdsa_sign_p256_without_hash(
+                    &mut signature,
+                    32,
+                    digest,
+                    scalar,
+                    &nonce,
+                ) {
+                    return signature.to_vec();
+                }
+            }
+            unreachable!()
+        }
+
+        fn verify(&self, public_key: &[u8], digest: &[u8], signature: &[u8]) -> bool {
+            let mut raw = [0u8; 64];
+            signature.len() == 64
+                && libcrux_p256::uncompressed_to_raw(public_key, &mut raw)
+                && libcrux_p256::ecdsa_verif_without_hash(
+                    32,
+                    digest,
+                    &raw,
+                    &signature[..32],
+                    &signature[32..],
+                )
+        }
+    }
+
+    #[cfg(any(rind_backend = "arm", rind_backend = "portable"))]
+    impl Nist for crate::reference::Weierstrass {
+        fn public_key(&self, scalar: &[u8]) -> Vec<u8> {
+            crate::reference::Weierstrass::public_key(self, scalar)
+        }
+
+        fn agree(&self, scalar: &[u8], peer: &[u8]) -> Option<Vec<u8>> {
+            crate::reference::Weierstrass::agree(self, scalar, peer)
+        }
+
+        fn sign(&self, scalar: &[u8], digest: &[u8]) -> Vec<u8> {
+            crate::reference::Weierstrass::sign(self, scalar, digest)
+        }
+
+        fn verify(&self, public_key: &[u8], digest: &[u8], signature: &[u8]) -> bool {
+            crate::reference::Weierstrass::verify(self, public_key, digest, signature)
+        }
+    }
+
+    pub(crate) fn p256() -> impl Nist {
+        P256
+    }
+
+    #[cfg(not(any(rind_backend = "arm", rind_backend = "portable")))]
+    pub(crate) fn p384() -> impl Nist {
+        P384
+    }
+
+    #[cfg(not(any(rind_backend = "arm", rind_backend = "portable")))]
+    pub(crate) fn p521() -> impl Nist {
+        P521
+    }
+
+    #[cfg(any(rind_backend = "arm", rind_backend = "portable"))]
+    pub(crate) fn p384() -> impl Nist {
+        crate::reference::p384()
+    }
+
+    #[cfg(any(rind_backend = "arm", rind_backend = "portable"))]
+    pub(crate) fn p521() -> impl Nist {
+        crate::reference::p521()
+    }
+}
+
+/// RustCrypto's `pkcs8` reading of a PKCS#8 key: its algorithm's OID and
+/// its private key's bytes.
+fn rustcrypto_pkcs8(der: &[u8]) -> (String, Vec<u8>) {
+    let info = pkcs8::PrivateKeyInfoRef::try_from(der).unwrap();
+    (
+        info.algorithm.oid.to_string(),
+        info.private_key.as_bytes().to_vec(),
+    )
+}
+
+/// RustCrypto's `spki` reading of an SPKI: its algorithm's OID and its
+/// public key's bytes.
+fn rustcrypto_spki(der: &[u8]) -> (String, Vec<u8>) {
+    let info = pkcs8::SubjectPublicKeyInfoRef::try_from(der).unwrap();
+    let key = info.subject_public_key.as_bytes().unwrap();
+    (info.algorithm.oid.to_string(), key.to_vec())
+}
+
 /// ECDSA and ECDH on one curve: aws-lc-rs and rind accept each other's keys,
-/// signatures, and public keys.
+/// signatures, and public keys, and so do rind and the curve's independent
+/// oracle.
 macro_rules! ec_crosschecks {
-    ($curve:ident, $oid:literal, $ecdh:ident, $fixed_signing:ident, $fixed:ident, $asn1_signing:ident, $asn1:ident, $ours_fixed:ident, $ours_asn1:ident) => {
+    ($curve:ident, $oid:literal, $ecdh:ident, $fixed_signing:ident, $fixed:ident, $asn1_signing:ident, $asn1:ident, $ours_fixed:ident, $ours_asn1:ident, $hash:ty) => {
         mod $curve {
             use aws_lc_rs::agreement::{self, $ecdh, EphemeralPrivateKey};
             use aws_lc_rs::encoding::{
@@ -1438,6 +1642,53 @@ macro_rules! ec_crosschecks {
                             verifier.verify(&[&message[..], b"!"].concat(), signature.as_ref()).is_err()
                         );
                     }
+                }
+
+                /// rind and the independent oracle derive the same public
+                /// key, verify each other's signatures and refuse them over
+                /// another message, agree on the same secret with a peer's
+                /// point, uncompressed or compressed, and refuse it with a
+                /// bit of its `y` flipped, off the curve.
+                #[test]
+                fn ec_oracle(message in vec(any::<u8>(), 0..300), flip in any::<prop::sample::Index>()) {
+                    use sha2::Digest;
+                    let oracle = crate::oracle::$curve();
+                    let ours = ecdsa::KeyPair::generate(&sign::$ours_fixed).unwrap();
+                    let scalar = ours.to_scalar();
+                    let scalar = scalar.as_ref();
+                    let public = ours.public_key();
+                    let public = public.as_ref();
+                    prop_assert_eq!(&crate::oracle::Nist::public_key(&oracle, scalar)[..], public);
+
+                    let digest = <$hash>::digest(&message);
+                    let other = <$hash>::digest([&message[..], b"!"].concat());
+                    let signature = ours.sign(&message).unwrap();
+                    prop_assert!(crate::oracle::Nist::verify(&oracle, public, &digest, signature.as_ref()));
+                    prop_assert!(!crate::oracle::Nist::verify(&oracle, public, &other, signature.as_ref()));
+                    let theirs = crate::oracle::Nist::sign(&oracle, scalar, &digest);
+                    let verifier = ecdsa::PublicKey::new(&verify::$ours_fixed, public).unwrap();
+                    prop_assert!(verifier.verify(&message, &theirs).is_ok());
+                    prop_assert!(verifier.verify(&[&message[..], b"!"].concat(), &theirs).is_err());
+
+                    let ecdh = &rind::agreement::$ecdh;
+                    let ours = rind::agreement::PrivateKey::from_scalar(ecdh, scalar).unwrap();
+                    let peer = rind::agreement::PrivateKey::generate(ecdh).unwrap().to_scalar();
+                    let peer_public = crate::oracle::Nist::public_key(&oracle, peer.as_ref());
+                    let wanted = crate::oracle::Nist::agree(&oracle, peer.as_ref(), public).unwrap();
+                    let secret = ours.agree(&peer_public).unwrap();
+                    prop_assert_eq!(secret.as_ref(), &wanted[..]);
+                    let len = (peer_public.len() - 1) / 2;
+                    let mut compressed = peer_public[..1 + len].to_vec();
+                    compressed[0] = 2 | (peer_public[2 * len] & 1);
+                    let decompressed = rind::agreement::PublicKey::new(ecdh, &compressed).unwrap();
+                    prop_assert_eq!(decompressed.as_ref(), &peer_public[..]);
+                    prop_assert_eq!(crate::oracle::Nist::agree(&oracle, scalar, &compressed), Some(wanted));
+
+                    let mut off_curve = peer_public.clone();
+                    let bit = flip.index(8 * len);
+                    off_curve[1 + len + bit / 8] ^= 1 << (bit % 8);
+                    prop_assert!(ours.agree(&off_curve).is_err());
+                    prop_assert_eq!(crate::oracle::Nist::agree(&oracle, scalar, &off_curve), None);
                 }
 
                 #[test]
@@ -1536,6 +1787,22 @@ macro_rules! ec_crosschecks {
                     prop_assert_eq!(parsed.as_ref(), point);
                     let ours_spki = parsed.to_spki();
                     prop_assert_eq!(ours_spki.as_ref(), spki.as_ref());
+
+                    // RustCrypto, whose DER is its own, reads each of ours
+                    // as the same key.
+                    {
+                        use ::$curve::elliptic_curve::sec1::ToSec1Point;
+                        use ::$curve::pkcs8::{DecodePrivateKey, DecodePublicKey};
+                        let scalar = ours.to_scalar();
+                        let ours_pkcs8 = ours.to_pkcs8();
+                        let from_pkcs8 = ::$curve::SecretKey::from_pkcs8_der(ours_pkcs8.as_ref()).unwrap();
+                        prop_assert_eq!(&from_pkcs8.to_bytes()[..], scalar.as_ref());
+                        let from_sec1 = ::$curve::SecretKey::from_sec1_der(ours_sec1.as_ref()).unwrap();
+                        prop_assert_eq!(&from_sec1.to_bytes()[..], scalar.as_ref());
+                        let from_spki = ::$curve::PublicKey::from_public_key_der(ours_spki.as_ref()).unwrap();
+                        let from_spki = from_spki.to_sec1_point(false);
+                        prop_assert_eq!(from_spki.as_bytes(), point);
+                    }
 
                     let ecdh = &rind::agreement::$ecdh;
                     let agreeing = agreement::PrivateKey::generate(&$ecdh).unwrap();
@@ -1673,7 +1940,8 @@ ec_crosschecks!(
     ECDSA_P256_SHA256_ASN1_SIGNING,
     ECDSA_P256_SHA256_ASN1,
     P256_SHA256_FIXED,
-    P256_SHA256_ASN1
+    P256_SHA256_ASN1,
+    sha2::Sha256
 );
 
 ec_crosschecks!(
@@ -1685,7 +1953,8 @@ ec_crosschecks!(
     ECDSA_P384_SHA384_ASN1_SIGNING,
     ECDSA_P384_SHA384_ASN1,
     P384_SHA384_FIXED,
-    P384_SHA384_ASN1
+    P384_SHA384_ASN1,
+    sha2::Sha384
 );
 
 ec_crosschecks!(
@@ -1697,7 +1966,8 @@ ec_crosschecks!(
     ECDSA_P521_SHA512_ASN1_SIGNING,
     ECDSA_P521_SHA512_ASN1,
     P521_SHA512_FIXED,
-    P521_SHA512_ASN1
+    P521_SHA512_ASN1,
+    sha2::Sha512
 );
 
 mod ed25519 {
@@ -1707,6 +1977,45 @@ mod ed25519 {
     use proptest::prelude::*;
     use proptest::sample::Index;
     use rind::ed25519 as ours;
+
+    /// Ed25519's independent oracle: libcrux's, HACL*'s, except on the
+    /// portable backend, whose SHA-512 is HACL*'s too, where it is the
+    /// textbook reference.
+    pub(crate) mod oracle {
+        #[cfg(not(rind_backend = "portable"))]
+        pub(crate) fn public_key(seed: &[u8; 32]) -> [u8; 32] {
+            let mut public = [0u8; 32];
+            libcrux_ed25519::secret_to_public(&mut public, seed);
+            public
+        }
+
+        #[cfg(not(rind_backend = "portable"))]
+        pub(crate) fn sign(seed: &[u8; 32], message: &[u8]) -> [u8; 64] {
+            libcrux_ed25519::sign(message, seed).unwrap()
+        }
+
+        #[cfg(not(rind_backend = "portable"))]
+        pub(crate) fn verify(public_key: &[u8; 32], message: &[u8], signature: &[u8]) -> bool {
+            <&[u8; 64]>::try_from(signature).is_ok_and(|signature| {
+                libcrux_ed25519::verify(message, public_key, signature).is_ok()
+            })
+        }
+
+        #[cfg(rind_backend = "portable")]
+        pub(crate) fn public_key(seed: &[u8; 32]) -> [u8; 32] {
+            crate::reference::edwards25519().ed25519_public_key(seed)
+        }
+
+        #[cfg(rind_backend = "portable")]
+        pub(crate) fn sign(seed: &[u8; 32], message: &[u8]) -> [u8; 64] {
+            crate::reference::edwards25519().ed25519_sign(seed, message)
+        }
+
+        #[cfg(rind_backend = "portable")]
+        pub(crate) fn verify(public_key: &[u8; 32], message: &[u8], signature: &[u8]) -> bool {
+            crate::reference::edwards25519().ed25519_verify(public_key, message, signature)
+        }
+    }
 
     proptest! {
         #[test]
@@ -1720,6 +2029,7 @@ mod ed25519 {
             // the public key matches theirs.
             let theirs = Ed25519KeyPair::from_seed_unchecked(&seed).unwrap();
             let public = theirs.public_key().as_ref();
+            let seed_public: [u8; 32] = public.try_into().unwrap();
             let ours = ours::KeyPair::from_seed_and_public_key(&seed, public).unwrap();
             let spki = theirs.public_key().as_der().unwrap();
             let ours_spki = ours.public_key().to_spki();
@@ -1732,8 +2042,10 @@ mod ed25519 {
             let signature = ours.sign(&message);
             let theirs_signature = theirs.sign(&message);
             prop_assert_eq!(signature.as_ref(), theirs_signature.as_ref());
+            prop_assert_eq!(&oracle::public_key(&seed), public);
+            prop_assert_eq!(&oracle::sign(&seed, &message)[..], signature.as_ref());
 
-            // Both verify it, and refuse it with any one bit flipped.
+            // All three verify it, and refuse it with any one bit flipped.
             let mut signature = signature.as_ref().to_vec();
             if let Some(flip) = flip {
                 let bit = flip.index(signature.len() * 8);
@@ -1745,6 +2057,7 @@ mod ed25519 {
             let theirs_result = UnparsedPublicKey::new(&ED25519, public).verify(&message, &signature);
             prop_assert_eq!(ours_result.is_ok(), flip.is_none());
             prop_assert_eq!(theirs_result.is_ok(), flip.is_none());
+            prop_assert_eq!(oracle::verify(&seed_public, &message, &signature), flip.is_none());
         }
 
         /// Both load a seed alone, and encode it as the same PKCS#8 v1, and
@@ -1758,6 +2071,9 @@ mod ed25519 {
             let (ours_v1, theirs_v1) = (ours.to_pkcs8v1(), theirs.to_pkcs8v1().unwrap());
             prop_assert_eq!(ours_v1.as_ref(), theirs_v1.as_ref());
             Ed25519KeyPair::from_pkcs8(ours_v1.as_ref()).unwrap();
+            // RFC 8410 wraps the seed in an OCTET STRING of its own.
+            let wrapped = [&[0x04, 0x20][..], &seed].concat();
+            prop_assert_eq!(crate::rustcrypto_pkcs8(ours_v1.as_ref()), ("1.3.101.112".into(), wrapped));
 
             let spki = theirs.public_key().as_der().unwrap();
             let parsed = ours::PublicKey::from_spki(spki.as_ref())
@@ -1765,6 +2081,8 @@ mod ed25519 {
             prop_assert_eq!(parsed.as_ref(), public.as_ref());
             let ours_spki = parsed.to_spki();
             prop_assert_eq!(ours_spki.as_ref(), spki.as_ref());
+            let wanted = ("1.3.101.112".into(), public.as_ref().to_vec());
+            prop_assert_eq!(crate::rustcrypto_spki(ours_spki.as_ref()), wanted);
         }
 
         #[test]
@@ -2978,17 +3296,37 @@ mod ecdh_scalars {
 
     proptest! {
         #[test]
-        fn p256(private in p256_scalar(), peer in p256_scalar()) {
-            let peer = PrivateKey::from_private_key(&ECDH_P256, &peer)
+        fn p256(private in p256_scalar(), peer_scalar in p256_scalar()) {
+            let peer = PrivateKey::from_private_key(&ECDH_P256, &peer_scalar)
                 .unwrap()
                 .compute_public_key()
                 .unwrap();
             check(&ours::ECDH_P256, &ECDH_P256, &private, peer.as_ref())?;
+
+            // The independent oracle agrees on the edge-case scalars too.
+            use crate::oracle::Nist;
+            let oracle = crate::oracle::p256();
+            let ours = ours::PrivateKey::from_scalar(&ours::ECDH_P256, &private).unwrap();
+            let public = ours.public_key();
+            prop_assert_eq!(&oracle.public_key(&private)[..], public.as_ref());
+            let secret = ours.agree(&oracle.public_key(&peer_scalar)).unwrap();
+            prop_assert_eq!(Some(secret.as_ref().to_vec()), oracle.agree(&peer_scalar, public.as_ref()));
         }
 
         #[test]
         fn x25519(private in any::<[u8; 32]>(), peer in x25519_peer()) {
             check(&ours::X25519, &X25519, &private, &peer)?;
+
+            // libcrux's X25519, HACL*'s, which rind runs nowhere, derives the
+            // same public key, and refuses the same peers or agrees alike.
+            let key = ours::PrivateKey::from_scalar(&ours::X25519, &private).unwrap();
+            let mut public = [0u8; 32];
+            libcrux_curve25519::secret_to_public(&mut public, &private);
+            prop_assert_eq!(key.public_key().as_ref(), &public[..]);
+            let mut secret = [0u8; 32];
+            let independent = libcrux_curve25519::ecdh(&mut secret, &peer, &private).map(|()| secret);
+            let ours_secret = key.agree(&peer).map(|secret| <[u8; 32]>::try_from(secret.as_ref()).unwrap());
+            prop_assert_eq!(ours_secret.ok(), independent.ok());
 
             // Both encode the public key as the same SPKI, which ours parses.
             let theirs = PrivateKey::from_private_key(&X25519, &private).unwrap();
@@ -2998,6 +3336,8 @@ mod ecdh_scalars {
             prop_assert_eq!(parsed.as_ref(), theirs_public.as_ref());
             let ours_spki = parsed.to_spki();
             prop_assert_eq!(ours_spki.as_ref(), spki.as_ref());
+            let wanted = ("1.3.101.110".into(), theirs_public.as_ref().to_vec());
+            prop_assert_eq!(crate::rustcrypto_spki(ours_spki.as_ref()), wanted);
 
             // Both keep the 32 bytes as given, unclamped.
             let theirs = PrivateKey::from_private_key(&X25519, &private).unwrap();
@@ -3016,6 +3356,8 @@ mod ecdh_scalars {
             let ours_pkcs8 = ours.to_pkcs8();
             let theirs_pkcs8 = aws_lc_x25519_pkcs8(&private);
             prop_assert_eq!(ours_pkcs8.as_ref(), &theirs_pkcs8[..]);
+            let wrapped = [&[0x04, 0x20][..], &private].concat();
+            prop_assert_eq!(crate::rustcrypto_pkcs8(ours_pkcs8.as_ref()), ("1.3.101.110".into(), wrapped));
             let loaded = ours::PrivateKey::from_pkcs8(&ours::X25519, &theirs_pkcs8).unwrap();
             let (loaded, ours) = (loaded.public_key(), ours.public_key());
             prop_assert_eq!(loaded.as_ref(), ours.as_ref());
@@ -3089,25 +3431,30 @@ mod ecdsa_digest {
 
         #[test]
         fn theirs_verify_ours(message in vec(any::<u8>(), 0..300)) {
-            let cases: [(_, _, &'static theirs::EcdsaVerificationAlgorithm); 14] = [
-                (&sign::P256_SHA256_ASN1, &SHA256, &theirs::ECDSA_P256_SHA256_ASN1),
-                (&sign::P256_SHA256_ASN1, &SHA384, &theirs::ECDSA_P256_SHA384_ASN1),
-                (&sign::P256_SHA256_ASN1, &SHA512, &theirs::ECDSA_P256_SHA512_ASN1),
-                (&sign::P256_SHA256_FIXED, &SHA256, &theirs::ECDSA_P256_SHA256_FIXED),
-                (&sign::P384_SHA384_ASN1, &SHA256, &theirs::ECDSA_P384_SHA256_ASN1),
-                (&sign::P384_SHA384_ASN1, &SHA384, &theirs::ECDSA_P384_SHA384_ASN1),
-                (&sign::P384_SHA384_ASN1, &SHA512, &theirs::ECDSA_P384_SHA512_ASN1),
-                (&sign::P384_SHA384_FIXED, &SHA384, &theirs::ECDSA_P384_SHA384_FIXED),
-                (&sign::P521_SHA512_ASN1, &SHA256, &theirs::ECDSA_P521_SHA256_ASN1),
-                (&sign::P521_SHA512_ASN1, &SHA384, &theirs::ECDSA_P521_SHA384_ASN1),
-                (&sign::P521_SHA512_ASN1, &SHA512, &theirs::ECDSA_P521_SHA512_ASN1),
-                (&sign::P521_SHA512_FIXED, &SHA256, &theirs::ECDSA_P521_SHA256_FIXED),
-                (&sign::P521_SHA512_FIXED, &SHA384, &theirs::ECDSA_P521_SHA384_FIXED),
-                (&sign::P521_SHA512_FIXED, &SHA512, &theirs::ECDSA_P521_SHA512_FIXED),
+            type Oracle = Option<fn() -> Box<dyn crate::oracle::Nist>>;
+            let p256: Oracle = Some(|| Box::new(crate::oracle::p256()));
+            let p384: Oracle = Some(|| Box::new(crate::oracle::p384()));
+            let p521: Oracle = Some(|| Box::new(crate::oracle::p521()));
+            let cases: [(_, _, &'static theirs::EcdsaVerificationAlgorithm, Oracle); 14] = [
+                (&sign::P256_SHA256_ASN1, &SHA256, &theirs::ECDSA_P256_SHA256_ASN1, None),
+                (&sign::P256_SHA256_ASN1, &SHA384, &theirs::ECDSA_P256_SHA384_ASN1, None),
+                (&sign::P256_SHA256_ASN1, &SHA512, &theirs::ECDSA_P256_SHA512_ASN1, None),
+                (&sign::P256_SHA256_FIXED, &SHA256, &theirs::ECDSA_P256_SHA256_FIXED, p256),
+                (&sign::P384_SHA384_ASN1, &SHA256, &theirs::ECDSA_P384_SHA256_ASN1, None),
+                (&sign::P384_SHA384_ASN1, &SHA384, &theirs::ECDSA_P384_SHA384_ASN1, None),
+                (&sign::P384_SHA384_ASN1, &SHA512, &theirs::ECDSA_P384_SHA512_ASN1, None),
+                (&sign::P384_SHA384_FIXED, &SHA384, &theirs::ECDSA_P384_SHA384_FIXED, p384),
+                (&sign::P521_SHA512_ASN1, &SHA256, &theirs::ECDSA_P521_SHA256_ASN1, None),
+                (&sign::P521_SHA512_ASN1, &SHA384, &theirs::ECDSA_P521_SHA384_ASN1, None),
+                (&sign::P521_SHA512_ASN1, &SHA512, &theirs::ECDSA_P521_SHA512_ASN1, None),
+                (&sign::P521_SHA512_FIXED, &SHA256, &theirs::ECDSA_P521_SHA256_FIXED, p521),
+                (&sign::P521_SHA512_FIXED, &SHA384, &theirs::ECDSA_P521_SHA384_FIXED, p521),
+                (&sign::P521_SHA512_FIXED, &SHA512, &theirs::ECDSA_P521_SHA512_FIXED, p521),
             ];
-            for (signing, hash, theirs) in cases {
+            for (signing, hash, theirs, oracle) in cases {
                 let ours = ecdsa::KeyPair::generate(signing).unwrap();
-                let signature = ours.sign_digest(&digest::digest(hash, &message)).unwrap();
+                let digest = digest::digest(hash, &message);
+                let signature = ours.sign_digest(&digest).unwrap();
                 let public_key = ours.public_key();
                 let verifier = UnparsedPublicKey::new(theirs, public_key.as_ref());
                 prop_assert!(
@@ -3115,6 +3462,13 @@ mod ecdsa_digest {
                     "{:?} {:?}", signing, hash
                 );
                 prop_assert!(verifier.verify(b"other", signature.as_ref()).is_err());
+
+                // The independent oracle takes fixed-width signatures.
+                if let Some(oracle) = oracle.map(|oracle| oracle()) {
+                    prop_assert!(oracle.verify(public_key.as_ref(), digest.as_ref(), signature.as_ref()));
+                    let other = digest::digest(hash, b"other");
+                    prop_assert!(!oracle.verify(public_key.as_ref(), other.as_ref(), signature.as_ref()));
+                }
             }
         }
 

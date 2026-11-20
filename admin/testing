@@ -12,7 +12,8 @@
 #   Wycheproof and CAVP file the tests load is named in the table;
 # - every row with a constant-time check names a zeroing test, or says why not;
 # - every row names its independent oracle, or says why it has none, and
-#   every crate named there in backticks is one of rind's dev-dependencies;
+#   every name there in backticks is one of rind's dev-dependencies, or, with
+#   a slash, a file in the repository;
 # - every function, fuzz target, and vector file the table names exists;
 # - every other fuzz target is an adapter's, named on the adapters line.
 #
@@ -174,7 +175,10 @@ for row in rows:
     if not row[ORACLE]:
         errors.append(f"{row['Primitive']}: names no independent oracle, nor says why")
     for token in re.findall(r"`([^`]+)`", row[ORACLE]):
-        if token not in dev_dependencies:
+        if "/" in token:
+            if not (ROOT / token).is_file():
+                errors.append(f"{row['Primitive']}, {ORACLE}: no file `{token}`")
+        elif token not in dev_dependencies:
             errors.append(f"{row['Primitive']}, {ORACLE}: `{token}` is not a dev-dependency of rind")
     for column in COLUMNS[2:]:
         if column == ORACLE:
