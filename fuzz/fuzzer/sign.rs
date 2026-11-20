@@ -112,6 +112,8 @@ struct EcdsaCase {
     ours: &'static ecdsa::SigningAlgorithm,
     digest: Option<&'static rind::digest::Algorithm>,
     theirs: &'static theirs::EcdsaVerificationAlgorithm,
+    /// Whether `ours` signs in DER, rather than fixed-width.
+    der: bool,
 }
 
 /// aws-lc-rs's agreement algorithm on a curve, which computes a scalar's
@@ -129,6 +131,7 @@ macro_rules! ecdsa {
             ours: &ecdsa::sign::$ours,
             digest: $digest,
             theirs: &theirs::$theirs,
+            der: matches!(stringify!($ours).as_bytes(), [.., b'A', b'S', b'N', b'1']),
         }
     };
 }
@@ -274,7 +277,7 @@ fn ecdsa(case: &EcdsaCase, scalar: &mut [u8; 66], message: &[u8]) {
         },
     };
     let digest = digest::digest(hash, message);
-    let fixed = der::fixed_width(signature.as_ref(), scalar_len).unwrap();
+    let fixed = der::fixed_width(signature.as_ref(), scalar_len, case.der).unwrap();
     assert!(
         oracle.verify(point.as_ref(), digest.as_ref(), &fixed),
         "the oracle refused rind's signature"

@@ -398,18 +398,18 @@ fn independent(selector: u8) -> Option<Independent> {
             <&[u8; 32]>::try_from(key)
                 .is_ok_and(|key| oracle::ed25519::verify(key, message, signature))
         },
-        1 => |k, m, s| nist::<Sha256>(&oracle::p256(), 32, k, m, s),
-        2 => |k, m, s| nist::<Sha384>(&oracle::p256(), 32, k, m, s),
-        3 => |k, m, s| nist::<Sha512>(&oracle::p256(), 32, k, m, s),
-        4 => |k, m, s| nist::<Sha256>(&oracle::p384(), 48, k, m, s),
-        5 => |k, m, s| nist::<Sha384>(&oracle::p384(), 48, k, m, s),
-        6 => |k, m, s| nist::<Sha512>(&oracle::p384(), 48, k, m, s),
-        7 => |k, m, s| nist::<Sha256>(&oracle::p521(), 66, k, m, s),
-        8 => |k, m, s| nist::<Sha384>(&oracle::p521(), 66, k, m, s),
-        9 => |k, m, s| nist::<Sha512>(&oracle::p521(), 66, k, m, s),
-        10 => |k, m, s| nist::<Sha256>(&oracle::p256(), 32, k, m, s),
-        11 => |k, m, s| nist::<Sha384>(&oracle::p384(), 48, k, m, s),
-        12 => |k, m, s| nist::<Sha512>(&oracle::p521(), 66, k, m, s),
+        1 => |k, m, s| nist::<Sha256>(&oracle::p256(), 32, true, k, m, s),
+        2 => |k, m, s| nist::<Sha384>(&oracle::p256(), 32, true, k, m, s),
+        3 => |k, m, s| nist::<Sha512>(&oracle::p256(), 32, true, k, m, s),
+        4 => |k, m, s| nist::<Sha256>(&oracle::p384(), 48, true, k, m, s),
+        5 => |k, m, s| nist::<Sha384>(&oracle::p384(), 48, true, k, m, s),
+        6 => |k, m, s| nist::<Sha512>(&oracle::p384(), 48, true, k, m, s),
+        7 => |k, m, s| nist::<Sha256>(&oracle::p521(), 66, true, k, m, s),
+        8 => |k, m, s| nist::<Sha384>(&oracle::p521(), 66, true, k, m, s),
+        9 => |k, m, s| nist::<Sha512>(&oracle::p521(), 66, true, k, m, s),
+        10 => |k, m, s| nist::<Sha256>(&oracle::p256(), 32, false, k, m, s),
+        11 => |k, m, s| nist::<Sha384>(&oracle::p384(), 48, false, k, m, s),
+        12 => |k, m, s| nist::<Sha512>(&oracle::p521(), 66, false, k, m, s),
         13 => |k, m, s| pkcs1::<Sha256>(k, m, s),
         14 => |k, m, s| pkcs1::<Sha384>(k, m, s),
         15 => |k, m, s| pkcs1::<Sha512>(k, m, s),
@@ -433,26 +433,30 @@ fn independent(selector: u8) -> Option<Independent> {
     })
 }
 
-/// Whether the curve's oracle verifies an ECDSA signature, in either
-/// encoding, over the message's digest under `D`.
+/// Whether the curve's oracle verifies an ECDSA signature, DER-encoded when
+/// `der` and fixed-width otherwise, over the message's digest under `D`.
 fn nist<D: sha2::Digest>(
     oracle: &impl Nist,
     len: usize,
+    der: bool,
     key: &[u8],
     message: &[u8],
     signature: &[u8],
 ) -> bool {
-    der::fixed_width(signature, len)
+    der::fixed_width(signature, len, der)
         .is_some_and(|signature| oracle.verify(key, &D::digest(message), &signature))
 }
 
-/// RustCrypto's RSA key from PKCS#1 or a `SubjectPublicKeyInfo`.
+/// RustCrypto's RSA key from PKCS#1 or the PKCS#1 key inside a
+/// `SubjectPublicKeyInfo`. rind and aws-lc take the `rsaEncryption`
+/// identifier with its `NULL` parameters or none, and RustCrypto's SPKI
+/// reader only with them, so the key is taken out of the SPKI, which rind
+/// has already checked.
 fn rustcrypto_rsa(key: &[u8]) -> Option<::rsa::PublicKey> {
     use ::rsa::pkcs1::DecodeRsaPublicKey;
-    use ::rsa::pkcs8::DecodePublicKey;
     ::rsa::PublicKey::from_pkcs1_der(key)
-        .or_else(|_| ::rsa::PublicKey::from_public_key_der(key))
         .ok()
+        .or_else(|| ::rsa::PublicKey::from_pkcs1_der(der::spki_key(key)?).ok())
 }
 
 /// Whether RustCrypto verifies a PKCS#1 v1.5 signature under `D`.

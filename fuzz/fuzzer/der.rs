@@ -59,11 +59,13 @@ pub fn spki_parameters(input: &[u8]) -> bool {
         .is_some_and(|(_, _, parameters)| !matches!(parameters, [] | [0x05, 0x00]))
 }
 
-/// An ECDSA signature as `r || s`, each `len` bytes: a fixed-width one as it
-/// is, or a DER one's two integers, or `None` if it is neither.
-pub fn fixed_width(signature: &[u8], len: usize) -> Option<Vec<u8>> {
-    if signature.len() == 2 * len {
-        return Some(signature.to_vec());
+/// An ECDSA signature as `r || s`, each `len` bytes, from its algorithm's
+/// encoding: a DER one's two integers when `der`, else a fixed-width one as
+/// it is, or `None` if it is malformed. A DER signature can be `2 * len`
+/// bytes too, so the length cannot tell them apart.
+pub fn fixed_width(signature: &[u8], len: usize, der: bool) -> Option<Vec<u8>> {
+    if !der {
+        return (signature.len() == 2 * len).then(|| signature.to_vec());
     }
     let (0x30, body, []) = element(signature)? else {
         return None;
@@ -80,4 +82,17 @@ pub fn fixed_width(signature: &[u8], len: usize) -> Option<Vec<u8>> {
         count += 1;
     }
     (count == 2).then_some(fixed)
+}
+
+/// The `subjectPublicKey` of a `SubjectPublicKeyInfo`, the BIT STRING's
+/// bytes, whatever its algorithm identifier's parameters.
+pub fn spki_key(input: &[u8]) -> Option<&[u8]> {
+    let mut elements = elements(sequence(input)?);
+    let (0x30, _) = elements.next()? else {
+        return None;
+    };
+    let (0x03, [0, key @ ..]) = elements.next()? else {
+        return None;
+    };
+    Some(key)
 }
