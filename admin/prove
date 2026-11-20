@@ -32,7 +32,7 @@
 # flake's `vg` dev shell: `nix develop .#vg --command admin/prove vg`. `lean`
 # ends by testing the Lean specs the proofs trust on a fixed sample, as
 # `spec_tests` below describes; `spec-tests` runs those tests alone, which
-# the nightly does over every vector. `session` checks
+# the nightly does unsampled. `session` checks
 # nothing: it starts a HOL Light session for developing the proofs of `arch`,
 # `x86_64` or `aarch64`, which `session` below describes. Run it in the flake's
 # `prove` dev shell: `nix develop .#prove --command admin/prove`, or for the
@@ -630,7 +630,8 @@ lean_deps() {
 # vectors in `thirdparty/vectors/` and on `SPEC_TESTS_RANDOM` random inputs
 # from the seed `SPEC_TESTS_SEED`, compared with rind's output, failing on any
 # disagreement. A run samples the larger vector files and the slowest specs'
-# vectors; `SPEC_TESTS_FULL` set runs every vector, as the nightly does.
+# vectors; `SPEC_TESTS_FULL` set samples nothing, as the nightly does, and
+# runs every vector the driver's filters admit.
 spec_tests() {
     local random=${SPEC_TESTS_RANDOM:-8} seed=${SPEC_TESTS_SEED:-1} full=()
     [[ -z ${SPEC_TESTS_FULL:-} ]] || full=(full)

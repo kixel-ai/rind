@@ -9,9 +9,12 @@
 //! Each section of `cases` runs on its own thread with its own server, and
 //! its own random source, from the seed and the section's name, so a seed
 //! reproduces each section's inputs alone (`SPEC_TESTS_ONLY=<section>,...`
-//! runs only those). Without `full`, a vector file of more than `SAMPLE`
-//! cases runs every k-th, and the slowest specs run a sample of their own,
-//! as `cases` says of each.
+//! runs only those). The exceptions, which no seed reproduces, are what rind
+//! offers no seeded API for and draws from its own generator: RSA and ML-KEM
+//! keys, rind's ML-KEM encapsulations, and rind's ECDSA nonces. Without `full`, a vector
+//! file of more than `SAMPLE` cases runs every k-th, and the slowest specs
+//! run a sample of their own, as `cases` says of each; with it, every vector
+//! the filters in `cases` admit runs.
 
 mod cases;
 
@@ -106,7 +109,7 @@ const NO_RANDOM: &[&str] = &[
 
 /// The spec server, a child process answering a line per request.
 struct Server {
-    _child: Child,
+    child: Child,
     input: BufWriter<ChildStdin>,
     output: BufReader<ChildStdout>,
 }
@@ -121,9 +124,23 @@ impl Server {
         let input = BufWriter::new(child.stdin.take().unwrap());
         let output = BufReader::new(child.stdout.take().unwrap());
         Self {
-            _child: child,
+            child,
             input,
             output,
+        }
+    }
+
+    /// Closes the server's input, which ends it, and fails unless it exits
+    /// cleanly.
+    fn finish(self) -> Option<String> {
+        let Self {
+            mut child, input, ..
+        } = self;
+        drop(input);
+        match child.wait() {
+            Ok(status) if status.success() => None,
+            Ok(status) => Some(format!("the server exited with {status}")),
+            Err(e) => Some(format!("the server: {e}")),
         }
     }
 
@@ -329,10 +346,20 @@ fn main() -> ExitCode {
     }
     let server = PathBuf::from(&args[1]);
     let vectors = PathBuf::from(&args[2]);
-    let seed: u64 = args[3].parse().expect("spec-tests: seed");
-    let random: usize = args[4].parse().expect("spec-tests: random cases");
+    let (Ok(seed), Ok(random)) = (args[3].parse::<u64>(), args[4].parse::<usize>()) else {
+        eprintln!("spec-tests: the seed and random cases must be numbers");
+        return ExitCode::from(2);
+    };
     let full = args.len() == 6;
     let only = std::env::var("SPEC_TESTS_ONLY").ok();
+    if let Some(o) = &only
+        && let Some(bad) = o
+            .split(',')
+            .find(|o| !cases::SECTIONS.iter().any(|(name, _)| name == o))
+    {
+        eprintln!("spec-tests: no section {bad:?} in SPEC_TESTS_ONLY");
+        return ExitCode::from(2);
+    }
     let sections: Vec<_> = cases::SECTIONS
         .iter()
         .filter(|(name, _)| {
@@ -375,10 +402,12 @@ fn main() -> ExitCode {
                         let start = Instant::now();
                         section(&mut run);
                         let took = start.elapsed().as_secs_f64();
+                        let mut failures = run.failures;
+                        failures.extend(run.server.finish().map(|e| format!("{name}: {e}")));
                         let report = Report {
                             counts: run.counts,
                             times: run.times,
-                            failures: run.failures,
+                            failures,
                             sources: run.sources,
                             took,
                         };
@@ -400,7 +429,7 @@ fn main() -> ExitCode {
     let mut failures = Vec::new();
     println!(
         "spec-tests: seed {seed}, {random} random cases per test{}",
-        if full { ", every vector" } else { "" }
+        if full { ", unsampled" } else { "" }
     );
     let mut ok = true;
     for (_, name, report) in reports {

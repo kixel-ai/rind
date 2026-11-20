@@ -253,19 +253,21 @@ const SHA3: &[(&str, &str, &rind::digest::Algorithm)] = &[
 /// defines them, recurses without sharing, so a block costs SHA-256 some 25
 /// ms and SHA-512 most of a second. `S2nSha256` and `S2nSha512` prove each
 /// equal to FIPS 180-4's spec, which runs on every message: this runs the
-/// s2n form on two blocks of SHA-256, and on one of SHA-512 only with
-/// `full`, beside the random messages of that length it always runs on.
-fn s2n_runs(run: &Run, op: &str, len: usize) -> bool {
+/// s2n form on two blocks of SHA-256, and on one of SHA-512, every such
+/// vector with `full` and otherwise the first, which `ran` counts, beside the
+/// random messages of that length it always runs on.
+fn s2n_runs(run: &Run, op: &str, len: usize, ran: usize) -> bool {
     if op == "sha256" {
         len < 120
     } else {
-        run.full && len < 112
+        len < 112 && (run.full || ran == 0)
     }
 }
 
 fn sha2(run: &mut Run) {
     // CAVP's byte-aligned messages, through the spec and its s2n-bignum form.
     for (file, op, _) in SHA2 {
+        let mut ran = 0;
         for kind in ["ShortMsg", "LongMsg"] {
             let rel = format!("cavp/sha2/{file}{kind}.rsp");
             for rec in records(run, &rel) {
@@ -276,8 +278,9 @@ fn sha2(run: &mut Run) {
                 let m = &rec.bytes("Msg")[..len / 8];
                 let md = rec.h("MD");
                 run.check(Vector, &rel, &[op, &hex(m)], &md);
-                if s2n_runs(run, op, m.len()) {
+                if s2n_runs(run, op, m.len(), ran) {
                     run.check(Vector, &rel, &[&format!("{op}-s2n"), &hex(m)], &md);
+                    ran += 1;
                 }
             }
         }
@@ -463,10 +466,7 @@ fn kdfs(run: &mut Run) {
         let file = format!("hkdf_{op}_test");
         for (_, t) in wycheproof(run, &file) {
             // An invalid case asks for more than 255 blocks, which the spec
-            // does not bound.
-            if !valid(&t) {
-                continue;
-            }
+            // does not bound and the server refuses.
             let size = jn(&t, "size").to_string();
             run.check(
                 Vector,
@@ -479,7 +479,11 @@ fn kdfs(run: &mut Run) {
                     &jh(&t, "info"),
                     &size,
                 ],
-                &jh(&t, "okm"),
+                &if valid(&t) {
+                    jh(&t, "okm")
+                } else {
+                    "none".to_owned()
+                },
             );
         }
         let alg = match *op {
@@ -1117,11 +1121,14 @@ fn aes_modes(run: &mut Run) {
             &["aes-cbc-encrypt", &hex(&k), &hex(&iv), &hex(&m)],
             &hex(&c),
         );
-        // A changed last block, which rind's unpadding mostly refuses.
+        // A changed last block, which rind's unpadding mostly refuses, and a
+        // byte added, which leaves a partial block both refuse.
         let mut bad = c.clone();
         let at = bad.len() - 1 - run.rng.below(16);
         bad[at] ^= 1 + run.rng.below(255) as u8;
-        for c in [c, bad] {
+        let mut long = c.clone();
+        long.push(run.rng.u64() as u8);
+        for c in [c, bad, long] {
             let mut d = c.clone();
             let want = match rind::cipher::AesCbcDecryptingKey::new(cipher_alg(k.len()), &k)
                 .unwrap()
@@ -1252,6 +1259,16 @@ fn point(bytes: &[u8], len: usize) -> Option<(String, String)> {
         .then(|| (hex(&bytes[1..1 + len]), hex(&bytes[1 + len..])))
 }
 
+/// A random key on `c` from the section's source, so the seed reproduces
+/// it: a scalar from 1 to n - 1, which `from_scalar` alone accepts.
+fn nist_key(run: &mut Run, c: &Curve) -> rind::agreement::PrivateKey {
+    loop {
+        if let Ok(key) = rind::agreement::PrivateKey::from_scalar(c.ecdh, &run.rng.bytes(c.len)) {
+            return key;
+        }
+    }
+}
+
 fn nist(run: &mut Run) {
     let rel = "cavp/ecdh/KAS_ECC_CDH_PrimitiveTest.txt";
     for rec in records(run, rel) {
@@ -1352,8 +1369,8 @@ fn nist(run: &mut Run) {
 
     for c in CURVES {
         for _ in 0..run.random {
-            let ours = rind::agreement::PrivateKey::generate(c.ecdh).unwrap();
-            let peer = rind::agreement::PrivateKey::generate(c.ecdh).unwrap();
+            let ours = nist_key(run, c);
+            let peer = nist_key(run, c);
             let d = hex(ours.to_scalar().as_ref());
             let (qx, qy) = point(ours.public_key().as_ref(), c.len).unwrap();
             run.check(
@@ -1445,7 +1462,13 @@ fn ecdsa(run: &mut Run) {
 
     for c in CURVES {
         for _ in 0..run.random {
-            let key = rind::ecdsa::KeyPair::generate(c.sign).unwrap();
+            let scalar = nist_key(run, c);
+            let key = rind::ecdsa::KeyPair::from_scalar_and_public_key(
+                c.sign,
+                scalar.to_scalar().as_ref(),
+                scalar.public_key().as_ref(),
+            )
+            .unwrap();
             let d = hex(key.to_scalar().as_ref());
             let (qx, qy) = point(key.public_key().as_ref(), c.len).unwrap();
             run.check(
@@ -1465,19 +1488,21 @@ fn ecdsa(run: &mut Run) {
                 &["ecdsa-verify", c.name, &qx, &qy, &hex(&m), &r0, &s0],
                 "1",
             );
-            // The spec's signature, from a random nonce, verifies under rind.
-            let k = hex(&run.rng.bytes(c.len));
+            // The spec's signature, from a random nonce from 1 to n - 1,
+            // verifies under rind. Only an r or s of 0, with negligible odds,
+            // would let the spec answer `none`.
+            let k = hex(nist_key(run, c).to_scalar().as_ref());
             let e = hex(rind::digest::digest(c.hash, &m).as_ref());
             let got = run.ask(Rind, &["ecdsa-sign", c.name, &d, &k, &e]);
             let public = rind::ecdsa::PublicKey::new(c.verify, key.public_key().as_ref()).unwrap();
-            if let Some((r1, s1)) = got.split_once(' ') {
-                let sig = [unhex(r1), unhex(s1)].concat();
-                if public.verify(&m, &sig).is_err() {
-                    run.fail(format!(
-                        "random: ecdsa-sign {} {d} {k} {e}\n  spec: {got}\n  rind refuses it",
-                        c.name
-                    ));
-                }
+            let ok = got.split_once(' ').is_some_and(|(r1, s1)| {
+                public.verify(&m, &[unhex(r1), unhex(s1)].concat()).is_ok()
+            });
+            if !ok {
+                run.fail(format!(
+                    "random: ecdsa-sign {} {d} {k} {e}\n  spec: {got}\n  rind refuses it",
+                    c.name
+                ));
             }
             // A changed message verifies under neither.
             let mut bad = m.clone();

@@ -1557,8 +1557,9 @@ runs a sample: a vector file of more than 400 cases runs every k-th, the
 specs too slow for that fewer (PBKDF2's 4096-iteration vectors, SymCrypt's
 ML-KEM, and s2n-bignum's SHA-512 forms, as `admin/spec-tests/src/cases.rs`
 says of each), and 8 random inputs a spec from seed 1. The `prove`
-workflow's nightly `spec-tests` job runs every vector, and 64 random inputs
-from the run's own seed.
+workflow's nightly `spec-tests` job samples nothing: it runs every vector
+the filters in `cases.rs` admit, those inside the domain each spec's
+theorems pass it, and 64 random inputs from the run's own seed.
 
 A spec Lean cannot run fast enough, or at all, runs through an executable
 twin in `Rind/SpecTest/`, proven equal to it on the inputs the proofs pass

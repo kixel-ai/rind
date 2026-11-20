@@ -305,9 +305,10 @@ jobs:
       - name: Prove
         run: nix develop .#prove --command admin/prove lean
 
-  # The spec tests over every vector, and on random inputs from the run's own
-  # seed, nightly and when dispatched; the lean job runs a fixed sample. Its
-  # own job, so the sweep does not lengthen the lean job's.
+  # The spec tests unsampled, on every vector the driver's filters admit and
+  # on random inputs from the run's own seed, nightly and when dispatched; the
+  # lean job runs a fixed sample. Its own job, so the sweep does not lengthen
+  # the lean job's.
   spec-tests:
     if: github.event_name != 'pull_request' && github.event_name != 'push'
     runs-on: ubuntu-24.04

@@ -88,7 +88,9 @@ def sha512S2n (iv : List U64) (len : Nat) (m : List Byte) : List Byte :=
   (h.flatMap BitVec.toBEBytes).take len
 
 /-- A 32-bit counter, as its decimal value. -/
-def word (s : String) : Except String (BitVec 32) := do pure (BitVec.ofNat 32 (← nat s))
+def word (s : String) : Except String (BitVec 32) := do
+  let n ← nat s
+  if n < 2 ^ 32 then pure (BitVec.ofNat 32 n) else throw s!"not a 32-bit counter: {s}"
 
 def aesAlg (key : List Byte) : Except String vale.Algorithm :=
   match key.length with
@@ -161,10 +163,17 @@ def answer (args : List String) : Except String String := do
   | ["hkdf", h, ikm, salt, info, L] =>
     let (H, B, len) ← hashOf h
     let prk := hkdfExtract (hmac H B) (← unhex salt) (← unhex ikm)
-    return hex (hkdfExpand (hmac H B) len prk (← unhex info) (← nat L))
+    let (info, L) := (← unhex info, ← nat L)
+    -- RFC 5869 bounds L at 255 blocks, past which the spec's one-byte
+    -- counter wraps.
+    if L > 255 * len then return "none"
+    return hex (hkdfExpand (hmac H B) len prk info L)
   | ["pbkdf2", h, pw, salt, c, L] =>
     let (H, B, len) ← hashOf h
-    return hex (pbkdf2 (hmac H B) len (← unhex pw) (← unhex salt) (← nat c) (← nat L))
+    let (pw, salt, c, L) := (← unhex pw, ← unhex salt, ← nat c, ← nat L)
+    -- RFC 8018 takes a positive count, and the spec would answer 0 as 1.
+    if c = 0 then return "none"
+    return hex (pbkdf2 (hmac H B) len pw salt c L)
   | ["chacha20", k, ctr, n, m] =>
     return hex (chacha20.encrypt (← unhex k) (← word ctr) (← unhex n) (← unhex m))
   | ["chacha20-s2n", k, ctr, n, m] =>
@@ -216,7 +225,10 @@ def answer (args : List String) : Except String String := do
     return hex (vale.cbcEncrypt (← aesAlg k) k (← unhex iv) (vale.pkcs7Pad (← unhex m)))
   | ["aes-cbc-decrypt", k, iv, c] =>
     let k ← unhex k
-    return opt (vale.pkcs7Unpad (vale.cbcDecrypt (← aesAlg k) k (← unhex iv) (← unhex c)))
+    let (iv, c) := (← unhex iv, ← unhex c)
+    -- The spec drops a partial last block, which rind's theorems refuse.
+    if c.length % 16 ≠ 0 then return "none"
+    return opt (vale.pkcs7Unpad (vale.cbcDecrypt (← aesAlg k) k iv c))
   | ["aes-kw-wrap", k, m] =>
     let k ← unhex k
     return hex (vale.kwAE (← aesAlg k) k (← unhex m))
@@ -254,23 +266,22 @@ def answer (args : List String) : Except String String := do
   | ["ed25519-sign", seed, m] =>
     return hex (ofU8 (signWith upstream.edPow (toU8 (← unhex seed)) (toU8 (← unhex m))))
   | ["ed25519-verify", key, m, sig] =>
-    let key ← unhex key
+    let (key, m, sig) := (← unhex key, ← unhex m, ← unhex sig)
     if key.length ≠ 32 then return "badkey"
     match decodeC (leNat (toU8 key)) with
-    | some A => return bool (verifiesWith upstream.edPow upstream.edMul A (toU8 key) (toU8 (← unhex m))
-        (toU8 (← unhex sig)))
+    | some A => return bool (verifiesWith upstream.edPow upstream.edMul A (toU8 key) (toU8 m) (toU8 sig))
     | none => return "badkey"
   | ["ed25519-small-key", key] =>
     -- Whether rind's theorems refuse `key` as of small order before verifying.
     return bool (decide (leNat (toU8 (← unhex key)) % 2 ^ 255 ∈ edSmallOrderY))
   | ["ed25519-small-order"] =>
-    -- Each listed y is of a point whose order divides 8, and they are the y
-    -- of all eight such points.
+    -- Each listed y is of a point whose order divides 8, and the distinct
+    -- ones are the y of all eight such points.
     let ok := edSmallOrderY.all fun y => [0, 2 ^ 255].any fun sign =>
       match decodeC (sign + y % p25519) with
       | some P => upstream.edPow P 8 == (0, 1)
       | none => false
-    let count := (edSmallOrderY.filter (· < p25519)).foldl (fun c y =>
+    let count := (edSmallOrderY.eraseDups.filter (· < p25519)).foldl (fun c y =>
       c + ([0, 2 ^ 255].filter fun sign => (decodeC (sign + y)).isSome).length) 0
     return bool (ok && count == 8)
   | ["x25519", k, u] =>
