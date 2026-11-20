@@ -674,6 +674,13 @@ IMPORTS_64 = [
         ],
         "inner": ["_vpaes_schedule_low_round"],
         "carries": {"vpaes_cbc_encrypt": ["vpaes_cbc_decrypt"]},
+        # The key schedule's zeroing of v0 through v7 after its last store, as
+        # for armv7's: rind wipes no temporaries (AGENTS.md), and the routine
+        # is unproven. Each line is unique to it, comment included.
+        "drops": {
+            "vpaes_schedule_core": ["// cleanup"]
+            + [f"eor v{i}.16b, v{i}.16b, v{i}.16b // vpxor %xmm{i}, %xmm{i}, %xmm{i}" for i in range(8)],
+        },
     },
     # ChaCha20-Poly1305 in one pass, with NEON.
     {
