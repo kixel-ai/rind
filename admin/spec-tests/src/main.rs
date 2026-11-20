@@ -405,6 +405,9 @@ fn main() -> ExitCode {
                         section(&mut run);
                         let took = start.elapsed().as_secs_f64();
                         let mut failures = run.failures;
+                        if run.counts.is_empty() && run.sources.is_empty() {
+                            failures.push(format!("{name}: the section ran nothing"));
+                        }
                         failures.extend(run.server.finish().map(|e| format!("{name}: {e}")));
                         let report = Report {
                             counts: run.counts,

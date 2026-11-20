@@ -922,7 +922,7 @@ fn gcm(run: &mut Run) {
             let (c, t) = (rec.h("CT"), rec.h("Tag"));
             let ok = got
                 .split_once(' ')
-                .is_some_and(|(gc, gt)| gc == c && gt.starts_with(&t));
+                .is_some_and(|(gc, gt)| gc == c && gt.len() == 32 && gt.starts_with(&t));
             if !ok {
                 run.fail(format!(
                     "{rel} {}: aes-gcm-seal {k} {iv} {a} {p}\n  spec: {got}\n  want: {c} {t}...",
@@ -1299,13 +1299,21 @@ fn point(bytes: &[u8], len: usize) -> Option<(String, String)> {
 }
 
 /// A random key on `c` from the section's source, so the seed reproduces
-/// it: a scalar from 1 to n - 1, which `from_scalar` alone accepts.
+/// it: a scalar from 1 to n - 1, which `from_scalar` alone accepts. A draw
+/// falls outside with odds under 2^-32, so 64 refusals mean rind refuses
+/// valid scalars.
 fn nist_key(run: &mut Run, c: &Curve) -> rind::agreement::PrivateKey {
-    loop {
-        if let Ok(key) = rind::agreement::PrivateKey::from_scalar(c.ecdh, &run.rng.bytes(c.len)) {
-            return key;
+    let mut last = None;
+    for _ in 0..64 {
+        match rind::agreement::PrivateKey::from_scalar(c.ecdh, &run.rng.bytes(c.len)) {
+            Ok(key) => return key,
+            Err(e) => last = Some(e),
         }
     }
+    panic!(
+        "spec-tests: rind refuses 64 random {} scalars: {last:?}",
+        c.name
+    )
 }
 
 fn nist(run: &mut Run) {
@@ -1587,14 +1595,13 @@ fn x25519(run: &mut Run) {
             &["x25519", &hex(&k), &base],
             &hex(key.public_key().as_ref()),
         );
-        if let Ok(shared) = key.agree(&u) {
-            run.check(
-                Rind,
-                "random",
-                &["x25519", &hex(&k), &hex(&u)],
-                &hex(shared.as_ref()),
-            );
-        }
+        // rind refuses exactly a peer of small order, whose shared secret
+        // the spec computes as zero.
+        let want = match key.agree(&u) {
+            Ok(shared) => hex(shared.as_ref()),
+            Err(_) => hex(&[0; 32]),
+        };
+        run.check(Rind, "random", &["x25519", &hex(&k), &hex(&u)], &want);
     }
 }
 
