@@ -201,32 +201,30 @@ def build():
     return tests, libraries
 
 
-def run(model, args, out, stop=None):
-    """Runs every test in TESTS under one model, and returns those that failed.
+def tests():
+    """Each test binary in TESTS and its package's directory."""
+    return [line.rstrip("\n").split("\t") for line in open(TESTS)]
 
-    It stops before its next binary once `stop` is set."""
+
+def run(model, exe, package, args, out):
+    """Runs one test binary under one model, and returns whether it passed."""
     name, sde, paths = model
     env = os.environ.copy()
     env.update({f"RIND_TEST_X86_{p}": str(int(p in paths)) for p in PATHS})
     # Each test's CARGO_TARGET_TMPDIR, which cargo creates before a test run.
     target = os.environ.get("CARGO_TARGET_DIR", "target")
     os.makedirs(os.path.join(target, "tmp"), exist_ok=True)
-    failed = []
-    for line in open(TESTS):
-        if stop is not None and stop.is_set():
-            break
-        exe, package = line.rstrip("\n").split("\t")
-        print(f"Running {exe} in {package} on {name}", file=out, flush=True)
-        status = subprocess.run(
+    print(f"Running {exe} in {package} on {name}", file=out, flush=True)
+    return (
+        subprocess.run(
             ["sde", "-" + sde, "--", os.path.abspath(exe)] + SKIP + args,
             cwd=package,
             env=env,
             stdout=out,
             stderr=subprocess.STDOUT,
         ).returncode
-        if status != 0:
-            failed.append(exe)
-    return failed
+        == 0
+    )
 
 
 mode = sys.argv[1]
@@ -301,37 +299,55 @@ elif mode == "test":
         tar.extractall(filter="tar")
     # The binaries hold their CARGO_MANIFEST_DIR as an absolute path, which
     # holds because x86-cpu.yml's jobs check out to the same path.
-    failed = run(model, args, sys.stdout)
+    failed = [exe for exe, package in tests() if not run(model, exe, package, args, sys.stdout)]
     if failed:
         sys.exit("Failed: " + " ".join(failed))
 elif mode == "all":
     args = sys.argv[2:]
     build()
-    # Under CHECK_FAIL_FAST, as in the merge queue, the first failure stops
-    # every model before its next binary: the group fails either way.
-    stop = threading.Event()
+    # Every model's run of every binary, from one pool, so the box stays
+    # busy until the last one ends rather than idling behind the slowest
+    # model. The largest binaries come first, and within one the newest
+    # models, which run slowest under SDE: on a Zen 3 host, Granite Rapids
+    # took six times Prescott's CPU time, and crosschecks took half the
+    # total. A binary uses about one and a half CPUs under SDE, so half as
+    # many runs as CPUs keep the host busy beside the queue's other checks.
+    jobs = [
+        (model, exe, package)
+        for exe, package in sorted(tests(), key=lambda t: -os.path.getsize(t[0]))
+        for model in reversed(MODELS)
+    ]
+    jobs.reverse()
+    # Under CHECK_FAIL_FAST, as in the merge queue, the first failure starts
+    # no more runs: the group fails either way.
+    fail_fast = bool(os.environ.get("CHECK_FAIL_FAST"))
+    lock = threading.Lock()
     failed = []
+    seconds = {name: 0.0 for name, _, _ in MODELS}
 
-    def one(model):
-        start = time.monotonic()
-        with tempfile.TemporaryFile("w+") as log:
-            exes = run(model, args, log, stop)
-            minutes = (time.monotonic() - start) / 60
-            if exes:
-                if os.environ.get("CHECK_FAIL_FAST"):
-                    stop.set()
+    def worker():
+        while True:
+            with lock:
+                if not jobs or (fail_fast and failed):
+                    return
+                model, exe, package = jobs.pop()
+            start = time.monotonic()
+            with tempfile.TemporaryFile("w+") as log:
+                passed = run(model, exe, package, args, log)
                 log.seek(0)
-                failed.append(f"{model[0]}: {' '.join(exes)}")
-                print(f"{model[0]} failed in {minutes:.1f} minutes:\n{log.read()}", flush=True)
-            else:
-                result = "stopped" if stop.is_set() else "passed"
-                print(f"{model[0]} {result} in {minutes:.1f} minutes", flush=True)
+                with lock:
+                    seconds[model[0]] += time.monotonic() - start
+                    if not passed:
+                        failed.append(f"{exe} on {model[0]}")
+                        print(log.read(), flush=True)
 
-    threads = [threading.Thread(target=one, args=(m,)) for m in MODELS]
+    threads = [threading.Thread(target=worker) for _ in range(max(1, os.cpu_count() // 2))]
     for t in threads:
         t.start()
     for t in threads:
         t.join()
+    for name, total in seconds.items():
+        print(f"{name}: {total / 60:.1f} minutes of runs")
     if failed:
         sys.exit("Failed: " + "; ".join(failed))
 else:
