@@ -1366,9 +1366,10 @@ mod reference;
 
 /// The curves' independent oracles, each sharing no code with the path rind
 /// runs on this tier: on x86_64 and aarch64, RustCrypto's NIST curves; on
-/// armv7 and the portable backend, where rind and RustCrypto both run
-/// fiat-crypto's field arithmetic, libcrux's P-256 and the textbook
-/// reference's P-384 and P-521.
+/// armv7 and the portable backend, where rind, aws-lc-rs, and RustCrypto's
+/// `p521` run fiat-crypto's field arithmetic, libcrux's P-256 and the
+/// textbook reference's P-384 and P-521. RustCrypto's `p256`, and `p384`
+/// without its optional fiat backend, would share nothing there either.
 mod oracle {
     /// ECDH and ECDSA on one NIST curve, over big-endian scalars, SEC 1
     /// points, and fixed-width signatures.

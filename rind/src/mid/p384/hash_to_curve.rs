@@ -243,8 +243,8 @@ mod tests {
             assert_eq!(ours.as_bytes()[..], theirs.to_bytes()[..]);
 
             // armv7 and the portable backend run fiat-crypto's field
-            // arithmetic, as RustCrypto and aws-lc do there, so the
-            // independent oracle is the textbook reference.
+            // arithmetic, as aws-lc does there. RustCrypto's does not, and
+            // the textbook reference checks it too.
             #[cfg(all(
                 any(rind_backend = "arm", rind_backend = "portable"),
                 not(any(miri, target_family = "wasm"))

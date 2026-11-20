@@ -104,7 +104,7 @@ rsa = { version = "0.10", features = ["pkcs1v15"] }
 # HACL*'s curves, which rind runs nowhere: the X25519 oracle on every tier,
 # Ed25519's except on the portable backend, where rind runs HACL*'s
 # SHA-512, and P-256's on armv7 and the portable backend, where rind and
-# RustCrypto both run fiat-crypto's field arithmetic.
+# aws-lc-rs both run fiat-crypto's field arithmetic.
 libcrux-curve25519 = "0.0.10"
 libcrux-ed25519 = "0.0.11"
 libcrux-p256 = { version = "0.0.10", features = ["expose-hacl"] }
