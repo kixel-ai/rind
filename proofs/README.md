@@ -1290,27 +1290,21 @@ x86_64 proofs of SHA-256's padding, the SHA-512 family, HMAC's keyed states,
 the digest, HMAC, HKDF, and PBKDF2 APIs, and ChaCha20 header protection are
 written for it with the target renamed, as for aarch64, over what differs:
 
-- `Rind/Portable/Hacl.lean`: HACL*'s SHA-256 and SHA-512 block functions,
-  which libcrux-sha2 ships as the Rust KaRaMeL prints, as the axioms
-  `sha256_update_nblocks_spec` and `sha512_update_nblocks_spec`, restating
-  HACL*'s F* theorems, and the proof of rind's loop that hands them pieces
-  under 2^31 bytes. Charon cannot translate the two functions:
-  `krml::unroll_for!` unrolls their rounds into one body whose blocks nest
-  deeper than its recursion bound.
-- `Rind/Portable/Sha512Entry.lean`: `RunsSha512`, which assumes only the
-  entry checks, as no dispatch picks a routine, and SHA-512's block function
-  in the form the SHA-512 proof takes it.
-- `Rind/Portable/ShaBlocks.lean`: `Sha256Blocks`, only the entry checks, and
-  `Sha1Blocks`, as on the other targets the contract of SHA-1's block
-  function, `low::generic::sha1`, which no proof covers here.
+- `Rind/Portable/Sha512Entry.lean`: `RunsSha512`, which assumes the entry
+  checks, as no dispatch picks a routine, and the contract of SHA-512's block
+  function, `low::generic::sha512`, aws-lc's C in Rust, which no proof covers
+  yet, in the form the SHA-512 proof takes it.
+- `Rind/Portable/ShaBlocks.lean`: `Sha256Blocks` and `Sha1Blocks`, as on the
+  other targets the entry checks and the contracts of SHA-256's and SHA-1's
+  block functions, `low::generic::sha256`, aws-lc's C in Rust, and
+  `low::generic::sha1`, which no proof covers here.
 - `Rind/Portable/Compare.lean` and `Rind/Portable/CtEqual.lean`: the
   constant-time compares behind `hmac::verify` and `pbkdf2::Secret::verify`,
   Rust here, read through raw pointers and `black_box`, so modelled by hand
   and proven, where x86_64 and aarch64 take HOL Light's theorems as axioms.
 
 `Rind/Portable/HashAxioms.lean` and `Rind/Portable/Axioms.lean` check the
-axioms each theorem rests on: HACL*'s two, and for ChaCha20 header
-protection none.
+axioms each theorem rests on: none beyond Lean's own.
 
 Every other operation the portable backend runs has no proof yet, and
 these quests prove its code, whose proofs then run on this translation:
@@ -1334,6 +1328,9 @@ these quests prove its code, whose proofs then run on this translation:
   `Rind/X86_64/RsaDispatch.lean` proves over the Montgomery products as
   hypotheses, and [signing](/quest/m4/verified/rsa-sign.md), both over
   `low/generic/mont.rs`'s products, on 64-bit limbs here;
+- SHA-256 and SHA-512: `low::generic::sha256` and `low::generic::sha512`,
+  the block functions `Sha256Blocks` and `RunsSha512` stand for here, in
+  [the portable SHA-2 quest](/quest/m4/verified/portable-sha2-lean.md);
 - SHA-1: `low::generic::sha1`, the block function `Sha1Blocks` stands for
   here, in [SHA-1's quest](/quest/m5/verified/sha1.md);
 - MD5: [its own quest](/quest/m5/verified/md5.md).
@@ -1461,7 +1458,7 @@ proof after those.
 - `admin/prove` copies the other `Rind/X86_64/` models and proofs to
   `Rind/Aarch64/` with the target renamed, and the hash, KDF, and
   header-protection ones to `Rind/Portable/`.
-- `Rind/Portable/{TypesExternal,FunsExternal,Compare,Hacl,Sha512Entry,ShaBlocks,CtEqual}.lean`:
+- `Rind/Portable/{TypesExternal,FunsExternal,Compare,Sha512Entry,ShaBlocks,CtEqual}.lean`:
   the portable backend's opaque items, its compares' hand model, and its own
   proofs, which [the portable backend](#the-portable-backend) describes.
 - `Rind/NistGroup.lean`: that the NIST curves' `nist.add` is the addition of
@@ -1531,10 +1528,6 @@ Beyond Lean's kernel:
   `processBlock_Common` as FIPS 180-4's, `Rind/S2nSha256.lean` and
   `Rind/S2nSha512.lean` transliterate s2n-bignum's SHA-256 and SHA-512 specs,
   and `Rind/S2nChaCha20Poly1305.lean` rind's HOL Light ChaCha20-Poly1305 spec.
-- On the portable backend, HACL*'s F* theorems about its SHA-256 and SHA-512
-  block functions, restated as axioms in `Rind/Portable/Hacl.lean` under the
-  same composition rule, and that the Rust libcrux-sha2 ships is the code
-  KaRaMeL printed from the F* those theorems are about.
 - That `Rind/Rsa.lean` transliterates RFC 8017's RSASSA-PKCS1-v1_5 and
   RSASSA-PSS verification.
 - That `Rind/Spec.lean`'s ChaCha20, Poly1305, and ChaCha20-Poly1305

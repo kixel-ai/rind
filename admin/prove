@@ -13,7 +13,8 @@
 # own `Pbkdf2Vg.lean`. The portable backend,
 # translated for x86_64 into `proofs/Rind/Portable/`, takes the hash, HMAC,
 # HKDF, PBKDF2, and ChaCha20 header protection proofs the same way, over
-# HACL*'s SHA-2 instead of aws-lc's. So does armv7, its header-protection model
+# its own SHA-2 block functions' contracts instead of aws-lc's assembly's. So
+# does armv7, its header-protection model
 # and ChaCha20 proof.
 #
 # Usage: admin/prove [bytes | hol-light [<arch>] | cosim | vg | lean | session <arch> [<file>] | key <check>]
@@ -1645,9 +1646,9 @@ extract_kdf aarch64 Aarch64 --include crate::mid::pbkdf2_vg \
 extract_armv7
 
 # The portable backend, which builds only under the cfg CI's portable jobs
-# build with, here on x86_64: the hashes, down to HACL*'s SHA-2 block
-# functions, which are opaque (see UPSTREAM.md, "Charon panics on HACL*'s
-# unrolled SHA-2"), and the Keccak-f. `proofs/Rind/Portable/Compare.lean`
+# build with, here on x86_64: the hashes, down to the SHA-2 block functions in
+# `low::generic`, which are opaque, and the Keccak-f.
+# `proofs/Rind/Portable/Compare.lean`
 # models its constant-time compares, which read through raw pointers and
 # `black_box`. The error type and `into_public`, which the other targets reach
 # through their curves, are start points of their own here.
@@ -1681,7 +1682,8 @@ sed -i '/-- BEGIN vg/,/-- END vg/d' proofs/Rind/Aarch64/Kdf/TypesExternal.lean p
 sed -i 's/^public import Rind.Aarch64.HkdfExpand$/&\npublic import Rind.Aarch64.Kdf.VgExternal/' proofs/Rind/Aarch64/Kdf/FunsExternal.lean
 # The portable backend's hash, HMAC, KDF, and header-protection proofs are the
 # x86_64 ones with the target renamed, over its own block functions' contracts
-# in `Hacl.lean` and `ShaBlocks.lean`, and its compares' proof in `CtEqual.lean`.
+# in `Sha512Entry.lean` and `ShaBlocks.lean`, and its compares' proof in
+# `CtEqual.lean`.
 mkdir -p proofs/Rind/Portable/Kdf
 for file in QuicDispatch DigestAlgorithm DigestDispatch Sha512 ChaCha20 Blockwise Sha Hmac HmacDispatch \
     HkdfExpand Kdf/TypesExternal Kdf/FunsExternal HmacApi DigestApi Hkdf Pbkdf2; do
