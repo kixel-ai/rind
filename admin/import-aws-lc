@@ -228,32 +228,6 @@ ARM_IMPORTS = [
         "constants": [],
         "routines": ["bn_mul_mont_nohw", "bn_mul8x_mont_neon"],
     },
-    {
-        "source": "chacha-armv4.S",
-        "dir": "generated-src/linux-arm/crypto/chacha",
-        "tag": "chacha",
-        "perlasm": "crypto/chacha/asm/chacha-armv4.pl",
-        "copyright": "Copyright 2016 The OpenSSL Project Authors. All Rights Reserved.",
-        "constants": [(".Lsigma:", 3)],
-        "routines": ["ChaCha20_ctr32_nohw", "ChaCha20_ctr32_neon"],
-    },
-    # Written by hand rather than generated, its routines end without `.size`
-    # and its local labels start `._`, so the whole file is kept. aws-lc keeps
-    # BoringSSL's ISC license for it.
-    {
-        "source": "poly1305_arm_asm.S",
-        "dir": "crypto/poly1305",
-        "tag": "poly1305",
-        "notice": [
-            "Public domain: the neon2 version in SUPERCOP by D. J. Bernstein and",
-            "Peter Schwabe, as BoringSSL imported it. Copyright (c) 2014, Google Inc.",
-            "SPDX-License-Identifier: ISC",
-        ],
-        "local": "._",
-        "whole": True,
-        "constants": [],
-        "routines": ["openssl_poly1305_neon2_blocks", "openssl_poly1305_neon2_addmulmod"],
-    },
 ]
 
 # Per architecture: the comment leader, and per flavor its directory, the

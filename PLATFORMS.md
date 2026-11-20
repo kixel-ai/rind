@@ -61,18 +61,19 @@ qemu. iOS devices' code is only built.
   since Sapphire Rapids, and aws-lc's dual AVX-512 RSAZ without it, as
   for the 3969- to 4032-bit keys VG's CRT does not take.
 - 32-bit `arm` from ARMv7 on (tested on `armv7-unknown-linux-gnueabihf` and
-  `armv7-linux-androideabi`) runs portable Rust instead, mostly from
-  [libcrux] (see [ALGORITHMS.md](ALGORITHMS.md)), and needs no CPU features. RSA's
+  `armv7-linux-androideabi`) runs portable Rust for the operations without
+  assembly (see [ALGORITHMS.md](ALGORITHMS.md)), and needs no CPU features. RSA's
   Montgomery multiplication runs [aws-lc]'s assembly, with NEON where the CPU
   has it. Where
   the CPU has the ARMv8 crypto extension, as most 32-bit Android devices do,
   AES, GHASH, SHA1, and SHA256 run [aws-lc]'s assembly for it instead, and
   without it AES and GHASH run aws-lc's NEON assembly where the CPU has NEON.
   Without it, `rind::cpu::has_aes_hardware()` is false, and rind-rustls and
-  rind-dimpl prefer ChaCha20-Poly1305, which is faster there: ChaCha20 runs
-  aws-lc's assembly, and so does Poly1305 where the CPU has NEON. SHA-384,
-  SHA-512, and SHA-512/256 always run aws-lc's assembly, with NEON where the
-  CPU has it, as do SHA-1 and SHA-256 without the crypto extension, and with
+  rind-dimpl prefer ChaCha20-Poly1305, which is faster there: ChaCha20 and
+  Poly1305 run rind's Rust, since stable Rust has no 32-bit Arm NEON
+  intrinsics. SHA-384, SHA-512, and SHA-512/256 always run aws-lc's assembly,
+  with NEON where the CPU has it, as do SHA-1 and SHA-256 without the crypto
+  extension, and with
   NEON, X25519's shared secret runs [BoringSSL]'s assembly. SHA-3's, ML-KEM's,
   and ML-DSA's Keccak-f runs [OpenSSL]'s assembly, on NEON where the CPU has it.
   That assembly is A32 on every target, but `armv7-linux-androideabi` and
@@ -265,7 +266,6 @@ family since 2004, and of some AMD cores.
 [mlkem-native]: https://github.com/pq-code-package/mlkem-native
 [verified-garbage]: https://github.com/pyca/verified-garbage
 [mldsa-native]: https://github.com/pq-code-package/mldsa-native
-[libcrux]: https://github.com/cryspen/libcrux
 [aws-lc]: https://github.com/aws/aws-lc
 [BoringSSL]: https://boringssl.googlesource.com/boringssl
 [OpenSSL]: https://github.com/openssl/openssl

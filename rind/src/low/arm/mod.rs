@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
-//! 32-bit ARM: the portable backend, with aws-lc's assembly for ChaCha20,
-//! SHA-512, and RSA's Montgomery multiplication, for AES, GHASH, Poly1305,
-//! and X25519 where the CPU has NEON, and for the ARMv8 crypto extension
-//! where the CPU has it, and OpenSSL's for Keccak-f.
+//! 32-bit ARM: the portable ChaCha20 and Poly1305 bodies, with aws-lc's
+//! assembly for SHA-1, SHA-256, SHA-512, and RSA's Montgomery multiplication
+//! (the ARMv8 crypto extension where the CPU has it), for AES and GHASH where
+//! the CPU has NEON, BoringSSL's for X25519 where the CPU has NEON, and
+//! OpenSSL's for Keccak-f.
 
 /// The symbol for an aws-lc routine, qualified by rind's version so two
 /// semver-incompatible copies of rind can link into one binary.
@@ -27,7 +28,6 @@ pub(crate) mod aes_cbc;
 pub(crate) mod aes_ctr;
 pub(crate) mod aesv8_armx;
 pub(crate) mod chacha20;
-mod chacha_armv4;
 pub(crate) mod cpu;
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
@@ -38,6 +38,5 @@ pub(crate) mod ghashv8_armx;
 pub(crate) mod keccak1600_armv4;
 pub(crate) mod mont;
 pub(crate) mod poly1305;
-mod poly1305_arm;
 pub(crate) mod sha_armv4;
 pub(crate) mod vpaes_armv7;

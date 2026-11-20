@@ -1,44 +1,44 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
-//! SHA-1 on rind's portable code in `generic`, as armv7 runs it without the
-//! crypto extension, and the SHA-2 family on HACL*'s verified
-//! `Hacl_Hash_SHA2`, as libcrux-sha2 ships it. HACL*'s SHA-256 took 0.67-0.93
-//! of `generic`'s time at 16 KB on x86_64.
-//!
-//! Two exceptions are for small instruction caches, which HACL*'s unrolled
-//! bodies (about 12 KiB for SHA-256, 47 KiB for SHA-512 in 32-bit codegen)
-//! miss. On 32-bit microcontrollers (ESP-IDF or no OS), SHA-384/512 is the
-//! rolled loop in `generic::sha512`: on a Seeed XIAO ESP32-S3 it took about
-//! 0.033 of HACL*'s time. Hosted 32-bit targets keep HACL*, which took
-//! 0.71-0.78 of the rolled loop's time on i686. On ESP-IDF Xtensa, SHA-256
-//! is rind's own unproven compression in `sha256_iram`, run from internal
-//! RAM, at about 0.65-0.74 of HACL*'s time from flash on that board from
-//! 1200 B to 16 KB. Host tests call that body by name, on its Rust
-//! fallbacks, and ship HACL* in its place.
-
-#[cfg(any(not(all(target_arch = "xtensa", target_os = "espidf")), test))]
-use libcrux_sha2::hacl::sha256_update_nblocks;
-#[cfg(not(all(
-    not(target_pointer_width = "64"),
-    any(target_os = "espidf", target_os = "none")
-)))]
-use libcrux_sha2::hacl::sha512_update_nblocks;
+//! SHA-1 and SHA-256 on rind's portable code in `generic`, as armv7 runs
+//! SHA-1 without the crypto extension. On ESP-IDF Xtensa, SHA-256 is rind's
+//! own FIPS 180-4 compression in `sha256_iram`: sixteen rounds unrolled, the
+//! schedule body run three times, placed in internal RAM. Nothing proves
+//! that body. A fully rolled SHA-256 was slower in IRAM on an ESP32-S3,
+//! which is why it is unrolled by sixteen. Measured there at `3aaa3c6a`,
+//! long SHA-256 takes about 0.76× the time of the previous HACL* body placed
+//! in IRAM and about 0.65–0.74× main. The sha2 image's block symbol is
+//! 4,412 bytes and `.iram0.text` is 4,516 bytes above main. A standalone
+//! object probe of the same tree is smaller (4,256-byte block, 4,357 bytes
+//! of IRAM sections) and is not that firmware image. Other portable targets
+//! ship `generic::sha256` and do not link the IRAM body. Xtensa does not
+//! link `generic::sha256` beside it: a second compressor made long hashes
+//! slower on that chip. Host tests
+//! compile the IRAM body and call it directly, on the Rust `rotate_right`
+//! and `from_be_bytes` fallbacks rather than the Xtensa asm. SHA-384/512
+//! unrolls `generic::sha512` when the pointer is 64 bits and rolls it when
+//! the pointer is 32 bits. The unrolled form is about 47 KiB on a 32-bit
+//! pointer and misses a 16 KiB instruction cache. The measured ratio against
+//! aws-lc's C is the portable SHA-2 decision in `benchmarks/gaps.toml`.
 
 pub(crate) use crate::low::generic::sha1::sha1_compress_blocks;
-
-/// HACL* takes a 32-bit length, so longer input goes in pieces of whole
-/// blocks below it. ESP-IDF Xtensa calls HACL* for neither hash.
-#[cfg_attr(all(target_arch = "xtensa", target_os = "espidf"), allow(dead_code))]
-const PIECE: usize = 1 << 31;
+pub(crate) use crate::low::generic::sha512::sha512_compress_blocks;
 
 // The IRAM body is what ESP-IDF Xtensa ships. Other builds compile it only
-// for the tests below, which call it by name, so their `cargo test` and
-// ctgrind still run the HACL* SHA-256 they ship.
+// for the tests below, which call it by name. `sha256_compress_blocks` does
+// not, so a portable `cargo test` still runs `generic::sha256`, and
+// ctgrind's portable job checks that body.
 #[cfg(any(all(target_arch = "xtensa", target_os = "espidf"), test))]
 #[path = "sha256_iram.rs"]
 mod iram;
 
 /// Compresses whole 64-byte `blocks` into `state`.
+///
+/// `generic::sha256` on every portable target except ESP-IDF Xtensa, which
+/// runs the 16-round body in `sha256_iram` from internal RAM. Xtensa does
+/// not also link `generic::sha256`: on an ESP32-S3 a second compressor made
+/// long hashes slower. Nothing proves the IRAM body. The predicate is the
+/// target, not `test`: a host test of this function runs `generic::sha256`.
 pub(crate) fn sha256_compress_blocks(state: &mut [u32; 8], blocks: &[u8]) {
     assert!(blocks.len().is_multiple_of(64));
     #[cfg(all(target_arch = "xtensa", target_os = "espidf"))]
@@ -47,9 +47,7 @@ pub(crate) fn sha256_compress_blocks(state: &mut [u32; 8], blocks: &[u8]) {
     }
     #[cfg(not(all(target_arch = "xtensa", target_os = "espidf")))]
     {
-        for piece in blocks.chunks(PIECE) {
-            sha256_update_nblocks(piece.len() as u32, piece, state);
-        }
+        crate::low::generic::sha256::sha256_compress_blocks(state, blocks);
     }
 }
 
@@ -73,30 +71,6 @@ pub(crate) fn sha256_finish(state: &[u32; 8], message: &[u8], length: [u8; 8]) -
     crate::low::sha256_digest(&h)
 }
 
-/// Compresses whole 128-byte `blocks` into `state`.
-pub(crate) fn sha512_compress_blocks(state: &mut [u64; 8], blocks: &[u8]) {
-    assert!(blocks.len().is_multiple_of(128));
-    // The rolled loop on 32-bit microcontrollers, as the module comment
-    // says. The pointer width, not `rind_limb`, is the switch: HACL*'s size
-    // is a property of the 32-bit codegen.
-    #[cfg(all(
-        not(target_pointer_width = "64"),
-        any(target_os = "espidf", target_os = "none")
-    ))]
-    {
-        crate::low::generic::sha512::sha512_compress_blocks(state, blocks);
-    }
-    #[cfg(not(all(
-        not(target_pointer_width = "64"),
-        any(target_os = "espidf", target_os = "none")
-    )))]
-    {
-        for piece in blocks.chunks(PIECE) {
-            sha512_update_nblocks(piece.len() as u32, piece, state);
-        }
-    }
-}
-
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
@@ -110,7 +84,7 @@ mod tests {
     ];
 
     /// The IRAM body, with the same padding `sha256_finish` uses. Host tests
-    /// call this rather than `sha256_finish`, which stays on HACL* off Xtensa.
+    /// call this by name. Off Xtensa, `sha256_finish` runs `generic::sha256`.
     fn iram_digest(message: &[u8]) -> [u8; 32] {
         let bits = (message.len() as u64).checked_mul(8).unwrap();
         let mut state = IV;
@@ -157,7 +131,7 @@ mod tests {
         // FIPS 180-4 SHA-256: the empty message, "abc", and the 56-byte
         // message whose padding fills a second block. The message is secret
         // so ctgrind checks this IRAM body. Host builds compile it only in
-        // tests and do not ship it in place of HACL*.
+        // tests and do not ship it in place of `generic::sha256`.
         let cases: [(&[u8], &str); 3] = [
             (
                 b"",
@@ -212,12 +186,9 @@ mod tests {
                 }
                 let mut generic = state;
                 crate::low::generic::sha256::sha256_compress_blocks(&mut generic, input);
-                let mut hacl = state;
-                sha256_update_nblocks(input.len() as u32, input, &mut hacl);
                 let got = ct::into_public(got);
                 assert_eq!(got, ct::into_public(split), "split {case}, {count}");
                 assert_eq!(got, ct::into_public(generic), "generic {case}, {count}");
-                assert_eq!(got, ct::into_public(hacl), "HACL* {case}, {count}");
             }
         }
     }
@@ -227,7 +198,8 @@ mod tests {
     fn iram_digest_matches_aws_lc() {
         // Both padding boundaries and updates across them go through the
         // IRAM body, with a secret message. Off Xtensa the production
-        // finish stays on HACL*, so this calls the IRAM driver by name.
+        // finish stays on `generic::sha256`, so this calls the IRAM driver
+        // by name.
         let message: [u8; 1200] = core::array::from_fn(|i| i.wrapping_mul(197) as u8);
         ct::secret_slice(&message);
         for len in [

@@ -12,9 +12,11 @@
 # translates `mid::pbkdf2_vg`, which only its CPUs run, and proves it in its
 # own `Pbkdf2Vg.lean`. The portable backend,
 # translated for x86_64 into `proofs/Rind/Portable/`, takes the hash, HMAC,
-# HKDF, PBKDF2, and ChaCha20 header protection proofs the same way, over
-# HACL*'s SHA-2 instead of aws-lc's. So does armv7, its header-protection model
-# and ChaCha20 proof.
+# HKDF, PBKDF2, and ChaCha20 header protection proofs the same way, over the
+# contracts in `ShaBlocks.lean` and `Sha512Entry.lean`. So does armv7, its
+# header-protection model and ChaCha20 proof. `generic::sha256` and
+# `generic::sha512` stay opaque until
+# quest/m4/verified/rolled-sha2-esp.md proves them.
 #
 # Usage: admin/prove [bytes | hol-light [<arch>] | cosim | vg | lean | session <arch> [<file>] | key <check>]
 #
@@ -1645,12 +1647,14 @@ extract_kdf aarch64 Aarch64 --include crate::mid::pbkdf2_vg \
 extract_armv7
 
 # The portable backend, which builds only under the cfg CI's portable jobs
-# build with, here on x86_64: the hashes, down to HACL*'s SHA-2 block
-# functions, which are opaque (see UPSTREAM.md, "Charon panics on HACL*'s
-# unrolled SHA-2"), and the Keccak-f. `proofs/Rind/Portable/Compare.lean`
-# models its constant-time compares, which read through raw pointers and
-# `black_box`. The error type and `into_public`, which the other targets reach
-# through their curves, are start points of their own here.
+# build with, here on x86_64: the hashes, down to `generic::sha256` and
+# `generic::sha512`. Both stay opaque with the rest of
+# `crate::low`, since this pass does not `--include` them, until
+# quest/m4/verified/rolled-sha2-esp.md proves them. The Keccak-f is included.
+# `proofs/Rind/Portable/Compare.lean` models its constant-time compares, which
+# read through raw pointers and `black_box`. The error type and `into_public`,
+# which the other targets reach through their curves, are start points of
+# their own here.
 portable_cfg='--cfg rind_portable --cfg curve25519_dalek_backend="serial"'
 portable_target=$prove_target-portable
 CARGO_TARGET_DIR=$portable_target RUSTFLAGS=$portable_cfg extract x86_64 Portable "${hashes[@]}" --include crate::low::portable::sha \
@@ -1681,7 +1685,8 @@ sed -i '/-- BEGIN vg/,/-- END vg/d' proofs/Rind/Aarch64/Kdf/TypesExternal.lean p
 sed -i 's/^public import Rind.Aarch64.HkdfExpand$/&\npublic import Rind.Aarch64.Kdf.VgExternal/' proofs/Rind/Aarch64/Kdf/FunsExternal.lean
 # The portable backend's hash, HMAC, KDF, and header-protection proofs are the
 # x86_64 ones with the target renamed, over its own block functions' contracts
-# in `Hacl.lean` and `ShaBlocks.lean`, and its compares' proof in `CtEqual.lean`.
+# in `ShaBlocks.lean` and `Sha512Entry.lean`, and its compares' proof in
+# `CtEqual.lean`.
 mkdir -p proofs/Rind/Portable/Kdf
 for file in QuicDispatch DigestAlgorithm DigestDispatch Sha512 ChaCha20 Blockwise Sha Hmac HmacDispatch \
     HkdfExpand Kdf/TypesExternal Kdf/FunsExternal HmacApi DigestApi Hkdf Pbkdf2; do

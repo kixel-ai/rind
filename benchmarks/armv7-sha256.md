@@ -5,6 +5,12 @@ assembly: `sha256_block_data_order_neon` and `sha1_block_data_order_neon`
 where the CPU has NEON, and their `_nohw` integer twins otherwise. Every
 assembly row beat the Rust it replaced, Graviola's SHA-256 and rind's SHA-1.
 
+rind's own `generic::sha256` (a rolled and register-renamed Rust body) and
+`generic::sha512` were also measured against this assembly on a Raspberry Pi 2B
+(Cortex-A7): without the crypto extension, SHA-256 took 1.26 times aws-lc's
+NEON routine's time and SHA-512 took 2.14 times, each over 1.2 times from 1200 B
+up, so armv7 keeps the assembly for both.
+
 ## Assembly against Rust
 
 Measured on 2026-11-11 on GitHub's `ubuntu-24.04-arm` Neoverse-N2 runner,
