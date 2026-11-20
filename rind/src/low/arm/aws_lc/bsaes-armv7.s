@@ -1183,12 +1183,6 @@ _bsaes_key_convert:
 	vst1.8	{{q0}}, [r1]!		@ write output
 
 .Lbsaes_cbc_dec_done:
-	vmov.i32	q0, #0
-	vmov.i32	q1, #0
-.Lbsaes_cbc_dec_bzero:@ wipe key schedule [if any]
-	vstmia	sp!, {{q0,q1}}
-	cmp	sp, r9
-	bne	.Lbsaes_cbc_dec_bzero
 
 	mov	sp, r9
 	add	sp, #0x10			@ add sp,r9,#0x10 is no good for thumb
@@ -1326,12 +1320,6 @@ _bsaes_key_convert:
 	vst1.8	{{q2}}, [r1]!
 
 .Lbsaes_ctr_enc_done:
-	vmov.i32	q0, #0
-	vmov.i32	q1, #0
-.Lbsaes_ctr_enc_bzero:@ wipe key schedule [if any]
-	vstmia	sp!, {{q0,q1}}
-	cmp	sp, r9
-	bne	.Lbsaes_ctr_enc_bzero
 
 	mov	sp, r9
 	add	sp, #0x10		@ add sp,r9,#0x10 is no good for thumb

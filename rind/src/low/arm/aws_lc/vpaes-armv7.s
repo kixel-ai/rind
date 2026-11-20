@@ -577,15 +577,6 @@ _vpaes_schedule_core:
 	bl	_vpaes_schedule_transform	@ output transform
 	vst1.64	{{q0}}, [r2]			@ vmovdqu	%xmm0,	(%rdx)		# save last key
 
-	@ cleanup
-	veor	q0, q0, q0		@ vpxor	%xmm0,	%xmm0,	%xmm0
-	veor	q1, q1, q1		@ vpxor	%xmm1,	%xmm1,	%xmm1
-	veor	q2, q2, q2		@ vpxor	%xmm2,	%xmm2,	%xmm2
-	veor	q3, q3, q3		@ vpxor	%xmm3,	%xmm3,	%xmm3
-	veor	q4, q4, q4		@ vpxor	%xmm4,	%xmm4,	%xmm4
-	veor	q5, q5, q5		@ vpxor	%xmm5,	%xmm5,	%xmm5
-	veor	q6, q6, q6		@ vpxor	%xmm6,	%xmm6,	%xmm6
-	veor	q7, q7, q7		@ vpxor	%xmm7,	%xmm7,	%xmm7
 	ldmia	sp!, {{r3,pc}}		@ return
 .size	_vpaes_schedule_core,.-_vpaes_schedule_core
 .type	_vpaes_schedule_192_smear,%function
