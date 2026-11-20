@@ -1279,7 +1279,10 @@ fn sample_poly_cbd2<'a>(
             _ => low::mlkem_shake256_8x(&bufs, &mut samples, count, shake256_fours),
         }
         #[cfg(not(rind_backend = "x86_64"))]
-        shake256_fours(&bufs, &mut samples, count);
+        {
+            let _ = k;
+            shake256_fours(&bufs, &mut samples, count);
+        }
 
         for (sample, poly) in samples.iter().zip(batch.into_iter().flatten()) {
             sample_cbd2(sample, poly);
