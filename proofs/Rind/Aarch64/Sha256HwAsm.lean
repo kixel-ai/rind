@@ -12,8 +12,8 @@ open VG VG.AArch64 Rind.AArch64 Rind.AArch64.Sha256Hw rind.spec
 `sha256_block_data_order_hw_correct`: the routine
 `RindIsa/AArch64/Sha256Hw.lean` gives as `prog`, which `admin/prove lean`
 checks is the machine code of rind's naked function
-`low::aarch64::sha256::sha256_block_data_order_hw` as rind's release build
-emits it, run in rind's extension of VG's AArch64 model
+`low::aarch64::sha256::sha256_block_data_order_hw` as rind's Linux release
+build emits it, run in rind's extension of VG's AArch64 model
 (`RindIsa/AArch64.lean`) from a state `Pre` holds of, terminates in one that
 `Post` relates it to: the state's eight words become s2n-bignum's
 `sha256_hash_blocks` of the blocks, as `SHA256_HW_SUBROUTINE_CORRECT`, the
@@ -742,10 +742,13 @@ def tableR (s : Rind.AArch64.State) : Region := ⟨s.vg.syms kName, 256⟩
 /-- The 16 bytes below the stack pointer the routine saves `x29` and `x30` to. -/
 def frameR (s : Rind.AArch64.State) : Region := ⟨s.vg.sp - 16, 16⟩
 
-/-- `SHA256_HW_SUBROUTINE_CORRECT`'s hypotheses: at least one block; the
-stack pointer 16-byte aligned; the routine may read the blocks and the table,
-and write the state and the frame; the frame overlaps none of the others;
-and the table holds FIPS 180-4's constants. -/
+/-- The theorem's hypotheses: at least one block; the stack pointer 16-byte
+aligned; the routine may read the blocks and the table, and write the state
+and the frame; the frame overlaps none of the others; and the table holds
+FIPS 180-4's constants. They are weaker than `SHA256_HW_SUBROUTINE_CORRECT`'s:
+the state may overlap the blocks or the table, since the routine writes it
+only after its last read, and the table is at a symbol's address, so no
+`adrp` range or code region is assumed. -/
 structure Pre (s : Rind.AArch64.State) : Prop where
   n : s.vg.gpr .x2 ≠ 0
   sp : s.vg.sp.toNat % 16 = 0

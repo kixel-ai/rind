@@ -10,13 +10,17 @@ open Aeneas Aeneas.Std Result rind.spec
 rind's Lean theorem
 `rind.aarch64.sha256hw.sha256_block_data_order_hw_correct`, in
 `Rind/Aarch64/Sha256HwAsm.lean`, which the same build checks, that rind's
-naked function `sha256_block_data_order_hw`, as rind's build emits it, run in
+naked function `sha256_block_data_order_hw`, as rind's Linux build emits it, run in
 rind's extension of pyca/verified-garbage's AArch64 model, computes
 s2n-bignum's `sha256_hash_blocks`, restated as an axiom about the Rust
 wrapper `compress_hw` around it. `admin/prove lean` checks that the program
-the theorem is about is the object code rind's release build emits, its
-instructions, relocations, and the `K256` table they read, and `admin/prove
-vg` cosimulates each of its instructions against the CPU.
+the theorem is about is the object code rind's Linux release build emits,
+its instructions, relocations, and the `K256` table they read; Apple's build
+assembles its own copy of the routine, `sha256_block_data_order_hw.apple.s`,
+which no check compares. `admin/prove vg` cosimulates each distinct
+instruction and branch condition against the CPU, or qemu where the CPU lacks
+the extension, but for the `adrp` and `add` the linker fills and the final
+`ret`, as it does VG's.
 
 The theorem's precondition holds for every call `compress_hw`'s safety
 contract allows: the routine may read `blocks` and the table and write

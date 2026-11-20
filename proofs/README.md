@@ -293,22 +293,28 @@ a `Code` program there, such as `RindIsa/AArch64/Sha256Hw.lean`'s, which
 `RindIsa/Proven.lean` lists with the Rust path of the naked function it is
 and the statics it reads. `admin/prove lean` builds `rind-asm`, which prints
 each program's machine code from the model's encoder, its `adrp` and `add`
-relocations, and each static's leading bytes, and fails unless rind's release
-build emits the same: the function's `.text`, its relocations against the
-static's `.rodata`, and the static's bytes. `admin/prove vg` cosimulates
-every instruction and branch of those programs (`Cosim/Rind.lean`, `--rind`)
-as it does VG's, comparing `x29` too.
+relocations, and each static's leading bytes, and fails unless rind's Linux
+release build emits the same: the function's `.text`, its relocations against
+the static's `.rodata`, and the static's bytes. `admin/prove vg` cosimulates
+each distinct instruction and branch condition of those programs
+(`Cosim/Rind.lean`, `--rind`) as it does VG's, comparing `x29` too, but for
+the `adrp` and `add` the linker fills and the final `ret`, as VG's are not.
 
 - `Rind/Aarch64/Sha256HwAsm.lean`: `sha256_block_data_order_hw_correct`,
   that `low::aarch64::sha256::sha256_block_data_order_hw`, aws-lc's routine
-  for the SHA-256 instructions, computes s2n-bignum's FIPS 180-4 spec,
+  for the SHA-256 instructions, run from a state its `Pre` holds of (at least
+  one block, a 16-byte-aligned stack pointer, reads of the blocks and `K256`
+  only, writes of the state and the frame only, a frame that overlaps none of
+  them, and `K256` holding FIPS 180-4's constants), computes s2n-bignum's FIPS 180-4 spec,
   `sha256_hash_blocks`, of the blocks into the state, changing no memory but
   the state and the 16-byte frame below the stack pointer and no register
   AAPCS64 makes the callee save, and returning with `x29`, `x30`, and the
   stack pointer as they were; that its trace of addresses and branches is a
   function of its arguments, the stack pointer, and the table's address
   (VG's `ConstantTime`); and that some state meets its precondition. It
-  replaces HOL Light's `SHA256_HW_SUBROUTINE_CORRECT`, whose theorem it keeps.
+  replaces HOL Light's `SHA256_HW_SUBROUTINE_CORRECT`, whose conclusions it
+  keeps under weaker hypotheses: the state may overlap the blocks or the
+  table, and the table's address is a symbol, not an `adrp` range.
 
 ## What is proven
 

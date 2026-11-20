@@ -6,8 +6,8 @@
 //! and scalar code otherwise.
 //!
 //! rind's Lean proof, `proofs/Rind/Aarch64/Sha256HwAsm.lean`, covers the
-//! routine for the SHA-256 instructions as rind's build emits it, its leakage
-//! contract included.
+//! routine for the SHA-256 instructions as rind's Linux build emits it, its
+//! leakage contract included; Apple's build assembles its own copy.
 //! The scalar routine is not formally verified: its correctness rests on its
 //! use and testing in OpenSSL, BoringSSL, and aws-lc, and on rind's tests of
 //! it against the other, CAVP, and aws-lc-rs.
