@@ -1,10 +1,11 @@
 use core::fmt;
 use core::marker::PhantomData;
 
-use rind::kem;
 use rustls::crypto::{ActiveKeyExchange, CompletedKeyExchange, SharedSecret, SupportedKxGroup};
 use rustls::ffdhe_groups::FfdheGroup;
 use rustls::{Error, NamedGroup, PeerMisbehaved, ProtocolVersion};
+
+use crate::backend::kem;
 
 /// A key exchange with one ML-KEM parameter set alone, which `group` names.
 pub(super) struct MlKem<A> {
@@ -75,6 +76,11 @@ impl<A: kem::Algorithm> SupportedKxGroup for MlKem<A> {
 
     fn usable_for_version(&self, version: ProtocolVersion) -> bool {
         version == ProtocolVersion::TLSv1_3
+    }
+
+    /// ML-KEM runs in the module under `fips`.
+    fn fips(&self) -> bool {
+        cfg!(feature = "fips")
     }
 }
 
