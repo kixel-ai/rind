@@ -99,6 +99,14 @@ def aesAlg (key : List Byte) : Except String vale.Algorithm :=
   | 32 => pure .AES_256
   | n => throw s!"no AES key of {n} bytes"
 
+/-- `b`, refused unless it is `n` bytes: the models index fixed-length
+inputs, such as a ChaCha20 key's eight words, without checking. -/
+def sized (n : Nat) (b : List Byte) : Except String (List Byte) :=
+  if b.length = n then pure b else throw s!"{b.length} bytes, not {n}"
+
+/-- The bytes of hex `s`, refused unless they are `n`. -/
+def unhexN (n : Nat) (s : String) : Except String (List Byte) := do sized n (← unhex s)
+
 def opt (o : Option (List Byte)) : String := match o with
   | some b => hex b
   | none => "none"
@@ -175,40 +183,40 @@ def answer (args : List String) : Except String String := do
     if c = 0 then return "none"
     return hex (pbkdf2 (hmac H B) len pw salt c L)
   | ["chacha20", k, ctr, n, m] =>
-    return hex (chacha20.encrypt (← unhex k) (← word ctr) (← unhex n) (← unhex m))
+    return hex (chacha20.encrypt (← unhexN 32 k) (← word ctr) (← unhexN 12 n) (← unhex m))
   | ["chacha20-s2n", k, ctr, n, m] =>
-    return hex (s2n.chacha20Encrypt (← unhex k) (← word ctr) (← unhex n) (← unhex m))
-  | ["hchacha20", k, n] => return hex (chacha20.hchacha20 (← unhex k) (← unhex n))
-  | ["poly1305", k, m] => return hex (poly1305.mac (← unhex k) (← unhex m))
-  | ["poly1305-s2n", k, m] => return hex (s2n.poly1305Mac (← unhex k) (← unhex m))
+    return hex (s2n.chacha20Encrypt (← unhexN 32 k) (← word ctr) (← unhexN 12 n) (← unhex m))
+  | ["hchacha20", k, n] => return hex (chacha20.hchacha20 (← unhexN 32 k) (← unhexN 16 n))
+  | ["poly1305", k, m] => return hex (poly1305.mac (← unhexN 32 k) (← unhex m))
+  | ["poly1305-s2n", k, m] => return hex (s2n.poly1305Mac (← unhexN 32 k) (← unhex m))
   | ["chacha20poly1305-seal", k, n, a, m] =>
-    let (c, t) := chacha20poly1305.seal (← unhex k) (← unhex n) (← unhex a) (← unhex m)
+    let (c, t) := chacha20poly1305.seal (← unhexN 32 k) (← unhexN 12 n) (← unhex a) (← unhex m)
     return s!"{hex c} {hex t}"
   | ["chacha20poly1305-open", k, n, a, c, t] =>
-    let (m, ok) := chacha20poly1305.open (← unhex k) (← unhex n) (← unhex a) (← unhex c) (← unhex t)
+    let (m, ok) := chacha20poly1305.open (← unhexN 32 k) (← unhexN 12 n) (← unhex a) (← unhex c) (← unhex t)
     return s!"{hex m} {bool ok}"
   | ["chacha20poly1305-s2n-seal", k, n, a, m] =>
-    let (c, t) := s2n.chacha20Poly1305Seal (← unhex k) (← unhex n) (← unhex a) (← unhex m)
+    let (c, t) := s2n.chacha20Poly1305Seal (← unhexN 32 k) (← unhexN 12 n) (← unhex a) (← unhex m)
     return s!"{hex c} {hex t}"
   | ["chacha20poly1305-s2n-open", k, n, a, c, t] =>
-    let (m, ok) := s2n.chacha20Poly1305Open (← unhex k) (← unhex n) (← unhex a) (← unhex c) (← unhex t)
+    let (m, ok) := s2n.chacha20Poly1305Open (← unhexN 32 k) (← unhexN 12 n) (← unhex a) (← unhex c) (← unhex t)
     return s!"{hex m} {bool ok}"
   | ["xchacha20poly1305-seal", k, n, a, m] =>
-    let (c, t) := chacha20poly1305.xseal (← unhex k) (← unhex n) (← unhex a) (← unhex m)
+    let (c, t) := chacha20poly1305.xseal (← unhexN 32 k) (← unhexN 24 n) (← unhex a) (← unhex m)
     return s!"{hex c} {hex t}"
   | ["xchacha20poly1305-open", k, n, a, c, t] =>
-    let (m, ok) := chacha20poly1305.xopen (← unhex k) (← unhex n) (← unhex a) (← unhex c) (← unhex t)
+    let (m, ok) := chacha20poly1305.xopen (← unhexN 32 k) (← unhexN 24 n) (← unhex a) (← unhex c) (← unhex t)
     return s!"{hex m} {bool ok}"
-  | ["hp-chacha20", k, s] => return hex (chacha20.headerProtectionMask (← unhex k) (← unhex s))
+  | ["hp-chacha20", k, s] => return hex (chacha20.headerProtectionMask (← unhexN 32 k) (← unhexN 16 s))
   | ["hp-aes", k, s] =>
     let k ← unhex k
-    return hex (vale.aesHeaderMask (← aesAlg k) k (← unhex s))
+    return hex (vale.aesHeaderMask (← aesAlg k) k (← unhexN 16 s))
   | ["aes-encrypt", k, b] =>
     let k ← unhex k
-    return hex (vale.aesBlock (← aesAlg k) k (← unhex b))
+    return hex (vale.aesBlock (← aesAlg k) k (← unhexN 16 b))
   | ["aes-decrypt", k, b] =>
     let k ← unhex k
-    return hex (vale.aesBlockDecrypt (← aesAlg k) k (← unhex b))
+    return hex (vale.aesBlockDecrypt (← aesAlg k) k (← unhexN 16 b))
   | ["aes-gcm-seal", k, iv, a, m] =>
     let k ← unhex k
     let (c, t) := vale.gcmEncryptC (← aesAlg k) k (← unhex iv) (← unhex m) (← unhex a)
@@ -219,13 +227,13 @@ def answer (args : List String) : Except String String := do
     return s!"{hex m} {bool ok}"
   | ["aes-ctr", k, bits, t0, d] =>
     let k ← unhex k
-    return hex (vale.aesCtr (← aesAlg k) k (← nat bits) (← unhex t0) (← unhex d))
+    return hex (vale.aesCtr (← aesAlg k) k (← nat bits) (← unhexN 16 t0) (← unhex d))
   | ["aes-cbc-encrypt", k, iv, m] =>
     let k ← unhex k
-    return hex (vale.cbcEncrypt (← aesAlg k) k (← unhex iv) (vale.pkcs7Pad (← unhex m)))
+    return hex (vale.cbcEncrypt (← aesAlg k) k (← unhexN 16 iv) (vale.pkcs7Pad (← unhex m)))
   | ["aes-cbc-decrypt", k, iv, c] =>
     let k ← unhex k
-    let (iv, c) := (← unhex iv, ← unhex c)
+    let (iv, c) := (← unhexN 16 iv, ← unhex c)
     -- The spec drops a partial last block, which rind's theorems refuse.
     if c.length % 16 ≠ 0 then return "none"
     return opt (vale.pkcs7Unpad (vale.cbcDecrypt (← aesAlg k) k iv c))
@@ -243,8 +251,8 @@ def answer (args : List String) : Except String String := do
     return opt (vale.kwpAD (← aesAlg k) k (← unhex c))
   | ["ec-mul", c, d, qx, qy] =>
     let C ← curveOf c
-    let Q := some (beNum (← unhex qx), beNum (← unhex qy))
-    if nist.OnCurve C.p C.b Q then return point C (nist.powC C.p Q (beNum (← unhex d)))
+    let (d, Q) := (beNum (← unhex d), some (beNum (← unhex qx), beNum (← unhex qy)))
+    if nist.OnCurve C.p C.b Q then return point C (nist.powC C.p Q d)
     else return "offcurve"
   | ["ec-base", c, d] =>
     let C ← curveOf c
@@ -257,9 +265,9 @@ def answer (args : List String) : Except String String := do
   | ["ecdsa-verify", c, qx, qy, m, r, s] =>
     let C ← curveOf c
     let Q := some (beNum (← unhex qx), beNum (← unhex qy))
+    let (m, r, s) := (← unhex m, beNum (← unhex r), beNum (← unhex s))
     if nist.OnCurve C.p C.b Q then
-      return bool (nist.ecdsaVerifiesC C.p C.n C.G Q (beNum (C.hash (← unhex m))) (beNum (← unhex r))
-        (beNum (← unhex s)))
+      return bool (nist.ecdsaVerifiesC C.p C.n C.G Q (beNum (C.hash m)) r s)
     else return "offcurve"
   | ["ed25519-public", seed] =>
     return hex (ofU8 (publicKeyWith upstream.edPow (toU8 (← unhex seed))))
@@ -306,8 +314,9 @@ def answer (args : List String) : Except String String := do
   | ["mlkem-encaps", set, ek, m] =>
     let p ← paramOf set
     let ek ← vec _ (← unhex ek)
+    let m ← vec 32 (← unhex m)
     if Spec.MLKEM.Encaps.KeyCheck p ek then
-      let (K, c) := Spec.MLKEM.Encaps_internal p ek (← vec 32 (← unhex m))
+      let (K, c) := Spec.MLKEM.Encaps_internal p ek m
       return s!"{hex K.toList} {hex c.toList}"
     else return "badkey"
   | ["mlkem-decaps", set, dk, c] =>

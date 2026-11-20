@@ -223,7 +223,8 @@ fn verdict(run: &mut Run, label: &str, words: &[&str], want: &str, refused: &[&s
     let ok = match want {
         "valid" => accepted,
         "invalid" => !accepted && (got == "0" || refused.contains(&got.as_str())),
-        _ => got == "1" || got == "0" || refused.contains(&got.as_str()),
+        "acceptable" => got == "1" || got == "0" || refused.contains(&got.as_str()),
+        _ => panic!("spec-tests: {label}: no Wycheproof result {want:?}"),
     };
     if !ok {
         run.fail(format!(
@@ -517,13 +518,12 @@ fn kdfs(run: &mut Run) {
     // hours.
     for op in HASHES {
         let file = format!("pbkdf2_hmac{op}_test");
-        let cases = wycheproof(run, &file);
-        let cases = run.sample_n(cases, 4);
-        for (_, t) in cases {
+        let cases: Vec<_> = wycheproof(run, &file)
+            .into_iter()
+            .filter(|(_, t)| valid(t) && jn(t, "iterationCount") <= 100_000)
+            .collect();
+        for (_, t) in run.sample_n(cases, 4) {
             let c = jn(&t, "iterationCount");
-            if !valid(&t) || c > 100_000 {
-                continue;
-            }
             run.check(
                 Vector,
                 &label(&file, &t),
@@ -627,7 +627,8 @@ fn aead_random(
     let got = run.ask(Rind, &[&format!("{op}-open"), &k, &n, &a, &c, &hex(&bad)]);
     if !got.ends_with(" 0") {
         run.fail(format!(
-            "random: {op}-open {k} {n} {a} {c} (flipped tag)\n  spec: {got}\n  want: refused"
+            "random: {op}-open {k} {n} {a} {c} {}\n  spec: {got}\n  want: refused",
+            hex(&bad)
         ));
     }
 }
@@ -1081,7 +1082,7 @@ fn aes_modes(run: &mut Run) {
     for (_, t) in wycheproof(run, file) {
         let (k, iv, m, c) = (jh(&t, "key"), jh(&t, "iv"), jh(&t, "msg"), jh(&t, "ct"));
         let ct = unhex(js(&t, "ct"));
-        if unhex(js(&t, "iv")).len() != 16 || ct.is_empty() || !ct.len().is_multiple_of(16) {
+        if unhex(js(&t, "iv")).len() != 16 || !ct.len().is_multiple_of(16) {
             continue;
         }
         if valid(&t) {

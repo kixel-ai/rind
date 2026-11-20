@@ -11,7 +11,9 @@
 //! reproduces each section's inputs alone (`SPEC_TESTS_ONLY=<section>,...`
 //! runs only those). The exceptions, which no seed reproduces, are what rind
 //! offers no seeded API for and draws from its own generator: RSA and ML-KEM
-//! keys, rind's ML-KEM encapsulations, and rind's ECDSA nonces. Without `full`, a vector
+//! keys, rind's ML-KEM encapsulations, ECDSA nonces, RSA-PSS salts, and
+//! XChaCha20-Poly1305 nonces. A failure prints its request, cut short past
+//! 400 characters. Without `full`, a vector
 //! file of more than `SAMPLE` cases runs every k-th, and the slowest specs
 //! run a sample of their own, as `cases` says of each; with it, every vector
 //! the filters in `cases` admit runs.

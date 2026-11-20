@@ -1556,10 +1556,14 @@ compared with rind's output, and fails on any disagreement. A pull request
 runs a sample: a vector file of more than 400 cases runs every k-th, the
 specs too slow for that fewer (PBKDF2's 4096-iteration vectors, SymCrypt's
 ML-KEM, and s2n-bignum's SHA-512 forms, as `admin/spec-tests/src/cases.rs`
-says of each), and 8 random inputs a spec from seed 1. The `prove`
-workflow's nightly `spec-tests` job samples nothing: it runs every vector
-the filters in `cases.rs` admit, those inside the domain each spec's
-theorems pass it, and 64 random inputs from the run's own seed.
+says of each), and a budget of 8 random cases a test from seed 1. The
+`prove` workflow's nightly `spec-tests` job samples nothing: it runs every
+vector the filters in `cases.rs` admit, those inside the domain each spec's
+theorems pass it, and a budget of 64 random cases a test from the run's own
+seed. A case may send more than one request, ML-KEM's sampled run spends a
+quarter of the budget, and the specs `NO_RANDOM` in
+`admin/spec-tests/src/main.rs` lists run on no random inputs; the driver's
+table prints what each ran.
 
 A spec Lean cannot run fast enough, or at all, runs through an executable
 twin in `Rind/SpecTest/`, proven equal to it on the inputs the proofs pass
