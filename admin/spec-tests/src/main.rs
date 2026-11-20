@@ -4,7 +4,7 @@
 //! `thirdparty/vectors/`, and on random inputs from a fixed seed compared with
 //! rind's output, and fails on any disagreement. `admin/prove lean` runs it.
 //!
-//! Usage: spec-tests <spec-server> <vectors dir> <seed> <random cases per test> [full]
+//! Usage: `spec-tests <spec-server> <vectors dir> <seed> <random cases per test> [full]`
 //!
 //! Each section of `cases` runs on its own thread with its own server, and
 //! its own random source, from the seed and the section's name, so a seed
@@ -101,6 +101,7 @@ const NO_RANDOM: &[&str] = &[
     "poly1305",
     "poly1305-s2n",
     "ed25519-small-order",
+    "ed25519-small-key",
 ];
 
 /// The spec server, a child process answering a line per request.
@@ -139,12 +140,13 @@ impl Server {
     }
 }
 
-/// Where a case's expected answer comes from.
+/// Where a case comes from.
 #[derive(Clone, Copy)]
 pub enum From {
-    /// A published vector.
+    /// A published vector, with its expected answer or, where it carries
+    /// none, rind's.
     Vector,
-    /// rind, on a random input.
+    /// A random input, with rind's answer.
     Rind,
 }
 
@@ -159,9 +161,19 @@ pub struct Run {
     /// The time each spec took, in seconds.
     times: BTreeMap<String, f64>,
     failures: Vec<String>,
+    /// The vector cases each source file or document ran, so that a parser
+    /// that silently skips a whole file fails the run.
+    sources: BTreeMap<String, usize>,
+    source: Option<String>,
 }
 
 impl Run {
+    /// Names the source the vector cases asked from here on come from.
+    pub fn source(&mut self, name: &str) {
+        self.sources.entry(name.to_owned()).or_default();
+        self.source = Some(name.to_owned());
+    }
+
     /// Asks the server `words` and checks its answer is `want`.
     pub fn check(&mut self, from: From, label: &str, words: &[&str], want: &str) {
         let got = self.ask(from, words);
@@ -176,6 +188,9 @@ impl Run {
     /// The server's answer to `words`, counted, for a check of its own.
     pub fn ask(&mut self, from: From, words: &[&str]) -> String {
         self.counts.entry(words[0].to_owned()).or_default()[from as usize] += 1;
+        if let (From::Vector, Some(source)) = (from, &self.source) {
+            *self.sources.get_mut(source).unwrap() += 1;
+        }
         let start = Instant::now();
         let got = self.server.ask(words);
         *self.times.entry(words[0].to_owned()).or_default() += start.elapsed().as_secs_f64();
@@ -295,13 +310,14 @@ pub fn unhex(s: &str) -> Vec<u8> {
         .collect()
 }
 
-/// What a section reports: its counts, times, and failures.
-type Report = (
-    BTreeMap<String, [usize; 2]>,
-    BTreeMap<String, f64>,
-    Vec<String>,
-    f64,
-);
+/// What a section reports.
+struct Report {
+    counts: BTreeMap<String, [usize; 2]>,
+    times: BTreeMap<String, f64>,
+    failures: Vec<String>,
+    sources: BTreeMap<String, usize>,
+    took: f64,
+}
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().collect();
@@ -353,11 +369,20 @@ fn main() -> ExitCode {
                             counts: BTreeMap::new(),
                             times: BTreeMap::new(),
                             failures: Vec::new(),
+                            sources: BTreeMap::new(),
+                            source: None,
                         };
                         let start = Instant::now();
                         section(&mut run);
                         let took = start.elapsed().as_secs_f64();
-                        done.push((i, *name, (run.counts, run.times, run.failures, took)));
+                        let report = Report {
+                            counts: run.counts,
+                            times: run.times,
+                            failures: run.failures,
+                            sources: run.sources,
+                            took,
+                        };
+                        done.push((i, *name, report));
                     }
                     done
                 })
@@ -377,20 +402,26 @@ fn main() -> ExitCode {
         "spec-tests: seed {seed}, {random} random cases per test{}",
         if full { ", every vector" } else { "" }
     );
-    for (_, name, (c, t, f, took)) in reports {
-        println!("spec-tests: {name} took {took:.1}s");
-        for (k, [v, r]) in c {
+    let mut ok = true;
+    for (_, name, report) in reports {
+        println!("spec-tests: {name} took {:.1}s", report.took);
+        for (k, [v, r]) in report.counts {
             let e = counts.entry(k).or_default();
             e[0] += v;
             e[1] += r;
         }
-        for (k, s) in t {
+        for (k, s) in report.times {
             *times.entry(k).or_default() += s;
         }
-        failures.extend(f);
+        failures.extend(report.failures);
+        for (source, n) in report.sources {
+            if n == 0 {
+                eprintln!("spec-tests: {source} ran no vectors");
+                ok = false;
+            }
+        }
     }
 
-    let mut ok = true;
     println!(
         "{:<28} {:>8} {:>8} {:>8}",
         "spec", "vectors", "rind", "seconds"

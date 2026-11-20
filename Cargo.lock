@@ -5619,6 +5619,7 @@ version = "0.0.0"
 dependencies = [
  "rind",
  "serde_json",
+ "shake",
 ]
 
 [[package]]

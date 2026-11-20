@@ -52,9 +52,11 @@ fn r(words: &[String]) -> Vec<&str> {
 // ## Vector files
 
 /// A FileTest or CAVP record: its fields, and the bracketed section headers
-/// above it.
+/// above it, `[key = value]` by key and the rest, such as CAVP's curve and
+/// its method under it, in order.
 struct Record {
     section: BTreeMap<String, String>,
+    headers: Vec<String>,
     fields: Vec<(String, String)>,
 }
 
@@ -89,23 +91,45 @@ impl Record {
     fn sect(&self, key: &str) -> &str {
         self.section.get(key).map(String::as_str).unwrap_or("")
     }
+
+    /// The curve a header names, as `[P-256]` or `[P-256,SHA-256]` do, and
+    /// the hash after it, if any.
+    fn curve(&self) -> Option<(&'static Curve, Option<&str>)> {
+        self.headers.iter().find_map(|h| {
+            let (c, hash) = match h.split_once(',') {
+                Some((c, hash)) => (c, Some(hash)),
+                None => (h.as_str(), None),
+            };
+            curve(c).map(|c| (c, hash))
+        })
+    }
 }
 
 /// The records of a FileTest (`Key = value` or `KEY: value`) or CAVP
 /// response file, sampled.
-fn records(run: &Run, rel: &str) -> Vec<Record> {
+fn records(run: &mut Run, rel: &str) -> Vec<Record> {
+    run.source(rel);
     let path = run.path(rel);
     let text = std::fs::read_to_string(&path)
         .unwrap_or_else(|e| panic!("spec-tests: {}: {e}", path.display()));
     let mut out = Vec::new();
     let mut section = BTreeMap::new();
+    let mut headers: Vec<String> = Vec::new();
+    // Whether a record followed the last header, so the next starts a new
+    // block of unkeyed headers.
+    let mut recorded = false;
     let mut fields: Vec<(String, String)> = Vec::new();
-    let mut flush = |fields: &mut Vec<(String, String)>, section: &BTreeMap<String, String>| {
+    let mut flush = |fields: &mut Vec<(String, String)>,
+                     section: &BTreeMap<String, String>,
+                     headers: &[String],
+                     recorded: &mut bool| {
         if !fields.is_empty() {
             out.push(Record {
                 section: section.clone(),
+                headers: headers.to_vec(),
                 fields: std::mem::take(fields),
             });
+            *recorded = true;
         }
     };
     for line in text.lines() {
@@ -114,7 +138,7 @@ fn records(run: &Run, rel: &str) -> Vec<Record> {
             continue;
         }
         if line.trim().is_empty() {
-            flush(&mut fields, &section);
+            flush(&mut fields, &section, &headers, &mut recorded);
             continue;
         }
         if let Some(header) = line
@@ -122,11 +146,17 @@ fn records(run: &Run, rel: &str) -> Vec<Record> {
             .strip_prefix('[')
             .and_then(|l| l.strip_suffix(']'))
         {
-            flush(&mut fields, &section);
+            flush(&mut fields, &section, &headers, &mut recorded);
+            if recorded {
+                headers.clear();
+                recorded = false;
+            }
             match header.split_once('=') {
-                Some((k, v)) => section.insert(k.trim().to_owned(), v.trim().to_owned()),
-                None => section.insert(String::new(), header.trim().to_owned()),
-            };
+                Some((k, v)) => {
+                    section.insert(k.trim().to_owned(), v.trim().to_owned());
+                }
+                None => headers.push(header.trim().to_owned()),
+            }
             continue;
         }
         let at = match (line.find('='), line.find(':')) {
@@ -139,12 +169,13 @@ fn records(run: &Run, rel: &str) -> Vec<Record> {
             line[at + 1..].trim().to_owned(),
         ));
     }
-    flush(&mut fields, &section);
+    flush(&mut fields, &section, &headers, &mut recorded);
     run.sample(out)
 }
 
 /// The groups and tests of a Wycheproof file, sampled.
-fn wycheproof(run: &Run, name: &str) -> Vec<(Value, Value)> {
+fn wycheproof(run: &mut Run, name: &str) -> Vec<(Value, Value)> {
+    run.source(&format!("wycheproof/{name}"));
     let path = run.path(&format!("wycheproof/testvectors_v1/{name}.json"));
     let text = std::fs::read_to_string(&path)
         .unwrap_or_else(|e| panic!("spec-tests: {}: {e}", path.display()));
@@ -252,6 +283,7 @@ fn sha2(run: &mut Run) {
         }
     }
     // RFC 3174's, as CAVP has no SHA-1 file here.
+    run.source("RFC 3174");
     for (m, md) in [
         ("616263", "a9993e364706816aba3e25717850c26c9cd0d89d"),
         (
@@ -616,6 +648,7 @@ fn chacha(run: &mut Run) {
         }
     }
     // RFC 8439 section 2.4.2.
+    run.source("RFC 8439 2.4.2");
     let k = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
     let n = "000000000000004a00000000";
     let m = hex(b"Ladies and Gentlemen of the class of '99: If I could offer you only one tip for the future, sunscreen would be it.");
@@ -624,6 +657,7 @@ fn chacha(run: &mut Run) {
         run.check(Vector, "RFC 8439 2.4.2", &[op, k, "1", n, &m], c);
     }
     // draft-irtf-cfrg-xchacha-03 section 2.2.1.
+    run.source("draft-irtf-cfrg-xchacha 2.2.1");
     run.check(
         Vector,
         "draft-irtf-cfrg-xchacha 2.2.1",
@@ -738,6 +772,7 @@ fn chacha(run: &mut Run) {
     }
 
     // QUIC header protection: RFC 9001 A.5, and rind.
+    run.source("RFC 9001 A.5");
     run.check(
         Vector,
         "RFC 9001 A.5",
@@ -821,6 +856,7 @@ fn aes(run: &mut Run) {
     }
 
     // QUIC header protection: RFC 9001 A.2, and rind.
+    run.source("RFC 9001 A.2");
     run.check(
         Vector,
         "RFC 9001 A.2",
@@ -1219,7 +1255,7 @@ fn point(bytes: &[u8], len: usize) -> Option<(String, String)> {
 fn nist(run: &mut Run) {
     let rel = "cavp/ecdh/KAS_ECC_CDH_PrimitiveTest.txt";
     for rec in records(run, rel) {
-        let Some(c) = curve(rec.sect("")) else {
+        let Some((c, _)) = rec.curve() else {
             continue;
         };
         let d = rec.h("dIUT");
@@ -1243,20 +1279,21 @@ fn nist(run: &mut Run) {
     }
     let rel = "cavp/ecdsa/KeyPair.rsp";
     for rec in records(run, rel) {
-        let Some(c) = curve(rec.sect("")) else {
+        // Each curve's block opens with a record of its count, `N = 10`.
+        let (Some((c, _)), Some(d)) = (rec.curve(), rec.get("d")) else {
             continue;
         };
         run.check(
             Vector,
             rel,
-            &["ec-base", c.name, &rec.h("d")],
+            &["ec-base", c.name, &h(d)],
             &format!("{} {}", rec.h("Qx"), rec.h("Qy")),
         );
     }
     // A key's validity: on the curve, the spec answers its own point.
     let rel = "cavp/ecdsa/PKV.rsp";
     for rec in records(run, rel) {
-        let Some(c) = curve(rec.sect("")) else {
+        let Some((c, _)) = rec.curve() else {
             continue;
         };
         let (x, y) = (rec.h("Qx"), rec.h("Qy"));
@@ -1342,10 +1379,9 @@ fn nist(run: &mut Run) {
 fn ecdsa(run: &mut Run) {
     let rel = "cavp/ecdsa/SigVer.rsp";
     for rec in records(run, rel) {
-        let Some((cv, hash)) = rec.sect("").split_once(',') else {
+        let Some((c, Some(hash))) = rec.curve() else {
             continue;
         };
-        let Some(c) = curve(cv) else { continue };
         if hash != if c.len == 32 { "SHA-256" } else { "SHA-384" } {
             continue;
         }
@@ -1499,6 +1535,7 @@ fn x25519(run: &mut Run) {
 }
 
 fn ed25519(run: &mut Run) {
+    run.source("small order");
     run.check(Vector, "small order", &["ed25519-small-order"], "1");
     let file = "ed25519_test";
     for (g, t) in wycheproof(run, file) {
@@ -1523,6 +1560,7 @@ fn ed25519(run: &mut Run) {
     // and its theorems' refusal of a key of small order, before it verifies,
     // which `edSmallOrderY` lists.
     let rel = "cctv/ed25519/ed25519vectors.json";
+    run.source(rel);
     let json: Value =
         serde_json::from_str(&std::fs::read_to_string(run.path(rel)).unwrap()).unwrap();
     let cases = run.sample(json.as_array().unwrap().clone());
@@ -1530,8 +1568,8 @@ fn ed25519(run: &mut Run) {
         let (key, sig) = (unhex(js(&t, "key")), unhex(js(&t, "sig")));
         let m = js(&t, "msg").as_bytes();
         let rind = rind::ed25519::PublicKey::new(&key).and_then(|k| k.verify(m, &sig));
-        let small = run.ask(Rind, &["ed25519-small-key", &hex(&key)]);
-        let got = run.ask(Rind, &["ed25519-verify", &hex(&key), &hex(m), &hex(&sig)]);
+        let small = run.ask(Vector, &["ed25519-small-key", &hex(&key)]);
+        let got = run.ask(Vector, &["ed25519-verify", &hex(&key), &hex(m), &hex(&sig)]);
         if (small == "0" && got == "1") != rind.is_ok() {
             run.fail(format!(
                 "{rel} #{}: ed25519-verify\n  spec: {got}, small order {small}\n  rind: {rind:?}",
@@ -1860,6 +1898,7 @@ fn expected_c(set: &str) -> usize {
 /// pairs one side's: the spec encapsulates to rind's key, which decapsulates
 /// it, and rind encapsulates to the spec's key, which the spec decapsulates.
 fn mlkem_random<A: rind::kem::Algorithm>(run: &mut Run, set: &str) {
+    use shake::{ExtendableOutput, Update};
     let dk = rind::kem::DecapsulationKey::<A>::generate().unwrap();
     let ek = hex(dk.public_key().as_ref());
     let m = hex(&run.rng.bytes(32));
@@ -1892,14 +1931,22 @@ fn mlkem_random<A: rind::kem::Algorithm>(run: &mut Run, set: &str) {
         &["mlkem-decaps", set, dk, &hex(c.as_ref())],
         &hex(k.as_ref()),
     );
-    // A changed ciphertext: implicit rejection's key, as rind derives it.
+    // A changed ciphertext: implicit rejection's key, J(z || c) =
+    // SHAKE256(z || c, 32) of FIPS 203 Algorithm 18, with the z the spec's
+    // key generation took: only a changed ciphertext that re-encrypts to
+    // itself would decapsulate otherwise, and its odds are negligible.
     let mut bad = c.as_ref().to_vec();
     let at = run.rng.below(bad.len());
     bad[at] ^= 1;
-    let got = run.ask(Rind, &["mlkem-decaps", set, dk, &hex(&bad)]);
-    if got == hex(k.as_ref()) {
-        run.fail(format!(
-            "random: mlkem-decaps {set} (changed ciphertext)\n  spec: {got}, the unchanged key"
-        ));
-    }
+    let mut j = shake::Shake256::default();
+    j.update(&unhex(&z));
+    j.update(&bad);
+    let mut want = [0u8; 32];
+    j.finalize_xof_into(&mut want);
+    run.check(
+        Rind,
+        "random (changed ciphertext)",
+        &["mlkem-decaps", set, dk, &hex(&bad)],
+        &hex(&want),
+    );
 }

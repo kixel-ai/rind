@@ -309,7 +309,7 @@ jobs:
   # seed, nightly and when dispatched; the lean job runs a fixed sample. Its
   # own job, so the sweep does not lengthen the lean job's.
   spec-tests:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: github.event_name != 'pull_request' && github.event_name != 'push'
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
