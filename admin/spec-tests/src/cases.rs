@@ -1060,15 +1060,19 @@ fn aes_modes(run: &mut Run) {
         }
     }
     for _ in 0..run.random {
-        let k = run.rng.aes_key();
-        let bits = [32u8, 64, 128, 1 + run.rng.below(128) as u8][run.rng.below(4)];
-        let t0: [u8; 16] = run.rng.bytes(16).try_into().unwrap();
-        let mut c = run.rng.message(1000);
-        let m = hex(&c);
-        let ctr = rind::cipher::AesCtr::new(cipher_alg(k.len()), &k, bits).unwrap();
-        if ctr.apply_keystream(&t0, &mut c).is_err() {
-            continue;
-        }
+        // Drawn again until rind takes it: a narrow counter refuses a long
+        // message, which would leave the case unchecked.
+        let (k, bits, t0, m, c) = loop {
+            let k = run.rng.aes_key();
+            let bits = [32u8, 64, 128, 1 + run.rng.below(128) as u8][run.rng.below(4)];
+            let t0: [u8; 16] = run.rng.bytes(16).try_into().unwrap();
+            let mut c = run.rng.message(1000);
+            let m = hex(&c);
+            let ctr = rind::cipher::AesCtr::new(cipher_alg(k.len()), &k, bits).unwrap();
+            if ctr.apply_keystream(&t0, &mut c).is_ok() {
+                break (k, bits, t0, m, c);
+            }
+        };
         run.check(
             Rind,
             "random",
