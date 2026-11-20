@@ -41,6 +41,14 @@ pub extern "system" fn Java_io_github_steelhead99x_rindbench_Native_status(mut e
 }
 
 #[unsafe(no_mangle)]
+pub extern "system" fn Java_io_github_steelhead99x_rindbench_Native_setenv(mut env: JNIEnv, _c: JClass, k: JString, v: JString) {
+    let k: String = match env.get_string(&k) { Ok(s) => s.into(), Err(_) => return };
+    let v: String = match env.get_string(&v) { Ok(s) => s.into(), Err(_) => return };
+    // SAFETY: called once at launch, before the catalog or any run reads the environment.
+    unsafe { std::env::set_var(k, v) };
+}
+
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_io_github_steelhead99x_rindbench_Native_stop(_env: JNIEnv, _c: JClass) {
     crate::stop()
 }
