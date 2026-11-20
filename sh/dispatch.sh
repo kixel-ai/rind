@@ -152,6 +152,11 @@ if [[ "$action" == ci && -n "${CHECK_QUEUE:-}" ]]; then
     # Every importer and generator at its pinned upstream revision.
     paths=$(pull_request_paths regenerate.yml)
     module regenerate "$paths" tools='nix yq git' queue
+    # The tests under every Intel SDE model x86-cpu.yml runs, when the group
+    # reaches x86_64 code, as x86-cpu.yml selects them (see `check:sde`
+    # below), so a fault on one CPU's dispatch paths cannot land.
+    paths=$(pull_request_paths x86-cpu.yml)
+    module sde "$paths" tools='nix yq' queue
 fi
 
 # sh/select.sh narrows this to the changed crates and their dependents.
@@ -327,6 +332,13 @@ for module in "${modules[@]}"; do
     if [[ "$verb:$module" == check:cross ]]; then
         cross_reach=$(reach cross)
         reaches "$cross_reach" aarch64 arm portable || continue
+    fi
+    # x86-cpu.yml's scope, over the same whole diff: one that changes the
+    # models' own files, or that sh/backends.sh says reaches x86_64.
+    if [[ "$verb:$module" == check:sde && -z "$all" ]] &&
+        ! grep -qxE '\.github/workflows/x86-cpu\.yml|admin/x86-cpu' "$changed"; then
+        sde_reach=$(sh/backends.sh "$changed")
+        grep -qxE 'all|x86_64' <<<"$sde_reach" || continue
     fi
     # Selection must not depend on the tools setup has yet to install.
     if [[ -n "$query" ]]; then
@@ -628,6 +640,9 @@ step() {
             run nix develop .#ct-vartime --command admin/ct-vartime "${targets[@]}"
             ;;
         check:vg) run nix develop .#vg --command admin/prove vg ;;
+        # Its own target directory, so its release build runs beside rs's
+        # rather than behind Cargo's lock on target/.
+        check:sde) CARGO_TARGET_DIR=target/sde run nix develop .#sde --command admin/x86-cpu all ;;
         check:regenerate)
             # admin/regenerate rewrites rind/src/low/, which other modules
             # build, and .tmp/upstream/, which vg reads, so it runs in a

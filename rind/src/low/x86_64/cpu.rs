@@ -1045,6 +1045,14 @@ mod tests {
         );
     }
 
+    // admin/x86-cpu groups the SDE models by what this and `low::mcdt`'s
+    // report print: models that print the same take every `has` decision
+    // alike, and so every path this file picks.
+    #[test]
+    fn reports_dispatch() {
+        println!("rind dispatch: features {:#x}", features());
+    }
+
     // CI runs the suite again with features denied, and names the path each
     // run expects, so no run silently tests only the fastest one.
     #[test]

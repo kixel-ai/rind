@@ -278,8 +278,8 @@ exclude_re = [
   'rind/src/mid/mlkem\.rs:\d+:\d+: (delete match arm \(3, _\) \|\(_, 1\.\.= 4\) in sample_poly_cbd2|delete match arm [0-3] in shake256_fours|replace \* with / in shake256_fours)$',
   'rind/src/low/posint\.rs:\d+:\d+: (replace PosInt<N>::mod_exp_pair_rsaz -> .*|.* in PosInt<N>::mod_exp_pair_rsaz)$',
   # Compiled only for armv7, which no campaign runs: the portable AES-GCM's
-  # crypto-extension half.
-  'rind/src/mid/portable/aes_gcm\.rs:\d+:\d+: (replace (<impl Ghash for GhashTable>::ghash|<impl Parts for Hw>::\w+)( -> .*)? with .*|.* in <impl Parts for Hw>::\w+)$',
+  # crypto-extension and NEON halves.
+  'rind/src/mid/portable/aes_gcm\.rs:\d+:\d+: (replace (<impl Ghash for (GhashTable|NeonTable)>::ghash|<impl BlocksKey for (AesHwKey|NeonKey)>::\w+|<impl Parts for Arm<K, T>>::\w+)( -> .*)? with .*|.* in <impl Parts for Arm<K, T>>::\w+)$',
   # Whether this CPU needs Intel's MXCSR mitigation: no campaign's runner
   # can know what it should find, since nothing outside `cpuid` reports
   # `MCDT_NO`. x86-cpu.yml's SDE rows check `needed` on every model, and
