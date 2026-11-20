@@ -188,17 +188,21 @@ mod tests {
                 }
                 let mut generic = state;
                 crate::low::generic::sha256::sha256_compress_blocks(&mut generic, input);
-                // RustCrypto's shares no code with either rind body.
-                let mut rustcrypto = ct::into_public(state);
-                let public_blocks = ct::into_public(blocks);
-                sha2::block_api::compress256(
-                    &mut rustcrypto,
-                    public_blocks[..count * 64].as_chunks::<64>().0,
-                );
                 let got = ct::into_public(got);
                 assert_eq!(got, ct::into_public(split), "split {case}, {count}");
                 assert_eq!(got, ct::into_public(generic), "generic {case}, {count}");
-                assert_eq!(got, rustcrypto, "RustCrypto {case}, {count}");
+                // RustCrypto's shares no code with either rind body. Miri
+                // and wasm builds have no `sha2`.
+                #[cfg(not(any(miri, target_family = "wasm")))]
+                {
+                    let mut rustcrypto = ct::into_public(state);
+                    let public_blocks = ct::into_public(blocks);
+                    sha2::block_api::compress256(
+                        &mut rustcrypto,
+                        public_blocks[..count * 64].as_chunks::<64>().0,
+                    );
+                    assert_eq!(got, rustcrypto, "RustCrypto {case}, {count}");
+                }
             }
         }
     }
