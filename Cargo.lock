@@ -4762,7 +4762,6 @@ dependencies = [
  "libcrux-macros 0.0.4",
  "libcrux-p256 0.0.10",
  "libcrux-poly1305 0.0.7",
- "libcrux-sha2 0.0.9",
  "matter-crypto",
  "md-5",
  "ml-dsa",

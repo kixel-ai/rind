@@ -31,6 +31,38 @@ macro_rules! asm_call {
     };
 }
 
+/// Sixteen rounds of SHA-2's `$round`, each with the round's index in the
+/// sixteen and the eight working variables rotated one place from the round
+/// before, so they rename instead of moving. The portable SHA-256 and
+/// SHA-512 bodies use it.
+#[cfg(any(
+    test,
+    all(
+        rind_backend = "portable",
+        not(all(target_arch = "xtensa", target_os = "espidf"))
+    )
+))]
+macro_rules! sixteen {
+    ($round:ident, $a:ident, $b:ident, $c:ident, $d:ident, $e:ident, $f:ident, $g:ident, $h:ident) => {
+        $round!(0, $a, $b, $c, $d, $e, $f, $g, $h);
+        $round!(1, $h, $a, $b, $c, $d, $e, $f, $g);
+        $round!(2, $g, $h, $a, $b, $c, $d, $e, $f);
+        $round!(3, $f, $g, $h, $a, $b, $c, $d, $e);
+        $round!(4, $e, $f, $g, $h, $a, $b, $c, $d);
+        $round!(5, $d, $e, $f, $g, $h, $a, $b, $c);
+        $round!(6, $c, $d, $e, $f, $g, $h, $a, $b);
+        $round!(7, $b, $c, $d, $e, $f, $g, $h, $a);
+        $round!(8, $a, $b, $c, $d, $e, $f, $g, $h);
+        $round!(9, $h, $a, $b, $c, $d, $e, $f, $g);
+        $round!(10, $g, $h, $a, $b, $c, $d, $e, $f);
+        $round!(11, $f, $g, $h, $a, $b, $c, $d, $e);
+        $round!(12, $e, $f, $g, $h, $a, $b, $c, $d);
+        $round!(13, $d, $e, $f, $g, $h, $a, $b, $c);
+        $round!(14, $c, $d, $e, $f, $g, $h, $a, $b);
+        $round!(15, $b, $c, $d, $e, $f, $g, $h, $a);
+    };
+}
+
 #[cfg(any(rind_backend = "x86_64", rind_backend = "aarch64"))]
 #[macro_use]
 mod macros;
@@ -123,44 +155,40 @@ mod generic {
     ))]
     pub(crate) mod poly1305;
     pub(super) mod reuse_cache;
-    // The portable backend's SHA-1, and both hashes in armv7 and x86_64
-    // tests to check the assembly against.
+    // The portable backend's SHA-1 and SHA-256 (but ESP-IDF Xtensa's
+    // SHA-256, in `portable::sha`), and both in armv7 and x86_64 tests to
+    // check the assembly against.
     #[cfg(any(
         rind_backend = "portable",
         all(test, any(rind_backend = "arm", rind_backend = "x86_64"))
     ))]
     pub(super) mod sha1;
-    #[cfg(all(
-        test,
-        any(
-            rind_backend = "arm",
+    #[cfg(any(
+        all(
             rind_backend = "portable",
-            rind_backend = "x86_64"
-        )
+            not(all(target_arch = "xtensa", target_os = "espidf"))
+        ),
+        all(test, any(rind_backend = "arm", rind_backend = "x86_64"))
     ))]
     pub(super) mod sha256;
     // FIPS 180-4 §4.2.2, one copy. The ESP-IDF Xtensa compressor and the
-    // test compressor above both read it. aarch64 tests compile neither
-    // reader, so the table stays out: clippy denies an unused static.
+    // portable one above both read it. aarch64 tests compile neither reader,
+    // so the table stays out: clippy denies an unused static.
     #[cfg(any(
-        all(target_arch = "xtensa", target_os = "espidf"),
-        all(
-            test,
-            any(
-                rind_backend = "arm",
-                rind_backend = "portable",
-                rind_backend = "x86_64"
-            )
-        )
+        rind_backend = "portable",
+        all(test, any(rind_backend = "arm", rind_backend = "x86_64"))
     ))]
     pub(super) mod sha256_k;
     // SLH-DSA's SHA-256 lanes one at a time, which x86_64 runs with the SHA
     // extensions or without AVX2.
     pub(super) mod sha256x8;
+    // The portable backend's SHA-512, and its round constants. Tests compile
+    // it everywhere, to check the assembly and the rolled loop against.
+    #[cfg(any(rind_backend = "portable", test))]
+    pub(super) mod sha512;
     // Rolled SHA-512 on 32-bit microcontrollers (ESP-IDF or no OS), whose
-    // small instruction cache HACL*'s ~47 KiB unrolled body misses. Hosted
-    // 32-bit targets keep HACL*, which took 0.71-0.78 of this loop's time
-    // on i686. Tests compile it everywhere and check it against FIPS 180-4.
+    // small instruction cache the unrolled body would crowd. Tests compile
+    // it everywhere and check it against FIPS 180-4.
     #[cfg(any(
         all(
             rind_backend = "portable",
@@ -169,7 +197,7 @@ mod generic {
         ),
         test
     ))]
-    pub(super) mod sha512;
+    pub(super) mod sha512_rolled;
     pub(super) mod zeroise;
 }
 
@@ -587,9 +615,8 @@ cfg_if::cfg_if! {
         pub(crate) use arm::poly1305;
         pub(crate) use arm::curve25519::curve25519_x25519;
         pub(crate) use arm::mont::{mont_mul, mont_sqr};
-        // SHA-1 and SHA-256 use the crypto extension where present, else rind's
-        // portable SHA, since libcrux has no SHA-1 and rind's SHA-256 is faster
-        // than libcrux's. SHA-512 is aws-lc's, NEON or scalar.
+        // SHA-1, SHA-256, and SHA-512 are aws-lc's assembly: SHA-1 and SHA-256
+        // on the crypto extension where present, else NEON or scalar.
         pub(crate) use arm::keccak1600_armv4::{
             sha3_keccak4_f1600, sha3_keccak_f1600, sha3_keccak_nof4_f1600,
         };
