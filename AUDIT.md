@@ -207,10 +207,10 @@ establishes, and what it does not:
   [ALGORITHMS.md](ALGORITHMS.md#s2n-bignums-constant-time-theorems) lists
   constant time for every input, variable-time instructions included, but
   not the Rust that calls them.
-- **Timing tests** (`admin/timing`, weekly on GitHub's runners) run dudect
-  over each secret the API lets them set, and the Marvin toolkit against
-  RSA-OAEP decryption. They are statistical, on shared hardware, and cannot
-  time key generation or encapsulation.
+- **The Marvin timing test** (`admin/timing`, weekly on GitHub's runners) runs
+  the Marvin toolkit against RSA-OAEP decryption. It is statistical, on shared
+  hardware, and times nothing else: rind runs no dudect, whose noise on
+  shared runners outweighed what the constant-time checks above leave.
 - **Proofs**: s2n-bignum's, HACL\*'s, Vale's, fiat-crypto's, and
   aws-lc-verification's published proofs, and rind's own HOL Light and Lean
   proofs in [`proofs/`](proofs/README.md), checked nightly by `admin/prove`.
