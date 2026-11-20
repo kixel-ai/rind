@@ -26,9 +26,10 @@ in `Rind.Aarch64.S2nBignum` for X25519, P-256, P-384, Ed25519, and the
 Keccak-f of SHA-3 and ML-KEM's SHAKE; for the SHA-512 family, for HMAC,
 HKDF, and PBKDF2, which cover SHA-384 and SHA-512, and for Ed25519's hashes,
 aws-lc's scalar routine's in `Rind.Aarch64.AwsLc` and rind's HOL Light proof
-there of aws-lc's routine for the SHA-512 instructions; rind's HOL Light proof
-of SHA-256's routine for the crypto extension in `Rind.Aarch64.Sha256Hw`, for
-the theorems over every HMAC algorithm; rind's HOL Light proofs of its
+there of aws-lc's routine for the SHA-512 instructions; the restatement in
+`Rind.Aarch64.Sha256Hw` of rind's Lean proof of SHA-256's routine for the
+crypto extension, which the kernel checks but Aeneas cannot reach through the
+opaque wrapper, for the theorems over every HMAC algorithm; rind's HOL Light proofs of its
 constant-time compares in `Rind.Aarch64.CtEqual` for HMAC's and PBKDF2's
 `verify` and key wrap's `unwrap` and `unwrap_padded`; for P-256's public
 key, ECDH, and ECDSA verification, pyca/verified-garbage's Lean proofs of its

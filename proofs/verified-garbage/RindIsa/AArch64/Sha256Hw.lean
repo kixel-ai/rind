@@ -47,8 +47,8 @@ def kreg (i : Nat) : VReg := if i % 2 = 0 then .v16 else .v17
 def vop (o : VOp) : Instr := .vg (.vop o)
 
 /-- Group `i` of four rounds: load the next group's constants (the last
-group's without advancing `x3`, which then rewinds to the table's second
-group for the next block), add this group's to its schedule words,
+group's without advancing `x3`, which then rewinds to the table's start for
+the next block), add this group's to its schedule words,
 schedule four more words while any group needs them, and run the rounds. -/
 def group (i : Nat) : List Instr :=
   (if i < 14 then [.ld1 1 .s4 (kreg (i + 1)) .x3 true]
