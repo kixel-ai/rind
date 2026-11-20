@@ -1,12 +1,19 @@
 #![no_main]
 
 //! RFC 3394 and RFC 5649 key wrap against aws-lc's, through aws-lc-sys since
-//! aws-lc-rs offers no AES-192 KEK.
+//! aws-lc-rs offers no AES-192 KEK, and RustCrypto's. RustCrypto wraps keys
+//! the RFCs refuse, such as an empty one, so it checks only what aws-lc
+//! accepts.
 
+use ::aes::cipher::KeyInit;
+use aes_kw::{AesKw, AesKwp};
 use libfuzzer_sys::{arbitrary, arbitrary::Arbitrary, fuzz_target};
 use rind::key_wrap::{AES_128, AES_192, AES_256, AesKek, Mode};
 
 mod edit;
+mod rustcrypto;
+
+use rustcrypto::rustcrypto_aes;
 
 fuzz_target!(|input: (Operation, edit::Edit)| {
     let (op, edit) = input;
@@ -25,6 +32,12 @@ fuzz_target!(|input: (Operation, edit::Edit)| {
     assert_eq!(ours_padded.is_ok(), theirs_padded.is_some());
     if let Some(right) = theirs_padded {
         assert_eq!(wrapped, right);
+        let mut independent = vec![0u8; wrapped.len()];
+        rustcrypto_aes!(kek, Aes => AesKwp::<Aes>::new_from_slice(kek)
+            .unwrap()
+            .wrap_key(key, &mut independent)
+            .unwrap());
+        assert_eq!(wrapped, independent);
 
         // Both unwrap the wrapped key tampered with alike, and refuse it if
         // it changed.
@@ -38,6 +51,15 @@ fuzz_target!(|input: (Operation, edit::Edit)| {
             theirs.unwrap_padded(&wrapped).as_ref()
         );
         assert_eq!(ours_result.is_err(), changed);
+        if let Ok(key) = &ours_result {
+            let mut independent = vec![0u8; wrapped.len()];
+            let independent = rustcrypto_aes!(kek, Aes => AesKwp::<Aes>::new_from_slice(kek)
+                .unwrap()
+                .unwrap_key(&wrapped, &mut independent)
+                .unwrap()
+                .to_vec());
+            assert_eq!(key, &independent);
+        }
     }
 
     // Both wrap the keys RFC 3394 allows, alike, and refuse the rest.
@@ -49,6 +71,12 @@ fuzz_target!(|input: (Operation, edit::Edit)| {
         return;
     }
     assert_eq!(Some(&wrapped), theirs_result.as_ref());
+    let mut independent = vec![0u8; key.len() + 8];
+    rustcrypto_aes!(kek, Aes => AesKw::<Aes>::new_from_slice(kek)
+        .unwrap()
+        .wrap_key(key, &mut independent)
+        .unwrap());
+    assert_eq!(wrapped, independent);
 
     // Both unwrap the wrapped key tampered with alike, and refuse it if it
     // changed.
@@ -59,6 +87,15 @@ fuzz_target!(|input: (Operation, edit::Edit)| {
         .map(|k| k.to_vec());
     assert_eq!(ours_result.as_ref().ok(), theirs.unwrap(&wrapped).as_ref());
     assert_eq!(ours_result.is_err(), changed);
+    if let Ok(key) = &ours_result {
+        let mut independent = vec![0u8; wrapped.len() - 8];
+        let independent = rustcrypto_aes!(kek, Aes => AesKw::<Aes>::new_from_slice(kek)
+            .unwrap()
+            .unwrap_key(&wrapped, &mut independent)
+            .unwrap()
+            .to_vec());
+        assert_eq!(key, &independent);
+    }
 });
 
 #[derive(Arbitrary, Debug)]

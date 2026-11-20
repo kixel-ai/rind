@@ -58,3 +58,26 @@ pub fn spki_parameters(input: &[u8]) -> bool {
         .and_then(element)
         .is_some_and(|(_, _, parameters)| !matches!(parameters, [] | [0x05, 0x00]))
 }
+
+/// An ECDSA signature as `r || s`, each `len` bytes: a fixed-width one as it
+/// is, or a DER one's two integers, or `None` if it is neither.
+pub fn fixed_width(signature: &[u8], len: usize) -> Option<Vec<u8>> {
+    if signature.len() == 2 * len {
+        return Some(signature.to_vec());
+    }
+    let (0x30, body, []) = element(signature)? else {
+        return None;
+    };
+    let mut fixed = Vec::with_capacity(2 * len);
+    let mut count = 0;
+    for (tag, int) in elements(body) {
+        let int = &int[int.iter().take_while(|&&b| b == 0).count()..];
+        if tag != 0x02 || int.len() > len {
+            return None;
+        }
+        fixed.extend(std::iter::repeat_n(0, len - int.len()));
+        fixed.extend_from_slice(int);
+        count += 1;
+    }
+    (count == 2).then_some(fixed)
+}
