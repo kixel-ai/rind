@@ -152,7 +152,9 @@ mod tests {
     // constant time in them.
     #[test]
     fn paths_match_portable() {
-        let lens = [1, 15, 16, 17, 95, 96, 112, 127, 128, 129, 200, 223, 224, 300, 368];
+        let lens = [
+            1, 15, 16, 17, 95, 96, 112, 127, 128, 129, 200, 223, 224, 300, 368,
+        ];
         for (key_len, seed) in [16, 24, 32].into_iter().zip(1..) {
             let key = bytes(key_len, seed);
             ct::secret_slice(&key);
@@ -203,10 +205,7 @@ mod tests {
 
             let iv: [u8; 16] = bytes(16, seed + 7).try_into().unwrap();
             for blocks in lens.map(|len| len.div_ceil(16)) {
-                let plain: Vec<[u8; 16]> = bytes(16 * blocks, seed)
-                    .as_chunks()
-                    .0
-                    .to_vec();
+                let plain: Vec<[u8; 16]> = bytes(16 * blocks, seed).as_chunks().0.to_vec();
                 let mut want = plain.clone();
                 ct::secret_slice(&want);
                 aes_cbc::encrypt(&portable, &iv, &mut want);
@@ -223,7 +222,10 @@ mod tests {
                     ct::secret_slice(&got);
                     aes_cbc::decrypt(path, &iv, &mut got);
                     ct::public_slice(&got);
-                    assert_eq!(got, plain, "{key_len}-byte key, decryption {i}, {blocks} blocks");
+                    assert_eq!(
+                        got, plain,
+                        "{key_len}-byte key, decryption {i}, {blocks} blocks"
+                    );
                 }
             }
         }
