@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import subprocess, json, os, sys, glob, tarfile, tempfile, threading, time
+import concurrent.futures
 
 # Run it at the workspace root in `nix develop .#sde`, which has the Intel SDE
 # build x86-cpu.yml runs.
@@ -359,11 +360,12 @@ elif mode == "all":
                         failed.append(f"{exe} on {model[0]}")
                         print(log.read(), flush=True)
 
-    threads = [threading.Thread(target=worker) for _ in range(max(1, os.cpu_count() // 2))]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join()
+    # A worker's exception, such as SDE failing to start, re-raises here, so
+    # no run is left out with the exit status still 0.
+    workers = max(1, os.cpu_count() // 2)
+    with concurrent.futures.ThreadPoolExecutor(workers) as pool:
+        for future in [pool.submit(worker) for _ in range(workers)]:
+            future.result()
     for name, total in seconds.items():
         print(f"{name}: {total / 60:.1f} minutes of runs")
     if failed:
