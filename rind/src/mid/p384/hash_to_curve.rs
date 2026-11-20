@@ -245,7 +245,10 @@ mod tests {
             // armv7 and the portable backend run fiat-crypto's field
             // arithmetic, as RustCrypto and aws-lc do there, so the
             // independent oracle is the textbook reference.
-            #[cfg(any(rind_backend = "arm", rind_backend = "portable"))]
+            #[cfg(all(
+                any(rind_backend = "arm", rind_backend = "portable"),
+                not(any(miri, target_family = "wasm"))
+            ))]
             {
                 let reference = crate::test::reference::p384();
                 let point = hash_to_curve(&msg, &dst).unwrap();
