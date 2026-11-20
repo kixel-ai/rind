@@ -271,7 +271,7 @@ Hand-written arithmetic no proof covers, by where it came from:
   multiplication off ADX, the AVX2 and SHA512-instruction SHA-2, VAES
   AES-GCM, and all of armv7's. Vectors and fuzzing reach each on its tier;
   aws-lc-rs, which runs that code too, checks only the glue, and the
-  independent oracle the routine.
+  independent oracle the routine where its row names one.
 - **Graviola's** code under AES, GHASH, SHA-256, HMAC, P-256, P-384,
   ML-KEM, and RSA, wherever ALGORITHMS.md names it. Vectors, differential
   tests independent of it, and fuzzing reach each.
