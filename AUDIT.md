@@ -126,7 +126,6 @@ The pins, as `admin/audit` renders them from the files that hold them, so
 | libcrux-hacl-rs | 0.0.6 | `Cargo.lock` | the runtime of the HACL\* ChaCha20 rounds rind copied |
 | libcrux-macros | 0.0.4 | `Cargo.lock` | the same |
 | libcrux-poly1305 | 0.0.7 | `Cargo.lock` | HACL\*'s Poly1305, on 32-bit portable targets |
-| libcrux-sha2 | 0.0.9 | `Cargo.lock` | HACL\*'s SHA-2 block functions, on the portable backend |
 <!-- admin/audit pins: end -->
 
 Code taken once, with no importer to rerun, carries no machine-readable pin:
@@ -282,7 +281,8 @@ Hand-written arithmetic no proof covers, by where it came from:
   [TESTING.md](TESTING.md#vector-suites) describes.
 - **Ports to Rust**: mlkem-native's and mldsa-native's C, outside their CBMC
   proofs; curve25519-dalek's AVX2 backend, for Ed25519 verification on
-  x86_64 without ADX; and aws-lc's constant-time SSE2 AES and integer GHASH.
+  x86_64 without ADX; aws-lc's constant-time SSE2 AES and integer GHASH; and
+  aws-lc's C SHA-256 and SHA-384/512, the portable backend's.
   `low::generic::mldsa_poly::backend_matches_port` checks the ML-DSA port
   against the AVX2 and Neon routines.
 - **curve25519-dalek's serial backend**, X25519, Ed25519, and ristretto255

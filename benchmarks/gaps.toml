@@ -51,7 +51,7 @@ reason = "rind's portable SHA-1 trails aws-lc's C by 1.1 to 1.25× from 1200 B u
 [[gap]]
 operations = ["sha256/*", "sha256-updates/*", "hmac-sha256/*", "sha512*", "hmac-sha384/*"]
 on = ["portable"]
-quest = "/quest/m2/speed/portable-sha2.md"
+reason = "Closed after this run: [kixel-ai/rind#944](https://github.com/kixel-ai/rind/pull/944), which landed after the run's commit, replaces HACL*'s SHA-2 with aws-lc's C block functions ported to Rust, which measured 0.80 to 0.91× aws-lc-rs's time for SHA-256 and 0.90 to 0.99× for SHA-512 on an Intel core in this row's configuration. The next refresh measures it."
 
 [[gap]]
 operations = ["aes*", "quic-header-protection/aes*", "rustls-bulk/aes*", "hpke-*-aes128-gcm-*"]
