@@ -322,14 +322,12 @@ for module in "${modules[@]}"; do
         cross_reach=$(reach cross)
         reaches "$cross_reach" aarch64 arm portable || continue
     fi
-    # x86-cpu.yml's scope: a diff that changes the models' own files, or that
-    # sh/backends.sh says reaches x86_64.
-    if [[ "$verb:$module" == check:sde && -z "$all" ]]; then
-        sde_paths=$(grep -E "${scope[sde]}" "$changed")
-        if ! grep -qxE '\.github/workflows/x86-cpu\.yml|admin/x86-cpu' <<<"$sde_paths"; then
-            sde_reach=$(sh/backends.sh - <<<"$sde_paths")
-            grep -qxE 'all|x86_64' <<<"$sde_reach" || continue
-        fi
+    # x86-cpu.yml's scope, over the same whole diff: one that changes the
+    # models' own files, or that sh/backends.sh says reaches x86_64.
+    if [[ "$verb:$module" == check:sde && -z "$all" ]] &&
+        ! grep -qxE '\.github/workflows/x86-cpu\.yml|admin/x86-cpu' "$changed"; then
+        sde_reach=$(sh/backends.sh "$changed")
+        grep -qxE 'all|x86_64' <<<"$sde_reach" || continue
     fi
     # Selection must not depend on the tools setup has yet to install.
     if [[ -n "$query" ]]; then

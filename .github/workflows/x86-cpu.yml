@@ -77,10 +77,11 @@ jobs:
               grep -qxE 'all|x86_64' <<<"$reach" || run=false
             fi
           fi
-          echo "run=$run" | tee -a "$GITHUB_OUTPUT"
           if [ "$run" = true ]; then
-            echo "models=$(admin/x86-cpu matrix)" | tee -a "$GITHUB_OUTPUT"
+            models=$(admin/x86-cpu matrix)
+            echo "models=$models" | tee -a "$GITHUB_OUTPUT"
           fi
+          echo "run=$run" | tee -a "$GITHUB_OUTPUT"
 
   # The release tests, built once for every model's job to run: a model
   # changes only which paths the same binaries take.
