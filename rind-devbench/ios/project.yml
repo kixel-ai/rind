@@ -33,7 +33,6 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: io.github.steelhead99x.rindbench.all
-        DEVELOPMENT_TEAM: 
         CODE_SIGN_STYLE: Automatic
         TARGETED_DEVICE_FAMILY: "1,2"
         OTHER_LDFLAGS: ["$(RIND_DEVBENCH_LIB)", "-framework", "Security", "-lc++"]
