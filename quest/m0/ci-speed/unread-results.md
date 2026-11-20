@@ -25,6 +25,4 @@ Recommendations:
 
 ## Required
 
-- [x86-cpu builds once](/quest/m0/ci-speed/x86-cpu-build-once.md) - shortens x86-cpu's runs, so fewer are superseded
 - [PRs run three SDE models](/quest/m0/ci-speed/sde-pr-models.md) - cuts x86-cpu's pull-request hours before this re-measures
-- [PRs re-check only changed proofs](/quest/m0/ci-speed/prove-pr-cache.md) - cuts prove's pull-request hours before this re-measures
