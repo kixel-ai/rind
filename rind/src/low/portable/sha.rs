@@ -3,7 +3,7 @@
 //! SHA-1 on rind's portable code in `generic`, as armv7 runs it without the
 //! crypto extension, and the SHA-2 family on aws-lc's C block functions in
 //! Rust, `generic::sha256` and `generic::sha512`. On x86_64 those took
-//! 0.85-0.93 of aws-lc's own C's time for SHA-256 and 0.94-1.00 for SHA-512
+//! 0.83-0.93 of aws-lc's own C's time for SHA-256 and 0.94-1.00 for SHA-512
 //! from 32 B to 16 KB, where HACL*'s verified `Hacl_Hash_SHA2`, which this
 //! ran before, took 0.92-0.99 and 1.25-1.33 on an Intel core and up to 1.17
 //! and 1.22 on GitHub's runners.

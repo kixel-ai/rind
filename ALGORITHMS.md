@@ -173,11 +173,11 @@ with portable Rust in place of the assembly armv7 runs regardless.
 - portable: SHA-256 and SHA-384/512 run aws-lc's C block functions,
   `sha256_block_data_order_nohw` and the 64-bit
   `sha512_block_data_order_nohw`, ported to Rust in `generic::sha256` and
-  `generic::sha512`. On x86_64 they took 0.85-0.93 and 0.94-1.00 of aws-lc's
+  `generic::sha512`. On x86_64 they took 0.83-0.93 and 0.94-1.00 of aws-lc's
   own C's time from 32 B to 16 KB, where HACL*'s ✓, which the backend ran
   before, took 0.92-0.99 and 1.25-1.33 on an Intel core, and up to 1.17 and
-  1.22 on GitHub's runners; on i686, 0.85 and 1.58 against HACL*'s 1.00 and
-  1.72. RustCrypto's `sha2` and Graviola's portable SHA-256 measured slower
+  1.22 on GitHub's runners; on i686 at 16 KB, 0.86 and 1.58 against HACL*'s
+  1.04 and 1.72. RustCrypto's `sha2` and Graviola's portable SHA-256 measured slower
   still. Nothing proves the port yet.
 - portable, 32-bit microcontrollers (ESP-IDF or no OS): SHA-384/512 is
   rind's rolled loop in `generic::sha512_rolled`, a few kilobytes of code
