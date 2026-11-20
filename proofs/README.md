@@ -250,10 +250,16 @@ checks that the registrations they cite still emit the routines rind runs:
 ECDH, and ECDSA verification routines rind runs, one axiom per wrapper in
 `low::<arch>::p256_vg`, over `VerifiedGarbage.Spec.EcKey`, `Spec.Ecdh`, and
 `Spec.Ecdsa`, whose contracts `admin/import-vg-models` vendors too.
-`Rind/VgP256.lean` proves those specs are rind's: VG's points add and
-multiply as `p256Add` and `p256Pow`, through Mathlib's group of points
-(`Rind/NistGroup.lean`), its key validation is `p256OnCurve`, its octet
-strings `beNat`'s, and its ECDSA verification `ecdsaP256Verifies`. The P-256
+`Rind/VgNist.lean` proves those specs are rind's for any VG curve that
+`Matches` one of rind's NIST curves: VG's points add and multiply as
+`nist.add` and `nist.pow`, through Mathlib's group of points
+(`Rind/NistGroup.lean`), its key validation is `nist.OnCurve`, its octet
+strings `beNat`'s, and its ECDSA verification `nist.ecdsaVerifies`.
+`Rind/VgP256.lean` proves VG's P-256 matches rind's, and its ECDH is
+`p256Pow`'s x-coordinate. `Rind/<Arch>/VgP384.lean` restates VG's contracts
+for the P-384 public key and ECDSA verification routines, over
+`VerifiedGarbage.Spec.EcKey.P384` and `Spec.Ecdsa.Verify.P384`, and
+`Rind/VgP384.lean` proves VG's P-384 matches rind's. The P-256 and P-384
 theorems below rest on them.
 
 `Rind/VgPbkdf2.lean` proves VG's SHA-1, SHA-256, SHA-384, SHA-512, HMAC,
@@ -495,14 +501,18 @@ by cases before s2n-bignum's `p384_montjadd` and `p384_montjmixadd`, whose
 contracts exclude them, and the theorems assume `Drbg`, `Fills`, `Held`, and
 P-384's `Cached`, its keys' caches.
 
-Every P-384 theorem that derives a public key, key generation's and signing's
-included, assumes `NoVgP384`: the CPU does not run pyca/verified-garbage's
-`d·G`, which rind takes on every x86_64 and aarch64 CPU, and whose Lean proof
-lives in that project, not here. So those theorems cover no CPU until
-[their quest](/quest/m2/verified-garbage/p384-proof.md) imports VG's theorems.
-Verification's assume only `NoVgP384Verify`: the CPU does not run VG's
-verification, which rind takes on x86_64 with BMI2 and ADX and on every
-aarch64 CPU, so they cover x86_64 CPUs without those features.
+Where pyca/verified-garbage's checks pass, P-384 runs VG's routines: its
+`d·G` for key generation and each signature's k·G, on every x86_64 and
+aarch64 CPU, and its ECDSA verification, on x86_64 with BMI2 and ADX and on
+aarch64 until a key's multiples are ready. `Rind/<Arch>/VgP384.lean` restates
+their theorems as axioms, and the P-384 theorems assume only `RunsP384`, that
+the checks return, so cover rind's code and VG's alike. VG's contracts state
+SEC 1 and FIPS 186-5 over its own transcription, which `Rind/VgNist.lean`
+proves rind's for any of its curves that `Matches` one of rind's NIST curves,
+and `Rind/VgP384.lean` proves P-384 does, as `Rind/VgP256.lean` does P-256.
+`raw_ecdsa_verify` calls rind's twin multiplication from one function,
+`rind_ecdsa_verify`, so the proof is one on both targets though only aarch64
+reads the multiples' cache to choose.
 
 rind computes k·G with its own comb in Rust, aws-lc's layout: 77 Booth-recoded
 5-bit windows added from 20 tables of 1 to 16 times 2^(20j)·G, with five
@@ -1467,9 +1477,11 @@ proof after those.
 - `Rind/X86_64/P256Dispatch.lean`, `Rind/X86_64/P256Agree.lean`, and
   `Rind/X86_64/P256.lean`: the hand model of P-256's key generation, and the
   P-256 agreement and key generation proofs, on both targets.
-- `Rind/VgP256.lean`: that pyca/verified-garbage's P-256 specs are rind's,
-  and `Rind/<Arch>/VgP256.lean`, one per target, the axioms restating VG's
-  theorems about its P-256 routines.
+- `Rind/VgNist.lean`: that pyca/verified-garbage's NIST curve specs are
+  rind's for any curve that matches; `Rind/VgP256.lean` and
+  `Rind/VgP384.lean`: that VG's P-256 and P-384 match, and
+  `Rind/<Arch>/VgP256.lean` and `Rind/<Arch>/VgP384.lean`, one per target,
+  the axioms restating VG's theorems about its P-256 and P-384 routines.
 - `Rind/P256Booth.lean`: the arithmetic of x86_64's Booth-recoded generator
   multiplication.
 - `Rind/<Arch>/P256Table.lean` and `Rind/<Arch>/P256Base.lean`, one per
