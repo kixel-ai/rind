@@ -176,9 +176,8 @@ establishes, and what it does not:
   code with the path rind runs, on the same tiers. Where rind runs aws-lc's
   own routine, as for ChaCha20-Poly1305 on x86_64 and aarch64 or RSA's RSAZ
   exponentiation, aws-lc-rs compares that routine with itself, so it checks
-  rind's glue around it, and the oracle checks the routine; a row whose
-  oracle is "none" has only vectors for it. wasm runs none, since aws-lc
-  does not build for it.
+  rind's glue around it, and the oracle checks the routine. wasm runs none,
+  since aws-lc does not build for it.
 - **Fuzz targets**, weekly for twenty minutes each against aws-lc-rs,
   replayed on every tier and against the portable backend. The ECVRF, OPRF,
   and blind RSA targets compare rind with itself, so they find panics and
@@ -271,7 +270,7 @@ Hand-written arithmetic no proof covers, by where it came from:
   multiplication off ADX, the AVX2 and SHA512-instruction SHA-2, VAES
   AES-GCM, and all of armv7's. Vectors and fuzzing reach each on its tier;
   aws-lc-rs, which runs that code too, checks only the glue, and the
-  independent oracle the routine where its row names one.
+  independent oracle checks the routine.
 - **Graviola's** code under AES, GHASH, SHA-256, HMAC, P-256, P-384,
   ML-KEM, and RSA, wherever ALGORITHMS.md names it. Vectors, differential
   tests independent of it, and fuzzing reach each.

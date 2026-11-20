@@ -2170,6 +2170,8 @@ mod ed25519 {
 mod rsa {
     use std::sync::LazyLock;
 
+    use ::rsa::pkcs1::DecodeRsaPublicKey;
+    use ::rsa::pkcs8::{DecodePrivateKey, EncodePublicKey};
     use aws_lc_rs::encoding::AsDer;
     use aws_lc_rs::rand::SystemRandom;
     use aws_lc_rs::rsa::{KeyPair, KeySize};
@@ -2192,6 +2194,9 @@ mod rsa {
         theirs_verify: &'static signature::RsaParameters,
         /// PKCS#1 v1.5 signatures have no randomness, so both sides must agree.
         deterministic: bool,
+        /// RustCrypto's signature under the scheme, and its verdict on one.
+        oracle_sign: fn(&::rsa::PrivateKey, &[u8]) -> Vec<u8>,
+        oracle_verify: Oracle,
     }
 
     const SCHEMES: [Scheme; 6] = [
@@ -2201,6 +2206,8 @@ mod rsa {
             theirs_sign: &signature::RSA_PKCS1_SHA256,
             theirs_verify: &signature::RSA_PKCS1_2048_8192_SHA256,
             deterministic: true,
+            oracle_sign: |key, message| key.pkcs1v15_sign::<::sha2::Sha256>(message).unwrap(),
+            oracle_verify: pkcs1::<::sha2::Sha256>,
         },
         Scheme {
             ours_sign: &sign::PKCS1_SHA384,
@@ -2208,6 +2215,8 @@ mod rsa {
             theirs_sign: &signature::RSA_PKCS1_SHA384,
             theirs_verify: &signature::RSA_PKCS1_2048_8192_SHA384,
             deterministic: true,
+            oracle_sign: |key, message| key.pkcs1v15_sign::<::sha2::Sha384>(message).unwrap(),
+            oracle_verify: pkcs1::<::sha2::Sha384>,
         },
         Scheme {
             ours_sign: &sign::PKCS1_SHA512,
@@ -2215,6 +2224,8 @@ mod rsa {
             theirs_sign: &signature::RSA_PKCS1_SHA512,
             theirs_verify: &signature::RSA_PKCS1_2048_8192_SHA512,
             deterministic: true,
+            oracle_sign: |key, message| key.pkcs1v15_sign::<::sha2::Sha512>(message).unwrap(),
+            oracle_verify: pkcs1::<::sha2::Sha512>,
         },
         Scheme {
             ours_sign: &sign::PSS_SHA256,
@@ -2222,6 +2233,8 @@ mod rsa {
             theirs_sign: &signature::RSA_PSS_SHA256,
             theirs_verify: &signature::RSA_PSS_2048_8192_SHA256,
             deterministic: false,
+            oracle_sign: |key, message| key.pss_sign::<::sha2::Sha256>(message).unwrap(),
+            oracle_verify: pss::<::sha2::Sha256>,
         },
         Scheme {
             ours_sign: &sign::PSS_SHA384,
@@ -2229,6 +2242,8 @@ mod rsa {
             theirs_sign: &signature::RSA_PSS_SHA384,
             theirs_verify: &signature::RSA_PSS_2048_8192_SHA384,
             deterministic: false,
+            oracle_sign: |key, message| key.pss_sign::<::sha2::Sha384>(message).unwrap(),
+            oracle_verify: pss::<::sha2::Sha384>,
         },
         Scheme {
             ours_sign: &sign::PSS_SHA512,
@@ -2236,6 +2251,8 @@ mod rsa {
             theirs_sign: &signature::RSA_PSS_SHA512,
             theirs_verify: &signature::RSA_PSS_2048_8192_SHA512,
             deterministic: false,
+            oracle_sign: |key, message| key.pss_sign::<::sha2::Sha512>(message).unwrap(),
+            oracle_verify: pss::<::sha2::Sha512>,
         },
     ];
 
@@ -2279,18 +2296,26 @@ mod rsa {
         }
     }
 
-    /// aws-lc-rs accepts a key we generate and verifies its signatures under
-    /// every scheme, as we do.
+    /// aws-lc-rs and RustCrypto accept a key we generate and verify its
+    /// signatures under every scheme, as we do.
     fn check_key_generation(size: rind::rsa::KeySize) {
         let ours = RsaKeyPair::generate(size).unwrap();
         let theirs = KeyPair::from_pkcs8(ours.to_pkcs8().as_ref())
             .expect("aws-lc-rs rejected a key we generated");
+        let oracle = ::rsa::PrivateKey::from_pkcs8_der(ours.to_pkcs8().as_ref())
+            .expect("RustCrypto rejected a key we generated");
+        oracle.validate().unwrap();
         let public = theirs.public_key().as_ref();
         for scheme in &SCHEMES {
             let signature = ours.sign(scheme.ours_sign, b"hello").unwrap();
             UnparsedPublicKey::new(scheme.theirs_verify, public)
                 .verify(b"hello", signature.as_ref())
                 .unwrap();
+            assert!((scheme.oracle_verify)(
+                oracle.as_public_key(),
+                b"hello",
+                signature.as_ref()
+            ));
             rind::rsa::PublicKey::new(public)
                 .unwrap()
                 .verify(scheme.ours_verify, b"hello", signature.as_ref())
@@ -2328,6 +2353,10 @@ mod rsa {
                 let spki = theirs.public_key().as_der().unwrap();
                 let ours_spki = ours.public_key().to_spki();
                 prop_assert_eq!(ours_spki.as_ref(), spki.as_ref());
+                // RustCrypto reads our PKCS#8 to the same public key.
+                let oracle = ::rsa::PrivateKey::from_pkcs8_der(ours.to_pkcs8().as_ref()).unwrap();
+                let oracle_spki = oracle.to_public_key().to_public_key_der().unwrap();
+                prop_assert_eq!(oracle_spki.as_bytes(), ours_spki.as_ref());
                 let rng = SystemRandom::new();
                 let len = theirs.public_modulus_len();
                 prop_assert_eq!(ours.public_key().modulus_len(), len);
@@ -2335,13 +2364,18 @@ mod rsa {
                 for scheme in &SCHEMES {
                     prop_assert_eq!(ours.public_key().as_ref(), public);
 
-                    // It verifies our signature.
+                    // Both verify our signature.
                     let ours_signature = ours.sign(scheme.ours_sign, &message).unwrap();
                     let ours_signature = ours_signature.as_ref();
                     prop_assert_eq!(ours_signature.len(), len);
                     UnparsedPublicKey::new(scheme.theirs_verify, public)
                         .verify(&message, ours_signature)
                         .unwrap();
+                    prop_assert!((scheme.oracle_verify)(
+                        oracle.as_public_key(),
+                        &message,
+                        ours_signature
+                    ));
 
                     // We verify its signature, and refuse it over another message.
                     let mut theirs_signature = vec![0u8; len];
@@ -2363,6 +2397,13 @@ mod rsa {
                         ),
                         Err(Error::BadSignature)
                     );
+
+                    // And RustCrypto's.
+                    let oracle_signature = (scheme.oracle_sign)(&oracle, &message);
+                    if scheme.deterministic {
+                        prop_assert_eq!(ours_signature, &oracle_signature[..]);
+                    }
+                    verifier.verify(scheme.ours_verify, &message, &oracle_signature).unwrap();
                 }
             }
         }
@@ -2475,48 +2516,105 @@ mod rsa {
         }
     }
 
-    // Every verification algorithm, beside aws-lc-rs's of the same name.
-    const VERIFICATION: [(&RsaVerificationAlgorithm, &signature::RsaParameters); 11] = [
+    /// RustCrypto's verdict on a PKCS#1 v1.5 or PSS signature.
+    type Oracle = fn(&::rsa::PublicKey, &[u8], &[u8]) -> bool;
+
+    fn pkcs1<D: ::sha2::Digest + ::sha2::digest::const_oid::AssociatedOid>(
+        key: &::rsa::PublicKey,
+        message: &[u8],
+        signature: &[u8],
+    ) -> bool {
+        key.pkcs1v15_verify::<D>(message, signature).is_ok()
+    }
+
+    fn pss<D: ::sha2::Digest + ::sha2::digest::FixedOutputReset>(
+        key: &::rsa::PublicKey,
+        message: &[u8],
+        signature: &[u8],
+    ) -> bool {
+        key.pss_verify::<D>(message, signature).is_ok()
+    }
+
+    // Every verification algorithm, beside aws-lc-rs's of the same name, and
+    // RustCrypto's with the smallest modulus, in bits, the algorithm takes,
+    // which RustCrypto does not check.
+    const VERIFICATION: [(
+        &RsaVerificationAlgorithm,
+        &signature::RsaParameters,
+        usize,
+        Oracle,
+    ); 11] = [
         (
             &verify::legacy::PKCS1_1024_SHA1,
             &signature::RSA_PKCS1_1024_8192_SHA1_FOR_LEGACY_USE_ONLY,
+            1024,
+            pkcs1::<::sha1::Sha1>,
         ),
         (
             &verify::legacy::PKCS1_1024_SHA256,
             &signature::RSA_PKCS1_1024_8192_SHA256_FOR_LEGACY_USE_ONLY,
+            1024,
+            pkcs1::<::sha2::Sha256>,
         ),
         (
             &verify::legacy::PKCS1_1024_SHA512,
             &signature::RSA_PKCS1_1024_8192_SHA512_FOR_LEGACY_USE_ONLY,
+            1024,
+            pkcs1::<::sha2::Sha512>,
         ),
         (
             &verify::legacy::PKCS1_SHA1,
             &signature::RSA_PKCS1_2048_8192_SHA1_FOR_LEGACY_USE_ONLY,
+            2048,
+            pkcs1::<::sha1::Sha1>,
         ),
         (
             &verify::PKCS1_SHA256,
             &signature::RSA_PKCS1_2048_8192_SHA256,
+            2048,
+            pkcs1::<::sha2::Sha256>,
         ),
         (
             &verify::PKCS1_SHA384,
             &signature::RSA_PKCS1_2048_8192_SHA384,
+            2048,
+            pkcs1::<::sha2::Sha384>,
         ),
         (
             &verify::PKCS1_SHA512,
             &signature::RSA_PKCS1_2048_8192_SHA512,
+            2048,
+            pkcs1::<::sha2::Sha512>,
         ),
         (
             &verify::legacy::PKCS1_3072_SHA384,
             &signature::RSA_PKCS1_3072_8192_SHA384,
+            3072,
+            pkcs1::<::sha2::Sha384>,
         ),
-        (&verify::PSS_SHA256, &signature::RSA_PSS_2048_8192_SHA256),
-        (&verify::PSS_SHA384, &signature::RSA_PSS_2048_8192_SHA384),
-        (&verify::PSS_SHA512, &signature::RSA_PSS_2048_8192_SHA512),
+        (
+            &verify::PSS_SHA256,
+            &signature::RSA_PSS_2048_8192_SHA256,
+            2048,
+            pss::<::sha2::Sha256>,
+        ),
+        (
+            &verify::PSS_SHA384,
+            &signature::RSA_PSS_2048_8192_SHA384,
+            2048,
+            pss::<::sha2::Sha384>,
+        ),
+        (
+            &verify::PSS_SHA512,
+            &signature::RSA_PSS_2048_8192_SHA512,
+            2048,
+            pss::<::sha2::Sha512>,
+        ),
     ];
 
-    /// Both accept and refuse the same signatures under every algorithm, for
-    /// keys as DER or as components. aws-lc-rs signs neither SHA-1 nor
-    /// 1024-bit keys, so the signatures are Wycheproof's.
+    /// All three accept and refuse the same signatures under every
+    /// algorithm, for keys as DER or as components. aws-lc-rs signs neither
+    /// SHA-1 nor 1024-bit keys, so the signatures are Wycheproof's.
     #[test]
     fn verification_agrees() {
         for file in [
@@ -2536,6 +2634,8 @@ mod rsa {
                 let e = hex(&group["privateKey"]["publicExponent"]);
                 // A leading zero, as the DER sign byte leaves, is refused.
                 let n = modulus.strip_prefix(&[0]).unwrap();
+                let bits = n.len() * 8 - n[0].leading_zeros() as usize;
+                let oracle = ::rsa::PublicKey::from_pkcs1_der(&der).unwrap();
 
                 for (i, test) in group["tests"].as_array().unwrap().iter().enumerate() {
                     let message = hex(&test["msg"]);
@@ -2549,7 +2649,7 @@ mod rsa {
                     };
 
                     for message in messages {
-                        for (ours, theirs) in VERIFICATION {
+                        for (ours, theirs, min_bits, oracle_verify) in VERIFICATION {
                             let case = format!("{file} {i} {ours:?}");
                             for n in [n, &modulus] {
                                 let components = rind::rsa::PublicKeyComponents { n, e: &e };
@@ -2565,6 +2665,9 @@ mod rsa {
                             let theirs =
                                 UnparsedPublicKey::new(theirs, &der).verify(message, &signature);
                             assert_eq!(ours.is_ok(), theirs.is_ok(), "{case} {ours:?}");
+                            let oracle =
+                                bits >= min_bits && oracle_verify(&oracle, message, &signature);
+                            assert_eq!(ours.is_ok(), oracle, "{case} {ours:?}, RustCrypto");
                         }
                     }
                 }
@@ -2616,6 +2719,8 @@ mod rsa {
     }
 
     mod oaep {
+        use ::rsa::pkcs8::DecodePrivateKey;
+        use ::sha2::digest::{Digest, FixedOutputReset};
         use aws_lc_rs::encoding::{AsDer, PublicKeyX509Der};
         use aws_lc_rs::rand::SystemRandom;
         use aws_lc_rs::rsa::{
@@ -2647,15 +2752,58 @@ mod rsa {
             0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x0a,
         ];
 
-        const ALGORITHMS: [(&ours::OaepAlgorithm, &OaepAlgorithm); 4] = [
-            (&ours::legacy::OAEP_SHA1, &OAEP_SHA1_MGF1SHA1),
-            (&ours::OAEP_SHA256, &OAEP_SHA256_MGF1SHA256),
-            (&ours::OAEP_SHA384, &OAEP_SHA384_MGF1SHA384),
-            (&ours::OAEP_SHA512, &OAEP_SHA512_MGF1SHA512),
+        const ALGORITHMS: [(&ours::OaepAlgorithm, &OaepAlgorithm, Oracle); 4] = [
+            (
+                &ours::legacy::OAEP_SHA1,
+                &OAEP_SHA1_MGF1SHA1,
+                Oracle::of::<::sha1::Sha1>(),
+            ),
+            (
+                &ours::OAEP_SHA256,
+                &OAEP_SHA256_MGF1SHA256,
+                Oracle::of::<::sha2::Sha256>(),
+            ),
+            (
+                &ours::OAEP_SHA384,
+                &OAEP_SHA384_MGF1SHA384,
+                Oracle::of::<::sha2::Sha384>(),
+            ),
+            (
+                &ours::OAEP_SHA512,
+                &OAEP_SHA512_MGF1SHA512,
+                Oracle::of::<::sha2::Sha512>(),
+            ),
         ];
 
-        /// For each of `THEIRS` and each algorithm: our key, and aws-lc-rs's
-        /// and its public key, loaded from its PKCS#8.
+        /// RustCrypto's OAEP with one hash, for both the label and MGF1, and
+        /// its key.
+        #[derive(Clone, Copy)]
+        struct Oracle {
+            encrypt: fn(&::rsa::PublicKey, &[u8], &[u8]) -> Vec<u8>,
+            decrypt: fn(&::rsa::PrivateKey, &[u8], &[u8]) -> Decrypted,
+        }
+
+        /// The message, or `None` where the key refuses the ciphertext.
+        type Decrypted = Option<Vec<u8>>;
+
+        impl Oracle {
+            const fn of<D: Digest + FixedOutputReset>() -> Self {
+                Self {
+                    encrypt: |key, message, label| {
+                        let padding = ::rsa::Oaep::<D>::new_with_label(label);
+                        key.encrypt(&mut getrandom::SysRng, padding, message)
+                            .unwrap()
+                    },
+                    decrypt: |key, ciphertext, label| {
+                        let padding = ::rsa::Oaep::<D>::new_with_label(label);
+                        key.decrypt(padding, ciphertext).ok()
+                    },
+                }
+            }
+        }
+
+        /// For each of `THEIRS` and each algorithm, loaded from its PKCS#8:
+        /// our key, aws-lc-rs's and its public key, and RustCrypto's.
         fn keys() -> impl Iterator<
             Item = (
                 &'static ours::OaepAlgorithm,
@@ -2663,20 +2811,23 @@ mod rsa {
                 DecryptingKey,
                 OaepPrivateDecryptingKey,
                 PublicEncryptingKey,
+                (Oracle, ::rsa::PrivateKey),
             ),
         > {
             THEIRS.iter().flat_map(|theirs| {
                 let pkcs8 = theirs.as_der().unwrap();
-                ALGORITHMS.map(|(ours_algorithm, theirs_algorithm)| {
+                ALGORITHMS.map(|(ours_algorithm, theirs_algorithm, oracle)| {
                     let ours = DecryptingKey::from_pkcs8(ours_algorithm, pkcs8.as_ref()).unwrap();
                     let theirs = PrivateDecryptingKey::from_pkcs8(pkcs8.as_ref()).unwrap();
                     let public = theirs.public_key();
+                    let oracle_key = ::rsa::PrivateKey::from_pkcs8_der(pkcs8.as_ref()).unwrap();
                     (
                         ours_algorithm,
                         theirs_algorithm,
                         ours,
                         OaepPrivateDecryptingKey::new(theirs).unwrap(),
                         public,
+                        (oracle, oracle_key),
                     )
                 })
             })
@@ -2707,7 +2858,9 @@ mod rsa {
                 message in vec(any::<u8>(), 0..200),
                 label in vec(any::<u8>(), 0..40),
             ) {
-                for (ours_algorithm, theirs_algorithm, ours, theirs, public) in keys() {
+                for (ours_algorithm, theirs_algorithm, ours, theirs, public, (oracle, oracle_key)) in
+                    keys()
+                {
                     let spki: PublicKeyX509Der<'_> = public.as_der().unwrap();
                     let ours_spki = ours.public_key().to_spki();
                     prop_assert_eq!(ours_spki.as_ref(), spki.as_ref());
@@ -2733,17 +2886,25 @@ mod rsa {
                         .unwrap();
                     let decrypted = ours.decrypt(ciphertext, &label).unwrap();
                     prop_assert_eq!(decrypted.as_ref(), message);
+
+                    // And with RustCrypto.
+                    let ciphertext = ours_public.encrypt(message, &label).unwrap();
+                    let decrypted = (oracle.decrypt)(&oracle_key, ciphertext.as_ref(), &label);
+                    prop_assert_eq!(decrypted.as_deref(), Some(message));
+                    let ciphertext = (oracle.encrypt)(oracle_key.as_public_key(), message, &label);
+                    let decrypted = ours.decrypt(&ciphertext, &label).unwrap();
+                    prop_assert_eq!(decrypted.as_ref(), message);
                 }
             }
 
-            /// Both accept the same ciphertexts, tampered with or made up,
-            /// and decrypt them to the same message.
+            /// All three accept the same ciphertexts, tampered with or made
+            /// up, and decrypt them to the same message.
             #[test]
             fn decrypt_agrees(
                 flip in any::<prop::sample::Index>(),
                 bytes in vec(any::<u8>(), 256..=257),
             ) {
-                for (_, theirs_algorithm, ours, theirs, _) in keys() {
+                for (_, theirs_algorithm, ours, theirs, _, (oracle, oracle_key)) in keys() {
                     let ciphertext = ours.public_key().encrypt(b"message", b"").unwrap();
                     let mut tampered = ciphertext.as_ref().to_vec();
                     let i = flip.index(tampered.len());
@@ -2751,10 +2912,20 @@ mod rsa {
                     for ciphertext in [&tampered, &bytes] {
                         let ours = ours.decrypt(ciphertext, b"");
                         let theirs = decrypt(&theirs, theirs_algorithm, ciphertext, b"");
-                        match (&ours, &theirs) {
-                            (Ok(ours), Some(theirs)) => prop_assert_eq!(ours.as_ref(), &theirs[..]),
-                            (Err(Error::DecryptFailed), None) => {}
-                            _ => prop_assert!(false, "ours {:?}, theirs {:?}", ours, theirs),
+                        let oracle = (oracle.decrypt)(&oracle_key, ciphertext, b"");
+                        match (&ours, &theirs, &oracle) {
+                            (Ok(ours), Some(theirs), Some(oracle)) => {
+                                prop_assert_eq!(ours.as_ref(), &theirs[..]);
+                                prop_assert_eq!(ours.as_ref(), &oracle[..]);
+                            }
+                            (Err(Error::DecryptFailed), None, None) => {}
+                            _ => prop_assert!(
+                                false,
+                                "ours {:?}, theirs {:?}, RustCrypto {:?}",
+                                ours,
+                                theirs,
+                                oracle
+                            ),
                         }
                     }
                 }
@@ -3615,9 +3786,10 @@ mod hpke {
 }
 
 /// ML-DSA against aws-lc-rs, which runs mldsa-native with the same
-/// s2n-bignum kernels.
+/// s2n-bignum kernels, and against RustCrypto's, which shares no code with
+/// rind.
 macro_rules! ml_dsa_crosschecks {
-    ($set:ident, $signing:ident, $verify:ident) => {
+    ($set:ident, $signing:ident, $verify:ident, $rustcrypto:ident) => {
         use aws_lc_rs::encoding::{AsDer, AsRawBytes};
         use aws_lc_rs::signature::{KeyPair, PqdsaKeyPair, UnparsedPublicKey, $signing};
         use proptest::collection::vec;
@@ -3672,6 +3844,34 @@ macro_rules! ml_dsa_crosschecks {
                 }
             }
 
+            /// RustCrypto derives the same public key from the seed, and
+            /// each verifies the other's signature and refuses it altered.
+            #[test]
+            fn oracle(
+                seed in any::<[u8; 32]>(),
+                message in vec(any::<u8>(), 0..300),
+                flip in any::<Index>(),
+            ) {
+                let ours = MlDsaKeyPair::<$set>::from_seed(&seed).unwrap();
+                let theirs = ml_dsa::ExpandedSigningKey::<ml_dsa::$rustcrypto>::from_seed(&seed.into());
+                let their_public = theirs.verifying_key();
+                prop_assert_eq!(ours.public_key().as_ref(), &their_public.encode()[..]);
+
+                let ours_signature = ours.sign(&message).unwrap();
+                let decoded = ml_dsa::Signature::try_from(ours_signature.as_ref()).unwrap();
+                prop_assert!(their_public.verify_with_context(&message, &[], &decoded));
+                let mut signature = theirs.sign_deterministic(&message, &[]).unwrap().encode().to_vec();
+                let verifier = ours.public_key();
+                verifier.verify(&message, &signature).unwrap();
+
+                let bit = flip.index(signature.len() * 8);
+                signature[bit / 8] ^= 1 << (bit % 8);
+                prop_assert!(verifier.verify(&message, &signature).is_err());
+                let refused = ml_dsa::Signature::try_from(signature.as_slice())
+                    .is_ok_and(|signature| their_public.verify_with_context(&message, &[], &signature));
+                prop_assert!(!refused);
+            }
+
             /// Both load the other's expanded key, which has no seed, and
             /// sign alike with it.
             #[test]
@@ -3717,15 +3917,15 @@ macro_rules! ml_dsa_crosschecks {
 }
 
 mod ml_dsa_44 {
-    ml_dsa_crosschecks!(MlDsa44, ML_DSA_44_SIGNING, ML_DSA_44);
+    ml_dsa_crosschecks!(MlDsa44, ML_DSA_44_SIGNING, ML_DSA_44, MlDsa44);
 }
 
 mod ml_dsa_65 {
-    ml_dsa_crosschecks!(MlDsa65, ML_DSA_65_SIGNING, ML_DSA_65);
+    ml_dsa_crosschecks!(MlDsa65, ML_DSA_65_SIGNING, ML_DSA_65, MlDsa65);
 }
 
 mod ml_dsa_87 {
-    ml_dsa_crosschecks!(MlDsa87, ML_DSA_87_SIGNING, ML_DSA_87);
+    ml_dsa_crosschecks!(MlDsa87, ML_DSA_87_SIGNING, ML_DSA_87, MlDsa87);
 }
 
 // aws-lc-rs has no SLH-DSA, so RustCrypto's and integritychain's `fips205`
