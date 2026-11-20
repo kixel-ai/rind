@@ -1,0 +1,425 @@
+//! Tests the Lean specs `proofs/README.md`'s trust base trusts as
+//! transliterations of their standards: runs each, as the compiled
+//! `spec-server` answers, on its algorithm's published vectors from
+//! `thirdparty/vectors/`, and on random inputs from a fixed seed compared with
+//! rind's output, and fails on any disagreement. `admin/prove lean` runs it.
+//!
+//! Usage: spec-tests <spec-server> <vectors dir> <seed> <random cases per test> [full]
+//!
+//! Each section of `cases` runs on its own thread with its own server, and
+//! its own random source, from the seed and the section's name, so a seed
+//! reproduces each section's inputs alone (`SPEC_TESTS_ONLY=<section>,...`
+//! runs only those). Without `full`, a vector file of more than `SAMPLE`
+//! cases runs every k-th, and the slowest specs run a sample of their own,
+//! as `cases` says of each.
+
+mod cases;
+
+use std::collections::BTreeMap;
+use std::fmt::Write as _;
+use std::io::{BufRead, BufReader, BufWriter, Write};
+use std::path::{Path, PathBuf};
+use std::process::{Child, ChildStdin, ChildStdout, Command, ExitCode, Stdio};
+use std::sync::Mutex;
+use std::time::Instant;
+
+/// The most cases a vector file runs without `full`.
+pub const SAMPLE: usize = 400;
+
+/// Every request the server answers, so a test that stops running fails.
+const SPECS: &[&str] = &[
+    "sha1",
+    "sha256",
+    "sha256-s2n",
+    "sha384",
+    "sha384-s2n",
+    "sha512",
+    "sha512-s2n",
+    "sha512_256",
+    "sha512_256-s2n",
+    "sha3_256",
+    "sha3_384",
+    "sha3_512",
+    "shake128",
+    "shake256",
+    "sha3_256-symcrypt",
+    "shake128-symcrypt",
+    "hmac",
+    "hkdf",
+    "pbkdf2",
+    "chacha20",
+    "chacha20-s2n",
+    "hchacha20",
+    "poly1305",
+    "poly1305-s2n",
+    "chacha20poly1305-seal",
+    "chacha20poly1305-open",
+    "chacha20poly1305-s2n-seal",
+    "chacha20poly1305-s2n-open",
+    "xchacha20poly1305-seal",
+    "xchacha20poly1305-open",
+    "hp-chacha20",
+    "hp-aes",
+    "aes-encrypt",
+    "aes-decrypt",
+    "aes-gcm-seal",
+    "aes-gcm-open",
+    "aes-ctr",
+    "aes-cbc-encrypt",
+    "aes-cbc-decrypt",
+    "aes-kw-wrap",
+    "aes-kw-unwrap",
+    "aes-kwp-wrap",
+    "aes-kwp-unwrap",
+    "ec-mul",
+    "ec-base",
+    "ecdsa-sign",
+    "ecdsa-verify",
+    "ed25519-public",
+    "ed25519-sign",
+    "ed25519-verify",
+    "ed25519-small-order",
+    "ed25519-small-key",
+    "x25519",
+    "rsa-pkcs1-verify",
+    "rsa-pss-verify",
+    "mlkem-keygen",
+    "mlkem-encaps",
+    "mlkem-decaps",
+];
+
+/// The specs that run on no random inputs: rind offers no SHAKE or Poly1305
+/// alone, the SymCrypt sponge is proven the byte sponge `sha3_*` and
+/// `shake*` run, HChaCha20 runs inside XChaCha20-Poly1305, and the small-order
+/// list is a constant, which CCTV's keys test against rind.
+const NO_RANDOM: &[&str] = &[
+    "shake128",
+    "shake256",
+    "sha3_256-symcrypt",
+    "shake128-symcrypt",
+    "hchacha20",
+    "poly1305",
+    "poly1305-s2n",
+    "ed25519-small-order",
+];
+
+/// The spec server, a child process answering a line per request.
+struct Server {
+    _child: Child,
+    input: BufWriter<ChildStdin>,
+    output: BufReader<ChildStdout>,
+}
+
+impl Server {
+    fn start(path: &Path) -> Self {
+        let mut child = Command::new(path)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap_or_else(|e| panic!("spec-tests: cannot run {}: {e}", path.display()));
+        let input = BufWriter::new(child.stdin.take().unwrap());
+        let output = BufReader::new(child.stdout.take().unwrap());
+        Self {
+            _child: child,
+            input,
+            output,
+        }
+    }
+
+    fn ask(&mut self, words: &[&str]) -> String {
+        writeln!(self.input, "{}", words.join(" ")).unwrap();
+        self.input.flush().unwrap();
+        let mut line = String::new();
+        self.output.read_line(&mut line).unwrap();
+        let line = line.trim_end().to_owned();
+        if line.is_empty() || line.starts_with("error") {
+            panic!("spec-tests: {} answered {line:?}", words[0]);
+        }
+        line
+    }
+}
+
+/// Where a case's expected answer comes from.
+#[derive(Clone, Copy)]
+pub enum From {
+    /// A published vector.
+    Vector,
+    /// rind, on a random input.
+    Rind,
+}
+
+/// A section's state: its server, its random source, and what ran.
+pub struct Run {
+    server: Server,
+    pub rng: Rng,
+    pub random: usize,
+    pub full: bool,
+    pub vectors: PathBuf,
+    counts: BTreeMap<String, [usize; 2]>,
+    /// The time each spec took, in seconds.
+    times: BTreeMap<String, f64>,
+    failures: Vec<String>,
+}
+
+impl Run {
+    /// Asks the server `words` and checks its answer is `want`.
+    pub fn check(&mut self, from: From, label: &str, words: &[&str], want: &str) {
+        let got = self.ask(from, words);
+        if got != want {
+            self.failures.push(format!(
+                "{label}: {}\n  spec: {got}\n  want: {want}",
+                trim(words)
+            ));
+        }
+    }
+
+    /// The server's answer to `words`, counted, for a check of its own.
+    pub fn ask(&mut self, from: From, words: &[&str]) -> String {
+        self.counts.entry(words[0].to_owned()).or_default()[from as usize] += 1;
+        let start = Instant::now();
+        let got = self.server.ask(words);
+        *self.times.entry(words[0].to_owned()).or_default() += start.elapsed().as_secs_f64();
+        got
+    }
+
+    /// Records a failed check of an answer `ask` returned.
+    pub fn fail(&mut self, message: String) {
+        self.failures.push(message);
+    }
+
+    /// The cases of a vector file to run: all with `full`, otherwise every
+    /// k-th of a file of more than `SAMPLE`.
+    pub fn sample<T>(&self, cases: Vec<T>) -> Vec<T> {
+        self.sample_n(cases, SAMPLE)
+    }
+
+    /// The cases to run of a spec too slow for `SAMPLE`: all with `full`,
+    /// otherwise every k-th of more than `n`.
+    pub fn sample_n<T>(&self, cases: Vec<T>, n: usize) -> Vec<T> {
+        if self.full || cases.len() <= n {
+            return cases;
+        }
+        let step = cases.len().div_ceil(n);
+        cases.into_iter().step_by(step).collect()
+    }
+
+    pub fn path(&self, rel: &str) -> PathBuf {
+        self.vectors.join(rel)
+    }
+}
+
+/// A request for a message, cut short.
+pub fn trim(words: &[&str]) -> String {
+    let mut s = words.join(" ");
+    if s.len() > 400 {
+        let mut at = 400;
+        while !s.is_char_boundary(at) {
+            at -= 1;
+        }
+        s.truncate(at);
+        s.push_str("...");
+    }
+    s
+}
+
+/// SplitMix64, for random inputs a seed reproduces.
+pub struct Rng(u64);
+
+impl Rng {
+    pub fn u64(&mut self) -> u64 {
+        self.0 = self.0.wrapping_add(0x9e3779b97f4a7c15);
+        let mut z = self.0;
+        z = (z ^ (z >> 30)).wrapping_mul(0xbf58476d1ce4e5b9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94d049bb133111eb);
+        z ^ (z >> 31)
+    }
+
+    /// A number below `n`.
+    pub fn below(&mut self, n: usize) -> usize {
+        (self.u64() % n as u64) as usize
+    }
+
+    pub fn bytes(&mut self, n: usize) -> Vec<u8> {
+        (0..n).map(|_| self.u64() as u8).collect()
+    }
+
+    /// An AES key of a random length.
+    pub fn aes_key(&mut self) -> Vec<u8> {
+        let n = [16, 24, 32][self.below(3)];
+        self.bytes(n)
+    }
+
+    /// Bytes of a random length below `max`, short lengths as likely as long.
+    pub fn message(&mut self, max: usize) -> Vec<u8> {
+        let n = if self.u64().is_multiple_of(2) {
+            self.below(65)
+        } else {
+            self.below(max)
+        };
+        self.bytes(n)
+    }
+}
+
+/// `bytes` as the server reads them: hex, `-` for none.
+pub fn hex(bytes: &[u8]) -> String {
+    if bytes.is_empty() {
+        return "-".to_owned();
+    }
+    let mut s = String::with_capacity(2 * bytes.len());
+    for b in bytes {
+        write!(s, "{b:02x}").unwrap();
+    }
+    s
+}
+
+/// The bytes hex spells, or a quoted string's own. Hex of odd length is a
+/// number's, as CAVP writes some, with its leading zero left out.
+pub fn unhex(s: &str) -> Vec<u8> {
+    let s = s.trim();
+    if let Some(q) = s.strip_prefix('"').and_then(|s| s.strip_suffix('"')) {
+        return q.as_bytes().to_vec();
+    }
+    let padded;
+    let s = if s.len() % 2 == 1 {
+        padded = format!("0{s}");
+        &padded
+    } else {
+        s
+    };
+    (0..s.len())
+        .step_by(2)
+        .map(|i| {
+            u8::from_str_radix(&s[i..i + 2], 16)
+                .unwrap_or_else(|_| panic!("spec-tests: bad hex {s:?}"))
+        })
+        .collect()
+}
+
+/// What a section reports: its counts, times, and failures.
+type Report = (
+    BTreeMap<String, [usize; 2]>,
+    BTreeMap<String, f64>,
+    Vec<String>,
+    f64,
+);
+
+fn main() -> ExitCode {
+    let args: Vec<String> = std::env::args().collect();
+    if !(5..=6).contains(&args.len()) || (args.len() == 6 && args[5] != "full") {
+        eprintln!(
+            "usage: spec-tests <spec-server> <vectors dir> <seed> <random cases per test> [full]"
+        );
+        return ExitCode::from(2);
+    }
+    let server = PathBuf::from(&args[1]);
+    let vectors = PathBuf::from(&args[2]);
+    let seed: u64 = args[3].parse().expect("spec-tests: seed");
+    let random: usize = args[4].parse().expect("spec-tests: random cases");
+    let full = args.len() == 6;
+    let only = std::env::var("SPEC_TESTS_ONLY").ok();
+    let sections: Vec<_> = cases::SECTIONS
+        .iter()
+        .filter(|(name, _)| {
+            only.as_ref()
+                .is_none_or(|o| o.split(',').any(|o| o == *name))
+        })
+        .collect();
+
+    // The slowest sections first, so the longest one starts at once.
+    let queue = Mutex::new(sections.iter().enumerate());
+    let threads = std::thread::available_parallelism()
+        .map_or(1, |n| n.get())
+        .min(sections.len());
+    let mut reports: Vec<(usize, &str, Report)> = std::thread::scope(|scope| {
+        let workers: Vec<_> = (0..threads)
+            .map(|_| {
+                scope.spawn(|| {
+                    let mut done = Vec::new();
+                    loop {
+                        let Some((i, (name, section))) = queue.lock().unwrap().next() else {
+                            break;
+                        };
+                        // Each section's inputs depend on the seed and its name alone.
+                        let mut h = seed;
+                        for b in name.bytes() {
+                            h = (h ^ b as u64).wrapping_mul(0x100000001b3);
+                        }
+                        let mut run = Run {
+                            server: Server::start(&server),
+                            rng: Rng(h),
+                            random,
+                            full,
+                            vectors: vectors.clone(),
+                            counts: BTreeMap::new(),
+                            times: BTreeMap::new(),
+                            failures: Vec::new(),
+                        };
+                        let start = Instant::now();
+                        section(&mut run);
+                        let took = start.elapsed().as_secs_f64();
+                        done.push((i, *name, (run.counts, run.times, run.failures, took)));
+                    }
+                    done
+                })
+            })
+            .collect();
+        workers
+            .into_iter()
+            .flat_map(|w| w.join().unwrap())
+            .collect()
+    });
+    reports.sort_by_key(|(i, _, _)| *i);
+
+    let mut counts: BTreeMap<String, [usize; 2]> = BTreeMap::new();
+    let mut times: BTreeMap<String, f64> = BTreeMap::new();
+    let mut failures = Vec::new();
+    println!(
+        "spec-tests: seed {seed}, {random} random cases per test{}",
+        if full { ", every vector" } else { "" }
+    );
+    for (_, name, (c, t, f, took)) in reports {
+        println!("spec-tests: {name} took {took:.1}s");
+        for (k, [v, r]) in c {
+            let e = counts.entry(k).or_default();
+            e[0] += v;
+            e[1] += r;
+        }
+        for (k, s) in t {
+            *times.entry(k).or_default() += s;
+        }
+        failures.extend(f);
+    }
+
+    let mut ok = true;
+    println!(
+        "{:<28} {:>8} {:>8} {:>8}",
+        "spec", "vectors", "rind", "seconds"
+    );
+    for spec in SPECS {
+        let [v, r] = counts.get(*spec).copied().unwrap_or_default();
+        let t = times.get(*spec).copied().unwrap_or_default();
+        println!("{spec:<28} {v:>8} {r:>8} {t:>8.1}");
+        if only.is_none() && (v + r == 0 || (r == 0 && random > 0 && !NO_RANDOM.contains(spec))) {
+            eprintln!("spec-tests: {spec} ran on too few cases");
+            ok = false;
+        }
+    }
+    for spec in counts.keys() {
+        if !SPECS.contains(&spec.as_str()) {
+            eprintln!("spec-tests: {spec} is not in SPECS");
+            ok = false;
+        }
+    }
+    for failure in &failures {
+        eprintln!("spec-tests: {failure}");
+    }
+    if !failures.is_empty() {
+        eprintln!("spec-tests: {} disagreements", failures.len());
+        ok = false;
+    }
+    if ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    }
+}

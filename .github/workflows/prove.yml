@@ -5,11 +5,12 @@ name: prove
 # cosimulates rind's additions to s2n-bignum's x86 model against the runner's
 # CPU, cosimulates pyca/verified-garbage's models against the code rind takes
 # from it, checks that the NEON vectors the Lean proofs test their aarch64
-# intrinsic models with are what an aarch64 CPU computes, and translates
-# rind's Rust under proof to Lean and checks the proofs in `proofs/`. Too slow
-# for `just ci`, so it runs nightly and on pull requests that change rind's
-# source or build, the proofs, the checks, rind's fork of s2n-bignum, or the
-# flake that pins their tools.
+# intrinsic models with are what an aarch64 CPU computes, translates rind's
+# Rust under proof to Lean and checks the proofs in `proofs/`, and tests the
+# Lean specs those proofs trust against the published vectors and rind. Too
+# slow for `just ci`, so it runs nightly and on pull requests that change
+# rind's source or build, the proofs, the checks, the vectors, rind's fork of
+# s2n-bignum, or the flake that pins their tools.
 #
 # Each HOL Light target's proofs and the cosimulation are cached: a pull
 # request skips one that main already passed on the same inputs, which
@@ -48,6 +49,8 @@ on:
       - admin/import-vg-models
       - admin/vg-bytes
       - admin/vg-cosim-runner.rs
+      - admin/spec-tests/**
+      - thirdparty/vectors/**
       - ALGORITHMS.md
       - flake.nix
       - flake.lock
@@ -301,3 +304,24 @@ jobs:
 
       - name: Prove
         run: nix develop .#prove --command admin/prove lean
+
+  # The spec tests over every vector, and on random inputs from the run's own
+  # seed, nightly and when dispatched; the lean job runs a fixed sample. Its
+  # own job, so the sweep does not lengthen the lean job's.
+  spec-tests:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/nix
+
+      - name: Test the specs
+        run: nix develop .#prove --command admin/prove spec-tests
+        env:
+          SPEC_TESTS_FULL: 1
+          SPEC_TESTS_SEED: ${{ github.run_id }}
+          SPEC_TESTS_RANDOM: 64
