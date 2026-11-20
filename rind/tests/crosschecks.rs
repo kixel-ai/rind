@@ -251,7 +251,7 @@ mod cipher {
     use aes::cipher::block_padding::{NoPadding, Pkcs7};
     use aes::cipher::{
         BlockCipherEncrypt, BlockModeDecrypt, BlockModeEncrypt, KeyInit, KeyIvInit, StreamCipher,
-        StreamCipherSeek,
+        StreamCipherCore, StreamCipherSeek,
     };
     use aws_lc_rs::aead::{Aad, CHACHA20_POLY1305, LessSafeKey, Nonce, UnboundKey, quic};
     use aws_lc_rs::cipher::{
@@ -456,7 +456,13 @@ mod cipher {
         fn quic_header_protection_mask(
             index in 0..3usize,
             key in any::<[u8; 32]>(),
-            sample in any::<[u8; 16]>(),
+            // Often ChaCha20's last block counter, or the one before it.
+            sample in (any::<[u8; 16]>(), 0..3u8).prop_map(|(mut sample, last)| {
+                if last > 0 {
+                    sample[..4].copy_from_slice(&(u32::MAX - u32::from(last - 1)).to_le_bytes());
+                }
+                sample
+            }),
         ) {
             use rind::aead::quic as ours;
             let (algorithm, theirs) = [
@@ -475,17 +481,19 @@ mod cipher {
 
             // RFC 9001 section 5.4: AES encrypts the sample, and ChaCha20
             // takes its first four bytes as the block counter and the rest
-            // as the nonce.
-            let mut independent = [0u8; 16];
-            if index == 2 {
-                let mut cipher = chacha20::ChaCha20::new_from_slices(key, &sample[4..]).unwrap();
-                cipher.seek(64 * u64::from(u32::from_le_bytes(sample[..4].try_into().unwrap())));
-                cipher.apply_keystream(&mut independent[..5]);
+            // as the nonce. The counter may be the last, which RustCrypto's
+            // `ChaCha20` refuses to seek to, so this runs its core.
+            let independent: [u8; 16] = if index == 2 {
+                let mut core = chacha20::ChaChaCore::<chacha20::R20, chacha20::variants::Ietf>::new_from_slices(key, &sample[4..]).unwrap();
+                core.set_block_pos(u32::from_le_bytes(sample[..4].try_into().unwrap()));
+                let mut block = Default::default();
+                core.write_keystream_block(&mut block);
+                block[..16].try_into().unwrap()
             } else {
                 let mut block = sample.into();
                 rustcrypto_aes!(key, Aes => Aes::new_from_slice(key).unwrap().encrypt_block(&mut block));
-                independent = block.into();
-            }
+                block.into()
+            };
             prop_assert_eq!(&mask[..], &independent[..5]);
         }
 
