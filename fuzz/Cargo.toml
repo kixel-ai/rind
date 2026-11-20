@@ -33,6 +33,8 @@ str0m-aws-lc-rs = "0.7"
 # SLH-DSA, which aws-lc-rs lacks, and the traits that encode its keys.
 pkcs8 = { version = "0.11", default-features = false, features = ["alloc"] }
 slh-dsa = "=0.2.0-rc.5"
+# X-Wing, which aws-lc-rs lacks.
+x-wing = { version = "0.1.1", default-features = false }
 
 [dependencies.rind]
 path = "../rind"
@@ -145,6 +147,13 @@ bench = false
 [[bin]]
 name = "kem"
 path = "fuzzer/kem.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "xwing"
+path = "fuzzer/xwing.rs"
 test = false
 doc = false
 bench = false

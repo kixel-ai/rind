@@ -66,6 +66,7 @@ Ed25519 verification's multiplication runs curve25519-dalek ⚡, as above.
 | P-521 ECDH, ECDSA | s2n-bignum ✓ + rind ⚡ |  |  |  |  |
 | ML-KEM-512, ML-KEM-1024 | s2n-bignum ✓ + mlkem-native ✓ + Graviola ⚡ | mlkem-native ⚡ + s2n-bignum ✓ |  |  |  |
 | ML-KEM-768 | verified-garbage | mlkem-native ⚡ + s2n-bignum ✓ + verified-garbage |  |  |  |
+| X-Wing, over the rows it builds on | rind |  |  |  |  |
 | ML-DSA-44, ML-DSA-65, ML-DSA-87 | s2n-bignum ✓ + mldsa-native ⚡ | mldsa-native ⚡ + s2n-bignum ✓ |  |  |  |
 | SLH-DSA, over the SHA-2 and SHA-3 rows it builds on | SPHINCS+ |  |  |  |  |
 | RSA signatures, OAEP, blind signatures, key generation | s2n-bignum ✓ + aws-lc ⚡ + rind ⚡ + verified-garbage | s2n-bignum ✓ + aws-lc ⚡ |  |  |  |
@@ -160,6 +161,7 @@ with portable Rust in place of the assembly armv7 runs regardless.
 | P-521 ECDH, ECDSA | s2n-bignum ✓ + rind ⚡ |  | fiat-crypto ✓ + rind ⚡ |  |
 | ML-KEM-512, ML-KEM-1024 | s2n-bignum ✓ + Graviola ⚡ |  | mlkem-native ⚡ + OpenSSL ⚡ + Graviola ⚡ | mlkem-native ⚡ + rind + Graviola ⚡ |
 | ML-KEM-768 | s2n-bignum ✓ + Graviola ⚡ + verified-garbage | s2n-bignum ✓ + Graviola ⚡ | mlkem-native ⚡ + OpenSSL ⚡ + Graviola ⚡ | mlkem-native ⚡ + rind + Graviola ⚡ |
+| X-Wing, over the rows it builds on | rind |  |  |  |
 | ML-DSA-44, ML-DSA-65, ML-DSA-87 | s2n-bignum ✓ + mldsa-native ⚡ |  | mldsa-native ⚡ + OpenSSL ⚡ | mldsa-native ⚡ + rind |
 | SLH-DSA, over the SHA-2 and SHA-3 rows it builds on | SPHINCS+ |  |  |  |
 | RSA signatures, OAEP, blind signatures, key generation | s2n-bignum ✓ + aws-lc ⚡ + Graviola ⚡ |  | aws-lc ⚡ + Graviola ⚡ + rind ⚡ | Graviola ⚡ + rind ⚡ |
@@ -778,6 +780,22 @@ have some different options depending on CPU features:
 - We have rind's Keccak-f, proven in [`proofs/`](proofs/README.md), one state
   at a time, on the portable backend.
 
+### X-Wing
+X-Wing is [draft-connolly-cfrg-xwing-kem]'s hybrid of X25519 and ML-KEM-768,
+composed from rows above with no arithmetic of its own: SHAKE256 expands the
+32-byte seed into ML-KEM-768's `d` and `z` and X25519's key, ML-KEM-768 and
+X25519 run as for their own keys, and one SHA3-256 block combines their
+secrets, the X25519 ciphertext, and the X25519 public key. The decapsulation
+key keeps the expanded keys, so decapsulation does not expand the seed again.
+It runs ML-KEM-768 as [ML-KEM](#ml-kem) does, so a CPU's choice of routines
+for that set applies, with its mitigations.
+
+The draft's text takes an all-zero X25519 secret, from a public key or a
+ciphertext of small order, as any other, and `rind::kem` follows it: the
+combiner still binds both public keys and the ciphertext. BoringSSL and
+libcrux refuse it, as RFC 9180 does for DHKEM, and the CFRG has yet to choose
+one behavior for the draft.
+
 ### ML-DSA
 ML-DSA-44, ML-DSA-65, and ML-DSA-87 share one FIPS 204 construction (key
 generation, signing, verification, and the key and signature encodings): a
@@ -1092,6 +1110,7 @@ HACL*'s verified Poly1305 without NEON.
 [half-size]: https://tches.iacr.org/index.php/TCHES/article/view/12225
 [HACL\*]: https://github.com/hacl-star/hacl-star
 [libcrux]: https://github.com/cryspen/libcrux
+[draft-connolly-cfrg-xwing-kem]: https://datatracker.ietf.org/doc/draft-connolly-cfrg-xwing-kem/
 [mlkem-native]: https://github.com/pq-code-package/mlkem-native
 [mldsa-native]: https://github.com/pq-code-package/mldsa-native
 [aws-lc]: https://github.com/aws/aws-lc

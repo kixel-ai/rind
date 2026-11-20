@@ -31,6 +31,8 @@ The rustls rows run both peers in one process. The every-logical-CPU rows run on
 
 Measured 2026-11-18 at [`93c8bcd7`](https://github.com/kixel-ai/rind/commit/93c8bcd705a05136e534fee4b463ab1ba56162bf), noisy, on NixOS 26.11 (Zokor) (Linux 6.18.63) with rustc 1.98.1 (48a229cea 2026-09-01).
 
+Not timed on `nixos`: X-Wing key generation, X-Wing encapsulate, X-Wing decapsulate.
+
 rind-rustls on all 32 logical CPUs runs full handshakes at 7.6 times and resumed handshakes at 10.2 times its one-thread rate.
 
 <picture>
@@ -110,6 +112,9 @@ rind-rustls on all 32 logical CPUs runs full handshakes at 7.6 times and resumed
 | ML-KEM-512 key generation | 5.03 µs | 5.54 µs | - | - | - | 12.86 µs | - | - |
 | ML-KEM-512 encapsulate | 5.33 µs | 5.98 µs | - | - | - | 11.16 µs | - | - |
 | ML-KEM-512 decapsulate | 4.64 µs | 7.41 µs | - | - | - | 11.65 µs | - | - |
+| X-Wing key generation | - | - | - | - | - | - | - | - |
+| X-Wing encapsulate | - | - | - | - | - | - | - | - |
+| X-Wing decapsulate | - | - | - | - | - | - | - | - |
 | ML-DSA-65 key generation | 28.33 µs | 33.29 µs | - | 253.01 µs | - | 44.60 µs | 131.03 µs | 46.71 µs |
 | ML-DSA-65 sign | 54.61 µs | 93.50 µs | - | 929.62 µs | - | 112.45 µs | 720.03 µs | 80.73 µs |
 | ML-DSA-65 verify | 5.93 µs | 29.87 µs | - | 101.57 µs | - | 47.62 µs | 131.52 µs | 24.67 µs |
@@ -151,7 +156,7 @@ rind-rustls on all 32 logical CPUs runs full handshakes at 7.6 times and resumed
 
 Measured 2026-11-07 at [`9e7f6a5a`](https://github.com/kixel-ai/rind/commit/9e7f6a5a9ea59a0cf1251c24af6c5d4f21c2b0fd), on Ubuntu 26.04.1 LTS (Linux 7.0.0-42-generic) with rustc 1.98.1 (48a229cea 2026-09-01).
 
-Not timed on `desktop`: full handshake, X25519, every logical CPU, resumed handshake, X25519, every logical CPU, SHA3-256, 64 B, SHA3-256, 1350 B, SHA3-256, 16 KB, SHA3-512, 64 B, SHA3-512, 1350 B, SHA3-512, 16 KB, ML-KEM-1024 key generation, ML-KEM-1024 encapsulate, ML-KEM-1024 decapsulate, ML-KEM-512 key generation, ML-KEM-512 encapsulate, ML-KEM-512 decapsulate, ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verify, ML-DSA-65 load and verify, HPKE X25519 sender setup, HPKE X25519 recipient setup, HPKE AES-128-GCM seal, 1350 B, HPKE AES-128-GCM open, 1350 B, Blind RSA-2048 blind, Blind RSA-2048 sign, Blind RSA-2048 finalize, Blind RSA-2048 verify, OPRF ristretto255 blind, OPRF ristretto255 evaluate, OPRF ristretto255 finalize, VOPRF P-384 blind, VOPRF P-384 evaluate, VOPRF P-384 finalize, ECVRF edwards25519 prove, ECVRF edwards25519 verify, ECVRF P-256 prove, ECVRF P-256 verify, SPAKE2+ P-256 prover share, SPAKE2+ P-256 verifier share and confirmation, SPAKE2+ P-256 prover confirmation and key, SPAKE2+ P-256 verifier key, Argon2id 16 MiB t=1 p=1, Argon2id 64 MiB t=3 p=4.
+Not timed on `desktop`: full handshake, X25519, every logical CPU, resumed handshake, X25519, every logical CPU, SHA3-256, 64 B, SHA3-256, 1350 B, SHA3-256, 16 KB, SHA3-512, 64 B, SHA3-512, 1350 B, SHA3-512, 16 KB, ML-KEM-1024 key generation, ML-KEM-1024 encapsulate, ML-KEM-1024 decapsulate, ML-KEM-512 key generation, ML-KEM-512 encapsulate, ML-KEM-512 decapsulate, X-Wing key generation, X-Wing encapsulate, X-Wing decapsulate, ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verify, ML-DSA-65 load and verify, HPKE X25519 sender setup, HPKE X25519 recipient setup, HPKE AES-128-GCM seal, 1350 B, HPKE AES-128-GCM open, 1350 B, Blind RSA-2048 blind, Blind RSA-2048 sign, Blind RSA-2048 finalize, Blind RSA-2048 verify, OPRF ristretto255 blind, OPRF ristretto255 evaluate, OPRF ristretto255 finalize, VOPRF P-384 blind, VOPRF P-384 evaluate, VOPRF P-384 finalize, ECVRF edwards25519 prove, ECVRF edwards25519 verify, ECVRF P-256 prove, ECVRF P-256 verify, SPAKE2+ P-256 prover share, SPAKE2+ P-256 verifier share and confirmation, SPAKE2+ P-256 prover confirmation and key, SPAKE2+ P-256 verifier key, Argon2id 16 MiB t=1 p=1, Argon2id 64 MiB t=3 p=4.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="benchmarks/desktop-dark.svg">
@@ -230,6 +235,9 @@ Not timed on `desktop`: full handshake, X25519, every logical CPU, resumed hands
 | ML-KEM-512 key generation | - | - | - | - | - | - | - |
 | ML-KEM-512 encapsulate | - | - | - | - | - | - | - |
 | ML-KEM-512 decapsulate | - | - | - | - | - | - | - |
+| X-Wing key generation | - | - | - | - | - | - | - |
+| X-Wing encapsulate | - | - | - | - | - | - | - |
+| X-Wing decapsulate | - | - | - | - | - | - | - |
 | ML-DSA-65 key generation | - | - | - | - | - | - | - |
 | ML-DSA-65 sign | - | - | - | - | - | - | - |
 | ML-DSA-65 verify | - | - | - | - | - | - | - |
@@ -273,7 +281,7 @@ Measured 2026-11-12 at [`0d2e74b4`](https://github.com/kixel-ai/rind/commit/0d2e
 
 The maintainer's MacBook, in daily use. Its cores have DIT, and this run timed rind two ways. The AES-GCM, ChaCha20-Poly1305, header protection, SHA-2, HMAC, and HKDF rows hold `rind::cpu::Dit::hold()` across calls, as MoQ does and as the report's rind column assumes. rind's other rows set DIT around each call. In the run before, rows timed both ways paid 20 to 120 ns a call for that toggle, so the other primitive rows likely overstate rind's time until re-measured holding DIT. In the rustls rows, holding DIT would also run rustls' own code with it on, a cost not yet measured, so which way they would move is open.
 
-Not timed on `kixtop`: full handshake, X25519, every logical CPU, resumed handshake, X25519, every logical CPU, ML-KEM-1024 key generation, ML-KEM-1024 encapsulate, ML-KEM-1024 decapsulate, ML-KEM-512 key generation, ML-KEM-512 encapsulate, ML-KEM-512 decapsulate, ML-DSA-65 load and verify, HPKE X25519 sender setup, HPKE X25519 recipient setup, HPKE AES-128-GCM seal, 1350 B, HPKE AES-128-GCM open, 1350 B, Blind RSA-2048 blind, Blind RSA-2048 sign, Blind RSA-2048 finalize, Blind RSA-2048 verify, OPRF ristretto255 blind, OPRF ristretto255 evaluate, OPRF ristretto255 finalize, VOPRF P-384 blind, VOPRF P-384 evaluate, VOPRF P-384 finalize, ECVRF edwards25519 prove, ECVRF edwards25519 verify, ECVRF P-256 prove, ECVRF P-256 verify, SPAKE2+ P-256 prover share, SPAKE2+ P-256 verifier share and confirmation, SPAKE2+ P-256 prover confirmation and key, SPAKE2+ P-256 verifier key, Argon2id 16 MiB t=1 p=1, Argon2id 64 MiB t=3 p=4.
+Not timed on `kixtop`: full handshake, X25519, every logical CPU, resumed handshake, X25519, every logical CPU, ML-KEM-1024 key generation, ML-KEM-1024 encapsulate, ML-KEM-1024 decapsulate, ML-KEM-512 key generation, ML-KEM-512 encapsulate, ML-KEM-512 decapsulate, X-Wing key generation, X-Wing encapsulate, X-Wing decapsulate, ML-DSA-65 load and verify, HPKE X25519 sender setup, HPKE X25519 recipient setup, HPKE AES-128-GCM seal, 1350 B, HPKE AES-128-GCM open, 1350 B, Blind RSA-2048 blind, Blind RSA-2048 sign, Blind RSA-2048 finalize, Blind RSA-2048 verify, OPRF ristretto255 blind, OPRF ristretto255 evaluate, OPRF ristretto255 finalize, VOPRF P-384 blind, VOPRF P-384 evaluate, VOPRF P-384 finalize, ECVRF edwards25519 prove, ECVRF edwards25519 verify, ECVRF P-256 prove, ECVRF P-256 verify, SPAKE2+ P-256 prover share, SPAKE2+ P-256 verifier share and confirmation, SPAKE2+ P-256 prover confirmation and key, SPAKE2+ P-256 verifier key, Argon2id 16 MiB t=1 p=1, Argon2id 64 MiB t=3 p=4.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="benchmarks/kixtop-dark.svg">
@@ -352,6 +360,9 @@ Not timed on `kixtop`: full handshake, X25519, every logical CPU, resumed handsh
 | ML-KEM-512 key generation | - | - | - | - | - | - | - |
 | ML-KEM-512 encapsulate | - | - | - | - | - | - | - |
 | ML-KEM-512 decapsulate | - | - | - | - | - | - | - |
+| X-Wing key generation | - | - | - | - | - | - | - |
+| X-Wing encapsulate | - | - | - | - | - | - | - |
+| X-Wing decapsulate | - | - | - | - | - | - | - |
 | ML-DSA-65 key generation | 20.33 µs | 23.73 µs | - | 131.64 µs | - | 46.24 µs | 82.69 µs |
 | ML-DSA-65 sign | 54.96 µs | 64.06 µs | - | 453.30 µs | - | 130.86 µs | 397.50 µs |
 | ML-DSA-65 verify | 17.21 µs | 20.23 µs | - | 49.54 µs | - | 35.99 µs | 73.00 µs |
@@ -394,6 +405,8 @@ Not timed on `kixtop`: full handshake, X25519, every logical CPU, resumed handsh
 Measured 2026-11-17 at [`93c8bcd7`](https://github.com/kixel-ai/rind/commit/93c8bcd705a05136e534fee4b463ab1ba56162bf), on NixOS 26.11 (Zokor) (Linux 6.18.40) with rustc 1.98.1 (48a229cea 2026-09-01).
 
 OVH VPS in Virginia, 4 shared vCPUs: other tenants add noise that a dedicated host's times lack.
+
+Not timed on `ovh-iad`: X-Wing key generation, X-Wing encapsulate, X-Wing decapsulate.
 
 rind-rustls on all 4 logical CPUs runs full handshakes at 2.9 times and resumed handshakes at 2.7 times its one-thread rate.
 
@@ -476,6 +489,9 @@ graviola isn't timed on `ovh-iad`: it requires ADX, which this CPU lacks.
 | ML-KEM-512 key generation | 11.87 µs | 15.30 µs | - | - | 26.67 µs | - | - |
 | ML-KEM-512 encapsulate | 11.64 µs | 17.16 µs | - | - | 24.71 µs | - | - |
 | ML-KEM-512 decapsulate | 9.98 µs | 19.31 µs | - | - | 25.17 µs | - | - |
+| X-Wing key generation | - | - | - | - | - | - | - |
+| X-Wing encapsulate | - | - | - | - | - | - | - |
+| X-Wing decapsulate | - | - | - | - | - | - | - |
 | ML-DSA-65 key generation | 64.86 µs | 86.62 µs | - | 486.48 µs | 100.02 µs | 293.60 µs | 115.47 µs |
 | ML-DSA-65 sign | 132.14 µs | 237.44 µs | - | 1.50 ms | 285.58 µs | 1.57 ms | 229.71 µs |
 | ML-DSA-65 verify | 13.45 µs | 75.85 µs | - | 157.93 µs | 103.35 µs | 285.44 µs | 65.92 µs |
@@ -518,6 +534,8 @@ graviola isn't timed on `ovh-iad`: it requires ADX, which this CPU lacks.
 Measured 2026-11-17 at [`93c8bcd7`](https://github.com/kixel-ai/rind/commit/93c8bcd705a05136e534fee4b463ab1ba56162bf), on NixOS 26.11 (Zokor) (Linux 6.18.40) with rustc 1.98.1 (48a229cea 2026-09-01).
 
 OVH VPS in Oregon, 4 shared vCPUs: other tenants add noise that a dedicated host's times lack.
+
+Not timed on `ovh-sea`: X-Wing key generation, X-Wing encapsulate, X-Wing decapsulate.
 
 rind-rustls on all 4 logical CPUs runs full handshakes at 3.4 times and resumed handshakes at 3.7 times its one-thread rate.
 
@@ -600,6 +618,9 @@ graviola isn't timed on `ovh-sea`: it requires ADX, which this CPU lacks.
 | ML-KEM-512 key generation | 12.05 µs | 14.39 µs | - | - | 25.36 µs | - | - |
 | ML-KEM-512 encapsulate | 11.85 µs | 16.06 µs | - | - | 25.39 µs | - | - |
 | ML-KEM-512 decapsulate | 9.90 µs | 17.90 µs | - | - | 24.99 µs | - | - |
+| X-Wing key generation | - | - | - | - | - | - | - |
+| X-Wing encapsulate | - | - | - | - | - | - | - |
+| X-Wing decapsulate | - | - | - | - | - | - | - |
 | ML-DSA-65 key generation | 62.71 µs | 85.03 µs | - | 444.09 µs | 96.64 µs | 277.50 µs | 117.14 µs |
 | ML-DSA-65 sign | 119.36 µs | 221.75 µs | - | 1.38 ms | 276.08 µs | 1.47 ms | 200.74 µs |
 | ML-DSA-65 verify | 13.20 µs | 68.93 µs | - | 149.74 µs | 102.28 µs | 280.09 µs | 62.44 µs |

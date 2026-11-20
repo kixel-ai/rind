@@ -549,7 +549,7 @@ fn spake2plus() {
 
 #[test]
 fn mlkem() {
-    use rind::kem::{Algorithm, DecapsulationKey, MlKem512, MlKem768, MlKem1024};
+    use rind::kem::{Algorithm, DecapsulationKey, MlKem512, MlKem768, MlKem1024, XWing};
     fn check<A: Algorithm>() {
         assert_zeroed("ML-KEM key generation", || {
             DecapsulationKey::<A>::generate().unwrap()
@@ -566,4 +566,5 @@ fn mlkem() {
     check::<MlKem512>();
     check::<MlKem768>();
     check::<MlKem1024>();
+    check::<XWing>();
 }

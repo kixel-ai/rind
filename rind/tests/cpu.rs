@@ -94,6 +94,7 @@ fn upper_vector_state_left_clean() {
     mlkem::<kem::MlKem512>("ML-KEM-512");
     mlkem::<kem::MlKem768>("ML-KEM-768");
     mlkem::<kem::MlKem1024>("ML-KEM-1024");
+    mlkem::<kem::XWing>("X-Wing");
 
     for algorithm in [&SHA1, &SHA256, &SHA512] {
         check(&format!("{algorithm:?}"), || digest(algorithm, &[3; 4096]));
