@@ -207,6 +207,12 @@ fn jn(v: &Value, key: &str) -> u64 {
         .unwrap_or_else(|| panic!("spec-tests: no {key} in {v}"))
 }
 
+/// Whether an AEAD `-open` reply is a refusal: a message token, then the
+/// status `0`, and nothing else.
+fn refused(got: &str) -> bool {
+    matches!(got.split(' ').collect::<Vec<_>>()[..], [_, "0"])
+}
+
 fn valid(t: &Value) -> bool {
     js(t, "result") == "valid"
 }
@@ -600,7 +606,7 @@ fn aead_vector(
         run.check(Vector, label, &[&open, k, n, a, c, t], &format!("{m} 1"));
     } else {
         let got = run.ask(Vector, &[&open, k, n, a, c, t]);
-        if !got.ends_with(" 0") {
+        if !refused(&got) {
             run.fail(format!(
                 "{label}: {open} {k} {n} {a} {c} {t}\n  spec: {got}\n  want: refused"
             ));
@@ -637,7 +643,7 @@ fn aead_random(
     let mut bad = unhex(&t);
     bad[0] ^= 1;
     let got = run.ask(Rind, &[&format!("{op}-open"), &k, &n, &a, &c, &hex(&bad)]);
-    if !got.ends_with(" 0") {
+    if !refused(&got) {
         run.fail(format!(
             "random: {op}-open {k} {n} {a} {c} {}\n  spec: {got}\n  want: refused",
             hex(&bad)
@@ -953,7 +959,7 @@ fn gcm(run: &mut Run) {
                 Some(_) => run.check(Vector, &rel, &request, &format!("{} 1", rec.h("PT"))),
                 None => {
                     let got = run.ask(Vector, &request);
-                    if !got.ends_with(" 0") {
+                    if !refused(&got) {
                         run.fail(format!(
                             "{rel} {}: {}\n  spec: {got}\n  want: FAIL",
                             rec.s("Count"),
@@ -1596,8 +1602,15 @@ fn x25519(run: &mut Run) {
             &hex(key.public_key().as_ref()),
         );
         // rind refuses exactly a peer of small order, whose shared secret
-        // the spec computes as zero.
+        // the spec computes as zero, and never returns that secret.
         let want = match key.agree(&u) {
+            Ok(shared) if shared.as_ref() == [0; 32] => {
+                run.fail(format!(
+                    "random: rind's x25519 returns zero for {}",
+                    hex(&u)
+                ));
+                continue;
+            }
             Ok(shared) => hex(shared.as_ref()),
             Err(_) => hex(&[0; 32]),
         };

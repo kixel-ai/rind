@@ -464,7 +464,9 @@ fn main() -> ExitCode {
         let [v, r] = counts.get(*spec).copied().unwrap_or_default();
         let t = times.get(*spec).copied().unwrap_or_default();
         println!("{spec:<28} {v:>8} {r:>8} {t:>8.1}");
-        if only.is_none() && (v + r == 0 || (r == 0 && random > 0 && !NO_RANDOM.contains(spec))) {
+        // Every spec runs on published vectors, and on random inputs unless
+        // `NO_RANDOM` lists it.
+        if only.is_none() && (v == 0 || (r == 0 && random > 0 && !NO_RANDOM.contains(spec))) {
             eprintln!("spec-tests: {spec} ran on too few cases");
             ok = false;
         }

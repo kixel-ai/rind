@@ -636,9 +636,8 @@ spec_tests() {
     local random=${SPEC_TESTS_RANDOM:-8} seed=${SPEC_TESTS_SEED:-1} full=()
     [[ -z ${SPEC_TESTS_FULL:-} ]] || full=(full)
     (cd proofs && lake build spec-server)
-    CARGO_TARGET_DIR=$PWD/target cargo build --release --locked -p spec-tests
-    target/release/spec-tests proofs/.lake/build/bin/spec-server thirdparty/vectors \
-        "$seed" "$random" "${full[@]}"
+    CARGO_TARGET_DIR=$PWD/target cargo run --release --locked -q -p spec-tests -- \
+        proofs/.lake/build/bin/spec-server thirdparty/vectors "$seed" "$random" "${full[@]}"
 }
 
 # Checks that each function rind proves in its own extension of VG's AArch64
