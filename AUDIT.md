@@ -288,8 +288,8 @@ Hand-written arithmetic no proof covers, by where it came from:
   against the AVX2 and Neon routines.
 - **curve25519-dalek's serial backend**, X25519, Ed25519, and ristretto255
   on armv7 and the portable backend. There ristretto255's differential test
-  compares dalek with itself, so only RFC 9496's and RFC 9497's vectors
-  check it.
+  compares dalek with itself, so beside RFC 9496's and RFC 9497's vectors
+  only the textbook reference in `rind/src/test/reference.rs` checks it.
 - **x86_64 P-256's mixed addition on macOS**, aws-lc's: rind's HOL Light
   proofs check the Linux build's object, and Apple's text can place the
   routines' helpers at other offsets.
