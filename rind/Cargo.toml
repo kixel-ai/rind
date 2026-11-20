@@ -73,6 +73,23 @@ libc = { version = "0.2", default-features = false }
 aws-lc-rs = { version = "1.19", default-features = false, features = ["alloc", "prebuilt-nasm", "non-fips"] }
 # aws-lc's XChaCha20-Poly1305, which aws-lc-rs does not expose.
 aws-lc-sys = { version = "0.47", default-features = false }
+# The differential tests' second oracle beside aws-lc-rs, which shares no
+# code with rind: RustCrypto's symmetric primitives.
+aes = "0.9"
+aes-gcm = { version = "0.11", default-features = false, features = ["aes"] }
+aes-kw = "0.3"
+cbc = { version = "0.2", features = ["alloc"] }
+chacha20 = "0.10"
+chacha20poly1305 = { version = "0.11", default-features = false }
+ctr = "0.10"
+ghash = "0.6"
+hkdf = "0.13"
+hmac = "0.13"
+md-5 = { version = "0.11", default-features = false }
+pbkdf2 = { version = "0.13", default-features = false, features = ["hmac"] }
+sha1 = { version = "0.11", default-features = false }
+sha2 = { version = "0.11", default-features = false }
+sha3 = { version = "0.12", default-features = false }
 # HPKE, which aws-lc-rs does not expose either; `hazmat` reads its private keys.
 hpke-rs = { version = "0.8", default-features = false, features = ["hazmat", "rustcrypto", "std"] }
 # SPAKE2+ differential tests. aws-lc-rs has no SPAKE2+.
