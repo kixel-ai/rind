@@ -172,7 +172,7 @@ const GROUPS: [(&str, NamedGroup); 5] = [
     ("secp521r1", NamedGroup::secp521r1),
 ];
 
-const KEYS: [&str; 7] = [
+const KEYS: [&str; 10] = [
     "ecdsa-p256",
     "ecdsa-p384",
     "ecdsa-p521",
@@ -180,6 +180,9 @@ const KEYS: [&str; 7] = [
     "rsa-2048",
     "rsa-3072",
     "rsa-4096",
+    "ml-dsa-44",
+    "ml-dsa-65",
+    "ml-dsa-87",
 ];
 
 /// A full TLS 1.3 handshake per key exchange group, with an ECDSA P-256

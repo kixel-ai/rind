@@ -453,16 +453,9 @@ and where it behaves differently.
 ### rind-rustls
 
 rind-rustls offers rustls's `crypto::aws_lc_rs` API item for item, so
-replacing that path with `rind_rustls` changes no other code. It leaves out
-what rind cannot back yet; see [rustls provider parity](quest/m3/parity/rustls.md).
-
-| rustls `crypto::aws_lc_rs` | rind-rustls |
-|---|---|
-| `kx_group::MLKEM1024`, in `ALL_KX_GROUPS` | none |
-| ML-DSA, which `default_provider()` verifies and signs with | none |
-
-Its [README](rind-rustls/README.md) lists where it behaves differently, such
-as its cipher suite order.
+replacing that path with `rind_rustls` changes no other code. Its
+[README](rind-rustls/README.md) lists where it behaves differently, such as
+its cipher suite order.
 
 ### rind-rcgen
 
