@@ -5,6 +5,9 @@ use alloc::boxed::Box;
 use core::fmt;
 
 use rind::kem::{MlKem512, MlKem768, MlKem1024};
+// With `fips`, ML-KEM runs in rind-fips's module, whose API is rind's.
+#[cfg(feature = "fips")]
+use rind_fips as rind;
 
 use crate::buffer::generated_encodings;
 use crate::error::{KeyRejected, Unspecified, unspecified};
