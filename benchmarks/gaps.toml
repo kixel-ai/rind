@@ -92,3 +92,28 @@ reason = "Closed after this run: pyca/verified-garbage measured 30.6 µs against
 operations = ["rsa2048-pkcs1-sha256-sign", "rustls-bulk/chacha20poly1305", "rustls-resumed-handshake/x25519", "sha3-256/16KB", "sha3-512/16KB"]
 on = ["nixos"]
 reason = "Noise: CI jobs on `nixos` kept about 4 CPUs busy through this run, and a second run of the same commit right after it, under more load elsewhere, measured each of these within 10% of the fastest: PKCS#1 signing 0.97× graviola's time (PSS signing 0.94× in this run), ChaCha20-Poly1305 bulk 1.03× ring's, the resumed handshake 1.00× graviola's, and SHA3-256 and SHA3-512 at 16 KB 0.96 and 1.04× aws-lc-rs's. The next refresh rechecks them."
+
+[[gap]]
+operations = ["aes*-gcm*"]
+on = ["fedora"]
+quest = "/quest/m2/verified-garbage/aes-gcm-avx512.md"
+
+[[gap]]
+operations = ["chacha20poly1305/*", "rustls-bulk/chacha20poly1305"]
+on = ["fedora"]
+quest = "/quest/m2/verified-garbage/chacha20-poly1305-x86.md"
+
+[[gap]]
+operations = ["rsa2048-pkcs1-sha256-verify", "rsa2048-pss-sha256-verify"]
+on = ["fedora"]
+quest = "/quest/m2/verified-garbage/rsa-public-key.md"
+
+[[gap]]
+operations = ["p384-ecdsa-sign"]
+on = ["fedora"]
+reason = "1.10× pyca/verified-garbage's time in both of `fedora`'s quiet runs (16.7 and 16.8 µs against 15.2; aws-lc-rs 43.6). rind already runs VG's `d·G` for each signature's `k·G` ([#847](https://github.com/kixel-ai/rind/pull/847)), so the difference is in rind's other steps, among them its hedged nonce: fresh randomness for each signature, as aws-lc-rs draws, where VG derives its nonce deterministically by RFC 6979. That behavior is deliberate, so it stays; the next refresh rechecks the margin."
+
+[[gap]]
+operations = ["sha3-256/64B"]
+on = ["fedora"]
+reason = "SHA3-256 at 64 B measured 1.04 and 1.11× pyca/verified-garbage's time in `fedora`'s two quiet runs (184 and 195 ns against 175 and 176), while rind was faster at 1350 B and 16 KB (1.66 against 1.69 µs, 19.7 against 20.2 µs). x86_64 runs one Keccak-f on every CPU, and [#851](https://github.com/kixel-ai/rind/pull/851) kept rind's proven one, since VG measured 1.01 to 1.05× rind's time from 1200 B on Zen 3 and Zen 4; Zen 5 agrees at the long sizes. AGENTS.md takes a verified source only where it is as fast at every size, so rind's stays. The next refresh rechecks it."
