@@ -1246,8 +1246,11 @@ Below the API, `Rind/X86_64/RsaKey.lean` proves key loading
 (`from_components_spec`): components with no leading zero byte, an odd
 modulus of 1024 to 8192 bits, and an odd exponent from 3 to below 2^33 load,
 and a loaded key holds them, with an odd modulus of 1024 to 8192 bits, an
-odd exponent of at least 3, `pub_montifier`'s R^2 mod N, and
-`mont_neg_inverse`'s -N^-1 mod 2^64.
+odd exponent of at least 3, R^2 mod N, and `mont_neg_inverse`'s
+-N^-1 mod 2^64. R^2 mod N is `pub_montifier`'s, or, for a modulus of a
+multiple of four words whose top bit is set on a CPU with BMI2 and ADX,
+pyca/verified-garbage's `vg_rsa_public_precompute_adx`'s, through the axiom
+`Rind/X86_64/VgRsa.lean` restates from that project's Lean proof.
 `Rind/X86_64/RsaPublic.lean` proves the public operation's square-and-multiply,
 `Rind/X86_64/RsaIfma.lean` the public operation (`public_op_spec`), which
 runs pyca/verified-garbage's AVX-512 IFMA routine for the exponent 65537 and
@@ -1258,7 +1261,7 @@ bytes and words, and `Rind/X86_64/{RsaVerify,RsaPss}.lean`
 EMSA-PKCS1-v1_5's encoding check and EMSA-PSS-VERIFY. DER is opaque, as the ✓
 leaves it out, so the `new` and `from_spki` theorems hold for every key
 those return without saying which encodings they accept. The loaders assume
-that the entry guard holds, `from_components` also `Runs`, and each `verify`
+that the entry guard holds and `Runs`, and each `verify`
 theorem `Runs`, `Sha256Blocks`, messages of at most `maxInput` bytes, and
 `MontProducts k`, that `low::x86_64::mont`'s products
 return their results at the modulus's width of k words, and

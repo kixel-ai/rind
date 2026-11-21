@@ -305,6 +305,11 @@ opaque low.x86_64.rsa_ifma.RsaIfma.public
   : low.x86_64.rsa_ifma.RsaIfma → Slice Std.U8 → Slice Std.U64 → Slice Std.U8 → Slice Std.U8 →
     Result (Bool × Slice Std.U8)
 
+/-- pyca/verified-garbage's RSA `R² mod n`, behind the Rust that sizes its
+scratch and calls it, which `Rind.X86_64.VgRsa` states. -/
+opaque low.x86_64.rsa_vg.Precompute.precompute
+  : low.x86_64.rsa_vg.Precompute → Slice Std.U64 → Slice Std.U8 → Result (Bool × Slice Std.U64)
+
 opaque low.x86_64.rsa_ifma.IfmaCrt.crt
   : low.x86_64.rsa_ifma.IfmaCrt → Slice Std.U8 → Slice Std.U8 → Slice Std.U8 → Slice Std.U8 →
     Slice Std.U8 → Result (Bool × Slice Std.U8)

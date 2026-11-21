@@ -106,7 +106,7 @@ quest = "/quest/m2/verified-garbage/chacha20-poly1305-x86.md"
 [[gap]]
 operations = ["rsa2048-pkcs1-sha256-verify", "rsa2048-pss-sha256-verify"]
 on = ["fedora"]
-quest = "/quest/m2/verified-garbage/rsa-public-key.md"
+reason = "`fedora`'s data predates [#952](https://github.com/kixel-ai/rind/pull/952), which runs pyca/verified-garbage's `R² mod n` on key load: there these verifications measured 5.30 and 5.67 µs against VG's 4.83 and 5.30 (1.10 and 1.07×), from 6.00 and 6.26. What remains is in key loading around it, as VG's rows start from parsed components: the DER parse and re-encoding, the wipe of the key on drop that AGENTS.md requires, and the modulus's conversion to the routine's big-endian bytes. Drop this entry once `fedora`'s next run shows the gap within 10%."
 
 [[gap]]
 operations = ["p384-ecdsa-sign"]
