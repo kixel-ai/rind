@@ -21,6 +21,7 @@ members = [
   "rind-openssl",
   "rind-python",
   "fuzz",
+  "admin/spec-tests",
   "admin/wasm-fixture"
 ]
 # Vendored upstream forks, built only through `[patch.crates-io]`.
