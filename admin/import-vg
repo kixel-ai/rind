@@ -83,6 +83,8 @@ ROOTS = {
         "vg_ec_p384_public_key",
         "vg_ec_p384_public_key_adx",
         "vg_ecdsa_p384_verify_adx",
+        # RSA's R² mod n for a public modulus, with BMI2 and ADX.
+        "vg_rsa_public_precompute_adx",
     ],
     "aarch64": [
         # cipher::ChaCha20 with NEON, and with SVE2.
@@ -114,6 +116,8 @@ ROOTS = {
         # verification.
         "vg_ec_p384_public_key",
         "vg_ecdsa_p384_verify",
+        # RSA's R² mod n for a public modulus.
+        "vg_rsa_public_precompute",
     ],
 }
 

@@ -170,7 +170,6 @@ impl<const N: usize> PosInt<N> {
     /// Writes the low `out.len()` bytes of the value to `out`, big-endian,
     /// reading the same words whatever the value.
     // Indexes, as `to_bytes` does, which Aeneas can translate.
-    #[cfg(rind_backend = "x86_64")]
     pub(crate) fn to_bytes_fixed(&self, out: &mut [u8]) {
         let len = out.len();
         for i in 0..len {

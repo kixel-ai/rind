@@ -196,6 +196,8 @@ pub(crate) mod vg_rsa_private_crt_precomputed_ifma;
 #[rustfmt::skip]
 pub(crate) mod vg_rsa_private_crt_precomputed_ifma512;
 #[rustfmt::skip]
+pub(crate) mod vg_rsa_public_precompute_adx;
+#[rustfmt::skip]
 pub(crate) mod vg_rsa_public_precomputed_checked_ifma;
 #[rustfmt::skip]
 pub(crate) mod vg_sha512_compress_avx2;
