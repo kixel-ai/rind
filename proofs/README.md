@@ -1451,7 +1451,8 @@ proof after those.
   pyca/verified-garbage's ChaCha20 spec is `Rind/Spec.lean`'s,
   `Rind/VgChaCha20Glue.lean`, what both targets' `cipher::ChaCha20` proofs
   share, and `Rind/{X86_64,Aarch64}/VgChaCha20.lean`, each target's glue over
-  VG's routines.
+  VG's routines; `Rind/VgOutcome.lean` and `Rind/<Arch>/VgMlKem.lean`, the axioms
+  restating what VG's ML-KEM-768 routines return.
 - `Rind/Rsa.lean` and `Rind/RsaLemmas.lean`: RFC 8017's verification,
   transliterated, and its lemmas; `Rind/X86_64/{RsaBytes,RsaMont,RsaPublic,RsaKey,RsaVerify,RsaPss}.lean`:
   the RSA verification proof, on x86_64 alone, and
