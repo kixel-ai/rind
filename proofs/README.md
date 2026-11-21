@@ -1593,8 +1593,8 @@ API for them (RSA and ML-KEM keys, ML-KEM encapsulations, ECDSA nonces,
 RSA-PSS salts, and XChaCha20-Poly1305 nonces), which the module
 documentation of `admin/spec-tests/src/main.rs` lists. A pull request
 that changes the specs, their driver, their vectors, or the tools that build
-them runs a sample in the `prove` workflow's `spec-tests` job: a vector file of more than 400 cases runs every k-th, the
-specs too slow for that fewer (PBKDF2's 4096-iteration vectors, SymCrypt's
+them runs a sample in the `prove` workflow's `spec-tests` job: a vector file
+of more than 400 cases runs every k-th, the specs too slow for that fewer (PBKDF2's 4096-iteration vectors, SymCrypt's
 ML-KEM, and s2n-bignum's SHA-512 forms, as `admin/spec-tests/src/cases.rs`
 says of each), and a budget of 8 random cases a test from seed 1. The
 `prove` workflow's nightly `spec-tests` job samples nothing: it runs every
