@@ -22,7 +22,7 @@ omitted = [
 ]
 
 [dependencies]
-rind = { version = "0.3.2", path = "../rind" }
+rind = { version = "0.4.0", path = "../rind" }
 # rind-rustls needs the standard library, as does how it reports HPKE errors
 # through rustls's `OtherError`, whose fields depend on rustls's `std`.
 rustls = { version = "0.23.20", default-features = false, features = ["std"] }
