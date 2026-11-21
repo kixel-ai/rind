@@ -505,8 +505,9 @@ SDE instead.
 
 A public key's `R² mod n`, for its Montgomery products, runs
 [verified-garbage]'s `vg_rsa_public_precompute_adx` on x86_64 CPUs with
-BMI2 and ADX for moduli whose width is a multiple of four 64-bit words
-(every 2048-, 3072-, 4096-, 6144-, and 8192-bit modulus), and its
+BMI2 and ADX for moduli whose width is a multiple of four 64-bit words and
+whose top bit is set (every 2048-, 3072-, 4096-, 6144-, and 8192-bit
+modulus), and its
 `vg_rsa_public_precompute` on aarch64: `w` steps of long division by the
 modulus rather than rind's `k + 1` modular doublings. On Zen 5 the x86_64
 routine measured 2.5 to 3.2× as fast as rind's, which other moduli keep, as

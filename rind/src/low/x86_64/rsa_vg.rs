@@ -45,13 +45,18 @@ impl Precompute {
     /// big-endian `n`.
     ///
     /// Returns whether it did: it refuses, writing zeros, an `n` that is
-    /// even, outside 512 to 8192 bits, or with a leading zero byte.
+    /// even, outside 512 to 8192 bits, or with a leading zero byte, or a
+    /// `pre` that is not `2w` words.
     pub(crate) fn precompute(self, pre: &mut [u64], n: &[u8]) -> bool {
         let k = n.len();
         let w = k.div_ceil(8);
-        assert!((64..=MAX_WORDS * 8).contains(&k) && pre.len() == 2 * w);
-        // The routine accepts any initial contents. It leaves `n`'s values,
-        // which are public.
+        if !(64..=MAX_WORDS * 8).contains(&k) || pre.len() != 2 * w {
+            pre.fill(0);
+            return false;
+        }
+        // The routine accepts any initial contents. It leaves `n`'s values
+        // and the caller's saved registers there, stack temporaries, which
+        // AGENTS.md leaves unwiped.
         let mut scratch = MaybeUninit::<[u64; 8 * MAX_WORDS + 48]>::uninit();
         // SAFETY: `pre` is `2w` writable words, `n` `k` readable bytes, and
         // `scratch` `8w + 48` writable words, with `64 <= k <= 1024`. They
@@ -135,5 +140,11 @@ mod tests {
             assert!(!vg.precompute(&mut pre[..2 * w], &bytes[..8 * w]));
             assert_eq!(pre[..2 * w], [0; 2 * MAX_WORDS][..2 * w]);
         }
+        // So are a modulus under 512 bits and a `pre` of the wrong length.
+        let mut pre = [1u64; 2 * MAX_WORDS];
+        assert!(!vg.precompute(&mut pre[..8], &[0xff; 32]));
+        assert_eq!(pre[..8], [0; 8]);
+        assert!(!vg.precompute(&mut pre[..63], &[0xff; 256]));
+        assert_eq!(pre[..63], [0; 63]);
     }
 }
