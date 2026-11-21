@@ -109,6 +109,15 @@ const NO_RANDOM: &[&str] = &[
     "ed25519-small-key",
 ];
 
+/// Whether `w` is a word an answer may hold: lowercase hex, `-` for no
+/// bytes, or one of the words the server answers where a spec gives no
+/// value. Checking every answer here keeps a malformed one, `error`
+/// included, from passing a comparison that decodes it leniently.
+fn answer_word(w: &str) -> bool {
+    matches!(w, "-" | "none" | "offcurve" | "badkey" | "infinity")
+        || (!w.is_empty() && w.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')))
+}
+
 /// The spec server, a child process answering a line per request.
 struct Server {
     child: Child,
@@ -152,7 +161,7 @@ impl Server {
         let mut line = String::new();
         self.output.read_line(&mut line).unwrap();
         let line = line.trim_end().to_owned();
-        if line.is_empty() || line.starts_with("error") {
+        if line.is_empty() || !line.split(' ').all(answer_word) {
             panic!("spec-tests: {} answered {line:?}", words[0]);
         }
         line
@@ -356,7 +365,14 @@ fn main() -> ExitCode {
     };
     let random = random as usize;
     let full = args.len() == 6;
-    let only = std::env::var("SPEC_TESTS_ONLY").ok();
+    let only = match std::env::var("SPEC_TESTS_ONLY") {
+        Ok(o) => Some(o),
+        Err(std::env::VarError::NotPresent) => None,
+        Err(std::env::VarError::NotUnicode(_)) => {
+            eprintln!("spec-tests: SPEC_TESTS_ONLY is not Unicode");
+            return ExitCode::from(2);
+        }
+    };
     if let Some(o) = &only
         && let Some(bad) = o
             .split(',')
@@ -418,6 +434,18 @@ fn main() -> ExitCode {
                         let mut failures = run.failures;
                         if run.counts.is_empty() && run.sources.is_empty() {
                             failures.push(format!("{name}: the section ran nothing"));
+                        }
+                        // Each section runs its own random cases of what it
+                        // runs on vectors, so another section's of the same
+                        // spec, such as another ML-KEM set's, cannot stand in.
+                        for (spec, [v, r]) in &run.counts {
+                            if *v > 0
+                                && *r == 0
+                                && random > 0
+                                && !NO_RANDOM.contains(&spec.as_str())
+                            {
+                                failures.push(format!("{name}: {spec} ran on no random inputs"));
+                            }
                         }
                         failures.extend(run.server.finish().map(|e| format!("{name}: {e}")));
                         let report = Report {
