@@ -653,9 +653,11 @@ fn aead_random(
 
 fn chacha(run: &mut Run) {
     // ChaCha20 alone: Wycheproof's IETF counter boundaries and RFC 8439's.
+    // An invalid case runs past the counter's end, outside the theorems'
+    // domain, where the server answers `none`.
     let file = "chacha20_counter_test";
     for (g, t) in wycheproof(run, file) {
-        if js(&g, "algorithm") != "ChaCha20-IETF" || !valid(&t) {
+        if js(&g, "algorithm") != "ChaCha20-IETF" {
             continue;
         }
         let ctr =
@@ -666,7 +668,11 @@ fn chacha(run: &mut Run) {
                 Vector,
                 &label(file, &t),
                 &[op, &words[0], &words[1], &words[2], &words[3]],
-                &jh(&t, "ct"),
+                &if valid(&t) {
+                    jh(&t, "ct")
+                } else {
+                    "none".to_owned()
+                },
             );
         }
     }
@@ -750,8 +756,9 @@ fn chacha(run: &mut Run) {
     for _ in 0..run.random {
         let k: [u8; 32] = run.rng.bytes(32).try_into().unwrap();
         let n: [u8; 12] = run.rng.bytes(12).try_into().unwrap();
-        // Drawn again past the counter's end, which both refuse: RFC 8439's
-        // 32-bit counter covers the blocks from `ctr` to 2^32 - 1.
+        // Drawn again past the counter's end, which rind refuses and the
+        // server answers `none`: RFC 8439's 32-bit counter covers the blocks
+        // from `ctr` to 2^32 - 1.
         let (ctr, mut c) = loop {
             let ctr = run.rng.u64() as u32;
             let c = run.rng.message(1000);
@@ -926,9 +933,12 @@ fn gcm(run: &mut Run) {
             let (k, iv, a, p) = (rec.h("Key"), rec.h("IV"), rec.h("AAD"), rec.h("PT"));
             let got = run.ask(Vector, &["aes-gcm-seal", &k, &iv, &a, &p]);
             let (c, t) = (rec.h("CT"), rec.h("Tag"));
-            let ok = got
-                .split_once(' ')
-                .is_some_and(|(gc, gt)| gc == c && gt.len() == 32 && gt.starts_with(&t));
+            let ok = got.split_once(' ').is_some_and(|(gc, gt)| {
+                gc == c
+                    && gt.len() == 32
+                    && gt.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+                    && gt.starts_with(&t)
+            });
             if !ok {
                 run.fail(format!(
                     "{rel} {}: aes-gcm-seal {k} {iv} {a} {p}\n  spec: {got}\n  want: {c} {t}...",
@@ -1854,6 +1864,11 @@ fn rsa(run: &mut Run) {
             let mut bad = sig.as_ref().to_vec();
             let at = run.rng.below(bad.len());
             bad[at] ^= 1 << run.rng.below(8);
+            if let Err(e) = key.public_key().verify(verify, &m, sig.as_ref()) {
+                run.fail(format!(
+                    "random: rind refuses its own {op} signature: {e:?}"
+                ));
+            }
             for s in [sig.as_ref(), &bad] {
                 let want = match key.public_key().verify(verify, &m, s) {
                     Ok(()) => "1",

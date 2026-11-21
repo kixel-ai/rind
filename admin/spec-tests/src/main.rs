@@ -339,7 +339,8 @@ struct Report {
 }
 
 fn main() -> ExitCode {
-    let args: Vec<String> = std::env::args().collect();
+    // The paths stay OS strings, which need not be UTF-8.
+    let args: Vec<std::ffi::OsString> = std::env::args_os().collect();
     if !(5..=6).contains(&args.len()) || (args.len() == 6 && args[5] != "full") {
         eprintln!(
             "usage: spec-tests <spec-server> <vectors dir> <seed> <random cases per test> [full]"
@@ -348,10 +349,12 @@ fn main() -> ExitCode {
     }
     let server = PathBuf::from(&args[1]);
     let vectors = PathBuf::from(&args[2]);
-    let (Ok(seed), Ok(random)) = (args[3].parse::<u64>(), args[4].parse::<usize>()) else {
+    let number = |a: &std::ffi::OsString| a.to_str().and_then(|a| a.parse::<u64>().ok());
+    let (Some(seed), Some(random)) = (number(&args[3]), number(&args[4])) else {
         eprintln!("spec-tests: the seed and random cases must be numbers");
         return ExitCode::from(2);
     };
+    let random = random as usize;
     let full = args.len() == 6;
     let only = std::env::var("SPEC_TESTS_ONLY").ok();
     if let Some(o) = &only
@@ -402,7 +405,15 @@ fn main() -> ExitCode {
                             source: None,
                         };
                         let start = Instant::now();
-                        section(&mut run);
+                        // A panic, such as a request the server cannot
+                        // parse, fails the section but keeps what it found.
+                        if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                            section(&mut run)
+                        }))
+                        .is_err()
+                        {
+                            run.failures.push(format!("{name}: the section panicked"));
+                        }
                         let took = start.elapsed().as_secs_f64();
                         let mut failures = run.failures;
                         if run.counts.is_empty() && run.sources.is_empty() {

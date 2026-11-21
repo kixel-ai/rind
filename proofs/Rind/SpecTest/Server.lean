@@ -182,10 +182,16 @@ def answer (args : List String) : Except String String := do
     -- RFC 8018 takes a positive count, and the spec would answer 0 as 1.
     if c = 0 then return "none"
     return hex (pbkdf2 (hmac H B) len pw salt c L)
+  -- ChaCha20 on the blocks RFC 8439's 32-bit counter covers from `ctr`,
+  -- the theorems' domain, `none` past them.
   | ["chacha20", k, ctr, n, m] =>
-    return hex (chacha20.encrypt (← unhexN 32 k) (← word ctr) (← unhexN 12 n) (← unhex m))
+    let (k, ctr, n, m) := (← unhexN 32 k, ← word ctr, ← unhexN 12 n, ← unhex m)
+    if ctr.toNat + (m.length + 63) / 64 > 2 ^ 32 then return "none"
+    return hex (chacha20.encrypt k ctr n m)
   | ["chacha20-s2n", k, ctr, n, m] =>
-    return hex (s2n.chacha20Encrypt (← unhexN 32 k) (← word ctr) (← unhexN 12 n) (← unhex m))
+    let (k, ctr, n, m) := (← unhexN 32 k, ← word ctr, ← unhexN 12 n, ← unhex m)
+    if ctr.toNat + (m.length + 63) / 64 > 2 ^ 32 then return "none"
+    return hex (s2n.chacha20Encrypt k ctr n m)
   | ["hchacha20", k, n] => return hex (chacha20.hchacha20 (← unhexN 32 k) (← unhexN 16 n))
   | ["poly1305", k, m] => return hex (poly1305.mac (← unhexN 32 k) (← unhex m))
   | ["poly1305-s2n", k, m] => return hex (s2n.poly1305Mac (← unhexN 32 k) (← unhex m))
