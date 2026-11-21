@@ -58,6 +58,7 @@ on:
       - .github/workflows/prove.yml
       - .github/actions/nix/**
       - .github/actions/prove/**
+      - sh/changed.sh
   push:
     branches: [main]
     paths: *paths
@@ -305,24 +306,46 @@ jobs:
       - name: Prove
         run: nix develop .#prove --command admin/prove lean
 
-  # The spec tests unsampled, on every vector the driver's filters admit and
-  # on random inputs from the run's own seed, nightly and when dispatched; the
-  # lean job runs a fixed sample. Its own job, so the sweep does not lengthen
-  # the lean job's.
+  # The spec tests: nightly and when dispatched unsampled, on every vector the
+  # driver's filters admit and on random inputs from the run's own seed; on a
+  # pull request that changes the specs, their driver, their vectors, or the
+  # tools that build them, a fixed sample. Linking `spec-server` compiles
+  # every Mathlib module it imports to C, about 15 minutes that Mathlib's
+  # cache does not save, so this job keeps that out of the lean job's time.
+  # A pull request that changes only rind's code skips it: Wycheproof and the
+  # differential tests check rind there, and the nightly checks it here.
   spec-tests:
-    if: github.event_name != 'pull_request' && github.event_name != 'push'
+    if: github.event_name != 'push' && !github.event.pull_request.draft
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # A pull request's diff, for sh/changed.sh.
+          fetch-depth: ${{ github.event_name == 'pull_request' && '0' || '1' }}
+
+      - id: reach
+        shell: bash
+        run: |
+          set -euo pipefail
+          run=true
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            changed=$(sh/changed.sh)
+            if ! grep -qE '^(proofs/|admin/spec-tests/|thirdparty/vectors/|admin/prove$|flake\.(nix|lock)$|sh/changed\.sh$|\.github/(workflows/prove\.yml|actions/nix/))' <<<"$changed"; then
+              echo "The diff changes nothing the spec tests test."
+              run=false
+            fi
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
 
       - uses: ./.github/actions/nix
+        if: steps.reach.outputs.run == 'true'
 
       - name: Test the specs
+        if: steps.reach.outputs.run == 'true'
         run: nix develop .#prove --command admin/prove spec-tests
         env:
-          SPEC_TESTS_FULL: 1
-          SPEC_TESTS_SEED: ${{ github.run_id }}
-          SPEC_TESTS_RANDOM: 64
+          SPEC_TESTS_FULL: ${{ github.event_name != 'pull_request' && '1' || '' }}
+          SPEC_TESTS_SEED: ${{ github.event_name == 'pull_request' && '1' || github.run_id }}
+          SPEC_TESTS_RANDOM: ${{ github.event_name == 'pull_request' && '8' || '64' }}
