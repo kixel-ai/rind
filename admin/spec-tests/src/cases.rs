@@ -1297,6 +1297,16 @@ fn fixed(s: &str, len: usize) -> String {
     hex(&out)
 }
 
+/// The two numbers of a reply that should be a finite point or an ECDSA
+/// signature on a curve of `len` bytes: exactly two lowercase hex numbers of
+/// that length, or `None`.
+fn pair(got: &str, len: usize) -> Option<(&str, &str)> {
+    let (x, y) = got.split_once(' ')?;
+    let ok =
+        |s: &str| s.len() == 2 * len && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'));
+    (ok(x) && ok(y)).then_some((x, y))
+}
+
 /// An uncompressed point's coordinates as hex, or `None` for another
 /// encoding.
 fn point(bytes: &[u8], len: usize) -> Option<(String, String)> {
@@ -1339,7 +1349,7 @@ fn nist(run: &mut Run) {
             Vector,
             &["ec-mul", c.name, &d, &rec.h("QCAVSx"), &rec.h("QCAVSy")],
         );
-        if got.split(' ').next() != Some(&rec.h("ZIUT")) {
+        if pair(&got, c.len).map(|(x, _)| x) != Some(&rec.h("ZIUT")) {
             run.fail(format!(
                 "{rel} {}: ec-mul\n  spec: {got}\n  want: {}",
                 rec.s("COUNT"),
@@ -1404,9 +1414,13 @@ fn nist(run: &mut Run) {
             };
             let got = run.ask(Vector, &["ec-mul", c.name, &jh(&t, "private"), &x, &y]);
             let ok = match js(&t, "result") {
-                "valid" => got.split(' ').next() == Some(&jh(&t, "shared")),
+                "valid" => pair(&got, c.len).map(|(x, _)| x) == Some(&jh(&t, "shared")),
                 "invalid" => got == "offcurve" || got == "infinity",
-                _ => true,
+                "acceptable" => true,
+                r => panic!(
+                    "spec-tests: {}: no Wycheproof result {r:?}",
+                    label(&file, &t)
+                ),
             };
             if !ok {
                 run.fail(format!(
@@ -1435,7 +1449,7 @@ fn nist(run: &mut Run) {
             let (px, py) = point(peer.public_key().as_ref(), c.len).unwrap();
             let shared = ours.agree(peer.public_key().as_ref()).unwrap();
             let got = run.ask(Rind, &["ec-mul", c.name, &d, &px, &py]);
-            if got.split(' ').next() != Some(&hex(shared.as_ref())) {
+            if pair(&got, c.len).map(|(x, _)| x) != Some(&hex(shared.as_ref())) {
                 run.fail(format!(
                     "random: ec-mul {} {d} {px} {py}\n  spec: {got}\n  want: {}",
                     c.name,
@@ -1548,7 +1562,7 @@ fn ecdsa(run: &mut Run) {
             let e = hex(rind::digest::digest(c.hash, &m).as_ref());
             let got = run.ask(Rind, &["ecdsa-sign", c.name, &d, &k, &e]);
             let public = rind::ecdsa::PublicKey::new(c.verify, key.public_key().as_ref()).unwrap();
-            let ok = got.split_once(' ').is_some_and(|(r1, s1)| {
+            let ok = pair(&got, c.len).is_some_and(|(r1, s1)| {
                 public.verify(&m, &[unhex(r1), unhex(s1)].concat()).is_ok()
             });
             if !ok {
@@ -1654,7 +1668,9 @@ fn ed25519(run: &mut Run) {
         let rind = rind::ed25519::PublicKey::new(&key).and_then(|k| k.verify(m, &sig));
         let small = run.ask(Vector, &["ed25519-small-key", &hex(&key)]);
         let got = run.ask(Vector, &["ed25519-verify", &hex(&key), &hex(m), &hex(&sig)]);
-        if (small == "0" && got == "1") != rind.is_ok() {
+        let known =
+            matches!(small.as_str(), "0" | "1") && matches!(got.as_str(), "0" | "1" | "badkey");
+        if !known || (small == "0" && got == "1") != rind.is_ok() {
             run.fail(format!(
                 "{rel} #{}: ed25519-verify\n  spec: {got}, small order {small}\n  rind: {rind:?}",
                 t["number"]
