@@ -1121,6 +1121,20 @@ fn aes_modes(run: &mut Run) {
             &hex(&c),
         );
     }
+    // Counter widths outside 1 to 128, which both refuse.
+    for bits in [0u8, 129] {
+        let k = run.rng.aes_key();
+        let t0 = hex(&run.rng.bytes(16));
+        if rind::cipher::AesCtr::new(cipher_alg(k.len()), &k, bits).is_ok() {
+            run.fail(format!("random: rind's aes-ctr takes {bits} bits"));
+        }
+        run.check(
+            Rind,
+            "edge",
+            &["aes-ctr", &hex(&k), &bits.to_string(), &t0, "-"],
+            "none",
+        );
+    }
     // The counter's capacity at its edge: a 1-bit counter covers two
     // blocks, 32 bytes, and refuses 33.
     for len in [32, 33] {

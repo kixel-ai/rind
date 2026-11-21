@@ -126,19 +126,19 @@ struct Server {
 }
 
 impl Server {
-    fn start(path: &Path) -> Self {
+    fn start(path: &Path) -> Result<Self, String> {
         let mut child = Command::new(path)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .spawn()
-            .unwrap_or_else(|e| panic!("spec-tests: cannot run {}: {e}", path.display()));
+            .map_err(|e| format!("cannot run {}: {e}", path.display()))?;
         let input = BufWriter::new(child.stdin.take().unwrap());
         let output = BufReader::new(child.stdout.take().unwrap());
-        Self {
+        Ok(Self {
             child,
             input,
             output,
-        }
+        })
     }
 
     /// Closes the server's input, which ends it, and fails unless it then
@@ -150,14 +150,17 @@ impl Server {
             mut output,
         } = self;
         drop(input);
-        let mut rest = String::new();
-        if let Err(e) = std::io::Read::read_to_string(&mut output, &mut rest) {
-            return Some(format!("the server's output: {e}"));
-        }
-        if !rest.is_empty() {
+        // One byte tells EOF from more output, without waiting on a server
+        // that keeps writing.
+        let extra = match std::io::Read::read(&mut output, &mut [0; 1]) {
+            Ok(0) => None,
+            Ok(_) => Some("the server wrote after its last answer".to_owned()),
+            Err(e) => Some(format!("the server's output: {e}")),
+        };
+        if extra.is_some() {
             let _ = child.kill();
             let _ = child.wait();
-            return Some(format!("the server wrote after its last answer: {rest:?}"));
+            return extra;
         }
         match child.wait() {
             Ok(status) if status.success() => None,
@@ -222,10 +225,15 @@ impl Run {
     pub fn check(&mut self, from: From, label: &str, words: &[&str], want: &str) {
         let got = self.ask(from, words);
         if got != want {
-            self.failures.push(format!(
-                "{label}: {}\n  spec: {got}\n  want: {want}",
+            // A section's first failure prints its whole request, which a
+            // random input rind drew itself needs to be replayed.
+            let request = if self.failures.is_empty() {
+                words.join(" ")
+            } else {
                 trim(words)
-            ));
+            };
+            self.failures
+                .push(format!("{label}: {request}\n  spec: {got}\n  want: {want}"));
         }
     }
 
@@ -424,8 +432,22 @@ fn main() -> ExitCode {
                         for b in name.bytes() {
                             h = (h ^ b as u64).wrapping_mul(0x100000001b3);
                         }
+                        let process = match Server::start(&server) {
+                            Ok(process) => process,
+                            Err(e) => {
+                                let report = Report {
+                                    counts: BTreeMap::new(),
+                                    times: BTreeMap::new(),
+                                    failures: vec![format!("{name}: {e}")],
+                                    sources: BTreeMap::new(),
+                                    took: 0.0,
+                                };
+                                done.push((i, *name, report));
+                                continue;
+                            }
+                        };
                         let mut run = Run {
-                            server: Server::start(&server),
+                            server: process,
                             rng: Rng(h),
                             random,
                             full,
