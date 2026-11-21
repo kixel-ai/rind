@@ -10,6 +10,8 @@ use core::ffi::{CStr, c_int};
 use core::marker::PhantomData;
 use core::slice;
 
+use zeroize::Zeroizing;
+
 use crate::ffi::{INTEGER, OCTET_STRING, Param, REAL, UNSIGNED_INTEGER, UTF8_PTR, UTF8_STRING};
 
 /// A parameter array OpenSSL passes in, or none.
@@ -106,6 +108,92 @@ impl Param {
         // SAFETY: a parameter's data is valid for its size.
         let bytes = unsafe { slice::from_raw_parts(self.data.cast::<u8>(), self.data_size) };
         bytes.split(|&b| b == 0).next()
+    }
+
+    /// The value of an `OSSL_PARAM_INTEGER` of 1, 2, 4, or 8 bytes, as
+    /// `OSSL_PARAM_get_int` reads it, refused if it does not fit a `c_int`.
+    pub(crate) fn int(&self) -> Option<c_int> {
+        if self.data_type != INTEGER || self.data.is_null() {
+            return None;
+        }
+        // SAFETY: a parameter's data is valid for its size.
+        let bytes = unsafe { slice::from_raw_parts(self.data.cast::<u8>(), self.data_size) };
+        let value = match *bytes {
+            [a] => i64::from(i8::from_ne_bytes([a])),
+            [a, b] => i64::from(i16::from_ne_bytes([a, b])),
+            [a, b, c, d] => i64::from(i32::from_ne_bytes([a, b, c, d])),
+            [a, b, c, d, e, f, g, h] => i64::from_ne_bytes([a, b, c, d, e, f, g, h]),
+            _ => return None,
+        };
+        c_int::try_from(value).ok()
+    }
+
+    /// The value of an `OSSL_PARAM_UNSIGNED_INTEGER` of any size, as
+    /// `OSSL_PARAM_get_BN` reads it, in big-endian bytes of the parameter's
+    /// size. The bytes may be a private key's, so they wipe themselves.
+    pub(crate) fn unsigned_be(&self) -> Option<Zeroizing<Vec<u8>>> {
+        if self.data_type != UNSIGNED_INTEGER || self.data.is_null() {
+            return None;
+        }
+        // SAFETY: a parameter's data is valid for its size.
+        let native = unsafe { slice::from_raw_parts(self.data.cast::<u8>(), self.data_size) };
+        let mut value = Zeroizing::new(native.to_vec());
+        if cfg!(target_endian = "little") {
+            value.reverse();
+        }
+        Some(value)
+    }
+
+    /// Sets an `OSSL_PARAM_UNSIGNED_INTEGER` to the big-endian `value`: in the
+    /// parameter's native byte order, padded with zeros to its size, refused
+    /// if its size is smaller than `value`. A null `data` asks only the size.
+    ///
+    /// It keeps `value`'s length, rather than stripping its leading zeros as
+    /// `OSSL_PARAM_set_BN` does, so that a private key's length is not a
+    /// secret-dependent size the caller reads.
+    pub(crate) fn set_unsigned_be(&mut self, value: &[u8]) -> bool {
+        if self.data_type != UNSIGNED_INTEGER {
+            self.return_size = 0;
+            return false;
+        }
+        self.return_size = value.len();
+        if self.data.is_null() {
+            return true;
+        }
+        if self.data_size < value.len() {
+            return false;
+        }
+        let size = self.data_size;
+        let data = self.data.cast::<u8>();
+        for k in 0..size {
+            // The k-th least significant byte.
+            let byte = match value.len().checked_sub(1 + k) {
+                Some(at) => value[at],
+                None => 0,
+            };
+            let at = match cfg!(target_endian = "little") {
+                true => k,
+                false => size - 1 - k,
+            };
+            // SAFETY: a parameter's data is valid for its size, and `at` is
+            // below it.
+            unsafe { data.add(at).write(byte) };
+        }
+        true
+    }
+
+    /// Sets a `size_t` parameter, as `OSSL_PARAM_set_size_t` does: a null
+    /// `data` asks for the size of a `size_t`, not of an `int`. `value` is
+    /// small, as a digest's length is.
+    pub(crate) fn set_size(&mut self, value: usize) -> bool {
+        if self.data_type == UNSIGNED_INTEGER && self.data.is_null() {
+            self.return_size = size_of::<usize>();
+            return true;
+        }
+        match c_int::try_from(value) {
+            Ok(value) => self.set_int(value),
+            Err(_) => false,
+        }
     }
 
     /// Sets an integer or real parameter of any size that holds `value`,
@@ -347,5 +435,49 @@ mod tests {
         let mut p = param(c"mandatory-digest", UTF8_STRING, buf.as_mut_ptr().cast(), 4);
         assert!(p.set_utf8(c""));
         assert_eq!((buf[0], p.return_size), (0, 0));
+    }
+
+    #[test]
+    fn unsigned_integers_keep_their_length_and_native_order() {
+        // A value with leading zeros keeps them, into a buffer of its size.
+        let value = [0, 0, 1, 2, 3];
+        let mut buf = [0xffu8; 5];
+        let mut p = param(c"priv", UNSIGNED_INTEGER, buf.as_mut_ptr().cast(), 5);
+        assert!(p.set_unsigned_be(&value));
+        assert_eq!(p.return_size, 5);
+        let mut expected = value;
+        if cfg!(target_endian = "little") {
+            expected.reverse();
+        }
+        assert_eq!(buf, expected);
+        assert_eq!(&p.unsigned_be().unwrap()[..], &value[..]);
+
+        // A larger buffer pads, a smaller one refuses, a null one asks.
+        let mut big = [0xffu8; 8];
+        let mut p = param(c"priv", UNSIGNED_INTEGER, big.as_mut_ptr().cast(), 8);
+        assert!(p.set_unsigned_be(&value));
+        assert_eq!(&p.unsigned_be().unwrap()[..], &[0, 0, 0, 0, 0, 1, 2, 3][..]);
+        let mut small = [0u8; 4];
+        let mut p = param(c"priv", UNSIGNED_INTEGER, small.as_mut_ptr().cast(), 4);
+        assert!(!p.set_unsigned_be(&value));
+        let mut p = param(c"priv", UNSIGNED_INTEGER, core::ptr::null_mut(), 0);
+        assert!(p.set_unsigned_be(&value));
+        assert_eq!(p.return_size, 5);
+        let mut p = param(c"priv", OCTET_STRING, big.as_mut_ptr().cast(), 8);
+        assert!(!p.set_unsigned_be(&value));
+        assert!(p.unsigned_be().is_none());
+    }
+
+    #[test]
+    fn int_reads_each_size() {
+        let mut four = -7i32;
+        let p = param(c"mode", INTEGER, (&raw mut four).cast(), 4);
+        assert_eq!(p.int(), Some(-7));
+        let mut eight = 1i64 << 40;
+        let p = param(c"mode", INTEGER, (&raw mut eight).cast(), 8);
+        assert_eq!(p.int(), None);
+        let mut unsigned = 1u32;
+        let p = param(c"mode", UNSIGNED_INTEGER, (&raw mut unsigned).cast(), 4);
+        assert_eq!(p.int(), None);
     }
 }
