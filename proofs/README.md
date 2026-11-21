@@ -1385,6 +1385,10 @@ proof after those.
   `Rind/ValeBytes.lean`, and `Rind/Gf128.lean`: Vale's AES and GF(2^128) specs
   and their lemmas, and `Rind/AesInverse.lean`, FIPS 197's equivalent inverse
   cipher.
+- `Rind/SpecTest/`: the spec tests' executable twins, each proven equal to
+  the spec it runs, `Upstream.lean`'s stand-ins for the opaque constants,
+  and `Server.lean`, the executable `admin/spec-tests` drives, which
+  [the spec tests](#the-spec-tests) describes.
 - `Rind/X86_64/{Dispatch,QuicDispatch,DigestDispatch,DigestAlgorithm,AeadDispatch,HmacDispatch,GcmKey}.lean`:
   the hand models of the agreement, header-protection, digest, AEAD, and HMAC
   APIs' dispatch, `Rind/X86_64/SignatureBuffer.lean`, of the signature
@@ -1538,7 +1542,11 @@ Beyond Lean's kernel:
   Lean's `Classical.epsilon` does.
 - That `Rind/Vale.lean` transliterates Vale's AES and GF(2^128) specs and
   `hkeys_reqs_pub`, with the round functions Vale's AES spec assumes read as
-  FIPS 197's, the S-box and `MixColumns` opaque.
+  FIPS 197's, the S-box and `MixColumns` opaque; that `Rind/AesInverse.lean`
+  transliterates FIPS 197's equivalent inverse cipher, its inverse S-box and
+  `InvMixColumns` opaque as those are; and that `Rind/Aes.lean`'s header
+  mask is RFC 9001's, `Rind/AesModes.lean`'s CTR and CBC SP 800-38A's with
+  RFC 5652's PKCS#7 padding, and `Rind/AesKw.lean`'s KW and KWP SP 800-38F's.
 - That `Rind/X86_64/Simd.lean`'s and `Rind/Aarch64/Neon.lean`'s intrinsics
   compute what their instructions do beyond the inputs they are tested on.
   `admin/simd-vectors.rs` runs each x86_64 instruction on the checking
@@ -1571,3 +1579,67 @@ Beyond Lean's kernel:
 - The translation ignores drops, which here wipe keys and keyed state and
   restore CPU state, and computes nothing an output
   depends on.
+
+### The spec tests
+
+`admin/spec-tests` tests the transliterations above against what they
+transliterate. `admin/prove lean` builds the specs into an executable,
+`Rind/SpecTest/Server.lean`'s `spec-server`, and the driver runs each on its
+algorithm's published vectors in `thirdparty/vectors/` (CAVP's, Wycheproof's,
+CCTV's, aws-lc's, and the RFCs' own) and on random inputs from a fixed seed
+compared with rind's output, and fails on any disagreement. The seed
+reproduces every random input but those rind draws itself, having no seeded
+API for them (RSA and ML-KEM keys, ML-KEM encapsulations, ECDSA nonces,
+RSA-PSS salts, and XChaCha20-Poly1305 nonces), which the module
+documentation of `admin/spec-tests/src/main.rs` lists. A pull request
+runs a sample: a vector file of more than 400 cases runs every k-th, the
+specs too slow for that fewer (PBKDF2's 4096-iteration vectors, SymCrypt's
+ML-KEM, and s2n-bignum's SHA-512 forms, as `admin/spec-tests/src/cases.rs`
+says of each), and a budget of 8 random cases a test from seed 1. The
+`prove` workflow's nightly `spec-tests` job samples nothing: it runs every
+vector the filters in `cases.rs` admit, and a budget of 64 random cases a
+test from the run's own seed. Most filters keep a spec to the domain its
+theorems pass it; one is a runtime limit, PBKDF2's vectors past 100,000
+iterations (RFC 6070's 2^24), which would take hours. A case may send more than one request, ML-KEM's sampled run spends a
+quarter of the budget, and the specs `NO_RANDOM` in
+`admin/spec-tests/src/main.rs` lists run on no random inputs; the driver's
+table prints what each ran.
+
+A spec Lean cannot run fast enough, or at all, runs through an executable
+twin in `Rind/SpecTest/`, proven equal to it on the inputs the proofs pass
+it:
+
+- `nist.inv`, `nist.add`, and `nist.pow`, which `Classical.choose` and a
+  recursion once per unit of the scalar define, through `invC`, `addC`, and
+  the double-and-add `powC` on points of the curve, and ECDSA's signing and
+  verification over them (`Nist.lean`);
+- `edDecode`, a choice, through `decodeC`, RFC 8032's square root, which
+  `decodeC_spec` proves picks the point a valid encoding names and refuses
+  every encoding that names none (`Ed25519.lean`);
+- `rsavp1`, which raises before it reduces, by square-and-multiply mod `n`,
+  and RSASSA-PKCS1-v1_5's and RSASSA-PSS's verifications, propositions with
+  existential witnesses, decided, PSS's computing MGF1's mask once
+  (`Rsa.lean`);
+- Vale's `gf128MulLE`, a product of Mathlib polynomials, through
+  `Rind/Gf128.lean`'s bitwise multiplication, and GHASH and AES-GCM over it
+  (`Gcm.lean`);
+- Vale's and FIPS 197's S-boxes, opaque to proofs, which run as tables that
+  `sboxFast_eq` and `invSboxFast_eq` prove are the bodies they evaluate.
+
+`rfcx25519`, `edPow`, and `edMul` are opaque: under the composition rule each
+stands for HOL Light's definition, and nothing is assumed of it, so no twin
+can be proven equal to one. The tests run the specs around them, X25519's
+encoding of the scalar and the result, and Ed25519's hashing, clamping, and
+encodings, with `Rind/SpecTest/Upstream.lean`'s transliterations of the
+upstream definitions in their place, which checks those specs, not the
+constants.
+
+Run through a spec proven equal to them rather than themselves:
+`Rind/S2nSha256.lean`'s and `Rind/S2nSha512.lean`'s SHA-2 run on short
+messages only, as HOL Light's message schedules, transliterated, recurse
+without sharing, while FIPS 180-4's, which they are proven equal to, run on
+every vector; `Rind/S2nMlKem.lean`'s specs, which its bridges prove are FIPS
+203's NTT, NTT⁻¹, and products, with no executable whole; and VG's specs,
+which `Rind/Vg*.lean` prove are `Rind/Spec.lean`'s. Not run: `hkeysReqsPub`
+and the P-256 and P-384 representation predicates, preconditions on a
+routine's state rather than functions of inputs that vectors exercise.

@@ -5647,6 +5647,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "spec-tests"
+version = "0.0.0"
+dependencies = [
+ "rind",
+ "serde_json",
+ "shake",
+]
+
+[[package]]
 name = "spin"
 version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
