@@ -6,6 +6,8 @@ On x86_64 CPUs with AVX-512, VAES, and VPCLMULQDQ, AES-GCM seal and open run pyc
 
 ## Plan
 
+Decided 2026-11-21 (orchestrator, for the maintainer, in [kixel-ai/rind#949](https://github.com/kixel-ai/rind/pull/949)'s merge pick): ✅ keep this quest (rejected: drop it and record a reason in `benchmarks/gaps.toml`). It does not duplicate [the VAES proof quest](/quest/m4/verified/aes-gcm-x86-vaes.md), which proves BoringSSL's kernels and plans no switch; each links the other.
+
 - Found by `fedora`'s first report run (Ryzen 9 9950X, Zen 5), two quiet runs at [`8451c61f`](https://github.com/kixel-ai/rind/commit/8451c61f2ff869812224ab83a75f58d82d84a4a7) and [`fbdc801e`](https://github.com/kixel-ai/rind/commit/fbdc801e090ec1d476a01ca8c24be688baed5a7f), in ns, rind / VG per run:
 
   | Size | AES-128 seal | AES-128 open | AES-256 seal | AES-256 open |

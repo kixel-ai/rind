@@ -6,6 +6,8 @@ Every VG routine that AES-GCM runs on x86_64 with AVX-512 is imported as a theor
 
 ## Plan
 
+Decided 2026-11-21 (orchestrator, for the maintainer, in [kixel-ai/rind#949](https://github.com/kixel-ai/rind/pull/949)'s merge pick): ✅ keep this quest (rejected: drop it and record a reason in `benchmarks/gaps.toml`).
+
 - Import each routine's VG theorem as one axiom about rind's opaque wrapper, under [the m4 epic's composition rule](/quest/m4/verified/README.md#composition-rule), as [the epic](/quest/m2/verified-garbage/README.md)'s Plan settles, and vendor VG's AES-GCM spec into `proofs/verified-garbage/` with `admin/import-vg-models`.
 - Prove rind's glue around it, with the length choice between VG's kernel and rind's by-16 and by-8 intrinsics, which `proofs/Rind/X86_64/AesGcmAvx512.lean` already proves below 2 KB given the key-power predicates.
 - VG's spec and the two GCM specs rind's x86_64 proofs already use (Vale's, and s2n-bignum's that [the VAES quest](/quest/m4/verified/aes-gcm-x86-vaes.md) proves against) must meet: prove VG's equal to whichever the glue's theorems state, or reuse that quest's equivalence theorem if it lands first.
