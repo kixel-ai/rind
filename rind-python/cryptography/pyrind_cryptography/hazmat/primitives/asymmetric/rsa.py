@@ -4,12 +4,11 @@ import abc
 
 import pyrind
 from pyrind import rsa as _rsa
-from pyrind import signature as _signature
-from pyrind.signature import sign as _sign
-from pyrind.signature import verify as _verify
+from pyrind.rsa import sign as _sign
+from pyrind.rsa import verify as _verify
 
 from pyrind_cryptography import _der
-from pyrind_cryptography.exceptions import _Reasons, unsupported
+from pyrind_cryptography.exceptions import InvalidSignature, _Reasons, unsupported
 from pyrind_cryptography.hazmat.primitives import _keys, hashes
 from pyrind_cryptography.hazmat.primitives.asymmetric import padding as _padding
 from pyrind_cryptography.hazmat.primitives.asymmetric import utils as _utils
@@ -24,25 +23,25 @@ _SIZES = {
     6144: _rsa.KeySize.RSA_6144,
     8192: _rsa.KeySize.RSA_8192,
 }
-_PKCS1_SIGN = {"sha256": _sign.RSA_PKCS1_SHA256, "sha384": _sign.RSA_PKCS1_SHA384, "sha512": _sign.RSA_PKCS1_SHA512}
-_PSS_SIGN = {"sha256": _sign.RSA_PSS_SHA256, "sha384": _sign.RSA_PSS_SHA384, "sha512": _sign.RSA_PSS_SHA512}
+_PKCS1_SIGN = {"sha256": _sign.PKCS1_SHA256, "sha384": _sign.PKCS1_SHA384, "sha512": _sign.PKCS1_SHA512}
+_PSS_SIGN = {"sha256": _sign.PSS_SHA256, "sha384": _sign.PSS_SHA384, "sha512": _sign.PSS_SHA512}
 _PKCS1_VERIFY = {
-    "sha1": _verify.legacy.RSA_PKCS1_SHA1,
-    "sha256": _verify.RSA_PKCS1_SHA256,
-    "sha384": _verify.RSA_PKCS1_SHA384,
-    "sha512": _verify.RSA_PKCS1_SHA512,
+    "sha1": _verify.legacy.PKCS1_SHA1,
+    "sha256": _verify.PKCS1_SHA256,
+    "sha384": _verify.PKCS1_SHA384,
+    "sha512": _verify.PKCS1_SHA512,
 }
 # rind's PKCS#1 v1.5 verifiers for moduli from 1024 bits, which those above refuse below 2048.
 _PKCS1_VERIFY_1024 = {
-    "sha1": _verify.legacy.RSA_PKCS1_1024_SHA1,
-    "sha256": _verify.legacy.RSA_PKCS1_1024_SHA256,
-    "sha512": _verify.legacy.RSA_PKCS1_1024_SHA512,
+    "sha1": _verify.legacy.PKCS1_1024_SHA1,
+    "sha256": _verify.legacy.PKCS1_1024_SHA256,
+    "sha512": _verify.legacy.PKCS1_1024_SHA512,
 }
-_PSS_VERIFY = {"sha256": _verify.RSA_PSS_SHA256, "sha384": _verify.RSA_PSS_SHA384, "sha512": _verify.RSA_PSS_SHA512}
+_PSS_VERIFY = {"sha256": _verify.PSS_SHA256, "sha384": _verify.PSS_SHA384, "sha512": _verify.PSS_SHA512}
 _PSS_VERIFY_ANY_SALT = {
-    "sha256": _verify.RSA_PSS_SHA256_ANY_SALT,
-    "sha384": _verify.RSA_PSS_SHA384_ANY_SALT,
-    "sha512": _verify.RSA_PSS_SHA512_ANY_SALT,
+    "sha256": _verify.PSS_SHA256_ANY_SALT,
+    "sha384": _verify.PSS_SHA384_ANY_SALT,
+    "sha512": _verify.PSS_SHA512_ANY_SALT,
 }
 _OAEP = {"sha1": _rsa.legacy.OAEP_SHA1, "sha256": _rsa.OAEP_SHA256, "sha384": _rsa.OAEP_SHA384, "sha512": _rsa.OAEP_SHA512}
 
@@ -174,7 +173,7 @@ class RSAPrivateNumbers:
         der = _der.sequence(_der.encode_integer(0), *map(_der.encode_integer, values))
         _check_private_size(der)
         with _keys.loading():
-            return RSAPrivateKey(_signature.RsaKeyPair.from_pkcs1(der))
+            return RSAPrivateKey(_rsa.KeyPair.from_pkcs1(der))
 
     def __eq__(self, other):
         if not isinstance(other, RSAPrivateNumbers):
@@ -190,10 +189,11 @@ class RSAPrivateNumbers:
 class RSAPublicKey(metaclass=abc.ABCMeta):
     """An RSA public key."""
 
-    def __init__(self, spki, n, e):
-        self._spki = spki
-        self._n, self._e = n, e
-        self._keys = {}
+    def __init__(self, key):
+        self._key = key
+        self._spki = key.to_spki()
+        self._n, self._e = _der.integers(bytes(key))
+        self._encrypting = {}
 
     @classmethod
     def _from_spki(cls, der):
@@ -205,11 +205,7 @@ class RSAPublicKey(metaclass=abc.ABCMeta):
         else:
             _check_size(n.bit_length(), 1024)
         with _keys.loading():
-            key = _signature.PublicKey.from_spki(_verify.legacy.RSA_PKCS1_1024_SHA256, der)
-        n, e = _der.integers(bytes(key))
-        public_key = RSAPublicKey(key.to_spki(), n, e)
-        public_key._keys[_verify.legacy.RSA_PKCS1_1024_SHA256] = key
-        return public_key
+            return RSAPublicKey(_rsa.PublicKey.from_spki(der))
 
     @property
     def key_size(self):
@@ -228,7 +224,7 @@ class RSAPublicKey(metaclass=abc.ABCMeta):
         """Writes the key as `encoding` and `format`."""
         return _keys.public_bytes(encoding, format, spki=lambda: self._spki, pkcs1=self._pkcs1, openssh=self._openssh)
 
-    def _verifier(self, padding, algorithm):
+    def _verification_algorithm(self, padding, algorithm):
         hash_name = _hash_name(algorithm)
         if isinstance(padding, _padding.PKCS1v15):
             table = _PKCS1_VERIFY if self.key_size >= 2048 else _PKCS1_VERIFY_1024
@@ -243,17 +239,19 @@ class RSAPublicKey(metaclass=abc.ABCMeta):
             raise unsupported(f"{padding.name} signatures", _Reasons.UNSUPPORTED_PADDING)
         else:
             raise TypeError("Padding must be an instance of AsymmetricPadding.")
-        key = self._keys.get(chosen)
-        if key is None:
-            with _keys.loading():
-                key = self._keys[chosen] = _signature.PublicKey.from_spki(chosen, self._spki)
-        return key
+        return chosen
 
     def verify(self, signature, data, padding, algorithm):
         """Checks `signature` over `data`; raises `InvalidSignature` if it does not verify."""
-        key = self._verifier(padding, algorithm)
+        chosen = self._verification_algorithm(padding, algorithm)
         with _keys.verifying():
-            key.verify(data, signature)
+            try:
+                self._key.verify(chosen, data, signature)
+            except pyrind.KeyRejected:
+                # The size checks above keep every key within the chosen
+                # algorithm's floor, so this is a mismatch with rind's, which
+                # verifies nothing.
+                raise InvalidSignature from None
 
     def recover_data_from_signature(self, signature, padding, algorithm):
         """Recovers the signed digest; rind only verifies."""
@@ -263,10 +261,10 @@ class RSAPublicKey(metaclass=abc.ABCMeta):
         """Encrypts `plaintext` with OAEP."""
         algorithm, label = _oaep_algorithm(padding)
         _check_size(self.key_size, 2048)
-        key = self._keys.get(algorithm)
+        key = self._encrypting.get(algorithm)
         if key is None:
             with _keys.loading():
-                key = self._keys[algorithm] = _rsa.EncryptingKey(algorithm, self._spki)
+                key = self._encrypting[algorithm] = _rsa.EncryptingKey(algorithm, bytes(self._key))
         try:
             return key.encrypt(plaintext, label=label)
         except pyrind.WrongLength:
@@ -289,7 +287,7 @@ class RSAPrivateKey(metaclass=abc.ABCMeta):
 
     def __init__(self, key_pair):
         self._key_pair = key_pair
-        self._public_key = RSAPublicKey._from_spki(key_pair.to_spki())
+        self._public_key = RSAPublicKey(key_pair.public_key())
         self._decrypting = {}
 
     @property
@@ -353,7 +351,7 @@ def generate_private_key(public_exponent, key_size, backend=None):
         raise ValueError("key_size must be at least 1024-bits.")
     if public_exponent != 65537 or key_size not in _SIZES:
         raise unsupported(f"RSA key generation with e={public_exponent} and {key_size} bits", _Reasons.UNSUPPORTED_PUBLIC_KEY_ALGORITHM)
-    return RSAPrivateKey(_signature.RsaKeyPair.generate(_SIZES[key_size]))
+    return RSAPrivateKey(_rsa.KeyPair.generate(_SIZES[key_size]))
 
 
 def _secret_arithmetic(name):
