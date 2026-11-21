@@ -33,7 +33,10 @@ the theorems over every HMAC algorithm; rind's HOL Light proofs of its
 constant-time compares in `Rind.Aarch64.CtEqual` for HMAC's and PBKDF2's
 `verify` and key wrap's `unwrap` and `unwrap_padded`; for P-256's public
 key, ECDH, and ECDSA verification, pyca/verified-garbage's Lean proofs of its
-routines, which `Rind.Aarch64.VgP256` restates; for PBKDF2 on
+routines, which `Rind.Aarch64.VgP256` restates; for P-384's `d·G`, which
+key generation and each ECDSA signature's nonce point take, and its ECDSA
+verification, pyca/verified-garbage's Lean proofs of its routines, which
+`Rind.Aarch64.VgP384` restates; for PBKDF2 on
 pyca/verified-garbage's routines, its contracts in `Rind.Aarch64.VgPbkdf2`;
 and nothing else.
 P-384's comb table select rests on no axiom, only on the hand model in
@@ -144,7 +147,8 @@ A change here is a change to the trust base.
  bignum_neg_p384_spec,
  bignum_tomont_p384_spec,
  p384_montjdouble_spec,
- p384_montjmixadd_spec] -/
+ p384_montjmixadd_spec,
+ vg_p384_public_key_spec] -/
 #guard_msgs in
 #print axioms p384_generate
 
@@ -162,7 +166,8 @@ A change here is a change to the trust base.
  bignum_neg_p384_spec,
  bignum_tomont_p384_spec,
  p384_montjdouble_spec,
- p384_montjmixadd_spec] -/
+ p384_montjmixadd_spec,
+ vg_p384_public_key_spec] -/
 #guard_msgs in
 #print axioms p384_from_scalar
 
@@ -537,7 +542,8 @@ A change here is a change to the trust base.
  bignum_neg_p384_spec,
  bignum_tomont_p384_spec,
  p384_montjdouble_spec,
- p384_montjmixadd_spec] -/
+ p384_montjmixadd_spec,
+ vg_p384_public_key_spec] -/
 #guard_msgs in
 #print axioms p384_ecdsa_generate
 
@@ -555,7 +561,8 @@ A change here is a change to the trust base.
  bignum_neg_p384_spec,
  bignum_tomont_p384_spec,
  p384_montjdouble_spec,
- p384_montjmixadd_spec] -/
+ p384_montjmixadd_spec,
+ vg_p384_public_key_spec] -/
 #guard_msgs in
 #print axioms p384_ecdsa_from_scalar_and_public_key
 
@@ -579,7 +586,8 @@ A change here is a change to the trust base.
  compress_nohw_spec,
  p384_montjdouble_spec,
  p384_montjmixadd_spec,
- sha512_block_data_order_hw_spec] -/
+ sha512_block_data_order_hw_spec,
+ vg_p384_public_key_spec] -/
 #guard_msgs in
 #print axioms p384_ecdsa_sign
 
@@ -605,7 +613,8 @@ A change here is a change to the trust base.
  p384_montjadd_spec,
  p384_montjdouble_spec,
  p384_montjmixadd_spec,
- sha512_block_data_order_hw_spec] -/
+ sha512_block_data_order_hw_spec,
+ vg_p384_verify_spec] -/
 #guard_msgs in
 #print axioms p384_ecdsa_key_pair_verify
 
@@ -628,7 +637,8 @@ A change here is a change to the trust base.
  p384_montjadd_spec,
  p384_montjdouble_spec,
  p384_montjmixadd_spec,
- sha512_block_data_order_hw_spec] -/
+ sha512_block_data_order_hw_spec,
+ vg_p384_verify_spec] -/
 #guard_msgs in
 #print axioms p384_ecdsa_public_key_new
 
