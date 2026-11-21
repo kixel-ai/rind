@@ -43,6 +43,24 @@ fn stop_flag() -> bool {
     STOP.load(Ordering::Relaxed)
 }
 
+/// The CPU features this build denies, from `RIND_DEVBENCH_DENY` at build time
+/// (comma-separated `RIND_CPU_DISABLE_<id>` ids such as `sha3,dit`); empty if unset.
+pub const CPU_DENIED: &str = match option_env!("RIND_DEVBENCH_DENY") {
+    Some(ids) => ids,
+    None => "",
+};
+
+/// Sets `RIND_CPU_DISABLE_<id>` for each id in [`CPU_DENIED`], before rind's
+/// first call: rind reads the CPU's features once and keeps them. Takes effect
+/// only if rind was built with `--cfg rind_cpu_disable` (`build-ios.sh` does,
+/// when `RIND_DEVBENCH_DENY` is set). An app has no shell to set them from.
+fn apply_build_denies() {
+    for id in CPU_DENIED.split(',').filter(|id| !id.is_empty() && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')) {
+        // SAFETY: before any bench thread starts, as in `run`'s env loop.
+        unsafe { std::env::set_var(format!("RIND_CPU_DISABLE_{id}"), "1") };
+    }
+}
+
 /// The report library and operation of a criterion row ID, as bench-report's
 /// `operation_of` matches them.
 pub fn operation_of(id: &str) -> Option<(&'static str, &'static str, String)> {
@@ -106,6 +124,7 @@ fn now_rfc3339() -> String {
 pub fn catalog() -> &'static Value {
     // Bench setup code wants a big stack; the caller may be a GCD or JNI thread.
     CATALOG.get_or_init(|| {
+        apply_build_denies();
         std::thread::Builder::new()
             .name("devbench-catalog".into())
             .stack_size(64 << 20)
@@ -252,6 +271,7 @@ fn median(v: &mut [f64]) -> f64 {
 }
 
 fn run(cfg: Config) {
+    apply_build_denies();
     for (k, v) in &cfg.env {
         // SAFETY: set before any bench thread starts; the app does not read env concurrently.
         unsafe { std::env::set_var(k, v) };
@@ -414,6 +434,7 @@ fn run(cfg: Config) {
         "device": dev, "timing": {"rounds": rounds, "warm_ms": warm_ms, "sample_ms": sample_ms, "samples": samples,
             "ns": "median of per-round medians", "ns_low_high": "min/max per-round median"},
         "errors": errors, "results": results,
+        "cpu_denied": CPU_DENIED,
     });
     {
         let mut k = sink.borrow_mut();
