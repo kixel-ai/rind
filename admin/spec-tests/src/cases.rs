@@ -1741,7 +1741,13 @@ fn ed25519(run: &mut Run) {
         let got = run.ask(Vector, &["ed25519-verify", &hex(&key), &hex(m), &hex(&sig)]);
         let known =
             matches!(small.as_str(), "0" | "1") && matches!(got.as_str(), "0" | "1" | "badkey");
-        if !known || (small == "0" && got == "1") != rind.is_ok() {
+        // The spec's small-order list must refuse exactly the keys rind's
+        // key constructor refuses as small-order, noncanonical aliases too.
+        let rind_small = matches!(
+            rind::ed25519::PublicKey::new(&key),
+            Err(rind::Error::KeyRejected(ref k)) if k.to_string() == "a small-order point"
+        );
+        if !known || (small == "1") != rind_small || (small == "0" && got == "1") != rind.is_ok() {
             run.fail(format!(
                 "{rel} #{}: ed25519-verify\n  spec: {got}, small order {small}\n  rind: {rind:?}",
                 t["number"]
