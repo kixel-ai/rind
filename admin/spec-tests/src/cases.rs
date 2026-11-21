@@ -1320,6 +1320,8 @@ struct Curve {
     cavp: &'static str,
     wycheproof: &'static str,
     len: usize,
+    /// The group's order n, big-endian hex of `len` bytes (SEC 2).
+    order: &'static str,
     ecdh: &'static rind::agreement::Algorithm,
     sign: &'static rind::ecdsa::SigningAlgorithm,
     verify: &'static rind::ecdsa::VerificationAlgorithm,
@@ -1332,6 +1334,7 @@ const CURVES: &[Curve] = &[
         cavp: "P-256",
         wycheproof: "secp256r1",
         len: 32,
+        order: "ffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551",
         ecdh: &rind::agreement::ECDH_P256,
         sign: &rind::ecdsa::sign::P256_SHA256_FIXED,
         verify: &rind::ecdsa::verify::P256_SHA256_FIXED,
@@ -1342,6 +1345,7 @@ const CURVES: &[Curve] = &[
         cavp: "P-384",
         wycheproof: "secp384r1",
         len: 48,
+        order: "ffffffffffffffffffffffffffffffffffffffffffffffffc7634d81f4372ddf581a0db248b0a77aecec196accc52973",
         ecdh: &rind::agreement::ECDH_P384,
         sign: &rind::ecdsa::sign::P384_SHA384_FIXED,
         verify: &rind::ecdsa::verify::P384_SHA384_FIXED,
@@ -1380,21 +1384,23 @@ fn point(bytes: &[u8], len: usize) -> Option<(String, String)> {
 }
 
 /// A random key on `c` from the section's source, so the seed reproduces
-/// it: a scalar from 1 to n - 1, which `from_scalar` alone accepts. A draw
-/// falls outside with odds under 2^-32, so 64 refusals mean rind refuses
-/// valid scalars.
+/// it: a scalar drawn again until it is from 1 to n - 1, judged against the
+/// curve's order rather than by rind, which must then take it.
 fn nist_key(run: &mut Run, c: &Curve) -> rind::agreement::PrivateKey {
-    let mut last = None;
-    for _ in 0..64 {
-        match rind::agreement::PrivateKey::from_scalar(c.ecdh, &run.rng.bytes(c.len)) {
-            Ok(key) => return key,
-            Err(e) => last = Some(e),
+    let n = unhex(c.order);
+    let scalar = loop {
+        let s = run.rng.bytes(c.len);
+        if s.iter().any(|&b| b != 0) && s < n {
+            break s;
         }
-    }
-    panic!(
-        "spec-tests: rind refuses 64 random {} scalars: {last:?}",
-        c.name
-    )
+    };
+    rind::agreement::PrivateKey::from_scalar(c.ecdh, &scalar).unwrap_or_else(|e| {
+        panic!(
+            "spec-tests: rind refuses the {} scalar {}: {e:?}",
+            c.name,
+            hex(&scalar)
+        )
+    })
 }
 
 fn nist(run: &mut Run) {
