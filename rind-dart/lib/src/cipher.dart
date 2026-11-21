@@ -56,7 +56,7 @@ final class AesCbcEncryptingKey extends _Handle {
   /// it is [CipherAlgorithm.keyLength] bytes.
   AesCbcEncryptingKey(CipherAlgorithm algorithm, Uint8List key)
     : super(
-        _newHandle(
+        newHandle(
           (out) => _aesCbcEncryptingKeyNew(
             algorithm._id,
             key.address,
@@ -79,7 +79,7 @@ final class AesCbcEncryptingKey extends _Handle {
 
   Uint8List _encrypt(CbcIv iv, Uint8List plaintext, int length, int pad) {
     final inOut = Uint8List(length)..setAll(0, plaintext);
-    _check(
+    check(
       _aesCbcEncrypt(
         _pointer,
         iv.bytes.address,
@@ -104,7 +104,7 @@ final class AesCbcDecryptingKey extends _Handle {
   /// it is [CipherAlgorithm.keyLength] bytes.
   AesCbcDecryptingKey(CipherAlgorithm algorithm, Uint8List key)
     : super(
-        _newHandle(
+        newHandle(
           (out) => _aesCbcDecryptingKeyNew(
             algorithm._id,
             key.address,
@@ -131,7 +131,7 @@ final class AesCbcDecryptingKey extends _Handle {
 
   Uint8List _decrypt(Uint8List iv, Uint8List ciphertext, int pad) {
     final inOut = Uint8List.fromList(ciphertext);
-    final len = _check(
+    final len = check(
       _aesCbcDecrypt(
         _pointer,
         iv.address,
@@ -155,7 +155,7 @@ final class AesCtr extends _Handle {
   /// [RangeError] for a [counterBits] that is negative or over 32 bits.
   AesCtr(CipherAlgorithm algorithm, Uint8List key, int counterBits)
     : super(
-        _newHandle(
+        newHandle(
           (out) => _aesCtrNew(
             algorithm._id,
             key.address,
@@ -175,7 +175,7 @@ final class AesCtr extends _Handle {
   /// repeating keystream.
   Uint8List applyKeystream(Uint8List counterBlock, Uint8List data) {
     final inOut = Uint8List.fromList(data);
-    _check(
+    check(
       _aesCtrApplyKeystream(
         _pointer,
         counterBlock.address,
@@ -194,7 +194,7 @@ final class ChaCha20 extends _Handle {
   /// Makes a key from 32 bytes of key material.
   ChaCha20(Uint8List key)
     : super(
-        _newHandle((out) => _chacha20New(key.address, key.length, out)),
+        newHandle((out) => _chacha20New(key.address, key.length, out)),
         _chacha20Finalizer,
       );
 
@@ -207,7 +207,7 @@ final class ChaCha20 extends _Handle {
   /// [RangeError] unless [counter] fits in 32 bits.
   Uint8List applyKeystream(Uint8List nonce, int counter, Uint8List data) {
     final inOut = Uint8List.fromList(data);
-    _check(
+    check(
       _chacha20ApplyKeystream(
         _pointer,
         nonce.address,
