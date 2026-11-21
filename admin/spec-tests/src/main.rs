@@ -141,13 +141,24 @@ impl Server {
         }
     }
 
-    /// Closes the server's input, which ends it, and fails unless it exits
-    /// cleanly.
+    /// Closes the server's input, which ends it, and fails unless it then
+    /// writes nothing more and exits cleanly.
     fn finish(self) -> Option<String> {
         let Self {
-            mut child, input, ..
+            mut child,
+            input,
+            mut output,
         } = self;
         drop(input);
+        let mut rest = String::new();
+        if let Err(e) = std::io::Read::read_to_string(&mut output, &mut rest) {
+            return Some(format!("the server's output: {e}"));
+        }
+        if !rest.is_empty() {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Some(format!("the server wrote after its last answer: {rest:?}"));
+        }
         match child.wait() {
             Ok(status) if status.success() => None,
             Ok(status) => Some(format!("the server exited with {status}")),
@@ -160,7 +171,12 @@ impl Server {
         self.input.flush().unwrap();
         let mut line = String::new();
         self.output.read_line(&mut line).unwrap();
-        let line = line.trim_end().to_owned();
+        // An answer ends with its newline; one cut short by the server's
+        // exit does not.
+        let Some(line) = line.strip_suffix('\n') else {
+            panic!("spec-tests: {} answered {line:?} unterminated", words[0]);
+        };
+        let line = line.to_owned();
         if line.is_empty() || !line.split(' ').all(answer_word) {
             panic!("spec-tests: {} answered {line:?}", words[0]);
         }

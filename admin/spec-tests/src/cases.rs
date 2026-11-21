@@ -1095,7 +1095,8 @@ fn aes_modes(run: &mut Run) {
         }
     }
     for _ in 0..run.random {
-        // Drawn again past the counter's 2^bits blocks, which both refuse.
+        // Drawn again past the counter's 2^bits blocks, which rind refuses
+        // and the server answers `none`.
         let (bits, mut c) = loop {
             let bits = [32u8, 64, 128, 1 + run.rng.below(128) as u8][run.rng.below(4)];
             let c = run.rng.message(1000);
@@ -1118,6 +1119,32 @@ fn aes_modes(run: &mut Run) {
             "random",
             &["aes-ctr", &hex(&k), &bits.to_string(), &hex(&t0), &m],
             &hex(&c),
+        );
+    }
+    // The counter's capacity at its edge: a 1-bit counter covers two
+    // blocks, 32 bytes, and refuses 33.
+    for len in [32, 33] {
+        let k = run.rng.aes_key();
+        let t0: [u8; 16] = run.rng.bytes(16).try_into().unwrap();
+        let mut c = run.rng.bytes(len);
+        let m = hex(&c);
+        let want = match rind::cipher::AesCtr::new(cipher_alg(k.len()), &k, 1)
+            .unwrap()
+            .apply_keystream(&t0, &mut c)
+        {
+            Ok(()) => hex(&c),
+            Err(_) => "none".to_owned(),
+        };
+        if (want == "none") != (len == 33) {
+            run.fail(format!(
+                "random: rind's 1-bit aes-ctr on {len} bytes gives {want}"
+            ));
+        }
+        run.check(
+            Rind,
+            "edge",
+            &["aes-ctr", &hex(&k), "1", &hex(&t0), &m],
+            &want,
         );
     }
 
@@ -1173,7 +1200,7 @@ fn aes_modes(run: &mut Run) {
         bad[at] ^= 1 + run.rng.below(255) as u8;
         let mut long = c.clone();
         long.push(run.rng.u64() as u8);
-        for c in [c, bad, long] {
+        for (i, c) in [c, bad, long].into_iter().enumerate() {
             let mut d = c.clone();
             let want = match rind::cipher::AesCbcDecryptingKey::new(cipher_alg(k.len()), &k)
                 .unwrap()
@@ -1182,6 +1209,13 @@ fn aes_modes(run: &mut Run) {
                 Ok(m) => hex(m),
                 Err(_) => "none".to_owned(),
             };
+            // The untouched ciphertext decrypts to the message, so both
+            // refusing it fails.
+            if i == 0 && want != hex(&m) {
+                run.fail(format!(
+                    "random: rind's aes-cbc decrypts its own ciphertext to {want}"
+                ));
+            }
             run.check(
                 Rind,
                 "random",
@@ -1246,12 +1280,19 @@ fn aes_modes(run: &mut Run) {
                 _ => 8,
             })]
                 .to_vec();
-            for c in [c, bad, long, short] {
+            for (i, c) in [c, bad, long, short].into_iter().enumerate() {
                 let mut out = vec![0; c.len().saturating_sub(8)];
                 let want = match kek.unwrap_key(mode, &c, &mut out) {
                     Ok(m) => hex(m),
                     Err(_) => "none".to_owned(),
                 };
+                // The untouched ciphertext unwraps to the key, so both
+                // refusing it fails.
+                if i == 0 && want != hex(&m) {
+                    run.fail(format!(
+                        "random: rind's {unwrap} unwraps its own wrap to {want}"
+                    ));
+                }
                 run.check(Rind, "random", &[&unwrap, &hex(&k), &hex(&c)], &want);
             }
         }

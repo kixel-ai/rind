@@ -232,8 +232,12 @@ def answer (args : List String) : Except String String := do
     let (m, ok) := vale.gcmDecryptC (← aesAlg k) k (← unhex iv) (← unhex c) (← unhex a) (← unhex t)
     return s!"{hex m} {bool ok}"
   | ["aes-ctr", k, bits, t0, d] =>
-    let k ← unhex k
-    return hex (vale.aesCtr (← aesAlg k) k (← nat bits) (← unhexN 16 t0) (← unhex d))
+    let (k, bits, t0, d) := (← unhex k, ← nat bits, ← unhexN 16 t0, ← unhex d)
+    let alg ← aesAlg k
+    -- The theorems' domain: no more blocks than the counter's 2^bits, past
+    -- which the spec would reuse counter blocks.
+    if 2 ^ bits < (d.length + 15) / 16 then return "none"
+    return hex (vale.aesCtr alg k bits t0 d)
   | ["aes-cbc-encrypt", k, iv, m] =>
     let k ← unhex k
     return hex (vale.cbcEncrypt (← aesAlg k) k (← unhexN 16 iv) (vale.pkcs7Pad (← unhex m)))
