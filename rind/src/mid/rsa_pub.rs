@@ -31,7 +31,7 @@ impl RsaPublicKey {
             return Err(KeyFormatError::RsaExponent.into());
         }
 
-        let montifier = Self::montifier(&n)?;
+        let montifier = Self::montifier_of(&n)?;
 
         // and its inverse such that n * n0 == -1 (mod 2^64)
         let n0 = n.mont_neg_inverse();
@@ -47,7 +47,7 @@ impl RsaPublicKey {
     /// `R^2 mod n`, `R = 2^(64w)` for `n`'s `w` words: by
     /// pyca/verified-garbage's routine where it is faster, and otherwise by
     /// `PosInt::pub_montifier`, for an odd `n` of 1024 to 8192 bits.
-    fn montifier(n: &RsaPosInt) -> Result<RsaPosInt, Error> {
+    fn montifier_of(n: &RsaPosInt) -> Result<RsaPosInt, Error> {
         let Some(vg) = low::rsa_vg::Precompute::check(n.as_words()) else {
             return Ok(n.pub_montifier());
         };
