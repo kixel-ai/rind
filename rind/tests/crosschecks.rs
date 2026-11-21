@@ -15,7 +15,7 @@ fn ed25519_key_generation() {
         let seed: [u8; 32] = key.to_seed().as_ref().try_into().unwrap();
         assert_eq!(
             key.public_key().as_ref(),
-            ed25519::oracle::public_key(&seed),
+            oracle::ed25519::public_key(&seed),
             "the independent oracle derived another public key"
         );
         let aws = Ed25519KeyPair::from_pkcs8(key_enc)
@@ -1364,179 +1364,15 @@ mod aead {
 #[path = "../src/test/reference.rs"]
 mod reference;
 
-/// The curves' independent oracles, each sharing no code with the path rind
-/// runs on this tier: on x86_64 and aarch64, RustCrypto's NIST curves; on
-/// armv7 and the portable backend, where rind, aws-lc-rs, and RustCrypto's
-/// `p521` run fiat-crypto's field arithmetic, libcrux's P-256 and the
-/// textbook reference's P-384 and P-521. RustCrypto's `p256`, and `p384`
-/// without its optional fiat backend, would share nothing there either.
+/// The independent oracles of the curves and Ed25519, which the fuzz targets
+/// share.
 mod oracle {
-    /// ECDH and ECDSA on one NIST curve, over big-endian scalars, SEC 1
-    /// points, and fixed-width signatures.
-    pub(crate) trait Nist {
-        /// The uncompressed public key of a private scalar.
-        fn public_key(&self, scalar: &[u8]) -> Vec<u8>;
-        /// The ECDH secret with a peer's point, uncompressed or compressed,
-        /// or `None` where the oracle refuses the point.
-        fn agree(&self, scalar: &[u8], peer: &[u8]) -> Option<Vec<u8>>;
-        /// A signature over a digest of the curve's own hash.
-        fn sign(&self, scalar: &[u8], digest: &[u8]) -> Vec<u8>;
-        /// Whether a signature is over the digest.
-        fn verify(&self, public_key: &[u8], digest: &[u8], signature: &[u8]) -> bool;
-    }
-
-    #[cfg(not(any(rind_backend = "arm", rind_backend = "portable")))]
-    macro_rules! rustcrypto {
-        ($name:ident, $curve:ident) => {
-            /// RustCrypto's curve.
-            pub(crate) struct $name;
-
-            impl Nist for $name {
-                fn public_key(&self, scalar: &[u8]) -> Vec<u8> {
-                    use $curve::elliptic_curve::sec1::ToSec1Point;
-                    let key = $curve::SecretKey::from_slice(scalar).unwrap();
-                    key.public_key().to_sec1_point(false).as_bytes().to_vec()
-                }
-
-                fn agree(&self, scalar: &[u8], peer: &[u8]) -> Option<Vec<u8>> {
-                    let peer = $curve::PublicKey::from_sec1_bytes(peer).ok()?;
-                    let key = $curve::SecretKey::from_slice(scalar).unwrap();
-                    let secret =
-                        $curve::ecdh::diffie_hellman(key.to_nonzero_scalar(), peer.as_affine());
-                    Some(secret.raw_secret_bytes().to_vec())
-                }
-
-                fn sign(&self, scalar: &[u8], digest: &[u8]) -> Vec<u8> {
-                    use $curve::ecdsa::signature::hazmat::PrehashSigner;
-                    let key = $curve::ecdsa::SigningKey::from_slice(scalar).unwrap();
-                    let signature: $curve::ecdsa::Signature = key.sign_prehash(digest).unwrap();
-                    signature.to_bytes().to_vec()
-                }
-
-                fn verify(&self, public_key: &[u8], digest: &[u8], signature: &[u8]) -> bool {
-                    use $curve::ecdsa::signature::hazmat::PrehashVerifier;
-                    let (Ok(key), Ok(signature)) = (
-                        $curve::ecdsa::VerifyingKey::from_sec1_bytes(public_key),
-                        $curve::ecdsa::Signature::from_slice(signature),
-                    ) else {
-                        return false;
-                    };
-                    key.verify_prehash(digest, &signature).is_ok()
-                }
-            }
-        };
-    }
-
-    #[cfg(not(any(rind_backend = "arm", rind_backend = "portable")))]
-    mod rustcrypto {
-        use super::Nist;
-        rustcrypto!(P256, p256);
-        rustcrypto!(P384, p384);
-        rustcrypto!(P521, p521);
-    }
-
-    #[cfg(not(any(rind_backend = "arm", rind_backend = "portable")))]
-    pub(crate) use rustcrypto::{P256, P384, P521};
-
-    /// libcrux's P-256, HACL*'s, which rind runs nowhere. It hashes with
-    /// HACL*'s SHA-2, which the portable backend runs, so it takes digests.
     #[cfg(any(rind_backend = "arm", rind_backend = "portable"))]
-    pub(crate) struct P256;
+    use crate::reference;
 
-    #[cfg(any(rind_backend = "arm", rind_backend = "portable"))]
-    impl Nist for P256 {
-        fn public_key(&self, scalar: &[u8]) -> Vec<u8> {
-            let mut raw = [0u8; 64];
-            assert!(libcrux_p256::dh_initiator(&mut raw, scalar));
-            [&[4][..], &raw].concat()
-        }
-
-        fn agree(&self, scalar: &[u8], peer: &[u8]) -> Option<Vec<u8>> {
-            let mut raw = [0u8; 64];
-            let parsed = match peer.len() {
-                65 => libcrux_p256::uncompressed_to_raw(peer, &mut raw),
-                33 => libcrux_p256::compressed_to_raw(peer, &mut raw),
-                _ => false,
-            };
-            let mut secret = [0u8; 64];
-            (parsed && libcrux_p256::dh_responder(&mut secret, &raw, scalar))
-                .then(|| secret[..32].to_vec())
-        }
-
-        fn sign(&self, scalar: &[u8], digest: &[u8]) -> Vec<u8> {
-            use sha2::Digest;
-            let mut signature = [0u8; 64];
-            for counter in 0u8.. {
-                let nonce = sha2::Sha256::digest([scalar, digest, &[counter]].concat());
-                if libcrux_p256::ecdsa_sign_p256_without_hash(
-                    &mut signature,
-                    32,
-                    digest,
-                    scalar,
-                    &nonce,
-                ) {
-                    return signature.to_vec();
-                }
-            }
-            unreachable!()
-        }
-
-        fn verify(&self, public_key: &[u8], digest: &[u8], signature: &[u8]) -> bool {
-            let mut raw = [0u8; 64];
-            signature.len() == 64
-                && libcrux_p256::uncompressed_to_raw(public_key, &mut raw)
-                && libcrux_p256::ecdsa_verif_without_hash(
-                    32,
-                    digest,
-                    &raw,
-                    &signature[..32],
-                    &signature[32..],
-                )
-        }
-    }
-
-    #[cfg(any(rind_backend = "arm", rind_backend = "portable"))]
-    impl Nist for crate::reference::Weierstrass {
-        fn public_key(&self, scalar: &[u8]) -> Vec<u8> {
-            crate::reference::Weierstrass::public_key(self, scalar)
-        }
-
-        fn agree(&self, scalar: &[u8], peer: &[u8]) -> Option<Vec<u8>> {
-            crate::reference::Weierstrass::agree(self, scalar, peer)
-        }
-
-        fn sign(&self, scalar: &[u8], digest: &[u8]) -> Vec<u8> {
-            crate::reference::Weierstrass::sign(self, scalar, digest)
-        }
-
-        fn verify(&self, public_key: &[u8], digest: &[u8], signature: &[u8]) -> bool {
-            crate::reference::Weierstrass::verify(self, public_key, digest, signature)
-        }
-    }
-
-    pub(crate) fn p256() -> impl Nist {
-        P256
-    }
-
-    #[cfg(not(any(rind_backend = "arm", rind_backend = "portable")))]
-    pub(crate) fn p384() -> impl Nist {
-        P384
-    }
-
-    #[cfg(not(any(rind_backend = "arm", rind_backend = "portable")))]
-    pub(crate) fn p521() -> impl Nist {
-        P521
-    }
-
-    #[cfg(any(rind_backend = "arm", rind_backend = "portable"))]
-    pub(crate) fn p384() -> impl Nist {
-        crate::reference::p384()
-    }
-
-    #[cfg(any(rind_backend = "arm", rind_backend = "portable"))]
-    pub(crate) fn p521() -> impl Nist {
-        crate::reference::p521()
-    }
+    pub(crate) mod ed25519;
+    mod nist;
+    pub(crate) use nist::*;
 }
 
 /// RustCrypto's `pkcs8` reading of a PKCS#8 key: its algorithm's OID and
@@ -1978,45 +1814,6 @@ mod ed25519 {
     use proptest::sample::Index;
     use rind::ed25519 as ours;
 
-    /// Ed25519's independent oracle: libcrux's, HACL*'s, except on the
-    /// portable backend, whose SHA-512 is HACL*'s too, where it is the
-    /// textbook reference.
-    pub(crate) mod oracle {
-        #[cfg(not(rind_backend = "portable"))]
-        pub(crate) fn public_key(seed: &[u8; 32]) -> [u8; 32] {
-            let mut public = [0u8; 32];
-            libcrux_ed25519::secret_to_public(&mut public, seed);
-            public
-        }
-
-        #[cfg(not(rind_backend = "portable"))]
-        pub(crate) fn sign(seed: &[u8; 32], message: &[u8]) -> [u8; 64] {
-            libcrux_ed25519::sign(message, seed).unwrap()
-        }
-
-        #[cfg(not(rind_backend = "portable"))]
-        pub(crate) fn verify(public_key: &[u8; 32], message: &[u8], signature: &[u8]) -> bool {
-            <&[u8; 64]>::try_from(signature).is_ok_and(|signature| {
-                libcrux_ed25519::verify(message, public_key, signature).is_ok()
-            })
-        }
-
-        #[cfg(rind_backend = "portable")]
-        pub(crate) fn public_key(seed: &[u8; 32]) -> [u8; 32] {
-            crate::reference::edwards25519().ed25519_public_key(seed)
-        }
-
-        #[cfg(rind_backend = "portable")]
-        pub(crate) fn sign(seed: &[u8; 32], message: &[u8]) -> [u8; 64] {
-            crate::reference::edwards25519().ed25519_sign(seed, message)
-        }
-
-        #[cfg(rind_backend = "portable")]
-        pub(crate) fn verify(public_key: &[u8; 32], message: &[u8], signature: &[u8]) -> bool {
-            crate::reference::edwards25519().ed25519_verify(public_key, message, signature)
-        }
-    }
-
     proptest! {
         #[test]
         fn sign_verify(
@@ -2042,8 +1839,8 @@ mod ed25519 {
             let signature = ours.sign(&message);
             let theirs_signature = theirs.sign(&message);
             prop_assert_eq!(signature.as_ref(), theirs_signature.as_ref());
-            prop_assert_eq!(&oracle::public_key(&seed), public);
-            prop_assert_eq!(&oracle::sign(&seed, &message)[..], signature.as_ref());
+            prop_assert_eq!(&crate::oracle::ed25519::public_key(&seed), public);
+            prop_assert_eq!(&crate::oracle::ed25519::sign(&seed, &message)[..], signature.as_ref());
 
             // All three verify it, and refuse it with any one bit flipped.
             let mut signature = signature.as_ref().to_vec();
@@ -2057,7 +1854,7 @@ mod ed25519 {
             let theirs_result = UnparsedPublicKey::new(&ED25519, public).verify(&message, &signature);
             prop_assert_eq!(ours_result.is_ok(), flip.is_none());
             prop_assert_eq!(theirs_result.is_ok(), flip.is_none());
-            prop_assert_eq!(oracle::verify(&seed_public, &message, &signature), flip.is_none());
+            prop_assert_eq!(crate::oracle::ed25519::verify(&seed_public, &message, &signature), flip.is_none());
         }
 
         /// Both load a seed alone, and encode it as the same PKCS#8 v1, and

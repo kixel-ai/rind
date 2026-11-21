@@ -596,7 +596,7 @@ install ring's if nothing is installed first.
 | x509-parser 0.18 | `verify` is ring, `verify-aws` aws-lc-rs | **Patch**: `verify`, or verify `tbs_certificate` with the key's module, such as `rind::ecdsa::PublicKey::verify` |
 | x509-certificate 0.25, cryptographic-message-syntax 0.28 | ring types in their public API | **Patch** |
 | sigstore 0.14, tough 0.24 | aws-lc-rs, unconditionally | Unsupported |
-| jsonwebtoken 11 | optional `aws_lc_rs` | **rind-jsonwebtoken**, every algorithm. `rust_crypto` is the pure-Rust alternative |
+| jsonwebtoken 12 | optional `aws_lc_rs` | **rind-jsonwebtoken**, every algorithm. `rust_crypto` is the pure-Rust alternative |
 | jwtk 0.5 | default `aws-lc` for RSA verification and JWK conversion | Adapter, for caller-held keys only |
 | biscuit 0.8, rusty_paseto 0.10 | ring, unconditionally | **Patch** |
 | paseto 2 | ring 0.16 and OpenSSL | Unsupported |
