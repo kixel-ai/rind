@@ -1552,7 +1552,11 @@ transliterate. `admin/prove lean` builds the specs into an executable,
 `Rind/SpecTest/Server.lean`'s `spec-server`, and the driver runs each on its
 algorithm's published vectors in `thirdparty/vectors/` (CAVP's, Wycheproof's,
 CCTV's, aws-lc's, and the RFCs' own) and on random inputs from a fixed seed
-compared with rind's output, and fails on any disagreement. A pull request
+compared with rind's output, and fails on any disagreement. The seed
+reproduces every random input but those rind draws itself, having no seeded
+API for them (RSA and ML-KEM keys, ML-KEM encapsulations, ECDSA nonces,
+RSA-PSS salts, and XChaCha20-Poly1305 nonces), which the module
+documentation of `admin/spec-tests/src/main.rs` lists. A pull request
 runs a sample: a vector file of more than 400 cases runs every k-th, the
 specs too slow for that fewer (PBKDF2's 4096-iteration vectors, SymCrypt's
 ML-KEM, and s2n-bignum's SHA-512 forms, as `admin/spec-tests/src/cases.rs`

@@ -32,7 +32,8 @@
 # flake's `vg` dev shell: `nix develop .#vg --command admin/prove vg`. `lean`
 # ends by testing the Lean specs the proofs trust on a fixed sample, as
 # `spec_tests` below describes; `spec-tests` runs those tests alone, which
-# the nightly does unsampled. `session` checks
+# the nightly does unsampled, as `SPEC_TESTS_FULL=1 admin/prove spec-tests`
+# does. `session` checks
 # nothing: it starts a HOL Light session for developing the proofs of `arch`,
 # `x86_64` or `aarch64`, which `session` below describes. Run it in the flake's
 # `prove` dev shell: `nix develop .#prove --command admin/prove`, or for the
@@ -53,7 +54,15 @@ if [[ ${1:-} == key ]]; then
     shift
 fi
 case "${1:-}" in
-'' | bytes | cosim | vg | lean | spec-tests) only=${1:-} ;;
+'' | bytes | cosim | vg | lean) only=${1:-} ;;
+spec-tests)
+    # Its settings come from the environment, as `spec_tests` says.
+    if [[ $# -gt 1 ]]; then
+        echo "$usage" >&2
+        exit 2
+    fi
+    only=$1
+    ;;
 hol-light)
     if [[ $# -gt 2 || ($# -eq 2 && $2 != x86_64 && $2 != aarch64 && $2 != armv7) ]]; then
         echo "$usage" >&2
