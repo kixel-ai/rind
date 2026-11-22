@@ -12,8 +12,10 @@
 use core::arch::x86_64::*;
 use core::mem;
 
+use super::aes::AesKey;
 use super::aes_gcm_avx::AvxKernel;
 use super::aes_gcm_vaes::VaesKernel;
+use super::aes_gcm_vg::VgKey;
 use super::cpu::{
     HaveAesHardware, HaveAvx512ForAesGcm, HaveAvxMovbeForAesGcm, HaveSsse3, HaveVaesAvx2ForAesGcm,
 };
@@ -72,7 +74,21 @@ pub(crate) enum GhashTable {
 }
 
 impl GhashTable {
-    pub(crate) fn new(h: u128) -> Self {
+    /// The table for `key`: the powers of its hash subkey, the encryption of
+    /// the zero block, and with AVX-512 and an AES-NI key, pyca/verified-garbage's
+    /// key context.
+    pub(crate) fn new(key: &AesKey) -> Self {
+        let h = key.encrypt_block(&[0; 16]);
+        let mut table = Self::hash_only(u128::from_be_bytes(h));
+        if let (Self::Avx512(avx512), AesKey::Hw(hw_key)) = (&mut table, key) {
+            avx512.vg = Some(VgKey::new(hw_key, &h, avx512.token.vg()));
+        }
+        table
+    }
+
+    /// The table for the hash subkey `h` alone, without the key context
+    /// pyca/verified-garbage's AES-GCM also needs the AES key for.
+    pub(crate) fn hash_only(h: u128) -> Self {
         let Some(hw) = HaveAesHardware::check() else {
             return match HaveSsse3::check() {
                 Some(token) => Self::Ssse3(Ssse3Table::new(&h.to_be_bytes(), token)),
@@ -232,6 +248,9 @@ pub(crate) struct GhashTableAvx512 {
     /// BoringSSL's 512-bit kernel, for long messages, whose table also holds
     /// the powers the 512-bit multiplies here take.
     pub(crate) vaes: VaesKernel,
+    /// pyca/verified-garbage's key context, for the lengths its AES-GCM is
+    /// faster at, in every table but [`GhashTable::hash_only`]'s.
+    pub(crate) vg: Option<VgKey>,
     pub(crate) token: HaveAvx512ForAesGcm,
 }
 
@@ -239,7 +258,12 @@ impl GhashTableAvx512 {
     pub(crate) fn new(h: u128, hw: HaveAesHardware, token: HaveAvx512ForAesGcm) -> Self {
         let vaes = VaesKernel::avx512(h, token);
         let clmul = ClmulTable::from_powers(vaes.powers(), hw);
-        Self { clmul, vaes, token }
+        Self {
+            clmul,
+            vaes,
+            vg: None,
+            token,
+        }
     }
 
     /// H^16, H^15, ... H^1: descending, so a tail of `n` blocks multiplies
@@ -738,7 +762,7 @@ mod tests {
         let fb = b.into_bytes();
 
         let mut tables = vec![
-            GhashTable::new(key),
+            GhashTable::hash_only(key),
             GhashTable::Nohw(NohwTable::new(&key.to_be_bytes())),
         ];
         if let Some(token) = HaveSsse3::check() {

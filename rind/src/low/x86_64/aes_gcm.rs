@@ -9,6 +9,7 @@ use core::mem;
 use super::aes::{AesKey, HwKey};
 use super::aes_ctr;
 use super::aes_gcm_avx::AvxKernel;
+use super::aes_gcm_vg::VgKey;
 use super::cpu::HaveAvx512ForAesGcm;
 use super::ghash::{self, ClmulTable, Ghash, GhashTable, GhashTableAvx512};
 use crate::low::ct_equal;
@@ -21,6 +22,9 @@ pub(crate) fn seal(
     aad: &[u8],
     cipher_inout: &mut [u8],
 ) -> [u8; 16] {
+    if let Some(vg) = vg::<true>(table, cipher_inout.len()) {
+        return vg.seal(nonce, aad, cipher_inout);
+    }
     if let Some((hw_key, kernel)) = vale::<true>(key, table, aad, cipher_inout) {
         return kernel.seal(hw_key, nonce, aad, cipher_inout);
     }
@@ -37,10 +41,28 @@ pub(crate) fn open(
     cipher_inout: &mut [u8],
     tag: &[u8; 16],
 ) -> bool {
+    if let Some(vg) = vg::<false>(table, cipher_inout.len()) {
+        return vg.open(nonce, aad, cipher_inout, tag);
+    }
     if let Some((hw_key, kernel)) = vale::<false>(key, table, aad, cipher_inout) {
         return kernel.open(hw_key, nonce, aad, cipher_inout, tag);
     }
     ct_equal(&tagged::<false>(key, table, nonce, aad, cipher_inout), tag)
+}
+
+/// pyca/verified-garbage's AES-GCM, where the CPU runs it and it is the
+/// fastest path to encrypt (if `ENC`) or decrypt the message. `table` was
+/// made for the key it is used with, which holds its key context.
+fn vg<const ENC: bool>(table: &GhashTable, len: usize) -> Option<&VgKey> {
+    let from = if ENC { VG_SEAL_FROM } else { VG_OPEN_FROM };
+    match table {
+        GhashTable::Avx512(GhashTableAvx512 { vg: Some(vg), .. })
+            if len >= from =>
+        {
+            Some(vg)
+        }
+        _ => None,
+    }
 }
 
 /// Vale's AES-GCM, where the CPU runs it, it has a routine for the key size,
@@ -516,6 +538,11 @@ const AVX512_MINIMUM_CIPHER_LEN: usize = 16 * 16;
 /// setup costs more on short ones.
 const AVX512_KERNEL_MINIMUM_CIPHER_LEN: usize = 2048;
 
+/// The message lengths from which pyca/verified-garbage's AES-GCM seals and
+/// opens on the AVX-512 tier. TODO: measured.
+const VG_SEAL_FROM: usize = 1024;
+const VG_OPEN_FROM: usize = 8192;
+
 /// How many message bytes BoringSSL's 256-bit kernel needs to beat the AVX
 /// path, whose single blocks are quicker for short messages.
 const VAES_AVX2_MINIMUM_CIPHER_LEN: usize = 16 * 16;
@@ -680,7 +707,9 @@ mod tests {
             ct::secret_slice(&key);
             let fast = AesKey::new(&key);
             let h = fast.encrypt_block(&[0; 16]);
-            let fast_table = GhashTable::new(u128::from_be_bytes(h));
+            let fast_table = GhashTable::new(&fast);
+            let vg = matches!(&fast_table, GhashTable::Avx512(GhashTableAvx512 { vg: Some(_), .. }));
+            assert_eq!(vg, HaveAvx512ForAesGcm::check().is_some());
             let mut slow = vec![(
                 AesKey::Nohw(NohwKey::new(&key)),
                 GhashTable::Nohw(NohwTable::new(&h)),
@@ -700,14 +729,24 @@ mod tests {
                     let kernel = AvxKernel::new(&clmul, h, token);
                     slow.push((AesKey::new(&key), GhashTable::Avx(clmul, kernel)));
                 }
+                // rind's own AVX-512 path, which VG's replaces from its
+                // lengths.
+                if vg {
+                    let table = GhashTable::hash_only(u128::from_be_bytes(h));
+                    slow.push((AesKey::new(&key), table));
+                }
             }
 
             // Around where the AVX and VAES-AVX2 tiers hand over between
-            // Vale's AES-GCM and their own paths.
+            // Vale's AES-GCM and their own paths, and the AVX-512 tier
+            // between its own paths and VG's.
             let crossovers = [
                 AVX_VALE_SEAL_FROM,
                 VAES_AVX2_VALE_OPEN_BELOW,
                 VAES_AVX2_VALE_SEAL_BELOW,
+                AVX512_KERNEL_MINIMUM_CIPHER_LEN,
+                VG_SEAL_FROM,
+                VG_OPEN_FROM,
             ]
             .into_iter()
             .flat_map(|n| [n.saturating_sub(1), n, n + 1]);
@@ -787,7 +826,8 @@ mod tests {
                 let clmul = ClmulTable::new(u128::from_be_bytes(h), hw);
                 paths.push((AesKey::new(&key), GhashTable::Clmul(clmul)));
             }
-            paths.push((fast, GhashTable::new(u128::from_be_bytes(h))));
+            let table = GhashTable::new(&fast);
+            paths.push((fast, table));
 
             for (key, table) in &paths {
                 let starts = [0xffff_ffffu32, 0xffff_fffe, 0xffff_ff00, 0xffff_f000, 7];
@@ -880,8 +920,8 @@ mod tests {
         let key = bytes(rng, key_len);
         ct_sde::traced(|| {
             let key = AesKey::new(&key);
-            let h = key.encrypt_block(&[0; 16]);
-            (key, GhashTable::new(u128::from_be_bytes(h)))
+            let table = GhashTable::new(&key);
+            (key, table)
         })
     }
 

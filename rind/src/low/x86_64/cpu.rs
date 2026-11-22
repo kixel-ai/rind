@@ -179,7 +179,29 @@ impl HaveAvx512ForAesGcm {
             false => None,
         }
     }
+
+    /// pyca/verified-garbage's AVX-512 AES-GCM runs here too.
+    pub(crate) fn vg(self) -> HaveAvx512ForVgAesGcm {
+        const {
+            assert!(
+                (AES_GCM_BASE | AVX512F | AVX512BW | AVX512VL | VPCLMULQDQ | VAES) & VG_AES_GCM
+                    == VG_AES_GCM
+            )
+        };
+        HaveAvx512ForVgAesGcm(())
+    }
 }
+
+/// Proof that the CPU has what pyca/verified-garbage's AVX-512 AES-GCM runs:
+/// SSSE3, PCLMULQDQ, AVX, AVX2, AVX-512 F and BW, VAES, VPCLMULQDQ, and
+/// AES-NI, its `_FEATURES` for seal and open, whose EVEX instructions all
+/// take 512-bit vectors, so it needs no AVX-512 VL. Its key preparation needs
+/// a subset of them.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct HaveAvx512ForVgAesGcm(());
+
+const VG_AES_GCM: u32 =
+    SSSE3 | PCLMULQDQ | AVX | AVX2 | AVX512F | AVX512BW | VAES | VPCLMULQDQ | AES;
 
 /// Token type reflecting the check for CPU features needed for VAES-AES-GCM
 /// on 256-bit vectors.
