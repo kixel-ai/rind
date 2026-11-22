@@ -2,5 +2,7 @@
 # no test ran of functions that ran, across every tier coverage.yml measures,
 # as `admin/coverage-gate check` counts them. A file whose counts rise past
 # these fails the nightly; when tests cover more, lower them to the run's
-# `coverage.baseline` artifact. A file not listed has none.
+# `coverage.baseline` artifact. A file not listed has none. The regions and
+# branches of rind's backends, `rind/src/low/`, are not counted: which run
+# depends on the CPU the hosted runner draws and on thread races.
 

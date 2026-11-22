@@ -276,7 +276,10 @@ tier runs, unless [admin/coverage.allow](admin/coverage.allow) says why none
 can, and on a file whose uncovered regions, uncovered branch sides, or
 monomorphization gaps (copies of a generic or closure that ran, such as an
 instantiation for a type no test uses) rise past
-[admin/coverage.baseline](admin/coverage.baseline). Its log lists each
+[admin/coverage.baseline](admin/coverage.baseline). That leaves out the
+regions and branches of rind's backends (`rind/src/low/`), which vary with
+the CPU the hosted runner draws, Intel or AMD, with or without AVX-512 IFMA,
+and with thread races; every tier reaches the same functions there. Its log lists each
 unrun function and gap as `path:line`, each tier's log carries llvm-cov's
 table, and its `coverage.baseline` artifact holds the run's counts, to
 commit when tests cover more. A test module's functions don't count, and
