@@ -497,24 +497,18 @@ fn ct_binsec_mldsa() {
     });
 }
 
-// SLH-DSA's fast parameter sets at the lowest level, on SHA-2 and SHAKE: the
-// small ones run the same code with taller trees, which BINSEC cannot finish
-// in a scheduled run's time.
+// SLH-DSA-SHA2-128f, from loading its key, which rebuilds the top tree,
+// through signing. The other parameter sets run the same code with other
+// heights, or SHAKE, which `ct_binsec_digest` and ML-DSA check.
 #[test]
 #[ignore = "admin/ct-binsec runs it under BINSEC"]
 fn ct_binsec_slhdsa() {
     use crate::slh_dsa::*;
 
-    fn sign<P: ParameterSet>(pkcs8: &[u8]) {
-        let key = KeyPair::<P>::from_pkcs8(pkcs8).unwrap();
-        black_box(key.sign(&[2; 40]).is_ok());
-    }
-
-    let sha2 = KeyPair::<SlhDsaSha2_128f>::generate().unwrap().to_pkcs8();
-    let shake = KeyPair::<SlhDsaShake128f>::generate().unwrap().to_pkcs8();
+    let pkcs8 = KeyPair::<SlhDsaSha2_128f>::generate().unwrap().to_pkcs8();
     checked(|| {
-        sign::<SlhDsaSha2_128f>(sha2.as_ref());
-        sign::<SlhDsaShake128f>(shake.as_ref());
+        let key = KeyPair::<SlhDsaSha2_128f>::from_pkcs8(pkcs8.as_ref()).unwrap();
+        black_box(key.sign(&[2; 40]).is_ok());
     });
 }
 
@@ -587,15 +581,21 @@ fn ct_binsec_oprf() {
 fn ct_binsec_voprf() {
     use crate::oprf::*;
 
+    let (_, blinded) = voprf::Blind::new(&P384_SHA384, &[2; 20]).unwrap();
     checked(|| {
         let server = voprf::ServerKey::from_scalar(&P384_SHA384, &secret::<48>(1)).unwrap();
-        let (blind, blinded) = voprf::Blind::new(&P384_SHA384, &secret::<20>(2)).unwrap();
-        let (evaluated, proof) = server.blind_evaluate(blinded.as_ref()).unwrap();
-        black_box(
-            blind
-                .finalize(evaluated.as_ref(), proof.as_ref(), server.public_key())
-                .is_ok(),
-        );
+        black_box(server.blind_evaluate(blinded.as_ref()).is_ok());
+    });
+}
+
+// The VOPRF client's blinding, on its own, as the server's proof is above.
+#[test]
+#[ignore = "admin/ct-binsec runs it under BINSEC"]
+fn ct_binsec_voprf_client() {
+    use crate::oprf::*;
+
+    checked(|| {
+        black_box(voprf::Blind::new(&P384_SHA384, &secret::<20>(2)).is_ok());
     });
 }
 
