@@ -46,12 +46,16 @@ impl Mcdt {
 
     /// As [`Mcdt::enter`], for code that may change MXCSR itself, such as
     /// pyca/verified-garbage's routines that enter the mitigation on their
-    /// own and leave it entered: on a CPU that needs no mitigation, this
-    /// still restores on drop any MXCSR the code changed.
+    /// own and leave it entered: on drop this restores any MXCSR the code
+    /// changed, on a CPU that needs no mitigation and under one already held.
     #[cfg(rind_backend = "x86_64")]
     #[inline(always)]
     pub(crate) fn enter_restoring() -> Self {
-        Self(if needed() { enter() } else { Some(mxcsr()) })
+        Self(Some(if needed() {
+            enter().unwrap_or(MITIGATED)
+        } else {
+            mxcsr()
+        }))
     }
 }
 
@@ -231,14 +235,15 @@ mod tests {
             set(MITIGATED);
             drop(guard);
             assert_eq!(mxcsr(), start);
+
+            let guard = Mcdt::enter_restoring();
+            let changed = mxcsr() ^ 1;
+            set(changed);
+            assert_eq!(mxcsr(), changed);
+            drop(guard);
+            assert_eq!(mxcsr(), start);
         }
         set(before);
-        let guard = Mcdt::enter_restoring();
-        let changed = mxcsr() ^ 1;
-        set(changed);
-        assert_eq!(mxcsr(), changed);
-        drop(guard);
-        assert_eq!(mxcsr(), before);
     }
 
     #[test]
