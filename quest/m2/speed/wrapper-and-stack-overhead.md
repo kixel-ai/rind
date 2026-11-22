@@ -14,7 +14,7 @@ Planned with the maintainer on 2026-11-21 (`/quest-plan`): ✅ trim the Rust wra
   - Collapse redundant runtime dispatch layers on AEAD seal/open and QUIC header protection calls.
   - Trim the oversized Rust-wrapper stack wipe in ChaCha20-Poly1305 per `AGENTS.md`'s wipe rule (wipe keyed state and key-derived heap scratch, not stack temporaries or plaintext scratch, while leaving any wipe built into proven upstream assembly untouched).
 - **`rind-rustls` per-record `Dit::hold()` & hybrid KX copies (`rind-rustls/src/aead.rs:85`, `rind-rustls/src/kx_group/{mlkem.rs:18,hybrid.rs:40-54}`)**:
-  - Measure and avoid redundant `Dit::hold()` toggling inside `rind-rustls` where `rind`'s inner AEAD call already manages DIT (or hoist cleanly so small TLS records do not pay double MSR overhead on Apple Silicon).
+  - rind-rustls takes no `Dit::hold()` of its own (checked 2026-11-21), so a small record pays rind's toggle once to seal and once to open. Measure it with the `rustls-records/*` rows and `dit-per-call/rustls-records/aes128-gcm/*/64B`, and hold DIT across a record's seal or open in rind-rustls if that toggle costs more than a few percent of the record on Apple Silicon.
   - Eliminate redundant `Vec` / slice copies in `rind-rustls`'s ML-KEM and hybrid key-exchange setup/completion.
 - **`sha3` `aarch64` feature hoist (`rind/src/low/aarch64/sha3_keccak_f1600_mux.rs:6`)**:
   - Hoist `aarch64` SHA3 CPU-feature detection out of per-block sponge loops (`rind/src/mid/sha3.rs`) so multi-block hashing and XOF squeezing dispatch once.
