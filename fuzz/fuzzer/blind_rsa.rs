@@ -2,7 +2,8 @@
 
 //! RSA blind signatures with each message tampered with in flight: the
 //! client's blinded message, the server's reply, and the finalized
-//! signature, and a key the fuzzer writes.
+//! signature, under a private key the fuzzer edits from one of several sizes
+//! and exponents, and a public key it edits from that.
 //!
 //! No reference implements blind RSA on aws-lc, so this checks rind against
 //! itself and `blind-rsa-signatures`, over RustCrypto's `rsa`: an untampered
@@ -10,9 +11,8 @@
 //! rather than panicking or verifying. Where rind accepts a step, the crate
 //! signs the same blinded message to the same bytes and verifies the same
 //! signature, and its client finalizes rind's reply to a signature rind
-//! verifies.
-
-use std::sync::LazyLock;
+//! verifies. A private key rind loads, the crate loads as the same key, and
+//! it signs: rind refuses at load any key it could not sign with.
 
 use blind_rsa_signatures::{
     DefaultRng, Deterministic, MessagePrepare, MessageRandomizer, PSS, PSSZero, Randomized,
@@ -24,7 +24,18 @@ use rind::blind_rsa::*;
 
 mod edit;
 
-const PKCS8: &[u8] = include_bytes!("../../rind/src/high/rsa/rsa2048.pkcs8.der");
+/// The keys the fuzzer edits: the sizes either side of a byte boundary, a
+/// non-standard exponent, and larger moduli.
+const KEYS: [&[u8]; 8] = [
+    include_bytes!("../../rind/src/high/rsa/rsa2048.pkcs8.der"),
+    include_bytes!("../../rind/src/high/rsa/rsa2048-e33.pkcs8.der"),
+    include_bytes!("../../rind/src/high/rsa/rsa2049.pkcs8.der"),
+    include_bytes!("../../rind/src/high/rsa/rsa2050.pkcs8.der"),
+    include_bytes!("../../rind/src/high/rsa/rsa2056.pkcs8.der"),
+    include_bytes!("../../rind/src/high/rsa/rsa2560.pkcs8.der"),
+    include_bytes!("../../rind/src/high/rsa/rsa3072.pkcs8.der"),
+    include_bytes!("../../rind/src/high/rsa/rsa4096.pkcs8.der"),
+];
 
 const ALGORITHMS: [&Algorithm; 4] = [
     &RSABSSA_SHA384_PSS_RANDOMIZED,
@@ -33,22 +44,22 @@ const ALGORITHMS: [&Algorithm; 4] = [
     &RSABSSA_SHA384_PSSZERO_DETERMINISTIC,
 ];
 
-static KEYS: LazyLock<[KeyPair; 4]> =
-    LazyLock::new(|| ALGORITHMS.map(|algorithm| KeyPair::from_pkcs8(algorithm, PKCS8).unwrap()));
-
-/// The same key in `blind-rsa-signatures`, in `ALGORITHMS`' order.
-static INDEPENDENT: LazyLock<[Box<dyn Independent>; 4]> = LazyLock::new(|| {
-    [
-        Box::new(SecretKey::<Sha384, PSS, Randomized>::from_der(PKCS8).unwrap()),
-        Box::new(SecretKey::<Sha384, PSSZero, Randomized>::from_der(PKCS8).unwrap()),
-        Box::new(SecretKey::<Sha384, PSS, Deterministic>::from_der(PKCS8).unwrap()),
-        Box::new(SecretKey::<Sha384, PSSZero, Deterministic>::from_der(PKCS8).unwrap()),
-    ]
-});
+/// The key `der` in `blind-rsa-signatures`, for `ALGORITHMS[index]`, or
+/// `None` if it refuses the key.
+fn independent(index: usize, der: &[u8]) -> Option<Box<dyn Independent>> {
+    Some(match index {
+        0 => Box::new(SecretKey::<Sha384, PSS, Randomized>::from_der(der).ok()?),
+        1 => Box::new(SecretKey::<Sha384, PSSZero, Randomized>::from_der(der).ok()?),
+        2 => Box::new(SecretKey::<Sha384, PSS, Deterministic>::from_der(der).ok()?),
+        _ => Box::new(SecretKey::<Sha384, PSSZero, Deterministic>::from_der(der).ok()?),
+    })
+}
 
 #[derive(Arbitrary, Debug)]
 struct Input {
     algorithm: u8,
+    key: u8,
+    pkcs8: edit::Edit,
     message: Vec<u8>,
     blinded: edit::Edit,
     reply: edit::Edit,
@@ -58,9 +69,16 @@ struct Input {
 
 fuzz_target!(|input: Input| {
     let index = usize::from(input.algorithm % 4);
-    let key_pair = &KEYS[index];
+    let mut pkcs8 = KEYS[usize::from(input.key) % KEYS.len()].to_vec();
+    input.pkcs8.apply(&mut pkcs8);
+    let Ok(key_pair) = KeyPair::from_pkcs8(ALGORITHMS[index], &pkcs8) else {
+        return;
+    };
     let public_key = key_pair.public_key();
-    let independent = &INDEPENDENT[index];
+    // The crate reads the key rind wrote, as rind ignores what it may not
+    // round-trip, such as a version 2 document's public key.
+    let independent = independent(index, key_pair.to_pkcs8().as_ref())
+        .expect("blind-rsa-signatures refused a key rind loaded");
 
     // Their client, our server.
     let signature = independent.client(&input.message, &|blinded| {
