@@ -367,10 +367,10 @@ def fail(message):
 def operation_regex(refused=()):
     """A criterion filter matching exactly the report's operations, without
     the libraries in `refused`."""
-    lib = "[^/]+"
-    if refused:
-        # The regex crate has no lookahead, so name the rest.
-        lib = "(" + "|".join(re.escape(row) for row, name in LIBRARIES.items() if name not in refused) + ")"
+    # Name the report's libraries rather than match any, so a bench's extra
+    # row (slhdsa's fips205) costs no time and ranks nothing. The regex crate
+    # has no lookahead, so `refused` drops out of the list too.
+    lib = "(" + "|".join(re.escape(row) for row, name in LIBRARIES.items() if name not in refused) + ")"
     ops = "|".join(re.escape(op).replace(re.escape("{lib}"), lib) for op in OPERATIONS)
     return f"^({ops})$"
 
@@ -380,7 +380,7 @@ def operation_of(full_id):
     for op in OPERATIONS:
         pattern = "^" + re.escape(op).replace(re.escape("{lib}"), "([^/]+)") + "$"
         m = re.match(pattern, full_id)
-        if m:
+        if m and m.group(1) in LIBRARIES:
             return op, m.group(1)
     return None
 
@@ -585,7 +585,7 @@ def run(args):
         results.append(
             {
                 "operation": op,
-                "library": LIBRARIES.get(lib, lib),
+                "library": LIBRARIES[lib],
                 "id": meta["full_id"],
                 "ns": estimate["point_estimate"],
                 "ns_low": estimate["confidence_interval"]["lower_bound"],
@@ -1221,22 +1221,27 @@ def ranked_against(host_times, row):
     return {lib: ns for lib, ns in held.items() if lib != "rind"} | libs
 
 
+# The DIT-per-call rows short enough that the toggle's tens of ns stand above
+# run-to-run noise; a signature's noise alone outweighs it.
+DIT_COST_ROWS = [
+    *(f"{aead}/{{lib}}/32B" for aead in ["aes128-gcm", "chacha20poly1305"]),
+    "rustls-records/aes128-gcm/{lib}/64B",
+]
+
+
 def dit_cost(host):
     """What setting DIT around each call costs rind over holding it, on a
     host that times both, as report lines."""
     t = times(host)
-    costs = [
-        libs["rind"] - t[held]["rind"]
-        for row, libs in t.items()
-        if row.startswith(DIT_PER_CALL) and "rind" in t.get(held := row.removeprefix(DIT_PER_CALL), {})
-    ]
+    pairs = [(t.get(row_name(DIT_PER_CALL + op), {}), t.get(row_name(op), {})) for op in DIT_COST_ROWS]
+    costs = [per_call["rind"] - held["rind"] for per_call, held in pairs if "rind" in per_call and "rind" in held]
     if not costs:
         return []
     spread = human(costs[0]) if len(costs) == 1 else f"{human(min(costs))} to {human(max(costs))}"
     rows = "the row" if len(costs) == 1 else f"the {len(costs)} rows"
     return [
         f"Setting DIT around each call, as rind does for a caller holding no `rind::cpu::Dit::hold()` guard, "
-        f"takes rind {spread} more a call than holding it, in {rows} timed both ways.",
+        f"takes rind {spread} more a call than holding it, in {rows} timed both ways short enough to show it: 32 B AEAD calls and a 64 B rustls record.",
         "",
     ]
 
