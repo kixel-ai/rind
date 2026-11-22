@@ -1807,14 +1807,14 @@ mod tests {
             let mut buffer = [0u8; SigningKey::MAX_PKCS1_BUFFER_LEN];
             assert_eq!(key.to_pkcs1_der(&mut buffer).unwrap(), pkcs1);
 
-            // The same integers given apart, each private one behind a
-            // zero byte as well as without DER's sign byte.
+            // The same integers given apart, each private one without DER's
+            // sign byte and behind zero bytes, which may reach past its slot.
             let ints = pkix::RSAPrivateKey::from_bytes(pkcs1).unwrap();
             let unsigned = |x: &asn1::Integer<'_>| {
                 let bytes = x.as_ref();
                 bytes.strip_prefix(&[0]).unwrap_or(bytes).to_vec()
             };
-            for pad in [0, 1] {
+            for pad in [0, 1, 2, 9] {
                 let private = [
                     &ints.privateExponent,
                     &ints.prime1,

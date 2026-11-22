@@ -2214,7 +2214,31 @@ mod rsa {
         ours_any_salt: &'static RsaVerificationAlgorithm,
         theirs_sign: fn(TheirsSaltLength) -> signature::RsaSignatureEncoding,
         theirs_verify: fn(TheirsSaltLength) -> signature::RsaParameters,
+        /// RustCrypto's signature with a salt of the given length, and its
+        /// verdict on one.
+        oracle_sign: fn(&::rsa::PrivateKey, &[u8], usize) -> Vec<u8>,
+        oracle_verify: fn(&::rsa::PublicKey, &[u8], &[u8], usize) -> bool,
         hash_len: usize,
+    }
+
+    fn pss_salt_sign<D: ::sha2::Digest + ::sha2::digest::FixedOutputReset>(
+        key: &::rsa::PrivateKey,
+        message: &[u8],
+        salt: usize,
+    ) -> Vec<u8> {
+        let padding = ::rsa::pss::Pss::<D>::new_with_salt(salt);
+        key.sign_with_rng(&mut getrandom::SysRng, padding, &D::digest(message))
+            .unwrap()
+    }
+
+    fn pss_salt_verify<D: ::sha2::Digest + ::sha2::digest::FixedOutputReset>(
+        key: &::rsa::PublicKey,
+        message: &[u8],
+        signature: &[u8],
+        salt: usize,
+    ) -> bool {
+        let padding = ::rsa::pss::Pss::<D>::new_with_salt(salt);
+        key.verify(padding, &D::digest(message), signature).is_ok()
     }
 
     const PSS_SALTS: [PssSalt; 3] = [
@@ -2224,6 +2248,8 @@ mod rsa {
             ours_any_salt: &verify::PSS_SHA256_ANY_SALT,
             theirs_sign: |salt| signature::RSA_PSS_SHA256.with_pss_salt_length(salt),
             theirs_verify: |salt| signature::RSA_PSS_2048_8192_SHA256.with_pss_salt_length(salt),
+            oracle_sign: pss_salt_sign::<::sha2::Sha256>,
+            oracle_verify: pss_salt_verify::<::sha2::Sha256>,
             hash_len: 32,
         },
         PssSalt {
@@ -2232,6 +2258,8 @@ mod rsa {
             ours_any_salt: &verify::PSS_SHA384_ANY_SALT,
             theirs_sign: |salt| signature::RSA_PSS_SHA384.with_pss_salt_length(salt),
             theirs_verify: |salt| signature::RSA_PSS_2048_8192_SHA384.with_pss_salt_length(salt),
+            oracle_sign: pss_salt_sign::<::sha2::Sha384>,
+            oracle_verify: pss_salt_verify::<::sha2::Sha384>,
             hash_len: 48,
         },
         PssSalt {
@@ -2240,6 +2268,8 @@ mod rsa {
             ours_any_salt: &verify::PSS_SHA512_ANY_SALT,
             theirs_sign: |salt| signature::RSA_PSS_SHA512.with_pss_salt_length(salt),
             theirs_verify: |salt| signature::RSA_PSS_2048_8192_SHA512.with_pss_salt_length(salt),
+            oracle_sign: pss_salt_sign::<::sha2::Sha512>,
+            oracle_verify: pss_salt_verify::<::sha2::Sha512>,
             hash_len: 64,
         },
     ];
@@ -2314,6 +2344,68 @@ mod rsa {
         }
     }
 
+    /// RustCrypto and rind verify each other's PSS signatures with no salt,
+    /// a salt not the hash's length, and the longest the modulus allows,
+    /// and rind refuses each with a salt a byte shorter or longer.
+    #[test]
+    fn pss_salt_lengths_oracle() {
+        // A whole number of bytes, and one bit past, where PSS's encoded
+        // message is a byte shorter than the modulus.
+        for theirs in &THEIRS[..2] {
+            let pkcs8 = theirs.as_der().unwrap();
+            let ours = RsaKeyPair::from_pkcs8(pkcs8.as_ref()).unwrap();
+            let oracle = ::rsa::PrivateKey::from_pkcs8_der(pkcs8.as_ref()).unwrap();
+            let public = ours.public_key();
+            let bits = signature::RsaParameters::public_modulus_len(theirs.public_key().as_ref())
+                .unwrap() as usize;
+            let message = b"hello";
+            for pss in &PSS_SALTS {
+                // RFC 8017 section 9.1.1's `emLen - hLen - 2`.
+                let max = (bits - 1).div_ceil(8) - pss.hash_len - 2;
+                for salt in [0, pss.hash_len - 1, max] {
+                    let with = |len: usize| {
+                        (pss.ours_verify)(RsaPssSaltLength::Custom(len.try_into().unwrap()))
+                    };
+                    let signature = (pss.oracle_sign)(&oracle, message, salt);
+                    public.verify(&with(salt), message, &signature).unwrap();
+                    public
+                        .verify(pss.ours_any_salt, message, &signature)
+                        .unwrap();
+                    if salt > 0 {
+                        assert_eq!(
+                            public.verify(&with(salt - 1), message, &signature),
+                            Err(Error::BadSignature)
+                        );
+                    }
+                    if salt < max {
+                        assert_eq!(
+                            public.verify(&with(salt + 1), message, &signature),
+                            Err(Error::BadSignature)
+                        );
+                    }
+
+                    let ours_sign =
+                        (pss.ours_sign)(RsaPssSaltLength::Custom(salt.try_into().unwrap()));
+                    let signature = ours.sign(&ours_sign, message).unwrap();
+                    assert!((pss.oracle_verify)(
+                        oracle.as_public_key(),
+                        message,
+                        signature.as_ref(),
+                        salt
+                    ));
+                    if salt > 0 {
+                        assert!(!(pss.oracle_verify)(
+                            oracle.as_public_key(),
+                            message,
+                            signature.as_ref(),
+                            salt - 1
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
     // Each case loads every key twice and signs with each one that loads.
     proptest! {
         #![proptest_config(ProptestConfig::with_cases(32))]
@@ -2380,6 +2472,45 @@ mod rsa {
                         .unwrap();
                 }
             }
+        }
+    }
+
+    /// aws-lc-rs and rind load an 8192-bit key whose private integers have
+    /// more leading zero bytes than their slots leave room for, since its
+    /// primes take every word, to the same PKCS#8.
+    #[test]
+    fn from_components_padded() {
+        let pkcs8 = include_bytes!("../src/high/rsa/rsa8192.pkcs8.der");
+        for pad in [2, 9] {
+            let mut fields = components(pkcs8);
+            for value in &mut fields[2..] {
+                value.splice(0..0, vec![0; pad]);
+            }
+            let [n, e, d, p, q, dp, dq, qi] = &fields[..] else {
+                unreachable!()
+            };
+            let ours = RsaKeyPair::from_components(&rind::rsa::KeyPairComponents {
+                public_key: rind::rsa::PublicKeyComponents { n, e },
+                d,
+                p,
+                q,
+                dp,
+                dq,
+                qi,
+            })
+            .unwrap();
+            let them = KeyPair::from_components(&aws_lc_rs::rsa::KeyPairComponents {
+                public_key: aws_lc_rs::rsa::PublicKeyComponents { n, e },
+                d,
+                p,
+                q,
+                dP: dp,
+                dQ: dq,
+                qInv: qi,
+            })
+            .unwrap();
+            assert_eq!(ours.to_pkcs8().as_ref(), them.as_der().unwrap().as_ref());
+            assert_eq!(ours.to_pkcs8().as_ref(), &pkcs8[..]);
         }
     }
 

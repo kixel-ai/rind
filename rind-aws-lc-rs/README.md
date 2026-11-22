@@ -42,7 +42,9 @@ These items are left out, so code using them fails to build:
 - A [`error::KeyRejected`] from rind's own checks gives rind's reason in its `Display`, and `"InvalidEncoding"` from `description_()`.
 - `VerificationAlgorithm::verify_digest_sig` and `verify_digest` fail for RSA, as they do for Ed25519: rind verifies RSA only over a message it hashes itself.
 - An Ed25519 public key of small order verifies no signature, and a PKCS#8 v2 Ed25519 key whose public key does not match is refused.
-- ECDSA and ECDH public keys in the X9.62 hybrid form are refused.
+- ECDSA and ECDH public keys in the X9.62 hybrid form are refused, and so are
+  ECDSA private keys whose curve is given by explicit parameters rather than
+  its name, which AWS-LC loads when they match a curve it knows.
 - An RSA public key, from `rsa::PublicKey::from_der` or elsewhere, must have a modulus of 1024 to 8192 bits, the range rind verifies with.
 - `try_fips_cpu_jitter_entropy()` fails, where aws-lc-rs's default build answers `Ok`: rind seeds from the operating system, not from CPU jitter.
 - An RSA-OAEP private key is bound to one algorithm in rind, so a `rsa::PrivateDecryptingKey` loads the key again the first time it decrypts with each other algorithm, and keeps it.

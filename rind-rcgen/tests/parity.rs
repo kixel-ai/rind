@@ -83,6 +83,45 @@ fn encodings() -> Vec<(&'static str, Vec<u8>)> {
     out
 }
 
+/// Keys rcgen loads through AWS-LC that rind refuses: curves given by
+/// explicit parameters, and public points in X9.62's hybrid form.
+fn refused() -> Vec<(&'static str, Vec<u8>)> {
+    let key = EcdsaKeyPair::generate(&ecdsa::sign::P256_SHA256_ASN1).unwrap();
+    let mut hybrid = key.to_sec1().as_ref().to_vec();
+    // The public key's BIT STRING: 65 bytes after its unused-bits byte.
+    let at = hybrid.len() - 65;
+    assert_eq!(hybrid[at - 3..=at], [0x03, 0x42, 0x00, 0x04]);
+    hybrid[at] = 0x06 | (hybrid[hybrid.len() - 1] & 1);
+    vec![
+        (
+            "P-256 SEC1 with explicit parameters",
+            include_bytes!("data/p256-explicit.sec1.der").to_vec(),
+        ),
+        (
+            "P-256 PKCS#8 with explicit parameters",
+            include_bytes!("data/p256-explicit.pkcs8.der").to_vec(),
+        ),
+        ("P-256 SEC1 with a hybrid public point", hybrid),
+    ]
+}
+
+#[test]
+fn refuses_what_rcgen_loads() {
+    for (name, der) in refused() {
+        let theirs = rcgen::KeyPair::from_der_and_sign_algo(
+            &labels(&der)[if name.contains("PKCS#8") { 0 } else { 1 }],
+            &PKCS_ECDSA_P256_SHA256,
+        );
+        assert!(theirs.is_ok(), "{name}: rcgen refuses it");
+        for key in labels(&der) {
+            assert!(KeyPair::try_from(&key).is_err(), "{name}");
+            for alg in ALGORITHMS {
+                assert!(KeyPair::from_der_and_sign_algo(&key, alg).is_err(), "{name}");
+            }
+        }
+    }
+}
+
 /// `der` under each label `rustls_pki_types` gives a private key.
 fn labels(der: &[u8]) -> [PrivateKeyDer<'_>; 3] {
     [

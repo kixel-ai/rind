@@ -37,10 +37,15 @@ let key = key.serialize_der();
 `KeyPair` behaves as rcgen's on its `aws_lc_rs` backend, which loads more
 than its default `ring` one: RSA keys generate, at 2048 bits from
 `generate_for` or a chosen size from `generate_rsa_for`, SEC1 ECDSA and
-PKCS#1 RSA keys load, and so do PKCS#8 v2 documents. A key loaded from SEC1
-or PKCS#1 serializes as given, not as PKCS#8, as rcgen's does. Where it
-differs:
+PKCS#1 RSA keys load, and so do PKCS#8 v2 documents for ECDSA and Ed25519,
+though not for RSA, which AWS-LC refuses too. A key loaded from SEC1 or
+PKCS#1 serializes to DER as given, not as PKCS#8, and `serialize_pem` labels
+it `PRIVATE KEY` all the same, as rcgen's does. Where it differs:
 
+- An ECDSA key whose curve is given by explicit parameters rather than its
+  name, or whose public point is in X9.62's hybrid form, fails to load,
+  where AWS-LC loads it: rind reads only named curves and compressed or
+  uncompressed points.
 - No P-521 or ML-DSA keys: rcgen names their algorithms only with its
   `aws_lc_rs` feature, which builds AWS-LC, so a P-521 key fails to load
   with `CouldNotParseKeyPair`.
@@ -49,8 +54,8 @@ differs:
 - PEM whose base64 is malformed returns `PemError` with rind's description, not the `base64` crate's.
 
 The `pem` feature, on by default as rcgen's is, adds the PEM methods.
-Keys and the key pair's PKCS#8 copy are wiped on drop.
-The `zeroize` feature, as rcgen's, implements `Zeroize` for `KeyPair`, clearing its PKCS#8 copy.
+Keys and the key pair's DER copy are wiped on drop.
+The `zeroize` feature, as rcgen's, implements `Zeroize` for `KeyPair`, clearing its DER copy.
 
 ## WebAssembly
 

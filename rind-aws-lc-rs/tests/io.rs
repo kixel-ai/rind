@@ -90,38 +90,106 @@ fn integer() -> impl Strategy<Value = Vec<u8>> {
     .prop_map(|value| [&[0x02, value.len() as u8][..], &value].concat())
 }
 
+/// Each reader reads `input` as upstream's does.
+fn same(input: &[u8]) -> Result<(), TestCaseError> {
+    prop_assert_eq!(
+        run(input, |r| ours::read_tag_and_get_value(r)
+            .ok()
+            .map(|(t, v)| (t, v.as_slice_less_safe()))),
+        run(input, |r| theirs::read_tag_and_get_value(r)
+            .ok()
+            .map(|(t, v)| (t, v.as_slice_less_safe()))),
+    );
+    for (a, b) in TAGS {
+        prop_assert_eq!(
+            run(input, |r| slice(ours::expect_tag_and_get_value(r, a).ok())),
+            run(input, |r| slice(
+                theirs::expect_tag_and_get_value(r, b).ok()
+            )),
+        );
+        prop_assert_eq!(
+            run(input, |r| ours::nested(r, a, 1, |r| Ok(r
+                .read_bytes_to_end()
+                .as_slice_less_safe()))),
+            run(input, |r| theirs::nested(r, b, 1, |r| Ok(r
+                .read_bytes_to_end()
+                .as_slice_less_safe()))),
+        );
+    }
+    prop_assert_eq!(
+        run(input, |r| slice(
+            ours::bit_string_with_no_unused_bits(r).ok()
+        )),
+        run(input, |r| slice(
+            theirs::bit_string_with_no_unused_bits(r).ok()
+        )),
+    );
+    prop_assert_eq!(
+        run(input, |r| ours::small_nonnegative_integer(r).ok()),
+        run(input, |r| theirs::small_nonnegative_integer(r).ok()),
+    );
+    prop_assert_eq!(
+        run(input, |r| ours::positive_integer(r).ok().map(|p| (
+            p.big_endian_without_leading_zero(),
+            p.first_byte()
+        ))),
+        run(input, |r| theirs::positive_integer(r).ok().map(|p| (
+            p.big_endian_without_leading_zero(),
+            p.first_byte()
+        ))),
+    );
+    Ok(())
+}
+
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(4096))]
 
     #[test]
     fn reads_as_aws_lc_rs(input in prop_oneof![element(), integer(), vec(any::<u8>(), 0..8)]) {
-        let input = &input[..];
+        same(&input)?;
+    }
+}
 
-        prop_assert_eq!(
-            run(input, |r| ours::read_tag_and_get_value(r).ok().map(|(t, v)| (t, v.as_slice_less_safe()))),
-            run(input, |r| theirs::read_tag_and_get_value(r).ok().map(|(t, v)| (t, v.as_slice_less_safe()))),
-        );
-        for (a, b) in TAGS {
-            prop_assert_eq!(
-                run(input, |r| slice(ours::expect_tag_and_get_value(r, a).ok())),
-                run(input, |r| slice(theirs::expect_tag_and_get_value(r, b).ok())),
-            );
-            prop_assert_eq!(
-                run(input, |r| ours::nested(r, a, 1, |r| Ok(r.read_bytes_to_end().as_slice_less_safe()))),
-                run(input, |r| theirs::nested(r, b, 1, |r| Ok(r.read_bytes_to_end().as_slice_less_safe()))),
-            );
+/// The edges random input may miss: each length form at its bounds, and
+/// integers empty, negative, or with a needless leading zero.
+#[test]
+fn edges() {
+    let body = [0x5a; 0x1_0001];
+    let mut inputs = Vec::new();
+    for (len, header) in [
+        (0x7f, vec![0x7f]),
+        (0x7f, vec![0x81, 0x7f]),
+        (0x80, vec![0x81, 0x80]),
+        (0xff, vec![0x81, 0xff]),
+        (0xff, vec![0x82, 0x00, 0xff]),
+        (0x100, vec![0x82, 0x01, 0x00]),
+        (0xffff, vec![0x82, 0xff, 0xff]),
+        (0x1_0000, vec![0x83, 0x01, 0x00, 0x00]),
+    ] {
+        for tag in [0x02, 0x03, 0x04, 0x30] {
+            // Whole, a byte short, and a byte over.
+            for extra in [0, 1] {
+                inputs.push([&[tag][..], &header, &body[..len + extra]].concat());
+            }
+            inputs.push([&[tag][..], &header, &body[..len - 1]].concat());
         }
-        prop_assert_eq!(
-            run(input, |r| slice(ours::bit_string_with_no_unused_bits(r).ok())),
-            run(input, |r| slice(theirs::bit_string_with_no_unused_bits(r).ok())),
-        );
-        prop_assert_eq!(
-            run(input, |r| ours::small_nonnegative_integer(r).ok()),
-            run(input, |r| theirs::small_nonnegative_integer(r).ok()),
-        );
-        prop_assert_eq!(
-            run(input, |r| ours::positive_integer(r).ok().map(|p| (p.big_endian_without_leading_zero(), p.first_byte()))),
-            run(input, |r| theirs::positive_integer(r).ok().map(|p| (p.big_endian_without_leading_zero(), p.first_byte()))),
-        );
+    }
+    for value in [
+        &[][..],
+        &[0x00],
+        &[0x01],
+        &[0x7f],
+        &[0x80],
+        &[0xff],
+        &[0x00, 0x00],
+        &[0x00, 0x7f],
+        &[0x00, 0x80],
+        &[0xff, 0x80],
+        &[0x01, 0x00],
+    ] {
+        inputs.push([&[0x02, value.len() as u8][..], value].concat());
+    }
+    for input in inputs {
+        same(&input).unwrap();
     }
 }

@@ -186,17 +186,20 @@ impl KeyPair {
         pem::encode("PUBLIC KEY", &self.subject_public_key_info())
     }
 
-    /// Encodes the key pair as PKCS#8 DER.
+    /// Returns a copy of the key pair's DER: the key as loaded, or PKCS#8
+    /// for a generated one.
     pub fn serialize_der(&self) -> Vec<u8> {
         self.serialized_der.0.clone()
     }
 
-    /// Returns the key pair's PKCS#8 DER encoding.
+    /// Returns the key pair's DER: the key as loaded, or PKCS#8 for a
+    /// generated one.
     pub fn serialized_der(&self) -> &[u8] {
         &self.serialized_der.0
     }
 
-    /// Encodes the key pair as PEM PKCS#8.
+    /// Encodes the key pair's DER as PEM labeled `PRIVATE KEY`, as rcgen
+    /// does, even when that DER is a loaded SEC1 or PKCS#1 key.
     #[cfg(feature = "pem")]
     pub fn serialize_pem(&self) -> String {
         pem::encode("PRIVATE KEY", self.serialized_der())
@@ -238,7 +241,7 @@ pub enum RsaKeySize {
     _4096,
 }
 
-/// The key pair's PKCS#8 encoding, wiped on drop, as rind wipes the key itself.
+/// The key pair's DER, wiped on drop, as rind wipes the key itself.
 struct Wiped(Vec<u8>);
 
 impl Drop for Wiped {
@@ -247,7 +250,7 @@ impl Drop for Wiped {
     }
 }
 
-/// Clears the key pair's PKCS#8 copy, as rcgen's `zeroize` feature does; the
+/// Clears the key pair's DER copy, as rcgen's `zeroize` feature does; the
 /// rind key it wraps is wiped on drop.
 #[cfg(feature = "zeroize")]
 impl zeroize::Zeroize for KeyPair {

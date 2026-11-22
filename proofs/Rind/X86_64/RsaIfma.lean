@@ -308,13 +308,10 @@ theorem from_secret_bytes_spec (bytes : Slice U8) (hN : bytes.length ≤ 1024) :
       p.used.val = (bytes.length + 7) / 8 ∧ wordsNat p.words.val = beNat bytes.val ⦄ := by
   unfold low.posint.PosInt.from_secret_bytes low.posint.PosInt.zero
   step as ⟨i1, hi1⟩
-  step as ⟨i2, hi2⟩
   have hbl : bytes.length = bytes.val.length := rfl
-  have hne : ¬ (Slice.len bytes = i2) := by
-    intro h; have := congrArg UScalar.val h; simp at this; omega
   have hle : ¬ (Slice.len bytes > i1) := by
     intro h; have : (Slice.len bytes).val > i1.val := h; simp at this; omega
-  simp only [hne, hle, ↓reduceIte]
+  simp only [hle, ↓reduceIte]
   step with from_secret_bytes_loop1_spec bytes (Slice.len bytes) (by simp) (by simp; omega)
     { start := 0#usize, «end» := Slice.len bytes } rfl (by simp)
     { words := Array.repeat 128#usize 0#u64, used := 0#usize }
