@@ -513,39 +513,6 @@ fn check_span_zeroed_on_drop<T: Unpin>(value: Pin<Box<T>>, at: usize, len: usize
         ptr::drop_in_place(addr);
     }
     let after_drop = read_into_vec(ptr, len);
-    // DIAGNOSTIC (temporary): who owned this memory before?
-    if let Some(i) = after_drop.iter().position(|b| *b != 0) {
-        let base = addr as usize;
-        eprintln!(
-            "DIAG: box {base:#x} size {} at {at}, stray byte {i} at {:#x}",
-            size_of::<T>(),
-            ptr as usize + i
-        );
-        std::thread::sleep(std::time::Duration::from_millis(200));
-        let later = read_into_vec(ptr, len);
-        eprintln!(
-            "DIAG: 200ms later, nonzero: {:?}",
-            later
-                .iter()
-                .enumerate()
-                .filter(|(_, b)| **b != 0)
-                .collect::<Vec<_>>()
-        );
-        if std::env::var_os("MallocStackLogging").is_some() {
-            for a in [ptr as usize + i, base] {
-                let out = std::process::Command::new("malloc_history")
-                    .arg(std::process::id().to_string())
-                    .arg(format!("{a:#x}"))
-                    .output()
-                    .unwrap();
-                eprintln!(
-                    "DIAG: malloc_history {a:#x}:\n{}\n{}",
-                    String::from_utf8_lossy(&out.stdout),
-                    String::from_utf8_lossy(&out.stderr)
-                );
-            }
-        }
-    }
     // SAFETY: We obtained `addr` by unwrapping a valid `Box<T>`, so it is allocated and `T-`aligned.
     unsafe {
         dealloc(addr as *mut u8, Layout::new::<T>());
