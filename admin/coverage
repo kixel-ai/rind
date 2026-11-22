@@ -87,17 +87,19 @@ case $tier in
     native)
         env SLOW_TESTS=1 cargo test --locked "${tests[@]}"
         # The tiers build.yml tests, each of which reaches a fallback only a
-        # CPU without the denied features runs. SDE without AVX-512 reaches
+        # CPU without the denied features runs. The adapters run where their
+        # choices change: with AVX-512 and the SHA extensions denied, and
+        # without AES hardware, where they prefer ChaCha20-Poly1305; the other
+        # tiers reach only rind's own fallbacks. SDE without AVX-512 reaches
         # the VAES kernels, which some hosted runners lack.
         case $(uname -m) in
             x86_64)
-                env RIND_CPU_DISABLE_sha=1 RIND_CPU_DISABLE_intel=1 cargo test --locked "${denied[@]}"
-                env RIND_CPU_DISABLE_avx512bw=1 RIND_CPU_DISABLE_avx512f=1 RIND_CPU_DISABLE_vaes=1 cargo test --locked "${denied[@]}"
-                env RIND_CPU_DISABLE_adx=1 cargo test --locked "${denied[@]}"
-                env RIND_CPU_DISABLE_avx2=1 RIND_CPU_DISABLE_sha=1 RIND_CPU_DISABLE_intel=1 cargo test --locked "${denied[@]}"
-                env RIND_CPU_DISABLE_avx=1 cargo test --locked "${denied[@]}"
+                env RIND_CPU_DISABLE_sha=1 RIND_CPU_DISABLE_intel=1 RIND_CPU_DISABLE_avx512bw=1 RIND_CPU_DISABLE_avx512f=1 RIND_CPU_DISABLE_vaes=1 cargo test --locked "${denied[@]}"
+                env RIND_CPU_DISABLE_adx=1 cargo test --locked -p rind
+                env RIND_CPU_DISABLE_avx2=1 RIND_CPU_DISABLE_sha=1 RIND_CPU_DISABLE_intel=1 cargo test --locked -p rind
+                env RIND_CPU_DISABLE_avx=1 cargo test --locked -p rind
                 env RIND_CPU_DISABLE_aes=1 RIND_CPU_DISABLE_pclmulqdq=1 RIND_CPU_DISABLE_avx=1 RIND_CPU_DISABLE_sse41=1 cargo test --locked "${denied[@]}"
-                env RIND_CPU_DISABLE_ssse3=1 cargo test --locked "${denied[@]}"
+                env RIND_CPU_DISABLE_ssse3=1 cargo test --locked -p rind
                 env CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER="sde -dmr --" cargo test --locked "${tests[@]}"
                 env RIND_CPU_DISABLE_avx512f=1 RIND_CPU_DISABLE_avx512bw=1 CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER="sde -dmr --" cargo test --locked -p rind --lib
                 ;;
