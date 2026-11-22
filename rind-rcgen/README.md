@@ -5,7 +5,8 @@
 [![Documentation](https://img.shields.io/docsrs/rind-rcgen)](https://docs.rs/rind-rcgen/)
 
 This crate provides rcgen's `KeyPair` for [rcgen](https://github.com/rustls/rcgen), backed by [rind](https://github.com/kixel-ai/rind/), a fork of [Graviola](https://github.com/ctz/graviola/).
-It generates and loads ECDSA P-256 and P-384 and Ed25519 keys, and loads RSA keys.
+It generates and loads ECDSA P-256 and P-384, Ed25519, and RSA keys, as
+rcgen's `aws_lc_rs` backend does.
 
 Build rcgen with `default-features = false` so it compiles no other crypto backend:
 
@@ -33,11 +34,17 @@ let key = key.serialize_der();
 
 ## What rind cannot back
 
-`KeyPair` behaves as rcgen's on its `ring` backend, which is rcgen's default:
+`KeyPair` behaves as rcgen's on its `aws_lc_rs` backend, which loads more
+than its default `ring` one: RSA keys generate, at 2048 bits from
+`generate_for` or a chosen size from `generate_rsa_for`, SEC1 ECDSA and
+PKCS#1 RSA keys load, and so do PKCS#8 v2 documents. A key loaded from SEC1
+or PKCS#1 serializes as given, not as PKCS#8, as rcgen's does. Where it
+differs:
 
-- No P-521 or ML-DSA keys, and no `KeyPair::generate_rsa_for` or `RsaKeySize`, which rcgen offers only with `aws_lc_rs`.
-- RSA keys load but do not generate: `generate_for` returns `KeyGenerationUnavailable`.
-- Only PKCS#8 private keys load, not SEC1 or PKCS#1.
+- No P-521 or ML-DSA keys: rcgen names their algorithms only with its
+  `aws_lc_rs` feature, which builds AWS-LC, so a P-521 key fails to load
+  with `CouldNotParseKeyPair`.
+- `RsaKeySize` is this crate's, for the same reason, with rcgen's variants.
 - An unsupported algorithm returns `UnsupportedSignatureAlgorithm` where rcgen panics.
 - PEM whose base64 is malformed returns `PemError` with rind's description, not the `base64` crate's.
 

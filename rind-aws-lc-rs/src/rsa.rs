@@ -1,12 +1,9 @@
 //! RSA signatures and RSA-OAEP encryption.
 //!
-//! `KeyPair::from_components` and `KeyPairComponents` are not offered:
-//! building a key from big-endian private components means encoding them as
-//! DER here, which branches on their secret leading bytes. Load the key as
-//! PKCS#1 or PKCS#8 instead. Nor is PKCS#1 v1.5 encryption
-//! (`Pkcs1PublicEncryptingKey`, `Pkcs1PrivateDecryptingKey`), which invites
-//! padding-oracle attacks and rind refuses, or `KeyPair::sign_digest`, since
-//! rind signs only digests it computed.
+//! PKCS#1 v1.5 encryption (`Pkcs1PublicEncryptingKey`,
+//! `Pkcs1PrivateDecryptingKey`) is not offered, since it invites
+//! padding-oracle attacks and rind refuses it, nor is `KeyPair::sign_digest`,
+//! since rind signs only digests it computed.
 
 use alloc::boxed::Box;
 use alloc::sync::Arc;
@@ -112,6 +109,33 @@ impl KeyPair {
             .and_then(Self::new)
     }
 
+    /// Loads a private key from its big-endian integers, refusing one whose
+    /// integers disagree.
+    pub fn from_components<Public, Private>(
+        components: &KeyPairComponents<Public, Private>,
+    ) -> Result<Self, KeyRejected>
+    where
+        Public: AsRef<[u8]>,
+        Private: AsRef<[u8]>,
+    {
+        let public_key = &components.public_key;
+        let components = rind::rsa::KeyPairComponents {
+            public_key: rind::rsa::PublicKeyComponents {
+                n: public_key.n.as_ref(),
+                e: public_key.e.as_ref(),
+            },
+            d: components.d.as_ref(),
+            p: components.p.as_ref(),
+            q: components.q.as_ref(),
+            dp: components.dP.as_ref(),
+            dq: components.dQ.as_ref(),
+            qi: components.qInv.as_ref(),
+        };
+        rind::rsa::KeyPair::from_components(&components)
+            .map_err(KeyRejected::rind)
+            .and_then(Self::new)
+    }
+
     /// Signs `msg` with `padding_alg` into `signature`, which must be
     /// [`Self::public_modulus_len`] bytes.
     ///
@@ -163,6 +187,38 @@ impl fmt::Debug for KeyPair {
 impl AsDer<Pkcs8V1Der<'static>> for KeyPair {
     fn as_der(&self) -> Result<Pkcs8V1Der<'static>, Unspecified> {
         Ok(Pkcs8V1Der::new(self.key.to_pkcs8().as_ref().to_vec()))
+    }
+}
+
+/// An RSA private key as its big-endian integers.
+#[allow(non_snake_case)]
+#[derive(Clone, Copy)]
+pub struct KeyPairComponents<Public, Private = Public> {
+    /// The modulus and public exponent.
+    pub public_key: PublicKeyComponents<Public>,
+    /// The private exponent.
+    pub d: Private,
+    /// The first prime factor of the modulus.
+    pub p: Private,
+    /// The second prime factor of the modulus.
+    pub q: Private,
+    /// `d` mod `p - 1`.
+    pub dP: Private,
+    /// `d` mod `q - 1`.
+    pub dQ: Private,
+    /// The inverse of `q` mod `p`.
+    pub qInv: Private,
+}
+
+impl<Public, Private> fmt::Debug for KeyPairComponents<Public, Private>
+where
+    PublicKeyComponents<Public>: fmt::Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // As aws-lc-rs, leaving out the private integers.
+        f.debug_struct("KeyPairComponents")
+            .field("public_key", &self.public_key)
+            .finish()
     }
 }
 

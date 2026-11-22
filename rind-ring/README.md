@@ -50,17 +50,13 @@ These items are not offered, so code using them, in a patched dependency
 too, fails to build:
 
 - `aead::chacha20_poly1305_openssh`: rind refuses it, having no SSH consumer.
-- `rsa::KeyPairComponents` and `rsa::KeyPair::from_components`: building a
-  key from components means encoding its secret parts as DER, which
-  branches on their leading bytes. Load the key as PKCS#1 or PKCS#8.
-- `io`, `test`, `deprecated_test`, and `test_file!`: ring's DER reader and
-  test harness, which are no cryptography. `test::rand`'s fixed random
-  sources could not work, since rind draws its own randomness.
+- `test`, `deprecated_test`, and `test_file!`: ring's test harness, which
+  is no cryptography. `test::rand`'s fixed random sources could not work,
+  since rind draws its own randomness.
 - `signature::RsaEncoding::encode`: ring's hidden, deprecated internal
   method, which takes a type callers cannot name.
 
 ## Behaves differently
-
 
 - Where ring takes a `rand::SecureRandom` to generate a key or sign,
   rind draws from the system random source itself, as
@@ -71,6 +67,12 @@ too, fails to build:
   does; a public key on its own is not wiped.
 - A `error::KeyRejected`'s `Display` gives rind's reason, not ring's
   name for it, which ring documents as changing between releases.
+- An RSA key whose integers disagree is refused when it loads, as
+  aws-lc-rs refuses it, where ring takes a wrong `d`, which it never uses,
+  and finds a wrong `e` or CRT integer only when it signs.
+- `rsa::KeyPair::from_components` takes private integers with leading
+  zero bytes, as aws-lc-rs does, where ring refuses those wider than it
+  expects: refusing them would branch on their secret first bytes.
 
 ## WebAssembly
 

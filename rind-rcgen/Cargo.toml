@@ -18,14 +18,10 @@ all-features = true
 [package.metadata.rind.api]
 crate = "rcgen"
 module = ""
-items = ["KeyPair"]
-# rcgen's default backend, whose behavior the README documents.
-features = ["ring"]
+items = ["KeyPair", "RsaKeySize"]
+# rcgen's fuller backend, whose behavior the README documents.
+features = ["aws_lc_rs"]
 skip = { fips = "builds AWS-LC's FIPS module, which rind does not offer" }
-# Items rind cannot back, which the README names.
-omitted = [
-  "KeyPair::generate_rsa_for",
-]
 
 [features]
 # rcgen's default features include `pem`.

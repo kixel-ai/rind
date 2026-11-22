@@ -2314,6 +2314,80 @@ mod rsa {
         }
     }
 
+    // Each case loads every key twice and signs with each one that loads.
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(32))]
+
+        /// Both load a key from its integers, or refuse it, alike, whichever
+        /// one is altered: with a leading zero byte, a flipped bit, or a
+        /// byte cut off.
+        #[test]
+        fn from_components(field in 0..8usize, change in 0..4u8, at in any::<prop::sample::Index>()) {
+            for theirs in &*THEIRS {
+                let pkcs8 = theirs.as_der().unwrap();
+                let mut fields = components(pkcs8.as_ref());
+                let value = &mut fields[field];
+                match change {
+                    0 => {}
+                    1 => value.insert(0, 0),
+                    2 => {
+                        let i = at.index(value.len());
+                        value[i] ^= 1 << (i % 8);
+                    }
+                    _ => {
+                        value.pop();
+                    }
+                }
+                let [n, e, d, p, q, dp, dq, qi] = &fields[..] else { unreachable!() };
+                let ours = RsaKeyPair::from_components(&rind::rsa::KeyPairComponents {
+                    public_key: rind::rsa::PublicKeyComponents { n, e },
+                    d, p, q, dp, dq, qi,
+                });
+                let them = KeyPair::from_components(&aws_lc_rs::rsa::KeyPairComponents {
+                    public_key: aws_lc_rs::rsa::PublicKeyComponents { n, e },
+                    d, p, q, dP: dp, dQ: dq, qInv: qi,
+                });
+                prop_assert_eq!(ours.is_ok(), them.is_ok(), "field {} change {}", field, change);
+                if let (Ok(ours), Ok(them)) = (ours, them) {
+                    let (ours_pkcs8, them_pkcs8) = (ours.to_pkcs8(), them.as_der().unwrap());
+                    prop_assert_eq!(ours_pkcs8.as_ref(), them_pkcs8.as_ref());
+                    let signature = ours.sign(&sign::PSS_SHA256, b"hello").unwrap();
+                    UnparsedPublicKey::new(&signature::RSA_PSS_2048_8192_SHA256, them.public_key())
+                        .verify(b"hello", signature.as_ref())
+                        .unwrap();
+                }
+            }
+        }
+    }
+
+    /// The DER element starting `der`: its contents, and what follows it.
+    fn element(der: &[u8]) -> (&[u8], &[u8]) {
+        let (len, at) = match der[1] {
+            0x81 => (usize::from(der[2]), 3),
+            0x82 => (usize::from(u16::from_be_bytes([der[2], der[3]])), 4),
+            len => (usize::from(len), 2),
+        };
+        (&der[at..at + len], &der[at + len..])
+    }
+
+    /// A PKCS#8 RSA key's integers in `RSAPrivateKey` order (n, e, d, p, q,
+    /// dP, dQ, qInv), without DER's sign bytes.
+    fn components(pkcs8: &[u8]) -> Vec<Vec<u8>> {
+        let (pkcs8, _) = element(pkcs8);
+        let (_version, rest) = element(pkcs8);
+        let (_algorithm, rest) = element(rest);
+        let (pkcs1, _) = element(rest);
+        let (pkcs1, _) = element(pkcs1);
+        let (_version, mut rest) = element(pkcs1);
+        let mut out = Vec::new();
+        while !rest.is_empty() {
+            let (value, next) = element(rest);
+            out.push(value.strip_prefix(&[0]).unwrap_or(value).to_vec());
+            rest = next;
+        }
+        out
+    }
+
     /// RustCrypto's verdict on a PKCS#1 v1.5 or PSS signature.
     type Oracle = fn(&::rsa::PublicKey, &[u8], &[u8]) -> bool;
 

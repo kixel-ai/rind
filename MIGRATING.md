@@ -305,7 +305,7 @@ encryption.
 | OpenSSL's `RSA_PSS_SALTLEN_AUTO`, pyca's `PSS.AUTO` (not in aws-lc-rs) | `rsa::verify::PSS_SHA256_ANY_SALT` and so on |
 | `RsaParameters::{public_modulus_len, min_modulus_len, max_modulus_len}` | none |
 | `RsaKeyPair::from_der` | `rsa::KeyPair::from_pkcs1` |
-| `RsaKeyPair::from_components`, `KeyPairComponents` | none: load the key as PKCS#1 or PKCS#8 |
+| `RsaKeyPair::from_components(&KeyPairComponents { public_key, d, p, q, dP, dQ, qInv })` | `rsa::KeyPair::from_components(&rsa::KeyPairComponents { public_key, d, p, q, dp, dq, qi })`, whose fields take JWK's names |
 | `RsaKeyPair::sign(alg, rng, m, &mut sig)` | `sign(&alg, m)`, which takes no random source and returns an `rsa::Signature` |
 | `verify_digest` and `sign_digest` for RSA | none |
 | `rsa::KeySize`, `RsaKeyPair::generate(size)` | the same; `KeySize` adds `Rsa6144` |
