@@ -19,4 +19,3 @@ Planned with the maintainer on 2026-11-21 (`/quest-plan`): ✅ add optional `ran
 ## Related
 
 - [RustCrypto's traits](/quest/m2/rustcrypto/traits.md)
-- [Gate coverage regressions, test feature powersets, and execute wasm32 tests](/quest/m2/confidence/coverage-powerset-wasm-gates.md)
