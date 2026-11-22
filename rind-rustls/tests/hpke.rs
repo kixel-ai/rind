@@ -1,4 +1,6 @@
 use std::sync::Arc;
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+use wasm_bindgen_test::wasm_bindgen_test as test;
 
 use rustls::client::{EchConfig, EchMode};
 #[cfg(not(target_family = "wasm"))]

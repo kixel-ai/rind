@@ -200,6 +200,8 @@ mod tests {
     use rind::rand;
     use rind::rsa::KeyPair as RsaKeyPair;
     use rustls::SignatureScheme;
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    use wasm_bindgen_test::wasm_bindgen_test as test;
 
     use super::*;
 

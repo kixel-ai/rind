@@ -286,7 +286,8 @@ jobs:
 
   # wasm32-wasip2 on the portable backend, under wasmtime: rind's vector tests
   # and rind-rustls's and rind-ring's tests, without the differential ones,
-  # whose aws-lc does not build for wasm.
+  # whose aws-lc does not build for wasm; then the adapters' tests on
+  # wasm32-unknown-unknown in Node.
   wasm:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest

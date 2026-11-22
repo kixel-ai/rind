@@ -814,12 +814,24 @@
             # `just wasm` runs the portable backend's tests on wasm32-wasip2
             # in it, under wasmtime. The toolchain is the default shell's,
             # which already carries the target.
-            wasm = mkDevShell {
-              packages = [
-                rust-toolchain
-                pkgs.wasmtime
-              ];
-            };
+            # `just wasm` runs in it: wasmtime for WASI, and for the browser's
+            # target wasm-bindgen's test runner in Node. The runner must be
+            # the wasm-bindgen release Cargo.lock pins.
+            wasm =
+              let
+                lock = builtins.fromTOML (builtins.readFile ./Cargo.lock);
+                wasm-bindgen = builtins.head (
+                  builtins.filter (p: p.name == "wasm-bindgen") lock.package
+                );
+              in
+              mkDevShell {
+                packages = [
+                  rust-toolchain
+                  pkgs.wasmtime
+                  pkgs."wasm-bindgen-cli_${builtins.replaceStrings [ "." ] [ "_" ] wasm-bindgen.version}"
+                  pkgs.nodejs
+                ];
+              };
 
             # `just miri` and the miri workflow run in it: Charon's nightly,
             # which already carries Miri, rather than a second nightly.

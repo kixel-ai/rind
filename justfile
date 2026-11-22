@@ -45,7 +45,8 @@ qemu SHELL:
 portable:
     nix develop --command sh/portable.sh
 
-# Test the portable backend on wasm32-wasip2 under wasmtime (Linux or macOS).
+# Test the portable backend on wasm32-wasip2 under wasmtime, and the adapters on
+# wasm32-unknown-unknown in Node (Linux or macOS).
 wasm:
     nix develop .#wasm --command sh/wasm.sh
 

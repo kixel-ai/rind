@@ -50,7 +50,8 @@ says which features of each such crate avoid it.
 ## WebAssembly
 
 rind-rustls builds for `wasm32-wasip2`, where CI runs its tests under
-wasmtime, and for `wasm32-unknown-unknown`, the browser. rustls's aws-lc-rs
+wasmtime, and for `wasm32-unknown-unknown`, the browser, where CI runs them
+in Node. rustls's aws-lc-rs
 provider builds for neither, and its ring one needs a C compiler targeting
 wasm. In the browser, turn on rind's JavaScript random source, `getrandom = {
 version = "0.4", features = ["wasm_js"] }`, and give rustls a clock, as any
