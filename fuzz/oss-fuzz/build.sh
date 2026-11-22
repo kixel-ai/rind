@@ -12,10 +12,17 @@ if [ "$SANITIZER" = "coverage" ]; then
     export CFLAGS=""
 fi
 
-cargo fuzz build -O
+# OSS-Fuzz's runners lack the CPython the python target embeds. The fips
+# target loads the FIPS module from beside itself.
+export RUSTFLAGS="$RUSTFLAGS -Clink-arg=-Wl,-rpath,\$ORIGIN"
+targets=$(cargo fuzz list | grep -vx python)
+for target in $targets; do
+    cargo fuzz build -O "$target"
+done
 sh/fuzz-seed.sh
+find target/x86_64-unknown-linux-gnu/release/build -path '*/rind-fips*/out/lib/librind_fips_module.so' -exec cp {} "$OUT/" \;
 
-for target in $(cargo fuzz list); do
+for target in $targets; do
     cp "target/x86_64-unknown-linux-gnu/release/$target" "$OUT/"
     if [ -d "fuzz/corpus/$target" ]; then
         zip -qjr "$OUT/${target}_seed_corpus.zip" "fuzz/corpus/$target"

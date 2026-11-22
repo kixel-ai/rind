@@ -71,6 +71,14 @@ case "$arch" in
         ;;
 esac
 
+# The FIPS module refuses to load on a CPU without the features it requires
+# (rind-fips/README.md), so its target replays only the tiers that keep them.
+if [[ $(basename "$target") == fips ]]; then
+    case "$arch" in
+        x86_64 | aarch64) tiers=("${tiers[@]:0:2}") ;;
+    esac
+fi
+
 deny=()
 for tier in "${tiers[@]}"; do
     for feature in $tier; do

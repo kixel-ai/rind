@@ -104,6 +104,31 @@ fn build(manifest: &Path, out: &Path, target: &str) -> PathBuf {
     // match inlined frames.
     let ctgrind = env::var_os("CARGO_FEATURE___CTGRIND").is_some();
     let debug = if ctgrind { "line-tables-only" } else { "false" };
+    // Under cargo fuzz, which sets `--cfg fuzzing`, the module takes the
+    // fuzzer's coverage, sanitizer, and checks flags, so `fuzz/fuzzer/fips.rs`
+    // sees inside it as it does inside rind.
+    let caller = env::var("CARGO_ENCODED_RUSTFLAGS").unwrap_or_default();
+    let caller: Vec<&str> = caller.split('\x1f').collect();
+    if caller.windows(2).any(|pair| pair == ["--cfg", "fuzzing"]) {
+        flags.extend(caller.iter().filter(|flag| {
+            [
+                "-Cpasses=sancov",
+                "-Cllvm-args=-sanitizer-coverage",
+                "-Zsanitizer",
+                "-Cdebug-assertions",
+                "-Coverflow",
+            ]
+            .iter()
+            .any(|prefix| flag.starts_with(prefix))
+        }));
+        // AddressSanitizer would register the coverage counters as globals
+        // with relocations a shared library cannot take, so it leaves the
+        // module's globals unchecked, and so out of what the integrity test
+        // hashes; their heap and stack it still checks.
+        if caller.contains(&"-Zsanitizer=address") {
+            flags.push("-Cllvm-args=-asan-globals=0");
+        }
+    }
     let mut features = Vec::new();
     if ctgrind {
         features.push("rind/__ctgrind");
