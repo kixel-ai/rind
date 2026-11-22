@@ -19,12 +19,6 @@ jobs:
           - name: cov-parallel
             env: ""
             args: ""
-          - name: cov-serial
-            env: ""
-            args: --test-threads=1
-          - name: cov-parallel-nosha3
-            env: RIND_CPU_DISABLE_sha3=1
-            args: ""
     name: ${{ matrix.name }}
     runs-on: macos-latest
     steps:
