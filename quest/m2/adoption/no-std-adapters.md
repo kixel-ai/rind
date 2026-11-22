@@ -14,9 +14,8 @@ Planned with the maintainer on 2026-11-21 (`/quest-plan`): ✅ add `no_std + all
 - **`rind-aws-lc-rs`**:
   - Add `#![no_std]` with `extern crate alloc;` and a default `std` feature (matching `aws-lc-rs` / `rind-ring`'s feature surface where feasible).
   - Replace `std::*` imports with `core::*` / `alloc::*` and verify `alloc`-only compilation on a `no_std` target (such as `thumbv7em-none-eabihf` or `wasm32-unknown-unknown`).
-- Add `no_std + alloc` checks for both crates to `just ci` / `.github/workflows/ci.yml` so future PRs cannot silently re-introduce `std::` imports.
+- Add both crates to `sh/dispatch.sh`'s `nostd` module, which builds `rind-ring` on `x86_64-unknown-none`, so future PRs cannot silently re-introduce `std::` imports.
 
 ## Related
 
-- [Fix rind-ring no_std + alloc compilation](/quest/m0/rind-ring-no-std.md)
 - [Gate coverage regressions, test feature powersets, and execute wasm32 tests](/quest/m2/confidence/coverage-powerset-wasm-gates.md)
