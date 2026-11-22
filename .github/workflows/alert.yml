@@ -20,6 +20,7 @@ on:
       - bench
       - build
       - dart-libraries
+      - ESP32-S3 SHA-256 layout
       - Dart release
       - Check
       - coverage

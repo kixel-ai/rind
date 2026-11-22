@@ -16,22 +16,29 @@ Hosted job-hours per day of `pull_request` runs, from the Actions REST API: canc
 
 | workflow | cancelled before | after cuts | post-merge before | after cuts | choice |
 | --- | --- | --- | --- | --- | --- |
-| prove | 91.0 | 43.0 | 22.9 | 16.0 | sped up, gating open below |
+| prove | 91.0 | 43.0 | 22.9 | 16.0 | sped up; HOL Light gate open below |
 | x86-cpu | 75.7 | 1.1 | 26.3 | 1.2 | gates in the queue since #911 |
-| ctgrind | 32.7 | 2.3 | 6.7 | 3.6 | gating open below |
-| PR check, Site, regenerate, lints, timing, build, fuzz, ESP32 | 29.0 | 1.9 | 0.4 | 1.1 | minutes each: keep |
+| ctgrind | 32.7 | 2.3 | 6.7 | 3.6 | weekly only since #958 |
+| build, fuzz, timing, lints, ESP32 | part of 29.0 | part of 1.9 | part of 0.4 | part of 1.1 | scheduled only since #958 |
+| PR check, Site, regenerate | part of 29.0 | part of 1.9 | part of 0.4 | part of 1.1 | early copies of queue gates: keep |
 
-[kixel-ai/rind#958](https://github.com/kixel-ai/rind/pull/958) sped `prove` up: 64 of its 79 ready runs re-ran HOL Light aarch64 (58 minutes each), because `asm_function`'s objects kept names that a version bump, a lockfile change, or an unrelated edit changes, and with them every cache key. Its keys now change only with the code, and release-plz's release PR, rewritten on each push to `main`, skips `prove` as it already skipped `x86-cpu` and `ctgrind`: it took 23 of `prove`'s hours a day. `lean` (28 minutes) still runs on every ready run that touches `rind/src`, and `prove` returned a median 80 minutes after its push, while the newer push that cancelled a run came a median 6 minutes after it started.
+[kixel-ai/rind#958](https://github.com/kixel-ai/rind/pull/958) sped `prove` up: 64 of its 79 ready runs re-ran HOL Light aarch64 (58 minutes each), because `asm_function`'s objects kept names that a version bump, a lockfile change, or an unrelated edit changes, and with them every cache key. Its keys now change only with the code, and release-plz's release PR, rewritten on each push to `main`, skips `prove` as it already skipped `x86-cpu` and `ctgrind`: it took 23 of `prove`'s hours a day. `lean` (28 minutes) still runs on every ready run that touches `rind/src`.
+
+The maintainer's decisions, 2026-11-22, on #958:
+
+- ✅ Gate in the merge queue only the HOL Light targets whose cache key `main` hasn't already passed, once `lean` has a cache key of its own (rejected: leave `prove` advisory; gate all of `prove`).
+- ✅ "A lot of these non blocking PR checks should be nightly or weekly runs": a PR check that doesn't gate the merge moves off pull requests to its nightly or weekly run, and only gating checks stay on PRs (rejected: keeping advisory checks on PRs). This superseded keeping `ctgrind` advisory on PRs. #958 moved `ctgrind`, `build`, `fuzz`, `timing`, aarch64 clippy (`lints`), and the ESP32-S3 layout check (now weekly) off pull requests, and kept PR check, Site, `regenerate`, `x86-cpu`, and `prove`'s `vg` there as early copies of what the queue gates.
 
 Left:
 
-- Re-measure `prove` and `ctgrind` over the week after #958 lands, the same way (the script is in #958's Validation).
-- Give `lean` a result key as the HOL Light checks have, so a pull request skips it unless the Rust under proof, the proofs, or their tools change.
-- Gate what still runs after its PR merged, as the maintainer decides under Waiting.
+- Gate the uncached HOL Light targets, in the form the maintainer picks under Waiting, and give `lean` its own result key.
+- Settle the rest of `prove`'s pull-request jobs (`lean`, `cosim`, `neon`, `spec-tests`) under the 2026-11-22 rule.
+- Re-measure `prove` over the week after that lands, the same way (the script is in #958's Validation).
 
 ## Waiting
 
-- Maintainer: whether `prove`'s and `ctgrind`'s post-merge runs gate in the merge queue, and at what cost. A queue module (`CHECK_QUEUE` in `sh/dispatch.sh`) would add each check's time to every group whose diff reaches it: ctgrind's x86_64 release row and BINSEC rows took a median 28 minutes on hosted runners, `lean` 28 and HOL Light up to an hour, against a median 2.5-minute queue build. Recommendation: gate `prove` in the queue only for the HOL Light targets whose key `main` lacks, once `lean` has a key too, since that is when a proof can break and is rare after #958; leave `ctgrind` advisory on pull requests, since its 3.6 post-merge hours a day do not pay for 20 or more minutes on most groups, and its weekly run catches what slips through.
+- Maintainer: how the queue gates the HOL Light targets `main` hasn't passed. Running them in the queue build doesn't fit it: that build is one self-hosted job with a 60-minute limit, under the ruleset's 90-minute response window, and the queue builds one group at a time, while aarch64's proofs alone took 3753 s on a Ryzen 9 9950X and 2799 s on a Core Ultra 7 270K (the queue runner is a Ryzen 9 5900XT). Options: (A) run them in the queue build and raise both limits to about 150 and 180 minutes in dotfiles' `repo-settings`, so each such group holds the queue for an hour or more; (B) have the queue require the result rather than run it: a pull request's passing HOL Light job also saves its key on the PR's own ref, and the queue build computes the group's keys (minutes) and fails any target whose key has no passed result on `main` or on that PR, telling the author to let `prove` finish or merge `main`; (C) gate only x86_64 and armv7 in the queue build and leave aarch64 advisory. Recommendation: B, since it gates exactly the uncached targets for minutes of queue time; a forged key would need a PR edit to `prove.yml`, and the queue build already runs the PR's own code.
+- Maintainer: what happens to `prove`'s other pull-request jobs, which gate nothing today. Moving `lean` off pull requests would let an edit under `proofs/` land unchecked until the nightly. Options: (a) gate `lean` and `cosim` by key the same way as HOL Light, run `neon`'s vector diff (seconds) in the queue build, and move `spec-tests` to the nightly; (b) move all four to the nightly; (c) keep them advisory on pull requests as an exception. Recommendation: a, since each check then gates only when its inputs change.
 
 ## Related
 

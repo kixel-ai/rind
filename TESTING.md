@@ -307,10 +307,6 @@ and `powerpc` (the last two big-endian) under qemu, or `i686` (32-bit x86)
 natively.
 `just miri` runs the weekly `miri` job, the portable backend's tests under
 Miri, on x86_64, and `just miri s390x-unknown-linux-gnu` big-endian.
-With `RIND_SCOPE=BASE` set, such as `origin/main`, `admin/ctgrind` skips its
-run when nothing the branch changed since BASE reaches the backend it builds,
-as `sh/backends.sh` decides, and otherwise runs in full; pull requests'
-ctgrind job sets it.
 `nix develop .#ctgrind --command admin/ctgrind` runs the weekly
 constant-time checks under valgrind, `nix develop .#sde --command
 admin/ct-sde` those of the AVX-512, VAES, and SHA extension code
@@ -339,7 +335,8 @@ checks the proofs in [`proofs/`](proofs/README.md).
 ## Scheduled workflows
 
 The heavy suites run weekly on GitHub's hosted runners: `fuzz`, `ctgrind`,
-`bench`, and `mutants` on Saturday, `miri`, `x86-cpu`, and `timing` on Sunday (UTC),
+`bench`, and `mutants` on Saturday, `miri`, `x86-cpu`, `timing`, and the
+ESP32-S3 SHA-256 layout check on Sunday (UTC),
 each hours from the others, as their `cron:` lines set, so no two fill the
 organization's 60 concurrent hosted jobs together, and off the hour, which
 GitHub delays most. `build`, `asan`, `coverage`, `lints`, `prove`,
