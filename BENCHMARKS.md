@@ -32,6 +32,8 @@ The rustls rows run both peers in one process. The every-logical-CPU rows run on
 
 Measured 2026-11-18 at [`93c8bcd7`](https://github.com/kixel-ai/rind/commit/93c8bcd705a05136e534fee4b463ab1ba56162bf), noisy, on NixOS 26.11 (Zokor) (Linux 6.18.63) with rustc 1.98.1 (48a229cea 2026-09-01).
 
+Not timed on `nixos`: one record, AES-128-GCM, 64 B, one record, AES-128-GCM, 256 B, one record, AES-128-GCM, 1 KB, one record, ChaCha20-Poly1305, 64 B, one record, ChaCha20-Poly1305, 256 B, one record, ChaCha20-Poly1305, 1 KB, SLH-DSA-SHA2-128s key generation, SLH-DSA-SHA2-128s sign, SLH-DSA-SHA2-128s verify, SLH-DSA-SHA2-128f key generation, SLH-DSA-SHA2-128f sign, SLH-DSA-SHA2-128f verify, SLH-DSA-SHAKE-128f key generation, SLH-DSA-SHAKE-128f sign, SLH-DSA-SHAKE-128f verify.
+
 rind-rustls on all 32 logical CPUs runs full handshakes at 7.6 times and resumed handshakes at 10.2 times its one-thread rate.
 
 <picture>
@@ -55,6 +57,12 @@ rind-rustls on all 32 logical CPUs runs full handshakes at 7.6 times and resumed
 | 1 MB transfer, AES-128-GCM | 291.77 µs | 561.10 µs | 356.01 µs | - | 467.73 µs | - | 664.39 µs | - |
 | 1 MB transfer, AES-256-GCM | 478.16 µs | 775.45 µs | 506.13 µs | - | 696.58 µs | - | 938.74 µs | - |
 | 1 MB transfer, ChaCha20-Poly1305 | 1.10 ms | 1.13 ms | 1.21 ms | - | 1.88 ms | - | 959.63 µs | - |
+| one record, AES-128-GCM, 64 B | - | - | - | - | - | - | - | - |
+| one record, AES-128-GCM, 256 B | - | - | - | - | - | - | - | - |
+| one record, AES-128-GCM, 1 KB | - | - | - | - | - | - | - | - |
+| one record, ChaCha20-Poly1305, 64 B | - | - | - | - | - | - | - | - |
+| one record, ChaCha20-Poly1305, 256 B | - | - | - | - | - | - | - | - |
+| one record, ChaCha20-Poly1305, 1 KB | - | - | - | - | - | - | - | - |
 | AES-128-GCM seal, 32 B | 39 ns | 72 ns | 54 ns | 94 ns | 69 ns | 308 ns | 115 ns | 50 ns |
 | AES-128-GCM seal, 1350 B | 160 ns | 281 ns | 185 ns | 432 ns | 295 ns | 4.37 µs | 322 ns | 188 ns |
 | AES-128-GCM seal, 16 KB | 1.37 µs | 2.61 µs | 1.39 µs | 4.19 µs | 2.57 µs | 53.90 µs | 2.63 µs | 1.48 µs |
@@ -145,6 +153,15 @@ rind-rustls on all 32 logical CPUs runs full handshakes at 7.6 times and resumed
 | SPAKE2+ P-256 verifier key | 57 ns | - | - | 363 ns | - | - | - | - |
 | Argon2id 16 MiB t=1 p=1 | 3.12 ms | - | - | 4.24 ms | - | - | 5.89 ms | - |
 | Argon2id 64 MiB t=3 p=4 | 81.24 ms | - | - | 102.88 ms | - | - | 122.27 ms | - |
+| SLH-DSA-SHA2-128s key generation | - | - | - | - | - | - | - | - |
+| SLH-DSA-SHA2-128s sign | - | - | - | - | - | - | - | - |
+| SLH-DSA-SHA2-128s verify | - | - | - | - | - | - | - | - |
+| SLH-DSA-SHA2-128f key generation | - | - | - | - | - | - | - | - |
+| SLH-DSA-SHA2-128f sign | - | - | - | - | - | - | - | - |
+| SLH-DSA-SHA2-128f verify | - | - | - | - | - | - | - | - |
+| SLH-DSA-SHAKE-128f key generation | - | - | - | - | - | - | - | - |
+| SLH-DSA-SHAKE-128f sign | - | - | - | - | - | - | - | - |
+| SLH-DSA-SHAKE-128f verify | - | - | - | - | - | - | - | - |
 
 </details>
 
@@ -152,7 +169,7 @@ rind-rustls on all 32 logical CPUs runs full handshakes at 7.6 times and resumed
 
 Measured 2026-11-07 at [`9e7f6a5a`](https://github.com/kixel-ai/rind/commit/9e7f6a5a9ea59a0cf1251c24af6c5d4f21c2b0fd), on Ubuntu 26.04.1 LTS (Linux 7.0.0-42-generic) with rustc 1.98.1 (48a229cea 2026-09-01).
 
-Not timed on `desktop`: full handshake, X25519, every logical CPU, resumed handshake, X25519, every logical CPU, SHA3-256, 64 B, SHA3-256, 1350 B, SHA3-256, 16 KB, SHA3-512, 64 B, SHA3-512, 1350 B, SHA3-512, 16 KB, ML-KEM-1024 key generation, ML-KEM-1024 encapsulate, ML-KEM-1024 decapsulate, ML-KEM-512 key generation, ML-KEM-512 encapsulate, ML-KEM-512 decapsulate, ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verify, ML-DSA-65 load and verify, HPKE X25519 sender setup, HPKE X25519 recipient setup, HPKE AES-128-GCM seal, 1350 B, HPKE AES-128-GCM open, 1350 B, Blind RSA-2048 blind, Blind RSA-2048 sign, Blind RSA-2048 finalize, Blind RSA-2048 verify, OPRF ristretto255 blind, OPRF ristretto255 evaluate, OPRF ristretto255 finalize, VOPRF P-384 blind, VOPRF P-384 evaluate, VOPRF P-384 finalize, ECVRF edwards25519 prove, ECVRF edwards25519 verify, ECVRF P-256 prove, ECVRF P-256 verify, SPAKE2+ P-256 prover share, SPAKE2+ P-256 verifier share and confirmation, SPAKE2+ P-256 prover confirmation and key, SPAKE2+ P-256 verifier key, Argon2id 16 MiB t=1 p=1, Argon2id 64 MiB t=3 p=4.
+Not timed on `desktop`: full handshake, X25519, every logical CPU, resumed handshake, X25519, every logical CPU, one record, AES-128-GCM, 64 B, one record, AES-128-GCM, 256 B, one record, AES-128-GCM, 1 KB, one record, ChaCha20-Poly1305, 64 B, one record, ChaCha20-Poly1305, 256 B, one record, ChaCha20-Poly1305, 1 KB, SHA3-256, 64 B, SHA3-256, 1350 B, SHA3-256, 16 KB, SHA3-512, 64 B, SHA3-512, 1350 B, SHA3-512, 16 KB, ML-KEM-1024 key generation, ML-KEM-1024 encapsulate, ML-KEM-1024 decapsulate, ML-KEM-512 key generation, ML-KEM-512 encapsulate, ML-KEM-512 decapsulate, ML-DSA-65 key generation, ML-DSA-65 sign, ML-DSA-65 verify, ML-DSA-65 load and verify, HPKE X25519 sender setup, HPKE X25519 recipient setup, HPKE AES-128-GCM seal, 1350 B, HPKE AES-128-GCM open, 1350 B, Blind RSA-2048 blind, Blind RSA-2048 sign, Blind RSA-2048 finalize, Blind RSA-2048 verify, OPRF ristretto255 blind, OPRF ristretto255 evaluate, OPRF ristretto255 finalize, VOPRF P-384 blind, VOPRF P-384 evaluate, VOPRF P-384 finalize, ECVRF edwards25519 prove, ECVRF edwards25519 verify, ECVRF P-256 prove, ECVRF P-256 verify, SPAKE2+ P-256 prover share, SPAKE2+ P-256 verifier share and confirmation, SPAKE2+ P-256 prover confirmation and key, SPAKE2+ P-256 verifier key, Argon2id 16 MiB t=1 p=1, Argon2id 64 MiB t=3 p=4, SLH-DSA-SHA2-128s key generation, SLH-DSA-SHA2-128s sign, SLH-DSA-SHA2-128s verify, SLH-DSA-SHA2-128f key generation, SLH-DSA-SHA2-128f sign, SLH-DSA-SHA2-128f verify, SLH-DSA-SHAKE-128f key generation, SLH-DSA-SHAKE-128f sign, SLH-DSA-SHAKE-128f verify.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="benchmarks/desktop-dark.svg">
@@ -175,6 +192,12 @@ Not timed on `desktop`: full handshake, X25519, every logical CPU, resumed hands
 | 1 MB transfer, AES-128-GCM | 168.21 µs | 233.34 µs | 170.08 µs | - | 289.61 µs | - | 250.85 µs |
 | 1 MB transfer, AES-256-GCM | 184.54 µs | 265.29 µs | 188.67 µs | - | 337.96 µs | - | 285.79 µs |
 | 1 MB transfer, ChaCha20-Poly1305 | 596.91 µs | 595.41 µs | 590.49 µs | - | 1.16 ms | - | 658.48 µs |
+| one record, AES-128-GCM, 64 B | - | - | - | - | - | - | - |
+| one record, AES-128-GCM, 256 B | - | - | - | - | - | - | - |
+| one record, AES-128-GCM, 1 KB | - | - | - | - | - | - | - |
+| one record, ChaCha20-Poly1305, 64 B | - | - | - | - | - | - | - |
+| one record, ChaCha20-Poly1305, 256 B | - | - | - | - | - | - | - |
+| one record, ChaCha20-Poly1305, 1 KB | - | - | - | - | - | - | - |
 | AES-128-GCM seal, 32 B | 20 ns | 38 ns | 41 ns | 73 ns | 42 ns | 171 ns | 57 ns |
 | AES-128-GCM seal, 1350 B | 93 ns | 159 ns | 119 ns | 278 ns | 226 ns | 1.98 µs | 160 ns |
 | AES-128-GCM seal, 16 KB | 799 ns | 1.32 µs | 818 ns | 2.49 µs | 2.05 µs | 22.05 µs | 1.35 µs |
@@ -265,6 +288,15 @@ Not timed on `desktop`: full handshake, X25519, every logical CPU, resumed hands
 | SPAKE2+ P-256 verifier key | - | - | - | - | - | - | - |
 | Argon2id 16 MiB t=1 p=1 | - | - | - | - | - | - | - |
 | Argon2id 64 MiB t=3 p=4 | - | - | - | - | - | - | - |
+| SLH-DSA-SHA2-128s key generation | - | - | - | - | - | - | - |
+| SLH-DSA-SHA2-128s sign | - | - | - | - | - | - | - |
+| SLH-DSA-SHA2-128s verify | - | - | - | - | - | - | - |
+| SLH-DSA-SHA2-128f key generation | - | - | - | - | - | - | - |
+| SLH-DSA-SHA2-128f sign | - | - | - | - | - | - | - |
+| SLH-DSA-SHA2-128f verify | - | - | - | - | - | - | - |
+| SLH-DSA-SHAKE-128f key generation | - | - | - | - | - | - | - |
+| SLH-DSA-SHAKE-128f sign | - | - | - | - | - | - | - |
+| SLH-DSA-SHAKE-128f verify | - | - | - | - | - | - | - |
 
 </details>
 
@@ -273,6 +305,8 @@ Not timed on `desktop`: full handshake, X25519, every logical CPU, resumed hands
 Measured 2026-11-21 at [`fbdc801e`](https://github.com/kixel-ai/rind/commit/fbdc801e090ec1d476a01ca8c24be688baed5a7f), on Fedora Linux 45 (Workstation Edition) (Linux 7.3.3-300.fc45.x86_64) with rustc 1.98.1 (48a229cea 2026-09-01).
 
 The maintainer's Fedora workstation and the report's only AVX-512 host, so the one whose table times rind's AVX-512 AES-GCM, IFMA RSA, and 8-way ML-KEM sampler against every library. It also runs CI runners and agent sessions, so its times are noisier than the other dedicated hosts'. Zen 5 keeps its clock with 512-bit vectors, so this host cannot show what they cost on the Intel cores that slow down.
+
+Not timed on `fedora`: one record, AES-128-GCM, 64 B, one record, AES-128-GCM, 256 B, one record, AES-128-GCM, 1 KB, one record, ChaCha20-Poly1305, 64 B, one record, ChaCha20-Poly1305, 256 B, one record, ChaCha20-Poly1305, 1 KB, SLH-DSA-SHA2-128s key generation, SLH-DSA-SHA2-128s sign, SLH-DSA-SHA2-128s verify, SLH-DSA-SHA2-128f key generation, SLH-DSA-SHA2-128f sign, SLH-DSA-SHA2-128f verify, SLH-DSA-SHAKE-128f key generation, SLH-DSA-SHAKE-128f sign, SLH-DSA-SHAKE-128f verify.
 
 rind-rustls on all 32 logical CPUs runs full handshakes at 16.9 times and resumed handshakes at 15.8 times its one-thread rate.
 
@@ -297,6 +331,12 @@ rind-rustls on all 32 logical CPUs runs full handshakes at 16.9 times and resume
 | 1 MB transfer, AES-128-GCM | 113.66 µs | 119.60 µs | 185.84 µs | - | 135.82 µs | - | 141.69 µs | - |
 | 1 MB transfer, AES-256-GCM | 124.78 µs | 127.60 µs | 197.07 µs | - | 153.14 µs | - | 150.64 µs | - |
 | 1 MB transfer, ChaCha20-Poly1305 | 614.84 µs | 611.29 µs | 612.24 µs | - | 1.18 ms | - | 398.36 µs | - |
+| one record, AES-128-GCM, 64 B | - | - | - | - | - | - | - | - |
+| one record, AES-128-GCM, 256 B | - | - | - | - | - | - | - | - |
+| one record, AES-128-GCM, 1 KB | - | - | - | - | - | - | - | - |
+| one record, ChaCha20-Poly1305, 64 B | - | - | - | - | - | - | - | - |
+| one record, ChaCha20-Poly1305, 256 B | - | - | - | - | - | - | - | - |
+| one record, ChaCha20-Poly1305, 1 KB | - | - | - | - | - | - | - | - |
 | AES-128-GCM seal, 32 B | 29 ns | 54 ns | 44 ns | 108 ns | 57 ns | 240 ns | 73 ns | 35 ns |
 | AES-128-GCM seal, 1350 B | 91 ns | 121 ns | 155 ns | 403 ns | 146 ns | 2.50 µs | 133 ns | 86 ns |
 | AES-128-GCM seal, 16 KB | 506 ns | 611 ns | 1.06 µs | 3.42 µs | 755 ns | 27.79 µs | 606 ns | 470 ns |
@@ -387,6 +427,15 @@ rind-rustls on all 32 logical CPUs runs full handshakes at 16.9 times and resume
 | SPAKE2+ P-256 verifier key | 18 ns | - | - | 32 ns | - | - | - | - |
 | Argon2id 16 MiB t=1 p=1 | 2.54 ms | - | - | 4.13 ms | - | - | 4.65 ms | - |
 | Argon2id 64 MiB t=3 p=4 | 68.89 ms | - | - | 82.39 ms | - | - | 100.66 ms | - |
+| SLH-DSA-SHA2-128s key generation | - | - | - | - | - | - | - | - |
+| SLH-DSA-SHA2-128s sign | - | - | - | - | - | - | - | - |
+| SLH-DSA-SHA2-128s verify | - | - | - | - | - | - | - | - |
+| SLH-DSA-SHA2-128f key generation | - | - | - | - | - | - | - | - |
+| SLH-DSA-SHA2-128f sign | - | - | - | - | - | - | - | - |
+| SLH-DSA-SHA2-128f verify | - | - | - | - | - | - | - | - |
+| SLH-DSA-SHAKE-128f key generation | - | - | - | - | - | - | - | - |
+| SLH-DSA-SHAKE-128f sign | - | - | - | - | - | - | - | - |
+| SLH-DSA-SHAKE-128f verify | - | - | - | - | - | - | - | - |
 
 </details>
 
@@ -396,7 +445,7 @@ Measured 2026-11-12 at [`0d2e74b4`](https://github.com/kixel-ai/rind/commit/0d2e
 
 The maintainer's MacBook, in daily use. Its cores have DIT, and this run timed rind two ways. The AES-GCM, ChaCha20-Poly1305, header protection, SHA-2, HMAC, and HKDF rows hold `rind::cpu::Dit::hold()` across calls, as MoQ does and as the report's rind column assumes. rind's other rows set DIT around each call. In the run before, rows timed both ways paid 20 to 120 ns a call for that toggle, so the other primitive rows likely overstate rind's time until re-measured holding DIT. In the rustls rows, holding DIT would also run rustls' own code with it on, a cost not yet measured, so which way they would move is open.
 
-Not timed on `kixtop`: full handshake, X25519, every logical CPU, resumed handshake, X25519, every logical CPU, ML-KEM-1024 key generation, ML-KEM-1024 encapsulate, ML-KEM-1024 decapsulate, ML-KEM-512 key generation, ML-KEM-512 encapsulate, ML-KEM-512 decapsulate, ML-DSA-65 load and verify, HPKE X25519 sender setup, HPKE X25519 recipient setup, HPKE AES-128-GCM seal, 1350 B, HPKE AES-128-GCM open, 1350 B, Blind RSA-2048 blind, Blind RSA-2048 sign, Blind RSA-2048 finalize, Blind RSA-2048 verify, OPRF ristretto255 blind, OPRF ristretto255 evaluate, OPRF ristretto255 finalize, VOPRF P-384 blind, VOPRF P-384 evaluate, VOPRF P-384 finalize, ECVRF edwards25519 prove, ECVRF edwards25519 verify, ECVRF P-256 prove, ECVRF P-256 verify, SPAKE2+ P-256 prover share, SPAKE2+ P-256 verifier share and confirmation, SPAKE2+ P-256 prover confirmation and key, SPAKE2+ P-256 verifier key, Argon2id 16 MiB t=1 p=1, Argon2id 64 MiB t=3 p=4.
+Not timed on `kixtop`: full handshake, X25519, every logical CPU, resumed handshake, X25519, every logical CPU, one record, AES-128-GCM, 64 B, one record, AES-128-GCM, 256 B, one record, AES-128-GCM, 1 KB, one record, ChaCha20-Poly1305, 64 B, one record, ChaCha20-Poly1305, 256 B, one record, ChaCha20-Poly1305, 1 KB, ML-KEM-1024 key generation, ML-KEM-1024 encapsulate, ML-KEM-1024 decapsulate, ML-KEM-512 key generation, ML-KEM-512 encapsulate, ML-KEM-512 decapsulate, ML-DSA-65 load and verify, HPKE X25519 sender setup, HPKE X25519 recipient setup, HPKE AES-128-GCM seal, 1350 B, HPKE AES-128-GCM open, 1350 B, Blind RSA-2048 blind, Blind RSA-2048 sign, Blind RSA-2048 finalize, Blind RSA-2048 verify, OPRF ristretto255 blind, OPRF ristretto255 evaluate, OPRF ristretto255 finalize, VOPRF P-384 blind, VOPRF P-384 evaluate, VOPRF P-384 finalize, ECVRF edwards25519 prove, ECVRF edwards25519 verify, ECVRF P-256 prove, ECVRF P-256 verify, SPAKE2+ P-256 prover share, SPAKE2+ P-256 verifier share and confirmation, SPAKE2+ P-256 prover confirmation and key, SPAKE2+ P-256 verifier key, Argon2id 16 MiB t=1 p=1, Argon2id 64 MiB t=3 p=4, SLH-DSA-SHA2-128s key generation, SLH-DSA-SHA2-128s sign, SLH-DSA-SHA2-128s verify, SLH-DSA-SHA2-128f key generation, SLH-DSA-SHA2-128f sign, SLH-DSA-SHA2-128f verify, SLH-DSA-SHAKE-128f key generation, SLH-DSA-SHAKE-128f sign, SLH-DSA-SHAKE-128f verify, AES-128-GCM seal, 32 B, DIT set per call, AES-128-GCM seal, 1350 B, DIT set per call, ChaCha20-Poly1305 seal, 32 B, DIT set per call, ChaCha20-Poly1305 seal, 1350 B, DIT set per call, X25519, DIT set per call, Ed25519 sign, DIT set per call, Ed25519 verify, DIT set per call, P-256 ECDSA sign, DIT set per call, P-256 ECDSA verify, DIT set per call, one record, AES-128-GCM, 64 B, DIT set per call.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="benchmarks/kixtop-dark.svg">
@@ -419,6 +468,12 @@ Not timed on `kixtop`: full handshake, X25519, every logical CPU, resumed handsh
 | 1 MB transfer, AES-128-GCM | 296.33 µs | 292.60 µs | 361.56 µs | - | 312.02 µs | - | 323.80 µs |
 | 1 MB transfer, AES-256-GCM | 330.76 µs | 324.80 µs | 373.95 µs | - | 387.84 µs | - | 356.52 µs |
 | 1 MB transfer, ChaCha20-Poly1305 | 1.11 ms | 1.11 ms | 1.10 ms | - | 1.75 ms | - | 1.09 ms |
+| one record, AES-128-GCM, 64 B | - | - | - | - | - | - | - |
+| one record, AES-128-GCM, 256 B | - | - | - | - | - | - | - |
+| one record, AES-128-GCM, 1 KB | - | - | - | - | - | - | - |
+| one record, ChaCha20-Poly1305, 64 B | - | - | - | - | - | - | - |
+| one record, ChaCha20-Poly1305, 256 B | - | - | - | - | - | - | - |
+| one record, ChaCha20-Poly1305, 1 KB | - | - | - | - | - | - | - |
 | AES-128-GCM seal, 32 B | 12 ns | 50 ns | 42 ns | 24 ns | 78 ns | 54 ns | 70 ns |
 | AES-128-GCM seal, 1350 B | 163 ns | 180 ns | 212 ns | 216 ns | 217 ns | 617 ns | 196 ns |
 | AES-128-GCM seal, 16 KB | 1.43 µs | 1.45 µs | 1.95 µs | 2.31 µs | 1.61 µs | 6.94 µs | 1.52 µs |
@@ -509,6 +564,25 @@ Not timed on `kixtop`: full handshake, X25519, every logical CPU, resumed handsh
 | SPAKE2+ P-256 verifier key | - | - | - | - | - | - | - |
 | Argon2id 16 MiB t=1 p=1 | - | - | - | - | - | - | - |
 | Argon2id 64 MiB t=3 p=4 | - | - | - | - | - | - | - |
+| SLH-DSA-SHA2-128s key generation | - | - | - | - | - | - | - |
+| SLH-DSA-SHA2-128s sign | - | - | - | - | - | - | - |
+| SLH-DSA-SHA2-128s verify | - | - | - | - | - | - | - |
+| SLH-DSA-SHA2-128f key generation | - | - | - | - | - | - | - |
+| SLH-DSA-SHA2-128f sign | - | - | - | - | - | - | - |
+| SLH-DSA-SHA2-128f verify | - | - | - | - | - | - | - |
+| SLH-DSA-SHAKE-128f key generation | - | - | - | - | - | - | - |
+| SLH-DSA-SHAKE-128f sign | - | - | - | - | - | - | - |
+| SLH-DSA-SHAKE-128f verify | - | - | - | - | - | - | - |
+| AES-128-GCM seal, 32 B, DIT set per call | - | - | - | - | - | - | - |
+| AES-128-GCM seal, 1350 B, DIT set per call | - | - | - | - | - | - | - |
+| ChaCha20-Poly1305 seal, 32 B, DIT set per call | - | - | - | - | - | - | - |
+| ChaCha20-Poly1305 seal, 1350 B, DIT set per call | - | - | - | - | - | - | - |
+| X25519, DIT set per call | - | - | - | - | - | - | - |
+| Ed25519 sign, DIT set per call | - | - | - | - | - | - | - |
+| Ed25519 verify, DIT set per call | - | - | - | - | - | - | - |
+| P-256 ECDSA sign, DIT set per call | - | - | - | - | - | - | - |
+| P-256 ECDSA verify, DIT set per call | - | - | - | - | - | - | - |
+| one record, AES-128-GCM, 64 B, DIT set per call | - | - | - | - | - | - | - |
 
 </details>
 
@@ -517,6 +591,8 @@ Not timed on `kixtop`: full handshake, X25519, every logical CPU, resumed handsh
 Measured 2026-11-17 at [`93c8bcd7`](https://github.com/kixel-ai/rind/commit/93c8bcd705a05136e534fee4b463ab1ba56162bf), on NixOS 26.11 (Zokor) (Linux 6.18.40) with rustc 1.98.1 (48a229cea 2026-09-01).
 
 OVH VPS in Virginia, 4 shared vCPUs: other tenants add noise that a dedicated host's times lack.
+
+Not timed on `ovh-iad`: one record, AES-128-GCM, 64 B, one record, AES-128-GCM, 256 B, one record, AES-128-GCM, 1 KB, one record, ChaCha20-Poly1305, 64 B, one record, ChaCha20-Poly1305, 256 B, one record, ChaCha20-Poly1305, 1 KB, SLH-DSA-SHA2-128s key generation, SLH-DSA-SHA2-128s sign, SLH-DSA-SHA2-128s verify, SLH-DSA-SHA2-128f key generation, SLH-DSA-SHA2-128f sign, SLH-DSA-SHA2-128f verify, SLH-DSA-SHAKE-128f key generation, SLH-DSA-SHAKE-128f sign, SLH-DSA-SHAKE-128f verify.
 
 rind-rustls on all 4 logical CPUs runs full handshakes at 2.9 times and resumed handshakes at 2.7 times its one-thread rate.
 
@@ -543,6 +619,12 @@ graviola isn't timed on `ovh-iad`: it requires ADX, which this CPU lacks.
 | 1 MB transfer, AES-128-GCM | 728.87 µs | 783.43 µs | 805.42 µs | - | - | 810.57 µs | - |
 | 1 MB transfer, AES-256-GCM | 900.56 µs | 952.21 µs | 900.37 µs | - | - | 990.11 µs | - |
 | 1 MB transfer, ChaCha20-Poly1305 | 1.48 ms | 1.52 ms | 1.67 ms | - | - | 1.82 ms | - |
+| one record, AES-128-GCM, 64 B | - | - | - | - | - | - | - |
+| one record, AES-128-GCM, 256 B | - | - | - | - | - | - | - |
+| one record, AES-128-GCM, 1 KB | - | - | - | - | - | - | - |
+| one record, ChaCha20-Poly1305, 64 B | - | - | - | - | - | - | - |
+| one record, ChaCha20-Poly1305, 256 B | - | - | - | - | - | - | - |
+| one record, ChaCha20-Poly1305, 1 KB | - | - | - | - | - | - | - |
 | AES-128-GCM seal, 32 B | 71 ns ✓ | 143 ns | 116 ns | 159 ns | 449 ns | 244 ns | 103 ns |
 | AES-128-GCM seal, 1350 B | 405 ns ✓ | 560 ns | 453 ns | 896 ns | 5.52 µs | 594 ns | 466 ns |
 | AES-128-GCM seal, 16 KB | 3.74 µs ✓ | 3.93 µs | 3.95 µs | 8.97 µs | 61.44 µs | 4.03 µs | 3.81 µs |
@@ -633,6 +715,15 @@ graviola isn't timed on `ovh-iad`: it requires ADX, which this CPU lacks.
 | SPAKE2+ P-256 verifier key | 130 ns | - | - | 293 ns | - | - | - |
 | Argon2id 16 MiB t=1 p=1 | 11.79 ms | - | - | 13.28 ms | - | 19.19 ms | - |
 | Argon2id 64 MiB t=3 p=4 | 185.63 ms | - | - | 227.05 ms | - | 281.00 ms | - |
+| SLH-DSA-SHA2-128s key generation | - | - | - | - | - | - | - |
+| SLH-DSA-SHA2-128s sign | - | - | - | - | - | - | - |
+| SLH-DSA-SHA2-128s verify | - | - | - | - | - | - | - |
+| SLH-DSA-SHA2-128f key generation | - | - | - | - | - | - | - |
+| SLH-DSA-SHA2-128f sign | - | - | - | - | - | - | - |
+| SLH-DSA-SHA2-128f verify | - | - | - | - | - | - | - |
+| SLH-DSA-SHAKE-128f key generation | - | - | - | - | - | - | - |
+| SLH-DSA-SHAKE-128f sign | - | - | - | - | - | - | - |
+| SLH-DSA-SHAKE-128f verify | - | - | - | - | - | - | - |
 
 </details>
 
@@ -641,6 +732,8 @@ graviola isn't timed on `ovh-iad`: it requires ADX, which this CPU lacks.
 Measured 2026-11-17 at [`93c8bcd7`](https://github.com/kixel-ai/rind/commit/93c8bcd705a05136e534fee4b463ab1ba56162bf), on NixOS 26.11 (Zokor) (Linux 6.18.40) with rustc 1.98.1 (48a229cea 2026-09-01).
 
 OVH VPS in Oregon, 4 shared vCPUs: other tenants add noise that a dedicated host's times lack.
+
+Not timed on `ovh-sea`: one record, AES-128-GCM, 64 B, one record, AES-128-GCM, 256 B, one record, AES-128-GCM, 1 KB, one record, ChaCha20-Poly1305, 64 B, one record, ChaCha20-Poly1305, 256 B, one record, ChaCha20-Poly1305, 1 KB, SLH-DSA-SHA2-128s key generation, SLH-DSA-SHA2-128s sign, SLH-DSA-SHA2-128s verify, SLH-DSA-SHA2-128f key generation, SLH-DSA-SHA2-128f sign, SLH-DSA-SHA2-128f verify, SLH-DSA-SHAKE-128f key generation, SLH-DSA-SHAKE-128f sign, SLH-DSA-SHAKE-128f verify.
 
 rind-rustls on all 4 logical CPUs runs full handshakes at 3.4 times and resumed handshakes at 3.7 times its one-thread rate.
 
@@ -667,6 +760,12 @@ graviola isn't timed on `ovh-sea`: it requires ADX, which this CPU lacks.
 | 1 MB transfer, AES-128-GCM | 747.50 µs | 708.84 µs | 701.02 µs | - | - | 806.31 µs | - |
 | 1 MB transfer, AES-256-GCM | 862.38 µs | 886.37 µs | 842.84 µs | - | - | 948.07 µs | - |
 | 1 MB transfer, ChaCha20-Poly1305 | 1.44 ms | 1.44 ms | 1.44 ms | - | - | 1.74 ms | - |
+| one record, AES-128-GCM, 64 B | - | - | - | - | - | - | - |
+| one record, AES-128-GCM, 256 B | - | - | - | - | - | - | - |
+| one record, AES-128-GCM, 1 KB | - | - | - | - | - | - | - |
+| one record, ChaCha20-Poly1305, 64 B | - | - | - | - | - | - | - |
+| one record, ChaCha20-Poly1305, 256 B | - | - | - | - | - | - | - |
+| one record, ChaCha20-Poly1305, 1 KB | - | - | - | - | - | - | - |
 | AES-128-GCM seal, 32 B | 67 ns ✓ | 150 ns | 111 ns | 162 ns | 437 ns | 237 ns | 100 ns |
 | AES-128-GCM seal, 1350 B | 379 ns ✓ | 458 ns | 431 ns | 855 ns | 5.41 µs | 561 ns | 444 ns |
 | AES-128-GCM seal, 16 KB | 3.67 µs ✓ | 3.75 µs | 3.88 µs | 8.67 µs | 60.47 µs | 3.94 µs | 3.82 µs |
@@ -757,6 +856,15 @@ graviola isn't timed on `ovh-sea`: it requires ADX, which this CPU lacks.
 | SPAKE2+ P-256 verifier key | 118 ns | - | - | 192 ns | - | - | - |
 | Argon2id 16 MiB t=1 p=1 | 11.48 ms | - | - | 12.23 ms | - | 16.94 ms | - |
 | Argon2id 64 MiB t=3 p=4 | 185.54 ms | - | - | 214.99 ms | - | 266.82 ms | - |
+| SLH-DSA-SHA2-128s key generation | - | - | - | - | - | - | - |
+| SLH-DSA-SHA2-128s sign | - | - | - | - | - | - | - |
+| SLH-DSA-SHA2-128s verify | - | - | - | - | - | - | - |
+| SLH-DSA-SHA2-128f key generation | - | - | - | - | - | - | - |
+| SLH-DSA-SHA2-128f sign | - | - | - | - | - | - | - |
+| SLH-DSA-SHA2-128f verify | - | - | - | - | - | - | - |
+| SLH-DSA-SHAKE-128f key generation | - | - | - | - | - | - | - |
+| SLH-DSA-SHAKE-128f sign | - | - | - | - | - | - | - |
+| SLH-DSA-SHAKE-128f verify | - | - | - | - | - | - | - |
 
 </details>
 
@@ -876,13 +984,13 @@ Measured 2026-11-17 at [`93c8bcd7`](https://github.com/kixel-ai/rind/commit/93c8
 
 ## CPU tiers
 
-GitHub's runners, timed by the weekly `bench` workflow with CPU features denied as `bench.yml` describes: x86_64 runs every feature, its name suffixed with the AES-GCM tier the runner drew (AVX-512 or VAES AVX2); no IFMA denies AVX-512 IFMA, and no AVX-512 all of AVX-512 but VAES and VPCLMULQDQ; from no ADX, each column denies more (no ADX: ADX and AVX-512 IFMA; no AVX2: also AVX2, BMI2, SHA-NI, AVX-512, VAES, and VPCLMULQDQ; no AVX: also AVX; no AES-NI: also AES-NI, PCLMULQDQ, and SSE4.1; SSE2: also SSSE3). aarch64 runs with the crypto extension, no SHA-3 without the SHA-512 and SHA-3 instructions, no crypto without any of them, armv7 in 32-bit mode on the same core, and armv7 NEON there without the crypto extension. portable times rind's portable backend, forced with `--cfg rind_portable`, against aws-lc's C built without assembly; ring has no such build, and verified-garbage runs its assembly there, so both sit that column out. Each cell is rind's time over the fastest of aws-lc-rs, ring, and verified-garbage (without ring where a feature is denied, since ring can't be denied one), in the row's benchmark where rind trails most. Known gaps compares a tier against aws-lc-rs and ring only, so a cell that only verified-garbage beats gets a quest that switches rind to its proven code, not an entry there. An empty cell isn't timed: it runs the same code as the cell to its left, or, in a row built on other primitives such as `rustls-bulk/*` or HPKE, its tier times only those primitives, whose own rows show the difference.
+GitHub's runners, timed by the weekly `bench` workflow with CPU features denied as `bench.yml` describes: x86_64 runs every feature, its name suffixed with the AES-GCM tier the runner drew (AVX-512 or VAES AVX2); no IFMA denies AVX-512 IFMA, and no AVX-512 all of AVX-512 but VAES and VPCLMULQDQ; from no ADX, each column denies more (no ADX: ADX and AVX-512 IFMA; no AVX2: also AVX2, BMI2, SHA-NI, AVX-512, VAES, and VPCLMULQDQ; no AVX: also AVX; no AES-NI: also AES-NI, PCLMULQDQ, and SSE4.1; SSE2: also SSSE3). aarch64 runs with the crypto extension, no SHA-3 without the SHA-512 and SHA-3 instructions, no crypto without any of them, armv7 in 32-bit mode on the same core, and armv7 NEON there without the crypto extension. portable times rind's portable backend, forced with `--cfg rind_portable`, against aws-lc's C built without assembly; ring has no such build, and verified-garbage runs its assembly there, so both sit that column out. Each cell is rind's time over the fastest of aws-lc-rs, ring, and verified-garbage (without ring where a feature is denied, since ring can't be denied one), in the row's benchmark where rind trails most. Argon2id, SLH-DSA, and the protocols, which neither aws-lc-rs nor ring offers, are timed against RustCrypto instead, on the x86_64, aarch64, and armv7 columns alone, since RustCrypto's CPU detection can't be denied a feature. Known gaps compares a tier against aws-lc-rs, ring, and RustCrypto only, so a cell that only verified-garbage beats gets a quest that switches rind to its proven code, not an entry there. An empty cell isn't timed: it runs the same code as the cell to its left, or, in a row built on other primitives such as `rustls-bulk/*` or HPKE, its tier times only those primitives, whose own rows show the difference.
 
 From [run 43646114817](https://github.com/kixel-ai/rind/actions/runs/43646114817), 2026-11-14 at [`62856c6b`](https://github.com/kixel-ai/rind/commit/62856c6b461ecd7a263b7f05fc6fb1b8e1cc6e19), on AMD EPYC 7763 64-Core Processor, AMD EPYC 9V45 96-Core Processor, AMD EPYC 9V74 80-Core Processor, Intel(R) Xeon(R) 6975P-C, Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz, Neoverse-N2.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="benchmarks/tiers-dark.svg">
-  <img alt="rind's time over the fastest of aws-lc-rs, ring, and verified-garbage, by CPU tier" src="benchmarks/tiers.svg">
+  <img alt="rind's time over the fastest of aws-lc-rs, ring, RustCrypto, and verified-garbage, by CPU tier" src="benchmarks/tiers.svg">
 </picture>
 
 <details>
@@ -1246,8 +1354,7 @@ The CPU tiers rank every weekly benchmark but these, so none of them is a gap, w
 
 - RSA key generation: its time varies too much from run to run to rank.
 - A JWT's `load` rows: aws-lc-rs's provider parses the key only when it signs or verifies, so only `token`, which includes loading, compares.
-- Blind RSA, OPRF, VRF, SPAKE2+, and Argon2id: neither aws-lc-rs nor ring offers the protocol, so there is no baseline, and the report's hosts compare it.
-- SLH-DSA: neither aws-lc-rs nor ring offers it, so there is no baseline.
+- DIT set per call: rind's rows timed again without holding DIT, on aarch64, which only rind is timed in, so they compare with its rows holding it.
 
 | Operation | On | rind's time over the fastest | Decision |
 |---|---|---|---|

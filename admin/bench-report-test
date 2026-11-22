@@ -204,12 +204,28 @@ class Render(unittest.TestCase):
     def test_site_data_draws_a_tiers_fastest_from_the_heatmaps_rivals(self):
         columns = {c["name"]: c for c in br.site_data({}, TIERS, VERIFIED, [])["tiers"]["columns"]}
         x86, portable = columns["x86_64"], columns["portable"]
-        self.assertEqual(x86["rivals"], ["rind", "aws-lc-rs", "ring", "verified-garbage"])
+        self.assertEqual(x86["rivals"], ["rind", "aws-lc-rs", "ring", "rustcrypto", "verified-garbage"])
         self.assertEqual(x86["fastest"]["chacha20/*/32B"], "verified-garbage")
-        self.assertEqual(portable["rivals"], ["rind", "aws-lc-rs", "ring"])
+        self.assertEqual(portable["rivals"], ["rind", "aws-lc-rs", "ring", "rustcrypto"])
         self.assertEqual(portable["fastest"]["sha256/*/64B"], "rind")
         # The portable column still shows verified-garbage's time, with its ratio.
         self.assertIn("verified-garbage", portable["libraries"])
+
+    def test_dit_per_call_row_ranks_against_the_held_rows_rivals(self):
+        h = hosts()
+        h["kixtop"]["results"].append({"operation": "dit-per-call/x25519-ecdh/{lib}", "library": "rind", "ns": 50000.0})
+        titles = squares(br.host_svg("kixtop", h["kixtop"], VERIFIED, "light"))
+        self.assertIn("X25519, DIT set per call, rind: 50.00 µs, 1.25× the fastest", titles)
+        kixtop = next(x for x in br.site_data(h, None, VERIFIED, [])["hosts"] if x["name"] == "kixtop")
+        self.assertEqual(kixtop["fastest"]["dit-per-call/x25519-ecdh"], "ring")
+        md = br.report(h, None, VERIFIED, [])[br.REPORT]
+        self.assertIn("takes rind 30.00 µs more a call than holding it, in the row timed both ways", md)
+        # Only aarch64 has DIT, so an x86_64 host never lists the rows as untimed.
+        nixos = md.split("### `nixos`")[1].split("### `desktop`")[0]
+        self.assertNotIn("DIT set per call", nixos)
+        self.assertNotIn("setting DIT", br.host_svg("nixos", h["nixos"], VERIFIED, "light"))
+        self.assertIn("DIT set per call", re.search(r"Not timed on `kixtop`: (.*)", md).group(1))
+        self.assertIsNone(br.tier_row("dit-per-call/x25519-ecdh/*"))
 
     def test_ranks_every_aead_open_benchmark(self):
         for key in ["aes256-gcm-open/*/16KB", "chacha20poly1305-open/*/16KB"]:
