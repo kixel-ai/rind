@@ -13,11 +13,13 @@ fn draws_differ() {
     rng.try_fill_bytes(&mut b).unwrap();
     assert_ne!(a, b);
     assert_ne!(rng.try_next_u64().unwrap(), rng.try_next_u64().unwrap());
-    // Two equal draws of 32 bits happen once in 2^32 pairs.
+    // Two pairs of 32-bit draws match once in 2^64.
     assert_ne!(
         (rng.try_next_u32().unwrap(), rng.try_next_u32().unwrap()),
         (rng.try_next_u32().unwrap(), rng.try_next_u32().unwrap())
     );
+    // An empty request draws nothing and succeeds, as `fill` does.
+    rng.try_fill_bytes(&mut []).unwrap();
 }
 
 #[test]

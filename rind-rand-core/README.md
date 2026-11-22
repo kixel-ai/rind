@@ -9,6 +9,7 @@ Its version tracks rand_core's, so rind-rand-core 0.10 takes rand_core 0.10.
 
 ```toml
 [dependencies]
+rand_core = "0.10"
 rind-rand-core = "0.10"
 ```
 
@@ -28,8 +29,7 @@ let rng = UnwrapErr(SystemRandom);
 
 ## What rind cannot back
 
-rand_core ships no RNG of its own to match, so this crate has nothing to leave out.
-It adds only `SystemRandom`; `rind::rand::fill` remains rind's own way to draw bytes.
+Nothing: rand_core defines traits and ships no RNG whose API this crate could fall short of.
 
 ## WebAssembly
 
