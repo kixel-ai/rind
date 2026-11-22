@@ -215,8 +215,7 @@ macro_rules! constants {
 pub(crate) use constants;
 
 /// Returns a new `bytes` of `len` bytes that begins with `prefix`, the rest
-/// zeroed, after `fill` has written it in place. If `fill` fails, the buffer
-/// is wiped before it is freed, since it may hold part of a secret.
+/// zeroed, after `fill` has written it in place.
 ///
 /// Unlike `PyBytes::new_with`, this writes each byte once before `fill`
 /// rather than zeroing the whole buffer and then copying `prefix` over it,
@@ -240,11 +239,7 @@ pub(crate) fn bytes_with<'py>(
         let buffer = pyo3::ffi::PyBytes_AsString(object).cast::<u8>();
         core::ptr::copy_nonoverlapping(prefix.as_ptr(), buffer, prefix.len());
         core::ptr::write_bytes(buffer.add(prefix.len()), 0, len - prefix.len());
-        let out = core::slice::from_raw_parts_mut(buffer, len);
-        if let Err(e) = fill(&mut *out) {
-            out.zeroize();
-            return Err(e);
-        }
+        fill(core::slice::from_raw_parts_mut(buffer, len))?;
         Ok(bytes)
     }
 }
