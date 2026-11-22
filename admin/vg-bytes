@@ -193,11 +193,12 @@ class Static:
     __slots__ = ("section", "size", "data", "relocs", "path")
 
 
-def data_symbols(obj, keep=lambda path: True):
+def data_symbols(obj, keep, unique=False):
     """Each data symbol of `obj` that `keep` takes by its demangled path,
     by the path's last component, as a `Static`. Fails if two share a last
     component, since a relocation names a static by it, or if a static does
-    not start its section, which each has to itself."""
+    not start its section, which each has to itself, or if two statics it
+    takes start one section; with `unique`, if any two do, taken or not."""
     out = {}
     by_section = {}
     for line in run(["llvm-objdump", "-t", "-C", str(obj)]).splitlines():
@@ -209,7 +210,7 @@ def data_symbols(obj, keep=lambda path: True):
                 fail(f"{obj}: {m.group(4)} does not start its section {m.group(2)}")
             continue
         if m.group(2) in by_section:
-            if keep(m.group(4)) and keep(by_section[m.group(2)].path):
+            if unique or (keep(m.group(4)) and keep(by_section[m.group(2)].path)):
                 fail(f"{obj}: section {m.group(2)} starts two statics")
             if not keep(m.group(4)):
                 continue
@@ -254,7 +255,7 @@ def section_statics(obj):
     name. A relocation of a static local to its object may name the static's
     section instead, as LLVM's aarch64 backend does, and each static has a
     section of its own, so that section's start is the static."""
-    return data_symbols(obj, lambda path: False)[1]
+    return data_symbols(obj, lambda path: False, unique=True)[1]
 
 
 def relocation_target(sym, statics):
