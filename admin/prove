@@ -356,7 +356,7 @@ files_hash() {
 # Writes to `$out/keys/<name>`, and with `key` prints, the key the prove
 # workflow caches the result of the check `name` under, `<name>-<hash>`. The
 # workflow saves it only from main's nightly and dispatched runs, which read
-# no cached result, once the check passes, and a pull request skips a check
+# no cached result, once the check passes, and a push to main skips a check
 # whose key main saved. So the hash covers everything the check's result can
 # depend on: `paths`, which hold the program it compiles, with every file that
 # program loads inlined, and each file it reads as it runs; every file of the

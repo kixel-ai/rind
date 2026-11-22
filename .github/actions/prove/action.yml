@@ -24,7 +24,7 @@ runs:
         lookup-only: true
 
     # A key that differs from the one `keys` looked up would save an entry no
-    # lookup finds, so every pull request would miss without turning red.
+    # lookup finds, so every push to main would check it again without turning red.
     - name: Check
       if: steps.cache.outputs.cache-hit != 'true'
       shell: bash
@@ -44,7 +44,7 @@ runs:
     # names the inputs that passed.
     - name: Passed
       id: passed
-      if: steps.cache.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+      if: steps.cache.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main'
       shell: bash
       env:
         CHECK: ${{ inputs.check }}

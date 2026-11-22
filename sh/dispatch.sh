@@ -6,7 +6,7 @@
 # CHECK_FAIL_FAST=1 stops every lane at the first failed module, for the merge
 # queue, which ejects a failing group either way and gains nothing from the
 # rest.
-# CHECK_QUEUE=1 makes ci also run the checks GitHub runs on pull requests in
+# CHECK_QUEUE=1 makes ci also run checks that otherwise run only in scheduled
 # workflows of their own, when the diff touches their paths, for the merge
 # queue (see the queue modules below).
 # CHECK_TIMES=FILE also writes each module's wall seconds, CPU milliseconds,
@@ -104,19 +104,19 @@ module() {
     done
 }
 
-# The paths that trigger a workflow on a pull request, as one anchored regex
+# The paths that trigger a workflow on a push to main, as one anchored regex
 # over sh/changed.sh's paths: GitHub's `*` stays within a directory and `**`
 # crosses them. A glob this cannot convert is an error.
-pull_request_paths() {
+push_paths() {
     local globs glob regex=
-    globs=$(yq '.on.pull_request.paths[]' ".github/workflows/$1")
+    globs=$(yq '.on.push.paths[]' ".github/workflows/$1")
     [[ -n "$globs" ]] || {
-        echo "error: $1 lists no pull_request paths" >&2
+        echo "error: $1 lists no push paths" >&2
         return 1
     }
     while IFS= read -r glob; do
         [[ "$glob" =~ ^[A-Za-z0-9_./*-]+$ ]] || {
-            echo "error: $1's pull_request path '$glob' uses a pattern sh/dispatch.sh cannot convert" >&2
+            echo "error: $1's push path '$glob' uses a pattern sh/dispatch.sh cannot convert" >&2
             return 1
         }
         glob=${glob//./\\.}
@@ -130,27 +130,27 @@ pull_request_paths() {
     echo "^($regex)$"
 }
 
-# The merge queue's build runs the checks GitHub runs on a pull request in a
-# workflow of its own, when the group touches the paths that trigger it there,
-# so two PRs that each pass one alone cannot break it together on main. Each
-# reads its paths from its workflow, so the two selections cannot drift apart.
+# The merge queue's build gates on checks that otherwise run only in a
+# scheduled workflow of their own, when the group touches their inputs; pull
+# requests don't run them, since only the queue's result gates.
 # The group's build is the one self-hosted job queue-build.yml runs, on x86_64,
-# so `vg` checks only x86_64's code; `prove`'s arm job and the nightly cover
-# aarch64's. Plain assignments, so a failed read stops the run instead of
-# reading as a repository-wide pattern.
+# so `vg` checks only x86_64's code; the nightly `prove` covers aarch64's.
 if [[ "$action" == ci && -n "${CHECK_QUEUE:-}" ]]; then
     # pyca/verified-garbage's code against its Lean models, as `prove`'s vg
-    # job runs it, with the same fixed seed as a pull request.
-    paths=$(pull_request_paths prove.yml)
+    # job runs it, with a fixed seed, on the paths that start `prove` on
+    # main, read from its workflow so the two cannot drift apart. A plain
+    # assignment, so a failed read stops the run instead of reading as a
+    # repository-wide pattern.
+    paths=$(push_paths prove.yml)
     module vg "$paths" tools='nix yq' queue
     # Every importer and generator at its pinned upstream revision.
-    paths=$(pull_request_paths regenerate.yml)
-    module regenerate "$paths" tools='nix yq git' queue
+    module regenerate '^(admin/|thirdparty/s2n-bignum/|flake\.(nix|lock)$|\.github/workflows/regenerate\.yml$)' \
+        tools='nix git' queue
     # The tests under every Intel SDE model x86-cpu.yml runs, when the group
-    # reaches x86_64 code, as x86-cpu.yml selects them (see `check:sde`
-    # below), so a fault on one CPU's dispatch paths cannot land.
-    paths=$(pull_request_paths x86-cpu.yml)
-    module sde "$paths" tools='nix yq' queue
+    # reaches x86_64 code (see `check:sde` below), so a fault on one CPU's
+    # dispatch paths cannot land.
+    module sde '^(rind/|rind-[^/]*/|thirdparty/|Cargo\.(toml|lock)$|rust-toolchain(\.toml)?$|\.cargo/|flake\.(nix|lock)$|sh/(backends|changed)\.sh$|admin/x86-cpu$|\.github/(actions/|workflows/x86-cpu\.yml$))' \
+        tools='nix' queue
 fi
 
 # sh/select.sh narrows this to the changed crates and their dependents.
