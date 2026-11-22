@@ -1,4 +1,4 @@
-# [M] PR checks stop running for results no one reads
+# [S] PR checks stop running for results no one reads
 
 ## Goal
 
@@ -28,6 +28,8 @@ The maintainer's decisions, 2026-11-22, on #958:
 - ✅ Gate in the merge queue only the HOL Light targets whose cache key `main` hasn't already passed, once `lean` has a cache key of its own (rejected: leave `prove` advisory; gate all of `prove`).
 - ✅ "A lot of these non blocking PR checks should be nightly or weekly runs": a PR check that doesn't gate the merge moves off pull requests to a nightly or weekly run, and only gating checks stay on PRs (rejected: keeping advisory checks on PRs). This supersedes keeping `ctgrind` advisory on PRs, and the 2026-11-18 decisions in the [epic](/quest/m0/ci-speed/README.md) on what pull requests run.
 
+✅ The same day the maintainer picked how the HOL Light gate works (rejected: running the proofs in the queue's build, whose 60-minute limit the aarch64 proofs alone fill; gating only x86_64 and armv7), that `lean` gates the same way (rejected: nightly only), and that PR check becomes a required check, which dotfiles' `repo-settings` sets for kixel-ai's rulesets (rejected: dropping it).
+
 What #958 did with each pull-request check:
 
 | check | now | why that cadence |
@@ -40,23 +42,17 @@ What #958 did with each pull-request check:
 | ESP32-S3 SHA-256 layout | weekly (new) | one 30-minute job on code that rarely moves |
 | `x86-cpu` (three SDE models, ACVP on Diamond Rapids) | weekly | the queue runs every path set |
 | `regenerate` | nightly | the queue runs it on its inputs |
-| `prove` `keys`, HOL Light, `cosim` | nightly and on a push to main | the push checks the keys main lacks, so a failure names its commit |
-| `prove` `vg` | nightly | the queue runs x86_64's |
-| `prove` `lean`, `neon`, `spec-tests` | nightly | none gates |
+| `prove` HOL Light, `lean` | on a pull request and a push to main, each only for a key main lacks; nightly in full | the queue requires each key passed on main or the group's PR (`sh/proved.sh`) |
+| `prove` `cosim` | nightly and on a push to main | gates nothing |
+| `prove` `vg`, `neon`, `spec-tests`, bytes | nightly | the queue runs x86_64's `vg`; the rest gate nothing |
 | Site | dropped | PR check and the queue run the same `sh/site.sh` |
-| PR check | kept, waiting below | |
+| PR check | kept, to be required | a group the queue ejects costs a slot in a one-group-at-a-time queue |
 
-Left:
+Left: re-measure cancelled and post-merge hosted hours over the week after #958 lands, the same way (the script is in #958's Validation), and record them in the table above; then delete this quest.
 
-- Gate the uncached HOL Light targets, as the maintainer picks under Waiting, and give `lean` its own result key.
-- Re-measure over the week after that lands, the same way (the script is in #958's Validation).
+## Scheduled
 
-## Waiting
-
-- Maintainer: how the queue gates the HOL Light targets `main` hasn't passed. Running them in the queue build doesn't fit it: that build is one self-hosted job with a 60-minute limit, under the ruleset's 90-minute response window, and the queue builds one group at a time, while aarch64's proofs alone took 3753 s on a Ryzen 9 9950X and 2799 s on a Core Ultra 7 270K (the queue runner is a Ryzen 9 5900XT). Options: (A) run them in the queue build and raise both limits to about 150 and 180 minutes in dotfiles' `repo-settings`, so each such group holds the queue for an hour or more; (B) have the queue require the result rather than run it: a pull request runs only the HOL Light targets whose key `main` lacks, saving each passed key on the PR's own ref, and the queue build computes the group's keys (minutes) and fails any target whose key has no passed result on `main` or on that PR; (C) gate only x86_64 and armv7 in the queue build and leave aarch64 to the push to main. Recommendation: B, since it gates exactly the uncached targets for minutes of queue time; a forged key would need a PR edit to `prove.yml`, and the queue build already runs the PR's own code.
-- Maintainer: whether `lean` gates the same way once it has a key. Off pull requests, an edit under `proofs/` lands unchecked until the nightly. Recommendation: yes, by the mechanism picked above, since it then runs only when its inputs change.
-- Maintainer: whether PR check becomes a required check. It runs on every pull request, unfiltered, so it can be one, and it is the only early copy of the queue's `just ci`; [the catch-on-pr epic](/quest/m0/catch-on-pr/README.md) exists so a failure shows on its PR, not first in the queue. Options: require it in dotfiles' `repo-settings`; drop it, leaving failures to the queue and to agents' local `just ci`. Recommendation: require it, since a group the queue ejects costs a slot in a one-group-at-a-time queue.
-- Maintainer: [the catch-on-pr epic](/quest/m0/catch-on-pr/README.md)'s Goal, that a change breaking a check fails on its own pull request and main's nightly runs green, no longer holds for the checks now only scheduled. Recommendation: narrow it to the checks that gate, and leave a scheduled failure to its alert.
+- 2026-11-30 - a week of runs after #958 lands
 
 ## Related
 

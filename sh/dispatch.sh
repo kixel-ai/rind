@@ -131,8 +131,7 @@ push_paths() {
 }
 
 # The merge queue's build gates on checks that otherwise run only in a
-# scheduled workflow of their own, when the group touches their inputs; pull
-# requests don't run them, since only the queue's result gates.
+# workflow of their own, when the group touches their inputs.
 # The group's build is the one self-hosted job queue-build.yml runs, on x86_64,
 # so `vg` checks only x86_64's code; the nightly `prove` covers aarch64's.
 if [[ "$action" == ci && -n "${CHECK_QUEUE:-}" ]]; then
@@ -143,6 +142,13 @@ if [[ "$action" == ci && -n "${CHECK_QUEUE:-}" ]]; then
     # repository-wide pattern.
     paths=$(push_paths prove.yml)
     module vg "$paths" tools='nix yq' queue
+    # That every HOL Light target and the Lean proofs passed on this tree, on
+    # main or on the group's pull request, whose number queue-build.yml sets
+    # (sh/proved.sh). A build that names none, such as a local one, has no
+    # pull request to read results from.
+    if [[ -n ${PROVE_GATE_PR:-} ]]; then
+        module proved "$paths" tools='nix curl jq' queue
+    fi
     # Every importer and generator at its pinned upstream revision.
     module regenerate '^(admin/|thirdparty/s2n-bignum/|flake\.(nix|lock)$|\.github/workflows/regenerate\.yml$)' \
         tools='nix git' queue
@@ -622,6 +628,7 @@ step() {
             run nix develop .#ct-vartime --command admin/ct-vartime "${targets[@]}"
             ;;
         check:vg) run nix develop .#vg --command admin/prove vg ;;
+        check:proved) run sh/proved.sh ;;
         # Its own target directory, so its release build runs beside rs's
         # rather than behind Cargo's lock on target/.
         check:sde) CARGO_TARGET_DIR=target/sde run nix develop .#sde --command admin/x86-cpu all ;;

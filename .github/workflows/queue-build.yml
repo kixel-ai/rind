@@ -10,8 +10,11 @@ name: Queue build
 on:
   workflow_call:
 
+# `actions: read` lets sh/proved.sh read which proof results the prove
+# workflow saved; the group's code runs with it, as with every token here.
 permissions:
   contents: read
+  actions: read
 
 jobs:
   # Its context, `Queue build / Build`, is the one main's ruleset requires, so
@@ -31,8 +34,9 @@ jobs:
       BASE: ${{ github.event.merge_group.base_sha }}
       # A failure ejects the group whatever else fails, so stop at the first.
       CHECK_FAIL_FAST: 1
-      # Also `regenerate` and `prove`'s x86_64 `vg` when the group touches
-      # their paths, beside the other modules. They run here rather than on
+      # Also `regenerate`, `prove`'s x86_64 `vg`, the Intel SDE models, and
+      # the check that the group's proofs passed when the group touches their
+      # paths, beside the other modules. They run here rather than on
       # GitHub-hosted runners, whose queue waits (46 minutes at p90 in
       # November 2026) would run into this job's timeout.
       CHECK_QUEUE: 1
@@ -46,4 +50,14 @@ jobs:
         # behind the host's agent load.
         env:
           QUEST_GATE_PRIORITY: 1
-        run: nix develop --command quest gate just ci "$BASE"
+          GH_TOKEN: ${{ github.token }}
+          HEAD_REF: ${{ github.event.merge_group.head_ref }}
+        # The group's pull request, whose prove results sh/proved.sh accepts,
+        # from the group's branch, `gh-readonly-queue/<base>/pr-<N>-<sha>`.
+        run: |
+          [[ $HEAD_REF =~ /pr-([0-9]+)-[0-9a-f]+$ ]] || {
+            echo "::error::no pull request number in the merge group's branch $HEAD_REF"
+            exit 1
+          }
+          export PROVE_GATE_PR=${BASH_REMATCH[1]}
+          nix develop --command quest gate just ci "$BASE"

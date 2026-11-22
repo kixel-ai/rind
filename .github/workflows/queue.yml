@@ -28,8 +28,11 @@ on:
         description: The PR head commit to report the skipped required context on.
         required: true
 
+# queue-build.yml reads the prove workflow's saved results; a called
+# workflow gets no more than this.
 permissions:
   contents: read
+  actions: read
 
 # No concurrency group. Cancelling a pull request's run before its build job
 # skips, as a second event for the PR would, reports the required context
