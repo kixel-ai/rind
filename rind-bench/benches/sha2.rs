@@ -328,13 +328,25 @@ fn sha256_oneshot(c: &mut Criterion) {
         group.throughput(Throughput::Bytes(size as u64));
         for (lib, _dit) in criterion::rind_rows() {
             group.bench_with_input(BenchmarkId::new(lib, size_name), &input, |b, input| {
-                b.iter(|| black_box(rind::digest::digest(&rind::digest::SHA256, black_box(input))))
+                b.iter(|| {
+                    black_box(rind::digest::digest(
+                        &rind::digest::SHA256,
+                        black_box(input),
+                    ))
+                })
             });
         }
     }
 }
 
 #[cfg(not(target_arch = "xtensa"))]
-criterion_group!(benches, sha256, sha512, sha512_256, sha256_updates, sha256_oneshot);
+criterion_group!(
+    benches,
+    sha256,
+    sha512,
+    sha512_256,
+    sha256_updates,
+    sha256_oneshot
+);
 #[cfg(not(target_arch = "xtensa"))]
 criterion_main!(benches);
