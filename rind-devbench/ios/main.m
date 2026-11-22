@@ -90,7 +90,9 @@ static NSString *const kConsent = @"The run keeps the CPU busy (minutes on Quick
 @end
 
 @implementation VC {
-  UIStackView *body, *leftCol;
+  UIStackView *body, *leftCol, *pickCard;
+  UILabel *picksLbl;
+  BOOL isWide, showingRun;
   Flow *libFlow, *secFlow;
   UILabel *deviceLbl, *collectorLbl, *statusLbl, *currentLbl, *scoreLbl, *behindLbl;
   UIProgressView *progress;
@@ -125,9 +127,11 @@ static NSString *const kConsent = @"The run keeps the CPU busy (minutes on Quick
 - (UIButton *)chip:(NSString *)title on:(BOOL)on enabled:(BOOL)en {
   UIButton *b = [UIButton buttonWithType:UIButtonTypeCustom];
   [b setTitle:title forState:UIControlStateNormal];
-  b.titleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightSemibold];
+  BOOL small = [self compact];
+  b.titleLabel.font = [UIFont systemFontOfSize:small ? 13 : 14 weight:UIFontWeightSemibold];
   b.titleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
-  b.contentEdgeInsets = UIEdgeInsetsMake(7, 12, 7, 12); b.layer.cornerRadius = 15; b.layer.borderWidth = 1;
+  b.contentEdgeInsets = small ? UIEdgeInsetsMake(5, 10, 5, 10) : UIEdgeInsetsMake(7, 12, 7, 12);
+  b.layer.cornerRadius = small ? 13 : 15; b.layer.borderWidth = 1;
   b.selected = on; b.enabled = en;
   [b addTarget:self action:@selector(chipTapped:) forControlEvents:UIControlEventTouchUpInside];
   [self paintChip:b]; return b;
@@ -162,7 +166,9 @@ static NSString *const kConsent = @"The run keeps the CPU busy (minutes on Quick
   UIStackView *titleRow = [[UIStackView alloc] initWithArrangedSubviews:@[title, tag, [UIView new]]];
   titleRow.spacing = 10; titleRow.alignment = UIStackViewAlignmentLastBaseline;
   deviceLbl = [self label:@"Reading the list of tests…" size:13 weight:UIFontWeightMedium color:C_MUTED];
+  deviceLbl.numberOfLines = 2;
   collectorLbl = [self label:@"Results: looking for the computer that installed this app…" size:13 weight:UIFontWeightRegular color:C_MUTED];
+  collectorLbl.numberOfLines = 2;
   UIStackView *header = [[UIStackView alloc] initWithArrangedSubviews:@[titleRow, deviceLbl, collectorLbl]];
   header.axis = UILayoutConstraintAxisVertical; header.spacing = 4;
 
@@ -171,6 +177,7 @@ static NSString *const kConsent = @"The run keeps the CPU busy (minutes on Quick
   secFlow = [Flow new]; secFlow.gap = 8;
   UIStackView *pick = [self card:@[[self heading:@"Libraries"], libFlow, [self heading:@"Operations"], secFlow]];
   [pick setCustomSpacing:16 afterView:libFlow];
+  pickCard = pick;
 
   preset = [[UISegmentedControl alloc] initWithItems:@[@"Quick · 1 round", @"Full · 3 rounds"]];
   preset.selectedSegmentIndex = 0; preset.selectedSegmentTintColor = C_ACCENT;
@@ -198,6 +205,8 @@ static NSString *const kConsent = @"The run keeps the CPU busy (minutes on Quick
   // Right column: the run, summarised to fit. Every row's full timings go to
   // the collector and to this device's files.
   statusLbl = [self label:@"" size:16 weight:UIFontWeightBold color:nil];
+  // On a narrow screen the picker folds away during and after a run, and this line stands in for it.
+  picksLbl = [self label:@"" size:13 weight:UIFontWeightMedium color:C_ACCENT]; picksLbl.hidden = YES;
   progress = [[UIProgressView alloc] initWithProgressViewStyle:UIProgressViewStyleDefault];
   progress.progressTintColor = C_ACCENT; progress.trackTintColor = C_LINE; progress.progress = 0;
   currentLbl = [self label:@"" size:13 weight:UIFontWeightRegular color:C_MUTED]; currentLbl.numberOfLines = 2;
@@ -210,7 +219,7 @@ static NSString *const kConsent = @"The run keeps the CPU busy (minutes on Quick
   UIView *spring = [UIView new];
   [spring setContentHuggingPriority:UILayoutPriorityDefaultLow forAxis:UILayoutConstraintAxisVertical];
   UILabel *foot = [self label:@"An unofficial community tool, not run or endorsed by the rind maintainers." size:11 weight:UIFontWeightRegular color:C_MUTED];
-  UIStackView *results = [self card:@[[self heading:@"Run"], statusLbl, progress, currentLbl, scoreLbl, behindLbl, spring, foot]];
+  UIStackView *results = [self card:@[[self heading:@"Run"], picksLbl, statusLbl, progress, currentLbl, scoreLbl, behindLbl, spring, foot]];
   [results setContentHuggingPriority:UILayoutPriorityDefaultLow forAxis:UILayoutConstraintAxisVertical];
   [results setContentCompressionResistancePriority:UILayoutPriorityDefaultLow forAxis:UILayoutConstraintAxisVertical];
 
@@ -218,7 +227,10 @@ static NSString *const kConsent = @"The run keeps the CPU busy (minutes on Quick
   body.spacing = 12;
   [header setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisVertical];
   [leftCol setContentHuggingPriority:UILayoutPriorityDefaultHigh forAxis:UILayoutConstraintAxisVertical];
-  [leftCol setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisVertical];
+  // When a short screen can't fit everything, the run panel gives way first,
+  // then the picker (its chips are clipped), and never the run controls.
+  [run setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisVertical];
+  [pick setContentCompressionResistancePriority:UILayoutPriorityDefaultHigh - 10 forAxis:UILayoutConstraintAxisVertical];
   UIStackView *root = [[UIStackView alloc] initWithArrangedSubviews:@[header, body]];
   root.axis = UILayoutConstraintAxisVertical; root.spacing = 14; root.translatesAutoresizingMaskIntoConstraints = NO;
   [self.view addSubview:root];
@@ -242,15 +254,24 @@ static NSString *const kConsent = @"The run keeps the CPU busy (minutes on Quick
 
 // Wide screens put the picker and the run side by side; narrow ones stack them.
 - (void)arrange:(CGSize)size {
-  BOOL wide = size.width > size.height && size.width >= 700;
-  body.axis = wide ? UILayoutConstraintAxisHorizontal : UILayoutConstraintAxisVertical;
-  body.distribution = wide ? UIStackViewDistributionFillEqually : UIStackViewDistributionFill;
+  isWide = size.width > size.height && size.width >= 700;
+  [self foldPicker];
+  body.axis = isWide ? UILayoutConstraintAxisHorizontal : UILayoutConstraintAxisVertical;
+  body.distribution = isWide ? UIStackViewDistributionFillEqually : UIStackViewDistributionFill;
   body.alignment = UIStackViewAlignmentFill;
 }
 - (void)viewWillTransitionToSize:(CGSize)size withTransitionCoordinator:(id<UIViewControllerTransitionCoordinator>)c {
   [super viewWillTransitionToSize:size withTransitionCoordinator:c];
   [c animateAlongsideTransition:^(id<UIViewControllerTransitionCoordinatorContext> ctx) { [self arrange:size]; } completion:nil];
 }
+
+// Narrow screens have room for the picker or a run's results, not both: the
+// picker shows until Start, then folds into one line until Clear.
+- (void)foldPicker {
+  BOOL fold = showingRun && !isWide;
+  pickCard.hidden = fold; picksLbl.hidden = !fold;
+}
+- (BOOL)compact { return self.view.bounds.size.width < 500; }
 
 #pragma mark - catalog
 
@@ -259,9 +280,16 @@ static NSString *const kConsent = @"The run keeps the CPU busy (minutes on Quick
   if (!cat) { deviceLbl.text = @"Could not read the list of tests."; return; }
   NSDictionary *d = cat[@"device"];
   NSString *sha = [cat[@"rind_commit"] length] > 12 ? [cat[@"rind_commit"] substringToIndex:12] : cat[@"rind_commit"];
-  deviceLbl.text = [NSString stringWithFormat:@"%@ · %@ · %@ · rind %@ · %lu rows · OpenSSL %@",
-    d[@"product"], d[@"cpu"], d[@"os"], sha, (unsigned long)[cat[@"rows"] count],
-    [cat[@"openssl"] boolValue] ? @"built in" : @"not in this build"];
+  // Only the fields this device reports.
+  NSMutableArray *parts = [NSMutableArray new];
+  for (NSString *k in @[@"product", @"cpu", @"os"]) {
+    id v = d[k];
+    if ([v isKindOfClass:NSString.class] && [v length] && ![v isEqual:@"unknown"]) [parts addObject:v];
+  }
+  if (sha.length) [parts addObject:[@"rind " stringByAppendingString:sha]];
+  [parts addObject:[NSString stringWithFormat:@"%lu rows", (unsigned long)[cat[@"rows"] count]]];
+  [parts addObject:[cat[@"openssl"] boolValue] ? @"OpenSSL built in" : @"no OpenSSL in this build"];
+  deviceLbl.text = [parts componentsJoinedByString:@" · "];
   NSMutableDictionary *lc = [NSMutableDictionary new], *sc = [NSMutableDictionary new];
   for (NSDictionary *r in cat[@"rows"]) { lc[r[@"library"]] = @([lc[r[@"library"]] intValue] + 1); sc[r[@"section"]] = @([sc[r[@"section"]] intValue] + 1); }
   for (NSString *l in cat[@"libraries"]) {
@@ -330,6 +358,7 @@ static NSString *const kConsent = @"The run keeps the CPU busy (minutes on Quick
   if (running) return;
   agree.on = NO; clearBtn.hidden = YES;
   [startBtn setTitle:@"Start test" forState:UIControlStateNormal]; startBtn.hidden = NO;
+  showingRun = NO; [self foldPicker];
   [self setPicking:YES]; [self agreeChanged]; [self ready]; [self findCollector];
 }
 
@@ -357,6 +386,8 @@ static NSString *const kConsent = @"The run keeps the CPU busy (minutes on Quick
   UIApplication.sharedApplication.idleTimerDisabled = YES;
   startBtn.hidden = YES; clearBtn.hidden = YES; stopBtn.hidden = NO; stopBtn.enabled = YES; running = YES;
   [self setPicking:NO];
+  picksLbl.text = [NSString stringWithFormat:@"%@ · %lu libraries · %lu groups", full ? @"Full" : @"Quick", (unsigned long)libs.count, (unsigned long)secs.count];
+  showingRun = YES; [self foldPicker];
   statusLbl.text = @"Starting…"; scoreLbl.text = @""; behindLbl.text = @"";
   [self findCollector];
   [timer invalidate];
@@ -432,7 +463,7 @@ static NSString *const kConsent = @"The run keeps the CPU busy (minutes on Quick
 @end
 
 @interface AppDelegate : UIResponder <UIApplicationDelegate>
-@property (strong) UIWindow *window;
+@property (nonatomic, strong) UIWindow *window;
 @end
 @implementation AppDelegate
 - (BOOL)application:(UIApplication *)app didFinishLaunchingWithOptions:(NSDictionary *)o {

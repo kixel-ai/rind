@@ -47,8 +47,10 @@ public class MainActivity extends Activity {
         + "No name, account, serial or location. Results are also saved on this device.";
 
     private final Handler ui = new Handler(Looper.getMainLooper());
-    private LinearLayout body, leftCol;
+    private LinearLayout body, leftCol, pickCard;
     private View resultsCard;
+    private TextView picksLbl;
+    private boolean wide, showingRun;
     private Flow libFlow, secFlow;
     private TextView deviceLbl, statusLbl, currentLbl, scoreLbl, behindLbl, collectorLbl;
     private ProgressBar progress;
@@ -121,8 +123,10 @@ public class MainActivity extends Activity {
         parent.addView(v, lp);
     }
     private TextView chip(String title, boolean on, boolean en) {
-        TextView c = label(title, 14, Typeface.BOLD, TEXT);
-        c.setPadding(dp(12), dp(7), dp(12), dp(7)); c.setSingleLine(true);
+        boolean small = getResources().getConfiguration().screenWidthDp < 500;
+        TextView c = label(title, small ? 13 : 14, Typeface.BOLD, TEXT);
+        if (small) c.setPadding(dp(10), dp(5), dp(10), dp(5)); else c.setPadding(dp(12), dp(7), dp(12), dp(7));
+        c.setSingleLine(true);
         c.setEllipsize(android.text.TextUtils.TruncateAt.END);
         c.setSelected(on); c.setEnabled(en);
         c.setOnClickListener(v -> { if (!polling && v.isEnabled()) { v.setSelected(!v.isSelected()); paintChip((TextView) v); } });
@@ -172,8 +176,24 @@ public class MainActivity extends Activity {
         getWindow().setStatusBarColor(BG); getWindow().setNavigationBarColor(BG);
         LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(BG); root.setPadding(dp(20), dp(16), dp(20), dp(16));
-        root.setFitsSystemWindows(true);
         setContentView(root);
+        // Draw edge-to-edge on every version, as Android 15 does anyway for
+        // targetSdk 35, so the inset padding below is right everywhere.
+        if (Build.VERSION.SDK_INT >= 30) getWindow().setDecorFitsSystemWindows(false);
+        else root.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
+        // Android 15 draws a targetSdk 35 app under the status and navigation
+        // bars (edge-to-edge); keep the screen clear of them and of a cutout.
+        root.setOnApplyWindowInsetsListener((v, ins) -> {
+            int l, t, r, bt;
+            if (Build.VERSION.SDK_INT >= 30) {
+                android.graphics.Insets i = ins.getInsets(android.view.WindowInsets.Type.systemBars() | android.view.WindowInsets.Type.displayCutout());
+                l = i.left; t = i.top; r = i.right; bt = i.bottom;
+            } else {
+                l = ins.getSystemWindowInsetLeft(); t = ins.getSystemWindowInsetTop(); r = ins.getSystemWindowInsetRight(); bt = ins.getSystemWindowInsetBottom();
+            }
+            v.setPadding(dp(20) + l, dp(16) + t, dp(20) + r, dp(16) + bt);
+            return ins;
+        });
 
         // Header: name, device, where results go.
         LinearLayout titleRow = new LinearLayout(this); titleRow.setGravity(Gravity.BOTTOM);
@@ -187,6 +207,8 @@ public class MainActivity extends Activity {
         // Left column: what to run, and how.
         libFlow = new Flow(this, dp(8)); secFlow = new Flow(this, dp(8));
         LinearLayout pick = card(heading("Libraries"), libFlow, heading("Operations"), secFlow);
+        pickCard = pick;
+        pick.setClipChildren(true); pick.setClipToOutline(true);
         agree = makeSwitch(false, true);
         TextView agreeL = label("I agree: busy CPU for minutes; sends only timings and device model.", 14, Typeface.NORMAL, TEXT);
         TextView info = label("ⓘ", 20, Typeface.BOLD, ACCENT); info.setPadding(dp(10), 0, dp(4), 0);
@@ -213,6 +235,8 @@ public class MainActivity extends Activity {
         // Right column: the run, summarised to fit. Every row's full timings go
         // to the collector and to the phone's files.
         statusLbl = label("", 16, Typeface.BOLD, TEXT);
+        // On a narrow screen the picker folds away during and after a run, and this line stands in for it.
+        picksLbl = label("", 13, Typeface.BOLD, ACCENT); picksLbl.setVisibility(View.GONE);
         progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         progress.setMax(1000); progress.setProgress(0);
         progress.setProgressTintList(ColorStateList.valueOf(ACCENT)); progress.setProgressBackgroundTintList(ColorStateList.valueOf(LINE));
@@ -221,11 +245,13 @@ public class MainActivity extends Activity {
         scoreLbl.setAutoSizeTextTypeUniformWithConfiguration(14, 30, 1, TypedValue.COMPLEX_UNIT_SP);
         behindLbl = label("", 13, Typeface.NORMAL, TEXT); behindLbl.setTypeface(Typeface.MONOSPACE);
         TextView foot = label("An unofficial community tool, not run or endorsed by the rind maintainers.", 11, Typeface.NORMAL, MUTED);
-        LinearLayout results = card(heading("Run"), statusLbl, progress, currentLbl, scoreLbl);
+        LinearLayout results = card(heading("Run"), picksLbl, statusLbl, progress, currentLbl, scoreLbl);
         // The list takes what height is left, and is cut off rather than scrolled.
         LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1); blp.topMargin = dp(10);
         results.addView(behindLbl, blp);
         addSpaced(results, foot, 10);
+        // Autosizing needs a fixed height, not wrap_content.
+        ((LinearLayout.LayoutParams) scoreLbl.getLayoutParams()).height = dp(40);
         resultsCard = results;
 
         body = new LinearLayout(this);
@@ -233,6 +259,7 @@ public class MainActivity extends Activity {
         ((LinearLayout.LayoutParams) body.getLayoutParams()).topMargin = dp(14);
         body.addView(leftCol); body.addView(resultsCard);
         arrange(getResources().getConfiguration());
+        body.addOnLayoutChangeListener((v, l, t, r, bt, ol, ot, or, ob) -> v.post(this::fitPicker));
 
         Intent it = getIntent();
         if ("full".equals(it.getStringExtra("preset"))) setFull(true);
@@ -247,7 +274,8 @@ public class MainActivity extends Activity {
 
     /** Wide screens put the picker and the run side by side; narrow ones stack them. */
     private void arrange(Configuration c) {
-        boolean wide = c.orientation == Configuration.ORIENTATION_LANDSCAPE && c.screenWidthDp >= 600;
+        wide = c.orientation == Configuration.ORIENTATION_LANDSCAPE && c.screenWidthDp >= 600;
+        foldPicker();
         body.setOrientation(wide ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL);
         LinearLayout.LayoutParams l, r;
         if (wide) {
@@ -258,8 +286,45 @@ public class MainActivity extends Activity {
             r = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1); r.topMargin = dp(12);
         }
         leftCol.setLayoutParams(l); resultsCard.setLayoutParams(r);
+        // A cap fitPicker set for a short portrait screen doesn't carry over.
+        LinearLayout.LayoutParams p = (LinearLayout.LayoutParams) pickCard.getLayoutParams();
+        if (p.height != ViewGroup.LayoutParams.WRAP_CONTENT) { p.height = ViewGroup.LayoutParams.WRAP_CONTENT; pickCard.setLayoutParams(p); }
     }
     @Override public void onConfigurationChanged(Configuration c) { super.onConfigurationChanged(c); arrange(c); }
+
+    /**
+     * On a short screen, cap the picker's height so the run controls and some
+     * of the run panel always fit: the picker's chips are clipped, never the
+     * Start button. Runs after each layout of the body.
+     */
+    private void fitPicker() {
+        if (wide || pickCard.getVisibility() != View.VISIBLE || body.getHeight() == 0) return;
+        View run = leftCol.getChildAt(1);
+        int width = MeasureSpecs.exactly(pickCard.getWidth() > 0 ? pickCard.getWidth() : body.getWidth());
+        pickCard.measure(width, MeasureSpecs.unspecified());
+        int natural = pickCard.getMeasuredHeight();
+        int room = body.getHeight() - run.getHeight() - dp(12) - dp(12) - dp(110);
+        int want = natural > room ? Math.max(dp(80), room) : ViewGroup.LayoutParams.WRAP_CONTENT;
+        LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) pickCard.getLayoutParams();
+        if (lp.height != want) { lp.height = want; pickCard.setLayoutParams(lp); }
+    }
+    private static final class MeasureSpecs {
+        static int exactly(int px) { return View.MeasureSpec.makeMeasureSpec(px, View.MeasureSpec.EXACTLY); }
+        static int unspecified() { return View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED); }
+    }
+
+    /**
+     * Narrow screens have room for the picker or a run's results, not both: the
+     * picker shows until Start, then folds into one line until Clear.
+     */
+    private void foldPicker() {
+        boolean fold = showingRun && !wide;
+        pickCard.setVisibility(fold ? View.GONE : View.VISIBLE);
+        picksLbl.setVisibility(fold ? View.VISIBLE : View.GONE);
+        // The run card's top margin assumes something above it in the column.
+        View run = leftCol.getChildAt(1);
+        if (run != null) ((LinearLayout.LayoutParams) run.getLayoutParams()).topMargin = fold ? 0 : dp(12);
+    }
 
     // ---- the collector fills itself in: USB (adb reverse) first, then the LAN address baked in at build time.
     private List<String[]> candidates() {
@@ -315,8 +380,16 @@ public class MainActivity extends Activity {
             JSONObject d = catalog.getJSONObject("device");
             String sha = catalog.optString("rind_commit"); if (sha.length() > 12) sha = sha.substring(0, 12);
             JSONArray rows = catalog.getJSONArray("rows"), libs = catalog.getJSONArray("libraries"), secs = catalog.getJSONArray("sections");
-            deviceLbl.setText(d.optString("product") + " · " + d.optString("cpu") + " · " + d.optString("os") + " · rind " + sha + " · " + rows.length()
-                + " rows · OpenSSL " + (catalog.optBoolean("openssl") ? "built in" : "not in this build"));
+            // Only the fields this device reports.
+            List<String> parts = new ArrayList<>();
+            for (String k : new String[]{"product", "cpu", "os"}) {
+                String v = d.optString(k, "");
+                if (!v.isEmpty() && !v.equals("unknown") && !v.equals("null")) parts.add(v);
+            }
+            if (!sha.isEmpty()) parts.add("rind " + sha);
+            parts.add(rows.length() + " rows");
+            parts.add(catalog.optBoolean("openssl") ? "OpenSSL built in" : "no OpenSSL in this build");
+            deviceLbl.setText(String.join(" · ", parts));
             Map<String, Integer> sc = new HashMap<>();
             for (int i = 0; i < rows.length(); i++) sc.merge(rows.getJSONObject(i).getString("section"), 1, Integer::sum);
             Set<String> wantLibs = csv(getIntent().getStringExtra("libraries")), wantSecs = csv(getIntent().getStringExtra("sections"));
@@ -382,6 +455,8 @@ public class MainActivity extends Activity {
             startBtn.setVisibility(View.GONE); clearBtn.setVisibility(View.GONE);
             stopBtn.setVisibility(View.VISIBLE); setEnabledLook(stopBtn, true); agree.setEnabled(false);
             statusLbl.setText("Starting…"); scoreLbl.setText(""); behindLbl.setText("");
+            picksLbl.setText((full ? "Full" : "Quick") + " · " + libs.size() + " libraries · " + secs.size() + " groups");
+            showingRun = true; foldPicker();
             polling = true; ran = true; ui.post(this::poll);
         } catch (Exception e) { statusLbl.setText("Could not start: " + e); agreeChanged(); }
     }
@@ -393,6 +468,7 @@ public class MainActivity extends Activity {
         ran = false; agree.setChecked(false); agree.setEnabled(true);
         clearBtn.setVisibility(View.GONE);
         startBtn.setText("Start test"); startBtn.setVisibility(View.VISIBLE); agreeChanged(); ready();
+        showingRun = false; foldPicker();
         findCollector(null);
     }
 
