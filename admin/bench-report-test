@@ -226,6 +226,8 @@ class Render(unittest.TestCase):
         self.assertNotIn("setting DIT", br.host_svg("nixos", h["nixos"], VERIFIED, "light"))
         self.assertIn("DIT set per call", re.search(r"Not timed on `kixtop`: (.*)", md).group(1))
         self.assertIsNone(br.tier_row("dit-per-call/x25519-ecdh/*"))
+        # Trailing the held row's fastest rival is a gap that needs a decision.
+        self.assertEqual(br.gaps_of(h, None)[("dit-per-call/x25519-ecdh", "kixtop")], (1.25, "ring"))
 
     def test_ranks_every_aead_open_benchmark(self):
         for key in ["aes256-gcm-open/*/16KB", "chacha20poly1305-open/*/16KB"]:

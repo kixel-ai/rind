@@ -1320,7 +1320,9 @@ def gaps_of(hosts, tiers):
     (operation, host or tier), as (ratio, fastest library)."""
     out = {}
     for name, host in hosts.items():
-        for row, libs in times(host).items():
+        host_times = times(host)
+        for row in host_times:
+            libs = ranked_against(host_times, row)
             others = {lib: ns for lib, ns in libs.items() if lib != "rind"}
             if "rind" in libs and others:
                 best = min(others, key=others.get)
