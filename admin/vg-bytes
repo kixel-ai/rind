@@ -198,7 +198,8 @@ def data_symbols(obj, keep, unique=False):
     by the path's last component, as a `Static`. Fails if two share a last
     component, since a relocation names a static by it, or if a static does
     not start its section, which each has to itself, or if two statics it
-    takes start one section; with `unique`, if any two do, taken or not."""
+    takes start one section; with `unique`, if any two do, taken or not.
+    Also returns the demangled path of the static starting each section."""
     out = {}
     by_section = {}
     for line in run(["llvm-objdump", "-t", "-C", str(obj)]).splitlines():
@@ -218,7 +219,7 @@ def data_symbols(obj, keep, unique=False):
         st.section, st.size, st.path = m.group(2), int(m.group(3), 16), m.group(4)
         st.data, st.relocs = None, []
         by_section[st.section] = st
-    names = {sec: st.path.split("::")[-1] for sec, st in by_section.items()}
+    names = {sec: st.path for sec, st in by_section.items()}
     sections = {sec for sec, st in by_section.items() if keep(st.path)}
     if sections:
         cur = None
@@ -251,10 +252,11 @@ def data_symbols(obj, keep, unique=False):
 
 
 def section_statics(obj):
-    """The static that starts each data section of `obj`, by the section's
-    name. A relocation of a static local to its object may name the static's
-    section instead, as LLVM's aarch64 backend does, and each static has a
-    section of its own, so that section's start is the static."""
+    """The demangled path of the static that starts each data section of
+    `obj`, by the section's name. A relocation of a static local to its
+    object may name the static's section instead, as LLVM's aarch64 backend
+    does, and each static has a section of its own, so that section's start
+    is the static."""
     return data_symbols(obj, lambda path: False, unique=True)[1]
 
 
@@ -425,10 +427,13 @@ def self_test():
     no static and no routine of the text, or to a routine of the text that
     rind's build does not hold, and accepts one to a routine of both, and
     unless `relocation_target` qualifies a target outside a `vg` module."""
+    sections = {".rodata.k": "rind::low::other::K"}
     for sym, want in (("rind::low::x86_64::vg::k::K+0x8", ("K", 8)),
-                      ("rind::low::other::K", ("rind::low::other::K", 0))):
-        if relocation_target(sym, {}, qualify=True) != want:
-            fail(f"self-test: {sym} resolved to {relocation_target(sym, {}, qualify=True)}")
+                      ("rind::low::other::K", ("rind::low::other::K", 0)),
+                      (".rodata.k", ("rind::low::other::K", 0))):
+        got = relocation_target(sym, sections, qualify=True)
+        if got != want:
+            fail(f"self-test: {sym} resolved to {got}")
     def routine(target):
         i = Insn(0, "", "")
         i.relocs.append((0, "R_X86_64_PLT32", target, 0))
