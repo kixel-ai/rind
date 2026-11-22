@@ -55,7 +55,7 @@ Future<void> main() async {
 | `Sha1`, `Sha256`, `Sha384`, `Sha512` | all of it |
 | `Hmac` | over SHA-1, SHA-256, SHA-384, SHA-512 |
 | `Hkdf`, `Pbkdf2` | with those HMACs |
-| `AesGcm` | 128, 192, and 256-bit keys, nonces of any length |
+| `AesGcm` | 128, 192, and 256-bit keys, nonces of any length but zero |
 | `Chacha20.poly1305Aead`, `Xchacha20.poly1305Aead` | all of it, but XChaCha20-Poly1305 picks its own nonces |
 | `AesCbc`, `AesCtr` | 128, 192, and 256-bit keys, with any MAC and padding |
 | `Chacha20` | with any MAC that uses none of its keystream, such as `Hmac` |

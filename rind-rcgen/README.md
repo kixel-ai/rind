@@ -37,8 +37,9 @@ let key = key.serialize_der();
 `KeyPair` behaves as rcgen's on its `aws_lc_rs` backend, which loads more
 than its default `ring` one: RSA keys generate, at 2048 bits from
 `generate_for` or a chosen size from `generate_rsa_for`, SEC1 ECDSA and
-PKCS#1 RSA keys load, and so do PKCS#8 v2 documents for ECDSA and Ed25519,
-though not for RSA, which AWS-LC refuses too. A key loaded from SEC1 or
+PKCS#1 RSA keys load, and so do PKCS#8 v2 documents. As in AWS-LC, an RSA or
+ECDSA one whose outer `publicKey` field is present is refused, and an Ed25519
+one is checked against it. A key loaded from SEC1 or
 PKCS#1 serializes to DER as given, not as PKCS#8, and `serialize_pem` labels
 it `PRIVATE KEY` all the same, as rcgen's does. Where it differs:
 

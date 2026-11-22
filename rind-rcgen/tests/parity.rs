@@ -116,7 +116,10 @@ fn refuses_what_rcgen_loads() {
         for key in labels(&der) {
             assert!(KeyPair::try_from(&key).is_err(), "{name}");
             for alg in ALGORITHMS {
-                assert!(KeyPair::from_der_and_sign_algo(&key, alg).is_err(), "{name}");
+                assert!(
+                    KeyPair::from_der_and_sign_algo(&key, alg).is_err(),
+                    "{name}"
+                );
             }
         }
     }

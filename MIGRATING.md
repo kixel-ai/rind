@@ -469,7 +469,7 @@ as its cipher suite order.
 `rind_rcgen::KeyPair` offers `rcgen::KeyPair`'s API as rcgen's `aws_lc_rs`
 backend builds it, so code swaps the type in unchanged. It signs with ECDSA
 P-256 and P-384, Ed25519, and RSA with PKCS#1 v1.5, generates RSA keys, and
-loads PKCS#8 (v1 or v2), SEC1 ECDSA, and PKCS#1 RSA keys. Its
+loads PKCS#8, SEC1 ECDSA, and PKCS#1 RSA keys. Its
 [README](rind-rcgen/README.md) lists what it leaves out, such as P-521, which
 rcgen names only with its `aws_lc_rs` feature.
 
@@ -585,7 +585,7 @@ install ring's if nothing is installed first.
 | Crate | What ties it | On rind |
 |---|---|---|
 | hickory-proto, hickory-net, hickory-resolver 0.26 | TLS, HTTPS, and QUIC need a `*-ring` or `*-aws-lc-rs` feature; DNSSEC validation calls them internally | **Patch**: the `*-ring` features. Plain DNS is unaffected |
-| domain 0.12 | DNSSEC and TSIG need ring or OpenSSL | **Patch**: `ring`, `tsig`, and `unstable-validator`. `unstable-sign` builds RSA keys from components, which rind-ring leaves out |
+| domain 0.12 | DNSSEC and TSIG need ring or OpenSSL | **Patch**: `ring`, `tsig`, `unstable-validator`, and `unstable-sign` |
 
 ### Certificates, ACME, and tokens
 
