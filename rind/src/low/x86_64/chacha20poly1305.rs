@@ -77,7 +77,7 @@ fn seal_ifma(
     // SAFETY: each pointer is to a distinct Rust object of the length the
     // routine reads or writes, none of which overlaps the stack below the
     // return address or wraps the address space, as no object does, and the
-    // token proves AVX, AVX-512 F, and AVX512_IFMA.
+    // token proves AVX, AVX2, AVX-512 F and VL, and AVX512_IFMA.
     unsafe {
         asm_call!(unsafe extern "sysv64" vg_chacha20_poly1305_seal_ifma(key, nonce, aad.as_ptr(), aad.len(), data, len, &mut tag))
     };
@@ -372,7 +372,8 @@ mod tests {
     // the result may tell apart. The routines branch on the lengths, which
     // are public, so these take the short and long AAD paths and each
     // message path: a partial block, the one-block-group and the four-group
-    // loops with tails, and a run long enough for the widest loop.
+    // loops with tails, a run long enough for the widest loop, and open's
+    // AVX-512 VL body for 449 to 639 bytes, whole blocks and with a tail.
     #[test]
     #[ignore = "admin/ct-sde runs it under Intel SDE"]
     fn ct_sde_chacha20poly1305() {
@@ -382,7 +383,16 @@ mod tests {
         let key = bytes(32).try_into().unwrap();
         let nonce = bytes(12).try_into().unwrap();
         let wrong = bytes(16).try_into().unwrap();
-        for (aad_len, msg_len) in [(0, 0), (13, 9), (5, 64), (29, 300), (13, 1350), (77, 4097)] {
+        for (aad_len, msg_len) in [
+            (0, 0),
+            (13, 9),
+            (5, 64),
+            (29, 300),
+            (13, 512),
+            (7, 601),
+            (13, 1350),
+            (77, 4097),
+        ] {
             let aad = bytes(aad_len);
             let mut msg = bytes(msg_len);
             let tag = ct_sde::traced(|| seal_ifma(t, &key, &nonce, &aad, &mut msg));

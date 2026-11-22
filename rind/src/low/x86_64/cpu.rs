@@ -335,13 +335,15 @@ impl HaveAvx512Vl {
 }
 
 /// Proof that the CPU has what pyca/verified-garbage's AVX-512 IFMA
-/// ChaCha20-Poly1305 runs: AVX-512 F and IFMA, with AVX.
+/// ChaCha20-Poly1305 runs: AVX-512 F and IFMA, with AVX, for its seal, and
+/// AVX2 and AVX-512 VL too for its open, whose AVX-512 VL body takes 449 to
+/// 639 bytes.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct HaveIfmaForVgChaCha20Poly1305(());
 
 impl HaveIfmaForVgChaCha20Poly1305 {
     pub(crate) fn check() -> Option<Self> {
-        has(AVX | AVX512F | AVX512IFMA).then_some(Self(()))
+        has(AVX | AVX2 | AVX512F | AVX512VL | AVX512IFMA).then_some(Self(()))
     }
 }
 
@@ -1030,7 +1032,7 @@ mod tests {
             ),
             (
                 HaveIfmaForVgChaCha20Poly1305::check().is_some(),
-                available!("avx", "avx512f", "avx512ifma"),
+                available!("avx", "avx2") && available!("avx512f", "avx512vl", "avx512ifma"),
             ),
         ];
         for (i, (check, expected)) in checks.into_iter().enumerate() {
