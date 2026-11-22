@@ -159,6 +159,11 @@ mod tests {
     #[test]
     fn make_generator() {
         let g = make_ticket_generator().unwrap();
+        // rustls requires `Debug`, which shows the lifetime but no key.
+        assert_eq!(
+            format!("{g:?}"),
+            format!("XChaCha20Ticketer {{ lifetime: {ONE_TICKET_LIFETIME_SECS}, .. }}")
+        );
         assert!(g.enabled());
         // aws-lc-rs's `Ticketer` is a rotator of two of these generators, so
         // one generator's lifetime is half of that rotator's. A change to

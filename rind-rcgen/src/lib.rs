@@ -389,6 +389,16 @@ impl fmt::Debug for KeyPair {
 mod tests {
     use super::*;
 
+    /// rcgen requires `Debug`, which shows the algorithm but no key.
+    #[test]
+    fn debug_shows_the_algorithm_without_the_key() {
+        let key = KeyPair::generate_for(&rcgen::PKCS_ED25519).unwrap();
+        assert_eq!(
+            format!("{key:?}"),
+            format!("KeyPair {{ algorithm: {:?}, .. }}", rcgen::PKCS_ED25519)
+        );
+    }
+
     /// `pkcs8` with its version set to `version`.
     fn with_version(pkcs8: &[u8], version: u8) -> Vec<u8> {
         let mut der = pkcs8.to_vec();

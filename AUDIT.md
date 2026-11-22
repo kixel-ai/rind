@@ -244,9 +244,12 @@ establishes, and what it does not:
   and the portable backend, it mutates only the Rust that changed in the
   last week; a campaign over the whole workspace runs only when dispatched.
   It skips generated assembly, which proofs and differential tests own.
-- **Coverage** (`admin/coverage`, nightly on Linux and macOS) reports the
-  published functions no test runs, under `cargo test`, `dart test`, and
-  pyrind's tests, on each runner's tiers, but not under fuzzing.
+- **Coverage** (`admin/coverage`, nightly on x86_64 and aarch64 Linux,
+  macOS, the portable backend, and armv7) fails on a published function no
+  test runs on any tier, under `cargo test`, `dart test`, and pyrind's tests,
+  unless `admin/coverage.allow` says why, and on a file whose uncovered
+  regions, branches, or monomorphization gaps rise past
+  `admin/coverage.baseline`; fuzzing doesn't count.
 - **Adapter fuzz targets**, for rind-rustls, rind-dimpl, and rind-str0m,
   feed a hostile peer's bytes and whole handshakes edited in flight, against
   upstream's aws-lc-rs provider, and rind-openssl's calls its C ABI as
