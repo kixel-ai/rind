@@ -57,19 +57,21 @@ static DENIES_APPLIED: AtomicBool = AtomicBool::new(false);
 /// only if rind was built with `--cfg rind_cpu_disable` (`build-ios.sh` does,
 /// when `RIND_DEVBENCH_DENY` is set). An app has no shell to set them from.
 ///
+/// # Safety
 /// `std::env::set_var` is not safe to call while another thread may read the
-/// environment, so the caller must run this once, from the process's first
+/// environment, so the caller must guarantee that no other thread exists or
+/// reads the environment: run this once, from the process's first
 /// thread, before it starts any other: an iOS app calls `devbench_apply_denies`
 /// at the top of `main`, before `UIApplicationMain`, and a command-line host at
 /// the top of `main`. It does nothing after the first call, and nothing here
 /// calls it from a worker thread: [`catalog`] and [`start`] refuse a build that
 /// denies features when it was not called.
-pub fn apply_build_denies() {
+pub unsafe fn apply_build_denies() {
     if DENIES_APPLIED.swap(true, Ordering::SeqCst) {
         return;
     }
     for id in CPU_DENIED.split(',').filter(|id| !id.is_empty() && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')) {
-        // SAFETY: the caller's contract above: no other thread exists yet.
+        // SAFETY: the caller's contract above: no other thread exists or reads the environment.
         unsafe { std::env::set_var(format!("RIND_CPU_DISABLE_{id}"), "1") };
     }
 }
@@ -547,9 +549,13 @@ pub unsafe extern "C" fn devbench_start(config: *const c_char) -> i32 {
 
 /// Applies the build's CPU denies. Call it first thing in `main`, before the
 /// process starts any other thread (see [`apply_build_denies`]).
+///
+/// # Safety
+/// As [`apply_build_denies`]: the process must have no other thread yet.
 #[unsafe(no_mangle)]
-pub extern "C" fn devbench_apply_denies() {
-    apply_build_denies();
+pub unsafe extern "C" fn devbench_apply_denies() {
+    // SAFETY: the caller's contract above.
+    unsafe { apply_build_denies() };
 }
 
 /// Set an environment variable before the catalog is read (rind-bench's
