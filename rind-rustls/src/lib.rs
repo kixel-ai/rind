@@ -14,7 +14,13 @@
 //! Its API is rustls's `crypto::aws_lc_rs` provider's, item for item, short of
 //! the ML-KEM-1024 key exchange group and ML-DSA, which it does not back yet.
 
-use std::sync::Arc;
+#![no_std]
+
+extern crate alloc;
+#[cfg(test)]
+extern crate std;
+
+use alloc::sync::Arc;
 
 use rustls::SignatureScheme;
 use rustls::SupportedCipherSuite;
@@ -251,6 +257,7 @@ mod tests {
         use rustls::crypto::aws_lc_rs;
         use rustls::pki_types::{SignatureVerificationAlgorithm, alg_id};
         use rustls::{NamedGroup, SignatureScheme};
+        use std::vec::Vec;
 
         fn sorted<T: Ord>(items: impl IntoIterator<Item = T>) -> Vec<T> {
             let mut items = items.into_iter().collect::<Vec<_>>();

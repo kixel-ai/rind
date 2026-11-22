@@ -48,6 +48,12 @@ These items are left out, so code using them fails to build:
 - `try_fips_cpu_jitter_entropy()` fails, where aws-lc-rs's default build answers `Ok`: rind seeds from the operating system, not from CPU jitter.
 - An RSA-OAEP private key is bound to one algorithm in rind, so a `rsa::PrivateDecryptingKey` loads the key again the first time it decrypts with each other algorithm, and keeps it.
 
+## Without `std`
+
+Unlike aws-lc-rs, it builds without `std`, given a global allocator;
+[PLATFORMS.md](https://github.com/kixel-ai/rind/blob/main/PLATFORMS.md) says
+what else such a target needs.
+
 ## WebAssembly
 
 It builds for `wasm32-wasip2` and `wasm32-unknown-unknown`, the browser, for
