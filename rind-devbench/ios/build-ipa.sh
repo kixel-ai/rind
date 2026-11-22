@@ -6,7 +6,7 @@ cd "$(dirname "$0")"
 PORT=${1:-9101}; HOST=${2:-}  # HOST: the collector's LAN address; empty = results stay on the device
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 ../build-ios.sh ${CARGO_FEATURES---features __bench_openssl}
-LIB=$HOME/rind-devbench/target/aarch64-apple-ios/release/librind_devbench.a
+LIB=${CARGO_TARGET_DIR:-$HOME/rind-devbench/target}/aarch64-apple-ios/release/librind_devbench.a
 rm -rf Resources/keys && cp -R ../../rind-rustls/tests/keys Resources/keys
 BENCH_HOST=$HOST BENCH_PORT=$PORT xcodegen generate -q
 # BenchPort as an integer, as v13 reads it.
