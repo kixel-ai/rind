@@ -137,11 +137,11 @@ class Insn:
         self.addr, self.raw, self.text, self.relocs = addr, raw, text, []
 
 
-def disassemble(arch, obj, keep):
+def disassemble(arch, obj, keep, qualify=False):
     """The instructions of each function of `obj` that `keep` takes, by the
     demangled path's last component, with the relocations at each: its offset
-    in the instruction, its type, its symbol's last component, and its
-    addend."""
+    in the instruction, its type, its symbol's last component (its whole path
+    with `qualify`, when outside a `vg` module), and its addend."""
     flags = ["-M", "intel"] if arch == "x86_64" else ["--mattr=+all"]
     # `-z`: llvm-objdump otherwise prints a run of zero bytes as `...`.
     dis = run(["llvm-objdump", "-d", "-z", "-r", "-C", *flags, str(obj)])
@@ -168,7 +168,7 @@ def disassemble(arch, obj, keep):
             # Its offset in the instruction, so a relocation of the same bytes
             # that patches other bytes of them differs.
             off = int(m.group(1), 16) - cur[-1].addr
-            cur[-1].relocs.append((off, m.group(2), *relocation_target(m.group(3), statics)))
+            cur[-1].relocs.append((off, m.group(2), *relocation_target(m.group(3), statics, qualify)))
             continue
         m = re.match(r"^\s*([0-9a-f]+):\s(.*)$", line)
         if m:
@@ -258,11 +258,15 @@ def section_statics(obj):
     return data_symbols(obj, lambda path: False, unique=True)[1]
 
 
-def relocation_target(sym, statics):
-    """A relocation's symbol, by its name's last component, and its addend."""
+def relocation_target(sym, statics, qualify=False):
+    """A relocation's symbol, by its name's last component, and its addend.
+    With `qualify`, a target outside a `vg` module keeps its whole path, so it
+    cannot pass for a `vg` static or routine of the same last component."""
     m = re.match(r"^(.*?)([+-]0x[0-9a-f]+)?$", sym)
     name = statics.get(m.group(1), m.group(1))
-    return name.split("::")[-1], int(m.group(2) or "0", 16)
+    if not (qualify and "::" in name and "::vg::" not in name):
+        name = name.split("::")[-1]
+    return name, int(m.group(2) or "0", 16)
 
 
 def is_nop(arch, insn):
@@ -419,7 +423,12 @@ def bind_statics(name, got, got_statics, want, want_statics, bound, text, checke
 def self_test():
     """Fails unless `bind_statics` rejects a relocation to a symbol that is
     no static and no routine of the text, or to a routine of the text that
-    rind's build does not hold, and accepts one to a routine of both."""
+    rind's build does not hold, and accepts one to a routine of both, and
+    unless `relocation_target` qualifies a target outside a `vg` module."""
+    for sym, want in (("rind::low::x86_64::vg::k::K+0x8", ("K", 8)),
+                      ("rind::low::other::K", ("rind::low::other::K", 0))):
+        if relocation_target(sym, {}, qualify=True) != want:
+            fail(f"self-test: {sym} resolved to {relocation_target(sym, {}, qualify=True)}")
     def routine(target):
         i = Insn(0, "", "")
         i.relocs.append((0, "R_X86_64_PLT32", target, 0))
@@ -587,7 +596,7 @@ def main():
     # is VG's by its name, wherever rind puts it; any function of a `vg`
     # module must be one, so a routine an older pin had fails here.
     vendored_by_obj = [
-        disassemble(a.arch, obj, lambda path, name: name in text or "::vg::" in path)
+        disassemble(a.arch, obj, lambda path, name: name in text or "::vg::" in path, qualify=True)
         for obj in a.rind]
     checked = {name for v in vendored_by_obj for name in v}
     for vendored in vendored_by_obj:
