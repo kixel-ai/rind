@@ -767,18 +767,19 @@ def summary(args):
     print()
     print("| operation | " + " | ".join(h["host"] for h in measured) + " |")
     print("|---|" + "---|" * len(measured))
+    host_times = [times(h) for h in measured]
     for op in OPERATIONS:
         cells = []
-        for h in measured:
-            times = {r["library"]: r["ns"] for r in h["results"] if r["operation"] == op}
-            others = {lib: ns for lib, ns in times.items() if lib != "rind"}
-            if "rind" not in times or not others:
+        for t in host_times:
+            libs = ranked_against(t, row_name(op))
+            others = {lib: ns for lib, ns in libs.items() if lib != "rind"}
+            if "rind" not in libs or not others:
                 cells.append("-")
                 continue
             best = min(others, key=others.get)
-            ratio = times["rind"] / others[best]
-            cells.append(f"{human(times['rind'])}, {ratio:.2f}× {best}")
-        print(f"| {op.replace('/{lib}', '')} | " + " | ".join(cells) + " |")
+            ratio = libs["rind"] / others[best]
+            cells.append(f"{human(libs['rind'])}, {ratio:.2f}× {best}")
+        print(f"| {row_name(op)} | " + " | ".join(cells) + " |")
 
 
 # --- report -----------------------------------------------------------------
@@ -1187,7 +1188,8 @@ def proof_for(verified, library, row, host, any_os=False):
             continue
         if not all(cpuid.get(f.removeprefix("!")) == (0 if f.startswith("!") else 1) for f in e.get("cpu", [])):
             continue
-        if any(fnmatch.fnmatchcase(row, p) for p in e["operations"]):
+        # A DIT-per-call row runs the same code as the row it repeats.
+        if any(fnmatch.fnmatchcase(row.removeprefix(DIT_PER_CALL), p) for p in e["operations"]):
             return e
     return None
 
@@ -1231,7 +1233,10 @@ DIT_COST_ROWS = [
 
 def dit_cost(host):
     """What setting DIT around each call costs rind over holding it, on a
-    host that times both, as report lines."""
+    host that times both, as report lines. rind sets DIT only on Apple, so
+    elsewhere the two rows run the same code and differ only by noise."""
+    if host_os(host) != "macos":
+        return []
     t = times(host)
     pairs = [(t.get(row_name(DIT_PER_CALL + op), {}), t.get(row_name(op), {})) for op in DIT_COST_ROWS]
     costs = [per_call["rind"] - held["rind"] for per_call, held in pairs if "rind" in per_call and "rind" in held]
@@ -1546,7 +1551,8 @@ def standing(hosts):
     ratios = [
         libs["rind"] / libs[fastest(libs)]
         for h in hosts.values()
-        for libs in times(h).values()
+        for t in [times(h)]
+        for libs in (ranked_against(t, row) for row in t)
         if "rind" in libs and any(lib != "rind" for lib in libs)
     ]
     return sum(r <= SLOWER for r in ratios), len(ratios)
@@ -1855,7 +1861,12 @@ def comparison_table(hosts, verified):
         ]
         lead = timings = 0
         for h in hosts.values():
-            for libs in times(h).values():
+            t = times(h)
+            for row in t:
+                # Only rind times a DIT-per-call row; the rest are the held row's.
+                if row.startswith(DIT_PER_CALL) and lib != "rind":
+                    continue
+                libs = ranked_against(t, row)
                 if lib in libs and any(other != lib for other in libs):
                     timings += 1
                     lead += libs[lib] / libs[fastest(libs)] <= SLOWER
@@ -1931,6 +1942,9 @@ def site_data(hosts, tiers, verified, gaps):
         its benchmark."""
         if lib in h.get("refused", {}):
             return "refused"
+        # Only rind runs a DIT-per-call row, and only where it applies.
+        if row.startswith(DIT_PER_CALL) and (lib != "rind" or not applies(h, row)):
+            return "untimed"
         if entry := proof_for(verified, lib, row, h):
             return proof_index[id(entry)]
         if entry := proof_for(verified, lib, row, h, any_os=True):

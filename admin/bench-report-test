@@ -213,11 +213,21 @@ class Render(unittest.TestCase):
 
     def test_dit_per_call_row_ranks_against_the_held_rows_rivals(self):
         h = hosts()
+        lead, timed = br.standing(h)
         h["kixtop"]["results"].append({"operation": "dit-per-call/x25519-ecdh/{lib}", "library": "rind", "ns": 50000.0})
+        # The tally counts it as one more rind time, trailing ring's held one.
+        self.assertEqual(br.standing(h), (lead, timed + 1))
+        # It repeats the held row's code, so the held row's proof covers it.
+        linux = dict(h["kixtop"], os="Linux 6.18")
+        self.assertIsNotNone(br.proof_for(VERIFIED, "rind", "dit-per-call/x25519-ecdh", linux))
         titles = squares(br.host_svg("kixtop", h["kixtop"], VERIFIED, "light"))
         self.assertIn("X25519, DIT set per call, rind: 50.00 µs, 1.25× the fastest", titles)
         kixtop = next(x for x in br.site_data(h, None, VERIFIED, [])["hosts"] if x["name"] == "kixtop")
         self.assertEqual(kixtop["fastest"]["dit-per-call/x25519-ecdh"], "ring")
+        # nixos's x25519 proof doesn't reach a DIT row it never runs.
+        nixos = next(x for x in br.site_data(h, None, VERIFIED, [])["hosts"] if x["name"] == "nixos")
+        self.assertEqual(nixos["grid"]["dit-per-call/x25519-ecdh"]["rind"], "untimed")
+        self.assertEqual(nixos["grid"]["x25519-ecdh"]["rind"], 0)
         md = br.report(h, None, VERIFIED, [])[br.REPORT]
         # A signature's noise outweighs the toggle, so only short rows count.
         self.assertNotIn("more a call than holding it", md)

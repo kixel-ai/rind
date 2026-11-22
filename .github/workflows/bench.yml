@@ -234,6 +234,8 @@ jobs:
           ROW: ${{ matrix.benches }}
           BENCHES: ${{ inputs.benches }}
           PORTABLE: ${{ matrix.portable && 'true' || 'false' }}
+          # The bench targets whose rustcrypto rows the native rows time, as
+          # the filter in "Run benchmarks" names their groups: change both.
           RUSTCRYPTO_ONLY: argon2|slhdsa|blind_rsa|oprf|vrf|spake2plus
 
       # Hosted hardware can change under the same label. The personality
@@ -374,7 +376,8 @@ jobs:
           fi
           filter="(^|/)($libs)(/|\$)"
           # RustCrypto, where aws-lc-rs and ring offer nothing to time rind
-          # against: Argon2id, SLH-DSA, and the protocols.
+          # against: Argon2id, SLH-DSA, and the protocols. These are the
+          # groups of the bench targets in RUSTCRYPTO_ONLY: change both.
           if [ "${{ matrix.portable }}" != true ]; then
             filter+='|^(argon2id|slhdsa|blind-rsa\d+|v?oprf|vrf|spake2plus)-[^/]+/rustcrypto$'
           fi
