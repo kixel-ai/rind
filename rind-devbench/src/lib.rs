@@ -50,16 +50,37 @@ pub const CPU_DENIED: &str = match option_env!("RIND_DEVBENCH_DENY") {
     None => "",
 };
 
+static DENIES_APPLIED: AtomicBool = AtomicBool::new(false);
+
 /// Sets `RIND_CPU_DISABLE_<id>` for each id in [`CPU_DENIED`], before rind's
 /// first call: rind reads the CPU's features once and keeps them. Takes effect
 /// only if rind was built with `--cfg rind_cpu_disable` (`build-ios.sh` does,
 /// when `RIND_DEVBENCH_DENY` is set). An app has no shell to set them from.
-fn apply_build_denies() {
+///
+/// `std::env::set_var` is not safe to call while another thread may read the
+/// environment, so the caller must run this once, from the process's first
+/// thread, before it starts any other: an iOS app calls `devbench_apply_denies`
+/// at the top of `main`, before `UIApplicationMain`, and a command-line host at
+/// the top of `main`. It does nothing after the first call, and nothing here
+/// calls it from a worker thread: [`catalog`] and [`start`] refuse a build that
+/// denies features when it was not called.
+pub fn apply_build_denies() {
+    if DENIES_APPLIED.swap(true, Ordering::SeqCst) {
+        return;
+    }
     for id in CPU_DENIED.split(',').filter(|id| !id.is_empty() && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')) {
-        // SAFETY: before any bench thread starts, as in `run`'s env loop.
+        // SAFETY: the caller's contract above: no other thread exists yet.
         unsafe { std::env::set_var(format!("RIND_CPU_DISABLE_{id}"), "1") };
     }
 }
+
+/// Whether this build denies features whose variables were never set, so a
+/// run would time rind with them enabled while reporting them denied.
+fn denies_missing() -> bool {
+    !CPU_DENIED.is_empty() && !DENIES_APPLIED.load(Ordering::SeqCst)
+}
+
+const DENIES_MISSING: &str = "this build denies CPU features but apply_build_denies (devbench_apply_denies) was not called at the top of main, before any thread started";
 
 /// The report library and operation of a criterion row ID, as bench-report's
 /// `operation_of` matches them.
@@ -124,7 +145,9 @@ fn now_rfc3339() -> String {
 pub fn catalog() -> &'static Value {
     // Bench setup code wants a big stack; the caller may be a GCD or JNI thread.
     CATALOG.get_or_init(|| {
-        apply_build_denies();
+        if denies_missing() {
+            return json!({"schema": SCHEMA, "error": DENIES_MISSING, "rows": [], "extra": [], "sections": [], "libraries": [], "operations_without_rows": [], "device": device::capabilities()});
+        }
         std::thread::Builder::new()
             .name("devbench-catalog".into())
             .stack_size(64 << 20)
@@ -271,7 +294,6 @@ fn median(v: &mut [f64]) -> f64 {
 }
 
 fn run(cfg: Config) {
-    apply_build_denies();
     for (k, v) in &cfg.env {
         // SAFETY: set before any bench thread starts; the app does not read env concurrently.
         unsafe { std::env::set_var(k, v) };
@@ -459,6 +481,9 @@ fn run(cfg: Config) {
 /// Start a run (JSON config); false if one is already running or the JSON is bad.
 pub fn start(config_json: &str) -> Result<(), String> {
     let cfg: Config = serde_json::from_str(config_json).map_err(|e| e.to_string())?;
+    if denies_missing() {
+        return Err(DENIES_MISSING.into());
+    }
     if RUNNING.swap(true, Ordering::SeqCst) {
         return Err("already running".into());
     }
@@ -518,6 +543,13 @@ pub unsafe extern "C" fn devbench_start(config: *const c_char) -> i32 {
             1
         }
     }
+}
+
+/// Applies the build's CPU denies. Call it first thing in `main`, before the
+/// process starts any other thread (see [`apply_build_denies`]).
+#[unsafe(no_mangle)]
+pub extern "C" fn devbench_apply_denies() {
+    apply_build_denies();
 }
 
 /// Set an environment variable before the catalog is read (rind-bench's

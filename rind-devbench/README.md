@@ -65,7 +65,7 @@ and a fresh app launch (rind reads the CPU's features once per process):
 
 `RIND_DEVBENCH_DENY` builds rind with `--cfg rind_cpu_disable`, which an
 optimised build needs to honour `RIND_CPU_DISABLE_<id>` at all, and the app
-sets those variables before its first rind call. Each set has its own cargo
+sets those variables before its first rind call, from `main` before `UIApplicationMain` starts any thread (`devbench_apply_denies`), because changing the environment is not safe once other threads may read it. A build that denies features and skips that call refuses to list or run. Each set has its own cargo
 target directory and its own `out/RindBenchAll-v..-PORT-deny-<ids>.ipa`. The
 report records the denied ids as `cpu_denied`, and every run's `device`
 features include `FEAT_DIT` and `FEAT_SB`. Nothing here was built or run on
