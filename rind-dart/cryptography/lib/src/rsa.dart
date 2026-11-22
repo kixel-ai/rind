@@ -152,8 +152,14 @@ final class _RsaPkcs1 extends RsaSsaPkcs1v15 {
 /// RSA-PSS with a salt of [nonceLengthInBytes], which verifies only
 /// signatures of that salt length, as WebCrypto's does.
 final class _RsaPss extends RsaPss {
-  _RsaPss(this.hashAlgorithm, this.nonceLengthInBytes)
-    : _signing = switch (hashAlgorithm) {
+  _RsaPss(this.hashAlgorithm, int nonceLengthInBytes)
+    : nonceLengthInBytes = RangeError.checkValueInInterval(
+        nonceLengthInBytes,
+        0,
+        65535,
+        'nonceLengthInBytes',
+      ),
+      _signing = switch (hashAlgorithm) {
         Sha256() => rind.RsaPssSigningAlgorithm.sha256(nonceLengthInBytes),
         Sha384() => rind.RsaPssSigningAlgorithm.sha384(nonceLengthInBytes),
         Sha512() => rind.RsaPssSigningAlgorithm.sha512(nonceLengthInBytes),

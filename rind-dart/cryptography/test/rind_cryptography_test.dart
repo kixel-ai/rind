@@ -998,10 +998,18 @@ void main() {
           expect(await other.verify(message, signature: signature), isFalse);
         }
       }
-      expect(
-        () => _rind.rsaPss(_rind.sha256(), nonceLengthInBytes: -1),
-        throwsRangeError,
-      );
+      for (final salt in [-1, 65536]) {
+        expect(
+          () => _rind.rsaPss(_rind.sha256(), nonceLengthInBytes: salt),
+          throwsA(
+            isA<RangeError>().having(
+              (e) => e.name,
+              'name',
+              'nonceLengthInBytes',
+            ),
+          ),
+        );
+      }
     });
 
     test('SHA-1 PKCS#1 v1.5 verifies and signs nothing', () async {
