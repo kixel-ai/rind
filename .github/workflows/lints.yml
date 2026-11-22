@@ -18,6 +18,7 @@ on:
       - Cargo.lock
       - flake.nix
       - flake.lock
+      - sh/powerset.sh
       - .github/workflows/lints.yml
 
 permissions:
