@@ -305,6 +305,11 @@ the nightly `qemu` job, which lints and tests the portable backend: `s390x`
 `armv6-softfloat` (the Raspberry Pi 1's core), or `powerpc64le`, `powerpc64`,
 and `powerpc` (the last two big-endian) under qemu, or `i686` (32-bit x86)
 natively.
+`just powerset` runs the `lints` workflow's `powerset` job, on pull requests
+that touch a crate and daily: clippy over each published crate's library
+under every combination of its Cargo features, through cargo-hack, with the
+features that change nothing, those that turn on nothing and that no code
+names, toggled together as one.
 `just miri` runs the weekly `miri` job, the portable backend's tests under
 Miri, on x86_64, and `just miri s390x-unknown-linux-gnu` big-endian.
 With `RIND_SCOPE=BASE` set, such as `origin/main`, `admin/ctgrind` skips its

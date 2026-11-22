@@ -519,6 +519,8 @@
                   # git already brings this one.
                   perl
                   cargo-deny
+                  # `just powerset` and the quality lints workflow.
+                  cargo-hack
                   # admin/mutants and the mutants workflow.
                   cargo-mutants
                   cargo-nextest
