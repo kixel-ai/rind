@@ -938,7 +938,8 @@ change to the trust base.
  Classical.choice,
  Quot.sound,
  bignum_bitsize_spec,
- bignum_negmodinv_spec] -/
+ bignum_negmodinv_spec,
+ rsa_vg_precompute_spec] -/
 #guard_msgs in
 #print axioms rsa_signature_new_spec
 
@@ -946,7 +947,8 @@ change to the trust base.
  Classical.choice,
  Quot.sound,
  bignum_bitsize_spec,
- bignum_negmodinv_spec] -/
+ bignum_negmodinv_spec,
+ rsa_vg_precompute_spec] -/
 #guard_msgs in
 #print axioms rsa_signature_from_spki_spec
 
@@ -954,7 +956,8 @@ change to the trust base.
  Classical.choice,
  Quot.sound,
  bignum_bitsize_spec,
- bignum_negmodinv_spec] -/
+ bignum_negmodinv_spec,
+ rsa_vg_precompute_spec] -/
 #guard_msgs in
 #print axioms rsa_signature_from_components_spec
 

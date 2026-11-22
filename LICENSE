@@ -252,13 +252,14 @@ pyca/verified-garbage <https://github.com/pyca/verified-garbage>
   What: the files under rind/src/low/*/vg, which admin/import-vg
   takes from the Rust that verified-garbage generates from its Lean
   sources, at commit 0aa40d6c21fd02943fe5b38a5b69b6213d07764d:
-  ChaCha20-Poly1305 on aarch64 with SVE2, and the ChaCha20 and
-  Poly1305 routines it calls; ChaCha20 on x86_64 with AVX2 and with
+  ChaCha20-Poly1305 on aarch64 with SVE2 and on x86_64 with AVX-512
+  IFMA, and the ChaCha20 and Poly1305 routines it calls; ChaCha20 on x86_64 with AVX2 and with
   AVX-512 VL, and on aarch64 with NEON and with SVE2; X25519 and
   Ed25519 on x86_64 with AVX-512 IFMA, and the
   SHA-512 and field and point routines they call; RSA's public
   operation and CRT on x86_64 with AVX-512 IFMA, and the Montgomery
-  product they call; ML-KEM-768's encapsulation key check and
+  product they call; RSA's R² mod n for a public modulus on x86_64
+  with BMI2 and ADX and on aarch64; ML-KEM-768's encapsulation key check and
   encapsulation on x86_64 and on aarch64 with the SHA-3 instructions,
   and its key generation and decapsulation on x86_64 with AVX-512;
   PBKDF2 on aarch64 over HMAC-SHA1 and HMAC-SHA256 with the crypto

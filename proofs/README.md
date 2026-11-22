@@ -1135,8 +1135,10 @@ PCLMULQDQ table `from_powers` builds from them. BoringSSL's
 [the VAES quest](/quest/m4/verified/aes-gcm-x86-vaes.md) proves it, the
 kernels the tier runs from 2 KB, and the tier's seals and opens.
 
-ChaCha20-Poly1305 and XChaCha20-Poly1305 on x86_64 CPUs with SSE4.1, from
-the AEAD API's `Key` and `RandomizedNonceKey` down to the call of aws-lc's
+ChaCha20-Poly1305 and XChaCha20-Poly1305 on x86_64 CPUs with SSE4.1 that
+fail rind's check for pyca/verified-garbage's IFMA routines
+(`HaveIfmaForVgChaCha20Poly1305`: AVX-512 IFMA, with AVX, AVX2, and AVX-512 F
+and VL), from the AEAD API's `Key` and `RandomizedNonceKey` down to the call of aws-lc's
 one-pass routines, in `Rind/X86_64/ChaCha20Poly1305.lean`:
 
 - `chacha20_poly1305_new`: a key that is not 32 bytes is refused, and
@@ -1159,13 +1161,17 @@ HChaCha20, which derives XChaCha20's subkey, runs HACL*'s rounds, which
 `low/generic/chacha20.rs`, which this proof does not cover; the output loop
 stays inside the unrolled `hchacha20` so Aeneas still extracts
 `hchacha20_loop`. The theorems assume `RunsChaCha20Poly1305`: rind's
-CPU-feature checks find SSE4.1, and `OnePass`, that aws-lc's one-pass
+CPU-feature checks find SSE4.1 but not what VG's IFMA routines need, and `OnePass`, that aws-lc's one-pass
 routines compute RFC 8439's AEAD, which no proof covers yet;
 [the ChaCha20-Poly1305 quest](/quest/m4/verified/chacha20-poly1305-x86/aead.md)
 owns their HOL Light proofs, against the s2n-bignum fork's `common/chacha20poly1305.ml`,
 which `Rind/S2nChaCha20Poly1305.lean` proves is `Rind/Spec.lean`'s RFC 8439
-for a 32-byte key and a 12-byte nonce. CPUs without SSE4.1 run the separate ChaCha20
-and Poly1305 passes, which the model leaves opaque. `AeadDispatch` models
+for a 32-byte key and a 12-byte nonce. CPUs that pass that check run
+pyca/verified-garbage's IFMA one pass, and CPUs that fail it and lack SSE4.1
+the separate ChaCha20 and Poly1305 passes, which no theorem here covers; the model leaves VG's
+one pass opaque until
+[its quest](/quest/m2/verified-garbage/chacha20-poly1305-x86-proof.md)
+imports VG's theorems. `AeadDispatch` models
 `RandomizedNonceKey`, which reaches the system's random source, and
 `Rind/ChaCha20Poly1305Test.lean` checks `Rind/Spec.lean`'s transliterations
 against RFC 8439's and draft-irtf-cfrg-xchacha-03's test vectors.
@@ -1266,8 +1272,11 @@ Below the API, `Rind/X86_64/RsaKey.lean` proves key loading
 (`from_components_spec`): components with no leading zero byte, an odd
 modulus of 1024 to 8192 bits, and an odd exponent from 3 to below 2^33 load,
 and a loaded key holds them, with an odd modulus of 1024 to 8192 bits, an
-odd exponent of at least 3, `pub_montifier`'s R^2 mod N, and
-`mont_neg_inverse`'s -N^-1 mod 2^64.
+odd exponent of at least 3, R^2 mod N, and `mont_neg_inverse`'s
+-N^-1 mod 2^64. R^2 mod N is `pub_montifier`'s, or, for a modulus of a
+multiple of four words whose top bit is set on a CPU with BMI2 and ADX,
+pyca/verified-garbage's `vg_rsa_public_precompute_adx`'s, through the axiom
+`Rind/X86_64/VgRsa.lean` restates from that project's Lean proof.
 `Rind/X86_64/RsaPublic.lean` proves the public operation's square-and-multiply,
 `Rind/X86_64/RsaIfma.lean` the public operation (`public_op_spec`), which
 runs pyca/verified-garbage's AVX-512 IFMA routine for the exponent 65537 and
@@ -1278,7 +1287,7 @@ bytes and words, and `Rind/X86_64/{RsaVerify,RsaPss}.lean`
 EMSA-PKCS1-v1_5's encoding check and EMSA-PSS-VERIFY. DER is opaque, as the ✓
 leaves it out, so the `new` and `from_spki` theorems hold for every key
 those return without saying which encodings they accept. The loaders assume
-that the entry guard holds, `from_components` also `Runs`, and each `verify`
+that the entry guard holds and `Runs`, and each `verify`
 theorem `Runs`, `Sha256Blocks`, messages of at most `maxInput` bytes, and
 `MontProducts k`, that `low::x86_64::mont`'s products
 return their results at the modulus's width of k words, and

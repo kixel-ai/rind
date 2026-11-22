@@ -1215,9 +1215,10 @@ only_quoted rind/src/aead.rs "$out/AeadDispatch.rs" '= Algorithm \{'
 # On x86_64, RSA verification is translated from `high::rsa::VerifyingKey`
 # down to `low::posint` and the Montgomery products' dispatch in
 # `low::x86_64::mont`, whose s2n-bignum and aws-lc routines are opaque, and
-# to `RsaIfma::check`, over its opaque CPU check. pyca/verified-garbage's
-# AVX-512 IFMA public operation and CRT are opaque behind `RsaIfma::public`
-# and `IfmaCrt::crt`, which `VgRsa.lean`'s axioms state. Its DER parsing and
+# to `RsaIfma::check` and `rsa_vg::Precompute::check`, over their opaque CPU
+# checks. pyca/verified-garbage's AVX-512 IFMA public operation and CRT, and
+# its `R² mod n`, are opaque behind `RsaIfma::public`, `IfmaCrt::crt`, and
+# `Precompute::precompute`, which `VgRsa.lean`'s axioms state. Its DER parsing and
 # encoding, which the ✓ leaves out, are opaque too, and `RsaDispatch.lean`
 # models `signature::rsa::PublicKey` above it.
 # x86_64's RSA reaches `Digest::ct_equal`, so every target starts from it,
@@ -1594,6 +1595,8 @@ extract x86_64 X86_64 "${hashes[@]}" "${assembly[@]}" \
     --include 'crate::low::x86_64::rsa_ifma::_::check' \
     --include crate::low::x86_64::rsa_ifma::IfmaCrt \
     --start-from crate::low::x86_64::rsa_ifma::IfmaCrt::crt \
+    --include crate::low::x86_64::rsa_vg::Precompute \
+    --include 'crate::low::x86_64::rsa_vg::_::check' \
     --include crate::low::posint \
     --include crate::low::x86_64::mont::mont_mul \
     --include crate::low::x86_64::mont::mont_sqr \

@@ -55,7 +55,8 @@ qemu. iOS devices' code is only built.
   Intel's cores before Ice Lake and AMD's before Zen, SLH-DSA's SHA-2
   parameter sets hash eight SHA-256 inputs at once with a port of the
   SPHINCS+ team's AVX2 code. With `avx512ifma`, as on Ice Lake,
-  Sapphire Rapids, and AMD's Zen 4 and 5, RSA-2048 and 4096 signing and
+  Sapphire Rapids, and AMD's Zen 4 and 5, ChaCha20-Poly1305 runs
+  [verified-garbage]'s assembly, RSA-2048 and 4096 signing and
   the public operation of 2048-, 3072-, and 4096-bit moduli with
   e = 65537 run [verified-garbage]'s routines, and RSA-3072 signing too with `avx512fp16`, as on Intel's
   since Sapphire Rapids, and aws-lc's dual AVX-512 RSAZ without it, as
