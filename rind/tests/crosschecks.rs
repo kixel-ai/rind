@@ -1969,7 +1969,7 @@ mod rsa {
     use std::sync::LazyLock;
 
     use ::rsa::pkcs1::DecodeRsaPublicKey;
-    use ::rsa::pkcs8::{DecodePrivateKey, EncodePublicKey};
+    use ::rsa::pkcs8::{DecodePrivateKey, EncodePrivateKey, EncodePublicKey};
     use aws_lc_rs::encoding::AsDer;
     use aws_lc_rs::rand::SystemRandom;
     use aws_lc_rs::rsa::{KeyPair, KeySize};
@@ -2318,9 +2318,12 @@ mod rsa {
     proptest! {
         #![proptest_config(ProptestConfig::with_cases(32))]
 
-        /// Both load a key from its integers, or refuse it, alike, whichever
-        /// one is altered: with a leading zero byte, a flipped bit, or a
-        /// byte cut off.
+        /// aws-lc-rs and rind load a key from its integers, or refuse it,
+        /// alike, whichever one is altered: with a leading zero byte, a
+        /// flipped bit, or a byte cut off. RustCrypto, which takes only n, e,
+        /// d, and the primes and derives the rest, loads every key rind does
+        /// to the same PKCS#8 and PKCS#1 v1.5 signature, and refuses every
+        /// one rind does whose change it sees.
         #[test]
         fn from_components(field in 0..8usize, change in 0..4u8, at in any::<prop::sample::Index>()) {
             for theirs in &*THEIRS {
@@ -2348,6 +2351,26 @@ mod rsa {
                     d, p, q, dP: dp, dQ: dq, qInv: qi,
                 });
                 prop_assert_eq!(ours.is_ok(), them.is_ok(), "field {} change {}", field, change);
+                let int = |x: &[u8]| ::rsa::BoxedUint::from_be_slice_vartime(x);
+                let oracle = ::rsa::PrivateKey::from_components(
+                    int(n), int(e), int(d), vec![int(p), int(q)],
+                );
+                // RustCrypto reads n and e as numbers, and derives dP, dQ,
+                // and qInv, so it cannot see a leading zero there or a change
+                // to the CRT values.
+                if field < 5 && !(change == 1 && field < 2) {
+                    prop_assert_eq!(ours.is_ok(), oracle.is_ok(), "field {} change {}", field, change);
+                }
+                if let Ok(ours) = &ours {
+                    let oracle = oracle.unwrap();
+                    let (oracle_pkcs8, ours_pkcs8) = (oracle.to_pkcs8_der().unwrap(), ours.to_pkcs8());
+                    prop_assert_eq!(oracle_pkcs8.as_bytes(), ours_pkcs8.as_ref());
+                    let signature = ours.sign(&sign::PKCS1_SHA256, b"hello").unwrap();
+                    prop_assert_eq!(
+                        oracle.pkcs1v15_sign::<::sha2::Sha256>(b"hello").unwrap(),
+                        signature.as_ref()
+                    );
+                }
                 if let (Ok(ours), Ok(them)) = (ours, them) {
                     let (ours_pkcs8, them_pkcs8) = (ours.to_pkcs8(), them.as_der().unwrap());
                     prop_assert_eq!(ours_pkcs8.as_ref(), them_pkcs8.as_ref());
