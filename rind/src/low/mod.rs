@@ -346,7 +346,7 @@ mod aarch64;
 #[cfg(rind_backend = "arm")]
 mod arm;
 #[cfg(rind_backend = "x86_64")]
-mod x86_64;
+pub(crate) mod x86_64;
 
 cfg_if::cfg_if! {
     if #[cfg(rind_backend = "x86_64")] {

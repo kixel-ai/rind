@@ -121,10 +121,28 @@ fn key_setup(
 
 /// The AEAD rows, then QUIC's ACK-sized packets under its 13 B short header.
 fn rows() -> impl Iterator<Item = (usize, &'static str, &'static [u8])> {
-    criterion::aead_rows().chain([
-        (32, "quic-32B", &[0u8; 13][..]),
-        (64, "quic-64B", &[0u8; 13][..]),
-    ])
+    [
+        (32usize, &[0u8; 32][..]),
+        (128, &[0u8; 13][..]),
+        (256, &[0u8; 13][..]),
+        (512, &[0u8; 13][..]),
+        (768, &[0u8; 32][..]),
+        (1024, &[0u8; 32][..]),
+        (1200, &[0u8; 32][..]),
+        (1350, &[0u8; 32][..]),
+        (1536, &[0u8; 32][..]),
+        (1792, &[0u8; 32][..]),
+        (2048, &[0u8; 32][..]),
+        (3072, &[0u8; 32][..]),
+        (4096, &[0u8; 32][..]),
+        (6144, &[0u8; 32][..]),
+        (8192, &[0u8; 32][..]),
+        (12288, &[0u8; 32][..]),
+        (16384, &[0u8; 32][..]),
+        (65536, &[0u8; 32][..]),
+    ]
+    .into_iter()
+    .map(|(n, aad)| (n, &*Box::leak(format!("{n}B").into_boxed_str()), aad))
 }
 
 fn aes128_gcm(c: &mut Criterion) {
@@ -169,6 +187,15 @@ fn aes128_gcm(c: &mut Criterion) {
             let key = Key::new(&AES_128_GCM, &key).unwrap();
             b.iter(|| test_rind_aes_gcm(&key, &nonce, aad, &mut buf));
         });
+        #[cfg(target_arch = "x86_64")]
+        if let Some(sk) = rind::__ScratchAesGcm::new(&key[..]) {
+            for (vg, name) in [(false, "own"), (true, "vg")] {
+                group.bench_function(BenchmarkId::new("rind", format!("{name}-{size_name}")), |b| {
+                    let mut tag = [0u8; 16];
+                    b.iter(|| sk.run(vg, true, &nonce, aad, &mut buf, &mut tag));
+                });
+            }
+        }
         vg_seal(
             &mut group,
             &key,
@@ -240,6 +267,15 @@ fn aes256_gcm(c: &mut Criterion) {
             let key = Key::new(&AES_256_GCM, &key).unwrap();
             b.iter(|| test_rind_aes_gcm(&key, &nonce, aad, &mut buf));
         });
+        #[cfg(target_arch = "x86_64")]
+        if let Some(sk) = rind::__ScratchAesGcm::new(&key[..]) {
+            for (vg, name) in [(false, "own"), (true, "vg")] {
+                group.bench_function(BenchmarkId::new("rind", format!("{name}-{size_name}")), |b| {
+                    let mut tag = [0u8; 16];
+                    b.iter(|| sk.run(vg, true, &nonce, aad, &mut buf, &mut tag));
+                });
+            }
+        }
         vg_seal(
             &mut group,
             &key,
@@ -392,6 +428,18 @@ fn open<K: KeySize>(
                     .unwrap();
             });
         });
+        #[cfg(target_arch = "x86_64")]
+        if let Some(sk) = rind::__ScratchAesGcm::new(&key[..]) {
+            for (vg, name) in [(false, "own"), (true, "vg")] {
+                group.bench_function(BenchmarkId::new("rind", format!("{name}-{size_name}")), |b| {
+                    let mut t: [u8; 16] = tag.as_ref().try_into().unwrap();
+                    b.iter(|| {
+                        pt.copy_from_slice(ct);
+                        assert!(sk.run(vg, false, &nonce, aad, pt, &mut t));
+                    });
+                });
+            }
+        }
         vg_open(
             &mut group,
             key,
@@ -489,6 +537,15 @@ fn aes192_gcm(c: &mut Criterion) {
             let _dit = criterion::rind_dit();
             b.iter(|| test_rind_aes_gcm(&rind_key, &nonce, aad, &mut buf));
         });
+        #[cfg(target_arch = "x86_64")]
+        if let Some(sk) = rind::__ScratchAesGcm::new(&key[..]) {
+            for (vg, name) in [(false, "own"), (true, "vg")] {
+                group.bench_function(BenchmarkId::new("rind", format!("{name}-{size_name}")), |b| {
+                    let mut tag = [0u8; 16];
+                    b.iter(|| sk.run(vg, true, &nonce, aad, &mut buf, &mut tag));
+                });
+            }
+        }
         vg_seal(
             &mut group,
             &key,
@@ -538,6 +595,18 @@ fn aes192_gcm(c: &mut Criterion) {
                     .unwrap();
             });
         });
+        #[cfg(target_arch = "x86_64")]
+        if let Some(sk) = rind::__ScratchAesGcm::new(&key[..]) {
+            for (vg, name) in [(false, "own"), (true, "vg")] {
+                group.bench_function(BenchmarkId::new("rind", format!("{name}-{size_name}")), |b| {
+                    let mut t: [u8; 16] = tag.as_ref().try_into().unwrap();
+                    b.iter(|| {
+                        pt.copy_from_slice(ct);
+                        assert!(sk.run(vg, false, &nonce, aad, pt, &mut t));
+                    });
+                });
+            }
+        }
         vg_open(
             &mut group,
             &key,

@@ -86,6 +86,25 @@ mod test;
 
 // vvv Public API
 pub use error::{Error, KeyRejected};
+
+/// Scratch only.
+#[doc(hidden)]
+#[cfg(rind_backend = "x86_64")]
+pub struct __ScratchAesGcm(low::x86_64::aes_gcm::ScratchKey);
+
+#[cfg(rind_backend = "x86_64")]
+impl __ScratchAesGcm {
+    /// Scratch only.
+    pub fn new(key: &[u8]) -> Option<Self> {
+        low::x86_64::aes_gcm::ScratchKey::new(key).map(Self)
+    }
+
+    /// Scratch only.
+    pub fn run(&self, vg: bool, enc: bool, nonce: &[u8; 12], aad: &[u8], inout: &mut [u8], tag: &mut [u8; 16]) -> bool {
+        let _entry = low::Entry::new_secret();
+        self.0.run(vg, enc, nonce, aad, inout, tag)
+    }
+}
 pub use high::signature::any::KeyPair;
 
 /// Non-API documentation

@@ -540,8 +540,8 @@ const AVX512_KERNEL_MINIMUM_CIPHER_LEN: usize = 2048;
 
 /// The message lengths from which pyca/verified-garbage's AES-GCM seals and
 /// opens on the AVX-512 tier. TODO: measured.
-const VG_SEAL_FROM: usize = 1024;
-const VG_OPEN_FROM: usize = 8192;
+const VG_SEAL_FROM: usize = 0;
+const VG_OPEN_FROM: usize = 0;
 
 /// How many message bytes BoringSSL's 256-bit kernel needs to beat the AVX
 /// path, whose single blocks are quicker for short messages.
@@ -933,5 +933,33 @@ mod tests {
         let mut msg = bytes(rng, len);
         let tag = ct_sde::traced(|| seal(key, table, &nonce, &aad, &mut msg));
         ct_sde::traced(|| open(key, table, &nonce, &aad, &mut msg, &tag));
+    }
+}
+
+/// Scratch only: rind's own AVX-512 path (`vg` false) or VG's.
+pub(crate) struct ScratchKey {
+    key: AesKey,
+    own: GhashTable,
+    vg: GhashTable,
+}
+
+impl ScratchKey {
+    pub(crate) fn new(key: &[u8]) -> Option<Self> {
+        HaveAvx512ForAesGcm::check()?;
+        let key = AesKey::new(key);
+        let h = key.encrypt_block(&[0; 16]);
+        let own = GhashTable::hash_only(u128::from_be_bytes(h));
+        let vg = GhashTable::new(&key);
+        Some(Self { key, own, vg })
+    }
+
+    pub(crate) fn run(&self, vg: bool, enc: bool, nonce: &[u8; 12], aad: &[u8], inout: &mut [u8], tag: &mut [u8; 16]) -> bool {
+        let table = if vg { &self.vg } else { &self.own };
+        if enc {
+            *tag = seal(&self.key, table, nonce, aad, inout);
+            true
+        } else {
+            open(&self.key, table, nonce, aad, inout, tag)
+        }
     }
 }

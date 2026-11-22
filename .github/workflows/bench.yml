@@ -27,6 +27,7 @@ jobs:
   # and uploads every third bench target; shards of one workflow run merge
   # into one report.
   codspeed:
+    if: false
     name: codspeed (${{ matrix.shard }}/3)
     runs-on: ubuntu-24.04
     strategy:
@@ -125,77 +126,22 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - target: aarch64-unknown-linux-gnu
-            runner: ubuntu-24.04-arm
-            personality: linux64
-          - target: aarch64-unknown-linux-gnu
-            runner: ubuntu-24.04-arm
-            personality: linux64
-            portable: true
-          - target: aarch64-unknown-linux-gnu
-            runner: ubuntu-24.04-arm
-            personality: linux64
-            portable: true
-            cpu: no-sha3
-            benches: --bench aes_gcm --bench chacha20poly1305 --bench xchacha20poly1305 --bench sha2 --bench sha3 --bench hmac --bench hkdf --bench mlkem --bench mldsa
-          - target: armv7-unknown-linux-gnueabihf
-            runner: ubuntu-24.04-arm
-            personality: linux32
-          - target: armv7-unknown-linux-gnueabihf
-            runner: ubuntu-24.04-arm
-            personality: linux32
-            portable: true
-            cpu: no-crypto
           - target: x86_64-unknown-linux-gnu
             runner: ubuntu-24.04
             personality: linux64
+            copy: 1
           - target: x86_64-unknown-linux-gnu
             runner: ubuntu-24.04
             personality: linux64
-            portable: true
+            copy: 2
           - target: x86_64-unknown-linux-gnu
             runner: ubuntu-24.04
             personality: linux64
-            portable: true
-            # An RSA A/B on GitHub's runners reads this row: a runner may draw
-            # a CPU with IFMA, so only this row times the same path every run.
-            cpu: no-ifma
-            benches: --bench rsa_priv
+            copy: 3
           - target: x86_64-unknown-linux-gnu
             runner: ubuntu-24.04
             personality: linux64
-            portable: true
-            cpu: no-avx512
-            benches: --bench aes_gcm --bench mlkem --bench rsa_priv
-          - target: x86_64-unknown-linux-gnu
-            runner: ubuntu-24.04
-            personality: linux64
-            portable: true
-            cpu: no-adx
-            benches: --bench rsa_priv --bench rsa_pub --bench rsa_gen --bench p256 --bench p384 --bench p521 --bench x25519 --bench ed25519
-          - target: x86_64-unknown-linux-gnu
-            runner: ubuntu-24.04
-            personality: linux64
-            portable: true
-            cpu: no-avx
-            benches: --bench aes_gcm --bench cipher --bench sha1 --bench sha2
-          - target: x86_64-unknown-linux-gnu
-            runner: ubuntu-24.04
-            personality: linux64
-            portable: true
-            cpu: no-aes
-            benches: --bench aes_gcm --bench cipher --bench key_wrap --bench chacha20poly1305 --bench xchacha20poly1305
-          - target: x86_64-unknown-linux-gnu
-            runner: ubuntu-24.04
-            personality: linux64
-            portable: true
-            cpu: no-ssse3
-            benches: --bench aes_gcm --bench cipher --bench key_wrap --bench chacha20poly1305 --bench xchacha20poly1305 --bench sha1 --bench sha2
-          - target: x86_64-unknown-linux-gnu
-            runner: ubuntu-24.04
-            personality: linux64
-            portable: true
-            cpu: generic
+            copy: 4
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
@@ -405,7 +351,7 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: steps.select.outputs.skip != 'true'
         with:
-          name: bench-${{ matrix.target }}${{ matrix.portable && '-portable' || '' }}${{ matrix.cpu && format('-{0}', matrix.cpu) || '' }}
+          name: bench-${{ matrix.target }}${{ matrix.portable && '-portable' || '' }}${{ matrix.cpu && format('-{0}', matrix.cpu) || '' }}-${{ matrix.copy }}
           path: bench-results.json
 
       # One row per benchmark, in run order, with rind's time over the fastest
