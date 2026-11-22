@@ -303,15 +303,29 @@ asm_function() {
     target=$(relocations "$obj" "$section" | awk '{ sub(/[-+].*/, "", $3); print $3 }' | sort -u)
     if [[ -z $target ]]; then
         "$tools/llvm-objcopy" --only-section="$section" --rename-section="$section=.text" "$obj" "$dest"
-        return
-    fi
-    if [[ $(wc -l <<<"$target") != 1 || $target != .rodata.* ]]; then
+    elif [[ $(wc -l <<<"$target") != 1 || $target != .rodata.* ]]; then
         echo "admin/prove: $path's relocations refer to other than one .rodata section:" $target >&2
         return 1
+    else
+        "$tools/llvm-objcopy" --only-section="$section" --only-section=".rela$section" \
+            --only-section="$target" --rename-section="$section=.text" --rename-section="$target=.rodata" \
+            "$obj" "$dest"
     fi
-    "$tools/llvm-objcopy" --only-section="$section" --only-section=".rela$section" \
-        --only-section="$target" --rename-section="$section=.text" --rename-section="$target=.rodata" \
-        "$obj" "$dest"
+    # The codegen unit's file symbol names nothing a proof reads.
+    "$tools/llvm-nm" --just-symbol-name "$dest" >"$dest.names"
+    paste -d ' ' "$dest.names" <(stable_name <"$dest.names") >"$dest.renames"
+    "$tools/llvm-objcopy" --regex --strip-symbol='^rind\.[0-9a-f]+-cgu\.[0-9]+$' \
+        --redefine-syms="$dest.renames" "$dest"
+    rm "$dest.names" "$dest.renames"
+}
+
+# Prints each symbol name on stdin without what a version bump, a lockfile
+# change, or an edit elsewhere in rind changes, so `asm_function`'s objects,
+# and with them the HOL Light cache keys, change only with the code: the crate
+# disambiguator in each crate root of its v0 mangling, and the `.llvm.<hash>`
+# suffix of a local another codegen unit uses.
+stable_name() {
+    awk '{ gsub(/Cs[0-9A-Za-z]*_/, "C"); sub(/\.llvm\.[0-9]+$/, ""); print }'
 }
 
 # Takes `$out/<name>.lock`, waiting while another run in this worktree holds
@@ -672,7 +686,7 @@ rind_isa() {
     while read -r kind a b _; do
         if [[ $kind == static ]]; then
             read -r _ sym <<<"$(rind_symbol aarch64 "$b")"
-            statics[$sym]=$a
+            statics[$(stable_name <<<"$sym")]=$a
         fi
     done <"$dir/want"
     while read -r kind a b c; do
