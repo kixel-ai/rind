@@ -1,9 +1,8 @@
-//! `rand::SystemRandom` as RustCrypto's crates take it.
-#![cfg(feature = "rand_core")]
+//! `SystemRandom` as RustCrypto's crates take it.
 
 use p256::elliptic_curve::Generate;
 use rand_core::{TryRng, UnwrapErr};
-use rind::rand::SystemRandom;
+use rind_rand_core::SystemRandom;
 
 #[test]
 fn draws_differ() {

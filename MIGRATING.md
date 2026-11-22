@@ -355,10 +355,10 @@ No rind call takes a random source, so there is nothing to pass one to.
 | `generate::<[u8; N]>(rng)?.expose()` | `rand::fill` into a `[u8; N]` |
 | `SecureRandom`, `RandomlyConstructable`, `Random` | none |
 
-For a crate that takes a `rand_core` RNG, such as RustCrypto's, rind's
-`rand_core` feature adds `rand::SystemRandom`, a `rand_core` 0.10
-`TryCryptoRng` over `rand::fill`; wrap it in `rand_core::UnwrapErr` where
-the crate takes an infallible `CryptoRng`.
+For a crate that takes a `rand_core` RNG, such as RustCrypto's,
+[rind-rand-core](rind-rand-core/README.md)'s `SystemRandom` is a `rand_core`
+`TryCryptoRng` over `rand::fill`; wrap it in `rand_core::UnwrapErr` where the
+crate takes an infallible `CryptoRng`.
 
 ## error
 

@@ -13,12 +13,9 @@ rust-version.workspace = true
 # One target per backend: x86_64, aarch64, and i686 for the portable one.
 [package.metadata.docs.rs]
 targets = ["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu", "i686-unknown-linux-gnu"]
-features = ["rand_core", "zeroize"]
+features = ["zeroize"]
 
 [features]
-# rand_core 0.10's RNG traits on `rand::SystemRandom`, the major RustCrypto's
-# current crates and getrandom 0.4 take.
-rand_core = ["dep:rand_core"]
 # zeroize's `ZeroizeOnDrop` on every type that wipes itself on drop.
 zeroize = ["dep:zeroize"]
 __ctgrind = ["dep:crabgrind"]
@@ -27,7 +24,6 @@ __ctgrind = ["dep:crabgrind"]
 cfg-if = "1"
 getrandom = "0.4"
 crabgrind = { version = "0.4", optional = true }
-rand_core = { version = "0.10", optional = true }
 zeroize = { version = "1.9", default-features = false, optional = true }
 
 # The portable backend, which armv7 builds on: libcrux's portable Rust, with
