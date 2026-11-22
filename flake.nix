@@ -680,9 +680,7 @@
               ]
               ++ pkgs.lib.optionals (system == "x86_64-linux") [ sde ];
 
-              env =
-                python-shell.env
-                // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux armv7-shell.env;
+              env = python-shell.env // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux armv7-shell.env;
 
               shellHook = pkgs.lib.optionalString (system == "x86_64-linux") sde-certs;
             };
@@ -824,9 +822,7 @@
             wasm =
               let
                 lock = builtins.fromTOML (builtins.readFile ./Cargo.lock);
-                wasm-bindgen = builtins.head (
-                  builtins.filter (p: p.name == "wasm-bindgen") lock.package
-                );
+                wasm-bindgen = builtins.head (builtins.filter (p: p.name == "wasm-bindgen") lock.package);
               in
               mkDevShell {
                 packages = [
