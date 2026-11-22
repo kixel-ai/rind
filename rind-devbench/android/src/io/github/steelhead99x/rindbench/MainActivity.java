@@ -12,6 +12,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.PowerManager;
+import android.util.Log;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
@@ -37,6 +38,8 @@ import java.util.*;
  *
  * adb: am start -n io.github.steelhead99x.rindbench/.MainActivity [--es host H --ei port P]
  *      [--es libraries "rind,ring"] [--es sections "AEADs"] [--es preset quick|full] [--ez autostart true]
+ * autostart waits 3 s after the list loads, so a runner can capture the picker first.
+ * Each screen state logs one RINDBENCH_LAYOUT line (tag RindBench); see reportLayout.
  */
 public class MainActivity extends Activity {
     static final int BG = Color.rgb(13, 15, 20), CARD = Color.rgb(24, 27, 34), LINE = Color.rgb(44, 48, 58),
@@ -409,7 +412,55 @@ public class MainActivity extends Activity {
             ready();
         } catch (Exception e) { statusLbl.setText("Could not read the list of tests: " + e); }
         agreeChanged();
-        if (getIntent().getBooleanExtra("autostart", false)) { agree.setChecked(true); startTapped(); }
+        reportLayout("ready");
+        if (getIntent().getBooleanExtra("autostart", false)) ui.postDelayed(() -> { agree.setChecked(true); startTapped(); }, 3000);
+    }
+
+    /**
+     * One machine-readable line saying whether the screen fits, for a device
+     * runner checking "no scrolling" without a person looking:
+     *   RINDBENCH_LAYOUT {"phase":"ready","w":411,"h":914,"wide":false,"folded":false,"fits":true,"clipped":[]}
+     * w and h are dp. fits: the run controls are whole and on screen, and the
+     * run panel shows its status (and score, once there is one). "picker" in
+     * clipped means some chips are cut off, which a short screen allows.
+     */
+    private void reportLayout(String phase) {
+        ui.postDelayed(() -> {
+            try {
+                View run = leftCol.getChildAt(1);
+                int bottom = bottomOf(body) + 1;
+                List<String> clipped = new ArrayList<>();
+                if (!whole(run) || bottomOf(run) > bottom) clipped.add("run controls");
+                if (pickCard.getVisibility() == View.VISIBLE && !whole(pickCard)) clipped.add("picker");
+                if (statusLbl.getText().length() > 0 && !shown(statusLbl, bottom)) clipped.add("status");
+                if (scoreLbl.getText().length() > 0 && !shown(scoreLbl, bottom)) clipped.add("score");
+                boolean fits = true;
+                for (String c : clipped) if (!c.equals("picker")) fits = false;
+                float d = getResources().getDisplayMetrics().density;
+                View root = getWindow().getDecorView();
+                JSONObject o = new JSONObject();
+                o.put("phase", phase); o.put("w", Math.round(root.getWidth() / d)); o.put("h", Math.round(root.getHeight() / d));
+                o.put("wide", wide); o.put("folded", pickCard.getVisibility() != View.VISIBLE);
+                o.put("fits", fits); o.put("clipped", new JSONArray(clipped));
+                Log.i("RindBench", "RINDBENCH_LAYOUT " + o);
+            } catch (Exception e) { Log.w("RindBench", "RINDBENCH_LAYOUT failed: " + e); }
+        }, 600);
+    }
+    private static int bottomOf(View v) { int[] xy = new int[2]; v.getLocationInWindow(xy); return xy[1] + v.getHeight(); }
+    /** Whether v got all the height it asks for at its width. Re-lays out afterwards, since measure() overwrites its size. */
+    private static boolean whole(View v) {
+        if (v.getWidth() == 0) return false;
+        v.measure(MeasureSpecs.exactly(v.getWidth()), MeasureSpecs.unspecified());
+        boolean ok = v.getMeasuredHeight() <= v.getHeight() + 1;
+        v.requestLayout();
+        return ok;
+    }
+    private boolean shown(TextView v, int bottom) {
+        // The text's own layout, not a re-measure: scoreLbl has a fixed height and shrinks its text to fit.
+        android.text.Layout l = v.getLayout();
+        boolean textFits = l != null && l.getHeight() <= v.getHeight() - v.getTotalPaddingTop() - v.getTotalPaddingBottom() + 1;
+        return v.getVisibility() == View.VISIBLE && v.getHeight() > 0 && textFits
+            && bottomOf(v) <= bottomOf(resultsCard) + 1 && bottomOf(v) <= bottom;
     }
 
     private void ready() {
@@ -458,6 +509,7 @@ public class MainActivity extends Activity {
             picksLbl.setText((full ? "Full" : "Quick") + " · " + libs.size() + " libraries · " + secs.size() + " groups");
             showingRun = true; foldPicker();
             polling = true; ran = true; ui.post(this::poll);
+            reportLayout("run");
         } catch (Exception e) { statusLbl.setText("Could not start: " + e); agreeChanged(); }
     }
 
@@ -504,6 +556,7 @@ public class MainActivity extends Activity {
                 polling = false; getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
                 startBtn.setText("Run again"); startBtn.setVisibility(View.VISIBLE); stopBtn.setVisibility(View.GONE);
                 clearBtn.setVisibility(View.VISIBLE); setEnabledLook(clearBtn, true); agree.setEnabled(true); agreeChanged();
+                reportLayout("done");
                 return;
             }
         } catch (Exception e) { statusLbl.setText("status: " + e); }

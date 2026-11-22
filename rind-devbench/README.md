@@ -53,3 +53,17 @@ CAPTURE --out DIR` splits a collector capture into one JSON per run.
   the collector fills itself in (127.0.0.1:9103 via `adb reverse`, else the LAN address given to build-apk.sh as `COLLECTOR_HOST`); headless:
   `adb shell am start -n io.github.steelhead99x.rindbench/.MainActivity --es preset quick --es libraries rind,ring --es sections AEADs --ez autostart true`;
   results also in `/sdcard/Android/data/io.github.steelhead99x.rindbench/files/`.
+- iPad/iPhone headless (the same choices as Android's extras, as launch arguments):
+  `xcrun devicectl device process launch --console --device UDID io.github.steelhead99x.rindbench.all -preset quick -libraries rind,ring -sections AEADs -autostart YES [-host H -port P]`.
+  `-host`/`-port` override the collector baked in at build time.
+
+## Device runners
+Both apps support an unattended run with no one looking at the screen:
+- `autostart` waits 3 s after the list of tests loads, so a runner can capture the picker before the run starts.
+- At each screen state (`ready`, `run`, `done`), the app logs one line:
+  `RINDBENCH_LAYOUT {"phase":"ready","w":390,"h":844,"wide":false,"folded":false,"fits":true,"clipped":[]}`.
+  On Android it goes to logcat with tag `RindBench`. On iOS it goes to stderr (seen with `devicectl … --console`) and the device log.
+  `w` and `h` are in points (iOS) or dp (Android).
+- `fits` is false when the run controls are cut off or off screen, or when the run panel can't show its status or score. `"picker"` in `clipped` means some chips are cut off, which a short screen allows.
+- The run itself ends with a `done` or `stopped` line at the collector.
+

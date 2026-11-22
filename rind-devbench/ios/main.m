@@ -42,6 +42,27 @@ static BOOL Reachable(NSString *host, int port, int ms) {
   }
   freeaddrinfo(res); return ok;
 }
+// Launch arguments, the iOS twin of Android's adb extras, for a device runner:
+//   xcrun devicectl device process launch --device UDID io.github.steelhead99x.rindbench.all \
+//     -preset quick -libraries rind,ring -sections AEADs -autostart YES [-host H -port P]
+// Read from the argument domain only, so nothing carries over to a later launch.
+static NSString *Arg(NSString *k) {
+  id v = [NSUserDefaults.standardUserDefaults volatileDomainForName:NSArgumentDomain][k];
+  if ([v isKindOfClass:NSString.class]) return v;
+  return [v respondsToSelector:@selector(stringValue)] ? [v stringValue] : nil;
+}
+static BOOL ArgOn(NSString *k) {
+  NSString *v = Arg(k).lowercaseString;
+  return [v isEqual:@"yes"] || [v isEqual:@"true"] || [v isEqual:@"1"];
+}
+static NSSet<NSString *> *ArgList(NSString *k) {
+  NSMutableSet *out = [NSMutableSet new];
+  for (NSString *p in [Arg(k) componentsSeparatedByString:@","]) {
+    NSString *t = [p stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet];
+    if (t.length) [out addObject:t];
+  }
+  return out;
+}
 
 #define RGB(r, g, b) [UIColor colorWithRed:(r) / 255.0 green:(g) / 255.0 blue:(b) / 255.0 alpha:1]
 #define C_BG RGB(13, 15, 20)
@@ -90,7 +111,7 @@ static NSString *const kConsent = @"The run keeps the CPU busy (minutes on Quick
 @end
 
 @implementation VC {
-  UIStackView *body, *leftCol, *pickCard;
+  UIStackView *body, *leftCol, *pickCard, *runCard, *resultsCard;
   UILabel *picksLbl;
   BOOL isWide, showingRun;
   Flow *libFlow, *secFlow;
@@ -196,6 +217,8 @@ static NSString *const kConsent = @"The run keeps the CPU busy (minutes on Quick
   UIStackView *btns = [[UIStackView alloc] initWithArrangedSubviews:@[startBtn, stopBtn, clearBtn]];
   btns.spacing = 10; btns.distribution = UIStackViewDistributionFillEqually;
   UIStackView *run = [self card:@[preset, agreeRow, btns]];
+  runCard = run;
+  if ([Arg(@"preset") isEqual:@"full"]) preset.selectedSegmentIndex = 1;
 
   UIView *leftSpring = [UIView new];
   [leftSpring setContentHuggingPriority:UILayoutPriorityDefaultLow - 1 forAxis:UILayoutConstraintAxisVertical];
@@ -222,6 +245,7 @@ static NSString *const kConsent = @"The run keeps the CPU busy (minutes on Quick
   UIStackView *results = [self card:@[[self heading:@"Run"], picksLbl, statusLbl, progress, currentLbl, scoreLbl, behindLbl, spring, foot]];
   [results setContentHuggingPriority:UILayoutPriorityDefaultLow forAxis:UILayoutConstraintAxisVertical];
   [results setContentCompressionResistancePriority:UILayoutPriorityDefaultLow forAxis:UILayoutConstraintAxisVertical];
+  resultsCard = results;
 
   body = [[UIStackView alloc] initWithArrangedSubviews:@[leftCol, results]];
   body.spacing = 12;
@@ -292,23 +316,70 @@ static NSString *const kConsent = @"The run keeps the CPU busy (minutes on Quick
   deviceLbl.text = [parts componentsJoinedByString:@" · "];
   NSMutableDictionary *lc = [NSMutableDictionary new], *sc = [NSMutableDictionary new];
   for (NSDictionary *r in cat[@"rows"]) { lc[r[@"library"]] = @([lc[r[@"library"]] intValue] + 1); sc[r[@"section"]] = @([sc[r[@"section"]] intValue] + 1); }
+  NSSet *wantLibs = ArgList(@"libraries"), *wantSecs = ArgList(@"sections");
   for (NSString *l in cat[@"libraries"]) {
-    UIButton *b = [self chip:l on:YES enabled:YES]; libChips[l] = b; [libFlow addSubview:b];
+    UIButton *b = [self chip:l on:!wantLibs.count || [wantLibs containsObject:l] enabled:YES]; libChips[l] = b; [libFlow addSubview:b];
   }
   // rind-bench's extra rows ("More: <file>", off by default) share one chip, so the screen never has to scroll.
   NSMutableArray *more = [NSMutableArray new];
+  BOOL moreOn = NO;
   for (NSString *s in cat[@"sections"]) {
     int n = [sc[s] intValue];
-    if ([s hasPrefix:@"More: "]) { if (n > 0) [more addObject:s]; continue; }
-    UIButton *b = [self chip:s on:n > 0 enabled:n > 0]; secChips[s] = b; [secFlow addSubview:b];
+    if ([s hasPrefix:@"More: "]) { if (n > 0) { [more addObject:s]; moreOn |= [wantSecs containsObject:s]; } continue; }
+    UIButton *b = [self chip:s on:n > 0 && (!wantSecs.count || [wantSecs containsObject:s]) enabled:n > 0]; secChips[s] = b; [secFlow addSubview:b];
   }
   moreSections = more;
   if (more.count) {
-    moreChip = [self chip:[NSString stringWithFormat:@"+ %lu more groups", (unsigned long)more.count] on:NO enabled:YES];
+    moreChip = [self chip:[NSString stringWithFormat:@"+ %lu more groups", (unsigned long)more.count] on:moreOn enabled:YES];
     [secFlow addSubview:moreChip];
   }
   [libFlow invalidateIntrinsicContentSize]; [secFlow invalidateIntrinsicContentSize];
   [self ready];
+  [self reportLayout:@"ready"];
+  // -autostart waits a moment, so a runner can capture the picker before the run.
+  if (ArgOn(@"autostart"))
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+      self->agree.on = YES; [self agreeChanged]; [self startTapped];
+    });
+}
+
+// One machine-readable line saying whether the screen fits, for a device
+// runner checking "no scrolling" without a person looking:
+//   RINDBENCH_LAYOUT {"phase":"ready","w":390,"h":844,"wide":false,"folded":false,"fits":true,"clipped":[]}
+// fits: the run controls are whole and on screen, and the run panel shows its
+// status (and score, once there is one). "picker" in clipped means some chips
+// are cut off, which a short screen allows.
+- (void)reportLayout:(NSString *)phase {
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.6 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+    [self.view layoutIfNeeded];
+    UIView *root = self.view;
+    CGFloat bottom = CGRectGetMaxY(root.safeAreaLayoutGuide.layoutFrame) + 1;
+    CGFloat (^maxY)(UIView *) = ^CGFloat(UIView *v) { return CGRectGetMaxY([v convertRect:v.bounds toView:root]); };
+    BOOL (^whole)(UIView *) = ^BOOL(UIView *v) {
+      CGFloat need = [v systemLayoutSizeFittingSize:CGSizeMake(v.bounds.size.width, 0)
+                      withHorizontalFittingPriority:UILayoutPriorityRequired
+                            verticalFittingPriority:UILayoutPriorityFittingSizeLevel].height;
+      return need <= v.bounds.size.height + 1;
+    };
+    BOOL (^shown)(UIView *) = ^BOOL(UIView *v) {
+      CGFloat need = [v sizeThatFits:CGSizeMake(v.bounds.size.width, CGFLOAT_MAX)].height;
+      return !v.hidden && v.bounds.size.height + 1 >= need && maxY(v) <= maxY(self->resultsCard) + 1 && maxY(v) <= bottom;
+    };
+    NSMutableArray *clipped = [NSMutableArray new];
+    if (!whole(self->runCard) || maxY(self->runCard) > bottom) [clipped addObject:@"run controls"];
+    if (!self->pickCard.hidden && !whole(self->pickCard)) [clipped addObject:@"picker"];
+    if (self->statusLbl.text.length && !shown(self->statusLbl)) [clipped addObject:@"status"];
+    if (self->scoreLbl.text.length && !shown(self->scoreLbl)) [clipped addObject:@"score"];
+    BOOL fits = YES;
+    for (NSString *c in clipped) if (![c isEqual:@"picker"]) fits = NO;
+    NSDictionary *o = @{@"phase": phase, @"w": @((int)root.bounds.size.width), @"h": @((int)root.bounds.size.height),
+                        @"wide": @(self->isWide), @"folded": @(self->pickCard.hidden), @"fits": @(fits), @"clipped": clipped};
+    NSData *js = [NSJSONSerialization dataWithJSONObject:o options:NSJSONWritingSortedKeys error:nil];
+    NSString *line = [@"RINDBENCH_LAYOUT " stringByAppendingString:[[NSString alloc] initWithData:js encoding:NSUTF8StringEncoding]];
+    // stderr reaches `devicectl … --console`; NSLog reaches the device log.
+    fprintf(stderr, "%s\n", line.UTF8String); fflush(stderr);
+    NSLog(@"%@", line);
+  });
 }
 
 - (void)ready {
@@ -329,15 +400,22 @@ static NSString *const kConsent = @"The run keeps the CPU busy (minutes on Quick
   [self presentViewController:a animated:YES completion:nil];
 }
 
-// The collector fills itself in from the address baked in at build time (BenchHost/BenchPort); shown, never typed.
+// The collector fills itself in from the address baked in at build time (BenchHost/BenchPort),
+// or from -host/-port at launch; shown, never typed.
+- (NSString *)colHost { NSString *h = Arg(@"host"); return h.length ? h : [NSBundle.mainBundle objectForInfoDictionaryKey:@"BenchHost"]; }
+- (NSNumber *)colPort {
+  if (Arg(@"port").intValue > 0) return @(Arg(@"port").intValue);
+  id p = [NSBundle.mainBundle objectForInfoDictionaryKey:@"BenchPort"];
+  return [p respondsToSelector:@selector(intValue)] && [p intValue] > 0 ? @([p intValue]) : nil;
+}
 - (void)findCollector {
-  NSString *host = [NSBundle.mainBundle objectForInfoDictionaryKey:@"BenchHost"];
-  NSNumber *port = [NSBundle.mainBundle objectForInfoDictionaryKey:@"BenchPort"];
+  NSString *host = [self colHost];
+  NSNumber *port = [self colPort];
   if (!host.length || !port) { collectorLbl.text = @"Results: saved on this device (no collector in this build)"; return; }
   dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
     BOOL ok = Reachable(host, port.intValue, 800);
     dispatch_async(dispatch_get_main_queue(), ^{
-      self->collectorLbl.text = ok ? [NSString stringWithFormat:@"● Results: %@:%@ over Wi-Fi, and saved on this device", host, port]
+      self->collectorLbl.text = ok ? [NSString stringWithFormat:@"● Results: %@:%@ over the network, and saved on this device", host, port]
                                    : [NSString stringWithFormat:@"○ Results: %@:%@ not reachable yet (tries again at Start); saved on this device", host, port];
       self->collectorLbl.textColor = ok ? C_GOOD : C_MUTED;
     });
@@ -377,8 +455,8 @@ static NSString *const kConsent = @"The run keeps the CPU busy (minutes on Quick
     @"sample_ms": @(full ? 100 : 50), @"warm_ms": @(full ? 300 : 150), @"out_dir": docs, @"label": @"ipad",
     @"env": @{@"RIND_BENCH_KEYS_DIR": keys},
   } mutableCopy];
-  NSString *host = [NSBundle.mainBundle objectForInfoDictionaryKey:@"BenchHost"];
-  NSNumber *port = [NSBundle.mainBundle objectForInfoDictionaryKey:@"BenchPort"];
+  NSString *host = [self colHost];
+  NSNumber *port = [self colPort];
   if (host.length && port) { cfg[@"host"] = host; cfg[@"port"] = port; }
   NSData *js = [NSJSONSerialization dataWithJSONObject:cfg options:0 error:nil];
   NSString *s = [[NSString alloc] initWithData:js encoding:NSUTF8StringEncoding];
@@ -392,6 +470,7 @@ static NSString *const kConsent = @"The run keeps the CPU busy (minutes on Quick
   [self findCollector];
   [timer invalidate];
   timer = [NSTimer scheduledTimerWithTimeInterval:1.0 repeats:YES block:^(NSTimer *t) { [self poll]; }];
+  [self reportLayout:@"run"];
 }
 
 - (void)stopTapped { devbench_stop(); stopBtn.enabled = NO; statusLbl.text = @"Stopping after the current row…"; }
@@ -414,6 +493,7 @@ static NSString *const kConsent = @"The run keeps the CPU busy (minutes on Quick
     [timer invalidate]; timer = nil; UIApplication.sharedApplication.idleTimerDisabled = NO;
     startBtn.hidden = NO; [startBtn setTitle:@"Run again" forState:UIControlStateNormal]; stopBtn.hidden = YES; clearBtn.hidden = NO;
     [self setPicking:YES];
+    [self reportLayout:@"done"];
   }
 }
 
