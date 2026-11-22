@@ -669,8 +669,10 @@
                 pkgs.git
               ]
               ++ python-shell.packages
+              # The armv7 compiler stays off PATH, where its setup hook would
+              # make it every build's `cc`; the armv7 shell's variables name it
+              # by path.
               ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [
-                armv7-cc
                 pkgs.qemu-user
                 pkgs.util-linux
               ]
