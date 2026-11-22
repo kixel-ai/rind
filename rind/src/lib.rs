@@ -67,6 +67,9 @@ mod high;
 /// Errors.  Common to all layers.
 mod error;
 
+#[cfg(feature = "zeroize")]
+mod zeroize_on_drop;
+
 /// The FIPS module's random generator, which [`mid::rng`] draws from in the
 /// module's build.
 #[cfg(any(test, rind_fips))]
@@ -912,4 +915,42 @@ pub mod rand {
         use crate::mid::rng::{RandomSource, SystemRandom};
         SystemRandom.fill(out)
     }
+
+    /// [`fill`] as a `rand_core` RNG, for crates generic over one.
+    ///
+    /// It fails as [`fill`] does, so it is a `TryCryptoRng`; wrap it in
+    /// `rand_core::UnwrapErr` where a crate takes an infallible `CryptoRng`.
+    ///
+    /// ```
+    /// use rand_core::TryRng;
+    /// let mut nonce = [0u8; 16];
+    /// rind::rand::SystemRandom.try_fill_bytes(&mut nonce).unwrap();
+    /// ```
+    #[cfg(feature = "rand_core")]
+    #[derive(Debug, Default, Clone)]
+    pub struct SystemRandom;
+
+    #[cfg(feature = "rand_core")]
+    impl rand_core::TryRng for SystemRandom {
+        type Error = super::Error;
+
+        fn try_next_u32(&mut self) -> Result<u32, Self::Error> {
+            let mut out = [0u8; 4];
+            fill(&mut out)?;
+            Ok(u32::from_le_bytes(out))
+        }
+
+        fn try_next_u64(&mut self) -> Result<u64, Self::Error> {
+            let mut out = [0u8; 8];
+            fill(&mut out)?;
+            Ok(u64::from_le_bytes(out))
+        }
+
+        fn try_fill_bytes(&mut self, dst: &mut [u8]) -> Result<(), Self::Error> {
+            fill(dst)
+        }
+    }
+
+    #[cfg(feature = "rand_core")]
+    impl rand_core::TryCryptoRng for SystemRandom {}
 }

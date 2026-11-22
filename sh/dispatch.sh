@@ -430,6 +430,15 @@ step() {
             # `cargo test`, it passes a selection with no tests, such as the
             # benches alone.
             run cargo nextest run "${packages[@]}" --locked --no-tests=warn
+            # rind's optional trait features, and the tests that hold each
+            # impl to its claim: zeroing requires `ZeroizeOnDrop` of every
+            # type it checks.
+            if names rind "${packages[@]}"; then
+                run cargo clippy -p rind --features rand_core,zeroize --lib --test zeroing --test rand_core \
+                    --locked -- --deny warnings
+                run cargo nextest run -p rind --features rand_core,zeroize --test zeroing --test rand_core --locked
+                run cargo test -p rind --features rand_core --locked --doc rand::SystemRandom
+            fi
             # The FIPS module's own code compiles only under its cfg, which a
             # workspace build leaves off, and only for glibc Linux on x86_64
             # and aarch64, where rind-fips is not empty. Its break build
