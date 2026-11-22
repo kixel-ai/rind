@@ -21,6 +21,7 @@ use pyo3::exceptions::{PyException, PyMemoryError};
 use pyo3::ffi;
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict};
+use zeroize::Zeroize;
 
 mod aead;
 mod agreement;
@@ -145,6 +146,37 @@ impl core::ops::Deref for Bytes<'_> {
     }
 }
 
+/// A bytes-like secret argument, such as a key, seed, password, or private
+/// key's encoding: a [`Bytes`] whose copy, if it made one, is wiped when
+/// dropped. Messages and public values stay [`Bytes`], unwiped, as rind
+/// leaves them.
+pub(crate) struct Secret<'a>(Bytes<'a>);
+
+impl<'a, 'py> FromPyObject<'a, 'py> for Secret<'a> {
+    type Error = PyErr;
+
+    fn extract(obj: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
+        Bytes::extract(obj).map(Self)
+    }
+}
+
+impl core::ops::Deref for Secret<'_> {
+    type Target = [u8];
+
+    fn deref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl Drop for Secret<'_> {
+    fn drop(&mut self) {
+        // A borrowed `bytes` is Python's to free.
+        if let Cow::Owned(copy) = &mut self.0.0 {
+            copy.zeroize();
+        }
+    }
+}
+
 /// Declares the Python class of a module's algorithm constants, each
 /// wrapping a rind algorithm, with any further methods.
 macro_rules! algorithm {
@@ -183,7 +215,8 @@ macro_rules! constants {
 pub(crate) use constants;
 
 /// Returns a new `bytes` of `len` bytes that begins with `prefix`, the rest
-/// zeroed, after `fill` has written it in place.
+/// zeroed, after `fill` has written it in place. If `fill` fails, the buffer
+/// is wiped before it is freed, since it may hold part of a secret.
 ///
 /// Unlike `PyBytes::new_with`, this writes each byte once before `fill`
 /// rather than zeroing the whole buffer and then copying `prefix` over it,
@@ -207,7 +240,11 @@ pub(crate) fn bytes_with<'py>(
         let buffer = pyo3::ffi::PyBytes_AsString(object).cast::<u8>();
         core::ptr::copy_nonoverlapping(prefix.as_ptr(), buffer, prefix.len());
         core::ptr::write_bytes(buffer.add(prefix.len()), 0, len - prefix.len());
-        fill(core::slice::from_raw_parts_mut(buffer, len))?;
+        let out = core::slice::from_raw_parts_mut(buffer, len);
+        if let Err(e) = fill(&mut *out) {
+            out.zeroize();
+            return Err(e);
+        }
         Ok(bytes)
     }
 }
