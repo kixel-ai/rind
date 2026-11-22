@@ -2,7 +2,7 @@
 //! transliterations of their standards: runs each, as the compiled
 //! `spec-server` answers, on its algorithm's published vectors from
 //! `thirdparty/vectors/`, and on random inputs from a fixed seed compared with
-//! rind's output, and fails on any disagreement. `admin/prove lean` runs it.
+//! rind's output, and fails on any disagreement. `admin/prove spec-tests` runs it.
 //!
 //! Usage: `spec-tests <spec-server> <vectors dir> <seed> <random cases per test> [full]`
 //!

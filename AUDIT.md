@@ -181,7 +181,7 @@ establishes, and what it does not:
   replayed on every tier and against the portable backend. The ECVRF, OPRF,
   and blind RSA targets compare rind with itself, so they find panics and
   hangs, not wrong answers. Coverage does not measure what fuzzing reaches.
-  [OSS-Fuzz](/quest/m4/oss-fuzz.md) is not running yet.
+  [OSS-Fuzz](/quest/m2/confidence/oss-fuzz.md) is not running yet.
 - **ctgrind** (`admin/ctgrind`, weekly, in release and debug builds, armv7's
   included) runs the unit tests under valgrind, failing on a branch or address
   that depends on a marked secret. It sees only the paths the tests take,

@@ -5,7 +5,7 @@ edition = "2024"
 publish = false
 
 # Tests the Lean specs the proofs trust, compiled as `proofs/`'s `spec-server`,
-# against the published vectors and against rind: `admin/prove lean` runs it.
+# against the published vectors and against rind: `admin/prove spec-tests` runs it.
 [dependencies]
 rind = { path = "../../rind" }
 serde_json = "1"

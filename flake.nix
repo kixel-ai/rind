@@ -514,6 +514,10 @@
                   cmake
                   pkg-config
                   openssl
+                  # admin/build-cost's vendored OpenSSL configures with it. A
+                  # host's own can lack core modules, as Fedora's lacks FindBin;
+                  # git already brings this one.
+                  perl
                   cargo-deny
                   # admin/mutants and the mutants workflow.
                   cargo-mutants
