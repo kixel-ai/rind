@@ -150,6 +150,11 @@ fn key_pair_from_components() {
                     assert!(ours.is_ok(), "{at}");
                     continue;
                 }
+                // A changed `d` disagrees with the rest, which rind refuses
+                // even where ring, never reading it, takes it.
+                if field == 2 && change >= 2 {
+                    assert!(ours.is_err(), "{at}");
+                }
                 let ring_signs = |key: &theirs::KeyPair| {
                     let mut signature = vec![0; key.public().modulus_len()];
                     key.sign(
