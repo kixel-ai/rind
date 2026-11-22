@@ -607,21 +607,18 @@ impl SigningKey {
             return Err(KeyFormatError::RsaExponent.into());
         }
         // The private integers are secret: only whether one is negative, as
-        // aws-lc refuses, is revealed.
-        let negative = [
-            &decoded.prime1,
-            &decoded.prime2,
-            &decoded.privateExponent,
-            &decoded.exponent1,
-            &decoded.exponent2,
-            &decoded.coefficient,
-        ]
-        .map(|x| x.is_negative());
-        if ct::into_public(negative[0] | negative[1]) {
+        // aws-lc refuses, is revealed. Their sign bits are read without
+        // `Integer::is_negative`, whose `Option<bool>` branches on the bit.
+        let sign = |x: &asn1::Integer<'_>| x.as_ref().first().map_or(0, |b| b >> 7);
+        if ct::into_public(sign(&decoded.prime1) | sign(&decoded.prime2)) != 0 {
             return Err(KeyFormatError::RsaPrimes.into());
         }
         // One that is negative cannot agree with the others.
-        if ct::into_public(negative[2] | negative[3] | negative[4] | negative[5]) {
+        let others = sign(&decoded.privateExponent)
+            | sign(&decoded.exponent1)
+            | sign(&decoded.exponent2)
+            | sign(&decoded.coefficient);
+        if ct::into_public(others) != 0 {
             return Err(KeyFormatError::MismatchedRsaComponents.into());
         }
         Self::from_unsigned(&Components {

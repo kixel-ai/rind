@@ -71,6 +71,7 @@ fn key_pair_pkcs8_v1_only() {
 
 /// A PKCS#1 key's integers in `RSAPrivateKey` order (n, e, d, p, q, dP, dQ,
 /// qInv), read with rind-ring's own DER reader.
+#[cfg(not(target_family = "wasm"))]
 fn components(pkcs1: &[u8]) -> Vec<Vec<u8>> {
     use rind_ring::{error, io::der};
     untrusted::Input::from(pkcs1)
