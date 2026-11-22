@@ -12,13 +12,27 @@ The maintainer's decision, 2026-11-19:
 
 The orchestrator's reading, ✅ confirmed by the maintainer on 2026-11-19 (rejected: another meaning): a check whose PR merged while it ran never gated anything, so it becomes a gating check, required or run in the merge queue. A check that newer pushes, such as review fixes, keep cancelling is made faster or moved to nightly. Since no PR run was cancelled because its PR merged, the merge case is the checks still running when their PR merged, also confirmed by the maintainer. Measure each workflow's causes before choosing for it.
 
-Measured on 2026-11-18 from the Actions REST API, hosted job-hours only:
+Hosted job-hours per day of `pull_request` runs, from the Actions REST API: cancelled, then still running when their PR merged (whole runs). "Before" is 2026-11-18; "after cuts" is 2026-11-20 06:03 UTC, when [kixel-ai/rind#911](https://github.com/kixel-ai/rind/pull/911) landed after [kixel-ai/rind#906](https://github.com/kixel-ai/rind/pull/906), [kixel-ai/rind#881](https://github.com/kixel-ai/rind/pull/881), and [kixel-ai/rind#843](https://github.com/kixel-ai/rind/pull/843), to 2026-11-22 05:46 UTC.
 
-- No PR run was cancelled because its PR merged. Merges waste time another way: 43 hosted hours were still running after their PR had merged, so their results gated nothing: prove 21, x86-cpu 18, ctgrind 4.
-- A newer push to the same branch cancelled 197 hours in 142 runs: x86-cpu 71, prove 66, ctgrind 29, Site 8, PR check 7, regenerate 6, lints 4. 19 of those pushes merged `main` into the branch; the rest were other commits, mostly review fixes. The newer push came a median 28 minutes after the cancelled run started (p25 13, p75 58).
-- 72 of the day's 198 cancelled PR hours were on drafts. Since [kixel-ai/rind#906](https://github.com/kixel-ai/rind/pull/906), drafts no longer run the seven heavy workflows, only Site, PR check, regenerate, and lints, so the re-measure shows how much of those 72 hours is left. Hand-cancelled `bench` dispatches (21 hours) and the armv7 debug rows at their 6-hour limit (14 hours, fixed since by [kixel-ai/rind#843](https://github.com/kixel-ai/rind/pull/843)) are out of scope.
+| workflow | cancelled before | after cuts | post-merge before | after cuts | choice |
+| --- | --- | --- | --- | --- | --- |
+| prove | 91.0 | 43.0 | 22.9 | 16.0 | sped up, gating open below |
+| x86-cpu | 75.7 | 1.1 | 26.3 | 1.2 | gates in the queue since #911 |
+| ctgrind | 32.7 | 2.3 | 6.7 | 3.6 | gating open below |
+| PR check, Site, regenerate, lints, timing, build, fuzz, ESP32 | 29.0 | 1.9 | 0.4 | 1.1 | minutes each: keep |
 
-Recommendations:
+[kixel-ai/rind#958](https://github.com/kixel-ai/rind/pull/958) sped `prove` up: 64 of its 79 ready runs re-ran HOL Light aarch64 (58 minutes each), because `asm_function`'s objects kept names that a version bump, a lockfile change, or an unrelated edit changes, and with them every cache key. Its keys now change only with the code, and release-plz's release PR, rewritten on each push to `main`, skips `prove` as it already skipped `x86-cpu` and `ctgrind`: it took 23 of `prove`'s hours a day. `lean` (28 minutes) still runs on every ready run that touches `rind/src`, and `prove` returned a median 80 minutes after its push, while the newer push that cancelled a run came a median 6 minutes after it started.
 
-- Re-measure after the cuts this quest requires land, then choose per remaining workflow; many of the cancelled hours go with them.
-- Gate through the merge queue rather than a required context: a path-filtered workflow cannot be a required check, and [kixel-ai/rind#881](https://github.com/kixel-ai/rind/pull/881) runs a workflow's check inside the queue's self-hosted build when the group's diff touches its `pull_request` paths (`CHECK_QUEUE` in `sh/dispatch.sh`), since hosted runners' queue waits would run into the group's timeout. Reuse it. [kixel-ai/rind#911](https://github.com/kixel-ai/rind/pull/911) already runs every SDE path set in the queue that way. A check moved into the queue slows the gate, so the PR says by how much and why it is worth it. `main`'s ruleset comes from dotfiles' `repo-settings`, so change it there if a required context changes.
+Left:
+
+- Re-measure `prove` and `ctgrind` over the week after #958 lands, the same way (the script is in #958's Validation).
+- Give `lean` a result key as the HOL Light checks have, so a pull request skips it unless the Rust under proof, the proofs, or their tools change.
+- Gate what still runs after its PR merged, as the maintainer decides under Waiting.
+
+## Waiting
+
+- Maintainer: whether `prove`'s and `ctgrind`'s post-merge runs gate in the merge queue, and at what cost. A queue module (`CHECK_QUEUE` in `sh/dispatch.sh`) would add each check's time to every group whose diff reaches it: ctgrind's x86_64 release row and BINSEC rows took a median 28 minutes on hosted runners, `lean` 28 and HOL Light up to an hour, against a median 2.5-minute queue build. Recommendation: gate `prove` in the queue only for the HOL Light targets whose key `main` lacks, once `lean` has a key too, since that is when a proof can break and is rare after #958; leave `ctgrind` advisory on pull requests, since its 3.6 post-merge hours a day do not pay for 20 or more minutes on most groups, and its weekly run catches what slips through.
+
+## Related
+
+- [The merge queue runs rind's tests natively on aarch64](/quest/m0/mac-mini-runner.md) - a second queue runner, which a queue module must not slow
