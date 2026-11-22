@@ -3,6 +3,7 @@ package io.github.steelhead99x.rindbench;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.res.ColorStateList;
+import android.content.res.Configuration;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -25,10 +26,10 @@ import java.net.Socket;
 import java.util.*;
 
 /**
- * RindBench All (v14) for Android: the same screens, flow and words as the
- * iPad app (ios/main.m). A data-driven list of every library x operation this
- * build of rind-devbench can time, picked per run; nothing here names an
- * operation or a library.
+ * RindBench All (v15) for Android: one screen, no scrolling, the same layout,
+ * flow and words as the iPad app (ios/main.m). A data-driven picker of every
+ * library x operation this build of rind-devbench can time, and a live
+ * summary of the run; nothing here names an operation or a library.
  *
  * The collector fills itself in: USB first (127.0.0.1:PORT, live when the
  * computer ran `adb reverse tcp:PORT tcp:PORT`), then the LAN address baked in
@@ -38,19 +39,61 @@ import java.util.*;
  *      [--es libraries "rind,ring"] [--es sections "AEADs"] [--es preset quick|full] [--ez autostart true]
  */
 public class MainActivity extends Activity {
-    static final int BG = Color.rgb(15, 18, 23), CARD = Color.rgb(28, 31, 38), MUTED = Color.rgb(166, 166, 166), ACCENT = Color.rgb(250, 191, 51);
+    static final int BG = Color.rgb(13, 15, 20), CARD = Color.rgb(24, 27, 34), LINE = Color.rgb(44, 48, 58),
+        CHIP = Color.rgb(36, 40, 50), MUTED = Color.rgb(150, 156, 170), TEXT = Color.rgb(236, 238, 243),
+        ACCENT = Color.rgb(250, 191, 51), GOOD = Color.rgb(84, 214, 146), BAD = Color.rgb(255, 120, 110);
+    static final String CONSENT = "The run keeps the CPU busy (minutes on Quick, longer on Full) and warms the device. "
+        + "It sends only timings and the model, chip, OS version and CPU features to the computer that installed this app. "
+        + "No name, account, serial or location. Results are also saved on this device.";
 
     private final Handler ui = new Handler(Looper.getMainLooper());
-    private LinearLayout root, libBox, secBox;
-    private TextView deviceLbl, statusLbl, resultsLbl, collectorLbl;
+    private LinearLayout body, leftCol;
+    private View resultsCard;
+    private Flow libFlow, secFlow;
+    private TextView deviceLbl, statusLbl, currentLbl, scoreLbl, behindLbl, collectorLbl;
+    private ProgressBar progress;
     private Switch agree;
-    private RadioGroup preset;
+    private TextView quickBtn, fullBtn;
+    private boolean full;
     private Button startBtn, stopBtn, clearBtn;
     private JSONObject catalog;
-    private final Map<String, Switch> libSw = new LinkedHashMap<>(), secSw = new LinkedHashMap<>();
+    private final Map<String, TextView> libChips = new LinkedHashMap<>(), secChips = new LinkedHashMap<>();
+    private final List<String> moreSections = new ArrayList<>();
+    private TextView moreChip;
     private boolean polling, ran;
     private String keysDir;
     private String colHost; private int colPort; private String colHow = "looking…";
+
+    /** Lays its children out left to right, wrapping to a new line when one is full. */
+    static final class Flow extends ViewGroup {
+        final int gap;
+        Flow(Activity a, int gap) { super(a); this.gap = gap; }
+        @Override protected void onMeasure(int wSpec, int hSpec) {
+            int width = MeasureSpec.getSize(wSpec) - getPaddingLeft() - getPaddingRight();
+            int x = 0, y = 0, line = 0;
+            for (int i = 0; i < getChildCount(); i++) {
+                View c = getChildAt(i);
+                if (c.getVisibility() == GONE) continue;
+                c.measure(MeasureSpec.makeMeasureSpec(width, MeasureSpec.AT_MOST), MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED));
+                int w = c.getMeasuredWidth(), h = c.getMeasuredHeight();
+                if (x > 0 && x + w > width) { x = 0; y += line + gap; line = 0; }
+                x += w + gap; line = Math.max(line, h);
+            }
+            setMeasuredDimension(MeasureSpec.getSize(wSpec), y + line + getPaddingTop() + getPaddingBottom());
+        }
+        @Override protected void onLayout(boolean changed, int l, int t, int r, int b) {
+            int width = r - l - getPaddingLeft() - getPaddingRight();
+            int x = 0, y = 0, line = 0;
+            for (int i = 0; i < getChildCount(); i++) {
+                View c = getChildAt(i);
+                if (c.getVisibility() == GONE) continue;
+                int w = c.getMeasuredWidth(), h = c.getMeasuredHeight();
+                if (x > 0 && x + w > width) { x = 0; y += line + gap; line = 0; }
+                c.layout(getPaddingLeft() + x, getPaddingTop() + y, getPaddingLeft() + x + w, getPaddingTop() + y + h);
+                x += w + gap; line = Math.max(line, h);
+            }
+        }
+    }
 
     private int dp(float v) { return (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, getResources().getDisplayMetrics()); }
 
@@ -58,17 +101,38 @@ public class MainActivity extends Activity {
         TextView l = new TextView(this); l.setText(t); l.setTextSize(sp); l.setTextColor(color);
         l.setTypeface(Typeface.create(Typeface.DEFAULT, style)); return l;
     }
+    private TextView heading(String t) {
+        TextView l = label(t.toUpperCase(Locale.US), 12, Typeface.BOLD, MUTED); l.setLetterSpacing(0.1f); return l;
+    }
+    private GradientDrawable round(int fill, int stroke, float radius) {
+        GradientDrawable g = new GradientDrawable(); g.setColor(fill); g.setCornerRadius(dp(radius));
+        if (stroke != 0) g.setStroke(dp(1), stroke);
+        return g;
+    }
     private LinearLayout card(View... views) {
         LinearLayout s = new LinearLayout(this); s.setOrientation(LinearLayout.VERTICAL);
-        s.setPadding(dp(16), dp(16), dp(16), dp(16));
-        GradientDrawable g = new GradientDrawable(); g.setColor(CARD); g.setCornerRadius(dp(14)); s.setBackground(g);
-        for (View v : views) addSpaced(s, v);
+        s.setPadding(dp(16), dp(14), dp(16), dp(14)); s.setBackground(round(CARD, LINE, 16));
+        for (View v : views) addSpaced(s, v, 10);
         return s;
     }
-    private void addSpaced(LinearLayout parent, View v) {
+    private void addSpaced(LinearLayout parent, View v, int gap) {
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        if (parent.getChildCount() > 0) lp.topMargin = dp(parent == root ? 16 : 10);
+        if (parent.getChildCount() > 0) lp.topMargin = dp(gap);
         parent.addView(v, lp);
+    }
+    private TextView chip(String title, boolean on, boolean en) {
+        TextView c = label(title, 14, Typeface.BOLD, TEXT);
+        c.setPadding(dp(12), dp(7), dp(12), dp(7)); c.setSingleLine(true);
+        c.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        c.setSelected(on); c.setEnabled(en);
+        c.setOnClickListener(v -> { if (!polling && v.isEnabled()) { v.setSelected(!v.isSelected()); paintChip((TextView) v); } });
+        paintChip(c); return c;
+    }
+    private void paintChip(TextView c) {
+        boolean on = c.isSelected();
+        c.setBackground(round(on ? ACCENT : CHIP, on ? ACCENT : LINE, 15));
+        c.setTextColor(!c.isEnabled() ? MUTED : on ? Color.BLACK : TEXT);
+        c.setAlpha(c.isEnabled() ? 1f : 0.45f);
     }
     private Switch makeSwitch(boolean on, boolean en) {
         Switch sw = new Switch(this); sw.setChecked(on); sw.setEnabled(en);
@@ -77,70 +141,101 @@ public class MainActivity extends Activity {
         sw.setTrackTintList(new ColorStateList(st, new int[]{Color.argb(140, 250, 191, 51), Color.rgb(80, 80, 88)}));
         return sw;
     }
-    private LinearLayout switchRow(String title, boolean on, boolean en, Map<String, Switch> dict, String key) {
-        Switch sw = makeSwitch(on, en); dict.put(key, sw);
-        TextView l = label(title, 16, Typeface.NORMAL, en ? Color.WHITE : MUTED);
-        LinearLayout r = new LinearLayout(this); r.setGravity(Gravity.CENTER_VERTICAL);
-        r.addView(sw); LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1); lp.leftMargin = dp(12);
-        r.addView(l, lp); l.setOnClickListener(v -> { if (sw.isEnabled()) sw.toggle(); });
-        return r;
-    }
-    private Button button(String t, View.OnClickListener a) {
-        Button b = new Button(this); b.setText(t); b.setAllCaps(false); b.setTextSize(18); b.setTextColor(Color.BLACK);
-        b.setTypeface(Typeface.DEFAULT_BOLD);
-        GradientDrawable g = new GradientDrawable(); g.setColor(ACCENT); g.setCornerRadius(dp(10)); b.setBackground(g);
+    private Button button(String t, boolean primary, View.OnClickListener a) {
+        Button b = new Button(this); b.setText(t); b.setAllCaps(false); b.setTextSize(17);
+        b.setTextColor(primary ? Color.BLACK : TEXT); b.setTypeface(Typeface.DEFAULT_BOLD);
+        b.setBackground(round(primary ? ACCENT : CHIP, 0, 12));
         b.setPadding(dp(20), dp(10), dp(20), dp(10)); b.setOnClickListener(a); return b;
     }
-    private void setEnabledLook(Button b, boolean en) { b.setEnabled(en); b.setAlpha(en ? 1f : 0.4f); }
+    private void setEnabledLook(View b, boolean en) { b.setEnabled(en); b.setAlpha(en ? 1f : 0.4f); }
+
+    /** Quick/Full as a two-part segmented control, like the iPad's. */
+    private LinearLayout segmented() {
+        LinearLayout seg = new LinearLayout(this); seg.setBackground(round(CHIP, LINE, 10)); seg.setPadding(dp(3), dp(3), dp(3), dp(3));
+        quickBtn = label("Quick · 1 round", 14, Typeface.BOLD, TEXT); fullBtn = label("Full · 3 rounds", 14, Typeface.BOLD, TEXT);
+        for (TextView t : new TextView[]{quickBtn, fullBtn}) {
+            t.setGravity(Gravity.CENTER); t.setPadding(dp(8), dp(8), dp(8), dp(8));
+            seg.addView(t, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        }
+        quickBtn.setOnClickListener(v -> { if (!polling) setFull(false); });
+        fullBtn.setOnClickListener(v -> { if (!polling) setFull(true); });
+        setFull(false); return seg;
+    }
+    private void setFull(boolean f) {
+        full = f;
+        quickBtn.setBackground(f ? null : round(ACCENT, 0, 8)); quickBtn.setTextColor(f ? TEXT : Color.BLACK);
+        fullBtn.setBackground(f ? round(ACCENT, 0, 8) : null); fullBtn.setTextColor(f ? Color.BLACK : TEXT);
+    }
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
         getWindow().setStatusBarColor(BG); getWindow().setNavigationBarColor(BG);
-        ScrollView sc = new ScrollView(this); sc.setBackgroundColor(BG); sc.setFillViewport(true);
-        root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL); root.setPadding(dp(24), dp(24), dp(24), dp(24));
-        sc.addView(root); setContentView(sc);
+        LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL);
+        root.setBackgroundColor(BG); root.setPadding(dp(20), dp(16), dp(20), dp(16));
+        root.setFitsSystemWindows(true);
+        setContentView(root);
 
-        addSpaced(root, label("RindBench — every library", 30, Typeface.BOLD, Color.WHITE));
-        addSpaced(root, label("Times rind and the libraries it is compared with (aws-lc-rs, ring, RustCrypto, graviola, libcrux, verified-garbage) on this phone, with rind-bench's own benchmarks. Pick what to run below. Nothing runs or connects until you agree and press Start test.", 15, Typeface.NORMAL, MUTED));
-        deviceLbl = label("Reading the list of tests…", 14, Typeface.BOLD, ACCENT);
-        addSpaced(root, card(deviceLbl));
-        libBox = card(label("Libraries", 20, Typeface.BOLD, Color.WHITE));
-        secBox = card(label("Operations", 20, Typeface.BOLD, Color.WHITE));
-        addSpaced(root, libBox); addSpaced(root, secBox);
+        // Header: name, device, where results go.
+        LinearLayout titleRow = new LinearLayout(this); titleRow.setGravity(Gravity.BOTTOM);
+        titleRow.addView(label("RindBench", 28, Typeface.BOLD, TEXT));
+        TextView tag = label("every library", 15, Typeface.BOLD, ACCENT); tag.setPadding(dp(10), 0, 0, dp(4));
+        titleRow.addView(tag);
+        deviceLbl = label("Reading the list of tests…", 13, Typeface.NORMAL, MUTED);
+        collectorLbl = label("Results: looking for the computer that installed this app…", 13, Typeface.NORMAL, MUTED);
+        addSpaced(root, titleRow, 0); addSpaced(root, deviceLbl, 4); addSpaced(root, collectorLbl, 4);
 
-        preset = new RadioGroup(this); preset.setOrientation(RadioGroup.HORIZONTAL);
-        String[] names = {"Quick: 1 round, 5 × 50 ms", "Full: 3 rounds, 10 × 100 ms"};
-        for (int i = 0; i < 2; i++) {
-            RadioButton rb = new RadioButton(this); rb.setId(100 + i); rb.setText(names[i]); rb.setTextColor(Color.WHITE);
-            rb.setButtonTintList(ColorStateList.valueOf(ACCENT)); preset.addView(rb);
-        }
-        preset.check(100);
+        // Left column: what to run, and how.
+        libFlow = new Flow(this, dp(8)); secFlow = new Flow(this, dp(8));
+        LinearLayout pick = card(heading("Libraries"), libFlow, heading("Operations"), secFlow);
         agree = makeSwitch(false, true);
-        TextView agreeL = label("I agree to the above: the run keeps the CPU busy (minutes on Quick, longer on Full), warms the phone, and sends only timings and the model, chip, Android version and CPU features to the computer that installed this app. No name, account, serial or location.", 15, Typeface.NORMAL, Color.WHITE);
+        TextView agreeL = label("I agree: busy CPU for minutes; sends only timings and device model.", 14, Typeface.NORMAL, TEXT);
+        TextView info = label("ⓘ", 20, Typeface.BOLD, ACCENT); info.setPadding(dp(10), 0, dp(4), 0);
+        info.setOnClickListener(v -> new android.app.AlertDialog.Builder(this).setTitle("Before you start").setMessage(CONSENT).setPositiveButton("OK", null).show());
         LinearLayout agreeRow = new LinearLayout(this); agreeRow.setGravity(Gravity.CENTER_VERTICAL); agreeRow.addView(agree);
-        LinearLayout.LayoutParams alp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1); alp.leftMargin = dp(12);
-        agreeRow.addView(agreeL, alp);
+        LinearLayout.LayoutParams alp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1); alp.leftMargin = dp(10);
+        agreeRow.addView(agreeL, alp); agreeRow.addView(info);
         agreeL.setOnClickListener(v -> { if (agree.isEnabled()) agree.toggle(); });
         agree.setOnCheckedChangeListener((v, on) -> agreeChanged());
-        collectorLbl = label("Results go to: looking for the computer that installed this app…", 14, Typeface.NORMAL, MUTED);
-        startBtn = button("Start test", v -> startTapped());
-        stopBtn = button("Stop", v -> stopTapped()); stopBtn.setVisibility(View.GONE);
-        clearBtn = button("Clear", v -> clearTapped()); clearBtn.setVisibility(View.GONE);
+        startBtn = button("Start test", true, v -> startTapped());
+        stopBtn = button("Stop", false, v -> stopTapped()); stopBtn.setVisibility(View.GONE);
+        clearBtn = button("Clear", false, v -> clearTapped()); clearBtn.setVisibility(View.GONE);
         setEnabledLook(startBtn, false);
         LinearLayout btns = new LinearLayout(this);
         for (Button bt : new Button[]{startBtn, stopBtn, clearBtn}) {
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT); lp.rightMargin = dp(12);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+            lp.rightMargin = bt == clearBtn ? 0 : dp(10);
             btns.addView(bt, lp);
         }
-        addSpaced(root, card(label("Timing", 20, Typeface.BOLD, Color.WHITE), preset, agreeRow, collectorLbl, btns));
-        statusLbl = label("", 15, Typeface.BOLD, Color.WHITE);
-        resultsLbl = label("", 12, Typeface.NORMAL, Color.WHITE); resultsLbl.setTypeface(Typeface.MONOSPACE);
-        resultsLbl.setHorizontallyScrolling(false);
-        addSpaced(root, card(label("Status", 20, Typeface.BOLD, Color.WHITE), statusLbl, resultsLbl));
-        addSpaced(root, label("An unofficial community tool, not run or endorsed by the rind maintainers.", 12, Typeface.NORMAL, MUTED));
+        LinearLayout run = card(segmented(), agreeRow, btns);
+        leftCol = new LinearLayout(this); leftCol.setOrientation(LinearLayout.VERTICAL);
+        addSpaced(leftCol, pick, 0); addSpaced(leftCol, run, 12);
+
+        // Right column: the run, summarised to fit. Every row's full timings go
+        // to the collector and to the phone's files.
+        statusLbl = label("", 16, Typeface.BOLD, TEXT);
+        progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        progress.setMax(1000); progress.setProgress(0);
+        progress.setProgressTintList(ColorStateList.valueOf(ACCENT)); progress.setProgressBackgroundTintList(ColorStateList.valueOf(LINE));
+        currentLbl = label("", 13, Typeface.NORMAL, MUTED); currentLbl.setMaxLines(2);
+        scoreLbl = label("", 30, Typeface.BOLD, GOOD); scoreLbl.setSingleLine(true);
+        scoreLbl.setAutoSizeTextTypeUniformWithConfiguration(14, 30, 1, TypedValue.COMPLEX_UNIT_SP);
+        behindLbl = label("", 13, Typeface.NORMAL, TEXT); behindLbl.setTypeface(Typeface.MONOSPACE);
+        TextView foot = label("An unofficial community tool, not run or endorsed by the rind maintainers.", 11, Typeface.NORMAL, MUTED);
+        LinearLayout results = card(heading("Run"), statusLbl, progress, currentLbl, scoreLbl);
+        // The list takes what height is left, and is cut off rather than scrolled.
+        LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1); blp.topMargin = dp(10);
+        results.addView(behindLbl, blp);
+        addSpaced(results, foot, 10);
+        resultsCard = results;
+
+        body = new LinearLayout(this);
+        root.addView(body, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+        ((LinearLayout.LayoutParams) body.getLayoutParams()).topMargin = dp(14);
+        body.addView(leftCol); body.addView(resultsCard);
+        arrange(getResources().getConfiguration());
 
         Intent it = getIntent();
-        if ("full".equals(it.getStringExtra("preset"))) preset.check(101);
+        if ("full".equals(it.getStringExtra("preset"))) setFull(true);
         new Thread(() -> {
             String keys = copyKeys();
             Native.setenv("RIND_BENCH_KEYS_DIR", keys);
@@ -149,6 +244,22 @@ public class MainActivity extends Activity {
         }).start();
         findCollector(null);
     }
+
+    /** Wide screens put the picker and the run side by side; narrow ones stack them. */
+    private void arrange(Configuration c) {
+        boolean wide = c.orientation == Configuration.ORIENTATION_LANDSCAPE && c.screenWidthDp >= 600;
+        body.setOrientation(wide ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams l, r;
+        if (wide) {
+            l = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1); l.rightMargin = dp(6);
+            r = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1); r.leftMargin = dp(6);
+        } else {
+            l = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            r = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1); r.topMargin = dp(12);
+        }
+        leftCol.setLayoutParams(l); resultsCard.setLayoutParams(r);
+    }
+    @Override public void onConfigurationChanged(Configuration c) { super.onConfigurationChanged(c); arrange(c); }
 
     // ---- the collector fills itself in: USB (adb reverse) first, then the LAN address baked in at build time.
     private List<String[]> candidates() {
@@ -204,24 +315,34 @@ public class MainActivity extends Activity {
             JSONObject d = catalog.getJSONObject("device");
             String sha = catalog.optString("rind_commit"); if (sha.length() > 12) sha = sha.substring(0, 12);
             JSONArray rows = catalog.getJSONArray("rows"), libs = catalog.getJSONArray("libraries"), secs = catalog.getJSONArray("sections");
-            deviceLbl.setText(d.optString("product") + " · " + d.optString("cpu") + " · " + d.optString("os") + "\nrind " + sha + " · " + rows.length() + " rows · " +
-                libs.length() + " libraries · OpenSSL " + (catalog.optBoolean("openssl") ? "built in" : "not in this build"));
-            Map<String, Integer> lc = new HashMap<>(), sc = new HashMap<>();
-            for (int i = 0; i < rows.length(); i++) { JSONObject r = rows.getJSONObject(i); lc.merge(r.getString("library"), 1, Integer::sum); sc.merge(r.getString("section"), 1, Integer::sum); }
+            deviceLbl.setText(d.optString("product") + " · " + d.optString("cpu") + " · " + d.optString("os") + " · rind " + sha + " · " + rows.length()
+                + " rows · OpenSSL " + (catalog.optBoolean("openssl") ? "built in" : "not in this build"));
+            Map<String, Integer> sc = new HashMap<>();
+            for (int i = 0; i < rows.length(); i++) sc.merge(rows.getJSONObject(i).getString("section"), 1, Integer::sum);
             Set<String> wantLibs = csv(getIntent().getStringExtra("libraries")), wantSecs = csv(getIntent().getStringExtra("sections"));
             for (int i = 0; i < libs.length(); i++) {
                 String l = libs.getString(i);
-                addSpaced(libBox, switchRow(l + "  (" + lc.getOrDefault(l, 0) + " rows)", wantLibs.isEmpty() || wantLibs.contains(l), true, libSw, l));
+                TextView c = chip(l, wantLibs.isEmpty() || wantLibs.contains(l), true); libChips.put(l, c); libFlow.addView(c);
             }
+            // rind-bench's extra rows ("More: <file>", off by default) share one chip, so the screen never has to scroll.
+            boolean moreOn = false;
             for (int i = 0; i < secs.length(); i++) {
                 String s = secs.getString(i); int n = sc.getOrDefault(s, 0);
-                boolean on = n > 0 && (wantSecs.isEmpty() ? !s.startsWith("More: ") : wantSecs.contains(s));
-                addSpaced(secBox, switchRow(s + "  (" + n + " rows)", on, n > 0, secSw, s));
+                if (s.startsWith("More: ")) { if (n > 0) { moreSections.add(s); moreOn |= wantSecs.contains(s); } continue; }
+                boolean on = n > 0 && (wantSecs.isEmpty() || wantSecs.contains(s));
+                TextView c = chip(s, on, n > 0); secChips.put(s, c); secFlow.addView(c);
             }
-            statusLbl.setText("Ready. " + catalog.getJSONArray("operations_without_rows").length() + " report operations have no row on this platform.");
+            if (!moreSections.isEmpty()) { moreChip = chip("+ " + moreSections.size() + " more groups", moreOn, true); secFlow.addView(moreChip); }
+            ready();
         } catch (Exception e) { statusLbl.setText("Could not read the list of tests: " + e); }
         agreeChanged();
         if (getIntent().getBooleanExtra("autostart", false)) { agree.setChecked(true); startTapped(); }
+    }
+
+    private void ready() {
+        statusLbl.setText("Ready"); progress.setProgress(0); scoreLbl.setText(""); behindLbl.setText("");
+        try { currentLbl.setText(catalog.getJSONArray("operations_without_rows").length() + " report operations have no row on this platform."); }
+        catch (Exception e) { currentLbl.setText(""); }
     }
 
     private static Set<String> csv(String s) {
@@ -235,9 +356,10 @@ public class MainActivity extends Activity {
     private void startTapped() {
         if (!agree.isChecked() || catalog == null || polling) return;
         List<String> libs = new ArrayList<>(), secs = new ArrayList<>();
-        for (Map.Entry<String, Switch> e : libSw.entrySet()) if (e.getValue().isChecked()) libs.add(e.getKey());
-        for (Map.Entry<String, Switch> e : secSw.entrySet()) if (e.getValue().isChecked()) secs.add(e.getKey());
-        if (libs.isEmpty() || secs.isEmpty()) { statusLbl.setText("Pick at least one library and one group of operations."); return; }
+        for (Map.Entry<String, TextView> e : libChips.entrySet()) if (e.getValue().isSelected()) libs.add(e.getKey());
+        for (Map.Entry<String, TextView> e : secChips.entrySet()) if (e.getValue().isSelected()) secs.add(e.getKey());
+        if (moreChip != null && moreChip.isSelected()) secs.addAll(moreSections);
+        if (libs.isEmpty() || secs.isEmpty()) { statusLbl.setText("Pick at least one library and one operation"); return; }
         setEnabledLook(startBtn, false);
         statusLbl.setText("Starting. Connecting to the computer that installed this app.");
         // Look again right before the run, so a cable plugged in (or Wi-Fi joined) since launch is used.
@@ -246,7 +368,6 @@ public class MainActivity extends Activity {
 
     private void begin(List<String> libs, List<String> secs) {
         try {
-            boolean full = preset.getCheckedRadioButtonId() == 101;
             JSONObject cfg = new JSONObject();
             cfg.put("libraries", new JSONArray(libs)); cfg.put("sections", new JSONArray(secs));
             cfg.put("rounds", full ? 3 : 1); cfg.put("samples", full ? 10 : 5); cfg.put("sample_ms", full ? 100 : 50); cfg.put("warm_ms", full ? 300 : 150);
@@ -260,6 +381,7 @@ public class MainActivity extends Activity {
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
             startBtn.setVisibility(View.GONE); clearBtn.setVisibility(View.GONE);
             stopBtn.setVisibility(View.VISIBLE); setEnabledLook(stopBtn, true); agree.setEnabled(false);
+            statusLbl.setText("Starting…"); scoreLbl.setText(""); behindLbl.setText("");
             polling = true; ran = true; ui.post(this::poll);
         } catch (Exception e) { statusLbl.setText("Could not start: " + e); agreeChanged(); }
     }
@@ -269,9 +391,9 @@ public class MainActivity extends Activity {
     private void clearTapped() {
         if (polling) return;
         ran = false; agree.setChecked(false); agree.setEnabled(true);
-        resultsLbl.setText(""); clearBtn.setVisibility(View.GONE);
-        startBtn.setText("Start test"); startBtn.setVisibility(View.VISIBLE); agreeChanged();
-        try { statusLbl.setText("Ready. " + catalog.getJSONArray("operations_without_rows").length() + " report operations have no row on this platform."); } catch (Exception e) { statusLbl.setText("Ready."); }
+        clearBtn.setVisibility(View.GONE);
+        startBtn.setText("Start test"); startBtn.setVisibility(View.VISIBLE); agreeChanged(); ready();
+        findCollector(null);
     }
 
     /** iOS NSProcessInfo.thermalState words, from Android's thermal status. */
@@ -290,13 +412,18 @@ public class MainActivity extends Activity {
             JSONObject s = new JSONObject(Native.status());
             boolean running = s.optBoolean("running");
             String th = thermal();
-            if (running)
-                statusLbl.setText(String.format(Locale.US, "Running %d of %d · round %d of %d\n%s\nerrors %d · sent %d lines (%s) · thermal %s",
-                    s.optInt("done"), s.optInt("total"), s.optInt("round"), s.optInt("rounds"), s.optString("current", ""), s.optInt("errors"), s.optInt("lines"), s.optString("sink"), th));
-            else
-                statusLbl.setText(String.format(Locale.US, "%s · %d rows in %.0f s · errors %d · sent %d lines (%s) · thermal %s",
-                    s.optBoolean("stopped") ? "Stopped" : "Finished", s.optInt("done"), s.optDouble("elapsed_s", 0), s.optInt("errors"), s.optInt("lines"), s.optString("sink"), th));
-            renderResults(s.optJSONObject("results"));
+            int total = Math.max(1, s.optInt("total"));
+            progress.setProgress((int) (1000L * s.optInt("done") / total));
+            if (running) {
+                statusLbl.setText(String.format(Locale.US, "Running %d of %d · round %d of %d", s.optInt("done"), s.optInt("total"), s.optInt("round"), s.optInt("rounds")));
+                currentLbl.setText(String.format(Locale.US, "%s\nerrors %d · sent %d lines (%s) · thermal %s",
+                    s.optString("current", ""), s.optInt("errors"), s.optInt("lines"), s.optString("sink"), th));
+            } else {
+                statusLbl.setText(String.format(Locale.US, "%s · %d rows in %.0f s", s.optBoolean("stopped") ? "Stopped" : "Finished", s.optInt("done"), s.optDouble("elapsed_s", 0)));
+                currentLbl.setText(String.format(Locale.US, "errors %d · sent %d lines (%s) · thermal %s · full timings saved on this phone",
+                    s.optInt("errors"), s.optInt("lines"), s.optString("sink"), th));
+            }
+            summarize(s.optJSONObject("results"));
             if (!running) {
                 polling = false; getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
                 startBtn.setText("Run again"); startBtn.setVisibility(View.VISIBLE); stopBtn.setVisibility(View.GONE);
@@ -307,35 +434,57 @@ public class MainActivity extends Activity {
         ui.postDelayed(this::poll, 1000);
     }
 
-    /** Per operation: each library's median and rind's time as a share of it (as the iPad shows). */
-    private void renderResults(JSONObject res) throws Exception {
+    /**
+     * Per operation, the fastest library. The score counts the operations rind
+     * is fastest at; the list shows where it is not, worst first, as many as fit.
+     */
+    private void summarize(JSONObject res) throws Exception {
         if (res == null) return;
         Map<String, Map<String, Double>> byOp = new TreeMap<>();
-        List<String> errs = new ArrayList<>();
+        int errors = 0;
         for (Iterator<String> it = res.keys(); it.hasNext(); ) {
             String id = it.next(); JSONObject r = res.getJSONObject(id);
-            if ("error".equals(r.optString("t"))) { errs.add("ERROR " + id + ": " + r.optString("error")); continue; }
+            if ("error".equals(r.optString("t"))) { errors++; continue; }
             String op = r.isNull("op") ? id : r.optString("op", id);
             String lib = r.isNull("library") ? "?" : r.optString("library", "?");
             byOp.computeIfAbsent(op, k -> new TreeMap<>()).put(lib, r.optDouble("ns"));
         }
-        StringBuilder out = new StringBuilder();
+        int compared = 0, wins = 0;
+        List<Object[]> behind = new ArrayList<>();
         for (Map.Entry<String, Map<String, Double>> e : byOp.entrySet()) {
             Double rind = e.getValue().get("rind");
-            out.append(e.getKey().replace("/{lib}", "")).append('\n');
-            for (Map.Entry<String, Double> l : e.getValue().entrySet()) {
-                out.append(String.format(Locale.US, "   %-16s %12s", l.getKey(), fmt(l.getValue())));
-                if (rind != null && !l.getKey().equals("rind")) out.append(String.format(Locale.US, "   rind %.2f× its time", rind / l.getValue()));
-                out.append('\n');
-            }
+            if (rind == null || e.getValue().size() < 2) continue;
+            compared++;
+            String best = null; double bestNs = Double.MAX_VALUE;
+            for (Map.Entry<String, Double> l : e.getValue().entrySet()) if (l.getValue() < bestNs) { bestNs = l.getValue(); best = l.getKey(); }
+            if ("rind".equals(best)) wins++;
+            else behind.add(new Object[]{e.getKey().replace("/{lib}", ""), best, rind / bestNs, rind});
         }
-        for (String e : errs) out.append(e).append('\n');
-        resultsLbl.setText(out.toString());
+        if (compared == 0) { scoreLbl.setText(""); behindLbl.setText(errors > 0 ? errors + " rows failed so far" : ""); return; }
+        scoreLbl.setText("rind fastest on " + wins + " of " + compared);
+        scoreLbl.setTextColor(wins * 2 >= compared ? GOOD : ACCENT);
+        behind.sort((a, b) -> Double.compare((Double) b[2], (Double) a[2]));
+        android.text.SpannableStringBuilder out = new android.text.SpannableStringBuilder();
+        if (!behind.isEmpty()) {
+            int st = out.length(); out.append("Where another library is faster\n");
+            out.setSpan(new android.text.style.ForegroundColorSpan(MUTED), st, out.length(), 0);
+            out.setSpan(new android.text.style.StyleSpan(Typeface.BOLD), st, out.length(), 0);
+        }
+        for (Object[] b : behind) {
+            int st = out.length();
+            out.append(String.format(Locale.US, "%.2f×  %s  (vs %s, rind %s)\n", (Double) b[2], b[0], b[1], fmt((Double) b[3])));
+            out.setSpan(new android.text.style.ForegroundColorSpan((Double) b[2] > 1.10 ? BAD : TEXT), st, out.length(), 0);
+        }
+        if (errors > 0) {
+            int st = out.length(); out.append(errors + " rows failed; see the saved results\n");
+            out.setSpan(new android.text.style.ForegroundColorSpan(BAD), st, out.length(), 0);
+        }
+        behindLbl.setText(out);
     }
 
     private static String fmt(double ns) {
-        if (ns >= 1e6) return String.format(Locale.US, "%.3f ms", ns / 1e6);
-        if (ns >= 1e3) return String.format(Locale.US, "%.3f µs", ns / 1e3);
-        return String.format(Locale.US, "%.1f ns", ns);
+        if (ns >= 1e6) return String.format(Locale.US, "%.2f ms", ns / 1e6);
+        if (ns >= 1e3) return String.format(Locale.US, "%.2f µs", ns / 1e3);
+        return String.format(Locale.US, "%.0f ns", ns);
     }
 }

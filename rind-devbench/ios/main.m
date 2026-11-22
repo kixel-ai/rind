@@ -1,5 +1,6 @@
-// RindBench v14 (all libraries): a data-driven list of every library x
-// operation this build of rind-devbench can time, picked per run.
+// RindBench v15 (all libraries): one screen, no scrolling. A data-driven
+// picker of every library x operation this build of rind-devbench can time,
+// and a live summary of the run.
 // The catalog (rows, libraries, sections) comes from the Rust core; nothing
 // here names an operation or a library.
 #import <UIKit/UIKit.h>
@@ -8,6 +9,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <poll.h>
+#include <float.h>
 
 extern char *devbench_catalog_json(void);
 extern int devbench_start(const char *config);
@@ -23,9 +25,9 @@ static id JSON(char *p) {
   return [NSJSONSerialization JSONObjectWithData:d options:0 error:nil];
 }
 static NSString *Fmt(double ns) {
-  if (ns >= 1e6) return [NSString stringWithFormat:@"%.3f ms", ns / 1e6];
-  if (ns >= 1e3) return [NSString stringWithFormat:@"%.3f µs", ns / 1e3];
-  return [NSString stringWithFormat:@"%.1f ns", ns];
+  if (ns >= 1e6) return [NSString stringWithFormat:@"%.2f ms", ns / 1e6];
+  if (ns >= 1e3) return [NSString stringWithFormat:@"%.2f µs", ns / 1e3];
+  return [NSString stringWithFormat:@"%.0f ns", ns];
 }
 // TCP connect with a timeout: is the collector listening? (The run connects again itself.)
 static BOOL Reachable(NSString *host, int port, int ms) {
@@ -40,86 +42,196 @@ static BOOL Reachable(NSString *host, int port, int ms) {
   }
   freeaddrinfo(res); return ok;
 }
-#define C_BG [UIColor colorWithRed:0.06 green:0.07 blue:0.09 alpha:1]
-#define C_CARD [UIColor colorWithRed:0.11 green:0.12 blue:0.15 alpha:1]
-#define C_MUTED [UIColor colorWithWhite:0.65 alpha:1]
-#define C_ACCENT [UIColor colorWithRed:0.98 green:0.75 blue:0.20 alpha:1]
+
+#define RGB(r, g, b) [UIColor colorWithRed:(r) / 255.0 green:(g) / 255.0 blue:(b) / 255.0 alpha:1]
+#define C_BG RGB(13, 15, 20)
+#define C_CARD RGB(24, 27, 34)
+#define C_LINE RGB(44, 48, 58)
+#define C_CHIP RGB(36, 40, 50)
+#define C_MUTED RGB(150, 156, 170)
+#define C_TEXT RGB(236, 238, 243)
+#define C_ACCENT RGB(250, 191, 51)
+#define C_GOOD RGB(84, 214, 146)
+#define C_BAD RGB(255, 120, 110)
+
+static NSString *const kConsent = @"The run keeps the CPU busy (minutes on Quick, longer on Full) and warms the device. "
+  "It sends only timings and the model, chip, OS version and CPU features to the computer that installed this app. "
+  "No name, account, serial or location. Results are also saved on this device.";
+
+// Lays its subviews out left to right, wrapping to a new line when one is full.
+@interface Flow : UIView
+@property CGFloat gap;
+@end
+@implementation Flow
+- (CGSize)fit:(CGFloat)width place:(BOOL)place {
+  CGFloat x = 0, y = 0, line = 0;
+  for (UIView *v in self.subviews) {
+    CGSize s = [v sizeThatFits:CGSizeMake(width, CGFLOAT_MAX)];
+    s.width = MIN(s.width, width);
+    if (x > 0 && x + s.width > width) { x = 0; y += line + self.gap; line = 0; }
+    if (place) v.frame = CGRectMake(x, y, s.width, s.height);
+    x += s.width + self.gap; line = MAX(line, s.height);
+  }
+  return CGSizeMake(width, self.subviews.count ? y + line : 0);
+}
+- (void)layoutSubviews {
+  [super layoutSubviews];
+  CGFloat h = [self fit:self.bounds.size.width place:YES].height;
+  // Only when the wrapped height changed, so layout settles.
+  if (h != self.bounds.size.height) [self invalidateIntrinsicContentSize];
+}
+- (CGSize)intrinsicContentSize {
+  CGFloat w = self.bounds.size.width;
+  return CGSizeMake(UIViewNoIntrinsicMetric, w > 0 ? [self fit:w place:NO].height : 30);
+}
+@end
 
 @interface VC : UIViewController
 @end
 
 @implementation VC {
-  UIStackView *root, *libBox, *secBox;
-  UILabel *deviceLbl, *statusLbl, *resultsLbl, *collectorLbl;
+  UIStackView *body, *leftCol;
+  Flow *libFlow, *secFlow;
+  UILabel *deviceLbl, *collectorLbl, *statusLbl, *currentLbl, *scoreLbl, *behindLbl;
+  UIProgressView *progress;
   UISwitch *agree; UISegmentedControl *preset;
   UIButton *startBtn, *stopBtn, *clearBtn;
   BOOL running;
   NSDictionary *catalog;
-  NSMutableDictionary<NSString *, UISwitch *> *libSw, *secSw;
+  NSMutableDictionary<NSString *, UIButton *> *libChips, *secChips;
+  NSArray<NSString *> *moreSections;
+  UIButton *moreChip;
   NSTimer *timer;
 }
 
+#pragma mark - building blocks
+
 - (UILabel *)label:(NSString *)t size:(CGFloat)s weight:(UIFontWeight)w color:(UIColor *)c {
-  UILabel *l = [UILabel new]; l.text = t; l.numberOfLines = 0; l.textColor = c ?: UIColor.whiteColor;
+  UILabel *l = [UILabel new]; l.text = t; l.numberOfLines = 0; l.textColor = c ?: C_TEXT;
   l.font = [UIFont systemFontOfSize:s weight:w]; return l;
+}
+- (UILabel *)heading:(NSString *)t {
+  UILabel *l = [self label:t.uppercaseString size:12 weight:UIFontWeightBold color:C_MUTED];
+  l.attributedText = [[NSAttributedString alloc] initWithString:t.uppercaseString attributes:@{
+    NSKernAttributeName: @1.2, NSFontAttributeName: l.font, NSForegroundColorAttributeName: C_MUTED}];
+  return l;
 }
 - (UIStackView *)card:(NSArray<UIView *> *)views {
   UIStackView *s = [[UIStackView alloc] initWithArrangedSubviews:views];
   s.axis = UILayoutConstraintAxisVertical; s.spacing = 10; s.layoutMarginsRelativeArrangement = YES;
-  s.layoutMargins = UIEdgeInsetsMake(16, 16, 16, 16); s.backgroundColor = C_CARD; s.layer.cornerRadius = 14; return s;
+  s.layoutMargins = UIEdgeInsetsMake(14, 16, 14, 16); s.backgroundColor = C_CARD; s.layer.cornerRadius = 16;
+  s.layer.borderWidth = 1; s.layer.borderColor = C_LINE.CGColor; s.clipsToBounds = YES; return s;
 }
-- (UIStackView *)switchRow:(NSString *)title on:(BOOL)on enabled:(BOOL)en into:(NSMutableDictionary *)dict key:(NSString *)key {
-  UISwitch *sw = [UISwitch new]; sw.on = on; sw.enabled = en; sw.onTintColor = C_ACCENT; dict[key] = sw;
-  UILabel *l = [self label:title size:16 weight:UIFontWeightRegular color:en ? nil : C_MUTED];
-  UIStackView *r = [[UIStackView alloc] initWithArrangedSubviews:@[sw, l]]; r.spacing = 12; r.alignment = UIStackViewAlignmentCenter; return r;
+- (UIButton *)chip:(NSString *)title on:(BOOL)on enabled:(BOOL)en {
+  UIButton *b = [UIButton buttonWithType:UIButtonTypeCustom];
+  [b setTitle:title forState:UIControlStateNormal];
+  b.titleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightSemibold];
+  b.titleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+  b.contentEdgeInsets = UIEdgeInsetsMake(7, 12, 7, 12); b.layer.cornerRadius = 15; b.layer.borderWidth = 1;
+  b.selected = on; b.enabled = en;
+  [b addTarget:self action:@selector(chipTapped:) forControlEvents:UIControlEventTouchUpInside];
+  [self paintChip:b]; return b;
 }
-- (UIButton *)button:(NSString *)t action:(SEL)a {
+- (void)paintChip:(UIButton *)b {
+  BOOL on = b.selected;
+  b.backgroundColor = on ? C_ACCENT : C_CHIP;
+  b.layer.borderColor = (on ? C_ACCENT : C_LINE).CGColor;
+  [b setTitleColor:on ? UIColor.blackColor : C_TEXT forState:UIControlStateNormal];
+  [b setTitleColor:C_MUTED forState:UIControlStateDisabled];
+  b.alpha = b.enabled ? 1 : 0.45;
+}
+- (UIButton *)button:(NSString *)t action:(SEL)a primary:(BOOL)primary {
   UIButton *b = [UIButton buttonWithType:UIButtonTypeSystem]; [b setTitle:t forState:UIControlStateNormal];
-  b.titleLabel.font = [UIFont systemFontOfSize:18 weight:UIFontWeightSemibold]; b.tintColor = UIColor.blackColor;
-  b.backgroundColor = C_ACCENT; b.layer.cornerRadius = 10; b.contentEdgeInsets = UIEdgeInsetsMake(10, 20, 10, 20);
+  b.titleLabel.font = [UIFont systemFontOfSize:17 weight:UIFontWeightBold];
+  b.tintColor = primary ? UIColor.blackColor : C_TEXT;
+  b.backgroundColor = primary ? C_ACCENT : C_CHIP; b.layer.cornerRadius = 12;
+  b.contentEdgeInsets = UIEdgeInsetsMake(11, 22, 11, 22);
   [b addTarget:self action:a forControlEvents:UIControlEventTouchUpInside]; return b;
 }
+
+#pragma mark - layout
 
 - (void)viewDidLoad {
   [super viewDidLoad];
   self.view.backgroundColor = C_BG;
-  libSw = [NSMutableDictionary new]; secSw = [NSMutableDictionary new];
-  UIScrollView *sc = [UIScrollView new]; sc.translatesAutoresizingMaskIntoConstraints = NO; [self.view addSubview:sc];
-  root = [UIStackView new]; root.axis = UILayoutConstraintAxisVertical; root.spacing = 16; root.translatesAutoresizingMaskIntoConstraints = NO;
-  [sc addSubview:root];
+  libChips = [NSMutableDictionary new]; secChips = [NSMutableDictionary new];
+
+  // Header: name, device, where results go.
+  UILabel *title = [self label:@"RindBench" size:28 weight:UIFontWeightHeavy color:nil];
+  UILabel *tag = [self label:@"every library" size:15 weight:UIFontWeightSemibold color:C_ACCENT];
+  UIStackView *titleRow = [[UIStackView alloc] initWithArrangedSubviews:@[title, tag, [UIView new]]];
+  titleRow.spacing = 10; titleRow.alignment = UIStackViewAlignmentLastBaseline;
+  deviceLbl = [self label:@"Reading the list of tests…" size:13 weight:UIFontWeightMedium color:C_MUTED];
+  collectorLbl = [self label:@"Results: looking for the computer that installed this app…" size:13 weight:UIFontWeightRegular color:C_MUTED];
+  UIStackView *header = [[UIStackView alloc] initWithArrangedSubviews:@[titleRow, deviceLbl, collectorLbl]];
+  header.axis = UILayoutConstraintAxisVertical; header.spacing = 4;
+
+  // Left column: what to run, and how.
+  libFlow = [Flow new]; libFlow.gap = 8;
+  secFlow = [Flow new]; secFlow.gap = 8;
+  UIStackView *pick = [self card:@[[self heading:@"Libraries"], libFlow, [self heading:@"Operations"], secFlow]];
+  [pick setCustomSpacing:16 afterView:libFlow];
+
+  preset = [[UISegmentedControl alloc] initWithItems:@[@"Quick · 1 round", @"Full · 3 rounds"]];
+  preset.selectedSegmentIndex = 0; preset.selectedSegmentTintColor = C_ACCENT;
+  [preset setTitleTextAttributes:@{NSForegroundColorAttributeName: UIColor.blackColor} forState:UIControlStateSelected];
+  [preset setTitleTextAttributes:@{NSForegroundColorAttributeName: C_TEXT} forState:UIControlStateNormal];
+  agree = [UISwitch new]; agree.onTintColor = C_ACCENT;
+  [agree addTarget:self action:@selector(agreeChanged) forControlEvents:UIControlEventValueChanged];
+  UILabel *agreeL = [self label:@"I agree: busy CPU for minutes; sends only timings and device model." size:14 weight:UIFontWeightRegular color:nil];
+  UIButton *info = [UIButton buttonWithType:UIButtonTypeInfoLight]; info.tintColor = C_ACCENT;
+  [info addTarget:self action:@selector(showConsent) forControlEvents:UIControlEventTouchUpInside];
+  UIStackView *agreeRow = [[UIStackView alloc] initWithArrangedSubviews:@[agree, agreeL, info]];
+  agreeRow.spacing = 10; agreeRow.alignment = UIStackViewAlignmentCenter;
+  startBtn = [self button:@"Start test" action:@selector(startTapped) primary:YES]; startBtn.enabled = NO; startBtn.alpha = 0.4;
+  stopBtn = [self button:@"Stop" action:@selector(stopTapped) primary:NO]; stopBtn.hidden = YES;
+  clearBtn = [self button:@"Clear" action:@selector(clearTapped) primary:NO]; clearBtn.hidden = YES;
+  UIStackView *btns = [[UIStackView alloc] initWithArrangedSubviews:@[startBtn, stopBtn, clearBtn]];
+  btns.spacing = 10; btns.distribution = UIStackViewDistributionFillEqually;
+  UIStackView *run = [self card:@[preset, agreeRow, btns]];
+
+  UIView *leftSpring = [UIView new];
+  [leftSpring setContentHuggingPriority:UILayoutPriorityDefaultLow - 1 forAxis:UILayoutConstraintAxisVertical];
+  leftCol = [[UIStackView alloc] initWithArrangedSubviews:@[pick, run, leftSpring]];
+  leftCol.axis = UILayoutConstraintAxisVertical; leftCol.spacing = 12;
+
+  // Right column: the run, summarised to fit. Every row's full timings go to
+  // the collector and to this device's files.
+  statusLbl = [self label:@"" size:16 weight:UIFontWeightBold color:nil];
+  progress = [[UIProgressView alloc] initWithProgressViewStyle:UIProgressViewStyleDefault];
+  progress.progressTintColor = C_ACCENT; progress.trackTintColor = C_LINE; progress.progress = 0;
+  currentLbl = [self label:@"" size:13 weight:UIFontWeightRegular color:C_MUTED]; currentLbl.numberOfLines = 2;
+  scoreLbl = [self label:@"" size:34 weight:UIFontWeightHeavy color:C_GOOD]; scoreLbl.numberOfLines = 1;
+  scoreLbl.adjustsFontSizeToFitWidth = YES; scoreLbl.minimumScaleFactor = 0.5;
+  behindLbl = [self label:@"" size:13 weight:UIFontWeightRegular color:nil];
+  behindLbl.font = [UIFont monospacedSystemFontOfSize:13 weight:UIFontWeightRegular];
+  behindLbl.lineBreakMode = NSLineBreakByTruncatingTail;
+  [behindLbl setContentCompressionResistancePriority:UILayoutPriorityDefaultLow forAxis:UILayoutConstraintAxisVertical];
+  UIView *spring = [UIView new];
+  [spring setContentHuggingPriority:UILayoutPriorityDefaultLow forAxis:UILayoutConstraintAxisVertical];
+  UILabel *foot = [self label:@"An unofficial community tool, not run or endorsed by the rind maintainers." size:11 weight:UIFontWeightRegular color:C_MUTED];
+  UIStackView *results = [self card:@[[self heading:@"Run"], statusLbl, progress, currentLbl, scoreLbl, behindLbl, spring, foot]];
+  [results setContentHuggingPriority:UILayoutPriorityDefaultLow forAxis:UILayoutConstraintAxisVertical];
+  [results setContentCompressionResistancePriority:UILayoutPriorityDefaultLow forAxis:UILayoutConstraintAxisVertical];
+
+  body = [[UIStackView alloc] initWithArrangedSubviews:@[leftCol, results]];
+  body.spacing = 12;
+  [header setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisVertical];
+  [leftCol setContentHuggingPriority:UILayoutPriorityDefaultHigh forAxis:UILayoutConstraintAxisVertical];
+  [leftCol setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisVertical];
+  UIStackView *root = [[UIStackView alloc] initWithArrangedSubviews:@[header, body]];
+  root.axis = UILayoutConstraintAxisVertical; root.spacing = 14; root.translatesAutoresizingMaskIntoConstraints = NO;
+  [self.view addSubview:root];
   UILayoutGuide *g = self.view.safeAreaLayoutGuide;
   [NSLayoutConstraint activateConstraints:@[
-    [sc.topAnchor constraintEqualToAnchor:g.topAnchor], [sc.bottomAnchor constraintEqualToAnchor:g.bottomAnchor],
-    [sc.leadingAnchor constraintEqualToAnchor:g.leadingAnchor], [sc.trailingAnchor constraintEqualToAnchor:g.trailingAnchor],
-    [root.topAnchor constraintEqualToAnchor:sc.contentLayoutGuide.topAnchor constant:24],
-    [root.bottomAnchor constraintEqualToAnchor:sc.contentLayoutGuide.bottomAnchor constant:-24],
-    [root.centerXAnchor constraintEqualToAnchor:sc.centerXAnchor],
-    [root.widthAnchor constraintEqualToAnchor:sc.widthAnchor constant:-48],
+    [root.topAnchor constraintEqualToAnchor:g.topAnchor constant:16],
+    [root.bottomAnchor constraintEqualToAnchor:g.bottomAnchor constant:-16],
+    [root.leadingAnchor constraintEqualToAnchor:g.leadingAnchor constant:20],
+    [root.trailingAnchor constraintEqualToAnchor:g.trailingAnchor constant:-20],
   ]];
-  [root addArrangedSubview:[self label:@"RindBench — every library" size:30 weight:UIFontWeightHeavy color:nil]];
-  [root addArrangedSubview:[self label:@"Times rind and the libraries it is compared with (aws-lc-rs, ring, RustCrypto, graviola, libcrux, verified-garbage) on this iPad, with rind-bench's own benchmarks. Pick what to run below. Nothing runs or connects until you agree and press Start test." size:15 weight:UIFontWeightRegular color:C_MUTED]];
-  deviceLbl = [self label:@"Reading the list of tests…" size:14 weight:UIFontWeightMedium color:C_ACCENT];
-  [root addArrangedSubview:[self card:@[deviceLbl]]];
-  libBox = [self card:@[[self label:@"Libraries" size:20 weight:UIFontWeightBold color:nil]]];
-  secBox = [self card:@[[self label:@"Operations" size:20 weight:UIFontWeightBold color:nil]]];
-  [root addArrangedSubview:libBox]; [root addArrangedSubview:secBox];
-  preset = [[UISegmentedControl alloc] initWithItems:@[@"Quick: 1 round, 5 × 50 ms", @"Full: 3 rounds, 10 × 100 ms"]];
-  preset.selectedSegmentIndex = 0;
-  agree = [UISwitch new]; agree.onTintColor = C_ACCENT; [agree addTarget:self action:@selector(agreeChanged) forControlEvents:UIControlEventValueChanged];
-  UILabel *agreeL = [self label:@"I agree to the above: the run keeps the CPU busy (minutes on Quick, longer on Full), warms the iPad, and sends only timings and the model, chip, iPadOS version and CPU features to the computer that installed this app. No name, account, serial or location." size:15 weight:UIFontWeightRegular color:nil];
-  UIStackView *agreeRow = [[UIStackView alloc] initWithArrangedSubviews:@[agree, agreeL]]; agreeRow.spacing = 12; agreeRow.alignment = UIStackViewAlignmentCenter;
-  startBtn = [self button:@"Start test" action:@selector(startTapped)]; startBtn.enabled = NO; startBtn.alpha = 0.4;
-  stopBtn = [self button:@"Stop" action:@selector(stopTapped)]; stopBtn.hidden = YES;
-  clearBtn = [self button:@"Clear" action:@selector(clearTapped)]; clearBtn.hidden = YES;
-  UIStackView *btns = [[UIStackView alloc] initWithArrangedSubviews:@[startBtn, stopBtn, clearBtn]]; btns.spacing = 12;
-  collectorLbl = [self label:@"Results go to: looking for the computer that installed this app…" size:14 weight:UIFontWeightRegular color:C_MUTED];
-  [root addArrangedSubview:[self card:@[[self label:@"Timing" size:20 weight:UIFontWeightBold color:nil], preset, agreeRow, collectorLbl, btns]]];
+  [self arrange:self.view.bounds.size];
+
   [self findCollector];
-  statusLbl = [self label:@"" size:15 weight:UIFontWeightMedium color:nil];
-  resultsLbl = [self label:@"" size:12 weight:UIFontWeightRegular color:nil];
-  resultsLbl.font = [UIFont monospacedSystemFontOfSize:12 weight:UIFontWeightRegular];
-  [root addArrangedSubview:[self card:@[[self label:@"Status" size:20 weight:UIFontWeightBold color:nil], statusLbl, resultsLbl]]];
-  [root addArrangedSubview:[self label:@"An unofficial community tool, not run or endorsed by the rind maintainers." size:12 weight:UIFontWeightRegular color:C_MUTED]];
   // rind-bench's rustls rows read their certificates while the list is made, not only when timed.
   devbench_setenv("RIND_BENCH_KEYS_DIR", [NSBundle.mainBundle.resourcePath stringByAppendingPathComponent:@"keys"].UTF8String);
   dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
@@ -128,56 +240,106 @@ static BOOL Reachable(NSString *host, int port, int ms) {
   });
 }
 
+// Wide screens put the picker and the run side by side; narrow ones stack them.
+- (void)arrange:(CGSize)size {
+  BOOL wide = size.width > size.height && size.width >= 700;
+  body.axis = wide ? UILayoutConstraintAxisHorizontal : UILayoutConstraintAxisVertical;
+  body.distribution = wide ? UIStackViewDistributionFillEqually : UIStackViewDistributionFill;
+  body.alignment = UIStackViewAlignmentFill;
+}
+- (void)viewWillTransitionToSize:(CGSize)size withTransitionCoordinator:(id<UIViewControllerTransitionCoordinator>)c {
+  [super viewWillTransitionToSize:size withTransitionCoordinator:c];
+  [c animateAlongsideTransition:^(id<UIViewControllerTransitionCoordinatorContext> ctx) { [self arrange:size]; } completion:nil];
+}
+
+#pragma mark - catalog
+
 - (void)loaded:(NSDictionary *)cat {
   catalog = cat;
   if (!cat) { deviceLbl.text = @"Could not read the list of tests."; return; }
   NSDictionary *d = cat[@"device"];
   NSString *sha = [cat[@"rind_commit"] length] > 12 ? [cat[@"rind_commit"] substringToIndex:12] : cat[@"rind_commit"];
-  deviceLbl.text = [NSString stringWithFormat:@"%@ · %@ · %@\nrind %@ · %lu rows · %lu libraries · OpenSSL %@",
-    d[@"product"], d[@"cpu"], d[@"os"], sha, (unsigned long)[cat[@"rows"] count], (unsigned long)[cat[@"libraries"] count],
+  deviceLbl.text = [NSString stringWithFormat:@"%@ · %@ · %@ · rind %@ · %lu rows · OpenSSL %@",
+    d[@"product"], d[@"cpu"], d[@"os"], sha, (unsigned long)[cat[@"rows"] count],
     [cat[@"openssl"] boolValue] ? @"built in" : @"not in this build"];
   NSMutableDictionary *lc = [NSMutableDictionary new], *sc = [NSMutableDictionary new];
   for (NSDictionary *r in cat[@"rows"]) { lc[r[@"library"]] = @([lc[r[@"library"]] intValue] + 1); sc[r[@"section"]] = @([sc[r[@"section"]] intValue] + 1); }
-  for (NSString *l in cat[@"libraries"])
-    [libBox addArrangedSubview:[self switchRow:[NSString stringWithFormat:@"%@  (%@ rows)", l, lc[l]] on:YES enabled:YES into:libSw key:l]];
+  for (NSString *l in cat[@"libraries"]) {
+    UIButton *b = [self chip:l on:YES enabled:YES]; libChips[l] = b; [libFlow addSubview:b];
+  }
+  // rind-bench's extra rows ("More: <file>", off by default) share one chip, so the screen never has to scroll.
+  NSMutableArray *more = [NSMutableArray new];
   for (NSString *s in cat[@"sections"]) {
     int n = [sc[s] intValue];
-    [secBox addArrangedSubview:[self switchRow:[NSString stringWithFormat:@"%@  (%d rows)", s, n] on:n > 0 && ![s hasPrefix:@"More: "] enabled:n > 0 into:secSw key:s]];
+    if ([s hasPrefix:@"More: "]) { if (n > 0) [more addObject:s]; continue; }
+    UIButton *b = [self chip:s on:n > 0 enabled:n > 0]; secChips[s] = b; [secFlow addSubview:b];
   }
-  statusLbl.text = [NSString stringWithFormat:@"Ready. %lu report operations have no row on this platform.", (unsigned long)[cat[@"operations_without_rows"] count]];
+  moreSections = more;
+  if (more.count) {
+    moreChip = [self chip:[NSString stringWithFormat:@"+ %lu more groups", (unsigned long)more.count] on:NO enabled:YES];
+    [secFlow addSubview:moreChip];
+  }
+  [libFlow invalidateIntrinsicContentSize]; [secFlow invalidateIntrinsicContentSize];
+  [self ready];
+}
+
+- (void)ready {
+  statusLbl.text = @"Ready";
+  progress.progress = 0;
+  currentLbl.text = [NSString stringWithFormat:@"%lu report operations have no row on this platform.", (unsigned long)[catalog[@"operations_without_rows"] count]];
+  scoreLbl.text = @""; behindLbl.text = @"";
+}
+
+- (void)chipTapped:(UIButton *)b {
+  if (running) return;
+  b.selected = !b.selected; [self paintChip:b];
+}
+
+- (void)showConsent {
+  UIAlertController *a = [UIAlertController alertControllerWithTitle:@"Before you start" message:kConsent preferredStyle:UIAlertControllerStyleAlert];
+  [a addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+  [self presentViewController:a animated:YES completion:nil];
 }
 
 // The collector fills itself in from the address baked in at build time (BenchHost/BenchPort); shown, never typed.
 - (void)findCollector {
   NSString *host = [NSBundle.mainBundle objectForInfoDictionaryKey:@"BenchHost"];
   NSNumber *port = [NSBundle.mainBundle objectForInfoDictionaryKey:@"BenchPort"];
-  if (!host.length || !port) { collectorLbl.text = @"Results are saved on this iPad (no collector in this build)."; return; }
+  if (!host.length || !port) { collectorLbl.text = @"Results: saved on this device (no collector in this build)"; return; }
   dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
     BOOL ok = Reachable(host, port.intValue, 800);
     dispatch_async(dispatch_get_main_queue(), ^{
-      self->collectorLbl.text = ok ? [NSString stringWithFormat:@"Results go to: %@:%@ (over Wi-Fi, found automatically). They are also saved on this iPad.", host, port]
-                                   : [NSString stringWithFormat:@"Results go to: %@:%@ (could not reach it yet; will try again at Start). They are saved on this iPad either way.", host, port];
-      self->collectorLbl.textColor = ok ? UIColor.whiteColor : C_MUTED;
+      self->collectorLbl.text = ok ? [NSString stringWithFormat:@"● Results: %@:%@ over Wi-Fi, and saved on this device", host, port]
+                                   : [NSString stringWithFormat:@"○ Results: %@:%@ not reachable yet (tries again at Start); saved on this device", host, port];
+      self->collectorLbl.textColor = ok ? C_GOOD : C_MUTED;
     });
   });
 }
 
-- (void)clearTapped {
-  if (running) return;
-  agree.on = NO; agree.enabled = YES; resultsLbl.text = @""; clearBtn.hidden = YES;
-  [startBtn setTitle:@"Start test" forState:UIControlStateNormal]; startBtn.hidden = NO; [self agreeChanged];
-  statusLbl.text = [NSString stringWithFormat:@"Ready. %lu report operations have no row on this platform.", (unsigned long)[catalog[@"operations_without_rows"] count]];
-  [self findCollector];
-}
+#pragma mark - run
 
 - (void)agreeChanged { startBtn.enabled = agree.on && catalog; startBtn.alpha = startBtn.enabled ? 1 : 0.4; }
+
+- (void)setPicking:(BOOL)en {
+  for (UIButton *b in libFlow.subviews) b.userInteractionEnabled = en;
+  for (UIButton *b in secFlow.subviews) b.userInteractionEnabled = en;
+  preset.enabled = en; agree.enabled = en;
+}
+
+- (void)clearTapped {
+  if (running) return;
+  agree.on = NO; clearBtn.hidden = YES;
+  [startBtn setTitle:@"Start test" forState:UIControlStateNormal]; startBtn.hidden = NO;
+  [self setPicking:YES]; [self agreeChanged]; [self ready]; [self findCollector];
+}
 
 - (void)startTapped {
   if (!agree.on || !catalog) return;
   NSMutableArray *libs = [NSMutableArray new], *secs = [NSMutableArray new];
-  for (NSString *k in libSw) if (libSw[k].on) [libs addObject:k];
-  for (NSString *k in secSw) if (secSw[k].on) [secs addObject:k];
-  if (!libs.count || !secs.count) { statusLbl.text = @"Pick at least one library and one group of operations."; return; }
+  for (NSString *k in libChips) if (libChips[k].selected) [libs addObject:k];
+  for (NSString *k in secChips) if (secChips[k].selected) [secs addObject:k];
+  if (moreChip.selected) [secs addObjectsFromArray:moreSections];
+  if (!libs.count || !secs.count) { statusLbl.text = @"Pick at least one library and one operation"; return; }
   BOOL full = preset.selectedSegmentIndex == 1;
   NSString *docs = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
   NSString *keys = [NSBundle.mainBundle.resourcePath stringByAppendingPathComponent:@"keys"];
@@ -193,7 +355,9 @@ static BOOL Reachable(NSString *host, int port, int ms) {
   NSString *s = [[NSString alloc] initWithData:js encoding:NSUTF8StringEncoding];
   if (devbench_start(s.UTF8String) != 0) { NSDictionary *st = JSON(devbench_status_json()); statusLbl.text = [NSString stringWithFormat:@"Could not start: %@", st[@"start_error"]]; return; }
   UIApplication.sharedApplication.idleTimerDisabled = YES;
-  startBtn.hidden = YES; clearBtn.hidden = YES; stopBtn.hidden = NO; stopBtn.enabled = YES; agree.enabled = NO; running = YES;
+  startBtn.hidden = YES; clearBtn.hidden = YES; stopBtn.hidden = NO; stopBtn.enabled = YES; running = YES;
+  [self setPicking:NO];
+  statusLbl.text = @"Starting…"; scoreLbl.text = @""; behindLbl.text = @"";
   [self findCollector];
   [timer invalidate];
   timer = [NSTimer scheduledTimerWithTimeInterval:1.0 repeats:YES block:^(NSTimer *t) { [self poll]; }];
@@ -205,40 +369,65 @@ static BOOL Reachable(NSString *host, int port, int ms) {
   NSDictionary *s = JSON(devbench_status_json());
   running = [s[@"running"] boolValue];
   NSString *thermal = @[@"nominal", @"fair", @"serious", @"critical"][MIN(3, (NSInteger)NSProcessInfo.processInfo.thermalState)];
-  if (running)
-    statusLbl.text = [NSString stringWithFormat:@"Running %@ of %@ · round %@ of %@\n%@\nerrors %@ · sent %@ lines (%@) · thermal %@",
-      s[@"done"], s[@"total"], s[@"round"], s[@"rounds"], s[@"current"] ?: @"", s[@"errors"], s[@"lines"], s[@"sink"], thermal];
-  else
-    statusLbl.text = [NSString stringWithFormat:@"%@ · %@ rows in %.0f s · errors %@ · sent %@ lines (%@) · thermal %@",
-      [s[@"stopped"] boolValue] ? @"Stopped" : @"Finished", s[@"done"], [s[@"elapsed_s"] doubleValue], s[@"errors"], s[@"lines"], s[@"sink"], thermal];
-  // Per operation: each library's median and rind's time as a share of it.
+  double done = [s[@"done"] doubleValue], total = MAX(1, [s[@"total"] doubleValue]);
+  progress.progress = done / total;
+  if (running) {
+    statusLbl.text = [NSString stringWithFormat:@"Running %@ of %@ · round %@ of %@", s[@"done"], s[@"total"], s[@"round"], s[@"rounds"]];
+    currentLbl.text = [NSString stringWithFormat:@"%@\nerrors %@ · sent %@ lines (%@) · thermal %@", s[@"current"] ?: @"", s[@"errors"], s[@"lines"], s[@"sink"], thermal];
+  } else {
+    statusLbl.text = [NSString stringWithFormat:@"%@ · %@ rows in %.0f s", [s[@"stopped"] boolValue] ? @"Stopped" : @"Finished", s[@"done"], [s[@"elapsed_s"] doubleValue]];
+    currentLbl.text = [NSString stringWithFormat:@"errors %@ · sent %@ lines (%@) · thermal %@ · full timings saved on this device", s[@"errors"], s[@"lines"], s[@"sink"], thermal];
+  }
+  [self summarize:s[@"results"]];
+  if (!running) {
+    [timer invalidate]; timer = nil; UIApplication.sharedApplication.idleTimerDisabled = NO;
+    startBtn.hidden = NO; [startBtn setTitle:@"Run again" forState:UIControlStateNormal]; stopBtn.hidden = YES; clearBtn.hidden = NO;
+    [self setPicking:YES];
+  }
+}
+
+// Per operation, the fastest library. The score counts the operations rind
+// is fastest at; the list shows where it is not, worst first, as many as fit.
+- (void)summarize:(NSDictionary *)res {
   NSMutableDictionary<NSString *, NSMutableDictionary *> *byOp = [NSMutableDictionary new];
-  NSMutableArray *errs = [NSMutableArray new];
-  NSDictionary *res = s[@"results"];
+  int errors = 0;
   for (NSString *id_ in res) {
     NSDictionary *r = res[id_];
-    if ([r[@"t"] isEqual:@"error"]) { [errs addObject:[NSString stringWithFormat:@"ERROR %@: %@", id_, r[@"error"]]]; continue; }
+    if ([r[@"t"] isEqual:@"error"]) { errors++; continue; }
     NSString *op = r[@"op"] ?: id_;
     if (!byOp[op]) byOp[op] = [NSMutableDictionary new];
     byOp[op][r[@"library"] ?: @"?"] = r[@"ns"];
   }
-  NSMutableString *out = [NSMutableString new];
-  for (NSString *op in [byOp.allKeys sortedArrayUsingSelector:@selector(compare:)]) {
+  int compared = 0, wins = 0;
+  NSMutableArray *behind = [NSMutableArray new];
+  for (NSString *op in byOp) {
     NSDictionary *libs = byOp[op]; NSNumber *rind = libs[@"rind"];
-    [out appendFormat:@"%@\n", [op stringByReplacingOccurrencesOfString:@"/{lib}" withString:@""]];
-    for (NSString *l in [libs.allKeys sortedArrayUsingSelector:@selector(compare:)]) {
-      double ns = [libs[l] doubleValue];
-      [out appendFormat:@"   %-16s %12s", l.UTF8String, Fmt(ns).UTF8String];
-      if (rind && ![l isEqual:@"rind"]) [out appendFormat:@"   rind %.2f× its time", rind.doubleValue / ns];
-      [out appendString:@"\n"];
-    }
+    if (!rind || libs.count < 2) continue;
+    compared++;
+    NSString *best = nil; double bestNs = DBL_MAX;
+    for (NSString *l in libs) if ([libs[l] doubleValue] < bestNs) { bestNs = [libs[l] doubleValue]; best = l; }
+    if ([best isEqual:@"rind"]) wins++;
+    else [behind addObject:@{@"op": [op stringByReplacingOccurrencesOfString:@"/{lib}" withString:@""], @"lib": best,
+                              @"ratio": @(rind.doubleValue / bestNs), @"ns": rind}];
   }
-  for (NSString *e in errs) [out appendFormat:@"%@\n", e];
-  resultsLbl.text = out;
-  if (!running) {
-    [timer invalidate]; timer = nil; UIApplication.sharedApplication.idleTimerDisabled = NO;
-    startBtn.hidden = NO; [startBtn setTitle:@"Run again" forState:UIControlStateNormal]; stopBtn.hidden = YES; clearBtn.hidden = NO; agree.enabled = YES;
+  if (!compared) { scoreLbl.text = @""; behindLbl.text = errors ? [NSString stringWithFormat:@"%d rows failed so far", errors] : @""; return; }
+  scoreLbl.text = [NSString stringWithFormat:@"rind fastest on %d of %d", wins, compared];
+  scoreLbl.textColor = wins * 2 >= compared ? C_GOOD : C_ACCENT;
+  [behind sortUsingComparator:^NSComparisonResult(NSDictionary *a, NSDictionary *b) { return [b[@"ratio"] compare:a[@"ratio"]]; }];
+  NSMutableAttributedString *out = [NSMutableAttributedString new];
+  UIFont *mono = [UIFont monospacedSystemFontOfSize:13 weight:UIFontWeightRegular];
+  if (behind.count)
+    [out appendAttributedString:[[NSAttributedString alloc] initWithString:@"Where another library is faster\n"
+      attributes:@{NSFontAttributeName: [UIFont systemFontOfSize:13 weight:UIFontWeightBold], NSForegroundColorAttributeName: C_MUTED}]];
+  for (NSDictionary *b in behind) {
+    NSString *line = [NSString stringWithFormat:@"%.2f×  %@  (vs %@, rind %@)\n", [b[@"ratio"] doubleValue], b[@"op"], b[@"lib"], Fmt([b[@"ns"] doubleValue])];
+    [out appendAttributedString:[[NSAttributedString alloc] initWithString:line
+      attributes:@{NSFontAttributeName: mono, NSForegroundColorAttributeName: [b[@"ratio"] doubleValue] > 1.10 ? C_BAD : C_TEXT}]];
   }
+  if (errors)
+    [out appendAttributedString:[[NSAttributedString alloc] initWithString:[NSString stringWithFormat:@"%d rows failed; see the saved results\n", errors]
+      attributes:@{NSFontAttributeName: mono, NSForegroundColorAttributeName: C_BAD}]];
+  behindLbl.attributedText = out;
 }
 @end
 
@@ -248,6 +437,7 @@ static BOOL Reachable(NSString *host, int port, int ms) {
 @implementation AppDelegate
 - (BOOL)application:(UIApplication *)app didFinishLaunchingWithOptions:(NSDictionary *)o {
   self.window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
+  self.window.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
   self.window.rootViewController = [VC new];
   [self.window makeKeyAndVisible];
   return YES;
