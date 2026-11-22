@@ -101,7 +101,7 @@ quest = "/quest/m2/verified-garbage/aes-gcm-avx512.md"
 [[gap]]
 operations = ["chacha20poly1305/*", "rustls-bulk/chacha20poly1305"]
 on = ["fedora"]
-quest = "/quest/m2/verified-garbage/chacha20-poly1305-x86.md"
+reason = "`fedora`'s data predates [#953](https://github.com/kixel-ai/rind/pull/953), which runs pyca/verified-garbage's AVX-512 IFMA one pass: with it, `fedora` measured rind's seal within 1.09 of the fastest library at every size, 16 KB in 2.81 µs against OpenSSL's 2.67 (from 4.71), and the 1 MB rustls transfer in 397 µs against OpenSSL's provider's 423 (from 615). Drop this entry once `fedora`'s next run shows the gap within 10%."
 
 [[gap]]
 operations = ["rsa2048-pkcs1-sha256-verify", "rsa2048-pss-sha256-verify"]

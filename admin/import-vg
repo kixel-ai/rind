@@ -42,6 +42,9 @@ ROOTS = {
         "vg_chacha20_init",
         "vg_chacha20_apply_avx2",
         "vg_chacha20_apply_avx512vl",
+        # ChaCha20-Poly1305 with AVX512_IFMA.
+        "vg_chacha20_poly1305_seal_ifma",
+        "vg_chacha20_poly1305_open_ifma",
         # ML-KEM-768's encapsulation key check and encapsulation, by key or
         # with its hash, on every CPU; key generation and decapsulation
         # with AVX-512.

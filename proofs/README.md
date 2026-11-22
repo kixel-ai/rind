@@ -1115,8 +1115,10 @@ PCLMULQDQ table `from_powers` builds from them. BoringSSL's
 [the VAES quest](/quest/m4/verified/aes-gcm-x86-vaes.md) proves it, the
 kernels the tier runs from 2 KB, and the tier's seals and opens.
 
-ChaCha20-Poly1305 and XChaCha20-Poly1305 on x86_64 CPUs with SSE4.1, from
-the AEAD API's `Key` and `RandomizedNonceKey` down to the call of aws-lc's
+ChaCha20-Poly1305 and XChaCha20-Poly1305 on x86_64 CPUs with SSE4.1 that
+fail rind's check for pyca/verified-garbage's IFMA routines
+(`HaveIfmaForVgChaCha20Poly1305`: AVX-512 IFMA, with AVX, AVX2, and AVX-512 F
+and VL), from the AEAD API's `Key` and `RandomizedNonceKey` down to the call of aws-lc's
 one-pass routines, in `Rind/X86_64/ChaCha20Poly1305.lean`:
 
 - `chacha20_poly1305_new`: a key that is not 32 bytes is refused, and
@@ -1139,13 +1141,17 @@ HChaCha20, which derives XChaCha20's subkey, runs HACL*'s rounds, which
 `low/generic/chacha20.rs`, which this proof does not cover; the output loop
 stays inside the unrolled `hchacha20` so Aeneas still extracts
 `hchacha20_loop`. The theorems assume `RunsChaCha20Poly1305`: rind's
-CPU-feature checks find SSE4.1, and `OnePass`, that aws-lc's one-pass
+CPU-feature checks find SSE4.1 but not what VG's IFMA routines need, and `OnePass`, that aws-lc's one-pass
 routines compute RFC 8439's AEAD, which no proof covers yet;
 [the ChaCha20-Poly1305 quest](/quest/m4/verified/chacha20-poly1305-x86/aead.md)
 owns their HOL Light proofs, against the s2n-bignum fork's `common/chacha20poly1305.ml`,
 which `Rind/S2nChaCha20Poly1305.lean` proves is `Rind/Spec.lean`'s RFC 8439
-for a 32-byte key and a 12-byte nonce. CPUs without SSE4.1 run the separate ChaCha20
-and Poly1305 passes, which the model leaves opaque. `AeadDispatch` models
+for a 32-byte key and a 12-byte nonce. CPUs that pass that check run
+pyca/verified-garbage's IFMA one pass, and CPUs that fail it and lack SSE4.1
+the separate ChaCha20 and Poly1305 passes, which no theorem here covers; the model leaves VG's
+one pass opaque until
+[its quest](/quest/m2/verified-garbage/chacha20-poly1305-x86-proof.md)
+imports VG's theorems. `AeadDispatch` models
 `RandomizedNonceKey`, which reaches the system's random source, and
 `Rind/ChaCha20Poly1305Test.lean` checks `Rind/Spec.lean`'s transliterations
 against RFC 8439's and draft-irtf-cfrg-xchacha-03's test vectors.

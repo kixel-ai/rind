@@ -334,6 +334,19 @@ impl HaveAvx512Vl {
     }
 }
 
+/// Proof that the CPU has what pyca/verified-garbage's AVX-512 IFMA
+/// ChaCha20-Poly1305 runs: AVX-512 F and IFMA, with AVX, for its seal, and
+/// AVX2 and AVX-512 VL too for its open, whose AVX-512 VL body takes 449 to
+/// 639 bytes.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct HaveIfmaForVgChaCha20Poly1305(());
+
+impl HaveIfmaForVgChaCha20Poly1305 {
+    pub(crate) fn check() -> Option<Self> {
+        has(AVX | AVX2 | AVX512F | AVX512VL | AVX512IFMA).then_some(Self(()))
+    }
+}
+
 /// Proof that the CPU has AES-NI and PCLMULQDQ, and the SSSE3 and SSE4.1
 /// their kernels also use: rind's AES-GCM and GHASH intrinsics, and aws-lc's
 /// AES-CTR.
@@ -1017,6 +1030,10 @@ mod tests {
                 adx && available!("bmi2", "avx", "avx2")
                     && available!("avx512f", "avx512vl", "avx512ifma"),
             ),
+            (
+                HaveIfmaForVgChaCha20Poly1305::check().is_some(),
+                available!("avx", "avx2") && available!("avx512f", "avx512vl", "avx512ifma"),
+            ),
         ];
         for (i, (check, expected)) in checks.into_iter().enumerate() {
             assert_eq!(check, expected, "check {i}");
@@ -1082,9 +1099,14 @@ mod tests {
             assert_eq!(HaveAvx512ForRsa::check().is_some(), expected == "1");
         }
         // Every CPU and SDE model with AVX-512 IFMA has the rest of what
-        // either needs, so RSA's tiers name X25519's and Ed25519's too.
+        // each needs, so RSA's tiers name X25519's and Ed25519's, and
+        // ChaCha20-Poly1305's, too.
         if let Some(expected) = std::env::var_os("RIND_TEST_X86_AVX512_RSA") {
             assert_eq!(HaveIfmaForCurve25519::check().is_some(), expected == "1");
+            assert_eq!(
+                HaveIfmaForVgChaCha20Poly1305::check().is_some(),
+                expected == "1"
+            );
         }
     }
 }
