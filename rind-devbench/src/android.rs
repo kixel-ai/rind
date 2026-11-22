@@ -52,10 +52,3 @@ pub extern "system" fn Java_io_github_steelhead99x_rindbench_Native_setenv(mut e
 pub extern "system" fn Java_io_github_steelhead99x_rindbench_Native_stop(_env: JNIEnv, _c: JClass) {
     crate::stop()
 }
-
-/// Applies the build's CPU denies; `Native`'s static initializer calls it right
-/// after loading the library, before the app starts its worker threads.
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_io_github_steelhead99x_rindbench_Native_applyDenies(_env: JNIEnv, _c: JClass) {
-    crate::apply_build_denies()
-}
