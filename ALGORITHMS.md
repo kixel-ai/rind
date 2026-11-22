@@ -1105,8 +1105,12 @@ and BMI2 and its SSE4.1 half otherwise, as aws-lc picks them, and on aarch64
 without SVE2, its NEON routine. x86_64 CPUs with AVX-512 IFMA run
 [verified-garbage]'s IFMA one-pass routines at every length instead. On
 Granite Rapids in [run 44962459177], sealing 32 B to 16 KB under rind's glue
-took 0.99 to 0.58 of the time of aws-lc's AVX2 routine, and opening 0.89 to
-0.58; on `fedora`'s Zen 5, 0.97 to 0.62. VG's AVX-512 and AVX-512 VL variants
+took 1.00 to 0.58 of the time of aws-lc's AVX2 routine, and opening 0.89 to
+0.58; on `fedora`'s Zen 5, 0.97 to 0.62. Where VG's routines hash with
+vectors they set MXCSR's status flags, for Intel's MXCSR mitigation, and
+leave them set; rind's wrappers put MXCSR back, as aws-lc never changes it,
+which costs a 32 B seal about 20 ns on Granite Rapids: 1.15 of VG's own
+API's time, which pays it once and leaves the flags set. VG's AVX-512 and AVX-512 VL variants
 were slower than its IFMA one on both, and no AVX-512 CPU without IFMA was
 measured, so such CPUs keep aws-lc's. OpenSSL's separate AVX-512 passes
 took 0.95 of VG's time at 16 KB on Zen 5 but 1.06 on Granite Rapids, and
