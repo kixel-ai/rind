@@ -396,11 +396,17 @@ mod tests {
             let aad = bytes(aad_len);
             let mut msg = bytes(msg_len);
             let tag = ct_sde::traced(|| seal_ifma(t, &key, &nonce, &aad, &mut msg));
+            let mut forged = msg.clone();
             assert!(ct_sde::traced(|| open_ifma(
                 t, &key, &nonce, &aad, &mut msg, &tag
             )));
             assert!(!ct_sde::traced(|| open_ifma(
-                t, &key, &nonce, &aad, &mut msg, &wrong
+                t,
+                &key,
+                &nonce,
+                &aad,
+                &mut forged,
+                &wrong
             )));
         }
     }

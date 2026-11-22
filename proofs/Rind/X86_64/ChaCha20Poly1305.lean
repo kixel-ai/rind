@@ -13,9 +13,10 @@ draft-irtf-cfrg-xchacha-03 as `Rind.Spec` transliterates them, through the
 dispatch `Rind.X86_64.AeadDispatch` models. HChaCha20 runs HACL*'s rounds,
 which are Rust, so it is proven here too.
 
-They are about CPUs without AVX512_IFMA, which run aws-lc's one-pass
-routines; CPUs with it run pyca/verified-garbage's, which no theorem here
-covers yet. Below rind's Rust, they take `OnePass` as a hypothesis: that
+They are about CPUs where `HaveIfmaForVgChaCha20Poly1305`'s check fails
+and `HaveSse41`'s passes, which run aws-lc's one-pass routines. CPUs that
+pass the first run pyca/verified-garbage's, and CPUs that fail both the
+separate passes, which no theorem here covers yet. Below rind's Rust, they take `OnePass` as a hypothesis: that
 aws-lc's one-pass routines, which `one_pass` calls, compute RFC 8439's
 ciphertext and tag. No proof covers those routines yet, so no theorem here
 earns the ✓.
@@ -43,8 +44,9 @@ def OnePass : Prop :=
         (chacha20poly1305.macData (bvs aad.val) (bvs inout.val)) ⦄
 
 /-- rind runs aws-lc's one-pass routines on this CPU, and they compute RFC
-8439's AEAD: its entry guard passes and holds, and its CPU-feature checks find
-no AVX512_IFMA but SSE4.1. None reads an input. -/
+8439's AEAD: its entry guard passes and holds, and of its CPU-feature checks,
+`HaveIfmaForVgChaCha20Poly1305`'s fails and `HaveSse41`'s passes. None reads
+an input. -/
 def RunsChaCha20Poly1305 : Prop :=
   (∃ e, low.entry.Entry.new_secret = ok e) ∧ low.entry.Entry.assert_held = ok () ∧
   low.x86_64.cpu.HaveIfmaForVgChaCha20Poly1305.check = ok none ∧

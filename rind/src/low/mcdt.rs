@@ -206,8 +206,10 @@ mod tests {
         assert_eq!(mxcsr(), before);
     }
 
-    // As pyca/verified-garbage's routines change it, setting the six status
-    // flags, on a CPU that needs the mitigation or not.
+    // As pyca/verified-garbage's routines change it, loading Intel's value
+    // with its six status flags set, from the caller's value or from Intel's
+    // already held, and as other code inside the guard might, toggling a
+    // status flag, on a CPU that needs the mitigation or not.
     #[test]
     #[cfg(rind_backend = "x86_64")]
     #[cfg_attr(
@@ -215,14 +217,26 @@ mod tests {
         ignore = "valgrind models only MXCSR's rounding mode"
     )]
     fn restoring_guard_undoes_a_change() {
-        let before = mxcsr();
-        let guard = Mcdt::enter_restoring();
-        let flagged = mxcsr() | 0x3f;
-        // SAFETY: loads MXCSR from a valid value, which the guard restores.
-        unsafe {
-            core::arch::asm!("ldmxcsr dword ptr [{v}]", v = in(reg) &flagged, options(nostack));
+        fn set(value: u32) {
+            // SAFETY: loads MXCSR from a valid value, which the test restores.
+            unsafe {
+                core::arch::asm!("ldmxcsr dword ptr [{v}]", v = in(reg) &value, options(nostack));
+            }
         }
-        assert_eq!(mxcsr(), flagged);
+        let before = mxcsr();
+        assert_ne!(before, MITIGATED);
+        for start in [before, MITIGATED] {
+            set(start);
+            let guard = Mcdt::enter_restoring();
+            set(MITIGATED);
+            drop(guard);
+            assert_eq!(mxcsr(), start);
+        }
+        set(before);
+        let guard = Mcdt::enter_restoring();
+        let changed = mxcsr() ^ 1;
+        set(changed);
+        assert_eq!(mxcsr(), changed);
         drop(guard);
         assert_eq!(mxcsr(), before);
     }
