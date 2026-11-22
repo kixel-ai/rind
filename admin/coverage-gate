@@ -1,0 +1,221 @@
+#!/usr/bin/env python3
+"""Turns coverage measurements into a gate.
+
+    admin/coverage-gate export REPORT.json TIER.json
+        Reduces `cargo llvm-cov report --json` to the published code, with
+        names demangled, for `admin/coverage` to write.
+    admin/coverage-gate list TIER.json...
+        Prints the published functions none of these tiers ran, beside the
+        allowed ones.
+    admin/coverage-gate check [--baseline-out FILE] TIER.json...
+        The nightly gate, given every tier coverage.yml measures: fails when
+        a published function no tier ran is not in admin/coverage.allow, an
+        entry there matches no such function, or a file's uncovered regions
+        or branches exceed admin/coverage.baseline.
+
+Published code is each crate's `src/`. A function runs when any tier runs any
+copy of it: each architecture compiles its own, and a generic or a closure
+has one copy per instantiation. A region or branch is located by its source
+span, so it is covered when any tier covers it in any copy.
+"""
+
+import collections
+import json
+import os
+import re
+import subprocess
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ALLOW = os.path.join(ROOT, "admin", "coverage.allow")
+BASELINE = os.path.join(ROOT, "admin", "coverage.baseline")
+
+
+def published(path):
+    parts = path.split("/")
+    return not path.startswith("/") and len(parts) > 2 and parts[1] == "src"
+
+
+def demangle(names):
+    # cargo-llvm-cov's own demangler, the one its text report uses, reads
+    # one symbol a line.
+    env = dict(os.environ, __CARGO_LLVM_COV_DEMANGLER="1")
+    out = subprocess.run(
+        ["cargo-llvm-cov"], input="\n".join(names) + "\n", env=env,
+        capture_output=True, text=True, check=True,
+    ).stdout.splitlines()
+    if len(out) != len(names):
+        sys.exit(f"error: the demangler returned {len(out)} names for {len(names)}")
+    return out
+
+
+def export(report, output):
+    data = json.load(open(report))["data"][0]
+    prefix = ROOT + "/"
+    functions = []
+    regions = collections.Counter()
+    branches = collections.Counter()
+    for function in data["functions"]:
+        files = [f.removeprefix(prefix) for f in function["filenames"]]
+        # Skip pyo3's `__pymethod_` trampolines, which the release wheel
+        # counts as unrun even when the method each calls, measured on its
+        # own, ran.
+        if published(files[0]) and "__pymethod_" not in function["name"]:
+            functions.append([files[0], function["regions"][0][0], function["name"], function["count"]])
+        for ls, cs, le, ce, count, file, _, kind in function["regions"]:
+            # Kind 0 is a code region; the others are expansions, skipped
+            # code, gaps, and branches.
+            if kind == 0 and published(files[file]):
+                regions[files[file], ls, cs, le, ce] += count
+        for ls, cs, le, ce, taken, not_taken, file, *_ in function["branches"]:
+            if published(files[file]):
+                branches[files[file], ls, cs, le, ce, True] += taken
+                branches[files[file], ls, cs, le, ce, False] += not_taken
+    names = demangle([f[2] for f in functions]) if functions else []
+    for function, name in zip(functions, names):
+        function[2] = name
+    with open(output, "w") as f:
+        json.dump({
+            "functions": functions,
+            "regions": [[*k, v] for k, v in regions.items()],
+            "branches": [[*k, v] for k, v in branches.items()],
+        }, f)
+
+
+def load(tiers):
+    functions = collections.defaultdict(lambda: [set(), 0])
+    regions = collections.Counter()
+    branches = collections.Counter()
+    for tier in tiers:
+        data = json.load(open(tier))
+        for path, line, name, count in data["functions"]:
+            function = functions[path, line]
+            function[0].add(name)
+            function[1] += count
+        for *k, v in data["regions"]:
+            regions[tuple(k)] += v
+        for *k, v in data["branches"]:
+            branches[tuple(k)] += v
+    return functions, regions, branches
+
+
+def allowlist():
+    """Each entry: a path, or a directory ending in `/`, and the names of the
+    functions it allows there, or none to allow every function."""
+    entries = []
+    for line in open(ALLOW):
+        line = line.split("#", 1)[0].split()
+        if line:
+            entries.append((line[0], line[1:]))
+    return entries
+
+
+def allows(entry, path, names):
+    where, fns = entry
+    if not (path == where or (where.endswith("/") and path.startswith(where))):
+        return False
+    # A name matches any segment of the demangled path, so a function's entry
+    # also allows its closures.
+    return not fns or any(re.search(rf"(^|::){re.escape(fn)}(::|<|$)", name) for fn in fns for name in names)
+
+
+def instantiations(tiers):
+    """The copies no tier ran of each function some tier ran."""
+    runs = collections.Counter()
+    for tier in tiers:
+        for path, line, name, count in json.load(open(tier))["functions"]:
+            runs[path, line, name] += count
+    ran = {(path, line) for (path, line, _), count in runs.items() if count}
+    return sorted(k for k, count in runs.items() if not count and k[:2] in ran)
+
+
+def unrun(functions):
+    return sorted((path, line, sorted(names)[0]) for (path, line), (names, count) in functions.items() if count == 0)
+
+
+def show(functions, entries):
+    allowed, listed = [], []
+    for path, line, name in unrun(functions):
+        matches = [e for e in entries if allows(e, path, [name])]
+        (allowed if matches else listed).append((path, line, name, matches))
+    return allowed, listed
+
+
+def per_file(regions, branches, entries):
+    # Whole files and directories the allowlist excludes stay out of the
+    # baseline too.
+    skip = [where for where, fns in entries if not fns]
+    counts = collections.defaultdict(lambda: [0, 0])
+    for (path, *_), count in regions.items():
+        counts[path][0] += count == 0
+    for (path, *_), count in branches.items():
+        counts[path][1] += count == 0
+    return {
+        path: c for path, c in sorted(counts.items())
+        if not any(path == w or (w.endswith("/") and path.startswith(w)) for w in skip)
+    }
+
+
+def main():
+    args = sys.argv[1:]
+    if not args:
+        sys.exit(__doc__)
+    command, args = args[0], args[1:]
+    if command == "export" and len(args) == 2:
+        return export(*args)
+    baseline_out = None
+    if command == "check" and args[:1] == ["--baseline-out"]:
+        baseline_out, args = args[1], args[2:]
+    if command not in ("list", "check") or not args:
+        sys.exit(__doc__)
+
+    functions, regions, branches = load(args)
+    entries = allowlist()
+    allowed, listed = show(functions, entries)
+    print("Functions no test ran:")
+    for path, line, name, _ in listed:
+        print(f"  {path}:{line} {name}")
+    print("Functions no test ran that admin/coverage.allow allows:")
+    for path, line, name, _ in allowed:
+        print(f"  {path}:{line} {name}")
+    print("Copies no test ran of functions that ran:")
+    for path, line, name in instantiations(args):
+        print(f"  {path}:{line} {name}")
+    if command == "list":
+        return
+
+    failed = bool(listed)
+    used = {id(e) for *_, matches in allowed for e in matches}
+    for entry in entries:
+        if id(entry) not in used:
+            print(f"error: admin/coverage.allow's `{' '.join([entry[0], *entry[1]])}` matches no unrun function")
+            failed = True
+
+    measured = per_file(regions, branches, entries)
+    baseline = {}
+    for line in open(BASELINE):
+        if line.strip() and not line.startswith("#"):
+            r, b, path = line.split()
+            baseline[path] = [int(r), int(b)]
+    lower = False
+    for path, (r, b) in measured.items():
+        base = baseline.get(path, [0, 0])
+        if r > base[0] or b > base[1]:
+            print(f"error: {path} has {r} uncovered regions and {b} uncovered branches, past the baseline's {base[0]} and {base[1]}")
+            failed = True
+        elif [r, b] != base:
+            lower = True
+    if lower:
+        print("Some files' uncovered regions or branches fell below the baseline; lower it from this run's baseline artifact.")
+    if baseline_out:
+        with open(baseline_out, "w") as f:
+            f.write(open(BASELINE).read().split("\n\n", 1)[0] + "\n\n")
+            for path, (r, b) in measured.items():
+                if r or b:
+                    f.write(f"{r} {b} {path}\n")
+    if failed:
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

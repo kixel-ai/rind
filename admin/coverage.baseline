@@ -1,0 +1,6 @@
+# Each published file's uncovered regions and branches across every tier
+# coverage.yml measures, as `admin/coverage-gate check` counts them. A file
+# that rises past its counts fails the nightly; lower them, from the run's
+# `coverage.baseline` artifact, when tests cover more. A file not listed
+# has none.
+

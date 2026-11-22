@@ -649,10 +649,16 @@
             };
 
             # `coverage.yml` runs `admin/coverage` in it. On x86_64 Linux it
-            # adds `sde`, for the pass that covers the AVX-512 paths.
+            # adds `sde`, for the pass that covers the AVX-512 paths, and on
+            # Linux the armv7 shell's toolchain, for the armv7 tier.
             coverage = mkDevShell {
               packages = [
-                (rust-stable.minimal.override { extensions = [ "llvm-tools" ]; })
+                (rust-stable.minimal.override {
+                  extensions = [ "llvm-tools" ];
+                  targets = pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [
+                    "armv7-unknown-linux-gnueabihf"
+                  ];
+                })
                 pkgs.cargo-llvm-cov
                 # aws-lc-rs builds C.
                 pkgs.cmake
@@ -663,9 +669,16 @@
                 pkgs.git
               ]
               ++ python-shell.packages
+              ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [
+                armv7-cc
+                pkgs.qemu-user
+                pkgs.util-linux
+              ]
               ++ pkgs.lib.optionals (system == "x86_64-linux") [ sde ];
 
-              inherit (python-shell) env;
+              env =
+                python-shell.env
+                // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux armv7-shell.env;
 
               shellHook = pkgs.lib.optionalString (system == "x86_64-linux") sde-certs;
             };

@@ -1,0 +1,18 @@
+# The published functions `admin/coverage-gate check` lets no test run, each
+# for its reason. An entry is a path, or a directory ending in `/`, then the
+# names of the functions it allows there, or none to allow every function in
+# it; a name also allows the closures inside that function. An entry that
+# allows no unrun function fails the gate, so this list stays current.
+# Functions only constant evaluation runs, such as a table builder behind a
+# `const`, and test-only modules, are marked `coverage(off)` instead, with a
+# comment saying so.
+
+# The unpublished crates, rind-fips and rind-openssl, and rind's FIPS code,
+# which its unit tests compile but only rind-fips runs.
+rind-fips/
+rind-openssl/
+rind/src/fips.rs
+rind/src/fips/
+rind/src/fips_rng.rs
+# What only the FIPS code calls.
+rind/src/high/signature/rsa.rs modulus_bits
