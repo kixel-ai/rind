@@ -1,5 +1,6 @@
 //! RSA key pairs and public keys.
 
+use alloc::boxed::Box;
 use core::fmt;
 use core::marker::PhantomData;
 
