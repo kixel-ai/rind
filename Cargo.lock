@@ -5022,6 +5022,7 @@ version = "0.1.3"
 dependencies = [
  "pyo3",
  "rind",
+ "zeroize",
 ]
 
 [[package]]
