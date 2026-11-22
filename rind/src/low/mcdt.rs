@@ -43,12 +43,24 @@ impl Mcdt {
     pub(crate) fn enter() -> Self {
         Self(if needed() { enter() } else { None })
     }
+
+    /// As [`Mcdt::enter`], for code that may change MXCSR itself, such as
+    /// pyca/verified-garbage's routines that enter the mitigation on their
+    /// own and leave it entered: on a CPU that needs no mitigation, this
+    /// still restores on drop any MXCSR the code changed.
+    #[cfg(rind_backend = "x86_64")]
+    #[inline(always)]
+    pub(crate) fn enter_restoring() -> Self {
+        Self(if needed() { enter() } else { Some(mxcsr()) })
+    }
 }
 
 impl Drop for Mcdt {
     #[inline]
     fn drop(&mut self) {
-        if let Some(saved) = self.0 {
+        if let Some(saved) = self.0
+            && mxcsr() != saved
+        {
             leave(saved);
         }
     }
@@ -91,7 +103,7 @@ fn leave(saved: u32) {
 }
 
 /// This thread's MXCSR.
-fn mxcsr() -> u32 {
+pub(super) fn mxcsr() -> u32 {
     let mut value = 0u32;
     // SAFETY: stores MXCSR to `value`.
     unsafe {
@@ -190,6 +202,27 @@ mod tests {
         let guard = Mcdt::enter();
         assert_eq!(guard.0.is_some(), needed());
         assert_eq!(mxcsr() == MITIGATED, needed());
+        drop(guard);
+        assert_eq!(mxcsr(), before);
+    }
+
+    // As pyca/verified-garbage's routines change it, setting the six status
+    // flags, on a CPU that needs the mitigation or not.
+    #[test]
+    #[cfg(rind_backend = "x86_64")]
+    #[cfg_attr(
+        feature = "__ctgrind",
+        ignore = "valgrind models only MXCSR's rounding mode"
+    )]
+    fn restoring_guard_undoes_a_change() {
+        let before = mxcsr();
+        let guard = Mcdt::enter_restoring();
+        let flagged = mxcsr() | 0x3f;
+        // SAFETY: loads MXCSR from a valid value, which the guard restores.
+        unsafe {
+            core::arch::asm!("ldmxcsr dword ptr [{v}]", v = in(reg) &flagged, options(nostack));
+        }
+        assert_eq!(mxcsr(), flagged);
         drop(guard);
         assert_eq!(mxcsr(), before);
     }
