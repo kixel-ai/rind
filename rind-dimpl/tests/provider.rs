@@ -550,7 +550,10 @@ fn debug_names_objects_without_their_keys() {
 
     let (_, key) = certificate(&rcgen::PKCS_ECDSA_P256_SHA256);
     let key = provider.key_provider.load_private_key(&key).unwrap();
-    assert_eq!(format!("{key:?}"), "Key { group: Secp256r1, hash: SHA256, .. }");
+    assert_eq!(
+        format!("{key:?}"),
+        "Key { group: Secp256r1, hash: SHA256, .. }"
+    );
 
     let suite = provider.dtls13_cipher_suites[0];
     let cipher = suite.create_cipher(&vec![7; suite.key_len()]).unwrap();
