@@ -1,0 +1,56 @@
+name: zeroing-repro (temporary)
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  loop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: cov-parallel-msl
+            env: MallocStackLogging=1
+            args: ""
+          - name: cov-parallel
+            env: ""
+            args: ""
+          - name: cov-serial
+            env: ""
+            args: --test-threads=1
+          - name: cov-parallel-nosha3
+            env: RIND_CPU_DISABLE_sha3=1
+            args: ""
+    name: ${{ matrix.name }}
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/nix
+      - name: Loop
+        env:
+          RUNS: "600"
+        run: |
+          nix develop .#coverage --command bash -c '
+            set -euo pipefail
+            export RUSTC_BOOTSTRAP=1
+            source <(cargo llvm-cov show-env --sh --branch)
+            bin=$(cargo test --locked -p rind --test zeroing --no-run --message-format=json | jq -r "select(.executable != null) | .executable")
+            export LLVM_PROFILE_FILE=/dev/null
+            mkdir -p fails
+            fails=0
+            for n in $(seq 1 $RUNS); do
+              if ! env ${{ matrix.env }} "$bin" ${{ matrix.args }} > out.txt 2>&1; then
+                fails=$((fails + 1)); cp out.txt fails/$n.txt
+              fi
+            done
+            echo "FAILURES: $fails / $RUNS"
+            for f in $(ls fails | head -3); do
+              echo "===== $f"; grep -v "^before_drop\|^after_drop" fails/$f | cut -c1-600
+            done
+          '
