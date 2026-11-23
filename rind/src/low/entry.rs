@@ -162,7 +162,7 @@ impl Drop for Entry {
 /// only ever adds DIT, so every secret computation still runs under it,
 /// but everything else the thread runs does too. It is a measuring
 /// prototype for the toggle cost on Apple silicon (fork issues #259 to
-/// #266), not a supported configuration.
+/// #266), not a supported configuration, and the FIPS module refuses it.
 pub(super) fn leave_secret(cpu_state: u32) {
     if cfg!(rind_dit_sticky) {
         let _ = cpu_state;
@@ -171,24 +171,38 @@ pub(super) fn leave_secret(cpu_state: u32) {
     }
 }
 
+// The FIPS module restores DIT as each guard drops; a cfg that leaves it
+// set for the rest of the thread changes that, so it is refused there.
+#[cfg(all(rind_fips, rind_dit_sticky))]
+compile_error!("rind_dit_sticky is a measuring prototype, not a FIPS configuration");
+
 /// `--cfg rind_dit_autohold`: a prototype of coalescing DIT toggles across
 /// calls without a guard, for measuring only (see
 /// `benchmarks/apple-dit-coalescing.md`). When the last secret `Entry` on a
 /// thread drops, DIT stays on if rind set it, and the thread is in a batch.
 /// The batch ends, and DIT is cleared, at the next public call into rind
 /// (verifying, parsing a public key), or after [`autohold::BATCH`] secret
-/// calls in a row, whichever comes first. A guard's drop still clears DIT
-/// at once, as its docs promise. It only ever delays clearing DIT, so every
-/// secret computation still runs under it; the cost is that the caller's
-/// own code between calls in a batch runs with DIT too. It never clears DIT
-/// rind did not set.
+/// calls in a row, whichever comes first. A guard taken outside a batch
+/// still clears DIT as it drops, as its docs promise; one taken inside a
+/// batch finds DIT on, so its drop leaves DIT to the batch, which ends as
+/// above. It only ever delays clearing DIT, so every secret computation
+/// still runs under it; the cost is that the caller's own code between
+/// calls in a batch runs with DIT too. It never clears DIT that was on
+/// before rind set it, but a caller that sets DIT itself during a batch
+/// (which changes nothing, DIT being on) loses it when the batch ends.
+///
+/// The bound is in calls into rind, not in time: nothing clears DIT while
+/// the thread makes no call. A thread whose last call into rind is a secret
+/// one keeps DIT on, for all its own code, until it calls rind again or
+/// exits, however long that is.
 #[cfg(all(rind_dit_autohold, rind_dit))]
 pub(super) mod autohold {
     use core::cell::Cell;
 
     /// Secret calls a batch may span before rind clears DIT anyway, so a
-    /// thread that never makes a public call still runs its own code
-    /// without DIT most of the time.
+    /// thread that keeps calling rind, but never with a public call, still
+    /// has DIT cleared every `BATCH + 1` secret calls. It bounds calls, not
+    /// time: after a thread's last call, DIT stays on until it calls again.
     pub(crate) const BATCH: u32 = 64;
 
     std::thread_local! {
@@ -211,7 +225,9 @@ pub(super) mod autohold {
             // rind set DIT for this call: keep it, and start a batch.
             (0, 1, _) => 1,
             // DIT was on before this call, and rind left it on: count.
-            (0, _, 1..) if batch < BATCH || crate::cpu::Dit::is_held() => batch + 1,
+            // Saturating: under a held guard the count is not bounded, and a
+            // wrap to 0 would read as DIT the caller set, never cleared.
+            (0, _, 1..) if batch < BATCH || crate::cpu::Dit::is_held() => batch.saturating_add(1),
             (0, _, 1..) => {
                 super::leave_cpu_state(1);
                 0
@@ -240,6 +256,11 @@ pub(super) mod autohold {
 // A measuring prototype, which the FIPS module, which ships, refuses.
 #[cfg(all(rind_fips, rind_dit_autohold))]
 compile_error!("rind_dit_autohold is a measuring prototype, not a FIPS configuration");
+
+// Autohold clears DIT itself, around `leave_secret`, so sticky would hold for
+// guards but not for entries: the pair measures neither.
+#[cfg(all(rind_dit_sticky, rind_dit_autohold))]
+compile_error!("rind_dit_autohold and rind_dit_sticky are two measuring prototypes; pick one");
 
 /// How many PSTATE.DIT checks this thread has passed.
 #[cfg(all(test, debug_assertions, rind_dit))]

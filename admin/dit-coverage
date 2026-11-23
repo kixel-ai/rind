@@ -15,8 +15,15 @@
 #   public     touches only public values or constants
 #
 # It also fails on a listed function that no longer exists or now makes an
-# `Entry` of its own, so the list stays the API's. A new public function
-# therefore cannot ship without someone deciding how DIT covers it.
+# `Entry` of its own, so the list stays the API's. A new `pub fn` therefore
+# cannot ship without someone deciding how DIT covers it.
+#
+# What it does not see: trait impl methods (`From`, `TryFrom`, `Drop`,
+# `Iterator` and the like), which are written without `pub`, such as the
+# `From<Okm<..>>` key conversions in `high/hkdf.rs`. Those rest on
+# `admin/dit-qemu`, which runs the ones listed in `low/entry/tests.rs`, and
+# on review. Nor does it check that a `delegates` or `public` class is true:
+# that is the reviewer's claim, recorded with its reason.
 #
 # And it fails on a function that makes a public `Entry` but whose name
 # says it handles a secret (signing, agreeing, decrypting, deriving, or
