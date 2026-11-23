@@ -227,8 +227,10 @@ PSTATE.DIT takes effect in program order, and instructions run
 speculatively after it count as running with DIT set. There, the guarantee
 rests on that architectural rule alone; we have not tested it on any core
 but Apple's, and Apple's cores are a separate case. rind sets DIT off
-Apple's platforms only in a testing build (`--cfg rind_dit_everywhere`),
-and the FIPS module keeps Apple's barrier everywhere. The project owner
+Apple's platforms only in a testing build (`--cfg rind_dit_everywhere`).
+The FIPS module sets no DIT: it builds for glibc Linux, and refuses that
+testing cfg. Its code keeps Apple's barrier on every target in case that
+changes. The project owner
 chose this split on 2026-11-23; [the sources][dit-barrier] are collected
 with it. Key wipes on drop run without DIT, by the same decision: a wipe
 stores zeros and loads nothing secret.

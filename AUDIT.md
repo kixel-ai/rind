@@ -67,8 +67,10 @@ Outside the model:
   Apple asks, so no instruction after it runs speculatively without DIT. On
   other aarch64 cores, where rind sets DIT only in its testing build, it adds
   none and relies on the Arm architecture (Arm ARM DDI 0487 M.d, C5.1.3.3
-  and B1.5.6), untested on hardware; the FIPS module keeps Apple's barrier
-  everywhere. `admin/dit-disasm` checks the emitted sequence per target.
+  and B1.5.6), untested on hardware. The FIPS module sets no DIT (it builds
+  for glibc Linux, and refuses `rind_dit_everywhere`); its code keeps
+  Apple's barrier on every target in case that changes. `admin/dit-disasm`
+  checks the emitted sequence per target.
   The owner's decision of 2026-11-23 (benchmarks/apple-dit-barrier.md).
 - A compromised toolchain, build machine, or dependency. `cargo deny`
   checks crates against RustSec's advisories, licenses, and sources; nothing

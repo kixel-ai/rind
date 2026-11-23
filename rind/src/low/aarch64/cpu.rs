@@ -458,7 +458,7 @@ mod dit {
     }
 
     /// The barrier after `msr DIT, #1`: Apple's sequence on Apple's targets
-    /// and in the FIPS module, none on any other aarch64 target.
+    /// (and in the FIPS module's code), none on any other aarch64 target.
     ///
     /// The Arm architecture needs none. "Writes to PSTATE occur in program
     /// order without the need for additional synchronization" (Arm ARM DDI
@@ -488,8 +488,11 @@ mod dit {
     /// elsewhere, as graviola and the Linux kernel (`SET_PSTATE_DIT` at
     /// `kernel_entry`, Linux 6.2) do everywhere.
     ///
-    /// The FIPS module keeps Apple's sequence on every target, and refuses
-    /// the measuring cfgs below.
+    /// The FIPS module's code keeps Apple's sequence on every target, and
+    /// refuses the measuring cfgs below. The module sets no DIT today: it
+    /// builds for glibc Linux, where build.rs sets `rind_dit` only under
+    /// `rind_dit_everywhere`, which it refuses with `rind_fips`. The choice
+    /// applies only if that changes.
     ///
     /// `--cfg rind_dit_barrier="apple"` runs Apple's sequence on any target,
     /// `--cfg rind_dit_barrier="isb"` runs `isb sy` alone, and
@@ -564,8 +567,8 @@ mod dit {
 }
 
 // `--cfg rind_dit_barrier` is for measuring only (`dit::barrier_after_set`),
-// so the FIPS module, which ships with Apple's barrier on every target,
-// refuses the values that run less than it.
+// so the FIPS module, whose code keeps Apple's barrier on every target (it
+// sets no DIT today), refuses the values that run less than it.
 #[cfg(all(rind_fips, any(rind_dit_barrier = "isb", rind_dit_barrier = "none")))]
 compile_error!("rind_dit_barrier is a measuring prototype; the FIPS module keeps Apple's barrier");
 
