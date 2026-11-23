@@ -38,6 +38,10 @@ import java.util.*;
  *
  * adb: am start -n io.github.steelhead99x.rindbench/.MainActivity [--es host H --ei port P]
  *      [--es libraries "rind,ring"] [--es sections "AEADs"] [--es preset quick|full] [--ez autostart true]
+ * The launcher is exported, so any app can send these. Only a device-runner
+ * build (build-apk.sh with DEVICE_RUNNER=1) honours host, port and autostart:
+ * a normal build never ticks the consent box or picks a collector for the
+ * user. The other extras only preselect the picker.
  * autostart waits 3 s after the list loads, so a runner can capture the picker first.
  * Each screen state logs one RINDBENCH_LAYOUT line (tag RindBench); see reportLayout.
  */
@@ -344,7 +348,7 @@ public class MainActivity extends Activity {
     private List<String[]> candidates() {
         List<String[]> c = new ArrayList<>();
         Intent it = getIntent();
-        if (it.hasExtra("host")) c.add(new String[]{it.getStringExtra("host"), String.valueOf(it.getIntExtra("port", Collector.PORT)), "set by adb"});
+        if (Collector.RUNNER && it.hasExtra("host")) c.add(new String[]{it.getStringExtra("host"), String.valueOf(it.getIntExtra("port", Collector.PORT)), "set by adb"});
         c.add(new String[]{"127.0.0.1", String.valueOf(Collector.PORT), "over USB"});
         if (!Collector.HOST.isEmpty()) c.add(new String[]{Collector.HOST, String.valueOf(Collector.PORT), "over Wi-Fi"});
         return c;
@@ -424,7 +428,7 @@ public class MainActivity extends Activity {
         } catch (Exception e) { statusLbl.setText("Could not read the list of tests: " + e); }
         agreeChanged();
         reportLayout("ready");
-        if (getIntent().getBooleanExtra("autostart", false)) ui.postDelayed(() -> { agree.setChecked(true); startTapped(); }, 3000);
+        if (Collector.RUNNER && getIntent().getBooleanExtra("autostart", false)) ui.postDelayed(() -> { agree.setChecked(true); startTapped(); }, 3000);
     }
 
     /**
@@ -442,7 +446,8 @@ public class MainActivity extends Activity {
                 int bottom = bottomOf(body) + 1;
                 List<String> clipped = new ArrayList<>();
                 if (!whole(run) || bottomOf(run) > bottom) clipped.add("run controls");
-                if (pickCard.getVisibility() == View.VISIBLE && !whole(pickCard)) clipped.add("picker");
+                if (pickCard.getVisibility() == View.VISIBLE && (!whole(pickCard) || pickScroll.canScrollVertically(1) || pickScroll.canScrollVertically(-1)))
+                    clipped.add("picker");
                 if (statusLbl.getText().length() > 0 && !shown(statusLbl, bottom)) clipped.add("status");
                 if (scoreLbl.getText().length() > 0 && !shown(scoreLbl, bottom)) clipped.add("score");
                 boolean fits = true;
