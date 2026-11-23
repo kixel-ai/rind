@@ -1,12 +1,12 @@
 #!/bin/bash
-# usage: [RIND_DEVBENCH_DENY=sha3,dit] build-ipa.sh PORT [HOST]  -> out/RindBenchAll-v${VER:-14.1}-<PORT>[-deny-<ids>].ipa (unsigned; sign it yourself, e.g. with plumesign)
+# usage: [RIND_DEVBENCH_DENY=sha3,dit] [RIND_DEVBENCH_DIT=sticky|nobarrier|isb|both] build-ipa.sh PORT [HOST]  -> out/RindBenchAll-v${VER:-14.1}-<PORT>[-deny-<ids>][-dit-<build>].ipa (unsigned; sign it yourself, e.g. with plumesign)
 # Ports: 9101 for the iPad Pro M4, 9102 for the iPad mini A17 Pro (new listeners, so v13's 9099/9100 logs stay clean).
 set -eu
 cd "$(dirname "$0")"
 PORT=${1:-9101}; HOST=${2:-}  # HOST: the collector's LAN address; empty = results stay on the device
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 ../build-ios.sh ${CARGO_FEATURES---features __bench_openssl}
-TAG=${RIND_DEVBENCH_DENY:+-deny-${RIND_DEVBENCH_DENY//,/_}}  # as ../build-ios.sh names it
+TAG=${RIND_DEVBENCH_DENY:+-deny-${RIND_DEVBENCH_DENY//,/_}}${RIND_DEVBENCH_DIT:+-dit-$RIND_DEVBENCH_DIT}  # as ../build-ios.sh names it
 LIB=$HOME/rind-devbench/target$TAG/aarch64-apple-ios/release/librind_devbench.a
 rm -rf Resources/keys && cp -R ../../rind-rustls/tests/keys Resources/keys
 BENCH_HOST=$HOST BENCH_PORT=$PORT xcodegen generate -q
