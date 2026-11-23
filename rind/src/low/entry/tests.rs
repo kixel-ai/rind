@@ -54,7 +54,7 @@ macro_rules! call {
             name: $name,
             toggles: $toggles,
             run: || {
-                let _ = $body;
+                let _value = $body;
             },
         }
     };
@@ -69,7 +69,10 @@ fn toggles(body: impl FnOnce()) -> u64 {
 
 fn calls() -> [Call; 24] {
     [
-        call!("digest::digest", 1, || digest::digest(&digest::SHA256, &[5; 1350])),
+        call!("digest::digest", 1, || digest::digest(
+            &digest::SHA256,
+            &[5; 1350]
+        )),
         call!("digest::Context::update", 1, || {
             digest::Context::new(&digest::SHA256).update(&[5; 1350])
         }),
@@ -77,13 +80,21 @@ fn calls() -> [Call; 24] {
             digest::Context::new(&digest::SHA256).finish()
         }),
         call!("hmac::Key::new", 1, || hmac_key()),
-        call!("hmac::sign", 1, || hmac::sign(&hmac_key_untimed(), &[5; 1350])),
+        call!("hmac::sign", 1, || hmac::sign(
+            &hmac_key_untimed(),
+            &[5; 1350]
+        )),
         call!("hmac::verify", 1, || {
             let key = hmac_key_untimed();
-            let _ = hmac::verify(&key, b"m", &[0; 32]);
+            hmac::verify(&key, b"m", &[0; 32]).unwrap_err();
         }),
-        call!("hkdf::Salt::new", 1, || hkdf::Salt::new(&hkdf::HKDF_SHA256, b"salt")),
-        call!("hkdf::Salt::extract", 1, || salt_untimed().extract(&[6; 32]).unwrap()),
+        call!("hkdf::Salt::new", 1, || hkdf::Salt::new(
+            &hkdf::HKDF_SHA256,
+            b"salt"
+        )),
+        call!("hkdf::Salt::extract", 1, || salt_untimed()
+            .extract(&[6; 32])
+            .unwrap()),
         call!("hkdf::Prk::new", 1, || prk()),
         call!("hkdf::Prk::fill", 1, || {
             prk_untimed().fill(&[b"info"], &mut [0; 32]).unwrap()
@@ -118,23 +129,25 @@ fn calls() -> [Call; 24] {
                     .unwrap(),
             )
         }),
-        call!("aead::Key::new AES-128-GCM", 1, || aead_key(&aead::AES_128_GCM)),
+        call!("aead::Key::new AES-128-GCM", 1, || aead_key(
+            &aead::AES_128_GCM
+        )),
         call!("aead::Key::seal AES-128-GCM", 1, || {
-            let _ = aead_key_untimed(&aead::AES_128_GCM).seal_in_place_separate_tag(
-                nonce(),
-                b"header",
-                &mut [4; 1350],
-            );
+            aead_key_untimed(&aead::AES_128_GCM)
+                .seal_in_place_separate_tag(nonce(), b"header", &mut [4; 1350])
+                .unwrap()
         }),
-        call!("aead::Key::open AES-128-GCM", 1, || open_untimed(&aead::AES_128_GCM)),
+        call!("aead::Key::open AES-128-GCM", 1, || open_untimed(
+            &aead::AES_128_GCM
+        )),
         call!("aead::Key::seal ChaCha20-Poly1305", 1, || {
-            let _ = aead_key_untimed(&aead::CHACHA20_POLY1305).seal_in_place_separate_tag(
-                nonce(),
-                b"header",
-                &mut [4; 1350],
-            );
+            aead_key_untimed(&aead::CHACHA20_POLY1305)
+                .seal_in_place_separate_tag(nonce(), b"header", &mut [4; 1350])
+                .unwrap()
         }),
-        call!("aead::Key::open ChaCha20-Poly1305", 1, || open_untimed(&aead::CHACHA20_POLY1305)),
+        call!("aead::Key::open ChaCha20-Poly1305", 1, || open_untimed(
+            &aead::CHACHA20_POLY1305
+        )),
         call!("quic::HeaderProtectionKey::mask AES-128", 1, || {
             quic_key_untimed(&aead::quic::AES_128).mask(&[8; 16])
         }),
@@ -142,10 +155,10 @@ fn calls() -> [Call; 24] {
             quic_key_untimed(&aead::quic::CHACHA20).mask(&[8; 16])
         }),
         call!("constant_time::verify", 1, || {
-            let _ = constant_time::verify(&[9; 32], &[9; 32]);
+            constant_time::verify(&[9; 32], &[9; 32]).unwrap();
         }),
         call!("agreement X25519 agree", 1, || {
-            let _ = x25519_untimed().agree(&X25519_PEER);
+            x25519_untimed().agree(&X25519_PEER).unwrap()
         }),
         call!("ed25519 sign", 1, || ed25519_untimed().sign(b"message")),
     ]
@@ -228,7 +241,11 @@ fn each_call_costs_its_toggles() {
         assert!(!model::live(), "{} began inside a guard", call.name);
         let made = run_counted(&call);
         if made != call.toggles {
-            wrong.push(std::format!("{}: {made} toggles, listed {}", call.name, call.toggles));
+            wrong.push(std::format!(
+                "{}: {made} toggles, listed {}",
+                call.name,
+                call.toggles
+            ));
         }
         assert!(!model::live(), "{} left a guard live", call.name);
     }
@@ -273,7 +290,10 @@ fn quic_packets_under_one_guard_toggle_once() {
 #[test]
 fn every_secret_call_runs_with_dit() {
     if std::env::var_os("RIND_TEST_DIT").is_some_and(|v| v == "1") {
-        assert!(dit_on().is_some(), "RIND_TEST_DIT=1 but rind sets no DIT here");
+        assert!(
+            dit_on().is_some(),
+            "RIND_TEST_DIT=1 but rind sets no DIT here"
+        );
     }
     if dit_on().is_none() {
         return;
