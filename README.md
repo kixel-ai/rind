@@ -214,6 +214,10 @@ let _dit = rind::cpu::Dit::hold();
 
 The guard covers every rind call its thread makes, including those through
 rind-rustls and the other adapters, and does nothing off Apple's platforms.
+`rind::cpu::Dit::with(|| ...)` holds one over a closure, and
+`rind::cpu::Dit::batch(packets, |packet| ...)` over one batch of datagrams,
+releasing it when the closure returns or unwinds. Each rind call already
+toggles DIT at most once, however much it computes inside.
 
 ## Platforms
 
