@@ -14,11 +14,12 @@
 # - no instruction ran with DIT clear between two that ran with it set (a
 #   hole: a second toggle inside one call, or something clearing DIT under a
 #   live `Entry`), whichever function it ran in, core's and libc's included;
-# - before DIT was first set, nothing ran in a rind kernel (`rind::low::`,
-#   outside the `Entry` and feature detection that set DIT) or in `rind::mid::`
-#   that the call's entry in `PRE_ENTRY` below does not list with a reason;
+# - before DIT was first set, no rind kernel (`rind::low::`, outside the
+#   `Entry` and feature detection that set DIT, or `rind::mid::`) ran more
+#   than a prologue's worth of instructions (`FRAME`), unless the call's entry
+#   in `PRE_ENTRY` below lists it with a reason;
 # - after DIT was last cleared, no rind kernel ran more than an epilogue's
-#   worth of instructions (`EPILOGUE`), outside the `Entry` drop that clears
+#   worth of instructions (`FRAME`), outside the `Entry` drop that clears
 #   it, key wipes, and what the call's entry in `POST_ENTRY` lists, so a call
 #   that clears DIT early and then does secret work before it returns fails
 #   too, though it leaves no hole.
@@ -62,6 +63,7 @@ ALWAYS_BEFORE = re.compile(
     # prefetcher's input depends on the secret. Run outside a guard, a
     # drop sets no DIT (see benchmarks/apple-dit-coverage.md).
     r"|^<*rind::low::generic::zeroise::"
+    r"|^<*rind::low::aarch64::cpu::zero_bytes$"
 )
 # Secret code, which must not run before DIT is set unless listed below. A
 # method's name starts with `<` (`<rind::mid::aes::Aes>::encrypt_block`).
@@ -79,17 +81,38 @@ ALWAYS_AFTER = re.compile(
     r"|^<rind::mid::mldsa::Polys>::free$"
     r"|^<rind::mid::mldsa::PublicKey<.*>>::free_expansion$"
 )
-# Instructions a kernel may run after DIT is cleared, outside `ALWAYS_AFTER`:
-# a debug build's epilogue, copying the return value out and restoring the
-# frame, as `<rind::mid::aes::Aes as rind::aead::quic::Mask>::mask` does in
-# 15. Any kernel's real work is far more.
-EPILOGUE = 16
+# Instructions a kernel may run before DIT is set or after it is cleared,
+# outside the allow-lists: a debug build's prologue up to the function's
+# secret `Entry` (moving arguments to the stack), or its epilogue after the
+# `Entry` drops (copying the return value out, restoring the frame). The
+# most any listed call's kernel runs there is 25 (`<rind::mid::pbkdf2_vg::Key>::new`
+# before its `Entry`); real work on a secret is far more (the planted
+# window's `chacha20_block` runs hundreds).
+FRAME = 32
 
 # Call name to (symbol pattern, reason) pairs: kernels a call runs on public
 # data before its secret `Entry`.
 PRE_ENTRY = {
     "agreement X25519 agree": [
         (r"^<*rind::mid::(x25519::PublicKey|util::little_endian)", "parses the peer's public key"),
+    ],
+    "digest::Context::update": [
+        (
+            r"^<*rind::low::generic::blockwise::Blockwise",
+            "copies the message into the block buffer, computing nothing; each compression takes its own secret Entry",
+        ),
+    ],
+    "hmac::Context::update": [
+        (
+            r"^<*rind::(low::generic::blockwise::Blockwise|mid::sha2::Sha256(Context|State))",
+            "buffers the public message and copies the keyed state; each compression takes its own secret Entry",
+        ),
+    ],
+    "hmac::Context::sign": [
+        (
+            r"^<*rind::(low::generic::blockwise::Blockwise|mid::sha2::Sha256(Context|State))",
+            "copies the keyed state before the secret Entry that finishes it",
+        ),
     ],
     "agreement P-384 agree": [
         (
@@ -202,7 +225,7 @@ def main():
         early = sorted(
             (c, names_of[s])
             for s, c in w["P"].items()
-            if KERNEL.search(names_of[s]) and not ALWAYS_BEFORE.search(names_of[s])
+            if KERNEL.search(names_of[s]) and not ALWAYS_BEFORE.search(names_of[s]) and c > FRAME
         )
         allowed_after = [re.compile(p) for p, _ in POST_ENTRY.get(name, [])]
         late = sorted(
@@ -211,7 +234,7 @@ def main():
                 for s, c in w["T"].items()
                 if KERNEL.search(names_of[s])
                 and not ALWAYS_AFTER.search(names_of[s])
-                and c > EPILOGUE
+                and c > FRAME
             ),
             reverse=True,
         )
