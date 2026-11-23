@@ -77,8 +77,7 @@ mod rustcrypto {
 #[cfg(not(any(rind_backend = "arm", rind_backend = "portable")))]
 pub(crate) use rustcrypto::{P256, P384, P521};
 
-/// libcrux's P-256, HACL*'s, which rind runs nowhere. It hashes with
-/// HACL*'s SHA-2, which the portable backend runs, so it takes digests.
+/// libcrux's P-256, HACL*'s, which rind runs nowhere.
 #[cfg(any(rind_backend = "arm", rind_backend = "portable"))]
 pub(crate) struct P256;
 
