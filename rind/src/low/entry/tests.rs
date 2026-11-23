@@ -99,30 +99,30 @@ fn calls() -> [Call; 24] {
         call!("hkdf::Prk::fill", 1, || {
             prk_untimed().fill(&[b"info"], &mut [0; 32]).unwrap()
         }),
-        // Each conversion expands, then keys what it expanded: two entries,
-        // one after the other.
-        call!("hkdf Okm into aead::Key", 2, || {
+        // Each conversion expands, then keys what it expanded, under one
+        // entry.
+        call!("hkdf Okm into aead::Key", 1, || {
             aead::Key::from(
                 prk_untimed()
                     .expand(&[b"quic key"], &aead::AES_128_GCM)
                     .unwrap(),
             )
         }),
-        call!("hkdf Okm into quic::HeaderProtectionKey", 2, || {
+        call!("hkdf Okm into quic::HeaderProtectionKey", 1, || {
             aead::quic::HeaderProtectionKey::from(
                 prk_untimed()
                     .expand(&[b"quic hp"], &aead::quic::AES_128)
                     .unwrap(),
             )
         }),
-        call!("hkdf Okm into hmac::Key", 2, || {
+        call!("hkdf Okm into hmac::Key", 1, || {
             hmac::Key::from(
                 prk_untimed()
                     .expand(&[b"finished"], &hmac::HMAC_SHA256)
                     .unwrap(),
             )
         }),
-        call!("hkdf Okm into Prk", 2, || {
+        call!("hkdf Okm into Prk", 1, || {
             hkdf::Prk::from(
                 prk_untimed()
                     .expand(&[b"derived"], &hkdf::HKDF_SHA256)
@@ -299,12 +299,17 @@ fn every_secret_call_runs_with_dit() {
         return;
     }
     for call in calls() {
+        if cfg!(rind_dit_sticky) {
+            // The last call left DIT on.
+            crate::low::leave_cpu_state(1);
+        }
         assert_eq!(dit_on(), Some(false), "{} began with DIT set", call.name);
         let before = super::dit_checks();
         (call.run)();
         let checks = super::dit_checks() - before;
         assert!(checks > 0, "{} ran no PSTATE.DIT check", call.name);
-        assert_eq!(dit_on(), Some(false), "{} left DIT set", call.name);
+        let left = Some(cfg!(rind_dit_sticky));
+        assert_eq!(dit_on(), left, "{}: DIT after the call", call.name);
     }
 }
 
@@ -323,7 +328,7 @@ fn a_cleared_dit_under_an_entry_panics() {
     // Sets it again, so the `Entry` drops cleanly and clears it.
     let _ = crate::low::enter_cpu_state();
     drop(entry);
-    assert_eq!(dit_on(), Some(false));
+    assert_eq!(dit_on(), Some(cfg!(rind_dit_sticky)));
     let message = caught.expect_err("a cleared DIT passed the check");
     let message = message
         .downcast_ref::<&str>()

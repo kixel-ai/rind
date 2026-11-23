@@ -92,7 +92,7 @@ impl Drop for Dit {
             let (guards, cpu_state) = DIT_GUARDS.get();
             DIT_GUARDS.set((guards.saturating_sub(1), cpu_state));
             if guards == 1 {
-                super::leave_cpu_state(cpu_state);
+                super::entry::leave_secret(cpu_state);
             }
         }
         #[cfg(test)]

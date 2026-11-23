@@ -135,8 +135,26 @@ impl Drop for Entry {
             }
             #[cfg(test)]
             model::leave();
-            leave_cpu_state(self.cpu_state);
+            leave_secret(self.cpu_state);
         }
+    }
+}
+
+/// Restores what `enter_cpu_state` changed, as the last secret `Entry` or
+/// [`crate::cpu::Dit`] guard drops.
+///
+/// `--cfg rind_dit_sticky` instead leaves DIT on for the rest of the
+/// thread's life once rind has set it, so a thread that makes many small
+/// calls pays one toggle in all, as a guard held for its life would. It
+/// only ever adds DIT, so every secret computation still runs under it,
+/// but everything else the thread runs does too. It is a measuring
+/// prototype for the toggle cost on Apple silicon (fork issues #259 to
+/// #266), not a supported configuration.
+pub(super) fn leave_secret(cpu_state: u32) {
+    if cfg!(rind_dit_sticky) {
+        let _ = cpu_state;
+    } else {
+        leave_cpu_state(cpu_state);
     }
 }
 

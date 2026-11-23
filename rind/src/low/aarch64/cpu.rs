@@ -774,7 +774,7 @@ mod tests {
             assert_eq!(unsafe { dit::read() }, expected as u32);
             drop(outer);
             // SAFETY: as above.
-            assert_eq!(unsafe { dit::read() }, 0);
+            assert_eq!(unsafe { dit::read() }, u32::from(cfg!(rind_dit_sticky)));
         }
     }
 
@@ -801,7 +801,7 @@ mod tests {
         assert_eq!(unsafe { dit::read() }, 1);
         drop(second);
         // SAFETY: as above.
-        assert_eq!(unsafe { dit::read() }, 0);
+        assert_eq!(unsafe { dit::read() }, u32::from(cfg!(rind_dit_sticky)));
     }
 
     #[cfg(rind_dit)]
