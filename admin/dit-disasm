@@ -34,6 +34,9 @@ import json, os, re, subprocess, sys
 
 # (name, target, extra RUSTFLAGS, expected endings)
 SB, DSB_ISB, NONE = "sb", "dsb nsh; isb", "no barrier"
+# A call to the function holding `sb`, which `check` counts as `sb` only once
+# it has seen an `sb` in that function's own instructions.
+SB_CALL = "a call to speculation_barrier"
 BUILDS = [
     ("apple", "aarch64-apple-darwin", "", {SB, DSB_ISB}),
     ("linux", "aarch64-unknown-linux-gnu", "--cfg rind_dit_everywhere", {NONE}),
@@ -147,7 +150,7 @@ def endings(insns, start):
             continue
         # A call to, or tail call of, the function holding `sb`.
         if mnem in ("bl", "b") and reloc and "speculation_barrier" in reloc and not after_dsb:
-            found.add(SB)
+            found.add(SB_CALL)
             continue
         if mnem == "b" and reloc:
             found.add(NONE if not after_dsb else "dsb nsh then a tail call")
@@ -230,12 +233,17 @@ def self_test():
 def check(tool, name, target, flags, expected):
     rlib = build(name, target, flags)
     sites, failures, seen_all = 0, [], set()
-    for func, insns in sorted(functions(tool, rlib).items()):
+    funcs = functions(tool, rlib)
+    holders = [insns for func, insns in funcs.items() if "speculation_barrier" in func]
+    callee_has_sb = bool(holders) and all(any(m == "sb" for _, m, _, _ in i) for i in holders)
+    for func, insns in sorted(funcs.items()):
         for i, (addr, mnem, ops, _) in enumerate(insns):
             if mnem != "msr" or ops.replace(" ", "").lower() != "dit,#0x1":
                 continue
             sites += 1
             found = endings(insns, i)
+            if SB_CALL in found:
+                found = (found - {SB_CALL}) | {SB if callee_has_sb else "a call to a speculation_barrier without sb"}
             seen_all |= found
             problem = site_problem(found, expected)
             if problem:
