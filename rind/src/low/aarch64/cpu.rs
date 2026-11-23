@@ -450,19 +450,51 @@ mod dit {
         if on > 0 {
             // SAFETY: `msr DIT, _` is defined only if `dit` cpu feature is supported
             unsafe { core::arch::asm!("msr DIT, #1") }
-            // Arm requires no barrier after a PSTATE write, but Apple asks
-            // for a speculation barrier after setting DIT, so that nothing
-            // after it runs speculatively without DIT.
-            if super::features() & super::SB != 0 {
-                // SAFETY: in this branch, we verified `sb` cpu feature is supported
-                unsafe { speculation_barrier() }
-            } else {
-                // SAFETY: Armv8.0 barriers, Apple's choice for cores without `sb`.
-                unsafe { core::arch::asm!("dsb nsh", "isb sy", options(nostack, preserves_flags)) }
-            }
+            barrier_after_set();
         } else {
             // SAFETY: `msr DIT, _` is defined only if `dit` cpu feature is supported
             unsafe { core::arch::asm!("msr DIT, #0") }
+        }
+    }
+
+    /// Apple asks for a speculation barrier after setting DIT, so that
+    /// nothing after it runs speculatively without DIT: "To ensure that
+    /// subsequent instruction timing reflects the updated DIT processor
+    /// state, add a speculation barrier after turning on DIT" (Writing ARM64
+    /// code for Apple platforms, "Enable DIT for constant-time cryptographic
+    /// operations"). That is `sb` where the core has FEAT_SB, and `dsb nsh;
+    /// isb sy` where not, as Apple's corecrypto does
+    /// (`cc/src/cc_timing_safe.c`).
+    ///
+    /// Others set DIT with no barrier: aws-lc's `armv8_set_dit` is a bare
+    /// `msr dit, #1` (`crypto/fipsmodule/cpucap/cpu_aarch64.c`, aws-lc-sys
+    /// 0.47.0), as is the Linux kernel's 2022 RFC "arm64: Enable data
+    /// independent timing (DIT) in the kernel" (`set_pstate_dit`, and an
+    /// `ALTERNATIVE` in `entry.S`). An MSR (immediate) write to PSTATE needs
+    /// no context synchronization for later instructions in program order
+    /// to see it; what speculative execution sees is what Apple's barrier
+    /// is for, and is not settled here.
+    ///
+    /// `--cfg rind_dit_barrier="isb"` runs `isb sy` alone, and
+    /// `--cfg rind_dit_barrier="none"` no barrier, the architectural
+    /// minimum the others use. Both are measuring prototypes, for the cost
+    /// of the barrier on Apple silicon (fork issues #259 to #266), not
+    /// supported configurations: they depart from Apple's guidance, and the
+    /// FIPS module refuses them.
+    #[inline(always)]
+    fn barrier_after_set() {
+        #[cfg(not(any(rind_dit_barrier = "isb", rind_dit_barrier = "none")))]
+        if super::features() & super::SB != 0 {
+            // SAFETY: in this branch, we verified `sb` cpu feature is supported
+            unsafe { speculation_barrier() }
+        } else {
+            // SAFETY: Armv8.0 barriers, Apple's choice for cores without `sb`.
+            unsafe { core::arch::asm!("dsb nsh", "isb sy", options(nostack, preserves_flags)) }
+        }
+        // SAFETY: an Armv8.0 barrier.
+        #[cfg(rind_dit_barrier = "isb")]
+        unsafe {
+            core::arch::asm!("isb sy", options(nostack, preserves_flags))
         }
     }
 
@@ -474,12 +506,22 @@ mod dit {
     }
 
     /// Runs nothing after it speculatively until everything before it completes.
+    // Only the tests run it under a measuring `rind_dit_barrier`.
+    #[cfg_attr(
+        any(rind_dit_barrier = "isb", rind_dit_barrier = "none"),
+        allow(dead_code)
+    )]
     #[target_feature(enable = "sb")]
     pub(super) fn speculation_barrier() {
         // SAFETY: `sb` is defined only if `sb` cpu feature is supported
         unsafe { core::arch::asm!("sb", options(nostack, preserves_flags)) }
     }
 }
+
+// `--cfg rind_dit_barrier` is for measuring only (`dit::barrier_after_set`),
+// so the FIPS module, which ships, refuses it.
+#[cfg(all(rind_fips, any(rind_dit_barrier = "isb", rind_dit_barrier = "none")))]
+compile_error!("rind_dit_barrier is a measuring prototype; the FIPS module keeps Apple's barrier");
 
 /// Whether PSTATE.DIT is set, or `None` on a CPU where rind sets none, for
 /// the debug checks in `low::entry`.
