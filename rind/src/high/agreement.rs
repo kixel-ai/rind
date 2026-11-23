@@ -290,13 +290,17 @@ struct Ops<K> {
 }
 
 impl<K: Agree> Keyed<K> {
+    // One `Entry` over making the key and encoding its public key, so the
+    // call toggles DIT once, not once for each.
     fn generate(algorithm: &'static Algorithm) -> Result<PrivateKey, Error> {
+        let _entry = low::Entry::new_secret();
         let key = K::random()?;
         let public = K::encode_public(&key, algorithm);
         Ok(Self::private_key(key, public))
     }
 
     fn load(algorithm: &'static Algorithm, source: Source<'_>) -> Result<PrivateKey, Error> {
+        let _entry = low::Entry::new_secret();
         let (key, public) = K::load(algorithm, source)?;
         Ok(Self::private_key(key, public))
     }
