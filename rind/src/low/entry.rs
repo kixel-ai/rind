@@ -11,6 +11,34 @@ std::thread_local! {
     static HELD: core::cell::Cell<usize> = const { core::cell::Cell::new(0) };
 }
 
+#[cfg(all(debug_assertions, rind_dit))]
+std::thread_local! {
+    // This thread's live secret `Entry`s, unit tests included: while one is
+    // live, PSTATE.DIT must be set, which `check_dit` asserts. And how many
+    // times it has asserted so, for the tests to see the check ran.
+    static SECRET: core::cell::Cell<(usize, u64)> = const { core::cell::Cell::new((0, 0)) };
+}
+
+/// Panics, in a debug build where rind sets DIT, if a secret `Entry` is live
+/// on this thread and PSTATE.DIT is clear on a CPU that has it.
+///
+/// Called as a secret `Entry` is made and dropped, and by every primitive
+/// that calls [`Entry::assert_held`], so a debug run of the tests on Apple
+/// silicon, or under qemu-aarch64 with `--cfg rind_dit_everywhere`, reads
+/// PSTATE.DIT under each kernel any secret call reaches.
+#[cfg(all(debug_assertions, rind_dit))]
+#[track_caller]
+fn check_dit() {
+    let (live, checks) = SECRET.get();
+    if live == 0 {
+        return;
+    }
+    if let Some(on) = super::dit_on() {
+        assert!(on, "secret computation with PSTATE.DIT clear");
+        SECRET.set((live, checks + 1));
+    }
+}
+
 /// One of these should be made at library entry points: every `pub` function.
 ///
 /// Trivial conversions, accessors (ie, functions which do no actual computation)
@@ -58,6 +86,14 @@ impl Entry {
         let cpu_state = enter_cpu_state();
         #[cfg(all(debug_assertions, not(test), rind_std))]
         HELD.set(HELD.get() + 1);
+        #[cfg(all(debug_assertions, rind_dit))]
+        {
+            let (live, checks) = SECRET.get();
+            SECRET.set((live + 1, checks));
+            check_dit();
+        }
+        #[cfg(test)]
+        model::enter();
 
         Self {
             secret: true,
@@ -74,9 +110,15 @@ impl Entry {
     ///
     /// Primitives that make no `Entry` of their own call this, so a test
     /// reaching one through a public function that skipped its `Entry` fails.
+    ///
+    /// Where rind sets DIT, a debug build also panics if a secret `Entry` is
+    /// live and PSTATE.DIT is clear.
+    #[track_caller]
     pub(crate) fn assert_held() {
         #[cfg(all(debug_assertions, not(test), rind_std))]
         assert!(HELD.get() > 0, "computing outside an `Entry`");
+        #[cfg(all(debug_assertions, rind_dit))]
+        check_dit();
     }
 }
 
@@ -85,7 +127,58 @@ impl Drop for Entry {
         #[cfg(all(debug_assertions, not(test), rind_std))]
         HELD.set(HELD.get() - 1);
         if self.secret {
+            #[cfg(all(debug_assertions, rind_dit))]
+            {
+                check_dit();
+                let (live, checks) = SECRET.get();
+                SECRET.set((live - 1, checks));
+            }
+            #[cfg(test)]
+            model::leave();
             leave_cpu_state(self.cpu_state);
         }
     }
 }
+
+/// How many PSTATE.DIT checks this thread has passed.
+#[cfg(all(test, debug_assertions, rind_dit))]
+pub(crate) fn dit_checks() -> u64 {
+    SECRET.get().1
+}
+
+/// A model of when rind toggles DIT, for tests on any target: a toggle is a
+/// secret `Entry`, or a [`crate::cpu::Dit`] guard, made while none of either
+/// is live on this thread, which is when Apple's targets turn DIT on (and
+/// off again when the last drops). The count is the same on every backend,
+/// so x86_64 CI checks how many toggles each operation costs on Apple's.
+#[cfg(test)]
+pub(crate) mod model {
+    std::thread_local! {
+        // Live secret entries and guards, and toggles so far.
+        static STATE: core::cell::Cell<(usize, u64)> = const { core::cell::Cell::new((0, 0)) };
+    }
+
+    pub(crate) fn enter() {
+        let (live, toggles) = STATE.get();
+        STATE.set((live + 1, toggles + u64::from(live == 0)));
+    }
+
+    pub(crate) fn leave() {
+        let (live, toggles) = STATE.get();
+        STATE.set((live - 1, toggles));
+    }
+
+    /// Toggles this thread has made so far.
+    pub(crate) fn toggles() -> u64 {
+        STATE.get().1
+    }
+
+    /// Whether a secret `Entry` or guard is live on this thread.
+    pub(crate) fn live() -> bool {
+        STATE.get().0 > 0
+    }
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod tests;

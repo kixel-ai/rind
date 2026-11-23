@@ -117,6 +117,9 @@ unexpected_cfgs = { level = "warn", check-cfg = [
   "cfg(coverage_nightly)",
   # Lets an optimised build honour `RIND_CPU_DISABLE_*`, for benches and ctgrind.
   "cfg(rind_cpu_disable)",
+  # Sets DIT on any aarch64 target with an OS, not only Apple's, so qemu-aarch64
+  # tests the DIT checks (see build.rs).
+  "cfg(rind_dit_everywhere)",
   # Plants the variable-time operations `admin/ct-vartime` must find.
   "cfg(rind_vartime_planted)",
   # Forces the portable backend, for testing it on x86_64 (see build.rs).

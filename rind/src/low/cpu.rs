@@ -64,7 +64,7 @@ pub struct Dit {
 impl Dit {
     /// Turns DIT on for this thread, if rind sets it here, until the guard drops.
     pub fn hold() -> Self {
-        #[cfg(all(rind_backend = "aarch64", target_vendor = "apple"))]
+        #[cfg(rind_dit)]
         {
             let (guards, cpu_state) = DIT_GUARDS.get();
             let cpu_state = if guards == 0 {
@@ -77,6 +77,8 @@ impl Dit {
             // but never safety, since every rind call sets DIT itself.
             DIT_GUARDS.set((guards.saturating_add(1), cpu_state));
         }
+        #[cfg(test)]
+        super::entry::model::enter();
         Self {
             _thread: PhantomData,
         }
@@ -85,7 +87,7 @@ impl Dit {
 
 impl Drop for Dit {
     fn drop(&mut self) {
-        #[cfg(all(rind_backend = "aarch64", target_vendor = "apple"))]
+        #[cfg(rind_dit)]
         {
             let (guards, cpu_state) = DIT_GUARDS.get();
             DIT_GUARDS.set((guards.saturating_sub(1), cpu_state));
@@ -93,12 +95,15 @@ impl Drop for Dit {
                 super::leave_cpu_state(cpu_state);
             }
         }
+        #[cfg(test)]
+        super::entry::model::leave();
     }
 }
 
 // Counted only where rind sets DIT, on Apple's aarch64 platforms, which all
-// have threads and `std`; elsewhere the guard holds nothing.
-#[cfg(all(rind_backend = "aarch64", target_vendor = "apple"))]
+// have threads and `std` (and under `--cfg rind_dit_everywhere`, only with
+// `std`); elsewhere the guard holds nothing.
+#[cfg(rind_dit)]
 std::thread_local! {
     // This thread's live guards, and what the first one's `enter_cpu_state`
     // returned, for the last one to drop to restore.

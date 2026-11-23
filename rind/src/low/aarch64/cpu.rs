@@ -4,16 +4,16 @@
 use core::sync::atomic::{AtomicU8, Ordering};
 
 pub(crate) fn enter_cpu_state() -> u32 {
-    #[cfg(target_vendor = "apple")]
+    #[cfg(rind_dit)]
     return dit::maybe_enable();
-    #[cfg(not(target_vendor = "apple"))]
+    #[cfg(not(rind_dit))]
     0
 }
 
 pub(crate) fn leave_cpu_state(old: u32) {
-    #[cfg(target_vendor = "apple")]
+    #[cfg(rind_dit)]
     dit::maybe_disable(old);
-    #[cfg(not(target_vendor = "apple"))]
+    #[cfg(not(rind_dit))]
     let _ = old;
 }
 
@@ -171,9 +171,9 @@ impl HaveSve2 {
 
 const CRYPTO_EXT: u8 = 1 << 1;
 const SHA3: u8 = 1 << 2;
-#[cfg(target_vendor = "apple")]
+#[cfg(rind_dit)]
 const DIT: u8 = 1 << 3;
-#[cfg(target_vendor = "apple")]
+#[cfg(rind_dit)]
 const SB: u8 = 1 << 4;
 const SVE2: u8 = 1 << 5;
 const DETECTED: u8 = 1 << 7;
@@ -252,7 +252,7 @@ fn detect() -> u8 {
     let features = (if crypto_ext { CRYPTO_EXT } else { 0 })
         | (if sha3 { SHA3 } else { 0 })
         | (if sve2 { SVE2 } else { 0 });
-    #[cfg(target_vendor = "apple")]
+    #[cfg(rind_dit)]
     let features = features
         | if test_toggle("dit", detected!("dit")) {
             DIT
@@ -401,8 +401,9 @@ fn narrow_part(implementer: u64, part: u64) -> bool {
 // DIT changes what runs only on Apple's cores, where from the M3 it turns off
 // the data memory-dependent prefetcher that GoFetch reads secrets through. Arm
 // says it has no effect on any current Arm core, so elsewhere rind skips the
-// cost of setting it.
-#[cfg(target_vendor = "apple")]
+// cost of setting it. `--cfg rind_dit_everywhere` sets it on any aarch64 OS
+// too, for testing under qemu-aarch64 (see build.rs).
+#[cfg(rind_dit)]
 mod dit {
     pub(super) fn maybe_enable() -> u32 {
         if super::features() & super::DIT != 0 {
@@ -465,12 +466,26 @@ mod dit {
         }
     }
 
+    /// Whether PSTATE.DIT is set, or `None` on a CPU where rind sets none.
+    #[cfg(debug_assertions)]
+    pub(super) fn is_on() -> Option<bool> {
+        // SAFETY: in this branch, we verified `dit` cpu feature is supported
+        (super::features() & super::DIT != 0).then(|| unsafe { read() } == 1)
+    }
+
     /// Runs nothing after it speculatively until everything before it completes.
     #[target_feature(enable = "sb")]
     pub(super) fn speculation_barrier() {
         // SAFETY: `sb` is defined only if `sb` cpu feature is supported
         unsafe { core::arch::asm!("sb", options(nostack, preserves_flags)) }
     }
+}
+
+/// Whether PSTATE.DIT is set, or `None` on a CPU where rind sets none, for
+/// the debug checks in `low::entry`.
+#[cfg(all(rind_dit, debug_assertions))]
+pub(crate) fn dit_on() -> Option<bool> {
+    dit::is_on()
 }
 
 /// `detected`, unless `RIND_CPU_DISABLE_<id>` denies it, so a CPU with the
@@ -510,7 +525,7 @@ pub(in crate::low) fn prefetch_ro<T>(ptr: *const T) {
 /// Re-exec this test binary. qemu-user is cargo's runner, not a kernel
 /// binfmt handler, so a child of a cross test needs that runner too. A
 /// native run leaves the variable unset and execs the binary itself.
-#[cfg(all(test, any(debug_assertions, rind_cpu_disable)))]
+#[cfg(all(test, any(debug_assertions, rind_cpu_disable, rind_dit)))]
 pub(super) fn reexec() -> std::process::Command {
     let exe = std::env::current_exe().unwrap();
     let Ok(runner) = std::env::var("CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUNNER") else {
@@ -546,7 +561,7 @@ mod tests {
         unsafe { call!(unsafe zero_bytes, bytes.as_mut_ptr(), 100) };
         assert_eq!(bytes, [0; 100]);
         call!(prefetch_ro::<u8>, bytes.as_ptr());
-        #[cfg(target_vendor = "apple")]
+        #[cfg(rind_dit)]
         if std::arch::is_aarch64_feature_detected!("dit") {
             // SAFETY: the CPU has DIT, which this leaves as it found it.
             unsafe {
@@ -554,7 +569,7 @@ mod tests {
                 call!(unsafe dit::write, on);
             }
         }
-        #[cfg(target_vendor = "apple")]
+        #[cfg(rind_dit)]
         if std::arch::is_aarch64_feature_detected!("sb") {
             // SAFETY: the CPU has SB.
             unsafe { call!(unsafe dit::speculation_barrier) };
@@ -586,7 +601,7 @@ mod tests {
             cfg!(target_vendor = "apple") && available!("sha3")
         );
         assert_eq!(HaveSve2::check().is_some(), available!("sve2"));
-        #[cfg(target_vendor = "apple")]
+        #[cfg(rind_dit)]
         assert_eq!(features() & SB != 0, available!("sb"));
     }
 
@@ -729,7 +744,7 @@ mod tests {
 
     // A core that runs `mrs DIT` has DIT, whatever the OS reports, so a child
     // process runs it.
-    #[cfg(target_vendor = "apple")]
+    #[cfg(rind_dit)]
     #[test]
     fn enables_dit_whenever_the_cpu_has_it() {
         let has_dit = child_reads_dit();
@@ -763,7 +778,7 @@ mod tests {
         }
     }
 
-    #[cfg(target_vendor = "apple")]
+    #[cfg(rind_dit)]
     #[test]
     fn dit_hold_keeps_dit_on_across_calls() {
         if features() & DIT == 0 {
@@ -789,11 +804,11 @@ mod tests {
         assert_eq!(unsafe { dit::read() }, 0);
     }
 
-    #[cfg(target_vendor = "apple")]
+    #[cfg(rind_dit)]
     fn child_reads_dit() -> bool {
         let test = concat!(module_path!(), "::reads_dit");
         let test = test.split_once("::").unwrap().1;
-        let out = std::process::Command::new(std::env::current_exe().unwrap())
+        let out = reexec()
             .args([test, "--exact", "--nocapture"])
             .env("RIND_TEST_READ_DIT", "1")
             .output()
@@ -810,7 +825,7 @@ mod tests {
 
     /// Runs `mrs DIT` for `child_reads_dit`, which an illegal instruction
     /// kills on a core without DIT.
-    #[cfg(target_vendor = "apple")]
+    #[cfg(rind_dit)]
     #[test]
     fn reads_dit() {
         if std::env::var_os("RIND_TEST_READ_DIT").is_some() {
