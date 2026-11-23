@@ -155,7 +155,7 @@ impl Drop for Entry {
 /// only ever adds DIT, so every secret computation still runs under it,
 /// but everything else the thread runs does too. It is a measuring
 /// prototype for the toggle cost on Apple silicon (fork issues #259 to
-/// #266), not a supported configuration.
+/// #266), not a supported configuration, and the FIPS module refuses it.
 pub(super) fn leave_secret(cpu_state: u32) {
     if cfg!(rind_dit_sticky) {
         let _ = cpu_state;
@@ -163,6 +163,11 @@ pub(super) fn leave_secret(cpu_state: u32) {
         leave_cpu_state(cpu_state);
     }
 }
+
+// The FIPS module restores DIT as each guard drops; a cfg that leaves it
+// set for the rest of the thread changes that, so it is refused there.
+#[cfg(all(rind_fips, rind_dit_sticky))]
+compile_error!("rind_dit_sticky is a measuring prototype, not a FIPS configuration");
 
 /// How many PSTATE.DIT checks this thread has passed.
 #[cfg(all(test, debug_assertions, rind_dit))]
