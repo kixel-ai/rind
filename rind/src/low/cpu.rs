@@ -76,8 +76,7 @@ pub fn has_aes_hardware() -> bool {
 ///     tag.copy_from_slice(sealed.as_ref());
 ///     // RFC 9001, section 5.4.2: the sample starts 4 bytes past the start
 ///     // of the packet number.
-///     let sample: &[u8; SAMPLE_LEN] =
-///         packet[PN.start + 4..][..SAMPLE_LEN].try_into().unwrap();
+///     let sample: &[u8; SAMPLE_LEN] = packet[PN.start + 4..][..SAMPLE_LEN].try_into().unwrap();
 ///     let mask = header_key.mask(sample);
 ///     packet[0] ^= mask[0] & 0x1f;
 ///     for (byte, m) in packet[PN].iter_mut().zip(&mask[1..]) {
