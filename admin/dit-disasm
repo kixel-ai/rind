@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Usage: admin/dit-disasm
+# Usage: admin/dit-disasm [--self-test]
 #
 # The disassembly check for the barrier after `msr DIT, #1`
 # (`rind/src/low/aarch64/cpu.rs`, `dit::barrier_after_set`). It builds rind's
@@ -22,7 +22,10 @@
 #   find both.
 #
 # Each build must hold at least one `msr DIT, #1`, so a build that sets DIT
-# nowhere fails rather than passing.
+# nowhere fails rather than passing, and each site must have at least one
+# ending, so a site whose paths only loop fails too. A self-test of planted
+# control flow (a loop with no exit among them) runs first; `--self-test`
+# runs only that.
 #
 # Run it in `nix develop .#dit-disasm`, which has llvm-objdump and both
 # targets' standard libraries.
@@ -168,6 +171,62 @@ def endings(insns, start):
     return found
 
 
+def site_problem(found, expected):
+    """Why one site's endings fail, or None. A site with no ending at all
+    (every path loops back into instructions already explored) fails: the
+    empty set is a subset of every expected set, and another site's endings
+    could otherwise make the aggregate check pass."""
+    if not found:
+        return "no path from it reaches an ending"
+    if not found <= expected:
+        return ", ".join(sorted(found))
+    return None
+
+
+def self_test():
+    """Planted control flow, so a scan that stops recording endings fails
+    here rather than passing every site: a loop with no exit, Apple's two
+    barriers behind a feature test, and a path with no barrier."""
+    msr = (0x0, "msr", "DIT, #0x1", None)
+    planted = [
+        (
+            "a loop with no barrier exit",
+            [msr, (0x4, "ldr", "x8, [x9]", None), (0x8, "cbz", "x8, 0x4 <f+0x4>", None),
+             (0xC, "b", "0x4 <f+0x4>", None)],
+            {SB, DSB_ISB},
+            False,
+        ),
+        (
+            "sb, else dsb nsh; isb",
+            [msr, (0x4, "ldrb", "w8, [x9]", None), (0x8, "tbz", "w8, #0x0, 0x14 <f+0x14>", None),
+             (0xC, "sb", "", None), (0x10, "ret", "", None), (0x14, "dsb", "nsh", None),
+             (0x18, "isb", "", None), (0x1C, "ret", "", None)],
+            {SB, DSB_ISB},
+            True,
+        ),
+        (
+            "no barrier where Apple's is expected",
+            [msr, (0x4, "ldp", "x29, x30, [sp], #0x10", None), (0x8, "ret", "", None)],
+            {SB, DSB_ISB},
+            False,
+        ),
+        (
+            "no barrier where none is expected",
+            [msr, (0x4, "ldp", "x29, x30, [sp], #0x10", None), (0x8, "ret", "", None)],
+            {NONE},
+            True,
+        ),
+    ]
+    bad = []
+    for name, insns, expected, passes in planted:
+        found = endings(insns, 0)
+        if (site_problem(found, expected) is None) != passes:
+            bad.append("{}: endings {}".format(name, sorted(found) or "none"))
+    if bad:
+        sys.exit("dit-disasm: self-test failed:\n  " + "\n  ".join(bad))
+    print("dit-disasm: self-test: {} planted sites classified as expected".format(len(planted)))
+
+
 def check(tool, name, target, flags, expected):
     rlib = build(name, target, flags)
     sites, failures, seen_all = 0, [], set()
@@ -178,8 +237,9 @@ def check(tool, name, target, flags, expected):
             sites += 1
             found = endings(insns, i)
             seen_all |= found
-            if not found <= expected:
-                failures.append("{} +{:#x}: {}".format(func, addr, ", ".join(sorted(found))))
+            problem = site_problem(found, expected)
+            if problem:
+                failures.append("{} +{:#x}: {}".format(func, addr, problem))
     if not sites:
         failures.append("no `msr DIT, #1` at all")
     if expected - seen_all:
@@ -196,6 +256,9 @@ def check(tool, name, target, flags, expected):
 
 
 def main():
+    self_test()
+    if sys.argv[1:] == ["--self-test"]:
+        return
     tool = objdump()
     ok = [check(tool, *b) for b in BUILDS]
     if not all(ok):
