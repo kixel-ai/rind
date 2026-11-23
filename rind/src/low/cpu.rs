@@ -217,11 +217,15 @@ impl Dit {
         items.into_iter().try_for_each(&mut each)
     }
 
-    /// Whether a guard on this thread is holding DIT on.
+    /// Whether a guard is live on this thread, on a target where rind sets
+    /// DIT.
     ///
-    /// Always `false` where rind sets no DIT, since a guard holds nothing
-    /// there. It reports the guards alone: inside a rind call DIT is set
-    /// whether or not this is `true`.
+    /// Always `false` on targets where rind sets no DIT, since a guard holds
+    /// nothing there. On a target where it does, this counts guards and does
+    /// not read the CPU: on a core without DIT (FEAT_DIT is optional before
+    /// Armv8.4), or with `dit` denied, a live guard holds nothing and this
+    /// is still `true`. It reports the guards alone: inside a rind call DIT
+    /// is set, where the CPU has it, whether or not this is `true`.
     #[must_use]
     pub fn is_held() -> bool {
         #[cfg(rind_dit)]
