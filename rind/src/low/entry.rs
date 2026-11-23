@@ -69,6 +69,8 @@ impl Entry {
     pub(crate) fn new_public() -> Self {
         #[cfg(all(debug_assertions, not(test), rind_std))]
         HELD.set(HELD.get() + 1);
+        #[cfg(all(rind_dit_autohold, rind_dit))]
+        autohold::public_call();
 
         Self {
             secret: false,
@@ -88,6 +90,8 @@ impl Entry {
     /// (directly, or transitively).
     #[must_use]
     pub(crate) fn new_secret() -> Self {
+        #[cfg(all(rind_dit_autohold, rind_dit))]
+        autohold::enter();
         let cpu_state = enter_cpu_state();
         #[cfg(all(debug_assertions, not(test), rind_std))]
         HELD.set(HELD.get() + 1);
@@ -141,6 +145,9 @@ impl Drop for Entry {
             }
             #[cfg(test)]
             model::leave();
+            #[cfg(all(rind_dit_autohold, rind_dit))]
+            autohold::leave(self.cpu_state);
+            #[cfg(not(all(rind_dit_autohold, rind_dit)))]
             leave_secret(self.cpu_state);
         }
     }
@@ -163,6 +170,76 @@ pub(super) fn leave_secret(cpu_state: u32) {
         leave_cpu_state(cpu_state);
     }
 }
+
+/// `--cfg rind_dit_autohold`: a prototype of coalescing DIT toggles across
+/// calls without a guard, for measuring only (see
+/// `benchmarks/apple-dit-coalescing.md`). When the last secret `Entry` on a
+/// thread drops, DIT stays on if rind set it, and the thread is in a batch.
+/// The batch ends, and DIT is cleared, at the next public call into rind
+/// (verifying, parsing a public key), or after [`autohold::BATCH`] secret
+/// calls in a row, whichever comes first. A guard's drop still clears DIT
+/// at once, as its docs promise. It only ever delays clearing DIT, so every
+/// secret computation still runs under it; the cost is that the caller's
+/// own code between calls in a batch runs with DIT too. It never clears DIT
+/// rind did not set.
+#[cfg(all(rind_dit_autohold, rind_dit))]
+pub(super) mod autohold {
+    use core::cell::Cell;
+
+    /// Secret calls a batch may span before rind clears DIT anyway, so a
+    /// thread that never makes a public call still runs its own code
+    /// without DIT most of the time.
+    pub(crate) const BATCH: u32 = 64;
+
+    std::thread_local! {
+        // Live secret entries on this thread, and secret calls since rind
+        // left DIT on (0: not in a batch).
+        static STATE: Cell<(u32, u32)> = const { Cell::new((0, 0)) };
+    }
+
+    pub(super) fn enter() {
+        let (live, batch) = STATE.get();
+        STATE.set((live + 1, batch));
+    }
+
+    pub(super) fn leave(cpu_state: u32) {
+        let (live, batch) = STATE.get();
+        let live = live - 1;
+        let batch = match (live, cpu_state, batch) {
+            // Inside another secret entry: nothing to decide.
+            (1.., _, _) => batch,
+            // rind set DIT for this call: keep it, and start a batch.
+            (0, 1, _) => 1,
+            // DIT was on before this call, and rind left it on: count.
+            (0, _, 1..) if batch < BATCH || crate::cpu::Dit::is_held() => batch + 1,
+            (0, _, 1..) => {
+                super::leave_cpu_state(1);
+                0
+            }
+            // DIT was on before this call, set by the caller: theirs.
+            (0, _, 0) => 0,
+        };
+        STATE.set((live, batch));
+    }
+
+    /// A public call outside any secret entry or guard ends the batch.
+    pub(super) fn public_call() {
+        if matches!(STATE.get(), (0, 1..)) && !crate::cpu::Dit::is_held() {
+            super::leave_cpu_state(1);
+            STATE.set((0, 0));
+        }
+    }
+
+    /// Whether this thread is in a batch, DIT left on by rind.
+    #[cfg(test)]
+    pub(crate) fn in_batch() -> bool {
+        STATE.get().1 > 0
+    }
+}
+
+// A measuring prototype, which the FIPS module, which ships, refuses.
+#[cfg(all(rind_fips, rind_dit_autohold))]
+compile_error!("rind_dit_autohold is a measuring prototype, not a FIPS configuration");
 
 /// How many PSTATE.DIT checks this thread has passed.
 #[cfg(all(test, debug_assertions, rind_dit))]

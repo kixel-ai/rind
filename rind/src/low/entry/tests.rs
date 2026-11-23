@@ -32,6 +32,10 @@ macro_rules! dit_qemu_mark {
     };
 }
 
+/// Whether DIT stays on after a call that set it: always under
+/// `--cfg rind_dit_sticky`, and for a batch under `--cfg rind_dit_autohold`.
+const LINGERS: bool = cfg!(any(rind_dit_sticky, rind_dit_autohold));
+
 /// A public call, and the DIT toggles it costs alone.
 struct Call {
     name: &'static str,
@@ -632,7 +636,7 @@ fn every_secret_call_runs_with_dit() {
         return;
     }
     for call in calls() {
-        if cfg!(rind_dit_sticky) {
+        if LINGERS {
             // The last call left DIT on.
             crate::low::leave_cpu_state(1);
         }
@@ -641,8 +645,11 @@ fn every_secret_call_runs_with_dit() {
         (call.run)();
         let checks = super::dit_checks() - before;
         assert!(checks > 0, "{} ran no PSTATE.DIT check", call.name);
-        let left = Some(cfg!(rind_dit_sticky));
-        assert_eq!(dit_on(), left, "{}: DIT after the call", call.name);
+        // Under autohold, a call that ends with a public step (parsing a
+        // public value) ends its own batch, so either is right there.
+        if !cfg!(rind_dit_autohold) {
+            assert_eq!(dit_on(), Some(LINGERS), "{}: DIT after the call", call.name);
+        }
     }
 }
 
@@ -661,7 +668,7 @@ fn a_cleared_dit_under_an_entry_panics() {
     // Sets it again, so the `Entry` drops cleanly and clears it.
     let _ = crate::low::enter_cpu_state();
     drop(entry);
-    assert_eq!(dit_on(), Some(cfg!(rind_dit_sticky)));
+    assert_eq!(dit_on(), Some(LINGERS));
     let message = caught.expect_err("a cleared DIT passed the check");
     let message = message
         .downcast_ref::<&str>()
@@ -672,12 +679,12 @@ fn a_cleared_dit_under_an_entry_panics() {
 }
 
 /// Checks the guard and DIT state outside every guard: nothing held, and
-/// DIT clear, except under `--cfg rind_dit_sticky`, which leaves it set.
+/// DIT clear, except where it lingers (see [`LINGERS`]).
 fn assert_released(what: &str) {
     assert!(!model::live(), "{what}: a guard is still live");
     assert!(!Dit::is_held(), "{what}: is_held after release");
     #[cfg(all(debug_assertions, rind_dit))]
-    if !cfg!(rind_dit_sticky) {
+    if !LINGERS {
         assert_ne!(dit_on(), Some(true), "{what}: DIT set after release");
     }
 }
@@ -852,7 +859,7 @@ fn a_caller_set_dit_survives_every_call_and_guard() {
     if dit_on().is_none() {
         return;
     }
-    if cfg!(rind_dit_sticky) {
+    if LINGERS {
         crate::low::leave_cpu_state(1);
     }
     // The caller's own `msr DIT, #1`.
@@ -888,7 +895,7 @@ fn a_caller_set_dit_survives_every_call_and_guard() {
 #[cfg(all(debug_assertions, rind_dit))]
 #[test]
 fn dit_returns_to_what_the_first_guard_found() {
-    if dit_on().is_none() || cfg!(rind_dit_sticky) {
+    if dit_on().is_none() || LINGERS {
         return;
     }
     let dit = Dit::hold();
@@ -906,7 +913,7 @@ fn dit_returns_to_what_the_first_guard_found() {
 #[cfg(all(debug_assertions, rind_dit))]
 #[test]
 fn a_thread_spawned_under_a_guard_holds_nothing() {
-    if dit_on().is_none() || cfg!(rind_dit_sticky) {
+    if dit_on().is_none() || LINGERS {
         return;
     }
     let dit = Dit::hold();
@@ -954,7 +961,7 @@ extern "C" fn on_signal(_: libc::c_int) {
 #[cfg(all(debug_assertions, rind_dit, unix))]
 #[test]
 fn a_signal_handler_leaves_the_interrupted_dit() {
-    if dit_on().is_none() || cfg!(rind_dit_sticky) {
+    if dit_on().is_none() || LINGERS {
         return;
     }
     // SAFETY: installs a handler for a signal nothing else in the tests
@@ -979,4 +986,68 @@ fn a_signal_handler_leaves_the_interrupted_dit() {
     // Inside each handler, the secret call left DIT as the handler found it.
     assert_eq!(seen[0], seen[1], "{seen:?}");
     assert_eq!(seen[2], seen[3], "{seen:?}");
+}
+
+/// `--cfg rind_dit_autohold` keeps DIT on after a secret call, through the
+/// next calls, until a public call or the batch's limit clears it, and
+/// never clears DIT the caller set.
+#[cfg(all(debug_assertions, rind_dit, rind_dit_autohold))]
+#[test]
+fn autohold_batches_until_a_public_call_or_its_limit() {
+    use super::autohold::{BATCH, in_batch};
+    if dit_on().is_none() {
+        return;
+    }
+    let secret = || drop(super::Entry::new_secret());
+    let public = || drop(super::Entry::new_public());
+    secret();
+    assert_eq!(
+        (dit_on(), in_batch()),
+        (Some(true), true),
+        "the first call starts a batch"
+    );
+    for _ in 1..BATCH {
+        secret();
+    }
+    assert_eq!(dit_on(), Some(true), "the batch holds for its limit");
+    secret();
+    assert_eq!(
+        (dit_on(), in_batch()),
+        (Some(false), false),
+        "the limit ends the batch"
+    );
+    secret();
+    public();
+    assert_eq!(
+        (dit_on(), in_batch()),
+        (Some(false), false),
+        "a public call ends the batch"
+    );
+    // Nested: an inner public call does not end the batch under a live entry.
+    let outer = super::Entry::new_secret();
+    public();
+    assert_eq!(dit_on(), Some(true));
+    drop(outer);
+    public();
+    // A guard taken in a batch keeps DIT through a public call.
+    secret();
+    let dit = Dit::hold();
+    public();
+    assert_eq!(dit_on(), Some(true), "a public call cleared a guard's DIT");
+    drop(dit);
+    public();
+    assert_eq!(dit_on(), Some(false));
+    // The caller's own DIT is not rind's to clear.
+    assert_eq!(crate::low::enter_cpu_state(), 1);
+    secret();
+    public();
+    for _ in 0..=BATCH {
+        secret();
+    }
+    assert_eq!(
+        (dit_on(), in_batch()),
+        (Some(true), false),
+        "rind cleared the caller's DIT"
+    );
+    crate::low::leave_cpu_state(1);
 }

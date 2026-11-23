@@ -123,6 +123,9 @@ unexpected_cfgs = { level = "warn", check-cfg = [
   # Leaves DIT on once rind sets it, to measure the toggle's cost (see
   # src/low/entry.rs, `leave_secret`).
   "cfg(rind_dit_sticky)",
+  # Leaves DIT on between calls for a bounded batch, to measure coalescing
+  # without a guard (see src/low/entry.rs, `autohold`).
+  "cfg(rind_dit_autohold)",
   # Plants the variable-time operations `admin/ct-vartime` must find.
   "cfg(rind_vartime_planted)",
   # Forces the portable backend, for testing it on x86_64 (see build.rs).
