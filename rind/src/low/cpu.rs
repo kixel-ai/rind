@@ -46,6 +46,53 @@ pub fn has_aes_hardware() -> bool {
 /// }
 /// ```
 ///
+/// A QUIC sender protects each packet twice: it seals the payload, then
+/// masks the header with a sample of the ciphertext. Each is a call that
+/// sets DIT, and the mask itself is a few nanoseconds of work beside the
+/// toggle, so one guard over a burst of packets saves two toggles a packet:
+///
+/// ```
+/// use rind::aead::quic::{AES_128, HeaderProtectionKey, SAMPLE_LEN};
+/// use rind::aead::{AES_128_GCM, Key, Nonce};
+///
+/// let packet_key = Key::new(&AES_128_GCM, &[0x42; 16]).unwrap();
+/// let header_key = HeaderProtectionKey::new(&AES_128, &[0x24; 16]).unwrap();
+/// let iv = [0x11; 12];
+/// // Each packet: a 1-byte flags field, an 8-byte connection id, a 4-byte
+/// // packet number, then the payload.
+/// const PN: core::ops::Range<usize> = 9..13;
+/// let mut burst = [[0u8; 1200]; 8];
+///
+/// let _dit = rind::cpu::Dit::hold();
+/// for (number, packet) in (0u64..).zip(burst.iter_mut()) {
+///     packet[0] = 0x43;
+///     packet[PN].copy_from_slice(&(number as u32).to_be_bytes());
+///     let (header, payload) = packet.split_at_mut(PN.end);
+///     let (payload, tag) = payload.split_at_mut(payload.len() - 16);
+///     let nonce = Nonce::from_sequence(&iv, number);
+///     let sealed = packet_key
+///         .seal_in_place_separate_tag(nonce, header, payload)
+///         .unwrap();
+///     tag.copy_from_slice(sealed.as_ref());
+///     // RFC 9001, section 5.4.2: the sample starts 4 bytes past the start
+///     // of the packet number.
+///     let sample: &[u8; SAMPLE_LEN] = packet[PN.start + 4..][..SAMPLE_LEN].try_into().unwrap();
+///     let mask = header_key.mask(sample);
+///     packet[0] ^= mask[0] & 0x1f;
+///     for (byte, m) in packet[PN].iter_mut().zip(&mask[1..]) {
+///         *byte ^= m;
+///     }
+/// }
+/// ```
+///
+/// A thread that does nothing but such work, such as a dedicated packet
+/// thread, can hold one guard for its whole life instead, made at the top of
+/// the thread's function.
+///
+/// The guard only adds DIT. Every rind call that handles a secret still sets
+/// it on entry if it finds it off, so a call made outside any guard is as
+/// protected as one inside.
+///
 /// DIT belongs to a thread, so the guard can't leave the one that made it,
 /// nor live across an `.await` in a task a multi-threaded runtime may move:
 ///
