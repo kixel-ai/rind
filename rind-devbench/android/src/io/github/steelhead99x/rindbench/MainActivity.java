@@ -50,7 +50,8 @@ public class MainActivity extends Activity {
         + "No name, account, serial or location. Results are also saved on this device.";
 
     private final Handler ui = new Handler(Looper.getMainLooper());
-    private LinearLayout body, leftCol, pickCard;
+    private LinearLayout body, leftCol, pickCard, pickChips;
+    private ScrollView pickScroll;
     private View resultsCard;
     private TextView picksLbl;
     private boolean wide, showingRun;
@@ -209,7 +210,15 @@ public class MainActivity extends Activity {
 
         // Left column: what to run, and how.
         libFlow = new Flow(this, dp(8)); secFlow = new Flow(this, dp(8));
-        LinearLayout pick = card(heading("Libraries"), libFlow, heading("Operations"), secFlow);
+        // The chips sit in their own scroller: on a short screen fitPicker caps
+        // its height, and the chips that do not fit stay reachable by scrolling
+        // the picker, while the rest of the screen stays put.
+        pickChips = new LinearLayout(this); pickChips.setOrientation(LinearLayout.VERTICAL);
+        addSpaced(pickChips, heading("Libraries"), 0); addSpaced(pickChips, libFlow, 10);
+        addSpaced(pickChips, heading("Operations"), 10); addSpaced(pickChips, secFlow, 10);
+        pickScroll = new ScrollView(this); pickScroll.setScrollbarFadingEnabled(false);
+        pickScroll.addView(pickChips, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        LinearLayout pick = card(pickScroll);
         pickCard = pick;
         pick.setClipChildren(true); pick.setClipToOutline(true);
         agree = makeSwitch(false, true);
@@ -290,26 +299,28 @@ public class MainActivity extends Activity {
         }
         leftCol.setLayoutParams(l); resultsCard.setLayoutParams(r);
         // A cap fitPicker set for a short portrait screen doesn't carry over.
-        LinearLayout.LayoutParams p = (LinearLayout.LayoutParams) pickCard.getLayoutParams();
-        if (p.height != ViewGroup.LayoutParams.WRAP_CONTENT) { p.height = ViewGroup.LayoutParams.WRAP_CONTENT; pickCard.setLayoutParams(p); }
+        LinearLayout.LayoutParams p = (LinearLayout.LayoutParams) pickScroll.getLayoutParams();
+        if (p.height != ViewGroup.LayoutParams.WRAP_CONTENT) { p.height = ViewGroup.LayoutParams.WRAP_CONTENT; pickScroll.setLayoutParams(p); }
     }
     @Override public void onConfigurationChanged(Configuration c) { super.onConfigurationChanged(c); arrange(c); }
 
     /**
      * On a short screen, cap the picker's height so the run controls and some
-     * of the run panel always fit: the picker's chips are clipped, never the
-     * Start button. Runs after each layout of the body.
+     * of the run panel always fit: the chips that do not fit scroll inside the
+     * picker, and the Start button is never pushed off. Runs after each layout
+     * of the body.
      */
     private void fitPicker() {
         if (wide || pickCard.getVisibility() != View.VISIBLE || body.getHeight() == 0) return;
         View run = leftCol.getChildAt(1);
-        int width = MeasureSpecs.exactly(pickCard.getWidth() > 0 ? pickCard.getWidth() : body.getWidth());
-        pickCard.measure(width, MeasureSpecs.unspecified());
-        int natural = pickCard.getMeasuredHeight();
+        int cardWidth = pickCard.getWidth() > 0 ? pickCard.getWidth() : body.getWidth();
+        int pad = pickCard.getPaddingTop() + pickCard.getPaddingBottom();
+        pickChips.measure(MeasureSpecs.exactly(cardWidth - pickCard.getPaddingLeft() - pickCard.getPaddingRight()), MeasureSpecs.unspecified());
+        int natural = pickChips.getMeasuredHeight() + pad;
         int room = body.getHeight() - run.getHeight() - dp(12) - dp(12) - dp(110);
-        int want = natural > room ? Math.max(dp(80), room) : ViewGroup.LayoutParams.WRAP_CONTENT;
-        LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) pickCard.getLayoutParams();
-        if (lp.height != want) { lp.height = want; pickCard.setLayoutParams(lp); }
+        int want = natural > room ? Math.max(dp(80), room) - pad : ViewGroup.LayoutParams.WRAP_CONTENT;
+        LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) pickScroll.getLayoutParams();
+        if (lp.height != want) { lp.height = want; pickScroll.setLayoutParams(lp); }
     }
     private static final class MeasureSpecs {
         static int exactly(int px) { return View.MeasureSpec.makeMeasureSpec(px, View.MeasureSpec.EXACTLY); }
