@@ -219,6 +219,20 @@ rind-rustls and the other adapters, and does nothing off Apple's platforms.
 releasing it when the closure returns or unwinds. Each rind call already
 toggles DIT at most once, however much it computes inside.
 
+After setting DIT, rind runs the speculation barrier Apple asks for on
+Apple's platforms: `sb` where the core has it, else `dsb nsh; isb sy`. On
+any other aarch64 core it runs none, which is what the Arm architecture
+requires (Arm ARM DDI 0487 M.d, sections C5.1.3.3 and B1.5.6): a write to
+PSTATE.DIT takes effect in program order, and instructions run
+speculatively after it count as running with DIT set. There, the guarantee
+rests on that architectural rule alone; we have not tested it on any core
+but Apple's, and Apple's cores are a separate case. rind sets DIT off
+Apple's platforms only in a testing build (`--cfg rind_dit_everywhere`),
+and the FIPS module keeps Apple's barrier everywhere. The project owner
+chose this split on 2026-11-23; [the sources][dit-barrier] are collected
+with it. Key wipes on drop run without DIT, by the same decision: a wipe
+stores zeros and loads nothing secret.
+
 ## Platforms
 
 rind has assembly for x86_64, aarch64, and 32-bit arm from ARMv7 on, and runs
@@ -363,3 +377,4 @@ from other projects keeps its source's license, which [LICENSE] lists.
 [platforms]: https://github.com/kixel-ai/rind/blob/main/PLATFORMS.md
 [architecture]: https://github.com/kixel-ai/rind/blob/main/ARCHITECTURE.md
 [audit]: https://github.com/kixel-ai/rind/blob/main/AUDIT.md
+[dit-barrier]: https://github.com/kixel-ai/rind/blob/main/benchmarks/apple-dit-barrier.md

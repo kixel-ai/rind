@@ -2,12 +2,24 @@
 
 Research date: 2026-11-22, for fork issues #259 to #266 and PR #292's measuring cfgs. Scope: what rind's `barrier_after_set` (rind/src/low/aarch64/cpu.rs) should emit after `msr DIT, #1` on Apple targets. "Verified" means I read the quoted text in the primary source myself. Anything marked **UNVERIFIED** I could not confirm from a primary source.
 
+## Decision (project owner, 2026-11-23)
+
+1. **Non-Apple aarch64: no barrier after `msr DIT, #1`.** This follows the Arm ARM (DDI 0487 M.d), which requires none: C5.1.3.3 ("Writes to PSTATE occur in program order without the need for additional synchronization") and B1.5.6 (instructions speculatively executed after the 0 to 1 change are part of the data-independent-time sequence). On those cores the guarantee rests on that architectural rule alone. It has not been tested on any non-Apple hardware by us. rind sets DIT off Apple's targets only under `--cfg rind_dit_everywhere` (a testing configuration, see `rind/build.rs`), so today this reaches qemu and test builds, not a shipped default.
+2. **Apple targets keep Apple's documented sequence:** `sb` where the core has FEAT_SB (detected at run time, as before), else `dsb nsh; isb sy`. Detection of Apple is at compile time (`target_vendor = "apple"`).
+3. **The FIPS module keeps Apple's sequence on every target**, and still refuses `--cfg rind_dit_barrier="isb"` and `"none"` at compile time.
+4. **Key wipes on drop stay outside DIT** (benchmarks/apple-dit-coverage.md, "Wipes on drop run outside DIT"): a wipe stores zeros and loads none of the secret.
+5. **Autohold (`--cfg rind_dit_autohold`, fork PR #302) stays a measuring prototype only.** The supported way to coalesce toggles is the guard API: `Dit::hold`, `Dit::with`, `Dit::batch`.
+
+Implemented in `rind/src/low/aarch64/cpu.rs`, `dit::barrier_after_set` and `dit::apple_barrier`. The measuring cfgs remain for the owner's A/B, on any target: `rind_dit_barrier="apple"` (Apple's sequence), `"isb"` (`isb sy` alone), `"none"` (no barrier). `admin/dit-disasm` (dispatch module `ditbarrier`) builds the release rlib and checks every path from each `msr DIT, #1`: on `aarch64-apple-darwin` each ends in `sb` or `dsb nsh; isb` and both appear; on `aarch64-unknown-linux-gnu` with `rind_dit_everywhere` none reaches a barrier; and with `rind_dit_barrier="apple"` on Linux both appear again, so the scan is shown to see a barrier when one is there.
+
+No speed is claimed for the change: nothing here ran on Apple hardware. On Apple targets the emitted code is the same sequence as before the decision.
+
 ## TL;DR
 
 - **Arm architecture:** no barrier is needed for program-order correctness. PSTATE writes "occur in program order without the need for additional synchronization". Instructions speculatively executed after the DIT 0 to 1 change are architecturally part of the data-independent-time sequence.
 - **Apple:** Apple explicitly asks for a speculation barrier (`sb`, else `dsb nsh; isb sy`) after setting DIT, and gives no rationale. Apple's own libplatform and corecrypto use `sb`, else `dsb sy; isb sy` (note **`sy`, not `nsh`**).
 - **Other libraries:** as of November 2026, Go, aws-lc and BoringSSL all add the barrier **on Apple only**, and skip it when DIT was already on. graviola and the Linux kernel use no barrier.
-- **rind's doc comment is stale in two places.** aws-lc's `armv8_set_dit` is no longer a bare `msr` on Apple. Also, `cc_timing_safe.c` uses `dsb sy`, not `dsb nsh`.
+- **rind's doc comment was stale in two places** (fixed with the decision above). aws-lc's `armv8_set_dit` is no longer a bare `msr` on Apple. Also, `cc_timing_safe.c` uses `dsb sy`, not `dsb nsh`; rind's `dsb nsh; isb sy` comes from Apple's developer page, as Go's, aws-lc's and BoringSSL's do.
 
 ## 1. Arm Architecture Reference Manual (DDI 0487 M.d, published 2026-09-29)
 
@@ -124,9 +136,9 @@ The paper does not discuss barriers or the timing of enabling DIT. The claim "DI
 2. Skipping the `msr` and barrier when DIT is already on, as Go, aws-lc and BoringSSL do: rind already does this. `dit::maybe_enable` reads PSTATE.DIT first and writes (and runs the barrier) only when it finds it clear, and a nested `Entry` or guard finds it set (checked by `a_caller_set_dit_survives_every_call_and_guard` in `rind/src/low/entry/tests.rs` on the audit branch).
 3. Keep the `isb sy` and `none` cfgs as measurement aids only. On the evidence above, `none` is architecturally sound and `sb` (else `dsb nsh; isb sy`) is what Apple asks for. `isb`-only has no source behind it.
 
-## Decision belongs to the project owner (measurements required, do not change the shipped default)
+## Measurements still wanted (the decision above is made; these inform any later change on Apple)
 
-The shipped default (`sb` when FEAT_SB, else `dsb nsh; isb sy`) must not change without the project owner's decision. Any change needs measurements of the barrier variants (`sb`, `dsb nsh; isb sy`, `isb sy`, none) on:
+The Apple default (`sb` when FEAT_SB, else `dsb nsh; isb sy`) is unchanged by the decision. Measurements of the barrier variants (`sb`, `dsb nsh; isb sy`, `isb sy`, none) would still inform the owner, on:
 - M1 (no FEAT_SB, per the task brief; I did not verify M1's FEAT_SB status from a primary source)
 - iPad with M4
 - iPad (or device) with A17 Pro

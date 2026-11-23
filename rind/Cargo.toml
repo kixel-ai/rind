@@ -123,8 +123,10 @@ unexpected_cfgs = { level = "warn", check-cfg = [
   # Leaves DIT on once rind sets it, to measure the toggle's cost (see
   # src/low/entry.rs, `leave_secret`).
   "cfg(rind_dit_sticky)",
-  # Picks the barrier after setting DIT, to measure its cost: "apple" (the
-  # default), "isb", or "none" (see src/low/aarch64/cpu.rs, `barrier_after_set`).
+  # Picks the barrier after setting DIT on any target, to measure its cost:
+  # "apple" (the default on Apple's targets and in the FIPS module), "isb", or
+  # "none" (the default elsewhere; see src/low/aarch64/cpu.rs,
+  # `barrier_after_set`).
   'cfg(rind_dit_barrier, values("apple", "isb", "none"))',
   # Leaves DIT on between calls for a bounded batch, to measure coalescing
   # without a guard (see src/low/entry.rs, `autohold`).

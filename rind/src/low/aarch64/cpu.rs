@@ -457,44 +457,83 @@ mod dit {
         }
     }
 
-    /// Apple asks for a speculation barrier after setting DIT, so that
-    /// nothing after it runs speculatively without DIT: "To ensure that
-    /// subsequent instruction timing reflects the updated DIT processor
+    /// The barrier after `msr DIT, #1`: Apple's sequence on Apple's targets
+    /// and in the FIPS module, none on any other aarch64 target.
+    ///
+    /// The Arm architecture needs none. "Writes to PSTATE occur in program
+    /// order without the need for additional synchronization" (Arm ARM DDI
+    /// 0487 M.d, C5.1.3.3), and "Instructions speculatively executed between
+    /// the change of PSTATE.DIT from 0 to 1 and the change of PSTATE.DIT from
+    /// 1 to 0 are considered part of the data-independent-time sequence of
+    /// code" (B1.5.6). So on a core that is not Apple's, rind relies on that
+    /// architectural rule alone. No core other than Apple's has been tested
+    /// for it here, and rind sets DIT off Apple's targets only under
+    /// `--cfg rind_dit_everywhere` (see build.rs). The project owner chose
+    /// this split on 2026-11-23 (benchmarks/apple-dit-barrier.md).
+    ///
+    /// Apple asks for a speculation barrier after setting DIT: "To ensure
+    /// that subsequent instruction timing reflects the updated DIT processor
     /// state, add a speculation barrier after turning on DIT" (Writing ARM64
     /// code for Apple platforms, "Enable DIT for constant-time cryptographic
-    /// operations"). That is `sb` where the core has FEAT_SB, and `dsb nsh;
-    /// isb sy` where not, as Apple's corecrypto does
-    /// (`cc/src/cc_timing_safe.c`).
+    /// operations"). That page gives `sb` where the core has FEAT_SB, and
+    /// `dsb nsh; isb sy` where not, which is what `apple_barrier` runs.
+    /// Apple's own libplatform (`src/timingsafe/arm64/timingsafe.c`) and
+    /// corecrypto (`cc/src/cc_timing_safe.c`) fall back to `dsb sy; isb sy`
+    /// instead; rind follows the developer page, as Go, aws-lc, and BoringSSL
+    /// do.
     ///
-    /// Others set DIT with no barrier: aws-lc's `armv8_set_dit` is a bare
-    /// `msr dit, #1` (`crypto/fipsmodule/cpucap/cpu_aarch64.c`, aws-lc-sys
-    /// 0.47.0), as is the Linux kernel's 2022 RFC "arm64: Enable data
-    /// independent timing (DIT) in the kernel" (`set_pstate_dit`, and an
-    /// `ALTERNATIVE` in `entry.S`). An MSR (immediate) write to PSTATE needs
-    /// no context synchronization for later instructions in program order
-    /// to see it; what speculative execution sees is what Apple's barrier
-    /// is for, and is not settled here.
+    /// The others agree on the split: Go's runtime (go.dev/issue/77776),
+    /// aws-lc's `armv8_set_dit` (aws-lc #3751, 2026-11-17), and BoringSSL's
+    /// `ConstTimeGuard` add the barrier on Apple only, and set DIT bare
+    /// elsewhere, as graviola and the Linux kernel (`SET_PSTATE_DIT` at
+    /// `kernel_entry`, Linux 6.2) do everywhere.
     ///
+    /// The FIPS module keeps Apple's sequence on every target, and refuses
+    /// the measuring cfgs below.
+    ///
+    /// `--cfg rind_dit_barrier="apple"` runs Apple's sequence on any target,
     /// `--cfg rind_dit_barrier="isb"` runs `isb sy` alone, and
-    /// `--cfg rind_dit_barrier="none"` no barrier, the architectural
-    /// minimum the others use. Both are measuring prototypes, for the cost
-    /// of the barrier on Apple silicon (fork issues #259 to #266), not
-    /// supported configurations: they depart from Apple's guidance, and the
-    /// FIPS module refuses them.
+    /// `--cfg rind_dit_barrier="none"` no barrier. All three are measuring
+    /// prototypes, for the cost of the barrier on Apple silicon (fork issues
+    /// #259 to #266), not supported configurations.
     #[inline(always)]
     pub(super) fn barrier_after_set() {
-        #[cfg(not(any(rind_dit_barrier = "isb", rind_dit_barrier = "none")))]
+        #[cfg(any(
+            rind_dit_barrier = "apple",
+            all(
+                not(any(rind_dit_barrier = "isb", rind_dit_barrier = "none")),
+                any(target_vendor = "apple", rind_fips)
+            )
+        ))]
+        apple_barrier();
+        // SAFETY: an Armv8.0 barrier.
+        #[cfg(rind_dit_barrier = "isb")]
+        unsafe {
+            core::arch::asm!("isb sy", options(nostack, preserves_flags))
+        }
+    }
+
+    /// Apple's barrier after setting DIT: `sb` where the core has FEAT_SB,
+    /// else `dsb nsh; isb sy`.
+    // Only the tests run it where `barrier_after_set` does not.
+    #[cfg_attr(
+        not(any(
+            rind_dit_barrier = "apple",
+            all(
+                not(any(rind_dit_barrier = "isb", rind_dit_barrier = "none")),
+                any(target_vendor = "apple", rind_fips)
+            )
+        )),
+        allow(dead_code)
+    )]
+    #[inline(always)]
+    pub(super) fn apple_barrier() {
         if super::features() & super::SB != 0 {
             // SAFETY: in this branch, we verified `sb` cpu feature is supported
             unsafe { speculation_barrier() }
         } else {
             // SAFETY: Armv8.0 barriers, Apple's choice for cores without `sb`.
             unsafe { core::arch::asm!("dsb nsh", "isb sy", options(nostack, preserves_flags)) }
-        }
-        // SAFETY: an Armv8.0 barrier.
-        #[cfg(rind_dit_barrier = "isb")]
-        unsafe {
-            core::arch::asm!("isb sy", options(nostack, preserves_flags))
         }
     }
 
@@ -506,9 +545,15 @@ mod dit {
     }
 
     /// Runs nothing after it speculatively until everything before it completes.
-    // Only the tests run it under a measuring `rind_dit_barrier`.
+    // Only the tests run it where `apple_barrier` does not.
     #[cfg_attr(
-        any(rind_dit_barrier = "isb", rind_dit_barrier = "none"),
+        not(any(
+            rind_dit_barrier = "apple",
+            all(
+                not(any(rind_dit_barrier = "isb", rind_dit_barrier = "none")),
+                any(target_vendor = "apple", rind_fips)
+            )
+        )),
         allow(dead_code)
     )]
     #[target_feature(enable = "sb")]
@@ -519,7 +564,8 @@ mod dit {
 }
 
 // `--cfg rind_dit_barrier` is for measuring only (`dit::barrier_after_set`),
-// so the FIPS module, which ships, refuses it.
+// so the FIPS module, which ships with Apple's barrier on every target,
+// refuses the values that run less than it.
 #[cfg(all(rind_fips, any(rind_dit_barrier = "isb", rind_dit_barrier = "none")))]
 compile_error!("rind_dit_barrier is a measuring prototype; the FIPS module keeps Apple's barrier");
 
@@ -619,6 +665,8 @@ mod tests {
         // Barriers only: the speculation barrier where `features` has SB.
         #[cfg(rind_dit)]
         call!(dit::barrier_after_set);
+        #[cfg(rind_dit)]
+        call!(dit::apple_barrier);
         let (a, b) = ([1u8; 37], [2u8; 37]);
         assert_ne!(call!(ct_compare_bytes, &a, &b), 0);
         assert_ne!(call!(ct_compare_16, &[1; 16], &[2; 16]), 0);
@@ -819,8 +867,9 @@ mod tests {
             assert_eq!(unsafe { dit::read() }, expected as u32);
             drop(outer);
             // SAFETY: as above.
+            let after = unsafe { dit::read() };
             assert_eq!(
-                unsafe { dit::read() },
+                after,
                 u32::from(cfg!(any(rind_dit_sticky, rind_dit_autohold)))
             );
         }

@@ -111,7 +111,9 @@ none before.
 
 ## Decisions for the owner
 
-- **Wipes on drop run outside DIT.** A key type's `Drop` zeroises without an
+- **Wipes on drop run outside DIT.** Decided by the owner on 2026-11-23:
+  they stay as they are, without DIT (benchmarks/apple-dit-barrier.md,
+  "Decision"). The reasoning that decision rests on: A key type's `Drop` zeroises without an
   `Entry`. A wipe stores zeros: it loads none of the secret and computes on
   none of it, so no instruction's timing depends on the secret, and Apple's
   data memory-dependent prefetcher, which GoFetch drives through loaded
