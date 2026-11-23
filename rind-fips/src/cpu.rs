@@ -100,7 +100,10 @@ impl Dit {
     ///     2 + 2
     /// });
     /// assert_eq!(total, 4);
-    /// assert_eq!(rind_fips::cpu::Dit::batch([1, 2, 3], |n| if n < 3 { Ok(()) } else { Err(n) }), Err(3));
+    /// assert_eq!(
+    ///     rind_fips::cpu::Dit::batch([1, 2, 3], |n| if n < 3 { Ok(()) } else { Err(n) }),
+    ///     Err(3)
+    /// );
     /// ```
     #[must_use]
     pub fn is_held() -> bool {
