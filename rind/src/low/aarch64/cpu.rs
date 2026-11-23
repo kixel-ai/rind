@@ -482,7 +482,7 @@ mod dit {
     /// supported configurations: they depart from Apple's guidance, and the
     /// FIPS module refuses them.
     #[inline(always)]
-    fn barrier_after_set() {
+    pub(super) fn barrier_after_set() {
         #[cfg(not(any(rind_dit_barrier = "isb", rind_dit_barrier = "none")))]
         if super::features() & super::SB != 0 {
             // SAFETY: in this branch, we verified `sb` cpu feature is supported
@@ -616,6 +616,9 @@ mod tests {
             // SAFETY: the CPU has SB.
             unsafe { call!(unsafe dit::speculation_barrier) };
         }
+        // Barriers only: the speculation barrier where `features` has SB.
+        #[cfg(rind_dit)]
+        call!(dit::barrier_after_set);
         let (a, b) = ([1u8; 37], [2u8; 37]);
         assert_ne!(call!(ct_compare_bytes, &a, &b), 0);
         assert_ne!(call!(ct_compare_16, &[1; 16], &[2; 16]), 0);
