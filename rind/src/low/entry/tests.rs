@@ -10,8 +10,14 @@
 //! [`super::Entry::assert_held`], and these tests require those reads to
 //! have run and passed, and DIT to be clear again after each call.
 
+use std::panic;
+
 use super::model;
-use crate::{aead, agreement, constant_time, digest, ed25519, hkdf, hmac};
+use crate::cpu::Dit;
+use crate::{
+    aead, agreement, cipher, constant_time, digest, ecdsa, ed25519, hkdf, hmac, hpke, pbkdf2,
+    spake2plus,
+};
 
 /// A public call, and the DIT toggles it costs alone.
 struct Call {
@@ -67,8 +73,8 @@ fn toggles(body: impl FnOnce()) -> u64 {
     model::toggles() - before
 }
 
-fn calls() -> [Call; 24] {
-    [
+fn calls() -> Vec<Call> {
+    std::vec![
         call!("digest::digest", 1, || digest::digest(
             &digest::SHA256,
             &[5; 1350]
@@ -161,7 +167,254 @@ fn calls() -> [Call; 24] {
             x25519_untimed().agree(&X25519_PEER).unwrap()
         }),
         call!("ed25519 sign", 1, || ed25519_untimed().sign(b"message")),
+        // The one-shot digests of #264, and the tiny inputs of #259: each
+        // hashes, pads, and finishes under one entry.
+        call!("digest::digest SHA-256 16 B", 1, || digest::digest(
+            &digest::SHA256,
+            &[5; 16]
+        )),
+        call!("digest::digest SHA-1", 1, || digest::digest(
+            &digest::legacy::SHA1,
+            &[5; 1350]
+        )),
+        call!("digest::digest SHA-384", 1, || digest::digest(
+            &digest::SHA384,
+            &[5; 1350]
+        )),
+        call!("digest::digest SHA-512", 1, || digest::digest(
+            &digest::SHA512,
+            &[5; 1350]
+        )),
+        call!("digest::digest SHA3-256", 1, || digest::digest(
+            &digest::SHA3_256,
+            &[5; 1350]
+        )),
+        call!("digest::digest MD5", 1, || digest::digest(
+            &digest::legacy::MD5,
+            &[5; 1350]
+        )),
+        call!("hmac::sign HMAC-SHA1", 1, || hmac::sign(
+            &untimed(|| hmac::Key::new(&hmac::legacy::HMAC_SHA1, &[1; 20])),
+            &[5; 1350]
+        )),
+        call!("hmac::Context::update", 1, || {
+            let key = hmac_key_untimed();
+            let mut ctx = hmac::Context::with_key(&key);
+            ctx.update(&[5; 1350]);
+        }),
+        call!("hmac::Context::sign", 1, || {
+            let key = hmac_key_untimed();
+            hmac::Context::with_key(&key).sign()
+        }),
+        call!("hkdf Okm into aead::Key AES-256-GCM", 1, || {
+            aead::Key::from(prk_untimed().expand(&[b"key"], &aead::AES_256_GCM).unwrap())
+        }),
+        call!(
+            "hkdf Okm into quic::HeaderProtectionKey ChaCha20",
+            1,
+            || {
+                aead::quic::HeaderProtectionKey::from(
+                    prk_untimed()
+                        .expand(&[b"quic hp"], &aead::quic::CHACHA20)
+                        .unwrap(),
+                )
+            }
+        ),
+        call!("pbkdf2::Secret::new", 1, || pbkdf2::Secret::new(
+            &pbkdf2::PBKDF2_HMAC_SHA256,
+            b"password"
+        )),
+        call!("pbkdf2::Secret::derive", 1, || {
+            pbkdf2_untimed().derive(TWO, b"salt", &mut [0; 32]).unwrap()
+        }),
+        call!("pbkdf2::Secret::verify", 1, || {
+            pbkdf2_untimed().verify(TWO, b"salt", &[0; 32]).unwrap_err()
+        }),
+        call!("aead::Key::seal AES-128-GCM 0 B", 1, || {
+            aead_key_untimed(&aead::AES_128_GCM)
+                .seal_in_place_separate_tag(nonce(), b"", &mut [])
+                .unwrap()
+        }),
+        call!("aead::Key::seal AES-128-GCM 16 B", 1, || {
+            aead_key_untimed(&aead::AES_128_GCM)
+                .seal_in_place_separate_tag(nonce(), b"header", &mut [4; 16])
+                .unwrap()
+        }),
+        call!("aead::Key::seal AES-256-GCM 16 B", 1, || {
+            aead_key_untimed(&aead::AES_256_GCM)
+                .seal_in_place_separate_tag(nonce(), b"header", &mut [4; 16])
+                .unwrap()
+        }),
+        call!("aead::Key::open AES-256-GCM", 1, || open_untimed(
+            &aead::AES_256_GCM
+        )),
+        call!("aead::Key::open AES-128-GCM wrong tag", 1, || {
+            let (key, mut packet, _) = untimed(|| sealed(&aead::AES_128_GCM));
+            let tag = aead::Tag::try_from(&[0u8; 16][..]).unwrap();
+            key.open_in_place_separate_tag(nonce(), b"header", tag, &mut packet)
+                .unwrap_err()
+        }),
+        call!("aead::Key::seal ChaCha20-Poly1305 16 B", 1, || {
+            aead_key_untimed(&aead::CHACHA20_POLY1305)
+                .seal_in_place_separate_tag(nonce(), b"header", &mut [4; 16])
+                .unwrap()
+        }),
+        call!(
+            "aead::RandomizedNonceKey seal (XChaCha20-Poly1305)",
+            1,
+            || {
+                let mut packet = std::vec![4; 1350];
+                untimed(|| aead::RandomizedNonceKey::new(&[2; 32]))
+                    .seal_in_place_append_tag(b"header", &mut packet)
+                    .unwrap()
+            }
+        ),
+        call!(
+            "aead::RandomizedNonceKey open (XChaCha20-Poly1305)",
+            1,
+            || {
+                let (key, nonce, mut packet) = untimed(|| {
+                    let key = aead::RandomizedNonceKey::new(&[2; 32]);
+                    let mut packet = std::vec![4; 1350];
+                    let nonce = key
+                        .seal_in_place_append_tag(b"header", &mut packet)
+                        .unwrap();
+                    (key, nonce, packet)
+                });
+                key.open_in_place(nonce, b"header", &mut packet)
+                    .unwrap()
+                    .len()
+            }
+        ),
+        call!("aead::gcm::Key::new", 1, || aead::gcm::Key::new(
+            &cipher::AES_128,
+            &[2; 16],
+            aead::gcm::TagLength::Full
+        )
+        .unwrap()),
+        call!("cipher::ChaCha20::apply_keystream", 1, || {
+            cipher::ChaCha20::new(&[2; 32])
+                .apply_keystream(&[3; 12], 0, &mut [4; 1350])
+                .unwrap()
+        }),
+        call!("cipher::Aes::encrypt_block", 1, || {
+            untimed(|| cipher::Aes::new(&cipher::AES_128, &[2; 16]).unwrap())
+                .encrypt_block(&mut [4; 16])
+        }),
+        call!("cipher::AesCtr::apply_keystream", 1, || {
+            untimed(|| cipher::AesCtr::new(&cipher::AES_128, &[2; 16], 32).unwrap())
+                .apply_keystream(&[3; 16], &mut [4; 1350])
+                .unwrap()
+        }),
+        call!("cipher::AesCbcEncryptingKey::encrypt_blocks", 1, || {
+            untimed(|| cipher::AesCbcEncryptingKey::new(&cipher::AES_128, &[2; 16]).unwrap())
+                .encrypt_blocks(cipher::CbcIv::assume_unpredictable([3; 16]), &mut [4; 64])
+                .unwrap()
+        }),
+        call!("spake2plus prover start", 1, || {
+            untimed(spake_prover)
+                .start(&spake2plus::RFC9383, &SPAKE_SESSION)
+                .unwrap()
+        }),
+        call!("spake2plus verifier start", 1, || {
+            let (share_p, verifier) = untimed(|| {
+                let (share_p, _) = spake_prover()
+                    .start(&spake2plus::RFC9383, &SPAKE_SESSION)
+                    .unwrap();
+                (share_p, spake_verifier())
+            });
+            verifier
+                .start(&spake2plus::RFC9383, &SPAKE_SESSION, &share_p)
+                .unwrap()
+        }),
+        // #265: each side's finish, key schedule and confirmation, under one
+        // entry.
+        call!("spake2plus prover finish", 1, || {
+            let (prover, share_v, confirm_v, _, _) = untimed(spake_started);
+            prover.finish(&share_v, &confirm_v).unwrap()
+        }),
+        call!("spake2plus verifier finish", 1, || {
+            let (prover, share_v, confirm_v, verifier) = untimed(|| {
+                let (prover, share_v, confirm_v, verifier, _) = spake_started();
+                (prover, share_v, confirm_v, verifier)
+            });
+            let confirm_p = untimed(|| prover.finish(&share_v, &confirm_v).unwrap().0);
+            verifier.finish(&confirm_p).unwrap()
+        }),
+        // Making a private key and encoding its public key share one entry.
+        call!("agreement::PrivateKey::generate X25519", 1, || {
+            agreement::PrivateKey::generate(&agreement::X25519).unwrap()
+        }),
+        call!("agreement::PrivateKey::generate P-256", 1, || {
+            agreement::PrivateKey::generate(&agreement::ECDH_P256).unwrap()
+        }),
+        call!("agreement::PrivateKey::from_scalar X25519", 1, || {
+            agreement::PrivateKey::from_scalar(&agreement::X25519, &[10; 32]).unwrap()
+        }),
+        call!("agreement::PrivateKey::from_pkcs8 P-256", 1, || {
+            let der = untimed(|| {
+                agreement::PrivateKey::from_scalar(&agreement::ECDH_P256, &[10; 32])
+                    .unwrap()
+                    .to_pkcs8()
+            });
+            agreement::PrivateKey::from_pkcs8(&agreement::ECDH_P256, der.as_ref()).unwrap()
+        }),
+        call!("hpke::PrivateKey::generate X25519", 1, || {
+            hpke::PrivateKey::generate(&hpke::DHKEM_X25519_HKDF_SHA256).unwrap()
+        }),
+        call!("ecdsa::KeyPair::generate P-256", 1, || {
+            ecdsa::KeyPair::generate(&ecdsa::sign::P256_SHA256_FIXED).unwrap()
+        }),
+        call!("ecdsa::KeyPair::from_pkcs8 P-256", 1, || {
+            let der = untimed(|| {
+                ecdsa::KeyPair::generate(&ecdsa::sign::P256_SHA256_FIXED)
+                    .unwrap()
+                    .to_pkcs8()
+            });
+            ecdsa::KeyPair::from_pkcs8(&ecdsa::sign::P256_SHA256_FIXED, der.as_ref()).unwrap()
+        }),
     ]
+}
+
+const TWO: core::num::NonZeroU32 = core::num::NonZeroU32::new(2).unwrap();
+
+const SPAKE_SESSION: spake2plus::Session<'static> = spake2plus::Session {
+    context: b"app",
+    id_prover: b"client",
+    id_verifier: b"server",
+};
+
+fn spake_prover() -> spake2plus::ProverSecrets {
+    spake2plus::ProverSecrets::new(&[0x11; 40], &[0x22; 40]).unwrap()
+}
+
+fn spake_verifier() -> spake2plus::VerifierRecord {
+    spake2plus::VerifierRecord::from_w1(&[0x11; 40], &[0x22; 40]).unwrap()
+}
+
+type SpakeStarted = (
+    spake2plus::ProverAwaiting<spake2plus::Rfc9383>,
+    spake2plus::Share<spake2plus::Rfc9383>,
+    spake2plus::Confirm<spake2plus::Rfc9383>,
+    spake2plus::VerifierAwaiting<spake2plus::Rfc9383>,
+    spake2plus::Share<spake2plus::Rfc9383>,
+);
+
+/// Both sides of a SPAKE2+ exchange, started: the prover awaiting the
+/// verifier's share and confirmation, and the verifier awaiting the
+/// prover's.
+fn spake_started() -> SpakeStarted {
+    let (share_p, prover) = spake_prover()
+        .start(&spake2plus::RFC9383, &SPAKE_SESSION)
+        .unwrap();
+    let (share_v, confirm_v, verifier) = spake_verifier()
+        .start(&spake2plus::RFC9383, &SPAKE_SESSION, &share_p)
+        .unwrap();
+    (prover, share_v, confirm_v, verifier, share_p)
+}
+
+fn pbkdf2_untimed() -> pbkdf2::Secret {
+    untimed(|| pbkdf2::Secret::new(&pbkdf2::PBKDF2_HMAC_SHA256, b"password"))
 }
 
 // The values a timed call works on, made by the `untimed` helpers, whose
@@ -255,7 +508,7 @@ fn each_call_costs_its_toggles() {
 /// Under a held guard no call toggles again.
 #[test]
 fn a_held_guard_absorbs_every_toggle() {
-    let dit = crate::cpu::Dit::hold();
+    let dit = Dit::hold();
     for call in calls() {
         assert_eq!(toggles(call.run), 0, "{} toggled under a guard", call.name);
     }
@@ -269,7 +522,7 @@ fn quic_packets_under_one_guard_toggle_once() {
     let header = quic_key(&aead::quic::AES_128);
     let packet_key = aead_key(&aead::AES_128_GCM);
     let made = toggles(|| {
-        let _dit = crate::cpu::Dit::hold();
+        let _dit = Dit::hold();
         for number in 0..16u64 {
             let mut packet = [0u8; 1350];
             let nonce = aead::Nonce::from_sequence(&[3; 12], number);
@@ -324,7 +577,7 @@ fn a_cleared_dit_under_an_entry_panics() {
     let entry = super::Entry::new_secret();
     // Clears DIT under the live `Entry`, as a bug that left it would.
     crate::low::leave_cpu_state(1);
-    let caught = std::panic::catch_unwind(|| super::Entry::assert_held());
+    let caught = panic::catch_unwind(|| super::Entry::assert_held());
     // Sets it again, so the `Entry` drops cleanly and clears it.
     let _ = crate::low::enter_cpu_state();
     drop(entry);
@@ -336,4 +589,140 @@ fn a_cleared_dit_under_an_entry_panics() {
         .or_else(|| message.downcast_ref::<String>().map(|s| s.as_str()))
         .unwrap_or_default();
     assert!(message.contains("PSTATE.DIT clear"), "{message}");
+}
+
+/// Checks the guard and DIT state outside every guard: nothing held, and
+/// DIT clear, except under `--cfg rind_dit_sticky`, which leaves it set.
+fn assert_released(what: &str) {
+    assert!(!model::live(), "{what}: a guard is still live");
+    assert!(!Dit::is_held(), "{what}: is_held after release");
+    #[cfg(all(debug_assertions, rind_dit))]
+    if !cfg!(rind_dit_sticky) {
+        assert_ne!(dit_on(), Some(true), "{what}: DIT set after release");
+    }
+}
+
+/// `with` toggles once for everything inside, returns the closure's value,
+/// and reports the guard as held only where rind sets DIT.
+#[test]
+fn with_toggles_once_and_returns_its_value() {
+    let tag_key = hmac_key();
+    let packet_key = aead_key(&aead::AES_128_GCM);
+    let made = toggles(|| {
+        let tags = Dit::with(|| {
+            assert_eq!(Dit::is_held(), cfg!(rind_dit));
+            #[cfg(all(debug_assertions, rind_dit))]
+            if let Some(on) = dit_on() {
+                assert!(on, "DIT clear inside `with`");
+            }
+            let mut packet = [4; 64];
+            let sealed = packet_key
+                .seal_in_place_separate_tag(nonce(), b"", &mut packet)
+                .unwrap();
+            (hmac::sign(&tag_key, &packet), sealed)
+        });
+        assert_eq!(tags.0.as_ref().len(), 32);
+    });
+    assert_eq!(made, 1);
+    assert_released("with");
+}
+
+/// Guards nest, in any drop order, and DIT stays held until the last one
+/// goes: the inner ones toggle nothing.
+#[test]
+fn nested_guards_toggle_once_and_release_last() {
+    let made = toggles(|| {
+        let outer = Dit::hold();
+        let inner = Dit::hold();
+        Dit::with(|| {
+            Dit::batch(0..3, |_| {
+                let _digest = digest::digest(&digest::SHA256, b"x");
+                Ok::<(), ()>(())
+            })
+            .unwrap();
+        });
+        // The outer guard drops first; the inner one still holds.
+        drop(outer);
+        assert_eq!(Dit::is_held(), cfg!(rind_dit));
+        assert!(model::live());
+        drop(inner);
+    });
+    assert_eq!(made, 1);
+    assert_released("nested guards");
+}
+
+/// A panic inside `with` or `batch` unwinds through the guard, which
+/// releases DIT as a return would.
+#[test]
+fn a_panic_inside_a_guard_releases_it() {
+    let caught = panic::catch_unwind(|| {
+        Dit::with(|| {
+            let _digest = digest::digest(&digest::SHA256, b"x");
+            panic!("inside with");
+        })
+    });
+    assert!(caught.is_err());
+    assert_released("panic in with");
+
+    let caught = panic::catch_unwind(|| {
+        Dit::batch(0..4, |n| {
+            assert!(n < 2, "inside batch");
+            Ok::<(), ()>(())
+        })
+    });
+    assert!(caught.is_err());
+    assert_released("panic in batch");
+
+    // A panic in a rind call made under a guard, with an entry live too.
+    let caught = panic::catch_unwind(|| {
+        let _dit = Dit::hold();
+        let _entry = super::Entry::new_secret();
+        panic!("under a guard and an entry");
+    });
+    assert!(caught.is_err());
+    assert_released("panic under a guard and an entry");
+}
+
+/// `batch` runs every item under one toggle, and stops at the first error,
+/// returning it with the guard released.
+#[test]
+fn batch_toggles_once_and_stops_at_an_error() {
+    let packet_key = aead_key(&aead::AES_128_GCM);
+    let header_key = quic_key(&aead::quic::AES_128);
+    let mut seen = 0;
+    let made = toggles(|| {
+        Dit::batch(0..32u64, |number| {
+            let mut packet = [0u8; 64];
+            let nonce = aead::Nonce::from_sequence(&[3; 12], number);
+            let tag = packet_key.seal_in_place_separate_tag(nonce, b"h", &mut packet)?;
+            let _mask = header_key.mask(tag.as_ref().try_into().unwrap());
+            seen += 1;
+            Ok::<(), crate::Error>(())
+        })
+        .unwrap();
+    });
+    assert_eq!((made, seen), (1, 32));
+    assert_released("batch");
+
+    let mut seen = 0;
+    let result = Dit::batch(0..8, |n| {
+        seen += 1;
+        if n == 2 { Err(n) } else { Ok(()) }
+    });
+    assert_eq!((result, seen), (Err(2), 3));
+    assert_released("batch error");
+}
+
+/// Outside a guard nothing is held, inside an entry included: `is_held`
+/// reports guards, not entries.
+#[test]
+fn is_held_reports_guards_only() {
+    assert!(!Dit::is_held());
+    let entry = super::Entry::new_secret();
+    assert!(!Dit::is_held());
+    drop(entry);
+    let dit = Dit::hold();
+    assert_eq!(Dit::is_held(), cfg!(rind_dit));
+    drop(dit);
+    assert_released("is_held");
 }
