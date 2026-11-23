@@ -16,9 +16,10 @@
 //! - `dit-toggle/no-entry/rind`: a public call that makes no entry, for the cost
 //!   of calling and timing alone.
 //!
-//! Run `rind` and `rind-dit-held` with `RIND_CPU_DISABLE_dit=1` (needs
-//! `--cfg rind_cpu_disable` in a release build) and the two rows should agree:
-//! rind then sets no DIT, so the toggle's cost is the difference.
+//! Run with `RIND_CPU_DISABLE_dit=1` (needs `--cfg rind_cpu_disable` in a
+//! release build) and rind sets no DIT: the held and hold-drop rows are not
+//! made, since the guard turns nothing on, and `rind` is the cost of an empty
+//! call, so the toggle's cost is the difference from an undenied run's `rind`.
 
 #[cfg(target_arch = "xtensa")]
 fn main() {}
