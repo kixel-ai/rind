@@ -27,6 +27,7 @@ on:
       - fuzz
       - miri
       - mutants
+      - openssl-libraries
       - prove
       - python
       - quality lints
