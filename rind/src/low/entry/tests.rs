@@ -15,9 +15,22 @@ use std::panic;
 use super::model;
 use crate::cpu::Dit;
 use crate::{
-    aead, agreement, cipher, constant_time, digest, ecdsa, ed25519, hkdf, hmac, hpke, pbkdf2,
-    spake2plus,
+    aead, agreement, cipher, constant_time, digest, ecdsa, ed25519, hkdf, hmac, hpke, kem, ml_dsa,
+    oprf, pbkdf2, spake2plus, vrf,
 };
+
+/// Marks for `admin/dit-qemu-plugin.c`, no-ops anywhere else: `hint #84`
+/// opens a window around one call, `hint #85` closes it, and `hint #86` to
+/// `hint #87` leaves the call's setup out of it.
+macro_rules! dit_qemu_mark {
+    ($hint:literal) => {
+        // SAFETY: an unallocated hint, which executes as a no-op.
+        #[cfg(target_arch = "aarch64")]
+        unsafe {
+            core::arch::asm!($hint, options(nostack, preserves_flags))
+        };
+    };
+}
 
 /// A public call, and the DIT toggles it costs alone.
 struct Call {
@@ -362,6 +375,71 @@ fn calls() -> Vec<Call> {
         call!("hpke::PrivateKey::generate X25519", 1, || {
             hpke::PrivateKey::generate(&hpke::DHKEM_X25519_HKDF_SHA256).unwrap()
         }),
+        // The key exports the audit found outside any `Entry` (fork issue
+        // #259's audit), and the post-quantum and signing calls.
+        call!("agreement::PrivateKey::to_scalar X25519", 1, || {
+            x25519_untimed().to_scalar()
+        }),
+        call!("agreement::PrivateKey::to_scalar P-256", 1, || {
+            untimed(|| agreement::PrivateKey::generate(&agreement::ECDH_P256).unwrap()).to_scalar()
+        }),
+        call!("agreement P-384 agree", 1, || {
+            let (key, peer) = untimed(|| {
+                let peer = agreement::PrivateKey::generate(&agreement::ECDH_P384).unwrap();
+                let key = agreement::PrivateKey::generate(&agreement::ECDH_P384).unwrap();
+                (key, peer.public_key().as_ref().to_vec())
+            });
+            key.agree(&peer).unwrap()
+        }),
+        call!("ecdsa::KeyPair::sign P-256", 1, || {
+            untimed(|| ecdsa::KeyPair::generate(&ecdsa::sign::P256_SHA256_FIXED).unwrap())
+                .sign(b"message")
+                .unwrap()
+        }),
+        call!("ecdsa::KeyPair::to_scalar P-256", 1, || {
+            untimed(|| ecdsa::KeyPair::generate(&ecdsa::sign::P256_SHA256_FIXED).unwrap())
+                .to_scalar()
+        }),
+        call!("vrf::KeyPair::to_seed P-256", 1, || {
+            untimed(|| vrf::KeyPair::generate(&vrf::ECVRF_P256_SHA256_TAI).unwrap()).to_seed()
+        }),
+        call!("vrf::KeyPair::prove P-256", 1, || {
+            untimed(|| vrf::KeyPair::generate(&vrf::ECVRF_P256_SHA256_TAI).unwrap())
+                .prove(b"alpha")
+                .unwrap()
+        }),
+        call!("oprf::ServerKey::to_scalar P-256", 1, || {
+            untimed(|| oprf::ServerKey::generate(&oprf::P256_SHA256).unwrap()).to_scalar()
+        }),
+        call!("kem::DecapsulationKey::generate ML-KEM-768", 1, || {
+            kem::DecapsulationKey::<kem::MlKem768>::generate().unwrap()
+        }),
+        call!("kem::EncapsulationKey::encapsulate ML-KEM-768", 1, || {
+            untimed(|| {
+                kem::DecapsulationKey::<kem::MlKem768>::generate()
+                    .unwrap()
+                    .public_key()
+                    .clone()
+            })
+            .encapsulate()
+            .unwrap()
+        }),
+        call!("kem::DecapsulationKey::decapsulate ML-KEM-768", 1, || {
+            let (key, ciphertext) = untimed(|| {
+                let key = kem::DecapsulationKey::<kem::MlKem768>::generate().unwrap();
+                let (ciphertext, _) = key.public_key().encapsulate().unwrap();
+                (key, ciphertext)
+            });
+            key.decapsulate(&ciphertext)
+        }),
+        call!("ml_dsa::KeyPair::from_seed ML-DSA-44", 1, || {
+            ml_dsa::KeyPair::<ml_dsa::MlDsa44>::from_seed(&[12; 32]).unwrap()
+        }),
+        call!("ml_dsa::KeyPair::sign ML-DSA-44", 1, || {
+            untimed(|| ml_dsa::KeyPair::<ml_dsa::MlDsa44>::from_seed(&[12; 32]).unwrap())
+                .sign(b"message")
+                .unwrap()
+        }),
         call!("ecdsa::KeyPair::generate P-256", 1, || {
             ecdsa::KeyPair::generate(&ecdsa::sign::P256_SHA256_FIXED).unwrap()
         }),
@@ -426,7 +504,9 @@ const X25519_PEER: [u8; 32] = [9; 32];
 /// its toggles are subtracted by [`run_counted`].
 fn untimed<T>(make: impl FnOnce() -> T) -> T {
     let before = model::toggles();
+    dit_qemu_mark!("hint #86");
     let value = make();
+    dit_qemu_mark!("hint #87");
     UNTIMED.set(UNTIMED.get() + (model::toggles() - before));
     value
 }
@@ -725,4 +805,178 @@ fn is_held_reports_guards_only() {
     assert_eq!(Dit::is_held(), cfg!(rind_dit));
     drop(dit);
     assert_released("is_held");
+}
+
+/// `admin/dit-qemu` runs this under qemu-aarch64 with
+/// `admin/dit-qemu-plugin.c`, which reads PSTATE.DIT at every instruction
+/// each call executes, its callees' included (core's, and libc's `memcpy`),
+/// not only at the `Entry` and `assert_held` checks the other tests read.
+/// It fails a call that ran without DIT between two instructions that ran
+/// with it, or never set it. The names go to stdout, one per window, in
+/// order.
+#[cfg(all(target_arch = "aarch64", rind_dit))]
+#[test]
+#[ignore = "admin/dit-qemu runs it under qemu-aarch64"]
+fn dit_qemu_every_secret_call() {
+    for call in calls() {
+        std::println!("dit-qemu: {}", call.name);
+        dit_qemu_mark!("hint #84");
+        (call.run)();
+        dit_qemu_mark!("hint #85");
+    }
+
+    // Planted: DIT cleared under a live `Entry` and set again, which the
+    // plugin must report as a hole.
+    std::println!("dit-qemu: planted: a hole");
+    dit_qemu_mark!("hint #84");
+    let entry = super::Entry::new_secret();
+    crate::low::leave_cpu_state(1);
+    core::hint::black_box([0u8; 64]);
+    let _ = crate::low::enter_cpu_state();
+    drop(entry);
+    dit_qemu_mark!("hint #85");
+
+    // Planted: work that never sets DIT, which the plugin must report.
+    std::println!("dit-qemu: planted: no DIT");
+    dit_qemu_mark!("hint #84");
+    core::hint::black_box(core::hint::black_box([1u8; 64]).iter().sum::<u8>());
+    dit_qemu_mark!("hint #85");
+}
+
+/// A caller that set DIT itself keeps it. rind clears only what it set, so
+/// no call, guard, `with`, or `batch`, nested in any order or unwound by a
+/// panic, clears DIT that was on before rind ran.
+#[cfg(all(debug_assertions, rind_dit))]
+#[test]
+fn a_caller_set_dit_survives_every_call_and_guard() {
+    if dit_on().is_none() {
+        return;
+    }
+    if cfg!(rind_dit_sticky) {
+        crate::low::leave_cpu_state(1);
+    }
+    // The caller's own `msr DIT, #1`.
+    assert_eq!(crate::low::enter_cpu_state(), 1);
+    let still_set =
+        |what: &str| assert_eq!(dit_on(), Some(true), "{what} cleared the caller's DIT");
+    for call in calls() {
+        (call.run)();
+        still_set(call.name);
+    }
+    drop(Dit::hold());
+    still_set("a guard");
+    Dit::with(|| ());
+    still_set("with");
+    Dit::batch(0..3, |_| Ok::<(), ()>(())).unwrap();
+    still_set("batch");
+    let (outer, inner) = (Dit::hold(), Dit::hold());
+    drop(outer);
+    (calls()[0].run)();
+    drop(inner);
+    still_set("guards dropped out of order");
+    let caught = panic::catch_unwind(|| Dit::with(|| panic!("inside with")));
+    assert!(caught.is_err());
+    still_set("a panic inside with");
+    assert!(!Dit::is_held());
+    crate::low::leave_cpu_state(1);
+    assert_eq!(dit_on(), Some(false));
+}
+
+/// The last guard to drop puts DIT back as the first guard found it, so a
+/// caller that sets DIT itself inside a guard rind took loses it when the
+/// guard drops: set it before taking the guard to keep it.
+#[cfg(all(debug_assertions, rind_dit))]
+#[test]
+fn dit_returns_to_what_the_first_guard_found() {
+    if dit_on().is_none() || cfg!(rind_dit_sticky) {
+        return;
+    }
+    let dit = Dit::hold();
+    // The caller's own `msr DIT, #1`, a no-op since the guard set it.
+    assert_eq!(crate::low::enter_cpu_state(), 0);
+    drop(dit);
+    assert_eq!(dit_on(), Some(false));
+}
+
+/// A thread starts with no guard of its parent's: the guard counts are the
+/// thread's own. Linux copies PSTATE into a new thread, so a child spawned
+/// under a guard may start with DIT set, though nothing it holds keeps it
+/// on; rind then leaves it as the child found it. Either way every secret
+/// call the child makes runs under DIT.
+#[cfg(all(debug_assertions, rind_dit))]
+#[test]
+fn a_thread_spawned_under_a_guard_holds_nothing() {
+    if dit_on().is_none() || cfg!(rind_dit_sticky) {
+        return;
+    }
+    let dit = Dit::hold();
+    let (held, before, after) = std::thread::spawn(|| {
+        let before = dit_on();
+        let checks = super::dit_checks();
+        (calls()[0].run)();
+        assert!(
+            super::dit_checks() > checks,
+            "the child ran no PSTATE.DIT check"
+        );
+        (Dit::is_held(), before, dit_on())
+    })
+    .join()
+    .unwrap();
+    drop(dit);
+    assert!(!held, "a new thread inherited a guard");
+    assert_eq!(
+        before, after,
+        "rind changed the DIT a new thread started with"
+    );
+    assert_eq!(dit_on(), Some(false));
+}
+
+#[cfg(all(debug_assertions, rind_dit, unix))]
+static SIGNALLED: std::sync::Mutex<Vec<Option<bool>>> = std::sync::Mutex::new(Vec::new());
+
+/// A signal handler that makes a secret call, and one that sets DIT and
+/// returns with it set. Test-only: it locks a mutex, which is not
+/// async-signal-safe in general, but the signal is raised synchronously on
+/// a thread that holds no lock.
+#[cfg(all(debug_assertions, rind_dit, unix))]
+extern "C" fn on_signal(_: libc::c_int) {
+    let found = dit_on();
+    drop(super::Entry::new_secret());
+    let left = dit_on();
+    let _ = crate::low::enter_cpu_state();
+    SIGNALLED.lock().unwrap().extend([found, left]);
+}
+
+/// A signal handler that runs rind under a guard, or outside one, leaves the
+/// interrupted code's DIT as it was: rind restores what the handler found,
+/// and the kernel's signal return restores the interrupted PSTATE, DIT
+/// included, even after a handler that left DIT set.
+#[cfg(all(debug_assertions, rind_dit, unix))]
+#[test]
+fn a_signal_handler_leaves_the_interrupted_dit() {
+    if dit_on().is_none() || cfg!(rind_dit_sticky) {
+        return;
+    }
+    // SAFETY: installs a handler for a signal nothing else in the tests
+    // uses, and raises it on this thread.
+    unsafe {
+        libc::signal(
+            libc::SIGUSR2,
+            on_signal as extern "C" fn(libc::c_int) as libc::sighandler_t,
+        );
+        libc::raise(libc::SIGUSR2);
+    }
+    assert_eq!(dit_on(), Some(false), "a handler's DIT outlived it");
+    let dit = Dit::hold();
+    // SAFETY: as above.
+    unsafe { libc::raise(libc::SIGUSR2) };
+    assert_eq!(dit_on(), Some(true), "a handler cleared a guard's DIT");
+    assert!(Dit::is_held());
+    drop(dit);
+    assert_eq!(dit_on(), Some(false));
+    let seen = SIGNALLED.lock().unwrap().clone();
+    assert_eq!(seen.len(), 4, "{seen:?}");
+    // Inside each handler, the secret call left DIT as the handler found it.
+    assert_eq!(seen[0], seen[1], "{seen:?}");
+    assert_eq!(seen[2], seen[3], "{seen:?}");
 }

@@ -196,6 +196,8 @@ impl PrivateKey {
 
     /// Encodes the private key as the scalar [`Self::from_scalar`] loads.
     pub fn to_scalar(&self) -> Scalar {
+        // Each curve converts its scalar's limbs to bytes.
+        let _entry = low::Entry::new_secret();
         Scalar(Buffer::encode(|output| match &self.private {
             Private::X25519(key) => key.to_scalar(output),
             Private::P256(key) => key.to_scalar(output),

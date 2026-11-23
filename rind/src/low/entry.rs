@@ -46,6 +46,10 @@ fn check_dit() {
 pub(crate) struct Entry {
     secret: bool,
     cpu_state: u32,
+    // Neither `Send` nor `Sync`: DIT and the counts above belong to the
+    // thread that made the `Entry`, so it must drop there, as
+    // `crate::cpu::Dit` must.
+    _thread: core::marker::PhantomData<*const ()>,
     // On x86 the portable backend's arithmetic may compile to any of the
     // multiplies Intel's MXCSR mitigation covers, anywhere, so every call,
     // public or secret, holds it. The x86_64 backend holds it only around
@@ -69,6 +73,7 @@ impl Entry {
         Self {
             secret: false,
             cpu_state: 0,
+            _thread: core::marker::PhantomData,
             #[cfg(all(
                 rind_backend = "portable",
                 any(target_arch = "x86", target_arch = "x86_64")
@@ -98,6 +103,7 @@ impl Entry {
         Self {
             secret: true,
             cpu_state,
+            _thread: core::marker::PhantomData,
             #[cfg(all(
                 rind_backend = "portable",
                 any(target_arch = "x86", target_arch = "x86_64")
