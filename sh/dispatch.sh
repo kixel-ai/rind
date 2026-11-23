@@ -150,6 +150,10 @@ module patch '^(patch/|rind-ring/|(rind/)?Cargo\.toml$|sh/patch\.sh$)' \
 # rind's low, mid, and high layers reference only the layers below them.
 module structure '^(rind/(src/|Cargo\.toml$)|admin/structure$)' \
     tools='cargo cargo-modules'
+# Every public function of rind's either makes an `Entry`, which sets DIT on
+# Apple silicon for a secret, or admin/dit-coverage.txt says how it needs none.
+module dit '^(rind/src/|admin/dit-coverage(\.txt)?$)' \
+    tools='python3'
 # admin/build-cost builds these against rind's public API, which nothing
 # under rind/src/low/ is part of: rs already compiles that code on the host.
 module fixtures '^(rind/(src/([^l]|l[^o]|lo[^w]|low[^/])|Cargo\.toml$|build\.rs$)|rind-rustls/(src/|Cargo\.toml$|build\.rs$)|Cargo\.toml$|admin/build-cost-fixtures/(rind|rustls)/)' \
@@ -573,6 +577,7 @@ step() {
             run nix develop .#ct-vartime --command admin/ct-vartime "${targets[@]}"
             ;;
         check:structure) run admin/structure ;;
+        check:dit) run python3 admin/dit-coverage ;;
         check:deny) run cargo deny --locked check ;;
         check:versions) run sh/adapter-versions.sh ;;
         check:adapters) run python3 admin/adapter-api ;;
