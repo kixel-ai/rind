@@ -177,11 +177,14 @@ pub(super) fn leave_secret(cpu_state: u32) {
 /// thread drops, DIT stays on if rind set it, and the thread is in a batch.
 /// The batch ends, and DIT is cleared, at the next public call into rind
 /// (verifying, parsing a public key), or after [`autohold::BATCH`] secret
-/// calls in a row, whichever comes first. A guard's drop still clears DIT
-/// at once, as its docs promise. It only ever delays clearing DIT, so every
-/// secret computation still runs under it; the cost is that the caller's
-/// own code between calls in a batch runs with DIT too. It never clears DIT
-/// rind did not set.
+/// calls in a row, whichever comes first. A guard taken outside a batch
+/// still clears DIT as it drops, as its docs promise; one taken inside a
+/// batch finds DIT on, so its drop leaves DIT to the batch, which ends as
+/// above. It only ever delays clearing DIT, so every secret computation
+/// still runs under it; the cost is that the caller's own code between
+/// calls in a batch runs with DIT too. It never clears DIT that was on
+/// before rind set it, but a caller that sets DIT itself during a batch
+/// (which changes nothing, DIT being on) loses it when the batch ends.
 ///
 /// The bound is in calls into rind, not in time: nothing clears DIT while
 /// the thread makes no call. A thread whose last call into rind is a secret
@@ -217,7 +220,9 @@ pub(super) mod autohold {
             // rind set DIT for this call: keep it, and start a batch.
             (0, 1, _) => 1,
             // DIT was on before this call, and rind left it on: count.
-            (0, _, 1..) if batch < BATCH || crate::cpu::Dit::is_held() => batch + 1,
+            // Saturating: under a held guard the count is not bounded, and a
+            // wrap to 0 would read as DIT the caller set, never cleared.
+            (0, _, 1..) if batch < BATCH || crate::cpu::Dit::is_held() => batch.saturating_add(1),
             (0, _, 1..) => {
                 super::leave_cpu_state(1);
                 0
@@ -246,6 +251,11 @@ pub(super) mod autohold {
 // A measuring prototype, which the FIPS module, which ships, refuses.
 #[cfg(all(rind_fips, rind_dit_autohold))]
 compile_error!("rind_dit_autohold is a measuring prototype, not a FIPS configuration");
+
+// Autohold clears DIT itself, around `leave_secret`, so sticky would hold for
+// guards but not for entries: the pair measures neither.
+#[cfg(all(rind_dit_sticky, rind_dit_autohold))]
+compile_error!("rind_dit_autohold and rind_dit_sticky are two measuring prototypes; pick one");
 
 /// How many PSTATE.DIT checks this thread has passed.
 #[cfg(all(test, debug_assertions, rind_dit))]
