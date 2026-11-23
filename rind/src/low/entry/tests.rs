@@ -34,6 +34,7 @@ macro_rules! dit_qemu_mark {
 
 /// Whether DIT stays on after a call that set it: always under
 /// `--cfg rind_dit_sticky`, and for a batch under `--cfg rind_dit_autohold`.
+#[cfg(all(debug_assertions, rind_dit))]
 const LINGERS: bool = cfg!(any(rind_dit_sticky, rind_dit_autohold));
 
 /// A public call, and the DIT toggles it costs alone.
