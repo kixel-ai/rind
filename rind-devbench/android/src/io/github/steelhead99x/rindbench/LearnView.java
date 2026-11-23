@@ -4,12 +4,11 @@ import android.content.Context;
 import android.graphics.Typeface;
 import android.view.Gravity;
 import android.view.View;
-import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
-/** Learn: plain-language FAQ accordion. Copy matches the iOS 14.4 Learn page. */
+/** Learn: short plain-language FAQ answers (<= 2 short sentences each). */
 final class LearnView extends LinearLayout {
     LearnView(Context c) {
         super(c);
@@ -24,17 +23,22 @@ final class LearnView extends LinearLayout {
         int pad = Theme.dpi(c, 16);
         root.setPadding(pad, Theme.dpi(c, 8), pad, Theme.dpi(c, 24));
 
-        TextView title = Theme.label(c, "Learn", 28, 36, Theme.TEXT, Typeface.BOLD, 1);
+        TextView title = Theme.label(c, "Learn", 26, 34, Theme.TEXT, Typeface.BOLD, 1);
         title.setAccessibilityHeading(true);
-        TextView lead = Theme.label(c, "Short answers about this app, the tests, and what is shared. Open a topic to read it.",
-                15, 22, Theme.MUTED, Typeface.NORMAL, 0);
+        TextView lead = Theme.label(c, "Tap a question to read the answer.",
+                16, 22, Theme.MUTED, Typeface.NORMAL, 0);
         root.addView(title);
-        spacer(root, 8);
+        spacer(root, 6);
         root.addView(lead);
-        spacer(root, 16);
+        spacer(root, 14);
 
         String[][] items = topics();
         for (int i = 0; i < items.length; i++) root.addView(row(c, items[i][0], items[i][1]));
+
+        spacer(root, 6);
+        TextView foot = Theme.label(c, "Unofficial community tool. Not run or endorsed by the rind maintainers.",
+                14, 18, Theme.MUTED, Typeface.NORMAL, 0);
+        root.addView(foot);
 
         scroll.addView(root, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
         addView(scroll, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
@@ -48,60 +52,63 @@ final class LearnView extends LinearLayout {
     private static View row(Context c, String title, String body) {
         LinearLayout card = Theme.card(c, Theme.LINE);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
-        lp.bottomMargin = Theme.dpi(c, 12);
+        lp.bottomMargin = Theme.dpi(c, 10);
         card.setLayoutParams(lp);
 
-        Button head = new Button(c, null, android.R.attr.borderlessButtonStyle);
-        head.setText(title);
-        head.setAllCaps(false);
-        head.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
-        head.setTextColor(Theme.TEXT);
-        head.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, Theme.sp(c, 17, 24));
-        head.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
-        head.setBackground(null);
-        head.setMinHeight(Theme.dpi(c, 48));
-        head.setPadding(Theme.dpi(c, 4), Theme.dpi(c, 12), Theme.dpi(c, 4), Theme.dpi(c, 12));
-        head.setContentDescription(title);
-        head.setAccessibilityPaneTitle(title);
+        LinearLayout head = new LinearLayout(c);
+        head.setOrientation(HORIZONTAL);
+        head.setGravity(Gravity.CENTER_VERTICAL);
+        head.setMinimumHeight(Theme.dpi(c, 48));
+        head.setPadding(Theme.dpi(c, 2), Theme.dpi(c, 6), Theme.dpi(c, 2), Theme.dpi(c, 6));
 
-        TextView bodyL = Theme.label(c, body, 15, 22, Theme.TEXT, Typeface.NORMAL, 0);
+        TextView q = Theme.label(c, title, 18, 24, Theme.TEXT, Typeface.BOLD, 0);
+        TextView chev = Theme.label(c, "+", 20, 26, Theme.PEEL, Typeface.BOLD, 1);
+        chev.setPadding(Theme.dpi(c, 12), 0, Theme.dpi(c, 2), 0);
+        chev.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
+
+        head.addView(q, new LayoutParams(0, LayoutParams.WRAP_CONTENT, 1));
+        head.addView(chev, new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
+        head.setFocusable(true);
+        head.setContentDescription(title + ", Closed");
+
+        TextView bodyL = Theme.label(c, body, 16, 22, Theme.TEXT, Typeface.NORMAL, 0);
+        bodyL.setPadding(Theme.dpi(c, 2), Theme.dpi(c, 6), Theme.dpi(c, 2), Theme.dpi(c, 4));
         bodyL.setVisibility(GONE);
-        head.setTag(new Object[]{bodyL, false});
+
+        final boolean[] open = {false};
         head.setOnClickListener(v -> {
-            Object[] st = (Object[]) v.getTag();
-            TextView b = (TextView) st[0];
-            boolean open = !(Boolean) st[1];
-            st[1] = open;
-            b.setVisibility(open ? VISIBLE : GONE);
-            v.setContentDescription(title + (open ? ", Open" : ", Closed"));
-            v.announceForAccessibility(open ? "Open" : "Closed");
+            open[0] = !open[0];
+            bodyL.setVisibility(open[0] ? VISIBLE : GONE);
+            chev.setText(open[0] ? "-" : "+");
+            Theme.setCardAccent(card, open[0] ? Theme.PEEL_MID : Theme.LINE);
+            v.setContentDescription(title + (open[0] ? ", Open" : ", Closed"));
+            v.announceForAccessibility(open[0] ? "Open" : "Closed");
         });
         card.addView(head);
         card.addView(bodyL);
         return card;
     }
 
-    /** Same topics and facts as iOS 14.4; "phone" in place of "iPad". */
     static String[][] topics() {
         return new String[][]{
             {"What is this app?",
-                "rind-bench is an unofficial community tool. It times cryptography operations on this phone and can send those times to the computer that installed the app.\n\nIt is not run or endorsed by the rind maintainers. Nothing runs, and nothing is sent, until you agree and press Start test on the Bench page."},
+                "It times how fast this phone runs math that keeps data safe. Nothing runs or leaves your phone until you agree and tap Start."},
             {"What is rind?",
-                "rind is a cryptography library written in Rust. The rind project describes it as a drop-in replacement for other Rust libraries such as ring, aws-lc-rs, and rustls.\n\nThis app does not rank products or award a score. It measures how long the same operations take on this phone, so the times can be compared on the same device."},
+                "rind is a Rust software library that protects data with math like scrambling and signatures. This app times rind next to other libraries doing the same jobs."},
             {"What are the libraries?",
-                "The Bench page lists every library this build can time, under Libraries. The list comes from the build itself, not from a fixed menu in this screen.\n\nReport operations are on by default. Extra groups appear under More, and stay off until you turn them on. That split comes from this app's own catalog: the default report set, and the extra bench files offered as More groups."},
-            {"Quick and Full",
-                "Quick runs 1 round, with 5 samples of 50 milliseconds each, and a 150 millisecond warm-up.\n\nFull runs 3 rounds, with 10 samples of 100 milliseconds each, and a 300 millisecond warm-up.\n\nFull takes longer and keeps the CPU busy for more time. For a complete pass of every operation this build can time, choose Full and turn on the More groups as well. Leaving More off runs only the default report set."},
-            {"What the numbers mean",
-                "Times are shown in nanoseconds, microseconds, or milliseconds per operation. Shorter is faster.\n\nThe figure this app records as ns is the median of each round's median. The low and high values are the smallest and largest of those per-round medians. They are not a statistical confidence interval.\n\nWhen a line says “rind 2.00× its time”, rind took twice as long as that other library on the same operation. A figure below 1× means rind was faster than that library."},
-            {"Why the phone gets warm",
-                "A run keeps the CPU busy, on purpose, so the times reflect a working chip rather than an idle one. A busy chip produces heat, so the phone can feel warm. That is expected.\n\nIf the system reports a thermal state during a run, the Bench page shows it. You can press Stop at any time."},
-            {"What is shared, and what is not",
-                "When you agree and start a Bench run, the app can send timings and this device's model, chip, system version, and CPU features to the computer that installed the app. Results are also saved on this phone.\n\nThe app does not send your name, account, serial number, or location.\n\nThe collector address is chosen at install time and is shown on the Bench page. If the collector cannot be reached, the run still finishes and the results stay on this phone.\n\nContender, on its own page, is off until you turn it on and agree. A live session, when the service is available, is limited to timings and a coarse model and chip. It does not include a device name, serial, UDID, or IP address."},
-            {"How to read results",
-                "During a run, the progress bar and status line show how far the test has got, which operation is running, and how many result lines have been sent.\n\nWhen the run finishes, a short summary appears on the Bench page. Open View results for the full list, grouped by operation, with each library's time.\n\nCompare numbers from the same kind of run. A Quick run and a Full run, or a run with More off and a run with More on, are not the same test set."},
+                "They are code packages that do safety math, like rind, ring, and OpenSSL. You can pick which libraries and groups to run on the Bench tab."},
+            {"Quick test vs Full test",
+                "Quick test runs 1 round (5 tries of 50 ms) for a fast check. Full test runs 3 rounds (10 tries of 100 ms) for steadier numbers, and More groups add extra tests."},
+            {"What do the numbers mean?",
+                "Numbers show how long one test took in ns, µs, or ms, so smaller is faster. If another library says 2.00x, rind took twice as long; under 1.00x means rind was faster."},
+            {"Why does the phone get warm?",
+                "The tests make the chip work hard on purpose to measure real speed. Working chips make heat, and you can tap Stop anytime."},
+            {"What is shared?",
+                "If you agree, Bench sends timings plus your phone model, chip, and OS to the collector, while Contender shares model and chip only. Neither sends your name, serial, ID, or IP."},
+            {"How do I read results?",
+                "While it runs, the green bar fills up and shows the current test. When it finishes, tap View results to compare each library side by side."},
             {"How to report a problem",
-                "This is an unofficial community tool, and it is not a product of the rind maintainers.\n\nIf something looks wrong, write down the rind commit shown on the Bench page, the phone model and system version, whether you chose Quick or Full, whether More groups were on, and what you saw. Give that to the person who installed the app on this phone."},
+                "Tap Details on the Bench tab to note your commit, phone model, and preset. Send that note to the person who installed this app."},
         };
     }
 }

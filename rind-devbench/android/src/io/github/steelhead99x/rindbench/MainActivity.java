@@ -13,7 +13,6 @@ import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowInsets;
 import android.widget.Button;
-import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -23,18 +22,19 @@ import android.widget.TextView;
  * Portrait uses a bottom tab bar; landscape uses a left rail.
  */
 public class MainActivity extends Activity {
-    private LinearLayout root, header, tabBar, sidebar, content;
+    private LinearLayout root, header, tabBar, sidebar, railTabs, content;
     private static final String[] TAB_NAMES = {"Bench", "Learn", "Contender"};
     private static final String[] TAB_HINTS = {
-            "Times cryptography operations on this phone.",
-            "Answers about this app, the tests, and what is shared.",
-            "Join a live demo or talk. Off until you turn it on."
+            "Run speed tests on this phone.",
+            "Short answers about how this app works.",
+            "Join a live demo or talk. Off by default."
     };
     private final View[] pages = new View[3];
     private final Button[] tabsBottom = new Button[3], tabsRail = new Button[3];
     private int selected;
     private BenchView bench;
     private ContenderView contender;
+    private Button detailsBtn;
     private int insetL, insetT, insetR, insetB;
 
     @Override protected void onCreate(Bundle b) {
@@ -65,12 +65,17 @@ public class MainActivity extends Activity {
             return insets;
         });
 
-        header = makeHeader();
         bench = new BenchView(this, getIntent());
         LearnView learn = new LearnView(this);
         contender = new ContenderView(this);
         pages[0] = bench; pages[1] = learn; pages[2] = contender;
         for (View p : pages) p.setVisibility(View.GONE);
+
+        detailsBtn = Theme.chip(this, "Details");
+        detailsBtn.setContentDescription("Details. Shows device, chip, and build commit.");
+        detailsBtn.setOnClickListener(v -> { if (bench != null) bench.openDetails(); });
+
+        header = makeHeader();
 
         content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
@@ -82,7 +87,7 @@ public class MainActivity extends Activity {
         sidebar.setOrientation(LinearLayout.VERTICAL);
         sidebar.setBackgroundColor(Theme.INK2);
         sidebar.setPadding(Theme.dpi(this, 12), Theme.dpi(this, 16), Theme.dpi(this, 12), Theme.dpi(this, 16));
-        LinearLayout railTabs = makeTabRow(tabsRail, false);
+        railTabs = makeTabRow(tabsRail, false);
         relayout();
         selectTab(0);
         setContentView(root);
@@ -96,17 +101,14 @@ public class MainActivity extends Activity {
         int id = getResources().getIdentifier("rindlogo", "drawable", getPackageName());
         if (id != 0) logo.setImageResource(id);
         logo.setContentDescription("rind-bench");
-        int s = Theme.dpi(this, 40);
+        int s = Theme.dpi(this, 38);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(s, s);
         lp.rightMargin = Theme.dpi(this, 10);
         h.addView(logo, lp);
-        LinearLayout col = new LinearLayout(this);
-        col.setOrientation(LinearLayout.VERTICAL);
-        col.addView(Theme.eyebrow(this, "unofficial community tool"));
-        TextView title = Theme.label(this, "rind-bench", 22, 30, Theme.TEXT, Typeface.BOLD, 1);
+
+        TextView title = Theme.label(this, "rind-bench", 24, 32, Theme.TEXT, Typeface.BOLD, 1);
         title.setAccessibilityHeading(true);
-        col.addView(title);
-        h.addView(col);
+        h.addView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         return h;
     }
 
@@ -152,6 +154,7 @@ public class MainActivity extends Activity {
                     ? View.IMPORTANT_FOR_ACCESSIBILITY_YES
                     : View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
         }
+        if (detailsBtn != null) detailsBtn.setVisibility(i == 0 ? View.VISIBLE : View.GONE);
         styleTabs(tabsBottom);
         styleTabs(tabsRail);
     }
@@ -175,6 +178,9 @@ public class MainActivity extends Activity {
     private void relayout() {
         root.removeAllViews();
         sidebar.removeAllViews();
+        if (header.getParent() instanceof ViewGroup) ((ViewGroup) header.getParent()).removeView(header);
+        if (railTabs.getParent() instanceof ViewGroup) ((ViewGroup) railTabs.getParent()).removeView(railTabs);
+        if (detailsBtn.getParent() instanceof ViewGroup) ((ViewGroup) detailsBtn.getParent()).removeView(detailsBtn);
         boolean land = isLandscape();
         root.setPadding(insetL, insetT, insetR, land ? insetB : 0);
         if (land) {
@@ -182,19 +188,23 @@ public class MainActivity extends Activity {
             sidebar.addView(header);
             View spacer = new View(this);
             sidebar.addView(spacer, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Theme.dpi(this, 20)));
-            sidebar.addView(makeTabRow(tabsRail, false));
-            LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(Theme.dpi(this, 200), ViewGroup.LayoutParams.MATCH_PARENT);
+            sidebar.addView(railTabs);
+            View flex = new View(this);
+            sidebar.addView(flex, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+            sidebar.addView(detailsBtn, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(Theme.dpi(this, 210), ViewGroup.LayoutParams.MATCH_PARENT);
             root.addView(sidebar, slp);
             LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1);
             clp.leftMargin = Theme.dpi(this, 8);
             root.addView(content, clp);
         } else {
             root.setOrientation(LinearLayout.VERTICAL);
+            header.addView(detailsBtn, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
             LinearLayout.LayoutParams hlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             hlp.leftMargin = Theme.dpi(this, 16);
             hlp.rightMargin = Theme.dpi(this, 16);
-            hlp.topMargin = Theme.dpi(this, 4);
-            hlp.bottomMargin = Theme.dpi(this, 4);
+            hlp.topMargin = Theme.dpi(this, 6);
+            hlp.bottomMargin = Theme.dpi(this, 6);
             root.addView(header, hlp);
             root.addView(content, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
             tabBar.setPadding(0, 0, 0, insetB);

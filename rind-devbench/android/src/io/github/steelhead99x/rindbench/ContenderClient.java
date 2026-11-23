@@ -68,7 +68,6 @@ final class ContenderClient {
                 c.setRequestMethod("GET");
                 c.setRequestProperty("Accept", "application/json");
                 c.setUseCaches(false);
-                // Do not send cookies: a Cloudflare Access login page is not a session service.
                 try { c.setRequestProperty("Cookie", ""); } catch (Exception ignored) {}
                 r.code = c.getResponseCode();
                 String loc = c.getHeaderField("Location");
@@ -95,14 +94,14 @@ final class ContenderClient {
         h.baseURL = baseURL;
         if (baseURL == null || baseURL.isEmpty()) {
             h.status = UNAVAILABLE;
-            h.detail = "No session address is set in this build.";
+            h.detail = "No session address is set.";
             done.done(h);
             return;
         }
         get("/api/health", r -> {
             if (r.err != null) {
                 h.status = UNREACHABLE;
-                h.detail = "Could not reach the session service.";
+                h.detail = "Could not reach moq-bench.dev.";
                 done.done(h);
                 return;
             }
@@ -121,7 +120,7 @@ final class ContenderClient {
                 h.serviceName = json.optString("name", "");
                 h.isLabReferee = "moq-contender-referee".equals(h.serviceName);
                 h.status = AVAILABLE;
-                h.detail = h.isLabReferee ? "Lab referee is reachable." : "Session service is reachable.";
+                h.detail = h.isLabReferee ? "Lab referee ready." : "Session service ready.";
                 done.done(h);
                 return;
             }
@@ -136,8 +135,8 @@ final class ContenderClient {
         try { enc = java.net.URLEncoder.encode(code, "UTF-8").replace("+", "%20"); }
         catch (Exception e) { enc = code; }
         get("/api/sessions/" + enc, r -> {
-            if (r.err != null) { done.done(null, "Could not reach the session service."); return; }
-            if (r.code == 404) { done.done(null, "No session uses that code."); return; }
+            if (r.err != null) { done.done(null, "Could not reach moq-bench.dev."); return; }
+            if (r.code == 404) { done.done(null, "No session matches that code."); return; }
             String body = r.body();
             JSONObject json = r.json();
             if (r.code == 302 || r.code == 401 || r.code == 403
@@ -189,7 +188,6 @@ final class ContenderClient {
     }
 
     static JSONObject scrubbedDeviceFromCatalog(JSONObject catalog) {
-        // Coarse model and chip only. No device name, serial, UDID, or IP.
         JSONObject d = catalog != null ? catalog.optJSONObject("device") : null;
         if (d == null) d = new JSONObject();
         JSONObject out = new JSONObject();
@@ -201,17 +199,11 @@ final class ContenderClient {
     }
 
     static String neededEndpointsText() {
-        return "This app looks for these addresses on moq-bench.dev:\n\n"
+        return "Needed on moq-bench.dev:\n"
                 + "GET /api/health\n"
                 + "GET /api/sessions/{code}\n"
                 + "POST /api/sessions/{code}/join\n"
                 + "GET /api/sessions/{code}/status\n"
-                + "POST /api/sessions/{code}/results\n\n"
-                + "A QR code can be a short session code, or a link such as https://moq-bench.dev/join/{code}.\n\n"
-                + "If a lab referee is used instead, the existing moq-contender routes apply: "
-                + "GET /api/health, POST /api/announce, GET /api/assignment, POST /api/heartbeat, "
-                + "POST /api/contendertrack, GET and POST /api/bouts, GET /api/live, GET /api/live-matches/{id}.\n\n"
-                + "Nothing is sent until you turn Contender on and agree. Results shared with a session "
-                + "are limited to timings and a coarse model and chip. No device name, serial, UDID, or IP.";
+                + "POST /api/sessions/{code}/results";
     }
 }

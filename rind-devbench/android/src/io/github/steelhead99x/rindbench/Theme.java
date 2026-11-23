@@ -4,20 +4,16 @@ import android.content.Context;
 import android.content.res.ColorStateList;
 import android.graphics.Canvas;
 import android.graphics.Color;
-import android.graphics.LinearGradient;
 import android.graphics.Paint;
-import android.graphics.Shader;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
 import android.util.TypedValue;
-import android.view.Gravity;
+import android.view.HapticFeedbackConstants;
 import android.view.View;
-import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
-import android.view.accessibility.AccessibilityNodeInfo;
 
 /** Original RindBench (v13) palette: ink panels, cream type, peel green, gold for "now". */
 final class Theme {
@@ -41,7 +37,7 @@ final class Theme {
     }
     static int dpi(Context c, float v) { return Math.round(dp(c, v)); }
 
-    /** Follows the user's font scale, then caps so the Bench page can still fit. */
+    /** Follows the user's font scale, then caps so single-page layouts still fit. */
     static float sp(Context c, float base, float cap) {
         float px = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, base, c.getResources().getDisplayMetrics());
         float capPx = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, cap, c.getResources().getDisplayMetrics());
@@ -56,14 +52,15 @@ final class Theme {
         t.setTypeface(Typeface.create("sans-serif", style));
         t.setMaxLines(lines <= 0 ? Integer.MAX_VALUE : lines);
         if (lines == 1) t.setSingleLine(true);
+        else t.setLineSpacing(0f, 1.12f);
         t.setElegantTextHeight(true);
         return t;
     }
 
     static TextView eyebrow(Context c, String text) {
-        TextView t = label(c, text.toUpperCase(), 11, 16, PEEL, Typeface.BOLD, 1);
+        TextView t = label(c, text.toUpperCase(), 12, 16, PEEL, Typeface.BOLD, 1);
         t.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
-        t.setLetterSpacing(0.12f);
+        t.setLetterSpacing(0.10f);
         t.setContentDescription(text);
         return t;
     }
@@ -72,13 +69,14 @@ final class Theme {
     static Button secondary(Context c, String title) { return button(c, title, false); }
     static Button chip(Context c, String title) {
         Button b = button(c, title, false);
-        b.setPadding(dpi(c, 10), dpi(c, 8), dpi(c, 10), dpi(c, 8));
+        b.setMinHeight(dpi(c, 44));
+        b.setMinimumHeight(dpi(c, 44));
+        b.setPadding(dpi(c, 12), dpi(c, 8), dpi(c, 12), dpi(c, 8));
         b.setSingleLine(true);
         if (Build.VERSION.SDK_INT >= 26) {
-            b.setAutoSizeTextTypeUniformWithConfiguration(10, 14, 1, TypedValue.COMPLEX_UNIT_SP);
-        } else {
-            b.setTextSize(TypedValue.COMPLEX_UNIT_PX, sp(c, 14, 20));
+            b.setAutoSizeTextTypeWithDefaults(TextView.AUTO_SIZE_TEXT_TYPE_NONE);
         }
+        b.setTextSize(TypedValue.COMPLEX_UNIT_PX, sp(c, 15, 19));
         return b;
     }
 
@@ -112,10 +110,10 @@ final class Theme {
         b.setAllCaps(false);
         b.setMinHeight(dpi(c, 48));
         b.setMinimumHeight(dpi(c, 48));
-        b.setPadding(dpi(c, 16), dpi(c, 10), dpi(c, 16), dpi(c, 10));
+        b.setPadding(dpi(c, 14), dpi(c, 10), dpi(c, 14), dpi(c, 10));
         b.setSingleLine(true);
         if (Build.VERSION.SDK_INT >= 26) {
-            b.setAutoSizeTextTypeUniformWithConfiguration(11, 16, 1, TypedValue.COMPLEX_UNIT_SP);
+            b.setAutoSizeTextTypeUniformWithConfiguration(14, 17, 1, TypedValue.COMPLEX_UNIT_SP);
         } else {
             b.setTextSize(TypedValue.COMPLEX_UNIT_PX, sp(c, 16, 22));
         }
@@ -181,10 +179,12 @@ final class Theme {
         v.setMinimumWidth(dpi(v.getContext(), dp));
     }
 
-    static boolean landscape(Context c) {
-        android.util.DisplayMetrics m = c.getResources().getDisplayMetrics();
-        return m.widthPixels > m.heightPixels && m.widthPixels >= dp(c, 700) * m.density / c.getResources().getDisplayMetrics().density
-                || (m.widthPixels > m.heightPixels && m.widthPixels >= dpi(c, 700));
+    static void haptic(View v, boolean confirm) {
+        if (v == null) return;
+        int flag = (confirm && Build.VERSION.SDK_INT >= 30)
+                ? HapticFeedbackConstants.CONFIRM
+                : HapticFeedbackConstants.CONTEXT_CLICK;
+        v.performHapticFeedback(flag);
     }
 }
 
@@ -196,7 +196,7 @@ final class SegBar extends View {
 
     SegBar(Context c) {
         super(c);
-        setMinimumHeight(Theme.dpi(c, 22));
+        setMinimumHeight(Theme.dpi(c, 24));
         setContentDescription("Run progress");
         setFocusable(true);
         if (Build.VERSION.SDK_INT >= 28) setScreenReaderFocusable(true);
@@ -205,32 +205,28 @@ final class SegBar extends View {
         this.done = done;
         this.total = Math.max(1, total);
         this.running = running;
-        setContentDescription("Run progress");
-        announce();
+        setContentDescription("Run progress, " + done + " of " + total);
         invalidate();
     }
-    private void announce() {
-        setContentDescription("Run progress, " + done + " of " + total);
-    }
     @Override protected void onMeasure(int w, int h) {
-        int minH = Theme.dpi(getContext(), 22);
+        int minH = Theme.dpi(getContext(), 24);
         int width = View.MeasureSpec.getSize(w);
-        setMeasuredDimension(width, Math.max(minH, View.MeasureSpec.getSize(h) == 0 ? minH : Math.max(minH, View.MeasureSpec.getSize(h))));
-        if (View.MeasureSpec.getMode(h) == View.MeasureSpec.UNSPECIFIED) setMeasuredDimension(width, minH);
+        if (View.MeasureSpec.getMode(h) == View.MeasureSpec.UNSPECIFIED) {
+            setMeasuredDimension(width, minH);
+        } else {
+            setMeasuredDimension(width, Math.max(minH, View.MeasureSpec.getSize(h)));
+        }
     }
     @Override protected void onDraw(Canvas c) {
         float inset = Theme.dp(getContext(), 5), gap = Theme.dp(getContext(), 3);
         int n = Math.max(1, total);
         float w = (getWidth() - inset * 2 - gap * (n - 1)) / n;
         float h = getHeight() - inset * 2;
-        // track
-        p.setStyle(Paint.Style.STROKE);
-        p.setStrokeWidth(Theme.dp(getContext(), 2));
-        p.setColor(Theme.LINE);
         p.setStyle(Paint.Style.FILL);
         p.setColor(Theme.INK);
         c.drawRoundRect(0, 0, getWidth(), getHeight(), Theme.dp(getContext(), 6), Theme.dp(getContext(), 6), p);
         p.setStyle(Paint.Style.STROKE);
+        p.setStrokeWidth(Theme.dp(getContext(), 2));
         p.setColor(Theme.LINE);
         c.drawRoundRect(Theme.dp(getContext(), 1), Theme.dp(getContext(), 1), getWidth() - Theme.dp(getContext(), 1), getHeight() - Theme.dp(getContext(), 1), Theme.dp(getContext(), 6), Theme.dp(getContext(), 6), p);
         p.setStyle(Paint.Style.FILL);
