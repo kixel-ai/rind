@@ -79,6 +79,12 @@ pub const HASH_SIZES: [(usize, &str); 6] = [
 /// [`rind::cpu::Dit`] guard for the caller to hold while timing it, as a
 /// caller batching calls would. Elsewhere the guard does nothing, so the row
 /// would repeat `rind`'s.
+///
+/// The held row is made only if the guard turned DIT on, read back from
+/// PSTATE.DIT, so it follows what rind decided rather than what the CPU
+/// reports: with `dit` denied (`RIND_CPU_DISABLE_dit` under
+/// `--cfg rind_cpu_disable`, or a devbench deny build) rind sets no DIT, and
+/// there is no held row to label.
 #[allow(dead_code)]
 pub fn rind_rows() -> impl Iterator<Item = (&'static str, Option<rind::cpu::Dit>)> {
     #[cfg(all(target_arch = "aarch64", target_vendor = "apple"))]
@@ -87,8 +93,38 @@ pub fn rind_rows() -> impl Iterator<Item = (&'static str, Option<rind::cpu::Dit>
     let dit = false;
     // Lazily, so that the guard is taken only once `rind`'s row is timed.
     let held = dit.then_some(()).into_iter();
-    std::iter::once(("rind", None))
-        .chain(held.map(|()| ("rind-dit-held", Some(rind::cpu::Dit::hold()))))
+    std::iter::once(("rind", None)).chain(held.filter_map(|()| {
+        let guard = rind::cpu::Dit::hold();
+        dit_set().then_some(("rind-dit-held", Some(guard)))
+    }))
+}
+
+/// Whether PSTATE.DIT is set on this thread. Called by [`rind_rows`] only
+/// once the CPU has reported `dit`.
+#[cfg(all(target_arch = "aarch64", target_vendor = "apple"))]
+fn dit_set() -> bool {
+    #[target_feature(enable = "dit")]
+    fn read() -> u64 {
+        let pstate: u64;
+        // SAFETY: `mrs _, DIT` reads a register and touches no memory; the
+        // caller has checked that the CPU has DIT.
+        unsafe {
+            core::arch::asm!(
+                "mrs {r}, DIT",
+                r = out(reg) pstate,
+                options(nomem, nostack, preserves_flags)
+            )
+        };
+        pstate
+    }
+    // SAFETY: `rind_rows` calls this only after the CPU reported `dit`.
+    let pstate = unsafe { read() };
+    pstate & (1 << 24) != 0
+}
+
+#[cfg(not(all(target_arch = "aarch64", target_vendor = "apple")))]
+fn dit_set() -> bool {
+    false
 }
 
 /// verified-garbage's rows: `verified-garbage`, then, on an aarch64 CPU with
