@@ -31,7 +31,12 @@ not, or cannot, take a guard.
      signature verification, parsing a public key): the thread has moved
      on to public work;
    - the 65th secret call in a row (`autohold::BATCH = 64`), so a thread
-     that never makes a public call still clears DIT regularly.
+     that keeps calling rind, but never with a public call, still has DIT
+     cleared every 65 secret calls.
+
+   Both bounds count calls into rind, not time: a thread whose last call
+   into rind is a secret one keeps DIT on for all its own code until it
+   calls rind again or exits (see "No end without rind" under Risks).
 4. A guard's drop still clears DIT at once, as `cpu::Dit`'s docs promise,
    and a batch never clears DIT while a guard is held.
 5. DIT rind did not set (the caller's own `msr DIT, #1`) is never cleared:

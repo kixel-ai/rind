@@ -182,13 +182,19 @@ pub(super) fn leave_secret(cpu_state: u32) {
 /// secret computation still runs under it; the cost is that the caller's
 /// own code between calls in a batch runs with DIT too. It never clears DIT
 /// rind did not set.
+///
+/// The bound is in calls into rind, not in time: nothing clears DIT while
+/// the thread makes no call. A thread whose last call into rind is a secret
+/// one keeps DIT on, for all its own code, until it calls rind again or
+/// exits, however long that is.
 #[cfg(all(rind_dit_autohold, rind_dit))]
 pub(super) mod autohold {
     use core::cell::Cell;
 
     /// Secret calls a batch may span before rind clears DIT anyway, so a
-    /// thread that never makes a public call still runs its own code
-    /// without DIT most of the time.
+    /// thread that keeps calling rind, but never with a public call, still
+    /// has DIT cleared every `BATCH + 1` secret calls. It bounds calls, not
+    /// time: after a thread's last call, DIT stays on until it calls again.
     pub(crate) const BATCH: u32 = 64;
 
     std::thread_local! {
