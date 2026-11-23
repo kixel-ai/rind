@@ -18,8 +18,11 @@
 // the last set one (the return to the test). A hole is a stretch of the call
 // that ran without DIT after the call had started handling its secrets: a
 // second toggle, or code that cleared DIT under a live `Entry`. Then one
-// line `H <count> <symbol>` for each function a hole ran in, and one line
-// `P <count> <symbol>` for each function run before DIT was first set.
+// line `H <count> <symbol>` for each function a hole ran in, one line
+// `P <count> <symbol>` for each function run before DIT was first set, and
+// one line `T <count> <symbol>` for each function run clear after the last
+// set one, so a call that clears DIT early and then does secret work before
+// it returns shows up too.
 
 #include <glib.h>
 #include <qemu-plugin.h>
@@ -160,6 +163,7 @@ static void mark(unsigned int vcpu, void *udata) {
                 (unsigned long long)w->post_run);
         dump('H', w->hole_syms);
         dump('P', w->pre_syms);
+        dump('T', w->run_syms);
         fflush(out);
         g_mutex_unlock(&out_lock);
         break;

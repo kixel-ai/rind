@@ -836,6 +836,18 @@ fn dit_qemu_every_secret_call() {
     drop(entry);
     dit_qemu_mark!("hint #85");
 
+    // Planted: a call that clears DIT early, then does secret work before it
+    // returns. Nothing after the clear sets DIT again, so this is no hole:
+    // the check of what ran after DIT was last cleared must report it.
+    std::println!("dit-qemu: planted: a secret tail");
+    dit_qemu_mark!("hint #84");
+    drop(core::hint::black_box(super::Entry::new_secret()));
+    core::hint::black_box(crate::low::chacha20_block(
+        core::hint::black_box(&[5; 32]),
+        core::hint::black_box(&[6; 16]),
+    ));
+    dit_qemu_mark!("hint #85");
+
     // Planted: work that never sets DIT, which the plugin must report.
     std::println!("dit-qemu: planted: no DIT");
     dit_qemu_mark!("hint #84");
