@@ -509,8 +509,10 @@ def mitigated(objects, node):
     while queue:
         i = queue.popleft()
         state = held[i]
+        # Only a call to `enter` returns here holding the mitigation; any
+        # other reference to it, such as a conditional tail call, does not.
         for name in named.get(i, ()):
-            if name == MITIGATION:
+            if name == MITIGATION and insns[i][1] == "call":
                 state = True
             elif RELEASE.fullmatch(name):
                 state = False
