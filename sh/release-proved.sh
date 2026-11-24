@@ -23,8 +23,8 @@ range=(--max-count=1 HEAD)
 
 # Polls a minute apart: up to 10 minutes for a run to appear, as GitHub starts
 # the push's beside this one, then until one finishes. A cancelled run is
-# rerun up to `attempts` in all: a newer push whose job checks the same key
-# cancels a job pending behind another, which then saves that key.
+# rerun, up to `attempts` in all: a newer push whose job checks the same key
+# cancels a job pending behind another, and that job then saves the key.
 appear=10
 attempts=3
 for commit in $(git rev-list --first-parent --reverse "${range[@]}"); do
@@ -73,16 +73,28 @@ for commit in $(git rev-list --first-parent --reverse "${range[@]}"); do
             }
         elif jq -e 'all(.[]; .status == "completed")' <<<"$runs" >/dev/null; then
             # Only a cancellation is retried: the checks are deterministic.
-            rerun=$(jq -r --argjson attempts "$attempts" \
-                'if any(.[]; .conclusion != "cancelled") then empty else
-                 map(select(.run_attempt < $attempts)) | max_by(.run_number) // empty | .id end' <<<"$runs")
-            if [[ -z "$rerun" ]]; then
+            if jq -e 'any(.[]; .conclusion != "cancelled")' <<<"$runs" >/dev/null; then
                 echo "error: prove did not pass on main at ${same[*]}, which release $commit's proofs come from:" >&2
                 jq -r '.[] | "  \(.conclusion) \(.html_url)"' <<<"$runs" >&2
                 exit 1
             fi
-            echo "release-proved: rerunning the cancelled jobs of run $rerun" >&2
-            gh api --silent -X POST "repos/$GH_REPO/actions/runs/$rerun/rerun-failed-jobs"
+            # A rerun waits until no prove run on main is unfinished, so the
+            # one whose job took the cancelled job's place has saved the key,
+            # which the rerun looks up at once rather than queueing where a
+            # newer push could cancel it again.
+            unfinished=$(gh api "repos/$GH_REPO/actions/workflows/prove.yml/runs?branch=main&per_page=50" \
+                --jq '.workflow_runs[] | select(.event != "pull_request" and .status != "completed") | .id')
+            if [[ -z "$unfinished" ]]; then
+                rerun=$(jq -r --argjson attempts "$attempts" \
+                    'map(select(.run_attempt < $attempts)) | max_by(.run_number) // empty | .id' <<<"$runs")
+                if [[ -z "$rerun" ]]; then
+                    echo "error: prove was cancelled $attempts times on main at ${same[*]}:" >&2
+                    jq -r '.[] | "  \(.conclusion) \(.html_url)"' <<<"$runs" >&2
+                    exit 1
+                fi
+                echo "release-proved: rerunning the cancelled jobs of run $rerun" >&2
+                gh api --silent -X POST "repos/$GH_REPO/actions/runs/$rerun/rerun-failed-jobs"
+            fi
         fi
         polls=$((polls + 1))
         sleep 60
