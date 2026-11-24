@@ -224,7 +224,8 @@ establishes, and what it does not:
   compiled from HACL\*'s verified C by an unverified step.
 - **Zeroing**: `rind/tests/zeroing.rs` drops each value holding a secret and
   fails on any byte left nonzero, and `rind/tests/heap_scratch.rs` fails on a
-  freed heap block that differs between two keys. Both see only the value
+  freed heap block that differs between two keys, or, for a randomized
+  protocol step, that holds one of its secrets. Both see only the value
   itself and the heap blocks it frees.
 - **Bounds**: `low::guard_pages` runs each kernel that takes a caller's
   slice against `PROT_NONE` pages, at lengths up to 1100 bytes and, for the
