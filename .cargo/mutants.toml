@@ -53,7 +53,7 @@ exclude_re = [
   'rind/src/low/aarch64/aes_gcm\.rs:\d+:\d+: replace \| with \^ in (inc32|lengths)$',
   'rind/src/mid/portable/aes_gcm\.rs:\d+:\d+: replace \| with \^ in (add32|lengths)$',
   'rind/src/low/aarch64/cpu\.rs:\d+:\d+: replace \| with \^ in (detect|detect_once)$',
-  'rind/src/low/generic/bignum\.rs:\d+:\d+: replace \| with \^ in (add_masked|bignum_add|bignum_cmp_lt|bignum_modadd|gcd_step|mod_halve|sub_masked)$',
+  'rind/src/low/generic/bignum\.rs:\d+:\d+: replace \| with \^ in (add_masked|bignum_add|bignum_cmp_lt|bignum_modadd|sub_masked)$',
   'rind/src/low/generic/mont\.rs:\d+:\d+: replace \| with \^ in (cmp_lt_limbs|mod_double|mont_mul_limbs|sub_limbs_masked)$',
   'rind/src/low/generic/limb32\.rs:\d+:\d+: replace \| with \^ in join$',
   'rind/src/low/generic/chacha20\.rs:\d+:\d+: replace \| with \^ in quarter_round$',
