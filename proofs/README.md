@@ -69,6 +69,13 @@ those inputs, in any worktree, restores in under a second.
   the instructions rind's fork adds (`thirdparty/s2n-bignum/RIND.md`); the proof checks its round
   constants against FIPS 180-4's. Its stack frame, which the routine aligns
   down to 2048 bytes, lies in the 3440 bytes below the stack pointer.
+- `x86_64/sha256_block_data_order_avx2.ml`:
+  `SHA256_AVX2_SUBROUTINE_CORRECT`, rind's proof that the naked function
+  `low::x86_64::sha256::sha256_block_data_order_avx2`, OpenSSL's routine for
+  AVX2, computes s2n-bignum's FIPS 180-4 spec, `sha256_hash_blocks`, and
+  stores it to the state, as `sha512`'s above, on the same model; the proof
+  checks its round constants against FIPS 180-4's. Its stack frame, which the routine aligns down to 1024
+  bytes, lies in the 1648 bytes below the stack pointer.
 - `aarch64/bn_mul_mont.ml`: `BN_MUL_MONT_SUBROUTINE_CORRECT`, rind's
   proof that the naked function `low::aarch64::mont::bn_mul_mont`, aws-lc's
   Montgomery multiplication, writes the Montgomery product
@@ -600,13 +607,15 @@ against FIPS 180-4 and RFC 2104 as `Rind/HashSpec.lean` transliterates them:
 Below rind's padding, these theorems take `Sha1Blocks` or `Sha256Blocks` as
 a hypothesis, in each target's own `Rind/<Arch>/ShaBlocks.lean`. No proof
 covers a SHA-1 block function rind runs, or SHA-256's on x86_64 without the
-SHA extensions, so there each states that every such routine computes FIPS
-180-4's block function, x86_64's SHA extensions' routine for SHA-1's padded
-last blocks pads as FIPS 180-4 does, and that rind's checks pass.
+SHA extensions or AVX2, so there each states that every such routine computes
+FIPS 180-4's block function, x86_64's SHA extensions' routine for SHA-1's
+padded last blocks pads as FIPS 180-4 does, and that rind's checks pass.
 `Rind/X86_64/Sha256Shaext.lean` restates the HOL Light proofs above of
 SHA-256's routines for the SHA extensions as the axioms
 `sha256_compress_blocks_shaext_spec` and `finish_padded_spec`, and proves that
 the finish's padding, `padded` and `ended`, gives FIPS 180-4's last blocks.
+`Rind/X86_64/ShaBlocks.lean` restates the one above of OpenSSL's AVX2
+routine as the axiom `sha256_compress_blocks_avx2_spec`.
 On aarch64, `Sha256Blocks` states only that the CPU has the crypto extension
 and rind's checks pass: `Rind/Aarch64/Sha256Hw.lean` restates the Lean proof
 above, in `Rind/Aarch64/Sha256HwAsm.lean`, as the axiom
