@@ -18,10 +18,7 @@ remains:
   internal`), which the module offers since
   [kixel-ai/rind#771](https://github.com/kixel-ai/rind/pull/771): aws-lc's `acvptool` asks `AES-GCM/seal` with an empty nonce, and
   reads the ciphertext, tag, and 12-byte IV back in one string.
-- Once a credential exists, run fresh demo sets for every registered
-  algorithm, once per CPU mask, in a scheduled job, as the offline test
-  runs the samples.
-
-## Waiting
-
-- Maintainer: request ACVP demo server credentials from NIST, which issues a TLS client certificate per organization, so fresh sets run before the lab's production run. An agent cannot contact NIST. Optional until the lab is engaged: the offline runs cover the wrapper meanwhile. Done once a credential is stored as a secret and this item is deleted.
+- Decided 2026-11-24 (maintainer, /quest-run): ✅ no NIST ACVP demo
+  server credentials (rejected: request them now; defer the request). The
+  offline sample runs cover the wrapper; the lab's production run is the
+  first against NIST's server.
