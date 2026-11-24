@@ -988,6 +988,8 @@
               packages = [
                 rust-stable.minimal
                 rust2.packages.${system}.bench
+                # sh/bench-select.sh lists the bench targets with it.
+                pkgs.jq
                 pkgs.cmake
                 pkgs.pkg-config
                 pkgs.openssl

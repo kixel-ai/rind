@@ -67,7 +67,7 @@ jobs:
           fi
           if [ ${#benches[@]} -eq 0 ]; then
             # A bisect step that counts nothing must fail, not pass empty.
-            [ -z "$BENCHMARKS" ] || { echo "No bench target holds the benchmarks named"; exit 1; }
+            [ -z "$BENCHMARKS" ] || { echo "No counted bench target holds the benchmarks named: each must start rind-bench/benches/<target>.rs::, and rsa_gen is never counted"; exit 1; }
             echo "skip=true" >>"$GITHUB_OUTPUT"
             echo "This job counts none of: $BENCHES"
           fi
