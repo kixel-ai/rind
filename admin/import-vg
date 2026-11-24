@@ -138,10 +138,10 @@ HEADER = """\
 # same names.
 SHARED = {
     "x86_64": {
-        # Lean proves `mid`'s table (`proofs/Rind/X86_64/P256Table.lean`).
-        # Its alignment is a `u64`'s, where VG's is a cache line's, which
-        # `vg_p256_mul_base_adx` does not need: it reads the table only as
-        # `vpand`'s memory operand, which takes any address.
+        # Lean proves `mid`'s table (`proofs/Rind/X86_64/P256Table.lean`),
+        # which its type aligns to a cache line as VG's `Table` is: the
+        # routine's 32-byte loads take any address, but measured 1.3% slower
+        # where they crossed lines.
         "VG_P256_COMB": "crate::mid::p256::precomp::CURVE_GENERATOR_PRECOMP",
     },
     "aarch64": {},

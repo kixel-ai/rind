@@ -173,12 +173,16 @@ mod tests {
 
     // `vg_p256_mul_base_adx` reads `mid`'s generator table in place of
     // VG's own (admin/import-vg, `SHARED`), so VG's proof is about rind's
-    // code only while the two hold the same bytes.
+    // code only while the two hold the same bytes, and runs as fast only
+    // on the same alignment.
     #[test]
     fn generator_table_is_vgs() {
         let rind = &crate::mid::p256::precomp::CURVE_GENERATOR_PRECOMP;
-        let words = rind.iter().flatten().flat_map(|word| word.to_le_bytes());
-        assert!(words.eq(vg::vg_p256_comb::VG_P256_COMB.0));
+        let words = rind.0.iter().flatten().flat_map(|word| word.to_le_bytes());
+        let vg = &vg::vg_p256_comb::VG_P256_COMB;
+        assert!(words.eq(vg.0));
+        assert_eq!(align_of_val(rind), align_of_val(vg));
+        assert_eq!(size_of_val(rind), size_of_val(vg));
     }
 
     // The CPU's widest variant hides the narrower from every other test, so
