@@ -106,7 +106,7 @@ rind is `no_std` with `alloc`. It uses `std` only where build.rs's `rind_std`
 says the target has an OS, and only for what needs one: aarch64's run-time CPU
 detection, the `RIND_CPU_DISABLE_*` switches (read by debug builds and by
 release ones with `--cfg rind_cpu_disable`), the debug builds' `Entry` check,
-the `Dit` guard's per-thread count on Apple's platforms, and the FIPS module.
+the `Dit` guard's per-thread count on aarch64, and the FIPS module.
 
 `low` code should not refer to `mid`, nor `mid` to `high`.
 

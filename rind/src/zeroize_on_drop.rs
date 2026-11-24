@@ -26,6 +26,7 @@ wipes!(
     crate::agreement::Scalar,
     crate::agreement::SharedSecret,
     crate::argon2::Secret,
+    crate::blind_rsa::Blinding,
     crate::blind_rsa::KeyPair,
     crate::cipher::Aes,
     crate::cipher::AesCbcDecryptingKey,

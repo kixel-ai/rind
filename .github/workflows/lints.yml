@@ -9,17 +9,6 @@ on:
   schedule:
     - cron: "0 18 * * *"
   workflow_dispatch:
-  pull_request:
-    branches: [main]
-    paths:
-      - rind*/**
-      - fuzz/**
-      - Cargo.toml
-      - Cargo.lock
-      - flake.nix
-      - flake.lock
-      - sh/powerset.sh
-      - .github/workflows/lints.yml
 
 permissions:
   contents: read
