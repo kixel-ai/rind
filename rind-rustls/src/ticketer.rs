@@ -138,6 +138,8 @@ const TAG_LEN: usize = 16;
 
 #[cfg(test)]
 mod tests {
+    use std::format;
+
     #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
     use wasm_bindgen_test::wasm_bindgen_test as test;
 
