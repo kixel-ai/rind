@@ -15,7 +15,6 @@ use libfuzzer_sys::fuzz_target;
 // Unused where the target does nothing.
 #[allow(dead_code)]
 mod edit;
-#[allow(dead_code)]
 mod fixtures;
 
 #[cfg(all(

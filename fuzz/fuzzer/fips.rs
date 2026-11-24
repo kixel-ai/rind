@@ -3,13 +3,13 @@
 //! rind-fips's services, each on arbitrary lengths and malformed keys,
 //! against the same call on rind, from whose source the module is built.
 //! The module is a shared library behind a C ABI, so every call crosses it:
-//! rind-fips's `__fuzz` feature builds it with this target's coverage and
-//! sanitizer flags, so libFuzzer sees inside it and AddressSanitizer checks
-//! its heap. A call the module accepts must be one rind accepts, giving the
-//! same bytes, and verdicts on signatures, tags, and ciphertexts under keys
-//! both load match rind's outright. FIPS 140-3 refuses some inputs rind
-//! takes, such as a PBKDF2 salt under 16 bytes, so elsewhere the module may
-//! refuse more.
+//! under cargo fuzz's `--cfg fuzzing`, rind-fips builds it with this
+//! target's coverage and sanitizer flags, so libFuzzer sees inside it and
+//! AddressSanitizer checks its heap. A call the module accepts must be one
+//! rind accepts, giving the same bytes, and verdicts on signatures, tags,
+//! and ciphertexts under keys both load match rind's outright. FIPS 140-3
+//! refuses some inputs rind takes, such as a PBKDF2 salt under 16 bytes, so
+//! elsewhere the module may refuse more.
 //!
 //! The module builds only for glibc Linux on x86_64 and aarch64; elsewhere
 //! this target does nothing.
@@ -19,7 +19,6 @@ use libfuzzer_sys::fuzz_target;
 // Unused where the target does nothing.
 #[allow(dead_code)]
 mod edit;
-#[allow(dead_code)]
 mod fixtures;
 
 #[cfg(all(
