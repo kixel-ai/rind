@@ -29,11 +29,12 @@ jobs:
 
     runs-on: ${{ matrix.os }}
     env:
-      # Some of the crate dependencies compile C code. Using
-      # "-Zexternal-clangrt" keeps the Rust and C object files from ending up
-      # with dependencies on conflicting versions of the ASAN runtime.
+      # Rust's own ASan runtime, not the system's: Ubuntu 24.04's, from GCC
+      # 13, takes no lock across fork, so rind-fips's fork tests' children
+      # deadlock in its allocator. No C dependency is instrumented, since
+      # aws-lc-sys only is when asked, so no second runtime is linked.
       # `rind_cpu_disable` lets the release build honour the denied tiers.
-      RUSTFLAGS: "-Zsanitizer=address -Zexternal-clangrt -lasan --cfg rind_cpu_disable"
+      RUSTFLAGS: "-Zsanitizer=address --cfg rind_cpu_disable"
       # Leaks are not checked: tests leak on purpose, and a forked child
       # holds its parent's other threads' memory.
       ASAN_OPTIONS: detect_leaks=0
