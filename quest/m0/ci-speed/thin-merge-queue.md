@@ -18,6 +18,10 @@ Measured across the 15 merge-queue runs ending 2026-11-22: median 15.0 min wall 
 - Note that `queue-build.yml` runs main's copy, so edits to `queue-build.yml` take effect on the merge group after this PR lands, and `queue-build.yml` must use no local actions (`sh/dispatch.sh`'s `check:gh` enforces this).
 - Update [CONTRIBUTING.md](/CONTRIBUTING.md) where it documents what the merge queue runs.
 
+## Required
+
+- [Scope check:site to site inputs and drop its duplicate PR run](/quest/m0/ci-speed/site-scope.md) - gives release-plz's release PRs a site check in `pr-check.yml`, which skips them today, so dropping `site` from the queue leaves them checked before merge
+
 ## Related
 
 - [The merge queue builds through mbx, warm across groups](/quest/m0/queue-warm-target.md) - eliminates the cold-build penalty on `rind-queue`
