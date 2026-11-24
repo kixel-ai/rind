@@ -58,6 +58,11 @@ A primitive is checked five ways:
   operation frees: it runs each under two keys with the same public inputs
   and fails on a freed block whose bytes differ between them, since those
   vary with the key, and fails on any nonzero block key generation frees.
+  A randomized protocol step that frees public values its randomness
+  reached, such as a VOPRF proof's terms, fails instead on a freed block
+  holding one of the step's secrets, such as its key or output, in either
+  byte order. Refused inputs, such as a forged ciphertext or a corrupt key,
+  run through the same checks.
   It runs wherever the zeroing tests do, RSA key generation only in the
   nightly native and portable runs, and on wasm only for RSA-2048.
 
