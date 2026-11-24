@@ -387,7 +387,7 @@ mod module {
                         rind::hkdf::Salt::new(theirs_algorithm, salt).extract(secret),
                     )
                 };
-                let (Ok(ours), Ok(theirs)) = (ours, theirs) else {
+                let (Some(ours), Some(theirs)) = agree_keys(ours, theirs) else {
                     return;
                 };
                 let info: Vec<&[u8]> = info.iter().map(Vec::as_slice).collect();
