@@ -97,8 +97,10 @@ def _buffer(raw, kind):
         # Of 4-byte items.
         return memoryview(raw[: len(raw) // 4 * 4]).cast("I")
     if kind == 5:
-        # Two-dimensional.
+        # Two-dimensional, which an empty view cannot be cast to.
         even = raw[: len(raw) // 2 * 2]
+        if not even:
+            return memoryview(even)
         return memoryview(even).cast("B", shape=[2, len(even) // 2])
     if kind == 6:
         return array.array("H", raw[: len(raw) // 2 * 2])
