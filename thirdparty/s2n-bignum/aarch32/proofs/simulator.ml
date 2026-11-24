@@ -206,16 +206,14 @@ let scratch_address = lazy (executor_address "scratch");;
 
 (* The input state with register `r`, any but SP and PC, or scratch word `i`,
    set to `v`. *)
-let with_register r v input =
-  let index = if r = 14 then 13 else r in
+let with_index index v input =
   List.mapi (fun j x -> if j = index then v else x) input;;
 
-let with_word i v input =
-  List.mapi (fun j x -> if j = 20 + i then v else x) input;;
+let with_register r = with_index (if r = 14 then 13 else r);;
 
-let with_carry c input =
-  List.mapi (fun j x -> if j = 16 then (if c then num_1 else num_0) else x)
-    input;;
+let with_word i = with_index (20 + i);;
+
+let with_carry c = with_index 16 (if c then num_1 else num_0);;
 
 (* [cond:4; 000; opc:4; S; Rn:4; Rd:4; Rs:4; 0; type:2; 1; Rm:4] *)
 let encode_dp_rsr cond opc s rn rd rs ty rm =
@@ -654,8 +652,12 @@ let cosimulate_case test_case =
         template in
       let execth = AARCH32_MK_EXEC_RULE (REFL ibyteterm) in
       let decoded =
-        (rand o rand o snd o strip_forall o concl o option_get)
-          (snd execth).(0) in
+        match (snd execth).(0) with
+        | Some th -> rand (rand (snd (strip_forall (concl th))))
+        | None ->
+            failwith (Printf.sprintf
+              "AArch32 simulator: case %08x does not decode"
+              test_case.case_instruction) in
       let proof_tactic =
         PURE_REWRITE_TAC [fst execth] THEN
         tac_before test_case.case_memop

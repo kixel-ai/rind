@@ -100,10 +100,11 @@ let AARCH32_ALIGNED_NUMERAL_CONV =
         when is_numeral n && is_numeral m -> conv tm
     | _ -> failwith "AARCH32_ALIGNED_NUMERAL_CONV";;
 
-(* Folds a constant offset from R15's value, `word (pc + a)`, into it, as far
-   as it stays at or after `pc`: what ADR and a literal load compute. The
-   offset is added, perhaps as a negative number's 32-bit encoding, or
-   subtracted. *)
+(* Folds a constant offset from R15's value, `word (pc + a)`, into it: what
+   ADR and a literal load compute. The offset is added, perhaps as a negative
+   number's 32-bit encoding, or subtracted. An address at or after `pc` comes
+   out as `word (pc + n)` and one before it as `word_sub (word pc) (word n)`,
+   whichever way the instruction spells the offset. *)
 
 let AARCH32_PC_RELATIVE_CONV =
   let pth_add = (UNDISCH o prove)
@@ -119,10 +120,31 @@ let AARCH32_PC_RELATIVE_CONV =
       ALL_TAC] THEN
     REWRITE_TAC[GSYM WORD_ADD; GSYM ADD_ASSOC] THEN ASM_REWRITE_TAC[] THEN
     ASM_REWRITE_TAC[WORD_ADD] THEN CONV_TAC WORD_RULE)
+  and pth_add_back = (UNDISCH o prove)
+   (`a + b + c = 4294967296
+     ==> word_add (word (pc + a)) (word b):int32 =
+         word_sub (word pc) (word c)`,
+    DISCH_TAC THEN
+    SUBGOAL_THEN
+     `word_add (word a) (word_add (word b) (word c)):int32 = word 0`
+    MP_TAC THENL
+     [ASM_REWRITE_TAC[GSYM WORD_ADD] THEN
+      REWRITE_TAC[WORD_EQ; DIMINDEX_32; CONG] THEN CONV_TAC NUM_REDUCE_CONV;
+      ALL_TAC] THEN
+    REWRITE_TAC[WORD_ADD; WORD_RULE
+     `word_add (word_add p x) y:int32 = word_sub p z <=>
+      word_add x (word_add y z) = word 0`])
   and pth_sub = (UNDISCH o prove)
    (`b + c = a ==> word_sub (word (pc + a)) (word b):int32 = word (pc + c)`,
     DISCH_THEN(SUBST1_TAC o SYM) THEN REWRITE_TAC[WORD_ADD] THEN
     CONV_TAC WORD_RULE)
+  and pth_sub_back = (UNDISCH o prove)
+   (`a + c = b
+     ==> word_sub (word (pc + a)) (word b):int32 =
+         word_sub (word pc) (word c)`,
+    DISCH_THEN(SUBST1_TAC o SYM) THEN REWRITE_TAC[WORD_ADD] THEN
+    CONV_TAC WORD_RULE)
+  and two31 = pow2 31
   and two32 = pow2 32
   and ea,eb,ec,epc = `a:num`,`b:num`,`c:num`,`pc:num` in
   let finish pth pc a b c =
@@ -135,12 +157,17 @@ let AARCH32_PC_RELATIVE_CONV =
            Comb(Const("word",_),b))
         when is_numeral a && is_numeral b && type_of tm = `:int32` ->
           let na = dest_numeral a and nb = dest_numeral b in
-          if op = "word_add" && na +/ nb </ two32 then
+          if op = "word_add" && nb </ two31 && na +/ nb </ two32 then
             finish pth_add pc a b (na +/ nb)
-          else if op = "word_add" && nb </ two32 then
-            finish pth_wrap pc a b (na +/ nb -/ two32)
+          else if op = "word_add" && two31 <=/ nb && nb </ two32 then
+            (* The offset is the negative number `nb - 2^32`. *)
+            if two32 <=/ na +/ nb then
+              finish pth_wrap pc a b (na +/ nb -/ two32)
+            else finish pth_add_back pc a b (two32 -/ na -/ nb)
           else if op = "word_sub" && nb <=/ na then
             finish pth_sub pc a b (na -/ nb)
+          else if op = "word_sub" then
+            finish pth_sub_back pc a b (nb -/ na)
           else failwith "AARCH32_PC_RELATIVE_CONV"
     | _ -> failwith "AARCH32_PC_RELATIVE_CONV";;
 
@@ -175,7 +202,11 @@ let AARCH32_CONV (decode_ths:thm option array) (ths:thm list) tm =
       failwith "AARCH32_CONV: cannot find `read PC .. = ..`" in
   let aligned_bytes_loaded_mc_ths =
     let the_mc =
-      option_bind decode_ths.(0)
+      option_bind
+        (* The first word that decodes: a routine may open with data. *)
+        (try find (function Some _ -> true | None -> false)
+               (Array.to_list decode_ths)
+         with Failure _ -> None)
         (fun th ->
           let t = concl th in
           let loaded = fst (dest_imp (snd (strip_forall t))) in
@@ -239,11 +270,13 @@ let AARCH32_CONV (decode_ths:thm option array) (ths:thm list) tm =
    ONCE_REWRITE_CONV[WORD_SUB_ADD] THENC
    ONCE_DEPTH_CONV
     (REWR_CONV (GSYM ADD_ASSOC) THENC RAND_CONV NUM_REDUCE_CONV) THENC
+   (* Before the next fold, which would leave an address before `pc` as
+      `word (pc + n)` for an `n` just under 2^32. *)
+   TOP_DEPTH_CONV AARCH32_PC_RELATIVE_CONV THENC
    ONCE_DEPTH_CONV
     (GEN_REWRITE_CONV I [GSYM WORD_ADD] THENC
      GEN_REWRITE_CONV (RAND_CONV o TOP_DEPTH_CONV) [GSYM ADD_ASSOC] THENC
      RAND_CONV NUM_REDUCE_CONV) THENC
-   TOP_DEPTH_CONV AARCH32_PC_RELATIVE_CONV THENC
    TOP_DEPTH_CONV COMPONENT_WRITE_OVER_WRITE_CONV THENC
    GEN_REWRITE_CONV (SUB_COMPONENTS_CONV o TOP_DEPTH_CONV) ths THENC
    (* An address with a register offset the assumptions give a value. *)
@@ -551,9 +584,9 @@ let AARCH32_ADD_RETURN_STACK_TAC =
     ASM_REWRITE_TAC[];;
 
 (* ------------------------------------------------------------------------- *)
-(* The wrappers, a literal load, and a load at a known base's offset, proven *)
-(* of four small routines as this file loads, as                             *)
-(* riscv/tutorial/subroutine.ml proves s2n-bignum's.                         *)
+(* The wrappers, literal loads after and before the code, and a load at a    *)
+(* known base's offset, proven of five small routines as this file loads,    *)
+(* as riscv/tutorial/subroutine.ml proves s2n-bignum's.                      *)
 (* ------------------------------------------------------------------------- *)
 
 let AARCH32_SUBROUTINE_TESTS =
@@ -664,4 +697,20 @@ let AARCH32_SUBROUTINE_TESTS =
     REWRITE_TAC[fst offset_exec] THEN
     REPEAT STRIP_TAC THEN
     AARCH32_SIM_TAC offset_exec [1]) in
-  [nostack; stack; literal; offset];;
+  (* ldr r0, [pc, #-12]; sub r1, pc, #16: a word and an address before the
+     code, each 4 bytes before it. *)
+  let before_mc = define "aarch32_test_before_mc" [0xe51f000c; 0xe24f1010] in
+  let before_exec = AARCH32_MK_EXEC_RULE before_mc in
+  let before = prove
+   (`!pc v.
+      ensures aarch32
+        (\s. aligned_bytes_loaded s (word pc) aarch32_test_before_mc /\
+             read PC s = word pc /\
+             read (memory :> bytes32 (word_sub (word pc) (word 4))) s = v)
+        (\s. read PC s = word (pc + 8) /\
+             read R0 s = v /\ read R1 s = word_sub (word pc) (word 4))
+        (MAYCHANGE [PC] ,, MAYCHANGE [R0; R1] ,, MAYCHANGE [events])`,
+    REWRITE_TAC[fst before_exec] THEN
+    REPEAT STRIP_TAC THEN
+    AARCH32_SIM_TAC before_exec [1;2]) in
+  [nostack; stack; literal; offset; before];;

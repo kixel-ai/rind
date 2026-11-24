@@ -276,6 +276,16 @@ let aarch32_reglist = new_definition
    manual deprecates, the user-register forms (bit 22), and STM of R15. LDM
    of R15 is a branch. *)
 
+let aarch32_ldstm_lowest = new_definition
+ `aarch32_ldstm_lowest P U (l:16 word) : int32 =
+    if U then if P then word 4 else word 0
+    else word_sub (if P then word 0 else word 4) (word(4 * word_popcount l))`;;
+
+let aarch32_ldstm_writeback = new_definition
+ `aarch32_ldstm_writeback U (l:16 word) : int32 =
+    if U then word(4 * word_popcount l)
+    else word_neg(word(4 * word_popcount l))`;;
+
 let aarch32_ldstm = new_definition
  `aarch32_ldstm (cond:4 word) P U W L (n:4 word) (l:16 word) =
     if l = word 0 \/ n = word 15 \/ (W /\ bit (val n) l) \/ bit 13 l \/
@@ -285,33 +295,18 @@ let aarch32_ldstm = new_definition
      (if L then
         if bit 15 l then
           aarch32_LDM_PC (aarch32_reglist l) (aarch32_reg n)
-           (if U then if P then word 4 else word 0
-            else word_sub (if P then word 0 else word 4)
-                          (word(4 * word_popcount l)))
+           (aarch32_ldstm_lowest P U l)
            (if U then word(4 * word_popcount l - (if P then 0 else 4))
             else if P then word_neg(word 4) else word 0)
-           (4 * word_popcount l)
-           (if U then word(4 * word_popcount l)
-            else word_neg(word(4 * word_popcount l)))
-           W
+           (4 * word_popcount l) (aarch32_ldstm_writeback U l) W
         else
           aarch32_LDM (aarch32_reglist l) (aarch32_reg n)
-           (if U then if P then word 4 else word 0
-            else word_sub (if P then word 0 else word 4)
-                          (word(4 * word_popcount l)))
-           (4 * word_popcount l)
-           (if U then word(4 * word_popcount l)
-            else word_neg(word(4 * word_popcount l)))
-           W
+           (aarch32_ldstm_lowest P U l)
+           (4 * word_popcount l) (aarch32_ldstm_writeback U l) W
       else
         aarch32_STM (aarch32_reglist l) (aarch32_reg n)
-         (if U then if P then word 4 else word 0
-          else word_sub (if P then word 0 else word 4)
-                        (word(4 * word_popcount l)))
-         (4 * word_popcount l)
-         (if U then word(4 * word_popcount l)
-          else word_neg(word(4 * word_popcount l)))
-         W)`;;
+         (aarch32_ldstm_lowest P U l)
+         (4 * word_popcount l) (aarch32_ldstm_writeback U l) W)`;;
 
 (* B's and BL's offset from its own address: the sign-extended imm24:00 plus
    A32's PC bias of 8. *)
@@ -435,6 +430,7 @@ let DECODE_OPTION_CONV =
               aarch32_expand_imm_carry; aarch32_dp; aarch32_dp_rsr;
               aarch32_dp_imm; aarch32_ldst; aarch32_ldst_imm; aarch32_ldst_reg; aarch32_ldstd;
               aarch32_mul; aarch32_mull; aarch32_reglist; aarch32_ldstm;
+              aarch32_ldstm_lowest; aarch32_ldstm_writeback;
               aarch32_branch_offset; APPEND] rw;
     (let Some (conceal_th, opaque_const, opaque_arity, _, opaque_conv) =
         conceal_bitmatch (concl decode) in

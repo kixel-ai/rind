@@ -61,7 +61,7 @@ Each bullet names one file.
 - `aarch32/proofs/decode.ml`: rind's. Their A32 encodings.
 - `aarch32/proofs/aarch32.ml`: rind's. The step relation, symbolic-execution
   tactics, AAPCS argument and clobber lists, and the tactics that promote a
-  core theorem to one of a subroutine, with the four small routines that
+  core theorem to one of a subroutine, with the five small routines that
   check them and the step conversion as the file loads.
 - `aarch32/proofs/consttime.ml`: rind's. s2n-bignum's safety tactics
   specialized to the model.
@@ -182,8 +182,9 @@ leave them.
 `AARCH32_MK_EXEC_RULE` gives a word that does not decode no theorem rather
 than failing, since A32 routines keep literal pools and tables among their
 instructions, and the step conversion folds a constant offset from R15 into
-`word (pc + n)`, where a proof states what the pool holds, as long as the
-address is not before `pc`, the code's first byte.
+`word (pc + n)`, where a proof states what the pool holds, or into
+`word_sub (word pc) (word n)` for an address before `pc`, the code's first
+byte.
 `AARCH32_ADD_RETURN_NOSTACK_TAC` and `AARCH32_ADD_RETURN_STACK_TAC` are
 `RISCV_ADD_RETURN_NOSTACK_TAC` and `RISCV_ADD_RETURN_STACK_TAC` for the AAPCS:
 a return by `bx lr`, or a prologue and epilogue around the core, by default
