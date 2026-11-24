@@ -11,7 +11,9 @@ use crate::mid;
 use crate::mid::rng::{RandomSource, SystemRandom};
 
 pub(crate) mod hash_to_curve;
-mod precomp;
+// Visible to `low`: on x86_64, pyca/verified-garbage's `d·G` reads this table
+// too (admin/import-vg, `SHARED`).
+pub(crate) mod precomp;
 
 /// A P-256 public key.
 #[derive(Clone, Debug)]

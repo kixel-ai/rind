@@ -113,7 +113,10 @@ detection, the `RIND_CPU_DISABLE_*` switches (read by debug builds and by
 release ones with `--cfg rind_cpu_disable`), the debug builds' `Entry` check,
 the `Dit` guard's per-thread count on Apple's platforms, and the FIPS module.
 
-`low` code should not refer to `mid`, nor `mid` to `high`.
+`low` code should not refer to `mid`, nor `mid` to `high`. The one exception,
+which `admin/structure` allows by name: on x86_64, pyca/verified-garbage's
+P-256 `d·G` reads `mid`'s generator table, which Lean proves where it is,
+in place of a second copy of the same 148 KB.
 
 `low` must present the same interface irrespective of platform.  To this end,
 `low::generic` contains pure-rust polyfills for items we don't have assembler-

@@ -17,4 +17,3 @@ Planned with the maintainer on 2026-11-21 (`/quest-plan`): ✅ turn coverage int
 ## Related
 
 - [Every published function runs under a test](/quest/m2/confidence/uncovered-functions.md)
-- [Shrink rustls+rind-rustls binary size with additive Cargo algorithm features and asm deduplication](/quest/m2/speed/binary-size-and-features.md)
