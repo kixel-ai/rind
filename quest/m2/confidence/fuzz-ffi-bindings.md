@@ -17,4 +17,3 @@ Planned with the maintainer on 2026-11-21 (`/quest-plan`): ✅ fuzz the FFI C AB
 
 - [pyrind takes rind 0.4's shape](/quest/m2/api/pyrind-shape.md)
 - [rind for Dart takes rind 0.4's shape](/quest/m2/api/rind-dart-shape.md)
-- [Fix rind-python leaking mutable Python buffer copies without wiping](/quest/m0/python-buffer-wiping.md)
