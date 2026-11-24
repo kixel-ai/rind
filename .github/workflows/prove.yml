@@ -21,10 +21,10 @@ name: prove
 # checking and saving the ones main lacks. A push to main saves to main's
 # cache, so a failure shows on the commit that caused it; a pull request
 # saves to its own, which no run of main reads, and the merge queue requires
-# every HOL Light and Lean key of the group passed on main or on the group's
-# pull request (sh/proved.sh), so those proofs gate the merge. The rest gate
-# nothing, so pull requests skip them; the queue's build runs x86_64's `vg`
-# (`CHECK_QUEUE` in sh/dispatch.sh).
+# every HOL Light and Lean key of the group passed on main, on the group's
+# pull request, or on one main landed since its last run (sh/proved.sh), so
+# those proofs gate the merge. The rest gate nothing, so pull requests skip
+# them; the queue's build runs x86_64's `vg` (`CHECK_QUEUE` in sh/dispatch.sh).
 on:
   schedule:
     - cron: "0 18 * * *"

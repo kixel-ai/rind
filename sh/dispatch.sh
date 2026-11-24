@@ -143,11 +143,11 @@ if [[ "$action" == ci && -n "${CHECK_QUEUE:-}" ]]; then
     paths=$(push_paths prove.yml)
     module vg "$paths" tools='nix yq' queue
     # That every HOL Light target and the Lean proofs passed on this tree, on
-    # main or on the group's pull request, whose number queue-build.yml sets
-    # (sh/proved.sh). A build that names none, such as a local one, has no
-    # pull request to read results from.
+    # main, on the group's pull request, whose number queue-build.yml sets, or
+    # on one main landed since its last prove run (sh/proved.sh). A build that
+    # names none, such as a local one, has no pull request to read results from.
     if [[ -n ${PROVE_GATE_PR:-} ]]; then
-        module proved "$paths" tools='nix curl jq' queue
+        module proved "$paths" tools='nix curl jq git' queue
     fi
     # Every importer and generator at its pinned upstream revision.
     module regenerate '^(admin/|thirdparty/s2n-bignum/|flake\.(nix|lock)$|\.github/workflows/regenerate\.yml$)' \
