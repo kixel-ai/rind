@@ -5,6 +5,7 @@ Usage: admin/bench-report-test
 """
 
 import contextlib
+import copy
 import fcntl
 import importlib.machinery
 import importlib.util
@@ -75,7 +76,7 @@ def hosts():
             "kixtop",
             "arm64",
             "macOS 15.1 (24.1.0)",
-            {"aes": 1, "pmull": 1, "sha2": 1, "sha3": 1},
+            {"aes": 1, "dit": 1, "pmull": 1, "sha2": 1, "sha3": 1},
             [("x25519-ecdh/{lib}", "rind", 20000.0), ("x25519-ecdh/{lib}", "ring", 40000.0)],
         ),
     }
@@ -235,6 +236,10 @@ class Render(unittest.TestCase):
             h["kixtop"]["results"].append({"operation": op, "library": "rind", "ns": ns})
         md = br.report(h, None, VERIFIED, [])[br.REPORT]
         self.assertIn("takes rind 60 ns more a call than holding it, in the row timed both ways", md)
+        # Where the OS hides DIT, rind sets none, and the difference is noise.
+        hidden = copy.deepcopy(h)
+        hidden["kixtop"]["rind_cpu"]["cpuid"]["dit"] = 0
+        self.assertNotIn("more a call than holding it", br.report(hidden, None, VERIFIED, [])[br.REPORT])
         # Only aarch64 has DIT, so an x86_64 host never lists the rows as untimed.
         nixos = md.split("### `nixos`")[1].split("### `desktop`")[0]
         self.assertNotIn("DIT set per call", nixos)

@@ -18,4 +18,3 @@ Planned with the maintainer on 2026-11-21 (`/quest-plan`): ✅ close the LTO, MC
 ## Related
 
 - [The portable backend's secret branches are checked on i686, s390x, and riscv64](/quest/m2/confidence/ct-portable-targets.md)
-- [Constant-time checks run in debug builds too](/quest/m2/confidence/ct-portable-debug.md)

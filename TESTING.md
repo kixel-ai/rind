@@ -58,6 +58,11 @@ A primitive is checked five ways:
   operation frees: it runs each under two keys with the same public inputs
   and fails on a freed block whose bytes differ between them, since those
   vary with the key, and fails on any nonzero block key generation frees.
+  A randomized protocol step that frees public values its randomness
+  reached, such as a VOPRF proof's terms, fails instead on a freed block
+  holding one of the step's secrets, such as its key or output, in either
+  byte order. Refused inputs, such as a forged ciphertext or a corrupt key,
+  run through the same checks.
   It runs wherever the zeroing tests do, RSA key generation only in the
   nightly native and portable runs, and on wasm only for RSA-2048.
 
@@ -105,7 +110,7 @@ an Intel SDE CPU model, as `admin/x86-cpu` names them.
 | armv7 | crypto extension (most 32-bit Android) | `just armv7`: natively on an aarch64 host whose AArch32 has the extension, such as `build.yml`'s arm64 runner, else qemu `max` | the arm64 runner, which runs armv7 natively | `admin/ct-qemu`: AES, AES-CBC, AES-KW, AES-GCM, HMAC |
 | armv7 | NEON without the crypto extension | `just armv7`: qemu Cortex-A15 | denied | ctgrind on the arm64 runner, which valgrind hides the crypto extension from |
 | armv7 | no NEON | `just armv7`: denied, natively on an aarch64 host that runs AArch32 code, else on qemu Cortex-A15 | denied | ctgrind: denied (`no-neon`) |
-| portable | forced on x86_64 (`--cfg rind_portable`) | `just portable`: clippy and release vectors and differential tests | `fuzz.yml`'s `fuzz-portable` job: every target, from the x86_64 corpus and a corpus of its own | ctgrind: the `portable` job forces this backend |
+| portable | forced on x86_64 (`--cfg rind_portable`) | `just portable`: clippy and release vectors and differential tests | `fuzz.yml`'s `fuzz-portable` job: every target, from the x86_64 corpus and a corpus of its own | ctgrind: the `portable` job forces this backend, in release and debug builds; the schedule skips the 32-bit limbs' debug row, which a dispatch naming it runs |
 | portable | 32-bit x86 (`i686`) | `just qemu i686`: clippy and release vectors and differential tests, natively on an x86_64 host; `build.yml`'s `i686-windows` and `android` jobs | the forced run's, of the same code built for x86_64 | ctgrind's forced run, of the same code built for x86_64, whose test binary also compiles the 32-bit rolled HChaCha20 and checks it in `low::generic::chacha20::rolled_hchacha_matches_rounds` |
 | portable | big-endian s390x | `just qemu s390x`: clippy and release vectors and differential tests under qemu | as above | ctgrind's forced run, of the same code built for x86_64 |
 | portable | riscv64gc Linux, glibc and musl | `just qemu riscv64` and `just qemu riscv64-musl`: as s390x | as above | as s390x |
@@ -307,10 +312,6 @@ and `powerpc` (the last two big-endian) under qemu, or `i686` (32-bit x86)
 natively.
 `just miri` runs the weekly `miri` job, the portable backend's tests under
 Miri, on x86_64, and `just miri s390x-unknown-linux-gnu` big-endian.
-With `RIND_SCOPE=BASE` set, such as `origin/main`, `admin/ctgrind` skips its
-run when nothing the branch changed since BASE reaches the backend it builds,
-as `sh/backends.sh` decides, and otherwise runs in full; pull requests'
-ctgrind job sets it.
 `nix develop .#ctgrind --command admin/ctgrind` runs the weekly
 constant-time checks under valgrind, `nix develop .#sde --command
 admin/ct-sde` those of the AVX-512, VAES, and SHA extension code
@@ -339,13 +340,17 @@ checks the proofs in [`proofs/`](proofs/README.md).
 ## Scheduled workflows
 
 The heavy suites run weekly on GitHub's hosted runners: `fuzz`, `ctgrind`,
-`bench`, and `mutants` on Saturday, `miri`, `x86-cpu`, and `timing` on Sunday (UTC),
+`bench`, and `mutants` on Saturday, `miri`, `x86-cpu`, `timing`, and the
+ESP32-S3 SHA-256 layout check on Sunday (UTC),
 each hours from the others, as their `cron:` lines set, so no two fill the
 organization's 60 concurrent hosted jobs together, and off the hour, which
 GitHub delays most. `build`, `asan`, `coverage`, `lints`, `prove`,
 `python`, `dart-libraries`, and `regenerate` run daily, and `Check` runs
 `just ci --all` on main's head daily as the backstop for the merge queue's
-diff-scoped selection. Each runs on demand with
+diff-scoped selection. `prove` also runs each push to main that reaches it,
+checking the bytes, and the HOL Light and Lean proofs and the cosimulation
+that main has not passed on the same inputs; a release waits for that run to
+pass. Each runs on demand with
 `gh workflow run <name> --ref <branch>`; a dispatched `bench` measures every
 bench target unless `-f benches='aes_gcm sha2'` names the ones to measure,
 and each CPU-tier row then times only those of them it covers. A dispatched
