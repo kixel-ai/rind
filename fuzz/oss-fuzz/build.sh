@@ -20,7 +20,12 @@ for target in $targets; do
     cargo fuzz build -O "$target"
 done
 sh/fuzz-seed.sh
-find target/x86_64-unknown-linux-gnu/release/build -path '*/rind-fips*/out/lib/librind_fips_module.so' -exec cp {} "$OUT/" \;
+modules=$(find target/x86_64-unknown-linux-gnu/release/build -path '*/rind-fips*/out/lib/librind_fips_module.so')
+if [ "$(printf '%s\n' "$modules" | wc -l)" -ne 1 ] || [ -z "$modules" ]; then
+    echo "error: expected one FIPS module, found: $modules" >&2
+    exit 1
+fi
+cp "$modules" "$OUT/"
 
 for target in $targets; do
     cp "target/x86_64-unknown-linux-gnu/release/$target" "$OUT/"

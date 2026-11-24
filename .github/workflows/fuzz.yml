@@ -101,7 +101,13 @@ jobs:
           for target in $(cargo fuzz list); do
             cp "target/$TARGET/release/$target" bin/
           done
-          find "target/$TARGET/release/build" -path '*/rind-fips*/out/lib/librind_fips_module.so' -exec cp {} bin/ \;
+          # One module, or none where it does not build: two would mean a
+          # stale build whose flags the fips target was not built with.
+          modules=$(find "target/$TARGET/release/build" -path '*/rind-fips*/out/lib/librind_fips_module.so')
+          case $modules in
+            *$'\n'*) echo "::error::more than one FIPS module: $modules"; exit 1 ;;
+            ?*) cp "$modules" bin/ ;;
+          esac
         env:
           TARGET: ${{ matrix.target }}
           SANITIZER: ${{ matrix.sanitizer || 'address' }}

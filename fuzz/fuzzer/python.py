@@ -59,6 +59,17 @@ for cls in CLASSES:
 
 INTS = [0, 1, -1, 7, 12, 16, 24, 32, 64, 255, 256, 2**31, 2**32, 2**64, -(2**64), 2**200]
 
+# Parameters a call's work grows with, by name: the most one call may ask
+# for, and the bound of the Rust type that takes it. An int between the two,
+# such as 2**31 PBKDF2 iterations or a 4 GiB output, would only stop the
+# fuzzer on a timeout or out-of-memory, so it is cut below the cap; one past
+# the type's range still checks its conversion.
+COSTS = {"iterations": (1 << 10, 1 << 32), "length": (1 << 9, 1 << 64)}
+
+# How deep a list argument may nest, so generating one never reaches
+# Python's recursion limit.
+DEPTH = 3
+
 
 class Input:
     def __init__(self, data):
@@ -114,7 +125,7 @@ class State:
         self.objects = []
         self.byte_pool = list(fixtures)
 
-    def value(self):
+    def value(self, depth=0):
         kind = self.input.byte()
         if kind < 96:
             return _buffer(self.input.bytes(), kind % 8)
@@ -127,8 +138,8 @@ class State:
             return self.input.pick(self.objects)
         if kind < 216:
             return self.input.pick(INTS) if kind % 2 else self.input.byte()
-        if kind < 224:
-            return [self.value() for _ in range(self.input.byte() % 4)]
+        if kind < 224 and depth < DEPTH:
+            return [self.value(depth + 1) for _ in range(self.input.byte() % 4)]
         if kind < 232:
             return self.input.bytes().decode("latin-1")
         return self.input.pick([None, True, False, 1.5, object()])
@@ -166,10 +177,14 @@ class State:
             # Now and then a parameter goes missing.
             if self.input.byte() == 0:
                 continue
+            value = self.value()
+            cap, limit = COSTS.get(p.name, (0, 0))
+            if type(value) is int and cap <= value < limit:
+                value %= cap
             if p.kind == p.KEYWORD_ONLY:
-                kwargs[p.name] = self.value()
+                kwargs[p.name] = value
             else:
-                args.append(self.value())
+                args.append(value)
         return args, kwargs
 
     def keep(self, result):

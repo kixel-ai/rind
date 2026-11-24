@@ -101,7 +101,7 @@ mod module {
         Pbkdf2 {
             algorithm: u8,
             secret: Vec<u8>,
-            rounds: u8,
+            rounds: u16,
             salt: Vec<u8>,
             len: u16,
             previous: Vec<u8>,
@@ -405,7 +405,9 @@ mod module {
                 previous,
             } => {
                 let i = *algorithm;
-                let Some(rounds) = NonZeroU32::new(u32::from(*rounds)) else {
+                // Either side of the module's floor of 1000, and no more
+                // than a fuzz iteration can afford.
+                let Some(rounds) = NonZeroU32::new(u32::from(*rounds % 1100)) else {
                     return;
                 };
                 let ours = fips::pbkdf2::Secret::new(
@@ -433,11 +435,11 @@ mod module {
                     secret,
                 );
                 // Each output block costs every round again.
-                let len = usize::from(*len % 1024);
+                let len = usize::from(*len % 256);
                 let (mut a, mut b) = (vec![0; len], vec![0; len]);
                 let derived = ours.derive(rounds, salt, &mut a).map(|()| a);
                 agree(derived, theirs.derive(rounds, salt, &mut b).map(|()| b));
-                let previous = &previous[..previous.len().min(1024)];
+                let previous = &previous[..previous.len().min(256)];
                 if ours.verify(rounds, salt, previous).is_ok() {
                     theirs.verify(rounds, salt, previous).unwrap();
                 }
