@@ -69,8 +69,8 @@ on = ["nixos", "ovh-iad", "ovh-sea"]
 reason = "Decided in [kixel-ai/rind#812](https://github.com/kixel-ai/rind/pull/812): on x86_64 without AVX-512, ML-KEM-768 key generation stays on rind's arithmetic though pyca/verified-garbage's is faster, since a key pair decapsulates on the arithmetic that generated it and VG's decapsulation was 1.17 to 1.25× slower there when it decided (1.09 to 1.22× in these runs), and decapsulation is the hot path."
 
 [[gap]]
-operations = ["oprf-ristretto255-blind", "oprf-ristretto255-evaluate"]
-on = ["nixos", "ovh-iad", "ovh-sea"]
+operations = ["oprf-ristretto255-blind", "oprf-ristretto255-evaluate", "oprf-ristretto255-blind/*", "oprf-ristretto255-evaluate/*"]
+on = ["nixos", "ovh-iad", "ovh-sea", "x86_64"]
 quest = "/quest/m2/speed/ristretto255-avx2.md"
 
 [[gap]]
