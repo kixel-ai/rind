@@ -31,8 +31,7 @@ impl RsaPublicKey {
             return Err(KeyFormatError::RsaExponent.into());
         }
 
-        // determine M^2 mod n
-        let montifier = n.pub_montifier();
+        let montifier = Self::montifier_of(&n)?;
 
         // and its inverse such that n * n0 == -1 (mod 2^64)
         let n0 = n.mont_neg_inverse();
@@ -43,6 +42,33 @@ impl RsaPublicKey {
             montifier,
             n0,
         })
+    }
+
+    /// `R^2 mod n`, `R = 2^(64w)` for `n`'s `w` words: by
+    /// pyca/verified-garbage's routine where it is faster, and otherwise by
+    /// `PosInt::pub_montifier`, for an odd `n` of 1024 to 8192 bits.
+    fn montifier_of(n: &RsaPosInt) -> Result<RsaPosInt, Error> {
+        let Some(vg) = low::rsa_vg::Precompute::check(n.as_words()) else {
+            return Ok(n.pub_montifier());
+        };
+        let k = n.len_bytes();
+        let w = n.as_words().len();
+        let mut bytes = [0u8; MAX_PUBLIC_MODULUS_BYTES];
+        n.to_bytes_fixed(&mut bytes[..k]);
+        // pyca/verified-garbage's precomputed values of `n`: `n` and then
+        // `R^2 mod n`.
+        let mut pre = [0u64; 2 * MAX_PUBLIC_MODULUS_WORDS];
+        // The routine refuses only moduli `new` already has.
+        if !vg.precompute(&mut pre[..2 * w], &bytes[..k]) {
+            return Err(KeyFormatError::RsaModulus.into());
+        }
+        RsaPosInt::from_words(&pre[w..2 * w])
+    }
+
+    /// `R^2 mod n`, which the CRT of a private key of this modulus takes.
+    #[cfg(rind_backend = "x86_64")]
+    pub(crate) fn montifier_words(&self) -> &[u64] {
+        self.montifier.as_words_with_len_of(&self.n)
     }
 
     pub(crate) fn modulus_len_bytes(&self) -> usize {
@@ -63,17 +89,28 @@ impl RsaPublicKey {
         }
         c.expand(&self.n);
 
+        #[cfg(rind_backend = "x86_64")]
+        if let Some(ifma) = low::RsaIfma::check(&self.n, self.e) {
+            return self.public_op_ifma(ifma, &c);
+        }
+
         // bring c into montgomery domain, c_mont = c * M^2 * M^-1 mod n
         let c_mont = c.to_montgomery(&self.montifier, &self.n);
 
         // e's top bit is set, so the accumulator starts at c. Each product
-        // goes to the other of these, then they swap roles.
+        // goes to the other of these, which becomes the accumulator. A flag
+        // names it rather than swapped references, which Aeneas cannot
+        // translate, so `proofs/` can prove RSA verification.
         let (mut a, mut b) = (c_mont.clone(), RsaPosInt::zero());
-        let (mut accum, mut spare) = (&mut a, &mut b);
+        let mut in_a = true;
 
         for bit in (0..self.e.ilog2()).rev() {
-            accum.mont_sqr_into(spare, &self.n, self.n0);
-            core::mem::swap(&mut accum, &mut spare);
+            if in_a {
+                a.mont_sqr_into(&mut b, &self.n, self.n0);
+            } else {
+                b.mont_sqr_into(&mut a, &self.n, self.n0);
+            }
+            in_a = !in_a;
 
             // e is odd, so the last step multiplies, and by c itself rather
             // than c_mont it takes the result out of the montgomery domain
@@ -81,12 +118,64 @@ impl RsaPublicKey {
             let mask = 1 << bit;
             if self.e & mask == mask {
                 let term = if bit == 0 { &c } else { &c_mont };
-                accum.mont_mul_into(term, spare, &self.n, self.n0);
-                core::mem::swap(&mut accum, &mut spare);
+                if in_a {
+                    a.mont_mul_into(term, &mut b, &self.n, self.n0);
+                } else {
+                    b.mont_mul_into(term, &mut a, &self.n, self.n0);
+                }
+                in_a = !in_a;
             }
         }
 
-        Ok(accum.clone())
+        Ok(if in_a { a } else { b })
+    }
+
+    /// [`Self::public_op`] by pyca/verified-garbage's routine, for `c`
+    /// below `n` and at its width.
+    #[cfg(rind_backend = "x86_64")]
+    fn public_op_ifma(&self, ifma: low::RsaIfma, c: &RsaPosInt) -> Result<RsaPosInt, Error> {
+        let k = self.modulus_len_bytes();
+        // pyca/verified-garbage's precomputed values of `n`: `n` and then
+        // `2^(128w) mod n`, `w` words each for `n`'s `w`.
+        let w = self.n.as_words().len();
+        let mut pre = [0u64; 2 * MAX_PUBLIC_MODULUS_WORDS];
+        pre[..w].copy_from_slice(self.n.as_words());
+        pre[w..2 * w].copy_from_slice(self.montifier.as_words_with_len_of(&self.n));
+        let e = self.e.to_be_bytes();
+        let e = &e[self.e.leading_zeros() as usize / 8..];
+        let mut x = [0u8; MAX_PUBLIC_MODULUS_BYTES];
+        c.to_bytes_fixed(&mut x[..k]);
+        let mut m = [0u8; MAX_PUBLIC_MODULUS_BYTES];
+        // `new` checked `n` and `e` as the routine does, and the caller `c`.
+        if !ifma.public(&mut m[..k], &pre[..2 * w], e, &x[..k]) {
+            return Err(Error::WrongLength);
+        }
+        // As wide as `n`, without reading `m`'s value.
+        RsaPosInt::from_secret_bytes(&m[..k])
+    }
+
+    /// `c^e mod n` by pyca/verified-garbage's routine, and by square and
+    /// multiply on [`Self::mul`], for `c` below `n`, where the former runs.
+    #[cfg(all(test, rind_backend = "x86_64"))]
+    pub(crate) fn public_op_both(&self, c: &RsaPosInt) -> Option<[RsaPosInt; 2]> {
+        let ifma = low::RsaIfma::check(&self.n, self.e)?;
+        let mut c = c.clone();
+        c.expand(&self.n);
+        let mut want = c.clone();
+        for bit in (0..self.e.ilog2()).rev() {
+            want = self.mul(&want, &want);
+            if self.e >> bit & 1 == 1 {
+                want = self.mul(&want, &c);
+            }
+        }
+        Some([self.public_op_ifma(ifma, &c).unwrap(), want])
+    }
+
+    /// a * b mod n, for `a` and `b` below `n`. Constant time in both.
+    pub(crate) fn mul(&self, a: &RsaPosInt, b: &RsaPosInt) -> RsaPosInt {
+        // a * b * R^-1, then * R^2 * R^-1.
+        a.mont_mul(b, &self.n, self.n0)
+            .mont_mul(&self.montifier, &self.n, self.n0)
     }
 }
 

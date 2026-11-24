@@ -44,6 +44,8 @@ impl TlsRecordSealingKey {
     }
 
     // Takes `nonce`'s sequence number, refused unless it is above the last.
+    // A seal it refuses zeroes its output, as AWS-LC's does, so a caller that
+    // ignores the error sends no plaintext.
     fn check(&mut self, nonce: &Nonce) -> Result<(), Unspecified> {
         let given = u64::from_be_bytes(nonce.0[NONCE_LEN - 8..].try_into()?);
         let given = match self.protocol {
@@ -68,8 +70,15 @@ impl TlsRecordSealingKey {
         A: AsRef<[u8]>,
         InOut: AsMut<[u8]> + for<'in_out> Extend<&'in_out u8>,
     {
-        self.check(&nonce)?;
-        self.key.seal_in_place_append_tag(nonce, aad, in_out)
+        // Bad buffers leave the nonce unused, as in aws-lc-rs.
+        let (plaintext, tag_out) = super::append_tag_room(in_out)?;
+        if let Err(refused) = self.check(&nonce) {
+            plaintext.fill(0);
+            return Err(refused);
+        }
+        let tag = self.key.seal_in_place_separate_tag(nonce, aad, plaintext)?;
+        tag_out.copy_from_slice(tag.as_ref());
+        Ok(())
     }
 
     /// Seals `in_out` in place and returns the tag.
@@ -82,7 +91,10 @@ impl TlsRecordSealingKey {
     where
         A: AsRef<[u8]>,
     {
-        self.check(&nonce)?;
+        if let Err(refused) = self.check(&nonce) {
+            in_out.fill(0);
+            return Err(refused);
+        }
         self.key.seal_in_place_separate_tag(nonce, aad, in_out)
     }
 
@@ -101,7 +113,11 @@ impl TlsRecordSealingKey {
     {
         // Bad buffers leave the nonce unused, as in aws-lc-rs.
         super::check_scatter(in_plaintext, out_ciphertext, extra_in, extra_out_and_tag)?;
-        self.check(&nonce)?;
+        if let Err(refused) = self.check(&nonce) {
+            out_ciphertext.fill(0);
+            extra_out_and_tag.fill(0);
+            return Err(refused);
+        }
         self.key.seal_out_of_place_scatter(
             nonce,
             aad,
@@ -126,7 +142,7 @@ impl TlsRecordSealingKey {
 impl fmt::Debug for TlsRecordSealingKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("TlsRecordSealingKey")
-            .field("key", &self.key)
+            .field("key", &AsUnbound(&self.key))
             .field("protocol", &self.protocol)
             .finish()
     }
@@ -192,9 +208,19 @@ impl TlsRecordOpeningKey {
 impl fmt::Debug for TlsRecordOpeningKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("TlsRecordOpeningKey")
-            .field("key", &self.key)
+            .field("key", &AsUnbound(&self.key))
             .field("protocol", &self.protocol)
             .finish()
+    }
+}
+
+/// Shows a TLS key as aws-lc-rs's `Debug` does, which names the key it
+/// holds `UnboundKey`.
+struct AsUnbound<'a>(&'a LessSafeKey);
+
+impl fmt::Debug for AsUnbound<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt_debug("UnboundKey", f)
     }
 }
 

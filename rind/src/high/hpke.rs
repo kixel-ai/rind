@@ -156,10 +156,10 @@ pub struct Suite {
     pub aead: &'static Aead,
 }
 
-/// A recipient's private key, wiped on drop under the `wipe` feature.
+/// A recipient's private key, wiped on drop.
 pub struct PrivateKey {
-    kem: low::ZeroableRef<Kem>,
     key: agreement::PrivateKey,
+    public: PublicKey,
 }
 
 impl PrivateKey {
@@ -223,23 +223,21 @@ impl PrivateKey {
     }
 
     /// Returns the public key to send to senders.
-    pub fn public_key(&self) -> PublicKey {
-        PublicKey {
-            kem: self.kem(),
-            key: self.key.public_key().clone(),
-        }
+    pub fn public_key(&self) -> &PublicKey {
+        &self.public
     }
 
     /// Returns the key's KEM.
     pub fn kem(&self) -> &'static Kem {
-        self.kem.get()
+        self.public.kem()
     }
 
     fn new(kem: &'static Kem, key: agreement::PrivateKey) -> Self {
-        Self {
+        let public = PublicKey {
             kem: low::ZeroableRef::new(kem),
-            key,
-        }
+            key: key.public_key().clone(),
+        };
+        Self { key, public }
     }
 
     /// `Decap` (RFC 9180 section 4.1): the shared secret `enc` encapsulates.
@@ -259,8 +257,7 @@ impl PrivateKey {
     }
 }
 
-// A NIST curve's key is a valid agreement key; the KEM reference is a
-// `ZeroableRef`.
+// A NIST curve's key is a valid agreement key, and so is its public key's.
 impl low::Zeroable for PrivateKey {}
 
 impl Drop for PrivateKey {
@@ -281,7 +278,7 @@ impl fmt::Debug for PrivateKey {
 /// A recipient's public key.
 #[derive(Clone)]
 pub struct PublicKey {
-    kem: &'static Kem,
+    kem: low::ZeroableRef<Kem>,
     key: agreement::PublicKey,
 }
 
@@ -294,14 +291,14 @@ impl PublicKey {
             return Err(KeyFormatError::WrongLength.into());
         }
         Ok(Self {
-            kem,
+            kem: low::ZeroableRef::new(kem),
             key: agreement::PublicKey::new(kem.agreement, bytes)?,
         })
     }
 
     /// Returns the key's KEM.
     pub fn kem(&self) -> &'static Kem {
-        self.kem
+        self.kem.get()
     }
 
     /// `Encap` (RFC 9180 section 4.1): a fresh shared secret and its
@@ -312,12 +309,12 @@ impl PublicKey {
     ) -> Result<(EncapsulatedKey, SharedSecret), Error> {
         let dh = ephemeral.agree(self.key.as_ref())?;
         let enc = ephemeral.public_key();
-        let secret = SharedSecret::new(self.kem, dh.as_ref(), enc.as_ref(), self.key.as_ref());
+        let secret = SharedSecret::new(self.kem(), dh.as_ref(), enc.as_ref(), self.key.as_ref());
         Ok((EncapsulatedKey(enc.clone()), secret))
     }
 
     fn encapsulate_random(&self) -> Result<(EncapsulatedKey, SharedSecret), Error> {
-        self.encapsulate(&agreement::PrivateKey::generate(self.kem.agreement)?)
+        self.encapsulate(&agreement::PrivateKey::generate(self.kem().agreement)?)
     }
 }
 
@@ -330,7 +327,7 @@ impl AsRef<[u8]> for PublicKey {
 impl fmt::Debug for PublicKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PublicKey")
-            .field("kem", self.kem)
+            .field("kem", self.kem())
             .field("key", &self.as_ref())
             .finish()
     }
@@ -355,7 +352,7 @@ impl fmt::Debug for EncapsulatedKey {
 }
 
 /// A sender's context, which seals messages in order and exports secrets;
-/// wiped on drop under the `wipe` feature.
+/// wiped on drop.
 pub struct Sender {
     sealing: Sealing,
     exporter: Exporter,
@@ -435,7 +432,7 @@ impl fmt::Debug for Sender {
 }
 
 /// A recipient's context, which opens messages in the order they were sealed
-/// and exports secrets; wiped on drop under the `wipe` feature.
+/// and exports secrets; wiped on drop.
 pub struct Recipient {
     sealing: Sealing,
     exporter: Exporter,
@@ -502,7 +499,7 @@ impl fmt::Debug for Recipient {
 }
 
 /// An export-only context (RFC 9180 section 5.3), which derives secrets but
-/// seals and opens nothing; wiped on drop under the `wipe` feature.
+/// seals and opens nothing; wiped on drop.
 pub struct Exporter {
     secret: Prk,
     /// The key schedule's `suite_id`, which `Export` labels with.
@@ -594,14 +591,8 @@ impl Sealing {
         // RFC 9180 allows 2^96 - 1 messages; a u64 counter stops at its own
         // limit, which no context reaches.
         let next = self.seq.checked_add(1).ok_or(Error::MessageLimitReached)?;
-        let mut nonce = self.base_nonce;
-        for (n, s) in nonce[NONCE_LEN - 8..]
-            .iter_mut()
-            .zip(self.seq.to_be_bytes())
-        {
-            *n ^= s;
-        }
-        let result = f(&self.key, aead::Nonce::assume_unique_for_key(nonce))?;
+        let nonce = aead::Nonce::from_sequence(&self.base_nonce, self.seq);
+        let result = f(&self.key, nonce)?;
         self.seq = next;
         Ok(result)
     }
@@ -794,7 +785,7 @@ fn labeled_expand(
         .to_be_bytes();
     let mut parts: [&[u8]; 6] = [&len, VERSION, suite_id, label, &[], &[]];
     parts[4..4 + info.len()].copy_from_slice(info);
-    prk.expand(&parts[..4 + info.len()], out.len()).fill(out)
+    prk.fill(&parts[..4 + info.len()], out)
 }
 
 const VERSION: &[u8] = b"HPKE-v1";
@@ -863,7 +854,7 @@ mod tests {
         ikm_e: &[u8],
         info: &[u8],
     ) -> Result<(EncapsulatedKey, Sender), Error> {
-        let ephemeral = PrivateKey::derive(public_key.kem, ikm_e)?;
+        let ephemeral = PrivateKey::derive(public_key.kem(), ikm_e)?;
         let (enc, secret) = public_key.encapsulate(&ephemeral.key)?;
         Ok((enc, Sender::schedule(suite, &secret, info)))
     }
@@ -973,6 +964,292 @@ mod tests {
         assert_eq!(count, 24);
     }
 
+    /// One of the edge-case vectors in the IETF revision of RFC 9180,
+    /// appendix "Edge-Case Test Vectors" of draft-ietf-hpke-hpke at
+    /// hpkewg/hpke e298f94 (2026-06-29). The draft publishes them in Markdown
+    /// only, so `admin/sync-vectors` cannot fetch them; they are copied here
+    /// by hand. Every one uses HKDF-SHA256 and AES-128-GCM.
+    struct EdgeVector {
+        name: &'static str,
+        kem_id: u16,
+        kdf_id: u16,
+        aead_id: u16,
+        info: &'static str,
+        ikm_e: &'static str,
+        ikm_r: &'static str,
+        sk_rm: &'static str,
+        pk_rm: &'static str,
+        enc: &'static str,
+        shared_secret: &'static str,
+        /// The key schedule's `base_nonce`, for a base-mode vector, which rind
+        /// runs end to end; `None` for the PSK vector, whose KEM half alone is
+        /// checked, as rind offers no PSK mode. The draft's `key`
+        /// and `exporter_secret` are opaque here, so the ciphertexts and
+        /// exported values check them.
+        base_nonce: Option<&'static str>,
+        /// `(pt, aad, ct)` for sequence numbers 0, 1, ...
+        encryptions: &'static [(&'static str, &'static str, &'static str)],
+        /// `(exporter_context, exported_value)`, each 32 bytes.
+        exports: &'static [(&'static str, &'static str)],
+    }
+
+    const PT: &str = "4265617574792069732074727574682c20747275746820626561757479";
+    const AAD: &str = "436f756e742d30";
+    const INFO: &str = "4f6465206f6e2061204772656369616e2055726e";
+    const CONTEXT: &str = "54657374436f6e74657874";
+
+    const X25519_IKM_E: &str = "7268600d403fce431561aef583ee1613527cff655c1343f29812e66706df3234";
+    const X25519_IKM_R: &str = "6db9df30aa07dd42ee5e8181afdb977e538f5e1fec8a06223f33f7013e525037";
+    const X25519_SK_RM: &str = "4612c550263fc8ad58375df3f557aac531d26850903e55a9f23f21d8534e8ac8";
+    const X25519_PK_RM: &str = "3948cfe0ad1ddb695d780e59077195da6c56506b027329794ab02bca80815c4d";
+    const X25519_ENC: &str = "37fda3567bdbd628e88668c3c8d7e97d1d1253b6d4ea6d44c150f741f1bf4431";
+    const X25519_SHARED: &str = "fe0e18c9f024ce43799ae393c7e8fe8fce9d218875e8227b0187c04e7d2ea1fc";
+
+    const EDGE_VECTORS: [EdgeVector; 5] = [
+        EdgeVector {
+            name: "KEM Key Derivation with Rejection Sampling",
+            kem_id: 0x0010,
+            kdf_id: 0x0001,
+            aead_id: 0x0001,
+            info: INFO,
+            ikm_e: "4270e54ffd08d79d5928020af4686d8f6b7d35dbe470265f1f5aa22816ce860e",
+            ikm_r: "68706b652d656467652d703235362d72656a656374696f6e00000001c6be4ce7",
+            sk_rm: "d9cbff7adaa1c604a2e4fcfb762c9e1c5ed7d2e33b15fcad4c6c3f23a9637325",
+            pk_rm: "04d3bec6a691f47bbedd5caa1d51c7228f6afeeec5576495b855bbe6595e49643570be\
+                    005fc177b3d80f6eeef280b1cf8a565d7ca28116dee2e875550ef3050ca8",
+            enc: "04a92719c6195d5085104f469a8b9814d5838ff72b60501e2c4466e5e67b325ac98536\
+                  d7b61a1af4b78e5b7f951c0900be863c403ce65c9bfcb9382657222d18c4",
+            shared_secret: "1f38c13d9156ad1439d1edf648a12bf9c62cecb95cbb2087e16683636744251a",
+            base_nonce: Some("d4967824655d4887a04b3d87"),
+            encryptions: &[(
+                PT,
+                AAD,
+                "bcf25d5db84780b5b222eb26a63d8fb489c6a0bf1f6281cbc10c633707dbcda9af7cee\
+                 7a57abdb59ce4c9d4162",
+            )],
+            exports: &[(
+                CONTEXT,
+                "abd921fc81dae75036e9146d2e5826e3ea075b410c1c46a0a0533a9e3e685490",
+            )],
+        },
+        EdgeVector {
+            name: "Empty and Zero-Byte AEAD Inputs",
+            kem_id: 0x0020,
+            kdf_id: 0x0001,
+            aead_id: 0x0001,
+            info: INFO,
+            ikm_e: X25519_IKM_E,
+            ikm_r: X25519_IKM_R,
+            sk_rm: X25519_SK_RM,
+            pk_rm: X25519_PK_RM,
+            enc: X25519_ENC,
+            shared_secret: X25519_SHARED,
+            base_nonce: Some("56d890e5accaaf011cff4b7d"),
+            encryptions: &[
+                ("", AAD, "3f431133aa05608a56675bec51d03e0f"),
+                (
+                    PT,
+                    "",
+                    "af2d7e9ac9ae7e270f46ba1f975be53c09f8d875bdc8535458c2494e8aa7d2bb71109b\
+                     5730bb714a8e64e5cc16",
+                ),
+                (
+                    "00010002000300",
+                    AAD,
+                    "0be99ddcad54aabf548b3dbae884aff7aaeb0afc9ab60f",
+                ),
+                (
+                    PT,
+                    "00ff00ff00",
+                    "6b0f4cd351730cd25993d8ad0f11bff1ef2c3a957cb4d8694bb06c60a2f65e4f4cf8c1\
+                     ae35431071bb18eff3e8",
+                ),
+            ],
+            exports: &[
+                (
+                    "",
+                    "3853fe2b4035195a573ffc53856e77058e15d9ea064de3e59f4961d0095250ee",
+                ),
+                (
+                    "00",
+                    "2e8f0b54673c7029649d4eb9d5e33bf1872cf76d623ff164ac185da9e88c21a5",
+                ),
+                (
+                    "0011002200",
+                    "73ac25f70dd55c215b4220e6978533ee2d3a559a48c507b11e200af81e64337a",
+                ),
+            ],
+        },
+        EdgeVector {
+            name: "Empty info",
+            kem_id: 0x0020,
+            kdf_id: 0x0001,
+            aead_id: 0x0001,
+            info: "",
+            ikm_e: X25519_IKM_E,
+            ikm_r: X25519_IKM_R,
+            sk_rm: X25519_SK_RM,
+            pk_rm: X25519_PK_RM,
+            enc: X25519_ENC,
+            shared_secret: X25519_SHARED,
+            base_nonce: Some("0816b7f1635cce3ee2a7f611"),
+            encryptions: &[(
+                PT,
+                AAD,
+                "2a19b5c53b9bc4d52723cfa64b0c0532b9fd5473e8c1105285be1a5fd763463c3d3423\
+                 6f5d26ebfe906277e094",
+            )],
+            exports: &[(
+                CONTEXT,
+                "8a02de446479bb7d27490ed85a69c6bbaddd0969fbc84f7661ab038c9008f053",
+            )],
+        },
+        EdgeVector {
+            name: "info with Embedded Zero Bytes",
+            kem_id: 0x0020,
+            kdf_id: 0x0001,
+            aead_id: 0x0001,
+            info: "f0000f00ff",
+            ikm_e: X25519_IKM_E,
+            ikm_r: X25519_IKM_R,
+            sk_rm: X25519_SK_RM,
+            pk_rm: X25519_PK_RM,
+            enc: X25519_ENC,
+            shared_secret: X25519_SHARED,
+            base_nonce: Some("626c42fcd01b1690bf10cb44"),
+            encryptions: &[(
+                PT,
+                AAD,
+                "dccc58fdd5dd0f80a162809a6bd47bf881ce2821b5ab718892dd568e2dcef6c98750fa\
+                 1dc39a6182802ef3416c",
+            )],
+            exports: &[(
+                CONTEXT,
+                "b16979c789e60ff4a21a3975b785ed3114d44525a3f660a4a848891dcf54446a",
+            )],
+        },
+        // PSK mode (psk 0000000000000000111111111111111100000000000000002222222222222222,
+        // psk_id 0050534b00696400), which rind does not offer: only
+        // `DeriveKeyPair`, `Encap`, and `Decap` are checked.
+        EdgeVector {
+            name: "psk and psk_id with Embedded Zero Bytes",
+            kem_id: 0x0020,
+            kdf_id: 0x0001,
+            aead_id: 0x0001,
+            info: INFO,
+            ikm_e: "78628c354e46f3e169bd231be7b2ff1c77aa302460a26dbfa15515684c00130b",
+            ikm_r: "d4a09d09f575fef425905d2ab396c1449141463f698f8efdb7accfaff8995098",
+            sk_rm: "c5eb01eb457fe6c6f57577c5413b931550a162c71a03ac8d196babbd4e5ce0fd",
+            pk_rm: "9fed7e8c17387560e92cc6462a68049657246a09bfa8ade7aefe589672016366",
+            enc: "0ad0950d9fb9588e59690b74f1237ecdf1d775cd60be2eca57af5a4b0471c91b",
+            shared_secret: "727699f009ffe3c076315019c69648366b69171439bd7dd0807743bde76986cd",
+            base_nonce: None,
+            encryptions: &[],
+            exports: &[],
+        },
+    ];
+
+    #[test]
+    fn rfc9180_edge_cases() {
+        let h = |s: &str| hex::decode(s).unwrap();
+        let suite = Suite {
+            kdf: &HKDF_SHA256,
+            aead: &AES_128_GCM,
+        };
+        for v in &EDGE_VECTORS {
+            let kem = kem(v.kem_id).unwrap();
+            assert_eq!(
+                (v.kdf_id, v.aead_id),
+                (suite.kdf.id, suite.aead.id),
+                "{}",
+                v.name
+            );
+            let (info, ikm_e, enc) = (h(v.info), h(v.ikm_e), h(v.enc));
+
+            let private_key = PrivateKey::derive(kem, &h(v.ikm_r)).unwrap();
+            assert_eq!(
+                public(private_key.to_scalar().as_ref()),
+                h(v.sk_rm),
+                "{}",
+                v.name
+            );
+            assert_eq!(private_key.public_key().as_ref(), h(v.pk_rm), "{}", v.name);
+            let loaded = PrivateKey::from_scalar(kem, &h(v.sk_rm)).unwrap();
+            assert_eq!(loaded.public_key().as_ref(), h(v.pk_rm), "{}", v.name);
+
+            let public_key = PublicKey::new(kem, &h(v.pk_rm)).unwrap();
+            let ephemeral = PrivateKey::derive(kem, &ikm_e).unwrap();
+            let (sent, secret) = public_key.encapsulate(&ephemeral.key).unwrap();
+            assert_eq!(sent.as_ref(), enc, "{}", v.name);
+            assert_eq!(public(secret.as_ref()), h(v.shared_secret), "{}", v.name);
+            let received = loaded.decapsulate(&enc).unwrap();
+            assert_eq!(public(received.as_ref()), h(v.shared_secret), "{}", v.name);
+            let Some(base_nonce) = v.base_nonce else {
+                continue;
+            };
+
+            let mut sender = Sender::schedule(suite, &secret, &info);
+            assert_eq!(
+                public(&sender.sealing.base_nonce),
+                h(base_nonce),
+                "{}",
+                v.name
+            );
+            let mut recipient = Recipient::new(suite, &loaded, &enc, &info).unwrap();
+            for (pt, aad, ct) in v.encryptions {
+                let (pt, aad, ct) = (h(pt), h(aad), h(ct));
+                let mut sealed = pt.clone();
+                sender.seal_in_place_append_tag(&aad, &mut sealed).unwrap();
+                assert_eq!(sealed, ct, "{}", v.name);
+                assert_eq!(opened(&mut recipient, &aad, &ct).unwrap(), pt, "{}", v.name);
+            }
+            for (context, value) in v.exports {
+                let context = h(context);
+                let value = h(value);
+                let sent = exported(|out| sender.export(&context, out), 32);
+                assert_eq!(sent, value, "{}", v.name);
+                let received = exported(|out| recipient.export(&context, out), 32);
+                assert_eq!(received, value, "{}", v.name);
+            }
+        }
+    }
+
+    #[test]
+    fn derive_rejects_a_candidate_at_or_above_the_order() {
+        // The rejection-sampling vector's ikmR: its counter 0 candidate is
+        // above P-256's order, so `DeriveKeyPair` keeps counter 1's. Both
+        // candidates are the draft's: counter 0's is its published
+        // `rejected_candidate`, and counter 1's its `skRm`.
+        let v = &EDGE_VECTORS[0];
+        let kem = kem(v.kem_id).unwrap();
+        assert_eq!(kem.id, DHKEM_P256_HKDF_SHA256.id);
+        let ikm = hex::decode(v.ikm_r).unwrap();
+        let labels = Labels::kem(kem);
+        let dkp_prk = labels.extract_prk(b"", b"dkp_prk", &ikm);
+        let mut candidate = [0u8; 32];
+        for (counter, wanted, in_range) in [
+            (
+                0u8,
+                "ffffffffc6e92ab863d8293933c849d280fc9a40f07471a06702bdf2eac30fa2",
+                false,
+            ),
+            (
+                1,
+                "d9cbff7adaa1c604a2e4fcfb762c9e1c5ed7d2e33b15fcad4c6c3f23a9637325",
+                true,
+            ),
+        ] {
+            labels
+                .expand(&dkp_prk, b"candidate", &[&[counter]], &mut candidate)
+                .unwrap();
+            candidate[0] &= kem.candidate_mask.unwrap();
+            assert_eq!(public(&candidate), hex::decode(wanted).unwrap());
+            assert_eq!(PrivateKey::from_scalar(kem, &candidate).is_ok(), in_range);
+        }
+        let key = PrivateKey::derive(kem, &ikm).unwrap();
+        assert_eq!(public(key.to_scalar().as_ref()), candidate);
+    }
+
     #[derive(Deserialize, Debug)]
     struct WycheproofTest {
         #[serde(rename = "tcId")]
@@ -1025,7 +1302,7 @@ mod tests {
         // `crate::test::wycheproof` reads tests alone; these need their
         // group's suite.
         let path = format!(
-            "{}/../thirdparty/wycheproof/testvectors_v1/{name}",
+            "{}/../thirdparty/vectors/wycheproof/testvectors_v1/{name}",
             env!("CARGO_MANIFEST_DIR")
         );
         #[derive(Deserialize)]
@@ -1151,7 +1428,7 @@ mod tests {
                 kem.scalar_len
             );
             for suite in suites() {
-                let (enc, mut sender) = Sender::new(suite, &public_key, b"info").unwrap();
+                let (enc, mut sender) = Sender::new(suite, public_key, b"info").unwrap();
                 let mut recipient =
                     Recipient::new(suite, &private_key, enc.as_ref(), b"info").unwrap();
                 for message in [&b""[..], b"one", &[7; 1000]] {
@@ -1172,7 +1449,7 @@ mod tests {
                     Err(Error::WrongLength)
                 );
 
-                let (enc, exporter) = Exporter::sender(suite.kdf, &public_key, b"info").unwrap();
+                let (enc, exporter) = Exporter::sender(suite.kdf, public_key, b"info").unwrap();
                 let other =
                     Exporter::recipient(suite.kdf, &private_key, enc.as_ref(), b"info").unwrap();
                 assert_eq!(
@@ -1194,7 +1471,7 @@ mod tests {
             kdf: &HKDF_SHA256,
             aead: &AES_128_GCM,
         };
-        let (enc, mut sender) = Sender::new(suite, &private_key.public_key(), b"info").unwrap();
+        let (enc, mut sender) = Sender::new(suite, private_key.public_key(), b"info").unwrap();
         let mut sealed = b"hello".to_vec();
         sender.seal_in_place_append_tag(b"", &mut sealed).unwrap();
 
@@ -1302,7 +1579,7 @@ mod tests {
             kdf: &HKDF_SHA256,
             aead: &CHACHA20_POLY1305,
         };
-        let (enc, mut sender) = Sender::new(suite, &private_key.public_key(), b"").unwrap();
+        let (enc, mut sender) = Sender::new(suite, private_key.public_key(), b"").unwrap();
         let mut recipient = Recipient::new(suite, &private_key, enc.as_ref(), b"").unwrap();
         let mut first = b"first".to_vec();
         sender.seal_in_place_append_tag(b"", &mut first).unwrap();
@@ -1349,7 +1626,7 @@ mod tests {
             kdf: &HKDF_SHA256,
             aead: &AES_128_GCM,
         };
-        let (_, mut sender) = Sender::new(suite, &private_key.public_key(), b"").unwrap();
+        let (_, mut sender) = Sender::new(suite, private_key.public_key(), b"").unwrap();
         let mut lost = NoRoom(vec![0; 16]);
         let sealed = std::panic::catch_unwind(core::panic::AssertUnwindSafe(|| {
             sender.seal_in_place_append_tag(b"", &mut lost)
@@ -1370,7 +1647,7 @@ mod tests {
             kdf: &HKDF_SHA256,
             aead: &AES_256_GCM,
         };
-        let (enc, mut sender) = Sender::new(suite, &private_key.public_key(), b"").unwrap();
+        let (enc, mut sender) = Sender::new(suite, private_key.public_key(), b"").unwrap();
         let mut recipient = Recipient::new(suite, &private_key, enc.as_ref(), b"").unwrap();
         sender.sealing.seq = u64::MAX - 1;
         recipient.sealing.seq = u64::MAX - 1;
@@ -1423,8 +1700,7 @@ mod tests {
                     aead: &CHACHA20_POLY1305,
                 },
             ] {
-                let (enc, mut sender) =
-                    Sender::new(suite, &private_key.public_key(), info).unwrap();
+                let (enc, mut sender) = Sender::new(suite, private_key.public_key(), info).unwrap();
                 let mut sealed = b"message".to_vec();
                 sender
                     .seal_in_place_append_tag(b"aad", &mut sealed)
@@ -1449,7 +1725,7 @@ mod tests {
         // whether a NIST curve's candidate is in range, which is public.
         for kem in KEMS {
             let ikm = [0x5a; 66];
-            let wanted = PrivateKey::derive(kem, &ikm).unwrap().public_key();
+            let wanted = PrivateKey::derive(kem, &ikm).unwrap().public_key().clone();
 
             low::ct::secret_slice(&ikm);
             let key = PrivateKey::derive(kem, &ikm).unwrap();
@@ -1476,7 +1752,41 @@ mod tests {
             kdf: &HKDF_SHA384,
             aead: &AES_256_GCM,
         };
-        let (_, sender) = Sender::new(suite, &key.public_key(), b"").unwrap();
+        let (enc, sender) = Sender::new(suite, key.public_key(), b"").unwrap();
         assert_eq!(format!("{sender:?}"), "Sender { .. }");
+        let recipient = Recipient::new(suite, &key, enc.as_ref(), b"").unwrap();
+        assert_eq!(format!("{recipient:?}"), "Recipient { .. }");
+        let (_, exporter) = Exporter::sender(&HKDF_SHA384, key.public_key(), b"").unwrap();
+        assert_eq!(format!("{exporter:?}"), "Exporter { .. }");
+    }
+
+    #[test]
+    fn debug_shows_public_values() {
+        // A suite's KDF and AEAD show as the algorithms they run.
+        assert_eq!(
+            format!("{HKDF_SHA384:?}"),
+            format!("{:?}", hkdf::HKDF_SHA384)
+        );
+        assert_eq!(
+            format!("{AES_256_GCM:?}"),
+            format!("{:?}", aead::AES_256_GCM)
+        );
+        let key = PublicKey::new(&DHKEM_X25519_HKDF_SHA256, &[1; 32]).unwrap();
+        assert_eq!(
+            format!("{key:?}"),
+            format!(
+                "PublicKey {{ kem: DHKEM(X25519, HKDF-SHA256), key: {:?} }}",
+                [1u8; 32]
+            )
+        );
+        let suite = Suite {
+            kdf: &HKDF_SHA256,
+            aead: &AES_128_GCM,
+        };
+        let (enc, _) = Sender::new(suite, &key, b"").unwrap();
+        assert_eq!(
+            format!("{enc:?}"),
+            format!("EncapsulatedKey({:?})", enc.as_ref())
+        );
     }
 }

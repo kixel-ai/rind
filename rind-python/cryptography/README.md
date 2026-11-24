@@ -1,8 +1,8 @@
 # pyrind-cryptography
 
 [pyca/cryptography](https://cryptography.io)'s `hazmat` API on
-[pyrind](https://github.com/moq-dev/rind/tree/main/rind-python), for what
-[rind](https://github.com/moq-dev/rind), a pure-Rust library, covers. Code
+[pyrind](https://github.com/kixel-ai/rind/tree/main/rind-python), for what
+[rind](https://github.com/kixel-ai/rind), a pure-Rust library, covers. Code
 switches by changing an import, and runs on rind's assembly.
 
 Its Python layer costs part of pyrind's lead over pyca on small messages.
@@ -22,9 +22,11 @@ hand, fastest of five runs:
 | ECDSA P-256 verify, 21 B | 31.9 µs | 47.0 µs | 1.5x |
 | RSA-2048 PKCS#1 sign, 21 B | 352 µs | 424 µs | 1.2x |
 
-It is not on PyPI yet.
-
 ## Use
+
+```shell
+pip install pyrind-cryptography
+```
 
 Import `pyrind_cryptography` where code imports `cryptography`:
 

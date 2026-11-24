@@ -32,7 +32,7 @@ ci-select $BASE="":
 fix $BASE="":
     sh/dispatch.sh fix "$BASE"
 
-# Build, lint, and test armv7, running the tests under qemu on both CPU paths (Linux only).
+# Build, lint, and test armv7 on each CPU tier, under qemu or natively on an aarch64 host that runs AArch32 code (Linux only).
 armv7:
     nix develop .#armv7 --command sh/armv7.sh
 
@@ -53,9 +53,17 @@ wasm:
 miri TARGET="x86_64-unknown-linux-gnu":
     nix develop .#miri --command sh/miri.sh {{TARGET}}
 
+# Run openmls's own test suite on rind-openmls, passing ARGS to cargo test.
+openmls *ARGS:
+    nix develop --command sh/openmls.sh {{ARGS}}
+
 # Check dependencies against advisories, licenses, and sources in deny.toml.
 audit:
     cargo deny check
+
+# Dispatch every scheduled workflow on the release PR (default: the open one), wait, and record the result on its head.
+release-check *ARGS:
+    nix develop --command sh/release-check.sh {{ARGS}}
 
 # Open or update the release PR, then publish a release PR landed since BEFORE.
 release $BEFORE="":

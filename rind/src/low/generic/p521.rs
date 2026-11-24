@@ -1,15 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
 //! The s2n-bignum routines `mid::p521` uses, with their contracts, over
-//! fiat-crypto's 32-bit P-521 field arithmetic, and rind's arithmetic mod
-//! the group order.
+//! fiat-crypto's P-521 field arithmetic on the parent module's limbs, and
+//! rind's arithmetic mod the group order, plus the public twin
+//! multiplication that `mid::p521` composes from them on other backends.
 //!
 //! fiat-crypto proves each field operation correct, and emits it as
 //! straight-line code with no secret-dependent branch or index.  Mod n,
-//! rind multiplies by Montgomery's method, word by word over 18 32-bit
-//! words (CIOS), in loops whose bounds and indices are public: fiat-crypto's
-//! 17-word output for n overflows rustc's stack in debug builds, and its
-//! 9-word one, in 64-bit words, measured 5x slower on armv7.  The rest
+//! rind multiplies by Montgomery's method, limb by limb over 576 bits
+//! (CIOS), in loops whose bounds and indices are public: the fiat-crypto
+//! crate has no arithmetic mod n, and for 32-bit limbs, the 17-limb output
+//! fiat-crypto's generator gives overflows rustc's stack in debug builds,
+//! and its 9-word one, in 64-bit words, measured 5x slower on armv7.  The rest
 //! composes those: the point formulas repeat s2n-bignum's,
 //! and every coordinate is fully reduced, so results match it word for
 //! word; inversion is Fermat's little theorem, raising to a public exponent
@@ -22,9 +24,15 @@
 //! Arithmetic on secrets wraps: the bounds rule out overflow, and a debug
 //! build's overflow check would branch on secret values.
 
-use fiat_crypto::p521_32 as fp;
-use fiat_crypto::p521_32::fiat_p521_loose_field_element as Loose;
-use fiat_crypto::p521_32::fiat_p521_tight_field_element as Fe;
+use super::fiat_p521::fiat_p521_loose_field_element as Loose;
+use super::fiat_p521::fiat_p521_tight_field_element as Fe;
+use super::{Limb, Wide, fiat_p521 as fp};
+
+/// fiat-crypto's limbs in a field element, which are not all full.
+const FE_LIMBS: usize = size_of::<Fe>() / size_of::<Limb>();
+
+/// Limbs in a value mod n, which take 576 bits.
+const LIMBS: usize = (576 / Limb::BITS) as usize;
 
 /// z := (x * y) mod p_521, assuming x and y reduced
 pub(crate) fn bignum_mul_p521(z: &mut [u64; 9], x: &[u64; 9], y: &[u64; 9]) {
@@ -62,16 +70,17 @@ pub(crate) fn bignum_mod_n521(z: &mut [u64; 9], x: &[u64; 9]) {
     let high = x[8] >> 9;
     let mut r = *x;
     r[8] &= 0x1ff;
-    let mut r: [u32; 18] = split(&r);
-    let c: [u32; 10] = split(&C);
-    // high * C, as two 32-bit halves of high, each a product below 2^64
-    // that a 32-bit word and carry cannot overflow.
-    for (shift, half) in [(0, high as u32), (1, (high >> 32) as u32)] {
-        let mut carry = 0u64;
+    let mut r: [Limb; LIMBS] = split(&r);
+    let c: [Limb; (320 / Limb::BITS) as usize] = split(&C);
+    // high * C, a limb of high at a time, each a product that a limb and
+    // carry cannot overflow.
+    for shift in 0..(64 / Limb::BITS) as usize {
+        let part = (high >> (Limb::BITS as usize * shift)) as Limb;
+        let mut carry = 0;
         for (i, r) in r.iter_mut().enumerate().skip(shift) {
-            let t = mul_add(*r, half, c.get(i - shift).copied().unwrap_or(0), carry);
-            *r = t as u32;
-            carry = t >> 32;
+            let t = mul_add(*r, part, c.get(i - shift).copied().unwrap_or(0), carry);
+            *r = t as Limb;
+            carry = t >> Limb::BITS;
         }
     }
 
@@ -151,7 +160,7 @@ pub(crate) fn p521_jscalarmul(res: &mut [u64; 27], scalar: &[u64; 9], point_in: 
         };
     }
     let lookup = |digit: u8, sign: u8| {
-        let mut r = [Fe([0; 19]); 3];
+        let mut r = [Fe([0; FE_LIMBS]); 3];
         for (i, entry) in (1u8..).zip(&table) {
             let hit = 1u8.wrapping_sub(nonzero_u8(i ^ digit));
             for (r, e) in r.iter_mut().zip(entry) {
@@ -177,7 +186,7 @@ pub(crate) fn p521_jscalarmul(res: &mut [u64; 27], scalar: &[u64; 9], point_in: 
         acc = select_point(nonzero_u8(digit), &acc, &sum);
     }
 
-    let infinity = [Fe([0; 19]); 3];
+    let infinity = [Fe([0; FE_LIMBS]); 3];
     *res = point(&select_point(point_at_infinity, &acc, &infinity));
 }
 
@@ -228,23 +237,109 @@ fn jadd([x1, y1, z1]: &[Fe; 3], [x2, y2, z2]: &[Fe; 3]) -> [Fe; 3] {
 }
 
 /// The point formulas of s2n-bignum's `p521_jmixadd`.
-fn jmixadd([x1, y1, z1]: &[Fe; 3], x2: &Fe, y2: &Fe) -> [Fe; 3] {
+fn jmixadd(p1: &[Fe; 3], x2: &Fe, y2: &Fe) -> [Fe; 3] {
+    jmixadd_finish(p1, &jmixadd_start(p1, x2, y2))
+}
+
+/// The first steps of [`jmixadd`]: p2's x scaled to p1's z, and the
+/// differences of the points' x's and y's there, both zero when the points
+/// are equal and the x's alone when they are opposite.
+struct MixAddStart {
+    x2a: Fe,
+    xd: Fe,
+    yd: Fe,
+}
+
+fn jmixadd_start([x1, y1, z1]: &[Fe; 3], x2: &Fe, y2: &Fe) -> MixAddStart {
     let z1sq = fe_sqr(z1);
     let y2a = fe_mul(&z1sq, &fe_mul(z1, y2));
     let x2a = fe_mul(&z1sq, x2);
+    MixAddStart {
+        xd: fe_sub(&x2a, x1),
+        yd: fe_sub(&y2a, y1),
+        x2a,
+    }
+}
 
-    let xd = fe_sub(&x2a, x1);
-    let yd = fe_sub(&y2a, y1);
-    let zz = fe_sqr(&xd);
-    let ww = fe_sqr(&yd);
+fn jmixadd_finish([x1, y1, z1]: &[Fe; 3], MixAddStart { x2a, xd, yd }: &MixAddStart) -> [Fe; 3] {
+    let zz = fe_sqr(xd);
+    let ww = fe_sqr(yd);
     let zzx1 = fe_mul(&zz, x1);
-    let zzx2 = fe_mul(&zz, &x2a);
+    let zzx2 = fe_mul(&zz, x2a);
 
     let x3 = fe_sub(&fe_sub(&ww, &zzx1), &zzx2);
     let t1 = fe_mul(&fe_sub(&zzx2, &zzx1), y1);
-    let y3 = fe_sub(&fe_mul(&yd, &fe_sub(&zzx1, &x3)), &t1);
-    let z3 = fe_mul(&xd, z1);
+    let y3 = fe_sub(&fe_mul(yd, &fe_sub(&zzx1, &x3)), &t1);
+    let z3 = fe_mul(xd, z1);
     [x3, y3, z3]
+}
+
+/// A public scalar's NAF digits, low first, and the odd multiples of its
+/// point they pick: digit d picks `odd_multiples[|d| / 2]`, negated when d
+/// is negative.
+pub(crate) struct Naf<'a> {
+    pub(crate) digits: &'a [i8; 522],
+    /// Affine points, x then y, at most 16.
+    pub(crate) odd_multiples: &'a [[u64; 18]],
+}
+
+/// res := g * G + p * P, for public scalars g and p given as NAFs over
+/// odd multiples of G and P, as `mid::p521` composes it from s2n-bignum's
+/// point routines on the other backends.
+///
+/// This keeps the coordinates in fiat-crypto's limbs throughout, sparing
+/// a conversion of each at every doubling and addition.  Any sum is
+/// handled: the accumulator at infinity, equal to the point added, which
+/// doubles, or opposite it, which gives infinity, with a zero z.
+pub(crate) fn p521_public_twin_multiply(res: &mut [u64; 27], g: &Naf<'_>, p: &Naf<'_>) {
+    let table = |naf: &Naf<'_>| {
+        let mut table = [[Fe([0; FE_LIMBS]); 2]; 16];
+        for (entry, point) in table.iter_mut().zip(naf.odd_multiples) {
+            let (xy, _) = point.as_chunks::<9>();
+            *entry = [fe(&xy[0]), fe(&xy[1])];
+        }
+        table
+    };
+    let (g_table, p_table) = (table(g), table(p));
+    let one = fe(&ONE);
+
+    // `None` at infinity.
+    let mut acc: Option<[Fe; 3]> = None;
+    for i in (0..522).rev() {
+        acc = acc.map(|acc| jdouble(&acc));
+        for (digit, table) in [(p.digits[i], &p_table), (g.digits[i], &g_table)] {
+            if digit == 0 {
+                continue;
+            }
+            let [x, mut y] = table[usize::from(digit.unsigned_abs() / 2)];
+            if digit < 0 {
+                y = fe_opp(&y);
+            }
+            acc = match acc {
+                None => Some([x, y, one]),
+                Some(acc) => {
+                    let start = jmixadd_start(&acc, &x, &y);
+                    if !public_is_zero(&start.xd) {
+                        Some(jmixadd_finish(&acc, &start))
+                    } else if public_is_zero(&start.yd) {
+                        Some(jdouble(&acc))
+                    } else {
+                        None
+                    }
+                }
+            };
+        }
+    }
+
+    *res = match acc {
+        Some(acc) => point(&acc),
+        None => [0; 27],
+    };
+}
+
+/// Whether `x` is zero mod p, for a public `x`.
+fn public_is_zero(x: &Fe) -> bool {
+    words(x) == [0; 9]
 }
 
 /// The point formulas of s2n-bignum's `p521_jdouble`.
@@ -342,7 +437,7 @@ fn fe_invert(x: &Fe) -> Fe {
 /// by a fixed 4-bit window starting at `e`'s top window.
 ///
 /// The exponent picks the table entries, so it must not be secret.
-fn mont_pow(x: &[u32; 18], e: &[u64; 9]) -> [u32; 18] {
+fn mont_pow(x: &[Limb; LIMBS], e: &[u64; 9]) -> [Limb; LIMBS] {
     let one = mont_mul(&split(&ONE), &split(&MM));
     let mut table = [one; 16];
     for i in 1..table.len() {
@@ -365,83 +460,83 @@ fn mont_pow(x: &[u32; 18], e: &[u64; 9]) -> [u32; 18] {
 }
 
 /// `x * y / 2^576 mod n`, for `x` and `y` below n, by Montgomery's method
-/// with the multiplication and reduction interleaved word by word (CIOS).
+/// with the multiplication and reduction interleaved limb by limb (CIOS).
 ///
 /// Each step adds `x * y[i]`, then the multiple of n that zeroes the low
-/// word, and drops it.  The running value stays below 2n, so the 18 words
-/// and the two above them hold it, and one subtraction of n reduces it.
-fn mont_mul(x: &[u32; 18], y: &[u32; 18]) -> [u32; 18] {
-    let n: [u32; 18] = split(&N);
-    let mut t = [0u32; 20];
+/// limb, and drops it.  The running value stays below 2n, so the limbs and
+/// the two above them hold it, and one subtraction of n reduces it.
+fn mont_mul(x: &[Limb; LIMBS], y: &[Limb; LIMBS]) -> [Limb; LIMBS] {
+    let n: [Limb; LIMBS] = split(&N);
+    let mut t = [0; LIMBS + 2];
     for yi in y {
-        let mut carry = 0u64;
+        let mut carry = 0;
         for (t, x) in t.iter_mut().zip(x) {
             let s = mul_add(*t, *x, *yi, carry);
-            *t = s as u32;
-            carry = s >> 32;
+            *t = s as Limb;
+            carry = s >> Limb::BITS;
         }
-        let s = u64::from(t[18]).wrapping_add(carry);
-        t[18] = s as u32;
-        t[19] = (s >> 32) as u32;
+        let s = Wide::from(t[LIMBS]).wrapping_add(carry);
+        t[LIMBS] = s as Limb;
+        t[LIMBS + 1] = (s >> Limb::BITS) as Limb;
 
         let m = t[0].wrapping_mul(N_INV_NEG);
-        let mut carry = mul_add(t[0], m, n[0], 0) >> 32;
-        for j in 1..18 {
+        let mut carry = mul_add(t[0], m, n[0], 0) >> Limb::BITS;
+        for j in 1..LIMBS {
             let s = mul_add(t[j], m, n[j], carry);
-            t[j - 1] = s as u32;
-            carry = s >> 32;
+            t[j - 1] = s as Limb;
+            carry = s >> Limb::BITS;
         }
-        let s = u64::from(t[18]).wrapping_add(carry);
-        t[17] = s as u32;
-        t[18] = t[19].wrapping_add((s >> 32) as u32);
-        t[19] = 0;
+        let s = Wide::from(t[LIMBS]).wrapping_add(carry);
+        t[LIMBS - 1] = s as Limb;
+        t[LIMBS] = t[LIMBS + 1].wrapping_add((s >> Limb::BITS) as Limb);
+        t[LIMBS + 1] = 0;
     }
-    // Below 2n < 2^576, so t[18] is zero.
-    subtract_n_if_above(&t[..18].try_into().unwrap())
+    // Below 2n < 2^576, so t[LIMBS] is zero.
+    subtract_n_if_above(&t[..LIMBS].try_into().unwrap())
 }
 
 /// `x - n` if `x` is at least n, else `x`, for `x` below 2n.
-fn subtract_n_if_above(x: &[u32; 18]) -> [u32; 18] {
+fn subtract_n_if_above(x: &[Limb; LIMBS]) -> [Limb; LIMBS] {
     let (diff, borrow) = sub(x, &split(&N));
     select_words(opaque(borrow as u8), &diff, x)
 }
 
-/// `a + b * c + carry`, which is at most 2^64 - 1.
-fn mul_add(a: u32, b: u32, c: u32, carry: u64) -> u64 {
-    u64::from(a)
-        .wrapping_add(u64::from(b).wrapping_mul(u64::from(c)))
+/// `a + b * c + carry`, which at most fills two limbs.
+fn mul_add(a: Limb, b: Limb, c: Limb, carry: Wide) -> Wide {
+    Wide::from(a)
+        .wrapping_add(Wide::from(b).wrapping_mul(Wide::from(c)))
         .wrapping_add(carry)
 }
 
 /// `x + y`, and the carry out.
-fn add(x: &[u32; 18], y: &[u32; 18]) -> ([u32; 18], u32) {
-    let mut carry = 0u64;
+fn add(x: &[Limb; LIMBS], y: &[Limb; LIMBS]) -> ([Limb; LIMBS], Limb) {
+    let mut carry = 0;
     let r = core::array::from_fn(|i| {
-        let s = u64::from(x[i])
-            .wrapping_add(u64::from(y[i]))
+        let s = Wide::from(x[i])
+            .wrapping_add(Wide::from(y[i]))
             .wrapping_add(carry);
-        carry = s >> 32;
-        s as u32
+        carry = s >> Limb::BITS;
+        s as Limb
     });
-    (r, carry as u32)
+    (r, carry as Limb)
 }
 
 /// `x - y`, and 1 if it borrowed.
-fn sub(x: &[u32; 18], y: &[u32; 18]) -> ([u32; 18], u32) {
-    let mut borrow = 0u64;
+fn sub(x: &[Limb; LIMBS], y: &[Limb; LIMBS]) -> ([Limb; LIMBS], Limb) {
+    let mut borrow = 0;
     let r = core::array::from_fn(|i| {
-        let d = u64::from(x[i])
-            .wrapping_sub(u64::from(y[i]))
+        let d = Wide::from(x[i])
+            .wrapping_sub(Wide::from(y[i]))
             .wrapping_sub(borrow);
-        borrow = d >> 63;
-        d as u32
+        borrow = d >> (Wide::BITS - 1);
+        d as Limb
     });
-    (r, borrow as u32)
+    (r, borrow as Limb)
 }
 
 /// `if_nonzero` if `flag` is 1, else `if_zero`.
-fn select_words(flag: u8, if_zero: &[u32; 18], if_nonzero: &[u32; 18]) -> [u32; 18] {
-    let mask = u32::from(flag).wrapping_neg();
+fn select_words(flag: u8, if_zero: &[Limb; LIMBS], if_nonzero: &[Limb; LIMBS]) -> [Limb; LIMBS] {
+    let mask = Limb::from(flag).wrapping_neg();
     core::array::from_fn(|i| (if_nonzero[i] & mask) | (if_zero[i] & !mask))
 }
 
@@ -449,61 +544,113 @@ fn scalar(x: &[u64]) -> [u64; 9] {
     x.try_into().unwrap()
 }
 
-/// The 32-bit words of `x`, low first.
-fn split<const N: usize, const W: usize>(x: &[u64; N]) -> [u32; W] {
-    core::array::from_fn(|i| x.get(i / 2).map_or(0, |w| (w >> (32 * (i % 2))) as u32))
+/// The limbs of `x`, low first.
+fn split<const N: usize, const W: usize>(x: &[u64; N]) -> [Limb; W] {
+    let per_word = (64 / Limb::BITS) as usize;
+    core::array::from_fn(|i| {
+        x.get(i / per_word)
+            .map_or(0, |w| (w >> (Limb::BITS as usize * (i % per_word))) as Limb)
+    })
 }
 
-/// The 64-bit words of 18 32-bit ones, low first.
-fn join(x: &[u32; 18]) -> [u64; 9] {
-    core::array::from_fn(|i| u64::from(x[2 * i]) | (u64::from(x[2 * i + 1]) << 32))
-}
-
-/// The words of a fully reduced field element.
-fn fe(x: &[u64; 9]) -> Fe {
-    let mut bytes = [0u8; 72];
-    for (chunk, word) in bytes.as_chunks_mut::<8>().0.iter_mut().zip(x) {
-        *chunk = word.to_le_bytes();
+/// The 64-bit words of a value mod n's limbs, low first.
+fn join(x: &[Limb; LIMBS]) -> [u64; 9] {
+    let mut r = [0u64; 9];
+    for (i, limb) in x.iter().enumerate() {
+        r[i * 9 / LIMBS] |= u64::from(*limb) << (Limb::BITS as usize * i % 64);
     }
-    let mut r = Fe([0; 19]);
-    fp::fiat_p521_from_bytes(&mut r, bytes[..66].try_into().unwrap());
     r
 }
 
+/// The bit at which fiat-crypto's limb `i` starts: limbs split 521 bits
+/// as evenly as they can, the wider first, as its `eval` lists them.
+const fn offset(i: usize) -> usize {
+    (521 * i).div_ceil(FE_LIMBS)
+}
+
+/// The field element of `x`, a value below 2^521, by cutting its words at
+/// the limbs' offsets: every limb is then within its width, so within
+/// fiat-crypto's tight bounds.
+///
+/// This and [`words`] convert by shifts rather than through
+/// fiat-crypto's byte encoding, which costs a third of a field
+/// multiplication a round trip, and every routine here converts each
+/// operand and result.
+fn fe(x: &[u64; 9]) -> Fe {
+    Fe(core::array::from_fn(|i| {
+        let (start, width) = (offset(i), offset(i + 1) - offset(i));
+        let (word, shift) = (start / 64, start % 64);
+        let mut v = x[word] >> shift;
+        if shift + width > 64 {
+            v |= x[word + 1] << (64 - shift);
+        }
+        (v & ((1 << width) - 1)) as Limb
+    }))
+}
+
 /// The words of `x`, fully reduced.
+///
+/// A tight limb reaches one past its width, so the value can reach p and
+/// above.  As `fiat_p521_to_bytes` does, this subtracts p, limb by limb
+/// with the borrow carried, then adds p back if that borrowed out, which
+/// leaves each limb within its width; then it packs the limbs into words.
 fn words(x: &Fe) -> [u64; 9] {
-    let mut bytes = [0u8; 72];
-    fp::fiat_p521_to_bytes((&mut bytes[..66]).try_into().unwrap(), x);
-    let (chunks, _) = bytes.as_chunks::<8>();
-    core::array::from_fn(|i| u64::from_le_bytes(chunks[i]))
+    // Each limb of p is all ones across its width.
+    let mask = |i: usize| -> Limb { (1 << (offset(i + 1) - offset(i))) - 1 };
+    let mut borrow: Wide = 0;
+    let mut r: [Limb; FE_LIMBS] = core::array::from_fn(|i| {
+        let d = Wide::from(x.0[i])
+            .wrapping_sub(Wide::from(mask(i)))
+            .wrapping_sub(borrow);
+        borrow = d >> (Wide::BITS - 1);
+        d as Limb & mask(i)
+    });
+    let add_back = Limb::from(opaque(borrow as u8)).wrapping_neg();
+    let mut carry: Limb = 0;
+    for (i, r) in r.iter_mut().enumerate() {
+        let s = r.wrapping_add(mask(i) & add_back).wrapping_add(carry);
+        carry = s >> (offset(i + 1) - offset(i));
+        *r = s & mask(i);
+    }
+
+    let mut z = [0u64; 9];
+    for (i, limb) in r.iter().enumerate() {
+        let (word, shift) = (offset(i) / 64, offset(i) % 64);
+        let v = u64::from(*limb);
+        z[word] |= v << shift;
+        if shift + (offset(i + 1) - offset(i)) > 64 {
+            z[word + 1] |= v >> (64 - shift);
+        }
+    }
+    z
 }
 
 fn relax(x: &Fe) -> Loose {
-    let mut r = Loose([0; 19]);
+    let mut r = Loose([0; FE_LIMBS]);
     fp::fiat_p521_relax(&mut r, x);
     r
 }
 
 fn carry(x: &Loose) -> Fe {
-    let mut r = Fe([0; 19]);
+    let mut r = Fe([0; FE_LIMBS]);
     fp::fiat_p521_carry(&mut r, x);
     r
 }
 
 fn fe_mul(x: &Fe, y: &Fe) -> Fe {
-    let mut r = Fe([0; 19]);
+    let mut r = Fe([0; FE_LIMBS]);
     fp::fiat_p521_carry_mul(&mut r, &relax(x), &relax(y));
     r
 }
 
 fn fe_sqr(x: &Fe) -> Fe {
-    let mut r = Fe([0; 19]);
+    let mut r = Fe([0; FE_LIMBS]);
     fp::fiat_p521_carry_square(&mut r, &relax(x));
     r
 }
 
 fn fe_add(x: &Fe, y: &Fe) -> Fe {
-    let mut r = Loose([0; 19]);
+    let mut r = Loose([0; FE_LIMBS]);
     fp::fiat_p521_add(&mut r, x, y);
     carry(&r)
 }
@@ -513,13 +660,13 @@ fn fe_double(x: &Fe) -> Fe {
 }
 
 fn fe_sub(x: &Fe, y: &Fe) -> Fe {
-    let mut r = Loose([0; 19]);
+    let mut r = Loose([0; FE_LIMBS]);
     fp::fiat_p521_sub(&mut r, x, y);
     carry(&r)
 }
 
 fn fe_opp(x: &Fe) -> Fe {
-    let mut r = Loose([0; 19]);
+    let mut r = Loose([0; FE_LIMBS]);
     fp::fiat_p521_opp(&mut r, x);
     carry(&r)
 }
@@ -537,7 +684,7 @@ fn nonzero_u8(x: u8) -> u8 {
 
 /// `if_nonzero` if `flag` is 1, else `if_zero`.
 fn select(flag: u8, if_zero: &Fe, if_nonzero: &Fe) -> Fe {
-    let mut r = Fe([0; 19]);
+    let mut r = Fe([0; FE_LIMBS]);
     fp::fiat_p521_selectznz(&mut r.0, flag, &if_zero.0, &if_nonzero.0);
     r
 }
@@ -573,7 +720,7 @@ fn point(p: &[Fe; 3]) -> [u64; 27] {
 }
 
 /// n_521, the group order, as little-endian words.
-pub(super) const N: [u64; 9] = [
+pub(crate) const N: [u64; 9] = [
     0xbb6f_b71e_9138_6409,
     0x3bb5_c9b8_899c_47ae,
     0x7fcc_0148_f709_a5d0,
@@ -626,8 +773,18 @@ const MM: [u64; 9] = [
     0x0000_0000_0000_003d,
 ];
 
-/// -n_521^-1 mod 2^32.
-const N_INV_NEG: u32 = 0x79a9_95c7;
+/// -n_521^-1 mod 2^b, for b bits a limb: correct to 5 bits, then Newton's
+/// iteration doubles that each time.
+const N_INV_NEG: Limb = {
+    let n = N[0] as Limb;
+    let mut inv = n.wrapping_mul(3) ^ 2;
+    let mut i = 0;
+    while i < 4 {
+        inv = inv.wrapping_mul(Limb::wrapping_sub(2, n.wrapping_mul(inv)));
+        i += 1;
+    }
+    inv.wrapping_neg()
+};
 
 /// 2^521 - n_521, as little-endian words.
 const C: [u64; 5] = [
@@ -767,6 +924,11 @@ mod tests {
         affine(a) == affine(b)
     }
 
+    // The reference results are public but marked so anyway: memcheck can
+    // count the secret arithmetic's stale flags against a flag a reference
+    // routine sets itself, such as the `stc` before `bignum_add_p521`'s
+    // `adc` chain on x86_64. See UPSTREAM.md, "Memcheck blames a public
+    // flag on a secret carry".
     proptest! {
         #[test]
         fn field_ops(x in field(), y in field()) {
@@ -775,19 +937,19 @@ mod tests {
 
             bignum_mul_p521(&mut ours, &sx, &sy);
             low::bignum_mul_p521(&mut theirs, &x, &y);
-            prop_assert_eq!(into_public(ours), theirs);
+            prop_assert_eq!(into_public(ours), into_public(theirs));
 
             bignum_sqr_p521(&mut ours, &sx);
             low::bignum_sqr_p521(&mut theirs, &x);
-            prop_assert_eq!(into_public(ours), theirs);
+            prop_assert_eq!(into_public(ours), into_public(theirs));
 
             bignum_add_p521(&mut ours, &sx, &sy);
             low::bignum_add_p521(&mut theirs, &x, &y);
-            prop_assert_eq!(into_public(ours), theirs);
+            prop_assert_eq!(into_public(ours), into_public(theirs));
 
             bignum_neg_p521(&mut ours, &sx);
             low::bignum_neg_p521(&mut theirs, &x);
-            prop_assert_eq!(into_public(ours), theirs);
+            prop_assert_eq!(into_public(ours), into_public(theirs));
         }
 
         #[test]
@@ -800,7 +962,7 @@ mod tests {
             let (mut ours, mut theirs) = ([0; 9], [0; 9]);
             bignum_inv_p521(&mut ours, &into_secret(x));
             low::bignum_inv_p521(&mut theirs, &x);
-            prop_assert_eq!(into_public(ours), theirs);
+            prop_assert_eq!(into_public(ours), into_public(theirs));
         }
 
         #[test]
@@ -813,7 +975,7 @@ mod tests {
             let (mut ours, mut theirs) = ([0; 27], [0; 27]);
             p521_jadd(&mut ours, &sp, &sq);
             low::p521_jadd(&mut theirs, &p, &q);
-            prop_assert_eq!(into_public(ours), theirs);
+            prop_assert_eq!(into_public(ours), into_public(theirs));
         }
 
         #[test]
@@ -829,7 +991,7 @@ mod tests {
             let (mut ours, mut theirs) = ([0; 27], [0; 27]);
             p521_jmixadd(&mut ours, &sp, &sq);
             low::p521_jmixadd(&mut theirs, &p, &q);
-            prop_assert_eq!(into_public(ours), theirs);
+            prop_assert_eq!(into_public(ours), into_public(theirs));
         }
 
         #[test]
@@ -838,7 +1000,7 @@ mod tests {
             let (mut ours, mut theirs) = ([0; 27], [0; 27]);
             p521_jdouble(&mut ours, &sp);
             low::p521_jdouble(&mut theirs, &p);
-            prop_assert_eq!(into_public(ours), theirs);
+            prop_assert_eq!(into_public(ours), into_public(theirs));
         }
 
         #[test]
@@ -847,7 +1009,7 @@ mod tests {
             let (mut ours, mut theirs) = ([0; 18], [0; 18]);
             bignum_aff_point_select_p521(&mut ours, &table, into_secret(index));
             low::bignum_aff_point_select_p521(&mut theirs, &table, index);
-            prop_assert_eq!(into_public(ours), theirs);
+            prop_assert_eq!(into_public(ours), into_public(theirs));
         }
     }
 
@@ -861,7 +1023,12 @@ mod tests {
             p521_jscalarmul(&mut ours, &into_secret(k), &into_secret(p));
             low::p521_jscalarmul(&mut theirs, &k, &p);
             let ours = into_public(ours);
-            prop_assert!(same_point(&ours, &theirs));
+            prop_assert!(same_point(&ours, &into_public(theirs)));
+        }
+
+        #[test]
+        fn twin_multiply(g in scalar(), p in scalar(), c in 1..40u64, wide: bool) {
+            check_twin_multiply(&g, &p, c, wide);
         }
 
         #[test]
@@ -871,25 +1038,25 @@ mod tests {
 
             bignum_mod_n521(&mut ours, &sraw);
             low::bignum_mod_n521(&mut theirs, &raw);
-            prop_assert_eq!(into_public(ours), theirs);
+            prop_assert_eq!(into_public(ours), into_public(theirs));
 
             bignum_montmul(&mut ours, &sx, &sy, &N);
             low::bignum_montmul(&mut theirs, &x, &y, &N);
-            prop_assert_eq!(into_public(ours), theirs);
+            prop_assert_eq!(into_public(ours), into_public(theirs));
 
             bignum_demont(&mut ours, &sx, &N);
             low::bignum_demont(&mut theirs, &x, &N);
-            prop_assert_eq!(into_public(ours), theirs);
+            prop_assert_eq!(into_public(ours), into_public(theirs));
 
             bignum_modadd(&mut ours, &sx, &sy, &N);
             low::bignum_modadd(&mut theirs, &x, &y, &N);
-            prop_assert_eq!(into_public(ours), theirs);
+            prop_assert_eq!(into_public(ours), into_public(theirs));
 
             // s2n-bignum leaves the inverse of zero unspecified.
             if x != [0; 9] {
                 bignum_modinv(&mut ours, &sx, &N, &mut [0; 27]);
                 low::bignum_modinv(&mut theirs, &x, &N, &mut [0; 27]);
-                prop_assert_eq!(into_public(ours), theirs);
+                prop_assert_eq!(into_public(ours), into_public(theirs));
             }
         }
     }
@@ -909,6 +1076,103 @@ mod tests {
             p521_jscalarmul(&mut ours, &k, &GENERATOR);
             low::p521_jscalarmul(&mut theirs, &k, &GENERATOR);
             assert!(same_point(&ours, &theirs), "{k:x?}");
+        }
+    }
+
+    /// The width-`w` NAF of `k`, low first.
+    fn naf(k: &[u64; 9], w: u32) -> [i8; 522] {
+        let mut k = *k;
+        let mut digits = [0; 522];
+        for digit in &mut digits {
+            if k[0] & 1 == 1 {
+                let low = (k[0] & ((1 << w) - 1)) as i64;
+                let d = if low >= 1 << (w - 1) {
+                    low - (1 << w)
+                } else {
+                    low
+                };
+                // k - d, which clears the low bits or carries out of them.
+                let mut carry = d.unsigned_abs();
+                for word in &mut k {
+                    let (sum, c) = match d < 0 {
+                        true => word.overflowing_add(carry),
+                        false => word.overflowing_sub(carry),
+                    };
+                    (*word, carry) = (sum, u64::from(c));
+                }
+                *digit = d as i8;
+            }
+            for i in 0..9 {
+                k[i] = (k[i] >> 1) | (k.get(i + 1).map_or(0, |w| w << 63));
+            }
+        }
+        assert_eq!(k, [0; 9]);
+        digits
+    }
+
+    /// Checks `p521_public_twin_multiply` for g * G + p * P, with P = c * G,
+    /// against s2n-bignum's scalar multiplication by g + c * p.
+    fn check_twin_multiply(g: &[u64; 9], p: &[u64; 9], c: u64, wide: bool) {
+        let multiple = |k: u64, point: &[u64; 27]| {
+            let mut r = [0; 27];
+            low::p521_jscalarmul(&mut r, &[k, 0, 0, 0, 0, 0, 0, 0, 0], point);
+            affine(&r).unwrap()
+        };
+        let mut point = [0; 27];
+        point[..18].copy_from_slice(&multiple(c, &GENERATOR));
+        point[18] = 1;
+        let rows = if wide { 16 } else { 8 };
+        let g_multiples: Vec<_> = (0..8).map(|i| multiple(2 * i + 1, &GENERATOR)).collect();
+        let p_multiples: Vec<_> = (0..rows).map(|i| multiple(2 * i + 1, &point)).collect();
+        let (g_digits, p_digits) = (naf(g, 5), naf(p, if wide { 6 } else { 5 }));
+
+        let mut ours = [0; 27];
+        p521_public_twin_multiply(
+            &mut ours,
+            &Naf {
+                digits: &g_digits,
+                odd_multiples: &g_multiples,
+            },
+            &Naf {
+                digits: &p_digits,
+                odd_multiples: &p_multiples,
+            },
+        );
+
+        let (mut cp, mut k) = ([0; 9], [0; 9]);
+        low::bignum_montmul(&mut cp, &[c, 0, 0, 0, 0, 0, 0, 0, 0], p, &N);
+        let cp_mont = cp;
+        low::bignum_montmul(&mut cp, &cp_mont, &MM, &N);
+        low::bignum_modadd(&mut k, g, &cp, &N);
+        let mut theirs = [0; 27];
+        low::p521_jscalarmul(&mut theirs, &k, &GENERATOR);
+        assert!(same_point(&ours, &theirs), "{g:x?} {p:x?} {c}");
+    }
+
+    #[test]
+    fn twin_multiply_exceptional() {
+        // With P = G or 2G, the accumulator meets the point it adds: equal,
+        // which must double, or opposite, which must give infinity.
+        let small = |k: u64| [k, 0, 0, 0, 0, 0, 0, 0, 0];
+        let n_minus = |k: i64| add_small(N, -k);
+        for c in [1, 2] {
+            for (g, p) in [
+                (small(0), small(0)),
+                (small(1), small(0)),
+                (small(0), small(1)),
+                (small(1), small(1)),
+                (small(3), small(3)),
+                (small(2), small(1)),
+                (small(6), small(3)),
+                (small(1), n_minus(1)),
+                (n_minus(5), small(5)),
+                (n_minus(2), small(1)),
+                (n_minus(1), n_minus(1)),
+            ] {
+                for wide in [false, true] {
+                    check_twin_multiply(&g, &p, c, wide);
+                }
+            }
         }
     }
 

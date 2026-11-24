@@ -1,27 +1,97 @@
 #!/usr/bin/env bash
+# Measures how much of the published code its tests run: the rind crate and
+# its adapters under `cargo test`, rind-dart under `dart test`, and pyrind
+# (rind-python) under `sh/python.sh test`. The tools, rind-bench, rind-cpuid,
+# rind-timing, and the fuzzer, are left out. Runs in the `coverage` dev shell.
+#
+# Usage: admin/coverage [REPORT-ARGS...], which go to `cargo llvm-cov report`.
 
-set -e
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
 
 # for branch coverage support, which is unstable
 export RUSTC_BOOTSTRAP=1
 OPTIONS=--branch
 
-cargo llvm-cov show-env --export-prefix $OPTIONS "$@" > envsh
-source ./envsh
+# show-env shares the workspace's target directory, where sh/python.sh also
+# builds.
+target=$(cargo metadata --format-version 1 --no-deps | jq -r .target_directory)
+out=$target/coverage
+# The report reads objects only from the profile's directory, and only
+# executables, so the Dart and Python libraries are installed here.
+objects=$target/debug/coverage
+rm -rf "$out" "$objects"
+mkdir -p "$out/bin" "$objects"
+cargo llvm-cov show-env --sh $OPTIONS > "$out/env.sh"
+# shellcheck source=/dev/null
+source "$out/env.sh"
 cargo llvm-cov clean --workspace
 
-env SLOW_TESTS=1 cargo test --locked
+tests=(--workspace --exclude rind-bench --exclude rind-cpuid --exclude rind-fuzz --exclude rind-timing)
+env SLOW_TESTS=1 cargo test --locked "${tests[@]}"
 
-case `uname -m` in
+# The older-CPU tiers of build.yml reach only rind's own fallbacks, so they
+# run rind's tests alone: AVX without AVX2, then no AES, CLMUL, AVX, or
+# SSE4.1 on x86_64, and no AES, PMULL, or SHA-2 on aarch64. SDE without
+# AVX-512 reaches the VAES kernels, which some hosted runners lack.
+case $(uname -m) in
     x86_64)
-        env RIND_CPU_DISABLE_sha=1 RIND_CPU_DISABLE_intel=1 RIND_CPU_DISABLE_avx512bw=1 RIND_CPU_DISABLE_avx512f=1 RIND_CPU_DISABLE_vaes=1 cargo test --locked
-        env CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER="sde -dmr --" cargo test --locked
+        env RIND_CPU_DISABLE_sha=1 RIND_CPU_DISABLE_intel=1 RIND_CPU_DISABLE_avx512bw=1 RIND_CPU_DISABLE_avx512f=1 RIND_CPU_DISABLE_vaes=1 cargo test --locked "${tests[@]}"
+        env RIND_CPU_DISABLE_avx2=1 RIND_CPU_DISABLE_sha=1 cargo test --locked -p rind
+        env RIND_CPU_DISABLE_aes=1 RIND_CPU_DISABLE_pclmulqdq=1 RIND_CPU_DISABLE_avx=1 RIND_CPU_DISABLE_sse41=1 cargo test --locked -p rind
+        env CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER="sde -dmr --" cargo test --locked "${tests[@]}"
+        env RIND_CPU_DISABLE_avx512f=1 RIND_CPU_DISABLE_avx512bw=1 CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER="sde -dmr --" cargo test --locked -p rind --lib
         ;;
     arm|arm64|aarch64)
-        env RIND_CPU_DISABLE_sha3=1 cargo test --locked
+        env RIND_CPU_DISABLE_sha3=1 cargo test --locked "${tests[@]}"
+        env RIND_CPU_DISABLE_aes=1 RIND_CPU_DISABLE_pmull=1 RIND_CPU_DISABLE_sha2=1 cargo test --locked -p rind
         ;;
 esac
 
-cargo run --example client https://jbp.io >/dev/null
+# rind-dart's build hook runs cargo with only the environment Dart lets
+# through, which keeps PATH but drops show-env's wrapper variables, so a cargo
+# ahead of the real one on PATH restores them.
+cat > "$out/bin/cargo" <<EOF
+#!/bin/sh
+export RUSTC_BOOTSTRAP=1
+. "$out/env.sh"
+exec "$(command -v cargo)" "\$@"
+EOF
+chmod +x "$out/bin/cargo"
+# The hook caches its build, which must be this instrumented one, and no
+# later `dart test` may reuse it.
+dart_build() {
+    rm -rf rind-dart/.dart_tool/hooks_runner rind-dart/.dart_tool/lib
+}
+dart_build
+trap dart_build EXIT
+(cd rind-dart && dart pub get && PATH="$out/bin:$PATH" dart test)
+install -m 755 rind-dart/.dart_tool/lib/librind_dart.* "$objects/"
+
+sh/python.sh test
+install -m 755 "$target"/pyrind/site/pyrind/_rind.*.so "$objects/"
 
 cargo llvm-cov report $OPTIONS "$@"
+
+# The table counts the functions no test ran; this names where each starts,
+# one `path:line` each, counting a generic or a closure as run when any copy
+# of it ran. It skips pyo3's `__pymethod_` trampolines, which the release
+# wheel counts as unrun even when the method each calls, measured on its
+# own, ran.
+cargo llvm-cov report $OPTIONS --json --output-path "$out/report.json"
+echo "Functions no test ran:"
+python3 - "$out/report.json" "$PWD/" <<'EOF'
+import collections, json, sys
+
+runs = collections.Counter()
+for function in json.load(open(sys.argv[1]))["data"][0]["functions"]:
+    if "__pymethod_" in function["name"]:
+        continue
+    path = function["filenames"][0].removeprefix(sys.argv[2])
+    runs[path, function["regions"][0][0]] += function["count"]
+for (path, line), count in sorted(runs.items()):
+    published = not path.startswith("/") and path.split("/")[1] == "src"
+    if count == 0 and published:
+        print(f"  {path}:{line}")
+EOF

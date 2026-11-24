@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
-use super::aes::{AesDecKey, AesKey};
+use super::aes::{AesDecKey, AesKey, HwDecKey, HwKey};
 
 /// Encrypts whole blocks in place in CBC mode, the first chained from `iv`.
 pub(crate) fn encrypt(key: &AesKey, iv: &[u8; 16], blocks: &mut [[u8; 16]]) {
     match key {
-        AesKey::Hw(key) => hw_cbc(key.as_aes_key(), iv, blocks, true),
+        AesKey::Hw(key) => hw_encrypt(key, iv, blocks),
         AesKey::Vpaes(key) => key.cbc_encrypt(iv, blocks),
         AesKey::Nohw(key) => key.cbc_encrypt(iv, blocks),
     }
@@ -14,10 +14,20 @@ pub(crate) fn encrypt(key: &AesKey, iv: &[u8; 16], blocks: &mut [[u8; 16]]) {
 /// Decrypts whole blocks in place in CBC mode, the first chained from `iv`.
 pub(crate) fn decrypt(key: &AesDecKey, iv: &[u8; 16], blocks: &mut [[u8; 16]]) {
     match key {
-        AesDecKey::Hw(key) => hw_cbc(key.as_aes_key(), iv, blocks, false),
+        AesDecKey::Hw(key) => hw_decrypt(key, iv, blocks),
         AesDecKey::Vpaes(key) => key.cbc_decrypt(iv, blocks),
         AesDecKey::Nohw(key) => key.cbc_decrypt(iv, blocks),
     }
+}
+
+/// Encrypts whole blocks in place in CBC mode with aws-lc's AES-NI routine.
+fn hw_encrypt(key: &HwKey, iv: &[u8; 16], blocks: &mut [[u8; 16]]) {
+    hw_cbc(key.as_aes_key(), iv, blocks, true)
+}
+
+/// Decrypts whole blocks in place in CBC mode with aws-lc's AES-NI routine.
+fn hw_decrypt(key: &HwDecKey, iv: &[u8; 16], blocks: &mut [[u8; 16]]) {
+    hw_cbc(key.as_aes_key(), iv, blocks, false)
 }
 
 /// CBC with aws-lc's AES-NI routine: serial encryption, and decryption eight
@@ -28,14 +38,15 @@ pub(crate) fn decrypt(key: &AesDecKey, iv: &[u8; 16], blocks: &mut [[u8; 16]]) {
 fn hw_cbc(key: *const u8, iv: &[u8; 16], blocks: &mut [[u8; 16]], encrypt: bool) {
     // The routine leaves the next IV here; CBC callers here start afresh.
     let mut ivec = *iv;
+    let io = blocks.as_mut_ptr().cast::<u8>();
     // SAFETY: `blocks` is `16 * blocks.len()` readable and writable bytes,
     // which aws-lc allows to alias, and `key` the `AES_KEY` for the
     // direction. Only a `HaveAesHardware` token builds it, proving the AES-NI
     // and SSSE3 the routine uses. It returns at once for zero bytes.
     unsafe {
         asm_call!(unsafe extern "sysv64" aes_hw_cbc_encrypt(
-            blocks.as_ptr().cast(),
-            blocks.as_mut_ptr().cast(),
+            io,
+            io,
             16 * blocks.len(),
             key,
             &mut ivec,

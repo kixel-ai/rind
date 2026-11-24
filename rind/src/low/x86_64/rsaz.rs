@@ -42,6 +42,7 @@ impl Rsaz {
     ///
     /// The instruction trace and memory addresses depend on none of their
     /// values.
+    #[inline(never)]
     pub(crate) fn mod_exp(
         self,
         z: &mut [u64; 16],
@@ -51,6 +52,8 @@ impl Rsaz {
         rr: &[u64; 16],
         n0: u64,
     ) {
+        // `vpmuludq` multiplies the secrets.
+        let _mcdt = low::Mcdt::enter();
         mod_exp(self.0, z, x, e, m, rr, n0);
     }
 }
@@ -78,6 +81,7 @@ struct Storage {
 static ONE: Red = limb(0, 1);
 static TWO80: Red = limb(2, 1 << 22);
 
+#[cfg_attr(coverage_nightly, coverage(off))] // const-evaluated only
 const fn limb(i: usize, v: u64) -> Red {
     let mut r = [0; 40];
     r[i] = v;
@@ -336,7 +340,7 @@ mod tests {
             .from_montgomery(&n);
 
         let mut got = [0; 16];
-        mod_exp(token, &mut got, x, e, m, &words(&rr), n0);
+        Rsaz(token).mod_exp(&mut got, x, e, m, &words(&rr), n0);
         [got, words(&want)]
     }
 

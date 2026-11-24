@@ -11,7 +11,7 @@
     # The quest CLI, which also serves the quest guide and skills the stubs in
     # .claude/skills call. Bump the rev to upgrade them.
     quest = {
-      url = "github:moq-dev/quest";
+      url = "github:kixel-ai/quest";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.flake-utils.follows = "flake-utils";
     };
@@ -69,19 +69,38 @@
               "wasm32-unknown-unknown"
               "wasm32-wasip2"
               "x86_64-unknown-linux-gnu"
+              # Targets with no `std`, one per architecture rind has assembly for.
+              "aarch64-unknown-none"
+              "armv7a-none-eabi"
+              "x86_64-unknown-none"
             ];
           };
 
           quest-cli = quest.packages.${system}.default;
 
-          timing-shell = {
+          # admin/ scripts, and `sh/python.sh test`, which `admin/coverage`
+          # also runs.
+          python-shell = {
             packages = [
-              rust-stable.minimal
-              # admin/timing finds the binary cargo built.
+              # pyrind's tests and benchmarks check it against
+              # pyca/cryptography, and its type stubs with mypy's stubtest.
+              # pytest runs pyjwt's and joserfc's suites against
+              # pyrind-cryptography.
+              (pkgs.python3.withPackages (ps: [
+                ps.cryptography
+                ps.mypy
+                ps.pytest
+              ]))
+              # Builds pyrind (rind-python).
+              pkgs.maturin
               pkgs.jq
-            ]
-            # taskset pins the tests to one core.
-            ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.util-linux ];
+            ];
+            # The releases whose test suites `sh/python.sh test` runs against
+            # pyrind-cryptography, pinned with nixpkgs.
+            env = {
+              PYJWT_SRC = pkgs.python3Packages.pyjwt.src;
+              JOSERFC_SRC = pkgs.python3Packages.joserfc.src;
+            };
           };
 
           # rind itself builds for armv7 without C. Only its tests need this
@@ -102,10 +121,9 @@
               })
               armv7-cc
               pkgs.qemu-user
-              # admin/mutants --target armv7-unknown-linux-gnueabihf.
-              pkgs.cargo-mutants
-              pkgs.cargo-nextest
-            ];
+            ]
+            # sh/armv7.sh asks setarch whether the host runs AArch32 code.
+            ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.util-linux ];
 
             env = {
               CC_armv7_unknown_linux_gnueabihf = "${armv7-prefix}cc";
@@ -139,7 +157,7 @@
               lower = builtins.replaceStrings [ "-" ] [ "_" ] target;
               native = pkgs.stdenv.hostPlatform.canExecute cross.stdenv.hostPlatform;
             in
-            pkgs.mkShell {
+            mkDevShell {
               packages = [
                 (rust-stable.minimal.override {
                   extensions = [ "clippy" ];
@@ -169,6 +187,37 @@
               };
             };
 
+          # aws-lc's ACVP client, of the aws-lc release nixpkgs pins. Its
+          # `-json` mode answers vector sets offline through a module wrapper,
+          # as `rind-acvp`'s tests run it on rind's FIPS module.
+          acvptool = pkgs.buildGoModule {
+            pname = "acvptool";
+            inherit (pkgs.aws-lc) version src;
+            subPackages = [ "util/fipstools/acvp/acvptool" ];
+            vendorHash = "sha256-495bUr3Cuo7kuhuNLMVhrVg9NXTAXyFmnXRmBrCHovA=";
+            # It forwards ML-DSA's `externalMu` from external-interface groups
+            # too, which a wrapper then reads as the internal interface.
+            # See UPSTREAM.md, "acvptool sends ML-DSA's externalMu for the
+            # external interface".
+            postPatch = ''
+              file=util/fipstools/acvp/acvptool/subprocess/ml_dsa.go
+              substituteInPlace $file --replace-fail \
+                'boolToBytes(group.ExternalMu))' \
+                'boolToBytes(internalOnly(group.SignatureInterface, group.ExternalMu)))'
+              cat >>$file <<'EOF'
+
+              // internalOnly is externalMu for the internal interface, the only
+              // one it applies to, and absent for the external one.
+              func internalOnly(signatureInterface string, externalMu *bool) *bool {
+              	if !strings.EqualFold(signatureInterface, "internal") {
+              		return nil
+              	}
+              	return externalMu
+              }
+              EOF
+            '';
+          };
+
           # The tracer `admin/ct-qemu` loads into qemu-arm or qemu-aarch64,
           # built against the plugin API of the qemu-user its shells run.
           ct-qemu-plugin = pkgs.stdenv.mkDerivation {
@@ -184,6 +233,27 @@
             installPhase = "install -D ct-qemu-plugin.so $out/lib/ct-qemu-plugin.so";
           };
 
+          # OpenSSL's `evp_test` and its X25519 and Ed25519 data, from the
+          # source of the OpenSSL the dev shell has. `sh/openssl.sh` runs them
+          # with rind-openssl loaded and preferred. A static build, so the
+          # test runs the library it was built with, and the default provider
+          # inside it.
+          openssl-evp-test = pkgs.stdenv.mkDerivation {
+            pname = "openssl-evp-test";
+            inherit (pkgs.openssl) version src;
+            nativeBuildInputs = [ pkgs.perl ];
+            configurePhase = "perl Configure no-shared no-docs";
+            # Naming the target skips the headers `make` generates first.
+            buildPhase = ''
+              make -j$NIX_BUILD_CORES build_generated
+              make -j$NIX_BUILD_CORES test/evp_test
+            '';
+            installPhase = ''
+              install -D test/evp_test $out/bin/evp_test
+              install -D -t $out/share/evp_test test/recipes/30-test_evp_data/evppkey_{ecx,ecx_sigalg,ecx_kem,mismatch_ecx}.txt
+            '';
+          };
+
           # Intel SDE, which `x86-cpu.yml`, `coverage.yml`, `admin/x86-cpu`,
           # and `admin/ct-sde` run to emulate Intel CPU models. Its license allows use and
           # redistribution only unmodified, so its 64-bit launcher runs as
@@ -192,6 +262,7 @@
           # the same arguments.
           # Ubuntu's AppArmor denies the sandbox its user namespace until
           # `kernel.apparmor_restrict_unprivileged_userns=0`, as the workflows set.
+          # See UPSTREAM.md, "Ubuntu's AppArmor denies Intel SDE's sandbox".
           sde = pkgs.buildFHSEnv {
             name = "sde";
             runScript = "${
@@ -209,7 +280,8 @@
           # its release with the decoders it takes from unisim-archisec and
           # the Bitwuzla solver it links. nixpkgs packages neither BINSEC nor
           # its `mula` dependency. BINSEC loads its plugins through findlib,
-          # so the wrapper points OCAMLPATH at its own.
+          # so the wrapper points OCAMLPATH at its own, and its library stays
+          # in `out`: a split `dev` output would reference `out` and back.
           binsec =
             let
               ocaml = pkgs.ocamlPackages;
@@ -225,6 +297,7 @@
             ocaml.buildDunePackage rec {
               pname = "binsec";
               version = "0.11.3";
+              outputs = [ "out" ];
               src = pkgs.fetchurl {
                 url = "https://github.com/binsec/binsec/releases/download/${version}/binsec-${version}.tbz";
                 hash = "sha256-k/b+Q51IaxZgYu9t2SxM46oJR7Xhixw6p94vwwA6ptk=";
@@ -270,6 +343,15 @@
               ${link "aarch64" pkgs.pkgsCross.aarch64-multiplatform}
             '';
 
+          # The armv7 C compiler and qemu-arm that build and run the AArch32
+          # model's cosimulation executor, linked without the cross
+          # compiler's setup hooks, as debian-cross-tools are.
+          armv7-cosim-tools = pkgs.runCommand "armv7-cosim-tools" { } ''
+            mkdir -p $out/bin
+            ln -s ${armv7-prefix}gcc $out/bin/armv7-linux-gnueabihf-gcc
+            ln -s ${pkgs.qemu-user}/bin/qemu-arm $out/bin/qemu-arm
+          '';
+
           # Otherwise cargo exports the host's OpenSSL CA paths, which on
           # Ubuntu lie under the /usr the SDE sandbox replaces, and the tests
           # that load the system's roots find none. A shell hook, since `nix
@@ -301,6 +383,7 @@
             targets = [
               "x86_64-unknown-linux-gnu"
               "aarch64-unknown-linux-gnu"
+              "armv7-unknown-linux-gnueabihf"
             ];
           };
 
@@ -315,7 +398,7 @@
             [source.vendored-sources]
             directory = "$(rustc --print sysroot)/lib/rustlib/src/rust/library/vendor"
             END
-            for target in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu; do
+            for target in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu armv7-unknown-linux-gnueabihf; do
               sysroot=$(cargo miri setup --target=$target --print-sysroot)
             done
             mkdir -p $out
@@ -352,15 +435,20 @@
           # Light, the OCaml it compiles the proofs with, as s2n-bignum's
           # `tools/build-proof.sh` does, the Rust whose build emits the object
           # code they are of, with llvm-objdump to read it, the Python that
-          # compares that code with the code upstream's proofs check, and the
-          # cross tools that assemble Vale's and aws-lc's.
-          hol-light = pkgs.mkShell {
+          # compares that code with the code upstream's proofs check, the
+          # cross tools that assemble Vale's and aws-lc's, and flock, which
+          # keeps runs in one worktree from rewriting each other's files. On
+          # Linux, `admin/prove session` checkpoints and restores HOL Light
+          # with DMTCP, and the AArch32 model's cosimulation runs under
+          # qemu-arm; qemu-user builds only on Linux.
+          hol-light = mkDevShell {
             packages = [
               (rust-stable.minimal.override {
                 extensions = [ "llvm-tools" ];
                 targets = [
                   "x86_64-unknown-linux-gnu"
                   "aarch64-unknown-linux-gnu"
+                  "armv7-unknown-linux-gnueabihf"
                 ];
               })
               pkgs.hol_light
@@ -370,8 +458,40 @@
               pkgs.git
               pkgs.python3
               debian-cross-tools
+              pkgs.flock
+            ]
+            ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [
+              pkgs.dmtcp
+              armv7-cosim-tools
             ];
           };
+
+          # Cargo runs an external subcommand from $CARGO_HOME/bin before
+          # PATH unless that directory is on PATH, so a host rustup's
+          # cargo-fmt and cargo-clippy there would shadow this shell's.
+          # Appending it keeps host `cargo install` tools reachable behind
+          # the shell's own. See UPSTREAM.md, "Cargo runs $CARGO_HOME/bin's
+          # subcommands before PATH's".
+          dev-cargo-path = ''
+            # Cargo resolves a relative CARGO_HOME against each run's working
+            # directory, so pin it to the one the shell starts in.
+            case ''${CARGO_HOME-} in "" | /*) ;; *) export CARGO_HOME=$PWD/$CARGO_HOME ;; esac
+            cargo_bin=''${CARGO_HOME:-$HOME/.cargo}/bin
+            case ":$PATH:" in
+              *":$cargo_bin:"*) ;;
+              *) export PATH="$PATH:$cargo_bin" ;;
+            esac
+            unset cargo_bin
+          '';
+
+          mkDevShell =
+            args:
+            pkgs.mkShell (
+              args
+              // {
+                shellHook = dev-cargo-path + (args.shellHook or "");
+              }
+            );
 
           sde-certs = ''
             export SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt
@@ -381,7 +501,7 @@
           devShells = {
             inherit hol-light;
 
-            default = pkgs.mkShell {
+            default = mkDevShell {
               packages =
                 with pkgs;
                 [
@@ -394,6 +514,10 @@
                   cmake
                   pkg-config
                   openssl
+                  # admin/build-cost's vendored OpenSSL configures with it. A
+                  # host's own can lack core modules, as Fedora's lacks FindBin;
+                  # git already brings this one.
+                  perl
                   cargo-deny
                   # admin/mutants and the mutants workflow.
                   cargo-mutants
@@ -407,47 +531,37 @@
                   # sh/alert.sh reads the workflows.
                   yq-go
                   nixfmt
-                  # admin/ scripts, and pyrind's tests and benchmarks: they
-                  # check it against pyca/cryptography, and its type stubs
-                  # with mypy's stubtest. pytest runs pyjwt's and joserfc's
-                  # suites against pyrind-cryptography.
-                  (python3.withPackages (ps: [
-                    ps.cryptography
-                    ps.mypy
-                    ps.pytest
-                  ]))
-                  # Builds pyrind (rind-python).
-                  maturin
                   # admin/bench-report-test runs the script that holds a
                   # leased host.
                   flock
                   cargo-modules
                   rustfmt-unstable
                   quest-cli
-                ]
-                ++ pkgs.lib.optionals (!pkgs.stdenv.hostPlatform.isDarwin) [
-                  # Marked broken on Darwin in nixpkgs.
                   release-plz
+                  # rind-acvp's tests answer ACVP's vector sets through it.
+                  acvptool
+                ]
+                ++ python-shell.packages
+                ++ pkgs.lib.optionals (!pkgs.stdenv.hostPlatform.isDarwin) [
                   # admin/ctgrind's constant-time checks.
                   valgrind
                 ];
 
-              # What sh/dispatch.sh checks before a scoped `just check` or `just
-              # fix`. IN_NIX_SHELL would also pass inside another project's shell.
-              env.IN_RIND_DEV_SHELL = "1";
-              # The releases whose test suites `sh/python.sh compat` runs
-              # against pyrind-cryptography, pinned with nixpkgs.
-              env.PYJWT_SRC = pkgs.python3Packages.pyjwt.src;
-              env.JOSERFC_SRC = pkgs.python3Packages.joserfc.src;
+              env = python-shell.env // {
+                # What sh/dispatch.sh checks before a scoped `just check` or
+                # `just fix`. IN_NIX_SHELL would also pass inside another
+                # project's shell.
+                IN_RIND_DEV_SHELL = "1";
+              };
             };
-
-            # dudect needs only Rust, without Marvin's Python and toolkit fetches.
-            dudect = pkgs.mkShell timing-shell;
 
             # The Marvin toolkit's RSA ciphertexts, timed by rind-timing and
             # analysed by tlsfuzzer.
-            timing = pkgs.mkShell {
-              packages = timing-shell.packages ++ [
+            timing = mkDevShell {
+              packages = [
+                rust-stable.minimal
+                # admin/timing finds the binary cargo built.
+                pkgs.jq
                 (
                   (pkgs.python3.override {
                     packageOverrides = _: super: {
@@ -486,7 +600,9 @@
                 )
                 # The Marvin keys and certificates.
                 pkgs.openssl
-              ];
+              ]
+              # taskset pins the test to one core.
+              ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.util-linux ];
 
               env = {
                 MARVIN_TOOLKIT = pkgs.fetchFromGitHub {
@@ -507,8 +623,8 @@
             # The nightly MSRV job builds in it. The workspace's rust-version
             # names a minor release, which resolves to its latest patch, as
             # rustup does. The extra targets let it check rind's other
-            # backends, which `check` does without a C toolchain.
-            msrv = pkgs.mkShell {
+            # backends and 32-bit x86, which `check` does without a C toolchain.
+            msrv = mkDevShell {
               packages = [
                 (pkgs.rust-bin.fromRustupToolchain {
                   channel = (builtins.fromTOML (builtins.readFile ./Cargo.toml)).workspace.package.rust-version;
@@ -516,6 +632,7 @@
                   targets = [
                     "aarch64-unknown-linux-gnu"
                     "armv7-unknown-linux-gnueabihf"
+                    "i686-unknown-linux-gnu"
                   ];
                 })
               ];
@@ -524,7 +641,7 @@
             # The `dart` module of `just check` runs rind-dart's Dart package
             # in it. Its own shell, since the SDK would add over 200 MB to
             # the closure every CI job downloads.
-            dart = pkgs.mkShell {
+            dart = mkDevShell {
               packages = [
                 rust-toolchain
                 pkgs.dart
@@ -533,26 +650,59 @@
 
             # `coverage.yml` runs `admin/coverage` in it. On x86_64 Linux it
             # adds `sde`, for the pass that covers the AVX-512 paths.
-            coverage = pkgs.mkShell {
+            coverage = mkDevShell {
               packages = [
                 (rust-stable.minimal.override { extensions = [ "llvm-tools" ]; })
-                # Its tests build with nixpkgs' rustc, whose instrumented
-                # binaries crash on exit, so the cache has no build. rind's
-                # coverage builds with the toolchain above instead.
-                (pkgs.cargo-llvm-cov.overrideAttrs { doCheck = false; })
+                pkgs.cargo-llvm-cov
                 # aws-lc-rs builds C.
                 pkgs.cmake
                 pkgs.pkg-config
                 pkgs.openssl
+                # rind-dart's tests.
+                pkgs.dart
+                pkgs.git
               ]
+              ++ python-shell.packages
               ++ pkgs.lib.optionals (system == "x86_64-linux") [ sde ];
+
+              inherit (python-shell) env;
 
               shellHook = pkgs.lib.optionalString (system == "x86_64-linux") sde-certs;
             };
 
+            # `just check` runs `sh/site.sh` in it, which builds site/, the
+            # landing page, with Bun, and loads it in headless Chromium. Its own
+            # shell, since Chromium would add hundreds of MB to the closure
+            # every CI job downloads.
+            site =
+              assert pkgs.lib.assertMsg
+                (
+                  (builtins.fromJSON (builtins.readFile ./site/package.json)).packageManager
+                  == "bun@${pkgs.bun.version}"
+                )
+                "Bun pins disagree: site/package.json's packageManager must be bun@${pkgs.bun.version}, the Bun in the pinned nixpkgs, which CI's site job also reads. Update them together.";
+              mkDevShell {
+                packages = [ pkgs.bun ];
+                # Bun.WebView takes this browser over any on $PATH. nixpkgs has
+                # no Chromium for Darwin, where Bun finds an installed Chrome.
+                env = pkgs.lib.optionalAttrs (!pkgs.stdenv.hostPlatform.isDarwin) {
+                  BUN_CHROME_PATH = pkgs.lib.getExe pkgs.chromium;
+                };
+              };
+
+            # `just check` runs `sh/openssl.sh` in it, which builds rind-openssl
+            # and runs OpenSSL's `evp_test` with it.
+            openssl = mkDevShell {
+              packages = [
+                rust-toolchain
+                pkgs.jq
+              ];
+              env.OPENSSL_EVP_TEST = openssl-evp-test;
+            };
+
             # `just check` runs `admin/ct-vartime` in it: llvm-objdump, and the
             # standard library of each target it builds rind's rlib for.
-            ct-vartime = pkgs.mkShell {
+            ct-vartime = mkDevShell {
               packages = [
                 (rust-stable.minimal.override {
                   extensions = [ "llvm-tools" ];
@@ -580,7 +730,8 @@
             # Aeneas releases for it. Lake fetches the Lean toolchain that
             # `proofs/lean-toolchain` names, whose bundled `leantar` reads
             # Mathlib's cache, which nixpkgs' Lean cannot.
-            prove = pkgs.mkShell {
+            # See UPSTREAM.md, "nixpkgs' Lean cannot read Mathlib's cache".
+            prove = mkDevShell {
               inputsFrom = [ hol-light ];
               packages = [
                 aeneas
@@ -590,24 +741,67 @@
               ];
             };
 
+            # `admin/prove vg` and the prove workflow's `vg` jobs run in it:
+            # the Rust that compiles VG's naked functions and rind's, with the
+            # targets the bytes check reads; nixpkgs' LLVM, whose `llvm-mc`
+            # assembles VG's text with an assembler other than rustc's; elan,
+            # for the Lean that `proofs/lean-toolchain` names, which builds
+            # VG's models; and the emulator that runs the instructions this
+            # CPU lacks: Intel SDE on x86_64, qemu-aarch64 on aarch64.
+            vg = mkDevShell {
+              packages = [
+                (rust-stable.minimal.override {
+                  extensions = [ "llvm-tools" ];
+                  targets = [
+                    "x86_64-unknown-linux-gnu"
+                    "aarch64-unknown-linux-gnu"
+                  ];
+                })
+                pkgs.llvmPackages_21.llvm
+                pkgs.elan
+                pkgs.git
+                pkgs.curl
+                pkgs.python3
+                pkgs.flock
+              ]
+              ++ pkgs.lib.optionals (system == "x86_64-linux") [ sde ]
+              ++ pkgs.lib.optionals (system == "aarch64-linux") [ pkgs.qemu-user ];
+
+              shellHook = pkgs.lib.optionalString (system == "x86_64-linux") sde-certs;
+            };
+
             # `admin/ctgrind` and the ctgrind workflow run in it. A separate
             # shell because crabgrind's bindgen needs libclang, which no other
             # job does.
-            ctgrind = pkgs.mkShell {
+            ctgrind = mkDevShell {
               packages = [
                 rust-stable.minimal
                 pkgs.valgrind
-                # crabgrind finds valgrind's headers through it.
+                pkgs.cargo-nextest
+                # crabgrind finds valgrind's headers through it, and
+                # rind-openssl's tests OpenSSL's.
                 pkgs.pkg-config
+                pkgs.openssl
               ];
 
               env.LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
             };
 
+            # build.yml's nightly ACVP job answers ACVP's sets in it, with
+            # the large-data hash tests, on x86_64 and aarch64.
+            acvp = mkDevShell {
+              packages = [
+                rust-stable.minimal
+                acvptool
+                # The aws-lc-rs dev-dependency builds C.
+                pkgs.cmake
+              ];
+            };
+
             # `just wasm` runs the portable backend's tests on wasm32-wasip2
             # in it, under wasmtime. The toolchain is the default shell's,
             # which already carries the target.
-            wasm = pkgs.mkShell {
+            wasm = mkDevShell {
               packages = [
                 rust-toolchain
                 pkgs.wasmtime
@@ -616,7 +810,7 @@
 
             # `just miri` and the miri workflow run in it: Charon's nightly,
             # which already carries Miri, rather than a second nightly.
-            miri = pkgs.mkShell {
+            miri = mkDevShell {
               packages = [
                 rust-charon
                 pkgs.cargo-nextest
@@ -626,7 +820,7 @@
             # `admin/regenerate` and the regenerate workflow run in it. A
             # separate shell because the aarch64 cross compiler, for its cpp,
             # adds about 500 MB.
-            regenerate = pkgs.mkShell {
+            regenerate = mkDevShell {
               packages = [
                 (rust-stable.minimal.override { extensions = [ "rustfmt" ]; })
                 pkgs.git
@@ -638,11 +832,10 @@
             };
 
             # `just armv7` enters it to lint and test the armv7 build under
-            # qemu, and the mutants workflow to mutate it. A separate shell
-            # because the ARM C toolchain, qemu-user, and the armv7 standard
-            # libraries add about 700 MB, which every other CI job would
-            # download.
-            armv7 = pkgs.mkShell armv7-shell;
+            # qemu. A separate shell because the ARM C toolchain, qemu-user,
+            # and the armv7 standard libraries add about 700 MB, which every
+            # other CI job would download.
+            armv7 = mkDevShell armv7-shell;
 
             # `just qemu aarch64` tests the aarch64 build under qemu in it, and
             # `just check`'s cross module lints rind's tests for aarch64 in it,
@@ -709,6 +902,8 @@
             # `crtbeginS.o` included, use the BSS PLT, which lld links without
             # error into a binary that crashes. GNU ld handles both. gcc obeys
             # the last `-fuse-ld`, so a trailing one picks GNU ld.
+            # See UPSTREAM.md, "rust-lld cannot link ELFv1" and "lld links
+            # BSS-PLT objects into a crashing ppc32 binary".
             powerpc64le = qemu-shell {
               target = "powerpc64le-unknown-linux-gnu";
               cross = pkgs.pkgsCross.powernv;
@@ -726,7 +921,7 @@
 
             # `admin/ct-binsec` runs in it: the release tests under gdb, which
             # dumps each at its region, and BINSEC on the dump.
-            binsec = pkgs.mkShell {
+            binsec = mkDevShell {
               packages = [
                 rust-stable.minimal
                 binsec
@@ -737,7 +932,7 @@
 
             # `admin/ct-qemu` traces the armv7 tests in it, through the qemu
             # plugin it adds to the `armv7` shell.
-            ct-qemu = pkgs.mkShell (
+            ct-qemu = mkDevShell (
               armv7-shell
               // {
                 packages = armv7-shell.packages ++ [ pkgs.python3 ];
@@ -750,7 +945,7 @@
             # `admin/ct-qemu --target aarch64-unknown-linux-gnu` traces the
             # aarch64 tests in it on an aarch64 host, which builds them
             # natively, so it needs none of the armv7 toolchain.
-            ct-qemu-aarch64 = pkgs.mkShell {
+            ct-qemu-aarch64 = mkDevShell {
               packages = [
                 rust-stable.minimal
                 pkgs.qemu-user
@@ -760,11 +955,10 @@
             };
           }
           # `x86-cpu.yml` and `admin/x86-cpu sde-scan` run the tests and
-          # `rind-cpuid` under `sde` in it, `admin/ct-sde` traces them, and
-          # `admin/mutants --avx512` mutates under it.
+          # `rind-cpuid` under `sde` in it, and `admin/ct-sde` traces them.
           # SDE runs only on x86_64.
           // pkgs.lib.optionalAttrs (system == "x86_64-linux") {
-            sde = pkgs.mkShell {
+            sde = mkDevShell {
               packages = with pkgs; [
                 rust-stable.minimal
                 # aws-lc-rs and the OpenSSL benchmarks build C.
@@ -773,8 +967,8 @@
                 openssl
                 python3
                 sde
-                cargo-mutants
-                cargo-nextest
+                # x86-cpu.yml answers ACVP's sets on Diamond Rapids with it.
+                acvptool
                 # `admin/ct-sde` runs SDE without ASLR by its `setarch`.
                 util-linux
               ];

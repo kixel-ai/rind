@@ -2,6 +2,7 @@ use std::io::{Read, Write};
 use std::sync::Arc;
 
 use rustls::crypto::{CryptoProvider, SupportedKxGroup};
+#[cfg(not(target_family = "wasm"))]
 use rustls::crypto::{aws_lc_rs as aws_lc_rs_provider, ring};
 use rustls::pki_types::pem::PemObject;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer};
@@ -31,6 +32,7 @@ fn all_suites() {
         test_keys_match(&rind_rustls::default_provider(), *key_type);
     }
 
+    #[cfg(feature = "tls12")]
     for key_type in KeyType::RSA {
         test_suite(
             rind_rustls::cipher_suite::TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
@@ -46,6 +48,7 @@ fn all_suites() {
         );
     }
 
+    #[cfg(feature = "tls12")]
     for key_type in KeyType::ECDSA {
         test_suite(
             rind_rustls::cipher_suite::TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
@@ -65,7 +68,11 @@ fn all_suites() {
 #[test]
 fn all_key_exchanges() {
     let tls13 = rind_rustls::cipher_suite::TLS13_AES_128_GCM_SHA256;
-    let tls12 = rind_rustls::cipher_suite::TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256;
+    let suites = [
+        tls13,
+        #[cfg(feature = "tls12")]
+        rind_rustls::cipher_suite::TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+    ];
 
     // Not supported by *ring*, and TLS 1.3 only.
     for group in [
@@ -73,13 +80,13 @@ fn all_key_exchanges() {
         rind_rustls::kx_group::SECP256R1MLKEM768,
         rind_rustls::kx_group::MLKEM768,
     ] {
-        for other in [OtherProvider::BaselineAwsLcRs, OtherProvider::SelfTest] {
-            test_key_exchange(group, tls13, other);
+        for other in OtherProvider::NOT_RING {
+            test_key_exchange(group, tls13, *other);
         }
     }
 
     for other in OtherProvider::OTHERS {
-        for suite in [tls13, tls12] {
+        for suite in suites {
             test_key_exchange(rind_rustls::kx_group::X25519, suite, *other);
             test_key_exchange(rind_rustls::kx_group::SECP256R1, suite, *other);
             test_key_exchange(rind_rustls::kx_group::SECP384R1, suite, *other);
@@ -175,36 +182,86 @@ fn client_config(provider: Arc<CryptoProvider>, key_type: KeyType) -> Arc<Client
         .into()
 }
 
+/// Moves one `write_tls` to the peer. A short `read_tls` is not a complete
+/// delivery: rustls reads once into its deframer, and the unread tail would
+/// otherwise be overwritten on the next write.
+macro_rules! transfer {
+    ($from:expr, $to:expr, $buf:expr) => {{
+        let wr = $from.write_tls(&mut &mut $buf[..]).unwrap();
+        let mut off = 0;
+        while off < wr {
+            let n = $to.read_tls(&mut &$buf[off..wr]).unwrap();
+            assert!(
+                n > 0,
+                "TLS peer read none of the {} bytes still queued",
+                wr - off
+            );
+            off += n;
+            // An incomplete record stays buffered. Process after each read so a
+            // full deframer cannot refuse the rest of this write.
+            $to.process_new_packets().unwrap();
+        }
+    }};
+}
+
+/// Drains both directions. A confidentiality limit of zero keeps `wants_write`
+/// set, and this fails at the cap instead of spinning.
+fn drain(client: &mut ClientConnection, server: &mut ServerConnection, what: &str) {
+    let mut rounds = 0;
+    while client.wants_write() || server.wants_write() {
+        rounds += 1;
+        assert!(rounds <= 64, "{what} did not finish");
+        let mut buf = [0u8; 1024];
+        transfer!(client, server, buf);
+        transfer!(server, client, buf);
+    }
+}
+
 fn exercise(client_config: Arc<ClientConfig>, server_config: Arc<ServerConfig>) -> HandshakeKind {
     let mut client = ClientConnection::new(client_config, "localhost".try_into().unwrap()).unwrap();
     let mut server = ServerConnection::new(server_config).unwrap();
 
-    while client.is_handshaking() && server.is_handshaking() {
+    // A confidentiality limit of zero never leaves the handshake: each record
+    // asks for a key update. Shuttle until both sides have finished and neither
+    // still wants to write, so a one-sided stall stays inside the cap. One
+    // 1024-byte write cannot carry an RSA-4096 chain plus an ML-KEM share; 64
+    // rounds is past that flight and still rejects a handshake that never goes idle.
+    let mut rounds = 0;
+    while client.is_handshaking()
+        || server.is_handshaking()
+        || client.wants_write()
+        || server.wants_write()
+    {
+        rounds += 1;
+        assert!(rounds <= 64, "handshake did not finish");
         let mut buf = [0u8; 1024];
-        let wr = client.write_tls(&mut &mut buf[..]).unwrap();
-        server.read_tls(&mut &buf[..wr]).unwrap();
-        server.process_new_packets().unwrap();
-
-        let wr = server.write_tls(&mut &mut buf[..]).unwrap();
-        client.read_tls(&mut &buf[..wr]).unwrap();
-        client.process_new_packets().unwrap();
+        transfer!(client, server, buf);
+        transfer!(server, client, buf);
     }
 
-    let _ = client.writer().write(b"hello world").unwrap();
+    client.writer().write_all(b"hello world").unwrap();
     client.send_close_notify();
-    let mut buf = [0u8; 1024];
-    let wr = client.write_tls(&mut &mut buf[..]).unwrap();
-    server.read_tls(&mut &buf[..wr]).unwrap();
-    server.process_new_packets().unwrap();
+    drain(&mut client, &mut server, "application exchange");
 
     let mut out = vec![];
     server.reader().read_to_end(&mut out).unwrap();
     assert_eq!(out, b"hello world");
 
-    let _ = server.writer().write(b"goodbye").unwrap();
-    let wr = server.write_tls(&mut &mut buf[..]).unwrap();
-    client.read_tls(&mut &buf[..wr]).unwrap();
-    client.process_new_packets().unwrap();
+    server.writer().write_all(b"goodbye").unwrap();
+    drain(&mut client, &mut server, "server reply");
+    let mut got = Vec::new();
+    while got.len() < b"goodbye".len() {
+        let mut buf = [0u8; 16];
+        // `WouldBlock` is what a reply that never arrives looks like. `unwrap`
+        // would panic with that error and hide the assertion below.
+        let n = client
+            .reader()
+            .read(&mut buf)
+            .expect("client read none of the server reply");
+        assert!(n > 0, "client read none of the server reply");
+        got.extend_from_slice(&buf[..n]);
+    }
+    assert_eq!(got, b"goodbye");
 
     server.handshake_kind().unwrap()
 }
@@ -237,8 +294,10 @@ impl KeyType {
         Self::EcdsaP521,
         Self::Ed25519,
     ];
+    #[cfg(feature = "tls12")]
     const RSA: &[Self] = &[Self::Rsa2048, Self::Rsa3072, Self::Rsa4096];
     // TLS 1.2's ECDHE_ECDSA suites also carry Ed25519 (RFC 8422).
+    #[cfg(feature = "tls12")]
     const ECDSA: &[Self] = &[
         Self::EcdsaP256,
         Self::EcdsaP384,
@@ -249,7 +308,7 @@ impl KeyType {
     /// The providers that can sign and verify with this key: *ring* has no P-521.
     fn others(self) -> &'static [OtherProvider] {
         match self {
-            Self::EcdsaP521 => &[OtherProvider::BaselineAwsLcRs],
+            Self::EcdsaP521 => OtherProvider::NOT_RING,
             _ => OtherProvider::OTHERS,
         }
     }
@@ -295,7 +354,9 @@ impl KeyType {
 
 #[derive(Copy, Clone, Debug)]
 enum OtherProvider {
+    #[cfg(not(target_family = "wasm"))]
     BaselineRing,
+    #[cfg(not(target_family = "wasm"))]
     BaselineAwsLcRs,
     SelfTest,
 }
@@ -303,18 +364,33 @@ enum OtherProvider {
 impl OtherProvider {
     fn into_provider(self) -> Arc<CryptoProvider> {
         match self {
+            #[cfg(not(target_family = "wasm"))]
             Self::BaselineRing => ring::default_provider().into(),
+            #[cfg(not(target_family = "wasm"))]
             Self::BaselineAwsLcRs => aws_lc_rs_provider::default_provider().into(),
             Self::SelfTest => rind_rustls::default_provider().into(),
         }
     }
 
+    #[cfg(not(target_family = "wasm"))]
     const OTHERS: &[Self] = &[Self::BaselineRing, Self::BaselineAwsLcRs];
+    /// Those with P-521 and ML-KEM, which *ring* lacks.
+    #[cfg(not(target_family = "wasm"))]
+    const NOT_RING: &[Self] = &[Self::BaselineAwsLcRs, Self::SelfTest];
+
+    // rustls's own providers build for neither wasm target, so there rind
+    // runs against itself.
+    #[cfg(target_family = "wasm")]
+    const OTHERS: &[Self] = &[Self::SelfTest];
+    #[cfg(target_family = "wasm")]
+    const NOT_RING: &[Self] = Self::OTHERS;
 
     /// This provider's own key exchange group named `name`.
     fn kx_group(self, name: NamedGroup) -> &'static dyn SupportedKxGroup {
         let all = match self {
+            #[cfg(not(target_family = "wasm"))]
             Self::BaselineRing => ring::ALL_KX_GROUPS,
+            #[cfg(not(target_family = "wasm"))]
             Self::BaselineAwsLcRs => aws_lc_rs_provider::ALL_KX_GROUPS,
             Self::SelfTest => rind_rustls::ALL_KX_GROUPS,
         };

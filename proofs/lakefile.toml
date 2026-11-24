@@ -1,5 +1,12 @@
 name = "rind"
 defaultTargets = ["Rind"]
+# Lake's artifact cache, which every checkout of the user on a host shares, so
+# a new worktree takes the dependencies and unchanged modules another already
+# fetched or built from it as hard links rather than unpacking or building
+# copies of its own. Restore every artifact, not just the `.ilean` files Lake
+# needs itself, since `lake env lean` reads `.olean` files from `.lake/build`.
+enableArtifactCache = true
+restoreAllArtifacts = true
 
 [[require]]
 name = "aeneas"
@@ -8,6 +15,12 @@ git = "https://github.com/AeneasVerif/aeneas"
 rev = "ab34bd28458a08c150b7cbf1873e59af74588138"
 subDir = "backends/lean"
 
+# pyca/verified-garbage's models and the `Spec` modules its theorems state,
+# which `admin/import-vg-models` vendors, for the axioms restating them.
+[[require]]
+name = "verified-garbage"
+path = "verified-garbage"
+
 # No module imports both targets: their translations share global names.
 [[lean_lib]]
 name = "Rind"
@@ -15,3 +28,9 @@ globs = ["Rind.+"]
 # Lean's default 512 is too shallow for `Array.make`'s length proof of the
 # 256-word rows of P-256's generator table in the translation.
 leanOptions = { maxRecDepth = 1024 }
+
+# The specs, compiled, which `admin/spec-tests` runs against the vectors and
+# rind: `Rind.SpecTest.Server`.
+[[lean_exe]]
+name = "spec-server"
+root = "Rind.SpecTest.Server"

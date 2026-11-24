@@ -10,7 +10,7 @@ use crate::mid::rng::{RandomSource, SystemRandom};
 use crate::mid::{ed25519, util};
 
 /// An Ed25519 verification public key.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct Ed25519VerifyingKey(ed25519::VerifyingKey);
 
 impl Ed25519VerifyingKey {
@@ -55,6 +55,11 @@ impl Ed25519VerifyingKey {
         self.0.as_bytes()
     }
 
+    /// The compressed point encoding this key was decoded from.
+    pub(crate) fn bytes(&self) -> &[u8; 32] {
+        self.0.bytes()
+    }
+
     /// Verify a `signature` against the given `message`.
     ///
     /// The signature must be precisely 64 bytes.
@@ -77,7 +82,7 @@ impl Ed25519VerifyingKey {
 /// of order dividing 8, then `y = p` and `y = p + 1`, the only `y` of a
 /// small-order point whose non-canonical `y + p` fits in 255 bits. Each is
 /// compared as little-endian limbs with s2n-bignum's proven `bignum_eq`.
-fn has_small_order(bytes: &[u8]) -> bool {
+pub(crate) fn has_small_order(bytes: &[u8]) -> bool {
     const SMALL_ORDER_Y: [[u64; 4]; 7] = [
         // `y = 0`, order 4.
         [0; 4],
@@ -104,6 +109,7 @@ fn has_small_order(bytes: &[u8]) -> bool {
     ];
 
     /// `p = 2^255 - 19`, as limbs, with its lowest limb `low`.
+    #[cfg_attr(coverage_nightly, coverage(off))] // const-evaluated only
     const fn near_p(low: u64) -> [u64; 4] {
         [low, u64::MAX, u64::MAX, u64::MAX >> 1]
     }

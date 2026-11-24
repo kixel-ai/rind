@@ -73,7 +73,7 @@ impl hkdf::KeyType for Algorithm {
     }
 }
 
-/// An HMAC key, keyed once and reused for every message; wiped on drop under the `wipe` feature.
+/// An HMAC key, keyed once and reused for every message; wiped on drop.
 #[derive(Clone)]
 pub struct Key {
     inner: rind::hmac::Key,
@@ -146,7 +146,7 @@ impl Context {
     }
 
     /// Returns the tag of the message.
-    pub fn sign(self) -> Tag {
+    pub fn sign(mut self) -> Tag {
         Tag::new(self.inner.sign().as_ref())
     }
 }

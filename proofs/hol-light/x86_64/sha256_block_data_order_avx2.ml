@@ -11,7 +11,7 @@
    the AVX2 path), which reads its round constants and byte-shuffle masks
    from the K256 table beside it. Its result is s2n-bignum's FIPS 180-4
    spec, sha256_hash_blocks, from s2n-bignum pull request #415, which
-   proofs/hol-light/s2n-bignum/ holds until it merges.
+   rind's fork in thirdparty/s2n-bignum/ holds until it merges.
 
    The routine hashes blocks two at a time: it computes both blocks' message
    schedules at once, block A's in the low 128-bit lane of each register and

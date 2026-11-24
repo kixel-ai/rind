@@ -1,5 +1,5 @@
-import Rind.X86_64.S2nBignum
-import Rind.X86_64.Dispatch
+import Rind.X86_64.QuicDispatch
+import Rind.Spec
 import Rind.Bytes
 open Aeneas Aeneas.Std Result rind.spec
 
@@ -8,9 +8,9 @@ open Aeneas Aeneas.Std Result rind.spec
 
 The `chacha20_*` theorems state what the header-protection API returns for
 ChaCha20, in terms of `chacha20.headerProtectionMask`, through the dispatch
-`Rind.X86_64.Dispatch` models. HACL*'s rounds are Rust, so they are proven
-here too, and no axiom stands in for them. `admin/prove` writes the aarch64
-proof from this file by renaming the target.
+`Rind.X86_64.QuicDispatch` models. HACL*'s rounds are Rust, so they are proven
+here too, and no axiom stands in for them. `admin/prove` writes the aarch64,
+armv7, and portable proofs from this file by renaming the target.
 -/
 
 namespace rind.x86_64
@@ -215,21 +215,21 @@ theorem state_spec (key : Std.Array U8 32#usize) (nonce : Std.Array U8 16#usize)
 def keystream (st input : Std.Array U32 16#usize) : List (BitVec 32) :=
   List.zipWith (· + ·) (st.val.map (·.bv)) (input.val.map (·.bv))
 
-theorem chacha20_block_loop_spec (input st : Std.Array U32 16#usize)
+theorem keystream_loop_spec (input st : Std.Array U32 16#usize)
     (iter : core.ops.range.Range Usize) (out : Std.Array U8 64#usize) (hs : iter.start.val ≤ 16)
     (he : iter.end.val = 16)
     (ho : (out.val.map (·.bv)).take (4 * iter.start.val) =
       ((keystream st input).take iter.start.val).flatMap BitVec.toLEBytes) :
-    low.generic.chacha20.chacha20_block_loop iter input st out ⦃ r =>
+    low.generic.chacha20.keystream_loop iter input st out ⦃ r =>
       r.val.map (·.bv) = (keystream st input).flatMap BitVec.toLEBytes ⦄ := by
-  unfold low.generic.chacha20.chacha20_block_loop
+  unfold low.generic.chacha20.keystream_loop
   apply loop.spec_decr_nat (fun x => 16 - x.1.start.val)
     (fun x => x.1.start.val ≤ 16 ∧ x.1.end.val = 16 ∧
       (x.2.val.map (·.bv)).take (4 * x.1.start.val) =
         ((keystream st input).take x.1.start.val).flatMap BitVec.toLEBytes)
   · rintro ⟨it, out⟩ ⟨hs, he, ho⟩
     simp only at hs he ho ⊢
-    unfold low.generic.chacha20.chacha20_block_loop.body
+    unfold low.generic.chacha20.keystream_loop.body
     by_cases hlt : it.start.val < it.end.val
     · step with core.iter.range.IteratorRange.next_Usize_some_spec as ⟨o, it', ho', hst, hen⟩
       subst ho'
@@ -262,6 +262,21 @@ theorem words_counter_nonce (b : List (BitVec 8)) (h : b.length = 16) :
     chacha20.words b = [chacha20.le32 b[0]! b[1]! b[2]! b[3]!] ++ chacha20.words (b.drop 4) := by
   simp [chacha20.words, h, List.range_succ]
 
+/-- The keystream block for a state: its rounds, added to it, written out
+little-endian. -/
+@[step]
+theorem keystream_spec (input : Std.Array U32 16#usize) :
+    low.generic.chacha20.keystream input ⦃ out =>
+      out.val.map (·.bv) = (List.zipWith (· + ·) (chacha20.innerBlock^[10] (input.val.map (·.bv)))
+        (input.val.map (·.bv))).flatMap BitVec.toLEBytes ⦄ := by
+  unfold low.generic.chacha20.keystream
+  step*
+  apply WP.spec_mono (keystream_loop_spec input _ _ _ (by simp) (by simp) (by simp))
+  intro out hout
+  have hst : (to_slice_mut_back s1).val = s1.val := by
+    rw [to_slice_mut_back_post]; simp [Std.Array.from_slice, s1_post]
+  rw [hout, keystream, hst, s1_post1, s_post]
+
 @[step]
 theorem chacha20_block_spec (key : Std.Array U8 32#usize) (counter_nonce : Std.Array U8 16#usize) :
     low.generic.chacha20.chacha20_block key counter_nonce ⦃ out =>
@@ -270,18 +285,24 @@ theorem chacha20_block_spec (key : Std.Array U8 32#usize) (counter_nonce : Std.A
         chacha20.block (key.val.map (·.bv)) (chacha20.le32 cn[0]! cn[1]! cn[2]! cn[3]!) (cn.drop 4) ⦄ := by
   unfold low.generic.chacha20.chacha20_block
   step*
-  apply WP.spec_mono (chacha20_block_loop_spec input _ _ _ (by simp) (by simp) (by simp))
-  intro out hout
-  have hst : (to_slice_mut_back s1).val = s1.val := by
-    rw [to_slice_mut_back_post]; simp [Std.Array.from_slice, s1_post]
-  rw [hout, keystream, hst, s1_post1, s_post, input_post,
-    words_counter_nonce (counter_nonce.val.map (·.bv)) (by simp)]
+  rw [out_post, a_post, words_counter_nonce (counter_nonce.val.map (·.bv)) (by simp)]
   simp only [chacha20.block, List.append_assoc]
 
 /-! ## Header protection, `mid::chacha20` and `aead::quic` -/
 
+/-- The entry guard admits a call that handles secrets: the one fact about the
+machine the mask needs, as it runs the same Rust on every CPU. Each target's
+`Runs` implies it. -/
+def RunsChaCha20 : Prop := ∃ e, low.entry.Entry.new_secret = ok e
+
 @[step]
-theorem header_protection_mask_spec (h : Runs) (k : mid.chacha20.ChaCha20)
+theorem chacha20_new_secret_spec (h : RunsChaCha20) :
+    low.entry.Entry.new_secret ⦃ _ => True ⦄ := by
+  obtain ⟨e, he⟩ := h
+  simp [he]
+
+@[step]
+theorem header_protection_mask_spec (h : RunsChaCha20) (k : mid.chacha20.ChaCha20)
     (sample : Std.Array U8 16#usize) :
     mid.chacha20.ChaCha20.header_protection_mask k sample ⦃ mask =>
       mask.val.map (·.bv) =
@@ -316,7 +337,7 @@ theorem chacha20_new (key : Slice U8) :
 /-- A ChaCha20 header-protection key's mask for a sample: RFC 9001's, the
 first five bytes of RFC 8439's keystream block for the key, with the sample
 as the block counter and nonce. -/
-theorem chacha20_mask (h : Runs) (k : mid.chacha20.ChaCha20) (sample : Std.Array U8 16#usize) :
+theorem chacha20_mask (h : RunsChaCha20) (k : mid.chacha20.ChaCha20) (sample : Std.Array U8 16#usize) :
     aead.quic.HeaderProtectionKey.mask (.ChaCha20 k) sample ⦃ mask =>
       mask.val.map (·.bv) =
         chacha20.headerProtectionMask (k.key.val.map (·.bv)) (sample.val.map (·.bv)) ⦄ := by

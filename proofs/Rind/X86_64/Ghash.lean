@@ -1,9 +1,30 @@
 import Rind.X86_64.Funs
-import Rind.Gf128
+import Rind.GhashSpec
 import Rind.ValeBytes
 open Aeneas Aeneas.Std Result rind.vale rind.simd
 
 namespace rind.x86_64
+
+/-- `u128_to_m128i` keeps `v`'s bits, its halves rejoined. -/
+theorem u128_to_m128i_eq (v : Std.U128) : low.x86_64.ghash.u128_to_m128i v = ok v.bv := by
+  have h64 : (64#i32).val ≥ 0 := by decide
+  have t64 : (64#i32).toNat = 64 := by decide
+  simp only [low.x86_64.ghash.u128_to_m128i, HShiftRight.hShiftRight, UScalar.shiftRight_IScalar, h64,
+    ite_true, t64, UScalar.shiftRight, lift, UScalar.hcast, core.core_arch.x86.sse2._mm_set_epi64x, bind_ok]
+  simp only [UScalarTy.numBits, show 64 < 128 by decide, ite_true, bind_ok, IScalarTy.numBits]
+  congr 1
+  apply BitVec.eq_of_getLsbD_eq; intro i hi
+  simp only [BitVec.getLsbD_append]
+  by_cases h : i < 64
+  · simp [h, hi]
+  · simp [h, hi, show i - 64 < 64 by omega, show 64 + (i - 64) = i by omega]
+
+theorem poly_carry_mask_bv :
+    low.x86_64.ghash.GF128_POLY_CARRY_MASK.bv = 257870231182273679361785313768096399361#128 := by
+  unfold low.x86_64.ghash.GF128_POLY_CARRY_MASK; rfl
+
+theorem poly_hi_bv : low.x86_64.ghash.GF128_POLY_HI.bv = 0xc2000000_00000000#128 := by
+  unfold low.x86_64.ghash.GF128_POLY_HI; rfl
 
 theorem swap_lanes (x : BitVec 128) :
     ofLanes32 (fun i => lane32 x ((78#i32).bv.toNat / 4 ^ i % 4)) = swap x := by
@@ -34,7 +55,7 @@ theorem big_endian_eq (h : BitVec 128) : low.x86_64.ghash.gf128_big_endian h = o
   simp only [low.x86_64.ghash.gf128_big_endian, core.core_arch.x86.sse2._mm_shuffle_epi32,
     core.core_arch.x86.sse2._mm_srai_epi32, core.core_arch.x86.sse2._mm_add_epi64,
     core.core_arch.x86.sse2._mm_and_si128, core.core_arch.x86.sse2._mm_xor_si128,
-    low.x86_64.ghash.GF128_POLY_CARRY_MASK, bind_ok, add_self_eq]
+    u128_to_m128i_eq, poly_carry_mask_bv, bind_ok, add_self_eq]
   congr 1
   have e1 : (I32.bv 211#i32).toNat = 211 := by decide
   have e2 : (I32.bv 31#i32).toNat = 31 := by decide
@@ -63,7 +84,7 @@ theorem mul_eq (a b : BitVec 128) : low.x86_64.ghash._mul a b = ok (mulModel a b
   have f0 : (I32.bv 17#i32).getLsbD 0 = true := by decide
   have f4 : (I32.bv 17#i32).getLsbD 4 = true := by decide
   simp only [low.x86_64.ghash._mul, low.x86_64.ghash.zero, low.x86_64.ghash.xor_halves,
-    low.x86_64.ghash.GF128_POLY_HI, core.core_arch.x86.sse2._mm_setzero_si128,
+    u128_to_m128i_eq, poly_hi_bv, core.core_arch.x86.sse2._mm_setzero_si128,
     core.core_arch.x86.sse2._mm_shuffle_epi32, core.core_arch.x86.sse2._mm_xor_si128,
     core.core_arch.x86.pclmulqdq._mm_clmulepi64_si128, swap_lanes, bind_ok, e0, e4, f0, f4,
     Bool.false_eq_true, ite_false, ite_true, lane64_0, lane64_1, xor_zero', poly_hi_lo]
@@ -71,17 +92,9 @@ theorem mul_eq (a b : BitVec 128) : low.x86_64.ghash._mul a b = ok (mulModel a b
 
 /-! ## The GHASH key powers, `ClmulTable` and `AvxKernel::new` -/
 
-/-- H to H^8 as `ClmulTable::powers` multiplies them, from the key `h`. -/
-def ghashPowers (h : BitVec 128) : List (BitVec 128) :=
-  let h1 := skBV h
-  let h2 := mulModel h1 h1
-  let h3 := mulModel h2 h1
-  let h4 := mulModel h2 h2
-  [h1, h2, h3, h4, mulModel h4 h1, mulModel h4 h2, mulModel h4 h3, mulModel h4 h4]
-
 theorem powers_eq (h : Std.U128) :
     low.x86_64.ghash.ClmulTable.impl.powers h = ok (Std.Array.make 8#usize (ghashPowers h.bv) (by simp [ghashPowers])) := by
-  simp only [low.x86_64.ghash.ClmulTable.impl.powers, low.x86_64.ghash.u128_to_m128i, big_endian_eq,
+  simp only [low.x86_64.ghash.ClmulTable.impl.powers, u128_to_m128i_eq, big_endian_eq,
     mul_eq, bind_ok, ghashPowers]
 
 /-- `<[T; N]>::map` returns, for a closure that always does. -/
@@ -134,7 +147,7 @@ theorem kernel_new_eq (h : Std.U128) (p : List (BitVec 128)) (hp : p.length = 8)
   unfold low.x86_64.aes_gcm_avx.AvxKernel.new low.x86_64.ghash.ClmulTable.vale_hkeys
   match p, hp with
   | [p0, p1, p2, p3, p4, p5, p6, p7], _ =>
-  simp [Std.Array.index_usize, low.x86_64.ghash.u128_to_m128i, low.x86_64.ghash.zero,
+  simp [Std.Array.index_usize, u128_to_m128i_eq, low.x86_64.ghash.zero,
     core.core_arch.x86.sse2._mm_setzero_si128, valeHkeys]
 
 /-- rind's GHASH key powers are those `hkeys_reqs_pub` requires of the key `h`. -/

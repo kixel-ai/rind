@@ -12,6 +12,7 @@ impl fmt::Display for Unspecified {
     }
 }
 
+#[cfg(feature = "std")]
 impl std::error::Error for Unspecified {}
 
 impl From<untrusted::EndOfInput> for Unspecified {
@@ -49,10 +50,12 @@ impl KeyRejected {
         Self(Reason::Ring("InvalidEncoding"))
     }
 
+    #[cfg(feature = "alloc")]
     pub(crate) fn too_small() -> Self {
         Self(Reason::Ring("TooSmall"))
     }
 
+    #[cfg(feature = "alloc")]
     pub(crate) fn too_large() -> Self {
         Self(Reason::Ring("TooLarge"))
     }
@@ -73,6 +76,7 @@ impl KeyRejected {
         Self(Reason::Ring("VersionNotSupported"))
     }
 
+    #[cfg(feature = "alloc")]
     pub(crate) fn private_modulus_len_not_multiple_of_512_bits() -> Self {
         Self(Reason::Ring("PrivateModulusLenNotMultipleOf512Bits"))
     }
@@ -99,4 +103,35 @@ impl fmt::Display for KeyRejected {
     }
 }
 
+#[cfg(feature = "std")]
 impl std::error::Error for KeyRejected {}
+
+#[cfg(test)]
+mod tests {
+    use super::KeyRejected;
+
+    #[test]
+    fn rind_errors_keep_ring_names() {
+        // Deleting any arm of `KeyRejected::rind` sends that error through the
+        // catch-all, which ring calls `UnexpectedError`.
+        assert_eq!(
+            KeyRejected::rind(rind::Error::WrongLength).to_string(),
+            "InvalidEncoding"
+        );
+        assert_eq!(
+            KeyRejected::rind(rind::Error::RngFailed).to_string(),
+            "RNG failed"
+        );
+        assert_eq!(
+            KeyRejected::rind(rind::Error::Fault).to_string(),
+            "UnexpectedError"
+        );
+
+        let rejected = rind::agreement::PrivateKey::from_pkcs8(&rind::agreement::X25519, &[0x30])
+            .expect_err("a one-byte sequence is not a key");
+        let rind::Error::KeyRejected(reason) = rejected else {
+            panic!("expected a rejected key, got {rejected}");
+        };
+        assert_eq!(KeyRejected::rind(rejected).to_string(), reason.to_string());
+    }
+}

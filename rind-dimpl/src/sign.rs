@@ -5,8 +5,9 @@ use dimpl::crypto::{
     check_verify_scheme,
 };
 use dimpl::{CryptoError, CryptoOperation};
-use rind::signature::{
-    EcdsaKeyPair, EcdsaSigningAlgorithm, PublicKey, VerificationAlgorithm, sign, verify,
+use rind::ecdsa::{
+    KeyPair as EcdsaKeyPair, PublicKey, SigningAlgorithm as EcdsaSigningAlgorithm,
+    VerificationAlgorithm, sign, verify,
 };
 use rustls_pki_types::pem;
 use x509_cert::Certificate;
@@ -25,12 +26,12 @@ const CURVES: [(NamedGroup, HashAlgorithm, &EcdsaSigningAlgorithm); 2] = [
     (
         NamedGroup::Secp256r1,
         HashAlgorithm::SHA256,
-        &sign::ECDSA_P256_SHA256_ASN1,
+        &sign::P256_SHA256_ASN1,
     ),
     (
         NamedGroup::Secp384r1,
         HashAlgorithm::SHA384,
-        &sign::ECDSA_P384_SHA384_ASN1,
+        &sign::P384_SHA384_ASN1,
     ),
 ];
 
@@ -41,15 +42,15 @@ pub(crate) static KEYS: Keys = Keys;
 
 impl KeyProvider for Keys {
     fn load_private_key(&self, der: &[u8]) -> Result<Box<dyn SigningKey>, CryptoError> {
-        type Load = fn(&'static EcdsaSigningAlgorithm, &[u8]) -> Result<EcdsaKeyPair, rind::Error>;
-        let load = |load: Load, der: &[u8]| {
-            CURVES.into_iter().find_map(|(group, hash, algorithm)| {
-                let key = load(algorithm, der).ok()?;
-                Some(Box::new(Key { key, group, hash }) as Box<dyn SigningKey>)
-            })
-        };
-        let der_key = |der: &[u8]| {
-            load(EcdsaKeyPair::from_pkcs8, der).or_else(|| load(EcdsaKeyPair::from_sec1, der))
+        let boxed =
+            |key, (group, hash, _)| Box::new(Key { key, group, hash }) as Box<dyn SigningKey>;
+        let der_key = |der: &[u8]| match rind::KeyPair::from_pkcs8(der) {
+            Ok(rind::KeyPair::EcdsaP256(key)) => Some(boxed(key, CURVES[0])),
+            Ok(rind::KeyPair::EcdsaP384(key)) => Some(boxed(key, CURVES[1])),
+            // SEC1 has no rind call that reads its curve, so this tries each.
+            _ => CURVES
+                .into_iter()
+                .find_map(|curve| Some(boxed(EcdsaKeyPair::from_sec1(curve.2, der).ok()?, curve))),
         };
         // dimpl's own providers also take a PEM-wrapped key, under any label.
         der_key(der)
@@ -93,7 +94,7 @@ impl SigningKey for Key {
         let signature = self
             .key
             .sign(data)
-            .map_err(|_| CryptoError::OperationFailed(CryptoOperation::Sign))?;
+            .or(Err(CryptoError::OperationFailed(CryptoOperation::Sign)))?;
         out.clear();
         out.extend_from_slice(signature.as_ref());
         Ok(())
@@ -152,10 +153,10 @@ impl SignatureVerifier for Verifier {
 
         // DTLS 1.2 may pair either curve with either hash.
         let verification: &'static VerificationAlgorithm = match (group, hash) {
-            (NamedGroup::Secp256r1, HashAlgorithm::SHA256) => &verify::ECDSA_P256_SHA256_ASN1,
-            (NamedGroup::Secp256r1, HashAlgorithm::SHA384) => &verify::ECDSA_P256_SHA384_ASN1,
-            (NamedGroup::Secp384r1, HashAlgorithm::SHA256) => &verify::ECDSA_P384_SHA256_ASN1,
-            (NamedGroup::Secp384r1, HashAlgorithm::SHA384) => &verify::ECDSA_P384_SHA384_ASN1,
+            (NamedGroup::Secp256r1, HashAlgorithm::SHA256) => &verify::P256_SHA256_ASN1,
+            (NamedGroup::Secp256r1, HashAlgorithm::SHA384) => &verify::P256_SHA384_ASN1,
+            (NamedGroup::Secp384r1, HashAlgorithm::SHA256) => &verify::P384_SHA256_ASN1,
+            (NamedGroup::Secp384r1, HashAlgorithm::SHA384) => &verify::P384_SHA384_ASN1,
             _ => {
                 return Err(CryptoError::UnsupportedSignatureVerification {
                     signature: algorithm,

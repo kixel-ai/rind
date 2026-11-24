@@ -6,6 +6,8 @@ use core::marker::PhantomData;
 use core::mem;
 use core::mem::size_of;
 
+use crate::low::ct;
+
 macro_rules! _asn1_struct_ty(
     ([$context:literal] EXPLICIT $($itty:ident)+) => { $crate::high::asn1::Context<'a, $context, true, $crate::high::asn1::_asn1_struct_ty!($($itty)+)> };
     ([$context:literal] $($itty:ident)+) => { $crate::high::asn1::Context<'a, $context, false, $crate::high::asn1::_asn1_struct_ty!($($itty)+)> };
@@ -498,6 +500,12 @@ impl<'a> Integer<'a> {
             .unwrap_or_default()
     }
 
+    /// The two's complement bytes, borrowed for as long as what was parsed,
+    /// which `as_ref` through `AsRef` cannot return.
+    pub(crate) fn as_bytes(&self) -> &'a [u8] {
+        self.twos_complement
+    }
+
     pub(crate) fn as_usize(&self) -> Result<usize, Error> {
         if self.is_negative() || self.twos_complement.len() > size_of::<usize>() {
             return Err(Error::IntegerOutOfRange);
@@ -521,12 +529,12 @@ impl<'a> Integer<'a> {
         // the first octet and bit 8 of the second octet
         // a) shall not be ones; and
         // b) shall not be zero"
+        // That is, the first octet is not bit 8 of the second, extended. A
+        // private key's integers are secret, so only the verdict is
+        // revealed.
         if let Some(first_two) = twos_complement.get(..2) {
-            if first_two[0] == 0xff && first_two[1] & 0x80 == 0x80 {
-                return Err(Error::IntegerOutOfRange);
-            }
-
-            if first_two[0] == 0x00 && first_two[1] & 0x80 == 0x00 {
+            let extended = 0u8.wrapping_sub(first_two[1] >> 7);
+            if ct::into_public(first_two[0] == extended) {
                 return Err(Error::IntegerOutOfRange);
             }
         }
@@ -661,14 +669,39 @@ impl<'a> Type<'a> for SetOf<'a> {
     const TAG: Tag = Tag(Tag::SET);
 }
 
-/// Whether `bytes` opens with a `SEQUENCE` whose first element is also a
-/// `SEQUENCE`, as a `SubjectPublicKeyInfo` does and an `RSAPublicKey`, which
-/// opens with an `INTEGER`, does not.
-pub(crate) fn opens_nested_sequence(bytes: &[u8]) -> bool {
-    Parser::new(bytes)
-        .descend(Tag(Tag::SEQUENCE))
-        .and_then(|(_, mut body)| body.peek_tag())
-        .is_ok_and(|tag| tag.0 == Tag::SEQUENCE)
+/// A `SEQUENCE` kept as its encoded body, which its user compares whole.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct Sequence<'a> {
+    body: &'a [u8],
+}
+
+impl<'a> Sequence<'a> {
+    pub(crate) fn new(body: &'a [u8]) -> Self {
+        Self { body }
+    }
+
+    pub(crate) fn body(&self) -> &'a [u8] {
+        self.body
+    }
+}
+
+impl<'a> Type<'a> for Sequence<'a> {
+    fn parse_with_tag(p: &mut Parser<'a>, tag: Tag) -> Result<Self, Error> {
+        let (_, body) = p.take(tag)?;
+        Ok(Self { body })
+    }
+
+    fn encode_with_tag(&self, encoder: &mut Encoder<'_>, tag: Tag) -> Result<usize, Error> {
+        let mut body = encoder.begin(tag, self.body.len())?;
+        body.append_slice(self.body)?;
+        Ok(body.finish())
+    }
+
+    fn encoded_len(&self) -> usize {
+        encoded_length_for(self.body.len())
+    }
+
+    const TAG: Tag = Tag(Tag::SEQUENCE);
 }
 
 pub(crate) struct Parser<'a> {
@@ -874,6 +907,7 @@ impl Tag {
         self.0 == offered
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))] // const-evaluated only
     const fn constructed(&self) -> bool {
         matches!(self.0, Self::SEQUENCE) || self.0 & Self::CONSTRUCTED == Self::CONSTRUCTED
     }

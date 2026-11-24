@@ -3,7 +3,13 @@ name = "rind-fuzz"
 version = "0.0.0"
 publish = false
 edition = "2021"
-rust-version.workspace = true
+# hpke-rs, the HPKE oracle, needs 1.94 through libcrux-platform, which calls
+# `__cpuid` as the safe function it became then. cargo fuzz builds on nightly.
+rust-version = "1.94"
+
+# rind's own build script, so the targets see the `rind_backend` it picks
+# and take the oracle that shares no code with that backend.
+build = "build.rs"
 
 [package.metadata]
 cargo-fuzz = true
@@ -14,12 +20,15 @@ aws-lc-rs = { version = "1.19", features = ["non-fips", "ring-io"], default-feat
 # What aws-lc-rs does not expose: XChaCha20-Poly1305, bare ChaCha20, MD5,
 # AES-GCM with any IV, AES-192 key wrap, and RSA-PSS with any salt length.
 aws-lc-sys = { version = "0.47", default-features = false }
+# Argon2id, which aws-lc-rs does not have.
+argon2 = { version = "0.6", default-features = false, features = ["alloc"] }
 # Tells which Ed25519 keys are of small order, which rind refuses.
 curve25519-dalek = { version = "5", default-features = false }
 # The adapters, each compared with its upstream's aws-lc-rs provider.
 arrayvec = "0.7"
 dimpl = { version = "0.9", default-features = false, features = ["aws-lc-rs", "_crypto-common"] }
 rind-dimpl = { path = "../rind-dimpl" }
+rind-openssl = { path = "../rind-openssl" }
 rind-rcgen = { path = "../rind-rcgen" }
 rind-rustls = { path = "../rind-rustls" }
 rind-str0m = { path = "../rind-str0m" }
@@ -27,6 +36,47 @@ rcgen = { version = "0.14", default-features = false }
 rustls = { version = "0.23.20", default-features = false, features = ["aws-lc-rs", "std", "tls12"] }
 str0m = { version = "0.25", default-features = false }
 str0m-aws-lc-rs = "0.7"
+# SLH-DSA, which aws-lc-rs lacks, and the traits that encode its keys.
+pkcs8 = { version = "0.11", default-features = false, features = ["alloc"] }
+slh-dsa = "=0.2.0-rc.5"
+# Each primitive's independent oracle beside aws-lc, which shares no code
+# with the path rind runs, as TESTING.md's primitives table names it.
+aes = "0.9"
+aes-gcm = { version = "0.11", default-features = false, features = ["aes"] }
+aes-kw = "0.3"
+cbc = { version = "0.2", features = ["alloc"] }
+chacha20 = "0.10"
+chacha20poly1305 = { version = "0.11", default-features = false }
+ctr = "0.10"
+ghash = "0.6"
+hkdf = "0.13"
+hmac = "0.13"
+md-5 = { version = "0.11", default-features = false }
+pbkdf2 = { version = "0.13", default-features = false, features = ["hmac"] }
+sha1 = { version = "0.11", default-features = false, features = ["oid"] }
+sha2 = { version = "0.11", default-features = false }
+sha3 = { version = "0.12", default-features = false }
+ml-dsa = { version = "0.1", default-features = false }
+ml-kem = { version = "0.3", default-features = false, features = ["hazmat"] }
+rsa = { version = "0.10", features = ["pkcs1v15"] }
+libcrux-curve25519 = "0.0.10"
+libcrux-ed25519 = "0.0.11"
+libcrux-p256 = { version = "0.0.10", features = ["expose-hacl"] }
+p256 = { version = "0.14", default-features = false, features = ["ecdh", "ecdsa", "pkcs8"] }
+p384 = { version = "0.14", default-features = false, features = ["ecdh", "ecdsa", "pkcs8"] }
+p521 = { version = "0.14", default-features = false, features = ["ecdh", "ecdsa", "pkcs8"] }
+# The textbook curves in `rind/src/test/reference.rs`, the oracle on armv7
+# and the portable backend where every crate covering a curve runs rind's.
+num-bigint = "0.5"
+hpke-rs = { version = "0.8", default-features = false, features = ["hazmat", "rustcrypto", "std"] }
+blind-rsa-signatures = { version = "0.18", default-features = false }
+akd_core = { version = "0.13", default-features = false, features = ["vrf"] }
+vrf-rfc9381 = { version = "0.0.7", default-features = false, features = ["p256"] }
+voprf = { version = "0.5", default-features = false, features = ["alloc", "ristretto255-ciphersuite"] }
+p256-voprf = { package = "p256", version = "0.13", default-features = false, features = ["hash2curve", "voprf"] }
+p384-voprf = { package = "p384", version = "0.13", default-features = false, features = ["hash2curve", "voprf"] }
+p521-voprf = { package = "p521", version = "0.13.3", default-features = false, features = ["hash2curve", "voprf"] }
+rand_core-voprf = { package = "rand_core", version = "0.6", features = ["getrandom"] }
 
 [dependencies.rind]
 path = "../rind"
@@ -102,6 +152,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "argon2"
+path = "fuzzer/argon2.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "pbkdf2"
 path = "fuzzer/pbkdf2.rs"
 test = false
@@ -144,6 +201,27 @@ doc = false
 bench = false
 
 [[bin]]
+name = "blind_rsa"
+path = "fuzzer/blind_rsa.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "oprf"
+path = "fuzzer/oprf.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "vrf"
+path = "fuzzer/vrf.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "oaep"
 path = "fuzzer/oaep.rs"
 test = false
@@ -167,6 +245,13 @@ bench = false
 [[bin]]
 name = "str0m"
 path = "fuzzer/str0m.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "openssl"
+path = "fuzzer/openssl.rs"
 test = false
 doc = false
 bench = false

@@ -1,27 +1,26 @@
 rind is a pure-Rust cryptography library for [MoQ](https://github.com/moq-dev/moq), derived from [graviola](https://github.com/ctz/graviola), which it no longer tracks.
-This is one Rust workspace: the `rind` library, its `rind-<consumer>` adapter crates such as `rind-rustls`, and the unpublished bench, cpuid, timing, and fuzz crates.
+This is one Rust workspace: the `rind` library, its `rind-<consumer>` adapter crates such as `rind-rustls`, and the unpublished `rind-fips` module, ACVP wrapper (`rind-acvp`), bench, cpuid, timing, and fuzz crates.
 [ARCHITECTURE.md](ARCHITECTURE.md) covers the `low`/`mid`/`high` layering, [PLATFORMS.md](PLATFORMS.md) the CPU requirements, and [CONTRIBUTING.md](CONTRIBUTING.md) how to run the tests.
 
 # Required
 
-- Refuse what is unsupported, never fall back. Exactly one backend compiles per target, the portable one where rind has no assembly, and a CPU missing a required feature fails with an error naming it.
-- Treat every input as hostile: keys, signatures, ciphertexts, encodings. Malformed input is an error, never a panic, and its cost is bounded by design.
-- Secret-dependent code runs in constant time: no branch, memory index, or variable-time instruction depends on a secret. New secret-handling paths get a ctgrind test (`admin/ctgrind`).
-- Pick the fastest permissively licensed source for each primitive on each backend. Take a formally verified one (s2n-bignum, libcrux/HACL*, fiat-crypto) only where it measures as fast at every size; otherwise run the fastest and plan its proof. New arithmetic states where its correctness argument comes from.
-- Test every primitive against Wycheproof where vectors exist, and differentially against aws-lc-rs (a dev-dependency only).
-- Design the API so misuse fails to compile: types over runtime checks, one way to do each job. Borrow an aws-lc-rs or ring name only when it is as clear; the migration guide maps theirs to rind's.
+- Exactly one backend compiles per target, the portable one where rind has no assembly, and it requires only the CPU features its target enables at compile time.
+- Keys, signatures, ciphertexts, and encodings are hostile input: a malformed one is an error, never a panic, and its cost is bounded by design.
+- Secret-dependent code runs in constant time: no branch, memory index, or variable-time instruction depends on a secret. New secret-handling paths get a ctgrind test (`admin/ctgrind`). The one exception is Argon2id's data-dependent addressing, everything after its first pass's first half, which picks the memory it reads from password-derived values: the cost of its memory hardness, which RFC 9106 and RFC 9807 accept. It declassifies each such index, so ctgrind still checks the rest.
+- Pick the fastest permissively licensed source for each primitive on each backend. Take a formally verified one (s2n-bignum, libcrux/HACL*, pyca/verified-garbage, fiat-crypto) only where it measures as fast at every size; otherwise run the fastest and plan its proof. New arithmetic states where its correctness argument comes from.
+- The long-term goal is every path proven in Lean, functional correctness and the assembly's constant time, with upstream theorems imported as axioms. Speed still wins: until then a path keeps whatever proofs it has, scattered across HOL Light, F*, or Coq, or weaker ones, decided case by case.
+- Test every primitive against Wycheproof where vectors exist, and differentially against aws-lc-rs (a dev-dependency only), and against a Rust implementation that shares no code with the path rind runs, such as RustCrypto's or libcrux's. Where aws-lc-rs lacks the algorithm, the latter alone, and follow the standard and its LAMPS or IETF profile for behavior.
+- Give the API one way to do each job. Borrow an aws-lc-rs or ring name only when it is as clear; the migration guide maps theirs to rind's.
 - When in doubt about behavior (what to accept, refuse, or wipe), follow aws-lc-rs: it is the library rind would use if it didn't require C.
-- A key type wipes its whole value on drop, public parts included: FIPS 140-3 requires zeroising public security parameters too, and a whole-value wipe lets `rind/tests/zeroing.rs` check every byte. Wipe keyed state and heap scratch derived from a private key before they are freed, since that scratch can be as good as the key, but only under the `wipe` feature: wipe through `low::zeroise` or `low::zeroise_value`, which do nothing without it. Wipe nothing else: digest contexts, decrypted messages, stack temporaries, other scratch, and copies inside a call stay unwiped. Safe Rust cannot read them, so wiping them costs speed for nothing.
-- Benchmark performance-sensitive changes against aws-lc-rs.
-- An adapter for a third-party crate lives in its own `rind-<consumer>` crate, so that crate's major bump never forces one in `rind`. It offers exactly the API of the provider its upstream ships, adding nothing, so swapping one for the other changes no other code; its README lists what rind cannot back. A divergence is a bug, fixed in a patch release. The adapter's version begins with the breaking part of its upstream's (rind-rustls 0.23.x for rustls 0.23).
+- A key type wipes its whole value on drop, public parts included: FIPS 140-3 requires zeroising public security parameters too, and a whole-value wipe lets `rind/tests/zeroing.rs` check every byte. An enum that only carries such key types, such as `rind::KeyPair`, wipes nothing itself: its variants wipe their whole values, and a `Drop` of its own would stop callers moving the key out. Wipe keyed state and heap scratch derived from a private key before they are freed, since that scratch can be as good as the key, through `low::zeroise` or `low::zeroise_value`. Wipe nothing else: digest contexts, decrypted messages, stack temporaries, other scratch, and copies inside a call stay unwiped. Safe Rust cannot read them, so wiping them costs speed for nothing. The exception is an imported routine whose upstream builds such a wipe into the code it proves and offers no variant without it: rind keeps that wipe, since editing proven code would void the proof, and the routine's measured speed includes its cost.
+- The FIPS module also wipes the SSPs that live only inside a call, such as ECDSA's nonce or HMAC's padded key blocks, by zeroing each service's stack and every heap block it frees, so that cost stays in `rind-fips`.
+- Benchmark performance-sensitive changes against aws-lc-rs. A dispatched `bench` or `ctgrind` run names only what the change reaches, since without it the run covers everything: `bench` the bench targets, as `gh workflow run bench --ref <branch> -f benches='aes_gcm sha2'`, and `ctgrind` the jobs and their rows, as `-f jobs='x86_64-sde:rsa4096 armv7:no-neon'` (see `sh/select-jobs.sh`).
+- An adapter for a third-party crate lives in its own `rind-<consumer>` crate, so that crate's major bump never forces one in `rind`. It offers exactly the API of the provider its upstream ships, adding nothing, so swapping one for the other changes no other code; its README lists what rind cannot back. A divergence is a bug, fixed in a patch release.
 
 # Development
 
-PRs target `main`. The `just ci` gate holds only fast, high-signal tests; slow suites run in the other workflows.
+PRs target `main`.
 
-```bash
-just check        # Lint, compile, and test what the branch changed
-just fix          # Auto-fix lint/formatting, same scope
-```
+Agents may post in the kixel-ai, kixelated, and moq-dev orgs; anywhere else, ask the maintainer first, with no standing approval.
 
 Quests: before any work, run `quest context` and follow it, unless this session already holds its rules.

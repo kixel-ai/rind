@@ -1,23 +1,30 @@
 [package]
 name = "rind-jsonwebtoken"
-version = "11.0.4"
+version = "12.0.0"
 edition = "2024"
-repository = "https://github.com/moq-dev/rind"
+repository = "https://github.com/kixel-ai/rind"
+homepage = "https://rind.kixel.ai"
 license = "Apache-2.0 OR ISC OR MIT-0"
 description = "jsonwebtoken CryptoProvider backed by rind"
 categories = ["authentication", "cryptography"]
 rust-version.workspace = true
 readme = "README.md"
 
+# The provider admin/adapter-api diffs this crate's API against.
+[package.metadata.rind.api]
+crate = "jsonwebtoken"
+module = "crypto::aws_lc"
+features = ["aws_lc_rs"]
+
 [dependencies]
 rind = { version = "0.3.2", path = "../rind" }
-jsonwebtoken = { version = "11.1", default-features = false }
-pkcs1 = { version = "0.7.5", default-features = false, features = ["alloc"] }
+jsonwebtoken = { version = "12", default-features = false }
+pkcs1 = { version = "0.8", default-features = false }
 
 [dev-dependencies]
 aws-lc-rs = { version = "1.16", default-features = false, features = ["alloc", "prebuilt-nasm", "non-fips"] }
 # Requests reach valgrind only once `rind/__ctgrind` turns on crabgrind's default
 # features, as `admin/ctgrind` does; otherwise they build as no-ops.
 crabgrind = { version = "0.4", default-features = false }
-jsonwebtoken = { version = "11.1", default-features = false, features = ["aws_lc_rs"] }
+jsonwebtoken = { version = "12", default-features = false, features = ["aws_lc_rs"] }
 serde_json = "1"

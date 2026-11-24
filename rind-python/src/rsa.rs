@@ -3,7 +3,7 @@ use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 use rind::rsa;
 
-use crate::{Bytes, algorithm, bytes, constants, error, submodule};
+use crate::{Bytes, Secret, algorithm, bytes, constants, error, submodule};
 
 /// An RSA modulus size for key generation.
 #[pyclass(frozen, eq, eq_int, from_py_object, module = "pyrind.rsa")]
@@ -61,7 +61,7 @@ impl DecryptingKey {
 
     /// Loads a PKCS#8 RSA private key for `algorithm`.
     #[staticmethod]
-    fn from_pkcs8(algorithm: &Bound<'_, OaepAlgorithm>, der: Bytes<'_>) -> PyResult<Self> {
+    fn from_pkcs8(algorithm: &Bound<'_, OaepAlgorithm>, der: Secret<'_>) -> PyResult<Self> {
         rsa::DecryptingKey::from_pkcs8(algorithm.get().inner, &der)
             .map(Box::new)
             .map(Self)
@@ -70,7 +70,7 @@ impl DecryptingKey {
 
     /// Loads a PKCS#1 `RSAPrivateKey` for `algorithm`.
     #[staticmethod]
-    fn from_pkcs1(algorithm: &Bound<'_, OaepAlgorithm>, der: Bytes<'_>) -> PyResult<Self> {
+    fn from_pkcs1(algorithm: &Bound<'_, OaepAlgorithm>, der: Secret<'_>) -> PyResult<Self> {
         rsa::DecryptingKey::from_pkcs1(algorithm.get().inner, &der)
             .map(Box::new)
             .map(Self)
@@ -79,7 +79,7 @@ impl DecryptingKey {
 
     /// The public key, which encrypts to this key with its algorithm.
     fn public_key(&self) -> EncryptingKey {
-        EncryptingKey(Box::new(self.0.public_key()))
+        EncryptingKey(Box::new(self.0.public_key().clone()))
     }
 
     /// Decrypts `ciphertext`, encrypted with `label`, releasing the GIL.
@@ -107,7 +107,7 @@ impl DecryptingKey {
 
     /// Encodes the public key as `SubjectPublicKeyInfo` DER.
     fn to_spki<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
-        bytes(py, self.0.to_spki())
+        bytes(py, self.0.public_key().to_spki())
     }
 }
 
@@ -121,7 +121,9 @@ impl EncryptingKey {
     /// `algorithm`.
     #[new]
     fn new(algorithm: &Bound<'_, OaepAlgorithm>, der: Bytes<'_>) -> PyResult<Self> {
-        rsa::EncryptingKey::new(algorithm.get().inner, &der)
+        let algorithm = algorithm.get().inner;
+        rsa::EncryptingKey::new(algorithm, &der)
+            .or_else(|_| rsa::EncryptingKey::from_spki(algorithm, &der))
             .map(Box::new)
             .map(Self)
             .map_err(error)

@@ -3,7 +3,7 @@
 #
 # Usage: sh/python.sh test|bench [ARGS...]
 # The tests need pyca/cryptography, the differential oracle, mypy, pytest,
-# and the Wycheproof submodule. They cover pyrind, then pyrind-cryptography,
+# and the Wycheproof vectors. They cover pyrind, then pyrind-cryptography,
 # then pyjwt's and joserfc's own suites run on pyrind-cryptography, from the
 # releases the dev shell pins (PYJWT_SRC and JOSERFC_SRC). The benchmarks
 # compare against cryptography, hashlib, and hmac. ARGS go to unittest or
@@ -48,6 +48,15 @@ compat() {
 
 case "$action" in
     test)
+        # The tests take pyrind from PYTHONPATH, never resolving
+        # pyrind-cryptography's requirement, so a release PR bumping pyrind
+        # past it would pass here and only fail release.yml once merged.
+        version=$(PYTHONPATH="$out/site" python3 -c 'from importlib.metadata import version; print(version("pyrind"))')
+        state=$(python3 rind-python/cryptography/pin.py "$version")
+        if [[ "$state" == past ]]; then
+            echo "error: pyrind $version is past pyrind-cryptography's pyrind requirement" >&2
+            exit 1
+        fi
         PYTHONPATH="$out/site" python3 -m unittest discover --start-directory rind-python/tests "$@"
         # Checks the type stubs against the built module.
         (cd "$out/site" && python3 -m mypy.stubtest pyrind)

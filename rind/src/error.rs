@@ -16,7 +16,7 @@ pub enum Error {
     /// its length; its `Display` says why.
     KeyRejected(KeyRejected),
 
-    /// A signature, MAC tag, or PBKDF2 output did not verify.
+    /// A signature, MAC tag, or PBKDF2 or Argon2 output did not verify.
     BadSignature,
 
     /// An AEAD ciphertext, its tag, or its associated data did not
@@ -40,11 +40,14 @@ pub enum Error {
     /// A call was given an algorithm it does not take, such as a SHA-1
     /// digest to sign, or a digest for a key that verifies only messages.
     Unsupported,
+
+    /// The memory an Argon2 cost asks for could not be allocated.
+    OutOfMemory,
 }
 
 /// Why a key was refused, which its `Display` describes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct KeyRejected(KeyFormatError);
+pub struct KeyRejected(pub(crate) KeyFormatError);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum KeyFormatError {
@@ -72,6 +75,12 @@ pub(crate) enum KeyFormatError {
     MismatchedSec1Curve,
     MismatchedSec1PublicKey,
     MismatchedSpkiAlgorithm,
+    DuplicateIdentifier,
+    UnknownIdentifier,
+    MismatchedCommitments,
+    UnknownPkcs8Algorithm,
+    UnsupportedCurve,
+    X25519CannotSign,
 }
 
 impl From<KeyFormatError> for Error {
@@ -131,6 +140,25 @@ impl core::fmt::Display for KeyRejected {
             KeyFormatError::MismatchedSpkiAlgorithm => {
                 write!(f, "a SubjectPublicKeyInfo of another algorithm")
             }
+            KeyFormatError::DuplicateIdentifier => {
+                write!(f, "a threshold participant's identifier given twice")
+            }
+            KeyFormatError::UnknownIdentifier => {
+                write!(
+                    f,
+                    "a threshold participant missing from the signing package"
+                )
+            }
+            KeyFormatError::MismatchedCommitments => {
+                write!(f, "nonce commitments that are not the signer's")
+            }
+            KeyFormatError::UnknownPkcs8Algorithm => {
+                write!(f, "a PKCS#8 key of an algorithm rind does not support")
+            }
+            KeyFormatError::UnsupportedCurve => {
+                write!(f, "an EC key on a curve rind does not support")
+            }
+            KeyFormatError::X25519CannotSign => write!(f, "an X25519 key, which cannot sign"),
         }
     }
 }
@@ -147,6 +175,7 @@ impl core::fmt::Display for Error {
             Self::Fault => write!(f, "an internal consistency check failed"),
             Self::MessageLimitReached => write!(f, "a context reached its message limit"),
             Self::Unsupported => write!(f, "an algorithm the call does not take"),
+            Self::OutOfMemory => write!(f, "the memory asked for could not be allocated"),
         }
     }
 }

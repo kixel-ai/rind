@@ -2,18 +2,20 @@
 
 use super::aes::{check_gcm_iv, check_gcm_lengths};
 use crate::Error;
-use crate::low::{self, AesKey, Entry, NohwTable, ct_equal};
+use crate::low::{self, Entry, NohwTable, PortableAesKey, ct_equal};
 #[cfg(rind_backend = "arm")]
-use crate::low::{AesHwKey, GhashTable, HaveCryptoExt};
+use crate::low::{AesHwKey, GhashTable, HaveCryptoExt, HaveNeon, NeonKey, NeonTable};
 
 /// An AES-GCM key.
-// A process only ever builds one variant, so boxing would buy nothing.
-#[cfg_attr(rind_backend = "arm", expect(clippy::large_enum_variant))]
 pub(crate) enum AesGcm {
     Portable(Portable),
+    /// armv7's NEON's, which the key picks when the CPU has it but not the
+    /// crypto extension.
+    #[cfg(rind_backend = "arm")]
+    Neon(Arm<NeonKey, NeonTable>),
     /// armv7's crypto extension's, which the key picks when the CPU has it.
     #[cfg(rind_backend = "arm")]
-    Hw(Hw),
+    Hw(Arm<AesHwKey, GhashTable>),
 }
 
 impl AesGcm {
@@ -28,7 +30,11 @@ impl AesGcm {
         low::ct::secret_slice(copy_key);
         #[cfg(rind_backend = "arm")]
         if let Some(token) = HaveCryptoExt::check() {
-            return Self::Hw(Hw::new(copy_key, token));
+            return Self::Hw(Arm::hw(copy_key, token));
+        }
+        #[cfg(rind_backend = "arm")]
+        if let Some(token) = HaveNeon::check() {
+            return Self::Neon(Arm::neon(copy_key, token));
         }
         Self::Portable(Portable::new(copy_key))
     }
@@ -37,6 +43,8 @@ impl AesGcm {
     pub(crate) fn key_len(&self) -> usize {
         match self {
             Self::Portable(key) => key.key.key_len(),
+            #[cfg(rind_backend = "arm")]
+            Self::Neon(key) => key.key.key_len(),
             #[cfg(rind_backend = "arm")]
             Self::Hw(key) => key.key.key_len(),
         }
@@ -65,6 +73,8 @@ impl AesGcm {
         check_gcm_lengths(aad.len(), cipher_inout.len())?;
         match self {
             Self::Portable(key) => *tag_out = key.tagged::<true>(nonce, aad, cipher_inout),
+            #[cfg(rind_backend = "arm")]
+            Self::Neon(key) => *tag_out = key.tagged::<true>(nonce, aad, cipher_inout),
             #[cfg(rind_backend = "arm")]
             Self::Hw(key) => *tag_out = key.tagged::<true>(nonce, aad, cipher_inout),
         }
@@ -99,6 +109,8 @@ impl AesGcm {
         let want = match self {
             Self::Portable(key) => key.tagged::<false>(nonce, aad, cipher_inout),
             #[cfg(rind_backend = "arm")]
+            Self::Neon(key) => key.tagged::<false>(nonce, aad, cipher_inout),
+            #[cfg(rind_backend = "arm")]
             Self::Hw(key) => key.tagged::<false>(nonce, aad, cipher_inout),
         };
         let result = ct_equal(&want, tag);
@@ -132,6 +144,8 @@ impl AesGcm {
         let tag = match self {
             Self::Portable(key) => key.tagged::<true>(iv, aad, cipher_inout),
             #[cfg(rind_backend = "arm")]
+            Self::Neon(key) => key.tagged::<true>(iv, aad, cipher_inout),
+            #[cfg(rind_backend = "arm")]
             Self::Hw(key) => key.tagged::<true>(iv, aad, cipher_inout),
         };
         tag_out.copy_from_slice(&tag[..tag_out.len()]);
@@ -159,6 +173,8 @@ impl AesGcm {
         let want = match self {
             Self::Portable(key) => key.tagged::<false>(iv, aad, cipher_inout),
             #[cfg(rind_backend = "arm")]
+            Self::Neon(key) => key.tagged::<false>(iv, aad, cipher_inout),
+            #[cfg(rind_backend = "arm")]
             Self::Hw(key) => key.tagged::<false>(iv, aad, cipher_inout),
         };
         let valid = ct_equal(&want[..tag.len()], tag);
@@ -174,16 +190,16 @@ impl AesGcm {
     }
 }
 
-/// The bitsliced AES rind copies from libcrux and aws-lc's integer GHASH,
-/// for CPUs without the crypto extension. Both wipe themselves on drop.
+/// aws-lc's bitsliced AES and integer GHASH, for CPUs without the crypto
+/// extension. Both wipe themselves on drop.
 pub(crate) struct Portable {
-    key: AesKey,
+    key: PortableAesKey,
     table: NohwTable,
 }
 
 impl Portable {
     fn new(key: &[u8]) -> Self {
-        let key = AesKey::new(key);
+        let key = PortableAesKey::new(key);
         let h = key.encrypt_block(&[0; 16]);
         let table = NohwTable::new(&h);
         Self { key, table }
@@ -194,21 +210,64 @@ impl Portable {
 /// cache: aws-lc's `GHASH_CHUNK`.
 const CHUNK: usize = 3 * 1024;
 
-/// aws-lc's AES and GHASH for the crypto extension, composed as aws-lc's
-/// `CRYPTO_gcm128_encrypt_ctr32` does on 32-bit ARM.
+/// aws-lc's AES and GHASH assembly for the crypto extension or NEON,
+/// composed as aws-lc's `CRYPTO_gcm128_encrypt_ctr32` does on 32-bit ARM.
 #[cfg(rind_backend = "arm")]
-pub(crate) struct Hw {
-    key: AesHwKey,
-    table: GhashTable,
+pub(crate) struct Arm<K, T> {
+    key: K,
+    table: T,
 }
 
 #[cfg(rind_backend = "arm")]
-impl Hw {
-    fn new(key: &[u8], token: HaveCryptoExt) -> Self {
+impl Arm<AesHwKey, GhashTable> {
+    fn hw(key: &[u8], token: HaveCryptoExt) -> Self {
         let key = AesHwKey::new(key, token);
         let h = key.encrypt_block(&[0; 16]);
         let table = GhashTable::new(&h, token);
         Self { key, table }
+    }
+}
+
+#[cfg(rind_backend = "arm")]
+impl Arm<NeonKey, NeonTable> {
+    fn neon(key: &[u8], token: HaveNeon) -> Self {
+        let key = NeonKey::new(key, token);
+        let h = key.encrypt_block(&[0; 16]);
+        let table = NeonTable::new(&h, token);
+        Self { key, table }
+    }
+}
+
+/// An armv7 AES key with a counter-mode routine for whole blocks.
+#[cfg(rind_backend = "arm")]
+trait BlocksKey {
+    #[must_use]
+    fn encrypt_block(&self, block: &[u8; 16]) -> [u8; 16];
+
+    /// XORs the keystream from counter block `ivec` into `blocks`, its last
+    /// four bytes incremented with 32-bit wrapping.
+    fn ctr32(&self, ivec: &[u8; 16], blocks: &mut [[u8; 16]]);
+}
+
+#[cfg(rind_backend = "arm")]
+impl BlocksKey for AesHwKey {
+    fn encrypt_block(&self, block: &[u8; 16]) -> [u8; 16] {
+        self.encrypt_block(block)
+    }
+
+    fn ctr32(&self, ivec: &[u8; 16], blocks: &mut [[u8; 16]]) {
+        self.ctr32(ivec, blocks);
+    }
+}
+
+#[cfg(rind_backend = "arm")]
+impl BlocksKey for NeonKey {
+    fn encrypt_block(&self, block: &[u8; 16]) -> [u8; 16] {
+        self.encrypt_block(block)
+    }
+
+    fn ctr32(&self, ivec: &[u8; 16], blocks: &mut [[u8; 16]]) {
+        self.ctr32(ivec, blocks);
     }
 }
 
@@ -222,9 +281,10 @@ trait Parts {
     #[must_use]
     fn encrypt_block(&self, block: &[u8; 16]) -> [u8; 16];
 
-    /// XORs the keystream from counter block `ivec` into `blocks`,
-    /// incrementing its last four bytes with 32-bit wrapping.
-    fn ctr32(&self, ivec: &[u8; 16], blocks: &mut [[u8; 16]]);
+    /// XORs the keystream from counter block `ivec` into `inout`, its last
+    /// four bytes incremented with 32-bit wrapping, returning the next
+    /// counter block.
+    fn ctr(&self, ivec: &[u8; 16], inout: &mut [u8]) -> [u8; 16];
 
     /// Encrypts (if `ENC`) or decrypts `inout` in place under `iv`, of any
     /// length, and returns its tag.
@@ -264,23 +324,6 @@ trait Parts {
         }
         xi
     }
-
-    /// XORs the keystream from counter block `ivec` into `inout`, returning
-    /// the next counter block.
-    fn ctr(&self, ivec: &[u8; 16], inout: &mut [u8]) -> [u8; 16] {
-        let (blocks, tail) = inout.as_chunks_mut::<16>();
-        self.ctr32(ivec, blocks);
-        let ivec = add32(ivec, blocks.len() as u32);
-        if tail.is_empty() {
-            return ivec;
-        }
-
-        let next = add32(&ivec, 1);
-        for (b, k) in tail.iter_mut().zip(self.encrypt_block(&ivec)) {
-            *b ^= k;
-        }
-        next
-    }
 }
 
 /// GHASH over whole blocks.
@@ -295,6 +338,13 @@ impl Ghash for GhashTable {
     }
 }
 
+#[cfg(rind_backend = "arm")]
+impl Ghash for NeonTable {
+    fn ghash(&self, xi: &mut [u8; 16], input: &[[u8; 16]]) {
+        self.ghash(xi, input);
+    }
+}
+
 impl Ghash for NohwTable {
     fn ghash(&self, xi: &mut [u8; 16], input: &[[u8; 16]]) {
         self.ghash(xi, input);
@@ -302,10 +352,10 @@ impl Ghash for NohwTable {
 }
 
 #[cfg(rind_backend = "arm")]
-impl Parts for Hw {
-    type Table = GhashTable;
+impl<K: BlocksKey, T: Ghash> Parts for Arm<K, T> {
+    type Table = T;
 
-    fn table(&self) -> &GhashTable {
+    fn table(&self) -> &T {
         &self.table
     }
 
@@ -313,8 +363,18 @@ impl Parts for Hw {
         self.key.encrypt_block(block)
     }
 
-    fn ctr32(&self, ivec: &[u8; 16], blocks: &mut [[u8; 16]]) {
+    fn ctr(&self, ivec: &[u8; 16], inout: &mut [u8]) -> [u8; 16] {
+        let (blocks, tail) = inout.as_chunks_mut::<16>();
         self.key.ctr32(ivec, blocks);
+        let ivec = add32(ivec, blocks.len() as u32);
+        if tail.is_empty() {
+            return ivec;
+        }
+
+        for (b, k) in tail.iter_mut().zip(self.key.encrypt_block(&ivec)) {
+            *b ^= k;
+        }
+        add32(&ivec, 1)
     }
 }
 
@@ -329,15 +389,10 @@ impl Parts for Portable {
         self.key.encrypt_block(block)
     }
 
-    fn ctr32(&self, ivec: &[u8; 16], blocks: &mut [[u8; 16]]) {
-        for (i, block) in (0u32..).zip(blocks) {
-            for (b, k) in block
-                .iter_mut()
-                .zip(self.key.encrypt_block(&add32(ivec, i)))
-            {
-                *b ^= k;
-            }
-        }
+    fn ctr(&self, ivec: &[u8; 16], inout: &mut [u8]) -> [u8; 16] {
+        // The final partial block shares the last batch.
+        self.key.ctr32(ivec, inout);
+        add32(ivec, inout.len().div_ceil(16) as u32)
     }
 }
 
@@ -417,10 +472,14 @@ mod tests {
             let raw = bytes(key_len, 1);
             let portable = Portable::new(&raw);
             #[cfg(rind_backend = "arm")]
-            let hw = HaveCryptoExt::check().map(|token| Hw::new(&raw, token));
+            let hw = HaveCryptoExt::check().map(|token| Arm::hw(&raw, token));
+            #[cfg(rind_backend = "arm")]
+            let neon = HaveNeon::check().map(|token| Arm::neon(&raw, token));
             let encrypt = |b: &[u8; 16]| portable.encrypt_block(b);
             let aad = bytes(17, 2);
-            for msg_len in [0, 1, 16, 17, 100, 3071, 3073] {
+            // 133 and 230 bytes end in a partial eight-block batch below
+            // and at the six blocks NEON's CTR hands bsaes.
+            for msg_len in [0, 1, 16, 17, 100, 133, 230, 3071, 3073] {
                 let plain = bytes(msg_len, 3);
                 let what = format!("{key_len} {msg_len}");
                 let mut runs = vec![];
@@ -444,6 +503,10 @@ mod tests {
                     if let Some(hw) = &hw {
                         check(hw, &iv, &aad, &plain, &want, &what);
                     }
+                    #[cfg(rind_backend = "arm")]
+                    if let Some(neon) = &neon {
+                        check(neon, &iv, &aad, &plain, &want, &what);
+                    }
                 }
             }
         }
@@ -455,7 +518,7 @@ mod tests {
         let portable = Portable::new(&[7; 16]);
         let mut y0 = [3u8; 16];
         y0[12..].copy_from_slice(&0xffff_fffeu32.to_be_bytes());
-        let plain = bytes(100, 4);
+        let plain = bytes(200, 4);
         let (want, _) = gcm_model(|b| portable.encrypt_block(b), &y0, &[], &plain);
         let mut got = plain.clone();
         let mut next = add32(&y0, 1);
@@ -463,12 +526,20 @@ mod tests {
         portable.ctr(&next, &mut got[48..]);
         assert_eq!(got, want);
         #[cfg(rind_backend = "arm")]
-        if let Some(token) = HaveCryptoExt::check() {
-            let hw = Hw::new(&[7; 16], token);
-            let mut got = plain.clone();
-            let next = hw.ctr(&add32(&y0, 1), &mut got[..48]);
-            hw.ctr(&next, &mut got[48..]);
-            assert_eq!(got, want);
+        {
+            // The second call's nine blocks reach bsaes on NEON.
+            fn split(parts: &impl Parts, y0: &[u8; 16], plain: &[u8], want: &[u8]) {
+                let mut got = plain.to_vec();
+                let next = parts.ctr(&add32(y0, 1), &mut got[..48]);
+                parts.ctr(&next, &mut got[48..]);
+                assert_eq!(got, want);
+            }
+            if let Some(token) = HaveCryptoExt::check() {
+                split(&Arm::hw(&[7; 16], token), &y0, &plain, &want);
+            }
+            if let Some(token) = HaveNeon::check() {
+                split(&Arm::neon(&[7; 16], token), &y0, &plain, &want);
+            }
         }
 
         fn check(

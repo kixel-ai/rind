@@ -5,9 +5,10 @@
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 use rind::cipher::{self, CbcIv};
-use rind::key_wrap::AesKek;
+use rind::key_wrap::{AesKek, Mode};
+use zeroize::Zeroizing;
 
-use crate::{Bytes, WrongLength, algorithm, bytes, bytes_with, constants, error};
+use crate::{Bytes, Secret, WrongLength, algorithm, bytes, bytes_with, constants, error};
 
 algorithm!(
     /// An AES key size.
@@ -27,7 +28,7 @@ struct AesCbcEncryptingKey(Box<cipher::AesCbcEncryptingKey>);
 impl AesCbcEncryptingKey {
     /// Expands `key` for `algorithm`; raises `WrongLength` unless it is that size.
     #[new]
-    fn new(algorithm: &Bound<'_, Algorithm>, key: Bytes<'_>) -> PyResult<Self> {
+    fn new(algorithm: &Bound<'_, Algorithm>, key: Secret<'_>) -> PyResult<Self> {
         cipher::AesCbcEncryptingKey::new(algorithm.get().inner, &key)
             .map(Box::new)
             .map(Self)
@@ -59,7 +60,7 @@ struct AesCbcDecryptingKey(Box<cipher::AesCbcDecryptingKey>);
 impl AesCbcDecryptingKey {
     /// Expands `key` for `algorithm`; raises `WrongLength` unless it is that size.
     #[new]
-    fn new(algorithm: &Bound<'_, Algorithm>, key: Bytes<'_>) -> PyResult<Self> {
+    fn new(algorithm: &Bound<'_, Algorithm>, key: Secret<'_>) -> PyResult<Self> {
         cipher::AesCbcDecryptingKey::new(algorithm.get().inner, &key)
             .map(Box::new)
             .map(Self)
@@ -90,7 +91,7 @@ struct Kek(Box<AesKek>);
 impl Kek {
     /// Expands `key` for `algorithm`; raises `WrongLength` unless it is that size.
     #[new]
-    fn new(algorithm: &Bound<'_, Algorithm>, key: Bytes<'_>) -> PyResult<Self> {
+    fn new(algorithm: &Bound<'_, Algorithm>, key: Secret<'_>) -> PyResult<Self> {
         AesKek::new(algorithm.get().inner, &key)
             .map(Box::new)
             .map(Self)
@@ -99,9 +100,9 @@ impl Kek {
 
     /// Wraps `key`, a multiple of 8 bytes from 16, with AES-KW; raises
     /// `WrongLength` for any other length.
-    fn wrap<'py>(&self, py: Python<'py>, key: Bytes<'_>) -> PyResult<Bound<'py, PyBytes>> {
+    fn wrap<'py>(&self, py: Python<'py>, key: Secret<'_>) -> PyResult<Bound<'py, PyBytes>> {
         bytes_with(py, &[], key.len() + 8, |out| {
-            self.0.wrap(&key, out).map_err(error)
+            self.0.wrap_key(Mode::Kw, &key, out).map_err(error)
         })
     }
 
@@ -112,14 +113,17 @@ impl Kek {
             return Err(error(rind::Error::DecryptFailed));
         }
         bytes_with(py, &[], wrapped.len() - 8, |out| {
-            self.0.unwrap(&wrapped, out).map_err(error)
+            self.0
+                .unwrap_key(Mode::Kw, &wrapped, out)
+                .map(|_| ())
+                .map_err(error)
         })
     }
 
     /// Wraps `key`, of any length from 1 byte, with AES-KWP.
-    fn wrap_padded<'py>(&self, py: Python<'py>, key: Bytes<'_>) -> PyResult<Bound<'py, PyBytes>> {
+    fn wrap_padded<'py>(&self, py: Python<'py>, key: Secret<'_>) -> PyResult<Bound<'py, PyBytes>> {
         bytes_with(py, &[], key.len().next_multiple_of(8) + 8, |out| {
-            self.0.wrap_padded(&key, out).map_err(error)
+            self.0.wrap_key(Mode::Kwp, &key, out).map_err(error)
         })
     }
 
@@ -133,10 +137,12 @@ impl Kek {
         if wrapped.len() < 16 || !wrapped.len().is_multiple_of(8) {
             return Err(error(rind::Error::DecryptFailed));
         }
-        let mut key = vec![0; wrapped.len() - 8];
+        // The unwrapped key's length is known only once unwrapped, so it
+        // lands in scratch first, wiped before it is freed.
+        let mut key = Zeroizing::new(vec![0; wrapped.len() - 8]);
         let len = self
             .0
-            .unwrap_padded(&wrapped, &mut key)
+            .unwrap_key(Mode::Kwp, &wrapped, &mut key)
             .map_err(error)?
             .len();
         Ok(bytes(py, &key[..len]))

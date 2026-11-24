@@ -46,6 +46,55 @@ fn test_rind_aes_gcm(key: &rind::aead::Key, nonce: &[u8; 12], aad: &[u8], buf: &
         .unwrap();
 }
 
+// verified-garbage's sealing row, checked once against rind's ciphertext and tag.
+fn vg_seal(
+    group: &mut criterion::BenchmarkGroup<'_, criterion::measurement::WallTime>,
+    key: &[u8],
+    ours: &'static rind::aead::Algorithm,
+    (nonce, aad, size_name): (&[u8; 12], &[u8], &str),
+    buf: &mut [u8],
+) {
+    let vg = verified_garbage::aead::aes_gcm::AesGcm::new(key).unwrap();
+    let mut expect = vec![0u8; buf.len()];
+    let tag = rind::aead::Key::new(ours, key)
+        .unwrap()
+        .seal_in_place_separate_tag(
+            rind::aead::Nonce::assume_unique_for_key(*nonce),
+            aad,
+            &mut expect,
+        )
+        .unwrap();
+    let mut ct = vec![0u8; buf.len()];
+    assert_eq!(
+        vg.encrypt_in_place(nonce, aad, &mut ct).unwrap(),
+        tag.as_ref()
+    );
+    assert_eq!(ct, expect);
+    group.bench_function(BenchmarkId::new("verified-garbage", size_name), |b| {
+        b.iter(|| vg.encrypt_in_place(nonce, aad, buf).unwrap());
+    });
+}
+
+// verified-garbage's opening row, over a ciphertext and tag rind sealed.
+fn vg_open(
+    group: &mut criterion::BenchmarkGroup<'_, criterion::measurement::WallTime>,
+    key: &[u8],
+    (nonce, aad, size_name): (&[u8; 12], &[u8], &str),
+    (ct, tag): (&[u8], &[u8; 16]),
+    pt: &mut [u8],
+) {
+    let vg = verified_garbage::aead::aes_gcm::AesGcm::new(key).unwrap();
+    pt.copy_from_slice(ct);
+    vg.decrypt_in_place(nonce, aad, pt, tag).unwrap();
+    assert!(pt.iter().all(|&x| x == 0));
+    group.bench_function(BenchmarkId::new("verified-garbage", size_name), |b| {
+        b.iter(|| {
+            pt.copy_from_slice(ct);
+            vg.decrypt_in_place(nonce, aad, pt, tag).unwrap();
+        });
+    });
+}
+
 // Expanding a key and its GHASH table, as each QUIC connection and derived
 // track key pays. It drops each key in the loop, so their wiping is timed too.
 fn key_setup(
@@ -62,7 +111,11 @@ fn key_setup(
         b.iter(|| aws_lc_rs::aead::UnboundKey::new(aws, black_box(key)).unwrap())
     });
     group.bench_function(BenchmarkId::new("rind", "key"), |b| {
+        let _dit = criterion::rind_dit();
         b.iter(|| rind::aead::Key::new(ours, black_box(key)).unwrap())
+    });
+    group.bench_function(BenchmarkId::new("verified-garbage", "key"), |b| {
+        b.iter(|| verified_garbage::aead::aes_gcm::AesGcm::new(black_box(key)).unwrap())
     });
 }
 
@@ -110,13 +163,19 @@ fn aes128_gcm(c: &mut Criterion) {
             let key = aes_gcm::Aes128Gcm::new_from_slice(&key).unwrap();
             b.iter(|| test_rc_aes128_gcm(&key, &nonce, aad, &mut buf));
         });
-        for (lib, _dit) in criterion::rind_rows() {
-            group.bench_function(BenchmarkId::new(lib, size_name), |b| {
-                use rind::aead::{AES_128_GCM, Key};
-                let key = Key::new(&AES_128_GCM, &key).unwrap();
-                b.iter(|| test_rind_aes_gcm(&key, &nonce, aad, &mut buf));
-            });
-        }
+        group.bench_function(BenchmarkId::new("rind", size_name), |b| {
+            let _dit = criterion::rind_dit();
+            use rind::aead::{AES_128_GCM, Key};
+            let key = Key::new(&AES_128_GCM, &key).unwrap();
+            b.iter(|| test_rind_aes_gcm(&key, &nonce, aad, &mut buf));
+        });
+        vg_seal(
+            &mut group,
+            &key,
+            &rind::aead::AES_128_GCM,
+            (&nonce, aad, size_name),
+            &mut buf,
+        );
         #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
         group.bench_function(BenchmarkId::new("graviola", size_name), |b| {
             let key = graviola::aead::AesGcm::new(&key);
@@ -136,6 +195,19 @@ fn aes128_gcm(c: &mut Criterion) {
             let mut key = ossl_aead::Sealer::new(openssl::cipher::Cipher::aes_128_gcm(), &key);
             b.iter(|| key.seal(&nonce, aad, &mut buf));
         });
+    }
+    group.finish();
+
+    if let Some(mut group) = criterion::dit_per_call(c, "aes128-gcm") {
+        for (size, size_name, aad) in criterion::dit_per_call_aead_rows() {
+            let mut buf = vec![0u8; size];
+            group.throughput(Throughput::Bytes(size as u64));
+            group.bench_function(BenchmarkId::new("rind", size_name), |b| {
+                use rind::aead::{AES_128_GCM, Key};
+                let key = Key::new(&AES_128_GCM, &key).unwrap();
+                b.iter(|| test_rind_aes_gcm(&key, &nonce, aad, &mut buf));
+            });
+        }
     }
 }
 
@@ -175,13 +247,19 @@ fn aes256_gcm(c: &mut Criterion) {
             let key = aes_gcm::Aes256Gcm::new_from_slice(&key).unwrap();
             b.iter(|| test_rc_aes256_gcm(&key, &nonce, aad, &mut buf));
         });
-        for (lib, _dit) in criterion::rind_rows() {
-            group.bench_function(BenchmarkId::new(lib, size_name), |b| {
-                use rind::aead::{AES_256_GCM, Key};
-                let key = Key::new(&AES_256_GCM, &key).unwrap();
-                b.iter(|| test_rind_aes_gcm(&key, &nonce, aad, &mut buf));
-            });
-        }
+        group.bench_function(BenchmarkId::new("rind", size_name), |b| {
+            let _dit = criterion::rind_dit();
+            use rind::aead::{AES_256_GCM, Key};
+            let key = Key::new(&AES_256_GCM, &key).unwrap();
+            b.iter(|| test_rind_aes_gcm(&key, &nonce, aad, &mut buf));
+        });
+        vg_seal(
+            &mut group,
+            &key,
+            &rind::aead::AES_256_GCM,
+            (&nonce, aad, size_name),
+            &mut buf,
+        );
         #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
         group.bench_function(BenchmarkId::new("graviola", size_name), |b| {
             let key = graviola::aead::AesGcm::new(&key);
@@ -313,21 +391,27 @@ fn open<K: KeySize>(
                     .unwrap();
             });
         });
-        for (lib, _dit) in criterion::rind_rows() {
-            group.bench_function(BenchmarkId::new(lib, size_name), |b| {
-                b.iter(|| {
-                    pt.copy_from_slice(ct);
-                    rind_key
-                        .open_in_place_separate_tag(
-                            rind::aead::Nonce::assume_unique_for_key(nonce),
-                            aad,
-                            tag,
-                            pt,
-                        )
-                        .unwrap();
-                });
+        group.bench_function(BenchmarkId::new("rind", size_name), |b| {
+            let _dit = criterion::rind_dit();
+            b.iter(|| {
+                pt.copy_from_slice(ct);
+                rind_key
+                    .open_in_place_separate_tag(
+                        rind::aead::Nonce::assume_unique_for_key(nonce),
+                        aad,
+                        tag,
+                        pt,
+                    )
+                    .unwrap();
             });
-        }
+        });
+        vg_open(
+            &mut group,
+            key,
+            (&nonce, aad, size_name),
+            (ct, tag.as_ref().try_into().unwrap()),
+            pt,
+        );
         group.bench_function(BenchmarkId::new("rustcrypto", size_name), |b| {
             use aes_gcm::{AeadInOut, KeyInit};
             let key = K::RustCrypto::new_from_slice(key).unwrap();
@@ -402,7 +486,11 @@ fn aes192_gcm(c: &mut Criterion) {
         })
     });
     group.bench_function(BenchmarkId::new("rind", "key"), |b| {
+        let _dit = criterion::rind_dit();
         b.iter(|| rind::aead::Key::new(&rind::aead::AES_192_GCM, black_box(&key)).unwrap())
+    });
+    group.bench_function(BenchmarkId::new("verified-garbage", "key"), |b| {
+        b.iter(|| verified_garbage::aead::aes_gcm::AesGcm::new(black_box(&key)).unwrap())
     });
     for (size, size_name, aad) in rows() {
         let mut buf = vec![0u8; size];
@@ -410,11 +498,17 @@ fn aes192_gcm(c: &mut Criterion) {
         group.bench_function(BenchmarkId::new("aws-lc-rs", size_name), |b| {
             b.iter(|| test_aws_aes_gcm(&aws_key, &nonce, aad, &mut buf));
         });
-        for (lib, _dit) in criterion::rind_rows() {
-            group.bench_function(BenchmarkId::new(lib, size_name), |b| {
-                b.iter(|| test_rind_aes_gcm(&rind_key, &nonce, aad, &mut buf));
-            });
-        }
+        group.bench_function(BenchmarkId::new("rind", size_name), |b| {
+            let _dit = criterion::rind_dit();
+            b.iter(|| test_rind_aes_gcm(&rind_key, &nonce, aad, &mut buf));
+        });
+        vg_seal(
+            &mut group,
+            &key,
+            &rind::aead::AES_192_GCM,
+            (&nonce, aad, size_name),
+            &mut buf,
+        );
     }
     drop(group);
 
@@ -443,21 +537,27 @@ fn aes192_gcm(c: &mut Criterion) {
                     .unwrap();
             });
         });
-        for (lib, _dit) in criterion::rind_rows() {
-            group.bench_function(BenchmarkId::new(lib, size_name), |b| {
-                b.iter(|| {
-                    pt.copy_from_slice(ct);
-                    rind_key
-                        .open_in_place_separate_tag(
-                            rind::aead::Nonce::assume_unique_for_key(nonce),
-                            aad,
-                            tag,
-                            pt,
-                        )
-                        .unwrap();
-                });
+        group.bench_function(BenchmarkId::new("rind", size_name), |b| {
+            let _dit = criterion::rind_dit();
+            b.iter(|| {
+                pt.copy_from_slice(ct);
+                rind_key
+                    .open_in_place_separate_tag(
+                        rind::aead::Nonce::assume_unique_for_key(nonce),
+                        aad,
+                        tag,
+                        pt,
+                    )
+                    .unwrap();
             });
-        }
+        });
+        vg_open(
+            &mut group,
+            &key,
+            (&nonce, aad, size_name),
+            (ct, tag.as_ref().try_into().unwrap()),
+            pt,
+        );
     }
 }
 

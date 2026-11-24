@@ -67,54 +67,117 @@ impl<const N: usize> PosInt<N> {
     }
 
     /// Makes a value from little-endian `words`, `words.len()` wide.
+    // Checks the length rather than `?` on `get_mut`, whose translation
+    // Lean cannot check, so `proofs/` can prove RSA's key loading.
     pub(crate) fn from_words(words: &[u64]) -> Result<Self, Error> {
+        if words.len() > N {
+            return Err(Error::WrongLength);
+        }
         let mut r = Self::zero();
-        r.words
-            .get_mut(..words.len())
-            .ok_or(Error::WrongLength)?
-            .copy_from_slice(words);
+        r.words[..words.len()].copy_from_slice(words);
         r.used = words.len();
         Ok(r)
     }
 
+    // Indexes rather than taking `rchunks_exact` and returning early from
+    // its loop, which Aeneas cannot translate, so `proofs/` can prove RSA's
+    // encoding.
+    #[allow(clippy::needless_range_loop)]
     pub(crate) fn from_bytes(bytes: &[u8]) -> Result<Self, Error> {
-        let mut r = Self::zero();
-
         let bytes = trim_leading_zeroes(bytes);
-
         if bytes.len() > N * 8 {
             return Err(Error::WrongLength);
         }
 
-        let mut words = bytes.rchunks_exact(8);
-
-        for word_bytes in words.by_ref() {
-            r.push_word(u64::from_be_bytes(word_bytes.try_into().unwrap()))?;
+        let mut r = Self::zero();
+        let full = bytes.len() / 8;
+        for i in 0..full {
+            let end = bytes.len() - i * 8;
+            r.words[i] = u64::from_be_bytes(bytes[end - 8..end].try_into().unwrap());
         }
+        r.used = full;
 
-        let remainder = words.remainder();
-        let mut final_word = 0;
-        for byte in remainder.iter() {
-            final_word = (final_word << 8) | (*byte as u64);
+        // The rest is the top word, whose leading byte is nonzero.
+        let mut top = 0;
+        for i in 0..bytes.len() % 8 {
+            top = (top << 8) | (bytes[i] as u64);
         }
-
-        if final_word != 0 {
-            r.push_word(final_word)?;
+        if top != 0 {
+            r.push_word(top)?;
         }
 
         Ok(r)
     }
 
+    /// Like `from_bytes`, for secret `bytes`: it reads none of them through
+    /// a branch or an index, so the value is as wide as `bytes`, leading
+    /// zeroes included, and `fit` sets the width it needs.
+    // Indexes, as `to_bytes_fixed` does, which Aeneas can translate, so
+    // `proofs/` can prove RSA's public operation on AVX-512 IFMA.
+    pub(crate) fn from_secret_bytes(bytes: &[u8]) -> Result<Self, Error> {
+        // A DER integer this wide fits only with a zero sign byte, so the
+        // check reveals only whether it is too wide to be valid.
+        let bytes = if bytes.len() == N * 8 + 1 {
+            // `eq`, a `bool`, where Aeneas reads `==` as a proposition.
+            if !low::ct::into_public(bytes[0].eq(&0)) {
+                return Err(Error::WrongLength);
+            }
+            &bytes[1..]
+        } else if bytes.len() > N * 8 {
+            return Err(Error::WrongLength);
+        } else {
+            bytes
+        };
+
+        let mut r = Self::zero();
+        let len = bytes.len();
+        for i in 0..len {
+            r.words[i / 8] |= (bytes[len - 1 - i] as u64) << (8 * (i % 8));
+        }
+        r.used = len.div_ceil(8);
+        Ok(r)
+    }
+
+    /// Sets the width to `words`, returning whether the value fits in it,
+    /// without branching on the value. A value that does not fit loses its
+    /// words above `words`.
+    #[must_use]
+    pub(crate) fn fit(&mut self, words: usize) -> bool {
+        assert!(words <= N);
+        let mut high = 0;
+        for word in self.words.iter_mut().take(self.used).skip(words) {
+            high |= *word;
+            *word = 0;
+        }
+        self.used = words;
+        high == 0
+    }
+
+    // Indexes rather than zipping reversed `as_chunks_mut`, which Aeneas
+    // cannot translate, so `proofs/` can prove RSA's encoding.
     pub(crate) fn to_bytes<'a>(&self, out: &'a mut [u8]) -> Result<&'a [u8], Error> {
         let required_bytes = self.used * 8;
-        let out = out.get_mut(..required_bytes).ok_or(Error::WrongLength)?;
+        let Some(out) = out.get_mut(..required_bytes) else {
+            return Err(Error::WrongLength);
+        };
 
-        let (chunks, _) = out.as_chunks_mut::<8>();
-        for (chunk, word) in chunks.iter_mut().rev().zip(self.as_words().iter()) {
-            chunk.copy_from_slice(&word.to_be_bytes());
+        for i in 0..self.used {
+            let end = required_bytes - i * 8;
+            out[end - 8..end].copy_from_slice(&self.words[i].to_be_bytes());
         }
 
         Ok(out)
+    }
+
+    /// Writes the low `out.len()` bytes of the value to `out`, big-endian,
+    /// reading the same words whatever the value.
+    // Indexes, as `to_bytes` does, which Aeneas can translate.
+    pub(crate) fn to_bytes_fixed(&self, out: &mut [u8]) {
+        let len = out.len();
+        for i in 0..len {
+            let word = if i / 8 < N { self.words[i / 8] } else { 0 };
+            out[len - 1 - i] = (word >> (8 * (i % 8))) as u8;
+        }
     }
 
     /// Like `to_bytes`, but guarantees a zero byte prefix.
@@ -138,17 +201,6 @@ impl<const N: usize> PosInt<N> {
         Ok(out)
     }
 
-    #[allow(dead_code)]
-    pub(crate) fn debug(&self, why: &str) {
-        let mut bytes = [0u8; 1024];
-        let bytes = self.to_bytes(&mut bytes).unwrap();
-        print!("{why} = 0x");
-        for b in bytes {
-            print!("{b:02x}");
-        }
-        println!();
-    }
-
     pub(crate) fn len_bytes(&self) -> usize {
         self.len_bits().wrapping_add(7) / 8
     }
@@ -167,11 +219,10 @@ impl<const N: usize> PosInt<N> {
 
     /// Return true if `gcd(self, other)` is one
     pub(crate) fn is_coprime(&self, other: &Self) -> bool {
-        let mut tmp = vec![0u64; N + N];
-        let r = low::bignum_coprime(self.as_words(), other.as_words(), &mut tmp);
-        // Key generation's values are secret, and this scratch is on the heap.
-        low::zeroise(&mut tmp);
-        r
+        const { assert!(N <= MAX_SCRATCH_WORDS) };
+        // On the stack, so nothing derived from a key outlives the call.
+        let mut tmp = [0u64; 2 * MAX_SCRATCH_WORDS];
+        low::bignum_coprime(self.as_words(), other.as_words(), &mut tmp[..N + N])
     }
 
     /// The significant words.
@@ -187,7 +238,7 @@ impl<const N: usize> PosInt<N> {
     ///
     /// This is safe assuming `len.used` is in range (a fundamental invariant in this type)
     /// because `len` and `self` share the same type.
-    fn as_words_with_len_of(&self, len: &Self) -> &[u64] {
+    pub(crate) fn as_words_with_len_of(&self, len: &Self) -> &[u64] {
         &self.words[..len.used]
     }
 
@@ -248,32 +299,36 @@ impl<const N: usize> PosInt<N> {
     /// `self`, each of width + 1 steps of long division multiplies by 2^64,
     /// ending at M^2 mod `self`.
     #[must_use]
+    // Indexes, and shifts word pairs as `u128`s, rather than calling
+    // closures, which Aeneas cannot translate, so `proofs/` can prove RSA's
+    // key loading.
     pub(crate) fn pub_montifier(&self) -> Self {
         let k = self.used;
-        let Some(&top) = self.as_words().last().filter(|top| **top != 0) else {
+        if k == 0 || self.words[k - 1] == 0 {
             return Self::zero();
-        };
+        }
 
         // Shift both so the divisor's top bit is set, as `mul_word_mod` needs.
-        let shift = top.leading_zeros();
+        let shift = self.words[k - 1].leading_zeros();
         let mut d = Self::zero();
         d.used = k;
         for i in 0..k {
-            let below = i.checked_sub(1).map_or(0, |i| self.words[i]);
-            d.words[i] = self.words[i] << shift | below.checked_shr(64 - shift).unwrap_or(0);
+            let below = if i > 0 { self.words[i - 1] } else { 0 };
+            let pair = (u128::from(self.words[i]) << 64) | u128::from(below);
+            d.words[i] = ((pair << shift) >> 64) as u64;
         }
         let mut r = Self::zero();
         r.used = k;
         r.words[k - 1] = 1 << shift;
 
-        for _ in 0..=k {
+        for _ in 0..k + 1 {
             mul_word_mod(r.as_mut_words(), d.as_words());
         }
 
         for i in 0..k {
-            let above = r.words.get(i + 1).copied().filter(|_| i + 1 < k);
-            r.words[i] = r.words[i] >> shift
-                | above.map_or(0, |above| above.checked_shl(64 - shift).unwrap_or(0));
+            let above = if i + 1 < k { r.words[i + 1] } else { 0 };
+            let pair = (u128::from(above) << 64) | u128::from(r.words[i]);
+            r.words[i] = (pair >> shift) as u64;
         }
         r
     }
@@ -396,7 +451,7 @@ impl<const N: usize> PosInt<N> {
 
     /// Computes each of `pair`, as [`Self::mod_exp`] does: two at once by
     /// aws-lc's dual RSAZ where it is the fastest, on x86_64 CPUs with
-    /// AVX-512 IFMA, for moduli of 16, 24, or 32 words each, and exponents
+    /// AVX-512 IFMA, for moduli of 24 or 32 words each, and exponents
     /// no wider.
     pub(crate) fn mod_exp_pair(pair: [ModExp<'_, N>; 2]) -> [Self; 2] {
         #[cfg(rind_backend = "x86_64")]
@@ -515,7 +570,7 @@ impl<const N: usize> PosInt<N> {
 
         // `table` holds `self^i` at row `i`: each even power squares its
         // half, and each odd one multiplies the power below it by `self`.
-        let mut table = vec![0; k << WINDOW];
+        let mut table = alloc::vec![0; k << WINDOW];
         table[..k].copy_from_slice(one_mont.as_words_with_len_of(n));
         table[k..2 * k].copy_from_slice(self.as_words_with_len_of(n));
         for i in 2..1 << WINDOW {
@@ -565,15 +620,15 @@ impl<const N: usize> PosInt<N> {
     pub(crate) fn mod_inverse(&self, n: &Self) -> Self {
         let mut r = Self::zero();
         r.used = n.used;
-        let mut temp = vec![0u64; N * 3];
+        const { assert!(N <= MAX_SCRATCH_WORDS) };
+        // On the stack, as `is_coprime`'s.
+        let mut temp = [0u64; 3 * MAX_SCRATCH_WORDS];
         low::bignum_modinv(
             r.as_mut_words(),
             self.as_words_with_len_of(n),
             n.as_words(),
-            &mut temp,
+            &mut temp[..N * 3],
         );
-        // Key generation's values are secret, and this scratch is on the heap.
-        low::zeroise(&mut temp);
         r
     }
 
@@ -681,6 +736,10 @@ impl<const N: usize> PosInt<N> {
 // All-zero bytes are a valid zero.
 impl<const N: usize> low::Zeroable for PosInt<N> {}
 
+/// The widest operands of `is_coprime` and `mod_inverse`, an 8192-bit
+/// modulus, whose scratch is sized for it on the stack.
+const MAX_SCRATCH_WORDS: usize = 128;
+
 /// `base` ^ `e` mod `n`, one of a pair for [`PosInt::mod_exp_pair`], where
 /// `n_montifier` is `n.montifier()` and `n_0` is `n.mont_neg_inverse()`.
 pub(crate) struct ModExp<'a, const N: usize> {
@@ -738,16 +797,20 @@ fn window_bits(e: &[u64], lsb: usize, width: usize) -> u64 {
     bits & ((1 << width) - 1)
 }
 
-fn trim_leading_zeroes(mut bytes: &[u8]) -> &[u8] {
-    while let Some((first, rest)) = bytes.split_first() {
-        if *first == 0x00 {
-            bytes = rest;
-        } else {
-            return bytes;
-        }
+fn trim_leading_zeroes(bytes: &[u8]) -> &[u8] {
+    let mut start = 0;
+    while start < bytes.len() && bytes[start] == 0x00 {
+        start += 1;
     }
+    &bytes[start..]
+}
 
-    bytes
+/// The word `i` from the top of `x`, or zero if it is not that wide.
+fn word_below(x: &[u64], i: usize) -> u64 {
+    match x.len().checked_sub(i) {
+        Some(j) => x[j],
+        None => 0,
+    }
 }
 
 /// Replaces `u` with `u * 2^64 mod d`, in variable time.
@@ -758,26 +821,31 @@ fn trim_leading_zeroes(mut bytes: &[u8]) -> &[u8] {
 // function rather than its callers.
 #[inline(never)]
 fn mul_word_mod(u: &mut [u64], d: &[u64]) {
+    // Indexes rather than zipping or calling closures, which Aeneas cannot
+    // translate, so `proofs/` can prove RSA's key loading.
     let k = d.len();
-    let (Some(&d1), Some(&u2)) = (d.last(), u.last()) else {
+    if k == 0 {
         return;
-    };
-    let d0 = k.checked_sub(2).map_or(0, |i| d[i]);
-    let u1 = k.checked_sub(2).map_or(0, |i| u[i]);
-    let u0 = k.checked_sub(3).map_or(0, |i| u[i]);
-    u.copy_within(..k - 1, 1);
+    }
+    let (d1, d0) = (d[k - 1], word_below(d, 2));
+    let (u2, u1, u0) = (word_below(u, 1), word_below(u, 2), word_below(u, 3));
+    for j in 1..k {
+        let i = k - j;
+        u[i] = u[i - 1];
+    }
     u[0] = 0;
 
     // Estimate the quotient word from the top words, then refine it with
     // the next, after which it is at most one too large. `u` is below `d`,
     // so u2 <= d1.
-    let num = u128::from(u2) << 64 | u128::from(u1);
-    let mut q = match u2 < d1 {
-        true => num / u128::from(d1),
-        false => u128::from(u64::MAX),
+    let num = (u128::from(u2) << 64) | u128::from(u1);
+    let mut q = if u2 < d1 {
+        num / u128::from(d1)
+    } else {
+        u128::from(u64::MAX)
     };
     let mut rem = num - q * u128::from(d1);
-    while rem >> 64 == 0 && q * u128::from(d0) > (rem << 64 | u128::from(u0)) {
+    while rem >> 64 == 0 && q * u128::from(d0) > ((rem << 64) | u128::from(u0)) {
         q -= 1;
         rem += u128::from(d1);
     }
@@ -785,20 +853,20 @@ fn mul_word_mod(u: &mut [u64], d: &[u64]) {
     // (u2, u) -= q * d, then add d back if that went negative.
     let mut carry = 0u64;
     let mut borrow = false;
-    for (u, d) in u.iter_mut().zip(d) {
-        let product = q * u128::from(*d) + u128::from(carry);
+    for i in 0..k {
+        let product = q * u128::from(d[i]) + u128::from(carry);
         carry = (product >> 64) as u64;
-        let (diff, b1) = u.overflowing_sub(product as u64);
+        let (diff, b1) = u[i].overflowing_sub(product as u64);
         let (diff, b2) = diff.overflowing_sub(u64::from(borrow));
-        *u = diff;
+        u[i] = diff;
         borrow = b1 | b2;
     }
     if u2 < carry || (u2 == carry && borrow) {
         let mut carry = false;
-        for (u, d) in u.iter_mut().zip(d) {
-            let (sum, c1) = u.overflowing_add(*d);
+        for i in 0..k {
+            let (sum, c1) = u[i].overflowing_add(d[i]);
             let (sum, c2) = sum.overflowing_add(u64::from(carry));
-            *u = sum;
+            u[i] = sum;
             carry = c1 | c2;
         }
     }
@@ -943,12 +1011,12 @@ mod tests {
             n.words[k - 1] |= 1 << 63;
             n
         };
-        let moduli = [odd(16), odd(16), odd(15)];
+        let moduli = [odd(24), odd(24), odd(23)];
         let montifiers = moduli.each_ref().map(PosInt::montifier);
-        // Each below every modulus, as a 15-word value is.
-        let base = random(15);
-        // Exponents of 16 and 17 words.
-        let exponents = [random(16), random(17)];
+        // Each below every modulus, as a 23-word value is.
+        let base = random(23);
+        // Exponents of 24 and 25 words.
+        let exponents = [random(24), random(25)];
         let pair = |[i, j]: [usize; 2], [ei, ej]: [usize; 2]| {
             [(i, ei), (j, ej)].map(|(i, e)| ModExp {
                 base: &base,
@@ -959,7 +1027,7 @@ mod tests {
             })
         };
 
-        let rsaz = low::RsazAvx512::check(16).is_some();
+        let rsaz = low::RsazAvx512::check(24).is_some();
         assert_eq!(
             PosInt::mod_exp_pair_rsaz(&pair([0, 1], [0, 0])).is_some(),
             rsaz
@@ -994,6 +1062,51 @@ mod tests {
         ] {
             super::mul_word_mod(&mut u, &d);
             assert_eq!(u, want, "{why}");
+        }
+    }
+
+    /// `from_secret_bytes` reads the value `from_bytes` does, as wide as its
+    /// input, and `fit` narrows it to any width it fits in. Under
+    /// `admin/ctgrind` neither branches on the bytes.
+    #[test]
+    fn from_secret_bytes_and_fit() {
+        for len in 0..=17 {
+            for zeroes in 0..=len {
+                let mut bytes = vec![0u8; len];
+                for (i, b) in bytes.iter_mut().enumerate().skip(zeroes) {
+                    // Nonzero first, then zero every third byte.
+                    *b = if i == zeroes {
+                        0x80
+                    } else {
+                        (i % 3) as u8 * 0x55
+                    };
+                }
+                let want = PosInt::<2>::from_bytes(&bytes);
+                low::ct::secret_slice(&bytes);
+                let got = PosInt::<2>::from_secret_bytes(&bytes);
+                let (want, mut got) = match (want, got) {
+                    (Ok(want), Ok(got)) => (want, got),
+                    (want, got) => {
+                        // Only a nonzero byte above two words is refused.
+                        assert_eq!(len, 17, "{len} bytes, {zeroes} leading zeroes");
+                        assert_eq!(want.is_err(), zeroes == 0);
+                        assert_eq!(got.is_err(), zeroes == 0);
+                        continue;
+                    }
+                };
+                assert_eq!(got.used, len.min(16).div_ceil(8));
+                for words in 0..=2 {
+                    let mut fitted = got.clone();
+                    let fits = low::ct::into_public(fitted.fit(words));
+                    assert_eq!(fits, want.used <= words, "{len} bytes, {zeroes} zeroes");
+                    assert_eq!(fitted.used, words);
+                    if fits {
+                        assert!(low::ct::into_public(fitted).pub_equals(&want));
+                    }
+                }
+                assert!(low::ct::into_public(got.fit(2)));
+                assert!(low::ct::into_public(got).pub_equals(&want));
+            }
         }
     }
 
@@ -1091,15 +1204,12 @@ mod tests {
         let one_2 = PosInt::<2>::one();
 
         let r = PosInt::mul(&one_1, &one_1);
-        r.debug("1 x 1");
         assert!(r.pub_equals(&one_2));
 
         let r = PosInt::mul(&zero_1, &one_1);
-        r.debug("1 x 0");
         assert!(r.pub_equals(&zero_2));
 
         let r = PosInt::mul(&zero_1, &zero_1);
-        r.debug("0 x 0");
         assert!(r.pub_equals(&zero_2));
 
         let x_4 = PosInt::<4>::from_bytes(b"\xed\x1f\xde\xb5\xc6\x39\x43\x8f\xea\x1d\x05\x9c\xba\xa8\xd3\x7c\x13\x96\xf4\x96\x1c\x8e\x5f\x52\x8f\x3c\x4c\x3c\x45\xe5\x75\xa2").unwrap();

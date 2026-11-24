@@ -157,8 +157,10 @@ theorem sha256_update_blocks_spec (hb : Sha256Blocks) (P : List U8) (s : mid.sha
   obtain ⟨e, he⟩ := hb.entry
   unfold mid.sha2.Sha256State.Insts.RindLowGenericBlockwiseUpdateBlocks.update_blocks
   step*
-  case h2 =>
-    rw [he, bind_ok]
+  -- `step*` names its goals differently per target, so each is told by its shape:
+  -- the nonempty case runs the block function, the empty one does not.
+  all_goals first
+  | rw [he, bind_ok]
     step with sha256_block_spec hb s.h blk hl as ⟨a, ha⟩
     step*
     have hi3 : i3.val = blk.length / 64 := by
@@ -170,8 +172,7 @@ theorem sha256_update_blocks_spec (hb : Sha256Blocks) (P : List U8) (s : mid.sha
     rw [saturating_add_val _ _ (by rw [hi3]; omega), hi3, List.length_append]
     simp only [Slice.length] at *
     omega
-  all_goals
-    rename_i h0
+  | rename_i h0
     have : blk.val = [] := List.eq_nil_of_length_eq_zero (by simpa [b1_post] using h0)
     simp only [this, List.append_nil]
     exact ⟨hh, hn⟩
@@ -302,33 +303,13 @@ structure HashSpec {Self C S : Type} (inst : high.hash.Hash Self C S)
   hash_default : inst.hash = high.hash.Hash.hash.default inst
   cclone : ∀ p c, CAbs p c → inst.HashContextInst.corecloneCloneInst.clone c ⦃ c' => CAbs p c' ⦄
 
-theorem blockwise_clone_spec {N : Usize} (bw : low.generic.blockwise.Blockwise N) :
-    low.generic.blockwise.Blockwise.Insts.CoreCloneClone.clone bw ⦃ bw' => bw' = bw ⦄ := by
-  unfold low.generic.blockwise.Blockwise.Insts.CoreCloneClone.clone
-  simp only [core.clone.impls.CloneUsize.clone, lift, bind_ok]
-  step*
-  subst_vars
-  rfl
-
 theorem sha256_ctx_clone_spec (c : high.hash.Sha256Context) :
     high.hash.Sha256Context.Insts.CoreCloneClone.clone c ⦃ c' => c' = c ⦄ := by
-  simp only [high.hash.Sha256Context.Insts.CoreCloneClone.clone,
-    mid.sha2.Sha256Context.Insts.CoreCloneClone.clone, mid.sha2.Sha256State.Insts.CoreCloneClone.clone,
-    core.clone.impls.CloneU64.clone, lift, bind_ok]
-  step*
-  step with blockwise_clone_spec as ⟨bw, hbw⟩
-  subst_vars
-  rfl
+  simp [high.hash.Sha256Context.Insts.CoreCloneClone.clone]
 
 theorem sha1_ctx_clone_spec (c : high.hash.Sha1Context) :
     high.hash.Sha1Context.Insts.CoreCloneClone.clone c ⦃ c' => c' = c ⦄ := by
-  simp only [high.hash.Sha1Context.Insts.CoreCloneClone.clone,
-    mid.sha1.Sha1Context.Insts.CoreCloneClone.clone, mid.sha1.Sha1State.Insts.CoreCloneClone.clone,
-    core.clone.impls.CloneU64.clone, lift, bind_ok]
-  step*
-  step with blockwise_clone_spec as ⟨bw, hbw⟩
-  subst_vars
-  rfl
+  simp [high.hash.Sha1Context.Insts.CoreCloneClone.clone]
 
 theorem sha256_compress_length (H : List (BitVec 32)) (b : List Byte) (h : H.length = 8) :
     (sha256.compress H b).length = 8 := by
@@ -372,18 +353,10 @@ theorem sha256_hashSpec (hb : Sha256Blocks) :
     refine ⟨by rw [hd1]; rfl, ?_⟩
     rw [hd2, s_post, Array.val_to_slice, hr]
   clone := fun p s hs => by
-    simp only [high.hash.Sha256State.Insts.CoreCloneClone.clone,
-      mid.sha2.Sha256State.Insts.CoreCloneClone.clone]
-    step*
-    simp only [core.clone.impls.CloneU64.clone, lift, bind_ok, WP.spec_ok]
-    rw [← x_post]
-    exact hs
+    simpa [high.hash.Sha256State.Insts.CoreCloneClone.clone,
+      mid.sha2.Sha256State.Insts.CoreCloneClone.clone] using hs
   resume := fun p s hs => by
-    simp only [high.hash.Sha256State.Insts.RindHighHashHashStateSha256Context.resume,
-      mid.sha2.Sha256State.Insts.CoreCloneClone.clone]
-    step*
-    simp only [core.clone.impls.CloneU64.clone, lift, bind_ok]
-    rw [← x_post]
+    simp only [high.hash.Sha256State.Insts.RindHighHashHashStateSha256Context.resume]
     step with sha256_resume_spec p _ hs as ⟨c, hc⟩
     exact hc
   update := fun p c b hc hm => by
@@ -470,8 +443,10 @@ theorem sha1_update_blocks_spec (hb : Sha1Blocks) (P : List U8) (s : mid.sha1.Sh
   obtain ⟨e, he⟩ := hb.entry
   unfold mid.sha1.Sha1State.Insts.RindLowGenericBlockwiseUpdateBlocks.update_blocks
   step*
-  case h2 =>
-    rw [he, bind_ok]
+  -- `step*` names its goals differently per target, so each is told by its shape:
+  -- the nonempty case runs the block function, the empty one does not.
+  all_goals first
+  | rw [he, bind_ok]
     step with sha1_block_spec hb s.h blk hl as ⟨a, ha⟩
     step*
     have hi3 : i3.val = blk.length / 64 := by
@@ -483,8 +458,7 @@ theorem sha1_update_blocks_spec (hb : Sha1Blocks) (P : List U8) (s : mid.sha1.Sh
     rw [saturating_add_val _ _ (by rw [hi3]; omega), hi3, List.length_append]
     simp only [Slice.length] at *
     omega
-  all_goals
-    rename_i h0
+  | rename_i h0
     have : blk.val = [] := List.eq_nil_of_length_eq_zero (by simpa [b1_post] using h0)
     simp only [this, List.append_nil]
     exact ⟨hh, hn⟩
@@ -566,18 +540,10 @@ theorem sha1_hashSpec (hb : Sha1Blocks) :
     refine ⟨by rw [hd1]; rfl, ?_⟩
     rw [hd2, s_post, Array.val_to_slice, hr]
   clone := fun p s hs => by
-    simp only [high.hash.Sha1State.Insts.CoreCloneClone.clone,
-      mid.sha1.Sha1State.Insts.CoreCloneClone.clone]
-    step*
-    simp only [core.clone.impls.CloneU64.clone, lift, bind_ok, WP.spec_ok]
-    rw [← x_post]
-    exact hs
+    simpa [high.hash.Sha1State.Insts.CoreCloneClone.clone,
+      mid.sha1.Sha1State.Insts.CoreCloneClone.clone] using hs
   resume := fun p s hs => by
-    simp only [high.hash.Sha1State.Insts.RindHighHashHashStateSha1Context.resume,
-      mid.sha1.Sha1State.Insts.CoreCloneClone.clone]
-    step*
-    simp only [core.clone.impls.CloneU64.clone, lift, bind_ok]
-    rw [← x_post]
+    simp only [high.hash.Sha1State.Insts.RindHighHashHashStateSha1Context.resume]
     step with sha1_resume_spec p _ hs as ⟨c, hc⟩
     exact hc
   update := fun p c b hc hm => by

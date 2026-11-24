@@ -92,6 +92,27 @@ class BytesLike(unittest.TestCase):
             self.assertEqual(digest.digest(digest.SHA256, data), hashlib.sha256(bytes(data)).digest())
         self.assertEqual(digest.digest(digest.SHA256, bytearray()), hashlib.sha256(b"").digest())
 
+    def test_secrets_from_any_buffer(self):
+        # A secret in a buffer other than `bytes` loads through a copy that
+        # pyrind wipes; it works as the `bytes` would, and the caller's buffer
+        # is left for the caller to wipe.
+        seed = bytes(range(32))
+        derived = pbkdf2.Secret(pbkdf2.PBKDF2_HMAC_SHA256, seed).derive(1, b"salt", 32)
+        loads = (
+            lambda s: aead.Key(aead.AES_256_GCM, s).seal(bytes(12), b"m", aad=b""),
+            lambda s: hmac.sign(hmac.Key(hmac.HMAC_SHA256, s), b"m"),
+            lambda s: hkdf.Salt(hkdf.HKDF_SHA256, b"").extract(s).expand(b"", 32),
+            lambda s: pbkdf2.Secret(pbkdf2.PBKDF2_HMAC_SHA256, s).verify(1, b"salt", derived),
+            lambda s: key_wrap.AesKek(key_wrap.AES_256, bytes(32)).wrap(s),
+            lambda s: bytes(agreement.PrivateKey.from_scalar(agreement.X25519, s).public_key()),
+            lambda s: signature.Ed25519KeyPair.from_seed(s).sign(b"m"),
+        )
+        for load in loads:
+            expected = load(seed)
+            for buffer in (bytearray(seed), memoryview(bytearray(seed)), array.array("B", seed)):
+                self.assertEqual(load(buffer), expected)
+                self.assertEqual(bytes(buffer), seed)
+
 
 class Digest(unittest.TestCase):
     ALGORITHMS = {
@@ -546,9 +567,28 @@ class Signature(unittest.TestCase):
         key = signature.RsaKeyPair.generate(rsa.KeySize.RSA_2048)
         public = signature.PublicKey.from_spki(verify.RSA_PSS_SHA256, key.to_spki())
         public.verify(b"m", key.sign(sign.RSA_PSS_SHA256, b"m"))
+        # The constructor takes SPKI as well as PKCS#1.
+        spki = signature.PublicKey(verify.RSA_PSS_SHA256, key.to_spki())
+        self.assertEqual(bytes(spki), bytes(public))
+        # Each constructor refuses a modulus below the algorithm's floor as
+        # it loads, before any signature arrives.
+        floor = verify.legacy.RSA_PKCS1_3072_SHA384
+        for call in (
+            lambda: signature.PublicKey(floor, bytes(public)),
+            lambda: signature.PublicKey(floor, key.to_spki()),
+            lambda: signature.PublicKey.from_spki(floor, key.to_spki()),
+        ):
+            with self.assertRaises(pyrind.KeyRejected):
+                call()
         if PYCA:
             loaded = serialization.load_der_private_key(key.to_pkcs8(), None)
             self.assertEqual(loaded.key_size, 2048)
+            numbers = loaded.public_key().public_numbers()
+            n = numbers.n.to_bytes(256, "big")
+            e = numbers.e.to_bytes(3, "big")
+            signature.PublicKey.from_components(verify.RSA_PSS_SHA256, n, e)
+            with self.assertRaises(pyrind.KeyRejected):
+                signature.PublicKey.from_components(floor, n, e)
 
     def test_garbage_keys_are_rejected(self):
         for call in (

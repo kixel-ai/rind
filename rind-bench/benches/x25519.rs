@@ -1,7 +1,7 @@
 mod criterion;
 use std::hint::black_box;
 
-use criterion::{Criterion, Throughput, criterion_group, criterion_main};
+use criterion::{Bencher, Criterion, Throughput, criterion_group, criterion_main};
 
 const PUBLIC_KEY: &[u8; 32] = b"\xe6\xdb\x68\x67\x58\x30\x30\xdb\x35\x94\xc1\xa4\x24\xb1\x5f\x7c\x72\x66\x24\xec\x26\xb3\x35\x3b\x10\xa9\x03\xa6\xd0\xab\x1c\x4c";
 
@@ -82,7 +82,7 @@ fn x25519(c: &mut Criterion) {
         });
     });
 
-    group.bench_function("rind", |b| {
+    let rind = |b: &mut Bencher<'_>| {
         b.iter(|| {
             use rind::agreement::*;
             let our_private_key = PrivateKey::generate(&X25519).unwrap();
@@ -91,6 +91,23 @@ fn x25519(c: &mut Criterion) {
 
             let secret = our_private_key.agree(PUBLIC_KEY).unwrap();
             black_box(secret);
+        })
+    };
+    group.bench_function("rind", |b| {
+        let _dit = criterion::rind_dit();
+        rind(b)
+    });
+
+    group.bench_function("verified-garbage", |b| {
+        vg_agrees_with_rind();
+        use verified_garbage::x25519::{PrivateKey, PublicKey};
+
+        b.iter(|| {
+            let our_private_key = PrivateKey::generate().unwrap();
+            black_box(our_private_key.public_key());
+
+            let peer = PublicKey::from_bytes(PUBLIC_KEY);
+            black_box(our_private_key.exchange(&peer).unwrap());
         })
     });
 
@@ -118,6 +135,12 @@ fn x25519(c: &mut Criterion) {
             black_box(x25519_derive(&peer, &our_private_key).unwrap());
         })
     });
+    group.finish();
+
+    if let Some(mut group) = criterion::dit_per_call(c, "x25519-ecdh") {
+        group.throughput(Throughput::Elements(1));
+        group.bench_function("rind", rind);
+    }
 }
 
 // Generate a key and its public key: the fixed-base multiplication alone,
@@ -154,6 +177,7 @@ fn keygen(c: &mut Criterion) {
     });
 
     group.bench_function("rind", |b| {
+        let _dit = criterion::rind_dit();
         b.iter(|| {
             use rind::agreement::*;
             let key = PrivateKey::generate(&X25519).unwrap();
@@ -171,6 +195,14 @@ fn keygen(c: &mut Criterion) {
 
     group.bench_function("libcrux", |b| {
         b.iter(|| black_box(libcrux_ecdh::x25519_key_gen(&mut getrandom::SysRng).unwrap()));
+    });
+
+    group.bench_function("verified-garbage", |b| {
+        vg_agrees_with_rind();
+        b.iter(|| {
+            let key = verified_garbage::x25519::PrivateKey::generate().unwrap();
+            black_box(key.public_key());
+        })
     });
 
     #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
@@ -205,11 +237,41 @@ fn stored(c: &mut Criterion) {
     });
 
     group.bench_function("rind", |b| {
+        let _dit = criterion::rind_dit();
         use rind::agreement::*;
         let key = PrivateKey::from_scalar(&X25519, &scalar).unwrap();
 
         b.iter(|| black_box(key.agree(public_key).unwrap()))
     });
+
+    group.bench_function("verified-garbage", |b| {
+        use verified_garbage::x25519::{PrivateKey, PublicKey};
+        vg_agrees_with_rind();
+        let key = PrivateKey::from_bytes(&scalar);
+
+        b.iter(|| {
+            let peer = PublicKey::from_bytes(PUBLIC_KEY);
+            black_box(key.exchange(&peer).unwrap())
+        })
+    });
+}
+
+// Checks verified-garbage's public key and exchange against rind's, from a
+// fixed scalar, before any of its rows times them.
+fn vg_agrees_with_rind() {
+    use verified_garbage::x25519::{PrivateKey, PublicKey};
+    let scalar = [1u8; 32];
+    let key = PrivateKey::from_bytes(&scalar);
+    let rind_key =
+        rind::agreement::PrivateKey::from_scalar(&rind::agreement::X25519, &scalar).unwrap();
+    assert_eq!(
+        key.public_key().as_bytes()[..],
+        *rind_key.public_key().as_ref()
+    );
+    assert_eq!(
+        key.exchange(&PublicKey::from_bytes(PUBLIC_KEY)).unwrap()[..],
+        *rind_key.agree(PUBLIC_KEY).unwrap().as_ref()
+    );
 }
 
 criterion_group!(benches, x25519, keygen, stored);

@@ -37,6 +37,19 @@ impl Default for EncodedPoint {
     }
 }
 
+impl EncodedPoint {
+    /// Copies an encoded point, refused if it is longer than any curve's.
+    pub(crate) fn copy_from(encoded: &[u8]) -> Result<Self, Error> {
+        let mut point = Self::default();
+        let Some(span) = point.bytes.get_mut(..encoded.len()) else {
+            return Err(KeyFormatError::WrongLength.into());
+        };
+        span.copy_from_slice(encoded);
+        point.len = encoded.len();
+        Ok(point)
+    }
+}
+
 impl AsRef<[u8]> for EncodedPoint {
     fn as_ref(&self) -> &[u8] {
         &self.bytes[..self.len]
@@ -121,8 +134,11 @@ impl<C: Curve> SigningKey<C> {
     /// has one.
     fn is_public_key(&self, encoded: &[u8]) -> bool {
         // Kept as the public key once it matches, so it is not derived again.
+        // Indexed rather than matched on a slice pattern, which Aeneas cannot
+        // translate.
         #[cfg(rind_backend = "x86_64")]
-        if let [0x04, ..] = encoded
+        if !encoded.is_empty()
+            && encoded[0] == 0x04
             && let Some(matches) = self.private_key.public_key_is_uncompressed(encoded)
         {
             if matches {
@@ -158,27 +174,6 @@ impl<C: Curve> SigningKey<C> {
         })
     }
 
-    /// Encode this private key's corresponding public key in SubjectPublicKeyInfo DER format.
-    ///
-    /// The encoding is written to the start of `output`, and the used span is
-    /// returned.  [`Error::WrongLength`] is returned if `output` is not sufficient
-    /// to contain the full encoding.
-    pub(crate) fn to_spki_der<'a>(&self, output: &'a mut [u8]) -> Result<&'a [u8], Error> {
-        let point = self.public_key_uncompressed();
-        let spki = asn1::pkix::SubjectPublicKeyInfo {
-            algorithm: asn1::pkix::AlgorithmIdentifier {
-                algorithm: asn1::oid::id_ecPublicKey.clone(),
-                parameters: Some(asn1::Any::ObjectId(C::oid())),
-            },
-            subjectPublicKey: asn1::BitString::new(point.as_ref()),
-        };
-
-        let len = spki
-            .encode(&mut asn1::Encoder::new(output))
-            .map_err(|_| Error::WrongLength)?;
-        Ok(&output[..len])
-    }
-
     /// ECDSA signing, returning a fixed-length signature.
     ///
     /// The `message` is hashed using `H`.
@@ -195,6 +190,19 @@ impl<C: Curve> SigningKey<C> {
         let mut random = [0u8; 16];
         SystemRandom.fill(&mut random)?;
         self.rfc6979_sign_with_random::<H>(message, &random, signature)
+    }
+
+    /// [`Self::sign()`] with `random` in place of the system's, so the FIPS
+    /// module's self-test knows its answer.
+    #[cfg(any(test, rind_fips))]
+    pub(crate) fn sign_with_random<'a, H: SignatureHash>(
+        &self,
+        message: &[u8],
+        random: &[u8; 16],
+        signature: &'a mut [u8],
+    ) -> Result<&'a [u8], Error> {
+        let _entry = Entry::new_secret();
+        self.rfc6979_sign_with_random::<H>(message, random, signature)
     }
 
     /// ECDSA signing, returning a DER-encoded ASN.1 signature.
@@ -834,7 +842,6 @@ mod tests {
             sk.sign_asn1::<hash::Sha256>(message, &mut [0u8; 8]),
             Err(Error::WrongLength)
         );
-        assert_eq!(sk.to_spki_der(&mut [0u8; 8]), Err(Error::WrongLength));
     }
 
     fn check_pairwise_sec1<C: Curve>(sec1_der: &[u8]) {
@@ -856,6 +863,35 @@ mod tests {
             ),
             Err(Error::WrongLength)
         );
+    }
+
+    /// A SEC1 private key's scalar may carry leading zero bytes, which
+    /// aws-lc accepts too, but no nonzero byte beyond the order's length.
+    #[test]
+    fn sec1_scalar_with_leading_zeroes() {
+        fn check<C: Curve>(sec1_der: &[u8]) {
+            let key = SigningKey::<C>::from_sec1_der(sec1_der).unwrap();
+            let mut scalar = [0u8; MAX_SCALAR_LEN];
+            let scalar = key.to_scalar(&mut scalar).unwrap();
+            let public_key = key.public_key_uncompressed();
+            let mut buf = [0u8; 256];
+            for (lead, accepted) in [(0, true), (1, false)] {
+                let mut long = vec![0, lead];
+                long.extend_from_slice(scalar);
+                let der =
+                    sec1::encode(&long, public_key.as_ref(), Some(C::oid()), &mut buf).unwrap();
+                let loaded = SigningKey::<C>::from_sec1_der(der);
+                match accepted {
+                    true => assert!(loaded.unwrap().is_public_key(public_key.as_ref())),
+                    false => {
+                        assert_eq!(loaded.err(), Some(KeyFormatError::ScalarOutOfRange.into()))
+                    }
+                }
+            }
+        }
+        check::<curve::P256>(include_bytes!("ecdsa/secp256r1.der"));
+        check::<curve::P384>(include_bytes!("ecdsa/secp384r1.der"));
+        check::<curve::P521>(include_bytes!("ecdsa/secp521r1.der"));
     }
 
     fn check_pairwise_pkcs8<C: Curve>(pkcs8_der: &[u8]) {
@@ -1377,7 +1413,10 @@ mod tests {
             }
         }
 
-        process_cavp("../thirdparty/cavp/ecdsa/SigVer.rsp", &mut State::default());
+        process_cavp(
+            "../thirdparty/vectors/cavp/ecdsa/SigVer.rsp",
+            &mut State::default(),
+        );
     }
 
     fn pad(v: &mut Vec<u8>, l: usize) {

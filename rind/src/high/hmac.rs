@@ -69,15 +69,18 @@ impl<H: Hash> HmacKey<H> {
     pub(crate) fn start(&self) -> Hmac<H> {
         Hmac {
             inner: self.inner.resume(),
-            outer: self.outer.clone(),
+            key: self.clone(),
         }
     }
 }
 
-/// An in-progress HMAC computation, using hash function `H`.
+/// An in-progress HMAC computation, using hash function `H`, with the keyed
+/// states it restarts from.
+// `inner` first, so `Tagged` places it as `digest::Context` places a context.
+#[repr(C)]
 pub(crate) struct Hmac<H: Hash> {
     inner: H::Context,
-    outer: H::State,
+    key: HmacKey<H>,
 }
 
 // Not derived, as for `HmacKey`.
@@ -85,7 +88,7 @@ impl<H: Hash> Clone for Hmac<H> {
     fn clone(&self) -> Self {
         Self {
             inner: self.inner.clone(),
-            outer: self.outer.clone(),
+            key: self.key.clone(),
         }
     }
 }
@@ -101,7 +104,14 @@ impl<H: Hash> Hmac<H> {
     /// The HMAC output (sometimes called a "signature", or "tag") is returned.
     pub(crate) fn finish(&self) -> Digest {
         let inner = self.inner.finish();
-        self.outer.finish_with(inner.as_ref())
+        self.key.outer.finish_with(inner.as_ref())
+    }
+
+    /// Completes the HMAC signing operation, and starts a new message under the same key.
+    pub(crate) fn sign(&mut self) -> Digest {
+        let tag = self.finish();
+        self.inner = self.key.inner.resume();
+        tag
     }
 }
 
@@ -127,6 +137,11 @@ impl Algorithm {
     /// The length of this algorithm's tag, in bytes.
     pub fn tag_len(&self) -> usize {
         self.tag_len
+    }
+
+    /// The hash this algorithm runs over.
+    pub(super) fn id(&self) -> Id {
+        self.id
     }
 }
 
@@ -167,7 +182,7 @@ pub static HMAC_SHA512: Algorithm = Algorithm {
     key: Keying::<Sha512>::with_key,
 };
 
-/// An HMAC key, keyed once and reused for every message; wiped on drop under the `wipe` feature.
+/// An HMAC key, keyed once and reused for every message; wiped on drop.
 #[derive(Clone)]
 pub struct Key(Keyed);
 
@@ -218,7 +233,7 @@ impl fmt::Debug for Key {
     }
 }
 
-/// An in-progress tag computation, for a message given in pieces; wiped on drop under the `wipe` feature.
+/// An in-progress tag computation, for a message given in pieces; wiped on drop.
 ///
 /// A clone forks the computation, so messages sharing a prefix process it once.
 #[derive(Clone)]
@@ -235,11 +250,11 @@ impl Context {
         self.0.update(data);
     }
 
-    /// Returns the tag of the message.
+    /// Returns the tag of the message, and starts a new one under the same key.
     #[must_use]
-    pub fn sign(self) -> Tag {
+    pub fn sign(&mut self) -> Tag {
         let _entry = Entry::new_secret();
-        Tag(self.0.finish())
+        Tag(self.0.sign())
     }
 }
 
@@ -353,9 +368,13 @@ impl Zeroable for Keyed {}
 #[derive(Clone)]
 pub(super) struct Streaming(Tagged);
 
-// As `Keyed`, with all-zero hash contexts too.
+// As `Keyed`, with all-zero hash contexts too. Each `Hmac` sits 16 bytes
+// in on 64-bit targets, so, as in `digest::Context`, no 16-byte lane of its
+// contexts crosses a cache line. Aligned to a cache line rather than 16
+// bytes: on Arrow Lake a `Box`ed context ran up to 50 cycles slower, and
+// rind-rustls' `sign_concat` 15, at 16-byte alignment.
 #[derive(Clone)]
-#[repr(u8)]
+#[repr(u8, align(64))]
 enum Tagged {
     Sha1(Tagging<LegacySha1>),
     Sha256(Tagging<Sha256>),
@@ -382,6 +401,16 @@ impl Streaming {
             Tagged::Sha256(hmac) => hmac.finish(),
             Tagged::Sha384(hmac) => hmac.finish(),
             Tagged::Sha512(hmac) => hmac.finish(),
+        }
+    }
+
+    /// The tag of the message, restarting under the same key, for callers that have entered.
+    fn sign(&mut self) -> Digest {
+        match &mut self.0 {
+            Tagged::Sha1(hmac) => hmac.sign(),
+            Tagged::Sha256(hmac) => hmac.sign(),
+            Tagged::Sha384(hmac) => hmac.sign(),
+            Tagged::Sha512(hmac) => hmac.sign(),
         }
     }
 }
@@ -467,14 +496,16 @@ impl<H: HmacHash> Keying<H> {
 }
 
 /// An in-progress computation with its hash's code, as [`Keying`].
+#[repr(C)]
 struct Tagging<H: HmacHash> {
-    hmac: Hmac<H>,
     ops: ZeroableRef<TagOps<H>>,
+    hmac: Hmac<H>,
 }
 
 struct TagOps<H: HmacHash> {
     update: fn(&mut Hmac<H>, &[u8]),
     finish: fn(&Hmac<H>) -> Digest,
+    sign: fn(&mut Hmac<H>) -> Digest,
 }
 
 // Not derived, as for `HmacKey`.
@@ -496,6 +527,7 @@ impl<H: HmacHash> Tagging<H> {
                     &TagOps {
                         update: |hmac, data| hmac.update(data),
                         finish: Hmac::finish,
+                        sign: Hmac::sign,
                     }
                 },
             ),
@@ -509,6 +541,10 @@ impl<H: HmacHash> Tagging<H> {
     fn finish(&self) -> Digest {
         (self.ops.get().finish)(&self.hmac)
     }
+
+    fn sign(&mut self) -> Digest {
+        (self.ops.get().sign)(&mut self.hmac)
+    }
 }
 
 #[cfg(test)]
@@ -516,6 +552,27 @@ impl<H: HmacHash> Tagging<H> {
 mod tests {
     use super::*;
     use crate::test::*;
+
+    // Each inner context starts on a 16-byte boundary of a
+    // cache-line-aligned `Context`.
+    #[cfg(target_pointer_width = "64")]
+    #[test]
+    fn layout() {
+        assert_eq!(align_of::<Context>(), 64);
+        for algorithm in [&HMAC_SHA256, &HMAC_SHA384, &HMAC_SHA512] {
+            let ctx = Context::with_key(&Key::new(algorithm, b"key"));
+            let inner: *const u8 = match &ctx.0.0 {
+                Tagged::Sha256(tagging) => core::ptr::from_ref(&tagging.hmac.inner).cast(),
+                Tagged::Sha384(tagging) => core::ptr::from_ref(&tagging.hmac.inner).cast(),
+                Tagged::Sha512(tagging) => core::ptr::from_ref(&tagging.hmac.inner).cast(),
+                Tagged::Sha1(_) => unreachable!(),
+            };
+            assert_eq!(
+                (inner as usize - core::ptr::from_ref(&ctx) as usize) % 16,
+                0
+            );
+        }
+    }
 
     #[test]
     fn acvp() {
@@ -549,6 +606,24 @@ mod tests {
         let key = Key::new(&HMAC_SHA512, b"hello");
         assert_eq!(sign(&key, b"world").as_ref(),
                    b"\x66\x68\xed\x2f\x7d\x01\x6c\x5f\x12\xd7\x80\x8f\xc4\xf2\xd1\xdc\x48\x51\x62\x2d\x7f\x15\x61\x6d\xe9\x47\xa8\x23\xb3\xee\x67\xd7\x61\xb9\x53\xf0\x95\x60\xda\x30\x1f\x83\x29\x02\x02\r\xd1\xc6\x4f\x49\x6d\xf3\x7e\xb7\xac\x4f\xd2\xfe\xee\xb6\x7d\x77\xba\x9b");
+    }
+
+    #[test]
+    fn sign_resets() {
+        for algorithm in ALGORITHMS {
+            let key = Key::new(algorithm, b"key");
+            let mut ctx = Context::with_key(&key);
+            assert_eq!(ctx.sign().as_ref(), sign(&key, &[]).as_ref());
+            for message in [&[0x61u8; 3][..], &[0x62; 300], &[], &[0x63; 128]] {
+                ctx.update(message);
+                assert_eq!(
+                    ctx.sign().as_ref(),
+                    sign(&key, message).as_ref(),
+                    "{algorithm:?}, {} bytes",
+                    message.len()
+                );
+            }
+        }
     }
 
     #[test]
@@ -593,10 +668,10 @@ mod tests {
         }
     }
 
-    // HMAC-SHA1 and HMAC-SHA256 on the SHA extensions, and HMAC-SHA384 and
-    // HMAC-SHA512 on the SHA512 instructions, which valgrind cannot run, with
-    // a secret key and message, for `admin/ct-sde`. The longer key is hashed
-    // first, and the messages end in a block that pads within itself, fills
+    // HMAC-SHA1 and HMAC-SHA256 on the SHA extensions, which valgrind cannot
+    // run, with a secret key and message, for `admin/ct-sde`. HMAC-SHA384 and
+    // HMAC-SHA512 run no such instruction, so `admin/ctgrind` covers them
+    // through `secret_key_and_message`. The longer key is hashed first, and the messages end in a block that pads within itself, fills
     // it exactly, pads into another, or follows a whole one, both in one call
     // and through a context's buffer.
     #[cfg(rind_backend = "x86_64")]
@@ -606,13 +681,9 @@ mod tests {
         use crate::low::ct_sde;
 
         assert!(is_x86_feature_detected!("sha"), "the SHA extensions");
-        assert!(
-            is_x86_feature_detected!("sha512"),
-            "the SHA512 instructions"
-        );
         let seed = ct_sde::seed().to_le_bytes();
         let bytes = |n| seed.iter().cycle().take(n).copied().collect::<Vec<u8>>();
-        for algorithm in [&HMAC_SHA1, &HMAC_SHA256, &HMAC_SHA384, &HMAC_SHA512] {
+        for algorithm in [&HMAC_SHA1, &HMAC_SHA256] {
             for key_len in [16, 200] {
                 for message_len in [300, 311, 316, 320] {
                     let (key, message) = (bytes(key_len), bytes(message_len));
@@ -699,7 +770,10 @@ mod tests {
             }
         }
 
-        process_cavp("../thirdparty/cavp/hmac/HMAC.rsp", &mut Cavp::default());
+        process_cavp(
+            "../thirdparty/vectors/cavp/hmac/HMAC.rsp",
+            &mut Cavp::default(),
+        );
     }
 
     static ALGORITHMS: [&Algorithm; 4] = [&HMAC_SHA1, &HMAC_SHA256, &HMAC_SHA384, &HMAC_SHA512];

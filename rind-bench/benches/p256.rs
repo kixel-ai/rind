@@ -3,7 +3,23 @@ mod criterion;
 mod ossl_ec;
 use std::hint::black_box;
 
-use criterion::{Criterion, Throughput, criterion_group, criterion_main};
+use criterion::{Bencher, Criterion, Throughput, criterion_group, criterion_main};
+
+// verified-garbage has no key generation: a random scalar, drawn again until
+// it is in range, and its public key.
+fn vg_generate() -> (
+    verified_garbage::ec::PrivateKey<verified_garbage::ec::P256>,
+    verified_garbage::ec::PublicKey<verified_garbage::ec::P256>,
+) {
+    loop {
+        let mut d = [0u8; 32];
+        getrandom::fill(&mut d).unwrap();
+        let key = verified_garbage::ec::PrivateKey::from_bytes(&d);
+        if let Ok(public_key) = key.public_key() {
+            return (key, public_key);
+        }
+    }
+}
 
 const PUBLIC_KEY: &[u8; 65] = b"\x04\
 \x62\xd5\xbd\x33\x72\xaf\x75\xfe\x85\xa0\x40\x71\x5d\x0f\x50\x24\x28\xe0\x70\x46\x86\x8b\x0b\xfd\xfa\x61\xd7\x31\xaf\xe4\x4f\x26\
@@ -82,6 +98,7 @@ fn ecdh(c: &mut Criterion) {
     });
 
     group.bench_function("rind", |b| {
+        let _dit = criterion::rind_dit();
         b.iter(|| {
             use rind::agreement::*;
             let our_private_key = PrivateKey::generate(&ECDH_P256).unwrap();
@@ -90,6 +107,20 @@ fn ecdh(c: &mut Criterion) {
 
             let secret = our_private_key.agree(PUBLIC_KEY).unwrap();
             black_box(secret);
+        })
+    });
+
+    group.bench_function("verified-garbage", |b| {
+        vg_agrees_with_rind();
+        use verified_garbage::ec::PublicKey;
+        let peer_bytes: [u8; 65] = PUBLIC_KEY[..].try_into().unwrap();
+
+        b.iter(|| {
+            let (our_private_key, our_public_key) = vg_generate();
+            black_box(our_public_key);
+
+            let peer = PublicKey::from_bytes(&peer_bytes);
+            black_box(our_private_key.exchange(&peer).unwrap());
         })
     });
 
@@ -167,11 +198,17 @@ fn keygen(c: &mut Criterion) {
     });
 
     group.bench_function("rind", |b| {
+        let _dit = criterion::rind_dit();
         b.iter(|| {
             use rind::agreement::*;
             let our_private_key = PrivateKey::generate(&ECDH_P256).unwrap();
             black_box(our_private_key.public_key());
         })
+    });
+
+    group.bench_function("verified-garbage", |b| {
+        vg_agrees_with_rind();
+        b.iter(|| black_box(vg_generate()));
     });
 
     #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
@@ -201,12 +238,18 @@ fn ecdsa_keygen(c: &mut Criterion) {
     });
 
     group.bench_function("rind", |b| {
-        use rind::signature::{EcdsaKeyPair, sign};
+        let _dit = criterion::rind_dit();
+        use rind::ecdsa::{KeyPair, sign};
 
         b.iter(|| {
-            let key = EcdsaKeyPair::generate(&sign::ECDSA_P256_SHA256_FIXED).unwrap();
+            let key = KeyPair::generate(&sign::P256_SHA256_FIXED).unwrap();
             black_box(key.public_key().as_ref());
         })
+    });
+
+    group.bench_function("verified-garbage", |b| {
+        vg_agrees_with_rind();
+        b.iter(|| black_box(vg_generate()));
     });
 }
 
@@ -253,14 +296,31 @@ fn ecdsa_verify(c: &mut Criterion) {
         });
     });
 
-    group.bench_function("rind", |b| {
-        use rind::signature::{PublicKey, verify};
+    let rind = |b: &mut Bencher<'_>| {
+        use rind::ecdsa::{PublicKey, verify};
 
         b.iter(|| {
-            PublicKey::new(&verify::ECDSA_P256_SHA256_FIXED, public_key)
+            PublicKey::new(&verify::P256_SHA256_FIXED, public_key)
                 .unwrap()
                 .verify(message, signature)
                 .unwrap();
+        })
+    };
+    group.bench_function("rind", |b| {
+        let _dit = criterion::rind_dit();
+        rind(b)
+    });
+
+    // verified-garbage takes the key's bytes and validates it on every verify.
+    group.bench_function("verified-garbage", |b| {
+        use verified_garbage::hashes::sha256::Sha256;
+        let public_key = verified_garbage::ec::PublicKey::<verified_garbage::ec::P256>::from_bytes(
+            &public_key[..].try_into().unwrap(),
+        );
+        let signature: [u8; 64] = signature[..].try_into().unwrap();
+
+        b.iter(|| {
+            public_key.verify::<Sha256>(message, &signature).unwrap();
         })
     });
 
@@ -301,6 +361,11 @@ fn ecdsa_verify(c: &mut Criterion) {
     });
     group.finish();
 
+    if let Some(mut group) = criterion::dit_per_call(c, "p256-ecdsa-verify") {
+        group.throughput(Throughput::Elements(1));
+        group.bench_function("rind", rind);
+    }
+
     // A key parsed once, as a JWT verifier holds it, keeps its multiplication table.
     let mut group = c.benchmark_group("p256-ecdsa-verify-parsed");
     group.throughput(Throughput::Elements(1));
@@ -317,8 +382,9 @@ fn ecdsa_verify(c: &mut Criterion) {
     });
 
     group.bench_function("rind", |b| {
-        use rind::signature::{PublicKey, verify};
-        let public_key = PublicKey::new(&verify::ECDSA_P256_SHA256_FIXED, public_key).unwrap();
+        let _dit = criterion::rind_dit();
+        use rind::ecdsa::{PublicKey, verify};
+        let public_key = PublicKey::new(&verify::P256_SHA256_FIXED, public_key).unwrap();
 
         b.iter(|| {
             public_key.verify(message, signature).unwrap();
@@ -343,13 +409,34 @@ fn ecdsa_verify(c: &mut Criterion) {
     });
 
     group.bench_function("rind", |b| {
+        let _dit = criterion::rind_dit();
         use rind::digest;
-        use rind::signature::{PublicKey, verify};
-        let public_key = PublicKey::new(&verify::ECDSA_P256_SHA256_FIXED, public_key).unwrap();
+        use rind::ecdsa::{PublicKey, verify};
+        let public_key = PublicKey::new(&verify::P256_SHA256_FIXED, public_key).unwrap();
         let digest = digest::digest(&digest::SHA256, message);
 
         b.iter(|| {
             public_key.verify_digest(&digest, signature).unwrap();
+        })
+    });
+
+    // verified-garbage validates the key on every verify, which rind's row parses once.
+    group.bench_function("verified-garbage", |b| {
+        use rind::digest;
+        use verified_garbage::hashes::sha256::Sha256;
+        let public_key = verified_garbage::ec::PublicKey::<verified_garbage::ec::P256>::from_bytes(
+            &public_key[..].try_into().unwrap(),
+        );
+        let signature: [u8; 64] = signature[..].try_into().unwrap();
+        let digest: [u8; 32] = digest::digest(&digest::SHA256, message)
+            .as_ref()
+            .try_into()
+            .unwrap();
+
+        b.iter(|| {
+            public_key
+                .verify_prehashed::<Sha256>(&digest, &signature)
+                .unwrap();
         })
     });
 }
@@ -411,12 +498,31 @@ fn ecdsa_sign(c: &mut Criterion) {
         });
     });
 
-    group.bench_function("rind", |b| {
-        use rind::signature::{EcdsaKeyPair, sign};
-        let signing_key = EcdsaKeyPair::generate(&sign::ECDSA_P256_SHA256_FIXED).unwrap();
+    let rind = |b: &mut Bencher<'_>| {
+        use rind::ecdsa::{KeyPair, sign};
+        let signing_key = KeyPair::generate(&sign::P256_SHA256_FIXED).unwrap();
 
         b.iter(|| {
             black_box(signing_key.sign(message).unwrap());
+        });
+    };
+    group.bench_function("rind", |b| {
+        let _dit = criterion::rind_dit();
+        rind(b)
+    });
+
+    // verified-garbage signs deterministically (RFC 6979), where rind hedges its nonce.
+    group.bench_function("verified-garbage", |b| {
+        use rind::ecdsa::{PublicKey, verify};
+        use verified_garbage::hashes::sha256::Sha256;
+        let (signing_key, public_key) = vg_generate();
+        // rind verifies verified-garbage's signature.
+        let rind_key = PublicKey::new(&verify::P256_SHA256_FIXED, public_key.as_bytes()).unwrap();
+        let signature = signing_key.sign::<Sha256>(message).unwrap();
+        rind_key.verify(message, &signature).unwrap();
+
+        b.iter(|| {
+            black_box(signing_key.sign::<Sha256>(message).unwrap());
         });
     });
 
@@ -461,6 +567,11 @@ fn ecdsa_sign(c: &mut Criterion) {
     });
     group.finish();
 
+    if let Some(mut group) = criterion::dit_per_call(c, "p256-ecdsa-sign") {
+        group.throughput(Throughput::Elements(1));
+        group.bench_function("rind", rind);
+    }
+
     // A digest the caller computed, as node's `createSign` holds it.
     let mut group = c.benchmark_group("p256-ecdsa-sign-digest");
     group.throughput(Throughput::Elements(1));
@@ -485,13 +596,34 @@ fn ecdsa_sign(c: &mut Criterion) {
     });
 
     group.bench_function("rind", |b| {
+        let _dit = criterion::rind_dit();
         use rind::digest;
-        use rind::signature::{EcdsaKeyPair, sign};
-        let signing_key = EcdsaKeyPair::generate(&sign::ECDSA_P256_SHA256_FIXED).unwrap();
+        use rind::ecdsa::{KeyPair, sign};
+        let signing_key = KeyPair::generate(&sign::P256_SHA256_FIXED).unwrap();
         let digest = digest::digest(&digest::SHA256, message);
 
         b.iter(|| {
             black_box(signing_key.sign_digest(&digest).unwrap());
+        });
+    });
+
+    // verified-garbage signs deterministically (RFC 6979), where rind hedges its nonce.
+    group.bench_function("verified-garbage", |b| {
+        use rind::digest;
+        use rind::ecdsa::{PublicKey, verify};
+        use verified_garbage::hashes::sha256::Sha256;
+        let (signing_key, public_key) = vg_generate();
+        // rind verifies verified-garbage's signature.
+        let rind_key = PublicKey::new(&verify::P256_SHA256_FIXED, public_key.as_bytes()).unwrap();
+        let signature = signing_key.sign::<Sha256>(message).unwrap();
+        rind_key.verify(message, &signature).unwrap();
+        let digest: [u8; 32] = digest::digest(&digest::SHA256, message)
+            .as_ref()
+            .try_into()
+            .unwrap();
+
+        b.iter(|| {
+            black_box(signing_key.sign_prehashed::<Sha256>(&digest).unwrap());
         });
     });
 }
@@ -519,11 +651,44 @@ fn stored(c: &mut Criterion) {
     });
 
     group.bench_function("rind", |b| {
+        let _dit = criterion::rind_dit();
         use rind::agreement::*;
         let key = PrivateKey::from_scalar(&ECDH_P256, &scalar).unwrap();
 
         b.iter(|| black_box(key.agree(public_key).unwrap()))
     });
+
+    group.bench_function("verified-garbage", |b| {
+        use verified_garbage::ec::{PrivateKey, PublicKey};
+        vg_agrees_with_rind();
+        let key = PrivateKey::<verified_garbage::ec::P256>::from_bytes(&scalar);
+        let peer_bytes: [u8; 65] = public_key[..].try_into().unwrap();
+
+        b.iter(|| {
+            let peer = PublicKey::from_bytes(&peer_bytes);
+            black_box(key.exchange(&peer).unwrap())
+        })
+    });
+}
+
+// Checks verified-garbage's public key and exchange against rind's, from a
+// fixed scalar, before any of its rows times them.
+fn vg_agrees_with_rind() {
+    use rind::agreement::{self, ECDH_P256};
+    use verified_garbage::ec::{PrivateKey, PublicKey};
+    let scalar = [1u8; 32];
+    let public_key: &[u8] = PUBLIC_KEY;
+    let key = PrivateKey::<verified_garbage::ec::P256>::from_bytes(&scalar);
+    let peer_bytes: [u8; 65] = public_key.try_into().unwrap();
+    let rind_key = agreement::PrivateKey::from_scalar(&ECDH_P256, &scalar).unwrap();
+    assert_eq!(
+        key.public_key().unwrap().as_bytes()[..],
+        *rind_key.public_key().as_ref()
+    );
+    assert_eq!(
+        key.exchange(&PublicKey::from_bytes(&peer_bytes)).unwrap()[..],
+        *rind_key.agree(public_key).unwrap().as_ref()
+    );
 }
 
 criterion_group!(

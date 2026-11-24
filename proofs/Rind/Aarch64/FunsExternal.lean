@@ -1,13 +1,17 @@
 module
 public import Aeneas
 public import Rind.Aarch64.Types
+public import Rind.Aarch64.Neon
+public import Rind.Aarch64.PointSelectModel
+public import Rind.Aarch64.AesGcmModel
 @[expose] public section
 open Aeneas Aeneas.Std Result
 set_option linter.dupNamespace false
 
 /-!
-The rind functions the aarch64 translation leaves opaque. No proof assumes anything
-about them beyond what `Rind.Aarch64.S2nBignum` and `Rind.Aarch64.AwsLc` state for
+The rind functions the aarch64 translation leaves opaque, beside those
+`Rind.Aarch64.PointSelectModel` and `Rind.Aarch64.AesGcmModel` model. No proof assumes anything about them
+beyond what `Rind.Aarch64.S2nBignum` and `Rind.Aarch64.AwsLc` state for
 s2n-bignum's and aws-lc's routines and what each theorem takes as a hypothesis.
 -/
 
@@ -24,6 +28,24 @@ opaque low.aarch64.curve25519_x25519.curve25519_x25519
   :
   Array Std.U64 4#usize → Array Std.U64 4#usize → Array Std.U64 4#usize →
     Result (Array Std.U64 4#usize)
+
+opaque low.aarch64.sha3_keccak_f1600.sha3_keccak_f1600
+  : Array Std.U64 25#usize → Array Std.U64 24#usize → Result (Array Std.U64 25#usize)
+
+opaque low.aarch64.sha3_keccak_f1600_alt.sha3_keccak_f1600
+  : Array Std.U64 25#usize → Array Std.U64 24#usize → Result (Array Std.U64 25#usize)
+
+opaque low.aarch64.sha3_keccak2_f1600.sha3_keccak2_f1600
+  : Array (Array Std.U64 25#usize) 2#usize → Array Std.U64 24#usize →
+    Result (Array (Array Std.U64 25#usize) 2#usize)
+
+opaque low.aarch64.sha3_keccak4_f1600.sha3_keccak4_f1600
+  : Array (Array Std.U64 25#usize) 4#usize → Array Std.U64 24#usize →
+    Result (Array (Array Std.U64 25#usize) 4#usize)
+
+opaque low.aarch64.sha3_keccak4_f1600_alt.sha3_keccak4_f1600
+  : Array (Array Std.U64 25#usize) 4#usize → Array Std.U64 24#usize →
+    Result (Array (Array Std.U64 25#usize) 4#usize)
 
 opaque low.aarch64.bignum_eq.bignum_eq
   : Slice Std.U64 → Slice Std.U64 → Result Bool
@@ -175,8 +197,7 @@ opaque high.hmac_drbg.HmacDrbg.Insts.RindMidRngRandomSource.fill
 verification's theorems take what they need of as a hypothesis. -/
 
 opaque low.generic.reuse_cache.ReuseCache.new
-  {T : Type _} (coremarkerCopyInst : core.marker.Copy T)
-  (coredefaultDefaultInst : core.default.Default T) :
+  {T : Type _} (coredefaultDefaultInst : core.default.Default T) :
   Result (low.generic.reuse_cache.ReuseCache T)
 
 opaque low.generic.reuse_cache.ReuseCache.get_or_build_now
@@ -186,8 +207,7 @@ opaque low.generic.reuse_cache.ReuseCache.get_or_build_now
   low.generic.reuse_cache.ReuseCache T → T1 → Result T
 
 opaque low.generic.reuse_cache.ReuseCache.get_or_build
-  {T : Type _} {T1 : Type _} (coremarkerCopyInst : core.marker.Copy T)
-  (coredefaultDefaultInst : core.default.Default T)
+  {T : Type _} {T1 : Type _} (coredefaultDefaultInst : core.default.Default T)
   (coreopsfunctionFnOnceT1TupleTInst : core.ops.function.FnOnce T1 Unit T) :
   low.generic.reuse_cache.ReuseCache T → T1 → Result (Option T)
 
@@ -203,11 +223,21 @@ opaque low.generic.zeroise.zeroise
   {T : Type _} (ZeroableInst : low.generic.zeroise.Zeroable T) :
   Slice T → Result (Slice T)
 
+/-- Wiping a value, which no proof observes: the translation ignores drops. -/
+opaque low.generic.zeroise.zeroise_value {T : Type} (ZeroableInst : low.generic.zeroise.Zeroable T) :
+  T → Result T
+
 /-- `ZeroableRef::new`, as `Rind.Aarch64.Dispatch` models a `ZeroableRef`: its
 value. -/
 def low.generic.zeroise.ZeroableRef.new {T : Type} (value : T) :
     Result (low.generic.zeroise.ZeroableRef T) :=
   ok value
+
+/-- `ZeroableRef::get`, which panics only on a wiped value, and only a drop
+wipes one: its value. -/
+def low.generic.zeroise.ZeroableRef.get {T : Type} (r : low.generic.zeroise.ZeroableRef T) :
+    Result T :=
+  ok r
 
 /-! The entry guard and CPU dispatch, which read no input. -/
 
@@ -219,6 +249,8 @@ opaque low.entry.Entry.new_public : Result low.entry.Entry
 opaque low.entry.Entry.assert_held : Result Unit
 
 opaque low.aarch64.cpu.HaveSha3.check : Result (Option low.aarch64.cpu.HaveSha3)
+
+opaque low.aarch64.cpu.HaveSha3.check_keccak : Result (Option low.aarch64.cpu.HaveSha3)
 
 opaque low.aarch64.cpu.HaveCryptoExt.check : Result (Option low.aarch64.cpu.HaveCryptoExt)
 
@@ -240,6 +272,122 @@ opaque low.aarch64.sha256.compress_hw
 opaque low.aarch64.sha256.compress_nohw
   : Array Std.U32 8#usize → Slice Std.U8 → Result (Array Std.U32 8#usize)
 
+/-! P-384's s2n-bignum routines, its table select, and `bignum_mux`. -/
+
+opaque low.aarch64.bignum_add_p384.bignum_add_p384
+  :
+  Array Std.U64 6#usize → Array Std.U64 6#usize → Array Std.U64 6#usize →
+    Result (Array Std.U64 6#usize)
+
+opaque low.aarch64.bignum_demont_p384.bignum_demont_p384
+  :
+  Array Std.U64 6#usize → Array Std.U64 6#usize → Result (Array Std.U64
+    6#usize)
+
+opaque low.aarch64.bignum_inv_p384.bignum_inv_p384
+  :
+  Array Std.U64 6#usize → Array Std.U64 6#usize → Result (Array Std.U64
+    6#usize)
+
+opaque low.aarch64.bignum_montmul_p384.bignum_montmul_p384
+  :
+  Array Std.U64 6#usize → Array Std.U64 6#usize → Array Std.U64 6#usize →
+    Result (Array Std.U64 6#usize)
+
+opaque low.aarch64.bignum_montsqr_p384.bignum_montsqr_p384
+  :
+  Array Std.U64 6#usize → Array Std.U64 6#usize → Result (Array Std.U64
+    6#usize)
+
+opaque low.aarch64.bignum_mux.bignum_mux
+  :
+  Std.U64 → Slice Std.U64 → Slice Std.U64 → Slice Std.U64 → Result
+    (Slice Std.U64)
+
+opaque low.aarch64.bignum_neg_p384.bignum_neg_p384
+  :
+  Array Std.U64 6#usize → Array Std.U64 6#usize → Result (Array Std.U64
+    6#usize)
+
+opaque low.aarch64.bignum_tomont_p384.bignum_tomont_p384
+  :
+  Array Std.U64 6#usize → Array Std.U64 6#usize → Result (Array Std.U64
+    6#usize)
+
+opaque low.aarch64.p384_montjdouble.p384_montjdouble
+  :
+  Array Std.U64 18#usize → Array Std.U64 18#usize → Result (Array Std.U64
+    18#usize)
+
+opaque low.aarch64.p384_montjmixadd.p384_montjmixadd
+  :
+  Array Std.U64 18#usize → Array Std.U64 18#usize → Array Std.U64 12#usize
+    → Result (Array Std.U64 18#usize)
+
+/-! Whether the CPU runs pyca/verified-garbage's P-384 `d·G`, for key
+generation and ECDSA's nonces, and its ECDSA verification, which read no
+input, and its routines behind their Rust wrappers, whose contracts
+`Rind.Aarch64.VgP384` states. -/
+
+opaque low.aarch64.p384_vg.MulBase.check
+  : Result (Option low.aarch64.p384_vg.MulBase)
+
+opaque low.aarch64.p384_vg.MulBase.public_key
+  : low.aarch64.p384_vg.MulBase → Array Std.U8 48#usize →
+    Result (Option (Array Std.U8 97#usize))
+
+opaque low.aarch64.p384_vg.Verify.check
+  : Result (Option low.aarch64.p384_vg.Verify)
+
+opaque low.aarch64.p384_vg.Verify.ecdsa_verify
+  :
+  low.aarch64.p384_vg.Verify → Array Std.U8 97#usize → Array Std.U8 48#usize →
+    Array Std.U8 96#usize → Result Bool
+
+opaque low.aarch64.p384_montjscalarmul.p384_montjscalarmul
+  :
+  Array Std.U64 18#usize → Array Std.U64 6#usize → Array Std.U64 18#usize
+    → Result (Array Std.U64 18#usize)
+
+opaque low.aarch64.bignum_mod_n384.bignum_mod_n384
+  :
+  Array Std.U64 6#usize → Array Std.U64 6#usize → Result (Array Std.U64
+    6#usize)
+
+opaque low.aarch64.p384_montjadd.p384_montjadd
+  :
+  Array Std.U64 18#usize → Array Std.U64 18#usize → Array Std.U64 18#usize
+    → Result (Array Std.U64 18#usize)
+
+opaque high.curve.P384.Insts.RindHighCurveCurveStaticPrivateKeyVerifyingKeyScalar.oid
+  : Result high.asn1.ObjectId
+
+/-- P-384's ECDSA key generation, which the signing theorems model. -/
+opaque high.curve.P384.Insts.RindHighCurveCurveStaticPrivateKeyVerifyingKeyScalar.generate_random_key
+  {T0 : Type _} (midrngRandomSourceInst : mid.rng.RandomSource T0) :
+  T0 → Result ((core.result.Result mid.p384.StaticPrivateKey error.Error) × T0)
+
+/-! Whether the CPU runs pyca/verified-garbage's P-256, which reads no input,
+and its routines behind their Rust wrappers, whose contracts
+`Rind.Aarch64.VgP256` states. -/
+
+opaque low.aarch64.p256_vg.P256.check : Result (Option low.aarch64.p256_vg.P256)
+
+opaque low.aarch64.p256_vg.P256.check_public_key : Result (Option low.aarch64.p256_vg.P256)
+
+opaque low.aarch64.p256_vg.P256.public_key
+  : low.aarch64.p256_vg.P256 → Array Std.U8 32#usize → Result (Option (Array Std.U8 65#usize))
+
+opaque low.aarch64.p256_vg.P256.ecdh
+  :
+  low.aarch64.p256_vg.P256 → Array Std.U8 32#usize → Array Std.U8 65#usize → Result (Option
+    (Array Std.U8 32#usize))
+
+opaque low.aarch64.p256_vg.P256.verify
+  :
+  low.aarch64.p256_vg.P256 → Array Std.U8 65#usize → Array Std.U8 32#usize → Array Std.U8
+    64#usize → Result Bool
+
 /-! The other curves, which X25519's and P-256's results never depend on. -/
 
 opaque mid.p521.PrivateKey.new_random
@@ -251,9 +399,6 @@ opaque mid.p384.PrivateKey.new_random
 opaque mid.p521.PrivateKey.public_key_uncompressed
   : mid.p521.PrivateKey → Result (Array Std.U8 133#usize)
 
-opaque mid.p384.PrivateKey.public_key_uncompressed
-  : mid.p384.PrivateKey → Result (Array Std.U8 97#usize)
-
 opaque mid.p521.PrivateKey.diffie_hellman
   :
   mid.p521.PrivateKey → mid.p521.PublicKey → Result (core.result.Result
@@ -262,18 +407,101 @@ opaque mid.p521.PrivateKey.diffie_hellman
 opaque mid.p521.PublicKey.from_x962_uncompressed
   : Slice Std.U8 → Result (core.result.Result mid.p521.PublicKey error.Error)
 
-opaque mid.p384.PrivateKey.diffie_hellman
+/-! NEON's AES, which CPUs without the crypto extension run, and which no proof covers. -/
+
+opaque low.aarch64.vpaes_armv8.VpaesKey.new
+  : Slice Std.U8 → Result low.aarch64.vpaes_armv8.VpaesKey
+
+opaque low.aarch64.vpaes_armv8.VpaesKey.encrypt_block
+  : low.aarch64.vpaes_armv8.VpaesKey → Array Std.U8 16#usize → Result (Array Std.U8 16#usize)
+
+opaque low.aarch64.vpaes_armv8.VpaesDecKey.new
+  : Slice Std.U8 → Result low.aarch64.vpaes_armv8.VpaesDecKey
+
+opaque low.aarch64.vpaes_armv8.VpaesDecKey.decrypt_block
+  : low.aarch64.vpaes_armv8.VpaesDecKey → Array Std.U8 16#usize → Result (Array Std.U8 16#usize)
+
+opaque low.aarch64.vpaes_armv8.VpaesKey.ctr32
+  : low.aarch64.vpaes_armv8.VpaesKey → Array Std.U8 16#usize → Slice (Array Std.U8 16#usize) →
+    Result (Slice (Array Std.U8 16#usize))
+
+opaque low.aarch64.vpaes_armv8.VpaesKey.cbc_encrypt
+  : low.aarch64.vpaes_armv8.VpaesKey → Array Std.U8 16#usize → Slice (Array Std.U8 16#usize) →
+    Result (Slice (Array Std.U8 16#usize))
+
+opaque low.aarch64.vpaes_armv8.VpaesDecKey.cbc_decrypt
+  : low.aarch64.vpaes_armv8.VpaesDecKey → Array Std.U8 16#usize → Slice (Array Std.U8 16#usize) →
+    Result (Slice (Array Std.U8 16#usize))
+
+/-! AES-CBC's chained `AESE`, in inline assembly so that its destination is
+the chaining register: modelled by hand as `vaeseq_u8` of its operands, the
+`AESE` it runs, which `Rind.Aarch64.Neon` models and `admin/neon-vectors.rs`
+tests. -/
+
+def low.aarch64.aes_cbc.aese_chained (y b : core.core_arch.arm_shared.neon.uint8x16_t) :
+    Result core.core_arch.arm_shared.neon.uint8x16_t :=
+  core.core_arch.arm_shared.neon.generated.vaeseq_u8 y b
+
+/-! pyca/verified-garbage's ML-KEM-768 routines, behind their Rust wrappers,
+whose contracts `Rind.Aarch64.VgMlKem` states. -/
+
+opaque low.aarch64.mlkem768_vg.Encaps.check_ek
+  : low.aarch64.mlkem768_vg.Encaps → Array Std.U8 1184#usize → Result Bool
+
+opaque low.aarch64.mlkem768_vg.Encaps.encaps
   :
-  mid.p384.PrivateKey → mid.p384.PublicKey → Result (core.result.Result
-    mid.p384.SharedSecret error.Error)
+  low.aarch64.mlkem768_vg.Encaps → Array Std.U8 1184#usize → Option (Array
+    Std.U8 32#usize) → Array Std.U8 32#usize → Result (Option ((Array
+    Std.U8 32#usize) × (Array Std.U8 1088#usize)))
 
-opaque mid.p384.PublicKey.from_x962_uncompressed
-  : Slice Std.U8 → Result (core.result.Result mid.p384.PublicKey error.Error)
+/-- pyca/verified-garbage's PBKDF2 routines, behind their Rust wrapper,
+`Pbkdf2::derive`, whose contracts `Rind.Aarch64.VgPbkdf2` states. The
+iteration count is the `u32` its `NonZeroU32` holds. -/
+opaque low.aarch64.pbkdf2_vg.Pbkdf2.derive
+  : low.aarch64.pbkdf2_vg.Pbkdf2 → Slice Std.U8 → Slice Std.U8 → Std.U32 → Slice Std.U8 →
+    Result (Slice Std.U8)
+/-! ChaCha20-Poly1305's one pass: pyca/verified-garbage's SVE2 routines,
+behind one wrapper each, whose contracts `Rind.Aarch64.VgChaCha20Poly1305`
+restates, and aws-lc's NEON routines, which no proof covers yet. -/
 
-/-! AES, whose header protection no proof covers. -/
+opaque low.aarch64.cpu.HaveSve2.check : Result (Option low.aarch64.cpu.HaveSve2)
 
-opaque mid.aes.Aes.header_protection_mask
-  : mid.aes.Aes → Array Std.U8 16#usize → Result (Array Std.U8 5#usize)
+opaque low.aarch64.chacha20poly1305.seal_sve2
+  : low.aarch64.cpu.HaveSve2 → Std.Array Std.U8 32#usize → Std.Array Std.U8 12#usize →
+    Slice Std.U8 → Slice Std.U8 → Result ((Std.Array Std.U8 16#usize) × (Slice Std.U8))
+
+opaque low.aarch64.chacha20poly1305.open_sve2
+  : low.aarch64.cpu.HaveSve2 → Std.Array Std.U8 32#usize → Std.Array Std.U8 12#usize →
+    Slice Std.U8 → Slice Std.U8 → Std.Array Std.U8 16#usize → Result (Bool × (Slice Std.U8))
+
+opaque low.aarch64.chacha20poly1305.seal_neon
+  : Std.Array Std.U8 32#usize → Std.Array Std.U8 12#usize → Slice Std.U8 → Slice Std.U8 →
+    Result ((Std.Array Std.U8 16#usize) × (Slice Std.U8))
+
+opaque low.aarch64.chacha20poly1305.open_neon
+  : Std.Array Std.U8 32#usize → Std.Array Std.U8 12#usize → Slice Std.U8 → Slice Std.U8 →
+    Result ((Std.Array Std.U8 16#usize) × (Slice Std.U8))
+
+/-! `cipher::ChaCha20`'s routines: pyca/verified-garbage's, behind one
+wrapper each, whose contracts `Rind.Aarch64.VgChaCha20` restates, and rind's
+NEON code, whose contract it takes as the hypothesis `Neon`. -/
+
+opaque low.aarch64.chacha20.VgState.uninit : Result low.aarch64.chacha20.VgState
+
+opaque low.aarch64.chacha20.VgState.init
+  : low.aarch64.chacha20.VgState → Std.Array Std.U32 8#usize → Std.Array Std.U32 4#usize →
+    Result low.aarch64.chacha20.VgState
+
+opaque low.aarch64.chacha20.VgState.apply_neon
+  : low.aarch64.chacha20.VgState → Slice Std.U8 →
+    Result (Std.U32 × low.aarch64.chacha20.VgState × (Slice Std.U8))
+
+opaque low.aarch64.chacha20.VgState.apply_sve2
+  : low.aarch64.chacha20.VgState → low.aarch64.cpu.HaveSve2 → Slice Std.U8 →
+    Result (Std.U32 × low.aarch64.chacha20.VgState × (Slice Std.U8))
+
+opaque low.aarch64.chacha20.cipher_neon
+  : Std.Array Std.U32 8#usize → Std.Array Std.U32 4#usize → Slice Std.U8 → Result (Slice Std.U8)
 
 /-! MD5, which no proof covers. -/
 
@@ -289,20 +517,6 @@ opaque mid.md5.Md5Context.update : mid.md5.Md5Context → Slice Std.U8 → Resul
 opaque mid.md5.Md5Context.finish : mid.md5.Md5Context → Result (Array Std.U8 16#usize)
 
 opaque mid.md5.Md5Context.Insts.CoreCloneClone.clone : mid.md5.Md5Context → Result mid.md5.Md5Context
-
-/-! SHA-3, whose sponge no proof covers. -/
-
-opaque mid.sha3.Sha3Context.new
-  (R : Std.Usize) (OUT : Std.Usize) : Result (mid.sha3.Sha3Context R OUT)
-
-opaque mid.sha3.Sha3Context.update {R : Std.Usize} {OUT : Std.Usize}
-  : mid.sha3.Sha3Context R OUT → Slice Std.U8 → Result (mid.sha3.Sha3Context R OUT)
-
-opaque mid.sha3.Sha3Context.finish {R : Std.Usize} {OUT : Std.Usize}
-  : mid.sha3.Sha3Context R OUT → Result (Array Std.U8 OUT)
-
-opaque mid.sha3.Sha3Context.Insts.CoreCloneClone.clone {R : Std.Usize} {OUT : Std.Usize}
-  : mid.sha3.Sha3Context R OUT → Result (mid.sha3.Sha3Context R OUT)
 
 /-! Agreement key encodings, and loading on the curves no theorem loads a key
 on, whose DER no proof covers. -/
@@ -349,10 +563,6 @@ opaque high.curve.P521.Insts.RindHighAgreementAgreePrivateKey.encode_scalar
   : mid.p521.PrivateKey → Slice Std.U8 →
     Result ((core.result.Result (Slice Std.U8) error.Error) × (Slice Std.U8))
 
-opaque high.curve.P384.Insts.RindHighAgreementAgreePrivateKey.load
-  : high.agreement.Algorithm → high.agreement.Source →
-    Result (core.result.Result (mid.p384.PrivateKey × high.agreement.PublicKey) error.Error)
-
 opaque high.curve.P521.Insts.RindHighAgreementAgreePrivateKey.load
   : high.agreement.Algorithm → high.agreement.Source →
     Result (core.result.Result (mid.p521.PrivateKey × high.agreement.PublicKey) error.Error)
@@ -364,5 +574,31 @@ opaque low.aarch64.cpu.ct_compare_16
   : Array Std.U8 16#usize → Array Std.U8 16#usize → Result Std.Usize
 
 opaque low.aarch64.cpu.ct_compare_bytes : Slice Std.U8 → Slice Std.U8 → Result Std.U8
+
+/-! AES-GCM's stitched kernels and the separate passes around them, which no
+proof covers yet, and aws-lc's NEON GHASH table. -/
+
+opaque low.aarch64.aes_gcm.cipher
+  : Bool → low.aarch64.aes.AesKey → low.aarch64.ghash.Ghash → Array Std.U8 16#usize → Slice Std.U8 →
+    Slice Std.U8 → Result (low.aarch64.ghash.Ghash × Slice Std.U8)
+
+opaque low.aarch64.ghash_neon_armv8.NeonTable.new
+  : Array Std.U8 16#usize → Result low.aarch64.ghash_neon_armv8.NeonTable
+
+/-- x86_64's AVX-512 IFMA X25519 and Ed25519, which no aarch64 CPU runs, and
+which the proofs here take as not running. -/
+opaque low.aarch64.curve25519_ifma.Curve25519Ifma.check : Result (Option low.aarch64.curve25519_ifma.Curve25519Ifma)
+
+opaque low.aarch64.curve25519_ifma.Curve25519Ifma.ed25519_key_pair
+  : low.aarch64.curve25519_ifma.Curve25519Ifma → Array Std.U8 32#usize → Result (Array Std.U8 64#usize × Array Std.U8 32#usize)
+
+opaque low.aarch64.curve25519_ifma.Curve25519Ifma.ed25519_sign
+  : low.aarch64.curve25519_ifma.Curve25519Ifma → Array Std.U8 64#usize → Array Std.U8 32#usize → Slice Std.U8 →
+    Result (Array Std.U8 64#usize)
+
+opaque low.aarch64.curve25519_ifma.Curve25519Ifma.ed25519_verify
+  : low.aarch64.curve25519_ifma.Curve25519Ifma → Array Std.U8 32#usize → Slice Std.U8 → Array Std.U8 64#usize → Result Bool
+
+opaque low.aarch64.curve25519_ifma.Curve25519Ifma.Insts.CoreCloneClone.clone : low.aarch64.curve25519_ifma.Curve25519Ifma → Result low.aarch64.curve25519_ifma.Curve25519Ifma
 
 end rind.aarch64

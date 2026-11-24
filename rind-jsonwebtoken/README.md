@@ -1,10 +1,18 @@
 <h1 align="center">rind-jsonwebtoken</h1>
-<img width="40%" align="right" src="https://raw.githubusercontent.com/moq-dev/rind/main/admin/logo.png">
+<img width="40%" align="right" src="https://raw.githubusercontent.com/kixel-ai/rind/main/admin/logo.png">
 
 [![Latest release](https://img.shields.io/crates/v/rind-jsonwebtoken)](https://crates.io/crates/rind-jsonwebtoken)
 [![Documentation](https://img.shields.io/docsrs/rind-jsonwebtoken)](https://docs.rs/rind-jsonwebtoken/)
 
-This crate provides an integration between [jsonwebtoken](https://github.com/Keats/jsonwebtoken) and [rind](https://github.com/moq-dev/rind/), a fork of [Graviola](https://github.com/ctz/graviola/).
+This crate provides an integration between [jsonwebtoken](https://github.com/Keats/jsonwebtoken) and [rind](https://github.com/kixel-ai/rind/), a fork of [Graviola](https://github.com/ctz/graviola/).
+
+Leave jsonwebtoken's `aws_lc_rs` and `rust_crypto` features off, and add this crate:
+
+```toml
+[dependencies]
+jsonwebtoken = "12"
+rind-jsonwebtoken = "12"
+```
 
 Use it like:
 
@@ -13,6 +21,18 @@ rind_jsonwebtoken::DEFAULT_PROVIDER.install_default().unwrap();
 ```
 
 And then use jsonwebtoken as normal.
+`rind_jsonwebtoken::DEFAULT_PROVIDER` stands in for jsonwebtoken's `crypto::aws_lc::DEFAULT_PROVIDER`.
 It signs and verifies HS256/384/512, ES256/384, RS256/384/512, PS256/384/512, and EdDSA, and implements the key utilities jsonwebtoken needs for JWKs.
+
+## What rind cannot back
+
+Nothing: it backs every algorithm jsonwebtoken names.
+
+## WebAssembly
+
+It builds for `wasm32-wasip2` and `wasm32-unknown-unknown`, the browser, where
+rind needs its JavaScript random source, `getrandom = { version = "0.4",
+features = ["wasm_js"] }`. [PLATFORMS.md](https://github.com/kixel-ai/rind/blob/main/PLATFORMS.md) lists what each adapter's
+upstream needs there too, and why rind's constant-time checks do not cover wasm.
 
 License: Apache-2.0 OR ISC OR MIT-0
