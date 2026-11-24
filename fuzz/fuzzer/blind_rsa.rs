@@ -13,8 +13,10 @@
 //! signature, and its client finalizes rind's reply to a signature rind
 //! verifies. A private key rind loads, the crate loads as the same key, and
 //! it signs: rind refuses at load any key it could not sign with. The crate
-//! takes only exponents 3 and 65537 and moduli up to 4096 bits, so rind
-//! alone checks the rest, such as the exponent `2^32 + 1` key.
+//! takes only exponents 3 and 65537, moduli up to 4096 bits, and keys its
+//! `rsa` decodes, which refuses some aws-lc takes, such as a private exponent
+//! of at least the modulus, so rind alone checks the rest, such as the
+//! exponent `2^32 + 1` key.
 
 use blind_rsa_signatures::{
     DefaultRng, Deterministic, MessagePrepare, MessageRandomizer, PSS, PSSZero, Randomized,
@@ -58,12 +60,16 @@ fn independent(index: usize, der: &[u8]) -> Option<Box<dyn Independent>> {
 }
 
 /// Whether `blind-rsa-signatures` takes the PKCS#8 key `der`, which rind
-/// loaded: only a modulus of 2048 to 4096 bits and an exponent of 3 or 65537.
+/// loaded: only a modulus of 2048 to 4096 bits and an exponent of 3 or 65537,
+/// and only a key its `rsa` decodes, which refuses some that rind and aws-lc
+/// take, such as a private exponent of at least the modulus.
 fn supported(der: &[u8]) -> bool {
     use blind_rsa_signatures::reexports::rsa::{
         PrivateKey, pkcs8::DecodePrivateKey, traits::PublicKeyParts,
     };
-    let key = PrivateKey::from_pkcs8_der(der).unwrap();
+    let Ok(key) = PrivateKey::from_pkcs8_der(der) else {
+        return false;
+    };
     let e = key.e().to_be_bytes();
     let e = &e[e.iter().take_while(|&&b| b == 0).count()..];
     (2048..=4096).contains(&(key.size() * 8)) && (e == [3] || e == [1, 0, 1])
