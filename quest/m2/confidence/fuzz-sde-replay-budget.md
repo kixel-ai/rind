@@ -6,7 +6,7 @@
 
 ## Plan
 
-Found by [kixel-ai/rind#971](https://github.com/kixel-ai/rind/pull/971)'s dispatched run. The job hits its 60-minute timeout on main's weekly runs ([run 44892064887](https://github.com/kixel-ai/rind/actions/runs/44892064887), [run 43645306794](https://github.com/kixel-ai/rind/actions/runs/43645306794)) and on that PR's run ([run 45435272600](https://github.com/kixel-ai/rind/actions/runs/45435272600)), where the first tier (Diamond Rapids, every path) alone took 48.5 minutes over 1281 inputs, and the second was cancelled. SDE runs an SLH-DSA signature, which `keys` makes for every SLH-DSA key it loads, in about 44 s, so a few dozen such inputs fill the job. That PR adds the eleven other SLH-DSA sets to `keys`, so more inputs reach that path.
+Found by [kixel-ai/rind#971](https://github.com/kixel-ai/rind/pull/971)'s dispatched run. The job hits its 60-minute timeout on main's weekly runs ([run 44892064887](https://github.com/kixel-ai/rind/actions/runs/44892064887), [run 43645306794](https://github.com/kixel-ai/rind/actions/runs/43645306794)) and on that PR's run ([run 45435272600](https://github.com/kixel-ai/rind/actions/runs/45435272600)), where the first tier (Diamond Rapids, every path) alone took 48.5 minutes over 1281 inputs, and the second was cancelled. SDE runs an SLH-DSA signature, which `keys` makes for every SLH-DSA key it loads, in about 44 s, so a few dozen such inputs fill the job. That PR adds the ten other SLH-DSA sets to `keys`, so more inputs reach that path.
 
 Recommendation: measure which inputs dominate, then bound the job by design rather than by raising its timeout:
 - give each SDE tier its own job, as the other replays are already split per architecture;
