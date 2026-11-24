@@ -17,8 +17,8 @@ env:
 
 jobs:
   # rind-fips's module answers ACVP's sets through rind-acvp on each of the
-  # runner's paths, with the large-data hash tests, 15 GiB a hash, which
-  # pull requests skip. x86-cpu.yml covers the AVX-512 paths under SDE.
+  # runner's paths, with the large-data hash tests, 15 GiB a hash, which run
+  # only with SLOW_TESTS. x86-cpu.yml covers the AVX-512 paths under SDE.
   acvp:
     strategy:
       matrix:

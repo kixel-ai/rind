@@ -55,8 +55,8 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
-  # One job per SDE model in `admin/x86-cpu`'s MODELS, each running the build job's tests and asserting the
-  # dispatch paths its model takes.
+  # One job per SDE model in `admin/x86-cpu`'s MODELS, each running the build
+  # job's tests and asserting the dispatch paths its model takes.
   #
   # A job each, not one job for all: SDE's speed depends on the host, and on
   # GitHub's AMD EPYC 7763 runners a model with the SHA extensions runs the

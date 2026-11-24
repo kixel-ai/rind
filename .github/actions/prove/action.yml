@@ -46,7 +46,7 @@ runs:
     # names the inputs that passed.
     - name: Passed
       id: passed
-      if: steps.cache.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+      if: steps.cache.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main'
       shell: bash
       env:
         CHECK: ${{ inputs.check }}

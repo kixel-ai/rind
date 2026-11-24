@@ -73,6 +73,7 @@ for commit in $(git rev-list --first-parent --reverse "${range[@]}"); do
         elif jq -e 'all(.[]; .status == "completed")' <<<"$runs" >/dev/null; then
             echo "error: prove did not pass on main at ${same[*]}, which release $commit's proofs come from:" >&2
             jq -r '.[] | "  \(.conclusion) \(.html_url)"' <<<"$runs" >&2
+            echo "After a flake, rerun its failed jobs, then this Release run; a real failure needs a fix and a new release PR." >&2
             exit 1
         fi
         polls=$((polls + 1))

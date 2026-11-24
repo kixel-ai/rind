@@ -98,7 +98,7 @@ It dispatches every scheduled workflow but `bench` and `dart-libraries` on the P
 An agent merging a release PR, as `/quest-merge` does, runs it first.
 It records the result as the `release-check` status on the head the runs tested, so a release-plz update to the PR needs a new run.
 `just ci` fails a scheduled workflow that a dispatch would not run whole.
-Before a release PR's commit publishes, `release.yml`'s Proofs job waits for a `prove` run on `main` with the commit's inputs to pass (`sh/release-proved.sh`): that run checked the bytes, the cosimulation, and every HOL Light and Lean proof of the released code that main had not passed on the same inputs. A failure there stops the release and alerts.
+Before a release PR's commit publishes, `release.yml`'s Proofs job waits for a `prove` run on `main` with the commit's inputs to pass (`sh/release-proved.sh`): that run checked the bytes, the cosimulation, and every HOL Light and Lean proof of the released code that main had not passed on the same inputs. A failure there stops the release and alerts. After a flake, rerun that `prove` run's failed jobs, then the failed `Release` run; a real failure needs a fix on main and a new release PR.
 
 Each published `rind-<consumer>` adapter's version begins with the breaking part of the upstream version it adapts (major.minor below 1.0, major from 1.0 on), so rind-rustls 0.23.x adapts rustls 0.23; the rest of the version is the adapter's own.
 `sh/adapter-versions.sh`, in `just ci`, fails when the two drift.
