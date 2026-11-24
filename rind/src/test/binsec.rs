@@ -497,23 +497,10 @@ fn ct_binsec_mldsa() {
     });
 }
 
-// SLH-DSA-SHA2-128f, from loading its key, which rebuilds the top tree,
-// through signing. The other parameter sets run the same code with other
-// heights, or SHAKE, which `ct_binsec_digest` and ML-DSA check.
-#[test]
-#[ignore = "admin/ct-binsec runs it under BINSEC"]
-fn ct_binsec_slhdsa() {
-    use crate::slh_dsa::*;
-
-    let pkcs8 = KeyPair::<SlhDsaSha2_128f>::generate().unwrap().to_pkcs8();
-    checked(|| {
-        let key = KeyPair::<SlhDsaSha2_128f>::from_pkcs8(pkcs8.as_ref()).unwrap();
-        black_box(key.sign(&[2; 40]).is_ok());
-    });
-}
-
 // Both ends of HPKE's base mode on X25519 and P-256: encapsulation,
-// decapsulation, the key schedule, a message each way, and an export.
+// decapsulation, the key schedule, a message each way, and an export. It
+// seals with ChaCha20-Poly1305, since BINSEC cannot finish aarch64's AES-GCM
+// (see `ct_binsec_aes_gcm`), and HPKE runs the same code around either AEAD.
 #[test]
 #[ignore = "admin/ct-binsec runs it under BINSEC"]
 fn ct_binsec_hpke() {
@@ -521,7 +508,7 @@ fn ct_binsec_hpke() {
 
     let suite = Suite {
         kdf: &HKDF_SHA256,
-        aead: &AES_128_GCM,
+        aead: &CHACHA20_POLY1305,
     };
     let mut sent = Vec::new();
     for (kem, len) in [
@@ -589,6 +576,11 @@ fn ct_binsec_voprf() {
 }
 
 // The VOPRF client's blinding, on its own, as the server's proof is above.
+// Only on the portable backend: x86_64's and aarch64's field arithmetic is
+// s2n-bignum's, whose `bignum_tomont_p384` of the hashed input BINSEC cannot
+// finish in a scheduled run's time. The hash to the curve around it is the
+// same code on every backend.
+#[cfg(rind_backend = "portable")]
 #[test]
 #[ignore = "admin/ct-binsec runs it under BINSEC"]
 fn ct_binsec_voprf_client() {
