@@ -85,9 +85,26 @@ impl Drop for Dit {
     }
 }
 
-#[cfg(all(test, target_arch = "aarch64"))]
+#[cfg(test)]
 mod tests {
+    // A guard in a thread-local drops while the thread tears down, which may
+    // follow the module's own thread-locals; the release must still run.
+    #[test]
+    fn dit_releases_during_thread_teardown() {
+        std::thread_local! {
+            static HELD: core::cell::RefCell<Option<super::Dit>> = const { core::cell::RefCell::new(None) };
+        }
+        // Touched first, so its destructor runs after the module's.
+        std::thread::spawn(|| {
+            HELD.with(|_| ());
+            HELD.set(Some(super::Dit::hold()));
+        })
+        .join()
+        .unwrap();
+    }
+
     /// PSTATE.DIT, which only a core with DIT may read.
+    #[cfg(target_arch = "aarch64")]
     fn dit() -> bool {
         let pstate: u64;
         // SAFETY: the caller checked that the core has DIT.
@@ -97,6 +114,7 @@ mod tests {
 
     // The module holds DIT until the last of this thread's guards drops, in
     // whatever order.
+    #[cfg(target_arch = "aarch64")]
     #[test]
     fn dit_hold_holds_dit() {
         if !std::arch::is_aarch64_feature_detected!("dit") {

@@ -262,31 +262,34 @@ pub extern "C" fn rind_fips_has_aes_hardware() -> bool {
 
 std::thread_local! {
     // This thread's `rind_fips_dit_hold`s not yet released, and the one
-    // guard they share while there are any.
-    static DIT: core::cell::RefCell<(usize, Option<rind::cpu::Dit>)> =
-        const { core::cell::RefCell::new((0, None)) };
+    // guard they share while there are any. Neither needs a destructor, so
+    // a caller's guard dropped while the thread's other thread-locals are
+    // torn down still finds them.
+    static DIT_HOLDS: core::cell::Cell<usize> = const { core::cell::Cell::new(0) };
+    static DIT_GUARD: core::cell::Cell<Option<core::mem::ManuallyDrop<rind::cpu::Dit>>> =
+        const { core::cell::Cell::new(None) };
 }
 
 /// Holds DIT on for this thread, as `rind::cpu::Dit::hold` does, until a
 /// matching `rind_fips_dit_release`.
 #[unsafe(no_mangle)]
 pub extern "C" fn rind_fips_dit_hold() {
-    DIT.with_borrow_mut(|(holds, guard)| {
-        *holds += 1;
-        guard.get_or_insert_with(rind::cpu::Dit::hold);
-    });
+    let holds = DIT_HOLDS.get();
+    if holds == 0 {
+        DIT_GUARD.set(Some(core::mem::ManuallyDrop::new(rind::cpu::Dit::hold())));
+    }
+    DIT_HOLDS.set(holds + 1);
 }
 
 /// Releases one of this thread's `rind_fips_dit_hold`s, dropping the guard
 /// with the last.
 #[unsafe(no_mangle)]
 pub extern "C" fn rind_fips_dit_release() {
-    DIT.with_borrow_mut(|(holds, guard)| {
-        *holds -= 1;
-        if *holds == 0 {
-            *guard = None;
-        }
-    });
+    let holds = DIT_HOLDS.get() - 1;
+    DIT_HOLDS.set(holds);
+    if holds == 0 {
+        drop(DIT_GUARD.take().map(core::mem::ManuallyDrop::into_inner));
+    }
 }
 
 /// Compares the `a_len` bytes at `a` with the `b_len` at `b` in constant
