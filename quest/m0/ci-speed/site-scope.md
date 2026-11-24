@@ -2,7 +2,7 @@
 
 ## Goal
 
-`check:site` in `sh/dispatch.sh` runs only when a diff touches `site/`, `sh/site.sh`, or one of the repository files `site/src/lib/repo.ts`'s `sources` reads (plus file deletions/renames that could break repo links), and pull requests no longer run the site build twice across both `site.yml` and `pr-check.yml`.
+`check:site` in `sh/dispatch.sh` runs only when a diff touches `site/`, `sh/site.sh`, or one of the repository files `site/src/lib/repo.ts`'s `sources` reads (plus file deletions/renames that could break repo links), pull requests no longer run the site build twice across both `site.yml` and `pr-check.yml`, and release-plz's release PRs still get a site check once the thin merge queue stops running it.
 
 ## Plan
 
@@ -10,9 +10,10 @@ Measured across recent PR and merge-queue runs: `check:site` runs `bun install -
 
 - ✅ Scope `check:site` to site/doc/README paths only and eliminate the duplicate run between `pr-check.yml` and `site.yml` (maintainer, 2026-11-21).
 - `site/src/lib/repo.ts` already declares the exact repository files `site/` reads (`README.md`, `BENCHMARKS.md`, `MIGRATING.md`, `benchmarks/report.json`, `admin/wordmark.svg`, `admin/wordmark-light.svg`, and each routed adapter's `README.md` and `Cargo.toml`). Scope `module site` in `sh/dispatch.sh` to those paths plus `site/`, `sh/site.sh`, and `flake.lock` (and keep a lightweight link check or nightly `just ci --all` catching renamed/deleted linked repo files).
-- Remove the duplicate run by either dropping `site.yml` (letting path-scoped `pr-check.yml` cover it) or keeping `site.yml` with matching `pull_request.paths` and skipping `site` in `pr-check.yml` (`CHECK_MODULES=-site`). Prefer dropping `site.yml` if `pr-check.yml` already runs `check:site` on matching diffs, so the path list lives in one place (`sh/dispatch.sh`).
+- Remove the duplicate run by dropping `site.yml`, so path-scoped `pr-check.yml` covers it and the path list lives in one place (`sh/dispatch.sh`). [kixel-ai/rind#958](https://github.com/kixel-ai/rind/pull/958) deletes `site.yml`; if it lands first, this part is done.
+- `pr-check.yml` skips release-plz's release PRs, which `site.yml` checks today and the queue's `just ci` checks after it, and a release PR bumps each routed adapter's `Cargo.toml`, which the site reads. Once `site.yml` is gone and the [thin merge queue](/quest/m0/ci-speed/thin-merge-queue.md) drops `site`, nothing would check those PRs before they land. So on a release PR, `pr-check.yml` runs with `CHECK_MODULES=site` instead of skipping the job: the scoped `site` module, and no `rs` build of the bumped crates.
 
 ## Related
 
 - [Thin the self-hosted merge queue to host rs and fast lints](/quest/m0/ci-speed/thin-merge-queue.md) - removes `check:site` from `queue-build.yml`
-- [PR checks stop running for results no one reads](/quest/m0/ci-speed/unread-results.md) - trims `pr-check.yml` to fast checks
+- [PR checks stop running for results no one reads](/quest/m0/ci-speed/unread-results.md) - [kixel-ai/rind#958](https://github.com/kixel-ai/rind/pull/958) implements it, deleting `site.yml`
