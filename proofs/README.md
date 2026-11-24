@@ -560,8 +560,24 @@ backend, from `HeaderProtectionKey` to HACL*'s rounds, in
 HACL*'s rounds are Rust, so they are translated and proven with the rest, and
 no axiom stands in for HACL*'s proof of them. `chacha20_mask` assumes only
 `RunsChaCha20`, that the entry guard admits it, which each target's `Runs`
-implies. armv7's translation reaches only this API: its other operations run
-assembly or Rust that other proofs are still to cover.
+implies. armv7's translation also reaches the AES-GCM API, below.
+
+The bitsliced AES armv7 runs with neither NEON nor the crypto extension,
+`low/generic/aes_nohw.rs` in 32-bit words, is proven up to its key schedule:
+`encrypt_block_spec` in `Rind/Armv7/AesNohwBlock.lean` proves that
+`Schedule::encrypt_block` is `cipherRounds`, Vale's `eval_cipher` for the
+schedule's number of rounds, on the round keys the schedule holds, and
+`encrypt_batch_spec` the same of both blocks of a batch. Under them,
+`Rind/Armv7/AesNohw.lean` proves the S-box circuit, `AesNohwRound.lean`
+`ShiftRows`, `MixColumns`, and `AddRoundKey`, and `AesNohwBatch.lean` the
+compact form and the transpose, each at every bit position by `bv_decide`,
+against the FIPS 197 functions Vale's spec names: `sbox` and `mixColumns` are
+irreducible definitions rather than opaque ones, so these proofs alone unfold
+them, through `sbox_eq` and `mixColumns_eq`, and `Rind/AesSbox.lean` has the
+kernel check the S-box table against a decision tree on its input's bits. No
+theorem yet states that the schedule's round keys are FIPS 197's key
+expansion, that `ctr32` is counter mode, or anything of GHASH and the GCM
+above them, so [armv7's AES-GCM](/quest/m5/verified-armv7/prove.md) has no ✓.
 
 Theorems that run an entry guard assume `Runs`: rind's CPU-feature checks
 pass, which no input affects. `Rind/<Arch>/P256Table.lean` proves that each
@@ -1518,6 +1534,9 @@ Beyond Lean's kernel:
   `Rind/Core.lean`'s.
 - That each hand model computes what the Rust it quotes does. They add no
   axiom.
+- For the theorems that rest on `bv_decide`, the bitsliced AES's among them,
+  Lean's compiler and its LRAT checker: each call adds an axiom that the
+  compiled checker accepted a SAT solver's certificate.
 - That `Rind/HashSpec.lean` transliterates FIPS 180-4, RFC 2104, RFC 5869,
   and RFC 8018.
 - The restatement of each s2n-bignum and aws-lc-verification theorem, and of
