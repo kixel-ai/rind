@@ -10,9 +10,11 @@
 //! crate evaluates rind's blinded elements and each input as rind does under
 //! the same key, and rind evaluates the crate's clients' blinded elements to
 //! what they finalize to the direct outputs. An untampered exchange
-//! finalizes to the server's direct evaluation of each input. A tampered one
-//! is refused, or, in the OPRF mode, which cannot tell, finalizes to another
-//! output, rather than panicking or finalizing to the right one.
+//! finalizes to the server's direct evaluation of each input. A tampered
+//! element is refused exactly when the crate cannot decode it, and a
+//! tampered exchange is refused, or, in the OPRF mode, which cannot tell,
+//! finalizes to another output, rather than panicking or finalizing to the
+//! right one.
 //!
 //! On armv7 and the portable backend, `voprf` runs rind's own group
 //! arithmetic, fiat-crypto's for the NIST suites and `curve25519-dalek` for
@@ -70,6 +72,12 @@ fuzz_target!(|input: Input| {
             voprf::Blind::new(suite, long).unwrap_err(),
             Error::WrongLength
         );
+        // A fixed key, so the check holds whether or not the fuzzed one loads.
+        let (seed, info) = ([0x42; 32], b"fuzz");
+        let key = oprf::ServerKey::derive(suite, &seed, info).unwrap();
+        assert_eq!(key.evaluate(long).unwrap_err(), Error::WrongLength);
+        let key = voprf::ServerKey::derive(suite, &seed, info).unwrap();
+        assert_eq!(key.evaluate(long).unwrap_err(), Error::WrongLength);
         return;
     }
     match (index, input.verifiable) {
@@ -165,9 +173,21 @@ macro_rules! run_oprf {
             outputs.push(direct);
             let direct = outputs.last().unwrap();
 
-            let changed = input.blinded.apply(&mut blinded);
-            let Ok(evaluated) = key.blind_evaluate(&blinded) else {
-                assert!(changed);
+            // rind takes exactly the elements the crate decodes: on the
+            // curve, canonical, and not the identity. The crate ignores
+            // bytes past an element, so the length is checked here.
+            let decodes = |bytes: &[u8]| {
+                bytes.len() == right.len() && BlindedElement::<$cs>::deserialize(bytes).is_ok()
+            };
+            input.blinded.apply(&mut blinded);
+            let evaluated = key.blind_evaluate(&blinded);
+            assert_eq!(
+                evaluated.is_ok(),
+                decodes(&blinded),
+                "{:?}",
+                evaluated.as_ref().err()
+            );
+            let Ok(evaluated) = evaluated else {
                 continue;
             };
             let mut evaluated = evaluated.as_ref().to_vec();
@@ -177,10 +197,13 @@ macro_rules! run_oprf {
             // negating the blinded element and then the evaluated one does,
             // so the expectation reads the element finalized.
             match blind.finalize(&evaluated) {
-                Ok(output) => assert_eq!(output.as_ref() == direct.as_ref(), evaluated == right),
+                Ok(output) => {
+                    assert!(decodes(&evaluated));
+                    assert_eq!(output.as_ref() == direct.as_ref(), evaluated == right);
+                }
                 Err(e) => {
                     assert!(matches!(e, Error::KeyRejected(_)), "{e:?}");
-                    assert_ne!(evaluated, right);
+                    assert!(!decodes(&evaluated));
                 }
             }
         }
@@ -233,9 +256,10 @@ macro_rules! run_voprf {
             blinded.extend_from_slice(element.as_ref());
         }
 
+        // A public key is one element, encoded.
+        let element_len = key.public_key().as_ref().len();
         if !inputs.is_empty() {
             // Their server evaluates our blinded elements as ours does.
-            let element_len = blinded.len() / inputs.len();
             let elements: Vec<_> = blinded
                 .chunks(element_len)
                 .map(|element| BlindedElement::<$cs>::deserialize(element).unwrap())
@@ -294,8 +318,16 @@ macro_rules! run_voprf {
         }
 
         let mut changed = input.blinded.apply(&mut blinded);
-        let Ok((evaluated, proof)) = key.blind_evaluate(&blinded) else {
-            assert!(changed || inputs.is_empty());
+        // rind takes a batch of one or more elements the crate decodes;
+        // edits only shrink it, so it stays within rind's batch limit.
+        let decodes = !blinded.is_empty()
+            && blinded.len().is_multiple_of(element_len)
+            && blinded
+                .chunks(element_len)
+                .all(|element| BlindedElement::<$cs>::deserialize(element).is_ok());
+        let evaluated = key.blind_evaluate(&blinded);
+        assert_eq!(evaluated.is_ok(), decodes, "{:?}", evaluated.as_ref().err());
+        let Ok((evaluated, proof)) = evaluated else {
             return;
         };
         let mut evaluated = evaluated.as_ref().to_vec();
