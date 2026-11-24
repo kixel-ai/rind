@@ -12,7 +12,7 @@ Today `rind/tests/crosschecks.rs` is a single 191 KB integration test target imp
 
 - ✅ Split `rind/tests/crosschecks.rs` into per-family integration test files (maintainer, 2026-11-21). Placed in `m1` ("the agent hosts' smaller costs") because `m0`'s `mbx`, `just check`, and test-profile quests deliver the urgent wins first.
 - Split `rind/tests/crosschecks.rs` into focused integration test targets under `rind/tests/` (for example `crosschecks_symmetric.rs`, `crosschecks_curves.rs`, `crosschecks_rsa.rs`, `crosschecks_pq.rs`, `crosschecks_protocols.rs`), sharing any tiny helpers under `rind/tests/oracle/` (which already exists).
-- Update `TESTING.md` (checked by `admin/testing`), `admin/x86-cpu` (`SKIP` filters for `slh_dsa_*::sign_verify`), and `sh/dispatch.sh` / `sh/test-filter.sh` (if landed) so every test name and skip rule continues to match, and verify `cargo nextest list -p rind` preserves the exact test count.
+- Update `TESTING.md` (checked by `admin/testing`), `admin/x86-cpu` (`SKIP` filters for `slh_dsa_*::sign_verify`), and `sh/dispatch.sh` / `sh/test-filter.sh` (if landed) so every test name and skip rule continues to match. If [scoped-tests](/quest/m0/ci-speed/scoped-tests.md) landed first, point its self-test's trigger and its unlisted-test inventory at every split file instead of `crosschecks.rs`, and its target selectors at the per-family binaries, and verify `cargo nextest list -p rind` preserves the exact test count.
 
 ## Related
 
