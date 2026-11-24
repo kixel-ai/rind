@@ -205,7 +205,7 @@ const DENIABLE: bool = cfg!(all(rind_std, any(debug_assertions, rind_cpu_disable
 /// carry no table-free AES. A build that can deny a feature still asks.
 #[inline]
 fn has(wanted: u8) -> bool {
-    (!DENIABLE && ENABLED & wanted != 0) || features() & wanted != 0
+    (!DENIABLE && wanted & !ENABLED == 0) || features() & wanted == wanted
 }
 
 static FEATURES: AtomicU8 = AtomicU8::new(0);
