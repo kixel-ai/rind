@@ -1,7 +1,5 @@
 use std::io::{Read, Write};
 use std::sync::Arc;
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-use wasm_bindgen_test::wasm_bindgen_test as test;
 
 use rustls::crypto::{CryptoProvider, SupportedKxGroup};
 #[cfg(not(target_family = "wasm"))]
@@ -13,6 +11,8 @@ use rustls::{
     ClientConfig, ClientConnection, HandshakeKind, NamedGroup, RootCertStore, ServerConfig,
     ServerConnection,
 };
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+use wasm_bindgen_test::wasm_bindgen_test as test;
 
 #[test]
 fn all_suites() {

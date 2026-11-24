@@ -2,8 +2,6 @@
 //! packet and header protection keys open what the other side seals.
 
 use std::sync::Arc;
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-use wasm_bindgen_test::wasm_bindgen_test as test;
 
 use rustls::crypto::CryptoProvider;
 #[cfg(not(target_family = "wasm"))]
@@ -12,6 +10,8 @@ use rustls::pki_types::pem::PemObject;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use rustls::quic::{self, Connection, DirectionalKeys, KeyChange, PacketKey, Version};
 use rustls::{CipherSuite, ClientConfig, RootCertStore, ServerConfig, Side, SupportedCipherSuite};
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+use wasm_bindgen_test::wasm_bindgen_test as test;
 
 /// The providers rind runs against.
 #[cfg(not(target_family = "wasm"))]
