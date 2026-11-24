@@ -37,6 +37,9 @@ jobs:
       # Leaks are not checked: tests leak on purpose, and a forked child
       # holds its parent's other threads' memory.
       ASAN_OPTIONS: detect_leaks=0
+      # LLVM takes over 15 minutes to build fips205, the SLH-DSA oracle, for
+      # aarch64 with AddressSanitizer at opt-level 3, and 3 seconds at 1.
+      FIPS205: --config=profile.release.package.fips205.opt-level=1
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -53,12 +56,12 @@ jobs:
       # rind-fips's doctests could not load its module: the doctests, usage
       # examples whose code the other tests run, are left out.
       - name: Tests
-        run: cargo test --release --target="$(rustc --print host-tuple)" --workspace --tests
+        run: cargo test "$FIPS205" --release --target="$(rustc --print host-tuple)" --workspace --tests
 
       # The fallback paths each slower CPU runs, the Rust ones among them
       # instrumented. rind-fips's module refuses a CPU below its baseline.
       - name: Tests on each denied CPU tier
-        run: sh/cpu-tiers.sh cargo test --release --target="$(rustc --print host-tuple)" -p rind --lib
+        run: sh/cpu-tiers.sh cargo test "$FIPS205" --release --target="$(rustc --print host-tuple)" -p rind --lib
 
   # ThreadSanitizer: data races between threads, which needs the standard
   # library built with it. Miri checks the portable backend's races; this
