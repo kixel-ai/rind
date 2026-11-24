@@ -18,7 +18,7 @@ renames [rind-aws-lc-rs](#rind-aws-lc-rs) to `aws-lc-rs` the same way.
 | An allocated `Document`, `Vec`, or `Box` output | an owned value of fixed capacity, such as `encoding::Pkcs8` |
 | `error::Unspecified`, `error::KeyRejected` | `rind::Error`, by kind of call (see [error](#error)) |
 | One `signature` module for every algorithm | a module for each: [ecdsa](#ecdsa), [ed25519](#ed25519), [ml_dsa](#ml_dsa), [rsa](#rsa), and [slh_dsa](#slh_dsa) (see [signature](#signature)) |
-| aws-lc-rs wipes keys and keyed state on drop; ring doesn't | rind wipes them too, always |
+| aws-lc-rs wipes keys and keyed state on drop; ring doesn't | rind wipes them too, always, and its `zeroize` feature marks each such type `zeroize::ZeroizeOnDrop` |
 
 ## digest
 
@@ -354,6 +354,11 @@ No rind call takes a random source, so there is nothing to pass one to.
 | `SystemRandom::new().fill(out)`, `rand::fill(out)` | `rand::fill(out)` |
 | `generate::<[u8; N]>(rng)?.expose()` | `rand::fill` into a `[u8; N]` |
 | `SecureRandom`, `RandomlyConstructable`, `Random` | none |
+
+For a crate that takes a `rand_core` RNG, such as RustCrypto's,
+[rind-rand-core](rind-rand-core/README.md)'s `SystemRandom` is a `rand_core`
+`TryCryptoRng` over `rand::fill`; wrap it in `rand_core::UnwrapErr` where the
+crate takes an infallible `CryptoRng`.
 
 ## error
 
