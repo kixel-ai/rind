@@ -19,12 +19,21 @@
 
    The state is the A32 instruction set's, at user level: R0-R12, SP, LR,
    the program counter, the NZCV flags, and flat 32-bit memory. It omits
-   Thumb (T32) and interworking, the GE and Q flags, NEON and VFP registers,
-   FPSCR, banked registers, exceptions, and the system registers.
+   Thumb (T32), the GE and Q flags, NEON and VFP registers, FPSCR, banked
+   registers, exceptions, and the system registers.
+
+   A branch to a register's or a loaded word's value interworks: bit 0 of
+   the target selects Thumb, which this state cannot hold. So BX and a load
+   into PC take only a target aligned to four bytes, and allow every next
+   state otherwise, as s2n-bignum's models do an instruction whose side
+   condition fails: a proof that reaches one proves nothing.
 
    Unaligned word loads and stores are architectural on ARMv7 and later when
    SCTLR.A is clear, as Linux and Android leave it at user level, so LDR and
-   STR here access any address. *)
+   STR here access any address. LDRD, STRD, LDM, and STM fault on an address
+   that is not word-aligned whatever SCTLR.A holds, and a load into PC from
+   one is UNPREDICTABLE, so those take only an aligned address, and allow
+   every next state otherwise, as an unaligned branch target does. *)
 
 new_type_abbrev
  ("aarch32_uarch_event",`:32 address_uarch_event`);;
@@ -66,7 +75,8 @@ let VF = define `VF = flags :> bitelement 0`;;
 add_component_alias_thms [NF; ZF; CF; VF];;
 
 (* ------------------------------------------------------------------------- *)
-(* Core registers. R15 is PC, which only branches and the fetch write.      *)
+(* Core registers. R15 is PC, which only branches, loads into PC, and the   *)
+(* fetch write.                                                              *)
 (* ------------------------------------------------------------------------- *)
 
 let RREG = define
@@ -114,6 +124,21 @@ let aarch32_reg = define
     if n = word 11 then R11 else
     if n = word 12 then R12 else
     if n = word 13 then SP else LR`;;
+
+(* R15 as an operand: the instruction's address plus 8. PC already holds the
+   address plus 4 when the semantics run. The manual aligns the value to
+   four bytes for ADR and literal loads, which changes nothing here: the
+   fetch takes only an aligned PC. *)
+
+let aarch32_R15 = define
+ `aarch32_R15:(aarch32state,int32)component =
+    component((\s. word_add (read PC s) (word 4)),(\y s. s))`;;
+
+(* A four-bit register field that may name R15 as an operand. *)
+
+let aarch32_src = define
+ `aarch32_src (n:4 word) =
+    if n = word 15 then aarch32_R15 else aarch32_reg n`;;
 
 (* ------------------------------------------------------------------------- *)
 (* Conditions: the pseudocode's ConditionHolds.                              *)
@@ -163,6 +188,8 @@ let aarch32_cond = define
 (* Shifted-register operands and their carry out: the pseudocode's Shift_C. *)
 (* Each is a read-only component; the decoder picks the shift and amount,    *)
 (* and gives the carry as a bit of the source register, as Shift_C does.     *)
+(* A register-shifted register takes the amount from the low byte of `rs`:   *)
+(* up to 255, and zero leaves both the value and the carry.                  *)
 (* ------------------------------------------------------------------------- *)
 
 let aarch32_LSL = define
@@ -191,17 +218,99 @@ let aarch32_BIT = define
  `aarch32_BIT (r:(aarch32state,int32)component) i =
     component((\s. bit i (read r s)),(\y s. s))`;;
 
+let aarch32_NEG = define
+ `aarch32_NEG (r:(aarch32state,int32)component) =
+    component((\s. word_neg (read r s)),(\y s. s))`;;
+
+let aarch32_LSL_R = define
+ `aarch32_LSL_R (r:(aarch32state,int32)component)
+                (rs:(aarch32state,int32)component) =
+    component((\s. word_shl (read r s) (val(read rs s) MOD 256)),(\y s. s))`;;
+
+let aarch32_LSR_R = define
+ `aarch32_LSR_R (r:(aarch32state,int32)component)
+                (rs:(aarch32state,int32)component) =
+    component((\s. word_ushr (read r s) (val(read rs s) MOD 256)),(\y s. s))`;;
+
+let aarch32_ASR_R = define
+ `aarch32_ASR_R (r:(aarch32state,int32)component)
+                (rs:(aarch32state,int32)component) =
+    component((\s. word_ishr (read r s) (val(read rs s) MOD 256)),(\y s. s))`;;
+
+let aarch32_ROR_R = define
+ `aarch32_ROR_R (r:(aarch32state,int32)component)
+                (rs:(aarch32state,int32)component) =
+    component((\s. word_ror (read r s) (val(read rs s) MOD 256)),(\y s. s))`;;
+
+(* Their carries out: the last bit shifted out, which past 32 places is zero
+   for the logical shifts and the sign for ASR. *)
+
+let aarch32_LSL_RC = define
+ `aarch32_LSL_RC (r:(aarch32state,int32)component)
+                 (rs:(aarch32state,int32)component) =
+    component((\s. if val(read rs s) MOD 256 = 0 then read CF s
+                   else val(read rs s) MOD 256 <= 32 /\
+                        bit (32 - val(read rs s) MOD 256) (read r s)),
+              (\y s. s))`;;
+
+let aarch32_LSR_RC = define
+ `aarch32_LSR_RC (r:(aarch32state,int32)component)
+                 (rs:(aarch32state,int32)component) =
+    component((\s. if val(read rs s) MOD 256 = 0 then read CF s
+                   else bit (val(read rs s) MOD 256 - 1) (read r s)),
+              (\y s. s))`;;
+
+let aarch32_ASR_RC = define
+ `aarch32_ASR_RC (r:(aarch32state,int32)component)
+                 (rs:(aarch32state,int32)component) =
+    component((\s. if val(read rs s) MOD 256 = 0 then read CF s
+                   else bit (MIN (val(read rs s) MOD 256 - 1) 31) (read r s)),
+              (\y s. s))`;;
+
+let aarch32_ROR_RC = define
+ `aarch32_ROR_RC (r:(aarch32state,int32)component)
+                 (rs:(aarch32state,int32)component) =
+    component((\s. if val(read rs s) MOD 256 = 0 then read CF s
+                   else bit ((val(read rs s) MOD 256 - 1) MOD 32) (read r s)),
+              (\y s. s))`;;
+
 let AARCH32_OPERAND_READS = prove
- (`(!r n s. read (aarch32_LSL r n) s = word_shl (read r s) n) /\
+ (`(!s. read aarch32_R15 s = word_add (read PC s) (word 4)) /\
+   (!r n s. read (aarch32_LSL r n) s = word_shl (read r s) n) /\
    (!r n s. read (aarch32_LSR r n) s = word_ushr (read r s) n) /\
    (!r n s. read (aarch32_ASR r n) s = word_ishr (read r s) n) /\
    (!r n s. read (aarch32_ROR r n) s = word_ror (read r s) n) /\
    (!r s. read (aarch32_RRX r) s =
           word_or (word_ushr (read r s) 1)
                   (word_shl (word(bitval(read CF s))) 31)) /\
-   (!r i s. read (aarch32_BIT r i) s = bit i (read r s))`,
-  REWRITE_TAC[aarch32_LSL; aarch32_LSR; aarch32_ASR; aarch32_ROR;
-              aarch32_RRX; aarch32_BIT; read]);;
+   (!r i s. read (aarch32_BIT r i) s = bit i (read r s)) /\
+   (!r s. read (aarch32_NEG r) s = word_neg (read r s)) /\
+   (!r rs s. read (aarch32_LSL_R r rs) s =
+             word_shl (read r s) (val(read rs s) MOD 256)) /\
+   (!r rs s. read (aarch32_LSR_R r rs) s =
+             word_ushr (read r s) (val(read rs s) MOD 256)) /\
+   (!r rs s. read (aarch32_ASR_R r rs) s =
+             word_ishr (read r s) (val(read rs s) MOD 256)) /\
+   (!r rs s. read (aarch32_ROR_R r rs) s =
+             word_ror (read r s) (val(read rs s) MOD 256)) /\
+   (!r rs s. read (aarch32_LSL_RC r rs) s <=>
+             if val(read rs s) MOD 256 = 0 then read CF s
+             else val(read rs s) MOD 256 <= 32 /\
+                  bit (32 - val(read rs s) MOD 256) (read r s)) /\
+   (!r rs s. read (aarch32_LSR_RC r rs) s <=>
+             if val(read rs s) MOD 256 = 0 then read CF s
+             else bit (val(read rs s) MOD 256 - 1) (read r s)) /\
+   (!r rs s. read (aarch32_ASR_RC r rs) s <=>
+             if val(read rs s) MOD 256 = 0 then read CF s
+             else bit (MIN (val(read rs s) MOD 256 - 1) 31) (read r s)) /\
+   (!r rs s. read (aarch32_ROR_RC r rs) s <=>
+             if val(read rs s) MOD 256 = 0 then read CF s
+             else bit ((val(read rs s) MOD 256 - 1) MOD 32) (read r s))`,
+  REWRITE_TAC[aarch32_R15; aarch32_LSL; aarch32_LSR; aarch32_ASR;
+              aarch32_ROR; aarch32_RRX; aarch32_BIT; aarch32_NEG;
+              aarch32_LSL_R; aarch32_LSR_R; aarch32_ASR_R; aarch32_ROR_R;
+              aarch32_LSL_RC; aarch32_LSR_RC; aarch32_ASR_RC; aarch32_ROR_RC;
+              read]);;
 
 (* ------------------------------------------------------------------------- *)
 (* Data processing. `Rm` is the shifted register or immediate operand, and  *)
@@ -479,10 +588,49 @@ let aarch32_MOVT = define
         let d:int32 = word_join imm (word_subword (read Rd s) (0,16):16 word) in
         (Rd := d) s`;;
 
+(* MUL keeps the product's low word; UMULL writes the whole 64-bit product
+   of two words, and UMLAL adds it to the 64-bit value already in RdHi:RdLo.
+   None sets flags: the decoder refuses their S forms. *)
+
+let aarch32_MUL = define
+ `aarch32_MUL Rd Rn Rm =
+    \s:aarch32state.
+        let d:int32 = word_mul (read Rn s) (read Rm s) in
+        (Rd := d) s`;;
+
+let aarch32_UMULL = define
+ `aarch32_UMULL RdLo RdHi Rn Rm =
+    \s:aarch32state.
+        let p = val(read Rn s:int32) * val(read Rm s:int32) in
+        (RdLo := (word p:int32) ,,
+         RdHi := (word(p DIV 2 EXP 32):int32)) s`;;
+
+let aarch32_UMLAL = define
+ `aarch32_UMLAL RdLo RdHi Rn Rm =
+    \s:aarch32state.
+        let p = val(read Rn s:int32) * val(read Rm s:int32) +
+                (2 EXP 32 * val(read RdHi s:int32) + val(read RdLo s:int32)) in
+        (RdLo := (word p:int32) ,,
+         RdHi := (word(p DIV 2 EXP 32):int32)) s`;;
+
+let aarch32_REV = define
+ `aarch32_REV Rd Rm =
+    \s:aarch32state.
+        let d:int32 = word_bytereverse (read Rm s) in
+        (Rd := d) s`;;
+
+(* NOP, and DMB, which orders memory accesses and changes no state here. *)
+
+let aarch32_NOP = define
+ `aarch32_NOP = \s:aarch32state. (=) s`;;
+
+let aarch32_DMB = define
+ `aarch32_DMB = \s:aarch32state. (=) s`;;
+
 (* ------------------------------------------------------------------------- *)
 (* Branches. `off` is the target's offset from the branch's own address: the *)
 (* decoder folds in A32's PC bias of 8. PC already holds the branch's        *)
-(* address plus 4 when the semantics run.                                    *)
+(* address plus 4 when the semantics run, which is what BL leaves in LR.     *)
 (* ------------------------------------------------------------------------- *)
 
 let aarch32_B = define
@@ -495,51 +643,182 @@ let aarch32_B = define
         (PC := pc_next ,,
          events := CONS (EventJump (pc,pc_next)) (read events s)) s`;;
 
+let aarch32_BL = define
+ `aarch32_BL (off:int32) =
+    \s:aarch32state.
+        let pc_incr = read PC s in
+        let pc = word_sub pc_incr (word 4) in
+        let pc_next = word_add pc off in
+        (LR := pc_incr ,,
+         PC := pc_next ,,
+         events := CONS (EventJump (pc,pc_next)) (read events s)) s`;;
+
+let aarch32_BX = define
+ `aarch32_BX Rm =
+    \s:aarch32state.
+        let pc = word_sub (read PC s) (word 4) in
+        let pc_next:int32 = read Rm s in
+        (if aligned 4 pc_next then
+           PC := pc_next ,,
+           events := CONS (EventJump (pc,pc_next)) (read events s)
+         else ASSIGNS entirety) s`;;
+
 (* ------------------------------------------------------------------------- *)
-(* Loads and stores, word and byte, with an immediate offset. `off` is the   *)
-(* signed offset, `indexed` whether the access uses the offset address, and  *)
-(* `wback` whether Rn takes it: offset, pre-indexed, and post-indexed forms. *)
+(* Loads and stores, word and byte. `Rm` is the offset operand, an immediate *)
+(* or a shifted register, negated when the instruction subtracts it;         *)
+(* `indexed` whether the access uses the offset address, and `wback` whether *)
+(* Rn takes it: offset, pre-indexed, and post-indexed forms. Rn is R15 for a *)
+(* literal load.                                                             *)
 (* ------------------------------------------------------------------------- *)
 
 let aarch32_LDR = define
- `aarch32_LDR Rt Rn (off:int32) indexed wback =
+ `aarch32_LDR Rt Rn Rm indexed wback =
     \s:aarch32state.
-        let base = read Rn s in
-        let offset_addr = word_add base off in
+        let base:int32 = read Rn s in
+        let offset_addr = word_add base (read Rm s) in
         let addr = if indexed then offset_addr else base in
         (Rt := read (memory :> bytes32 addr) s ,,
          events := CONS (EventLoad (addr,4)) (read events s) ,,
          (if wback then Rn := offset_addr else (=))) s`;;
 
 let aarch32_LDRB = define
- `aarch32_LDRB Rt Rn (off:int32) indexed wback =
+ `aarch32_LDRB Rt Rn Rm indexed wback =
     \s:aarch32state.
-        let base = read Rn s in
-        let offset_addr = word_add base off in
+        let base:int32 = read Rn s in
+        let offset_addr = word_add base (read Rm s) in
         let addr = if indexed then offset_addr else base in
         (Rt := word_zx (read (memory :> bytes8 addr) s) ,,
          events := CONS (EventLoad (addr,1)) (read events s) ,,
          (if wback then Rn := offset_addr else (=))) s`;;
 
 let aarch32_STR = define
- `aarch32_STR Rt Rn (off:int32) indexed wback =
+ `aarch32_STR Rt Rn Rm indexed wback =
     \s:aarch32state.
-        let base = read Rn s in
-        let offset_addr = word_add base off in
+        let base:int32 = read Rn s in
+        let offset_addr = word_add base (read Rm s) in
         let addr = if indexed then offset_addr else base in
         (memory :> bytes32 addr := read Rt s ,,
          events := CONS (EventStore (addr,4)) (read events s) ,,
          (if wback then Rn := offset_addr else (=))) s`;;
 
 let aarch32_STRB = define
- `aarch32_STRB Rt Rn (off:int32) indexed wback =
+ `aarch32_STRB Rt Rn Rm indexed wback =
     \s:aarch32state.
-        let base = read Rn s in
-        let offset_addr = word_add base off in
+        let base:int32 = read Rn s in
+        let offset_addr = word_add base (read Rm s) in
         let addr = if indexed then offset_addr else base in
         (memory :> bytes8 addr := word_zx (read Rt s) ,,
          events := CONS (EventStore (addr,1)) (read events s) ,,
          (if wback then Rn := offset_addr else (=))) s`;;
+
+(* LDR into PC: a branch to the loaded word, from an aligned address. *)
+
+let aarch32_LDR_PC = define
+ `aarch32_LDR_PC Rn Rm indexed wback =
+    \s:aarch32state.
+        let pc = word_sub (read PC s) (word 4) in
+        let base:int32 = read Rn s in
+        let offset_addr = word_add base (read Rm s) in
+        let addr = if indexed then offset_addr else base in
+        let pc_next:int32 = read (memory :> bytes32 addr) s in
+        (if aligned 4 addr /\ aligned 4 pc_next then
+           PC := pc_next ,,
+           events := CONS (EventJump (pc,pc_next))
+                          (CONS (EventLoad (addr,4)) (read events s)) ,,
+           (if wback then Rn := offset_addr else (=))
+         else ASSIGNS entirety) s`;;
+
+(* LDRD and STRD: two words, Rt at the address and Rt2 four bytes on. *)
+
+let aarch32_LDRD = define
+ `aarch32_LDRD Rt Rt2 Rn Rm indexed wback =
+    \s:aarch32state.
+        let base:int32 = read Rn s in
+        let offset_addr = word_add base (read Rm s) in
+        let addr = if indexed then offset_addr else base in
+        (if aligned 4 addr then
+           Rt := read (memory :> bytes32 addr) s ,,
+           Rt2 := read (memory :> bytes32 (word_add addr (word 4))) s ,,
+           events := CONS (EventLoad (addr,8)) (read events s) ,,
+           (if wback then Rn := offset_addr else (=))
+         else ASSIGNS entirety) s`;;
+
+let aarch32_STRD = define
+ `aarch32_STRD Rt Rt2 Rn Rm indexed wback =
+    \s:aarch32state.
+        let base:int32 = read Rn s in
+        let offset_addr = word_add base (read Rm s) in
+        let addr = if indexed then offset_addr else base in
+        (if aligned 4 addr then
+           memory :> bytes32 addr := read Rt s ,,
+           memory :> bytes32 (word_add addr (word 4)) := read Rt2 s ,,
+           events := CONS (EventStore (addr,8)) (read events s) ,,
+           (if wback then Rn := offset_addr else (=))
+         else ASSIGNS entirety) s`;;
+
+(* ------------------------------------------------------------------------- *)
+(* LDM and STM, PUSH and POP among them. `regs` is the registers in          *)
+(* ascending order, which take ascending addresses; `off` the lowest         *)
+(* address's offset from Rn, `len` the bytes transferred, and `wb` what Rn   *)
+(* gains when `wback`: the decoder works them out from the addressing mode.  *)
+(* Every value is read from the state before the instruction, so a base      *)
+(* register in the list loads and stores as the manual says. The addresses   *)
+(* are aligned exactly when Rn is.                                           *)
+(* ------------------------------------------------------------------------- *)
+
+let aarch32_loads = define
+ `(aarch32_loads [] (base:int32) (off:int32) (s:aarch32state)
+                 (k:aarch32state->aarch32state->bool) = k) /\
+  (aarch32_loads (CONS (r:(aarch32state,int32)component) rs) base off s k =
+     (r := read (memory :> bytes32 (word_add base off)) s ,,
+      aarch32_loads rs base (word_add off (word 4)) s k))`;;
+
+let aarch32_stores = define
+ `(aarch32_stores [] (base:int32) (off:int32) (s:aarch32state)
+                  (k:aarch32state->aarch32state->bool) = k) /\
+  (aarch32_stores (CONS (r:(aarch32state,int32)component) rs) base off s k =
+     (memory :> bytes32 (word_add base off) := read r s ,,
+      aarch32_stores rs base (word_add off (word 4)) s k))`;;
+
+let aarch32_LDM = define
+ `aarch32_LDM regs Rn (off:int32) len (wb:int32) wback =
+    \s:aarch32state.
+        let base:int32 = read Rn s in
+        (if aligned 4 base then
+           aarch32_loads regs base off s
+            (events := CONS (EventLoad (word_add base off,len))
+                            (read events s) ,,
+             (if wback then Rn := word_add base wb else (=)))
+         else ASSIGNS entirety) s`;;
+
+let aarch32_STM = define
+ `aarch32_STM regs Rn (off:int32) len (wb:int32) wback =
+    \s:aarch32state.
+        let base:int32 = read Rn s in
+        (if aligned 4 base then
+           aarch32_stores regs base off s
+            (events := CONS (EventStore (word_add base off,len))
+                            (read events s) ,,
+             (if wback then Rn := word_add base wb else (=)))
+         else ASSIGNS entirety) s`;;
+
+(* LDM with PC in the list: PC is the last word, at `pcoff` from Rn, and the
+   instruction branches to it. *)
+
+let aarch32_LDM_PC = define
+ `aarch32_LDM_PC regs Rn (off:int32) (pcoff:int32) len (wb:int32) wback =
+    \s:aarch32state.
+        let pc = word_sub (read PC s) (word 4) in
+        let base:int32 = read Rn s in
+        let pc_next:int32 = read (memory :> bytes32 (word_add base pcoff)) s in
+        (if aligned 4 base /\ aligned 4 pc_next then
+           aarch32_loads regs base off s
+            (PC := pc_next ,,
+             events := CONS (EventJump (pc,pc_next))
+                            (CONS (EventLoad (word_add base off,len))
+                                  (read events s)) ,,
+             (if wback then Rn := word_add base wb else (=)))
+         else ASSIGNS entirety) s`;;
 
 (* ------------------------------------------------------------------------- *)
 (* The instruction semantics the step conversion unfolds.                    *)
@@ -552,4 +831,7 @@ let AARCH32_INSTRUCTIONS =
    aarch32_ADDS; aarch32_CMN; aarch32_ADC; aarch32_ADCS; aarch32_SUB;
    aarch32_SUBS; aarch32_CMP; aarch32_RSB; aarch32_RSBS; aarch32_SBC;
    aarch32_SBCS; aarch32_RSC; aarch32_RSCS; aarch32_MOVW; aarch32_MOVT;
-   aarch32_B; aarch32_LDR; aarch32_LDRB; aarch32_STR; aarch32_STRB];;
+   aarch32_MUL; aarch32_UMULL; aarch32_UMLAL; aarch32_REV; aarch32_NOP;
+   aarch32_DMB; aarch32_B; aarch32_BL; aarch32_BX; aarch32_LDR; aarch32_LDRB;
+   aarch32_STR; aarch32_STRB; aarch32_LDR_PC; aarch32_LDRD; aarch32_STRD;
+   aarch32_loads; aarch32_stores; aarch32_LDM; aarch32_STM; aarch32_LDM_PC];;
