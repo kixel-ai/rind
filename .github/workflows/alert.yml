@@ -16,7 +16,6 @@ on:
     # Matched by workflow `name:`, not filename. Only workflows that run outside
     # a pull request and a manual dispatch. `sh/alert.sh check` enforces the list.
     workflows:
-      - asan
       - bench
       - build
       - dart-libraries
@@ -31,6 +30,7 @@ on:
       - python
       - quality lints
       - regenerate
+      - sanitizers
       - Site deploy
       - Release
       - timing

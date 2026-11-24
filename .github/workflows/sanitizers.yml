@@ -1,0 +1,92 @@
+name: sanitizers
+
+# Nightly only, never on pull requests: a sanitizer finds what no gating check
+# does, but too slowly to gate a merge. Dispatch it to check a change first.
+on:
+  schedule:
+    - cron: "0 18 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sanitizers-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # AddressSanitizer: out-of-bounds and use-after-free accesses in Rust code,
+  # rind-fips's module included (its build script passes the flag on), but
+  # not in assembly, which `low::guard_pages` bounds instead.
+  asan:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm]
+
+    runs-on: ${{ matrix.os }}
+    env:
+      # Some of the crate dependencies compile C code. Using
+      # "-Zexternal-clangrt" keeps the Rust and C object files from ending up
+      # with dependencies on conflicting versions of the ASAN runtime.
+      # `rind_cpu_disable` lets the release build honour the denied tiers.
+      RUSTFLAGS: "-Zsanitizer=address -Zexternal-clangrt -lasan --cfg rind_cpu_disable"
+      # Leaks are not checked: tests leak on purpose, and a forked child
+      # holds its parent's other threads' memory.
+      ASAN_OPTIONS: detect_leaks=0
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install nightly toolchain
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: nightly
+
+      # The explicit target keeps the -Zsanitizer setting out of build
+      # scripts and proc macros. It also keeps build scripts' library
+      # directories off doctests' search path (rust-lang/cargo#8531), so
+      # rind-fips's doctests could not load its module: the doctests, usage
+      # examples whose code the other tests run, are left out.
+      - name: Tests
+        run: cargo test --release --target="$(rustc --print host-tuple)" --workspace --lib --bins --tests
+
+      # The fallback paths each slower CPU runs, the Rust ones among them
+      # instrumented. rind-fips's module refuses a CPU below its baseline.
+      - name: Tests on each denied CPU tier
+        run: sh/cpu-tiers.sh cargo test --release --target="$(rustc --print host-tuple)" -p rind --lib
+
+  # ThreadSanitizer: data races between threads, which needs the standard
+  # library built with it. Miri checks the portable backend's races; this
+  # checks rind's native build and rind-fips's module, which Miri cannot
+  # run, through the tests that share keys, the DRBG, and the module's
+  # handles across threads. rind-fips's fork tests are left out: their
+  # children start threads after a multi-threaded fork, which it does not
+  # support, or fork with a raw system call, which it does not see.
+  tsan:
+    runs-on: ubuntu-latest
+    env:
+      RUSTFLAGS: -Zsanitizer=thread
+      # In the environment, not as `-Zbuild-std`, so the build of rind-fips's
+      # module, a cargo of its own, builds its standard library the same way.
+      CARGO_UNSTABLE_BUILD_STD: std panic_abort
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install nightly toolchain
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: nightly
+          components: rust-src
+
+      - name: Tests
+        run: |
+          target=$(rustc --print host-tuple)
+          cargo test --release --target="$target" -p rind --lib
+          cargo test --release --target="$target" -p rind-fips --lib --tests -- --skip a_child_forked --skip a_raw_fork
