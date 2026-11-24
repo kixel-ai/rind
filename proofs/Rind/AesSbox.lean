@@ -271,13 +271,44 @@ def sboxTree (c : BitVec 8) : BitVec 8 :=
                 then bif c.getLsbD 0 then 0x7b#8 else 0x77#8
                 else bif c.getLsbD 0 then 0x7c#8 else 0x63#8
 
-set_option maxRecDepth 100000 in
-theorem fips197Sbox_eq_tree : ∀ c : Fin 256, fips197Sbox (BitVec.ofFin c) = sboxTree (BitVec.ofFin c) := by
-  decide +kernel
+/-- Whether `fips197Sbox` is `sboxTree` on the 16 bytes from `lo`. -/
+def treeAgrees (lo : Nat) : Bool :=
+  (List.range' lo 16).all fun n => fips197Sbox (BitVec.ofNat 8 n) == sboxTree (BitVec.ofNat 8 n)
+
+/-! The kernel keeps what it reduces until it has checked the declaration, so
+one check of all 256 bytes peaks at 13 GB; sixteen bytes a declaration keep it
+near the rest of the build's. -/
+
+theorem treeAgrees_0 : treeAgrees 0 = true := by decide +kernel
+theorem treeAgrees_1 : treeAgrees 16 = true := by decide +kernel
+theorem treeAgrees_2 : treeAgrees 32 = true := by decide +kernel
+theorem treeAgrees_3 : treeAgrees 48 = true := by decide +kernel
+theorem treeAgrees_4 : treeAgrees 64 = true := by decide +kernel
+theorem treeAgrees_5 : treeAgrees 80 = true := by decide +kernel
+theorem treeAgrees_6 : treeAgrees 96 = true := by decide +kernel
+theorem treeAgrees_7 : treeAgrees 112 = true := by decide +kernel
+theorem treeAgrees_8 : treeAgrees 128 = true := by decide +kernel
+theorem treeAgrees_9 : treeAgrees 144 = true := by decide +kernel
+theorem treeAgrees_10 : treeAgrees 160 = true := by decide +kernel
+theorem treeAgrees_11 : treeAgrees 176 = true := by decide +kernel
+theorem treeAgrees_12 : treeAgrees 192 = true := by decide +kernel
+theorem treeAgrees_13 : treeAgrees 208 = true := by decide +kernel
+theorem treeAgrees_14 : treeAgrees 224 = true := by decide +kernel
+theorem treeAgrees_15 : treeAgrees 240 = true := by decide +kernel
 
 /-- Vale's S-box is the table. -/
 theorem sbox_eq_tree (c : BitVec 8) : sbox c = sboxTree c := by
+  have chunk : ∀ k < 16, treeAgrees (16 * k) = true
+    | 0, _ => treeAgrees_0 | 1, _ => treeAgrees_1 | 2, _ => treeAgrees_2
+    | 3, _ => treeAgrees_3 | 4, _ => treeAgrees_4 | 5, _ => treeAgrees_5
+    | 6, _ => treeAgrees_6 | 7, _ => treeAgrees_7 | 8, _ => treeAgrees_8
+    | 9, _ => treeAgrees_9 | 10, _ => treeAgrees_10 | 11, _ => treeAgrees_11
+    | 12, _ => treeAgrees_12 | 13, _ => treeAgrees_13 | 14, _ => treeAgrees_14
+    | 15, _ => treeAgrees_15 | _ + 16, h => absurd h (by omega)
+  have h := chunk (c.toNat / 16) (by omega)
+  rw [treeAgrees, List.all_eq_true] at h
+  have := h c.toNat (by simp only [List.mem_range'_1]; omega)
   rw [sbox_eq]
-  exact fips197Sbox_eq_tree c.toFin
+  simpa using this
 
 end rind.vale
