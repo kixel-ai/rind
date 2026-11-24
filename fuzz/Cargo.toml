@@ -95,8 +95,8 @@ path = "../rind-dart"
 rind-python = { path = "../rind-python" }
 pyo3 = { version = "0.30", features = ["auto-initialize"] }
 
-# The FIPS module builds only here.
-[target.'cfg(all(target_os = "linux", target_env = "gnu", any(target_arch = "x86_64", target_arch = "aarch64")))'.dependencies]
+# The FIPS module builds only here, as rind-fips's build script decides.
+[target.'cfg(all(target_os = "linux", target_env = "gnu", target_endian = "little", target_pointer_width = "64", any(target_arch = "x86_64", target_arch = "aarch64")))'.dependencies]
 rind-fips = { path = "../rind-fips" }
 
 [[bin]]

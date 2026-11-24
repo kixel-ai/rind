@@ -1867,6 +1867,18 @@ unsafe fn run(s: &mut State, op: &Op) {
             );
             assert_eq!(got, 32);
             assert_eq!(decapsulated, secret[..32]);
+            // rind, encapsulating to the same key, agrees with the binding's
+            // decapsulation, so neither side's secret is the binding's alone.
+            let (ciphertext, secret) = Encapsulation::new(&public).unwrap().encapsulate().unwrap();
+            let got = rind_dart_decapsulate(
+                handle,
+                ciphertext.as_ref().as_ptr(),
+                1088,
+                decapsulated.as_mut_ptr(),
+                32,
+            );
+            assert_eq!(got, 32);
+            assert_eq!(decapsulated, secret.as_ref());
         }
         Op::Encapsulate {
             key,

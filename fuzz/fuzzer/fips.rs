@@ -11,8 +11,8 @@
 //! refuses some inputs rind takes, such as a PBKDF2 salt under 16 bytes, so
 //! elsewhere the module may refuse more.
 //!
-//! The module builds only for glibc Linux on x86_64 and aarch64; elsewhere
-//! this target does nothing.
+//! The module builds only for little-endian 64-bit glibc Linux on x86_64 and
+//! aarch64; elsewhere this target does nothing.
 
 use libfuzzer_sys::fuzz_target;
 
@@ -24,6 +24,8 @@ mod fixtures;
 #[cfg(all(
     target_os = "linux",
     target_env = "gnu",
+    target_endian = "little",
+    target_pointer_width = "64",
     any(target_arch = "x86_64", target_arch = "aarch64")
 ))]
 fuzz_target!(|ops: Vec<module::Op>| {
@@ -35,6 +37,8 @@ fuzz_target!(|ops: Vec<module::Op>| {
 #[cfg(not(all(
     target_os = "linux",
     target_env = "gnu",
+    target_endian = "little",
+    target_pointer_width = "64",
     any(target_arch = "x86_64", target_arch = "aarch64")
 )))]
 fuzz_target!(|_data: &[u8]| {});
@@ -42,6 +46,8 @@ fuzz_target!(|_data: &[u8]| {});
 #[cfg(all(
     target_os = "linux",
     target_env = "gnu",
+    target_endian = "little",
+    target_pointer_width = "64",
     any(target_arch = "x86_64", target_arch = "aarch64")
 ))]
 mod module {
@@ -438,7 +444,23 @@ mod module {
                 let len = usize::from(*len % 256);
                 let (mut a, mut b) = (vec![0; len], vec![0; len]);
                 let derived = ours.derive(rounds, salt, &mut a).map(|()| a);
-                agree(derived, theirs.derive(rounds, salt, &mut b).map(|()| b));
+                let twin = theirs.derive(rounds, salt, &mut b).map(|()| b);
+                // The module takes exactly what rind takes within SP 800-132's
+                // floors.
+                let approved =
+                    secret.len() >= 14 && salt.len() >= 16 && rounds.get() >= 1000 && len >= 14;
+                assert_eq!(
+                    derived.is_ok(),
+                    twin.is_ok() && approved,
+                    "{derived:?} {twin:?}"
+                );
+                // Verification refuses a key shorter than the hash's output.
+                let hash_len = [32, 48, 64, 20][usize::from(i) % 4];
+                if let (Some(derived), _) = agree(derived, twin) {
+                    if derived.len() >= hash_len {
+                        ours.verify(rounds, salt, &derived).unwrap();
+                    }
+                }
                 let previous = &previous[..previous.len().min(256)];
                 if ours.verify(rounds, salt, previous).is_ok() {
                     theirs.verify(rounds, salt, previous).unwrap();
@@ -649,7 +671,9 @@ mod module {
                 )
                 .unwrap();
                 // The key refuses a sequence number, the nonce XORed with the
-                // first, not above the last; what it seals is plain AES-GCM.
+                // first, not above the last, or one that would wrap; what it
+                // seals is plain AES-GCM.
+                let (mut first, mut next) = (None, 0);
                 for (sequence, aad, plaintext) in records.iter().take(8) {
                     let mut nonce = [0; 12];
                     nonce[4..].copy_from_slice(&sequence.to_be_bytes());
@@ -659,7 +683,13 @@ mod module {
                         aad,
                         &mut a,
                     );
-                    let Ok(tag) = sealed else { continue };
+                    let seq = sequence ^ *first.get_or_insert(*sequence);
+                    if seq == u64::MAX || seq < next {
+                        assert_eq!(sealed.err(), Some(fips::Error::MessageLimitReached));
+                        continue;
+                    }
+                    next = seq + 1;
+                    let tag = sealed.unwrap();
                     let twin = theirs
                         .seal_in_place_separate_tag(
                             rind::aead::Nonce::assume_unique_for_key(nonce),
@@ -860,10 +890,10 @@ mod module {
                     );
                     agree(opened, twin);
                 } else {
-                    agree(
-                        ours.decrypt_blocks(iv, &mut a).map(|()| a),
-                        theirs.decrypt_blocks(iv, &mut b).map(|()| b),
-                    );
+                    let opened = ours.decrypt_blocks(iv, &mut a);
+                    let twin = theirs.decrypt_blocks(iv, &mut b);
+                    same_verdict(opened, twin);
+                    agree(opened.map(|()| a), twin.map(|()| b));
                 }
             }
             Op::KeyWrap {
