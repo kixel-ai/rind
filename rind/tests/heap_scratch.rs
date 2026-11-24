@@ -114,6 +114,7 @@ fn first_holding<S, R>(
 ) -> Option<usize> {
     op(setup());
     let input = setup();
+    assert!(secrets.iter().all(|secret| !secret.is_empty()));
     let wanted: Vec<Vec<u8>> = secrets
         .iter()
         .flat_map(|secret| [secret.to_vec(), secret.iter().rev().copied().collect()])
@@ -761,11 +762,10 @@ fn oprf() {
                 key.blind_evaluate(blinded.as_ref()).unwrap(),
             )
         });
-        // The blind is random, so the client's output is searched for.
-        let output = keys[0].evaluate(b"input").unwrap();
-        assert_absent(
+        // Finalizing frees nothing public, so it must free nothing unwiped,
+        // the blind included.
+        assert_zeroed_given(
             "OPRF finalization",
-            &[output.as_ref()],
             || {
                 let (blind, blinded) = Blind::new(suite, b"input").unwrap();
                 (blind, keys[0].blind_evaluate(blinded.as_ref()).unwrap())
