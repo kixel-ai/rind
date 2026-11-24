@@ -33,9 +33,10 @@ fn a_raw_fork_child_never_repeats_its_parent() {
     assert_eq!(unsafe { pipe(fds.as_mut_ptr()) }, 0);
     let [from_child, to_parent] = fds;
 
+    let none: c_long = 0;
     // SAFETY: `clone` with only SIGCHLD forks as `fork` does, without libc's
     // handlers. The child only draws, writes, and leaves through `_exit`.
-    let pid = unsafe { syscall(SYS_CLONE, SIGCHLD, 0 as c_long, 0 as c_long, 0 as c_long, 0 as c_long) };
+    let pid = unsafe { syscall(SYS_CLONE, SIGCHLD, none, none, none, none) };
     assert!(pid >= 0, "clone failed");
     if pid == 0 {
         let mut out = [0; 32];
