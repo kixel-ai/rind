@@ -27,12 +27,15 @@ Before the release PR merges, check what it proposes:
 
 Decided 2026-11-12 (maintainer, rust2's /quest-unblock): keep rind-openmls out of the release ✅. Before the release PR merges, a PR sets `release = false` for it in `.release-plz.toml`. Once 0.4.0 is on crates.io, the maintainer publishes rind-openmls by hand from `main` with their own `cargo login`, adds its trusted publisher and turns on "require trusted publishing", and a PR removes the exclusion (rejected: merging the release and publishing rind-openmls by hand after its job fails, which leaves the release partial).
 
+Decided 2026-11-23 (maintainer, /quest-run): ✅ publish rind-rand-core 0.10.0 by hand from main before the release, since it builds against rind 0.3.2, so the release ships it as a patch on rind 0.4 (rejected: release = false like rind-openmls, publishing by hand after 0.4.0).
+
 Each change documents its own migration in MIGRATING.md, so this quest adds none. Delete it once 0.4.0 is published.
 
 The benchmark report is refreshed once before each minor release (maintainer, 2026-11-09), so this quest requires that run. The first ran in [kixel-ai/rind#619](https://github.com/kixel-ai/rind/pull/619); a second, decided 2026-11-21 in [kixel-ai/rind#949](https://github.com/kixel-ai/rind/pull/949), measures what 0.4 ships. Whoever plans the next minor release's quest creates the next run at the same path, from the last one in git history, and requires it.
 
 ## Waiting
 
+- Maintainer (PC): publish rind-rand-core's first version before the release PR merges: run `cargo publish -p rind-rand-core` from `main` with your own `cargo login`, add its trusted publisher for `release.yml` and the `publish` environment, and turn on its "require trusted publishing" setting. An agent cannot: trusted publishing cannot create a crate (`CONTRIBUTING.md`'s Releases section), so the first publish needs your crates.io login, which no agent holds. Check: `cargo search rind-rand-core` shows 0.10.0.
 - Maintainer: leave the release PR, [kixel-ai/rind#511](https://github.com/kixel-ai/rind/pull/511) or whichever replaces it, unmerged until every quest under `Required` is on `main` and MoQ's PR is ready, then merge it once `just release-check` passes at its head. An agent cannot: a release PR merges on the maintainer's approval (`CONTRIBUTING.md`'s Reviews section), and leaving rind alone out of the release (`release = false`) would not hold it, since every adapter's fix requires rind 0.4, which is why the hold is the unmerged PR. Check: `cargo search rind` shows 0.4.0.
 
 ## Required
