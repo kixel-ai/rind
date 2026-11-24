@@ -1,0 +1,16 @@
+# [XS] Record the weekly bench's first RustCrypto-baseline gaps
+
+## Goal
+
+`benchmarks/data/tiers.json` holds a scheduled weekly run that times RustCrypto for Argon2id, SLH-DSA, and the protocols, and `benchmarks/gaps.toml` holds a decision for every gap that run shows, before the second such scheduled run's `gate` job would fail on them.
+
+## Plan
+
+[kixel-ai/rind#964](https://github.com/kixel-ai/rind/pull/964) made RustCrypto a weekly baseline where aws-lc-rs and ring offer nothing. `admin/bench-report render` refuses a `gaps.toml` entry for a gap the saved weekly data does not show, so that PR could not record the armv7 gaps its dispatched [run 44996218659](https://github.com/kixel-ai/rind/actions/runs/44996218659) found. The first scheduled run after it lands reports them as new, and the next one fails its `gate` job unless they have decisions.
+
+- Start once a scheduled `bench` run on `main` has the RustCrypto rows: `admin/bench-report weekly`, then `admin/bench-report render`, which names each gap without a decision.
+- Expected, from the dispatched run: `blind-rsa2048-blind/*` on armv7 (1.60×), for [the armv7 inverse quest](/quest/m2/speed/armv7-modinv.md), and `oprf-ristretto255-blind/*` and `oprf-ristretto255-evaluate/*` on armv7 (1.07 and 1.16×), for [the armv7 ristretto255 quest](/quest/m2/speed/ristretto255-armv7.md). Triage any other new gap the same way, into a speed quest or a recorded reason.
+
+## Scheduled
+
+- 2026-11-28 - the weekly `bench` runs Saturdays at 12:23 UTC, so the first run after kixel-ai/rind#964 lands is the 28th at the earliest

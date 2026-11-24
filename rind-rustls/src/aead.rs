@@ -1,3 +1,5 @@
+use alloc::boxed::Box;
+
 use rind::aead;
 use rustls::crypto::cipher::{
     AeadKey, InboundOpaqueMessage, InboundPlainMessage, Iv, MessageDecrypter, MessageEncrypter,
@@ -534,7 +536,7 @@ mod tests {
                 .into_iter()
                 .enumerate()
             {
-                let plain = vec![0x42; len];
+                let plain = std::vec![0x42; len];
                 let sealed = encrypter
                     .encrypt(
                         OutboundPlainMessage {
