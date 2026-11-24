@@ -24,12 +24,9 @@ module = ""
 # Items rind cannot back, which the README names.
 omitted = [
   "aead::chacha20_poly1305_openssh",
-  "io",
   "test",
   "deprecated_test",
   "test_file",
-  "rsa::KeyPair::from_components",
-  "rsa::KeyPairComponents",
   "signature::RsaEncoding::encode",
 ]
 

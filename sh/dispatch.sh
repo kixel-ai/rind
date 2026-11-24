@@ -169,9 +169,10 @@ module cross '^(rind/(src/|tests/|Cargo\.toml$|build\.rs$)|Cargo\.(toml|lock)$|f
 # rind's manifest picks the random source rind-ring's browser feature reaches.
 module wasm '^(rind/Cargo\.toml$|rind-(aws-lc-rs|ring|rustls|rcgen|jsonwebtoken|dimpl|str0m|openmls|object-store|rand-core)/(src/|tests/|Cargo\.toml$)|admin/wasm-fixture/|Cargo\.(toml|lock)$|flake\.(nix|lock)$)' \
     tools='cargo jq' compiles
-# The adapters that build without `std` as their upstreams do, on a target
-# with none: rind-ring, as ring 0.17 builds.
-module nostd '^(rind/Cargo\.toml$|rind-ring/(src/|Cargo\.toml$)|Cargo\.(toml|lock)$|flake\.(nix|lock)$)' \
+# The adapters that build without `std`, on a target with none: rind-ring and
+# rind-rustls, as ring 0.17 and rustls 0.23 build, and rind-aws-lc-rs, which
+# aws-lc-rs cannot.
+module nostd '^(rind/Cargo\.toml$|rind-(ring|rustls|aws-lc-rs)/(src/|Cargo\.toml$)|Cargo\.(toml|lock)$|flake\.(nix|lock)$)' \
     tools='cargo' compiles
 # Dependents may build with the workspace's declared rust-version. Plain
 # `cargo check` covers the lib and bin targets, all a dependent builds, so a
@@ -601,15 +602,22 @@ step() {
             run cargo clippy -p rind-rustls --lib --tests --locked --target wasm32-unknown-unknown -- --deny warnings
             ;;
         check:nostd)
-            # With and without `alloc`, which gates RSA; x86_64-unknown-none
-            # builds rind's portable backend, as check:cross explains, and is
-            # built as well as linted for the same reason.
-            local nostd='--cfg getrandom_backend="custom" --cfg curve25519_dalek_backend="serial"'
-            for features in --no-default-features --features=alloc; do
-                RUSTFLAGS="$nostd" run cargo clippy -p rind-ring --lib --locked --target x86_64-unknown-none \
-                    "$features" -- --deny warnings
+            # rind-ring with and without `alloc`, which gates RSA, and
+            # rind-rustls without `std`, which gates what it gates in rustls,
+            # with and without `tls12`; rind-aws-lc-rs has no `std` to turn
+            # off. x86_64-unknown-none builds rind's portable backend, as
+            # check:cross explains, and is built as well as linted for the
+            # same reason.
+            local nostd='--cfg getrandom_backend="custom" --cfg curve25519_dalek_backend="serial"' args
+            for args in 'rind-ring --no-default-features' 'rind-ring --features=alloc' \
+                'rind-rustls --no-default-features' 'rind-rustls --no-default-features --features=tls12' \
+                rind-aws-lc-rs; do
+                # shellcheck disable=SC2086 # each row is a package and its flags
+                RUSTFLAGS="$nostd" run cargo clippy --lib --locked --target x86_64-unknown-none -p $args -- --deny warnings
             done
-            RUSTFLAGS="$nostd --deny warnings" run cargo build -p rind-ring --lib --locked --target x86_64-unknown-none
+            RUSTFLAGS="$nostd --deny warnings" run cargo build --lib --locked --target x86_64-unknown-none \
+                -p rind-ring -p rind-rustls -p rind-aws-lc-rs --no-default-features \
+                --features=rind-ring/alloc,rind-rustls/tls12,rind-aws-lc-rs/ring-io,rind-aws-lc-rs/ring-sig-verify
             ;;
         check:vartime)
             # Each backend's targets, as admin/ct-vartime names them; no

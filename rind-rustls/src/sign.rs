@@ -1,5 +1,9 @@
+use alloc::boxed::Box;
+use alloc::format;
+use alloc::string::ToString;
+use alloc::sync::Arc;
+use alloc::vec::Vec;
 use core::fmt;
-use std::sync::Arc;
 
 use rind::ecdsa::{KeyPair as EcdsaKeyPair, SigningAlgorithm as EcdsaSigningAlgorithm};
 use rind::ed25519::KeyPair as Ed25519KeyPair;
@@ -313,6 +317,8 @@ impl fmt::Debug for Ed25519 {
 
 #[cfg(test)]
 mod tests {
+    use std::{println, vec};
+
     use rustls::pki_types;
     use rustls::pki_types::pem::PemObject;
     #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]

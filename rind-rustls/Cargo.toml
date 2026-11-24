@@ -23,9 +23,7 @@ omitted = [
 
 [dependencies]
 rind = { version = "0.3.2", path = "../rind" }
-# rind-rustls needs the standard library, as does how it reports HPKE errors
-# through rustls's `OtherError`, whose fields depend on rustls's `std`.
-rustls = { version = "0.23.20", default-features = false, features = ["std"] }
+rustls = { version = "0.23.20", default-features = false }
 
 [dev-dependencies]
 env_logger = "0.11"
@@ -55,8 +53,7 @@ rustls-pki-types = { version = "1", features = ["web"] }
 wasm-bindgen-test = "0.3"
 
 # rustls's: as there, `std` gates `Ticketer` and `tls12` the TLS 1.2 suites.
-# rustls's `std` is always on, since rind-rustls needs it.
 [features]
 default = ["std", "tls12"]
-std = []
+std = ["rustls/std"]
 tls12 = ["rustls/tls12"]

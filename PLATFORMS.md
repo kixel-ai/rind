@@ -137,7 +137,10 @@ on every CPU its target does; every other feature only picks a faster path.
 
 rind is `no_std` with `alloc`, so a target without `std` builds it, given a
 global allocator. CI builds it for `x86_64-unknown-none`,
-`aarch64-unknown-none`, and `armv7a-none-eabi`. Without an OS:
+`aarch64-unknown-none`, and `armv7a-none-eabi`. rind-ring builds there as
+ring does, rind-rustls with its `std` feature off as rustls does, and
+rind-aws-lc-rs as it is, though aws-lc-rs needs `std`; CI builds all three
+for `x86_64-unknown-none`. Without an OS:
 
 - rind draws random bytes from [getrandom], which has no source there until
   the caller supplies one: pass `--cfg getrandom_backend="custom"` to every

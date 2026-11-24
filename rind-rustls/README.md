@@ -47,6 +47,13 @@ says which features of each such crate avoid it.
 - `Ticketer` seals tickets with XChaCha20-Poly1305, where upstream's uses
   RFC 5077's AES-256-CBC and HMAC-SHA256.
 
+## Without `std`
+
+Turn off this crate's and rustls's default features for a target without
+`std`. As in rustls, `std` gates `Ticketer`. rind still needs a global
+allocator; [PLATFORMS.md](https://github.com/kixel-ai/rind/blob/main/PLATFORMS.md)
+says what else such a target needs.
+
 ## WebAssembly
 
 rind-rustls builds for `wasm32-wasip2`, where CI runs its tests under

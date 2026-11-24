@@ -1,3 +1,5 @@
+use alloc::boxed::Box;
+
 use rind::aead::{self, quic::SAMPLE_LEN};
 use rustls::Error;
 use rustls::crypto::cipher::{AeadKey, Iv, Nonce};
