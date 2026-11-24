@@ -184,13 +184,16 @@ jobs:
           check: hol-light aarch64
           key: ${{ needs.keys.outputs.hol-light-aarch64 }}
 
+  # x86_64's proofs took 2227 s on an Intel Core Ultra 7 270K Plus, 734 s of
+  # them in the AVX2 SHA-256, so at up to 2.1 times as long the job can run
+  # about 80 minutes with the build.
   hol-light-x86_64:
     needs: keys
     if: ${{ !cancelled() && !github.event.pull_request.draft && needs.keys.outputs.hit-hol-light-x86_64 != 'true' }}
     concurrency:
       group: prove-${{ github.event_name == 'push' && needs.keys.outputs.hol-light-x86_64 || github.run_id }}-hol-light-x86_64
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
