@@ -12,9 +12,8 @@ inputs:
 runs:
   using: composite
   steps:
-    # On a push to main, a HOL Light job waited for any other run checking
-    # this key, which may have saved it since `keys` looked; `lean` looks its
-    # key up only here.
+    # On a push to main, another run may have saved a HOL Light job's key
+    # since `keys` looked; `lean` looks its key up only here.
     - name: Look up
       id: cache
       if: github.event_name == 'push' && inputs.key != ''

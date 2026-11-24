@@ -36,13 +36,13 @@ jobs:
     name: Proofs
     runs-on: ubuntu-latest
     if: ${{ github.repository_owner == 'kixel-ai' && github.ref == 'refs/heads/main' }}
-    # GitHub's limit for a hosted job: prove's HOL Light aarch64 job alone
-    # may run 150 minutes, after waiting behind any other run of its key.
+    # GitHub's limit for a hosted job: prove's run may take 30 minutes for its
+    # keys and 150 for HOL Light aarch64, after queueing for runners.
     timeout-minutes: 360
     permissions:
       contents: read
-      # To rerun a prove run that a newer push's job cancelled.
-      actions: write
+      # To read prove's runs.
+      actions: read
       # To find the pull request that landed each commit.
       pull-requests: read
     steps:

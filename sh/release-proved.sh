@@ -10,11 +10,11 @@
 #
 # Usage: GH_TOKEN=... GH_REPO=owner/repo sh/release-proved.sh [BEFORE]
 # Without BEFORE, only HEAD is considered, as in sh/release.sh. GH_TOKEN needs
-# actions: write, to rerun a cancelled run, and pull-requests: read.
+# actions: read and pull-requests: read.
 set -euo pipefail
 
 before=${1:-}
-: "${GH_TOKEN:?sh/release-proved.sh reads and reruns the runs of prove.yml with GH_TOKEN}"
+: "${GH_TOKEN:?sh/release-proved.sh reads the runs of prove.yml with GH_TOKEN}"
 : "${GH_REPO:?sh/release-proved.sh needs GH_REPO, the repository as owner/repo}"
 cd "$(git rev-parse --show-toplevel)"
 
@@ -22,11 +22,10 @@ range=(--max-count=1 HEAD)
 [[ -z "$before" ]] || range=("$before..HEAD")
 
 # Polls a minute apart: up to 10 minutes for a run to appear, as GitHub starts
-# the push's beside this one, then until one finishes. A cancelled run is
-# rerun, up to `attempts` in all: a newer push whose job checks the same key
-# cancels a job pending behind another, and that job then saves the key.
+# the push's beside this one, then until one passes or all have ended. No run
+# on main is cancelled by another (prove.yml), so one that ended without
+# passing failed or was stopped, and is never retried.
 appear=10
-attempts=3
 for commit in $(git rev-list --first-parent --reverse "${range[@]}"); do
     # release-plz's own test for a release (release_always = false): a pull
     # request the commit belongs to came from a `release-plz-` branch. For a
@@ -72,29 +71,9 @@ for commit in $(git rev-list --first-parent --reverse "${range[@]}"); do
                 exit 1
             }
         elif jq -e 'all(.[]; .status == "completed")' <<<"$runs" >/dev/null; then
-            # Only a cancellation is retried: the checks are deterministic.
-            if jq -e 'any(.[]; .conclusion != "cancelled")' <<<"$runs" >/dev/null; then
-                echo "error: prove did not pass on main at ${same[*]}, which release $commit's proofs come from:" >&2
-                jq -r '.[] | "  \(.conclusion) \(.html_url)"' <<<"$runs" >&2
-                exit 1
-            fi
-            # A rerun waits until no prove run on main is unfinished, so the
-            # one whose job took the cancelled job's place has saved the key,
-            # which the rerun looks up at once rather than queueing where a
-            # newer push could cancel it again.
-            unfinished=$(gh api "repos/$GH_REPO/actions/workflows/prove.yml/runs?branch=main&per_page=50" \
-                --jq '.workflow_runs[] | select(.event != "pull_request" and .status != "completed") | .id')
-            if [[ -z "$unfinished" ]]; then
-                rerun=$(jq -r --argjson attempts "$attempts" \
-                    'map(select(.run_attempt < $attempts)) | max_by(.run_number) // empty | .id' <<<"$runs")
-                if [[ -z "$rerun" ]]; then
-                    echo "error: prove was cancelled $attempts times on main at ${same[*]}:" >&2
-                    jq -r '.[] | "  \(.conclusion) \(.html_url)"' <<<"$runs" >&2
-                    exit 1
-                fi
-                echo "release-proved: rerunning the cancelled jobs of run $rerun" >&2
-                gh api --silent -X POST "repos/$GH_REPO/actions/runs/$rerun/rerun-failed-jobs"
-            fi
+            echo "error: prove did not pass on main at ${same[*]}, which release $commit's proofs come from:" >&2
+            jq -r '.[] | "  \(.conclusion) \(.html_url)"' <<<"$runs" >&2
+            exit 1
         fi
         polls=$((polls + 1))
         sleep 60

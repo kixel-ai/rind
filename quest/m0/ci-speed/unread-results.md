@@ -37,6 +37,8 @@ The maintainer's decisions, 2026-11-24, on #958 ([first](https://github.com/kixe
 
 #958 put the release gate in `release.yml`'s publish path (`sh/release-proved.sh`), its implementer's choice for review: that job is the only step that publishes and the only one that knows the exact commit, while release-plz's PR is tested at a head its squash commit can differ from.
 
+The maintainer's decision, 2026-11-24, at the review's design checkpoint ([comment](https://github.com/kixel-ai/rind/pull/958#issuecomment-7138298450)): ✅ drop `prove.yml`'s per-key job concurrency groups, so no run on main is cancelled and the release gate reads how a run ended, with no reruns and no `actions: write` (rejected: gate on saved per-key results; wait only for the runs unfinished when a cancellation is seen; merge with the reruns). Two overlapping pushes that both lack a key now both check it.
+
 What #958 did with each pull-request check:
 
 | check | now | why that cadence |
