@@ -18,7 +18,7 @@
     # rust2-bench, which counts the weekly bench's instructions under the
     # Valgrind its own nixpkgs pins. Bumping the rev can move every count,
     # and a new Valgrind starts new series: keep its nixpkgs, not ours.
-    rust2.url = "github:kixel-ai/rust2/af1a76643700cf0314b7a2e02ef159c563712c2e";
+    rust2.url = "github:kixel-ai/rust2/6ead6d565ef4d9c739238653c3ec01e25590ad0e";
   };
 
   outputs =
