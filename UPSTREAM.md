@@ -95,9 +95,9 @@ Each upstream rind changes, with where its fork is vendored and where the list o
 
 ### Valgrind hides the ARM crypto extension and SHA3
 
-- **Breaks:** valgrind passes `AT_HWCAP2` only to ppc64 programs (3.22 through 3.28), so the armv7 build never sees its ARMv8 crypto extension; on aarch64 it hides SHA3 and the SHA-512 instructions. ctgrind never reaches the code that uses them.
+- **Breaks:** valgrind passes `AT_HWCAP2` only to ppc64 programs (3.22 through 3.28), so the armv7 build never sees its ARMv8 crypto extension; on aarch64 it hides SHA3, the SHA-512 instructions, and DIT. ctgrind never reaches the code that uses them, and so checks aarch64 with DIT clear.
 - **Reproduce:** `getauxval(AT_HWCAP2)` is nonzero natively and zero under an armhf valgrind on an arm64 host.
-- **Workaround:** `admin/ct-qemu` and `admin/ct-qemu-plugin.c` compare qemu traces of those paths for two secrets, through the `ct_qemu` tests (`rind/src/low/arm/ct_qemu.rs`), in `ctgrind.yml`'s `armv7-qemu` and `aarch64-qemu` jobs.
+- **Workaround:** `admin/ct-qemu` and `admin/ct-qemu-plugin.c` compare qemu traces of those paths for two secrets, through the `ct_qemu` tests (`rind/src/low/arm/ct_qemu.rs`), in `ctgrind.yml`'s `armv7-qemu` and `aarch64-qemu` jobs; `enables_dit_whenever_the_cpu_has_it`, whose child process runs natively and finds DIT, is ignored under ctgrind.
 - **Reported:** no.
 - **Goes when:** valgrind passes `AT_HWCAP2` on ARM and runs SHA3 on aarch64.
 
