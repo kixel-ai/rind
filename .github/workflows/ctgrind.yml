@@ -82,6 +82,8 @@ jobs:
     needs: select
     if: ${{ !cancelled() && !github.event.pull_request.draft && !(startsWith(github.head_ref, 'release-plz-') && github.event.pull_request.user.login == 'moq-bot[bot]') && (!inputs.jobs || contains(fromJSON(needs.select.outputs.jobs || '[]'), 'build')) }}
     strategy:
+      # One row's failure would cancel the others and hide theirs.
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, ubuntu-24.04-arm]
         build: [debug, release]
