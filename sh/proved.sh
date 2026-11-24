@@ -63,6 +63,6 @@ for key in "${keys[@]}"; do
 done
 if ((${#missing[@]})); then
     echo "error: no passed result for ${missing[*]}." >&2
-    echo "Let #$pr's prove run finish, or merge main into it if main changed the proven code since, then queue it again." >&2
+    echo "Let #$pr's prove run finish, rerun it if it passed but its result has since been evicted from the cache, or merge main into it if main changed the proven code since, then queue it again." >&2
     exit 1
 fi

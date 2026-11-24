@@ -368,7 +368,10 @@ files_hash() {
 # lines, which no proof reads, so an edit that only moves translated code
 # keeps the key.
 rooted_hash() {
-    local root=$PWD cargo=${CARGO_HOME:-$HOME/.cargo} file
+    local root cargo file
+    # Each path as a literal in sed's extended regex, `|` delimiter included.
+    root=$(sed -e 's/[][\.$*+?(){}^]/\\&/g' -e 's/|/[|]/g' <<<"$PWD")
+    cargo=$(sed -e 's/[][\.$*+?(){}^]/\\&/g' -e 's/|/[|]/g' <<<"${CARGO_HOME:-$HOME/.cargo}")
     find "$@" -name .lake -prune -o -type f -print0 | LC_ALL=C sort -z |
         while IFS= read -r -d '' file; do
             printf '%s  %s\n' "$(sed -E -e "s|$root|@ROOT@|g" -e "s|$cargo|@CARGO@|g" \
