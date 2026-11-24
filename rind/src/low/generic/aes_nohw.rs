@@ -323,16 +323,23 @@ mod word {
             | (((a3 >> (8 * k)) & 0xff) << 24)
     }
 
-    // Both written out a word at a time: Aeneas translates a closure or an
-    // iterator's loop into a model no proof of this file needs otherwise.
+    /// Four bytes as a word, the first its least significant.
+    #[inline(always)]
+    fn word(b0: u8, b1: u8, b2: u8, b3: u8) -> Word {
+        Word::from(b0) | (Word::from(b1) << 8) | (Word::from(b2) << 16) | (Word::from(b3) << 24)
+    }
+
+    // Both written out a word at a time, and the words by shifts: Aeneas
+    // translates a closure or an iterator's loop into a model no proof of
+    // this file needs otherwise, and its `from_le_bytes` is a list's.
     #[inline(always)]
     pub(super) fn compact_block(input: &[u8; 16]) -> [Word; 4] {
         let [b0, b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11, b12, b13, b14, b15] = *input;
         let a = [
-            compact_word(Word::from_le_bytes([b0, b1, b2, b3])),
-            compact_word(Word::from_le_bytes([b4, b5, b6, b7])),
-            compact_word(Word::from_le_bytes([b8, b9, b10, b11])),
-            compact_word(Word::from_le_bytes([b12, b13, b14, b15])),
+            compact_word(word(b0, b1, b2, b3)),
+            compact_word(word(b4, b5, b6, b7)),
+            compact_word(word(b8, b9, b10, b11)),
+            compact_word(word(b12, b13, b14, b15)),
         ];
         [
             byte_column(&a, 0),
@@ -344,12 +351,27 @@ mod word {
 
     #[inline(always)]
     pub(super) fn uncompact_block(out: &mut [u8; 16], input: &[Word; 4]) {
-        let [b0, b1, b2, b3] = uncompact_word(byte_column(input, 0)).to_le_bytes();
-        let [b4, b5, b6, b7] = uncompact_word(byte_column(input, 1)).to_le_bytes();
-        let [b8, b9, b10, b11] = uncompact_word(byte_column(input, 2)).to_le_bytes();
-        let [b12, b13, b14, b15] = uncompact_word(byte_column(input, 3)).to_le_bytes();
+        let a0 = uncompact_word(byte_column(input, 0));
+        let a1 = uncompact_word(byte_column(input, 1));
+        let a2 = uncompact_word(byte_column(input, 2));
+        let a3 = uncompact_word(byte_column(input, 3));
         *out = [
-            b0, b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11, b12, b13, b14, b15,
+            a0 as u8,
+            (a0 >> 8) as u8,
+            (a0 >> 16) as u8,
+            (a0 >> 24) as u8,
+            a1 as u8,
+            (a1 >> 8) as u8,
+            (a1 >> 16) as u8,
+            (a1 >> 24) as u8,
+            a2 as u8,
+            (a2 >> 8) as u8,
+            (a2 >> 16) as u8,
+            (a2 >> 24) as u8,
+            a3 as u8,
+            (a3 >> 8) as u8,
+            (a3 >> 16) as u8,
+            (a3 >> 24) as u8,
         ];
     }
 }
@@ -397,27 +419,30 @@ impl Batch {
 /// by `BATCH_SIZE` square of bits.
 #[inline(always)]
 fn transpose(batch: &mut Batch) {
-    let w = &mut batch.w;
+    let [w0, w1, w2, w3, w4, w5, w6, w7] = batch.w;
     // Swap bits with index 0 and 1 mod 2 (0x55 = 0b01010101).
-    (w[0], w[1]) = swap_bits::<1>(w[0], w[1], 0x55555555);
-    (w[2], w[3]) = swap_bits::<1>(w[2], w[3], 0x55555555);
-    (w[4], w[5]) = swap_bits::<1>(w[4], w[5], 0x55555555);
-    (w[6], w[7]) = swap_bits::<1>(w[6], w[7], 0x55555555);
+    let (w0, w1) = swap_bits::<1>(w0, w1, 0x55555555);
+    let (w2, w3) = swap_bits::<1>(w2, w3, 0x55555555);
+    let (w4, w5) = swap_bits::<1>(w4, w5, 0x55555555);
+    let (w6, w7) = swap_bits::<1>(w6, w7, 0x55555555);
+    batch.w = [w0, w1, w2, w3, w4, w5, w6, w7];
 
     if BATCH_SIZE >= 4 {
         // Swap bits with index 0-1 and 2-3 mod 4 (0x33 = 0b00110011).
-        (w[0], w[2]) = swap_bits::<2>(w[0], w[2], 0x33333333);
-        (w[1], w[3]) = swap_bits::<2>(w[1], w[3], 0x33333333);
-        (w[4], w[6]) = swap_bits::<2>(w[4], w[6], 0x33333333);
-        (w[5], w[7]) = swap_bits::<2>(w[5], w[7], 0x33333333);
-    }
+        let (w0, w2) = swap_bits::<2>(w0, w2, 0x33333333);
+        let (w1, w3) = swap_bits::<2>(w1, w3, 0x33333333);
+        let (w4, w6) = swap_bits::<2>(w4, w6, 0x33333333);
+        let (w5, w7) = swap_bits::<2>(w5, w7, 0x33333333);
+        batch.w = [w0, w1, w2, w3, w4, w5, w6, w7];
 
-    if BATCH_SIZE >= 8 {
-        // Swap bits with index 0-3 and 4-7 mod 8 (0x0f = 0b00001111).
-        (w[0], w[4]) = swap_bits::<4>(w[0], w[4], 0x0f0f0f0f);
-        (w[1], w[5]) = swap_bits::<4>(w[1], w[5], 0x0f0f0f0f);
-        (w[2], w[6]) = swap_bits::<4>(w[2], w[6], 0x0f0f0f0f);
-        (w[3], w[7]) = swap_bits::<4>(w[3], w[7], 0x0f0f0f0f);
+        if BATCH_SIZE >= 8 {
+            // Swap bits with index 0-3 and 4-7 mod 8 (0x0f = 0b00001111).
+            let (w0, w4) = swap_bits::<4>(w0, w4, 0x0f0f0f0f);
+            let (w1, w5) = swap_bits::<4>(w1, w5, 0x0f0f0f0f);
+            let (w2, w6) = swap_bits::<4>(w2, w6, 0x0f0f0f0f);
+            let (w3, w7) = swap_bits::<4>(w3, w7, 0x0f0f0f0f);
+            batch.w = [w0, w1, w2, w3, w4, w5, w6, w7];
+        }
     }
 }
 
@@ -448,9 +473,18 @@ fn from_batch(out: &mut [[u8; 16]], batch: &Batch) {
 
 #[inline(always)]
 fn add_round_key(batch: &mut Batch, key: &Batch) {
-    for i in 0..8 {
-        batch.w[i] = xor(batch.w[i], key.w[i]);
-    }
+    let [a0, a1, a2, a3, a4, a5, a6, a7] = batch.w;
+    let [k0, k1, k2, k3, k4, k5, k6, k7] = key.w;
+    batch.w = [
+        xor(a0, k0),
+        xor(a1, k1),
+        xor(a2, k2),
+        xor(a3, k3),
+        xor(a4, k4),
+        xor(a5, k5),
+        xor(a6, k6),
+        xor(a7, k7),
+    ];
 }
 
 #[inline(always)]
@@ -620,36 +654,61 @@ fn inv_sub_bytes(batch: &mut Batch) {
     sub_bytes_inv_affine(batch);
 }
 
+/// Rotates the columns in row `r` of each logical byte's square right by
+/// `r`.
+#[inline(always)]
+fn shift_rows_word(w: Word) -> Word {
+    let row0 = and(w, ROW0);
+    let row1 = and(w, ROW1);
+    let row2 = and(w, ROW2);
+    let row3 = and(w, ROW3);
+    let row1 = or(shift_right::<4>(row1), shift_left::<12>(row1));
+    let row2 = or(shift_right::<8>(row2), shift_left::<8>(row2));
+    let row3 = or(shift_right::<12>(row3), shift_left::<4>(row3));
+    or(or(row0, row1), or(row2, row3))
+}
+
 #[inline(always)]
 fn shift_rows(batch: &mut Batch) {
-    for i in 0..8 {
-        let w = batch.w[i];
-        let row0 = and(w, ROW0);
-        let row1 = and(w, ROW1);
-        let row2 = and(w, ROW2);
-        let row3 = and(w, ROW3);
-        // Rotate the columns in row `r` right by `r`.
-        let row1 = or(shift_right::<4>(row1), shift_left::<12>(row1));
-        let row2 = or(shift_right::<8>(row2), shift_left::<8>(row2));
-        let row3 = or(shift_right::<12>(row3), shift_left::<4>(row3));
-        batch.w[i] = or(or(row0, row1), or(row2, row3));
-    }
+    let [a0, a1, a2, a3, a4, a5, a6, a7] = batch.w;
+    batch.w = [
+        shift_rows_word(a0),
+        shift_rows_word(a1),
+        shift_rows_word(a2),
+        shift_rows_word(a3),
+        shift_rows_word(a4),
+        shift_rows_word(a5),
+        shift_rows_word(a6),
+        shift_rows_word(a7),
+    ];
+}
+
+/// Rotates the columns in row `r` right by `4 - r`.
+#[inline(always)]
+fn inv_shift_rows_word(w: Word) -> Word {
+    let row0 = and(w, ROW0);
+    let row1 = and(w, ROW1);
+    let row2 = and(w, ROW2);
+    let row3 = and(w, ROW3);
+    let row1 = or(shift_right::<12>(row1), shift_left::<4>(row1));
+    let row2 = or(shift_right::<8>(row2), shift_left::<8>(row2));
+    let row3 = or(shift_right::<4>(row3), shift_left::<12>(row3));
+    or(or(row0, row1), or(row2, row3))
 }
 
 #[inline(always)]
 fn inv_shift_rows(batch: &mut Batch) {
-    for i in 0..8 {
-        let w = batch.w[i];
-        let row0 = and(w, ROW0);
-        let row1 = and(w, ROW1);
-        let row2 = and(w, ROW2);
-        let row3 = and(w, ROW3);
-        // Rotate the columns in row `r` right by `4 - r`.
-        let row1 = or(shift_right::<12>(row1), shift_left::<4>(row1));
-        let row2 = or(shift_right::<8>(row2), shift_left::<8>(row2));
-        let row3 = or(shift_right::<4>(row3), shift_left::<12>(row3));
-        batch.w[i] = or(or(row0, row1), or(row2, row3));
-    }
+    let [a0, a1, a2, a3, a4, a5, a6, a7] = batch.w;
+    batch.w = [
+        inv_shift_rows_word(a0),
+        inv_shift_rows_word(a1),
+        inv_shift_rows_word(a2),
+        inv_shift_rows_word(a3),
+        inv_shift_rows_word(a4),
+        inv_shift_rows_word(a5),
+        inv_shift_rows_word(a6),
+        inv_shift_rows_word(a7),
+    ];
 }
 
 #[inline(always)]
@@ -995,24 +1054,21 @@ impl Schedule {
 
     #[inline(always)]
     fn encrypt_batch(&self, batch: &mut Batch) {
-        let keys = &self.keys[..self.rounds + 1];
-        let (first, rest) = keys.split_first().unwrap();
-        let (last, middle) = rest.split_last().unwrap();
-        add_round_key(batch, first);
-        for r in 0..middle.len() {
+        add_round_key(batch, &self.keys[0]);
+        for round in 1..self.rounds {
             sub_bytes(batch);
             shift_rows(batch);
             mix_columns(batch);
-            add_round_key(batch, &middle[r]);
+            add_round_key(batch, &self.keys[round]);
         }
         sub_bytes(batch);
         shift_rows(batch);
-        add_round_key(batch, last);
+        add_round_key(batch, &self.keys[self.rounds]);
     }
 
     #[inline(always)]
     fn decrypt_batch(&self, batch: &mut Batch) {
-        let keys = &self.keys[..self.rounds + 1];
+        let keys = &self.keys[..=self.rounds];
         let (first, rest) = keys.split_first().unwrap();
         let (last, middle) = rest.split_last().unwrap();
         add_round_key(batch, last);
