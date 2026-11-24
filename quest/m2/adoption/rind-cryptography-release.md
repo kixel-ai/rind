@@ -23,6 +23,10 @@ rind's.
   crate against rind from crates.io, so the tag waits for crates.io to list
   rind 0.4.0 too: until then every library build fails, as the nightly
   `dart-libraries` run does.
+- Checked 2026-11-24 on https://pub.dev/packages/rind/admin: rind's
+  automated publishing names `kixel-ai/rind`, tag pattern
+  `rind-dart-v{{version}}`, in the `pub.dev` environment, so the 0.1.1 tag
+  run can publish.
 - `dart-release.yml` publishes rind_cryptography on a
   `rind-cryptography-v{{version}}` tag, staged as pub.dev receives it,
   without its `pubspec_overrides.yaml` or `hooks` user-define, tested against
@@ -35,11 +39,6 @@ rind's.
   rind 0.4.0 to crates.io when it merges; check https://crates.io/crates/rind lists 0.4.0. Then an agent
   pushes the pre-approved `rind-dart-v0.1.1` tag at `main` and checks that
   https://pub.dev/packages/rind lists 0.1.1.
-- Maintainer: on https://pub.dev/packages/rind/admin, check that automated
-  publishing names `kixel-ai/rind`, since it was set up for `moq-dev/rind`
-  before the repository moved and pub.dev matches the token's repository
-  name; an agent holds no pub.dev account. Otherwise the 0.1.1 run fails at
-  its last step, and its `rind-dart` artifact can be published by hand.
 - Maintainer: once pub.dev lists rind 0.1.1, publish rind_cryptography 0.1.0
   by hand (`cd rind-dart/cryptography && rm pubspec_overrides.yaml && dart
   pub publish`), since pub.dev creates a new package only from an uploader's
