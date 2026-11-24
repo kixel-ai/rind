@@ -48,7 +48,7 @@ What #958 did with each pull-request check:
 | Site | dropped | PR check and the queue run the same `sh/site.sh` |
 | PR check | kept, to be required | a group the queue ejects costs a slot in a one-group-at-a-time queue |
 
-Left: re-measure cancelled and post-merge hosted hours over the week after #958 lands, the same way (the script is in #958's Validation), and record them in the table above; then delete this quest.
+Left: re-measure cancelled and post-merge hosted hours over the week after #958 lands, the same way (the script is in #958's Validation), and record them in the table above; then delete this quest. If newer pushes still cancel `prove`'s HOL Light proofs on pull requests, which now delays a PR's landing by the proof's length, group each proof job by its pull request and key without cancelling instead of cancelling the whole run, so a push that keeps a key reuses the running proof; it gives up cancelling a draft's run and needs `lean`'s key computed before its job.
 
 ## Scheduled
 
