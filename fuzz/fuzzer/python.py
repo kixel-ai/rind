@@ -71,6 +71,12 @@ COSTS = {"iterations": (1 << 10, 1 << 32), "length": (1 << 9, 1 << 64)}
 DEPTH = 3
 
 
+# The input ran out: a class of its own, so an EOFError a call raises still
+# fails the input.
+class Exhausted(Exception):
+    pass
+
+
 class Input:
     def __init__(self, data):
         self.data = data
@@ -78,7 +84,7 @@ class Input:
 
     def byte(self):
         if self.at >= len(self.data):
-            raise EOFError
+            raise Exhausted
         self.at += 1
         return self.data[self.at - 1]
 
@@ -201,5 +207,5 @@ def fuzz(data, fixtures):
     try:
         for _ in range(32):
             state.call()
-    except EOFError:
+    except Exhausted:
         pass
