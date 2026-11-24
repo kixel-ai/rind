@@ -254,10 +254,11 @@ mod tests {
     #[cfg(all(feature = "tls12", not(target_family = "wasm")))]
     #[test]
     fn aws_lc_rs_parity() {
+        use std::vec::Vec;
+
         use rustls::crypto::aws_lc_rs;
         use rustls::pki_types::{SignatureVerificationAlgorithm, alg_id};
         use rustls::{NamedGroup, SignatureScheme};
-        use std::vec::Vec;
 
         fn sorted<T: Ord>(items: impl IntoIterator<Item = T>) -> Vec<T> {
             let mut items = items.into_iter().collect::<Vec<_>>();
