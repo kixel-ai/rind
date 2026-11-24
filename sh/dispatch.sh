@@ -6,7 +6,7 @@
 # CHECK_FAIL_FAST=1 stops every lane at the first failed module, for the merge
 # queue, which ejects a failing group either way and gains nothing from the
 # rest.
-# CHECK_QUEUE=1 makes ci also run the checks GitHub runs on pull requests in
+# CHECK_QUEUE=1 makes ci also run checks that otherwise run only in scheduled
 # workflows of their own, when the diff touches their paths, for the merge
 # queue (see the queue modules below).
 # CHECK_TIMES=FILE also writes each module's wall seconds, CPU milliseconds,
@@ -104,19 +104,19 @@ module() {
     done
 }
 
-# The paths that trigger a workflow on a pull request, as one anchored regex
+# The paths that trigger a workflow on a push to main, as one anchored regex
 # over sh/changed.sh's paths: GitHub's `*` stays within a directory and `**`
 # crosses them. A glob this cannot convert is an error.
-pull_request_paths() {
+push_paths() {
     local globs glob regex=
-    globs=$(yq '.on.pull_request.paths[]' ".github/workflows/$1")
+    globs=$(yq '.on.push.paths[]' ".github/workflows/$1")
     [[ -n "$globs" ]] || {
-        echo "error: $1 lists no pull_request paths" >&2
+        echo "error: $1 lists no push paths" >&2
         return 1
     }
     while IFS= read -r glob; do
         [[ "$glob" =~ ^[A-Za-z0-9_./*-]+$ ]] || {
-            echo "error: $1's pull_request path '$glob' uses a pattern sh/dispatch.sh cannot convert" >&2
+            echo "error: $1's push path '$glob' uses a pattern sh/dispatch.sh cannot convert" >&2
             return 1
         }
         glob=${glob//./\\.}
@@ -130,27 +130,26 @@ pull_request_paths() {
     echo "^($regex)$"
 }
 
-# The merge queue's build runs the checks GitHub runs on a pull request in a
-# workflow of its own, when the group touches the paths that trigger it there,
-# so two PRs that each pass one alone cannot break it together on main. Each
-# reads its paths from its workflow, so the two selections cannot drift apart.
+# The merge queue's build gates on checks that otherwise run only in a
+# workflow of their own, when the group touches their inputs.
 # The group's build is the one self-hosted job queue-build.yml runs, on x86_64,
-# so `vg` checks only x86_64's code; `prove`'s arm job and the nightly cover
-# aarch64's. Plain assignments, so a failed read stops the run instead of
-# reading as a repository-wide pattern.
+# so `vg` checks only x86_64's code; the nightly `prove` covers aarch64's.
 if [[ "$action" == ci && -n "${CHECK_QUEUE:-}" ]]; then
     # pyca/verified-garbage's code against its Lean models, as `prove`'s vg
-    # job runs it, with the same fixed seed as a pull request.
-    paths=$(pull_request_paths prove.yml)
+    # job runs it, with a fixed seed, on the paths that start `prove` on
+    # main, read from its workflow so the two cannot drift apart. A plain
+    # assignment, so a failed read stops the run instead of reading as a
+    # repository-wide pattern.
+    paths=$(push_paths prove.yml)
     module vg "$paths" tools='nix yq' queue
     # Every importer and generator at its pinned upstream revision.
-    paths=$(pull_request_paths regenerate.yml)
-    module regenerate "$paths" tools='nix yq git' queue
+    module regenerate '^(admin/|thirdparty/s2n-bignum/|flake\.(nix|lock)$|\.github/workflows/regenerate\.yml$)' \
+        tools='nix git' queue
     # The tests under every Intel SDE model x86-cpu.yml runs, when the group
-    # reaches x86_64 code, as x86-cpu.yml selects them (see `check:sde`
-    # below), so a fault on one CPU's dispatch paths cannot land.
-    paths=$(pull_request_paths x86-cpu.yml)
-    module sde "$paths" tools='nix yq' queue
+    # reaches x86_64 code (see `check:sde` below), so a fault on one CPU's
+    # dispatch paths cannot land.
+    module sde '^(rind/|rind-[^/]*/|thirdparty/|Cargo\.(toml|lock)$|rust-toolchain(\.toml)?$|\.cargo/|flake\.(nix|lock)$|sh/(backends|changed)\.sh$|admin/x86-cpu$|\.github/(actions/|workflows/x86-cpu\.yml$))' \
+        tools='nix' queue
 fi
 
 # sh/select.sh narrows this to the changed crates and their dependents.
@@ -167,8 +166,13 @@ module cross '^(rind/(src/|tests/|Cargo\.toml$|build\.rs$)|Cargo\.(toml|lock)$|f
     tools="$cross_tools" compiles
 # The published adapters' wasm32 builds, and the tests the nightly runs there.
 # rind's manifest picks the random source rind-ring's browser feature reaches.
-module wasm '^(rind/Cargo\.toml$|rind-(aws-lc-rs|ring|rustls|rcgen|jsonwebtoken|dimpl|str0m|openmls|object-store)/(src/|tests/|Cargo\.toml$)|admin/wasm-fixture/|Cargo\.(toml|lock)$|flake\.(nix|lock)$)' \
+module wasm '^(rind/Cargo\.toml$|rind-(aws-lc-rs|ring|rustls|rcgen|jsonwebtoken|dimpl|str0m|openmls|object-store|rand-core)/(src/|tests/|Cargo\.toml$)|admin/wasm-fixture/|Cargo\.(toml|lock)$|flake\.(nix|lock)$)' \
     tools='cargo jq' compiles
+# The adapters that build without `std`, on a target with none: rind-ring and
+# rind-rustls, as ring 0.17 and rustls 0.23 build, and rind-aws-lc-rs, which
+# aws-lc-rs cannot.
+module nostd '^(rind/Cargo\.toml$|rind-(ring|rustls|aws-lc-rs)/(src/|Cargo\.toml$)|Cargo\.(toml|lock)$|flake\.(nix|lock)$)' \
+    tools='cargo' compiles
 # Dependents may build with the workspace's declared rust-version. Plain
 # `cargo check` covers the lib and bin targets, all a dependent builds, so a
 # crate's tests, benches, and docs cannot break it. A Rust crate nested in
@@ -214,8 +218,8 @@ module mutants '^(rind[^/]*/src/|\.cargo/mutants\.toml$|admin/mutants$)' \
 module versions '^(rind-[^/]+/Cargo\.toml$|sh/adapter-versions\.sh$)' \
     tools='cargo jq'
 # Each adapter's API against its upstream's, which reaches rind only through a
-# lockfile change, as read by the flake's rustdoc. rind-object-store has none
-# to copy.
+# lockfile change, as read by the flake's rustdoc. rind-object-store and
+# rind-rand-core have none to copy.
 module adapters '^(rind/(src/|Cargo\.toml$)|rind-(aws-lc-rs|ring|rustls|rcgen|jsonwebtoken|dimpl|str0m|openmls)/(src/|Cargo\.toml$|README\.md$)|Cargo\.lock$|flake\.(nix|lock)$|admin/adapter-api$)' \
     tools='cargo python3' compiles
 module license '^(rind/src/|rind/LICENSE$|rind-python/LICENSE$|admin/scan-license$)' \
@@ -430,6 +434,12 @@ step() {
             # `cargo test`, it passes a selection with no tests, such as the
             # benches alone.
             run cargo nextest run "${packages[@]}" --locked --no-tests=warn
+            # rind's `zeroize` feature, whose impls the zeroing test holds to
+            # their claim: it requires `ZeroizeOnDrop` of every type it checks.
+            if names rind "${packages[@]}"; then
+                run cargo clippy -p rind --features zeroize --lib --test zeroing --locked -- --deny warnings
+                run cargo nextest run -p rind --features zeroize --test zeroing --locked
+            fi
             # The FIPS module's own code compiles only under its cfg, which a
             # workspace build leaves off, and only for glibc Linux on x86_64
             # and aarch64, where rind-fips is not empty. Its break build
@@ -587,6 +597,24 @@ step() {
             run cargo clippy -p wasm-fixture "${adapters[@]}" --lib --locked --target wasm32-unknown-unknown -- --deny warnings
             run cargo clippy -p rind-ring --lib --locked --target wasm32-unknown-unknown \
                 --features wasm32_unknown_unknown_js -- --deny warnings
+            ;;
+        check:nostd)
+            # rind-ring with and without `alloc`, which gates RSA, and
+            # rind-rustls without `std`, which gates what it gates in rustls,
+            # with and without `tls12`; rind-aws-lc-rs has no `std` to turn
+            # off. x86_64-unknown-none builds rind's portable backend, as
+            # check:cross explains, and is built as well as linted for the
+            # same reason.
+            local nostd='--cfg getrandom_backend="custom" --cfg curve25519_dalek_backend="serial"' args
+            for args in 'rind-ring --no-default-features' 'rind-ring --features=alloc' \
+                'rind-rustls --no-default-features' 'rind-rustls --no-default-features --features=tls12' \
+                rind-aws-lc-rs; do
+                # shellcheck disable=SC2086 # each row is a package and its flags
+                RUSTFLAGS="$nostd" run cargo clippy --lib --locked --target x86_64-unknown-none -p $args -- --deny warnings
+            done
+            RUSTFLAGS="$nostd --deny warnings" run cargo build --lib --locked --target x86_64-unknown-none \
+                -p rind-ring -p rind-rustls -p rind-aws-lc-rs --no-default-features \
+                --features=rind-ring/alloc,rind-rustls/tls12,rind-aws-lc-rs/ring-io,rind-aws-lc-rs/ring-sig-verify
             ;;
         check:vartime)
             # Each backend's targets, as admin/ct-vartime names them; no

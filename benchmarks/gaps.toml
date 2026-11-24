@@ -69,8 +69,8 @@ on = ["nixos", "ovh-iad", "ovh-sea"]
 reason = "Decided in [kixel-ai/rind#812](https://github.com/kixel-ai/rind/pull/812): on x86_64 without AVX-512, ML-KEM-768 key generation stays on rind's arithmetic though pyca/verified-garbage's is faster, since a key pair decapsulates on the arithmetic that generated it and VG's decapsulation was 1.17 to 1.25× slower there when it decided (1.09 to 1.22× in these runs), and decapsulation is the hot path."
 
 [[gap]]
-operations = ["oprf-ristretto255-blind", "oprf-ristretto255-evaluate"]
-on = ["nixos", "ovh-iad", "ovh-sea"]
+operations = ["oprf-ristretto255-blind", "oprf-ristretto255-evaluate", "oprf-ristretto255-blind/*", "oprf-ristretto255-evaluate/*"]
+on = ["nixos", "ovh-iad", "ovh-sea", "x86_64"]
 quest = "/quest/m2/speed/ristretto255-avx2.md"
 
 [[gap]]
@@ -96,7 +96,7 @@ reason = "Noise: CI jobs on `nixos` kept about 4 CPUs busy through this run, and
 [[gap]]
 operations = ["aes*-gcm*"]
 on = ["fedora"]
-quest = "/quest/m2/verified-garbage/aes-gcm-avx512.md"
+reason = "These rows time pyca/verified-garbage's public API. [kixel-ai/rind#955](https://github.com/kixel-ai/rind/pull/955) ran its prepared AVX-512 kernels, `vg_aes_gcm_{seal,open}_prepared_vaes_vpclmul_avx512`, under rind's glue on the Xeon 6975P runners in [run 44984309951](https://github.com/kixel-ai/rind/actions/runs/44984309951): VG took 1.08 to 1.77× rind's time below 8 KB in every direction and key size, 1350 B included, and AES-256 0.99 to 1.09× from 8 KB; only AES-128 and AES-192 from 12 KB came out ahead, at 0.88 to 0.99×. `fedora` ran under a load average of 20 to 40 throughout, and its cells, from 0.46 to 1.59×, could not settle Zen 5. VG's key-power table also took rind's key setup from the fastest of the libraries to 257 to 274 ns, against aws-lc-rs's 95 to 132, so rind keeps its code. The next refresh rechecks it."
 
 [[gap]]
 operations = ["chacha20poly1305/*", "rustls-bulk/chacha20poly1305"]

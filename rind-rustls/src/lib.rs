@@ -14,7 +14,13 @@
 //! Its API is rustls's `crypto::aws_lc_rs` provider's, item for item, short of
 //! the ML-KEM-1024 key exchange group and ML-DSA, which it does not back yet.
 
-use std::sync::Arc;
+#![no_std]
+
+extern crate alloc;
+#[cfg(test)]
+extern crate std;
+
+use alloc::sync::Arc;
 
 use rustls::SignatureScheme;
 use rustls::SupportedCipherSuite;
@@ -248,6 +254,8 @@ mod tests {
     #[cfg(all(feature = "tls12", not(target_family = "wasm")))]
     #[test]
     fn aws_lc_rs_parity() {
+        use std::vec::Vec;
+
         use rustls::crypto::aws_lc_rs;
         use rustls::pki_types::{SignatureVerificationAlgorithm, alg_id};
         use rustls::{NamedGroup, SignatureScheme};
