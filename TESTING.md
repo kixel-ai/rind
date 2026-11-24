@@ -205,7 +205,9 @@ Miri and debug builds' overflow checks find Rust's undefined behavior.
   include Rust ones. It leaves out the module's globals, since the
   integrity test reads the module's whole image, and leaks, since tests
   leak on purpose; the doctests, since a cross build's doctests cannot load
-  the module ([rust-lang/cargo#8531]).
+  the module ([rust-lang/cargo#8531]). It links Rust's own runtime, which,
+  unlike Ubuntu's, locks its allocator across fork, so rind-fips's fork
+  tests' children do not deadlock in it.
 - **ThreadSanitizer**, on x86_64, fails a data race in rind's unit tests and
   rind-fips's tests, among them those that share keys across threads
   (`high::signature::keys_shared_across_threads`, rind-fips's
