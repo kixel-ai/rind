@@ -66,7 +66,8 @@ jobs:
   # run, through the tests that share keys, the DRBG, and the module's
   # handles across threads. rind-fips's fork tests are left out: their
   # children start threads after a multi-threaded fork, which it does not
-  # support, or fork with a raw system call, which it does not see.
+  # support, or fork with a raw system call, which it does not see. rind's
+  # own fork tests run, since their children start no thread.
   tsan:
     runs-on: ubuntu-latest
     env:

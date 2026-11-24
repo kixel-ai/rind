@@ -212,7 +212,7 @@ Miri and debug builds' overflow checks find Rust's undefined behavior.
   other than its own), and the DRBG's threads that come and go
   (`fips_rng::threads_come_and_go`). It leaves out rind-fips's fork tests,
   whose children start threads after a multi-threaded fork or fork with a
-  raw system call.
+  raw system call; rind's own, whose children start no thread, run.
 
 rind-fips's `tests/raw_fork.rs` forks with a raw `clone`, which runs none of
 the module's fork handlers, and checks the child's draw differs from its
