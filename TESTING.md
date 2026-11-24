@@ -264,20 +264,22 @@ length, every handle live and of its type, which the caller's own side
 guarantees) and with everything else hostile: lengths from zero (as a null
 pointer) up, output buffers too short, exact, and long, unknown algorithm
 ids, sources, and export kinds, and malformed or tampered keys from rind's
-test keys. Each answer must match the same call on rind, AddressSanitizer
-catches an access outside a buffer, LeakSanitizer a leaked handle, and a
-panic aborts across the boundary.
+test keys. AddressSanitizer catches an access outside a buffer,
+LeakSanitizer a leaked handle, and a panic aborts across the boundary.
 
 - `fuzz::dart` drives rind-dart's C ABI, a sequence of calls on live
-  handles of every type.
+  handles of every type, each of whose answers must match the same call
+  on rind.
 - `fuzz::python` embeds CPython and calls pyrind's native module, `_rind`,
   as `fuzz/fuzzer/python.py` directs: every export it finds, with arguments
   of every Python type and buffer shape, including the objects and bytes
   earlier calls returned and objects of the wrong class. Only `pyrind.Error`
-  or Python's own conversion errors may come back. It builds only under
-  cargo fuzz, on 64-bit glibc Linux, and needs CPython 3.11 or later with
-  its shared library: `LD_LIBRARY_PATH` and `PYTHONHOME` find one outside
-  the loader's path.
+  or Python's own conversion errors may come back. It checks no answer:
+  `rind-python/tests` checks them against Wycheproof and `hashlib`, buffers
+  of every shape included, since every bytes-like argument takes the same
+  conversion. It builds only under cargo fuzz, on 64-bit glibc Linux, and
+  needs CPython 3.11 or later with its shared library: `LD_LIBRARY_PATH`
+  and `PYTHONHOME` find one outside the loader's path.
 - `fuzz::fips` calls rind-fips's services, whose every call crosses the
   module's C ABI. Under cargo fuzz, rind-fips's build script gives the module
   the fuzzer's coverage and sanitizer flags, so libFuzzer and
