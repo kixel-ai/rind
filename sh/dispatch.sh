@@ -595,13 +595,15 @@ step() {
             ;;
         check:nostd)
             # rind-ring with and without `alloc`, which gates RSA, and
-            # rind-rustls without `std`, which gates what it gates in rustls;
-            # rind-aws-lc-rs has no `std` to turn off. x86_64-unknown-none
-            # builds rind's portable backend, as check:cross explains, and is
-            # built as well as linted for the same reason.
+            # rind-rustls without `std`, which gates what it gates in rustls,
+            # with and without `tls12`; rind-aws-lc-rs has no `std` to turn
+            # off. x86_64-unknown-none builds rind's portable backend, as
+            # check:cross explains, and is built as well as linted for the
+            # same reason.
             local nostd='--cfg getrandom_backend="custom" --cfg curve25519_dalek_backend="serial"' args
             for args in 'rind-ring --no-default-features' 'rind-ring --features=alloc' \
-                'rind-rustls --no-default-features --features=tls12' rind-aws-lc-rs; do
+                'rind-rustls --no-default-features' 'rind-rustls --no-default-features --features=tls12' \
+                rind-aws-lc-rs; do
                 # shellcheck disable=SC2086 # each row is a package and its flags
                 RUSTFLAGS="$nostd" run cargo clippy --lib --locked --target x86_64-unknown-none -p $args -- --deny warnings
             done
