@@ -142,13 +142,6 @@ if [[ "$action" == ci && -n "${CHECK_QUEUE:-}" ]]; then
     # repository-wide pattern.
     paths=$(push_paths prove.yml)
     module vg "$paths" tools='nix yq' queue
-    # That every HOL Light target and the Lean proofs passed on this tree, on
-    # main, on the group's pull request, whose number queue-build.yml sets, or
-    # on one main landed since its last prove run (sh/proved.sh). A build that
-    # names none, such as a local one, has no pull request to read results from.
-    if [[ -n ${PROVE_GATE_PR:-} ]]; then
-        module proved "$paths" tools='nix curl jq git' queue
-    fi
     # Every importer and generator at its pinned upstream revision.
     module regenerate '^(admin/|thirdparty/s2n-bignum/|flake\.(nix|lock)$|\.github/workflows/regenerate\.yml$)' \
         tools='nix git' queue
@@ -628,7 +621,6 @@ step() {
             run nix develop .#ct-vartime --command admin/ct-vartime "${targets[@]}"
             ;;
         check:vg) run nix develop .#vg --command admin/prove vg ;;
-        check:proved) run sh/proved.sh ;;
         # Its own target directory, so its release build runs beside rs's
         # rather than behind Cargo's lock on target/.
         check:sde) CARGO_TARGET_DIR=target/sde run nix develop .#sde --command admin/x86-cpu all ;;

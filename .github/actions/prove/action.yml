@@ -1,5 +1,5 @@
 name: Prove
-description: Run an `admin/prove` check that the prove workflow caches, and on main or a pull request save its key once it passes.
+description: Run an `admin/prove` check that the prove workflow caches, and on main save its key once it passes.
 
 inputs:
   check:
@@ -14,11 +14,10 @@ runs:
   steps:
     # On a push to main, a HOL Light job waited for any other run checking
     # this key, which may have saved it since `keys` looked; `lean` looks its
-    # key up only here. On a pull request this finds the pull request's own
-    # saved keys as well as main's.
+    # key up only here.
     - name: Look up
       id: cache
-      if: (github.event_name == 'push' || github.event_name == 'pull_request') && inputs.key != ''
+      if: github.event_name == 'push' && inputs.key != ''
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: .tmp/prove/keys
@@ -45,11 +44,10 @@ runs:
         fi
 
     # The key of what this job checked, rather than the input, so an entry
-    # names the inputs that passed. A pull request's lands in its own cache,
-    # which main's runs never read, and the merge queue accepts only for it.
+    # names the inputs that passed.
     - name: Passed
       id: passed
-      if: steps.cache.outputs.cache-hit != 'true' && (github.ref == 'refs/heads/main' || github.event_name == 'pull_request')
+      if: steps.cache.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
       shell: bash
       env:
         CHECK: ${{ inputs.check }}

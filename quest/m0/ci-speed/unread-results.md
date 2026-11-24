@@ -30,6 +30,13 @@ The maintainer's decisions, 2026-11-22, on #958:
 
 ✅ The same day the maintainer picked how the HOL Light gate works (rejected: running the proofs in the queue's build, whose 60-minute limit the aarch64 proofs alone fill; gating only x86_64 and armv7), that `lean` gates the same way (rejected: nightly only), and that PR check becomes a required check, which dotfiles' `repo-settings` sets for kixel-ai's rulesets (rejected: dropping it).
 
+The maintainer's decisions, 2026-11-24, on #958 ([first](https://github.com/kixel-ai/rind/pull/958#issuecomment-7136993777), [refining it](https://github.com/kixel-ai/rind/pull/958#issuecomment-7137035248)), which supersede the proof gate above, following the direction on [kixel-ai/rind#962](https://github.com/kixel-ai/rind/pull/962#issuecomment-7124239070) not to gate merging on slow or expensive tests:
+
+- ✅ The proofs gate no merge: they run batched after merge, on each push to main for the keys main lacks and nightly in full, and a failure alerts (rejected: keeping the merge-queue gate and fixing how it picked main's last `prove` run).
+- ✅ The proofs gate releases: a release publishes only once they passed on the commit it releases (release-plz's PR or the publish job, whichever is the right choke point).
+
+#958 put the release gate in `release.yml`'s publish path (`sh/release-proved.sh`), its implementer's choice for review: that job is the only step that publishes and the only one that knows the exact commit, while release-plz's PR is tested at a head its squash commit can differ from.
+
 What #958 did with each pull-request check:
 
 | check | now | why that cadence |
@@ -42,13 +49,12 @@ What #958 did with each pull-request check:
 | ESP32-S3 SHA-256 layout | weekly (new) | one 30-minute job on code that rarely moves |
 | `x86-cpu` (three SDE models, ACVP on Diamond Rapids) | weekly | the queue runs every path set |
 | `regenerate` | nightly | the queue runs it on its inputs |
-| `prove` HOL Light, `lean` | on a pull request and a push to main, each only for a key main lacks; nightly in full | the queue requires each key passed on main or the group's PR (`sh/proved.sh`) |
-| `prove` `cosim` | nightly and on a push to main | gates nothing |
+| `prove` HOL Light, `lean`, `cosim` | on a push to main, each only for a key main lacks; nightly in full | gates a release, not a merge (`sh/release-proved.sh`) |
 | `prove` `vg`, `neon`, `spec-tests`, bytes | nightly | the queue runs x86_64's `vg`; the rest gate nothing |
 | Site | dropped | PR check and the queue run the same `sh/site.sh` |
 | PR check | kept, to be required | a group the queue ejects costs a slot in a one-group-at-a-time queue |
 
-Left: re-measure cancelled and post-merge hosted hours over the week after #958 lands, the same way (the script is in #958's Validation), and record them in the table above; then delete this quest. If newer pushes still cancel `prove`'s HOL Light proofs on pull requests, which now delays a PR's landing by the proof's length, group each proof job by its pull request and key without cancelling instead of cancelling the whole run, so a push that keeps a key reuses the running proof; it gives up cancelling a draft's run and needs `lean`'s key computed before its job.
+Left: re-measure cancelled and post-merge hosted hours over the week after #958 lands, the same way (the script is in #958's Validation), and record them in the table above; then delete this quest.
 
 ## Scheduled
 

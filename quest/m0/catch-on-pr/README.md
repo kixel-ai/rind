@@ -2,7 +2,7 @@
 
 ## Goal
 
-A change that breaks a check that gates the merge and runs on pull requests fails on its own pull request, not first in the merge queue, so a red result names the PR that caused it. The checks that run only in the queue's build (`CHECK_QUEUE` in `sh/dispatch.sh`: `regenerate`, `vg`, the Intel SDE models, and the proof gate) fail there first. A check that gates nothing runs only on its schedule, and its alert reports a failure there.
+A change that breaks a check that gates the merge and runs on pull requests fails on its own pull request, not first in the merge queue, so a red result names the PR that caused it. The checks that run only in the queue's build (`CHECK_QUEUE` in `sh/dispatch.sh`: `regenerate`, `vg`, and the Intel SDE models) fail there first. A check that gates nothing runs only on its schedule, and its alert reports a failure there.
 
 ## Plan
 

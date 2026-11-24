@@ -362,8 +362,8 @@ files_hash() {
 # Like `files_hash`, but of each file with the checkout's path and Cargo's home
 # replaced by placeholders, for files this script generates, which can name
 # them, such as a HOL Light program with its loads inlined. So a key is the
-# same wherever a runner checks the repository out: the merge queue's runner
-# compares its keys with the ones a pull request's hosted run saved. It also
+# same wherever a runner checks the repository out, hosted or self-hosted, and
+# a run on one finds the results another saved. It also
 # leaves out the line of each Aeneas doc comment that cites the Rust's source
 # lines, which no proof reads, so an edit that only moves translated code
 # keeps the key.
@@ -381,13 +381,11 @@ rooted_hash() {
 
 # Writes to `$out/keys/<name>`, and with `key` prints, the key the prove
 # workflow caches the result of the check `name` under, `<name>-<hash>`. The
-# workflow saves it once the check passes, from main's runs and from a pull
-# request's, to that pull request's own cache; main's nightly and dispatched
-# runs read no cached result. A push to main or a pull request skips a check
-# whose key main saved, and the merge queue (sh/proved.sh) requires each
-# HOL Light and Lean key of the group's tree saved by main or by the group's
-# pull request. So the hash covers everything the check's result can depend
-# on: `paths`, which hold the program it compiles, with every file that
+# workflow saves it once the check passes on main; main's nightly and
+# dispatched runs read no cached result. A push to main skips a check whose
+# key main saved, and a release publishes only once that push's run passed
+# (sh/release-proved.sh). So the hash covers everything the check's result can
+# depend on: `paths`, which hold the program it compiles, with every file that
 # program loads inlined, and each file it reads as it runs; every file of the
 # fork of s2n-bignum, which a program may read too; the functions, lists, and
 # shell options this script runs the check with; the dev shell `result_shell`

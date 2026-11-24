@@ -10,8 +10,10 @@ the theorems are about that translation.
 every proof against the translation, after the HOL Light proofs below and
 `admin/prove bytes`, which checks that each imported routine those proofs
 build on, from s2n-bignum, Vale, and aws-lc, is in rind's build the object
-code its own proof is about. The `prove` workflow runs it nightly and on pull
-requests that change rind's source or these files.
+code its own proof is about. The `prove` workflow runs it nightly and on each
+push to main that changes rind's source or these files. A failure gates no
+merge; it alerts, and a release publishes only once these proofs passed on
+the code it releases.
 
 `lakefile.toml` turns on Lake's artifact cache, which lives in the Lean
 toolchain's directory under `~/.elan` and every checkout of a user shares, so
