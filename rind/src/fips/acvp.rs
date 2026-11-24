@@ -15,7 +15,8 @@ use crate::high::hmac_drbg::HmacDrbg;
 use crate::high::signature::ml_dsa::ParameterSet;
 use crate::kem::Algorithm;
 use crate::low::Entry;
-use crate::mid::mldsa::{self, Array as _, KeyPair};
+use crate::mid::mldsa::{self, KeyPair};
+use crate::mid::util::Array as _;
 use crate::mid::mlkem::{Array, Ciphertext, DecapKey, EncapKey, Message};
 use crate::mid::sha3::Sha3_256Context;
 

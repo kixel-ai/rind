@@ -29,7 +29,7 @@ use core::panic::{RefUnwindSafe, UnwindSafe};
 use crate::Error;
 use crate::error::KeyFormatError;
 use crate::low::{self, Entry, UpdateBlocks};
-use crate::mid::mldsa::Array;
+use crate::mid::util::Array;
 use crate::mid::rng::{RandomSource, SystemRandom};
 use crate::mid::sha2::{Sha256Context, Sha256State, Sha512Context, Sha512State};
 use crate::mid::sha3::{Shake256Sponge, shake256_x4};

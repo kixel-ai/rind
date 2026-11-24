@@ -457,7 +457,7 @@ fn ct_binsec_rsa2048_oaep() {
 }
 
 // Not on aarch64, where BINSEC cannot finish it in a scheduled run's time.
-#[cfg(not(rind_backend = "aarch64"))]
+#[cfg(all(feature = "ml-dsa", not(rind_backend = "aarch64")))]
 #[test]
 #[ignore = "admin/ct-binsec runs it under BINSEC"]
 fn ct_binsec_mldsa() {

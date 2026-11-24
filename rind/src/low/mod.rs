@@ -121,6 +121,7 @@ mod generic {
     // ML-DSA arithmetic for the portable backend and x86_64 CPUs without
     // AVX2, and what s2n-bignum has no Neon routine for. aarch64 runs the
     // rest only in tests, to check its routines against.
+    #[cfg(feature = "ml-dsa")]
     #[cfg_attr(all(rind_backend = "aarch64", not(test)), allow(dead_code))]
     pub(crate) mod mldsa_poly;
     pub(crate) mod mlkem;
@@ -183,6 +184,7 @@ mod generic {
     pub(super) mod sha256_k;
     // SLH-DSA's SHA-256 lanes one at a time, which x86_64 runs with the SHA
     // extensions or without AVX2.
+    #[cfg(feature = "slh-dsa")]
     pub(super) mod sha256x8;
     // The portable backend's SHA-512, and its round constants. Tests compile
     // it everywhere, to check the assembly and the rolled loop against.
@@ -285,6 +287,7 @@ pub(crate) mod abi;
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod guard_pages;
 
+#[cfg(feature = "ml-dsa")]
 pub(crate) use generic::mldsa_poly::MldsaPoly;
 
 // The portable backend, which armv7 builds on, and what both run alike.
@@ -314,12 +317,6 @@ pub(crate) use generic::{
         bignum_mod_n521, bignum_mul_p521, bignum_neg_p521, bignum_sqr_p521, p521_jadd,
         p521_jdouble, p521_jmixadd, p521_jscalarmul, p521_public_twin_multiply,
     },
-    mldsa_poly::{
-        mldsa_caddq, mldsa_chknorm, mldsa_decompose_32, mldsa_decompose_88, mldsa_intt, mldsa_ntt,
-        mldsa_nttunpack, mldsa_pointwise, mldsa_pointwise_acc, mldsa_poly_use_hint_32,
-        mldsa_poly_use_hint_88, mldsa_polyz_unpack_17, mldsa_polyz_unpack_19, mldsa_reduce,
-        mldsa_rej_uniform_eta2_vartime, mldsa_rej_uniform_eta4_vartime, mldsa_rej_uniform_vartime,
-    },
     mlkem::{
         mlkem_compress_d4, mlkem_compress_d5, mlkem_compress_d10, mlkem_compress_d11,
         mlkem_frombytes, mlkem_unpack,
@@ -332,6 +329,16 @@ pub(crate) use generic::{
     // sign, it exports P-384 only as ECDH, and it has no P-521, so rind
     // composes their arithmetic itself.
     order::{bignum_demont, bignum_modadd, bignum_modinv, bignum_montmul},
+};
+#[cfg(all(
+    feature = "ml-dsa",
+    any(rind_backend = "arm", rind_backend = "portable")
+))]
+pub(crate) use generic::mldsa_poly::{
+    mldsa_caddq, mldsa_chknorm, mldsa_decompose_32, mldsa_decompose_88, mldsa_intt, mldsa_ntt,
+    mldsa_nttunpack, mldsa_pointwise, mldsa_pointwise_acc, mldsa_poly_use_hint_32,
+    mldsa_poly_use_hint_88, mldsa_polyz_unpack_17, mldsa_polyz_unpack_19, mldsa_reduce,
+    mldsa_rej_uniform_eta2_vartime, mldsa_rej_uniform_eta4_vartime, mldsa_rej_uniform_vartime,
 };
 #[cfg(any(rind_backend = "arm", rind_backend = "portable"))]
 pub(crate) use portable::{
@@ -425,6 +432,7 @@ cfg_if::cfg_if! {
         pub(crate) use x86_64::adx_mux::edwards25519_scalarmulbase;
         pub(crate) use x86_64::adx_mux::edwards25519_msm;
         pub(crate) use x86_64::ghash;
+        #[cfg(feature = "ml-dsa")]
         pub(crate) use x86_64::mldsa::{
             mldsa_ntt, mldsa_intt, mldsa_nttunpack, mldsa_pointwise, mldsa_pointwise_acc,
             mldsa_reduce, mldsa_caddq, mldsa_chknorm, mldsa_decompose_32, mldsa_decompose_88,
@@ -477,6 +485,7 @@ cfg_if::cfg_if! {
         pub(crate) use x86_64::adx_mux::p521_jscalarmul;
         pub(crate) use x86_64::sha1_mux::{sha1_compress_blocks, sha1_compress_padded};
         pub(crate) use x86_64::sha256_mux::{sha256_compress_blocks, sha256_finish};
+        #[cfg(feature = "slh-dsa")]
         pub(crate) use x86_64::sha256x8::sha256_finish_x8;
         pub(crate) use x86_64::sha512::sha512_compress_blocks;
         pub(crate) use x86_64::sha3_keccak_f1600::sha3_keccak_f1600;
@@ -553,6 +562,7 @@ cfg_if::cfg_if! {
         pub(crate) use aarch64::edwards25519_pdouble::edwards25519_pdouble;
         pub(crate) use aarch64::edwards25519_scalarmulbase::edwards25519_scalarmulbase;
         pub(crate) use aarch64::edwards25519_scalarmuldouble::edwards25519_scalarmuldouble;
+        #[cfg(feature = "ml-dsa")]
         pub(crate) use aarch64::mldsa::{
             mldsa_ntt, mldsa_intt, mldsa_nttunpack, mldsa_pointwise, mldsa_pointwise_acc,
             mldsa_reduce, mldsa_caddq, mldsa_chknorm, mldsa_decompose_32, mldsa_decompose_88,
@@ -594,6 +604,7 @@ cfg_if::cfg_if! {
         pub(crate) use aarch64::p521_jscalarmul::p521_jscalarmul;
         pub(crate) use aarch64::sha1::{sha1_compress_blocks, sha1_compress_padded};
         pub(crate) use aarch64::sha256::{sha256_compress_blocks, sha256_finish};
+        #[cfg(feature = "slh-dsa")]
         pub(crate) use generic::sha256x8::sha256_finish_x8;
         pub(crate) use aarch64::sha3_keccak_f1600_mux::sha3_keccak_f1600;
         pub(crate) use aarch64::sha3_keccak4_f1600_mux::sha3_keccak4_f1600;
@@ -633,6 +644,7 @@ cfg_if::cfg_if! {
         pub(crate) use generic::p384_vg;
         pub(crate) use generic::pbkdf2_vg;
         pub(crate) use generic::rsa_vg;
+        #[cfg(feature = "slh-dsa")]
         pub(crate) use generic::sha256x8::sha256_finish_x8;
     } else if #[cfg(rind_backend = "portable")] {
         pub(in crate::low) use portable::cpu::{enter_cpu_state, zero_bytes, ct_compare_bytes, ct_compare_16, leave_cpu_state};
@@ -654,6 +666,7 @@ cfg_if::cfg_if! {
         pub(crate) use generic::p384_vg;
         pub(crate) use generic::pbkdf2_vg;
         pub(crate) use generic::rsa_vg;
+        #[cfg(feature = "slh-dsa")]
         pub(crate) use generic::sha256x8::sha256_finish_x8;
     } else {
         compile_error!("build.rs sets rind_backend");

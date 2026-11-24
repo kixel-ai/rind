@@ -12,7 +12,7 @@ use crate::error::{Error, KeyFormatError};
 use crate::high::asn1;
 use crate::high::{pkcs8, spki};
 use crate::low;
-use crate::mid::mldsa::Array;
+use crate::mid::util::Array;
 use crate::mid::slhdsa::{
     self, Params, SlhDsaSha2_128f, SlhDsaSha2_128s, SlhDsaSha2_192f, SlhDsaSha2_192s,
     SlhDsaSha2_256f, SlhDsaSha2_256s, SlhDsaShake128f, SlhDsaShake128s, SlhDsaShake192f,

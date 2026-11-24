@@ -25,6 +25,7 @@ use crate::Error;
 use crate::error::KeyFormatError;
 use crate::low::{self, Entry, MldsaPoly as Poly};
 use crate::mid::rng::{RandomSource, SystemRandom};
+use crate::mid::util::Array;
 use crate::mid::sha3::{
     SHAKE_128_R_BYTES, SHAKE_256_R_BYTES, Shake128x4, Shake256, Shake256Sponge, Shake256x4,
 };
@@ -143,30 +144,6 @@ pub trait Params: fmt::Debug + Send + Sync + Unpin + UnwindSafe + RefUnwindSafe 
 #[doc(hidden)]
 #[derive(Clone, Copy)]
 pub struct Internal(());
-
-/// A byte array of a parameter set's length.
-pub trait Array:
-    Clone
-    + fmt::Debug
-    + AsRef<[u8]>
-    + AsMut<[u8]>
-    + Send
-    + Sync
-    + Unpin
-    + UnwindSafe
-    + RefUnwindSafe
-    + 'static
-{
-    /// Every byte zero.
-    #[doc(hidden)]
-    fn zeroed() -> Self;
-}
-
-impl<const LEN: usize> Array for [u8; LEN] {
-    fn zeroed() -> Self {
-        [0; LEN]
-    }
-}
 
 macro_rules! params {
     ($(

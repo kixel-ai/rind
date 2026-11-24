@@ -50,7 +50,6 @@ wipes!(
     crate::hpke::Recipient,
     crate::hpke::Sender,
     crate::key_wrap::AesKek,
-    crate::ml_dsa::Seed,
     crate::oprf::Blind,
     crate::oprf::Output,
     crate::oprf::Scalar,
@@ -69,7 +68,11 @@ wipes!(
 
 impl<A: crate::kem::Algorithm> ZeroizeOnDrop for crate::kem::DecapsulationKey<A> {}
 impl<A: crate::kem::Algorithm> ZeroizeOnDrop for crate::kem::SharedSecret<A> {}
+#[cfg(feature = "ml-dsa")]
+impl ZeroizeOnDrop for crate::ml_dsa::Seed {}
+#[cfg(feature = "ml-dsa")]
 impl<P: crate::ml_dsa::ParameterSet> ZeroizeOnDrop for crate::ml_dsa::KeyPair<P> {}
+#[cfg(feature = "slh-dsa")]
 impl<P: crate::slh_dsa::ParameterSet> ZeroizeOnDrop for crate::slh_dsa::KeyPair<P> {}
 impl<S> ZeroizeOnDrop for crate::spake2plus::ProverAwaiting<S> {}
 impl<S> ZeroizeOnDrop for crate::spake2plus::VerifierAwaiting<S> {}
