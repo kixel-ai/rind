@@ -48,7 +48,7 @@ Have at least these sections:
 
 Run `just ci` before every push.
 
-The scheduled workflows run as [TESTING.md](TESTING.md#scheduled-workflows) lists, or on demand with `gh workflow run <name> --ref <branch>`, a `bench` or `ctgrind` dispatch naming only what the change reaches. None of them runs on a pull request, where only what gates a merge runs: dispatch the ones your change reaches on your branch before review, and mutate a diff with `admin/mutants --in-diff`. `prove` also runs on each push to main that reaches it, checking the HOL Light and Lean proofs and the cosimulation for inputs main has not passed. Its proofs gate no merge: a failure on main alerts, and a release waits for them (see [Releases](#releases)). `admin/mutants` runs a whole campaign only on GitHub-hosted runners.
+The scheduled workflows run as [TESTING.md](TESTING.md#scheduled-workflows) lists, or on demand with `gh workflow run <name> --ref <branch>`, a `bench` or `ctgrind` dispatch naming only what the change reaches. None of them runs on a pull request, where only what gates a merge runs: dispatch the ones your change reaches on your branch before review, and mutate a diff with `admin/mutants --in-diff`. `prove` also runs on each push to main that reaches it, checking the bytes, and the HOL Light and Lean proofs and the cosimulation for inputs main has not passed. Its proofs gate no merge: a failure on main alerts, and a release waits for them (see [Releases](#releases)). `admin/mutants` runs a whole campaign only on GitHub-hosted runners.
 PRs land on `main` through GitHub's merge queue, one PR at a time, as squash commits.
 Queue the reviewed head with `quest merge <pr> --land <sha>` (`/quest-merge` does this).
 `pr-check.yml` runs `just ci` over the PR's diff on a GitHub-hosted runner, so a check that the PR's own changes fail shows red here first; it does not rerun when main moves, so the queue can still fail a group it passed. It is advisory, since main's ruleset requires only the queue's build.
@@ -98,7 +98,7 @@ It dispatches every scheduled workflow but `bench` and `dart-libraries` on the P
 An agent merging a release PR, as `/quest-merge` does, runs it first.
 It records the result as the `release-check` status on the head the runs tested, so a release-plz update to the PR needs a new run.
 `just ci` fails a scheduled workflow that a dispatch would not run whole.
-Before a release PR's commit publishes, `release.yml`'s Proofs job waits for `prove` to pass on `main` at the last commit up to it that changed `prove`'s paths (`sh/release-proved.sh`): that run checked every HOL Light and Lean proof of the released code that main had not passed on the same inputs. A failure there stops the release and alerts.
+Before a release PR's commit publishes, `release.yml`'s Proofs job waits for a `prove` run on `main` with the commit's inputs to pass (`sh/release-proved.sh`): that run checked the bytes, the cosimulation, and every HOL Light and Lean proof of the released code that main had not passed on the same inputs. A failure there stops the release and alerts.
 
 Each published `rind-<consumer>` adapter's version begins with the breaking part of the upstream version it adapts (major.minor below 1.0, major from 1.0 on), so rind-rustls 0.23.x adapts rustls 0.23; the rest of the version is the adapter's own.
 `sh/adapter-versions.sh`, in `just ci`, fails when the two drift.

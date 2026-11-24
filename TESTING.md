@@ -343,8 +343,9 @@ GitHub delays most. `build`, `asan`, `coverage`, `lints`, `prove`,
 `python`, `dart-libraries`, and `regenerate` run daily, and `Check` runs
 `just ci --all` on main's head daily as the backstop for the merge queue's
 diff-scoped selection. `prove` also runs each push to main that reaches it,
-checking only the HOL Light and Lean proofs and the cosimulation that main
-has not passed on the same inputs; a release waits for that run to pass. Each runs on demand with
+checking the bytes, and the HOL Light and Lean proofs and the cosimulation
+that main has not passed on the same inputs; a release waits for that run to
+pass. Each runs on demand with
 `gh workflow run <name> --ref <branch>`; a dispatched `bench` measures every
 bench target unless `-f benches='aes_gcm sha2'` names the ones to measure,
 and each CPU-tier row then times only those of them it covers. A dispatched

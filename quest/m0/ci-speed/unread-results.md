@@ -49,8 +49,8 @@ What #958 did with each pull-request check:
 | ESP32-S3 SHA-256 layout | weekly (new) | one 30-minute job on code that rarely moves |
 | `x86-cpu` (three SDE models, ACVP on Diamond Rapids) | weekly | the queue runs every path set |
 | `regenerate` | nightly | the queue runs it on its inputs |
-| `prove` HOL Light, `lean`, `cosim` | on a push to main, each only for a key main lacks; nightly in full | gates a release, not a merge (`sh/release-proved.sh`) |
-| `prove` `vg`, `neon`, `spec-tests`, bytes | nightly | the queue runs x86_64's `vg`; the rest gate nothing |
+| `prove` HOL Light, `lean`, `cosim`, bytes | on a push to main, each but the bytes only for a key main lacks; nightly in full | gates a release, not a merge (`sh/release-proved.sh`) |
+| `prove` `vg`, `neon`, `spec-tests` | nightly | the queue runs x86_64's `vg`; the rest gate nothing |
 | Site | dropped | PR check and the queue run the same `sh/site.sh` |
 | PR check | kept, to be required | a group the queue ejects costs a slot in a one-group-at-a-time queue |
 

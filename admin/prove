@@ -327,10 +327,11 @@ asm_function() {
 # Prints each symbol name on stdin without what a version bump, a lockfile
 # change, or an edit elsewhere in rind changes, so `asm_function`'s objects,
 # and with them the HOL Light cache keys, change only with the code: the crate
-# disambiguator in each crate root of its v0 mangling, and the `.llvm.<hash>`
-# suffix of a local another codegen unit uses.
+# disambiguator in each crate root of a v0-mangled (`_R`) name, `Cs<base62>_`
+# before the crate name's length, and the `.llvm.<hash>` suffix of a local
+# another codegen unit uses.
 stable_name() {
-    awk '{ gsub(/Cs[0-9A-Za-z]*_/, "C"); sub(/\.llvm\.[0-9]+$/, ""); print }'
+    sed -E -e '/^_R/ s/Cs[0-9A-Za-z]*_([0-9u])/C\1/g' -e 's/\.llvm\.[0-9]+$//'
 }
 
 # Takes `$out/<name>.lock`, waiting while another run in this worktree holds

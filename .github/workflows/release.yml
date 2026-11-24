@@ -28,10 +28,10 @@ on:
 
 jobs:
   # The proofs gate no merge but gate a release: before a release PR's commit
-  # publishes, prove must have passed on main at the last commit up to it
-  # that changed prove's paths (sh/release-proved.sh), so this waits for that
-  # run when the release follows it closely. A job of its own, holding no
-  # secret, so the wait never outlives the App token `release` makes.
+  # publishes, a prove run on main with the same inputs must have passed
+  # (sh/release-proved.sh), so this waits for that run when the release
+  # follows it closely. A job of its own, outside the `publish` environment,
+  # so the wait never outlives the App token `release` makes.
   proofs:
     name: Proofs
     runs-on: ubuntu-latest
@@ -41,7 +41,10 @@ jobs:
     timeout-minutes: 360
     permissions:
       contents: read
-      actions: read
+      # To rerun a prove run that a newer push's job cancelled.
+      actions: write
+      # To find the pull request that landed each commit.
+      pull-requests: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
