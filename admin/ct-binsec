@@ -122,14 +122,15 @@ LIBC = ["memcpy", "memmove", "memset", "memcmp", "bcmp"]
 # test binary and glibc hold, since BINSEC matches an opcode byte for byte.
 # s2n-bignum's P-521 code sets the carry with `stc`, LLVM tests the portable
 # P-256 and P-384 for zero with `movmskps`, and loads and stores rind's AVX2
-# ChaCha20 state with `vinsertf128` and `vpermpd`, and at `opt-level = "z"`
-# loads it with `vbroadcastf128`, stores a lane with `vextractps`, and permutes Argon2's rows from memory with
-# `vpermpd`, and aws-lc's AVX2 ML-DSA
+# ChaCha20 state with `vinsertf128` and `vpermpd`, and aws-lc's AVX2 ML-DSA
 # moves lanes with `vmovshdup` and samples with `vmovmskps`. Intel's MXCSR
 # mitigation, `rind::low::Mcdt`, runs `stmxcsr` and `ldmxcsr` on a CPU that
-# needs it. glibc's `malloc`
-# reads the thread pointer with `mrs`, vpaes and aws-lc's NEON ChaCha20 look
-# up bytes with `tbl`, and ML-KEM's rejection sampling counts bits with `cnt`.
+# needs it. glibc's `malloc` reads the thread pointer with `mrs`, vpaes and
+# aws-lc's NEON ChaCha20 look up bytes with `tbl`, and ML-KEM's rejection
+# sampling counts bits with `cnt`. Only `ctgrind.yml`'s `opt-level = "z"`
+# build needs the rest: LLVM there loads ChaCha20's state with
+# `vbroadcastf128`, stores a lane of it with `vextractps`, and permutes
+# Argon2's rows with `vpermpd` from memory.
 # See UPSTREAM.md, "BINSEC cannot decode instructions `admin/ct-binsec` stubs".
 GP = {"e" + r[1:]: r for r in ["rax", "rcx", "rdx", "rbx", "rsp", "rbp", "rsi", "rdi"]}
 GP.update(("r{}d".format(n), "r{}".format(n)) for n in range(8, 16))

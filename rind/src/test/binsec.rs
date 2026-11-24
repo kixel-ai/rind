@@ -510,12 +510,15 @@ fn ct_binsec_hpke() {
         kdf: &HKDF_SHA256,
         aead: &CHACHA20_POLY1305,
     };
+    // The recipient's key, which the region loads again as a secret, so that
+    // it opens what was sealed to it here.
+    const KEY: u8 = 1;
     let mut sent = Vec::new();
     for (kem, len) in [
         (&DHKEM_X25519_HKDF_SHA256, 32),
         (&DHKEM_P256_HKDF_SHA256, 32),
     ] {
-        let key = PrivateKey::from_scalar(kem, &vec![1; len]).unwrap();
+        let key = PrivateKey::from_scalar(kem, &vec![KEY; len]).unwrap();
         let (enc, mut sender) = Sender::new(suite, key.public_key(), b"info").unwrap();
         let mut message = [3; MESSAGE].to_vec();
         sender
@@ -526,7 +529,7 @@ fn ct_binsec_hpke() {
     checked(|| {
         for (kem, len, public_key, enc, message) in &sent {
             let mut out = [0; 32];
-            let key = PrivateKey::from_scalar(kem, &secret::<32>(1)[..*len]).unwrap();
+            let key = PrivateKey::from_scalar(kem, &secret::<32>(KEY)[..*len]).unwrap();
             let mut recipient = Recipient::new(suite, &key, enc.as_ref(), b"info").unwrap();
             black_box(
                 recipient
