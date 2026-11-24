@@ -53,7 +53,7 @@ jobs:
       # rind-fips's doctests could not load its module: the doctests, usage
       # examples whose code the other tests run, are left out.
       - name: Tests
-        run: cargo test --release --target="$(rustc --print host-tuple)" --workspace --lib --bins --tests
+        run: cargo test --release --target="$(rustc --print host-tuple)" --workspace --tests
 
       # The fallback paths each slower CPU runs, the Rust ones among them
       # instrumented. rind-fips's module refuses a CPU below its baseline.
@@ -89,4 +89,4 @@ jobs:
         run: |
           target=$(rustc --print host-tuple)
           cargo test --release --target="$target" -p rind --lib
-          cargo test --release --target="$target" -p rind-fips --lib --tests -- --skip a_child_forked --skip a_raw_fork
+          cargo test --release --target="$target" -p rind-fips --tests -- --skip a_child_forked --skip a_raw_fork
