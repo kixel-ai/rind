@@ -2,6 +2,10 @@
 
 - `AesCbc`, `AesCtr`, and `Chacha20` with a MAC, such as `Hmac`, on rind's
   ciphers, which need the rind release after 0.1.0.
+- `AesGcm` takes nonces of any length but zero, and `RsaPss` signs and
+  verifies with its `nonceLengthInBytes`, its default 16 bytes included,
+  where it signed only with a salt as long as the hash and verified any
+  salt otherwise. Both need the rind release after 0.1.0.
 
 ## 0.1.0
 
