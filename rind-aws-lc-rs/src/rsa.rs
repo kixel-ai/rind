@@ -10,8 +10,8 @@ use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::fmt;
 use core::ops::RangeInclusive;
-use std::sync::OnceLock;
 
+use once_cell::race::OnceBox;
 use signing::RsaEncoding;
 
 use crate::digest::{self, Digest};
@@ -822,23 +822,11 @@ pub const OAEP_SHA512_MGF1SHA512: OaepAlgorithm = OaepAlgorithm {
     hash: &digest::SHA512,
 };
 
-/// Fills `cell` with `load`'s key once, returning it.
-fn cached<K>(
-    cell: &OnceLock<K>,
-    load: impl FnOnce() -> Result<K, rind::Error>,
-) -> Result<&K, Unspecified> {
-    if let Some(key) = cell.get() {
-        return Ok(key);
-    }
-    let _ = cell.set(load().map_err(unspecified)?);
-    cell.get().ok_or(Unspecified)
-}
-
 struct DecryptingInner {
     /// The key as PKCS#8, from which each algorithm's key is loaded.
     pkcs8: Wiped<Vec<u8>>,
     /// The key loaded for each algorithm, by [`OaepAlgorithm::index`].
-    keys: [OnceLock<rind::rsa::DecryptingKey>; 4],
+    keys: [OnceBox<rind::rsa::DecryptingKey>; 4],
     public: PublicEncryptingKey,
 }
 
@@ -852,9 +840,9 @@ pub struct PrivateDecryptingKey(Arc<DecryptingInner>);
 impl PrivateDecryptingKey {
     fn new(key: rind::rsa::DecryptingKey) -> Result<Self, KeyRejected> {
         let public = PublicEncryptingKey::new(key.public_key().as_ref())?;
-        let keys = [const { OnceLock::new() }; 4];
+        let keys = [const { OnceBox::new() }; 4];
         let pkcs8 = Wiped::new(key.to_pkcs8().as_ref().to_vec());
-        let _ = keys[OAEP_SHA256_MGF1SHA256.index()].set(key);
+        let _ = keys[OAEP_SHA256_MGF1SHA256.index()].set(Box::new(key));
         Ok(Self(Arc::new(DecryptingInner {
             pkcs8,
             keys,
@@ -895,8 +883,10 @@ impl PrivateDecryptingKey {
     }
 
     fn key(&self, algorithm: &OaepAlgorithm) -> Result<&rind::rsa::DecryptingKey, Unspecified> {
-        cached(&self.0.keys[algorithm.index()], || {
+        self.0.keys[algorithm.index()].get_or_try_init(|| {
             rind::rsa::DecryptingKey::from_pkcs8(algorithm.rind(), &self.0.pkcs8)
+                .map(Box::new)
+                .map_err(unspecified)
         })
     }
 }
@@ -918,7 +908,7 @@ struct EncryptingInner {
     der: Box<[u8]>,
     bits: usize,
     /// The key parsed for each algorithm, by [`OaepAlgorithm::index`].
-    keys: [OnceLock<rind::rsa::EncryptingKey>; 4],
+    keys: [OnceBox<rind::rsa::EncryptingKey>; 4],
 }
 
 /// An RSA public key for encryption, with a modulus of 2048 to 8192 bits.
@@ -934,7 +924,7 @@ impl PublicEncryptingKey {
         Ok(Self(Arc::new(EncryptingInner {
             der: pkcs1.into(),
             bits,
-            keys: [const { OnceLock::new() }; 4],
+            keys: [const { OnceBox::new() }; 4],
         })))
     }
 
@@ -961,8 +951,10 @@ impl PublicEncryptingKey {
     }
 
     fn key(&self, algorithm: &OaepAlgorithm) -> Result<&rind::rsa::EncryptingKey, Unspecified> {
-        cached(&self.0.keys[algorithm.index()], || {
+        self.0.keys[algorithm.index()].get_or_try_init(|| {
             rind::rsa::EncryptingKey::new(algorithm.rind(), &self.0.der)
+                .map(Box::new)
+                .map_err(unspecified)
         })
     }
 }
