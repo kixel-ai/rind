@@ -1233,9 +1233,10 @@ DIT_COST_ROWS = [
 
 def dit_cost(host):
     """What setting DIT around each call costs rind over holding it, on a
-    host that times both, as report lines. rind sets DIT only on Apple, so
-    elsewhere the two rows run the same code and differ only by noise."""
-    if host_os(host) != "macos":
+    host that times both, as report lines. rind sets DIT only where the OS
+    reports it, so elsewhere the two rows run the same code and differ only
+    by noise."""
+    if not host.get("rind_cpu", {}).get("cpuid", {}).get("dit"):
         return []
     t = times(host)
     pairs = [(t.get(row_name(DIT_PER_CALL + op), {}), t.get(row_name(op), {})) for op in DIT_COST_ROWS]

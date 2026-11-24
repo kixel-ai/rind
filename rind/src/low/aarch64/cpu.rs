@@ -229,7 +229,8 @@ fn detect() -> u8 {
     features
 }
 
-// Set on every core that has it: Arm says some cores with DIT, such as
+// Set on every core whose OS reports it, which a hypervisor, Windows, or a
+// BSD may not (PLATFORMS.md): Arm says some cores with DIT, such as
 // Neoverse V1, may run the instructions it covers in data-dependent time
 // without it, and strongly recommends that software set it (KA005181,
 // https://developer.arm.com/documentation/ka005181/1-0/). On

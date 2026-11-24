@@ -260,6 +260,35 @@ pub extern "C" fn rind_fips_has_aes_hardware() -> bool {
     rind::cpu::has_aes_hardware()
 }
 
+std::thread_local! {
+    // This thread's `rind_fips_dit_hold`s not yet released, and the one
+    // guard they share while there are any.
+    static DIT: core::cell::RefCell<(usize, Option<rind::cpu::Dit>)> =
+        const { core::cell::RefCell::new((0, None)) };
+}
+
+/// Holds DIT on for this thread, as `rind::cpu::Dit::hold` does, until a
+/// matching `rind_fips_dit_release`.
+#[unsafe(no_mangle)]
+pub extern "C" fn rind_fips_dit_hold() {
+    DIT.with_borrow_mut(|(holds, guard)| {
+        *holds += 1;
+        guard.get_or_insert_with(rind::cpu::Dit::hold);
+    });
+}
+
+/// Releases one of this thread's `rind_fips_dit_hold`s, dropping the guard
+/// with the last.
+#[unsafe(no_mangle)]
+pub extern "C" fn rind_fips_dit_release() {
+    DIT.with_borrow_mut(|(holds, guard)| {
+        *holds -= 1;
+        if *holds == 0 {
+            *guard = None;
+        }
+    });
+}
+
 /// Compares the `a_len` bytes at `a` with the `b_len` at `b` in constant
 /// time.
 ///
