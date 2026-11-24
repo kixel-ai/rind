@@ -97,7 +97,7 @@ ring = { package = "rind-ring", version = "0.17" }
 aws-lc-rs = { package = "rind-aws-lc-rs", version = "1" }
 
 # Or use rind's own API.
-rind = "0.3"
+rind = "0.4"
 ```
 
 ### With rustls
@@ -161,6 +161,7 @@ Each crate's README shows its setup.
 | [rind-jsonwebtoken][] | JWTs through [jsonwebtoken](https://github.com/Keats/jsonwebtoken) |
 | [rind-object-store][] | S3, Azure, and GCS request signing through [object_store](https://github.com/apache/arrow-rs-object-store) |
 | [rind-rcgen][] | certificates through [rcgen](https://github.com/rustls/rcgen) |
+| [rind-rand-core][] | rind's random source as a [rand_core](https://github.com/rust-random/rand) RNG, such as RustCrypto's crates take |
 | [rind-openssl][] | X25519 and Ed25519 for whatever links OpenSSL 3, as a provider its configuration loads; built from source |
 | [rind-dart][] | Dart and Flutter, through FFI, as the `rind` package on [pub.dev](https://pub.dev/packages/rind) |
 | [rind_cryptography][] | Dart and Flutter, as the `rind_cryptography` package, with the `cryptography` package's API on rind |
@@ -336,6 +337,7 @@ from other projects keeps its source's license, which [LICENSE] lists.
 [rind-openssl]: https://github.com/kixel-ai/rind/tree/main/rind-openssl
 [rind-object-store]: https://github.com/kixel-ai/rind/tree/main/rind-object-store
 [rind-rcgen]: https://github.com/kixel-ai/rind/tree/main/rind-rcgen
+[rind-rand-core]: https://github.com/kixel-ai/rind/tree/main/rind-rand-core
 [rind-dart]: https://github.com/kixel-ai/rind/tree/main/rind-dart
 [rind_cryptography]: https://github.com/kixel-ai/rind/tree/main/rind-dart/cryptography
 [rind-python]: https://github.com/kixel-ai/rind/tree/main/rind-python
