@@ -84,20 +84,36 @@ fuzz_target!(|input: Input| {
     }
 });
 
+/// Each suite's `SerializeScalar` length, in `SUITES`' order.
+const SCALAR_LENS: [usize; 4] = [32, 32, 48, 66];
+
 /// Loads the key on both sides with `$ours::from_scalar` or `derive` and
 /// `$theirs::new_with_key` or `new_from_seed`, which take and refuse the
-/// same, or returns from the target.
+/// same within rind's documented bounds, or returns from the target.
 macro_rules! load {
-    ($ours:ty, $theirs:ty, $suite:expr, $key:expr) => {{
+    ($ours:ty, $theirs:ty, $index:expr, $key:expr) => {{
+        let suite = SUITES[$index];
         let (ours, theirs) = match $key {
-            Key::Scalar(scalar) => (
-                <$ours>::from_scalar($suite, scalar),
-                <$theirs>::new_with_key(scalar),
-            ),
-            Key::Seed { seed, info } => (
-                <$ours>::derive($suite, seed, info),
-                <$theirs>::new_from_seed(seed, info),
-            ),
+            Key::Scalar(scalar) => {
+                let ours = <$ours>::from_scalar(suite, scalar);
+                // The crate's NIST suites zero-pad a scalar of 24 bytes or
+                // more; rind takes only `SerializeScalar`'s length.
+                if scalar.len() != SCALAR_LENS[$index] {
+                    assert!(ours.is_err());
+                    return;
+                }
+                (ours, <$theirs>::new_with_key(scalar))
+            }
+            Key::Seed { seed, info } => {
+                let ours = <$ours>::derive(suite, seed, info);
+                // rind refuses an `info` of `2^16 - 1` bytes, which the
+                // crate takes, as it does such an input.
+                if info.len() >= usize::from(u16::MAX) {
+                    assert_eq!(ours.err(), Some(Error::WrongLength));
+                    return;
+                }
+                (ours, <$theirs>::new_from_seed(seed, info))
+            }
         };
         assert_eq!(
             ours.is_ok(),
@@ -120,13 +136,20 @@ macro_rules! run_oprf {
         use ::voprf::{BlindedElement, EvaluationElement, OprfClient, OprfServer};
         let (index, input, inputs): (usize, &Input, &[Vec<u8>]) = ($index, $input, $inputs);
         let suite = SUITES[index];
-        let (key, theirs) = load!(oprf::ServerKey, OprfServer<$cs>, suite, &input.key);
+        let (key, theirs) = load!(oprf::ServerKey, OprfServer<$cs>, index, &input.key);
 
         let mut outputs = Vec::new();
         let mut pairs = Vec::new();
         for message in inputs {
             let direct = key.evaluate(message).unwrap();
             assert_eq!(direct.as_ref(), &theirs.evaluate(message).unwrap()[..]);
+
+            // Their client, our server.
+            let result = OprfClient::<$cs>::blind(message, &mut OsRng).unwrap();
+            let evaluated = key.blind_evaluate(&result.message.serialize()).unwrap();
+            let evaluated = EvaluationElement::<$cs>::deserialize(evaluated.as_ref()).unwrap();
+            let output = result.state.finalize(message, &evaluated).unwrap();
+            assert_eq!(&output[..], direct.as_ref());
 
             // Our client, their server and ours.
             let (blind, blinded) = oprf::Blind::new(suite, message).unwrap();
@@ -137,32 +160,29 @@ macro_rules! run_oprf {
                 evaluated.as_ref(),
                 &theirs.blind_evaluate(&element).serialize()[..]
             );
-            pairs.push((blinded.clone(), evaluated.as_ref().to_vec()));
+            let right = evaluated.as_ref().to_vec();
+            pairs.push((blinded.clone(), right.clone()));
+            outputs.push(direct);
+            let direct = outputs.last().unwrap();
 
-            let mut changed = input.blinded.apply(&mut blinded);
+            let changed = input.blinded.apply(&mut blinded);
             let Ok(evaluated) = key.blind_evaluate(&blinded) else {
                 assert!(changed);
                 continue;
             };
             let mut evaluated = evaluated.as_ref().to_vec();
-            changed |= input.evaluated.apply(&mut evaluated);
+            input.evaluated.apply(&mut evaluated);
             // The OPRF mode cannot tell a wrong element from a right one,
-            // but another element is another output.
+            // but another element is another output. Edits can cancel, as
+            // negating the blinded element and then the evaluated one does,
+            // so the expectation reads the element finalized.
             match blind.finalize(&evaluated) {
-                Ok(output) => assert_eq!(output.as_ref() == direct.as_ref(), !changed),
+                Ok(output) => assert_eq!(output.as_ref() == direct.as_ref(), evaluated == right),
                 Err(e) => {
                     assert!(matches!(e, Error::KeyRejected(_)), "{e:?}");
-                    assert!(changed);
+                    assert_ne!(evaluated, right);
                 }
             }
-
-            // Their client, our server.
-            let result = OprfClient::<$cs>::blind(message, &mut OsRng).unwrap();
-            let evaluated = key.blind_evaluate(&result.message.serialize()).unwrap();
-            let evaluated = EvaluationElement::<$cs>::deserialize(evaluated.as_ref()).unwrap();
-            let output = result.state.finalize(message, &evaluated).unwrap();
-            assert_eq!(&output[..], direct.as_ref());
-            outputs.push(direct);
         }
         #[cfg(any(rind_backend = "arm", rind_backend = "portable"))]
         reference::check(
@@ -191,7 +211,7 @@ macro_rules! run_voprf {
         type G = <$cs as ::voprf::CipherSuite>::Group;
         let (index, input, inputs): (usize, &Input, &[Vec<u8>]) = ($index, $input, $inputs);
         let suite = SUITES[index];
-        let (key, theirs) = load!(voprf::ServerKey, VoprfServer<$cs>, suite, &input.key);
+        let (key, theirs) = load!(voprf::ServerKey, VoprfServer<$cs>, index, &input.key);
         assert_eq!(
             key.public_key().as_ref(),
             &G::serialize_elem(theirs.get_public_key())[..]

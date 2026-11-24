@@ -83,7 +83,7 @@ fn to_bytes_be_padded(n: &BoxedUint, len: usize) -> Vec<u8> {
     // is not a multiple of the limb, such as 2056 bits: the excess is
     // leading zeros, as every value here is below the modulus.
     let (excess, bytes) = bytes.split_at(bytes.len().saturating_sub(len));
-    assert!(excess.iter().all(|&b| b == 0), "the value does not fit in {len} bytes");
+    assert!(excess.iter().all(|&b| b == 0), "the value does not fit in {} bytes", len);
     let mut result = vec![0u8; len];
     result[len - bytes.len()..].copy_from_slice(bytes);
     result

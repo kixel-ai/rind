@@ -12,7 +12,9 @@
 //! signs the same blinded message to the same bytes and verifies the same
 //! signature, and its client finalizes rind's reply to a signature rind
 //! verifies. A private key rind loads, the crate loads as the same key, and
-//! it signs: rind refuses at load any key it could not sign with.
+//! it signs: rind refuses at load any key it could not sign with. The crate
+//! takes only exponents 3 and 65537 and moduli up to 4096 bits, so rind
+//! alone checks the rest, such as the exponent `2^32 + 1` key.
 
 use blind_rsa_signatures::{
     DefaultRng, Deterministic, MessagePrepare, MessageRandomizer, PSS, PSSZero, Randomized,
@@ -55,6 +57,18 @@ fn independent(index: usize, der: &[u8]) -> Option<Box<dyn Independent>> {
     })
 }
 
+/// Whether `blind-rsa-signatures` takes the PKCS#8 key `der`, which rind
+/// loaded: only a modulus of 2048 to 4096 bits and an exponent of 3 or 65537.
+fn supported(der: &[u8]) -> bool {
+    use blind_rsa_signatures::reexports::rsa::{
+        PrivateKey, pkcs8::DecodePrivateKey, traits::PublicKeyParts,
+    };
+    let key = PrivateKey::from_pkcs8_der(der).unwrap();
+    let e = key.e().to_be_bytes();
+    let e = &e[e.iter().take_while(|&&b| b == 0).count()..];
+    (2048..=4096).contains(&(key.size() * 8)) && (e == [3] || e == [1, 0, 1])
+}
+
 #[derive(Arbitrary, Debug)]
 struct Input {
     algorithm: u8,
@@ -77,14 +91,21 @@ fuzz_target!(|input: Input| {
     let public_key = key_pair.public_key();
     // The crate reads the key rind wrote, as rind ignores what it may not
     // round-trip, such as a version 2 document's public key.
-    let independent = independent(index, key_pair.to_pkcs8().as_ref())
-        .expect("blind-rsa-signatures refused a key rind loaded");
+    let der = key_pair.to_pkcs8();
+    let independent = independent(index, der.as_ref());
+    assert_eq!(
+        independent.is_some(),
+        supported(der.as_ref()),
+        "blind-rsa-signatures refused a key rind loaded"
+    );
 
     // Their client, our server.
-    let signature = independent.client(&input.message, &|blinded| {
-        key_pair.blind_sign(blinded).unwrap().as_ref().to_vec()
-    });
-    public_key.verify(&input.message, &signature).unwrap();
+    if let Some(independent) = &independent {
+        let signature = independent.client(&input.message, &|blinded| {
+            key_pair.blind_sign(blinded).unwrap().as_ref().to_vec()
+        });
+        public_key.verify(&input.message, &signature).unwrap();
+    }
 
     let mut spki = public_key.to_spki().as_ref().to_vec();
     let spki_changed = input.spki.apply(&mut spki);
@@ -101,10 +122,12 @@ fuzz_target!(|input: Input| {
     let blinded_changed = input.blinded.apply(&mut blinded);
     let reply = match key_pair.blind_sign(&blinded) {
         Ok(reply) => {
-            assert_eq!(
-                independent.blind_sign(&blinded).as_deref(),
-                Some(reply.as_ref())
-            );
+            if let Some(independent) = &independent {
+                assert_eq!(
+                    independent.blind_sign(&blinded).as_deref(),
+                    Some(reply.as_ref())
+                );
+            }
             reply
         }
         Err(e) => {
@@ -129,7 +152,7 @@ fuzz_target!(|input: Input| {
     let changed = input.signature.apply(&mut signature);
     let result = public_key.verify(&input.message, &signature);
     assert_eq!(result.is_ok(), !changed, "{result:?}");
-    if result.is_ok() {
+    if let (Ok(()), Some(independent)) = (&result, &independent) {
         assert!(independent.verify(&input.message, &signature));
     }
 });

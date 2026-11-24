@@ -10,13 +10,14 @@
 //! The reference's dealer splits the fuzzer's key, so edge-case keys are
 //! reached, and draws its coefficients and nonces from a generator the
 //! input seeds; rind's own nonces are fresh. rind loads every share the
-//! reference deals and refuses each tampered one; its own dealer refuses
-//! the thresholds the reference's does and deals shares the reference
-//! loads. An untampered round with enough signers aggregates to the
-//! reference's signature, which both verify. Too few signers, a tampered
-//! commitment, or a tampered share is refused where its step documents,
-//! rather than panicking or aggregating, and a tampered signature verifies
-//! on rind exactly when it does on the reference.
+//! reference deals and refuses each tampered one, and verifies a share
+//! against a tampered commitment exactly when the reference does; its own
+//! dealer refuses the thresholds the reference's does and deals shares the
+//! reference loads. An untampered round with enough signers aggregates to
+//! the reference's signature, which both verify. Too few signers, a
+//! tampered commitment, or a tampered share is refused where its step
+//! documents, rather than panicking or aggregating, and a tampered
+//! signature verifies on rind exactly when it does on the reference.
 //!
 //! On armv7 and the portable backend, frost-ed25519 and frost-ristretto255
 //! run curve25519-dalek, as rind does, so there only frost-p256 is
@@ -108,7 +109,10 @@ macro_rules! differential {
         }
 
         // rind loads the reference's commitment and shares, and refuses
-        // them tampered.
+        // the shares tampered. A tampered commitment rind loads, the
+        // reference loads too, and both judge each share against it alike:
+        // some edits keep a share valid, such as swapping two terms, whose
+        // sum is all participant 1's check reads.
         let vss = secret_shares
             .values()
             .next()
@@ -123,17 +127,26 @@ macro_rules! differential {
             pubkeys.verifying_key().serialize().unwrap()
         );
         let mut edited = vss.clone();
-        let commitment_changed = input.commitment.apply(&mut edited);
-        let edited = VssCommitment::new(suite, &edited).ok();
+        input.commitment.apply(&mut edited);
+        let edited = VssCommitment::new(suite, &edited).ok().map(|ours| {
+            let theirs = VerifiableSecretSharingCommitment::deserialize_whole(&edited)
+                .expect("the reference refused a commitment rind loaded");
+            (ours, theirs)
+        });
         let mut ours = BTreeMap::new();
         for (id, share) in &secret_shares {
             let identifier = Identifier::new(suite, &id.serialize()).unwrap();
             let scalar = share.signing_share().serialize();
             let loaded = SigningShare::from_scalar(&identifier, &scalar, &commitment).unwrap();
             assert_eq!(loaded.to_scalar().as_ref(), &scalar[..]);
-            if let Some(edited) = &edited {
-                let loaded = SigningShare::from_scalar(&identifier, &scalar, edited);
-                assert_eq!(loaded.is_ok(), !commitment_changed);
+            if let Some((ours, theirs)) = &edited {
+                let loaded = SigningShare::from_scalar(&identifier, &scalar, ours);
+                let valid = KeyPackage::try_from(SecretShare::new(
+                    *id,
+                    *share.signing_share(),
+                    theirs.clone(),
+                ));
+                assert_eq!(loaded.is_ok(), valid.is_ok());
             }
             let mut tampered = scalar.clone();
             if input.share.apply(&mut tampered) {
@@ -148,11 +161,9 @@ macro_rules! differential {
             .filter(|n| input.signers >> (n - 1) & 1 == 1)
             .map(|n| FrostId::try_from(n).unwrap())
             .collect();
-        // The reference refuses to sign with fewer than the threshold, so
-        // rind runs every signer then.
         let is_ours = |id: &FrostId| {
             let n = signers.iter().position(|s| s == id).unwrap();
-            signers.len() < usize::from(min) || input.ours >> n & 1 == 1
+            input.ours >> n & 1 == 1
         };
         let mut our_nonces = BTreeMap::new();
         let mut their_nonces = BTreeMap::new();
@@ -213,6 +224,25 @@ macro_rules! differential {
             commitments.iter().map(frost_commitments).collect(),
             &input.message,
         );
+        // Below the threshold, every signer refuses to sign.
+        if signers.len() < usize::from(min) {
+            for id in &signers {
+                match our_nonces.remove(id) {
+                    Some(nonces) => assert_eq!(
+                        nonces.sign(&ours[id], &package).unwrap_err(),
+                        Error::WrongLength
+                    ),
+                    None => {
+                        let key_package = KeyPackage::try_from(secret_shares[id].clone()).unwrap();
+                        assert!(
+                            round2::sign(&frost_package, &their_nonces[id], &key_package).is_err()
+                        );
+                    }
+                }
+            }
+            return;
+        }
+
         let mut shares = Vec::new();
         let mut frost_shares = BTreeMap::new();
         for id in &signers {
@@ -226,17 +256,12 @@ macro_rules! differential {
                     SignatureShare::new(suite, &[id.serialize(), share].concat()).unwrap()
                 }
             };
-            // Each share verifies, even with too few signers to sign.
             package.verify_share(&share, &commitment).unwrap();
             frost_shares.insert(
                 *id,
                 round2::SignatureShare::deserialize(&share.as_ref()[SCALAR_LEN..]).unwrap(),
             );
             shares.push(share);
-        }
-        if signers.len() < usize::from(min) {
-            assert_eq!(package.aggregate(&shares).unwrap_err(), Error::BadSignature);
-            return;
         }
 
         // A tampered share fails its own check and the aggregate.
