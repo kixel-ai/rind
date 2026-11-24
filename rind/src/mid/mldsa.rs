@@ -25,10 +25,10 @@ use crate::Error;
 use crate::error::KeyFormatError;
 use crate::low::{self, Entry, MldsaPoly as Poly};
 use crate::mid::rng::{RandomSource, SystemRandom};
-use crate::mid::util::Array;
 use crate::mid::sha3::{
     SHAKE_128_R_BYTES, SHAKE_256_R_BYTES, Shake128x4, Shake256, Shake256Sponge, Shake256x4,
 };
+use crate::mid::util::Array;
 
 const N: usize = 256;
 const Q: i32 = 8380417;

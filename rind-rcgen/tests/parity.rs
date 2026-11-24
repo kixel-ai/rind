@@ -61,11 +61,15 @@ fn encodings() -> Vec<(&'static str, Vec<u8>)> {
         ),
         (
             "ML-DSA-44 PKCS#8",
-            rind::ml_dsa::KeyPair::<rind::ml_dsa::MlDsa44>::generate()
-                .unwrap()
-                .to_pkcs8()
-                .as_ref()
-                .to_vec(),
+            // RFC 9881's seed form, written out since this crate builds rind
+            // without ML-DSA.
+            [
+                &[0x30, 0x34, 0x02, 0x01, 0x00, 0x30, 0x0b, 0x06, 0x09][..],
+                &[0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x03, 0x11],
+                &[0x04, 0x22, 0x80, 0x20],
+                &[0x42; 32],
+            ]
+            .concat(),
         ),
         ("garbage", vec![0x30, 0x03, 0x02, 0x01, 0x00]),
     ];

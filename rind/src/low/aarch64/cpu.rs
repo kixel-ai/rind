@@ -128,7 +128,7 @@ pub(crate) struct HaveCryptoExt(());
 impl HaveCryptoExt {
     /// Detects the extension once, then answers from the cached result.
     pub(crate) fn check() -> Option<Self> {
-        (features() & CRYPTO_EXT != 0).then_some(Self(()))
+        has(CRYPTO_EXT).then_some(Self(()))
     }
 }
 
@@ -140,7 +140,7 @@ pub(crate) struct HaveSha3(());
 
 impl HaveSha3 {
     pub(crate) fn check() -> Option<Self> {
-        (features() & SHA3 != 0).then_some(Self(()))
+        has(SHA3).then_some(Self(()))
     }
 
     /// The token where Keccak-f runs on the SHA3 instructions: only on Apple
@@ -165,7 +165,7 @@ pub(crate) struct HaveSve2(());
 
 impl HaveSve2 {
     pub(crate) fn check() -> Option<Self> {
-        (features() & SVE2 != 0).then_some(Self(()))
+        has(SVE2).then_some(Self(()))
     }
 }
 
@@ -177,6 +177,36 @@ const DIT: u8 = 1 << 3;
 const SB: u8 = 1 << 4;
 const SVE2: u8 = 1 << 5;
 const DETECTED: u8 = 1 << 7;
+
+/// Those the target enables at compile time, which every CPU that runs the
+/// binary has. Rust's `aes` covers PMULL, and its `sha2` SHA-1.
+const ENABLED: u8 = (if cfg!(all(target_feature = "aes", target_feature = "sha2")) {
+    CRYPTO_EXT
+} else {
+    0
+}) | (if cfg!(target_feature = "sha3") {
+    SHA3
+} else {
+    0
+}) | (if cfg!(target_feature = "sve2") {
+    SVE2
+} else {
+    0
+});
+
+/// Whether the build reads `RIND_CPU_DISABLE_*`, as `cpu_denied` does.
+const DENIABLE: bool = cfg!(all(rind_std, any(debug_assertions, rind_cpu_disable)));
+
+/// Whether the CPU has the feature `wanted`.
+///
+/// A feature the target enables is on every CPU the binary runs on, so this
+/// is then true at compile time, and the linker drops the kernels for CPUs
+/// without it: Apple's targets, which enable the crypto extension and SHA3,
+/// carry no table-free AES. A build that can deny a feature still asks.
+#[inline]
+fn has(wanted: u8) -> bool {
+    (!DENIABLE && ENABLED & wanted != 0) || features() & wanted != 0
+}
 
 static FEATURES: AtomicU8 = AtomicU8::new(0);
 

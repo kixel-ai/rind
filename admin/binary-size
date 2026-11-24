@@ -1,0 +1,131 @@
+#!/usr/bin/env python3
+"""Checks what rind adds to a binary against admin/binary-size.txt.
+
+Usage: admin/binary-size [--write]
+
+Builds admin/build-cost-fixtures' `rind` and `rustls` programs in release, the
+latter over rind-rustls, and sums the sizes of the functions and tables that
+rind and rind-rustls define in each: what the linker kept of them, whatever
+the versions of rustls and std around them, which the fixtures do not pin.
+
+Fails unless each sum is the one recorded for this host's target, so a change
+that grows or shrinks rind in a binary records the new size, with `--write`,
+and its diff shows by how much. On a target with no record the programs are
+only built: the sizes are one toolchain's, the Nix dev shell's on x86_64
+Linux, where CI runs this, and `nm` reads them only from ELF.
+"""
+
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+FIXTURES = ROOT / "admin" / "build-cost-fixtures"
+RECORD = ROOT / "admin" / "binary-size.txt"
+
+# Each fixture and the features it builds with.
+BUILDS = {"rind": [], "rustls": ["rind"]}
+
+HEADER = """\
+# Bytes of rind's and rind-rustls's functions and tables in each program of
+# admin/build-cost-fixtures, built in release, by target. `admin/binary-size`
+# checks them, and `just fix` records a change.
+"""
+
+# A symbol rind or rind-rustls defines, by its demangled name: a path in the
+# crate, or an impl on one of its types.
+OURS = re.compile(r"^[<&\[(]*(?:rind|rind_rustls)::")
+
+
+def build_env():
+    """The environment for each build, free of settings that change its code."""
+    env = {
+        k: v
+        for k, v in os.environ.items()
+        if not k.startswith(("CARGO_PROFILE_", "CARGO_BUILD_"))
+        and not re.fullmatch(r"CARGO_TARGET_.*_RUSTFLAGS", k)
+        and k not in ("RUSTFLAGS", "CARGO_ENCODED_RUSTFLAGS")
+    }
+    return env
+
+
+def build(fixture, features, env):
+    """Builds `fixture` in release and returns its binary."""
+    target = ROOT / "target"
+    cmd = ["cargo", "build", "--release", "--target-dir", str(target)]
+    cmd += ["--manifest-path", str(FIXTURES / fixture / "Cargo.toml")]
+    if features:
+        cmd += ["--features", ",".join(features)]
+    subprocess.run(cmd, env=env, check=True)
+    return target / "release" / f"build-cost-{fixture}"
+
+
+def measure(binary):
+    """The bytes rind and rind-rustls define in `binary`."""
+    nm = subprocess.run(
+        ["nm", "--defined-only", "-S", "-C", str(binary)], check=True, capture_output=True, text=True
+    ).stdout
+    # Two names for one address, such as a function and its alias, count once.
+    sizes = {}
+    for line in nm.splitlines():
+        m = re.match(r"([0-9a-f]+) ([0-9a-f]+) \S (.+)$", line)
+        if m and OURS.match(m.group(3)):
+            sizes[int(m.group(1), 16)] = int(m.group(2), 16)
+    if not sizes:
+        sys.exit(f"error: {binary} names no rind symbol; was it stripped?")
+    return sum(sizes.values())
+
+
+def read_record():
+    """The recorded bytes, by target and fixture."""
+    record = {}
+    for line in RECORD.read_text().splitlines():
+        if line and not line.startswith("#"):
+            target, fixture, size = line.split()
+            record[target, fixture] = int(size)
+    return record
+
+
+def main():
+    if sys.argv[1:] not in ([], ["--write"]):
+        sys.exit(__doc__)
+    write = sys.argv[1:] == ["--write"]
+    env = build_env()
+    host = subprocess.run(["rustc", "-vV"], env=env, check=True, capture_output=True, text=True).stdout
+    target = re.search(r"^host: (.+)$", host, re.M).group(1)
+
+    record = read_record()
+    binaries = {fixture: build(fixture, features, env) for fixture, features in BUILDS.items()}
+    if write:
+        record.update({(target, fixture): measure(binary) for fixture, binary in binaries.items()})
+        rows = [f"{t} {f} {size}\n" for (t, f), size in sorted(record.items())]
+        RECORD.write_text(HEADER + "".join(rows))
+        return
+
+    failed = False
+    for fixture, binary in binaries.items():
+        want = record.get((target, fixture))
+        if want is None:
+            print(f"{fixture}: built; {target} has no recorded size")
+            continue
+        size = measure(binary)
+        if size == want:
+            print(f"{fixture}: {size} bytes of rind, as recorded")
+        else:
+            failed = True
+            print(
+                f"error: {fixture}: {size} bytes of rind on {target}, {size - want:+} "
+                f"({(size - want) / want:+.1%}) against the {want} recorded",
+                file=sys.stderr,
+            )
+    if failed:
+        sys.exit(
+            "error: rind's size in a binary changed. If the change is meant, record it with "
+            "`admin/binary-size --write` (`just fix`) and say why in the pull request."
+        )
+
+
+if __name__ == "__main__":
+    main()

@@ -293,6 +293,16 @@ pub(crate) use generic::mldsa_poly::MldsaPoly;
 // The portable backend, which armv7 builds on, and what both run alike.
 #[cfg(any(rind_backend = "arm", rind_backend = "portable"))]
 mod portable;
+#[cfg(all(
+    feature = "ml-dsa",
+    any(rind_backend = "arm", rind_backend = "portable")
+))]
+pub(crate) use generic::mldsa_poly::{
+    mldsa_caddq, mldsa_chknorm, mldsa_decompose_32, mldsa_decompose_88, mldsa_intt, mldsa_ntt,
+    mldsa_nttunpack, mldsa_pointwise, mldsa_pointwise_acc, mldsa_poly_use_hint_32,
+    mldsa_poly_use_hint_88, mldsa_polyz_unpack_17, mldsa_polyz_unpack_19, mldsa_reduce,
+    mldsa_rej_uniform_eta2_vartime, mldsa_rej_uniform_eta4_vartime, mldsa_rej_uniform_vartime,
+};
 #[cfg(any(rind_backend = "arm", rind_backend = "portable"))]
 pub(crate) use generic::{
     bignum::{
@@ -329,16 +339,6 @@ pub(crate) use generic::{
     // sign, it exports P-384 only as ECDH, and it has no P-521, so rind
     // composes their arithmetic itself.
     order::{bignum_demont, bignum_modadd, bignum_modinv, bignum_montmul},
-};
-#[cfg(all(
-    feature = "ml-dsa",
-    any(rind_backend = "arm", rind_backend = "portable")
-))]
-pub(crate) use generic::mldsa_poly::{
-    mldsa_caddq, mldsa_chknorm, mldsa_decompose_32, mldsa_decompose_88, mldsa_intt, mldsa_ntt,
-    mldsa_nttunpack, mldsa_pointwise, mldsa_pointwise_acc, mldsa_poly_use_hint_32,
-    mldsa_poly_use_hint_88, mldsa_polyz_unpack_17, mldsa_polyz_unpack_19, mldsa_reduce,
-    mldsa_rej_uniform_eta2_vartime, mldsa_rej_uniform_eta4_vartime, mldsa_rej_uniform_vartime,
 };
 #[cfg(any(rind_backend = "arm", rind_backend = "portable"))]
 pub(crate) use portable::{

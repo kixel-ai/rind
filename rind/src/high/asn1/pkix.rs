@@ -1,9 +1,9 @@
 // Written for Graviola by Joe Birr-Pixton, 2024.
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
-use super::{Sequence, SetOf};
 #[cfg(feature = "ml-dsa")]
 use super::{Encoder, Error, OctetString, Parser, Tag, Type};
+use super::{Sequence, SetOf};
 
 asn1_struct! {
     RSAPublicKey ::= SEQUENCE {
