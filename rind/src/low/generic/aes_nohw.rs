@@ -10,9 +10,11 @@
 //! otherwise, as aws-lc's configurations do.
 //!
 //! The S-box is a circuit of ANDs and XORs, so no branch or memory index
-//! depends on the key or data. It is not formally verified: its correctness
-//! rests on its use and testing in BoringSSL and aws-lc, and on rind's tests
-//! of it against FIPS-197, Wycheproof, aws-lc-rs, and each CPU's faster AES.
+//! depends on the key or data. Its encryption rounds in 32-bit words are
+//! proven in Lean, in `proofs/Rind/Armv7/AesNohw*.lean`; the rest, the key
+//! schedule and the wider words among it, rests on its use and testing in
+//! BoringSSL and aws-lc, and on rind's tests of it against FIPS-197,
+//! Wycheproof, aws-lc-rs, and each CPU's faster AES.
 //! It follows <https://bearssl.org/constanttime.html#aes>,
 //! <https://eprint.iacr.org/2009/129.pdf>, and
 //! <https://eprint.iacr.org/2009/191.pdf>.
@@ -334,7 +336,24 @@ mod word {
     // this file needs otherwise, and its `from_le_bytes` is a list's.
     #[inline(always)]
     pub(super) fn compact_block(input: &[u8; 16]) -> [Word; 4] {
-        let [b0, b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11, b12, b13, b14, b15] = *input;
+        let [
+            b0,
+            b1,
+            b2,
+            b3,
+            b4,
+            b5,
+            b6,
+            b7,
+            b8,
+            b9,
+            b10,
+            b11,
+            b12,
+            b13,
+            b14,
+            b15,
+        ] = *input;
         let a = [
             compact_word(word(b0, b1, b2, b3)),
             compact_word(word(b4, b5, b6, b7)),
@@ -398,6 +417,8 @@ impl Batch {
     /// apart, which puts the bits along the diagonals of each `BATCH_SIZE`
     /// square where the transpose expects them.
     #[inline(always)]
+    // Loops by index: Aeneas translates no loop that writes through an iterator's references.
+    #[allow(clippy::needless_range_loop)]
     fn set(&mut self, block: &Compact, i: usize) {
         for k in 0..BLOCK_WORDS {
             self.w[i + k * BATCH_SIZE] = block[k];
@@ -406,6 +427,8 @@ impl Batch {
 
     /// Block `i` of a compact batch.
     #[inline(always)]
+    // Loops by index: Aeneas translates no loop that writes through an iterator's references.
+    #[allow(clippy::needless_range_loop)]
     fn get(&self, i: usize) -> Compact {
         let mut block = [ZERO; BLOCK_WORDS];
         for k in 0..BLOCK_WORDS {
@@ -448,6 +471,8 @@ fn transpose(batch: &mut Batch) {
 
 /// Bitslices up to `BATCH_SIZE` blocks, leaving the rest zero.
 #[inline(always)]
+// Loops by index: Aeneas translates no loop that writes through an iterator's references.
+#[allow(clippy::needless_range_loop)]
 fn to_batch(input: &[[u8; 16]]) -> Batch {
     assert!(input.len() <= BATCH_SIZE);
     let mut out = EMPTY;
@@ -460,6 +485,8 @@ fn to_batch(input: &[[u8; 16]]) -> Batch {
 
 /// Writes the first `out.len()` blocks of `batch`.
 #[inline(always)]
+// Loops by index: Aeneas translates no loop that writes through an iterator's references.
+#[allow(clippy::needless_range_loop)]
 fn from_batch(out: &mut [[u8; 16]], batch: &Batch) {
     assert!(out.len() <= BATCH_SIZE);
     let mut copy = *batch;
@@ -969,6 +996,8 @@ impl NohwKey {
 
     /// The bitsliced round keys, aws-lc's `AES_NOHW_SCHEDULE`: `BATCH_SIZE`
     /// copies of each.
+    // Loops by index: Aeneas translates no loop that writes through an iterator's references.
+    #[allow(clippy::needless_range_loop)]
     pub(crate) fn schedule(&self) -> Schedule {
         let mut keys = [EMPTY; 15];
         for r in 0..self.rounds + 1 {
@@ -1106,6 +1135,8 @@ impl Schedule {
     ///
     /// The counter blocks are `ivec`, then `ivec` with its last four bytes,
     /// a big-endian counter, incremented with 32-bit wrapping.
+    // Loops by index: Aeneas translates no loop that writes through an iterator's references.
+    #[allow(clippy::needless_range_loop)]
     pub(crate) fn ctr32(&self, ivec: &[u8; 16], inout: &mut [u8]) {
         let [.., c0, c1, c2, c3] = *ivec;
         let mut ctr = u32::from_be_bytes([c0, c1, c2, c3]);
@@ -1131,6 +1162,8 @@ impl Schedule {
     /// The keystream of the `todo` counter blocks from `ivec` with `ctr` as
     /// its counter, at most `BATCH_SIZE`; the blocks past them are zero.
     #[inline(always)]
+    // Loops by index: Aeneas translates no loop that writes through an iterator's references.
+    #[allow(clippy::needless_range_loop)]
     fn keystream(&self, ivec: &[u8; 16], ctr: u32, todo: usize) -> [[u8; 16]; BATCH_SIZE] {
         let mut ivs = [*ivec; BATCH_SIZE];
         for i in 0..BATCH_SIZE {

@@ -288,6 +288,7 @@ trait Parts {
 
     /// Encrypts (if `ENC`) or decrypts `inout` in place under `iv`, of any
     /// length, and returns its tag.
+    #[allow(clippy::needless_range_loop)]
     fn tagged<const ENC: bool>(&self, iv: &[u8], aad: &[u8], inout: &mut [u8]) -> [u8; 16] {
         let table = self.table();
         let y0 = initial_counter(table, iv);

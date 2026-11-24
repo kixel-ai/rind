@@ -1349,11 +1349,12 @@ to_lean() {
     cp "$out/lean/Rind/$dir/Types.lean" "$out/lean/Rind/$dir/Funs.lean" "proofs/Rind/$dir/"
 }
 
-# armv7's translation reaches only the header-protection API, ChaCha20's the
-# one armv7 path that is Rust down to code a proof covers: the rest of armv7's
-# operations run assembly, which no instruction model covers yet, or Rust its
-# own proof quests translate. `Rind/Armv7/{Types,Funs}External.lean` define
-# what it leaves opaque.
+# armv7's translation reaches the header-protection API, ChaCha20's the one
+# armv7 path that is Rust down to code a proof covers, and the AES-GCM API,
+# down to the bitsliced AES and integer GHASH a CPU with neither NEON nor the
+# crypto extension runs: the rest of armv7's operations run assembly, which no
+# instruction model covers yet, or Rust its own proof quests translate.
+# `Rind/Armv7/{Types,Funs}External.lean` define what it leaves opaque.
 extract_armv7() {
     (cd rind && charon cargo --preset=aeneas \
         --start-from '{impl crate::aead::quic::Mask for crate::mid::chacha20::ChaCha20}' \
