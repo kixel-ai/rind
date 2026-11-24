@@ -15,11 +15,12 @@
  *
  * The transport holds R0-R12, LR, the four flags, SP's offset into a private
  * 256-byte scratch buffer, PC's offset from the instruction, and the buffer's
- * 64 words. SP starts at the buffer's middle and is the base of every load and
- * store but a literal load, whose offsets stay inside the buffer, so the other
- * registers take any value. A branch lands 8 or 4 bytes before the
- * instruction, or 8, 12, or 16 past it, where the executor has a landing
- * slot, and falling through lands at 4, as a branch to there does too.
+ * 64 words. A load or store goes through SP, which starts at the buffer's
+ * middle, or through a register a case gives that address, at offsets that
+ * stay inside the buffer, so the other registers take any value. A branch
+ * lands 8 or 4 bytes before the instruction, or 8, 12, or 16 past it, where
+ * the executor has a landing slot, and falling through lands at 4, as a
+ * branch to there does too.
  *
  * The executor's greeting gives the instruction's and the buffer's addresses.
  * Each theorem assumes them of `pc` and the buffer, so that it can say what

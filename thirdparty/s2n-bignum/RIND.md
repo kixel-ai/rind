@@ -60,7 +60,9 @@ Each bullet names one file.
   Manual's AArch32 pseudocode (DDI 0487, part F).
 - `aarch32/proofs/decode.ml`: rind's. Their A32 encodings.
 - `aarch32/proofs/aarch32.ml`: rind's. The step relation, symbolic-execution
-  tactics, and AAPCS argument and clobber lists.
+  tactics, AAPCS argument and clobber lists, and the tactics that promote a
+  core theorem to one of a subroutine, with the three small routines that
+  check them as the file loads.
 - `aarch32/proofs/consttime.ml`: rind's. s2n-bignum's safety tactics
   specialized to the model.
 - `aarch32/proofs/base.ml`: rind's. What a proof on the model loads.
@@ -145,26 +147,58 @@ the event trace s2n-bignum's safety proofs read.
 
 | Instructions | Forms |
 | --- | --- |
-| `AND`, `EOR`, `SUB`, `RSB`, `ADD`, `ADC`, `SBC`, `RSC`, `ORR`, `BIC`, and their `S` forms | register with an immediate shift, or a modified immediate |
+| `AND`, `EOR`, `SUB`, `RSB`, `ADD`, `ADC`, `SBC`, `RSC`, `ORR`, `BIC`, and their `S` forms | register with an immediate shift, register shifted by a register, or a modified immediate |
 | `TST`, `TEQ`, `CMP`, `CMN` | the same operands |
 | `MOV`, `MVN`, and their `S` forms | the same operands |
 | `MOVW`, `MOVT` | 16-bit immediate |
-| `LDR`, `LDRB`, `STR`, `STRB` | 12-bit immediate offset, pre-indexed, or post-indexed |
-| `B` | 24-bit offset |
+| `MUL`, `UMULL`, `UMLAL` | without `S` |
+| `REV` | |
+| `LDR`, `LDRB`, `STR`, `STRB` | 12-bit immediate or shifted register offset, pre-indexed, or post-indexed |
+| `LDRD`, `STRD` | 8-bit immediate offset, pre-indexed, or post-indexed |
+| `LDM`, `STM`, `PUSH` and `POP` among them | each of the four addressing modes, with or without write-back |
+| `B`, `BL` | 24-bit offset |
+| `BX` | |
+| `NOP`, `DMB` | `DMB` under any option |
 
-Each takes any condition but the unconditional space. The decoder refuses
-everything else: Thumb, register-shifted registers, PC as an operand or
-destination, `LDRT` and the other unprivileged forms, write-back to the
-transferred register, and every other encoding. Loads and stores may be
-unaligned, as Linux and Android leave them.
+Each but `DMB` takes any condition but the unconditional space. R15 is an
+operand, the instruction's address plus 8, of a data-processing instruction
+with an immediate or an immediate shift, as `ADR` is, and the base of a word
+load, a literal load. It is a destination only of a word load from another
+base with an immediate offset and of `LDM`, each a branch. The decoder
+refuses everything else: Thumb, R15 anywhere else, `LDRT` and the other
+unprivileged forms, write-back to a transferred register, SP in an `LDM` or
+`STM` list, the flag-setting multiplies, `BLX`, and every other encoding.
+
+A step either has one next state or, where the instruction would leave what
+the model holds, any: a proof that reaches such a step proves nothing, as in
+s2n-bignum's other models. That is `BX`, or a load into PC, of a target not
+aligned to four bytes, which would enter Thumb, and `LDRD`, `STRD`, `LDM`,
+`STM`, or a load into PC at an address not aligned to four bytes, which
+faults. So a subroutine's theorem assumes `aligned 4` of its return address
+and, where it uses the stack, of SP. Other loads and stores may be unaligned,
+as Linux and Android leave them.
+
+`AARCH32_MK_EXEC_RULE` gives a word that does not decode no theorem rather
+than failing, since A32 routines keep literal pools and tables among their
+instructions, and the step conversion folds a constant offset from R15 into
+`word (pc + n)`, where a proof states what the pool holds.
+`AARCH32_ADD_RETURN_NOSTACK_TAC` and `AARCH32_ADD_RETURN_STACK_TAC` are
+`RISCV_ADD_RETURN_NOSTACK_TAC` and `RISCV_ADD_RETURN_STACK_TAC` for the AAPCS:
+a return by `bx lr`, or a prologue and epilogue around the core, by default
+one `push` and one `pop` that returns.
 
 `simulator.ml` cosimulates the model as s2n-bignum's
-`riscv/proofs/simulator.ml` does its own: directed cases at the shifts' and
-carries' edges, a backward branch, and unaligned word loads and stores, then
-random instructions from every row above, each with a random condition and
-state, branches forward and back and word offsets unaligned, which
+`riscv/proofs/simulator.ml` does its own: directed cases at the shifts',
+carries', and multiply's edges, a backward branch, unaligned word loads and
+stores, and a push and load of every register, then random instructions from
+every row above, each with a random condition and state, which
 `cosim_runner.c` and `cosim_start.S` run under qemu-arm, and the model must
-prove reach the same state. `admin/prove cosim` runs 1000 random cases,
-printing the seed, which
+prove reach the same state. The executor reports where it holds the
+instruction and its scratch buffer, so the cases reach every form: `BX`,
+`POP`, and `LDR` into PC branch to a landing slot whose address a register or
+the buffer holds, a literal load reads the buffer, `LDM` and `STM` go through
+SP or a register that may be in the list, and each theorem says what an
+instruction that reads R15 computes. `admin/prove cosim` runs 1000 random
+cases, printing the seed, which
 `S2N_BIGNUM_SEMATEST_SEED` repeats. Offering the model upstream is also a
 post to awslabs/s2n-bignum, which needs the maintainer's approval.

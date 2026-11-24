@@ -364,11 +364,12 @@ let C_ARGUMENTS = define
 let C_RETURN = define
  `C_RETURN = read R0`;;
 
-(* The AAPCS lets a subroutine change R0-R3, R12, and the flags; it keeps
-   R4-R11 and SP, and returns through LR. *)
+(* The AAPCS lets a subroutine change R0-R3, R12, the flags, and LR, which
+   it returns through and may use as scratch once saved; it keeps R4-R11 and
+   SP. *)
 
 let MODIFIABLE_GPRS = define
- `MODIFIABLE_GPRS = [R0; R1; R2; R3; R12]`;;
+ `MODIFIABLE_GPRS = [R0; R1; R2; R3; R12; LR]`;;
 
 let MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI = REWRITE_RULE
   [SOME_FLAGS; MODIFIABLE_GPRS]
