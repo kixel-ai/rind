@@ -2082,8 +2082,8 @@ let SHA256_BASE_CMPS = prove
 let sha256_avx2_slot = new_definition
  `sha256_avx2_slot t = 496 - 64 * (t DIV 8) + 32 * ((t MOD 8) DIV 4) + 4 * (t MOD 4)`;;
 
-let SHA256_AVX2_BLOCK_A = prove
- (`!pc k256 base pa pb ctx rsp0 (H:int32 list) (MA:int32 list) (MB:int32 list).
+let SHA256_AVX2_BLOCK_A_GOAL =
+ `!pc k256 base pa pb ctx rsp0 (H:int32 list) (MA:int32 list) (MB:int32 list).
      aligned 64 (word k256:int64) /\ aligned 32 (base:int64) /\
      nonoverlapping (word pc,0x1423) (base,544) /\
      nonoverlapping (word k256,640) (base,544) /\
@@ -2168,7 +2168,10 @@ let SHA256_AVX2_BLOCK_A = prove
                   R8; R9; R10; R11; R12; R13; R14; R15] ,,
        MAYCHANGE [ZMM0; ZMM1; ZMM2; ZMM3; ZMM4; ZMM5; ZMM6; ZMM7] ,,
        MAYCHANGE SOME_FLAGS ,, MAYCHANGE [events] ,,
-       MAYCHANGE [memory :> bytes(base,544); memory :> bytes(ctx,32)])`,
+       MAYCHANGE [memory :> bytes(base,544); memory :> bytes(ctx,32)])`;;
+
+let SHA256_AVX2_BLOCK_A = prove
+ (SHA256_AVX2_BLOCK_A_GOAL,
   MAP_EVERY X_GEN_TAC
    [`pc:num`; `k256:num`; `base:int64`; `pa:int64`; `pb:int64`; `ctx:int64`;
     `rsp0:int64`; `H:int32 list`; `MA:int32 list`; `MB:int32 list`] THEN
@@ -2206,8 +2209,8 @@ let SHA256_AVX2_BLOCK_A = prove
 (* then its feed-forward and the test for another pair.                     *)
 (* ------------------------------------------------------------------------- *)
 
-let SHA256_AVX2_BLOCK_B = prove
- (`!pc k256 base pa ctx endp (H:int32 list) (MB:int32 list).
+let SHA256_AVX2_BLOCK_B_GOAL =
+ `!pc k256 base pa ctx endp (H:int32 list) (MB:int32 list).
      nonoverlapping (ctx,32) (base,576) /\ nonoverlapping (ctx,32) (word pc,0x1423) /\
      32 <= val base /\ val base + 576 <= 2 EXP 64
      ==> ensures x86
@@ -2263,7 +2266,10 @@ let SHA256_AVX2_BLOCK_B = prove
       (MAYCHANGE [RIP; RSP; RBP; RSI; RAX; RBX; RCX; RDX; RDI;
                   R8; R9; R10; R11; R12; R13; R14; R15] ,,
        MAYCHANGE SOME_FLAGS ,, MAYCHANGE [events] ,,
-       MAYCHANGE [memory :> bytes(ctx,32)])`,
+       MAYCHANGE [memory :> bytes(ctx,32)])`;;
+
+let SHA256_AVX2_BLOCK_B = prove
+ (SHA256_AVX2_BLOCK_B_GOAL,
   MAP_EVERY X_GEN_TAC
    [`pc:num`; `k256:num`; `base:int64`; `pa:int64`; `ctx:int64`; `endp:int64`;
     `H:int32 list`; `MB:int32 list`] THEN
@@ -2480,3 +2486,505 @@ let SHA256_AVX2_BASE_NONOVERLAP = prove
   EXISTS_TAC `d + i:num` THEN ASM_REWRITE_TAC[] THEN
   CONJ_TAC THENL [ASM_ARITH_TAC; ALL_TAC] THEN
   MATCH_MP_TAC(MESON[CONG_REFL] `x = y ==> (x == y) (mod n)`) THEN ARITH_TAC);;
+
+(* ------------------------------------------------------------------------- *)
+(* The context, the hash state in the scalar registers, and the spec's       *)
+(* state after k blocks, as the terms below state them.                      *)
+(* ------------------------------------------------------------------------- *)
+
+let sha256_els v =
+  map (fun j -> mk_comb(mk_comb(`EL:num->int32 list->int32`, mk_small_numeral j), v)) (0--7);;
+
+let sha256_ctx_at j =
+  if j = 0 then `ctx:int64`
+  else mk_binop `word_add:int64->int64->int64` `ctx:int64`
+         (mk_comb(`word:num->int64`, mk_small_numeral (4*j)));;
+
+let sha256_ctx_facts v =
+  list_mk_conj(map2 (fun j e ->
+    subst [sha256_ctx_at j,`a:int64`; e,`e:int32`] `read (memory :> bytes32 a) (s:x86state) = e`)
+    (0--7) (sha256_els v));;
+
+let sha256_scalar_regs = [`RAX`; `RBX`; `RCX`; `RDX`; `R8`; `R9`; `R10`; `R11`];;
+
+let sha256_reg_facts v =
+  list_mk_conj(map2 (fun r e ->
+    subst [r,`r:(x86state,int64)component`; e,`e:int32`] `read (r:(x86state,int64)component) (s:x86state) = word_zx (e:int32)`)
+    sha256_scalar_regs (sha256_els v));;
+
+let sha256_hblocks k =
+  subst [k,`k:num`] `sha256_hash_blocks (m:num->int32 list) (h:int32 list) k`;;
+
+(* ------------------------------------------------------------------------- *)
+(* The message's blocks, and the input pointer against the end.              *)
+(* ------------------------------------------------------------------------- *)
+
+let WORD_BYTEREVERSE_BYTEREVERSE_32 = prove
+ (`!x:int32. word_bytereverse (word_bytereverse x) = x`,
+  CONV_TAC WORD_BLAST);;
+
+let sha256_join a mm =
+  let br j = mk_comb(`word_bytereverse:int32->int32`,
+                     mk_comb(mk_comb(`EL:num->int32 list->int32`, mk_small_numeral j), mm)) in
+  let j64 x y = mk_binop `word_join:int32->int32->int64` x y in
+  let j128 x y = mk_binop `word_join:int64->int64->int128` x y in
+  map (fun k ->
+    let addr = if k = 0 then a
+               else mk_binop `word_add:int64->int64->int64` a
+                      (mk_comb(`word:num->int64`, mk_small_numeral (16*k))) in
+    subst [addr,`x:int64`;
+           j128 (j64 (br (4*k+3)) (br (4*k+2))) (j64 (br (4*k+1)) (br (4*k))),`v:int128`]
+      `read (memory :> bytes128 x) (s:x86state) = v`) (0--3);;
+
+(* Any 64 bytes are some block's byte-swapped message words: block B's lane
+   reads the frame when only one block is left. *)
+let SHA256_AVX2_ANY_DATA =
+  let w j = let x = if j = 0 then `a:int64` else
+              mk_binop `word_add:int64->int64->int64` `a:int64`
+                (mk_comb(`word:num->int64`, mk_small_numeral (4*j))) in
+            subst [x,`x:int64`] `word_bytereverse (read (memory :> bytes32 x) (s:x86state))` in
+  let witness = mk_list(map w (0--15), `:int32`) in
+  prove
+  (mk_forall(`s:x86state`, mk_forall(`a:int64`,
+     mk_exists(`mm:int32 list`, list_mk_conj(sha256_join `a:int64` `mm:int32 list`)))),
+   REPEAT GEN_TAC THEN EXISTS_TAC witness THEN
+   CONV_TAC(DEPTH_CONV EL_CONV) THEN
+   REWRITE_TAC[WORD_BYTEREVERSE_BYTEREVERSE_32;
+               CONJUNCT1(CONJUNCT2 READ_MEMORY_BYTESIZED_SPLIT);
+               CONJUNCT1(CONJUNCT2(CONJUNCT2 READ_MEMORY_BYTESIZED_SPLIT))] THEN
+   REWRITE_TAC[GSYM WORD_ADD_ASSOC; GSYM WORD_ADD] THEN
+   CONV_TAC(DEPTH_CONV NUM_ADD_CONV) THEN REWRITE_TAC[]);;
+
+(* The message words as slices of the input's value, which a big step
+   carries, unlike a quantified fact about the state. *)
+let SHA256_AVX2_INPUT_REL = prove
+ (`!(s:x86state) data n (m:num->int32 list).
+     (!i j. i < n /\ j < 16
+            ==> read (memory :> bytes32 (word_add data (word (64 * i + 4 * j)))) s =
+                word_bytereverse (EL j (m i)))
+     ==> !i j. i < n /\ j < 16
+               ==> (word((read (memory :> bytes(data,64 * n)) s DIV 2 EXP (8 * (64 * i + 4 * j)))
+                         MOD 2 EXP (8 * 4)):int32) = word_bytereverse (EL j (m i))`,
+  REPEAT STRIP_TAC THEN
+  FIRST_X_ASSUM(fun th -> REWRITE_TAC[GSYM(MATCH_MP th (CONJ (ASSUME `i < n`) (ASSUME `j < 16`)))]) THEN
+  CONV_TAC SYM_CONV THEN MATCH_MP_TAC SHA256_READ_SLICE32 THEN EXISTS_TAC `64 * n` THEN
+  REWRITE_TAC[] THEN
+  UNDISCH_TAC `i < n` THEN UNDISCH_TAC `j < 16` THEN ARITH_TAC);;
+
+let SHA256_RSI_END = prove
+ (`!data:int64 n i.
+     val data + 64 * (n + 1) < 2 EXP 64 /\ 2 * i < n
+     ==> (val (word_sub (word_add (word_add data (word (128 * i))) (word 64))
+                        (word_add data (word (64 * n)))) = 0 <=> 2 * i + 1 = n)`,
+  REPEAT STRIP_TAC THEN
+  REWRITE_TAC[GSYM WORD_ADD_ASSOC; GSYM WORD_ADD; ARITH_RULE `128 * i + 64 = 64 * (2 * i + 1)`] THEN
+  MP_TAC(SPECL [`data:int64`; `n:num`; `2 * i + 1`] SHA256_AVX2_PTRS) THEN
+  ANTS_TAC THENL [ASM_REWRITE_TAC[] THEN UNDISCH_TAC `2 * i < n` THEN ARITH_TAC; SIMP_TAC[]]);;
+
+let SHA256_RSI_NEXT = prove
+ (`!data:int64 n i.
+     val data + 64 * (n + 1) < 2 EXP 64 /\ 2 * i + 2 <= n
+     ==> (val (word_add (word_add data (word (128 * i))) (word 192)) <
+          val (word_add data (word (64 * n))) <=> 2 * i + 3 < n) /\
+         (val (word_sub (word_add (word_add data (word (128 * i))) (word 192))
+                        (word_add data (word (64 * n)))) = 0 <=> 2 * i + 3 = n)`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  REWRITE_TAC[GSYM WORD_ADD_ASSOC; GSYM WORD_ADD; ARITH_RULE `128 * i + 192 = 64 * (2 * i + 3)`] THEN
+  MP_TAC(SPECL [`data:int64`; `n:num`; `2 * i + 3`] SHA256_AVX2_PTRS) THEN
+  ANTS_TAC THENL [ASM_REWRITE_TAC[] THEN UNDISCH_TAC `2 * i + 2 <= n` THEN ARITH_TAC; SIMP_TAC[]]);;
+
+(* ------------------------------------------------------------------------- *)
+(* The loop over pairs of blocks.                                            *)
+(* ------------------------------------------------------------------------- *)
+
+let sha256_endp = `word_add data (word (64 * n)):int64`;;
+
+(* At the loop head with 2 * i blocks done. *)
+let sha256_loop_inv =
+  let hb = sha256_hblocks `2 * i` in
+  list_mk_conj[
+   `bytes_loaded s (word pc) (sha256_avx2_mc pc k256) /\
+    read RIP s = word(pc + 0x80) /\ read RSP s = word_add base (word 480) /\
+    read RSI s = word_add (word_add data (word (128 * i))) (word 64) /\
+    read R12 s = (if 2 * i + 1 < n then word_add data (word (128 * i + 64))
+                  else word_add base (word 480)) /\
+    read YMM8 s = word 0xffffffffffffffff0b0a090803020100ffffffffffffffff0b0a090803020100 /\
+    read YMM9 s = word 0x0b0a090803020100ffffffffffffffff0b0a090803020100ffffffffffffffff /\
+    read (memory :> bytes(word k256,640)) s = num_of_bytelist sha256_avx2_k256 /\
+    read (memory :> bytes(data,64 * n)) s = dv /\
+    read (memory :> bytes64 (word_add base (word 544))) s = ctx /\
+    read (memory :> bytes64 (word_add base (word 560))) s = word_add data (word (64 * n)) /\
+    read (memory :> bytes64 (word_add base (word 568))) s = rsp0`;
+   sha256_reg_facts hb;
+   sha256_ctx_facts hb];;
+
+let sha256_loop_post =
+  list_mk_conj[
+   `read RIP s = word(pc + 0x13ff) /\ read RBP s = word_add base (word 480) /\
+    read (memory :> bytes64 (word_add base (word 568))) s = rsp0`;
+   sha256_ctx_facts (sha256_hblocks `n:num`)];;
+
+let sha256_loop_frame =
+  `MAYCHANGE [RIP; RSP; RAX; RBX; RCX; RDX; RSI; RDI; RBP; R8; R9; R10; R11; R12; R13; R14; R15] ,,
+   MAYCHANGE [ZMM0; ZMM1; ZMM2; ZMM3; ZMM4; ZMM5; ZMM6; ZMM7] ,,
+   MAYCHANGE SOME_FLAGS ,, MAYCHANGE [events] ,,
+   MAYCHANGE [memory :> bytes(base,544); memory :> bytes(ctx:int64,32)]`;;
+
+let sha256_loop_hyps =
+  `aligned 64 (word k256:int64) /\ aligned 32 (base:int64) /\
+   32 <= val base /\ val base + 576 <= 2 EXP 64 /\
+   nonoverlapping (base,576) (word pc:int64,0x1423) /\
+   nonoverlapping (base,576) (word k256:int64,640) /\
+   nonoverlapping (base,576) (data:int64,64 * n) /\
+   nonoverlapping (base,576) (ctx:int64,32) /\
+   nonoverlapping (ctx,32) (word pc,0x1423) /\
+   nonoverlapping (ctx,32) (word k256,640) /\
+   nonoverlapping (ctx,32) (data,64 * n) /\
+   riprel32_within_bounds (k256 + 512) (pc + 136) /\
+   riprel32_within_bounds k256 (pc + 204) /\
+   val data + 64 * (n + 1) < 2 EXP 64 /\
+   (!i j. i < n /\ j < 16
+          ==> (word((dv DIV 2 EXP (8 * (64 * i + 4 * j))) MOD 2 EXP (8 * 4)):int32) =
+              word_bytereverse (EL j ((m:num->int32 list) i)))`;;
+
+let sha256_loop_ensures inv =
+  list_mk_icomb "ensures" [`x86`; mk_abs(`s:x86state`, inv);
+                           mk_abs(`s:x86state`, sha256_loop_post); sha256_loop_frame];;
+
+let SHA256_AVX2_LOOP_GOAL =
+  let tm = mk_imp(sha256_loop_hyps,
+                  mk_forall(`i:num`, mk_imp(`2 * i < n`, sha256_loop_ensures sha256_loop_inv))) in
+  list_mk_forall(frees tm, tm);;
+
+let sha256_inst th l =
+  INST (map (fun (v,n) -> v, mk_var(n, type_of v)) l) (SPEC_ALL th);;
+
+(* Arithmetic on the loop counters alone, away from the state's facts. *)
+let SHA256_ARITH_TAC =
+  let num_ty = `:num` in
+  W(fun (asl,w) ->
+    let hs = filter (fun (_,th) -> let c = concl th in
+               let fv = frees c in
+               fv <> [] && not (is_forall c) && forall (fun v -> type_of v = num_ty) fv) asl in
+    MAP_EVERY (fun (_,th) -> MP_TAC th) hs THEN ARITH_TAC);;
+
+(* Folds a block's result into the next hash state. *)
+let SHA256_FOLD_TAC =
+  RULE_ASSUM_TAC(REWRITE_RULE[GSYM(CONJUNCT2 sha256_hash_blocks)]);;
+
+(* Block B's schedule words, which block A leaves on the stack, as one fact
+   each, which steps carry. *)
+let SHA256_SLOTS_CONV =
+  EXPAND_CASES_CONV THENC REWRITE_CONV[sha256_avx2_slot] THENC DEPTH_CONV NUM_RED_CONV;;
+
+let SHA256_SLOTS_TAC =
+  FIRST_X_ASSUM(STRIP_ASSUME_TAC o CONV_RULE SHA256_SLOTS_CONV o
+    check (fun th -> is_forall(concl th) && can (find_term ((=) `sha256_avx2_slot`)) (concl th)));;
+
+let SHA256_PRE_TAC =
+  REWRITE_TAC[SHA256_AVX2_BYTES_LOADED] THEN
+  TRY(CONV_TAC(ONCE_DEPTH_CONV(fun t ->
+    if is_forall t && can (find_term ((=) `sha256_avx2_slot`)) t then SHA256_SLOTS_CONV t
+    else failwith ""))) THEN
+  ASM_REWRITE_TAC[];;
+
+(* Block A's rounds and the context update after them, from the loop head
+   with block B's message at pb, through the branch on whether B is there. *)
+let SHA256_BLOCK_A_TAC pb mB =
+  let thA = sha256_inst SHA256_AVX2_BLOCK_A
+    [`word_add data (word (128 * i)):int64`, "pa"; pb, "pb";
+     `(m:num->int32 list) (2 * i)`, "MA"; mB, "MB";
+     sha256_hblocks `2 * i`, "H"] in
+  REWRITE_TAC[fst SHA256_AVX2_EXEC; SOME_FLAGS] THEN ENSURES_INIT_TAC "s0" THEN
+  MP_TAC(SPECL [`s0:x86state`; `data:int64`; `n:num`; `dv:num`; `m:num->int32 list`; `2 * i`]
+          SHA256_AVX2_DATA) THEN
+  ASM_REWRITE_TAC[ARITH_RULE `64 * (2 * i) = 128 * i`] THEN
+  CONV_TAC(LAND_CONV(TOP_DEPTH_CONV let_CONV)) THEN STRIP_TAC THEN
+  (fun g -> (if mB = `MB:int32 list` then
+     X_CHOOSE_THEN mB STRIP_ASSUME_TAC (SPECL [`s0:x86state`; pb] SHA256_AVX2_ANY_DATA)
+   else
+     MP_TAC(SPECL [`s0:x86state`; `data:int64`; `n:num`; `dv:num`; `m:num->int32 list`; `2 * i + 1`]
+              SHA256_AVX2_DATA) THEN
+     ASM_REWRITE_TAC[ARITH_RULE `64 * (2 * i + 1) = 128 * i + 64`] THEN
+     CONV_TAC(LAND_CONV(TOP_DEPTH_CONV let_CONV)) THEN STRIP_TAC) g) THEN
+  MP_TAC thA THEN ANTS_TAC THENL
+   [ASM_REWRITE_TAC[] THEN REPEAT CONJ_TAC THEN NONOVERLAPPING_TAC; ALL_TAC] THEN
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [SOME_FLAGS] THEN
+  X86_BIGSTEP_TAC SHA256_AVX2_EXEC "s1" THENL [SHA256_PRE_TAC; ALL_TAC] THEN
+  SHA256_SLOTS_TAC THEN
+  X86_STEPS_TAC SHA256_AVX2_EXEC (2--3) THEN
+  MP_TAC(SPECL [`data:int64`; `n:num`; `i:num`] SHA256_RSI_END) THEN ASM_REWRITE_TAC[] THEN
+  DISCH_THEN(fun th -> RULE_ASSUM_TAC(REWRITE_RULE[th])) THEN
+  SHA256_FOLD_TAC;;
+
+(* Block B's rounds and the context update after them, to the loop's
+   closing branch, with the branch's condition as one on i and n. *)
+let SHA256_BLOCK_B_TAC =
+  let thB = sha256_inst SHA256_AVX2_BLOCK_B
+    [`word_add data (word (128 * i)):int64`, "pa"; sha256_endp, "endp";
+     `(m:num->int32 list) (2 * i + 1)`, "MB"; sha256_hblocks `2 * i + 1`, "H"] in
+  MP_TAC thB THEN ANTS_TAC THENL
+   [ASM_REWRITE_TAC[] THEN REPEAT CONJ_TAC THEN NONOVERLAPPING_TAC; ALL_TAC] THEN
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [SOME_FLAGS] THEN
+  X86_BIGSTEP_TAC SHA256_AVX2_EXEC "s4" THENL [SHA256_PRE_TAC; ALL_TAC] THEN
+  X86_STEPS_TAC SHA256_AVX2_EXEC [5] THEN
+  SHA256_FOLD_TAC THEN
+  MP_TAC(SPECL [`data:int64`; `n:num`; `i:num`] SHA256_RSI_NEXT) THEN
+  ANTS_TAC THENL [ASM_REWRITE_TAC[] THEN SHA256_ARITH_TAC; ALL_TAC] THEN
+  DISCH_THEN(fun th -> RULE_ASSUM_TAC(REWRITE_RULE[th])) THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[ARITH_RULE `(2 * i + 1) + 1 = 2 * (i + 1)`]);;
+
+let SHA256_HASH_N_TAC k =
+  SUBGOAL_THEN (subst [k,`k:num`] `sha256_hash_blocks m h n = sha256_hash_blocks m h k`) SUBST1_TAC THENL
+   [FIRST_X_ASSUM(SUBST1_TAC o SYM o check (fun th -> let c = concl th in is_eq c && rand c = `n:num`)) THEN
+    (REFL_TAC ORELSE (AP_TERM_TAC THEN ARITH_TAC)); ALL_TAC];;
+
+(* Rewriting a fact leaves the rewrite's hypotheses on it, which can clash
+   with the stepper's own variable names (it names an instruction's length
+   n); this restates every assumption as itself. *)
+let SHA256_LAUNDER_TAC =
+  POP_ASSUM_LIST(fun ths -> MAP_EVERY (fun th -> ASSUME_TAC (ASSUME (concl th))) (rev ths));;
+
+let SHA256_AVX2_LOOP = prove
+ (SHA256_AVX2_LOOP_GOAL,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  SUBGOAL_THEN (mk_forall(`d:num`, mk_forall(`i:num`,
+    mk_imp(`n - 2 * i = d`, mk_imp(`2 * i < n`, sha256_loop_ensures sha256_loop_inv)))))
+   (fun th -> X_GEN_TAC `i:num` THEN MP_TAC(SPECL [`n - 2 * i`; `i:num`] th) THEN REWRITE_TAC[]) THEN
+  MATCH_MP_TAC num_WF THEN X_GEN_TAC `d:num` THEN DISCH_TAC THEN X_GEN_TAC `i:num` THEN
+  REPEAT DISCH_TAC THEN
+  ASM_CASES_TAC `2 * i + 1 = n` THENL
+   [(* One block left: block B's lane reads the frame, and the routine ends
+       after block A. *)
+    SUBGOAL_THEN `~(2 * i + 1 < n)` (fun th -> REWRITE_TAC[th]) THENL [SHA256_ARITH_TAC; ALL_TAC] THEN
+    SHA256_BLOCK_A_TAC `word_add base (word 480):int64` `MB:int32 list` THEN
+    ENSURES_FINAL_STATE_TAC THEN SHA256_HASH_N_TAC `2 * i + 1` THEN ASM_REWRITE_TAC[];
+    ALL_TAC] THEN
+  SUBGOAL_THEN `2 * i + 1 < n` ASSUME_TAC THENL [SHA256_ARITH_TAC; ALL_TAC] THEN
+  ASM_CASES_TAC `2 * i + 2 = n` THENL
+   [(* Two blocks left: the loop ends after them. *)
+    ASM_REWRITE_TAC[] THEN
+    SHA256_BLOCK_A_TAC `word_add data (word (128 * i + 64)):int64` `(m:num->int32 list) (2 * i + 1)` THEN
+    SHA256_BLOCK_B_TAC THEN
+    SUBGOAL_THEN `~(2 * i + 3 < n) /\ ~(2 * i + 3 = n)` (fun th -> RULE_ASSUM_TAC(REWRITE_RULE[th])) THENL
+     [SHA256_ARITH_TAC; ALL_TAC] THEN
+    SHA256_LAUNDER_TAC THEN X86_STEPS_TAC SHA256_AVX2_EXEC [6] THEN
+    ENSURES_FINAL_STATE_TAC THEN SHA256_HASH_N_TAC `2 * (i + 1)` THEN ASM_REWRITE_TAC[];
+    ALL_TAC] THEN
+  (* More: the loop runs again from the head with two more blocks done. *)
+  SUBGOAL_THEN `2 * i + 3 <= n` ASSUME_TAC THENL [SHA256_ARITH_TAC; ALL_TAC] THEN
+  REWRITE_TAC[GSYM CONJ_ASSOC; SOME_FLAGS] THEN
+  ENSURES_SEQUENCE_TAC `pc + 0x80`
+   (mk_abs(`s:x86state`, list_mk_conj(tl(tl(conjuncts(subst [`i + 1`,`i:num`] sha256_loop_inv)))))) THEN
+  CONJ_TAC THENL
+   [ASM_REWRITE_TAC[] THEN
+    SHA256_BLOCK_A_TAC `word_add data (word (128 * i + 64)):int64` `(m:num->int32 list) (2 * i + 1)` THEN
+    SHA256_BLOCK_B_TAC THEN
+    SUBGOAL_THEN `2 * i + 3 < n \/ 2 * i + 3 = n` (fun th -> RULE_ASSUM_TAC(REWRITE_RULE[th])) THENL
+     [SHA256_ARITH_TAC; ALL_TAC] THEN
+    ENSURES_FINAL_STATE_TAC THEN
+    REWRITE_TAC[ARITH_RULE `2 * (i + 1) + 1 = 2 * i + 3`; ARITH_RULE `128 * (i + 1) + 64 = 128 * i + 192`;
+                ARITH_RULE `128 * (i + 1) = 128 * i + 128`] THEN
+    RULE_ASSUM_TAC(REWRITE_RULE[GSYM WORD_ADD_ASSOC; GSYM WORD_ADD]) THEN
+    REWRITE_TAC[GSYM WORD_ADD_ASSOC; GSYM WORD_ADD; ARITH_RULE `(128 * i + 128) + 64 = 128 * i + 192`] THEN
+    ASM_CASES_TAC `2 * i + 3 = n` THEN ASM_REWRITE_TAC[LT_REFL] THEN
+    SUBGOAL_THEN `2 * i + 3 < n` ASSUME_TAC THENL [SHA256_ARITH_TAC; ASM_REWRITE_TAC[]];
+    FIRST_X_ASSUM(MP_TAC o SPEC `n - 2 * (i + 1)` o
+                  check (fun th -> is_forall (concl th) && free_in `d:num` (concl th))) THEN
+    ANTS_TAC THENL [SHA256_ARITH_TAC; DISCH_THEN(MP_TAC o SPEC `i + 1`)] THEN
+    REWRITE_TAC[] THEN
+    ANTS_TAC THENL [SHA256_ARITH_TAC; REWRITE_TAC[GSYM CONJ_ASSOC; SOME_FLAGS]] THEN
+    DISCH_THEN MATCH_ACCEPT_TAC]);;
+
+(* ------------------------------------------------------------------------- *)
+(* The stack frame.                                                          *)
+(* ------------------------------------------------------------------------- *)
+
+let SHA256_AVX2_PUSHES = WORD_RULE
+ `word_sub (word_sub (word_sub (word_sub (word_sub (word_sub (word_sub
+    (stackpointer:int64) (word 8)) (word 8)) (word 8)) (word 8)) (word 8)) (word 8))
+    (word 544) = word_sub stackpointer (word 592)`;;
+
+let SHA256_AVX2_FRAME_RSP = WORD_RULE
+ `word_add (word_and (word_sub (stackpointer:int64) (word 592)) (word 18446744073709550592))
+           (word 448) =
+  word_add (word_sub (word_and (word_sub stackpointer (word 592)) (word 18446744073709550592))
+                     (word 32)) (word 480)`;;
+
+(* The frame as an offset into the function's stack region. *)
+let SHA256_AVX2_BASE_OFFSET = prove
+ (`!stackpointer base:int64.
+     1648 <= val stackpointer /\
+     val stackpointer - 1648 <= val base /\ val base + 624 <= val stackpointer
+     ==> ?e. e + 576 <= 1648 /\ word_add (word_sub stackpointer (word 1648)) (word e) = base`,
+  REPEAT STRIP_TAC THEN
+  EXISTS_TAC `val(base:int64) - (val(stackpointer:int64) - 1648)` THEN
+  CONJ_TAC THENL [ASM_ARITH_TAC; ALL_TAC] THEN
+  MP_TAC(ISPEC `base:int64` VAL_BOUND) THEN MP_TAC(ISPEC `stackpointer:int64` VAL_BOUND) THEN
+  REWRITE_TAC[DIMINDEX_64] THEN REPEAT DISCH_TAC THEN
+  REWRITE_TAC[GSYM VAL_EQ; VAL_WORD_ADD; VAL_WORD; DIMINDEX_64] THEN
+  SUBGOAL_THEN `val(word_sub stackpointer (word 1648):int64) = val stackpointer - 1648`
+  SUBST1_TAC THENL
+   [REWRITE_TAC[VAL_WORD_SUB_CASES; VAL_WORD; DIMINDEX_64] THEN CONV_TAC NUM_REDUCE_CONV THEN
+    COND_CASES_TAC THEN ASM_ARITH_TAC;
+    ALL_TAC] THEN
+  SUBGOAL_THEN `(val(base:int64) - (val(stackpointer:int64) - 1648)) MOD 2 EXP 64 =
+                val base - (val stackpointer - 1648)` SUBST1_TAC THENL
+   [MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC; ALL_TAC] THEN
+  SUBGOAL_THEN `(val(stackpointer:int64) - 1648) + (val(base:int64) - (val stackpointer - 1648)) =
+                val base` SUBST1_TAC THENL
+   [ASM_ARITH_TAC; MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC]);;
+
+(* Names the frame base once the prologue has aligned the stack pointer, and
+   places the frame within the function's stack region. *)
+let SHA256_AVX2_FRAME_TAC =
+  RULE_ASSUM_TAC(REWRITE_RULE[SHA256_AVX2_PUSHES; SHA256_AVX2_FRAME_RSP]) THEN
+  ABBREV_TAC `base = word_sub (word_and (word_sub stackpointer (word 592))
+                                        (word 18446744073709550592)) (word 32):int64` THEN
+  MP_TAC(SPECL [`stackpointer:int64`; `base:int64`] SHA256_AVX2_BASE) THEN
+  ASM_REWRITE_TAC[] THEN STRIP_TAC THEN
+  MP_TAC(SPECL [`stackpointer:int64`; `base:int64`] SHA256_AVX2_PUSH_NONOVERLAP) THEN
+  ASM_REWRITE_TAC[] THEN DISCH_TAC THEN
+  MAP_EVERY (fun (x,l) ->
+    MP_TAC(SPECL [`stackpointer:int64`; `base:int64`; x; l] SHA256_AVX2_BASE_NONOVERLAP) THEN
+    ASM_REWRITE_TAC[] THEN DISCH_TAC)
+   [`word pc:int64`,`0x1423`; `word k256:int64`,`640`; `data:int64`,`64 * n`; `ctx:int64`,`32`];;
+
+let SHA256_AVX2_N_FACTS = prove
+ (`!data:int64 n.
+     0 < n /\ val data + 64 * (n + 1) < 2 EXP 64
+     ==> word_sub data (word 18446744073709551552) = word_add data (word 64) /\
+         word_add data (word (4 * val (word_shl (word n:int64) 4))) =
+         word_add data (word (64 * n)) /\
+         (val (word_sub (word_add data (word 64)) (word_add data (word (64 * n)))) = 0
+          <=> ~(1 < n))`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN REPEAT CONJ_TAC THENL
+   [CONV_TAC WORD_BLAST;
+    AP_TERM_TAC THEN AP_TERM_TAC THEN
+    REWRITE_TAC[VAL_WORD_SHL; VAL_WORD; DIMINDEX_64] THEN
+    SUBGOAL_THEN `n MOD 2 EXP 64 = n` SUBST1_TAC THENL
+     [MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC; ALL_TAC] THEN
+    SUBGOAL_THEN `(2 EXP 4 * n) MOD 2 EXP 64 = 16 * n` SUBST1_TAC THENL
+     [CONV_TAC(ONCE_DEPTH_CONV NUM_REDUCE_CONV) THEN MATCH_MP_TAC MOD_LT THEN
+      POP_ASSUM MP_TAC THEN CONV_TAC NUM_REDUCE_CONV THEN ARITH_TAC;
+      ARITH_TAC];
+    MP_TAC(SPECL [`data:int64`; `n:num`; `1`] SHA256_AVX2_PTRS) THEN
+    ANTS_TAC THENL [ASM_REWRITE_TAC[] THEN ASM_ARITH_TAC; ALL_TAC] THEN
+    REWRITE_TAC[MULT_CLAUSES] THEN DISCH_THEN(SUBST1_TAC o CONJUNCT1) THEN ASM_ARITH_TAC]);;
+
+(* The pushes leave their slots at nested word_sub addresses; the pops
+   read them back as word_add stackpointer (word (2 EXP 64 - 8 * k)). *)
+let SHA256_AVX2_PUSH_SLOTS =
+  let sp = `stackpointer:int64` and w8 = `word 8:int64` in
+  let rec nest k = if k = 0 then sp else mk_binop `word_sub:int64->int64->int64` (nest(k-1)) w8 in
+  map (fun k ->
+    let neg = mk_comb(`word:num->int64`, mk_numeral(num_of_string "18446744073709551616" -/ num_of_string(string_of_int(8*k)))) in
+    let sub = mk_binop `word_sub:int64->int64->int64` sp (mk_comb(`word:num->int64`, mk_small_numeral(8*k))) in
+    let th2 = WORD_BLAST(mk_eq(sub, mk_binop `word_add:int64->int64->int64` sp neg)) in
+    if k = 1 then th2 else TRANS (WORD_RULE(mk_eq(nest k, sub))) th2) (1--6);;
+
+(* The frame: every stack address the routine writes, as an offset from the
+   bottom of the declared stack region. *)
+let SHA256_AVX2_SUB_FRAME_TAC =
+  let sp = `stackpointer:int64` and b = `word_sub stackpointer (word 1648):int64` in
+  let wadd x y = mk_binop `word_add:int64->int64->int64` x y in
+  let wd n = mk_comb(`word:num->int64`, n) in
+  let slots = map (fun k ->
+    WORD_BLAST(mk_eq(
+      wadd sp (wd (mk_numeral(num_of_string "18446744073709551616" -/ num_of_string(string_of_int(8*k))))),
+      wadd b (wd (mk_small_numeral(1648 - 8*k)))))) (1--6) in
+  MP_TAC(SPECL [sp; `base:int64`] SHA256_AVX2_BASE_OFFSET) THEN ASM_REWRITE_TAC[] THEN
+  DISCH_THEN(X_CHOOSE_THEN `e:num` (CONJUNCTS_THEN2 ASSUME_TAC
+    (fun th -> RULE_ASSUM_TAC(REWRITE_RULE[SYM th])))) THEN
+  RULE_ASSUM_TAC(REWRITE_RULE slots) THEN
+  MONOTONE_MAYCHANGE_TAC;;
+
+(* ------------------------------------------------------------------------- *)
+(* The whole routine: its prologue, the loop, and its epilogue and return.   *)
+(* ------------------------------------------------------------------------- *)
+
+(* The prologue pushes six registers and then aligns its frame down to 1024
+   bytes, so the frame's place depends on the stack pointer's low bits. All
+   the routine writes on the stack lies in the 1648 bytes below it. *)
+let SHA256_AVX2_SUBROUTINE_GOAL =
+  let tm = mk_imp(
+   `0 < n /\ val (data:int64) + 64 * (n + 1) < 2 EXP 64 /\
+    1648 <= val (stackpointer:int64) /\ aligned 64 (word k256:int64) /\
+    riprel32_within_bounds (k256 + 544) (pc + 114) /\
+    riprel32_within_bounds (k256 + 576) (pc + 122) /\
+    riprel32_within_bounds (k256 + 512) (pc + 136) /\
+    riprel32_within_bounds k256 (pc + 204) /\
+    ALL (nonoverlapping (word_sub stackpointer (word 1648),1656))
+        [(word pc,0x1423); (word k256,640); (data,64 * n); (ctx:int64,32)] /\
+    ALL (nonoverlapping (ctx,32)) [(word pc,0x1423); (word k256,640); (data,64 * n)]`,
+   list_mk_icomb "ensures" [`x86`;
+    mk_abs(`s:x86state`, list_mk_conj[
+     `bytes_loaded s (word pc) (sha256_avx2_mc pc k256) /\
+      read RIP s = word pc /\ read RSP s = stackpointer /\
+      read (memory :> bytes64 stackpointer) s = returnaddress /\
+      C_ARGUMENTS [ctx; data; word n] s /\
+      bytes_loaded s (word k256) sha256_avx2_k256`;
+     sha256_ctx_facts `h:int32 list`;
+     `!i j. i < n /\ j < 16
+            ==> read (memory :> bytes32 (word_add data (word (64 * i + 4 * j)))) s =
+                word_bytereverse (EL j ((m:num->int32 list) i))`]);
+    mk_abs(`s:x86state`, list_mk_conj[
+     `read RIP s = returnaddress /\ read RSP s = word_add stackpointer (word 8)`;
+     sha256_ctx_facts (sha256_hblocks `n:num`)]);
+    `MAYCHANGE [RSP] ,, MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI ,,
+     MAYCHANGE [memory :> bytes(ctx:int64,32);
+                memory :> bytes(word_sub stackpointer (word 1648),1648)]`]) in
+  list_mk_forall(frees tm, tm);;
+
+let SHA256_AVX2_SUBROUTINE_CORRECT = prove
+ (SHA256_AVX2_SUBROUTINE_GOAL,
+  let thL = sha256_inst SHA256_AVX2_LOOP [`stackpointer:int64`, "rsp0"] in
+  let fold ofs extra k =
+    let sum = mk_small_numeral (ofs + extra) in
+    FIRST_ASSUM(ASSUME_TAC o
+      MATCH_MP (SPECL [`pc:num`; mk_small_numeral ofs; mk_small_numeral extra; `k256:num`]
+                      SHA256_RIPREL_FOLD) o
+      CONV_RULE(LAND_CONV(RAND_CONV(ONCE_REWRITE_CONV
+        [ARITH_RULE(mk_eq(sum, mk_binop `(+):num->num->num` (mk_small_numeral ofs) (mk_small_numeral extra)))]))) o
+      check ((=) (subst [k,`k:num`; mk_small_numeral ofs,`q:num`]
+                    `riprel32_within_bounds (k256 + k) (pc + q)`) o concl)) in
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[ALL; C_ARGUMENTS; MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI; SOME_FLAGS] THEN
+  STRIP_TAC THEN
+  MAP_EVERY (fun c -> ENSURES_PRESERVED_TAC ("init_"^fst(dest_const c)) c)
+   [`RBX`; `RBP`; `R12`; `R13`; `R14`; `R15`] THEN
+  REWRITE_TAC[fst SHA256_AVX2_EXEC] THEN ENSURES_INIT_TAC "s0" THEN
+  (* The input as one region, which the loop takes. *)
+  ABBREV_TAC `dv = read (memory :> bytes(data,64 * n)) s0` THEN
+  MP_TAC(SPECL [`s0:x86state`; `data:int64`; `n:num`; `m:num->int32 list`] SHA256_AVX2_INPUT_REL) THEN
+  ASM_REWRITE_TAC[] THEN DISCH_TAC THEN
+  FIRST_X_ASSUM(K ALL_TAC o check (fun th -> is_forall(concl th) && free_in `s0:x86state` (concl th))) THEN
+  (* The masks the prologue loads from the table, and the table as one
+     region. VMOVDQA's alignment check needs the table 32-byte aligned. *)
+  FIRST_ASSUM(STRIP_ASSUME_TAC o MATCH_MP SHA256_AVX2_K256 o
+    check (can (term_match [] `bytes_loaded s (word k) sha256_avx2_k256`) o concl)) THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[SHA256_AVX2_BYTES_LOADED]) THEN
+  fold 114 430 `544` THEN fold 122 454 `576` THEN
+  RULE_ASSUM_TAC(CONV_RULE(ONCE_DEPTH_CONV NUM_ADD_CONV)) THEN
+  SUBGOAL_THEN `aligned 32 (word k256:int64)` ASSUME_TAC THENL
+   [ASM_MESON_TAC[ALIGNED_WORD_WEAKEN; DIVIDES_CONV `32 divides 64`]; ALL_TAC] THEN
+  (* The pushes and the frame's alignment, then its stores and the loads
+     before the loop. *)
+  X86_STEPS_TAC SHA256_AVX2_EXEC (1--12) THEN
+  SHA256_AVX2_FRAME_TAC THEN
+  X86_STEPS_TAC SHA256_AVX2_EXEC (13--32) THEN
+  MP_TAC(SPECL [`data:int64`; `n:num`] SHA256_AVX2_N_FACTS) THEN
+  ANTS_TAC THENL [ASM_REWRITE_TAC[]; ALL_TAC] THEN
+  DISCH_THEN(fun th -> RULE_ASSUM_TAC(REWRITE_RULE[th; COND_SWAP])) THEN
+  (* The loop, from no blocks done. *)
+  MP_TAC thL THEN ANTS_TAC THENL [ASM_REWRITE_TAC[]; ALL_TAC] THEN
+  DISCH_THEN(MP_TAC o SPEC `0`) THEN
+  REWRITE_TAC[MULT_CLAUSES; ADD_CLAUSES; WORD_ADD_0; CONJUNCT1 sha256_hash_blocks] THEN
+  ASM_REWRITE_TAC[] THEN
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [SOME_FLAGS] THEN
+  X86_BIGSTEP_TAC SHA256_AVX2_EXEC "s33" THEN
+  (* The pops and the return. *)
+  RULE_ASSUM_TAC(REWRITE_RULE SHA256_AVX2_PUSH_SLOTS) THEN
+  X86_STEPS_TAC SHA256_AVX2_EXEC (34--43) THEN
+  ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
+  SHA256_AVX2_SUB_FRAME_TAC);;
