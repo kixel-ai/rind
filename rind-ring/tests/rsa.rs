@@ -194,6 +194,8 @@ fn key_pair_from_components() {
 
 /// `Debug` shows what ring's does, the public key, and none of the private
 /// integers.
+// ring does not build for wasm.
+#[cfg(not(target_family = "wasm"))]
 #[test]
 fn key_pair_components_debug() {
     use rind_ring::rsa as ours;
