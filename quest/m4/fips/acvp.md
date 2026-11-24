@@ -4,8 +4,7 @@
 
 [rind-acvp](/rind-acvp/README.md) answers ACVP test sets for every
 algorithm in rind's FIPS module, including the ones the module does not
-offer yet, and answers fresh sets from NIST's demo server, not only the
-sample sets `admin/sync-acvp` keeps.
+offer yet, on the sample sets `admin/sync-acvp` keeps.
 
 ## Plan
 
