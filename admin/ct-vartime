@@ -478,7 +478,11 @@ def mitigated(objects, node):
     def successors(i):
         _, mnemonic, operands = insns[i]
         names = named.get(i, ())
-        if mnemonic in END or any(PANICS.match(n) for n in names):
+        if mnemonic in END:
+            return []
+        # A call or jump to a panic never returns; a conditional jump to one
+        # falls through when not taken.
+        if mnemonic in ("call", "jmp") and any(PANICS.match(n) for n in names):
             return []
         # A jump with a relocation leaves the section, as a tail call.
         jump = mnemonic == "jmp" or BRANCH.fullmatch(mnemonic)
