@@ -311,8 +311,10 @@ macro_rules! run_voprf {
                 &proof,
                 theirs.get_public_key(),
             )
-            .unwrap();
-            for (output, direct) in outputs.zip(&direct) {
+            .unwrap()
+            .collect::<Vec<_>>();
+            assert_eq!(outputs.len(), direct.len());
+            for (output, direct) in outputs.into_iter().zip(&direct) {
                 assert_eq!(&output.unwrap()[..], direct.as_ref());
             }
         }
@@ -338,6 +340,7 @@ macro_rules! run_voprf {
         match voprf::Blind::finalize_batch(blinds, &evaluated, &proof, key.public_key()) {
             Ok(outputs) => {
                 assert!(!changed);
+                assert_eq!(outputs.len(), direct.len());
                 for (output, direct) in outputs.iter().zip(&direct) {
                     assert_eq!(output.as_ref(), direct.as_ref());
                 }
