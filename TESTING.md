@@ -307,10 +307,6 @@ and `powerpc` (the last two big-endian) under qemu, or `i686` (32-bit x86)
 natively.
 `just miri` runs the weekly `miri` job, the portable backend's tests under
 Miri, on x86_64, and `just miri s390x-unknown-linux-gnu` big-endian.
-With `RIND_SCOPE=BASE` set, such as `origin/main`, `admin/ctgrind` skips its
-run when nothing the branch changed since BASE reaches the backend it builds,
-as `sh/backends.sh` decides, and otherwise runs in full; pull requests'
-ctgrind job sets it.
 `nix develop .#ctgrind --command admin/ctgrind` runs the weekly
 constant-time checks under valgrind, `nix develop .#sde --command
 admin/ct-sde` those of the AVX-512, VAES, and SHA extension code
@@ -339,13 +335,17 @@ checks the proofs in [`proofs/`](proofs/README.md).
 ## Scheduled workflows
 
 The heavy suites run weekly on GitHub's hosted runners: `fuzz`, `ctgrind`,
-`bench`, and `mutants` on Saturday, `miri`, `x86-cpu`, and `timing` on Sunday (UTC),
+`bench`, and `mutants` on Saturday, `miri`, `x86-cpu`, `timing`, and the
+ESP32-S3 SHA-256 layout check on Sunday (UTC),
 each hours from the others, as their `cron:` lines set, so no two fill the
 organization's 60 concurrent hosted jobs together, and off the hour, which
 GitHub delays most. `build`, `asan`, `coverage`, `lints`, `prove`,
 `python`, `dart-libraries`, and `regenerate` run daily, and `Check` runs
 `just ci --all` on main's head daily as the backstop for the merge queue's
-diff-scoped selection. Each runs on demand with
+diff-scoped selection. `prove` also runs each push to main that reaches it,
+checking the bytes, and the HOL Light and Lean proofs and the cosimulation
+that main has not passed on the same inputs; a release waits for that run to
+pass. Each runs on demand with
 `gh workflow run <name> --ref <branch>`; a dispatched `bench` measures every
 bench target unless `-f benches='aes_gcm sha2'` names the ones to measure,
 and each CPU-tier row then times only those of them it covers. A dispatched
