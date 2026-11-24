@@ -193,11 +193,14 @@ pub(crate) fn argon2_compress(x: &Argon2Block, y: &Argon2Block, out: Argon2Out<'
     }
 
     match out {
+        // Written word by word rather than moved in whole, which would copy
+        // the block once more.
         Argon2Out::Set(out) => {
+            let out = out.as_mut_ptr().cast::<u64>();
             for i in 0..128 {
-                q.0[i] ^= r.0[i];
+                // SAFETY: the block is 128 words, any of which may be written.
+                unsafe { out.add(i).write(q.0[i] ^ r.0[i]) };
             }
-            out.write(q);
         }
         Argon2Out::Xor(out) => {
             for i in 0..128 {
