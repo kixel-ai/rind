@@ -12,9 +12,12 @@ readme = "README.md"
 # aws-lc-rs's own tests and test vectors, under their own licenses.
 exclude = ["tests/aws-lc-rs"]
 
-# Every feature, so docs.rs shows the items each gates, labeled with it.
+# Every feature, so docs.rs shows the items each gates, labeled with it. The
+# `fips` feature builds only for glibc Linux on x86_64 and aarch64, so docs.rs
+# builds for those two alone.
 [package.metadata.docs.rs]
 all-features = true
+targets = ["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu"]
 
 # The aws-lc-rs version whose API this crate offers, which its own version
 # tracks (sh/adapter-versions.sh), since it implements aws-lc-rs rather than
@@ -23,16 +26,16 @@ all-features = true
 upstream = "1"
 
 # aws-lc-rs's feature names, so a manifest naming them builds unchanged.
-# `ring-io` and `ring-sig-verify` gate what they gate there; the rest change
-# nothing. `fips` is left out, so a manifest asking for it fails to
-# resolve: rind is not FIPS validated.
+# `ring-io` and `ring-sig-verify` gate what they gate there; `fips` backs the
+# TLS record keys with rind-fips's module, on glibc Linux x86_64 and aarch64
+# only; the rest change nothing.
 # The provider admin/adapter-api diffs this crate's API against.
 [package.metadata.rind.api]
 crate = "aws-lc-rs"
 module = ""
 # aws-lc-rs fails to build without one of its C libraries.
 features = ["aws-lc-sys"]
-skip = { fips = "builds AWS-LC's FIPS module, which rind does not offer", asan = "builds AWS-LC under AddressSanitizer", bindgen = "generates AWS-LC's bindings with libclang" }
+skip = { fips = "builds AWS-LC's FIPS module; rind's own `fips` is tested by tests/fips.rs", asan = "builds AWS-LC under AddressSanitizer", bindgen = "generates AWS-LC's bindings with libclang" }
 # Items rind cannot back, which the README names.
 omitted = [
   "aead::AES_*_GCM_SIV",
@@ -89,6 +92,8 @@ asan = []
 aws-lc-sys = []
 bindgen = []
 dev-tests-only = []
+# Backs the TLS record keys with rind-fips's module (README, "FIPS").
+fips = ["dep:rind-fips"]
 legacy-des = []
 non-fips = ["aws-lc-sys"]
 prebuilt-nasm = []
@@ -99,6 +104,9 @@ unstable = []
 
 [dependencies]
 rind = { version = "0.3.2", path = "../rind" }
+# rind-fips is unpublished, so a published rind-aws-lc-rs cannot yet carry
+# this dependency until rind-fips is published: see the README.
+rind-fips = { version = "0.1.0", path = "../rind-fips", optional = true }
 untrusted = "0.7.1"
 zeroize = "1.9"
 
