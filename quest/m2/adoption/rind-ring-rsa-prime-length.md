@@ -23,18 +23,15 @@ It also loads a 3072-bit key with unbalanced primes, which ring refuses.
   the adapter, since rind already holds the primes and its `ct` tools.
 - The 2047-bit key also meets rind's own floor: `rind::rsa::KeyPair` refuses
   a modulus under 2048 bits (`MIN_MODULUS_BITS` in `rind/src/mid/rsa_priv.rs`),
-  as aws-lc-rs does, so rind-ring cannot accept it alone. See Waiting.
+  as aws-lc-rs does, so rind-ring cannot accept it alone.
+- Decided 2026-11-24 (maintainer, /quest-run): ✅ lower rind's private-key
+  floor to 2047 bits, whose 1024-bit primes give the strength of 2048, so
+  rind-ring loads 2047-bit keys as ring does, and have rind-aws-lc-rs refuse
+  under 2048 bits as aws-lc-rs does (rejected: keep rind's 2048-bit floor and
+  list 2047-bit keys as refused in rind-ring's README). An adapter's
+  divergence from its upstream is a bug under AGENTS.md.
 - Test against ring with 2047-, 3071-, 3072-, 4095-, and 4096-bit keys whose
   primes are each `ceil(n / 2)` bits, an unbalanced 3072-bit key, and a
   2560-bit key (1280-bit primes, refused), under `rind-ring/tests/rsa.rs`. Update the
   `KeyPair` doc comment in `rind-ring/src/rsa.rs`.
 
-## Waiting
-
-- Maintainer: whether rind-ring loads 2047-bit keys as ring does.
-  Recommendation: lower rind's private-key floor to 2047 bits, whose
-  1024-bit primes give the strength of 2048, and have rind-aws-lc-rs refuse
-  under 2048 bits as aws-lc-rs does, since AGENTS.md calls an adapter's
-  divergence a bug. Rejected: keep rind's 2048-bit floor and list 2047-bit
-  keys as refused in rind-ring's README, which keeps rind matching aws-lc-rs
-  but leaves rind-ring refusing a valid key ring loads.
