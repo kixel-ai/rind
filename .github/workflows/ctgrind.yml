@@ -180,8 +180,9 @@ jobs:
   #
   # Release and debug builds, as `build` checks, but the schedule skips the
   # 32-bit limbs' debug row to spare a hosted job, since only the limb
-  # arithmetic differs between the two. A dispatch naming rows, such as
-  # `portable:debug`, runs every row it names, that one included.
+  # arithmetic differs between the two. A dispatch of `portable` skips it too;
+  # one naming rows, such as `portable:debug`, runs every row it names, that
+  # one included.
   portable:
     name: portable (${{ matrix.limb }}-bit limbs, ${{ matrix.build }})
     needs: select
