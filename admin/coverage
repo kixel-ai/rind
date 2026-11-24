@@ -80,7 +80,7 @@ tests=(--workspace --exclude rind-bench --exclude rind-cpuid --exclude rind-fuzz
 # rind-fips's module refuses a CPU masked below its baseline.
 denied=("${tests[@]}" --exclude rind-fips)
 # The adapters sh/portable.sh and sh/armv7.sh test on those backends.
-portable=(-p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-ring -p rind-dimpl -p rind-openmls)
+portable=(-p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-rand-core -p rind-ring -p rind-dimpl -p rind-openmls)
 armv7=("${portable[@]}" -p rind-aws-lc-rs -p rind-str0m)
 
 case $tier in

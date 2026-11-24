@@ -15,10 +15,13 @@ rind/src/fips_rng.rs
 rind/src/high/signature/rsa.rs modulus_bits
 rind/src/mid/mldsa.rs verify_mu
 
-# `VpaesDecKey`'s wipe: only `AesDecKey` holds one, and its drop wipes the
-# whole enum first, so drop glue then finds another variant. The key keeps
-# its own wipe, as every key type does.
+# The decryption keys' wipes but the first variant's: only `AesDecKey` holds
+# one, and its drop wipes the whole enum, tag included, so the drop glue after
+# it reaches only the first variant. Each key keeps its own wipe, as every key
+# type does.
 rind/src/low/aarch64/vpaes_armv8.rs drop
+rind/src/low/arm/aesv8_armx.rs drop
+rind/src/low/arm/vpaes_armv7.rs drop
 rind/src/low/x86_64/vpaes_x86_64.rs drop
 
 # Error mappings for a failure no test can cause: signing failing with a key
