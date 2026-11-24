@@ -5,18 +5,26 @@ Usage: admin/binary-size [--write]
 
 Builds admin/build-cost-fixtures' `rind` and `rustls` programs in release, the
 latter over rind-rustls, and sums the sizes of the functions and tables that
-rind and rind-rustls define in each: what the linker kept of them, whatever
-the versions of rustls and std around them, which the fixtures do not pin.
+rind and rind-rustls define in each: what the linker kept of them.
 
 Fails unless each sum is the one recorded for this host's target, so a change
 that grows or shrinks rind in a binary records the new size, with `--write`,
 and its diff shows by how much. On a target with no record the programs are
-only built: the sizes are one toolchain's, the Nix dev shell's on x86_64
-Linux, where CI runs this, and `nm` reads them only from ELF.
+only built, with or without `--write`: the sizes are one toolchain's, the Nix
+dev shell's on x86_64 Linux, where CI runs this, and `nm` reads them only
+from ELF.
+
+The fixtures float on the newest rustls for admin/build-cost, and which of
+rind's code a program keeps depends on its other crates, so each builds here
+from its own lockfile, admin/binary-size-<fixture>.lock, copied over the
+fixture's ignored one. cargo still adds to the copy what the lockfile lacks,
+such as a new version of rind, and `--write` records the result. To take
+newer releases, delete the lockfile and run `--write`.
 """
 
 import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -39,26 +47,41 @@ HEADER = """\
 OURS = re.compile(r"^[<&\[(]*(?:rind|rind_rustls)::")
 
 
+def lockfile(fixture):
+    """The lockfile `fixture` builds from here."""
+    return ROOT / "admin" / f"binary-size-{fixture}.lock"
+
+
 def build_env():
     """The environment for each build, free of settings that change its code."""
     env = {
         k: v
         for k, v in os.environ.items()
-        if not k.startswith(("CARGO_PROFILE_", "CARGO_BUILD_"))
-        and not re.fullmatch(r"CARGO_TARGET_.*_RUSTFLAGS", k)
-        and k not in ("RUSTFLAGS", "CARGO_ENCODED_RUSTFLAGS")
+        if not k.startswith(("CARGO_PROFILE_", "CARGO_TARGET_", "CARGO_BUILD_"))
+        and k not in ("RUSTFLAGS", "CARGO_INCREMENTAL")
     }
+    # Empty, it also overrides the flags of a cargo configuration file.
+    env["CARGO_ENCODED_RUSTFLAGS"] = ""
     return env
 
 
-def build(fixture, features, env):
-    """Builds `fixture` in release and returns its binary."""
+def build(fixture, features, env, write):
+    """Builds `fixture` in release from its lockfile and returns its binary."""
     target = ROOT / "target"
+    used = FIXTURES / fixture / "Cargo.lock"
+    if lockfile(fixture).exists():
+        shutil.copyfile(lockfile(fixture), used)
+    elif write:
+        used.unlink(missing_ok=True)
+    else:
+        sys.exit(f"error: no {lockfile(fixture)}; `admin/binary-size --write` resolves one")
     cmd = ["cargo", "build", "--release", "--target-dir", str(target)]
     cmd += ["--manifest-path", str(FIXTURES / fixture / "Cargo.toml")]
     if features:
         cmd += ["--features", ",".join(features)]
     subprocess.run(cmd, env=env, check=True)
+    if write:
+        shutil.copyfile(used, lockfile(fixture))
     return target / "release" / f"build-cost-{fixture}"
 
 
@@ -97,13 +120,9 @@ def main():
     target = re.search(r"^host: (.+)$", host, re.M).group(1)
 
     record = read_record()
-    binaries = {fixture: build(fixture, features, env) for fixture, features in BUILDS.items()}
-    if write:
-        record.update({(target, fixture): measure(binary) for fixture, binary in binaries.items()})
-        rows = [f"{t} {f} {size}\n" for (t, f), size in sorted(record.items())]
-        RECORD.write_text(HEADER + "".join(rows))
-        return
-
+    binaries = {
+        fixture: build(fixture, features, env, write) for fixture, features in BUILDS.items()
+    }
     failed = False
     for fixture, binary in binaries.items():
         want = record.get((target, fixture))
@@ -111,7 +130,9 @@ def main():
             print(f"{fixture}: built; {target} has no recorded size")
             continue
         size = measure(binary)
-        if size == want:
+        if write:
+            record[target, fixture] = size
+        elif size == want:
             print(f"{fixture}: {size} bytes of rind, as recorded")
         else:
             failed = True
@@ -120,6 +141,9 @@ def main():
                 f"({(size - want) / want:+.1%}) against the {want} recorded",
                 file=sys.stderr,
             )
+    if write:
+        rows = [f"{t} {f} {size}\n" for (t, f), size in sorted(record.items())]
+        RECORD.write_text(HEADER + "".join(rows))
     if failed:
         sys.exit(
             "error: rind's size in a binary changed. If the change is meant, record it with "

@@ -231,6 +231,20 @@ pub(crate) fn cpu_denied(_id: &str) -> bool {
     false
 }
 
+/// Whether the build reads `RIND_CPU_DISABLE_*`: where `cpu_denied` can deny.
+#[cfg_attr(any(rind_backend = "portable", rind_backend = "arm"), allow(dead_code))]
+pub(crate) const CPU_DENIABLE: bool = cfg!(all(rind_std, any(debug_assertions, rind_cpu_disable)));
+
+/// Whether the target enables every CPU feature in `wanted`, in a build that
+/// cannot deny one. Each is then on every CPU the binary runs on, so a check
+/// for them is true at compile time, and the linker drops the kernels for
+/// CPUs without them.
+#[cfg_attr(any(rind_backend = "portable", rind_backend = "arm"), allow(dead_code))]
+#[inline(always)]
+pub(crate) const fn cpu_enabled(deniable: bool, enabled: u32, wanted: u32) -> bool {
+    !deniable && wanted & !enabled == 0
+}
+
 // Intel's MXCSR mitigation, where the instructions it covers exist: on x86
 // and x86_64 targets with SSE2, outside Miri, which runs no assembly.
 #[cfg_attr(

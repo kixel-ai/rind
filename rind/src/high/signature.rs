@@ -21,8 +21,7 @@ pub(crate) mod rsa;
 #[cfg(feature = "slh-dsa")]
 pub(crate) mod slh_dsa;
 
-// The tests cover every signature algorithm.
-#[cfg(all(test, feature = "ml-dsa", feature = "slh-dsa"))]
+#[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests;
 

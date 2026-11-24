@@ -168,7 +168,10 @@ impl core::fmt::Display for KeyRejected {
             KeyFormatError::X25519CannotSign => write!(f, "an X25519 key, which cannot sign"),
             #[cfg(not(all(feature = "ml-dsa", feature = "slh-dsa")))]
             KeyFormatError::FeatureDisabled(feature) => {
-                write!(f, "a key that rind loads only with its `{feature}` feature")
+                write!(
+                    f,
+                    "a key of an algorithm this build leaves out, rind's `{feature}` feature"
+                )
             }
         }
     }

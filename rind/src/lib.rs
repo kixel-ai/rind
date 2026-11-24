@@ -28,12 +28,6 @@
 #![cfg_attr(target_arch = "xtensa", feature(asm_experimental_arch))]
 // Unit tests run on hosted targets and keep `std`'s prelude.
 #![cfg_attr(not(test), no_std)]
-// Some test helpers serve only the tests that need every algorithm, which a
-// build that leaves one out skips.
-#![cfg_attr(
-    all(test, not(all(feature = "ml-dsa", feature = "slh-dsa"))),
-    allow(dead_code)
-)]
 
 extern crate alloc;
 

@@ -207,7 +207,7 @@ module structure '^(rind/(src/|Cargo\.toml$)|admin/structure$)' \
 # admin/build-cost builds these against rind's public API, and
 # admin/binary-size holds what rind adds to each to its record, which any
 # change to rind's code or the toolchain can move.
-module fixtures '^(rind/(src/|Cargo\.toml$|build\.rs$)|rind-rustls/(src/|Cargo\.toml$|build\.rs$)|Cargo\.toml$|flake\.lock$|admin/build-cost-fixtures/(rind|rustls)/|admin/binary-size(\.txt)?$)' \
+module fixtures '^(rind/(src/|Cargo\.toml$|build\.rs$)|rind-rustls/(src/|Cargo\.toml$|build\.rs$)|Cargo\.toml$|flake\.(nix|lock)$|admin/build-cost-fixtures/(rind|rustls)/|admin/binary-size(\.txt|-[a-z]+\.lock)?$)' \
     tools='cargo nm python3' compiles fix
 # Advisories, licenses, and sources move with any manifest or the policy.
 module deny '(^|/)Cargo\.(toml|lock)$|^deny\.toml$' \
@@ -441,16 +441,16 @@ step() {
             if names rind "${packages[@]}"; then
                 run cargo clippy -p rind --features zeroize --lib --test zeroing --locked -- --deny warnings
                 run cargo nextest run -p rind --features zeroize --test zeroing --locked
-            fi
-            # rind without the algorithms its features hold, as the adapters
-            # build it: no combination may leave dead code, and a key of an
-            # algorithm left out is refused by its feature's name.
-            if names rind "${packages[@]}"; then
+                # rind without the algorithms its features hold, as the
+                # adapters build it: no combination may leave dead code, a key
+                # of an algorithm left out is refused by its feature's name,
+                # and the other signature types' encodings fit its smaller
+                # buffers.
                 run cargo clippy -p rind --no-default-features --all-targets --locked -- --deny warnings
                 for features in ml-dsa slh-dsa; do
                     run cargo clippy -p rind --no-default-features --features "$features" --lib --locked -- --deny warnings
                 done
-                run cargo nextest run -p rind --no-default-features --lib --locked -E 'test(left_out_tests)'
+                run cargo nextest run -p rind --no-default-features --lib --locked -E 'test(high::signature::)'
             fi
             # The FIPS module's own code compiles only under its cfg, which a
             # workspace build leaves off, and only for glibc Linux on x86_64

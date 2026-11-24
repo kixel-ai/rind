@@ -475,18 +475,15 @@ const AVX2_KERNELS: u32 = AVX | AVX2 | BMI1 | BMI2 | POPCNT | SSSE3;
 const AES_GCM_BASE: u32 = AES | PCLMULQDQ | SSSE3 | SSE41 | AVX | AVX2 | MOVBE;
 const DETECTED: u32 = 1 << 31;
 
-/// Whether the build reads `RIND_CPU_DISABLE_*`, as `cpu_denied` does.
-const DENIABLE: bool = cfg!(all(rind_std, any(debug_assertions, rind_cpu_disable)));
-
 /// Whether the CPU has every feature in `wanted`.
 ///
-/// Features the target enables are on every CPU the binary runs on, so this
-/// is then true at compile time, and the linker drops the kernels for CPUs
-/// without them: a build for a CPU with BMI2 and ADX carries no `_alt`
-/// routine. A build that can deny a feature still asks.
+/// True at compile time for features the target enables (`cpu_enabled`): a
+/// build for a CPU with BMI2 and ADX carries no `_alt` routine. A build that
+/// can deny a feature still asks.
 #[inline]
 fn has(wanted: u32) -> bool {
-    (!DENIABLE && wanted & !ENABLED == 0) || features() & wanted == wanted
+    use super::super::{CPU_DENIABLE, cpu_enabled};
+    cpu_enabled(CPU_DENIABLE, ENABLED, wanted) || features() & wanted == wanted
 }
 
 static FEATURES: AtomicU32 = AtomicU32::new(0);

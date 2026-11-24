@@ -425,8 +425,8 @@ mod tests {
         let err = load(pki_types::PrivateKeyDer::Pkcs8(ml_dsa.into())).unwrap_err();
         assert!(
             [
-                "unsupported PKCS#8 key: a key was rejected: a key that rind loads only with \
-                 its `ml-dsa` feature",
+                "unsupported PKCS#8 key: a key was rejected: a key of an algorithm this build \
+                 leaves out, rind's `ml-dsa` feature",
                 "unsupported PKCS#8 key: MlDsa65(KeyPair { algorithm: ML-DSA-65, .. }), which \
                  rind-rustls does not sign with",
             ]

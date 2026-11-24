@@ -71,7 +71,7 @@ pub(crate) struct Shake<const R: usize> {
 pub(crate) type Shake128 = Shake<SHAKE_128_R_BYTES>;
 
 /// SHAKE256's reader.
-#[cfg(any(feature = "ml-dsa", test))]
+#[cfg(feature = "ml-dsa")]
 pub(crate) type Shake256 = Shake<SHAKE_256_R_BYTES>;
 
 #[cfg(any(feature = "ml-dsa", test))]
