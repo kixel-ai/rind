@@ -1362,11 +1362,23 @@ extract_armv7() {
         --start-from crate::aead::quic::AlgorithmId \
         --start-from crate::mid::chacha20::ChaCha20::new \
         --start-from crate::error::Error \
+        --start-from crate::mid::aes_gcm::AesGcm::new \
+        --start-from crate::mid::aes_gcm::AesGcm::encrypt \
+        --start-from crate::mid::aes_gcm::AesGcm::decrypt \
+        --start-from crate::mid::aes_gcm::AesGcm::encrypt_any \
+        --start-from crate::mid::aes_gcm::AesGcm::decrypt_any \
         --opaque crate::aead::quic::Masker \
         --opaque crate::mid::aes \
+        --include crate::mid::aes::check_gcm_lengths \
+        --include crate::mid::aes::check_gcm_iv \
+        --include crate::mid::aes::check_counter \
         --opaque crate::low \
         --include crate::low::ct \
         --include crate::low::generic::chacha20 \
+        --include crate::low::generic::ct_equal \
+        --include crate::low::portable::aes \
+        --include crate::low::portable::aes_nohw \
+        --include crate::low::portable::ghash_nohw \
         --dest-file "$PWD/../$out/armv7.llbc" \
         -- -p rind --lib --target armv7-unknown-linux-gnueabihf)
     to_lean Armv7

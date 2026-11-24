@@ -35,6 +35,7 @@ mod word {
 
     pub(super) type Word = __m128i;
     pub(super) const BATCH_SIZE: usize = 8;
+    pub(super) const BLOCK_WORDS: usize = 1;
 
     #[cfg_attr(coverage_nightly, coverage(off))] // const-evaluated only
     const fn splat(mask: [u32; 4]) -> Word {
@@ -211,6 +212,7 @@ macro_rules! integer_word_ops {
 mod word {
     pub(super) type Word = u64;
     pub(super) const BATCH_SIZE: usize = 4;
+    pub(super) const BLOCK_WORDS: usize = 2;
 
     pub(super) const ROW0: Word = 0x000f000f000f000f;
     pub(super) const ROW1: Word = 0x00f000f000f000f0;
@@ -274,6 +276,7 @@ mod word {
 mod word {
     pub(super) type Word = u32;
     pub(super) const BATCH_SIZE: usize = 2;
+    pub(super) const BLOCK_WORDS: usize = 4;
 
     pub(super) const ROW0: Word = 0x03030303;
     pub(super) const ROW1: Word = 0x0c0c0c0c;
@@ -312,27 +315,47 @@ mod word {
 
     /// Byte `k` of each of `a`, as a word.
     #[inline(always)]
-    fn byte_column(a: &[Word; 4], k: usize) -> Word {
-        Word::from_le_bytes(a.map(|a| (a >> (8 * k)) as u8))
+    fn byte_column(a: &[Word; 4], k: u32) -> Word {
+        let [a0, a1, a2, a3] = *a;
+        ((a0 >> (8 * k)) & 0xff)
+            | (((a1 >> (8 * k)) & 0xff) << 8)
+            | (((a2 >> (8 * k)) & 0xff) << 16)
+            | (((a3 >> (8 * k)) & 0xff) << 24)
     }
 
+    // Both written out a word at a time: Aeneas translates a closure or an
+    // iterator's loop into a model no proof of this file needs otherwise.
     #[inline(always)]
     pub(super) fn compact_block(input: &[u8; 16]) -> [Word; 4] {
-        let words = input.as_chunks::<4>().0;
-        let a = core::array::from_fn(|k| compact_word(Word::from_le_bytes(words[k])));
-        core::array::from_fn(|k| byte_column(&a, k))
+        let [b0, b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11, b12, b13, b14, b15] = *input;
+        let a = [
+            compact_word(Word::from_le_bytes([b0, b1, b2, b3])),
+            compact_word(Word::from_le_bytes([b4, b5, b6, b7])),
+            compact_word(Word::from_le_bytes([b8, b9, b10, b11])),
+            compact_word(Word::from_le_bytes([b12, b13, b14, b15])),
+        ];
+        [
+            byte_column(&a, 0),
+            byte_column(&a, 1),
+            byte_column(&a, 2),
+            byte_column(&a, 3),
+        ]
     }
 
     #[inline(always)]
     pub(super) fn uncompact_block(out: &mut [u8; 16], input: &[Word; 4]) {
-        for (k, bytes) in out.as_chunks_mut::<4>().0.iter_mut().enumerate() {
-            *bytes = uncompact_word(byte_column(input, k)).to_le_bytes();
-        }
+        let [b0, b1, b2, b3] = uncompact_word(byte_column(input, 0)).to_le_bytes();
+        let [b4, b5, b6, b7] = uncompact_word(byte_column(input, 1)).to_le_bytes();
+        let [b8, b9, b10, b11] = uncompact_word(byte_column(input, 2)).to_le_bytes();
+        let [b12, b13, b14, b15] = uncompact_word(byte_column(input, 3)).to_le_bytes();
+        *out = [
+            b0, b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11, b12, b13, b14, b15,
+        ];
     }
 }
 
-/// Words per block.
-const BLOCK_WORDS: usize = 16 / size_of::<Word>();
+// `BLOCK_WORDS` words hold a block.
+const _: () = assert!(BLOCK_WORDS * size_of::<Word>() == 16);
 
 /// A block in compact form.
 type Compact = [Word; BLOCK_WORDS];
@@ -354,15 +377,19 @@ impl Batch {
     /// square where the transpose expects them.
     #[inline(always)]
     fn set(&mut self, block: &Compact, i: usize) {
-        for (k, w) in block.iter().enumerate() {
-            self.w[i + k * BATCH_SIZE] = *w;
+        for k in 0..BLOCK_WORDS {
+            self.w[i + k * BATCH_SIZE] = block[k];
         }
     }
 
     /// Block `i` of a compact batch.
     #[inline(always)]
     fn get(&self, i: usize) -> Compact {
-        core::array::from_fn(|k| self.w[i + k * BATCH_SIZE])
+        let mut block = [ZERO; BLOCK_WORDS];
+        for k in 0..BLOCK_WORDS {
+            block[k] = self.w[i + k * BATCH_SIZE];
+        }
+        block
     }
 }
 
@@ -399,8 +426,8 @@ fn transpose(batch: &mut Batch) {
 fn to_batch(input: &[[u8; 16]]) -> Batch {
     assert!(input.len() <= BATCH_SIZE);
     let mut out = EMPTY;
-    for (i, block) in input.iter().enumerate() {
-        out.set(&compact_block(block), i);
+    for i in 0..input.len() {
+        out.set(&compact_block(&input[i]), i);
     }
     transpose(&mut out);
     out
@@ -412,8 +439,8 @@ fn from_batch(out: &mut [[u8; 16]], batch: &Batch) {
     assert!(out.len() <= BATCH_SIZE);
     let mut copy = *batch;
     transpose(&mut copy);
-    for (i, block) in out.iter_mut().enumerate() {
-        uncompact_block(block, &copy.get(i));
+    for i in 0..out.len() {
+        uncompact_block(&mut out[i], &copy.get(i));
     }
 }
 
@@ -421,8 +448,8 @@ fn from_batch(out: &mut [[u8; 16]], batch: &Batch) {
 
 #[inline(always)]
 fn add_round_key(batch: &mut Batch, key: &Batch) {
-    for (w, k) in batch.w.iter_mut().zip(key.w) {
-        *w = xor(*w, k);
+    for i in 0..8 {
+        batch.w[i] = xor(batch.w[i], key.w[i]);
     }
 }
 
@@ -595,31 +622,33 @@ fn inv_sub_bytes(batch: &mut Batch) {
 
 #[inline(always)]
 fn shift_rows(batch: &mut Batch) {
-    for w in &mut batch.w {
-        let row0 = and(*w, ROW0);
-        let row1 = and(*w, ROW1);
-        let row2 = and(*w, ROW2);
-        let row3 = and(*w, ROW3);
+    for i in 0..8 {
+        let w = batch.w[i];
+        let row0 = and(w, ROW0);
+        let row1 = and(w, ROW1);
+        let row2 = and(w, ROW2);
+        let row3 = and(w, ROW3);
         // Rotate the columns in row `r` right by `r`.
         let row1 = or(shift_right::<4>(row1), shift_left::<12>(row1));
         let row2 = or(shift_right::<8>(row2), shift_left::<8>(row2));
         let row3 = or(shift_right::<12>(row3), shift_left::<4>(row3));
-        *w = or(or(row0, row1), or(row2, row3));
+        batch.w[i] = or(or(row0, row1), or(row2, row3));
     }
 }
 
 #[inline(always)]
 fn inv_shift_rows(batch: &mut Batch) {
-    for w in &mut batch.w {
-        let row0 = and(*w, ROW0);
-        let row1 = and(*w, ROW1);
-        let row2 = and(*w, ROW2);
-        let row3 = and(*w, ROW3);
+    for i in 0..8 {
+        let w = batch.w[i];
+        let row0 = and(w, ROW0);
+        let row1 = and(w, ROW1);
+        let row2 = and(w, ROW2);
+        let row3 = and(w, ROW3);
         // Rotate the columns in row `r` right by `4 - r`.
         let row1 = or(shift_right::<12>(row1), shift_left::<4>(row1));
         let row2 = or(shift_right::<8>(row2), shift_left::<8>(row2));
         let row3 = or(shift_right::<4>(row3), shift_left::<12>(row3));
-        *w = or(or(row0, row1), or(row2, row3));
+        batch.w[i] = or(or(row0, row1), or(row2, row3));
     }
 }
 
@@ -729,11 +758,11 @@ fn setup_key_128(rd_key: &mut [Compact; 15], input: &[u8; 16]) {
 
     for i in 1..=10 {
         let sub = sub_block(&block);
-        for (j, (b, s)) in block.iter_mut().zip(sub).enumerate() {
+        for j in 0..BLOCK_WORDS {
             // Incorporate `rcon` and the transformed word into the first word.
-            let w = xor(*b, rcon_slice(RCON[i - 1], j));
-            let w = xor(w, shift_right::<12>(rotate_rows_down(s)));
-            *b = propagate(w);
+            let w = xor(block[j], rcon_slice(RCON[i - 1], j));
+            let w = xor(w, shift_right::<12>(rotate_rows_down(sub[j])));
+            block[j] = propagate(w);
         }
         rd_key[i] = block;
     }
@@ -820,12 +849,13 @@ fn setup_key_256(rd_key: &mut [Compact; 15], input: &[u8; 32]) {
     let mut block2 = compact_block(hi.try_into().unwrap());
     rd_key[1] = block2;
 
-    for i in (2..=14).step_by(2) {
+    for half in 1..8 {
+        let i = 2 * half;
         let sub = sub_block(&block2);
-        for (j, (b, s)) in block1.iter_mut().zip(sub).enumerate() {
+        for j in 0..BLOCK_WORDS {
             // Incorporate `rcon` and the transformed word into the first word.
-            let w = xor(*b, rcon_slice(RCON[i / 2 - 1], j));
-            *b = propagate(xor(w, shift_right::<12>(rotate_rows_down(s))));
+            let w = xor(block1[j], rcon_slice(RCON[half - 1], j));
+            block1[j] = propagate(xor(w, shift_right::<12>(rotate_rows_down(sub[j]))));
         }
         rd_key[i] = block1;
 
@@ -834,9 +864,9 @@ fn setup_key_256(rd_key: &mut [Compact; 15], input: &[u8; 32]) {
         }
 
         let sub = sub_block(&block1);
-        for (b, s) in block2.iter_mut().zip(sub) {
+        for j in 0..BLOCK_WORDS {
             // Incorporate the transformed word into the first word.
-            *b = propagate(xor(*b, shift_right::<12>(s)));
+            block2[j] = propagate(xor(block2[j], shift_right::<12>(sub[j])));
         }
         rd_key[i + 1] = block2;
     }
@@ -882,11 +912,11 @@ impl NohwKey {
     /// copies of each.
     pub(crate) fn schedule(&self) -> Schedule {
         let mut keys = [EMPTY; 15];
-        for (out, round_key) in keys.iter_mut().zip(&self.rd_key[..=self.rounds]) {
+        for r in 0..self.rounds + 1 {
             for i in 0..BATCH_SIZE {
-                out.set(round_key, i);
+                keys[r].set(&self.rd_key[r], i);
             }
-            transpose(out);
+            transpose(&mut keys[r]);
         }
         Schedule {
             keys,
@@ -965,15 +995,15 @@ impl Schedule {
 
     #[inline(always)]
     fn encrypt_batch(&self, batch: &mut Batch) {
-        let keys = &self.keys[..=self.rounds];
+        let keys = &self.keys[..self.rounds + 1];
         let (first, rest) = keys.split_first().unwrap();
         let (last, middle) = rest.split_last().unwrap();
         add_round_key(batch, first);
-        for round_key in middle {
+        for r in 0..middle.len() {
             sub_bytes(batch);
             shift_rows(batch);
             mix_columns(batch);
-            add_round_key(batch, round_key);
+            add_round_key(batch, &middle[r]);
         }
         sub_bytes(batch);
         shift_rows(batch);
@@ -982,7 +1012,7 @@ impl Schedule {
 
     #[inline(always)]
     fn decrypt_batch(&self, batch: &mut Batch) {
-        let keys = &self.keys[..=self.rounds];
+        let keys = &self.keys[..self.rounds + 1];
         let (first, rest) = keys.split_first().unwrap();
         let (last, middle) = rest.split_last().unwrap();
         add_round_key(batch, last);
@@ -1021,26 +1051,45 @@ impl Schedule {
     /// The counter blocks are `ivec`, then `ivec` with its last four bytes,
     /// a big-endian counter, incremented with 32-bit wrapping.
     pub(crate) fn ctr32(&self, ivec: &[u8; 16], inout: &mut [u8]) {
-        let mut ivs = [*ivec; BATCH_SIZE];
-        let mut enc_ivs = [[0u8; 16]; BATCH_SIZE];
-
-        let mut ctr = u32::from_be_bytes(ivec[12..].try_into().unwrap());
-        for chunk in inout.chunks_mut(16 * BATCH_SIZE) {
-            for (i, iv) in (0..).zip(&mut ivs) {
-                iv[12..].copy_from_slice(&ctr.wrapping_add(i).to_be_bytes());
+        let [.., c0, c1, c2, c3] = *ivec;
+        let mut ctr = u32::from_be_bytes([c0, c1, c2, c3]);
+        // By index, a whole batch at a time and then the rest: Aeneas
+        // translates no loop that writes through an iterator's references.
+        let (chunks, tail) = inout.as_chunks_mut::<{ 16 * BATCH_SIZE }>();
+        for n in 0..chunks.len() {
+            let stream = self.keystream(ivec, ctr, BATCH_SIZE);
+            for i in 0..16 * BATCH_SIZE {
+                chunks[n][i] ^= stream[i / 16][i % 16];
             }
-
-            let todo = chunk.len().div_ceil(16);
-            let mut batch = to_batch(&ivs[..todo]);
-            self.encrypt_batch(&mut batch);
-            from_batch(&mut enc_ivs[..todo], &batch);
-
-            for (b, e) in chunk.iter_mut().zip(enc_ivs.as_flattened()) {
-                *b ^= e;
-            }
-
             ctr = ctr.wrapping_add(BATCH_SIZE as u32);
         }
+
+        if !tail.is_empty() {
+            let stream = self.keystream(ivec, ctr, tail.len().div_ceil(16));
+            for i in 0..tail.len() {
+                tail[i] ^= stream[i / 16][i % 16];
+            }
+        }
+    }
+
+    /// The keystream of the `todo` counter blocks from `ivec` with `ctr` as
+    /// its counter, at most `BATCH_SIZE`; the blocks past them are zero.
+    #[inline(always)]
+    fn keystream(&self, ivec: &[u8; 16], ctr: u32, todo: usize) -> [[u8; 16]; BATCH_SIZE] {
+        let mut ivs = [*ivec; BATCH_SIZE];
+        for i in 0..BATCH_SIZE {
+            let [c0, c1, c2, c3] = ctr.wrapping_add(i as u32).to_be_bytes();
+            ivs[i][12] = c0;
+            ivs[i][13] = c1;
+            ivs[i][14] = c2;
+            ivs[i][15] = c3;
+        }
+
+        let mut batch = to_batch(&ivs[..todo]);
+        self.encrypt_batch(&mut batch);
+        let mut stream = [[0u8; 16]; BATCH_SIZE];
+        from_batch(&mut stream[..todo], &batch);
+        stream
     }
 
     /// Encrypts whole blocks in place in CBC mode, the first chained from
