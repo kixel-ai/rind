@@ -409,21 +409,27 @@ mod tests {
 
     // A core that runs `mrs DIT` has DIT, whatever the OS reports, so a child
     // process runs it, on a Unix OS, which reports the illegal instruction
-    // as a signal.
+    // as a signal. A hypervisor may hide DIT, as GitHub's arm64 runners'
+    // does, but no OS reports it on a core without it, and macOS reports it
+    // on every core with it.
     #[cfg(unix)]
     #[test]
     #[cfg_attr(
         feature = "__ctgrind",
-        ignore = "valgrind hides DIT, which the child runs natively"
+        ignore = "valgrind hides DIT from the test but not from its child"
     )]
-    fn enables_dit_whenever_the_cpu_has_it() {
+    fn enables_dit_whenever_the_os_reports_it() {
         let has_dit = child_reads_dit();
+        let reported = std::arch::is_aarch64_feature_detected!("dit");
+        assert!(has_dit || !reported, "the OS reports DIT the core lacks");
+        #[cfg(target_vendor = "apple")]
+        assert_eq!(reported, has_dit);
 
-        let expected = test_toggle("dit", has_dit);
+        let expected = test_toggle("dit", reported);
         assert_eq!(features() & DIT != 0, expected);
-        // A denied DIT is left alone.
+        // A DIT the OS hides or the caller denies is left alone.
         if has_dit && !expected {
-            // SAFETY: this core has DIT, though `test_toggle` denies it.
+            // SAFETY: this core has DIT, though rind may not set it.
             unsafe { dit::write(0) };
             drop(crate::low::Entry::new_secret());
             let _held = crate::cpu::Dit::hold();

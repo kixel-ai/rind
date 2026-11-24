@@ -23,9 +23,11 @@ qemu. iOS devices' code is only built.
   Apple's do, secret-dependent code runs with data-independent timing, set
   and cleared in each call unless `rind::cpu::Dit::hold()` holds it across a
   batch of calls, as Arm
-  [recommends](https://developer.arm.com/documentation/ka005181/1-0/). Rust's
-  detection finds DIT on Linux, Android, and Apple's platforms, but not on
-  Windows or the BSDs, which run without it.
+  [recommends](https://developer.arm.com/documentation/ka005181/1-0/). It
+  runs without DIT wherever the OS doesn't report it: Rust's detection finds
+  it only on Linux, Android, and Apple's platforms, not on Windows or the
+  BSDs, and a hypervisor may hide it, as that of GitHub's Neoverse N2
+  runners does.
 - `x86_64` runs on every x86_64 CPU. It needs a target that enables SSE2,
   as every one with an OS does; `x86_64-unknown-none` and
   `x86_64-unknown-uefi` disable it and run the portable backend. Without `aes` and `pclmulqdq`, as on
