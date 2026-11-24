@@ -175,7 +175,8 @@ requests: a run takes hours, so a change to the portable backend runs
 Miri runs each test hundreds of times slower than a native build, so it runs a
 subset: the unit tests and `tests/cpu.rs` and `tests/debug.rs`, without the
 tests `sh/miri.sh` lists as slow, which are the vector sets and long loops
-over inputs, RSA private-key operations beyond one for each key type, and the
+over inputs, RSA key generation and private-key operations beyond one for each
+key type, and the
 tests that run many scalar multiplications. `sh/miri.sh` fails on an entry
 that names no test, so a rename cannot slip a slow test back in. A test that
 repeats one code path over parameter sets or cases runs only those that take
