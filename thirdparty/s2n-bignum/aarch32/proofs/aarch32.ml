@@ -207,11 +207,13 @@ let AARCH32_CONV (decode_ths:thm option array) (ths:thm list) tm =
     map (MATCH_MP aligned_bytes_loaded_aligned) aligned_bytes_loaded_mc_ths @
     ths in
   (* A branch target is a loaded word, which the assumptions give only at
-     its address's normal form. *)
+     its address's normal form, and an address may be a known base's
+     offset, which is aligned or not only once the sum is taken. *)
   let target_conv =
     SUB_ALIGNED_WORD_CONV
      (TOP_DEPTH_CONV
        (GEN_REWRITE_CONV I (filter (is_eq o concl) ths) ORELSEC
+        WORD_RED_CONV ORELSEC
         NORMALIZE_RELATIVE_ADDRESS_CONV)) in
   (K eth THENC
    REWRITE_CONV
@@ -549,8 +551,9 @@ let AARCH32_ADD_RETURN_STACK_TAC =
     ASM_REWRITE_TAC[];;
 
 (* ------------------------------------------------------------------------- *)
-(* The wrappers and a literal load, proven of three small routines as this   *)
-(* file loads, as riscv/tutorial/subroutine.ml proves s2n-bignum's.          *)
+(* The wrappers, a literal load, and a load at a known base's offset, proven *)
+(* of four small routines as this file loads, as                             *)
+(* riscv/tutorial/subroutine.ml proves s2n-bignum's.                         *)
 (* ------------------------------------------------------------------------- *)
 
 let AARCH32_SUBROUTINE_TESTS =
@@ -647,4 +650,18 @@ let AARCH32_SUBROUTINE_TESTS =
     REWRITE_TAC[fst literal_exec] THEN
     REPEAT STRIP_TAC THEN
     AARCH32_SIM_TAC literal_exec [1;2]) in
-  [nostack; stack; literal];;
+  (* ldrd r4, r5, [r0, #3], at an address that only the sum aligns. *)
+  let offset_mc = define "aarch32_test_offset_mc" [0xe1c040d3] in
+  let offset_exec = AARCH32_MK_EXEC_RULE offset_mc in
+  let offset = prove
+   (`!pc.
+      ensures aarch32
+        (\s. aligned_bytes_loaded s (word pc) aarch32_test_offset_mc /\
+             read PC s = word pc /\
+             read R0 s = word 0x1001)
+        (\s. read PC s = word (pc + 4))
+        (MAYCHANGE [PC] ,, MAYCHANGE [R4; R5] ,, MAYCHANGE [events])`,
+    REWRITE_TAC[fst offset_exec] THEN
+    REPEAT STRIP_TAC THEN
+    AARCH32_SIM_TAC offset_exec [1]) in
+  [nostack; stack; literal; offset];;

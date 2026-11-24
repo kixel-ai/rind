@@ -404,15 +404,23 @@ let decode = new_definition
 
 open Compute;;
 
+(* Whether a decode theorem says the encoding is unsupported. *)
+
+let is_decode_none th =
+  match rhs (concl th) with Const("NONE",_) -> true | _ -> false;;
+
 (* Prove the result of decoding one concrete 32-bit instruction word. The
-   input must have the form `decode (word n)`, and the conversion fails when
-   the encoding is unsupported. For example, applying `PURE_DECODE_CONV` to
+   input must have the form `decode (word n)`. For example, applying
+   `DECODE_OPTION_CONV` to
 
      `decode (word 0xe0200002)`
 
-   proves that 0xe0200002 decodes to `SOME (aarch32_EOR R0 R0 R2)`. *)
+   proves that 0xe0200002 decodes to `SOME (aarch32_EOR R0 R0 R2)`, and an
+   unsupported encoding's theorem says it decodes to `NONE`. It fails only
+   when the evaluation reaches neither, which is a fault in the decoder or
+   in this conversion, not a refusal. *)
 
-let PURE_DECODE_CONV =
+let DECODE_OPTION_CONV =
   let decode_rw =
     let rw = bool_compset() in
     set_skip rw `COND:bool->A->A->A` (Some 1);
@@ -433,16 +441,28 @@ let PURE_DECODE_CONV =
      add_thms [GEN_REWRITE_RULE I [conceal_th] decode] rw;
      add_conv (opaque_const, opaque_arity, opaque_conv) rw);
     rw in
-  let base_conv = WEAK_CBV_CONV decode_rw in
+  let base_conv = WEAK_CBV_CONV decode_rw
+  (* The decision tree above has no leaf for a word that matches no clause,
+     so it leaves one unevaluated: the clauses in order reach the default. *)
+  and default_conv = REWR_CONV decode THENC BITMATCH_SEQ_CONV in
+  let is_result r =
+    match r with
+    | Const("NONE",_) | Comb(Const("SOME",_),_) -> true
+    | _ -> false in
   fun t ->
-    try
-      let th = base_conv t in
-      let c = concl th in
-      let r,_ = dest_comb (rhs c) in
-      if is_const r && name_of r = "SOME" then th else failwith ""
-    with Failure _ -> failwith ("PURE_DECODE_CONV: " ^ string_of_term t);;
+    let th = base_conv t in
+    if is_result (rhs (concl th)) then th else
+    let th' = try default_conv t with Failure _ -> th in
+    if is_decode_none th' then th' else
+    failwith ("DECODE_OPTION_CONV: " ^ string_of_term t ^
+              " evaluates to " ^ string_of_term (rhs (concl th)));;
 
-let DECODE_CONV = PURE_DECODE_CONV;;
+(* `DECODE_OPTION_CONV` for an encoding that must be supported. *)
+
+let DECODE_CONV t =
+  let th = DECODE_OPTION_CONV t in
+  if is_decode_none th
+  then failwith ("DECODE_CONV: unsupported " ^ string_of_term t) else th;;
 
 (* One encoding per instruction form, checked as this file loads, with
    operand shapes the manual's special cases distinguish: each shift type
@@ -562,10 +582,8 @@ let AARCH32_DECODE_TESTS =
 
 let AARCH32_DECODE_REFUSALS =
   let refuse tm =
-    (try ignore (DECODE_CONV tm);
-         failwith ("AARCH32_DECODE_REFUSALS: decoded " ^ string_of_term tm)
-     with Failure s when String.length s >= 16 &&
-                         String.sub s 0 16 = "PURE_DECODE_CONV" -> ()) in
+    if not (is_decode_none (DECODE_OPTION_CONV tm)) then
+      failwith ("AARCH32_DECODE_REFUSALS: decoded " ^ string_of_term tm) in
   List.iter refuse
    [`decode (word 0xe08ff000)`;                (* add pc, pc, r0 *)
     `decode (word 0xe1a0f00e)`;                (* mov pc, lr *)
@@ -673,16 +691,16 @@ let AARCH32_DECODES_THM =
       match l' with
       | Const("NIL",_) -> []
       | _ -> go (bth ()) in
-    match (try Some (DECODE_CONV (mk_comb (dec,a))) with Failure _ -> None) with
-    | None ->
-        rest (fun () ->
-          itlist PROVE_HYP [th4; th; th1]
-            (INST [pc,epc; pc',epc'; l,el; a,ea; l',el'] sth))
-    | Some th2 ->
-        let i = rand (rhs (concl th2)) in
-        let th' = itlist PROVE_HYP [REFL i; th4; th; th1; th2]
-          (INST [i,ei; i,ei'; pc,epc; pc',epc'; l,el; a,ea; l',el'] pth) in
-        (CONJUNCT1 th',pcofs)::rest (fun () -> CONJUNCT2 th') in
+    let th2 = DECODE_OPTION_CONV (mk_comb (dec,a)) in
+    if is_decode_none th2 then
+      rest (fun () ->
+        itlist PROVE_HYP [th4; th; th1]
+          (INST [pc,epc; pc',epc'; l,el; a,ea; l',el'] sth))
+    else
+      let i = rand (rhs (concl th2)) in
+      let th' = itlist PROVE_HYP [REFL i; th4; th; th1; th2]
+        (INST [i,ei; i,ei'; pc,epc; pc',epc'; l,el; a,ea; l',el'] pth) in
+      (CONJUNCT1 th',pcofs)::rest (fun () -> CONJUNCT2 th') in
   fun th ->
     let decodes:(thm*term) list =
       (go o

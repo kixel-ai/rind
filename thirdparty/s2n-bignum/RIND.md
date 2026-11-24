@@ -61,8 +61,8 @@ Each bullet names one file.
 - `aarch32/proofs/decode.ml`: rind's. Their A32 encodings.
 - `aarch32/proofs/aarch32.ml`: rind's. The step relation, symbolic-execution
   tactics, AAPCS argument and clobber lists, and the tactics that promote a
-  core theorem to one of a subroutine, with the three small routines that
-  check them as the file loads.
+  core theorem to one of a subroutine, with the four small routines that
+  check them and the step conversion as the file loads.
 - `aarch32/proofs/consttime.ml`: rind's. s2n-bignum's safety tactics
   specialized to the model.
 - `aarch32/proofs/base.ml`: rind's. What a proof on the model loads.
@@ -172,16 +172,18 @@ unprivileged forms, write-back to a transferred register, SP in an `LDM` or
 A step either has one next state or, where the instruction would leave what
 the model holds, any: a proof that reaches such a step proves nothing, as in
 s2n-bignum's other models. That is `BX`, or a load into PC, of a target not
-aligned to four bytes, which would enter Thumb, and `LDRD`, `STRD`, `LDM`,
-`STM`, or a load into PC at an address not aligned to four bytes, which
-faults. So a subroutine's theorem assumes `aligned 4` of its return address
-and, where it uses the stack, of SP. Other loads and stores may be unaligned,
-as Linux and Android leave them.
+aligned to four bytes, which enters Thumb when its bit 0 is set and is
+otherwise unpredictable, and `LDRD`, `STRD`, `LDM`, `STM`, or a load into PC
+at an address not aligned to four bytes, which faults. So a subroutine's
+theorem assumes `aligned 4` of its return address and, where it uses the
+stack, of SP. Other loads and stores may be unaligned, as Linux and Android
+leave them.
 
 `AARCH32_MK_EXEC_RULE` gives a word that does not decode no theorem rather
 than failing, since A32 routines keep literal pools and tables among their
 instructions, and the step conversion folds a constant offset from R15 into
-`word (pc + n)`, where a proof states what the pool holds.
+`word (pc + n)`, where a proof states what the pool holds, as long as the
+address is not before `pc`, the code's first byte.
 `AARCH32_ADD_RETURN_NOSTACK_TAC` and `AARCH32_ADD_RETURN_STACK_TAC` are
 `RISCV_ADD_RETURN_NOSTACK_TAC` and `RISCV_ADD_RETURN_STACK_TAC` for the AAPCS:
 a return by `bx lr`, or a prologue and epilogue around the core, by default

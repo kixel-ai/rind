@@ -197,7 +197,9 @@ let executor_address name =
   match filter (fun s -> String.length s > n && String.sub s 0 n = prefix)
                metadata with
   | [s] -> int_of_string (String.sub s n (String.length s - n))
-  | _ -> failwith ("AArch32 executor's greeting lacks " ^ prefix);;
+  | _ ->
+      failwith ("AArch32 executor's greeting lacks " ^ prefix ^
+                ": build it from this tree's cosim_runner.c and cosim_start.S");;
 
 let slot_address = lazy (executor_address "slot");;
 let scratch_address = lazy (executor_address "scratch");;
@@ -413,13 +415,16 @@ let make_load_pc_case input =
       case_memop = false;
       case_input = with_word (at / 4) (random_landing ()) input };;
 
-(* A literal load of one of the buffer's first words, which follow the
+(* A literal load of one of the buffer's 64 words that follow the
    instruction closely enough for its 12-bit offset. *)
 let make_literal_case input =
   let reach = Lazy.force scratch_address - (Lazy.force slot_address + 8) in
+  let words = min 64 ((4096 - reach) / 4) in
+  if reach < 0 || reach mod 4 <> 0 || words <= 0 then
+    failwith "AArch32 executor's buffer is out of a literal load's reach";
   { case_instruction =
       encode_ldst (random_condition ()) true true false false true 15
-        (random_register ()) (reach + 4 * Random.int ((4096 - reach) / 4));
+        (random_register ()) (reach + 4 * Random.int words);
     case_memop = false; case_input = input };;
 
 let caseclasses =

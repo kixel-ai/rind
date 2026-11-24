@@ -23,7 +23,8 @@
    registers, exceptions, and the system registers.
 
    A branch to a register's or a loaded word's value interworks: bit 0 of
-   the target selects Thumb, which this state cannot hold. So BX and a load
+   the target selects Thumb, which this state cannot hold, and a target with
+   bit 1 set alone is UNPREDICTABLE. So BX and a load
    into PC take only a target aligned to four bytes, and allow every next
    state otherwise, as s2n-bignum's models do an instruction whose side
    condition fails: a proof that reaches one proves nothing.
