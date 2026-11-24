@@ -45,6 +45,35 @@ def published(path):
     return not path.startswith("/") and len(parts) > 2 and parts[1] == "src"
 
 
+def defining(name):
+    """The segments of the path that defines a demangled function, without
+    its generic arguments, its trait, or the closures inside it: so
+    `<a::Foo<b::tests::T> as Drop>::drop::{closure#0}` is `a`, `Foo`, `drop`.
+    A test's types and closures, as generic arguments, are left out."""
+    out, depth = [], 0
+    for i, c in enumerate(name):
+        if depth:
+            if c == "<":
+                depth += 1
+            elif c == ">" and name[i - 1] != "-":
+                depth -= 1
+        elif c == "<" and out and (out[-1].isalnum() or out[-1] in "_:"):
+            # A generic argument list, after a name or as a turbofish.
+            depth = 1
+            if out[-2:] == [":", ":"]:
+                del out[-2:]
+        else:
+            out.append(c)
+    path = "".join(out)
+    # What remains of angle brackets are qualified paths: `<T as Trait>`
+    # and `<T>` each define in `T`.
+    while True:
+        path, n = re.subn(r"<([^<>]*?)(?: as [^<>]*)?>", r"\1", path)
+        if not n:
+            break
+    return [s for s in path.split("::") if not s.startswith("{")]
+
+
 def demangle(names):
     # cargo-llvm-cov's own demangler, the one its text report uses, reads
     # one symbol a line.
@@ -74,7 +103,9 @@ def export(report, output):
     regions = collections.Counter()
     branches = collections.Counter()
     for (files, function), name in zip(records, demangle([f["name"] for _, f in records])):
-        if "::tests::" in name:
+        # A test module's own functions, not the published ones a test
+        # instantiates with its types or closures.
+        if "tests" in defining(name):
             continue
         if published(files[0]):
             functions.append([files[0], function["regions"][0][0], name, function["count"]])
@@ -111,13 +142,14 @@ def load(tiers):
 
 
 def allowlist():
-    """Each entry: a path, or a directory ending in `/`, and the names of the
-    functions it allows there, or none to allow every function in it."""
+    """Each entry: a path, or a directory ending in `/`, and the name of a
+    function it allows there, or none to allow every function in it. A line
+    naming several functions is an entry for each, so each must stay in use."""
     entries = []
     for line in open(ALLOW):
         words = line.split("#", 1)[0].split()
         if words:
-            entries.append((words[0], tuple(words[1:])))
+            entries.extend((words[0], (fn,) if fn else ()) for fn in words[1:] or [None])
     return entries
 
 
@@ -127,10 +159,13 @@ def within(path, where):
 
 def allows(entry, path, names):
     where, fns = entry
-    # A name matches a segment of the demangled path, so a function's entry
-    # also allows its closures.
+    # A name, such as `sign` or `Key::sign`, matches the end of the path that
+    # defines a function, so it also allows the closures inside it but no
+    # other function of the same module or name.
     return within(path, where) and (
-        not fns or any(re.search(rf"(^|::){re.escape(fn)}(::|<|$)", n) for fn in fns for n in names)
+        not fns or any(
+            defining(n)[-len(fn.split("::")):] == fn.split("::") for fn in fns for n in names
+        )
     )
 
 

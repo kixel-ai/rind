@@ -16,6 +16,7 @@ on:
       - rind/src/low/arm/**
       - rind/src/low/portable/**
       - sh/armv7.sh
+      - sh/armv7-tiers.sh
       - sh/portable.sh
       - rind-dart/**
       - rind-openmls/**
@@ -59,7 +60,7 @@ jobs:
             changed=$(sh/changed.sh)
           fi
           for rule in \
-            'armv7=^(rind/src/low/arm/|sh/armv7\.sh$|\.github/workflows/build\.yml$)' \
+            'armv7=^(rind/src/low/arm/|sh/armv7(-tiers)?\.sh$|\.github/workflows/build\.yml$)' \
             'portable=^(rind/src/low/portable/|sh/portable\.sh$|\.github/workflows/build\.yml$)' \
             'dart=^(rind-dart/|\.github/workflows/build\.yml$)' \
             'openmls=^(rind-openmls/|sh/openmls\.sh$|\.github/workflows/build\.yml$)'; do

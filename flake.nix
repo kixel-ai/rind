@@ -818,11 +818,16 @@
             # which already carries the target.
             # `just wasm` runs in it: wasmtime for WASI, and for the browser's
             # target wasm-bindgen's test runner in Node. The runner must be
-            # the wasm-bindgen release Cargo.lock pins.
+            # the one wasm-bindgen release Cargo.lock pins.
             wasm =
               let
                 lock = builtins.fromTOML (builtins.readFile ./Cargo.lock);
-                wasm-bindgen = builtins.head (builtins.filter (p: p.name == "wasm-bindgen") lock.package);
+                pinned = builtins.filter (p: p.name == "wasm-bindgen") lock.package;
+                wasm-bindgen =
+                  if builtins.length pinned == 1 then
+                    builtins.head pinned
+                  else
+                    throw "Cargo.lock pins ${toString (builtins.length pinned)} wasm-bindgen releases; the wasm shell's test runner must match exactly one";
               in
               mkDevShell {
                 packages = [

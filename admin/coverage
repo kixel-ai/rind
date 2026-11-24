@@ -41,6 +41,13 @@ case $tier in
         ;;
 esac
 
+# admin/coverage-gate demangles through cargo-llvm-cov's internal demangler,
+# which a cargo-llvm-cov bump could drop: fail now, not after hours of tests.
+if [[ $(__CARGO_LLVM_COV_DEMANGLER=1 cargo-llvm-cov <<<_RNvC4rind5probe) != rind::probe ]]; then
+    echo "error: cargo-llvm-cov no longer demangles as admin/coverage-gate needs" >&2
+    exit 1
+fi
+
 # for branch coverage support, which is unstable
 export RUSTC_BOOTSTRAP=1
 OPTIONS=(--branch)
