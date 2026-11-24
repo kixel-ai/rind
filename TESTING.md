@@ -348,7 +348,18 @@ GitHub delays most. `build`, `asan`, `coverage`, `lints`, `prove`,
 diff-scoped selection. Each runs on demand with
 `gh workflow run <name> --ref <branch>`; a dispatched `bench` measures every
 bench target unless `-f benches='aes_gcm sha2'` names the ones to measure,
-and each CPU-tier row then times only those of them it covers. A dispatched
+and each CPU-tier row then times only those of them it covers.
+`bench`'s `instructions` job counts each benchmark's instructions under
+Valgrind with kixel-ai/rust2's `rust2-bench`, which `flake.nix` pins with
+Valgrind, and uploads them for Kixel Quest, which bisects a count that moved
+by dispatching the workflow with `benchmarks`, the IDs to count. Valgrind
+hides AVX-512, VAES, VPCLMULQDQ, and the SHA extensions, and the `bench` shell
+sets `VALGRIND_BUG_494162`, so the counts measure the x86_64 tier with AVX2
+and ADX, Broadwell's to Cooper Lake's, whatever the runner's CPU. Benchmark
+sets must not depend on the CPU, since the runner lists them natively and
+counts them under Valgrind: `rsa_gen`, which registers nothing without
+`NOISY_BENCHMARKS`, is left out, and the count build drops the Graviola
+handshakes. A dispatched
 `ctgrind` runs every job unless `-f jobs='x86_64-sde:rsa4096 armv7:no-neon'`
 names some, each whole or narrowed to the rows with the named matrix values,
 as `sh/select-jobs.sh` describes. `alert.yml`

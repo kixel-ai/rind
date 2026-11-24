@@ -15,6 +15,10 @@
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.flake-utils.follows = "flake-utils";
     };
+    # rust2-bench, which counts the weekly bench's instructions under the
+    # Valgrind its own nixpkgs pins. Bumping the rev can move every count,
+    # and a new Valgrind starts new series: keep its nixpkgs, not ours.
+    rust2.url = "github:kixel-ai/rust2/af1a76643700cf0314b7a2e02ef159c563712c2e";
   };
 
   outputs =
@@ -23,6 +27,7 @@
       flake-utils,
       rust-overlay,
       quest,
+      rust2,
       ...
     }:
     flake-utils.lib.eachSystem
@@ -974,6 +979,23 @@
               ];
 
               shellHook = sde-certs;
+            };
+
+            # The bench workflow's instruction counts, `rust2-bench run` and
+            # `rust2-bench compare <base>`, which build rind-bench with its C
+            # baselines. rust2-bench runs on x86_64 Linux only.
+            bench = mkDevShell {
+              packages = [
+                rust-stable.minimal
+                rust2.packages.${system}.bench
+                pkgs.cmake
+                pkgs.pkg-config
+                pkgs.openssl
+              ];
+              # Valgrind hides ADX, which every CPU since Broadwell has, so
+              # rind takes its ADX routines anyway, as under `admin/ctgrind`.
+              # See UPSTREAM.md, "Valgrind hides ADX from `cpuid`".
+              env.VALGRIND_BUG_494162 = "1";
             };
           };
 
