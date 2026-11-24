@@ -29,12 +29,15 @@ jobs:
 
     runs-on: ${{ matrix.os }}
     env:
-      # Rust's own ASan runtime, not the system's: Ubuntu 24.04's, from GCC
-      # 13, takes no lock across fork, so rind-fips's fork tests' children
-      # deadlock in its allocator. No C dependency is instrumented, since
-      # aws-lc-sys only is when asked, so no second runtime is linked.
-      # `rind_cpu_disable` lets the release build honour the denied tiers.
-      RUSTFLAGS: "-Zsanitizer=address --cfg rind_cpu_disable"
+      # Rust's own ASan runtime, not the system's: Ubuntu 24.04's takes no
+      # lock across fork, so rind-fips's fork tests' children deadlock in its
+      # allocator. No C dependency is instrumented, since aws-lc-sys only is
+      # when asked, so no second runtime is linked. `-rdynamic` exports the
+      # runtime, which is linked statically into each test, to the libraries
+      # it loads, as OpenSSL does rind-openssl's provider; clang exports it
+      # the same way. `rind_cpu_disable` lets the release build honour the
+      # denied tiers.
+      RUSTFLAGS: "-Zsanitizer=address -Clink-arg=-rdynamic --cfg rind_cpu_disable"
       # Leaks are not checked: tests leak on purpose, and a forked child
       # holds its parent's other threads' memory.
       ASAN_OPTIONS: detect_leaks=0
