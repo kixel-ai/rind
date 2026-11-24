@@ -16,4 +16,4 @@ rind's `fuzz` crate targets run continuously in OSS-Fuzz, with crashes reported 
 ## Waiting
 
 - google/oss-fuzz: [#16607](https://github.com/google/oss-fuzz/pull/16607) passes its trial build, which OSS-Fuzz's maintainers start (its CLA, header, and PR helper checks passed by 2026-11-24), and merges; check with `gh pr view 16607 --repo google/oss-fuzz`. If its build fails, fix `fuzz/oss-fuzz/` here and push the same change to the `rind` branch of kixelated/oss-fuzz.
-- Maintainer: once it merges, sign in to OSS-Fuzz's ClusterFuzz with kixelated@gmail.com (Google accounts only, so no agent can) and confirm crash reports and the coverage dashboard show rind. Delete this quest only once that is done and the upstream copy matches `fuzz/oss-fuzz/` plus the header, including #970's `build.sh` once it lands.
+- Maintainer: once it merges, sign in to OSS-Fuzz's ClusterFuzz with kixelated@gmail.com (Google accounts only, so no agent can) and confirm crash reports and the coverage dashboard show rind. Delete this quest only once that is done, #970 has landed, and the upstream copy matches `fuzz/oss-fuzz/` plus the header, #970's `build.sh` included.
