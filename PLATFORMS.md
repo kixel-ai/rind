@@ -131,6 +131,10 @@ qemu. iOS devices' code is only built.
 
 A backend requires only what its target enables at compile time, so rind runs
 on every CPU its target does; every other feature only picks a faster path.
+On x86_64 and aarch64, a release build for a CPU with a feature, such as one
+with `-C target-cpu=icelake-server`, links no code for the CPUs without it,
+so it is smaller: a rustls client over rind-rustls drops from 5.4 MB to
+4.5 MB there.
 
 rind is `no_std` with `alloc`, so a target without `std` builds it, given a
 global allocator. CI builds it for `x86_64-unknown-none`,

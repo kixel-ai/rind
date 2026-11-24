@@ -579,6 +579,8 @@ pub mod ed25519 {
 /// The parameter set is a type, so a key of one set fails to compile where
 /// another's is expected, and a signature is a fixed-size array.
 ///
+/// The `ml-dsa` Cargo feature, on by default, builds this module.
+///
 /// ```
 /// # fn main() -> Result<(), rind::Error> {
 /// use rind::ml_dsa::{KeyPair, MlDsa65, PublicKey};
@@ -603,6 +605,8 @@ pub mod ml_dsa {
 /// The parameter set is a type, so a key of one set fails to compile where
 /// another's is expected. A signature, up to 49,856 bytes, lives on the
 /// heap.
+///
+/// The `slh-dsa` Cargo feature, on by default, builds this module.
 ///
 /// ```
 /// # fn main() -> Result<(), rind::Error> {
