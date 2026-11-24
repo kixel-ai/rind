@@ -97,7 +97,7 @@ ring = { package = "rind-ring", version = "0.17" }
 aws-lc-rs = { package = "rind-aws-lc-rs", version = "1" }
 
 # Or use rind's own API.
-rind = "0.3"
+rind = "0.4"
 ```
 
 ### With rustls
