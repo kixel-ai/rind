@@ -11,10 +11,12 @@ OpenSSL's AVX2 routine, `sha256_block_data_order_avx2`, which rind runs on CPUs
 with AVX2, BMI1, and BMI2 but not the SHA extensions: its HOL Light proof
 `SHA256_AVX2_SUBROUTINE_CORRECT`, in
 `proofs/hol-light/x86_64/sha256_block_data_order_avx2.ml` at rind's commit, that
-rind's naked function, as rind's build emits it, computes s2n-bignum's
+rind's naked function, as rind's Linux build emits it, computes s2n-bignum's
 `sha256_hash_blocks`, from awslabs/s2n-bignum#415 as rind's fork carries it, is
 restated below as an axiom about the Rust function `sha256_compress_blocks_avx2`
-around it. No proof covers x86_64's other SHA-1 and SHA-256 block functions, so
+around it, which this model translates for `x86_64-unknown-linux-gnu`. Apple's
+build assembles its own copy, `sha256_block_data_order_avx2.apple.s`, which no
+check compares, so nothing here covers macOS. No proof covers x86_64's other SHA-1 and SHA-256 block functions, so
 the theorems over them take `Sha1Blocks` or `Sha256Blocks` as a hypothesis
 instead of an axiom: each routine's contract, FIPS 180-4's block function over
 every whole block it is given, and that rind's checks pass. On the SHA
