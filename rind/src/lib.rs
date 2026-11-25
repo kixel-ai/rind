@@ -67,6 +67,9 @@ mod high;
 /// Errors.  Common to all layers.
 mod error;
 
+#[cfg(feature = "zeroize")]
+mod zeroize_on_drop;
+
 /// The FIPS module's random generator, which [`mid::rng`] draws from in the
 /// module's build.
 #[cfg(any(test, rind_fips))]
@@ -276,8 +279,8 @@ pub mod rsa {
         OaepAlgorithm, Plaintext,
     };
     pub use crate::high::signature::rsa::{
-        KeyPair, PssSaltLength, PublicKey, PublicKeyComponents, Signature, SigningAlgorithm,
-        VerificationAlgorithm,
+        KeyPair, KeyPairComponents, PssSaltLength, PublicKey, PublicKeyComponents, Signature,
+        SigningAlgorithm, VerificationAlgorithm,
     };
     pub use crate::mid::rsa_key_size::RsaKeySize as KeySize;
 
