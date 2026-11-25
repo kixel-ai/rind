@@ -43,7 +43,9 @@
    nearly every instruction, so one whose condition fails records what it
    would have: a branch its jump to the next instruction, and a load or store
    an access of no bytes at the address it would have used, which the bounds
-   check accepts of any range, so the condition shows only in the length.
+   check accepts of any list of ranges that is not empty. So the condition
+   shows in an access's length and in a branch's target, a load into PC's
+   in both.
    Such an instruction does not fault, as the hardware transfers nothing,
    but one whose bytes would run past 0xffffffff leaves the model as if it
    ran: allowing any state there is sound whatever the hardware does. *)
