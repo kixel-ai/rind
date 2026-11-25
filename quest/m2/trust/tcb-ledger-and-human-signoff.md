@@ -17,7 +17,7 @@ Drafted wording for `CONTRIBUTING.md`, under a new `# Sign-off` heading, which t
 > - **Proof trust**: a new or changed Lean `axiom`, `bv_decide`, or hand model (an `admin/prove` `check_quote`), the TCB & Axiom Ledger's tables moving, a change to `UNCOVERED` in `admin/vg-binding`, `proofs/hol-light/`, or `admin/prove-bytes`'s allowed differences.
 > - **FFI**: a change to an exported `extern "C"` function or its types in rind-dart, rind-openssl, rind-python, or rind-fips.
 >
-> A PR that adds `unsafe` where `.github/CODEOWNERS` names no path adds that path, and its author requests the maintainer's review by hand, since GitHub reads CODEOWNERS from the base branch.
+> A PR that adds `unsafe` where `.github/CODEOWNERS` names no path adds that path, and its author requests the maintainer's review by hand, since GitHub reads CODEOWNERS from the base branch; the maintainer's own PR needs no request, and the maintainer's sign-off comment on it counts.
 >
 > Everything else, including new safe Rust, tests, docs, and benchmarks, needs no sign-off beyond the queue's checks.
 
