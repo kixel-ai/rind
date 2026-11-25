@@ -109,6 +109,9 @@ those inputs, in any worktree, restores in under a second.
   frame of up to `8k + 1088` bytes below the stack pointer, aligned and probed
   a page at a time, and the callee-saved registers it restores. The function
   has no relocations, so its object is its section alone.
+  `Rind/X86_64/RsaMont.lean` restates it as the axiom `nohw_spec`, about the
+  Rust wrapper `low::x86_64::mont::nohw`, for widths below `2^32`, which the
+  routine's `mov r9d, r9d` needs.
 - `x86_64/sha256_compress_blocks_shaext.ml` and
   `x86_64/sha256_finish_shaext.ml`: `SHA256_COMPRESS_BLOCKS_SHAEXT_CORRECT`
   and `SHA256_FINISH_SHAEXT_CORRECT`, rind's proofs that the blocks in
@@ -1301,8 +1304,11 @@ theorem `Runs`, `Sha256Blocks`, messages of at most `maxInput` bytes, and
 return their results at the modulus's width of k words, and
 `IfmaCheckReturns`, that the CPU check for AVX-512 IFMA returns.
 `Rind/X86_64/RsaMont.lean`'s `mont_products` proves it at 16 and 32 words
-with BMI2 and ADX, from s2n-bignum's theorems, and from `AwsLcMont`, that
-aws-lc's unproven routines return theirs, at every other width and CPU.
+with BMI2 and ADX, from s2n-bignum's theorems; on any CPU at a width that is
+under eight words or not a multiple of four, from `nohw_spec`, which restates
+rind's HOL Light proof of `bn_mul_mont_nohw` below; and from `AwsLcMont`, that
+aws-lc's unproven 4x and 8x routines return theirs, at every other width and
+CPU.
 `PublicKey::verify` reaches each algorithm's verification through a function
 pointer, and every loader encodes the key through `Buffer::write`, which
 `Rind/X86_64/RsaDispatch.lean` models for these two algorithms. On aarch64 the products are aws-lc's, so these proofs are not

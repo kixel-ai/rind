@@ -98,7 +98,7 @@ theorem mont_args_of (x y n : RsaInt) (n0 : U64) (hk : n.used.val ≤ 128) (hk2 
     (hx : wordsNat (lowWords x n.used) < wordsNat (lowWords n n.used))
     (hy : wordsNat (lowWords y n.used) < wordsNat (lowWords n n.used)) :
     MontArgs (lowWords x n.used) (lowWords y n.used) (lowWords n n.used) n0 := by
-  refine ⟨?_, ?_, ?_, hodd, hn0, hx, hy⟩ <;> simp only [lowWords_length _ hk] <;> omega
+  refine ⟨?_, ?_, ?_, ?_, hodd, hn0, hx, hy⟩ <;> simp only [lowWords_length _ hk] <;> omega
 
 /-- A Montgomery product's result, as a congruence. -/
 theorem mont_result_of {x y m r : List U64} (h : MontResult x y m r) :
