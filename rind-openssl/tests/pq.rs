@@ -111,7 +111,7 @@ unsafe extern "C" {
         propq: *const c_char,
     ) -> *mut EVP_PKEY;
     fn OSSL_PARAM_construct_int(key: *const c_char, buf: *mut c_int) -> OSSL_PARAM;
-    fn OSSL_PARAM_construct_long(key: *const c_char, buf: *mut c_long) -> OSSL_PARAM;
+    fn OSSL_PARAM_construct_int64(key: *const c_char, buf: *mut i64) -> OSSL_PARAM;
     fn ERR_error_string_n(error: c_ulong, buf: *mut c_char, len: usize);
     fn X509_new_ex(libctx: *mut OSSL_LIB_CTX, propq: *const c_char) -> *mut X509;
     fn SSL_CTX_new_ex(
@@ -898,9 +898,9 @@ fn ml_dsa_keeps_what_was_set_before_a_refusal() {
 
         // 2^32 + 1 is 1 when truncated to an `int`, so it is refused whole.
         let (md, pctx) = sign_init(&ctx, &key);
-        let mut wide = (1 as c_long) << 32 | 1;
+        let mut wide = (1_i64 << 32) | 1;
         let params = [
-            OSSL_PARAM_construct_long(c"deterministic".as_ptr(), &mut wide),
+            OSSL_PARAM_construct_int64(c"deterministic".as_ptr(), &mut wide),
             OSSL_PARAM_construct_end(),
         ];
         assert_ne!(EVP_PKEY_CTX_set_params(pctx, params.as_ptr()), 1);
