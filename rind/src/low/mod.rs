@@ -526,6 +526,8 @@ cfg_if::cfg_if! {
 
     } else if #[cfg(rind_backend = "aarch64")] {
         pub(in crate::low) use aarch64::cpu::{enter_cpu_state, zero_bytes, ct_compare_bytes, ct_compare_16, leave_cpu_state};
+        #[cfg(all(rind_dit, debug_assertions))]
+        pub(in crate::low) use aarch64::cpu::dit_on;
         #[cfg(rind_fips)]
         pub(crate) use aarch64::cpu::missing_cpu_feature;
         pub(crate) use aarch64::aes::{AesDecKey, AesKey};

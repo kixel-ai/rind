@@ -54,7 +54,8 @@ fn main() {
 
     let os = env::var("CARGO_CFG_TARGET_OS").expect("cargo sets the target os");
     let libc = env::var("CARGO_CFG_TARGET_ENV").is_ok_and(|e| !e.is_empty());
-    if !(os == "none" || os == "uefi" || (os == "linux" && !libc)) {
+    let has_std = !(os == "none" || os == "uefi" || (os == "linux" && !libc));
+    if has_std {
         println!("cargo::rustc-cfg=rind_std");
     }
 
@@ -73,6 +74,15 @@ fn main() {
         _ => "portable",
     };
     println!(r#"cargo::rustc-cfg=rind_backend="{backend}""#);
+
+    // `rind_dit`: an aarch64 target with an OS, where `rind::cpu::Dit`
+    // counts guards per thread and a debug build checks PSTATE.DIT under
+    // every secret computation (`src/low/entry.rs`). Every aarch64 call that
+    // handles a secret sets DIT where the CPU has it, without an OS too.
+    println!("cargo::rustc-check-cfg=cfg(rind_dit)");
+    if backend == "aarch64" && has_std {
+        println!("cargo::rustc-cfg=rind_dit");
+    }
 
     // Stable Rust's `asm!` with a `reg` operand, allow-listed so an
     // architecture whose inline assembly is unstable, such as Xtensa or MIPS,

@@ -166,7 +166,6 @@ impl HaveSve2 {
 const CRYPTO_EXT: u8 = 1 << 1;
 const SHA3: u8 = 1 << 2;
 const DIT: u8 = 1 << 3;
-#[cfg(target_vendor = "apple")]
 const SB: u8 = 1 << 4;
 const SVE2: u8 = 1 << 5;
 const DETECTED: u8 = 1 << 7;
@@ -298,7 +297,8 @@ fn detect() -> u8 {
         | (if sha3 { SHA3 } else { 0 })
         | (if sve2 { SVE2 } else { 0 })
         | (if dit { DIT } else { 0 });
-    #[cfg(target_vendor = "apple")]
+    // Apple's barrier after setting DIT, and a `rind_dit_barrier="apple"`
+    // build anywhere, use `sb` where the core has it.
     let features = features
         | if test_toggle("sb", detected!("sb")) {
             SB
@@ -533,30 +533,128 @@ mod dit {
         if on > 0 {
             // SAFETY: `msr DIT, _` is defined only if `dit` cpu feature is supported
             unsafe { core::arch::asm!("msr DIT, #1") }
-            // Arm requires no barrier after a PSTATE write, but Apple asks
-            // for a speculation barrier after setting DIT, so that nothing
-            // after it runs speculatively without DIT.
-            #[cfg(target_vendor = "apple")]
-            if super::features() & super::SB != 0 {
-                // SAFETY: in this branch, we verified `sb` cpu feature is supported
-                unsafe { speculation_barrier() }
-            } else {
-                // SAFETY: Armv8.0 barriers, Apple's choice for cores without `sb`.
-                unsafe { core::arch::asm!("dsb nsh", "isb sy", options(nostack, preserves_flags)) }
-            }
+            barrier_after_set();
         } else {
             // SAFETY: `msr DIT, _` is defined only if `dit` cpu feature is supported
             unsafe { core::arch::asm!("msr DIT, #0") }
         }
     }
 
+    /// The barrier after `msr DIT, #1`: Apple's sequence on Apple's targets
+    /// (and in the FIPS module's code), none on any other aarch64 target.
+    ///
+    /// The Arm architecture needs none. "Writes to PSTATE occur in program
+    /// order without the need for additional synchronization" (Arm ARM DDI
+    /// 0487 M.d, C5.1.3.3), and "Instructions speculatively executed between
+    /// the change of PSTATE.DIT from 0 to 1 and the change of PSTATE.DIT from
+    /// 1 to 0 are considered part of the data-independent-time sequence of
+    /// code" (B1.5.6). So on a core that is not Apple's, rind relies on that
+    /// architectural rule alone. No core other than Apple's has been tested
+    /// for it here. The sources are in benchmarks/apple-dit-barrier.md.
+    ///
+    /// Apple asks for a speculation barrier after setting DIT: "To ensure
+    /// that subsequent instruction timing reflects the updated DIT processor
+    /// state, add a speculation barrier after turning on DIT" (Writing ARM64
+    /// code for Apple platforms, "Enable DIT for constant-time cryptographic
+    /// operations"). That page gives `sb` where the core has FEAT_SB, and
+    /// `dsb nsh; isb sy` where not, which is what `apple_barrier` runs.
+    /// Apple's own libplatform (`src/timingsafe/arm64/timingsafe.c`) and
+    /// corecrypto (`cc/src/cc_timing_safe.c`) fall back to `dsb sy; isb sy`
+    /// instead; rind follows the developer page, as Go, aws-lc, and BoringSSL
+    /// do.
+    ///
+    /// The others agree on the split: Go's runtime (go.dev/issue/77776),
+    /// aws-lc's `armv8_set_dit` (aws-lc #3751, 2026-11-17), and BoringSSL's
+    /// `ConstTimeGuard` add the barrier on Apple only, and set DIT bare
+    /// elsewhere, as graviola and the Linux kernel (`SET_PSTATE_DIT` at
+    /// `kernel_entry`, Linux 6.2) do everywhere.
+    ///
+    /// The FIPS module's code keeps Apple's sequence on every target, so on
+    /// its glibc Linux cores too, and refuses the measuring cfgs below.
+    ///
+    /// `--cfg rind_dit_barrier="apple"` runs Apple's sequence on any target,
+    /// `--cfg rind_dit_barrier="isb"` runs `isb sy` alone, and
+    /// `--cfg rind_dit_barrier="none"` no barrier. All three are measuring
+    /// prototypes, for the cost of the barrier on Apple silicon, not
+    /// supported configurations.
+    #[inline(always)]
+    pub(super) fn barrier_after_set() {
+        #[cfg(any(
+            rind_dit_barrier = "apple",
+            all(
+                not(any(rind_dit_barrier = "isb", rind_dit_barrier = "none")),
+                any(target_vendor = "apple", rind_fips)
+            )
+        ))]
+        apple_barrier();
+        // SAFETY: an Armv8.0 barrier.
+        #[cfg(rind_dit_barrier = "isb")]
+        unsafe {
+            core::arch::asm!("isb sy", options(nostack, preserves_flags))
+        }
+    }
+
+    /// Apple's barrier after setting DIT: `sb` where the core has FEAT_SB,
+    /// else `dsb nsh; isb sy`.
+    // Only the tests run it where `barrier_after_set` does not.
+    #[cfg_attr(
+        not(any(
+            rind_dit_barrier = "apple",
+            all(
+                not(any(rind_dit_barrier = "isb", rind_dit_barrier = "none")),
+                any(target_vendor = "apple", rind_fips)
+            )
+        )),
+        allow(dead_code)
+    )]
+    #[inline(always)]
+    pub(super) fn apple_barrier() {
+        if super::features() & super::SB != 0 {
+            // SAFETY: in this branch, we verified `sb` cpu feature is supported
+            unsafe { speculation_barrier() }
+        } else {
+            // SAFETY: Armv8.0 barriers, Apple's choice for cores without `sb`.
+            unsafe { core::arch::asm!("dsb nsh", "isb sy", options(nostack, preserves_flags)) }
+        }
+    }
+
+    /// Whether PSTATE.DIT is set, or `None` on a CPU where rind sets none.
+    #[cfg(all(rind_dit, debug_assertions))]
+    pub(super) fn is_on() -> Option<bool> {
+        // SAFETY: in this branch, we verified `dit` cpu feature is supported
+        (super::features() & super::DIT != 0).then(|| unsafe { read() } == 1)
+    }
+
     /// Runs nothing after it speculatively until everything before it completes.
-    #[cfg(target_vendor = "apple")]
+    // Only the tests run it where `apple_barrier` does not.
+    #[cfg_attr(
+        not(any(
+            rind_dit_barrier = "apple",
+            all(
+                not(any(rind_dit_barrier = "isb", rind_dit_barrier = "none")),
+                any(target_vendor = "apple", rind_fips)
+            )
+        )),
+        allow(dead_code)
+    )]
     #[target_feature(enable = "sb")]
     pub(super) fn speculation_barrier() {
         // SAFETY: `sb` is defined only if `sb` cpu feature is supported
         unsafe { core::arch::asm!("sb", options(nostack, preserves_flags)) }
     }
+}
+
+// `--cfg rind_dit_barrier` is for measuring only (`dit::barrier_after_set`),
+// so the FIPS module, whose code keeps Apple's barrier on every target,
+// refuses the values that run less than it.
+#[cfg(all(rind_fips, any(rind_dit_barrier = "isb", rind_dit_barrier = "none")))]
+compile_error!("rind_dit_barrier is a measuring prototype; the FIPS module keeps Apple's barrier");
+
+/// Whether PSTATE.DIT is set, or `None` on a CPU where rind sets none, for
+/// the debug checks in `low::entry`.
+#[cfg(all(rind_dit, debug_assertions))]
+pub(crate) fn dit_on() -> Option<bool> {
+    dit::is_on()
 }
 
 /// `detected`, unless `RIND_CPU_DISABLE_<id>` denies it, so a CPU with the
@@ -596,7 +694,7 @@ pub(in crate::low) fn prefetch_ro<T>(ptr: *const T) {
 /// Re-exec this test binary. qemu-user is cargo's runner, not a kernel
 /// binfmt handler, so a child of a cross test needs that runner too. A
 /// native run leaves the variable unset and execs the binary itself.
-#[cfg(all(test, any(debug_assertions, rind_cpu_disable)))]
+#[cfg(all(test, any(debug_assertions, rind_cpu_disable, unix)))]
 pub(super) fn reexec() -> std::process::Command {
     let exe = std::env::current_exe().unwrap();
     let Ok(runner) = std::env::var("CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUNNER") else {
@@ -639,11 +737,13 @@ mod tests {
                 call!(unsafe dit::write, on);
             }
         }
-        #[cfg(target_vendor = "apple")]
         if std::arch::is_aarch64_feature_detected!("sb") {
             // SAFETY: the CPU has SB.
             unsafe { call!(unsafe dit::speculation_barrier) };
         }
+        // Barriers only: the speculation barrier where `features` has SB.
+        call!(dit::barrier_after_set);
+        call!(dit::apple_barrier);
         let (a, b) = ([1u8; 37], [2u8; 37]);
         assert_ne!(call!(ct_compare_bytes, &a, &b), 0);
         assert_ne!(call!(ct_compare_16, &[1; 16], &[2; 16]), 0);
@@ -671,7 +771,6 @@ mod tests {
             cfg!(target_vendor = "apple") && available!("sha3")
         );
         assert_eq!(HaveSve2::check().is_some(), available!("sve2"));
-        #[cfg(target_vendor = "apple")]
         assert_eq!(features() & SB != 0, available!("sb"));
     }
 
@@ -935,7 +1034,11 @@ mod tests {
             assert_eq!(unsafe { dit::read() }, expected as u32);
             drop(outer);
             // SAFETY: as above.
-            assert_eq!(unsafe { dit::read() }, 0);
+            let after = unsafe { dit::read() };
+            assert_eq!(
+                after,
+                u32::from(cfg!(any(rind_dit_sticky, rind_dit_autohold)))
+            );
         }
     }
 
@@ -961,25 +1064,14 @@ mod tests {
         assert_eq!(unsafe { dit::read() }, 1);
         drop(second);
         // SAFETY: as above.
-        assert_eq!(unsafe { dit::read() }, 0);
+        assert_eq!(unsafe { dit::read() }, u32::from(cfg!(rind_dit_sticky)));
     }
 
     #[cfg(unix)]
     fn child_reads_dit() -> bool {
         let test = concat!(module_path!(), "::reads_dit");
         let test = test.split_once("::").unwrap().1;
-        // Under qemu-user, as `just qemu aarch64` runs the tests on another
-        // host, the child needs qemu too.
-        let mut runner = std::env::var("CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUNNER")
-            .ok()
-            .filter(|_| cfg!(all(target_os = "linux", target_env = "gnu")))
-            .unwrap_or_default()
-            .split_whitespace()
-            .map(std::ffi::OsString::from)
-            .collect::<Vec<_>>();
-        runner.push(std::env::current_exe().unwrap().into());
-        let out = std::process::Command::new(&runner[0])
-            .args(&runner[1..])
+        let out = reexec()
             .args([test, "--exact", "--nocapture"])
             .env("RIND_TEST_READ_DIT", "1")
             .output()
