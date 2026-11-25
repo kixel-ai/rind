@@ -473,6 +473,11 @@ pub(crate) unsafe extern "C" fn get_params<S: Scheme>(
     let Some(key) = data.key() else {
         return 1;
     };
+    // A private encoding is a copy of the key, made only when asked for.
+    let (want_seed, want_expanded) = (
+        params.find(c"seed").is_some(),
+        params.find(c"priv").is_some(),
+    );
     let mut set = |name: &CStr, bytes: &[u8]| params.find(name).is_none_or(|p| p.set_octets(bytes));
     if !set(c"pub", key.public()) {
         return 0;
@@ -481,12 +486,14 @@ pub(crate) unsafe extern "C" fn get_params<S: Scheme>(
         return 0;
     }
     if let Some(private) = key.private() {
-        if let Some(seed) = S::seed(private)
+        if want_seed
+            && let Some(seed) = S::seed(private)
             && !set(c"seed", &seed)
         {
             return 0;
         }
-        if let Some(expanded) = S::expanded(private)
+        if want_expanded
+            && let Some(expanded) = S::expanded(private)
             && !set(c"priv", &expanded)
         {
             return 0;

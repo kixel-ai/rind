@@ -660,6 +660,21 @@ fn ml_kem_loads_an_expanded_key() {
             .unwrap();
         let error = ctx.decapsulate(&refused, None, &ct).unwrap_err();
         assert!(error.contains("key rejected"), "{error}");
+
+        // Another key's secret vector, `dkPKE`, which FIPS 203's checks
+        // pass beside this key's public half: only a pairwise test finds it.
+        let other = ctx
+            .generate(algorithm, Some(DEFAULT), None)
+            .octets(c"priv")
+            .unwrap();
+        let mut spliced = private.clone();
+        let k = (spliced.len() - 96) / 768;
+        spliced[..384 * k].copy_from_slice(&other[..384 * k]);
+        let refused = ctx
+            .load(algorithm, RIND, EVP_PKEY_KEYPAIR, &[(c"priv", &spliced)])
+            .unwrap();
+        let error = ctx.decapsulate(&refused, None, &ct).unwrap_err();
+        assert!(error.contains("not a pair"), "{error}");
     }
 }
 

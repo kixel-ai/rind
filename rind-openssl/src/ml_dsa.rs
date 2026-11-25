@@ -98,9 +98,11 @@ fn algorithm_id<P: Set>() -> [u8; 13] {
     ]
 }
 
-/// DER's `tag`, `content`'s length, and `content`.
-fn der(tag: u8, content: &[u8]) -> Secret {
-    let len = content.len();
+/// DER's `tag`, the length of `content`'s parts, and the parts in turn,
+/// in a buffer sized once, since growing one would free a copy of the key
+/// unwiped.
+fn der(tag: u8, content: &[&[u8]]) -> Secret {
+    let len = content.iter().map(|part| part.len()).sum::<usize>();
     let mut out = Zeroizing::new(Vec::with_capacity(len + 4));
     out.push(tag);
     match len {
@@ -108,17 +110,23 @@ fn der(tag: u8, content: &[u8]) -> Secret {
         0x80..0x100 => out.extend([0x81, len as u8]),
         _ => out.extend([0x82, (len >> 8) as u8, len as u8]),
     }
-    out.extend_from_slice(content);
+    for part in content {
+        out.extend_from_slice(part);
+    }
     out
 }
 
 /// PKCS#8 v1 holding `private`, an ML-DSA private key's DER (RFC 9881),
 /// which is how rind loads an expanded key.
 fn pkcs8<P: Set>(private: &[u8]) -> Secret {
-    let mut info = Zeroizing::new(vec![0x02, 0x01, 0x00]);
-    info.extend_from_slice(&algorithm_id::<P>());
-    info.extend_from_slice(&der(0x04, private));
-    der(0x30, &info)
+    der(
+        0x30,
+        &[
+            &[0x02, 0x01, 0x00],
+            &algorithm_id::<P>(),
+            &der(0x04, &[private]),
+        ],
+    )
 }
 
 impl<P: Set> Scheme for MlDsa<P> {
@@ -148,11 +156,9 @@ impl<P: Set> Scheme for MlDsa<P> {
     fn load(seed: Option<&[u8]>, expanded: Option<&[u8]>) -> Result<Self::Private, Failure> {
         let private = match (seed, expanded) {
             (Some(seed), None) => return Ok(KeyPair::from_seed(seed)?),
-            (None, Some(expanded)) => der(0x04, expanded),
+            (None, Some(expanded)) => der(0x04, &[expanded]),
             (Some(seed), Some(expanded)) => {
-                let mut both = der(0x04, seed);
-                both.extend_from_slice(&der(0x04, expanded));
-                der(0x30, &both)
+                der(0x30, &[&der(0x04, &[seed]), &der(0x04, &[expanded])])
             }
             (None, None) => return Err(Failure::invalid("neither seed nor priv is given")),
         };

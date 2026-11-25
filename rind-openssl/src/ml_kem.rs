@@ -108,7 +108,26 @@ impl<A: Set> Scheme for MlKem<A> {
                 }
                 Ok(key)
             }
-            (None, Some(expanded)) => Ok(DecapsulationKey::new(expanded)?),
+            (None, Some(expanded)) => {
+                let key = DecapsulationKey::new(expanded)?;
+                // FIPS 203's checks pass a secret vector that is not its
+                // public key's, which then decapsulates every ciphertext to
+                // an implicit rejection, so a pairwise test refuses it, as
+                // OpenSSL's default provider tests a key it imports.
+                let (ciphertext, secret) = key.public_key().encapsulate()?;
+                if rind::constant_time::verify(
+                    key.decapsulate(&ciphertext).as_ref(),
+                    secret.as_ref(),
+                )
+                .is_err()
+                {
+                    return Err(Failure::Raise(
+                        crate::provider::Reason::KeyRejected,
+                        format!("the {} expanded key's halves are not a pair", A::NAME),
+                    ));
+                }
+                Ok(key)
+            }
             (None, None) => Err(Failure::invalid("neither seed nor priv is given")),
         }
     }
