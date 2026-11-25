@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.10.1](https://github.com/kixel-ai/rind/compare/rind-rand-core-v0.10.0...rind-rand-core-v0.10.1) - 2026-11-25
 
+Requires rind 0.4, so `SystemRandom`'s `TryRng::Error` is rind 0.4's `rind::Error`.
+
 ### Other
 
 - updated the following local packages: rind
