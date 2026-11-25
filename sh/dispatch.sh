@@ -508,8 +508,9 @@ step() {
             if ((${#libs[@]} > 0 || ${#packages[@]} == 0)); then
                 run cargo test "${libs[@]}" --locked --doc
                 # A broken or private intra-doc link renders as plain text on
-                # docs.rs.
-                RUSTDOCFLAGS='--deny warnings' run cargo doc "${libs[@]}" --no-deps --locked
+                # docs.rs. Its dependencies build in check mode, which the
+                # tests' build never shares, so clippy there would only cost.
+                RUSTC_WORKSPACE_WRAPPER='' RUSTDOCFLAGS='--deny warnings' run cargo doc "${libs[@]}" --no-deps --locked
             fi
             ;;
         fix:rs)
