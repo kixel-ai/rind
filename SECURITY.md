@@ -48,7 +48,11 @@ checks are thinnest.
 
 Only the latest release of each package rind publishes gets fixes: the
 `rind` crate and its `rind-<consumer>` adapter crates on crates.io, and its
-packages on pub.dev and PyPI. A fix ships as a new release of each package
-it affects.
+packages on pub.dev and PyPI. A fix lands on `main` and ships as a new release
+of each package it affects, through the release PR that release-plz opens from
+`main`. rind keeps no release branch, so a fix is not backported: below 1.0, a
+user on an earlier minor, such as 0.3 once 0.4 is out, takes the fix by moving
+to the latest minor, which its changelog and [MIGRATING.md](MIGRATING.md)
+describe.
 
 A fixed vulnerability gets a GitHub security advisory and a RustSec advisory.

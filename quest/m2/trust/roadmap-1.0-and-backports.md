@@ -1,18 +1,20 @@
-# [S] Define 1.0 roadmap, gate semver with cargo-semver-checks, scope changelogs, and document security backports
+# [XS] Settle 1.0's exit criteria and the security backport window
 
 ## Goal
 
-Evaluators see clear 1.0 exit criteria and a security hotfix/backport branch policy, CI automatically catches accidental semver breaks on published crates via `cargo-semver-checks`, and `rind/CHANGELOG.md` is cleanly scoped to `rind` changes rather than mixing unrelated workspace noise.
+The maintainer has decided what 1.0 requires beyond what README.md already says, and which release lines get security backports, so [STABILITY.md](/STABILITY.md) and [SECURITY.md](/SECURITY.md) state commitments instead of today's facts.
 
 ## Plan
 
-Planned with the maintainer on 2026-11-21 (`/quest-plan`): ✅ define the 1.0 roadmap, add `cargo-semver-checks`, scope `rind/CHANGELOG.md`, and document security backport branches (rejected: skip).
+Planned with the maintainer on 2026-11-21 (`/quest-plan`). The semver gate (`sh/semver.sh`), the changelog scoping (`rind/README.md` as a copy), STABILITY.md's factual list of what is checked and what is open, and SECURITY.md's statement that only the latest release gets a fix and rind keeps no release branch are done. What remains is each commitment the repository cannot derive; each is a `Waiting` item with a recommendation. Once the maintainer answers, write the answer into STABILITY.md or SECURITY.md and delete this quest.
 
-- **1.0 exit criteria**:
-  - Add a clear, factual "Path to 1.0" / stability roadmap section (in `README.md` or `STABILITY.md` / `AUDIT.md`, fitting the existing docs layout) listing what must be true before cutting `rind 1.0` (API stability across 0.4+, CI/CT/coverage/fuzzing gates, external audit milestone, MSRV & semver guarantees), handing any binding commitment wording to the maintainer in the PR.
-- **`cargo-semver-checks` CI gate**:
-  - Add `cargo-semver-checks` to CI (for PRs or release checks against the latest published crates.io version of `rind` and published Rust adapters) so accidental breaking changes in minor/patch releases fail before publish.
-- **Changelog scoping**:
-  - Audit and clean up `rind/CHANGELOG.md` (and adapter changelogs / release script) so `rind`'s changelog records user-visible changes to `rind` itself rather than unrelated internal or adapter-only churn.
-- **Security hotfix & backport branch policy**:
-  - Document how security fixes will be backported to supported release lines (e.g. `release/0.x` maintenance branches for active minor versions, patch release tags, and GHSA advisory mapping) in `SECURITY.md` / release docs, flagging the exact supported-branch window for maintainer confirmation in the PR.
+## Waiting
+
+- Maintainer: do older minors get security backports? Options: (a) only the latest release, as SECURITY.md says today; (b) also the previous minor for a fixed window. Recommendation: (a) below 1.0, since a minor batches every breaking change and an adapter pins one rind minor, so a second line would double every release PR; from 1.0, back-port to the last minor of the previous major for 6 months, on a `release/<major>.<minor>` branch release-plz can open a release PR from. Answer by editing SECURITY.md's Supported versions.
+- Maintainer: does 1.0 require an outside audit of the Phase 1 scope in [the audit scope quest](/quest/m2/trust/third-party-audit-scope.md)? Recommendation: yes, report published, since README.md's "no one outside the project has audited it" would otherwise ship in a 1.0 release; FIPS 140-3 validation is not a requirement.
+- Maintainer: how long must the API sit without a breaking change before 1.0? README.md says only that none is planned. Recommendation: one full minor release (0.4 to 0.5 with no `!` change in `rind`, which `sh/semver.sh` enforces), so 1.0 is the 0.5 line re-tagged.
+
+## Related
+
+- [Scope phased third-party security audit and prepare grant funding packet](/quest/m2/trust/third-party-audit-scope.md)
+- [rind 0.4 ships once](/quest/m2/api/release-0.4.md)

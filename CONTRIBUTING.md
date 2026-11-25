@@ -88,6 +88,9 @@ A PR that adds such a workaround adds its entry there and names the entry in the
 
 # Releases
 
+`just ci` runs `sh/semver.sh` over each published crate a PR changes ([STABILITY.md](STABILITY.md#checked-before-every-release)): a breaking change to `rind` needs `!` in the PR title, and an adapter's is refused unless it moves the adapter to its upstream's next breaking release.
+`rind/README.md` is a copy of `README.md` rather than a symlink, since release-plz would otherwise list every README edit in `rind/CHANGELOG.md`; `just fix` refreshes it.
+
 release-plz opens a release PR from `main`, and publishing happens only when that PR merges.
 release-plz owns crate versions.
 It creates a GitHub Release for each tag it pushes, with its changelog entry as the body, and only rind's marked latest.

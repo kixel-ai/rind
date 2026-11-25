@@ -32,6 +32,8 @@ jobs:
     timeout-minutes: 60
     env:
       BASE: origin/${{ github.base_ref }}
+      # The squash commit's subject, which sh/semver.sh reads for a `!`.
+      PR_TITLE: ${{ github.event.pull_request.title }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
