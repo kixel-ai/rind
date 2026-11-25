@@ -81,15 +81,19 @@ CONSTRUCTS = [
     ),
     (
         "`@[implemented_by]`, `@[extern]`",
-        r"@\[\s*(?:implemented_by|extern)\b",
+        r"@\[[^\]]*\b(?:implemented_by|extern)\b",
         "the compiler runs another definition than the one proofs use, as for the AES S-boxes' tables, which `sboxFast_eq` and `invSboxFast_eq` prove equal",
     ),
 ]
 
-AXIOM = re.compile(
-    r"^[ \t]*(?:@\[[^\]]*\]\s*)*(?:(?:private|protected|noncomputable|unsafe)\s+)*axiom\s+\S+", re.M
-)
+# `axiom` is a keyword, so any use not part of a longer name declares one,
+# whatever precedes it: modifiers, attributes, or `open Foo in`.
+AXIOM = re.compile(r"(?<![\w.'])axiom\s+\S+")
 SORRY = re.compile(r"\b(?:sorry|admit|sorryAx)\b")
+
+
+# A character literal, which may hold a double quote.
+CHAR = re.compile(r"'(?:\\(?:x[0-9a-fA-F]{2}|u\{[0-9a-fA-F]+\}|.)|[^\\'\n])'")
 
 
 def strip(src):
@@ -113,6 +117,9 @@ def strip(src):
                     i += 2
                 else:
                     i += 1
+            out.append(" ")
+        elif src[i] == "'" and CHAR.match(src, i) and not (out and (out[-1][-1].isalnum() or out[-1][-1] in "_'")):
+            i = CHAR.match(src, i).end()
             out.append(" ")
         elif src[i] == '"':
             i += 1

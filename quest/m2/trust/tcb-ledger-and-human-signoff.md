@@ -12,17 +12,20 @@ Drafted wording for `CONTRIBUTING.md`, under a new `# Sign-off` heading, which t
 
 > These changes land only on the maintainer's explicit approval, which an agent never gives itself and a merge queue pick does not imply:
 >
-> - **`unsafe`**: any added or changed `unsafe` block or `unsafe impl`. The generated `unsafe` table in AUDIT.md moves in the same PR, so the diff shows it.
+> - **`unsafe`**: any added or changed `unsafe` block or `unsafe impl`. Reviewers find these in the diff itself: AUDIT.md's `unsafe` table is a dated per-area count, so it does not show a changed block.
 > - **Assembly**: a hand edit to `asm!`, `naked_asm!`, or `global_asm!` under `rind/src/low/`, or a bump of an importer's `REV` (`admin/import-*`, `thirdparty/s2n-bignum/RIND.md`), which regenerates it.
 > - **Proof trust**: a new or changed Lean `axiom`, `bv_decide`, or hand model (an `admin/prove` `check_quote`), the TCB & Axiom Ledger's tables moving, a change to `UNCOVERED` in `admin/vg-binding`, `proofs/hol-light/`, or `admin/prove-bytes`'s allowed differences.
 > - **FFI**: a change to an exported `extern "C"` function or its types in rind-dart, rind-openssl, rind-python, or rind-fips.
 >
 > Everything else, including new safe Rust, tests, docs, and benchmarks, needs no sign-off beyond the queue's checks.
 
-Drafted `.github/CODEOWNERS`, if the maintainer wants the review requested automatically:
+Drafted `.github/CODEOWNERS`, if the maintainer wants the review requested automatically. Its paths are where `unsafe` lives today (AUDIT.md's table, plus the few files outside `low` that hold it); the policy covers any `unsafe` block, so a new one elsewhere needs its path added in the same PR:
 
 ```
 /rind/src/low/                  @kixelated
+/rind/src/fips_rng.rs           @kixelated
+/rind/src/mid/p256.rs           @kixelated
+/rind-aws-lc-rs/src/kem.rs      @kixelated
 /proofs/                        @kixelated
 /admin/prove*                   @kixelated
 /admin/vg-binding               @kixelated
@@ -35,4 +38,4 @@ Drafted `.github/CODEOWNERS`, if the maintainer wants the review requested autom
 /rind-fips/                     @kixelated
 ```
 
-The maintainer decided on 2026-11-25: adopt the wording above in `CONTRIBUTING.md` under `# Sign-off` and add the drafted `.github/CODEOWNERS`, so each such PR requests the maintainer's review, without requiring code-owner approval in `main`'s ruleset: GitHub does not let an author approve their own PR, so a required code-owner review would block the maintainer's own PRs on those paths. Set that requirement in dotfiles' `bin/repo-settings` once a second owner exists. Check it is done: `CONTRIBUTING.md` has the `# Sign-off` heading, `.github/CODEOWNERS` exists, and this quest is deleted.
+The maintainer decided on 2026-11-25: adopt the wording above in `CONTRIBUTING.md` under `# Sign-off` and add the drafted `.github/CODEOWNERS`, so each such PR requests the maintainer's review, without requiring code-owner approval in `main`'s ruleset: GitHub does not let an author approve their own PR, so a required code-owner review would block the maintainer's own PRs on those paths. Set that requirement in dotfiles' `bin/repo-settings` once a second owner exists. Check it is done: `CONTRIBUTING.md` has the `# Sign-off` heading, `.github/CODEOWNERS` exists, and this quest is deleted along with its link in [third-party-audit-scope.md](/quest/m2/trust/third-party-audit-scope.md), which lists it.

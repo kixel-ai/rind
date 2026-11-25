@@ -77,6 +77,10 @@ def pinned():
     return m.group(1)
 
 
+# A character literal, which may hold a double quote.
+CHAR = re.compile(r"'(?:\\(?:x[0-9a-fA-F]{2}|u\{[0-9a-fA-F]+\}|.)|[^\\'\n])'")
+
+
 def code_only(src):
     """Lean source without comments, which nest, and string literals."""
     out, i, n = [], 0, len(src)
@@ -93,6 +97,9 @@ def code_only(src):
                     depth, i = depth - 1, i + 2
                 else:
                     i += 1
+            out.append(" ")
+        elif src[i] == "'" and CHAR.match(src, i) and not (out and (out[-1][-1].isalnum() or out[-1][-1] in "_'")):
+            i = CHAR.match(src, i).end()
             out.append(" ")
         elif src[i] == '"':
             i += 1
@@ -122,16 +129,19 @@ def vg_text(vg, arch):
 
 
 def vg_contracts(vg, arch):
-    """The contract VG's generated documentation names for each artifact."""
-    out = {}
+    """The contract VG's generated documentation names for each artifact, and
+    the internal routines it says have none, whose callers' proofs cover them."""
+    out, internal = {}, set()
     src = vg / "crates" / f"verified-garbage-asm-{arch}" / "src"
-    for path in src.glob("*.rs"):
+    for path in [*src.glob("*.rs"), *src.glob("internal/*.rs")]:
         for m in re.finditer(
             r'((?:///[^\n]*\n)+)#\[unsafe\(naked\)\]\s*pub\(crate\) unsafe extern "[A-Za-z0-9]+" fn (vg_\w+)',
             path.read_text(),
         ):
             out[m.group(2)] = re.findall(r"Contract: `([^`]+)`", m.group(1))
-    return out
+            if "An internal function of the verified functions" in m.group(1):
+                internal.add(m.group(2))
+    return out, internal
 
 
 def vendored(arch):
@@ -148,7 +158,7 @@ def axioms(arch):
     out = []
     for path in sorted((ROOT / "proofs/Rind" / ARCHS[arch]).glob("Vg*.lean")):
         for m in re.finditer(
-            r"/--(.*?)-/\s*(?:@\[[^\]]*\]\s*)*axiom\s+(\S+)", path.read_text(), re.S
+            r"/--((?:(?!-/).)*)-/\s*(?:@\[[^\]]*\]\s*)*axiom\s+(\S+)", path.read_text(), re.S
         ):
             out.append((m.group(2), path.name, m.group(1)))
     return out
@@ -188,7 +198,7 @@ def main():
     sorry = [
         str(p.relative_to(vg))
         for p in sorted((vg / "lean").rglob("*.lean"))
-        if re.search(r"\b(sorry|admit)\b|^\s*axiom\s", code_only(p.read_text()), re.M)
+        if re.search(r"\b(sorry|admit)\b|(?<![\w.'])axiom\s", code_only(p.read_text()))
     ]
     if sorry:
         fail(f"a sorry or an axiom in VG's {', '.join(sorry)}")
@@ -200,7 +210,7 @@ def main():
     named = 0
     for arch in ARCHS:
         calls = vg_text(vg, arch)
-        contracts = vg_contracts(vg, arch)
+        contracts, internal = vg_contracts(vg, arch)
         found = axioms(arch)
         by_name = {(file, name): doc for name, file, doc in found}
         covered = set()
@@ -221,6 +231,8 @@ def main():
             for r in routines:
                 if r not in calls:
                     fail(f"{where} names {r}, which VG's {arch} text lacks")
+                if r not in internal and not contracts.get(r):
+                    fail(f"{where} covers {r}, whose Rust in VG's {arch} crate names no `Contract:`, so no check of its contract would run")
                 for c in contracts.get(r, []):
                     short = c.split(".")[-1]
                     if short not in doc + "".join(peers):
