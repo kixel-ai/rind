@@ -24,10 +24,16 @@ cargo bench
 [BENCHMARKS.md](BENCHMARKS.md#updating-this-report) says how to refresh the benchmark report.
 
 With [Nix](https://nixos.org), `nix develop` (or direnv) provides CI's
-toolchain, and `just check` runs CI's gate over what the branch changed,
-three modules at a time (`sh/dispatch.sh` lists the `CHECK_*` variables that
-change that); the scheduled workflows' tools are in [TESTING.md](TESTING.md#running-the-tools).
-Its tests build under the `test-fast` profile in `Cargo.toml`, a lightly
+toolchain. `just check` is the local loop over what the branch changed: it
+checks formatting (`just fix` applies it), builds the tests of the changed
+crates and their dependents in one pass with clippy as the compiler wrapper,
+runs them, and runs the repository lints that take a second. `just ci` runs CI's whole gate over the same diff,
+adding the other targets' builds, the docs, and the cross, MSRV, wasm,
+adapter, and constant-time modules. Both run three modules at a time
+(`sh/dispatch.sh` lists the `CHECK_*` variables that change that); the
+scheduled workflows' tools are in [TESTING.md](TESTING.md#running-the-tools).
+
+Both build their tests under the `test-fast` profile in `Cargo.toml`, a lightly
 optimized dev build with assertions and overflow checks on, since the slowest
 tests run minutes at `opt-level = 0`. For a bare test run, pass it as
 `cargo nextest run --cargo-profile test-fast`; `admin/ctgrind` and the other
@@ -51,7 +57,7 @@ Have at least these sections:
 - **Alternatives**: any alternative approaches considered.
 - **Follow-ups**: any issues encountered or quests created.
 
-Run `just ci` before every push.
+Run `just check` before every push; `pr-check.yml` runs `just ci` on the PR.
 
 The scheduled workflows run as [TESTING.md](TESTING.md#scheduled-workflows) lists, or on demand with `gh workflow run <name> --ref <branch>`, a `bench` or `ctgrind` dispatch naming only what the change reaches. None of them runs on a pull request, where only what gates a merge runs: dispatch the ones your change reaches on your branch before review, and mutate a diff with `admin/mutants --in-diff`. `prove` also runs on each push to main that reaches it, checking the bytes, and the HOL Light and Lean proofs and the cosimulation for inputs main has not passed. Its proofs gate no merge: a failure on main alerts, and a release waits for them (see [Releases](#releases)). `admin/mutants` runs a whole campaign only on GitHub-hosted runners.
 PRs land on `main` through GitHub's merge queue, one PR at a time, as squash commits.
