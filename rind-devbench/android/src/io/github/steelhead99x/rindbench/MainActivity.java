@@ -437,7 +437,8 @@ public class MainActivity extends Activity {
      *   RINDBENCH_LAYOUT {"phase":"ready","w":411,"h":914,"wide":false,"folded":false,"fits":true,"clipped":[]}
      * w and h are dp. fits: the run controls are whole and on screen, and the
      * run panel shows its status (and score, once there is one). "picker" in
-     * clipped means some chips are cut off, which a short screen allows.
+     * clipped means some chips are out of view and scroll inside the picker,
+     * which a short screen allows.
      */
     private void reportLayout(String phase) {
         ui.postDelayed(() -> {

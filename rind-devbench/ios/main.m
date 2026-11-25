@@ -378,7 +378,7 @@ static NSString *const kConsent = @"The run keeps the CPU busy (minutes on Quick
 //   RINDBENCH_LAYOUT {"phase":"ready","w":390,"h":844,"wide":false,"folded":false,"fits":true,"clipped":[]}
 // fits: the run controls are whole and on screen, and the run panel shows its
 // status (and score, once there is one). "picker" in clipped means some chips
-// are cut off, which a short screen allows.
+// are out of view and scroll inside the picker, which a short screen allows.
 - (void)reportLayout:(NSString *)phase {
   dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.6 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
     [self.view layoutIfNeeded];
@@ -397,7 +397,8 @@ static NSString *const kConsent = @"The run keeps the CPU busy (minutes on Quick
     };
     NSMutableArray *clipped = [NSMutableArray new];
     if (!whole(self->runCard) || maxY(self->runCard) > bottom) [clipped addObject:@"run controls"];
-    if (!self->pickCard.hidden && !whole(self->pickCard)) [clipped addObject:@"picker"];
+    UIScrollView *ps = self->pickScroll;
+    if (!self->pickCard.hidden && (!whole(self->pickCard) || ps.contentSize.height > ps.bounds.size.height + 1)) [clipped addObject:@"picker"];
     if (self->statusLbl.text.length && !shown(self->statusLbl)) [clipped addObject:@"status"];
     if (self->scoreLbl.text.length && !shown(self->scoreLbl)) [clipped addObject:@"score"];
     BOOL fits = YES;
