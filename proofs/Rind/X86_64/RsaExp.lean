@@ -419,4 +419,240 @@ theorem mont_exp_by_loop2_spec (havx : ∃ t, low.x86_64.cpu.HaveAvx2.check = ok
 
 end window
 
+theorem next_multiple_of_4_self (k : Usize) (h : k.val % 4 = 0) :
+    core.num.Usize.next_multiple_of k 4#usize ⦃ r => r = k ⦄ := by
+  unfold core.num.Usize.next_multiple_of
+  step as ⟨r, hr⟩
+  split
+  · simp only [WP.spec_ok]
+  · rename_i h0
+    exact absurd (UScalar.eq_of_val_eq (by rw [hr]; simpa using h)) h0
+
+/-- Setting a slice at or past `n` keeps the first `n` items. -/
+theorem take_setSlice_le {α : Type} (l s : List α) (i n : Nat) (h : n ≤ i) (hi : i ≤ l.length) :
+    (l.setSlice! i s).take n = l.take n := by
+  simp only [List.setSlice!, List.append_assoc, List.take_append, List.length_take,
+    Nat.min_eq_left hi, Nat.sub_eq_zero_of_le h, List.take_take, Nat.min_eq_left h, Nat.zero_min,
+    List.take_zero, Nat.zero_sub, List.append_nil]
+
+/-- Setting `s` at `i` puts `s` at `i`. -/
+theorem rowOf_setSlice {α : Type} (l s : List α) (i : Nat) (h : i + s.length ≤ l.length) :
+    ((l.setSlice! i s).drop i).take s.length = s := by
+  simp only [List.setSlice!, List.append_assoc, List.drop_append, List.length_take,
+    Nat.min_eq_left (show i ≤ l.length by omega), List.drop_eq_nil_of_le (show (l.take i).length ≤ i by simp),
+    List.nil_append, Nat.sub_self, List.drop_zero, Nat.min_eq_left (show s.length ≤ l.length - i by omega),
+    List.take_length, List.take_append, Nat.sub_self, List.take_zero, List.append_nil]
+
+/-- With BMI2 and ADX at 16 and 32 words, `mont_exp_by` leaves in `z` what
+stands for `C^e` in the Montgomery domain, where `x` stands for `C` and `one`
+for `C^0`. -/
+theorem mont_exp_by_spec (havx : ∃ t, low.x86_64.cpu.HaveAvx2.check = ok t)
+    (z x one e m : Slice U64) (n0 : U64) (C : Nat) (t : low.x86_64.cpu.HaveBmi2Adx)
+    (hP : MontProducts m.length) (hk : m.length = 16 ∨ m.length = 32)
+    (hodd : wordsNat m.val % 2 = 1) (hn0 : (wordsNat m.val * n0.val + 1) % 2 ^ 64 = 0)
+    (hz : z.length = m.length) (hxl : x.length = m.length) (hol : one.length = m.length)
+    (hel : 64 * e.length ≤ Usize.max)
+    (hx : MontPow (wordsNat m.val) (2 ^ (64 * m.length)) C 1 x.val)
+    (hone : MontPow (wordsNat m.val) (2 ^ (64 * m.length)) C 0 one.val) :
+    low.x86_64.mont_exp.mont_exp_by z x one e m n0 (some t) ⦃ r =>
+      r.length = m.length ∧
+        MontPow (wordsNat m.val) (2 ^ (64 * m.length)) C (wordsNat e.val) r.val ⦄ := by
+  have hkk : 16 ≤ m.length ∧ m.length ≤ 32 ∧ m.length % 8 = 0 := by
+    rcases hk with h | h <;> rw [h] <;> decide
+  have hkv : (Slice.len m).val = m.length := by simp
+  have hkm : m.val.length = m.length := rfl
+  unfold low.x86_64.mont_exp.mont_exp_by
+  step
+  step
+  step
+  step
+  step as ⟨i4, hi4⟩
+  step as ⟨o, ho⟩
+  cases o with
+  | none =>
+    simp only at ho
+    have he0 : e.val = [] := by
+      apply List.eq_nil_of_length_eq_zero
+      have : e.len.val = e.val.length := by simp
+      omega
+    step as ⟨z1, hz1⟩
+    subst hz1
+    rw [he0]
+    exact ⟨hol, hone⟩
+  | some top =>
+    simp only at ho
+    obtain ⟨hi41, htop, -⟩ := ho
+    have hel' : e.len.val = e.length := by simp
+    step with next_multiple_of_4_self m.len (by rw [hkv]; omega) as ⟨w, hw⟩
+    subst hw
+    step as ⟨i5, hi5⟩
+    step as ⟨i6, hi6⟩
+    step as ⟨i7, hi7⟩
+    step with alloc.vec.from_elem_spec core.clone.CloneU64 0#u64 i7 rfl as ⟨heap, hheap, hheapl⟩
+    simp only [lift, alloc.vec.Vec.deref_mut, bind_ok]
+    have hsl : heap.slice.length = i7.val := hheapl
+    have hsv : heap.slice.val = List.replicate i7.val 0#u64 := hheap
+    step as ⟨powers, scratch, back1, hp1, hp2, hp3, hp4, hback1⟩
+    have hk' : m.len.val = m.length := hkv
+    have hscl : scratch.length = 2 * m.length := by rw [hp2, hsl]; omega
+    have hpl : powers.length = 32 * m.length := by rw [hp1, hi5, hkv]
+    step with core.slice.Slice.split_at_mut.spec scratch m.len (by rw [hscl]; omega)
+      as ⟨spare, term, back2, hs1, hs2, hs3, hs4, hback2⟩
+    step with core.slice.index.SliceIndexRangeToUsizeSlice.index_mut.step_spec { «end» := m.len } powers
+      (by simp only; omega) as ⟨s1, ib1, hs1v, hs1l, hib1⟩
+    step with core.slice.Slice.copy_from_slice.step_spec core.marker.CopyU64 s1 one
+      (by rw [hs1l, hol]; simp) as ⟨s2, hs2'⟩
+    subst s2
+    step as ⟨i8, hi8⟩
+    have hp1l : (ib1 one).length = 32 * m.length := by
+      simp only [Slice.length, hib1, List.length_setSlice!]; exact hpl
+    step with core.slice.index.SliceIndexRangeUsizeSlice.index_mut.step_spec
+      { start := m.len, «end» := i8 } (ib1 one) (by simp only [UScalar.le_equiv]; omega)
+      (by simp only; omega) as ⟨s3, ib2, hs3v, hs3l, hib2⟩
+    step with core.slice.Slice.copy_from_slice.step_spec core.marker.CopyU64 s3 x
+      (by rw [hs3l, hxl]; omega) as ⟨s4, hs4'⟩
+    subst s4
+    have hone' : one.val.length = m.length := hol
+    have hrows : ∀ j < (2#usize : Usize).val, MontPow (wordsNat m.val) (2 ^ (64 * m.len.val)) C j
+        (rowOf (ib2 x).val m.len.val j) := by
+      intro j hj
+      have hj2 : j = 0 ∨ j = 1 := by simp at hj; omega
+      have hil : (ib1 one).val.length = 32 * m.length := hp1l
+      rw [hib2, Slice.setSlice!_val, hk']
+      rcases hj2 with rfl | rfl
+      · simp only [rowOf, Nat.zero_mul, List.drop_zero]
+        have hpw : one.val.length ≤ powers.val.length := by
+          have : powers.val.length = 32 * m.length := hpl
+          omega
+        rw [take_setSlice_le _ _ _ _ le_rfl (by omega), hib1, ← hone', take_setSlice_zero _ _ hpw, hone']
+        exact hone
+      · have hx' : x.val.length = m.length := hxl
+        simp only [rowOf, Nat.one_mul]
+        rw [← hx', rowOf_setSlice _ _ _ (by omega), hx']
+        exact hx
+    have hxk : x.length = m.len.val := by rw [hk', hxl]
+    have hxp : MontPow (wordsNat m.val) (2 ^ (64 * m.len.val)) C 1 x.val := by rw [hk']; exact hx
+    have hpl2 : (ib2 x).length = 32 * m.len.val := by
+      simp only [Slice.length, hib2, Slice.setSlice!_val, List.length_setSlice!, hk']; exact hp1l
+    step with mont_exp_by_loop0_spec x m n0 C m.len m.len hP hk' rfl (by omega) hodd hn0 hxk hxp
+      { start := 2#usize, «end» := 32#usize } (ib2 x) hpl2 (by simp) (by simp) (by simp) hrows
+      as ⟨powers3, hp3l, hrows3⟩
+    step as ⟨i9, hi9⟩
+    have hi4e : i4.val = 64 * e.length := by omega
+    have htopb : top.val + 1 = i4.val := by omega
+    step as ⟨lsb, hlsb⟩
+    step as ⟨i10, hi10⟩
+    step as ⟨i11, hi11⟩
+    have hi11v : i11.val = top.val % 5 + 1 := by omega
+    have hsum : lsb.val + i11.val = 64 * e.length := by omega
+    step with bits_spec e lsb i11 (by omega) (by omega) (by omega) as ⟨i12, hi12⟩
+    have hE : wordsNat e.val < 2 ^ (lsb.val + i11.val) := by
+      rw [hsum]; exact wordsNat_lt' e.val
+    have hi12v : i12.val = wordsNat e.val / 2 ^ lsb.val := by
+      rw [hi12]
+      apply Nat.mod_eq_of_lt
+      rw [Nat.div_lt_iff_lt_mul (by positivity), ← pow_add, add_comm]
+      exact hE
+    have hi12b : i12.val < 32 := by
+      rw [hi12]
+      calc _ < 2 ^ i11.val := Nat.mod_lt _ (by positivity)
+        _ ≤ 2 ^ 5 := Nat.pow_le_pow_right (by norm_num) (by omega)
+        _ = 32 := by norm_num
+    have htl : term.length = m.len.val := by rw [hs2, hscl, hk']; omega
+    step with gather_spec havx term powers3 i12 (by rw [htl, hk']; omega) (by rw [htl]; exact hp3l)
+      hi12b (by rw [htl, hk']; omega) as ⟨term1, ht1⟩
+    have ht1r : term1.val = rowOf powers3.val m.len.val i12.val := by rw [ht1, htl]; rfl
+    have ht1l : term1.length = m.len.val := by
+      have := rowOf_length powers3.val m.len.val i12.val (by
+        have : powers3.val.length = 32 * m.len.val := hp3l
+        have : i12.val * m.len.val ≤ 31 * m.len.val := Nat.mul_le_mul_right _ (by omega)
+        omega)
+      rw [← ht1r] at this; exact this
+    step with core.slice.index.SliceIndexRangeToUsizeSlice.index.step_spec { «end» := m.len } term1
+      (by simp only; omega) as ⟨s5, hs5v, hs5l⟩
+    have hs5 : s5.val = rowOf powers3.val m.len.val i12.val := by
+      rw [hs5v, List.slice_zero_j, ← ht1r]
+      exact List.take_of_length_le (by simp only [Slice.length] at ht1l; omega)
+    step with core.slice.Slice.copy_from_slice.step_spec core.marker.CopyU64 z s5
+      (by rw [hs5l, hz, hk']) as ⟨z1, hz1⟩
+    subst z1
+    step as ⟨b, hb⟩
+    have hbt : b = true := by rw [hb]; simp [hk', hkk.2.2]
+    simp only [hbt, Option.isNone_some, Bool.false_eq_true, ↓reduceIte]
+    have hsl5 : s5.length = m.len.val := hs5l
+    have hspl : spare.length = m.len.val := by rw [hs1]
+    have hlsb5 : lsb.val % 5 = 0 := by omega
+    have hlsbe : lsb.val ≤ 64 * e.length := by omega
+    have hpow : MontPow (wordsNat m.val) (2 ^ (64 * m.len.val)) C (wordsNat e.val / 2 ^ lsb.val) s5.val := by
+      rw [hs5, ← hi12v]; exact hrows3 _ hi12b
+    have hloop := mont_exp_by_loop2_spec e m n0 C havx hP m.len hk' (by omega) (by omega) (by omega) hodd hn0
+      powers3 hp3l hrows3 s5 spare term1 lsb hsl5 hspl ht1l hlsb5 hlsbe hpow
+    rcases hk with h | h <;>
+    · have h' : m.len.val = _ := hk'.trans h
+      simp only [h', bind_ok, ↓reduceIte]
+      step with hloop as ⟨z2, spare1, term2, hz2l, hz2⟩
+      simp only [low.generic.zeroise.zeroise, bind_ok, WP.spec_ok]
+      rw [hk'] at hz2l hz2
+      exact ⟨hz2l, hz2⟩
+
+theorem mont_exp_spec (havx : ∃ t, low.x86_64.cpu.HaveAvx2.check = ok t)
+    (z x one e m : Slice U64) (n0 : U64) (C : Nat) (t : low.x86_64.cpu.HaveBmi2Adx)
+    (hadx : low.x86_64.cpu.HaveBmi2Adx.check = ok (some t))
+    (hP : MontProducts m.length) (hk : m.length = 16 ∨ m.length = 32)
+    (hodd : wordsNat m.val % 2 = 1) (hn0 : (wordsNat m.val * n0.val + 1) % 2 ^ 64 = 0)
+    (hz : z.length = m.length) (hxl : x.length = m.length) (hol : one.length = m.length)
+    (hel : 64 * e.length ≤ Usize.max)
+    (hx : MontPow (wordsNat m.val) (2 ^ (64 * m.length)) C 1 x.val)
+    (hone : MontPow (wordsNat m.val) (2 ^ (64 * m.length)) C 0 one.val) :
+    low.x86_64.mont_exp.mont_exp z x one e m n0 ⦃ r =>
+      r.length = m.length ∧
+        MontPow (wordsNat m.val) (2 ^ (64 * m.length)) C (wordsNat e.val) r.val ⦄ := by
+  unfold low.x86_64.mont_exp.mont_exp
+  simp only [hadx, bind_ok]
+  exact mont_exp_by_spec havx z x one e m n0 C t hP hk hodd hn0 hz hxl hol hel hx hone
+
+/-- `PosInt::mont_exp` at 16 and 32 words with BMI2 and ADX: what stands for
+`C^e` in the Montgomery domain, where `self` stands for `C` and `one_mont` for
+`C^0`, at `n`'s width. -/
+theorem posint_mont_exp_spec {N : Usize} (havx : ∃ t, low.x86_64.cpu.HaveAvx2.check = ok t)
+    (t : low.x86_64.cpu.HaveBmi2Adx) (hadx : low.x86_64.cpu.HaveBmi2Adx.check = ok (some t))
+    (self one_mont e n : low.posint.PosInt N) (n0 : U64) (C : Nat)
+    (hP : MontProducts n.used.val) (hk : n.used.val = 16 ∨ n.used.val = 32) (hN : n.used.val ≤ N.val)
+    (he : e.used.val ≤ N.val) (hel : 64 * e.used.val ≤ Usize.max)
+    (hodd : wordsNat (lowWords n n.used) % 2 = 1)
+    (hn0 : (wordsNat (lowWords n n.used) * n0.val + 1) % 2 ^ 64 = 0)
+    (hx : MontPow (wordsNat (lowWords n n.used)) (2 ^ (64 * n.used.val)) C 1 (lowWords self n.used))
+    (hone : MontPow (wordsNat (lowWords n n.used)) (2 ^ (64 * n.used.val)) C 0
+      (lowWords one_mont n.used)) :
+    low.posint.PosInt.mont_exp self one_mont e n n0 ⦃ r => r.used = n.used ∧
+      MontPow (wordsNat (lowWords n n.used)) (2 ^ (64 * n.used.val)) C (wordsNat (lowWords e e.used))
+        (lowWords r n.used) ⦄ := by
+  unfold low.posint.PosInt.mont_exp low.posint.PosInt.as_mut_words
+    low.posint.PosInt.as_words_with_len_of low.posint.PosInt.as_words low.posint.PosInt.zero
+  step*
+  obtain ⟨s, back⟩ := x
+  dsimp only at *
+  step as ⟨s1, hs1v, hs1l⟩
+  step as ⟨s2, hs2v, hs2l⟩
+  step as ⟨s3, hs3v, hs3l⟩
+  step as ⟨s4, hs4v, hs4l⟩
+  have hk4 : s4.length = n.used.val := hs4l
+  have hs4 : s4.val = lowWords n n.used := by simp [hs4v, lowWords]
+  have hs1 : s1.val = lowWords self n.used := by simp [hs1v, lowWords]
+  have hs2 : s2.val = lowWords one_mont n.used := by simp [hs2v, lowWords]
+  have hs3 : s3.val = lowWords e e.used := by simp [hs3v, lowWords]
+  rw [← hs4] at hx hone hodd hn0 ⊢
+  rw [← hs1] at hx
+  rw [← hs2] at hone
+  rw [← hk4] at hx hone ⊢
+  rw [← hk4] at hP hk
+  step with mont_exp_spec havx s s1 s2 s3 s4 n0 C t hadx hP hk hodd hn0 (by rw [x_post1, hk4])
+    (by rw [hs1l, hk4]) (by rw [hs2l, hk4]) (by rw [hs3l]; exact hel) hx hone as ⟨s5, hs5l, hs5⟩
+  obtain ⟨h1, -⟩ := mont_into_post ({ n with words := Array.repeat N 0#u64 } : low.posint.PosInt N) n back
+    x_post2 hN s5 (by rw [hs5l, hk4])
+  have h1' : lowWords ({ words := back s5, used := n.used } : low.posint.PosInt N) s4.length = s5.val := by
+    rw [hk4]; exact h1
+  rw [h1', ← hs3]
+  exact hs5
+
 end rind.x86_64

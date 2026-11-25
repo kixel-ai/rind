@@ -35,10 +35,10 @@ theorem drop_setSlice_zero {α : Type} (l s : List α) (h : s.length ≤ l.lengt
 
 /-- A Montgomery product into `out` sets its words below `n`'s width, which
 `f` returns, and keeps the rest. -/
-theorem mont_into_post (out n : RsaInt) (back : Slice U64 → Std.Array U64 128#usize)
+theorem mont_into_post {N : Usize} (out n : low.posint.PosInt N) (back : Slice U64 → Std.Array U64 N)
     (hback : ∀ s' : Slice U64, (back s').val = out.words.val.setSlice! 0 s'.val)
-    (hk : n.used.val ≤ 128) (s3 : Slice U64) (hs3 : s3.length = n.used.val) :
-    lowWords ({ words := back s3, used := n.used } : RsaInt) n.used = s3.val ∧
+    (hk : n.used.val ≤ N.val) (s3 : Slice U64) (hs3 : s3.length = n.used.val) :
+    lowWords ({ words := back s3, used := n.used } : low.posint.PosInt N) n.used = s3.val ∧
       List.drop n.used.val (back s3).val = List.drop n.used.val out.words.val := by
   have hl : s3.val.length ≤ out.words.val.length := by simp [Slice.length] at hs3; simp; omega
   have hs3' : s3.val.length = n.used.val := hs3
@@ -46,8 +46,8 @@ theorem mont_into_post (out n : RsaInt) (back : Slice U64 → Std.Array U64 128#
   · simp only [lowWords, hback, ← hs3']; exact take_setSlice_zero _ _ hl
   · rw [hback, ← hs3']; exact drop_setSlice_zero _ _ hl
 
-theorem mont_sqr_into_spec (self out n : RsaInt) (n0 : U64) (hP : MontProducts n.used.val)
-    (hk : n.used.val ≤ 128)
+theorem mont_sqr_into_spec {N : Usize} (self out n : low.posint.PosInt N) (n0 : U64)
+    (hP : MontProducts n.used.val) (hk : n.used.val ≤ N.val)
     (hargs : MontArgs (lowWords self n.used) (lowWords self n.used) (lowWords n n.used) n0) :
     low.posint.PosInt.mont_sqr_into self out n n0 ⦃ r =>
       r.used = n.used ∧
@@ -66,8 +66,8 @@ theorem mont_sqr_into_spec (self out n : RsaInt) (n0 : U64) (hP : MontProducts n
     rw [h1]
     simpa [lowWords, s1_post, s2_post] using s3_post
 
-theorem mont_mul_into_spec (self v out n : RsaInt) (n0 : U64) (hP : MontProducts n.used.val)
-    (hk : n.used.val ≤ 128)
+theorem mont_mul_into_spec {N : Usize} (self v out n : low.posint.PosInt N) (n0 : U64)
+    (hP : MontProducts n.used.val) (hk : n.used.val ≤ N.val)
     (hargs : MontArgs (lowWords self n.used) (lowWords v n.used) (lowWords n n.used) n0) :
     low.posint.PosInt.mont_mul_into self v out n n0 ⦃ r =>
       r.used = n.used ∧
@@ -88,11 +88,13 @@ theorem mont_mul_into_spec (self v out n : RsaInt) (n0 : U64) (hP : MontProducts
 
 /-! ## Square-and-multiply, `public_op`'s loop -/
 
-theorem lowWords_length (p : RsaInt) {k : Nat} (hk : k ≤ 128) : (lowWords p k).length = k := by
+theorem lowWords_length {N : Usize} (p : low.posint.PosInt N) {k : Nat} (hk : k ≤ N.val) :
+    (lowWords p k).length = k := by
   simp [lowWords]; omega
 
 /-- A Montgomery product's arguments, from their values. -/
-theorem mont_args_of (x y n : RsaInt) (n0 : U64) (hk : n.used.val ≤ 128) (hk2 : 2 ≤ n.used.val)
+theorem mont_args_of {N : Usize} (x y n : low.posint.PosInt N) (n0 : U64) (hk : n.used.val ≤ N.val)
+    (hk2 : 2 ≤ n.used.val)
     (hodd : wordsNat (lowWords n n.used) % 2 = 1)
     (hn0 : (wordsNat (lowWords n n.used) * n0.val + 1) % 2 ^ 64 = 0)
     (hx : wordsNat (lowWords x n.used) < wordsNat (lowWords n n.used))
@@ -313,7 +315,8 @@ theorem ilog2_spec (x : U64) (hx : x.val ≠ 0) :
   show (BitVec.ofNat 32 x.val.log2).toNat = _
   rw [BitVec.toNat_ofNat]; omega
 
-theorem mont_neg_inverse_spec (n : RsaInt) (hk : 1 ≤ n.used.val) (hk' : n.used.val ≤ 128)
+theorem mont_neg_inverse_spec {N : Usize} (n : low.posint.PosInt N) (hk : 1 ≤ n.used.val)
+    (hk' : n.used.val ≤ N.val)
     (hodd : wordsNat (lowWords n n.used) % 2 = 1) :
     low.posint.PosInt.mont_neg_inverse n ⦃ r =>
       (wordsNat (lowWords n n.used) * r.val + 1) % 2 ^ 64 = 0 ⦄ := by
