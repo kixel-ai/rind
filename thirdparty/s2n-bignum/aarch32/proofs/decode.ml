@@ -11,7 +11,8 @@
    encoding" and its subsections, as DDI 0487's F4 restates them for AArch32.
 
    Every encoding the model does not cover, or the manual calls
-   UNPREDICTABLE, decodes to NONE, so no theorem holds of code containing it:
+   UNPREDICTABLE, decodes to NONE, so a proof cannot step at an offset
+   holding it, though it may step through the code's other words:
    R15 as a destination other than a load's, or as an operand where the
    manual forbids it, the unconditional space (cond = 1111) but for DMB,
    non-zero should-be-zero fields, LDRT and STRT, and writeback to a

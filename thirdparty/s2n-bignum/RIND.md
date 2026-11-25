@@ -205,7 +205,8 @@ instruction and its scratch buffer, so the cases reach every form: `BX`,
 `POP`, and `LDR` into PC branch to a landing slot whose address a register or
 the buffer holds, a literal load reads the buffer, `LDM` and `STM` go through
 SP or a register that may be in the list, and each theorem says what an
-instruction that reads R15 computes. `admin/prove cosim` runs 1000 random
-cases, printing the seed, which
+instruction that reads R15 computes. `admin/prove cosim` runs up to 1000
+cases in all, the directed ones among them, so at most 979 random ones, and
+its timeout may stop it sooner; it prints the seed, which
 `S2N_BIGNUM_SEMATEST_SEED` repeats. Offering the model upstream is also a
 post to awslabs/s2n-bignum, which needs the maintainer's approval.

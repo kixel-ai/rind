@@ -26,6 +26,20 @@ let aarch32 = define
 (* `word (pc + n)` for the code's symbolic base `pc`.                        *)
 (* ------------------------------------------------------------------------- *)
 
+(* The current PC's offset from `pc`, from its `read PC s = word (pc + n)`. *)
+
+let aarch32_pc_offset pc_th =
+  let pc_expr = snd (dest_comb (snd (dest_eq (concl pc_th)))) in
+  if is_var pc_expr then 0
+  else
+    try
+      let _,ofs = dest_binary "+" pc_expr in
+      dest_small_numeral ofs
+    with Failure _ ->
+      failwith
+        ("AARCH32_THM: cannot decompose PC expression: " ^
+         string_of_term (concl pc_th));;
+
 let AARCH32_THM =
   let pth = prove
    (`read PC s = word pc ==> aarch32_decode s (word pc) instr ==>
@@ -35,17 +49,7 @@ let AARCH32_THM =
     ASM_MESON_TAC[aarch32_decode_unique]) in
   fun (execth2:thm option array) loaded_mc_th pc_th ->
     let th = MATCH_MP pth pc_th in
-    let pc_ofs =
-      let pc_expr = snd (dest_comb (snd (dest_eq (concl pc_th)))) in
-      if is_var pc_expr then 0
-      else
-        try
-          let _,ofs = dest_binary "+" pc_expr in
-          dest_small_numeral ofs
-        with Failure _ ->
-          failwith
-            ("AARCH32_THM: cannot decompose PC expression: " ^
-             string_of_term (concl pc_th)) in
+    let pc_ofs = aarch32_pc_offset pc_th in
     let _ =
       if pc_ofs >= Array.length execth2 then
         failwith
@@ -225,6 +229,20 @@ let AARCH32_CONV (decode_ths:thm option array) (ths:thm list) tm =
     else
       res in
   let eth =
+    (* A PC this cannot read as `pc + n` is AARCH32_THM's to report. *)
+    let undecoded =
+      try
+        let ofs = aarch32_pc_offset pc_th in
+        if ofs < Array.length decode_ths &&
+           (match decode_ths.(ofs) with None -> true | Some _ -> false)
+        then Some ofs else None
+      with Failure _ -> None in
+    match undecoded with
+      Some ofs ->
+        failwith
+          ("AARCH32_CONV: the word at `pc + " ^ string_of_int ofs ^
+           "` does not decode, such as a literal pool's")
+    | None ->
     try
       tryfind
         (fun loaded_mc_th ->
@@ -267,6 +285,8 @@ let AARCH32_CONV (decode_ths:thm option array) (ths:thm list) tm =
    REWRITE_CONV (READ_RVALUE :: WRITE_RVALUE :: WORD_ADD_0 ::
                  CONJUNCTS AARCH32_OPERAND_READS) THENC
    TOP_DEPTH_CONV COMPONENT_READ_OVER_WRITE_CONV THENC
+   (* RRX reads C, which appears only once its operand is unfolded. *)
+   REWRITE_CONV (BITVAL_CLAUSES :: flag_ths) THENC
    WORD_REDUCE_CONV THENC
    ONCE_REWRITE_CONV[WORD_SUB_ADD] THENC
    ONCE_DEPTH_CONV
@@ -729,4 +749,45 @@ let AARCH32_SUBROUTINE_TESTS =
     REWRITE_TAC[fst untaken_exec] THEN
     REPEAT STRIP_TAC THEN
     AARCH32_SIM_TAC untaken_exec [1]) in
-  [nostack; stack; literal; offset; before; untaken];;
+  (* mov r0, r0, then a word that does not decode: a step onto it says so. *)
+  let data_mc = define "aarch32_test_data_mc" [0xe1a00000; 0xffffffff] in
+  let data_exec = AARCH32_MK_EXEC_RULE data_mc in
+  let () =
+    let msg =
+      try
+        ignore (prove
+         (`!pc.
+            ensures aarch32
+              (\s. aligned_bytes_loaded s (word pc) aarch32_test_data_mc /\
+                   read PC s = word pc)
+              (\s. read PC s = word (pc + 8))
+              (MAYCHANGE [PC] ,, MAYCHANGE [R0] ,, MAYCHANGE [events])`,
+          REWRITE_TAC[fst data_exec] THEN
+          REPEAT STRIP_TAC THEN
+          AARCH32_SIM_TAC data_exec [1;2]));
+        "the step succeeded"
+      with Failure msg -> msg in
+    if msg <> "AARCH32_CONV: the word at `pc + 4` does not decode, such as \
+               a literal pool's"
+    then failwith ("AARCH32_SUBROUTINE_TESTS: a step onto data: " ^ msg) in
+  (* str r12, [sp, -r3, rrx]! with C clear: an address that reads C, which
+     appears only once the operand unfolds. *)
+  let rrx_mc = define "aarch32_test_rrx_mc" [0xe72dc063] in
+  let rrx_exec = AARCH32_MK_EXEC_RULE rrx_mc in
+  let rrx = prove
+   (`!pc (scratch:int32) (v:int32).
+      nonoverlapping ((word pc):int32,LENGTH aarch32_test_rrx_mc) (scratch,256)
+      ==> ensures aarch32
+        (\s. aligned_bytes_loaded s (word pc) aarch32_test_rrx_mc /\
+             read PC s = word pc /\
+             read SP s = word_add scratch (word 128) /\
+             read R3 s = word 32 /\ ~read CF s /\ read R12 s = v)
+        (\s. read PC s = word (pc + 4) /\
+             read SP s = word_add scratch (word 112) /\
+             read (memory :> bytes32 (word_add scratch (word 112))) s = v)
+        (MAYCHANGE [PC; SP] ,, MAYCHANGE [memory :> bytes(scratch,256)] ,,
+         MAYCHANGE [events])`,
+    REWRITE_TAC[fst rrx_exec] THEN
+    REPEAT STRIP_TAC THEN
+    AARCH32_SIM_TAC rrx_exec [1]) in
+  [nostack; stack; literal; offset; before; untaken; rrx];;
