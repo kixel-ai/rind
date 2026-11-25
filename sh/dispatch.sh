@@ -154,7 +154,7 @@ if [[ "$action" == ci && -n "${CHECK_QUEUE:-}" ]]; then
 fi
 
 # sh/select.sh narrows this to the changed crates and their dependents.
-module rs '^(rind[^/]*/|fuzz/|thirdparty/|Cargo\.(toml|lock)$|\.rustfmt(\.unstable)?\.toml$)' \
+module rs '^(rind[^/]*/|fuzz/|thirdparty/|Cargo\.(toml|lock)$|\.rustfmt(\.unstable)?\.toml$|flake\.(nix|lock)$)' \
     tools='cargo jq rustfmt-unstable' check-tools='cargo-nextest' compiles fix
 # rind's aarch64, armv7, portable, and wasm32 builds, which the host's own
 # build skips, and which a toolchain bump can break. A change under one
@@ -429,6 +429,9 @@ step() {
     case "$1:$2" in
         check:rs)
             mapfile -t packages < <(sh/select.sh "$changed" "$all")
+            # A change that selects no crate, such as the flake's, can still
+            # change the toolchain, its lints, and its codegen.
+            ((${#packages[@]} > 0)) || packages=(--workspace)
             run cargo fmt --all --check
             RUSTFMT=rustfmt-unstable run cargo fmt --all --check -- --config-path=.rustfmt.unstable.toml
             run cargo clippy "${packages[@]}" --all-targets --locked -- --deny warnings

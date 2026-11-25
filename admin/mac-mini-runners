@@ -135,17 +135,19 @@ fi
 sudo defaults delete /Library/Preferences/com.apple.loginwindow autoLoginUser 2>/dev/null || true
 sudo rm -f /etc/kcpassword
 printf 'PasswordAuthentication no\nKbdInteractiveAuthentication no\n' | sudo tee /etc/ssh/sshd_config.d/10-key-only.conf >/dev/null
-# Only globally routable addresses, DNS, and DHCP, as the x86_64 runner's
-# egress rules allow on its host; the runner user cannot change them. sshd's
-# replies match the port-22 rule, so loading this keeps the current session.
-# They replace /etc/pf.conf, since macOS's own com.apple.pfctl also loads that
-# file at boot, in no set order with the daemon below, and would otherwise
-# replace these rules with Apple's.
+# Only globally routable addresses, DHCP, and DNS to the host's resolver on
+# tart's network, as the x86_64 runner's egress rules allow on its host; the
+# runner user cannot change them. sshd's replies match the port-22 rule, so
+# loading this keeps the current session. They replace /etc/pf.conf, since
+# macOS's own com.apple.pfctl also loads that file at boot, in no set order
+# with the daemon below, and would otherwise replace these rules with Apple's.
+gw=$(route -n get default | awk '/gateway:/ { print $2 }')
+[ -n "$gw" ] || { echo "error: the guest has no default gateway" >&2; exit 1; }
 sudo tee /etc/pf.conf >/dev/null <<EOF
 set skip on lo0
 pass in all
 pass out quick proto tcp from any port 22
-pass out quick proto { tcp, udp } to any port 53
+pass out quick proto { tcp, udp } to { $gw, fe80::/10 } port 53
 pass out quick proto udp to any port 67
 pass out quick inet6 proto icmp6
 block return out quick inet to { 0.0.0.0/8, 10.0.0.0/8, 100.64.0.0/10, 127.0.0.0/8, 169.254.0.0/16, 172.16.0.0/12, 192.168.0.0/16, 224.0.0.0/4, 240.0.0.0/4 }
@@ -176,8 +178,11 @@ set -euo pipefail
 echo "admin:$(openssl rand -hex 32)" | sudo chpasswd
 printf 'PasswordAuthentication no\nKbdInteractiveAuthentication no\n' | sudo tee /etc/ssh/sshd_config.d/10-key-only.conf >/dev/null
 sudo systemctl reload ssh
-# Only globally routable addresses, DNS, and DHCP, as the x86_64 runner's
-# egress rules allow on its host; the runner user cannot change them.
+# Only globally routable addresses, DHCP, and DNS to the host's resolver on
+# tart's network, as the x86_64 runner's egress rules allow on its host; the
+# runner user cannot change them.
+gw=$(ip -4 route show default | awk '{ print $3; exit }')
+[ -n "$gw" ] || { echo "error: the guest has no default gateway" >&2; exit 1; }
 sudo tee /etc/nftables.conf >/dev/null <<EOF
 #!/usr/sbin/nft -f
 flush ruleset
@@ -189,7 +194,8 @@ table inet rind-queue {
         # which conntrack did not see start. Only root binds port 22.
         tcp sport 22 accept
         oifname "lo" accept
-        meta l4proto { tcp, udp } th dport 53 accept
+        ip daddr $gw meta l4proto { tcp, udp } th dport 53 accept
+        ip6 daddr fe80::/10 meta l4proto { tcp, udp } th dport 53 accept
         udp dport 67 accept
         meta l4proto icmpv6 accept
         ip daddr { 0.0.0.0/8, 10.0.0.0/8, 100.64.0.0/10, 127.0.0.0/8, 169.254.0.0/16, 172.16.0.0/12, 192.168.0.0/16, 224.0.0.0/4, 240.0.0.0/4 } reject
