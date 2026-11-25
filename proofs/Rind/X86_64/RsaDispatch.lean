@@ -209,6 +209,12 @@ impl PublicKey {
         self.key.modulus_len_bits().div_ceil(8)
     }
 
+    /// The modulus's length in bits, for a caller that enforces its own floor,
+    /// such as one mirroring a library that refuses a key under 2048 bits.
+    pub fn modulus_bits(&self) -> usize {
+        self.key.modulus_len_bits()
+    }
+
     /// Verifies `signature` over `message` with `algorithm`, refusing a
     /// malformed signature, and refusing the key if its modulus is below
     /// the algorithm's floor.
@@ -255,7 +261,7 @@ The model departs from the Rust in these ways, and adds no axiom:
   `pkcs1_components` and `spki_components`, which `from_pkcs1_der` and
   `from_spki_der` read their components with.
 - `?` is a `match`, since each error it passes on is already an `Error`.
-- `to_spki`, `modulus_len`, and `PublicKey`'s `AsRef`, which no theorem here
+- `to_spki`, `modulus_len`, `modulus_bits`, and `PublicKey`'s `AsRef`, which no theorem here
   is about, are not modelled.
 
 Drops are not modelled, as everywhere in the translation.
