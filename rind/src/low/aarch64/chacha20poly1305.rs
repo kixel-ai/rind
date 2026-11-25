@@ -79,9 +79,13 @@ fn seal_runs_vg(len: usize) -> bool {
     matches!(len, 577..=768 | 897..)
 }
 
-/// Whether an open of `len` bytes runs VG's NEON routine.
+/// Whether an open of `len` bytes runs VG's NEON routine. Never in a
+/// ctgrind build: VG's open branches on whether the tag matched, which its
+/// contract allows and valgrind cannot tell from a leak, so ctgrind checks
+/// aws-lc's open at every length and `ct_qemu_chacha20poly1305` VG's, as
+/// valgrind hides SVE2 and AVX-512 IFMA and so VG's other opens.
 fn open_runs_vg(len: usize) -> bool {
-    matches!(len, 129..=256 | 449..=895 | 961..)
+    !cfg!(feature = "__ctgrind") && matches!(len, 129..=256 | 449..=895 | 961..)
 }
 
 fn seal_sve2(
@@ -267,7 +271,7 @@ mod tests {
     type Open = fn(&[u8; 32], &[u8; 12], &[u8], &mut [u8], &[u8; 16]) -> bool;
 
     /// Each one-pass path the CPU can run, by name, and whether its open
-    /// may run VG's, which branches on whether the tag matched.
+    /// runs VG's under ctgrind, which branches on whether the tag matched.
     fn paths() -> Vec<(&'static str, Seal, Open, bool)> {
         let mut paths: Vec<(&'static str, Seal, Open, bool)> = vec![
             (
@@ -277,7 +281,7 @@ mod tests {
                 false,
             ),
             ("neon", seal_neon, open_neon, true),
-            ("dispatch", seal, open, true),
+            ("dispatch", seal, open, false),
         ];
         if HaveSve2::check().is_some() {
             paths.push((
@@ -299,10 +303,10 @@ mod tests {
     // each path, against separate ChaCha20 and Poly1305 passes, under a key
     // `admin/ctgrind` keeps secret, and opening under a tag one bit off.
     // VG's open branches on whether the tag matched, which its contract
-    // allows and valgrind cannot tell from a leak, so a path that may run it
+    // allows and valgrind cannot tell from a leak, so a path that runs it
     // opens under a public copy of the key, and `ct_qemu_chacha20poly1305`
-    // checks VG's routines instead, as it does those valgrind hides SVE2
-    // from.
+    // checks VG's routines instead; a ctgrind build's dispatch never runs it
+    // (see `open_runs_vg`).
     #[test]
     fn matches_separate_passes() {
         let public_key: [u8; 32] = core::array::from_fn(|i| i as u8);
