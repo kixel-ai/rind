@@ -490,6 +490,6 @@ theorem rsa2048_mont_products (o : Option low.x86_64.cpu.HaveBmi2Adx)
     (hcheck : low.x86_64.cpu.HaveBmi2Adx.check = ok o) (hsome : o.isSome) (N : Nat) (hN : N.size = 2048) :
     MontProducts ((N.size + 63) / 64) := by
   rw [hN]
-  exact mont_products o hcheck (Or.inr ⟨hsome, Or.inr rfl⟩)
+  exact karatsuba_products o hcheck hsome (Or.inr rfl)
 
 end rind.x86_64
