@@ -9,10 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.17.4](https://github.com/kixel-ai/rind/compare/rind-ring-v0.17.3...rind-ring-v0.17.4) - 2026-11-25
 
+Requires rind 0.4. This release matches ring 0.17's API and features, but for what its README lists under "What rind cannot back": the `cpu` module (`cpu::check` and `cpu::MissingFeature`), which ring keeps private, is gone, so drop any `cpu::check()` call. A change that restores upstream's API is a bug fix, released as a patch (CONTRIBUTING.md's Releases section). The other entries marked breaking change rind's API or another crate's, which this crate does not expose.
+
 ### Added
 
 - *(site)* the README and crates link rind.kixel.ai, and a pasted link shows a social card ([#844](https://github.com/kixel-ai/rind/pull/844))
-- *(site)* a page per library at /from/<library>, with a picker on the landing page ([#826](https://github.com/kixel-ai/rind/pull/826))
+- *(site)* a page per library at `/from/<library>`, with a picker on the landing page ([#826](https://github.com/kixel-ai/rind/pull/826))
 - [**breaking**] always wipe keys, removing the `wipe` feature ([#609](https://github.com/kixel-ai/rind/pull/609))
 - rind's adapters build for wasm32, and rind-rustls's and rind-ring's tests run on wasip2 ([#762](https://github.com/kixel-ai/rind/pull/762))
 - [**breaking**] per-algorithm signature modules and one API shape ([#781](https://github.com/kixel-ai/rind/pull/781))
@@ -24,7 +26,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - *(ring)* rind-ring builds without std, as ring 0.17 does ([#960](https://github.com/kixel-ai/rind/pull/960))
 - *(adapters)* match each adapter's API to its upstream's, and drop the drift list ([#783](https://github.com/kixel-ai/rind/pull/783))
-- *(release)* return rind to 0.3.2 and set four adapter patch versions by hand ([#548](https://github.com/kixel-ai/rind/pull/548))
 - *(rind-ring)* [**breaking**] offer exactly ring 0.17's API and features ([#516](https://github.com/kixel-ai/rind/pull/516))
 
 ### Other

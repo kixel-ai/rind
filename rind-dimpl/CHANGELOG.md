@@ -9,10 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.9.4](https://github.com/kixel-ai/rind/compare/rind-dimpl-v0.9.3...rind-dimpl-v0.9.4) - 2026-11-25
 
+Requires rind 0.4. This release matches dimpl's `crypto::aws_lc_rs` API, but for what its README lists under "What rind cannot back": `default_provider()` returns `CryptoProvider`, not a `Result`, and `MissingFeature` is gone, so drop the `?` or `.unwrap()`. A change that restores upstream's API is a bug fix, released as a patch (CONTRIBUTING.md's Releases section). The other entries marked breaking change rind's API or another crate's, which this crate does not expose.
+
 ### Added
 
 - *(site)* the README and crates link rind.kixel.ai, and a pasted link shows a social card ([#844](https://github.com/kixel-ai/rind/pull/844))
-- *(site)* a page per library at /from/<library>, with a picker on the landing page ([#826](https://github.com/kixel-ai/rind/pull/826))
+- *(site)* a page per library at `/from/<library>`, with a picker on the landing page ([#826](https://github.com/kixel-ai/rind/pull/826))
 - rind's adapters build for wasm32, and rind-rustls's and rind-ring's tests run on wasip2 ([#762](https://github.com/kixel-ai/rind/pull/762))
 - [**breaking**] per-algorithm signature modules and one API shape ([#781](https://github.com/kixel-ai/rind/pull/781))
 
@@ -24,7 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - gate nightly coverage across every tier, lint feature powersets, and run wasm32-unknown-unknown tests ([#965](https://github.com/kixel-ai/rind/pull/965))
 - *(adapters)* catch the mutants the adapter campaign excluded ([#792](https://github.com/kixel-ai/rind/pull/792))
-- :KeyPair loads a PKCS#8 key of any signing type in one call ([#857](https://github.com/kixel-ai/rind/pull/857))
+- `rind::KeyPair` loads a PKCS#8 key of any signing type in one call ([#857](https://github.com/kixel-ai/rind/pull/857))
 - every published function the coverage report listed runs under a test, or says why not ([#862](https://github.com/kixel-ai/rind/pull/862))
 - diff each adapter's API against its upstream's ([#698](https://github.com/kixel-ai/rind/pull/698))
 - release and queue from the kixel-ai org ([#711](https://github.com/kixel-ai/rind/pull/711))
