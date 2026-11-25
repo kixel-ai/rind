@@ -136,6 +136,16 @@ jobs:
             personality: linux64
             portable: true
             cpu: generic32
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-24.04-arm
+            personality: linux64
+            portable: true
+            cpu: generic
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-24.04-arm
+            personality: linux64
+            portable: true
+            cpu: generic32
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
@@ -234,6 +244,10 @@ jobs:
             libs='rind|aws-lc-rs|verified-garbage'
             export RUSTFLAGS='--cfg rind_cpu_disable'
             case "${{ matrix.target }}/${{ matrix.cpu }}" in
+              aarch64-*/generic|aarch64-*/generic32)
+                export RUSTFLAGS='--cfg rind_portable --cfg curve25519_dalek_backend="serial"'
+                if [ "${{ matrix.cpu }}" = generic32 ]; then RUSTFLAGS+=' --cfg rind_limb="32"'; fi
+                ;;
               # aws-lc's SHA512 and SHA3 bits. aws-lc has no SVE2 code to deny.
               aarch64-*/no-sha3)
                 export RIND_CPU_DISABLE_sha3=1 RIND_CPU_DISABLE_sve2=1
