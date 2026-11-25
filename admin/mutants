@@ -530,13 +530,19 @@ case $(uname -sm) in
     "Linux aarch64") host=aarch64-unknown-linux-gnu ;;
     *) host="$(uname -sm)" ;;
 esac
+# macOS on Apple silicon takes the aarch64 campaign, which only lists here,
+# so a listing, as the self-test runs, works there too.
+case $host in
+    "Darwin arm64") default_campaign=aarch64-unknown-linux-gnu ;;
+    *) default_campaign=$host ;;
+esac
 
 # Only armv7 and the portable backend compile these.
 portable=(
     'rind/src/low/portable/**' 'rind/src/mid/portable/**'
     rind/src/low/generic/order.rs
 )
-campaign=${target:-$host}
+campaign=${target:-$default_campaign}
 if [ -n "$portable_backend" ]; then
     [ -z "$target" ] && [ "$campaign" = x86_64-unknown-linux-gnu ] || {
         echo "admin/mutants: --portable runs only on Linux x86_64, without --target" >&2
