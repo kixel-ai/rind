@@ -20,7 +20,9 @@
 #
 # A backticked name in the table's other columns, but the oracle's, is one of:
 # - `fuzz::NAME`, a fuzz target;
-# - `crosschecks_FAMILY::[MOD::]FN`, a test in `rind/tests/crosschecks_FAMILY.rs`;
+# - `crosschecks_FAMILY::[MOD::]FN`, a test in `rind/tests/crosschecks_FAMILY.rs` by its
+#   full module path, where `*` matches any run of characters, as a macro's
+#   per-curve or per-suite modules need;
 # - `zeroing::FN`, a test in `rind/tests/zeroing.rs`;
 # - `aws_lc::FN` or `cctv::FN`, a test in `rind/tests/NAME.rs`;
 # - `a::b::FN`, a function in `rind/src/a/b.rs` (or `a/b/mod.rs`);
@@ -121,6 +123,77 @@ def tests(path):
     return set(re.findall(r"#\[test\]\s*(?:#\[[^\]]*\]\s*)*fn ([a-z0-9_]+)", path.read_text()))
 
 
+def test_paths(path):
+    """The module path of each `#[test]` in `path`, as `mod::fn`, with a test a
+    macro defines counted under each module it is invoked in, and a `$name`
+    module it declares named by the invocation's argument."""
+    text = path.read_text()
+    text = re.sub(r"//[^\n]*|/\*.*?\*/", " ", text, flags=re.S)
+    text = re.sub(r'r(#*)".*?"\1|"(?:\\.|[^"\\])*"', '""', text, flags=re.S)
+    text = re.sub(r"'(?:\\.[^']*|[^'\\])'", "''", text)
+    tokens = re.findall(r"\$?[A-Za-z_][A-Za-z0-9_]*|[{}()\[\]!#;,]", text)
+    macros = {}  # name -> [(modules relative to its body, test)]
+    found = set()
+    stack = []  # ("mod", name), ("macro", name), or ("other", None)
+    marked = False
+    i = 0
+
+    def group(i):
+        """The index after the bracket group opening at `i`."""
+        depth = 0
+        while True:
+            depth += tokens[i] in "{(["
+            depth -= tokens[i] in "})]"
+            i += 1
+            if depth == 0:
+                return i
+
+    while i < len(tokens):
+        tok = tokens[i]
+        if tok == "#" and tokens[i + 1 : i + 2] == ["["]:
+            end = group(i + 1)
+            marked |= tokens[i + 2 : end - 1] == ["test"]
+            i = end
+        elif tok == "mod" and tokens[i + 2 : i + 3] == ["{"]:
+            stack.append(("mod", tokens[i + 1]))
+            i += 3
+        elif tok == "macro_rules" and tokens[i + 1 : i + 2] == ["!"]:
+            macros[tokens[i + 2]] = []
+            stack.append(("macro", tokens[i + 2]))
+            i += 4
+        elif tok == "{":
+            stack.append(("other", None))
+            marked = False
+            i += 1
+        elif tok == "}":
+            stack.pop()
+            marked = False
+            i += 1
+        elif tok == "fn" and marked:
+            mods = [n for kind, n in stack if kind == "mod"]
+            macro = next((n for kind, n in stack if kind == "macro"), None)
+            if macro is None:
+                found.add("::".join([*mods, tokens[i + 1]]))
+            else:
+                depth = [k for k, (kind, _) in enumerate(stack) if kind == "macro"][0]
+                macros[macro].append(([n for kind, n in stack[depth:] if kind == "mod"], tokens[i + 1]))
+            marked = False
+            i += 2
+        elif tok in macros and tokens[i + 1 : i + 2] == ["!"] and tokens[i + 2 : i + 3] in (["("], ["{"], ["["]) and not any(k == "macro" for k, _ in stack):
+            end = group(i + 2)
+            args = tokens[i + 3 : end - 1]
+            first = args[0] if args else ""
+            mods = [n for kind, n in stack if kind == "mod"]
+            for relative, test in macros[tok]:
+                found.add("::".join([*mods, *(first if m.startswith("$") else m for m in relative), test]))
+            i = end
+        else:
+            if tok == ";":
+                marked = False
+            i += 1
+    return found
+
+
 def source_file(segments):
     for candidate in [SRC.joinpath(*segments).with_suffix(".rs"), SRC.joinpath(*segments, "mod.rs")]:
         if candidate.is_file():
@@ -140,7 +213,7 @@ for name in sorted(named - exported):
 
 fuzz_targets = set(re.findall(r'^name = "([a-z0-9_]+)"', (ROOT / "fuzz/Cargo.toml").read_text(), re.M))
 fuzz_targets.discard("rind-fuzz")
-crosschecks = {p.stem: p for p in (ROOT / "rind/tests").glob("crosschecks_*.rs")}
+crosschecks = {p.stem: test_paths(p) for p in (ROOT / "rind/tests").glob("crosschecks_*.rs")}
 zeroing_path = ROOT / "rind/tests/zeroing.rs"
 
 # What the code loads, read from string literals across the tests.
@@ -192,13 +265,10 @@ for row in rows:
                     errors.append(f"{where} is no fuzz target")
                 seen["fuzz"].add(segments[1])
             elif segments[0] in crosschecks and len(segments) >= 2:
-                path = crosschecks[segments[0]]
-                for module in segments[1:-1]:
-                    if not re.search(rf"\bmod {module}\b", path.read_text()):
-                        errors.append(f"{where}: no `mod {module}` in {path.name}")
-                if segments[-1] not in tests(path):
-                    errors.append(f"{where}: no such test in {path.name}")
-                seen["crosschecks"].add(f"{segments[0]}::{segments[-1]}")
+                matches = fnmatch.filter(crosschecks[segments[0]], "::".join(segments[1:]))
+                if not matches:
+                    errors.append(f"{where}: no such test in {segments[0]}.rs")
+                seen["crosschecks"].update(f"{segments[0]}::{match}" for match in matches)
             elif segments[0] == "zeroing" and len(segments) == 2:
                 if segments[1] not in tests(zeroing_path):
                     errors.append(f"{where}: no such test in {zeroing_path.name}")
@@ -243,7 +313,7 @@ for label in [ADAPTERS, BINDINGS]:
 
 for kind, names in [
     ("fuzz target", fuzz_targets - seen["fuzz"]),
-    ("differential test", {f"{stem}::{name}" for stem, path in crosschecks.items() for name in tests(path)} - seen["crosschecks"]),
+    ("differential test", {f"{stem}::{name}" for stem, names in crosschecks.items() for name in names} - seen["crosschecks"]),
     ("constant-time test", ct_tests - seen["ct"]),
     ("zeroing test", tests(zeroing_path) - seen["zeroing"]),
     ("Wycheproof file", wycheproof - seen["wycheproof"]),
