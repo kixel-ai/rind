@@ -8,11 +8,11 @@
 default:
     just --list
 
-# Lints, compiles, and tests only the crates the branch changed plus
-# everything depending on them; `check --all` is the unscoped suite. BASE
-# defaults to the PR base, then a main upstream, then origin/main.
+# check and ci cover only the crates the branch changed plus everything
+# depending on them, and `--all` the whole workspace. BASE defaults to the PR
+# base, then a main upstream, then origin/main.
 
-# Lint, compile, and test what the branch changed since BASE, plus its dependents.
+# Format, lint, and test what the branch changed since BASE, plus its dependents, and run the quick repository lints.
 check $BASE="":
     sh/dispatch.sh check "$BASE"
 
