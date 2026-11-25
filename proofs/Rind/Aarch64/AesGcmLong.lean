@@ -132,6 +132,7 @@ s2n-bignum's kernels' theorems, as Vale states GCTR and GHASH. -/
 theorem stitched_spec (ENC : Bool) (hk : low.aarch64.aes.HwKey) (alg : Algorithm) (kw : List (BitVec 32))
     (hkey : HwKeyIs alg kw hk) (h192 : alg ≠ .AES_192) (t : low.aarch64.ghash.PmullTable)
     (ht : TableFor (polyLE (aesEncrypt alg kw (mkfour 0 0 0 0))) t)
+    (haddr : t.eight_way.isSome → KernelBuffersLow)
     (tag counter : Std.Array U8 16#usize) (x j : BitVec 128) (htag : loadBytes tag.val = reverseBytesQuad32 x)
     (hctr : loadBytes counter.val = reverseBytesQuad32 j) (blocks : Slice (Std.Array U8 16#usize))
     (hn : blocks.length < 2 ^ 57) :
@@ -172,7 +173,8 @@ theorem stitched_spec (ENC : Bool) (hk : low.aarch64.aes.HwKey) (alg : Algorithm
         (htab4 aes128Cipher _ hrk aes128Cipher_eq))
       intro r hr; rw [WP.spec_ok]
       exact kernel_post false aes128Cipher .AES_128 kw _ hrk aes128Cipher_eq x j blocks r _ rfl hr
-    · apply WP.spec_bind (aes128_gcm_dec_alt_spec blocks tag counter k.round_keys _ x _ _ _ _ hn (hin _)
+    · apply WP.spec_bind (aes128_gcm_dec_alt_spec blocks tag counter k.round_keys _ x _ _ _ _ hn
+        (haddr (by simp [he])) (hin _)
         (htab aes128Cipher _ hrk aes128Cipher_eq))
       intro r hr; rw [WP.spec_ok]
       exact kernel_post false aes128Cipher .AES_128 kw _ hrk aes128Cipher_eq x j blocks r _ rfl hr
@@ -180,7 +182,8 @@ theorem stitched_spec (ENC : Bool) (hk : low.aarch64.aes.HwKey) (alg : Algorithm
         (htab4 aes128Cipher _ hrk aes128Cipher_eq))
       intro r hr; rw [WP.spec_ok]
       exact kernel_post true aes128Cipher .AES_128 kw _ hrk aes128Cipher_eq x j blocks r _ rfl hr
-    · apply WP.spec_bind (aes128_gcm_enc_alt_spec blocks tag counter k.round_keys _ x _ _ _ _ hn (hin _)
+    · apply WP.spec_bind (aes128_gcm_enc_alt_spec blocks tag counter k.round_keys _ x _ _ _ _ hn
+        (haddr (by simp [he])) (hin _)
         (htab aes128Cipher _ hrk aes128Cipher_eq))
       intro r hr; rw [WP.spec_ok]
       exact kernel_post true aes128Cipher .AES_128 kw _ hrk aes128Cipher_eq x j blocks r _ rfl hr
@@ -191,7 +194,8 @@ theorem stitched_spec (ENC : Bool) (hk : low.aarch64.aes.HwKey) (alg : Algorithm
         (htab4 aes256Cipher _ hrk aes256Cipher_eq))
       intro r hr; rw [WP.spec_ok]
       exact kernel_post false aes256Cipher .AES_256 kw _ hrk aes256Cipher_eq x j blocks r _ rfl hr
-    · apply WP.spec_bind (aes256_gcm_dec_alt_spec blocks tag counter k.round_keys _ x _ _ _ _ hn (hin _)
+    · apply WP.spec_bind (aes256_gcm_dec_alt_spec blocks tag counter k.round_keys _ x _ _ _ _ hn
+        (haddr (by simp [he])) (hin _)
         (htab aes256Cipher _ hrk aes256Cipher_eq))
       intro r hr; rw [WP.spec_ok]
       exact kernel_post false aes256Cipher .AES_256 kw _ hrk aes256Cipher_eq x j blocks r _ rfl hr
@@ -199,7 +203,8 @@ theorem stitched_spec (ENC : Bool) (hk : low.aarch64.aes.HwKey) (alg : Algorithm
         (htab4 aes256Cipher _ hrk aes256Cipher_eq))
       intro r hr; rw [WP.spec_ok]
       exact kernel_post true aes256Cipher .AES_256 kw _ hrk aes256Cipher_eq x j blocks r _ rfl hr
-    · apply WP.spec_bind (aes256_gcm_enc_alt_spec blocks tag counter k.round_keys _ x _ _ _ _ hn (hin _)
+    · apply WP.spec_bind (aes256_gcm_enc_alt_spec blocks tag counter k.round_keys _ x _ _ _ _ hn
+        (haddr (by simp [he])) (hin _)
         (htab aes256Cipher _ hrk aes256Cipher_eq))
       intro r hr; rw [WP.spec_ok]
       exact kernel_post true aes256Cipher .AES_256 kw _ hrk aes256Cipher_eq x j blocks r _ rfl hr
@@ -381,7 +386,8 @@ PMULL table for its hash key: GCTR from the block after `j0`, and GHASH
 from `x` over the AAD's blocks, then the ciphertext's. -/
 theorem cipher_spec (ENC : Bool) (hk : low.aarch64.aes.HwKey) (alg : Algorithm) (kw : List (BitVec 32))
     (hkey : HwKeyIs alg kw hk) (h192 : alg ≠ .AES_192) (t : low.aarch64.ghash.PmullTable)
-    (ht : TableFor (polyLE (aesEncrypt alg kw (mkfour 0 0 0 0))) t) (x : V) (j0 : Quad32)
+    (ht : TableFor (polyLE (aesEncrypt alg kw (mkfour 0 0 0 0))) t)
+    (haddr : t.eight_way.isSome → KernelBuffersLow) (x : V) (j0 : Quad32)
     (y0 : Std.Array U8 16#usize) (hy : loadBytes y0.val = reverseBytesQuad32 j0) (aad inout : Slice U8)
     (hin : inout.length < 2 ^ 61) :
     low.aarch64.aes_gcm.cipher ENC (.Hw hk) ⟨.Pmull t, x⟩ y0 aad inout ⦃ r =>
@@ -404,7 +410,7 @@ theorem cipher_spec (ENC : Bool) (hk : low.aarch64.aes.HwKey) (alg : Algorithm) 
     simp only [low.aarch64.ghash.Ghash.state, low.aarch64.ghash.to_u128, bind_ok]
     have hn : W.length < 2 ^ 57 := by
       simp only [Slice.length] at hin hWl ⊢; omega
-    apply WP.spec_bind (stitched_spec ENC _ alg kw hkey h192 t ht _ c1 x1 (inc32 j0 1) (load_to_be _) hc1 W hn)
+    apply WP.spec_bind (stitched_spec ENC _ alg kw hkey h192 t ht haddr _ c1 x1 (inc32 j0 1) (load_to_be _) hc1 W hn)
     rintro ⟨tag1, c2, W'⟩ ⟨hWl2, hW', hc2, hg2⟩
     dsimp only at hWl2 hW' hc2 hg2
     simp only [low.aarch64.ghash.Ghash.set_state, lift, low.aarch64.ghash.from_u128, bind_ok]
@@ -483,7 +489,8 @@ a PMULL table, at any length: GCTR from the block after `j0`, and the tag
 GCTR from `j0` on `gcm_hash` of the AAD and the ciphertext. -/
 theorem tagged_from_spec (ENC : Bool) (hk : low.aarch64.aes.HwKey) (alg : Algorithm) (kw : List (BitVec 32))
     (hkey : HwKeyIs alg kw hk) (h192 : alg ≠ .AES_192) (t : low.aarch64.ghash.PmullTable)
-    (ht : TableFor (polyLE (aesEncrypt alg kw (mkfour 0 0 0 0))) t) (j0 : Quad32) (y0 : Std.Array U8 16#usize)
+    (ht : TableFor (polyLE (aesEncrypt alg kw (mkfour 0 0 0 0))) t)
+    (haddr : t.eight_way.isSome → KernelBuffersLow) (j0 : Quad32) (y0 : Std.Array U8 16#usize)
     (hy : loadBytes y0.val = reverseBytesQuad32 j0) (aad inout : Slice U8) (hin : inout.length < 2 ^ 61) :
     low.aarch64.aes_gcm.tagged_from ENC (.Hw hk) (.Pmull t) y0 aad inout ⦃ r =>
       r.2.length = inout.length ∧
@@ -506,7 +513,7 @@ theorem tagged_from_spec (ENC : Bool) (hk : low.aarch64.aes.HwKey) (alg : Algori
     cases ENC <;> simp only [Bool.false_eq_true, ite_false, ite_true, low.aarch64.aes_gcm.SHORT_SEAL_BLOCKS,
       low.aarch64.aes_gcm.SHORT_OPEN_BLOCKS] at hshort ⊢ <;> scalar_tac)]
   simp only [low.aarch64.ghash.Ghash.new, pmull.zero_eq, bind_ok]
-  apply WP.spec_bind (cipher_spec ENC hk alg kw hkey h192 t ht 0 j0 y0 hy aad inout hin)
+  apply WP.spec_bind (cipher_spec ENC hk alg kw hkey h192 t ht haddr 0 j0 y0 hy aad inout hin)
   rintro ⟨⟨gt, gc⟩, out⟩ ⟨hgt, hl, hout, hgh⟩
   dsimp only at hgt hl hout hgh ⊢
   subst hgt
@@ -535,7 +542,8 @@ theorem tagged_from_spec (ENC : Bool) (hk : low.aarch64.aes.HwKey) (alg : Algori
 crypto extension, and a PMULL table is Vale's `gcm_encrypt_LE`. -/
 theorem tagged_seal_spec (hk : low.aarch64.aes.HwKey) (alg : Algorithm) (kw : List (BitVec 32))
     (hkey : HwKeyIs alg kw hk) (h192 : alg ≠ .AES_192) (t : low.aarch64.ghash.PmullTable)
-    (ht : TableFor (polyLE (aesEncrypt alg kw (mkfour 0 0 0 0))) t) (nonce : Std.Array U8 12#usize)
+    (ht : TableFor (polyLE (aesEncrypt alg kw (mkfour 0 0 0 0))) t)
+    (haddr : t.eight_way.isSome → KernelBuffersLow) (nonce : Std.Array U8 12#usize)
     (aad inout : Slice U8) (hin : inout.length < 2 ^ 61) :
     low.aarch64.aes_gcm.tagged true (.Hw hk) (.Pmull t) nonce aad inout ⦃ r =>
       r.2.length = inout.length ∧ (bvs r.2.val, bvs r.1.val) =
@@ -543,7 +551,7 @@ theorem tagged_seal_spec (hk : low.aarch64.aes.HwKey) (alg : Algorithm) (kw : Li
   unfold low.aarch64.aes_gcm.tagged
   apply WP.spec_bind (counter_block_eq (aesEncrypt alg kw (mkfour 0 0 0 0)) nonce)
   intro y0 hy
-  apply WP.spec_mono (tagged_from_spec true hk alg kw hkey h192 t ht _ y0 hy aad inout hin)
+  apply WP.spec_mono (tagged_from_spec true hk alg kw hkey h192 t ht haddr _ y0 hy aad inout hin)
   rintro r ⟨hl, ho, htag⟩
   refine ⟨hl, ?_⟩
   simp only [ite_true] at htag
@@ -555,7 +563,8 @@ crypto extension, and a PMULL table is Vale's `gcm_decrypt_LE`, its tag the
 one `open` compares. -/
 theorem tagged_open_spec (hk : low.aarch64.aes.HwKey) (alg : Algorithm) (kw : List (BitVec 32))
     (hkey : HwKeyIs alg kw hk) (h192 : alg ≠ .AES_192) (t : low.aarch64.ghash.PmullTable)
-    (ht : TableFor (polyLE (aesEncrypt alg kw (mkfour 0 0 0 0))) t) (nonce : Std.Array U8 12#usize)
+    (ht : TableFor (polyLE (aesEncrypt alg kw (mkfour 0 0 0 0))) t)
+    (haddr : t.eight_way.isSome → KernelBuffersLow) (nonce : Std.Array U8 12#usize)
     (aad inout : Slice U8) (hin : inout.length < 2 ^ 61) :
     low.aarch64.aes_gcm.tagged false (.Hw hk) (.Pmull t) nonce aad inout ⦃ r =>
       r.2.length = inout.length ∧ ∀ tag : List (BitVec 8),
@@ -564,7 +573,7 @@ theorem tagged_open_spec (hk : low.aarch64.aes.HwKey) (alg : Algorithm) (kw : Li
   unfold low.aarch64.aes_gcm.tagged
   apply WP.spec_bind (counter_block_eq (aesEncrypt alg kw (mkfour 0 0 0 0)) nonce)
   intro y0 hy
-  apply WP.spec_mono (tagged_from_spec false hk alg kw hkey h192 t ht _ y0 hy aad inout hin)
+  apply WP.spec_mono (tagged_from_spec false hk alg kw hkey h192 t ht haddr _ y0 hy aad inout hin)
   rintro r ⟨hl, ho, htag⟩
   refine ⟨hl, fun tag => ?_⟩
   simp only [Bool.false_eq_true, ite_false] at htag

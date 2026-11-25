@@ -49,7 +49,9 @@ P-384's comb table select rests on no axiom, only on the hand model in
 AES-GCM's counter blocks and its `tagged_from` and `tagged` on short messages
 with the crypto extension's key, rest on no axiom, only on the hand model in
 `Rind.Aarch64.AesGcmModel`; at every length, with an AES-128 or AES-256 key,
-they rest also on s2n-bignum's stitched kernels' contracts.
+they rest also on s2n-bignum's stitched kernels' contracts, and on cores with
+SHA3 take the `_alt` kernels' address bound as the hypothesis
+`KernelBuffersLow`, which no axiom states.
 ML-KEM's decompression and message coding rest on no axiom.
 ChaCha20-Poly1305's one pass on SVE2 rests on the axioms restating
 pyca/verified-garbage's theorems for its routines in
