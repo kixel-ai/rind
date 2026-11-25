@@ -1967,3 +1967,55 @@ let CHACHA_TAIL = prove
    [ARITH_TAC; ALL_TAC] THEN
   REPEAT(DISCH_THEN(DISJ_CASES_THEN2 STRIP_ASSUME_TAC MP_TAC)) THEN TRY DISCH_TAC THENL
    [CHACHA_TAIL_CASE_TAC 3; CHACHA_TAIL_CASE_TAC 2; CHACHA_TAIL_CASE_TAC 1; CHACHA_TAIL_CASE0_TAC]);;
+(* ------------------------------------------------------------------------- *)
+(* The next group's rows from the stack copies, 0x100 to 0x163, the counter  *)
+(* row 4 on.                                                                 *)
+(* ------------------------------------------------------------------------- *)
+
+(* The code's RIP-relative operands: the instruction ending at pc + e with
+   displacement data - (pc + c) addresses data + t. *)
+let CHACHA_RIPREL = prove
+ (`(!pc data e c t. riprel32_within_bounds (data + t) (pc + e) /\ c + t = e
+        ==> word(val(word(pc + e):int64) + val(word_sx(iword(&data - (&pc + &c)):int32):int64)):int64 =
+            word(data + t)) /\
+   (!pc data e c t. riprel32_within_bounds (data + t) (pc + e) /\ e + c = t
+        ==> word(val(word(pc + e):int64) + val(word_sx(iword(&data - (&pc + -- &c)):int32):int64)):int64 =
+            word(data + t))`,
+  CONJ_TAC THEN REPEAT GEN_TAC THEN STRIP_TAC THEN
+  MP_TAC(SPECL [`pc:num`; `e:num`; `0`; `data + t`] RIP_REL_ADDR_FOLD) THEN
+  ASM_REWRITE_TAC[] THEN DISCH_THEN(SUBST1_TAC o SYM o CONJUNCT1) THEN
+  REPLICATE_TAC 4 AP_TERM_TAC THEN AP_TERM_TAC THEN
+  FIRST_X_ASSUM(SUBST1_TAC o SYM) THEN REWRITE_TAC[GSYM INT_OF_NUM_ADD] THEN INT_ARITH_TAC);;
+
+let chacha_reload_rows =
+  let rd c = mk_icomb(`read:(x86state,int128)component->x86state->int128`, c) in
+  let loc k = if k = 10 then rd `XMM6` else if k = 11 then rd `XMM7` else chacha_loc k in
+  list_mk_conj(map (fun k -> mk_eq(mk_comb(loc k, `s:x86state`),
+    chacha_lanes (fun j -> if k = 12 then list_mk_icomb "word_add" [chacha_el k (chacha_sv j); `word 4:int32`]
+                           else chacha_el k (chacha_sv j)))) (0--15));;
+
+let CHACHA_RELOAD_GOAL =
+  let tm = mk_imp(
+   `aligned 16 (stk:int64) /\ aligned 16 (word(data + 48):int64) /\
+    riprel32_within_bounds (data + 48) (pc + 0x163)`,
+   list_mk_icomb "ensures" [`x86`;
+    mk_abs(`s:x86state`, list_mk_conj [
+     `bytes_loaded s (word pc) (chacha20_ssse3_4x_mc pc data) /\ read RIP s = word(pc + 0x100) /\
+      read RSP s = stk /\ read RCX s = word_add stk (word 256) /\
+      read (memory :> bytes128 (word(data + 48))) s = word 0x00000004000000040000000400000004`;
+     chacha_copies]);
+    mk_abs(`s:x86state`, list_mk_conj [
+     `read RIP s = word(pc + 0x163)`; chacha_reload_rows]);
+    `MAYCHANGE [RIP] ,,
+     MAYCHANGE [ZMM0; ZMM1; ZMM2; ZMM3; ZMM4; ZMM5; ZMM6; ZMM7;
+                ZMM8; ZMM9; ZMM10; ZMM11; ZMM12; ZMM13; ZMM14; ZMM15] ,,
+     MAYCHANGE [events]`]) in
+  list_mk_forall(frees tm, tm);;
+
+let CHACHA_RELOAD = prove
+ (CHACHA_RELOAD_GOAL,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  MP_TAC(SPECL [`pc:num`; `data:num`; `0x163`; `307`; `48`] (CONJUNCT1 CHACHA_RIPREL)) THEN
+  ANTS_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC NUM_REDUCE_CONV; DISCH_TAC] THEN
+  ENSURES_INIT_TAC "s0" THEN GHOST_YMMS_TAC THEN CHACHA_UNTIL_TAC 0x163 1 THEN XMMS_OF_YMMS_TAC THEN
+  ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[]);;
