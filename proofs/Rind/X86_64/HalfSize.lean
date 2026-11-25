@@ -215,14 +215,14 @@ theorem cmp_eq (x y : U256) : U256.Insts.CoreCmpOrd.cmp x y = ok (compare (val x
 theorem gt_spec (x y : U256) :
     core.cmp.PartialOrd.gt.trait_default U256.Insts.CoreCmpPartialOrdU256 x y ⦃ b => b ↔ val y < val x ⦄ := by
   simp only [core.cmp.PartialOrd.gt.trait_default, core.cmp.PartialOrd.gt.default, core.cmp.PartialOrd.gt_body,
-    U256.Insts.CoreCmpPartialOrdU256, U256.Insts.CoreCmpPartialOrdU256.partial_cmp, cmp_eq, bind_ok, WP.spec_ok]
+    U256.Insts.CoreCmpPartialOrdU256.partial_cmp, cmp_eq, bind_ok]
   simp [compare_gt_iff_gt]
 
 @[step]
 theorem lt_spec (x y : U256) :
     core.cmp.PartialOrd.lt.trait_default U256.Insts.CoreCmpPartialOrdU256 x y ⦃ b => b ↔ val x < val y ⦄ := by
   simp only [core.cmp.PartialOrd.lt.trait_default, core.cmp.PartialOrd.lt.default, core.cmp.PartialOrd.lt_body,
-    U256.Insts.CoreCmpPartialOrdU256, U256.Insts.CoreCmpPartialOrdU256.partial_cmp, cmp_eq, bind_ok, WP.spec_ok]
+    U256.Insts.CoreCmpPartialOrdU256.partial_cmp, cmp_eq, bind_ok]
   simp [compare_lt_iff_lt]
 
 theorem mul_pow_div (lo s : Nat) (hs : s ≤ 128) : lo * 2 ^ s / 2 ^ 128 = lo / 2 ^ (128 - s) := by
@@ -263,6 +263,218 @@ theorem shl_spec (x : U256) (s : U32) (hs : s.val < 128) (h : val x * 2 ^ s.val 
     have hsplit := Nat.div_add_mod (x.lo.val * 2 ^ s.val) (2 ^ 128)
     rw [mul_pow_div _ _ (by omega)] at hsplit
     nlinarith
+
+/-! ## The Euclidean loop's invariant -/
+
+theorem N_eq : N = 57896044618658097711785492504343953926856930875039260848015607506283634007912 := by
+  simp [N, n25519]
+
+theorem N_lt : N < 2 ^ 256 := by rw [N_eq]; norm_num
+
+theorem N_gt : 2 ^ 255 < N := by rw [N_eq]; norm_num
+
+/-- `r ≡ ±t k (mod 8L)`, `+` for the row from `k`. -/
+def Congr (K r t : Nat) (from_k : Bool) : Prop :=
+  (r : Int) ≡ (if from_k then (t : Int) else -(t : Int)) * K [ZMOD N]
+
+/-- What `split`'s loop keeps of its two rows, for `k`'s number `K`. -/
+structure Inv (K : Nat) (big small : Row) : Prop where
+  sign : big.from_k = !small.from_k
+  cb : Congr K (val big.r) big.t.val big.from_k
+  cs : Congr K (val small.r) small.t.val small.from_k
+  cop : Nat.Coprime big.t.val small.t.val
+  sum : val big.r * small.t.val + val small.r * big.t.val = N
+  le : val small.r ≤ val big.r
+  big_ge : 2 ^ 128 ≤ val big.r
+  big_le : val big.r ≤ N
+  small_lt : val small.r < 2 ^ 255
+  big_lt : val big.r < 2 ^ 255 ∨ small.t.val = 1
+
+/-- Subtracting `2^sh` times the smaller row from the bigger keeps the `t`
+below 2^128, while the smaller row is at least 2^128. -/
+theorem t_bound {K : Nat} {big small : Row} (h : Inv K big small) (hs : 2 ^ 128 ≤ val small.r) (sh : Nat)
+    (hsh : val small.r * 2 ^ sh ≤ val big.r) :
+    big.t.val + small.t.val * 2 ^ sh < 2 ^ 128 := by
+  have hsum := h.sum
+  have e : (val big.r - val small.r * 2 ^ sh) * small.t.val + val small.r * (big.t.val + small.t.val * 2 ^ sh) = N := by
+    rw [← hsum, Nat.sub_mul]
+    have : val small.r * 2 ^ sh * small.t.val ≤ val big.r * small.t.val := Nat.mul_le_mul_right _ hsh
+    zify [this, hsh]; ring
+  have h1 : val small.r * (big.t.val + small.t.val * 2 ^ sh) ≤ N := by omega
+  have h2 : 2 ^ 128 * (big.t.val + small.t.val * 2 ^ sh) ≤ N :=
+    le_trans (Nat.mul_le_mul_right _ hs) h1
+  have := N_lt
+  by_contra hc
+  have : 2 ^ 128 * 2 ^ 128 ≤ 2 ^ 128 * (big.t.val + small.t.val * 2 ^ sh) := Nat.mul_le_mul_left _ (by omega)
+  omega
+
+theorem congr_step {K rb rs tb ts : Nat} {fb fs : Bool} (hf : fb = !fs) (hb : Congr K rb tb fb)
+    (hs : Congr K rs ts fs) (sh : Nat) (hle : rs * 2 ^ sh ≤ rb) :
+    Congr K (rb - rs * 2 ^ sh) (tb + ts * 2 ^ sh) fb := by
+  unfold Congr at *
+  have e := Int.ModEq.sub hb (hs.mul_right (2 ^ sh))
+  push_cast [hle]
+  refine e.trans ?_
+  unfold Int.ModEq
+  congr 1
+  subst hf
+  cases fs <;> simp <;> ring
+
+theorem inv_step {K : Nat} {big small : Row} (h : Inv K big small) (hs : 2 ^ 128 ≤ val small.r) (sh : Nat)
+    (hsh1 : val small.r * 2 ^ sh ≤ val big.r) (hsh2 : val big.r < val small.r * 2 ^ (sh + 1))
+    (r' : U256) (hr' : val r' = val big.r - val small.r * 2 ^ sh)
+    (t' : U128) (ht' : t'.val = big.t.val + small.t.val * 2 ^ sh) :
+    (val r' < val small.r → Inv K small { big with r := r', t := t' }) ∧
+      (¬ val r' < val small.r → Inv K { big with r := r', t := t' } small) ∧
+      val r' + val small.r < val big.r + val small.r := by
+  have hsum := h.sum
+  have hpos : 0 < val small.r := by omega
+  have hsh0 : val small.r ≤ val small.r * 2 ^ sh := Nat.le_mul_of_pos_right _ (by positivity)
+  have hhalf : 2 * val r' < val big.r := by
+    rw [hr']; rw [pow_succ, ← Nat.mul_assoc] at hsh2; omega
+  have hN := N_lt
+  have hbig := h.big_le
+  have hcop : Nat.Coprime t'.val small.t.val := by
+    rw [ht']; exact (Nat.coprime_add_mul_left_left _ _ _).mpr h.cop
+  have hc := congr_step h.sign h.cb h.cs sh hsh1
+  rw [← hr', ← ht'] at hc
+  have hid : val r' * small.t.val + val small.r * t'.val = N := by
+    rw [hr', ht', ← hsum, Nat.sub_mul]
+    have : val small.r * 2 ^ sh * small.t.val ≤ val big.r * small.t.val := Nat.mul_le_mul_right _ hsh1
+    zify [this, hsh1]; ring
+  refine ⟨fun hlt => ?_, fun hge => ?_, by omega⟩
+  · exact {
+      sign := by simp [h.sign]
+      cb := h.cs
+      cs := hc
+      cop := hcop.symm
+      sum := by simp only; rw [← hid]; ring
+      le := hlt.le
+      big_ge := hs
+      big_le := by have := h.le; omega
+      small_lt := by simp only; omega
+      big_lt := Or.inl h.small_lt }
+  · exact {
+      sign := h.sign
+      cb := hc
+      cs := h.cs
+      cop := hcop
+      sum := hid
+      le := by simp only; omega
+      big_ge := by simp only; omega
+      big_le := by simp only; omega
+      small_lt := h.small_lt
+      big_lt := Or.inl (by simp only; omega) }
+
+theorem bitLen_ge_129 {x : Nat} (h : 2 ^ 128 ≤ x) : 129 ≤ bitLen x := by
+  by_contra hc
+  have := lt_pow_bitLen x
+  have := Nat.pow_le_pow_right (show 0 < 2 by norm_num) (show bitLen x ≤ 128 by omega)
+  omega
+
+/-- The largest shift with `small << shift <= big`, as the loop picks it. -/
+theorem shift_facts {big small : Nat} (hs : 2 ^ 128 ≤ small) (hle : small ≤ big) (hbig : big < 2 ^ 256) :
+    let shift := bitLen big - bitLen small
+    shift < 128 ∧ small * 2 ^ shift < 2 ^ 256 ∧
+      (big < small * 2 ^ shift → 1 ≤ shift ∧ small * 2 ^ (shift - 1) ≤ big ∧ big < small * 2 ^ (shift - 1 + 1)) ∧
+      (¬ big < small * 2 ^ shift → big < small * 2 ^ (shift + 1)) := by
+  intro shift
+  have h1 := bitLen_ge_129 hs
+  have h2 := bitLen_le hbig
+  have h3 := bitLen_mono hle
+  have hsl := lt_pow_bitLen small
+  have hbl := lt_pow_bitLen big
+  have hbp := pow_bitLen_le (show 0 < big by omega)
+  have hsp := pow_bitLen_le (show 0 < small by omega)
+  have hsum : bitLen small + shift = bitLen big := by omega
+  have hlt : small * 2 ^ shift < 2 ^ bitLen big := by
+    rw [← hsum, pow_add]; exact Nat.mul_lt_mul_of_pos_right hsl (by positivity)
+  refine ⟨by omega, lt_of_lt_of_le hlt (Nat.pow_le_pow_right (by norm_num) h2), fun hb => ?_, fun hb => ?_⟩
+  · have h0 : 1 ≤ shift := by
+      by_contra h0
+      have : shift = 0 := by omega
+      rw [this, pow_zero, mul_one] at hb; omega
+    refine ⟨h0, ?_, by rw [Nat.sub_add_cancel h0]; exact hb⟩
+    have : small * 2 ^ (shift - 1) < 2 ^ (bitLen big - 1) := by
+      rw [show bitLen big - 1 = bitLen small + (shift - 1) by omega, pow_add]
+      exact Nat.mul_lt_mul_of_pos_right hsl (by positivity)
+    omega
+  · calc big < 2 ^ bitLen big := hbl
+      _ = 2 * 2 ^ (bitLen small - 1) * 2 ^ shift := by
+        rw [← pow_succ', ← pow_add]; congr 1; omega
+      _ ≤ 2 * small * 2 ^ shift := by gcongr
+      _ = small * 2 ^ (shift + 1) := by ring
+
+theorem split_loop_spec (K : Nat) (big small : Row) (h : Inv K big small) :
+    split_loop big small ⦃ r =>
+      Inv K r.1 ⟨⟨r.2.1, r.2.2.1⟩, r.2.2.2.1, r.2.2.2.2⟩ ∧ r.2.1.val = 0 ⦄ := by
+  unfold split_loop
+  apply loop.spec_decr_nat (fun x => val x.1.r + val x.2.r) (fun x => Inv K x.1 x.2)
+  · rintro ⟨big, small⟩ h
+    simp only at h ⊢
+    unfold split_loop.body
+    by_cases hne : (small.r.hi != 0#u128) = true
+    · rw [if_pos hne]
+      have hhi : small.r.hi.val ≠ 0 := by
+        intro h0; simp only [bne_iff_ne, ne_eq] at hne
+        exact hne ((UScalar.eq_equiv _ _).mpr (by rw [h0]; rfl))
+      have hs : 2 ^ 128 ≤ val small.r := by unfold val; omega
+      have hbig := val_lt big.r
+      obtain ⟨hsh, hsmul, hgt, hngt⟩ := shift_facts hs h.le hbig
+      have h3 := bitLen_mono h.le
+      step as ⟨i, hi⟩
+      step as ⟨i1, hi1⟩
+      step as ⟨shift, hshift⟩
+      rw [hi, hi1] at hshift
+      have hsh' : shift.val < 128 := by rw [hshift]; exact hsh
+      have hsmul' : val small.r * 2 ^ shift.val < 2 ^ 256 := by rw [hshift]; exact hsmul
+      step with shl_spec small.r shift hsh' hsmul' as ⟨u, hu⟩
+      step as ⟨b, hb⟩
+      rw [hu, hshift] at hb
+      apply WP.spec_bind (Pₘ := fun shift1 : U32 =>
+        val small.r * 2 ^ shift1.val ≤ val big.r ∧ val big.r < val small.r * 2 ^ (shift1.val + 1) ∧
+          shift1.val ≤ shift.val)
+      · split
+        · rename_i hb'
+          obtain ⟨h0, hle, hlt⟩ := hgt (hb.mp hb')
+          rw [← hshift] at h0 hle hlt
+          step as ⟨s1, hs1⟩
+          rw [hs1]
+          exact ⟨by simpa using hle, by simpa using hlt, by simp⟩
+        · rename_i hb'
+          simp only [WP.spec_ok]
+          exact ⟨by rw [hshift]; exact not_lt.mp (fun h' => hb' (hb.mpr h')),
+            by rw [hshift]; exact hngt (fun h' => hb' (hb.mpr h')), le_refl _⟩
+      rintro shift1 ⟨hle1, hlt1, hs1le⟩
+      have hsmul1 : val small.r * 2 ^ shift1.val < 2 ^ 256 :=
+        lt_of_le_of_lt (Nat.mul_le_mul_left _ (Nat.pow_le_pow_right (by norm_num) hs1le)) hsmul'
+      have hsh1 : shift1.val < 128 := by omega
+      have htb := t_bound h hs shift1.val hle1
+      step with shl_spec small.r shift1 hsh1 hsmul1 as ⟨u1, hu1⟩
+      step with sub_spec big.r u1 (by rw [hu1]; exact hle1) as ⟨u2, hu2⟩
+      rw [hu1] at hu2
+      have hsh1' : shift1.val < 128 := hsh1
+      step as ⟨i2, hi2⟩
+      have hi2v : i2.val = small.t.val * 2 ^ shift1.val := by
+        rw [hi2, Nat.shiftLeft_eq, u128_size]; exact Nat.mod_eq_of_lt (by omega)
+      have hadd : big.t.val + i2.val ≤ U128.max := by
+        rw [hi2v, U128.max_def, U128.numBits_def]; simp only [UScalarTy.numBits]; omega
+      step as ⟨i3, hi3⟩
+      rw [hi2v] at hi3
+      step as ⟨b1, hb1⟩
+      obtain ⟨hA, hB, hC⟩ := inv_step h hs shift1.val hle1 hlt1 u2 hu2 i3 hi3
+      split
+      · rename_i hb1t
+        simp only [WP.spec_ok]
+        exact ⟨hA (hb1.mp hb1t), by omega⟩
+      · rename_i hb1t
+        simp only [WP.spec_ok]
+        exact ⟨hB (fun h' => hb1t (hb1.mpr h')), by omega⟩
+    · rw [if_neg hne]
+      simp only [WP.spec_ok]
+      have h0 : small.r.hi.val = 0 := by simpa using hne
+      exact ⟨h, h0⟩
+  · exact h
 
 end HalfSize
 
