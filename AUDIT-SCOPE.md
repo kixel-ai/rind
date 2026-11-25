@@ -226,7 +226,7 @@ restated as a work list:
    backend, and curve25519-dalek's AVX2 backend, ported to intrinsics.
 3. Imported assembly that runs without a proof: aws-lc's ChaCha20-Poly1305 on
    x86_64 and aarch64, RSAZ, Montgomery multiplication without ADX, the AVX2
-   and SHA512-instruction SHA-2, VAES AES-GCM, and all of armv7's.
+   SHA-2, VAES AES-GCM, and all of armv7's.
 4. The Lean trust base: for each restated axiom, that it is the upstream
    theorem at the pinned revision with the preconditions rind's call sites
    meet; for each hand model, that it is what the Rust it quotes does; for
