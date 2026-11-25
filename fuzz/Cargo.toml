@@ -77,6 +77,14 @@ p256-voprf = { package = "p256", version = "0.13", default-features = false, fea
 p384-voprf = { package = "p384", version = "0.13", default-features = false, features = ["hash2curve", "voprf"] }
 p521-voprf = { package = "p521", version = "0.13.3", default-features = false, features = ["hash2curve", "voprf"] }
 rand_core-voprf = { package = "rand_core", version = "0.6", features = ["getrandom"] }
+# SPAKE2+, which aws-lc-rs does not offer; `test-utils` takes the ephemeral
+# scalars the fuzzer writes.
+pakery-crypto = { version = "0.6.2", default-features = false, features = ["std", "p256"] }
+pakery-spake2plus = { version = "0.6.2", default-features = false, features = ["std", "test-utils"] }
+# RFC 9591's FROST, which aws-lc-rs does not offer.
+frost-ed25519 = { version = "3", default-features = false }
+frost-ristretto255 = { version = "3", default-features = false }
+frost-p256 = { version = "3", default-features = false }
 
 [dependencies.rind]
 path = "../rind"
@@ -252,6 +260,20 @@ bench = false
 [[bin]]
 name = "openssl"
 path = "fuzzer/openssl.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "spake2plus"
+path = "fuzzer/spake2plus.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "frost"
+path = "fuzzer/frost.rs"
 test = false
 doc = false
 bench = false

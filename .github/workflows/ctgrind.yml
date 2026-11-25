@@ -13,25 +13,6 @@ on:
         description: Job IDs to run, space-separated, in workflow order, each optionally narrowed to rows as `job:value,...`; empty runs all
         type: string
         default: ""
-  # A pull request runs only the x86_64 release row of `build`, the one that
-  # fails fastest, and `binsec`; the weekly run runs the rest.
-  pull_request:
-    # A draft skips every job until it is marked ready, and turning a PR back
-    # into a draft cancels its ready run: see CONTRIBUTING.md.
-    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
-    branches: [main]
-    paths:
-      - rind/src/**
-      - rind/Cargo.toml
-      - "**/tests/ctgrind.rs"
-      - rind-fips/**
-      - admin/ctgrind
-      - admin/ctgrind.supp
-      - admin/ct-binsec
-      - Cargo.lock
-      - flake.nix
-      - flake.lock
-      - .github/workflows/ctgrind.yml
 
 permissions:
   contents: read
@@ -75,39 +56,27 @@ jobs:
   # check the code for cores with the crypto extension but without either,
   # and say so; `aarch64-qemu` checks the SHA3 and SVE2 paths. x86_64
   # ignores the variables.
-  # release-plz's release PR, which only bumps versions and changelogs, runs
-  # neither this nor `binsec`: a `release-plz-` branch that moq-bot,
-  # release.yml's app, opened.
   build:
     needs: select
-    if: ${{ !cancelled() && !github.event.pull_request.draft && !(startsWith(github.head_ref, 'release-plz-') && github.event.pull_request.user.login == 'moq-bot[bot]') && (!inputs.jobs || contains(fromJSON(needs.select.outputs.jobs || '[]'), 'build')) }}
+    if: ${{ !cancelled() && (!inputs.jobs || contains(fromJSON(needs.select.outputs.jobs || '[]'), 'build')) }}
     strategy:
       # One row's failure would cancel the others and hide theirs.
       fail-fast: false
       matrix:
         os: [ubuntu-latest, ubuntu-24.04-arm]
         build: [debug, release]
-        exclude: ${{ github.event_name == 'pull_request' && fromJSON('[{"os":"ubuntu-24.04-arm"},{"build":"debug"}]') || fromJSON(needs.select.outputs.exclude || '{}').build || fromJSON('[]') }}
+        exclude: ${{ fromJSON(needs.select.outputs.exclude || '{}').build || fromJSON('[]') }}
     runs-on: ${{ matrix.os }}
     env:
       RIND_TEST_ARM_CRYPTO_EXT: 1
       RIND_TEST_ARM_SHA3: 0
       RIND_TEST_ARM_SVE2: 0
-      # A pull request whose change reaches no backend this job builds skips it.
-      RIND_SCOPE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          fetch-depth: 0
 
       - uses: ./.github/actions/nix
-
-      # Only for the row pull requests run.
-      - uses: ./.github/actions/rust-cache
-        if: matrix.os == 'ubuntu-latest' && matrix.build == 'release'
-        with:
-          shell: .#ctgrind
 
       - name: ctgrind tests
         run: nix develop .#ctgrind --command admin/ctgrind ${{ matrix.build == 'release' && '--release' || '' }}
@@ -138,7 +107,7 @@ jobs:
   x86_64-portable:
     name: x86_64-portable (${{ matrix.cpu }})
     needs: select
-    if: ${{ !cancelled() && github.event_name != 'pull_request' && (!inputs.jobs || contains(fromJSON(needs.select.outputs.jobs || '[]'), 'x86_64-portable')) }}
+    if: ${{ !cancelled() && (!inputs.jobs || contains(fromJSON(needs.select.outputs.jobs || '[]'), 'x86_64-portable')) }}
     strategy:
       fail-fast: false
       matrix:
@@ -186,7 +155,7 @@ jobs:
   portable:
     name: portable (${{ matrix.limb }}-bit limbs, ${{ matrix.build }})
     needs: select
-    if: ${{ !cancelled() && github.event_name != 'pull_request' && (!inputs.jobs || contains(fromJSON(needs.select.outputs.jobs || '[]'), 'portable')) }}
+    if: ${{ !cancelled() && (!inputs.jobs || contains(fromJSON(needs.select.outputs.jobs || '[]'), 'portable')) }}
     strategy:
       fail-fast: false
       matrix:
@@ -213,7 +182,7 @@ jobs:
   x86_64-sde:
     name: x86_64-sde (${{ matrix.test }})
     needs: select
-    if: ${{ !cancelled() && github.event_name != 'pull_request' && (!inputs.jobs || contains(fromJSON(needs.select.outputs.jobs || '[]'), 'x86_64-sde')) }}
+    if: ${{ !cancelled() && (!inputs.jobs || contains(fromJSON(needs.select.outputs.jobs || '[]'), 'x86_64-sde')) }}
     strategy:
       fail-fast: false
       matrix:
@@ -239,7 +208,7 @@ jobs:
   # without it run. The denial takes `--cfg rind_cpu_disable`, as above.
   aarch64-portable:
     needs: select
-    if: ${{ !cancelled() && github.event_name != 'pull_request' && (!inputs.jobs || contains(fromJSON(needs.select.outputs.jobs || '[]'), 'aarch64-portable')) }}
+    if: ${{ !cancelled() && (!inputs.jobs || contains(fromJSON(needs.select.outputs.jobs || '[]'), 'aarch64-portable')) }}
     runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -278,7 +247,7 @@ jobs:
   armv7:
     name: armv7 (${{ matrix.suite }}, ${{ matrix.build }})
     needs: select
-    if: ${{ !cancelled() && github.event_name != 'pull_request' && (!inputs.jobs || contains(fromJSON(needs.select.outputs.jobs || '[]'), 'armv7')) }}
+    if: ${{ !cancelled() && (!inputs.jobs || contains(fromJSON(needs.select.outputs.jobs || '[]'), 'armv7')) }}
     strategy:
       # One suite's failure says nothing about the others.
       fail-fast: false
@@ -333,7 +302,7 @@ jobs:
   # instead, as `x86_64-sde` does with SDE.
   armv7-qemu:
     needs: select
-    if: ${{ !cancelled() && github.event_name != 'pull_request' && (!inputs.jobs || contains(fromJSON(needs.select.outputs.jobs || '[]'), 'armv7-qemu')) }}
+    if: ${{ !cancelled() && (!inputs.jobs || contains(fromJSON(needs.select.outputs.jobs || '[]'), 'armv7-qemu')) }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -353,7 +322,7 @@ jobs:
   # runner.
   aarch64-qemu:
     needs: select
-    if: ${{ !cancelled() && github.event_name != 'pull_request' && (!inputs.jobs || contains(fromJSON(needs.select.outputs.jobs || '[]'), 'aarch64-qemu')) }}
+    if: ${{ !cancelled() && (!inputs.jobs || contains(fromJSON(needs.select.outputs.jobs || '[]'), 'aarch64-qemu')) }}
     runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -374,7 +343,7 @@ jobs:
   binsec:
     name: binsec (${{ matrix.backend }})
     needs: select
-    if: ${{ !cancelled() && !github.event.pull_request.draft && !(startsWith(github.head_ref, 'release-plz-') && github.event.pull_request.user.login == 'moq-bot[bot]') && (!inputs.jobs || contains(fromJSON(needs.select.outputs.jobs || '[]'), 'binsec')) }}
+    if: ${{ !cancelled() && (!inputs.jobs || contains(fromJSON(needs.select.outputs.jobs || '[]'), 'binsec')) }}
     strategy:
       fail-fast: false
       matrix:

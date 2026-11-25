@@ -19,11 +19,15 @@ qemu. iOS devices' code is only built.
   rind-rustls and rind-dimpl prefer ChaCha20-Poly1305. Where the CPU has
   SVE2, as Armv9 cores from Neoverse N2 and Cortex-A710 on do,
   ChaCha20-Poly1305 runs [verified-garbage]'s SVE2 assembly, and aws-lc's
-  NEON assembly otherwise. On Apple's platforms,
-  secret-dependent code runs with data-independent timing (DIT), set and
-  cleared in each call unless `rind::cpu::Dit::hold()` holds it across a batch
-  of calls. rind sets no DIT on other aarch64 platforms, where Arm says it
-  changes nothing on current cores.
+  NEON assembly otherwise. Where the CPU has DIT, as Armv8.4 cores and
+  Apple's do, secret-dependent code runs with data-independent timing, set
+  and cleared in each call unless `rind::cpu::Dit::hold()` holds it across a
+  batch of calls, as Arm
+  [recommends](https://developer.arm.com/documentation/ka005181/1-0/). It
+  runs without DIT wherever the OS doesn't report it: Rust's detection finds
+  it only on Linux, Android, and Apple's platforms, not on Windows or the
+  BSDs, and a hypervisor may hide it, as that of GitHub's Neoverse N2
+  runners does.
 - `x86_64` runs on every x86_64 CPU. It needs a target that enables SSE2,
   as every one with an OS does; `x86_64-unknown-none` and
   `x86_64-unknown-uefi` disable it and run the portable backend. Without `aes` and `pclmulqdq`, as on
@@ -176,7 +180,8 @@ for `x86_64-unknown-none`. Without an OS:
   level that runs rind. The `*-none` targets
   build Rust with `strict-align` for code that runs before that.
 - `RIND_CPU_DISABLE_*` does nothing, and `rind::cpu::Dit::hold()` holds
-  nothing, since rind sets DIT only on Apple's platforms.
+  nothing, since there are no threads to count guards per: on aarch64 each
+  call sets DIT itself where the target enables `+dit`.
 
 [rind-fips](rind-fips/README.md)'s FIPS 140-3 module builds only for glibc
 Linux on `x86_64` and `aarch64`, and runs only the fastest paths there: on

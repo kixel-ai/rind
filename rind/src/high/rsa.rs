@@ -523,6 +523,9 @@ pub(crate) struct Unblinder {
     m: RsaInt,
 }
 
+// Two integers, valid at zero.
+impl crate::low::Zeroable for Unblinder {}
+
 /// An integer at the width of the widest modulus.
 type RsaInt = PosInt<{ rsa_pub::MAX_PUBLIC_MODULUS_BYTES / 8 }>;
 

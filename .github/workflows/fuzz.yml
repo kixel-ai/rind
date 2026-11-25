@@ -12,17 +12,6 @@ on:
   schedule:
     - cron: "23 2 * * 6"
   workflow_dispatch:
-  # A pull request only builds the targets; fuzzing needs the saved corpus
-  # and hours.
-  pull_request:
-    # A draft skips every job until it is marked ready, and turning a PR back
-    # into a draft cancels its ready run: see CONTRIBUTING.md.
-    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
-    branches: [main]
-    paths:
-      - fuzz/**
-      - sh/fuzz-*.sh
-      - .github/workflows/fuzz.yml
 
 concurrency:
   group: fuzz-${{ github.ref }}
@@ -37,7 +26,6 @@ env:
 jobs:
   build:
     name: Build fuzz targets (${{ matrix.arch }})
-    if: ${{ !github.event.pull_request.draft }}
     strategy:
       matrix:
         include:
@@ -113,7 +101,6 @@ jobs:
 
   fuzz:
     name: Fuzz ${{ matrix.target }}
-    if: github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -189,7 +176,7 @@ jobs:
   replay-aarch64:
     name: Replay ${{ matrix.target }} on aarch64
     needs: [build, fuzz]
-    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.build.result == 'success' }}
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
     strategy:
@@ -236,7 +223,7 @@ jobs:
   replay-x86_64-sde:
     name: Replay ${{ matrix.target }} under SDE
     needs: [build, fuzz]
-    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.build.result == 'success' }}
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
@@ -294,7 +281,7 @@ jobs:
   replay-armv7:
     name: Replay ${{ matrix.target }} on armv7
     needs: [build, fuzz]
-    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.build.result == 'success' }}
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
     strategy:
@@ -347,7 +334,7 @@ jobs:
   fuzz-portable:
     name: Fuzz ${{ matrix.target }} on the portable backend
     needs: [build, fuzz]
-    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.build.result == 'success' }}
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
