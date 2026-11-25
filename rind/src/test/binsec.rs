@@ -581,8 +581,9 @@ fn ct_binsec_voprf() {
 // The VOPRF client's blinding, on its own, as the server's proof is above.
 // Only on the portable backend: x86_64's and aarch64's field arithmetic is
 // s2n-bignum's, whose `bignum_tomont_p384` of the hashed input BINSEC cannot
-// finish in a scheduled run's time. The hash to the curve around it is the
-// same code on every backend.
+// finish in a scheduled run's time (UPSTREAM.md, "BINSEC stalls on
+// s2n-bignum's P-384 arithmetic of a hashed value"). The hash to the curve
+// around it is the same code on every backend.
 #[cfg(rind_backend = "portable")]
 #[test]
 #[ignore = "admin/ct-binsec runs it under BINSEC"]
