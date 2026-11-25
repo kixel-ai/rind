@@ -56,10 +56,10 @@ points scanners here.
 
 - **Dependencies.** `cargo vet` holds every crate the published `rind` crate
   can build with, on any target and feature, to a safe-to-deploy audit:
-  imported from Mozilla's, Google's, or the Bytecode Alliance's audits, rind's
-  own in [supply-chain/audits.toml](supply-chain/audits.toml), or an exemption
-  in [supply-chain/config.toml](supply-chain/config.toml) for a version rind
-  used before it began vetting. A new crate or version fails CI until one
+  imported from Mozilla's, Google's, the Bytecode Alliance's, or ISRG's
+  audits, rind's own in [supply-chain/audits.toml](supply-chain/audits.toml),
+  or an exemption in [supply-chain/config.toml](supply-chain/config.toml) for
+  a version rind used before it began vetting. A new crate or version fails CI until one
   covers it. `cargo deny` checks every crate the workspace uses against
   RustSec's advisories, licenses, and sources.
 - **Provenance.** A release attests, through GitHub's artifact attestations
