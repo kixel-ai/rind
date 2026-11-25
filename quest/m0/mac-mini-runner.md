@@ -1,4 +1,4 @@
-# [M] The merge queue runs rind's tests natively on aarch64
+# [XS] The merge queue runs rind's tests natively on aarch64
 
 ## Goal
 
