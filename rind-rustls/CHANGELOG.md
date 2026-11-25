@@ -9,22 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.23.4](https://github.com/kixel-ai/rind/compare/rind-rustls-v0.23.3...rind-rustls-v0.23.4) - 2026-11-25
 
+Requires rind 0.4. This release matches rustls's `crypto::aws_lc_rs` API item for item, but for what its README lists under "What rind cannot back", such as `kx_group::MLKEM1024`: `default_provider()` returns `CryptoProvider`, not a `Result`, so drop the `.unwrap()`, and items rustls's provider lacks, such as `MissingFeature`, `empty_provider()`, the `verify` module, and `kx_group::SECP521R1`, are gone. A change that restores upstream's API is a bug fix, released as a patch (CONTRIBUTING.md's Releases section). The other entries marked breaking change rind's API or another crate's, which this crate does not expose.
+
 ### Added
 
 - adapters build rind without ML-DSA and SLH-DSA, a build for one CPU links one tier, and CI holds rind's size in a binary ([#1008](https://github.com/kixel-ai/rind/pull/1008))
 - rind-rustls and rind-aws-lc-rs build without std ([#968](https://github.com/kixel-ai/rind/pull/968))
 - *(site)* the README and crates link rind.kixel.ai, and a pasted link shows a social card ([#844](https://github.com/kixel-ai/rind/pull/844))
-- *(site)* a page per library at /from/<library>, with a picker on the landing page ([#826](https://github.com/kixel-ai/rind/pull/826))
+- *(site)* a page per library at `/from/<library>`, with a picker on the landing page ([#826](https://github.com/kixel-ai/rind/pull/826))
 - rind's adapters build for wasm32, and rind-rustls's and rind-ring's tests run on wasip2 ([#762](https://github.com/kixel-ai/rind/pull/762))
 - [**breaking**] per-algorithm signature modules and one API shape ([#781](https://github.com/kixel-ai/rind/pull/781))
-- *(kem)* [**breaking**] ML-KEM-512 and ML-KEM-1024 ([#606](https://github.com/kixel-ai/rind/pull/606))
+- *(kem)* [**breaking**] rind's typed ML-KEM API, which adds ML-KEM-512 and ML-KEM-1024; the provider moves to it and still offers only the ML-KEM-768 key-exchange groups ([#606](https://github.com/kixel-ai/rind/pull/606))
 - HPKE (RFC 9180), and rind-rustls's HPKE suites for ECH ([#585](https://github.com/kixel-ai/rind/pull/585))
 - *(agreement)* [**breaking**] keys keep their public key and algorithm ([#529](https://github.com/kixel-ai/rind/pull/529))
 
 ### Fixed
 
 - *(adapters)* match each adapter's API to its upstream's, and drop the drift list ([#783](https://github.com/kixel-ai/rind/pull/783))
-- *(release)* return rind to 0.3.2 and set four adapter patch versions by hand ([#548](https://github.com/kixel-ai/rind/pull/548))
 - *(rustls)* [**breaking**] rind-rustls is rustls's aws-lc-rs provider, item for item ([#521](https://github.com/kixel-ai/rind/pull/521))
 
 ### Other
@@ -32,7 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - gate nightly coverage across every tier, lint feature powersets, and run wasm32-unknown-unknown tests ([#965](https://github.com/kixel-ai/rind/pull/965))
 - *(rustls)* hold rind's DIT guard across small records on Apple silicon ([#1011](https://github.com/kixel-ai/rind/pull/1011))
 - *(adapters)* catch the mutants the adapter campaign excluded ([#792](https://github.com/kixel-ai/rind/pull/792))
-- :KeyPair loads a PKCS#8 key of any signing type in one call ([#857](https://github.com/kixel-ai/rind/pull/857))
+- `rind::KeyPair` loads a PKCS#8 key of any signing type in one call ([#857](https://github.com/kixel-ai/rind/pull/857))
 - every published function the coverage report listed runs under a test, or says why not ([#862](https://github.com/kixel-ai/rind/pull/862))
 - ML-KEM-768 runs pyca/verified-garbage's code where it is faster ([#812](https://github.com/kixel-ai/rind/pull/812))
 - time rustls handshakes on every logical CPU; pin handshake allocations ([#752](https://github.com/kixel-ai/rind/pull/752))

@@ -9,11 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.14.4](https://github.com/kixel-ai/rind/compare/rind-object-store-v0.14.3...rind-object-store-v0.14.4) - 2026-11-25
 
+Requires rind 0.4. `default_provider()` returns `Arc<dyn CryptoProvider>`, not a `Result`, and `MissingFeature` is gone, so drop the `?` or `.unwrap()`: the CPU check behind them could not fail on any target rind builds for. object_store keeps its own providers private, so this crate has no upstream API to copy; the maintainer chose to drop the `Result` from every adapter in patch releases. The other entries marked breaking change rind's API or another crate's, which this crate does not expose.
+
 ### Added
 
 - adapters build rind without ML-DSA and SLH-DSA, a build for one CPU links one tier, and CI holds rind's size in a binary ([#1008](https://github.com/kixel-ai/rind/pull/1008))
 - *(site)* the README and crates link rind.kixel.ai, and a pasted link shows a social card ([#844](https://github.com/kixel-ai/rind/pull/844))
-- *(site)* a page per library at /from/<library>, with a picker on the landing page ([#826](https://github.com/kixel-ai/rind/pull/826))
+- *(site)* a page per library at `/from/<library>`, with a picker on the landing page ([#826](https://github.com/kixel-ai/rind/pull/826))
 - rind's adapters build for wasm32, and rind-rustls's and rind-ring's tests run on wasip2 ([#762](https://github.com/kixel-ai/rind/pull/762))
 - [**breaking**] per-algorithm signature modules and one API shape ([#781](https://github.com/kixel-ai/rind/pull/781))
 

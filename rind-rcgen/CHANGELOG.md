@@ -9,11 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.14.4](https://github.com/kixel-ai/rind/compare/rind-rcgen-v0.14.3...rind-rcgen-v0.14.4) - 2026-11-25
 
+Requires rind 0.4. This release matches `rcgen::KeyPair`'s API, but for what its README lists under "What rind cannot back": `KeyPair::generate()` takes no argument, so call `KeyPair::generate_for(alg)` where you passed one, and items rcgen lacks, such as `KeyPair::to_pkcs8` and the crate-level `check` and `MissingFeature`, are gone. A change that restores upstream's API is a bug fix, released as a patch (CONTRIBUTING.md's Releases section). The other entries marked breaking change rind's API or another crate's, which this crate does not expose.
+
 ### Added
 
 - adapters build rind without ML-DSA and SLH-DSA, a build for one CPU links one tier, and CI holds rind's size in a binary ([#1008](https://github.com/kixel-ai/rind/pull/1008))
 - *(site)* the README and crates link rind.kixel.ai, and a pasted link shows a social card ([#844](https://github.com/kixel-ai/rind/pull/844))
-- *(site)* a page per library at /from/<library>, with a picker on the landing page ([#826](https://github.com/kixel-ai/rind/pull/826))
+- *(site)* a page per library at `/from/<library>`, with a picker on the landing page ([#826](https://github.com/kixel-ai/rind/pull/826))
 - [**breaking**] always wipe keys, removing the `wipe` feature ([#609](https://github.com/kixel-ai/rind/pull/609))
 - rind's adapters build for wasm32, and rind-rustls's and rind-ring's tests run on wasip2 ([#762](https://github.com/kixel-ai/rind/pull/762))
 - [**breaking**] per-algorithm signature modules and one API shape ([#781](https://github.com/kixel-ai/rind/pull/781))
@@ -21,7 +23,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- *(release)* return rind to 0.3.2 and set four adapter patch versions by hand ([#548](https://github.com/kixel-ai/rind/pull/548))
 - *(rcgen)* [**breaking**] KeyPair offers rcgen's KeyPair API ([#515](https://github.com/kixel-ai/rind/pull/515))
 - *(rustls)* [**breaking**] rind-rustls is rustls's aws-lc-rs provider, item for item ([#521](https://github.com/kixel-ai/rind/pull/521))
 
@@ -31,7 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Close existing adapter parity gaps across rind-rcgen, rind_cryptography, rind-ring, and rind-aws-lc-rs ([#961](https://github.com/kixel-ai/rind/pull/961))
 - *(release)* prepare rind 0.4: hold rind-openmls, README asks for 0.4, adapters at their next patch ([#992](https://github.com/kixel-ai/rind/pull/992))
 - *(adapters)* catch the mutants the adapter campaign excluded ([#792](https://github.com/kixel-ai/rind/pull/792))
-- :KeyPair loads a PKCS#8 key of any signing type in one call ([#857](https://github.com/kixel-ai/rind/pull/857))
+- `rind::KeyPair` loads a PKCS#8 key of any signing type in one call ([#857](https://github.com/kixel-ai/rind/pull/857))
 - every published function the coverage report listed runs under a test, or says why not ([#862](https://github.com/kixel-ai/rind/pull/862))
 - GitHub Releases per crate, docs.rs metadata, and a generated comparison in the README ([#786](https://github.com/kixel-ai/rind/pull/786))
 - diff each adapter's API against its upstream's ([#698](https://github.com/kixel-ai/rind/pull/698))
