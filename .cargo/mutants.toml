@@ -297,7 +297,7 @@ exclude_re = [
   # Pinned to its line: the `cpu_forced` of a release build, one without an
   # OS, or the FIPS module, which mutation runs never are. The debug build's,
   # under the same name, is caught.
-  'rind/src/low/aarch64/cpu\.rs:615:\d+: replace cpu_forced -> bool with true$',
+  'rind/src/low/aarch64/cpu\.rs:679:\d+: replace cpu_forced -> bool with true$',
   # The portable backend has no CPU state to save, so `leave_cpu_state`
   # ignores it.
   'rind/src/low/portable/cpu\.rs:\d+:\d+: replace enter_cpu_state -> u32 with 1$',
@@ -314,7 +314,7 @@ exclude_re = [
   # Pinned to its line: the `cpu_denied` of a release build or one without
   # an OS, which tests never are. The debug build's, under the same name, is
   # caught.
-  'rind/src/low/mod\.rs:235:\d+: replace cpu_denied -> bool with true$',
+  'rind/src/low/mod\.rs:241:\d+: replace cpu_denied -> bool with true$',
   # The FIPS module's `SystemRandom`, compiled only under `--cfg rind_fips`,
   # which no mutation run sets; `fips_rng`'s tests cover what it calls.
   # Pinned to its line: the other `fill`, under the same name, is caught.
