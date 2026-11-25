@@ -355,7 +355,8 @@ Valgrind, and uploads them for Kixel Quest, which bisects a count that moved
 by dispatching the workflow with `benchmarks`, the IDs to count. Valgrind
 hides AVX-512, VAES, VPCLMULQDQ, and the SHA extensions, and the `bench` shell
 sets `VALGRIND_BUG_494162`, so the counts measure the x86_64 tier with AVX2
-and ADX, Broadwell's to Cooper Lake's, whatever the runner's CPU. Benchmark
+and ADX, Broadwell's to Cooper Lake's, on any host CPU that has them, and counts
+compare only under one `rust2-bench` fingerprint. Benchmark
 sets must not depend on the CPU, since the runner lists them natively and
 counts them under Valgrind: `rsa_gen`, which registers nothing without
 `NOISY_BENCHMARKS`, is left out, and the count build drops the Graviola
