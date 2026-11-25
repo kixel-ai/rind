@@ -1355,8 +1355,11 @@ refuses with `Fault` where it is not. It holds for a key meeting `PrivKeyInv`,
 the values `RsaPrivateKey::new` computes, which no proof yet shows it does,
 with primes of 16 or 32 words, on a CPU with BMI2 and ADX, where
 pyca/verified-garbage's IFMA CRT does not run (`ifma.w = 0`) and neither does
-aws-lc's dual RSAZ (`NoRsazPair`); `private_op_rsa2048_spec` discharges the
-products and the dual RSAZ for RSA-2048. `Rind/X86_64/RsaExp.lean` proves
+aws-lc's dual RSAZ (`NoRsazPair`), given `MontProducts` at the primes' and the
+modulus's widths. `private_op_rsa2048_spec` discharges the products, by
+s2n-bignum's Karatsuba routines at 16 and 32 words, and the dual RSAZ for
+RSA-2048; RSA-4096's 64-word modulus still needs `AwsLcMont` for its fault
+check's products. `Rind/X86_64/RsaExp.lean` proves
 `mont_exp`'s fixed-window exponentiation on that path, and
 `Rind/X86_64/RsaGather.lean` its table gather on both paths `HaveAvx2::check`
 picks, over `Rind/X86_64/GatherModel.lean`'s hand model of the AVX2 one.
