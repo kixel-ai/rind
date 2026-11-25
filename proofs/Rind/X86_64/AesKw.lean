@@ -65,7 +65,7 @@ theorem expand_copy_eq (n : Usize) (key : Slice U8) (hn : n.val ≤ 32) (hk : ke
   split
   · simp only [bind_ok]
   · rename_i hne
-    exact absurd (by apply UScalar.eq_of_val_eq; simpa [List.slice, hn] using hk) hne
+    exact absurd (by apply UScalar.eq_of_val_eq; simpa [List.slice, hn] using hk.symm) hne
 
 /-- `mid::aes::expand_key` passes `AesKey::new` its key unchanged. -/
 theorem expand_key_eq (key : Slice U8) (hk : key.length = 16 ∨ key.length = 24 ∨ key.length = 32) :
