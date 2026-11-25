@@ -1265,3 +1265,83 @@ let CHACHA_DR = prove
   CHACHA_UNTIL_TAC 0x4a6 1 THEN XMMS_OF_YMMS_TAC THEN ENSURES_FINAL_STATE_TAC THEN
   REWRITE_TAC(map CHACHA_DR_SPEC (0--3)) THEN CONV_TAC(DEPTH_CONV EL_CONV) THEN
   ASM_REWRITE_TAC[] THEN MONOTONE_MAYCHANGE_TAC);;
+
+(* ------------------------------------------------------------------------- *)
+(* The ten double rounds, from the loop's head with eax = 10 to its exit.    *)
+(* ------------------------------------------------------------------------- *)
+
+(* State j, s_j, as a list of 16 words. *)
+let chacha_sv j = mk_var("s"^string_of_int j, `:int32 list`);;
+
+let chacha_rounds_rows i =
+  chacha_rows (fun k j -> chacha_el k (list_mk_comb(`chacha20_rounds`, [i; chacha_sv j])));;
+
+let CHACHA_ROUNDS_HYPS =
+  `aligned 16 (rp10:int64) /\ aligned 16 (rp11:int64) /\ aligned 16 (stk:int64) /\
+   nonoverlapping (stk:int64,64) (rp10:int64,16) /\ nonoverlapping (stk:int64,64) (rp11:int64,16) /\
+   nonoverlapping (stk:int64,64) (word pc:int64,0x9d4)`;;
+
+let CHACHA_ROUNDS_COMMON =
+  `read RSP s = stk /\ read R10 s = rp10 /\ read R11 s = rp11 /\
+   read (memory :> bytes128 rp10) s = word 0x0d0c0f0e09080b0a0504070601000302 /\
+   read (memory :> bytes128 rp11) s = word 0x0e0d0c0f0a09080b0605040702010003 /\
+   read XMM7 s = word 0x0d0c0f0e09080b0a0504070601000302`;;
+
+let CHACHA_ROUNDS_FRAME =
+  `MAYCHANGE [RIP; RAX] ,, MAYCHANGE SOME_FLAGS ,,
+   MAYCHANGE [ZMM0; ZMM1; ZMM2; ZMM3; ZMM4; ZMM5; ZMM6; ZMM7;
+              ZMM8; ZMM9; ZMM10; ZMM11; ZMM12; ZMM13; ZMM14; ZMM15] ,,
+   MAYCHANGE [memory :> bytes(stk,64)] ,, MAYCHANGE [events]`;;
+
+let CHACHA_ROUNDS_GOAL =
+  let tm = mk_imp(CHACHA_ROUNDS_HYPS,
+   list_mk_icomb "ensures" [`x86`;
+    mk_abs(`s:x86state`, list_mk_conj [
+     `bytes_loaded s (word pc) (chacha20_ssse3_4x_mc pc data) /\ read RIP s = word(pc + 0x180) /\
+      read RAX s = word 10`; CHACHA_ROUNDS_COMMON;
+     chacha_rows (fun k j -> chacha_el k (chacha_sv j))]);
+    mk_abs(`s:x86state`, list_mk_conj [
+     `read RIP s = word(pc + 0x4ae)`; CHACHA_ROUNDS_COMMON; chacha_rounds_rows `10`]);
+    CHACHA_ROUNDS_FRAME]) in
+  list_mk_forall(frees tm, tm);;
+
+let CHACHA_ROUNDS_INV =
+  mk_abs(`i:num`, mk_abs(`s:x86state`, mk_conj(list_mk_conj [
+   `read RAX s = word (10 - i)`;
+   CHACHA_ROUNDS_COMMON; chacha_rounds_rows `i:num`], `read ZF s <=> i = 10`)));;
+
+(* The double round's words from state lists. *)
+let CHACHA_DR_ELS = prove
+ (`!l. chacha20_double_round
+         [EL 0 l; EL 1 l; EL 2 l; EL 3 l; EL 4 l; EL 5 l; EL 6 l; EL 7 l;
+          EL 8 l; EL 9 l; EL 10 l; EL 11 l; EL 12 l; EL 13 l; EL 14 l; EL 15 l] =
+       chacha20_double_round (l:int32 list)`,
+  GEN_TAC THEN REWRITE_TAC[chacha20_double_round] THEN CONV_TAC(DEPTH_CONV EL_CONV) THEN REFL_TAC);;
+
+let CHACHA_DR_AT i =
+  INST (List.concat (map (fun j -> map (fun k -> chacha_el k (list_mk_comb(`chacha20_rounds`, [i; chacha_sv j])), chacha_xv k j) (0--15)) (0--3)))
+       (SPEC_ALL CHACHA_DR);;
+let CHACHA_ROUNDS = prove
+ (CHACHA_ROUNDS_GOAL,
+  REWRITE_TAC[SOME_FLAGS; GSYM CONJ_ASSOC] THEN REPEAT GEN_TAC THEN STRIP_TAC THEN
+  ENSURES_WHILE_PUP_TAC `10` `pc + 0x180` `pc + 0x4a8` CHACHA_ROUNDS_INV THEN
+  REWRITE_TAC[ARITH] THEN REPEAT CONJ_TAC THENL
+   [(* Into the loop. *)
+    REWRITE_TAC[chacha20_rounds; SUB_0] THEN ENSURES_INIT_TAC "s0" THEN
+    ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[];
+    (* A double round, and the count. *)
+    X_GEN_TAC `i:num` THEN STRIP_TAC THEN
+    REWRITE_TAC[fst CHACHA_EXEC] THEN ENSURES_INIT_TAC "s0" THEN
+    MP_TAC(CHACHA_DR_AT `i:num`) THEN ASM_REWRITE_TAC[] THEN
+    X86_BIGSTEP_TAC CHACHA_EXEC "s1" THEN
+    RULE_ASSUM_TAC(REWRITE_RULE[CHACHA_DR_ELS; GSYM(CONJUNCT2 chacha20_rounds)]) THEN
+    X86_STEPS_TAC CHACHA_EXEC [2] THEN ENSURES_FINAL_STATE_TAC THEN
+    REWRITE_TAC[GSYM ADD1] THEN ASM_REWRITE_TAC[] THEN
+    UNDISCH_TAC `i < 10` THEN SPEC_TAC(`i:num`,`i:num`) THEN CONV_TAC EXPAND_CASES_CONV THEN
+    CONV_TAC(DEPTH_CONV(NUM_RED_CONV ORELSEC WORD_RED_CONV)) THEN REWRITE_TAC[];
+    (* Back to the head. *)
+    X_GEN_TAC `i:num` THEN STRIP_TAC THEN ENSURES_INIT_TAC "s0" THEN
+    X86_STEPS_TAC CHACHA_EXEC [1] THEN ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[];
+    (* Out of the loop. *)
+    ENSURES_INIT_TAC "s0" THEN X86_STEPS_TAC CHACHA_EXEC [1] THEN
+    ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[]]);;
