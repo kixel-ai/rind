@@ -998,6 +998,14 @@
               # rind takes its ADX routines anyway, as under `admin/ctgrind`.
               # See UPSTREAM.md, "Valgrind hides ADX from `cpuid`".
               env.VALGRIND_BUG_494162 = "1";
+              # rust2-bench lists the benchmarks natively, where that forced
+              # ADX would fault on a CPU without it, such as Haswell.
+              shellHook = ''
+                if ! grep -qw adx /proc/cpuinfo; then
+                  echo "the bench shell needs a CPU with ADX (Broadwell or later)" >&2
+                  exit 1
+                fi
+              '';
             };
           };
 
