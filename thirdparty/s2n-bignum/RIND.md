@@ -247,7 +247,8 @@ byte.
 `RISCV_ADD_RETURN_NOSTACK_TAC` and `RISCV_ADD_RETURN_STACK_TAC` for the AAPCS:
 a return by `bx lr`, or a prologue and epilogue around the core, by default
 one `push` and one `pop` that returns. The AAPCS lets a subroutine change
-Q0-Q3 and Q8-Q15 and keeps Q4-Q7, D8-D15.
+Q0-Q3 and Q8-Q15 and keeps Q4-Q7, D8-D15, which the stack wrapper restores
+from a `vpush` in the prologue when `qreglist` names them.
 
 `simulator.ml` cosimulates the model as s2n-bignum's
 `riscv/proofs/simulator.ml` does its own: directed cases at the shifts',

@@ -326,17 +326,10 @@ let AARCH32_NOWRAP_CONV =
                                   MP (ARITH_RULE
                                        (mk_imp(list_mk_conj(map concl facts),goal)))
                                      (end_itlist CONJ facts) in
-                          (* WORD_RULE leaves an offset unreduced modulo
-                             2^32, as an address below a region's base, such
-                             as a push's under `word_sub sp (word 16)`,
-                             needs; WORD_ARITH reduces it. *)
-                          let eq =
-                            let g = mk_eq(a,mk_binop
-                              `word_add:int32->int32->int32` r
-                              (mk_comb(word_tm,mk_numeral dd))) in
-                            try prove(g,REWRITE_TAC[WORD_ADD] THEN
-                                        CONV_TAC WORD_RULE)
-                            with Failure _ -> WORD_ARITH g in
+                          let eq = prove
+                           (mk_eq(a,mk_binop `word_add:int32->int32->int32` r
+                                      (mk_comb(word_tm,mk_numeral dd))),
+                            REWRITE_TAC[WORD_ADD] THEN CONV_TAC WORD_RULE) in
                           let th' = MP (SPECL [r;n;mk_numeral dd;len]
                                           AARCH32_NOWRAP_OFFSET)
                                        (CONJ th fit) in
@@ -735,20 +728,29 @@ let AARCH32_ADD_RETURN_NOSTACK_TAC =
        ...                @ covered by coreth
        pop {r4, r5, pc}   @ epilogue, which returns
 
-   `reglist` names the callee-saved registers the prologue saves and
-   `stackoff` is the frame's size in bytes. The prologue is `pre_n` steps
-   and the epilogue with its return `post_n`, each one unless
-   `pre_post_nsteps` says otherwise, as for `pop {r4, r5, lr}` and `bx lr`.
-   The tactic runs them, proves that SP and the listed registers are
-   restored, and applies the AAPCS frame. *)
+   `reglist` names the callee-saved registers the prologue saves,
+   `qreglist` any of Q4-Q7 a `vpush` among it saves, and `stackoff` is the
+   frame's size in bytes. The prologue is `pre_n` steps and the epilogue
+   with its return `post_n`, each one unless `pre_post_nsteps` says
+   otherwise, as for `pop {r4, r5, lr}` and `bx lr`, or a `vpush` and
+   `vpop` too. The tactic runs them, proves that SP and the listed registers
+   are restored, and applies the AAPCS frame. *)
+
+(* A Q register a `vpop` restores is the join of the halves its `vpush`
+   saved. *)
+
+let AARCH32_JOIN_HALVES = WORD_BLAST
+ `word_join (word_subword (x:int128) (64,64):int64)
+            (word_subword x (0,64):int64):int128 = x`;;
 
 let AARCH32_ADD_RETURN_STACK_TAC =
   let sp_tm = `SP` in
   fun ?(pre_post_nsteps = (1,1))
       ?(core_precondition_tac = ALL_TAC)
+      ?(qreglist = `[]:((aarch32state,int128)component)list`)
       execth coreth reglist stackoff ->
     let is_coreth_safety = is_exists (concl coreth) in
-    let regs = dest_list reglist in
+    let regs = dest_list reglist @ dest_list qreglist in
     let pre_n,post_n = pre_post_nsteps in
 
     (fun (asl,w) ->
@@ -821,15 +823,15 @@ let AARCH32_ADD_RETURN_STACK_TAC =
     AARCH32_STEPS_TAC execth
       ((pre_n + 2)--(pre_n + post_n + 1)) THEN
     ENSURES_FINAL_STATE_TAC THEN
-    ASM_REWRITE_TAC[];;
+    ASM_REWRITE_TAC[AARCH32_JOIN_HALVES];;
 
 (* ------------------------------------------------------------------------- *)
-(* The wrappers, literal loads after and before the code, a load at a known *)
+(* The wrappers, literal loads after and before the code, a load at a known  *)
 (* base's offset, what untaken branches, loads, and stores record, and       *)
-(* Advanced SIMD's loads, stores, halves, and crypto operations, proven of   *)
-(* small routines as this file loads, as riscv/tutorial/subroutine.ml       *)
-(* proves s2n-bignum's; and which transfers that run past 0xffffffff leave   *)
-(* the model.                                                                *)
+(* Advanced SIMD's loads, stores, halves, crypto operations, and saved Q     *)
+(* registers, proven of small routines as this file loads, as                *)
+(* riscv/tutorial/subroutine.ml proves s2n-bignum's; and which transfers     *)
+(* that run past 0xffffffff leave the model.                                 *)
 (* ------------------------------------------------------------------------- *)
 
 let AARCH32_SUBROUTINE_TESTS =
@@ -1181,27 +1183,49 @@ let AARCH32_SUBROUTINE_TESTS =
     REWRITE_TAC[fst aes_exec] THEN
     REPEAT STRIP_TAC THEN
     AARCH32_SIM_TAC aes_exec [1;2]) in
-  (* vpush {d8, d9}; vmov.i64 q4, #0; vpop {d8, d9}: Q4 comes back from the
-     stack. *)
-  let vpush_mc = define "aarch32_test_vpush_mc"
-    [0xed2d8b04; 0xf2808e70; 0xecbd8b04] in
-  let vpush_exec = AARCH32_MK_EXEC_RULE vpush_mc in
-  let vpush = prove
-   (`!pc (sp:int32) x.
-      aligned 4 sp /\ aarch32_nowrap (word_sub sp (word 16)) 16 /\
-      nonoverlapping ((word pc):int32,LENGTH aarch32_test_vpush_mc)
-                     (word_sub sp (word 16),16)
-      ==> ensures aarch32
-        (\s. aligned_bytes_loaded s (word pc) aarch32_test_vpush_mc /\
-             read PC s = word pc /\ read SP s = sp /\ read Q4 s = x)
-        (\s. read PC s = word (pc + 12) /\ read SP s = sp /\ read Q4 s = x)
-        (MAYCHANGE [PC; SP] ,, MAYCHANGE [Q4] ,,
-         MAYCHANGE [memory :> bytes(word_sub sp (word 16),16)] ,,
-         MAYCHANGE [events])`,
-    REWRITE_TAC[fst vpush_exec] THEN
+  (* push {r4, lr}; vpush {d8, d9}; mov r4, r0; vmov.i64 q4, #0;
+     add r0, r4, #1; vpop {d8, d9}; pop {r4, pc}: the wrapper restores Q4,
+     which the AAPCS keeps, from the halves the prologue saved. *)
+  let vstack_mc = define "aarch32_test_vstack_mc"
+    [0xe92d4010; 0xed2d8b04; 0xe1a04000; 0xf2808e70; 0xe2840001;
+     0xecbd8b04; 0xe8bd8010] in
+  let vstack_exec = AARCH32_MK_EXEC_RULE vstack_mc in
+  let vstack_core = prove
+   (`!pc a.
+      ensures aarch32
+        (\s. aligned_bytes_loaded s (word pc) aarch32_test_vstack_mc /\
+             read PC s = word (pc + 8) /\
+             C_ARGUMENTS [a] s)
+        (\s. read PC s = word (pc + 20) /\
+             C_RETURN s = word_add a (word 1))
+        (MAYCHANGE [PC] ,, MAYCHANGE [R0; R4] ,, MAYCHANGE [Q4])`,
+    REWRITE_TAC[fst vstack_exec; C_ARGUMENTS; C_RETURN] THEN
     REPEAT STRIP_TAC THEN
-    AARCH32_SIM_TAC vpush_exec [1;2;3] THEN
-    CONV_TAC WORD_BLAST) in
+    AARCH32_SIM_TAC vstack_exec [1;2;3]) in
+  let vstack = prove
+   (`!pc a (stackpointer:int32) (returnaddress:int32).
+      aligned 4 returnaddress /\ aligned 4 stackpointer /\
+      aarch32_nowrap (word_sub stackpointer (word 24)) 24 /\
+      nonoverlapping
+        ((word pc):int32,LENGTH aarch32_test_vstack_mc)
+        (word_sub stackpointer (word 24),24)
+      ==> ensures aarch32
+        (\s. aligned_bytes_loaded s (word pc) aarch32_test_vstack_mc /\
+             read PC s = word pc /\
+             read SP s = stackpointer /\
+             read LR s = returnaddress /\
+             C_ARGUMENTS [a] s)
+        (\s. read PC s = returnaddress /\
+             read SP s = stackpointer /\
+             C_RETURN s = word_add a (word 1))
+        (MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI ,,
+         MAYCHANGE
+          [memory :> bytes (word_sub stackpointer (word 24),24)])`,
+    REWRITE_TAC[fst vstack_exec] THEN
+    AARCH32_ADD_RETURN_STACK_TAC ~pre_post_nsteps:(2,2)
+      ~qreglist:`[Q4]` vstack_exec
+      (REWRITE_RULE[fst vstack_exec] vstack_core)
+      `[R4]` 24) in
   (* vldmiane r0, {d0, d1} with Z set: an access of no bytes, and Q0 kept. *)
   let vldmne_mc = define "aarch32_test_vldmne_mc" [0x1c900b04] in
   let vldmne_exec = AARCH32_MK_EXEC_RULE vldmne_mc in
@@ -1219,4 +1243,4 @@ let AARCH32_SUBROUTINE_TESTS =
     REPEAT STRIP_TAC THEN
     AARCH32_SIM_TAC vldmne_exec [1]) in
   [nostack; stack; literal; offset; before; untaken; rrx; skipped; sum;
-   region4; shaped; veor; halves; aes; vpush; vldmne];;
+   region4; shaped; veor; halves; aes; vstack; vldmne];;
