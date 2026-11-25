@@ -91,11 +91,12 @@ def rustc(args):
     os.execvp(args[0], args)
 
 
-def build(fixture, features, env, write):
-    """Builds `fixture` in release from its lockfile and returns its binary."""
+def build(fixture, features, host, env, write):
+    """Builds `fixture` in release for `host` from its lockfile and returns its
+    binary."""
     # Its own, since cargo does not rebuild for a changed wrapper: a build
     # without it in the same directory would look up to date.
-    target = ROOT / "target" / "binary-size"
+    target_dir = ROOT / "target" / "binary-size"
     used = FIXTURES / fixture / "Cargo.lock"
     if lockfile(fixture).exists():
         shutil.copyfile(lockfile(fixture), used)
@@ -103,14 +104,16 @@ def build(fixture, features, env, write):
         used.unlink(missing_ok=True)
     else:
         sys.exit(f"error: no {lockfile(fixture)}; `admin/binary-size --write` resolves one")
-    cmd = ["cargo", "build", "--release", "--target-dir", str(target)]
+    # The target named, since a cargo configuration's `build.target` would
+    # otherwise move the binary.
+    cmd = ["cargo", "build", "--release", "--target", host, "--target-dir", str(target_dir)]
     cmd += ["--manifest-path", str(FIXTURES / fixture / "Cargo.toml")]
     if features:
         cmd += ["--features", ",".join(features)]
     subprocess.run(cmd, env=env, check=True)
     if write:
         shutil.copyfile(used, lockfile(fixture))
-    return target / "release" / f"build-cost-{fixture}"
+    return target_dir / host / "release" / f"build-cost-{fixture}"
 
 
 def measure(binary):
@@ -153,7 +156,7 @@ def main():
 
     record = read_record()
     binaries = {
-        fixture: build(fixture, features, env, write) for fixture, features in BUILDS.items()
+        fixture: build(fixture, features, target, env, write) for fixture, features in BUILDS.items()
     }
     failed = False
     for fixture, binary in binaries.items():
