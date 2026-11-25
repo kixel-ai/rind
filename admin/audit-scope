@@ -28,9 +28,11 @@ PQ = re.compile(r"(^|/)(mldsa|slhdsa)")
 # Anything not listed here is Phase 1: a primitive or encoding a TLS stack
 # reaches. The Phase 2 ones are reached by no TLS handshake.
 MID_PHASE2 = re.compile(r"^(portable/)?(argon2|blake2b|pbkdf2_vg|ristretto255(_tests)?)\.rs$|^(mldsa|slhdsa)|(^|/)hash_to_curve")
-HIGH_PHASE2 = re.compile(
-    r"^(argon2|pbkdf2|hpke|oprf|frost|spake2plus|vrf|blind_rsa|hmac_drbg)(\.rs|/)|^signature/(ml_dsa|slh_dsa)\.rs$"
-)
+HIGH_PHASE2 = re.compile(r"^(argon2|pbkdf2|hpke|oprf|frost|spake2plus|vrf|blind_rsa|hmac_drbg)(\.rs|/)")
+# The ML-DSA and SLH-DSA keys sit in Phase 1 whole, because their `from_pkcs8`
+# loaders are methods inside the files and `rind-rustls` reaches them when any
+# crate in the build turns on rind's `ml-dsa` or `slh-dsa` feature.
+HIGH_PQ_LOADERS = re.compile(r"^signature/(ml_dsa|slh_dsa)\.rs$")
 
 # Other crates, by directory: Phase 1 is the TLS provider boundary, Phase 2
 # the bindings and the FIPS module, and the rest are adapters over rind's own
@@ -110,8 +112,10 @@ def classify(f):
             return "1", "`mid`: primitives and constructions"
         if rest[0] == "high":
             name = "/".join(rest[1:])
+            if HIGH_PQ_LOADERS.search(name):
+                return "1", "`high`: ML-DSA and SLH-DSA keys, for their PKCS#8 loaders"
             if HIGH_PHASE2.search(name):
-                return "2", "`high`: protocols (HPKE, OPRF, FROST, SPAKE2+, VRF, blind RSA, KDFs) and ML-DSA and SLH-DSA"
+                return "2", "`high`: protocols (HPKE, OPRF, FROST, SPAKE2+, VRF, blind RSA, KDFs)"
             return "1", "`high`: keys, signatures, encodings, and hashing"
         if rest[0] in ("fips", "fips.rs", "fips_rng.rs"):
             return "2", "`rind` FIPS build glue"

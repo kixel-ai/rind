@@ -30,6 +30,12 @@ shape the second.
   bindings (`rind-python`, `rind-dart`, `rind-openssl`), which add `unsafe`
   and a C ABI. `rind-fips` is in it only once it is published.
 
+The ML-DSA and SLH-DSA PKCS#8 loaders are in Phase 1, counted as their two
+whole files in `high/signature` since the loaders sit inside them: `rind-rustls`
+loads every PKCS#8 key through rind, so when any crate in the build enables
+rind's `ml-dsa` or `slh-dsa` feature, Cargo feature unification lets a hostile
+key reach them, while the schemes' `mid` and `low` code stays in Phase 2.
+
 ML-KEM is in Phase 1, not Phase 2, because `rind-rustls` offers
 `X25519MLKEM768` first by default, so a handshake runs it whenever the
 peer negotiates it. HPKE is in
@@ -66,6 +72,7 @@ is authoritative.
 | Lean TCB: files that state axioms | 23 | 5,539 | 0 |
 | Lean TCB: hand models, ISA models, and transliterated specs | 136 | 37,492 | 0 |
 | Lean: proofs and Aeneas glue (machine-checked) | 128 | 50,663 | 0 |
+| `high`: ML-DSA and SLH-DSA keys, for their PKCS#8 loaders | 2 | 562 | 0 |
 | `high`: keys, signatures, encodings, and hashing | 26 | 16,019 | 0 |
 | `low/aarch64` | 280 | 6,347 | 203,051 |
 | `low/arm` | 31 | 2,716 | 15,599 |
@@ -76,7 +83,7 @@ is authoritative.
 | `mid`: primitives and constructions | 34 | 16,008 | 42,161 |
 | `rind-rustls`: the TLS provider | 13 | 3,600 | 0 |
 | `rind` crate root: public API and errors | 7 | 2,641 | 0 |
-| **Total** | **1,213** | **198,710** | **669,489** |
+| **Total** | **1,215** | **199,272** | **669,489** |
 
 Lean `axiom` declarations: 173 in 23 files. `sorry`: 0.
 
@@ -84,7 +91,7 @@ Lean `axiom` declarations: 173 in 23 files. `sorry`: 0.
 
 | Area | Files | Hand-written lines | Generated lines |
 |---|---:|---:|---:|
-| `high`: protocols (HPKE, OPRF, FROST, SPAKE2+, VRF, blind RSA, KDFs) and ML-DSA and SLH-DSA | 15 | 12,021 | 0 |
+| `high`: protocols (HPKE, OPRF, FROST, SPAKE2+, VRF, blind RSA, KDFs) | 13 | 11,459 | 0 |
 | `low/aarch64`: ML-DSA, SLH-DSA, and Argon2 kernels | 18 | 1,100 | 4,174 |
 | `low/generic`: ML-DSA, SLH-DSA, and Argon2 kernels | 2 | 887 | 0 |
 | `low/x86_64`: ML-DSA, SLH-DSA, and Argon2 kernels | 22 | 1,052 | 11,829 |
@@ -96,7 +103,7 @@ Lean `axiom` declarations: 173 in 23 files. `sorry`: 0.
 | `rind-python`: Python bindings | 12 | 2,027 | 0 |
 | `rind` FIPS build glue | 3 | 1,345 | 0 |
 | other `rind-<consumer>` adapters | 60 | 13,087 | 0 |
-| **Total** | **207** | **56,201** | **16,003** |
+| **Total** | **205** | **55,639** | **16,003** |
 
 ### Phase 1 in more detail
 
@@ -147,7 +154,7 @@ says how to run them. The ones an auditor will want:
 | Variable-time instructions | `nix develop .#ct-vartime --command admin/ct-vartime` | Scans release builds for divisions and floating point. |
 | HOL Light and Lean proofs | `nix develop .#prove --command admin/prove` | Also `admin/prove bytes`, which checks the release build holds the bytes each proof is about. |
 | Imported code matches its pin | `nix develop .#regenerate --command admin/regenerate` | Reruns every importer; fails on a difference. |
-| Zeroing and heap scratch | `cargo test -p rind --test zeroing --test heap_scratch` | |
+| Zeroing and heap scratch | `nix develop --command cargo test -p rind --test zeroing --test heap_scratch` | |
 
 The audit should name a commit, ideally a release tag, and the auditor should
 report the commit each finding was made at, since the proofs and `regenerate`
@@ -228,7 +235,9 @@ For both phases:
   `getrandom`, `libcrux-*`, `libc`, `cfg-if`) beyond how rind calls them.
   [AUDIT.md's pins table](AUDIT.md#provenance) lists them.
 - Unpublished crates and tooling: `rind-bench`, `rind-cpuid`, `rind-timing`,
-  `rind-acvp`, the fuzz targets, `admin/`, and the site. `rind-fips` is out
+  `rind-acvp`, the fuzz targets, the site, and `admin/` apart from the importers,
+  `admin/parse-asm`, and `admin/regenerate`, which the generated-code rule makes
+  the audited unit. `rind-fips` is out
   until published, and FIPS 140-3 validation is a separate process.
 - The threat model's exclusions, listed above, and a flaw in a crate an
   adapter plugs into, such as rustls.
@@ -236,7 +245,7 @@ For both phases:
   reproducible, and the CI configuration, which the threat model excludes.
 - Performance.
 
-Phase 1 also leaves out Phase 2's code: ML-DSA, SLH-DSA, Argon2id,
+Phase 1 also leaves out Phase 2's code, apart from the PKCS#8 loaders above: ML-DSA, SLH-DSA, Argon2id,
 ristretto255, hash-to-curve, the protocols, the other adapters, and the
 bindings.
 

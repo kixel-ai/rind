@@ -13,7 +13,7 @@ technical scope to attach.
 - The scope, with file and line counts and what is machine-checked versus
   human-reviewed: [AUDIT-SCOPE.md](AUDIT-SCOPE.md); the threat model, provenance,
   and checks: [AUDIT.md](AUDIT.md).
-- Pure Rust, no C toolchain, memory-safe outside `low` and the bindings:
+- Pure Rust, no C toolchain, memory-safe outside `low`, the FIPS build's DRBG handle, and the bindings:
   [AUDIT.md's `unsafe` table](AUDIT.md#unsafe), [BENCHMARKS.md's build cost](BENCHMARKS.md#build-cost).
 - Formal proofs, and the trust base they rest on:
   [BENCHMARKS.md's verified code](BENCHMARKS.md#verified-code),
@@ -55,8 +55,10 @@ encryption technologies are in its examples.
 - Asks for (per the program page): applications only through its online
   platform, in English or German; proposed work costing over EUR 50,000; code and
   documentation under an OSI or FSF free license; no prototype
-  development; a decision in about 10 weeks and a contract about 6 months from
-  submission.
+  development; open-source technologies the applicant can name that depend on
+  the component; no grant or investment from another public entity for the
+  same activities, now or before; a decision in about 10 weeks and a contract
+  about 6 months from submission.
 - Cite: the license, the published crates, adopters (maintainer to fill in),
   [AUDIT-SCOPE.md](AUDIT-SCOPE.md) as the work plan for an audit line item.
 - Open: whether a security audit alone, or an audit plus follow-up fixes and the
