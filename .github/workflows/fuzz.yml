@@ -326,11 +326,12 @@ jobs:
           path: ${{ env.CORPUS }}
 
       # SDE emulates every instruction, so an SLH-DSA-SHA2-128s signature that
-      # takes about 1 s natively takes 44 s here. The per-input timeout is
-      # seven times that, and libFuzzer stops at the first hang, which costs at
-      # most 300 s more, so the job's 60 minutes hold while the corpus has
-      # fewer than about 80 such inputs. The other replays run natively and
-      # keep -timeout=30.
+      # takes about 1 s natively takes 44 s here, or 81 s on a runner without
+      # AVX-512, and more with AVX-512 denied. The per-input timeout is
+      # several times that, and libFuzzer stops at the first hang, which costs
+      # at most 300 s more. `keys` signs once per SLH-DSA set in a process, so
+      # a tier costs at most twelve signatures however large the corpus grows.
+      # The other replays run natively and keep -timeout=30.
       - name: Replay the corpus
         run: |
           chmod +x "bin/$TARGET"
