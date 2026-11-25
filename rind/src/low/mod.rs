@@ -78,6 +78,11 @@ mod vartime_planted;
 #[cfg(doc)]
 pub mod inline_assembly_safety;
 
+#[cfg(rind_backend = "portable")]
+pub(crate) fn exp_variant(v: u8) {
+    generic::limbs::mont::VARIANT.store(v, core::sync::atomic::Ordering::Relaxed);
+}
+
 mod generic {
     pub(crate) mod argon2;
     // The portable backend's RSA arithmetic, which armv7 shares, also built

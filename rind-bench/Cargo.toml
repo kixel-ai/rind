@@ -128,6 +128,10 @@ name = "rsa_pub"
 harness = false
 
 [[bench]]
+name = "exp_ab"
+harness = false
+
+[[bench]]
 name = "rsa_priv"
 harness = false
 

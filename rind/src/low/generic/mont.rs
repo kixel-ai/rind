@@ -453,16 +453,38 @@ fn redc(t: &mut [Limb], m: &[Limb], n0: Limb) {
     sub_limbs_masked(r, m, Limb::wrapping_sub(0, top as Limb | (below ^ 1)));
 }
 
-/// `x += y * (u + v 2^b) + c` over `x`'s limbs, as many as `y`'s, for a `c`
-/// that fits a limb, returning what lands above them, which fits `Wide`.
-///
-/// Its two products a limb are summed in two carry chains, which run side
-/// by side where one chain's latency would bound `mul_add`. A block of
-/// `BLOCK` limbs forms its products first, which depend only on `u`, `v`, and
-/// `y`, so a core that issues in order, or whose window is shorter than the
-/// block's chains, overlaps its multiplies with them.
+pub(crate) static VARIANT: core::sync::atomic::AtomicU8 = core::sync::atomic::AtomicU8::new(0);
+
 fn mul_add2(x: &mut [Limb], y: &[Limb], u: Limb, v: Limb, c: Wide) -> Wide {
-    const BLOCK: usize = 4;
+    match VARIANT.load(core::sync::atomic::Ordering::Relaxed) {
+        0 => mul_add2_old(x, y, u, v, c),
+        1 => mul_add2_block::<2>(x, y, u, v, c),
+        2 => mul_add2_block::<4>(x, y, u, v, c),
+        _ => mul_add2_block::<8>(x, y, u, v, c),
+    }
+}
+
+fn mul_add2_old(x: &mut [Limb], y: &[Limb], u: Limb, v: Limb, c: Wide) -> Wide {
+    let (mut c0, mut c1, mut prev) = (c, 0, 0);
+    for (x, y) in x.iter_mut().zip(y) {
+        let s0 = mul_add_limb(u, *y, *x, c0);
+        c0 = s0 >> Limb::BITS;
+        let s1 = mul_add_limb(v, prev, s0 as Limb, c1);
+        *x = s1 as Limb;
+        c1 = s1 >> Limb::BITS;
+        prev = *y;
+    }
+    mul_add_limb(v, prev, c0 as Limb, c1)
+}
+
+#[inline(always)]
+fn mul_add2_block<const BLOCK: usize>(
+    x: &mut [Limb],
+    y: &[Limb],
+    u: Limb,
+    v: Limb,
+    c: Wide,
+) -> Wide {
     let (mut c0, mut c1, mut prev) = (c, 0, 0);
     let (xs, x_rest) = x.as_chunks_mut::<BLOCK>();
     let (ys, y_rest) = y.as_chunks::<BLOCK>();
@@ -474,7 +496,6 @@ fn mul_add2(x: &mut [Limb], y: &[Limb], u: Limb, v: Limb, c: Wide) -> Wide {
             Wide::from(v).wrapping_mul(Wide::from(below))
         });
         for k in 0..BLOCK {
-            // Each sum is at most (2^b - 1)^2 + 2 (2^b - 1) = 2^2b - 1.
             let s0 = pu[k].wrapping_add(Wide::from(x[k])).wrapping_add(c0);
             c0 = s0 >> Limb::BITS;
             let s1 = pv[k].wrapping_add(Wide::from(s0 as Limb)).wrapping_add(c1);
@@ -491,7 +512,6 @@ fn mul_add2(x: &mut [Limb], y: &[Limb], u: Limb, v: Limb, c: Wide) -> Wide {
         c1 = s1 >> Limb::BITS;
         prev = *y;
     }
-    // At most (2^b - 1)^2 + 2 (2^b - 1).
     mul_add_limb(v, prev, c0 as Limb, c1)
 }
 

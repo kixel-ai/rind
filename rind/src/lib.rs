@@ -54,6 +54,14 @@ extern crate std;
 /// bignum arithmetic.
 mod low;
 
+#[doc(hidden)]
+pub fn exp_variant(v: u8) {
+    #[cfg(rind_backend = "portable")]
+    low::exp_variant(v);
+    #[cfg(not(rind_backend = "portable"))]
+    let _ = v;
+}
+
 /// Mid-level APIs.
 ///
 /// Examples: elliptic curve group operations.
