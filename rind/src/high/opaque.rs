@@ -873,9 +873,10 @@ impl ClientRegistration {
     /// `FinalizeRegistrationRequest`, returning the record to upload to the
     /// server and the export key.
     ///
-    /// Upload the record only over a channel that authenticates the server
-    /// and is confidential, such as TLS: it carries the masking key that
-    /// hides whether the account exists (RFC 9807 10.10).
+    /// Run registration only over a channel that authenticates the server
+    /// and keeps the messages confidential and unaltered, such as TLS: the
+    /// record carries the masking key that hides whether the account exists
+    /// (RFC 9807 3.2 and 10.10).
     ///
     /// This runs the suite's Argon2id, which holds 2 GiB for the call, and
     /// fails with [`Error::OutOfMemory`] if it cannot be allocated. The

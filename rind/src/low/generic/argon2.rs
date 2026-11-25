@@ -61,24 +61,26 @@ pub(crate) struct Argon2Memory {
 impl Argon2Memory {
     /// Reserves `lanes` lanes of `lane_len` blocks, none of them set.
     pub(crate) fn new(lanes: usize, lane_len: usize) -> Result<Self, Error> {
-        let mut memory = Self {
-            lanes: Vec::new(),
-            lane_len,
-            set: Vec::new(),
-        };
-        memory
-            .lanes
+        // Built apart from `Self`, so a failed reservation frees the earlier
+        // ones without `drop` writing to their untouched pages.
+        let mut reserved = Vec::new();
+        let mut set = Vec::new();
+        reserved
             .try_reserve_exact(lanes)
-            .and_then(|()| memory.set.try_reserve_exact(lanes))
+            .and_then(|()| set.try_reserve_exact(lanes))
             .map_err(|_| Error::OutOfMemory)?;
         for _ in 0..lanes {
             let mut lane = Vec::new();
             lane.try_reserve_exact(lane_len)
                 .map_err(|_| Error::OutOfMemory)?;
-            memory.lanes.push(lane);
+            reserved.push(lane);
         }
-        memory.set.resize(lanes, 0);
-        Ok(memory)
+        set.resize(lanes, 0);
+        Ok(Self {
+            lanes: reserved,
+            lane_len,
+            set,
+        })
     }
 
     /// Sets `lane`'s next block to `block`.

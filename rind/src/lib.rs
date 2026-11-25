@@ -783,9 +783,10 @@ pub mod spake2plus {
 /// no step runs twice or out of order.
 ///
 /// Registration, unlike login, must run over a channel that authenticates
-/// the server and keeps the messages confidential, such as TLS (RFC 9807
-/// 3.2): the record carries the masking key that hides whether an account
-/// exists, which an eavesdropper would otherwise learn (RFC 9807 10.10).
+/// the server and keeps the messages confidential and unaltered, such as
+/// TLS (RFC 9807 3.2): the record carries the masking key that hides
+/// whether an account exists, which an eavesdropper would otherwise learn
+/// (RFC 9807 10.10).
 ///
 /// Each step that stretches the password runs Argon2id at 2 GiB, so this
 /// example is not run as a test.
