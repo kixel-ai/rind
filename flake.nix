@@ -419,7 +419,8 @@
             sourceRoot = ".";
             # The macOS build ships Aeneas's GMP beside it, which it loads
             # from `libs/` next to its binary.
-            unpackCmd = "tar xzf $curSrc aeneas charon charon-driver"
+            unpackCmd =
+              "tar xzf $curSrc aeneas charon charon-driver"
               + pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isDarwin " libs";
             nativeBuildInputs = [
               pkgs.makeWrapper
