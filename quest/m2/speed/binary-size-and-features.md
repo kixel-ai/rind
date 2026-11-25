@@ -17,7 +17,3 @@ Planned with the maintainer on 2026-11-21 (`/quest-plan`): ✅ keep `rind`'s `de
   - Deduplicate or share read-only tables and cold code paths where doing so does not regress hot-tier benchmarks.
 - **CI binary-size gate**:
   - Measure stripped release binary size of the `rustls + rind-rustls` example (and `rind` minimal/full builds) in CI, print the delta on PRs or fail when size jumps unexpectedly above a threshold, and record the new numbers in `BENCHMARKS.md`.
-
-## Related
-
-- [Gate coverage regressions, test feature powersets, and execute wasm32 tests](/quest/m2/confidence/coverage-powerset-wasm-gates.md)
