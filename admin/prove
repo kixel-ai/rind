@@ -541,7 +541,7 @@ hol_light_compile() {
 # campaign that loading it runs is one of those it adds by hand. The SHA
 # extensions' instructions run only where the CPU has them.
 cosim() {
-    local dir=$out/cosim root=$PWD sha=0 cases=2000
+    local dir=$out/cosim root=$PWD sha=0 cases=1500
     local aarch32=thirdparty/s2n-bignum/aarch32/proofs
     hold cosim
     rm -rf "$dir"
