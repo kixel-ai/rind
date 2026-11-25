@@ -141,7 +141,7 @@ class Insn:
         self.addr, self.raw, self.text, self.relocs = addr, raw, text, []
 
 
-def disassemble(arch, obj, keep, shared={}):
+def disassemble(arch, obj, keep, shared=None):
     """The instructions of each function of `obj` that `keep` takes, by the
     demangled path's last component, with the relocations at each: its offset
     in the instruction, its type, its symbol's last component, or the table
@@ -150,6 +150,7 @@ def disassemble(arch, obj, keep, shared={}):
     # `-z`: llvm-objdump otherwise prints a run of zero bytes as `...`.
     dis = run(["llvm-objdump", "-d", "-z", "-r", "-C", *flags, str(obj)])
     statics = section_statics(obj)
+    shared = shared or {}
     fns, names = {}, {}
     cur = None
     for line in dis.splitlines():

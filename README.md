@@ -147,6 +147,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 [docs.rs][docs] documents every module, and [ARCHITECTURE.md][architecture]
 describes the API's shape.
 
+The linker keeps only the algorithms a program names, but loading a key of
+any kind (`rind::KeyPair::from_pkcs8`) names them all. Its default features,
+`ml-dsa` and `slh-dsa`, keep the two post-quantum signatures; build with
+`default-features = false` to leave them out, as every adapter does, and a
+key of theirs is then refused.
+
 ## Adapters
 
 Each crate's README shows its setup.
