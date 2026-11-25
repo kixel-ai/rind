@@ -24,7 +24,8 @@
 //! and from `KARATSUBA_MUL` and `KARATSUBA_SQR` limbs, products and
 //! squares split by Karatsuba's method (Knuth, TAOCP 4.3.3), as aws-lc's C
 //! does. Their loops add two rows a pass, in two carry chains, where one
-//! chain's latency would bound them.
+//! chain's latency would bound them, forming a block of each pass's products
+//! before the chains that add them.
 //!
 //! The crossovers are where each measured faster on x86_64 at both limb
 //! widths, and are the same in limbs for both.
@@ -457,12 +458,13 @@ fn redc(t: &mut [Limb], m: &[Limb], n0: Limb) {
 /// that fits a limb, returning what lands above them, which fits `Wide`.
 ///
 /// Its two products a limb are summed in two carry chains, which run side
-/// by side where one chain's latency would bound `mul_add`. A block of
-/// `BLOCK` limbs forms its products first, which depend only on `u`, `v`, and
-/// `y`, so a core that issues in order, or whose window is shorter than the
-/// block's chains, overlaps its multiplies with them.
+/// by side where one chain's latency would bound `mul_add`. A block of limbs
+/// forms its products first, which depend only on `u`, `v`, and `y`, so a core
+/// overlaps them with the chains that add them: four limbs at 64 bits and
+/// eight at 32, which measured fastest across x86_64 and aarch64, as a
+/// longer block of the wider products costs registers x86_64 lacks.
 fn mul_add2(x: &mut [Limb], y: &[Limb], u: Limb, v: Limb, c: Wide) -> Wide {
-    const BLOCK: usize = 4;
+    const BLOCK: usize = if Limb::BITS == 32 { 8 } else { 4 };
     let (mut c0, mut c1, mut prev) = (c, 0, 0);
     let (xs, x_rest) = x.as_chunks_mut::<BLOCK>();
     let (ys, y_rest) = y.as_chunks::<BLOCK>();
