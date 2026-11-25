@@ -1700,3 +1700,109 @@ let CHACHA_XOR256 = prove
   XMMS_OF_YMMS_TAC THEN ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
   REWRITE_TAC[VAL_WORD_SUB_CASES; VAL_WORD; DIMINDEX_64] THEN CONV_TAC NUM_REDUCE_CONV THEN
   ASM_REWRITE_TAC[] THEN ASM_ARITH_TAC);;
+(* ------------------------------------------------------------------------- *)
+(* The last r bytes, 0 < r < 64, one at a time against the stack's block,     *)
+(* 0x9b5 to 0x9cf.                                                           *)
+(* ------------------------------------------------------------------------- *)
+
+let CHACHA_BNUM_1 = prove
+ (`!f p. chacha_bnum f p 1 = val(f p:byte)`,
+  REWRITE_TAC[num_CONV `1`; chacha_bnum; MULT_CLAUSES; ADD_CLAUSES]);;
+
+let CHACHA_BYTES_GOAL = `!pc data stk a r mf kf p.
+  0 < r /\ r <= 64 /\ val a + r <= 2 EXP 64 /\
+  nonoverlapping (a:int64,r) (stk:int64,64) /\ nonoverlapping (a:int64,r) (word pc:int64,0x9d4)
+  ==> ensures x86
+   (\s. bytes_loaded s (word pc) (chacha20_ssse3_4x_mc pc data) /\
+        read RIP s = word(pc + 0x9b5) /\ read RSP s = stk /\
+        read RSI s = a /\ read RDI s = a /\ read RDX s = word r /\ read R10 s = word 0 /\
+        read (memory :> bytes(stk,64)) s = chacha_bnum kf p 64 /\
+        read (memory :> bytes(a,r)) s = chacha_bnum mf p r)
+   (\s. read RIP s = word(pc + 0x9cf) /\ read RSP s = stk /\
+        read (memory :> bytes(a,r)) s = chacha_bnum (\j. word_xor (mf j) (kf j)) p r)
+   (MAYCHANGE [RIP; RAX; RCX; RDX; R10] ,, MAYCHANGE SOME_FLAGS ,,
+    MAYCHANGE [memory :> bytes(a,r)] ,, MAYCHANGE [events])`;;
+
+let CHACHA_BYTES_INV = `\i s.
+  (read RSP s = stk /\ read RSI s = a /\ read RDI s = a /\
+   read RDX s = word(r - i) /\ read R10 s = word i /\
+   read (memory :> bytes(stk,64)) s = chacha_bnum kf p 64 /\
+   read (memory :> bytes(a,i)) s = chacha_bnum (\j. word_xor (mf j) (kf j)) p i /\
+   read (memory :> bytes(word_add a (word i),r - i)) s = chacha_bnum mf (p + i) (r - i)) /\
+  (read ZF s <=> i = r)`;;
+
+(* The store's address, rdi + r10 - 1 once r10 is i + 1, is byte i. *)
+let CHACHA_BYTES = prove
+ (CHACHA_BYTES_GOAL,
+  REWRITE_TAC[SOME_FLAGS] THEN REPEAT GEN_TAC THEN STRIP_TAC THEN
+  ENSURES_WHILE_PUP_TAC `r:num` `pc + 0x9b5` `pc + 0x9cd` CHACHA_BYTES_INV THEN
+  ASM_REWRITE_TAC[] THEN REPEAT CONJ_TAC THENL
+   [ASM_ARITH_TAC;
+    (* Into the loop. *)
+    REWRITE_TAC[SUB_0; ADD_CLAUSES; WORD_ADD_0; chacha_bnum; READ_COMPONENT_COMPOSE;
+                READ_BYTES_TRIVIAL] THEN
+    REWRITE_TAC[GSYM READ_COMPONENT_COMPOSE] THEN
+    ENSURES_INIT_TAC "s0" THEN ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[];
+    (* Byte i. *)
+    X_GEN_TAC `i:num` THEN STRIP_TAC THEN
+    ASM_SIMP_TAC[ARITH_RULE `i < r ==> r - i = 1 + (r - (i + 1))`] THEN
+    REWRITE_TAC[READ_CHACHA_BNUM_SPLIT] THEN
+    ENSURES_INIT_TAC "s0" THEN
+    SUBGOAL_THEN `read (memory :> bytes8(word_add a (word i))) s0 = mf(p + i) /\
+                  read (memory :> bytes8(word_add stk (word i))) s0 = kf(p + i)`
+     STRIP_ASSUME_TAC THENL
+     [CONJ_TAC THENL
+       [FIRST_X_ASSUM(MP_TAC o check (can (term_match [] `read (memory :> bytes(x,1)) s = y`) o concl)) THEN
+        REWRITE_TAC[READ_MEMORY_BYTES_BYTES8; CHACHA_BNUM_1; VAL_EQ];
+        FIRST_ASSUM(MP_TAC o check (can (term_match [] `read (memory :> bytes(stk,64)) s = y`) o concl)) THEN
+        REWRITE_TAC[READ_CHACHA_BNUM] THEN DISCH_THEN(MP_TAC o SPEC `i:num`) THEN
+        ANTS_TAC THENL [ASM_ARITH_TAC; SIMP_TAC[]]];
+      ALL_TAC] THEN
+    SUBGOAL_THEN `word (1 * val (word i:int64)):int64 = word i` ASSUME_TAC THENL
+     [AP_TERM_TAC THEN REWRITE_TAC[MULT_CLAUSES; VAL_WORD; DIMINDEX_64] THEN
+      MATCH_MP_TAC MOD_LT THEN UNDISCH_TAC `r <= 64` THEN
+      UNDISCH_TAC `i < r` THEN ARITH_TAC; ALL_TAC] THEN
+    SUBGOAL_THEN `read (memory :> bytes8(word_add a (word (1 * val (word i:int64))))) s0 = mf(p + i) /\
+                  read (memory :> bytes8(word_add stk (word (1 * val (word i:int64))))) s0 = kf(p + i)`
+     STRIP_ASSUME_TAC THENL [ASM_REWRITE_TAC[]; ALL_TAC] THEN
+    X86_STEPS_TAC CHACHA_EXEC (1--4) THEN
+    RULE_ASSUM_TAC(REWRITE_RULE[GSYM WORD_ADD]) THEN
+    ABBREV_TAC `wa:int64 = word_add a (word (1 * val (word (i + 1):int64) + 18446744073709551615))` THEN
+    SUBGOAL_THEN `wa:int64 = word_add a (word i)` ASSUME_TAC THENL
+     [EXPAND_TAC "wa" THEN AP_TERM_TAC THEN
+      SUBGOAL_THEN `1 * val (word (i + 1):int64) = i + 1` SUBST1_TAC THENL
+       [REWRITE_TAC[MULT_CLAUSES; VAL_WORD; DIMINDEX_64] THEN
+        MATCH_MP_TAC MOD_LT THEN UNDISCH_TAC `r <= 64` THEN
+        UNDISCH_TAC `i < r` THEN ARITH_TAC;
+        REWRITE_TAC[WORD_ADD; SYM(WORD_REDUCE_CONV `word_neg(word 1):int64`)] THEN
+        CONV_TAC WORD_RULE];
+      ALL_TAC] THEN
+    SUBGOAL_THEN
+     `nonoverlapping (word_add a (word (1 * val (word (i + 1):int64) + 18446744073709551615)):int64,1)
+                     (word pc,0x9d4) /\
+      nonoverlapping (word_add a (word (1 * val (word (i + 1):int64) + 18446744073709551615)):int64,1)
+                     (a,i) /\
+      nonoverlapping (word_add a (word (1 * val (word (i + 1):int64) + 18446744073709551615)):int64,1)
+                     (stk,64) /\
+      nonoverlapping (word_add a (word (1 * val (word (i + 1):int64) + 18446744073709551615)):int64,1)
+                     (word_add (word_add a (word i)) (word 1),r - (i + 1))`
+     STRIP_ASSUME_TAC THENL
+     [ASM_REWRITE_TAC[] THEN REPEAT CONJ_TAC THEN NONOVERLAPPING_TAC; ALL_TAC] THEN
+    X86_STEPS_TAC CHACHA_EXEC (5--6) THEN ENSURES_FINAL_STATE_TAC THEN
+    REWRITE_TAC[CHACHA_BNUM_1; READ_MEMORY_BYTES_BYTES8; VAL_EQ] THEN ASM_REWRITE_TAC[] THEN
+    SUBGOAL_THEN `word_sub (word (1 + r - (i + 1))) (word 1):int64 = word (r - (i + 1))`
+     (fun th -> REWRITE_TAC[th]) THENL [REWRITE_TAC[WORD_ADD] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+    REPEAT CONJ_TAC THENL
+     [CONV_TAC WORD_BLAST;
+      RULE_ASSUM_TAC(REWRITE_RULE[GSYM WORD_ADD_ASSOC; GSYM WORD_ADD; GSYM ADD_ASSOC]) THEN
+      ASM_REWRITE_TAC[GSYM ADD_ASSOC];
+      REWRITE_TAC[VAL_WORD; DIMINDEX_64] THEN
+      SUBGOAL_THEN `r - (i + 1) < 2 EXP 64` (fun th -> SIMP_TAC[th; MOD_LT]) THENL
+       [UNDISCH_TAC `r <= 64` THEN ARITH_TAC; UNDISCH_TAC `i < r` THEN ARITH_TAC]];
+    (* Back to the top. *)
+    X_GEN_TAC `i:num` THEN STRIP_TAC THEN ENSURES_INIT_TAC "s0" THEN
+    X86_STEPS_TAC CHACHA_EXEC [1] THEN ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[];
+    (* Out of the loop. *)
+    ENSURES_INIT_TAC "s0" THEN X86_STEPS_TAC CHACHA_EXEC [1] THEN
+    ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
+    REWRITE_TAC[SUB_REFL; READ_COMPONENT_COMPOSE; READ_BYTES_TRIVIAL]]);;
