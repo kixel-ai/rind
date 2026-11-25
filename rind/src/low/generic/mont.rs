@@ -37,6 +37,10 @@ use crate::low::ct;
 /// Limbs in a 64-bit word.
 const PER_WORD: usize = (u64::BITS / Limb::BITS) as usize;
 
+/// The limbs of `mul_add2`'s block, which forms its products before the chains
+/// that add them: eight at 32 bits, four at 64.
+const BLOCK: usize = if Limb::BITS == 32 { 8 } else { 4 };
+
 /// `MAX_WORDS` in limbs.
 const MAX_LIMBS: usize = MAX_WORDS * PER_WORD;
 
@@ -464,7 +468,6 @@ fn redc(t: &mut [Limb], m: &[Limb], n0: Limb) {
 /// eight at 32, which measured fastest across x86_64 and aarch64, as a
 /// longer block of the wider products costs registers x86_64 lacks.
 fn mul_add2(x: &mut [Limb], y: &[Limb], u: Limb, v: Limb, c: Wide) -> Wide {
-    const BLOCK: usize = if Limb::BITS == 32 { 8 } else { 4 };
     let (mut c0, mut c1, mut prev) = (c, 0, 0);
     let (xs, x_rest) = x.as_chunks_mut::<BLOCK>();
     let (ys, y_rest) = y.as_chunks::<BLOCK>();
