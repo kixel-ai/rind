@@ -21,7 +21,7 @@ the identity exactly when `R = [S]B - [k]A`.
 
 namespace rind.spec
 
-/-! ## `L` is prime, by a Pratt certificate -/
+/-! ## `p` and `L` are prime, by Pratt certificates -/
 
 namespace ed25519
 
@@ -75,6 +75,38 @@ theorem prime_276602624281642239937218680557139826668747 :
   prime_of_lucas 2 [(2, 1), (7, 1), (19757330305831588566944191468367130476339, 1)] (by decide +kernel)
     ⟨by norm_num, by norm_num, prime_19757330305831588566944191468367130476339, trivial⟩
 
+theorem prime_1923133 : Nat.Prime 1923133 :=
+  prime_of_lucas 2 [(2, 2), (3, 1), (43, 1), (3727, 1)] (by decide +kernel)
+    ⟨by norm_num, by norm_num, by norm_num, by norm_num, trivial⟩
+
+theorem prime_31757755568855353 : Nat.Prime 31757755568855353 :=
+  prime_of_lucas 10 [(2, 3), (3, 1), (31, 1), (107, 1), (223, 1), (4153, 1), (430751, 1)] (by decide +kernel)
+    ⟨by norm_num, by norm_num, by norm_num, by norm_num, by norm_num, by norm_num, by norm_num, trivial⟩
+
+theorem prime_2773320623 : Nat.Prime 2773320623 :=
+  prime_of_lucas 5 [(2, 1), (2437, 1), (569003, 1)] (by decide +kernel)
+    ⟨by norm_num, by norm_num, by norm_num, trivial⟩
+
+theorem prime_72106336199 : Nat.Prime 72106336199 :=
+  prime_of_lucas 7 [(2, 1), (13, 1), (2773320623, 1)] (by decide +kernel)
+    ⟨by norm_num, by norm_num, prime_2773320623, trivial⟩
+
+theorem prime_8574133 : Nat.Prime 8574133 :=
+  prime_of_lucas 2 [(2, 2), (3, 1), (7, 1), (103, 1), (991, 1)] (by decide +kernel)
+    ⟨by norm_num, by norm_num, by norm_num, by norm_num, by norm_num, trivial⟩
+
+theorem prime_1919519569386763 : Nat.Prime 1919519569386763 :=
+  prime_of_lucas 2 [(2, 1), (3, 1), (7, 1), (19, 1), (47, 2), (127, 1), (8574133, 1)] (by decide +kernel)
+    ⟨by norm_num, by norm_num, by norm_num, by norm_num, by norm_num, by norm_num, prime_8574133, trivial⟩
+
+theorem prime_75445702479781427272750846543864801 : Nat.Prime 75445702479781427272750846543864801 :=
+  prime_of_lucas 7 [(2, 5), (3, 2), (5, 2), (75707, 1), (72106336199, 1), (1919519569386763, 1)] (by decide +kernel)
+    ⟨by norm_num, by norm_num, by norm_num, by norm_num, prime_72106336199, prime_1919519569386763, trivial⟩
+
+theorem prime_74058212732561358302231226437062788676166966415465897661863160754340907 : Nat.Prime 74058212732561358302231226437062788676166966415465897661863160754340907 :=
+  prime_of_lucas 2 [(2, 1), (3, 1), (353, 1), (57467, 1), (132049, 1), (1923133, 1), (31757755568855353, 1), (75445702479781427272750846543864801, 1)] (by decide +kernel)
+    ⟨by norm_num, by norm_num, by norm_num, by norm_num, by norm_num, prime_1923133, prime_31757755568855353, prime_75445702479781427272750846543864801, trivial⟩
+
 end ed25519
 
 open ed25519 in
@@ -84,6 +116,12 @@ theorem n25519_prime : Nat.Prime n25519 :=
       (276602624281642239937218680557139826668747, 1)] (by decide +kernel)
     ⟨by norm_num, by norm_num, by norm_num, prime_198211423230930754013084525763697,
       prime_276602624281642239937218680557139826668747, trivial⟩
+
+open ed25519 in
+/-- `PRIME_P25519`, here by a Pratt certificate rather than an axiom. -/
+theorem p25519_prime : Nat.Prime p25519 :=
+  prime_of_lucas 2 [(2, 2), (3, 1), (65147, 1), (74058212732561358302231226437062788676166966415465897661863160754340907, 1)] (by decide +kernel)
+    ⟨by norm_num, by norm_num, by norm_num, prime_74058212732561358302231226437062788676166966415465897661863160754340907, trivial⟩
 
 /-! ## The group -/
 

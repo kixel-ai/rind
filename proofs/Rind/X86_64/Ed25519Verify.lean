@@ -1,0 +1,268 @@
+import Rind.X86_64.Ed25519
+import Rind.X86_64.HalfSize
+import Rind.Ed25519Group
+open Aeneas Aeneas.Std Result rind.spec
+
+/-!
+# Ed25519 verification on x86_64, proven to s2n-bignum's contracts
+
+x86_64 checks Ed25519 signatures with half-size scalars: `commits` checks that
+`[v S mod L]B - [v]R - [u]A` is the identity, for the `u ≡ v k (mod 8L)` that
+`mid::half_size::split` finds, which `Rind.X86_64.HalfSize` proves, and
+`Rind.Ed25519Group`'s `half_size_iff` proves that the check accepts exactly
+what RFC 8032's does. The multi-scalar multiplication it runs,
+`low::x86_64::adx_mux::edwards25519_msm`, is Rust over s2n-bignum's point
+routines that no proof covers yet
+(`quest/m4/verified/ed25519-half-scalar.md`), so these theorems take its
+contract as the hypothesis `RunsMsm`, which no axiom states.
+-/
+
+namespace rind.x86_64
+
+/-! ## Points in projective coordinates -/
+
+/-- HOL Light's `edwards25519_projective P (X,Y,Z)` of the twelve words `q`:
+the coordinates are reduced, `Z` is not zero, and `x = X/Z` and `y = Y/Z` mod
+`p`. -/
+def Projective (P : EdPoint) (q : List U64) : Prop :=
+  wordsNat (q.take 4) < p25519 ∧ wordsNat ((q.drop 4).take 4) < p25519 ∧
+    wordsNat ((q.drop 8).take 4) < p25519 ∧ wordsNat ((q.drop 8).take 4) ≠ 0 ∧
+    (wordsNat (q.take 4) : Int) ≡ P.1 * wordsNat ((q.drop 8).take 4) [ZMOD p25519] ∧
+    (wordsNat ((q.drop 4).take 4) : Int) ≡ P.2 * wordsNat ((q.drop 8).take 4) [ZMOD p25519]
+
+/-- HOL Light's `edwards25519_exprojective P (X,Y,Z,W)` of the sixteen words
+`q`: `Projective`, with `W = XY/Z` reduced. -/
+def ExProjective (P : EdPoint) (q : List U64) : Prop :=
+  Projective P q ∧ wordsNat ((q.drop 12).take 4) < p25519 ∧
+    (wordsNat ((q.drop 12).take 4) * wordsNat ((q.drop 8).take 4) : Int) ≡
+      wordsNat (q.take 4) * wordsNat ((q.drop 4).take 4) [ZMOD p25519]
+
+/-- The contract of the multi-scalar multiplication Ed25519 verification runs,
+`low::x86_64::adx_mux::edwards25519_msm`: for scalars below 2^255 and two
+points of the group in extended coordinates, it writes
+`[base]B + [s₀]P₀ + [s₁]P₁` in projective coordinates. No proof covers it yet,
+so the theorems below take it as a hypothesis. -/
+def RunsMsm : Prop :=
+  ∀ (res : Std.Array U64 12#usize) (base : Std.Array U64 4#usize)
+    (scalars : Std.Array (Std.Array U64 4#usize) 2#usize) (points : Std.Array (Std.Array U64 16#usize) 2#usize)
+    (P₀ P₁ : EdPoint), edOnCurve P₀ → edOnCurve P₁ →
+    ExProjective P₀ points.val[0]!.val → ExProjective P₁ points.val[1]!.val →
+    wordsNat base.val < 2 ^ 255 → wordsNat scalars.val[0]!.val < 2 ^ 255 →
+    wordsNat scalars.val[1]!.val < 2 ^ 255 →
+    low.x86_64.adx_mux.edwards25519_msm res base scalars points ⦃ r =>
+      Projective (edMul (edMul (edPow edB (wordsNat base.val)) (edPow P₀ (wordsNat scalars.val[0]!.val)))
+        (edPow P₁ (wordsNat scalars.val[1]!.val))) r.val ⦄
+
+theorem int_prime_p : Prime (p25519 : Int) := Nat.prime_iff_prime_int.mp p25519_prime
+
+/-- A number below `p` that `p` divides is zero. -/
+theorem eq_of_dvd_sub {a b : Int} (ha0 : 0 ≤ a) (ha : a < p25519) (hb0 : 0 ≤ b) (hb : b < p25519)
+    (h : (p25519 : Int) ∣ a - b) : a = b := by
+  obtain ⟨c, hc⟩ := h
+  have : c = 0 := by
+    by_contra hc0
+    rcases lt_or_gt_of_ne hc0 with h' | h' <;> nlinarith
+  subst this; omega
+
+/-- The identity is `(0 : Z : Z)`: a point of the group in projective
+coordinates is the identity exactly when `X = 0` and `Y = Z`. -/
+theorem projective_id {P : EdPoint} (hP : edOnCurve P) {q : List U64} (h : Projective P q) :
+    (wordsNat (q.take 4) = 0 ∧ wordsNat ((q.drop 4).take 4) = wordsNat ((q.drop 8).take 4)) ↔ P = edId := by
+  obtain ⟨x, y⟩ := P
+  obtain ⟨hx0, hx1, hy0, hy1, -⟩ := hP
+  obtain ⟨hX, hY, hZ, hZ0, hXc, hYc⟩ := h
+  generalize wordsNat (q.take 4) = X at *
+  generalize wordsNat ((q.drop 4).take 4) = Y at *
+  generalize wordsNat ((q.drop 8).take 4) = Z at *
+  simp only at *
+  have hpZ : ¬ (p25519 : Int) ∣ Z := by
+    intro ⟨c, hc⟩
+    have : c = 0 := by
+      by_contra hc0
+      rcases lt_or_gt_of_ne hc0 with h' | h' <;> nlinarith [show (0 : Int) < p25519 by decide]
+    subst this; omega
+  simp only [edId, Prod.mk.injEq]
+  constructor
+  · rintro ⟨rfl, hYZ⟩
+    subst hYZ
+    have h1 : (p25519 : Int) ∣ x * Y := by
+      have := hXc.symm.dvd; simpa using this
+    have h2 : (p25519 : Int) ∣ (y - 1) * Y := by
+      have := hYc.symm.dvd; rw [show (y - 1) * (Y : Int) = -(Y - y * Y) by ring]; exact (dvd_neg).mpr this
+    refine ⟨?_, ?_⟩
+    · rcases int_prime_p.dvd_or_dvd h1 with h | h
+      · exact (eq_of_dvd_sub hx0 hx1 (le_refl 0) (by decide) (by simpa using h))
+      · exact absurd h hpZ
+    · rcases int_prime_p.dvd_or_dvd h2 with h | h
+      · exact eq_of_dvd_sub hy0 hy1 (by norm_num) (by decide) h
+      · exact absurd h hpZ
+  · rintro ⟨rfl, rfl⟩
+    have hp : (0 : Int) < p25519 := by decide
+    refine ⟨?_, ?_⟩
+    · have h := hXc.dvd
+      have := eq_of_dvd_sub (a := 0) (b := (X : Int)) (le_refl 0) hp (by positivity) (by exact_mod_cast hX)
+        (by simpa using h)
+      omega
+    · have h := hYc.dvd
+      have := eq_of_dvd_sub (a := (Z : Int)) (b := (Y : Int)) (by positivity) (by exact_mod_cast hZ)
+        (by positivity) (by exact_mod_cast hY) (by simpa using h)
+      omega
+
+/-! ## `commits` -/
+
+@[step]
+theorem extended_spec (h : Runs) (p : Std.Array U64 8#usize) (P : EdPoint) (hP : edOnCurve P)
+    (hp : pairNat p.val = edModEncodePair P) :
+    mid.ed25519.EdwardsPoint.extended p ⦃ q => ExProjective P q.val ⦄ := by
+  unfold mid.ed25519.EdwardsPoint.extended
+  step*
+  have hp8 : p.val.length = 8 := p.property
+  have ht4 : t1.val.length = 4 := t1.property
+  have hq : (index_mut_back1 s7).val = p.val ++ [1#u64, 0#u64, 0#u64, 0#u64] ++ t1.val := by
+    have hz : (Std.Array.repeat 16#usize 0#u64).val = [] ++ List.replicate 16 0#u64 := by simp [Std.Array.repeat]
+    rw [s5_post2, s7_post, s6_post, out2_post, Std.Array.set_val_eq, s2_post2, s4_post, s3_post,
+      Std.Array.val_to_slice, hz, setSlice!_at [] _ _ 0 rfl (by simp [hp8])]
+    have hr : List.drop p.val.length (List.replicate 16 0#u64) =
+        [0#u64, 0#u64, 0#u64, 0#u64] ++ List.replicate 4 0#u64 := by rw [hp8]; rfl
+    rw [List.nil_append, hr, List.set_append_right _ _ (by simp [hp8]), hp8]
+    rw [show (8#usize).val - 8 = 0 from rfl,
+      show ([0#u64, 0#u64, 0#u64, 0#u64] ++ List.replicate 4 0#u64).set 0 1#u64 =
+        [1#u64, 0#u64, 0#u64, 0#u64] ++ List.replicate 4 0#u64 from rfl,
+      ← List.append_assoc, Std.Array.val_to_slice,
+      setSlice!_at _ _ _ 12 (by simp [hp8]) (by simp [ht4])]
+    simp [ht4]
+  have key : ∃ a b : Std.Array U64 4#usize, wordsNat t1.val = wordsNat a.val * wordsNat b.val % p25519 ∧
+      a.val = s.val ∧ b.val = s1.val := ⟨_, _, t1_post, by simp_all, by simp_all⟩
+  obtain ⟨a0, b0, ht, ha, hb⟩ := key
+  have hx : wordsNat a0.val = edModEncode P.1 := by
+    rw [ha, s_post, Std.Array.val_to_slice]
+    have := congrArg Prod.fst hp; simpa [pairNat, edModEncodePair, List.slice] using this
+  have hy : wordsNat b0.val = edModEncode P.2 := by
+    rw [hb, s1_post, Std.Array.val_to_slice]
+    have := congrArg Prod.snd hp
+    have hd : (p.val.drop 4).take 4 = p.val.drop 4 := List.take_of_length_le (by simp [hp8])
+    simpa [pairNat, edModEncodePair, hd] using this
+  have hX1 : wordsNat (p.val.take 4) = edModEncode P.1 := congrArg Prod.fst hp
+  have hY1 : wordsNat ((p.val.drop 4).take 4) = edModEncode P.2 := congrArg Prod.snd hp
+  obtain ⟨hx0, hx1, hy0, hy1, -⟩ := hP
+  have cx := edModEncode_of_onCurve _ hx0 hx1
+  have cy := edModEncode_of_onCurve _ hy0 hy1
+  have e1 : (p.val ++ [1#u64, 0#u64, 0#u64, 0#u64] ++ t1.val).take 4 = p.val.take 4 := by
+    simp [List.take_append, hp8]
+  have e2 : ((p.val ++ [1#u64, 0#u64, 0#u64, 0#u64] ++ t1.val).drop 4).take 4 = (p.val.drop 4).take 4 := by
+    simp [List.drop_append, hp8]
+  have e3 : ((p.val ++ [1#u64, 0#u64, 0#u64, 0#u64] ++ t1.val).drop 8).take 4 = [1#u64, 0#u64, 0#u64, 0#u64] := by
+    simp [hp8]
+  have e4 : ((p.val ++ [1#u64, 0#u64, 0#u64, 0#u64] ++ t1.val).drop 12).take 4 = t1.val := by
+    simp [List.drop_append, hp8, ht4]
+  have w1 : wordsNat [1#u64, 0#u64, 0#u64, 0#u64] = 1 := by decide
+  have hpp : (0 : Nat) < p25519 := by decide
+  unfold ExProjective Projective
+  rw [hq, e1, e2, e3, e4, w1, ht, hx, hy, hX1, hY1]
+  refine ⟨⟨edModEncode_lt _, edModEncode_lt _, by decide, by decide, ?_, ?_⟩, Nat.mod_lt _ hpp, ?_⟩
+  · rw [cx]; simp
+  · rw [cy]; simp
+  · push_cast; rw [cx, cy, mul_one]; exact Int.mod_modEq _ _
+
+/-- `commits`'s identity test on the words of `(X : Y : Z)`: `X = 0` and
+`Y = Z`. -/
+theorem id_words (q : List U64) (hl : q.length = 12) :
+    ((q[0]! ||| q[1]! ||| q[2]! ||| q[3]!) = 0#u64 ∧ q[4]! = q[8]! ∧ q[5]! = q[9]! ∧ q[6]! = q[10]! ∧
+        q[7]! = q[11]!) ↔
+      (wordsNat (q.take 4) = 0 ∧ wordsNat ((q.drop 4).take 4) = wordsNat ((q.drop 8).take 4)) := by
+  match q, hl with
+  | [a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11], _ =>
+    simp only [List.take, List.drop, wordsNat, List.map, Nat.ofDigits, Nat.cast_id,
+      List.getElem!_cons_zero, List.getElem!_cons_succ, UScalar.eq_equiv, UScalar.val_or]
+    have b : ∀ x : U64, x.val < 2 ^ 64 := fun x => x.hBounds
+    have := b a0; have := b a1; have := b a2; have := b a3; have := b a4; have := b a5
+    have := b a6; have := b a7; have := b a8; have := b a9; have := b a10; have := b a11
+    simp only [Nat.or_eq_zero_iff, show (0#u64).val = 0 from rfl]
+    omega
+
+/-- The coordinates `negate` writes for a point of the group are its
+negation's, as s2n-bignum writes them. -/
+theorem neg_encode (A : EdPoint) (hA : edOnCurve A) :
+    edModEncodePair (edNeg A) = ((p25519 - edModEncode A.1) % p25519, edModEncode A.2) := by
+  rw [← neg_decode A hA]
+  have hp : (0 : Nat) < p25519 := by decide
+  have h1 : (p25519 - edModEncode A.1) % p25519 < p25519 := Nat.mod_lt _ hp
+  have h2 := edModEncode_lt A.2
+  have e (n : Nat) (hn : n < p25519) : edModEncode ((n : Int) % p25519) = n := by
+    rw [Int.emod_eq_of_lt (by positivity) (by exact_mod_cast hn)]
+    exact_mod_cast edModEncode_of_onCurve n (by positivity) (by exact_mod_cast hn)
+  simp only [edModEncodePair, edModDecodePair, Prod.mk.injEq]
+  exact ⟨e _ h1, e _ h2⟩
+
+/-- The point `commits` multiplies by `u`: `A` if `u` is negative, `-A`
+otherwise. -/
+theorem select_spec (h : Runs) (b : Bool) (pt : Std.Array U64 8#usize) (A : EdPoint) (hA : edOnCurve A)
+    (hp : pairNat pt.val = edModEncodePair A) :
+    (if b then mid.ed25519.EdwardsPoint.extended pt
+      else do
+        let ep ← mid.ed25519.EdwardsPoint.negate pt
+        mid.ed25519.EdwardsPoint.extended ep) ⦃ a => ExProjective (if b then A else edNeg A) a.val ⦄ := by
+  cases b
+  · simp only [Bool.false_eq_true, ↓reduceIte]
+    step with negate_spec pt (by rw [hp]; exact (edModEncode_lt _).le) as ⟨ep, hep⟩
+    have hn : pairNat ep.val = edModEncodePair (edNeg A) := by rw [hep, hp, neg_encode A hA]; rfl
+    exact extended_spec h ep _ (edOnCurve_neg A hA) hn
+  · simpa using extended_spec h pt A hA hp
+
+open Classical in
+/-- `commits` accepts exactly when `r` encodes `[s]B - [k]A`, for a point `A`
+of the group and `k` below `L`. -/
+theorem commits_spec (h : Runs) (hm : RunsMsm) (pt : Std.Array U64 8#usize) (A : EdPoint) (hA : edOnCurve A)
+    (hp : pairNat pt.val = edModEncodePair A) (r : Std.Array U8 32#usize) (k s : Std.Array U64 4#usize)
+    (hk : wordsNat k.val < n25519) :
+    mid.ed25519.commits pt r k s ⦃ b =>
+      b = true ↔ leNat r.val = edEncode (edMul (edPow (edNeg A) (wordsNat k.val)) (edPow edB (wordsNat s.val))) ⦄ := by
+  have hX : edOnCurve (edMul (edPow (edNeg A) (wordsNat k.val)) (edPow edB (wordsNat s.val))) :=
+    edOnCurve_mul (edOnCurve_pow (edOnCurve_neg A hA) _) (edOnCurve_pow edOnCurve_B _)
+  unfold mid.ed25519.commits
+  step with decompress_from_spec h r as ⟨r1, hr1⟩
+  by_cases hv : edValidEncode (leNat r.val)
+  swap
+  · simp only [hv, ↓reduceIte] at hr1
+    subst hr1
+    simp only [WP.spec_ok, Bool.false_eq_true, false_iff]
+    intro he
+    exact hv ⟨_, hX, he.symm⟩
+  simp only [hv, ↓reduceIte] at hr1
+  obtain ⟨r2, rfl, hr2⟩ := hr1
+  obtain ⟨hR, hRe⟩ := edDecode_spec _ hv
+  generalize edDecode (leNat r.val) = R at hR hRe hr2
+  simp only
+  step with HalfSize.split_spec k (lt_trans hk (by decide)) as ⟨sp, hsu, hsv, hsv128, hsu255⟩
+  step with madd_spec h sp.v s _ as ⟨vs, hvs⟩
+  step with select_spec h sp.u_negative pt A hA hp as ⟨a1, ha1⟩
+  step with negate_spec r2 (by rw [hr2]; exact (edModEncode_lt _).le) as ⟨ep, hep⟩
+  have hn : pairNat ep.val = edModEncodePair (edNeg R) := by rw [hep, hr2, neg_encode R hR]; rfl
+  step with extended_spec h ep _ (edOnCurve_neg R hR) hn as ⟨a2, ha2⟩
+  have hsel : edOnCurve (if sp.u_negative then A else edNeg A) := by
+    split
+    · exact hA
+    · exact edOnCurve_neg A hA
+  have hz : wordsNat (Std.Array.repeat 4#usize 0#u64).val = 0 := by decide
+  rw [hz, add_zero] at hvs
+  have hvsl : wordsNat vs.val < 2 ^ 255 := by rw [hvs]; exact lt_trans (Nat.mod_lt _ (by decide)) (by decide)
+  step with hm (Std.Array.repeat 12#usize 0#u64) vs (Std.Array.make 2#usize [sp.v, sp.u])
+    (Std.Array.make 2#usize [a2, a1]) (edNeg R) _ (edOnCurve_neg R hR) hsel (by simpa using ha2)
+    (by simpa using ha1) hvsl (by simp; omega) (by simpa using hsu255) as ⟨q1, hq1⟩
+  simp only [Std.Array.make] at hq1
+  rw [hvs] at hq1
+  have hvL : wordsNat sp.v.val < n25519 := lt_trans hsv128 (by decide)
+  have hQ := edOnCurve_mul (edOnCurve_mul (edOnCurve_pow edOnCurve_B (wordsNat sp.v.val * wordsNat s.val % n25519))
+    (edOnCurve_pow (edOnCurve_neg R hR) (wordsNat sp.v.val)))
+    (edOnCurve_pow hsel (wordsNat sp.u.val))
+  have hfin := (id_words q1.val q1.property).trans ((projective_id hQ hq1).trans
+    ((half_size_iff A R hA hR (wordsNat s.val) (wordsNat k.val) _ _ sp.u_negative hsu hsv hvL).trans
+      (show R = edMul (edPow (edNeg A) (wordsNat k.val)) (edPow edB (wordsNat s.val)) ↔
+          leNat r.val = edEncode (edMul (edPow (edNeg A) (wordsNat k.val)) (edPow edB (wordsNat s.val))) from
+        ⟨fun he => by rw [← hRe, he], fun he => edEncode_inj hR hX (by rw [hRe, he])⟩)))
+  have hl : q1.val.length = 12 := q1.property
+  simp (disch := omega) only [getElem!_pos] at hfin
+  rw [← hfin]
+  step*
+
+end rind.x86_64

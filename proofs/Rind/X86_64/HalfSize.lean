@@ -41,7 +41,7 @@ theorem lt_pow_bitLen (x : Nat) : x < 2 ^ bitLen x := by
   · exact Nat.lt_pow_succ_log_self (by norm_num) x
 
 theorem pow_bitLen_le {x : Nat} (hx : 0 < x) : 2 ^ (bitLen x - 1) ≤ x := by
-  unfold bitLen; rw [if_neg (show ¬ x = 0 by omega), Nat.add_sub_cancel]
+  unfold bitLen; rw [ite_eq_right (show ¬ x = 0 by omega), Nat.add_sub_cancel]
   exact Nat.pow_log_le_self 2 (by omega)
 
 theorem bitLen_le {x m : Nat} (h : x < 2 ^ m) : bitLen x ≤ m := by
@@ -63,7 +63,7 @@ theorem bitLen_eq {x m : Nat} (hm : 0 < m) (h1 : 2 ^ (m - 1) ≤ x) (h2 : x < 2 
   omega
 
 theorem bitLen_pos {x : Nat} (hx : 0 < x) : 0 < bitLen x := by
-  unfold bitLen; rw [if_neg (show ¬ x = 0 by omega)]; omega
+  unfold bitLen; rw [ite_eq_right (show ¬ x = 0 by omega)]; omega
 
 @[step]
 theorem bits_spec (x : U128) : mid.half_size.bits x ⦃ r => r.val = bitLen x.val ⦄ := by
@@ -414,7 +414,7 @@ theorem split_loop_spec (K : Nat) (big small : Row) (h : Inv K big small) :
     simp only at h ⊢
     unfold split_loop.body
     by_cases hne : (small.r.hi != 0#u128) = true
-    · rw [if_pos hne]
+    · rw [ite_eq_left hne]
       have hhi : small.r.hi.val ≠ 0 := by
         intro h0; simp only [bne_iff_ne, ne_eq] at hne
         exact hne ((UScalar.eq_equiv _ _).mpr (by rw [h0]; rfl))
@@ -470,7 +470,7 @@ theorem split_loop_spec (K : Nat) (big small : Row) (h : Inv K big small) :
       · rename_i hb1t
         simp only [WP.spec_ok]
         exact ⟨hB (fun h' => hb1t (hb1.mpr h')), by omega⟩
-    · rw [if_neg hne]
+    · rw [ite_eq_right hne]
       simp only [WP.spec_ok]
       have h0 : small.r.hi.val = 0 := by simpa using hne
       exact ⟨h, h0⟩

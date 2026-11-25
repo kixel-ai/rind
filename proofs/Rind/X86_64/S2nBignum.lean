@@ -126,6 +126,20 @@ axiom bignum_neg_p25519_spec (z x : Std.Array U64 4#usize) :
     low.x86_64.bignum_neg_p25519.bignum_neg_p25519 z x ⦃ r =>
       wordsNat x.val ≤ p25519 → wordsNat r.val = (p25519 - wordsNat x.val) % p25519 ⦄
 
+/-- `BIGNUM_MUL_P25519_SUBROUTINE_CORRECT`,
+https://github.com/awslabs/s2n-bignum/blob/3f01260ff1bd2577abf0117ce45aa008bc243a80/x86/proofs/bignum_mul_p25519.ml#L446 -/
+@[step]
+axiom bignum_mul_p25519_spec (z x y : Std.Array U64 4#usize) :
+    low.x86_64.bignum_mul_p25519.bignum_mul_p25519 z x y ⦃ r =>
+      wordsNat r.val = wordsNat x.val * wordsNat y.val % p25519 ⦄
+
+/-- `BIGNUM_MUL_P25519_ALT_SUBROUTINE_CORRECT`,
+https://github.com/awslabs/s2n-bignum/blob/3f01260ff1bd2577abf0117ce45aa008bc243a80/x86/proofs/bignum_mul_p25519_alt.ml#L381 -/
+@[step]
+axiom bignum_mul_p25519_alt_spec (z x y : Std.Array U64 4#usize) :
+    low.x86_64.bignum_mul_p25519_alt.bignum_mul_p25519_alt z x y ⦃ r =>
+      wordsNat r.val = wordsNat x.val * wordsNat y.val % p25519 ⦄
+
 /-- `BIGNUM_LT_SUBROUTINE_CORRECT`, for the slices' lengths as `m` and `n`,
 https://github.com/awslabs/s2n-bignum/blob/3f01260ff1bd2577abf0117ce45aa008bc243a80/x86/proofs/bignum_lt.ml#L412 -/
 @[step]
@@ -741,6 +755,15 @@ theorem bignum_madd_n25519_mux_spec (h : Runs) (z x y c : Std.Array U64 4#usize)
       wordsNat r.val = (wordsNat x.val * wordsNat y.val + wordsNat c.val) % n25519 ⦄ := by
   obtain ⟨-, -, ⟨t, ht⟩, -⟩ := h
   unfold low.x86_64.adx_mux.bignum_madd_n25519
+  rw [ht]
+  cases t <;> step*
+
+@[step]
+theorem bignum_mul_p25519_mux_spec (h : Runs) (z x y : Std.Array U64 4#usize) :
+    low.x86_64.adx_mux.bignum_mul_p25519 z x y ⦃ r =>
+      wordsNat r.val = wordsNat x.val * wordsNat y.val % p25519 ⦄ := by
+  obtain ⟨-, -, ⟨t, ht⟩, -⟩ := h
+  unfold low.x86_64.adx_mux.bignum_mul_p25519
   rw [ht]
   cases t <;> step*
 
