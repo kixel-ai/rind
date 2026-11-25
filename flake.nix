@@ -233,11 +233,11 @@
             installPhase = "install -D ct-qemu-plugin.so $out/lib/ct-qemu-plugin.so";
           };
 
-          # OpenSSL's `evp_test` and its X25519 and Ed25519 data, from the
-          # source of the OpenSSL the dev shell has. `sh/openssl.sh` runs them
-          # with rind-openssl loaded and preferred. A static build, so the
-          # test runs the library it was built with, and the default provider
-          # inside it.
+          # OpenSSL's `evp_test` and its X25519, Ed25519, ML-KEM, and ML-DSA
+          # data, from the source of the OpenSSL the dev shell has.
+          # `sh/openssl.sh` runs them with rind-openssl loaded and preferred.
+          # A static build, so the test runs the library it was built with,
+          # and the default provider inside it.
           openssl-evp-test = pkgs.stdenv.mkDerivation {
             pname = "openssl-evp-test";
             inherit (pkgs.openssl) version src;
@@ -251,6 +251,7 @@
             installPhase = ''
               install -D test/evp_test $out/bin/evp_test
               install -D -t $out/share/evp_test test/recipes/30-test_evp_data/evppkey_{ecx,ecx_sigalg,ecx_kem,mismatch_ecx}.txt
+              install -D -t $out/share/evp_test test/recipes/30-test_evp_data/evppkey_ml_{kem,dsa}_*.txt
             '';
           };
 
