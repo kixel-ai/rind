@@ -135,6 +135,9 @@ fn mont_exp_by(
 
 /// The 32 powers of `powers`, rows of `w` words of which the first `k` are
 /// the value, laid out as `bn_scatter5` does for `bn_power5`.
+// Inlined before it is optimized, where the compiler sees `powers` hold 32
+// rows: optimized alone, it bounds the loop by dividing the length by `w`.
+#[inline(always)]
 fn power5_table(powers: &[u64], w: usize, k: usize) -> alloc::vec::Vec<Row> {
     let mut table = alloc::vec![Row([0; 32]); k];
     // Indexed rather than `chunks_exact`, which divides by `w`, and
