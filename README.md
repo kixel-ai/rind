@@ -150,8 +150,10 @@ describes the API's shape.
 The linker keeps only the algorithms a program names, but loading a key of
 any kind (`rind::KeyPair::from_pkcs8`) names them all. Its default features,
 `ml-dsa` and `slh-dsa`, keep the two post-quantum signatures; build with
-`default-features = false` to leave them out, as every adapter does, and a
-key of theirs is then refused.
+`default-features = false` to leave them out, as the adapters for Rust crates
+do (rind-aws-lc-rs keeps `ml-dsa`, which it offers), and a key of theirs is
+then refused. Cargo unifies features, so any crate in the build that keeps
+one turns it on for all.
 
 ## Adapters
 
