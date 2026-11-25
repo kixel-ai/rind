@@ -15,6 +15,8 @@
 //! (schema 1: host, commit, cpu, os, libraries, results[{operation, library,
 //! id, ns, ns_low, ns_high, throughput}]) so rind-results' tooling can read it.
 mod benches;
+#[cfg_attr(not(test), allow(dead_code))]
+mod deny;
 mod device;
 mod ops;
 #[cfg(target_os = "android")]
@@ -45,10 +47,11 @@ fn stop_flag() -> bool {
 
 /// The CPU features this build denies, from `RIND_DEVBENCH_DENY` at build time
 /// (comma-separated `RIND_CPU_DISABLE_<id>` ids such as `sha3,dit`); empty if unset.
-pub const CPU_DENIED: &str = match option_env!("RIND_DEVBENCH_DENY") {
-    Some(ids) => ids,
-    None => "",
-};
+/// build.rs refuses a list with an empty or malformed entry, an id rind does not
+/// read on the target, or an optimised rind built without `--cfg
+/// rind_cpu_disable`, so every id here is one rind denies; this is the checked
+/// list, dots dropped and each once, which the report publishes.
+pub const CPU_DENIED: &str = env!("DEVBENCH_DENY_IDS");
 
 static DENIES_APPLIED: AtomicBool = AtomicBool::new(false);
 
@@ -70,7 +73,7 @@ pub unsafe fn apply_build_denies() {
     if DENIES_APPLIED.swap(true, Ordering::SeqCst) {
         return;
     }
-    for id in CPU_DENIED.split(',').filter(|id| !id.is_empty() && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')) {
+    for id in CPU_DENIED.split(',').filter(|id| !id.is_empty()) {
         // SAFETY: the caller's contract above: no other thread exists or reads the environment.
         unsafe { std::env::set_var(format!("RIND_CPU_DISABLE_{id}"), "1") };
     }
