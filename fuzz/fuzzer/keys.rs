@@ -705,7 +705,17 @@ fn rsa_private(
     use rsa::pkcs1::EncodeRsaPublicKey;
     use rsa::pkcs8::DecodePrivateKey;
     let (ours, theirs) = (ours(input), theirs(input));
-    agree(&ours, &theirs, expect);
+    // rind loads a 2047-bit modulus, as ring does, which aws-lc refuses.
+    let two_047 = ours.as_ref().is_ok_and(|key| {
+        their_rsa::PublicKey::from_der(key.public_key().as_ref())
+            .is_ok_and(|public| modulus_bits(&public) == 2047)
+    });
+    if two_047 {
+        assert!(expect != Expect::Refused, "rind took an input it refuses");
+        assert!(theirs.is_err(), "aws-lc-rs took a 2047-bit key");
+    } else {
+        agree(&ours, &theirs, expect);
+    }
     let Ok(ours) = ours else {
         return;
     };
@@ -717,12 +727,14 @@ fn rsa_private(
     let pkcs8 = ours.to_pkcs8();
     let again = our_rsa::KeyPair::from_pkcs8(pkcs8.as_ref()).unwrap();
     assert_eq!(again.public_key().as_ref(), public.as_ref());
-    let theirs = their_rsa::KeyPair::from_pkcs8(pkcs8.as_ref()).unwrap();
-    assert_eq!(theirs.public_key().as_ref(), public.as_ref());
-    assert_eq!(
-        ours.public_key().to_spki().as_ref(),
-        theirs.public_key().as_der().unwrap().as_ref()
-    );
+    if !two_047 {
+        let theirs = their_rsa::KeyPair::from_pkcs8(pkcs8.as_ref()).unwrap();
+        assert_eq!(theirs.public_key().as_ref(), public.as_ref());
+        assert_eq!(
+            ours.public_key().to_spki().as_ref(),
+            theirs.public_key().as_der().unwrap().as_ref()
+        );
+    }
 
     // RustCrypto reads the same key, unless its primes are of such unequal
     // size as it refuses, and signs as rind does.
