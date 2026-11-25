@@ -76,12 +76,12 @@ CONSTRUCTS = [
     ),
     (
         "`native_decide`, `decide +native`",
-        r"\bnative_decide\b|\bdecide\s*\+native\b",
+        r"\bnative_decide\b|\bdecide(?:\s+\+\w+)*\s+\+native\b|\(\s*native\s*:=\s*true\s*\)",
         "each adds an axiom that Lean's compiled code evaluated a proposition as the kernel would; rind's proofs avoid it",
     ),
     (
         "`@[implemented_by]`, `@[extern]`",
-        r"@\[[^\]]*\b(?:implemented_by|extern)\b",
+        r"(?:@|\battribute\s*)\[[^\]]*\b(?:implemented_by|extern)\b",
         "the compiler runs another definition than the one proofs use, as for the AES S-boxes' tables, which `sboxFast_eq` and `invSboxFast_eq` prove equal",
     ),
 ]

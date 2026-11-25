@@ -198,6 +198,8 @@ def links(vg, rev, doc, where):
     for url_rev, path, line in URL.findall(doc):
         if url_rev != rev:
             fail(f"{where} links VG at {url_rev[:12]}, not the pinned {rev[:12]}: {path}")
+        if not path.endswith(".lean"):
+            fail(f"{where} links {path}, which is no Lean proof")
         file = vg / path
         if not file.is_file():
             fail(f"{where} links {path}, which VG's {rev[:12]} lacks")

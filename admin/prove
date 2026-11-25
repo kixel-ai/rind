@@ -579,7 +579,8 @@ cosim() {
 # VG's Lean models, so a theorem of VG's about a routine rind vendors from it
 # is about rind's machine code: `admin/import-vg-models --check` that
 # `proofs/verified-garbage` holds VG's models at its REV; `admin/vg-binding`
-# that each routine rind vendors is one an axiom's VG theorem covers;
+# that each routine rind vendors is one an axiom's VG theorem covers or is
+# listed as uncovered;
 # `admin/vg-bytes`
 # that VG's machine code, and each routine rind vendors, is the text VG's
 # proofs are about; and the cosimulation, which runs each distinct
