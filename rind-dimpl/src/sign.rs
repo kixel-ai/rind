@@ -54,9 +54,7 @@ impl KeyProvider for Keys {
         };
         // dimpl's own providers also take a PEM-wrapped key, under any label.
         der_key(der)
-            .or_else(|| {
-                der_key(&parse_pem(&relabel(der)?)?)
-            })
+            .or_else(|| der_key(&parse_pem(&relabel(der)?)?))
             .ok_or(CryptoError::InvalidPrivateKey)
     }
 }
