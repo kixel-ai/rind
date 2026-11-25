@@ -429,9 +429,6 @@ step() {
     case "$1:$2" in
         check:rs)
             mapfile -t packages < <(sh/select.sh "$changed" "$all")
-            # A change that selects no crate, such as the flake's, can still
-            # change the toolchain, its lints, and its codegen.
-            ((${#packages[@]} > 0)) || packages=(--workspace)
             run cargo fmt --all --check
             RUSTFMT=rustfmt-unstable run cargo fmt --all --check -- --config-path=.rustfmt.unstable.toml
             run cargo clippy "${packages[@]}" --all-targets --locked -- --deny warnings
