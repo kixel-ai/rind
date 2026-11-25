@@ -782,6 +782,11 @@ pub mod spake2plus {
 /// a registered one. Each side's state is a type its next step consumes, so
 /// no step runs twice or out of order.
 ///
+/// Registration, unlike login, must run over a channel that authenticates
+/// the server and keeps the messages confidential, such as TLS (RFC 9807
+/// 3.2): the record carries the masking key that hides whether an account
+/// exists, which an eavesdropper would otherwise learn (RFC 9807 10.10).
+///
 /// Each step that stretches the password runs Argon2id at 2 GiB, so this
 /// example is not run as a test.
 ///
@@ -796,7 +801,8 @@ pub mod spake2plus {
 /// let server = ServerSetup::generate(suite)?;
 /// let session = Session::default();
 ///
-/// // Registration: the server stores the record under the account's identifier.
+/// // Registration, over TLS: the server stores the record under the
+/// // account's identifier.
 /// let (client, request) = ClientRegistration::start(suite, b"password")?;
 /// let response = server.register(&request, b"alice")?;
 /// let (record, _export_key) = client.finish(&response, &session)?;

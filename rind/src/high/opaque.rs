@@ -736,6 +736,8 @@ impl ServerSetup {
         };
         let (client_public_key, rest) = record.as_ref().split_at(l.npk);
         let (masking_key, envelope) = rest.split_at(l.nh);
+        // A stored record's masking key hides whether its account exists.
+        ct::secret_slice(masking_key);
 
         // RFC 9807 6.3.2.2's `CreateCredentialResponse`.
         let ke1 = ke1.as_ref();
@@ -870,6 +872,10 @@ impl ClientRegistration {
     /// Finishes registering with the server's response, by RFC 9807 5.2.3's
     /// `FinalizeRegistrationRequest`, returning the record to upload to the
     /// server and the export key.
+    ///
+    /// Upload the record only over a channel that authenticates the server
+    /// and is confidential, such as TLS: it carries the masking key that
+    /// hides whether the account exists (RFC 9807 10.10).
     ///
     /// This runs the suite's Argon2id, which holds 2 GiB for the call, and
     /// fails with [`Error::OutOfMemory`] if it cannot be allocated. The
