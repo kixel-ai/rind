@@ -22,16 +22,17 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # release-plz's release PR, which only bumps versions and changelogs, skips
-  # this: a `release-plz-` branch that moq-bot, release.yml's app, opened.
-  # The queue's `just ci` still runs on it.
   check:
     name: Check
-    if: ${{ !(startsWith(github.head_ref, 'release-plz-') && github.event.pull_request.user.login == 'moq-bot[bot]') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
-      BASE: origin/${{ github.base_ref }}
+      # release-plz's release PR, a `release-plz-` branch that moq-bot,
+      # release.yml's app, opened, only bumps versions and changelogs, so it
+      # builds no Rust here. It still checks the whole site, which quotes the
+      # READMEs the release publishes, before it lands.
+      BASE: ${{ startsWith(github.head_ref, 'release-plz-') && github.event.pull_request.user.login == 'moq-bot[bot]' && '--all' || format('origin/{0}', github.base_ref) }}
+      CHECK_MODULES: ${{ startsWith(github.head_ref, 'release-plz-') && github.event.pull_request.user.login == 'moq-bot[bot]' && 'site' || '' }}
       # The squash commit's subject, which sh/semver.sh reads for a `!`.
       PR_TITLE: ${{ github.event.pull_request.title }}
     steps:
