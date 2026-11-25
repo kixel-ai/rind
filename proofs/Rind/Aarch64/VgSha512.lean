@@ -27,7 +27,9 @@ address space; and a `HaveSha3` exists only once the CPU check has found the
 SHA-512 instructions.
 
 Trusted: the restatement, and that the wrapper passes the routine the state's
-and the blocks' pointers, the block count, and the scratch's pointer.
+and the blocks' pointers, the block count, and the scratch's pointer, through
+`compress_vg`, a naked entry whose one instruction, `b`, reaches the routine
+with every register as the wrapper set it.
 -/
 
 namespace rind.aarch64

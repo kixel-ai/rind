@@ -42,20 +42,12 @@ unsafe fn compress_hw(_: HaveSha3, state: &mut [u64; 8], blocks: &[u8]) {
     // VG's contract also lends the routine 640 bytes of scratch, which this
     // variant never touches; reserving them costs only stack.
     let mut scratch = MaybeUninit::<[u8; 640]>::uninit();
-    // SAFETY: VG declares its internal functions without parameters, as only
-    // its own code calls them, and `CompressFn` is the signature its contract,
-    // `compressAArch64`, gives this one.
-    let f: CompressFn = unsafe {
-        core::mem::transmute::<unsafe extern "C" fn(), CompressFn>(
-            vg::vg_sha512_compress_sha512::vg_sha512_compress_sha512,
-        )
-    };
     // SAFETY: `state` is 64 writable bytes, `blocks` `len / 128` readable
     // blocks, and `scratch` 640 writable bytes. They are distinct objects, so
     // none overlaps another or wraps the address space. The token proves the
     // CPU has the SHA-512 instructions, which Rust's `sha3` feature includes.
     unsafe {
-        asm_call!(unsafe extern "C" (f)(
+        asm_call!(unsafe extern "C" compress_vg(
             state,
             blocks.as_ptr(),
             blocks.len() / 128,
@@ -64,9 +56,23 @@ unsafe fn compress_hw(_: HaveSha3, state: &mut [u64; 8], blocks: &[u8]) {
     }
 }
 
-/// `vg_sha512_compress_sha512`'s arguments: `state`, `blocks`, the number of
-/// blocks, and `scratch`.
-type CompressFn = unsafe extern "C" fn(*mut [u64; 8], *const u8, usize, *mut u8);
+/// Enters `vg_sha512_compress_sha512` with the arguments its contract,
+/// `compressAArch64`, names: `state`, `blocks`, the number of blocks, and
+/// `scratch`. VG declares its internal routines without parameters, so Rust
+/// may only call it through an entry that declares them; the branch leaves
+/// every register, and the return address, as the caller set them.
+#[unsafe(naked)]
+unsafe extern "C" fn compress_vg(
+    _state: *mut [u64; 8],
+    _blocks: *const u8,
+    _n: usize,
+    _scratch: *mut u8,
+) {
+    core::arch::naked_asm!(
+        "b {f}",
+        f = sym vg::vg_sha512_compress_sha512::vg_sha512_compress_sha512,
+    );
+}
 
 /// As [`compress_hw`], with the scalar routine.
 ///
