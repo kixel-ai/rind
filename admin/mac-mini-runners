@@ -380,8 +380,8 @@ put /etc/systemd/system/rind-queue-runner.service <<EOF
 [Unit]
 Description=rind merge-queue Actions runner
 Wants=network-online.target nftables.service
-# The firewall loads first. The runner only Wants it, since stopping it, as
-# KillMode=process would leave builds running, must not drop the rules.
+# The firewall loads first. The runner only Wants it, so stopping the firewall
+# does not stop the runner, and the firewall's stop keeps its rules.
 Requires=user@$uid.service
 After=network-online.target nftables.service user@$uid.service
 
@@ -397,7 +397,9 @@ Environment=XDG_RUNTIME_DIR=/run/user/$uid
 Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$uid/bus
 Environment=CARGO_INCREMENTAL=0
 Environment=CARGO_PROFILE_DEV_DEBUG=false
-KillMode=process
+# The default KillMode stops the listener along with run.sh, which does not
+# forward the signal: left running, the old listener would keep the runner's
+# session and its old settings.
 Restart=always
 RestartSec=30
 
