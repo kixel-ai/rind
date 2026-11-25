@@ -179,11 +179,13 @@ mod generic {
     // so the table stays out: clippy denies an unused static.
     #[cfg(any(
         rind_backend = "portable",
+        all(feature = "slh-dsa", rind_backend = "aarch64"),
         all(test, any(rind_backend = "arm", rind_backend = "x86_64"))
     ))]
     pub(super) mod sha256_k;
     // SLH-DSA's SHA-256 lanes one at a time, which x86_64 runs with the SHA
-    // extensions or without AVX2.
+    // extensions or without AVX2, and aarch64 without the SHA-256
+    // instructions or for one lane.
     #[cfg(feature = "slh-dsa")]
     pub(super) mod sha256x8;
     // The portable backend's SHA-512, and its round constants. Tests compile
@@ -620,7 +622,7 @@ cfg_if::cfg_if! {
         pub(crate) use aarch64::sha1::{sha1_compress_blocks, sha1_compress_padded};
         pub(crate) use aarch64::sha256::{sha256_compress_blocks, sha256_finish};
         #[cfg(feature = "slh-dsa")]
-        pub(crate) use generic::sha256x8::sha256_finish_x8;
+        pub(crate) use aarch64::sha256x8::sha256_finish_x8;
         pub(crate) use aarch64::sha3_keccak_f1600_mux::sha3_keccak_f1600;
         pub(crate) use aarch64::sha3_keccak4_f1600_mux::sha3_keccak4_f1600;
         pub(crate) use aarch64::sha3_keccak_nof4_f1600::sha3_keccak_nof4_f1600;
