@@ -77,7 +77,7 @@ HOSTS = {
         "note": "The maintainer's MacBook Air, in daily use. Its cores have DIT, and every rind row holds "
         "`rind::cpu::Dit::hold()` across calls, as MoQ does, so the rustls rows run rustls' own code with DIT on "
         "too. On every logical CPU, rind-rustls's handshakes gain less than aws-lc-rs's from the 6 efficiency "
-        "cores: more of their time is multiplication-heavy assembly, which those cores run at under 40% of a "
+        "cores: more of their time is multiplication-heavy assembly, which those cores run at 34-45% of a "
         "performance core's speed. The Air has no fan, so its performance cores slow within a minute there, "
         "giving those cores a larger share.",
     },
