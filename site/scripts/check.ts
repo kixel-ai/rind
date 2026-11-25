@@ -235,10 +235,11 @@ for (const file of files) {
 for (const { crate } of routes) {
 	const from = `${crate}/README.md`;
 	for (const href of links(read(from))) {
-		if (!/^https:/i.test(href)) continue;
+		// A protocol-relative link resolves to https on the page.
+		if (!/^(https:)?\/\//i.test(href)) continue;
 		let u: URL;
 		try {
-			u = new URL(href);
+			u = new URL(href, "https://github.com/");
 		} catch {
 			continue;
 		}
