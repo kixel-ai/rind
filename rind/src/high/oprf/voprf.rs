@@ -310,9 +310,12 @@ impl Blind {
         proof: &[u8],
         public_key: &PublicKey,
     ) -> Result<Output, Error> {
-        let mut outputs =
+        let outputs =
             Self::finalize_batch(alloc::vec![self], evaluated_element, proof, public_key)?;
-        Ok(outputs.remove(0))
+        // A copy, not a move: moving it out would leave its bytes in the
+        // vector's block, which then frees unwiped. The vector's drop wipes
+        // the output in place.
+        Ok(Output(outputs[0].0.clone()))
     }
 
     /// Verifies the server's one proof for a batch, then finalizes each

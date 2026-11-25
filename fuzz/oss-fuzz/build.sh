@@ -1,7 +1,8 @@
 #!/bin/bash -eu
 # OSS-Fuzz's build script for rind: every cargo-fuzz target, with the seed
 # corpora sh/fuzz-seed.sh writes. This directory is what google/oss-fuzz's
-# projects/rind copies; check it with that repo's `infra/helper.py check_build`.
+# projects/rind copies, adding the license header that repo requires; check
+# it with that repo's `infra/helper.py check_build`.
 
 cd "$SRC/rind"
 

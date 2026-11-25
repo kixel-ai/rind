@@ -243,9 +243,9 @@ mod mcdt;
 mod posint;
 
 pub(crate) use entry::Entry;
-pub(crate) use generic::argon2::Argon2Block;
 #[cfg(not(rind_backend = "x86_64"))]
-pub(crate) use generic::argon2::argon2_compress;
+pub(crate) use generic::argon2::Argon2Kernel;
+pub(crate) use generic::argon2::{Argon2Block, Argon2Memory};
 pub(crate) use generic::blockwise::{Blockwise, UpdateBlocks, pad, sha256_digest, split_tail};
 pub(crate) use generic::chacha20::{chacha20_block, hchacha20};
 pub(crate) use generic::ct_copy::{ct_copy, ct_select_i16};
@@ -293,8 +293,8 @@ mod portable;
 #[cfg(any(rind_backend = "arm", rind_backend = "portable"))]
 pub(crate) use generic::{
     bignum::{
-        bignum_add, bignum_bitsize, bignum_cmp_lt, bignum_coprime, bignum_copy_row_from_table,
-        bignum_ctz, bignum_digitsize, bignum_modsub, bignum_negmodinv, bignum_optsub,
+        bignum_add, bignum_bitsize, bignum_cmp_lt, bignum_copy_row_from_table, bignum_ctz,
+        bignum_digitsize, bignum_modsub, bignum_negmodinv, bignum_optsub,
     },
     chacha20poly1305,
     limbs::mont::{bignum_montifier, bignum_montredc, bignum_mul},
@@ -314,6 +314,7 @@ pub(crate) use generic::{
         bignum_mod_n521, bignum_mul_p521, bignum_neg_p521, bignum_sqr_p521, p521_jadd,
         p521_jdouble, p521_jmixadd, p521_jscalarmul, p521_public_twin_multiply,
     },
+    limbs::safegcd::bignum_coprime,
     mldsa_poly::{
         mldsa_caddq, mldsa_chknorm, mldsa_decompose_32, mldsa_decompose_88, mldsa_intt, mldsa_ntt,
         mldsa_nttunpack, mldsa_pointwise, mldsa_pointwise_acc, mldsa_poly_use_hint_32,
@@ -351,7 +352,7 @@ mod x86_64;
 cfg_if::cfg_if! {
     if #[cfg(rind_backend = "x86_64")] {
         pub(in crate::low) use x86_64::cpu::{enter_cpu_state, zero_bytes, ct_compare_bytes, ct_compare_16, leave_cpu_state};
-        pub(crate) use x86_64::argon2::argon2_compress;
+        pub(crate) use x86_64::argon2::Argon2Kernel;
         #[cfg(rind_fips)]
         pub(crate) use x86_64::cpu::missing_cpu_feature;
         pub(crate) use x86_64::chacha20;

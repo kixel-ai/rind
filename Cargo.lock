@@ -4870,7 +4870,7 @@ version = "0.1.0"
 
 [[package]]
 name = "rind-dart"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "crabgrind 0.4.0",
  "rind",
@@ -4928,6 +4928,9 @@ dependencies = [
  "ctr 0.10.1",
  "curve25519-dalek 5.0.0",
  "dimpl",
+ "frost-ed25519",
+ "frost-p256",
+ "frost-ristretto255",
  "ghash 0.6.0",
  "hkdf 0.13.0",
  "hmac 0.13.0",
@@ -4946,6 +4949,8 @@ dependencies = [
  "p384 0.14.0",
  "p521 0.13.3",
  "p521 0.14.0",
+ "pakery-crypto",
+ "pakery-spake2plus",
  "pbkdf2",
  "pkcs8 0.11.0",
  "pyo3",

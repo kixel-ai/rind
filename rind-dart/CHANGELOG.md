@@ -1,4 +1,4 @@
-## Unreleased
+## 0.1.1
 
 - The unauthenticated ciphers: AES-CBC (`AesCbcEncryptingKey`,
   `AesCbcDecryptingKey`, `CbcIv`), AES-CTR (`AesCtr`), and ChaCha20
@@ -8,6 +8,11 @@
   `RsaKeyPair.sign` and `RsaKeyPair.publicKey` now take as an
   `RsaSigningScheme`, and `RsaVerificationAlgorithm.pssSha256` and its
   SHA-384 and SHA-512 kin).
+- rind wipes a key's native memory when Dart frees the key.
+- No call throws `UnsupportedError` for a missing CPU feature: rind runs on
+  every CPU of each target it supports.
+- An RSA `PublicKey` whose modulus is below its algorithm's floor parses, and
+  `verify` throws `RindError.keyRejected`.
 
 ## 0.1.0
 
