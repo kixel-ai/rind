@@ -58,8 +58,10 @@ for package in $published; do
             latest=$(git tag -l "$package-v*" --sort=-v:refname | head -n1)
             version=$(cargo metadata --format-version 1 --no-deps --locked |
                 jq -r --arg p "$package" '.packages[] | select(.name == $p) | .version')
-            if [[ -n "$latest" && "$latest" == "$package-v$version" ]]; then
-                echo "semver: $package is marked breaking but still at its released version $version; set its patch version" >&2
+            released=${latest#"$package-v"}
+            if [[ -n "$latest" && ("$released" == "$version" ||
+                "$(printf '%s\n%s\n' "$released" "$version" | sort -V | tail -n1)" != "$version") ]]; then
+                echo "semver: $package is marked breaking but $version is not newer than its latest release $released; set its next patch version" >&2
                 status=1
                 continue
             fi
