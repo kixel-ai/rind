@@ -298,6 +298,15 @@ mod tests {
         paths
     }
 
+    // `open_runs_vg` never runs VG's open in a ctgrind build and runs it from
+    // 129 bytes otherwise; no output tells the two apart, so this
+    // pins it.
+    #[test]
+    fn open_runs_vg_selector() {
+        assert!(!open_runs_vg(128));
+        assert_eq!(open_runs_vg(129), !cfg!(feature = "__ctgrind"));
+    }
+
     // Every message length through the routines' blocks and the tails after
     // them, AAD lengths around their 16-byte blocks, and a long message, on
     // each path, against separate ChaCha20 and Poly1305 passes, under a key
@@ -360,7 +369,9 @@ mod tests {
     // qemu's exec log saw in 3,471 sampled pairs of lengths (messages to
     // 8 KiB, AAD to 600 bytes), sealed, opened, and forged. The NEON
     // routines branch as the SVE2 ones do, but for one kernel the NEON open
-    // lacks, and call VG's NEON ChaCha20 where those call its SVE2 one.
+    // lacks, and call VG's NEON ChaCha20 where those call its SVE2 one. The
+    // NEON open takes one more route for a message of 192 bytes with 64 of
+    // AAD, and (63, 192) is its control.
     #[test]
     #[ignore = "admin/ct-qemu runs it under qemu"]
     fn ct_qemu_chacha20poly1305() {
@@ -376,6 +387,8 @@ mod tests {
             (29, 43),
             (4, 262),
             (13, 322),
+            (64, 192),
+            (63, 192),
             (2, 459),
             (3, 520),
             (13, 768),
