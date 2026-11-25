@@ -1306,7 +1306,9 @@ return their results at the modulus's width of k words, and
 `Rind/X86_64/RsaMont.lean`'s `mont_products` proves it at 16 and 32 words
 with BMI2 and ADX, from s2n-bignum's theorems; on any CPU at a width that is
 under eight words or not a multiple of four, from `nohw_spec`, which restates
-rind's HOL Light proof of `bn_mul_mont_nohw` below; and from `AwsLcMont`, that
+rind's HOL Light proof of `bn_mul_mont_nohw` below, of the Linux build's
+object, so not of the macOS one ([its quest](/quest/m4/verified/apple-bytes.md));
+and from `AwsLcMont`, that
 aws-lc's unproven 4x and 8x routines return theirs, at every other width and
 CPU.
 `PublicKey::verify` reaches each algorithm's verification through a function
