@@ -1345,3 +1345,56 @@ let CHACHA_ROUNDS = prove
     (* Out of the loop. *)
     ENSURES_INIT_TAC "s0" THEN X86_STEPS_TAC CHACHA_EXEC [1] THEN
     ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[]]);;
+
+(* ------------------------------------------------------------------------- *)
+(* The input states added back, and the sums transposed into each block's    *)
+(* four 16-byte pieces.                                                      *)
+(* ------------------------------------------------------------------------- *)
+
+(* Where the code leaves 16-byte piece m of block j's keystream once it has
+   added the input state and transposed: the first on the stack, the others
+   in registers. *)
+let chacha_piece_loc j m =
+  let rd c = mk_icomb(`read:(x86state,int128)component->x86state->int128`, c) in
+  if m = 0 then rd (subst [mk_small_numeral(16*j),`n:num`] `memory :> bytes128 (word_add stk (word n))`)
+  else mk_icomb(`read:(x86state,int128)component->x86state->int128`,
+    mk_const("XMM"^string_of_int (List.nth (List.nth [[12;4;0];[13;5;1];[10;14;8];[15;9;3]] j) (m-1)),[]));;
+
+(* The stack copy of word k of the states, which the code adds after the
+   rounds. *)
+let chacha_copy_loc k =
+  mk_icomb(`read:(x86state,int128)component->x86state->int128`,
+    subst [mk_small_numeral(64+16*k),`n:num`] `memory :> bytes128 (word_add stk (word n))`);;
+
+let chacha_sum k j =
+  let s = chacha_sv j in
+  list_mk_icomb "word_add" [chacha_el k (list_mk_comb(`chacha20_rounds`, [`10`; s])); chacha_el k s];;
+
+let chacha_pieces =
+  list_mk_conj(List.concat(map (fun j -> map (fun m ->
+    mk_eq(mk_comb(chacha_piece_loc j m, `s:x86state`), chacha_lanes (fun t -> chacha_sum (4*m+t) j))) (0--3)) (0--3)));;
+
+let chacha_copies =
+  list_mk_conj(map (fun k -> mk_eq(mk_comb(chacha_copy_loc k, `s:x86state`), chacha_lanes (fun j -> chacha_el k (chacha_sv j)))) (0--15));;
+
+let CHACHA_FINISH_GOAL =
+  let tm = mk_imp(
+   `aligned 16 (stk:int64) /\ nonoverlapping (stk:int64,320) (word pc:int64,0x9d4)`,
+   list_mk_icomb "ensures" [`x86`;
+    mk_abs(`s:x86state`, list_mk_conj [
+     `bytes_loaded s (word pc) (chacha20_ssse3_4x_mc pc data) /\ read RIP s = word(pc + 0x4ae) /\
+      read RSP s = stk /\ read RCX s = word_add stk (word 256)`;
+     chacha_rounds_rows `10`; chacha_copies]);
+    mk_abs(`s:x86state`, list_mk_conj [
+     `read RIP s = word(pc + 0x618)`; chacha_pieces; chacha_copies]);
+    `MAYCHANGE [RIP] ,,
+     MAYCHANGE [ZMM0; ZMM1; ZMM2; ZMM3; ZMM4; ZMM5; ZMM6; ZMM7;
+                ZMM8; ZMM9; ZMM10; ZMM11; ZMM12; ZMM13; ZMM14; ZMM15] ,,
+     MAYCHANGE [memory :> bytes(stk,64)] ,, MAYCHANGE [events]`]) in
+  list_mk_forall(frees tm, tm);;
+
+let CHACHA_FINISH = prove
+ (CHACHA_FINISH_GOAL,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN ENSURES_INIT_TAC "s0" THEN GHOST_YMMS_TAC THEN
+  CHACHA_UNTIL_TAC 0x618 1 THEN XMMS_OF_YMMS_TAC THEN ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[]);;
