@@ -578,6 +578,54 @@ fn keys_from_a_seed_match_the_default_provider() {
     }
 }
 
+/// A generation context given a seed reuses it as the default provider
+/// does: for every ML-DSA key it generates, and for only the first ML-KEM
+/// key, after which it generates fresh ones.
+#[test]
+fn a_generation_seed_is_reused_as_the_default_provider_reuses_it() {
+    if !has_reference("a_generation_seed_is_reused_as_the_default_provider_reuses_it") {
+        return;
+    }
+    let ctx = Context::new();
+    for algorithm in ML_KEM.iter().chain(&ML_DSA) {
+        let mut seed = vec![7u8; if ML_KEM.contains(algorithm) { 64 } else { 32 }];
+        let mut twice = |propq: &CStr| unsafe {
+            let gen_ctx = non_null(EVP_PKEY_CTX_new_from_name(
+                ctx.0,
+                algorithm.as_ptr(),
+                propq.as_ptr(),
+            ));
+            check(EVP_PKEY_keygen_init(gen_ctx));
+            let params = [
+                OSSL_PARAM_construct_octet_string(
+                    c"seed".as_ptr(),
+                    seed.as_mut_ptr().cast(),
+                    seed.len(),
+                ),
+                OSSL_PARAM_construct_end(),
+            ];
+            check(EVP_PKEY_CTX_set_params(gen_ctx, params.as_ptr()));
+            let keys = [(); 2].map(|()| {
+                let mut key = null_mut();
+                check(EVP_PKEY_generate(gen_ctx, &mut key));
+                Key(key)
+            });
+            EVP_PKEY_CTX_free(gen_ctx);
+            keys
+        };
+        let [first, second] = twice(RIND);
+        assert_eq!(first.provider(), "rind");
+        let [theirs, theirs_again] = twice(DEFAULT);
+        assert!(first.eq(&theirs), "{algorithm:?}");
+        assert_eq!(second.eq(&first), theirs_again.eq(&theirs), "{algorithm:?}");
+        assert_eq!(
+            second.eq(&first),
+            ML_DSA.contains(algorithm),
+            "{algorithm:?}"
+        );
+    }
+}
+
 /// Each provider decapsulates what the other encapsulates, to keys either
 /// made, and both reject a tampered ciphertext to the same implicit secret.
 #[test]

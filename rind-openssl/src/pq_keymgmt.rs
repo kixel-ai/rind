@@ -47,6 +47,10 @@ pub(crate) trait Scheme: Sized + 'static {
     /// an ML-KEM key share; otherwise it gives `mandatory-digest`, empty, as
     /// an ML-DSA key does.
     const ENCODED_PUBLIC: bool;
+    /// Whether a generation context's seed makes one key, as OpenSSL's
+    /// default provider uses an ML-KEM seed, or every key the context
+    /// generates, as it uses an ML-DSA one.
+    const SEED_ONCE: bool;
 
     fn generate() -> Result<Self::Private, rind::Error>;
     fn from_seed(seed: &[u8]) -> Result<Self::Private, rind::Error>;
@@ -671,8 +675,11 @@ pub(crate) unsafe extern "C" fn generate<S: Scheme>(
     if generation.selection & SELECT_KEYPAIR == 0 {
         return KeyData::<S>::boxed(provider, Held::Empty);
     }
-    // The seed is for one key, as OpenSSL's default provider uses it.
-    let private = match generation.seed.take() {
+    let seed = match S::SEED_ONCE {
+        true => generation.seed.take(),
+        false => generation.seed.clone(),
+    };
+    let private = match seed {
         Some(seed) => S::from_seed(&seed),
         None => S::generate(),
     };

@@ -85,6 +85,7 @@ impl<A: Set> Scheme for MlKem<A> {
     const SECURITY_BITS: c_int = A::SECURITY_BITS;
     const MAX_SIZE: c_int = A::CIPHERTEXT_LEN as c_int;
     const ENCODED_PUBLIC: bool = true;
+    const SEED_ONCE: bool = true;
 
     fn generate() -> Result<Self::Private, rind::Error> {
         DecapsulationKey::generate()

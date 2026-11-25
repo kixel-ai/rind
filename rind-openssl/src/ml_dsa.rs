@@ -142,6 +142,7 @@ impl<P: Set> Scheme for MlDsa<P> {
     const SECURITY_BITS: c_int = P::SECURITY_BITS;
     const MAX_SIZE: c_int = P::SIGNATURE_LEN as c_int;
     const ENCODED_PUBLIC: bool = false;
+    const SEED_ONCE: bool = false;
 
     fn generate() -> Result<Self::Private, rind::Error> {
         KeyPair::generate()
