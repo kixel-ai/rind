@@ -404,7 +404,9 @@ RestartSec=30
 [Install]
 WantedBy=multi-user.target
 EOF
-if [ "$changed" = 0 ] && active; then
+# Files an interrupted run wrote but never loaded still need the reload.
+stale() { [ "$(systemctl show -p NeedDaemonReload --value nftables.service rind-queue-runner.service | grep -c yes)" != 0 ]; }
+if [ "$changed" = 0 ] && active && ! stale; then
     echo "unchanged"
     exit 0
 fi
