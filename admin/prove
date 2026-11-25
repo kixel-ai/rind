@@ -1109,6 +1109,8 @@ select_items() {
     items rind/src/low/x86_64/cpu.rs 'pub(crate) fn prefetch<'
 }
 check_quote X86_64/PointSelectModel select_items
+check_quote X86_64/GatherModel items rind/src/low/x86_64/mont_exp.rs 'fn gather_avx2(' \
+    '#[target_feature(enable = "avx,avx2")]'
 check_quote Aarch64/PointSelectModel items rind/src/low/aarch64/bignum_point_select.rs \
     'pub(crate) fn bignum_aff_point_select_p384(' 'fn select<' '#[target_feature(enable = "neon")]'
 check_quote X86_64/AeadDispatch items rind/src/aead.rs 'pub struct Algorithm ' 'impl Algorithm {' \
@@ -1647,6 +1649,18 @@ extract x86_64 X86_64 "${hashes[@]}" "${assembly[@]}" \
     --include crate::low::x86_64::mont::karatsuba_mul \
     --include crate::low::x86_64::mont::karatsuba_sqr \
     --include crate::low::x86_64::mont::redc_8n \
+    --start-from crate::mid::rsa_priv::RsaPrivateKey::private_op \
+    --include crate::low::x86_64::mont_exp \
+    --opaque crate::low::x86_64::mont_exp::power5 \
+    --opaque crate::low::x86_64::mont_exp::gather_avx2 \
+    --opaque crate::low::x86_64::mont_exp::power5_table \
+    --opaque 'crate::low::posint::_::mod_exp_pair_rsaz' \
+    --opaque 'crate::low::posint::_::mod_exp_rsaz' \
+    --include 'crate::low::x86_64::rsa_ifma::_::runs' \
+    --include crate::low::x86_64::rsaz::Rsaz \
+    --include 'crate::low::x86_64::rsaz::_::check' \
+    --include crate::low::x86_64::rsaz_avx512::RsazAvx512 \
+    --include 'crate::low::x86_64::rsaz_avx512::_::check' \
     --start-from crate::low::x86_64::mlkem768_vg::Encaps::check_ek \
     --start-from crate::low::x86_64::mlkem768_vg::Encaps::encaps \
     --start-from crate::low::x86_64::mlkem768_vg::KeyPair::keygen \

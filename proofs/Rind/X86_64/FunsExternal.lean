@@ -3,13 +3,15 @@ public import Aeneas
 public import Rind.X86_64.Types
 public import Rind.X86_64.AesGcmModel
 public import Rind.X86_64.PointSelectModel
+public import Rind.X86_64.GatherModel
 @[expose] public section
 open Aeneas Aeneas.Std Result
 set_option linter.dupNamespace false
 
 /-!
 The rind functions the x86_64 translation leaves opaque, beside those
-`Rind.X86_64.AesGcmModel` and `Rind.X86_64.PointSelectModel` model. No proof assumes anything about them beyond what
+`Rind.X86_64.AesGcmModel`, `Rind.X86_64.PointSelectModel`, and
+`Rind.X86_64.GatherModel` model. No proof assumes anything about them beyond what
 `Rind.X86_64.S2nBignum`, `Rind.X86_64.AwsLc`, `Rind.X86_64.ValeAesGcm`,
 `Rind.X86_64.VgRsa`, and `Rind.X86_64.VgChaCha20` state for s2n-bignum's,
 aws-lc's, Vale's, and pyca/verified-garbage's routines, what
@@ -850,6 +852,24 @@ opaque low.x86_64.bignum_montmul.bignum_montmul
   Slice Std.U64 → Slice Std.U64 → Slice Std.U64 → Slice Std.U64 →
     Result (Slice Std.U64)
 
+opaque low.x86_64.bignum_montredc.bignum_montredc
+  : Slice Std.U64 → Slice Std.U64 → Slice Std.U64 → Std.U64 → Result (Slice Std.U64)
+
+opaque low.x86_64.bignum_modsub.bignum_modsub
+  : Slice Std.U64 → Slice Std.U64 → Slice Std.U64 → Slice Std.U64 → Result (Slice Std.U64)
+
+opaque low.x86_64.bignum_mul.bignum_mul
+  : Slice Std.U64 → Slice Std.U64 → Slice Std.U64 → Result (Slice Std.U64)
+
+opaque low.x86_64.bignum_add.bignum_add
+  : Slice Std.U64 → Slice Std.U64 → Slice Std.U64 → Result (Std.U64 × (Slice Std.U64))
+
+opaque low.x86_64.bignum_digitsize.bignum_digitsize
+  : Slice Std.U64 → Result Std.Usize
+
+opaque low.x86_64.bignum_copy_row_from_table.bignum_copy_row_from_table
+  : Slice Std.U64 → Slice Std.U64 → Std.U64 → Std.U64 → Std.U64 → Result (Slice Std.U64)
+
 /-! aws-lc's Montgomery products, behind their Rust wrappers, which
 `Rind.X86_64.RsaMont`'s `AwsLcMont` states for the theorems that need them. -/
 
@@ -867,6 +887,27 @@ opaque low.x86_64.mont.sqr8x
   :
   Slice Std.U64 → Slice Std.U64 → Slice Std.U64 → Std.U64 → Option
     low.x86_64.cpu.HaveBmi2Adx → Result (Slice Std.U64)
+
+/-! aws-lc's `bn_power5` and `bn_powerx5`, behind `mont_exp`'s Rust, which RSA
+runs at widths other than 16 and 32 words with BMI2 and ADX, and the RSAZ
+exponentiations, which it runs only without ADX or at the widths its
+AVX-512 IFMA path takes. No proof covers them, and none reaches them: each
+theorem's hypotheses rule out the paths that call them. -/
+
+opaque low.x86_64.mont_exp.power5
+  : Slice Std.U64 → Slice low.x86_64.mont_exp.Row → Slice Std.U64 → Std.U64 → Std.U64 →
+    Option low.x86_64.cpu.HaveBmi2Adx → Result (Slice Std.U64)
+
+opaque low.x86_64.mont_exp.power5_table
+  : Slice Std.U64 → Std.Usize → Std.Usize → Result (alloc.vec.Vec low.x86_64.mont_exp.Row)
+
+opaque low.posint.PosInt.mod_exp_rsaz {N : Std.Usize}
+  : low.posint.PosInt N → low.x86_64.rsaz.Rsaz → low.posint.PosInt N → low.posint.PosInt N →
+    low.posint.PosInt N → Std.U64 → Result (Option (low.posint.PosInt N))
+
+opaque low.posint.PosInt.mod_exp_pair_rsaz {N : Std.Usize}
+  : low.x86_64.rsaz_avx512.RsazAvx512 → low.posint.ModExp N → low.posint.ModExp N →
+    Result ((low.posint.PosInt N) × (low.posint.PosInt N))
 
 /-! pyca/verified-garbage's ML-KEM-768 routines, behind their Rust wrappers,
 whose contracts `Rind.X86_64.VgMlKem` states. -/

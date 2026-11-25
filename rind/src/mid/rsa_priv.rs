@@ -247,11 +247,14 @@ impl RsaPrivateKey {
         let p_len = self.p.as_words().len() * 8;
         let mut x = [0u8; MAX_PUBLIC_MODULUS_BYTES];
         c.to_bytes_fixed(&mut x[..k]);
-        let mut parts = [[0u8; MAX_PRIVATE_MODULUS_BYTES]; 3];
-        for (bytes, value) in parts.iter_mut().zip([&self.dp, &self.dq, &self.iqmp]) {
-            value.to_bytes_fixed(&mut bytes[..p_len]);
-        }
-        let [dp, dq, qinv] = &parts;
+        // Each its own array, not one destructured, which Aeneas cannot
+        // translate, so `proofs/` can prove the private operation.
+        let mut dp = [0u8; MAX_PRIVATE_MODULUS_BYTES];
+        let mut dq = [0u8; MAX_PRIVATE_MODULUS_BYTES];
+        let mut qinv = [0u8; MAX_PRIVATE_MODULUS_BYTES];
+        self.dp.to_bytes_fixed(&mut dp[..p_len]);
+        self.dq.to_bytes_fixed(&mut dq[..p_len]);
+        self.iqmp.to_bytes_fixed(&mut qinv[..p_len]);
         let mut m = [0u8; MAX_PUBLIC_MODULUS_BYTES];
         // `new` and the caller ruled out each input it refuses.
         if !self.ifma.crt(
@@ -292,7 +295,7 @@ impl RsaPrivateKey {
         // width of p or q rather than pq.)
         let cmp = c.reduce(&self.p, &self.p_montifier);
         let cmq = c.reduce(&self.q, &self.q_montifier);
-        let [m_1, m_2] = low::PosInt::mod_exp_pair([
+        let (m_1, m_2) = low::PosInt::mod_exp_pair(
             low::ModExp {
                 base: &cmp,
                 e: &self.dp,
@@ -307,7 +310,7 @@ impl RsaPrivateKey {
                 n_montifier: &self.q_montifier,
                 n_0: self.q0,
             },
-        ]);
+        );
 
         // ii. If u > 2, let m_i = c^(d_i) mod r_i, i = 3, ..., u.
         // (we don't support multiprime rsa)

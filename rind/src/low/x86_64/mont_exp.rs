@@ -89,12 +89,13 @@ fn mont_exp_by(
     let (spare, term) = scratch.split_at_mut(k);
     powers[..k].copy_from_slice(one);
     powers[w..w + k].copy_from_slice(x);
+    // Rows are sliced inline, not by a closure, which Aeneas cannot
+    // translate, so `proofs/` can prove RSA's private operation.
     for i in 2..32 {
         let (done, rest) = powers.split_at_mut(i * w);
-        let row = |j: usize| &done[j * w..j * w + k];
         match i % 2 {
-            0 => mont_sqr(&mut rest[..k], row(i / 2), m, n0),
-            _ => mont_mul(&mut rest[..k], row(i - 1), x, m, n0),
+            0 => mont_sqr(&mut rest[..k], &done[i / 2 * w..][..k], m, n0),
+            _ => mont_mul(&mut rest[..k], &done[(i - 1) * w..][..k], x, m, n0),
         }
     }
     let powers = &*powers;
@@ -108,14 +109,7 @@ fn mont_exp_by(
     // At 16 and 32 words with ADX, the verified Karatsuba products below run
     // instead.
     if k.is_multiple_of(8) && (adx.is_none() || !matches!(k, 16 | 32)) {
-        let mut table = alloc::vec![Row([0; 32]); k];
-        // Indexed rather than `chunks_exact`, which divides by `w`, and
-        // `admin/ct-vartime` refuses a division here.
-        for i in 0..32 {
-            for (row, &word) in table.iter_mut().zip(&powers[i * w..]) {
-                row.0[i] = word;
-            }
-        }
+        let mut table = power5_table(powers, w, k);
         while lsb > 0 {
             lsb -= 5;
             power5(z, &table, m, n0, bits(e, lsb, 5), adx);
@@ -137,6 +131,20 @@ fn mont_exp_by(
         }
     }
     low::zeroise(&mut heap);
+}
+
+/// The 32 powers of `powers`, rows of `w` words of which the first `k` are
+/// the value, laid out as `bn_scatter5` does for `bn_power5`.
+fn power5_table(powers: &[u64], w: usize, k: usize) -> alloc::vec::Vec<Row> {
+    let mut table = alloc::vec![Row([0; 32]); k];
+    // Indexed rather than `chunks_exact`, which divides by `w`, and
+    // `admin/ct-vartime` refuses a division here.
+    for i in 0..32 {
+        for (row, &word) in table.iter_mut().zip(&powers[i * w..]) {
+            row.0[i] = word;
+        }
+    }
+    table
 }
 
 /// Copies power `i` of the 32 rows of `powers` into `z`, each row as long as
