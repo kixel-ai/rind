@@ -79,6 +79,8 @@ pub trait Params:
     #[doc(hidden)]
     fn parse(_: Internal, input: &Self::EncapKeyBytes) -> Result<EncapKey<Self>, Error>;
     #[doc(hidden)]
+    fn parse_decap_key(_: Internal, dk: &Self::DecapKeyBytes) -> Result<DecapKey<Self>, Error>;
+    #[doc(hidden)]
     fn encaps(_: Internal, key: &EncapKey<Self>, m: Message) -> (SharedSecret, Ciphertext<Self>);
 }
 
@@ -108,6 +110,12 @@ macro_rules! algorithms {
         fn parse(_: Internal, input: &Self::EncapKeyBytes) -> Result<EncapKey<Self>, Error> {
             let _mcdt = low::Mcdt::enter();
             EncapKey::parse_mitigated(input)
+        }
+
+        #[inline(never)]
+        fn parse_decap_key(_: Internal, dk: &Self::DecapKeyBytes) -> Result<DecapKey<Self>, Error> {
+            let _mcdt = low::Mcdt::enter();
+            DecapKey::parse_mitigated(dk)
         }
 
         #[inline(never)]
@@ -371,10 +379,16 @@ impl<P: Params> DecapKey<P> {
     ///
     /// The FIPS module's ACVP build tests this check alone; a key from
     /// outside rind goes through [`Self::parse`].
+    #[cfg(any(test, rind_fips))]
     pub(crate) fn from_bytes(dk: &P::DecapKeyBytes) -> Option<Self> {
         let _entry = low::Entry::new_public();
         // Its arithmetic runs multiplies Intel's MXCSR mitigation covers.
         let _mcdt = low::Mcdt::enter();
+        Self::from_bytes_mitigated(dk)
+    }
+
+    /// [`Self::from_bytes`], under the caller's MXCSR mitigation.
+    fn from_bytes_mitigated(dk: &P::DecapKeyBytes) -> Option<Self> {
         let key = Self::decode(dk, true);
         let mut h = sha3::Sha3_256Context::new();
         h.update(key.ek_pke.bytes.as_ref());
@@ -388,8 +402,11 @@ impl<P: Params> DecapKey<P> {
     /// every coefficient must be below q, as Wycheproof holds such a key to.
     pub(crate) fn parse(dk: &P::DecapKeyBytes) -> Result<Self, Error> {
         let _entry = low::Entry::new_secret();
-        // Its arithmetic runs multiplies Intel's MXCSR mitigation covers.
-        let _mcdt = low::Mcdt::enter();
+        P::parse_decap_key(Internal(()), dk)
+    }
+
+    /// [`Self::parse`], under the caller's MXCSR mitigation.
+    fn parse_mitigated(dk: &P::DecapKeyBytes) -> Result<Self, Error> {
         let (dk_pke, rest) = dk.as_ref().split_at(P::K * 384);
         let (t_hat, rest) = rest.split_at(P::K * 384);
         // The encapsulation key and its hash are public.
@@ -404,7 +421,7 @@ impl<P: Params> DecapKey<P> {
         if !(reduced(t_hat) && low::ct::into_public(reduced(dk_pke))) {
             return Err(KeyFormatError::MlKemModulus.into());
         }
-        Self::from_bytes(dk).ok_or_else(|| KeyFormatError::MismatchedPublicKey.into())
+        Self::from_bytes_mitigated(dk).ok_or_else(|| KeyFormatError::MismatchedPublicKey.into())
     }
 
     pub(crate) fn keygen_internal(seed: &[u8; 64]) -> Self {
