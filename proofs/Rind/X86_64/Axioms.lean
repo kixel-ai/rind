@@ -13,6 +13,7 @@ import Rind.X86_64.ChaCha20Cipher
 import Rind.X86_64.GcmKey
 import Rind.X86_64.Ed25519
 import Rind.X86_64.Ed25519Ifma
+import Rind.X86_64.Ed25519Verify
 import Rind.X86_64.RsaDispatch
 import Rind.X86_64.Sha3
 import Rind.X86_64.AesKw
@@ -44,8 +45,12 @@ IFMA, pyca/verified-garbage's Lean proof of its routine, which
 AVX-512 IFMA in `Rind.X86_64.VgCurve25519`, and for P-256's public key, ECDH,
 and ECDSA verification in `Rind.X86_64.VgP256`, and for P-384's `d·G`,
 which key generation and each ECDSA signature's nonce point take, and its
-ECDSA verification, in `Rind.X86_64.VgP384`; and nothing else.
-ChaCha20-Poly1305's theorems also take aws-lc's one-pass routines as the
+ECDSA verification, in `Rind.X86_64.VgP384`; for Ed25519 verification, HOL
+Light's edwards25519 group law, its order, and its encoding's injectivity,
+which `Rind.Ed25519Group` restates; and nothing else. Ed25519 verification
+also takes its multi-scalar multiplication,
+`low::x86_64::adx_mux::edwards25519_msm`, as the hypothesis `RunsMsm`, and
+ChaCha20-Poly1305's theorems take aws-lc's one-pass routines as the
 hypothesis `RunsChaCha20Poly1305`, which no axiom states. ChaCha20's
 `apply_keystream` on a CPU without AVX2 takes aws-lc's SSSE3 routine as the
 hypothesis `Ssse3`; `Rind.X86_64.ChaCha20Avx2` proves rind's two-block kernel
@@ -624,6 +629,61 @@ change to the trust base.
 /-- info: 'rind.x86_64.ed25519_key_pair_public_key' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms ed25519_key_pair_public_key
+
+/-- info: 'rind.x86_64.ed25519_key_pair_verify' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ rind.spec.edCard,
+ rind.spec.edEncode_inj,
+ rind.spec.edMul_assoc,
+ rind.spec.edMul_comm,
+ rind.spec.edMul_id,
+ rind.spec.edMul_neg,
+ rind.spec.edOnCurve_mul,
+ rind.spec.edPow_B_order,
+ rind.spec.edPow_succ,
+ rind.spec.edPow_zero,
+ bignum_cmp_lt_spec,
+ bignum_madd_n25519_alt_spec,
+ bignum_madd_n25519_spec,
+ bignum_mod_n25519_spec,
+ bignum_mul_p25519_alt_spec,
+ bignum_mul_p25519_spec,
+ bignum_neg_p25519_spec,
+ compress_avx_spec,
+ edwards25519_decode_alt_spec,
+ edwards25519_decode_spec,
+ sha512_block_data_order_avx2_spec] -/
+#guard_msgs in
+#print axioms ed25519_key_pair_verify
+
+/-- info: 'rind.x86_64.ed25519_public_key_new' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ rind.spec.edCard,
+ rind.spec.edEncode_inj,
+ rind.spec.edMul_assoc,
+ rind.spec.edMul_comm,
+ rind.spec.edMul_id,
+ rind.spec.edMul_neg,
+ rind.spec.edOnCurve_mul,
+ rind.spec.edPow_B_order,
+ rind.spec.edPow_succ,
+ rind.spec.edPow_zero,
+ bignum_cmp_lt_spec,
+ bignum_eq_spec,
+ bignum_madd_n25519_alt_spec,
+ bignum_madd_n25519_spec,
+ bignum_mod_n25519_spec,
+ bignum_mul_p25519_alt_spec,
+ bignum_mul_p25519_spec,
+ bignum_neg_p25519_spec,
+ compress_avx_spec,
+ edwards25519_decode_alt_spec,
+ edwards25519_decode_spec,
+ sha512_block_data_order_avx2_spec] -/
+#guard_msgs in
+#print axioms ed25519_public_key_new
 
 /-- info: 'rind.x86_64.ed25519_generate_ifma' depends on axioms: [propext, Classical.choice, Quot.sound, vg_ed25519_key_pair_spec] -/
 #guard_msgs in

@@ -843,9 +843,9 @@ quest's.
 Ed25519 on x86_64 and aarch64, from the signature API's `ed25519::KeyPair`
 and `ed25519::PublicKey` to s2n-bignum's routines and the SHA-512 proof above, in
 `Rind/X86_64/Ed25519.lean`, which `admin/prove` also writes for aarch64, and
-for aarch64's verification in `Rind/Aarch64/Ed25519Verify.lean`. x86_64's
-verification checks a multiple of RFC 8032's equation with half-size
-scalars, which nothing proves yet, so the last two are aarch64's only. On
+for verification in each target's `Rind/<Arch>/Ed25519Verify.lean`, since
+aarch64's recomputes R with s2n-bignum's `edwards25519_scalarmuldouble` while
+x86_64's checks a multiple of RFC 8032's equation with half-size scalars. On
 x86_64 these assume `NoCurveIfma`, that the CPU lacks AVX-512 IFMA:
 
 - `ed25519_generate`: the key pair's seed is the 32 drawn bytes, and a failed
@@ -863,18 +863,27 @@ x86_64 these assume `NoCurveIfma`, that the CPU lacks AVX-512 IFMA:
   otherwise its `verify` accepts exactly the signatures RFC 8032 verifies with
   that point: 64 bytes, S below L, and R the encoding of SB - kA;
 - `ed25519_key_pair_verify`: a key pair's public key verifies the same way,
-  with its point the base point times its secret scalar, for a scalar whose
-  multiple is a point of the group.
+  with its point the base point times its secret scalar (on aarch64, for a
+  scalar whose multiple is a point of the group).
 
 The spec, in `Rind/Ed25519.lean`, is RFC 8032 over HOL Light's
 `edwards25519_group`, whose multiplication and power stay opaque, with
 s2n-bignum's `ed25519_encode` and `ed25519_decode` of its points. Each theorem
 assumes `Runs` and `RunsSha512`, and each with a message bounds it at
-2^64 - 64 bytes. The two that verify also assume `RunsDouble`, which
-holds on every aarch64 CPU. That a multiple of the base point is a point of
-the group, which `ed25519_key_pair_verify` assumes, is the group's theory,
-which these theorems do not import. The `ed25519` module calls no function
-pointer, so these theorems are about its translation, with no hand model.
+2^64 - 64 bytes. The two that verify also assume, on aarch64, `RunsDouble`,
+which holds on every aarch64 CPU, and on x86_64 `RunsMsm`, the contract of
+the multi-scalar multiplication `low::x86_64::adx_mux::edwards25519_msm`,
+which nothing proves yet (`quest/m4/verified/ed25519-half-scalar.md`).
+x86_64's also rest on `Rind/Ed25519Group.lean`, which restates HOL Light's
+group law, the group's order 8L, the base point's order L, and the
+encoding's injectivity, and proves from them, as `half_size_iff`, that the
+half-size check accepts exactly what RFC 8032's does, and on
+`Rind/X86_64/HalfSize.lean`'s proof that `mid::half_size::split` returns
+`u ≡ v k (mod 8L)` with `v` odd and below 2^128. That a multiple of the base
+point is a point of the group, which aarch64's `ed25519_key_pair_verify`
+assumes, follows from that group law, which aarch64's theorems do not use
+yet. The `ed25519` module calls no function pointer, so these theorems are
+about its translation, with no hand model.
 
 Ed25519 on x86_64 CPUs with AVX-512 IFMA, from the same API to
 pyca/verified-garbage's key-pair derivation, signing, and verification, in

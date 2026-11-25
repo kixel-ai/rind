@@ -12,8 +12,9 @@ RFC 8032's PureEd25519 over HOL Light's `edwards25519_group`, defined in
 https://github.com/jrh13/hol-light/blob/217dd32e798d98926d3ab81ed3dfcdf435831e1f/EC/edwards25519.ml,
 with s2n-bignum's encoding of its points, the definitions s2n-bignum's
 theorems state their routines' results in. The group's multiplication and
-power stay opaque: nothing is assumed of them beyond the routine contracts in
-`Rind.<Arch>.S2nBignum`.
+power stay opaque here: nothing is assumed of them beyond the routine
+contracts in `Rind.<Arch>.S2nBignum` and the group law `Rind.Ed25519Group`
+restates from HOL Light.
 -/
 
 namespace rind.spec
@@ -54,13 +55,15 @@ def edB : EdPoint :=
 /-- `group_pow edwards25519_group P n`, the point `P` multiplied by `n`.
 
 It is opaque here: nothing is assumed of it beyond the routine contracts in
-`Rind.<Arch>.S2nBignum`, which restate s2n-bignum's theorems about it. -/
+`Rind.<Arch>.S2nBignum`, which restate s2n-bignum's theorems about it, and
+the group law `Rind.Ed25519Group` restates from HOL Light. -/
 opaque edPow : EdPoint → Nat → EdPoint
 
 /-- `group_mul edwards25519_group P Q`, the sum of two points.
 
 It is opaque here: nothing is assumed of it beyond the routine contracts in
-`Rind.<Arch>.S2nBignum`, which restate s2n-bignum's theorems about it. -/
+`Rind.<Arch>.S2nBignum`, which restate s2n-bignum's theorems about it, and
+the group law `Rind.Ed25519Group` restates from HOL Light. -/
 opaque edMul : EdPoint → EdPoint → EdPoint
 
 /-- `edwards_neg (integer_mod_ring p_25519, &e_25519, &d_25519) P`, which
