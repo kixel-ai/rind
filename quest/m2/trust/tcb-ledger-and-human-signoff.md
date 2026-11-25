@@ -19,7 +19,7 @@ Drafted wording for `CONTRIBUTING.md`, under a new `# Sign-off` heading, which t
 >
 > Everything else, including new safe Rust, tests, docs, and benchmarks, needs no sign-off beyond the queue's checks.
 
-Drafted `.github/CODEOWNERS`, if the maintainer wants the review requested automatically. Its paths are where `unsafe` lives today (AUDIT.md's table, plus the few files outside `low` that hold it); the policy covers any `unsafe` block, so a new one elsewhere needs its path added in the same PR:
+Drafted `.github/CODEOWNERS`, if the maintainer wants the review requested automatically. Its paths are where `unsafe` lives today (AUDIT.md's table, plus the few files outside `low` that hold it); the policy covers any `unsafe` block, so a new one elsewhere adds its path in the same PR, whose own author requests the maintainer's review by hand, since GitHub reads CODEOWNERS from the base:
 
 ```
 /rind/src/low/                  @kixelated

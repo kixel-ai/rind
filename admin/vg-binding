@@ -80,6 +80,14 @@ def pinned():
 # A character literal, which may hold a double quote.
 CHAR = re.compile(r"'(?:\\(?:x[0-9a-fA-F]{2}|u\{[0-9a-fA-F]+\}|.)|[^\\'\n])'")
 
+# A raw string literal, whose quotes need no escape, closed by a quote and as
+# many `#` as opened it.
+RAW = re.compile(r'r(#*)"')
+
+
+# `axiom` is a keyword, so a use not part of a longer name declares one.
+AXIOM = re.compile(r"(?<![\w.'])axiom\s")
+
 
 def code_only(src):
     """Lean source without comments, which nest, and string literals."""
@@ -97,6 +105,11 @@ def code_only(src):
                     depth, i = depth - 1, i + 2
                 else:
                     i += 1
+            out.append(" ")
+        elif src[i] == "r" and RAW.match(src, i) and not (out and (out[-1][-1].isalnum() or out[-1][-1] in "_'.")):
+            m = RAW.match(src, i)
+            end = src.find('"' + m.group(1), m.end())
+            i = n if end < 0 else end + 1 + len(m.group(1))
             out.append(" ")
         elif src[i] == "'" and CHAR.match(src, i) and not (out and (out[-1][-1].isalnum() or out[-1][-1] in "_'")):
             i = CHAR.match(src, i).end()
@@ -157,10 +170,19 @@ def axioms(arch):
     """Each axiom of `Rind/<Arch>/Vg*.lean`: its name, file, and docstring."""
     out = []
     for path in sorted((ROOT / "proofs/Rind" / ARCHS[arch]).glob("Vg*.lean")):
-        for m in re.finditer(
-            r"/--((?:(?!-/).)*)-/\s*(?:@\[[^\]]*\]\s*)*axiom\s+(\S+)", path.read_text(), re.S
-        ):
-            out.append((m.group(2), path.name, m.group(1)))
+        text = path.read_text()
+        found = [
+            (m.group(2), path.name, m.group(1))
+            for m in re.finditer(
+                r"/--((?:(?!-/).)*)-/\s*(?:@\[[^\]]*\]\s*)*(?:(?:private|protected|noncomputable|unsafe)\s+)*axiom\s+(\S+)",
+                text,
+                re.S,
+            )
+        ]
+        declared = len(AXIOM.findall(code_only(text)))
+        if declared != len(found):
+            fail(f"{ARCHS[arch]}/{path.name} declares {declared} axioms, {len(found)} of them with a docstring the checks read")
+        out += found
     return out
 
 
@@ -198,7 +220,7 @@ def main():
     sorry = [
         str(p.relative_to(vg))
         for p in sorted((vg / "lean").rglob("*.lean"))
-        if re.search(r"\b(sorry|admit)\b|(?<![\w.'])axiom\s", code_only(p.read_text()))
+        if re.search(r"\b(sorry|admit)\b|" + AXIOM.pattern, code_only(p.read_text()))
     ]
     if sorry:
         fail(f"a sorry or an axiom in VG's {', '.join(sorry)}")

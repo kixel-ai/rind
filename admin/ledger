@@ -54,7 +54,7 @@ GROUPS = [
         "a published proof and rind's own; `admin/prove bytes` and `admin/prove hol-light` check the object code",
     ),
     (
-        r"(X86_64/(CtEqual|ShaBlocks|Sha256Shaext)|Aarch64/Sha256Hw)\.lean",
+        r"(X86_64/(CtEqual|RsaMont|ShaBlocks|Sha256Shaext)|Aarch64/Sha256Hw)\.lean",
         "rind's own HOL Light proofs of its assembly, and rind's Lean proof of the SHA-256 crypto-extension routine",
         "rind's proofs, in `proofs/hol-light/` and `Rind/Aarch64/Sha256HwAsm.lean`, checked against the bytes rind's build emits",
     ),
@@ -95,6 +95,10 @@ SORRY = re.compile(r"\b(?:sorry|admit|sorryAx)\b")
 # A character literal, which may hold a double quote.
 CHAR = re.compile(r"'(?:\\(?:x[0-9a-fA-F]{2}|u\{[0-9a-fA-F]+\}|.)|[^\\'\n])'")
 
+# A raw string literal, whose quotes need no escape, closed by a quote and as
+# many `#` as opened it.
+RAW = re.compile(r'r(#*)"')
+
 
 def strip(src):
     """`src` without Lean's comments, which nest, and string literals."""
@@ -117,6 +121,11 @@ def strip(src):
                     i += 2
                 else:
                     i += 1
+            out.append(" ")
+        elif src[i] == "r" and RAW.match(src, i) and not (out and (out[-1][-1].isalnum() or out[-1][-1] in "_'.")):
+            m = RAW.match(src, i)
+            end = src.find('"' + m.group(1), m.end())
+            i = n if end < 0 else end + 1 + len(m.group(1))
             out.append(" ")
         elif src[i] == "'" and CHAR.match(src, i) and not (out and (out[-1][-1].isalnum() or out[-1][-1] in "_'")):
             i = CHAR.match(src, i).end()

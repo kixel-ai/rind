@@ -48,7 +48,7 @@ lists every one declared, and fails CI on a `sorry` or an axiom its groups
 do not name. [The trust base](#trust-base) says what each trusted item is.
 
 <!-- admin/ledger: begin -->
-Every `axiom` the tracked Lean files declare, 169 in 22 files, `sorry` none:
+Every `axiom` the tracked Lean files declare, 170 in 23 files, `sorry` none:
 
 | Restates | Axioms | Files under `proofs/Rind/` | Checked |
 |---|---|---|---|
@@ -56,14 +56,14 @@ Every `axiom` the tracked Lean files declare, 169 in 22 files, `sorry` none:
 | pyca/verified-garbage's Lean theorems of its assembly | 36 | `Aarch64/VgChaCha20` 3, `Aarch64/VgChaCha20Poly1305` 2, `Aarch64/VgMlKem` 2, `Aarch64/VgP256` 3, `Aarch64/VgP384` 2, `Aarch64/VgPbkdf2` 4, `X86_64/VgChaCha20` 3, `X86_64/VgCurve25519` 5, `X86_64/VgMlKem` 4, `X86_64/VgP256` 3, `X86_64/VgP384` 2, `X86_64/VgRsa` 3 | published proofs; `admin/vg-binding` checks each axiom cites the theorem of its routine, and `admin/vg-bytes` that rind runs that routine's bytes |
 | Vale's procedures for HACL\*'s AES-GCM | 5 | `X86_64/ValeAesGcm` 5 | published proofs; `admin/prove bytes` checks the object code |
 | aws-lc-verification's NSym proof of SHA-384/512 (aarch64) and rind's HOL Light proof of the AVX2 routine (x86_64) | 4 | `Aarch64/AwsLc` 2, `X86_64/AwsLc` 2 | a published proof and rind's own; `admin/prove bytes` and `admin/prove hol-light` check the object code |
-| rind's own HOL Light proofs of its assembly, and rind's Lean proof of the SHA-256 crypto-extension routine | 6 | `Aarch64/Sha256Hw` 1, `X86_64/CtEqual` 2, `X86_64/Sha256Shaext` 2, `X86_64/ShaBlocks` 1 | rind's proofs, in `proofs/hol-light/` and `Rind/Aarch64/Sha256HwAsm.lean`, checked against the bytes rind's build emits |
+| rind's own HOL Light proofs of its assembly, and rind's Lean proof of the SHA-256 crypto-extension routine | 7 | `Aarch64/Sha256Hw` 1, `X86_64/CtEqual` 2, `X86_64/RsaMont` 1, `X86_64/Sha256Shaext` 2, `X86_64/ShaBlocks` 1 | rind's proofs, in `proofs/hol-light/` and `Rind/Aarch64/Sha256HwAsm.lean`, checked against the bytes rind's build emits |
 | HOL Light theorems of AES-CTR and AES-CBC that no proof states yet | 3 | `X86_64/AesModesLow` 3 | **assumed, not proven**: [the AES modes quest](/quest/m4/verified/aes-modes.md) owns them |
 
 Lean's compiler, trusted beyond the kernel wherever one of these appears:
 
 | Construct | Uses | Trusts |
 |---|---|---|
-| `bv_decide` | 21 in 5 files | each call adds an axiom that Lean's compiled LRAT checker accepted a SAT solver's certificate |
+| `bv_decide` | 25 in 6 files | each call adds an axiom that Lean's compiled LRAT checker accepted a SAT solver's certificate |
 | `native_decide`, `decide +native` | 0 in 0 files | each adds an axiom that Lean's compiled code evaluated a proposition as the kernel would; rind's proofs avoid it |
 | `@[implemented_by]`, `@[extern]` | 2 in 2 files | the compiler runs another definition than the one proofs use, as for the AES S-boxes' tables, which `sboxFast_eq` and `invSboxFast_eq` prove equal |
 
