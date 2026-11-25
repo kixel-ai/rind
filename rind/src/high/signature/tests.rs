@@ -75,6 +75,33 @@ fn ecdsa_generated_public_key_agrees_whichever_reads_first() {
     }
 }
 
+// Keys that keep a value their uses build, an ECDSA key pair's public key and
+// an ML-DSA public key's expansion, shared by threads that race to build it,
+// sign and verify as on one thread: ThreadSanitizer, in `sanitizers.yml`,
+// fails a read of the kept value that races its build.
+#[test]
+// wasm32-wasip2 cannot spawn threads.
+#[cfg(not(target_family = "wasm"))]
+fn keys_shared_across_threads() {
+    let pair = ecdsa::KeyPair::generate(&ecdsa::sign::P256_SHA256_ASN1).unwrap();
+    let signer = ml_dsa::KeyPair::<MlDsa44>::generate().unwrap();
+    let signature = signer.sign(b"message").unwrap();
+    let public = ml_dsa::PublicKey::<MlDsa44>::new(signer.public_key().as_ref()).unwrap();
+    std::thread::scope(|s| {
+        for _ in 0..4 {
+            s.spawn(|| {
+                for _ in 0..2 {
+                    let ecdsa = pair.sign(b"message").unwrap();
+                    pair.public_key()
+                        .verify(b"message", ecdsa.as_ref())
+                        .unwrap();
+                    public.verify(b"message", signature.as_ref()).unwrap();
+                }
+            });
+        }
+    });
+}
+
 #[test]
 fn ecdsa_verifies_only_under_its_algorithm() {
     for (i, signing) in ECDSA_SIGNING.into_iter().enumerate() {

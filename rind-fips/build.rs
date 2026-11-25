@@ -104,6 +104,20 @@ fn build(manifest: &Path, out: &Path, target: &str) -> PathBuf {
     // match inlined frames.
     let ctgrind = env::var_os("CARGO_FEATURE___CTGRIND").is_some();
     let debug = if ctgrind { "line-tables-only" } else { "false" };
+    // A sanitizer the caller runs, as `sanitizers.yml` does, checks inside
+    // the module too.
+    let caller = env::var("CARGO_ENCODED_RUSTFLAGS").unwrap_or_default();
+    let sanitizers: Vec<&str> = caller
+        .split('\x1f')
+        .filter(|flag| flag.starts_with("-Zsanitizer"))
+        .collect();
+    // The integrity test reads the module's whole loaded image, globals'
+    // redzones included, so AddressSanitizer leaves the module's globals
+    // unchecked; their heap and stack it still checks.
+    if sanitizers.contains(&"-Zsanitizer=address") {
+        flags.push("-Cllvm-args=-asan-globals=0");
+    }
+    flags.extend(sanitizers);
     let mut features = Vec::new();
     if ctgrind {
         features.push("rind/__ctgrind");
