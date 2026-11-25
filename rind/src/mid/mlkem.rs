@@ -3,6 +3,13 @@
 
 //! ML-KEM as standardised by FIPS-203, at each of its parameter sets.
 
+// The loops here count indices, rather than zip iterators or call closures,
+// since their proof is about Aeneas's translation, which takes neither.
+#![allow(
+    clippy::needless_range_loop,
+    reason = "Aeneas translates no iterator adapter"
+)]
+
 use alloc::boxed::Box;
 use core::fmt;
 use core::marker::PhantomData;
@@ -36,7 +43,7 @@ pub enum MlKem1024 {}
 /// widths `DU` and `DV`, with the arrays they size, which stable Rust cannot
 /// compute from the constants.
 ///
-/// Its bounds, like [`Array`]'s, let a generic caller rely on the auto
+/// Its bounds, like [`FixedArray`]'s, let a generic caller rely on the auto
 /// traits every key and ciphertext has.
 pub trait Params:
     fmt::Debug + Sized + Send + Sync + Unpin + UnwindSafe + RefUnwindSafe + 'static
@@ -54,16 +61,16 @@ pub trait Params:
     type Vector: Vector;
     /// `K * K` polynomials, row by row.
     #[doc(hidden)]
-    type Matrix: Array<Poly>;
+    type Matrix: FixedArray<Poly>;
     /// An encoded encapsulation key: `384 * K + 32` bytes.
     #[doc(hidden)]
-    type EncapKeyBytes: Array<u8>;
+    type EncapKeyBytes: FixedArray<u8>;
     /// A ciphertext: `32 * (DU * K + DV)` bytes.
     #[doc(hidden)]
-    type CiphertextBytes: Array<u8>;
+    type CiphertextBytes: FixedArray<u8>;
     /// An expanded decapsulation key: `768 * K + 96` bytes.
     #[doc(hidden)]
-    type DecapKeyBytes: Array<u8>;
+    type DecapKeyBytes: FixedArray<u8>;
     /// FIPS-203's name for the set.
     #[cfg(test)]
     const NAME: &'static str;
@@ -168,7 +175,7 @@ impl Params for MlKem1024 {
 }
 
 /// A fixed-size array, of a length a [`Params`] picks.
-pub trait Array<T>:
+pub trait FixedArray<T>:
     Clone
     + fmt::Debug
     + AsRef<[T]>
@@ -189,7 +196,7 @@ pub trait Array<T>:
     fn from_slice(slice: &[T]) -> Option<Self>;
 }
 
-impl<T, const L: usize> Array<T> for [T; L]
+impl<T, const L: usize> FixedArray<T> for [T; L]
 where
     T: Copy + fmt::Debug + Send + Sync + Unpin + UnwindSafe + RefUnwindSafe + 'static,
 {
@@ -203,13 +210,13 @@ where
 }
 
 /// `K` polynomials, with the arrays of their mulcaches and encodings.
-pub trait Vector: Array<Poly> {
+pub trait Vector: FixedArray<Poly> {
     /// `K` mulcaches.
     #[doc(hidden)]
-    type MulCache: Array<[i16; N / 2]>;
+    type MulCache: FixedArray<[i16; N / 2]>;
     /// `K` encoded polynomials.
     #[doc(hidden)]
-    type Encoded: Array<[u8; 384]>;
+    type Encoded: FixedArray<[u8; 384]>;
 }
 
 impl Vector for [Poly; 2] {
@@ -339,7 +346,11 @@ impl<P: Params> DecapKey<P> {
         let bytes = P::EncapKeyBytes::from_slice(ek).unwrap();
         Self {
             ek_pke: EncapKey {
-                decoded: decode.then(|| Box::new(Decoded::new(&bytes))),
+                decoded: if decode {
+                    Some(Box::new(Decoded::new(&bytes)))
+                } else {
+                    None
+                },
                 bytes,
                 h_ek: h_ek.try_into().unwrap(),
                 hashed: true,
@@ -454,12 +465,10 @@ impl<P: Params> DecapKey<P> {
         j.finish().squeeze(&mut k_bar.0);
 
         // 8. c' <- K-PKE.Encrypt(ekPKE, m', r')
-        let c_prime = self
-            .ek_pke
-            .decoded
-            .as_deref()
-            .expect("rind decapsulates only a decoded key")
-            .kpke_encrypt(m_prime, r_prime);
+        let Some(decoded) = &self.ek_pke.decoded else {
+            unreachable!("rind decapsulates only a decoded key")
+        };
+        let c_prime = decoded.kpke_encrypt(m_prime, r_prime);
 
         // 9. - 11. if c != c' then K' <- K‾
         // 12. return K'
@@ -489,7 +498,7 @@ impl<P: Params> DecapKey<P> {
         // 8. - 15.
         let mut s = Coeffs::<P::Vector, Normal>::zero();
         let mut e = Coeffs::<P::Vector, Normal>::zero();
-        sample_poly_cbd(P::ETA1, &sigma.0, 0, s.polys_mut().chain(e.polys_mut()));
+        sample_poly_cbd(P::ETA1, &sigma.0, 0, s.0.as_mut(), e.0.as_mut());
 
         // 16. ŝ <- NTT(s)
         let mut s_hat = s.ntt();
@@ -528,14 +537,9 @@ impl<P: Params> DecapKey<P> {
 
         // 3. u' <- Decompress_du(ByteDecode_du(c1))
         let mut u_prime = Coeffs::<P::Vector, Normal>::zero();
-        let polys = u_prime.polys_mut();
         match P::DU {
-            10 => polys
-                .zip(c_1.as_chunks::<320>().0)
-                .for_each(|(poly, bytes)| decompress::<10, 320>(bytes, poly)),
-            11 => polys
-                .zip(c_1.as_chunks::<352>().0)
-                .for_each(|(poly, bytes)| decompress::<11, 352>(bytes, poly)),
+            10 => decompress_vector::<10, 320>(c_1, u_prime.0.as_mut()),
+            11 => decompress_vector::<11, 352>(c_1, u_prime.0.as_mut()),
             _ => unreachable!(),
         }
 
@@ -627,18 +631,14 @@ impl<P: Params> Decoded<P> {
 
         // 9. - 12. y_i <- SamplePolyCBD_eta1(PRF(r, N))
         let mut y = Coeffs::<P::Vector, Normal>::zero();
-        sample_poly_cbd(P::ETA1, &r.0, 0, y.polys_mut());
+        let mut none: [Poly; 0] = [];
+        sample_poly_cbd(P::ETA1, &r.0, 0, y.0.as_mut(), &mut none);
 
         // 13. - 16. e_1 <- SamplePolyCBD_eta2(PRF(r, N))
         // 17. e_2 <- SamplePolyCBD_eta2(PRF(r, N))
         let mut e_1 = Coeffs::<P::Vector, Normal>::zero();
-        let mut e_2 = Coeffs::<Poly, Normal>::zero();
-        sample_poly_cbd(
-            ETA2,
-            &r.0,
-            P::K as u8,
-            e_1.polys_mut().chain(core::iter::once(&mut e_2.0)),
-        );
+        let mut e_2 = [[0; N]; 1];
+        sample_poly_cbd(ETA2, &r.0, P::K as u8, e_1.0.as_mut(), &mut e_2);
 
         // 18. y^ <- NTT(y)
         let y_hat = y.ntt();
@@ -661,22 +661,17 @@ impl<P: Params> Decoded<P> {
         let mut v = self
             .t_hat_coeffs
             .dot_and_inverse_ntt(&y_hat, &y_cache)
-            .add(&e_2)
-            .add(&mu);
+            .add(&e_2[0])
+            .add(&mu.0);
         low::mlkem_reduce(&mut v.0);
 
         let mut c = P::CiphertextBytes::filled(0);
         let (c_1, c_2) = c.as_mut().split_at_mut(32 * P::DU * P::K);
 
         // 22. c_1 <- ByteEncode_du(Compress_du(u))
-        let polys = u.0.as_ref().iter();
         match P::DU {
-            10 => polys
-                .zip(c_1.as_chunks_mut::<320>().0)
-                .for_each(|(poly, out)| low::mlkem_compress_d10(out, poly)),
-            11 => polys
-                .zip(c_1.as_chunks_mut::<352>().0)
-                .for_each(|(poly, out)| low::mlkem_compress_d11(out, poly)),
+            10 => compress_d10_vector(c_1, u.0.as_ref()),
+            11 => compress_d11_vector(c_1, u.0.as_ref()),
             _ => unreachable!(),
         }
 
@@ -923,20 +918,16 @@ impl<V: Clone, D: Domain> Clone for Coeffs<V, D> {
     }
 }
 
-impl<V: Array<Poly>, D: Domain> Coeffs<V, D> {
+impl<V: FixedArray<Poly>, D: Domain> Coeffs<V, D> {
     fn zero() -> Self {
         Self(V::filled([0; N]), PhantomData)
     }
 
-    /// Each polynomial's coefficients.
-    fn polys_mut(&mut self) -> impl Iterator<Item = &mut Poly> {
-        self.0.as_mut().iter_mut()
-    }
-
     /// Reduce coefficients into [0, Q)
     fn reduce_in_place(&mut self) {
-        for k in self.polys_mut() {
-            low::mlkem_reduce(k);
+        let polys = self.0.as_mut();
+        for i in 0..polys.len() {
+            low::mlkem_reduce(&mut polys[i]);
         }
     }
 }
@@ -947,22 +938,17 @@ impl<D: Domain> Coeffs<Poly, D> {
     }
 }
 
-impl<M: Array<Poly>> Coeffs<M, Ntt> {
+impl<M: FixedArray<Poly>> Coeffs<M, Ntt> {
     /// FIPS-203's `SampleNTT` of the matrix `A^` from `rho`, or of its
     /// transpose.
     fn sample(rho: &[u8; 32], transposed: bool) -> Self {
         let mut r = Self(M::filled([0; N]), PhantomData);
-        sample_ntt::sample_ntt(rho, transposed, r.0.as_mut());
-        for poly in r.polys_mut() {
-            low::mlkem_unpack(poly);
+        let polys = r.0.as_mut();
+        sample_ntt::sample_ntt(rho, transposed, polys);
+        for i in 0..polys.len() {
+            low::mlkem_unpack(&mut polys[i]);
         }
         r
-    }
-
-    fn rows(&self) -> impl Iterator<Item = &[Poly]> {
-        let polys = self.0.as_ref();
-        let k = rank(polys.len());
-        polys.chunks_exact(k)
     }
 
     // a * s + e
@@ -973,12 +959,21 @@ impl<M: Array<Poly>> Coeffs<M, Ntt> {
 
         let mut term = Coeffs::<Poly, Ntt>::zero();
 
-        for (aa, rr) in self.rows().zip(r.polys_mut()) {
-            basemul(&mut term.0, aa, s.0.as_ref(), s_precomp.0.as_ref());
+        let a = self.0.as_ref();
+        let k = rank(a.len());
+        let rows = r.0.as_mut();
+        for i in 0..k {
+            basemul(
+                &mut term.0,
+                &a[i * k..i * k + k],
+                s.0.as_ref(),
+                s_precomp.0.as_ref(),
+            );
             low::mlkem_tomont(&mut term.0);
 
-            for (r, t) in rr.iter_mut().zip(term.0.iter()) {
-                *r = r.wrapping_add(*t);
+            let row = &mut rows[i];
+            for c in 0..N {
+                row[c] = row[c].wrapping_add(term.0[c]);
             }
         }
 
@@ -1009,8 +1004,16 @@ impl<M: Array<Poly>> Coeffs<M, Ntt> {
     ) -> Coeffs<V, Normal> {
         let mut r = Coeffs::<V, Ntt>::zero();
 
-        for (aa, rr) in self.rows().zip(r.polys_mut()) {
-            basemul(rr, aa, y.0.as_ref(), y_cache.0.as_ref());
+        let a = self.0.as_ref();
+        let k = rank(a.len());
+        let rows = r.0.as_mut();
+        for i in 0..k {
+            basemul(
+                &mut rows[i],
+                &a[i * k..i * k + k],
+                y.0.as_ref(),
+                y_cache.0.as_ref(),
+            );
         }
 
         r.inverse_ntt()
@@ -1022,9 +1025,11 @@ impl<V: Vector> Coeffs<V, Ntt> {
     fn from_bytes(bytes: &V::Encoded) -> Self {
         let mut r = Self::zero();
 
-        for (rr, bb) in r.polys_mut().zip(bytes.as_ref()) {
-            low::mlkem_frombytes(rr, bb);
-            low::mlkem_reduce(rr);
+        let polys = r.0.as_mut();
+        let bytes = bytes.as_ref();
+        for i in 0..polys.len() {
+            low::mlkem_frombytes(&mut polys[i], &bytes[i]);
+            low::mlkem_reduce(&mut polys[i]);
         }
 
         r
@@ -1034,8 +1039,10 @@ impl<V: Vector> Coeffs<V, Ntt> {
     fn to_bytes(&self) -> V::Encoded {
         let mut r = V::Encoded::filled([0; 384]);
 
-        for (rr, cc) in r.as_mut().iter_mut().zip(self.0.as_ref()) {
-            low::mlkem_tobytes(rr, cc);
+        let out = r.as_mut();
+        let polys = self.0.as_ref();
+        for i in 0..out.len() {
+            low::mlkem_tobytes(&mut out[i], &polys[i]);
         }
 
         r
@@ -1058,16 +1065,19 @@ impl<V: Vector> Coeffs<V, Ntt> {
     fn mul_cache(&self) -> Coeffs<V::MulCache, MulCache> {
         let mut r = Coeffs(V::MulCache::filled([0; N / 2]), PhantomData);
 
-        for (rr, m) in r.0.as_mut().iter_mut().zip(self.0.as_ref()) {
-            low::mlkem_mulcache_compute(rr, m);
+        let out = r.0.as_mut();
+        let polys = self.0.as_ref();
+        for i in 0..out.len() {
+            low::mlkem_mulcache_compute(&mut out[i], &polys[i]);
         }
 
         r
     }
 
     fn inverse_ntt(mut self) -> Coeffs<V, Normal> {
-        for ch in self.polys_mut() {
-            low::mlkem_intt(ch);
+        let polys = self.0.as_mut();
+        for i in 0..polys.len() {
+            low::mlkem_intt(&mut polys[i]);
         }
         Coeffs(self.0, PhantomData)
     }
@@ -1110,10 +1120,6 @@ fn basemul(r: &mut Poly, a: &[Poly], b: &[Poly], bt: &[[i16; N / 2]]) {
 /// `Decompress_D(ByteDecode_D(bytes))` into `out`, for `bytes` of `L = 32 * D`
 /// bytes: each `D` bytes yield eight `D`-bit values, little-endian bit order,
 /// and each value `y` becomes `round((q / 2^D) * y)`.
-///
-/// The loops here and in the helpers below count indices, rather than zip
-/// iterators, since their proof is about Aeneas's translation, which takes
-/// no iterator adapter.
 fn decompress<const D: usize, const L: usize>(bytes: &[u8; L], out: &mut Poly) {
     debug_assert_eq!(L, 32 * D);
     for i in 0..N / 8 {
@@ -1124,6 +1130,31 @@ fn decompress<const D: usize, const L: usize>(bytes: &[u8; L], out: &mut Poly) {
             let y = ((bits >> (D * j)) as u32) & ((1 << D) - 1);
             out[8 * i + j] = ((y * Q as u32 + (1 << (D - 1))) >> D) as i16;
         }
+    }
+}
+
+/// [`decompress`] of each `L` bytes of `bytes` into each of `polys`.
+fn decompress_vector<const D: usize, const L: usize>(bytes: &[u8], polys: &mut [Poly]) {
+    for i in 0..polys.len() {
+        decompress::<D, L>(bytes[L * i..L * i + L].try_into().unwrap(), &mut polys[i]);
+    }
+}
+
+/// `ByteEncode_10(Compress_10(poly))` of each of `polys` into each 320 bytes
+/// of `out`.
+fn compress_d10_vector(out: &mut [u8], polys: &[Poly]) {
+    for i in 0..polys.len() {
+        let out = (&mut out[320 * i..320 * i + 320]).try_into().unwrap();
+        low::mlkem_compress_d10(out, &polys[i]);
+    }
+}
+
+/// `ByteEncode_11(Compress_11(poly))` of each of `polys` into each 352 bytes
+/// of `out`.
+fn compress_d11_vector(out: &mut [u8], polys: &[Poly]) {
+    for i in 0..polys.len() {
+        let out = (&mut out[352 * i..352 * i + 352]).try_into().unwrap();
+        low::mlkem_compress_d11(out, &polys[i]);
     }
 }
 
@@ -1142,11 +1173,12 @@ fn compress_1(x: i16) -> u8 {
     (x & 1) as u8
 }
 
-impl<V: Array<Poly>> Coeffs<V, Normal> {
+impl<V: FixedArray<Poly>> Coeffs<V, Normal> {
     /// K-wise NTT
     fn ntt(mut self) -> Coeffs<V, Ntt> {
-        for ch in self.polys_mut() {
-            low::mlkem_ntt(ch);
+        let polys = self.0.as_mut();
+        for i in 0..polys.len() {
+            low::mlkem_ntt(&mut polys[i]);
         }
         Coeffs(self.0, PhantomData)
     }
@@ -1187,121 +1219,109 @@ impl Coeffs<Poly, Normal> {
 
 impl Coeffs<Poly, Normal> {
     /// Simple addition, leaving the sum unreduced
-    fn add(mut self, term: &Self) -> Self {
-        for (ss, tt) in self.0.iter_mut().zip(term.0.iter()) {
-            *ss = ss.wrapping_add(*tt);
+    fn add(mut self, term: &Poly) -> Self {
+        for c in 0..N {
+            self.0[c] = self.0[c].wrapping_add(term[c]);
         }
         self
     }
 
     /// Simple subtraction
     fn sub(mut self, term: &Self) -> Self {
-        for (ss, tt) in self.0.iter_mut().zip(term.0.iter()) {
-            *ss = ss.wrapping_sub(*tt);
+        for c in 0..N {
+            self.0[c] = self.0[c].wrapping_sub(term.0[c]);
         }
         low::mlkem_reduce(&mut self.0);
         self
     }
 }
 
-impl<V: Array<Poly>> Coeffs<V, Normal> {
+impl<V: FixedArray<Poly>> Coeffs<V, Normal> {
     /// Simple addition, leaving the sum unreduced
     fn add(mut self, term: &Self) -> Self {
-        for (ss, tt) in self.0.as_mut().iter_mut().zip(term.0.as_ref()) {
-            for (s, t) in ss.iter_mut().zip(tt) {
-                *s = s.wrapping_add(*t);
+        let polys = self.0.as_mut();
+        let terms = term.0.as_ref();
+        for i in 0..polys.len() {
+            for c in 0..N {
+                polys[i][c] = polys[i][c].wrapping_add(terms[i][c]);
             }
         }
         self
     }
 }
 
-/// `SamplePolyCBD_eta(PRF_eta(sigma, n))` into each of `polys`, with `n`
-/// counting from `first`.
-fn sample_poly_cbd<'a>(
-    eta: usize,
-    sigma: &[u8; 32],
-    first: u8,
-    polys: impl Iterator<Item = &'a mut Poly>,
-) {
+/// `SamplePolyCBD_eta(PRF_eta(sigma, n))` into each polynomial of `a`, then
+/// of `b`, with `n` counting from `first`, four polynomials at a time.
+fn sample_poly_cbd(eta: usize, sigma: &[u8; 32], first: u8, a: &mut [Poly], b: &mut [Poly]) {
+    let total = a.len() + b.len();
+    let mut done = 0;
+    while done < total {
+        let count = if total - done < 4 { total - done } else { 4 };
+        let polys = sample_poly_cbd_4x(eta, sigma, first + done as u8, count);
+        for t in 0..count {
+            let poly = done + t;
+            if poly < a.len() {
+                a[poly] = polys[t];
+            } else {
+                b[poly - a.len()] = polys[t];
+            }
+        }
+        done += count;
+    }
+}
+
+/// `SamplePolyCBD_eta(PRF_eta(sigma, n + t))` for each `t` below `count`,
+/// which is one to four, at once; the rest are zero.
+fn sample_poly_cbd_4x(eta: usize, sigma: &[u8; 32], n: u8, count: usize) -> [Poly; 4] {
+    let mut polys = [[0; N]; 4];
     match eta {
-        2 => sample_poly_cbd2(sigma, first, polys),
-        3 => sample_poly_cbd3(sigma, first, polys),
+        2 => {
+            let mut inputs = [[0; 40]; 4];
+            for t in 0..count {
+                inputs[t][..32].copy_from_slice(sigma);
+                inputs[t][32] = n + t as u8;
+                inputs[t][33] = sha3::SHAKE_PAD_BYTE;
+            }
+
+            let mut samples = [[0; 128]; 4];
+            match count {
+                1 => sha3::shake256_batch::<1>(
+                    inputs[..1].try_into().unwrap(),
+                    (&mut samples[..1]).try_into().unwrap(),
+                ),
+                2 => sha3::shake256_batch::<2>(
+                    inputs[..2].try_into().unwrap(),
+                    (&mut samples[..2]).try_into().unwrap(),
+                ),
+                3 => sha3::shake256_batch::<3>(
+                    inputs[..3].try_into().unwrap(),
+                    (&mut samples[..3]).try_into().unwrap(),
+                ),
+                _ => sha3::shake256_batch(&inputs, &mut samples),
+            }
+
+            for t in 0..count {
+                sample_cbd2(&samples[t], &mut polys[t]);
+            }
+        }
+        3 => {
+            let mut inputs = [[0; 33]; 4];
+            for t in 0..count {
+                inputs[t][..32].copy_from_slice(sigma);
+                inputs[t][32] = n + t as u8;
+            }
+
+            // The 192 bytes each polynomial takes span two blocks.
+            let mut samples = [[0; 2 * sha3::SHAKE_256_R_BYTES]; 4];
+            sha3::Shake256x4::new(&inputs[..count]).squeeze(&mut samples);
+
+            for t in 0..count {
+                sample_cbd3(samples[t].first_chunk().unwrap(), &mut polys[t]);
+            }
+        }
         _ => unreachable!(),
     }
-}
-
-/// [`sample_poly_cbd`] for `eta = 2`, four polynomials at a time.
-fn sample_poly_cbd2<'a>(
-    sigma: &[u8; 32],
-    mut n: u8,
-    mut polys: impl Iterator<Item = &'a mut Poly>,
-) {
-    loop {
-        let batch: [Option<&mut Poly>; 4] = core::array::from_fn(|_| polys.next());
-        let count = batch.iter().take_while(|p| p.is_some()).count();
-        if count == 0 {
-            return;
-        }
-
-        let mut bufs = [[0; 40]; 4];
-        for buf in &mut bufs[..count] {
-            buf[..32].copy_from_slice(sigma);
-            buf[32] = n;
-            buf[33] = sha3::SHAKE_PAD_BYTE;
-            n += 1;
-        }
-
-        let mut samples = [[0; 128]; 4];
-        match count {
-            1 => shake256_batch_of::<1>(&bufs, &mut samples),
-            2 => shake256_batch_of::<2>(&bufs, &mut samples),
-            3 => shake256_batch_of::<3>(&bufs, &mut samples),
-            _ => sha3::shake256_batch(&bufs, &mut samples),
-        }
-
-        for (sample, poly) in samples.iter().zip(batch.into_iter().flatten()) {
-            sample_cbd2(sample, poly);
-        }
-    }
-}
-
-/// [`sha3::shake256_batch`] of the first `P` of four inputs.
-fn shake256_batch_of<const P: usize>(inputs: &[[u8; 40]; 4], outputs: &mut [[u8; 128]; 4]) {
-    sha3::shake256_batch::<P>(
-        inputs.first_chunk().unwrap(),
-        outputs.first_chunk_mut().unwrap(),
-    );
-}
-
-/// [`sample_poly_cbd`] for `eta = 3`, four polynomials at a time.
-fn sample_poly_cbd3<'a>(
-    sigma: &[u8; 32],
-    mut n: u8,
-    mut polys: impl Iterator<Item = &'a mut Poly>,
-) {
-    loop {
-        let batch: [Option<&mut Poly>; 4] = core::array::from_fn(|_| polys.next());
-        let count = batch.iter().take_while(|p| p.is_some()).count();
-        if count == 0 {
-            return;
-        }
-
-        let mut inputs = [[0; 33]; 4];
-        for input in &mut inputs[..count] {
-            input[..32].copy_from_slice(sigma);
-            input[32] = n;
-            n += 1;
-        }
-
-        // The 192 bytes each polynomial takes span two blocks.
-        let mut samples = [[0; 2 * sha3::SHAKE_256_R_BYTES]; 4];
-        sha3::Shake256x4::new(&inputs[..count]).squeeze(&mut samples);
-
-        for (sample, poly) in samples.iter().zip(batch.into_iter().flatten()) {
-            sample_cbd3(sample.first_chunk().unwrap(), poly);
-        }
-    }
+    polys
 }
 
 fn sample_cbd2(buf: &[u8; 128], out: &mut Poly) {

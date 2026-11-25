@@ -20,15 +20,16 @@ use crate::low::{pad, split_tail};
 /// `messages`, which are of equal length, padded and closed by `length`.
 /// `messages` holds one to eight; the digests past them are unspecified.
 ///
-/// A lone message runs the serial routine; more run `WIDTH` lanes at a time.
+/// A group of up to `SERIAL` messages runs the serial routine; more run
+/// `WIDTH` lanes at a time.
 pub(crate) fn sha256_finish_x8(
     state: &[u32; 8],
     messages: &[&[u8]],
     length: [u8; 8],
 ) -> [[u8; 32]; 8] {
     match HaveCryptoExt::check() {
-        Some(token) if messages.len() > 1 => finish(state, messages, length, token),
-        _ => crate::low::generic::sha256x8::sha256_finish_x8(state, messages, length),
+        Some(token) => finish(state, messages, length, token),
+        None => crate::low::generic::sha256x8::sha256_finish_x8(state, messages, length),
     }
 }
 
@@ -37,6 +38,12 @@ pub(crate) fn sha256_finish_x8(
 /// registers; eight one-block messages took 1.9 times less time than the
 /// serial routine's.
 const WIDTH: usize = 4;
+
+/// The most messages in a group that the serial routine beats `WIDTH` lanes
+/// on: four lanes cost 4 * 18.5 = 74 ns a block on the M5, and the serial
+/// routine 30 ns a message, so it wins up to two, and a group that small
+/// would repeat messages to fill its lanes.
+const SERIAL: usize = 2;
 
 fn finish(
     state: &[u32; 8],
@@ -53,6 +60,11 @@ fn finish(
         .chunks(WIDTH)
         .zip(digests.as_chunks_mut::<WIDTH>().0)
     {
+        if group.len() <= SERIAL {
+            let serial = crate::low::generic::sha256x8::sha256_finish_x8(state, group, length);
+            digests[..group.len()].copy_from_slice(&serial[..group.len()]);
+            continue;
+        }
         // Unused lanes hash the group's last message again.
         let lanes = core::array::from_fn(|j| group[Ord::min(j, group.len() - 1)]);
         *digests = finish_group(state, lanes, length, token);
