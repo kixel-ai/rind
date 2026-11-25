@@ -363,12 +363,16 @@
           aeneas-release = "nightly-2026.11.03-ab34bd2";
           aeneas-tarball = {
             x86_64-linux = {
-              arch = "x86_64";
+              name = "linux-x86_64";
               hash = "sha256-7Q4zbFBtrTfk4cU/bMTW1ZWdfjr6sv1Vrq0oB3VlH14=";
             };
             aarch64-linux = {
-              arch = "aarch64";
+              name = "linux-aarch64";
               hash = "sha256-010M/V6/mqFYvTEvLPOoB2ppHyewhgX2Zk39twWtF14=";
+            };
+            aarch64-darwin = {
+              name = "macos-aarch64";
+              hash = "sha256-4QqS2JtDSmVN3h8xwqZhGRNCYDQfmjdjq2P/5hOtb5g=";
             };
           };
 
@@ -409,21 +413,38 @@
             pname = "aeneas";
             version = aeneas-release;
             src = pkgs.fetchurl {
-              url = "https://github.com/AeneasVerif/aeneas/releases/download/${aeneas-release}/aeneas-linux-${aeneas-tarball.${system}.arch}.tar.gz";
+              url = "https://github.com/AeneasVerif/aeneas/releases/download/${aeneas-release}/aeneas-${aeneas-tarball.${system}.name}.tar.gz";
               inherit (aeneas-tarball.${system}) hash;
             };
             sourceRoot = ".";
-            unpackCmd = "tar xzf $curSrc aeneas charon charon-driver";
+            # The macOS build ships Aeneas's GMP beside it, which it loads
+            # from `libs/` next to its binary.
+            unpackCmd = "tar xzf $curSrc aeneas charon charon-driver"
+              + pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isDarwin " libs";
             nativeBuildInputs = [
-              pkgs.autoPatchelfHook
               pkgs.makeWrapper
-            ];
+            ]
+            ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.autoPatchelfHook ]
+            ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isDarwin [ pkgs.darwin.autoSignDarwinBinariesHook ];
             buildInputs = [
               rust-charon
-              pkgs.stdenv.cc.cc.lib
-            ];
+            ]
+            ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.stdenv.cc.cc.lib ];
+            # On macOS, `charon-driver` names the nightly's `librustc_driver`
+            # and LLVM by bare file name, so each is pointed at the nightly's
+            # copy, and the hook signs the binary again. `DYLD_LIBRARY_PATH`
+            # would reach the C compiler that build scripts run too, which
+            # would then load the nightly's LLVM in place of its own.
             installPhase = ''
               install -Dm755 -t $out/bin aeneas charon charon-driver
+            ''
+            + pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isDarwin ''
+              cp -R libs $out/bin/libs
+              for lib in $(otool -L $out/bin/charon-driver | awk 'NR > 1 && $1 !~ /^\// { print $1 }'); do
+                install_name_tool -change "$lib" "${rust-charon}/lib/$lib" $out/bin/charon-driver
+              done
+            ''
+            + ''
               wrapProgram $out/bin/charon \
                 --set CHARON_TOOLCHAIN_IS_IN_PATH 1 \
                 --set CHARON_MIRI_SYSROOTS ${charon-sysroots} \
@@ -739,13 +760,12 @@
               ];
             };
           }
-          # Linux only, since valgrind and qemu-user need a Linux host.
-          // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
-            # `admin/prove` and the prove workflow run in it. Linux only, as
-            # Aeneas releases for it. Lake fetches the Lean toolchain that
-            # `proofs/lean-toolchain` names, whose bundled `leantar` reads
-            # Mathlib's cache, which nixpkgs' Lean cannot.
-            # See UPSTREAM.md, "nixpkgs' Lean cannot read Mathlib's cache".
+          # `admin/prove` and the prove workflow run in it, on the systems
+          # Aeneas releases for. Lake fetches the Lean toolchain that
+          # `proofs/lean-toolchain` names, whose bundled `leantar` reads
+          # Mathlib's cache, which nixpkgs' Lean cannot.
+          # See UPSTREAM.md, "nixpkgs' Lean cannot read Mathlib's cache".
+          // pkgs.lib.optionalAttrs (aeneas-tarball ? ${system}) {
             prove = mkDevShell {
               inputsFrom = [ hol-light ];
               packages = [
@@ -755,7 +775,9 @@
                 pkgs.curl
               ];
             };
-
+          }
+          # Linux only, since valgrind and qemu-user need a Linux host.
+          // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
             # `admin/prove vg` and the prove workflow's `vg` jobs run in it:
             # the Rust that compiles VG's naked functions and rind's, with the
             # targets the bytes check reads; nixpkgs' LLVM, whose `llvm-mc`
