@@ -1,5 +1,5 @@
 import Rind.Armv7.ChaCha20
-import Rind.Armv7.AesNohwBlock
+import Rind.Armv7.AesNohwKey
 open rind.armv7
 
 /-!
@@ -19,7 +19,7 @@ change to the trust base.
 The bitsliced AES's theorems rest on Lean's own axioms and on the ones
 `bv_decide` adds, one a call: each states that Lean's compiled LRAT checker
 accepted a SAT solver's certificate for one bit-vector identity of the S-box
-circuit, a round step, or the batch layout. `#bv_axioms` fails on any other.
+circuit, a round step, a key schedule step, or the batch layout. `#bv_axioms` fails on any other.
 -/
 
 open Lean Elab Command in
@@ -34,3 +34,5 @@ elab "#bv_axioms " id:ident : command => do
 
 #bv_axioms encrypt_batch_spec
 #bv_axioms encrypt_block_spec
+#bv_axioms new_schedule_spec
+#bv_axioms schedule_encrypt_block

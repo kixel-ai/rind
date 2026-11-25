@@ -55,21 +55,16 @@ those inputs, in any worktree, restores in under a second.
 - `aarch64/bignum_eq.ml`: `BIGNUM_EQ_CORRECT`, s2n-bignum's proof of
   `bignum_eq` on the block in `low::aarch64::bignum_eq::bignum_eq`, which is
   s2n-bignum's routine without its `ret`.
-- `aarch64/sha512_block_data_order_hw.ml`: `SHA512_HW_SUBROUTINE_CORRECT`,
-  rind's proof that the naked function
-  `low::aarch64::sha512::sha512_block_data_order_hw`, aws-lc's routine for
-  the SHA-512 instructions, computes s2n-bignum's FIPS 180-4 spec,
-  `sha512_hash_blocks`, and stores it to the state. A naked function's object
-  code is its whole section with its relocations and the read-only data they
-  reach, here the round constants, which `admin/prove` extracts as an object
-  file; the proof checks the constants against FIPS 180-4's.
 - `x86_64/sha512_block_data_order_avx2.ml`:
   `SHA512_AVX2_SUBROUTINE_CORRECT`, rind's proof that the naked function
   `low::x86_64::sha512::sha512_block_data_order_avx2`, OpenSSL's routine for
   AVX2, computes s2n-bignum's FIPS 180-4 spec, `sha512_hash_blocks`, and
-  stores it to the state, as `sha256`'s above, on s2n-bignum's x86 model with
-  the instructions rind's fork adds (`thirdparty/s2n-bignum/RIND.md`); the proof checks its round
-  constants against FIPS 180-4's. Its stack frame, which the routine aligns
+  stores it to the state, on s2n-bignum's x86 model with
+  the instructions rind's fork adds (`thirdparty/s2n-bignum/RIND.md`). A
+  naked function's object code is its whole section with its relocations and
+  the read-only data they reach, here the round constants, which
+  `admin/prove` extracts as an object file; the proof checks the constants
+  against FIPS 180-4's. Its stack frame, which the routine aligns
   down to 2048 bytes, lies in the 3440 bytes below the stack pointer.
 - `x86_64/sha256_block_data_order_avx2.ml`:
   `SHA256_AVX2_SUBROUTINE_CORRECT`, rind's proof that the naked function
@@ -109,6 +104,9 @@ those inputs, in any worktree, restores in under a second.
   frame of up to `8k + 1088` bytes below the stack pointer, aligned and probed
   a page at a time, and the callee-saved registers it restores. The function
   has no relocations, so its object is its section alone.
+  `Rind/X86_64/RsaMont.lean` restates it as the axiom `nohw_spec`, about the
+  Rust wrapper `low::x86_64::mont::nohw`, for widths below `2^32`, which the
+  routine's `mov r9d, r9d` needs.
 - `x86_64/sha256_compress_blocks_shaext.ml` and
   `x86_64/sha256_finish_shaext.ml`: `SHA256_COMPRESS_BLOCKS_SHAEXT_CORRECT`
   and `SHA256_FINISH_SHAEXT_CORRECT`, rind's proofs that the blocks in
@@ -279,7 +277,11 @@ than `2^32 - 1` blocks as VG's does. `Rind/Aarch64/VgPbkdf2.lean` restates
 VG's theorems about the aarch64 PBKDF2 routines rind runs, each variant's
 `pbkdf2F`, as one axiom per hash about `low::aarch64::pbkdf2_vg::Pbkdf2::derive`,
 and `Rind/Aarch64/Pbkdf2Vg.lean` proves `pbkdf2::Secret` from them, as "What
-is proven" lists.
+is proven" lists. `Rind/Aarch64/VgSha512.lean` restates VG's theorem about
+its SHA-512 block function for the SHA-512 instructions, an internal routine
+whose contract, `compressAArch64`, is in VG's proofs, as an axiom about
+`low::aarch64::sha512::compress_hw`, from which it proves the wrapper
+computes `Rind/Sha2.lean`'s `compress`.
 
 `Rind/VgOutcome.lean` and `Rind/<Arch>/VgMlKem.lean` restate VG's contracts
 for the ML-KEM-768 routines rind runs as one axiom per wrapper in
@@ -571,21 +573,30 @@ no axiom stands in for HACL*'s proof of them. `chacha20_mask` assumes only
 implies. armv7's translation also reaches the AES-GCM API, below.
 
 The bitsliced AES armv7 runs with neither NEON nor the crypto extension,
-`low/generic/aes_nohw.rs` in 32-bit words, is proven up to its key schedule:
-`encrypt_block_spec` in `Rind/Armv7/AesNohwBlock.lean` proves that
-`Schedule::encrypt_block` is `cipherRounds`, Vale's `eval_cipher` for the
-schedule's number of rounds, on the round keys the schedule holds, and
-`encrypt_batch_spec` the same of both blocks of a batch. Under them,
+`low/generic/aes_nohw.rs` in 32-bit words, is proven from the key to the
+block: `new_schedule_spec` in `Rind/Armv7/AesNohwKey.lean` proves that
+`NohwKey::new` and `NohwKey::schedule` turn a 16-, 24-, or 32-byte key into a
+schedule holding Vale's `key_to_round_keys_LE` of its words, and
+`schedule_encrypt_block` that such a schedule's `encrypt_block` is Vale's
+`aes_encrypt_LE` under that key. Under them, `setup_key_128_spec`,
+`setup_key_192_spec`, and `setup_key_256_spec` state each key expansion
+against `Rind/Aes.lean`'s round key recurrences, a step of the schedule at a
+time in compact words (`rot_step`, `sub_step`, and AES-192's `step192_a` and
+`step192_b`), and `encrypt_block_spec` in `Rind/Armv7/AesNohwBlock.lean`
+proves that `Schedule::encrypt_block` is `cipherRounds`, Vale's `eval_cipher`
+for the schedule's number of rounds, on the round keys the schedule holds, and
+`encrypt_batch_spec` the same of both blocks of a batch.
 `Rind/Armv7/AesNohw.lean` proves the S-box circuit, `AesNohwRound.lean`
 `ShiftRows`, `MixColumns`, and `AddRoundKey`, and `AesNohwBatch.lean` the
-compact form and the transpose, each at every bit position by `bv_decide`,
+compact form and the transpose, each at every bit position by `bv_decide`, as
+`AesNohwKey.lean` proves each key schedule step at every byte,
 against the FIPS 197 functions Vale's spec names: `sbox` and `mixColumns` are
 irreducible definitions rather than opaque ones, so these proofs alone unfold
 them, through `sbox_eq` and `mixColumns_eq`, and `Rind/AesSbox.lean` has the
 kernel check the S-box table against a decision tree on its input's bits. No
-theorem yet states that the schedule's round keys are FIPS 197's key
-expansion, that `ctr32` is counter mode, or anything of GHASH and the GCM
-above them, so [armv7's AES-GCM](/quest/m5/verified-armv7/prove.md) has no ✓.
+theorem yet states that `ctr32` is counter mode, or anything of GHASH and the
+GCM above them, so [armv7's AES-GCM](/quest/m5/verified-armv7/prove.md) has
+no ✓.
 
 Theorems that run an entry guard assume `Runs`: rind's CPU-feature checks
 pass, which no input affects. `Rind/<Arch>/P256Table.lean` proves that each
@@ -743,11 +754,12 @@ CPU with AVX2, BMI1, BMI2, POPCNT, and SSSE3,
 whose proof is rind's HOL Light proof above,
 which `Rind/X86_64/AwsLc.lean` restates as the axiom
 `sha512_block_data_order_avx2_spec`; on aarch64 only that rind's checks pass,
-as both of aws-lc's routines there have proofs: aws-lc-verification's of its
-scalar routine, and rind's HOL Light proof above of its routine for the
-SHA-512 instructions, which `Rind/Aarch64/AwsLc.lean` restates as the axiom
-`sha512_block_data_order_hw_spec`. For both HOL Light proofs,
-`Rind/S2nSha512.lean` proves s2n-bignum's spec `Rind/Sha2.lean`'s. The
+as both routines there have proofs: aws-lc-verification's of aws-lc's
+scalar routine, and pyca/verified-garbage's Lean proof of its routine for
+the SHA-512 instructions, which `Rind/Aarch64/VgSha512.lean` restates as the
+axiom `vg_sha512_compress_sha512_spec`. For the HOL Light proof,
+`Rind/S2nSha512.lean` proves s2n-bignum's spec `Rind/Sha2.lean`'s, and for
+VG's, `Rind/VgPbkdf2.lean` proves VG's spec `Rind/Sha2.lean`'s. The
 digest API reaches each hash through function pointers too, which
 `Rind/X86_64/DigestDispatch.lean` models, and `Rind/X86_64/DigestAlgorithm.lean`
 models the `Algorithm` statics that hold them, and `Digest`, whose
@@ -815,9 +827,10 @@ coding below it; the rest has
   `pmulaccred0K3_eq` and its siblings: the same for the x86_64 routines, which
   keep FIPS 203's coefficients in the AVX2 order.
 
-ML-KEM's decompression and message coding, on x86_64 and aarch64, in
-`Rind/X86_64/MlKemCoding.lean`, which `admin/prove` also writes for aarch64.
-They are the same Rust for ML-KEM-512, 768, and 1024, and rest on no axiom:
+ML-KEM's decompression, message coding, and CBD sampling, on x86_64 and
+aarch64, in `Rind/X86_64/MlKemCoding.lean`, which `admin/prove` also writes
+for aarch64. They are the same Rust for ML-KEM-512, 768, and 1024, and rest
+on no axiom:
 
 - `decompress_spec`: `mid::mlkem::decompress::<D, L>` writes FIPS 203's
   `Decompress_D(ByteDecode_D(bytes))`, each coefficient in `[0, q)`, for
@@ -829,15 +842,36 @@ They are the same Rust for ML-KEM-512, 768, and 1024, and rest on no axiom:
   `ByteEncode_1(Compress_1(f))` of a polynomial `f`, given Rust coefficients
   each in `[0, q)` and equal to `f`'s modulo `q` (`Holds 0 3328`), so its
   caller must show the coefficients canonical, not only congruent: `-1`
-  stands for the same element as 3328 but does not meet it.
+  stands for the same element as 3328 but does not meet it;
+- `sample_cbd2_spec`, `sample_cbd3_spec`: `mid::mlkem::sample_cbd2` and
+  `sample_cbd3` write FIPS 203's `SamplePolyCBD_2` and `SamplePolyCBD_3` of
+  their bytes, each coefficient in `[-η, η]` (`Holds (-η) η`). Each sums the
+  bits of a field of its word at once with masked adds, which `cbd2_field`
+  and `cbd3_field` show carry nothing from one field into the next, by
+  arithmetic rather than `bv_decide`.
+
+On aarch64, where s2n-bignum has no routine for them, rind runs
+`low::generic::mlkem`'s Rust for ciphertext compression and 12-bit
+unpacking, which `Rind/Aarch64/MlKemGeneric.lean` proves, on no axiom:
+
+- `compress_spec`, and `mlkem_compress_d4_spec` to `mlkem_compress_d11_spec`
+  for its wrappers: `compress::<D, L>` writes FIPS 203's
+  `ByteEncode_D(Compress_D(f))` for coefficients in `[0, q)`. Its multiply
+  and shift is the rounded quotient only on that range, which
+  `compress_exact_4` and its siblings check value by value, as the Rust test
+  `compress_is_exact` does;
+- `mlkem_frombytes_spec`: `mlkem_frombytes` writes each raw 12-bit field, in
+  `[0, 4096)`, so each coefficient is `ByteDecode_12`'s modulo `q` but not
+  yet reduced (`Holds 0 4095`); the `mlkem_reduce` after it, whose axiom is
+  the quest's, makes it canonical.
 
 `Rind/MlKemCoding.lean` states what they need of the spec, with no Rust:
 `ByteEncode_bit`, `ByteDecode_get`, and `SamplePolyCBD_get` give each bit or
 coefficient of FIPS 203's `ByteEncode`, `ByteDecode`, and `SamplePolyCBD`,
 which the spec writes as loops, and `Compress_val` and `Decompress_val` give
 `Compress` and `Decompress`, which it writes as rounded rationals, as
-quotients of naturals. Nothing above these three calls them yet: K-PKE, the
-Fujisaki-Okamoto transform, the samplers, and the other encodings are the
+quotients of naturals. Nothing above these calls them yet: K-PKE, the
+Fujisaki-Okamoto transform, SampleNTT, and the other encodings are the
 quest's.
 
 Ed25519 on x86_64 and aarch64, from the signature API's `ed25519::KeyPair`
@@ -1301,8 +1335,13 @@ theorem `Runs`, `Sha256Blocks`, messages of at most `maxInput` bytes, and
 return their results at the modulus's width of k words, and
 `IfmaCheckReturns`, that the CPU check for AVX-512 IFMA returns.
 `Rind/X86_64/RsaMont.lean`'s `mont_products` proves it at 16 and 32 words
-with BMI2 and ADX, from s2n-bignum's theorems, and from `AwsLcMont`, that
-aws-lc's unproven routines return theirs, at every other width and CPU.
+with BMI2 and ADX, from s2n-bignum's theorems; on any CPU at a width that is
+under eight words or not a multiple of four, from `nohw_spec`, which restates
+rind's HOL Light proof of `bn_mul_mont_nohw` below, of the Linux build's
+object, so not of the macOS one ([its quest](/quest/m4/verified/apple-bytes.md));
+and from `AwsLcMont`, that
+aws-lc's unproven 4x and 8x routines return theirs, at every other width and
+CPU.
 `PublicKey::verify` reaches each algorithm's verification through a function
 pointer, and every loader encodes the key through `Buffer::write`, which
 `Rind/X86_64/RsaDispatch.lean` models for these two algorithms. On aarch64 the products are aws-lc's, so these proofs are not
@@ -1485,7 +1524,9 @@ proof after those.
   proofs that they are FIPS 203's; `Rind/MlKemCoding.lean`: FIPS 203's byte
   coding, compression, and CBD sampling bit by bit and coefficient by
   coefficient; `Rind/X86_64/MlKemCoding.lean`, on both targets: that rind's
-  decompression and message coding are FIPS 203's.
+  decompression, message coding, and CBD sampling are FIPS 203's;
+  `Rind/Aarch64/MlKemGeneric.lean`: that aarch64's Rust compression and
+  12-bit unpacking are.
 - `Rind/<Arch>/ShaBlocks.lean`: SHA-1 and SHA-256's block functions on each
   target, SHA-1's padded last blocks, and SHA-256's padded last blocks and
   finish; `Rind/Aarch64/Sha256Hw.lean`, the axiom for aarch64's routine with
