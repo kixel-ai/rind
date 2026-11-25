@@ -1,0 +1,233 @@
+#!/usr/bin/env python3
+
+# Usage: admin/ledger check | fix
+#
+# `check` fails unless the generated part of proofs/README.md's TCB & Axiom
+# Ledger, between its two markers, is the one this renders from the Lean
+# files, and `fix` rewrites it. The ledger counts every `axiom` the tracked
+# Lean files declare, by the source it restates, and the tactics and
+# attributes that make Lean trust its compiler, and lists the hand models of
+# Rust Aeneas cannot translate, from the quotes `admin/prove` checks.
+#
+# It fails on:
+# - a `sorry`, which no proof may hold;
+# - an axiom in a file no group below describes, so a new axiom says what it
+#   trusts, and a group that lists a file with none;
+# - AUDIT.md without a link to the ledger.
+#
+# This is a scan of the text, with comments and strings removed. The axioms a
+# theorem rests on, through every definition it uses, are
+# `Rind/<Arch>/Axioms.lean`'s, which Lean checks when `admin/prove` builds.
+
+import pathlib, re, subprocess, sys
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+PAGE = ROOT / "proofs" / "README.md"
+AUDIT = ROOT / "AUDIT.md"
+BEGIN = "<!-- admin/ledger: begin -->"
+END = "<!-- admin/ledger: end -->"
+HEADING = "## TCB & Axiom Ledger"
+LINK = "proofs/README.md#tcb--axiom-ledger"
+
+# Each source an axiom restates: what it is, and how far it is checked, over
+# the files that hold its axioms (a regex on the path under `proofs/Rind/`).
+# The first group that matches a file takes it.
+GROUPS = [
+    (
+        r"(X86_64|Aarch64)/S2nBignum\.lean",
+        "s2n-bignum's HOL Light theorems of its assembly",
+        "published proofs; `admin/prove bytes` checks rind's build emits the code they are about",
+    ),
+    (
+        r"(X86_64|Aarch64)/Vg[A-Za-z0-9]*\.lean",
+        "pyca/verified-garbage's Lean theorems of its assembly",
+        "published proofs; `admin/vg-binding` checks each axiom cites the theorem of its routine, and `admin/vg-bytes` that rind runs that routine's bytes",
+    ),
+    (
+        r"X86_64/ValeAesGcm\.lean",
+        "Vale's procedures for HACL\\*'s AES-GCM",
+        "published proofs; `admin/prove bytes` checks the object code",
+    ),
+    (
+        r"(X86_64|Aarch64)/AwsLc\.lean",
+        "aws-lc-verification's NSym proof of SHA-384/512 (aarch64) and rind's HOL Light proof of the AVX2 routine (x86_64)",
+        "a published proof and rind's own; `admin/prove bytes` and `admin/prove hol-light` check the object code",
+    ),
+    (
+        r"(X86_64/(CtEqual|ShaBlocks|Sha256Shaext)|Aarch64/Sha256Hw)\.lean",
+        "rind's own HOL Light proofs of its assembly, and rind's Lean proof of the SHA-256 crypto-extension routine",
+        "rind's proofs, in `proofs/hol-light/` and `Rind/Aarch64/Sha256HwAsm.lean`, checked against the bytes rind's build emits",
+    ),
+    (
+        r"X86_64/AesModesLow\.lean",
+        "HOL Light theorems of AES-CTR and AES-CBC that no proof states yet",
+        "**assumed, not proven**: [the AES modes quest](/quest/m4/verified/aes-modes.md) owns them",
+    ),
+]
+
+# The tactics and attributes after which Lean trusts its compiler, or a
+# definition's compiled body differs from its kernel one, counted outside
+# comments and strings.
+CONSTRUCTS = [
+    (
+        "`bv_decide`",
+        r"\bbv_decide\b",
+        "each call adds an axiom that Lean's compiled LRAT checker accepted a SAT solver's certificate",
+    ),
+    (
+        "`native_decide`, `decide +native`",
+        r"\bnative_decide\b|\bdecide\s*\+native\b",
+        "each adds an axiom that Lean's compiled code evaluated a proposition as the kernel would; rind's proofs avoid it",
+    ),
+    (
+        "`@[implemented_by]`, `@[extern]`",
+        r"@\[\s*(?:implemented_by|extern)\b",
+        "the compiler runs another definition than the one proofs use, as for the AES S-boxes' tables, which `sboxFast_eq` and `invSboxFast_eq` prove equal",
+    ),
+]
+
+AXIOM = re.compile(
+    r"^[ \t]*(?:@\[[^\]]*\]\s*)*(?:(?:private|protected|noncomputable|unsafe)\s+)*axiom\s+\S+", re.M
+)
+SORRY = re.compile(r"\b(?:sorry|admit|sorryAx)\b")
+
+
+def strip(src):
+    """`src` without Lean's comments, which nest, and string literals."""
+    out = []
+    i = 0
+    n = len(src)
+    while i < n:
+        if src.startswith("--", i):
+            j = src.find("\n", i)
+            i = n if j < 0 else j
+        elif src.startswith("/-", i):
+            depth = 1
+            i += 2
+            while i < n and depth:
+                if src.startswith("/-", i):
+                    depth += 1
+                    i += 2
+                elif src.startswith("-/", i):
+                    depth -= 1
+                    i += 2
+                else:
+                    i += 1
+            out.append(" ")
+        elif src[i] == '"':
+            i += 1
+            while i < n and src[i] != '"':
+                i += 2 if src[i] == "\\" else 1
+            i += 1
+            out.append('""')
+        else:
+            out.append(src[i])
+            i += 1
+    return "".join(out)
+
+
+def lean_files():
+    out = subprocess.run(
+        ["git", "-C", str(ROOT), "ls-files", "--", "proofs/*.lean"], capture_output=True, text=True, check=True
+    ).stdout.split()
+    return [(f, strip((ROOT / f).read_text())) for f in out]
+
+
+def hand_models():
+    """The Lean files `admin/prove` checks quote the Rust they model, by
+    target directory, with their lines."""
+    quoted = sorted(set(re.findall(r"^check_quote ([A-Za-z0-9_]+/[A-Za-z0-9_]+)\b", (ROOT / "admin/prove").read_text(), re.M)))
+    if not quoted:
+        sys.exit("error: admin/prove has no check_quote lines, which admin/ledger lists the hand models from")
+    by_dir, total = {}, 0
+    for q in quoted:
+        path = ROOT / "proofs" / "Rind" / (q + ".lean")
+        if not path.is_file():
+            sys.exit(f"error: admin/prove quotes into {path.relative_to(ROOT)}, which does not exist")
+        lines = len(path.read_text().splitlines())
+        by_dir.setdefault(q.split("/")[0], []).append(q.split("/")[1])
+        total += lines
+    return by_dir, len(quoted), total
+
+
+def render():
+    files = lean_files()
+    sorries = [f for f, t in files if SORRY.search(t)]
+    if sorries:
+        sys.exit(f"error: sorry in {', '.join(sorries)}; no proof may hold one")
+
+    counts = {}
+    for f, t in files:
+        n = len(AXIOM.findall(t))
+        if n:
+            counts[f.removeprefix("proofs/Rind/")] = n
+    rows = []
+    unplaced = dict(counts)
+    for pattern, what, status in GROUPS:
+        mine = {f: n for f, n in unplaced.items() if re.fullmatch(pattern, f)}
+        if not mine:
+            sys.exit(f"error: admin/ledger's group for {what!r} matches no file with an axiom; remove it")
+        for f in mine:
+            del unplaced[f]
+        listed = ", ".join(f"`{f.removesuffix('.lean')}` {n}" for f, n in sorted(mine.items()))
+        rows.append(f"| {what} | {sum(mine.values())} | {listed} | {status} |")
+    if unplaced:
+        sys.exit(
+            "error: axioms in a file no group of admin/ledger describes: "
+            + ", ".join(sorted(unplaced))
+            + "; add the source each restates"
+        )
+
+    lines = [
+        f"Every `axiom` the tracked Lean files declare, {sum(counts.values())} in {len(counts)} files, `sorry` none:",
+        "",
+        "| Restates | Axioms | Files under `proofs/Rind/` | Checked |",
+        "|---|---|---|---|",
+        *rows,
+        "",
+        "Lean's compiler, trusted beyond the kernel wherever one of these appears:",
+        "",
+        "| Construct | Uses | Trusts |",
+        "|---|---|---|",
+    ]
+    for name, pattern, why in CONSTRUCTS:
+        hits = {f: len(re.findall(pattern, t)) for f, t in files}
+        hits = {f: n for f, n in hits.items() if n}
+        lines.append(f"| {name} | {sum(hits.values())} in {len(hits)} files | {why} |")
+
+    by_dir, n_files, n_lines = hand_models()
+    lines += [
+        "",
+        f"Hand models of Rust Aeneas cannot translate, {n_files} files of {n_lines:,} lines, each quoting the Rust it models:",
+        "",
+    ]
+    for d in sorted(by_dir):
+        lines.append(f"- `{d}`: " + ", ".join(f"`{m}`" for m in by_dir[d]))
+    return "\n".join(lines)
+
+
+def replace(text, body):
+    before, sep, rest = text.partition(BEGIN + "\n")
+    middle, sep2, after = rest.partition(END)
+    if not sep or not sep2:
+        sys.exit(f"error: proofs/README.md lacks the {BEGIN} and {END} markers")
+    return f"{before}{BEGIN}\n{body}\n{END}{after}"
+
+
+def main():
+    match sys.argv[1:]:
+        case ["check"]:
+            text = PAGE.read_text()
+            if HEADING + "\n" not in text:
+                sys.exit(f"error: proofs/README.md lacks the heading {HEADING!r}, which AUDIT.md links")
+            if replace(text, render()) != text:
+                sys.exit("error: proofs/README.md's TCB & Axiom Ledger is stale; run `admin/ledger fix`")
+            if f"]({LINK})" not in AUDIT.read_text():
+                sys.exit(f"error: AUDIT.md does not link {LINK}")
+        case ["fix"]:
+            PAGE.write_text(replace(PAGE.read_text(), render()))
+        case _:
+            sys.exit("usage: admin/ledger check | fix")
+
+
+main()

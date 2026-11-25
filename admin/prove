@@ -578,7 +578,9 @@ cosim() {
 # Checks pyca/verified-garbage's (VG's) code for this CPU's target against
 # VG's Lean models, so a theorem of VG's about a routine rind vendors from it
 # is about rind's machine code: `admin/import-vg-models --check` that
-# `proofs/verified-garbage` holds VG's models at its REV; `admin/vg-bytes`
+# `proofs/verified-garbage` holds VG's models at its REV; `admin/vg-binding`
+# that each routine rind vendors is one an axiom's VG theorem covers;
+# `admin/vg-bytes`
 # that VG's machine code, and each routine rind vendors, is the text VG's
 # proofs are about; and the cosimulation, which runs each distinct
 # instruction of VG's code, for `VG_COSIM_CASES` random states each from the
@@ -607,6 +609,7 @@ vg() {
     mkdir -p "$dir"
     admin/upstream verified-garbage
     admin/import-vg-models --check "$upstream"
+    admin/vg-binding "$upstream"
     hold scratch
     build_asm "$arch"
     rind_index "$arch" >/dev/null

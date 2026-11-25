@@ -215,6 +215,10 @@ module deny '(^|/)Cargo\.(toml|lock)$|^deny\.toml$' \
 # so moving code can leave one matching nothing.
 module mutants '^(rind[^/]*/src/|\.cargo/mutants\.toml$|admin/mutants$)' \
     tools='cargo-mutants python3'
+# proofs/README.md's TCB & Axiom Ledger counts the axioms the Lean files
+# declare, and fails on a `sorry` or an axiom its groups do not name.
+module ledger '^(proofs/(README\.md|.*\.lean)$|AUDIT\.md$|admin/(ledger|prove)$)' \
+    tools='python3 git' fix
 # An adapter's manifest holds both its version and its upstream requirement.
 module versions '^(rind-[^/]+/Cargo\.toml$|sh/adapter-versions\.sh$)' \
     tools='cargo jq'
@@ -672,6 +676,8 @@ step() {
         check:testing) run python3 admin/testing ;;
         check:audit) run python3 admin/audit check ;;
         fix:audit) run python3 admin/audit fix ;;
+        check:ledger) run python3 admin/ledger check ;;
+        fix:ledger) run python3 admin/ledger fix ;;
         check:compat)
             run python3 admin/x86-cpu markdown-table >"$logs/compat.md"
             run diff -u COMPATIBILITY.md "$logs/compat.md"
