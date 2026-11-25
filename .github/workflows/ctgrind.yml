@@ -218,7 +218,7 @@ jobs:
       - uses: ./.github/actions/nix
 
       - name: ctgrind tests
-        run: nix develop .#ctgrind --command admin/ctgrind adapters --release -E "binary(ctgrind) and test(pem_signing)"
+        run: nix develop .#ctgrind --command admin/ctgrind --release
         env:
           RUSTFLAGS: --cfg rind_cpu_disable
           RIND_CPU_DISABLE_aes: 1
@@ -364,11 +364,14 @@ jobs:
 
   # Consumers often build rind with LTO, which inlines it into their code and
   # reoptimizes it, or for size, where LLVM may pick a branch over a select
-  # and divides by a constant with `div`. Each row reruns the valgrind suites
-  # and BINSEC, whose division checks tell a secret dividend from a public
-  # one, under that profile on x86_64. `admin/ct-vartime` reads rlibs, which
-  # LTO never reaches, and at `opt-level = "z"` would refuse every division
-  # by a constant, almost all of public lengths.
+  # and divides by a constant with `div`; that row also uses fat LTO and one
+  # codegen unit, as consumers who optimize for size usually do, which inlines
+  # dependencies' frames that `admin/ctgrind.supp` would otherwise name. Each
+  # row reruns the valgrind suites and BINSEC, whose division checks tell a
+  # secret dividend from a public one, under that profile on x86_64.
+  # `admin/ct-vartime` reads rlibs, which LTO never reaches, and at
+  # `opt-level = "z"` would refuse every division by a constant, almost all of
+  # public lengths.
   profile:
     name: profile (${{ matrix.profile }})
     needs: select
@@ -391,7 +394,7 @@ jobs:
       - uses: ./.github/actions/nix
 
       - name: ctgrind tests
-        run: nix develop .#ctgrind --command admin/ctgrind adapters --release -E "binary(ctgrind) and test(pem_signing)"
+        run: nix develop .#ctgrind --command admin/ctgrind --release
 
       # Its own verdict, whatever ctgrind's.
       - name: ct-binsec
