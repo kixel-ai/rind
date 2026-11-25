@@ -1477,7 +1477,7 @@ extract_kdf() {
 
 # Charon's builds take target directories of their own, the portable
 # translation's apart from x86_64's: Cargo can reuse a build script's output
-# across builds whose cfgs differ, such as `just check`'s portable cross builds,
+# across builds whose cfgs differ, such as `just ci`'s portable cross builds,
 # leaving `rind_backend` naming another backend than the one compiled.
 #
 # Each is keyed by the toolchain Charon builds with, since Cargo reuses a build
