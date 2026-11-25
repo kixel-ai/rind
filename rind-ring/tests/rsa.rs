@@ -11,16 +11,19 @@ use rind_ring::{rand, signature};
 /// ones, and refuses 2560 bits, whose primes are 1280, and a 3072-bit
 /// modulus whose primes are 1537 and 1535 bits. The 2086-bit one has primes
 /// of 1028 and 1058, and the `rsa2560-unbalanced` one of 1280 and 1281, so
-/// its first prime is right and its multiple of 512 is what fails. ring
+/// its first prime is right and its multiple of 512 is what fails. The
+/// 3071-bit `rsa3071-unbalanced-q` has primes of 1536 and 1535 bits, so its
+/// first prime and its multiple of 512 pass and only its second fails. ring
 /// signs only with moduli up to 4096 bits, which rind-ring keeps though rind
 /// loads keys up to 8192 bits.
-const KEYS: [(&str, bool); 13] = [
+const KEYS: [(&str, bool); 14] = [
     ("../rind/src/high/rsa/rsa2047.der", true),
     ("../rind/src/high/rsa/rsa2048.der", true),
     ("../rind/src/high/rsa/rsa2086-unbalanced.der", false),
     ("tests/rsa/rsa2560.der", false),
     ("tests/rsa/rsa2560-unbalanced.der", false),
     ("tests/rsa/rsa3071.der", true),
+    ("tests/rsa/rsa3071-unbalanced-q.der", false),
     ("../rind/src/high/rsa/rsa3072.der", true),
     ("tests/rsa/rsa3072-unbalanced.der", false),
     ("tests/rsa/rsa4095.der", true),
@@ -233,6 +236,101 @@ fn verification_floors_match_ring() {
         ("tests/rsa/rsa3071.der", "RSA_PKCS1_3072_8192_SHA384"),
     ] {
         assert!(verified.contains(&(path, name)), "{path}, {name}");
+    }
+}
+
+/// A public key as a PKCS#1 `RSAPublicKey`, from a 128-byte modulus whose
+/// top bit is clear and an exponent of 65537.
+#[cfg(not(target_family = "wasm"))]
+fn public_key_der(n: &[u8]) -> Vec<u8> {
+    assert!(n.len() == 128 && n[0] & 0x80 == 0);
+    let mut der = vec![0x30, 0x81, 0x88, 0x02, 0x81, 0x80];
+    der.extend_from_slice(n);
+    der.extend_from_slice(&[0x02, 0x03, 0x01, 0x00, 0x01]);
+    der
+}
+
+/// A 1023-bit modulus fills 128 bytes, so ring's byte-counted floor takes it
+/// under the 1024-bit legacy algorithm, through both entry points, as
+/// `rind::rsa::PublicKey` itself would refuse it, and under no algorithm
+/// whose floor is higher.
+// ring does not build for wasm.
+#[cfg(not(target_family = "wasm"))]
+#[test]
+fn legacy_floor_counts_bytes() {
+    let n = read("tests/rsa/rsa1023.n");
+    let e = [1, 0, 1];
+    let signature = read("tests/rsa/rsa1023.sig");
+    let public = public_key_der(&n);
+
+    macro_rules! algorithms {
+        ($($name:ident),*) => {
+            [$((stringify!($name), &signature::$name, &ring::signature::$name)),*]
+        };
+    }
+    let mut verified = Vec::new();
+    for (name, ours, theirs) in algorithms![
+        RSA_PKCS1_1024_8192_SHA256_FOR_LEGACY_USE_ONLY,
+        RSA_PKCS1_2048_8192_SHA256
+    ] {
+        let theirs_verifies = ring::signature::UnparsedPublicKey::new(theirs, &public)
+            .verify(b"message", &signature)
+            .is_ok();
+        let ours_verifies = signature::UnparsedPublicKey::new(ours, &public)
+            .verify(b"message", &signature)
+            .is_ok();
+        assert_eq!(ours_verifies, theirs_verifies, "{name}");
+        let (n, e) = (&n[..], &e[..]);
+        let theirs_components = ring::rsa::PublicKeyComponents { n, e }
+            .verify(theirs, b"message", &signature)
+            .is_ok();
+        let ours_components = rind_ring::rsa::PublicKeyComponents { n, e }
+            .verify(ours, b"message", &signature)
+            .is_ok();
+        assert_eq!(ours_components, theirs_components, "{name}, components");
+        assert_eq!(theirs_verifies, theirs_components, "{name}, ring");
+        if theirs_verifies {
+            verified.push(name);
+        }
+    }
+    // The control: ring takes it, so the test checks the floor.
+    assert_eq!(verified, ["RSA_PKCS1_1024_8192_SHA256_FOR_LEGACY_USE_ONLY"]);
+}
+
+/// Both SHA-1 verifiers take a valid SHA-1 signature, as ring's do, through
+/// both entry points; no other test signs with SHA-1.
+// ring does not build for wasm.
+#[cfg(not(target_family = "wasm"))]
+#[test]
+fn sha1_verification_matches_ring() {
+    let key = rind::rsa::KeyPair::from_pkcs1(&read("../rind/src/high/rsa/rsa2048.der")).unwrap();
+    let public = key.public_key().as_ref();
+    let fields = components(&read("../rind/src/high/rsa/rsa2048.der"));
+    let (n, e) = (&fields[0], &fields[1]);
+    // `openssl dgst -sha1 -sign rsa2048.der -keyform DER` over "message".
+    let signature = read("tests/rsa/rsa2048-sha1.sig");
+
+    macro_rules! algorithms {
+        ($($name:ident),*) => {
+            [$((stringify!($name), &signature::$name, &ring::signature::$name)),*]
+        };
+    }
+    for (name, ours, theirs) in algorithms![
+        RSA_PKCS1_1024_8192_SHA1_FOR_LEGACY_USE_ONLY,
+        RSA_PKCS1_2048_8192_SHA1_FOR_LEGACY_USE_ONLY
+    ] {
+        ring::signature::UnparsedPublicKey::new(theirs, public)
+            .verify(b"message", &signature)
+            .expect(name);
+        signature::UnparsedPublicKey::new(ours, public)
+            .verify(b"message", &signature)
+            .expect(name);
+        ring::rsa::PublicKeyComponents { n, e }
+            .verify(theirs, b"message", &signature)
+            .expect(name);
+        rind_ring::rsa::PublicKeyComponents { n, e }
+            .verify(ours, b"message", &signature)
+            .expect(name);
     }
 }
 

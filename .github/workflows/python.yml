@@ -25,7 +25,7 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
-  # The dev shell's, which the tests and `just check` use.
+  # The dev shell's, which the tests and `just ci` use.
   MATURIN_VERSION: "1.15.0"
 
 jobs:

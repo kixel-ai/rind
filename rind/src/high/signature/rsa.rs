@@ -314,7 +314,7 @@ where
     }
 }
 
-/// An RSA public key, with a modulus of 1024 to 8192 bits, which verifies
+/// An RSA public key, with a modulus of 1017 to 8192 bits, which verifies
 /// with any [`VerificationAlgorithm`] whose floor it meets.
 ///
 /// Its bytes are its PKCS#1 `RSAPublicKey` DER, however it was loaded.

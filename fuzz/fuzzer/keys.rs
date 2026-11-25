@@ -16,6 +16,7 @@
 //! each public key from its private key.
 
 use std::marker::PhantomData;
+use std::sync::Mutex;
 
 use aws_lc_rs::agreement::ParsedPublicKeyFormat as Format;
 use aws_lc_rs::encoding::{AsBigEndian, AsDer};
@@ -1288,16 +1289,37 @@ fn slh_dsa_pkcs8<P: our_slh_dsa::ParameterSet, R: slh_dsa::ParameterSet>(input: 
     let again = our_slh_dsa::KeyPair::<P>::from_pkcs8(pkcs8.as_ref()).unwrap();
     assert_eq!(again.public_key().as_ref(), public.as_ref());
 
-    // Each verifies what the other signs.
-    let message = b"rind";
-    let signature = ours.sign(message).unwrap();
-    let signature = slh_dsa::Signature::<R>::try_from(signature.as_ref()).unwrap();
-    theirs.as_ref().verify(message, &signature).unwrap();
-    let signature = theirs.try_sign_with_context(message, b"", None).unwrap();
-    public.verify(message, &signature.to_bytes()).unwrap();
+    // Each verifies what the other signs. A signature costs seconds natively
+    // and most of a minute under SDE, and the corpus keeps dozens of keys of
+    // one set, so each tier of fuzz.yml's SDE replay spent its hour signing. sh/fuzz-replay.sh asks that replay to
+    // sign only the first key of each set; the other runs sign every key.
+    if sign::<P>() {
+        let message = b"rind";
+        let signature = ours.sign(message).unwrap();
+        let signature = slh_dsa::Signature::<R>::try_from(signature.as_ref()).unwrap();
+        theirs.as_ref().verify(message, &signature).unwrap();
+        let signature = theirs.try_sign_with_context(message, b"", None).unwrap();
+        public.verify(message, &signature.to_bytes()).unwrap();
+    }
 
     slh_dsa_public::<P, R>(public.as_ref());
     slh_dsa_spki::<P, R>(public.to_spki().as_ref());
+}
+
+/// Whether to sign with this key: always, unless `RIND_FUZZ_SIGN_ONCE` limits
+/// the process to the first key of each parameter set `P`.
+fn sign<P>() -> bool {
+    static SEEN: Mutex<Vec<&str>> = Mutex::new(Vec::new());
+    if std::env::var_os("RIND_FUZZ_SIGN_ONCE").is_none() {
+        return true;
+    }
+    let name = std::any::type_name::<P>();
+    let mut seen = SEEN.lock().unwrap();
+    let first = !seen.contains(&name);
+    if first {
+        seen.push(name);
+    }
+    first
 }
 
 fn slh_dsa_public<P: our_slh_dsa::ParameterSet, R: slh_dsa::ParameterSet>(input: &[u8]) {
