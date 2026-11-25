@@ -8,7 +8,7 @@ An outside firm has begun the Phase 1 audit that [AUDIT-SCOPE.md](/AUDIT-SCOPE.m
 
 The scope is written and the funding file is a stub of facts and links; the pitch, the budget, and contacting anyone are the maintainer's. Nothing here an agent can do: engaging an auditor and submitting applications act in the maintainer's name.
 
-When an audit is under way, finish this quest by deleting `AUDIT-FUNDING.md` and rewriting README's "no one outside the project has audited it" and AUDIT.md's scope link to say what was audited, at which commit.
+Keep the "no one outside the project has audited it" warning in README.md during fieldwork. Once the final report names what was reviewed and at which commit, finish this quest by deleting `AUDIT-FUNDING.md` and updating README.md, AUDIT.md, and AUDIT-SCOPE.md together to say what was audited.
 
 ## Waiting
 

@@ -20,15 +20,16 @@ import pathlib, re, subprocess, sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
-# Post-quantum code, wherever it sits: ML-KEM, ML-DSA, and SLH-DSA.
-PQ = re.compile(r"(^|/)(mlkem|mldsa|slhdsa|slh_dsa|ml_kem|ml_dsa)")
+# Signature-scheme code, wherever it sits: ML-DSA and SLH-DSA. ML-KEM is Phase 1,
+# since the default TLS key exchange, X25519MLKEM768, runs it.
+PQ = re.compile(r"(^|/)(mldsa|slhdsa)")
 
 # What a file under `rind/src/mid` or `rind/src/high` is for, by its stem.
 # Anything not listed here is Phase 1: a primitive or encoding a TLS stack
 # reaches. The Phase 2 ones are reached by no TLS handshake.
-MID_PHASE2 = re.compile(r"^(argon2|blake2b|pbkdf2_vg|ristretto255(_tests)?)\.rs$|^(mlkem|mldsa|slhdsa)|(^|/)hash_to_curve")
+MID_PHASE2 = re.compile(r"^(argon2|blake2b|pbkdf2_vg|ristretto255(_tests)?)\.rs$|^(mldsa|slhdsa)|(^|/)hash_to_curve")
 HIGH_PHASE2 = re.compile(
-    r"^(argon2|pbkdf2|hpke|kem|oprf|frost|spake2plus|vrf|blind_rsa|hmac_drbg)(\.rs|/)"
+    r"^(argon2|pbkdf2|hpke|oprf|frost|spake2plus|vrf|blind_rsa|hmac_drbg)(\.rs|/)"
 )
 
 # Other crates, by directory: Phase 1 is the TLS provider boundary, Phase 2
@@ -46,8 +47,8 @@ OUT = (
 # by name, from proofs/README.md's Layout; the ledger there is authoritative.
 LEAN_MODEL = re.compile(
     # Hand models and instruction models, in any directory.
-    r"(Model|External|Dispatch|Simd|Neon|NeonVectors|Avx512Vectors|Lanes512)\.lean$"
-    r"|^proofs/Rind/(SymCrypt|Portable)/(?!.*(Entry|Compare|CtEqual|ShaBlocks))"
+    r"(Model|External|Dispatch|Compare|DigestAlgorithm|Simd|Neon|NeonVectors|Avx512Vectors|Lanes512)\.lean$"
+    r"|^proofs/Rind/(SymCrypt/|Portable/Keccak\.lean)"
     # The specs `proofs/Rind` states its theorems against, at its top level.
     r"|^proofs/Rind/(Core|Spec|Bytes|HashSpec|GhashSpec|Gf128|Vale|ValeBytes|Lanes|Keccak|Sha2|AesInverse|Aes|AesModes"
     r"|AesModesBytes|AesKw|Rsa|Ed25519|MlKem|S2nChaCha20Poly1305|S2nMlKem|S2nSha256|S2nSha512)\.lean$"
@@ -99,12 +100,12 @@ def classify(f):
             else:
                 layer, tail = "`low` shared files", "/".join(rest[1:])
             if PQ.search(tail) or re.search(r"(^|/)argon2\.rs$", tail):
-                return "2", f"{layer}: post-quantum and Argon2 kernels"
+                return "2", f"{layer}: ML-DSA, SLH-DSA, and Argon2 kernels"
             return "1", f"{layer}"
         if rest[0] == "mid":
             name = "/".join(rest[1:])
             if MID_PHASE2.search(name):
-                kind = "post-quantum" if PQ.search(name) else "KDF, hash-to-curve, and ristretto255"
+                kind = "ML-DSA and SLH-DSA" if PQ.search(name) else "KDF, hash-to-curve, and ristretto255"
                 return "2", f"`mid`: {kind}"
             return "1", "`mid`: primitives and constructions"
         if rest[0] == "high":

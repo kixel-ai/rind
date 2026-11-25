@@ -24,11 +24,16 @@ shape the second.
   caller's bytes reach first, the `rind-rustls` provider boundary, and the
   formal-verification trusted computing base (what a proof assumes rather than
   proves).
-- **Phase 2** is the rest of what rind publishes: ML-KEM, ML-DSA, SLH-DSA,
-  Argon2id, ristretto255, hash-to-curve, the protocols built on them (HPKE,
-  OPRF, FROST, SPAKE2+, ECVRF, blind RSA), the other adapters, and the
+- **Phase 2** is the rest of what rind publishes: ML-DSA, SLH-DSA,
+  Argon2id, ristretto255, hash-to-curve, the protocols (HPKE, OPRF, FROST,
+  SPAKE2+, ECVRF, blind RSA), the other adapters, and the
   bindings (`rind-python`, `rind-dart`, `rind-openssl`), which add `unsafe`
   and a C ABI. `rind-fips` is in it only once it is published.
+
+ML-KEM is in Phase 1, not Phase 2, because `rind-rustls` offers
+`X25519MLKEM768` first by default, so a TLS 1.3 handshake runs it. HPKE is in
+Phase 2 as rind's own `hpke` module, while `rind-rustls`'s glue for rustls's
+HPKE trait is in Phase 1 with the rest of the provider.
 
 Phase 1 comes first because a flaw there reaches every user, and because Phase
 2's protocols and bindings call Phase 1's code: an auditor who has read it
@@ -58,19 +63,19 @@ is authoritative.
 |---|---:|---:|---:|
 | HOL Light: rind's proofs of its own assembly | 19 | 24,408 | 0 |
 | Lean TCB: files that state axioms | 23 | 5,539 | 0 |
-| Lean TCB: hand models, ISA models, and transliterated specs | 136 | 37,318 | 0 |
-| Lean: proofs and Aeneas glue (machine-checked) | 128 | 50,837 | 0 |
-| `high`: keys, signatures, encodings, and hashing | 27 | 15,819 | 0 |
-| `low/aarch64` | 268 | 5,796 | 200,251 |
+| Lean TCB: hand models, ISA models, and transliterated specs | 136 | 37,492 | 0 |
+| Lean: proofs and Aeneas glue (machine-checked) | 128 | 50,663 | 0 |
+| `high`: keys, signatures, encodings, and hashing | 28 | 16,581 | 0 |
+| `low/aarch64` | 280 | 6,347 | 203,051 |
 | `low/arm` | 31 | 2,716 | 15,599 |
-| `low/generic` | 37 | 10,877 | 0 |
+| `low/generic` | 40 | 11,278 | 0 |
 | `low/portable` | 12 | 1,106 | 0 |
-| `low/x86_64` | 425 | 14,252 | 401,318 |
+| `low/x86_64` | 449 | 15,596 | 408,678 |
 | `low` shared files | 15 | 5,297 | 0 |
-| `mid`: primitives and constructions | 33 | 14,112 | 42,161 |
+| `mid`: primitives and constructions | 35 | 16,062 | 42,161 |
 | `rind-rustls`: the TLS provider | 13 | 3,600 | 0 |
 | `rind` crate root: public API and errors | 7 | 2,641 | 0 |
-| **Total** | **1,174** | **194,318** | **659,329** |
+| **Total** | **1,216** | **199,326** | **669,489** |
 
 Lean `axiom` declarations: 173 in 23 files. `sorry`: 0.
 
@@ -78,19 +83,19 @@ Lean `axiom` declarations: 173 in 23 files. `sorry`: 0.
 
 | Area | Files | Hand-written lines | Generated lines |
 |---|---:|---:|---:|
-| `high`: protocols (HPKE, OPRF, FROST, SPAKE2+, VRF, blind RSA, KDFs) | 14 | 12,221 | 0 |
-| `low/aarch64`: post-quantum and Argon2 kernels | 30 | 1,651 | 6,974 |
-| `low/generic`: post-quantum and Argon2 kernels | 5 | 1,288 | 0 |
-| `low/x86_64`: post-quantum and Argon2 kernels | 46 | 2,396 | 19,189 |
+| `high`: protocols (HPKE, OPRF, FROST, SPAKE2+, VRF, blind RSA, KDFs) | 13 | 11,459 | 0 |
+| `low/aarch64`: ML-DSA, SLH-DSA, and Argon2 kernels | 18 | 1,100 | 4,174 |
+| `low/generic`: ML-DSA, SLH-DSA, and Argon2 kernels | 2 | 887 | 0 |
+| `low/x86_64`: ML-DSA, SLH-DSA, and Argon2 kernels | 22 | 1,052 | 11,829 |
 | `mid`: KDF, hash-to-curve, and ristretto255 | 9 | 2,924 | 0 |
-| `mid`: post-quantum | 4 | 4,985 | 0 |
+| `mid`: ML-DSA and SLH-DSA | 2 | 3,035 | 0 |
 | `rind-dart`: Dart FFI | 18 | 5,389 | 0 |
 | `rind-fips`: FIPS module (unpublished) | 38 | 10,662 | 0 |
 | `rind-openssl`: OpenSSL 3 provider | 7 | 2,618 | 0 |
 | `rind-python`: Python bindings | 12 | 2,027 | 0 |
 | `rind` FIPS build glue | 3 | 1,345 | 0 |
 | other `rind-<consumer>` adapters | 60 | 13,087 | 0 |
-| **Total** | **246** | **60,593** | **26,163** |
+| **Total** | **204** | **55,585** | **16,003** |
 
 ### Phase 1 in more detail
 
@@ -106,8 +111,8 @@ Where the hand-written lines are, and what the reviewer does with each:
   that runs wherever rind has no assembly. These are the code a non-x86_64,
   non-aarch64 deployment runs, and they are the only code Miri executes.
 - **`mid`**: constructions over the kernels: AEADs, SHA-2 and SHA-3, the NIST
-  curves, X25519, Ed25519, RSA (with its key-size floors), and the random
-  source. Its generated lines are the NIST curves' precomputed tables
+  curves, X25519, Ed25519, RSA (with its key-size floors), ML-KEM, and the
+  random source. Its generated lines are the NIST curves' precomputed tables
   (`admin/p256-precomp` and its siblings).
 - **`high`** (the Phase 1 half): key and signature types, ASN.1, PKCS#1/#8,
   SEC1, and SPKI parsing, ECDSA, RSA, hashing, and constant-time compare. It
@@ -134,7 +139,7 @@ says how to run them. The ones an auditor will want:
 | What | Command | Notes |
 |---|---|---|
 | Unit tests, vectors, differential tests | `nix develop --command cargo test --workspace` | Wycheproof, CAVP, ACVP, CCTV, and RFC vectors, and aws-lc-rs as a differential oracle. `SLOW_TESTS=1` adds the large sets. |
-| CI's whole gate | `nix develop --command just ci` | Lints, structure, license, adapter-API, and constant-time scans among them. |
+| CI's whole gate | `nix develop --command just gate` | CI's gate over every crate, with the lints, structure, license, adapter-API, and constant-time scans among them. `just ci` and `just check` pick checks from the branch's diff, so on a clean checkout of a tag they can skip the ones a source change would trigger. |
 | Constant time under valgrind | `nix develop .#ctgrind --command admin/ctgrind` | Weekly in CI. Sees only the paths the tests take. |
 | Constant time, symbolically | `nix develop .#binsec --command admin/ct-binsec` | Checks each `ct_binsec_...` region for every secret. |
 | Constant time under SDE and qemu | `nix develop .#sde --command admin/ct-sde`; `nix develop .#ct-qemu --command admin/ct-qemu` | The AVX-512, VAES, SHA extension, and armv7 crypto paths valgrind cannot run. |
@@ -230,7 +235,7 @@ For both phases:
   reproducible, and the CI configuration, which the threat model excludes.
 - Performance.
 
-Phase 1 also leaves out Phase 2's code: ML-KEM, ML-DSA, SLH-DSA, Argon2id,
+Phase 1 also leaves out Phase 2's code: ML-DSA, SLH-DSA, Argon2id,
 ristretto255, hash-to-curve, the protocols, the other adapters, and the
 bindings.
 
@@ -239,7 +244,7 @@ bindings.
 Each finding names the commit, the file and lines, the property of the four
 above it breaks (or the model assumption it challenges), and a reproduction
 or a failing test where one exists. Findings go to the maintainer privately as
-[SECURITY.md](SECURITY.md#reporting-a-vulnerability) says, and a confirmed one
-gets a GitHub and RustSec advisory. The auditor should also state what they
+[SECURITY.md](SECURITY.md#reporting-a-vulnerability) says; a fixed vulnerability gets the advisories
+[SECURITY.md](SECURITY.md#supported-versions) describes. The auditor should also state what they
 read and did not, per row of the inventory above, so the report says which
 parts of Phase 1 have been looked at and which have not.
