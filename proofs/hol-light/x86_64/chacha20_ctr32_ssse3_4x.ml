@@ -2184,3 +2184,66 @@ let CHACHA_STEP = prove
   REWRITE_TAC[READ_CHACHA_BNUM_SPLIT] THEN ASM_REWRITE_TAC[READ_CHACHA_BNUM_256] THEN
   CONV_TAC(ONCE_DEPTH_CONV EXPAND_CASES_CONV THENC NUM_REDUCE_CONV) THEN
   REWRITE_TAC[WORD_ADD_0; ADD_CLAUSES; GSYM CHACHA_BNUM_XOR] THEN ASM_REWRITE_TAC[ETA_AX]);;
+
+(* ------------------------------------------------------------------------- *)
+(* The last group, 256 bytes or fewer, 0x618 to 0x9cf.                        *)
+(* ------------------------------------------------------------------------- *)
+
+let CHACHA_DONE =
+  `\s. read RIP s = word(pc + 0x9cf) /\ read RSP s = stk /\
+       read (memory :> bytes(buf,n)) s =
+       chacha_bnum (\j. word_xor ((mf:num->byte) j) (chacha20_kbyte key counter nonce j)) 0 n`;;
+
+let CHACHA_LAST_GOAL =
+  let tm = mk_imp(mk_conj(CHACHA_GROUP_HYPS, `256 * g < n /\ n <= 256 * g + 256`),
+   list_mk_icomb "ensures" [`x86`; chacha_group `g:num`; CHACHA_DONE; CHACHA_GROUP_FRAME]) in
+  list_mk_forall(frees tm, tm);;
+
+let CHACHA_TAIL_AT =
+  INST [`word_add buf (word(256 * g)):int64`,`a:int64`; `n - 256 * g`,`n:num`; `256 * g`,`p:num`;
+        `chacha20_kbyte key counter nonce`,`kf:num->byte`] (SPEC_ALL CHACHA_TAIL);;
+
+let VAL_CHACHA_GROUP = prove
+ (`!buf:int64 n g. val buf + n <= 2 EXP 64 /\ 256 * g < n
+                   ==> val(word_add buf (word(256 * g))) + (n - 256 * g) <= 2 EXP 64`,
+  REPEAT STRIP_TAC THEN REWRITE_TAC[VAL_WORD_ADD; VAL_WORD; DIMINDEX_64] THEN
+  SUBGOAL_THEN `256 * g < 2 EXP 64` (fun th -> REWRITE_TAC[MATCH_MP MOD_LT th]) THENL
+   [ASM_ARITH_TAC; ALL_TAC] THEN
+  MP_TAC(SPECL [`val(buf:int64) + 256 * g`; `2 EXP 64`] MOD_LE) THEN ASM_ARITH_TAC);;
+
+let CHACHA_LAST = prove
+ (CHACHA_LAST_GOAL,
+  REWRITE_TAC[SOME_FLAGS] THEN REPEAT GEN_TAC THEN STRIP_TAC THEN
+  MP_TAC(SPECL [`buf:int64`; `n:num`; `g:num`] VAL_CHACHA_GROUP) THEN
+  ANTS_TAC THENL [ASM_REWRITE_TAC[]; DISCH_TAC] THEN
+  ASM_CASES_TAC `n = 256 * g + 256` THENL
+   [(* A whole group: its XOR, then out of the loop. *)
+    SUBGOAL_THEN `n - 256 * g = 256` ASSUME_TAC THENL [CHACHA_ARITH_TAC; ALL_TAC] THEN
+    ENSURES_INIT_TAC "s0" THEN
+    FIRST_X_ASSUM(MP_TAC o check (can (term_match []
+      `read (memory :> bytes(word_add buf (word(256 * g)),n - 256 * g)) s = x`) o concl)) THEN
+    ASM_REWRITE_TAC[READ_CHACHA_BNUM_256] THEN
+    CONV_TAC(LAND_CONV(EXPAND_CASES_CONV THENC NUM_REDUCE_CONV)) THEN
+    REWRITE_TAC[WORD_ADD_0; ADD_CLAUSES] THEN STRIP_TAC THEN
+    SUBGOAL_THEN `val(word(n - 256 * g):int64) = n - 256 * g` ASSUME_TAC THENL
+     [ASM_REWRITE_TAC[] THEN CONV_TAC(LAND_CONV WORD_REDUCE_CONV) THEN REFL_TAC; ALL_TAC] THEN
+    MP_TAC(REWRITE_RULE[WORD_ADD_0] CHACHA_XOR256_AT) THEN ANTS_TAC THENL
+     [ASM_REWRITE_TAC[] THEN REPEAT CONJ_TAC THEN TRY CHACHA_ARITH_TAC THEN NONOVERLAPPING_TAC;
+      ALL_TAC] THEN
+    RULE_ASSUM_TAC(REWRITE_RULE[WORD_ADD_0]) THEN
+    ASM_REWRITE_TAC[SOME_FLAGS] THEN X86_BIGSTEP_TAC CHACHA_EXEC "s1" THEN
+    X86_STEPS_TAC CHACHA_EXEC (2--3) THEN ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
+    REWRITE_TAC[READ_CHACHA_BNUM_SPLIT; ADD_CLAUSES] THEN ASM_REWRITE_TAC[READ_CHACHA_BNUM_256] THEN
+    CONV_TAC(ONCE_DEPTH_CONV EXPAND_CASES_CONV THENC NUM_REDUCE_CONV) THEN
+    REWRITE_TAC[WORD_ADD_0; ADD_CLAUSES; GSYM CHACHA_BNUM_XOR] THEN ASM_REWRITE_TAC[ETA_AX];
+    (* Fewer: the tail. *)
+    ENSURES_INIT_TAC "s0" THEN
+    MP_TAC CHACHA_TAIL_AT THEN ANTS_TAC THENL
+     [ASM_REWRITE_TAC[] THEN REPEAT CONJ_TAC THEN TRY CHACHA_ARITH_TAC THEN NONOVERLAPPING_TAC;
+      ALL_TAC] THEN
+    ASM_REWRITE_TAC[SOME_FLAGS] THEN X86_BIGSTEP_TAC CHACHA_EXEC "s1" THEN
+    ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
+    SUBGOAL_THEN `n = 256 * g + (n - 256 * g)`
+     (fun th -> GEN_REWRITE_TAC (BINOP_CONV o ONCE_DEPTH_CONV) [th]) THENL
+     [CHACHA_ARITH_TAC; ALL_TAC] THEN
+    REWRITE_TAC[READ_CHACHA_BNUM_SPLIT; ADD_CLAUSES] THEN ASM_REWRITE_TAC[]]);;
