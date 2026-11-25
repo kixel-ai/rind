@@ -476,6 +476,119 @@ theorem split_loop_spec (K : Nat) (big small : Row) (h : Inv K big small) :
       exact ⟨h, h0⟩
   · exact h
 
+theorem wordsNat_ORDER_TIMES_8 : wordsNat mid.half_size.ORDER_TIMES_8.val = N := by
+  unfold mid.half_size.ORDER_TIMES_8
+  simp [wordsNat, Nat.ofDigits, N, n25519]
+
+theorem inv_init (K : Nat) (hK : K < 2 ^ 255) (rN rK : U256) (hN : val rN = N) (hk : val rK = K) :
+    Inv K { r := rN, t := 0#u128, from_k := false } { r := rK, t := 1#u128, from_k := true } := by
+  have h1 : (1#u128 : U128).val = 1 := rfl
+  have h0 : (0#u128 : U128).val = 0 := rfl
+  have := N_gt
+  norm_num at this hK
+  refine ⟨rfl, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, Or.inr h1⟩ <;> simp only [hN, hk, h0, h1] <;>
+    first | omega | simp [Congr, Int.ModEq]
+
+/-- What `split` needs of the row it returns. -/
+def Final (K : Nat) (r : U256) (t : U128) (from_k : Bool) : Prop :=
+  Congr K (val r) t.val from_k ∧ t.val % 2 = 1 ∧ val r < 2 ^ 255
+
+theorem odd_of_coprime {a b : Nat} (h : Nat.Coprime a b) (hb : b % 2 = 0) : a % 2 = 1 := by
+  by_contra ha
+  have h2 : 2 ∣ Nat.gcd a b := Nat.dvd_gcd (by omega) (by omega)
+  rw [h] at h2; omega
+
+@[step]
+theorem split_spec (k : Std.Array U64 4#usize) (hk : wordsNat k.val < 2 ^ 255) :
+    mid.half_size.split k ⦃ s =>
+      (if s.u_negative then -(wordsNat s.u.val : Int) else (wordsNat s.u.val : Int)) ≡
+        (wordsNat s.v.val : Int) * wordsNat k.val [ZMOD 8 * n25519] ∧
+      wordsNat s.v.val % 2 = 1 ∧ wordsNat s.v.val < 2 ^ 128 ∧ wordsNat s.u.val < 2 ^ 255 ⦄ := by
+  unfold mid.half_size.split
+  step as ⟨rN, hN⟩
+  rw [wordsNat_ORDER_TIMES_8] at hN
+  step as ⟨rK, hK⟩
+  have hinv := inv_init _ hk rN rK hN hK
+  apply WP.spec_bind (split_loop_spec _ _ _ hinv)
+  rintro ⟨big, hi, lo, st, sf⟩ ⟨hl, hhi⟩
+  simp only at hl hhi ⊢
+  set sm : Row := { r := { hi := hi, lo := lo }, t := st, from_k := sf } with hsm
+  have hsmall : val sm.r < 2 ^ 128 := by
+    have := lo.hBounds; simp only [UScalarTy.numBits] at this
+    simp only [hsm, val, hhi]; omega
+  simp only [lift, bind_ok]
+  apply WP.spec_bind (Pₘ := fun x : U256 × U128 × Bool => Final (wordsNat k.val) x.1 x.2.1 x.2.2)
+  · split
+    · rename_i hodd
+      have hodd' : st.val % 2 = 1 := by
+        have := congrArg UScalar.val hodd
+        simpa [UScalar.val_and, Nat.and_one_is_mod] using this
+      simp only [WP.spec_ok]
+      exact ⟨hl.cs, hodd', by have := hsmall; simp only [hsm] at this; omega⟩
+    · rename_i heven
+      have heven' : st.val % 2 = 0 := by
+        have hv : (st &&& 1#u128).val = st.val % 2 := by simp [UScalar.val_and, Nat.and_one_is_mod]
+        have : (st &&& 1#u128).val ≠ 1 := fun h' => heven ((UScalar.eq_equiv _ _).mpr (by rw [h']; rfl))
+        omega
+      have hbodd : big.t.val % 2 = 1 := odd_of_coprime hl.cop heven'
+      have hbig : val big.r < 2 ^ 255 := by
+        rcases hl.big_lt with h | h
+        · exact h
+        · simp only [hsm] at h; omega
+      have hfin_big : Final (wordsNat k.val) big.r big.t big.from_k := ⟨hl.cb, hbodd, hbig⟩
+      have hadd := U128.checked_add_bv_spec st big.t
+      split at hadd
+      · rename_i z hz
+        rw [hz]
+        simp only [core.option.Option.map,
+          mid.half_size.split.closure.Insts.CoreOpsFunctionFnOnceTupleU128PairU256U128.call_once]
+        apply WP.spec_bind (Pₘ := fun diff : Option (U256 × U128) =>
+          ∃ d : U256, diff = some (d, z) ∧ val d = val big.r - val sm.r)
+        · apply WP.spec_bind (Pₘ := fun m : U256 × U128 => ∃ d : U256, m = (d, z) ∧ val d = val big.r - val sm.r)
+          · apply WP.spec_bind (sub_spec big.r sm.r hl.le)
+            intro d hd
+            simp only [WP.spec_ok]
+            exact ⟨d, rfl, hd⟩
+          · rintro m ⟨d, rfl, hd⟩
+            simp only [WP.spec_ok]
+            exact ⟨d, rfl, hd⟩
+        rintro diff ⟨d, rfl, hd⟩
+        simp only
+        have hc := congr_step hl.sign hl.cb hl.cs 0 (by simpa using hl.le)
+        simp only [pow_zero, mul_one] at hc
+        have hfin_d : Final (wordsNat k.val) d z big.from_k := by
+          refine ⟨?_, ?_, ?_⟩
+          · rw [hd, hadd.2.1, Nat.add_comm st.val]; exact hc
+          · rw [hadd.2.1]; omega
+          · rw [hd]; omega
+        step*
+        split <;> simp_all [WP.spec_ok]
+      · rename_i hz
+        rw [hz]
+        simp only [core.option.Option.map, bind_ok, WP.spec_ok]
+        exact hfin_big
+  · rintro ⟨r, t, fk⟩ ⟨hc, hodd, hr⟩
+    simp only at hc hodd hr
+    step as ⟨a, ha⟩
+    step*
+    have ht := t.hBounds
+    simp only [UScalarTy.numBits] at ht
+    have hv : wordsNat (Std.Array.make 4#usize [UScalar.cast UScalarTy.U64 t, UScalar.cast UScalarTy.U64 i5,
+        0#u64, 0#u64] (by simp)).val = t.val := by
+      rw [wordsNat_make4]
+      simp only [UScalar.cast_val_eq, UScalarTy.numBits, i5_post, Nat.shiftRight_eq_div_pow]
+      have : (0#u64 : U64).val = 0 := rfl
+      rw [this]; omega
+    rw [hv, ha]
+    refine ⟨?_, hodd, ht, hr⟩
+    unfold Congr N at hc
+    push_cast at hc
+    cases fk
+    · simp only [Bool.false_eq_true, not_false_eq_true, decide_true, ↓reduceIte] at hc ⊢
+      have := hc.neg
+      simpa using this
+    · simpa using hc
+
 end HalfSize
 
 end rind.x86_64
