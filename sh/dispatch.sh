@@ -434,12 +434,12 @@ step() {
             # nextest runs the test binaries in parallel but not doc tests. Like
             # `cargo test`, it passes a selection with no tests, such as the
             # benches alone.
-            run cargo nextest run "${packages[@]}" --locked --no-tests=warn
+            run cargo nextest run "${packages[@]}" --locked --no-tests=warn --cargo-profile test-fast
             # rind's `zeroize` feature, whose impls the zeroing test holds to
             # their claim: it requires `ZeroizeOnDrop` of every type it checks.
             if names rind "${packages[@]}"; then
                 run cargo clippy -p rind --features zeroize --lib --test zeroing --locked -- --deny warnings
-                run cargo nextest run -p rind --features zeroize --test zeroing --locked
+                run cargo nextest run -p rind --features zeroize --test zeroing --locked --cargo-profile test-fast
                 # rind without the algorithms its features hold, as the
                 # adapters build it: no combination may leave dead code, a key
                 # of an algorithm left out is refused by its feature's name,
@@ -449,7 +449,7 @@ step() {
                 for features in ml-dsa slh-dsa; do
                     run cargo clippy -p rind --no-default-features --features "$features" --lib --locked -- --deny warnings
                 done
-                run cargo nextest run -p rind --no-default-features --lib --locked -E 'test(high::signature::)'
+                run cargo nextest run -p rind --no-default-features --lib --locked --cargo-profile test-fast -E 'test(high::signature::)'
             fi
             # The FIPS module's own code compiles only under its cfg, which a
             # workspace build leaves off, and only for glibc Linux on x86_64
@@ -479,7 +479,7 @@ step() {
             # Doc tests need a library. No packages at all means the workspace.
             mapfile -t libs < <(sh/select.sh "$changed" "$all" --lib)
             if ((${#libs[@]} > 0 || ${#packages[@]} == 0)); then
-                run cargo test "${libs[@]}" --locked --doc
+                run cargo test "${libs[@]}" --locked --doc --profile test-fast
                 # A broken or private intra-doc link renders as plain text on
                 # docs.rs.
                 RUSTDOCFLAGS='--deny warnings' run cargo doc "${libs[@]}" --no-deps --locked
