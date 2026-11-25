@@ -43,13 +43,24 @@ BINDINGS = "Binding fuzz targets:"
 errors = []
 
 
-def strip_comments(text):
-    return re.sub(r"//[^\n]*", "", text)
+# One alternation, so each token starts at its own leftmost delimiter and a
+# `//` inside a string, or a quote inside a comment or char literal, is inert.
+LEXEME = re.compile(
+    r"(?P<comment>//[^\n]*|/\*.*?\*/)"
+    r'|(?P<literal>r(?P<hashes>#*)".*?"(?P=hashes)|"(?:\\.|[^"\\])*"|\'(?:\\.[^\']*|[^\'\\])\')',
+    re.S,
+)
+
+
+def strip_literals(text):
+    """`text` with each comment a space and each string or char literal empty,
+    so only code's own braces, items, and attributes remain."""
+    return LEXEME.sub(lambda m: " " if m.lastgroup == "comment" else '""', text)
 
 
 def exports(path, prefix):
     """The public paths of the items `path` exports, following `pub mod`."""
-    text = strip_comments(path.read_text())
+    text = strip_literals(path.read_text())
     token = re.compile(
         r"pub mod (\w+)\s*\{|pub mod (\w+)\s*;|pub use ([^;]+);"
         r"|pub (?:static|struct|fn|enum|const|trait|type) (\w+)|(\{)|(\})"
@@ -123,14 +134,12 @@ def tests(path):
     return set(re.findall(r"#\[test\]\s*(?:#\[[^\]]*\]\s*)*fn ([a-z0-9_]+)", path.read_text()))
 
 
-def test_paths(path):
-    """The module path of each `#[test]` in `path`, as `mod::fn`, with a test a
-    macro defines counted under each module it is invoked in, and a `$name`
-    module it declares named by the invocation's argument."""
-    text = path.read_text()
-    text = re.sub(r"//[^\n]*|/\*.*?\*/", " ", text, flags=re.S)
-    text = re.sub(r'r(#*)".*?"\1|"(?:\\.|[^"\\])*"', '""', text, flags=re.S)
-    text = re.sub(r"'(?:\\.[^']*|[^'\\])'", "''", text)
+def test_paths(text):
+    """The module path of each `#[test]` in the Rust source `text`, as
+    `mod::fn`, with a test a macro defines counted under each module it is
+    invoked in, and a `$name` module it declares named by the invocation's
+    argument."""
+    text = strip_literals(text)
     tokens = re.findall(r"\$?[A-Za-z_][A-Za-z0-9_]*|[{}()\[\]!#;,]", text)
     macros = {}  # name -> [(modules relative to its body, test)]
     found = set()
@@ -194,6 +203,20 @@ def test_paths(path):
     return found
 
 
+# Parser checks: delimiters inside a literal or comment must not hide or invent
+# a test, or the completeness check below would accept an undocumented one.
+PARSER_CHECKS = [
+    ('#[test]\nfn first() { let _ = "https://example.test"; }\n#[test]\nfn second() { let _ = "ok"; }', {"first", "second"}),
+    ('#[test]\nfn a() { let _ = r#"// "x"#; }\n#[test]\nfn b() { let _ = \'"\'; }\n#[test]\nfn c() {}', {"a", "b", "c"}),
+    ('// "\n#[test]\nfn a() {}\n/* " */\n#[test]\nfn b() { let _ = "}"; }', {"a", "b"}),
+    ('#[test]\nfn a() { let _ = "/* "; }\n#[test]\nfn b() { let _ = " */"; }', {"a", "b"}),
+]
+for source, want in PARSER_CHECKS:
+    got = test_paths(source)
+    if got != want:
+        sys.exit(f"admin/testing: parser check failed: found {sorted(got)}, not {sorted(want)}, in {source!r}")
+
+
 def source_file(segments):
     for candidate in [SRC.joinpath(*segments).with_suffix(".rs"), SRC.joinpath(*segments, "mod.rs")]:
         if candidate.is_file():
@@ -213,7 +236,7 @@ for name in sorted(named - exported):
 
 fuzz_targets = set(re.findall(r'^name = "([a-z0-9_]+)"', (ROOT / "fuzz/Cargo.toml").read_text(), re.M))
 fuzz_targets.discard("rind-fuzz")
-crosschecks = {p.stem: test_paths(p) for p in (ROOT / "rind/tests").glob("crosschecks_*.rs")}
+crosschecks = {p.stem: test_paths(p.read_text()) for p in (ROOT / "rind/tests").glob("crosschecks_*.rs")}
 zeroing_path = ROOT / "rind/tests/zeroing.rs"
 
 # What the code loads, read from string literals across the tests.
