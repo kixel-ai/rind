@@ -14,7 +14,3 @@ Planned with the maintainer on 2026-11-21 (`/quest-plan`): ✅ remove Argon2id h
   - Avoid upfront `vec![0; mem_size]` zeroing of the entire 64 MiB+ memory buffer when pass 0 writes every block before reading it (allocate uninitialized memory safely, prove/check that every index read during pass 0 has already been initialized, and still wipe the full buffer before deallocation).
 - Note: coordinate with or land cleanly alongside [kixel-ai/rind#822](https://github.com/kixel-ai/rind/pull/822) (Argon2id NEON/AVX-512 kernels), which changes the inner SIMD kernels rather than this Rust harness overhead.
 - Benchmark before and after on x86_64 and aarch64, and verify under Miri, ASan, `zeroing.rs`, and `heap_scratch.rs`.
-
-## Related
-
-- [Add missing Argon2id, SLH-DSA, unheld-DIT, and small-record TLS benchmark baselines](/quest/m2/bench/missing-baselines-and-dit-row.md)
