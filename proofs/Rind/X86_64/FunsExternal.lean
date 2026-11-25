@@ -285,11 +285,29 @@ opaque low.x86_64.adx_mux.bignum_mul_p25519
   Array Std.U64 4#usize → Array Std.U64 4#usize → Array Std.U64 4#usize →
     Result (Array Std.U64 4#usize)
 
-/-! The wipe a drop runs, which no theorem calls. -/
+/-! The wipe, which writes zeros over a slice through raw pointers, which Aeneas
+cannot translate, so this models it: it returns, leaving the zeros `wiped`
+stands for. `admin/prove` fails unless this quote is still that Rust:
 
-opaque low.generic.zeroise.zeroise
-  {T : Type _} (ZeroableInst : low.generic.zeroise.Zeroable T) :
-  Slice T → Result (Slice T)
+```rust
+pub(crate) fn zeroise<T: Zeroable>(v: &mut [T]) {
+    // SAFETY: `v` is `size_of_val(v)` writable bytes, and `T: Zeroable`
+    // makes all-zero bytes a valid `T`.
+    unsafe { zero_bytes(v.as_mut_ptr().cast(), size_of_val(v)) };
+}
+
+```
+-/
+
+/-- What `zeroise` leaves in `v`: all-bits-zero, which `Zeroable` makes a
+valid `T` but cannot name, so it is opaque, its value `v` only witnessing
+that it has one. No proof reads a slice after its wipe. -/
+opaque low.generic.zeroise.wiped {T : Type _} (v : Slice T) : Slice T := v
+
+/-- `zeroise`, which returns. -/
+def low.generic.zeroise.zeroise {T : Type _} (_ZeroableInst : low.generic.zeroise.Zeroable T)
+    (v : Slice T) : Result (Slice T) :=
+  ok (low.generic.zeroise.wiped v)
 
 /-- `ZeroableRef::new`, as `Rind.X86_64.Dispatch` models a `ZeroableRef`: its
 value. -/

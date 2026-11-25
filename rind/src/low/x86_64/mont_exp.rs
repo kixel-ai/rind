@@ -121,7 +121,7 @@ fn mont_exp_by(
     } else {
         while lsb > 0 {
             lsb -= 5;
-            for _ in 0..5 {
+            for _ in 0..5usize {
                 mont_sqr(spare, z, m, n0);
                 z.copy_from_slice(spare);
             }
