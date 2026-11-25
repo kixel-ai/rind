@@ -100,13 +100,15 @@
    fun:decode<fn(u8) -> rustls_pki_types::base64::CodePoint>
    fun:*16rustls_pki_types6base6413decode_secret
 }
-# Fat LTO inlines `decode_secret` into `pem::read`, a frame it keeps.
+
+# rind-dimpl reads PEM keys through `parse_pem`, which is `#[inline(never)]`
+# so that fat LTO, which inlines every rustls-pki-types frame above, still
+# leaves one to name. It holds nothing but that crate's PEM parser.
 {
-   rustls-pki-types-base64-character-class-inlined-into-pem-read
+   rind-dimpl-parse-pem
    Memcheck:Cond
-   fun:decode<fn(u8) -> rustls_pki_types::base64::CodePoint>
-   fun:decode_secret
-   fun:*16rustls_pki_types3pem4read*
+   ...
+   fun:*10rind_dimpl4sign9parse_pem*
 }
 
 # rind-rcgen's PEM codec (`rind-rcgen/src/pem.rs`) frames base64ct's, whose
