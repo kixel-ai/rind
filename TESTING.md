@@ -408,8 +408,10 @@ function rind exports reaches on a path that has not entered `rind::low::Mcdt`,
 Intel's mitigation, or has left it.
 The weekly `ctgrind` workflow's `profile` job reruns the valgrind suites and
 BINSEC on x86_64 as consumers often build rind: with thin LTO, and at
-`opt-level = "z"`, where LLVM divides by a constant with `div`, which only
-BINSEC's division checks tell apart from a public division.
+`opt-level = "z"` with fat LTO and one codegen unit, where LLVM divides by a
+constant with `div`, which only BINSEC's division checks tell apart from a
+public division. Set `CARGO_PROFILE_RELEASE_LTO=fat` and
+`CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1` beside the opt level to reproduce it.
 `nix develop .#timing --command admin/timing marvin` runs the Marvin toolkit
 against RSA-OAEP decryption. It needs quiet hardware: the weekly `timing`
 workflow runs it on GitHub's runners, and a shared host adds noise that no gate
