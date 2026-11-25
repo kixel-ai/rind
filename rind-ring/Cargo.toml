@@ -51,7 +51,7 @@ wasm32_unknown_unknown_js = ["dep:getrandom", "getrandom/wasm_js"]
 [dependencies]
 # rind's own, named here only to turn on its JavaScript source.
 getrandom = { version = "0.4", optional = true }
-rind = { version = "0.3.2", path = "../rind", default-features = false }
+rind = { version = "0.4.0", path = "../rind", default-features = false }
 untrusted = "0.9"
 
 [dev-dependencies]
