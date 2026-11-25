@@ -66,17 +66,17 @@ is authoritative.
 | Lean TCB: files that state axioms | 23 | 5,539 | 0 |
 | Lean TCB: hand models, ISA models, and transliterated specs | 136 | 37,492 | 0 |
 | Lean: proofs and Aeneas glue (machine-checked) | 128 | 50,663 | 0 |
-| `high`: keys, signatures, encodings, and hashing | 28 | 16,581 | 0 |
+| `high`: keys, signatures, encodings, and hashing | 26 | 16,019 | 0 |
 | `low/aarch64` | 280 | 6,347 | 203,051 |
 | `low/arm` | 31 | 2,716 | 15,599 |
 | `low/generic` | 40 | 11,278 | 0 |
 | `low/portable` | 12 | 1,106 | 0 |
 | `low/x86_64` | 449 | 15,596 | 408,678 |
 | `low` shared files | 15 | 5,297 | 0 |
-| `mid`: primitives and constructions | 35 | 16,062 | 42,161 |
+| `mid`: primitives and constructions | 34 | 16,008 | 42,161 |
 | `rind-rustls`: the TLS provider | 13 | 3,600 | 0 |
 | `rind` crate root: public API and errors | 7 | 2,641 | 0 |
-| **Total** | **1,216** | **199,326** | **669,489** |
+| **Total** | **1,213** | **198,710** | **669,489** |
 
 Lean `axiom` declarations: 173 in 23 files. `sorry`: 0.
 
@@ -84,11 +84,11 @@ Lean `axiom` declarations: 173 in 23 files. `sorry`: 0.
 
 | Area | Files | Hand-written lines | Generated lines |
 |---|---:|---:|---:|
-| `high`: protocols (HPKE, OPRF, FROST, SPAKE2+, VRF, blind RSA, KDFs) | 13 | 11,459 | 0 |
+| `high`: protocols (HPKE, OPRF, FROST, SPAKE2+, VRF, blind RSA, KDFs) and ML-DSA and SLH-DSA | 15 | 12,021 | 0 |
 | `low/aarch64`: ML-DSA, SLH-DSA, and Argon2 kernels | 18 | 1,100 | 4,174 |
 | `low/generic`: ML-DSA, SLH-DSA, and Argon2 kernels | 2 | 887 | 0 |
 | `low/x86_64`: ML-DSA, SLH-DSA, and Argon2 kernels | 22 | 1,052 | 11,829 |
-| `mid`: KDF, hash-to-curve, and ristretto255 | 9 | 2,924 | 0 |
+| `mid`: KDF, hash-to-curve, and ristretto255 | 10 | 2,978 | 0 |
 | `mid`: ML-DSA and SLH-DSA | 2 | 3,035 | 0 |
 | `rind-dart`: Dart FFI | 18 | 5,389 | 0 |
 | `rind-fips`: FIPS module (unpublished) | 38 | 10,662 | 0 |
@@ -96,7 +96,7 @@ Lean `axiom` declarations: 173 in 23 files. `sorry`: 0.
 | `rind-python`: Python bindings | 12 | 2,027 | 0 |
 | `rind` FIPS build glue | 3 | 1,345 | 0 |
 | other `rind-<consumer>` adapters | 60 | 13,087 | 0 |
-| **Total** | **204** | **55,585** | **16,003** |
+| **Total** | **207** | **56,201** | **16,003** |
 
 ### Phase 1 in more detail
 
@@ -144,9 +144,9 @@ says how to run them. The ones an auditor will want:
 | Constant time under valgrind | `nix develop .#ctgrind --command admin/ctgrind` | Weekly in CI. Sees only the paths the tests take. |
 | Constant time, symbolically | `nix develop .#binsec --command admin/ct-binsec` | Checks each `ct_binsec_...` region for every secret. |
 | Constant time under SDE and qemu | `nix develop .#sde --command admin/ct-sde`; `nix develop .#ct-qemu --command admin/ct-qemu` | The AVX-512, VAES, SHA extension, and armv7 crypto paths valgrind cannot run. |
-| Variable-time instructions | `admin/ct-vartime` | Scans release builds for divisions and floating point. |
+| Variable-time instructions | `nix develop .#ct-vartime --command admin/ct-vartime` | Scans release builds for divisions and floating point. |
 | HOL Light and Lean proofs | `nix develop .#prove --command admin/prove` | Also `admin/prove bytes`, which checks the release build holds the bytes each proof is about. |
-| Imported code matches its pin | `admin/regenerate` | Reruns every importer; fails on a difference. |
+| Imported code matches its pin | `nix develop .#regenerate --command admin/regenerate` | Reruns every importer; fails on a difference. |
 | Zeroing and heap scratch | `cargo test -p rind --test zeroing --test heap_scratch` | |
 
 The audit should name a commit, ideally a release tag, and the auditor should
