@@ -107,6 +107,12 @@ the caller-side cost of DIT is within noise on a pointer-heavy workload, it
 is worth proposing; otherwise the guard API stays the only coalescing
 across calls.
 
+## Decision (project owner, 2026-11-23)
+
+Autohold stays a measuring prototype only. The supported way to coalesce
+toggles across calls is the guard API: `Dit::hold`, `Dit::with`, and
+`Dit::batch` (benchmarks/apple-dit-barrier.md, "Decision").
+
 ## Recommendation
 
 Keep the guard API (`Dit::hold`, `with`, `batch`) as the supported answer,

@@ -731,6 +731,22 @@
               env.OPENSSL_EVP_TEST = openssl-evp-test;
             };
 
+            # `admin/dit-disasm` runs in it: llvm-objdump, and the standard
+            # library of the aarch64 targets whose barrier after setting DIT
+            # it reads, Apple's and one that is not.
+            dit-disasm = pkgs.mkShell {
+              packages = [
+                (rust-stable.minimal.override {
+                  extensions = [ "llvm-tools" ];
+                  targets = [
+                    "aarch64-unknown-linux-gnu"
+                    "aarch64-apple-darwin"
+                  ];
+                })
+                pkgs.python3
+              ];
+            };
+
             # `just check` runs `admin/ct-vartime` in it: llvm-objdump, and the
             # standard library of each target it builds rind's rlib for.
             ct-vartime = pkgs.mkShell {

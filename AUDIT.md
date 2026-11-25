@@ -64,7 +64,14 @@ Outside the model:
 - Speculative execution beyond what the constant-time rule gives: only
   secret-independent control flow and addresses stand against it. The one
   speculation barrier rind adds follows setting DIT on Apple's platforms, as
-  Apple asks, so no instruction after it runs speculatively without DIT.
+  Apple asks, so no instruction after it runs speculatively without DIT. On
+  other aarch64 cores, where rind sets DIT only in its testing build, it adds
+  none and relies on the Arm architecture (Arm ARM DDI 0487 M.d, C5.1.3.3
+  and B1.5.6), untested on hardware. The FIPS module sets no DIT (it builds
+  for glibc Linux, and refuses `rind_dit_everywhere`); its code keeps
+  Apple's barrier on every target in case that changes. `admin/dit-disasm`
+  checks the emitted sequence per target; benchmarks/apple-dit-barrier.md
+  collects the sources.
 - A compromised toolchain, build machine, or dependency. `cargo deny`
   checks crates against RustSec's advisories, licenses, and sources; nothing
   checks a release's build is reproducible.
