@@ -31,7 +31,8 @@ shape the second.
   and a C ABI. `rind-fips` is in it only once it is published.
 
 ML-KEM is in Phase 1, not Phase 2, because `rind-rustls` offers
-`X25519MLKEM768` first by default, so a TLS 1.3 handshake runs it. HPKE is in
+`X25519MLKEM768` first by default, so a handshake runs it whenever the
+peer negotiates it. HPKE is in
 Phase 2 as rind's own `hpke` module, while `rind-rustls`'s glue for rustls's
 HPKE trait is in Phase 1 with the rest of the provider.
 
