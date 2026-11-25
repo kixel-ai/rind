@@ -168,9 +168,10 @@ module rs '^(rind[^/]*/|fuzz/|thirdparty/|Cargo\.(toml|lock)$|\.rustfmt(\.unstab
 # armv7 builds run in nix's cross shells.
 cross_tools=cargo
 [[ $(uname -s) != Linux ]] || cross_tools='cargo nix'
-# `sh/bare-metal.sh` and `sh/bare-metal-rustc` are this module's scripts. They
-# are not under `rind/src/`, so `reach` treats a change to them as every backend.
-module cross '^(rind/(src/|tests/|Cargo\.toml$|build\.rs$)|rind-bench/Cargo\.toml$|sh/bare-metal((-test)?\.sh|-rustc)$|Cargo\.(toml|lock)$|flake\.(nix|lock)$)' \
+# `sh/bare-metal.sh`, `sh/bare-metal-rustc` and `sh/build-target-test.sh`
+# are this module's scripts. They are not under `rind/src/`, so `reach`
+# treats a change to them as every backend.
+module cross '^(rind/(src/|tests/|Cargo\.toml$|build\.rs$)|rind-bench/Cargo\.toml$|sh/(bare-metal((-test)?\.sh|-rustc)|build-target-test\.sh)$|Cargo\.(toml|lock)$|flake\.(nix|lock)$)' \
     tools="$cross_tools" compiles
 # The published adapters' wasm32 builds, and the tests the nightly runs there.
 # rind's manifest picks the random source rind-ring's browser feature reaches.
@@ -635,6 +636,9 @@ step() {
                 run sh/bare-metal-test.sh
                 run sh/bare-metal.sh
             fi
+            # rind/build.rs's ARM backend and Poly1305 multiply choice, for
+            # built-in triples and custom specifications under any file name.
+            run sh/build-target-test.sh
             ;;
         check:wasm)
             # Each published adapter, as sh/adapter-versions.sh finds them.
@@ -684,6 +688,10 @@ step() {
                     i686-unknown-linux-gnu arm-unknown-linux-gnueabihf loongarch64-unknown-linux-gnu
                     powerpc-unknown-linux-gnu powerpc64-unknown-linux-gnu powerpc64le-unknown-linux-gnu
                     riscv64gc-unknown-linux-gnu s390x-unknown-linux-gnu
+                    armv7-unknown-linux-gnueabihf+mul16 thumbv6m-none-eabi+mul16
+                    thumbv7m-none-eabi+mul16 thumbv8m.base-none-eabi+mul16
+                    armv5te-unknown-linux-gnueabi+mul16 riscv32i-unknown-none-elf+mul16
+                    riscv32imac-unknown-none-elf+branch
                 )
             fi
             run nix develop .#ct-vartime --command admin/ct-vartime "${targets[@]}"
