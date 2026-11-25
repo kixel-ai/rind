@@ -326,10 +326,17 @@ let AARCH32_NOWRAP_CONV =
                                   MP (ARITH_RULE
                                        (mk_imp(list_mk_conj(map concl facts),goal)))
                                      (end_itlist CONJ facts) in
-                          let eq = prove
-                           (mk_eq(a,mk_binop `word_add:int32->int32->int32` r
-                                      (mk_comb(word_tm,mk_numeral dd))),
-                            REWRITE_TAC[WORD_ADD] THEN CONV_TAC WORD_RULE) in
+                          (* WORD_RULE leaves an offset unreduced modulo
+                             2^32, as an address below a region's base, such
+                             as a push's under `word_sub sp (word 16)`,
+                             needs; WORD_ARITH reduces it. *)
+                          let eq =
+                            let g = mk_eq(a,mk_binop
+                              `word_add:int32->int32->int32` r
+                              (mk_comb(word_tm,mk_numeral dd))) in
+                            try prove(g,REWRITE_TAC[WORD_ADD] THEN
+                                        CONV_TAC WORD_RULE)
+                            with Failure _ -> WORD_ARITH g in
                           let th' = MP (SPECL [r;n;mk_numeral dd;len]
                                           AARCH32_NOWRAP_OFFSET)
                                        (CONJ th fit) in
@@ -340,6 +347,24 @@ let AARCH32_NOWRAP_CONV =
              try by_value () with Failure _ ->
              by_region ())
     | _ -> failwith "AARCH32_NOWRAP_CONV";;
+
+(* Unfolds a SIMD operation's lane combinators and lane operations, and
+   reduces the widths and nested subwords that leaves, so that each lane is
+   an operation on a subword of a register. *)
+
+let AARCH32_SIMD_EXPAND_CONV =
+  PURE_REWRITE_CONV (o_THM :: AARCH32_SIMD_EXPANSIONS) THENC
+  DEPTH_CONV DIMINDEX_CONV THENC
+  TOP_DEPTH_CONV BETA_CONV THENC
+  NUM_REDUCE_CONV THENC
+  TOP_DEPTH_CONV WORD_SIMPLE_SUBWORD_CONV;;
+
+(* Any address is aligned to a byte, which VLD1 without an alignment
+   qualifier needs. *)
+
+let AARCH32_ALIGNED_1 = prove
+ (`!a:int32. aligned 1 a <=> T`,
+  REWRITE_TAC[aligned; NUMBER_RULE `!x. 1 divides x`]);;
 
 (* Fails unless every conditional instruction's condition is decided, every
    address and branch target an instruction needs aligned is known to be, and
@@ -450,9 +475,13 @@ let AARCH32_CONV (decode_ths:thm option array) (ths:thm list) tm =
      AARCH32_INSTRUCTIONS) THENC
    REWRITE_CONV[LET_DEF; LET_END_DEF] THENC
    TOP_DEPTH_CONV BETA_CONV THENC
+   (* A D register is half a Q register; a SIMD operation, its lanes. *)
+   PURE_REWRITE_CONV AARCH32_DREGS THENC
+   PURE_REWRITE_CONV[AARCH32_HALF_READS] THENC
+   AARCH32_SIMD_EXPAND_CONV THENC
    REWRITE_CONV AARCH32_CONDITION_CLAUSES THENC
    TOP_DEPTH_CONV COMPONENT_READ_OVER_WRITE_CONV THENC
-   REWRITE_CONV (READ_RVALUE :: flag_ths) THENC
+   REWRITE_CONV (READ_RVALUE :: AARCH32_ALIGNED_1 :: flag_ths) THENC
    target_conv THENC
    ALIGNED_WORD_EXTENDED_CONV aligned_ths THENC
    ONCE_DEPTH_CONV AARCH32_ALIGNED_NUMERAL_CONV THENC
@@ -461,11 +490,14 @@ let AARCH32_CONV (decode_ths:thm option array) (ths:thm list) tm =
    AARCH32_CHECK_DECIDED_CONV THENC
    REWRITE_CONV[SEQ] THENC
    GEN_REWRITE_CONV TOP_DEPTH_CONV [assign] THENC
+   GEN_REWRITE_CONV TOP_DEPTH_CONV [AARCH32_HALF_WRITES] THENC
    REWRITE_CONV[] THENC
    TOP_DEPTH_CONV COMPONENT_READ_OVER_WRITE_CONV THENC
    REWRITE_CONV (READ_RVALUE :: WRITE_RVALUE :: WORD_ADD_0 ::
                  CONJUNCTS AARCH32_OPERAND_READS) THENC
    TOP_DEPTH_CONV COMPONENT_READ_OVER_WRITE_CONV THENC
+   (* A write of one half leaves the other's subword of the first. *)
+   TOP_DEPTH_CONV WORD_SIMPLE_SUBWORD_CONV THENC
    (* RRX reads C, which appears only once its operand is unfolded. *)
    REWRITE_CONV (BITVAL_CLAUSES :: flag_ths) THENC
    WORD_REDUCE_CONV THENC
@@ -601,17 +633,22 @@ let C_ARGUMENTS = define
 let C_RETURN = define
  `C_RETURN = read R0`;;
 
-(* The AAPCS lets a subroutine change R0-R3, R12, the flags, and LR, which
-   it returns through and may use as scratch once saved; it keeps R4-R11 and
-   SP. *)
+(* The AAPCS lets a subroutine change R0-R3, R12, the flags, LR, which it
+   returns through and may use as scratch once saved, and Q0-Q3 and Q8-Q15,
+   which are D0-D7 and D16-D31; it keeps R4-R11, SP, and Q4-Q7. *)
 
 let MODIFIABLE_GPRS = define
  `MODIFIABLE_GPRS = [R0; R1; R2; R3; R12; LR]`;;
 
+let MODIFIABLE_SIMD_REGS = define
+ `MODIFIABLE_SIMD_REGS =
+    [Q0; Q1; Q2; Q3; Q8; Q9; Q10; Q11; Q12; Q13; Q14; Q15]`;;
+
 let MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI = REWRITE_RULE
-  [SOME_FLAGS; MODIFIABLE_GPRS]
+  [SOME_FLAGS; MODIFIABLE_GPRS; MODIFIABLE_SIMD_REGS]
   (new_definition `MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI =
       MAYCHANGE [PC] ,, MAYCHANGE MODIFIABLE_GPRS ,,
+      MAYCHANGE MODIFIABLE_SIMD_REGS ,,
       MAYCHANGE SOME_FLAGS ,, MAYCHANGE [events]`);;
 
 (* ------------------------------------------------------------------------- *)
@@ -788,10 +825,11 @@ let AARCH32_ADD_RETURN_STACK_TAC =
 
 (* ------------------------------------------------------------------------- *)
 (* The wrappers, literal loads after and before the code, a load at a known *)
-(* base's offset, and what untaken branches, loads, and stores record,       *)
-(* proven of small routines as this file loads, as                           *)
-(* riscv/tutorial/subroutine.ml proves s2n-bignum's; and which transfers     *)
-(* that run past 0xffffffff leave the model.                                 *)
+(* base's offset, what untaken branches, loads, and stores record, and       *)
+(* Advanced SIMD's loads, stores, halves, and crypto operations, proven of   *)
+(* small routines as this file loads, as riscv/tutorial/subroutine.ml       *)
+(* proves s2n-bignum's; and which transfers that run past 0xffffffff leave   *)
+(* the model.                                                                *)
 (* ------------------------------------------------------------------------- *)
 
 let AARCH32_SUBROUTINE_TESTS =
@@ -1086,5 +1124,99 @@ let AARCH32_SUBROUTINE_TESTS =
        unaligned address, but one past the top still leaves the model. *)
     "aarch32_test_skipped_ldrd_mc",0x11c040d0,0xfffffff5,false;
     "aarch32_test_skipped_wrap_mc",0x11c040d0,0xfffffffd,true] in
+  (* vld1.8 {d0, d1}, [r0]!; veor q0, q0, q1; vst1.8 {d0, d1}, [r1]: a
+     load into two D registers that one Q register is, and a store of its
+     halves. *)
+  let veor_mc = define "aarch32_test_veor_mc"
+    [0xf4200a0d; 0xf3000152; 0xf4010a0f] in
+  let veor_exec = AARCH32_MK_EXEC_RULE veor_mc in
+  let veor = prove
+   (`!pc (a:int32) (b:int32) x0 x1 y.
+      aarch32_nowrap a 16 /\ aarch32_nowrap b 16 /\
+      nonoverlapping ((word pc):int32,LENGTH aarch32_test_veor_mc) (b,16)
+      ==> ensures aarch32
+        (\s. aligned_bytes_loaded s (word pc) aarch32_test_veor_mc /\
+             read PC s = word pc /\ read R0 s = a /\ read R1 s = b /\
+             read (memory :> bytes64 a) s = x0 /\
+             read (memory :> bytes64 (word_add a (word 8))) s = x1 /\
+             read Q1 s = y)
+        (\s. read PC s = word (pc + 12) /\ read R0 s = word_add a (word 16) /\
+             read Q0 s = word_xor (word_join x1 x0) y /\
+             read (memory :> bytes64 b) s =
+               word_xor x0 (word_subword y (0,64)) /\
+             read (memory :> bytes64 (word_add b (word 8))) s =
+               word_xor x1 (word_subword y (64,64)))
+        (MAYCHANGE [PC; R0] ,, MAYCHANGE [Q0] ,,
+         MAYCHANGE [memory :> bytes(b,16)] ,, MAYCHANGE [events])`,
+    REWRITE_TAC[fst veor_exec] THEN
+    REPEAT STRIP_TAC THEN
+    AARCH32_SIM_TAC veor_exec [1;2;3] THEN
+    CONV_TAC WORD_BLAST) in
+  (* vmov.i64 d0, #0; vswp d0, d1: writes to each half of Q0, the second
+     reading both before it writes either. *)
+  let halves_mc = define "aarch32_test_halves_mc" [0xf2800e30; 0xf3b20001] in
+  let halves_exec = AARCH32_MK_EXEC_RULE halves_mc in
+  let halves = prove
+   (`!pc x.
+      ensures aarch32
+        (\s. aligned_bytes_loaded s (word pc) aarch32_test_halves_mc /\
+             read PC s = word pc /\ read Q0 s = x)
+        (\s. read PC s = word (pc + 8) /\ read Q0 s = word_ushr x 64)
+        (MAYCHANGE [PC] ,, MAYCHANGE [Q0])`,
+    REWRITE_TAC[fst halves_exec] THEN
+    REPEAT STRIP_TAC THEN
+    AARCH32_SIM_TAC halves_exec [1;2] THEN
+    CONV_TAC WORD_BLAST) in
+  (* aese.8 q0, q1; aesmc.8 q0, q0: the crypto extension's operations, as
+     arm/proofs/utils/aes.ml defines them. *)
+  let aes_mc = define "aarch32_test_aes_mc" [0xf3b00302; 0xf3b00380] in
+  let aes_exec = AARCH32_MK_EXEC_RULE aes_mc in
+  let aes = prove
+   (`!pc x k.
+      ensures aarch32
+        (\s. aligned_bytes_loaded s (word pc) aarch32_test_aes_mc /\
+             read PC s = word pc /\ read Q0 s = x /\ read Q1 s = k)
+        (\s. read PC s = word (pc + 8) /\ read Q0 s = aesmc (aese x k))
+        (MAYCHANGE [PC] ,, MAYCHANGE [Q0])`,
+    REWRITE_TAC[fst aes_exec] THEN
+    REPEAT STRIP_TAC THEN
+    AARCH32_SIM_TAC aes_exec [1;2]) in
+  (* vpush {d8, d9}; vmov.i64 q4, #0; vpop {d8, d9}: Q4 comes back from the
+     stack. *)
+  let vpush_mc = define "aarch32_test_vpush_mc"
+    [0xed2d8b04; 0xf2808e70; 0xecbd8b04] in
+  let vpush_exec = AARCH32_MK_EXEC_RULE vpush_mc in
+  let vpush = prove
+   (`!pc (sp:int32) x.
+      aligned 4 sp /\ aarch32_nowrap (word_sub sp (word 16)) 16 /\
+      nonoverlapping ((word pc):int32,LENGTH aarch32_test_vpush_mc)
+                     (word_sub sp (word 16),16)
+      ==> ensures aarch32
+        (\s. aligned_bytes_loaded s (word pc) aarch32_test_vpush_mc /\
+             read PC s = word pc /\ read SP s = sp /\ read Q4 s = x)
+        (\s. read PC s = word (pc + 12) /\ read SP s = sp /\ read Q4 s = x)
+        (MAYCHANGE [PC; SP] ,, MAYCHANGE [Q4] ,,
+         MAYCHANGE [memory :> bytes(word_sub sp (word 16),16)] ,,
+         MAYCHANGE [events])`,
+    REWRITE_TAC[fst vpush_exec] THEN
+    REPEAT STRIP_TAC THEN
+    AARCH32_SIM_TAC vpush_exec [1;2;3] THEN
+    CONV_TAC WORD_BLAST) in
+  (* vldmiane r0, {d0, d1} with Z set: an access of no bytes, and Q0 kept. *)
+  let vldmne_mc = define "aarch32_test_vldmne_mc" [0x1c900b04] in
+  let vldmne_exec = AARCH32_MK_EXEC_RULE vldmne_mc in
+  let vldmne = prove
+   (`!pc (a:int32) x e.
+      aarch32_nowrap a 16
+      ==> ensures aarch32
+        (\s. aligned_bytes_loaded s (word pc) aarch32_test_vldmne_mc /\
+             read PC s = word pc /\ read ZF s /\ read R0 s = a /\
+             read Q0 s = x /\ read events s = e)
+        (\s. read PC s = word (pc + 4) /\ read Q0 s = x /\
+             read events s = CONS (EventLoad (a,0)) e)
+        (MAYCHANGE [PC] ,, MAYCHANGE [Q0] ,, MAYCHANGE [events])`,
+    REWRITE_TAC[fst vldmne_exec] THEN
+    REPEAT STRIP_TAC THEN
+    AARCH32_SIM_TAC vldmne_exec [1]) in
   [nostack; stack; literal; offset; before; untaken; rrx; skipped; sum;
-   region4; shaped];;
+   region4; shaped; veor; halves; aes; vpush; vldmne];;

@@ -541,7 +541,7 @@ hol_light_compile() {
 # campaign that loading it runs is one of those it adds by hand. The SHA
 # extensions' instructions run only where the CPU has them.
 cosim() {
-    local dir=$out/cosim root=$PWD sha=0 cases=1000
+    local dir=$out/cosim root=$PWD sha=0 cases=2000
     local aarch32=thirdparty/s2n-bignum/aarch32/proofs
     hold cosim
     rm -rf "$dir"
@@ -567,7 +567,7 @@ cosim() {
         -o "$dir/aarch32-runner" "$aarch32/cosim_runner.c" "$aarch32/cosim_start.S" -lgcc
     hol_light_compile "$dir" aarch32
     (cd "$dir" && S2N_BIGNUM_SEMATEST_CASES=$cases S2N_BIGNUM_SEMATEST_SECONDS=1200 \
-        RIND_AARCH32_EXECUTOR="qemu-arm -cpu cortex-a15 $root/$dir/aarch32-runner" \
+        RIND_AARCH32_EXECUTOR="qemu-arm -cpu max $root/$dir/aarch32-runner" \
         ./aarch32.native) | grep -v -e '^OK: ' -e '^Stepping to state' -e '^CPU time'
     hol_light_compile "$dir" cosim
     (cd "$dir" && TMPDIR="$root/$dir/tmp" S2N_BIGNUM_SEMATEST_CASES=1 RIND_COSIM_SHA=$sha \
