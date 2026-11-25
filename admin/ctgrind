@@ -76,6 +76,12 @@ esac
 export VALGRIND_BUG_494162=1
 export CARGO_PROFILE_RELEASE_DEBUG=line-tables-only
 
+# RustCrypto's Keccak, behind the ML-KEM and SHA-3 oracles in rind's unit
+# tests, would take its EOR3 kernel on aarch64, which valgrind cannot run:
+# cpufeatures reads SHA3 from the SHA-512 bit valgrind passes alone.
+# See UPSTREAM.md, "cpufeatures reports SHA3 from SHA-512 alone".
+export RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }--cfg keccak_backend=\"soft\""
+
 export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER="$self --run"
 export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUNNER="$self --run"
 export CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_RUNNER="$self --run"
