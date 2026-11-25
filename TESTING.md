@@ -438,7 +438,8 @@ and each CPU-tier row then times only those of them it covers. A dispatched
 `ctgrind` runs every job unless `-f jobs='x86_64-sde:rsa4096 armv7:no-neon'`
 names some, each whole or narrowed to the rows with the named matrix values,
 as `sh/select-jobs.sh` describes, and a dispatched `prove` every job unless
-`-f jobs='hol-light-armv7 cosim'` names some. `alert.yml`
+`-f jobs='hol-light-armv7 cosim'` names some, which main refuses since a
+release takes any passing run there. `alert.yml`
 posts a scheduled run that fails, times out, or is cancelled to Discord: a
 job past its timeout ends cancelled, so a suite that stops finishing alerts
 like one that fails.

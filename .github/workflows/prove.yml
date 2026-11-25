@@ -24,7 +24,8 @@ on:
   schedule:
     - cron: "0 18 * * *"
   # A dispatch runs every job the schedule runs, unless `jobs` names some,
-  # such as `-f jobs='hol-light-armv7 cosim'`: see sh/select-jobs.sh.
+  # such as `-f jobs='hol-light-armv7 cosim'`, on a branch other than main:
+  # see sh/select-jobs.sh.
   workflow_dispatch:
     inputs:
       jobs:
@@ -67,13 +68,19 @@ permissions:
 jobs:
   # Checks a dispatch's `jobs` and hands each job its part, which its `if:`
   # reads; every other job needs it, so a run without `jobs` skips it and
-  # runs them all.
+  # runs them all. A release takes any passing run on main
+  # (sh/release-proved.sh), so `jobs` there fails the run.
   select:
     if: inputs.jobs
     runs-on: ubuntu-latest
     outputs:
       jobs: ${{ steps.select.outputs.jobs }}
     steps:
+      - if: github.ref == 'refs/heads/main'
+        run: |
+          echo "::error::prove on main checks every job, since a release takes any passing run there; dispatch it without jobs"
+          exit 1
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
