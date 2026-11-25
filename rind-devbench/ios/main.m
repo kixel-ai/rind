@@ -17,6 +17,7 @@ extern char *devbench_status_json(void);
 extern void devbench_stop(void);
 extern void devbench_free(char *p);
 extern void devbench_setenv(const char *key, const char *value);
+extern void devbench_apply_denies(void);
 
 static id JSON(char *p) {
   if (!p) return nil;
@@ -113,6 +114,8 @@ static NSString *const kConsent = @"The run keeps the CPU busy (minutes on Quick
 @implementation VC {
   UIStackView *body, *leftCol, *pickCard, *runCard, *resultsCard;
   UILabel *picksLbl;
+  UIScrollView *pickScroll;
+  CGFloat flashedFor;
   BOOL isWide, showingRun;
   Flow *libFlow, *secFlow;
   UILabel *deviceLbl, *collectorLbl, *statusLbl, *currentLbl, *scoreLbl, *behindLbl;
@@ -196,8 +199,26 @@ static NSString *const kConsent = @"The run keeps the CPU busy (minutes on Quick
   // Left column: what to run, and how.
   libFlow = [Flow new]; libFlow.gap = 8;
   secFlow = [Flow new]; secFlow.gap = 8;
-  UIStackView *pick = [self card:@[[self heading:@"Libraries"], libFlow, [self heading:@"Operations"], secFlow]];
-  [pick setCustomSpacing:16 afterView:libFlow];
+  // The chips sit in their own scroller: on a short screen the picker gives
+  // up height, and the chips that do not fit stay reachable by scrolling the
+  // picker, while the rest of the screen stays put.
+  UIStackView *chips = [[UIStackView alloc] initWithArrangedSubviews:@[[self heading:@"Libraries"], libFlow, [self heading:@"Operations"], secFlow]];
+  chips.axis = UILayoutConstraintAxisVertical; chips.spacing = 10; [chips setCustomSpacing:16 afterView:libFlow];
+  chips.translatesAutoresizingMaskIntoConstraints = NO;
+  pickScroll = [UIScrollView new]; pickScroll.alwaysBounceVertical = NO; pickScroll.showsHorizontalScrollIndicator = NO;
+  pickScroll.indicatorStyle = UIScrollViewIndicatorStyleWhite;
+  [pickScroll addSubview:chips];
+  [NSLayoutConstraint activateConstraints:@[
+    [chips.topAnchor constraintEqualToAnchor:pickScroll.contentLayoutGuide.topAnchor],
+    [chips.bottomAnchor constraintEqualToAnchor:pickScroll.contentLayoutGuide.bottomAnchor],
+    [chips.leadingAnchor constraintEqualToAnchor:pickScroll.contentLayoutGuide.leadingAnchor],
+    [chips.trailingAnchor constraintEqualToAnchor:pickScroll.contentLayoutGuide.trailingAnchor],
+    [chips.widthAnchor constraintEqualToAnchor:pickScroll.frameLayoutGuide.widthAnchor],
+  ]];
+  // The scroller wants the chips' whole height, and gives it up before the run controls do.
+  NSLayoutConstraint *natural = [pickScroll.heightAnchor constraintEqualToAnchor:chips.heightAnchor];
+  natural.priority = UILayoutPriorityDefaultHigh - 10; natural.active = YES;
+  UIStackView *pick = [self card:@[pickScroll]];
   pickCard = pick;
 
   preset = [[UISegmentedControl alloc] initWithItems:@[@"Quick · 1 round", @"Full · 3 rounds"]];
@@ -252,9 +273,8 @@ static NSString *const kConsent = @"The run keeps the CPU busy (minutes on Quick
   [header setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisVertical];
   [leftCol setContentHuggingPriority:UILayoutPriorityDefaultHigh forAxis:UILayoutConstraintAxisVertical];
   // When a short screen can't fit everything, the run panel gives way first,
-  // then the picker (its chips are clipped), and never the run controls.
+  // then the picker (its chips scroll inside it), and never the run controls.
   [run setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisVertical];
-  [pick setContentCompressionResistancePriority:UILayoutPriorityDefaultHigh - 10 forAxis:UILayoutConstraintAxisVertical];
   UIStackView *root = [[UIStackView alloc] initWithArrangedSubviews:@[header, body]];
   root.axis = UILayoutConstraintAxisVertical; root.spacing = 14; root.translatesAutoresizingMaskIntoConstraints = NO;
   [self.view addSubview:root];
@@ -287,6 +307,16 @@ static NSString *const kConsent = @"The run keeps the CPU busy (minutes on Quick
 - (void)viewWillTransitionToSize:(CGSize)size withTransitionCoordinator:(id<UIViewControllerTransitionCoordinator>)c {
   [super viewWillTransitionToSize:size withTransitionCoordinator:c];
   [c animateAlongsideTransition:^(id<UIViewControllerTransitionCoordinatorContext> ctx) { [self arrange:size]; } completion:nil];
+}
+
+// iOS hides a scroll indicator until the view scrolls, so when chips are out
+// of view, flash it once per picker height to show there are more.
+- (void)viewDidLayoutSubviews {
+  [super viewDidLayoutSubviews];
+  CGFloat h = pickScroll.bounds.size.height;
+  BOOL more = !pickCard.hidden && h > 0 && pickScroll.contentSize.height > h + 0.5;
+  if (more && h != flashedFor) { flashedFor = h; [pickScroll flashScrollIndicators]; }
+  if (!more) flashedFor = 0;
 }
 
 // Narrow screens have room for the picker or a run's results, not both: the
@@ -556,5 +586,7 @@ static NSString *const kConsent = @"The run keeps the CPU busy (minutes on Quick
 @end
 
 int main(int argc, char *argv[]) {
+  // Before UIApplicationMain starts any thread: setenv is not thread safe.
+  devbench_apply_denies();
   @autoreleasepool { return UIApplicationMain(argc, argv, nil, NSStringFromClass([AppDelegate class])); }
 }
