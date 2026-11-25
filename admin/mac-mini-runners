@@ -14,7 +14,11 @@
 #   admin/mac-mini-runners ssh VM [CMD] a shell in VM (macos or linux)
 #
 # setup is idempotent: it starts a provisioned VM and leaves it alone. To
-# rebuild one, `tart delete rind-queue-VM` and run setup, then register.
+# rebuild one, unload its LaunchAgent, whose KeepAlive restarts the VM and
+# whose running VM tart refuses to delete, then delete it, run setup, and
+# register:
+#   launchctl bootout gui/$(id -u)/dev.kixelated.rind-queue-VM
+#   tart delete rind-queue-VM
 set -euo pipefail
 
 usage="usage: admin/mac-mini-runners setup | register | ssh macos|linux [COMMAND...]"
@@ -236,8 +240,12 @@ GUEST
         register)
             cat <<'GUEST'
 set -euo pipefail
-sudo -H -u runner bash -c 'cd ~/actions-runner && ./config.sh --unattended --replace --url https://github.com/kixel-ai \
-    --token "$1" --runnergroup rind-queue --labels "$2" --name "mini-$2" --work _work' _ "$token" "$name"
+# config.sh refuses a runner already configured here, before --replace
+# applies, so a rerun for another VM's rebuild skips it.
+if ! sudo -u runner test -e "$(eval echo ~runner)/actions-runner/.runner"; then
+    sudo -H -u runner bash -c 'cd ~/actions-runner && ./config.sh --unattended --replace --url https://github.com/kixel-ai \
+        --token "$1" --runnergroup rind-queue --labels "$2" --name "mini-$2" --work _work' _ "$token" "$name"
+fi
 GUEST
             ;;
         # Each service's environment: the Nix profile's tools, and the Cargo
@@ -247,26 +255,42 @@ GUEST
         service-macos)
             cat <<'GUEST'
 set -euo pipefail
+# The daemon runs this wrapper as root, which loads the firewall and checks it
+# before it starts the runner as runner, so a runner never starts before
+# dev.kixelated.rind-queue-pf, or Apple's own loader, has the rules in: it
+# fails, and launchd restarts it, until they are. Only root writes it.
+sudo mkdir -p /usr/local/libexec
+sudo tee /usr/local/libexec/rind-queue-runner >/dev/null <<'WRAP'
+#!/bin/sh
+set -eu
+/sbin/pfctl -E -f /etc/pf.conf
+/sbin/pfctl -s info 2>/dev/null | grep -q '^Status: Enabled' || {
+    echo "error: pf is not enabled; not starting the runner" >&2
+    exit 1
+}
+/sbin/pfctl -s rules 2>/dev/null | grep -q 'to ! 2000::/3' || {
+    echo "error: pf lacks the egress rules; not starting the runner" >&2
+    exit 1
+}
+cd /Users/runner/actions-runner
+exec /usr/bin/sudo -H -u runner /usr/bin/env \
+    PATH=/Users/runner/.nix-profile/bin:/nix/var/nix/profiles/default/bin:/usr/bin:/bin:/usr/sbin:/sbin \
+    CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=false \
+    /Users/runner/actions-runner/run.sh
+WRAP
+sudo chown root:wheel /usr/local/libexec/rind-queue-runner
+sudo chmod 755 /usr/local/libexec/rind-queue-runner
 sudo tee /Library/LaunchDaemons/dev.kixelated.rind-queue-runner.plist >/dev/null <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
   <key>Label</key><string>dev.kixelated.rind-queue-runner</string>
-  <key>UserName</key><string>runner</string>
-  <key>WorkingDirectory</key><string>/Users/runner/actions-runner</string>
-  <key>ProgramArguments</key><array><string>/Users/runner/actions-runner/run.sh</string></array>
-  <key>EnvironmentVariables</key>
-  <dict>
-    <key>HOME</key><string>/Users/runner</string>
-    <key>PATH</key><string>/Users/runner/.nix-profile/bin:/nix/var/nix/profiles/default/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
-    <key>CARGO_INCREMENTAL</key><string>0</string>
-    <key>CARGO_PROFILE_DEV_DEBUG</key><string>false</string>
-  </dict>
+  <key>ProgramArguments</key><array><string>/usr/local/libexec/rind-queue-runner</string></array>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
-  <key>StandardOutPath</key><string>/Users/runner/actions-runner/service.log</string>
-  <key>StandardErrorPath</key><string>/Users/runner/actions-runner/service.log</string>
+  <key>StandardOutPath</key><string>/var/log/rind-queue-runner.log</string>
+  <key>StandardErrorPath</key><string>/var/log/rind-queue-runner.log</string>
 </dict>
 </plist>
 EOF
@@ -282,12 +306,15 @@ sudo tee /etc/systemd/system/rind-queue-runner.service >/dev/null <<EOF
 [Unit]
 Description=rind merge-queue Actions runner
 Wants=network-online.target
-Requires=user@$uid.service
-After=network-online.target user@$uid.service
+# The firewall must be loaded first, and stop the runner if it stops.
+Requires=nftables.service user@$uid.service
+After=network-online.target nftables.service user@$uid.service
 
 [Service]
 User=runner
 WorkingDirectory=/home/runner/actions-runner
+# No runner without the egress rules: fail, and Restart retries, until loaded.
+ExecStartPre=+/usr/sbin/nft list table inet rind-queue
 ExecStart=/home/runner/actions-runner/run.sh
 Environment=HOME=/home/runner
 Environment=PATH=/home/runner/.nix-profile/bin:/nix/var/nix/profiles/default/bin:/usr/bin:/bin:/usr/sbin:/sbin
