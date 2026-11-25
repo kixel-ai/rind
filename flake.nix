@@ -642,7 +642,7 @@
               ];
             };
 
-            # The `dart` module of `just check` runs rind-dart's Dart package
+            # The `dart` module of `just ci` runs rind-dart's Dart package
             # in it. Its own shell, since the SDK would add over 200 MB to
             # the closure every CI job downloads.
             dart = mkDevShell {
@@ -687,7 +687,7 @@
               shellHook = pkgs.lib.optionalString (system == "x86_64-linux") sde-certs;
             };
 
-            # `just check` runs `sh/site.sh` in it, which builds site/, the
+            # `just ci` runs `sh/site.sh` in it, which builds site/, the
             # landing page, with Bun, and loads it in headless Chromium. Its own
             # shell, since Chromium would add hundreds of MB to the closure
             # every CI job downloads.
@@ -707,7 +707,7 @@
                 };
               };
 
-            # `just check` runs `sh/openssl.sh` in it, which builds rind-openssl
+            # `just ci` runs `sh/openssl.sh` in it, which builds rind-openssl
             # and runs OpenSSL's `evp_test` with it.
             openssl = mkDevShell {
               packages = [
@@ -717,7 +717,7 @@
               env.OPENSSL_EVP_TEST = openssl-evp-test;
             };
 
-            # `just check` runs `admin/ct-vartime` in it: llvm-objdump, and the
+            # `just ci` runs `admin/ct-vartime` in it: llvm-objdump, and the
             # standard library of each target it builds rind's rlib for.
             ct-vartime = mkDevShell {
               packages = [
@@ -870,7 +870,7 @@
             armv7 = mkDevShell armv7-shell;
 
             # `just qemu aarch64` tests the aarch64 build under qemu in it, and
-            # `just check`'s cross module lints rind's tests for aarch64 in it,
+            # `just ci`'s cross module lints rind's tests for aarch64 in it,
             # where the aws-lc-rs dev-dependency needs an aarch64 C compiler.
             aarch64 = qemu-shell {
               target = "aarch64-unknown-linux-gnu";
