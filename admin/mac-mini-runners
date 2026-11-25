@@ -137,8 +137,11 @@ sudo rm -f /etc/kcpassword
 printf 'PasswordAuthentication no\nKbdInteractiveAuthentication no\n' | sudo tee /etc/ssh/sshd_config.d/10-key-only.conf >/dev/null
 # Only globally routable addresses, DNS, and DHCP, as the x86_64 runner's
 # egress rules allow on its host; the runner user cannot change them. sshd's
-# replies pass statelessly, so loading this keeps the current session.
-sudo tee /etc/pf.rind-queue.conf >/dev/null <<EOF
+# replies match the port-22 rule, so loading this keeps the current session.
+# They replace /etc/pf.conf, since macOS's own com.apple.pfctl also loads that
+# file at boot, in no set order with the daemon below, and would otherwise
+# replace these rules with Apple's.
+sudo tee /etc/pf.conf >/dev/null <<EOF
 set skip on lo0
 pass in all
 pass out quick proto tcp from any port 22
@@ -154,7 +157,7 @@ sudo tee /Library/LaunchDaemons/dev.kixelated.rind-queue-pf.plist >/dev/null <<E
 <plist version="1.0">
 <dict>
   <key>Label</key><string>dev.kixelated.rind-queue-pf</string>
-  <key>ProgramArguments</key><array><string>/sbin/pfctl</string><string>-E</string><string>-f</string><string>/etc/pf.rind-queue.conf</string></array>
+  <key>ProgramArguments</key><array><string>/sbin/pfctl</string><string>-E</string><string>-f</string><string>/etc/pf.conf</string></array>
   <key>RunAtLoad</key><true/>
 </dict>
 </plist>
