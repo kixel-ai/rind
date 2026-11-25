@@ -20,8 +20,18 @@ from its own lockfile, admin/binary-size-<fixture>.lock, copied over the
 fixture's ignored one. cargo still adds to the copy what the lockfile lacks,
 such as a new version of rind, and `--write` records the result. To take
 newer releases, delete the lockfile and run `--write`.
+
+The code rustc emits for a crate depends on its `-C metadata`, and cargo
+hashes into that the absolute path of a path dependency outside the
+workspace, as rind and rind-rustls are to a fixture's: the same tree built
+from two checkouts differed by thousands of bytes. So this script is also
+the builds' rustc wrapper, giving rind's own crates a `-C metadata` that
+leaves out where the checkout is. Remapping paths cannot help, and cargo's
+trim-paths only leaves the path out from a later release than the pinned
+toolchain's.
 """
 
+import hashlib
 import os
 import re
 import shutil
@@ -62,12 +72,30 @@ def build_env():
     }
     # Empty, it also overrides the flags of a cargo configuration file.
     env["CARGO_ENCODED_RUSTFLAGS"] = ""
+    env["RUSTC_WRAPPER"] = str(Path(__file__).resolve())
+    env["RIND_BINARY_SIZE_RUSTC"] = "1"
+    env.pop("RUSTC_WORKSPACE_WRAPPER", None)
     return env
+
+
+def rustc(args):
+    """Runs rustc as cargo asks, with a `-C metadata` for a crate in this
+    checkout from its path within it, not the checkout's own."""
+    sources = [Path(a).resolve() for a in args if a.endswith(".rs")]
+    if len(sources) == 1 and sources[0].is_relative_to(ROOT):
+        # What else sets one build of a crate apart: its features and type.
+        key = [str(sources[0].relative_to(ROOT))]
+        key += [f"{a} {b}" for a, b in zip(args, args[1:]) if a in ("--cfg", "--crate-type")]
+        metadata = "metadata=" + hashlib.sha256("\n".join(sorted(key)).encode()).hexdigest()[:16]
+        args = [metadata if a.startswith("metadata=") else a for a in args]
+    os.execvp(args[0], args)
 
 
 def build(fixture, features, env, write):
     """Builds `fixture` in release from its lockfile and returns its binary."""
-    target = ROOT / "target"
+    # Its own, since cargo does not rebuild for a changed wrapper: a build
+    # without it in the same directory would look up to date.
+    target = ROOT / "target" / "binary-size"
     used = FIXTURES / fixture / "Cargo.lock"
     if lockfile(fixture).exists():
         shutil.copyfile(lockfile(fixture), used)
@@ -112,6 +140,9 @@ def read_record():
 
 
 def main():
+    # cargo runs the wrapper as `<wrapper> <rustc> <args>`.
+    if os.environ.get("RIND_BINARY_SIZE_RUSTC"):
+        rustc(sys.argv[1:])
     if sys.argv[1:] not in ([], ["--write"]):
         sys.exit(__doc__)
     write = sys.argv[1:] == ["--write"]
