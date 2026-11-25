@@ -178,15 +178,16 @@ extension's among them though the assembly spells them as `.byte` or
 | `VAND`, `VBIC`, `VORR` (`VMOV` among them), `VEOR`, `VBSL`, `VMVN` | D or Q registers |
 | `VADD`, `VSUB`, `VTST`, `VMUL` | integer lanes of each size; `VTST` and `VMUL` not of 64 bits |
 | `VSHL` | by register, signed or unsigned, or by an immediate |
-| `VSHR`, `VSRI`, `VSLI`, `VSHRN`, `VSHLL` (`VMOVL` among them) | by an immediate |
+| `VSHR`, `VSRI`, `VSLI`, `VSHRN`, `VSHLL` (`VMOVL` among them) | by an immediate; `VSHLL`'s A1 encoding only, so the A2 one that a shift equal to the input lane width uses, such as `VSHLL.I8 Q0, D0, #8`, is refused and has no step theorem |
 | `VMOV`, `VMVN`, `VORR`, `VBIC` | a modified immediate |
 | `VREV16`, `VREV32`, `VREV64`, `VTRN`, `VZIP`, `VSWP`, `VEXT`, `VTBL` | `VZIP` not of 32-bit lanes in D registers, `VTBL` of one to four registers |
 | `VDUP` | of a scalar or a core register |
 | `VMOV` | a core register to a lane |
 | `VMULL`, `VMLAL` | 32-bit lanes, signed or unsigned, of registers or by a scalar; `VMULL.P8` and `VMULL.P64` |
 | `AESE`, `AESD`, `AESMC`, `AESIMC`, `SHA1C`, `SHA1P`, `SHA1M`, `SHA1H`, `SHA1SU0`, `SHA1SU1`, `SHA256H`, `SHA256H2`, `SHA256SU0`, `SHA256SU1` | |
-| `VLD1`, `VST1` | one to four registers, one lane, or every lane of one or two registers, with or without an alignment qualifier and write-back |
-| `VLDM`, `VSTM`, `VPUSH`, `VPOP`, `VLDR`, `VSTR` | D registers, increment after or decrement before |
+| `VLD1`, `VST1` | one to four registers, or one lane, with or without an alignment qualifier and write-back; `VLD1` alone of every lane of one or two registers |
+| `VLDM`, `VSTM`, `VPUSH`, `VPOP` | D registers, increment after or decrement before |
+| `VLDR`, `VSTR` | one D register at a base plus or minus an offset, without write-back |
 
 An AES round, a SHA-256 step, and a 64-bit polynomial multiply are the
 aarch64 model's definitions, since AArch32's pseudocode is the same, and the
@@ -221,7 +222,7 @@ A step either has one next state or, where the instruction would leave what
 the model holds, any: a proof that reaches such a step proves nothing, as in
 s2n-bignum's other models. That is `BX`, or a load into PC, of a target not
 aligned to four bytes, which enters Thumb when its bit 0 is set and is
-otherwise unpredictable; `LDRD`, `STRD`, `LDM`, `STM`, `VLDM`, or `VSTM` at
+otherwise unpredictable; `LDRD`, `STRD`, `LDM`, `STM`, `VLDM`, `VSTM`, `VLDR`, or `VSTR` at
 an address not aligned to four bytes, or `VLD1` or `VST1` at one its
 alignment qualifier does not hold of, which faults; and `LDR` into PC from
 such an address,
@@ -234,8 +235,10 @@ Android leave them. The step conversion decides `aarch32_nowrap a n`, that
 values the assumptions' `val x = n` give the address's terms, or from an
 assumption `aarch32_nowrap` of a region holding the transfer, whose length
 may be symbolic where the assumptions' arithmetic bounds it, as a theorem
-states of each buffer and stack frame that an unaligned word or a transfer of
-more than one word reaches.
+states of each buffer and stack frame that an access reaches whose bytes it
+cannot show stay below 2^32: an access of more than one byte at an address
+not known aligned to four, such as a `VLD1.16` lane, or a transfer of more than
+one word.
 
 `AARCH32_MK_EXEC_RULE` gives a word that does not decode no theorem rather
 than failing, since A32 routines keep literal pools and tables among their
@@ -263,12 +266,13 @@ stores through SP or a register at the buffer's offsets their alignment
 allows, which `cosim_runner.c` and `cosim_start.S` run under qemu-arm with
 `-cpu max`, which has the crypto extension, transporting Q0-Q15 too, and the
 model must prove reach the same state. The executor reports where it holds the
-instruction and its scratch buffer, so the cases reach every form: `BX`,
+instruction and its scratch buffer, so the cases reach every form, though the
+lane transfers' write-back is always by the size of the transfer, never by a
+register: `BX`,
 `POP`, and `LDR` into PC branch to a landing slot whose address a register or
 the buffer holds, a literal load reads the buffer, `LDM` and `STM` go through
 SP or a register that may be in the list, and each theorem says what an
 instruction that reads R15 computes. `admin/prove cosim` runs up to 1500
-cases in all, the directed ones among them, so at most 1479 random ones, and
-its timeout may stop it sooner; it prints the seed, which
+cases in all, the directed ones among them, and its timeout may stop it sooner; it prints the seed, which
 `S2N_BIGNUM_SEMATEST_SEED` repeats. Offering the model upstream is also a
 post to awslabs/s2n-bignum, which needs the maintainer's approval.
