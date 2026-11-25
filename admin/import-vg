@@ -119,6 +119,8 @@ ROOTS = {
         "vg_pbkdf2_hmac_sha256_sha2",
         "vg_pbkdf2_hmac_sha384_sha512",
         "vg_pbkdf2_hmac_sha512_sha512",
+        # SHA-384 and SHA-512's block function with the SHA-512 instructions.
+        "vg_sha512_compress_sha512",
         # P-384's k·G, for ECDSA's keys and nonces, and its ECDSA
         # verification.
         "vg_ec_p384_public_key",
