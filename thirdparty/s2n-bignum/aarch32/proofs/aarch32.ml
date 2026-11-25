@@ -220,21 +220,22 @@ let AARCH32_NOWRAP_CONV =
   let two32 = pow2 32 and word_tm = `word:num->int32`
   and nowrap_tm = `aarch32_nowrap` in
   let wrap x = mod_num x two32 in
-  (* An address as a base, or none, and a numeral offset modulo 2^32. *)
+  (* An address as a base, or none, and a numeral offset modulo 2^32. A sum
+     of two symbolic terms is a base of its own. *)
   let rec offset t =
     match t with
       Comb(Comb(Const("word_add",_),x),y) ->
         (match offset x,offset y with
-           (Some _,_),(Some _,_) -> failwith "AARCH32_NOWRAP_CONV"
+           (Some _,_),(Some _,_) -> Some t,num_0
          | (b,kx),(None,ky) | (None,kx),(b,ky) -> b,wrap(kx +/ ky))
     | Comb(Comb(Const("word_sub",_),x),y) ->
         (match offset x,offset y with
            (b,kx),(None,ky) -> b,wrap(kx -/ ky +/ two32)
-         | _ -> failwith "AARCH32_NOWRAP_CONV")
+         | _ -> Some t,num_0)
     | Comb(Const("word_neg",_),y) ->
         (match offset y with
            None,ky -> None,wrap(two32 -/ ky)
-         | _ -> failwith "AARCH32_NOWRAP_CONV")
+         | _ -> Some t,num_0)
     | Comb(Const("word",_),n) when is_numeral n -> None,wrap(dest_numeral n)
     | Comb(Const("word",_) as w,Comb(Comb(Const("+",_),p),n))
         when is_numeral n -> Some(mk_comb(w,p)),wrap(dest_numeral n)
@@ -975,6 +976,21 @@ let AARCH32_SUBROUTINE_TESTS =
     REWRITE_TAC[fst skipped_exec] THEN
     REPEAT STRIP_TAC THEN
     AARCH32_SIM_TAC skipped_exec [1;2;3]) in
+  (* ldr r0, [r1, r2], at a sum of two symbolic words that only an
+     assumption aligns, so the word cannot run past 0xffffffff. *)
+  let sum_mc = define "aarch32_test_sum_mc" [0xe7910002] in
+  let sum_exec = AARCH32_MK_EXEC_RULE sum_mc in
+  let sum = prove
+   (`!pc (a:int32) b.
+      aligned 4 (word_add a b)
+      ==> ensures aarch32
+        (\s. aligned_bytes_loaded s (word pc) aarch32_test_sum_mc /\
+             read PC s = word pc /\ read R1 s = a /\ read R2 s = b)
+        (\s. read PC s = word (pc + 4))
+        (MAYCHANGE [PC] ,, MAYCHANGE [R0] ,, MAYCHANGE [events])`,
+    REWRITE_TAC[fst sum_exec] THEN
+    REPEAT STRIP_TAC THEN
+    AARCH32_SIM_TAC sum_exec [1]) in
   (* One instruction stepped with R0 at an address near the top of memory,
      and Z set: whether its step leaves the model. *)
   let leaves name word r0 =
@@ -1010,4 +1026,4 @@ let AARCH32_SUBROUTINE_TESTS =
     "aarch32_test_top_stmdb_mc",0xe9000006,0,false;
     (* ldrdne r4, r5, [r0] with Z set: nothing is transferred. *)
     "aarch32_test_skipped_ldrd_mc",0x11c040d0,0xfffffffd,false] in
-  [nostack; stack; literal; offset; before; untaken; rrx; skipped];;
+  [nostack; stack; literal; offset; before; untaken; rrx; skipped; sum];;
