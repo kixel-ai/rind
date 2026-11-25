@@ -910,6 +910,9 @@ impl SigningKey {
 
         let s_len = salt.len(em.len(), hash.as_ref().len());
         pkcs1::encode_pss_sig::<H>(em, em_bits, &mut SystemRandom, hash.as_ref(), s_len)?;
+        // The salt is random, but the encoding is public: the public key
+        // recovers it, salt included, from the signature.
+        ct::public_slice(em);
         let m = PosInt::from_bytes(em)?;
         let c = ct::into_public(self.0.private_op(&m)?);
         self.to_signature(&c, signature)

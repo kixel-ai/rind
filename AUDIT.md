@@ -201,8 +201,9 @@ establishes, and what it does not:
 - **`admin/ct-vartime`**, in `just ci`, scans the release builds of every
   Linux target rind builds for divisions and floating point, against an
   allowlist of public operands. On the x86_64 backend it also fails on a
-  multiply whose timing depends on MXCSR that an export reaches outside
-  `rind::low::Mcdt`, the mitigation; on 32-bit x86 and the portable backend,
+  multiply whose timing depends on MXCSR that an export reaches on a path
+  that has not entered `rind::low::Mcdt`, the mitigation, or has left it; on
+  32-bit x86 and the portable backend,
   that every call enters it is unchecked. It takes the integer multiplier to
   run in constant time, and on x86 it refuses `vsha512*`.
 - **s2n-bignum's `_SAFE` theorems** prove the routines
@@ -249,9 +250,14 @@ establishes, and what it does not:
   and the portable backend, it mutates only the Rust that changed in the
   last week; a campaign over the whole workspace runs only when dispatched.
   It skips generated assembly, which proofs and differential tests own.
-- **Coverage** (`admin/coverage`, nightly on Linux and macOS) reports the
-  published functions no test runs, under `cargo test`, `dart test`, and
-  pyrind's tests, on each runner's tiers, but not under fuzzing.
+- **Coverage** (`admin/coverage`, nightly on x86_64 and aarch64 Linux,
+  macOS, the portable backend, and armv7) fails on a published function no
+  test runs on any tier, under `cargo test`, `dart test`, and pyrind's tests,
+  unless `admin/coverage.allow` says why, and on a file whose uncovered
+  regions, branches, or monomorphization gaps rise past
+  `admin/coverage.baseline`, which leaves out the regions and branches of
+  rind's backends (`rind/src/low/`), as they vary with the runner's CPU;
+  fuzzing doesn't count.
 - **Adapter fuzz targets**, for rind-rustls, rind-dimpl, and rind-str0m,
   feed a hostile peer's bytes and whole handshakes edited in flight, against
   upstream's aws-lc-rs provider, and rind-openssl's calls its C ABI as

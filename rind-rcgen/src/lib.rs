@@ -407,3 +407,18 @@ impl fmt::Debug for KeyPair {
             .finish_non_exhaustive()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// rcgen requires `Debug`, which shows the algorithm but no key.
+    #[test]
+    fn debug_shows_the_algorithm_without_the_key() {
+        let key = KeyPair::generate_for(&rcgen::PKCS_ED25519).unwrap();
+        assert_eq!(
+            format!("{key:?}"),
+            format!("KeyPair {{ algorithm: {:?}, .. }}", rcgen::PKCS_ED25519)
+        );
+    }
+}

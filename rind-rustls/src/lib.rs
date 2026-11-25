@@ -223,6 +223,9 @@ impl KeyProvider for Rind {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    use wasm_bindgen_test::wasm_bindgen_test as test;
+
     use super::*;
 
     #[test]

@@ -606,8 +606,10 @@ step() {
             # The browser: admin/wasm-fixture adds what a caller adds, and
             # rind-ring also takes ring's own feature for it.
             run cargo clippy -p wasm-fixture "${adapters[@]}" --lib --locked --target wasm32-unknown-unknown -- --deny warnings
-            run cargo clippy -p rind-ring --lib --locked --target wasm32-unknown-unknown \
+            run cargo clippy -p rind-ring --lib --test ring --locked --target wasm32-unknown-unknown \
                 --features wasm32_unknown_unknown_js -- --deny warnings
+            # And the tests `just wasm` runs there.
+            run cargo clippy -p rind-rustls --lib --tests --locked --target wasm32-unknown-unknown -- --deny warnings
             ;;
         check:nostd)
             # rind-ring with and without `alloc`, which gates RSA, and
