@@ -6,7 +6,7 @@
 # difference:
 # - every item rind exports is named in the table's Exports column, or in the
 #   list of exports that are not primitives, and every name there is exported;
-# - every fuzz target, every differential test in `rind/tests/crosschecks.rs`,
+# - every fuzz target, every differential test in `rind/tests/crosschecks_*.rs`,
 #   every `ct_sde_...`, `ct_qemu_...`, and `ct_binsec_...` test, every CCTV and
 #   imported-vector test, every test in `rind/tests/zeroing.rs`, and every
 #   Wycheproof and CAVP file the tests load is named in the table;
@@ -20,7 +20,7 @@
 #
 # A backticked name in the table's other columns, but the oracle's, is one of:
 # - `fuzz::NAME`, a fuzz target;
-# - `crosschecks::[MOD::]FN`, a test in `rind/tests/crosschecks.rs`;
+# - `crosschecks_FAMILY::[MOD::]FN`, a test in `rind/tests/crosschecks_FAMILY.rs`;
 # - `zeroing::FN`, a test in `rind/tests/zeroing.rs`;
 # - `aws_lc::FN` or `cctv::FN`, a test in `rind/tests/NAME.rs`;
 # - `a::b::FN`, a function in `rind/src/a/b.rs` (or `a/b/mod.rs`);
@@ -140,8 +140,7 @@ for name in sorted(named - exported):
 
 fuzz_targets = set(re.findall(r'^name = "([a-z0-9_]+)"', (ROOT / "fuzz/Cargo.toml").read_text(), re.M))
 fuzz_targets.discard("rind-fuzz")
-crosschecks_path = ROOT / "rind/tests/crosschecks.rs"
-crosschecks = crosschecks_path.read_text()
+crosschecks = {p.stem: p for p in (ROOT / "rind/tests").glob("crosschecks_*.rs")}
 zeroing_path = ROOT / "rind/tests/zeroing.rs"
 
 # What the code loads, read from string literals across the tests.
@@ -192,13 +191,14 @@ for row in rows:
                 if segments[1] not in fuzz_targets:
                     errors.append(f"{where} is no fuzz target")
                 seen["fuzz"].add(segments[1])
-            elif segments[0] == "crosschecks" and len(segments) >= 2:
+            elif segments[0] in crosschecks and len(segments) >= 2:
+                path = crosschecks[segments[0]]
                 for module in segments[1:-1]:
-                    if not re.search(rf"\bmod {module}\b", crosschecks):
-                        errors.append(f"{where}: no `mod {module}` in {crosschecks_path.name}")
-                if segments[-1] not in tests(crosschecks_path):
-                    errors.append(f"{where}: no such test in {crosschecks_path.name}")
-                seen["crosschecks"].add(segments[-1])
+                    if not re.search(rf"\bmod {module}\b", path.read_text()):
+                        errors.append(f"{where}: no `mod {module}` in {path.name}")
+                if segments[-1] not in tests(path):
+                    errors.append(f"{where}: no such test in {path.name}")
+                seen["crosschecks"].add(f"{segments[0]}::{segments[-1]}")
             elif segments[0] == "zeroing" and len(segments) == 2:
                 if segments[1] not in tests(zeroing_path):
                     errors.append(f"{where}: no such test in {zeroing_path.name}")
@@ -243,7 +243,7 @@ for label in [ADAPTERS, BINDINGS]:
 
 for kind, names in [
     ("fuzz target", fuzz_targets - seen["fuzz"]),
-    ("differential test", tests(crosschecks_path) - seen["crosschecks"]),
+    ("differential test", {f"{stem}::{name}" for stem, path in crosschecks.items() for name in tests(path)} - seen["crosschecks"]),
     ("constant-time test", ct_tests - seen["ct"]),
     ("zeroing test", tests(zeroing_path) - seen["zeroing"]),
     ("Wycheproof file", wycheproof - seen["wycheproof"]),
