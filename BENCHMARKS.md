@@ -1390,7 +1390,7 @@ The CPU tiers rank every weekly benchmark but these, so none of them is a gap, w
 | `chacha20poly1305/*` | `kixtop` | 1.47× (verified-garbage) | [aarch64 ChaCha20-Poly1305 without SVE2 runs verified-garbage's NEON one pass where it is faster](quest/m2/speed/aarch64-chacha20-poly1305-neon.md) |
 | `sha512/*` | `kixtop` | 1.13× (verified-garbage) | [aarch64 SHA-512 with the SHA-512 instructions runs verified-garbage's block function where it is faster](quest/m2/speed/aarch64-sha512-vg.md) |
 | `p256-ecdsa-verify/*` | no ADX tier | 1.15× (aws-lc-rs) | [P-256 verification with a key used once costs no more than aws-lc-rs's on rind's own arithmetic](quest/m2/speed/p256-one-shot-verify.md) |
-| `aes192-gcm/*/key` | x86_64 tier | 1.15× (aws-lc-rs) | [AES-192 key expansion on x86_64 is as fast as aws-lc-rs's](quest/m2/speed/aes192-key-expansion.md) |
+| `aes192-gcm/*/key` | x86_64 tier | 1.15× (aws-lc-rs) | [kixel-ai/rind#1035](https://github.com/kixel-ai/rind/pull/1035) copies the key in constant-size moves, which removed a store-forwarding stall that AES-192 alone paid, 10 ns of its 112; the next refresh rechecks it. |
 
 ## Verified code
 
