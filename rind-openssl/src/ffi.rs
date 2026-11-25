@@ -339,7 +339,6 @@ pub(crate) const KEM_ENCAPSULATE: c_int = 3;
 pub(crate) const KEM_DECAPSULATE_INIT: c_int = 4;
 pub(crate) const KEM_DECAPSULATE: c_int = 5;
 pub(crate) const KEM_FREECTX: c_int = 6;
-pub(crate) const KEM_DUPCTX: c_int = 7;
 pub(crate) const KEM_SET_CTX_PARAMS: c_int = 10;
 pub(crate) const KEM_SETTABLE_CTX_PARAMS: c_int = 11;
 

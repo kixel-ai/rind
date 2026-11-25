@@ -54,6 +54,7 @@ unsafe extern "C" {
         secret_len: *mut usize,
     ) -> c_int;
     fn EVP_PKEY_decapsulate_init(ctx: *mut EVP_PKEY_CTX, params: *const OSSL_PARAM) -> c_int;
+    fn EVP_PKEY_CTX_dup(ctx: *const EVP_PKEY_CTX) -> *mut EVP_PKEY_CTX;
     fn EVP_PKEY_decapsulate(
         ctx: *mut EVP_PKEY_CTX,
         secret: *mut u8,
@@ -580,7 +581,8 @@ fn keys_from_a_seed_match_the_default_provider() {
 
 /// A generation context given a seed reuses it as the default provider
 /// does: for every ML-DSA key it generates, and for only the first ML-KEM
-/// key, after which it generates fresh ones.
+/// key, after which it generates fresh ones. Both drop a seed when a
+/// replacement for it is refused.
 #[test]
 fn a_generation_seed_is_reused_as_the_default_provider_reuses_it() {
     if !has_reference("a_generation_seed_is_reused_as_the_default_provider_reuses_it") {
@@ -588,23 +590,32 @@ fn a_generation_seed_is_reused_as_the_default_provider_reuses_it() {
     }
     let ctx = Context::new();
     for algorithm in ML_KEM.iter().chain(&ML_DSA) {
-        let mut seed = vec![7u8; if ML_KEM.contains(algorithm) { 64 } else { 32 }];
-        let mut twice = |propq: &CStr| unsafe {
+        let seed = vec![7u8; if ML_KEM.contains(algorithm) { 64 } else { 32 }];
+        let mut long = seed.clone();
+        long.push(7);
+        // Two keys from one context given `seed`, then `refused` if any,
+        // which it refuses.
+        let generate = |propq: &CStr, refused: Option<&[u8]>| unsafe {
             let gen_ctx = non_null(EVP_PKEY_CTX_new_from_name(
                 ctx.0,
                 algorithm.as_ptr(),
                 propq.as_ptr(),
             ));
             check(EVP_PKEY_keygen_init(gen_ctx));
-            let params = [
-                OSSL_PARAM_construct_octet_string(
-                    c"seed".as_ptr(),
-                    seed.as_mut_ptr().cast(),
-                    seed.len(),
-                ),
-                OSSL_PARAM_construct_end(),
-            ];
-            check(EVP_PKEY_CTX_set_params(gen_ctx, params.as_ptr()));
+            for (i, seed) in [Some(&seed[..]), refused].into_iter().flatten().enumerate() {
+                let mut seed = seed.to_vec();
+                let params = [
+                    OSSL_PARAM_construct_octet_string(
+                        c"seed".as_ptr(),
+                        seed.as_mut_ptr().cast(),
+                        seed.len(),
+                    ),
+                    OSSL_PARAM_construct_end(),
+                ];
+                let ok = EVP_PKEY_CTX_set_params(gen_ctx, params.as_ptr());
+                assert_eq!(ok == 1, i == 0, "{algorithm:?} {propq:?}");
+            }
+            ERR_clear_error();
             let keys = [(); 2].map(|()| {
                 let mut key = null_mut();
                 check(EVP_PKEY_generate(gen_ctx, &mut key));
@@ -613,9 +624,9 @@ fn a_generation_seed_is_reused_as_the_default_provider_reuses_it() {
             EVP_PKEY_CTX_free(gen_ctx);
             keys
         };
-        let [first, second] = twice(RIND);
+        let [first, second] = generate(RIND, None);
         assert_eq!(first.provider(), "rind");
-        let [theirs, theirs_again] = twice(DEFAULT);
+        let [theirs, theirs_again] = generate(DEFAULT, None);
         assert!(first.eq(&theirs), "{algorithm:?}");
         assert_eq!(second.eq(&first), theirs_again.eq(&theirs), "{algorithm:?}");
         assert_eq!(
@@ -623,6 +634,10 @@ fn a_generation_seed_is_reused_as_the_default_provider_reuses_it() {
             ML_DSA.contains(algorithm),
             "{algorithm:?}"
         );
+        for propq in [RIND, DEFAULT] {
+            let [fresh, _] = generate(propq, Some(&long));
+            assert!(!fresh.eq(&first), "{algorithm:?} {propq:?}");
+        }
     }
 }
 
@@ -822,6 +837,112 @@ fn ml_dsa_refuses_what_rind_cannot_back() {
         ]
     };
     ctx.sign(&key, b"message", None, params.as_ptr()).unwrap();
+
+    // OpenSSL signs with fresh randomness at `deterministic` 2.
+    let mut hedged = 2 as c_int;
+    let params = unsafe {
+        [
+            OSSL_PARAM_construct_int(c"deterministic".as_ptr(), &mut hedged),
+            OSSL_PARAM_construct_end(),
+        ]
+    };
+    ctx.sign(&key, b"message", None, params.as_ptr()).unwrap();
+
+    // Test entropy of the wrong size is refused and drops what was set
+    // before, and a refused call stores none of its parameters, so the
+    // operation signs with fresh randomness after both.
+    unsafe {
+        let md = non_null(EVP_MD_CTX_new());
+        let mut pctx = null_mut();
+        check(EVP_DigestSignInit_ex(
+            md,
+            &mut pctx,
+            null(),
+            ctx.0,
+            RIND.as_ptr(),
+            key.0,
+            null(),
+        ));
+        let entropy = |len| {
+            [
+                OSSL_PARAM_construct_octet_string(
+                    c"test-entropy".as_ptr(),
+                    entropy.as_ptr().cast_mut().cast(),
+                    len,
+                ),
+                OSSL_PARAM_construct_end(),
+            ]
+        };
+        check(EVP_PKEY_CTX_set_params(pctx, entropy(32).as_ptr()));
+        assert_ne!(EVP_PKEY_CTX_set_params(pctx, entropy(1).as_ptr()), 1);
+        assert!(errors().contains("32 bytes"));
+        let params = [
+            OSSL_PARAM_construct_int(c"deterministic".as_ptr(), &mut deterministic),
+            OSSL_PARAM_construct_int(c"message-encoding".as_ptr(), &mut raw),
+            OSSL_PARAM_construct_end(),
+        ];
+        assert_ne!(EVP_PKEY_CTX_set_params(pctx, params.as_ptr()), 1);
+        ERR_clear_error();
+        let message = b"message";
+        let mut len = 0;
+        check(EVP_DigestSign(
+            md,
+            null_mut(),
+            &mut len,
+            message.as_ptr(),
+            message.len(),
+        ));
+        let mut signature = vec![0; len];
+        check(EVP_DigestSign(
+            md,
+            signature.as_mut_ptr(),
+            &mut len,
+            message.as_ptr(),
+            message.len(),
+        ));
+        EVP_MD_CTX_free(md);
+    }
+}
+
+/// An ML-KEM operation takes what the default provider's does: `ikme`,
+/// which rind refuses to encapsulate with, is ignored by decapsulation,
+/// so one array can serve both, and neither duplicates its context.
+#[test]
+fn ml_kem_operations_take_what_the_default_provider_takes() {
+    let ctx = Context::new();
+    let reference =
+        has_reference("ml_kem_operations_take_what_the_default_provider_takes (the cross-checks)");
+    let key = ctx.generate(c"ML-KEM-768", None, None);
+    let mut ikme = [0u8; 32];
+    let params = unsafe {
+        [
+            OSSL_PARAM_construct_octet_string(
+                c"ikme".as_ptr(),
+                ikme.as_mut_ptr().cast(),
+                ikme.len(),
+            ),
+            OSSL_PARAM_construct_end(),
+        ]
+    };
+    unsafe {
+        let pctx = non_null(EVP_PKEY_CTX_new_from_pkey(ctx.0, key.0, RIND.as_ptr()));
+        assert_ne!(EVP_PKEY_encapsulate_init(pctx, params.as_ptr()), 1);
+        assert!(errors().contains("unsupported by rind"));
+        EVP_PKEY_CTX_free(pctx);
+    }
+    for propq in [RIND].into_iter().chain(reference.then_some(DEFAULT)) {
+        unsafe {
+            let pctx = non_null(EVP_PKEY_CTX_new_from_pkey(ctx.0, key.0, propq.as_ptr()));
+            check(EVP_PKEY_decapsulate_init(pctx, params.as_ptr()));
+            assert_eq!(
+                name(EVP_PKEY_CTX_get0_provider(pctx)),
+                &propq.to_str().unwrap()[9..]
+            );
+            assert!(EVP_PKEY_CTX_dup(pctx).is_null(), "{propq:?}");
+            ERR_clear_error();
+            EVP_PKEY_CTX_free(pctx);
+        }
+    }
 }
 
 /// A private key beside another's public key, or a seed beside another's

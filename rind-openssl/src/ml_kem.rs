@@ -16,8 +16,8 @@ use rind::kem::{
 use zeroize::Zeroizing;
 
 use crate::ffi::{
-    CtxDup, CtxFree, CtxParamList, CtxSetParams, Dispatch, KEM_DECAPSULATE, KEM_DECAPSULATE_INIT,
-    KEM_DUPCTX, KEM_ENCAPSULATE, KEM_ENCAPSULATE_INIT, KEM_FREECTX, KEM_NEWCTX, KEM_SET_CTX_PARAMS,
+    CtxFree, CtxParamList, CtxSetParams, Dispatch, KEM_DECAPSULATE, KEM_DECAPSULATE_INIT,
+    KEM_ENCAPSULATE, KEM_ENCAPSULATE_INIT, KEM_FREECTX, KEM_NEWCTX, KEM_SET_CTX_PARAMS,
     KEM_SETTABLE_CTX_PARAMS, KemDecapsulate, KemEncapsulate, KemInit, KeyexchNewctx, OCTET_STRING,
     Param, entry,
 };
@@ -170,7 +170,6 @@ macro_rules! kem_functions {
             entry!(KEM_DECAPSULATE_INIT, decapsulate_init::<$set>, KemInit),
             entry!(KEM_DECAPSULATE, decapsulate::<$set>, KemDecapsulate),
             entry!(KEM_FREECTX, freectx::<$set>, CtxFree),
-            entry!(KEM_DUPCTX, dupctx::<$set>, CtxDup),
             entry!(KEM_SET_CTX_PARAMS, set_ctx_params::<$set>, CtxSetParams),
             entry!(KEM_SETTABLE_CTX_PARAMS, settable_ctx_params, CtxParamList),
             Dispatch::END,
@@ -178,29 +177,22 @@ macro_rules! kem_functions {
     };
 }
 
-pub(crate) static KEM_512: [Dispatch; 10] = kem_functions!(MlKem512);
-pub(crate) static KEM_768: [Dispatch; 10] = kem_functions!(MlKem768);
-pub(crate) static KEM_1024: [Dispatch; 10] = kem_functions!(MlKem1024);
+pub(crate) static KEM_512: [Dispatch; 9] = kem_functions!(MlKem512);
+pub(crate) static KEM_768: [Dispatch; 9] = kem_functions!(MlKem768);
+pub(crate) static KEM_1024: [Dispatch; 9] = kem_functions!(MlKem1024);
 
-/// An encapsulation or decapsulation under way.
+/// An encapsulation or decapsulation under way. It has no `dupctx`, as
+/// OpenSSL's default provider's has none.
 struct Encapsulation<A: Set> {
     provider: Arc<Provider>,
     key: Option<Arc<Key<MlKem<A>>>>,
-}
-
-impl<A: Set> Clone for Encapsulation<A> {
-    fn clone(&self) -> Self {
-        Self {
-            provider: self.provider.clone(),
-            key: self.key.clone(),
-        }
-    }
+    decapsulating: bool,
 }
 
 impl<A: Set> Encapsulation<A> {
     /// # Safety
     ///
-    /// `ctx` is null or a context `newctx` or `dupctx` made, which OpenSSL
+    /// `ctx` is null or a context `newctx` made, which OpenSSL
     /// has not freed, and no one else uses for `'a`.
     unsafe fn from_ptr<'a>(ctx: *mut c_void) -> Option<&'a mut Self> {
         // SAFETY: per the caller.
@@ -227,8 +219,21 @@ impl<A: Set> Encapsulation<A> {
             return Err(Failure::invalid("decapsulation needs a private key"));
         }
         self.key = Some(key);
+        self.decapsulating = private;
         // SAFETY: per the caller.
-        set_params(unsafe { Params::new(params) })
+        self.set_params(unsafe { Params::new(params) })
+    }
+
+    /// Sets OpenSSL's `ikme`, the randomness of a deterministic
+    /// encapsulation that only tests use, which rind lacks. Decapsulation
+    /// ignores it, as OpenSSL's does, so one array can serve both.
+    fn set_params(&self, params: Params<'_>) -> Result<(), Failure> {
+        match params.find(c"ikme") {
+            Some(_) if !self.decapsulating => Err(Failure::unsupported(
+                "rind encapsulates only with fresh randomness, not ikme",
+            )),
+            _ => Ok(()),
+        }
     }
 
     fn key(&self) -> Result<&Key<MlKem<A>>, Failure> {
@@ -322,23 +327,13 @@ impl<A: Set> Encapsulation<A> {
     }
 }
 
-/// The parameters an operation takes: OpenSSL's `ikme`, the randomness of a
-/// deterministic encapsulation that only tests use, which rind lacks.
-fn set_params(params: Params<'_>) -> Result<(), Failure> {
-    match params.find(c"ikme") {
-        Some(_) => Err(Failure::unsupported(
-            "rind encapsulates only with fresh randomness, not ikme",
-        )),
-        None => Ok(()),
-    }
-}
-
 unsafe extern "C" fn newctx<A: Set>(provctx: *mut c_void) -> *mut c_void {
     // SAFETY: OpenSSL passes the provider's context.
     let provider = unsafe { Provider::from_context(provctx) };
     Box::into_raw(Box::new(Encapsulation::<A> {
         provider,
         key: None,
+        decapsulating: false,
     }))
     .cast()
 }
@@ -410,16 +405,8 @@ unsafe extern "C" fn decapsulate<A: Set>(
 
 unsafe extern "C" fn freectx<A: Set>(ctx: *mut c_void) {
     if !ctx.is_null() {
-        // SAFETY: OpenSSL frees a context `newctx` or `dupctx` made.
+        // SAFETY: OpenSSL frees a context `newctx` made.
         drop(unsafe { Box::from_raw(ctx.cast::<Encapsulation<A>>()) });
-    }
-}
-
-unsafe extern "C" fn dupctx<A: Set>(ctx: *mut c_void) -> *mut c_void {
-    // SAFETY: OpenSSL passes a context of this KEM.
-    match unsafe { Encapsulation::<A>::from_ptr(ctx) } {
-        Some(ctx) => Box::into_raw(Box::new(ctx.clone())).cast(),
-        None => core::ptr::null_mut(),
     }
 }
 
@@ -429,7 +416,7 @@ unsafe extern "C" fn set_ctx_params<A: Set>(ctx: *mut c_void, params: *const Par
         return 0;
     };
     // SAFETY: as above.
-    let result = set_params(unsafe { Params::new(params) });
+    let result = ctx.set_params(unsafe { Params::new(params) });
     ctx.provider.status(result)
 }
 

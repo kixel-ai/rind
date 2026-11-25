@@ -634,7 +634,10 @@ pub(crate) unsafe extern "C" fn gen_set_params<S: Scheme>(
                 Some(seed) if seed.len() == S::SEED_LEN => {
                     generation.seed = Some(Zeroizing::new(seed.to_vec()));
                 }
+                // OpenSSL's default provider drops the seed it had, so
+                // the context generates fresh keys.
                 _ => {
+                    generation.seed = None;
                     return Err(Failure::invalid(&format!(
                         "seed must be a {}-byte octet string",
                         S::SEED_LEN

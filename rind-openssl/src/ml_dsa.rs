@@ -31,6 +31,8 @@ use crate::provider::{Failure, Provider};
 
 /// The longest context string FIPS 204 allows.
 const MAX_CONTEXT_LEN: usize = 255;
+/// The bytes of randomness OpenSSL takes as `test-entropy`.
+const TEST_ENTROPY_LEN: usize = 32;
 
 /// ML-DSA with parameter set `P`.
 pub(crate) struct MlDsa<P>(PhantomData<P>);
@@ -433,14 +435,22 @@ fn set_params(params: Params<'_>, unhedged: &mut Unhedged) -> Result<(), Failure
             }
         }
     }
-    if params.find(c"test-entropy").is_some() {
-        unhedged.test_entropy = true;
-    }
-    if let Some(param) = params.find(c"deterministic") {
-        unhedged.deterministic = integer(param)
-            .ok_or_else(|| Failure::invalid("deterministic must be an integer"))?
-            != 0;
-    }
+    // OpenSSL drops a test entropy it is given of the wrong size, and
+    // signs only with exactly its 32 bytes.
+    let test_entropy = match params.find(c"test-entropy").map(|param| param.octets()) {
+        Some(Some(entropy)) if entropy.len() == TEST_ENTROPY_LEN => Some(true),
+        Some(_) => {
+            unhedged.test_entropy = false;
+            return Err(Failure::invalid("the test entropy must be 32 bytes"));
+        }
+        None => None,
+    };
+    // OpenSSL signs deterministically only at 1.
+    let deterministic = match params.find(c"deterministic").map(integer) {
+        Some(Some(value)) => Some(value == 1),
+        Some(None) => return Err(Failure::invalid("deterministic must be an integer")),
+        None => None,
+    };
     // Each integer and the value pure ML-DSA has.
     let flags = [
         (
@@ -468,6 +478,14 @@ fn set_params(params: Params<'_>, unhedged: &mut Unhedged) -> Result<(), Failure
                 )));
             }
         }
+    }
+    // Stored only once every parameter checks out, so a refused call leaves
+    // the operation as it was.
+    if let Some(test_entropy) = test_entropy {
+        unhedged.test_entropy = test_entropy;
+    }
+    if let Some(deterministic) = deterministic {
+        unhedged.deterministic = deterministic;
     }
     Ok(())
 }
