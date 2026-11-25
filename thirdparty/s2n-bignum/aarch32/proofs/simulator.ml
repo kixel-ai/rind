@@ -437,17 +437,21 @@ let condition_holds cond input =
     | 5 -> n = v | 6 -> n = v && not z | _ -> true in
   if cond land 1 = 1 && cond <> 15 then not base else base;;
 
-(* A load or store whose condition fails, through a register that holds
-   whatever the input does: the CPU transfers nothing, so the instruction
-   neither faults nor leaves the model, though its address may be unaligned,
-   unmapped, or run past 0xffffffff. LDR, LDRB, STR, STRB, and LDR into PC
-   with an immediate offset, LDRD and STRD, and LDM and STM, with PC in a
-   load's list half the time. *)
+(* A load or store whose condition fails, through a register that holds any
+   address from 64 KiB to 64 KiB short of the top: the CPU transfers
+   nothing, so the instruction does not fault, though its address may be
+   unaligned or unmapped, and none of these offsets runs it past 0xffffffff,
+   which would leave the model. LDR, LDRB, STR, STRB, and LDR into PC with an
+   immediate offset, LDRD and STRD, and LDM and STM, with PC in a load's list
+   half the time. *)
 let make_skipped_case input =
   let rec failing () =
     let cond = Random.int 14 in
     if condition_holds cond input then failing () else cond in
   let cond = failing () and rn = random_register () in
+  let input =
+    with_register rn
+      (num 0x10000 +/ mod_num (random32 32) (num 0xfffe0000)) input in
   let rec other () =
     let r = random_register () in if r = rn then other () else r in
   let p = Random.bool () and u = Random.bool () in
@@ -489,7 +493,7 @@ let make_case kind =
    branch's sign-extended offset, word transfers that straddle two of the
    buffer's words, whose bytes differ so a misplaced one shows, a push and a
    load of every register a list can name here, and skipped transfers at an
-   address that would fault and run past 0xffffffff. *)
+   address that would fault. *)
 let directed_input assignments =
   let base = map (fun _ -> num_0) (0--13) @ map (fun _ -> num_0) (1--4) @
              [num 128; num_0] @ map (fun _ -> num_0) (0--63) in
@@ -546,11 +550,11 @@ let directed_cases =
      case_input = directed_input (map (fun i -> 53 + i,num (0x01010101 * (i + 1)))
                                       (0--13)) };
    (* LDRDNE R4, R5, [R0] and LDMNE R0, {R4, PC} with Z set and R0 at
-      0xfffffffd: unaligned, and past the top of memory, but skipped. *)
+      0xfffffff5: unaligned and unmapped, but skipped. *)
    { case_instruction = 0x11c040d0; case_memop = true;
-     case_input = directed_input [0,num 0xfffffffd; 15,num 1] };
+     case_input = directed_input [0,num 0xfffffff5; 15,num 1] };
    { case_instruction = 0x18908010; case_memop = true;
-     case_input = directed_input [0,num 0xfffffffd; 15,num 1] }] @
+     case_input = directed_input [0,num 0xfffffff5; 15,num 1] }] @
   (* LDR R0, [SP, #1]; LDR R0, [SP, #-2]!; STR R1, [SP, #3];
      STR R1, [SP, #-1]!. Inputs 51 to 53 are the words at SP-4, SP, and
      SP+4. *)
@@ -563,7 +567,14 @@ let directed_cases =
              [1,num 0xddccbbaa; 51,num 0x03020100; 52,num 0x07060504;
               53,num 0x0b0a0908] })
     [true,false,true,1; false,true,true,2; true,false,false,3;
-     false,true,false,1];;
+     false,true,false,1] @
+  (* LDR R1, [SP, R0, LSR #k] with R0 holding an address in the buffer, which
+     the proof restates as the buffer's offset, shifted to a small offset. *)
+  (let a = Lazy.force scratch_address + 128 in
+   let rec shift k = if a lsr k < 125 then k else shift (k + 1) in
+   let k = shift 1 in
+   [{ case_instruction = 0xe79d1020 lor (k lsl 7); case_memop = true;
+      case_input = directed_input [0,num a] }]);;
 
 let AARCH32_MEMORY_SPLIT_TAC k =
   let tac =

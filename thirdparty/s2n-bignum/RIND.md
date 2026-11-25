@@ -167,8 +167,9 @@ every instruction: a branch (`B`, `BL`, `BX`, or a load into PC) its jump to
 the next instruction, as s2n-bignum's other models' conditional branches do,
 and a load or store an access of no bytes at the address it would have used,
 which `memaccess_inbounds` accepts of any list of ranges that is not empty.
-Such an instruction neither faults nor leaves the model, wherever its
-address points, as the CPU transfers nothing. R15 is an operand, the instruction's
+Such an instruction does not fault, wherever its address points, as the CPU
+transfers nothing, but one whose bytes would run past 0xffffffff leaves the
+model as if it ran, which is sound whatever the CPU does. R15 is an operand, the instruction's
 address plus 8, of a data-processing instruction with an immediate or an
 immediate shift, as `ADR` is, and the base of a word load, a literal load. It
 is a destination only of a word load from another base with an immediate
@@ -188,8 +189,8 @@ transfer whose bytes would run past 0xffffffff, which is unpredictable. So a
 subroutine's theorem assumes `aligned 4` of its return address and, where it
 uses the stack, of SP. Other loads and stores may be unaligned, as Linux and
 Android leave them. The step conversion decides `aarch32_nowrap a n`, that
-`n` bytes from `a` stay below 2^32, from numerals, from `aligned 4` for a
-word, from an assumption giving the value of the address's base, or from an
+`n` bytes from `a` stay below 2^32, from `aligned 4` for a word, from the
+values the assumptions' `val x = n` give the address's terms, or from an
 assumption `aarch32_nowrap` of a region holding the transfer, as a theorem
 states of each buffer and stack frame that an unaligned word or a transfer of
 more than one word reaches.
@@ -211,7 +212,7 @@ carries', and multiply's edges, a backward branch, unaligned word loads and
 stores, a push and load of every register, and skipped transfers at an
 address that would fault, then random instructions from every row above,
 each with a random condition and state, and transfers whose condition fails
-through any address, which
+through any address short of the top, which
 `cosim_runner.c` and `cosim_start.S` run under qemu-arm, and the model must
 prove reach the same state. The executor reports where it holds the
 instruction and its scratch buffer, so the cases reach every form: `BX`,

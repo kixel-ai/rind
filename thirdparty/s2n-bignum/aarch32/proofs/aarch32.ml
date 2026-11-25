@@ -176,9 +176,9 @@ let AARCH32_PC_RELATIVE_CONV =
     | _ -> failwith "AARCH32_PC_RELATIVE_CONV";;
 
 (* What decides `aarch32_nowrap` of an address: four bytes or fewer from an
-   aligned one, the address's offset from a base whose value an assumption
-   gives, or its offset into a region an assumption says stays below 2^32,
-   such as a buffer's or a stack frame's. *)
+   aligned one, the address's value once the assumptions' `val x = n` give
+   each of its terms one, or its offset into a region an assumption says
+   stays below 2^32, such as a buffer's or a stack frame's. *)
 
 let AARCH32_NOWRAP_ALIGNED = prove
  (`!(a:int32) len. aligned 4 a /\ len <= 4 ==> aarch32_nowrap a len`,
@@ -203,14 +203,6 @@ let AARCH32_NOWRAP_OFFSET = prove
     SUBGOAL_THEN `len = 0` SUBST1_TAC THENL [ASM_ARITH_TAC; ALL_TAC] THEN
     REWRITE_TAC[ADD_CLAUSES] THEN MATCH_MP_TAC LT_IMP_LE THEN
     REWRITE_TAC[MOD_LT_EQ] THEN CONV_TAC NUM_REDUCE_CONV]);;
-
-let AARCH32_NOWRAP_VAL = prove
- (`!(b:int32) m d len.
-      val b = m
-      ==> (aarch32_nowrap (word_add b (word d)) len <=>
-           aarch32_nowrap (word (m + d)) len)`,
-  REPEAT STRIP_TAC THEN AP_THM_TAC THEN AP_TERM_TAC THEN
-  FIRST_X_ASSUM(SUBST1_TAC o SYM) THEN REWRITE_TAC[WORD_ADD; WORD_VAL]);;
 
 (* Decides `aarch32_nowrap a len` for a numeral `len`, after `addr_conv`
    rewrites `a` to its value, or fails. `aligned_ths` decide alignment, as
@@ -280,17 +272,23 @@ let AARCH32_NOWRAP_CONV =
                                  (mk_binop `(<=):num->num->bool` len `4`)))) in
                TRANS (AP_THM (AP_TERM nowrap_tm nth) len) (EQT_INTRO th)
              and by_value () =
-               tryfind (fun th ->
+               (* `x = word n` from each `val x = n`, such as a buffer's or
+                  the code's known address. *)
+               let values = mapfilter (fun th ->
                  match concl th with
-                   Comb(Comb(Const("=",_),Comb(Const("val",_),b')),m)
-                     when b' = base && is_numeral m ->
-                       let eq = as_offset a b d in
-                       let vth = MP (SPECL [base;m;mk_numeral d;len]
-                                      AARCH32_NOWRAP_VAL) th in
-                       let rth = (DEPTH_CONV NUM_ADD_CONV THENC numeral_conv)
-                                   (rhs(concl vth)) in
-                       on (TRANS vth (decided rth)) eq
-                 | _ -> failwith "") ths
+                   Comb(Comb(Const("=",_),Comb(Const("val",_),x)),n)
+                     when is_numeral n && type_of x = `:int32` ->
+                       REWRITE_RULE[WORD_VAL] (AP_TERM word_tm th)
+                 | _ -> failwith "") ths in
+               if values = [] then failwith "AARCH32_NOWRAP_CONV" else
+               let eq = (REWRITE_CONV[WORD_ADD] THENC
+                         GEN_REWRITE_CONV TOP_DEPTH_CONV values THENC
+                         WORD_REDUCE_CONV) a in
+               match rhs(concl eq) with
+                 Comb(Const("word",_),n) when is_numeral n ->
+                   on (decided(numeral_conv
+                        (mk_comb(mk_comb(nowrap_tm,rhs(concl eq)),len)))) eq
+               | _ -> failwith "AARCH32_NOWRAP_CONV"
              and by_region () =
                tryfind (fun th ->
                  match concl th with
@@ -955,13 +953,14 @@ let AARCH32_SUBROUTINE_TESTS =
     AARCH32_SIM_TAC rrx_exec [1]) in
   (* ldrne r0, [r1]; strdne r4, r5, [r0, #3]; popne {r4, pc}, with Z set:
      each records an access of no bytes, at an address that need not be
-     aligned nor stay below 2^32, and the pop its fall-through too. *)
+     aligned, and the pop its fall-through too. *)
   let skipped_mc = define "aarch32_test_skipped_mc"
     [0x15910000; 0x11c040f3; 0x18bd8010] in
   let skipped_exec = AARCH32_MK_EXEC_RULE skipped_mc in
   let skipped = prove
    (`!pc a (sp:int32) e.
-      ensures aarch32
+      aarch32_nowrap a 4 /\ aarch32_nowrap sp 8
+      ==> ensures aarch32
         (\s. aligned_bytes_loaded s (word pc) aarch32_test_skipped_mc /\
              read PC s = word pc /\ read ZF s /\
              read R0 s = word 0x1002 /\ read R1 s = a /\ read SP s = sp /\
@@ -1024,6 +1023,8 @@ let AARCH32_SUBROUTINE_TESTS =
     (* stmdb r0, {r1, r2}, whose lowest address is R0 less 8. *)
     "aarch32_test_wrap_stmdb_mc",0xe9000006,4,true;
     "aarch32_test_top_stmdb_mc",0xe9000006,0,false;
-    (* ldrdne r4, r5, [r0] with Z set: nothing is transferred. *)
-    "aarch32_test_skipped_ldrd_mc",0x11c040d0,0xfffffffd,false] in
+    (* ldrdne r4, r5, [r0] with Z set: nothing is transferred, at an
+       unaligned address, but one past the top still leaves the model. *)
+    "aarch32_test_skipped_ldrd_mc",0x11c040d0,0xfffffff5,false;
+    "aarch32_test_skipped_wrap_mc",0x11c040d0,0xfffffffd,true] in
   [nostack; stack; literal; offset; before; untaken; rrx; skipped; sum];;

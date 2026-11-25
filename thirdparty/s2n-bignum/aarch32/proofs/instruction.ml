@@ -44,8 +44,9 @@
    would have: a branch its jump to the next instruction, and a load or store
    an access of no bytes at the address it would have used, which the bounds
    check accepts of any range, so the condition shows only in the length.
-   Such an instruction neither faults nor leaves the model, as the hardware
-   does nothing. *)
+   Such an instruction does not fault, as the hardware transfers nothing,
+   but one whose bytes would run past 0xffffffff leaves the model as if it
+   ran: allowing any state there is sound whatever the hardware does. *)
 
 new_type_abbrev
  ("aarch32_uarch_event",`:32 address_uarch_event`);;
@@ -692,14 +693,15 @@ let aarch32_BX = define
 (* ------------------------------------------------------------------------- *)
 (* Loads and stores. Each takes its condition, and when it fails records    *)
 (* an access of no bytes at the address it would have used, and a load into *)
-(* PC its jump to the next instruction too, and changes nothing else.       *)
+(* PC its jump to the next instruction too, and changes nothing else. A word *)
+(* or more that would run past 0xffffffff leaves the model either way.      *)
 (* ------------------------------------------------------------------------- *)
 
 (* Whether `len` bytes from `addr` stay below 2^32: a transfer that would run
    past 0xffffffff is UNPREDICTABLE. The step conversion decides it from
-   numerals, from `aligned 4` for four bytes or fewer, from an assumption
-   giving the value of the address's base, or from an assumption that a
-   region holding the bytes stays below 2^32. *)
+   `aligned 4` for four bytes or fewer, from the values the assumptions give
+   the address's terms, or from an assumption that a region holding the
+   bytes stays below 2^32. *)
 
 let aarch32_nowrap = define
  `aarch32_nowrap (addr:int32) len <=> val addr + len <= 2 EXP 32`;;
@@ -716,13 +718,13 @@ let aarch32_LDR = define
         let base:int32 = read Rn s in
         let offset_addr = word_add base (read Rm s) in
         let addr = if indexed then offset_addr else base in
-        (if aarch32_condition cond s then
-           if aarch32_nowrap addr 4 then
+        (if aarch32_nowrap addr 4 then
+           if aarch32_condition cond s then
              Rt := read (memory :> bytes32 addr) s ,,
              events := CONS (EventLoad (addr,4)) (read events s) ,,
              (if wback then Rn := offset_addr else (=))
-           else ASSIGNS entirety
-         else events := CONS (EventLoad (addr,0)) (read events s)) s`;;
+           else events := CONS (EventLoad (addr,0)) (read events s)
+         else ASSIGNS entirety) s`;;
 
 let aarch32_LDRB = define
  `aarch32_LDRB (cond:4 word) Rt Rn Rm indexed wback =
@@ -742,13 +744,13 @@ let aarch32_STR = define
         let base:int32 = read Rn s in
         let offset_addr = word_add base (read Rm s) in
         let addr = if indexed then offset_addr else base in
-        (if aarch32_condition cond s then
-           if aarch32_nowrap addr 4 then
+        (if aarch32_nowrap addr 4 then
+           if aarch32_condition cond s then
              memory :> bytes32 addr := read Rt s ,,
              events := CONS (EventStore (addr,4)) (read events s) ,,
              (if wback then Rn := offset_addr else (=))
-           else ASSIGNS entirety
-         else events := CONS (EventStore (addr,0)) (read events s)) s`;;
+           else events := CONS (EventStore (addr,0)) (read events s)
+         else ASSIGNS entirety) s`;;
 
 let aarch32_STRB = define
  `aarch32_STRB (cond:4 word) Rt Rn Rm indexed wback =
@@ -762,8 +764,7 @@ let aarch32_STRB = define
            (if wback then Rn := offset_addr else (=))
          else events := CONS (EventStore (addr,0)) (read events s)) s`;;
 
-(* LDR into PC: a branch to the loaded word, from an aligned address, from
-   which four bytes cannot run past 0xffffffff. *)
+(* LDR into PC: a branch to the loaded word, from an aligned address. *)
 
 let aarch32_LDR_PC = define
  `aarch32_LDR_PC (cond:4 word) Rn Rm indexed wback =
@@ -773,15 +774,17 @@ let aarch32_LDR_PC = define
         let offset_addr = word_add base (read Rm s) in
         let addr = if indexed then offset_addr else base in
         let pc_next:int32 = read (memory :> bytes32 addr) s in
-        (if aarch32_condition cond s then
-           if aligned 4 addr /\ aligned 4 pc_next then
-             PC := pc_next ,,
-             events := CONS (EventJump (pc,pc_next))
-                            (CONS (EventLoad (addr,4)) (read events s)) ,,
-             (if wback then Rn := offset_addr else (=))
-           else ASSIGNS entirety
-         else events := CONS (EventJump (pc,read PC s))
-                             (CONS (EventLoad (addr,0)) (read events s))) s`;;
+        (if aarch32_nowrap addr 4 then
+           if aarch32_condition cond s then
+             if aligned 4 addr /\ aligned 4 pc_next then
+               PC := pc_next ,,
+               events := CONS (EventJump (pc,pc_next))
+                              (CONS (EventLoad (addr,4)) (read events s)) ,,
+               (if wback then Rn := offset_addr else (=))
+             else ASSIGNS entirety
+           else events := CONS (EventJump (pc,read PC s))
+                               (CONS (EventLoad (addr,0)) (read events s))
+         else ASSIGNS entirety) s`;;
 
 (* LDRD and STRD: two words, Rt at the address and Rt2 four bytes on. *)
 
@@ -791,14 +794,16 @@ let aarch32_LDRD = define
         let base:int32 = read Rn s in
         let offset_addr = word_add base (read Rm s) in
         let addr = if indexed then offset_addr else base in
-        (if aarch32_condition cond s then
-           if aligned 4 addr /\ aarch32_nowrap addr 8 then
-             Rt := read (memory :> bytes32 addr) s ,,
-             Rt2 := read (memory :> bytes32 (word_add addr (word 4))) s ,,
-             events := CONS (EventLoad (addr,8)) (read events s) ,,
-             (if wback then Rn := offset_addr else (=))
-           else ASSIGNS entirety
-         else events := CONS (EventLoad (addr,0)) (read events s)) s`;;
+        (if aarch32_nowrap addr 8 then
+           if aarch32_condition cond s then
+             if aligned 4 addr then
+               Rt := read (memory :> bytes32 addr) s ,,
+               Rt2 := read (memory :> bytes32 (word_add addr (word 4))) s ,,
+               events := CONS (EventLoad (addr,8)) (read events s) ,,
+               (if wback then Rn := offset_addr else (=))
+             else ASSIGNS entirety
+           else events := CONS (EventLoad (addr,0)) (read events s)
+         else ASSIGNS entirety) s`;;
 
 let aarch32_STRD = define
  `aarch32_STRD (cond:4 word) Rt Rt2 Rn Rm indexed wback =
@@ -806,14 +811,16 @@ let aarch32_STRD = define
         let base:int32 = read Rn s in
         let offset_addr = word_add base (read Rm s) in
         let addr = if indexed then offset_addr else base in
-        (if aarch32_condition cond s then
-           if aligned 4 addr /\ aarch32_nowrap addr 8 then
-             memory :> bytes32 addr := read Rt s ,,
-             memory :> bytes32 (word_add addr (word 4)) := read Rt2 s ,,
-             events := CONS (EventStore (addr,8)) (read events s) ,,
-             (if wback then Rn := offset_addr else (=))
-           else ASSIGNS entirety
-         else events := CONS (EventStore (addr,0)) (read events s)) s`;;
+        (if aarch32_nowrap addr 8 then
+           if aarch32_condition cond s then
+             if aligned 4 addr then
+               memory :> bytes32 addr := read Rt s ,,
+               memory :> bytes32 (word_add addr (word 4)) := read Rt2 s ,,
+               events := CONS (EventStore (addr,8)) (read events s) ,,
+               (if wback then Rn := offset_addr else (=))
+             else ASSIGNS entirety
+           else events := CONS (EventStore (addr,0)) (read events s)
+         else ASSIGNS entirety) s`;;
 
 (* ------------------------------------------------------------------------- *)
 (* LDM and STM, PUSH and POP among them. `regs` is the registers in          *)
@@ -843,29 +850,33 @@ let aarch32_LDM = define
  `aarch32_LDM (cond:4 word) regs Rn (off:int32) len (wb:int32) wback =
     \s:aarch32state.
         let base:int32 = read Rn s in
-        (if aarch32_condition cond s then
-           if aligned 4 base /\ aarch32_nowrap (word_add base off) len then
-             aarch32_loads regs base off s
-              (events := CONS (EventLoad (word_add base off,len))
-                              (read events s) ,,
-               (if wback then Rn := word_add base wb else (=)))
-           else ASSIGNS entirety
-         else events := CONS (EventLoad (word_add base off,0))
-                             (read events s)) s`;;
+        (if aarch32_nowrap (word_add base off) len then
+           if aarch32_condition cond s then
+             if aligned 4 base then
+               aarch32_loads regs base off s
+                (events := CONS (EventLoad (word_add base off,len))
+                                (read events s) ,,
+                 (if wback then Rn := word_add base wb else (=)))
+             else ASSIGNS entirety
+           else events := CONS (EventLoad (word_add base off,0))
+                               (read events s)
+         else ASSIGNS entirety) s`;;
 
 let aarch32_STM = define
  `aarch32_STM (cond:4 word) regs Rn (off:int32) len (wb:int32) wback =
     \s:aarch32state.
         let base:int32 = read Rn s in
-        (if aarch32_condition cond s then
-           if aligned 4 base /\ aarch32_nowrap (word_add base off) len then
-             aarch32_stores regs base off s
-              (events := CONS (EventStore (word_add base off,len))
-                              (read events s) ,,
-               (if wback then Rn := word_add base wb else (=)))
-           else ASSIGNS entirety
-         else events := CONS (EventStore (word_add base off,0))
-                             (read events s)) s`;;
+        (if aarch32_nowrap (word_add base off) len then
+           if aarch32_condition cond s then
+             if aligned 4 base then
+               aarch32_stores regs base off s
+                (events := CONS (EventStore (word_add base off,len))
+                                (read events s) ,,
+                 (if wback then Rn := word_add base wb else (=)))
+             else ASSIGNS entirety
+           else events := CONS (EventStore (word_add base off,0))
+                               (read events s)
+         else ASSIGNS entirety) s`;;
 
 (* LDM with PC in the list: PC is the last word, at `pcoff` from Rn, and the
    instruction branches to it. *)
@@ -877,19 +888,20 @@ let aarch32_LDM_PC = define
         let pc = word_sub (read PC s) (word 4) in
         let base:int32 = read Rn s in
         let pc_next:int32 = read (memory :> bytes32 (word_add base pcoff)) s in
-        (if aarch32_condition cond s then
-           if aligned 4 base /\ aarch32_nowrap (word_add base off) len /\
-              aligned 4 pc_next then
-             aarch32_loads regs base off s
-              (PC := pc_next ,,
-               events := CONS (EventJump (pc,pc_next))
-                              (CONS (EventLoad (word_add base off,len))
-                                    (read events s)) ,,
-               (if wback then Rn := word_add base wb else (=)))
-           else ASSIGNS entirety
-         else events := CONS (EventJump (pc,read PC s))
-                             (CONS (EventLoad (word_add base off,0))
-                                   (read events s))) s`;;
+        (if aarch32_nowrap (word_add base off) len then
+           if aarch32_condition cond s then
+             if aligned 4 base /\ aligned 4 pc_next then
+               aarch32_loads regs base off s
+                (PC := pc_next ,,
+                 events := CONS (EventJump (pc,pc_next))
+                                (CONS (EventLoad (word_add base off,len))
+                                      (read events s)) ,,
+                 (if wback then Rn := word_add base wb else (=)))
+             else ASSIGNS entirety
+           else events := CONS (EventJump (pc,read PC s))
+                               (CONS (EventLoad (word_add base off,0))
+                                     (read events s))
+         else ASSIGNS entirety) s`;;
 
 (* ------------------------------------------------------------------------- *)
 (* The instruction semantics the step conversion unfolds.                    *)
