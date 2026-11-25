@@ -12,7 +12,4 @@ Planned with the maintainer on 2026-11-10, after [kixel-ai/rind#583](https://git
 - aarch64 Linux: a lightweight VM (for example Lima or the nix-darwin Linux builder) running the same `just ci` the x86_64 host runs. Pick whichever keeps the queue's added time smallest, and record it.
 - The agent workstation role is configured in the maintainer's machine configuration, not in this repo. Keep the runner's work under `quest gate` so agents and the queue share the machine as they share this host.
 - If the merge-group build on the Mac mini adds more than a few minutes to landing, say so in the PR and propose trimming it to what catches aarch64-only breakage.
-
-## Waiting
-
-- Maintainer: the Mac mini arrives, is on the network, and agents can reach it over SSH with an account that can install Nix and register a runner. Physical setup and network access can't be done by an agent. Check by SSHing to it.
+- Decided 2026-11-25 (maintainer, /quest-run): the Mac mini is set up and reachable as `ssh mini` (Apple M5 Pro, macOS 27.2.1, admin account `kixelated`, Nix installed; `sudo` asks for a password, so prefer a setup that needs none, such as a per-user runner LaunchAgent and an unprivileged VM).
