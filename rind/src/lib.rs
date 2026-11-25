@@ -768,6 +768,63 @@ pub mod spake2plus {
     };
 }
 
+/// OPAQUE ([RFC 9807]): a password-authenticated key exchange in which the
+/// server never sees the password, in RFC 9807's two Argon2id
+/// configurations, over ristretto255 and over P-256.
+///
+/// A client registers by blinding its password with the server's OPRF and
+/// uploading a [`opaque::RegistrationRecord`]; each login then runs RFC
+/// 9807's three-message 3DH exchange, which gives both sides a
+/// [`opaque::SessionKey`] only if the client knew the password, and the
+/// client an [`opaque::ExportKey`] for its own data. A stolen record allows
+/// only an offline guessing attack, each guess paced by Argon2id, and a
+/// [`opaque::ServerSetup`] answers an unknown account indistinguishably from
+/// a registered one. Each side's state is a type its next step consumes, so
+/// no step runs twice or out of order.
+///
+/// Each step that stretches the password runs Argon2id at 2 GiB, so this
+/// example is not run as a test.
+///
+/// ```no_run
+/// # fn main() -> Result<(), rind::Error> {
+/// use rind::opaque::{
+///     ClientLogin, ClientRegistration, Credential, RISTRETTO255_SHA512_ARGON2ID, ServerSetup,
+///     Session,
+/// };
+///
+/// let suite = &RISTRETTO255_SHA512_ARGON2ID;
+/// let server = ServerSetup::generate(suite)?;
+/// let session = Session::default();
+///
+/// // Registration: the server stores the record under the account's identifier.
+/// let (client, request) = ClientRegistration::start(suite, b"password")?;
+/// let response = server.register(&request, b"alice")?;
+/// let (record, _export_key) = client.finish(&response, &session)?;
+///
+/// // Login.
+/// let (client, ke1) = ClientLogin::start(suite, b"password")?;
+/// let credential = Credential {
+///     identifier: b"alice",
+///     record: Some(&record),
+/// };
+/// let (server_login, ke2) = server.login(&ke1, &credential, &session)?;
+/// let (ke3, client_key, _export_key) = client.finish(&ke2, &session)?;
+/// let server_key = server_login.finish(&ke3)?;
+/// assert_eq!(client_key.as_ref(), server_key.as_ref());
+/// # Ok(())
+/// # }
+/// ```
+///
+/// [RFC 9807]: https://www.rfc-editor.org/rfc/rfc9807.html
+pub mod opaque {
+    pub use super::high::opaque::{
+        ClientLogin, ClientRegistration, Credential, ExportKey, Ke1, Ke2, Ke3,
+        P256_SHA256_ARGON2ID, RISTRETTO255_SHA512_ARGON2ID, RegistrationRecord,
+        RegistrationRequest, RegistrationResponse, ServerLogin, ServerSetup, Session, SessionKey,
+        SetupBytes, Suite,
+    };
+}
+
 /// Password-based key derivation with PBKDF2.
 ///
 /// A [`pbkdf2::Secret`] keys HMAC with a password once, then derives a key

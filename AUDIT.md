@@ -119,6 +119,7 @@ The pins, as `admin/audit` renders them from the files that hold them, so
 | blind-rsa-signatures | `45d0abfa829c` | `admin/sync-vectors` | RFC 9474 test vectors |
 | RFC 9497 | `5d7d94c8dc75` | `admin/sync-vectors` | OPRF test vectors |
 | RFC 9591 | `127452b93acb` | `admin/sync-vectors` | FROST test vectors |
+| RFC 9807 | `78597fc81b79` | `admin/sync-vectors` | OPAQUE test vectors |
 | cfg-if | 1.0.5 | `Cargo.lock` | a macro for `cfg` blocks |
 | curve25519-dalek | 5.0.0 | `Cargo.lock` | X25519, Ed25519, and ristretto255 on armv7 and the portable backend |
 | fiat-crypto | 0.3.0 | `Cargo.lock` | the NIST curves' field arithmetic on armv7 and the portable backend |

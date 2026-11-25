@@ -60,6 +60,7 @@ ChaCha20-Poly1305 on the no AVX2 column's aws-lc ⚡ (see
 | PBKDF2 | rind |  |  |  |  |
 | Argon2id | Argon2's reference + rind | rind |  |  |  |
 | SPAKE2+ | rind, over P-256 |  |  |  |  |
+| OPAQUE, over the rows it builds on | rind |  |  |  |  |
 | X25519 | verified-garbage ✓ |  |  |  |  |
 | Ed25519 | verified-garbage ✓ |  |  |  |  |
 | ristretto255 | s2n-bignum ✓ + rind |  |  |  |  |
@@ -156,6 +157,7 @@ with portable Rust in place of the assembly armv7 runs regardless.
 | PBKDF2 | verified-garbage ✓ + rind | rind |  |  |
 | Argon2id | rind |  |  |  |
 | SPAKE2+ | rind, over P-256 |  |  |  |
+| OPAQUE, over the rows it builds on | rind |  |  |  |
 | X25519 | s2n-bignum ✓ |  | BoringSSL ⚡ + curve25519-dalek ⚡ | curve25519-dalek ⚡ |
 | Ed25519 | s2n-bignum ✓ + Graviola |  | curve25519-dalek ⚡ + rind ⚡ |  |
 | ristretto255 | s2n-bignum ✓ + rind |  | curve25519-dalek | curve25519-dalek |
@@ -731,6 +733,16 @@ edwards25519's and ristretto255's still multiply in constant time, and P-256
 computes its sums as ECDSA verification does. A FROST(Ed25519, SHA-512)
 signature verifies through rind's Ed25519. The suites' vectors and the Zcash
 Foundation's `frost-*` crates cover the composition; nothing in it is proven.
+
+OPAQUE (RFC 9807) is rind's too, over the OPRF above in its base mode and
+the same groups' constant-time multiplications for its 3DH key exchange,
+with HKDF, HMAC, and the transcript over the suite's SHA-2, and the client's
+Argon2id below. Registration, login, and the fake response to an unknown
+account run in constant time in the password, the OPRF seed, the server's
+and client's private keys, and the masking key; the client declassifies the
+server's public key it unmasks only once the envelope's tag has
+authenticated it. RFC 9807's vectors and the `opaque-ke` crate cover the
+composition; nothing in it is proven.
 
 ### ML-KEM
 On aarch64, and on x86_64 CPUs with AVX2, the core polynomial arithmetic -- the NTT, inverse NTT, base multiplication
