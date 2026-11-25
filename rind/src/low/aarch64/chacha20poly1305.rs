@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
 //! ChaCha20-Poly1305 in one pass: pyca/verified-garbage's SVE2 routines
-//! where the CPU has SVE2; otherwise VG's NEON routines from
-//! `VG_NEON_MIN_LEN` bytes, both imported by `admin/import-vg`, and below it
-//! aws-lc's `chacha20_poly1305_armv8`, which interleaves NEON ChaCha20 with
-//! scalar Poly1305, imported by `admin/import-aws-lc`. VG's NEON routines
-//! took up to 1.25 of aws-lc's time below 1 KiB on Apple's M5 Pro, and
-//! aws-lc's up to 1.45 of theirs from it.
+//! where the CPU has SVE2; otherwise VG's NEON routines at the lengths
+//! `seal_runs_vg` and `open_runs_vg` name, both imported by
+//! `admin/import-vg`, and at the rest aws-lc's `chacha20_poly1305_armv8`,
+//! which interleaves NEON ChaCha20 with scalar Poly1305, imported by
+//! `admin/import-aws-lc`.
 //!
 //! VG proves in Lean that its routines meet RFC 8439 and take the same
 //! branches and memory addresses whatever the key, nonce, and data, but for
@@ -37,7 +36,7 @@ pub(crate) fn seal(key: &[u8; 32], nonce: &[u8; 12], aad: &[u8], inout: &mut [u8
     match HaveSve2::check() {
         Some(sve2) => seal_sve2(sve2, key, nonce, aad, inout),
         None => {
-            if inout.len() >= VG_NEON_MIN_LEN {
+            if seal_runs_vg(inout.len()) {
                 seal_neon(key, nonce, aad, inout)
             } else {
                 seal_aws_lc(key, nonce, aad, inout)
@@ -58,7 +57,7 @@ pub(crate) fn open(
     match HaveSve2::check() {
         Some(sve2) => open_sve2(sve2, key, nonce, aad, inout, tag),
         None => {
-            if inout.len() >= VG_NEON_MIN_LEN {
+            if open_runs_vg(inout.len()) {
                 open_neon(key, nonce, aad, inout, tag)
             } else {
                 ct_equal(&open_aws_lc(key, nonce, aad, inout), tag)
@@ -67,10 +66,23 @@ pub(crate) fn open(
     }
 }
 
-/// The message length from which CPUs without SVE2 run VG's NEON routines:
-/// below it aws-lc's code ran up to 1.25x faster on Apple's M5 Pro, from it
-/// VG's up to 1.45x.
-const VG_NEON_MIN_LEN: usize = 1024;
+// The message lengths at which CPUs without SVE2 run VG's NEON routines,
+// where they took less time than aws-lc's on both an Apple M5 Pro and a
+// Neoverse N2. Each code's cost steps at 64-byte blocks, and the two step at
+// different blocks, so aws-lc's stays faster at some lengths past VG's first
+// win: sealing up to 576 bytes and from 769 to 896, by up to 1.22x, and
+// opening up to 128 bytes, from 257 to 448, and from 896 to 960, by up to
+// 1.2x. From 961 bytes VG's took 0.72 to 1.00 of aws-lc's time.
+
+/// Whether a seal of `len` bytes runs VG's NEON routine.
+fn seal_runs_vg(len: usize) -> bool {
+    matches!(len, 577..=768 | 897..)
+}
+
+/// Whether an open of `len` bytes runs VG's NEON routine.
+fn open_runs_vg(len: usize) -> bool {
+    matches!(len, 129..=256 | 449..=895 | 961..)
+}
 
 fn seal_sve2(
     _: HaveSve2,

@@ -1109,7 +1109,7 @@ ChaCha20-Poly1305, and XChaCha20-Poly1305 after HChaCha20, run aws-lc's
 `chacha20_poly1305` assembly, which interleaves ChaCha20 with Poly1305 in one
 pass: on x86_64 without AVX-512 IFMA, its AVX2 half where the CPU has AVX2
 and BMI2 and its SSE4.1 half otherwise, as aws-lc picks them, and on aarch64
-without SVE2, its NEON routine below 1 KiB. x86_64 CPUs with AVX-512 IFMA run
+without SVE2, its NEON routine at the lengths VG's loses. x86_64 CPUs with AVX-512 IFMA run
 [verified-garbage]'s IFMA one-pass routines at every length instead. On
 Granite Rapids in [run 44962459177], sealing 32 B to 16 KB under rind's glue
 took 1.00 to 0.58 of the time of aws-lc's AVX2 routine, and opening 0.89 to
@@ -1128,9 +1128,12 @@ others. Without SSE4.1, ChaCha20 and
 Poly1305 run in separate passes, as in aws-lc. aarch64 CPUs with SVE2 run
 [verified-garbage]'s one-pass routines instead, which rotate with SVE2's
 `xar`: on a Neoverse N2 they took 0.60 to 0.92 of aws-lc's time at every
-size. CPUs without SVE2 run its NEON routines from 1 KiB, where on Apple's
-M5 Pro they took 0.70 to 0.97 of aws-lc's time sealing and 0.59 to 0.84
-opening, and aws-lc's below it, where VG's took up to 1.25 of its time.
+size. CPUs without SVE2 run its NEON routines at the lengths where they
+took less time than aws-lc's on both an Apple M5 Pro and a Neoverse N2:
+sealing from 577 to 768 bytes and from 897, and opening from 129 to 256,
+from 449 to 895, and from 961, where they took 0.62 to 1.00 of aws-lc's
+time. The two codes' costs step at different 64-byte blocks, so aws-lc's
+stays faster by up to 1.22 at the lengths between.
 
 Elsewhere, 32-bit `arm` runs ChaCha20 on aws-lc's `chacha-armv4` assembly,
 switching from its integer routine to its NEON one at 192 bytes as aws-lc
