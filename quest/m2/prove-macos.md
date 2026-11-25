@@ -6,6 +6,8 @@ The flake's `prove` dev shell exists on aarch64-darwin, and `nix develop .#prove
 
 ## Plan
 
+The maintainer kept this quest when picking #1043 to merge; it has no open decisions.
+
 Found on 2026-11-25 while proving x86_64 ChaCha20-Poly1305 on the Mac mini ([kixel-ai/rind#1043](https://github.com/kixel-ai/rind/pull/1043)):
 
 - The `prove` shell is Linux-only because the flake fetches only Aeneas's Linux tarballs, but Aeneas's nightly release also ships `aeneas-macos-aarch64.tar.gz` (Charon, its driver, and Aeneas, with `libgmp` beside them). With it, the flake's nightly `rust-charon` built for aarch64-darwin, and a `cargo miri setup --target=x86_64-unknown-linux-gnu` sysroot as `charon-sysroots` builds, the x86_64 translation and its KDF slice ran in about 4 minutes, and `lake build Rind.X86_64.Axioms` passed against it. A dispatched `prove` run took about 1.5 hours that day, mostly queued.
