@@ -5,8 +5,9 @@ open Aeneas Aeneas.Std Result rind.spec Spec Spec.MLKEM rind.spec.mlkem
 # aarch64's ML-KEM compression and unpacking in Rust
 
 s2n-bignum has no routine for ML-KEM's ciphertext compression or its 12-bit
-unpacking on aarch64, so rind runs `low::generic::mlkem`'s Rust there, which
-x86_64 replaces with mlkem-native's AVX2 routines:
+unpacking on aarch64, so rind runs `low::generic::mlkem`'s Rust there; x86_64
+runs it too without AVX2, and with AVX2 runs s2n-bignum's unpacking and
+mlkem-native's compression instead:
 
 * `compress_spec` and its four wrappers: `compress::<D, L>` writes FIPS 203's
   `ByteEncode_D(Compress_D(f))` for the 4, 5, 10, and 11 bits a ciphertext's

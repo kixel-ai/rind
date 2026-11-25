@@ -868,8 +868,12 @@ opaque low.x86_64.mont.sqr8x
   Slice Std.U64 → Slice Std.U64 → Slice Std.U64 → Std.U64 → Option
     low.x86_64.cpu.HaveBmi2Adx → Result (Slice Std.U64)
 
-/-! mlkem-native's ML-KEM polynomial routines, behind their Rust wrappers,
-which pass the AVX2 layout's tables. -/
+/-! ML-KEM's polynomial routines, behind their Rust wrappers, which pick a
+path from the CPU: with AVX2, s2n-bignum's routines, mlkem-native's code
+with the AVX2 layout's tables, and mlkem-native's AVX2 compression;
+without it, `low::generic::mlkem_poly`, a port of mlkem-native's portable
+C, and for unpacking, compression, and reordering `low::generic::mlkem`'s
+Rust, which `Rind/Aarch64/MlKemGeneric.lean` proves on aarch64. -/
 
 opaque low.x86_64.mlkem.mlkem_ntt
   : Array Std.I16 256#usize → Result (Array Std.I16 256#usize)
