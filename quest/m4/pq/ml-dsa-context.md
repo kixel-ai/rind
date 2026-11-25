@@ -26,9 +26,10 @@ Kept on 2026-11-25 when the maintainer settled [kixel-ai/rind#1053](https://gith
     `verify(message, signature)` on it; `KeyPair::sign` stays as the empty
     context's. Recommended: no caller changes, and the length check happens
     where the context is given.
+- Decided 2026-11-25 (maintainer): ✅ the breaking shape, `KeyPair::sign(context, message)` and
+  `PublicKey::verify(context, message, signature)`, one way to sign (rejected: the
+  `signer(context)` / `verifier(context)` handle, which keeps a second way beside
+  `KeyPair::sign`). It lands in a breaking release with a MIGRATING.md entry.
 - rind-openssl's `set_params` then keeps the context on the signing context,
   and `sh/openssl.sh` stops leaving out the `hexcontext-string` stanzas.
 
-## Waiting
-
-- Maintainer: pick the API shape above, recorded in this file's Plan
