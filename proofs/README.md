@@ -85,8 +85,8 @@ those inputs, in any worktree, restores in under a second.
   calls it, leaves the buffer s2n-bignum's RFC 8439 spec,
   `chacha20_encrypt`, under the key, the 32-bit block counter, which wraps,
   and the nonce, on the same model. Its stack frame lies in the 320 bytes
-  from 328 below the stack pointer, which must be 16 bytes below a 16-byte
-  boundary, as the ABI leaves it; its table, which `admin/prove` extracts
+  from 328 below the stack pointer, which needs the stack pointer plus 8 to be
+  16-byte aligned at entry, as the ABI leaves it; its table, which `admin/prove` extracts
   with the code since the build places it in the function's own read-only
   section on Linux, must be 16-byte aligned.
 - `aarch64/bn_mul_mont.ml`: `BN_MUL_MONT_SUBROUTINE_CORRECT`, rind's
