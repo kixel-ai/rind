@@ -792,7 +792,7 @@ fn rsa_moduli_fips_does_not_approve_are_refused() {
     assert!(rind::rsa::KeyPair::from_pkcs8(RSA2047).is_ok());
     assert_eq!(
         rsa::KeyPair::from_pkcs8(RSA2047).err(),
-        Some(refused.clone())
+        Some(refused)
     );
 
     // An odd length rind signs with.
