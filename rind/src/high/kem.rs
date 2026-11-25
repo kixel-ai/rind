@@ -853,6 +853,20 @@ mod tests {
                 let theirs_rejected = theirs.decapsulate(altered.as_slice().try_into().unwrap());
                 prop_assert_eq!(&ours_rejected[..], &theirs_rejected[..]);
                 prop_assert_ne!(ours_rejected, secret);
+
+                // The key reloaded from its expanded form does the same.
+                let expanded = DecapsulationKey::<$ours>::new(
+                    low::ct::into_public(ours.to_bytes()).as_ref(),
+                )
+                .unwrap();
+                prop_assert_eq!(
+                    &decapsulate(&expanded, ciphertext.as_ref()).unwrap()[..],
+                    &theirs_decapsulated[..]
+                );
+                prop_assert_eq!(
+                    &decapsulate(&expanded, &altered).unwrap()[..],
+                    &theirs_rejected[..]
+                );
             }};
         }
 
