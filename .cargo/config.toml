@@ -1,0 +1,7 @@
+# MSVC's linker stamps each DLL and executable with its link time unless told
+# /Brepro, which a release's prebuilt Windows libraries and wheels need to be
+# reproducible (SECURITY.md, "Supply chain"). Cargo reads this from the
+# directory it runs in, which release builds run from even for a package
+# staged elsewhere.
+[target.'cfg(target_env = "msvc")']
+rustflags = ["-Clink-arg=/Brepro"]
