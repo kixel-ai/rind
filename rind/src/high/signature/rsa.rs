@@ -419,7 +419,7 @@ impl fmt::Debug for Signature {
     }
 }
 
-/// A two-prime RSA private key, with a modulus of 2048 to 8192 bits, and its
+/// A two-prime RSA private key, with a modulus of 2047 to 8192 bits, and its
 /// public key.
 pub struct KeyPair {
     key: rsa::SigningKey,
@@ -472,6 +472,15 @@ impl KeyPair {
     /// Returns the public key, which verifies what this key pair signs.
     pub fn public_key(&self) -> &PublicKey {
         &self.public
+    }
+
+    /// The bit lengths of the primes `p` and `q`, for a loader that sizes
+    /// keys by them, as ring does.
+    ///
+    /// Loading a key already reveals them, as aws-lc treats them as public,
+    /// and the encoding's framing shows their byte lengths.
+    pub fn prime_bits(&self) -> [usize; 2] {
+        self.key.prime_bits()
     }
 
     /// Signs `message` with `algorithm`, as long as the modulus.
