@@ -218,8 +218,8 @@ def main():
     # test ran. Whole files and directories the allowlist allows stay out.
     # So do rind's backends' regions and branches, which vary from run to run
     # with the CPU a hosted runner draws, Intel or AMD, with AVX-512 IFMA or
-    # without, and with which thread wins a race; every tier reaches the
-    # same functions there regardless.
+    # without, and with which thread wins a race; the functions and copies
+    # each tier runs there are the same from run to run, so they still count.
     measured = collections.defaultdict(lambda: [0, 0, 0])
     for (path, *_), count in regions.items():
         measured[path][0] += not count and not path.startswith("rind/src/low/")

@@ -251,7 +251,9 @@ establishes, and what it does not:
   test runs on any tier, under `cargo test`, `dart test`, and pyrind's tests,
   unless `admin/coverage.allow` says why, and on a file whose uncovered
   regions, branches, or monomorphization gaps rise past
-  `admin/coverage.baseline`; fuzzing doesn't count.
+  `admin/coverage.baseline`, which leaves out the regions and branches of
+  rind's backends (`rind/src/low/`), as they vary with the runner's CPU;
+  fuzzing doesn't count.
 - **Adapter fuzz targets**, for rind-rustls, rind-dimpl, and rind-str0m,
   feed a hostile peer's bytes and whole handshakes edited in flight, against
   upstream's aws-lc-rs provider, and rind-openssl's calls its C ABI as

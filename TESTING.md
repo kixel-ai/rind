@@ -284,7 +284,8 @@ instantiation for a type no test uses) rise past
 [admin/coverage.baseline](admin/coverage.baseline). That leaves out the
 regions and branches of rind's backends (`rind/src/low/`), which vary with
 the CPU the hosted runner draws, Intel or AMD, with or without AVX-512 IFMA,
-and with thread races; every tier reaches the same functions there. Its log lists each
+and with thread races; the functions and copies each tier runs there are the
+same from run to run, so they still count. Its log lists each
 unrun function and gap as `path:line`, each tier's log carries llvm-cov's
 table, and its `coverage.baseline` artifact holds the run's counts, to
 commit when tests cover more. A test module's functions don't count, and
