@@ -63,7 +63,7 @@ Lean's compiler, trusted beyond the kernel wherever one of these appears:
 
 | Construct | Uses | Trusts |
 |---|---|---|
-| `bv_decide` | 25 in 6 files | each call adds an axiom that Lean's compiled LRAT checker accepted a SAT solver's certificate |
+| `bv_decide`, `bv_check` | 25 in 6 files | each call adds an axiom that Lean's compiled LRAT checker accepted a SAT solver's certificate |
 | `native_decide`, `decide +native` | 0 in 0 files | each adds an axiom that Lean's compiled code evaluated a proposition as the kernel would; rind's proofs avoid it |
 | `@[implemented_by]`, `@[extern]` | 2 in 2 files | the compiler runs another definition than the one proofs use, as for the AES S-boxes' tables, which `sboxFast_eq` and `invSboxFast_eq` prove equal |
 

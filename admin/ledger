@@ -70,8 +70,8 @@ GROUPS = [
 # comments and strings.
 CONSTRUCTS = [
     (
-        "`bv_decide`",
-        r"\bbv_decide\b",
+        "`bv_decide`, `bv_check`",
+        r"\bbv_(?:decide|check)\b",
         "each call adds an axiom that Lean's compiled LRAT checker accepted a SAT solver's certificate",
     ),
     (
