@@ -17,7 +17,8 @@
  * 256-byte scratch buffer, PC's offset from the instruction, and the buffer's
  * 64 words. A load or store goes through SP, which starts at the buffer's
  * middle, or through a register a case gives that address, at offsets that
- * stay inside the buffer, so the other registers take any value. A branch
+ * stay inside the buffer, so the other registers take any value; one whose
+ * condition fails, which transfers nothing, may go anywhere. A branch
  * lands 8 or 4 bytes before the instruction, or 8, 12, or 16 past it, where
  * the executor has a landing slot, and falling through lands at 4, as a
  * branch to there does too.
@@ -425,12 +426,59 @@ let make_literal_case input =
         (random_register ()) (reach + 4 * Random.int words);
     case_memop = false; case_input = input };;
 
+(* Whether condition `cond` holds of an input state's flags, NZCV at inputs
+   14 to 17, as ConditionHolds says. *)
+let condition_holds cond input =
+  let flag i = el (14 + i) input = num_1 in
+  let n = flag 0 and z = flag 1 and c = flag 2 and v = flag 3 in
+  let base =
+    match cond lsr 1 with
+    | 0 -> z | 1 -> c | 2 -> n | 3 -> v | 4 -> c && not z
+    | 5 -> n = v | 6 -> n = v && not z | _ -> true in
+  if cond land 1 = 1 && cond <> 15 then not base else base;;
+
+(* A load or store whose condition fails, through a register that holds
+   whatever the input does: the CPU transfers nothing, so the instruction
+   neither faults nor leaves the model, though its address may be unaligned,
+   unmapped, or run past 0xffffffff. LDR, LDRB, STR, STRB, and LDR into PC
+   with an immediate offset, LDRD and STRD, and LDM and STM, with PC in a
+   load's list half the time. *)
+let make_skipped_case input =
+  let rec failing () =
+    let cond = Random.int 14 in
+    if condition_holds cond input then failing () else cond in
+  let cond = failing () and rn = random_register () in
+  let rec other () =
+    let r = random_register () in if r = rn then other () else r in
+  let p = Random.bool () and u = Random.bool () in
+  let instruction =
+    match Random.int 3 with
+    | 0 ->
+        let load = Random.bool () in
+        let rt = if load && Random.int 4 = 0 then 15 else other () in
+        encode_ldst cond p u (rt <> 15 && Random.bool ()) false load rn rt
+          (Random.int 4096)
+    | 1 ->
+        let rec even () =
+          let r = 2 * Random.int 6 in
+          if r = rn || r + 1 = rn then even () else r in
+        let imm8 = Random.int 256 in
+        (cond lsl 28) lor (bit p lsl 24) lor (bit u lsl 23) lor (1 lsl 22) lor
+        (rn lsl 16) lor (even () lsl 12) lor ((imm8 lsr 4) lsl 8) lor
+        (0b1101 lsl 4) lor (bit (Random.bool ()) lsl 5) lor (imm8 land 15)
+    | _ ->
+        let load = Random.bool () in
+        let list = random_register_list () lor
+                   (if load && Random.bool () then 0x8000 else 0) in
+        encode_ldstm cond p u false load rn list in
+  { case_instruction = instruction; case_memop = true; case_input = input };;
+
 let caseclasses =
   [make_dp_reg_case; make_dp_imm_case; make_movw_movt_case;
    make_branch_case; make_ldst_case; make_dp_rsr_case; make_dp_pc_case;
    make_multiply_case; make_misc_case; make_bl_case; make_bx_case;
    make_ldst_reg_case; make_ldstd_case; make_ldstm_case; make_load_pc_case;
-   make_literal_case];;
+   make_literal_case; make_skipped_case];;
 
 let make_case kind =
   el kind caseclasses (make_input_state (Random.int 65));;
@@ -439,8 +487,9 @@ let make_case kind =
    means 32 or RRX, a register's shift by 0, 32, 33, and 255 places, the
    carries and overflows of the arithmetic, UMLAL's largest sum, a backward
    branch's sign-extended offset, word transfers that straddle two of the
-   buffer's words, whose bytes differ so a misplaced one shows, and a push
-   and a load of every register a list can name here. *)
+   buffer's words, whose bytes differ so a misplaced one shows, a push and a
+   load of every register a list can name here, and skipped transfers at an
+   address that would fault and run past 0xffffffff. *)
 let directed_input assignments =
   let base = map (fun _ -> num_0) (0--13) @ map (fun _ -> num_0) (1--4) @
              [num 128; num_0] @ map (fun _ -> num_0) (0--63) in
@@ -495,7 +544,13 @@ let directed_cases =
                                       (0--13)) };
    { case_instruction = 0xe99d5fff; case_memop = true;
      case_input = directed_input (map (fun i -> 53 + i,num (0x01010101 * (i + 1)))
-                                      (0--13)) }] @
+                                      (0--13)) };
+   (* LDRDNE R4, R5, [R0] and LDMNE R0, {R4, PC} with Z set and R0 at
+      0xfffffffd: unaligned, and past the top of memory, but skipped. *)
+   { case_instruction = 0x11c040d0; case_memop = true;
+     case_input = directed_input [0,num 0xfffffffd; 15,num 1] };
+   { case_instruction = 0x18908010; case_memop = true;
+     case_input = directed_input [0,num 0xfffffffd; 15,num 1] }] @
   (* LDR R0, [SP, #1]; LDR R0, [SP, #-2]!; STR R1, [SP, #3];
      STR R1, [SP, #-1]!. Inputs 51 to 53 are the words at SP-4, SP, and
      SP+4. *)

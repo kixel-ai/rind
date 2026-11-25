@@ -26,7 +26,9 @@ let aarch32_conditional = new_definition
     else if cond = word 14 then SOME i
     else SOME (aarch32_cond cond i)`;;
 
-(* A branch under `cond`, which records its fall-through when not taken. *)
+(* A branch under `cond`, which records its fall-through when not taken. A
+   load or store, which records an access either way, takes `cond` itself,
+   and the unconditional space, cond = 1111, holds none of them. *)
 
 let aarch32_conditional_branch = new_definition
  `aarch32_conditional_branch (cond:4 word)
@@ -188,19 +190,18 @@ let aarch32_dp_rsr = new_definition
 
 let aarch32_ldst = new_definition
  `aarch32_ldst (cond:4 word) P B W L (n:4 word) (t:4 word) Roff =
-    if (~P /\ W) \/ ((~P \/ W) /\ (n = t \/ n = word 15)) \/
+    if cond = word 15 \/ (~P /\ W) \/
+       ((~P \/ W) /\ (n = t \/ n = word 15)) \/
        (n = word 15 /\ (~L \/ B \/ t = word 15))
     then NONE else
     if t = word 15 then
       if L /\ ~B
-      then aarch32_conditional_branch cond
-            (aarch32_LDR_PC (aarch32_reg n) Roff P (~P \/ W))
+      then SOME (aarch32_LDR_PC cond (aarch32_reg n) Roff P (~P \/ W))
       else NONE
     else
-    aarch32_conditional cond
-     ((if L then if B then aarch32_LDRB else aarch32_LDR
-       else if B then aarch32_STRB else aarch32_STR)
-      (aarch32_reg t) (aarch32_src n) Roff P (~P \/ W))`;;
+    SOME ((if L then if B then aarch32_LDRB else aarch32_LDR
+           else if B then aarch32_STRB else aarch32_STR)
+          cond (aarch32_reg t) (aarch32_src n) Roff P (~P \/ W))`;;
 
 (* The immediate-offset form, whose encodings with cond = 1111 hold DMB,
    under any option: the model's one unconditional instruction. *)
@@ -233,13 +234,13 @@ let aarch32_ldst_reg = new_definition
 
 let aarch32_ldstd = new_definition
  `aarch32_ldstd (cond:4 word) P U W St (n:4 word) (t:4 word) (imm:int32) =
-    if bit 0 t \/ t = word 14 \/ n = word 15 \/ (~P /\ W) \/
-       ((~P \/ W) /\ (n = t \/ n = word_add t (word 1)))
+    if cond = word 15 \/ bit 0 t \/ t = word 14 \/ n = word 15 \/
+       (~P /\ W) \/ ((~P \/ W) /\ (n = t \/ n = word_add t (word 1)))
     then NONE else
-    aarch32_conditional cond
-     ((if St then aarch32_STRD else aarch32_LDRD)
-      (aarch32_reg t) (aarch32_reg (word_add t (word 1))) (aarch32_reg n)
-      (rvalue (if U then imm else word_neg imm)) P (~P \/ W))`;;
+    SOME ((if St then aarch32_STRD else aarch32_LDRD)
+          cond (aarch32_reg t) (aarch32_reg (word_add t (word 1)))
+          (aarch32_reg n) (rvalue (if U then imm else word_neg imm))
+          P (~P \/ W))`;;
 
 (* MUL, and UMULL (A = 0) and UMLAL (A = 1), without S. *)
 
@@ -298,24 +299,23 @@ let aarch32_ldstm_writeback = new_definition
 
 let aarch32_ldstm = new_definition
  `aarch32_ldstm (cond:4 word) P U W L (n:4 word) (l:16 word) =
-    if l = word 0 \/ n = word 15 \/ (W /\ bit (val n) l) \/ bit 13 l \/
-       (~L /\ bit 15 l)
+    if cond = word 15 \/ l = word 0 \/ n = word 15 \/ (W /\ bit (val n) l) \/
+       bit 13 l \/ (~L /\ bit 15 l)
     then NONE else
-    (if L /\ bit 15 l then aarch32_conditional_branch
-     else aarch32_conditional) cond
+    SOME
      (if L then
         if bit 15 l then
-          aarch32_LDM_PC (aarch32_reglist l) (aarch32_reg n)
+          aarch32_LDM_PC cond (aarch32_reglist l) (aarch32_reg n)
            (aarch32_ldstm_lowest P U l)
            (if U then word(4 * word_popcount l - (if P then 0 else 4))
             else if P then word_neg(word 4) else word 0)
            (4 * word_popcount l) (aarch32_ldstm_writeback U l) W
         else
-          aarch32_LDM (aarch32_reglist l) (aarch32_reg n)
+          aarch32_LDM cond (aarch32_reglist l) (aarch32_reg n)
            (aarch32_ldstm_lowest P U l)
            (4 * word_popcount l) (aarch32_ldstm_writeback U l) W
       else
-        aarch32_STM (aarch32_reglist l) (aarch32_reg n)
+        aarch32_STM cond (aarch32_reglist l) (aarch32_reg n)
          (aarch32_ldstm_lowest P U l)
          (4 * word_popcount l) (aarch32_ldstm_writeback U l) W)`;;
 
@@ -525,46 +525,49 @@ let AARCH32_DECODE_TESTS =
     `decode (word 0x112fff1e)`,                (* bxne lr *)
       `SOME (aarch32_cond_branch (word 1) (aarch32_BX LR))`;
     `decode (word 0xe4d0c001)`,                (* ldrb r12, [r0], #1 *)
-      `SOME (aarch32_LDRB R12 R0 (rvalue (word 1)) F T)`;
+      `SOME (aarch32_LDRB (word 14) R12 R0 (rvalue (word 1)) F T)`;
     `decode (word 0xe5b2e004)`,                (* ldr lr, [r2, #4]! *)
-      `SOME (aarch32_LDR LR R2 (rvalue (word 4)) T T)`;
+      `SOME (aarch32_LDR (word 14) LR R2 (rvalue (word 4)) T T)`;
     `decode (word 0xe5013008)`,                (* str r3, [r1, #-8] *)
-      `SOME (aarch32_STR R3 R1 (rvalue (word 0xfffffff8)) T F)`;
+      `SOME (aarch32_STR (word 14) R3 R1 (rvalue (word 0xfffffff8)) T F)`;
     `decode (word 0x249c8010)`,                (* ldrhs r8, [r12], #16 *)
-      `SOME (aarch32_cond (word 2)
-              (aarch32_LDR R8 R12 (rvalue (word 16)) F T))`;
+      `SOME (aarch32_LDR (word 2) R8 R12 (rvalue (word 16)) F T)`;
     `decode (word 0xe59f84ec)`,                (* ldr r8, [pc, #0x4ec] *)
-      `SOME (aarch32_LDR R8 aarch32_R15 (rvalue (word 0x4ec)) T F)`;
+      `SOME (aarch32_LDR (word 14) R8 aarch32_R15 (rvalue (word 0x4ec)) T F)`;
     `decode (word 0xe59df1b8)`,                (* ldr pc, [sp, #0x1b8] *)
-      `SOME (aarch32_LDR_PC SP (rvalue (word 0x1b8)) T F)`;
+      `SOME (aarch32_LDR_PC (word 14) SP (rvalue (word 0x1b8)) T F)`;
     `decode (word 0x159df1b8)`,                (* ldrne pc, [sp, #0x1b8] *)
-      `SOME (aarch32_cond_branch (word 1)
-              (aarch32_LDR_PC SP (rvalue (word 0x1b8)) T F))`;
+      `SOME (aarch32_LDR_PC (word 1) SP (rvalue (word 0x1b8)) T F)`;
     `decode (word 0xe7d12002)`,                (* ldrb r2, [r1, r2] *)
-      `SOME (aarch32_LDRB R2 R1 R2 T F)`;
+      `SOME (aarch32_LDRB (word 14) R2 R1 R2 T F)`;
     `decode (word 0xe7203102)`,                (* str r3, [r0, -r2, lsl #2]! *)
-      `SOME (aarch32_STR R3 R0 (aarch32_NEG (aarch32_LSL R2 2)) T T)`;
+      `SOME (aarch32_STR (word 14) R3 R0 (aarch32_NEG (aarch32_LSL R2 2)) T T)`;
     `decode (word 0xe1cd40d0)`,                (* ldrd r4, r5, [sp] *)
-      `SOME (aarch32_LDRD R4 R5 SP (rvalue (word 0)) T F)`;
+      `SOME (aarch32_LDRD (word 14) R4 R5 SP (rvalue (word 0)) T F)`;
+    `decode (word 0x11cd40f0)`,                (* strdne r4, r5, [sp] *)
+      `SOME (aarch32_STRD (word 1) R4 R5 SP (rvalue (word 0)) T F)`;
     `decode (word 0xe16041f8)`,                (* strd r4, r5, [r0, #-24]! *)
-      `SOME (aarch32_STRD R4 R5 R0 (rvalue (word 0xffffffe8)) T T)`;
+      `SOME (aarch32_STRD (word 14) R4 R5 R0 (rvalue (word 0xffffffe8)) T T)`;
     `decode (word 0xe92d4010)`,                (* push {r4, lr} *)
-      `SOME (aarch32_STM [R4; LR] SP (word 0xfffffff8) 8
+      `SOME (aarch32_STM (word 14) [R4; LR] SP (word 0xfffffff8) 8
               (word 0xfffffff8) T)`;
     `decode (word 0xe8bd8010)`,                (* pop {r4, pc} *)
-      `SOME (aarch32_LDM_PC [R4] SP (word 0) (word 4) 8 (word 8) T)`;
+      `SOME (aarch32_LDM_PC (word 14) [R4] SP (word 0) (word 4) 8 (word 8)
+              T)`;
     `decode (word 0x18bd8010)`,                (* popne {r4, pc} *)
-      `SOME (aarch32_cond_branch (word 1)
-              (aarch32_LDM_PC [R4] SP (word 0) (word 4) 8 (word 8) T))`;
+      `SOME (aarch32_LDM_PC (word 1) [R4] SP (word 0) (word 4) 8 (word 8)
+              T)`;
     `decode (word 0x18bd0010)`,                (* popne {r4} *)
-      `SOME (aarch32_cond (word 1)
-              (aarch32_LDM [R4] SP (word 0) 4 (word 4) T))`;
+      `SOME (aarch32_LDM (word 1) [R4] SP (word 0) 4 (word 4) T)`;
+    `decode (word 0x092d4010)`,                (* pusheq {r4, lr} *)
+      `SOME (aarch32_STM (word 0) [R4; LR] SP (word 0xfffffff8) 8
+              (word 0xfffffff8) T)`;
     `decode (word 0xe89c0030)`,                (* ldm r12, {r4, r5} *)
-      `SOME (aarch32_LDM [R4; R5] R12 (word 0) 8 (word 8) F)`;
+      `SOME (aarch32_LDM (word 14) [R4; R5] R12 (word 0) 8 (word 8) F)`;
     `decode (word 0xe9800006)`,                (* stmib r0, {r1, r2} *)
-      `SOME (aarch32_STM [R1; R2] R0 (word 4) 8 (word 8) F)`;
+      `SOME (aarch32_STM (word 14) [R1; R2] R0 (word 4) 8 (word 8) F)`;
     `decode (word 0xe8300006)`,                (* ldmda r0!, {r1, r2} *)
-      `SOME (aarch32_LDM [R1; R2] R0 (word 0xfffffffc) 8
+      `SOME (aarch32_LDM (word 14) [R1; R2] R0 (word 0xfffffffc) 8
               (word 0xfffffff8) T)`;
     `decode (word 0xe008089a)`,                (* mul r8, r10, r8 *)
       `SOME (aarch32_MUL R8 R10 R8)`;
@@ -608,6 +611,9 @@ let AARCH32_DECODE_REFUSALS =
     `decode (word 0xe1a0f00e)`;                (* mov pc, lr *)
     `decode (word 0xe1a0021f)`;                (* lsl r0, pc, r2 *)
     `decode (word 0xf0200002)`;                (* cond = 1111 *)
+    `decode (word 0xf7910002)`;                (* ldr r0, [r1, r2], cond = 1111 *)
+    `decode (word 0xf1cd40d0)`;                (* ldrd r4, r5, [sp], cond = 1111 *)
+    `decode (word 0xf8bd0010)`;                (* pop {r4}, cond = 1111 *)
     `decode (word 0xe4f0c001)`;                (* ldrbt r12, [r0], #1 *)
     `decode (word 0xe4d00001)`;                (* ldrb r0, [r0], #1 *)
     `decode (word 0xe1a10002)`;                (* mov r0, r2, Rn = 1 *)

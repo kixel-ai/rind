@@ -175,18 +175,163 @@ let AARCH32_PC_RELATIVE_CONV =
           else failwith "AARCH32_PC_RELATIVE_CONV"
     | _ -> failwith "AARCH32_PC_RELATIVE_CONV";;
 
-(* Fails unless every conditional instruction's condition is decided, and
-   every address and branch target an instruction needs aligned is known to
-   be, since the state after one that is not is no single update. *)
+(* What decides `aarch32_nowrap` of an address: four bytes or fewer from an
+   aligned one, the address's offset from a base whose value an assumption
+   gives, or its offset into a region an assumption says stays below 2^32,
+   such as a buffer's or a stack frame's. *)
+
+let AARCH32_NOWRAP_ALIGNED = prove
+ (`!(a:int32) len. aligned 4 a /\ len <= 4 ==> aarch32_nowrap a len`,
+  REWRITE_TAC[aarch32_nowrap; aligned; DIMINDEX_32] THEN
+  REPEAT GEN_TAC THEN
+  DISCH_THEN(CONJUNCTS_THEN2 (MP_TAC o CONJUNCT2) ASSUME_TAC) THEN
+  REWRITE_TAC[divides] THEN DISCH_THEN(X_CHOOSE_TAC `k:num`) THEN
+  MP_TAC(ISPEC `a:int32` VAL_BOUND) THEN ASM_REWRITE_TAC[DIMINDEX_32] THEN
+  CONV_TAC NUM_REDUCE_CONV THEN
+  REWRITE_TAC[ARITH_RULE `4294967296 = 4 * 1073741824`; LT_MULT_LCANCEL] THEN
+  ASM_ARITH_TAC);;
+
+let AARCH32_NOWRAP_OFFSET = prove
+ (`!(b:int32) n d len.
+      aarch32_nowrap b n /\ d + len <= n
+      ==> aarch32_nowrap (word_add b (word d)) len`,
+  REWRITE_TAC[aarch32_nowrap; VAL_WORD_ADD; VAL_WORD; DIMINDEX_32] THEN
+  REPEAT STRIP_TAC THEN
+  ASM_CASES_TAC `val(b:int32) + d < 2 EXP 32` THENL
+   [SUBGOAL_THEN `d < 2 EXP 32` ASSUME_TAC THENL [ASM_ARITH_TAC; ALL_TAC] THEN
+    ASM_SIMP_TAC[MOD_LT] THEN ASM_ARITH_TAC;
+    SUBGOAL_THEN `len = 0` SUBST1_TAC THENL [ASM_ARITH_TAC; ALL_TAC] THEN
+    REWRITE_TAC[ADD_CLAUSES] THEN MATCH_MP_TAC LT_IMP_LE THEN
+    REWRITE_TAC[MOD_LT_EQ] THEN CONV_TAC NUM_REDUCE_CONV]);;
+
+let AARCH32_NOWRAP_VAL = prove
+ (`!(b:int32) m d len.
+      val b = m
+      ==> (aarch32_nowrap (word_add b (word d)) len <=>
+           aarch32_nowrap (word (m + d)) len)`,
+  REPEAT STRIP_TAC THEN AP_THM_TAC THEN AP_TERM_TAC THEN
+  FIRST_X_ASSUM(SUBST1_TAC o SYM) THEN REWRITE_TAC[WORD_ADD; WORD_VAL]);;
+
+(* Decides `aarch32_nowrap a len` for a numeral `len`, after `addr_conv`
+   rewrites `a` to its value, or fails. `aligned_ths` decide alignment, as
+   for the step's other guards, and `ths` are the assumptions. *)
+
+let AARCH32_NOWRAP_CONV =
+  let two32 = pow2 32 and word_tm = `word:num->int32`
+  and nowrap_tm = `aarch32_nowrap` in
+  let wrap x = mod_num x two32 in
+  (* An address as a base, or none, and a numeral offset modulo 2^32. *)
+  let rec offset t =
+    match t with
+      Comb(Comb(Const("word_add",_),x),y) ->
+        (match offset x,offset y with
+           (Some _,_),(Some _,_) -> failwith "AARCH32_NOWRAP_CONV"
+         | (b,kx),(None,ky) | (None,kx),(b,ky) -> b,wrap(kx +/ ky))
+    | Comb(Comb(Const("word_sub",_),x),y) ->
+        (match offset x,offset y with
+           (b,kx),(None,ky) -> b,wrap(kx -/ ky +/ two32)
+         | _ -> failwith "AARCH32_NOWRAP_CONV")
+    | Comb(Const("word_neg",_),y) ->
+        (match offset y with
+           None,ky -> None,wrap(two32 -/ ky)
+         | _ -> failwith "AARCH32_NOWRAP_CONV")
+    | Comb(Const("word",_),n) when is_numeral n -> None,wrap(dest_numeral n)
+    | Comb(Const("word",_) as w,Comb(Comb(Const("+",_),p),n))
+        when is_numeral n -> Some(mk_comb(w,p)),wrap(dest_numeral n)
+    | _ -> Some t,num_0 in
+  let numeral_conv =
+    REWR_CONV aarch32_nowrap THENC
+    DEPTH_CONV(WORD_RED_CONV ORELSEC NUM_RED_CONV ORELSEC DIMINDEX_CONV) in
+  let decided th =
+    match rhs(concl th) with
+      Const("T",_) | Const("F",_) -> th
+    | _ -> failwith "AARCH32_NOWRAP_CONV" in
+  (* `a = word_add b (word d)`, or `a = word d` without a base. *)
+  let as_offset a b d =
+    let rhs = match b with
+        Some b -> mk_binop `word_add:int32->int32->int32` b
+                   (mk_comb(word_tm,mk_numeral d))
+      | None -> mk_comb(word_tm,mk_numeral d) in
+    prove(mk_eq(a,rhs),REWRITE_TAC[WORD_ADD] THEN CONV_TAC WORD_RULE) in
+  fun aligned_ths ths addr_conv tm ->
+    match tm with
+      Comb(Comb(Const("aarch32_nowrap",_),a0),len) when is_numeral len ->
+        let nth = addr_conv a0 in
+        let a = rhs(concl nth) in
+        let l = dest_numeral len in
+        let b,d = offset a in
+        let on th = (* `aarch32_nowrap a len` from one of `a'`, `a = a'` *)
+          fun eq -> TRANS (AP_THM (AP_TERM nowrap_tm (TRANS nth eq)) len) th in
+        (match b with
+           None ->
+             let eq = as_offset a None d in
+             on (decided(numeral_conv
+                  (mk_comb(mk_comb(nowrap_tm,rand(concl eq)),len)))) eq
+         | Some base ->
+             let by_alignment () =
+               if l >/ num 4 then failwith "AARCH32_NOWRAP_CONV" else
+               let ath = ALIGNED_WORD_EXTENDED_CONV aligned_ths
+                          (mk_comb(`aligned 4:int32->bool`,a)) in
+               if rhs(concl ath) <> `T` then failwith "AARCH32_NOWRAP_CONV" else
+               let th = MP (SPECL [a;len] AARCH32_NOWRAP_ALIGNED)
+                         (CONJ (EQT_ELIM ath)
+                               (EQT_ELIM(NUM_REDUCE_CONV
+                                 (mk_binop `(<=):num->num->bool` len `4`)))) in
+               TRANS (AP_THM (AP_TERM nowrap_tm nth) len) (EQT_INTRO th)
+             and by_value () =
+               tryfind (fun th ->
+                 match concl th with
+                   Comb(Comb(Const("=",_),Comb(Const("val",_),b')),m)
+                     when b' = base && is_numeral m ->
+                       let eq = as_offset a b d in
+                       let vth = MP (SPECL [base;m;mk_numeral d;len]
+                                      AARCH32_NOWRAP_VAL) th in
+                       let rth = (DEPTH_CONV NUM_ADD_CONV THENC numeral_conv)
+                                   (rhs(concl vth)) in
+                       on (TRANS vth (decided rth)) eq
+                 | _ -> failwith "") ths
+             and by_region () =
+               tryfind (fun th ->
+                 match concl th with
+                   Comb(Comb(Const("aarch32_nowrap",_),r),n) when is_numeral n ->
+                     (match offset r with
+                        Some b',d0 when b' = base ->
+                          let dd = wrap(d -/ d0 +/ two32) in
+                          if dd +/ l >/ dest_numeral n then failwith "" else
+                          let eq = prove
+                           (mk_eq(a,mk_binop `word_add:int32->int32->int32` r
+                                      (mk_comb(word_tm,mk_numeral dd))),
+                            REWRITE_TAC[WORD_ADD] THEN CONV_TAC WORD_RULE) in
+                          let fit = EQT_ELIM(NUM_REDUCE_CONV
+                            (mk_binop `(<=):num->num->bool`
+                              (mk_binop `(+):num->num->num` (mk_numeral dd) len)
+                              n)) in
+                          let th' = MP (SPECL [r;n;mk_numeral dd;len]
+                                          AARCH32_NOWRAP_OFFSET)
+                                       (CONJ th fit) in
+                          on (EQT_INTRO th') eq
+                      | _ -> failwith "")
+                 | _ -> failwith "") ths in
+             try by_alignment () with Failure _ ->
+             try by_value () with Failure _ ->
+             by_region ())
+    | _ -> failwith "AARCH32_NOWRAP_CONV";;
+
+(* Fails unless every conditional instruction's condition is decided, every
+   address and branch target an instruction needs aligned is known to be, and
+   every transfer is known to stay below 2^32, since the state after one that
+   is not is no single update. *)
 
 let AARCH32_CHECK_DECIDED_CONV tm =
   let rel_tys = [`:aarch32state->bool`; `:aarch32state->aarch32state->bool`] in
   if can (find_term (fun t ->
             is_cond t && mem (type_of t) rel_tys)) tm
   then failwith
-   ("AARCH32_CONV: a conditional instruction's condition is undecided, or " ^
-    "an address or branch target is not known to be aligned; establish " ^
-    "the flags it reads, or assume `aligned 4` of the address, first")
+   ("AARCH32_CONV: a conditional instruction's condition is undecided, " ^
+    "an address or branch target is not known to be aligned, or a " ^
+    "transfer is not known to stay below 2^32; establish the flags it " ^
+    "reads, or assume `aligned 4` of the address, or `aarch32_nowrap` of " ^
+    "a region holding the transfer or the value of its base, first")
   else REFL tm;;
 
 (* Convert one symbolic machine step to the explicit state update for the
@@ -264,6 +409,17 @@ let AARCH32_CONV (decode_ths:thm option array) (ths:thm list) tm =
        (GEN_REWRITE_CONV I (filter (is_eq o concl) ths) ORELSEC
         WORD_RED_CONV ORELSEC
         NORMALIZE_RELATIVE_ADDRESS_CONV)) in
+  (* A transfer's address, as far as the assumptions give it, for deciding
+     whether it stays below 2^32. *)
+  let addr_conv =
+    TOP_DEPTH_CONV COMPONENT_READ_OVER_WRITE_CONV THENC
+    REWRITE_CONV (READ_RVALUE :: CONJUNCTS AARCH32_OPERAND_READS) THENC
+    TOP_DEPTH_CONV COMPONENT_READ_OVER_WRITE_CONV THENC
+    REWRITE_CONV (BITVAL_CLAUSES :: flag_ths) THENC
+    TOP_DEPTH_CONV
+     (GEN_REWRITE_CONV I (filter (is_eq o concl) ths) ORELSEC
+      WORD_RED_CONV ORELSEC
+      NORMALIZE_RELATIVE_ADDRESS_CONV) in
   (K eth THENC
    REWRITE_CONV
     ([aarch32_execute; aarch32_cond; aarch32_cond_branch; SEQ] @
@@ -276,6 +432,7 @@ let AARCH32_CONV (decode_ths:thm option array) (ths:thm list) tm =
    target_conv THENC
    ALIGNED_WORD_EXTENDED_CONV aligned_ths THENC
    ONCE_DEPTH_CONV AARCH32_ALIGNED_NUMERAL_CONV THENC
+   ONCE_DEPTH_CONV (AARCH32_NOWRAP_CONV aligned_ths ths addr_conv) THENC
    REWRITE_CONV[] THENC
    AARCH32_CHECK_DECIDED_CONV THENC
    REWRITE_CONV[SEQ] THENC
@@ -439,7 +596,8 @@ let MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI = REWRITE_RULE
 (* do. The subroutine theorem assumes `aligned 4 returnaddress`: it covers   *)
 (* an A32 caller, since returning to a Thumb one leaves the model. One with  *)
 (* a stack frame assumes `aligned 4 stackpointer` too, as the AAPCS keeps SP *)
-(* at every instruction.                                                     *)
+(* at every instruction, and `aarch32_nowrap` of the frame, which a push of  *)
+(* more than one word needs.                                                 *)
 (* ------------------------------------------------------------------------- *)
 
 let AARCH32_CHECK_FORALLVARS_TAC:tactic =
@@ -605,9 +763,11 @@ let AARCH32_ADD_RETURN_STACK_TAC =
     ASM_REWRITE_TAC[];;
 
 (* ------------------------------------------------------------------------- *)
-(* The wrappers, literal loads after and before the code, and a load at a    *)
-(* known base's offset, proven of five small routines as this file loads,    *)
-(* as riscv/tutorial/subroutine.ml proves s2n-bignum's.                      *)
+(* The wrappers, literal loads after and before the code, a load at a known *)
+(* base's offset, and what untaken branches, loads, and stores record,       *)
+(* proven of small routines as this file loads, as                           *)
+(* riscv/tutorial/subroutine.ml proves s2n-bignum's; and which transfers     *)
+(* that run past 0xffffffff leave the model.                                 *)
 (* ------------------------------------------------------------------------- *)
 
 let AARCH32_SUBROUTINE_TESTS =
@@ -668,6 +828,7 @@ let AARCH32_SUBROUTINE_TESTS =
   let stack = prove
    (`!pc a (stackpointer:int32) (returnaddress:int32).
       aligned 4 returnaddress /\ aligned 4 stackpointer /\
+      aarch32_nowrap (word_sub stackpointer (word 8)) 8 /\
       nonoverlapping
         ((word pc):int32,LENGTH aarch32_test_stack_mc)
         (word_sub stackpointer (word 8),8)
@@ -776,7 +937,8 @@ let AARCH32_SUBROUTINE_TESTS =
   let rrx_exec = AARCH32_MK_EXEC_RULE rrx_mc in
   let rrx = prove
    (`!pc (scratch:int32) (v:int32).
-      nonoverlapping ((word pc):int32,LENGTH aarch32_test_rrx_mc) (scratch,256)
+      nonoverlapping ((word pc):int32,LENGTH aarch32_test_rrx_mc) (scratch,256) /\
+      aarch32_nowrap scratch 256
       ==> ensures aarch32
         (\s. aligned_bytes_loaded s (word pc) aarch32_test_rrx_mc /\
              read PC s = word pc /\
@@ -790,4 +952,62 @@ let AARCH32_SUBROUTINE_TESTS =
     REWRITE_TAC[fst rrx_exec] THEN
     REPEAT STRIP_TAC THEN
     AARCH32_SIM_TAC rrx_exec [1]) in
-  [nostack; stack; literal; offset; before; untaken; rrx];;
+  (* ldrne r0, [r1]; strdne r4, r5, [r0, #3]; popne {r4, pc}, with Z set:
+     each records an access of no bytes, at an address that need not be
+     aligned nor stay below 2^32, and the pop its fall-through too. *)
+  let skipped_mc = define "aarch32_test_skipped_mc"
+    [0x15910000; 0x11c040f3; 0x18bd8010] in
+  let skipped_exec = AARCH32_MK_EXEC_RULE skipped_mc in
+  let skipped = prove
+   (`!pc a (sp:int32) e.
+      ensures aarch32
+        (\s. aligned_bytes_loaded s (word pc) aarch32_test_skipped_mc /\
+             read PC s = word pc /\ read ZF s /\
+             read R0 s = word 0x1002 /\ read R1 s = a /\ read SP s = sp /\
+             read events s = e)
+        (\s. read PC s = word (pc + 12) /\
+             read events s =
+               CONS (EventJump (word (pc + 8):int32,word (pc + 12)))
+                (CONS (EventLoad (sp,0))
+                  (CONS (EventStore (word 0x1005,0))
+                    (CONS (EventLoad (a,0)) e))))
+        (MAYCHANGE [PC] ,, MAYCHANGE [events])`,
+    REWRITE_TAC[fst skipped_exec] THEN
+    REPEAT STRIP_TAC THEN
+    AARCH32_SIM_TAC skipped_exec [1;2;3]) in
+  (* One instruction stepped with R0 at an address near the top of memory,
+     and Z set: whether its step leaves the model. *)
+  let leaves name word r0 =
+    let mc = define name [word] in
+    let exec = AARCH32_MK_EXEC_RULE mc in
+    let ths = map ASSUME
+     [mk_comb(`aligned_bytes_loaded (s:aarch32state) (word pc:int32)`,lhs(concl mc));
+      `read PC (s:aarch32state) = word pc`;
+      mk_eq(`read R0 (s:aarch32state)`,
+            mk_comb(`word:num->int32`,mk_small_numeral r0));
+      `read ZF (s:aarch32state)`] in
+    let th = AARCH32_CONV (snd exec) ths `aarch32 s s'` in
+    can (find_term (function
+           Comb(Const("ASSIGNS",_),Const("entirety",_)) -> true
+         | _ -> false)) (rhs(concl th)) in
+  let () = List.iter (fun (name,word,r0,expected) ->
+      if leaves name word r0 <> expected then
+        failwith ("AARCH32_SUBROUTINE_TESTS: " ^ name ^ " at " ^
+                  string_of_int r0))
+   [(* ldr r1, [r0]: a word may be unaligned, but not run past the top. *)
+    "aarch32_test_wrap_ldr_mc",0xe5901000,0xfffffffd,true;
+    "aarch32_test_top_ldr_mc",0xe5901000,0xfffffffc,false;
+    (* str r1, [r0] *)
+    "aarch32_test_wrap_str_mc",0xe5801000,0xffffffff,true;
+    (* ldrd r4, r5, [r0] *)
+    "aarch32_test_wrap_ldrd_mc",0xe1c040d0,0xfffffffc,true;
+    "aarch32_test_top_ldrd_mc",0xe1c040d0,0xfffffff8,false;
+    (* ldm r0, {r1, r2} *)
+    "aarch32_test_wrap_ldm_mc",0xe8900006,0xfffffffc,true;
+    "aarch32_test_top_ldm_mc",0xe8900006,0xfffffff8,false;
+    (* stmdb r0, {r1, r2}, whose lowest address is R0 less 8. *)
+    "aarch32_test_wrap_stmdb_mc",0xe9000006,4,true;
+    "aarch32_test_top_stmdb_mc",0xe9000006,0,false;
+    (* ldrdne r4, r5, [r0] with Z set: nothing is transferred. *)
+    "aarch32_test_skipped_ldrd_mc",0x11c040d0,0xfffffffd,false] in
+  [nostack; stack; literal; offset; before; untaken; rrx; skipped];;
