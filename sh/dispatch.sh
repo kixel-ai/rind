@@ -468,12 +468,12 @@ step() {
                 done
                 run cargo clippy -p rind-acvp --features module --all-targets --locked --profile test-fast -- --deny warnings
                 if [[ -n "$all" ]] || grep -q '^rind-fips/' "$changed"; then
-                    run cargo nextest run -p rind-fips --features __break_tests --locked
+                    run cargo nextest run -p rind-fips --features __break_tests --locked --cargo-profile test-fast
                 fi
                 # Selected whenever rind or the module it builds changes,
                 # since its answers come from rind's services.
                 if names rind-acvp "${packages[@]}"; then
-                    run cargo nextest run -p rind-acvp --features module --locked
+                    run cargo nextest run -p rind-acvp --features module --locked --cargo-profile test-fast
                 fi
             fi
             # Doc tests need a library. No packages at all means the workspace.
