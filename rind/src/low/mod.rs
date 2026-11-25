@@ -186,7 +186,7 @@ mod generic {
     pub(super) mod sha256_k;
     // SLH-DSA's SHA-256 lanes one at a time, which x86_64 runs with the SHA
     // extensions or without AVX2, and aarch64 without the SHA-256
-    // instructions or for one lane.
+    // instructions or for a group of one or two lanes.
     #[cfg(feature = "slh-dsa")]
     pub(super) mod sha256x8;
     // The portable backend's SHA-512, and its round constants. Tests compile
