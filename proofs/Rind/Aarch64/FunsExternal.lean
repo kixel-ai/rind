@@ -442,8 +442,61 @@ def low.aarch64.aes_cbc.aese_chained (y b : core.core_arch.arm_shared.neon.uint8
     Result core.core_arch.arm_shared.neon.uint8x16_t :=
   core.core_arch.arm_shared.neon.generated.vaeseq_u8 y b
 
+/-! s2n-bignum's ML-KEM polynomial routines: the NTTs, mulcache, and
+sampler behind wrappers that pass their tables, the rest called directly. -/
+
+opaque low.aarch64.mlkem.mlkem_ntt
+  : Array Std.I16 256#usize → Result (Array Std.I16 256#usize)
+
+opaque low.aarch64.mlkem.mlkem_intt
+  : Array Std.I16 256#usize → Result (Array Std.I16 256#usize)
+
+opaque low.aarch64.mlkem.mlkem_mulcache_compute
+  : Array Std.I16 128#usize → Array Std.I16 256#usize → Result (Array Std.I16 128#usize)
+
+opaque low.aarch64.mlkem.mlkem_rej_uniform_vartime
+  : Array Std.I16 256#usize → Slice Std.U8 → Result (Std.U64 × (Array Std.I16 256#usize))
+
+opaque low.aarch64.mlkem_basemul_k2.mlkem_basemul_k2
+  : Array Std.I16 256#usize → Array Std.I16 512#usize → Array Std.I16 512#usize →
+    Array Std.I16 256#usize → Result (Array Std.I16 256#usize)
+
+opaque low.aarch64.mlkem_basemul_k3.mlkem_basemul_k3
+  : Array Std.I16 256#usize → Array Std.I16 768#usize → Array Std.I16 768#usize →
+    Array Std.I16 384#usize → Result (Array Std.I16 256#usize)
+
+opaque low.aarch64.mlkem_basemul_k4.mlkem_basemul_k4
+  : Array Std.I16 256#usize → Array Std.I16 1024#usize → Array Std.I16 1024#usize →
+    Array Std.I16 512#usize → Result (Array Std.I16 256#usize)
+
+opaque low.aarch64.mlkem_reduce.mlkem_reduce
+  : Array Std.I16 256#usize → Result (Array Std.I16 256#usize)
+
+opaque low.aarch64.mlkem_tobytes.mlkem_tobytes
+  : Array Std.U8 384#usize → Array Std.I16 256#usize → Result (Array Std.U8 384#usize)
+
+opaque low.aarch64.mlkem_tomont.mlkem_tomont
+  : Array Std.I16 256#usize → Result (Array Std.I16 256#usize)
+
 /-! pyca/verified-garbage's ML-KEM-768 routines, behind their Rust wrappers,
-whose contracts `Rind.Aarch64.VgMlKem` states. -/
+whose contracts `Rind.Aarch64.VgMlKem` states, and the check for the SHA-3
+instructions encapsulation needs. -/
+
+opaque low.aarch64.mlkem768_vg.Encaps.check : Result (Option low.aarch64.mlkem768_vg.Encaps)
+
+/-- VG's key generation and decapsulation, which never run on aarch64: the
+token proving they do is an empty enum, which `check` never returns. -/
+def low.generic.mlkem768_vg.KeyPair.check : Result (Option low.generic.mlkem768_vg.KeyPair) :=
+  Std.Result.ok none
+
+def low.generic.mlkem768_vg.KeyPair.keygen (k : low.generic.mlkem768_vg.KeyPair)
+    (_ : Array Std.U8 64#usize) : Result (Option (Array Std.U8 2400#usize)) :=
+  nomatch k
+
+def low.generic.mlkem768_vg.KeyPair.decaps (k : low.generic.mlkem768_vg.KeyPair)
+    (_ : Array Std.U8 2400#usize) (_ : Array Std.U8 1088#usize) :
+    Result (Option (Array Std.U8 32#usize)) :=
+  nomatch k
 
 opaque low.aarch64.mlkem768_vg.Encaps.check_ek
   : low.aarch64.mlkem768_vg.Encaps → Array Std.U8 1184#usize → Result Bool
@@ -460,9 +513,10 @@ iteration count is the `u32` its `NonZeroU32` holds. -/
 opaque low.aarch64.pbkdf2_vg.Pbkdf2.derive
   : low.aarch64.pbkdf2_vg.Pbkdf2 → Slice Std.U8 → Slice Std.U8 → Std.U32 → Slice Std.U8 →
     Result (Slice Std.U8)
-/-! ChaCha20-Poly1305's one pass: pyca/verified-garbage's SVE2 routines,
-behind one wrapper each, whose contracts `Rind.Aarch64.VgChaCha20Poly1305`
-restates, and aws-lc's NEON routines, which no proof covers yet. -/
+/-! ChaCha20-Poly1305's one pass: pyca/verified-garbage's SVE2 and NEON
+routines, behind one wrapper each, whose SVE2 contracts
+`Rind.Aarch64.VgChaCha20Poly1305` restates, and aws-lc's NEON routines, which
+no proof covers yet. -/
 
 opaque low.aarch64.cpu.HaveSve2.check : Result (Option low.aarch64.cpu.HaveSve2)
 
@@ -479,6 +533,14 @@ opaque low.aarch64.chacha20poly1305.seal_neon
     Result ((Std.Array Std.U8 16#usize) × (Slice Std.U8))
 
 opaque low.aarch64.chacha20poly1305.open_neon
+  : Std.Array Std.U8 32#usize → Std.Array Std.U8 12#usize → Slice Std.U8 → Slice Std.U8 →
+    Std.Array Std.U8 16#usize → Result (Bool × (Slice Std.U8))
+
+opaque low.aarch64.chacha20poly1305.seal_aws_lc
+  : Std.Array Std.U8 32#usize → Std.Array Std.U8 12#usize → Slice Std.U8 → Slice Std.U8 →
+    Result ((Std.Array Std.U8 16#usize) × (Slice Std.U8))
+
+opaque low.aarch64.chacha20poly1305.open_aws_lc
   : Std.Array Std.U8 32#usize → Std.Array Std.U8 12#usize → Slice Std.U8 → Slice Std.U8 →
     Result ((Std.Array Std.U8 16#usize) × (Slice Std.U8))
 
