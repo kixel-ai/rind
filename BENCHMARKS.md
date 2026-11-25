@@ -17,6 +17,74 @@ How long rind and the usual Rust crypto libraries take for the same operations, 
 
 Each host builds with the pinned toolchain in the Nix dev shell, and runs `admin/bench-report` only when idle. Times are criterion's estimates.
 
+## Methodology
+
+Each host runs `cargo bench -p rind-bench --features __bench_openssl`, passing criterion `--warm-up-time 1 --measurement-time 3` and a filter for the report's rows, as `criterion_args` in its `benchmarks/data/<host>.json` records.
+
+On aarch64, every rind row holds a `rind::cpu::Dit::hold()` guard across the timed loop (`rind_dit` in `rind-bench/benches/criterion/mod.rs`), so it pays for turning DIT on and off once, as a caller holding the guard around a batch of calls does. A caller holding none pays it on every call: the rows marked *DIT set per call* time rind that way. On x86_64 the guard does nothing, and no other library sets DIT.
+
+To time a row without Nix, install the pinned toolchain and run its bench target, here AES-128-GCM's rows. aws-lc-rs and ring need a C compiler, and `--features __bench_openssl`, which adds OpenSSL's column on Unix, needs OpenSSL 3's headers and pkg-config.
+
+```sh
+rustup toolchain install 1.98.1
+cargo +1.98.1 bench -p rind-bench --bench aes_gcm -- --warm-up-time 1 --measurement-time 3 '^aes128-gcm/'
+```
+
+### Versions
+
+The versions of each library's crates that `rind-bench` built, from `Cargo.lock` at each host's measured commit, and the OpenSSL each host linked. A crate a host's build lacked is left out.
+
+| Library | Crate | Version |
+|---|---|---|
+| rind | `rind` | 0.3.2 on `nixos`, `fedora`, `kixtop`, `ovh-iad`, `ovh-sea`; 0.2.1 on `desktop` |
+| rind | `rind-rustls` | 0.23.4 on `nixos`, `fedora`, `kixtop`, `ovh-iad`, `ovh-sea`; 0.23.0 on `desktop` |
+| aws-lc-rs | `aws-lc-rs` | 1.19.0 |
+| aws-lc-rs | `aws-lc-sys` | 0.47.0 |
+| ring | `ring` | 0.17.14 |
+| RustCrypto + dalek | `aes-gcm` | 0.11.1 |
+| RustCrypto + dalek | `chacha20poly1305` | 0.11.0 |
+| RustCrypto + dalek | `sha2` | 0.11.1 |
+| RustCrypto + dalek | `sha3` | 0.12.0 |
+| RustCrypto + dalek | `hmac` | 0.13.0 |
+| RustCrypto + dalek | `hkdf` | 0.13.0 |
+| RustCrypto + dalek | `p256` | 0.14.0 |
+| RustCrypto + dalek | `p384` | 0.14.0 |
+| RustCrypto + dalek | `p521` | 0.14.0 |
+| RustCrypto + dalek | `rsa` | 0.10.0 on `nixos`, `fedora`, `kixtop`, `ovh-iad`, `ovh-sea`; 0.10.0-rc.19 on `desktop` |
+| RustCrypto + dalek | `ml-dsa` | 0.1.2 |
+| RustCrypto + dalek | `ml-kem` | 0.3.4 |
+| RustCrypto + dalek | `ed25519-dalek` | 3.0.0 |
+| RustCrypto + dalek | `x25519-dalek` | 3.0.0 |
+| RustCrypto + dalek | `hpke` | 0.15.1 |
+| RustCrypto + dalek | `blind-rsa-signatures` | 0.18.0 |
+| RustCrypto + dalek | `voprf` | 0.6.0-pre.2 |
+| RustCrypto + dalek | `vrf-rfc9381` | 0.0.7 |
+| RustCrypto + dalek | `spake2plus` | 0.1.0 |
+| RustCrypto + dalek | `argon2` | 0.6.0 |
+| RustCrypto + dalek | `slh-dsa` | 0.2.0-rc.5 |
+| graviola | `graviola` | 0.4.4 |
+| graviola | `rustls-graviola` | 0.4.0 |
+| libcrux | `libcrux-aes` | 0.0.10 |
+| libcrux | `libcrux-chacha20poly1305` | 0.0.10 |
+| libcrux | `libcrux-ecdh` | 0.0.9 |
+| libcrux | `libcrux-ecdsa` | 0.0.9 |
+| libcrux | `libcrux-ed25519` | 0.0.10 |
+| libcrux | `libcrux-hkdf` | 0.0.9 |
+| libcrux | `libcrux-hmac` | 0.0.9 |
+| libcrux | `libcrux-ml-dsa` | 0.0.11 |
+| libcrux | `libcrux-ml-kem` | 0.0.11 |
+| libcrux | `libcrux-rsa` | 0.0.9 |
+| libcrux | `libcrux-sha2` | 0.0.9 |
+| libcrux | `libcrux-sha3` | 0.0.11 |
+| libcrux | `hpke-rs` | 0.8.0 |
+| libcrux | `hpke-rs-libcrux` | 0.8.0 |
+| OpenSSL | `openssl` | 0.10.82 |
+| OpenSSL | `openssl-sys` | 0.9.118 |
+| OpenSSL | `rustls-openssl` | 0.4.2 |
+| OpenSSL | linked library | OpenSSL 3.5.9 29 Sep 2026 (Library: OpenSSL 3.5.9 29 Sep 2026) |
+| verified-garbage | `verified-garbage` | 0.0.0 (0aa40d6c) |
+| rustls | `rustls` | 0.23.46 |
+
 ## Speed
 
 Each row is one operation and each column one library. Each cell holds a square per host, colored by that library's time over the fastest library's on the same host, as the legend shows. A shield in a square marks verified code. Each square's tooltip, in the SVG opened on its own, gives its time; the tables below each host give them all. A library with no square doesn't offer the operation, or the host didn't time it, as its section says.
