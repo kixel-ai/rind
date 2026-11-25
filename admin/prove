@@ -1733,6 +1733,8 @@ extract aarch64 Aarch64 "${hashes[@]}" "${assembly[@]}" \
     --start-from crate::low::aarch64::chacha20poly1305::open \
     --include crate::low::aarch64::chacha20poly1305::seal \
     --include crate::low::aarch64::chacha20poly1305::open \
+    --include crate::low::aarch64::chacha20poly1305::seal_runs_vg \
+    --include crate::low::aarch64::chacha20poly1305::open_runs_vg \
     --start-from crate::mid::chacha20::ChaCha20::apply_keystream \
     --include crate::low::aarch64::chacha20 \
     --opaque crate::low::aarch64::chacha20::VgState \
