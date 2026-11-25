@@ -1188,3 +1188,11 @@ change to the trust base.
 /-- info: 'rind.x86_64.MlKemCoding.to_message_bits_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms MlKemCoding.to_message_bits_spec
+
+/-- info: 'rind.x86_64.MlKemCoding.sample_cbd2_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms MlKemCoding.sample_cbd2_spec
+
+/-- info: 'rind.x86_64.MlKemCoding.sample_cbd3_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms MlKemCoding.sample_cbd3_spec
