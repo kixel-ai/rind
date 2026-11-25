@@ -242,7 +242,8 @@ let AARCH32_NOWRAP_CONV =
   let arith_facts n ths =
     let is_arith th =
       match concl th with
-        Comb(Comb(Const(("<=" | "<" | "="),_),x),_) -> type_of x = `:num`
+        Comb(Comb(Const(("<=" | "<" | ">=" | ">" | "="),_),x),_) ->
+          type_of x = `:num`
       | _ -> false in
     let rec grow vars kept rest =
       let near,far = partition
@@ -319,11 +320,12 @@ let AARCH32_NOWRAP_CONV =
                               if dd +/ l >/ dest_numeral n then failwith "" else
                               EQT_ELIM(NUM_REDUCE_CONV goal)
                             else
-                              let facts = arith_facts n ths in
-                              if facts = [] then failwith "" else
-                              MP (ARITH_RULE
-                                   (mk_imp(list_mk_conj(map concl facts),goal)))
-                                 (end_itlist CONJ facts) in
+                              match arith_facts n ths with
+                                [] -> ARITH_RULE goal
+                              | facts ->
+                                  MP (ARITH_RULE
+                                       (mk_imp(list_mk_conj(map concl facts),goal)))
+                                     (end_itlist CONJ facts) in
                           let eq = prove
                            (mk_eq(a,mk_binop `word_add:int32->int32->int32` r
                                       (mk_comb(word_tm,mk_numeral dd))),
@@ -1015,27 +1017,31 @@ let AARCH32_SUBROUTINE_TESTS =
     AARCH32_SIM_TAC sum_exec [1]) in
   (* ldr r0, [r1, #4], then #8, in a region of symbolic length `n`, at least
      8 through `m`, that nothing aligns: the first word fits, and the second
-     is not known to, so its step stops at the bound. *)
-  let region name word =
+     is not known to, so its step stops at the bound. A region `8 + k` long
+     bounds the first word by its own shape. *)
+  let region name word hyp =
     let mc = define name [word] in
     let exec = AARCH32_MK_EXEC_RULE mc in
     if (snd exec).(0) = None then
       failwith ("AARCH32_SUBROUTINE_TESTS: " ^ name ^ " does not decode") else
+    let tm = vsubst [lhs(concl mc),`code:byte list`]
+     (mk_imp(hyp,
+       `ensures aarch32
+          (\s. aligned_bytes_loaded s (word pc) code /\
+               read PC s = word pc /\ read R1 s = (a:int32))
+          (\s. read PC s = word (pc + 4))
+          (MAYCHANGE [PC] ,, MAYCHANGE [R0] ,, MAYCHANGE [events])`)) in
     fun () -> prove
-     (vsubst [lhs(concl mc),`code:byte list`]
-       `!pc (a:int32) m n.
-          aarch32_nowrap a n /\ 8 <= m /\ m <= n
-          ==> ensures aarch32
-            (\s. aligned_bytes_loaded s (word pc) code /\
-                 read PC s = word pc /\ read R1 s = a)
-            (\s. read PC s = word (pc + 4))
-            (MAYCHANGE [PC] ,, MAYCHANGE [R0] ,, MAYCHANGE [events])`,
+     (list_mk_forall(frees tm,tm),
       REWRITE_TAC[fst exec] THEN
       REPEAT STRIP_TAC THEN
       AARCH32_SIM_TAC exec [1]) in
-  let region4 = region "aarch32_test_region_mc" 0xe5910004 () in
+  let chain = `aarch32_nowrap (a:int32) n /\ m >= 8 /\ m <= n` in
+  let region4 = region "aarch32_test_region_mc" 0xe5910004 chain () in
+  let shaped = region "aarch32_test_region_shaped_mc" 0xe5910004
+    `aarch32_nowrap (a:int32) (8 + k)` () in
   let () =
-    let past = region "aarch32_test_region_past_mc" 0xe5910008 in
+    let past = region "aarch32_test_region_past_mc" 0xe5910008 chain in
     let msg = try ignore (past ()); "the step succeeded"
               with Failure msg -> msg in
     let undecided =
@@ -1081,4 +1087,4 @@ let AARCH32_SUBROUTINE_TESTS =
     "aarch32_test_skipped_ldrd_mc",0x11c040d0,0xfffffff5,false;
     "aarch32_test_skipped_wrap_mc",0x11c040d0,0xfffffffd,true] in
   [nostack; stack; literal; offset; before; untaken; rrx; skipped; sum;
-   region4];;
+   region4; shaped];;
