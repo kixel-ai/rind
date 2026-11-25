@@ -191,8 +191,8 @@ theorem window_next (W : List (BitVec 64)) (n : Nat) (x : Std.Array U64 16#usize
     (hx : Window W n 16 x) : Window W (n + 16) 0 x := by
   intro m hm; rw [hx m hm]; congr 1; split <;> split <;> omega
 
-/-- What the loop over rounds 16 to 63 keeps: the window holds the last
-pass's words and the working variables are those after round `i`. -/
+/-- What the loop over rounds 16 to 79 keeps: the window holds the last
+pass's words and the working variables are the state after `i` rounds, before round `i`. -/
 def RoundsInv (M H : List (BitVec 64))
     (p : Std.Array U64 16#usize × U64 × U64 × U64 × U64 × U64 × U64 × U64 × U64 × Usize) : Prop :=
   match p with
@@ -201,7 +201,7 @@ def RoundsInv (M H : List (BitVec 64))
       [a.bv, b.bv, c.bv, d.bv, e.bv, f.bv, g.bv, h.bv] =
         (List.range i.val).foldl (sha512Round (fips512.schedule M)) H
 
-/-- Rounds `i` to 63. -/
+/-- Rounds `i` to 79. -/
 theorem rounds_spec (M : List (BitVec 64)) (hM : M.length = 16) (H : List (BitVec 64))
     (x : Std.Array U64 16#usize) (a b c d e f g h : U64) (i : Usize)
     (hinv : RoundsInv M H (x, a, b, c, d, e, f, g, h, i)) :
