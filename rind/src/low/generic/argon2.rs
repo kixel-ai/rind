@@ -160,7 +160,7 @@ impl Argon2Memory {
 
 impl Drop for Argon2Memory {
     fn drop(&mut self) {
-        for lane in &mut self.lanes {
+        for mut lane in self.lanes.drain(..) {
             // SAFETY: the reservation holds `capacity` blocks, any of whose
             // bytes may be overwritten.
             unsafe {
@@ -170,6 +170,16 @@ impl Drop for Argon2Memory {
                 )
             };
         }
+        // The lanes' addresses, which differ from call to call, so that
+        // `tests/heap_scratch.rs` cannot tell them from bytes of the key.
+        // SAFETY: the drained reservation holds `capacity` lanes, any of
+        // whose bytes may be overwritten.
+        unsafe {
+            zero_bytes(
+                self.lanes.as_mut_ptr().cast(),
+                self.lanes.capacity() * size_of::<Vec<Argon2Block>>(),
+            )
+        };
     }
 }
 
