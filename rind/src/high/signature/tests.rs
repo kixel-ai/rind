@@ -84,9 +84,12 @@ fn ecdsa_generated_public_key_agrees_whichever_reads_first() {
 #[cfg(not(target_family = "wasm"))]
 fn keys_shared_across_threads() {
     let pair = ecdsa::KeyPair::generate(&ecdsa::sign::P256_SHA256_ASN1).unwrap();
-    let signer = ml_dsa::KeyPair::<MlDsa44>::generate().unwrap();
-    let signature = signer.sign(b"message").unwrap();
-    let public = ml_dsa::PublicKey::<MlDsa44>::new(signer.public_key().as_ref()).unwrap();
+    #[cfg(feature = "ml-dsa")]
+    let (public, signature) = {
+        let signer = ml_dsa::KeyPair::<MlDsa44>::generate().unwrap();
+        let public = ml_dsa::PublicKey::<MlDsa44>::new(signer.public_key().as_ref()).unwrap();
+        (public, signer.sign(b"message").unwrap())
+    };
     std::thread::scope(|s| {
         for _ in 0..4 {
             s.spawn(|| {
@@ -95,6 +98,7 @@ fn keys_shared_across_threads() {
                     pair.public_key()
                         .verify(b"message", ecdsa.as_ref())
                         .unwrap();
+                    #[cfg(feature = "ml-dsa")]
                     public.verify(b"message", signature.as_ref()).unwrap();
                 }
             });
