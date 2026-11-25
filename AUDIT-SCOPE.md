@@ -35,8 +35,9 @@ every PKCS#8 key through rind, so when any crate in the build enables rind's
 `ml-dsa` or `slh-dsa` feature, Cargo feature unification lets a hostile key
 reach them. The loaders sit inside `high/signature/ml_dsa.rs` and `slh_dsa.rs`
 and call the key expansion in `mid/mldsa.rs` and `slhdsa.rs`, so those four
-files count whole, signing and verifying code included; the schemes' `low`
-kernels stay in Phase 2.
+files count whole, signing and verifying code included, with the `low` ML-DSA
+kernels that loading reaches (the transform, reduction, norm check, and
+sampling ones). The kernels only signing and verifying run stay in Phase 2.
 
 ML-KEM is in Phase 1, not Phase 2, because `rind-rustls` offers
 `X25519MLKEM768` first by default, so a handshake runs it whenever the
@@ -50,7 +51,7 @@ reads them faster.
 
 ### Inventory
 
-Counts are physical lines of tracked files at `ae29c5d7`, from
+Counts are physical lines of tracked files at `011392a6`, from
 `admin/audit-scope table`; they are a dated snapshot, which no check keeps
 current, so rerun it at the commit the audit names.
 `admin/audit-scope files [1|2]` prints every file in a phase with its area,
@@ -79,16 +80,19 @@ is authoritative.
 | `high`: ML-DSA and SLH-DSA keys, for their PKCS#8 loaders | 2 | 562 | 0 |
 | `high`: keys, signatures, encodings, and hashing | 26 | 16,019 | 0 |
 | `low/aarch64` | 280 | 6,347 | 203,051 |
+| `low/aarch64`: ML-DSA kernels key loading reaches | 11 | 1,100 | 3,133 |
 | `low/arm` | 31 | 2,716 | 15,599 |
 | `low/generic` | 40 | 11,278 | 0 |
+| `low/generic`: ML-DSA kernels key loading reaches | 1 | 632 | 0 |
 | `low/portable` | 12 | 1,106 | 0 |
 | `low/x86_64` | 449 | 15,596 | 408,678 |
+| `low/x86_64`: ML-DSA kernels key loading reaches | 14 | 827 | 9,557 |
 | `low` shared files | 15 | 5,297 | 0 |
 | `mid`: ML-DSA and SLH-DSA keys, for their PKCS#8 loaders | 2 | 3,035 | 0 |
 | `mid`: primitives and constructions | 34 | 16,008 | 42,161 |
 | `rind-rustls`: the TLS provider | 13 | 3,600 | 0 |
 | `rind` crate root: public API and errors | 7 | 2,641 | 0 |
-| **Total** | **1,228** | **208,528** | **669,489** |
+| **Total** | **1,254** | **211,087** | **682,179** |
 
 Lean `axiom` declarations: 173 in 23 files. `sorry`: 0.
 
@@ -97,9 +101,9 @@ Lean `axiom` declarations: 173 in 23 files. `sorry`: 0.
 | Area | Files | Hand-written lines | Generated lines |
 |---|---:|---:|---:|
 | `high`: protocols (OPRF, FROST, SPAKE2+, VRF, blind RSA, KDFs) | 12 | 9,667 | 0 |
-| `low/aarch64`: ML-DSA, SLH-DSA, and Argon2 kernels | 18 | 1,100 | 4,174 |
-| `low/generic`: ML-DSA, SLH-DSA, and Argon2 kernels | 2 | 887 | 0 |
-| `low/x86_64`: ML-DSA, SLH-DSA, and Argon2 kernels | 22 | 1,052 | 11,829 |
+| `low/aarch64`: ML-DSA signing and verifying, and Argon2, kernels | 7 | 0 | 1,041 |
+| `low/generic`: ML-DSA signing and verifying, and Argon2, kernels | 1 | 255 | 0 |
+| `low/x86_64`: ML-DSA signing and verifying, and Argon2, kernels | 8 | 225 | 2,272 |
 | `mid`: KDF, hash-to-curve, and ristretto255 | 10 | 2,978 | 0 |
 | `rind-dart`: Dart FFI and the `cryptography` drop-in | 27 | 7,140 | 0 |
 | `rind-fips`: FIPS module (unpublished) | 38 | 10,662 | 0 |
@@ -107,7 +111,7 @@ Lean `axiom` declarations: 173 in 23 files. `sorry`: 0.
 | `rind-python`: Python bindings and the `cryptography` drop-in | 48 | 5,382 | 0 |
 | `rind` FIPS build glue | 3 | 1,345 | 0 |
 | other `rind-<consumer>` adapters | 60 | 13,087 | 0 |
-| **Total** | **247** | **55,918** | **16,003** |
+| **Total** | **221** | **53,359** | **3,313** |
 
 ### Phase 1 in more detail
 
@@ -140,6 +144,13 @@ Where the hand-written lines are, and what the reviewer does with each:
   rind's HOL Light proofs of its own assembly. The proofs themselves are
   machine-checked; the auditor reads what they assume and what they are
   about, not their bodies ([below](#what-is-machine-checked-and-what-needs-a-human)).
+  The HOL Light row counts the files of rind's s2n-bignum fork that rind wrote.
+  The fork also edits upstream's x86 model files (`instruction.ml`, `decode.ml`,
+  `x86.ml`, and `simulator.ml`, for `RORX`, `ANDN`, the SHA-NI instructions, and
+  others): those edits are in Phase 1 too, but are not counted, since the files
+  are upstream's. Read the diff from the base commit that
+  [`thirdparty/s2n-bignum/RIND.md`](thirdparty/s2n-bignum/RIND.md) names, in the
+  sections it lists.
 
 ## Reproducing the project's own checks
 
@@ -250,7 +261,7 @@ For both phases:
 - Performance.
 
 Phase 1 also leaves out Phase 2's code, apart from the PKCS#8 loaders above:
-the ML-DSA and SLH-DSA kernels, Argon2id, ristretto255, hash-to-curve, the
+the ML-DSA signing and verifying kernels, Argon2id, ristretto255, hash-to-curve, the
 protocols other than HPKE, the other adapters, and the bindings.
 
 ## What an engagement delivers
