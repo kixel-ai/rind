@@ -399,7 +399,7 @@ that runs only with SHA3, and `nix develop .#binsec --command admin/ct-binsec
 [--exact] [test]` has BINSEC prove the region of each `ct_binsec_...` test
 constant time for every secret, symbolically. None of them but BINSEC, which
 sees divisions, can see an instruction whose timing depends on its
-operands, so `admin/ct-vartime`, which `just check` runs when rind changes,
+operands, so `admin/ct-vartime`, which `just ci` runs when rind changes,
 scans its release builds for every architecture it builds for, and its
 portable backend's on x86_64 and armv7, for divisions and floating-point arithmetic, and fails on one that `admin/ct-vartime.toml` does
 not list as taking only public operands. On the x86_64 backend it also fails
@@ -408,8 +408,10 @@ function rind exports reaches on a path that has not entered `rind::low::Mcdt`,
 Intel's mitigation, or has left it.
 The weekly `ctgrind` workflow's `profile` job reruns the valgrind suites and
 BINSEC on x86_64 as consumers often build rind: with thin LTO, and at
-`opt-level = "z"`, where LLVM divides by a constant with `div`, which only
-BINSEC's division checks tell apart from a public division.
+`opt-level = "z"` with fat LTO and one codegen unit, where LLVM divides by a
+constant with `div`, which only BINSEC's division checks tell apart from a
+public division. Set `CARGO_PROFILE_RELEASE_LTO=fat` and
+`CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1` beside the opt level to reproduce it.
 `nix develop .#timing --command admin/timing marvin` runs the Marvin toolkit
 against RSA-OAEP decryption. It needs quiet hardware: the weekly `timing`
 workflow runs it on GitHub's runners, and a shared host adds noise that no gate

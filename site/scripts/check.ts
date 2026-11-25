@@ -242,7 +242,13 @@ for (const { crate } of routes) {
 		} catch {
 			continue;
 		}
-		const file = repoFile(u);
+		let file: string | undefined;
+		try {
+			file = repoFile(u);
+		} catch {
+			fail(`${from}: ${href} is not a valid URL`);
+			continue;
+		}
 		if (file !== undefined && u.hash.length > 1) anchored(from, file);
 	}
 }
