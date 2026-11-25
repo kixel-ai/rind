@@ -588,9 +588,11 @@ def PrivateOpResult (key : mid.rsa_priv.RsaPrivateKey) (c : RsaInt) :
 and 32 words, where neither pyca/verified-garbage's IFMA CRT nor the dual RSAZ
 runs: `private_op` refuses with `WrongLength` a `c` not below `n`, and
 otherwise returns RSASP1 of `c`, `s` with `s^e mod n = c`, or refuses with
-`Fault` where `s^e mod n ≠ c`, which a key of two primes rules out and a fault
-does not; `new` does not test the primes, so a key it accepts with composite
-factors can still refuse some `c`. -/
+`Fault` where `s^e mod n ≠ c`. A valid key rules that out and a fault does
+not: two primes, dP and dQ inverting e modulo p - 1 and q - 1, and qInv
+inverting q modulo p. `PrivKeyInv` states none of those relations. `new`
+checks all but primality, so a key it accepts with composite factors can
+still refuse some `c`. -/
 theorem private_op_spec (havx : ∃ t, low.x86_64.cpu.HaveAvx2.check = ok t)
     (t : low.x86_64.cpu.HaveBmi2Adx) (hadx : low.x86_64.cpu.HaveBmi2Adx.check = ok (some t))
     (hifma : IfmaCheckReturns) (key : mid.rsa_priv.RsaPrivateKey) (hinv : PrivKeyInv key)

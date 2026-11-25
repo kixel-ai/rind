@@ -910,7 +910,8 @@ opaque low.x86_64.mont.sqr8x
     low.x86_64.cpu.HaveBmi2Adx → Result (Slice Std.U64)
 
 /-! aws-lc's `bn_power5` and `bn_powerx5`, behind `mont_exp`'s Rust, which RSA
-runs at widths other than 16 and 32 words with BMI2 and ADX, and the RSAZ
+runs at each width that is a multiple of eight words, but for 16 and 32 with
+BMI2 and ADX, and the RSAZ
 exponentiations, which it runs only without ADX or at the widths its
 AVX-512 IFMA path takes. No proof covers them, and none reaches them: each
 theorem's hypotheses rule out the paths that call them. -/
