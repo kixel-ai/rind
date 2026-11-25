@@ -51,7 +51,7 @@ reads them faster.
 
 ### Inventory
 
-Counts are physical lines of tracked files at `011392a6`, from
+Counts are physical lines of tracked files at `4f4909ef`, from
 `admin/audit-scope table`; they are a dated snapshot, which no check keeps
 current, so rerun it at the commit the audit names.
 `admin/audit-scope files [1|2]` prints every file in a phase with its area,
@@ -71,18 +71,18 @@ is authoritative.
 
 | Area | Files | Hand-written lines | Generated lines |
 |---|---:|---:|---:|
-| HOL Light: rind's proofs of its own assembly | 19 | 24,408 | 0 |
+| HOL Light: rind's proofs of its own assembly | 18 | 23,357 | 0 |
 | HOL Light: rind-authored models and specs in its s2n-bignum fork | 10 | 4,429 | 0 |
-| Lean TCB: files that state axioms | 23 | 5,539 | 0 |
-| Lean TCB: hand models, ISA models, and transliterated specs | 136 | 37,492 | 0 |
-| Lean: proofs and Aeneas glue (machine-checked) | 128 | 50,663 | 0 |
+| Lean TCB: files that state axioms | 25 | 5,913 | 0 |
+| Lean TCB: hand models, ISA models, and transliterated specs | 136 | 37,651 | 0 |
+| Lean: proofs and Aeneas glue (machine-checked) | 129 | 52,436 | 0 |
 | `high`: HPKE, for `rind-rustls`'s Encrypted ClientHello | 1 | 1,792 | 0 |
 | `high`: ML-DSA and SLH-DSA keys, for their PKCS#8 loaders | 2 | 562 | 0 |
 | `high`: keys, signatures, encodings, and hashing | 26 | 16,019 | 0 |
-| `low/aarch64` | 280 | 6,347 | 203,051 |
+| `low/aarch64` | 280 | 6,462 | 206,151 |
 | `low/aarch64`: ML-DSA kernels key loading reaches | 11 | 1,100 | 3,133 |
 | `low/arm` | 31 | 2,716 | 15,599 |
-| `low/generic` | 40 | 11,278 | 0 |
+| `low/generic` | 40 | 11,379 | 0 |
 | `low/generic`: ML-DSA kernels key loading reaches | 1 | 632 | 0 |
 | `low/portable` | 12 | 1,106 | 0 |
 | `low/x86_64` | 449 | 15,596 | 408,678 |
@@ -92,9 +92,9 @@ is authoritative.
 | `mid`: primitives and constructions | 34 | 16,008 | 42,161 |
 | `rind-rustls`: the TLS provider | 13 | 3,600 | 0 |
 | `rind` crate root: public API and errors | 7 | 2,641 | 0 |
-| **Total** | **1,254** | **211,087** | **682,179** |
+| **Total** | **1,256** | **212,558** | **685,279** |
 
-Lean `axiom` declarations: 173 in 23 files. `sorry`: 0.
+Lean `axiom` declarations: 173 in 25 files. `sorry`: 0.
 
 **Phase 2: follow-on**
 
@@ -110,8 +110,8 @@ Lean `axiom` declarations: 173 in 23 files. `sorry`: 0.
 | `rind-openssl`: OpenSSL 3 provider | 7 | 2,618 | 0 |
 | `rind-python`: Python bindings and the `cryptography` drop-in | 48 | 5,382 | 0 |
 | `rind` FIPS build glue | 3 | 1,345 | 0 |
-| other `rind-<consumer>` adapters | 60 | 13,087 | 0 |
-| **Total** | **221** | **53,359** | **3,313** |
+| other `rind-<consumer>` adapters | 60 | 13,092 | 0 |
+| **Total** | **221** | **53,364** | **3,313** |
 
 ### Phase 1 in more detail
 
