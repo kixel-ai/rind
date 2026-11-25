@@ -13,7 +13,7 @@ Requires rind 0.4. This release matches aws-lc-rs 1.x's API item for item, but f
 
 ### Added
 
-- adapters build rind without ML-DSA and SLH-DSA, a build for one CPU links one tier, and CI holds rind's size in a binary ([#1008](https://github.com/kixel-ai/rind/pull/1008))
+- this crate builds rind without SLH-DSA, keeping ML-DSA for aws-lc-rs's PQDSA API; a build for one CPU links one tier, and CI holds rind's size in a binary ([#1008](https://github.com/kixel-ai/rind/pull/1008))
 - rind-rustls and rind-aws-lc-rs build without std ([#968](https://github.com/kixel-ai/rind/pull/968))
 - *(site)* the README and crates link rind.kixel.ai, and a pasted link shows a social card ([#844](https://github.com/kixel-ai/rind/pull/844))
 - *(site)* a page per library at `/from/<library>`, with a picker on the landing page ([#826](https://github.com/kixel-ai/rind/pull/826))
