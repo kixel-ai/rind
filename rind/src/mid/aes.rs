@@ -4,7 +4,7 @@ use core::fmt;
 
 use crate::Error;
 use crate::cipher::Algorithm;
-use crate::low::{self, AesKey, Entry};
+use crate::low::{self, AesDecKey, AesKey, Entry};
 
 /// An AES key that encrypts single blocks.
 ///
@@ -204,12 +204,32 @@ fn expand_copy<const N: usize>(key: &[u8]) -> AesKey {
     AesKey::new(copy_key)
 }
 
+/// Expands `key` for decryption, which the caller has checked is 16, 24, or
+/// 32 bytes.
+pub(super) fn expand_dec_key(key: &[u8]) -> AesDecKey {
+    match key.len() {
+        16 => expand_dec_copy::<16>(key),
+        24 => expand_dec_copy::<24>(key),
+        _ => expand_dec_copy::<32>(key),
+    }
+}
+
+/// Expands a copy of `key` for decryption, as [`expand_copy`] does for
+/// encryption.
+#[inline(always)]
+fn expand_dec_copy<const N: usize>(key: &[u8]) -> AesDecKey {
+    let mut copy = [0u8; 32];
+    let copy_key = &mut copy[..N];
+    copy_key.copy_from_slice(key);
+    low::ct::secret_slice(copy_key);
+    AesDecKey::new(copy_key)
+}
+
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
     use crate::cipher::{AES_128, AES_192, AES_256};
-    use crate::low::AesDecKey;
     use crate::test::*;
 
     fn algorithm(key: &[u8]) -> &'static Algorithm {

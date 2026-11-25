@@ -701,6 +701,40 @@ theorem expand_key_32_eq (key : Slice U8) (hk : key.length = 32) :
   unfold mid.aes.expand_key
   simp (config := { decide := true }) [hl]
 
+/-- `expand_dec_copy` passes `AesDecKey::new` its key unchanged. -/
+theorem expand_dec_copy_eq (n : Usize) (key : Slice U8) (hn : n.val ≤ 32) (hk : key.length = n.val) :
+    mid.aes.expand_dec_copy n key = low.aarch64.aes.AesDecKey.new key := by
+  have h1 : n.val ≤ (Std.Array.repeat 32#usize 0#u8).to_slice.length := by simpa using hn
+  simp only [mid.aes.expand_dec_copy, core.array.Array.index_mut, core.ops.index.IndexMutSlice,
+    core.slice.index.Slice.index_mut, core.slice.index.SliceIndexRangeToUsizeSlice,
+    core.slice.index.SliceIndexRangeToUsizeSlice.index_mut, h1, ite_true, bind_ok,
+    core.slice.Slice.copy_from_slice, low.ct.secret_slice]
+  simp
+  split
+  · simp only [bind_ok]
+  · rename_i hne
+    exact absurd (by apply UScalar.eq_of_val_eq; simpa [List.slice, hn] using hk.symm) hne
+
+/-- `mid::aes::expand_dec_key` passes `AesDecKey::new` its key unchanged. -/
+theorem expand_dec_key_eq (key : Slice U8) (hk : key.length = 16 ∨ key.length = 24 ∨ key.length = 32) :
+    mid.aes.expand_dec_key key = low.aarch64.aes.AesDecKey.new key := by
+  rcases hk with hk | hk | hk
+  · have hv : key.len.val = 16 := by rw [Slice.len_val]; exact hk
+    have hl : key.len = 16#usize := by scalar_tac
+    rw [show mid.aes.expand_dec_key key = mid.aes.expand_dec_copy 16#usize key by
+      unfold mid.aes.expand_dec_key; simp (config := { decide := true }) [hl]]
+    exact expand_dec_copy_eq _ key (by simp) (by simpa using hk)
+  · have hv : key.len.val = 24 := by rw [Slice.len_val]; exact hk
+    have hl : key.len = 24#usize := by scalar_tac
+    rw [show mid.aes.expand_dec_key key = mid.aes.expand_dec_copy 24#usize key by
+      unfold mid.aes.expand_dec_key; simp (config := { decide := true }) [hl]]
+    exact expand_dec_copy_eq _ key (by simp) (by simpa using hk)
+  · have hv : key.len.val = 32 := by rw [Slice.len_val]; exact hk
+    have hl : key.len = 32#usize := by scalar_tac
+    rw [show mid.aes.expand_dec_key key = mid.aes.expand_dec_copy 32#usize key by
+      unfold mid.aes.expand_dec_key; simp (config := { decide := true }) [hl]]
+    exact expand_dec_copy_eq _ key (by simp) (by simpa using hk)
+
 theorem expand_key128_spec (h : RunsAesHw) (key : Slice U8) (hk : key.length = 16) :
     mid.aes.expand_key key ⦃ k => ∃ k128, k = .Hw (.Aes128 k128) ∧
       k128.round_keys.val = keyToRoundKeys .AES_128 (seqNat8ToSeqNat32LE (bvs key.val)) ⦄ := by
