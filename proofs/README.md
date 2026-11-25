@@ -571,21 +571,30 @@ no axiom stands in for HACL*'s proof of them. `chacha20_mask` assumes only
 implies. armv7's translation also reaches the AES-GCM API, below.
 
 The bitsliced AES armv7 runs with neither NEON nor the crypto extension,
-`low/generic/aes_nohw.rs` in 32-bit words, is proven up to its key schedule:
-`encrypt_block_spec` in `Rind/Armv7/AesNohwBlock.lean` proves that
-`Schedule::encrypt_block` is `cipherRounds`, Vale's `eval_cipher` for the
-schedule's number of rounds, on the round keys the schedule holds, and
-`encrypt_batch_spec` the same of both blocks of a batch. Under them,
+`low/generic/aes_nohw.rs` in 32-bit words, is proven from the key to the
+block: `new_schedule_spec` in `Rind/Armv7/AesNohwKey.lean` proves that
+`NohwKey::new` and `NohwKey::schedule` turn a 16-, 24-, or 32-byte key into a
+schedule holding Vale's `key_to_round_keys_LE` of its words, and
+`schedule_encrypt_block` that such a schedule's `encrypt_block` is Vale's
+`aes_encrypt_LE` under that key. Under them, `setup_key_128_spec`,
+`setup_key_192_spec`, and `setup_key_256_spec` state each key expansion
+against `Rind/Aes.lean`'s round key recurrences, a step of the schedule at a
+time in compact words (`rot_step`, `sub_step`, and AES-192's `step192_a` and
+`step192_b`), and `encrypt_block_spec` in `Rind/Armv7/AesNohwBlock.lean`
+proves that `Schedule::encrypt_block` is `cipherRounds`, Vale's `eval_cipher`
+for the schedule's number of rounds, on the round keys the schedule holds, and
+`encrypt_batch_spec` the same of both blocks of a batch.
 `Rind/Armv7/AesNohw.lean` proves the S-box circuit, `AesNohwRound.lean`
 `ShiftRows`, `MixColumns`, and `AddRoundKey`, and `AesNohwBatch.lean` the
-compact form and the transpose, each at every bit position by `bv_decide`,
+compact form and the transpose, each at every bit position by `bv_decide`, as
+`AesNohwKey.lean` proves each key schedule step at every byte,
 against the FIPS 197 functions Vale's spec names: `sbox` and `mixColumns` are
 irreducible definitions rather than opaque ones, so these proofs alone unfold
 them, through `sbox_eq` and `mixColumns_eq`, and `Rind/AesSbox.lean` has the
 kernel check the S-box table against a decision tree on its input's bits. No
-theorem yet states that the schedule's round keys are FIPS 197's key
-expansion, that `ctr32` is counter mode, or anything of GHASH and the GCM
-above them, so [armv7's AES-GCM](/quest/m5/verified-armv7/prove.md) has no ✓.
+theorem yet states that `ctr32` is counter mode, or anything of GHASH and the
+GCM above them, so [armv7's AES-GCM](/quest/m5/verified-armv7/prove.md) has
+no ✓.
 
 Theorems that run an entry guard assume `Runs`: rind's CPU-feature checks
 pass, which no input affects. `Rind/<Arch>/P256Table.lean` proves that each
