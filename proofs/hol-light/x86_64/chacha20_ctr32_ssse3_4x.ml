@@ -9,6 +9,10 @@
 needs "x86/proofs/base.ml";;
 needs "common/chacha20poly1305.ml";;
 
+(* admin/prove loads every x86_64 proof into one session, and an earlier one
+   can leave integers first. *)
+prioritize_num();;
+
 let chacha20_ssse3_4x_sym s =
   if s = "WHOLE_READONLY" then "chacha20_ssse3_4x_data"
   else if String.ends_with ~suffix:"ZERO" s then "chacha20_ssse3_4x_zero"
