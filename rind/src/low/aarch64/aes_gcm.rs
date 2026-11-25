@@ -423,7 +423,7 @@ fn composed<const ENC: bool>(
     let mut ctr = u32::from_be_bytes(ctr.try_into().unwrap());
 
     let (chunks, remainder) = cipher_inout.as_chunks_mut::<128>();
-    // By index, as in `cipher`.
+    // By index, as in `partial`.
     for i in 0..chunks.len() {
         if !ENC {
             ghash.add(&chunks[i]);

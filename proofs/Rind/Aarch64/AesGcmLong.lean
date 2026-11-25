@@ -9,10 +9,12 @@ open Aeneas Aeneas.Std Result rind.vale rind.simd Polynomial
 `cipher` with the crypto extension's AES-128 or AES-256 key and a PMULL
 table: `stitched` runs s2n-bignum's kernel on the whole blocks, whose
 theorems `Rind.Aarch64.S2nBignum` restates, and `partial` the last partial
-block. `Rind.S2nGcm` proves the kernels' spec Vale's, so `cipher` is Vale's
-GCTR from the block after the counter block and GHASH over the AAD's and the
-ciphertext's padded blocks, and `tagged_from` is GCTR and `gcm_hash` at every
-length.
+block. `Rind.S2nGcm` proves the kernels' specs are Vale's, so `cipher` is
+Vale's GCTR from the block after the counter block and GHASH over the AAD's
+and the ciphertext's padded blocks, `tagged_from` is GCTR and `gcm_hash` at
+every length, and `tagged` with a 96-bit nonce is `gcm_encrypt_LE` and
+`gcm_decrypt_LE`. AES-192 keys past `short`'s lengths run other code, not yet
+proven.
 -/
 
 local notation "P" => Polynomial (ZMod 2)
@@ -320,7 +322,18 @@ theorem inc32_spec (j : Quad32) (y : Std.Array U8 16#usize) (hy : loadBytes y.va
   simp only [UScalar.bv_or, UScalar.bv_and, UScalar.bv_not, UScalar.cast_bv_eq, core.num.U32.wrapping_add_bv_eq,
     hb, h1, h2, inc32, UScalarTy.numBits]
   clear hy hb
-  bv_decide
+  apply BitVec.eq_of_getLsbD_eq; intro i hi
+  have hm : (0xffffffff#128 : BitVec 128).getLsbD i = decide (i < 32) := by
+    rw [BitVec.getLsbD_ofNat, show (0xffffffff : Nat) = 2 ^ 32 - 1 by norm_num, Nat.testBit_two_pow_sub_one]
+    simp [hi]
+  have hlo : j.setWidth 32 = j.extractLsb' 0 32 := by
+    apply BitVec.eq_of_getLsbD_eq; intro k hk; simp [hk]
+  simp only [BitVec.getLsbD_or, BitVec.getLsbD_and, BitVec.getLsbD_not, hm, BitVec.getLsbD_setWidth,
+    BitVec.getLsbD_append, BitVec.getLsbD_extractLsb', hlo, hi]
+  by_cases h : i < 32
+  · simp [h]
+  · simp [h, show i - 32 < 96 by omega, show 32 + (i - 32) = i by omega,
+      BitVec.getLsbD_of_ge (BitVec.extractLsb' 0 32 j + 1#32) i (by omega)]
 
 /-! ## `cipher` -/
 
