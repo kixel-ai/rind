@@ -283,14 +283,21 @@ pub struct DecapKey<P: Params> {
 }
 
 impl<P: Params> DecapKey<P> {
-    /// Generate a random [`DecapKey`] (which contains the corresponding [`EncapKey`]).
+    /// Generate a random [`DecapKey`] (which contains the corresponding
+    /// [`EncapKey`]), and the seed `d || z` it came from.
     ///
     /// This fails only if random material generation fails.
-    pub(crate) fn generate() -> Result<Self, Error> {
+    pub(crate) fn generate() -> Result<(Self, [u8; 64]), Error> {
         let _entry = low::Entry::new_secret();
         let mut seed = [0u8; 64];
         SystemRandom.fill(&mut seed)?;
-        Ok(Self::keygen_internal(&seed))
+        Ok((Self::keygen_internal(&seed), seed))
+    }
+
+    /// FIPS 203's `ML-KEM.KeyGen_internal`, from the seed `d || z`.
+    pub(crate) fn from_seed(seed: &[u8; 64]) -> Self {
+        let _entry = low::Entry::new_secret();
+        Self::keygen_internal(seed)
     }
 
     /// Decapsulate ciphertext `c`, yielding a [`SharedSecret`].
@@ -349,10 +356,7 @@ impl<P: Params> DecapKey<P> {
         }
     }
 
-    /// Encode the key as bytes.
-    ///
-    /// This is used for testing, and by the FIPS module's self-test.
-    #[cfg(any(test, rind_fips))]
+    /// FIPS 203's encoding of the key, `dkPKE || ek || H(ek) || z`.
     pub(crate) fn as_bytes(&self) -> P::DecapKeyBytes {
         let _entry = low::Entry::new_secret();
         self.encode()
@@ -365,9 +369,8 @@ impl<P: Params> DecapKey<P> {
     /// reduced mod q. It decapsulates with rind's arithmetic, since VG's
     /// takes only a key VG generated.
     ///
-    /// This is used for testing, and by the FIPS module's ACVP build: rind
-    /// generates keys only from seeds.
-    #[cfg(any(test, rind_fips))]
+    /// The FIPS module's ACVP build tests this check alone; a key from
+    /// outside rind goes through [`Self::parse`].
     pub(crate) fn from_bytes(dk: &P::DecapKeyBytes) -> Option<Self> {
         let _entry = low::Entry::new_public();
         // Its arithmetic runs multiplies Intel's MXCSR mitigation covers.
@@ -376,6 +379,32 @@ impl<P: Params> DecapKey<P> {
         let mut h = sha3::Sha3_256Context::new();
         h.update(key.ek_pke.bytes.as_ref());
         (h.finish() == key.ek_pke.h_ek).then_some(key)
+    }
+
+    /// Parses FIPS 203's encoding `dk` of a key from outside rind: refused
+    /// unless it passes the decapsulation input check (section 7.3), whose
+    /// `H(ek)` must be its encapsulation key's, and the modulus check, on
+    /// its encapsulation key (section 7.2) and on its secret vector, whose
+    /// every coefficient must be below q, as Wycheproof holds such a key to.
+    pub(crate) fn parse(dk: &P::DecapKeyBytes) -> Result<Self, Error> {
+        let _entry = low::Entry::new_secret();
+        // Its arithmetic runs multiplies Intel's MXCSR mitigation covers.
+        let _mcdt = low::Mcdt::enter();
+        let (dk_pke, rest) = dk.as_ref().split_at(P::K * 384);
+        let (t_hat, rest) = rest.split_at(P::K * 384);
+        // The encapsulation key and its hash are public.
+        low::ct::public_slice(&rest[..64]);
+        low::ct::public_slice(t_hat);
+        let reduced = |bytes: &[u8]| {
+            let mut encoded = Encoded::<P>::filled([0; 384]);
+            encoded.as_mut().as_flattened_mut().copy_from_slice(bytes);
+            let decoded = Coeffs::<P::Vector, Ntt>::from_bytes(&encoded);
+            ct_equal(decoded.to_bytes().as_ref().as_flattened(), bytes)
+        };
+        if !(reduced(t_hat) && low::ct::into_public(reduced(dk_pke))) {
+            return Err(KeyFormatError::MlKemModulus.into());
+        }
+        Self::from_bytes(dk).ok_or_else(|| KeyFormatError::MismatchedPublicKey.into())
     }
 
     pub(crate) fn keygen_internal(seed: &[u8; 64]) -> Self {
@@ -1508,7 +1537,7 @@ mod tests {
     #[test]
     fn pairwise() {
         fn check<P: Params>() {
-            let d = DecapKey::<P>::generate().unwrap();
+            let (d, _) = DecapKey::<P>::generate().unwrap();
             let (ess, ct) = d.encapsulation_key().encaps().unwrap();
             let dss = d.decaps(&ct);
             assert_eq!(low::ct::into_public(ess.0), low::ct::into_public(dss.0));
