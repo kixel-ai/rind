@@ -6,7 +6,7 @@ use core::marker::PhantomData;
 use crate::Error;
 use crate::error::KeyFormatError;
 use crate::low;
-use crate::mid::mlkem::{self, Array, Params};
+use crate::mid::mlkem::{self, FixedArray, Params};
 pub use crate::mid::mlkem::{MlKem512, MlKem768, MlKem1024};
 
 /// An ML-KEM parameter set: [`MlKem512`], [`MlKem768`], or [`MlKem1024`].
