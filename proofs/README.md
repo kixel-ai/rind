@@ -164,9 +164,10 @@ known-answer tests `admin/prove hol-light` runs, the SHA extensions and
 other instructions an s2n-bignum pull request adds to the x86 model, rind's
 own additions to it, which `x86/proofs/rind_cosim.ml` checks against the CPU
 with the pull request's, and `aarch32/`, an AArch32 model of the A32
-instructions armv7's proofs need, which `aarch32/proofs/simulator.ml` checks
-against qemu-arm. `nix develop .#hol-light --command admin/prove cosim` runs
-both cosimulations, on an x86_64 CPU with AVX2.
+integer instructions armv7's assembly runs, which
+`aarch32/proofs/simulator.ml` checks against qemu-arm.
+`nix develop .#hol-light --command admin/prove cosim` runs both
+cosimulations, on an x86_64 CPU with AVX2.
 
 ## verified-garbage's models
 

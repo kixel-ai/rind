@@ -76,7 +76,7 @@ reason = "Noise: other tenants share `ovh-iad`'s VPS, whose load the report cann
 [[gap]]
 operations = ["chacha20poly1305/*"]
 on = ["kixtop"]
-reason = "Closed since `kixtop`'s data, measured before CPUs without SVE2 ran pyca/verified-garbage's NEON one pass where it is faster ([kixel-ai/rind#1023](https://github.com/kixel-ai/rind/pull/1023)): on an Apple M5 Pro it took 0.70 of aws-lc's time sealing 16 KB under rind's glue, the row VG led by 1.47×. The next refresh of `kixtop` drops this entry."
+reason = "Not yet re-measured: `kixtop`'s data predates CPUs without SVE2 running pyca/verified-garbage's NEON one pass where it is faster ([kixel-ai/rind#1023](https://github.com/kixel-ai/rind/pull/1023)). On an Apple M5 Pro, a different host, sealing 16 KB under rind's glue took 0.70 of aws-lc's time, the row VG led by 1.47× on `kixtop`. The next refresh of `kixtop` compares current rind with VG on these rows and drops the entry if the gap is gone."
 
 [[gap]]
 operations = ["sha512/*"]
