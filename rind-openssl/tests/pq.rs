@@ -111,6 +111,7 @@ unsafe extern "C" {
         propq: *const c_char,
     ) -> *mut EVP_PKEY;
     fn OSSL_PARAM_construct_int(key: *const c_char, buf: *mut c_int) -> OSSL_PARAM;
+    fn OSSL_PARAM_construct_long(key: *const c_char, buf: *mut c_long) -> OSSL_PARAM;
     fn ERR_error_string_n(error: c_ulong, buf: *mut c_char, len: usize);
     fn X509_new_ex(libctx: *mut OSSL_LIB_CTX, propq: *const c_char) -> *mut X509;
     fn SSL_CTX_new_ex(
@@ -849,20 +850,9 @@ fn ml_dsa_refuses_what_rind_cannot_back() {
     ctx.sign(&key, b"message", None, params.as_ptr()).unwrap();
 
     // Test entropy of the wrong size is refused and drops what was set
-    // before, and a refused call stores none of its parameters, so the
-    // operation signs with fresh randomness after both.
+    // before.
     unsafe {
-        let md = non_null(EVP_MD_CTX_new());
-        let mut pctx = null_mut();
-        check(EVP_DigestSignInit_ex(
-            md,
-            &mut pctx,
-            null(),
-            ctx.0,
-            RIND.as_ptr(),
-            key.0,
-            null(),
-        ));
+        let (md, pctx) = sign_init(&ctx, &key);
         let entropy = |len| {
             [
                 OSSL_PARAM_construct_octet_string(
@@ -876,6 +866,25 @@ fn ml_dsa_refuses_what_rind_cannot_back() {
         check(EVP_PKEY_CTX_set_params(pctx, entropy(32).as_ptr()));
         assert_ne!(EVP_PKEY_CTX_set_params(pctx, entropy(1).as_ptr()), 1);
         assert!(errors().contains("32 bytes"));
+        assert_eq!(digest_sign(md), Ok(()));
+        EVP_MD_CTX_free(md);
+    }
+}
+
+/// OpenSSL's ML-DSA stores `deterministic` as it reads it, ahead of the
+/// parameters after it (`ml_dsa_set_ctx_params` in OpenSSL 3.5's
+/// `ml_dsa_sig.c` reads the context string, test entropy, `deterministic`,
+/// message encoding, then `mu`), so a call it refuses after that leaves the
+/// operation deterministic, which rind then refuses to sign. OpenSSL reads
+/// `deterministic` as an `int`, refusing a value outside that range without
+/// storing it.
+#[test]
+fn ml_dsa_keeps_what_was_set_before_a_refusal() {
+    let ctx = Context::new();
+    let key = ctx.generate(c"ML-DSA-65", None, None);
+    let (mut deterministic, mut raw) = (1 as c_int, 0 as c_int);
+    unsafe {
+        let (md, pctx) = sign_init(&ctx, &key);
         let params = [
             OSSL_PARAM_construct_int(c"deterministic".as_ptr(), &mut deterministic),
             OSSL_PARAM_construct_int(c"message-encoding".as_ptr(), &mut raw),
@@ -883,6 +892,45 @@ fn ml_dsa_refuses_what_rind_cannot_back() {
         ];
         assert_ne!(EVP_PKEY_CTX_set_params(pctx, params.as_ptr()), 1);
         ERR_clear_error();
+        let error = digest_sign(md).unwrap_err();
+        assert!(error.contains("hedged, not deterministically"), "{error}");
+        EVP_MD_CTX_free(md);
+
+        // 2^32 + 1 is 1 when truncated to an `int`, so it is refused whole.
+        let (md, pctx) = sign_init(&ctx, &key);
+        let mut wide = (1 as c_long) << 32 | 1;
+        let params = [
+            OSSL_PARAM_construct_long(c"deterministic".as_ptr(), &mut wide),
+            OSSL_PARAM_construct_end(),
+        ];
+        assert_ne!(EVP_PKEY_CTX_set_params(pctx, params.as_ptr()), 1);
+        ERR_clear_error();
+        assert_eq!(digest_sign(md), Ok(()));
+        EVP_MD_CTX_free(md);
+    }
+}
+
+/// A signing operation on `key`, under rind.
+unsafe fn sign_init(ctx: &Context, key: &Key) -> (*mut EVP_MD_CTX, *mut EVP_PKEY_CTX) {
+    unsafe {
+        let md = non_null(EVP_MD_CTX_new());
+        let mut pctx = null_mut();
+        check(EVP_DigestSignInit_ex(
+            md,
+            &mut pctx,
+            null(),
+            ctx.0,
+            RIND.as_ptr(),
+            key.0,
+            null(),
+        ));
+        (md, pctx)
+    }
+}
+
+/// Signs a message, as the operation's parameters allow.
+unsafe fn digest_sign(md: *mut EVP_MD_CTX) -> Result<(), String> {
+    unsafe {
         let message = b"message";
         let mut len = 0;
         check(EVP_DigestSign(
@@ -893,14 +941,17 @@ fn ml_dsa_refuses_what_rind_cannot_back() {
             message.len(),
         ));
         let mut signature = vec![0; len];
-        check(EVP_DigestSign(
+        if EVP_DigestSign(
             md,
             signature.as_mut_ptr(),
             &mut len,
             message.as_ptr(),
             message.len(),
-        ));
-        EVP_MD_CTX_free(md);
+        ) != 1
+        {
+            return Err(errors());
+        }
+        Ok(())
     }
 }
 

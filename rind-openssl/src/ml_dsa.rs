@@ -435,22 +435,23 @@ fn set_params(params: Params<'_>, unhedged: &mut Unhedged) -> Result<(), Failure
             }
         }
     }
-    // OpenSSL drops a test entropy it is given of the wrong size, and
-    // signs only with exactly its 32 bytes.
-    let test_entropy = match params.find(c"test-entropy").map(|param| param.octets()) {
-        Some(Some(entropy)) if entropy.len() == TEST_ENTROPY_LEN => Some(true),
+    // OpenSSL stores these two as it reads each, in this order, so a call it
+    // refuses later keeps them, and drops a test entropy of the wrong size.
+    match params.find(c"test-entropy").map(|param| param.octets()) {
+        Some(Some(entropy)) if entropy.len() == TEST_ENTROPY_LEN => unhedged.test_entropy = true,
         Some(_) => {
             unhedged.test_entropy = false;
             return Err(Failure::invalid("the test entropy must be 32 bytes"));
         }
-        None => None,
-    };
-    // OpenSSL signs deterministically only at 1.
-    let deterministic = match params.find(c"deterministic").map(integer) {
-        Some(Some(value)) => Some(value == 1),
-        Some(None) => return Err(Failure::invalid("deterministic must be an integer")),
-        None => None,
-    };
+        None => {}
+    }
+    // OpenSSL reads it as an `int` and signs deterministically only at 1.
+    if let Some(param) = params.find(c"deterministic") {
+        match integer(param).map(i32::try_from) {
+            Some(Ok(value)) => unhedged.deterministic = value == 1,
+            _ => return Err(Failure::invalid("deterministic must be an int")),
+        }
+    }
     // Each integer and the value pure ML-DSA has.
     let flags = [
         (
@@ -478,14 +479,6 @@ fn set_params(params: Params<'_>, unhedged: &mut Unhedged) -> Result<(), Failure
                 )));
             }
         }
-    }
-    // Stored only once every parameter checks out, so a refused call leaves
-    // the operation as it was.
-    if let Some(test_entropy) = test_entropy {
-        unhedged.test_entropy = test_entropy;
-    }
-    if let Some(deterministic) = deterministic {
-        unhedged.deterministic = deterministic;
     }
     Ok(())
 }
