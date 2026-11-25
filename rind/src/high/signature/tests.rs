@@ -127,8 +127,8 @@ fn ecdsa_verifies_only_under_its_algorithm() {
 
 // Signing as a verify-only constant, such as a cross-hash pair, needs crate
 // access, so this differential test lives here rather than in
-// `tests/crosschecks.rs`. Wycheproof has no P-256 with SHA-384 vectors, nor
-// P-521 with SHA-256 or SHA-384.
+// `tests/crosschecks_curves.rs`. Wycheproof has no P-256 with SHA-384
+// vectors, nor P-521 with SHA-256 or SHA-384.
 #[test]
 #[cfg(not(any(miri, target_family = "wasm")))]
 fn ecdsa_verification_matches_aws_lc_rs() {

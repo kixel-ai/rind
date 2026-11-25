@@ -752,10 +752,10 @@ fn rsa_private(
 }
 
 /// aws-lc-rs's key, if it takes `der` and its modulus is in rind's range,
-/// 1024 to 8192 bits.
+/// 1017 to 8192 bits.
 fn their_rsa_public(der: &[u8]) -> Result<their_rsa::PublicKey, &'static str> {
     let key = their_rsa::PublicKey::from_der(der).map_err(|_| "refused")?;
-    match (1024..=8192).contains(&modulus_bits(&key)) {
+    match (1017..=8192).contains(&modulus_bits(&key)) {
         true => Ok(key),
         false => Err("modulus out of range"),
     }
