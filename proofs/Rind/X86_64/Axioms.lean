@@ -34,8 +34,10 @@ routine; for SHA-256, which the theorems over every HMAC algorithm cover,
 rind's HOL Light proofs of its routines for the SHA extensions in
 `Rind.X86_64.Sha256Shaext` and of OpenSSL's AVX2 routine in
 `Rind.X86_64.ShaBlocks`; Vale's in
-`Rind.X86_64.ValeAesGcm` for AES-GCM, rind's HOL Light proofs of its
-constant-time compares in `Rind.X86_64.CtEqual` for HMAC's and PBKDF2's
+`Rind.X86_64.ValeAesGcm` for AES-GCM, rind's HOL Light proof of aws-lc's
+`bn_mul_mont_nohw` in `Rind.X86_64.RsaMont` for RSA's Montgomery products at
+the widths aws-lc's 4x and 8x routines do not take, rind's HOL Light proofs
+of its constant-time compares in `Rind.X86_64.CtEqual` for HMAC's and PBKDF2's
 `verify`, AES-GCM's tag check, ChaCha20-Poly1305's and XChaCha20-Poly1305's
 tag checks, RSASSA-PSS's hash compare, and key wrap's `unwrap` and
 `unwrap_padded` checks; for RSA verification's public operation on AVX-512
@@ -50,7 +52,10 @@ and XChaCha20-Poly1305's one pass on AVX-512 IFMA in
 `Rind.X86_64.VgChaCha20Poly1305`; and nothing else.
 ChaCha20-Poly1305's theorems also take the hypothesis
 `RunsChaCha20Poly1305`, which no axiom states, whose `OnePass` takes aws-lc's
-one-pass routines on CPUs without IFMA. ChaCha20's
+one-pass routines on CPUs without IFMA.
+RSA's Montgomery products at the widths aws-lc's 4x and 8x routines take, but
+for s2n-bignum's Karatsuba routines, take them as the hypothesis
+`AwsLcMont`, which no axiom states either. ChaCha20's
 `apply_keystream` on a CPU without AVX2 takes aws-lc's SSSE3 routine as the
 hypothesis `Ssse3`; `Rind.X86_64.ChaCha20Avx2` proves rind's two-block kernel
 over `Rind.X86_64.Simd`'s models of the AVX2 intrinsics. The generator
@@ -1034,6 +1039,20 @@ change to the trust base.
 #guard_msgs in
 #print axioms rsa2048_mont_products
 
+/-- info: 'rind.x86_64.mont_products' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ bignum_cmp_lt_spec,
+ bignum_emontredc_8n_spec,
+ bignum_kmul_16_32_spec,
+ bignum_kmul_32_64_spec,
+ bignum_ksqr_16_32_spec,
+ bignum_ksqr_32_64_spec,
+ bignum_optsub_spec,
+ nohw_spec] -/
+#guard_msgs in
+#print axioms mont_products
+
 /-- info: 'rind.x86_64.sha3_family_digest' depends on axioms: [propext, Classical.choice, Quot.sound, sha3_keccak_f1600_spec] -/
 #guard_msgs in
 #print axioms sha3_family_digest
@@ -1188,3 +1207,11 @@ change to the trust base.
 /-- info: 'rind.x86_64.MlKemCoding.to_message_bits_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms MlKemCoding.to_message_bits_spec
+
+/-- info: 'rind.x86_64.MlKemCoding.sample_cbd2_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms MlKemCoding.sample_cbd2_spec
+
+/-- info: 'rind.x86_64.MlKemCoding.sample_cbd3_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms MlKemCoding.sample_cbd3_spec

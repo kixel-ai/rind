@@ -82,6 +82,22 @@ def core.slice.SliceArray.as_flattened_mut {T : Type _} {N : Std.Usize} (s : Sli
         (by simp))
   else Std.Result.fail .panic
 
+/-- `<[[T; N]]>::as_flattened`: the arrays' elements in order. Rust's length
+never overflows for an element with a size, so the failure is unreachable. -/
+def core.slice.SliceArray.as_flattened {T : Type _} {N : Std.Usize} (s : Slice (Array T N)) :
+    Result (Slice T) :=
+  let flat := s.val.flatMap (·.val)
+  if h : flat.length ≤ Usize.max then Std.Result.ok (Slice.from flat h)
+  else Std.Result.fail .panic
+
+/-- `<Option<T> as Clone>::clone`: the value's own clone, if there is one. -/
+def core.option.Option.Insts.CoreCloneClone.clone {T : Type _} (inst : core.clone.Clone T) :
+    Option T → Result (Option T)
+  | none => Std.Result.ok none
+  | some x => do
+    let y ← inst.clone x
+    Std.Result.ok (some y)
+
 /-- `<[T; N]>::map`: `f` called on each element in order. -/
 def core.array.Array.map {T F U : Type _} {N : Std.Usize} (inst : core.ops.function.FnMut F T U)
     (a : Array T N) (f : F) : Result (Array U N) := do
@@ -110,6 +126,10 @@ array, as slices. -/
 def Shared0Slice.Insts.CoreCmpPartialEqArray.eq {T U : Type _} {N : Std.Usize}
     (inst : core.cmp.PartialEq T U) (s : Slice T) (a : Array U N) : Result Bool :=
   core.slice.cmp.PartialEqSlice.eq inst s a.to_slice
+
+/-- `i16::wrapping_neg`: the negation modulo 2^16. -/
+def core.num.I16.wrapping_neg (x : Std.I16) : Result Std.I16 :=
+  Std.Result.ok ⟨-x.bv⟩
 
 /-- `i32::wrapping_neg`: the negation modulo 2^32. -/
 def core.num.I32.wrapping_neg (x : Std.I32) : Result Std.I32 :=
