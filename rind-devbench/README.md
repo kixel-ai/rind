@@ -65,10 +65,11 @@ and a fresh app launch (rind reads the CPU's features once per process):
 
 `RIND_DEVBENCH_DENY` must list ids rind reads on the target (`src/deny.rs`;
 `sse4.1` may be written with its dot): the build refuses an empty or
-malformed entry, an id rind does not read there, or an optimised build without
+malformed entry, an id rind does not read there, or any build without
 `--cfg rind_cpu_disable`, and the report's `cpu_denied` is that checked list.
-`build-ios.sh` builds rind with `--cfg rind_cpu_disable`, which an
-optimised build needs to honour `RIND_CPU_DISABLE_<id>` at all, and the app
+`build-ios.sh` builds rind with `--cfg rind_cpu_disable`, without which rind
+may ignore `RIND_CPU_DISABLE_<id>` (it reads it otherwise only with debug
+assertions on, which a profile can turn off for rind alone), and the app
 sets those variables before its first rind call, from `main` before `UIApplicationMain` starts any thread (`devbench_apply_denies`), because changing the environment is not safe once other threads may read it. A build that denies features and skips that call refuses to list or run. Android has no such point, since its process is multi-threaded before any app code runs, so `android/build-apk.sh` refuses to build with `RIND_DEVBENCH_DENY` set. Each set has its own cargo
 target directory and its own `out/RindBenchAll-v..-PORT-deny-<ids>.ipa`. The
 report records the denied ids as `cpu_denied`, and every run's `device`

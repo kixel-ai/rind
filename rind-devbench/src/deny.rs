@@ -49,15 +49,14 @@ pub fn parse_denies(spec: &str, arch: &str) -> Result<Vec<String>, String> {
     Ok(ids)
 }
 
-/// Whether rind, built with these encoded rustflags (`CARGO_ENCODED_RUSTFLAGS`,
-/// flags split by 0x1f) and this profile, reads `RIND_CPU_DISABLE_*` at all:
-/// a debug build does, an optimised one only with `--cfg rind_cpu_disable`.
-pub fn denies_take_effect(encoded_rustflags: &str, profile: &str) -> bool {
-    profile == "debug" || {
-        let flags: Vec<&str> = encoded_rustflags.split('\x1f').collect();
-        flags.windows(2).any(|w| w[0] == "--cfg" && w[1] == "rind_cpu_disable")
-            || flags.contains(&"--cfg=rind_cpu_disable")
-    }
+/// Whether these encoded rustflags (`CARGO_ENCODED_RUSTFLAGS`, flags split by
+/// 0x1f) give rind `--cfg rind_cpu_disable`, so it reads `RIND_CPU_DISABLE_*`.
+/// rind also reads them with debug assertions on, but a profile can turn those
+/// off for rind alone, so a deny build always asks for the cfg.
+pub fn denies_take_effect(encoded_rustflags: &str) -> bool {
+    let flags: Vec<&str> = encoded_rustflags.split('\x1f').collect();
+    flags.windows(2).any(|w| w[0] == "--cfg" && w[1] == "rind_cpu_disable")
+        || flags.contains(&"--cfg=rind_cpu_disable")
 }
 
 #[cfg(test)]
@@ -92,13 +91,13 @@ mod tests {
         }
     }
 
-    // Only a debug build or `--cfg rind_cpu_disable` makes rind read them.
+    // Only `--cfg rind_cpu_disable` counts, in either spelling.
     #[test]
     fn effect_needs_the_cfg() {
-        assert!(denies_take_effect("", "debug"));
-        assert!(!denies_take_effect("", "release"));
-        assert!(denies_take_effect("-Cfoo\x1f--cfg\x1frind_cpu_disable", "release"));
-        assert!(denies_take_effect("--cfg=rind_cpu_disable", "release"));
-        assert!(!denies_take_effect("--cfg\x1frind_portable", "release"));
+        assert!(!denies_take_effect(""));
+        assert!(denies_take_effect("-Cfoo\x1f--cfg\x1frind_cpu_disable"));
+        assert!(denies_take_effect("--cfg=rind_cpu_disable"));
+        assert!(!denies_take_effect("--cfg\x1frind_portable"));
+        assert!(!denies_take_effect("--cfg\x1frind_cpu_disable_x"));
     }
 }

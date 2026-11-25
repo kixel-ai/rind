@@ -13,9 +13,8 @@ fn main() {
         let arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
         let ids = parse_denies(&deny, &arch).unwrap_or_else(|e| panic!("{e}"));
         let flags = std::env::var("CARGO_ENCODED_RUSTFLAGS").unwrap_or_default();
-        let profile = std::env::var("PROFILE").unwrap_or_default();
-        if !denies_take_effect(&flags, &profile) {
-            panic!("RIND_DEVBENCH_DENY is set but rind is optimised without --cfg rind_cpu_disable, so it would deny nothing (build-ios.sh adds the flag)");
+        if !denies_take_effect(&flags) {
+            panic!("RIND_DEVBENCH_DENY is set but rind is built without --cfg rind_cpu_disable, so it may deny nothing (build-ios.sh adds the flag)");
         }
         ids
     };
