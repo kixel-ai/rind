@@ -132,8 +132,9 @@ push_paths() {
 
 # The merge queue's build gates on checks that otherwise run only in a
 # workflow of their own, when the group touches their inputs.
-# The group's build is the one self-hosted job queue-build.yml runs, on x86_64,
-# so `vg` checks only x86_64's code; the nightly `prove` covers aarch64's.
+# Only the group's x86_64 build sets CHECK_QUEUE (its aarch64 jobs run `rs`
+# alone), so `vg` checks only x86_64's code; the nightly `prove` covers
+# aarch64's.
 if [[ "$action" == ci && -n "${CHECK_QUEUE:-}" ]]; then
     # pyca/verified-garbage's code against its Lean models, as `prove`'s vg
     # job runs it, with a fixed seed, on the paths that start `prove` on
