@@ -478,9 +478,8 @@ mod dit {
     /// `--cfg rind_dit_barrier="isb"` runs `isb sy` alone, and
     /// `--cfg rind_dit_barrier="none"` no barrier, the architectural
     /// minimum the others use. Both are measuring prototypes, for the cost
-    /// of the barrier on Apple silicon (fork issues #259 to #266), not
-    /// supported configurations: they depart from Apple's guidance, and the
-    /// FIPS module refuses them.
+    /// of the barrier on Apple silicon, not supported configurations: they
+    /// depart from Apple's guidance, and the FIPS module refuses them.
     #[inline(always)]
     pub(super) fn barrier_after_set() {
         #[cfg(not(any(rind_dit_barrier = "isb", rind_dit_barrier = "none")))]

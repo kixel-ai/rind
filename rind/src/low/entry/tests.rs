@@ -185,8 +185,8 @@ fn calls() -> Vec<Call> {
             x25519_untimed().agree(&X25519_PEER).unwrap()
         }),
         call!("ed25519 sign", 1, || ed25519_untimed().sign(b"message")),
-        // The one-shot digests of #264, and the tiny inputs of #259: each
-        // hashes, pads, and finishes under one entry.
+        // One-shot digests and tiny inputs: each hashes, pads, and finishes
+        // under one entry.
         call!("digest::digest SHA-256 16 B", 1, || digest::digest(
             &digest::SHA256,
             &[5; 16]
@@ -345,8 +345,8 @@ fn calls() -> Vec<Call> {
                 .start(&spake2plus::RFC9383, &SPAKE_SESSION, &share_p)
                 .unwrap()
         }),
-        // #265: each side's finish, key schedule and confirmation, under one
-        // entry.
+        // SPAKE2+: each side's finish, key schedule and confirmation, under
+        // one entry.
         call!("spake2plus prover finish", 1, || {
             let (prover, share_v, confirm_v, _, _) = untimed(spake_started);
             prover.finish(&share_v, &confirm_v).unwrap()
@@ -380,8 +380,8 @@ fn calls() -> Vec<Call> {
         call!("hpke::PrivateKey::generate X25519", 1, || {
             hpke::PrivateKey::generate(&hpke::DHKEM_X25519_HKDF_SHA256).unwrap()
         }),
-        // The key exports the audit found outside any `Entry` (fork issue
-        // #259's audit), and the post-quantum and signing calls.
+        // Key exports, which copy out a private scalar or seed, and the
+        // post-quantum and signing calls.
         call!("agreement::PrivateKey::to_scalar X25519", 1, || {
             x25519_untimed().to_scalar()
         }),

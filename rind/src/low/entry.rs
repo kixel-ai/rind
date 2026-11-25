@@ -161,8 +161,8 @@ impl Drop for Entry {
 /// calls pays one toggle in all, as a guard held for its life would. It
 /// only ever adds DIT, so every secret computation still runs under it,
 /// but everything else the thread runs does too. It is a measuring
-/// prototype for the toggle cost on Apple silicon (fork issues #259 to
-/// #266), not a supported configuration, and the FIPS module refuses it.
+/// prototype for the toggle cost on Apple silicon, not a supported
+/// configuration, and the FIPS module refuses it.
 pub(super) fn leave_secret(cpu_state: u32) {
     if cfg!(rind_dit_sticky) {
         let _ = cpu_state;
