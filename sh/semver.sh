@@ -51,6 +51,19 @@ for package in $published; do
         continue
     fi
     if marked "$package"; then
+        # release-plz proposes a breaking version for a break it finds at the
+        # released one, which sh/adapter-versions.sh refuses: a parity fix sets
+        # its patch version by hand.
+        if [[ "$package" != rind ]]; then
+            latest=$(git tag -l "$package-v*" --sort=-v:refname | head -n1)
+            version=$(cargo metadata --format-version 1 --no-deps --locked |
+                jq -r --arg p "$package" '.packages[] | select(.name == $p) | .version')
+            if [[ -n "$latest" && "$latest" == "$package-v$version" ]]; then
+                echo "semver: $package is marked breaking but still at its released version $version; set its patch version" >&2
+                status=1
+                continue
+            fi
+        fi
         echo "semver: $package is marked breaking; skipping its check"
         continue
     fi

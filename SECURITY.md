@@ -60,7 +60,10 @@ months after the new major's first release, on a `release/<major>.<minor>`
 branch, such as `release/1.4`, that release-plz opens its release PR from.
 Every other earlier release takes the fix by upgrading.
 
-A fix reaches crates.io and PyPI when the release PR merges. The Dart packages
+A fix reaches crates.io and `pyrind` on PyPI when the release PR merges.
+`pyrind-cryptography`'s version is bumped by hand, so a fix confined to it
+publishes once its version is bumped and the `pyrind` it requires is released.
+The Dart packages
 on pub.dev publish from their own `rind-dart-v<version>` and
 `rind-cryptography-v<version>` tags, so a fix reaches them once those tags'
 workflows finish.
