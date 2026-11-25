@@ -94,7 +94,7 @@ test_logging = []
 unstable = []
 
 [dependencies]
-rind = { version = "0.3.2", path = "../rind" }
+rind = { version = "0.4.0", path = "../rind" }
 # Caches an RSA key per algorithm without `std`'s `OnceLock`; rustls already
 # depends on it the same way.
 once_cell = { version = "1.21", default-features = false, features = ["alloc", "race"] }
