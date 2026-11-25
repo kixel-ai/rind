@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.14.4](https://github.com/kixel-ai/rind/compare/rind-rcgen-v0.14.3...rind-rcgen-v0.14.4) - 2026-11-25
 
-Requires rind 0.4. This release matches `rcgen::KeyPair`'s API: `KeyPair::generate()` takes no argument, so call `KeyPair::generate_for(alg)` where you passed one, and items rcgen lacks, such as `KeyPair::to_pkcs8` and the crate-level `check` and `MissingFeature`, are gone. A change that restores upstream's API is a bug fix, released as a patch (CONTRIBUTING.md's Releases section). The other entries marked breaking change rind's API or another crate's, which this crate does not expose.
+Requires rind 0.4. This release matches `rcgen::KeyPair`'s API, but for what its README lists under "What rind cannot back": `KeyPair::generate()` takes no argument, so call `KeyPair::generate_for(alg)` where you passed one, and items rcgen lacks, such as `KeyPair::to_pkcs8` and the crate-level `check` and `MissingFeature`, are gone. A change that restores upstream's API is a bug fix, released as a patch (CONTRIBUTING.md's Releases section). The other entries marked breaking change rind's API or another crate's, which this crate does not expose.
 
 ### Added
 

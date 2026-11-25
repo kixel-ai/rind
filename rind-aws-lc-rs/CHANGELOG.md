@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.0.3](https://github.com/kixel-ai/rind/compare/rind-aws-lc-rs-v1.0.2...rind-aws-lc-rs-v1.0.3) - 2026-11-25
 
-Requires rind 0.4. This release matches aws-lc-rs 1.x's API item for item: the `cpu` module (`cpu::check` and `cpu::MissingFeature`) and the `wipe` feature, which aws-lc-rs lacks, are gone, so drop any `cpu::check()` call and `wipe` feature; keys always wipe. A change that restores upstream's API is a bug fix, released as a patch (CONTRIBUTING.md's Releases section). The other entries marked breaking change rind's API or another crate's, which this crate does not expose.
+Requires rind 0.4. This release matches aws-lc-rs 1.x's API item for item, but for what its README lists under "What rind cannot back": the `cpu` module (`cpu::check` and `cpu::MissingFeature`) and the `wipe` feature, which aws-lc-rs lacks, are gone, so drop any `cpu::check()` call and `wipe` feature; keys always wipe. A change that restores upstream's API is a bug fix, released as a patch (CONTRIBUTING.md's Releases section). The other entries marked breaking change rind's API or another crate's, which this crate does not expose.
 
 ### Added
 

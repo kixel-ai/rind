@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.23.4](https://github.com/kixel-ai/rind/compare/rind-rustls-v0.23.3...rind-rustls-v0.23.4) - 2026-11-25
 
-Requires rind 0.4. This release matches rustls's `crypto::aws_lc_rs` API item for item: `default_provider()` returns `CryptoProvider`, not a `Result`, so drop the `.unwrap()`, and items rustls's provider lacks, such as `MissingFeature`, `empty_provider()`, the `verify` module, and `kx_group::SECP521R1`, are gone. A change that restores upstream's API is a bug fix, released as a patch (CONTRIBUTING.md's Releases section). The other entries marked breaking change rind's API or another crate's, which this crate does not expose.
+Requires rind 0.4. This release matches rustls's `crypto::aws_lc_rs` API item for item, but for what its README lists under "What rind cannot back", such as `kx_group::MLKEM1024`: `default_provider()` returns `CryptoProvider`, not a `Result`, so drop the `.unwrap()`, and items rustls's provider lacks, such as `MissingFeature`, `empty_provider()`, the `verify` module, and `kx_group::SECP521R1`, are gone. A change that restores upstream's API is a bug fix, released as a patch (CONTRIBUTING.md's Releases section). The other entries marked breaking change rind's API or another crate's, which this crate does not expose.
 
 ### Added
 

@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.17.4](https://github.com/kixel-ai/rind/compare/rind-ring-v0.17.3...rind-ring-v0.17.4) - 2026-11-25
 
-Requires rind 0.4. This release matches ring 0.17's API and features: the `cpu` module (`cpu::check` and `cpu::MissingFeature`), which ring keeps private, is gone, so drop any `cpu::check()` call. A change that restores upstream's API is a bug fix, released as a patch (CONTRIBUTING.md's Releases section). The other entries marked breaking change rind's API or another crate's, which this crate does not expose.
+Requires rind 0.4. This release matches ring 0.17's API and features, but for what its README lists under "What rind cannot back": the `cpu` module (`cpu::check` and `cpu::MissingFeature`), which ring keeps private, is gone, so drop any `cpu::check()` call. A change that restores upstream's API is a bug fix, released as a patch (CONTRIBUTING.md's Releases section). The other entries marked breaking change rind's API or another crate's, which this crate does not expose.
 
 ### Added
 

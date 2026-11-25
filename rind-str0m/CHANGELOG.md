@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.25.3](https://github.com/kixel-ai/rind/compare/rind-str0m-v0.25.2...rind-str0m-v0.25.3) - 2026-11-25
 
-Requires rind 0.4 and rind-dimpl 0.9.4. This release matches str0m-aws-lc-rs's API: `default_provider()` returns `CryptoProvider`, not a `Result`, and `MissingFeature` is gone, so drop the `?` or `.unwrap()`; `dimpl_crypto_provider()` is new. A change that restores upstream's API is a bug fix, released as a patch (CONTRIBUTING.md's Releases section). The other entries marked breaking change rind's API or another crate's, which this crate does not expose.
+Requires rind 0.4 and rind-dimpl 0.9.4. This release matches str0m-aws-lc-rs's API, but for what its README lists under "What rind cannot back": `default_provider()` returns `CryptoProvider`, not a `Result`, and `MissingFeature` is gone, so drop the `?` or `.unwrap()`; `dimpl_crypto_provider()` is new. A change that restores upstream's API is a bug fix, released as a patch (CONTRIBUTING.md's Releases section). The other entries marked breaking change rind's API or another crate's, which this crate does not expose.
 
 ### Added
 
