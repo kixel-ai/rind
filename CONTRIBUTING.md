@@ -101,6 +101,8 @@ A PR that adds such a workaround adds its entry there and names the entry in the
 
 # Releases
 
+`just ci` runs `sh/semver.sh` over each published crate a PR changes ([STABILITY.md](STABILITY.md#checked-before-every-release)): a breaking change to `rind` needs `!` in the PR title, and an adapter's needs `!` with the adapter's name as the scope, as in `fix(rind-ring)!:` with its patch version set by hand, or a move to its upstream's next breaking release.
+
 release-plz opens a release PR from `main`, and publishing happens only when that PR merges.
 release-plz owns crate versions.
 It creates a GitHub Release for each tag it pushes, with its changelog entry as the body, and only rind's marked latest.
