@@ -170,7 +170,8 @@ opaque low.generic.zeroise.zeroise_value {T : Type} (ZeroableInst : low.generic.
   T → Result T
 
 /-! ChaCha20-Poly1305's routines: pyca/verified-garbage's AVX-512 IFMA seal
-and open, behind one wrapper each, which no theorem is about yet; aws-lc's
+and open, behind one wrapper each, whose contracts
+`Rind.X86_64.VgChaCha20Poly1305` restates; aws-lc's
 one-pass seal and open, behind their Rust wrapper, whose contract
 `Rind.X86_64.ChaCha20Poly1305`'s `OnePass` states as a hypothesis; and the
 separate passes CPUs without SSE4.1 run, which no theorem is about. -/
