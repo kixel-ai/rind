@@ -21,9 +21,9 @@ One screen, no scrolling, on both platforms: a header (device, rind commit,
 where results go), the picker and run controls, and a run panel with a
 progress bar, "rind fastest on X of Y" and the operations where another
 library is faster, worst first, as many as fit. Wide screens put the picker
-and the run panel side by side. On an Android phone too short for every chip,
-the picker's chips scroll inside its card, so none is out of reach; the rest
-of the screen stays put. Every row's full timings still go to the
+and the run panel side by side. On a phone too short for every chip, iOS or
+Android, the picker's chips scroll inside its card, so none is out of reach;
+the rest of the screen stays put. Every row's full timings still go to the
 collector and to the device's files.
 
 ## Output
