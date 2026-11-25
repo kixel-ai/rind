@@ -11,9 +11,10 @@ window's entry by reading every row. With BMI2 and ADX at 16 and 32 words,
 the width RSA-2048's and RSA-4096's primes take, it squares and multiplies by
 rind's Montgomery products, which `MontProducts` states, and gathers by
 `Rind.X86_64.RsaGather`'s proven gather; `mont_exp_by_spec` proves that path.
-aws-lc's `bn_power5` runs every other width that is a multiple of eight,
-which no proof covers, and the rest run the same loop as that path, which no
-proof here takes up.
+At every other width that is a multiple of eight, and at 16 and 32 without
+BMI2 and ADX, aws-lc's `bn_powerx5` with them or `bn_power5` without runs
+instead, which no proof covers. The widths that are not a multiple of eight
+run the same loop as the proven path, which no proof here takes up.
 -/
 
 namespace rind.x86_64

@@ -909,12 +909,12 @@ opaque low.x86_64.mont.sqr8x
   Slice Std.U64 → Slice Std.U64 → Slice Std.U64 → Std.U64 → Option
     low.x86_64.cpu.HaveBmi2Adx → Result (Slice Std.U64)
 
-/-! aws-lc's `bn_power5` and `bn_powerx5`, behind `mont_exp`'s Rust, which RSA
-runs at each width that is a multiple of eight words, but for 16 and 32 with
-BMI2 and ADX, and the RSAZ
-exponentiations, which it runs only without ADX or at the widths its
-AVX-512 IFMA path takes. No proof covers them, and none reaches them: each
-theorem's hypotheses rule out the paths that call them. -/
+/-! aws-lc's `bn_power5` and `bn_powerx5`, which `mont_exp`'s Rust runs at each
+width that is a multiple of eight words, but for 16 and 32 with BMI2 and ADX,
+and the RSAZ exponentiations, which `PosInt` runs in place of `mont_exp` only
+without ADX or at the widths its AVX-512 IFMA path takes. No proof covers
+them, and none reaches them: each theorem's hypotheses rule out the paths
+that call them. -/
 
 opaque low.x86_64.mont_exp.power5
   : Slice Std.U64 → Slice low.x86_64.mont_exp.Row → Slice Std.U64 → Std.U64 → Std.U64 →
