@@ -64,14 +64,14 @@ fn round(
 ))]
 #[inline(always)]
 fn schedule(x: &mut [u64; 16], j: usize) -> u64 {
-    let w1 = x[(j + 1) & 15];
-    let w14 = x[(j + 14) & 15];
+    let w1 = x[(j + 1) % 16];
+    let w14 = x[(j + 14) % 16];
     let s0 = w1.rotate_right(1) ^ w1.rotate_right(8) ^ (w1 >> 7);
     let s1 = w14.rotate_right(19) ^ w14.rotate_right(61) ^ (w14 >> 6);
     let w = x[j]
         .wrapping_add(s0)
         .wrapping_add(s1)
-        .wrapping_add(x[(j + 9) & 15]);
+        .wrapping_add(x[(j + 9) % 16]);
     x[j] = w;
     w
 }

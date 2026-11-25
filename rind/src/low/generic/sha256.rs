@@ -58,14 +58,14 @@ fn round(
 /// with each index taken mod 16 in the window.
 #[inline(always)]
 fn schedule(x: &mut [u32; 16], j: usize) -> u32 {
-    let w1 = x[(j + 1) & 15];
-    let w14 = x[(j + 14) & 15];
+    let w1 = x[(j + 1) % 16];
+    let w14 = x[(j + 14) % 16];
     let s0 = w1.rotate_right(7) ^ w1.rotate_right(18) ^ (w1 >> 3);
     let s1 = w14.rotate_right(17) ^ w14.rotate_right(19) ^ (w14 >> 10);
     let w = x[j]
         .wrapping_add(s0)
         .wrapping_add(s1)
-        .wrapping_add(x[(j + 9) & 15]);
+        .wrapping_add(x[(j + 9) % 16]);
     x[j] = w;
     w
 }
