@@ -2019,3 +2019,168 @@ let CHACHA_RELOAD = prove
   ANTS_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC NUM_REDUCE_CONV; DISCH_TAC] THEN
   ENSURES_INIT_TAC "s0" THEN GHOST_YMMS_TAC THEN CHACHA_UNTIL_TAC 0x163 1 THEN XMMS_OF_YMMS_TAC THEN
   ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[]);;
+(* ------------------------------------------------------------------------- *)
+(* Group g's four states and keystream pieces in the specification's terms.  *)
+(* ------------------------------------------------------------------------- *)
+
+(* State j of group g: block 4 g + j. *)
+let chacha_gstate j =
+  let b = if j = 0 then `4 * g` else mk_binop `(+):num->num->num` `4 * g` (mk_small_numeral j) in
+  list_mk_comb(`chacha20_state`, [`key:byte list`;
+    list_mk_icomb "word_add" [`counter:int32`; mk_comb(`word:num->int32`, b)]; `nonce:byte list`]);;
+
+let chacha_ginst = map (fun j -> chacha_gstate j, chacha_sv j) (0--3);;
+
+(* Piece n of group g's keystream as bytes from offset 256 g on. *)
+let chacha_gchunk n =
+  let off = if n = 0 then `256 * g` else mk_binop `(+):num->num->num` `256 * g` (mk_small_numeral(16*n)) in
+  mk_comb(`word:num->int128`, list_mk_comb(`chacha_bnum`,
+    [`chacha20_kbyte key counter nonce`; off; `16`]));;
+
+let CHACHA_PIECE_SUM j m =
+  let n = 4*j + m in
+  let lhs = subst chacha_ginst (chacha_lanes (fun t -> chacha_sum (4*m+t) j)) in
+  let q = if n = 0 then `16 * g` else mk_binop `(+):num->num->num` `16 * g` (mk_small_numeral n) in
+  prove(mk_eq(lhs, chacha_gchunk n),
+    SUBGOAL_THEN (mk_eq(rand(rator(rand(chacha_gchunk n))), mk_binop `( * ):num->num->num` `16` q))
+     SUBST1_TAC THENL [ARITH_TAC; ALL_TAC] THEN
+    REWRITE_TAC[GSYM CHACHA20_PIECE_CHUNK; chacha20_piece] THEN
+    CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+    SUBGOAL_THEN (subst [q,`q:num`; (if j = 0 then `4 * g` else mk_binop `(+):num->num->num` `4 * g` (mk_small_numeral j)),`b:num`;
+                         mk_small_numeral m,`m:num`] `q DIV 4 = b /\ q MOD 4 = m`)
+     (fun th -> REWRITE_TAC[th]) THENL
+     [MATCH_MP_TAC DIVMOD_UNIQ THEN ARITH_TAC; ALL_TAC] THEN
+    CONV_TAC NUM_REDUCE_CONV THEN
+    SIMP_TAC[EL_CHACHA20_BLOCK_WORDS; ARITH]);;
+
+let CHACHA_PIECE_SUMS =
+  end_itlist CONJ (List.concat(map (fun j -> map (fun m -> CHACHA_PIECE_SUM j m) (0--3)) (0--3)));;
+(* ------------------------------------------------------------------------- *)
+(* One group of the main loop, 0x618 to 0x618, with more than 256 bytes left. *)
+(* ------------------------------------------------------------------------- *)
+
+let CHACHA_GROUP_HYPS =
+  `aligned 16 (stk:int64) /\ aligned 16 (word(data + 48):int64) /\
+   aligned 16 (word(data + 128):int64) /\ aligned 16 (word(data + 144):int64) /\
+   riprel32_within_bounds (data + 48) (pc + 0x163) /\
+   val (buf:int64) + n <= 2 EXP 64 /\ n < 2 EXP 64 /\
+   nonoverlapping (stk,320) (word data:int64,192) /\ nonoverlapping (stk,320) (word pc:int64,0x9d4) /\
+   nonoverlapping (buf,n) (stk,320) /\ nonoverlapping (buf,n) (word data:int64,192) /\
+   nonoverlapping (buf,n) (word pc:int64,0x9d4)`;;
+
+(* The state at 0x618 once group g's keystream is ready: the bytes before
+   256 g are encrypted, the rest are still the message. *)
+let chacha_group g =
+  let inst = [g,`g:num`] in
+  mk_abs(`s:x86state`, list_mk_conj [
+   subst inst
+   `bytes_loaded s (word pc) (chacha20_ssse3_4x_mc pc data) /\ read RIP s = word(pc + 0x618) /\
+    read RSP s = stk /\ read RCX s = word_add stk (word 256) /\
+    read R10 s = word(data + 128) /\ read R11 s = word(data + 144) /\
+    read (memory :> bytes128 (word(data + 48))) s = word 0x00000004000000040000000400000004 /\
+    read (memory :> bytes128 (word(data + 128))) s = word 0x0d0c0f0e09080b0a0504070601000302 /\
+    read (memory :> bytes128 (word(data + 144))) s = word 0x0e0d0c0f0a09080b0605040702010003 /\
+    read RSI s = word_add buf (word(256 * g)) /\ read RDI s = word_add buf (word(256 * g)) /\
+    read RDX s = word(n - 256 * g) /\
+    read (memory :> bytes(buf,256 * g)) s =
+      chacha_bnum (\j. word_xor ((mf:num->byte) j) (chacha20_kbyte key counter nonce j)) 0 (256 * g) /\
+    read (memory :> bytes(word_add buf (word(256 * g)),n - 256 * g)) s =
+      chacha_bnum mf (256 * g) (n - 256 * g)`;
+   subst inst (list_mk_conj(List.concat(map (fun j -> map (fun m ->
+     mk_eq(mk_comb(chacha_piece_loc j m, `s:x86state`), chacha_gchunk (4*j+m))) (0--3)) (0--3))));
+   subst inst (list_mk_conj(map (fun k -> mk_eq(mk_comb(chacha_copy_loc k, `s:x86state`),
+     chacha_lanes (fun j -> chacha_el k (chacha_gstate j)))) (0--15)))]);;
+
+let CHACHA_GROUP_FRAME =
+  `MAYCHANGE [RIP; RAX; RCX; RSI; RDI; RDX; R10] ,, MAYCHANGE SOME_FLAGS ,,
+   MAYCHANGE [ZMM0; ZMM1; ZMM2; ZMM3; ZMM4; ZMM5; ZMM6; ZMM7;
+              ZMM8; ZMM9; ZMM10; ZMM11; ZMM12; ZMM13; ZMM14; ZMM15] ,,
+   MAYCHANGE [memory :> bytes(buf:int64,n); memory :> bytes(stk:int64,320)] ,,
+   MAYCHANGE [events]`;;
+
+let CHACHA_STEP_GOAL =
+  let tm = mk_imp(mk_conj(CHACHA_GROUP_HYPS, `256 * g + 256 < n`),
+   list_mk_icomb "ensures" [`x86`; chacha_group `g:num`; chacha_group `g + 1`; CHACHA_GROUP_FRAME]) in
+  list_mk_forall(frees tm, tm);;
+
+let chacha_mchunk n =
+  let off = if n = 0 then `256 * g` else mk_binop `(+):num->num->num` `256 * g` (mk_small_numeral(16*n)) in
+  mk_comb(`word:num->int128`, list_mk_comb(`chacha_bnum`, [`mf:num->byte`; off; `16`]));;
+
+let CHACHA_XOR256_AT =
+  INST ([`word_add buf (word(256 * g)):int64`,`a:int64`; `word(n - 256 * g):int64`,`d:int64`] @
+        map (fun n -> chacha_gchunk n, chacha_kv n) (0--15) @
+        map (fun n -> chacha_mchunk n, chacha_cv n) (0--15)) (SPEC_ALL CHACHA_XOR256);;
+
+let chacha_next = map (fun j -> subst [`g + 1`,`g:num`] (chacha_gstate j), chacha_sv j) (0--3);;
+
+let CHACHA_NEXT_COUNTERS = prove
+ (`4 * g + 4 = 4 * (g + 1) /\ (4 * g + 1) + 4 = 4 * (g + 1) + 1 /\
+   (4 * g + 2) + 4 = 4 * (g + 1) + 2 /\ (4 * g + 3) + 4 = 4 * (g + 1) + 3`,
+  ARITH_TAC);;
+
+(* Group g's rows, the counter row 4 on, as group g + 1's. *)
+let CHACHA_NEXT_LANES =
+  let old = map (fun j -> chacha_gstate j, chacha_sv j) (0--3) in
+  let tm = list_mk_conj(map (fun k ->
+    mk_eq(subst old (chacha_lanes (fun j ->
+            if k = 12 then list_mk_icomb "word_add" [chacha_el k (chacha_sv j); `word 4:int32`]
+            else chacha_el k (chacha_sv j))),
+          subst chacha_next (chacha_lanes (fun j -> chacha_el k (chacha_sv j))))) (0--15)) in
+  prove(tm, REWRITE_TAC[CHACHA20_STATE_EXPLICIT] THEN CONV_TAC(DEPTH_CONV EL_CONV) THEN
+            REWRITE_TAC[GSYM WORD_ADD_ASSOC; GSYM WORD_ADD; CHACHA_NEXT_COUNTERS]);;
+
+(* Replaces whole values of the state's components by the equations' right
+   sides, leaving everything else alone. *)
+let CHACHA_ASM_RHS_TAC ths =
+  RULE_ASSUM_TAC(fun th ->
+    let c = concl th in
+    if is_eq c && can (term_match [] `read c (s:x86state):A`) (lhs c)
+    then try CONV_RULE(RAND_CONV(GEN_REWRITE_CONV I ths)) th with Failure _ -> th
+    else th);;
+
+let READ_CHACHA_BNUM_256 = CONV_RULE NUM_REDUCE_CONV (SPEC `16` READ_CHACHA_BNUM_CHUNKS);;
+
+let CHACHA_STEP = prove
+ (CHACHA_STEP_GOAL,
+  REWRITE_TAC[SOME_FLAGS] THEN REPEAT GEN_TAC THEN STRIP_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  (* The group's 256 bytes as 16 pieces. *)
+  FIRST_X_ASSUM(MP_TAC o check (can (term_match []
+    `read (memory :> bytes(word_add buf (word(256 * g)),n - 256 * g)) s = x`) o concl)) THEN
+  SUBGOAL_THEN `n - 256 * g = 16 * 16 + (n - 256 * g - 256)`
+   (fun th -> GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [th]) THENL
+   [CHACHA_ARITH_TAC; ALL_TAC] THEN
+  REWRITE_TAC[READ_CHACHA_BNUM_SPLIT; READ_CHACHA_BNUM_CHUNKS] THEN
+  CONV_TAC(LAND_CONV(LAND_CONV(EXPAND_CASES_CONV THENC NUM_REDUCE_CONV))) THEN
+  REWRITE_TAC[WORD_ADD_0; ADD_CLAUSES] THEN CONV_TAC NUM_REDUCE_CONV THEN STRIP_TAC THEN
+  (* Their XOR, and back to the loop's top. *)
+  SUBGOAL_THEN `val(word(n - 256 * g):int64) = n - 256 * g` ASSUME_TAC THENL
+   [REWRITE_TAC[VAL_WORD; DIMINDEX_64] THEN MATCH_MP_TAC MOD_LT THEN CHACHA_ARITH_TAC; ALL_TAC] THEN
+  MP_TAC(REWRITE_RULE[WORD_ADD_0] CHACHA_XOR256_AT) THEN ANTS_TAC THENL
+   [ASM_REWRITE_TAC[] THEN REPEAT CONJ_TAC THEN TRY CHACHA_ARITH_TAC THEN NONOVERLAPPING_TAC;
+    ALL_TAC] THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[WORD_ADD_0]) THEN
+  ASM_REWRITE_TAC[SOME_FLAGS] THEN X86_BIGSTEP_TAC CHACHA_EXEC "s1" THEN
+  SUBGOAL_THEN `~(n - 256 * g = 256)` ASSUME_TAC THENL [CHACHA_ARITH_TAC; ALL_TAC] THEN
+  X86_STEPS_TAC CHACHA_EXEC [2] THEN
+  (* The next group's rows, and its four blocks. *)
+  MP_TAC(INST (map (fun j -> chacha_gstate j, chacha_sv j) (0--3)) (SPEC_ALL CHACHA_RELOAD)) THEN
+  ASM_REWRITE_TAC[] THEN X86_BIGSTEP_TAC CHACHA_EXEC "s3" THEN
+  CHACHA_ASM_RHS_TAC (CONJUNCTS CHACHA_NEXT_LANES) THEN
+  MP_TAC(INST ([`word(data + 128):int64`,`rp10:int64`; `word(data + 144):int64`,`rp11:int64`] @
+               chacha_next) (SPEC_ALL CHACHA_CORE)) THEN
+  ANTS_TAC THENL [ASM_REWRITE_TAC[] THEN REPEAT CONJ_TAC THEN NONOVERLAPPING_TAC; ALL_TAC] THEN
+  ASM_REWRITE_TAC[SOME_FLAGS] THEN X86_BIGSTEP_TAC CHACHA_EXEC "s4" THEN
+  (* Group g + 1's state. *)
+  ENSURES_FINAL_STATE_TAC THEN
+  CHACHA_ASM_RHS_TAC(CONJUNCTS(INST [`g + 1`,`g:num`] CHACHA_PIECE_SUMS)) THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[WORD_ADD_0]) THEN ASM_REWRITE_TAC[] THEN
+  REWRITE_TAC[ARITH_RULE `256 * (g + 1) = 256 * g + 256`;
+              ARITH_RULE `n - (256 * g + 256) = n - 256 * g - 256`] THEN
+  REWRITE_TAC[WORD_ADD; WORD_ADD_ASSOC] THEN ASM_REWRITE_TAC[] THEN
+  CONJ_TAC THENL
+   [REWRITE_TAC[WORD_SUB] THEN COND_CASES_TAC THEN REWRITE_TAC[] THEN CHACHA_ARITH_TAC; ALL_TAC] THEN
+  REWRITE_TAC[READ_CHACHA_BNUM_SPLIT] THEN ASM_REWRITE_TAC[READ_CHACHA_BNUM_256] THEN
+  CONV_TAC(ONCE_DEPTH_CONV EXPAND_CASES_CONV THENC NUM_REDUCE_CONV) THEN
+  REWRITE_TAC[WORD_ADD_0; ADD_CLAUSES; GSYM CHACHA_BNUM_XOR] THEN ASM_REWRITE_TAC[ETA_AX]);;
