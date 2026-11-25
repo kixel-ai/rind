@@ -127,33 +127,55 @@ static NSString *const kConsent = @"The run keeps the CPU busy (minutes on Quick
   s.layoutMargins = UIEdgeInsetsMake(14, 16, 14, 16); s.backgroundColor = C_CARD; s.layer.cornerRadius = 16;
   s.layer.borderWidth = 1; s.layer.borderColor = C_LINE.CGColor; s.clipsToBounds = YES; return s;
 }
+// Buttons are drawn from a UIButtonConfiguration (contentEdgeInsets and the
+// titleLabel/tint setters are deprecated or ignored once one is set). The app
+// paints every state itself, so automatic state updates are off.
+static UIButtonConfiguration *ButtonConfig(NSString *title, UIFont *font, NSDirectionalEdgeInsets insets, CGFloat radius) {
+  UIButtonConfiguration *c = [UIButtonConfiguration plainButtonConfiguration];
+  c.title = title;
+  c.contentInsets = insets;
+  c.titleLineBreakMode = NSLineBreakByTruncatingTail;
+  c.titleTextAttributesTransformer = ^NSDictionary<NSAttributedStringKey, id> *(NSDictionary<NSAttributedStringKey, id> *in) {
+    NSMutableDictionary *out = [in mutableCopy]; out[NSFontAttributeName] = font; return out;
+  };
+  c.background.cornerRadius = radius;
+  c.cornerStyle = UIButtonConfigurationCornerStyleFixed;
+  return c;
+}
 - (UIButton *)chip:(NSString *)title on:(BOOL)on enabled:(BOOL)en {
-  UIButton *b = [UIButton buttonWithType:UIButtonTypeCustom];
-  [b setTitle:title forState:UIControlStateNormal];
   BOOL small = [self compact];
-  b.titleLabel.font = [UIFont systemFontOfSize:small ? 13 : 14 weight:UIFontWeightSemibold];
-  b.titleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
-  b.contentEdgeInsets = small ? UIEdgeInsetsMake(5, 10, 5, 10) : UIEdgeInsetsMake(7, 12, 7, 12);
-  b.layer.cornerRadius = small ? 13 : 15; b.layer.borderWidth = 1;
+  UIButtonConfiguration *c = ButtonConfig(title,
+      [UIFont systemFontOfSize:small ? 13 : 14 weight:UIFontWeightSemibold],
+      small ? NSDirectionalEdgeInsetsMake(5, 10, 5, 10) : NSDirectionalEdgeInsetsMake(7, 12, 7, 12),
+      small ? 13 : 15);
+  c.background.strokeWidth = 1;
+  UIButton *b = [UIButton buttonWithConfiguration:c primaryAction:nil];
+  b.automaticallyUpdatesConfiguration = NO;
   b.selected = on; b.enabled = en;
   [b addTarget:self action:@selector(chipTapped:) forControlEvents:UIControlEventTouchUpInside];
   [self paintChip:b]; return b;
 }
 - (void)paintChip:(UIButton *)b {
   BOOL on = b.selected;
-  b.backgroundColor = on ? C_ACCENT : C_CHIP;
-  b.layer.borderColor = (on ? C_ACCENT : C_LINE).CGColor;
-  [b setTitleColor:on ? UIColor.blackColor : C_TEXT forState:UIControlStateNormal];
-  [b setTitleColor:C_MUTED forState:UIControlStateDisabled];
+  UIButtonConfiguration *c = b.configuration;
+  c.background.backgroundColor = on ? C_ACCENT : C_CHIP;
+  c.background.strokeColor = on ? C_ACCENT : C_LINE;
+  c.baseForegroundColor = !b.enabled ? C_MUTED : (on ? UIColor.blackColor : C_TEXT);
+  b.configuration = c;
   b.alpha = b.enabled ? 1 : 0.45;
 }
 - (UIButton *)button:(NSString *)t action:(SEL)a primary:(BOOL)primary {
-  UIButton *b = [UIButton buttonWithType:UIButtonTypeSystem]; [b setTitle:t forState:UIControlStateNormal];
-  b.titleLabel.font = [UIFont systemFontOfSize:17 weight:UIFontWeightBold];
-  b.tintColor = primary ? UIColor.blackColor : C_TEXT;
-  b.backgroundColor = primary ? C_ACCENT : C_CHIP; b.layer.cornerRadius = 12;
-  b.contentEdgeInsets = UIEdgeInsetsMake(11, 22, 11, 22);
+  UIButtonConfiguration *c = ButtonConfig(t, [UIFont systemFontOfSize:17 weight:UIFontWeightBold],
+      NSDirectionalEdgeInsetsMake(11, 22, 11, 22), 12);
+  c.background.backgroundColor = primary ? C_ACCENT : C_CHIP;
+  c.baseForegroundColor = primary ? UIColor.blackColor : C_TEXT;
+  UIButton *b = [UIButton buttonWithConfiguration:c primaryAction:nil];
+  b.automaticallyUpdatesConfiguration = NO;
   [b addTarget:self action:a forControlEvents:UIControlEventTouchUpInside]; return b;
+}
+// A configured button's title lives in its configuration.
+static void SetTitle(UIButton *b, NSString *t) {
+  UIButtonConfiguration *c = b.configuration; c.title = t; b.configuration = c;
 }
 
 #pragma mark - layout
@@ -387,7 +409,7 @@ static NSString *const kConsent = @"The run keeps the CPU busy (minutes on Quick
 - (void)clearTapped {
   if (running) return;
   agree.on = NO; clearBtn.hidden = YES;
-  [startBtn setTitle:@"Start test" forState:UIControlStateNormal]; startBtn.hidden = NO;
+  SetTitle(startBtn, @"Start test"); startBtn.hidden = NO;
   showingRun = NO; [self foldPicker];
   [self setPicking:YES]; [self agreeChanged]; [self ready]; [self findCollector];
 }
@@ -442,7 +464,7 @@ static NSString *const kConsent = @"The run keeps the CPU busy (minutes on Quick
   [self summarize:s[@"results"]];
   if (!running) {
     [timer invalidate]; timer = nil; UIApplication.sharedApplication.idleTimerDisabled = NO;
-    startBtn.hidden = NO; [startBtn setTitle:@"Run again" forState:UIControlStateNormal]; stopBtn.hidden = YES; clearBtn.hidden = NO;
+    startBtn.hidden = NO; SetTitle(startBtn, @"Run again"); stopBtn.hidden = YES; clearBtn.hidden = NO;
     [self setPicking:YES];
   }
 }
