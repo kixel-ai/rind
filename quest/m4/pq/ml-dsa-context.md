@@ -8,6 +8,8 @@ it with an `unsupported by rind` error.
 
 ## Plan
 
+Kept on 2026-11-25 when the maintainer settled [kixel-ai/rind#1053](https://github.com/kixel-ai/rind/pull/1053)'s follow-ups.
+
 - The mid layer already signs and verifies with any context; only the
   public API and the provider fix it to the empty one, which is what TLS and
   X.509 use.
