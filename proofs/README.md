@@ -67,7 +67,7 @@ Lean's compiler, trusted beyond the kernel wherever one of these appears:
 | `native_decide`, `decide +native` | 0 in 0 files | each adds an axiom that Lean's compiled code evaluated a proposition as the kernel would; rind's proofs avoid it |
 | `@[implemented_by]`, `@[extern]` | 2 in 2 files | the compiler runs another definition than the one proofs use, as for the AES S-boxes' tables, which `sboxFast_eq` and `invSboxFast_eq` prove equal |
 
-Hand models of Rust Aeneas cannot translate, 20 files of 7,502 lines, each quoting the Rust it models:
+Hand models of Rust Aeneas cannot translate, 20 files of 7,506 lines, each quoting the Rust it models:
 
 - `Aarch64`: `AesGcmModel`, `PointSelectModel`, `TypesExternal`
 - `Portable`: `Compare`
