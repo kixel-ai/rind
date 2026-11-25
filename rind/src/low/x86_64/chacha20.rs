@@ -255,7 +255,15 @@ struct Words([u32; 32]);
 #[repr(C, align(64))]
 struct Bytes([u8; 49]);
 
+// On Linux both tables share one section, so the routine's object, as
+// `admin/prove` extracts it for its HOL Light proof, reads one read-only
+// section, the one s2n-bignum's ELF reader takes.
+// SAFETY: the attribute only names the output section, which the linker
+// places with the other `.rodata.*` sections. The bytes are these tables.
+#[cfg_attr(target_os = "linux", unsafe(link_section = ".rodata.rind_chacha20_ssse3_4x"))]
 static ZERO: Words = Words(include!("aws_lc/chacha-x86_64.zero.rs"));
+// SAFETY: as `ZERO`'s.
+#[cfg_attr(target_os = "linux", unsafe(link_section = ".rodata.rind_chacha20_ssse3_4x"))]
 static ROT16: Bytes = Bytes(include!("aws_lc/chacha-x86_64.rot16.rs"));
 
 // The routine takes the System V ABI on every OS, since its text is aws-lc's
