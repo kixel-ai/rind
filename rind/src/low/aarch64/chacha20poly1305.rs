@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
-//! ChaCha20-Poly1305 in one pass: pyca/verified-garbage's SVE2 routines,
-//! imported by `admin/import-vg`, where the CPU has SVE2, and otherwise
+//! ChaCha20-Poly1305 in one pass: pyca/verified-garbage's SVE2 routines
+//! where the CPU has SVE2; otherwise VG's NEON routines from
+//! `VG_NEON_MIN_LEN` bytes, both imported by `admin/import-vg`, and below it
 //! aws-lc's `chacha20_poly1305_armv8`, which interleaves NEON ChaCha20 with
-//! scalar Poly1305, imported by `admin/import-aws-lc`, since VG's NEON
-//! routines took up to 1.06 of its time at 32 to 512 bytes on Apple's M4.
+//! scalar Poly1305, imported by `admin/import-aws-lc`. VG's NEON routines
+//! took up to 1.25 of aws-lc's time below 1 KiB on Apple's M5 Pro, and
+//! aws-lc's up to 1.45 of theirs from it.
 //!
 //! VG proves in Lean that its routines meet RFC 8439 and take the same
 //! branches and memory addresses whatever the key, nonce, and data, but for
@@ -14,16 +16,19 @@
 //! axioms about `seal_sve2` and `open_sve2` and proves `seal` and `open`
 //! from them on SVE2 CPUs. The aws-lc assembly is not formally verified: its
 //! correctness rests on its use and testing in BoringSSL and aws-lc. rind
-//! tests both against RFC 8439, Wycheproof, aws-lc-rs, and separate
+//! tests every path against RFC 8439, Wycheproof, aws-lc-rs, and separate
 //! ChaCha20 and Poly1305 passes.
 //!
 //! VG's routines zero their stack scratch before returning, which AGENTS.md
 //! allows an imported proven routine: VG defines each routine with that
 //! wipe, offers none without it, and its proofs are of the instructions as
-//! emitted. They outrun aws-lc's code at every size with that cost included.
+//! emitted. The lengths where they run are those where they outrun aws-lc's
+//! code with that cost included.
 
 use super::cpu::HaveSve2;
+use super::vg::vg_chacha20_poly1305_open_neon::vg_chacha20_poly1305_open_neon;
 use super::vg::vg_chacha20_poly1305_open_sve2::vg_chacha20_poly1305_open_sve2;
+use super::vg::vg_chacha20_poly1305_seal_neon::vg_chacha20_poly1305_seal_neon;
 use super::vg::vg_chacha20_poly1305_seal_sve2::vg_chacha20_poly1305_seal_sve2;
 use crate::low::ct_equal;
 
@@ -31,7 +36,13 @@ use crate::low::ct_equal;
 pub(crate) fn seal(key: &[u8; 32], nonce: &[u8; 12], aad: &[u8], inout: &mut [u8]) -> [u8; 16] {
     match HaveSve2::check() {
         Some(sve2) => seal_sve2(sve2, key, nonce, aad, inout),
-        None => seal_neon(key, nonce, aad, inout),
+        None => {
+            if inout.len() >= VG_NEON_MIN_LEN {
+                seal_neon(key, nonce, aad, inout)
+            } else {
+                seal_aws_lc(key, nonce, aad, inout)
+            }
+        }
     }
 }
 
@@ -46,9 +57,20 @@ pub(crate) fn open(
 ) -> bool {
     match HaveSve2::check() {
         Some(sve2) => open_sve2(sve2, key, nonce, aad, inout, tag),
-        None => ct_equal(&open_neon(key, nonce, aad, inout), tag),
+        None => {
+            if inout.len() >= VG_NEON_MIN_LEN {
+                open_neon(key, nonce, aad, inout, tag)
+            } else {
+                ct_equal(&open_aws_lc(key, nonce, aad, inout), tag)
+            }
+        }
     }
 }
+
+/// The message length from which CPUs without SVE2 run VG's NEON routines:
+/// below it aws-lc's code ran up to 1.25x faster on Apple's M5 Pro, from it
+/// VG's up to 1.45x.
+const VG_NEON_MIN_LEN: usize = 1024;
 
 fn seal_sve2(
     _: HaveSve2,
@@ -85,6 +107,33 @@ fn open_sve2(
 }
 
 fn seal_neon(key: &[u8; 32], nonce: &[u8; 12], aad: &[u8], inout: &mut [u8]) -> [u8; 16] {
+    let mut tag = [0u8; 16];
+    let (data, len) = (inout.as_mut_ptr(), inout.len());
+    // SAFETY: each pointer is to a distinct Rust object of the length the
+    // routine reads or writes. rind requires NEON.
+    unsafe {
+        asm_call!(unsafe extern "C" vg_chacha20_poly1305_seal_neon(key, nonce, aad.as_ptr(), aad.len(), data, len, &mut tag))
+    };
+    tag
+}
+
+/// As `open`, and zeroes `inout` when `tag` is not its tag.
+fn open_neon(
+    key: &[u8; 32],
+    nonce: &[u8; 12],
+    aad: &[u8],
+    inout: &mut [u8],
+    tag: &[u8; 16],
+) -> bool {
+    let (data, len) = (inout.as_mut_ptr(), inout.len());
+    // SAFETY: as in `seal_neon`.
+    let valid = unsafe {
+        asm_call!(unsafe extern "C" vg_chacha20_poly1305_open_neon(key, nonce, aad.as_ptr(), aad.len(), data, len, tag))
+    };
+    valid == 1
+}
+
+fn seal_aws_lc(key: &[u8; 32], nonce: &[u8; 12], aad: &[u8], inout: &mut [u8]) -> [u8; 16] {
     let mut data = Data::new(key, nonce);
     let ptr = inout.as_mut_ptr();
     // SAFETY: `inout` is `inout.len()` readable and writable bytes, which the
@@ -98,10 +147,10 @@ fn seal_neon(key: &[u8; 32], nonce: &[u8; 12], aad: &[u8], inout: &mut [u8]) -> 
 
 /// Decrypts `inout` in place, returning the tag over `aad` and the
 /// ciphertext.
-fn open_neon(key: &[u8; 32], nonce: &[u8; 12], aad: &[u8], inout: &mut [u8]) -> [u8; 16] {
+fn open_aws_lc(key: &[u8; 32], nonce: &[u8; 12], aad: &[u8], inout: &mut [u8]) -> [u8; 16] {
     let mut data = Data::new(key, nonce);
     let ptr = inout.as_mut_ptr();
-    // SAFETY: as in `seal_neon`.
+    // SAFETY: as in `seal_aws_lc`.
     unsafe {
         asm_call!(unsafe extern "C" chacha20_poly1305_open(ptr, ptr, inout.len(), aad.as_ptr(), aad.len(), &mut data))
     };
@@ -207,10 +256,13 @@ mod tests {
 
     /// Each one-pass path the CPU can run, by name.
     fn paths() -> Vec<(&'static str, Seal, Open)> {
-        let mut paths: Vec<(&'static str, Seal, Open)> =
-            vec![("neon", seal_neon, |key, nonce, aad, inout, tag| {
-                ct_equal(&open_neon(key, nonce, aad, inout), tag)
-            })];
+        let mut paths: Vec<(&'static str, Seal, Open)> = vec![
+            ("aws-lc", seal_aws_lc, |key, nonce, aad, inout, tag| {
+                ct_equal(&open_aws_lc(key, nonce, aad, inout), tag)
+            }),
+            ("neon", seal_neon, open_neon),
+            ("dispatch", seal, open),
+        ];
         if HaveSve2::check().is_some() {
             paths.push((
                 "sve2",
@@ -229,8 +281,8 @@ mod tests {
     // them, AAD lengths around their 16-byte blocks, and a long message, on
     // each path, against separate ChaCha20 and Poly1305 passes, under a key
     // `admin/ctgrind` keeps secret, and opening under a tag one bit off.
-    // Valgrind hides SVE2, so ctgrind checks only aws-lc's routines, and
-    // `ct_qemu_chacha20poly1305` VG's.
+    // Valgrind hides SVE2, so ctgrind checks aws-lc's and VG's NEON
+    // routines, and `ct_qemu_chacha20poly1305` VG's SVE2 ones.
     #[test]
     fn matches_separate_passes() {
         let key = core::array::from_fn(|i| i as u8);
