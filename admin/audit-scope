@@ -27,11 +27,12 @@ PQ = re.compile(r"(^|/)(mldsa|slhdsa)")
 # What a file under `rind/src/mid` or `rind/src/high` is for, by its stem.
 # Anything not listed here is Phase 1: a primitive or encoding a TLS stack
 # reaches. The Phase 2 ones are reached by no TLS handshake.
-MID_PHASE2 = re.compile(r"^(portable/)?(argon2|blake2b|pbkdf2_vg|ristretto255(_tests)?)\.rs$|^(mldsa|slhdsa)|(^|/)hash_to_curve")
-HIGH_PHASE2 = re.compile(r"^(argon2|pbkdf2|hpke|oprf|frost|spake2plus|vrf|blind_rsa|hmac_drbg)(\.rs|/)")
-# The ML-DSA and SLH-DSA keys sit in Phase 1 whole, because their `from_pkcs8`
-# loaders are methods inside the files and `rind-rustls` reaches them when any
-# crate in the build turns on rind's `ml-dsa` or `slh-dsa` feature.
+MID_PHASE2 = re.compile(r"^(portable/)?(argon2|blake2b|pbkdf2_vg|ristretto255(_tests)?)\.rs$|(^|/)hash_to_curve")
+HIGH_PHASE2 = re.compile(r"^(argon2|pbkdf2|oprf|frost|spake2plus|vrf|blind_rsa|hmac_drbg)(\.rs|/)")
+# The ML-DSA and SLH-DSA keys sit in Phase 1 whole, with the `mid` code that
+# expands and checks them, because their `from_pkcs8` loaders are methods inside
+# the files and `rind-rustls` reaches them when any crate in the build turns on
+# rind's `ml-dsa` or `slh-dsa` feature. Their `low` kernels stay in Phase 2.
 HIGH_PQ_LOADERS = re.compile(r"^signature/(ml_dsa|slh_dsa)\.rs$")
 
 # Other crates, by directory: Phase 1 is the TLS provider boundary, Phase 2
@@ -61,6 +62,12 @@ LEAN_MODELS = "Lean TCB: hand models, ISA models, and transliterated specs"
 LEAN_PROOFS = "Lean: proofs and Aeneas glue (machine-checked)"
 AXIOM = re.compile(r"^\s*(private |protected )?axiom ", re.M)
 
+# The files of rind's s2n-bignum fork that rind wrote, which its ledger marks
+# "rind's": the AArch32 model and the specs and cosimulators beside it. The
+# fork's other files are upstream's, or upstream's with a few edits.
+FORK = "thirdparty/s2n-bignum/"
+HOL_OWN = "HOL Light: rind-authored models and specs in its s2n-bignum fork"
+
 GEN = re.compile(r"generated source|[Gg]enerated by `?admin/")
 
 
@@ -69,9 +76,19 @@ def tracked():
     return sorted(f for f in out.decode().split("\0") if f and (ROOT / f).is_file())
 
 
+def fork_own():
+    ledger = (ROOT / FORK / "RIND.md").read_text()
+    return {FORK + m for m in re.findall(r"^- `([^`]+)`: rind's", ledger, re.M)}
+
+
+FORK_OWN = fork_own()
+
+
 def classify(f):
     """Returns (phase, area) for a file, or None when it is not code under review."""
     p = f.split("/")
+    if f in FORK_OWN:
+        return "1", HOL_OWN
     if p[0] == "proofs":
         if f.endswith(".lean"):
             text = (ROOT / f).read_text()
@@ -106,16 +123,19 @@ def classify(f):
             return "1", f"{layer}"
         if rest[0] == "mid":
             name = "/".join(rest[1:])
+            if PQ.search(name):
+                return "1", "`mid`: ML-DSA and SLH-DSA keys, for their PKCS#8 loaders"
             if MID_PHASE2.search(name):
-                kind = "ML-DSA and SLH-DSA" if PQ.search(name) else "KDF, hash-to-curve, and ristretto255"
-                return "2", f"`mid`: {kind}"
+                return "2", "`mid`: KDF, hash-to-curve, and ristretto255"
             return "1", "`mid`: primitives and constructions"
         if rest[0] == "high":
             name = "/".join(rest[1:])
             if HIGH_PQ_LOADERS.search(name):
                 return "1", "`high`: ML-DSA and SLH-DSA keys, for their PKCS#8 loaders"
+            if name == "hpke.rs":
+                return "1", "`high`: HPKE, for `rind-rustls`'s Encrypted ClientHello"
             if HIGH_PHASE2.search(name):
-                return "2", "`high`: protocols (HPKE, OPRF, FROST, SPAKE2+, VRF, blind RSA, KDFs)"
+                return "2", "`high`: protocols (OPRF, FROST, SPAKE2+, VRF, blind RSA, KDFs)"
             return "1", "`high`: keys, signatures, encodings, and hashing"
         if rest[0] in ("fips", "fips.rs", "fips_rng.rs"):
             return "2", "`rind` FIPS build glue"
@@ -123,10 +143,14 @@ def classify(f):
     if p[0] == "rind-rustls":
         return ("1", "`rind-rustls`: the TLS provider") if p[1] == "src" and f.endswith(".rs") else None
     if p[0] in BINDINGS:
-        if f.endswith((".rs", ".dart", ".py", ".c", ".h")) and p[1] in ("src", "lib", "python", "include", "module"):
+        # The `cryptography` drop-ins are published packages of their own.
+        shipped = p[1] in ("src", "lib", "python", "include", "module") or (
+            p[1] == "cryptography" and p[2] in ("lib", "pyrind_cryptography")
+        )
+        if f.endswith((".rs", ".dart", ".py", ".c", ".h")) and shipped:
             return "2", f"`{p[0]}`: " + {
-                "rind-python": "Python bindings",
-                "rind-dart": "Dart FFI",
+                "rind-python": "Python bindings and the `cryptography` drop-in",
+                "rind-dart": "Dart FFI and the `cryptography` drop-in",
                 "rind-openssl": "OpenSSL 3 provider",
                 "rind-fips": "FIPS module (unpublished)",
             }[p[0]]

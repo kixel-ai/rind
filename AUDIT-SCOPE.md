@@ -25,22 +25,24 @@ shape the second.
   formal-verification trusted computing base (what a proof assumes rather than
   proves).
 - **Phase 2** is the rest of what rind publishes: ML-DSA, SLH-DSA,
-  Argon2id, ristretto255, hash-to-curve, the protocols (HPKE, OPRF, FROST,
+  Argon2id, ristretto255, hash-to-curve, the protocols (OPRF, FROST,
   SPAKE2+, ECVRF, blind RSA), the other adapters, and the
   bindings (`rind-python`, `rind-dart`, `rind-openssl`), which add `unsafe`
   and a C ABI. `rind-fips` is in it only once it is published.
 
-The ML-DSA and SLH-DSA PKCS#8 loaders are in Phase 1, counted as their two
-whole files in `high/signature` since the loaders sit inside them: `rind-rustls`
-loads every PKCS#8 key through rind, so when any crate in the build enables
-rind's `ml-dsa` or `slh-dsa` feature, Cargo feature unification lets a hostile
-key reach them, while the schemes' `mid` and `low` code stays in Phase 2.
+The ML-DSA and SLH-DSA PKCS#8 loaders are in Phase 1: `rind-rustls` loads
+every PKCS#8 key through rind, so when any crate in the build enables rind's
+`ml-dsa` or `slh-dsa` feature, Cargo feature unification lets a hostile key
+reach them. The loaders sit inside `high/signature/ml_dsa.rs` and `slh_dsa.rs`
+and call the key expansion in `mid/mldsa.rs` and `slhdsa.rs`, so those four
+files count whole, signing and verifying code included; the schemes' `low`
+kernels stay in Phase 2.
 
 ML-KEM is in Phase 1, not Phase 2, because `rind-rustls` offers
 `X25519MLKEM768` first by default, so a handshake runs it whenever the
-peer negotiates it. HPKE is in
-Phase 2 as rind's own `hpke` module, while `rind-rustls`'s glue for rustls's
-HPKE trait is in Phase 1 with the rest of the provider.
+peer negotiates it. HPKE is in Phase 1 for the same reason: `rind-rustls`
+backs rustls's HPKE trait with rind's `hpke` module, which a client using
+Encrypted ClientHello runs.
 
 Phase 1 comes first because a flaw there reaches every user, and because Phase
 2's protocols and bindings call Phase 1's code: an auditor who has read it
@@ -69,9 +71,11 @@ is authoritative.
 | Area | Files | Hand-written lines | Generated lines |
 |---|---:|---:|---:|
 | HOL Light: rind's proofs of its own assembly | 19 | 24,408 | 0 |
+| HOL Light: rind-authored models and specs in its s2n-bignum fork | 10 | 4,429 | 0 |
 | Lean TCB: files that state axioms | 23 | 5,539 | 0 |
 | Lean TCB: hand models, ISA models, and transliterated specs | 136 | 37,492 | 0 |
 | Lean: proofs and Aeneas glue (machine-checked) | 128 | 50,663 | 0 |
+| `high`: HPKE, for `rind-rustls`'s Encrypted ClientHello | 1 | 1,792 | 0 |
 | `high`: ML-DSA and SLH-DSA keys, for their PKCS#8 loaders | 2 | 562 | 0 |
 | `high`: keys, signatures, encodings, and hashing | 26 | 16,019 | 0 |
 | `low/aarch64` | 280 | 6,347 | 203,051 |
@@ -80,10 +84,11 @@ is authoritative.
 | `low/portable` | 12 | 1,106 | 0 |
 | `low/x86_64` | 449 | 15,596 | 408,678 |
 | `low` shared files | 15 | 5,297 | 0 |
+| `mid`: ML-DSA and SLH-DSA keys, for their PKCS#8 loaders | 2 | 3,035 | 0 |
 | `mid`: primitives and constructions | 34 | 16,008 | 42,161 |
 | `rind-rustls`: the TLS provider | 13 | 3,600 | 0 |
 | `rind` crate root: public API and errors | 7 | 2,641 | 0 |
-| **Total** | **1,215** | **199,272** | **669,489** |
+| **Total** | **1,228** | **208,528** | **669,489** |
 
 Lean `axiom` declarations: 173 in 23 files. `sorry`: 0.
 
@@ -91,19 +96,18 @@ Lean `axiom` declarations: 173 in 23 files. `sorry`: 0.
 
 | Area | Files | Hand-written lines | Generated lines |
 |---|---:|---:|---:|
-| `high`: protocols (HPKE, OPRF, FROST, SPAKE2+, VRF, blind RSA, KDFs) | 13 | 11,459 | 0 |
+| `high`: protocols (OPRF, FROST, SPAKE2+, VRF, blind RSA, KDFs) | 12 | 9,667 | 0 |
 | `low/aarch64`: ML-DSA, SLH-DSA, and Argon2 kernels | 18 | 1,100 | 4,174 |
 | `low/generic`: ML-DSA, SLH-DSA, and Argon2 kernels | 2 | 887 | 0 |
 | `low/x86_64`: ML-DSA, SLH-DSA, and Argon2 kernels | 22 | 1,052 | 11,829 |
 | `mid`: KDF, hash-to-curve, and ristretto255 | 10 | 2,978 | 0 |
-| `mid`: ML-DSA and SLH-DSA | 2 | 3,035 | 0 |
-| `rind-dart`: Dart FFI | 18 | 5,389 | 0 |
+| `rind-dart`: Dart FFI and the `cryptography` drop-in | 27 | 7,140 | 0 |
 | `rind-fips`: FIPS module (unpublished) | 38 | 10,662 | 0 |
 | `rind-openssl`: OpenSSL 3 provider | 7 | 2,618 | 0 |
-| `rind-python`: Python bindings | 12 | 2,027 | 0 |
+| `rind-python`: Python bindings and the `cryptography` drop-in | 48 | 5,382 | 0 |
 | `rind` FIPS build glue | 3 | 1,345 | 0 |
 | other `rind-<consumer>` adapters | 60 | 13,087 | 0 |
-| **Total** | **205** | **55,639** | **16,003** |
+| **Total** | **247** | **55,918** | **16,003** |
 
 ### Phase 1 in more detail
 
@@ -245,9 +249,9 @@ For both phases:
   reproducible, and the CI configuration, which the threat model excludes.
 - Performance.
 
-Phase 1 also leaves out Phase 2's code, apart from the PKCS#8 loaders above: ML-DSA, SLH-DSA, Argon2id,
-ristretto255, hash-to-curve, the protocols, the other adapters, and the
-bindings.
+Phase 1 also leaves out Phase 2's code, apart from the PKCS#8 loaders above:
+the ML-DSA and SLH-DSA kernels, Argon2id, ristretto255, hash-to-curve, the
+protocols other than HPKE, the other adapters, and the bindings.
 
 ## What an engagement delivers
 
