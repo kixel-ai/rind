@@ -1,3 +1,8 @@
+-- Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+-- SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
+--
+-- A transliteration of s2n-bignum's AES-GCM spec; see LICENSE.
+
 import Rind.GcmSpec
 import Rind.AesSbox
 open Polynomial
@@ -25,7 +30,7 @@ Vale's on Vale's (`aes128Cipher_eq`, `aes256Cipher_eq`), `nist_dot` is
 Vale's `gf128_mul_rev` (`toPoly_nistDot`), so `nist_ghash` is `ghashPoly`
 (`toPoly_nistGhash`), `h_power` of the twisted key is the shifted power of
 H that rind's PMULL table holds (`toPoly_hPower`), and the kernels' counter
-blocks are Vale's `inc32` (`ctrBlock_add`).
+blocks are Vale's `inc32` (`inc32_ctrBlock`).
 -/
 
 local notation "P" => Polynomial (ZMod 2)
