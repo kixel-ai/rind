@@ -361,3 +361,38 @@ jobs:
         run: nix develop .#binsec --command admin/ct-binsec --timeout 480
         env:
           RUSTFLAGS: ${{ matrix.backend == 'portable' && '--cfg rind_portable --cfg curve25519_dalek_backend="serial"' || '' }}
+
+  # Consumers often build rind with LTO, which inlines it into their code and
+  # reoptimizes it, or for size, where LLVM may pick a branch over a select
+  # and divides by a constant with `div`. Each row reruns the valgrind suites
+  # and BINSEC, whose division checks tell a secret dividend from a public
+  # one, under that profile on x86_64. `admin/ct-vartime` reads rlibs, which
+  # LTO never reaches, and at `opt-level = "z"` would refuse every division
+  # by a constant, almost all of public lengths.
+  profile:
+    name: profile (${{ matrix.profile }})
+    needs: select
+    if: ${{ !cancelled() && github.event_name != 'pull_request' && (!inputs.jobs || contains(fromJSON(needs.select.outputs.jobs || '[]'), 'profile')) }}
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [lto, opt-z]
+        exclude: ${{ fromJSON(needs.select.outputs.exclude || '{}').profile || fromJSON('[]') }}
+    runs-on: ubuntu-latest
+    env:
+      CARGO_PROFILE_RELEASE_LTO: ${{ matrix.profile == 'lto' && 'thin' || 'false' }}
+      CARGO_PROFILE_RELEASE_OPT_LEVEL: ${{ matrix.profile == 'opt-z' && 'z' || '3' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/nix
+
+      - name: ctgrind tests
+        run: nix develop .#ctgrind --command admin/ctgrind --release
+
+      # Its own verdict, whatever ctgrind's.
+      - name: ct-binsec
+        if: ${{ !cancelled() }}
+        run: nix develop .#binsec --command admin/ct-binsec --timeout 480

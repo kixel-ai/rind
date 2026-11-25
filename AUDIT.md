@@ -201,8 +201,9 @@ establishes, and what it does not:
 - **`admin/ct-vartime`**, in `just ci`, scans the release builds of every
   Linux target rind builds for divisions and floating point, against an
   allowlist of public operands. On the x86_64 backend it also fails on a
-  multiply whose timing depends on MXCSR that an export reaches outside
-  `rind::low::Mcdt`, the mitigation; on 32-bit x86 and the portable backend,
+  multiply whose timing depends on MXCSR that an export reaches on a path
+  that has not entered `rind::low::Mcdt`, the mitigation, or has left it; on
+  32-bit x86 and the portable backend,
   that every call enters it is unchecked. It takes the integer multiplier to
   run in constant time, and on x86 it refuses `vsha512*`.
 - **s2n-bignum's `_SAFE` theorems** prove the routines
