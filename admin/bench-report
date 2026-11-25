@@ -2177,7 +2177,7 @@ def methodology(hosts, shown):
         "### Versions",
         "",
         "The versions of each library's crates that `rind-bench` built, from `Cargo.lock` at each host's "
-        "measured commit, and the OpenSSL each host linked. A crate a host's build lacked is left out.",
+        "measured commit, and the OpenSSL each host linked. A version some hosts did not build names the hosts that did.",
         "",
         "| Library | Crate | Version |",
         "|---|---|---|",
@@ -2193,7 +2193,7 @@ def methodology(hosts, shown):
                     by_version.setdefault(version, []).append(f"`{host}`")
             if not by_version:
                 continue
-            if len(by_version) == 1:
+            if len(by_version) == 1 and sum(map(len, by_version.values())) == len(shown):
                 cell = next(iter(by_version))
             else:
                 cell = "; ".join(f"{v} on {', '.join(h)}" for v, h in by_version.items())

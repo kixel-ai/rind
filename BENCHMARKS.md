@@ -32,7 +32,7 @@ cargo +1.98.1 bench -p rind-bench --features __bench_openssl --bench aes_gcm -- 
 
 ### Versions
 
-The versions of each library's crates that `rind-bench` built, from `Cargo.lock` at each host's measured commit, and the OpenSSL each host linked. A crate a host's build lacked is left out.
+The versions of each library's crates that `rind-bench` built, from `Cargo.lock` at each host's measured commit, and the OpenSSL each host linked. A version some hosts did not build names the hosts that did.
 
 | Library | Crate | Version |
 |---|---|---|
@@ -51,17 +51,17 @@ The versions of each library's crates that `rind-bench` built, from `Cargo.lock`
 | RustCrypto + dalek | `p384` | 0.14.0 |
 | RustCrypto + dalek | `p521` | 0.14.0 |
 | RustCrypto + dalek | `rsa` | 0.10.0 on `nixos`, `fedora`, `kixtop`, `ovh-iad`, `ovh-sea`; 0.10.0-rc.19 on `desktop` |
-| RustCrypto + dalek | `ml-dsa` | 0.1.2 |
+| RustCrypto + dalek | `ml-dsa` | 0.1.2 on `nixos`, `fedora`, `kixtop`, `ovh-iad`, `ovh-sea` |
 | RustCrypto + dalek | `ml-kem` | 0.3.4 |
 | RustCrypto + dalek | `ed25519-dalek` | 3.0.0 |
 | RustCrypto + dalek | `x25519-dalek` | 3.0.0 |
-| RustCrypto + dalek | `hpke` | 0.15.1 |
-| RustCrypto + dalek | `blind-rsa-signatures` | 0.18.0 |
-| RustCrypto + dalek | `voprf` | 0.6.0-pre.2 |
-| RustCrypto + dalek | `vrf-rfc9381` | 0.0.7 |
-| RustCrypto + dalek | `spake2plus` | 0.1.0 |
-| RustCrypto + dalek | `argon2` | 0.6.0 |
-| RustCrypto + dalek | `slh-dsa` | 0.2.0-rc.5 |
+| RustCrypto + dalek | `hpke` | 0.15.1 on `nixos`, `fedora`, `kixtop`, `ovh-iad`, `ovh-sea` |
+| RustCrypto + dalek | `blind-rsa-signatures` | 0.18.0 on `nixos`, `fedora`, `kixtop`, `ovh-iad`, `ovh-sea` |
+| RustCrypto + dalek | `voprf` | 0.6.0-pre.2 on `nixos`, `fedora`, `kixtop`, `ovh-iad`, `ovh-sea` |
+| RustCrypto + dalek | `vrf-rfc9381` | 0.0.7 on `nixos`, `fedora`, `kixtop`, `ovh-iad`, `ovh-sea` |
+| RustCrypto + dalek | `spake2plus` | 0.1.0 on `nixos`, `fedora`, `kixtop`, `ovh-iad`, `ovh-sea` |
+| RustCrypto + dalek | `argon2` | 0.6.0 on `nixos`, `fedora`, `kixtop`, `ovh-iad`, `ovh-sea` |
+| RustCrypto + dalek | `slh-dsa` | 0.2.0-rc.5 on `nixos`, `fedora`, `kixtop`, `ovh-iad`, `ovh-sea` |
 | graviola | `graviola` | 0.4.4 |
 | graviola | `rustls-graviola` | 0.4.0 |
 | libcrux | `libcrux-aes` | 0.0.10 |
@@ -71,18 +71,18 @@ The versions of each library's crates that `rind-bench` built, from `Cargo.lock`
 | libcrux | `libcrux-ed25519` | 0.0.10 |
 | libcrux | `libcrux-hkdf` | 0.0.9 |
 | libcrux | `libcrux-hmac` | 0.0.9 |
-| libcrux | `libcrux-ml-dsa` | 0.0.11 |
+| libcrux | `libcrux-ml-dsa` | 0.0.11 on `nixos`, `fedora`, `kixtop`, `ovh-iad`, `ovh-sea` |
 | libcrux | `libcrux-ml-kem` | 0.0.11 |
 | libcrux | `libcrux-rsa` | 0.0.9 |
 | libcrux | `libcrux-sha2` | 0.0.9 |
 | libcrux | `libcrux-sha3` | 0.0.11 |
-| libcrux | `hpke-rs` | 0.8.0 |
-| libcrux | `hpke-rs-libcrux` | 0.8.0 |
+| libcrux | `hpke-rs` | 0.8.0 on `nixos`, `fedora`, `kixtop`, `ovh-iad`, `ovh-sea` |
+| libcrux | `hpke-rs-libcrux` | 0.8.0 on `nixos`, `fedora`, `kixtop`, `ovh-iad`, `ovh-sea` |
 | OpenSSL | `openssl` | 0.10.82 |
 | OpenSSL | `openssl-sys` | 0.9.118 |
 | OpenSSL | `rustls-openssl` | 0.4.2 |
 | OpenSSL | linked library | OpenSSL 3.5.9 29 Sep 2026 (Library: OpenSSL 3.5.9 29 Sep 2026) |
-| verified-garbage | `verified-garbage` | 0.0.0 (0aa40d6c) |
+| verified-garbage | `verified-garbage` | 0.0.0 (0aa40d6c) on `nixos`, `fedora`, `kixtop`, `ovh-iad`, `ovh-sea` |
 | rustls | `rustls` | 0.23.46 |
 
 ## Speed
