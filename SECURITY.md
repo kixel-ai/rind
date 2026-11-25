@@ -46,13 +46,18 @@ checks are thinnest.
 
 ## Supported versions
 
-Only the latest release of each package rind publishes gets fixes: the
-`rind` crate and its `rind-<consumer>` adapter crates on crates.io, and its
+Below 1.0, only the latest release of each package rind publishes gets fixes:
+the `rind` crate and its `rind-<consumer>` adapter crates on crates.io, and its
 packages on pub.dev and PyPI. A fix lands on `main` and ships as a new release
 of each package it affects, through the release PR that release-plz opens from
-`main`. rind keeps no release branch, so a fix is not backported: below 1.0, a
+`main`. rind keeps no release branch below 1.0, so a fix is not backported: a
 user on an earlier minor, such as 0.3 once 0.4 is out, takes the fix by moving
 to the latest minor, which its changelog and [MIGRATING.md](MIGRATING.md)
 describe.
+
+From 1.0, the last minor of the previous major also gets security fixes for 6
+months after the new major's first release, on a `release/<major>.<minor>`
+branch, such as `release/1.4`, that release-plz opens its release PR from.
+Every other earlier release takes the fix by upgrading.
 
 A fixed vulnerability gets a GitHub security advisory and a RustSec advisory.

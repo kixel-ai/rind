@@ -57,6 +57,10 @@ opaque low.aarch64.vpaes_armv8.VpaesDecKey : Type
 here: the CPU has the SHA-3 instructions. -/
 opaque low.aarch64.mlkem768_vg.Encaps : Type
 
+/-- The token proving pyca/verified-garbage's ML-KEM-768 key generation and
+decapsulation run here, which they never do on aarch64: an empty enum. -/
+@[reducible] def low.generic.mlkem768_vg.KeyPair : Type := Empty
+
 /-- The token proving the CPU has SVE2, on which ChaCha20-Poly1305's one pass
 and `cipher::ChaCha20` run pyca/verified-garbage's routines. -/
 opaque low.aarch64.cpu.HaveSve2 : Type

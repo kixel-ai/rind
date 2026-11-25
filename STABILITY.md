@@ -17,9 +17,18 @@ README.md names three conditions, and each is open work:
 - Every key type loads, exports, and names things the same way.
 - No breaking change is planned. [rind 0.4 ships once](quest/m2/api/release-0.4.md) carries every one planned so far.
 
+1.0 also requires two things README.md does not say:
+
+- **An outside audit.** Someone outside the project audits the Phase 1 scope of [the audit scope quest](quest/m2/trust/third-party-audit-scope.md), and the report is published. README.md says no one outside the project has audited rind; 1.0 does not ship with that sentence. FIPS 140-3 validation is not a requirement.
+- **One full minor release without a break.** `rind` ships one full minor release with no breaking change, such as 0.5 after 0.4, meaning no change marked `!` that `sh/semver.sh` lets through. 1.0 is that line re-tagged.
+
+## Security backports
+
+Below 1.0, only the latest release gets a security fix. From 1.0, the last minor of the previous major also gets security fixes for 6 months after the new major ships, on a `release/<major>.<minor>` branch that release-plz opens its release PR from. [SECURITY.md](SECURITY.md#supported-versions) has the policy as users read it.
+
 What rind lacks today, which README.md also says:
 
-- An outside audit: README.md says no one outside the project has audited rind, and [the audit scope quest](quest/m2/trust/third-party-audit-scope.md) prepares one.
-- FIPS 140-3 validation.
+- An outside audit, which [the audit scope quest](quest/m2/trust/third-party-audit-scope.md) prepares.
+- FIPS 140-3 validation, which 1.0 does not wait for.
 
 The checks a release already passes are in [TESTING.md](TESTING.md): constant time (ctgrind and the `ct-vartime` scan), fuzzing, nightly coverage, mutation testing, and the proofs a release waits for.

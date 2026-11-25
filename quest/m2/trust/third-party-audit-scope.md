@@ -19,4 +19,3 @@ Planned with the maintainer on 2026-11-21 (`/quest-plan`): ✅ scope a phased th
 ## Related
 
 - [Publish TCB & Axiom Ledger, bind VG theorems in CI, and draft human sign-off policy](/quest/m2/trust/tcb-ledger-and-human-signoff.md)
-- [Settle 1.0's exit criteria and the security backport window](/quest/m2/trust/roadmap-1.0-and-backports.md)
