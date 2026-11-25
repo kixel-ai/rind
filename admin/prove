@@ -1253,6 +1253,13 @@ only_quoted rind/src/aead.rs "$out/AeadDispatch.rs" '= Algorithm \{'
 # models `signature::rsa::PublicKey` above it.
 # x86_64's RSA reaches `Digest::ct_equal`, so every target starts from it,
 # for the HMAC model all share.
+# ML-KEM's construction is translated from its key generation, key parsing,
+# encapsulation, and decapsulation, generic over the parameter set, down to
+# its polynomial routines in `low`, which are opaque. The sets' `Params`
+# impls are not translated, so the translation takes a set's impl as a
+# parameter: see UPSTREAM.md, "Aeneas cannot translate an auto trait's
+# built-in impl". x86_64's eight-way matrix sampler, which only ML-KEM-1024
+# runs and which passes function pointers, is opaque.
 # See UPSTREAM.md, "Aeneas cannot translate several kinds of Rust".
 # The hash, HMAC, and header-protection paths, which every target translates,
 # and the curves', signatures', SHA-3 sponge's, and AES modes', which only the
@@ -1367,7 +1374,13 @@ assembly=(
     --start-from crate::mid::mlkem::decompress
     --start-from 'crate::mid::mlkem::_::from_message_bits'
     --start-from 'crate::mid::mlkem::_::to_message_bits'
+    --start-from crate::mid::mlkem::DecapKey::keygen_mitigated
+    --start-from crate::mid::mlkem::DecapKey::decaps_mitigated
+    --start-from crate::mid::mlkem::DecapKey::encapsulation_key
+    --start-from crate::mid::mlkem::EncapKey::parse_mitigated
+    --start-from crate::mid::mlkem::EncapKey::encaps_mitigated
     --include crate::low::generic::ct_copy::ct_select_i16
+    --include crate::low::generic::ct_copy::ct_copy
 )
 extract() {
     local arch=$1 dir=$2
@@ -1476,7 +1489,7 @@ extract_kdf() {
 
 # Charon's builds take target directories of their own, the portable
 # translation's apart from x86_64's: Cargo can reuse a build script's output
-# across builds whose cfgs differ, such as `just check`'s portable cross builds,
+# across builds whose cfgs differ, such as `just ci`'s portable cross builds,
 # leaving `rind_backend` naming another backend than the one compiled.
 #
 # Each is keyed by the toolchain Charon builds with, since Cargo reuses a build
@@ -1649,7 +1662,8 @@ extract x86_64 X86_64 "${hashes[@]}" "${assembly[@]}" \
     --start-from crate::low::x86_64::mlkem768_vg::Encaps::check_ek \
     --start-from crate::low::x86_64::mlkem768_vg::Encaps::encaps \
     --start-from crate::low::x86_64::mlkem768_vg::KeyPair::keygen \
-    --start-from crate::low::x86_64::mlkem768_vg::KeyPair::decaps
+    --start-from crate::low::x86_64::mlkem768_vg::KeyPair::decaps \
+    --opaque crate::mid::mlkem::sample_ntt::sample_ntt_8x
 extract aarch64 Aarch64 "${hashes[@]}" "${assembly[@]}" \
     --include crate::low::aarch64::sha512::sha512_compress_blocks \
     --start-from crate::mid::p256::PrivateKey::from_bytes \

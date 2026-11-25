@@ -141,7 +141,7 @@ Each upstream rind changes, with where its fork is vendored and where the list o
 
 ### BINSEC cannot decode instructions `admin/ct-binsec` stubs
 
-- **Breaks:** BINSEC 0.11.3 stops with `uninterpreted` at these instructions rind's code or glibc runs: on x86_64, `stc` (`f9`), `clc` (`f8`), `movmskps` and VEX `vmovmskps`, `vinsertf128` (VEX.256 0F3A 18), `vpermpd` (VEX.256.W1 0F3A 01), from a register or memory, `vmovshdup` (VEX F3 0F 16), and at `opt-level = "z"` `vbroadcastf128` (VEX.256 0F38 1A) and `vextractps` to memory (VEX.128 0F3A 17), `stmxcsr` and `ldmxcsr` (0F AE /3 and /2, which Intel's MXCSR mitigation runs on a CPU that needs it), and the `syscall` in glibc's `mprotect`; on aarch64, `mrs xN, tpidr_el0` (glibc's `malloc`), `tbl` with one to four table registers (8B and 16B), and `cnt` (8B and 16B).
+- **Breaks:** BINSEC 0.11.3 stops with `uninterpreted` at these instructions rind's code or glibc runs: on x86_64, `stc` (`f9`), `clc` (`f8`), `movmskps` and VEX `vmovmskps`, `vinsertf128` (VEX.256 0F3A 18), `vpermpd` (VEX.256.W1 0F3A 01), from a register or memory, `vmovshdup` (VEX F3 0F 16), and at `opt-level = "z"` `vbroadcastf128` (VEX.256 0F38 1A), `vextractps` to memory (VEX.128 0F3A 17), and with fat LTO `vextractf128` to a register (VEX.256 0F3A 19), `stmxcsr` and `ldmxcsr` (0F AE /3 and /2, which Intel's MXCSR mitigation runs on a CPU that needs it), and the `syscall` in glibc's `mprotect`; on aarch64, `mrs xN, tpidr_el0` (glibc's `malloc`), `tbl` with one to four table registers (8B and 16B), and `cnt` (8B and 16B).
 - **Reproduce:** `admin/ct-binsec` with `STUBS` emptied stops at the first one its harnesses reach, such as `stc` in `ct_binsec_ecdh_p521` on x86_64 or `tbl` in `ct_binsec_aes` on aarch64; with `CARGO_PROFILE_RELEASE_OPT_LEVEL=z`, `vpermpd` from memory in `ct_binsec_argon2` and `vbroadcastf128` in `ct_binsec_chacha20`.
 - **Workaround:** `admin/ct-binsec`'s `STUBS` gives each its effect in BINSEC's script language, generated per encoding from objdump's disassembly of the test binary and glibc, since `replace opcode` matches exact bytes; `tbl`, a constant-time table lookup, becomes a shift of the whole table, which needs no branch; `stmxcsr` stores MXCSR's default, and `ldmxcsr` does nothing, since BINSEC models no floating-point state. Its script makes `mprotect` succeed without its system call.
 - **Reported:** no.
@@ -186,6 +186,22 @@ Each upstream rind changes, with where its fork is vendored and where the list o
 - **Workaround:** `proofs/` models that Rust by hand, quote-checked against the source by `admin/prove`. [Its quest](/quest/m4/verified/aeneas-fn-pointers.md) lists each model, with the Aeneas issue that blocks it where one exists.
 - **Reported:** per limitation, in that quest.
 - **Goes when:** each limitation lifts, model by model.
+
+### Aeneas cannot translate an auto trait's built-in impl
+
+- **Breaks:** a trait with an auto trait (`Send`, `Sync`, `Unpin`, `UnwindSafe`, `RefUnwindSafe`) among its supertraits needs that auto trait's built-in impl wherever the translation instantiates it at a concrete type, and Aeneas stops there with ``Unhandled `BuiltinOrAuto` for trait``. ML-KEM's `Params`, `FixedArray`, and `Vector` require all five, so the translation cannot reach `MlKem768`'s `Params` impl or `[Poly; 3]`'s `Vector` impl.
+- **Reproduce:** add `--start-from '{impl crate::mid::mlkem::Params for crate::mid::mlkem::MlKem768}::keygen'` to `admin/prove`'s x86_64 translation.
+- **Workaround:** `admin/prove` starts ML-KEM's translation from the generic `DecapKey::keygen_mitigated`, `DecapKey::decaps_mitigated`, `EncapKey::parse_mitigated`, and `EncapKey::encaps_mitigated` its impls call, which take the `Params` instance as an argument.
+- **Reported:** no.
+- **Goes when:** Aeneas translates built-in auto-trait impls, as unit instances; the proofs may then start from the impls.
+
+### Aeneas's Lean resolves a Rust item named `Array` to itself
+
+- **Breaks:** Aeneas writes Lean's `Array` unqualified, so inside the namespace of a Rust item named `Array`, such as ML-KEM's trait was in `mid::mlkem`, every array type in that module's declarations names the trait instead, and Lean rejects them.
+- **Reproduce:** rename `mid::mlkem::FixedArray` back to `Array` and run `admin/prove lean`: `Rind/X86_64/Types.lean` fails with `Application type mismatch` at `mid.mlkem.Vector`.
+- **Workaround:** the trait is named `FixedArray`. It is private to rind, so the name costs no API.
+- **Reported:** no.
+- **Goes when:** Aeneas qualifies the names it emits, as `Aeneas.Std.Array`.
 
 ### Aeneas emits a duplicate `markerCopyInst` field
 

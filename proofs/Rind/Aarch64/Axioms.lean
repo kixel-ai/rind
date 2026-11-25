@@ -15,6 +15,7 @@ import Rind.Aarch64.AesModesLow
 import Rind.Aarch64.AesKw
 import Rind.Aarch64.AesModesApi
 import Rind.Aarch64.MlKemCoding
+import Rind.Aarch64.MlKemGeneric
 import Rind.Aarch64.GhashPmull
 import Rind.Aarch64.AesGcm
 import Rind.Aarch64.VgChaCha20Poly1305
@@ -48,7 +49,8 @@ P-384's comb table select rests on no axiom, only on the hand model in
 AES-GCM's counter blocks and its `tagged_from` and `tagged` on short messages
 with the crypto extension's key, rest on no axiom, only on the hand model in
 `Rind.Aarch64.AesGcmModel`.
-ML-KEM's decompression and message coding rest on no axiom.
+ML-KEM's decompression, message coding, CBD sampling, compression, and
+12-bit unpacking rest on no axiom.
 ChaCha20-Poly1305's one pass on SVE2 rests on the axioms restating
 pyca/verified-garbage's theorems for its routines in
 `Rind.Aarch64.VgChaCha20Poly1305`.
@@ -824,6 +826,38 @@ A change here is a change to the trust base.
 /-- info: 'rind.aarch64.MlKemCoding.to_message_bits_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms MlKemCoding.to_message_bits_spec
+
+/-- info: 'rind.aarch64.MlKemCoding.sample_cbd2_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms MlKemCoding.sample_cbd2_spec
+
+/-- info: 'rind.aarch64.MlKemCoding.sample_cbd3_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms MlKemCoding.sample_cbd3_spec
+
+/-- info: 'rind.aarch64.MlKemGeneric.compress_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms MlKemGeneric.compress_spec
+
+/-- info: 'rind.aarch64.MlKemGeneric.mlkem_compress_d4_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms MlKemGeneric.mlkem_compress_d4_spec
+
+/-- info: 'rind.aarch64.MlKemGeneric.mlkem_compress_d5_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms MlKemGeneric.mlkem_compress_d5_spec
+
+/-- info: 'rind.aarch64.MlKemGeneric.mlkem_compress_d10_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms MlKemGeneric.mlkem_compress_d10_spec
+
+/-- info: 'rind.aarch64.MlKemGeneric.mlkem_compress_d11_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms MlKemGeneric.mlkem_compress_d11_spec
+
+/-- info: 'rind.aarch64.MlKemGeneric.mlkem_frombytes_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms MlKemGeneric.mlkem_frombytes_spec
 
 /-- info: 'rind.aarch64.pmull.ghash_table_new_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
