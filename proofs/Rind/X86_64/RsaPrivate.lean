@@ -48,7 +48,8 @@ theorem posint_mont_mul_spec {N : Usize} (self v n : low.posint.PosInt N) (n0 : 
 /-- `to_montgomery` takes `self`, below `n`, into the Montgomery domain, given
 `montifier`, which is `R² mod n`. -/
 theorem to_montgomery_spec {N : Usize} (self montifier n : low.posint.PosInt N)
-    (hP : MontProducts n.used.val) (hk2 : 2 ≤ n.used.val) (hk : n.used.val ≤ N.val)
+    (hP : MontProducts n.used.val) (hk2 : 2 ≤ n.used.val) (hk32 : n.used.val < 2 ^ 32)
+    (hk : n.used.val ≤ N.val)
     (hodd : wordsNat (lowWords n n.used) % 2 = 1)
     (hx : wordsNat (lowWords self n.used) < wordsNat (lowWords n n.used))
     (hmont : wordsNat (lowWords montifier n.used) = 2 ^ (128 * n.used.val) % wordsNat (lowWords n n.used)) :
@@ -59,7 +60,7 @@ theorem to_montgomery_spec {N : Usize} (self montifier n : low.posint.PosInt N)
   step with mont_neg_inverse_spec n (by omega) hk hodd as ⟨i, hi⟩
   have hM0 : 0 < wordsNat (lowWords n n.used) := by omega
   step with posint_mont_mul_spec self montifier n i hP hk
-    (mont_args_of self montifier n i hk hk2 hodd hi hx (by rw [hmont]; exact Nat.mod_lt _ hM0))
+    (mont_args_of self montifier n i hk hk2 hk32 hodd hi hx (by rw [hmont]; exact Nat.mod_lt _ hM0))
     as ⟨r, hru, hr⟩
   refine ⟨hru, hr.2.1, ?_⟩
   apply mont_cancel (coprime_two_pow_odd hodd (64 * n.used.val))
@@ -73,7 +74,8 @@ theorem to_montgomery_spec {N : Usize} (self montifier n : low.posint.PosInt N)
 /-- `from_montgomery` takes what stands for `C^t` in the Montgomery domain out
 of it: `C^t mod n`. -/
 theorem from_montgomery_spec {N : Usize} (self n : low.posint.PosInt N)
-    (hP : MontProducts n.used.val) (hk2 : 2 ≤ n.used.val) (hk : n.used.val ≤ N.val)
+    (hP : MontProducts n.used.val) (hk2 : 2 ≤ n.used.val) (hk32 : n.used.val < 2 ^ 32)
+    (hk : n.used.val ≤ N.val)
     (hodd : wordsNat (lowWords n n.used) % 2 = 1) (hM1 : 1 < wordsNat (lowWords n n.used))
     (C t : Nat)
     (hx : MontPow (wordsNat (lowWords n n.used)) (2 ^ (64 * n.used.val)) C t (lowWords self n.used)) :
@@ -83,7 +85,7 @@ theorem from_montgomery_spec {N : Usize} (self n : low.posint.PosInt N)
   step with fixed_one_spec n (by omega) hk as ⟨one, hou, hov⟩
   step with mont_neg_inverse_spec n (by omega) hk hodd as ⟨i, hi⟩
   step with posint_mont_mul_spec self one n i hP hk
-    (mont_args_of self one n i hk hk2 hodd hi hx.1 (by rw [hov]; exact hM1)) as ⟨r, hru, hr⟩
+    (mont_args_of self one n i hk hk2 hk32 hodd hi hx.1 (by rw [hov]; exact hM1)) as ⟨r, hru, hr⟩
   refine ⟨hru, ?_⟩
   have h2 := hr.2.2
   rw [lowWords_length n hk, hov, mul_one] at h2
@@ -124,7 +126,7 @@ theorem mod_exp_spec {N : Usize} (havx : ∃ t, low.x86_64.cpu.HaveAvx2.check = 
   simp only
   step with fixed_one_spec n (by omega) hN as ⟨one, hou, hov⟩
   step with posint_mont_mul_spec one montifier n n0 hP hN
-    (mont_args_of one montifier n n0 hN hk2 hodd hn0 (by rw [hov]; exact hM1)
+    (mont_args_of one montifier n n0 hN hk2 (by omega) hodd hn0 (by rw [hov]; exact hM1)
       (by rw [hmont]; exact Nat.mod_lt _ hM0)) as ⟨om, homu, hom⟩
   have homp : MontPow (wordsNat (lowWords n n.used)) (2 ^ (64 * n.used.val))
       (wordsNat (lowWords self n.used)) 0 (lowWords om n.used) := by
@@ -136,10 +138,10 @@ theorem mod_exp_spec {N : Usize} (havx : ∃ t, low.x86_64.cpu.HaveAvx2.check = 
       rw [← pow_add]; ring_nf
     unfold Nat.ModEq
     rw [h2, hRR, pow_zero, one_mul]
-  step with to_montgomery_spec self montifier n hP hk2 hN hodd hx hmont as ⟨sm, hsmu, hsm⟩
+  step with to_montgomery_spec self montifier n hP hk2 (by omega) hN hodd hx hmont as ⟨sm, hsmu, hsm⟩
   step with posint_mont_exp_spec havx t hadx sm om e n n0 (wordsNat (lowWords self n.used)) hP hk hN he hel
     hodd hn0 hsm homp as ⟨pe, hpeu, hpe⟩
-  step with from_montgomery_spec pe n hP hk2 hN hodd hM1 _ _ hpe as ⟨r, hru, hr⟩
+  step with from_montgomery_spec pe n hP hk2 (by omega) hN hodd hM1 _ _ hpe as ⟨r, hru, hr⟩
   exact ⟨hru, hr⟩
 
 /-- aws-lc's dual RSAZ, which no proof covers, does not run at `k` words: it
@@ -245,7 +247,7 @@ theorem mont_redc_spec {N M : Usize} (self : low.posint.PosInt N) (n : low.posin
 `R = 2^(64k)`, given `n`'s montifier, `R² mod n`. -/
 theorem posint_reduce_spec {N M : Usize} (self : low.posint.PosInt N) (n montifier : low.posint.PosInt M)
     (hMN : M.val < N.val) (hP : MontProducts n.used.val) (hk2 : 2 ≤ n.used.val) (hk : n.used.val ≤ M.val)
-    (hk61 : n.used.val < 2 ^ 61) (hsu : self.used.val ≤ N.val) (hs61 : self.used.val < 2 ^ 61)
+    (hk32 : n.used.val < 2 ^ 32) (hsu : self.used.val ≤ N.val) (hs61 : self.used.val < 2 ^ 61)
     (hodd : wordsNat (lowWords n n.used) % 2 = 1) (hM1 : 1 < wordsNat (lowWords n n.used))
     (hmont : wordsNat (lowWords montifier n.used) = 2 ^ (128 * n.used.val) % wordsNat (lowWords n n.used))
     (hX : wordsNat (lowWords self self.used) < 2 ^ (64 * n.used.val) * wordsNat (lowWords n n.used)) :
@@ -253,11 +255,11 @@ theorem posint_reduce_spec {N M : Usize} (self : low.posint.PosInt N) (n montifi
       wordsNat (lowWords r n.used) = wordsNat (lowWords self self.used) % wordsNat (lowWords n n.used) ⦄ := by
   unfold low.posint.PosInt.reduce
   step
-  step with mont_redc_spec self n hk hk61 hsu hs61 hodd hX as ⟨r1, hr1u, hr1⟩
+  step with mont_redc_spec self n hk (by omega) hsu hs61 hodd hX as ⟨r1, hr1u, hr1⟩
   obtain ⟨i, -, hi⟩ := Nat.exists_mul_mod_eq_one_of_coprime (coprime_two_pow_odd hodd (64 * n.used.val)) hM1
   have hr1v := hr1 i (by rw [hi, Nat.mod_eq_of_lt hM1])
   have hM0 : 0 < wordsNat (lowWords n n.used) := by omega
-  step with to_montgomery_spec r1 montifier n hP hk2 hk hodd (by rw [hr1v]; exact Nat.mod_lt _ hM0) hmont
+  step with to_montgomery_spec r1 montifier n hP hk2 hk32 hk hodd (by rw [hr1v]; exact Nat.mod_lt _ hM0) hmont
     as ⟨r, hru, hr⟩
   refine ⟨hru, ?_⟩
   have hc : wordsNat (lowWords r n.used) ≡ wordsNat (lowWords self self.used) [MOD wordsNat (lowWords n n.used)] := by
@@ -496,7 +498,7 @@ theorem crt_spec (havx : ∃ t, low.x86_64.cpu.HaveAvx2.check = ok t)
   have hqimP : wordsNat (lowWords key.iqmp_mont key.p.used) < wordsNat (lowWords key.p key.p.used) := by
     rw [hqim]; exact Nat.mod_lt _ hP0
   step with posint_mont_mul_spec d key.iqmp_mont key.p key.p0 hP hk64'
-    (mont_args_of d key.iqmp_mont key.p key.p0 hk64' hk2 hpo hp0 hdP hqimP) as ⟨h, hhu, hh⟩
+    (mont_args_of d key.iqmp_mont key.p key.p0 hk64' hk2 (by omega) hpo hp0 hdP hqimP) as ⟨h, hhu, hh⟩
   have hhu' : h.used.val ≤ 64 := by rw [hhu]; exact hk64
   have hqu' : key.q.used.val ≤ (64#usize : Usize).val := by rw [hqk']; exact hk64
   step with posint_mul_spec 128#usize key.q h (by decide) hqu' hhu' as ⟨pi8, hpi8u, hpi8⟩
@@ -644,8 +646,8 @@ theorem private_op_rsa2048_spec (havx : ∃ t, low.x86_64.cpu.HaveAvx2.check = o
     (hk : key.p.used.val = 16) (hn : key.public.n.used.val = 32) (hw : key.ifma.w = 0#usize)
     (c : RsaInt) (hcu : c.used.val ≤ 128) :
     mid.rsa_priv.RsaPrivateKey.private_op key c ⦃ r => PrivateOpResult key c r ⦄ :=
-  private_op_spec havx t hadx hifma key hinv (mont_products (some t) hadx (Or.inr ⟨rfl, Or.inl hk⟩))
-    (mont_products (some t) hadx (Or.inr ⟨rfl, Or.inr hn⟩)) (Or.inl hk) (Or.inl ⟨by omega, by omega, hifma⟩)
+  private_op_spec havx t hadx hifma key hinv (karatsuba_products (some t) hadx rfl (Or.inl hk))
+    (karatsuba_products (some t) hadx rfl (Or.inr hn)) (Or.inl hk) (Or.inl ⟨by omega, by omega, hifma⟩)
     hw c hcu
 
 end rind.x86_64

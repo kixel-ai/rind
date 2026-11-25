@@ -147,7 +147,7 @@ section table
 variable (x m : Slice U64) (n0 : U64) (C : Nat)
 
 theorem mont_exp_by_loop0_spec (k w : Usize) (hP : MontProducts m.length) (hk : k.val = m.length)
-    (hw : w.val = k.val) (hk2 : 2 ≤ k.val) (hodd : wordsNat m.val % 2 = 1)
+    (hw : w.val = k.val) (hk2 : 2 ≤ k.val) (hk32 : k.val < 2 ^ 32) (hodd : wordsNat m.val % 2 = 1)
     (hn0 : (wordsNat m.val * n0.val + 1) % 2 ^ 64 = 0) (hxl : x.length = k.val)
     (hx : MontPow (wordsNat m.val) (2 ^ (64 * k.val)) C 1 x.val)
     (iter : core.ops.range.Range Usize) (powers : Slice U64)
@@ -240,7 +240,7 @@ theorem mont_exp_by_loop0_spec (k w : Usize) (hP : MontProducts m.length) (hk : 
         rw [← hs2] at hhp
         have hs2l' : s2.val.length = m.val.length := by rw [hkm]; exact hs2l
         have hargs : MontArgs s2.val s2.val m.val n0 :=
-          ⟨hs2l', hs2l', by omega, hodd, hn0, hhp.1, hhp.1⟩
+          ⟨hs2l', hs2l', by omega, by omega, hodd, hn0, hhp.1, hhp.1⟩
         step with hP.2 sz s2 m n0 rfl (by rw [hsz2, hk]) hargs as ⟨s3, hs3⟩
         obtain ⟨hs3l, hs3N, hs3v⟩ := hs3
         rw [hkm] at hs3v hs3l
@@ -275,7 +275,7 @@ theorem mont_exp_by_loop0_spec (k w : Usize) (hP : MontProducts m.length) (hk : 
         have hs2l' : s2.val.length = m.val.length := by rw [hkm]; exact hs2l
         have hxl' : x.val.length = m.val.length := by rw [hkm]; exact hxl
         have hargs : MontArgs s2.val x.val m.val n0 :=
-          ⟨hs2l', hxl', by omega, hodd, hn0, hhp.1, hx.1⟩
+          ⟨hs2l', hxl', by omega, by omega, hodd, hn0, hhp.1, hx.1⟩
         step with hP.1 sz s2 x m n0 rfl (by rw [hsz2, hk]) hargs as ⟨s3, hs3⟩
         obtain ⟨hs3l, hs3N, hs3v⟩ := hs3
         rw [hkm] at hs3v hs3l
@@ -304,6 +304,7 @@ variable (e m : Slice U64) (n0 : U64) (C : Nat)
 /-- `mont_exp_by`'s five squarings: from `C^(t·2^s)`, after `s` of them,
 `C^(32t)`. -/
 theorem mont_exp_by_loop2_loop0_spec (hP : MontProducts m.length) (hk2 : 2 ≤ m.length)
+    (hk32 : m.length < 2 ^ 32)
     (hodd : wordsNat m.val % 2 = 1) (hn0 : (wordsNat m.val * n0.val + 1) % 2 ^ 64 = 0) (t : Nat)
     (iter : core.ops.range.Range Usize) (z spare : Slice U64) (hs : iter.start.val ≤ 5)
     (he : iter.end.val = 5) (hz : z.length = m.length) (hsp : spare.length = m.length)
@@ -325,7 +326,7 @@ theorem mont_exp_by_loop2_loop0_spec (hP : MontProducts m.length) (hk2 : 2 ≤ m
       subst ho'
       simp only
       have hzl : z.val.length = m.val.length := hz
-      have hargs : MontArgs z.val z.val m.val n0 := ⟨hzl, hzl, hk2, hodd, hn0, hpow.1, hpow.1⟩
+      have hargs : MontArgs z.val z.val m.val n0 := ⟨hzl, hzl, hk2, hk32, hodd, hn0, hpow.1, hpow.1⟩
       step with hP.2 sp z m n0 rfl hsp hargs as ⟨s3, hs3⟩
       obtain ⟨hs3l, hs3N, hs3v⟩ := hs3
       step as ⟨z1, hz1⟩
@@ -346,7 +347,7 @@ squares five times and multiplies by its window's power, gathered from the
 table, until `lsb` reaches zero, leaving `C^e`. -/
 theorem mont_exp_by_loop2_spec (havx : ∃ t, low.x86_64.cpu.HaveAvx2.check = ok t)
     (hP : MontProducts m.length) (k : Usize) (hk : k.val = m.length) (hk2 : 2 ≤ k.val)
-    (hk4 : k.val % 4 = 0) (hkb : k.val < 2 ^ 60)
+    (hk4 : k.val % 4 = 0) (hkb : k.val < 2 ^ 32)
     (hodd : wordsNat m.val % 2 = 1) (hn0 : (wordsNat m.val * n0.val + 1) % 2 ^ 64 = 0)
     (powers : Slice U64) (hpl : powers.length = 32 * k.val)
     (hrows : ∀ j < 32, MontPow (wordsNat m.val) (2 ^ (64 * k.val)) C j (rowOf powers.val k.val j))
@@ -374,14 +375,14 @@ theorem mont_exp_by_loop2_spec (havx : ∃ t, low.x86_64.cpu.HaveAvx2.check = ok
       have hpow' : MontPow (wordsNat m.val) (2 ^ (64 * m.length)) C
           (wordsNat e.val / 2 ^ lsb.val * 2 ^ (0#usize : Usize).val) z.val := by
         rw [← hk]; simpa using hpow
-      step with mont_exp_by_loop2_loop0_spec m n0 C hP (by omega) hodd hn0 (wordsNat e.val / 2 ^ lsb.val)
+      step with mont_exp_by_loop2_loop0_spec m n0 C hP (by omega) (by omega) hodd hn0 (wordsNat e.val / 2 ^ lsb.val)
         { start := 0#usize, «end» := 5#usize } z sp (by simp) (by simp) (by rw [hz, hk])
         (by rw [hsp, hk]) hpow' as ⟨z1, sp1, hz1, hsp1, hpow1⟩
       have h5v : (5#usize : Usize).val = 5 := rfl
       step with bits_spec e lsb1 5#usize (by simp) (by simp) (by rw [h5v]; omega) as ⟨b, hb⟩
       have hb32 : b.val < 32 := by rw [hb]; exact Nat.mod_lt _ (by norm_num)
       step with gather_spec havx tm powers b (by rw [ht]; exact hk4) (by rw [ht]; exact hpl) hb32
-        (by rw [ht]; exact hkb) as ⟨tm1, htm1⟩
+        (by rw [ht]; omega) as ⟨tm1, htm1⟩
       have htm1l : tm1.val.length = k.val := by
         rw [htm1, List.length_take, List.length_drop, ht]
         have : b.val * k.val ≤ 31 * k.val := Nat.mul_le_mul_right _ (by omega)
@@ -395,7 +396,7 @@ theorem mont_exp_by_loop2_spec (havx : ∃ t, low.x86_64.cpu.HaveAvx2.check = ok
       have hz1l : z1.val.length = m.val.length := by rw [hkm]; simp only [Slice.length] at hz1; omega
       have hsl' : s.val.length = m.val.length := by rw [hkm]; exact hsl
       have hargs : MontArgs z1.val s.val m.val n0 :=
-        ⟨hz1l, hsl', by omega, hodd, hn0, hpow1.1, hrow.1⟩
+        ⟨hz1l, hsl', by omega, by omega, hodd, hn0, hpow1.1, hrow.1⟩
       step with hP.1 sp1 z1 s m n0 rfl hsp1 hargs as ⟨s3, hs3⟩
       obtain ⟨hs3l, hs3N, hs3v⟩ := hs3
       step as ⟨z2, hz2⟩
@@ -535,7 +536,7 @@ theorem mont_exp_by_spec (havx : ∃ t, low.x86_64.cpu.HaveAvx2.check = ok t)
     have hxp : MontPow (wordsNat m.val) (2 ^ (64 * m.len.val)) C 1 x.val := by rw [hk']; exact hx
     have hpl2 : (ib2 x).length = 32 * m.len.val := by
       simp only [Slice.length, hib2, Slice.setSlice!_val, List.length_setSlice!, hk']; exact hp1l
-    step with mont_exp_by_loop0_spec x m n0 C m.len m.len hP hk' rfl (by omega) hodd hn0 hxk hxp
+    step with mont_exp_by_loop0_spec x m n0 C m.len m.len hP hk' rfl (by omega) (by omega) hodd hn0 hxk hxp
       { start := 2#usize, «end» := 32#usize } (ib2 x) hpl2 (by simp) (by simp) (by simp) hrows
       as ⟨powers3, hp3l, hrows3⟩
     step as ⟨i9, hi9⟩

@@ -94,7 +94,7 @@ theorem lowWords_length {N : Usize} (p : low.posint.PosInt N) {k : Nat} (hk : k 
 
 /-- A Montgomery product's arguments, from their values. -/
 theorem mont_args_of {N : Usize} (x y n : low.posint.PosInt N) (n0 : U64) (hk : n.used.val ≤ N.val)
-    (hk2 : 2 ≤ n.used.val)
+    (hk2 : 2 ≤ n.used.val) (hk32 : n.used.val < 2 ^ 32)
     (hodd : wordsNat (lowWords n n.used) % 2 = 1)
     (hn0 : (wordsNat (lowWords n n.used) * n0.val + 1) % 2 ^ 64 = 0)
     (hx : wordsNat (lowWords x n.used) < wordsNat (lowWords n n.used))
@@ -172,7 +172,7 @@ local macro "exp_bit" sq:ident other:ident hu:ident hN:ident : tactic => `(tacti
     · rename_i hz
       have hj0 : j = 0 := by rw [UScalar.eq_equiv] at hz; simp at hz; omega
       simp only [bind_ok, Bool.false_eq_true, not_false_eq_true, not_true_eq_false, ↓reduceIte]
-      step with mont_mul_into_spec $sq c $other n n0 hP hk (mont_args_of $sq c n n0 hk hk2 hodd hn0 $hN hc)
+      step with mont_mul_into_spec $sq c $other n n0 hP hk (mont_args_of $sq c n n0 hk hk2 (by omega) hodd hn0 $hN hc)
         as ⟨r, hru, hrr, _⟩
       obtain ⟨hrN, hrv⟩ := mont_result_of hrr
       rw [hmlen] at hrv
@@ -189,7 +189,7 @@ local macro "exp_bit" sq:ident other:ident hu:ident hN:ident : tactic => `(tacti
     · rename_i hz
       have hj0 : j ≠ 0 := by rw [UScalar.eq_equiv] at hz; simp at hz; omega
       simp only [bind_ok, Bool.false_eq_true, not_false_eq_true, not_true_eq_false, ↓reduceIte]
-      step with mont_mul_into_spec $sq cm $other n n0 hP hk (mont_args_of $sq cm n n0 hk hk2 hodd hn0 $hN hcm)
+      step with mont_mul_into_spec $sq cm $other n n0 hP hk (mont_args_of $sq cm n n0 hk hk2 (by omega) hodd hn0 $hN hcm)
         as ⟨r, hru, hrr, _⟩
       obtain ⟨hrN, hrv⟩ := mont_result_of hrr
       rw [hmlen] at hrv
@@ -265,7 +265,7 @@ theorem public_op_loop_spec (n : RsaInt) (e n0 : U64) (c cm : RsaInt)
       · simp only [ExpInv, Bool.false_eq_true, ↓reduceIte, show j + 1 ≠ 0 by omega] at hinv
         obtain ⟨hbu, hbN, hbC⟩ := hinv
         simp only [Bool.false_eq_true, ↓reduceIte]
-        step with mont_sqr_into_spec b1 a1 n n0 hP hk (mont_args_of b1 b1 n n0 hk hk2 hodd hn0 hbN hbN)
+        step with mont_sqr_into_spec b1 a1 n n0 hP hk (mont_args_of b1 b1 n n0 hk hk2 (by omega) hodd hn0 hbN hbN)
           as ⟨a2, ha2u, ha2r, _⟩
         obtain ⟨ha2N, ha2v⟩ := mont_result_of ha2r
         rw [hmlen] at ha2v
@@ -274,7 +274,7 @@ theorem public_op_loop_spec (n : RsaInt) (e n0 : U64) (c cm : RsaInt)
       · simp only [ExpInv, ↓reduceIte, show j + 1 ≠ 0 by omega] at hinv
         obtain ⟨hau, haN, haC⟩ := hinv
         simp only [↓reduceIte]
-        step with mont_sqr_into_spec a1 b1 n n0 hP hk (mont_args_of a1 a1 n n0 hk hk2 hodd hn0 haN haN)
+        step with mont_sqr_into_spec a1 b1 n n0 hP hk (mont_args_of a1 a1 n n0 hk hk2 (by omega) hodd hn0 haN haN)
           as ⟨b2, hb2u, hb2r, _⟩
         obtain ⟨hb2N, hb2v⟩ := mont_result_of hb2r
         rw [hmlen] at hb2v
