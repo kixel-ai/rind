@@ -25,7 +25,7 @@ members = [
   "admin/spec-tests",
   "admin/wasm-fixture"
 ]
-# Vendored upstream forks, built only through `[patch.crates-io]`.
+# Vendored upstream forks, which members take as path dependencies.
 exclude = ["thirdparty/blind-rsa-signatures"]
 
 [workspace.package]
@@ -62,8 +62,3 @@ opt-level = 3
 
 [profile.dev.package.subtle]
 debug-assertions = false
-
-# rind's fork, ported to rsa 0.10.0: UPSTREAM.md's "blind-rsa-signatures 0.18
-# does not build on rsa 0.10.0".
-[patch.crates-io]
-blind-rsa-signatures = { path = "thirdparty/blind-rsa-signatures" }

@@ -106,7 +106,7 @@ exclude_re = [
   'rind/src/high/sec1\.rs:\d+:\d+: replace \+ with \*$',
   'rind/src/high/signature\.rs:\d+:48: replace \+ with \*$',
   # Pinned to its line: the next line's `+`, at the same column, is caught.
-  'rind/src/low/generic/mont\.rs:167:\d+: replace \+ with \* in mont_mul$',
+  'rind/src/low/generic/mont\.rs:172:\d+: replace \+ with \* in mont_mul$',
   'rind/src/low/x86_64/mlkem_sample_poly_ntt_8x\.rs:\d+:\d+: replace \+ with \* in _squeeze_rate_and_reject$',
   'rind/src/mid/rsa_priv\.rs:\d+:78: replace / with \*$',
   'rind/src/mid/rsa_priv\.rs:\d+:44: replace \+ with \*$',
