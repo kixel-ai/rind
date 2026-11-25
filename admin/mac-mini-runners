@@ -11,6 +11,8 @@
 #   admin/mac-mini-runners register     register both runners in kixel-ai's
 #                                       rind-queue runner group, reading a
 #                                       registration token on stdin
+#   admin/mac-mini-runners services     install each runner's service from this
+#                                       script, restarting one whose unit changed
 #   admin/mac-mini-runners ssh VM [CMD] a shell in VM (macos or linux)
 #
 # setup is idempotent: it starts a provisioned VM and leaves it alone. To
@@ -19,9 +21,20 @@
 # register:
 #   launchctl bootout gui/$(id -u)/dev.kixelated.rind-queue-VM
 #   tart delete rind-queue-VM
+#
+# register skips a VM whose runner is already configured, and leaves a running
+# service alone, so a rerun for one VM's rebuild never restarts the other,
+# which could kill its job. services is the explicit upgrade: it installs the
+# service when it is missing or this script's differs, which restarts the
+# runner and kills a job in flight, so run it while no queue job is running.
+#
+# GitHub drops a runner offline for 14 days, but the guest keeps its local
+# .runner file, which is why register skips it. To register such a runner
+# again, remove the file in its guest first, then run register:
+#   admin/mac-mini-runners ssh VM 'sudo -u runner rm ~runner/actions-runner/.runner'
 set -euo pipefail
 
-usage="usage: admin/mac-mini-runners setup | register | ssh macos|linux [COMMAND...]"
+usage="usage: admin/mac-mini-runners setup | register | services | ssh macos|linux [COMMAND...]"
 [[ $(uname -sm) == "Darwin arm64" ]] || {
     echo "error: runs on the Mac mini (macOS on Apple silicon)" >&2
     exit 1
@@ -98,6 +111,7 @@ EOF
     if [[ -e "$plist" && "$(<"$plist")" == "$new" ]] && launchctl print "gui/$(id -u)/$label" >/dev/null 2>&1; then
         return
     fi
+    mkdir -p "${plist%/*}"
     printf '%s\n' "$new" >"$plist"
     launchctl bootout "gui/$(id -u)/$label" 2>/dev/null || true
     launchctl bootstrap "gui/$(id -u)" "$plist"
@@ -124,7 +138,7 @@ wait_ssh() {
 
 # The scripts setup and register run in a guest, as admin with passwordless
 # sudo: provision-macos and provision-linux, then provision on both; register
-# with $token and $name set, then service-macos or service-linux.
+# with $token and $name set; service-macos or service-linux with $upgrade set.
 guest_script() {
     case $1 in
         provision-macos)
@@ -242,9 +256,12 @@ GUEST
 set -euo pipefail
 # config.sh refuses a runner already configured here, before --replace
 # applies, so a rerun for another VM's rebuild skips it.
-if ! sudo -u runner test -e "$(eval echo ~runner)/actions-runner/.runner"; then
+if sudo -u runner test -e "$(eval echo ~runner)/actions-runner/.runner"; then
+    echo skipped
+else
     sudo -H -u runner bash -c 'cd ~/actions-runner && ./config.sh --unattended --replace --url https://github.com/kixel-ai \
-        --token "$1" --runnergroup rind-queue --labels "$2" --name "mini-$2" --work _work' _ "$token" "$name"
+        --token "$1" --runnergroup rind-queue --labels "$2" --name "mini-$2" --work _work' _ "$token" "$name" >&2
+    echo registered
 fi
 GUEST
             ;;
@@ -255,12 +272,36 @@ GUEST
         service-macos)
             cat <<'GUEST'
 set -euo pipefail
+label=dev.kixelated.rind-queue-runner
+loaded() { sudo launchctl print "system/$label" >/dev/null 2>&1; }
+# A loaded service is left alone unless this is the explicit upgrade, and then
+# unless its files changed: a restart kills the job in flight.
+if loaded && [ "$upgrade" = 0 ]; then
+    echo "running, left alone"
+    exit 0
+fi
+sudo -u runner test -e /Users/runner/actions-runner/.runner || {
+    echo "error: the runner is not configured; run register first" >&2
+    exit 1
+}
+changed=0
+# put DEST MODE: installs stdin as DEST when it differs.
+put() {
+    local tmp
+    tmp=$(mktemp)
+    cat >"$tmp"
+    if ! sudo cmp -s "$tmp" "$1"; then
+        sudo install -o root -g wheel -m "$2" "$tmp" "$1"
+        changed=1
+    fi
+    rm -f "$tmp"
+}
 # The daemon runs this wrapper as root, which loads the firewall and checks it
 # before it starts the runner as runner, so a runner never starts before
 # dev.kixelated.rind-queue-pf, or Apple's own loader, has the rules in: it
 # fails, and launchd restarts it, until they are. Only root writes it.
 sudo mkdir -p /usr/local/libexec
-sudo tee /usr/local/libexec/rind-queue-runner >/dev/null <<'WRAP'
+put /usr/local/libexec/rind-queue-runner 755 <<'WRAP'
 #!/bin/sh
 set -eu
 /sbin/pfctl -E -f /etc/pf.conf
@@ -278,14 +319,12 @@ exec /usr/bin/sudo -H -u runner /usr/bin/env \
     CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=false \
     /Users/runner/actions-runner/run.sh
 WRAP
-sudo chown root:wheel /usr/local/libexec/rind-queue-runner
-sudo chmod 755 /usr/local/libexec/rind-queue-runner
-sudo tee /Library/LaunchDaemons/dev.kixelated.rind-queue-runner.plist >/dev/null <<EOF
+put "/Library/LaunchDaemons/$label.plist" 644 <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>Label</key><string>dev.kixelated.rind-queue-runner</string>
+  <key>Label</key><string>$label</string>
   <key>ProgramArguments</key><array><string>/usr/local/libexec/rind-queue-runner</string></array>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
@@ -294,20 +333,56 @@ sudo tee /Library/LaunchDaemons/dev.kixelated.rind-queue-runner.plist >/dev/null
 </dict>
 </plist>
 EOF
-sudo launchctl bootout system/dev.kixelated.rind-queue-runner 2>/dev/null || true
-sudo launchctl bootstrap system /Library/LaunchDaemons/dev.kixelated.rind-queue-runner.plist
+if [ "$changed" = 0 ] && loaded; then
+    echo "unchanged"
+    exit 0
+fi
+sudo launchctl bootout "system/$label" 2>/dev/null || true
+sudo launchctl bootstrap system "/Library/LaunchDaemons/$label.plist"
+echo "installed"
 GUEST
             ;;
         service-linux)
             cat <<'GUEST'
 set -euo pipefail
+active() { systemctl is-active --quiet rind-queue-runner.service; }
+# An active service is left alone unless this is the explicit upgrade, and then
+# unless its files changed: a restart kills the job in flight.
+if active && [ "$upgrade" = 0 ]; then
+    echo "running, left alone"
+    exit 0
+fi
+sudo -u runner test -e /home/runner/actions-runner/.runner || {
+    echo "error: the runner is not configured; run register first" >&2
+    exit 1
+}
 uid=$(id -u runner)
-sudo tee /etc/systemd/system/rind-queue-runner.service >/dev/null <<EOF
+changed=0
+# put DEST: installs stdin as DEST when it differs.
+put() {
+    local tmp
+    tmp=$(mktemp)
+    cat >"$tmp"
+    if ! sudo cmp -s "$tmp" "$1"; then
+        sudo install -D -o root -g root -m 644 "$tmp" "$1"
+        changed=1
+    fi
+    rm -f "$tmp"
+}
+# A restart of nftables, which only a re-provision does, must not leave builds
+# running without rules: the runner only Wants it, and its stop no longer
+# flushes them, so the rules stay loaded until the next start replaces them.
+put /etc/systemd/system/nftables.service.d/keep-rules.conf <<EOF
+[Service]
+ExecStop=
+EOF
+put /etc/systemd/system/rind-queue-runner.service <<EOF
 [Unit]
 Description=rind merge-queue Actions runner
-Wants=network-online.target
-# The firewall must be loaded first, and stop the runner if it stops.
-Requires=nftables.service user@$uid.service
+Wants=network-online.target nftables.service
+# The firewall loads first. The runner only Wants it, since stopping it, as
+# KillMode=process would leave builds running, must not drop the rules.
+Requires=user@$uid.service
 After=network-online.target nftables.service user@$uid.service
 
 [Service]
@@ -329,9 +404,14 @@ RestartSec=30
 [Install]
 WantedBy=multi-user.target
 EOF
+if [ "$changed" = 0 ] && active; then
+    echo "unchanged"
+    exit 0
+fi
 sudo systemctl daemon-reload
 sudo systemctl enable rind-queue-runner.service
 sudo systemctl restart rind-queue-runner.service
+echo "installed"
 GUEST
             ;;
         *)
@@ -369,7 +449,7 @@ setup() {
 # group's "New runner" page or with
 # `gh api -X POST orgs/kixel-ai/actions/runners/registration-token --jq .token`.
 register() {
-    local vm token
+    local vm token status
     read -r token
     [[ -n "$token" ]] || {
         echo "error: no registration token on stdin" >&2
@@ -377,25 +457,59 @@ register() {
     }
     tart_tool
     for vm in "${vms[@]}"; do
-        [[ -e "$state/$vm.provisioned" ]] || {
-            echo "error: $(vm_name "$vm") is not provisioned; run setup first" >&2
-            exit 1
-        }
+        provisioned "$vm"
         wait_ssh "$vm"
         # The token travels in the script on stdin, out of the host's process
         # list.
-        {
-            printf 'token=%q name=%q\n' "$token" "$(vm_name "$vm")"
-            guest_script register
-            guest_script "service-$vm"
-        } | ssh_vm "$vm" bash -s
-        echo "$(vm_name "$vm"): registered"
+        status=$(
+            {
+                printf 'token=%q name=%q\n' "$token" "$(vm_name "$vm")"
+                guest_script register
+            } | ssh_vm "$vm" bash -s
+        )
+        if [[ $status == skipped ]]; then
+            echo "$(vm_name "$vm"): skipped (already configured)"
+        else
+            echo "$(vm_name "$vm"): registered"
+        fi
+        install_service "$vm" 0
     done
+}
+
+# Installs each registered runner's service from this script.
+services() {
+    local vm
+    tart_tool
+    for vm in "${vms[@]}"; do
+        provisioned "$vm"
+        wait_ssh "$vm"
+        install_service "$vm" 1
+    done
+}
+
+provisioned() {
+    [[ -e "$state/$1.provisioned" ]] || {
+        echo "error: $(vm_name "$1") is not provisioned; run setup first" >&2
+        exit 1
+    }
+}
+
+# $2 is 1 to replace a running service whose files differ, 0 to leave it.
+install_service() {
+    local out
+    out=$(
+        {
+            printf 'upgrade=%s\n' "$2"
+            guest_script "service-$1"
+        } | ssh_vm "$1" bash -s
+    )
+    echo "$(vm_name "$1"): service $out"
 }
 
 case "${1:-}" in
     setup) setup ;;
     register) register ;;
+    services) services ;;
     ssh)
         vm=${2:?$usage}
         [[ " ${vms[*]} " == *" $vm "* ]] || {
