@@ -175,8 +175,9 @@ mod generic {
     ))]
     pub(super) mod sha256;
     // FIPS 180-4 §4.2.2, one copy. The ESP-IDF Xtensa compressor and the
-    // portable one above both read it. aarch64 tests compile neither reader,
-    // so the table stays out: clippy denies an unused static.
+    // portable one above both read it, as do aarch64's interleaved SLH-DSA
+    // lanes. Other aarch64 builds compile no reader, so the table stays out
+    // there: clippy denies an unused static.
     #[cfg(any(
         rind_backend = "portable",
         all(feature = "slh-dsa", rind_backend = "aarch64"),
