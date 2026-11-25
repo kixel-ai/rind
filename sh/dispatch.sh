@@ -47,7 +47,9 @@ all=
 if [[ "$base" == --all ]]; then
     all=1
 else
-    sh/changed.sh "$base" >"$changed"
+    # Resolved once, since the deletions below need it too.
+    merge_base=$(sh/changed.sh --merge-base "$base")
+    sh/changed.sh "$merge_base" >"$changed"
 
     # These files hold the map and the recipes that call it, and match no
     # module, so a change to them would otherwise validate none of it.
@@ -240,9 +242,20 @@ module compat '^(COMPATIBILITY\.md$|admin/x86-cpus?(/|$))' \
 # close them.
 module bench '^(BENCHMARKS\.md$|README\.md$|benchmarks/|admin/bench-report|quest/)' \
     tools='python3'
-# The landing page reads and links files across the repository, and its build
-# takes seconds, so it runs on every diff rather than keep a list.
-module site '' \
+# The landing page, on a diff to its own code, the shell and CI setup it builds
+# in, or a repository file site/inputs.txt lists, which it reads or links with
+# an anchor; a diff that deletes or renames a file selects it too (see below),
+# since its link check catches a link to a file that is gone.
+site_inputs=
+while IFS= read -r input; do
+    [[ -n "$input" && "$input" != '#'* ]] || continue
+    [[ "$input" =~ ^[A-Za-z0-9_./-]+$ ]] || {
+        echo "error: site/inputs.txt lists '$input', which sh/dispatch.sh cannot match" >&2
+        exit 2
+    }
+    site_inputs+="|${input//./\\.}\$"
+done <site/inputs.txt
+module site "^(site/|sh/site\.sh$|flake\.(nix|lock)$|\.github/(workflows/pr-check\.yml$|actions/(just|nix)/)$site_inputs)" \
     tools='nix'
 # Quest documents form one graph, so any change validates the whole tree, as
 # does a bump of the flake-pinned validator.
@@ -311,6 +324,11 @@ for word in ${CHECK_MODULES:-}; do
     if [[ "$word" == -* ]]; then skip[$name]=1; else only[$name]=1; fi
 done
 
+# Whether the branch deleted a path, a rename's old one included, which
+# sh/changed.sh lists among the changed ones without saying so.
+deleted=
+[[ -n "$all" ]] || deleted=$(git diff --name-only --no-renames --diff-filter=D "$merge_base")
+
 selected=()
 missing=()
 for module in "${modules[@]}"; do
@@ -318,7 +336,8 @@ for module in "${modules[@]}"; do
         continue
     fi
     pattern=${scope[$module]}
-    if [[ -z "$all" && -n "$pattern" ]] && ! grep -qE "$pattern" "$changed"; then
+    if [[ -z "$all" && -n "$pattern" ]] && ! grep -qE "$pattern" "$changed" &&
+        ! [[ "$module" == site && -n "$deleted" ]]; then
         continue
     fi
     # The host's build already covers its own backend. A plain assignment, so
