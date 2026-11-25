@@ -25,6 +25,11 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
+  # MSVC's linker stamps the link time unless told /Brepro, and a release's
+  # wheels must be reproducible. Set here rather than in the tree, since a
+  # release can build a tag older than this workflow.
+  CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS: -Clink-arg=/Brepro
+  CARGO_TARGET_AARCH64_PC_WINDOWS_MSVC_RUSTFLAGS: -Clink-arg=/Brepro
   # The dev shell's, which the tests and `just check` use.
   MATURIN_VERSION: "1.15.0"
 

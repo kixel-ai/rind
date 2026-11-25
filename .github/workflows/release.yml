@@ -76,6 +76,7 @@ jobs:
     outputs:
       crates: ${{ steps.crates.outputs.crates }}
       pyrind: ${{ steps.pypi.outputs.pyrind }}
+      pyrind-commit: ${{ steps.pypi.outputs.pyrind-commit }}
       pyrind-cryptography: ${{ steps.pypi.outputs.pyrind-cryptography }}
 
     steps:
@@ -97,29 +98,20 @@ jobs:
       - uses: ./.github/actions/nix
 
       - name: Release
-        run: |
-          : >"$RELEASED"
-          nix develop --command just release "$BEFORE"
+        run: nix develop --command just release "$BEFORE"
         env:
           # `main` before this push, so a release PR that landed mid-batch still
           # publishes; empty when dispatched.
           BEFORE: ${{ github.event.before }}
           GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
-          RELEASED: ${{ runner.temp }}/released.json
 
-      # What release-plz published to crates.io, as name and version: not
-      # rind-python, which it only tags.
-      - name: Find the published crates
+      # Read from the tags release-plz pushed rather than from what this run
+      # published, so a rerun after a partial release still attests them.
+      - name: Find the released crates
         id: crates
+        run: echo "crates=$(nix develop --command sh/released-crates.sh "$BEFORE")" >>"$GITHUB_OUTPUT"
         env:
-          RELEASED: ${{ runner.temp }}/released.json
-        run: |
-          unpublished=$(nix develop --command cargo metadata --format-version 1 --no-deps --locked |
-            jq -c '[.packages[] | select(.publish == []) | .name]')
-          crates=$(jq -sc --argjson unpublished "$unpublished" \
-            '[.[].releases[] | select(.package_name | IN($unpublished[]) | not) | {name: .package_name, version}]' \
-            "$RELEASED")
-          echo "crates=$crates" >>"$GITHUB_OUTPUT"
+          BEFORE: ${{ github.event.before }}
 
       # release-plz tags pyrind's version rather than publishing it, and does
       # not know pyrind-cryptography.
@@ -129,12 +121,16 @@ jobs:
           for package in pyrind pyrind-cryptography; do
             ref=$(nix develop --command sh/pypi-unpublished.sh "$package")
             echo "$package=$ref" >>"$GITHUB_OUTPUT"
+            # The commit pyrind's tag names, which its attestation records.
+            if [[ "$package" == pyrind && -n "$ref" ]]; then
+              echo "pyrind-commit=$(git rev-parse "$ref^{commit}")" >>"$GITHUB_OUTPUT"
+            fi
           done
 
   # crates.io keeps no provenance, so GitHub holds an attestation for each
-  # .crate this run published, which `gh attestation verify` checks against
-  # the copy cargo downloads. Its own job, so a failure here holds back no
-  # PyPI release.
+  # .crate a release published, which `gh attestation verify` checks against
+  # the copy cargo downloads, naming the release commit it was built from.
+  # Its own job, so a failure here holds back no PyPI release.
   crates-attest:
     name: Attest crates
     needs: release
@@ -142,24 +138,39 @@ jobs:
     runs-on: ubuntu-latest
     environment: publish
     permissions:
+      contents: read
       id-token: write
       attestations: write
+    strategy:
+      matrix:
+        release: ${{ fromJSON(needs.release.outputs.crates) }}
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
       # The bytes crates.io serves, which `cargo publish` waited to see
       # published.
-      - name: Download the published crates
+      - name: Download the released crates
         env:
-          CRATES: ${{ needs.release.outputs.crates }}
+          CRATES: ${{ toJSON(matrix.release.crates) }}
         run: |
-          mkdir crates
+          mkdir "$RUNNER_TEMP/crates"
           jq -r '.[] | "\(.name) \(.version)"' <<<"$CRATES" | while read -r name version; do
-            curl --fail --silent --show-error --output "crates/$name-$version.crate" \
+            curl --fail --silent --show-error --output "$RUNNER_TEMP/crates/$name-$version.crate" \
               "https://static.crates.io/crates/$name/$name-$version.crate"
           done
 
+      - name: Describe the build
+        env:
+          COMMIT: ${{ matrix.release.commit }}
+        run: sh/provenance.sh "$COMMIT" refs/heads/main >"$RUNNER_TEMP/provenance.json"
+
       - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
-          subject-path: crates/*.crate
+          subject-path: ${{ runner.temp }}/crates/*.crate
+          predicate-type: https://slsa.dev/provenance/v1
+          predicate-path: ${{ runner.temp }}/provenance.json
 
   pyrind-wheels:
     name: pyrind wheels
@@ -179,6 +190,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: publish
     permissions:
+      contents: read
       id-token: write
       attestations: write
     steps:
@@ -188,11 +200,25 @@ jobs:
           path: dist
           merge-multiple: true
 
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          path: source
+
+      # The wheels come from pyrind's tag, which can predate this run's commit.
+      - name: Describe the build
+        env:
+          COMMIT: ${{ needs.release.outputs.pyrind-commit }}
+          REF: refs/tags/${{ needs.release.outputs.pyrind }}
+        run: source/sh/provenance.sh "$COMMIT" "$REF" >"$RUNNER_TEMP/provenance.json"
+
       # GitHub's provenance for `gh attestation verify`, beside the PEP 740
       # attestations the upload makes for PyPI.
       - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: dist/*
+          predicate-type: https://slsa.dev/provenance/v1
+          predicate-path: ${{ runner.temp }}/provenance.json
 
       - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
         with:
@@ -255,6 +281,8 @@ jobs:
           name: cryptography-dist
           path: dist
 
+      # It builds from this run's own commit, which the default provenance
+      # names.
       - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: dist/*

@@ -54,18 +54,22 @@ points scanners here.
 
 ## Supply chain
 
-- **Dependencies.** `cargo vet` holds every crate the published `rind` crate
-  can build with, on any target and feature, to a safe-to-deploy audit:
-  imported from Mozilla's, Google's, the Bytecode Alliance's, or ISRG's
-  audits, rind's own in [supply-chain/audits.toml](supply-chain/audits.toml),
-  or an exemption in [supply-chain/config.toml](supply-chain/config.toml) for
-  a version rind used before it began vetting. A new crate or version fails CI until one
-  covers it. `cargo deny` checks every crate the workspace uses against
-  RustSec's advisories, licenses, and sources.
+- **Dependencies.** `cargo vet` holds each crate version rind's lockfile
+  resolves for the published `rind` crate, on any target and feature, to a
+  safe-to-deploy audit: imported from Mozilla's, Google's, the Bytecode
+  Alliance's, or ISRG's audits, rind's own in
+  [supply-chain/audits.toml](supply-chain/audits.toml), or an exemption in
+  [supply-chain/config.toml](supply-chain/config.toml) for a version rind used
+  before it began vetting. A new crate or version fails CI until one covers
+  it; a newer version a dependent's own lockfile resolves is not covered.
+  `cargo deny` checks every crate the workspace uses against RustSec's
+  advisories, licenses, and sources.
 - **Provenance.** A release attests, through GitHub's artifact attestations
   (SLSA build provenance signed through Sigstore), the `.crate` files it
   published to crates.io, pyrind's and pyrind-cryptography's files on PyPI,
-  and rind-dart's prebuilt libraries on its GitHub release. Check a file with
+  and rind-dart's prebuilt libraries on its GitHub release, each naming the
+  commit it was built from as the provenance's first resolved dependency,
+  which can be older than the commit that started the run. Check a file with
   `gh attestation verify <file> --repo kixel-ai/rind`; cargo keeps each
   crate it downloaded under `~/.cargo/registry/cache/`.
 - **Reproducible builds.** Each build of rind-dart's prebuilt libraries and

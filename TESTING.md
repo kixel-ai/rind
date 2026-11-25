@@ -429,7 +429,7 @@ GitHub delays most. `build`, `sanitizers`, `coverage`, `lints`, `prove`,
 `python`, `dart-libraries`, and `regenerate` run daily, and `Check` runs
 `just ci --all` on main's head daily as the backstop for the merge queue's
 diff-scoped selection. OpenSSF `Scorecard` scores main on Monday and
-whenever branch protection changes. `prove` also runs each push to main that reaches it,
+whenever branch protection changes, and runs only on main. `prove` also runs each push to main that reaches it,
 checking the bytes, and the HOL Light and Lean proofs and the cosimulation
 that main has not passed on the same inputs; a release waits for that run to
 pass. Each runs on demand with
