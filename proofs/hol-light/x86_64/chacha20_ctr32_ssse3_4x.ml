@@ -1398,3 +1398,63 @@ let CHACHA_FINISH = prove
   REPEAT GEN_TAC THEN STRIP_TAC THEN ENSURES_INIT_TAC "s0" THEN GHOST_YMMS_TAC THEN
   CHACHA_UNTIL_TAC 0x618 1 THEN XMMS_OF_YMMS_TAC THEN ENSURES_FINAL_STATE_TAC THEN
   ASM_REWRITE_TAC[]);;
+(* ------------------------------------------------------------------------- *)
+(* The four blocks from the entry to the rounds, 0x163, to the keystream's   *)
+(* pieces at 0x618.                                                          *)
+(* ------------------------------------------------------------------------- *)
+
+(* At 0x163 words 10 and 11 are still in xmm6 and xmm7, and the stack copy
+   of row 12 is the previous group's. *)
+let chacha_entry_rows =
+  let rd c = mk_icomb(`read:(x86state,int128)component->x86state->int128`, c) in
+  let loc k = if k = 10 then rd `XMM6` else if k = 11 then rd `XMM7` else chacha_loc k in
+  list_mk_conj(map (fun k -> mk_eq(mk_comb(loc k, `s:x86state`),
+    chacha_lanes (fun j -> chacha_el k (chacha_sv j)))) (0--15));;
+
+let chacha_entry_copies =
+  list_mk_conj(map (fun k -> mk_eq(mk_comb(chacha_copy_loc k, `s:x86state`),
+    chacha_lanes (fun j -> chacha_el k (chacha_sv j)))) (subtract (0--15) [12]));;
+
+let CHACHA_CORE_HYPS =
+  `aligned 16 (rp10:int64) /\ aligned 16 (rp11:int64) /\ aligned 16 (stk:int64) /\
+   nonoverlapping (stk:int64,320) (rp10:int64,16) /\ nonoverlapping (stk:int64,320) (rp11:int64,16) /\
+   nonoverlapping (stk:int64,320) (word pc:int64,0x9d4)`;;
+
+let CHACHA_CORE_COMMON =
+  `read RSP s = stk /\ read RCX s = word_add stk (word 256) /\
+   read R10 s = rp10 /\ read R11 s = rp11 /\
+   read (memory :> bytes128 rp10) s = word 0x0d0c0f0e09080b0a0504070601000302 /\
+   read (memory :> bytes128 rp11) s = word 0x0e0d0c0f0a09080b0605040702010003`;;
+
+let CHACHA_CORE_FRAME =
+  `MAYCHANGE [RIP; RAX] ,, MAYCHANGE SOME_FLAGS ,,
+   MAYCHANGE [ZMM0; ZMM1; ZMM2; ZMM3; ZMM4; ZMM5; ZMM6; ZMM7;
+              ZMM8; ZMM9; ZMM10; ZMM11; ZMM12; ZMM13; ZMM14; ZMM15] ,,
+   MAYCHANGE [memory :> bytes(stk,320)] ,, MAYCHANGE [events]`;;
+
+let CHACHA_CORE_GOAL =
+  let tm = mk_imp(CHACHA_CORE_HYPS,
+   list_mk_icomb "ensures" [`x86`;
+    mk_abs(`s:x86state`, list_mk_conj [
+     `bytes_loaded s (word pc) (chacha20_ssse3_4x_mc pc data) /\ read RIP s = word(pc + 0x163)`;
+     CHACHA_CORE_COMMON; chacha_entry_rows; chacha_entry_copies]);
+    mk_abs(`s:x86state`, list_mk_conj [
+     `read RIP s = word(pc + 0x618)`; CHACHA_CORE_COMMON; chacha_pieces; chacha_copies]);
+    CHACHA_CORE_FRAME]) in
+  list_mk_forall(frees tm, tm);;
+
+let CHACHA_CORE = prove
+ (CHACHA_CORE_GOAL,
+  REWRITE_TAC[SOME_FLAGS] THEN REPEAT GEN_TAC THEN STRIP_TAC THEN
+  SUBGOAL_THEN `nonoverlapping (stk:int64,64) (rp10:int64,16) /\
+                nonoverlapping (stk:int64,64) (rp11:int64,16) /\
+                nonoverlapping (stk:int64,64) (word pc:int64,0x9d4)`
+   STRIP_ASSUME_TAC THENL [REPEAT CONJ_TAC THEN NONOVERLAPPING_TAC; ALL_TAC] THEN
+  ENSURES_INIT_TAC "s0" THEN GHOST_YMMS_TAC THEN CHACHA_UNTIL_TAC 0x180 1 THEN
+  XMMS_OF_YMMS_TAC THEN
+  MP_TAC(SPEC_ALL CHACHA_ROUNDS) THEN ASM_REWRITE_TAC[SOME_FLAGS] THEN
+  X86_BIGSTEP_TAC CHACHA_EXEC "s7" THEN
+  MP_TAC(SPEC_ALL CHACHA_FINISH) THEN ASM_REWRITE_TAC[] THEN
+  X86_BIGSTEP_TAC CHACHA_EXEC "s8" THEN
+  ENSURES_FINAL_STATE_TAC THEN RULE_ASSUM_TAC(REWRITE_RULE[WORD_ADD_0]) THEN
+  ASM_REWRITE_TAC[]);;
