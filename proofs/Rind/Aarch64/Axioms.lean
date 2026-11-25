@@ -341,11 +341,11 @@ A change here is a change to the trust base.
  Quot.sound,
  compress_nohw_spec,
  sha256_block_data_order_hw_spec,
- vg_sha512_compress_sha512_spec,
  vg_pbkdf2_hmac_sha1_sha2_spec,
  vg_pbkdf2_hmac_sha256_sha2_spec,
  vg_pbkdf2_hmac_sha384_sha512_spec,
- vg_pbkdf2_hmac_sha512_sha512_spec] -/
+ vg_pbkdf2_hmac_sha512_sha512_spec,
+ vg_sha512_compress_sha512_spec] -/
 #guard_msgs in
 #print axioms kdf.secret_derive_spec
 
@@ -356,11 +356,11 @@ A change here is a change to the trust base.
  ct_compare_16_spec,
  ct_compare_bytes_spec,
  sha256_block_data_order_hw_spec,
- vg_sha512_compress_sha512_spec,
  vg_pbkdf2_hmac_sha1_sha2_spec,
  vg_pbkdf2_hmac_sha256_sha2_spec,
  vg_pbkdf2_hmac_sha384_sha512_spec,
- vg_pbkdf2_hmac_sha512_sha512_spec] -/
+ vg_pbkdf2_hmac_sha512_sha512_spec,
+ vg_sha512_compress_sha512_spec] -/
 #guard_msgs in
 #print axioms kdf.secret_verify_spec
 
@@ -588,8 +588,8 @@ A change here is a change to the trust base.
  compress_nohw_spec,
  p384_montjdouble_spec,
  p384_montjmixadd_spec,
- vg_sha512_compress_sha512_spec,
- vg_p384_public_key_spec] -/
+ vg_p384_public_key_spec,
+ vg_sha512_compress_sha512_spec] -/
 #guard_msgs in
 #print axioms p384_ecdsa_sign
 
@@ -615,8 +615,8 @@ A change here is a change to the trust base.
  p384_montjadd_spec,
  p384_montjdouble_spec,
  p384_montjmixadd_spec,
- vg_sha512_compress_sha512_spec,
- vg_p384_verify_spec] -/
+ vg_p384_verify_spec,
+ vg_sha512_compress_sha512_spec] -/
 #guard_msgs in
 #print axioms p384_ecdsa_key_pair_verify
 
@@ -639,8 +639,8 @@ A change here is a change to the trust base.
  p384_montjadd_spec,
  p384_montjdouble_spec,
  p384_montjmixadd_spec,
- vg_sha512_compress_sha512_spec,
- vg_p384_verify_spec] -/
+ vg_p384_verify_spec,
+ vg_sha512_compress_sha512_spec] -/
 #guard_msgs in
 #print axioms p384_ecdsa_public_key_new
 
