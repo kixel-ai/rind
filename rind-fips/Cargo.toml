@@ -39,7 +39,7 @@ serde_json = "1"
 # Requests reach valgrind only once `rind/__ctgrind` turns on crabgrind's default
 # features, as `admin/ctgrind fips` does; otherwise they build as no-ops.
 crabgrind = { version = "0.4", default-features = false }
-# The differential reference of rind's `tests/crosschecks_*.rs`. aws-lc
+# The differential reference of `tests/crosschecks.rs`, as rind's is. aws-lc
 # does not build for wasm, where the module does not build either.
 [target.'cfg(not(target_family = "wasm"))'.dev-dependencies]
 aws-lc-rs = { version = "1.19", default-features = false, features = ["alloc", "prebuilt-nasm", "non-fips"] }
