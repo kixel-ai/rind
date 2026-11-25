@@ -342,13 +342,14 @@ impl<P: Set> Signing<P> {
         if signature_len.is_null() {
             return Err(Failure::invalid("no length to write"));
         }
+        // OpenSSL refuses a public key even for the size query.
+        let Some(pair) = self.key()?.private() else {
+            return Err(Failure::invalid("the key is not a private key"));
+        };
         if !signature.is_null() {
             if size < P::SIGNATURE_LEN {
                 return Err(Failure::invalid("the output buffer is too small"));
             }
-            let Some(pair) = self.key()?.private() else {
-                return Err(Failure::invalid("the key is not a private key"));
-            };
             if self.unhedged.deterministic {
                 return Err(Failure::unsupported(
                     "rind signs ML-DSA hedged, not deterministically",

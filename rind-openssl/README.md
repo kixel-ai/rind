@@ -48,6 +48,8 @@ OpenSSL's `evp_test` passes on its X25519, Ed25519, ML-KEM, and ML-DSA data with
 - ML-DSA other than pure, hedged, with the empty context, as TLS and X.509 use it: a context string, external mu, or the raw message encoding fails an operation, and deterministic signing or `test-entropy` fails a signature, with an `unsupported by rind` error. Verifying ignores the last two, which change only signing.
 - The expanded private key, OpenSSL's `priv`, of an ML-DSA key made or loaded from its seed, which rind keeps instead: `EVP_PKEY_get_raw_private_key` fails on one. It moves to other providers and encoders as its seed and public key, from which they rebuild it.
 - OpenSSL's `ml-kem.retain_seed=no` configuration setting, which makes the default provider drop an ML-KEM key's seed once made or loaded: rind always keeps it, so `EVP_PKEY_get_octet_string_param` still returns a `seed` where the default provider's would not.
+- OpenSSL's `ml-kem.prefer_seed=no` configuration setting, which makes the default provider load the expanded key, and keep no seed, when an import gives both: rind always loads from the seed, after checking the expanded key against it.
+- OpenSSL's `ml-kem.import_pct_type=fixed` configuration setting, which makes the default provider run the pairwise test of an expanded-only key's import on a fixed input: rind always runs it with random encapsulation.
 - Everything else, such as X448, Ed448, RSA, SLH-DSA, ciphers, and digests, which stays the default provider's.
 
 ## Where it differs from the default provider
