@@ -106,6 +106,10 @@ def code_only(src):
                 else:
                     i += 1
             out.append(" ")
+        elif src[i] == "«":
+            j = src.find("»", i)
+            i = n if j < 0 else j + 1
+            out.append(" ")
         elif src[i] == "r" and RAW.match(src, i) and not (out and (out[-1][-1].isalnum() or out[-1][-1] in "_'.")):
             m = RAW.match(src, i)
             end = src.find('"' + m.group(1), m.end())

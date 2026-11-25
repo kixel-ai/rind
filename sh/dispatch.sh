@@ -223,7 +223,7 @@ module mutants '^(rind[^/]*/src/|\.cargo/mutants\.toml$|admin/mutants$)' \
 # proofs/README.md's TCB & Axiom Ledger counts the axioms the Lean files
 # declare, and fails on a `sorry` or an axiom its groups do not name.
 module ledger '^(proofs/(README\.md|.*\.lean)$|AUDIT\.md$|admin/(ledger|prove)$)' \
-    tools='python3 git' fix
+    tools='python3 git' check fix
 # An adapter's manifest holds both its version and its upstream requirement.
 module versions '^(rind-[^/]+/Cargo\.toml$|sh/adapter-versions\.sh$)' \
     tools='cargo jq' check
