@@ -9,6 +9,9 @@
 # own `release-plz release`, which publishes from that commit only when it is
 # the release PR's, keeping later PRs out of the release. Without BEFORE, only
 # HEAD is considered.
+# RELEASED, when set, names a file that collects what each `release-plz
+# release` printed as JSON: the packages it released, for release.yml to
+# attest.
 set -euo pipefail
 
 before=${1:-}
@@ -26,5 +29,9 @@ start=$(git symbolic-ref --quiet --short HEAD || git rev-parse HEAD)
 trap 'git checkout --quiet "$start"' EXIT
 for commit in $commits; do
     git checkout --quiet --detach "$commit"
-    release-plz release --git-token "$GITHUB_TOKEN"
+    if [[ -n "${RELEASED:-}" ]]; then
+        release-plz release --git-token "$GITHUB_TOKEN" --output json >>"$RELEASED"
+    else
+        release-plz release --git-token "$GITHUB_TOKEN"
+    fi
 done

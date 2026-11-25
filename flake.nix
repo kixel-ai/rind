@@ -519,6 +519,8 @@
                   # git already brings this one.
                   perl
                   cargo-deny
+                  # Audits of rind's own dependencies (supply-chain/).
+                  cargo-vet
                   # `just powerset` and the quality lints workflow.
                   cargo-hack
                   # admin/mutants and the mutants workflow.

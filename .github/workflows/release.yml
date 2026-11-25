@@ -74,6 +74,7 @@ jobs:
       # publish token (trusted publishing).
       id-token: write
     outputs:
+      crates: ${{ steps.crates.outputs.crates }}
       pyrind: ${{ steps.pypi.outputs.pyrind }}
       pyrind-cryptography: ${{ steps.pypi.outputs.pyrind-cryptography }}
 
@@ -96,12 +97,29 @@ jobs:
       - uses: ./.github/actions/nix
 
       - name: Release
-        run: nix develop --command just release "$BEFORE"
+        run: |
+          : >"$RELEASED"
+          nix develop --command just release "$BEFORE"
         env:
           # `main` before this push, so a release PR that landed mid-batch still
           # publishes; empty when dispatched.
           BEFORE: ${{ github.event.before }}
           GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
+          RELEASED: ${{ runner.temp }}/released.json
+
+      # What release-plz published to crates.io, as name and version: not
+      # rind-python, which it only tags.
+      - name: Find the published crates
+        id: crates
+        env:
+          RELEASED: ${{ runner.temp }}/released.json
+        run: |
+          unpublished=$(nix develop --command cargo metadata --format-version 1 --no-deps --locked |
+            jq -c '[.packages[] | select(.publish == []) | .name]')
+          crates=$(jq -sc --argjson unpublished "$unpublished" \
+            '[.[].releases[] | select(.package_name | IN($unpublished[]) | not) | {name: .package_name, version}]' \
+            "$RELEASED")
+          echo "crates=$crates" >>"$GITHUB_OUTPUT"
 
       # release-plz tags pyrind's version rather than publishing it, and does
       # not know pyrind-cryptography.
@@ -112,6 +130,36 @@ jobs:
             ref=$(nix develop --command sh/pypi-unpublished.sh "$package")
             echo "$package=$ref" >>"$GITHUB_OUTPUT"
           done
+
+  # crates.io keeps no provenance, so GitHub holds an attestation for each
+  # .crate this run published, which `gh attestation verify` checks against
+  # the copy cargo downloads. Its own job, so a failure here holds back no
+  # PyPI release.
+  crates-attest:
+    name: Attest crates
+    needs: release
+    if: needs.release.outputs.crates != '[]'
+    runs-on: ubuntu-latest
+    environment: publish
+    permissions:
+      id-token: write
+      attestations: write
+    steps:
+      # The bytes crates.io serves, which `cargo publish` waited to see
+      # published.
+      - name: Download the published crates
+        env:
+          CRATES: ${{ needs.release.outputs.crates }}
+        run: |
+          mkdir crates
+          jq -r '.[] | "\(.name) \(.version)"' <<<"$CRATES" | while read -r name version; do
+            curl --fail --silent --show-error --output "crates/$name-$version.crate" \
+              "https://static.crates.io/crates/$name/$name-$version.crate"
+          done
+
+      - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: crates/*.crate
 
   pyrind-wheels:
     name: pyrind wheels
@@ -132,12 +180,19 @@ jobs:
     environment: publish
     permissions:
       id-token: write
+      attestations: write
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: pyrind-*
           path: dist
           merge-multiple: true
+
+      # GitHub's provenance for `gh attestation verify`, beside the PEP 740
+      # attestations the upload makes for PyPI.
+      - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: dist/*
 
       - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
         with:
@@ -193,11 +248,16 @@ jobs:
     environment: publish
     permissions:
       id-token: write
+      attestations: write
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: cryptography-dist
           path: dist
+
+      - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: dist/*
 
       - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
         with:

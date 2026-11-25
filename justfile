@@ -62,9 +62,10 @@ miri TARGET="x86_64-unknown-linux-gnu":
 openmls *ARGS:
     nix develop --command sh/openmls.sh {{ARGS}}
 
-# Check dependencies against advisories, licenses, and sources in deny.toml.
+# Check dependencies against deny.toml's advisories, licenses, and sources, and supply-chain/'s audits.
 audit:
     cargo deny check
+    cargo vet --locked
 
 # Dispatch every scheduled workflow on the release PR (default: the open one), wait, and record the result on its head.
 release-check *ARGS:

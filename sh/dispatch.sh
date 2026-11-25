@@ -211,6 +211,11 @@ module fixtures '^(rind/(src/|Cargo\.toml$|build\.rs$)|rind-rustls/(src/|Cargo\.
 # Advisories, licenses, and sources move with any manifest or the policy.
 module deny '(^|/)Cargo\.(toml|lock)$|^deny\.toml$' \
     tools='cargo-deny'
+# Audits of the published rind crate's dependencies, which a lockfile or
+# manifest change can add to, against supply-chain/'s audits, imports, and
+# exemptions.
+module vet '(^|/)Cargo\.(toml|lock)$|^supply-chain/' \
+    tools='cargo-vet'
 # .cargo/mutants.toml's exclusions name mutants by file, line, and function,
 # so moving code can leave one matching nothing.
 module mutants '^(rind[^/]*/src/|\.cargo/mutants\.toml$|admin/mutants$)' \
@@ -661,6 +666,7 @@ step() {
             ;;
         check:structure) run admin/structure ;;
         check:deny) run cargo deny --locked check ;;
+        check:vet) run cargo vet --locked ;;
         check:versions) run sh/adapter-versions.sh ;;
         check:adapters) run python3 admin/adapter-api ;;
         check:quest) run quest check ;;

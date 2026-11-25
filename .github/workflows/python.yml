@@ -104,6 +104,26 @@ jobs:
           manylinux: ${{ matrix.manylinux || 'auto' }}
           args: --release --locked --out dist --manifest-path rind-python/Cargo.toml
 
+      # A release's wheels must be reproducible: built again from a clean
+      # target directory, each matches bit for bit. On Linux the build ran
+      # in a container as root, which owns what it left.
+      - name: Clear the build
+        shell: bash
+        run: |
+          if [[ "$RUNNER_OS" == Linux ]]; then sudo rm -rf target; else rm -rf target; fi
+
+      - name: Rebuild
+        uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
+        with:
+          maturin-version: ${{ env.MATURIN_VERSION }}
+          target: ${{ matrix.target }}
+          manylinux: ${{ matrix.manylinux || 'auto' }}
+          args: --release --locked --out rebuilt --manifest-path rind-python/Cargo.toml
+
+      - name: Compare
+        shell: bash
+        run: diff -r dist rebuilt
+
       - name: Test
         if: matrix.test && !matrix.container
         shell: bash
