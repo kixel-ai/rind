@@ -7,9 +7,12 @@ open Aeneas Aeneas.Std Result rind.spec rind.spec.rsa
 
 `RsaPrivateKey::private_op` is RFC 8017's RSASP1 in its CRT form: two
 exponentiations modulo the primes, by `PosInt::mod_exp_pair`, recombined by
-Garner's formula, then checked by the public operation. This proves the
-exponentiation at 16 and 32 words with BMI2 and ADX, where `mont_exp` runs
-s2n-bignum's Karatsuba products, from the Montgomery conversions around it up.
+Garner's formula, then checked by the public operation. This proves it for a
+key meeting `PrivKeyInv`, with primes of 16 or 32 words, on a CPU with BMI2
+and ADX, where `mont_exp` runs rind's Montgomery products, and where neither
+pyca/verified-garbage's IFMA CRT nor aws-lc's dual RSAZ runs. That
+`RsaPrivateKey::new` establishes `PrivKeyInv`, and the IFMA CRT's path, are
+left to proofs to come.
 -/
 
 namespace rind.x86_64

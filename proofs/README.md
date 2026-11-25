@@ -1308,6 +1308,20 @@ pointer, and every loader encodes the key through `Buffer::write`, which
 `Rind/X86_64/RsaDispatch.lean` models for these two algorithms. On aarch64 the products are aws-lc's, so these proofs are not
 copied there yet.
 
+RSA's private operation on x86_64, in `Rind/X86_64/RsaPrivate.lean`:
+`private_op_spec` proves that `RsaPrivateKey::private_op` refuses with
+`WrongLength` a c not below N, and otherwise returns RSASP1 of c in its CRT
+form, `rsasp1Crt` in `Rind/Rsa.lean`, which raised to E modulo N is c, or
+refuses with `Fault` where it is not. It holds for a key meeting `PrivKeyInv`,
+the values `RsaPrivateKey::new` computes, which no proof yet shows it does,
+with primes of 16 or 32 words, on a CPU with BMI2 and ADX, where
+pyca/verified-garbage's IFMA CRT does not run (`ifma.w = 0`) and neither does
+aws-lc's dual RSAZ (`NoRsazPair`); `private_op_rsa2048_spec` discharges the
+products and the dual RSAZ for RSA-2048. `Rind/X86_64/RsaExp.lean` proves
+`mont_exp`'s fixed-window exponentiation on that path, and
+`Rind/X86_64/RsaGather.lean` its table gather on both paths `HaveAvx2::check`
+picks, over `Rind/X86_64/GatherModel.lean`'s hand model of the AVX2 one.
+
 `admin/prove` fails if a hand model's quote no longer matches the source, if
 the source names `Ops`, builds a `Masker`, or writes its `mask` outside the
 dispatch models' quotes, if it builds a digest `Algorithm` outside
@@ -1403,7 +1417,9 @@ proof after those.
   with; `Rind/X86_64/Lanes512.lean`, those intrinsics lane by lane;
   `Rind/X86_64/PointSelectModel.lean`, of its AVX2 and SSE2 point selects,
   whose raw-pointer loads and `as_chunks` Aeneas cannot translate, and
-  `Rind/X86_64/PointSelect.lean`, their proofs;
+  `Rind/X86_64/PointSelect.lean`, their proofs; `Rind/X86_64/GatherModel.lean`,
+  of RSA's AVX2 table gather, whose raw-pointer loads, `chunks_mut`, and
+  const generic picked by each block's length Aeneas cannot translate;
   `Rind/Aarch64/Neon.lean`, of the aarch64 intrinsics rind's AES and point
   select call, `Rind/Aarch64/NeonVectors.lean`, the vectors
   `admin/neon-vectors.rs` tests them with, `Rind/Aarch64/PointSelectModel.lean`,
@@ -1467,9 +1483,10 @@ proof after those.
   routines.
 - `Rind/Rsa.lean` and `Rind/RsaLemmas.lean`: RFC 8017's verification,
   transliterated, and its lemmas; `Rind/X86_64/{RsaBytes,RsaMont,RsaPublic,RsaKey,RsaVerify,RsaPss}.lean`:
-  the RSA verification proof, on x86_64 alone, and
+  the RSA verification proof, on x86_64 alone,
   `Rind/X86_64/RsaDispatch.lean`, the hand model of the signature API's RSA
-  public keys and its theorems.
+  public keys and its theorems, and `Rind/X86_64/{RsaGather,RsaExp,RsaPrivate}.lean`:
+  the private operation's proof.
 - `Rind/SymCrypt/{Defs,Sha3}.lean`: SymCrypt's Lean FIPS 202 spec, vendored;
   `Rind/Keccak.lean`: s2n-bignum's Keccak spec, transliterated, and its proof
   that it is SymCrypt's; `Rind/Sha3.lean`: the sponge over bytes, and its

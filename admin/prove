@@ -1246,13 +1246,17 @@ only_quoted rind/src/aead.rs "$out/AeadDispatch.rs" '= Algorithm \{'
 # targets; its comb tables are translated, which `P384Table.lean` checks.
 # HMAC's keyed states are translated over any hash, and its
 # `Key` and `Context`, which hold function pointers, are not.
-# On x86_64, RSA verification is translated from `high::rsa::VerifyingKey`
-# down to `low::posint` and the Montgomery products' dispatch in
-# `low::x86_64::mont`, whose s2n-bignum and aws-lc routines are opaque, and
-# to `RsaIfma::check` and `rsa_vg::Precompute::check`, over their opaque CPU
-# checks. pyca/verified-garbage's AVX-512 IFMA public operation and CRT, and
-# its `R² mod n`, are opaque behind `RsaIfma::public`, `IfmaCrt::crt`, and
-# `Precompute::precompute`, which `VgRsa.lean`'s axioms state. Its DER parsing and
+# On x86_64, RSA verification is translated from `high::rsa::VerifyingKey`,
+# and the private operation from `RsaPrivateKey::private_op`, down to
+# `low::posint`, `low::x86_64::mont_exp`, and the Montgomery products'
+# dispatch in `low::x86_64::mont`, whose s2n-bignum and aws-lc routines are
+# opaque, and to `RsaIfma::check`, `rsa_vg::Precompute::check`, and the RSAZ
+# checks, over their opaque CPU checks. aws-lc's `bn_power5` and RSAZ, behind
+# `power5` and the `mod_exp_rsaz` pair, are opaque, and `GatherModel.lean`
+# models the AVX2 gather. pyca/verified-garbage's AVX-512 IFMA public
+# operation and CRT, and its `R² mod n`, are opaque behind
+# `RsaIfma::public`, `IfmaCrt::crt`, and `Precompute::precompute`, which
+# `VgRsa.lean`'s axioms state. Its DER parsing and
 # encoding, which the ✓ leaves out, are opaque too, and `RsaDispatch.lean`
 # models `signature::rsa::PublicKey` above it.
 # x86_64's RSA reaches `Digest::ct_equal`, so every target starts from it,
