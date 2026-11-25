@@ -8,10 +8,11 @@
 # Usage: sh/semver.sh [BASE]
 # rind below 1.0 may break only in a minor release, which a `!` marks: a
 # commit subject between BASE and HEAD, or PR_TITLE, as in `feat(kem)!: ...`.
-# A marked branch skips rind's check. An adapter's API is its upstream's, so no
-# mark excuses it: it breaks only in the change that sets its version to its
-# upstream's next breaking release, which cargo-semver-checks reads from the
-# manifest.
+# A marked branch skips rind's check. An adapter's API is its upstream's, so a
+# plain `!` does not excuse it: it breaks in the change that sets its version
+# to its upstream's next breaking release, which cargo-semver-checks reads
+# from the manifest, or in one marked with its name as the scope, such as
+# `fix(rind-ring)!: ...`, which restores parity the patch release owes.
 set -euo pipefail
 
 usage="usage: sh/semver.sh [BASE]"
@@ -30,16 +31,27 @@ published=$(cargo metadata --format-version 1 --no-deps --locked |
     jq -r '.packages[] | select(.publish == null) | .name')
 
 subjects=$(git log --format=%s "$base..HEAD"; printf '%s\n' "${PR_TITLE:-}")
-breaking=
-if grep -qE '^[a-z]+(\([^)]*\))?!:' <<<"$subjects"; then
-    breaking=1
-fi
+# A `!` whose scope names an adapter marks that adapter only.
+marked() {
+    if [[ "$1" == rind ]]; then
+        local others
+        others=$(grep -vE '^[a-z]+\((.*,)?rind-[^),]*(,.*)?\)!:' <<<"$subjects" || true)
+        grep -qE '^[a-z]+(\([^)]*\))?!:' <<<"$others"
+    else
+        grep -qE "^[a-z]+\((.*,)?$1(,.*)?\)!:" <<<"$subjects"
+    fi
+}
 
 status=0
 for package in $published; do
     grep -q "^$package/" <<<"$changed" || continue
-    if [[ "$package" == rind && -n "$breaking" ]]; then
-        echo "semver: rind is marked breaking; skipping its check"
+    # A crate new in this branch has no baseline to compare with.
+    if ! git cat-file -e "$base:$package/Cargo.toml" 2>/dev/null; then
+        echo "semver: $package is new; no baseline"
+        continue
+    fi
+    if marked "$package"; then
+        echo "semver: $package is marked breaking; skipping its check"
         continue
     fi
     args=(--package "$package" --baseline-rev "$base")

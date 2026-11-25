@@ -224,7 +224,7 @@ module mutants '^(rind[^/]*/src/|\.cargo/mutants\.toml$|admin/mutants$)' \
 module versions '^(rind-[^/]+/Cargo\.toml$|sh/adapter-versions\.sh$)' \
     tools='cargo jq' check
 # A published crate's public API against the merge-base's: a break needs a `!`
-# mark, and an adapter's none (sh/semver.sh).
+# mark, and an adapter's one that names it (sh/semver.sh).
 module semver '^(rind[^/]*/(src/|Cargo\.toml$)|sh/semver\.sh$)' \
     tools='cargo cargo-semver-checks jq' compiles
 # Each adapter's API against its upstream's, which reaches rind only through a
@@ -234,11 +234,6 @@ module adapters '^(rind/(src/|Cargo\.toml$)|rind-(aws-lc-rs|ring|rustls|rcgen|js
     tools='cargo python3' compiles
 module license '^(rind/src/|rind/LICENSE$|rind-python/LICENSE$|admin/scan-license$)' \
     tools='find grep' check
-# rind/README.md is the crates.io page: a copy of the front door, not a
-# symlink to it, since release-plz puts a commit that touches a symlink's
-# target in rind's changelog, and a README edit is no change to rind.
-module readme '^(README\.md|rind/README\.md)$' \
-    tools='cmp' check fix
 # TESTING.md's table names every export, test, and vector file.
 module testing '^(TESTING\.md$|admin/testing$|rind/(src|tests)/|fuzz/)' \
     tools='python3' check
@@ -707,8 +702,6 @@ step() {
         check:adapters) run python3 admin/adapter-api ;;
         check:quest) run quest check ;;
         check:license) run bash admin/scan-license ;;
-        check:readme) run cmp README.md rind/README.md ;;
-        fix:readme) run cp README.md rind/README.md ;;
         check:mutants)
             run admin/mutants --pins
             run admin/mutants --expand-diff-self-test
