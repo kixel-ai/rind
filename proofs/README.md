@@ -867,21 +867,24 @@ x86_64 these assume `NoCurveIfma`, that the CPU lacks AVX-512 IFMA:
   scalar whose multiple is a point of the group).
 
 The spec, in `Rind/Ed25519.lean`, is RFC 8032 over HOL Light's
-`edwards25519_group`, whose multiplication and power stay opaque, with
-s2n-bignum's `ed25519_encode` and `ed25519_decode` of its points. Each theorem
+`edwards25519_group`, whose multiplication and power transliterate HOL Light's
+`edwards_add` and `group_pow`, with s2n-bignum's `ed25519_encode` and
+`ed25519_decode` of its points. `Rind/Ed25519Group.lean` proves they are the
+addition and multiples of the twisted Edwards group in `Rind/Edwards.lean`,
+with no axiom. Each theorem
 assumes `Runs` and `RunsSha512`, and each with a message bounds it at
 2^64 - 64 bytes. The two that verify also assume, on aarch64, `RunsDouble`,
 which holds on every aarch64 CPU, and on x86_64 `RunsMsm`, the contract of
 the multi-scalar multiplication `low::x86_64::adx_mux::edwards25519_msm`,
 which nothing proves yet (`quest/m4/verified/ed25519-half-scalar.md`).
-x86_64's also rest on `Rind/Ed25519Group.lean`, which restates HOL Light's
-group law, the group's order 8L, the base point's order L, and the
-encoding's injectivity, and proves from them, as `half_size_iff`, that the
-half-size check accepts exactly what RFC 8032's does, and on
-`Rind/X86_64/HalfSize.lean`'s proof that `mid::half_size::split` returns
+x86_64's also assume `EdOrders`, the group's orders, which HOL Light proves
+and Lean does not yet: every point times 8L, and the base point times L, is
+the identity. From them `Rind/Ed25519Group.lean`'s `half_size_iff` proves
+that the half-size check accepts exactly what `ed25519Verifies` does, and
+`Rind/X86_64/HalfSize.lean` proves that `mid::half_size::split` returns
 `u ≡ v k (mod 8L)` with `v` odd and below 2^128. That a multiple of the base
 point is a point of the group, which aarch64's `ed25519_key_pair_verify`
-assumes, follows from that group law, which aarch64's theorems do not use
+assumes, follows from the group law, which aarch64's theorems do not use
 yet. The `ed25519` module calls no function pointer, so these theorems are
 about its translation, with no hand model.
 
@@ -1518,6 +1521,12 @@ proof after those.
   `Rind/N256Prime.lean`: that `n256` is prime; `Rind/P256Multiples.lean`: the
   group laws and multiples ECDSA's twin multiplication relies on;
   `Rind/P384Multiples.lean`: the same for P-384.
+- `Rind/Edwards.lean`: the twisted Edwards group law, from the Beneficial AI
+  Foundation's curve25519-dalek simulation under the MIT license;
+  `Rind/Ed25519Group.lean`: that `d` is a non-square, so `edMul` and `edPow`
+  are that group's addition and multiples, that `L` is prime, by a Pratt
+  certificate, and `half_size_iff`, the half-size check's argument;
+  `Rind/X86_64/HalfSize.lean`: `mid::half_size::split`.
 - `Rind/X86_64/Naf.lean`, on both targets: that `mid::util::public_naf`
   writes a scalar's width-5 or width-6 non-adjacent form, for any number of
   words, which P-256's and P-384's ECDSA verification reads.
@@ -1570,7 +1579,9 @@ Beyond Lean's kernel:
   does. A function a proof must compute, such as `group_pow p256_group`, is
   its HOL Light definition, transliterated, rather than opaque, so `nist.add`,
   `nist.pow`, and `nist.inv` in `Rind/Spec.lean` are trusted to be
-  `weierstrass_add`, `group_pow`, and `ring_inv` on each NIST curve's group.
+  `weierstrass_add`, `group_pow`, and `ring_inv` on each NIST curve's group,
+  and `edMul` and `edPow` in `Rind/Ed25519.lean` `edwards_add` and
+  `group_pow` on `edwards25519_group`.
 - That `Rind/SymCrypt/Sha3.lean` is FIPS 202, as SymCrypt's authors state,
   and that `Rind/Keccak.lean` transliterates s2n-bignum's `keccak_spec.ml`,
   in which the Keccak-f axioms state their results.
@@ -1675,9 +1686,11 @@ it:
 - Vale's and FIPS 197's S-boxes, opaque to proofs, which run as tables that
   `sboxFast_eq` and `invSboxFast_eq` prove are the bodies they evaluate.
 
-`rfcx25519`, `edPow`, and `edMul` are opaque: under the composition rule each
-stands for HOL Light's definition, and nothing is assumed of it, so no twin
-can be proven equal to one. The tests run the specs around them, X25519's
+`rfcx25519` is opaque: under the composition rule it stands for HOL Light's
+definition, and nothing is assumed of it, so no twin can be proven equal to
+it. `edPow` transliterates HOL Light's `group_pow`, which adds its point once
+per unit of its exponent, too slowly to run. The tests run the specs around
+them, X25519's
 encoding of the scalar and the result, and Ed25519's hashing, clamping, and
 encodings, with `Rind/SpecTest/Upstream.lean`'s transliterations of the
 upstream definitions in their place, which checks those specs, not the

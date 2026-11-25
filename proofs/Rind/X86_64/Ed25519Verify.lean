@@ -10,11 +10,14 @@ x86_64 checks Ed25519 signatures with half-size scalars: `commits` checks that
 `[v S mod L]B - [v]R - [u]A` is the identity, for the `u ≡ v k (mod 8L)` that
 `mid::half_size::split` finds, which `Rind.X86_64.HalfSize` proves, and
 `Rind.Ed25519Group`'s `half_size_iff` proves that the check accepts exactly
-what RFC 8032's does. The multi-scalar multiplication it runs,
+what `ed25519Verifies` does: RFC 8032's cofactorless equation, with the
+challenge reduced mod L. That argument needs the group's orders, which HOL
+Light proves and Lean does not yet, so these theorems take them as the
+hypothesis `EdOrders`. The multi-scalar multiplication `commits` runs,
 `low::x86_64::adx_mux::edwards25519_msm`, is Rust over s2n-bignum's point
 routines that no proof covers yet
-(`quest/m4/verified/ed25519-half-scalar.md`), so these theorems take its
-contract as the hypothesis `RunsMsm`, which no axiom states.
+(`quest/m4/verified/ed25519-half-scalar.md`), so they also take its contract
+as the hypothesis `RunsMsm`. No axiom states either.
 -/
 
 namespace rind.x86_64
@@ -212,7 +215,7 @@ theorem select_spec (h : Runs) (b : Bool) (pt : Std.Array U64 8#usize) (A : EdPo
 open Classical in
 /-- `commits` accepts exactly when `r` encodes `[s]B - [k]A`, for a point `A`
 of the group and `k` below `L`. -/
-theorem commits_spec (h : Runs) (hm : RunsMsm) (pt : Std.Array U64 8#usize) (A : EdPoint) (hA : edOnCurve A)
+theorem commits_spec (h : Runs) (hm : RunsMsm) (ho : EdOrders) (pt : Std.Array U64 8#usize) (A : EdPoint) (hA : edOnCurve A)
     (hp : pairNat pt.val = edModEncodePair A) (r : Std.Array U8 32#usize) (k s : Std.Array U64 4#usize)
     (hk : wordsNat k.val < n25519) :
     mid.ed25519.commits pt r k s ⦃ b =>
@@ -256,7 +259,7 @@ theorem commits_spec (h : Runs) (hm : RunsMsm) (pt : Std.Array U64 8#usize) (A :
     (edOnCurve_pow (edOnCurve_neg R hR) (wordsNat sp.v.val)))
     (edOnCurve_pow hsel (wordsNat sp.u.val))
   have hfin := (id_words q1.val q1.property).trans ((projective_id hQ hq1).trans
-    ((half_size_iff A R hA hR (wordsNat s.val) (wordsNat k.val) _ _ sp.u_negative hsu hsv hvL).trans
+    ((half_size_iff ho A R hA hR (wordsNat s.val) (wordsNat k.val) _ _ sp.u_negative hsu hsv hvL).trans
       (show R = edMul (edPow (edNeg A) (wordsNat k.val)) (edPow edB (wordsNat s.val)) ↔
           leNat r.val = edEncode (edMul (edPow (edNeg A) (wordsNat k.val)) (edPow edB (wordsNat s.val))) from
         ⟨fun he => by rw [← hRe, he], fun he => edEncode_inj hR hX (by rw [hRe, he])⟩)))
@@ -270,7 +273,7 @@ theorem commits_spec (h : Runs) (hm : RunsMsm) (pt : Std.Array U64 8#usize) (A :
 open Classical in
 /-- `verify_rind` with the point `A`, a point of the group, and the key's
 bytes `vk.bytes`: RFC 8032's verification. -/
-theorem verify_rind_spec (h : Runs) (hmsm : RunsMsm) (hs : RunsSha512) (vk : mid.ed25519.VerifyingKey)
+theorem verify_rind_spec (h : Runs) (hmsm : RunsMsm) (ho : EdOrders) (hs : RunsSha512) (vk : mid.ed25519.VerifyingKey)
     (pt : mid.ed25519.EdwardsPoint) (A : EdPoint) (hA : edOnCurve A) (hp : pairNat pt.val = edModEncodePair A)
     (sig : Std.Array U8 64#usize) (msg : Slice U8) (hm : msg.length + 64 < 2 ^ 64) :
     mid.ed25519.VerifyingKey.verify_rind vk pt sig msg ⦃ b =>
@@ -289,17 +292,17 @@ theorem verify_rind_spec (h : Runs) (hmsm : RunsMsm) (hs : RunsSha512) (vk : mid
       simp_all
     have hn : ¬ ed25519Verifies A vk.bytes.val msg.val sig.val := fun ⟨_, h, _⟩ => hS h
     simp [hn]
-  · have ho : o = some s3 := by assumption
+  · have hos : o = some s3 := by assumption
     have hS : leNat (sig.val.drop 32) < n25519 := by
       by_contra hS
       simp only [hS, ↓reduceIte] at o_post
       simp_all
     simp only [hS, ↓reduceIte] at o_post
     obtain ⟨S, hSo, hSv⟩ := o_post
-    rw [ho, Option.some.injEq] at hSo
+    rw [hos, Option.some.injEq] at hSo
     subst hSo
     have h2 : a.val = r_sig.val := by simp_all
-    apply WP.spec_mono (commits_spec h hmsm pt A hA hp a k1 s3 (by rw [k1_post]; exact Nat.mod_lt _ (by decide)))
+    apply WP.spec_mono (commits_spec h hmsm ho pt A hA hp a k1 s3 (by rw [k1_post]; exact Nat.mod_lt _ (by decide)))
     intro b hb
     have hiff : leNat a.val = edEncode (edMul (edPow (edNeg A) (wordsNat k1.val)) (edPow edB (wordsNat s3.val))) ↔
         ed25519Verifies A vk.bytes.val msg.val sig.val := by
@@ -310,7 +313,7 @@ theorem verify_rind_spec (h : Runs) (hmsm : RunsMsm) (hs : RunsSha512) (vk : mid
 open Classical in
 /-- `verify` with a key that runs rind's own arithmetic on the point `A`, a
 point of the group, and whose bytes are `vk.bytes`: RFC 8032's verification. -/
-theorem mid_verify_spec (h : Runs) (hmsm : RunsMsm) (hs : RunsSha512) (vk : mid.ed25519.VerifyingKey) (A : EdPoint)
+theorem mid_verify_spec (h : Runs) (hmsm : RunsMsm) (ho : EdOrders) (hs : RunsSha512) (vk : mid.ed25519.VerifyingKey) (A : EdPoint)
     (hA : edOnCurve A) (hp : HoldsPoint vk A)
     (sig : Std.Array U8 64#usize) (msg : Slice U8) (hm : msg.length + 64 < 2 ^ 64) :
     mid.ed25519.VerifyingKey.verify vk sig msg ⦃ r =>
@@ -319,11 +322,11 @@ theorem mid_verify_spec (h : Runs) (hmsm : RunsMsm) (hs : RunsSha512) (vk : mid.
   obtain ⟨pt, hpath, hp⟩ := hp
   unfold mid.ed25519.VerifyingKey.verify
   rw [hpath]
-  step with verify_rind_spec h hmsm hs vk pt A hA hp sig msg hm as ⟨b, hb⟩
+  step with verify_rind_spec h hmsm ho hs vk pt A hA hp sig msg hm as ⟨b, hb⟩
   split <;> simp_all
 
 open Classical in
-theorem high_verify_spec (h : Runs) (hmsm : RunsMsm) (hs : RunsSha512) (vk : high.ed25519.Ed25519VerifyingKey) (A : EdPoint)
+theorem high_verify_spec (h : Runs) (hmsm : RunsMsm) (ho : EdOrders) (hs : RunsSha512) (vk : high.ed25519.Ed25519VerifyingKey) (A : EdPoint)
     (hA : edOnCurve A) (hp : HoldsPoint vk A) (sig msg : Slice U8)
     (hm : msg.length + 64 < 2 ^ 64) :
     high.ed25519.Ed25519VerifyingKey.verify vk sig msg ⦃ r =>
@@ -337,7 +340,7 @@ theorem high_verify_spec (h : Runs) (hmsm : RunsMsm) (hs : RunsSha512) (vk : hig
     obtain ⟨a, rfl, ha⟩ := hr
     simp only [core.result.Result.map_err, core.result.Result.Insts.CoreOpsTry.branch]
     step*
-    step with mid_verify_spec h hmsm hs vk A hA hp a msg hm as ⟨r, hr⟩
+    step with mid_verify_spec h hmsm ho hs vk A hA hp a msg hm as ⟨r, hr⟩
     rw [hr, ha]
   · simp only [hl, ↓reduceIte] at hr
     obtain ⟨e, rfl⟩ := hr
@@ -350,7 +353,7 @@ open Classical in
 /-- Verification with a key pair's public key: RFC 8032's verification with
 its seed's public key, whose point is the base point times its secret
 scalar. -/
-theorem ed25519_key_pair_verify (h : Runs) (hmsm : RunsMsm) (hs : RunsSha512) (kp : high.signature.ed25519.KeyPair)
+theorem ed25519_key_pair_verify (h : Runs) (hmsm : RunsMsm) (ho : EdOrders) (hs : RunsSha512) (kp : high.signature.ed25519.KeyPair)
     (seed : List U8) (hkp : KeyPairOf kp seed) (msg sig : Slice U8) (hm : msg.length + 64 < 2 ^ 64) :
     (do
       let pk ← high.signature.ed25519.KeyPair.public_key kp
@@ -362,7 +365,7 @@ theorem ed25519_key_pair_verify (h : Runs) (hmsm : RunsMsm) (hs : RunsSha512) (k
   simp only [bind_ok]
   have hb : (mid.ed25519.VerifyingKey.bytes kp.«public»).val = ed25519PublicKey seed := by rw [hpub]; exact hkb
   rw [← hb]
-  exact high_verify_spec h hmsm hs kp.«public» _ (edOnCurve_pow edOnCurve_B _) (by rw [hpub]; exact hkpt) sig msg hm
+  exact high_verify_spec h hmsm ho hs kp.«public» _ (edOnCurve_pow edOnCurve_B _) (by rw [hpub]; exact hkpt) sig msg hm
 
 open Classical in
 /-- An Ed25519 public key parsed from its encoding: refused unless it is 32
@@ -370,7 +373,7 @@ bytes, refused if its y-coordinate is one of libsodium's small-order list,
 refused unless it encodes a point of the group, and otherwise its
 verification is RFC 8032's with that point, for messages under 2⁶⁴ - 64
 bytes. -/
-theorem ed25519_public_key_new (h : Runs) (hmsm : RunsMsm) (hs : RunsSha512) (hi : NoCurveIfma) (key : Slice U8) :
+theorem ed25519_public_key_new (h : Runs) (hmsm : RunsMsm) (ho : EdOrders) (hs : RunsSha512) (hi : NoCurveIfma) (key : Slice U8) :
     high.signature.ed25519.PublicKey.new key ⦃ r =>
       if key.length ≠ 32 then r = .Err (.KeyRejected .WrongLength)
       else if leNat key.val % 2 ^ 255 ∈ edSmallOrderY then r = .Err (.KeyRejected .SmallOrder)
@@ -390,7 +393,7 @@ theorem ed25519_public_key_new (h : Runs) (hmsm : RunsMsm) (hs : RunsSha512) (hi
       high.signature.ed25519.PublicKey.constructor, bind_ok, WP.spec_ok]
     refine ⟨_, rfl, fun msg sig hm => ?_⟩
     simp only [high.signature.ed25519.PublicKey.verify]
-    have := high_verify_spec h hmsm hs vk _ (edDecode_spec _ hv).1 hvp sig msg hm
+    have := high_verify_spec h hmsm ho hs vk _ (edDecode_spec _ hv).1 hvp sig msg hm
     rwa [hvb] at this
   · subst hr; simp [core.result.Result.map]
 
