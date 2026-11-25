@@ -202,15 +202,16 @@ class Static:
     __slots__ = ("section", "size", "data", "relocs", "path")
 
 
-def data_symbols(obj, keep, unique=False, qualify=False):
+def data_symbols(obj, keep, unique=False, qualify=False, shared=None):
     """Each data symbol of `obj` that `keep` takes by its demangled path,
     by the path's last component, as a `Static`. Fails if two share a last
     component, since a relocation names a static by it, or if a static does
     not start its section, which each has to itself, or if two statics it
     takes start one section; with `unique`, if any two do, taken or not.
     Each relocation's target is as `relocation_target` gives it, with
-    `qualify`. Also returns the demangled path of the static starting each
-    section."""
+    `qualify`. A static whose path `shared` maps is named by the table it
+    maps to, as a relocation of it is. Also returns the demangled path of the
+    static starting each section."""
     out = {}
     by_section = {}
     for line in run(["llvm-objdump", "-t", "-C", str(obj)]).splitlines():
@@ -242,7 +243,7 @@ def data_symbols(obj, keep, unique=False, qualify=False):
             m = re.match(r"^([0-9a-f]+)\s+(R_\S+)\s+(.+)$", line)
             if m and cur is not None:
                 cur.relocs.append((int(m.group(1), 16), m.group(2),
-                                   *relocation_target(m.group(3), names, qualify)))
+                                   *relocation_target(m.group(3), names, qualify, shared)))
         for sec in sections:
             st = by_section[sec]
             dump = run(["llvm-objdump", "-s", "-j", sec, str(obj)])
@@ -255,7 +256,7 @@ def data_symbols(obj, keep, unique=False, qualify=False):
             if len(st.data) != 2 * st.size:
                 fail(f"{obj}: {st.path} is {st.size} bytes, but its section {sec} holds "
                      f"{len(st.data) // 2}")
-            name = st.path.split("::")[-1]
+            name = (shared or {}).get(st.path) or st.path.split("::")[-1]
             if name in out:
                 fail(f"{obj}: two statics named {name}: {out[name].path} and {st.path}")
             out[name] = st
@@ -602,7 +603,8 @@ def main():
     vg_statics, _ = data_symbols(vg_obj, lambda path: "::dispatch::" not in path)
     rind_statics = {}
     for obj in a.rind:
-        for name, st in data_symbols(obj, lambda path: "::vg::" in path, qualify=True)[0].items():
+        for name, st in data_symbols(obj, lambda path: "::vg::" in path or path in SHARED[a.arch],
+                                     qualify=True, shared=SHARED[a.arch])[0].items():
             if name in rind_statics:
                 fail(f"rind's build has two statics named {name}: {rind_statics[name].path} "
                      f"and {st.path}")
