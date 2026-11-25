@@ -33,6 +33,12 @@ adapter, and constant-time modules. Both run three modules at a time
 (`sh/dispatch.sh` lists the `CHECK_*` variables that change that); the
 scheduled workflows' tools are in [TESTING.md](TESTING.md#running-the-tools).
 
+Both build their tests under the `test-fast` profile in `Cargo.toml`, a lightly
+optimized dev build with assertions and overflow checks on, since the slowest
+tests run minutes at `opt-level = 0`. For a bare test run, pass it as
+`cargo nextest run --cargo-profile test-fast`; `admin/ctgrind` and the other
+dev builds stay unoptimized.
+
 # Commits
 
 PRs land on `main` as squash commits, so the PR title becomes the commit subject in `git log`; the body keeps the PR's commit messages and co-author trailers, not the PR description.
