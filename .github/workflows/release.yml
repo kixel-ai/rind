@@ -74,7 +74,6 @@ jobs:
       # publish token (trusted publishing).
       id-token: write
     outputs:
-      crates: ${{ steps.crates.outputs.crates }}
       pyrind: ${{ steps.pypi.outputs.pyrind }}
       pyrind-commit: ${{ steps.pypi.outputs.pyrind-commit }}
       pyrind-cryptography: ${{ steps.pypi.outputs.pyrind-cryptography }}
@@ -105,16 +104,6 @@ jobs:
           BEFORE: ${{ github.event.before }}
           GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
 
-      # Read from crates.io rather than from what this run published, so a
-      # rerun after a partial release still attests them.
-      - name: Find the released crates
-        id: crates
-        run: |
-          crates=$(nix develop --command sh/released-crates.sh "$BEFORE")
-          echo "crates=$crates" >>"$GITHUB_OUTPUT"
-        env:
-          BEFORE: ${{ github.event.before }}
-
       # release-plz tags pyrind's version rather than publishing it, and does
       # not know pyrind-cryptography.
       - name: Find unpublished PyPI releases
@@ -136,11 +125,37 @@ jobs:
   # crates.io keeps no provenance, so GitHub holds an attestation for each
   # .crate a release published, which `gh attestation verify` checks against
   # the copy cargo downloads, naming the release commit it was built from.
-  # Its own job, so a failure here holds back no PyPI release.
+  # Read from crates.io rather than from what this run published, so a rerun
+  # after a partial release still attests them. Its own job, outside
+  # `release`, so a crates.io outage here holds back no PyPI release.
+  crates:
+    name: Find released crates
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      crates: ${{ steps.crates.outputs.crates }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: ./.github/actions/nix
+
+      - name: Find the released crates
+        id: crates
+        run: |
+          crates=$(nix develop --command sh/released-crates.sh "$BEFORE")
+          echo "crates=$crates" >>"$GITHUB_OUTPUT"
+        env:
+          BEFORE: ${{ github.event.before }}
+
   crates-attest:
     name: Attest crates
-    needs: release
-    if: needs.release.outputs.crates != '[]'
+    needs: crates
+    if: needs.crates.outputs.crates != '[]'
     runs-on: ubuntu-latest
     environment: publish
     permissions:
@@ -149,7 +164,7 @@ jobs:
       attestations: write
     strategy:
       matrix:
-        release: ${{ fromJSON(needs.release.outputs.crates) }}
+        release: ${{ fromJSON(needs.crates.outputs.crates) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

@@ -30,10 +30,13 @@ change that); the scheduled workflows' tools are in [TESTING.md](TESTING.md#runn
 
 `cargo vet --locked` fails when the published rind crate's dependencies gain
 a crate or version no audit covers, as [SECURITY.md](SECURITY.md#supply-chain)
-describes. Plain `cargo vet` first fetches the imported audits, which may
-cover it; otherwise review its code with `cargo vet diff` or `cargo vet
-inspect` and record the review with `cargo vet certify`. A new exemption
-needs the maintainer's approval.
+describes. Plain `cargo vet` first fetches the imported audits and the
+publishers of new versions into `supply-chain/imports.lock`, which may cover
+it: a release by a publisher `supply-chain/audits.toml` trusts passes once
+recorded, and `cargo vet trust` renews a trust whose `end` date has passed.
+Otherwise review its code with `cargo vet diff` or `cargo vet inspect` and
+record the review with `cargo vet certify`. A new exemption needs the
+maintainer's approval.
 
 # Commits
 

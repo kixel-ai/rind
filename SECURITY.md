@@ -58,7 +58,9 @@ points scanners here.
   resolves for the published `rind` crate, on any target and feature, to a
   safe-to-deploy audit: imported from Mozilla's, Google's, the Bytecode
   Alliance's, or ISRG's audits, rind's own in
-  [supply-chain/audits.toml](supply-chain/audits.toml), or an exemption in
+  [supply-chain/audits.toml](supply-chain/audits.toml), trust in every
+  release from a publisher Mozilla and the Bytecode Alliance also trust
+  (dtolnay, BurntSushi, rust-lang-owner, alexcrichton), or an exemption in
   [supply-chain/config.toml](supply-chain/config.toml) for a version rind used
   before it began vetting. A new crate or version fails CI until one covers
   it; a newer version a dependent's own lockfile resolves is not covered.
