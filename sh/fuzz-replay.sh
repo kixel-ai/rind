@@ -43,13 +43,15 @@ case "$arch" in
     # to run, so Diamond Rapids, which selects every path, runs them all, and
     # VAES without AVX-512 runs the next. The x86_64 replay covers the tiers
     # below. LeakSanitizer is off under SDE: see UPSTREAM.md,
-    # "LeakSanitizer deadlocks under Intel SDE".
+    # "LeakSanitizer deadlocks under Intel SDE". RIND_FUZZ_SIGN_ONCE has
+    # `keys` sign once per SLH-DSA set, as a signature costs most of a minute
+    # here and the corpus holds dozens of keys.
     x86_64-sde)
-        runner=(env ASAN_OPTIONS=detect_leaks=0 sde -dmr --)
+        runner=(env ASAN_OPTIONS=detect_leaks=0 RIND_FUZZ_SIGN_ONCE=1 sde -dmr --)
         tiers=("")
         ;;
     x86_64-sde-vaes)
-        runner=(env ASAN_OPTIONS=detect_leaks=0 sde -dmr --)
+        runner=(env ASAN_OPTIONS=detect_leaks=0 RIND_FUZZ_SIGN_ONCE=1 sde -dmr --)
         tiers=("avx512f avx512bw")
         ;;
     aarch64)

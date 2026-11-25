@@ -331,8 +331,8 @@ jobs:
       # takes about 1 s natively takes 44 s here, or 81 s on a runner without
       # AVX-512, and more with AVX-512 denied. The per-input timeout is
       # several times that, and libFuzzer stops at the first hang, which costs
-      # at most 300 s more. `keys` signs once per SLH-DSA set in a process, so
-      # a tier costs at most twelve signatures however large the corpus grows.
+      # at most 300 s more. `keys` signs once per SLH-DSA set under SDE, so a
+      # tier costs at most twelve signatures however large the corpus grows.
       # The other replays run natively and keep -timeout=30.
       - name: Replay the corpus
         run: |

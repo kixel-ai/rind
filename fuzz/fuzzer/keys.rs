@@ -1277,12 +1277,11 @@ fn slh_dsa_pkcs8<P: our_slh_dsa::ParameterSet, R: slh_dsa::ParameterSet>(input: 
     let again = our_slh_dsa::KeyPair::<P>::from_pkcs8(pkcs8.as_ref()).unwrap();
     assert_eq!(again.public_key().as_ref(), public.as_ref());
 
-    // Each verifies what the other signs, but only for the first key of each
-    // set that this process loads. A signature costs seconds natively and
-    // most of a minute under SDE, and the corpus kept dozens of keys of one
-    // set, so each tier of fuzz.yml's SDE replay spent its hour signing. The
-    // crosschecks sign with fresh keys.
-    if first_of_set::<P>() {
+    // Each verifies what the other signs. A signature costs seconds natively
+    // and most of a minute under SDE, and the corpus keeps dozens of keys of
+    // one set, so each tier of fuzz.yml's SDE replay spent its hour signing. sh/fuzz-replay.sh asks that replay to
+    // sign only the first key of each set; the other runs sign every key.
+    if sign::<P>() {
         let message = b"rind";
         let signature = ours.sign(message).unwrap();
         let signature = slh_dsa::Signature::<R>::try_from(signature.as_ref()).unwrap();
@@ -1295,9 +1294,13 @@ fn slh_dsa_pkcs8<P: our_slh_dsa::ParameterSet, R: slh_dsa::ParameterSet>(input: 
     slh_dsa_spki::<P, R>(public.to_spki().as_ref());
 }
 
-/// Whether this is the first time this process asks about parameter set `P`.
-fn first_of_set<P>() -> bool {
+/// Whether to sign with this key: always, unless `RIND_FUZZ_SIGN_ONCE` limits
+/// the process to the first key of each parameter set `P`.
+fn sign<P>() -> bool {
     static SEEN: Mutex<Vec<&str>> = Mutex::new(Vec::new());
+    if std::env::var_os("RIND_FUZZ_SIGN_ONCE").is_none() {
+        return true;
+    }
     let name = std::any::type_name::<P>();
     let mut seen = SEEN.lock().unwrap();
     let first = !seen.contains(&name);
