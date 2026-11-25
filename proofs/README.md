@@ -1322,7 +1322,11 @@ statics are built wholly by quoted code.
 rind_portable`, the cfg CI's portable jobs build with, on x86_64, into
 `Rind/Portable/`: the hash, HMAC, KDF, and header-protection paths, down to
 the SHA-2 block functions, and the Keccak-f above, alone. None of that Rust picks by pointer width or CPU, and Aeneas's `usize` is either
-width, so the theorems hold on every target the backend builds for. The
+width, so the theorems hold on every target the backend builds for, but
+for two bodies the extraction leaves out: ESP-IDF Xtensa's SHA-256,
+`low/portable/sha256_iram.rs`, and 32-bit microcontrollers' SHA-512,
+`low::generic::sha512_rolled`, which
+[the rolled-SHA-2 quest](../quest/m4/verified/rolled-sha2-esp.md) covers. The
 x86_64 proofs of SHA-256's padding, the SHA-512 family, HMAC's keyed states,
 the digest, HMAC, HKDF, and PBKDF2 APIs, and ChaCha20 header protection are
 written for it with the target renamed, as for aarch64, over what differs:
