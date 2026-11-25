@@ -6,6 +6,7 @@
 use crate::error::{Unspecified, unspecified};
 
 const INTEGER: u8 = 0x02;
+const BIT_STRING: u8 = 0x03;
 const OBJECT_IDENTIFIER: u8 = 0x06;
 const SEQUENCE: u8 = 0x30;
 
@@ -170,6 +171,39 @@ pub(crate) fn is_spki(der: &[u8]) -> bool {
     read(&mut input, SEQUENCE)
         .map(|body| body.as_slice_less_safe().first() == Some(&SEQUENCE))
         .unwrap_or(false)
+}
+
+/// A `SubjectPublicKeyInfo`'s algorithm and key.
+pub(crate) struct SpkiParts<'a> {
+    /// The algorithm's object identifier's contents.
+    pub(crate) oid: &'a [u8],
+    /// Whatever follows the object identifier in the algorithm identifier.
+    pub(crate) parameters: &'a [u8],
+    /// The key's BIT STRING contents after its unused-bits byte.
+    pub(crate) key: &'a [u8],
+}
+
+/// Splits the `SubjectPublicKeyInfo` at the start of `der` as aws-lc's
+/// `EVP_parse_public_key` (`crypto/evp_extra/evp_asn1.c`) does: bytes after
+/// it are ignored, and the key's BIT STRING has no unused bits.
+pub(crate) fn spki_parts(der: &[u8]) -> Option<SpkiParts<'_>> {
+    let mut outer = untrusted::Reader::new(untrusted::Input::from(der));
+    let (algorithm, key) = read(&mut outer, SEQUENCE)
+        .ok()?
+        .read_all(Unspecified, |body| {
+            Ok((read(body, SEQUENCE)?, read(body, BIT_STRING)?))
+        })
+        .ok()?;
+    let mut algorithm = untrusted::Reader::new(algorithm);
+    let oid = read(&mut algorithm, OBJECT_IDENTIFIER).ok()?;
+    let [0, key @ ..] = key.as_slice_less_safe() else {
+        return None;
+    };
+    Some(SpkiParts {
+        oid: oid.as_slice_less_safe(),
+        parameters: algorithm.read_bytes_to_end().as_slice_less_safe(),
+        key,
+    })
 }
 
 /// The bit length of a big-endian magnitude without leading zero bytes; 0

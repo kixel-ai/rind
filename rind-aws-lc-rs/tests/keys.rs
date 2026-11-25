@@ -994,3 +994,381 @@ fn rsa_public_keys() {
             .is_err()
     );
 }
+
+/// An RSA public key's accessors match aws-lc-rs's, components with a
+/// leading zero byte are refused by both, and an OAEP output buffer larger
+/// than the minimum is fine.
+#[test]
+fn rsa_surfaces() {
+    let ours_pair = ours::rsa::KeyPair::from_pkcs8(rsa_pkcs8()).unwrap();
+    let theirs_pair = theirs::rsa::KeyPair::from_pkcs8(rsa_pkcs8()).unwrap();
+    #[cfg(feature = "ring-io")]
+    {
+        let (o, t) = (ours_pair.public_key(), theirs_pair.public_key());
+        assert_eq!(o.modulus_len(), t.modulus_len());
+        assert_eq!(o.modulus().first_byte(), t.modulus().first_byte());
+        assert_eq!(o.exponent().first_byte(), t.exponent().first_byte());
+    }
+
+    let message = b"message";
+    let mut signature = vec![0; ours_pair.public_modulus_len()];
+    ours_pair
+        .sign(
+            &ours::signature::RSA_PKCS1_SHA256,
+            &ours::rand::SystemRandom::new(),
+            message,
+            &mut signature,
+        )
+        .unwrap();
+    let components: ours::rsa::PublicKeyComponents<Vec<u8>> = ours_pair.public_key().into();
+    let (n, e) = (components.n.clone(), components.e.clone());
+    let padded = |v: &[u8]| [&[0][..], v].concat();
+    for (n, e, ok) in [
+        (n.clone(), e.clone(), true),
+        (padded(&n), e.clone(), false),
+        (n.clone(), padded(&e), false),
+    ] {
+        let ours = ours::signature::RsaPublicKeyComponents { n: &n, e: &e }.verify(
+            &ours::signature::RSA_PKCS1_2048_8192_SHA256,
+            message,
+            &signature,
+        );
+        let theirs = theirs::signature::RsaPublicKeyComponents { n: &n, e: &e }.verify(
+            &theirs::signature::RSA_PKCS1_2048_8192_SHA256,
+            message,
+            &signature,
+        );
+        assert_eq!(ours.is_ok(), ok);
+        assert_eq!(theirs.is_ok(), ok);
+    }
+
+    let private = ours::rsa::PrivateDecryptingKey::from_pkcs8(rsa_pkcs8()).unwrap();
+    let public = ours::rsa::OaepPublicEncryptingKey::new(private.public_key()).unwrap();
+    let private = ours::rsa::OaepPrivateDecryptingKey::new(private).unwrap();
+    let alg = &ours::rsa::OAEP_SHA256_MGF1SHA256;
+    let mut ciphertext = vec![0; public.ciphertext_size()];
+    let ciphertext = public.encrypt(alg, message, &mut ciphertext, None).unwrap();
+    let mut plaintext = vec![0; private.min_output_size() + 1];
+    assert_eq!(
+        private
+            .decrypt(alg, ciphertext, &mut plaintext, None)
+            .unwrap(),
+        message
+    );
+    let mut short = vec![0; private.min_output_size() - 1];
+    assert!(private.decrypt(alg, ciphertext, &mut short, None).is_err());
+}
+
+/// Wycheproof's first test group's DER field `field` in `file`.
+fn wycheproof_der(file: &str, field: &str) -> Vec<u8> {
+    let path = format!(
+        "{}/../thirdparty/vectors/wycheproof/testvectors_v1/{file}",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    let value: serde_json::Value =
+        serde_json::from_reader(std::fs::File::open(path).unwrap()).unwrap();
+    hex::decode(value["testGroups"][0][field].as_str().unwrap()).unwrap()
+}
+
+// Public keys of types aws-lc parses and rind cannot back, from OpenSSL.
+const P224_SPKI: &str = concat!(
+    "304e301006072a8648ce3d020106052b81040021033a000450a75a47302a74ee6cda1c6060a3b4927de0acab",
+    "171f0c60a4d8392874539cb5e646377f8bb6354e02c5401f0cd974b0e676cf271fe6dd04",
+);
+const SECP256K1_SPKI: &str = concat!(
+    "3056301006072a8648ce3d020106052b8104000a03420004e102c24c49990577603b25d03364ff7d76c0b327",
+    "8795214d26cd5b9484fbc647b2f9b99b3134764db89eac2e4faa99f8e4992fc6b9cf3b6f2b1189de8bfcbf51",
+);
+const DSA_SPKI: &str = concat!(
+    "308201b63082012b06072a8648ce3804013082011e02818100f5b7e70b6016a21cee293f538ba2495c2e5e69",
+    "1c4e31d471fcfe3af669b7357f9baeafdd008fbe261c9f085b9136efb4aeee06a803a63db5663ecbc6f57a4a",
+    "4e265d7c297c3a805519c4bc6eae98d5e5d9f46e2d56bd06a8434e386bf3b6736df8667553e1be528b4b7c3d",
+    "fd149785cf4b29ead2cba702864252aab42da65a7d021500aa81c1fd4c3525af2dc022f0d4cdd375cad01d79",
+    "0281802be03f9422eefa5d8460e8ac8a2e572e036e8d18a2782ded641a9f0398389c98bc95f952f5b9c4f290",
+    "acc77dcc4a59b99719a2c64bcb18caffaf62d4def72dcad90e6dd6c48fcbc6f3c4e13307e1926514499e0f75",
+    "ab223c25b88a1677ae6874bfb851c87a5f39cbf010248d56058f1a91de0124e5e81601f6bfb6f2247ffede03",
+    "818400028180714d276ebec41a6d6032c1ecc3b45461059653953d33eaa74718e49318200669a127b478433f",
+    "88c8932b51af90dcc15bc7c4afbc0292496d373422b80888b7a6b92ad33f8b9be9aa1a734c5ac0dc2e0b3229",
+    "6eec804b690e3c45ef461d806d6225b6c995427d34024c89491c2881feec343daf510bfeb293ea4c4a831366",
+    "31d4",
+);
+const DH_SPKI: &str = concat!(
+    "30819b305306092a864886f70d0103013046024100c7796f97f072bd4300ed7701aa2931edb183d88d562eb1",
+    "47dd57c8eb7f6ae8bcfc53221abfb1f238ec30b909470f70b40fa032f0f129b688144ef254fabda3cf020102",
+    "034400024100bb8d96c75eae6a889c98ec9aca05bbc7e12386f5faf19c30fa8a6a68c84439d2b771ec04e6b3",
+    "2696d23c89064bce6774101beec9266a55b3c74ee2fdb86b9a0f",
+);
+
+/// An RSA encryption key's `SubjectPublicKeyInfo` is refused as aws-lc-rs
+/// refuses it: the framing, the algorithm, and the key's encoding each pick
+/// their refusal before the modulus's size does.
+#[test]
+fn rsa_encrypting_key_refusals() {
+    let oid = |o: &[u8]| der(0x06, o);
+    let pkcs1_oid = |last: u8| oid(&[0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, last]);
+    let null = [0x05, 0x00];
+    let spki = |algorithm: &[u8], key: &[u8]| {
+        der(
+            0x30,
+            &[der(0x30, algorithm), der(0x03, &[&[0][..], key].concat())].concat(),
+        )
+    };
+    let rsa_key = |n: &[u8], e: &[u8]| der(0x30, &[der(0x02, n), der(0x02, e)].concat());
+    let pkcs1_of_spki = |spki: &[u8]| {
+        let (_, body, _) = tlv(spki).unwrap();
+        let (_, _, rest) = tlv(body).unwrap();
+        let (_, bits, _) = tlv(rest).unwrap();
+        bits[1..].to_vec()
+    };
+    let rsa1024 = pkcs1_of_spki(&wycheproof_der(
+        "rsa_pkcs1_1024_sig_gen_test.json",
+        "keyDer",
+    ));
+    let rsa2048 = pkcs1_of_spki(&wycheproof_der(
+        "rsa_pkcs1_2048_sig_gen_test.json",
+        "keyDer",
+    ));
+    // An odd modulus of 8200 bits, beyond aws-lc-rs's 8192.
+    let mut n8200 = vec![0xff; 1026];
+    n8200[0] = 0x7f;
+    let rsa8200 = rsa_key(&n8200, &[1, 0, 1]);
+    let p256 = wycheproof_der("ecdsa_secp256r1_sha256_test.json", "publicKeyDer");
+    let mut off_curve = p256.clone();
+    *off_curve.last_mut().unwrap() ^= 1;
+    let ec = oid(&[0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01]);
+    let ec_p256 = [
+        ec.clone(),
+        oid(&[0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07]),
+    ]
+    .concat();
+    // brainpoolP256r1's generator, a curve rind cannot back.
+    let bp_g = hex::decode(
+        "048bd2aeb9cb7e57cb2c4b482ffc81b7afb9de27e1e3bd23c23a4453bd9ace3262\
+         547ef835c3dac4fd97f8461a14611dc9c27745132ded8e545c1d54c72f046997",
+    )
+    .unwrap();
+    let brainpool = |point: &[u8]| {
+        let curve = oid(&[0x2b, 0x24, 0x03, 0x03, 0x02, 0x08, 0x01, 0x01, 0x07]);
+        spki(&[ec.clone(), curve].concat(), point)
+    };
+    let dsa = oid(&[0x2a, 0x86, 0x48, 0xce, 0x38, 0x04, 0x01]);
+    let dh = oid(&[0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x03, 0x01]);
+    let ml_dsa_44 = oid(&[0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x03, 0x11]);
+    let ml_kem_768 = oid(&[0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x04, 0x02]);
+    let trailing = |mut der: Vec<u8>| {
+        der.push(0);
+        der
+    };
+
+    let mut cases: Vec<(String, Vec<u8>, Option<&str>)> = vec![
+        ("p256".into(), p256.clone(), Some("WrongAlgorithm")),
+        ("p256 trailing".into(), trailing(p256.clone()), None),
+        ("p256 off curve".into(), off_curve, None),
+        (
+            "ed25519".into(),
+            wycheproof_der("ed25519_test.json", "publicKeyDer"),
+            Some("WrongAlgorithm"),
+        ),
+        (
+            "x25519".into(),
+            spki(&oid(&[0x2b, 0x65, 0x6e]), &[9; 32]),
+            None,
+        ),
+        ("ml-dsa-44".into(), spki(&ml_dsa_44, &[0; 1312]), None),
+        ("ml-dsa-44 short".into(), spki(&ml_dsa_44, &[0; 1311]), None),
+        ("ml-kem-768".into(), spki(&ml_kem_768, &[0; 1184]), None),
+        (
+            "p224".into(),
+            hex::decode(P224_SPKI).unwrap(),
+            Some("WrongAlgorithm"),
+        ),
+        (
+            "secp256k1".into(),
+            hex::decode(SECP256K1_SPKI).unwrap(),
+            Some("WrongAlgorithm"),
+        ),
+        (
+            "brainpoolP256r1".into(),
+            brainpool(&bp_g),
+            Some("WrongAlgorithm"),
+        ),
+        (
+            "dsa".into(),
+            hex::decode(DSA_SPKI).unwrap(),
+            Some("WrongAlgorithm"),
+        ),
+        (
+            "dh".into(),
+            hex::decode(DH_SPKI).unwrap(),
+            Some("WrongAlgorithm"),
+        ),
+        (
+            "dsa, no parameters".into(),
+            spki(&dsa, &der(0x02, &[5])),
+            Some("InvalidEncoding"),
+        ),
+        (
+            "dh, no parameters".into(),
+            spki(&dh, &der(0x02, &[5])),
+            Some("InvalidEncoding"),
+        ),
+        (
+            "p224, no point".into(),
+            spki(
+                &[ec.clone(), oid(&[0x2b, 0x81, 0x04, 0x00, 0x21])].concat(),
+                &[],
+            ),
+            Some("InvalidEncoding"),
+        ),
+        (
+            "ec, unknown curve".into(),
+            spki(&[ec.clone(), oid(&[0x2a, 0x03])].concat(), &[4; 65]),
+            Some("InvalidEncoding"),
+        ),
+        (
+            "x25519, parameters".into(),
+            spki(
+                &[oid(&[0x2b, 0x65, 0x6e]), null.to_vec()].concat(),
+                &[9; 32],
+            ),
+            Some("InvalidEncoding"),
+        ),
+        (
+            "e of 34 bits".into(),
+            spki(&pkcs1_oid(1), &rsa_key(&n8200[..256], &[3, 0, 0, 0, 1])),
+            None,
+        ),
+        (
+            "n of 16392 bits".into(),
+            spki(&pkcs1_oid(1), &rsa_key(&[0xff; 2049], &[3])),
+            Some("InvalidEncoding"),
+        ),
+        ("empty".into(), vec![], Some("InvalidEncoding")),
+        ("pkcs1".into(), rsa2048.clone(), Some("InvalidEncoding")),
+        (
+            "truncated".into(),
+            spki(&pkcs1_oid(1), &rsa2048)[..100].to_vec(),
+            Some("InvalidEncoding"),
+        ),
+        (
+            "unused bits".into(),
+            {
+                let mut der = spki(&pkcs1_oid(1), &rsa2048);
+                let at = der.len() - rsa2048.len() - 1;
+                der[at] = 1;
+                der
+            },
+            Some("InvalidEncoding"),
+        ),
+        (
+            "even e".into(),
+            spki(&pkcs1_oid(1), &rsa_key(&n8200[..256], &[1, 0, 0])),
+            None,
+        ),
+        (
+            "e = 1, 1024".into(),
+            spki(&pkcs1_oid(1), &rsa_key(&n8200[..128], &[1])),
+            None,
+        ),
+        (
+            "even n, 1024".into(),
+            spki(&pkcs1_oid(1), &rsa_key(&[0x7f; 128], &[3])),
+            None,
+        ),
+    ];
+    for (last, len) in [(0x11, 1312), (0x12, 1952), (0x13, 2592)] {
+        let algorithm = oid(&[0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x03, last]);
+        cases.push((
+            format!("ml-dsa {len}"),
+            spki(&algorithm, &vec![0; len]),
+            Some("WrongAlgorithm"),
+        ));
+        cases.push((
+            format!("ml-dsa {len} short"),
+            spki(&algorithm, &vec![0; len - 1]),
+            Some("InvalidEncoding"),
+        ));
+    }
+    for (last, len) in [(1, 800), (2, 1184), (3, 1568)] {
+        let algorithm = oid(&[0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x04, last]);
+        cases.push((
+            format!("ml-kem {len}"),
+            spki(&algorithm, &vec![0; len]),
+            Some("WrongAlgorithm"),
+        ));
+        cases.push((
+            format!("ml-kem {len} short"),
+            spki(&algorithm, &vec![0; len - 1]),
+            Some("InvalidEncoding"),
+        ));
+    }
+    for (file, name) in [
+        ("ecdsa_secp384r1_sha384_test.json", "p384"),
+        ("ecdsa_secp521r1_sha512_test.json", "p521"),
+    ] {
+        let der = wycheproof_der(file, "publicKeyDer");
+        let mut off_curve = der.clone();
+        *off_curve.last_mut().unwrap() ^= 1;
+        cases.push((name.into(), der, Some("WrongAlgorithm")));
+        cases.push((
+            format!("{name} off curve"),
+            off_curve,
+            Some("InvalidEncoding"),
+        ));
+    }
+    for (size, key, expected) in [
+        ("1024", &rsa1024, Some("TooSmall")),
+        ("2048", &rsa2048, None),
+        ("8200", &rsa8200, Some("TooLarge")),
+    ] {
+        let wrong = expected.map(|_| "InvalidEncoding");
+        for (name, algorithm, expected) in [
+            (
+                "rsaEncryption",
+                [pkcs1_oid(1), null.to_vec()].concat(),
+                expected,
+            ),
+            ("rsaEncryption, no NULL", pkcs1_oid(1), expected),
+            (
+                "rsaEncryption, INTEGER",
+                [pkcs1_oid(1), vec![2, 1, 0]].concat(),
+                expected,
+            ),
+            ("id-RSAES-OAEP", pkcs1_oid(7), expected),
+            ("id-RSASSA-PSS", pkcs1_oid(10), expected),
+            (
+                "id-RSASSA-PSS, bad parameters",
+                [pkcs1_oid(10), vec![2, 1, 0]].concat(),
+                wrong,
+            ),
+            (
+                "id-ea-rsa",
+                [oid(&[0x55, 0x08, 0x01, 0x01]), null.to_vec()].concat(),
+                expected,
+            ),
+            // The review's case: a non-RSA algorithm around an RSA key whose
+            // size aws-lc-rs would refuse.
+            ("id-ecPublicKey", ec_p256.clone(), wrong),
+            ("unknown", oid(&[0x2a, 0x03, 0x04]), wrong),
+        ] {
+            cases.push((format!("{size} {name}"), spki(&algorithm, key), expected));
+        }
+        let der = spki(&[pkcs1_oid(1), null.to_vec()].concat(), key);
+        cases.push((format!("{size} trailing"), trailing(der), expected));
+    }
+
+    for (name, input, expected) in cases {
+        let ours = ours::rsa::PublicEncryptingKey::from_der(&input)
+            .map(|key| key.key_size_bits())
+            .map_err(|e| e.description_());
+        let theirs = theirs::rsa::PublicEncryptingKey::from_der(&input)
+            .map(|key| key.key_size_bits())
+            .map_err(|e| e.description_());
+        assert_eq!(ours, theirs, "{name}");
+        if let Some(expected) = expected {
+            assert_eq!(ours, Err(expected), "{name}");
+        }
+    }
+    let ours = ours::rsa::PublicEncryptingKey::from_der(&spki(&pkcs1_oid(1), &rsa2048));
+    assert_eq!(ours.unwrap().key_size_bits(), 2048);
+}
