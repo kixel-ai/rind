@@ -25,9 +25,9 @@ cargo bench
 
 With [Nix](https://nixos.org), `nix develop` (or direnv) provides CI's
 toolchain. `just check` is the local loop over what the branch changed: it
-formats, builds the tests of the changed crates and their dependents in one
-pass with clippy as the compiler wrapper, runs them, and runs the repository
-lints that take a second. `just ci` runs CI's whole gate over the same diff,
+checks formatting (`just fix` applies it), builds the tests of the changed
+crates and their dependents in one pass with clippy as the compiler wrapper,
+runs them, and runs the repository lints that take a second. `just ci` runs CI's whole gate over the same diff,
 adding the other targets' builds, the docs, and the cross, MSRV, wasm,
 adapter, and constant-time modules. Both run three modules at a time
 (`sh/dispatch.sh` lists the `CHECK_*` variables that change that); the

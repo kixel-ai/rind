@@ -483,11 +483,12 @@ step() {
             # every vector set on each of this CPU's paths, with the dev
             # shell's acvptool. ci runs them whenever rind or the module
             # changes, since rind-acvp's answers come from rind's services;
-            # the local loop only when the FIPS crates themselves change.
+            # the local loop only under `--all` or when the FIPS crates
+            # themselves change, not for an edit to this script alone.
             local fips=
             if [[ "$action" == ci ]]; then
                 if names rind-fips "${packages[@]}" || names rind-acvp "${packages[@]}"; then fips=1; fi
-            elif [[ -n "$all" ]] || grep -qE '^rind-(fips|acvp)/' "$changed"; then
+            elif [[ "$base" == --all ]] || grep -qE '^rind-(fips|acvp)/' "$changed"; then
                 fips=1
             fi
             if [[ -n "$fips" && "$(rustc -vV | sed -n 's/^host: //p')" =~ ^(x86_64|aarch64)-unknown-linux-gnu$ ]]; then
