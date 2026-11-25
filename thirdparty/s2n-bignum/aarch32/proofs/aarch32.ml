@@ -237,12 +237,19 @@ let AARCH32_NOWRAP_CONV =
   let numeral_conv =
     REWR_CONV aarch32_nowrap THENC
     DEPTH_CONV(WORD_RED_CONV ORELSEC NUM_RED_CONV ORELSEC DIMINDEX_CONV) in
-  (* A comparison of numbers that shares a variable with `n`. *)
-  let arith_fact n c =
-    match c with
-      Comb(Comb(Const(("<=" | "<" | "="),_),x),_) ->
-        type_of x = `:num` && intersect (frees n) (frees c) <> []
-    | _ -> false in
+  (* The assumptions comparing numbers that reach `n` through shared
+     variables, such as `8 <= m` beside `m <= n`. *)
+  let arith_facts n ths =
+    let is_arith th =
+      match concl th with
+        Comb(Comb(Const(("<=" | "<" | "="),_),x),_) -> type_of x = `:num`
+      | _ -> false in
+    let rec grow vars kept rest =
+      let near,far = partition
+        (fun th -> intersect vars (frees(concl th)) <> []) rest in
+      if near = [] then kept else
+      grow (itlist (union o frees o concl) near vars) (near @ kept) far in
+    grow (frees n) [] (filter is_arith ths) in
   let decided th =
     match rhs(concl th) with
       Const("T",_) | Const("F",_) -> th
@@ -312,8 +319,7 @@ let AARCH32_NOWRAP_CONV =
                               if dd +/ l >/ dest_numeral n then failwith "" else
                               EQT_ELIM(NUM_REDUCE_CONV goal)
                             else
-                              let facts =
-                                filter (fun th -> arith_fact n (concl th)) ths in
+                              let facts = arith_facts n ths in
                               if facts = [] then failwith "" else
                               MP (ARITH_RULE
                                    (mk_imp(list_mk_conj(map concl facts),goal)))
@@ -1007,16 +1013,18 @@ let AARCH32_SUBROUTINE_TESTS =
     REWRITE_TAC[fst sum_exec] THEN
     REPEAT STRIP_TAC THEN
     AARCH32_SIM_TAC sum_exec [1]) in
-  (* ldr r0, [r1, #4], then #8, in a region of symbolic length at least 8
-     that nothing aligns: the first word fits, and the second is not known
-     to, so its step fails. *)
+  (* ldr r0, [r1, #4], then #8, in a region of symbolic length `n`, at least
+     8 through `m`, that nothing aligns: the first word fits, and the second
+     is not known to, so its step stops at the bound. *)
   let region name word =
     let mc = define name [word] in
     let exec = AARCH32_MK_EXEC_RULE mc in
-    prove
+    if (snd exec).(0) = None then
+      failwith ("AARCH32_SUBROUTINE_TESTS: " ^ name ^ " does not decode") else
+    fun () -> prove
      (vsubst [lhs(concl mc),`code:byte list`]
-       `!pc (a:int32) n.
-          aarch32_nowrap a n /\ 8 <= n
+       `!pc (a:int32) m n.
+          aarch32_nowrap a n /\ 8 <= m /\ m <= n
           ==> ensures aarch32
             (\s. aligned_bytes_loaded s (word pc) code /\
                  read PC s = word pc /\ read R1 s = a)
@@ -1025,10 +1033,16 @@ let AARCH32_SUBROUTINE_TESTS =
       REWRITE_TAC[fst exec] THEN
       REPEAT STRIP_TAC THEN
       AARCH32_SIM_TAC exec [1]) in
-  let region4 = region "aarch32_test_region_mc" 0xe5910004 in
+  let region4 = region "aarch32_test_region_mc" 0xe5910004 () in
   let () =
-    if can (region "aarch32_test_region_past_mc") 0xe5910008 then
-      failwith "AARCH32_SUBROUTINE_TESTS: a word past a region decided" in
+    let past = region "aarch32_test_region_past_mc" 0xe5910008 in
+    let msg = try ignore (past ()); "the step succeeded"
+              with Failure msg -> msg in
+    let undecided =
+      "AARCH32_CONV: a conditional instruction's condition is undecided" in
+    let k = String.length undecided in
+    if String.length msg < k || String.sub msg 0 k <> undecided then
+      failwith ("AARCH32_SUBROUTINE_TESTS: a word past a region: " ^ msg) in
   (* One instruction stepped with R0 at an address near the top of memory,
      and Z set: whether its step leaves the model. *)
   let leaves name word r0 =
