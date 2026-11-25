@@ -9,12 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.3](https://github.com/kixel-ai/rind/compare/rind-python-v0.1.2...rind-python-v0.1.3) - 2026-11-25
 
+pyrind's Python API only gains items in this release: `pyrind.cipher`, `pyrind.key_wrap`, and `copy()` on digest and HMAC contexts. The entries marked breaking, and those adding rind features such as SLH-DSA and Argon2id, change rind's Rust API, which pyrind builds on but does not expose.
+
 ### Added
 
-- [**breaking**] always wipe keys, removing the `wipe` feature ([#609](https://github.com/kixel-ai/rind/pull/609))
+- [**breaking**] rind always wipes keys, removing its `wipe` feature, so pyrind's key objects wipe when Python frees them; the `bytes` a key was loaded from or exported to are Python's and stay unwiped ([#609](https://github.com/kixel-ai/rind/pull/609))
 - [**breaking**] per-algorithm signature modules and one API shape ([#781](https://github.com/kixel-ai/rind/pull/781))
 - *(hkdf)* [**breaking**] Prk::new loads a pseudorandom key, Prk::fill writes a slice ([#758](https://github.com/kixel-ai/rind/pull/758))
-- *(kem)* [**breaking**] ML-KEM-512 and ML-KEM-1024 ([#606](https://github.com/kixel-ai/rind/pull/606))
+- *(kem)* [**breaking**] rind's typed ML-KEM API, which adds ML-KEM-512 and ML-KEM-1024; pyrind moves to it and still offers only ML-KEM-768 ([#606](https://github.com/kixel-ai/rind/pull/606))
 - *(signature)* SLH-DSA, all twelve FIPS 205 parameter sets ([#641](https://github.com/kixel-ai/rind/pull/641))
 - *(argon2)* rind offers Argon2id ([#634](https://github.com/kixel-ai/rind/pull/634))
 - [**breaking**] rind needs no runtime CPU check ([#696](https://github.com/kixel-ai/rind/pull/696))
@@ -50,20 +52,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [**breaking**] digest contexts build their state in place, and hmac::Context::sign takes &mut self ([#864](https://github.com/kixel-ai/rind/pull/864))
 - VG's ChaCha20 axioms are stated over its vendored spec, not rind's copy ([#886](https://github.com/kixel-ai/rind/pull/886))
 - ML-KEM-768 imports pyca/verified-garbage's theorems as axioms, and its proof quest moves to m4 ([#858](https://github.com/kixel-ai/rind/pull/858))
-- :ChaCha20 earns the ✓ from pyca/verified-garbage's proof ([#853](https://github.com/kixel-ai/rind/pull/853))
+- `cipher::ChaCha20` earns the ✓ from pyca/verified-garbage's proof ([#853](https://github.com/kixel-ai/rind/pull/853))
 - P-256 runs pyca/verified-garbage's public key, ECDH, and verification where it is faster ([#846](https://github.com/kixel-ai/rind/pull/846))
 - Vendored verified-garbage code matches the pinned 0aa40d6c ([#877](https://github.com/kixel-ai/rind/pull/877))
 - PBKDF2 on aarch64 runs pyca/verified-garbage's code where it is faster ([#850](https://github.com/kixel-ai/rind/pull/850))
 - ChaCha20-Poly1305 on aarch64 runs pyca/verified-garbage's code where it is faster ([#813](https://github.com/kixel-ai/rind/pull/813))
 - ML-KEM-768 runs pyca/verified-garbage's code where it is faster ([#812](https://github.com/kixel-ai/rind/pull/812))
-- :ChaCha20 runs verified-garbage's AVX2 and AVX-512 VL routines on x86_64 ([#811](https://github.com/kixel-ai/rind/pull/811))
+- `cipher::ChaCha20` runs verified-garbage's AVX2 and AVX-512 VL routines on x86_64 ([#811](https://github.com/kixel-ai/rind/pull/811))
 - VG's ISA models are cosimulated for the instructions rind runs ([#815](https://github.com/kixel-ai/rind/pull/815))
 - *(rsa)* RSA on AVX-512 IFMA runs pyca/verified-garbage's public operation and CRT where they measured faster ([#814](https://github.com/kixel-ai/rind/pull/814))
 - *(ed25519)* x86_64 verification multiplies half-size scalars ([#768](https://github.com/kixel-ai/rind/pull/768))
 - take upstream changes since the pins (2026-11-14 run) ([#787](https://github.com/kixel-ai/rind/pull/787))
 - vendor the Wycheproof, CAVP, and CCTV vectors the tests read ([#714](https://github.com/kixel-ai/rind/pull/714))
 - release and queue from the kixel-ai org ([#711](https://github.com/kixel-ai/rind/pull/711))
-- *(dart,python)* say the bindings do not wipe ([#549](https://github.com/kixel-ai/rind/pull/549))
 
 ## [0.1.2](https://github.com/kixel-ai/rind/compare/rind-python-v0.1.1...rind-python-v0.1.2) - 2026-11-08
 
