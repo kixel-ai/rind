@@ -105,11 +105,13 @@ jobs:
           BEFORE: ${{ github.event.before }}
           GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
 
-      # Read from the tags release-plz pushed rather than from what this run
-      # published, so a rerun after a partial release still attests them.
+      # Read from crates.io rather than from what this run published, so a
+      # rerun after a partial release still attests them.
       - name: Find the released crates
         id: crates
-        run: echo "crates=$(nix develop --command sh/released-crates.sh "$BEFORE")" >>"$GITHUB_OUTPUT"
+        run: |
+          crates=$(nix develop --command sh/released-crates.sh "$BEFORE")
+          echo "crates=$crates" >>"$GITHUB_OUTPUT"
         env:
           BEFORE: ${{ github.event.before }}
 
@@ -121,9 +123,13 @@ jobs:
           for package in pyrind pyrind-cryptography; do
             ref=$(nix develop --command sh/pypi-unpublished.sh "$package")
             echo "$package=$ref" >>"$GITHUB_OUTPUT"
-            # The commit pyrind's tag names, which its attestation records.
+            # The commit pyrind's tag names, which its wheels build from and
+            # its attestation records. release-plz created the tag after the
+            # checkout, through GitHub's API.
             if [[ "$package" == pyrind && -n "$ref" ]]; then
-              echo "pyrind-commit=$(git rev-parse "$ref^{commit}")" >>"$GITHUB_OUTPUT"
+              git fetch --quiet origin "refs/tags/$ref:refs/tags/$ref"
+              commit=$(git rev-parse --verify "refs/tags/$ref^{commit}")
+              echo "pyrind-commit=$commit" >>"$GITHUB_OUTPUT"
             fi
           done
 
@@ -180,7 +186,8 @@ jobs:
       contents: read
     uses: ./.github/workflows/python.yml
     with:
-      ref: ${{ needs.release.outputs.pyrind }}
+      # The tag's commit, which a branch of the same name cannot shadow.
+      ref: ${{ needs.release.outputs.pyrind-commit }}
 
   # Publishes to PyPI by trusted publishing, which trusts this workflow in the
   # `publish` environment, so no PyPI token is stored anywhere.
