@@ -40,15 +40,15 @@ tag checks, RSASSA-PSS's hash compare, and key wrap's `unwrap` and
 `unwrap_padded` checks; for RSA verification's public operation on AVX-512
 IFMA, pyca/verified-garbage's Lean proof of its routine, which
 `Rind.X86_64.VgRsa` restates; pyca/verified-garbage's for ChaCha20's
-`apply_keystream` in `Rind.X86_64.VgChaCha20`, for X25519 and Ed25519 on
+`apply_keystream` in `Rind.X86_64.VgChaCha20`, with rind's HOL Light proof of
+aws-lc's SSSE3 routine in `Rind.X86_64.ChaCha20Cipher`, for X25519 and Ed25519 on
 AVX-512 IFMA in `Rind.X86_64.VgCurve25519`, and for P-256's public key, ECDH,
 and ECDSA verification in `Rind.X86_64.VgP256`, and for P-384's `d·G`,
 which key generation and each ECDSA signature's nonce point take, and its
 ECDSA verification, in `Rind.X86_64.VgP384`; and nothing else.
 ChaCha20-Poly1305's theorems also take aws-lc's one-pass routines as the
-hypothesis `RunsChaCha20Poly1305`, which no axiom states. ChaCha20's
-`apply_keystream` on a CPU without AVX2 takes aws-lc's SSSE3 routine as the
-hypothesis `Ssse3`; `Rind.X86_64.ChaCha20Avx2` proves rind's two-block kernel
+hypothesis `RunsChaCha20Poly1305`, which no axiom states.
+`Rind.X86_64.ChaCha20Avx2` proves rind's two-block kernel
 over `Rind.X86_64.Simd`'s models of the AVX2 intrinsics. The generator
 tables' point selects rest on no axiom, only on the hand model in
 `Rind.X86_64.PointSelectModel`. P-256's generator multiplication also rests
@@ -404,20 +404,12 @@ change to the trust base.
 /-- info: 'rind.x86_64.chacha20_apply_keystream' depends on axioms: [propext,
  Classical.choice,
  Quot.sound,
+ chacha20_ctr32_ssse3_4x_spec,
  vg_chacha20_apply_avx2_spec,
  vg_chacha20_apply_avx512vl_spec,
  vg_chacha20_init_spec] -/
 #guard_msgs in
 #print axioms chacha20_apply_keystream
-
-/-- info: 'rind.x86_64.chacha20_apply_keystream_ssse3' depends on axioms: [propext,
- Classical.choice,
- Quot.sound,
- vg_chacha20_apply_avx2_spec,
- vg_chacha20_apply_avx512vl_spec,
- vg_chacha20_init_spec] -/
-#guard_msgs in
-#print axioms chacha20_apply_keystream_ssse3
 
 /-- info: 'rind.x86_64.avx2.kernel' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in

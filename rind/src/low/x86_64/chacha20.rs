@@ -21,11 +21,10 @@
 //! proves the kernel against RFC 8439 over Lean models of its intrinsics,
 //! which `admin/prove` tests against the CPU, and
 //! `proofs/Rind/X86_64/ChaCha20Cipher.lean` proves the bytes `cipher` writes
-//! at every length the block counter covers on those and HACL*'s rounds, taking the aws-lc SSSE3
-//! routine's contract as the hypothesis `Ssse3`. That assembly is not formally
-//! verified: its correctness rests on rind's tests of it against HACL*'s
-//! rounds at each length from 129 to 1700 bytes, and on its use in OpenSSL,
-//! BoringSSL, and aws-lc.
+//! at every length the block counter covers on those, HACL*'s rounds, and the
+//! aws-lc SSSE3 routine, whose object code
+//! `proofs/hol-light/x86_64/chacha20_ctr32_ssse3_4x.ml` proves against RFC
+//! 8439 in HOL Light, of the Linux build, in place on a nonempty buffer.
 
 use core::arch::x86_64::*;
 use core::mem::MaybeUninit;
@@ -209,8 +208,8 @@ unsafe fn cipher_ssse3_4x(
     // SAFETY: `buffer` is `len` readable and writable bytes, at least one as
     // the caller ensures, which the routine allows to alias exactly, and
     // `key` and `counter_nonce` are 8 and 4 words. The token proves the
-    // `ssse3` cpu feature. Its 32-bit counter wraps unspecified past 2^32
-    // blocks, which callers rule out.
+    // `ssse3` cpu feature. Its 32-bit counter wraps past 2^32 blocks, which
+    // callers rule out.
     unsafe {
         asm_call!(unsafe extern "sysv64" chacha20_ctr32_ssse3_4x(ptr, ptr, len, key, counter_nonce))
     }

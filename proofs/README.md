@@ -78,6 +78,17 @@ those inputs, in any worktree, restores in under a second.
   stores it to the state, as `sha512`'s above, on the same model; the proof
   checks its round constants against FIPS 180-4's. Its stack frame, which the routine aligns down to 1024
   bytes, lies in the 1648 bytes below the stack pointer.
+- `x86_64/chacha20_ctr32_ssse3_4x.ml`:
+  `CHACHA20_CTR32_SSSE3_4X_SUBROUTINE_CORRECT`, rind's proof that the naked
+  function `low::x86_64::chacha20::chacha20_ctr32_ssse3_4x`, aws-lc's SSSE3
+  ChaCha20, called in place on a nonempty buffer, as `cipher_ssse3_4x`
+  calls it, leaves the buffer s2n-bignum's RFC 8439 spec,
+  `chacha20_encrypt`, under the key, the 32-bit block counter, which wraps,
+  and the nonce, on the same model. Its stack frame lies in the 320 bytes
+  from 328 below the stack pointer, which must be 16 bytes below a 16-byte
+  boundary, as the ABI leaves it; its table, which `admin/prove` extracts
+  with the code since the build places it in the function's own read-only
+  section on Linux, must be 16-byte aligned.
 - `aarch64/bn_mul_mont.ml`: `BN_MUL_MONT_SUBROUTINE_CORRECT`, rind's
   proof that the naked function `low::aarch64::mont::bn_mul_mont`, aws-lc's
   Montgomery multiplication, writes the Montgomery product
@@ -1206,17 +1217,20 @@ proves it, so the ✓ on SVE2 CPUs waits on that quest.
 
 ChaCha20 on x86_64, at every length, from `cipher::ChaCha20` down to
 pyca/verified-garbage's AVX2 and AVX-512 VL routines, rind's two-block AVX2
-kernel, and HACL*'s rounds, in `Rind/X86_64/ChaCha20Cipher.lean`:
+kernel, aws-lc's SSSE3 routine, and HACL*'s rounds, in
+`Rind/X86_64/ChaCha20Cipher.lean`:
 
-- `chacha20_apply_keystream`, where the CPU-feature checks find AVX2 or
-  AVX-512 VL, and `chacha20_apply_keystream_ssse3`, on any: a buffer that needs more blocks
+- `chacha20_apply_keystream`, on any CPU: a buffer that needs more blocks
   than remain before the 32-bit block counter wraps is refused with
   `WrongLength` and left as it is, and otherwise it becomes RFC 8439's
   encryption of it under the key, the block counter, and the nonce.
 
-They rest on the axioms `vg_chacha20_init_spec`,
+It rests on the axioms `vg_chacha20_init_spec`,
 `vg_chacha20_apply_avx2_spec`, and `vg_chacha20_apply_avx512vl_spec` in
-`Rind/X86_64/VgChaCha20.lean`, which restate VG's theorems, and compose them
+`Rind/X86_64/VgChaCha20.lean`, which restate VG's theorems, and
+`chacha20_ctr32_ssse3_4x_spec`, which restates rind's HOL Light proof of
+aws-lc's SSSE3 routine, `CHACHA20_CTR32_SSSE3_4X_SUBROUTINE_CORRECT` in
+`hol-light/x86_64/chacha20_ctr32_ssse3_4x.ml`, and composes them
 as `cipher` does: VG's routines from 256 bytes over the whole buffer, or,
 when what follows its last whole 512-byte group is 65 to 255 bytes, over the
 groups, and the kernel over that remainder from the block counter past them;
@@ -1225,15 +1239,13 @@ below. `Rind/X86_64/ChaCha20Avx2.lean` proves the kernel, `kernel`, over
 `Rind/X86_64/Simd.lean`'s models of the AVX2 intrinsics it calls, which
 `admin/prove` tests against the CPU: each double round is RFC 8439's inner
 block on both blocks' states at once, and the stored and XORed keystream is
-the two blocks'. `chacha20_apply_keystream` assumes `RunsVg`: the entry guard
-admits the call, constructing the VG state succeeds (the model leaves
-`VgState::uninit` opaque), and the CPU-feature checks find AVX2 or AVX-512 VL.
-Without AVX2 but with SSSE3, `cipher` runs aws-lc's
-`ChaCha20_ctr32_ssse3_4x` from 129 bytes, which no proof covers yet, so `chacha20_apply_keystream_ssse3` assumes
-its contract, `Ssse3`, and `RunsCipher`: the entry guard admits the call,
-a VG state can be made, and the CPU-feature checks return, whatever they find;
-[the x86_64 cipher quest](/quest/m4/verified/chacha20-poly1305-x86/cipher.md)
-owns that proof.
+the two blocks'. Without AVX2 but with SSSE3, `cipher` runs aws-lc's
+`ChaCha20_ctr32_ssse3_4x` from 129 bytes, in place, whose HOL Light proof
+steps its setup, the four blocks' rounds, each 256-byte group's XOR, and the
+tail of fewer than 256 bytes, by induction over the groups.
+`chacha20_apply_keystream` assumes `RunsCipher`: the entry guard admits the
+call, constructing the VG state succeeds (the model leaves `VgState::uninit`
+opaque), and the CPU-feature checks return, whatever they find.
 
 ChaCha20 on aarch64, from `cipher::ChaCha20` down to pyca/verified-garbage's
 NEON and SVE2 routines, in `Rind/Aarch64/VgChaCha20.lean`:
