@@ -15,14 +15,17 @@ theorems here state the one pass in `Rind.Spec`'s terms. Each axiom states
 only what its wrapper returns, not VG's wipe of its stack scratch and
 registers, its memory safety, or that it runs in constant time.
 
-The wrappers pass Rust objects, which never overlap one another, the stack,
-or the end of the address space, as VG's contracts require; the token proves
-AVX, AVX2, AVX-512 F and VL, and AVX512_IFMA. VG's contracts set no bound on
-the length, past which ChaCha20's 32-bit block counter wraps, as
-`Rind.Spec`'s does too: the AEAD API refuses a message past RFC 8439's
-`P_MAX` before it reaches these. VG's theorems rest on its models of the
-instructions, which `admin/prove vg` cosimulates for each instruction of the
-two routines, on the CPU or, where it lacks a feature, under Intel SDE.
+The wrappers pass Rust objects, which never overlap the stack or the end of
+the address space. What the routines write, the data and seal's tag, are
+exclusive borrows, which overlap no other argument; the key, nonce, AAD, and
+open's tag may overlap one another, which VG's contracts allow for buffers a
+routine only reads (`TCB/Sig.lean`). The token proves AVX, AVX2, AVX-512 F and
+VL, and AVX512_IFMA. VG's contracts set no bound on the length, past which
+ChaCha20's 32-bit block counter wraps, as `Rind.Spec`'s does too: the AEAD
+API refuses a message past RFC 8439's `P_MAX` before it reaches these. VG's
+theorems rest on its models of the instructions, which `admin/prove vg`
+cosimulates for each instruction of the two routines, on the CPU or, where it
+lacks a feature, under Intel SDE.
 -/
 
 namespace rind.x86_64
