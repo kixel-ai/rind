@@ -28,6 +28,13 @@ toolchain, and `just check` runs CI's gate over what the branch changed,
 three modules at a time (`sh/dispatch.sh` lists the `CHECK_*` variables that
 change that); the scheduled workflows' tools are in [TESTING.md](TESTING.md#running-the-tools).
 
+`cargo vet --locked` fails when the published rind crate's dependencies gain
+a crate or version no audit covers, as [SECURITY.md](SECURITY.md#supply-chain)
+describes. Plain `cargo vet` first fetches the imported audits, which may
+cover it; otherwise review its code with `cargo vet diff` or `cargo vet
+inspect` and record the review with `cargo vet certify`. A new exemption
+needs the maintainer's approval.
+
 # Commits
 
 PRs land on `main` as squash commits, so the PR title becomes the commit subject in `git log`; the body keeps the PR's commit messages and co-author trailers, not the PR description.

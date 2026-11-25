@@ -67,8 +67,11 @@ Outside the model:
   Apple asks, so no instruction after it runs speculatively without DIT;
   rind sets DIT on other aarch64 cores too, where Arm asks for no barrier.
 - A compromised toolchain, build machine, or dependency. `cargo deny`
-  checks crates against RustSec's advisories, licenses, and sources; nothing
-  checks a release's build is reproducible.
+  checks crates against RustSec's advisories, licenses, and sources, and
+  `cargo vet` holds the published crate's dependencies to audits; a release's
+  prebuilt libraries and wheels are built twice and must match, but on one
+  runner with one toolchain, which a compromise would reach both times
+  (see [SECURITY.md](SECURITY.md#supply-chain)).
 - A compiler or flags other than CI's: constant time is checked on the
   builds CI makes for Linux, so a user's own toolchain, a non-Linux target,
   or a wasm engine may emit code no check has seen.
