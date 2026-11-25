@@ -21,8 +21,10 @@ on:
         type: string
         default: ""
 
+# A dispatch naming targets has a group of its own, so it never cancels the
+# full run.
 concurrency:
-  group: fuzz-${{ github.ref }}
+  group: fuzz-${{ github.ref }}-${{ inputs.targets }}
   cancel-in-progress: true
 
 permissions:
