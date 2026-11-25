@@ -329,6 +329,12 @@ fn stitched<const ENC: bool>(
     // (`AES*_GCM_*_NOIBT_SUBROUTINE_{CORRECT,SAFE}`) take the input and
     // output either equal, as here, or disjoint, and every other buffer
     // is a separate borrow. aws-lc runs its AES-192 routines in place too.
+    // The `_alt` kernels' proofs also assume `inout` plus its length is
+    // below 2^63 (`KernelBuffersLow` in the Lean proofs), which holds for
+    // untagged user-space addresses and is not checked here: the kernels
+    // compare their pointers as signed integers, so two pointers with the
+    // same tag still compare in order, but a tag that sets bit 63 leaves the
+    // proof's cover.
     unsafe {
         match (key, ENC, table.eight_way) {
             (HwKey::Aes128(k), true, None) => {
