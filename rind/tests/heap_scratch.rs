@@ -294,10 +294,13 @@ fn rsa_oaep() {
         assert_independent("RSA decryption", keys.each_ref(), |(key, ciphertext)| {
             key.decrypt(ciphertext.as_ref(), b"").unwrap()
         });
-        // The other key's ciphertext, below both moduli, fails the padding
-        // check under each key.
+        // The first key's ciphertext, cleared in its top byte to fall below
+        // both moduli and changed in its last so it is never the ciphertext
+        // itself, which a top byte already zero would leave, fails the
+        // padding check under each key.
         let mut forged = keys[0].1.as_ref().to_vec();
         forged[0] = 0;
+        *forged.last_mut().unwrap() ^= 1;
         assert_independent("RSA refused decryption", keys, |(key, _)| {
             key.decrypt(&forged, b"").unwrap_err()
         });
