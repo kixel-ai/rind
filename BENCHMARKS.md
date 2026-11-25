@@ -21,7 +21,7 @@ Each host builds with the pinned toolchain in the Nix dev shell, and runs `admin
 
 Each host runs `cargo bench -p rind-bench --features __bench_openssl`, passing criterion `--warm-up-time 1 --measurement-time 3` and a filter for the report's rows, as `criterion_args` in its `benchmarks/data/<host>.json` records.
 
-On aarch64, every rind row holds a `rind::cpu::Dit::hold()` guard across the timed loop (`rind_dit` in `rind-bench/benches/criterion/mod.rs`), so it pays for turning DIT on and off once, as a caller holding the guard around a batch of calls does. A caller holding none pays it on every call: the rows marked *DIT set per call* time rind that way. On x86_64 the guard does nothing, and no other library sets DIT.
+On aarch64, every rind row except those marked *DIT set per call* holds a `rind::cpu::Dit::hold()` guard across the timed loop (`rind_dit` in `rind-bench/benches/criterion/mod.rs`), so it pays for turning DIT on and off once, as a caller holding the guard around a batch of calls does. A caller holding none pays it on every call: the rows marked *DIT set per call* time rind that way. On x86_64 the guard does nothing, and no other library sets DIT.
 
 To time a row without Nix, install the pinned toolchain and run its bench target, here AES-128-GCM's rows. aws-lc-rs and ring need a C compiler, and on Unix the OpenSSL column needs OpenSSL 3's headers and pkg-config.
 
