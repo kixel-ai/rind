@@ -191,3 +191,36 @@ fn key_pair_from_components() {
         }
     }
 }
+
+/// `Debug` shows what ring's does, the public key, and none of the private
+/// integers.
+// ring does not build for wasm.
+#[cfg(not(target_family = "wasm"))]
+#[test]
+fn key_pair_components_debug() {
+    use rind_ring::rsa as ours;
+    use ring::rsa as theirs;
+
+    let private = [0xffu8];
+    let ours = ours::KeyPairComponents {
+        public_key: ours::PublicKeyComponents { n: [1u8], e: [3u8] },
+        d: private,
+        p: private,
+        q: private,
+        dP: private,
+        dQ: private,
+        qInv: private,
+    };
+    let theirs = theirs::KeyPairComponents {
+        public_key: theirs::PublicKeyComponents { n: [1u8], e: [3u8] },
+        d: private,
+        p: private,
+        q: private,
+        dP: private,
+        dQ: private,
+        qInv: private,
+    };
+    let shown = format!("{ours:?}");
+    assert_eq!(shown, format!("{theirs:?}"));
+    assert!(!shown.contains("255"), "{shown}");
+}

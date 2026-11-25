@@ -4928,6 +4928,9 @@ dependencies = [
  "ctr 0.10.1",
  "curve25519-dalek 5.0.0",
  "dimpl",
+ "frost-ed25519",
+ "frost-p256",
+ "frost-ristretto255",
  "ghash 0.6.0",
  "hkdf 0.13.0",
  "hmac 0.13.0",
@@ -4946,13 +4949,19 @@ dependencies = [
  "p384 0.14.0",
  "p521 0.13.3",
  "p521 0.14.0",
+ "pakery-crypto",
+ "pakery-spake2plus",
  "pbkdf2",
  "pkcs8 0.11.0",
+ "pyo3",
  "rand_core 0.6.4",
  "rcgen",
  "rind",
+ "rind-dart",
  "rind-dimpl",
+ "rind-fips",
  "rind-openssl",
+ "rind-python",
  "rind-rcgen",
  "rind-rustls",
  "rind-str0m",
@@ -5065,6 +5074,7 @@ dependencies = [
  "serde",
  "serde_json",
  "untrusted 0.9.0",
+ "wasm-bindgen-test",
 ]
 
 [[package]]
@@ -5073,6 +5083,7 @@ version = "0.23.4"
 dependencies = [
  "crabgrind 0.4.0",
  "env_logger",
+ "getrandom 0.4.3",
  "hex",
  "http",
  "http-body-util",
@@ -5081,8 +5092,10 @@ dependencies = [
  "hyper-util",
  "rind",
  "rustls",
+ "rustls-pki-types",
  "tokio",
  "tokio-rustls",
+ "wasm-bindgen-test",
 ]
 
 [[package]]

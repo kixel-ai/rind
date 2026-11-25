@@ -112,7 +112,7 @@ qemu. iOS devices' code is only built.
   for `wasm32-wasip2` and `wasm32-unknown-unknown`
   when a change touches rind, the workspace manifest or lockfile, or the
   flake, and `just gate` always does. It compiles every published adapter
-  for both, and rind-rustls's and rind-ring's tests for `wasm32-wasip2`, when
+  for both, and rind-rustls's and rind-ring's tests for each, when
   a change touches an adapter, rind's manifest, the workspace manifest or
   lockfile, or the flake. `wasm32-unknown-unknown` enables `getrandom/wasm_js`
   for JavaScript randomness, as rind-ring's `wasm32_unknown_unknown_js` does
@@ -124,8 +124,11 @@ qemu. iOS devices' code is only built.
   rind-ring's tests on `wasm32-wasip2` under wasmtime (`just wasm`), without
   the differential tests, since aws-lc does not build for wasm; Ed25519's CCTV
   vectors and the expanded ML-DSA wipe check run against data recorded from
-  aws-lc instead, and the adapters' handshakes run rind against itself. `wasm32-unknown-unknown` stays
-  compile-only: its tests need a JavaScript host. Constant time is unchecked on
+  aws-lc instead, and the adapters' handshakes run rind against itself. It
+  runs rind-rustls's and rind-ring's tests again on `wasm32-unknown-unknown`
+  in Node, under wasm-bindgen's test runner, where rind takes its random
+  source and rustls its clock from JavaScript; rind's own tests read their
+  vectors from files, which that target cannot open. Constant time is unchecked on
   wasm: ctgrind and the trace checks inspect native code, and a wasm engine
   compiles rind again, so its JIT may turn a select into a branch.
   RSA and the NIST curves run on 64-bit limbs on 64-bit targets and on
@@ -256,9 +259,10 @@ Intel guarantees the timing of the instructions it lists as data-independent
   and around every call on 32-bit `x86`, whose compiled arithmetic may use
   them anywhere, then
   restores the caller's MXCSR. On the x86_64 backend, `admin/ct-vartime`
-  checks that nothing rind exports reaches one except through a function that
-  enters the mitigation. It counts all of such a function as covered, so each
-  enters first, holds it to its end, and never inlines into its caller. On
+  checks that nothing rind exports reaches one unless the mitigation is held
+  on every path to it: in a function that enters it, it follows the control
+  flow from the function's start, so a multiply before the mitigation is
+  entered or after it ends still fails. On
   32-bit `x86` and the portable backend, coverage rests on every call's
   `Entry`, which the scan does not check. aws-lc and BoringSSL do not
   mitigate this.
