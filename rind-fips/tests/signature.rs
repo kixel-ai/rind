@@ -787,13 +787,10 @@ fn rsa_moduli_fips_does_not_approve_are_refused() {
         Err(Error::KeyRejected(reason)) => reason,
         other => panic!("{other:?}"),
     });
-    // rind loads a 2047-bit key, as its primes are 1024 bits, and the module
+    // rind loads a 2047-bit key, and the module
     // refuses it for the same reason.
     assert!(rind::rsa::KeyPair::from_pkcs8(RSA2047).is_ok());
-    assert_eq!(
-        rsa::KeyPair::from_pkcs8(RSA2047).err(),
-        Some(refused)
-    );
+    assert_eq!(rsa::KeyPair::from_pkcs8(RSA2047).err(), Some(refused));
 
     // An odd length rind signs with.
     assert!(rind::rsa::KeyPair::from_pkcs8(RSA2049).is_ok());
