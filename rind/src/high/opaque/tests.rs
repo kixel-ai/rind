@@ -168,9 +168,12 @@ where
 
     let (ke3, session_key, export_key) = client.finish(&ke2, &session).unwrap();
     assert_eq!(ke3.as_ref(), output("KE3"));
+    ct::public_slice(session_key.as_ref());
+    ct::public_slice(export_key.as_ref());
     assert_eq!(session_key.as_ref(), output("session_key"));
     assert_eq!(export_key.as_ref(), output("export_key"));
     let server_key = server_login.finish(&ke3).unwrap();
+    ct::public_slice(server_key.as_ref());
     assert_eq!(server_key.as_ref(), output("session_key"));
 }
 
@@ -306,6 +309,12 @@ impl Run<'_> {
         let (server_login, ke2) = server.login(&ke1, &credential, &self.login)?;
         let (ke3, client_key, export_key) = client.finish(&ke2, &self.login)?;
         let server_key = server_login.finish(&ke3)?;
+        for key in [client_key.as_ref(), server_key.as_ref()] {
+            ct::public_slice(key);
+        }
+        for key in [export_key.as_ref(), registered_export_key.as_ref()] {
+            ct::public_slice(key);
+        }
         assert_eq!(client_key.as_ref(), server_key.as_ref());
         assert_eq!(export_key.as_ref(), registered_export_key.as_ref());
         Ok(export_key)
@@ -720,7 +729,10 @@ fn setup_encoding() {
         assert_eq!(bytes.as_ref().len(), l.setup());
         let loaded = ServerSetup::from_bytes(suite, bytes.as_ref()).unwrap();
         assert_eq!(loaded.public_key(), server.public_key());
-        assert_eq!(loaded.to_bytes().as_ref(), bytes.as_ref());
+        let reloaded = loaded.to_bytes();
+        ct::public_slice(reloaded.as_ref());
+        ct::public_slice(bytes.as_ref());
+        assert_eq!(reloaded.as_ref(), bytes.as_ref());
 
         // A login against the loaded setup verifies a record the original
         // registered.
@@ -971,9 +983,12 @@ macro_rules! matches_opaque_ke {
                 ours.public_key(),
                 &theirs.keypair().public().serialize()[..]
             );
-            assert_eq!(ours.to_bytes().as_ref(), &theirs.serialize()[..]);
-            let theirs =
-                opaque_ke::ServerSetup::<Cs>::deserialize(ours.to_bytes().as_ref()).unwrap();
+            // opaque-ke's arithmetic is not constant time, so nothing it
+            // takes is marked secret.
+            let ours_bytes = ours.to_bytes();
+            ct::public_slice(ours_bytes.as_ref());
+            assert_eq!(ours_bytes.as_ref(), &theirs.serialize()[..]);
+            let theirs = opaque_ke::ServerSetup::<Cs>::deserialize(ours_bytes.as_ref()).unwrap();
 
             for password in [&b"password"[..], b"", &[0xa5; 1000]] {
                 // rind's client registers with both servers, whose
@@ -989,6 +1004,7 @@ macro_rules! matches_opaque_ke {
                 .message;
                 assert_eq!(response.as_ref(), &their_response.serialize()[..]);
                 let (our_record, our_export_key) = client.finish(&response, &session).unwrap();
+                ct::public_slice(our_export_key.as_ref());
                 let their_record = ServerRegistration::<Cs>::finish(
                     RegistrationUpload::deserialize(our_record.as_ref()).unwrap(),
                 );
@@ -1031,6 +1047,8 @@ macro_rules! matches_opaque_ke {
                     let ke2 = Ke2::new(suite, &their_server.message.serialize()).unwrap();
                     let (ke3, session_key, login_export_key) =
                         client.finish(&ke2, &session).unwrap();
+                    ct::public_slice(session_key.as_ref());
+                    ct::public_slice(login_export_key.as_ref());
                     assert_eq!(login_export_key.as_ref(), export_key);
                     let their_key = their_server
                         .state
@@ -1062,6 +1080,7 @@ macro_rules! matches_opaque_ke {
                     assert_eq!(&finish.export_key[..], export_key);
                     let ke3 = Ke3::new(suite, &finish.message.serialize()).unwrap();
                     let session_key = server_login.finish(&ke3).unwrap();
+                    ct::public_slice(session_key.as_ref());
                     assert_eq!(session_key.as_ref(), &finish.session_key[..]);
                 }
 
