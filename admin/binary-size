@@ -3,9 +3,12 @@
 
 Usage: admin/binary-size [--write]
 
-Builds admin/build-cost-fixtures' `rind` and `rustls` programs in release, the
-latter over rind-rustls, and sums the sizes of the functions and tables that
-rind and rind-rustls define in each: what the linker kept of them.
+Builds admin/build-cost-fixtures' `rind` and `rustls` programs, the latter
+over rind-rustls, in release with one codegen unit, and sums the sizes of the
+functions and tables that rind and rind-rustls define in each: what the
+linker kept of them. One codegen unit keeps code no fixture calls from moving
+the sums, which the default sixteen let it do by shifting what rustc inlines;
+it measures a build about 0.5% smaller than a default release.
 
 Fails unless each sum is the one recorded for this host's target, so a change
 that grows or shrinks rind in a binary records the new size, with `--write`,
@@ -48,8 +51,8 @@ BUILDS = {"rind": [], "rustls": ["rind"]}
 
 HEADER = """\
 # Bytes of rind's and rind-rustls's functions and tables in each program of
-# admin/build-cost-fixtures, built in release, by target. `admin/binary-size`
-# checks them, and `just fix` records a change.
+# admin/build-cost-fixtures, built in release with one codegen unit, by
+# target. `admin/binary-size` checks them, and `just fix` records a change.
 """
 
 # A symbol rind or rind-rustls defines, by its demangled name: a path in the
@@ -72,6 +75,8 @@ def build_env():
     }
     # Empty, it also overrides the flags of a cargo configuration file.
     env["CARGO_ENCODED_RUSTFLAGS"] = ""
+    # One codegen unit, for the reason the docstring gives.
+    env["CARGO_PROFILE_RELEASE_CODEGEN_UNITS"] = "1"
     env["RUSTC_WRAPPER"] = str(Path(__file__).resolve())
     env["RIND_BINARY_SIZE_RUSTC"] = "1"
     env.pop("RUSTC_WORKSPACE_WRAPPER", None)
