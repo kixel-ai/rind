@@ -30,8 +30,10 @@ env:
 
 jobs:
   # One staged package, so every library and the published package share its
-  # lockfile.
+  # lockfile. Only a release stages it: before rind's version is on crates.io,
+  # as on a release branch, `cargo package` cannot resolve it.
   package:
+    if: inputs.ref
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -55,6 +57,8 @@ jobs:
   library:
     name: library (${{ matrix.name }})
     needs: package
+    # A release needs the staged package; the nightly skips it.
+    if: ${{ !cancelled() && (needs.package.result == 'success' || (!inputs.ref && needs.package.result == 'skipped')) }}
     strategy:
       fail-fast: false
       matrix:
