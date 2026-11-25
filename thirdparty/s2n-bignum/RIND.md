@@ -167,6 +167,8 @@ every instruction: a branch (`B`, `BL`, `BX`, or a load into PC) its jump to
 the next instruction, as s2n-bignum's other models' conditional branches do,
 and a load or store an access of no bytes at the address it would have used,
 which `memaccess_inbounds` accepts of any list of ranges that is not empty.
+Its length differs from a taken access's, so a condition that depends on a
+secret shows in the trace, as a branch's does.
 Such an instruction does not fault, wherever its address points, as the CPU
 transfers nothing, but one whose bytes would run past 0xffffffff leaves the
 model as if it ran, which is sound whatever the CPU does. R15 is an operand, the instruction's
@@ -191,7 +193,8 @@ uses the stack, of SP. Other loads and stores may be unaligned, as Linux and
 Android leave them. The step conversion decides `aarch32_nowrap a n`, that
 `n` bytes from `a` stay below 2^32, from `aligned 4` for a word, from the
 values the assumptions' `val x = n` give the address's terms, or from an
-assumption `aarch32_nowrap` of a region holding the transfer, as a theorem
+assumption `aarch32_nowrap` of a region holding the transfer, whose length
+may be symbolic where the assumptions' arithmetic bounds it, as a theorem
 states of each buffer and stack frame that an unaligned word or a transfer of
 more than one word reaches.
 

@@ -206,7 +206,9 @@ let AARCH32_NOWRAP_OFFSET = prove
 
 (* Decides `aarch32_nowrap a len` for a numeral `len`, after `addr_conv`
    rewrites `a` to its value, or fails. `aligned_ths` decide alignment, as
-   for the step's other guards, and `ths` are the assumptions. *)
+   for the step's other guards, and `ths` are the assumptions. A region's
+   length may be symbolic, such as a buffer's, if the assumptions' arithmetic
+   bounds it. *)
 
 let AARCH32_NOWRAP_CONV =
   let two32 = pow2 32 and word_tm = `word:num->int32`
@@ -235,6 +237,12 @@ let AARCH32_NOWRAP_CONV =
   let numeral_conv =
     REWR_CONV aarch32_nowrap THENC
     DEPTH_CONV(WORD_RED_CONV ORELSEC NUM_RED_CONV ORELSEC DIMINDEX_CONV) in
+  (* A comparison of numbers that shares a variable with `n`. *)
+  let arith_fact n c =
+    match c with
+      Comb(Comb(Const(("<=" | "<" | "="),_),x),_) ->
+        type_of x = `:num` && intersect (frees n) (frees c) <> []
+    | _ -> false in
   let decided th =
     match rhs(concl th) with
       Const("T",_) | Const("F",_) -> th
@@ -292,19 +300,28 @@ let AARCH32_NOWRAP_CONV =
              and by_region () =
                tryfind (fun th ->
                  match concl th with
-                   Comb(Comb(Const("aarch32_nowrap",_),r),n) when is_numeral n ->
+                   Comb(Comb(Const("aarch32_nowrap",_),r),n) ->
                      (match offset r with
                         Some b',d0 when b' = base ->
                           let dd = wrap(d -/ d0 +/ two32) in
-                          if dd +/ l >/ dest_numeral n then failwith "" else
+                          let goal = mk_binop `(<=):num->num->bool`
+                            (mk_binop `(+):num->num->num` (mk_numeral dd) len)
+                            n in
+                          let fit =
+                            if is_numeral n then
+                              if dd +/ l >/ dest_numeral n then failwith "" else
+                              EQT_ELIM(NUM_REDUCE_CONV goal)
+                            else
+                              let facts =
+                                filter (fun th -> arith_fact n (concl th)) ths in
+                              if facts = [] then failwith "" else
+                              MP (ARITH_RULE
+                                   (mk_imp(list_mk_conj(map concl facts),goal)))
+                                 (end_itlist CONJ facts) in
                           let eq = prove
                            (mk_eq(a,mk_binop `word_add:int32->int32->int32` r
                                       (mk_comb(word_tm,mk_numeral dd))),
                             REWRITE_TAC[WORD_ADD] THEN CONV_TAC WORD_RULE) in
-                          let fit = EQT_ELIM(NUM_REDUCE_CONV
-                            (mk_binop `(<=):num->num->bool`
-                              (mk_binop `(+):num->num->num` (mk_numeral dd) len)
-                              n)) in
                           let th' = MP (SPECL [r;n;mk_numeral dd;len]
                                           AARCH32_NOWRAP_OFFSET)
                                        (CONJ th fit) in
@@ -990,6 +1007,28 @@ let AARCH32_SUBROUTINE_TESTS =
     REWRITE_TAC[fst sum_exec] THEN
     REPEAT STRIP_TAC THEN
     AARCH32_SIM_TAC sum_exec [1]) in
+  (* ldr r0, [r1, #4], then #8, in a region of symbolic length at least 8
+     that nothing aligns: the first word fits, and the second is not known
+     to, so its step fails. *)
+  let region name word =
+    let mc = define name [word] in
+    let exec = AARCH32_MK_EXEC_RULE mc in
+    prove
+     (vsubst [lhs(concl mc),`code:byte list`]
+       `!pc (a:int32) n.
+          aarch32_nowrap a n /\ 8 <= n
+          ==> ensures aarch32
+            (\s. aligned_bytes_loaded s (word pc) code /\
+                 read PC s = word pc /\ read R1 s = a)
+            (\s. read PC s = word (pc + 4))
+            (MAYCHANGE [PC] ,, MAYCHANGE [R0] ,, MAYCHANGE [events])`,
+      REWRITE_TAC[fst exec] THEN
+      REPEAT STRIP_TAC THEN
+      AARCH32_SIM_TAC exec [1]) in
+  let region4 = region "aarch32_test_region_mc" 0xe5910004 in
+  let () =
+    if can (region "aarch32_test_region_past_mc") 0xe5910008 then
+      failwith "AARCH32_SUBROUTINE_TESTS: a word past a region decided" in
   (* One instruction stepped with R0 at an address near the top of memory,
      and Z set: whether its step leaves the model. *)
   let leaves name word r0 =
@@ -1027,4 +1066,5 @@ let AARCH32_SUBROUTINE_TESTS =
        unaligned address, but one past the top still leaves the model. *)
     "aarch32_test_skipped_ldrd_mc",0x11c040d0,0xfffffff5,false;
     "aarch32_test_skipped_wrap_mc",0x11c040d0,0xfffffffd,true] in
-  [nostack; stack; literal; offset; before; untaken; rrx; skipped; sum];;
+  [nostack; stack; literal; offset; before; untaken; rrx; skipped; sum;
+   region4];;
