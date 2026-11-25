@@ -2247,3 +2247,25 @@ let CHACHA_LAST = prove
      (fun th -> GEN_REWRITE_TAC (BINOP_CONV o ONCE_DEPTH_CONV) [th]) THENL
      [CHACHA_ARITH_TAC; ALL_TAC] THEN
     REWRITE_TAC[READ_CHACHA_BNUM_SPLIT; ADD_CLAUSES] THEN ASM_REWRITE_TAC[]]);;
+
+(* ------------------------------------------------------------------------- *)
+(* The main loop, from group g's 0x618 to the byte loop's exit at 0x9cf.     *)
+(* ------------------------------------------------------------------------- *)
+
+let CHACHA_LOOP_GOAL =
+  let tm = mk_imp(mk_conj(CHACHA_GROUP_HYPS, `256 * g < n /\ n <= 256 * (g + k + 1)`),
+   list_mk_icomb "ensures" [`x86`; chacha_group `g:num`; CHACHA_DONE; CHACHA_GROUP_FRAME]) in
+  let fv = subtract (frees tm) [`k:num`; `g:num`] in
+  mk_forall(`k:num`, list_mk_forall(fv @ [`g:num`], tm));;
+
+let CHACHA_LOOP = prove
+ (CHACHA_LOOP_GOAL,
+  INDUCT_TAC THEN REPEAT GEN_TAC THEN STRIP_TAC THEN
+  ASM_CASES_TAC `n <= 256 * g + 256` THEN
+  TRY(MATCH_MP_TAC CHACHA_LAST THEN ASM_REWRITE_TAC[] THEN NO_TAC) THENL
+   [ASM_ARITH_TAC; ALL_TAC] THEN
+  MATCH_MP_TAC ENSURES_TRANS_SIMPLE THEN EXISTS_TAC (chacha_group `g + 1`) THEN
+  REPEAT CONJ_TAC THENL
+   [REWRITE_TAC[SOME_FLAGS] THEN MAYCHANGE_IDEMPOT_TAC;
+    MATCH_MP_TAC CHACHA_STEP THEN ASM_REWRITE_TAC[] THEN ASM_ARITH_TAC;
+    FIRST_X_ASSUM MATCH_MP_TAC THEN ASM_REWRITE_TAC[] THEN ASM_ARITH_TAC]);;
