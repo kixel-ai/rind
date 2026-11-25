@@ -7,7 +7,8 @@ open Aeneas Aeneas.Std Result rind.spec Spec Spec.MLKEM rind.spec.mlkem
 s2n-bignum has no routine for ML-KEM's 12-bit unpacking on aarch64, so rind
 runs `low::generic::mlkem`'s Rust there; x86_64 runs it too without AVX2, and
 with AVX2 runs s2n-bignum's instead. Ciphertext compression on aarch64 is
-mlkem-native's NEON assembly, which HOL Light proves.
+mlkem-native's NEON assembly, which HOL Light proves; `admin/prove bytes`
+does not yet check rind's build against that proof.
 
 * `mlkem_frombytes_spec`: `mlkem_frombytes` unpacks each 12-bit field of its
   bytes as it is, so in `[0, 4096)`; each is congruent modulo `q` to
