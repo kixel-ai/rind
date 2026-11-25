@@ -123,7 +123,8 @@ impl fmt::Debug for Suite {
 /// OPAQUE-3DH over ristretto255 with SHA-512, HKDF-SHA-512, and HMAC-SHA-512,
 /// stretching with RFC 9807's Argon2id: 2 GiB, one pass, and four lanes.
 ///
-/// Messages and keys are 32 bytes, and session and export keys 64.
+/// Elements, scalars, and public keys are 32-byte encodings, which makes KE1
+/// 96 bytes and KE2 320; session and export keys are 64 bytes.
 pub static RISTRETTO255_SHA512_ARGON2ID: Suite = Suite {
     group: GroupId::Ristretto255,
     stretch: Stretch::Argon2id(Params::FIRST_RECOMMENDED.cost()),
@@ -133,8 +134,9 @@ pub static RISTRETTO255_SHA512_ARGON2ID: Suite = Suite {
 /// OPAQUE-3DH over P-256 with SHA-256, HKDF-SHA-256, and HMAC-SHA-256,
 /// stretching with RFC 9807's Argon2id: 2 GiB, one pass, and four lanes.
 ///
-/// Elements and keys are 33-byte compressed points, and session and export
-/// keys 32 bytes.
+/// Elements and public keys are 33-byte compressed points and scalars 32
+/// bytes, which makes KE1 98 bytes and KE2 259; session and export keys are
+/// 32 bytes.
 pub static P256_SHA256_ARGON2ID: Suite = Suite {
     group: GroupId::P256,
     stretch: Stretch::Argon2id(Params::FIRST_RECOMMENDED.cost()),
@@ -787,6 +789,7 @@ impl ServerSetup {
                 suite: ZeroableRef::new(self.suite()),
                 expected_client_mac: concat(&[expected_client_mac.as_ref()]),
                 session_key: keys.session_key.0.clone(),
+                registered: credential.record.is_some(),
             },
             Ke2(Message {
                 suite: self.suite(),
@@ -879,7 +882,9 @@ impl ClientRegistration {
     /// (RFC 9807 3.2 and 10.10).
     ///
     /// This runs the suite's Argon2id, which holds 2 GiB for the call, and
-    /// fails with [`Error::OutOfMemory`] if it cannot be allocated. The
+    /// fails with [`Error::OutOfMemory`] if that reservation fails. A host
+    /// that overcommits memory can grant it and still kill the process when
+    /// the pages are touched, so size the process's limit for it. The
     /// session's identities are bound into the record, so every login must
     /// pass the same ones. A response for another suite is refused with
     /// [`Error::Unsupported`], and identities that are too long with
@@ -1034,7 +1039,9 @@ impl ClientLogin {
     /// key, and the export key.
     ///
     /// This runs the suite's Argon2id, which holds 2 GiB for the call, and
-    /// fails with [`Error::OutOfMemory`] if it cannot be allocated. A wrong
+    /// fails with [`Error::OutOfMemory`] if that reservation fails. A host
+    /// that overcommits memory can grant it and still kill the process when
+    /// the pages are touched, so size the process's limit for it. A wrong
     /// password, other identities than registration bound, an unknown
     /// account, or a server that does not hold the record fails with
     /// [`Error::BadSignature`]; the server learns of it only when no valid
@@ -1157,6 +1164,11 @@ pub struct ServerLogin {
     suite: ZeroableRef<Suite>,
     expected_client_mac: Bytes<MAX_HASH>,
     session_key: Bytes<MAX_HASH>,
+    /// Whether the account had a record. A fake record's key is only secret
+    /// while the setup's fake public key has no known private part, which
+    /// [`ServerSetup::from_bytes`] cannot check, so an unknown account never
+    /// gets a session key whatever the KE3 says.
+    registered: bool,
 }
 
 impl ServerLogin {
@@ -1172,7 +1184,9 @@ impl ServerLogin {
         if ke3.suite() != self.suite() {
             return Err(Error::Unsupported);
         }
-        match ct::into_public(ct_equal(ke3.as_ref(), self.expected_client_mac.as_ref())) {
+        // The MAC is compared on both paths, so an unknown account takes as long.
+        let mac_ok = ct::into_public(ct_equal(ke3.as_ref(), self.expected_client_mac.as_ref()));
+        match mac_ok && self.registered {
             true => Ok(SessionKey(self.session_key.clone())),
             false => Err(Error::BadSignature),
         }
@@ -1343,9 +1357,10 @@ message!(
 /// and passes to every login, wiped on drop.
 ///
 /// It holds the client's public key, its envelope, and the masking key that
-/// hides the envelope from anyone who cannot guess the password. That makes
-/// it as sensitive as a password hash: one stolen allows an offline guessing
-/// attack, each guess paced by the suite's Argon2id.
+/// hides the envelope from anyone who cannot guess the password. Guessing
+/// needs the server's OPRF key too, so a stolen record alone allows no
+/// offline attack; with the setup it is as sensitive as a password hash, each
+/// guess paced by the suite's Argon2id. Protect both.
 pub struct RegistrationRecord {
     suite: ZeroableRef<Suite>,
     bytes: Bytes<MAX_RECORD>,
@@ -1356,7 +1371,7 @@ impl RegistrationRecord {
     /// public key that does not decode or is the identity, with
     /// [`Error::KeyRejected`].
     pub fn new(suite: &'static Suite, bytes: &[u8]) -> Result<Self, Error> {
-        let _entry = Entry::new_public();
+        let _entry = Entry::new_secret();
         with_ake!(suite, G => check_record::<G>(bytes))?;
         Ok(Self {
             suite: ZeroableRef::new(suite),
@@ -1419,8 +1434,10 @@ macro_rules! secret {
 }
 
 secret!(
-    /// The key a login agrees on, the suite's hash length, which both sides
-    /// get only once they authenticated each other.
+    /// The key a login agrees on, the suite's hash length. The client gets it
+    /// once it authenticated the server, before the server has checked the
+    /// KE3, so it does not show the server accepted the login; the server
+    /// gets it only once it verified the KE3.
     SessionKey
 );
 

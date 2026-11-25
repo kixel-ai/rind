@@ -460,6 +460,28 @@ fn unknown_account_is_refused() {
     }
 }
 
+/// A setup imported with a fake public key whose private part is known lets
+/// a client compute the MAC, which the server must still refuse.
+#[test]
+fn unknown_account_never_gets_a_session_key() {
+    for suite in SUITES {
+        let server = ServerSetup::generate(suite).unwrap();
+        let (_, ke1) = ClientLogin::start(suite, b"password").unwrap();
+        let credential = Credential {
+            identifier: b"nobody",
+            record: None,
+        };
+        let (server_login, _) = server
+            .login(&ke1, &credential, &Session::default())
+            .unwrap();
+        let forged = Ke3::new(suite, server_login.expected_client_mac.as_ref()).unwrap();
+        assert_eq!(
+            server_login.finish(&forged).err(),
+            Some(Error::BadSignature)
+        );
+    }
+}
+
 #[test]
 fn refuses_tampered_messages() {
     for suite in [&RISTRETTO255_IDENTITY, &P256_IDENTITY] {
@@ -517,14 +539,15 @@ fn refuses_tampered_messages() {
         let (server_login, ke2) = server.login(&ke1, &credential, &session).unwrap();
         let (ke3, _, _) = client.finish(&ke2, &session).unwrap();
         for i in 0..ke3.as_ref().len() {
-            let mut bytes = ke3.as_ref().to_vec();
-            bytes[i] ^= 1;
             let (client, ke1) = ClientLogin::start(suite, b"password").unwrap();
             let (server_login, ke2) = server.login(&ke1, &credential, &session).unwrap();
-            client.finish(&ke2, &session).unwrap();
+            let (ke3, _, _) = client.finish(&ke2, &session).unwrap();
+            let mut bytes = ke3.as_ref().to_vec();
+            bytes[i] ^= 1;
             assert_eq!(
                 server_login.finish(&Ke3::new(suite, &bytes).unwrap()).err(),
-                Some(Error::BadSignature)
+                Some(Error::BadSignature),
+                "byte {i}"
             );
         }
         server_login.finish(&ke3).unwrap();
