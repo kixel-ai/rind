@@ -381,7 +381,8 @@ impl PublicKey {
     }
 }
 
-#[cfg(any(test, rind_fips))]
+// Compiled as `crate::fips` is.
+#[cfg(all(any(test, rind_fips), feature = "ml-dsa", feature = "slh-dsa"))]
 impl PublicKey {
     /// The modulus length in bits: what the FIPS module checks against
     /// FIPS 186-5's sizes.

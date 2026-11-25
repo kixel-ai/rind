@@ -344,6 +344,8 @@ static STATE: Shared = Shared(UnsafeCell::new(State::CANARIES));
 
 /// Holds the lock every checked call runs under, so a test can fork with no
 /// other thread inside one: the child would inherit the lock held forever.
+/// Only `fips_rng`'s test forks, which builds with every algorithm.
+#[cfg(all(feature = "ml-dsa", feature = "slh-dsa"))]
 pub(crate) fn hold() -> std::sync::MutexGuard<'static, ()> {
     LOCK.lock().unwrap_or_else(PoisonError::into_inner)
 }
