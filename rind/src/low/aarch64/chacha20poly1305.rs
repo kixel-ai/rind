@@ -254,14 +254,18 @@ mod tests {
     type Seal = fn(&[u8; 32], &[u8; 12], &[u8], &mut [u8]) -> [u8; 16];
     type Open = fn(&[u8; 32], &[u8; 12], &[u8], &mut [u8], &[u8; 16]) -> bool;
 
-    /// Each one-pass path the CPU can run, by name.
-    fn paths() -> Vec<(&'static str, Seal, Open)> {
-        let mut paths: Vec<(&'static str, Seal, Open)> = vec![
-            ("aws-lc", seal_aws_lc, |key, nonce, aad, inout, tag| {
-                ct_equal(&open_aws_lc(key, nonce, aad, inout), tag)
-            }),
-            ("neon", seal_neon, open_neon),
-            ("dispatch", seal, open),
+    /// Each one-pass path the CPU can run, by name, and whether its open
+    /// may run VG's, which branches on whether the tag matched.
+    fn paths() -> Vec<(&'static str, Seal, Open, bool)> {
+        let mut paths: Vec<(&'static str, Seal, Open, bool)> = vec![
+            (
+                "aws-lc",
+                seal_aws_lc,
+                |key, nonce, aad, inout, tag| ct_equal(&open_aws_lc(key, nonce, aad, inout), tag),
+                false,
+            ),
+            ("neon", seal_neon, open_neon, true),
+            ("dispatch", seal, open, true),
         ];
         if HaveSve2::check().is_some() {
             paths.push((
@@ -272,6 +276,7 @@ mod tests {
                 |key, nonce, aad, inout, tag| {
                     open_sve2(HaveSve2::check().unwrap(), key, nonce, aad, inout, tag)
                 },
+                true,
             ));
         }
         paths
@@ -281,11 +286,15 @@ mod tests {
     // them, AAD lengths around their 16-byte blocks, and a long message, on
     // each path, against separate ChaCha20 and Poly1305 passes, under a key
     // `admin/ctgrind` keeps secret, and opening under a tag one bit off.
-    // Valgrind hides SVE2, so ctgrind checks aws-lc's and VG's NEON
-    // routines, and `ct_qemu_chacha20poly1305` VG's SVE2 ones.
+    // VG's open branches on whether the tag matched, which its contract
+    // allows and valgrind cannot tell from a leak, so a path that may run it
+    // opens under a public copy of the key, and `ct_qemu_chacha20poly1305`
+    // checks VG's routines instead, as it does those valgrind hides SVE2
+    // from.
     #[test]
     fn matches_separate_passes() {
-        let key = core::array::from_fn(|i| i as u8);
+        let public_key: [u8; 32] = core::array::from_fn(|i| i as u8);
+        let key = public_key;
         ct::secret_slice(&key);
         let nonce = core::array::from_fn(|i| (i * 7) as u8);
         let input: Vec<u8> = (0..16384 + 15).map(|i| (i * 13 + 5) as u8).collect();
@@ -297,7 +306,8 @@ mod tests {
             let mut sealed = input[..len].to_vec();
             let tag = ct::into_public(separate::seal(&key, &nonce, aad, &mut sealed));
             ct::public_slice(&sealed);
-            for (path, seal, open) in paths() {
+            for (path, seal, open, open_branches) in paths() {
+                let open_key = if open_branches { &public_key } else { &key };
                 let mut ours = input[..len].to_vec();
                 let ours_tag = ct::into_public(seal(&key, &nonce, aad, &mut ours));
                 ct::public_slice(&ours);
@@ -306,7 +316,7 @@ mod tests {
                     "{path} seal tag, {len} bytes, {aad_len} of AAD"
                 );
                 assert_eq!(ours, sealed, "{path} seal, {len} bytes, {aad_len} of AAD");
-                let valid = ct::into_public(open(&key, &nonce, aad, &mut ours, &tag));
+                let valid = ct::into_public(open(open_key, &nonce, aad, &mut ours, &tag));
                 ct::public_slice(&ours);
                 assert!(valid, "{path} open, {len} bytes, {aad_len} of AAD");
                 assert_eq!(
@@ -318,21 +328,23 @@ mod tests {
                 let mut wrong = tag;
                 wrong[len % 16] ^= 1 << (len % 8);
                 let mut forged = sealed.clone();
-                let valid = ct::into_public(open(&key, &nonce, aad, &mut forged, &wrong));
+                let valid = ct::into_public(open(open_key, &nonce, aad, &mut forged, &wrong));
                 assert!(!valid, "{path} forged, {len} bytes, {aad_len} of AAD");
             }
         }
     }
 
-    // Valgrind hides SVE2, so `admin/ctgrind` never reaches VG's routines;
-    // `admin/ct-qemu` traces them here instead, under qemu-aarch64's `max`
-    // CPU, with a secret key, nonce, AAD, message, and tag, opening under
-    // the right tag and a wrong one, which only the result may tell apart.
-    // The routines branch on the lengths into size-specialized kernels and
-    // tails. These lengths reach every basic block, of both routines and
-    // their callees, that qemu's exec log saw in 3,471 sampled pairs of
-    // lengths (messages to 8 KiB, AAD to 600 bytes), sealed, opened, and
-    // forged.
+    // Valgrind hides SVE2, and cannot tell VG's open's branch on whether the
+    // tag matched from a leak, so `admin/ct-qemu` traces VG's SVE2 and NEON
+    // routines here instead, under qemu-aarch64's `max` CPU, with a secret
+    // key, nonce, AAD, message, and tag, opening under the right tag and a
+    // wrong one, which only the result may tell apart. The routines branch
+    // on the lengths into size-specialized kernels and tails. These lengths
+    // reach every basic block, of both SVE2 routines and their callees, that
+    // qemu's exec log saw in 3,471 sampled pairs of lengths (messages to
+    // 8 KiB, AAD to 600 bytes), sealed, opened, and forged. The NEON
+    // routines branch as the SVE2 ones do, but for one kernel the NEON open
+    // lacks, and call VG's NEON ChaCha20 where those call its SVE2 one.
     #[test]
     #[ignore = "admin/ct-qemu runs it under qemu"]
     fn ct_qemu_chacha20poly1305() {
@@ -367,6 +379,14 @@ mod tests {
             )));
             assert!(!ct_qemu::traced(|| open_sve2(
                 sve2, &key, &nonce, &aad, &mut msg, &wrong
+            )));
+            let mut msg = bytes(msg_len);
+            let tag = ct_qemu::traced(|| seal_neon(&key, &nonce, &aad, &mut msg));
+            assert!(ct_qemu::traced(|| open_neon(
+                &key, &nonce, &aad, &mut msg, &tag
+            )));
+            assert!(!ct_qemu::traced(|| open_neon(
+                &key, &nonce, &aad, &mut msg, &wrong
             )));
         }
     }
