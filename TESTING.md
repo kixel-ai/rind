@@ -116,7 +116,7 @@ an Intel SDE CPU model, as `admin/x86-cpu` names them.
 | portable | riscv64gc Linux, glibc and musl | `just qemu riscv64` and `just qemu riscv64-musl`: as s390x | as above | as s390x |
 | portable | PowerPC Linux: powerpc64le, big-endian powerpc64 and powerpc | `just qemu powerpc64le`, `just qemu powerpc64`, and `just qemu powerpc`: as s390x | as above | as s390x; 32-bit powerpc's rolled HChaCha20 as i686 |
 | portable | ARM before ARMv7 (Raspberry Pi 1 and Zero) | `just qemu armv6` and `just qemu armv6-softfloat`: as s390x, on qemu's ARM1176; `build.yml`'s `android` job: ARMv5TE Android | as above | as i686 |
-| portable | wasm32-wasip2 | `just wasm`: release vectors, and rind-rustls's and rind-ring's tests, under wasmtime, in the nightly `build.yml`; no differential tests, since aws-lc does not build for wasm, and `just portable` runs the same Rust against it | as above | unchecked: a wasm engine compiles rind again, and its JIT may turn a select into a branch |
+| portable | wasm32-wasip2 and wasm32-unknown-unknown | `just wasm`: release vectors, and rind-rustls's and rind-ring's tests, under wasmtime, then the adapters' tests on the browser's target in Node, in the nightly `build.yml`; no differential tests, since aws-lc does not build for wasm, and `just portable` runs the same Rust against it | as above | unchecked: a wasm engine compiles rind again, and its JIT may turn a select into a branch |
 
 ## Vector suites
 
@@ -340,41 +340,34 @@ Binding fuzz targets: `fuzz::dart`, `fuzz::python`, `fuzz::fips`.
 
 ## Coverage
 
-`nix develop .#coverage --command admin/coverage` measures how much of the
-published code its own tests run: the `rind` crate and its adapters under
-`cargo test`, rind-dart under `dart test`, and pyrind under
-`sh/python.sh test`, leaving out the tools (rind-bench, rind-cpuid,
-rind-timing, and the fuzzer). A function it lists as never run is published
-code no test reaches. It runs the suites as the nightly jobs do, with
-`SLOW_TESTS=1`, and again with CPU features denied (on x86_64, under Intel
-SDE too), so a plain `cargo llvm-cov` reports less. The
-nightly `coverage` workflow runs it on Linux and macOS; the summary table in
-its "Measure coverage" step's log is the report, and the list after it
-names where each function no test ran starts.
+`nix develop .#coverage --command admin/coverage [TIER]` measures how much of
+the published code its own tests run on one tier: the `rind` crate and its
+adapters under `cargo test`, and on the native tier also rind-dart under
+`dart test` and pyrind under `sh/python.sh test`, leaving out the tools
+(rind-bench, rind-cpuid, rind-timing, and the fuzzer). The native tier runs
+the suites as the nightly jobs do, with `SLOW_TESTS=1`, and again under each
+CPU tier `build.yml` tests (on x86_64, under Intel SDE too), so a plain
+`cargo llvm-cov` reports less; `portable` forces the portable backend on
+x86_64 Linux, and `armv7` runs `just armv7`'s three tiers.
 
-A function only one architecture compiles counts as run when that
-architecture's report runs it. These stay unrun, each for a reason:
-
-- Functions only constant evaluation runs, such as a table builder behind a
-  `const`, are marked `coverage(off)` with a comment saying so, as are
-  test-only modules.
-- What only a CPU neither runner has reaches: pyca/verified-garbage's SVE2
-  ChaCha20-Poly1305 (`seal_sve2` and `open_sve2` in
-  `low/aarch64/chacha20poly1305.rs`), since macOS's Apple cores lack SVE2,
-  which build.yml's arm64 job tests natively and `admin/ct-qemu` traces;
-  and `mcdt::denied`, which only an Intel CPU reporting `MCDT_NO` asks,
-  a bit SDE sets for no model.
-- `VpaesDecKey`'s wipe on x86_64 and aarch64: only `AesDecKey` holds one,
-  and its drop wipes the whole enum first, so drop glue then finds another
-  variant. The key keeps its own wipe, as every key type does.
-- Error mappings for a failure no test can cause: the system random source
-  failing, signing failing with a key that loaded, a message past a cipher's
-  length limit or `isize::MAX`, and rind-object-store's arm for an
-  algorithm a later object_store adds.
-- The unpublished crates, rind-fips and rind-openssl, and `rind`'s FIPS
-  code (`fips`, `fips_rng`, and what only they call, such as
-  `rsa::PublicKey::modulus_bits`), which its unit tests compile but only
-  rind-fips runs.
+The nightly `coverage` workflow measures the native tier on x86_64 Linux,
+aarch64 Linux, and macOS, the portable tier, and armv7, then its `gate` job
+merges them with `admin/coverage-gate check`, counting a function, region,
+or branch as run when any tier runs it. It fails on a published function no
+tier runs, unless [admin/coverage.allow](admin/coverage.allow) says why none
+can, and on a file whose uncovered regions, uncovered branch sides, or
+monomorphization gaps (copies of a generic or closure that ran, such as an
+instantiation for a type no test uses) rise past
+[admin/coverage.baseline](admin/coverage.baseline). That leaves out the
+regions and branches of rind's backends (`rind/src/low/`), which vary with
+the CPU the hosted runner draws, Intel or AMD, with or without AVX-512 IFMA,
+and with thread races; the functions and copies each tier runs there are the
+same from run to run, so they still count. Its log lists each
+unrun function and gap as `path:line`, each tier's log carries llvm-cov's
+table, and its `coverage.baseline` artifact holds the run's counts, to
+commit when tests cover more. A test module's functions don't count, and
+functions only constant evaluation runs, such as a table builder behind a
+`const`, are marked `coverage(off)` with a comment saying so.
 
 ## Running the tools
 
@@ -387,6 +380,11 @@ the nightly `qemu` job, which lints and tests the portable backend: `s390x`
 `armv6-softfloat` (the Raspberry Pi 1's core), or `powerpc64le`, `powerpc64`,
 and `powerpc` (the last two big-endian) under qemu, or `i686` (32-bit x86)
 natively.
+`just powerset` runs the `lints` workflow's `powerset` job, nightly and on
+dispatch, never on pull requests: clippy over each published crate's library
+under every combination of its Cargo features, through cargo-hack, with the
+features that change nothing, those that turn on nothing and that no code
+names, toggled together as one.
 `just miri` runs the weekly `miri` job, the portable backend's tests under
 Miri, on x86_64, `just miri s390x-unknown-linux-gnu` big-endian, and
 `just miri i686-unknown-linux-gnu` on 32-bit x86.
