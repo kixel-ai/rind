@@ -81,7 +81,7 @@ quest = "/quest/m2/speed/aarch64-chacha20-poly1305-neon.md"
 [[gap]]
 operations = ["sha512/*"]
 on = ["kixtop"]
-quest = "/quest/m2/speed/aarch64-sha512-vg.md"
+reason = "`kixtop`'s data predates rind running verified-garbage's `vg_sha512_compress_sha512` on the SHA-512 instructions, which under rind's glue took 0.81 to 0.88 of aws-lc's routine's time at every block count on an Apple M5 Pro and 0.96 to 0.97 on the weekly tier's Neoverse N2 ([run 45582697087](https://github.com/kixel-ai/rind/actions/runs/45582697087)), so its next refresh should close this gap."
 
 [[gap]]
 operations = ["p256-ecdsa-verify/*"]

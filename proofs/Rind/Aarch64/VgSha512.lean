@@ -41,15 +41,19 @@ axiom vg_sha512_compress_sha512_spec (c : low.aarch64.cpu.HaveSha3)
       r.val.map (·.bv) =
         (VG.Spec.Sha512.compressList H (blocks.val.map (·.bv)) (blocks.val.length / 128)).toList ⦄
 
+private theorem map_bv_injective : Function.Injective (List.map (fun x : U64 => x.bv)) :=
+  List.map_injective_iff.2 fun x y h => by cases x; cases y; simp_all
+
 /-- The wrapper computes rind's `compress`. -/
 @[step]
 theorem compress_hw_spec (c : low.aarch64.cpu.HaveSha3) (state : Std.Array U64 8#usize)
     (blocks : Slice U8) (hm : blocks.length % 128 = 0) :
     low.aarch64.sha512.compress_hw c state blocks ⦃ r => r.val = compress state.val blocks.val ⦄ := by
   apply WP.spec_mono (vg_sha512_compress_sha512_spec c state blocks
-    ⟨(state.val.map (·.bv)).toArray, by simpa using state.property⟩ rfl hm)
+    ⟨(state.val.map (·.bv)).toArray, by simp⟩ rfl hm)
   intro r hr
-  apply List.map_injective_iff.2 fun x y h => by cases x; cases y; simp_all
-  rw [hr, vg.sha512_compressList blocks.val state.val _ rfl]
+  apply map_bv_injective
+  rw [hr]
+  exact vg.sha512_compressList blocks.val state.val _ rfl
 
 end rind.aarch64
