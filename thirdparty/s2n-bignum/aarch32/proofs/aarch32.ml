@@ -248,7 +248,8 @@ let AARCH32_CONV (decode_ths:thm option array) (ths:thm list) tm =
         NORMALIZE_RELATIVE_ADDRESS_CONV)) in
   (K eth THENC
    REWRITE_CONV
-    ([aarch32_execute; aarch32_cond; SEQ] @ AARCH32_INSTRUCTIONS) THENC
+    ([aarch32_execute; aarch32_cond; aarch32_cond_branch; SEQ] @
+     AARCH32_INSTRUCTIONS) THENC
    REWRITE_CONV[LET_DEF; LET_END_DEF] THENC
    TOP_DEPTH_CONV BETA_CONV THENC
    REWRITE_CONV AARCH32_CONDITION_CLAUSES THENC
@@ -713,4 +714,19 @@ let AARCH32_SUBROUTINE_TESTS =
     REWRITE_TAC[fst before_exec] THEN
     REPEAT STRIP_TAC THEN
     AARCH32_SIM_TAC before_exec [1;2]) in
-  [nostack; stack; literal; offset; before];;
+  (* blne #0 with Z set: a branch not taken records its fall-through. *)
+  let untaken_mc = define "aarch32_test_untaken_mc" [0x1b000000] in
+  let untaken_exec = AARCH32_MK_EXEC_RULE untaken_mc in
+  let untaken = prove
+   (`!pc e.
+      ensures aarch32
+        (\s. aligned_bytes_loaded s (word pc) aarch32_test_untaken_mc /\
+             read PC s = word pc /\ read ZF s /\ read events s = e)
+        (\s. read PC s = word (pc + 4) /\
+             read events s =
+               CONS (EventJump (word pc:int32,word (pc + 4))) e)
+        (MAYCHANGE [PC] ,, MAYCHANGE [events])`,
+    REWRITE_TAC[fst untaken_exec] THEN
+    REPEAT STRIP_TAC THEN
+    AARCH32_SIM_TAC untaken_exec [1]) in
+  [nostack; stack; literal; offset; before; untaken];;

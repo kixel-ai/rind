@@ -185,6 +185,17 @@ let aarch32_cond = define
  `aarch32_cond (cond:4 word) (i:aarch32state->aarch32state->bool) =
     \s. if aarch32_condition cond s then i s else (=) s`;;
 
+(* A branch under such a condition: when the condition fails, it records the
+   jump to the next instruction, as B does and as the other models'
+   conditional branches do, so every branch leaves the same event shape. *)
+
+let aarch32_cond_branch = define
+ `aarch32_cond_branch (cond:4 word) (i:aarch32state->aarch32state->bool) =
+    \s. if aarch32_condition cond s then i s
+        else (events := CONS (EventJump (word_sub (read PC s) (word 4),
+                                         read PC s))
+                             (read events s)) s`;;
+
 (* ------------------------------------------------------------------------- *)
 (* Shifted-register operands and their carry out: the pseudocode's Shift_C. *)
 (* Each is a read-only component; the decoder picks the shift and amount,    *)

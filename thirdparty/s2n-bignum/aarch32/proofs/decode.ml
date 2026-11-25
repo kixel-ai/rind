@@ -25,6 +25,15 @@ let aarch32_conditional = new_definition
     else if cond = word 14 then SOME i
     else SOME (aarch32_cond cond i)`;;
 
+(* A branch under `cond`, which records its fall-through when not taken. *)
+
+let aarch32_conditional_branch = new_definition
+ `aarch32_conditional_branch (cond:4 word)
+                             (i:aarch32state->aarch32state->bool) =
+    if cond = word 15 then NONE
+    else if cond = word 14 then SOME i
+    else SOME (aarch32_cond_branch cond i)`;;
+
 (* DecodeImmShift and Shift_C for an immediate shift of Rm: its value, and
    which bit of Rm is the carry out. LSL #0 leaves Rm and C as they are. *)
 
@@ -163,7 +172,7 @@ let aarch32_dp_rsr = new_definition
     if m = word 15 then NONE else
     if ~S /\ opc = word 9 then
       if d = word 15 /\ n = word 15 /\ s = word 15 /\ ty = word 0
-      then aarch32_conditional cond (aarch32_BX (aarch32_reg m))
+      then aarch32_conditional_branch cond (aarch32_BX (aarch32_reg m))
       else NONE
     else if n = word 15 \/ s = word 15 then NONE
     else aarch32_dp cond opc S d n (aarch32_reg n)
@@ -183,7 +192,7 @@ let aarch32_ldst = new_definition
     then NONE else
     if t = word 15 then
       if L /\ ~B
-      then aarch32_conditional cond
+      then aarch32_conditional_branch cond
             (aarch32_LDR_PC (aarch32_reg n) Roff P (~P \/ W))
       else NONE
     else
@@ -291,7 +300,8 @@ let aarch32_ldstm = new_definition
     if l = word 0 \/ n = word 15 \/ (W /\ bit (val n) l) \/ bit 13 l \/
        (~L /\ bit 15 l)
     then NONE else
-    aarch32_conditional cond
+    (if L /\ bit 15 l then aarch32_conditional_branch
+     else aarch32_conditional) cond
      (if L then
         if bit 15 l then
           aarch32_LDM_PC (aarch32_reglist l) (aarch32_reg n)
@@ -392,7 +402,7 @@ let decode = new_definition
     | [cond:4; 0b101:3; L; imm24:24] ->
         if cond = word 15 then NONE
         else if L
-        then aarch32_conditional cond
+        then aarch32_conditional_branch cond
               (aarch32_BL (aarch32_branch_offset imm24))
         else SOME (aarch32_B cond (aarch32_branch_offset imm24))
     | _ -> NONE`;;
@@ -424,7 +434,8 @@ let DECODE_OPTION_CONV =
     word_compute_add_convs rw;
     num_compute_add_convs rw;
     add_conv (`_MATCH:A->(A->B->bool)->B`, 2, MATCH_CONV) rw;
-    add_thms [aarch32_reg; aarch32_src; aarch32_conditional; aarch32_shifted;
+    add_thms [aarch32_reg; aarch32_src; aarch32_conditional;
+              aarch32_conditional_branch; aarch32_shifted;
               aarch32_shifted_carry; aarch32_shifted_reg;
               aarch32_shifted_reg_carry; aarch32_expand_imm;
               aarch32_expand_imm_carry; aarch32_dp; aarch32_dp_rsr;
@@ -507,9 +518,11 @@ let AARCH32_DECODE_TESTS =
     `decode (word 0xebfffffe)`,                (* bl . *)
       `SOME (aarch32_BL (word 0))`;
     `decode (word 0x1b000001)`,                (* blne .+12 *)
-      `SOME (aarch32_cond (word 1) (aarch32_BL (word 12)))`;
+      `SOME (aarch32_cond_branch (word 1) (aarch32_BL (word 12)))`;
     `decode (word 0xe12fff1e)`,                (* bx lr *)
       `SOME (aarch32_BX LR)`;
+    `decode (word 0x112fff1e)`,                (* bxne lr *)
+      `SOME (aarch32_cond_branch (word 1) (aarch32_BX LR))`;
     `decode (word 0xe4d0c001)`,                (* ldrb r12, [r0], #1 *)
       `SOME (aarch32_LDRB R12 R0 (rvalue (word 1)) F T)`;
     `decode (word 0xe5b2e004)`,                (* ldr lr, [r2, #4]! *)
@@ -523,6 +536,9 @@ let AARCH32_DECODE_TESTS =
       `SOME (aarch32_LDR R8 aarch32_R15 (rvalue (word 0x4ec)) T F)`;
     `decode (word 0xe59df1b8)`,                (* ldr pc, [sp, #0x1b8] *)
       `SOME (aarch32_LDR_PC SP (rvalue (word 0x1b8)) T F)`;
+    `decode (word 0x159df1b8)`,                (* ldrne pc, [sp, #0x1b8] *)
+      `SOME (aarch32_cond_branch (word 1)
+              (aarch32_LDR_PC SP (rvalue (word 0x1b8)) T F))`;
     `decode (word 0xe7d12002)`,                (* ldrb r2, [r1, r2] *)
       `SOME (aarch32_LDRB R2 R1 R2 T F)`;
     `decode (word 0xe7203102)`,                (* str r3, [r0, -r2, lsl #2]! *)
@@ -536,6 +552,12 @@ let AARCH32_DECODE_TESTS =
               (word 0xfffffff8) T)`;
     `decode (word 0xe8bd8010)`,                (* pop {r4, pc} *)
       `SOME (aarch32_LDM_PC [R4] SP (word 0) (word 4) 8 (word 8) T)`;
+    `decode (word 0x18bd8010)`,                (* popne {r4, pc} *)
+      `SOME (aarch32_cond_branch (word 1)
+              (aarch32_LDM_PC [R4] SP (word 0) (word 4) 8 (word 8) T))`;
+    `decode (word 0x18bd0010)`,                (* popne {r4} *)
+      `SOME (aarch32_cond (word 1)
+              (aarch32_LDM [R4] SP (word 0) 4 (word 4) T))`;
     `decode (word 0xe89c0030)`,                (* ldm r12, {r4, r5} *)
       `SOME (aarch32_LDM [R4; R5] R12 (word 0) 8 (word 8) F)`;
     `decode (word 0xe9800006)`,                (* stmib r0, {r1, r2} *)

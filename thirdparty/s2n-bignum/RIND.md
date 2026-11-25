@@ -160,24 +160,28 @@ the event trace s2n-bignum's safety proofs read.
 | `BX` | |
 | `NOP`, `DMB` | `DMB` under any option |
 
-Each but `DMB` takes any condition but the unconditional space. R15 is an
-operand, the instruction's address plus 8, of a data-processing instruction
-with an immediate or an immediate shift, as `ADR` is, and the base of a word
-load, a literal load. It is a destination only of a word load from another
-base with an immediate offset and of `LDM`, each a branch. The decoder
-refuses everything else: Thumb, R15 anywhere else, `LDRT` and the other
-unprivileged forms, write-back to a transferred register, SP in an `LDM` or
-`STM` list, the flag-setting multiplies, `BLX`, and every other encoding.
+Each but `DMB` takes any condition but the unconditional space. An instruction
+whose condition fails changes nothing, but a branch (`B`, `BL`, `BX`, or a
+load into PC) then records its jump to the next instruction, as s2n-bignum's
+other models' conditional branches do. R15 is an operand, the instruction's
+address plus 8, of a data-processing instruction with an immediate or an
+immediate shift, as `ADR` is, and the base of a word load, a literal load. It
+is a destination only of a word load from another base with an immediate
+offset and of `LDM`, each a branch. The decoder refuses everything else:
+Thumb, R15 anywhere else, `LDRT` and the other unprivileged forms, write-back
+to a transferred register, SP in an `LDM` or `STM` list, the flag-setting
+multiplies, `BLX`, and every other encoding.
 
 A step either has one next state or, where the instruction would leave what
 the model holds, any: a proof that reaches such a step proves nothing, as in
 s2n-bignum's other models. That is `BX`, or a load into PC, of a target not
 aligned to four bytes, which enters Thumb when its bit 0 is set and is
-otherwise unpredictable, and `LDRD`, `STRD`, `LDM`, `STM`, or a load into PC
-at an address not aligned to four bytes, which faults. So a subroutine's
-theorem assumes `aligned 4` of its return address and, where it uses the
-stack, of SP. Other loads and stores may be unaligned, as Linux and Android
-leave them.
+otherwise unpredictable; `LDRD`, `STRD`, `LDM`, or `STM` at an address not
+aligned to four bytes, which faults; and `LDR` into PC from such an address,
+which is unpredictable where unaligned loads are allowed, not a fault. So a
+subroutine's theorem assumes `aligned 4` of its return address and, where it
+uses the stack, of SP. Other loads and stores may be unaligned, as Linux and
+Android leave them.
 
 `AARCH32_MK_EXEC_RULE` gives a word that does not decode no theorem rather
 than failing, since A32 routines keep literal pools and tables among their
