@@ -8,7 +8,7 @@ open Aeneas Aeneas.Std Result rind.spec rind.spec.rsa
 `low::x86_64::mont_exp` raises `x` to `e` in the Montgomery domain by a
 5-bit fixed window over a table of the 32 powers of `x`, gathering each
 window's entry by reading every row. With BMI2 and ADX at 16 and 32 words,
-the width RSA-2048's and RSA-4096's primes take, it squares and multiplies by
+the width balanced RSA-2048 and RSA-4096 primes take, it squares and multiplies by
 rind's Montgomery products, which `MontProducts` states, and gathers by
 `Rind.X86_64.RsaGather`'s proven gather; `mont_exp_by_spec` proves that path.
 At every other width that is a multiple of eight, and at 16 and 32 without
