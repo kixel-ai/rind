@@ -2162,12 +2162,13 @@ def methodology(hosts, shown):
         "library sets DIT.",
         "",
         "To time a row without Nix, install the pinned toolchain and run its bench target, here AES-128-GCM's "
-        "rows. aws-lc-rs and ring need a C compiler, and `--features __bench_openssl`, which adds OpenSSL's "
-        "column on Unix, needs OpenSSL 3's headers and pkg-config.",
+        "rows. aws-lc-rs and ring need a C compiler, and on Unix the OpenSSL column needs OpenSSL 3's headers "
+        "and pkg-config.",
         "",
         "```sh",
         f"rustup toolchain install {toolchain}",
-        f"cargo +{toolchain} bench -p rind-bench --bench aes_gcm -- {criterion} '^aes128-gcm/'",
+        f"cargo +{toolchain} bench -p rind-bench --features __bench_openssl --bench aes_gcm -- {criterion} "
+        "'^aes128-gcm/'",
         "```",
         "",
         "### Versions",

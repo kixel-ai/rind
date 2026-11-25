@@ -238,8 +238,8 @@ module compat '^(COMPATIBILITY\.md$|admin/x86-cpus?(/|$))' \
     tools='python3' fix
 # BENCHMARKS.md and the README's comparison are generated from the results,
 # the verified-code table, and the gap decisions, which link the quests that
-# close them.
-module bench '^(BENCHMARKS\.md$|README\.md$|benchmarks/|admin/bench-report|quest/)' \
+# close them. Its reproduction command names flake.nix's pinned toolchain.
+module bench '^(BENCHMARKS\.md$|README\.md$|benchmarks/|admin/bench-report|quest/|flake\.nix$)' \
     tools='python3'
 # The landing page reads and links files across the repository, and its build
 # takes seconds, so it runs on every diff rather than keep a list.
