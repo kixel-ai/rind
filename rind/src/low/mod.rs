@@ -320,8 +320,8 @@ pub(crate) use generic::mldsa_poly::{
 #[cfg(any(rind_backend = "arm", rind_backend = "portable"))]
 pub(crate) use generic::{
     bignum::{
-        bignum_add, bignum_bitsize, bignum_cmp_lt, bignum_coprime, bignum_copy_row_from_table,
-        bignum_ctz, bignum_digitsize, bignum_modsub, bignum_negmodinv, bignum_optsub,
+        bignum_add, bignum_bitsize, bignum_cmp_lt, bignum_copy_row_from_table, bignum_ctz,
+        bignum_digitsize, bignum_modsub, bignum_negmodinv, bignum_optsub,
     },
     chacha20poly1305,
     limbs::mont::{bignum_montifier, bignum_montredc, bignum_mul},
@@ -341,6 +341,7 @@ pub(crate) use generic::{
         bignum_mod_n521, bignum_mul_p521, bignum_neg_p521, bignum_sqr_p521, p521_jadd,
         p521_jdouble, p521_jmixadd, p521_jscalarmul, p521_public_twin_multiply,
     },
+    limbs::safegcd::bignum_coprime,
     mlkem::{
         mlkem_compress_d4, mlkem_compress_d5, mlkem_compress_d10, mlkem_compress_d11,
         mlkem_frombytes, mlkem_unpack,

@@ -58,6 +58,11 @@ A primitive is checked five ways:
   operation frees: it runs each under two keys with the same public inputs
   and fails on a freed block whose bytes differ between them, since those
   vary with the key, and fails on any nonzero block key generation frees.
+  A randomized protocol step that frees public values its randomness
+  reached, such as a VOPRF proof's terms, fails instead on a freed block
+  holding one of the step's secrets, such as its key or output, in either
+  byte order. Refused inputs, such as a forged ciphertext or a corrupt key,
+  run through the same checks.
   It runs wherever the zeroing tests do, RSA key generation only in the
   nightly native and portable runs, and on wasm only for RSA-2048.
 
@@ -105,7 +110,7 @@ an Intel SDE CPU model, as `admin/x86-cpu` names them.
 | armv7 | crypto extension (most 32-bit Android) | `just armv7`: natively on an aarch64 host whose AArch32 has the extension, such as `build.yml`'s arm64 runner, else qemu `max` | the arm64 runner, which runs armv7 natively | `admin/ct-qemu`: AES, AES-CBC, AES-KW, AES-GCM, HMAC |
 | armv7 | NEON without the crypto extension | `just armv7`: qemu Cortex-A15 | denied | ctgrind on the arm64 runner, which valgrind hides the crypto extension from |
 | armv7 | no NEON | `just armv7`: denied, natively on an aarch64 host that runs AArch32 code, else on qemu Cortex-A15 | denied | ctgrind: denied (`no-neon`) |
-| portable | forced on x86_64 (`--cfg rind_portable`) | `just portable`: clippy and release vectors and differential tests | `fuzz.yml`'s `fuzz-portable` job: every target, from the x86_64 corpus and a corpus of its own | ctgrind: the `portable` job forces this backend |
+| portable | forced on x86_64 (`--cfg rind_portable`) | `just portable`: clippy and release vectors and differential tests | `fuzz.yml`'s `fuzz-portable` job: every target, from the x86_64 corpus and a corpus of its own | ctgrind: the `portable` job forces this backend, in release and debug builds; the schedule skips the 32-bit limbs' debug row, which a dispatch naming it runs |
 | portable | 32-bit x86 (`i686`) | `just qemu i686`: clippy and release vectors and differential tests, natively on an x86_64 host; `build.yml`'s `i686-windows` and `android` jobs | the forced run's, of the same code built for x86_64 | ctgrind's forced run, of the same code built for x86_64, whose test binary also compiles the 32-bit rolled HChaCha20 and checks it in `low::generic::chacha20::rolled_hchacha_matches_rounds` |
 | portable | big-endian s390x | `just qemu s390x`: clippy and release vectors and differential tests under qemu | as above | ctgrind's forced run, of the same code built for x86_64 |
 | portable | riscv64gc Linux, glibc and musl | `just qemu riscv64` and `just qemu riscv64-musl`: as s390x | as above | as s390x |
@@ -231,7 +236,7 @@ secret names a zeroing test, or says why it has none.
 | SLH-DSA signing | `slh_dsa::{KeyPair, ParameterSet, Signature, SlhDsaSha2_128s, SlhDsaSha2_128f, SlhDsaSha2_192s, SlhDsaSha2_192f, SlhDsaSha2_256s, SlhDsaSha2_256f, SlhDsaShake128s, SlhDsaShake128f, SlhDsaShake192s, SlhDsaShake192f, SlhDsaShake256s, SlhDsaShake256f}` | ACVP: `mid::slhdsa::acvp_key_gen`, `mid::slhdsa::acvp_sig_gen`; RFC 9909's examples: `high::signature::tests::slh_dsa_rfc9909` | `fuzz::keys`, against RustCrypto's, which signs with each key it loads | `crosschecks::slh_dsa_sha2_128s::sign_verify`, `crosschecks::slh_dsa_sha2_128f::sign_verify`, `crosschecks::slh_dsa_sha2_192s::sign_verify`, `crosschecks::slh_dsa_sha2_192f::sign_verify`, `crosschecks::slh_dsa_sha2_256s::sign_verify`, `crosschecks::slh_dsa_sha2_256f::sign_verify`, `crosschecks::slh_dsa_shake_128s::sign_verify`, `crosschecks::slh_dsa_shake_128f::sign_verify`, `crosschecks::slh_dsa_shake_192s::sign_verify`, `crosschecks::slh_dsa_shake_192f::sign_verify`, `crosschecks::slh_dsa_shake_256s::sign_verify`, `crosschecks::slh_dsa_shake_256f::sign_verify`, against RustCrypto's and fips205's, in release builds only | RustCrypto's `slh-dsa` and `fips205` | ctgrind: SK.seed and SK.prf, from `mid::slhdsa::from_seeds` and `mid::slhdsa::from_secret_key`, and every value derived from them; the debug build checks only the 128f sets | `zeroing::slh_dsa`, and inside rind::KeyPair: `zeroing::key_pair` |
 | SLH-DSA verification | `slh_dsa::PublicKey` | ACVP: `mid::slhdsa::acvp_sig_ver` | `fuzz::verify`, against RustCrypto's, `fuzz::keys` | the same tests, both ways | RustCrypto's `slh-dsa` and `fips205` | | |
 | RSA-OAEP | `rsa::{Ciphertext, DecryptingKey, EncryptingKey, OaepAlgorithm, Plaintext, OAEP_SHA256, OAEP_SHA384, OAEP_SHA512}`, `rsa::legacy::OAEP_SHA1` | `rsa_oaep_*_test`, `aws_lc::evp`, ACVP's decryption primitive: `mid::rsa_priv::acvp_decryption_primitive` | `fuzz::oaep` | `crosschecks::rsa::encrypt_decrypt`, `crosschecks::rsa::decrypt_agrees` | RustCrypto's `rsa`, over crypto-bigint | ctgrind: private keys are marked when loaded, `high::oaep::stays_secret`, `high::pkcs1::encode_oaep`; SDE: as RSA signing, and encryption's public operation: `low::x86_64::rsa_ifma::ct_sde_public_ifma_2048`, `low::x86_64::rsa_ifma::ct_sde_public_ifma_3072`, `low::x86_64::rsa_ifma::ct_sde_public_ifma_4096`; BINSEC of loading the key and decrypting, at 2048 bits: `test::binsec::ct_binsec_rsa2048_oaep`, and the rest as RSA signing | `zeroing::rsa_oaep` |
-| RSA blind signatures | `blind_rsa::{Algorithm, BlindSignature, BlindedMessage, Blinding, KeyPair, PublicKey, Signature, RSABSSA_SHA384_PSS_DETERMINISTIC, RSABSSA_SHA384_PSS_RANDOMIZED, RSABSSA_SHA384_PSSZERO_DETERMINISTIC, RSABSSA_SHA384_PSSZERO_RANDOMIZED}` | `rsa_pss_2048_sha384_mgf1_48_test`, `rsa_pss_4096_sha384_mgf1_48_test`, RFC 9474: `high::blind_rsa::rfc9474_vectors`, RFC 9578's token: `high::blind_rsa::rfc9578_token` | `fuzz::blind_rsa`, against blind-rsa-signatures, as aws-lc-rs has no blind RSA | `crosschecks::blind_rsa::matches_blind_rsa_signatures`, against blind-rsa-signatures, as aws-lc-rs has no blind RSA | `blind-rsa-signatures` | ctgrind: private keys are marked when loaded, `high::blind_rsa::stays_secret`; SDE and BINSEC: as RSA signing | `zeroing::blind_rsa` |
+| RSA blind signatures | `blind_rsa::{Algorithm, BlindSignature, BlindedMessage, Blinding, KeyPair, PublicKey, Signature, RSABSSA_SHA384_PSS_DETERMINISTIC, RSABSSA_SHA384_PSS_RANDOMIZED, RSABSSA_SHA384_PSSZERO_DETERMINISTIC, RSABSSA_SHA384_PSSZERO_RANDOMIZED}` | `rsa_pss_2048_sha384_mgf1_48_test`, `rsa_pss_4096_sha384_mgf1_48_test`, RFC 9474: `high::blind_rsa::rfc9474_vectors`, RFC 9578's token: `high::blind_rsa::rfc9578_token`, aws-lc's modular inverses for the blind's on armv7 and the portable backend: `low::generic::safegcd::aws_lc` | `fuzz::blind_rsa`, against blind-rsa-signatures, as aws-lc-rs has no blind RSA | `crosschecks::blind_rsa::matches_blind_rsa_signatures`, against blind-rsa-signatures, as aws-lc-rs has no blind RSA | `blind-rsa-signatures` | ctgrind: private keys are marked when loaded, `high::blind_rsa::stays_secret`, and on armv7 and the portable backend the blind's inverse and coprimality, `low::generic::safegcd::inverse` and `low::generic::safegcd::gcd_one`; SDE and BINSEC: as RSA signing | `zeroing::blind_rsa` |
 | Key encodings | `encoding::{Pkcs8, Sec1, Spki}` | `aws_lc::evp` (PKCS#8, SPKI); the other keys in the files above | `fuzz::keys` | `crosschecks::encodings`, `crosschecks::pkcs8_attributes::v2_without_public_key` | RustCrypto's `pkcs8`, `p256`, `p384`, and `p521`, which read rind's EC, Ed25519, and X25519 keys, and `rsa`, which reads its RSA keys | none: a key is marked once parsed, and its DER's lengths are not secret | `zeroing::ecdh`, `zeroing::ecdsa`, `zeroing::ed25519`, `zeroing::rsa` |
 | Constant-time comparison | `constant_time::verify` | none: no published set | none: it returns whether two slices are equal, which the differential test covers | `crosschecks::slice_comparison_matches_aws_lc_rs` | slice equality | ctgrind: `high::constant_time::contents_stay_secret`, `low::generic::ct_equal::equiv`; BINSEC: `test::binsec::ct_binsec_constant_time_verify` | none: it keeps nothing |
 | Random bytes | `rand::fill` | none: the operating system's generator, which no vector can check | none, as for vectors | none, as for vectors | none: no output to compare | none: rind passes the bytes on | none: rind keeps no copy of the bytes |
@@ -307,10 +312,6 @@ and `powerpc` (the last two big-endian) under qemu, or `i686` (32-bit x86)
 natively.
 `just miri` runs the weekly `miri` job, the portable backend's tests under
 Miri, on x86_64, and `just miri s390x-unknown-linux-gnu` big-endian.
-With `RIND_SCOPE=BASE` set, such as `origin/main`, `admin/ctgrind` skips its
-run when nothing the branch changed since BASE reaches the backend it builds,
-as `sh/backends.sh` decides, and otherwise runs in full; pull requests'
-ctgrind job sets it.
 `nix develop .#ctgrind --command admin/ctgrind` runs the weekly
 constant-time checks under valgrind, `nix develop .#sde --command
 admin/ct-sde` those of the AVX-512, VAES, and SHA extension code
@@ -339,13 +340,17 @@ checks the proofs in [`proofs/`](proofs/README.md).
 ## Scheduled workflows
 
 The heavy suites run weekly on GitHub's hosted runners: `fuzz`, `ctgrind`,
-`bench`, and `mutants` on Saturday, `miri`, `x86-cpu`, and `timing` on Sunday (UTC),
+`bench`, and `mutants` on Saturday, `miri`, `x86-cpu`, `timing`, and the
+ESP32-S3 SHA-256 layout check on Sunday (UTC),
 each hours from the others, as their `cron:` lines set, so no two fill the
 organization's 60 concurrent hosted jobs together, and off the hour, which
 GitHub delays most. `build`, `asan`, `coverage`, `lints`, `prove`,
 `python`, `dart-libraries`, and `regenerate` run daily, and `Check` runs
 `just ci --all` on main's head daily as the backstop for the merge queue's
-diff-scoped selection. Each runs on demand with
+diff-scoped selection. `prove` also runs each push to main that reaches it,
+checking the bytes, and the HOL Light and Lean proofs and the cosimulation
+that main has not passed on the same inputs; a release waits for that run to
+pass. Each runs on demand with
 `gh workflow run <name> --ref <branch>`; a dispatched `bench` measures every
 bench target unless `-f benches='aes_gcm sha2'` names the ones to measure,
 and each CPU-tier row then times only those of them it covers. A dispatched
