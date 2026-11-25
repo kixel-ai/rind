@@ -165,10 +165,12 @@ the default 10,000 cases, even though they build in release mode.
 ## Undefined behavior
 
 The weekly `miri` workflow, or `just miri TARGET`, runs the portable
-backend's tests under [Miri], forced on x86_64 and again as
-big-endian `s390x-unknown-linux-gnu`. Miri fails a test on undefined behavior,
+backend's tests under [Miri], forced on x86_64, again as
+big-endian `s390x-unknown-linux-gnu`, and as `i686-unknown-linux-gnu`, whose
+32-bit limbs and pointers no other Miri run takes. Miri fails a test on undefined behavior,
 such as a key type's wipe leaving an invalid value for the drop that follows,
-a misaligned or out-of-bounds pointer, or a data race in `ReuseCache`, in rind
+a misaligned or out-of-bounds pointer, or a data race in `ReuseCache` or the
+FIPS DRBG's registry, in rind
 or in the libcrux, fiat-crypto, and curve25519-dalek code it calls; a
 byte-order assumption fails the test's own assertions on s390x. Miri runs no
 assembly, so the other backends are out. It runs weekly, not on pull
@@ -178,7 +180,8 @@ requests: a run takes hours, so a change to the portable backend runs
 Miri runs each test hundreds of times slower than a native build, so it runs a
 subset: the unit tests and `tests/cpu.rs` and `tests/debug.rs`, without the
 tests `sh/miri.sh` lists as slow, which are the vector sets and long loops
-over inputs, RSA private-key operations beyond one for each key type, and the
+over inputs, RSA key generation and private-key operations beyond one for each
+key type, and the
 tests that run many scalar multiplications. `sh/miri.sh` fails on an entry
 that names no test, so a rename cannot slip a slow test back in. A test that
 repeats one code path over parameter sets or cases runs only those that take
@@ -187,7 +190,42 @@ and drops its keys. Miri cannot run aws-lc's C, so its builds leave out
 aws-lc-rs and the differential tests, `tests/crosschecks.rs` and
 `tests/cctv.rs` among them.
 `tests/wycheproof.rs` and `tests/aws_lc.rs` are vector sets too, and
-`tests/zeroing.rs` reads a dropped value on purpose.
+`tests/zeroing.rs` reads a dropped value on purpose. On i686 it runs only
+what a 32-bit width changes: the `low` and `mid` tests and the encodings
+`high` parses. The rest of `high` composes those, which the 64-bit runs
+check whole, and would add hours.
+
+## Sanitizers
+
+The nightly `sanitizers` workflow runs the native backends' tests under
+the sanitizers Rust offers, for the Rust code Miri cannot run: the x86_64
+and aarch64 backends' glue and rind-fips's module, whose build script
+passes the sanitizer on. Neither sees inside assembly. rind compiles no C,
+so UndefinedBehaviorSanitizer, a C compiler's, has nothing to check;
+Miri and debug builds' overflow checks find Rust's undefined behavior.
+
+- **AddressSanitizer**, on the x86_64 and arm64 runners, fails an
+  out-of-bounds or freed access in the workspace's tests, then in rind's
+  unit tests on each denied tier (`sh/cpu-tiers.sh`), whose fallbacks
+  include Rust ones. It leaves out the module's globals, since the
+  integrity test reads the module's whole image, and leaks, since tests
+  leak on purpose; the doctests, since a cross build's doctests cannot load
+  the module ([rust-lang/cargo#8531]). It links Rust's own runtime, which,
+  unlike Ubuntu's, locks its allocator across fork, so rind-fips's fork
+  tests' children do not deadlock in it.
+- **ThreadSanitizer**, on x86_64, fails a data race in rind's unit tests and
+  rind-fips's tests, among them those that share keys across threads
+  (`high::signature::keys_shared_across_threads`, rind-fips's
+  `keys_shared_across_threads`, which also frees a handle on a thread
+  other than its own), and the DRBG's threads that come and go
+  (`fips_rng::threads_come_and_go`). It leaves out rind-fips's fork tests,
+  whose children start threads after a multi-threaded fork or fork with a
+  raw system call; rind's own, whose children start no thread, run.
+
+rind-fips's `tests/raw_fork.rs` forks with a raw `clone`, which runs none of
+the module's fork handlers, and checks the child's draw differs from its
+parent's: every draw reseeds from the OS first, so a child needs no fork
+detection to diverge.
 
 ## Primitives
 
@@ -311,7 +349,8 @@ the nightly `qemu` job, which lints and tests the portable backend: `s390x`
 and `powerpc` (the last two big-endian) under qemu, or `i686` (32-bit x86)
 natively.
 `just miri` runs the weekly `miri` job, the portable backend's tests under
-Miri, on x86_64, and `just miri s390x-unknown-linux-gnu` big-endian.
+Miri, on x86_64, `just miri s390x-unknown-linux-gnu` big-endian, and
+`just miri i686-unknown-linux-gnu` on 32-bit x86.
 `nix develop .#ctgrind --command admin/ctgrind` runs the weekly
 constant-time checks under valgrind, `nix develop .#sde --command
 admin/ct-sde` those of the AVX-512, VAES, and SHA extension code
@@ -344,7 +383,7 @@ The heavy suites run weekly on GitHub's hosted runners: `fuzz`, `ctgrind`,
 ESP32-S3 SHA-256 layout check on Sunday (UTC),
 each hours from the others, as their `cron:` lines set, so no two fill the
 organization's 60 concurrent hosted jobs together, and off the hour, which
-GitHub delays most. `build`, `asan`, `coverage`, `lints`, `prove`,
+GitHub delays most. `build`, `sanitizers`, `coverage`, `lints`, `prove`,
 `python`, `dart-libraries`, and `regenerate` run daily, and `Check` runs
 `just ci --all` on main's head daily as the backstop for the merge queue's
 diff-scoped selection. `prove` also runs each push to main that reaches it,
@@ -364,5 +403,6 @@ like one that fails.
 [Wycheproof]: https://github.com/C2SP/wycheproof
 [CCTV]: https://github.com/C2SP/CCTV
 [Miri]: https://github.com/rust-lang/miri
+[rust-lang/cargo#8531]: https://github.com/rust-lang/cargo/issues/8531
 [BINSEC]: https://github.com/binsec/binsec
 [arXiv 2501.04183]: https://arxiv.org/abs/2501.04183

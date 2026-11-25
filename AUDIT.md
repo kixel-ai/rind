@@ -231,16 +231,19 @@ establishes, and what it does not:
 - **Bounds**: `low::guard_pages` runs each kernel that takes a caller's
   slice against `PROT_NONE` pages, at lengths up to 1100 bytes and, for the
   AEADs, 2000 to 2600, on Unix. It is the only bounds check on the assembly
-  valgrind cannot run, since AddressSanitizer, nightly in `asan`, does not
+  valgrind cannot run, since AddressSanitizer, nightly in `sanitizers`, does not
   instrument assembly.
 - **Calling convention**: `low::abi` calls every assembly routine through a
   trampoline that fails when a register its ABI preserves, the stack
   pointer, or x86_64's direction flag comes back changed, and
   `admin/prove-bytes clobbers` checks each s2n-bignum block declares what
   its proof says it may change.
-- **Miri**, weekly, runs the portable backend's unit tests on x86_64 and
-  big-endian s390x, failing on undefined behavior. It runs no assembly, and
-  skips the slow tests `sh/miri.sh` lists.
+- **Miri**, weekly, runs the portable backend's unit tests on x86_64,
+  big-endian s390x, and 32-bit i686, failing on undefined behavior. It runs
+  no assembly, and skips the slow tests `sh/miri.sh` lists.
+- **Sanitizers**, nightly in `sanitizers`: AddressSanitizer and
+  ThreadSanitizer run the native backends' tests and rind-fips's module,
+  failing on an out-of-bounds or freed access or a data race in Rust code.
 - **Mutation testing** (`admin/mutants`) fails on a mutant of rind's Rust
   that no test catches. Weekly, on native x86_64 and aarch64 Linux runners
   and the portable backend, it mutates only the Rust that changed in the
