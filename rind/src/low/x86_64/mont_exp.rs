@@ -37,6 +37,7 @@
 //! `R`. So the last product, by `R mod m`, is below `2m`, and one
 //! subtraction reduces it.
 
+use alloc::vec::Vec;
 use core::arch::x86_64::*;
 
 use super::bignum_copy_row_from_table::bignum_copy_row_from_table;
@@ -138,7 +139,7 @@ fn mont_exp_by(
 // Inlined before it is optimized, where the compiler sees `powers` hold 32
 // rows: optimized alone, it bounds the loop by dividing the length by `w`.
 #[inline(always)]
-fn power5_table(powers: &[u64], w: usize, k: usize) -> alloc::vec::Vec<Row> {
+fn power5_table(powers: &[u64], w: usize, k: usize) -> Vec<Row> {
     let mut table = alloc::vec![Row([0; 32]); k];
     // Indexed rather than `chunks_exact`, which divides by `w`, and
     // `admin/ct-vartime` refuses a division here.
