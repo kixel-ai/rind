@@ -70,8 +70,8 @@ Outside the model:
   and B1.5.6), untested on hardware. The FIPS module sets no DIT (it builds
   for glibc Linux, and refuses `rind_dit_everywhere`); its code keeps
   Apple's barrier on every target in case that changes. `admin/dit-disasm`
-  checks the emitted sequence per target.
-  The owner's decision of 2026-11-23 (benchmarks/apple-dit-barrier.md).
+  checks the emitted sequence per target; benchmarks/apple-dit-barrier.md
+  collects the sources.
 - A compromised toolchain, build machine, or dependency. `cargo deny`
   checks crates against RustSec's advisories, licenses, and sources; nothing
   checks a release's build is reproducible.

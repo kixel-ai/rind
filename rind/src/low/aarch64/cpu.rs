@@ -468,8 +468,8 @@ mod dit {
     /// code" (B1.5.6). So on a core that is not Apple's, rind relies on that
     /// architectural rule alone. No core other than Apple's has been tested
     /// for it here, and rind sets DIT off Apple's targets only under
-    /// `--cfg rind_dit_everywhere` (see build.rs). The project owner chose
-    /// this split on 2026-11-23 (benchmarks/apple-dit-barrier.md).
+    /// `--cfg rind_dit_everywhere` (see build.rs). The sources are in
+    /// benchmarks/apple-dit-barrier.md.
     ///
     /// Apple asks for a speculation barrier after setting DIT: "To ensure
     /// that subsequent instruction timing reflects the updated DIT processor
@@ -497,8 +497,8 @@ mod dit {
     /// `--cfg rind_dit_barrier="apple"` runs Apple's sequence on any target,
     /// `--cfg rind_dit_barrier="isb"` runs `isb sy` alone, and
     /// `--cfg rind_dit_barrier="none"` no barrier. All three are measuring
-    /// prototypes, for the cost of the barrier on Apple silicon (fork issues
-    /// #259 to #266), not supported configurations.
+    /// prototypes, for the cost of the barrier on Apple silicon, not
+    /// supported configurations.
     #[inline(always)]
     pub(super) fn barrier_after_set() {
         #[cfg(any(
