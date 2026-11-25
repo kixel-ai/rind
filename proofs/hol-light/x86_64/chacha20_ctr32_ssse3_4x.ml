@@ -2269,3 +2269,255 @@ let CHACHA_LOOP = prove
    [REWRITE_TAC[SOME_FLAGS] THEN MAYCHANGE_IDEMPOT_TAC;
     MATCH_MP_TAC CHACHA_STEP THEN ASM_REWRITE_TAC[] THEN ASM_ARITH_TAC;
     FIRST_X_ASSUM MATCH_MP_TAC THEN ASM_REWRITE_TAC[] THEN ASM_ARITH_TAC]);;
+
+(* ------------------------------------------------------------------------- *)
+(* The inputs: byte lists in memory as chacha_bnum, and the table.           *)
+(* ------------------------------------------------------------------------- *)
+
+let CHACHA_BNUM_LIST = prove
+ (`!l f p. (!i. i < LENGTH l ==> f(p + i) = EL i l)
+           ==> chacha_bnum f p (LENGTH l) = num_of_bytelist l`,
+  LIST_INDUCT_TAC THEN REWRITE_TAC[LENGTH; chacha_bnum; num_of_bytelist] THEN
+  REPEAT STRIP_TAC THEN
+  FIRST_ASSUM(MP_TAC o SPEC `0`) THEN REWRITE_TAC[LT_0; ADD_CLAUSES; EL; HD] THEN
+  DISCH_THEN SUBST1_TAC THEN AP_TERM_TAC THEN AP_TERM_TAC THEN
+  FIRST_X_ASSUM MATCH_MP_TAC THEN X_GEN_TAC `i:num` THEN DISCH_TAC THEN
+  FIRST_X_ASSUM(MP_TAC o SPEC `SUC i`) THEN
+  ASM_REWRITE_TAC[LT_SUC; EL; TL; ARITH_RULE `(p + 1) + i = p + SUC i`]);;
+
+let EL_SUB_LIST_CHACHA = prove
+ (`!(l:A list) p k i. i < k /\ p + k <= LENGTH l ==> EL i (SUB_LIST(p,k) l) = EL (p + i) l`,
+  LIST_INDUCT_TAC THEN REWRITE_TAC[LENGTH] THENL [ARITH_TAC; ALL_TAC] THEN
+  INDUCT_TAC THENL
+   [INDUCT_TAC THEN REWRITE_TAC[LT] THEN INDUCT_TAC THEN
+    REWRITE_TAC[SUB_LIST_CLAUSES; ADD_CLAUSES; EL; HD; TL] THEN STRIP_TAC THEN
+    FIRST_X_ASSUM(MP_TAC o SPECL [`0`; `k:num`; `i:num`]) THEN
+    REWRITE_TAC[ADD_CLAUSES] THEN DISCH_THEN MATCH_MP_TAC THEN ASM_ARITH_TAC;
+    REPEAT GEN_TAC THEN STRIP_TAC THEN
+    REWRITE_TAC[SUB_LIST_CLAUSES; ADD_CLAUSES; EL; TL] THEN
+    FIRST_X_ASSUM MATCH_MP_TAC THEN ASM_ARITH_TAC]);;
+
+let CHACHA_BNUM_SUB_LIST = prove
+ (`!l p k. p + k <= LENGTH l
+           ==> num_of_bytelist(SUB_LIST(p,k) l) = chacha_bnum (\i. EL i l) p k`,
+  REPEAT STRIP_TAC THEN
+  MP_TAC(ISPECL [`SUB_LIST(p,k) (l:byte list)`; `\i. EL i (l:byte list)`; `p:num`]
+         CHACHA_BNUM_LIST) THEN
+  REWRITE_TAC[LENGTH_SUB_LIST] THEN
+  SUBGOAL_THEN `MIN k (LENGTH(l:byte list) - p) = k` SUBST1_TAC THENL [ASM_ARITH_TAC; ALL_TAC] THEN
+  BETA_TAC THEN ANTS_TAC THENL
+   [REPEAT STRIP_TAC THEN CONV_TAC SYM_CONV THEN MATCH_MP_TAC EL_SUB_LIST_CHACHA THEN
+    ASM_REWRITE_TAC[];
+    DISCH_THEN(ACCEPT_TAC o SYM)]);;
+
+let CHACHA_BNUM_BYTELIST = prove
+ (`!l. num_of_bytelist l = chacha_bnum (\i. EL i l) 0 (LENGTH l)`,
+  GEN_TAC THEN CONV_TAC SYM_CONV THEN MATCH_MP_TAC CHACHA_BNUM_LIST THEN
+  REWRITE_TAC[ADD_CLAUSES]);;
+
+(* RFC 8439's initial state with the key and nonce words as chacha_bnum. *)
+let CHACHA20_STATE_BNUM =
+  let th = SPEC_ALL CHACHA20_STATE_EXPLICIT in
+  let pat = `num_of_bytelist(SUB_LIST(p,4) (l:byte list))` in
+  let subs = map (fun t -> let i = term_match [] pat t in
+                    instantiate i `chacha_bnum (\i. EL i (l:byte list)) p 4`, t)
+                 (find_terms (can (term_match [] pat)) (rand(concl th))) in
+  let tm = mk_imp(`LENGTH(key:byte list) = 32 /\ LENGTH(nonce:byte list) = 12`,
+                  mk_eq(lhs(concl th), subst subs (rand(concl th)))) in
+  prove(list_mk_forall(frees tm, tm),
+    REPEAT STRIP_TAC THEN REWRITE_TAC[CHACHA20_STATE_EXPLICIT] THEN
+    ASM_SIMP_TAC[CHACHA_BNUM_SUB_LIST; ARITH]);;
+
+let READ_BYTES32_VAL = prove
+ (`!(a:int64) s x. read (memory :> bytes32 a) s = x <=>
+                   read (memory :> bytes(a,4)) s = val(x:int32)`,
+  REPEAT GEN_TAC THEN REWRITE_TAC[READ_COMPONENT_COMPOSE; BYTES32_WBYTES] THEN
+  REWRITE_TAC[GSYM VAL_EQ; VAL_READ_WBYTES] THEN
+  CONV_TAC(ONCE_DEPTH_CONV DIMINDEX_CONV) THEN CONV_TAC NUM_REDUCE_CONV);;
+
+let READ_CHACHA_BNUM_4 = prove
+ (`!f p (a:int64) s.
+        read (memory :> bytes(a,4)) s = chacha_bnum f p 4 <=>
+        read (memory :> bytes32 a) s = word(chacha_bnum f p 4)`,
+  REWRITE_TAC[READ_BYTES32_VAL] THEN REPEAT GEN_TAC THEN
+  SIMP_TAC[VAL_WORD; DIMINDEX_32; MOD_LT; CHACHA_BNUM_BOUND;
+           ARITH_RULE `2 EXP 32 = 2 EXP (8 * 4)`]);;
+
+let READ_CHACHA_BNUM_WORDS = prove
+ (`!m f p (a:int64) s.
+        read (memory :> bytes(a,4 * m)) s = chacha_bnum f p (4 * m) <=>
+        !q. q < m ==> read (memory :> bytes32(word_add a (word(4 * q)))) s =
+                      word(chacha_bnum f (p + 4 * q) 4)`,
+  INDUCT_TAC THEN REWRITE_TAC[chacha_bnum; CONJUNCT1 LT; MULT_CLAUSES] THEN
+  REWRITE_TAC[READ_COMPONENT_COMPOSE; READ_BYTES_TRIVIAL] THEN
+  REWRITE_TAC[GSYM READ_COMPONENT_COMPOSE] THEN REPEAT GEN_TAC THEN
+  REWRITE_TAC[ARITH_RULE `4 * m + 4 = 4 + 4 * m`; READ_CHACHA_BNUM_SPLIT] THEN
+  ASM_REWRITE_TAC[READ_CHACHA_BNUM_4; FORALL_LT_SUC_SPLIT] THEN
+  REWRITE_TAC[MULT_CLAUSES; ADD_CLAUSES; WORD_ADD_0; GSYM WORD_ADD_ASSOC; GSYM WORD_ADD] THEN
+  REWRITE_TAC[ARITH_RULE `(p + 4) + 4 * i = p + 4 * SUC i`;
+              ARITH_RULE `4 + 4 * i = 4 * SUC i`]);;
+
+(* The table's 16-byte constants the code loads. *)
+let chacha20_ssse3_4x_data = last chacha20_ssse3_4x_tables;;
+
+let CHACHA_DATA_FACTS =
+  let th = prove
+   (`!s k. bytes_loaded s (word (k + 0)) chacha20_ssse3_4x_data
+           ==> read (memory :> bytes128 (word(k + 32))) s = word 0x00000003000000020000000100000000 /\
+               read (memory :> bytes128 (word(k + 48))) s = word 0x00000004000000040000000400000004 /\
+               read (memory :> bytes128 (word(k + 128))) s = word 0x0d0c0f0e09080b0a0504070601000302 /\
+               read (memory :> bytes128 (word(k + 144))) s = word 0x0e0d0c0f0a09080b0605040702010003 /\
+               read (memory :> bytes128 (word(k + 160))) s = word 0x6b20657479622d323320646e61707865`,
+    REPEAT GEN_TAC THEN REWRITE_TAC[chacha20_ssse3_4x_data] THEN
+    CONV_TAC(LAND_CONV DATA64_CONV) THEN STRIP_TAC THEN
+    REWRITE_TAC[CONJUNCT1(CONJUNCT2 READ_MEMORY_BYTESIZED_SPLIT); GSYM WORD_ADD] THEN
+    REWRITE_TAC[GSYM ADD_ASSOC] THEN CONV_TAC(DEPTH_CONV NUM_ADD_CONV) THEN
+    ASM_REWRITE_TAC[] THEN CONV_TAC WORD_REDUCE_CONV) in
+  GEN_ALL(REWRITE_RULE[ADD_CLAUSES] th);;
+
+let READ_BYTES128_WORDS = prove
+ (`!(a:int64) s. read (memory :> bytes128 a) s =
+     word_join (word_join (read (memory :> bytes32 (word_add a (word 12))) s)
+                          (read (memory :> bytes32 (word_add a (word 8))) s):int64)
+               (word_join (read (memory :> bytes32 (word_add a (word 4))) s)
+                          (read (memory :> bytes32 a) s):int64)`,
+  REWRITE_TAC[CONJUNCT1(CONJUNCT2 READ_MEMORY_BYTESIZED_SPLIT);
+              CONJUNCT1(CONJUNCT2(CONJUNCT2 READ_MEMORY_BYTESIZED_SPLIT))] THEN
+  REWRITE_TAC[GSYM WORD_ADD_ASSOC; GSYM WORD_ADD] THEN CONV_TAC(DEPTH_CONV NUM_ADD_CONV) THEN
+  REWRITE_TAC[]);;
+
+let READ_MEMORY_BYTES_0 = prove
+ (`!(a:int64) s. read (memory :> bytes(a,0)) s = 0`,
+  REWRITE_TAC[READ_COMPONENT_COMPOSE; READ_BYTES_TRIVIAL]);;
+
+(* The 4 m bytes at an address in the assumptions as m words. *)
+let CHACHA_WORDS_TAC t m =
+  FIRST_X_ASSUM(MP_TAC o check (can (term_match [] t) o concl)) THEN
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV)
+   [ARITH_RULE (mk_eq(mk_small_numeral(4*m), mk_binop `( * ):num->num->num` `4` (mk_small_numeral m)))] THEN
+  REWRITE_TAC[READ_CHACHA_BNUM_WORDS] THEN
+  CONV_TAC(LAND_CONV(EXPAND_CASES_CONV THENC NUM_REDUCE_CONV)) THEN
+  REWRITE_TAC[WORD_ADD_0; GSYM WORD_ADD_ASSOC; GSYM WORD_ADD] THEN
+  CONV_TAC(LAND_CONV NUM_REDUCE_CONV) THEN STRIP_TAC;;
+
+(* The frame 328 bytes below the entry's stack pointer is 16-byte aligned. *)
+let CHACHA_ALIGNED_TAC =
+  REWRITE_TAC[WORD_ADD; WORD_RULE `word_sub (x:int64) (word 328) = word_sub (word_add x (word 8)) (word 336)`] THEN
+  CONV_TAC(ONCE_DEPTH_CONV NORMALIZE_ALIGNED_WORD_CONV) THEN ASM_REWRITE_TAC[];;
+
+(* The inputs' lengths into their reads, keeping the lengths themselves. *)
+let CHACHA_LEN_TAC =
+  RULE_ASSUM_TAC(fun th ->
+    if is_eq(concl th) && can (term_match [] `LENGTH(l:A list)`) (lhs(concl th)) then th
+    else REWRITE_RULE[ASSUME `LENGTH(key:byte list) = 32`; ASSUME `LENGTH(nonce:byte list) = 12`;
+                      ASSUME `LENGTH(msg:byte list) = n`] th);;
+
+(* The first group's four states, blocks counter to counter + 3. *)
+let chacha_sts = [`chacha20_state key counter nonce`;
+  `chacha20_state key (word_add counter (word 1)) nonce`;
+  `chacha20_state key (word_add counter (word 2)) nonce`;
+  `chacha20_state key (word_add counter (word 3)) nonce`];;
+
+let CHACHA_CORE_0 =
+  INST ([`word(data + 128):int64`,`rp10:int64`; `word(data + 144):int64`,`rp11:int64`;
+         `word_sub stackpointer (word 328):int64`,`stk:int64`] @
+        zip chacha_sts (map chacha_sv (0--3))) (SPEC_ALL CHACHA_CORE);;
+
+(* A conversion on an ensures theorem's precondition. *)
+let CHACHA_PRE_CONV conv = RAND_CONV(RATOR_CONV(RATOR_CONV(RAND_CONV conv)));;
+
+(* Group 0's terms in their simplest form. *)
+let CHACHA_G0_RULE th =
+  REWRITE_RULE[SUB_0; WORD_ADD_0; ADD_CLAUSES; READ_MEMORY_BYTES_0; CONJUNCT1 chacha_bnum;
+               GSYM(NUM_REDUCE_CONV `2 EXP 64`)]
+    (CONV_RULE NUM_REDUCE_CONV (INST [`0`,`g:num`] th));;
+
+let CHACHA_LOOP_0 = CHACHA_G0_RULE
+  (INST [`n:num`,`k:num`; `\i. EL i (msg:byte list)`,`mf:num->byte`;
+         `word_sub stackpointer (word 328):int64`,`stk:int64`] (SPEC_ALL CHACHA_LOOP));;
+
+let CHACHA_PIECE_SUMS_0 = CONJUNCTS(CHACHA_G0_RULE CHACHA_PIECE_SUMS);;
+
+(* ------------------------------------------------------------------------- *)
+(* The whole routine, as rind calls it: in place, on a nonempty buffer.      *)
+(* ------------------------------------------------------------------------- *)
+
+let CHACHA20_CTR32_SSSE3_4X_SUBROUTINE_GOAL =
+ `!buf n keyp cnp key counter nonce msg pc data stackpointer returnaddress.
+   0 < n /\ n < 2 EXP 64 /\ val buf + n <= 2 EXP 64 /\
+   aligned 16 (word_add stackpointer (word 8)) /\ aligned 16 (word data:int64) /\
+   riprel32_within_bounds (data + 160) (pc + 0x13) /\
+   riprel32_within_bounds (data + 128) (pc + 0x31) /\
+   riprel32_within_bounds (data + 144) (pc + 0x38) /\
+   riprel32_within_bounds (data + 32) (pc + 0xd6) /\
+   riprel32_within_bounds (data + 48) (pc + 0x163) /\
+   ALL (nonoverlapping (word_sub stackpointer (word 328),336))
+       [(word pc,0x9d4); (word data,192); (buf,n)] /\
+   ALL (nonoverlapping (buf,n)) [(word pc,0x9d4); (word data,192)]
+   ==> ensures x86
+        (\s. bytes_loaded s (word pc) (chacha20_ssse3_4x_mc pc data) /\
+             bytes_loaded s (word data) chacha20_ssse3_4x_data /\
+             read RIP s = word pc /\ read RSP s = stackpointer /\
+             read (memory :> bytes64 stackpointer) s = returnaddress /\
+             C_ARGUMENTS [buf; buf; word n; keyp; cnp] s /\
+             read (memory :> bytelist(keyp,32)) s = key /\
+             read (memory :> bytes32 cnp) s = counter /\
+             read (memory :> bytelist(word_add cnp (word 4),12)) s = nonce /\
+             read (memory :> bytelist(buf,n)) s = msg)
+        (\s. read RIP s = returnaddress /\ read RSP s = word_add stackpointer (word 8) /\
+             read (memory :> bytelist(buf,n)) s = chacha20_encrypt key counter nonce msg)
+        (MAYCHANGE [RSP] ,, MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI ,,
+         MAYCHANGE [memory :> bytes(buf,n);
+                    memory :> bytes(word_sub stackpointer (word 328),320)] ,,
+         MAYCHANGE [events])`;;
+
+let CHACHA20_CTR32_SSSE3_4X_SUBROUTINE_CORRECT = prove
+ (CHACHA20_CTR32_SSSE3_4X_SUBROUTINE_GOAL,
+  REWRITE_TAC[ALL; C_ARGUMENTS; MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI; SOME_FLAGS] THEN
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  REWRITE_TAC[READ_BYTELIST_EQ_BYTES; CHACHA_BNUM_BYTELIST] THEN
+  ENSURES_INIT_TAC "s0" THEN
+  (* The key and nonce as words, and the code's 16-byte loads of them. *)
+  CHACHA_LEN_TAC THEN
+  CHACHA_WORDS_TAC `read (memory :> bytes (keyp,32)) s0 = x` 8 THEN
+  CHACHA_WORDS_TAC `read (memory :> bytes (word_add cnp (word 4),12)) s0 = x` 3 THEN
+  MAP_EVERY (fun a -> MP_TAC(SPECL [a; `s0:x86state`] READ_BYTES128_WORDS) THEN
+                      REWRITE_TAC[GSYM WORD_ADD_ASSOC; GSYM WORD_ADD] THEN
+                      CONV_TAC(LAND_CONV(DEPTH_CONV NUM_ADD_CONV)) THEN
+                      ASM_REWRITE_TAC[WORD_ADD_0] THEN DISCH_TAC)
+    [`keyp:int64`; `word_add keyp (word 16):int64`; `cnp:int64`] THEN
+  REPEAT(FIRST_X_ASSUM(K ALL_TAC o check (can (term_match []
+    `read (memory :> bytes32 a) s0 = x`) o concl))) THEN
+  (* The table's constants, the RIP-relative operands, and the alignments. *)
+  FIRST_ASSUM(STRIP_ASSUME_TAC o MATCH_MP CHACHA_DATA_FACTS) THEN
+  MAP_EVERY (fun (th,e,c,t) -> MP_TAC(SPECL [`pc:num`; `data:num`; e; c; t] th) THEN
+                               ANTS_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC NUM_REDUCE_CONV; DISCH_TAC])
+   [CONJUNCT2 CHACHA_RIPREL, `0x13`, `141`, `160`; CONJUNCT2 CHACHA_RIPREL, `0x31`, `79`, `128`;
+    CONJUNCT2 CHACHA_RIPREL, `0x38`, `88`, `144`; CONJUNCT1 CHACHA_RIPREL, `0xd6`, `182`, `32`] THEN
+  SUBGOAL_THEN `aligned 16 (word(data + 32):int64) /\ aligned 16 (word(data + 48):int64) /\
+                aligned 16 (word(data + 128):int64) /\ aligned 16 (word(data + 144):int64) /\
+                aligned 16 (word(data + 160):int64) /\
+                aligned 16 (word_sub stackpointer (word 328):int64)`
+   STRIP_ASSUME_TAC THENL [REPEAT CONJ_TAC THEN CHACHA_ALIGNED_TAC; ALL_TAC] THEN
+  (* The rows and their stack copies, then group 0's rounds. *)
+  GHOST_YMMS_TAC THEN X86_XSTEPS_TAC CHACHA_EXEC [1] THEN CHACHA_UNTIL_TAC 0x163 2 THEN
+  XMMS_OF_YMMS_TAC THEN RULE_ASSUM_TAC(REWRITE_RULE[WORD_ADD_0]) THEN
+  MP_TAC(CONV_RULE(CHACHA_PRE_CONV(
+    REWRITE_CONV[GEN `counter:int32` (MP (SPEC_ALL CHACHA20_STATE_BNUM)
+                   (CONJ (ASSUME `LENGTH(key:byte list) = 32`) (ASSUME `LENGTH(nonce:byte list) = 12`)))] THENC
+    DEPTH_CONV EL_CONV THENC DEPTH_CONV WORD_RED_CONV)) CHACHA_CORE_0) THEN
+  ANTS_TAC THENL [ASM_REWRITE_TAC[] THEN REPEAT CONJ_TAC THEN NONOVERLAPPING_TAC; ALL_TAC] THEN
+  ASM_REWRITE_TAC[SOME_FLAGS] THEN X86_BIGSTEP_TAC CHACHA_EXEC "s43" THEN
+  (* The main loop from group 0. *)
+  CHACHA_ASM_RHS_TAC CHACHA_PIECE_SUMS_0 THEN MP_TAC CHACHA_LOOP_0 THEN
+  ANTS_TAC THENL
+   [ASM_REWRITE_TAC[] THEN REPEAT CONJ_TAC THEN TRY CHACHA_ARITH_TAC THEN NONOVERLAPPING_TAC;
+    ALL_TAC] THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[WORD_ADD_0]) THEN
+  ASM_REWRITE_TAC[SOME_FLAGS] THEN X86_BIGSTEP_TAC CHACHA_EXEC "s44" THEN
+  (* The return, and RFC 8439's encryption byte by byte. *)
+  X86_STEPS_TAC CHACHA_EXEC (45--46) THEN ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
+  SUBGOAL_THEN `LENGTH (chacha20_encrypt key counter nonce msg) = n` ASSUME_TAC THENL
+   [ASM_REWRITE_TAC[chacha20_encrypt; LENGTH_MAP2_LE]; ASM_REWRITE_TAC[]] THEN
+  MATCH_MP_TAC CHACHA_BNUM_EQ THEN REWRITE_TAC[ADD_CLAUSES] THEN REPEAT STRIP_TAC THEN
+  ASM_SIMP_TAC[CHACHA20_ENCRYPT_BYTE; chacha20_kbyte]);;
