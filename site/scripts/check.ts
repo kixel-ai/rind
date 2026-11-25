@@ -230,16 +230,15 @@ for (const file of files) {
 }
 // A page can quote an adapter's README from crates.io rather than this
 // checkout, so a release can change the site's links with no change here. A
-// README's relative links point into its release's tag, which this check does
-// not follow, so only its links into `main` count.
+// README's relative links resolve into its release's tag, which this check
+// does not follow, so only those that reach `main` count.
 for (const { crate } of routes) {
 	const from = `${crate}/README.md`;
 	for (const href of links(read(from))) {
-		// A protocol-relative link resolves to https on the page.
-		if (!/^(https:)?\/\//i.test(href)) continue;
 		let u: URL;
 		try {
-			u = new URL(href, "https://github.com/");
+			// As src/lib/from.ts resolves it on a release's page.
+			u = new URL(href, `${repoUrl}/blob/${crate}-v0.0.0/${crate}/`);
 		} catch {
 			continue;
 		}
