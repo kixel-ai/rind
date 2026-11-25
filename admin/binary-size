@@ -45,6 +45,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 FIXTURES = ROOT / "admin" / "build-cost-fixtures"
 RECORD = ROOT / "admin" / "binary-size.txt"
+# Its own, since cargo does not rebuild for a changed wrapper: a build
+# without it, or with an earlier version of it, would look up to date.
+TARGET_DIR = ROOT / "target" / "binary-size"
 
 # Each fixture and the features it builds with.
 BUILDS = {"rind": [], "rustls": ["rind"]}
@@ -112,9 +115,6 @@ def rustc(args):
 def build(fixture, features, host, env, write):
     """Builds `fixture` in release for `host` from its lockfile and returns its
     binary."""
-    # Its own, since cargo does not rebuild for a changed wrapper: a build
-    # without it in the same directory would look up to date.
-    target_dir = ROOT / "target" / "binary-size"
     used = FIXTURES / fixture / "Cargo.lock"
     if lockfile(fixture).exists():
         shutil.copyfile(lockfile(fixture), used)
@@ -124,14 +124,26 @@ def build(fixture, features, host, env, write):
         sys.exit(f"error: no {lockfile(fixture)}; `admin/binary-size --write` resolves one")
     # The target named, since a cargo configuration's `build.target` would
     # otherwise move the binary.
-    cmd = ["cargo", "build", "--release", "--target", host, "--target-dir", str(target_dir)]
+    cmd = ["cargo", "build", "--release", "--target", host, "--target-dir", str(TARGET_DIR)]
     cmd += ["--manifest-path", str(FIXTURES / fixture / "Cargo.toml")]
     if features:
         cmd += ["--features", ",".join(features)]
     subprocess.run(cmd, env=env, check=True)
     if write:
         shutil.copyfile(used, lockfile(fixture))
-    return target_dir / host / "release" / f"build-cost-{fixture}"
+    return TARGET_DIR / host / "release" / f"build-cost-{fixture}"
+
+
+def clear_stale_builds():
+    """Empties the target directory if this script changed since it built
+    there, so no build from an earlier wrapper is reused."""
+    stamp = TARGET_DIR / "wrapper.sha256"
+    digest = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+    if stamp.exists() and stamp.read_text() == digest:
+        return
+    shutil.rmtree(TARGET_DIR, ignore_errors=True)
+    TARGET_DIR.mkdir(parents=True)
+    stamp.write_text(digest)
 
 
 def measure(binary):
@@ -173,6 +185,7 @@ def main():
     target = re.search(r"^host: (.+)$", host, re.M).group(1)
 
     record = read_record()
+    clear_stale_builds()
     binaries = {
         fixture: build(fixture, features, target, env, write) for fixture, features in BUILDS.items()
     }
