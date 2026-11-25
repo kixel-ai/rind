@@ -53,15 +53,14 @@ fn key_pair_prime_lengths() {
                 &mut signature,
             )
             .unwrap();
-        // The PSS algorithms verify only a modulus of 2048 bits or more.
-        if !path.ends_with("/rsa2047.der") {
-            signature::UnparsedPublicKey::new(
-                &signature::RSA_PSS_2048_8192_SHA256,
-                key_pair.public().as_ref(),
-            )
-            .verify(b"message", &signature)
-            .unwrap();
-        }
+        // ring counts a modulus floor in whole bytes, so the 2047-bit key
+        // verifies under the 2048-bit floor.
+        signature::UnparsedPublicKey::new(
+            &signature::RSA_PSS_2048_8192_SHA256,
+            key_pair.public().as_ref(),
+        )
+        .verify(b"message", &signature)
+        .unwrap();
     }
 }
 
@@ -154,6 +153,86 @@ fn key_pair_prime_lengths_match_ring() {
                 (ours, theirs) => panic!("{at}: {ours:?}, ring {theirs:?}"),
             }
         }
+    }
+}
+
+/// Every verification algorithm gives ring's verdict for each key's
+/// signature under each padding and hash, so a modulus a bit under an
+/// algorithm's floor verifies where ring counts it in whole bytes: 2047 bits
+/// under the 2048-bit algorithms, and 3071 under the 3072-bit one.
+// ring does not build for wasm.
+#[cfg(not(target_family = "wasm"))]
+#[test]
+fn verification_floors_match_ring() {
+    use rind::rsa::sign;
+
+    macro_rules! algorithms {
+        ($($name:ident),*) => {
+            [$((stringify!($name), &signature::$name, &ring::signature::$name)),*]
+        };
+    }
+    let algorithms = algorithms![
+        RSA_PKCS1_1024_8192_SHA1_FOR_LEGACY_USE_ONLY,
+        RSA_PKCS1_1024_8192_SHA256_FOR_LEGACY_USE_ONLY,
+        RSA_PKCS1_1024_8192_SHA512_FOR_LEGACY_USE_ONLY,
+        RSA_PKCS1_2048_8192_SHA1_FOR_LEGACY_USE_ONLY,
+        RSA_PKCS1_2048_8192_SHA256,
+        RSA_PKCS1_2048_8192_SHA384,
+        RSA_PKCS1_2048_8192_SHA512,
+        RSA_PKCS1_3072_8192_SHA384,
+        RSA_PSS_2048_8192_SHA256,
+        RSA_PSS_2048_8192_SHA384,
+        RSA_PSS_2048_8192_SHA512
+    ];
+    let signers = [
+        &sign::PKCS1_SHA256,
+        &sign::PKCS1_SHA384,
+        &sign::PKCS1_SHA512,
+        &sign::PSS_SHA256,
+        &sign::PSS_SHA384,
+        &sign::PSS_SHA512,
+    ];
+
+    let mut verified = Vec::new();
+    for (path, _) in KEYS {
+        let key = rind::rsa::KeyPair::from_pkcs1(&read(path)).unwrap();
+        let public = key.public_key().as_ref();
+        let fields = components(&read(path));
+        let (n, e) = (&fields[0], &fields[1]);
+        for signer in signers {
+            let signature = key.sign(signer, b"message").unwrap();
+            let signature = signature.as_ref();
+            for (name, ours, theirs) in algorithms {
+                let at = format!("{path}, {signer:?}, {name}");
+                let theirs_verifies = ring::signature::UnparsedPublicKey::new(theirs, public)
+                    .verify(b"message", signature)
+                    .is_ok();
+                let ours_verifies = signature::UnparsedPublicKey::new(ours, public)
+                    .verify(b"message", signature)
+                    .is_ok();
+                assert_eq!(ours_verifies, theirs_verifies, "{at}");
+                let theirs_verifies = ring::rsa::PublicKeyComponents { n, e }
+                    .verify(theirs, b"message", signature)
+                    .is_ok();
+                let ours_verifies = rind_ring::rsa::PublicKeyComponents { n, e }
+                    .verify(ours, b"message", signature)
+                    .is_ok();
+                assert_eq!(ours_verifies, theirs_verifies, "{at}, components");
+                if theirs_verifies {
+                    verified.push((path, name));
+                }
+            }
+        }
+    }
+    // The odd sizes are among what verifies, so the test checks the floors.
+    for (path, name) in [
+        (
+            "../rind/src/high/rsa/rsa2047.der",
+            "RSA_PSS_2048_8192_SHA256",
+        ),
+        ("tests/rsa/rsa3071.der", "RSA_PKCS1_3072_8192_SHA384"),
+    ] {
+        assert!(verified.contains(&(path, name)), "{path}, {name}");
     }
 }
 

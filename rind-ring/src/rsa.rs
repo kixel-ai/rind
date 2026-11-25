@@ -302,7 +302,8 @@ pub(crate) mod verification {
         ($name:ident, $rind:path, $doc:expr) => {
             #[doc = $doc]
             pub static $name: RsaParameters = RsaParameters {
-                rind: &$rind,
+                // ring counts the modulus floor in whole bytes.
+                rind: &$rind.floor_in_bytes(),
                 id: stringify!($name),
                 unwind: core::marker::PhantomData,
             };
