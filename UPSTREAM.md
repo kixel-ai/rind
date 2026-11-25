@@ -187,6 +187,22 @@ Each upstream rind changes, with where its fork is vendored and where the list o
 - **Reported:** per limitation, in that quest.
 - **Goes when:** each limitation lifts, model by model.
 
+### Aeneas cannot translate an auto trait's built-in impl
+
+- **Breaks:** a trait with an auto trait (`Send`, `Sync`, `Unpin`, `UnwindSafe`, `RefUnwindSafe`) among its supertraits needs that auto trait's built-in impl wherever the translation instantiates it at a concrete type, and Aeneas stops there with ``Unhandled `BuiltinOrAuto` for trait``. ML-KEM's `Params`, `FixedArray`, and `Vector` require all five, so the translation cannot reach `MlKem768`'s `Params` impl or `[Poly; 3]`'s `Vector` impl.
+- **Reproduce:** add `--start-from '{impl crate::mid::mlkem::Params for crate::mid::mlkem::MlKem768}::keygen'` to `admin/prove`'s x86_64 translation.
+- **Workaround:** `admin/prove` starts ML-KEM's translation from the generic `DecapKey::keygen_mitigated`, `DecapKey::decaps_mitigated`, `EncapKey::parse_mitigated`, and `EncapKey::encaps_mitigated` its impls call, which take the `Params` instance as an argument.
+- **Reported:** no.
+- **Goes when:** Aeneas translates built-in auto-trait impls, as unit instances; the proofs may then start from the impls.
+
+### Aeneas's Lean resolves a Rust item named `Array` to itself
+
+- **Breaks:** Aeneas writes Lean's `Array` unqualified, so inside the namespace of a Rust item named `Array`, such as ML-KEM's trait was in `mid::mlkem`, every array type in that module's declarations names the trait instead, and Lean rejects them.
+- **Reproduce:** rename `mid::mlkem::FixedArray` back to `Array` and run `admin/prove lean`: `Rind/X86_64/Types.lean` fails with `Application type mismatch` at `mid.mlkem.Vector`.
+- **Workaround:** the trait is named `FixedArray`. It is private to rind, so the name costs no API.
+- **Reported:** no.
+- **Goes when:** Aeneas qualifies the names it emits, as `Aeneas.Std.Array`.
+
 ### Aeneas emits a duplicate `markerCopyInst` field
 
 - **Breaks:** Aeneas names both of `ZeroablePrimitive`'s `Copy` clauses, which `NonZeroU32::get` brings in, `markerCopyInst`, and Lean refuses the duplicate field.

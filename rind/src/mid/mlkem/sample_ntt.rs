@@ -3,7 +3,10 @@
 
 // The loops here count indices, rather than zip iterators or call closures,
 // since their proof is about Aeneas's translation, which takes neither.
-#![allow(clippy::needless_range_loop, reason = "Aeneas translates no iterator adapter")]
+#![allow(
+    clippy::needless_range_loop,
+    reason = "Aeneas translates no iterator adapter"
+)]
 
 use super::{N, Poly, Q};
 use crate::{low, mid::sha3};

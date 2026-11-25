@@ -5,7 +5,10 @@
 
 // The loops here count indices, rather than zip iterators or call closures,
 // since their proof is about Aeneas's translation, which takes neither.
-#![allow(clippy::needless_range_loop, reason = "Aeneas translates no iterator adapter")]
+#![allow(
+    clippy::needless_range_loop,
+    reason = "Aeneas translates no iterator adapter"
+)]
 
 use alloc::boxed::Box;
 use core::fmt;
@@ -40,7 +43,7 @@ pub enum MlKem1024 {}
 /// widths `DU` and `DV`, with the arrays they size, which stable Rust cannot
 /// compute from the constants.
 ///
-/// Its bounds, like [`Array`]'s, let a generic caller rely on the auto
+/// Its bounds, like [`FixedArray`]'s, let a generic caller rely on the auto
 /// traits every key and ciphertext has.
 pub trait Params:
     fmt::Debug + Sized + Send + Sync + Unpin + UnwindSafe + RefUnwindSafe + 'static
@@ -58,16 +61,16 @@ pub trait Params:
     type Vector: Vector;
     /// `K * K` polynomials, row by row.
     #[doc(hidden)]
-    type Matrix: Array<Poly>;
+    type Matrix: FixedArray<Poly>;
     /// An encoded encapsulation key: `384 * K + 32` bytes.
     #[doc(hidden)]
-    type EncapKeyBytes: Array<u8>;
+    type EncapKeyBytes: FixedArray<u8>;
     /// A ciphertext: `32 * (DU * K + DV)` bytes.
     #[doc(hidden)]
-    type CiphertextBytes: Array<u8>;
+    type CiphertextBytes: FixedArray<u8>;
     /// An expanded decapsulation key: `768 * K + 96` bytes.
     #[doc(hidden)]
-    type DecapKeyBytes: Array<u8>;
+    type DecapKeyBytes: FixedArray<u8>;
     /// FIPS-203's name for the set.
     #[cfg(test)]
     const NAME: &'static str;
@@ -172,7 +175,7 @@ impl Params for MlKem1024 {
 }
 
 /// A fixed-size array, of a length a [`Params`] picks.
-pub trait Array<T>:
+pub trait FixedArray<T>:
     Clone
     + fmt::Debug
     + AsRef<[T]>
@@ -193,7 +196,7 @@ pub trait Array<T>:
     fn from_slice(slice: &[T]) -> Option<Self>;
 }
 
-impl<T, const L: usize> Array<T> for [T; L]
+impl<T, const L: usize> FixedArray<T> for [T; L]
 where
     T: Copy + fmt::Debug + Send + Sync + Unpin + UnwindSafe + RefUnwindSafe + 'static,
 {
@@ -207,13 +210,13 @@ where
 }
 
 /// `K` polynomials, with the arrays of their mulcaches and encodings.
-pub trait Vector: Array<Poly> {
+pub trait Vector: FixedArray<Poly> {
     /// `K` mulcaches.
     #[doc(hidden)]
-    type MulCache: Array<[i16; N / 2]>;
+    type MulCache: FixedArray<[i16; N / 2]>;
     /// `K` encoded polynomials.
     #[doc(hidden)]
-    type Encoded: Array<[u8; 384]>;
+    type Encoded: FixedArray<[u8; 384]>;
 }
 
 impl Vector for [Poly; 2] {
@@ -915,7 +918,7 @@ impl<V: Clone, D: Domain> Clone for Coeffs<V, D> {
     }
 }
 
-impl<V: Array<Poly>, D: Domain> Coeffs<V, D> {
+impl<V: FixedArray<Poly>, D: Domain> Coeffs<V, D> {
     fn zero() -> Self {
         Self(V::filled([0; N]), PhantomData)
     }
@@ -935,7 +938,7 @@ impl<D: Domain> Coeffs<Poly, D> {
     }
 }
 
-impl<M: Array<Poly>> Coeffs<M, Ntt> {
+impl<M: FixedArray<Poly>> Coeffs<M, Ntt> {
     /// FIPS-203's `SampleNTT` of the matrix `A^` from `rho`, or of its
     /// transpose.
     fn sample(rho: &[u8; 32], transposed: bool) -> Self {
@@ -1170,7 +1173,7 @@ fn compress_1(x: i16) -> u8 {
     (x & 1) as u8
 }
 
-impl<V: Array<Poly>> Coeffs<V, Normal> {
+impl<V: FixedArray<Poly>> Coeffs<V, Normal> {
     /// K-wise NTT
     fn ntt(mut self) -> Coeffs<V, Ntt> {
         let polys = self.0.as_mut();
@@ -1233,7 +1236,7 @@ impl Coeffs<Poly, Normal> {
     }
 }
 
-impl<V: Array<Poly>> Coeffs<V, Normal> {
+impl<V: FixedArray<Poly>> Coeffs<V, Normal> {
     /// Simple addition, leaving the sum unreduced
     fn add(mut self, term: &Self) -> Self {
         let polys = self.0.as_mut();

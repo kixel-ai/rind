@@ -868,8 +868,73 @@ opaque low.x86_64.mont.sqr8x
   Slice Std.U64 → Slice Std.U64 → Slice Std.U64 → Std.U64 → Option
     low.x86_64.cpu.HaveBmi2Adx → Result (Slice Std.U64)
 
+/-! mlkem-native's ML-KEM polynomial routines, behind their Rust wrappers,
+which pass the AVX2 layout's tables. -/
+
+opaque low.x86_64.mlkem.mlkem_ntt
+  : Array Std.I16 256#usize → Result (Array Std.I16 256#usize)
+
+opaque low.x86_64.mlkem.mlkem_intt
+  : Array Std.I16 256#usize → Result (Array Std.I16 256#usize)
+
+opaque low.x86_64.mlkem.mlkem_mulcache_compute
+  : Array Std.I16 128#usize → Array Std.I16 256#usize → Result (Array Std.I16 128#usize)
+
+opaque low.x86_64.mlkem.mlkem_rej_uniform_vartime
+  : Array Std.I16 256#usize → Slice Std.U8 → Result (Std.U64 × (Array Std.I16 256#usize))
+
+opaque low.x86_64.mlkem.mlkem_basemul_k2
+  : Array Std.I16 256#usize → Array Std.I16 512#usize → Array Std.I16 512#usize →
+    Array Std.I16 256#usize → Result (Array Std.I16 256#usize)
+
+opaque low.x86_64.mlkem.mlkem_basemul_k3
+  : Array Std.I16 256#usize → Array Std.I16 768#usize → Array Std.I16 768#usize →
+    Array Std.I16 384#usize → Result (Array Std.I16 256#usize)
+
+opaque low.x86_64.mlkem.mlkem_basemul_k4
+  : Array Std.I16 256#usize → Array Std.I16 1024#usize → Array Std.I16 1024#usize →
+    Array Std.I16 512#usize → Result (Array Std.I16 256#usize)
+
+opaque low.x86_64.mlkem.mlkem_reduce
+  : Array Std.I16 256#usize → Result (Array Std.I16 256#usize)
+
+opaque low.x86_64.mlkem.mlkem_tomont
+  : Array Std.I16 256#usize → Result (Array Std.I16 256#usize)
+
+opaque low.x86_64.mlkem.mlkem_frombytes
+  : Array Std.I16 256#usize → Array Std.U8 384#usize → Result (Array Std.I16 256#usize)
+
+opaque low.x86_64.mlkem.mlkem_tobytes
+  : Array Std.U8 384#usize → Array Std.I16 256#usize → Result (Array Std.U8 384#usize)
+
+opaque low.x86_64.mlkem.mlkem_compress_d4
+  : Array Std.U8 128#usize → Array Std.I16 256#usize → Result (Array Std.U8 128#usize)
+
+opaque low.x86_64.mlkem.mlkem_compress_d5
+  : Array Std.U8 160#usize → Array Std.I16 256#usize → Result (Array Std.U8 160#usize)
+
+opaque low.x86_64.mlkem.mlkem_compress_d10
+  : Array Std.U8 320#usize → Array Std.I16 256#usize → Result (Array Std.U8 320#usize)
+
+opaque low.x86_64.mlkem.mlkem_compress_d11
+  : Array Std.U8 352#usize → Array Std.I16 256#usize → Result (Array Std.U8 352#usize)
+
+opaque low.x86_64.mlkem.mlkem_unpack
+  : Array Std.I16 256#usize → Result (Array Std.I16 256#usize)
+
+/-- ML-KEM-1024's eight-way matrix sampler, which hands the eight-way Keccak
+function pointers Aeneas cannot translate. No ✓ covers ML-KEM-1024. -/
+opaque mid.mlkem.sample_ntt.sample_ntt_8x
+  : Array Std.U8 32#usize → Bool → Slice (Array Std.I16 256#usize) →
+    Result (Slice (Array Std.I16 256#usize))
+
 /-! pyca/verified-garbage's ML-KEM-768 routines, behind their Rust wrappers,
-whose contracts `Rind.X86_64.VgMlKem` states. -/
+whose contracts `Rind.X86_64.VgMlKem` states, and the checks for the CPU
+features they need. -/
+
+opaque low.x86_64.mlkem768_vg.Encaps.check : Result (Option low.x86_64.mlkem768_vg.Encaps)
+
+opaque low.x86_64.mlkem768_vg.KeyPair.check : Result (Option low.x86_64.mlkem768_vg.KeyPair)
 
 opaque low.x86_64.mlkem768_vg.Encaps.check_ek
   : low.x86_64.mlkem768_vg.Encaps → Array Std.U8 1184#usize → Result Bool
