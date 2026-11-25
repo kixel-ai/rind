@@ -430,7 +430,7 @@ step() {
             mapfile -t packages < <(sh/select.sh "$changed" "$all")
             run cargo fmt --all --check
             RUSTFMT=rustfmt-unstable run cargo fmt --all --check -- --config-path=.rustfmt.unstable.toml
-            run cargo clippy "${packages[@]}" --all-targets --locked -- --deny warnings
+            run cargo clippy "${packages[@]}" --all-targets --locked --profile test-fast -- --deny warnings
             # nextest runs the test binaries in parallel but not doc tests. Like
             # `cargo test`, it passes a selection with no tests, such as the
             # benches alone.
@@ -438,16 +438,16 @@ step() {
             # rind's `zeroize` feature, whose impls the zeroing test holds to
             # their claim: it requires `ZeroizeOnDrop` of every type it checks.
             if names rind "${packages[@]}"; then
-                run cargo clippy -p rind --features zeroize --lib --test zeroing --locked -- --deny warnings
+                run cargo clippy -p rind --features zeroize --lib --test zeroing --locked --profile test-fast -- --deny warnings
                 run cargo nextest run -p rind --features zeroize --test zeroing --locked --cargo-profile test-fast
                 # rind without the algorithms its features hold, as the
                 # adapters build it: no combination may leave dead code, a key
                 # of an algorithm left out is refused by its feature's name,
                 # and the other signature types' encodings fit its smaller
                 # buffers.
-                run cargo clippy -p rind --no-default-features --all-targets --locked -- --deny warnings
+                run cargo clippy -p rind --no-default-features --all-targets --locked --profile test-fast -- --deny warnings
                 for features in ml-dsa slh-dsa; do
-                    run cargo clippy -p rind --no-default-features --features "$features" --lib --locked -- --deny warnings
+                    run cargo clippy -p rind --no-default-features --features "$features" --lib --locked --profile test-fast -- --deny warnings
                 done
                 run cargo nextest run -p rind --no-default-features --lib --locked --cargo-profile test-fast -E 'test(high::signature::)'
             fi
@@ -466,7 +466,7 @@ step() {
                     RUSTFLAGS='--cfg rind_fips --cfg rind_cpu_disable' run cargo clippy -p rind-fips-module \
                         --features "$features" --locked --target-dir target/fips-module -- --deny warnings
                 done
-                run cargo clippy -p rind-acvp --features module --all-targets --locked -- --deny warnings
+                run cargo clippy -p rind-acvp --features module --all-targets --locked --profile test-fast -- --deny warnings
                 if [[ -n "$all" ]] || grep -q '^rind-fips/' "$changed"; then
                     run cargo nextest run -p rind-fips --features __break_tests --locked
                 fi
@@ -482,7 +482,7 @@ step() {
                 run cargo test "${libs[@]}" --locked --doc --profile test-fast
                 # A broken or private intra-doc link renders as plain text on
                 # docs.rs.
-                RUSTDOCFLAGS='--deny warnings' run cargo doc "${libs[@]}" --no-deps --locked
+                RUSTDOCFLAGS='--deny warnings' run cargo doc "${libs[@]}" --no-deps --locked --profile test-fast
             fi
             ;;
         fix:rs)
