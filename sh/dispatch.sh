@@ -428,8 +428,11 @@ step() {
     case "$1:$2" in
         check:rs)
             mapfile -t packages < <(sh/select.sh "$changed" "$all")
-            run cargo fmt --all --check
-            RUSTFMT=rustfmt-unstable run cargo fmt --all --check -- --config-path=.rustfmt.unstable.toml
+            # Every member, without `--all`, which would also format the path
+            # dependencies outside the workspace: thirdparty/'s vendored
+            # forks, which keep their upstream's format.
+            run cargo fmt --check
+            RUSTFMT=rustfmt-unstable run cargo fmt --check -- --config-path=.rustfmt.unstable.toml
             run cargo clippy "${packages[@]}" --all-targets --locked -- --deny warnings
             # nextest runs the test binaries in parallel but not doc tests. Like
             # `cargo test`, it passes a selection with no tests, such as the
@@ -487,8 +490,8 @@ step() {
             ;;
         fix:rs)
             mapfile -t packages < <(sh/select.sh "$changed" "$all")
-            run cargo fmt --all
-            RUSTFMT=rustfmt-unstable run cargo fmt --all -- --config-path=.rustfmt.unstable.toml
+            run cargo fmt
+            RUSTFMT=rustfmt-unstable run cargo fmt -- --config-path=.rustfmt.unstable.toml
             run cargo clippy "${packages[@]}" --all-targets --fix --allow-dirty --allow-staged
             ;;
         check:msrv)
