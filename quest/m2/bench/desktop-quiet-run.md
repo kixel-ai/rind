@@ -20,4 +20,5 @@ Decided 2026-11-24 (maintainer): ✅ refresh with the quiet hosts and re-measure
 - Then run `admin/bench-report collect --host desktop` and `render --from`.
   - Triage new gaps into speed quests or reasons in `benchmarks/gaps.toml`.
   - Read its every-logical-CPU handshake rows against its last run and against aws-lc-rs.
+- The refresh's collections predate [kixel-ai/rind#964](https://github.com/kixel-ai/rind/pull/964), so no host times its SLH-DSA, one-record rustls, and DIT-per-call rows yet. Once the window works, collect every host the same way, so those rows get host data, triaging their gaps like any other.
 - Record what got the window in [the bench epic's README](/quest/m2/bench/README.md), so the next minor release's refresh can use it on every shared host.

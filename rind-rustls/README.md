@@ -28,6 +28,18 @@ A dependency that turns on rustls's `aws_lc_rs` or `ring` feature still
 compiles that library; [MIGRATING.md](https://github.com/kixel-ai/rind/blob/main/MIGRATING.md#crates-with-their-own-crypto-backend)
 says which features of each such crate avoid it.
 
+## Small records on Apple silicon
+
+On Apple's platforms, rind turns data-independent timing (DIT) on and off
+around each call that handles a secret, and rustls seals or opens each record
+in its own call. On an M4 that adds about 40 ns to each seal and open, half
+again the time of sealing and opening a 64-byte record. To pay it once,
+depend on rind and hold
+[`rind::cpu::Dit::hold()`](https://docs.rs/rind/latest/rind/cpu/struct.Dit.html)
+around a batch of rustls calls, such as one pass of a connection's read and
+write loop. The guard stays on its thread, so an async task holds it only
+between `.await`s. Elsewhere rind sets no DIT and the guard does nothing.
+
 ## What rind cannot back
 
 - `kx_group::MLKEM1024`, which `ALL_KX_GROUPS` leaves out.
@@ -46,6 +58,13 @@ says which features of each such crate avoid it.
   public or encapsulated key, as rind does everywhere; upstream takes one.
 - `Ticketer` seals tickets with XChaCha20-Poly1305, where upstream's uses
   RFC 5077's AES-256-CBC and HMAC-SHA256.
+
+## Without `std`
+
+Turn off this crate's and rustls's default features for a target without
+`std`. As in rustls, `std` gates `Ticketer`. rind still needs a global
+allocator; [PLATFORMS.md](https://github.com/kixel-ai/rind/blob/main/PLATFORMS.md)
+says what else such a target needs.
 
 ## WebAssembly
 

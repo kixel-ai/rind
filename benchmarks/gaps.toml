@@ -49,8 +49,8 @@ on = ["nixos", "ovh-iad", "ovh-sea", "kixtop"]
 reason = "Decided in [kixel-ai/rind#812](https://github.com/kixel-ai/rind/pull/812): on x86_64 without AVX-512, ML-KEM-768 key generation stays on rind's arithmetic though pyca/verified-garbage's is faster, since a key pair decapsulates on the arithmetic that generated it and VG's decapsulation was 1.17 to 1.25× slower there when it decided, and decapsulation is the hot path. aarch64 holds for the same reason: on `kixtop`'s Apple M4 VG generated keys in 5.22 µs against rind's 6.36 but decapsulated in 4.79 against 4.21 (1.14×), and `ovh-iad` and `ovh-sea` decapsulated at 1.16 and 1.21× rind's time."
 
 [[gap]]
-operations = ["oprf-ristretto255-blind", "oprf-ristretto255-evaluate"]
-on = ["nixos", "ovh-iad", "ovh-sea"]
+operations = ["oprf-ristretto255-blind", "oprf-ristretto255-evaluate", "oprf-ristretto255-blind/*", "oprf-ristretto255-evaluate/*"]
+on = ["nixos", "ovh-iad", "ovh-sea", "x86_64"]
 quest = "/quest/m2/speed/ristretto255-avx2.md"
 
 [[gap]]
