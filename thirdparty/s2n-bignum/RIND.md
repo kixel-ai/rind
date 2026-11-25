@@ -95,8 +95,9 @@ What aws-lc's x86_64 ChaCha20-Poly1305 and ChaCha20 routines need,
 AES-CTR and AES-CBC routines, `aes_hw_ctr32_encrypt_blocks` and
 `aes_hw_cbc_encrypt`, its P-256 mixed additions,
 `ecp_nistz256_point_add_affine` and `ecp_nistz256_point_add_affinex`, and
-what OpenSSL's `sha512_block_data_order_avx2` adds to them: BMI1's `ANDN`,
-BMI2's `RORX`, and `PUSH m64`. With them every instruction of those
+what OpenSSL's `sha512_block_data_order_avx2` and
+`sha256_block_data_order_avx2` add to them: BMI1's `ANDN`, BMI2's `RORX`,
+`PUSH m64`, and VEX `VPSHUFD`. With them every instruction of those
 routines, as rind's release build emits them,
 decodes. Posting them to awslabs/s2n-bignum needs the maintainer's approval
 ([kixel-ai/rind#448](https://github.com/kixel-ai/rind/pull/448)).
@@ -104,6 +105,7 @@ decodes. Posting them to awslabs/s2n-bignum needs the maintainer's approval
 | Instruction | Encoding | Note |
 | --- | --- | --- |
 | `VPALIGNR xmm/ymm, xmm/ymm, xmm/ymm/m, imm8` | VEX.128/256.66.0F3A.WIG 0F /r ib | `PALIGNR` in each 128-bit lane |
+| `VPSHUFD xmm/ymm, xmm/ymm/m, imm8` | VEX.128/256.66.0F.WIG 70 /r ib | `PSHUFD` in each 128-bit lane |
 | `PSLLD xmm, imm8` | 66 0F 72 /6 ib | |
 | `PSRLD xmm, imm8` | 66 0F 72 /2 ib | |
 | `PSLLDQ xmm, imm8` | 66 0F 73 /7 ib | semantics as in [awslabs/s2n-bignum#439](https://github.com/awslabs/s2n-bignum/pull/439) |
