@@ -1099,7 +1099,7 @@ aarch64_aes_gcm_items() {
         'fn mul8(' 'fn _mul_h(' 'fn _mul8(' "pub(crate) struct Aggregate<'a> {" "impl<'a> Aggregate<'a> {" \
         'fn reverse(' 'fn vmull_p64_fix(' 'fn vmull_high_p64_fix(' 'fn zero(' 'fn from_u128(' 'fn to_u128(' \
         'const GF128_POLY_HI:' 'const GF128_POLY_CARRY_MASK:'
-    items rind/src/low/aarch64/aes_gcm.rs 'fn short<' 'static KEEP:' 'fn encrypt<' 'fn load(' 'fn store('
+    items rind/src/low/aarch64/aes_gcm.rs 'fn short<' 'static KEEP:' 'fn encrypt<' 'fn load(' 'fn store(' 'fn stitched<'
 }
 check_quote Aarch64/AesGcmModel aarch64_aes_gcm_items
 select_items() {
@@ -1744,7 +1744,7 @@ extract aarch64 Aarch64 "${hashes[@]}" "${assembly[@]}" \
     --opaque 'crate::low::aarch64::ghash::_::add' \
     --include crate::low::aarch64::aes_gcm \
     --opaque crate::low::aarch64::aes_gcm::short \
-    --opaque crate::low::aarch64::aes_gcm::cipher
+    --opaque crate::low::aarch64::aes_gcm::stitched
 
 # The AEAD key's conversion is x86_64's alone: the AEAD API's model and proofs
 # are x86_64's, as AES-GCM's are.
