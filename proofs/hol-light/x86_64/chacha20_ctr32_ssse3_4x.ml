@@ -1458,3 +1458,153 @@ let CHACHA_CORE = prove
   X86_BIGSTEP_TAC CHACHA_EXEC "s8" THEN
   ENSURES_FINAL_STATE_TAC THEN RULE_ASSUM_TAC(REWRITE_RULE[WORD_ADD_0]) THEN
   ASM_REWRITE_TAC[]);;
+(* ------------------------------------------------------------------------- *)
+(* Memory as bytes: chacha_bnum f p k is the k bytes f p, ..., f (p + k - 1)  *)
+(* read little-endian.                                                       *)
+(* ------------------------------------------------------------------------- *)
+
+let chacha_bnum = define
+ `(!f p. chacha_bnum (f:num->byte) p 0 = 0) /\
+  (!f p k. chacha_bnum f p (SUC k) = val(f p) + 256 * chacha_bnum f (p + 1) k)`;;
+
+let ADD_MULT_EXP_EQ = prove
+ (`!e x y x' y'. x < e /\ x' < e
+                 ==> (x + e * y = x' + e * y' <=> x = x' /\ y = y')`,
+  REPEAT STRIP_TAC THEN EQ_TAC THEN SIMP_TAC[] THEN DISCH_TAC THEN
+  SUBGOAL_THEN `(x + e * y) MOD e = (x' + e * y') MOD e /\
+                (x + e * y) DIV e = (x' + e * y') DIV e` MP_TAC THENL
+   [ASM_REWRITE_TAC[]; ALL_TAC] THEN
+  SUBGOAL_THEN `~(e = 0)` ASSUME_TAC THENL [ASM_ARITH_TAC; ALL_TAC] THEN
+  ONCE_REWRITE_TAC[ADD_SYM] THEN
+  ASM_SIMP_TAC[MOD_MULT_ADD; DIV_MULT_ADD; MOD_LT; DIV_LT; ADD_CLAUSES]);;
+
+let FORALL_LT_SUC_SPLIT = prove
+ (`!P m. (!i. i < SUC m ==> P i) <=> P 0 /\ (!i. i < m ==> P(SUC i))`,
+  REPEAT GEN_TAC THEN EQ_TAC THENL
+   [REPEAT STRIP_TAC THEN FIRST_X_ASSUM MATCH_MP_TAC THEN ASM_ARITH_TAC;
+    STRIP_TAC THEN INDUCT_TAC THEN ASM_SIMP_TAC[LT_SUC; LT_0]]);;
+
+let READ_BYTES128_VAL = prove
+ (`!(a:int64) s x. read (memory :> bytes128 a) s = x <=>
+                   read (memory :> bytes(a,16)) s = val(x:int128)`,
+  REPEAT GEN_TAC THEN REWRITE_TAC[READ_COMPONENT_COMPOSE; BYTES128_WBYTES] THEN
+  REWRITE_TAC[GSYM VAL_EQ; VAL_READ_WBYTES] THEN
+  CONV_TAC(ONCE_DEPTH_CONV DIMINDEX_CONV) THEN CONV_TAC NUM_REDUCE_CONV);;
+
+let CHACHA_BNUM_BOUND = prove
+ (`!k f p. chacha_bnum f p k < 2 EXP (8 * k)`,
+  INDUCT_TAC THEN REWRITE_TAC[chacha_bnum] THEN CONV_TAC NUM_REDUCE_CONV THEN
+  REPEAT GEN_TAC THEN MP_TAC(ISPEC `(f:num->byte) p` VAL_BOUND) THEN
+  FIRST_X_ASSUM(MP_TAC o SPECL [`f:num->byte`; `p + 1`]) THEN
+  REWRITE_TAC[DIMINDEX_8; ARITH_RULE `8 * SUC k = 8 * k + 8`; EXP_ADD] THEN
+  CONV_TAC NUM_REDUCE_CONV THEN REPEAT STRIP_TAC THEN
+  SUBGOAL_THEN `256 * (chacha_bnum (f:num->byte) (p + 1) k + 1) <= 2 EXP (8 * k) * 256`
+   MP_TAC THENL [ONCE_REWRITE_TAC[MULT_SYM] THEN REWRITE_TAC[LE_MULT_RCANCEL] THEN ASM_ARITH_TAC;
+                 ASM_ARITH_TAC]);;
+
+let CHACHA_BNUM_ADD = prove
+ (`!k l f p. chacha_bnum f p (k + l) =
+             chacha_bnum f p k + 2 EXP (8 * k) * chacha_bnum f (p + k) l`,
+  INDUCT_TAC THEN REWRITE_TAC[chacha_bnum; ADD_CLAUSES; MULT_CLAUSES; EXP] THEN
+  ASM_REWRITE_TAC[ARITH_RULE `8 * SUC k = 8 + 8 * k`; EXP_ADD] THEN
+  REWRITE_TAC[ARITH_RULE `(p + 1) + k = SUC(p + k)`] THEN
+  CONV_TAC NUM_REDUCE_CONV THEN CONV_TAC NUM_RING);;
+
+let CHACHA_BNUM_EQ = prove
+ (`!k f g p. (!i. i < k ==> f(p + i) = g(p + i)) ==> chacha_bnum f p k = chacha_bnum g p k`,
+  INDUCT_TAC THEN REWRITE_TAC[chacha_bnum] THEN REPEAT STRIP_TAC THEN
+  FIRST_ASSUM(MP_TAC o SPEC `0`) THEN REWRITE_TAC[ADD_CLAUSES; LT_0] THEN
+  DISCH_THEN SUBST1_TAC THEN AP_TERM_TAC THEN AP_TERM_TAC THEN
+  FIRST_X_ASSUM MATCH_MP_TAC THEN X_GEN_TAC `i:num` THEN DISCH_TAC THEN
+  FIRST_X_ASSUM(MP_TAC o SPEC `SUC i`) THEN
+  ASM_REWRITE_TAC[LT_SUC; ARITH_RULE `(p + 1) + i = p + SUC i`]);;
+
+(* Byte i of the sum. *)
+let CHACHA_BNUM_BYTE = prove
+ (`!k f p i. i < k ==> (chacha_bnum f p k DIV 2 EXP (8 * i)) MOD 256 = val(f(p + i):byte)`,
+  REPEAT STRIP_TAC THEN
+  FIRST_X_ASSUM(SUBST1_TAC o MATCH_MP (ARITH_RULE `i < k ==> k = i + SUC(k - i - 1)`)) THEN
+  REWRITE_TAC[CHACHA_BNUM_ADD; chacha_bnum] THEN
+  SIMP_TAC[DIV_MULT_ADD; EXP_EQ_0; ARITH_EQ; CHACHA_BNUM_BOUND; DIV_LT; ADD_CLAUSES] THEN
+  REWRITE_TAC[MOD_MULT_ADD] THEN MATCH_MP_TAC MOD_LT THEN
+  REWRITE_TAC[ARITH_RULE `256 = 2 EXP 8`; GSYM DIMINDEX_8; VAL_BOUND]);;
+
+(* The bytes at a and on are f p and on. *)
+let READ_CHACHA_BNUM = prove
+ (`!k f p (a:int64) s.
+        read (memory :> bytes(a,k)) s = chacha_bnum f p k <=>
+        !i. i < k ==> read (memory :> bytes8(word_add a (word i))) s = f(p + i)`,
+  INDUCT_TAC THEN REWRITE_TAC[chacha_bnum; CONJUNCT1 LT] THEN
+  REWRITE_TAC[READ_COMPONENT_COMPOSE; READ_BYTES_TRIVIAL] THEN
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[ARITH_RULE `SUC k = 1 + k`; READ_BYTES_COMBINE] THEN
+  REWRITE_TAC[GSYM READ_COMPONENT_COMPOSE; READ_MEMORY_BYTES_BYTES8] THEN
+  CONV_TAC NUM_REDUCE_CONV THEN
+  W(MP_TAC o PART_MATCH (lhand o rand) ADD_MULT_EXP_EQ o lhand o snd) THEN
+  ANTS_TAC THENL
+   [MP_TAC(ISPEC `read (memory :> bytes8 a) s` VAL_BOUND) THEN
+    MP_TAC(ISPEC `(f:num->byte) p` VAL_BOUND) THEN
+    REWRITE_TAC[DIMINDEX_8] THEN CONV_TAC NUM_REDUCE_CONV THEN SIMP_TAC[];
+    DISCH_THEN SUBST1_TAC] THEN
+  FIRST_X_ASSUM(fun th -> REWRITE_TAC[th]) THEN
+  REWRITE_TAC[VAL_EQ; GSYM ADD1; FORALL_LT_SUC_SPLIT] THEN
+  REWRITE_TAC[ADD_CLAUSES; WORD_ADD_0; GSYM WORD_ADD_ASSOC; GSYM WORD_ADD] THEN
+  REWRITE_TAC[ARITH_RULE `1 + i = SUC i`; ARITH_RULE `(p + 1) + i = SUC(p + i)`] THEN
+  REWRITE_TAC[FORALL_LT_SUC_SPLIT; ADD_CLAUSES; WORD_ADD_0]);;
+
+let READ_CHACHA_BNUM_SPLIT = prove
+ (`!k l f p (a:int64) s.
+        read (memory :> bytes(a,k + l)) s = chacha_bnum f p (k + l) <=>
+        read (memory :> bytes(a,k)) s = chacha_bnum f p k /\
+        read (memory :> bytes(word_add a (word k),l)) s = chacha_bnum f (p + k) l`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[READ_COMPONENT_COMPOSE; READ_BYTES_COMBINE; CHACHA_BNUM_ADD] THEN
+  MATCH_MP_TAC ADD_MULT_EXP_EQ THEN
+  REWRITE_TAC[READ_BYTES_BOUND; CHACHA_BNUM_BOUND]);;
+
+(* A 16-byte piece. *)
+let READ_CHACHA_BNUM_16 = prove
+ (`!f p (a:int64) s.
+        read (memory :> bytes(a,16)) s = chacha_bnum f p 16 <=>
+        read (memory :> bytes128 a) s = word(chacha_bnum f p 16)`,
+  REWRITE_TAC[READ_BYTES128_VAL] THEN REPEAT GEN_TAC THEN
+  SIMP_TAC[VAL_WORD; DIMINDEX_128; MOD_LT; CHACHA_BNUM_BOUND;
+           ARITH_RULE `2 EXP 128 = 2 EXP (8 * 16)`]);;
+
+let READ_CHACHA_BNUM_CHUNKS = prove
+ (`!m f p (a:int64) s.
+        read (memory :> bytes(a,16 * m)) s = chacha_bnum f p (16 * m) <=>
+        !q. q < m ==> read (memory :> bytes128(word_add a (word(16 * q)))) s =
+                      word(chacha_bnum f (p + 16 * q) 16)`,
+  INDUCT_TAC THEN REWRITE_TAC[chacha_bnum; CONJUNCT1 LT; MULT_CLAUSES] THEN
+  REWRITE_TAC[READ_COMPONENT_COMPOSE; READ_BYTES_TRIVIAL] THEN
+  REWRITE_TAC[GSYM READ_COMPONENT_COMPOSE] THEN REPEAT GEN_TAC THEN
+  REWRITE_TAC[ARITH_RULE `16 * m + 16 = 16 + 16 * m`; READ_CHACHA_BNUM_SPLIT] THEN
+  ASM_REWRITE_TAC[READ_CHACHA_BNUM_16; FORALL_LT_SUC_SPLIT] THEN
+  REWRITE_TAC[MULT_CLAUSES; ADD_CLAUSES; WORD_ADD_0; GSYM WORD_ADD_ASSOC; GSYM WORD_ADD] THEN
+  REWRITE_TAC[ARITH_RULE `(p + 16) + 16 * i = p + 16 * SUC i`;
+              ARITH_RULE `16 + 16 * i = 16 * SUC i`]);;
+
+(* A 128-bit word is its 16 bytes. *)
+let WORD_EQ_BYTES_128 = prove
+ (`!x y:int128. (!i. i < 16 ==> word_subword x (8 * i,8):byte = word_subword y (8 * i,8))
+                ==> x = y`,
+  REPEAT STRIP_TAC THEN REWRITE_TAC[WORD_EQ_BITS_ALT; DIMINDEX_128] THEN
+  X_GEN_TAC `b:num` THEN DISCH_TAC THEN
+  FIRST_X_ASSUM(MP_TAC o SPEC `b DIV 8`) THEN ANTS_TAC THENL [ASM_ARITH_TAC; ALL_TAC] THEN
+  DISCH_THEN(MP_TAC o AP_TERM `bit (b MOD 8):byte->bool`) THEN
+  REWRITE_TAC[BIT_WORD_SUBWORD; DIMINDEX_8; DIMINDEX_128] THEN
+  SUBGOAL_THEN `8 * b DIV 8 + b MOD 8 = b /\ b MOD 8 < MIN 8 8` (fun th -> REWRITE_TAC[th]) THEN
+  REWRITE_TAC[ARITH_RULE `MIN 8 8 = 8`] THEN MP_TAC(SPECL [`b:num`; `8`] DIVISION) THEN ARITH_TAC);;
+
+let WORD_SUBWORD_CHACHA_BNUM = prove
+ (`!f p i. i < 16 ==> word_subword (word(chacha_bnum f p 16):int128) (8 * i,8):byte = f(p + i)`,
+  REPEAT STRIP_TAC THEN REWRITE_TAC[word_subword; VAL_WORD; DIMINDEX_128] THEN
+  SIMP_TAC[MOD_LT; CHACHA_BNUM_BOUND; ARITH_RULE `2 EXP 128 = 2 EXP (8 * 16)`] THEN
+  REWRITE_TAC[ARITH_RULE `2 EXP 8 = 256`] THEN ASM_SIMP_TAC[CHACHA_BNUM_BYTE; WORD_VAL]);;
+
+let CHACHA_BNUM_XOR = prove
+ (`!f g p. word_xor (word(chacha_bnum f p 16)) (word(chacha_bnum g p 16)):int128 =
+           word(chacha_bnum (\i. word_xor (f i) (g i)) p 16)`,
+  REPEAT GEN_TAC THEN MATCH_MP_TAC WORD_EQ_BYTES_128 THEN REPEAT STRIP_TAC THEN
+  ASM_SIMP_TAC[WORD_SUBWORD_XOR; WORD_SUBWORD_CHACHA_BNUM]);;
