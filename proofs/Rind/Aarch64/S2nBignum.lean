@@ -440,11 +440,12 @@ entries hold them. The `_alt` kernels, which the cores with SHA3 run, also
 require `val in_p + 16 * gcm_wb_blocks len_bits < 2 EXP 63`, which their
 restatements take as `KernelBuffersLow`. -/
 
-/-- That the blocks rind hands s2n-bignum's `_alt` AES-GCM kernels end below
-address 2^63, as their theorems require. The model has no addresses, so this
-names the condition, and every theorem resting on those kernels takes it as a
-hypothesis. Untagged user-space addresses on aarch64 Linux and macOS meet it;
-top-byte-tagged pointers, such as Android's heap pointers, do not. -/
+/-- That the address of the blocks rind hands s2n-bignum's `_alt` AES-GCM
+kernels, plus their length in bytes, is below 2^63, as their theorems require.
+The model has no addresses, so this names the condition, and every theorem
+resting on those kernels takes it as a hypothesis. Untagged user-space
+addresses on aarch64 Linux and macOS meet it; a pointer tag that sets bit 63,
+as Android's heap tags do, breaks it. -/
 opaque KernelBuffersLow : Prop
 
 open rind.s2n rind.simd in

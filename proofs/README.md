@@ -1102,9 +1102,9 @@ ciphertext (`cipher_spec`), and `tagged_from` and `tagged` at every length are
 GCTR and the tag on `gcm_hash` (`tagged_from_spec`) and `gcm_encrypt_LE` and
 `gcm_decrypt_LE` (`tagged_seal_spec`, `tagged_open_spec`). With a table for
 the cores with SHA3, each takes `KernelBuffersLow`, which names the `_alt`
-kernels' requirement that the blocks end below address 2^63, as a
-hypothesis: untagged user-space addresses meet it, top-byte-tagged pointers
-do not. AES-192 past the
+kernels' requirement that the blocks' address plus their length is below
+2^63, as a hypothesis: untagged user-space addresses meet it, and a pointer
+tag that sets bit 63 breaks it. AES-192 past the
 short path, which runs aws-lc's stitched kernels on cores with SHA3 and
 rind's AES-CTR and GHASH in turn otherwise, and the AEAD API above `tagged`
 remain to prove.
