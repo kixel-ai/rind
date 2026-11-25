@@ -164,17 +164,29 @@ theorem edOnCurve_ofPoint (Q : Point dF) : edOnCurve (ofPoint Q) := by
   exact ⟨Int.natCast_nonneg _, Int.ofNat_lt.mpr (ZMod.val_lt Q.1.1), Int.natCast_nonneg _,
     Int.ofNat_lt.mpr (ZMod.val_lt Q.1.2), Q.2⟩
 
+/-- The point of the group a point on the curve names. -/
+def toPoint (P : EdPoint) (h : edOnCurve P) : Point dF :=
+  ⟨((P.1 : ZMod p25519), (P.2 : ZMod p25519)), ((onCurve_iff P).mp h).2.2.2.2⟩
+
+theorem ofPoint_toPoint (P : EdPoint) (h : edOnCurve P) : ofPoint (toPoint P h) = P := by
+  obtain ⟨h0, h1, h2, h3, -⟩ := (onCurve_iff P).mp h
+  simp only [ofPoint, toPoint, ZMod.val_intCast, Int.emod_eq_of_lt h0 h1, Int.emod_eq_of_lt h2 h3]
+
 /-- Each point on the curve is one of the group's. -/
-theorem exists_ofPoint {P : EdPoint} (h : edOnCurve P) : ∃ Q, ofPoint Q = P := by
-  obtain ⟨h0, h1, h2, h3, hc⟩ := (onCurve_iff P).mp h
-  refine ⟨⟨((P.1 : ZMod p25519), (P.2 : ZMod p25519)), hc⟩, ?_⟩
-  simp only [ofPoint, ZMod.val_intCast, Int.emod_eq_of_lt h0 h1, Int.emod_eq_of_lt h2 h3]
+theorem exists_ofPoint {P : EdPoint} (h : edOnCurve P) : ∃ Q, ofPoint Q = P :=
+  ⟨toPoint P h, ofPoint_toPoint P h⟩
 
 /-- `edMul` is the group's addition. -/
 theorem edMul_ofPoint (Q R : Point dF) : edMul (ofPoint Q) (ofPoint R) = ofPoint (Q + R) := by
   simp only [edMul, cast_ofPoint_fst, cast_ofPoint_snd, e25519_eq]
   simp only [ofPoint, Point.val_add, add, div_eq_mul_inv]
   congr 3 <;> ring
+
+/-- `edPow` is the group's multiples. -/
+theorem edPow_ofPoint (Q : Point dF) (n : Nat) : edPow (ofPoint Q) n = ofPoint (n • Q) := by
+  induction n with
+  | zero => simp [edPow, ofPoint, ZMod.val_one]
+  | succ n ih => rw [edPow, ih, edMul_ofPoint, succ_nsmul, add_comm]
 
 /-- `edNeg` is the group's negation. -/
 theorem edNeg_ofPoint (Q : Point dF) : edNeg (ofPoint Q) = ofPoint (-Q) := by
