@@ -100,6 +100,14 @@
    fun:decode<fn(u8) -> rustls_pki_types::base64::CodePoint>
    fun:*16rustls_pki_types6base6413decode_secret
 }
+# Fat LTO inlines `decode_secret` into `pem::read`, a frame it keeps.
+{
+   rustls-pki-types-base64-character-class-inlined-into-pem-read
+   Memcheck:Cond
+   fun:decode<fn(u8) -> rustls_pki_types::base64::CodePoint>
+   fun:decode_secret
+   fun:*16rustls_pki_types3pem4read*
+}
 
 # rind-rcgen's PEM codec (`rind-rcgen/src/pem.rs`) frames base64ct's, whose
 # per-character arithmetic is branch-free. What they branch on or index by is

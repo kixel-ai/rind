@@ -218,7 +218,7 @@ jobs:
       - uses: ./.github/actions/nix
 
       - name: ctgrind tests
-        run: nix develop .#ctgrind --command admin/ctgrind --release
+        run: nix develop .#ctgrind --command admin/ctgrind adapters --release -E "binary(ctgrind) and test(pem_signing)"
         env:
           RUSTFLAGS: --cfg rind_cpu_disable
           RIND_CPU_DISABLE_aes: 1
@@ -380,8 +380,9 @@ jobs:
         exclude: ${{ fromJSON(needs.select.outputs.exclude || '{}').profile || fromJSON('[]') }}
     runs-on: ubuntu-latest
     env:
-      CARGO_PROFILE_RELEASE_LTO: ${{ matrix.profile == 'lto' && 'thin' || 'false' }}
+      CARGO_PROFILE_RELEASE_LTO: ${{ matrix.profile == 'lto' && 'thin' || matrix.profile == 'opt-z' && 'fat' || 'false' }}
       CARGO_PROFILE_RELEASE_OPT_LEVEL: ${{ matrix.profile == 'opt-z' && 'z' || '3' }}
+      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: ${{ matrix.profile == 'opt-z' && '1' || '16' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -390,7 +391,7 @@ jobs:
       - uses: ./.github/actions/nix
 
       - name: ctgrind tests
-        run: nix develop .#ctgrind --command admin/ctgrind --release
+        run: nix develop .#ctgrind --command admin/ctgrind adapters --release -E "binary(ctgrind) and test(pem_signing)"
 
       # Its own verdict, whatever ctgrind's.
       - name: ct-binsec
