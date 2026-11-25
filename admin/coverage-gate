@@ -183,6 +183,9 @@ def main():
     copies, regions, branches = load(args)
     entries = allowlist()
 
+    # A function is identified by where its code starts: the copies of one
+    # definition, such as a blanket impl's `<u8 as T>::f` and `<u16 as T>::f`,
+    # demangle to different paths, so no name tells them from two functions.
     functions = collections.defaultdict(lambda: [[], 0])
     for (path, line, name), count in copies.items():
         functions[path, line][0].append(name)
