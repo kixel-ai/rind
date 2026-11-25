@@ -33,6 +33,9 @@ needs. A backend requires only what its target enables at compile time, so
 rind runs on every CPU its target does, and each other feature only picks a
 faster path.
 
+[AUDIT-SCOPE.md](AUDIT-SCOPE.md) scopes a phased third-party audit of this
+code.
+
 ## Threat model
 
 rind assumes an attacker who:
