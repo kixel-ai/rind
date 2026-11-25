@@ -17,9 +17,10 @@ run time. [MIGRATING.md][migrating] maps each ring and aws-lc-rs item to it.
   as `rind::KeyPair`, an enum of the modules' key pairs, whose
   `from_pkcs8` reads the algorithm identifier and links every module. Since
   that call is the one way to link an algorithm unnamed, the two a caller
-  most often does without, `ml_dsa` and `slh_dsa`, are Cargo features, on
-  by default: a build without one leaves its module and `KeyPair` variants
-  out, as the adapters that sign with neither do. No other algorithm has a
+  most often does without, ML-DSA and SLH-DSA, are the Cargo features
+  `ml-dsa` and `slh-dsa`, on by default: a build without one leaves its
+  module and `KeyPair` variants out, as the adapters that sign with neither
+  do. No other algorithm has a
   feature, since leaving it unnamed already leaves it out of the binary.
 - Algorithms only old protocols should use sit in `legacy` submodules, such
   as `digest::legacy::SHA1`.
