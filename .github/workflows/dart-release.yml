@@ -25,7 +25,7 @@ jobs:
       contents: read
     uses: ./.github/workflows/dart-libraries.yml
     with:
-      ref: ${{ github.ref }}
+      ref: ${{ github.sha }}
 
   publish:
     name: Publish
@@ -114,7 +114,9 @@ jobs:
 
       # What the release serves, a rerun's included, must verify against this
       # tag's attestation before it is pinned: `gh attestation verify` checks
-      # the download's digest, and the workflow and ref that signed it.
+      # the download's digest, and the workflow, ref, and commit that signed
+      # it, so a tag moved after its release was made cannot reuse libraries
+      # built from the commit it pointed at before.
       - name: Pin and verify what the release serves
         env:
           GH_TOKEN: ${{ github.token }}
@@ -127,7 +129,8 @@ jobs:
           for asset in "${assets[@]}"; do
             gh attestation verify "$asset" --repo "$GITHUB_REPOSITORY" \
               --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/dart-release.yml" \
-              --source-ref "refs/tags/$GITHUB_REF_NAME"
+              --source-ref "refs/tags/$GITHUB_REF_NAME" \
+              --source-digest "$GITHUB_SHA"
           done
           sh/dart-prebuilt.sh "$RUNNER_TEMP/rind-dart" "$RUNNER_TEMP/released"
 
