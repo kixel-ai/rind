@@ -29,7 +29,10 @@ Drafted `.github/CODEOWNERS`, if the maintainer wants the review requested autom
 /admin/ledger                   @kixelated
 /admin/import-*                 @kixelated
 /thirdparty/s2n-bignum/         @kixelated
-/rind-dart/ /rind-openssl/ /rind-python/ /rind-fips/   @kixelated
+/rind-dart/                     @kixelated
+/rind-openssl/                  @kixelated
+/rind-python/                   @kixelated
+/rind-fips/                     @kixelated
 ```
 
 ## Waiting

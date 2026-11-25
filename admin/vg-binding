@@ -18,6 +18,9 @@ This checks the chain from rind's side, on the files at rind's pin of VG:
   and one of the VG files it links, at the pinned revision, holds that
   contract. A link with a line lands on a theorem, a definition, a field that
   states `Verified` code, or a registration.
+- Where an axiom names several variants of one contract, each variant's tag
+  (`adx`, `ifma`) is where one of its links lands, so each has a proof or a
+  registration of its own, unless the axiom is in `GENERIC`.
 - No file of VG's `lean/` holds a `sorry` or an `axiom`.
 - Each routine rind vendors under `rind/src/low/<arch>/vg/` is reached by a
   routine an axiom covers, through the calls in VG's text, or by an
@@ -55,6 +58,12 @@ UNCOVERED = {
         "vg_rsa_public_precompute": "rind's aarch64 RSA is not proven yet; [its quest](/quest/m4/verified/rsa-aarch64-mont-import.md) restates VG's",
     },
 }
+
+
+# Axioms whose one theorem is generic over the variants of a routine, so no
+# link lands on a variant's own: VG's wipe wrapper takes the variant as an
+# argument (`Proof.MlKem.<Arch>.Wipe.suffix`).
+GENERIC = {"vg_mlkem768_encaps_spec"}
 
 
 def fail(msg):
@@ -146,8 +155,9 @@ def axioms(arch):
 
 
 def links(vg, rev, doc, where):
-    """Checks each link of `doc` to VG's Lean, and returns the text of the
-    files it links."""
+    """Checks each link of `doc` to VG's Lean, and returns each linked file's
+    text and the lines its link lands on, lowercased (the whole file for a link
+    with no line)."""
     texts = []
     for url_rev, path, line in URL.findall(doc):
         if url_rev != rev:
@@ -156,14 +166,16 @@ def links(vg, rev, doc, where):
         if not file.is_file():
             fail(f"{where} links {path}, which VG's {rev[:12]} lacks")
         text = file.read_text()
-        texts.append(text)
+        window = text
         if line:
             lines = text.splitlines()
             n = int(line)
             # The line is the declaration's, or an attribute or docstring
             # line above it.
+            window = "\n".join(lines[max(n - 2, 0) : n + 8])
             if not any(DECL.match(l) or ARTIFACT.search(l) for l in lines[n - 1 : n + 8]):
                 fail(f"{where} links {path}#L{n}, which is no theorem, definition, or registration")
+        texts.append((text, window.lower()))
     return texts
 
 
@@ -181,6 +193,10 @@ def main():
     if sorry:
         fail(f"a sorry or an axiom in VG's {', '.join(sorry)}")
 
+    stale = GENERIC - {name for arch in ARCHS for name, _, _ in axioms(arch)}
+    if stale:
+        fail(f"GENERIC lists {', '.join(sorted(stale))}, which no axiom of Vg*.lean is")
+
     named = 0
     for arch in ARCHS:
         calls = vg_text(vg, arch)
@@ -197,9 +213,11 @@ def main():
             routines = sorted({t for t in ticked if (file, t) not in by_name})
             if not routines:
                 fail(f"{where} names no VG routine in backticks")
-            texts = links(vg, rev, doc, where) + [t for d in peers for t in links(vg, rev, d, where)]
-            if not texts:
+            linked = links(vg, rev, doc, where) + [t for d in peers for t in links(vg, rev, d, where)]
+            if not linked:
                 fail(f"{where} links no file of VG's theorem")
+            texts = [t for t, _ in linked]
+            sharing = {}
             for r in routines:
                 if r not in calls:
                     fail(f"{where} names {r}, which VG's {arch} text lacks")
@@ -209,6 +227,17 @@ def main():
                         fail(f"{where} covers {r} without naming its contract {c}")
                     if not any(short in t for t in texts):
                         fail(f"{where} covers {r}, whose contract {c} is in none of the files it links")
+                    sharing.setdefault(short, []).append(r)
+            # Variants of one contract (`_adx`, `_ifma`) each have a theorem
+            # or a registration of their own, and the contract's name is in
+            # all of them; so each variant's tag must be where a link lands, or
+            # dropping one variant's links would leave the other's to pass.
+            if name not in GENERIC:
+                for short, rs in sharing.items():
+                    for r in rs if len(rs) > 1 else []:
+                        tag = r.rsplit("_", 1)[1]
+                        if not any(tag in w for _, w in linked):
+                            fail(f"{where} covers {r}, but no link it gives lands on a {tag} proof or registration")
             covered.update(routines)
             named += len(routines)
 
