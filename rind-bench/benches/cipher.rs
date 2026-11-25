@@ -37,12 +37,11 @@ fn bench_aes_ctr(c: &mut Criterion) {
                         .unwrap()
                 });
             });
-            for (lib, _dit) in criterion::rind_rows() {
-                group.bench_function(BenchmarkId::new(lib, size_name), |b| {
-                    let key = rind::cipher::AesCtr::new(rind_aes(key_len), key, 128).unwrap();
-                    b.iter(|| key.apply_keystream(&iv, &mut buf).unwrap());
-                });
-            }
+            group.bench_function(BenchmarkId::new("rind", size_name), |b| {
+                let _dit = criterion::rind_dit();
+                let key = rind::cipher::AesCtr::new(rind_aes(key_len), key, 128).unwrap();
+                b.iter(|| key.apply_keystream(&iv, &mut buf).unwrap());
+            });
             // verified-garbage takes the IV only with the key, so each
             // message expands the key again.
             group.bench_function(BenchmarkId::new("verified-garbage", size_name), |b| {
@@ -117,22 +116,21 @@ fn bench_aes_cbc(c: &mut Criterion) {
                         }
                     });
                 });
-                for (lib, _dit) in criterion::rind_rows() {
-                    group.bench_function(BenchmarkId::new(lib, size_name), |b| {
-                        let enc = AesCbcEncryptingKey::new(algorithm, key).unwrap();
-                        let dec = AesCbcDecryptingKey::new(algorithm, key).unwrap();
-                        b.iter(|| {
-                            buf.clear();
-                            buf.extend_from_slice(&input);
-                            if op == "encrypt" {
-                                enc.encrypt(CbcIv::assume_unpredictable(iv), &mut buf)
-                                    .unwrap();
-                            } else {
-                                dec.decrypt(&iv, &mut buf).unwrap();
-                            }
-                        });
+                group.bench_function(BenchmarkId::new("rind", size_name), |b| {
+                    let _dit = criterion::rind_dit();
+                    let enc = AesCbcEncryptingKey::new(algorithm, key).unwrap();
+                    let dec = AesCbcDecryptingKey::new(algorithm, key).unwrap();
+                    b.iter(|| {
+                        buf.clear();
+                        buf.extend_from_slice(&input);
+                        if op == "encrypt" {
+                            enc.encrypt(CbcIv::assume_unpredictable(iv), &mut buf)
+                                .unwrap();
+                        } else {
+                            dec.decrypt(&iv, &mut buf).unwrap();
+                        }
                     });
-                }
+                });
                 // verified-garbage has no padding, so its row pads and unpads
                 // here, and takes the IV only with the key, so each message
                 // expands the key again.
@@ -201,12 +199,11 @@ fn bench_chacha20(c: &mut Criterion) {
         let mut buf = vec![0u8; size];
         group.throughput(Throughput::Bytes(size as u64));
 
-        for (lib, _dit) in criterion::rind_rows() {
-            group.bench_function(BenchmarkId::new(lib, size_name), |b| {
-                let key = rind::cipher::ChaCha20::new(&key);
-                b.iter(|| key.apply_keystream(&nonce, 0, &mut buf).unwrap());
-            });
-        }
+        group.bench_function(BenchmarkId::new("rind", size_name), |b| {
+            let _dit = criterion::rind_dit();
+            let key = rind::cipher::ChaCha20::new(&key);
+            b.iter(|| key.apply_keystream(&nonce, 0, &mut buf).unwrap());
+        });
         group.bench_function(BenchmarkId::new("verified-garbage", size_name), |b| {
             use verified_garbage::cipher::chacha20::ChaCha20;
             let mut expect = vec![0u8; size];
@@ -256,18 +253,17 @@ fn bench_header_protection(c: &mut Criterion) {
             let key = HeaderProtectionKey::new(algorithm, key).unwrap();
             b.iter(|| key.new_mask(&sample).unwrap());
         });
-        for (lib, _dit) in criterion::rind_rows() {
-            group.bench_function(format!("{name}/{lib}"), |b| {
-                use rind::aead::quic::{AES_128, AES_256, CHACHA20, HeaderProtectionKey};
-                let algorithm = match name {
-                    "aes128" => &AES_128,
-                    "aes256" => &AES_256,
-                    _ => &CHACHA20,
-                };
-                let key = HeaderProtectionKey::new(algorithm, key).unwrap();
-                b.iter(|| key.mask(&sample));
-            });
-        }
+        group.bench_function(format!("{name}/rind"), |b| {
+            let _dit = criterion::rind_dit();
+            use rind::aead::quic::{AES_128, AES_256, CHACHA20, HeaderProtectionKey};
+            let algorithm = match name {
+                "aes128" => &AES_128,
+                "aes256" => &AES_256,
+                _ => &CHACHA20,
+            };
+            let key = HeaderProtectionKey::new(algorithm, key).unwrap();
+            b.iter(|| key.mask(&sample));
+        });
         for (lib, held) in criterion::vg_rows() {
             group.bench_function(format!("{name}/{lib}"), |b| {
                 use rind::aead::quic::{AES_128, AES_256, CHACHA20, HeaderProtectionKey};

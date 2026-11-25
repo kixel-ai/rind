@@ -72,19 +72,12 @@ fn main() {
     };
     println!(r#"cargo::rustc-cfg=rind_backend="{backend}""#);
 
-    // `rind_dit`: rind sets PSTATE.DIT around every call that handles a
-    // secret. Only on Apple's targets, where DIT changes what runs (see
-    // `src/low/aarch64/cpu.rs`), unless `--cfg rind_dit_everywhere` asks for
-    // it on any aarch64 target with an OS, outside the FIPS module. That cfg
-    // is for testing: qemu-aarch64 runs `msr DIT` and Linux reports
-    // `HWCAP_DIT`, so a debug build there checks PSTATE.DIT under every
-    // secret computation as Apple hardware does (`src/low/entry.rs`).
+    // `rind_dit`: an aarch64 target with an OS, where `rind::cpu::Dit`
+    // counts guards per thread and a debug build checks PSTATE.DIT under
+    // every secret computation (`src/low/entry.rs`). Every aarch64 call that
+    // handles a secret sets DIT where the CPU has it, without an OS too.
     println!("cargo::rustc-check-cfg=cfg(rind_dit)");
-    let apple = env::var("CARGO_CFG_TARGET_VENDOR").is_ok_and(|v| v == "apple");
-    let everywhere = env::var_os("CARGO_CFG_RIND_DIT_EVERYWHERE").is_some()
-        && env::var_os("CARGO_CFG_RIND_FIPS").is_none()
-        && has_std;
-    if backend == "aarch64" && (apple || everywhere) {
+    if backend == "aarch64" && has_std {
         println!("cargo::rustc-cfg=rind_dit");
     }
 

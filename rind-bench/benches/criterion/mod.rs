@@ -75,56 +75,33 @@ pub const HASH_SIZES: [(usize, &str); 6] = [
     (16384, "16KB"),
 ];
 
-/// rind's rows: `rind`, then, on an Apple CPU with DIT, `rind-dit-held` with a
-/// [`rind::cpu::Dit`] guard for the caller to hold while timing it, as a
-/// caller batching calls would. Elsewhere the guard does nothing, so the row
-/// would repeat `rind`'s.
-///
-/// The held row is made only if the guard turned DIT on, read back from
-/// PSTATE.DIT, so it follows what rind decided rather than what the CPU
-/// reports: with `dit` denied (`RIND_CPU_DISABLE_dit` under
-/// `--cfg rind_cpu_disable`, or a devbench deny build) rind sets no DIT, and
-/// there is no held row to label.
+/// A [`rind::cpu::Dit`] guard for rind's rows to hold while they are timed:
+/// on a CPU with DIT, the report times rind as a caller holding it across its
+/// calls, as MoQ does. Elsewhere the guard does nothing.
 #[allow(dead_code)]
-pub fn rind_rows() -> impl Iterator<Item = (&'static str, Option<rind::cpu::Dit>)> {
-    #[cfg(all(target_arch = "aarch64", target_vendor = "apple"))]
-    let dit = std::arch::is_aarch64_feature_detected!("dit");
-    #[cfg(not(all(target_arch = "aarch64", target_vendor = "apple")))]
-    let dit = false;
-    // Lazily, so that the guard is taken only once `rind`'s row is timed.
-    let held = dit.then_some(()).into_iter();
-    std::iter::once(("rind", None)).chain(held.filter_map(|()| {
-        let guard = rind::cpu::Dit::hold();
-        dit_set().then_some(("rind-dit-held", Some(guard)))
-    }))
+pub fn rind_dit() -> rind::cpu::Dit {
+    rind::cpu::Dit::hold()
 }
 
-/// Whether PSTATE.DIT is set on this thread. Called by [`rind_rows`] only
-/// once the CPU has reported `dit`.
-#[cfg(all(target_arch = "aarch64", target_vendor = "apple"))]
-fn dit_set() -> bool {
-    #[target_feature(enable = "dit")]
-    fn read() -> u64 {
-        let pstate: u64;
-        // SAFETY: `mrs _, DIT` reads a register and touches no memory; the
-        // caller has checked that the CPU has DIT.
-        unsafe {
-            core::arch::asm!(
-                "mrs {r}, DIT",
-                r = out(reg) pstate,
-                options(nomem, nostack, preserves_flags)
-            )
-        };
-        pstate
-    }
-    // SAFETY: `rind_rows` calls this only after the CPU reported `dit`.
-    let pstate = unsafe { read() };
-    pstate & (1 << 24) != 0
+/// A group for rind's rows timed again without [`rind_dit`], named
+/// `dit-per-call/{name}`, so the report shows what a caller holding no guard
+/// pays for rind setting DIT around each call. On every aarch64 target, the
+/// one architecture with DIT; where the OS reports none, as on GitHub's
+/// arm64 runners, they match the held rows. Elsewhere they could only ever
+/// repeat the held ones.
+#[allow(dead_code)]
+pub fn dit_per_call<'a>(
+    c: &'a mut Criterion,
+    name: &str,
+) -> Option<BenchmarkGroup<'a, measurement::WallTime>> {
+    cfg!(target_arch = "aarch64").then(|| c.benchmark_group(format!("dit-per-call/{name}")))
 }
 
-#[cfg(not(all(target_arch = "aarch64", target_vendor = "apple")))]
-fn dit_set() -> bool {
-    false
+/// The [`aead_rows`] that [`dit_per_call`] times: a short token and a QUIC
+/// packet, where the toggle is the largest and a typical share of a call.
+#[allow(dead_code)]
+pub fn dit_per_call_aead_rows() -> impl Iterator<Item = (usize, &'static str, &'static [u8])> {
+    aead_rows().filter(|(size, ..)| [32, 1350].contains(size))
 }
 
 /// verified-garbage's rows: `verified-garbage`, then, on an aarch64 CPU with
@@ -132,10 +109,9 @@ fn dit_set() -> bool {
 /// loop inside `verified_garbage::dit::scope` with [`vg_scope!`].
 ///
 /// verified-garbage sets DIT around each keyed call (MACs, AEADs, ciphers)
-/// on any aarch64 CPU with DIT, not only Apple's, and its scope holds it
-/// across calls as [`rind::cpu::Dit`] does, so the pair is as
-/// [`rind_rows`]' is. Its unkeyed hashes never set DIT, so its hash rows
-/// take no pair.
+/// on any aarch64 CPU with DIT, and its scope holds it across calls as
+/// [`rind_dit`] does for rind's rows. Its unkeyed hashes never set DIT, so
+/// its hash rows take no pair.
 #[allow(dead_code)]
 pub fn vg_rows() -> impl Iterator<Item = (&'static str, bool)> {
     #[cfg(all(target_arch = "aarch64", not(target_os = "none")))]

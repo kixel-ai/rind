@@ -48,19 +48,19 @@ CAPTURE --out DIR` splits a collector capture into one JSON per run.
 
 ## DIT and SHA-3: the A/B/C/D matrix for an iPad
 
-rind's per-call DIT toggle and its SHA-3 instructions both change what a row
-measures on Apple CPUs. Every row `rind` times has DIT off between calls, so it
-pays one enter/exit per call; `rind-dit-held` rows (now also SHA-1, MD5,
-SHA-3, XChaCha20-Poly1305 and SPAKE2+) time the same call inside a held
-`rind::cpu::Dit`. Neither shows what the toggle or the SHA-3 extension costs
-on its own, so run the same app four times on each iPad, each a separate build
-and a fresh app launch (rind reads the CPU's features once per process):
+rind's DIT and its SHA-3 instructions both change what a row measures on Apple
+CPUs. Every `rind` row is timed holding `rind::cpu::Dit`, so it pays no
+per-call toggle, and the `dit-per-call/*` rows time a few of them again without
+the guard, paying one enter/exit per call. Neither shows what DIT itself or the
+SHA-3 extension costs, so run the same app four times on each iPad, each a
+separate build and a fresh app launch (rind reads the CPU's features once per
+process):
 
 | Run | Build | rind sees |
 |---|---|---|
-| A | `ios/build-ipa.sh PORT` | default: DIT toggled per call, SHA-3 instructions used |
+| A | `ios/build-ipa.sh PORT` | default: DIT set, SHA-3 instructions used |
 | B | `RIND_DEVBENCH_DENY=sha3 ios/build-ipa.sh PORT` | no SHA-3 extension (`RIND_CPU_DISABLE_sha3`) |
-| C | `RIND_DEVBENCH_DENY=dit ios/build-ipa.sh PORT` | rind sets no DIT, so no per-call toggle |
+| C | `RIND_DEVBENCH_DENY=dit ios/build-ipa.sh PORT` | rind sets no DIT, held or per call |
 | D | `RIND_DEVBENCH_DENY=sha3,dit ios/build-ipa.sh PORT` | both |
 
 `RIND_DEVBENCH_DENY` must list ids rind reads on the target (`src/deny.rs`;
@@ -78,15 +78,17 @@ Apple hardware when it was written.
 
 What to compare, with the same rounds and sample settings in all four:
 
-- A against C, rows `rind` and `rind-dit-held`: C's `rind` row has no toggle, so
-  A's `rind` minus C's `rind` is the per-call toggle, and A's `rind-dit-held`
-  should match C's `rind` within noise. If it does not, holding DIT costs
-  something beyond the toggle (DIT's own slowdown on the instructions).
+- A alone, a `dit-per-call/*` row against the held row it repeats: the
+  per-call toggle.
+- A against C, the `rind` rows: A runs with DIT held on, C without DIT, so A's
+  `rind` minus C's is DIT's own slowdown on the instructions, if any; C's
+  `dit-per-call/*` rows should match its held ones within noise.
 - A against B, the `sha3-*` rows and the SHA-512 rows (rind's SHA-512 compress
   runs on the same `sha3` feature as Keccak): B's `rind` row without
   the SHA-3 extension against A's is what that extension is worth; it also
-  shows whether a SHA-3 row's gap is the toggle, the instructions, or neither.
-  B against D separates the SHA-3 effect when no toggle is paid.
-- The `dit-toggle/*` rows (run them as "More: dit_toggle") in A: `verify-empty`
-  `rind` minus `rind-dit-held` and `hold-drop` are one toggle with no other
-  work, and `no-entry` is the floor; in C all of them should agree.
+  shows whether a SHA-3 row's gap is DIT, the instructions, or neither.
+  B against D separates the SHA-3 effect without DIT.
+- The `dit-toggle/*` rows (run them as "More: dit_toggle") in A:
+  `dit-per-call/dit-toggle/verify-empty` minus `dit-toggle/verify-empty`, and
+  `hold-drop`, are one toggle with no other work, and `no-entry` is the floor;
+  in C the verify-empty rows agree and `hold-drop` is not made.

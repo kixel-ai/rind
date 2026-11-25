@@ -37,7 +37,6 @@ fips::-::hold_drbgs delegates to crate::fips_rng::hold, which enter
 fips::-::missing_cpu_feature delegates to crate::low::missing_cpu_feature, which enter
 fips::-::zeroise_drbgs delegates to crate::fips_rng::zeroise_all, which enter
 fips::DrbgHold::release_in_child delegates to crate::fips_rng::forked, which enter
-fips::SelfTest::run delegates to kat::sha1, kat::sha256, kat::sha512, which enter
 high/agreement::PrivateKey::agree delegates to agree, which enter
 high/agreement::PrivateKey::algorithm accessor returns the algorithm
 high/agreement::PrivateKey::from_pkcs8 delegates to the curve's load, which enters
@@ -163,6 +162,7 @@ high/signature/ml_dsa::PublicKey::from_spki delegates to spki::decode, which ent
 high/signature/ml_dsa::PublicKey::new delegates to mldsa::PublicKey::from_bytes, which enter
 high/signature/ml_dsa::PublicKey::to_spki delegates to spki::encode, which enter
 high/signature/ml_dsa::PublicKey::verify delegates to verify, which enter
+high/signature/rsa::KeyPair::from_components delegates to rsa::SigningKey::from_components, which enter
 high/signature/rsa::KeyPair::from_pkcs1 delegates to rsa::SigningKey::from_pkcs1_der, which enter
 high/signature/rsa::KeyPair::from_pkcs8 delegates to rsa::SigningKey::from_pkcs8_der, which enter
 high/signature/rsa::KeyPair::generate delegates to rsa::SigningKey::generate, which enter

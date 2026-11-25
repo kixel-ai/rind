@@ -147,11 +147,10 @@ fn sha256(c: &mut Criterion) {
             &input,
             |b, input| b.iter(|| test_rc_sha256(input)),
         );
-        for (lib, _dit) in criterion::rind_rows() {
-            group.bench_with_input(BenchmarkId::new(lib, size_name), &input, |b, input| {
-                b.iter(|| test_rind_sha256(input))
-            });
-        }
+        group.bench_with_input(BenchmarkId::new("rind", size_name), &input, |b, input| {
+            let _dit = criterion::rind_dit();
+            b.iter(|| test_rind_sha256(input))
+        });
         vg_row::<verified_garbage::hashes::sha256::Sha256>(
             &mut group,
             &rind::digest::SHA256,
@@ -209,11 +208,10 @@ fn sha512(c: &mut Criterion) {
             &input,
             |b, input| b.iter(|| test_rc_sha512(input)),
         );
-        for (lib, _dit) in criterion::rind_rows() {
-            group.bench_with_input(BenchmarkId::new(lib, size_name), &input, |b, input| {
-                b.iter(|| test_rind_sha512(input))
-            });
-        }
+        group.bench_with_input(BenchmarkId::new("rind", size_name), &input, |b, input| {
+            let _dit = criterion::rind_dit();
+            b.iter(|| test_rind_sha512(input))
+        });
         vg_row::<verified_garbage::hashes::sha512::Sha512>(
             &mut group,
             &rind::digest::SHA512,
@@ -272,6 +270,7 @@ fn sha512_256(c: &mut Criterion) {
             |b, input| b.iter(|| test_rc_sha512_256(input)),
         );
         group.bench_with_input(BenchmarkId::new("rind", size_name), &input, |b, input| {
+            let _dit = criterion::rind_dit();
             b.iter(|| test_rind_sha512_256(input))
         });
         vg_row::<verified_garbage::hashes::sha512_256::Sha512_256>(
@@ -305,6 +304,7 @@ fn sha256_updates(c: &mut Criterion) {
             },
         );
         group.bench_with_input(BenchmarkId::new("rind", chunk_name), &input, |b, input| {
+            let _dit = criterion::rind_dit();
             b.iter(|| {
                 let mut ctx = rind::digest::Context::new(&rind::digest::SHA256);
                 for part in input.chunks(chunk) {
@@ -316,37 +316,7 @@ fn sha256_updates(c: &mut Criterion) {
     }
 }
 
-// rind's one-shot `digest` beside its `Context` path, to show the guard's
-// cost: `digest` enters DIT once, while `Context::update` (on a full block)
-// and `finish` enter it once each. Not a like-for-like row against the other
-// libraries, which hash through a context, so the report never reads it.
 #[cfg(not(target_arch = "xtensa"))]
-fn sha256_oneshot(c: &mut Criterion) {
-    let mut group = c.benchmark_group("sha256-oneshot");
-    for (size, size_name) in criterion::HASH_SIZES {
-        let input = vec![0u8; size];
-        group.throughput(Throughput::Bytes(size as u64));
-        for (lib, _dit) in criterion::rind_rows() {
-            group.bench_with_input(BenchmarkId::new(lib, size_name), &input, |b, input| {
-                b.iter(|| {
-                    black_box(rind::digest::digest(
-                        &rind::digest::SHA256,
-                        black_box(input),
-                    ))
-                })
-            });
-        }
-    }
-}
-
-#[cfg(not(target_arch = "xtensa"))]
-criterion_group!(
-    benches,
-    sha256,
-    sha512,
-    sha512_256,
-    sha256_updates,
-    sha256_oneshot
-);
+criterion_group!(benches, sha256, sha512, sha512_256, sha256_updates);
 #[cfg(not(target_arch = "xtensa"))]
 criterion_main!(benches);

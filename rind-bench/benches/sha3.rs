@@ -53,15 +53,14 @@ fn bench<R: sha3::Digest, V: verified_garbage::hashes::HashFunction>(
             &input,
             |b, input| b.iter(|| libcrux(input)),
         );
-        for (lib, _dit) in criterion::rind_rows() {
-            group.bench_with_input(BenchmarkId::new(lib, size_name), &input, |b, input| {
-                b.iter(|| {
-                    let mut ctx = rind::digest::Context::new(ours);
-                    ctx.update(input);
-                    black_box(ctx.finish())
-                })
-            });
-        }
+        group.bench_with_input(BenchmarkId::new("rind", size_name), &input, |b, input| {
+            let _dit = criterion::rind_dit();
+            b.iter(|| {
+                let mut ctx = rind::digest::Context::new(ours);
+                ctx.update(input);
+                black_box(ctx.finish())
+            })
+        });
         let mut ctx = V::new();
         ctx.update(&input);
         assert_eq!(

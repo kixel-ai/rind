@@ -14,8 +14,8 @@
 # - Apple's targets (`aarch64-apple-darwin`): in `sb`, or in `dsb nsh` then
 #   `isb`, and both appear, since which one runs depends on FEAT_SB at run
 #   time. That is Apple's documented sequence.
-# - Other aarch64 targets (`aarch64-unknown-linux-gnu`, where rind sets DIT
-#   only under `--cfg rind_dit_everywhere`): in no barrier at all. The Arm
+# - Other aarch64 targets (`aarch64-unknown-linux-gnu`): in no barrier at
+#   all. The Arm
 #   architecture needs none (Arm ARM DDI 0487 M.d, C5.1.3.3 and B1.5.6).
 # - `--cfg rind_dit_barrier="apple"` on Linux: Apple's sequence again. A scan
 #   that read no barrier would pass the row above for nothing; this one must
@@ -39,11 +39,11 @@ SB, DSB_ISB, NONE = "sb", "dsb nsh; isb", "no barrier"
 SB_CALL = "a call to speculation_barrier"
 BUILDS = [
     ("apple", "aarch64-apple-darwin", "", {SB, DSB_ISB}),
-    ("linux", "aarch64-unknown-linux-gnu", "--cfg rind_dit_everywhere", {NONE}),
+    ("linux", "aarch64-unknown-linux-gnu", "", {NONE}),
     (
         "linux-apple-barrier",
         "aarch64-unknown-linux-gnu",
-        '--cfg rind_dit_everywhere --cfg rind_dit_barrier="apple"',
+        '--cfg rind_dit_barrier="apple"',
         {SB, DSB_ISB},
     ),
 ]

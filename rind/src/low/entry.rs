@@ -23,9 +23,9 @@ std::thread_local! {
 /// on this thread and PSTATE.DIT is clear on a CPU that has it.
 ///
 /// Called as a secret `Entry` is made and dropped, and by every primitive
-/// that calls [`Entry::assert_held`], so a debug run of the tests on Apple
-/// silicon, or under qemu-aarch64 with `--cfg rind_dit_everywhere`, reads
-/// PSTATE.DIT under each kernel any secret call reaches.
+/// that calls [`Entry::assert_held`], so a debug run of the tests on an
+/// aarch64 core with DIT, or under qemu-aarch64, reads PSTATE.DIT under each
+/// kernel any secret call reaches.
 #[cfg(all(debug_assertions, rind_dit))]
 #[track_caller]
 fn check_dit() {

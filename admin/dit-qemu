@@ -4,9 +4,8 @@
 #
 # The instruction-level DIT check. `rind/src/low/entry/tests.rs` lists each
 # public call that handles a secret; its test `dit_qemu_every_secret_call`
-# runs each one between two marks. This builds the debug aarch64 test binary
-# with `--cfg rind_dit_everywhere`, so rind sets DIT on any aarch64 OS, runs
-# that test under qemu-aarch64's `max` CPU (which has FEAT_DIT) with
+# runs each one between two marks. This builds the debug aarch64 test binary,
+# runs that test under qemu-aarch64's `max` CPU (which has FEAT_DIT) with
 # `admin/dit-qemu-plugin.c`, which reads PSTATE.DIT at every instruction
 # between the marks, and fails unless, for every call:
 #
@@ -134,17 +133,6 @@ POST_ENTRY = {
 }
 
 
-def build_env():
-    env = dict(os.environ)
-    flags = env.get("RUSTFLAGS", "")
-    if "rind_dit_everywhere" not in flags:
-        env["RUSTFLAGS"] = (flags + " --cfg rind_dit_everywhere").strip()
-    var = "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUSTFLAGS"
-    if var in env and "rind_dit_everywhere" not in env[var]:
-        env[var] = env[var] + " --cfg rind_dit_everywhere"
-    return env
-
-
 def build():
     out = subprocess.run(
         ["cargo", "test", "-p", "rind", "--lib", "--no-run", "--target", TARGET]
@@ -152,7 +140,6 @@ def build():
         stdout=subprocess.PIPE,
         check=True,
         encoding="utf-8",
-        env=build_env(),
     ).stdout
     for line in out.splitlines():
         js = json.loads(line)

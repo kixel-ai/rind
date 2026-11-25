@@ -4,9 +4,8 @@
 //! number of DIT toggles listed for it.
 //!
 //! The toggle counts come from [`super::model`], which counts on every
-//! backend, so they are checked on x86_64 too. Where rind sets DIT (Apple's
-//! targets, or any aarch64 OS with `--cfg rind_dit_everywhere`) a debug
-//! build also reads PSTATE.DIT at each secret `Entry` and each primitive's
+//! backend, so they are checked on x86_64 too. On an aarch64 OS
+//! (`rind_dit`) a debug build also reads PSTATE.DIT at each secret `Entry` and each primitive's
 //! [`super::Entry::assert_held`], and these tests require those reads to
 //! have run and passed, and DIT to be clear again after each call.
 

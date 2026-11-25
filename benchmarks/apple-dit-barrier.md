@@ -4,13 +4,13 @@ Research date: 2026-11-22, for fork issues #259 to #266 and PR #292's measuring 
 
 ## Decision (project owner, 2026-11-23)
 
-1. **Non-Apple aarch64: no barrier after `msr DIT, #1`.** This follows the Arm ARM (DDI 0487 M.d), which requires none: C5.1.3.3 ("Writes to PSTATE occur in program order without the need for additional synchronization") and B1.5.6 (instructions speculatively executed after the 0 to 1 change are part of the data-independent-time sequence). On those cores the guarantee rests on that architectural rule alone. It has not been tested on any non-Apple hardware by us. rind sets DIT off Apple's targets only under `--cfg rind_dit_everywhere` (a testing configuration, see `rind/build.rs`), so today this reaches qemu and test builds, not a shipped default.
+1. **Non-Apple aarch64: no barrier after `msr DIT, #1`.** This follows the Arm ARM (DDI 0487 M.d), which requires none: C5.1.3.3 ("Writes to PSTATE occur in program order without the need for additional synchronization") and B1.5.6 (instructions speculatively executed after the 0 to 1 change are part of the data-independent-time sequence). On those cores the guarantee rests on that architectural rule alone. It has not been tested on any non-Apple hardware by us. Since upstream's #1005 (2026-11-24) rind sets DIT on every aarch64 core whose OS reports it, so this is the shipped default off Apple.
 2. **Apple targets keep Apple's documented sequence:** `sb` where the core has FEAT_SB (detected at run time, as before), else `dsb nsh; isb sy`. Detection of Apple is at compile time (`target_vendor = "apple"`).
-3. **The FIPS module keeps Apple's sequence on every target**, and still refuses `--cfg rind_dit_barrier="isb"` and `"none"` at compile time. Today this is conservative code only: the module sets no DIT at all, since it builds for glibc Linux (`rind-fips/build.rs`) and `rind/build.rs` sets `rind_dit` there only under `rind_dit_everywhere`, which it refuses with `rind_fips`.
+3. **The FIPS module keeps Apple's sequence on every target**, and still refuses `--cfg rind_dit_barrier="isb"` and `"none"` at compile time. Since upstream's #1005 the module sets DIT on its glibc Linux aarch64 cores, so this sequence runs there.
 4. **Key wipes on drop stay outside DIT** (benchmarks/apple-dit-coverage.md, "Wipes on drop run outside DIT"): a wipe stores zeros and loads none of the secret.
 5. **Autohold (`--cfg rind_dit_autohold`, fork PR #302) stays a measuring prototype only.** The supported way to coalesce toggles is the guard API: `Dit::hold`, `Dit::with`, `Dit::batch`.
 
-Implemented in `rind/src/low/aarch64/cpu.rs`, `dit::barrier_after_set` and `dit::apple_barrier`. The measuring cfgs remain for the owner's A/B, on any target: `rind_dit_barrier="apple"` (Apple's sequence), `"isb"` (`isb sy` alone), `"none"` (no barrier). `admin/dit-disasm` (dispatch module `ditbarrier`) builds the release rlib and checks every path from each `msr DIT, #1`: on `aarch64-apple-darwin` each ends in `sb` or `dsb nsh; isb` and both appear; on `aarch64-unknown-linux-gnu` with `rind_dit_everywhere` none reaches a barrier; and with `rind_dit_barrier="apple"` on Linux both appear again, so the scan is shown to see a barrier when one is there.
+Implemented in `rind/src/low/aarch64/cpu.rs`, `dit::barrier_after_set` and `dit::apple_barrier`. The measuring cfgs remain for the owner's A/B, on any target: `rind_dit_barrier="apple"` (Apple's sequence), `"isb"` (`isb sy` alone), `"none"` (no barrier). `admin/dit-disasm` (dispatch module `ditbarrier`) builds the release rlib and checks every path from each `msr DIT, #1`: on `aarch64-apple-darwin` each ends in `sb` or `dsb nsh; isb` and both appear; on `aarch64-unknown-linux-gnu` none reaches a barrier; and with `rind_dit_barrier="apple"` on Linux both appear again, so the scan is shown to see a barrier when one is there.
 
 No speed is claimed for the change: nothing here ran on Apple hardware. On Apple targets the emitted code is the same sequence as before the decision.
 
@@ -166,4 +166,3 @@ Measure both raw cost per enable and end-to-end cost for rind's real call sites.
 - No later Linux DIT series
 - XNU signal DIT inheritance (source reading only)
 - All performance questions
-

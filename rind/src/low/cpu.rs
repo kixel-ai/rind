@@ -18,12 +18,13 @@ pub fn has_aes_hardware() -> bool {
 
 /// Holds data-independent timing (DIT) on for this thread until dropped.
 ///
-/// On Apple's platforms, every rind call that handles a secret runs with DIT,
-/// turning it on at entry and back off on return. On Apple's M1 that costs
-/// about 55 ns a call, a fifth of sealing a 1350-byte QUIC packet, so
-/// holding a guard across a batch of calls pays it once instead, for calls
-/// made directly or through an adapter such as rind-rustls. Everywhere else
-/// rind sets no DIT, and the guard does nothing.
+/// On an aarch64 CPU with DIT, every rind call that handles a secret runs
+/// with it, turning it on at entry and back off on return. On Apple's M1
+/// that costs about 55 ns a call, a fifth of sealing a 1350-byte QUIC
+/// packet, so holding a guard across a batch of calls pays it once instead,
+/// for calls made directly or through an adapter such as rind-rustls.
+/// Everywhere else, and on a target without an OS, where each call still
+/// sets DIT itself, the guard does nothing.
 ///
 /// Everything the thread runs while a guard is held runs with DIT, rind's
 /// code or not. DIT stays on until the thread's last guard drops, in
@@ -217,12 +218,12 @@ impl Dit {
         items.into_iter().try_for_each(&mut each)
     }
 
-    /// Whether a guard is live on this thread, on a target where rind sets
-    /// DIT.
+    /// Whether a guard is live on this thread, on a target where guards
+    /// count.
     ///
-    /// Always `false` on targets where rind sets no DIT, since a guard holds
-    /// nothing there. On a target where it does, this counts guards and does
-    /// not read the CPU: on a core without DIT (FEAT_DIT is optional before
+    /// Always `false` off aarch64 and on a target without an OS, since a
+    /// guard holds nothing there. Elsewhere it counts guards and does not
+    /// read the CPU: on a core without DIT (FEAT_DIT is optional before
     /// Armv8.4), or with `dit` denied, a live guard holds nothing and this
     /// is still `true`. It reports the guards alone: inside a rind call DIT
     /// is set, where the CPU has it, whether or not this is `true`.
@@ -250,9 +251,8 @@ impl Drop for Dit {
     }
 }
 
-// Counted only where rind sets DIT, on Apple's aarch64 platforms, which all
-// have threads and `std` (and under `--cfg rind_dit_everywhere`, only with
-// `std`); elsewhere the guard holds nothing.
+// Counted per thread, so only on aarch64 targets with an OS, which have
+// threads and `std` (`rind_dit`); elsewhere the guard holds nothing.
 #[cfg(rind_dit)]
 std::thread_local! {
     // This thread's live guards, and what the first one's `enter_cpu_state`
@@ -274,5 +274,28 @@ mod tests {
         #[cfg(rind_backend = "portable")]
         let hardware = false;
         assert_eq!(super::has_aes_hardware(), hardware);
+    }
+
+    /// rind runs while nested guards are held, on every backend, and on
+    /// aarch64 the guards count up and back down to none.
+    #[test]
+    fn dit_guards_nest() {
+        let guards = |_expected: usize| {
+            #[cfg(rind_dit)]
+            assert_eq!(super::DIT_GUARDS.get().0, _expected);
+        };
+        let outer = super::Dit::hold();
+        let inner = super::Dit::hold();
+        guards(2);
+        assert_eq!(
+            crate::digest::digest(&crate::digest::SHA256, b"")
+                .as_ref()
+                .len(),
+            32
+        );
+        drop(outer);
+        guards(1);
+        drop(inner);
+        guards(0);
     }
 }

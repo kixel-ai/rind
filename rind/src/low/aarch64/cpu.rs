@@ -4,17 +4,11 @@
 use core::sync::atomic::{AtomicU8, Ordering};
 
 pub(crate) fn enter_cpu_state() -> u32 {
-    #[cfg(rind_dit)]
-    return dit::maybe_enable();
-    #[cfg(not(rind_dit))]
-    0
+    dit::maybe_enable()
 }
 
 pub(crate) fn leave_cpu_state(old: u32) {
-    #[cfg(rind_dit)]
     dit::maybe_disable(old);
-    #[cfg(not(rind_dit))]
-    let _ = old;
 }
 
 /// Effectively memset(ptr, 0, len), but not visible to optimiser
@@ -128,7 +122,7 @@ pub(crate) struct HaveCryptoExt(());
 impl HaveCryptoExt {
     /// Detects the extension once, then answers from the cached result.
     pub(crate) fn check() -> Option<Self> {
-        (features() & CRYPTO_EXT != 0).then_some(Self(()))
+        has(CRYPTO_EXT).then_some(Self(()))
     }
 }
 
@@ -140,7 +134,7 @@ pub(crate) struct HaveSha3(());
 
 impl HaveSha3 {
     pub(crate) fn check() -> Option<Self> {
-        (features() & SHA3 != 0).then_some(Self(()))
+        has(SHA3).then_some(Self(()))
     }
 
     /// The token where Keccak-f runs on the SHA3 instructions: only on Apple
@@ -165,15 +159,13 @@ pub(crate) struct HaveSve2(());
 
 impl HaveSve2 {
     pub(crate) fn check() -> Option<Self> {
-        (features() & SVE2 != 0).then_some(Self(()))
+        has(SVE2).then_some(Self(()))
     }
 }
 
 const CRYPTO_EXT: u8 = 1 << 1;
 const SHA3: u8 = 1 << 2;
-#[cfg(rind_dit)]
 const DIT: u8 = 1 << 3;
-#[cfg(rind_dit)]
 const SB: u8 = 1 << 4;
 const SVE2: u8 = 1 << 5;
 const DETECTED: u8 = 1 << 7;
@@ -196,6 +188,34 @@ pub(crate) fn wide_multiplier() -> bool {
         WIDE_ALT => true,
         _ => false,
     }
+}
+
+/// Those the target enables at compile time, which every CPU that runs the
+/// binary has. Rust's `aes` covers PMULL, and its `sha2` SHA-1.
+const ENABLED: u8 = (if cfg!(all(target_feature = "aes", target_feature = "sha2")) {
+    CRYPTO_EXT
+} else {
+    0
+}) | (if cfg!(target_feature = "sha3") {
+    SHA3
+} else {
+    0
+}) | (if cfg!(target_feature = "sve2") {
+    SVE2
+} else {
+    0
+});
+
+/// Whether the CPU has the feature `wanted`.
+///
+/// True at compile time for a feature the target enables (`cpu_enabled`):
+/// Apple's targets, which enable the crypto extension and SHA3, carry no
+/// table-free AES. A build that can deny a feature still asks.
+#[inline]
+fn has(wanted: u8) -> bool {
+    use super::super::{CPU_DENIABLE, cpu_enabled};
+    cpu_enabled(CPU_DENIABLE, u32::from(ENABLED), u32::from(wanted))
+        || features() & wanted == wanted
 }
 
 static FEATURES: AtomicU8 = AtomicU8::new(0);
@@ -249,16 +269,14 @@ fn detect() -> u8 {
         && test_toggle("sha2", detected!("sha2"));
     let sha3 = test_toggle("sha3", detected!("sha3"));
     let sve2 = test_toggle("sve2", detected!("sve2"));
+    let dit = test_toggle("dit", detected!("dit"));
     let features = (if crypto_ext { CRYPTO_EXT } else { 0 })
         | (if sha3 { SHA3 } else { 0 })
-        | (if sve2 { SVE2 } else { 0 });
-    #[cfg(rind_dit)]
+        | (if sve2 { SVE2 } else { 0 })
+        | (if dit { DIT } else { 0 });
+    // Apple's barrier after setting DIT, and a `rind_dit_barrier="apple"`
+    // build anywhere, use `sb` where the core has it.
     let features = features
-        | if test_toggle("dit", detected!("dit")) {
-            DIT
-        } else {
-            0
-        }
         | if test_toggle("sb", detected!("sb")) {
             SB
         } else {
@@ -398,12 +416,13 @@ fn narrow_part(implementer: u64, part: u64) -> bool {
     implementer == 0x41 && matches!(part, 0xd08 | 0xd0b | 0xd0c)
 }
 
-// DIT changes what runs only on Apple's cores, where from the M3 it turns off
-// the data memory-dependent prefetcher that GoFetch reads secrets through. Arm
-// says it has no effect on any current Arm core, so elsewhere rind skips the
-// cost of setting it. `--cfg rind_dit_everywhere` sets it on any aarch64 OS
-// too, for testing under qemu-aarch64 (see build.rs).
-#[cfg(rind_dit)]
+// Set on every core whose OS reports it, which a hypervisor, Windows, or a
+// BSD may not (PLATFORMS.md): Arm says some cores with DIT, such as
+// Neoverse V1, may run the instructions it covers in data-dependent time
+// without it, and strongly recommends that software set it (KA005181,
+// https://developer.arm.com/documentation/ka005181/1-0/). On
+// Apple's cores from the M3 it also turns off the data memory-dependent
+// prefetcher that GoFetch reads secrets through.
 mod dit {
     pub(super) fn maybe_enable() -> u32 {
         if super::features() & super::DIT != 0 {
@@ -467,9 +486,7 @@ mod dit {
     /// 1 to 0 are considered part of the data-independent-time sequence of
     /// code" (B1.5.6). So on a core that is not Apple's, rind relies on that
     /// architectural rule alone. No core other than Apple's has been tested
-    /// for it here, and rind sets DIT off Apple's targets only under
-    /// `--cfg rind_dit_everywhere` (see build.rs). The sources are in
-    /// benchmarks/apple-dit-barrier.md.
+    /// for it here. The sources are in benchmarks/apple-dit-barrier.md.
     ///
     /// Apple asks for a speculation barrier after setting DIT: "To ensure
     /// that subsequent instruction timing reflects the updated DIT processor
@@ -488,11 +505,8 @@ mod dit {
     /// elsewhere, as graviola and the Linux kernel (`SET_PSTATE_DIT` at
     /// `kernel_entry`, Linux 6.2) do everywhere.
     ///
-    /// The FIPS module's code keeps Apple's sequence on every target, and
-    /// refuses the measuring cfgs below. The module sets no DIT today: it
-    /// builds for glibc Linux, where build.rs sets `rind_dit` only under
-    /// `rind_dit_everywhere`, which it refuses with `rind_fips`. The choice
-    /// applies only if that changes.
+    /// The FIPS module's code keeps Apple's sequence on every target, so on
+    /// its glibc Linux cores too, and refuses the measuring cfgs below.
     ///
     /// `--cfg rind_dit_barrier="apple"` runs Apple's sequence on any target,
     /// `--cfg rind_dit_barrier="isb"` runs `isb sy` alone, and
@@ -541,7 +555,7 @@ mod dit {
     }
 
     /// Whether PSTATE.DIT is set, or `None` on a CPU where rind sets none.
-    #[cfg(debug_assertions)]
+    #[cfg(all(rind_dit, debug_assertions))]
     pub(super) fn is_on() -> Option<bool> {
         // SAFETY: in this branch, we verified `dit` cpu feature is supported
         (super::features() & super::DIT != 0).then(|| unsafe { read() } == 1)
@@ -567,8 +581,8 @@ mod dit {
 }
 
 // `--cfg rind_dit_barrier` is for measuring only (`dit::barrier_after_set`),
-// so the FIPS module, whose code keeps Apple's barrier on every target (it
-// sets no DIT today), refuses the values that run less than it.
+// so the FIPS module, whose code keeps Apple's barrier on every target,
+// refuses the values that run less than it.
 #[cfg(all(rind_fips, any(rind_dit_barrier = "isb", rind_dit_barrier = "none")))]
 compile_error!("rind_dit_barrier is a measuring prototype; the FIPS module keeps Apple's barrier");
 
@@ -616,7 +630,7 @@ pub(in crate::low) fn prefetch_ro<T>(ptr: *const T) {
 /// Re-exec this test binary. qemu-user is cargo's runner, not a kernel
 /// binfmt handler, so a child of a cross test needs that runner too. A
 /// native run leaves the variable unset and execs the binary itself.
-#[cfg(all(test, any(debug_assertions, rind_cpu_disable, rind_dit)))]
+#[cfg(all(test, any(debug_assertions, rind_cpu_disable, unix)))]
 pub(super) fn reexec() -> std::process::Command {
     let exe = std::env::current_exe().unwrap();
     let Ok(runner) = std::env::var("CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUNNER") else {
@@ -652,7 +666,6 @@ mod tests {
         unsafe { call!(unsafe zero_bytes, bytes.as_mut_ptr(), 100) };
         assert_eq!(bytes, [0; 100]);
         call!(prefetch_ro::<u8>, bytes.as_ptr());
-        #[cfg(rind_dit)]
         if std::arch::is_aarch64_feature_detected!("dit") {
             // SAFETY: the CPU has DIT, which this leaves as it found it.
             unsafe {
@@ -660,15 +673,12 @@ mod tests {
                 call!(unsafe dit::write, on);
             }
         }
-        #[cfg(rind_dit)]
         if std::arch::is_aarch64_feature_detected!("sb") {
             // SAFETY: the CPU has SB.
             unsafe { call!(unsafe dit::speculation_barrier) };
         }
         // Barriers only: the speculation barrier where `features` has SB.
-        #[cfg(rind_dit)]
         call!(dit::barrier_after_set);
-        #[cfg(rind_dit)]
         call!(dit::apple_barrier);
         let (a, b) = ([1u8; 37], [2u8; 37]);
         assert_ne!(call!(ct_compare_bytes, &a, &b), 0);
@@ -697,7 +707,6 @@ mod tests {
             cfg!(target_vendor = "apple") && available!("sha3")
         );
         assert_eq!(HaveSve2::check().is_some(), available!("sve2"));
-        #[cfg(rind_dit)]
         assert_eq!(features() & SB != 0, available!("sb"));
     }
 
@@ -839,18 +848,28 @@ mod tests {
     }
 
     // A core that runs `mrs DIT` has DIT, whatever the OS reports, so a child
-    // process runs it.
-    #[cfg(rind_dit)]
+    // process runs it, on a Unix OS, which reports the illegal instruction
+    // as a signal. A hypervisor may hide DIT, as GitHub's arm64 runners'
+    // does, but no OS reports it on a core without it, and macOS reports it
+    // on every core with it.
+    #[cfg(unix)]
     #[test]
-    fn enables_dit_whenever_the_cpu_has_it() {
+    #[cfg_attr(
+        feature = "__ctgrind",
+        ignore = "valgrind hides DIT from the test but not from its child"
+    )]
+    fn enables_dit_whenever_the_os_reports_it() {
         let has_dit = child_reads_dit();
+        let reported = std::arch::is_aarch64_feature_detected!("dit");
+        assert!(has_dit || !reported, "the OS reports DIT the core lacks");
+        #[cfg(target_vendor = "apple")]
+        assert_eq!(reported, has_dit);
 
-        let expected = test_toggle("dit", has_dit);
+        let expected = test_toggle("dit", reported);
         assert_eq!(features() & DIT != 0, expected);
-        // A denied DIT is left alone, as under `admin/ctgrind`, whose
-        // valgrind runs no DIT instruction.
+        // A DIT the OS hides or the caller denies is left alone.
         if has_dit && !expected {
-            // SAFETY: this core has DIT, though `test_toggle` denies it.
+            // SAFETY: this core has DIT, though rind may not set it.
             unsafe { dit::write(0) };
             drop(crate::low::Entry::new_secret());
             let _held = crate::cpu::Dit::hold();
@@ -878,7 +897,6 @@ mod tests {
         }
     }
 
-    #[cfg(rind_dit)]
     #[test]
     fn dit_hold_keeps_dit_on_across_calls() {
         if features() & DIT == 0 {
@@ -904,7 +922,7 @@ mod tests {
         assert_eq!(unsafe { dit::read() }, u32::from(cfg!(rind_dit_sticky)));
     }
 
-    #[cfg(rind_dit)]
+    #[cfg(unix)]
     fn child_reads_dit() -> bool {
         let test = concat!(module_path!(), "::reads_dit");
         let test = test.split_once("::").unwrap().1;
@@ -925,7 +943,7 @@ mod tests {
 
     /// Runs `mrs DIT` for `child_reads_dit`, which an illegal instruction
     /// kills on a core without DIT.
-    #[cfg(rind_dit)]
+    #[cfg(unix)]
     #[test]
     fn reads_dit() {
         if std::env::var_os("RIND_TEST_READ_DIT").is_some() {
