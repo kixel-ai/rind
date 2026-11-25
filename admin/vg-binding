@@ -19,8 +19,8 @@ This checks the chain from rind's side, on the files at rind's pin of VG:
   contract. A link with a line lands on a theorem, a definition, a field that
   states `Verified` code, or a registration.
 - Where an axiom names several variants of one contract, each variant's tag
-  (`adx`, `ifma`) is where one of its links lands, so each has a proof or a
-  registration of its own, unless the axiom is in `GENERIC`.
+  (`adx`, `ifma`) is where one of its links lands, in a file holding that
+  contract, so each has a proof of its own, unless the axiom is in `GENERIC`.
 - No file of VG's `lean/` holds a `sorry` or an `axiom`.
 - Each routine rind vendors under `rind/src/low/<arch>/vg/` is reached by a
   routine an axiom covers, through the calls in VG's text, or by an
@@ -230,14 +230,15 @@ def main():
                     sharing.setdefault(short, []).append(r)
             # Variants of one contract (`_adx`, `_ifma`) each have a theorem
             # or a registration of their own, and the contract's name is in
-            # all of them; so each variant's tag must be where a link lands, or
-            # dropping one variant's links would leave the other's to pass.
+            # all of them; so each variant's tag must be where a link lands in
+            # a file of that contract, or another variant's link, or another
+            # routine's, would stand in for it.
             if name not in GENERIC:
                 for short, rs in sharing.items():
                     for r in rs if len(rs) > 1 else []:
                         tag = r.rsplit("_", 1)[1]
-                        if not any(tag in w for _, w in linked):
-                            fail(f"{where} covers {r}, but no link it gives lands on a {tag} proof or registration")
+                        if not any(short in t and tag in w for t, w in linked):
+                            fail(f"{where} covers {r}, but no link it gives lands on a {tag} proof of {short}")
             covered.update(routines)
             named += len(routines)
 
