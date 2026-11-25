@@ -14,6 +14,7 @@ import Rind.X86_64.GcmKey
 import Rind.X86_64.Ed25519
 import Rind.X86_64.Ed25519Ifma
 import Rind.X86_64.RsaDispatch
+import Rind.X86_64.RsaPrivate
 import Rind.X86_64.Sha3
 import Rind.X86_64.AesKw
 import Rind.X86_64.P256Signature
@@ -25,11 +26,11 @@ open rind.x86_64
 /-!
 The axioms each theorem rests on, beyond Lean's own: s2n-bignum's contracts
 in `Rind.X86_64.S2nBignum` for X25519, P-256 key generation, ECDH, and
-ECDSA, P-384, Ed25519, RSA verification, and the Keccak-f of SHA-3 and
-ML-KEM's SHAKE; for the SHA-512 family, for HMAC, HKDF, and PBKDF2, which
-cover SHA-384 and SHA-512, and for Ed25519's hashes, aws-lc's AVX routine's in
-`Rind.X86_64.AwsLc` and rind's HOL Light proof there of OpenSSL's AVX2
-routine; for SHA-256, which the theorems over every HMAC algorithm cover,
+ECDSA, P-384, Ed25519, RSA verification and the private operation, and the
+Keccak-f of SHA-3 and ML-KEM's SHAKE; for the SHA-512 family, for HMAC, HKDF,
+and PBKDF2, which cover SHA-384 and SHA-512, and for Ed25519's hashes, aws-lc's
+AVX routine's in `Rind.X86_64.AwsLc` and rind's HOL Light proof there of
+OpenSSL's AVX2 routine; for SHA-256, which the theorems over every HMAC algorithm cover,
 rind's HOL Light proofs of its routines for the SHA extensions in
 `Rind.X86_64.Sha256Shaext` and of OpenSSL's AVX2 routine in
 `Rind.X86_64.ShaBlocks`; Vale's in
@@ -37,8 +38,9 @@ rind's HOL Light proofs of its routines for the SHA extensions in
 constant-time compares in `Rind.X86_64.CtEqual` for HMAC's and PBKDF2's
 `verify`, AES-GCM's tag check, ChaCha20-Poly1305's and XChaCha20-Poly1305's
 tag checks, RSASSA-PSS's hash compare, and key wrap's `unwrap` and
-`unwrap_padded` checks; for RSA verification's public operation on AVX-512
-IFMA, pyca/verified-garbage's Lean proof of its routine, which
+`unwrap_padded` checks; for RSA's public operation on AVX-512 IFMA, which
+verification and the private operation's fault check run,
+pyca/verified-garbage's Lean proof of its routine, which
 `Rind.X86_64.VgRsa` restates; pyca/verified-garbage's for ChaCha20's
 `apply_keystream` in `Rind.X86_64.VgChaCha20`, for X25519 and Ed25519 on
 AVX-512 IFMA in `Rind.X86_64.VgCurve25519`, and for P-256's public key, ECDH,
@@ -51,7 +53,8 @@ hypothesis `RunsChaCha20Poly1305`, which no axiom states. ChaCha20's
 hypothesis `Ssse3`; `Rind.X86_64.ChaCha20Avx2` proves rind's two-block kernel
 over `Rind.X86_64.Simd`'s models of the AVX2 intrinsics. The generator
 tables' point selects rest on no axiom, only on the hand model in
-`Rind.X86_64.PointSelectModel`. P-256's generator multiplication also rests
+`Rind.X86_64.PointSelectModel`, as RSA's table gather does on
+`Rind.X86_64.GatherModel`. P-256's generator multiplication also rests
 on `p256_point_add_affine_spec` in `Rind.X86_64.S2nBignum`, which restates
 rind's HOL Light proofs of aws-lc's mixed addition. A change here is a
 change to the trust base.
@@ -1014,6 +1017,29 @@ change to the trust base.
  bignum_optsub_spec] -/
 #guard_msgs in
 #print axioms rsa2048_mont_products
+
+/-- info: 'rind.x86_64.private_op_rsa2048_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ bignum_add_spec,
+ bignum_bitsize_spec,
+ bignum_cmp_lt_spec,
+ bignum_copy_row_from_table_spec,
+ bignum_digitsize_spec,
+ bignum_emontredc_8n_spec,
+ bignum_eq_spec,
+ bignum_kmul_16_32_spec,
+ bignum_kmul_32_64_spec,
+ bignum_ksqr_16_32_spec,
+ bignum_ksqr_32_64_spec,
+ bignum_modsub_spec,
+ bignum_montredc_spec,
+ bignum_mul_spec,
+ bignum_negmodinv_spec,
+ bignum_optsub_spec,
+ rsa_ifma_public_spec] -/
+#guard_msgs in
+#print axioms private_op_rsa2048_spec
 
 /-- info: 'rind.x86_64.sha3_family_digest' depends on axioms: [propext, Classical.choice, Quot.sound, sha3_keccak_f1600_spec] -/
 #guard_msgs in

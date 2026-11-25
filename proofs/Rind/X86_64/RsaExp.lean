@@ -31,7 +31,7 @@ theorem wordsNat_div_word (l : List U64) (q : Nat) (hq : q < l.length) :
 
 /-- A window of `w ≤ 64` bits from bit `s` of a word `a` and the value `T`
 above it. -/
-theorem window_eq (a T s w : Nat) (hs : s ≤ 64) (hw : w ≤ 64) :
+theorem bits_window_eq (a T s w : Nat) (hs : s ≤ 64) (hw : w ≤ 64) :
     (a + 2 ^ 64 * T) / 2 ^ s % 2 ^ w = (a / 2 ^ s + 2 ^ (64 - s) * (T % 2 ^ s)) % 2 ^ w := by
   have h64 : (2 : Nat) ^ 64 = 2 ^ s * 2 ^ (64 - s) := by rw [← pow_add]; congr 1; omega
   have h64w : (2 : Nat) ^ 64 = 2 ^ w * 2 ^ (64 - w) := by rw [← pow_add]; congr 1; omega
@@ -55,7 +55,7 @@ theorem bits_spec (e : Slice U64) (lsb width : Usize) (hw1 : 1 ≤ width.val) (h
   have hq : word.val < e.val.length := by simp only [Slice.length] at hin; omega
   have hW : wordsNat e.val / 2 ^ lsb.val = (wordsNat e.val / 2 ^ (64 * word.val)) / 2 ^ shift.val := by
     rw [Nat.div_div_eq_div_mul, ← pow_add]; congr 2; omega
-  rw [hW, wordsNat_div_word _ _ hq, window_eq _ _ _ _ (by omega) (by omega)]
+  rw [hW, wordsNat_div_word _ _ hq, bits_window_eq _ _ _ _ (by omega) (by omega)]
   have hs64 : shift.val < 64 := by omega
   have ha : i.val < 2 ^ 64 := by scalar_tac
   have hbits : bits.val = i.val / 2 ^ shift.val := by rw [bits_post, Nat.shiftRight_eq_div_pow]
