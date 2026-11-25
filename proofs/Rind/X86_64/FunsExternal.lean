@@ -872,8 +872,9 @@ opaque low.x86_64.mont.sqr8x
 path from the CPU: with AVX2, s2n-bignum's routines, mlkem-native's code
 with the AVX2 layout's tables, and mlkem-native's AVX2 compression;
 without it, `low::generic::mlkem_poly`, a port of mlkem-native's portable
-C, and for unpacking, compression, and reordering `low::generic::mlkem`'s
-Rust, which `Rind/Aarch64/MlKemGeneric.lean` proves on aarch64. -/
+C, and for 12-bit unpacking and compression `low::generic::mlkem`'s Rust,
+which `Rind/Aarch64/MlKemGeneric.lean` proves on aarch64; its reordering is
+a no-op, since that path keeps the natural order. -/
 
 opaque low.x86_64.mlkem.mlkem_ntt
   : Array Std.I16 256#usize → Result (Array Std.I16 256#usize)
