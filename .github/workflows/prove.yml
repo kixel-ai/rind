@@ -48,6 +48,7 @@ on:
       - admin/neon-vectors.rs
       - admin/avx512-vectors.rs
       - admin/upstream
+      - admin/import-mlkem-native
       - admin/import-vg
       - admin/import-vg-models
       - admin/vg-bytes
