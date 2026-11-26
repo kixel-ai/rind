@@ -151,7 +151,14 @@ added. The state is R0-R12, SP, LR, PC, the N, Z, C, and V flags, Q0-Q15,
 memory, and the event trace s2n-bignum's safety proofs read. D0-D31 are the
 halves of Q0-Q15, D2n the low one, so a write to a D register keeps its
 pair; nothing armv7's assembly runs reads the VFP S registers or FPSCR, which
-the model omits.
+the model omits. PC holds the T bit as its bit 0, as LR and `BX`'s operand
+do: `BX` and a load into PC step to a target that is aligned to four bytes
+or has bit 0 set, `aarch32_bx_target`, and the fetch takes only an aligned
+PC, so a state in T32 steps nowhere (`AARCH32_T32_STOPS`). That is all a
+T32 caller needs: a subroutine's theorem assumes `aarch32_bx_target` of its
+return address and ends where its return lands, so it holds for a caller in
+either instruction set, as `armv7-linux-androideabi` and the `thumbv7`
+targets call the A32 routines from Thumb-2 Rust.
 
 | Instructions | Forms |
 | --- | --- |
@@ -220,16 +227,15 @@ multiplies, `BLX`, and every other encoding.
 
 A step either has one next state or, where the instruction would leave what
 the model holds, any: a proof that reaches such a step proves nothing, as in
-s2n-bignum's other models. That is `BX`, or a load into PC, of a target not
-aligned to four bytes, which enters Thumb when its bit 0 is set and is
-otherwise unpredictable; `LDRD`, `STRD`, `LDM`, `STM`, `VLDM`, `VSTM`, `VLDR`, or `VSTR` at
+s2n-bignum's other models. That is `BX`, or a load into PC, of a target with
+bit 1 set and bit 0 clear, which is unpredictable; `LDRD`, `STRD`, `LDM`, `STM`, `VLDM`, `VSTM`, `VLDR`, or `VSTR` at
 an address not aligned to four bytes, or `VLD1` or `VST1` at one its
 alignment qualifier does not hold of, which faults; and `LDR` into PC from
 such an address,
 which is unpredictable where unaligned loads are allowed, not a fault; and a
 transfer whose bytes would run past 0xffffffff, which is unpredictable. So a
-subroutine's theorem assumes `aligned 4` of its return address and, where it
-uses the stack, of SP. Other loads and stores may be unaligned, as Linux and
+subroutine's theorem assumes `aarch32_bx_target` of its return address and,
+where it uses the stack, `aligned 4` of SP. Other loads and stores may be unaligned, as Linux and
 Android leave them. The step conversion decides `aarch32_nowrap a n`, that
 `n` bytes from `a` stay below 2^32, from `aligned 4` for a word, from the
 values the assumptions' `val x = n` give the address's terms, or from an

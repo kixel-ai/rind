@@ -254,11 +254,11 @@
             installPhase = "install -D dit-qemu-plugin.so $out/lib/dit-qemu-plugin.so";
           };
 
-          # OpenSSL's `evp_test` and its X25519 and Ed25519 data, from the
-          # source of the OpenSSL the dev shell has. `sh/openssl.sh` runs them
-          # with rind-openssl loaded and preferred. A static build, so the
-          # test runs the library it was built with, and the default provider
-          # inside it.
+          # OpenSSL's `evp_test` and its X25519, Ed25519, ML-KEM, and ML-DSA
+          # data, from the source of the OpenSSL the dev shell has.
+          # `sh/openssl.sh` runs them with rind-openssl loaded and preferred.
+          # A static build, so the test runs the library it was built with,
+          # and the default provider inside it.
           openssl-evp-test = pkgs.stdenv.mkDerivation {
             pname = "openssl-evp-test";
             inherit (pkgs.openssl) version src;
@@ -272,6 +272,7 @@
             installPhase = ''
               install -D test/evp_test $out/bin/evp_test
               install -D -t $out/share/evp_test test/recipes/30-test_evp_data/evppkey_{ecx,ecx_sigalg,ecx_kem,mismatch_ecx}.txt
+              install -D -t $out/share/evp_test test/recipes/30-test_evp_data/evppkey_ml_{kem,dsa}_*.txt
             '';
           };
 
@@ -452,6 +453,34 @@
             '';
           };
 
+          # The Charon and Aeneas that Beneficial AI Foundation's Lean proofs
+          # of curve25519-dalek translate it with, the tag their
+          # `curve25519-dalek/lean/AENEAS_VERSION.txt` names at
+          # `admin/import-dalek`'s REV, run with the same nightly as rind's.
+          # `admin/prove dalek` runs them, from `$DALEK_AENEAS`, to check that
+          # the dalek rind builds translates to the code those proofs are about.
+          aeneas-dalek-release = "nightly-2026.11.10-0d21a9e";
+          aeneas-dalek = aeneas.overrideAttrs {
+            version = aeneas-dalek-release;
+            src = pkgs.fetchurl {
+              url = "https://github.com/AeneasVerif/aeneas/releases/download/${aeneas-dalek-release}/aeneas-linux-${aeneas-tarball.${system}.arch}.tar.gz";
+              hash =
+                {
+                  x86_64-linux = "sha256-n5v1/VJwy4NAdAcrJGiukKTFptUDx2IpOkGakowt9Zs=";
+                  aarch64-linux = "sha256-EgRADVVDMHQzbaicKb404sha+A9ukeSiZ6skiJcAoAI=";
+                }
+                .${system};
+            };
+            # BAIF's translation builds `core` and `alloc` for its own target
+            # specs, so it needs no sysroot of rind's.
+            installPhase = ''
+              install -Dm755 -t $out/bin aeneas charon charon-driver
+              wrapProgram $out/bin/charon \
+                --set CHARON_TOOLCHAIN_IS_IN_PATH 1 \
+                --prefix PATH : ${rust-charon}/bin
+            '';
+          };
+
           # `admin/prove hol-light` and `admin/prove bytes` run in it: HOL
           # Light, the OCaml it compiles the proofs with, as s2n-bignum's
           # `tools/build-proof.sh` does, the Rust whose build emits the object
@@ -573,6 +602,8 @@
                   # git already brings this one.
                   perl
                   cargo-deny
+                  # Audits of rind's own dependencies (supply-chain/).
+                  cargo-vet
                   # `just powerset` and the quality lints workflow.
                   cargo-hack
                   # admin/mutants and the mutants workflow.
@@ -830,6 +861,7 @@
                 pkgs.git
                 pkgs.curl
               ];
+              DALEK_AENEAS = "${aeneas-dalek}/bin";
             };
 
             # `admin/prove vg` and the prove workflow's `vg` jobs run in it:

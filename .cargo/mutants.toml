@@ -4,6 +4,11 @@
 # Runs each mutant's tests in parallel, in about half `cargo test`'s time.
 test_tool = "nextest"
 
+# A mutant that hangs a test is killed at twice the baseline test run, not the
+# default five times, which the weekly campaign measured at up to an hour each:
+# a mutant that only runs every test, as a missed one does, takes the baseline.
+timeout_multiplier = 2
+
 exclude_globs = [
   # Constants imported with aws-lc's, BoringSSL's, and OpenSSL's assembly,
   # which proofs and differential tests own.
@@ -210,10 +215,10 @@ exclude_re = [
   'rind/src/low/aarch64/mont\.rs:\d+:\d+: replace match guard k >= 2 with false in (mont_mul|mont_sqr)$',
   'rind/src/low/generic/order\.rs:\d+:\d+: replace (order -> Option<Order> with None|== with != in order)$',
   'rind/src/low/generic/blockwise\.rs:\d+:\d+: replace > with >= in Blockwise<N>::complete_blocks$',
-  'rind/src/low/posint\.rs:\d+:\d+: replace > with < in (PosInt<N>::mod_exp_rsaz|PosInt<N>::reduce_even)$',
-  'rind/src/low/posint\.rs:\d+:\d+: replace > with == in PosInt<N>::mod_exp_rsaz$',
-  'rind/src/low/posint\.rs:\d+:\d+: replace > with >= in PosInt<N>::mod_exp_rsaz$',
-  'rind/src/low/posint\.rs:\d+:\d+: replace PosInt<N>::mod_exp_rsaz -> Option<Self> with None$',
+  'rind/src/low/posint\.rs:\d+:\d+: replace > with < in (PosInt<N>::rsaz|PosInt<N>::reduce_even)$',
+  'rind/src/low/posint\.rs:\d+:\d+: replace > with == in PosInt<N>::rsaz$',
+  'rind/src/low/posint\.rs:\d+:\d+: replace > with >= in PosInt<N>::rsaz$',
+  'rind/src/low/posint\.rs:\d+:\d+: replace PosInt<N>::(mod_exp_rsaz -> Option<Self>|rsaz -> Option<low::Rsaz>) with None$',
   'rind/src/low/x86_64/aes_gcm\.rs:\d+:\d+: delete ! in vale$',
   'rind/src/low/x86_64/aes_gcm\.rs:\d+:\d+: replace && with \|\| in vale$',
   'rind/src/low/x86_64/aes_gcm\.rs:\d+:\d+: replace < with <= in vale$',
@@ -275,7 +280,7 @@ exclude_re = [
   # samples; only the time differs. `sample_poly_cbd`'s `&&`, `==`, and `>`
   # are its eight-way gate's alone.
   'rind/src/mid/mlkem\.rs:\d+:\d+: (replace (&& with \|\||== with !=|> with (==|<|>=)) in sample_poly_cbd|delete match arm [0-3] in shake256_fours|replace \* with / in shake256_fours)$',
-  'rind/src/low/posint\.rs:\d+:\d+: (replace PosInt<N>::mod_exp_pair_rsaz -> .*|.* in PosInt<N>::mod_exp_pair_rsaz)$',
+  'rind/src/low/posint\.rs:\d+:\d+: (replace PosInt<N>::rsaz_pair -> .*|.* in PosInt<N>::rsaz_pair)$',
   # Compiled only for armv7, which no campaign runs: the portable AES-GCM's
   # crypto-extension and NEON halves.
   'rind/src/mid/portable/aes_gcm\.rs:\d+:\d+: (replace (<impl Ghash for (GhashTable|NeonTable)>::ghash|<impl BlocksKey for (AesHwKey|NeonKey)>::\w+|<impl Parts for Arm<K, T>>::\w+)( -> .*)? with .*|.* in <impl Parts for Arm<K, T>>::\w+)$',
@@ -317,7 +322,7 @@ exclude_re = [
   # Pinned to its line: the `cpu_denied` of a release build or one without
   # an OS, which tests never are. The debug build's, under the same name, is
   # caught.
-  'rind/src/low/mod\.rs:281:\d+: replace cpu_denied -> bool with true$',
+  'rind/src/low/mod\.rs:287:\d+: replace cpu_denied -> bool with true$',
   # The FIPS module's `SystemRandom`, compiled only under `--cfg rind_fips`,
   # which no mutation run sets; `fips_rng`'s tests cover what it calls.
   # Pinned to its line: the other `fill`, under the same name, is caught.
