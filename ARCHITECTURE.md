@@ -95,6 +95,10 @@ The modules:
 - `argon2`: Argon2id, deriving or verifying a key from a password at a memory and time cost.
 - `spake2plus`: SPAKE2+ on P-256 (RFC 9383, and Matter PASE's draft-01
   schedule), a password-authenticated key exchange whose suite is a type.
+- `opaque`: RFC 9807's OPAQUE-3DH over ristretto255 and P-256, each with
+  RFC 9807's Argon2id: a server's setup that registers clients and answers
+  their logins, an unknown account's with a fake record, and each side's
+  state as a type its next step consumes.
 - `encoding`: the PKCS#8, SEC1, and `SubjectPublicKeyInfo` encodings key
   types export.
 - `constant_time`: comparing secrets such as MACs without a timing leak.
