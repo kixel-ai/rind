@@ -509,7 +509,15 @@ fn refuses_tampered_messages() {
                     Some(Error::BadSignature),
                     "byte {i}"
                 ),
-                Err(e) => assert!(matches!(e, Error::KeyRejected(_)), "byte {i}"),
+                Err(e) => {
+                    // Only a byte of the evaluated element or the key share
+                    // can fail to load; the rest is nonces, masked bytes, and
+                    // the MAC.
+                    let (npk, nh) = with_ake!(suite, G => (G::LENS.npk, G::LENS.nh));
+                    let share = bytes.len() - nh - npk;
+                    assert!(i < npk || (share..share + npk).contains(&i), "byte {i}");
+                    assert!(matches!(e, Error::KeyRejected(_)), "byte {i}");
+                }
             }
         }
 

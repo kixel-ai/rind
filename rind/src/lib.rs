@@ -775,7 +775,8 @@ pub mod spake2plus {
 /// A client registers by blinding its password with the server's OPRF and
 /// uploading a [`opaque::RegistrationRecord`]; each login then runs RFC
 /// 9807's three-message 3DH exchange, which gives both sides a
-/// [`opaque::SessionKey`] only if the client knew the password, and the
+/// [`opaque::SessionKey`] only if the client holds the credential its record
+/// binds, which a client may keep instead of the password, and gives the
 /// client an [`opaque::ExportKey`] for its own data. A stolen record together
 /// with the server's setup allows an offline guessing attack, each guess
 /// paced by Argon2id; a record alone does not, but it does let its holder
