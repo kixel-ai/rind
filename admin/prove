@@ -1771,14 +1771,15 @@ extract_armv7
 
 # The portable backend, which builds only under the cfg CI's portable jobs
 # build with, here on x86_64: the hashes, down to the SHA-2 block functions in
-# `low::generic`, which are opaque, and the Keccak-f.
-# `proofs/Rind/Portable/Compare.lean`
+# `low::generic`, and the Keccak-f. `proofs/Rind/Portable/Compare.lean`
 # models its constant-time compares, which read through raw pointers and
 # `black_box`. The error type and `into_public`, which the other targets reach
 # through their curves, are start points of their own here.
 portable_cfg='--cfg rind_portable --cfg curve25519_dalek_backend="serial"'
 portable_target=$prove_target-portable
 CARGO_TARGET_DIR=$portable_target RUSTFLAGS=$portable_cfg extract x86_64 Portable "${hashes[@]}" --include crate::low::portable::sha \
+    --include crate::low::generic::sha256 --include crate::low::generic::sha256_k \
+    --include crate::low::generic::sha512 \
     --start-from crate::error::Error --start-from crate::low::ct::into_public \
     --start-from crate::low::portable::keccak::sha3_keccak4_f1600 \
     --start-from crate::low::portable::keccak::sha3_keccak_nof4_f1600 \
