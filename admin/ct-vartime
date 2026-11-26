@@ -530,13 +530,15 @@ def jump_tables(objects, node):
 
 def written(mnemonic, operands):
     """The 64-bit registers an x86 instruction may write: its first operand,
-    or for a call, or one that writes others too, more."""
+    or for a call, or one that writes others too, more. An `imul` of two or
+    three operands writes only its first."""
     ops = operands.split(", ")
     if mnemonic == "call":
         return CALLER_SAVED
-    names = ops if WRITES_MORE.fullmatch(mnemonic) else ops[:1]
+    more = WRITES_MORE.fullmatch(mnemonic) and not (mnemonic == "imul" and len(ops) > 1)
+    names = ops if more else ops[:1]
     regs = {REG64[w] for op in names if "[" not in op for w in re.findall(r"\w+", op) if w in REG64}
-    return regs | IMPLICIT if WRITES_MORE.fullmatch(mnemonic) else regs
+    return regs | IMPLICIT if more else regs
 
 
 def mitigated(objects, node):
@@ -640,6 +642,10 @@ def mitigated(objects, node):
             after.pop(reg, None)
         if i in loads:
             after[REG64[insns[i][2].split(", ")[0]]] = frozenset([loads[i]])
+        # A full-width copy between registers carries the tables with it.
+        copy = insns[i][1] == "mov" and insns[i][2].split(", ")
+        if copy and len(copy) == 2 and copy[0] in ALIASES and copy[1] in regs:
+            after[copy[0]] = regs[copy[1]]
         for s in successors(i, regs):
             if held[s] is None:
                 new = (state, after)
