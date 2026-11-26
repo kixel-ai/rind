@@ -1,0 +1,26 @@
+# Changes that need the maintainer's sign-off, as CONTRIBUTING.md's Sign-off
+# section lists. This only requests the review; main's ruleset does not
+# require it. `admin/audit check` fails when a file of shipped code holding
+# `unsafe` matches no line here.
+
+# `unsafe` and assembly
+/rind/src/low/                  @kixelated
+/rind/src/fips_rng.rs           @kixelated
+/rind/src/test.rs               @kixelated
+/rind/src/mid/p256.rs           @kixelated
+/rind/src/high/opaque/tests.rs  @kixelated
+/rind-aws-lc-rs/src/kem.rs      @kixelated
+/admin/import-*                 @kixelated
+/thirdparty/s2n-bignum/         @kixelated
+
+# Proof trust
+/proofs/                        @kixelated
+/admin/prove*                   @kixelated
+/admin/vg-binding               @kixelated
+/admin/ledger                   @kixelated
+
+# FFI
+/rind-dart/                     @kixelated
+/rind-openssl/                  @kixelated
+/rind-python/                   @kixelated
+/rind-fips/                     @kixelated

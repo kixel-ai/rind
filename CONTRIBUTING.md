@@ -108,6 +108,21 @@ an issue, pull request, or quest.
 
 A release-plz PR, which only bumps versions and changelogs, needs no review beyond the maintainer's approval to merge it.
 
+# Sign-off
+
+These changes land only on the maintainer's explicit approval, which an agent never gives itself and a merge queue pick does not imply:
+
+- **`unsafe`**: any added or changed `unsafe` block or `unsafe impl`. Reviewers find these in the diff itself: AUDIT.md's `unsafe` table names areas, not blocks, so it does not show a changed block.
+- **Assembly**: a hand edit to `asm!`, `naked_asm!`, or `global_asm!` under `rind/src/low/`, or a bump of an importer's `REV` (`admin/import-*`, `thirdparty/s2n-bignum/RIND.md`), which regenerates it.
+- **Proof trust**: a new or changed Lean `axiom`, `bv_decide`, or hand model (an `admin/prove` `check_quote`), the [TCB & Axiom Ledger](proofs/README.md#tcb--axiom-ledger)'s tables moving, a change to `UNCOVERED` in `admin/vg-binding`, `proofs/hol-light/`, or `admin/prove-bytes`'s allowed differences.
+- **FFI**: a change to an exported `extern "C"` function or its types in rind-dart, rind-openssl, rind-python, or rind-fips.
+
+`.github/CODEOWNERS` requests the maintainer's review on the paths these live in; main's ruleset does not require it, since GitHub does not let authors approve their own PRs.
+`admin/audit check` fails when a file of shipped code holding `unsafe` matches no CODEOWNERS line, so a PR that adds `unsafe` in a new file adds its path there.
+GitHub reads CODEOWNERS from the base branch, so that PR's author requests the maintainer's review by hand. The maintainer's own PR needs no request, and the maintainer's sign-off comment on it counts.
+
+Everything else, including new safe Rust, tests, docs, and benchmarks, needs no sign-off beyond the queue's checks.
+
 # Upstream
 
 rind began as a fork of [ctz/graviola](https://github.com/ctz/graviola) and no longer tracks it: graviola's changes are not merged in, and rind is reshaped freely.

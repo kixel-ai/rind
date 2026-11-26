@@ -345,7 +345,9 @@ KEM keys, the bindings, rind-openssl, and test code. Every block in `rind`,
 rind-dart, and rind-openssl carries a `SAFETY:` comment, which clippy's
 `undocumented_unsafe_blocks` lint enforces in CI.
 CI's `admin/audit check` fails when `unsafe` (outside comments and literals)
-appears in an area the table does not name, or an area it names holds none.
+appears in an area the table does not name, or an area it names holds none,
+and when a file holding it matches no `.github/CODEOWNERS` line, which
+requests the maintainer's [sign-off](CONTRIBUTING.md#sign-off).
 `admin/audit unsafe` prints each area's current count; the table leaves the
 counts out, since nearly every change to `low` moves them:
 
