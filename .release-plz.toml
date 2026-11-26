@@ -40,13 +40,14 @@ commit_preprocessors = [
   { pattern = 'one API shape \(#781\)', replace = 'one API shape; in rind, `aead::gcm::TagLength` is now `#[non_exhaustive]`, so a `match` on it needs a `_` arm (#781)' },
   { pattern = 'pass the nightly on main', replace = '''fix the ctgrind nightly's failures then on main''' },
   { pattern = 'the build nightly passes on main', replace = '''fix the build nightly's failures then on main''' },
-  { pattern = 'x86_64 SHA-384/512 and Ed25519 are proven on AVX2', replace = 'proof coverage for the x86_64 AVX2 SHA-384/512 path and Ed25519 signing, and for Ed25519 verification on the AVX2 path with ADX' },
+  { pattern = 'x86_64 SHA-384/512 and Ed25519 are proven on AVX2', replace = 'proof coverage for the x86_64 AVX2 SHA-384/512 path and Ed25519 signing; the verification it proved is superseded by half-size scalars in #768, which nothing proves yet' },
   # A Rust path as a title's first word reads as a commit type, so release-plz
   # prints it garbled; a `chore:` type in front lets the path through, and the
   # entry stays in Other. Release-plz runs preprocessors twice, so each pattern
   # must not match its own output.
   { pattern = '^cipher::ChaCha20', replace = 'chore: `cipher::ChaCha20`' },
   { pattern = '^rind::KeyPair loads', replace = 'chore: `rind::KeyPair` loads' },
+  { pattern = '!: ML-KEM-512 and ML-KEM-1024', replace = '''!: rind's typed ML-KEM API adds ML-KEM-512 and ML-KEM-1024''' },
   { pattern = 'at /from/<library>,', replace = 'at `/from/<library>`,' },
   # release-plz's default: a PR number becomes its link.
   { pattern = '\(#([0-9]+)\)', replace = '([#${1}](https://github.com/kixel-ai/rind/pull/${1}))' },
@@ -69,7 +70,7 @@ pyrind's Python API only gains items in this release: `pyrind.cipher`, `pyrind.k
 {% elif package == "rind-rand-core" and version == "0.10.1" %}
 Requires rind 0.4, so `SystemRandom`'s `TryRng::Error` is rind 0.4's `rind::Error`.
 {% elif package == "rind-rcgen" and version == "0.14.4" %}
-Requires rind 0.4. This release matches `rcgen::KeyPair`'s API, but for what its README lists under "What rind cannot back": `KeyPair::generate()` takes no argument, so call `KeyPair::generate_for(alg)` where you passed one, and items rcgen lacks, such as `KeyPair::to_pkcs8` and the crate-level `check` and `MissingFeature`, are gone. A change that restores upstream's API is a bug fix, released as a patch (CONTRIBUTING.md's Releases section). The other entries marked breaking change rind's API or another crate's, which this crate does not expose.
+Requires rind 0.4. This release matches `rcgen::KeyPair`'s API, but for what its README lists under "What rind cannot back": `KeyPair::generate()` takes no argument, so call `KeyPair::generate_for(alg)` where you passed one, and items rcgen lacks, such as `KeyPair::to_pkcs8` and the crate-level `check` and `MissingFeature`, are gone. `KeyPair::serialize_der()` returns a plain `Vec<u8>` that nothing wipes, so borrow `serialized_der()` where you can, and wipe the copy where you cannot. A change that restores upstream's API is a bug fix, released as a patch (CONTRIBUTING.md's Releases section). The other entries marked breaking change rind's API or another crate's, which this crate does not expose.
 {% elif package == "rind-ring" and version == "0.17.4" %}
 Requires rind 0.4. This release matches ring 0.17's API and features, but for what its README lists under "What rind cannot back": the `cpu` module (`cpu::check` and `cpu::MissingFeature`), which ring keeps private, is gone, so drop any `cpu::check()` call. A change that restores upstream's API is a bug fix, released as a patch (CONTRIBUTING.md's Releases section). The other entries marked breaking change rind's API or another crate's, which this crate does not expose.
 {% elif package == "rind-rustls" and version == "0.23.4" %}
