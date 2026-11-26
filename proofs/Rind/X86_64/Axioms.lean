@@ -428,20 +428,12 @@ change to the trust base.
 /-- info: 'rind.x86_64.chacha20_apply_keystream' depends on axioms: [propext,
  Classical.choice,
  Quot.sound,
+ chacha20_ctr32_ssse3_4x_spec,
  vg_chacha20_apply_avx2_spec,
  vg_chacha20_apply_avx512vl_spec,
  vg_chacha20_init_spec] -/
 #guard_msgs in
 #print axioms chacha20_apply_keystream
-
-/-- info: 'rind.x86_64.chacha20_apply_keystream_ssse3' depends on axioms: [propext,
- Classical.choice,
- Quot.sound,
- vg_chacha20_apply_avx2_spec,
- vg_chacha20_apply_avx512vl_spec,
- vg_chacha20_init_spec] -/
-#guard_msgs in
-#print axioms chacha20_apply_keystream_ssse3
 
 /-- info: 'rind.x86_64.avx2.kernel' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
