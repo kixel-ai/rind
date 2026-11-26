@@ -23,7 +23,7 @@ cargo bench
 
 On x86_64 Linux with ADX (Broadwell or later), count a change's instructions against main's under Valgrind, as the weekly bench does ([TESTING.md](TESTING.md#scheduled-workflows) says what it counts):
 ```shell
-nix develop .#bench --command rust2-bench compare main -- -p rind-bench --features __bench_codspeed --bench sha2
+nix develop .#bench --command swole compare main -- -p rind-bench --features __bench_codspeed --bench sha2
 ```
 
 [BENCHMARKS.md](BENCHMARKS.md#updating-this-report) says how to refresh the benchmark report.

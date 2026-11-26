@@ -27,7 +27,7 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # Each benchmark's instruction count under Valgrind, from `rust2-bench` in
+  # Each benchmark's instruction count under Valgrind, from `swole` in
   # the flake's `bench` shell, which an agent runs locally to the same count.
   # Kixel Quest reads the `kixel-metrics` artifact and bisects a count that
   # moved through the `benchmarks` input. rsa_gen times nothing without
@@ -76,15 +76,18 @@ jobs:
           BENCHES: ${{ inputs.benches }}
           BENCHMARKS: ${{ inputs.benchmarks }}
 
-      # rust2-bench fails on a name `--benchmarks` lists that no benchmark
-      # has, so a bisect step never reads a benchmark it could not count.
+      # A bisect step names benchmarks with `--benchmarks`, some of which a
+      # commit before one was added, or after a rename, lacks. With
+      # `--allow-missing`, swole names each missing one, counts the rest, and
+      # fails only when none is there; Kixel Quest reads a benchmark
+      # `metrics.json` lacks as unmeasured.
       - name: Count instructions
         if: steps.select.outputs.skip != 'true'
         run: |
           read -ra benches <<<"$SELECTED"
           args=(--out metrics.json)
-          [ -z "$LIST" ] || args+=(--benchmarks "$LIST")
-          nix develop .#bench --command rust2-bench run "${args[@]}" -- \
+          [ -z "$LIST" ] || args+=(--benchmarks "$LIST" --allow-missing)
+          nix develop .#bench --command swole run "${args[@]}" -- \
             -p rind-bench --features __bench_codspeed "${benches[@]/#/--bench=}"
         env:
           SELECTED: ${{ steps.select.outputs.benches }}

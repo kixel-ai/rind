@@ -82,7 +82,7 @@ rustls-openssl = { version = "0.4", default-features = false }
 [features]
 __bench_openssl = []
 # The weekly instruction count's build: CodSpeed's Criterion, whose markers
-# rust2-bench reads, and no rustls Graviola rows, which Valgrind cannot list.
+# swole reads, and no rustls Graviola rows, which Valgrind cannot list.
 __bench_codspeed = ["dep:codspeed-criterion-compat"]
 
 [[bench]]

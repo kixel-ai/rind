@@ -15,10 +15,10 @@
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.flake-utils.follows = "flake-utils";
     };
-    # rust2-bench, which counts the weekly bench's instructions under the
-    # Valgrind its own nixpkgs pins. Bumping the rev can move every count,
-    # and a new Valgrind starts new series: keep its nixpkgs, not ours.
-    rust2.url = "github:kixel-ai/rust2/6ead6d565ef4d9c739238653c3ec01e25590ad0e";
+    # swole, which counts the weekly bench's instructions under the Valgrind
+    # its own nixpkgs pins. Bumping the rev can move every count, and a new
+    # Valgrind starts new series: keep its nixpkgs, not ours.
+    swole.url = "github:kixel-ai/swole/159bf5fe993f34c56dc6dc27612947f2becdf654";
   };
 
   outputs =
@@ -27,7 +27,7 @@
       flake-utils,
       rust-overlay,
       quest,
-      rust2,
+      swole,
       ...
     }:
     flake-utils.lib.eachSystem
@@ -981,13 +981,13 @@
               shellHook = sde-certs;
             };
 
-            # The bench workflow's instruction counts, `rust2-bench run` and
-            # `rust2-bench compare <base>`, which build rind-bench with its C
-            # baselines. rust2-bench runs on x86_64 Linux only.
+            # The bench workflow's instruction counts, `swole run` and
+            # `swole compare <base>`, which build rind-bench with its C
+            # baselines. swole counts on x86_64 Linux only.
             bench = mkDevShell {
               packages = [
                 rust-stable.minimal
-                rust2.packages.${system}.bench
+                swole.packages.${system}.default
                 # sh/bench-select.sh lists the bench targets with it.
                 pkgs.jq
                 pkgs.cmake
@@ -998,7 +998,7 @@
               # rind takes its ADX routines anyway, as under `admin/ctgrind`.
               # See UPSTREAM.md, "Valgrind hides ADX from `cpuid`".
               env.VALGRIND_BUG_494162 = "1";
-              # rust2-bench lists the benchmarks natively, where that forced
+              # swole lists the benchmarks natively, where that forced
               # ADX would fault on a CPU without it, such as Haswell.
               shellHook = ''
                 if ! grep -qw adx /proc/cpuinfo; then

@@ -350,13 +350,13 @@ diff-scoped selection. Each runs on demand with
 bench target unless `-f benches='aes_gcm sha2'` names the ones to measure,
 and each CPU-tier row then times only those of them it covers.
 `bench`'s `instructions` job counts each benchmark's instructions under
-Valgrind with kixel-ai/rust2's `rust2-bench`, which `flake.nix` pins with
+Valgrind with kixel-ai/swole's `swole`, which `flake.nix` pins with
 Valgrind, and uploads them for Kixel Quest, which bisects a count that moved
 by dispatching the workflow with `benchmarks`, the IDs to count. Valgrind
 hides AVX-512, VAES, VPCLMULQDQ, and the SHA extensions, and the `bench` shell
 sets `VALGRIND_BUG_494162`, so the counts measure the x86_64 tier with AVX2
 and ADX, Broadwell's to Cooper Lake's, on any host CPU that has them, and counts
-compare only under one `rust2-bench` fingerprint. Benchmark
+compare only under one `swole` fingerprint. Benchmark
 sets must not depend on the CPU, since the runner lists them natively and
 counts them under Valgrind: `rsa_gen`, which registers nothing without
 `NOISY_BENCHMARKS`, is left out, and the count build drops the Graviola
