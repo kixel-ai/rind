@@ -10,7 +10,9 @@ name: mutants
 # runs a whole campaign, which `admin/mutants` refuses off GitHub-hosted
 # runners: every architecture's over the workspace, or one crate's, one
 # architecture's, or the changes since `base`, as in
-# `gh workflow run mutants.yml --ref <branch> -f package=rind-rustls`.
+# `gh workflow run mutants.yml --ref <branch> -f package=rind-rustls`. The
+# whole workspace's three campaigns exceed a matrix's 256 jobs together, so
+# dispatch those one `campaign` at a time.
 # Like fuzzing, it never runs on pull requests: a large diff's mutants take
 # hours of every architecture's runners.
 #
@@ -144,7 +146,9 @@ jobs:
           # replaces. Its adapters' code is the same as on x86_64.
           add portable ubuntu-latest 75 --portable -p rind
           jobs=$(jq length <<<"$matrix")
-          [ "$jobs" -le 256 ] || { echo "::error::$jobs jobs, more than a matrix's 256"; exit 1; }
+          # A whole workspace at these sizes is over 256 shards across the three
+          # campaigns, but each fits alone.
+          [ "$jobs" -le 256 ] || { echo "::error::$jobs jobs, more than a matrix's 256; dispatch one campaign at a time with -f campaign=x86_64, aarch64, or portable"; exit 1; }
           echo "mutants=$matrix" >> "$GITHUB_OUTPUT"
         env:
           CAMPAIGN: ${{ inputs.campaign || 'all' }}
