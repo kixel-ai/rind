@@ -4,13 +4,17 @@
 #
 # `check` fails unless the generated part of proofs/README.md's TCB & Axiom
 # Ledger, between its two markers, is the one this renders from the Lean
-# files, and `fix` rewrites it. The ledger counts every `axiom` the tracked
-# Lean files declare, by the source it restates, and the tactics and
-# attributes that make Lean trust its compiler, and lists the hand models of
-# Rust Aeneas cannot translate, from the quotes `admin/prove` checks.
+# files, and `fix` rewrites it. The ledger lists every Lean file that declares
+# an `axiom`, by the source it restates, and the hand models of Rust Aeneas
+# cannot translate, from the quotes `admin/prove` checks.
+#
+# It holds no counts: they change with most proofs, so a checked count would
+# go stale whenever another pull request lands first, as AUDIT-SCOPE.md's
+# would. A file that gains or loses its first axiom or hand model changes it,
+# which the pull request doing so controls.
 #
 # It fails on:
-# - a `sorry`, which no proof may hold;
+# - a `sorry`, or a `native_decide`, which no proof may hold;
 # - an axiom in a file no group below describes, so a new axiom says what it
 #   trusts, and a group that lists a file with none;
 # - AUDIT.md without a link to the ledger.
@@ -65,26 +69,9 @@ GROUPS = [
     ),
 ]
 
-# The tactics and attributes after which Lean trusts its compiler, or a
-# definition's compiled body differs from its kernel one, counted outside
-# comments and strings.
-CONSTRUCTS = [
-    (
-        "`bv_decide`, `bv_check`",
-        r"\bbv_(?:decide|check)\b",
-        "each call adds an axiom that Lean's compiled LRAT checker accepted a SAT solver's certificate",
-    ),
-    (
-        "`native_decide`, `decide +native`",
-        r"\bnative_decide\b|\bdecide(?:\s+\+\w+)*\s+\+native\b|\(\s*native\s*:=\s*true\s*\)",
-        "each adds an axiom that Lean's compiled code evaluated a proposition as the kernel would; rind's proofs avoid it",
-    ),
-    (
-        "`@[implemented_by]`, `@[extern]`",
-        r"(?:@|\battribute\s*)\[[^\]]*\b(?:implemented_by|extern)\b",
-        "the compiler runs another definition than the one proofs use, as for the AES S-boxes' tables, which `sboxFast_eq` and `invSboxFast_eq` prove equal",
-    ),
-]
+# `native_decide` and its spellings, which trust Lean's compiled code to decide
+# a proposition as the kernel would.
+NATIVE = re.compile(r"\bnative_decide\b|\bdecide(?:\s+\+\w+)*\s+\+native\b|\(\s*native\s*:=\s*true\s*\)")
 
 # `axiom` is a keyword, so any use not part of a longer name declares one,
 # whatever precedes it: modifiers, attributes, or `open Foo in`.
@@ -159,19 +146,17 @@ def lean_files():
 
 def hand_models():
     """The Lean files `admin/prove` checks quote the Rust they model, by
-    target directory, with their lines."""
+    target directory."""
     quoted = sorted(set(re.findall(r"^check_quote ([A-Za-z0-9_]+/[A-Za-z0-9_]+)\b", (ROOT / "admin/prove").read_text(), re.M)))
     if not quoted:
         sys.exit("error: admin/prove has no check_quote lines, which admin/ledger lists the hand models from")
-    by_dir, total = {}, 0
+    by_dir = {}
     for q in quoted:
         path = ROOT / "proofs" / "Rind" / (q + ".lean")
         if not path.is_file():
             sys.exit(f"error: admin/prove quotes into {path.relative_to(ROOT)}, which does not exist")
-        lines = len(path.read_text().splitlines())
         by_dir.setdefault(q.split("/")[0], []).append(q.split("/")[1])
-        total += lines
-    return by_dir, len(quoted), total
+    return by_dir
 
 
 def render():
@@ -179,22 +164,19 @@ def render():
     sorries = [f for f, t in files if SORRY.search(t)]
     if sorries:
         sys.exit(f"error: sorry in {', '.join(sorries)}; no proof may hold one")
+    natives = [f for f, t in files if NATIVE.search(t)]
+    if natives:
+        sys.exit(f"error: native_decide in {', '.join(natives)}; prove it with decide or bv_decide, which the kernel or an LRAT certificate checks")
 
-    counts = {}
-    for f, t in files:
-        n = len(AXIOM.findall(t))
-        if n:
-            counts[f.removeprefix("proofs/Rind/")] = n
+    unplaced = {f.removeprefix("proofs/Rind/") for f, t in files if AXIOM.search(t)}
     rows = []
-    unplaced = dict(counts)
     for pattern, what, status in GROUPS:
-        mine = {f: n for f, n in unplaced.items() if re.fullmatch(pattern, f)}
+        mine = {f for f in unplaced if re.fullmatch(pattern, f)}
         if not mine:
             sys.exit(f"error: admin/ledger's group for {what!r} matches no file with an axiom; remove it")
-        for f in mine:
-            del unplaced[f]
-        listed = ", ".join(f"`{f.removesuffix('.lean')}` {n}" for f, n in sorted(mine.items()))
-        rows.append(f"| {what} | {sum(mine.values())} | {listed} | {status} |")
+        unplaced -= mine
+        listed = ", ".join(f"`{f.removesuffix('.lean')}`" for f in sorted(mine))
+        rows.append(f"| {what} | {listed} | {status} |")
     if unplaced:
         sys.exit(
             "error: axioms in a file no group of admin/ledger describes: "
@@ -203,26 +185,17 @@ def render():
         )
 
     lines = [
-        f"Every `axiom` the tracked Lean files declare, {sum(counts.values())} in {len(counts)} files, `sorry` none:",
+        "Every Lean file that declares an `axiom`, by the source it restates; no file holds a `sorry`:",
         "",
-        "| Restates | Axioms | Files under `proofs/Rind/` | Checked |",
-        "|---|---|---|---|",
-        *rows,
-        "",
-        "Lean's compiler, trusted beyond the kernel wherever one of these appears:",
-        "",
-        "| Construct | Uses | Trusts |",
+        "| Restates | Files under `proofs/Rind/` | Checked |",
         "|---|---|---|",
+        *rows,
     ]
-    for name, pattern, why in CONSTRUCTS:
-        hits = {f: len(re.findall(pattern, t)) for f, t in files}
-        hits = {f: n for f, n in hits.items() if n}
-        lines.append(f"| {name} | {sum(hits.values())} in {len(hits)} files | {why} |")
 
-    by_dir, n_files, n_lines = hand_models()
+    by_dir = hand_models()
     lines += [
         "",
-        f"Hand models of Rust Aeneas cannot translate, {n_files} files of {n_lines:,} lines, each quoting the Rust it models:",
+        "Hand models of Rust Aeneas cannot translate, each quoting the Rust it models:",
         "",
     ]
     for d in sorted(by_dir):

@@ -49,11 +49,7 @@ DECL = re.compile(r"^\s*(?:@\[[^\]]*\]\s*)*(?:(?:private|protected|noncomputable
 # Routines rind vendors that no axiom covers, and why. A routine that calls
 # others covers them too.
 UNCOVERED = {
-    "x86_64": {
-        "vg_chacha20_poly1305_open_ifma": "no proof of rind's x86_64 ChaCha20-Poly1305 yet; [its quest](/quest/m4/verified/chacha20-poly1305-x86/README.md) restates VG's",
-        "vg_chacha20_poly1305_seal_ifma": "the same",
-        "vg_mcdt_enter": "sets MXCSR, whose effect rind's proofs do not state; `admin/ct-vartime` checks every call enters it",
-    },
+    "x86_64": {},
     "aarch64": {
         "vg_chacha20_poly1305_open_neon": "no proof of rind's aarch64 ChaCha20-Poly1305 yet; [its quest](/quest/m4/verified/chacha20-poly1305-aarch64.md) restates VG's",
         "vg_chacha20_poly1305_seal_neon": "the same",
