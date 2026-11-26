@@ -202,7 +202,7 @@ establishes, and what it does not:
   AVX-512, or aarch64's crypto extension and SHA3, it
   does not run on armv7, and its lifter misses a secret branch whose two
   sides are empty.
-- **`admin/ct-vartime`**, in `just ci`, scans the release builds of every
+- **`admin/ct-vartime`**, in the nightly `just ci --all`, scans the release builds of every
   Linux target rind builds for divisions and floating point, against an
   allowlist of public operands. On the x86_64 backend it also fails on a
   multiply whose timing depends on MXCSR that an export reaches on a path

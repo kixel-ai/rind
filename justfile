@@ -16,11 +16,11 @@ default:
 check $BASE="":
     sh/dispatch.sh check "$BASE"
 
-# Run CI's gate over the branch diff against BASE; missing tools fail.
+# Run the PR check's gate over the branch diff against BASE; missing tools fail.
 ci $BASE="":
     CI_STRICT=1 sh/dispatch.sh ci "$BASE"
 
-# Run CI's gate over every crate.
+# Run every CI module over every crate, as check.yml does nightly.
 gate:
     just ci --all
 

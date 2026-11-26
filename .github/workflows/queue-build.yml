@@ -31,10 +31,9 @@ jobs:
       BASE: ${{ github.event.merge_group.base_sha }}
       # A failure ejects the group whatever else fails, so stop at the first.
       CHECK_FAIL_FAST: 1
-      # Also `regenerate`, `prove`'s x86_64 `vg`, and the Intel SDE models
-      # when the group touches their paths, beside the other modules. They
-      # run here rather than on GitHub-hosted runners, whose queue waits (46
-      # minutes at p90 in November 2026) would run into this job's timeout.
+      # Only the host's Rust checks and the quick lints, leaving the PR
+      # check's slower modules to it and check.yml's nightly run, since every
+      # group waits on this build.
       CHECK_QUEUE: 1
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -47,3 +46,13 @@ jobs:
         env:
           QUEST_GATE_PRIORITY: 1
         run: nix develop --command quest gate just ci "$BASE"
+      # Cargo's per-crate timings of the group's build, so a compile-time
+      # regression shows without profiling by hand.
+      - name: Upload build timings
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cargo-timings
+          path: target/cargo-timings/cargo-timing-*.html
+          if-no-files-found: ignore
+          retention-days: 14

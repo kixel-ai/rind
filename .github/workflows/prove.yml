@@ -264,8 +264,7 @@ jobs:
 
   # pyca/verified-garbage's code for each target against VG's Lean models,
   # on the runner's CPU and, for what it lacks, Intel SDE or qemu-aarch64.
-  # Each run takes its run ID as the seed, so each tries new cases; the merge
-  # queue's build runs x86_64's with a fixed seed.
+  # Each run takes its run ID as the seed, so each tries new cases.
   vg:
     needs: select
     if: ${{ !cancelled() && (!inputs.jobs || contains(fromJSON(needs.select.outputs.jobs || '[]'), 'vg')) && github.event_name != 'push' }}

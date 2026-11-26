@@ -109,13 +109,10 @@ qemu. iOS devices' code is only built.
   Raspberry Pi 1 and Zero), on `arm-linux-androideabi`, which Rust builds for
   ARMv5TE, on `powerpc64le` and big-endian `powerpc64` and `powerpc` Linux,
   and on `x86_64`,
-  where `--cfg rind_portable` forces it. `just ci` also compiles the library
-  for `wasm32-wasip2` and `wasm32-unknown-unknown`
-  when a change touches rind, the workspace manifest or lockfile, or the
-  flake, and `just gate` always does. It compiles every published adapter
-  for both, and rind-rustls's and rind-ring's tests for each, when
-  a change touches an adapter, rind's manifest, the workspace manifest or
-  lockfile, or the flake. `wasm32-unknown-unknown` enables `getrandom/wasm_js`
+  where `--cfg rind_portable` forces it. `just gate`, nightly, also compiles the
+  library for `wasm32-wasip2` and `wasm32-unknown-unknown`, and every
+  published adapter for both, with rind-rustls's and rind-ring's tests for
+  each; `CHECK_MODULES=wasm just ci` does so over a branch's diff. `wasm32-unknown-unknown` enables `getrandom/wasm_js`
   for JavaScript randomness, as rind-ring's `wasm32_unknown_unknown_js` does
   for a ring caller; the WASI target uses its system random source. There the
   adapters' upstreams need what they need with any backend, which
