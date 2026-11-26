@@ -1089,8 +1089,8 @@ CPU-feature checks pick Vale's tier (`RunsValeAesGcm`) or the SSE tier
 which is generic over its buffer.
 
 On aarch64, AES-GCM is proven below the AEAD API on CPUs with the crypto
-extension: for short messages with every key size, and at every length with
-AES-128 and AES-256 keys; its GHASH key setup and hashing are proven at every
+extension: for short messages with every key size, and at every length below
+2^61 bytes with AES-128 and AES-256 keys; its GHASH key setup and hashing are proven at every
 length. `Rind/Aarch64/GhashPmull.lean` proves
 that `GhashTable::new` builds the PMULL table of H to H^8, each shifted as
 Vale's `shift_key_1` does (`ghash_table_new_spec`), and that `Ghash::add` on
@@ -1130,8 +1130,8 @@ read is the PMULL table's (`toPoly_hPower`). `Rind/Aarch64/AesGcmLong.lean`
 proves that `stitched` is GCTR and GHASH over the blocks (`stitched_spec`),
 that `partial` is `short`'s last chunk (`partial_spec`), so `cipher` is GCTR
 from the block after the counter block and GHASH over the AAD and the
-ciphertext (`cipher_spec`), and `tagged_from` and `tagged` at every length are
-GCTR and the tag on `gcm_hash` (`tagged_from_spec`) and `gcm_encrypt_LE` and
+ciphertext (`cipher_spec`), and `tagged_from` and `tagged` at every length
+below 2^61 bytes are GCTR and the tag on `gcm_hash` (`tagged_from_spec`) and `gcm_encrypt_LE` and
 `gcm_decrypt_LE` (`tagged_seal_spec`, `tagged_open_spec`). With a table for
 the cores with SHA3, each takes `KernelBuffersLow`, which names the `_alt`
 kernels' requirement that the blocks' address plus their length is below
