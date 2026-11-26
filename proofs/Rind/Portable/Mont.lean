@@ -47,6 +47,10 @@ theorem shr_bits_lt (t : U128) : t.val >>> 64 < 2 ^ 64 := by
   simp only [UScalarTy.numBits] at this
   omega
 
+theorem u64_lt (x : U64) : x.val < 2 ^ 64 := x.hBounds
+
+theorem u64_le (x : U64) : x.val ≤ 2 ^ 64 - 1 := Nat.le_pred_of_lt x.hBounds
+
 theorem u64_size : U64.size = 2 ^ 64 := by
   simp [U64.size, U64.numBits]
 
@@ -488,5 +492,499 @@ theorem add_shift_loop_spec (t0 m : Slice U64) (u : U64) (low0 : Nat) (hm : m.le
           (hsv.trans (by rw [hcw, hmi, hti0, ← getElem!_pos]))
         exact this
   · exact ⟨hend, h1, hi, htl, hdrop, hinv⟩
+
+/-! ## `mul_add2` -/
+
+/-- `mul_add2`'s block of limbs. -/
+abbrev Block := Std.Array U64 4#usize
+
+theorem four_val : (4#usize).val = 4 := by simp
+
+theorem block_eq : low.generic.limb64.mont.BLOCK = 4#usize := by
+  unfold low.generic.limb64.mont.BLOCK
+  simp [core.num.U64.BITS]
+
+/-- `foldlM` of a step that appends one value a call, leaving its state. -/
+theorem foldlM_append_spec {α β S : Type} (φ : List β × S → α → Result (List β × S)) (s : S)
+    (P : α → β → Prop) (hφ : ∀ acc a, φ (acc, s) a ⦃ r => ∃ y, r = (acc ++ [y], s) ∧ P a y ⦄)
+    (l : List α) (acc : List β) :
+    l.foldlM φ (acc, s) ⦃ r => ∃ ys, r = (acc ++ ys, s) ∧ List.Forall₂ P l ys ⦄ := by
+  induction l generalizing acc with
+  | nil => exact (WP.spec_ok (acc, s)).mpr ⟨[], by simp, List.Forall₂.nil⟩
+  | cons a l ih =>
+    rw [List.foldlM_cons]
+    apply WP.spec_bind (hφ acc a)
+    rintro r ⟨y, rfl, hy⟩
+    apply WP.spec_mono (ih (acc ++ [y]))
+    rintro r ⟨ys, rfl, hys⟩
+    exact ⟨y :: ys, by simp, List.Forall₂.cons hy hys⟩
+
+/-- `core::array::from_fn` of a closure that leaves its state: element `k`
+is what the closure returns for `k`. -/
+theorem from_fn_spec {T F : Type} [Inhabited T] (N : Usize) (n : Nat) (hn : N.val = n)
+    (inst : core.ops.function.FnMut F Usize T) (f : F) (P : Nat → T → Prop)
+    (hcall : ∀ i : Usize, i.val < n → inst.call_mut f i ⦃ r => r.2 = f ∧ P i.val r.1 ⦄) :
+    core.array.from_fn N inst f ⦃ a => ∀ k < n, P k a.val[k]! ⦄ := by
+  subst hn
+  unfold core.array.from_fn
+  apply WP.spec_bind (foldlM_append_spec _ f (fun a y => P a.val y) ?_ _ [])
+  · rintro r ⟨ys, rfl, hys⟩
+    obtain ⟨hl, hget⟩ := List.forall₂_iff_get.mp hys
+    simp only [List.length_attach, List.length_range] at hl
+    change (if h : ys.length = N.val then ok (Std.Array.from ys h) else fail .panic) ⦃ a => ∀ k < N.val, P k a.val[k]! ⦄
+    rw [dif_pos hl.symm, WP.spec_ok]
+    intro k hk
+    have := hget k (by simp; omega) (by omega)
+    simpa [getElem!_pos ys k (by omega)] using this
+  · rintro acc ⟨i, hi⟩
+    have hiN : i < N.val := List.mem_range.mp hi
+    dsimp only
+    apply WP.spec_bind (hcall _ (by simpa using hiN))
+    rintro ⟨y, f'⟩ ⟨hf, hy⟩
+    subst hf
+    refine (WP.spec_ok _).mpr ⟨y, rfl, ?_⟩
+    simpa using hy
+
+theorem closure_spec (u : U64) (y : Std.Array U64 4#usize) (i : Usize) (hi : i.val < 4) :
+    low.generic.limb64.mont.mul_add2.closure.Insts.CoreOpsFunctionFnMutTupleUsizeU128.call_mut (u, y) i
+      ⦃ r => r.2 = (u, y) ∧ r.1.val = u.val * y.val[i.val]!.val ⦄ := by
+  unfold low.generic.limb64.mont.mul_add2.closure.Insts.CoreOpsFunctionFnMutTupleUsizeU128.call_mut
+  simp only [lift, bind_ok]
+  step with Array.index_usize_spec y i (by simpa using hi) as ⟨yi, hyi⟩
+  have hb : u.val * yi.val < 2 ^ 128 := by
+    have := mul_add_limb_bound u.val yi.val 0 0 u.hBounds yi.hBounds (by norm_num) (by norm_num); omega
+  simp only [lift, bind_ok, WP.spec_ok, core.num.U128.wrapping_mul_val_eq, from_u128_val, UScalar.size,
+    UScalarTy.numBits]
+  refine ⟨rfl, ?_⟩
+  rw [Nat.mod_eq_of_lt hb, hyi, getElem!_pos _ _ (by simpa using hi)]
+
+/-- The multiple of `v` that limb `k` of `mul_add2`'s second chain adds:
+the limb of `y` below `k`, or `prev` at the bottom. -/
+def prevAt (prev : U64) (y : List U64) (k : Nat) : Nat := if k = 0 then prev.val else y[k - 1]!.val
+
+theorem closure1_spec (prev : U64) (y : Std.Array U64 4#usize) (v : U64) (i : Usize) (hi : i.val < 4) :
+    low.generic.limb64.mont.mul_add2.closure_1.Insts.CoreOpsFunctionFnMutTupleUsizeU128.call_mut
+      (prev, y, v) i ⦃ r => r.2 = (prev, y, v) ∧ r.1.val = v.val * prevAt prev y.val i.val ⦄ := by
+  have hcall : low.generic.limb64.mont.mul_add2.closure_1.Insts.CoreOpsFunctionFnMutTupleUsizeU128.call_mut
+      (prev, y, v) i = (do
+        let below1 ← if i = 0#usize then ok prev else do
+          let i1 ← i - 1#usize
+          Array.index_usize y i1
+        let i1 ← lift (core.convert.num.FromU128U64.from v)
+        let i2 ← lift (core.convert.num.FromU128U64.from below1)
+        let i3 ← lift (core.num.U128.wrapping_mul i1 i2)
+        ok (i3, ((prev, y, v) : low.generic.limb64.mont.mul_add2.closure_1))) := rfl
+  rw [hcall]
+  have key : ∀ b : U64, b.val = prevAt prev y.val i.val →
+      (do
+        let i1 ← lift (core.convert.num.FromU128U64.from v)
+        let i2 ← lift (core.convert.num.FromU128U64.from b)
+        let i3 ← lift (core.num.U128.wrapping_mul i1 i2)
+        ok (i3, ((prev, y, v) : low.generic.limb64.mont.mul_add2.closure_1)))
+        ⦃ r => r.2 = (prev, y, v) ∧ r.1.val = v.val * prevAt prev y.val i.val ⦄ := by
+    intro b hb
+    have hbb : v.val * b.val < 2 ^ 128 := by
+      have := mul_add_limb_bound v.val b.val 0 0 v.hBounds b.hBounds (by norm_num) (by norm_num); omega
+    simp only [lift, bind_ok, WP.spec_ok, core.num.U128.wrapping_mul_val_eq, from_u128_val, UScalar.size,
+      UScalarTy.numBits, true_and]
+    rw [Nat.mod_eq_of_lt hbb, hb]
+  split
+  · rename_i h0
+    simp only [bind_ok]
+    exact key prev (by simp [prevAt, h0])
+  · rename_i h0
+    have h0' : i.val ≠ 0 := by intro h; apply h0; scalar_tac
+    step as ⟨j, hj⟩
+    step with Array.index_usize_spec y j (by simp; omega) as ⟨b, hb⟩
+    exact key b (by rw [hb, ← getElem!_pos]; simp [prevAt, h0', hj])
+
+/-- The products of `u` and a block's limbs. -/
+theorem pu_spec (u : U64) (y : Std.Array U64 4#usize) :
+    core.array.from_fn 4#usize
+      low.generic.limb64.mont.mul_add2.closure.Insts.CoreOpsFunctionFnMutTupleUsizeU128
+      ((u, y) : low.generic.limb64.mont.mul_add2.closure)
+      ⦃ a => ∀ k < 4, a.val[k]!.val = u.val * y.val[k]!.val ⦄ := by
+  exact from_fn_spec 4#usize 4 four_val
+    low.generic.limb64.mont.mul_add2.closure.Insts.CoreOpsFunctionFnMutTupleUsizeU128 (u, y)
+    (fun k r => r.val = u.val * y.val[k]!.val)
+    (fun i hi => closure_spec u y i hi)
+
+/-- The products of `v` and the limbs a block's second chain adds. -/
+theorem pv_spec (prev : U64) (y : Std.Array U64 4#usize) (v : U64) :
+    core.array.from_fn 4#usize
+      low.generic.limb64.mont.mul_add2.closure_1.Insts.CoreOpsFunctionFnMutTupleUsizeU128
+      ((prev, y, v) : low.generic.limb64.mont.mul_add2.closure_1)
+      ⦃ a => ∀ k < 4, a.val[k]!.val = v.val * prevAt prev y.val k ⦄ := by
+  exact from_fn_spec 4#usize 4 four_val
+    low.generic.limb64.mont.mul_add2.closure_1.Insts.CoreOpsFunctionFnMutTupleUsizeU128 (prev, y, v)
+    (fun k r => r.val = v.val * prevAt prev y.val k)
+    (fun i hi => closure1_spec prev y v i hi)
+
+/-- One limb of `mul_add2`: the first chain's sum `s0 = u·y_j + x_j + c0`
+passes its low half to the second's, `s1 = v·prev + s0 mod 2^64 + c1`,
+whose low half lands at limb `j`. -/
+theorem mac2_step {X X0 Y C c0 c1 s0 s1 j xj yj u v P : Nat}
+    (hinv : X + 2 ^ (64 * j) * (c0 + c1 + v * P) = X0 + (u + 2 ^ 64 * v) * Y + C)
+    (hs0 : s0 = u * yj + xj + c0) (hs1 : s1 = v * P + s0 % 2 ^ 64 + c1) :
+    X + 2 ^ (64 * j) * (s1 % 2 ^ 64) + 2 ^ (64 * (j + 1)) * (s0 / 2 ^ 64 + s1 / 2 ^ 64 + v * yj) =
+      X0 + 2 ^ (64 * j) * xj + (u + 2 ^ 64 * v) * (Y + 2 ^ (64 * j) * yj) + C := by
+  have h0 := Nat.mod_add_div s0 (2 ^ 64)
+  have h1 := Nat.mod_add_div s1 (2 ^ 64)
+  rw [show 64 * (j + 1) = 64 * j + 64 by ring, pow_add]
+  zify at *
+  linear_combination hinv + (2 ^ (64 * j) : Int) * (h1 + h0 + hs1 + hs0)
+
+theorem mul_add2_block_loop_spec (u v prev : U64) (y x0 : Std.Array U64 4#usize) (pu pv : Std.Array U128 4#usize)
+    (hpu : ∀ k < 4, pu.val[k]!.val = u.val * y.val[k]!.val)
+    (hpv : ∀ k < 4, pv.val[k]!.val = v.val * prevAt prev y.val k) (C : Nat)
+    (iter : core.ops.range.Range Usize) (c0 c1 : U128) (x : Std.Array U64 4#usize)
+    (hend : iter.end.val = 4) (hi : iter.start.val ≤ 4) (hc0 : c0.val < 2 ^ 64) (hc1 : c1.val < 2 ^ 64)
+    (hdrop : x.val.drop iter.start.val = x0.val.drop iter.start.val)
+    (hinv : wordsNat (x.val.take iter.start.val) +
+        2 ^ (64 * iter.start.val) * (c0.val + c1.val + v.val * prevAt prev y.val iter.start.val) =
+      wordsNat (x0.val.take iter.start.val) + (u.val + 2 ^ 64 * v.val) * wordsNat (y.val.take iter.start.val) + C) :
+    low.generic.limb64.mont.mul_add2_loop0_loop0 iter c0 c1 x pu pv ⦃ r =>
+      r.1.val < 2 ^ 64 ∧ r.2.1.val < 2 ^ 64 ∧
+      wordsNat r.2.2.val + 2 ^ 256 * (r.1.val + r.2.1.val + v.val * prevAt prev y.val 4) =
+        wordsNat x0.val + (u.val + 2 ^ 64 * v.val) * wordsNat y.val + C ⦄ := by
+  unfold low.generic.limb64.mont.mul_add2_loop0_loop0
+  apply loop.spec_decr_nat (fun x' => 4 - x'.1.start.val)
+    (fun x' : core.ops.range.Range Usize × U128 × U128 × Std.Array U64 4#usize =>
+      x'.1.end.val = 4 ∧ x'.1.start.val ≤ 4 ∧ x'.2.1.val < 2 ^ 64 ∧ x'.2.2.1.val < 2 ^ 64 ∧
+      x'.2.2.2.val.drop x'.1.start.val = x0.val.drop x'.1.start.val ∧
+      wordsNat (x'.2.2.2.val.take x'.1.start.val) +
+          2 ^ (64 * x'.1.start.val) * (x'.2.1.val + x'.2.2.1.val + v.val * prevAt prev y.val x'.1.start.val) =
+        wordsNat (x0.val.take x'.1.start.val) +
+          (u.val + 2 ^ 64 * v.val) * wordsNat (y.val.take x'.1.start.val) + C)
+  · rintro ⟨it, a, b, w⟩ ⟨he, hs, ha, hb, hd, hv⟩
+    simp only at he hs ha hb hd hv
+    unfold low.generic.limb64.mont.mul_add2_loop0_loop0.body
+    step as ⟨op, iter1, hop, hend1⟩
+    cases op with
+    | none =>
+      have h0 : it.start.val = 4 := by
+        split at hop
+        · simp at hop
+        · scalar_tac
+      simp only [WP.spec_ok]
+      rw [h0] at hv
+      have hwl : w.val.length = 4 := by simp
+      have hyl : y.val.length = 4 := by simp
+      have hx0l : x0.val.length = 4 := by simp
+      rw [List.take_of_length_le (by omega), List.take_of_length_le (by omega),
+        List.take_of_length_le (by omega)] at hv
+      exact ⟨ha, hb, hv⟩
+    | some k =>
+      have hlt : it.start.val < it.end.val := by
+        by_contra hc; simp [hc] at hop
+      simp only [hlt, ↓reduceIte, Option.some.injEq] at hop
+      obtain ⟨rfl, hst⟩ := hop
+      rw [he] at hlt
+      have hwl : w.val.length = 4 := by simp
+      have hyl : y.val.length = 4 := by simp
+      have hx0l : x0.val.length = 4 := by simp
+      step with Array.index_usize_spec pu it.start (by simp; omega) as ⟨pk, hpk⟩
+      step with Array.index_usize_spec w it.start (by simp; omega) as ⟨xk, hxk⟩
+      have hpkv : pk.val = u.val * y.val[it.start.val]!.val := by rw [hpk, ← getElem!_pos]; exact hpu _ hlt
+      have hxk0 : xk = x0.val[it.start.val]! := by rw [hxk, ← getElem!_pos]; exact getElem!_of_drop_eq hd
+      have hpkb : pk.val ≤ (2 ^ 64 - 1) * (2 ^ 64 - 1) := by
+        rw [hpkv]; exact Nat.mul_le_mul (u64_le _) (u64_le _)
+      have hs0b : pk.val + xk.val + a.val < 2 ^ 128 := by have := u64_lt xk; omega
+      simp only [lift, bind_ok]
+      step as ⟨c0', hc0', _⟩
+      step with Array.index_usize_spec pv it.start (by simp; omega) as ⟨qk, hqk⟩
+      have hqkv : qk.val = v.val * prevAt prev y.val it.start.val := by
+        rw [hqk, ← getElem!_pos]; exact hpv _ hlt
+      have hqkb : qk.val ≤ (2 ^ 64 - 1) * (2 ^ 64 - 1) := by
+        rw [hqkv]; refine Nat.mul_le_mul (u64_le _) ?_
+        unfold prevAt; split <;> exact u64_le _
+      step with Array.update_spec w it.start _ (by simp; omega) as ⟨w1, hw1⟩
+      step as ⟨c1', hc1', _⟩
+      set s0 := core.num.U128.wrapping_add (core.num.U128.wrapping_add pk (core.convert.num.FromU128U64.from xk)) a
+        with hs0def
+      set s1 := core.num.U128.wrapping_add (core.num.U128.wrapping_add qk
+        (core.convert.num.FromU128U64.from (UScalar.cast UScalarTy.U64 s0))) b with hs1def
+      have hs0v : s0.val = pk.val + xk.val + a.val := by
+        rw [hs0def]
+        simp only [core.num.U128.wrapping_add_val_eq, from_u128_val, UScalar.size, UScalarTy.numBits]
+        rw [Nat.mod_eq_of_lt (by omega), Nat.mod_eq_of_lt (by omega)]
+      have hs0m : s0.val % 2 ^ 64 < 2 ^ 64 := Nat.mod_lt _ (by norm_num)
+      have hs1v : s1.val = qk.val + s0.val % 2 ^ 64 + b.val := by
+        rw [hs1def]
+        simp only [core.num.U128.wrapping_add_val_eq, from_u128_val, cast_u64_val, UScalar.size,
+          UScalarTy.numBits]
+        rw [Nat.mod_eq_of_lt (by omega), Nat.mod_eq_of_lt (by omega)]
+      have hc0v : c0'.val = s0.val / 2 ^ 64 := by rw [hc0']; simp [Nat.shiftRight_eq_div_pow]
+      have hc1v : c1'.val = s1.val / 2 ^ 64 := by rw [hc1']; simp [Nat.shiftRight_eq_div_pow]
+      have hw1v : w1.val = w.val.set it.start.val (UScalar.cast .U64 s1) := by rw [hw1]; simp
+      refine ⟨by rw [hend1, he], by omega, by rw [hc0v]; omega, by rw [hc1v]; omega, ?_, ?_, by omega⟩
+      · rw [hst, hw1v, drop_set_succ']
+        rw [List.drop_eq_getElem_cons (show it.start.val < w.val.length by omega),
+          List.drop_eq_getElem_cons (show it.start.val < x0.val.length by omega)] at hd
+        exact (List.cons.inj hd).2
+      · have hP : prevAt prev y.val (it.start.val + 1) = y.val[it.start.val]!.val := by simp [prevAt]
+        rw [hst, hw1v, take_set_succ' _ _ _ (by omega), wordsNat_append, wordsNat_cons, wordsNat_nil,
+          List.length_take, Nat.min_eq_left (by omega), cast_u64_val, hc0v, hc1v, hP,
+          wordsNat_take_succ' _ _ (by omega), wordsNat_take_succ' (l := y.val) _ (by omega), ← hxk0]
+        have := mac2_step hv (hs0v.trans (by rw [hpkv])) (hs1v.trans (by rw [hqkv]))
+        simpa using this
+  · exact ⟨hend, hi, hc0, hc1, hdrop, hinv⟩
+
+/-- `mul_add2`'s blocks, flattened back into limbs. -/
+def flat (cs : List Block) : List U64 := cs.flatMap (·.val)
+
+theorem flat_append (a b : List Block) : flat (a ++ b) = flat a ++ flat b :=
+  List.flatMap_append ..
+
+theorem flat_singleton (a : Block) : flat [a] = a.val := by simp [flat]
+
+theorem flat_length (cs : List Block) : (flat cs).length = 4 * cs.length := by
+  induction cs with
+  | nil => simp [flat]
+  | cons a cs ih =>
+    rw [show a :: cs = [a] ++ cs from rfl, flat_append, List.length_append, ih, flat_singleton]
+    simp; ring
+
+theorem wordsNat_flat_take_succ (cs : List Block) (b : Nat) (hb : b < cs.length) :
+    wordsNat (flat (cs.take (b + 1))) = wordsNat (flat (cs.take b)) + 2 ^ (64 * (4 * b)) * wordsNat (cs[b]'hb).val := by
+  rw [List.take_add_one, List.getElem?_eq_getElem hb, Option.toList_some, flat_append, flat_singleton,
+    wordsNat_append, flat_length, List.length_take, Nat.min_eq_left hb.le]
+
+theorem flat_ofFn (s : List U64) (k : Nat) (hk : k * 4 ≤ s.length) (f : Fin k → Block)
+    (hf : ∀ i, (f i).val = (s.drop (i.val * 4)).take 4) : flat (List.ofFn f) = s.take (k * 4) := by
+  induction k with
+  | zero => simp [flat]
+  | succ k ih =>
+    rw [List.ofFn_succ_last, flat_append, ih (by omega) _ (fun i => hf _), flat_singleton, hf,
+      show (k + 1) * 4 = k * 4 + 4 by ring, List.take_add]
+    simp
+
+@[step]
+theorem as_chunks4_spec (s : Slice U64) :
+    core.slice.Slice.as_chunks 4#usize s ⦃ p => p.1.length = s.length / 4 ∧ flat p.1.val ++ p.2.val = s.val ⦄ := by
+  unfold core.slice.Slice.as_chunks
+  simp only [four_val, OfNat.ofNat_ne_zero, ↓reduceIte, WP.spec_ok]
+  refine ⟨by simp [Slice.length], ?_⟩
+  simp only [Slice.from_val]
+  rw [flat_ofFn s.val _ (by simp [Slice.length]; omega) _ (fun i => by simp [Std.Array.from_val])]
+  exact List.take_append_drop _ _
+
+@[step]
+theorem as_chunks_mut4_spec (s : Slice U64) :
+    core.slice.Slice.as_chunks_mut 4#usize s ⦃ p back =>
+      p.1.length = s.length / 4 ∧ flat p.1.val ++ p.2.val = s.val ∧
+      ∀ c t, (flat c.val ++ t.val).length ≤ Usize.max → (back (c, t)).val = flat c.val ++ t.val ⦄ := by
+  unfold core.slice.Slice.as_chunks_mut
+  apply WP.spec_bind (as_chunks4_spec s)
+  rintro p ⟨hl, hf⟩
+  simp only [WP.spec_ok]
+  refine ⟨hl, hf, fun c t hct => ?_⟩
+  simp only [flat] at hct ⊢
+  rw [dif_pos hct, Slice.from_val]
+
+theorem mul_add2_tail_loop_spec (u v : U64) (y x0 : Slice U64) (hy : y.length = x0.length) (C : Nat)
+    (iter : core.ops.range.Range Usize) (c0 c1 : U128) (prev : U64) (x : Slice U64)
+    (hend : iter.end.val = x0.length) (hi : iter.start.val ≤ x0.length) (hxl : x.length = x0.length)
+    (hc0 : c0.val < 2 ^ 64) (hc1 : c1.val < 2 ^ 64)
+    (hdrop : x.val.drop iter.start.val = x0.val.drop iter.start.val)
+    (hinv : wordsNat (x.val.take iter.start.val) + 2 ^ (64 * iter.start.val) * (c0.val + c1.val + v.val * prev.val) =
+      wordsNat (x0.val.take iter.start.val) + (u.val + 2 ^ 64 * v.val) * wordsNat (y.val.take iter.start.val) + C) :
+    low.generic.limb64.mont.mul_add2_loop1 iter u v c0 c1 prev x y ⦃ r =>
+      r.2.2.2.length = x0.length ∧ r.1.val < 2 ^ 64 ∧ r.2.1.val < 2 ^ 64 ∧
+      wordsNat r.2.2.2.val + 2 ^ (64 * x0.length) * (r.1.val + r.2.1.val + v.val * r.2.2.1.val) =
+        wordsNat x0.val + (u.val + 2 ^ 64 * v.val) * wordsNat y.val + C ⦄ := by
+  unfold low.generic.limb64.mont.mul_add2_loop1
+  apply loop.spec_decr_nat (fun x' => x0.length - x'.1.start.val)
+    (fun x' : core.ops.range.Range Usize × U128 × U128 × U64 × Slice U64 =>
+      x'.1.end.val = x0.length ∧ x'.1.start.val ≤ x0.length ∧ x'.2.2.2.2.length = x0.length ∧
+      x'.2.1.val < 2 ^ 64 ∧ x'.2.2.1.val < 2 ^ 64 ∧
+      x'.2.2.2.2.val.drop x'.1.start.val = x0.val.drop x'.1.start.val ∧
+      wordsNat (x'.2.2.2.2.val.take x'.1.start.val) +
+          2 ^ (64 * x'.1.start.val) * (x'.2.1.val + x'.2.2.1.val + v.val * x'.2.2.2.1.val) =
+        wordsNat (x0.val.take x'.1.start.val) + (u.val + 2 ^ 64 * v.val) * wordsNat (y.val.take x'.1.start.val) + C)
+  · rintro ⟨it, a, b, p, w⟩ ⟨he, hs, hwl, ha, hb, hd, hv⟩
+    simp only at he hs hwl ha hb hd hv
+    unfold low.generic.limb64.mont.mul_add2_loop1.body
+    step as ⟨op, iter1, hop, hend1⟩
+    cases op with
+    | none =>
+      have h0 : it.start.val = x0.length := by
+        split at hop
+        · simp at hop
+        · scalar_tac
+      simp only [WP.spec_ok]
+      rw [h0] at hv
+      have hwl' : w.val.length = x0.length := hwl
+      have hyl : y.val.length = x0.length := hy
+      have hx0l : x0.val.length = x0.length := rfl
+      rw [List.take_of_length_le (by omega), List.take_of_length_le (by omega),
+        List.take_of_length_le (by omega)] at hv
+      exact ⟨hwl, ha, hb, hv⟩
+    | some j =>
+      have hlt : it.start.val < it.end.val := by
+        by_contra hc; simp [hc] at hop
+      simp only [hlt, ↓reduceIte, Option.some.injEq] at hop
+      obtain ⟨rfl, hst⟩ := hop
+      rw [he] at hlt
+      have hwL : w.length = w.val.length := rfl
+      have hyL : y.length = y.val.length := rfl
+      have hx0L : x0.length = x0.val.length := rfl
+      step as ⟨yi, hyi⟩
+      step as ⟨xi, hxi⟩
+      step with mul_add_limb_spec u yi xi a ha as ⟨s0, hs0⟩
+      step as ⟨c0', hc0', _⟩
+      step as ⟨t, ht⟩
+      step with mul_add_limb_spec v p t b hb as ⟨s1, hs1⟩
+      step as ⟨t1, ht1⟩
+      step as ⟨w1, hw1⟩
+      step as ⟨c1', hc1', _⟩
+      have hxi0 : xi = x0.val[it.start.val]! := by
+        rw [hxi, ← getElem!_pos]; exact getElem!_of_drop_eq hd
+      have hs0b : s0.val < 2 ^ 128 := by
+        rw [hs0]; exact mul_add_limb_bound _ _ _ _ u.hBounds yi.hBounds xi.hBounds ha
+      have htv : t.val = s0.val % 2 ^ 64 := by rw [ht, cast_u64_val]
+      have hs1b : s1.val < 2 ^ 128 := by
+        rw [hs1]; exact mul_add_limb_bound _ _ _ _ v.hBounds p.hBounds t.hBounds hb
+      have hc0v : c0'.val = s0.val / 2 ^ 64 := by rw [hc0']; simp [Nat.shiftRight_eq_div_pow]
+      have hc1v : c1'.val = s1.val / 2 ^ 64 := by rw [hc1']; simp [Nat.shiftRight_eq_div_pow]
+      have hw1v : w1.val = w.val.set it.start.val (UScalar.cast .U64 s1) := by rw [hw1, ht1]; simp
+      refine ⟨by rw [hend1, he], by scalar_tac, by rw [hw1]; simp at hwl ⊢; omega,
+        by rw [hc0v]; omega, by rw [hc1v]; omega, ?_, ?_, by omega⟩
+      · rw [hst, hw1v, drop_set_succ']
+        rw [List.drop_eq_getElem_cons (show it.start.val < w.val.length by omega),
+          List.drop_eq_getElem_cons (show it.start.val < x0.val.length by omega)] at hd
+        exact (List.cons.inj hd).2
+      · rw [hst, hw1v, take_set_succ' _ _ _ (by omega), wordsNat_append, wordsNat_cons, wordsNat_nil,
+          List.length_take, Nat.min_eq_left (by omega), cast_u64_val, hc0v, hc1v,
+          wordsNat_take_succ' _ _ (by omega), wordsNat_take_succ' (l := y.val) _ (by omega), ← hxi0]
+        have := mac2_step hv hs0 (hs1.trans (by rw [htv]))
+        have hyi' : yi = y.val[it.start.val]! := by rw [hyi, ← getElem!_pos]
+        rw [hyi'] at this ⊢
+        simpa using this
+  · exact ⟨hend, hi, hxl, hc0, hc1, hdrop, hinv⟩
+
+theorem mul_add2_blocks_loop_spec (u v : U64) (ys xs0 : Slice Block)
+    (hy : ys.length = xs0.length) (c : Nat)
+    (iter : core.ops.range.Range Usize) (c0 c1 : U128) (prev : U64) (xs : Slice Block)
+    (hend : iter.end.val = xs0.length) (hi : iter.start.val ≤ xs0.length) (hxl : xs.length = xs0.length)
+    (hc0 : c0.val < 2 ^ 64) (hc1 : c1.val < 2 ^ 64)
+    (hdrop : xs.val.drop iter.start.val = xs0.val.drop iter.start.val)
+    (hinv : wordsNat (flat (xs.val.take iter.start.val)) +
+        2 ^ (64 * (4 * iter.start.val)) * (c0.val + c1.val + v.val * prev.val) =
+      wordsNat (flat (xs0.val.take iter.start.val)) +
+        (u.val + 2 ^ 64 * v.val) * wordsNat (flat (ys.val.take iter.start.val)) + c) :
+    low.generic.limb64.mont.mul_add2_loop0 iter u v c0 c1 prev xs ys ⦃ r =>
+      r.2.2.2.length = xs0.length ∧ r.1.val < 2 ^ 64 ∧ r.2.1.val < 2 ^ 64 ∧
+      wordsNat (flat r.2.2.2.val) + 2 ^ (64 * (4 * xs0.length)) * (r.1.val + r.2.1.val + v.val * r.2.2.1.val) =
+        wordsNat (flat xs0.val) + (u.val + 2 ^ 64 * v.val) * wordsNat (flat ys.val) + c ⦄ := by
+  unfold low.generic.limb64.mont.mul_add2_loop0
+  apply loop.spec_decr_nat (fun x' => xs0.length - x'.1.start.val)
+    (fun x' : core.ops.range.Range Usize × U128 × U128 × U64 × Slice Block =>
+      x'.1.end.val = xs0.length ∧ x'.1.start.val ≤ xs0.length ∧ x'.2.2.2.2.length = xs0.length ∧
+      x'.2.1.val < 2 ^ 64 ∧ x'.2.2.1.val < 2 ^ 64 ∧
+      x'.2.2.2.2.val.drop x'.1.start.val = xs0.val.drop x'.1.start.val ∧
+      wordsNat (flat (x'.2.2.2.2.val.take x'.1.start.val)) +
+          2 ^ (64 * (4 * x'.1.start.val)) * (x'.2.1.val + x'.2.2.1.val + v.val * x'.2.2.2.1.val) =
+        wordsNat (flat (xs0.val.take x'.1.start.val)) +
+          (u.val + 2 ^ 64 * v.val) * wordsNat (flat (ys.val.take x'.1.start.val)) + c)
+  · rintro ⟨it, a, b, p, w⟩ ⟨he, hs, hwl, ha, hb, hd, hv⟩
+    simp only at he hs hwl ha hb hd hv
+    unfold low.generic.limb64.mont.mul_add2_loop0.body
+    step as ⟨op, iter1, hop, hend1⟩
+    cases op with
+    | none =>
+      have h0 : it.start.val = xs0.length := by
+        split at hop
+        · simp at hop
+        · scalar_tac
+      simp only [WP.spec_ok]
+      rw [h0] at hv
+      have hwl' : w.val.length = xs0.length := hwl
+      have hyl : ys.val.length = xs0.length := hy
+      have hx0l : xs0.val.length = xs0.length := rfl
+      rw [List.take_of_length_le (by omega), List.take_of_length_le (by omega),
+        List.take_of_length_le (by omega)] at hv
+      exact ⟨hwl, ha, hb, hv⟩
+    | some j =>
+      have hlt : it.start.val < it.end.val := by
+        by_contra hc; simp [hc] at hop
+      simp only [hlt, ↓reduceIte, Option.some.injEq] at hop
+      obtain ⟨rfl, hst⟩ := hop
+      rw [he] at hlt
+      have hwL : w.length = w.val.length := rfl
+      have hyL : ys.length = ys.val.length := rfl
+      have hx0L : xs0.length = xs0.val.length := rfl
+      simp only [block_eq]
+      step as ⟨x, back, hx, hback⟩
+      step as ⟨y, hy'⟩
+      step with pu_spec u y as ⟨pu, hpu⟩
+      step with pv_spec p y v as ⟨pv, hpv⟩
+      step with mul_add2_block_loop_spec u v p y x pu pv hpu hpv (a.val + b.val + v.val * p.val)
+        { start := 0#usize, «end» := 4#usize } a b x four_val (by simp) ha hb rfl (by simp [prevAt, wordsNat_nil]) as ⟨c0', c1', x1, hc0', hc1', hx1⟩
+      step as ⟨i3, hi3⟩
+      step with Array.index_usize_spec y i3 (by simp; scalar_tac) as ⟨prev1, hprev1⟩
+      have hbv : (back x1).val = w.val.set it.start.val x1 := by rw [hback]; simp
+      have hprev1v : prev1.val = prevAt p y.val 4 := by
+        rw [hprev1, ← getElem!_pos]; simp [prevAt, hi3]
+      rw [List.drop_eq_getElem_cons (show it.start.val < w.val.length by omega),
+        List.drop_eq_getElem_cons (show it.start.val < xs0.val.length by omega)] at hd
+      have hx0 : x = xs0.val[it.start.val] := by rw [hx]; exact (List.cons.inj hd).1
+      refine ⟨by rw [hend1, he], by omega, ?_, hc0', hc1', ?_, ?_, by omega⟩
+      · simp only [Slice.length] at hwl ⊢; rw [hbv, List.length_set]; exact hwl
+      · rw [hst, hbv, drop_set_succ']
+        exact (List.cons.inj hd).2
+      · rw [hst, hbv, take_set_succ' _ _ _ (by omega), flat_append, flat_singleton, wordsNat_append, flat_length,
+          List.length_take, Nat.min_eq_left (by omega), wordsNat_flat_take_succ _ _ (by omega),
+          wordsNat_flat_take_succ (ys.val) _ (by omega), hprev1v, ← hx0, ← hy',
+          show 64 * (4 * (it.start.val + 1)) = 64 * (4 * it.start.val) + 256 by ring, pow_add]
+        zify at hv hx1 ⊢
+        linear_combination hv + (2 ^ (64 * (4 * it.start.val)) : Int) * hx1
+  · exact ⟨hend, hi, hxl, hc0, hc1, hdrop, hinv⟩
+
+/-- `mul_add2`: `x + (u + 2^64 v)·y + c` over `x`'s limbs, as many of `y`'s,
+what lands above them returned. -/
+@[step]
+theorem mul_add2_spec (x y : Slice U64) (u v : U64) (c : U128) (hc : c.val < 2 ^ 64) (hy : x.length ≤ y.length) :
+    low.generic.limb64.mont.mul_add2 x y u v c ⦃ r =>
+      r.2.length = x.length ∧
+      wordsNat r.2.val + 2 ^ (64 * x.length) * r.1.val =
+        wordsNat x.val + (u.val + 2 ^ 64 * v.val) * wordsNat (y.val.take x.length) + c.val ⦄ := by
+  unfold low.generic.limb64.mont.mul_add2
+  step as ⟨y1, hy1⟩
+  have hy1v : y1.val = y.val.take x.length := by rw [hy1]; simp
+  step as ⟨xs, xr, back, hxsl, hxf, hback⟩
+  step as ⟨ys, yr, hysl, hyf⟩
+  have hxL : x.length = x.val.length := rfl
+  have hyL : y.length = y.val.length := rfl
+  have hy1L : y1.val.length = x.length := by rw [hy1v, List.length_take]; omega
+  have hxfl := congrArg List.length hxf
+  have hyfl := congrArg List.length hyf
+  rw [List.length_append, flat_length] at hxfl hyfl
+  have hxsL : xs.val.length = x.length / 4 := hxsl
+  have hysL : ys.val.length = x.length / 4 := by rw [← hy1L]; exact hysl
+  step with mul_add2_blocks_loop_spec u v ys xs (by simp only [Slice.length]; omega) c.val
+    { start := 0#usize, «end» := xs.len } c 0#u128 0#u64 xs (by simp) (by simp) rfl hc (by simp) rfl
+    (by simp [flat, wordsNat_nil]) as ⟨c0, c1, prev, xs1, hxs1l, hc0, hc1, hxs1⟩
+  step with mul_add2_tail_loop_spec u v yr xr (by simp only [Slice.length]; omega) (c0.val + c1.val + v.val * prev.val)
+    { start := 0#usize, «end» := xr.len } c0 c1 prev xr (by simp) (by simp) rfl hc0 hc1 rfl
+    (by simp [wordsNat_nil]) as ⟨c01, c11, prev1, xr1, hxr1l, hc01, hc11, hxr1⟩
+  step as ⟨i3, hi3⟩
+  step with mul_add_limb_spec v prev1 i3 c11 hc11 as ⟨r, hr⟩
+  have hi3v : i3.val = c01.val := by rw [hi3, cast_u64_val, Nat.mod_eq_of_lt hc01]
+  have hlen : (flat xs1.val ++ xr1.val).length = x.length := by
+    rw [List.length_append, flat_length]; simp only [Slice.length] at hxs1l hxr1l; omega
+  have hbv := hback xs1 xr1 (by rw [hlen]; exact x.property)
+  refine ⟨by simp only [Slice.length]; rw [hbv]; exact hlen, ?_⟩
+  rw [hbv, wordsNat_append, flat_length, ← hxf, ← hy1v, ← hyf, wordsNat_append, wordsNat_append, flat_length,
+    flat_length, hr, hi3v]
+  have hxs1L : xs1.val.length = x.length / 4 := by simp only [Slice.length] at hxs1l; omega
+  have hxrL : xr.length = x.length - 4 * (x.length / 4) := by simp only [Slice.length]; omega
+  rw [hxs1L, hxsL, hysL]
+  rw [hxrL] at hxr1
+  simp only [Slice.length] at hxs1
+  rw [hxsL] at hxs1
+  rw [show 64 * x.length = 64 * (4 * (x.length / 4)) + 64 * (x.length - 4 * (x.length / 4)) by omega, pow_add]
+  zify at hxs1 hxr1 ⊢
+  linear_combination hxs1 + (2 ^ (64 * (4 * (x.length / 4))) : Int) * hxr1
 
 end rind.portable
