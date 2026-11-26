@@ -59,8 +59,8 @@ Ed25519 verification also takes its multi-scalar multiplication,
 `low::x86_64::adx_mux::edwards25519_msm`, as the hypothesis `RunsMsm`, and
 the edwards25519 group's orders, which HOL Light proves, as the hypothesis
 `EdOrders`. ChaCha20-Poly1305's one pass also takes aws-lc's routines as the
-hypothesis `RunsChaCha20Poly1305`, which no axiom states, whose `OnePass`
-takes them on CPUs without IFMA, and the AEAD API above it takes the one pass
+hypotheses `RunsSeal` and `RunsOpen`, which no axiom states, whose `OnePass`
+takes them on CPUs without IFMA, and on Zen 4 for short messages, and the AEAD API above it takes the one pass
 as the hypotheses `Seals` and `Opens`.
 SHA-3's and SHAKE's theorems take rind's eight-way AVX-512 Keccak-f as part
 of the hypothesis `RunsSha3`. None of these four states an axiom.

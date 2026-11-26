@@ -1485,14 +1485,17 @@ does. Each target's `ChaCha20Poly1305.lean` proves those where a proof covers
 the one pass.
 
 On x86_64, `Rind/X86_64/ChaCha20Poly1305.lean`'s `seals` and `opens` prove
-them at every length, assuming `RunsChaCha20Poly1305`: rind's CPU-feature
-checks find what VG's IFMA routines need, or find SSE4.1 but not that and
+them at every length, assuming `RunsSeal` or `RunsOpen` of that length: rind's
+CPU-feature checks find what VG's IFMA routines need there, which Zen 4's
+`check_seal` and `check_open` deny to a seal of fewer than 800 bytes and an
+open of fewer than 512, or find SSE4.1 but not that and
 `OnePass` holds, that aws-lc's one-pass routines compute RFC 8439's AEAD,
 which no proof covers yet;
 [the ChaCha20-Poly1305 quest](/quest/m4/verified/chacha20-poly1305-x86/aead.md)
 owns their HOL Light proofs, against the s2n-bignum fork's `common/chacha20poly1305.ml`,
 which `Rind/S2nChaCha20Poly1305.lean` proves is `Rind/Spec.lean`'s RFC 8439
-for a 32-byte key and a 12-byte nonce. On CPUs with IFMA they rest instead on
+for a 32-byte key and a 12-byte nonce. On CPUs with IFMA, but for Zen 4 at the
+short lengths above, they rest instead on
 the axioms `vg_chacha20_poly1305_seal_ifma_spec` and
 `vg_chacha20_poly1305_open_ifma_spec` in `Rind/X86_64/VgChaCha20Poly1305.lean`,
 which restate VG's theorems and from which `seal_ifma_spec` and

@@ -45,7 +45,7 @@ ChaCha20-Poly1305 on the no AVX2 column's aws-lc ⚡ (see
 | AES-CBC | Graviola + aws-lc + rind |  |  | aws-lc + rind |  |
 | ChaCha20 | verified-garbage ✓ + Graviola + HACL* ✓ | aws-lc ✓ (x86_64-unknown-linux-gnu only) + HACL* ✓ |  |  | HACL* ✓ |
 | ChaCha20 (header protection) | HACL* ✓ + rind |  |  |  |  |
-| ChaCha20-Poly1305, XChaCha20-Poly1305 | verified-garbage ✓ + HACL* ✓ | aws-lc ⚡ |  | HACL* ✓ + aws-lc ⚡ + Graviola ⚡ | HACL* ✓ + Graviola ⚡ |
+| ChaCha20-Poly1305, XChaCha20-Poly1305 | verified-garbage ✓ + HACL* ✓ (+ aws-lc ⚡ on Zen 4 below 800 bytes sealing, 512 opening) | aws-lc ⚡ |  | HACL* ✓ + aws-lc ⚡ + Graviola ⚡ | HACL* ✓ + Graviola ⚡ |
 | MD5 | rind |  |  |  |  |
 | SHA-1 | rind | aws-lc |  |  |  |
 | SHA-256 | Graviola ⚡ + rind ⚡ | aws-lc ⚡ |  |  |  |
@@ -1154,10 +1154,19 @@ ChaCha20-Poly1305, and XChaCha20-Poly1305 after HChaCha20, run aws-lc's
 pass: on x86_64 without AVX-512 IFMA, its AVX2 half where the CPU has AVX2
 and BMI2 and its SSE4.1 half otherwise, as aws-lc picks them, and on aarch64
 without SVE2, its NEON routine at the lengths VG's loses. x86_64 CPUs with AVX-512 IFMA run
-[verified-garbage]'s IFMA one-pass routines at every length instead. On
+[verified-garbage]'s IFMA one-pass routines at every length instead, but
+AMD's Zen 4, below 800 bytes sealing and 512 opening. On
 Granite Rapids in [run 44962459177], sealing 32 B to 16 KB under rind's glue
 took 1.00 to 0.58 of the time of aws-lc's AVX2 routine, and opening 0.89 to
-0.58; on `fedora`'s Zen 5, 0.97 to 0.62. Where VG's routines hash with
+0.58; on `fedora`'s Zen 5, 0.97 to 0.62. On an EPYC 9V74 (Zen 4), VG's
+routines under rind's glue took 1.08 to 1.04 of aws-lc's time sealing 32 to
+512 bytes, and 1.05 to 1.11 opening up to 256, in [run 45900806051] against
+[run 45902212354], which denied IFMA so rind ran aws-lc's routine under the
+same glue; [run 45903442095]'s sweep of 16 to 16384 bytes put VG at 1.03 to
+1.14 of aws-lc's through 320 bytes and from there trading places with its
+steps, so rind runs VG from 800 bytes sealing, from where it took 0.78 to 1.05,
+and from 512 opening, where it took 0.78 to 1.00 but for 992 to 1088 bytes,
+up to 1.11. Where VG's routines hash with
 vectors they set MXCSR's status flags, for Intel's MXCSR mitigation, and
 leave them set; rind's wrappers put MXCSR back, as aws-lc never changes it,
 which costs a 32 B seal about 20 ns on Granite Rapids: 1.15 of VG's own
@@ -1220,6 +1229,9 @@ HACL*'s verified Poly1305 without NEON.
 [run 41861521276]: https://github.com/kixel-ai/rind/actions/runs/41861521276
 [run 41861526675]: https://github.com/kixel-ai/rind/actions/runs/41861526675
 [run 44962459177]: https://github.com/kixel-ai/rind/actions/runs/44962459177
+[run 45900806051]: https://github.com/kixel-ai/rind/actions/runs/45900806051
+[run 45902212354]: https://github.com/kixel-ai/rind/actions/runs/45902212354
+[run 45903442095]: https://github.com/kixel-ai/rind/actions/runs/45903442095
 [#224]: https://github.com/kixel-ai/rind/pull/224
 [#281]: https://github.com/kixel-ai/rind/pull/281
 [LICENSE]: LICENSE
