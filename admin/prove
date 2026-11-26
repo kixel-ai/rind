@@ -1555,6 +1555,26 @@ assembly=(
     --include crate::low::generic::ct_copy::ct_select_i16
     --include crate::low::generic::ct_copy::ct_copy
 )
+# RSA verification, from the key's constructors down to `low::posint`, whose
+# Montgomery products and word routines each target adds.
+rsa=(
+    --start-from crate::high::rsa::VerifyingKey::from_components
+    --start-from crate::high::rsa::VerifyingKey::from_pkcs1_der
+    --start-from crate::high::rsa::VerifyingKey::from_spki_der
+    --start-from crate::high::rsa::VerifyingKey::to_pkcs1_der
+    --start-from crate::high::rsa::VerifyingKey::modulus_len_bits
+    --start-from crate::high::rsa::VerifyingKey::verify_pkcs1_sha1
+    --start-from crate::high::rsa::VerifyingKey::verify_pkcs1_sha256
+    --start-from crate::high::rsa::VerifyingKey::verify_pkcs1_sha384
+    --start-from crate::high::rsa::VerifyingKey::verify_pkcs1_sha512
+    --start-from crate::high::rsa::VerifyingKey::verify_pss_sha256
+    --start-from crate::high::rsa::VerifyingKey::verify_pss_sha384
+    --start-from crate::high::rsa::VerifyingKey::verify_pss_sha512
+    --opaque crate::high::rsa::pkcs1_components
+    --opaque crate::high::rsa::spki_components
+    --opaque 'crate::high::rsa::_::to_pkcs1_der'
+    --include crate::low::posint
+)
 extract() {
     local arch=$1 dir=$2
     shift 2
@@ -1843,28 +1863,13 @@ extract x86_64 X86_64 "${hashes[@]}" "${assembly[@]}" \
     --include crate::low::x86_64::aes_gcm_avx \
     --opaque crate::low::x86_64::aes_gcm_avx::counter_block \
     --opaque crate::low::x86_64::aes_gcm_avx::aead \
-    --start-from crate::high::rsa::VerifyingKey::from_components \
-    --start-from crate::high::rsa::VerifyingKey::from_pkcs1_der \
-    --start-from crate::high::rsa::VerifyingKey::from_spki_der \
-    --start-from crate::high::rsa::VerifyingKey::to_pkcs1_der \
-    --start-from crate::high::rsa::VerifyingKey::modulus_len_bits \
-    --start-from crate::high::rsa::VerifyingKey::verify_pkcs1_sha1 \
-    --start-from crate::high::rsa::VerifyingKey::verify_pkcs1_sha256 \
-    --start-from crate::high::rsa::VerifyingKey::verify_pkcs1_sha384 \
-    --start-from crate::high::rsa::VerifyingKey::verify_pkcs1_sha512 \
-    --start-from crate::high::rsa::VerifyingKey::verify_pss_sha256 \
-    --start-from crate::high::rsa::VerifyingKey::verify_pss_sha384 \
-    --start-from crate::high::rsa::VerifyingKey::verify_pss_sha512 \
-    --opaque crate::high::rsa::pkcs1_components \
-    --opaque crate::high::rsa::spki_components \
-    --opaque 'crate::high::rsa::_::to_pkcs1_der' \
+    "${rsa[@]}" \
     --include crate::low::x86_64::rsa_ifma::RsaIfma \
     --include 'crate::low::x86_64::rsa_ifma::_::check' \
     --include crate::low::x86_64::rsa_ifma::IfmaCrt \
     --start-from crate::low::x86_64::rsa_ifma::IfmaCrt::crt \
     --include crate::low::x86_64::rsa_vg::Precompute \
     --include 'crate::low::x86_64::rsa_vg::_::check' \
-    --include crate::low::posint \
     --include crate::low::x86_64::mont::mont_mul \
     --include crate::low::x86_64::mont::mont_sqr \
     --include crate::low::x86_64::mont::karatsuba_mul \
@@ -2005,7 +2010,10 @@ extract_armv7
 
 # The portable backend, which builds only under the cfg CI's portable jobs
 # build with, here on x86_64: the hashes, down to the SHA-2 block functions in
-# `low::generic`, and the Keccak-f. `proofs/Rind/Portable/Compare.lean`
+# `low::generic`, the Keccak-f, and RSA verification, down to
+# `low::generic`'s word routines and Montgomery products, with the signature
+# API's `Buffer`, which `RsaDispatch.lean`'s model writes keys' encodings
+# into. `proofs/Rind/Portable/Compare.lean`
 # models its constant-time compares, which read through raw pointers and
 # `black_box`. The error type and `into_public`, which the other targets reach
 # through their curves, are start points of their own here.
@@ -2018,7 +2026,16 @@ CARGO_TARGET_DIR=$portable_target RUSTFLAGS=$portable_cfg extract x86_64 Portabl
     --start-from crate::low::portable::keccak::sha3_keccak4_f1600 \
     --start-from crate::low::portable::keccak::sha3_keccak_nof4_f1600 \
     --include crate::low::portable::keccak \
-    --opaque crate::mid::sha3
+    --opaque crate::mid::sha3 \
+    "${rsa[@]}" \
+    --start-from crate::high::signature::Buffer::new \
+    --start-from '{impl core::convert::AsRef for crate::high::signature::Buffer<_>}' \
+    --include crate::low::generic::rsa_vg \
+    --include crate::low::generic::bignum \
+    --include crate::low::portable::bignum_eq \
+    --include crate::low::generic::limb64::join \
+    --include crate::low::generic::limb64::limbs \
+    --include crate::low::generic::limb64::mont
 CARGO_TARGET_DIR=$portable_target RUSTFLAGS=$portable_cfg extract_kdf x86_64 Portable
 
 mkdir -p proofs/Rind/Aarch64/Kdf
@@ -2050,6 +2067,16 @@ for file in QuicDispatch DigestAlgorithm DigestDispatch Sha512 ChaCha20 Blockwis
 done
 sed -i '/Rind.Portable.AeadDispatch/d' proofs/Rind/Portable/Kdf/TypesExternal.lean
 sed -i '/-- BEGIN aead/,/-- END aead/d' proofs/Rind/Portable/Kdf/FunsExternal.lean
+# So are RSA verification's, over its own `RsaMont.lean`, without the sections
+# marked as x86_64's alone, its AVX-512 IFMA public operation and
+# pyca/verified-garbage's R² mod n, and with the lines marked as the portable
+# backend's in their place. Without that IFMA path its theorems take no
+# `IfmaCheckReturns`.
+for file in RsaPublic RsaBytes RsaIfma RsaVerify RsaPss RsaKey SignatureBuffer RsaDispatch; do
+    sed -e '/-- BEGIN x86_64/,/-- END x86_64/d' -e 's/^\( *\)-- portable: /\1/' \
+        -e 's/ (hifma : IfmaCheckReturns)//; s/ hifma / /' -e 's/X86_64/Portable/g; s/x86_64/portable/g' \
+        "proofs/Rind/X86_64/$file.lean" >"proofs/Rind/Portable/$file.lean"
+done
 # armv7's header-protection, agreement, and compares' models and ChaCha20 and
 # X25519 proofs are x86_64's with the target renamed. X25519's are over
 # `Rind.Armv7.Curve25519`'s dispatch where x86_64's are over s2n-bignum's:
