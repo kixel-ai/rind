@@ -1837,7 +1837,8 @@ ML-KEM, and s2n-bignum's SHA-512 forms, as `admin/spec-tests/src/cases.rs`
 says of each), and a budget of 8 random cases a test from seed 1. The
 `prove` workflow's nightly `spec-tests` job samples nothing: it runs every
 vector the filters in `cases.rs` admit, and a budget of 64 random cases a
-test from the run's own seed. Most filters keep a spec to the domain its
+test from the run's own seed, each of the driver's groups of sections on a
+runner of its own (`SPEC_TESTS_GROUP`). Most filters keep a spec to the domain its
 theorems pass it; one is a runtime limit, PBKDF2's vectors past 100,000
 iterations (RFC 6070's 2^24), which would take hours. A case may send more than one request, ML-KEM's sampled run spends a
 quarter of the budget, and the specs `NO_RANDOM` in
