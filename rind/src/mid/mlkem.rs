@@ -1358,8 +1358,8 @@ fn sample_poly_cbd_4x(eta: usize, sigma: &[u8; 32], n: u8, count: usize) -> [Pol
             }
 
             // The 192 bytes each polynomial takes span two blocks.
-            let mut samples = [[0; 2 * sha3::SHAKE_256_R_BYTES]; 4];
-            sha3::Shake256x4::new(&inputs[..count]).squeeze(&mut samples);
+            let mut samples = [[0; 2 * sha3::SHAKE_256_R_BYTES]; 8];
+            sha3::Shake256x8::new(&inputs[..count]).squeeze(&mut samples);
 
             for t in 0..count {
                 sample_cbd3(samples[t].first_chunk().unwrap(), &mut polys[t]);

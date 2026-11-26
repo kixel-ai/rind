@@ -57,7 +57,9 @@ Ed25519 verification also takes its multi-scalar multiplication,
 the edwards25519 group's orders, which HOL Light proves, as the hypothesis
 `EdOrders`. ChaCha20-Poly1305's theorems also take the hypothesis
 `RunsChaCha20Poly1305`, which no axiom states, whose `OnePass` takes aws-lc's
-one-pass routines on CPUs without IFMA. None of these three states an axiom.
+one-pass routines on CPUs without IFMA.
+SHA-3's and SHAKE's theorems take rind's eight-way AVX-512 Keccak-f as part
+of the hypothesis `RunsSha3`. None of these four states an axiom.
 ChaCha20's `apply_keystream` takes the hypothesis `LinuxBuild`, which no axiom
 states either, where `new` picks no VG routine and finds SSSE3, since rind's
 HOL Light proof of the SSSE3 routine covers the Linux build's object, not

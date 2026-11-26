@@ -43,6 +43,11 @@ GROUPS = [
         "published proofs; `admin/prove bytes` checks rind's build emits the code they are about",
     ),
     (
+        r"Aarch64/MlKemRoutines\.lean",
+        "s2n-bignum's HOL Light theorems of its ML-KEM routines, and mlkem-native's of its compression routines",
+        "published proofs; `admin/prove bytes` checks rind's build emits the code they are about, and `admin/prove` that the tables rind passes are s2n-bignum's",
+    ),
+    (
         r"(X86_64|Aarch64)/Vg[A-Za-z0-9]*\.lean",
         "pyca/verified-garbage's Lean theorems of its assembly",
         "published proofs; `admin/vg-binding` checks each axiom cites the theorem of its routine, and `admin/vg-bytes` that rind runs that routine's bytes",

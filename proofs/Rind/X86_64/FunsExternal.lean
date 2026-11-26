@@ -228,6 +228,13 @@ opaque low.x86_64.chacha20.cipher_ssse3_4x
   : low.x86_64.cpu.HaveSsse3 → Std.Array Std.U32 8#usize → Std.Array Std.U32 4#usize →
     Slice Std.U8 → Result (Slice Std.U8)
 
+/-! rind's eight-way AVX-512 Keccak-f, which `RunsSha3` takes to compute
+Keccak-f on each state. -/
+
+opaque low.x86_64.sha3_keccak8_f1600.permute
+  : Array (Array Std.U64 25#usize) 8#usize → Array Std.U64 24#usize →
+    low.x86_64.cpu.HaveAvx512Vl → Result (Array (Array Std.U64 25#usize) 8#usize)
+
 /-! s2n-bignum's Ed25519 routines, transliterated to inline assembly. -/
 
 opaque low.x86_64.edwards25519_decode.edwards25519_decode
