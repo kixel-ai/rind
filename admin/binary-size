@@ -47,6 +47,7 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -163,11 +164,13 @@ def extract(rev):
         return BASE_TREE
     shutil.rmtree(BASE_TREE, ignore_errors=True)
     stamp.unlink(missing_ok=True)
-    # git archive sets each file's time to the commit's, so cargo sees the
-    # same base unchanged however often it is extracted.
+    # Each file gets the time of extraction, not the commit's: cargo rebuilds
+    # a path dependency only when a source is newer than its build, which an
+    # older REV's would not be.
+    now = time.time()
     archive = subprocess.run(["git", "archive", commit], cwd=ROOT, check=True, capture_output=True).stdout
     with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
-        tar.extractall(BASE_TREE, filter="tar")
+        tar.extractall(BASE_TREE, filter=lambda m, path: tarfile.tar_filter(m, path).replace(mtime=now))
     stamp.write_text(commit)
     return BASE_TREE
 
