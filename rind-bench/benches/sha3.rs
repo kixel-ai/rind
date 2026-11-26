@@ -50,6 +50,24 @@ fn bench<R: sha3::Digest, V: verified_garbage::hashes::HashFunction>(
                 black_box(ctx.finish())
             })
         });
+        #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
+        {
+            let md = match name {
+                "sha3-256" => openssl::hash::MessageDigest::sha3_256(),
+                "sha3-384" => openssl::hash::MessageDigest::sha3_384(),
+                "sha3-512" => openssl::hash::MessageDigest::sha3_512(),
+                _ => unreachable!("{name} is no SHA-3 group"),
+            };
+            assert_eq!(
+                openssl::hash::hash(md, &input).unwrap().as_ref(),
+                rind::digest::digest(ours, &input).as_ref()
+            );
+            group.bench_with_input(
+                BenchmarkId::new("openssl", size_name),
+                &input,
+                |b, input| b.iter(|| black_box(openssl::hash::hash(md, input).unwrap())),
+            );
+        }
         let mut ctx = V::new();
         ctx.update(&input);
         assert_eq!(
