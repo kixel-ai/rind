@@ -250,6 +250,10 @@ theorem getElem!_set_of_ne {α : Type _} [Inhabited α] (l : List α) {i j : Nat
     (l.set i x)[j]! = l[j]! := by
   simp [List.getElem!_eq_getElem?_getD, List.getElem?_set_ne h]
 
+theorem getElem!_take_lt {α : Type _} [Inhabited α] (l : List α) {k n : Nat} (h : k < n) :
+    (l.take n)[k]! = l[k]! := by
+  simp [List.getElem!_eq_getElem?_getD, List.getElem?_take, h]
+
 /-- GCTR's output from counter block `J`, as bytes. -/
 def gctrBytes (alg : Algorithm) (kw : List (BitVec 32)) (J : Quad32) (l : List U8) : List U8 :=
   (List.range l.length).map fun j => (⟨l[j]!.bv ^^^ ksByte alg kw J j⟩ : U8)
@@ -377,5 +381,207 @@ theorem tagged_loop0_spec (ENC : Bool) (alg : Algorithm) (kw : List (BitVec 32))
       · rw [hd q hq i hi, ite_eq_left (by omega)]
       · rw [hx, hst, ← hCl, List.take_of_length_le le_rfl]
   · exact ⟨hs, he, hl, hc, hd, hx⟩
+
+/-- The tag's mask, XORed in from byte `iter.start` on. -/
+theorem tagged_loop1_spec (x0 mask : Std.Array U8 16#usize) (iter : core.ops.range.Range Usize)
+    (xi : Std.Array U8 16#usize) (hs : iter.start.val ≤ 16) (he : iter.end.val = 16)
+    (hd : ∀ i < 16, xi.val[i]!.bv = if i < iter.start.val then x0.val[i]!.bv ^^^ mask.val[i]!.bv else x0.val[i]!.bv) :
+    mid.aes_gcm.Parts.tagged.default_loop1 iter xi mask ⦃ r =>
+      ∀ i < 16, r.val[i]!.bv = x0.val[i]!.bv ^^^ mask.val[i]!.bv ⦄ := by
+  unfold mid.aes_gcm.Parts.tagged.default_loop1
+  apply loop.spec_decr_nat (fun x => 16 - x.1.start.val)
+    (fun x => x.1.start.val ≤ 16 ∧ x.1.end.val = 16 ∧
+      ∀ i < 16, x.2.val[i]!.bv = if i < x.1.start.val then x0.val[i]!.bv ^^^ mask.val[i]!.bv else x0.val[i]!.bv)
+  · rintro ⟨it, x⟩ ⟨hs, he, hd⟩
+    simp only at hs he hd ⊢
+    unfold mid.aes_gcm.Parts.tagged.default_loop1.body
+    by_cases hlt : it.start.val < it.end.val
+    · step with core.iter.range.IteratorRange.next_Usize_some_spec as ⟨o, it', ho', hst', hen⟩
+      subst ho'
+      step*
+      refine ⟨by omega, by rw [hen]; omega, fun i hi => ?_, by omega⟩
+      rw [a_post, Std.Array.set_val_eq]
+      by_cases hie : i = it.start.val
+      · subst hie
+        rw [getElem!_pos _ _ (by simp; omega), List.getElem_set_self, ite_eq_left (by omega)]
+        refine Eq.trans i3_post1 ?_
+        have h1 := hd _ hi
+        rw [ite_eq_right (by omega)] at h1
+        rw [i2_post, i1_post, getElem!_pos x.val it.start.val (by simp; omega),
+          getElem!_pos mask.val it.start.val (by simp; omega)] at *
+        rw [← h1]
+      · rw [getElem!_set_of_ne _ _ (Ne.symm hie), hd i hi]
+        by_cases hlt2 : i < it.start.val
+        · rw [ite_eq_left hlt2, ite_eq_left (by omega)]
+        · rw [ite_eq_right hlt2, ite_eq_right (by omega)]
+    · step with core.iter.range.IteratorRange.next_Usize_none_spec as ⟨o, it', ho', hit⟩
+      subst ho'
+      simp only [WP.spec_ok]
+      intro i hi
+      rw [hd i hi, ite_eq_left (by omega)]
+  · exact ⟨hs, he, hd⟩
+
+/-- `tagged`'s last partial chunk, if any, through one `pass`. -/
+theorem tagged_tail_spec (ENC : Bool) (alg : Algorithm) (kw : List (BitVec 32)) {S T : Type}
+    (PI : mid.aes_gcm.Parts S T) (key : S) (hP : PartsFor alg kw PI key) (J : Quad32)
+    (xi counter : Std.Array U8 16#usize) (hc : blockQ counter = reverseBytesQuad32 J) (tail : Slice U8)
+    (b : Bool) (hb : (b = true) = (tail.length = 0)) :
+    (if b = true then ok (xi, tail) else do
+      let (_, xi4, tail2) ← PI.pass ENC key xi counter tail
+      ok (xi4, tail2)) ⦃ r =>
+      r.2.length = tail.length ∧ (∀ j < tail.length, r.2.val[j]!.bv = tail.val[j]!.bv ^^^ ksByte alg kw J j) ∧
+      toPoly (blockBE r.1.val) = ghashPoly (polyLE (aesEncrypt alg kw (mkfour 0 0 0 0))) (toPoly (blockBE xi.val))
+        ((padBlocks (if ENC then r.2.val else tail.val)).map toPoly) ⦄ := by
+  split
+  · rename_i h
+    have h0 : tail.val = [] := by simpa [Slice.length, h] using hb
+    simp only [WP.spec_ok]
+    refine ⟨by simp, fun j hj => by simp [Slice.length, h0] at hj, ?_⟩
+    rw [h0]; cases ENC <;> simp [padBlocks_nil, ghashPoly_nil]
+  · rw [hP.pass ENC]
+    step with pass_spec ENC alg kw PI key hP J counter hc xi tail as ⟨n1, x1, t1, hn1, ht1l, ht1, hx1⟩
+    exact ⟨ht1l, ht1, hx1⟩
+
+/-- `tagged`, for any `Parts` that hashes, encrypts, and counts as GCM's do:
+GCTR from the block after `compute_iv_BE`'s counter block, and the tag GCTR
+from that block on `gcm_hash` of the AAD and the ciphertext. -/
+theorem tagged_spec (ENC : Bool) (alg : Algorithm) (kw : List (BitVec 32)) {S T : Type}
+    (PI : mid.aes_gcm.Parts S T) (key : S) (hP : PartsFor alg kw PI key) (iv aad inout : Slice U8)
+    (hiv : iv.length < 2 ^ 61) (haad : 8 * aad.length < 2 ^ 64) (hin : 8 * inout.length < 2 ^ 64) :
+    mid.aes_gcm.Parts.tagged.default ENC PI key iv aad inout ⦃ r =>
+      r.2.length = inout.length ∧
+      r.2.val.map (·.bv) = gctrEncrypt (inc32 (computeIvBE (aesEncrypt alg kw (mkfour 0 0 0 0))
+        (iv.val.map (·.bv))) 1) (inout.val.map (·.bv)) alg kw ∧
+      r.1.val.map (·.bv) = gctrEncrypt (computeIvBE (aesEncrypt alg kw (mkfour 0 0 0 0)) (iv.val.map (·.bv)))
+        (leQuad32ToBytes (gcmHash (aesEncrypt alg kw (mkfour 0 0 0 0)) (aad.val.map (·.bv))
+          ((if ENC then r.2.val else inout.val).map (·.bv)))) alg kw ⦄ := by
+  obtain ⟨t, ht, hG⟩ := hP.table
+  generalize hH : aesEncrypt alg kw (mkfour 0 0 0 0) = hLE at hG ⊢
+  generalize hj0 : computeIvBE hLE (iv.val.map (·.bv)) = j0
+  have hmax := Slice.length_ineq inout
+  have e0 : inout.length = inout.val.length := rfl
+  unfold mid.aes_gcm.Parts.tagged.default
+  rw [ht, bind_ok]
+  step with initial_counter_spec hLE PI.GhashInst t hG iv hiv as ⟨y0, hy0⟩
+  rw [hj0] at hy0
+  step with ghash_pad_spec _ _ _ hG (Std.Array.repeat 16#usize 0#u8) aad as ⟨xi1, hxi1⟩
+  rw [blockBE_zero, toPoly_zero] at hxi1
+  step with add32_spec j0 y0 hy0 1#u32 as ⟨ctr, hctr⟩
+  step with rind.modes.as_chunks_mut_spec 3072#usize (by decide) inout as ⟨chunks, tail, back, hcl, hc, ht, hback⟩
+  -- The ciphertext GHASH reads.
+  obtain ⟨Cf, hCfd⟩ : ∃ Cf : List U8, Cf = if ENC then gctrBytes alg kw (inc32 j0 1) inout.val else inout.val :=
+    ⟨_, rfl⟩
+  have hCfl : Cf.length = inout.length := by
+    rw [hCfd]; split <;> simp [length_gctrBytes, Slice.length]
+  have hCf : ∀ j < inout.length, Cf[j]!.bv = if ENC then inout.val[j]!.bv ^^^ ksByte alg kw (inc32 j0 1) j
+      else inout.val[j]!.bv := by
+    intro j hj
+    rw [hCfd]; split
+    · exact getElem!_gctrBytes _ _ _ _ (by omega)
+    · rfl
+  have e1 : chunks.length = chunks.val.length := rfl
+  have hchunk : ∀ q < chunks.length, ∀ i < 3072, (chunks.val[q]!).val[i]!.bv = inout.val[3072 * q + i]!.bv := by
+    intro q hq i hi
+    rw [getElem!_pos chunks.val q (by omega), hc q (by omega), getElem!_take_drop _ _ _ _ hi, Nat.mul_comm]
+  have hN : (3072#usize : Usize).val = 3072 := rfl
+  have hLc : 3072 * chunks.length ≤ inout.length := by
+    rw [hcl]; omega
+  have hCt : (Cf.take (3072 * chunks.length)).length = 3072 * chunks.length := by
+    rw [List.length_take]; omega
+  have hCq : ∀ q < chunks.length, ∀ i < 3072, (Cf.take (3072 * chunks.length))[3072 * q + i]!.bv =
+      if ENC then (chunks.val[q]!).val[i]!.bv ^^^ ksByte alg kw (inc32 j0 1) (3072 * q + i)
+      else (chunks.val[q]!).val[i]!.bv := by
+    intro q hq i hi
+    have hlt : 3072 * q + i < 3072 * chunks.length := by
+      have := Nat.mul_le_mul_left 3072 (show q + 1 ≤ chunks.length from hq); omega
+    rw [getElem!_take_lt _ hlt, hCf _ (by omega), hchunk q hq i hi]
+  have hctr0 : blockQ ctr = reverseBytesQuad32 (inc32 (inc32 j0 1) (192 * (0#usize : Usize).val)) := by
+    rw [hctr]; simp [inc32_zero]
+  have hd0 : ∀ q < chunks.length, ∀ i < 3072, (chunks.val[q]!).val[i]!.bv = if q < (0#usize : Usize).val then
+      (chunks.val[q]!).val[i]!.bv ^^^ ksByte alg kw (inc32 j0 1) (3072 * q + i) else (chunks.val[q]!).val[i]!.bv := by
+    intro q _ i _; simp
+  have hx0 : toPoly (blockBE xi1.val) = ghashPoly (polyLE (aesEncrypt alg kw (mkfour 0 0 0 0)))
+      (toPoly (blockBE xi1.val)) ((padBlocks ((Cf.take (3072 * chunks.length)).take (3072 * (0#usize : Usize).val))).map toPoly) := by
+    simp [padBlocks_nil, ghashPoly_nil]
+  step with tagged_loop0_spec ENC alg kw PI key hP (inc32 j0 1) (toPoly (blockBE xi1.val)) chunks
+    (Cf.take (3072 * chunks.length)) hCt hCq
+    { start := 0#usize, «end» := chunks.len } xi1 ctr chunks (by simp) (by simp [Slice.length]) rfl
+    hctr0 hd0 hx0
+    as ⟨xi2, ctr1, chunks1, hctr1, hl1, hd1, hx2⟩
+  step as ⟨b, hb⟩
+  step with tagged_tail_spec ENC alg kw PI key hP _ xi2 ctr1 hctr1 tail b hb as ⟨xi3, tail1, ht1l, ht1, hx3⟩
+  step with lengths_spec aad.len inout.len (by simpa using haad) (by simpa using hin) as ⟨a, ha⟩
+  simp only [lift, bind_ok]
+  step with hG xi3 as ⟨xi4, hx4⟩
+  step with hP.encrypt_block y0 as ⟨mask, hmask⟩
+  step with tagged_loop1_spec xi4 mask { start := 0#usize, «end» := 16#usize } xi4 (by simp) rfl
+    (fun i _ => by simp) as ⟨xi5, hx5⟩
+  rw [hH] at hx2 hx3
+  -- The output, chunks and tail back together, is GCTR's.
+  have e2 : tail.length = tail.val.length := rfl
+  have htl : tail.length = inout.length - 3072 * chunks.length := by
+    rw [e2, ht, List.length_drop, hcl, Nat.mul_comm]
+  have hbk : (back (chunks1, tail1)).val = chunks1.val.flatMap (·.val) ++ tail1.val := by
+    apply hback
+    rw [List.length_append, length_flatMapN]
+    have : (3072#usize : Usize).val * chunks1.val.length + tail1.val.length = inout.length := by
+      have e3 : chunks1.length = chunks1.val.length := rfl
+      have e4 : tail1.length = tail1.val.length := rfl
+      rw [hN]; omega
+    omega
+  have ht1' : ∀ i < tail.length, tail1.val[i]!.bv = tail.val[i]!.bv ^^^
+      ksByte alg kw (inc32 j0 1) ((3072#usize : Usize).val * chunks.length + i) := by
+    intro i hi
+    rw [ht1 i hi, ksByte_inc, hN, show 16 * (192 * chunks.length) + i = 3072 * chunks.length + i by ring]
+  obtain ⟨hrl, hr⟩ := chunks_assemble (N := 3072#usize) (by decide) (ksByte alg kw (inc32 j0 1)) inout
+    chunks chunks1 tail tail1 hcl hc ht hl1 (fun q hq i hi => hd1 q hq i hi) ht1l ht1' _ hbk
+  have hbe : (back (chunks1, tail1)).val = gctrBytes alg kw (inc32 j0 1) inout.val := by
+    apply eq_of_bv _ _ (by rw [length_gctrBytes]; exact hrl)
+    intro j hj
+    rw [hr j (by rw [← hrl]; exact hj), getElem!_gctrBytes _ _ _ _ (by rw [← e0]; omega)]
+  have hCe : (if ENC then (back (chunks1, tail1)).val else inout.val) = Cf := by rw [hbe, hCfd]
+  -- The GHASH input: the padded AAD, then the padded ciphertext.
+  have hdrop : (if ENC then tail1.val else tail.val) = Cf.drop (3072 * chunks.length) := by
+    have hil : (if ENC then tail1.val else tail.val).length = tail.length := by
+      split
+      · exact ht1l
+      · rfl
+    apply eq_of_bv _ _ (by rw [hil, List.length_drop, hCfl]; omega)
+    intro j hj
+    have hj' : j < tail.length := by rw [hil] at hj; exact hj
+    have hti : tail.val[j]!.bv = inout.val[3072 * chunks.length + j]!.bv := by
+      have : tail.val[j]! = inout.val[3072 * chunks.length + j]! := by
+        rw [ht, ← hcl, Nat.mul_comm]; simp [List.getElem!_eq_getElem?_getD, List.getElem?_drop]
+      rw [this]
+    have hdj : (Cf.drop (3072 * chunks.length))[j]! = Cf[3072 * chunks.length + j]! := by
+      simp [List.getElem!_eq_getElem?_getD, List.getElem?_drop]
+    rw [hdj, hCf _ (by omega)]
+    cases ENC
+    · simpa using hti
+    · simp only [ite_true]
+      rw [ht1 j hj', hti, ksByte_inc, show 16 * (192 * chunks.length) + j = 3072 * chunks.length + j by ring]
+  have htk : (Cf.take (3072 * chunks.length)).length % 16 = 0 := by
+    rw [List.length_take, Nat.min_eq_left (by omega)]; omega
+  have hpad : padBlocks Cf = padBlocks (Cf.take (3072 * chunks.length)) ++
+      padBlocks (if ENC then tail1.val else tail.val) := by
+    rw [hdrop, ← padBlocks_append _ _ htk, List.take_append_drop]
+  have hsv : ((Array.make 1#usize [a] (by simp)).to_slice).val = [a] := rfl
+  have hX : toPoly (blockBE xi4.val) = gf128MulRev (ghashPoly (polyLE hLE) 0
+      ((padBlocks aad.val ++ padBlocks Cf).map toPoly) +
+      toPoly (insertNat64 (insertNat64 (mkfour 0 0 0 0) (8 * aad.val.length) 1) (8 * Cf.length) 0)) (polyLE hLE) := by
+    rw [hx4, hsv, List.map_singleton, ghashPoly_cons, ghashPoly_nil, hx3, hx2, hxi1, ha, hpad, List.map_append,
+      List.map_append, ghashPoly_append, ghashPoly_append, hCfl]
+    simp [Slice.length]
+  have htag := gcmHash_eq hLE aad.val Cf (blockBE xi4.val) hX
+  rw [blockBE_blockQ, reverseBytesQuad32_involutive] at htag
+  refine ⟨hrl, by rw [hbe, bvs_gctrBytes], ?_⟩
+  rw [hCe, ← htag, gctr_block, ← hy0, ← hmask]
+  have hl5 : xi5.val.length = 16 := by simp
+  apply List.ext_getElem (by simp [leQuad32ToBytes])
+  intro i h1 h2
+  rw [List.length_map, hl5] at h1
+  rw [← getElem!_pos _ i (by simpa using h1), ← getElem!_pos _ i h2, leQuad32ToBytes_getElem! _ h1, byte_xor,
+    blockQ, blockQ, byte_ofBytes _ h1, byte_ofBytes _ h1, ← hx5 i h1]
+  rw [getElem!_pos _ i (by simpa using h1), List.getElem_map, getElem!_pos xi5.val i (by omega)]
 
 end rind.armv7
