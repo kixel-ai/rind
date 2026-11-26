@@ -1,22 +1,21 @@
-# [M] Reuse 8-way AVX-512 Keccak in ML-DSA/SLH-DSA and add aarch64 pipelined SHA-256 x8 and NEON ML-KEM codecs
+# [M] ML-DSA samples on the 8-way AVX-512 Keccak-f
 
 ## Goal
 
-Post-quantum signing and encapsulation capture the remaining obvious SIMD wins on x86_64 and aarch64: ML-DSA and SLH-DSA reuse the existing AVX-512 8-way Keccak-f kernel (and keep 4-way states transposed across rounds), `aarch64` gains a pipelined `sha256_finish_x8` path for SLH-DSA SHA2, and `aarch64` gains NEON ML-KEM compress/decompress routines.
+On x86_64 CPUs with AVX-512, ML-DSA's matrix expansion and its secret and mask vector sampling permute eight Keccak-f states at once on the AVX-512 kernel ML-KEM's sampler already ships, wherever that measures faster than s2n-bignum's four-way AVX2 permutation, and within the rule [avoid-zmm](/quest/m2/speed/avoid-zmm.md) settles for cores that downclock.
 
 ## Plan
 
-Planned with the maintainer on 2026-11-21 (`/quest-plan`): ✅ wire existing 8-way AVX-512 Keccak into ML-DSA and SLH-DSA, add pipelined `aarch64` `sha256_x8`, and port NEON ML-KEM compress/decompress (rejected: skip).
+Planned with the maintainer on 2026-11-21 (`/quest-plan`): ✅ wire the existing 8-way AVX-512 Keccak into ML-DSA and SLH-DSA, add pipelined `aarch64` SHA-256 lanes, and port NEON ML-KEM compress/decompress (rejected: skip). [kixel-ai/rind#1036](https://github.com/kixel-ai/rind/pull/1036) landed aarch64's SHA-256 lanes and NEON ML-KEM compression, and left this one, which needs x86_64 hosts to measure. NEON decompression was not taken: it measured no faster than the proven Rust.
 
-- **AVX-512 8-way Keccak reuse (`x86_64`)**:
-  - `rind/src/low/x86_64/mlkem_sample_poly_ntt_8x.rs` already ships `_sha3_keccak8_f1600`. Expose and reuse it from `rind/src/mid/mldsa.rs` (matrix/vector expansion and rejection sampling) and SLH-DSA SHAKE paths (coordinating cleanly with [kixel-ai/rind#872](https://github.com/kixel-ai/rind/pull/872) for AVX2 SLH-DSA SHAKE).
-  - Also keep 4-way AVX2 Keccak states transposed in `rind/src/mid/sha3.rs` across consecutive squeezes/absorbs instead of transposing back and forth on every block.
-- **Pipelined `aarch64` `sha256_finish_x8`**:
-  - In `rind/src/low/mod.rs` (around lines 597-605) and `rind/src/low/aarch64/`, replace the sequential 8x loop with a pipelined/interleaved `sha256_finish_x8` (using ARMv8 SHA2 instructions interleaved across independent lanes to hide instruction latency) for SLH-DSA-SHA2.
-- **NEON ML-KEM compress/decompress (`aarch64`)**:
-  - Port vectorized NEON ML-KEM polynomial compress/decompress (`d = 1, 4, 5, 10, 11`) matching the x86_64 vectorized paths, and verify constant-time behavior under `ctgrind`/`ct-vartime`.
-- Benchmark ML-DSA, SLH-DSA (SHAKE and SHA2), and ML-KEM on both x86_64 (AVX2 + AVX-512) and aarch64 before and after, respecting `avoid-zmm` downclocking rules for AVX-512.
+- The kernel is `_sha3_keccak8_f1600` in `rind/src/low/x86_64/mlkem_sample_poly_ntt_8x.rs`. Move it to a module of its own, and rotate with `_mm512_rol_epi64` (`vprolq`), one instruction, instead of its `sllv`, `srlv`, and `or`, which also speeds ML-KEM-1024's sampler.
+- `mid::sha3::Shake4x` (ML-DSA's `Shake128x4` and `Shake256x4`) takes eight lanes where the kernel runs; `mid::mldsa` asks for up to eight polynomials at a time instead of four.
+- Measure on `fedora` (Zen 5, full-width AVX-512) and on an Intel AVX-512 core if one is reachable: GitHub's hosted runners rarely draw AVX-512, so a dispatched `bench` may never time the path. Zen 4 splits 512-bit operations in two, so the gain there may be nil; keep the four-way path where it is not faster.
+- ML-DSA's secret vectors come from a secret seed, so the 8-way path needs a `ct_sde_*` test under `admin/ct-sde`; valgrind decodes no AVX-512.
+- SLH-DSA's SHAKE sets are [SLH-DSA SHAKE on x86_64](/quest/m4/pq/slh-dsa-shake-x86.md)'s, whose [kixel-ai/rind#872](https://github.com/kixel-ai/rind/pull/872) keeps four states transposed across calls on XKCP's AVX2 permutation and runs eight lanes on AVX-512 in its fork's follow-up.
+- Dropped: keeping s2n-bignum's four-way AVX2 states transposed across permutations in `mid::sha3`. The transposition is inside s2n-bignum's proven routine, so removing it would void the proof, and #872 does it for SLH-DSA, where it pays.
 
 ## Related
 
 - [Avoid 512-bit kernels on Intel cores that downclock for them](/quest/m2/speed/avoid-zmm.md)
+- [SLH-DSA SHAKE on x86_64](/quest/m4/pq/slh-dsa-shake-x86.md) - owns SLH-DSA's SHAKE lanes on x86_64
