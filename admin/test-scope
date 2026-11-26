@@ -47,6 +47,8 @@ def load():
         for name, owners in entries.items():
             if not re.fullmatch(r"\*|(\w+::)*\w*", name) or (where == "units" and not re.fullmatch(r"(\w+::)+\w+", name)):
                 errors.append(f"{where}: '{name}' is not a test name, a module prefix ending in '::', or '*'")
+            if not owners:
+                errors.append(f"{where}: '{name}' names no family; a test for every scoped run is [\"{SHARED}\"]")
             for owner in owners:
                 if owner not in known:
                     errors.append(f"{where}: '{name}' names unknown family '{owner}'")
@@ -135,8 +137,15 @@ def signature_lines(text):
             i += 1
             continue
         start = i
-        while start > 0 and ATTRIBUTE.match(lines[start - 1]):
-            start -= 1
+        # Each attribute above, a multi-line one from its closing `]` up to
+        # its `#[`, with no comment or item end between.
+        while start > 0 and lines[start - 1].rstrip().endswith("]"):
+            k = start - 1
+            while k > 0 and not ATTRIBUTE.match(lines[k]) and not lines[k].lstrip().startswith("//") and not ENDS_LINE.search(lines[k - 1]):
+                k -= 1
+            if not ATTRIBUTE.match(lines[k]):
+                break
+            start = k
         indent = len(lines[i]) - len(lines[i].lstrip())
         j = i
         while j + 1 < len(lines) and not ENDS_LINE.search(lines[j]):
@@ -229,6 +238,8 @@ SIGNATURES = [
     ("pub trait T {\n    fn m(&self);\n}\nfn after() {}\n", {1, 2, 3}),
     ("impl Clone for X {\n    fn clone(&self) -> Self {\n        *self\n    }\n}\n", {1}),
     ("pub static S: A = A {\n    field: 1,\n};\n", {1}),
+    ("fn a() {}\n#[cfg(any(\n    x,\n))]\n#[inline]\npub fn f() {}\n", {2, 3, 4, 5, 6}),
+    ("/// See [x]\npub fn g() {}\n", {2}),
 ]
 
 
