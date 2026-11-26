@@ -1124,6 +1124,7 @@ aes_gcm_items() {
 check_quote X86_64/AesGcmModel aes_gcm_items
 check_quote X86_64/TypesExternal items rind/src/low/x86_64/chacha20.rs 'struct VgState('
 check_quote Aarch64/TypesExternal items rind/src/low/aarch64/chacha20.rs 'struct VgState('
+check_quote Aarch64/FunsExternal items rind/src/low/aarch64/mlkem.rs 'pub(crate) fn mlkem_rej_uniform_vartime('
 aarch64_aes_gcm_items() {
     items rind/src/low/aarch64/ghash.rs 'macro_rules! mul {' 'macro_rules! reduce {' \
         '    pub(crate) fn add(&mut self, bytes: &[u8]) {' '    fn one_block(' '    fn eight_blocks(' \
@@ -1375,7 +1376,7 @@ assembly=(
     --start-from crate::mid::sha3::Sponge::finish
     --start-from 'crate::mid::sha3::Sha3Context::_'
     --start-from 'crate::mid::sha3::Shake::_'
-    --start-from 'crate::mid::sha3::Shake4x::_'
+    --start-from 'crate::mid::sha3::Shake8x::_'
     --start-from crate::mid::aes::AesCtr::new
     --start-from crate::mid::aes::AesCtr::apply_keystream
     --start-from crate::mid::aes_cbc::AesCbcEncryptingKey::new
@@ -1608,6 +1609,9 @@ extract x86_64 X86_64 "${hashes[@]}" "${assembly[@]}" \
     --opaque crate::low::x86_64::sha512::path \
     --include crate::low::x86_64::sha3_keccak4_f1600_shim \
     --include crate::low::x86_64::sha3_keccak_nof4_f1600 \
+    --include crate::low::x86_64::sha3_keccak8_f1600 \
+    --opaque crate::low::x86_64::sha3_keccak8_f1600::permute \
+    --include crate::low::generic::keccak8 \
     --start-from '{impl crate::aead::Cipher for crate::mid::aes_gcm::AesGcm}' \
     --start-from crate::mid::aes_gcm::AesGcm::encrypt_any \
     --start-from crate::mid::aes_gcm::AesGcm::decrypt_any \
@@ -1733,6 +1737,7 @@ extract aarch64 Aarch64 "${hashes[@]}" "${assembly[@]}" \
     --include crate::low::aarch64::sha3_keccak_f1600_mux \
     --include crate::low::aarch64::sha3_keccak4_f1600_mux \
     --include crate::low::aarch64::sha3_keccak_nof4_f1600 \
+    --include crate::low::generic::keccak8 \
     --include crate::low::aarch64::sha256 \
     --opaque crate::low::aarch64::sha256::compress_hw \
     --opaque crate::low::aarch64::sha256::compress_nohw \
@@ -1749,6 +1754,12 @@ extract aarch64 Aarch64 "${hashes[@]}" "${assembly[@]}" \
     --opaque crate::low::aarch64::aes_cbc::aese_chained \
     --include crate::low::generic::mlkem \
     --start-from crate::low::generic::mlkem::mlkem_frombytes \
+    --include crate::low::aarch64::mlkem \
+    --opaque crate::low::aarch64::mlkem::mlkem_compress_d4 \
+    --opaque crate::low::aarch64::mlkem::mlkem_compress_d5 \
+    --opaque crate::low::aarch64::mlkem::mlkem_compress_d10 \
+    --opaque crate::low::aarch64::mlkem::mlkem_compress_d11 \
+    --opaque crate::low::aarch64::mlkem::mlkem_rej_uniform_vartime \
     --start-from crate::low::aarch64::mlkem768_vg::Encaps::check_ek \
     --start-from crate::low::aarch64::mlkem768_vg::Encaps::encaps \
     --include crate::low::aarch64::pbkdf2_vg \
@@ -1858,6 +1869,58 @@ sed -i '/-- BEGIN aead/,/-- END aead/d' proofs/Rind/Portable/Kdf/FunsExternal.le
 for file in QuicDispatch ChaCha20; do
     sed 's/X86_64/Armv7/g; s/x86_64/armv7/g' "proofs/Rind/X86_64/$file.lean" >"proofs/Rind/Armv7/$file.lean"
 done
+
+# The elements of the HOL Light list `$2` that `$1` defines, as Lean writes
+# them: `-- &1600` is -1600 and `&630` is 630.
+hol_list() {
+    local list
+    list=$(awk -v n="$2" '$0 ~ "^let " n " = " { on = 1 } on { printf "%s ", $0 } on && /`;;/ { exit }' "$1" |
+        sed -E 's/^[^`]*`//; s/^[^[]*\[//; s/\].*$//; s/-- &/-/g; s/&//g; s/;/,/g; s/[[:space:]]+/ /g; s/^ //; s/ $//')
+    if [[ -z $list ]]; then
+        echo "admin/prove: no list $2 in $1" >&2
+        return 1
+    fi
+    echo "$list"
+}
+
+# The tables s2n-bignum's aarch64 ML-KEM theorems assume, from its HOL Light
+# sources, so that no hand copy of them is trusted:
+# `proofs/Rind/Aarch64/MlKemRoutines.lean` checks rind's against them.
+{
+    echo "-- Written by admin/prove from thirdparty/s2n-bignum/arm/proofs: the tables"
+    echo "-- s2n-bignum's ML-KEM theorems assume. Do not edit."
+    echo "namespace rind.aarch64.MlKemTables"
+    for row in \
+        "mlkem_ntt ntt_zetas_layer01234 nttZetasLayer01234 Int" \
+        "mlkem_ntt ntt_zetas_layer56 nttZetasLayer56 Int" \
+        "mlkem_intt intt_zetas_layer01234 inttZetasLayer01234 Int" \
+        "mlkem_intt intt_zetas_layer56 inttZetasLayer56 Int" \
+        "mlkem_mulcache_compute mulcache_zetas mulcacheZetas Int" \
+        "mlkem_mulcache_compute mulcache_zetas_twisted mulcacheZetasTwisted Int"; do
+        read -r file name lean type <<<"$row"
+        echo "/-- \`$name\`, from \`arm/proofs/$file.ml\`. -/"
+        echo "def $lean : List $type := [$(hol_list "thirdparty/s2n-bignum/arm/proofs/$file.ml" "$name")]"
+    done
+    echo "end rind.aarch64.MlKemTables"
+} >proofs/Rind/Aarch64/MlKemTables.lean
+# The rejection sampler's 4096-byte table is too long a literal for Lean to
+# elaborate, so the translation leaves its wrapper opaque, and this checks the
+# table it passes is s2n-bignum's, each -1 the byte 255.
+rej_table() {
+    awk '/MLKEM_REJ_UNIFORM_TABLE: \[i8; 4096\] = \[/ { on = 1; next } on && /^\];/ { exit }
+        on { sub(/\/\/.*/, ""); printf "%s", $0 }' "$1" |
+        tr -d ' ' | tr ',' '\n' | sed '/^$/d; s/^-1$/255/'
+}
+rind_rej=$(rej_table rind/src/low/aarch64/mlkem.rs)
+s2n_rej=$(hol_list thirdparty/s2n-bignum/arm/proofs/mlkem_rej_uniform_VARIABLE_TIME.ml mlkem_rej_uniform_table) || exit 1
+if [[ $(wc -l <<<"$rind_rej") -ne 4096 ]]; then
+    echo "admin/prove: no 4096-entry rejection table in rind/src/low/aarch64/mlkem.rs" >&2
+    exit 1
+fi
+if ! diff <(echo "$rind_rej") <(tr -d ' ' <<<"$s2n_rej" | tr ',' '\n') >/dev/null; then
+    echo "admin/prove: rind's aarch64 rejection table is not s2n-bignum's" >&2
+    exit 1
+fi
 
 [ "${PROVE_TRANSLATE_ONLY:-}" ] && exit 0
 # Each hand model of a CPU intrinsic, a `core.core_arch` definition but its

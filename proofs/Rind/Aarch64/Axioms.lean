@@ -16,6 +16,7 @@ import Rind.Aarch64.AesKw
 import Rind.Aarch64.AesModesApi
 import Rind.Aarch64.MlKemCoding
 import Rind.Aarch64.MlKemGeneric
+import Rind.Aarch64.MlKemPke
 import Rind.Aarch64.GhashPmull
 import Rind.Aarch64.AesGcm
 import Rind.Aarch64.AesGcmLong
@@ -46,7 +47,8 @@ key generation and each ECDSA signature's nonce point take, and its ECDSA
 verification, pyca/verified-garbage's Lean proofs of its routines, which
 `Rind.Aarch64.VgP384` restates; for PBKDF2 on
 pyca/verified-garbage's routines, its contracts in `Rind.Aarch64.VgPbkdf2`;
-and nothing else.
+for ML-KEM-768, s2n-bignum's and mlkem-native's contracts for its routines in
+`Rind.Aarch64.MlKemRoutines`; and nothing else.
 P-384's comb table select rests on no axiom, only on the hand model in
 `Rind.Aarch64.PointSelectModel`. The PMULL GHASH's table and `Ghash::add`, and
 AES-GCM's counter blocks and its `tagged_from` and `tagged` on short messages
@@ -848,6 +850,63 @@ A change here is a change to the trust base.
 /-- info: 'rind.aarch64.MlKemGeneric.mlkem_frombytes_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms MlKemGeneric.mlkem_frombytes_spec
+
+/-- info: 'rind.aarch64.MlKemPke.kpke_decrypt_fips' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ MlKemRoutines.mlkem_basemul_k3_axiom,
+ MlKemRoutines.mlkem_intt_axiom,
+ MlKemRoutines.mlkem_mulcache_compute_axiom,
+ MlKemRoutines.mlkem_ntt_axiom,
+ MlKemRoutines.mlkem_reduce_axiom] -/
+#guard_msgs in
+#print axioms MlKemPke.kpke_decrypt_fips
+
+/-- info: 'rind.aarch64.MlKemPoly.to_bytes_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ MlKemRoutines.mlkem_tobytes_axiom] -/
+#guard_msgs in
+#print axioms MlKemPoly.to_bytes_spec
+
+/-- info: 'rind.aarch64.MlKemPoly.inverse_ntt_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ MlKemRoutines.mlkem_intt_axiom] -/
+#guard_msgs in
+#print axioms MlKemPoly.inverse_ntt_spec
+
+/-- info: 'rind.aarch64.MlKemPoly.reduce_in_place_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ MlKemRoutines.mlkem_reduce_axiom] -/
+#guard_msgs in
+#print axioms MlKemPoly.reduce_in_place_spec
+
+/-- info: 'rind.aarch64.MlKemPoly.add1_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms MlKemPoly.add1_spec
+
+/-- info: 'rind.aarch64.MlKemRoutines.mlkem_tomont_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ MlKemRoutines.mlkem_tomont_axiom] -/
+#guard_msgs in
+#print axioms MlKemRoutines.mlkem_tomont_spec
+
+/-- info: 'rind.aarch64.MlKemRoutines.mlkem_compress_d10_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ MlKemRoutines.mlkem_compress_d10_axiom] -/
+#guard_msgs in
+#print axioms MlKemRoutines.mlkem_compress_d10_spec
+
+/-- info: 'rind.aarch64.MlKemRoutines.mlkem_compress_d4_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ MlKemRoutines.mlkem_compress_d4_axiom] -/
+#guard_msgs in
+#print axioms MlKemRoutines.mlkem_compress_d4_spec
 
 /-- info: 'rind.aarch64.pmull.ghash_table_new_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
