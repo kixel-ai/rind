@@ -698,7 +698,8 @@ impl<P: Params> Decoded<P> {
         if P::ETA1 == ETA2 {
             sample_poly_cbd(ETA2, P::K, &r.0, 0, y.0.as_mut(), e_1.0.as_mut(), &mut e_2);
         } else {
-            sample_poly_cbd(P::ETA1, P::K, &r.0, 0, y.0.as_mut(), &mut [], &mut none);
+            let mut no_b: [Poly; 0] = [];
+            sample_poly_cbd(P::ETA1, P::K, &r.0, 0, y.0.as_mut(), &mut no_b, &mut none);
             sample_poly_cbd(
                 ETA2,
                 P::K,
