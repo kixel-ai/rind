@@ -6,8 +6,10 @@ name: prove
 # CPU, cosimulates pyca/verified-garbage's models against the code rind takes
 # from it, checks that the NEON vectors the Lean proofs test their aarch64
 # intrinsic models with are what an aarch64 CPU computes, translates rind's
-# Rust under proof to Lean and checks the proofs in `proofs/`, and tests the
-# Lean specs those proofs trust against the published vectors and rind. It
+# Rust under proof to Lean and checks the proofs in `proofs/`, checks that the
+# curve25519-dalek rind runs on armv7 translates to the code Beneficial AI
+# Foundation's Lean proofs of it are about, and tests the Lean specs those
+# proofs trust against the published vectors and rind. It
 # all runs nightly. None of it gates a merge: a failure on main alerts.
 #
 # Each HOL Light target's proofs, the Lean proofs, and the cosimulation are
@@ -48,6 +50,8 @@ on:
       - admin/neon-vectors.rs
       - admin/avx512-vectors.rs
       - admin/upstream
+      - admin/import-dalek
+      - admin/dalek-closure
       - admin/import-vg
       - admin/import-vg-models
       - admin/vg-bytes

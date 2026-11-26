@@ -17,7 +17,7 @@
 # does armv7, its header-protection model
 # and ChaCha20 proof.
 #
-# Usage: admin/prove [bytes | hol-light [<arch>] | cosim | vg | lean | spec-tests | session <arch> [<file>] | key <check>]
+# Usage: admin/prove [bytes | hol-light [<arch>] | cosim | vg | dalek | lean | spec-tests | session <arch> [<file>] | key <check>]
 #
 # An argument checks only those proofs, `bytes` only that the assembly rind
 # imports is the object code its upstream's proofs checked, and declares
@@ -30,7 +30,10 @@
 # an x86_64 CPU with AVX2 too, to test the intrinsic models. `vg`, which no
 # other run includes either, checks pyca/verified-garbage's code for this
 # CPU's target against VG's Lean models, as `vg` below describes, in the
-# flake's `vg` dev shell: `nix develop .#vg --command admin/prove vg`. A run
+# flake's `vg` dev shell: `nix develop .#vg --command admin/prove vg`.
+# `dalek`, which `lean` and a run of everything include, checks that the
+# curve25519-dalek rind builds is the code Beneficial AI Foundation's proofs,
+# which armv7's restate, are about, as `dalek` below describes. A run
 # of everything ends by testing the Lean specs the proofs trust on a fixed
 # sample, as `spec_tests` below describes, and `lean` alone does not;
 # `spec-tests` runs those tests alone, which the nightly does unsampled, as
@@ -46,7 +49,7 @@
 # dev shell, the others' in `hol-light`.
 set -euo pipefail
 
-usage="usage: admin/prove [bytes | hol-light [x86_64 | aarch64 | armv7] | cosim | vg | lean | spec-tests | session <x86_64 | aarch64> [<file>] | key <hol-light <x86_64 | aarch64 | armv7> | cosim | lean>]"
+usage="usage: admin/prove [bytes | hol-light [x86_64 | aarch64 | armv7] | cosim | vg | dalek | lean | spec-tests | session <x86_64 | aarch64> [<file>] | key <hol-light <x86_64 | aarch64 | armv7> | cosim | lean>]"
 key_only=
 if [[ ${1:-} == key ]]; then
     if [[ ! (($# -eq 3 && $2 == hol-light && $3 != '') || ($# -eq 2 && ($2 == cosim || $2 == lean))) ]]; then
@@ -60,7 +63,7 @@ if [[ ${1:-} == key ]]; then
     exec 3>&1 1>&2
 fi
 case "${1:-}" in
-'' | bytes | cosim | vg | lean) only=${1:-} ;;
+'' | bytes | cosim | vg | dalek | lean) only=${1:-} ;;
 spec-tests)
     # Its settings come from the environment, as `spec_tests` says.
     if [[ $# -gt 1 ]]; then
@@ -656,6 +659,87 @@ vg() {
     return $failed
 }
 
+# The functions of curve25519-dalek whose theorems in Beneficial AI
+# Foundation's Lean proofs `proofs/Rind/Armv7/Dalek.lean` restates as axioms,
+# as BAIF's translation names them.
+dalek_roots=(
+    montgomery.MontgomeryPoint.mul_clamped
+    montgomery.MontgomeryPoint.mul_base_clamped
+)
+# Checks that the curve25519-dalek rind builds on armv7 is the code BAIF's
+# proofs at `admin/import-dalek`'s REV are about, in every definition
+# `dalek_roots` reach: that it is the crates.io release Cargo.lock pins with
+# the features BAIF's proofs build it with, and that BAIF's own translation,
+# its patches applied and run with the Charon and Aeneas its
+# `AENEAS_VERSION.txt` names, `$DALEK_AENEAS`, gives that release the Lean
+# BAIF's proofs read, `admin/dalek-closure` comparing each definition. The
+# proofs' configurations are 32- and 64-bit limbs, with and without
+# precomputed tables; armv7 builds the first with tables. A patch that no
+# longer applies to the release is skipped: a definition it would have
+# changed then differs.
+dalek() {
+    local dir=$out/dalek fork=.tmp/upstream/curve25519-dalek lean src features bits triple spec patch
+    local targets=() charon_opts
+    hold dalek
+    rm -rf "$dir"
+    mkdir -p "$dir/work"
+    admin/upstream curve25519-dalek
+    admin/import-dalek --check "$fork"
+    lean=$fork/curve25519-dalek/lean
+    if [[ "$("$DALEK_AENEAS/aeneas" -version)" != "aeneas $(<"$lean/AENEAS_VERSION.txt")" ]]; then
+        echo "admin/prove: BAIF's proofs pin Aeneas $(<"$lean/AENEAS_VERSION.txt"); bump flake.nix's aeneas-dalek-release" >&2
+        return 1
+    fi
+    # The release rind depends on for armv7, and the features rind asks of it.
+    read -r src features < <(cargo metadata --locked --format-version 1 \
+        --filter-platform armv7-unknown-linux-gnueabihf | python3 -c '
+import json, sys
+m = json.load(sys.stdin)
+rind = next(p for p in m["packages"] if p["name"] == "rind")
+asked = next(d for d in rind["dependencies"] if d["name"] == "curve25519-dalek" and d["kind"] is None)
+node = next(n for n in m["resolve"]["nodes"] if n["id"] == rind["id"])
+dep = next(d["pkg"] for d in node["deps"] if d["name"] == "curve25519_dalek")
+pkg = next(p for p in m["packages"] if p["id"] == dep)
+features = sorted(asked["features"]) + (["default"] if asked["uses_default_features"] else [])
+print(pkg["manifest_path"].rsplit("/", 1)[0], ",".join(features))')
+    if [[ $features != alloc,precomputed-tables,zeroize ]]; then
+        echo "admin/prove: rind builds curve25519-dalek with $features, not the alloc, precomputed-tables, and zeroize BAIF's proofs build it with" >&2
+        return 1
+    fi
+    # BAIF's workspace, with the release's source and build script.
+    git -C "$fork" archive HEAD Cargo.toml Cargo.lock curve25519-dalek curve25519-dalek-derive \
+        ed25519-dalek x25519-dalek | tar -x -C "$dir/work" --exclude curve25519-dalek/lean
+    rm -rf "$dir/work/curve25519-dalek/src"
+    cp -R "$src/src" "$src/build.rs" "$dir/work/curve25519-dalek/"
+    for patch in "$lean"/translation-patches/*.patch; do
+        GIT_CEILING_DIRECTORIES=$PWD/$dir git -C "$dir/work" apply -C1 "$PWD/$patch" 2>/dev/null ||
+            echo "admin/prove: $(basename "$patch") does not apply to curve25519-dalek $(basename "$src")" >&2
+    done
+    # BAIF's four configurations and Charon options, as its translate script sets them.
+    for bits in 64:x86_64-unknown-linux-gnu 32:i686-unknown-linux-gnu; do
+        triple=${bits#*:} bits=${bits%%:*}
+        for spec in "${bits}bit-tables" "${bits}bit-notables"; do
+            "$("$DALEK_AENEAS/charon" toolchain-path)/bin/rustc" -Z unstable-options --print target-spec-json \
+                --target "$triple" >"$dir/$spec.json"
+            targets+=(--targets "$PWD/$dir/$spec.json")
+        done
+        export "CARGO_TARGET_${bits}BIT_TABLES_RUSTFLAGS=--cfg curve25519_dalek_backend=\"serial\" --cfg feature=\"precomputed-tables\""
+        export "CARGO_TARGET_${bits}BIT_NOTABLES_RUSTFLAGS=--cfg curve25519_dalek_backend=\"serial\""
+    done
+    eval "$(sed -n '/^charon_opts=(/,/^)/p' "$lean/scripts/aeneas-translate.sh")"
+    # Unset, not empty: cargo takes an empty CARGO_ENCODED_RUSTFLAGS over
+    # each configuration's flags.
+    (cd "$dir/work/curve25519-dalek" && env -u RUSTFLAGS -u CARGO_ENCODED_RUSTFLAGS CARGO_TARGET_DIR=$PWD/../target \
+        "$DALEK_AENEAS/charon" cargo --preset=aeneas "${targets[@]}" "${charon_opts[@]}" \
+        --dest-file "$PWD/../../curve25519_dalek.llbc" \
+        -- --locked --no-default-features --features alloc,zeroize -Zjson-target-spec -Zbuild-std=core,alloc)
+    "$DALEK_AENEAS/aeneas" -backend lean -split-files -namespace Curve25519Dalek \
+        -dest "$dir" -subdir Curve25519Dalek "$dir/curve25519_dalek.llbc" >"$dir/aeneas.log" 2>&1 ||
+        { tail -20 "$dir/aeneas.log" >&2; return 1; }
+    admin/dalek-closure "$lean/Curve25519Dalek" "$dir/Curve25519Dalek" 32bit-tables "${dalek_roots[@]}"
+    release dalek
+}
+
 # Fetches Mathlib and Aeneas for the Lean proofs, from `proofs/`. Mathlib's
 # cache unpacks a copy into each checkout, so take Mathlib and Aeneas from
 # Lake's artifact cache, which `lakefile.toml` turns on, when another checkout
@@ -996,6 +1080,9 @@ if [[ $only == cosim ]]; then
 fi
 if [[ $only == vg ]]; then
     vg
+fi
+if [[ $only == dalek ]]; then
+    dalek
 fi
 if [[ $only == session ]]; then
     session "$session_arch" "$session_file"
@@ -1404,9 +1491,12 @@ to_lean() {
 }
 
 # armv7's translation reaches the header-protection API, ChaCha20's the one
-# armv7 path that is Rust down to code a proof covers, and the AES-GCM API,
-# down to the bitsliced AES and integer GHASH a CPU with neither NEON nor the
-# crypto extension runs: the rest of armv7's operations run assembly, which no
+# armv7 path that is Rust down to code a proof covers; the AES-GCM API, down
+# to the bitsliced AES and integer GHASH a CPU with neither NEON nor the
+# crypto extension runs; and the agreement API, down to the curve25519-dalek
+# functions X25519 runs on a CPU without NEON, and for the public key on every
+# CPU, whose BAIF theorems `Rind/Armv7/Dalek.lean` restates. The rest of
+# armv7's operations, the NIST curves' among them, run assembly, which no
 # instruction model covers yet, or Rust its own proof quests translate.
 # `Rind/Armv7/{Types,Funs}External.lean` define what it leaves opaque.
 extract_armv7() {
@@ -1416,12 +1506,39 @@ extract_armv7() {
         --start-from crate::aead::quic::HeaderProtectionKey \
         --start-from crate::aead::quic::AlgorithmId \
         --start-from crate::mid::chacha20::ChaCha20::new \
+        --start-from crate::mid::aes::Aes::new \
         --start-from crate::error::Error \
         --start-from crate::mid::aes_gcm::AesGcm::new \
         --start-from crate::mid::aes_gcm::AesGcm::encrypt \
         --start-from crate::mid::aes_gcm::AesGcm::decrypt \
         --start-from crate::mid::aes_gcm::AesGcm::encrypt_any \
         --start-from crate::mid::aes_gcm::AesGcm::decrypt_any \
+        --start-from '{impl crate::high::agreement::Agree for crate::high::agreement::X25519Curve}' \
+        --start-from '{impl crate::high::agreement::Agree for crate::high::curve::P256}' \
+        --start-from '{impl crate::high::agreement::Agree for crate::high::curve::P384}' \
+        --start-from '{impl crate::high::agreement::Agree for crate::high::curve::P521}' \
+        --start-from '{impl core::convert::AsRef for crate::high::agreement::PublicKey}' \
+        --start-from '{impl core::convert::AsRef for crate::high::agreement::SharedSecret}' \
+        --start-from crate::high::agreement::PrivateKey \
+        --start-from crate::high::agreement::AlgorithmId \
+        --opaque crate::high::agreement::Algorithm \
+        --opaque crate::high::agreement::Ops \
+        --opaque crate::high::agreement::x25519_from_pkcs8 \
+        --opaque crate::high::agreement::x25519_to_pkcs8 \
+        --opaque crate::high::sec1::decode \
+        --opaque crate::high::sec1::decode_pkcs8 \
+        --opaque crate::high::sec1::encode \
+        --opaque crate::high::sec1::encode_pkcs8 \
+        --opaque 'crate::high::agreement::_::encode_pkcs8' \
+        --opaque 'crate::high::agreement::_::encode_scalar' \
+        --opaque '{impl crate::high::agreement::Agree for crate::high::curve::P521}::load' \
+        --opaque 'crate::high::curve::_::oid' \
+        --opaque crate::mid::p256 \
+        --opaque crate::mid::p384 \
+        --opaque crate::mid::p521 \
+        --include crate::mid::p256::SharedSecret \
+        --include crate::mid::p384::SharedSecret \
+        --include crate::mid::p521::SharedSecret \
         --opaque crate::aead::quic::Masker \
         --opaque crate::mid::aes \
         --include crate::mid::aes::check_gcm_lengths \
@@ -1434,6 +1551,10 @@ extract_armv7() {
         --include crate::low::portable::aes \
         --include crate::low::portable::aes_nohw \
         --include crate::low::portable::ghash_nohw \
+        --include crate::low::arm::curve25519 \
+        --opaque crate::low::arm::curve25519::ladder_neon \
+        --include crate::low::portable::curve25519 \
+        --include crate::low::portable::bignum_eq \
         --dest-file "$PWD/../$out/armv7.llbc" \
         -- -p rind --lib --target armv7-unknown-linux-gnueabihf)
     to_lean Armv7
@@ -1788,7 +1909,7 @@ mkdir -p proofs/Rind/Aarch64/Kdf
 # target has its own `P256Base` stating it, and `P256KeyCheck` for the key
 # check x86_64 shortcuts; key generation and ECDSA above them are shared.
 # Each target's `P384KeyCheck` reads its own translation of the key check.
-for file in Dispatch QuicDispatch P256Dispatch P256Agree P384Dispatch X25519 P384 P384Table P384Keygen DigestAlgorithm \
+for file in Dispatch QuicDispatch P256Dispatch P256Agree P384Dispatch X25519Bytes X25519 P384 P384Table P384Keygen DigestAlgorithm \
     DigestDispatch Sha512 ChaCha20 SignatureBuffer Ed25519 \
     Blockwise Sha Hmac HmacDispatch HkdfExpand Kdf/TypesExternal Kdf/FunsExternal \
     CtEqual HmacApi DigestApi Hkdf Pbkdf2 Sha3 AesCipher HkdfAes AesModesApi AesKw P256 EcdsaDispatch Naf P256Ecdsa P256Signature \
@@ -1813,10 +1934,13 @@ for file in QuicDispatch DigestAlgorithm DigestDispatch Sha512 ChaCha20 Blockwis
 done
 sed -i '/Rind.Portable.AeadDispatch/d' proofs/Rind/Portable/Kdf/TypesExternal.lean
 sed -i '/-- BEGIN aead/,/-- END aead/d' proofs/Rind/Portable/Kdf/FunsExternal.lean
-# armv7's header-protection model and ChaCha20 proof are x86_64's with the
-# target renamed.
-for file in QuicDispatch ChaCha20; do
-    sed 's/X86_64/Armv7/g; s/x86_64/armv7/g' "proofs/Rind/X86_64/$file.lean" >"proofs/Rind/Armv7/$file.lean"
+# armv7's header-protection and agreement models and ChaCha20 and X25519
+# proofs are x86_64's with the target renamed. X25519's are over
+# `Rind.Armv7.Curve25519`'s dispatch where x86_64's are over s2n-bignum's:
+# the CPU check that picks the routine is NEON's.
+for file in QuicDispatch Dispatch P256Dispatch P384Dispatch ChaCha20 X25519Bytes X25519; do
+    sed 's/X86_64/Armv7/g; s/x86_64/armv7/g; s/Rind\.Armv7\.S2nBignum/Rind.Armv7.Curve25519/; s/low\.armv7\.curve25519_ifma\.Curve25519Ifma/low.arm.cpu.HaveNeon/g; s/CurveIfma/DalekCpu/g' \
+        "proofs/Rind/X86_64/$file.lean" >"proofs/Rind/Armv7/$file.lean"
 done
 
 [ "${PROVE_TRANSLATE_ONLY:-}" ] && exit 0
@@ -1859,14 +1983,22 @@ rind_isa
 
 # Every input the Lean proofs take from rind's source is now in `proofs/`, as
 # a translation or a quote the checks above found unchanged, or in
-# `SimdVectors.lean` and `rind_isa`'s listing. So `lean`'s key hashes those,
-# this whole script, whose top-level code runs the check, and its vector
-# programs, with the `prove` dev shell, which holds the Lean toolchain's
-# installer and Aeneas; `proofs/` pins the toolchain and Mathlib.
+# `SimdVectors.lean` and `rind_isa`'s listing, but curve25519-dalek's, whose
+# release and checksum Cargo.lock pins, with the features rind's manifest
+# asks of it, and `dalek` checks below. So `lean`'s key hashes those, that pin
+# and those features, `dalek`'s scripts, this whole script, whose top-level
+# code runs the check, and its vector programs, with the `prove` dev shell,
+# which holds the Lean toolchain's installer and Aeneas; `proofs/` pins the
+# toolchain and Mathlib.
+{
+    sed -n '/^name = "curve25519-dalek"$/,/^$/p' Cargo.lock
+    grep '^curve25519-dalek = ' rind/Cargo.toml
+} >"$out/dalek.lock"
 result_shell=prove result_key lean admin/prove admin/simd-vectors.rs admin/avx512-vectors.rs \
-    proofs "$out/SimdVectors.lean" "$out/rind-isa/got"
+    admin/import-dalek admin/dalek-closure proofs "$out/SimdVectors.lean" "$out/rind-isa/got" "$out/dalek.lock"
 [[ -z $key_only ]] || exit 0
 
+dalek
 cd proofs
 lean_deps
 lake build
