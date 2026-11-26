@@ -261,6 +261,7 @@ feature.
 rind is below 1.0, so a minor release is its breaking one. There is no date
 for 1.0: it comes once the API takes one shape, every key type loading,
 exporting, and naming things the same way, and no breaking change is planned.
+[STABILITY.md][stability] says what is checked and what is open.
 
 - A patch release, such as 0.3.1 to 0.3.2, adds API and fixes bugs: code
   that built against an earlier patch of the same minor still builds. A fix
@@ -389,3 +390,4 @@ from other projects keeps its source's license, which [LICENSE] lists.
 [architecture]: https://github.com/kixel-ai/rind/blob/main/ARCHITECTURE.md
 [audit]: https://github.com/kixel-ai/rind/blob/main/AUDIT.md
 [dit-barrier]: https://github.com/kixel-ai/rind/blob/main/benchmarks/apple-dit-barrier.md
+[stability]: https://github.com/kixel-ai/rind/blob/main/STABILITY.md
