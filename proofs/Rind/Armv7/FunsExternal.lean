@@ -157,8 +157,8 @@ opaque low.arm.cpu.HaveCryptoExt.check : Result (Option low.arm.cpu.HaveCryptoEx
 
 opaque low.arm.cpu.HaveNeon.check : Result (Option low.arm.cpu.HaveNeon)
 
-/-! The constant-time compares behind `low::generic::ct_equal`, whose inline
-assembly `Rind.Armv7.CtEqual` states HOL Light's theorems about. -/
+/-! The constant-time compares behind `low::generic::ct_equal`, which call
+A32 routines that `proofs/hol-light/armv7/ct_compare_*.ml` prove. -/
 
 opaque low.arm.cpu.ct_compare_16
   : Array Std.U8 16#usize → Array Std.U8 16#usize → Result Std.Usize

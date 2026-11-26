@@ -234,6 +234,10 @@ module vet '(^|/)Cargo\.(toml|lock)$|^supply-chain/' \
 # so moving code can leave one matching nothing.
 module mutants '^(rind[^/]*/src/|\.cargo/mutants\.toml$|admin/mutants$)' \
     tools='cargo-mutants python3'
+# proofs/README.md's TCB & Axiom Ledger counts the axioms the Lean files
+# declare, and fails on a `sorry` or an axiom its groups do not name.
+module ledger '^(proofs/(README\.md|.*\.lean)$|AUDIT\.md$|admin/(ledger|prove)$)' \
+    tools='python3 git' check fix
 # An adapter's manifest holds both its version and its upstream requirement.
 module versions '^(rind-[^/]+/Cargo\.toml$|sh/adapter-versions\.sh$)' \
     tools='cargo jq' check
@@ -251,17 +255,18 @@ module license '^(rind/src/|rind/LICENSE$|rind-python/LICENSE$|admin/scan-licens
 # TESTING.md's table names every export, test, and vector file.
 module testing '^(TESTING\.md$|admin/testing$|rind/(src|tests)/|fuzz/)' \
     tools='python3' check
-# AUDIT.md's pins table is generated from the files that hold the pins, and
-# the quests it links name gaps that finishing them closes.
-module audit '^(AUDIT\.md$|admin/(audit|import-[a-z-]+|prove-bytes|sync-(acvp|vectors))$|thirdparty/s2n-bignum/RIND\.md$|(rind/)?Cargo\.(toml|lock)$|quest/)' \
+# AUDIT.md's pins table is generated from the files that hold the pins, its
+# `unsafe` table must name every area whose Rust files hold `unsafe`, and the
+# quests it links name gaps that finishing them closes.
+module audit '^(AUDIT\.md$|admin/(audit|import-[a-z-]+|prove-bytes|sync-(acvp|vectors))$|thirdparty/s2n-bignum/RIND\.md$|(rind/)?Cargo\.(toml|lock)$|quest/|.*\.rs$)' \
     tools='python3 git' check fix
 # COMPATIBILITY.md is generated from the CPU scans.
 module compat '^(COMPATIBILITY\.md$|admin/x86-cpus?(/|$))' \
     tools='python3' check fix
 # BENCHMARKS.md and the README's comparison are generated from the results,
 # the verified-code table, and the gap decisions, which link the quests that
-# close them.
-module bench '^(BENCHMARKS\.md$|README\.md$|benchmarks/|admin/bench-report|quest/)' \
+# close them. Its reproduction command names flake.nix's pinned toolchain.
+module bench '^(BENCHMARKS\.md$|README\.md$|benchmarks/|admin/bench-report|quest/|flake\.nix$)' \
     tools='python3' check
 # The landing page, on a diff to its own code, the shell and CI setup it builds
 # in, or a repository file site/inputs.txt lists, which it reads or links with
@@ -798,6 +803,8 @@ step() {
         check:testing) run python3 admin/testing ;;
         check:audit) run python3 admin/audit check ;;
         fix:audit) run python3 admin/audit fix ;;
+        check:ledger) run python3 admin/ledger check ;;
+        fix:ledger) run python3 admin/ledger fix ;;
         check:compat)
             run python3 admin/x86-cpu markdown-table >"$logs/compat.md"
             run diff -u COMPATIBILITY.md "$logs/compat.md"
