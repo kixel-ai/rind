@@ -40,7 +40,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 ARCHS = {"x86_64": "X86_64", "aarch64": "Aarch64"}
 SYM = re.compile(r"\{(vg_[A-Za-z0-9_]+)\}")
-URL = re.compile(r"https://github\.com/pyca/verified-garbage/blob/([0-9a-f]{40})/(\S+?)(?:#L(\d+))?(?=[\s)`]|[.,;:]?(?:\s|$))")
+URL = re.compile(r"https://github\.com/pyca/verified-garbage/blob/([^/\s]+)/(\S+?)(?:#L(\d+))?(?=[\s)`]|[.,;:]?(?:\s|$))")
 # What else a link lands on: a registration in `Artifacts/` builds an artifact
 # from its `Api`, and a proof's field states `Verified` code and contract.
 ARTIFACT = re.compile(r"\.artifact\b|\bArtifact\b|\bVerified\b")
