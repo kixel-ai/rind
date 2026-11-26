@@ -113,7 +113,7 @@ The pins, as `admin/audit` renders them from the files that hold them, so
 | OpenSSL | `2f4e3a5fec05` | `admin/import-openssl` | copied code |
 | HACL\* | `f557259007db` | `admin/import-hacl` | Vale's x86_64 AES-GCM |
 | pyca/verified-garbage | `0aa40d6c21fd` | `admin/import-vg` | copied code and the Lean ISA models its proofs rest on |
-| mlkem-native | `58721ebde4b6` | `admin/import-mlkem-native` | aarch64 ML-KEM ciphertext compression |
+| mlkem-native | `58721ebde4b6` | `admin/import-mlkem-native` | aarch64 ML-KEM ciphertext compression, and the HOL Light proofs of it and of x86_64's |
 | s2n-bignum | `3f01260ff1bd` | `thirdparty/s2n-bignum/RIND.md` | assembly and the HOL Light proofs of it |
 | aws-lc | `c21d40da4bbe` | `admin/prove-bytes` | the routines aws-lc-verification's SHA-384/512 proofs are about |
 | ACVP-Server | `975de31eb83d` | `admin/sync-acvp` | test vectors |

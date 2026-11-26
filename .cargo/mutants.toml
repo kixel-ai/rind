@@ -4,6 +4,11 @@
 # Runs each mutant's tests in parallel, in about half `cargo test`'s time.
 test_tool = "nextest"
 
+# A mutant that hangs a test is killed at twice the baseline test run, not the
+# default five times, which the weekly campaign measured at up to an hour each:
+# a mutant that only runs every test, as a missed one does, takes the baseline.
+timeout_multiplier = 2
+
 exclude_globs = [
   # Constants imported with aws-lc's, BoringSSL's, and OpenSSL's assembly,
   # which proofs and differential tests own.
