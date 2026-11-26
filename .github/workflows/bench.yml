@@ -19,8 +19,10 @@ on:
         type: string
         default: ""
 
+# A newer run on a ref replaces an older one, except a bisect step's: each
+# counts its own commit, so none may cancel another or the weekly run.
 concurrency:
-  group: bench-${{ github.ref }}
+  group: bench-${{ github.ref }}-${{ inputs.benchmarks != '' && github.run_id || 'timed' }}
   cancel-in-progress: true
 
 env:
