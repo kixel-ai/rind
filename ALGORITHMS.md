@@ -663,8 +663,8 @@ verified once never pays for them. s2n-bignum's point
 additions are proven only for unequal points, so P-384's and P-521's first
 compare x's and settle equal or opposite points by cases. P-256's mixed
 addition is also proven, by rind's own HOL Light lemma, to leave z zero for
-equal or opposite points, as fiat-crypto's on armv7 and the portable backend
-does by construction, so P-256 adds first and compares y's only when z is
+equal or opposite points, as rind's own formula over fiat-crypto's field on
+armv7 and the portable backend does by construction, so P-256 adds first and compares y's only when z is
 zero. The portable
 backend's P521 runs the whole chain in fiat-crypto's limbs, rather than
 converting each coordinate to and from words at every point routine, and

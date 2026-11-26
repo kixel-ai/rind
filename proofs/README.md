@@ -145,7 +145,8 @@ those inputs, in any worktree, restores in under a second.
   `low::x86_64::p256_montjmixadd_alt::p256_montjmixadd_alt`, and
   `low::aarch64::p256_montjmixadd::p256_montjmixadd`, which is s2n-bignum's
   `p256_montjmixadd_alt`, leave the sum's z zero when the two points are
-  equal or opposite, the case s2n-bignum's correctness theorem excludes. Each
+  equal, which s2n-bignum's correctness theorem excludes, or opposite, whose
+  sum it states only as the point at infinity. Each
   file carries s2n-bignum's definitions and lemmas for its routine and
   replays its simulation: the routine's z is z1 times x2 z1² - x1, zero mod p
   when the points' x's agree. `p256_montjmixadd_spec` in
