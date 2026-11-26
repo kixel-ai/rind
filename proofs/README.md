@@ -1101,12 +1101,26 @@ ML-KEM-768, on those axioms. Aeneas does not translate a set's `Params` impl,
 so the theorem takes it as a parameter, and `Is768` states what ML-KEM-768's
 is: its constants, and its types' `FixedArray` impls those of arrays.
 
+`sample_poly_cbd_spec` (`Rind/X86_64/MlKemCbd.lean`, which `admin/prove` also
+writes for aarch64): `mid::mlkem::sample_poly_cbd` with η = 2 writes FIPS
+203's `SamplePolyCBD_2(PRF_2(σ, N))` into each polynomial it fills, `N`
+counting up from its first, each coefficient in `[-2, 2]`, hashing up to four
+inputs at once through `shake256_batch_spec`, so it rests on SHA-3's axioms.
+ML-KEM-512's η₁ of 3 runs another path, which it leaves out.
+
+`kpke_encrypt_fips` (`Rind/Aarch64/MlKemEncrypt.lean`): on aarch64,
+`Decoded::kpke_encrypt` is FIPS 203's `K-PKE.Encrypt` (Algorithm 14) for
+ML-KEM-768, given a `Decoded` whose `t̂` and transposed matrix are those the
+encapsulation key encodes (`DecodedHolds`), on the routines' and SHA-3's
+axioms. `kpke_encrypt_spec` states the ciphertext from rind's side, and
+`encrypt_eq` unrolls the spec's loops to the same terms.
+
 `Rind/MlKemCoding.lean` states what they need of the spec, with no Rust:
 `ByteEncode_bit`, `ByteDecode_get`, and `SamplePolyCBD_get` give each bit or
 coefficient of FIPS 203's `ByteEncode`, `ByteDecode`, and `SamplePolyCBD`,
 which the spec writes as loops, and `Compress_val` and `Decompress_val` give
 `Compress` and `Decompress`, which it writes as rounded rationals, as
-quotients of naturals. K-PKE's decryption calls them; its encryption and key
+quotients of naturals. K-PKE's decryption and encryption call them; its key
 generation, the Fujisaki-Okamoto transform, SampleNTT, and x86_64's
 encodings are the quest's.
 
@@ -1905,7 +1919,9 @@ proof after those.
   `ByteEncode`; `Rind/Aarch64/MlKemRoutines.lean`: the axioms for aarch64's
   ML-KEM routines and their specs in FIPS 203's terms;
   `Rind/Aarch64/MlKemPoly.lean`: `mid::mlkem`'s vector operations over them;
-  `Rind/Aarch64/MlKemPke.lean`: ML-KEM-768's K-PKE decryption.
+  `Rind/X86_64/MlKemCbd.lean`, on both targets: rind's noise sampling;
+  `Rind/Aarch64/MlKemPke.lean`: ML-KEM-768's K-PKE decryption;
+  `Rind/Aarch64/MlKemEncrypt.lean`: its encryption.
 - `Rind/<Arch>/ShaBlocks.lean`: SHA-1 and SHA-256's block functions on each
   target, SHA-1's padded last blocks, and SHA-256's padded last blocks and
   finish; `Rind/Aarch64/Sha256Hw.lean`, the axiom for aarch64's routine with
