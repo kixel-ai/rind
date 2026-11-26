@@ -858,9 +858,10 @@ writes each raw 12-bit field, in `[0, 4096)`, so each coefficient is
 `mlkem_reduce` after it, whose axiom is the quest's, makes it canonical.
 Ciphertext compression there is mlkem-native's NEON assembly, which HOL Light
 proves, and `admin/prove bytes` checks rind's build of it, and of x86_64's
-AVX2 compression, against the code and tables those proofs list; its bridge
-to `Compress` is the construction quest's, as for x86_64's AVX2
-compression.
+AVX2 compression, against the code those proofs list, and the constant table
+statics it configures against the proofs' tables; which table a wrapper passes
+is not part of that check. Its bridge to `Compress` is the construction quest's,
+as for x86_64's AVX2 compression.
 
 `Rind/MlKemCoding.lean` states what they need of the spec, with no Rust:
 `ByteEncode_bit`, `ByteDecode_get`, and `SamplePolyCBD_get` give each bit or
