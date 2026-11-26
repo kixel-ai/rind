@@ -24,8 +24,8 @@
 # exports, which is all its callers can call, holds an instruction in MCDT
 # that can run outside Intel's MXCSR mitigation, `rind::low::Mcdt`. In a
 # function that calls MITIGATION, it follows the control flow, through
-# every target of the function's jump tables where it jumps through a
-# register, and fails at an indirect jump it cannot bound. So an
+# every target of a jump table where it dispatches through one whose start
+# every path there loads, and fails at an indirect jump it cannot bound. So an
 # instruction, and whatever a call there reaches, counts as mitigated only
 # where every path from the function's start calls MITIGATION with no call
 # in RELEASE since: the mitigation must dominate it. Nothing in `admin/ct-vartime.toml`
@@ -212,6 +212,16 @@ ALIASES = {
     **{"r" + x: {"r" + x, "e" + x, x, x + "l"} for x in ("si", "di", "bp", "sp")},
     **{"r%d" % n: {"r%d" % n + s for s in ("", "d", "w", "b")} for n in range(8, 16)},
 }
+REG64 = {name: reg for reg, names in ALIASES.items() for name in names}
+# What a call may write, by the System V ABI.
+CALLER_SAVED = {"rax", "rcx", "rdx", "rsi", "rdi", "r8", "r9", "r10", "r11"}
+# Instructions that may write every register they name, and some they do
+# not: IMPLICIT, as `cpuid` writes rbx, `leave` rbp, and `syscall` r11.
+WRITES_MORE = re.compile(
+    r"xchg|xadd|cmpxchg\w*|mulx|i?mul|i?div|c(qo|dq|wd|bw|dqe|wde)|cpuid|rdtscp?|rdpid|rdpkru"
+    r"|syscall|xgetbv|leave|enter|lahf|loop\w*|pop\w*|(movs|stos|lods|scas|cmps|ins|outs)[bwdq]?"
+)
+IMPLICIT = {"rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rbp", "r11"}
 
 # Mnemonics each VARTIME pattern must refuse, then must allow, checked
 # before every scan.
@@ -483,19 +493,27 @@ class Objects:
 
 
 def jump_tables(objects, node):
-    """Every offset in x86 section `node` that its jump tables hold. In
-    position-independent code, LLVM lowers a `match` to a table of each
-    target's 32-bit offset from the table's start, which `node` loads with a
-    `lea`, and jumps through a register. Each entry is a PC32 relocation into
-    `node` at the target plus the entry's distance from the table's start."""
-    starts = collections.defaultdict(set)
-    for _, target, addend in objects.pcrel.get(node, ()):
+    """The jump tables of x86 section `node`, as {(section, start): its
+    targets}, and which instructions load which table's start, as {index:
+    (section, start)}. In position-independent code, LLVM lowers a `match`
+    to a table of each target's 32-bit offset from the table's start, which
+    `node` loads with a `lea`, and jumps through a register. Each entry is a
+    PC32 relocation into `node` at the target plus the entry's distance from
+    the table's start."""
+    insns = objects.insns[node]
+    offsets = [offset for offset, _, _ in insns]
+    loads = {}
+    for offset, target, addend in objects.pcrel.get(node, ()):
+        i = bisect.bisect_right(offsets, offset) - 1
         to = objects.resolve(node[0], target)
-        if to is not None and to != node:
-            # The relocation is a `lea`'s last four bytes, so the address
+        if insns[i][1] == "lea" and to is not None and to != node:
+            # The relocation is the `lea`'s last four bytes, so the address
             # it loads is four past where its addend points.
-            starts[to].add(addend + 4)
-    targets = set()
+            loads[i] = (to, addend + 4)
+    starts = collections.defaultdict(set)
+    for data, start in loads.values():
+        starts[data].add(start)
+    tables = collections.defaultdict(set)
     for data, bases in starts.items():
         bases = sorted(bases)
         for offset, target, addend in objects.pcrel.get(data, ()):
@@ -506,8 +524,19 @@ def jump_tables(objects, node):
             if i < 0:
                 sys.exit("ct-vartime: {:#x} in {} points into {} before any table it loads".format(
                     offset, data[1], objects.section_name(node)))
-            targets.add(addend - (offset - bases[i]))
-    return targets
+            tables[(data, bases[i])].add(addend - (offset - bases[i]))
+    return tables, {i: key for i, key in loads.items() if key in tables}
+
+
+def written(mnemonic, operands):
+    """The 64-bit registers an x86 instruction may write: its first operand,
+    or for a call, or one that writes others too, more."""
+    ops = operands.split(", ")
+    if mnemonic == "call":
+        return CALLER_SAVED
+    names = ops if WRITES_MORE.fullmatch(mnemonic) else ops[:1]
+    regs = {REG64[w] for op in names if "[" not in op for w in re.findall(r"\w+", op) if w in REG64}
+    return regs | IMPLICIT if WRITES_MORE.fullmatch(mnemonic) else regs
 
 
 def mitigated(objects, node):
@@ -518,29 +547,29 @@ def mitigated(objects, node):
     insns = objects.insns[node]
     offsets = [offset for offset, _, _ in insns]
     index = {offset: i for i, offset in enumerate(offsets)}
-    # An indirect jump may reach any of the section's jump tables' targets.
-    # Joining a target from a table no path there loads only takes a
-    # mitigation away, so it can make the scan stricter but never laxer.
-    tables = sorted(jump_tables(objects, node))
-    for target in tables:
-        if target not in index:
-            sys.exit("ct-vartime: a jump table in {} points at {:#x}, outside an instruction".format(
-                objects.section_name(node), target))
+    tables, loads = jump_tables(objects, node)
+    for targets in tables.values():
+        for target in targets:
+            if target not in index:
+                sys.exit("ct-vartime: a jump table in {} points at {:#x}, outside an instruction".format(
+                    objects.section_name(node), target))
     switched = set()
 
-    def dispatches(i):
-        """Whether the `jmp` at `i` adds a table's entry to the table's
-        start, as LLVM dispatches, rather than calling a function pointer.
-        LLVM may schedule other instructions among the three, so the walk
-        back passes any that neither names their registers nor branches."""
+    def dispatch(i):
+        """The register holding the table's start if the `jmp` at `i` adds
+        a table's entry to it, as LLVM dispatches, else None. LLVM may
+        schedule other instructions among the three, so the walk back passes
+        any that neither names their registers nor branches."""
         to = insns[i][2]
         add = earlier(i, to)
         if add is None or insns[add][1] != "add" or not insns[add][2].startswith(to + ", "):
-            return False
+            return None
         table = insns[add][2][len(to) + 2:]
         load = earlier(add, to, table)
-        m = load is not None and re.fullmatch(r"(r\w+), dword ptr \[(r\w+) \+ 4\*r\w+\]", insns[load][2])
-        return insns[load][1] == "movsxd" and m and m[1] == to and m[2] == table
+        if earlier(i, to, table) != add or load is None or insns[load][1] != "movsxd":
+            return None
+        m = re.fullmatch(r"(r\w+), dword ptr \[(r\w+) \+ 4\*r\w+\]", insns[load][2])
+        return table if m and m[1] == to and m[2] == table else None
 
     def earlier(i, *registers):
         """The last instruction before `i` in its block naming `registers`."""
@@ -557,7 +586,7 @@ def mitigated(objects, node):
     for offset, target in objects.relocs.get(node, ()):
         named[bisect.bisect_right(offsets, offset) - 1].append(objects.target_name(node[0], target))
 
-    def successors(i):
+    def successors(i, regs):
         _, mnemonic, operands = insns[i]
         names = named.get(i, ())
         if mnemonic in END:
@@ -569,9 +598,12 @@ def mitigated(objects, node):
         # A jump with a relocation leaves the section, as a tail call.
         jump = mnemonic == "jmp" or BRANCH.fullmatch(mnemonic)
         to = TARGET.match(operands) if jump and not names else None
-        if mnemonic == "jmp" and not names and tables and dispatches(i):
+        # A table dispatch goes to every target of each table its base
+        # register may hold, which every path there loads.
+        table = mnemonic == "jmp" and not names and not to and dispatch(i)
+        if table and regs.get(table):
             switched.add(objects.function(node, offsets[i]))
-            return [index[t] for t in tables]
+            return sorted({index[t] for key in regs[table] for t in tables[key]})
         if jump and not names and not to:
             sys.exit("ct-vartime: {} at {:#x} jumps indirectly in {}, which the MXCSR scan cannot follow".format(
                 mnemonic, offsets[i], objects.section_name(node)))
@@ -584,16 +616,18 @@ def mitigated(objects, node):
         return [s for s in out if s < len(insns)]
 
     # A forward must-analysis: held into an instruction only if held out of
-    # every one that leads to it. Each function starts unmitigated.
+    # every one that leads to it. Each function starts unmitigated. Beside
+    # it, which tables' starts each register may hold, known only where
+    # every path there loads one, so a dispatch's targets are bounded.
     held = [None] * len(insns)
     queue = collections.deque()
     for start, _ in objects.labels.get(node, [(offsets[0], None)]):
         if start in index:
-            held[index[start]] = False
+            held[index[start]] = (False, {})
             queue.append(index[start])
     while queue:
         i = queue.popleft()
-        state = held[i]
+        state, regs = held[i]
         # Only a call to `enter` returns here holding the mitigation; any
         # other reference to it, such as a conditional tail call, does not.
         for name in named.get(i, ()):
@@ -601,13 +635,21 @@ def mitigated(objects, node):
                 state = True
             elif RELEASE.fullmatch(name):
                 state = False
-        for s in successors(i):
-            new = state if held[s] is None else held[s] and state
+        after = dict(regs)
+        for reg in written(insns[i][1], insns[i][2]):
+            after.pop(reg, None)
+        if i in loads:
+            after[REG64[insns[i][2].split(", ")[0]]] = frozenset([loads[i]])
+        for s in successors(i, regs):
+            if held[s] is None:
+                new = (state, after)
+            else:
+                new = (held[s][0] and state, {r: t | after[r] for r, t in held[s][1].items() if r in after})
             if new != held[s]:
                 held[s] = new
                 queue.append(s)
     # Code no path reaches, such as a landing pad, counts as unmitigated.
-    covered = {offsets[i] for i, h in enumerate(held) if h}
+    covered = {offsets[i] for i, h in enumerate(held) if h and h[0]}
 
     def at(offset):
         return offsets[bisect.bisect_right(offsets, offset) - 1] in covered
