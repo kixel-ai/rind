@@ -293,4 +293,72 @@ theorem copy_ok (s : S) (j k c : Nat) (ap bp np n0p tp rp : BitVec 64)
       | with_reducible rfl
       | skip
 
+/-! ## The epilogue -/
+
+/-- `lea rsp` raising the stack pointer by at most what the function claimed. -/
+theorem moveSp_up (s : S) (v : Addr) (n : Nat) (rest : List Region)
+    (hwr : s.vg.wr = ⟨s.vg.gpr .rsp, n⟩ :: rest) (h1 : (s.vg.gpr .rsp).toNat < v.toNat)
+    (h2 : v.toNat - (s.vg.gpr .rsp).toNat ≤ n) :
+    Rind.X86_64.moveSp s v = some { s with vg := { s.vg.setReg .rsp v with
+        wr := ⟨v, n - (v.toNat - (s.vg.gpr .rsp).toNat)⟩ :: rest,
+        mem := lose s.vg.mem (s.vg.gpr .rsp) (v.toNat - (s.vg.gpr .rsp).toNat) s.vg.unknowns,
+        unknowns := fun i => s.vg.unknowns (i + 2 * ((v.toNat - (s.vg.gpr .rsp).toNat + 7) / 8)) } } := by
+  have hc : Rind.X86_64.claimed s.vg = some n := by simp [Rind.X86_64.claimed, hwr]
+  simp only [Rind.X86_64.moveSp, hc, Option.bind_some, hwr, List.tail_cons]
+  rw [if_neg (by omega), if_pos ⟨h1, h2⟩]
+
+theorem disp_neg (b : BitVec 64) (L : Nat) (h : 2 ^ 63 ≤ L ∧ L < 2 ^ 64) :
+    b + BitVec.ofNat 64 L = b - BitVec.ofNat 64 (2 ^ 64 - L) := by
+  apply BitVec.eq_of_toNat_eq
+  simp only [BitVec.toNat_add, BitVec.toNat_sub, BitVec.toNat_ofNat]
+  omega
+
+theorem signExtend_one : (1 : BitVec 32).signExtend 64 = 1 := by decide
+
+def epilogueTrace (tp sp0 : Addr) (k : Nat) : List Leak :=
+  [.addr (wa tp (k + 1)), .addr (sp0 - 48#64), .addr (sp0 - 40#64), .addr (sp0 - 32#64), .addr (sp0 - 24#64),
+   .addr (sp0 - 16#64), .addr (sp0 - 8#64)]
+
+set_option hygiene false in
+/-- Reads in the claimed stack. -/
+macro "epi_disch" : tactic => `(tactic| no_recover first
+  | decide
+  | (try simp only [rd_setReg, wr_setReg]) <;>
+     first
+      | (refine inR (List.mem_append_right _ rS) ?_; simp only; bv_omega)
+      | omega)
+
+set_option maxHeartbeats 4000000 in
+theorem epilogue_ok (s : S) (k n : Nat) (tp sp0 v15 v14 v13 v12 vbp vbx : Addr) (rest : List Region)
+    (hk : k < 2 ^ 32) (htp : tp.toNat + 8 * (k + 3) + 48 ≤ sp0.toNat) (hsp : sp0.toNat + 8 ≤ 2 ^ 64)
+    (hrsp : s.vg.gpr .rsp = tp) (hr9 : s.vg.gpr .r9 = BitVec.ofNat 64 k)
+    (hwr : s.vg.wr = ⟨tp, n⟩ :: rest) (hn : n = sp0.toNat + 8 - tp.toNat)
+    (hS : s.vg.mem.readW (wa tp (k + 1)) 64 = sp0) (h15 : s.vg.mem.readW (sp0 - 48#64) 64 = v15)
+    (h14 : s.vg.mem.readW (sp0 - 40#64) 64 = v14) (h13 : s.vg.mem.readW (sp0 - 32#64) 64 = v13)
+    (h12 : s.vg.mem.readW (sp0 - 24#64) 64 = v12) (hbp : s.vg.mem.readW (sp0 - 16#64) 64 = vbp)
+    (hbx : s.vg.mem.readW (sp0 - 8#64) 64 = vbx) :
+    ∃ s', execBlock I epilogue s = some (s', epilogueTrace tp sp0 k) ∧
+      s'.vg.gpr .rsp = sp0 ∧ s'.vg.gpr .rax = 1 ∧ s'.vg.gpr .r15 = v15 ∧ s'.vg.gpr .r14 = v14 ∧
+      s'.vg.gpr .r13 = v13 ∧ s'.vg.gpr .r12 = v12 ∧ s'.vg.gpr .rbp = vbp ∧ s'.vg.gpr .rbx = vbx ∧
+      s'.vg.wr = ⟨sp0, 8⟩ :: rest ∧ s'.vg.rd = s.vg.rd ∧ s'.vg.mxcsr = s.vg.mxcsr ∧ s'.lo = s.lo ∧
+      s'.vg.mem = lose s.vg.mem tp (sp0.toNat - tp.toNat) s.vg.unknowns := by
+  have rS : (⟨tp, n⟩ : Region) ∈ s.vg.wr := by rw [hwr]; exact List.mem_cons_self
+  apply ex_of_eq
+  · rw [execBlock_acc]
+    simp (config := { maxSteps := 4000000 }) (disch := epi_disch) only [epilogue, hrsp, hr9, hS, h15, h14, h13,
+      h12, hbp, hbx, execAcc_cons, execAcc_nil, load64_of, Rind.X86_64.exec, Rind.X86_64.addrs, VG.X86_64.addrs,
+      srcAddrs, VG.X86_64.exec, readSrc, Option.map_some, Option.bind_some, State.ea, m, mx, ofInt_lit,
+      Int.reduceNeg, Int.reduceMod, Int.reduceToNat, Int.reducePow, ea_pos, ea_comb, ofNat_add_pos, disp_neg,
+      Nat.reduceAdd, Nat.reduceSub, Nat.reduceDiv, Nat.reducePow, ofNat_zero, add_zero', signExtend_one,
+      gpr_setReg, mem_setReg, rd_setReg, wr_setReg, reduceCtorEq, ↓reduceIte, List.map_nil, List.map_cons,
+      List.append_nil, List.nil_append, List.cons_append]
+    rw [moveSp_up _ _ n rest (by simp only [wr_setReg, gpr_setReg, reduceCtorEq, ↓reduceIte, hrsp, hwr])
+      (by simp only [gpr_setReg, reduceCtorEq, ↓reduceIte, hrsp]; omega)
+      (by simp only [gpr_setReg, reduceCtorEq, ↓reduceIte, hrsp]; omega)]
+    rfl
+  · rfl
+  · simp only [gpr_setReg, reduceCtorEq, ↓reduceIte, hrsp, hn]
+    repeat' apply And.intro
+    all_goals first | trivial | rfl | (congr 2; omega)
+
 end rind.x86_64.mul4x
