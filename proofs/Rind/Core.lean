@@ -275,12 +275,6 @@ def Shared0U8.Insts.CoreOpsBitBitAndU8U8.bitand (x y : Std.U8) : Result Std.U8 :
 def Shared0U64.Insts.CoreOpsBitBitAndU64U64.bitand (x y : Std.U64) : Result Std.U64 :=
   Std.Result.ok (x &&& y)
 
-/-- `Option<&T>::copied`: the value, which Aeneas translates a shared
-reference to. -/
-def core.option.OptionShared0T.copied {T : Type _} (_ : core.marker.Copy T) (o : Option T) :
-    Result (Option T) :=
-  Std.Result.ok o
-
 /-- `<Vec<T> as AsMut<[T]>>::as_mut`: the whole vector, which writes back to it. -/
 def alloc.vec.Vec.Insts.CoreConvertAsMutSlice.as_mut {T : Type _} (_A : Type _) (v : alloc.vec.Vec T) :
     Result ((Slice T) × (Slice T → alloc.vec.Vec T)) :=
