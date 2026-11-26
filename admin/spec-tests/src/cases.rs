@@ -53,10 +53,10 @@ pub const SECTIONS: &[Section] = &[
     ("mlkem768.3", "mlkem.c", |run| {
         mlkem::<rind::kem::MlKem768>(run, "768", 3, 4)
     }),
-    ("mlkem512.0", "mlkem.b", |run| {
+    ("mlkem512.0", "mlkem.c", |run| {
         mlkem::<rind::kem::MlKem512>(run, "512", 0, 2)
     }),
-    ("mlkem512.1", "mlkem.b", |run| {
+    ("mlkem512.1", "mlkem.c", |run| {
         mlkem::<rind::kem::MlKem512>(run, "512", 1, 2)
     }),
     ("sha2-sha384", "digests", |run| sha2(run, "sha384")),
