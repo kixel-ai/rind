@@ -1598,6 +1598,7 @@ extract x86_64 X86_64 "${hashes[@]}" "${assembly[@]}" \
     --include crate::low::x86_64::adx_mux::edwards25519_decode \
     --include crate::low::x86_64::adx_mux::edwards25519_scalarmulbase \
     --include crate::low::x86_64::adx_mux::bignum_madd_n25519 \
+    --include crate::low::x86_64::adx_mux::bignum_mul_p25519 \
     --include crate::low::x86_64::sha1_mux \
     --opaque crate::low::x86_64::sha1_mux::path \
     --opaque crate::low::x86_64::sha1_mux::sha1_compress_blocks \
