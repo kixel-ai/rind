@@ -212,6 +212,8 @@ theorem ofNat_zero : BitVec.ofNat 64 0 = 0 := rfl
 
 theorem add_zero' (x : BitVec 64) : x + 0 = x := BitVec.add_zero x
 
+theorem zero_add' (x : BitVec 64) : 0 + x = x := BitVec.zero_add x
+
 /-! ## Memory -/
 
 theorem read_congr (m m' : Mem) (a : Addr) (n : Nat)
