@@ -2,7 +2,7 @@
 
 ## Goal
 
-A change that breaks a check that gates the merge and runs on pull requests fails on its own pull request, not first in the merge queue, so a red result names the PR that caused it. The queue's build runs only checks the PR check runs too. A check that gates nothing runs only on its schedule, and its alert reports a failure there.
+A change that breaks a check that gates the merge and runs on pull requests fails on its own pull request, not first in the merge queue, so a red result names the PR that caused it. The queue's build runs only checks the PR check runs too. A check that gates nothing runs only on its schedule, and its alert reports a failure there, but for the few the PR check also runs, advisory, since their result rests on the PR's own diff (`pr` in `sh/dispatch.sh`).
 
 ## Plan
 

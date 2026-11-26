@@ -47,9 +47,11 @@ jobs:
           QUEST_GATE_PRIORITY: 1
         run: nix develop --command quest gate just ci "$BASE"
       # Cargo's per-crate timings of the group's build, so a compile-time
-      # regression shows without profiling by hand.
+      # regression shows without profiling by hand. A diagnostic, so a failed
+      # upload never fails the group.
       - name: Upload build timings
         if: ${{ !cancelled() }}
+        continue-on-error: true
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: cargo-timings
