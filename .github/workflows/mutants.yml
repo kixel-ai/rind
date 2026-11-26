@@ -102,7 +102,10 @@ jobs:
       # diff's mean follows its survivors more than its size. That run's 24 for
       # aarch64 was far low: 126 of its mutants were Ed25519 verification, which
       # only x86_64 compiles and no test killed elsewhere, and hung tests ran at
-      # 5x the baseline, up to an hour each.
+      # 5x the baseline, up to an hour each. Replaying that run's mutants into
+      # these shard counts, the slowest shard takes 3.1 h on x86_64, 3.8 h on
+      # aarch64, and 3.5 h on portable, so x86_64's 120 is above its 94 mean:
+      # its survivors cluster.
       - name: Count
         id: count
         run: |
@@ -135,7 +138,7 @@ jobs:
               '. + [range($shards) | {name: $name, os: $os, args: $args, shard: ., shards: $shards}]' <<<"$matrix")
           }
           # `--target` lets this x86_64 runner list another's campaign.
-          add x86_64 ubuntu-latest 100 --target x86_64-unknown-linux-gnu "${crate[@]}"
+          add x86_64 ubuntu-latest 120 --target x86_64-unknown-linux-gnu "${crate[@]}"
           add aarch64 ubuntu-24.04-arm 60 --target aarch64-unknown-linux-gnu "${crate[@]}"
           # What only the portable backend compiles, and what armv7's assembly
           # replaces. Its adapters' code is the same as on x86_64.
