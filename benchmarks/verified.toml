@@ -65,9 +65,9 @@
 # IFMA checks a multiple of RFC 8032's equation with half-size scalars that
 # nothing proves yet. With AVX-512 IFMA, X25519 and Ed25519 run
 # pyca/verified-garbage's whole operations, SHA-512 included, whose Lean
-# proofs `proofs/` imports, under glue it proves. On aarch64 with SVE2,
-# ChaCha20-Poly1305 and XChaCha20-Poly1305 run pyca/verified-garbage's one
-# pass, whose Lean proofs `proofs/` imports, under glue it proves. Without
+# proofs `proofs/` imports, under glue it proves. On x86_64 with AVX-512
+# IFMA and on aarch64 with SVE2, ChaCha20-Poly1305 and XChaCha20-Poly1305 run
+# pyca/verified-garbage's one pass, whose Lean proofs `proofs/` imports, under glue it proves. Without
 # SVE2, VG's NEON one pass runs at the lengths where it outruns aws-lc's,
 # 1350 bytes and 16 KiB among them, and `proofs/` proves those too, but
 # `kixtop`'s table predates kixel-ai/rind#1023, which moved them to it, so
@@ -76,8 +76,9 @@
 # x86_64 without the SHA extensions or AVX2 or on aarch64 without the crypto
 # extension, under padding and HMAC glue that
 # `proofs/` proves, or ChaCha20-Poly1305's aws-lc one-pass routines on x86_64
-# and at the other lengths on aarch64 without SVE2, under glue `proofs/`
-# proves.
+# and on aarch64 at the lengths no VG routine runs, and ChaCha20-Poly1305's
+# aws-lc one-pass routines on x86_64 CPUs without AVX-512 IFMA, under glue
+# `proofs/` proves.
 #
 # rind's RSA-2048 PKCS#1 v1.5 verification earns the ✓ on x86_64 with BMI2
 # and ADX, whose Montgomery products are s2n-bignum's Karatsuba routines, and
@@ -337,6 +338,14 @@ arch = "aarch64"
 cpu = ["sve2"]
 proof = "rind's Lean proof, through Aeneas and a hand model of the function-pointer dispatch Aeneas cannot translate, of its AEAD API's ChaCha20-Poly1305 and XChaCha20-Poly1305 key setup, seal, and open against RFC 8439 and draft-irtf-cfrg-xchacha-03, for every AAD and message length it takes, HChaCha20 over HACL*'s rounds included, down to pyca/verified-garbage's vg_chacha20_poly1305_seal_sve2 and vg_chacha20_poly1305_open_sve2, which rind runs at every length on CPUs with SVE2, composed with pyca/verified-garbage's Lean proofs of those routines against its model of its own machine code, which rind vendors, whose instructions rind cosimulates against that model, and rind's Lean proof that that project's RFC 8439 spec is its own"
 link = "https://github.com/kixel-ai/rind/blob/main/proofs/Rind/Aarch64/ChaCha20Poly1305.lean"
+
+[[verified]]
+library = "rind"
+operations = ["chacha20poly1305/*", "xchacha20poly1305/*"]
+arch = "x86_64"
+cpu = ["avx", "avx2", "avx512f", "avx512vl", "avx512ifma"]
+proof = "rind's Lean proof, through Aeneas and a hand model of the function-pointer dispatch Aeneas cannot translate, of its AEAD API's ChaCha20-Poly1305 and XChaCha20-Poly1305 key setup, seal, and open against RFC 8439 and draft-irtf-cfrg-xchacha-03, for every AAD and message length it takes, HChaCha20 over HACL*'s rounds included, down to pyca/verified-garbage's vg_chacha20_poly1305_seal_ifma and vg_chacha20_poly1305_open_ifma, which rind runs at every length on CPUs with AVX-512 IFMA, composed with pyca/verified-garbage's Lean proofs of those routines against its model of its own machine code, which rind vendors, whose instructions rind cosimulates against its ISA models, and rind's Lean proof that that project's RFC 8439 spec is its own"
+link = "https://github.com/kixel-ai/rind/blob/main/proofs/Rind/X86_64/ChaCha20Poly1305.lean"
 
 # aws-lc-rs: SHA-512 on Intel x86_64 alone. On aarch64, NSym's proof of
 # sha512_block_data_order_hw asserts the digest in registers at its loop's

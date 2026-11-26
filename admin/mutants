@@ -537,6 +537,14 @@ case $host in
     *) default_campaign=$host ;;
 esac
 
+# Ed25519 verification's multi-scalar multiplication, which only the x86_64
+# backend compiles under a `cfg`, though cargo-mutants mutates it anyway:
+# on the other campaigns every one of its mutants survives, each costing a
+# whole test run.
+x86_64_only=(
+    rind/src/low/generic/edwards25519_msm.rs rind/src/mid/half_size.rs
+)
+
 # Only armv7 and the portable backend compile these.
 portable=(
     'rind/src/low/portable/**' 'rind/src/mid/portable/**'
@@ -570,6 +578,7 @@ case $campaign in
         triple=AARCH64_UNKNOWN_LINUX_GNU
         skip=(
             'rind/src/low/x86_64/**' 'rind/src/low/arm/**' "${portable[@]}"
+            "${x86_64_only[@]}"
             rind/src/low/generic/mlkem_poly.rs
             rind/src/low/generic/sha1.rs rind/src/low/generic/sha256.rs
         )
@@ -590,6 +599,7 @@ case $campaign in
             'rind/src/low/x86_64/**' 'rind/src/low/aarch64/**' 'rind/src/low/arm/**'
             rind/src/low/generic/limb32.rs
             rind/src/low/generic/p256_mul32.rs rind/src/low/generic/p384_mul32.rs
+            "${x86_64_only[@]}"
         )
         rows=()
         ;;
