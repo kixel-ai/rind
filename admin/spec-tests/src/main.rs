@@ -6,6 +6,12 @@
 //!
 //! Usage: `spec-tests <spec-server> <vectors dir> <seed> <random cases per test> [full]`
 //!
+//! `SPEC_TESTS_GROUP=<group>` runs only the sections of one of `GROUPS`, which
+//! `prove.yml` runs as the rows of its `spec-tests` job, each on its own
+//! runner, so that the job's time is the slowest group's, not the sum. A group
+//! checks that its own specs ran on enough cases, and fails a section that
+//! runs a spec of another group, so the groups together check every spec.
+//!
 //! Each section of `cases` runs on its own thread with its own server, and
 //! its own random source, from the seed and the section's name, so a seed
 //! reproduces each section's inputs alone (`SPEC_TESTS_ONLY=<section>,...`
@@ -92,6 +98,23 @@ const SPECS: &[&str] = &[
     "mlkem-encaps",
     "mlkem-decaps",
 ];
+
+/// The groups the sections run in, which `prove.yml` runs apart: each spec
+/// belongs to the group `group_of` names, and only that group's sections ask
+/// it. Keep the `group` axis of `prove.yml`'s `spec-tests` job to these.
+pub const GROUPS: &[&str] = &["mlkem", "digests", "rest"];
+
+/// The group whose sections run `spec`, ML-KEM's, the digests', or the rest's,
+/// the slowest balanced against each other.
+fn group_of(spec: &str) -> &'static str {
+    if spec.starts_with("mlkem") {
+        "mlkem"
+    } else if spec.starts_with("sha") || spec.starts_with("shake") {
+        "digests"
+    } else {
+        "rest"
+    }
+}
 
 /// The specs that run on no random inputs: rind offers no SHAKE or Poly1305
 /// alone, the SymCrypt sponge is proven the byte sponge `sha3_*` and
@@ -400,18 +423,38 @@ fn main() -> ExitCode {
     if let Some(o) = &only
         && let Some(bad) = o
             .split(',')
-            .find(|o| !cases::SECTIONS.iter().any(|(name, _)| name == o))
+            .find(|o| !cases::SECTIONS.iter().any(|(name, ..)| name == o))
     {
         eprintln!("spec-tests: no section {bad:?} in SPEC_TESTS_ONLY");
         return ExitCode::from(2);
     }
+    let group = match std::env::var("SPEC_TESTS_GROUP") {
+        Ok(g) => {
+            let Some(group) = GROUPS.iter().copied().find(|x| *x == g) else {
+                eprintln!("spec-tests: no group {g:?} in SPEC_TESTS_GROUP, only {GROUPS:?}");
+                return ExitCode::from(2);
+            };
+            Some(group)
+        }
+        Err(std::env::VarError::NotPresent) => None,
+        Err(std::env::VarError::NotUnicode(_)) => {
+            eprintln!("spec-tests: SPEC_TESTS_GROUP is not Unicode");
+            return ExitCode::from(2);
+        }
+    };
     let sections: Vec<_> = cases::SECTIONS
         .iter()
-        .filter(|(name, _)| {
-            only.as_ref()
-                .is_none_or(|o| o.split(',').any(|o| o == *name))
+        .filter(|(name, g, _)| {
+            group.is_none_or(|group| group == *g)
+                && only
+                    .as_ref()
+                    .is_none_or(|o| o.split(',').any(|o| o == *name))
         })
         .collect();
+    if sections.is_empty() {
+        eprintln!("spec-tests: no sections to run");
+        return ExitCode::from(2);
+    }
 
     // The slowest sections first, so the longest one starts at once.
     let queue = Mutex::new(sections.iter().enumerate());
@@ -424,7 +467,9 @@ fn main() -> ExitCode {
                 scope.spawn(|| {
                     let mut done = Vec::new();
                     loop {
-                        let Some((i, (name, section))) = queue.lock().unwrap().next() else {
+                        let Some((i, (name, section_group, section))) =
+                            queue.lock().unwrap().next()
+                        else {
                             break;
                         };
                         // Each section's inputs depend on the seed and its name alone.
@@ -477,6 +522,12 @@ fn main() -> ExitCode {
                         // runs on vectors, so another section's of the same
                         // spec, such as another ML-KEM set's, cannot stand in.
                         for (spec, [v, r]) in &run.counts {
+                            if SPECS.contains(&spec.as_str()) && group_of(spec) != *section_group {
+                                failures.push(format!(
+                                    "{name}: {spec} belongs to the {} group, not {section_group}",
+                                    group_of(spec)
+                                ));
+                            }
                             if *v > 0
                                 && *r == 0
                                 && random > 0
@@ -537,7 +588,10 @@ fn main() -> ExitCode {
         "{:<28} {:>8} {:>8} {:>8}",
         "spec", "vectors", "rind", "seconds"
     );
-    for spec in SPECS {
+    for spec in SPECS
+        .iter()
+        .filter(|s| group.is_none_or(|g| group_of(s) == g))
+    {
         let [v, r] = counts.get(*spec).copied().unwrap_or_default();
         let t = times.get(*spec).copied().unwrap_or_default();
         println!("{spec:<28} {v:>8} {r:>8} {t:>8.1}");
@@ -565,5 +619,25 @@ fn main() -> ExitCode {
         ExitCode::SUCCESS
     } else {
         ExitCode::FAILURE
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    /// `prove.yml` runs each group, and no other: a group left out of its
+    /// matrix would never run.
+    #[test]
+    fn workflow_runs_every_group() {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../.github/workflows/prove.yml"
+        );
+        let workflow = std::fs::read_to_string(path).unwrap();
+        let line = workflow
+            .lines()
+            .find_map(|l| l.trim().strip_prefix("group: ["))
+            .expect("prove.yml's spec-tests job has no `group: [...]` matrix axis");
+        let groups: Vec<_> = line.trim_end_matches(']').split(", ").collect();
+        assert_eq!(groups, super::GROUPS);
     }
 }
