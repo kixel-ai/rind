@@ -31,16 +31,19 @@ a literal for Lean to elaborate: its wrapper stays opaque, and `admin/prove`
 checks the table's text is s2n-bignum's instead.
 
 ML-KEM-768, the set the ✓ covers, runs `mlkem_basemul_k3` alone of the base
-multiplications, so the axioms leave out `_k2` and `_k4`.
+multiplications, and compresses to 10 and 4 bits alone, so the axioms leave
+out `_k2`, `_k4`, `_d5`, and `_d11`.
 
 The specs after them state what each routine computes in FIPS 203's terms,
 which `mid::mlkem`'s proof builds on: the NTTs, the mulcache, and the base
 multiplication, over coefficients in FIPS 203's order, as aarch64 keeps them
 (`mlkem_ntt_spec`, `mlkem_intt_spec`, `mlkem_mulcache_compute_spec`,
-`mlkem_basemul_k3_spec`); reduction and Montgomery conversion
-(`mlkem_reduce_spec`, `mlkem_tomont_spec`); `ByteEncode_12`
-(`mlkem_tobytes_spec`); and `ByteEncode_d(Compress_d(f))` for each width a
-ciphertext takes (`mlkem_compress_spec`).
+`basemul_spec`); reduction and Montgomery conversion (`mlkem_reduce_spec`,
+`mlkem_tomont_spec`); `ByteEncode_12` (`mlkem_tobytes_spec`); and
+`ByteEncode_d(Compress_d(f))` for the widths ML-KEM-768's ciphertext takes
+(`mlkem_compress_d10_spec`, `mlkem_compress_d4_spec`). The base
+multiplication and the inverse NTT scale by Montgomery's factor `2 ^ 16` in
+opposite directions, so each spec states its input or output times it.
 -/
 
 namespace rind.aarch64
@@ -143,27 +146,12 @@ axiom mlkem_compress_d4_axiom (r : Std.Array U8 128#usize) (a : Std.Array I16 25
     low.aarch64.mlkem.mlkem_compress_d4 r a ⦃ r' =>
       leNat r'.val = numOfWords 4 ((words a.val).map (compressD 4)) ⦄
 
-/-- `MLKEM_POLY_COMPRESS_D5_SUBROUTINE_CORRECT`, whose table precondition holds
-because the wrapper passes rind's copy of mlkem-native's table,
-https://github.com/pq-code-package/mlkem-native/blob/58721ebde4b682bb3384ef7d11333e4f0ddb0164/proofs/hol_light/aarch64/proofs/mlkem_poly_compress_d5_aarch64_asm.ml#L407 -/
-axiom mlkem_compress_d5_axiom (r : Std.Array U8 160#usize) (a : Std.Array I16 256#usize)
-    (ha : ∀ i < 256, 0 ≤ (a.val[i]!).val ∧ (a.val[i]!).val ≤ 3328) :
-    low.aarch64.mlkem.mlkem_compress_d5 r a ⦃ r' =>
-      leNat r'.val = numOfWords 5 ((words a.val).map (compressD 5)) ⦄
-
 /-- `MLKEM_POLY_COMPRESS_D10_SUBROUTINE_CORRECT`,
 https://github.com/pq-code-package/mlkem-native/blob/58721ebde4b682bb3384ef7d11333e4f0ddb0164/proofs/hol_light/aarch64/proofs/mlkem_poly_compress_d10_aarch64_asm.ml#L765 -/
 axiom mlkem_compress_d10_axiom (r : Std.Array U8 320#usize) (a : Std.Array I16 256#usize)
     (ha : ∀ i < 256, 0 ≤ (a.val[i]!).val ∧ (a.val[i]!).val ≤ 3328) :
     low.aarch64.mlkem.mlkem_compress_d10 r a ⦃ r' =>
       leNat r'.val = numOfWords 10 ((words a.val).map (compressD 10)) ⦄
-
-/-- `MLKEM_POLY_COMPRESS_D11_SUBROUTINE_CORRECT`,
-https://github.com/pq-code-package/mlkem-native/blob/58721ebde4b682bb3384ef7d11333e4f0ddb0164/proofs/hol_light/aarch64/proofs/mlkem_poly_compress_d11_aarch64_asm.ml#L843 -/
-axiom mlkem_compress_d11_axiom (r : Std.Array U8 352#usize) (a : Std.Array I16 256#usize)
-    (ha : ∀ i < 256, 0 ≤ (a.val[i]!).val ∧ (a.val[i]!).val ≤ 3328) :
-    low.aarch64.mlkem.mlkem_compress_d11 r a ⦃ r' =>
-      leNat r'.val = numOfWords 11 ((words a.val).map (compressD 11)) ⦄
 
 /-! ## rind's tables are s2n-bignum's -/
 
@@ -196,6 +184,153 @@ theorem mulcache_zetas_twisted_eq :
     (low.aarch64.mlkem.MULCACHE_ZETAS_TWISTED : Std.Array I16 128#usize).val.map (·.val) =
       mulcacheZetasTwisted := by
   decide +kernel
+
+/-! ## The routines in FIPS 203's terms -/
+
+theorem cast_of_modEq {x y : ℤ} (h : x ≡ y [ZMOD 3329]) : (x : Zq) = (y : Zq) :=
+  (ZMod.intCast_eq_intCast_iff x y 3329).2 h
+
+/-- The polynomial `a`'s values are congruent to. -/
+theorem poly_coeff (a : List I16) (F : Polynomial) (h : ∀ p < 256, ((a[p]!).val : Zq) = F[p]!) :
+    poly (coeff a) = F := by
+  ext i hi
+  rw [← getElem!_pos (poly (coeff a)) i hi, ← getElem!_pos F i hi, poly_get _ _ hi]
+  exact h i hi
+
+theorem two_pow_16_unit : IsUnit ((2 : Zq) ^ 16) := ⟨⟨2 ^ 16, 169, by decide, by decide⟩, rfl⟩
+
+/-- `NTTInv` is linear, here in the scaling the inverse NTT's Montgomery
+factor needs. -/
+theorem NTTInv_scale (f G : Polynomial) (h : ∀ p < 256, (2 : Zq) ^ 16 * f[p]! = G[p]!) (k : ℕ) (hk : k < 256) :
+    (2 : Zq) ^ 16 * (NTTInv f)[k]! = (NTTInv G)[k]! := by
+  apply two_pow_16_unit.mul_left_cancel
+  rw [← inverse_sum f k hk, ← inverse_sum G k hk, Finset.mul_sum, Finset.mul_sum, Finset.mul_sum]
+  refine Finset.sum_congr rfl fun j hj => ?_
+  have := bitRev_lt j (Finset.mem_range.1 hj)
+  have : k % 2 < 2 := Nat.mod_lt _ (by norm_num)
+  rw [← h _ (by omega)]
+  ring
+
+/-- `mlkem_ntt` is FIPS 203's `NTT`, of coefficients below `2 ^ 13` in magnitude. -/
+theorem mlkem_ntt_spec (a : Std.Array I16 256#usize) (F : Polynomial)
+    (h : Holds (-8191) 8191 256 a.val F) :
+    low.aarch64.mlkem.mlkem_ntt a ⦃ r => Holds (-23594) 23594 256 r.val (NTT F) ⦄ := by
+  unfold low.aarch64.mlkem.mlkem_ntt
+  apply WP.spec_mono (mlkem_ntt_axiom a _ _ ntt_zetas_01234_eq ntt_zetas_56_eq
+    (fun i hi => abs_le.2 ⟨(h i hi).1, (h i hi).2.1⟩))
+  intro r hr p hp
+  obtain ⟨hc, hb⟩ := hr p hp
+  refine ⟨(abs_le.1 hb).1, (abs_le.1 hb).2, ?_⟩
+  rw [cast_of_modEq hc, forwardNtt_eq _ _ hp, poly_coeff a.val F (fun q hq => (h q hq).2.2)]
+
+/-- `mlkem_intt` is FIPS 203's `NTTInv` of `G`, of coefficients `G` times
+`2 ^ -16`. -/
+theorem mlkem_intt_spec (a : Std.Array I16 256#usize) (G : Polynomial)
+    (h : ∀ p < 256, 2 ^ 16 * ((a.val[p]!).val : Zq) = G[p]!) :
+    low.aarch64.mlkem.mlkem_intt a ⦃ r => Holds (-26624) 26624 256 r.val (NTTInv G) ⦄ := by
+  unfold low.aarch64.mlkem.mlkem_intt
+  apply WP.spec_mono (mlkem_intt_axiom a _ _ intt_zetas_01234_eq intt_zetas_56_eq)
+  intro r hr p hp
+  obtain ⟨hc, hb⟩ := hr p hp
+  refine ⟨(abs_le.1 hb).1, (abs_le.1 hb).2, ?_⟩
+  rw [cast_of_modEq hc, inverseNtt_eq _ _ hp]
+  exact NTTInv_scale _ G (fun q hq => by rw [poly_get _ _ hq]; exact h q hq) p hp
+
+/-- `t` is `F`'s mulcache: each odd coefficient times the root
+`MultiplyNTTs` multiplies it by. -/
+def CacheHolds (t : List I16) (F : Polynomial) : Prop :=
+  ∀ i < 128, ((t[i]!).val : Zq) = F[2 * i + 1]! * ζ ^ (2 * bitRev 7 i + 1)
+
+theorem mlkem_mulcache_compute_spec (x : Std.Array I16 128#usize) (a : Std.Array I16 256#usize)
+    (F : Polynomial) (h : ∀ p < 256, ((a.val[p]!).val : Zq) = F[p]!) :
+    low.aarch64.mlkem.mlkem_mulcache_compute x a ⦃ r => CacheHolds r.val F ⦄ := by
+  unfold low.aarch64.mlkem.mlkem_mulcache_compute
+  apply WP.spec_mono (mlkem_mulcache_compute_axiom x a _ _ mulcache_zetas_eq mulcache_zetas_twisted_eq)
+  intro r hr i hi
+  rw [cast_of_modEq (hr i hi).1, mulcache_eq _ _ hi, poly_coeff a.val F h]
+
+/-- `mlkem_reduce` reduces each coefficient into `[0, q)`. -/
+theorem mlkem_reduce_spec (a : Std.Array I16 256#usize) (F : Polynomial)
+    (h : ∀ p < 256, ((a.val[p]!).val : Zq) = F[p]!) :
+    low.aarch64.mlkem_reduce.mlkem_reduce a ⦃ r => Holds 0 3328 256 r.val F ⦄ := by
+  apply WP.spec_mono (mlkem_reduce_axiom a)
+  intro r hr p hp
+  rw [hr p hp, cast_rem, h p hp]
+  exact ⟨Int.emod_nonneg _ (by norm_num), by have := Int.emod_lt_of_pos (a.val[p]!).val (by norm_num : (0 : ℤ) < 3329); omega, rfl⟩
+
+/-- `mlkem_tomont` multiplies by `2 ^ 16`. -/
+theorem mlkem_tomont_spec (a : Std.Array I16 256#usize) (G : Polynomial)
+    (h : ∀ p < 256, 2 ^ 16 * ((a.val[p]!).val : Zq) = G[p]!) :
+    low.aarch64.mlkem_tomont.mlkem_tomont a ⦃ r => Holds (-3328) 3328 256 r.val G ⦄ := by
+  apply WP.spec_mono (mlkem_tomont_axiom a)
+  intro r hr p hp
+  obtain ⟨hc, hb⟩ := hr p hp
+  refine ⟨(abs_le.1 hb).1, (abs_le.1 hb).2, ?_⟩
+  rw [cast_of_modEq hc, tomont3329_eq]
+  exact h p hp
+
+/-- A nonnegative `i16` is its bits' value. -/
+theorem i16_nonneg (x : I16) (h : 0 ≤ x.val) : x.val = (x.bv.toNat : ℤ) := by
+  have hc := BitVec.toInt_eq_toNat_cond x.bv
+  have hl := x.bv.isLt
+  change 0 ≤ x.bv.toInt at h
+  change x.bv.toInt = _
+  split_ifs at hc <;> omega
+
+/-- The words of coefficients in `[0, q)` are their values in `Zq`. -/
+theorem words_getElem (a : Std.Array I16 256#usize) (F : Polynomial) (h : Holds 0 3328 256 a.val F)
+    (p : ℕ) (hp : p < 256) : (words a.val)[p]! = (F[p]!).val := by
+  obtain ⟨h0, h1, hF⟩ := h p hp
+  have hlen : p < a.val.length := by simp [hp]
+  rw [words, List.getElem!_eq_getElem?_getD, List.getElem?_map, List.getElem?_eq_getElem hlen,
+    Option.map_some, Option.getD_some, ← hF, ← getElem!_pos a.val p hlen, i16_nonneg _ h0,
+    Int.cast_natCast, ZMod.val_natCast]
+  have := i16_nonneg _ h0
+  exact (Nat.mod_eq_of_lt (show _ < 3329 by omega)).symm
+
+/-- A byte string whose packing is `l`'s, bit for bit. -/
+theorem bits_of_leNat (n : ℕ) (r : List U8) (hr : r.length = n) (N : ℕ) (h : leNat r = N) (k : ℕ) :
+    bit (toVec n r hr) k = N.testBit k := by
+  rw [bit_toVec, ← h, leNat_testBit]
+
+/-- `mlkem_tobytes` is FIPS 203's `ByteEncode_12`, of coefficients in `[0, q)`. -/
+theorem mlkem_tobytes_spec (r : Std.Array U8 384#usize) (a : Std.Array I16 256#usize) (F : Polynomial)
+    (h : Holds 0 3328 256 a.val F) :
+    low.aarch64.mlkem_tobytes.mlkem_tobytes r a ⦃ r' =>
+      toVec (32 * 12) r'.val r'.property = ByteEncode 12 F ⦄ := by
+  apply WP.spec_mono (mlkem_tobytes_axiom r a)
+  intro r' hr'
+  exact byteEncode12_of_words F _ (words_getElem a F h) _
+    (fun k _ => bits_of_leNat _ r'.val r'.property _ hr' k)
+
+theorem compress_words (d : ℕ) (a : Std.Array I16 256#usize) (F : Polynomial)
+    (h : Holds 0 3328 256 a.val F) (p : ℕ) (hp : p < 256) :
+    ((words a.val).map (compressD d))[p]! = compressD d (F[p]!).val := by
+  have hlen : p < (words a.val).length := by simp [words, hp]
+  rw [List.getElem!_eq_getElem?_getD, List.getElem?_map, List.getElem?_eq_getElem hlen,
+    Option.map_some, Option.getD_some, ← getElem!_pos _ p hlen, words_getElem a F h p hp]
+
+/-- `mlkem_compress_d10` is FIPS 203's `ByteEncode_10(Compress_10(F))`, of
+coefficients in `[0, q)`. -/
+theorem mlkem_compress_d10_spec (r : Std.Array U8 320#usize) (a : Std.Array I16 256#usize) (F : Polynomial)
+    (h : Holds 0 3328 256 a.val F) :
+    low.aarch64.mlkem.mlkem_compress_d10 r a ⦃ r' =>
+      toVec (32 * 10) r'.val r'.property = ByteEncode 10 (Polynomial.Compress 10 F) ⦄ := by
+  apply WP.spec_mono (mlkem_compress_d10_axiom r a fun i hi => ⟨(h i hi).1, (h i hi).2.1⟩)
+  intro r' hr'
+  exact byteEncode_compress_of_words 10 (by omega) F _ (compress_words 10 a F h) _
+    (fun k _ => bits_of_leNat _ r'.val r'.property _ hr' k)
+
+/-- `mlkem_compress_d4` is FIPS 203's `ByteEncode_4(Compress_4(F))`, of
+coefficients in `[0, q)`. -/
+theorem mlkem_compress_d4_spec (r : Std.Array U8 128#usize) (a : Std.Array I16 256#usize) (F : Polynomial)
+    (h : Holds 0 3328 256 a.val F) :
+    low.aarch64.mlkem.mlkem_compress_d4 r a ⦃ r' =>
+      toVec (32 * 4) r'.val r'.property = ByteEncode 4 (Polynomial.Compress 4 F) ⦄ := by
+  apply WP.spec_mono (mlkem_compress_d4_axiom r a fun i hi => ⟨(h i hi).1, (h i hi).2.1⟩)
+  intro r' hr'
+  exact byteEncode_compress_of_words 4 (by omega) F _ (compress_words 4 a F h) _
+    (fun k _ => bits_of_leNat _ r'.val r'.property _ hr' k)
 
 end MlKemRoutines
 
