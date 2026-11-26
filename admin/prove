@@ -114,8 +114,14 @@ build_asm() {
     mkdir -p "$out/asm"
     cargo rustc -q -p rind --lib --release --target "$(triple "$arch")" \
         --target-dir "$out/asm" --message-format=json-render-diagnostics -- --emit=asm -C codegen-units=16 |
-        jq -er 'select(.reason == "compiler-artifact" and .target.name == "rind" and (.target.kind | index("lib"))) | .filenames[] | select(endswith(".rlib"))' \
-            >"$out/asm/$arch-rlib"
+        python3 -c '
+import json, sys
+for line in sys.stdin:
+    m = json.loads(line)
+    if m["reason"] == "compiler-artifact" and m["target"]["name"] == "rind" and "lib" in m["target"]["kind"]:
+        print(*[f for f in m["filenames"] if f.endswith(".rlib")], sep="\n")
+' >"$out/asm/$arch-rlib"
+    [[ -s "$out/asm/$arch-rlib" ]] || { echo "admin/prove: cargo reported no rind rlib for $arch" >&2; return 1; }
     rm -rf "$out/asm/$arch-units"
 }
 
