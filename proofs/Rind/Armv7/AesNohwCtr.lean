@@ -164,7 +164,7 @@ theorem encrypt_batch_aes (alg : Algorithm) (kw : List (BitVec 32)) (s : Schedul
   intro q hq
   rw [roundKeys_get s i q (by omega), hs.2 q hq i hi, keyToRoundKeys_eq, getElem!_range_map _ (by omega)]
 
-theorem keystream_loop_spec (J : Quad32) (ivec : Std.Array U8 16#usize) (hiv : blockQ ivec = reverseBytesQuad32 J)
+theorem schedule_keystream_loop_spec (J : Quad32) (ivec : Std.Array U8 16#usize) (hiv : blockQ ivec = reverseBytesQuad32 J)
     (n : Nat) (ctr : U32) (hc : ctr.bv = lane32 J 0 + BitVec.ofNat 32 n)
     (iter : core.ops.range.Range Usize) (ivs : Std.Array (Std.Array U8 16#usize) 2#usize)
     (hs : iter.start.val ≤ 2) (he : iter.end.val = 2)
@@ -232,14 +232,14 @@ theorem keystream_loop_spec (J : Quad32) (ivec : Std.Array U8 16#usize) (hiv : b
 
 /-- `keystream` is GCTR's keystream for the first `todo` blocks from counter
 block `inc32 J n`, given `ivec` holds `J` and `ctr` its low word plus `n`. -/
-theorem keystream_spec (alg : Algorithm) (kw : List (BitVec 32)) (sch : Schedule) (hs : Keyed alg kw sch)
+theorem schedule_keystream_spec (alg : Algorithm) (kw : List (BitVec 32)) (sch : Schedule) (hs : Keyed alg kw sch)
     (J : Quad32) (ivec : Std.Array U8 16#usize) (hiv : blockQ ivec = reverseBytesQuad32 J)
     (n : Nat) (ctr : U32) (hc : ctr.bv = lane32 J 0 + BitVec.ofNat 32 n) (todo : Usize) (ht : todo.val ≤ 2) :
     sch.keystream ivec ctr todo ⦃ r =>
       ∀ k < todo.val, ∀ m < 16, (r.val[k]!).val[m]!.bv = ksByte alg kw J (16 * (n + k) + m) ⦄ := by
   unfold Schedule.keystream
   simp only [word.BATCH_SIZE]
-  step with keystream_loop_spec J ivec hiv n ctr hc { start := 0#usize, «end» := 2#usize } (Std.Array.repeat 2#usize ivec)
+  step with schedule_keystream_loop_spec J ivec hiv n ctr hc { start := 0#usize, «end» := 2#usize } (Std.Array.repeat 2#usize ivec)
     (by simp) (by simp) (by intro k hk; simp at hk) (by intro k hk _; interval_cases k <;> simp [Std.Array.repeat])
     as ⟨ivs, hivs⟩
   step as ⟨sl, hsl, hsll⟩
@@ -399,7 +399,7 @@ theorem ctr32_loop0_spec (alg : Algorithm) (kw : List (BitVec 32)) (sch : Schedu
     · step with core.iter.range.IteratorRange.next_Usize_some_spec as ⟨o, it', ho', hst', hen⟩
       subst ho'
       simp only [word.BATCH_SIZE]
-      step with keystream_spec alg kw sch hk J ivec hiv (2 * it.start.val) ct hc 2#usize (by simp) as ⟨st, hstr⟩
+      step with schedule_keystream_spec alg kw sch hk J ivec hiv (2 * it.start.val) ct hc 2#usize (by simp) as ⟨st, hstr⟩
       step as ⟨i, hi⟩
       step with ctr32_inner_spec alg kw J it.start st (fun k hk m hm => by
           rw [hstr k (by simpa using hk) m hm]) ch (by omega) { start := 0#usize, «end» := i } ch
@@ -563,7 +563,7 @@ theorem ctr32_spec (alg : Algorithm) (kw : List (BitVec 32)) (sch : Schedule) (h
     have h32 : tail.length < 32 := by omega
     step with div_ceil_spec tail.len 16#usize (by decide) as ⟨i2, hi2⟩
     have hi2' : i2.val = (tail.length + 15) / 16 := by rw [hi2]; simp [Slice.length]
-    step with keystream_spec alg kw sch hk J ivec hiv (2 * chunks.length) ctr1 hc1 i2 (by omega) as ⟨st, hst⟩
+    step with schedule_keystream_spec alg kw sch hk J ivec hiv (2 * chunks.length) ctr1 hc1 i2 (by omega) as ⟨st, hst⟩
     step with ctr32_loop1_spec alg kw J st (2 * chunks.length) i2.val (by omega) hst tail (by omega)
       { start := 0#usize, «end» := tail.len } tail (by simp) (by simp [Slice.length]) rfl (fun i _ => by simp)
       as ⟨t1, ht1l, ht1⟩
