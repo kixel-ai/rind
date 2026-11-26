@@ -513,11 +513,12 @@ step() {
             export RUSTC_WORKSPACE_WRAPPER CARGO_BUILD_WARNINGS
             # A unit test admin/test-scope.toml names may have been renamed by
             # an edit that selects no `scope` module. Listed with the package
-            # arguments of the run that tests rind, so the two share a build.
+            # and target arguments of the run that tests rind, so the two
+            # share a build.
             if [[ -n "$filter" ]]; then
-                run python3 admin/test-scope units -p rind
+                run python3 admin/test-scope units -p rind --lib
             elif [[ -n "$rind" || ${#packages[@]} -eq 0 || " ${packages[*]} " == *" --workspace "* ]]; then
-                run python3 admin/test-scope units "${packages[@]}"
+                run python3 admin/test-scope units "${packages[@]}" --tests
             fi
             # nextest runs the test binaries in parallel but not doc tests. Like
             # `cargo test`, it passes a selection with no tests.

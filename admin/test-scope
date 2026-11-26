@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 # Usage: admin/test-scope args CHANGED_FILE MERGE_BASE
-#        admin/test-scope units [PACKAGE_ARGS...]
+#        admin/test-scope units CARGO_ARGS...
 #        admin/test-scope check
 #
 # Scopes `just check`'s rind tests to the primitive families a diff touches,
@@ -18,8 +18,9 @@
 # `units` fails when a [units] name, module path and all, is no unit test
 # `cargo nextest list` finds in rind's library, which a rename in rind/src/
 # makes without triggering `check`; `just check` and `just ci` run it on every
-# change to rind, with the package arguments of the run that tests rind, so
-# the listing reuses that run's build.
+# change to rind, with the package and target arguments of the run that tests
+# rind, so the listing builds nothing that run does not, such as a test
+# binary a crate's `test = false` leaves out.
 #
 # `check` fails unless the map covers every test and file: every test under
 # rind/tests/ is listed, every listed test and unit test exists, every family
@@ -187,9 +188,9 @@ def scope(families, changed, merge_base):
     return touched, None
 
 
-def units_command(packages):
+def units_command(cargo_args):
     _, units, _ = load()
-    lib = {name for binary, name in listing(["--lib"], packages) if binary == "rind"}
+    lib = {name for binary, name in listing(cargo_args, packages=()) if binary == "rind"}
     if stale := [name for name in units if name not in lib]:
         sys.exit("\n".join(f"error: {MAP.name}: [units] names {name}, which is no unit test of rind" for name in stale))
 
@@ -295,12 +296,12 @@ def main():
     match sys.argv[1:]:
         case ["args", changed_file, merge_base]:
             args_command(changed_file, merge_base)
-        case ["units", *packages]:
-            units_command(packages)
+        case ["units", *cargo_args] if cargo_args:
+            units_command(cargo_args)
         case ["check"]:
             check_command()
         case _:
-            sys.exit("usage: admin/test-scope args CHANGED_FILE MERGE_BASE | units [PACKAGE_ARGS...] | check")
+            sys.exit("usage: admin/test-scope args CHANGED_FILE MERGE_BASE | units CARGO_ARGS... | check")
 
 
 if __name__ == "__main__":
