@@ -471,7 +471,7 @@ jobs:
   # the dev shell's toolchain, which `admin/bench-report weekly` puts in
   # BENCHMARKS.md's build cost from scheduled runs alone.
   binary-size:
-    if: github.event_name == 'schedule' || inputs.benches == ''
+    if: inputs.benchmarks == '' && (github.event_name == 'schedule' || inputs.benches == '')
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
