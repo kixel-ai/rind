@@ -7,6 +7,8 @@ pass, `body0`, its loop of `first`, and `firstTail`. -/
 
 open VG VG.X86_64 Rind.X86_64.Mul4x rind.x86_64.asm
 
+set_option linter.unusedSimpArgs false
+
 namespace rind.x86_64.mul4x
 
 /-! ## Frames -/
@@ -332,5 +334,108 @@ theorem pass0_ok (s : S) (k : Nat) (ap bp np n0p tp rp x n0' : BitVec 64) (a bw 
       readW_tp_ne _ htp (by omega) (by omega) (by omega), readW_tp_ne _ htp (by omega) (by omega) (by omega),
       hI2.agree.tp (k := k) (by omega) (by omega) htp, pmem, readW_tp_ne _ htp (by omega) (by omega) (by omega),
       readW_writeW_self]
+
+/-- An outer pass's trace. -/
+def passTrace (ap bp np tp : Addr) (k i : Nat) : List Leak :=
+  outerHeadTrace ap bp np tp i ++
+    (loopTrace (innerTrace ap np tp) 4 1 ((k - 8) / 4) ++ outerTailTrace ap np tp (k - 3) k)
+
+/-- An outer pass's program. -/
+abbrev passProg : Prog I :=
+  .seq (.block outerHead) (.seq (.loop (.block Rind.X86_64.Mul4x.inner) (Rind.X86_64.Cond.vg .b)) (.block outerTail))
+
+set_option maxHeartbeats 1000000 in
+/-- Outer pass `i`: `outerHead`, its loop of `inner`, and `outerTail` leave `passOut`'s words in `tp[0..k]`. -/
+theorem pass_ok (s : S) (k i : Nat) (ap bp np n0p tp n0' : BitVec 64) (a bw n t : Nat → BitVec 64)
+    (hk8 : 8 ≤ k) (hk4 : k % 4 = 0) (hi : i < k) (ar : Arrays s k ap bp np n0p tp)
+    (hrsi : s.vg.gpr .rsi = ap) (hrcx : s.vg.gpr .rcx = np) (hrsp : s.vg.gpr .rsp = tp)
+    (hr12 : s.vg.gpr .r12 = bp) (hr8 : s.vg.gpr .r8 = n0') (hrax : s.vg.gpr .rax = a 0)
+    (hr14 : s.vg.gpr .r14 = BitVec.ofNat 64 i) (hr9 : s.vg.gpr .r9 = BitVec.ofNat 64 k)
+    (hA : ∀ i < k, s.vg.mem.readW (wa ap i) 64 = a i) (hN : ∀ i < k, s.vg.mem.readW (wa np i) 64 = n i)
+    (hB : ∀ i < k, s.vg.mem.readW (wa bp i) 64 = bw i)
+    (hT : ∀ j ≤ k, s.vg.mem.readW (wa tp j) 64 = t j) :
+    let A0 := mac (a 0) (bw i) (t 0)
+    let q := n0' * A0.1
+    let N0 := mac (n 0) q A0.1
+    ∃ s', Exec I passProg s (passTrace ap bp np tp k i) s' ∧
+      s'.vg.gpr .rax = a 0 ∧ s'.vg.gpr .r14 = BitVec.ofNat 64 (i + 1) ∧
+      s'.vg.cf = some (decide (i + 1 < k)) ∧
+      (∀ j ≤ k, s'.vg.mem.readW (wa tp j) 64 = passOut (f1 a n t (bw i) q) (A0.2, N0.2) k (t k) j) ∧
+      Agree s.vg.mem s'.vg.mem tp (k + 1) ∧
+      Frame s s' [.rax, .rdx, .rdi, .rbx, .rbp, .r10, .r11, .r13, .r14, .r15] := by
+  intro A0 q N0
+  have htp := ar.htp
+  have hN0 : s.vg.mem.readW np 64 = n 0 := by have := hN 0 (by omega); rwa [wa_zero] at this
+  have hT0 : s.vg.mem.readW tp 64 = t 0 := by have := hT 0 (by omega); rwa [wa_zero] at this
+  obtain ⟨s₁, hx1, p10, p13, pax, p15, pbx, pbp, pmem, pF⟩ :=
+    outerHead_ok s k i ap bp np n0p tp n0' a bw n t hk8 hi ar hrsi hrcx hrsp hr12 hr8 hrax hr14 hA hN hB hN0
+      hT0 (hT 1 (by omega))
+  rw [writeW_wa_zero] at pmem
+  have ag1 : Agree s.vg.mem s₁.vg.mem tp (k + 1) := by
+    rw [pmem]; exact (Agree.refl _ tp _).writeW_below _ (by omega)
+  have ar1 := ar.frame pF
+  let f := f1 a n t (bw i) q
+  let c₀ : C := (A0.2, N0.2)
+  have hI1 : ChainInv s₁ s₁ tp a f c₀ 1 := by
+    refine ⟨le_refl _, Frame.refl _ _, p15, p10, p13, pax, Agree.refl _ _ _, ?_⟩
+    intro j hj
+    obtain rfl : j = 0 := by omega
+    rw [pmem, readW_writeW_self]; rfl
+  have g1 : ∀ r, r ∉ [Reg.rax, .rdx, .rdi, .rbx, .rbp, .r10, .r11, .r13, .r15] →
+      s₁.vg.gpr r = s.vg.gpr r := pF.gpr
+  have hT1 : ∀ j, 1 ≤ j → j ≤ k → s₁.vg.mem.readW (wa tp j) 64 = t j := fun j h1 h2 => by
+    rw [pmem, readW_tp_ne _ htp (by omega) (by omega) (by omega), hT j h2]
+  obtain ⟨s₂, hx2, hI2⟩ := loop_ok (body := .block Rind.X86_64.Mul4x.inner) (c := Rind.X86_64.Cond.vg .b)
+    (fun j s => ChainInv s₁ s tp a f c₀ j) (fun j => j + 7 ≤ k) (fun j => decide (j + 7 < k))
+    (innerTrace ap np tp) 4
+    (fun j s' hI hR => inner_step s₁ k ap bp np n0p tp (bw i) q a n t c₀ ar1
+      ((g1 .rsi (by decide)).trans hrsi) ((g1 .rcx (by decide)).trans hrcx) ((g1 .rsp (by decide)).trans hrsp)
+      pbx pbp ((g1 .r9 (by decide)).trans hr9)
+      (fun i hi => (ag1.arr (by omega) htp ar.hap ar.sepA hi).trans (hA i hi))
+      (fun i hi => (ag1.arr (by omega) htp ar.hnp ar.sepN hi).trans (hN i hi)) hT1 j s' hI hR)
+    ((k - 8) / 4) 1 s₁ hI1 (fun i hi => by omega) (fun i hi => by simp; omega) (by simp; omega)
+  rw [show 1 + 4 * ((k - 8) / 4 + 1) = k - 3 by omega] at hI2
+  have ag2 : Agree s.vg.mem s₂.vg.mem tp (k + 1) := ag1.trans (hI2.agree.mono (by omega)) (le_refl _)
+  have F2 := hI2.frame
+  have ar2 := ar1.frame F2
+  obtain ⟨s₃, hx3, oax, o14, ocf, omem, oF⟩ :=
+    outerTail_ok s₂ (k - 3) k i ap bp np n0p tp (bw i) q _ _ a n t (by omega) (by omega) ar2
+      ((F2.gpr .rsi (by decide)).trans ((g1 .rsi (by decide)).trans hrsi))
+      ((F2.gpr .rcx (by decide)).trans ((g1 .rcx (by decide)).trans hrcx))
+      ((F2.gpr .rsp (by decide)).trans ((g1 .rsp (by decide)).trans hrsp))
+      hI2.r15 ((F2.gpr .rbx (by decide)).trans pbx) ((F2.gpr .rbp (by decide)).trans pbp)
+      hI2.r10 hI2.r13 hI2.rax ((F2.gpr .r14 (by decide)).trans ((g1 .r14 (by decide)).trans hr14))
+      ((F2.gpr .r9 (by decide)).trans ((g1 .r9 (by decide)).trans hr9)) hi
+      (fun i hi => (ag2.arr (by omega) htp ar.hap ar.sepA hi).trans (hA i hi))
+      (fun i hi => (ag2.arr (by omega) htp ar.hnp ar.sepN hi).trans (hN i hi))
+      (by have := (ag2.arr (by omega) htp ar.hap ar.sepA (i := 0) (by omega)).trans (hA 0 (by omega))
+          rwa [wa_zero] at this)
+      (fun j h1 h2 => (hI2.agree.tp (k := k) (by omega) (by omega) htp).trans (hT1 j (by omega) (by omega)))
+  have ag3 : Agree s₂.vg.mem s₃.vg.mem tp (k + 1) := by
+    rw [omem]
+    exact ((((Agree.refl _ tp _).writeW_below _ (by omega)).writeW_below _ (by omega)).writeW_below _
+      (by omega)).writeW_below _ (by omega)
+  refine ⟨s₃, Exec.seq (Exec.block hx1) (Exec.seq hx2 (Exec.block hx3)), oax, o14, ocf, ?_,
+    ag2.trans ag3 (le_refl _), (pF.mono (by decide)).trans ((F2.mono (by decide)).trans (oF.mono (by decide)))⟩
+  intro j hj
+  rw [omem]
+  rcases (by omega : j < k - 3 ∨ j = k - 3 ∨ j = k - 3 + 1 ∨ j = k - 3 + 2 ∨ j = k - 3 + 3) with
+    h | rfl | rfl | rfl | rfl
+  · rw [readW_tp_ne _ htp (by omega) (by omega) (by omega), readW_tp_ne _ htp (by omega) (by omega) (by omega),
+      readW_tp_ne _ htp (by omega) (by omega) (by omega), readW_tp_ne _ htp (by omega) (by omega) (by omega),
+      hI2.words j h]
+    simp only [passOut, show j + 1 < k by omega, ↓reduceIte]; rfl
+  · rw [readW_tp_ne _ htp (by omega) (by omega) (by omega), readW_tp_ne _ htp (by omega) (by omega) (by omega),
+      readW_tp_ne _ htp (by omega) (by omega) (by omega), readW_writeW_self]
+    simp only [passOut, show k - 3 + 1 < k by omega, ↓reduceIte]; rfl
+  · rw [readW_tp_ne _ htp (by omega) (by omega) (by omega), readW_tp_ne _ htp (by omega) (by omega) (by omega),
+      readW_writeW_self]
+    simp only [passOut, show k - 3 + 1 + 1 < k by omega, ↓reduceIte]; rfl
+  · rw [readW_tp_ne _ htp (by omega) (by omega) (by omega), readW_writeW_self]
+    simp only [passOut, show ¬ k - 3 + 2 + 1 < k by omega, show k - 3 + 2 + 1 = k by omega, Nat.lt_irrefl,
+      show k - 1 = k - 3 + 1 + 1 by omega, ↓reduceIte]; rfl
+  · rw [readW_writeW_self]
+    simp only [passOut, show ¬ k - 3 + 3 + 1 < k by omega, show ¬ k - 3 + 3 + 1 = k by omega,
+      show k - 1 = k - 3 + 1 + 1 by omega, ↓reduceIte]; rfl
 
 end rind.x86_64.mul4x
