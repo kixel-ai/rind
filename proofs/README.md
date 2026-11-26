@@ -371,6 +371,9 @@ then fails unless every definition the two functions reach in the
 configuration armv7 builds, 32-bit with precomputed tables, has BAIF's text.
 A patch that does not apply to the release is reported and skipped, so a
 definition it would have changed fails that comparison if X25519 reaches it.
+One patch writes the code of the ladder's `mul_bits_be` and `bits_le` into
+their caller, so the comparison reads BAIF's copy: `admin/prove`'s
+`dalek_copied` names them, and their source must be the fork's.
 
 ## What is proven
 

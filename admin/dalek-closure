@@ -22,24 +22,34 @@ import sys
 NAME = re.compile(r"(?:[A-Za-z_][\w']*|«[^»]*»)(?:\.(?:[A-Za-z_][\w']*|«[^»]*»))*")
 DECL = re.compile(
     r"^(?:@\[[^\]]*\]\s*)*(?:noncomputable\s+|private\s+|protected\s+|partial\s+)*"
-    r"(?:def|abbrev|structure|inductive|instance|opaque|axiom|theorem|class)\s+(\S+)",
+    r"(?:def|impl_def|abbrev|structure|inductive|instance|opaque|axiom|theorem|class)\s+(\S+)",
     re.M,
 )
 CONFIGS = ["64bit-tables", "64bit-notables", "32bit-tables", "32bit-notables"]
 
 
 def definitions(directory):
-    """Each defined name's texts, from the doc comment Aeneas puts before each item."""
+    """Each defined name's texts, from the doc comment Aeneas puts before each item.
+
+    A trait declaration's or implementation's doc comment names its kind before
+    the Rust path. Each is an item of its own, so a call through an
+    implementation reaches its methods.
+    """
     out = {}
     for module in ["Types", "Funs"]:
         with open(f"{directory}/{module}.lean") as f:
             text = f.read()
-        for item in re.split(r"(?m)^(?=/-- \[)", text)[1:]:
+        preamble, *items = re.split(r"(?m)^(?=/-- (?:Trait (?:declaration|implementation): )?\[)", text)
+        # A doc comment of a form the split misses would hide the names of the
+        # items it joins.
+        if DECL.search(preamble):
+            sys.exit(f"admin/dalek-closure: {directory}/{module}.lean: a definition before the first item")
+        for item in items:
             body = re.sub(r"(?s)^/--.*?-/\n", "", item, count=1).strip()
-            decl = DECL.search(body)
-            if decl is None:
-                sys.exit(f"admin/dalek-closure: {directory}/{module}.lean: no definition in: {body[:200]}")
-            out.setdefault(decl.group(1), []).append(body)
+            decls = DECL.findall(body)
+            if len(decls) != 1:
+                sys.exit(f"admin/dalek-closure: {directory}/{module}.lean: not one definition in: {body[:200]}")
+            out.setdefault(decls[0], []).append(body)
     return out
 
 

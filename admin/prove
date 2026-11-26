@@ -666,13 +666,26 @@ dalek_roots=(
     montgomery.MontgomeryPoint.mul_clamped
     montgomery.MontgomeryPoint.mul_base_clamped
 )
+# The functions whose code a BAIF translation patch on the roots' path copies
+# into their caller, as `file:function`. `montgomery-MontgomeryPoint-mul.patch`
+# writes `mul_bits_be`'s ladder and `bits_le`'s bit order out in `Mul::mul`,
+# so the translation compares BAIF's copy, and the call the patch removes
+# reads the same whatever they hold: `dalek` compares their source with the
+# fork's instead. A patch that rewrites only the lines it removes needs no
+# entry, since a change to them stops it applying. A root added above adds
+# the functions its patches copy.
+dalek_copied=(
+    src/montgomery.rs:mul_bits_be
+    src/scalar.rs:bits_le
+)
 # Checks that the curve25519-dalek rind builds on armv7 is the code BAIF's
 # proofs at `admin/import-dalek`'s REV are about, in every definition
 # `dalek_roots` reach: that it is the crates.io release Cargo.lock pins with
 # the features BAIF's proofs build it with, and that BAIF's own translation,
 # its patches applied and run with the Charon and Aeneas its
 # `AENEAS_VERSION.txt` names, `$DALEK_AENEAS`, gives that release the Lean
-# BAIF's proofs read, `admin/dalek-closure` comparing each definition. The
+# BAIF's proofs read, `admin/dalek-closure` comparing each definition, and
+# that each function `dalek_copied` names is the fork's source. The
 # proofs' configurations are 32- and 64-bit limbs, with and without
 # precomputed tables; armv7 builds the first with tables. A patch that no
 # longer applies to the release is skipped: a definition it would have
@@ -706,6 +719,31 @@ print(pkg["manifest_path"].rsplit("/", 1)[0], ",".join(features))')
         echo "admin/prove: rind builds curve25519-dalek with $features, not the alloc, precomputed-tables, and zeroize BAIF's proofs build it with" >&2
         return 1
     fi
+    # The functions the patches copy, in the release and in the fork.
+    python3 - "$src" "$fork" "${dalek_copied[@]}" <<'PY'
+import re, subprocess, sys
+
+def function(text, name, where):
+    found = list(re.finditer(rf"(?m)^[ \t]*(?:pub(?:\([^)]*\))?[ \t]+)?fn {name}\b", text))
+    if len(found) != 1:
+        sys.exit(f"admin/prove: {len(found)} definitions of {name} in {where}")
+    depth = 0
+    for i in range(text.index("{", found[0].end()), len(text)):
+        depth += {"{": 1, "}": -1}.get(text[i], 0)
+        if depth == 0:
+            return text[found[0].start() : i + 1]
+    sys.exit(f"admin/prove: {name} in {where} never closes")
+
+release, fork = sys.argv[1:3]
+for copied in sys.argv[3:]:
+    path, name = copied.split(":")
+    with open(f"{release}/{path}") as f:
+        ours = function(f.read(), name, f"the release's {path}")
+    fork_text = subprocess.run(["git", "-C", fork, "show", f"HEAD:curve25519-dalek/{path}"],
+                               check=True, capture_output=True, text=True).stdout
+    if ours != function(fork_text, name, f"the fork's {path}"):
+        sys.exit(f"admin/prove: the release's {name} is not the fork's, which a BAIF translation patch copies")
+PY
     # BAIF's workspace, with the release's source and build script.
     git -C "$fork" archive HEAD Cargo.toml Cargo.lock curve25519-dalek curve25519-dalek-derive \
         ed25519-dalek x25519-dalek | tar -x -C "$dir/work" --exclude curve25519-dalek/lean
