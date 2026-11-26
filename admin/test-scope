@@ -2,7 +2,7 @@
 
 # Usage: admin/test-scope args CHANGED_FILE MERGE_BASE
 #        admin/test-scope units CARGO_ARGS...
-#        admin/test-scope check [CARGO_ARGS...]
+#        admin/test-scope check [--timings]
 #
 # Scopes `just check`'s rind tests to the primitive families a diff touches,
 # by the map in admin/test-scope.toml.
@@ -28,8 +28,9 @@
 # high}/ belongs to, `cargo nextest list` with that set's arguments selects
 # exactly the tests the map gives it. Build it as `just check` builds rind's
 # tests, under the same profile and wrapper, so the two share their build;
-# CARGO_ARGS, such as CI's `--timings`, go to its first listing, the one
-# that builds the tests.
+# `--timings`, which CI passes, goes to its first listing, the one that
+# builds the tests. It takes no other Cargo argument, since one such as
+# `--features` would change the test set the later listings compare with.
 
 import json, pathlib, re, subprocess, sys, tomllib
 
@@ -312,10 +313,10 @@ def main():
             args_command(changed_file, merge_base)
         case ["units", *cargo_args] if cargo_args:
             units_command(cargo_args)
-        case ["check", *cargo_args]:
+        case ["check", *cargo_args] if cargo_args in ([], ["--timings"]):
             check_command(cargo_args)
         case _:
-            sys.exit("usage: admin/test-scope args CHANGED_FILE MERGE_BASE | units CARGO_ARGS... | check [CARGO_ARGS...]")
+            sys.exit("usage: admin/test-scope args CHANGED_FILE MERGE_BASE | units CARGO_ARGS... | check [--timings]")
 
 
 if __name__ == "__main__":
