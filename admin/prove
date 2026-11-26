@@ -111,6 +111,7 @@ triple() {
 # produced, since `deps` also holds the rlibs of earlier builds.
 build_asm() {
     local arch=$1
+    mkdir -p "$out/asm"
     cargo rustc -q -p rind --lib --release --target "$(triple "$arch")" \
         --target-dir "$out/asm" --message-format=json-render-diagnostics -- --emit=asm -C codegen-units=16 |
         jq -er 'select(.reason == "compiler-artifact" and .target.name == "rind" and (.target.kind | index("lib"))) | .filenames[] | select(endswith(".rlib"))' \
