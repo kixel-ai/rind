@@ -3092,4 +3092,89 @@ theorem mont_mul_limbs_spec (t x y m : Slice U64) (n0 : U64) (hk1 : 1 ≤ m.leng
   · rw [hbv, List.take_left' hr1L, hR1]; exact Nat.mod_lt _ hM0
   · rw [hbv, List.take_left' hr1L, hR1, Nat.mod_mul_mod, mul_comm, hVQ, Nat.add_mul_mod_self_right]
 
+/-! ## Scratch at RSA's widths -/
+
+theorem mulNeed_small (k : Nat) (hk : k < 32) : mulNeed k = 0 := by rw [mulNeed.eq_1]; simp [hk]
+
+theorem sqrNeed_small (k : Nat) (hk : k < 64) : sqrNeed k = 0 := by rw [sqrNeed.eq_1]; simp [hk]
+
+/-- `MAX_LIMBS`'s Karatsuba scratch fits `SCRATCH`. -/
+theorem mulNeed_le (k : Nat) (hk : k ≤ 128) : mulNeed k ≤ 576 := by
+  have h : mulNeed 128 = 448 := by
+    rw [mulNeed.eq_1]; norm_num; rw [mulNeed.eq_1]; norm_num; rw [mulNeed.eq_1]; norm_num
+    rw [mulNeed_small 16 (by norm_num)]
+  have := mulNeed_mono 128 k hk
+  omega
+
+theorem sqrNeed_le (k : Nat) (hk : k ≤ 128) : sqrNeed k ≤ 576 := by
+  have h : sqrNeed 128 = 288 := by
+    rw [sqrNeed.eq_1]; norm_num; rw [sqrNeed.eq_1]; norm_num
+    rw [sqrNeed_small 32 (by norm_num)]
+  have := sqrNeed_mono 128 k hk
+  omega
+
+/-! ## `join` and the reductions' entries -/
+
+/-- `join`: `z := x[..z.len]`, for `x` at least as long. -/
+theorem join_spec (x z : Slice U64) (h : z.length ≤ x.length) :
+    low.generic.limb64.join x z ⦃ r => r.val = x.val.take z.length ⦄ := by
+  unfold low.generic.limb64.join
+  simp only [lift, bind_ok]
+  have hn : (core.cmp.impls.OrdUsize.min x.len z.len).val = z.length := by
+    rw [core.cmp.impls.OrdUsize.min_val]; simp; omega
+  step as ⟨s, back, hs, hsl, hback⟩
+  step as ⟨s1, hs1, hs1l⟩
+  step with core.slice.Slice.copy_from_slice.step_spec _ s s1 (by rw [hsl, hs1l]) as ⟨s2, hs2⟩
+  rw [hback, hs2, hs1, hn]
+  have hzL : z.val.length = z.length := rfl
+  rw [setSlice_zero_full _ _ (by simp [List.slice]; omega)]
+  simp [List.slice]
+
+/-- `mont_sqr_limbs`: `x^2 / 2^(64k) mod m` in `t`'s top `k` limbs. -/
+theorem mont_sqr_limbs_spec (t x m : Slice U64) (n0 : U64) (hk1 : 1 ≤ m.length) (hk : m.length ≤ 128)
+    (hx : x.length = m.length) (ht : t.length = 2 * m.length) (hX : wordsNat x.val < wordsNat m.val)
+    (hn0 : (wordsNat m.val * n0.val + 1) % 2 ^ 64 = 0) :
+    low.generic.limb64.mont.mont_sqr_limbs t x m n0 ⦃ r =>
+      r.length = 2 * m.length ∧ wordsNat (r.val.drop m.length) < wordsNat m.val ∧
+        wordsNat (r.val.drop m.length) * 2 ^ (64 * m.length) % wordsNat m.val =
+          wordsNat x.val * wordsNat x.val % wordsNat m.val ⦄ := by
+  unfold low.generic.limb64.mont.mont_sqr_limbs
+  have hmax : 4 * m.length ≤ Usize.max := by scalar_tac
+  have hMk : wordsNat m.val < 2 ^ (64 * m.length) := wordsNat_lt' m.val
+  have hT : wordsNat x.val * wordsNat x.val < 2 ^ (64 * (2 * m.length - m.length)) * wordsNat m.val := by
+    rw [show 2 * m.length - m.length = m.length by omega]
+    calc wordsNat x.val * wordsNat x.val < wordsNat m.val * wordsNat m.val := Nat.mul_lt_mul'' hX hX
+      _ ≤ 2 ^ (64 * m.length) * wordsNat m.val := Nat.mul_le_mul_right _ hMk.le
+  have hsq : ∀ s : Slice U64, sqrNeed x.length ≤ s.length →
+      (do let (t2, _) ← low.generic.limb64.mont.sqr_limbs t x s; ok t2) ⦃ t1 =>
+        t1.length = 2 * m.length ∧ wordsNat t1.val = wordsNat x.val * wordsNat x.val ⦄ := by
+    intro s hs
+    step with sqr_limbs_spec x.length t x s rfl (by omega) hs (by omega) as ⟨t2, s2, ht2l, _, ht2⟩
+    exact ⟨by omega, ht2⟩
+  have hbranch : (if Slice.len x < low.generic.limb64.mont.KARATSUBA_SQR then do
+        let (s, _) ← lift (Array.to_slice_mut (Std.Array.empty U64))
+        let (t2, _) ← low.generic.limb64.mont.sqr_limbs t x s
+        ok t2
+      else do
+        let a := Array.repeat 576#usize 0#u64
+        let (s, _) ← lift (Array.to_slice_mut a)
+        let (t2, _) ← low.generic.limb64.mont.sqr_limbs t x s
+        ok t2) ⦃ t1 => t1.length = 2 * m.length ∧ wordsNat t1.val = wordsNat x.val * wordsNat x.val ⦄ := by
+    rw [karatsuba_sqr_eq]
+    split
+    · rename_i hn
+      have hn' : x.length < 64 := by simpa using hn
+      step as ⟨s, back, hs, _⟩
+      exact hsq s (by rw [sqrNeed_small _ hn']; omega)
+    · step as ⟨s, back, hs, _⟩
+      exact hsq s (by
+        have : s.length = 576 := by
+          simp only [Slice.length]; rw [hs, Array.repeat_val, List.length_replicate]; rfl
+        rw [this]; exact sqrNeed_le _ (by omega))
+  step with hbranch as ⟨t1, ht1l, ht1⟩
+  step with redc_spec t1 m n0 hk1 (by omega) hn0 (by rw [ht1, ht1l]; exact hT) as ⟨r, hrl, hr, hrm⟩
+  rw [ht1l, show 2 * m.length - m.length = m.length by omega] at hr hrm
+  rw [ht1] at hrm
+  exact ⟨by omega, hr, hrm⟩
+
 end rind.portable
