@@ -344,7 +344,7 @@ the count is stale or `unsafe` appears in an area the table does not name:
 | Area | `unsafe` | What it is | What justifies it |
 |---|---|---|---|
 | `rind/src/low/x86_64` | 722 | `asm!`, naked functions, and intrinsics | [`rind::doc::inline_assembly_safety`](rind/src/low/inline_assembly_safety.rs), with the calling-convention, bounds, and `admin/prove bytes` checks above |
-| `rind/src/low/aarch64` | 492 | the same | the same |
+| `rind/src/low/aarch64` | 514 | the same | the same |
 | `rind/src/low/arm` | 113 | `global_asm!` and the calls into it | the same |
 | `rind/src/low/generic` | 29 | SSE2 intrinsics in `aes_nohw`, Argon2's memory of blocks set one at a time, `ReuseCache`'s one-time initialization, the volatile wipe, a cast between same-layout arrays, the link section that puts SHA-256's constants in ESP-IDF's internal RAM, and MD5's empty `asm!` barrier | each block's `SAFETY:` comment; Miri checks `ReuseCache` and the wipe |
 | `rind/src/low/portable` | 13 | volatile writes and reads for the wipe and the constant-time compare, and Xtensa `asm!` in SHA-256 for ESP-IDF | the same |
