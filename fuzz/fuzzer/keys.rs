@@ -819,10 +819,24 @@ fn rsa_reencode(rsa: &Rsa, key: &our_rsa::PublicKey) {
     use rsa::pkcs8::DecodePublicKey;
     let again = our_rsa::PublicKey::new(key.as_ref()).unwrap();
     assert_eq!(again.as_ref(), key.as_ref());
-    let independent = rsa::PublicKey::from_pkcs1_der(key.as_ref()).unwrap();
-    assert_eq!(independent.to_pkcs1_der().unwrap().as_bytes(), key.as_ref());
-    let independent = rsa::PublicKey::from_public_key_der(key.to_spki().as_ref()).unwrap();
-    assert_eq!(independent.to_pkcs1_der().unwrap().as_bytes(), key.as_ref());
+    // RustCrypto's decoders refuse a modulus under 1024 bits, so it reads
+    // one of 1017 to 1023 bits, which rind loads, from its components.
+    if key.modulus_bits() >= 1024 {
+        let independent = rsa::PublicKey::from_pkcs1_der(key.as_ref()).unwrap();
+        assert_eq!(independent.to_pkcs1_der().unwrap().as_bytes(), key.as_ref());
+        let independent = rsa::PublicKey::from_public_key_der(key.to_spki().as_ref()).unwrap();
+        assert_eq!(independent.to_pkcs1_der().unwrap().as_bytes(), key.as_ref());
+    } else {
+        let components = their_rsa::PublicKey::from_der(key.as_ref()).unwrap();
+        let int = |x: &[u8]| rsa::BoxedUint::from_be_slice_vartime(x);
+        let independent = rsa::PublicKey::new_with_size_limits(
+            int(components.modulus().big_endian_without_leading_zero()),
+            int(components.exponent().big_endian_without_leading_zero()),
+            1017..=8192,
+        )
+        .unwrap();
+        assert_eq!(independent.to_pkcs1_der().unwrap().as_bytes(), key.as_ref());
+    }
     theirs::ParsedPublicKey::new(rsa.theirs, key.as_ref()).unwrap();
 
     let theirs = their_rsa::PublicKey::from_der(key.as_ref()).unwrap();
