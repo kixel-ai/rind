@@ -252,7 +252,7 @@ theorem getElem!_set_of_ne {α : Type _} [Inhabited α] (l : List α) {i j : Nat
 
 theorem getElem!_take_lt {α : Type _} [Inhabited α] (l : List α) {k n : Nat} (h : k < n) :
     (l.take n)[k]! = l[k]! := by
-  simp [List.getElem!_eq_getElem?_getD, List.getElem?_take, h]
+  simp [List.getElem!_eq_getElem?_getD, h]
 
 /-- GCTR's output from counter block `J`, as bytes. -/
 def gctrBytes (alg : Algorithm) (kw : List (BitVec 32)) (J : Quad32) (l : List U8) : List U8 :=
@@ -583,5 +583,353 @@ theorem tagged_spec (ENC : Bool) (alg : Algorithm) (kw : List (BitVec 32)) {S T 
   rw [← getElem!_pos _ i (by simpa using h1), ← getElem!_pos _ i h2, leQuad32ToBytes_getElem! _ h1, byte_xor,
     blockQ, blockQ, byte_ofBytes _ h1, byte_ofBytes _ h1, ← hx5 i h1]
   rw [getElem!_pos _ i (by simpa using h1), List.getElem_map, getElem!_pos xi5.val i (by omega)]
+
+/-! ## `Portable` -/
+
+theorem inc32_mod (q : Quad32) (n : Nat) : inc32 q (n % 2 ^ 32) = inc32 q n := by
+  rw [inc32_eq, inc32_eq]
+  apply congrArg
+  apply congrArg
+  apply BitVec.eq_of_toNat_eq
+  simp
+
+/-- A `Portable` keyed with `kw`: its round keys and its GHASH table. -/
+def PortableFor (alg : Algorithm) (kw : List (BitVec 32)) (p : mid.aes_gcm.Portable) : Prop :=
+  Keyed alg kw p.key ∧ TableFor (polyLE (aesEncrypt alg kw (mkfour 0 0 0 0))) p.table
+
+/-- `Portable` hashes, encrypts, and counts as GCM's `Parts` do. -/
+theorem portable_partsFor (alg : Algorithm) (kw : List (BitVec 32)) (p : mid.aes_gcm.Portable)
+    (h : PortableFor alg kw p) :
+    PartsFor alg kw mid.aes_gcm.Portable.Insts.RindMidAes_gcmPartsNohwTable p where
+  table := ⟨p.table, rfl, nohw_ghashFor _ (small_toPoly _) p.table h.2⟩
+  encrypt_block b := aes_key_encrypt_block_spec alg kw p.key h.1 b
+  ctr J ivec hiv inout := by
+    show mid.aes_gcm.Portable.Insts.RindMidAes_gcmPartsNohwTable.ctr p ivec inout ⦃ _ ⦄
+    unfold mid.aes_gcm.Portable.Insts.RindMidAes_gcmPartsNohwTable.ctr low.portable.aes.AesKey.ctr32
+    step with ctr32_spec alg kw p.key h.1 J ivec hiv inout as ⟨r, hrl, hr⟩
+    step with div_ceil_spec r.len 16#usize (by decide) as ⟨i1, hi1⟩
+    step as ⟨i2, hi2⟩
+    step with add32_spec J ivec hiv i2 as ⟨a, ha⟩
+    refine ⟨?_, hrl, hr⟩
+    rw [ha, hi2, UScalar.cast_val_eq, UScalarTy.U32_numBits_eq, inc32_mod, hi1]
+    simp [Slice.length, ← hrl]
+  pass _ := rfl
+
+theorem blockQ_zero : blockQ (Std.Array.repeat 16#usize 0#u8) = mkfour 0 0 0 0 := by
+  rw [blockQ_load]; decide
+
+/-- `Portable::new` keys `Portable` with the key's words. -/
+theorem portable_new_spec (alg : Algorithm) (key : Slice U8) (h : KeyLen alg key.length) :
+    mid.aes_gcm.Portable.new key ⦃ p => PortableFor alg (seqNat8ToSeqNat32LE (key.val.map (·.bv))) p ⦄ := by
+  unfold mid.aes_gcm.Portable.new
+  step with aes_key_new_spec alg key h as ⟨k, hk⟩
+  step with aes_key_encrypt_block_spec alg _ k hk _ as ⟨hb, hhb⟩
+  step with table_new_spec hb as ⟨t, ht⟩
+  refine ⟨hk, ?_⟩
+  rw [blockBE_blockQ, hhb, blockQ_zero] at ht
+  exact ht
+
+/-- An `AesGcm` running `Portable` keyed with `kw`. -/
+def GcmReady (alg : Algorithm) (kw : List (BitVec 32)) (g : mid.aes_gcm.AesGcm) : Prop :=
+  ∃ p, g = .Portable p ∧ PortableFor alg kw p
+
+/-- rind runs `Portable` on this CPU: its entry guards pass, and its CPU
+checks find neither the crypto extension nor NEON. None reads an input. -/
+def RunsPortable : Prop :=
+  (∃ e, low.entry.Entry.new_secret = ok e) ∧
+  low.arm.cpu.HaveCryptoExt.check = ok none ∧ low.arm.cpu.HaveNeon.check = ok none
+
+/-- `AesGcm::new`, finding neither the crypto extension nor NEON, keys
+`Portable` with the key's words. -/
+theorem aes_gcm_new_spec (h : RunsPortable) (alg : Algorithm) (key : Slice U8) (hk : KeyLen alg key.length) :
+    mid.aes_gcm.AesGcm.new key ⦃ g => GcmReady alg (seqNat8ToSeqNat32LE (key.val.map (·.bv))) g ⦄ := by
+  obtain ⟨⟨e, he⟩, hce, hneon⟩ := h
+  have hl : key.length ≤ 32 := by rcases hk with ⟨-, h⟩ | ⟨-, h⟩ | ⟨-, h⟩ <;> omega
+  unfold mid.aes_gcm.AesGcm.new
+  rw [he, bind_ok]
+  step with Array.index_mut_SliceIndexRangeToUsizeSlice (Std.Array.repeat 32#usize 0#u8)
+    { «end» := key.len } (by scalar_tac) as ⟨s, back, hs, hsl, hback⟩
+  step with core.slice.Slice.copy_from_slice.step_spec _ s key (by rw [hsl]; simp) as ⟨s1, hs1⟩
+  rw [hs1]
+  simp only [low.ct.secret_slice, bind_ok, hce, hneon]
+  step with portable_new_spec alg key hk as ⟨p, hp⟩
+  exact ⟨p, rfl, hp⟩
+
+/-! ## The refusals -/
+
+/-- `check_gcm_iv` refuses an empty IV or one of 2^61 bytes or more. -/
+theorem check_gcm_iv_spec (iv : Slice U8) :
+    mid.aes.check_gcm_iv iv ⦃ r =>
+      r = if iv.length = 0 ∨ 2 ^ 61 ≤ iv.length then .Err .WrongLength else .Ok () ⦄ := by
+  have hl := Slice.len_val iv
+  have hb := usize_lt iv.len
+  unfold mid.aes.check_gcm_iv
+  step*
+  all_goals
+    have hc : i1.val = iv.length := by
+      rw [i1_post, UScalar.cast_val_eq, UScalarTy.U64_numBits_eq, Nat.mod_eq_of_lt hb, hl]
+    have h2 : i2.val = 2 ^ 61 := by rw [i2_post]; simp [Nat.shiftLeft_eq, U64.size, U64.numBits]
+  · rw [ite_eq_left (Or.inr (by scalar_tac))]
+  · rw [ite_eq_right (by simp_all)]
+
+/-- From block 2, past the tag's, the 32-bit block counter covers 2^36 - 32
+bytes. -/
+theorem gcm_check_counter_spec (len : Usize) :
+    mid.aes.check_counter 2#u32 len ⦃ r =>
+      r = if len.val ≤ 2 ^ 36 - 32 then .Ok () else .Err .WrongLength ⦄ := by
+  unfold mid.aes.check_counter core.num.Usize.div_ceil
+  simp only [lift, bind_ok, show ¬ (16#usize : Usize).val = 0 by decide, ↓reduceDIte]
+  have h1 : (core.convert.num.FromU64U32.from 2#u32 : U64).val = 2 := rfl
+  have hb := usize_lt len
+  have hm : (len.val + 16 - 1) / 16 % 2 ^ UScalarTy.U64.numBits = (len.val + 15) / 16 := by
+    rw [UScalarTy.U64_numBits_eq]; apply Nat.mod_eq_of_lt; omega
+  step*
+  all_goals simp only [h1, UScalar.cast_val_eq, UScalar.ofNatCore_val_eq] at *
+  all_goals simp only [hm] at *
+  all_goals first
+    | scalar_tac
+    | (have h4 : i4.val = 2 ^ 32 := by rw [i4_post]; simp [Nat.shiftLeft_eq, U64.size, U64.numBits]
+       first
+        | (rw [ite_eq_right (by intro; scalar_tac)])
+        | (rw [ite_eq_left (by scalar_tac)]))
+
+/-- `check_gcm_lengths` refuses AAD of 2^61 bytes or more, and messages past
+2^36 - 32 bytes. -/
+theorem check_gcm_lengths_eq (aad msg : Usize) :
+    mid.aes.check_gcm_lengths aad msg ⦃ r =>
+      r = if 2 ^ 61 ≤ aad.val ∨ 2 ^ 36 - 32 < msg.val then .Err .WrongLength else .Ok () ⦄ := by
+  have hb := usize_lt aad
+  unfold mid.aes.check_gcm_lengths
+  step*
+  all_goals
+    have hc : i.val = aad.val := by
+      rw [i_post, UScalar.cast_val_eq, UScalarTy.U64_numBits_eq, Nat.mod_eq_of_lt hb]
+    have h2 : i1.val = 2 ^ 61 := by rw [i1_post]; simp [Nat.shiftLeft_eq, U64.size, U64.numBits]
+  · rw [ite_eq_left (Or.inl (by scalar_tac))]
+  · apply WP.spec_mono (gcm_check_counter_spec msg)
+    rintro r rfl
+    by_cases hm : msg.val ≤ 2 ^ 36 - 32
+    · rw [ite_eq_left hm, ite_eq_right (by scalar_tac)]
+    · rw [ite_eq_right hm, ite_eq_left (Or.inr (by omega))]
+
+/-! ## The API -/
+
+theorem map_bv_beq (a b : List U8) : (a.map (·.bv) == b.map (·.bv)) = decide (a = b) := by
+  have hinj : Function.Injective (fun x : U8 => x.bv) := by
+    intro x y h; cases x; cases y; simp_all
+  by_cases h : a = b
+  · subst h; simp
+  · have : a.map (·.bv) ≠ b.map (·.bv) := fun e => h (List.map_injective_iff.2 hinj e)
+    simp [h, this]
+
+/-- A slice of `tag` up to `n`, at most 16, is its first `n` bytes. -/
+theorem index_tag (tag : Std.Array U8 16#usize) (n : Usize) (hn : n.val ≤ 16) :
+    core.slice.index.SliceIndexRangeToUsizeSlice.index { «end» := n } tag.to_slice ⦃ s =>
+      s.val = tag.val.take n.val ∧ s.length = n.val ⦄ := by
+  apply WP.spec_mono (core.slice.index.SliceIndexRangeToUsizeSlice.index.step_spec _ _
+    (by simp [Std.Array.to_slice, Slice.length]; exact hn))
+  rintro s ⟨h1, h2⟩
+  refine ⟨?_, h2⟩
+  rw [h1]; simp [Std.Array.to_slice, List.slice]
+
+/-- `tagged` on a keyed `Portable` is AES-GCM under the key bytes
+`seqNat32ToSeqNat8LE kw`: its ciphertext or plaintext, and its tag over the
+ciphertext. -/
+theorem portable_tagged_spec (ENC : Bool) (alg : Algorithm) (kw : List (BitVec 32)) (p : mid.aes_gcm.Portable)
+    (hp : PortableFor alg kw p) (iv aad inout : Slice U8)
+    (hiv : iv.length < 2 ^ 61) (haad : aad.length < 2 ^ 61) (hin : inout.length ≤ 2 ^ 36 - 32) :
+    mid.aes_gcm.Parts.tagged.default ENC mid.aes_gcm.Portable.Insts.RindMidAes_gcmPartsNohwTable p iv aad inout
+      ⦃ r => r.2.length = inout.length ∧
+        r.2.val.map (·.bv) = (gcmDecrypt alg (seqNat32ToSeqNat8LE kw) (iv.val.map (·.bv))
+          (inout.val.map (·.bv)) (aad.val.map (·.bv)) []).1 ∧
+        r.1.val.map (·.bv) = gcmTag alg (seqNat32ToSeqNat8LE kw) (iv.val.map (·.bv))
+          ((if ENC then r.2.val else inout.val).map (·.bv)) (aad.val.map (·.bv)) ⦄ := by
+  apply WP.spec_mono (tagged_spec ENC alg kw _ p (portable_partsFor alg kw p hp) iv aad inout hiv
+    (by omega) (by omega))
+  rintro r ⟨hl, hout, htag⟩
+  refine ⟨hl, ?_, ?_⟩
+  · rw [hout]; simp only [gcmDecrypt, seqNat8ToSeqNat32LE_seqNat32ToSeqNat8LE]
+  · rw [htag]; simp only [gcmTag, seqNat8ToSeqNat32LE_seqNat32ToSeqNat8LE]
+
+theorem gcmEncrypt_eq (alg : Algorithm) (key iv plain auth c t : List (BitVec 8))
+    (hc : c = (gcmDecrypt alg key iv plain auth []).1) (ht : t = gcmTag alg key iv c auth) :
+    (c, t) = gcmEncrypt alg key iv plain auth := by
+  subst hc ht; rfl
+
+/-- `AesGcm::encrypt` on `Portable`, for AAD under 2^61 bytes and messages
+rind takes: the ciphertext in place and the tag are AES-GCM's. -/
+theorem aes_gcm_encrypt_spec (he : ∃ e, low.entry.Entry.new_secret = ok e) (alg : Algorithm)
+    (kw : List (BitVec 32)) (g : mid.aes_gcm.AesGcm) (hg : GcmReady alg kw g)
+    (nonce : Std.Array U8 12#usize) (aad inout : Slice U8) (tag : Std.Array U8 16#usize)
+    (haad : aad.length < 2 ^ 61) (hin : inout.length ≤ 2 ^ 36 - 32) :
+    mid.aes_gcm.AesGcm.encrypt g nonce aad inout tag ⦃ r =>
+      r.1 = .Ok () ∧ r.2.1.length = inout.length ∧ (r.2.1.val.map (·.bv), r.2.2.val.map (·.bv)) =
+        gcmEncrypt alg (seqNat32ToSeqNat8LE kw) (nonce.val.map (·.bv)) (inout.val.map (·.bv))
+          (aad.val.map (·.bv)) ⦄ := by
+  obtain ⟨e, he⟩ := he
+  obtain ⟨p, rfl, hp⟩ := hg
+  unfold mid.aes_gcm.AesGcm.encrypt
+  rw [he, bind_ok]
+  apply WP.spec_bind (check_gcm_lengths_eq _ _)
+  rintro r rfl
+  rw [Slice.len_val, Slice.len_val, ite_eq_right (by omega)]
+  simp only [core.result.Result.Insts.CoreOpsTry.branch, bind_ok, lift]
+  step with portable_tagged_spec true alg kw p hp nonce.to_slice aad inout
+    (by rw [Array.length_to_slice]; simp) haad hin as ⟨res, hl, hout, htag⟩
+  obtain ⟨tg, out⟩ := res
+  simp only [ite_true, Array.val_to_slice] at hl hout htag
+  simp only [low.ct.public_slice, bind_ok]
+  step*
+  exact ⟨hl, gcmEncrypt_eq _ _ _ _ _ _ _ hout htag⟩
+
+/-- `AesGcm::decrypt` on `Portable`, for AAD under 2^61 bytes and messages
+rind takes: it succeeds exactly when the tag is AES-GCM's, leaving the
+plaintext in place, and otherwise fails, leaving zeros. -/
+theorem aes_gcm_decrypt_spec (he : ∃ e, low.entry.Entry.new_secret = ok e)
+    (hheld : low.entry.Entry.assert_held = ok ()) (alg : Algorithm)
+    (kw : List (BitVec 32)) (g : mid.aes_gcm.AesGcm) (hg : GcmReady alg kw g)
+    (nonce : Std.Array U8 12#usize) (aad inout : Slice U8) (tag : Std.Array U8 16#usize)
+    (haad : aad.length < 2 ^ 61) (hin : inout.length ≤ 2 ^ 36 - 32) :
+    mid.aes_gcm.AesGcm.decrypt g nonce aad inout tag ⦃ r =>
+      let out := gcmDecrypt alg (seqNat32ToSeqNat8LE kw) (nonce.val.map (·.bv)) (inout.val.map (·.bv))
+        (aad.val.map (·.bv)) (tag.val.map (·.bv))
+      if out.2 then r.1 = .Ok () ∧ r.2.val.map (·.bv) = out.1
+      else r.1 = .Err .DecryptFailed ∧ r.2.val = List.replicate inout.length 0#u8 ⦄ := by
+  obtain ⟨e, he⟩ := he
+  obtain ⟨p, rfl, hp⟩ := hg
+  unfold mid.aes_gcm.AesGcm.decrypt
+  rw [he, bind_ok]
+  apply WP.spec_bind (check_gcm_lengths_eq _ _)
+  rintro r rfl
+  rw [Slice.len_val, Slice.len_val, ite_eq_right (by omega)]
+  simp only [core.result.Result.Insts.CoreOpsTry.branch, bind_ok, lift]
+  step with portable_tagged_spec false alg kw p hp nonce.to_slice aad inout
+    (by rw [Array.length_to_slice]; simp) haad hin as ⟨res, hl, hout, htag⟩
+  obtain ⟨want, out⟩ := res
+  simp only [Bool.false_eq_true, ite_false, Array.val_to_slice] at hl hout htag
+  step*
+  apply WP.spec_bind (ct_equal_spec hheld _ _)
+  rintro b rfl
+  simp only [Array.val_to_slice]
+  have hb : (gcmDecrypt alg (seqNat32ToSeqNat8LE kw) (nonce.val.map (·.bv)) (inout.val.map (·.bv))
+      (aad.val.map (·.bv)) (tag.val.map (·.bv))).2 = decide (want.val = tag.val) := by
+    rw [← map_bv_beq, htag]; simp only [gcmDecrypt, gcmTag]
+  have hp1 : (gcmDecrypt alg (seqNat32ToSeqNat8LE kw) (nonce.val.map (·.bv)) (inout.val.map (·.bv))
+      (aad.val.map (·.bv)) (tag.val.map (·.bv))).1 = out.val.map (·.bv) := by
+    rw [hout]; simp only [gcmDecrypt]
+  simp only [hb, hp1, low.ct.into_public, bind_ok]
+  by_cases hc : want.val = tag.val
+  · simp only [hc, decide_true, ite_true, low.ct.public_slice, bind_ok, WP.spec_ok]
+    exact ⟨trivial, trivial⟩
+  · simp only [hc, decide_false, Bool.false_eq_true, ite_false]
+    step*
+
+/-- `AesGcm::encrypt_any` on `Portable`: an empty IV, or an IV or AAD of
+2^61 bytes or more, or a message past 2^36 - 32 bytes, is refused, and the
+buffers left as they were; otherwise the ciphertext in place is AES-GCM's
+under the IV, and `tag_out`, of at most 16 bytes, holds the first bytes of
+its tag. -/
+theorem aes_gcm_encrypt_any_spec (he : ∃ e, low.entry.Entry.new_secret = ok e) (alg : Algorithm)
+    (kw : List (BitVec 32)) (g : mid.aes_gcm.AesGcm) (hg : GcmReady alg kw g)
+    (iv aad inout tag_out : Slice U8) (htl : tag_out.length ≤ 16) :
+    mid.aes_gcm.AesGcm.encrypt_any g iv aad inout tag_out ⦃ r =>
+      if iv.length = 0 ∨ 2 ^ 61 ≤ iv.length ∨ 2 ^ 61 ≤ aad.length ∨ 2 ^ 36 - 32 < inout.length then
+        r.1 = .Err .WrongLength ∧ r.2.1 = inout ∧ r.2.2 = tag_out
+      else
+        let out := gcmEncrypt alg (seqNat32ToSeqNat8LE kw) (iv.val.map (·.bv)) (inout.val.map (·.bv))
+          (aad.val.map (·.bv))
+        r.1 = .Ok () ∧ r.2.1.length = inout.length ∧ r.2.2.length = tag_out.length ∧
+          r.2.1.val.map (·.bv) = out.1 ∧ r.2.2.val.map (·.bv) = out.2.take tag_out.length ⦄ := by
+  obtain ⟨e, he⟩ := he
+  obtain ⟨p, rfl, hp⟩ := hg
+  unfold mid.aes_gcm.AesGcm.encrypt_any
+  rw [he, bind_ok]
+  apply WP.spec_bind (check_gcm_iv_spec iv)
+  rintro r rfl
+  by_cases hiv : iv.length = 0 ∨ 2 ^ 61 ≤ iv.length
+  · simp only [hiv, ite_true, core.result.Result.Insts.CoreOpsTry.branch, bind_ok,
+      core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual,
+      core.convert.FromSame.from, bind_tc_ok]
+    exact (WP.spec_ok _).2 (by simp_all; tauto)
+  simp only [hiv, ite_false, core.result.Result.Insts.CoreOpsTry.branch, bind_ok]
+  apply WP.spec_bind (check_gcm_lengths_eq _ _)
+  rintro r rfl
+  rw [Slice.len_val, Slice.len_val]
+  by_cases hl : 2 ^ 61 ≤ aad.length ∨ 2 ^ 36 - 32 < inout.length
+  · simp only [hl, ite_true, bind_ok,
+      core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual,
+      core.convert.FromSame.from, bind_tc_ok]
+    exact (WP.spec_ok _).2 (by simp_all)
+  simp only [hl, ite_false, bind_ok]
+  step with portable_tagged_spec true alg kw p hp iv aad inout (by omega) (by omega) (by omega) as ⟨res, hlen, hout, htag⟩
+  obtain ⟨tag, out⟩ := res
+  simp only [ite_true] at hlen hout htag
+  step with index_tag tag tag_out.len (by rw [Slice.len_val]; exact htl) as ⟨s, hs1, hs2⟩
+  step with core.slice.Slice.copy_from_slice.step_spec _ tag_out s (by rw [hs2, Slice.len_val]) as ⟨s', hs'⟩
+  subst hs'
+  simp only [low.ct.public_slice, bind_ok, WP.spec_ok]
+  simp only [or_false, hiv, ite_false]
+  have he := gcmEncrypt_eq _ _ _ _ _ _ _ hout htag
+  refine ⟨trivial, hlen, by rw [hs2, Slice.len_val], by rw [← he], ?_⟩
+  rw [hs1, Slice.len_val, List.map_take, ← he]
+
+/-- `AesGcm::decrypt_any` on `Portable`: refused as `encrypt_any` is, the
+buffer left as it was; otherwise it succeeds exactly when `tag`, of at most 16
+bytes, is the first bytes of AES-GCM's tag under the IV, leaving the plaintext
+in place, and otherwise fails, leaving zeros. -/
+theorem aes_gcm_decrypt_any_spec (he : ∃ e, low.entry.Entry.new_secret = ok e)
+    (hheld : low.entry.Entry.assert_held = ok ()) (alg : Algorithm)
+    (kw : List (BitVec 32)) (g : mid.aes_gcm.AesGcm) (hg : GcmReady alg kw g)
+    (iv aad inout tag : Slice U8) (htl : tag.length ≤ 16) :
+    mid.aes_gcm.AesGcm.decrypt_any g iv aad inout tag ⦃ r =>
+      if iv.length = 0 ∨ 2 ^ 61 ≤ iv.length ∨ 2 ^ 61 ≤ aad.length ∨ 2 ^ 36 - 32 < inout.length then
+        r.1 = .Err .WrongLength ∧ r.2 = inout
+      else
+        let out := gcmDecryptTrunc alg (seqNat32ToSeqNat8LE kw) (iv.val.map (·.bv)) (inout.val.map (·.bv))
+          (aad.val.map (·.bv)) (tag.val.map (·.bv))
+        if out.2 then r.1 = .Ok () ∧ r.2.val.map (·.bv) = out.1
+        else r.1 = .Err .DecryptFailed ∧ r.2.val = List.replicate inout.length 0#u8 ⦄ := by
+  obtain ⟨e, he⟩ := he
+  obtain ⟨p, rfl, hp⟩ := hg
+  unfold mid.aes_gcm.AesGcm.decrypt_any
+  rw [he, bind_ok]
+  apply WP.spec_bind (check_gcm_iv_spec iv)
+  rintro r rfl
+  by_cases hiv : iv.length = 0 ∨ 2 ^ 61 ≤ iv.length
+  · simp only [hiv, ite_true, core.result.Result.Insts.CoreOpsTry.branch, bind_ok,
+      core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual,
+      core.convert.FromSame.from, bind_tc_ok]
+    exact (WP.spec_ok _).2 (by simp_all; tauto)
+  simp only [hiv, ite_false, core.result.Result.Insts.CoreOpsTry.branch, bind_ok]
+  apply WP.spec_bind (check_gcm_lengths_eq _ _)
+  rintro r rfl
+  rw [Slice.len_val, Slice.len_val]
+  by_cases hl : 2 ^ 61 ≤ aad.length ∨ 2 ^ 36 - 32 < inout.length
+  · simp only [hl, ite_true, bind_ok,
+      core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual,
+      core.convert.FromSame.from, bind_tc_ok]
+    exact (WP.spec_ok _).2 (by simp_all)
+  simp only [hl, ite_false, bind_ok]
+  step with portable_tagged_spec false alg kw p hp iv aad inout (by omega) (by omega) (by omega) as ⟨res, hlen, hout, htag⟩
+  obtain ⟨want, out⟩ := res
+  simp only [Bool.false_eq_true, ite_false] at hlen hout htag
+  step with index_tag want tag.len (by rw [Slice.len_val]; exact htl) as ⟨s, hs1, hs2⟩
+  step with ct_equal_spec hheld s tag as ⟨b, hb0⟩
+  subst hb0
+  simp only [or_false, hiv, ite_false]
+  have hb : (gcmDecryptTrunc alg (seqNat32ToSeqNat8LE kw) (iv.val.map (·.bv)) (inout.val.map (·.bv))
+      (aad.val.map (·.bv)) (tag.val.map (·.bv))).2 = decide (s.val = tag.val) := by
+    rw [← map_bv_beq, hs1, Slice.len_val, List.map_take, htag]
+    simp only [gcmDecryptTrunc, List.length_map, Slice.length]
+  have hp1 : (gcmDecryptTrunc alg (seqNat32ToSeqNat8LE kw) (iv.val.map (·.bv)) (inout.val.map (·.bv))
+      (aad.val.map (·.bv)) (tag.val.map (·.bv))).1 = out.val.map (·.bv) := by
+    rw [hout]; simp only [gcmDecrypt, gcmDecryptTrunc]
+  rw [hb, hp1]
+  simp only [low.ct.into_public, bind_ok]
+  by_cases hc : s.val = tag.val
+  · simp only [hc, decide_true, ite_true, low.ct.public_slice, bind_ok, WP.spec_ok]
+    exact ⟨trivial, trivial⟩
+  · simp only [hc, decide_false, Bool.false_eq_true, ite_false]
+    step*
 
 end rind.armv7
