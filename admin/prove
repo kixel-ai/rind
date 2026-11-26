@@ -46,7 +46,9 @@
 # `hol-light <arch>`, `cosim`, or `lean`, checks nothing either: it prints the
 # key that check's result is cached under, which `result_key` below
 # describes, running only what the key hashes; `lean`'s runs in the `prove`
-# dev shell, the others' in `hol-light`.
+# dev shell, the others' in `hol-light`. `lean` also runs on aarch64 macOS, in
+# the same shell, where it names the checks the host cannot run, the intrinsic
+# vectors, and exits nonzero for them after everything else passes.
 set -euo pipefail
 
 usage="usage: admin/prove [bytes | hol-light [x86_64 | aarch64 | armv7] | cosim | vg | dalek | lean | spec-tests | session <x86_64 | aarch64> [<file>] | key <hol-light <x86_64 | aarch64 | armv7> | cosim | lean>]"
@@ -2140,6 +2142,17 @@ if ! diff <(echo "$rind_rej") <(tr -d ' ' <<<"$s2n_rej" | tr ',' '\n') >/dev/nul
 fi
 
 [ "${PROVE_TRANSLATE_ONLY:-}" ] && exit 0
+# What this host cannot run of the checks below, which the run names at its end
+# and fails for, so a partial run never passes as the whole one. On macOS that
+# is the intrinsic vectors, which run x86_64's instructions on this CPU.
+skipped=()
+if [[ $(uname -sm) != "Linux x86_64" ]] || ! grep -qw avx2 /proc/cpuinfo; then
+    skipped+=("the intrinsic vectors (admin/simd-vectors.rs needs an x86_64 Linux CPU with AVX2)")
+fi
+if [[ -n $key_only && ${#skipped[@]} -gt 0 ]]; then
+    echo "admin/prove: no key for a host that cannot run ${skipped[*]}" >&2
+    exit 1
+fi
 # Each hand model of a CPU intrinsic, a `core.core_arch` definition but its
 # vector types' own, is tested against the instruction: `admin/simd-vectors.rs`
 # runs each x86_64 one on this CPU and writes `#guard`s that the models compute
@@ -2151,28 +2164,30 @@ fi
 # VPCLMULQDQ, which this checks is still what it prints where this CPU has
 # them; no CI runner is sure to. Fail on a model none tests, so a new one
 # cannot go untested.
-rustc --edition 2024 -O -o "$out/simd-vectors" admin/simd-vectors.rs
-"$out/simd-vectors" >"$out/SimdVectors.lean"
-has_avx512() {
-    local feature
-    for feature in avx512f avx512bw avx512vl vaes vpclmulqdq; do
-        grep -qw "$feature" /proc/cpuinfo || return 1
-    done
-}
-if has_avx512; then
-    rustc --edition 2024 -O -o "$out/avx512-vectors" admin/avx512-vectors.rs
-    "$out/avx512-vectors" | diff -u --label avx512-vectors - proofs/Rind/X86_64/Avx512Vectors.lean
-else
-    echo "admin/prove: this CPU lacks AVX-512, so proofs/Rind/X86_64/Avx512Vectors.lean is checked against the models but not rerun" >&2
-fi
-untested=$(grep -rhoE '^def core\.core_arch\.[^ ]+' proofs/Rind | sed 's/^def //' | grep -vE '\.__m|_t\.Insts\.' | sort -u |
-    while read -r model; do
-        grep -qF " $model " "$out/SimdVectors.lean" proofs/Rind/Aarch64/NeonVectors.lean \
-            proofs/Rind/X86_64/Avx512Vectors.lean || echo "$model"
-    done)
-if [[ -n $untested ]]; then
-    echo "admin/prove: no vectors test these intrinsic models:" $untested >&2
-    exit 1
+if [[ ${#skipped[@]} -eq 0 ]]; then
+    rustc --edition 2024 -O -o "$out/simd-vectors" admin/simd-vectors.rs
+    "$out/simd-vectors" >"$out/SimdVectors.lean"
+    has_avx512() {
+        local feature
+        for feature in avx512f avx512bw avx512vl vaes vpclmulqdq; do
+            grep -qw "$feature" /proc/cpuinfo || return 1
+        done
+    }
+    if has_avx512; then
+        rustc --edition 2024 -O -o "$out/avx512-vectors" admin/avx512-vectors.rs
+        "$out/avx512-vectors" | diff -u --label avx512-vectors - proofs/Rind/X86_64/Avx512Vectors.lean
+    else
+        echo "admin/prove: this CPU lacks AVX-512, so proofs/Rind/X86_64/Avx512Vectors.lean is checked against the models but not rerun" >&2
+    fi
+    untested=$(grep -rhoE '^def core\.core_arch\.[^ ]+' proofs/Rind | sed 's/^def //' | grep -vE '\.__m|_t\.Insts\.' | sort -u |
+        while read -r model; do
+            grep -qF " $model " "$out/SimdVectors.lean" proofs/Rind/Aarch64/NeonVectors.lean \
+                proofs/Rind/X86_64/Avx512Vectors.lean || echo "$model"
+        done)
+    if [[ -n $untested ]]; then
+        echo "admin/prove: no vectors test these intrinsic models:" $untested >&2
+        exit 1
+    fi
 fi
 
 rind_isa
@@ -2190,18 +2205,25 @@ rind_isa
     sed -n '/^name = "curve25519-dalek"$/,/^$/p' Cargo.lock
     grep '^curve25519-dalek = ' rind/Cargo.toml
 } >"$out/dalek.lock"
-result_shell=prove result_key lean admin/prove admin/simd-vectors.rs admin/avx512-vectors.rs \
-    admin/import-dalek admin/dalek-closure proofs "$out/SimdVectors.lean" "$out/rind-isa/got" "$out/dalek.lock"
+# A host that skipped the vectors has no key to save.
+if [[ ${#skipped[@]} -eq 0 ]]; then
+    result_shell=prove result_key lean admin/prove admin/simd-vectors.rs admin/avx512-vectors.rs \
+        admin/import-dalek admin/dalek-closure proofs "$out/SimdVectors.lean" "$out/rind-isa/got" "$out/dalek.lock"
+fi
 [[ -z $key_only ]] || exit 0
 
 dalek
 cd proofs
 lean_deps
 lake build
-lake env lean "../$out/SimdVectors.lean"
+[[ ${#skipped[@]} -gt 0 ]] || lake env lean "../$out/SimdVectors.lean"
 cd ..
 # The spec tests compile Mathlib to C to link `spec-server`, so CI runs them
 # in a job of their own: `prove.yml`'s `spec-tests`.
 if [[ -z $only ]]; then
     spec_tests
+fi
+if [[ ${#skipped[@]} -gt 0 ]]; then
+    printf 'admin/prove: not run on this host: %s\n' "${skipped[@]}" >&2
+    exit 1
 fi
