@@ -34,6 +34,8 @@ pub(crate) fn bignum_add(z: &mut [u64], x: &[u64], y: &[u64]) -> u64 {
 /// Input x[k]; output function return
 ///
 /// In the case of a zero bignum as input the result is 0
+// Indexed rather than enumerated, which Aeneas cannot translate.
+#[allow(clippy::needless_range_loop)]
 pub(crate) fn bignum_bitsize(x: &[u64]) -> usize {
     let mut bits = 0;
     for i in 0..x.len() {

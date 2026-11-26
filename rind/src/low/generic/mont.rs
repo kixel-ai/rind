@@ -30,6 +30,10 @@
 //! The crossovers are where each measured faster on x86_64 at both limb
 //! widths, and are the same in limbs for both.
 
+// Loops index rather than iterate or zip, which Aeneas cannot translate, so
+// `proofs/` can prove them.
+#![allow(clippy::needless_range_loop)]
+
 use super::super::bignum::{MAX_WORDS, nonzero, select, word};
 use super::{Limb, Wide, join, limbs};
 use crate::low::ct;
