@@ -210,6 +210,8 @@ def base_sizes(rev, host, env):
     # else, so REV's own dev shell names its rustc.
     flake = subprocess.run(["git", "diff", "--quiet", rev, "--", "flake.nix", "flake.lock"], cwd=ROOT)
     if flake.returncode == 1:
+        if shutil.which("nix") is None:
+            return None, f"the flake changed since {rev[:12]} and this host has no nix to read its toolchain"
         ours = subprocess.run(["rustc", "-vV"], env=env, check=True, capture_output=True, text=True).stdout
         theirs = subprocess.run(
             ["nix", "develop", f"path:{tree}", "--command", "rustc", "-vV"], capture_output=True, text=True

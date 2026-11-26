@@ -177,7 +177,7 @@ module structure '^(rind/(src/|Cargo\.toml$)|admin/structure$)' \
 # admin/binary-size reports what the diff does to rind's size in each, which
 # any change to rind's code or the toolchain can move, passing whatever it is.
 module fixtures '^(rind/(src/|Cargo\.toml$|build\.rs$)|rind-rustls/(src/|Cargo\.toml$|build\.rs$)|Cargo\.toml$|flake\.(nix|lock)$|admin/build-cost-fixtures/(rind|rustls)/|admin/binary-size(-[a-z]+\.lock)?$)' \
-    tools='cargo git nix nm python3' compiles pr
+    tools='cargo git nm python3' compiles pr
 # Advisories, licenses, and sources move with any manifest or the policy.
 module deny '(^|/)Cargo\.(toml|lock)$|^deny\.toml$' \
     tools='cargo-deny' check
