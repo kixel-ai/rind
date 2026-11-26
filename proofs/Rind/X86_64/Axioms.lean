@@ -49,7 +49,10 @@ and ECDSA verification in `Rind.X86_64.VgP256`, and for P-384's `d·G`,
 which key generation and each ECDSA signature's nonce point take, and its
 ECDSA verification, in `Rind.X86_64.VgP384`; and nothing else.
 ChaCha20-Poly1305's theorems also take aws-lc's one-pass routines as the
-hypothesis `RunsChaCha20Poly1305`, which no axiom states.
+hypothesis `RunsChaCha20Poly1305`, which no axiom states. ChaCha20's
+`apply_keystream` takes the hypothesis `LinuxBuild`, which no axiom states
+either, since rind's HOL Light proof of the SSSE3 routine covers the Linux
+build's object, not Apple's.
 RSA's Montgomery products at the widths aws-lc's 4x and 8x routines take, but
 for s2n-bignum's Karatsuba routines, take them as the hypothesis
 `AwsLcMont`, which no axiom states either.

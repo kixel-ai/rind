@@ -3,7 +3,8 @@
  *)
 
 (* ========================================================================= *)
-(* ChaCha20 four blocks at a time with SSSE3, as rind's build emits it.      *)
+(* ChaCha20 four blocks at a time with SSSE3, as rind's Linux build emits it. *)
+(* Apple's copy, with no shared table section, is not covered.               *)
 (* ========================================================================= *)
 
 needs "x86/proofs/base.ml";;

@@ -1075,7 +1075,7 @@ around HACL*'s rounds, at every length.
 
 x86_64 CPUs without AVX2 run ChaCha20 above 128 bytes on aws-lc's
 `chacha-x86_64` SSSE3 routine, four blocks at a time, as aws-lc picks it,
-whose object code rind's own HOL Light proof covers (see
+whose object code, in rind's Linux build, rind's own HOL Light proof covers (see
 [Sources](#sources)), which measured 2.4-2.7x faster than HACL*'s rounds from 256 bytes on Coffee
 Lake, Zen 3, and Arrow Lake. Up to that, and at every length without SSSE3,
 where aws-lc runs its integer routine, they run HACL*'s verified rounds, which

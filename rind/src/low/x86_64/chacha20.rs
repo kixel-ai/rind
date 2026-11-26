@@ -208,8 +208,10 @@ unsafe fn cipher_ssse3_4x(
     // SAFETY: `buffer` is `len` readable and writable bytes, at least one as
     // the caller ensures, which the routine allows to alias exactly, and
     // `key` and `counter_nonce` are 8 and 4 words. The token proves the
-    // `ssse3` cpu feature. Its 32-bit counter wraps past 2^32 blocks, which
-    // callers rule out.
+    // `ssse3` cpu feature. Its 32-bit counter adds the block index mod 2^32,
+    // so it wraps once the counter plus the blocks passes 2^32, which can be
+    // before 2^32 blocks. Callers rule that out with `check_counter`, apart
+    // from the nonempty check above.
     unsafe {
         asm_call!(unsafe extern "sysv64" chacha20_ctr32_ssse3_4x(ptr, ptr, len, key, counter_nonce))
     }

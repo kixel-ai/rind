@@ -83,7 +83,10 @@ those inputs, in any worktree, restores in under a second.
   from 328 below the stack pointer, which needs the stack pointer plus 8 to be
   16-byte aligned at entry, as the ABI leaves it; its table, which `admin/prove` extracts
   with the code since the build places it in the function's own read-only
-  section on Linux, must be 16-byte aligned.
+  section on Linux, must be 16-byte aligned. It is of the Linux build's object:
+  Apple's `aws_lc/ChaCha20_ctr32_ssse3_4x.apple.s` lacks the entry's
+  `.align 32`, so its branches can land at other offsets, and its two tables
+  are separate statics, not one section, so no proof covers it.
 - `aarch64/bn_mul_mont.ml`: `BN_MUL_MONT_SUBROUTINE_CORRECT`, rind's
   proof that the naked function `low::aarch64::mont::bn_mul_mont`, aws-lc's
   Montgomery multiplication, writes the Montgomery product
@@ -1252,7 +1255,9 @@ pyca/verified-garbage's AVX2 and AVX-512 VL routines, rind's two-block AVX2
 kernel, aws-lc's SSSE3 routine, and HACL*'s rounds, in
 `Rind/X86_64/ChaCha20Cipher.lean`:
 
-- `chacha20_apply_keystream`, on any CPU: a buffer that needs more blocks
+- `chacha20_apply_keystream`, on any CPU in rind's Linux build (it assumes
+  `LinuxBuild`; an x86_64 Mac's SSSE3 routine is Apple's copy, which no proof
+  covers): a buffer that needs more blocks
   than remain before the 32-bit block counter wraps is refused with
   `WrongLength` and left as it is, and otherwise it becomes RFC 8439's
   encryption of it under the key, the block counter, and the nonce.
@@ -1275,8 +1280,9 @@ the two blocks'. Without AVX2 but with SSSE3, `cipher` runs aws-lc's
 `ChaCha20_ctr32_ssse3_4x` from 129 bytes, in place, whose HOL Light proof
 steps its setup, the four blocks' rounds, each 256-byte group's XOR, and the
 tail of fewer than 256 bytes, by induction over the groups.
-`chacha20_apply_keystream` assumes `RunsCipher`: the entry guard admits the
-call, constructing the VG state succeeds (the model leaves `VgState::uninit`
+`chacha20_apply_keystream` assumes `RunsCipher`: rind's build assembled the
+Linux object the HOL Light proof covers (`LinuxBuild`, which no axiom states),
+the entry guard admits the call, constructing the VG state succeeds (the model leaves `VgState::uninit`
 opaque), and the CPU-feature checks return, whatever they find.
 
 ChaCha20 on aarch64, from `cipher::ChaCha20` down to pyca/verified-garbage's
