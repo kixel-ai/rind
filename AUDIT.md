@@ -292,8 +292,8 @@ Hand-written arithmetic no proof covers, by where it came from:
   ML-KEM, and RSA, wherever ALGORITHMS.md names it. Vectors, differential
   tests independent of it, and fuzzing reach each.
 - **rind's own**, which ALGORITHMS.md marks ⚡, such as its parts of P-384 and
-  P-521, x86_64 SHA-256, the portable RSA multiplication on 32-bit limbs,
-  and armv7 Ed25519. Vectors, independent differential tests, and fuzzing reach each,
+  P-521, x86_64 SHA-256, the portable RSA multiplication but its Montgomery
+  products on 64-bit limbs, and armv7 Ed25519. Vectors, independent differential tests, and fuzzing reach each,
   and each Montgomery routine's unit tests compare it with proven or
   portable arithmetic on edge-case limbs, as
   [TESTING.md](TESTING.md#vector-suites) describes.

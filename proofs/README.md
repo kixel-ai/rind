@@ -1401,7 +1401,8 @@ the SHA-2 block functions, RSA verification, down to `low::generic`'s word
 routines and Montgomery products, and the Keccak-f above, alone. None of
 that Rust picks by CPU, and Aeneas's `usize` is either width, so the
 theorems hold on every target the backend builds for, but RSA's on 32-bit
-limbs, which 32-bit targets run and the translation, on x86_64, leaves out,
+limbs, which most 32-bit targets run and the translation, on x86_64, leaves
+out,
 and two bodies the extraction leaves out too: ESP-IDF Xtensa's SHA-256,
 `low/portable/sha256_iram.rs`, and 32-bit microcontrollers' SHA-512,
 `low::generic::sha512_rolled`, which

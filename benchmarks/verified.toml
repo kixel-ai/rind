@@ -369,14 +369,14 @@ link = "https://github.com/kixel-ai/rind/blob/main/proofs/Rind/X86_64/ChaCha20.l
 library = "rind"
 operations = ["rsa2048-pkcs1-sha256-verify"]
 arch = "portable"
-proof = "rind's Lean proof, through Aeneas and a hand model of the function-pointer dispatch Aeneas cannot translate, of its signature API's RSASSA-PKCS1-v1_5 SHA-256 verification against RFC 8017, key loading's checks, R^2 mod n, and -n^-1 mod 2^64 included, down to low::generic's word routines and Montgomery products, CIOS below 16 limbs and Karatsuba products with Montgomery reduction above, on 64-bit limbs; not 32-bit targets', which run 32-bit limbs"
+proof = "rind's Lean proof, through Aeneas and a hand model of the function-pointer dispatch Aeneas cannot translate, of its signature API's RSASSA-PKCS1-v1_5 SHA-256 verification against RFC 8017, key loading's checks, R^2 mod n, and -n^-1 mod 2^64 included, down to low::generic's word routines and Montgomery products, CIOS below 16 limbs and Karatsuba products with Montgomery reduction above, on 64-bit limbs; not builds on 32-bit limbs, which most 32-bit targets run"
 link = "https://github.com/kixel-ai/rind/blob/main/proofs/Rind/Portable/RsaMont.lean"
 
 [[verified]]
 library = "rind"
 operations = ["rsa2048-pss-sha256-verify"]
 arch = "portable"
-proof = "rind's Lean proof, through Aeneas and a hand model of the function-pointer dispatch Aeneas cannot translate, of its signature API's RSASSA-PSS SHA-256 verification against RFC 8017, MGF1 and H' with SHA-256 and a 32-byte salt, key loading's checks, R^2 mod n, and -n^-1 mod 2^64 included, down to low::generic's word routines, Montgomery products, SHA-256 block function, and constant-time compare, on 64-bit limbs; not 32-bit targets', which run 32-bit limbs"
+proof = "rind's Lean proof, through Aeneas and a hand model of the function-pointer dispatch Aeneas cannot translate, of its signature API's RSASSA-PSS SHA-256 verification against RFC 8017, MGF1 and H' with SHA-256 and a 32-byte salt, key loading's checks, R^2 mod n, and -n^-1 mod 2^64 included, down to low::generic's word routines, Montgomery products, SHA-256 block function, and constant-time compare, on 64-bit limbs; not builds on 32-bit limbs, which most 32-bit targets run"
 link = "https://github.com/kixel-ai/rind/blob/main/proofs/Rind/Portable/RsaMont.lean"
 
 # libcrux: portable Rust that KaRaMeL generates from HACL*, with no CPU

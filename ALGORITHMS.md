@@ -208,7 +208,8 @@ with portable Rust in place of the assembly armv7 runs regardless.
   limbs, then a separate product and reduction, with Karatsuba from 32 limbs.
   Its scratch is on the stack, never on the heap as HACL*'s is.
   [`proofs/`](proofs/README.md) proves it in Lean at every width on 64-bit
-  limbs, and RSA verification over it. Inversion
+  limbs, and its signature API's SHA-256 PKCS#1 v1.5 and PSS verification
+  over it. Inversion
   modulo an RSA modulus or edwards25519's order, and coprimality, run
   [libsecp256k1]'s safegcd ported to any length, as on armv7: on x86_64, at
   2048 and 4096 bits, inversion took a seventeenth to a thirty-sixth of the

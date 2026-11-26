@@ -220,7 +220,8 @@ restated as a work list:
 
 1. rind's own hand-written arithmetic with no proof, the ⚡ and "rind" cells of
    ALGORITHMS.md, such as parts of P-384 and P-521, x86_64 SHA-256, the
-   portable RSA multiplication on 32-bit limbs, and armv7 Ed25519.
+   portable RSA multiplication but its Montgomery products on 64-bit limbs,
+   and armv7 Ed25519.
 2. Code ported by hand from C or from another Rust backend: aws-lc's
    constant-time SSE2 AES and integer GHASH, and curve25519-dalek's AVX2
    backend, ported to intrinsics.
