@@ -210,6 +210,23 @@ those inputs, in any worktree, restores in under a second.
   runs the code they are about. `ct_compare_bytes` saves R4 and LR in the
   8 bytes below SP, which its theorems assume aligned, below 2^32, and
   apart from the code and, for `CT_COMPARE_BYTES_CORRECT`, the strings.
+- `armv7/gcm_init_neon.ml` and `armv7/gcm_ghash_neon.ml`:
+  `GCM_INIT_NEON_SUBROUTINE_CORRECT` and
+  `GCM_GHASH_NEON_SUBROUTINE_CORRECT`, rind's proofs that aws-lc's NEON
+  GHASH in `low::arm::ghash_armv4`, which armv7 runs without the crypto
+  extension, computes SP 800-38D's GHASH. `gcm_init_neon` stores the key H
+  twisted, H times x modulo POLYVAL's polynomial x^128 + x^127 + x^126 +
+  x^121 + 1, as s2n-bignum's `ghash_twist` states it, and `gcm_ghash_neon`
+  leaves in Xi `nist_ghash`, the fork's SP 800-38D spec, of its blocks
+  under H from Xi, for one block up. Its loop builds each 64x64 carry-less
+  product from eight `vmull.p8` byte products; `PMUL_P8_CONV` proves each
+  of the three a Karatsuba step needs, and the shift reduction after them
+  is Gueron's Proposition 3, `polyval_reduce_prop3`, as one bit-blasted
+  identity, so each block is s2n-bignum's `polyval_dot` with the twisted
+  key, which its `NIST_GHASH_IS_POLYVAL` relates to `nist_ghash`. Both are
+  A32 routines in a `global_asm!` that `admin/prove` finds by their
+  symbols, and the theorems cover each from entry to return for a caller in
+  A32 or T32, so every armv7 target. No Lean theorem restates them yet.
 - `x86_64/ecp_nistz256_point_add_affine.ml` and
   `x86_64/ecp_nistz256_point_add_affinex.ml`:
   `ECP_NISTZ256_POINT_ADD_AFFINE_SUBROUTINE_CORRECT` and
