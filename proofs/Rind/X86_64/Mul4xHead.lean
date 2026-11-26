@@ -13,10 +13,10 @@ set_option linter.unusedSimpArgs false
 namespace rind.x86_64.mul4x
 
 theorem and_mask10 (x : BitVec 64) : x &&& BitVec.ofNat 64 18446744073709550592 = (x >>> 10) <<< 10 := by
-  bv_decide
+  rw [BitVec.shiftLeft_ushiftRight]; rfl
 
 theorem and_mask12 (x : BitVec 64) : x &&& BitVec.ofNat 64 18446744073709547520 = (x >>> 12) <<< 12 := by
-  bv_decide
+  rw [BitVec.shiftLeft_ushiftRight]; rfl
 
 theorem toNat_shr_shl (x : BitVec 64) (j : Nat) : ((x >>> j) <<< j).toNat = x.toNat / 2 ^ j * 2 ^ j := by
   rw [BitVec.toNat_shiftLeft, BitVec.toNat_ushiftRight, Nat.shiftLeft_eq, Nat.shiftRight_eq_div_pow]
@@ -26,7 +26,7 @@ theorem tpOf_toNat (sp0 : Addr) (k : Nat) (hk : k < 2 ^ 32) (h : 8 * k + 80 ≤ 
     (tpOf sp0 k).toNat = (sp0.toNat - 8 * k - 80) / 1024 * 1024 := by
   have e : sp0 - BitVec.ofNat 64 48 + (0 - BitVec.ofNat 64 k) * 8#64 + BitVec.ofNat 64 18446744073709551584 =
       sp0 - (BitVec.ofNat 64 k * 8#64 + 80#64) := by
-    generalize BitVec.ofNat 64 k = x; bv_decide
+    generalize BitVec.ofNat 64 k = x; bv_omega
   have hx : (BitVec.ofNat 64 k).toNat = k := by rw [BitVec.toNat_ofNat]; omega
   unfold tpOf
   rw [e, and_mask10, toNat_shr_shl]
@@ -108,21 +108,14 @@ theorem walk_loop (s₀ : S) (tp sp0 : Addr) (rest : List Region) (m : Nat) (hm 
   rw [show 0 + 1 * (m - 1 + 1) = m by omega] at hI'
   exact ⟨s', hx, hI'⟩
 
-/-- The prologue's and walk's trace. -/
-def headTrace (sp0 : Addr) (k : Nat) : List Leak :=
-  (prologueATrace sp0 ++ [.addr (tpOf sp0 k + pagesOf sp0 (tpOf sp0 k))]) ++
-    walkTrace (tpOf sp0 k) ((pagesOf sp0 (tpOf sp0 k)).toNat / 4096)
-
-/-- The prologue and walk: the pushes, and `rsp` at `tp`, which the stack's head region now starts at. -/
-abbrev headProg : Prog I :=
-  .seq (.block prologue) (.ite Rind.X86_64.Cond.a (.loop (.block walk) Rind.X86_64.Cond.a) (.block []))
-
 set_option maxHeartbeats 1000000 in
 theorem head_ok (s : S) (k : Nat) (sp0 : Addr) (rest : List Region)
     (hk : k < 2 ^ 32) (hlo : s.lo.toNat + 8 * k + 1104 ≤ sp0.toNat) (hsp : sp0.toNat + 8 ≤ 2 ^ 64)
     (hrsp : s.vg.gpr .rsp = sp0) (hr9 : s.vg.gpr .r9 = BitVec.ofNat 64 k)
     (hwr : s.vg.wr = ⟨sp0, 8⟩ :: rest) :
-    ∃ s', Exec I headProg s (headTrace sp0 k) s' ∧
+    ∃ s₁ s', Exec I (.block prologue) s (prologueATrace sp0 ++ [.addr (tpOf sp0 k + pagesOf sp0 (tpOf sp0 k))]) s₁ ∧
+      Exec I (.ite Rind.X86_64.Cond.a (.loop (.block walk) Rind.X86_64.Cond.a) (.block [])) s₁
+        (walkTrace (tpOf sp0 k) ((pagesOf sp0 (tpOf sp0 k)).toNat / 4096)) s' ∧
       s'.vg.gpr .rsp = tpOf sp0 k ∧ s'.vg.gpr .rax = sp0 ∧ s'.vg.gpr .r9 = BitVec.ofNat 64 k ∧
       s'.vg.wr = ⟨tpOf sp0 k, sp0.toNat + 8 - (tpOf sp0 k).toNat⟩ :: rest ∧
       s'.vg.mem = (((((s.vg.mem.writeW (sp0 - BitVec.ofNat 64 8) (s.vg.gpr .rbx)).writeW (sp0 - BitVec.ofNat 64 16)
@@ -134,7 +127,6 @@ theorem head_ok (s : S) (k : Nat) (sp0 : Addr) (rest : List Region)
   obtain ⟨s₁, hxA, a_sp, a_ax, a9, a10, a11, awr, amem, ag, aoth, amx, alo⟩ :=
     prologueA_ok s k sp0 rest hk (by omega) hsp hrsp hr9 hwr
   have htp := tpOf_toNat sp0 k hk (by omega)
-  unfold headTrace
   generalize tpOf sp0 k = tp at htp a10 a11 ⊢
   have t1 := Nat.div_add_mod (sp0.toNat - 8 * k - 80) 1024
   have t2 := Nat.mod_lt (sp0.toNat - 8 * k - 80) (show 1024 > 0 by norm_num)
@@ -197,7 +189,7 @@ theorem head_ok (s : S) (k : Nat) (sp0 : Addr) (rest : List Region)
       · rw [hI3.wr, Nat.sub_self, Nat.mul_zero]; simp only [BitVec.ofNat_eq_ofNat, BitVec.add_zero]
   obtain ⟨s₃, hx3, c_sp, cwr, cF⟩ := hwalk
   have F := bF.trans cF
-  refine ⟨s₃, Exec.seq (Exec.block hxP) hx3, c_sp, ?_, ?_, cwr, ?_, ?_, ?_, ?_, ?_⟩
+  refine ⟨s₂, s₃, Exec.block hxP, hx3, c_sp, ?_, ?_, cwr, ?_, ?_, ?_, ?_, ?_⟩
   · rw [F.gpr _ (by decide), a_ax]
   · rw [F.gpr _ (by decide), a9]
   · rw [F.mem, amem]

@@ -225,7 +225,7 @@ theorem prologueB_ok (s : S) (q tp P : Addr) (L : Nat) (rest : List Region)
       simp only [gpr_arithFlags, gpr_setReg, gpr_setWr, hr.1, hr.2, ↓reduceIte]
 
 theorem walk_addr (tp X : Addr) : tp + (X + BitVec.ofNat 64 4096) + BitVec.ofNat 64 18446744073709547520 = tp + X := by
-  bv_decide
+  bv_omega
 
 set_option maxHeartbeats 2000000 in
 theorem walk_ok (s : S) (tp X : Addr) (L : Nat) (rest : List Region)

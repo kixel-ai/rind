@@ -230,13 +230,38 @@ theorem readW_writeW128_hi (m : Mem) (a : Addr) (v : BitVec 128) :
   try simp only [BitVec.toNat_ofNat, BitVec.ofNat_eq_ofNat]
   bv_decide
 
+/-- `n + p` bytes from `a`: the first `n`, then `p` from `a + n` above them. -/
+theorem read_toNat_add (m : Mem) (a : Addr) (n p : Nat) :
+    (m.read a (n + p)).toNat = (m.read a n).toNat + 2 ^ (8 * n) * (m.read (a + BitVec.ofNat 64 n) p).toNat := by
+  induction n generalizing a with
+  | zero =>
+    rw [Nat.zero_add]; simp [Mem.read]
+  | succ n ih =>
+    rw [show n + 1 + p = (n + p) + 1 by omega]
+    simp only [Mem.read, BitVec.toNat_append]
+    rw [← Nat.shiftLeft_add_eq_or_of_lt (m a).isLt, ← Nat.shiftLeft_add_eq_or_of_lt (m a).isLt, Nat.shiftLeft_eq,
+      Nat.shiftLeft_eq, ih (a + 1)]
+    rw [show a + 1 + BitVec.ofNat 64 n = a + BitVec.ofNat 64 (n + 1) by
+      rw [BitVec.add_assoc]; congr 1; apply BitVec.eq_of_toNat_eq; simp; omega]
+    rw [show 8 * (n + 1) = 8 * n + 8 by ring, Nat.pow_add]
+    ring
+
 theorem readW128_lo (m : Mem) (a : Addr) : (m.readW a 128).setWidth 64 = m.readW a 64 := by
-  simp only [Mem.readW, Mem.read, BitVec.add_assoc, BitVec.reduceAdd, Nat.reduceDiv, Nat.reduceMul]
-  bv_decide
+  apply BitVec.eq_of_toNat_eq
+  have h := read_toNat_add m a 8 8
+  have h1 := (m.read a 8).isLt
+  have h2 := (m.read (a + BitVec.ofNat 64 8) 8).isLt
+  simp only [Mem.readW, BitVec.toNat_setWidth, Nat.reduceDiv, Nat.reduceAdd, Nat.reduceMul] at h h1 h2 ⊢
+  rw [h]; omega
 
 theorem readW128_hi (m : Mem) (a : Addr) : (m.readW a 128).extractLsb' 64 64 = m.readW (a + 8#64) 64 := by
-  simp only [Mem.readW, Mem.read, BitVec.add_assoc, BitVec.reduceAdd, Nat.reduceDiv, Nat.reduceMul]
-  bv_decide
+  apply BitVec.eq_of_toNat_eq
+  have h := read_toNat_add m a 8 8
+  have h1 := (m.read a 8).isLt
+  have h2 := (m.read (a + BitVec.ofNat 64 8) 8).isLt
+  simp only [Mem.readW, BitVec.toNat_setWidth, BitVec.extractLsb'_toNat, Nat.shiftRight_eq_div_pow, Nat.reduceDiv,
+    Nat.reduceAdd, Nat.reduceMul] at h h1 h2 ⊢
+  rw [h]; omega
 
 theorem wa_succ (p : Addr) (i : Nat) : wa p (i + 1) = wa p i + 8#64 := by
   simp only [wa]; bv_omega

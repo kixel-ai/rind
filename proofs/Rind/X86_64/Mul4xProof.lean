@@ -53,7 +53,7 @@ def pushes (M : Mem) (sp0 : Addr) (g : Reg → BitVec 64) : Mem :=
     (sp0 - BitVec.ofNat 64 24) (g .r12)).writeW (sp0 - BitVec.ofNat 64 32) (g .r13)).writeW
     (sp0 - BitVec.ofNat 64 40) (g .r14)).writeW (sp0 - BitVec.ofNat 64 48) (g .r15)
 
-theorem pushes_byte (M : Mem) (sp0 y : Addr) (g : Reg → BitVec 64) (hsp : 48 ≤ sp0.toNat)
+theorem pushes_byte (M : Mem) (sp0 y : Addr) (g : Reg → BitVec 64) (_hsp : 48 ≤ sp0.toNat)
     (hy : 48 ≤ (y - (sp0 - BitVec.ofNat 64 48)).toNat) : pushes M sp0 g y = M y := by
   unfold pushes Mem.writeW
   repeat rw [write_other _ _ _ _ _ (by bv_omega)]
@@ -64,7 +64,7 @@ theorem pushes_readW (M : Mem) (sp0 x : Addr) (g : Reg → BitVec 64) (hsp : 48 
   simp only [Mem.readW]; congr 1; apply read_congr; intro b hb
   exact pushes_byte M sp0 _ g hsp (hx b (by omega))
 
-theorem pushes_saved (M : Mem) (sp0 : Addr) (g : Reg → BitVec 64) (hsp : 48 ≤ sp0.toNat) :
+theorem pushes_saved (M : Mem) (sp0 : Addr) (g : Reg → BitVec 64) (_hsp : 48 ≤ sp0.toNat) :
     (pushes M sp0 g).readW (sp0 - 48#64) 64 = g .r15 ∧ (pushes M sp0 g).readW (sp0 - 40#64) 64 = g .r14 ∧
       (pushes M sp0 g).readW (sp0 - 32#64) 64 = g .r13 ∧ (pushes M sp0 g).readW (sp0 - 24#64) 64 = g .r12 ∧
       (pushes M sp0 g).readW (sp0 - 16#64) 64 = g .rbp ∧ (pushes M sp0 g).readW (sp0 - 8#64) 64 = g .rbx := by
@@ -77,11 +77,12 @@ theorem pushes_saved (M : Mem) (sp0 : Addr) (g : Reg → BitVec 64) (hsp : 48 �
 theorem lose_readW (m : Mem) (a x : Addr) (n : Nat) (u : Nat → BitVec 64)
     (h : ∀ b < 8, n ≤ (x + BitVec.ofNat 64 b - a).toNat) : (lose m a n u).readW x 64 = m.readW x 64 := by
   simp only [Mem.readW]; congr 1; apply read_congr; intro b hb
-  simp only [lose]; rw [if_neg (by have := h b (by omega); omega)]
+  have := h b (by omega)
+  simp only [lose]; split <;> first | rfl | omega
 
 theorem lose_byte (m : Mem) (a y : Addr) (n : Nat) (u : Nat → BitVec 64) (h : n ≤ (y - a).toNat) :
     lose m a n u y = m y := by
-  simp only [lose]; rw [if_neg (by omega)]
+  simp only [lose]; split <;> first | rfl | omega
 
 theorem others_mxcsr {g g' : VG.X86_64.State} (h : others g' = others g) : g'.mxcsr = g.mxcsr :=
   congrArg (fun x => x.2.2.2.2.1) h
@@ -384,4 +385,46 @@ theorem correct (s : S) (h : Pre s) : ∃ s', Exec I prog s (trace s) s' ∧ Pos
   · rw [emx, others_mxcsr F610.others, others_mxcsr F26.others, h_mx]
   · rw [erd, F610.rd, F26.rd, rd2]
 
+theorem constant_time : ConstantTime I Pre Pub prog := by
+  intro s₁ s₂ t₁ t₂ s₁' s₂' h₁ h₂ ⟨e0, e1, e2, e3, e4, e5, e6⟩ x₁ x₂
+  obtain ⟨_, y₁, -⟩ := correct s₁ h₁
+  obtain ⟨_, y₂, -⟩ := correct s₂ h₂
+  rw [(exec_det x₁ y₁).1, (exec_det x₂ y₂).1]
+  simp only [trace, num, e0, e1, e2, e3, e4, e5, e6]
+
+/-! ## The precondition holds of some state -/
+
+/-- Memory holding the modulus 1 at `0x203000` and `n0 = -1` at `0x204000`, and zeros elsewhere. -/
+def witnessMem : Mem := fun x =>
+  if x = 0x203000#64 then 1 else if (x - 0x204000#64).toNat < 8 then 0xFF else 0
+
+/-- A state the precondition holds of: eight words, `rp` at `0x200000`, `ap`, `bp`, and `np` after it, the stack
+pointer at `0x100000`. -/
+def witness : S where
+  vg := { gpr := fun r => if r = .rdi then 0x200000#64 else if r = .rsi then 0x201000#64
+            else if r = .rdx then 0x202000#64 else if r = .rcx then 0x203000#64 else if r = .r8 then 0x204000#64
+            else if r = .r9 then 8#64 else if r = .rsp then 0x100000#64 else 0,
+          cf := none, zf := none, sf := none, of := none,
+          mem := witnessMem,
+          rd := [⟨0x201000#64, 64⟩, ⟨0x202000#64, 64⟩, ⟨0x203000#64, 64⟩, ⟨0x204000#64, 8⟩],
+          wr := [⟨0x100000#64, 8⟩, ⟨0x200000#64, 64⟩] }
+  lo := 0
+
+set_option exponentiation.threshold 512 in
+set_option maxRecDepth 8192 in
+theorem pre_witness : Pre witness := by
+  have hk : num witness = 8 := by decide
+  refine ⟨?_, ?_, ?_, ⟨[⟨0x200000#64, 64⟩], rfl, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;>
+    (try simp only [hk, OffFrame, frameLen]) <;> decide
+
+/-- The routine computes the Montgomery product of its arguments, keeping what the System V ABI and its contract
+require; its trace depends only on its arguments and the stack pointer; and some state meets its precondition. -/
+theorem bn_mul4x_mont_correct :
+    (∀ s, Pre s → ∃ t s', Exec I prog s t s' ∧ Post s s') ∧ ConstantTime I Pre Pub prog ∧ ∃ s, Pre s :=
+  ⟨fun s h => let ⟨s', e, p⟩ := correct s h; ⟨_, s', e, p⟩, constant_time, _, pre_witness⟩
+
 end rind.x86_64.mul4x
+
+/-- info: 'rind.x86_64.mul4x.bn_mul4x_mont_correct' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms rind.x86_64.mul4x.bn_mul4x_mont_correct
