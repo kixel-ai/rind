@@ -48,11 +48,11 @@ lists every one declared, and fails CI on a `sorry` or an axiom its groups
 do not name. [The trust base](#trust-base) says what each trusted item is.
 
 <!-- admin/ledger: begin -->
-Every `axiom` the tracked Lean files declare, 170 in 24 files, `sorry` none:
+Every `axiom` the tracked Lean files declare, 178 in 24 files, `sorry` none:
 
 | Restates | Axioms | Files under `proofs/Rind/` | Checked |
 |---|---|---|---|
-| s2n-bignum's HOL Light theorems of its assembly | 115 | `Aarch64/S2nBignum` 45, `X86_64/S2nBignum` 70 | published proofs; `admin/prove bytes` checks rind's build emits the code they are about |
+| s2n-bignum's HOL Light theorems of its assembly | 123 | `Aarch64/S2nBignum` 53, `X86_64/S2nBignum` 70 | published proofs; `admin/prove bytes` checks rind's build emits the code they are about |
 | pyca/verified-garbage's Lean theorems of its assembly | 37 | `Aarch64/VgChaCha20` 3, `Aarch64/VgChaCha20Poly1305` 2, `Aarch64/VgMlKem` 2, `Aarch64/VgP256` 3, `Aarch64/VgP384` 2, `Aarch64/VgPbkdf2` 4, `Aarch64/VgSha512` 1, `X86_64/VgChaCha20` 3, `X86_64/VgCurve25519` 5, `X86_64/VgMlKem` 4, `X86_64/VgP256` 3, `X86_64/VgP384` 2, `X86_64/VgRsa` 3 | published proofs; `admin/vg-binding` checks each axiom cites the theorem of its routine, and `admin/vg-bytes` that rind runs that routine's bytes |
 | Vale's procedures for HACL\*'s AES-GCM | 5 | `X86_64/ValeAesGcm` 5 | published proofs; `admin/prove bytes` checks the object code |
 | aws-lc-verification's NSym proof of SHA-384/512 (aarch64) and rind's HOL Light proof of the AVX2 routine (x86_64) | 3 | `Aarch64/AwsLc` 1, `X86_64/AwsLc` 2 | a published proof and rind's own; `admin/prove bytes` and `admin/prove hol-light` check the object code |
@@ -67,7 +67,7 @@ Lean's compiler, trusted beyond the kernel wherever one of these appears:
 | `native_decide`, `decide +native` | 0 in 0 files | each adds an axiom that Lean's compiled code evaluated a proposition as the kernel would; rind's proofs avoid it |
 | `@[implemented_by]`, `@[extern]` | 2 in 2 files | the compiler runs another definition than the one proofs use, as for the AES S-boxes' tables, which `sboxFast_eq` and `invSboxFast_eq` prove equal |
 
-Hand models of Rust Aeneas cannot translate, 20 files of 7,506 lines, each quoting the Rust it models:
+Hand models of Rust Aeneas cannot translate, 20 files of 7,653 lines, each quoting the Rust it models:
 
 - `Aarch64`: `AesGcmModel`, `PointSelectModel`, `TypesExternal`
 - `Portable`: `Compare`
