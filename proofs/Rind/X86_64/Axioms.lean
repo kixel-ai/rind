@@ -38,7 +38,8 @@ rind's HOL Light proofs of its routines for the SHA extensions in
 `Rind.X86_64.ShaBlocks`; Vale's in
 `Rind.X86_64.ValeAesGcm` for AES-GCM, rind's HOL Light proof of aws-lc's
 `bn_mul_mont_nohw` in `Rind.X86_64.RsaMont` for RSA's Montgomery products at
-the widths aws-lc's 4x and 8x routines do not take, rind's HOL Light proofs
+the widths aws-lc's 4x and 8x routines do not take, and its Lean proof there
+of `bn_mul4x_mont` for the 4x products without BMI2 and ADX, rind's HOL Light proofs
 of its constant-time compares in `Rind.X86_64.CtEqual` for HMAC's and PBKDF2's
 `verify`, AES-GCM's tag check, ChaCha20-Poly1305's one-pass tag check,
 RSASSA-PSS's hash compare, and key wrap's `unwrap` and
@@ -62,9 +63,9 @@ takes them on CPUs without IFMA, and the AEAD API above it takes the one pass
 as the hypotheses `Seals` and `Opens`.
 SHA-3's and SHAKE's theorems take rind's eight-way AVX-512 Keccak-f as part
 of the hypothesis `RunsSha3`. None of these four states an axiom.
-RSA's Montgomery products at the widths aws-lc's 4x and 8x routines take, but
-for s2n-bignum's Karatsuba routines, take them as the hypothesis
-`AwsLcMont`, which no axiom states either. ChaCha20's
+RSA's Montgomery products at the widths aws-lc's `bn_mulx4x_mont` and
+`bn_sqr8x_mont` take, but for s2n-bignum's Karatsuba routines, take those as
+the hypothesis `AwsLcMont`, which no axiom states either. ChaCha20's
 `apply_keystream` on a CPU without AVX2 takes aws-lc's SSSE3 routine as the
 hypothesis `Ssse3`; `Rind.X86_64.ChaCha20Avx2` proves rind's two-block kernel
 over `Rind.X86_64.Simd`'s models of the AVX2 intrinsics. The generator
@@ -1081,6 +1082,7 @@ change to the trust base.
  bignum_ksqr_16_32_spec,
  bignum_ksqr_32_64_spec,
  bignum_optsub_spec,
+ mul4x_spec,
  nohw_spec] -/
 #guard_msgs in
 #print axioms mont_products
