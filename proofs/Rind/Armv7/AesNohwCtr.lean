@@ -487,37 +487,43 @@ theorem div_ceil_spec (a b : Usize) (hb : b.val ≠ 0) :
     core.num.Usize.div_ceil a b ⦃ r => r.val = (a.val + b.val - 1) / b.val ⦄ := by
   simp [core.num.Usize.div_ceil, hb]
 
-/-- `ctr32`'s output, whole chunks then the rest, byte by byte. -/
-theorem ctr32_assemble (alg : Algorithm) (kw : List (BitVec 32)) (J : Quad32) (inout : Slice U8)
-    (chunks c1 : Slice (Std.Array U8 32#usize)) (tail t1 : Slice U8)
-    (hcl : chunks.length = inout.length / 32)
-    (hc : ∀ i (h : i < chunks.val.length), (chunks.val[i]).val = (inout.val.drop (i * 32)).take 32)
-    (ht : tail.val = inout.val.drop (inout.length / 32 * 32))
+/-- What `as_chunks_mut` writes back, whole chunks then the rest, each byte
+of the input XORed with `f` of its position, byte by byte. -/
+theorem chunks_assemble {N : Usize} (hN : 0 < N.val) (f : Nat → BitVec 8) (inout : Slice U8)
+    (chunks c1 : Slice (Std.Array U8 N)) (tail t1 : Slice U8)
+    (hcl : chunks.length = inout.length / N.val)
+    (hc : ∀ i (h : i < chunks.val.length), (chunks.val[i]).val = (inout.val.drop (i * N.val)).take N.val)
+    (ht : tail.val = inout.val.drop (inout.length / N.val * N.val))
     (h1l : c1.length = chunks.length)
-    (h1 : ∀ q < chunks.length, ∀ i < 32,
-      (c1.val[q]!).val[i]!.bv = (chunks.val[q]!).val[i]!.bv ^^^ ksByte alg kw J (32 * q + i))
+    (h1 : ∀ q < chunks.length, ∀ i < N.val,
+      (c1.val[q]!).val[i]!.bv = (chunks.val[q]!).val[i]!.bv ^^^ f (N.val * q + i))
     (t1l : t1.length = tail.length)
-    (ht1 : ∀ i < tail.length, t1.val[i]!.bv = tail.val[i]!.bv ^^^ ksByte alg kw J (32 * chunks.length + i))
+    (ht1 : ∀ i < tail.length, t1.val[i]!.bv = tail.val[i]!.bv ^^^ f (N.val * chunks.length + i))
     (r : List U8) (hr : r = c1.val.flatMap (·.val) ++ t1.val) :
-    r.length = inout.length ∧ ∀ j < inout.length, r[j]!.bv = inout.val[j]!.bv ^^^ ksByte alg kw J j := by
+    r.length = inout.length ∧ ∀ j < inout.length, r[j]!.bv = inout.val[j]!.bv ^^^ f j := by
   have e0 : inout.length = inout.val.length := rfl
   have e1 : chunks.length = chunks.val.length := rfl
   have e2 : c1.length = c1.val.length := rfl
   have e3 : tail.length = tail.val.length := rfl
   have e4 : t1.length = t1.val.length := rfl
-  have htl : tail.val.length = inout.length - inout.length / 32 * 32 := by rw [ht]; simp
-  have hfl : (c1.val.flatMap (·.val)).length = 32 * c1.val.length := length_flatMapN c1.val
+  have htl : tail.val.length = inout.length - inout.length / N.val * N.val := by rw [ht]; simp
+  have hfl : (c1.val.flatMap (·.val)).length = N.val * c1.val.length := length_flatMapN c1.val
+  have hdm := Nat.div_mul_le_self inout.length N.val
+  have hcm : N.val * chunks.length = inout.length / N.val * N.val := by rw [hcl, Nat.mul_comm]
+  have hcc : N.val * c1.val.length = N.val * chunks.length := by rw [← e2, h1l]
   refine ⟨by rw [hr, List.length_append, hfl]; omega, fun j hj => ?_⟩
   rw [hr]
-  by_cases hjc : j < 32 * chunks.length
-  · rw [getElem!_append_lt _ _ (by omega), getElem!_flatMapN (by decide) _ (by simp; omega)]
-    simp only [show (32#usize : Usize).val = 32 from rfl]
-    rw [h1 _ (by omega) _ (by omega), show 32 * (j / 32) + j % 32 = j by omega,
-      getElem!_pos chunks.val (j / 32) (by omega), hc _ (by omega)]
-    simp [List.getElem!_eq_getElem?_getD, show j / 32 * 32 + j % 32 = j by omega, show j % 32 < 32 by omega]
-  · rw [getElem!_append_ge _ _ (by omega), hfl, ← e2, h1l, ht1 _ (by omega), show 32 * chunks.length +
-      (j - 32 * chunks.length) = j by omega, ht]
-    simp [List.getElem!_eq_getElem?_getD, hcl, show inout.length / 32 * 32 + (j - 32 * (inout.length / 32)) = j by omega]
+  by_cases hjc : j < N.val * chunks.length
+  · have hq : j / N.val < chunks.length := by
+      rw [Nat.div_lt_iff_lt_mul hN, Nat.mul_comm]; exact hjc
+    have hjm : j % N.val < N.val := Nat.mod_lt _ hN
+    have hjd : N.val * (j / N.val) + j % N.val = j := Nat.div_add_mod j N.val
+    rw [getElem!_append_lt _ _ (by omega), getElem!_flatMapN hN _ (by omega),
+      h1 _ hq _ hjm, hjd, getElem!_pos chunks.val (j / N.val) (by omega), hc _ (by omega)]
+    simp [List.getElem!_eq_getElem?_getD, hjm, Nat.mul_comm (j / N.val), hjd]
+  · rw [getElem!_append_ge _ _ (by omega), hfl, ← e2, h1l, ht1 _ (by omega),
+      show N.val * chunks.length + (j - N.val * chunks.length) = j by omega, ht]
+    simp [List.getElem!_eq_getElem?_getD, ← hcm, show N.val * chunks.length + (j - N.val * chunks.length) = j by omega]
 
 /-- `ctr32` XORs GCTR's keystream from counter block `J` into `inout`, given
 `ivec` holds `J`. -/
@@ -550,7 +556,7 @@ theorem ctr32_spec (alg : Algorithm) (kw : List (BitVec 32)) (sch : Schedule) (h
   · rename_i hbt
     have h0 : tail.length = 0 := by simpa [hbt] using hb
     simp only [WP.spec_ok]
-    exact ctr32_assemble alg kw J inout chunks chunks1 tail tail chunks_post chunks_post1 chunks_post2 hl1 hd1 rfl
+    exact chunks_assemble (by decide) (ksByte alg kw J) inout chunks chunks1 tail tail chunks_post chunks_post1 chunks_post2 hl1 hd1 rfl
       (fun i hi => absurd hi (by omega)) _ (chunks_post3 _ _ (hlen tail rfl))
   · rename_i hbt
     have hne : tail.length ≠ 0 := by simpa [hb] using hbt
@@ -561,8 +567,8 @@ theorem ctr32_spec (alg : Algorithm) (kw : List (BitVec 32)) (sch : Schedule) (h
     step with ctr32_loop1_spec alg kw J st (2 * chunks.length) i2.val (by omega) hst tail (by omega)
       { start := 0#usize, «end» := tail.len } tail (by simp) (by simp [Slice.length]) rfl (fun i _ => by simp)
       as ⟨t1, ht1l, ht1⟩
-    exact ctr32_assemble alg kw J inout chunks chunks1 tail t1 chunks_post chunks_post1 chunks_post2 hl1 hd1 ht1l
-      (fun i hi => by rw [ht1 i hi, show 16 * (2 * chunks.length) + i = 32 * chunks.length + i by omega]) _
+    exact chunks_assemble (by decide) (ksByte alg kw J) inout chunks chunks1 tail t1 chunks_post chunks_post1 chunks_post2 hl1 hd1 ht1l
+      (fun i hi => by rw [ht1 i hi, show 16 * (2 * chunks.length) + i = 32 * chunks.length + i by omega]; rfl) _
       (chunks_post3 _ _ (hlen t1 ht1l))
 
 /-! ## `AesKey` -/
