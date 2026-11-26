@@ -399,7 +399,7 @@ that runs only with SHA3, and `nix develop .#binsec --command admin/ct-binsec
 [--exact] [test]` has BINSEC prove the region of each `ct_binsec_...` test
 constant time for every secret, symbolically. None of them but BINSEC, which
 sees divisions, can see an instruction whose timing depends on its
-operands, so `admin/ct-vartime`, which `just ci` runs when rind changes,
+operands, so `admin/ct-vartime`, which `just ci --all` runs nightly,
 scans its release builds for every architecture it builds for, and its
 portable backend's on x86_64 and armv7, for divisions and floating-point arithmetic, and fails on one that `admin/ct-vartime.toml` does
 not list as taking only public operands. On the x86_64 backend it also fails
@@ -429,9 +429,10 @@ each hours from the others, as their `cron:` lines set, so no two fill the
 organization's 60 concurrent hosted jobs together, and off the hour, which
 GitHub delays most. `build`, `sanitizers`, `coverage`, `lints`, `prove`,
 `python`, `dart-libraries`, and `regenerate` run daily, and `Check` runs
-`just ci --all` on main's head daily as the backstop for the merge queue's
-diff-scoped selection. OpenSSF `Scorecard` scores main on Monday and
-whenever branch protection changes, and runs only on main. `prove` also runs each push to main that reaches it,
+`just ci --all` on main's head daily as the backstop for the PR check's and
+the merge queue's diff-scoped gate, and the one run of the modules that gate
+leaves out. OpenSSF `Scorecard` scores main on Monday and whenever branch
+protection changes, and runs only on main. `prove` also runs each push to main that reaches it,
 checking the bytes, and the HOL Light and Lean proofs and the cosimulation
 that main has not passed on the same inputs; a release waits for that run to
 pass. Each runs on demand with

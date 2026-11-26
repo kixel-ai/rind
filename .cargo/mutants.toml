@@ -213,10 +213,10 @@ exclude_re = [
   'rind/src/low/aarch64/mont\.rs:\d+:\d+: replace match guard k >= 2 with false in (mont_mul|mont_sqr)$',
   'rind/src/low/generic/order\.rs:\d+:\d+: replace (order -> Option<Order> with None|== with != in order)$',
   'rind/src/low/generic/blockwise\.rs:\d+:\d+: replace > with >= in Blockwise<N>::complete_blocks$',
-  'rind/src/low/posint\.rs:\d+:\d+: replace > with < in (PosInt<N>::mod_exp_rsaz|PosInt<N>::reduce_even)$',
-  'rind/src/low/posint\.rs:\d+:\d+: replace > with == in PosInt<N>::mod_exp_rsaz$',
-  'rind/src/low/posint\.rs:\d+:\d+: replace > with >= in PosInt<N>::mod_exp_rsaz$',
-  'rind/src/low/posint\.rs:\d+:\d+: replace PosInt<N>::mod_exp_rsaz -> Option<Self> with None$',
+  'rind/src/low/posint\.rs:\d+:\d+: replace > with < in (PosInt<N>::rsaz|PosInt<N>::reduce_even)$',
+  'rind/src/low/posint\.rs:\d+:\d+: replace > with == in PosInt<N>::rsaz$',
+  'rind/src/low/posint\.rs:\d+:\d+: replace > with >= in PosInt<N>::rsaz$',
+  'rind/src/low/posint\.rs:\d+:\d+: replace PosInt<N>::(mod_exp_rsaz -> Option<Self>|rsaz -> Option<low::Rsaz>) with None$',
   'rind/src/low/x86_64/aes_gcm\.rs:\d+:\d+: delete ! in vale$',
   'rind/src/low/x86_64/aes_gcm\.rs:\d+:\d+: replace && with \|\| in vale$',
   'rind/src/low/x86_64/aes_gcm\.rs:\d+:\d+: replace < with <= in vale$',
@@ -272,7 +272,7 @@ exclude_re = [
   # x86-cpu.yml's SDE tiers test them.
   'rind/src/low/x86_64/(aes|aes_gcm|aes_gcm_vaes|cpu|ghash)\.rs:\d+:\d+: (replace (HwKey::round_keys_512|RoundKeys512::split|_cipher_avx512|Counter512::\w+|VaesKernel::avx512|HaveAvx512(For\w+|Vl)::check|GhashTableAvx512::\w+|_mul16|_mul_tail)( -> .*)? with .*|.* in (_cipher_avx512|HaveAvx512(For\w+|Vl)::check|_mul_tail))$',
   'rind/src/low/x86_64/aes_gcm\.rs:\d+:45: replace \* with (\+|/)$',
-  'rind/src/low/posint\.rs:\d+:\d+: (replace PosInt<N>::mod_exp_pair_rsaz -> .*|.* in PosInt<N>::mod_exp_pair_rsaz)$',
+  'rind/src/low/posint\.rs:\d+:\d+: (replace PosInt<N>::rsaz_pair -> .*|.* in PosInt<N>::rsaz_pair)$',
   # Compiled only for armv7, which no campaign runs: the portable AES-GCM's
   # crypto-extension and NEON halves.
   'rind/src/mid/portable/aes_gcm\.rs:\d+:\d+: (replace (<impl Ghash for (GhashTable|NeonTable)>::ghash|<impl BlocksKey for (AesHwKey|NeonKey)>::\w+|<impl Parts for Arm<K, T>>::\w+)( -> .*)? with .*|.* in <impl Parts for Arm<K, T>>::\w+)$',

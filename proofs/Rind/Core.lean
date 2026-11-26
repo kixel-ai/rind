@@ -36,6 +36,11 @@ def core.result.Result.map {T E U F : Type _} (inst : core.ops.function.FnOnce F
 def core.slice.Slice.first {T : Type _} (s : Slice T) : Result (Option T) :=
   Std.Result.ok s.val.head?
 
+/-- `Option<&T>::copied`, of a value Aeneas passes by copy already. -/
+def core.option.OptionShared0T.copied {T : Type _} (_ : core.marker.Copy T) (o : Option T) :
+    Result (Option T) :=
+  Std.Result.ok o
+
 /-- `<[T]>::split_first`. -/
 def core.slice.Slice.split_first {T : Type _} (s : Slice T) : Result (Option (T × Slice T)) :=
   match h : s.val with
