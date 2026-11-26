@@ -14,7 +14,15 @@ namespace rind.portable
 
 /-! ## Masks -/
 
-theorem nonzero_bv (x : BitVec 64) (hx : x ≠ 0) : (x ||| -x) >>> 63 = 1 := by bv_decide
+/-- A nonzero word or its negation reaches the top bit. -/
+theorem nonzero_top (x : BitVec 64) (hx : x.toNat ≠ 0) : (x ||| -x).toNat >>> 63 = 1 := by
+  have hlt := x.isLt
+  rw [BitVec.toNat_or, BitVec.toNat_neg, Nat.mod_eq_of_lt (by omega : 2 ^ 64 - x.toNat < 2 ^ 64)]
+  have h1 : x.toNat ≤ x.toNat ||| (2 ^ 64 - x.toNat) := Nat.left_le_or
+  have h2 : 2 ^ 64 - x.toNat ≤ x.toNat ||| (2 ^ 64 - x.toNat) := Nat.right_le_or
+  have h3 : x.toNat ||| (2 ^ 64 - x.toNat) < 2 ^ 64 := Nat.or_lt_two_pow hlt (by omega)
+  rw [Nat.shiftRight_eq_div_pow]
+  omega
 
 /-- `nonzero`: one for a nonzero word, zero for zero. -/
 @[step]
@@ -30,10 +38,8 @@ theorem nonzero_spec (x : U64) :
     subst this
     rfl
   · rename_i h
-    have hx : x.bv ≠ 0 := by
-      intro h0; apply h; show x.bv.toNat = 0; rw [h0]; rfl
     show (x.bv ||| -x.bv).toNat >>> 63 = 1
-    rw [← BitVec.toNat_ushiftRight, nonzero_bv x.bv hx]; rfl
+    exact nonzero_top x.bv h
 
 /-- `select`: `x` for the bit one, `y` for zero. -/
 @[step]

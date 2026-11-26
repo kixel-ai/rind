@@ -1,4 +1,4 @@
-import Rind.Portable.Mont
+import Rind.Portable.Bignum
 open Aeneas Aeneas.Std Result rind.spec rind.spec.rsa
 
 /-!
@@ -9,6 +9,10 @@ take, to `MAX_WORDS`: below `SEPARATE` limbs CIOS, and from there the whole
 product, by Karatsuba from `KARATSUBA_MUL` limbs or a square's from
 `KARATSUBA_SQR`, reduced by `redc`. `Rind.Portable.Mont` proves each from
 its loops, so `mont_products` rests on no axiom.
+
+The RSA proofs `admin/prove` writes from x86_64's import this as x86_64's
+import theirs, and take from here what x86_64's take from s2n-bignum's
+axioms: `Runs`, and through `Rind.Portable.Bignum` the word routines' specs.
 -/
 
 namespace rind.portable
@@ -178,7 +182,33 @@ theorem mont_products {k : Nat} (hk : k ≤ 128) : MontProducts k :=
   ⟨fun z x y m n0 hm hz hargs => mont_mul_spec z x y m n0 (by rw [hz, hm]) (by omega) hargs,
     fun z x m n0 hm hz hargs => mont_sqr_spec z x m n0 (by rw [hz, hm]) (by omega) hargs⟩
 
-/-- RSA-2048's Montgomery products: 32 words. -/
-theorem rsa2048_mont_products : MontProducts 32 := mont_products (by norm_num)
+/-- A 2048-bit modulus fills 32 words, whose Montgomery products rind's
+portable backend runs on `low::generic::mont`'s routines, proven here. -/
+theorem rsa2048_mont_products (N : Nat) (hN : N.size = 2048) : MontProducts ((N.size + 63) / 64) := by
+  rw [hN]
+  exact mont_products (by norm_num)
+
+/-! ## What the RSA proofs assume of the code below them -/
+
+/-- rind runs: its entry guards pass. The portable backend has no CPU
+dispatch on RSA's path, and neither guard reads an input. -/
+def Runs : Prop :=
+  (∃ e, low.entry.Entry.new_secret = ok e) ∧ (∃ e, low.entry.Entry.new_public = ok e)
+
+@[step]
+theorem new_secret_spec (h : Runs) : low.entry.Entry.new_secret ⦃ _ => True ⦄ := by
+  obtain ⟨⟨e, he⟩, -⟩ := h
+  simp [he]
+
+@[step]
+theorem new_public_spec (h : Runs) : low.entry.Entry.new_public ⦃ _ => True ⦄ := by
+  obtain ⟨-, ⟨e, he⟩⟩ := h
+  simp [he]
+
+/-- `Precompute::check` never gives a token here: pyca/verified-garbage's
+routine needs x86_64 or aarch64. -/
+theorem precompute_check_spec (_ : Runs) (n : Slice U64) :
+    low.generic.rsa_vg.Precompute.check n ⦃ _ => True ⦄ := by
+  simp [low.generic.rsa_vg.Precompute.check]
 
 end rind.portable

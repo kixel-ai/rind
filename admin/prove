@@ -1779,7 +1779,10 @@ extract_armv7
 
 # The portable backend, which builds only under the cfg CI's portable jobs
 # build with, here on x86_64: the hashes, down to the SHA-2 block functions in
-# `low::generic`, and the Keccak-f. `proofs/Rind/Portable/Compare.lean`
+# `low::generic`, the Keccak-f, and RSA verification, down to
+# `low::generic`'s word routines and Montgomery products, with the signature
+# API's `Buffer`, which `RsaDispatch.lean`'s model writes keys' encodings
+# into. `proofs/Rind/Portable/Compare.lean`
 # models its constant-time compares, which read through raw pointers and
 # `black_box`. The error type and `into_public`, which the other targets reach
 # through their curves, are start points of their own here.
@@ -1794,6 +1797,8 @@ CARGO_TARGET_DIR=$portable_target RUSTFLAGS=$portable_cfg extract x86_64 Portabl
     --include crate::low::portable::keccak \
     --opaque crate::mid::sha3 \
     "${rsa[@]}" \
+    --start-from crate::high::signature::Buffer::new \
+    --start-from '{impl core::convert::AsRef for crate::high::signature::Buffer<_>}' \
     --include crate::low::generic::rsa_vg \
     --include crate::low::generic::bignum \
     --include crate::low::portable::bignum_eq \
@@ -1832,6 +1837,16 @@ for file in QuicDispatch DigestAlgorithm DigestDispatch Sha512 ChaCha20 Blockwis
 done
 sed -i '/Rind.Portable.AeadDispatch/d' proofs/Rind/Portable/Kdf/TypesExternal.lean
 sed -i '/-- BEGIN aead/,/-- END aead/d' proofs/Rind/Portable/Kdf/FunsExternal.lean
+# So are RSA verification's, over its own `RsaMont.lean`, without the sections
+# marked as x86_64's alone, its AVX-512 IFMA public operation and
+# pyca/verified-garbage's R² mod n, and with the lines marked as the portable
+# backend's in their place. Without that IFMA path its theorems take no
+# `IfmaCheckReturns`.
+for file in RsaPublic RsaBytes RsaIfma RsaVerify RsaPss RsaKey SignatureBuffer RsaDispatch; do
+    sed -e '/-- BEGIN x86_64/,/-- END x86_64/d' -e 's/^\( *\)-- portable: /\1/' \
+        -e 's/ (hifma : IfmaCheckReturns)//; s/ hifma / /' -e 's/X86_64/Portable/g; s/x86_64/portable/g' \
+        "proofs/Rind/X86_64/$file.lean" >"proofs/Rind/Portable/$file.lean"
+done
 # armv7's header-protection model and ChaCha20 proof are x86_64's with the
 # target renamed.
 for file in QuicDispatch ChaCha20; do
