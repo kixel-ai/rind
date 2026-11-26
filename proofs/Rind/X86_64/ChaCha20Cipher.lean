@@ -303,7 +303,8 @@ theorem apply_keystream_spec (he : ∃ e, low.entry.Entry.new_secret = ok e)
         simpa only [UScalar.bv_toNat] using this
       step with cipher_all_spec hu cc
         (fun hv hs' => hlinux (fun h => by have := cc_post2.mpr h; simp [hv] at this)
-          (by first | exact hs' | rwa [← cc_post3])) inout
+          (by first | exact hs' | (rw [← ‹cc.ssse3 = s›]; exact hs')
+            | (rw [‹s = cc.ssse3›]; exact hs') | simp_all)) inout
         (by rw [hcv]; exact hc) as ⟨c', inout1, h1⟩
       step*
     · subst r_post
