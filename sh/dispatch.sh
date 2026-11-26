@@ -495,11 +495,6 @@ step() {
                     rest+=("${packages[i]}")
                 fi
             done
-            if [[ -n "$rind" || ${#packages[@]} -eq 0 || " ${packages[*]} " == *" --workspace "* ]]; then
-                # A unit test admin/test-scope.toml names may have been
-                # renamed by an edit that selects no `scope` module.
-                run python3 admin/test-scope units
-            fi
             if [[ "$action" == check && -n "$rind" ]]; then
                 filter=$(python3 admin/test-scope args "$changed" "$merge_base") || return 1
             fi
@@ -516,6 +511,14 @@ step() {
             local RUSTC_WORKSPACE_WRAPPER CARGO_BUILD_WARNINGS=deny
             RUSTC_WORKSPACE_WRAPPER=$(command -v clippy-driver)
             export RUSTC_WORKSPACE_WRAPPER CARGO_BUILD_WARNINGS
+            # A unit test admin/test-scope.toml names may have been renamed by
+            # an edit that selects no `scope` module. Listed with the package
+            # arguments of the run that tests rind, so the two share a build.
+            if [[ -n "$filter" ]]; then
+                run python3 admin/test-scope units -p rind
+            elif [[ -n "$rind" || ${#packages[@]} -eq 0 || " ${packages[*]} " == *" --workspace "* ]]; then
+                run python3 admin/test-scope units "${packages[@]}"
+            fi
             # nextest runs the test binaries in parallel but not doc tests. Like
             # `cargo test`, it passes a selection with no tests.
             if [[ -n "$filter" ]]; then

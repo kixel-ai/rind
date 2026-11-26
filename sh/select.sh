@@ -59,7 +59,7 @@ edges=$(jq -r '.packages[] | .name as $n | .dependencies[] | select(.path != nul
 edges+=$'\nrind-fips-module\trind-fips'
 if [[ "$mode" == --no-dependents-on-low ]] && grep -q '^rind/' "$changed" &&
     ! grep '^rind/' "$changed" | grep -qvE '^rind/src/low/' &&
-    ! grep -qE '^rind/src/low/((mod|entry|cpu|mcdt|mcdt_none|macros|abi|inline_assembly_safety)\.rs|abi/|[^/]+/(mod|cpu)\.rs)$' "$changed"; then
+    ! grep -qE '^rind/src/low/((mod|entry|cpu|mcdt|mcdt_none|macros|abi|inline_assembly_safety)\.rs|abi/.+|[^/]+/(mod|cpu)\.rs)$' "$changed"; then
     edges=$(grep -v $'^rind\t' <<<"$edges")
 fi
 grew=1

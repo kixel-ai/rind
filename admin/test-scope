@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 # Usage: admin/test-scope args CHANGED_FILE MERGE_BASE
-#        admin/test-scope units
+#        admin/test-scope units [PACKAGE_ARGS...]
 #        admin/test-scope check
 #
 # Scopes `just check`'s rind tests to the primitive families a diff touches,
@@ -15,9 +15,11 @@
 # high}/, belongs to no family, or changes a public item's signature in mid/
 # or high/, whose change can break a test binary the scoped run never builds.
 #
-# `units` fails when a [units] name's function is gone from its module's
-# source, which a rename in rind/src/ does without triggering `check`; `just
-# check` and `just ci` run it on every change to rind.
+# `units` fails when a [units] name, module path and all, is no unit test
+# `cargo nextest list` finds in rind's library, which a rename in rind/src/
+# makes without triggering `check`; `just check` and `just ci` run it on every
+# change to rind, with the package arguments of the run that tests rind, so
+# the listing reuses that run's build.
 #
 # `check` fails unless the map covers every test and file: every test under
 # rind/tests/ is listed, every listed test and unit test exists, every family
@@ -32,7 +34,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 MAP = pathlib.Path(__file__).with_suffix(".toml")
 LAYERS = ("low", "mid", "high")
 SHARED = "shared"
-NEXTEST = ["cargo", "nextest", "list", "-p", "rind", "--locked", "--cargo-profile", "test-fast", "--message-format", "json", "--run-ignored", "all"]
+NEXTEST = ["cargo", "nextest", "list", "--locked", "--cargo-profile", "test-fast", "--message-format", "json", "--run-ignored", "all"]
 
 
 def load():
@@ -185,29 +187,11 @@ def scope(families, changed, merge_base):
     return touched, None
 
 
-def missing_units(units):
-    """The [units] names whose function no longer exists in their module's source.
-
-    `check` lists every unit test, but runs only when the map or the tests
-    change, not when a rename in rind/src/ leaves a name here stale.
-    """
-    missing = []
-    for name in units:
-        *modules, function = name.split("::")
-        files = []
-        for i in range(1, len(modules) + 1):
-            base = ROOT / "rind/src" / "/".join(modules[:i])
-            files += [base.with_suffix(".rs"), base / "mod.rs"]
-        pattern = re.compile(rf"\bfn {function}\b")
-        if not any(f.exists() and pattern.search(f.read_text()) for f in files):
-            missing.append(name)
-    return missing
-
-
-def units_command():
+def units_command(packages):
     _, units, _ = load()
-    if missing := missing_units(units):
-        sys.exit("\n".join(f"error: {MAP.name}: [units] names {name}, which its module no longer defines" for name in missing))
+    lib = {name for binary, name in listing(["--lib"], packages) if binary == "rind"}
+    if stale := [name for name in units if name not in lib]:
+        sys.exit("\n".join(f"error: {MAP.name}: [units] names {name}, which is no unit test of rind" for name in stale))
 
 
 def args_command(changed_file, merge_base):
@@ -221,11 +205,13 @@ def args_command(changed_file, merge_base):
     print("\n".join(arguments(families, units, tests, touched)))
 
 
-def listing(args):
-    """Each test `cargo nextest list` selects, as (binary, name)."""
-    out = subprocess.run(NEXTEST + args, cwd=ROOT, check=True, stdout=subprocess.PIPE, text=True).stdout
+def listing(args, packages=("-p", "rind")):
+    """Each test of rind's that `cargo nextest list` selects, as (binary, name)."""
+    out = subprocess.run(NEXTEST + [*packages, *args], cwd=ROOT, check=True, stdout=subprocess.PIPE, text=True).stdout
     found = set()
     for suite in json.loads(out)["rust-suites"].values():
+        if suite["package-name"] != "rind":
+            continue
         binary = suite["binary-name"] if suite["kind"] != "lib" else "rind"
         for name, case in suite["testcases"].items():
             if case["filter-match"]["status"] == "matches":
@@ -309,12 +295,12 @@ def main():
     match sys.argv[1:]:
         case ["args", changed_file, merge_base]:
             args_command(changed_file, merge_base)
-        case ["units"]:
-            units_command()
+        case ["units", *packages]:
+            units_command(packages)
         case ["check"]:
             check_command()
         case _:
-            sys.exit("usage: admin/test-scope args CHANGED_FILE MERGE_BASE | units | check")
+            sys.exit("usage: admin/test-scope args CHANGED_FILE MERGE_BASE | units [PACKAGE_ARGS...] | check")
 
 
 if __name__ == "__main__":

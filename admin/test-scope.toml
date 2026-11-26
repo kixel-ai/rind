@@ -18,8 +18,9 @@
 # KEMs', KDFs', and AEADs' families. A hash a scheme fixes internally, such as
 # Ed25519's SHA-512, does not make its tests the hash's, unless only such
 # schemes reach its code, as only ML-KEM and ML-DSA run SHAKE four lanes at a
-# time. A `[units]` name is checked against the source on every scoped run,
-# since renaming a unit test changes no file this map's self-test watches.
+# time. A `[units]` name, module path and all, is checked against rind's unit
+# tests on every run of them, since renaming a unit test or its module changes
+# no file this map's self-test watches.
 
 [families]
 aes = ['aes[\w-]*', 'vpaes[\w-]*', 'bsaes[\w-]*', 'ghash[\w-]*', 'gcm\w*', 'compute_iv_stdcall', 'ctr', 'quic']
