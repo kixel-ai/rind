@@ -84,7 +84,7 @@ theorem final_ok (s : S) (k : Nat) (ap bp np n0p tp rp : BitVec 64) (t n : Nat �
       s'.vg.cf = some (decide ((t 1).toNat < (n 1).toNat + (decide ((t 0).toNat < (n 0).toNat)).toNat)) ∧
       s'.vg.gpr .rbx = t 2 ∧ s'.vg.gpr .rbp = t 3 ∧ s'.vg.mem = s.vg.mem ∧
       Frame s s' [.rax, .rdx, .rdi, .rsi, .rbx, .rbp, .r14, .r15] := by
-  obtain ⟨hk, hap, hbp, hnp, hn0p, htp, sepA, sepB, sepN, sepN0, rA, rB, rN, rN0, rT⟩ := ar
+  obtain ⟨hk, hap, hbp, hnp, hn0p, htp, sepA, sepB, sepN, sepN0, rA, rB, rN, rN0, LT, hLT, rT⟩ := ar
   tail_block [final, hrcx, hrsp, hr9, hN, hN0, hT, hT0, hrp, ofNat_add_neg, ofNat_shr, execShift, Nat.reduceLeDiff,
     and_self]
 
@@ -123,7 +123,7 @@ theorem sub_ok (s : S) (j k c : Nat) (ap bp np n0p tp rp x0 x1 x2 x3 : BitVec 64
       s'.vg.mem = (((s.vg.mem.writeW (wa rp j) x0).writeW (wa rp (j + 1)) x1).writeW (wa rp (j + 2)) y2).writeW
         (wa rp (j + 3)) y3 ∧
       Frame s s' [.rax, .rdx, .rbx, .rbp, .r14, .r15] := by
-  obtain ⟨hk, hap, hbp, hnp, hn0p, htp, sepA, sepB, sepN, sepN0, rA, rB, rN, rN0, rT⟩ := ar
+  obtain ⟨hk, hap, hbp, hnp, hn0p, htp, sepA, sepB, sepN, sepN0, rA, rB, rN, rN0, LT, hLT, rT⟩ := ar
   obtain ⟨hrp, sepPT, sepPN, rP⟩ := out
   intro y2 b3 y3 b4 y4 b5 y5 b6
   tail_block [sub, hrdi, hrsi, hrcx, hr14, hr15, hrax, hrdx, hrbx, hrbp, hcf, hN, hT]
@@ -173,7 +173,7 @@ theorem subTail_ok (s : S) (j : Nat) (ap bp np n0p tp rp x0 x1 x2 x3 : BitVec 64
       s'.vg.mem = (((s.vg.mem.writeW (wa rp j) x0).writeW (wa rp (j + 1)) x1).writeW (wa rp (j + 2)) y2).writeW
         (wa rp (j + 3)) y3 ∧
       FrameX s s' [.rax, .rdx, .rbx, .rbp, .r15] := by
-  obtain ⟨hk, hap, hbp, hnp, hn0p, htp, sepA, sepB, sepN, sepN0, rA, rB, rN, rN0, rT⟩ := ar
+  obtain ⟨hk, hap, hbp, hnp, hn0p, htp, sepA, sepB, sepN, sepN0, rA, rB, rN, rN0, LT, hLT, rT⟩ := ar
   obtain ⟨hrp, sepPT, sepPN, rP⟩ := out
   intro y2 b3 y3 b4 mask x4
   apply ex_of_eq
@@ -264,7 +264,7 @@ theorem copy_ok (s : S) (j k c : Nat) (ap bp np n0p tp rp : BitVec 64)
       s'.vg.gpr .r15 = BitVec.ofNat 64 c - 1 ∧ s'.vg.zf = some (BitVec.ofNat 64 c - 1 == 0) ∧
       s'.vg.mem = (((M.writeW (wa tp j) x0).writeW (wa rp j) y0).writeW (wa tp (j + 2)) x0).writeW (wa rp (j + 2)) y1 ∧
       FrameX s s' [.rax, .r15] := by
-  obtain ⟨hk, hap, hbp, hnp, hn0p, htp, sepA, sepB, sepN, sepN0, rA, rB, rN, rN0, rT⟩ := ar
+  obtain ⟨hk, hap, hbp, hnp, hn0p, htp, sepA, sepB, sepN, sepN0, rA, rB, rN, rN0, LT, hLT, rT⟩ := ar
   obtain ⟨hrp, sepPT, sepPN, rP⟩ := out
   intro M x0 x4 x5 y0 y1
   apply ex_of_eq

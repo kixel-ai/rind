@@ -97,7 +97,7 @@ structure Arrays (s : S) (k : Nat) (ap bp np n0p tp : Addr) : Prop where
   rB : ⟨bp, 8 * k⟩ ∈ s.vg.rd ++ s.vg.wr
   rN : ⟨np, 8 * k⟩ ∈ s.vg.rd ++ s.vg.wr
   rN0 : ⟨n0p, 8⟩ ∈ s.vg.rd ++ s.vg.wr
-  rT : ⟨tp, 8 * (k + 3)⟩ ∈ s.vg.wr
+  rT : ∃ L, 8 * (k + 3) ≤ L ∧ ⟨tp, L⟩ ∈ s.vg.wr
 
 set_option maxHeartbeats 8000000 in
 theorem first_ok (s : S) (j k : Nat) (ap bp np n0p tp b q cA cN : BitVec 64) (a n : Nat → BitVec 64)
@@ -117,7 +117,7 @@ theorem first_ok (s : S) (j k : Nat) (ap bp np n0p tp b q cA cN : BitVec 64) (a 
       s'.vg.mem = (((s.vg.mem.writeW (wa tp j) w0.1).writeW (wa tp (j + 1)) w1.1).writeW (wa tp (j + 2)) w2.1).writeW
         (wa tp (j + 3)) w3.1 ∧
       Frame s s' [.rax, .rdx, .rdi, .r10, .r11, .r13, .r15] := by
-  obtain ⟨hk, hap, hbp, hnp, hn0p, htp, sepA, sepB, sepN, sepN0, rA, rB, rN, rN0, rT⟩ := ar
+  obtain ⟨hk, hap, hbp, hnp, hn0p, htp, sepA, sepB, sepN, sepN0, rA, rB, rN, rN0, LT, hLT, rT⟩ := ar
   intro w0 w1 w2 w3
   mul4x_block [first, hrsi, hrcx, hrsp, hr15, hrbx, hrbp, hr10, hr13, hrax, hr9, hA, hN]
 
@@ -146,7 +146,7 @@ theorem inner_ok (s : S) (j k : Nat) (ap bp np n0p tp b q cA cN : BitVec 64) (a 
       s'.vg.mem = (((s.vg.mem.writeW (wa tp j) w0.1).writeW (wa tp (j + 1)) w1.1).writeW (wa tp (j + 2)) w2.1).writeW
         (wa tp (j + 3)) w3.1 ∧
       Frame s s' [.rax, .rdx, .rdi, .r10, .r11, .r13, .r15] := by
-  obtain ⟨hk, hap, hbp, hnp, hn0p, htp, sepA, sepB, sepN, sepN0, rA, rB, rN, rN0, rT⟩ := ar
+  obtain ⟨hk, hap, hbp, hnp, hn0p, htp, sepA, sepB, sepN, sepN0, rA, rB, rN, rN0, LT, hLT, rT⟩ := ar
   intro w0 w1 w2 w3
   mul4x_block [Rind.X86_64.Mul4x.inner, hrsi, hrcx, hrsp, hr15, hrbx, hrbp, hr10, hr13, hrax, hr9, hA, hN, hT]
 
@@ -173,7 +173,7 @@ theorem body0_ok (s : S) (k : Nat) (ap bp np n0p tp rp x n0' : BitVec 64) (a bw 
       s'.vg.gpr .r12 = bp ∧ s'.vg.gpr .r8 = n0' ∧
       s'.vg.mem = ((s.vg.mem.writeW (wa tp (k + 1)) x).writeW (wa tp (k + 2)) rp).writeW tp w1.1 ∧
       Frame s s' [.rax, .rdx, .rdi, .rbx, .rbp, .r8, .r10, .r11, .r12, .r13, .r14, .r15] := by
-  obtain ⟨hk, hap, hbp, hnp, hn0p, htp, sepA, sepB, sepN, sepN0, rA, rB, rN, rN0, rT⟩ := ar
+  obtain ⟨hk, hap, hbp, hnp, hn0p, htp, sepA, sepB, sepN, sepN0, rA, rB, rN, rN0, LT, hLT, rT⟩ := ar
   intro A0 q N0 w1
   mul4x_block [body0, hrsi, hrdx, hrcx, hr8, hrsp, hrdi, hrax, hr9, hA, hN, hA0, hN0, hB0, hn0]
 
@@ -197,7 +197,7 @@ theorem firstTail_ok (s : S) (j k i : Nat) (ap bp np n0p tp b q cA cN : BitVec 6
       s'.vg.mem = (((s.vg.mem.writeW (wa tp j) w0.1).writeW (wa tp (j + 1)) w1.1).writeW (wa tp (j + 2))
         (top0 w1.2).1).writeW (wa tp (j + 3)) (top0 w1.2).2 ∧
       Frame s s' [.rax, .rdx, .rdi, .r10, .r11, .r13, .r14] := by
-  obtain ⟨hk, hap, hbp, hnp, hn0p, htp, sepA, sepB, sepN, sepN0, rA, rB, rN, rN0, rT⟩ := ar
+  obtain ⟨hk, hap, hbp, hnp, hn0p, htp, sepA, sepB, sepN, sepN0, rA, rB, rN, rN0, LT, hLT, rT⟩ := ar
   intro w0 w1
   mul4x_block [firstTail, hrsi, hrcx, hrsp, hr15, hrbx, hrbp, hr10, hr13, hrax, hr14, hA, hN, hA0]
 
@@ -224,7 +224,7 @@ theorem outerTail_ok (s : S) (j k i : Nat) (ap bp np n0p tp b q cA cN : BitVec 6
       s'.vg.mem = (((s.vg.mem.writeW (wa tp j) w0.1).writeW (wa tp (j + 1)) w1.1).writeW (wa tp (j + 2))
         (top w1.2 (t k)).1).writeW (wa tp (j + 3)) (top w1.2 (t k)).2 ∧
       Frame s s' [.rax, .rdx, .rdi, .r10, .r11, .r13, .r14] := by
-  obtain ⟨hk, hap, hbp, hnp, hn0p, htp, sepA, sepB, sepN, sepN0, rA, rB, rN, rN0, rT⟩ := ar
+  obtain ⟨hk, hap, hbp, hnp, hn0p, htp, sepA, sepB, sepN, sepN0, rA, rB, rN, rN0, LT, hLT, rT⟩ := ar
   intro w0 w1
   mul4x_block [outerTail, hrsi, hrcx, hrsp, hr15, hrbx, hrbp, hr10, hr13, hrax, hr14, hr9, hA, hN, hA0, hT]
 
@@ -249,7 +249,7 @@ theorem outerHead_ok (s : S) (k i : Nat) (ap bp np n0p tp n0' : BitVec 64) (a bw
       s'.vg.gpr .r15 = BitVec.ofNat 64 4 ∧ s'.vg.gpr .rbx = bw i ∧ s'.vg.gpr .rbp = q ∧
       s'.vg.mem = s.vg.mem.writeW tp w1.1 ∧
       Frame s s' [.rax, .rdx, .rdi, .rbx, .rbp, .r10, .r11, .r13, .r15] := by
-  obtain ⟨hk, hap, hbp, hnp, hn0p, htp, sepA, sepB, sepN, sepN0, rA, rB, rN, rN0, rT⟩ := ar
+  obtain ⟨hk, hap, hbp, hnp, hn0p, htp, sepA, sepB, sepN, sepN0, rA, rB, rN, rN0, LT, hLT, rT⟩ := ar
   intro A0 q N0 w1
   mul4x_block [outerHead, hrsi, hrcx, hrsp, hr12, hr8, hrax, hr14, hA, hN, hB, hN0, hT0, hT1]
 

@@ -29,10 +29,10 @@ theorem Frame.rd {s s' : S} {gs : List Reg} (h : Frame s s' gs) : s'.vg.rd = s.v
 
 theorem Arrays.frame {s s' : S} {k : Nat} {ap bp np n0p tp : Addr} {gs : List Reg}
     (ar : Arrays s k ap bp np n0p tp) (h : Frame s s' gs) : Arrays s' k ap bp np n0p tp := by
-  obtain ⟨hk, hap, hbp, hnp, hn0p, htp, sepA, sepB, sepN, sepN0, rA, rB, rN, rN0, rT⟩ := ar
+  obtain ⟨hk, hap, hbp, hnp, hn0p, htp, sepA, sepB, sepN, sepN0, rA, rB, rN, rN0, LT, hLT, rT⟩ := ar
   rw [← h.rd, ← h.wr] at rA rB rN rN0
   rw [← h.wr] at rT
-  exact ⟨hk, hap, hbp, hnp, hn0p, htp, sepA, sepB, sepN, sepN0, rA, rB, rN, rN0, rT⟩
+  exact ⟨hk, hap, hbp, hnp, hn0p, htp, sepA, sepB, sepN, sepN0, rA, rB, rN, rN0, LT, hLT, rT⟩
 
 /-! ## Memory -/
 
