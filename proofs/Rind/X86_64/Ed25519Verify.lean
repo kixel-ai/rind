@@ -26,7 +26,9 @@ namespace rind.x86_64
 
 /-- HOL Light's `edwards25519_projective P (X,Y,Z)` of the twelve words `q`:
 the coordinates are reduced, `Z` is not zero, and `x = X/Z` and `y = Y/Z` mod
-`p`. -/
+`p`. HOL Light also requires `P`'s own coordinates to be reduced, which this
+leaves to the caller (`edOnCurve P` says it): `P = (p, 1)` passes here as
+`(0, 1)`. -/
 def Projective (P : EdPoint) (q : List U64) : Prop :=
   wordsNat (q.take 4) < p25519 ∧ wordsNat ((q.drop 4).take 4) < p25519 ∧
     wordsNat ((q.drop 8).take 4) < p25519 ∧ wordsNat ((q.drop 8).take 4) ≠ 0 ∧
@@ -34,7 +36,8 @@ def Projective (P : EdPoint) (q : List U64) : Prop :=
     (wordsNat ((q.drop 4).take 4) : Int) ≡ P.2 * wordsNat ((q.drop 8).take 4) [ZMOD p25519]
 
 /-- HOL Light's `edwards25519_exprojective P (X,Y,Z,W)` of the sixteen words
-`q`: `Projective`, with `W = XY/Z` reduced. -/
+`q`: `Projective`, with `W = XY/Z` reduced; the same caller condition on `P`
+applies. -/
 def ExProjective (P : EdPoint) (q : List U64) : Prop :=
   Projective P q ∧ wordsNat ((q.drop 12).take 4) < p25519 ∧
     (wordsNat ((q.drop 12).take 4) * wordsNat ((q.drop 8).take 4) : Int) ≡
@@ -272,7 +275,8 @@ theorem commits_spec (h : Runs) (hm : RunsMsm) (ho : EdOrders) (pt : Std.Array U
 
 open Classical in
 /-- `verify_rind` with the point `A`, a point of the group, and the key's
-bytes `vk.bytes`: RFC 8032's verification. -/
+bytes `vk.bytes`: `ed25519Verifies`, rind's cofactorless check with the
+challenge reduced mod L. -/
 theorem verify_rind_spec (h : Runs) (hmsm : RunsMsm) (ho : EdOrders) (hs : RunsSha512) (vk : mid.ed25519.VerifyingKey)
     (pt : mid.ed25519.EdwardsPoint) (A : EdPoint) (hA : edOnCurve A) (hp : pairNat pt.val = edModEncodePair A)
     (sig : Std.Array U8 64#usize) (msg : Slice U8) (hm : msg.length + 64 < 2 ^ 64) :
@@ -312,7 +316,8 @@ theorem verify_rind_spec (h : Runs) (hmsm : RunsMsm) (ho : EdOrders) (hs : RunsS
 
 open Classical in
 /-- `verify` with a key that runs rind's own arithmetic on the point `A`, a
-point of the group, and whose bytes are `vk.bytes`: RFC 8032's verification. -/
+point of the group, and whose bytes are `vk.bytes`: `ed25519Verifies`, rind's cofactorless check
+with the challenge reduced mod L. -/
 theorem mid_verify_spec (h : Runs) (hmsm : RunsMsm) (ho : EdOrders) (hs : RunsSha512) (vk : mid.ed25519.VerifyingKey) (A : EdPoint)
     (hA : edOnCurve A) (hp : HoldsPoint vk A)
     (sig : Std.Array U8 64#usize) (msg : Slice U8) (hm : msg.length + 64 < 2 ^ 64) :
@@ -350,9 +355,9 @@ theorem high_verify_spec (h : Runs) (hmsm : RunsMsm) (ho : EdOrders) (hs : RunsS
       core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual, hn]
 
 open Classical in
-/-- Verification with a key pair's public key: RFC 8032's verification with
-its seed's public key, whose point is the base point times its secret
-scalar. -/
+/-- Verification with a key pair's public key: `ed25519Verifies`, rind's
+cofactorless check with the challenge reduced mod L, with its seed's public
+key, whose point is the base point times its secret scalar. -/
 theorem ed25519_key_pair_verify (h : Runs) (hmsm : RunsMsm) (ho : EdOrders) (hs : RunsSha512) (kp : high.signature.ed25519.KeyPair)
     (seed : List U8) (hkp : KeyPairOf kp seed) (msg sig : Slice U8) (hm : msg.length + 64 < 2 ^ 64) :
     (do
@@ -371,8 +376,8 @@ open Classical in
 /-- An Ed25519 public key parsed from its encoding: refused unless it is 32
 bytes, refused if its y-coordinate is one of libsodium's small-order list,
 refused unless it encodes a point of the group, and otherwise its
-verification is RFC 8032's with that point, for messages under 2⁶⁴ - 64
-bytes. -/
+verification is `ed25519Verifies`, rind's cofactorless check with the
+challenge reduced mod L, with that point, for messages under 2⁶⁴ - 64 bytes. -/
 theorem ed25519_public_key_new (h : Runs) (hmsm : RunsMsm) (ho : EdOrders) (hs : RunsSha512) (hi : NoCurveIfma) (key : Slice U8) :
     high.signature.ed25519.PublicKey.new key ⦃ r =>
       if key.length ≠ 32 then r = .Err (.KeyRejected .WrongLength)

@@ -13,7 +13,8 @@ open Aeneas Aeneas.Std Result rind.spec
 `u ≡ v k (mod 8L)`, `v` odd and below 2^128, and `|u| < 2^255`: what Ed25519
 verification's half-size check, `Rind.Ed25519Group`'s `half_size_iff`, needs
 of them, and the multi-scalar multiplication's bound on its scalars. That the
-two parts come out near 128 bits only bounds the work, so nothing proves it.
+two parts usually come out near 128 bits, though not always (`u` can stay near
+2^255), only bounds the work, so nothing proves it.
 
 The extended Euclidean loop keeps, for its rows `(r, t)`, `r ≡ ±t k (mod 8L)`
 with opposite signs, the two `t` coprime, and `r₀ |t₁| + r₁ |t₀| = 8L`, as
