@@ -1333,7 +1333,7 @@ the signature API's `rsa::PublicKey` to the Montgomery products, in
 transliterates it:
 
 - `rsa_signature_new_spec`, `rsa_signature_from_spki_spec`: a key
-  `PublicKey::new` or `PublicKey::from_spki` returns has a modulus N of 1024
+  `PublicKey::new` or `PublicKey::from_spki` returns has a modulus N of 1017
   to 8192 bits and an exponent E;
 - `rsa_signature_from_components_spec`: the same for a key
   `PublicKey::from_components` returns, with N and E its components read
@@ -1349,8 +1349,8 @@ transliterates it:
 
 Below the API, `Rind/X86_64/RsaKey.lean` proves key loading
 (`from_components_spec`): components with no leading zero byte, an odd
-modulus of 1024 to 8192 bits, and an odd exponent from 3 to below 2^33 load,
-and a loaded key holds them, with an odd modulus of 1024 to 8192 bits, an
+modulus of 1017 to 8192 bits, and an odd exponent from 3 to below 2^33 load,
+and a loaded key holds them, with an odd modulus of 1017 to 8192 bits, an
 odd exponent of at least 3, R^2 mod N, and `mont_neg_inverse`'s
 -N^-1 mod 2^64. R^2 mod N is `pub_montifier`'s, or, for a modulus of a
 multiple of four words whose top bit is set on a CPU with BMI2 and ADX,
