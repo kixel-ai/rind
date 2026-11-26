@@ -293,8 +293,8 @@ on them yet: the ✓ also needs rind's glue in `mid/mlkem.rs` proven, and its
 fallback to rind's arithmetic.
 
 `Rind/Aarch64/VgChaCha20Poly1305.lean` restates VG's theorems about the
-aarch64 SVE2 ChaCha20-Poly1305 routines rind runs, `seal_framed` and
-`open_framed` at the SVE2 variant, as one axiom per wrapper in
+aarch64 SVE2 and NEON ChaCha20-Poly1305 routines rind runs, `seal_framed` and
+`open_framed` at each variant, as one axiom per wrapper in
 `low::aarch64::chacha20poly1305`, over VG's AEAD spec,
 `VerifiedGarbage.Spec.ChaCha20Poly1305` with its ChaCha20 and Poly1305
 specs, which `Rind/VgChaCha20Poly1305.lean` imports and proves is
@@ -1175,11 +1175,11 @@ PCLMULQDQ table `from_powers` builds from them. BoringSSL's
 [the VAES quest](/quest/m4/verified/aes-gcm-x86-vaes.md) proves it, the
 kernels the tier runs from 2 KB, and the tier's seals and opens.
 
-ChaCha20-Poly1305 and XChaCha20-Poly1305 on x86_64 CPUs with SSE4.1 that
-fail rind's check for pyca/verified-garbage's IFMA routines
-(`HaveIfmaForVgChaCha20Poly1305`: AVX-512 IFMA, with AVX, AVX2, and AVX-512 F
-and VL), from the AEAD API's `Key` and `RandomizedNonceKey` down to the call of aws-lc's
-one-pass routines, in `Rind/X86_64/ChaCha20Poly1305.lean`:
+ChaCha20-Poly1305 and XChaCha20-Poly1305, from the AEAD API's `Key` and
+`RandomizedNonceKey` down to the call of the target's one pass,
+`low::<arch>::chacha20poly1305`'s `seal` and `open`, in
+`Rind/X86_64/ChaCha20Poly1305Api.lean`, which `admin/prove` copies to
+aarch64:
 
 - `chacha20_poly1305_new`: a key that is not 32 bytes is refused, and
   otherwise the key holds its bytes;
@@ -1200,8 +1200,17 @@ HChaCha20, which derives XChaCha20's subkey, runs HACL*'s rounds, which
 `hchacha20_spec` proves. 32-bit portable HChaCha20 is the rolled loop in
 `low/generic/chacha20.rs`, which this proof does not cover; the output loop
 stays inside the unrolled `hchacha20` so Aeneas still extracts
-`hchacha20_loop`. The theorems assume `RunsChaCha20Poly1305`: rind's
-CPU-feature checks find SSE4.1 but not what VG's IFMA routines need, and `OnePass`, that aws-lc's one-pass
+`hchacha20_loop`. The theorems assume `Seals` or `Opens` of the message's
+length: that the one pass seals or opens a message that long as RFC 8439
+does. Each target's `ChaCha20Poly1305.lean` proves those where a proof covers
+the one pass.
+
+On x86_64 CPUs with SSE4.1 that fail rind's check for pyca/verified-garbage's
+IFMA routines (`HaveIfmaForVgChaCha20Poly1305`: AVX-512 IFMA, with AVX,
+AVX2, and AVX-512 F and VL), `Rind/X86_64/ChaCha20Poly1305.lean`'s `seals`
+and `opens` prove them at every length, from aws-lc's one-pass routines,
+assuming `RunsChaCha20Poly1305`: rind's CPU-feature checks find SSE4.1 but
+not what VG's IFMA routines need, and `OnePass`, that aws-lc's one-pass
 routines compute RFC 8439's AEAD, which no proof covers yet;
 [the ChaCha20-Poly1305 quest](/quest/m4/verified/chacha20-poly1305-x86/aead.md)
 owns their HOL Light proofs, against the s2n-bignum fork's `common/chacha20poly1305.ml`,
@@ -1216,25 +1225,40 @@ imports VG's theorems. `AeadDispatch` models
 `Rind/ChaCha20Poly1305Test.lean` checks `Rind/Spec.lean`'s transliterations
 against RFC 8439's and draft-irtf-cfrg-xchacha-03's test vectors.
 
-ChaCha20-Poly1305's one pass on aarch64 CPUs with SVE2, from
+ChaCha20-Poly1305's one pass on aarch64, from
 `low::aarch64::chacha20poly1305`'s `seal` and `open` down to
-pyca/verified-garbage's SVE2 routines, in
+pyca/verified-garbage's SVE2 routines, on CPUs with SVE2, and its NEON
+routines, on CPUs without it at the lengths `seal_runs_vg` and
+`open_runs_vg` name (`SealsNeon`: 577 to 768 bytes and from 897;
+`OpensNeon`: 129 to 256, 449 to 895, and from 961), in
 `Rind/Aarch64/VgChaCha20Poly1305.lean`:
 
-- `chacha20_poly1305_seal_sve2_spec`: the data becomes RFC 8439 section 2.8's
-  ciphertext, and the tag is its tag over the AAD and it;
-- `chacha20_poly1305_open_sve2_spec`: the result is whether RFC 8439's tag
-  over the AAD and the ciphertext is the one given, leaving the plaintext in
-  place if it is and zeros if not.
+- `chacha20_poly1305_seal_sve2_spec` and `chacha20_poly1305_seal_neon_spec`:
+  the data becomes RFC 8439 section 2.8's ciphertext, and the tag is its tag
+  over the AAD and it;
+- `chacha20_poly1305_open_sve2_spec` and `chacha20_poly1305_open_neon_spec`:
+  the result is whether RFC 8439's tag over the AAD and the ciphertext is the
+  one given, leaving the plaintext in place if it is and zeros if not.
 
-They rest on the axioms `vg_chacha20_poly1305_seal_sve2_spec` and
-`vg_chacha20_poly1305_open_sve2_spec`, which restate VG's theorems, and
-assume the CPU-feature check finds SVE2. No length bound is needed: VG's
-spec and `Rind/Spec.lean`'s both wrap the 32-bit block counter, which the
-AEAD API stops short of. The glue above them, the AEAD API and HChaCha20
-included, is the same on every aarch64 CPU, and
-[the aarch64 ChaCha20-Poly1305 quest](/quest/m4/verified/chacha20-poly1305-aarch64.md)
-proves it, so the ✓ on SVE2 CPUs waits on that quest.
+They rest on the axioms `vg_chacha20_poly1305_seal_sve2_spec`,
+`vg_chacha20_poly1305_open_sve2_spec`, `vg_chacha20_poly1305_seal_neon_spec`,
+and `vg_chacha20_poly1305_open_neon_spec`, which restate VG's theorems, and
+assume the CPU-feature check finds SVE2, or finds none, as the routine needs.
+No length bound is needed: VG's spec and `Rind/Spec.lean`'s both wrap the
+32-bit block counter, which the AEAD API stops short of.
+`Rind/Aarch64/ChaCha20Poly1305.lean` carries them to the AEAD API:
+
+- `seals_sve2` and `opens_sve2`: `Seals` and `Opens` at every length where
+  the SVE2 check finds SVE2;
+- `seals_neon` and `opens_neon`: `Seals` at `SealsNeon`'s lengths and
+  `Opens` at `OpensNeon`'s where it finds none.
+
+Each assumes `RunsChaCha20Poly1305`: the entry guard admits the call and the
+SVE2 check returns. CPUs without SVE2 run aws-lc's `chacha20_poly1305_armv8`
+at the other lengths, which no proof covers yet, so `seals` and `opens`,
+which cover every length, assume its contract, `AwsLc`, there;
+[the aarch64 aws-lc ChaCha20-Poly1305 quest](/quest/m4/verified/chacha20-poly1305-aarch64/aead.md)
+owns that proof.
 
 ChaCha20 on x86_64, at every length, from `cipher::ChaCha20` down to
 pyca/verified-garbage's AVX2 and AVX-512 VL routines, rind's two-block AVX2
@@ -1285,7 +1309,7 @@ request, so no tail resumes on rind's code. Both assume the entry guard
 admits the call, constructing the VG state succeeds, and the SVE2 check
 returns. rind's NEON code runs every other request, which no proof covers
 yet, so `chacha20_apply_keystream` also assumes its contract, `Neon`;
-[the aarch64 ChaCha20-Poly1305 quest](/quest/m4/verified/chacha20-poly1305-aarch64.md)
+[the aarch64 NEON ChaCha20 quest](/quest/m4/verified/chacha20-poly1305-aarch64/cipher.md)
 owns that proof.
 
 RSASSA-PKCS1-v1_5 and RSASSA-PSS verification with SHA-256 on x86_64, from
@@ -1498,12 +1522,15 @@ proof after those.
   `Rind/X86_64/{Ghash,PartialBlock,AesGcmGlue,AesGcm,GhashClmul,AesGcmBy8,AesGcmClmul,AesGcmAead,AesGcmAny,GhashAvx512,AesGcmAvx512}.lean`:
   the AES-GCM proof, on x86_64 alone; `Rind/Aarch64/{AesGcmModel,GhashPmull}.lean`,
   aarch64's hand model and its PMULL GHASH proof; `Rind/X86_64/GcmKey.lean`, the hand model
-  of `aead::gcm::Key` and its proofs; `Rind/X86_64/ChaCha20Poly1305.lean`, the
-  ChaCha20-Poly1305 and XChaCha20-Poly1305 proof above aws-lc's routines;
+  of `aead::gcm::Key` and its proofs; `Rind/X86_64/AeadVec.lean`, the AEAD
+  API's `Vec` buffers; `Rind/X86_64/ChaCha20Poly1305Api.lean`, the
+  ChaCha20-Poly1305 and XChaCha20-Poly1305 proof down to the one pass, both
+  shared with aarch64; `Rind/X86_64/ChaCha20Poly1305.lean` and
+  `Rind/Aarch64/ChaCha20Poly1305.lean`, each target's one pass under it;
   `Rind/VgChaCha20Poly1305.lean`, the proof that pyca/verified-garbage's
   ChaCha20-Poly1305 spec is `Rind/Spec.lean`'s, and
   `Rind/Aarch64/VgChaCha20Poly1305.lean`, the aarch64 one pass over its SVE2
-  routines; `Rind/VgChaCha20.lean`, the proof that pyca/verified-garbage's
+  and NEON routines; `Rind/VgChaCha20.lean`, the proof that pyca/verified-garbage's
   ChaCha20 spec is `Rind/Spec.lean`'s, `Rind/VgChaCha20Glue.lean`, what both
   targets' `cipher::ChaCha20` proofs share, and
   `Rind/{X86_64,Aarch64}/VgChaCha20.lean`, each target's glue over VG's

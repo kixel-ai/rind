@@ -18,7 +18,7 @@ import Rind.Aarch64.MlKemCoding
 import Rind.Aarch64.MlKemGeneric
 import Rind.Aarch64.GhashPmull
 import Rind.Aarch64.AesGcm
-import Rind.Aarch64.VgChaCha20Poly1305
+import Rind.Aarch64.ChaCha20Poly1305
 import Rind.Aarch64.VgChaCha20
 open rind.aarch64
 
@@ -51,9 +51,13 @@ with the crypto extension's key, rest on no axiom, only on the hand model in
 `Rind.Aarch64.AesGcmModel`.
 ML-KEM's decompression, message coding, CBD sampling, and 12-bit unpacking
 rest on no axiom.
-ChaCha20-Poly1305's one pass on SVE2 rests on the axioms restating
-pyca/verified-garbage's theorems for its routines in
-`Rind.Aarch64.VgChaCha20Poly1305`.
+ChaCha20-Poly1305's one pass on pyca/verified-garbage's SVE2 and NEON
+routines rests on the axioms restating its theorems for them in
+`Rind.Aarch64.VgChaCha20Poly1305`, and its open on rind's HOL Light proofs
+of its constant-time compares where aws-lc's runs; at the lengths aws-lc's
+routines run, it also takes their contract as the hypothesis `AwsLc`, which
+no axiom states. The AEAD API above it rests on none, taking the one pass as
+the hypotheses `Seals` and `Opens`.
 ChaCha20's `apply_keystream` rests on the axioms restating
 pyca/verified-garbage's theorems for its routines in `Rind.Aarch64.VgChaCha20`;
 at every length it also takes rind's NEON code's contract as the hypothesis
@@ -880,6 +884,110 @@ A change here is a change to the trust base.
  vg_chacha20_poly1305_open_sve2_spec] -/
 #guard_msgs in
 #print axioms chacha20_poly1305_open_sve2_spec
+
+/-- info: 'rind.aarch64.chacha20_poly1305_seal_neon_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ vg_chacha20_poly1305_seal_neon_spec] -/
+#guard_msgs in
+#print axioms chacha20_poly1305_seal_neon_spec
+
+/-- info: 'rind.aarch64.chacha20_poly1305_open_neon_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ vg_chacha20_poly1305_open_neon_spec] -/
+#guard_msgs in
+#print axioms chacha20_poly1305_open_neon_spec
+
+/-- info: 'rind.aarch64.seals' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ vg_chacha20_poly1305_seal_neon_spec,
+ vg_chacha20_poly1305_seal_sve2_spec] -/
+#guard_msgs in
+#print axioms seals
+
+/-- info: 'rind.aarch64.opens' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ ct_compare_16_spec,
+ ct_compare_bytes_spec,
+ vg_chacha20_poly1305_open_neon_spec,
+ vg_chacha20_poly1305_open_sve2_spec] -/
+#guard_msgs in
+#print axioms opens
+
+/-- info: 'rind.aarch64.seals_sve2' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ vg_chacha20_poly1305_seal_neon_spec,
+ vg_chacha20_poly1305_seal_sve2_spec] -/
+#guard_msgs in
+#print axioms seals_sve2
+
+/-- info: 'rind.aarch64.opens_sve2' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ ct_compare_16_spec,
+ ct_compare_bytes_spec,
+ vg_chacha20_poly1305_open_neon_spec,
+ vg_chacha20_poly1305_open_sve2_spec] -/
+#guard_msgs in
+#print axioms opens_sve2
+
+/-- info: 'rind.aarch64.seals_neon' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ vg_chacha20_poly1305_seal_neon_spec,
+ vg_chacha20_poly1305_seal_sve2_spec] -/
+#guard_msgs in
+#print axioms seals_neon
+
+/-- info: 'rind.aarch64.opens_neon' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ ct_compare_16_spec,
+ ct_compare_bytes_spec,
+ vg_chacha20_poly1305_open_neon_spec,
+ vg_chacha20_poly1305_open_sve2_spec] -/
+#guard_msgs in
+#print axioms opens_neon
+
+/-- info: 'rind.aarch64.chacha20_poly1305_new' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms chacha20_poly1305_new
+
+/-- info: 'rind.aarch64.chacha20_poly1305_seal' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms chacha20_poly1305_seal
+
+/-- info: 'rind.aarch64.chacha20_poly1305_seal_append_tag' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms chacha20_poly1305_seal_append_tag
+
+/-- info: 'rind.aarch64.chacha20_poly1305_seal_append_tag_vec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms chacha20_poly1305_seal_append_tag_vec
+
+/-- info: 'rind.aarch64.chacha20_poly1305_open_separate_tag' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms chacha20_poly1305_open_separate_tag
+
+/-- info: 'rind.aarch64.chacha20_poly1305_open' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms chacha20_poly1305_open
+
+/-- info: 'rind.aarch64.randomized_nonce_key_new' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms randomized_nonce_key_new
+
+/-- info: 'rind.aarch64.randomized_nonce_key_seal_append_tag_vec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms randomized_nonce_key_seal_append_tag_vec
+
+/-- info: 'rind.aarch64.randomized_nonce_key_open' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms randomized_nonce_key_open
 
 /-- info: 'rind.aarch64.chacha20_apply_keystream_vg' depends on axioms: [propext,
  Classical.choice,

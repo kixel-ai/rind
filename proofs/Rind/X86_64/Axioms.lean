@@ -37,8 +37,8 @@ rind's HOL Light proofs of its routines for the SHA extensions in
 `bn_mul_mont_nohw` in `Rind.X86_64.RsaMont` for RSA's Montgomery products at
 the widths aws-lc's 4x and 8x routines do not take, rind's HOL Light proofs
 of its constant-time compares in `Rind.X86_64.CtEqual` for HMAC's and PBKDF2's
-`verify`, AES-GCM's tag check, ChaCha20-Poly1305's and XChaCha20-Poly1305's
-tag checks, RSASSA-PSS's hash compare, and key wrap's `unwrap` and
+`verify`, AES-GCM's tag check, ChaCha20-Poly1305's one-pass tag check,
+RSASSA-PSS's hash compare, and key wrap's `unwrap` and
 `unwrap_padded` checks; for RSA verification's public operation on AVX-512
 IFMA, pyca/verified-garbage's Lean proof of its routine, which
 `Rind.X86_64.VgRsa` restates; pyca/verified-garbage's for ChaCha20's
@@ -47,8 +47,9 @@ AVX-512 IFMA in `Rind.X86_64.VgCurve25519`, and for P-256's public key, ECDH,
 and ECDSA verification in `Rind.X86_64.VgP256`, and for P-384's `d·G`,
 which key generation and each ECDSA signature's nonce point take, and its
 ECDSA verification, in `Rind.X86_64.VgP384`; and nothing else.
-ChaCha20-Poly1305's theorems also take aws-lc's one-pass routines as the
-hypothesis `RunsChaCha20Poly1305`, which no axiom states.
+ChaCha20-Poly1305's one pass also takes aws-lc's routines as the hypothesis
+`RunsChaCha20Poly1305`, which no axiom states, and the AEAD API above it
+takes the one pass as the hypotheses `Seals` and `Opens`.
 RSA's Montgomery products at the widths aws-lc's 4x and 8x routines take, but
 for s2n-bignum's Karatsuba routines, take them as the hypothesis
 `AwsLcMont`, which no axiom states either. ChaCha20's
@@ -448,19 +449,11 @@ change to the trust base.
 #guard_msgs in
 #print axioms chacha20_poly1305_seal_append_tag_vec
 
-/-- info: 'rind.x86_64.chacha20_poly1305_open_separate_tag' depends on axioms: [propext,
- Classical.choice,
- Quot.sound,
- ct_compare_16_spec,
- ct_compare_bytes_spec] -/
+/-- info: 'rind.x86_64.chacha20_poly1305_open_separate_tag' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms chacha20_poly1305_open_separate_tag
 
-/-- info: 'rind.x86_64.chacha20_poly1305_open' depends on axioms: [propext,
- Classical.choice,
- Quot.sound,
- ct_compare_16_spec,
- ct_compare_bytes_spec] -/
+/-- info: 'rind.x86_64.chacha20_poly1305_open' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms chacha20_poly1305_open
 
@@ -472,13 +465,21 @@ change to the trust base.
 #guard_msgs in
 #print axioms randomized_nonce_key_seal_append_tag_vec
 
-/-- info: 'rind.x86_64.randomized_nonce_key_open' depends on axioms: [propext,
+/-- info: 'rind.x86_64.randomized_nonce_key_open' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms randomized_nonce_key_open
+
+/-- info: 'rind.x86_64.seals' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms seals
+
+/-- info: 'rind.x86_64.opens' depends on axioms: [propext,
  Classical.choice,
  Quot.sound,
  ct_compare_16_spec,
  ct_compare_bytes_spec] -/
 #guard_msgs in
-#print axioms randomized_nonce_key_open
+#print axioms opens
 
 /-- info: 'rind.x86_64.aes_new' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
