@@ -323,6 +323,35 @@ each distinct instruction and branch condition of those programs
 (`Cosim/Rind.lean`, `--rind`) as it does VG's, comparing `x29` too, but for
 the `adrp` and `add` the linker fills and the final `ret`, as VG's are not.
 
+`verified-garbage/RindIsa/X86_64.lean` extends VG's x86_64 model the same
+way: its state is VG's with `lo`, the lowest address the stack may reach, and
+it adds the push, `lea`, `neg`, `dec`, aligned 128-bit load and store, and
+`ja` aws-lc's code uses, a stack pointer move that claims the region it
+passes over as writable and forgets what a release leaves below it, and the
+padding (`.align` and the `jmp` over it), which runs as no instructions.
+`admin/prove lean` compares each x86_64 program's bytes with the Linux build
+the same way, `rind-asm x86_64` printing them, and `admin/prove vg`
+cosimulates its instructions and branches (`Cosim/RindX86_64.lean`) but for
+the padding, whose bytes that comparison checks.
+
+- `Rind/X86_64/Mul4xProof.lean`: `bn_mul4x_mont_correct`, that
+  `low::x86_64::mont::bn_mul4x_mont`, aws-lc's 4x Montgomery multiplication
+  without BMI2 and ADX, run from a state its `Pre` holds of (a width `k`
+  that is a multiple of four from eight and below `2^32`, `n0` the
+  `-m⁻¹ mod 2^64` of `m`, `a` below `m`, writes to `rp` only, `rp` disjoint
+  from `m`, every argument outside the `8k + 1104` bytes below the stack
+  pointer it owns, and room for that frame above `lo`), writes the Montgomery
+  product `a·b·2^(-64k) mod m` to `rp`, below `m`, returns 1, and changes no
+  other memory outside that frame and no register SysV makes the callee
+  save; that its trace is a function of its pointers, width, and stack
+  pointer (`ConstantTime`); and that some state meets `Pre`. The other
+  `Mul4x*` files build it: `Mul4xModel` the words a pass computes,
+  `Mul4xAsm` and `Mul4xHeadAsm` the program's blocks, `Mul4xHead` the
+  prologue and page walk, `Mul4xLoop` and `Mul4xOuter` the passes,
+  `Mul4xSub`, `Mul4xTailAsm`, and `Mul4xFinal` the subtraction and the
+  constant-time copy.
+  `Rind/X86_64/RsaMont.lean` restates it as `mul4x_spec`.
+
 - `Rind/Aarch64/Sha256HwAsm.lean`: `sha256_block_data_order_hw_correct`,
   that `low::aarch64::sha256::sha256_block_data_order_hw`, aws-lc's routine
   for the SHA-256 instructions, run from a state its `Pre` holds of (at least
@@ -1359,8 +1388,11 @@ under eight words or not a multiple of four, from `nohw_spec`, which restates
 rind's HOL Light proof of `bn_mul_mont_nohw` below, of the Linux build's
 object, so not of the macOS one ([its quest](/quest/m4/verified/apple-bytes.md));
 and from `AwsLcMont`, that
-aws-lc's unproven 4x and 8x routines return theirs, at every other width and
-CPU.
+aws-lc's unproven `bn_mulx4x_mont` and `bn_sqr8x_mont` return theirs, at every
+other width and CPU. Its products through `bn_mul4x_mont`, without BMI2 and
+ADX, follow from `mul4x_spec`, which restates `Mul4xProof.lean`'s theorem
+above, but `mont_products` still takes `AwsLcMont` at those widths, since it
+does not name the CPU.
 `PublicKey::verify` reaches each algorithm's verification through a function
 pointer, and every loader encodes the key through `Buffer::write`, which
 `Rind/X86_64/RsaDispatch.lean` models for these two algorithms. On aarch64 the products are aws-lc's, so these proofs are not

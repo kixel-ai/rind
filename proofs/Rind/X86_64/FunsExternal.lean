@@ -853,8 +853,8 @@ opaque low.x86_64.bignum_montmul.bignum_montmul
 
 /-! aws-lc's Montgomery products, behind their Rust wrappers, which
 `Rind.X86_64.RsaMont` states: `nohw_spec` restates rind's HOL Light proof of
-`bn_mul_mont_nohw`, and `AwsLcMont` the others for the theorems that need
-them. -/
+`bn_mul_mont_nohw`, `mul4x_spec` its Lean proof of `bn_mul4x_mont`, and
+`AwsLcMont` the others for the theorems that need them. -/
 
 opaque low.x86_64.mont.nohw
   :

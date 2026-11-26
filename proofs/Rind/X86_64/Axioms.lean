@@ -49,9 +49,12 @@ which key generation and each ECDSA signature's nonce point take, and its
 ECDSA verification, in `Rind.X86_64.VgP384`; and nothing else.
 ChaCha20-Poly1305's theorems also take aws-lc's one-pass routines as the
 hypothesis `RunsChaCha20Poly1305`, which no axiom states.
-RSA's Montgomery products at the widths aws-lc's 4x and 8x routines take, but
-for s2n-bignum's Karatsuba routines, take them as the hypothesis
-`AwsLcMont`, which no axiom states either. ChaCha20's
+RSA's Montgomery products rest on `nohw_spec` and `mul4x_spec` in
+`Rind.X86_64.RsaMont`, which restate rind's HOL Light proof of
+`bn_mul_mont_nohw` and its Lean proof of `bn_mul4x_mont`; at the widths
+aws-lc's `bn_mulx4x_mont` and `bn_sqr8x_mont` take, but for s2n-bignum's
+Karatsuba routines, they take those as the hypothesis `AwsLcMont`, which no
+axiom states either. ChaCha20's
 `apply_keystream` on a CPU without AVX2 takes aws-lc's SSSE3 routine as the
 hypothesis `Ssse3`; `Rind.X86_64.ChaCha20Avx2` proves rind's two-block kernel
 over `Rind.X86_64.Simd`'s models of the AVX2 intrinsics. The generator
