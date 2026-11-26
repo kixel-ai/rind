@@ -207,8 +207,8 @@ opaque low.generic.chacha20poly1305.open
 
 /-! `cipher::ChaCha20`'s routines: pyca/verified-garbage's, behind one
 wrapper each, whose contracts `Rind.X86_64.VgChaCha20` restates, and aws-lc's
-SSSE3 routine, whose contract `Rind.X86_64.ChaCha20Cipher` takes as the
-hypothesis `Ssse3`. -/
+SSSE3 routine, whose HOL Light theorem `Rind.X86_64.ChaCha20Cipher`
+restates. -/
 
 opaque low.x86_64.cpu.HaveAvx512Vl.check : Result (Option low.x86_64.cpu.HaveAvx512Vl)
 
