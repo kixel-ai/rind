@@ -324,6 +324,30 @@ asm_function() {
     rm "$dest.names" "$dest.renames"
 }
 
+# Writes to `dest` the bytes of the section `section` in rind's release build
+# for `arch` Linux: a `global_asm!` block's, which pushes a section of its own
+# so that it holds that block alone, with the tables its routines read through
+# PC. Its routines' symbols carry rind's version, so a proof finds each at its
+# offset in the section rather than by name. A relocation fails, as would a
+# section that more than one codegen unit defines.
+asm_section() {
+    local arch=$1 section=$2 dest=$3 index units
+    index=$(rind_index "$arch")
+    units=$(cut -f1 "$index" | sort -u | while read -r unit; do
+        "$tools/llvm-objdump" -h "$unit" | awk -v s="$section" -v u="$unit" '$2 == s { print u }'
+    done)
+    if [[ -z $units || $(wc -l <<<"$units") != 1 ]]; then
+        echo "admin/prove: rind's $arch build defines $section in other than one unit:" $units >&2
+        return 1
+    fi
+    if [[ -n "$(relocations "$units" "$section")" ]]; then
+        echo "admin/prove: $section has a relocation" >&2
+        return 1
+    fi
+    "$tools/llvm-objcopy" --dump-section="$section=$dest" "$units" "$dest.o"
+    rm "$dest.o"
+}
+
 # Prints each symbol name on stdin without what a version bump, a lockfile
 # change, or an edit elsewhere in rind changes, so `asm_function`'s objects,
 # and with them the HOL Light cache keys, change only with the code: the crate
@@ -411,15 +435,17 @@ result_key() {
     [[ -z $key_only ]] || cat "$out/keys/$name" >&3
 }
 
-# rind's own HOL Light proofs, each of the `asm!` block in a Rust function or
-# of a naked one, on the model, tactics, and specs of rind's fork of
-# s2n-bignum in `thirdparty/s2n-bignum`, which `RIND.md` there describes.
-# Each `<arch>/<file>.ml` reads its object code from `<arch>/<file>.bin`, the
-# block's bytes, which `asm_block` writes, or `<arch>/<file>.o`, the naked
-# function's object, which `asm_function` writes, and asserts it is what it
-# lists. A target's proofs compile into one program, as s2n-bignum's
-# `tools/build-proof.sh` compiles each of its own, which fails on an error or
-# an axiom beyond HOL Light's.
+# rind's own HOL Light proofs, each of the `asm!` block in a Rust function, of
+# a naked one, or of the section a `global_asm!` block pushes, on the model,
+# tactics, and specs of rind's fork of s2n-bignum in `thirdparty/s2n-bignum`,
+# which `RIND.md` there describes. Each `<arch>/<file>.ml` reads its object
+# code from `<arch>/<file>.bin`, the block's bytes, which `asm_block` writes,
+# or the section's, which `asm_section` writes for a path that names a
+# `.text.` section, or from `<arch>/<file>.o`, the naked function's object,
+# which `asm_function` writes, and asserts it is what it lists. A target's
+# proofs compile into one program, as s2n-bignum's `tools/build-proof.sh`
+# compiles each of its own, which fails on an error or an axiom beyond HOL
+# Light's.
 hol_light_proofs=(
     "aarch64 bignum_eq.bin rind::low::aarch64::bignum_eq::bignum_eq"
     "aarch64 bn_mul_mont.o rind::low::aarch64::mont::bn_mul_mont"
@@ -429,6 +455,7 @@ hol_light_proofs=(
     "x86_64 ct_compare_16.bin rind::low::x86_64::cpu::ct_compare_16"
     "armv7 ct_compare_bytes.bin rind::low::arm::cpu::ct_compare_bytes"
     "armv7 ct_compare_16.bin rind::low::arm::cpu::ct_compare_16"
+    "armv7 ghash_armv4.bin .text.rind.ghash_armv4"
     "x86_64 sha512_block_data_order_avx2.o rind::low::x86_64::sha512::sha512_block_data_order_avx2"
     "x86_64 sha256_block_data_order_avx2.o rind::low::x86_64::sha256::sha256_block_data_order_avx2"
     "x86_64 bn_mul_mont_nohw.o rind::low::x86_64::mont::bn_mul_mont_nohw"
@@ -494,9 +521,10 @@ hol_light_objects() {
     for proof in "${hol_light_proofs[@]}"; do
         read -r parch file path <<<"$proof"
         [[ $parch == "$arch" ]] || continue
-        case $file in
-        *.bin) asm_block "$arch" "$path" "$dir/$file" ;;
-        *.o) asm_function "$arch" "$path" "$dir/$file" ;;
+        case $file:$path in
+        *.bin:.text.*) asm_section "$arch" "$path" "$dir/$file" ;;
+        *.bin:*) asm_block "$arch" "$path" "$dir/$file" ;;
+        *.o:*) asm_function "$arch" "$path" "$dir/$file" ;;
         esac
     done
     for data in "${hol_light_data[@]}"; do
