@@ -302,8 +302,8 @@ theorem mont_exp_add {N R A B P C a b : Nat} (hR : Nat.Coprime R N) (hA : A ≡ 
 section window
 variable (e m : Slice U64) (n0 : U64) (C : Nat)
 
-/-- `mont_exp_by`'s five squarings: from `C^(t·2^s)`, after `s` of them,
-`C^(32t)`. -/
+/-- `mont_exp_by`'s five squarings: after `s` of them the value is `C^(t·2^s)`, and the
+remaining `5 - s` reach `C^(32t)`. -/
 theorem mont_exp_by_loop2_loop0_spec (hP : MontProducts m.length) (hk2 : 2 ≤ m.length)
     (hk32 : m.length < 2 ^ 32)
     (hodd : wordsNat m.val % 2 = 1) (hn0 : (wordsNat m.val * n0.val + 1) % 2 ^ 64 = 0) (t : Nat)
