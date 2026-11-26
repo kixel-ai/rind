@@ -308,7 +308,7 @@ def main():
             )
         print(
             f"admin/vg-binding: {arch}: {len(mine)} routines of rind's, {len(set(mine) & proven)} covered by the "
-            f"{len(covered)} axioms name, {len(set(mine) & reach(UNCOVERED[arch]))} listed uncovered"
+            f"{len(covered)} axioms name, {len((set(mine) & reach(UNCOVERED[arch])) - proven)} listed uncovered"
         )
     print(f"admin/vg-binding: {named} routines named by axioms, at VG {rev[:12]}")
 
