@@ -26,6 +26,10 @@ pub(crate) struct RsaPrivateKey {
     p0: u64,
     q0: u64,
 
+    /// The primes' bit lengths, public as `new` reveals them.
+    p_bits: usize,
+    q_bits: usize,
+
     /// pyca/verified-garbage's values for its IFMA CRT, where it runs.
     #[cfg(rind_backend = "x86_64")]
     ifma: low::IfmaCrt,
@@ -139,6 +143,8 @@ impl RsaPrivateKey {
             q_montifier,
             p0,
             q0,
+            p_bits,
+            q_bits,
         })
     }
 
@@ -166,6 +172,11 @@ impl RsaPrivateKey {
 
     pub(crate) fn modulus_len_bits(&self) -> usize {
         self.public.modulus_len_bits()
+    }
+
+    /// The bit lengths of `p` and `q`, which `new` already revealed.
+    pub(crate) fn prime_bits(&self) -> [usize; 2] {
+        [self.p_bits, self.q_bits]
     }
 
     pub(crate) fn encode_components<'a>(
@@ -333,6 +344,8 @@ impl Drop for RsaPrivateKey {
     fn drop(&mut self) {
         low::zeroise_value(&mut self.p0);
         low::zeroise_value(&mut self.q0);
+        low::zeroise_value(&mut self.p_bits);
+        low::zeroise_value(&mut self.q_bits);
         // Not secret, but wiping it lets `tests/zeroing.rs` check every byte.
         low::zeroise_value(&mut self.public);
     }
@@ -392,8 +405,10 @@ pub(crate) const MAX_PRIVATE_MODULUS_BYTES: usize = MAX_PRIVATE_MODULUS_BITS / 8
 const MIN_PRIVATE_MODULUS_BITS: usize = 1024;
 const MIN_PRIVATE_MODULUS_BYTES: usize = MIN_PRIVATE_MODULUS_BITS / 8;
 
-// Signing keeps the 2048-bit floor that only legacy verification goes below.
-const MIN_MODULUS_BITS: usize = 2048;
+// Signing keeps a 2048-bit floor, but for a 2047-bit modulus: two 1024-bit
+// primes give it the strength of 2048 bits, and ring loads it. Only legacy
+// verification goes below.
+const MIN_MODULUS_BITS: usize = 2047;
 
 type SecretRsaPosIntModP = low::SecretPosInt<MAX_PRIVATE_MODULUS_WORDS>;
 type SecretRsaPosIntD = low::SecretPosInt<{ MAX_PRIVATE_MODULUS_WORDS * 2 }>;

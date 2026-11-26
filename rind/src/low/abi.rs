@@ -936,6 +936,8 @@ mod tests {
         ("x86_64/aes_gcm_avx.rs", "gcm128_decrypt_opt", DISPATCHED),
         ("x86_64/aes_gcm_avx.rs", "gcm256_encrypt_opt", DISPATCHED),
         ("x86_64/aes_gcm_avx.rs", "gcm256_decrypt_opt", DISPATCHED),
+        ("x86_64/rsa_ifma.rs", "crt_vg", DISPATCHED),
+        ("x86_64/rsa_ifma.rs", "crt_vg512", DISPATCHED),
         (
             "x86_64/rsaz_avx512.rs",
             "rsaz_amm52x20_x2_ifma256",

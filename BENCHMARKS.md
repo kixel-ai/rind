@@ -17,6 +17,74 @@ How long rind and the usual Rust crypto libraries take for the same operations, 
 
 Each host builds with the pinned toolchain in the Nix dev shell, and runs `admin/bench-report` only when idle. Times are criterion's estimates.
 
+## Methodology
+
+Each host runs `cargo bench -p rind-bench --features __bench_openssl`, passing criterion `--warm-up-time 1 --measurement-time 3` and a filter for the report's rows, as `criterion_args` in its `benchmarks/data/<host>.json` records.
+
+On aarch64, every rind row except those marked *DIT set per call* holds a `rind::cpu::Dit::hold()` guard across the timed loop (`rind_dit` in `rind-bench/benches/criterion/mod.rs`), so it pays for turning DIT on and off once, as a caller holding the guard around a batch of calls does. A caller holding none pays it on every call: the rows marked *DIT set per call* time rind that way. On x86_64 the guard does nothing, and no other library sets DIT.
+
+To time a row without Nix, install the pinned toolchain and run its bench target, here AES-128-GCM's rows. aws-lc-rs and ring need a C compiler, and on Unix the OpenSSL column needs OpenSSL 3's headers and pkg-config.
+
+```sh
+rustup toolchain install 1.98.1
+cargo +1.98.1 bench -p rind-bench --features __bench_openssl --bench aes_gcm -- --warm-up-time 1 --measurement-time 3 '^aes128-gcm/'
+```
+
+### Versions
+
+The versions of each library's crates that `rind-bench` built, from `Cargo.lock` at each host's measured commit, and the OpenSSL each host linked. A version some hosts did not build names the hosts that did.
+
+| Library | Crate | Version |
+|---|---|---|
+| rind | `rind` | 0.3.2 on `nixos`, `fedora`, `kixtop`, `ovh-iad`, `ovh-sea`; 0.2.1 on `desktop` |
+| rind | `rind-rustls` | 0.23.4 on `nixos`, `fedora`, `kixtop`, `ovh-iad`, `ovh-sea`; 0.23.0 on `desktop` |
+| aws-lc-rs | `aws-lc-rs` | 1.19.0 |
+| aws-lc-rs | `aws-lc-sys` | 0.47.0 |
+| ring | `ring` | 0.17.14 |
+| RustCrypto + dalek | `aes-gcm` | 0.11.1 |
+| RustCrypto + dalek | `chacha20poly1305` | 0.11.0 |
+| RustCrypto + dalek | `sha2` | 0.11.1 |
+| RustCrypto + dalek | `sha3` | 0.12.0 |
+| RustCrypto + dalek | `hmac` | 0.13.0 |
+| RustCrypto + dalek | `hkdf` | 0.13.0 |
+| RustCrypto + dalek | `p256` | 0.14.0 |
+| RustCrypto + dalek | `p384` | 0.14.0 |
+| RustCrypto + dalek | `p521` | 0.14.0 |
+| RustCrypto + dalek | `rsa` | 0.10.0 on `nixos`, `fedora`, `kixtop`, `ovh-iad`, `ovh-sea`; 0.10.0-rc.19 on `desktop` |
+| RustCrypto + dalek | `ml-dsa` | 0.1.2 on `nixos`, `fedora`, `kixtop`, `ovh-iad`, `ovh-sea` |
+| RustCrypto + dalek | `ml-kem` | 0.3.4 |
+| RustCrypto + dalek | `ed25519-dalek` | 3.0.0 |
+| RustCrypto + dalek | `x25519-dalek` | 3.0.0 |
+| RustCrypto + dalek | `hpke` | 0.15.1 on `nixos`, `fedora`, `kixtop`, `ovh-iad`, `ovh-sea` |
+| RustCrypto + dalek | `blind-rsa-signatures` | 0.18.0 (rind's fork in `thirdparty/blind-rsa-signatures`) on `nixos`, `fedora`, `kixtop`, `ovh-iad`, `ovh-sea` |
+| RustCrypto + dalek | `voprf` | 0.6.0-pre.2 on `nixos`, `fedora`, `kixtop`, `ovh-iad`, `ovh-sea` |
+| RustCrypto + dalek | `vrf-rfc9381` | 0.0.7 on `nixos`, `fedora`, `kixtop`, `ovh-iad`, `ovh-sea` |
+| RustCrypto + dalek | `spake2plus` | 0.1.0 on `nixos`, `fedora`, `kixtop`, `ovh-iad`, `ovh-sea` |
+| RustCrypto + dalek | `argon2` | 0.6.0 on `nixos`, `fedora`, `kixtop`, `ovh-iad`, `ovh-sea` |
+| RustCrypto + dalek | `slh-dsa` | 0.2.0-rc.5 on `nixos`, `fedora`, `kixtop`, `ovh-iad`, `ovh-sea` |
+| graviola | `graviola` | 0.4.4 |
+| graviola | `rustls-graviola` | 0.4.0 |
+| libcrux | `libcrux-aes` | 0.0.10 |
+| libcrux | `libcrux-chacha20poly1305` | 0.0.10 |
+| libcrux | `libcrux-ecdh` | 0.0.9 |
+| libcrux | `libcrux-ecdsa` | 0.0.9 |
+| libcrux | `libcrux-ed25519` | 0.0.10 |
+| libcrux | `libcrux-hkdf` | 0.0.9 |
+| libcrux | `libcrux-hmac` | 0.0.9 |
+| libcrux | `libcrux-ml-dsa` | 0.0.11 on `nixos`, `fedora`, `kixtop`, `ovh-iad`, `ovh-sea` |
+| libcrux | `libcrux-ml-kem` | 0.0.11 |
+| libcrux | `libcrux-rsa` | 0.0.9 |
+| libcrux | `libcrux-sha2` | 0.0.9 |
+| libcrux | `libcrux-sha3` | 0.0.11 |
+| libcrux | `hpke-rs` | 0.8.0 on `nixos`, `fedora`, `kixtop`, `ovh-iad`, `ovh-sea` |
+| libcrux | `hpke-rs-libcrux` | 0.8.0 on `nixos`, `fedora`, `kixtop`, `ovh-iad`, `ovh-sea` |
+| OpenSSL | `openssl` | 0.10.82 |
+| OpenSSL | `openssl-sys` | 0.9.118 |
+| OpenSSL | `rustls-openssl` | 0.4.2 |
+| OpenSSL | linked library | OpenSSL 3.5.9 29 Sep 2026 (Library: OpenSSL 3.5.9 29 Sep 2026) |
+| verified-garbage | `verified-garbage` | 0.0.0 (0aa40d6c) on `nixos`, `fedora`, `kixtop`, `ovh-iad`, `ovh-sea` |
+| rustls | `rustls` | 0.23.46 |
+
 ## Speed
 
 Each row is one operation and each column one library. Each cell holds a square per host, colored by that library's time over the fastest library's on the same host, as the legend shows. A shield in a square marks verified code. Each square's tooltip, in the SVG opened on its own, gives its time; the tables below each host give them all. A library with no square doesn't offer the operation, or the host didn't time it, as its section says.
@@ -349,12 +417,12 @@ rind-rustls on all 32 logical CPUs runs full handshakes at 26.0 times and resume
 | AES-256-GCM open, 32 B | 27 ns | 51 ns | 63 ns | 127 ns | 50 ns | 309 ns | 64 ns | 34 ns |
 | AES-256-GCM open, 1350 B | 90 ns | 126 ns | 169 ns | 449 ns | 144 ns | 3.40 µs | 138 ns | 109 ns |
 | AES-256-GCM open, 16 KB | 625 ns | 647 ns | 1.19 µs | 3.50 µs | 711 ns | 37.94 µs | 691 ns | 581 ns |
-| ChaCha20-Poly1305 seal, 32 B | 134 ns | 140 ns | 135 ns | 977 ns | 273 ns | 147 ns ✓ | 272 ns | 130 ns |
-| ChaCha20-Poly1305 seal, 1350 B | 395 ns | 484 ns | 490 ns | 1.85 µs | 1.16 µs | 1.56 µs ✓ | 612 ns | 372 ns |
-| ChaCha20-Poly1305 seal, 16 KB | 2.70 µs | 4.52 µs | 4.42 µs | 10.67 µs | 8.98 µs | 17.65 µs ✓ | 2.61 µs | 2.70 µs |
-| XChaCha20-Poly1305 seal, 32 B | 242 ns | 251 ns | - | 1.08 µs | 448 ns | 258 ns | - | - |
-| XChaCha20-Poly1305 seal, 1350 B | 507 ns | 600 ns | - | 1.97 µs | 1.29 µs | 1.67 µs | - | - |
-| XChaCha20-Poly1305 seal, 16 KB | 2.78 µs | 4.56 µs | - | 10.64 µs | 9.03 µs | 17.66 µs | - | - |
+| ChaCha20-Poly1305 seal, 32 B | 134 ns ✓ | 140 ns | 135 ns | 977 ns | 273 ns | 147 ns ✓ | 272 ns | 130 ns |
+| ChaCha20-Poly1305 seal, 1350 B | 395 ns ✓ | 484 ns | 490 ns | 1.85 µs | 1.16 µs | 1.56 µs ✓ | 612 ns | 372 ns |
+| ChaCha20-Poly1305 seal, 16 KB | 2.70 µs ✓ | 4.52 µs | 4.42 µs | 10.67 µs | 8.98 µs | 17.65 µs ✓ | 2.61 µs | 2.70 µs |
+| XChaCha20-Poly1305 seal, 32 B | 242 ns ✓ | 251 ns | - | 1.08 µs | 448 ns | 258 ns | - | - |
+| XChaCha20-Poly1305 seal, 1350 B | 507 ns ✓ | 600 ns | - | 1.97 µs | 1.29 µs | 1.67 µs | - | - |
+| XChaCha20-Poly1305 seal, 16 KB | 2.78 µs ✓ | 4.56 µs | - | 10.64 µs | 9.03 µs | 17.66 µs | - | - |
 | AES-128 header protection | 2 ns ✓ | 3 ns | 4 ns | - | - | - | - | 2 ns |
 | AES-256 header protection | 3 ns ✓ | 5 ns | 6 ns | - | - | - | - | 3 ns |
 | ChaCha20 header protection | 51 ns ✓ | 58 ns | 52 ns | - | - | - | - | 58 ns |
@@ -1430,6 +1498,7 @@ A ✓ means a published, machine-checked proof shows that all the code computing
 | rind | `quic-header-protection/aes128`, `quic-header-protection/aes256` | aarch64 with aes, pmull, sha2 | [rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch Aeneas cannot translate, which assumes each key's mask is its own cipher's, the only one rind builds, and of the NEON intrinsics as Arm's manual defines them, tested on an aarch64 CPU, of its header-protection API's AES-128 and AES-256 against RFC 9001 and Vale's FIPS 197 spec](https://github.com/kixel-ai/rind/blob/main/proofs/Rind/Aarch64/AesKey.lean) |
 | rind | `aes128-gcm/*`, `aes128-gcm-open/*`, `aes256-gcm/*`, `aes256-gcm-open/*` | x86_64 with aes, pclmulqdq, ssse3, sse4.1, avx, movbe without vaes | [rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch, of the by-8 AES-GCM and PCLMULQDQ GHASH Aeneas cannot translate, and of the SIMD intrinsics as Intel's manual defines them, of its AEAD API's AES-GCM key setup, seal, and open, for every AAD and message length it takes, down to HACL*'s Vale AES-GCM routines and, for seals under 129 bytes and AAD or messages of 2^32 bytes or more, rind's by-8 AES-CTR and PCLMULQDQ GHASH against Vale's gcm_encrypt_LE and gcm_decrypt_LE without their bound of 2^32 bytes, composed with Vale's F* proofs of Gcm_blocks_stdcall, Gcm_blocks_decrypt_stdcall, and Compute_iv_stdcall, of the code Vale prints at HACL* f557259007db, which rind imports, and with rind's HOL Light proofs of its constant-time tag compare](https://github.com/kixel-ai/rind/blob/main/proofs/Rind/X86_64/AesGcmAead.lean) |
 | rind | `aes128-gcm/*`, `aes128-gcm-open/*`, `aes256-gcm/*`, `aes256-gcm-open/*` | x86_64 with aes, pclmulqdq, ssse3, sse4.1 without avx | [rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch, of the by-8 AES-GCM and PCLMULQDQ GHASH Aeneas cannot translate, and of the SIMD intrinsics as Intel's manual defines them, of its AEAD API's AES-GCM key setup, seal, and open, for every AAD and message length it takes, down to its by-8 AES-CTR and PCLMULQDQ GHASH, against Vale's gcm_encrypt_LE and gcm_decrypt_LE without their bound of 2^32 bytes, composed with rind's HOL Light proofs of its constant-time tag compare](https://github.com/kixel-ai/rind/blob/main/proofs/Rind/X86_64/AesGcmAead.lean) |
+| rind | `chacha20poly1305/*`, `xchacha20poly1305/*` | x86_64 with avx, avx2, avx512f, avx512vl, avx512ifma | [rind's Lean proof, through Aeneas and a hand model of the function-pointer dispatch Aeneas cannot translate, of its AEAD API's ChaCha20-Poly1305 and XChaCha20-Poly1305 key setup, seal, and open against RFC 8439 and draft-irtf-cfrg-xchacha-03, for every AAD and message length it takes, HChaCha20 over HACL*'s rounds included, down to pyca/verified-garbage's vg_chacha20_poly1305_seal_ifma and vg_chacha20_poly1305_open_ifma, which rind runs at every length on CPUs with AVX-512 IFMA, composed with pyca/verified-garbage's Lean proofs of those routines against its model of its own machine code, which rind vendors, whose instructions rind cosimulates against its ISA models, and rind's Lean proof that that project's RFC 8439 spec is its own](https://github.com/kixel-ai/rind/blob/main/proofs/Rind/X86_64/ChaCha20Poly1305.lean) |
 | aws-lc-rs | `sha512/*` | x86_64 with intel, avx, ssse3 | [aws-lc-verification's SAW proof of SHA-512 through EVP_Digest, padding included, over sha512_block_data_order_avx, which aws-lc runs only on Intel; of aws-lc c21d40da, whose SHA-512 code 5.12.0 keeps](https://github.com/awslabs/aws-lc-verification/blob/797302470c1703cbb1a3a6fa98daffef0bfd3d80/SAW/proof/SHA512/verify-SHA512-x86.saw) |
 | rind | `sha256/*`, `sha512/*`, `hmac-sha256/*`, `hkdf-sha256/*` | portable | [rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch and of HKDF-Expand's loop over its info slices, which Aeneas cannot translate, of its digest, HMAC, and HKDF APIs' SHA-256 and SHA-512 against FIPS 180-4, RFC 2104, and RFC 5869, padding and the block functions low::generic::sha256 and low::generic::sha512 (aws-lc's C, ported to Rust) included; not ESP-IDF Xtensa's SHA-256 or 32-bit microcontrollers' SHA-512, which run other bodies](https://github.com/kixel-ai/rind/blob/main/proofs/Rind/Portable/Sha256Compress.lean) |
 | rind | `quic-header-protection/chacha20` | portable | [rind's Lean proof, through Aeneas and a hand model of the function-pointer dispatch Aeneas cannot translate, which assumes each key's mask is its own cipher's, the only one rind builds, of its header-protection API's ChaCha20 against RFC 9001 and RFC 8439, HACL*'s rounds included](https://github.com/kixel-ai/rind/blob/main/proofs/Rind/X86_64/ChaCha20.lean) |

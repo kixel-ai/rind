@@ -27,14 +27,19 @@ With [Nix](https://nixos.org), `nix develop` (or direnv) provides CI's
 toolchain. `just check` is the local loop over what the branch changed: it
 checks formatting (`just fix` applies it), builds the tests of the changed
 crates and their dependents in one pass with clippy as the compiler wrapper,
-runs them, and runs the repository lints that take a second. `just ci` runs
-the PR check's gate over the same diff, adding the Rust targets' other builds
-and the docs, the site, the semver marks, the binary-size record, and the
-mutants pins. `just ci --all` (`just gate`) runs every module over the whole
-tree, the cross, MSRV, wasm, no-std, adapter-API, constant-time, structure,
-Python, Dart, OpenSSL, and patch modules among them, which gate no merge and
-run nightly; `CHECK_MODULES=cross just ci` runs one over the diff. Each runs
-three modules at a time (`sh/dispatch.sh` lists the `CHECK_*` variables that change that); the
+runs them, and runs the repository lints that take a second.
+A change to rind's private code under `rind/src/low/` skips its dependents, and
+one to `rind/src/{low,mid,high}/` runs only rind's tests for the primitive
+families it touches, by the map in `admin/test-scope.toml`; a test added to
+`rind/tests/`, or a primitive's new file, needs its entry there, which `just
+check` checks. `just ci` runs the PR check's gate over the same diff, adding
+the Rust targets' other builds and the docs, the site, the semver marks, the
+binary-size record, and the mutants pins. `just ci --all` (`just gate`) runs
+every module over the whole tree, the cross, MSRV, wasm, no-std, adapter-API,
+constant-time, structure, Python, Dart, OpenSSL, and patch modules among
+them, which gate no merge and run nightly; `CHECK_MODULES=cross just ci` runs
+one over the diff. Each runs three modules at a time (`sh/dispatch.sh` lists
+the `CHECK_*` variables that change that); the
 scheduled workflows' tools are in [TESTING.md](TESTING.md#running-the-tools).
 
 Both build their tests under the `test-fast` profile in `Cargo.toml`, a lightly
@@ -120,6 +125,9 @@ A PR that adds such a workaround adds its entry there and names the entry in the
 
 release-plz opens a release PR from `main`, and publishing happens only when that PR merges.
 release-plz owns crate versions.
+Correct a release's notes on `main`, never with a commit on the release PR's branch: release-plz force-pushes a PR it alone wrote, but closes one carrying a commit of anyone else's and opens a new PR without it, which happens on each merge to `main` that touches a crate, so every correction would be pushed again and `just release-check` rerun.
+Release-plz regenerates the notes from commit titles on every run, so a correction is input to that: a pattern in `.release-plz.toml`'s `[changelog]` that rewrites an entry's title (release-plz runs each twice, so a pattern must not match its own output), a `commit_parsers` entry that skips one, or a migration note in its `body` template, keyed on the crate and version.
+Delete an entry once its release ships.
 It creates a GitHub Release for each tag it pushes, with its changelog entry as the body, and only rind's marked latest.
 If creating one fails, the release job stops there and alerts, leaving later crates and pyrind's PyPI upload undone. Rerun the failed `Release` run, which finishes them but skips the tag already pushed, then create that tag's Release by hand with `gh release create <tag> --verify-tag --latest=false --title <tag> --notes-file <its CHANGELOG.md entry>`, passing `--latest` for rind's.
 
