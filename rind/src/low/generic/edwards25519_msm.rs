@@ -65,12 +65,12 @@ pub(crate) fn non_adjacent_forms(base: &[u64; 4], scalars: &[[u64; 4]; 2]) -> [[
 /// One past the highest nonzero digit of any form, where the loop starts,
 /// since doubling the identity leaves it.
 pub(crate) fn top(nafs: &[[i8; 257]; 4]) -> usize {
-    let mut i = 257;
-    while i > 0 && nafs[0][i - 1] == 0 && nafs[1][i - 1] == 0 && nafs[2][i - 1] == 0 && nafs[3][i - 1] == 0
-    {
-        i -= 1;
+    for i in (0..257).rev() {
+        if nafs[0][i] != 0 || nafs[1][i] != 0 || nafs[2][i] != 0 || nafs[3][i] != 0 {
+            return i + 1;
+        }
     }
-    i
+    0
 }
 
 /// `(0, 1, 1, 0)`.

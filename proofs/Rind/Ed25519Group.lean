@@ -299,20 +299,28 @@ theorem edAddOk_spec {Q R : Point dF} {S : ℕ × ℕ} (h : edAddOk (coords Q) (
     rw [Ne, ZMod.natCast_eq_zero_iff, Nat.dvd_iff_mod_eq_zero]; exact hs
   have ex' := (ZMod.natCast_eq_natCast_iff' _ _ p25519).mpr ex
   have ey' := (ZMod.natCast_eq_natCast_iff' _ _ p25519).mpr ey
-  push_cast [Nat.cast_sub (show _ ≤ 1 + p25519 by omega), ZMod.natCast_mod, ZMod.natCast_zmod_val,
-    ZMod.natCast_self] at ha' hs' ex' ey'
-  simp only [add_zero] at hs' ey'
+  have hle : d25519 * Q.1.1.val * R.1.1.val * Q.1.2.val * R.1.2.val % p25519 ≤ 1 + p25519 := by omega
+  push_cast [Nat.cast_sub hle, ZMod.natCast_mod, ZMod.natCast_zmod_val, ZMod.natCast_self] at ha' hs' ex' ey'
   have hv : ∀ {n : ℕ}, n < p25519 → (n : ZMod p25519).val = n := ZMod.val_natCast_of_lt
-  simp only [Point.val_add, add, Prod.mk.injEq]
+  simp only [coords, Point.val_add, add, Prod.mk.injEq]
   constructor
   · rw [← hv hx3]
     congr 1
-    rw [eq_div_iff (by simpa [mul_assoc, mul_comm, mul_left_comm] using ha')]
-    linear_combination ex'
+    exact (div_eq_iff ha').mpr (by linear_combination -ex')
   · rw [← hv hy3]
     congr 1
-    rw [eq_div_iff (by simpa [mul_assoc, mul_comm, mul_left_comm] using hs')]
-    linear_combination ey'
+    rw [add_zero] at hs' ey'
+    exact (div_eq_iff hs').mpr (by linear_combination -ey')
+
+/-- `f x`, with `x` evaluated first, which keeps the kernel from carrying an
+unevaluated sum up `edMulCheck`'s recursion. -/
+def force {α : Type} (x : ℕ) (f : ℕ → α) : α :=
+  match x with
+  | 0 => f 0
+  | n + 1 => f (n + 1)
+
+theorem force_eq {α : Type} (x : ℕ) (f : ℕ → α) : force x f = f x := by
+  cases x <;> rfl
 
 /-- `k` times the point `P`, for `k < 2 ^ fuel`, by doubling and adding, or
 `none` if `edAddOk` refuses a sum. -/
@@ -325,10 +333,11 @@ def edMulCheck (P : ℕ × ℕ) : ℕ → ℕ → Option (ℕ × ℕ)
       | some Q =>
         let D := edAddC Q Q
         if edAddOk Q Q D then
-          if k % 2 = 0 then some D
+          force D.1 fun x => force D.2 fun y =>
+          if k % 2 = 0 then some (x, y)
           else
-            let S := edAddC D P
-            if edAddOk D P S then some S else none
+            let S := edAddC (x, y) P
+            if edAddOk (x, y) P S then force S.1 fun a => force S.2 fun b => some (a, b) else none
         else none
 
 theorem edMulCheck_spec (X : Point dF) : ∀ fuel k R, edMulCheck (coords X) fuel k = some R → coords (k • X) = R
@@ -343,7 +352,7 @@ theorem edMulCheck_spec (X : Point dF) : ∀ fuel k R, edMulCheck (coords X) fue
     rcases hq : edMulCheck (coords X) fuel (k / 2) with _ | Q
     · simp [hq] at h
     have ih := edMulCheck_spec X fuel _ _ hq
-    simp only [hq] at h
+    simp only [hq, force_eq] at h
     by_cases hD : edAddOk Q Q (edAddC Q Q) = true
     swap
     · simp [hD] at h
@@ -395,8 +404,7 @@ instance : Finite (Point dF) := Finite.of_injective _ yParity_injective
 
 theorem card_le : Nat.card (Point dF) ≤ 2 * p25519 := by
   refine (Nat.card_le_card_of_injective _ yParity_injective).trans (le_of_eq ?_)
-  simp only [Nat.card_eq_fintype_card, Fintype.card_prod, ZMod.card, Fintype.card_bool]
-  ring
+  rw [Nat.card_prod, Nat.card_zmod, Nat.card_eq_fintype_card (α := Bool), Fintype.card_bool, mul_comm]
 
 instance : Fact (Nat.Prime n25519) := ⟨n25519_prime⟩
 
@@ -415,7 +423,7 @@ theorem card_eq : Nat.card (Point dF) = 8 * n25519 := by
     refine addOrderOf_eq_prime_pow (fun h0 => ?_) (eq_zero_of_coords (by simpa using hT8))
     have := congrArg coords h0
     rw [show 2 ^ 2 = 4 by rfl, hT4] at this
-    simp [coords, ZMod.val_zero] at this
+    norm_num [coords, ZMod.val_zero, ZMod.val_one, p25519] at this
   have d1 := oB ▸ addOrderOf_dvd_natCard (toPoint edB edOnCurve_B)
   have d2 := oT ▸ addOrderOf_dvd_natCard (toPoint edT8 edOnCurve_T8)
   have d : 8 * n25519 ∣ Nat.card (Point dF) :=
@@ -423,12 +431,12 @@ theorem card_eq : Nat.card (Point dF) = 8 * n25519 := by
   obtain ⟨c, hc⟩ := d
   have hle := card_le
   have hpos : 0 < Nat.card (Point dF) := Nat.card_pos
+  have hp : 2 * p25519 < 16 * n25519 := by decide
   have hc1 : c = 1 := by
     rcases c with _ | _ | c
     · omega
     · rfl
-    · have : 8 * n25519 * 2 ≤ 8 * n25519 * (c + 2) := Nat.mul_le_mul_left _ (by omega)
-      have : 2 * p25519 < 16 * n25519 := by decide
+    · have : 8 * n25519 * 2 ≤ Nat.card (Point dF) := hc ▸ Nat.mul_le_mul_left _ (by omega)
       omega
   rw [hc, hc1, mul_one]
 
