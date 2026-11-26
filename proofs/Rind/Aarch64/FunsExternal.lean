@@ -446,7 +446,8 @@ def low.aarch64.aes_cbc.aese_chained (y b : core.core_arch.arm_shared.neon.uint8
 `Rind.Aarch64.MlKemRoutines` states: the NTTs, mulcache, and sampler take the
 tables the translated wrappers in `low::aarch64::mlkem` pass, and the rest
 are called directly. mlkem-native's NEON ciphertext compression follows,
-behind wrappers that pass its table themselves. -/
+behind wrappers that take only the destination and polynomial, except
+`mlkem_compress_d5`'s, which also passes its table itself. -/
 
 opaque low.aarch64.mlkem_ntt.mlkem_ntt
   : Array Std.I16 256#usize → Array Std.I16 80#usize → Array Std.I16 384#usize →

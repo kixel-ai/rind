@@ -1874,9 +1874,13 @@ rej_table() {
         on { sub(/\/\/.*/, ""); printf "%s", $0 }' "$1" |
         tr -d ' ' | tr ',' '\n' | sed '/^$/d; s/^-1$/255/'
 }
-if ! diff <(rej_table rind/src/low/aarch64/mlkem.rs) \
-    <(hol_list thirdparty/s2n-bignum/arm/proofs/mlkem_rej_uniform_VARIABLE_TIME.ml mlkem_rej_uniform_table |
-        tr -d ' ' | tr ',' '\n') >/dev/null; then
+rind_rej=$(rej_table rind/src/low/aarch64/mlkem.rs)
+s2n_rej=$(hol_list thirdparty/s2n-bignum/arm/proofs/mlkem_rej_uniform_VARIABLE_TIME.ml mlkem_rej_uniform_table) || exit 1
+if [[ $(wc -l <<<"$rind_rej") -ne 4096 ]]; then
+    echo "admin/prove: no 4096-entry rejection table in rind/src/low/aarch64/mlkem.rs" >&2
+    exit 1
+fi
+if ! diff <(echo "$rind_rej") <(tr -d ' ' <<<"$s2n_rej" | tr ',' '\n') >/dev/null; then
     echo "admin/prove: rind's aarch64 rejection table is not s2n-bignum's" >&2
     exit 1
 fi
