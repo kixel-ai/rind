@@ -20,10 +20,9 @@ stack pointer 16-byte aligned; its total correctness (`ensures`) gives the
 `ok`. A theorem whose postcondition assumes the tables or the input bounds it
 names is restated with them as hypotheses, which is weaker. The restatement,
 that rind's inline assembly is the object code each proof is about, which
-`admin/prove bytes` checks for s2n-bignum's routines and
-[a quest](/quest/m4/verified/mlkem-compress-bytes.md) adds for
-mlkem-native's, and that each wrapper passes the arguments the theorem names,
-are trusted. The tables `low::aarch64::mlkem` passes are not: `MlKemTables`
+`admin/prove bytes` checks against s2n-bignum's HOL Light proofs for its
+routines and mlkem-native's for its compression routines, and that each
+wrapper passes the arguments the theorem names, are trusted. The tables `low::aarch64::mlkem` passes are not: `MlKemTables`
 holds s2n-bignum's, which `admin/prove` writes from its HOL Light sources,
 and the kernel checks rind's against them (`ntt_zetas_01234_eq` and its
 siblings). The rejection sampler's 4096-byte table is the exception, too long
