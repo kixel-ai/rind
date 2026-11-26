@@ -73,7 +73,7 @@ Hand models of Rust Aeneas cannot translate, each quoting the Rust it models:
 
 - `Aarch64`: `AesGcmModel`, `PointSelectModel`, `TypesExternal`
 - `Portable`: `Compare`
-- `X86_64`: `AeadDispatch`, `AesGcmModel`, `DigestAlgorithm`, `DigestDispatch`, `Dispatch`, `EcdsaDispatch`, `GcmKey`, `HkdfExpand`, `HmacDispatch`, `P256Dispatch`, `P384Dispatch`, `PointSelectModel`, `QuicDispatch`, `RsaDispatch`, `SignatureBuffer`, `TypesExternal`
+- `X86_64`: `AeadDispatch`, `AesGcmModel`, `DigestAlgorithm`, `DigestDispatch`, `Dispatch`, `EcdsaDispatch`, `FunsExternal`, `GatherModel`, `GcmKey`, `HkdfExpand`, `HmacDispatch`, `P256Dispatch`, `P384Dispatch`, `PointSelectModel`, `QuicDispatch`, `RsaDispatch`, `SignatureBuffer`, `TypesExternal`
 <!-- admin/ledger: end -->
 
 ## HOL Light proofs
