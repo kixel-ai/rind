@@ -118,6 +118,7 @@ mod generic {
     pub(crate) use limb64 as limbs;
     // Every target's MD5: no CPU has instructions for it.
     pub(super) mod md5;
+    pub(super) mod naf;
     // ML-DSA arithmetic for the portable backend and x86_64 CPUs without
     // AVX2, and what s2n-bignum has no Neon routine for. aarch64 runs the
     // rest only in tests, to check its routines against.
@@ -275,6 +276,7 @@ pub(crate) use generic::ct_equal::ct_equal;
 #[cfg(all(test, any(rind_backend = "arm", rind_backend = "portable")))]
 pub(crate) use generic::ghash::gcm_model;
 pub(crate) use generic::md5::md5_compress_blocks;
+pub(crate) use generic::naf::public_naf;
 #[cfg(any(rind_backend = "x86_64", all(rind_backend = "aarch64", test)))]
 pub(crate) use generic::poly1305;
 pub(crate) use generic::reuse_cache::ReuseCache;

@@ -13,7 +13,7 @@
 //! tests only.
 
 use crate::low::{
-    bignum_neg_p25519, edwards25519_epadd, edwards25519_epdouble, edwards25519_pdouble,
+    bignum_neg_p25519, edwards25519_epadd, edwards25519_epdouble, edwards25519_pdouble, public_naf,
 };
 
 /// Computes `res := [base]B + [scalars[0]]points[0] + [scalars[1]]points[1]`
@@ -25,55 +25,68 @@ pub(crate) fn edwards25519_msm(
     scalars: &[[u64; 4]; 2],
     points: &[[u64; 16]; 2],
 ) {
-    let nafs = [
-        non_adjacent_form(&[base[0], base[1], 0, 0], 8),
-        non_adjacent_form(&[base[2], base[3], 0, 0], 8),
-        non_adjacent_form(&scalars[0], 5),
-        non_adjacent_form(&scalars[1], 5),
-    ];
-    let tables = [odd_multiples(&points[0]), odd_multiples(&points[1])];
+    let nafs = non_adjacent_forms(base, scalars);
+    let table0 = odd_multiples(&points[0]);
+    let table1 = odd_multiples(&points[1]);
 
-    let top = (0..256).rev().find(|&i| nafs.iter().any(|naf| naf[i] != 0));
     let mut acc = IDENTITY;
-    for i in (0..=top.unwrap_or(0)).rev() {
-        let digits = nafs.map(|naf| naf[i]);
+    let mut i = top(&nafs);
+    while i > 0 {
+        i -= 1;
+        let digits = [nafs[0][i], nafs[1][i], nafs[2][i], nafs[3][i]];
         if digits == [0; 4] {
-            // Only the next addition reads `T`, so skip it.
+            // Only an addition reads `T`, so skip it.
             let mut doubled = [0; 12];
             edwards25519_pdouble(&mut doubled, projective(&acc));
             acc[..12].copy_from_slice(&doubled);
-            continue;
-        }
-
-        let doubled = acc;
-        edwards25519_epdouble(&mut acc, projective(&doubled));
-        let entries = [
-            BASE_ODD_MULTIPLES.get(odd_index(digits[0])),
-            BASE128_ODD_MULTIPLES.get(odd_index(digits[1])),
-            tables[0].get(odd_index(digits[2])),
-            tables[1].get(odd_index(digits[3])),
-        ];
-        for (digit, entry) in digits.iter().zip(entries) {
-            let Some(entry) = entry else { continue };
-            let sum = acc;
-            match *digit > 0 {
-                true => edwards25519_epadd(&mut acc, &sum, entry),
-                false => edwards25519_epadd(&mut acc, &sum, &neg(entry)),
-            }
+        } else {
+            let doubled = acc;
+            edwards25519_epdouble(&mut acc, projective(&doubled));
+            add_digit(&mut acc, &BASE_ODD_MULTIPLES, digits[0]);
+            add_digit(&mut acc, &BASE128_ODD_MULTIPLES, digits[1]);
+            add_digit(&mut acc, &table0, digits[2]);
+            add_digit(&mut acc, &table1, digits[3]);
         }
     }
     res.copy_from_slice(projective(&acc));
 }
 
+/// The width-8 non-adjacent forms of `base`'s two 128-bit halves and the
+/// width-5 forms of `scalars`.
+pub(crate) fn non_adjacent_forms(base: &[u64; 4], scalars: &[[u64; 4]; 2]) -> [[i8; 257]; 4] {
+    let mut nafs = [[0; 257]; 4];
+    public_naf::<8>(&[base[0], base[1], 0, 0], &mut nafs[0]);
+    public_naf::<8>(&[base[2], base[3], 0, 0], &mut nafs[1]);
+    public_naf::<5>(&scalars[0], &mut nafs[2]);
+    public_naf::<5>(&scalars[1], &mut nafs[3]);
+    nafs
+}
+
+/// One past the highest nonzero digit of any form, where the loop starts,
+/// since doubling the identity leaves it.
+pub(crate) fn top(nafs: &[[i8; 257]; 4]) -> usize {
+    let mut i = 257;
+    while i > 0 && nafs[0][i - 1] == 0 && nafs[1][i - 1] == 0 && nafs[2][i - 1] == 0 && nafs[3][i - 1] == 0
+    {
+        i -= 1;
+    }
+    i
+}
+
 /// `(0, 1, 1, 0)`.
 const IDENTITY: [u64; 16] = [0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0];
 
-/// The table index of a digit's magnitude, past the end for zero, which
-/// adds nothing.
-fn odd_index(digit: i8) -> usize {
-    match digit {
-        0 => usize::MAX,
-        d => d.unsigned_abs() as usize / 2,
+/// Adds `[digit]P` to `acc`, for `table` the odd multiples of `P` and a
+/// digit zero or odd and below twice the table's length in magnitude.
+fn add_digit(acc: &mut [u64; 16], table: &[[u64; 16]], digit: i8) {
+    if digit != 0 {
+        let entry = &table[usize::from(digit.unsigned_abs() / 2)];
+        let sum = *acc;
+        if digit > 0 {
+            edwards25519_epadd(acc, &sum, entry);
+        } else {
+            edwards25519_epadd(acc, &sum, &neg(entry));
+        }
     }
 }
 
@@ -82,7 +95,7 @@ fn odd_multiples(point: &[u64; 16]) -> [[u64; 16]; 8] {
     let mut double = [0; 16];
     edwards25519_epdouble(&mut double, projective(point));
     let mut table = [*point; 8];
-    for i in 1..table.len() {
+    for i in 1..8 {
         let previous = table[i - 1];
         edwards25519_epadd(&mut table[i], &previous, &double);
     }
@@ -91,63 +104,19 @@ fn odd_multiples(point: &[u64; 16]) -> [[u64; 16]; 8] {
 
 /// `-(x, y) = (-x, y)`, so `X` and `T` change sign.
 fn neg(point: &[u64; 16]) -> [u64; 16] {
+    let mut x = [0; 4];
+    bignum_neg_p25519(&mut x, point[..4].try_into().unwrap());
+    let mut t = [0; 4];
+    bignum_neg_p25519(&mut t, point[12..].try_into().unwrap());
     let mut out = *point;
-    for i in [0, 12] {
-        let mut x = [0; 4];
-        bignum_neg_p25519(&mut x, point[i..i + 4].try_into().unwrap());
-        out[i..i + 4].copy_from_slice(&x);
-    }
+    out[..4].copy_from_slice(&x);
+    out[12..].copy_from_slice(&t);
     out
 }
 
 /// `(X, Y, Z)`.
 fn projective(point: &[u64; 16]) -> &[u64; 12] {
     point[..12].try_into().unwrap()
-}
-
-/// The width-`w` non-adjacent form of `x < 2^255`: `x = sum(naf[i] 2^i)`,
-/// each digit zero or odd and below `2^(w-1)` in magnitude, and at most one
-/// nonzero in any `w` consecutive.
-pub(crate) fn non_adjacent_form(x: &[u64; 4], w: usize) -> [i8; 256] {
-    let mut naf = [0i8; 256];
-    // What remains of x above bit i, which a negative digit's borrow raises
-    // by one at bit i + w: below 2^256 throughout, as x < 2^255.
-    let mut k = *x;
-    let mut i = 0;
-    while i < 256 {
-        let (word, bit) = (i / 64, i % 64);
-        if k[word] >> bit & 1 == 0 {
-            i += 1;
-            continue;
-        }
-
-        let mut window = k[word] >> bit;
-        if bit + w > 64 && word < 3 {
-            window |= k[word + 1] << (64 - bit);
-        }
-        let window = (window & ((1 << w) - 1)) as i16;
-        let digit = match window >= 1 << (w - 1) {
-            true => window - (1 << w),
-            false => window,
-        };
-        naf[i] = digit as i8;
-
-        // k -= digit 2^i clears the window, which the scan never reads
-        // again, and for a negative digit adds 2^(i + w).
-        if digit < 0 {
-            let mut j = i + w;
-            while j < 256 {
-                let (sum, carry) = k[j / 64].overflowing_add(1 << (j % 64));
-                k[j / 64] = sum;
-                if !carry {
-                    break;
-                }
-                j = (j / 64 + 1) * 64;
-            }
-        }
-        i += w;
-    }
-    naf
 }
 
 /// `[B, 3B, 5B, ..., 127B]`, `B` the base point, with `Z = 1`.
@@ -1067,45 +1036,6 @@ mod tests {
                     &point_mul(&scalars[1], &p1),
                 );
                 assert!(same(&got, projective(&want)), "{base:x?} {scalars:x?}");
-            }
-        }
-    }
-
-    #[test]
-    fn non_adjacent_form_sums_to_the_scalar() {
-        let mut rng = Rng(0x1319_8a2e_0370_7344);
-        for w in [5, 8] {
-            for _ in 0..256 {
-                let x = rng.words(255);
-                let naf = non_adjacent_form(&x, w);
-                // sum(naf[i] 2^i), in 2^256 wrapping arithmetic.
-                let mut sum = [0u64; 4];
-                for (i, &digit) in naf.iter().enumerate().rev() {
-                    let mut carry = 0;
-                    for word in &mut sum {
-                        let next = *word >> 63;
-                        *word = *word << 1 | carry;
-                        carry = next;
-                    }
-                    let add = (digit as i64) as u64;
-                    let mut carry = 0u64;
-                    for (j, word) in sum.iter_mut().enumerate() {
-                        let addend = if j == 0 {
-                            add
-                        } else {
-                            (digit >> 7) as i64 as u64
-                        };
-                        let (s, c1) = word.overflowing_add(addend);
-                        let (s, c2) = s.overflowing_add(carry);
-                        *word = s;
-                        carry = u64::from(c1 | c2);
-                    }
-                    assert!(
-                        digit == 0 || (digit & 1 == 1 && digit.unsigned_abs() < 1 << (w - 1)),
-                        "{i}"
-                    );
-                }
-                assert_eq!(sum, x);
             }
         }
     }
