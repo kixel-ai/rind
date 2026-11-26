@@ -102,7 +102,7 @@ fn kem_key_bytes() {
     let expected = saved.as_ref().to_vec();
 
     let input = expected.clone();
-    secret(&input);
+    secret(input.as_slice());
     let loaded = kem::DecapsulationKey::new(&kem::ML_KEM_768, &input).unwrap();
     let saved = loaded.key_bytes().unwrap();
     public(saved.as_ref());
