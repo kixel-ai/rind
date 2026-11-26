@@ -513,9 +513,10 @@ iteration count is the `u32` its `NonZeroU32` holds. -/
 opaque low.aarch64.pbkdf2_vg.Pbkdf2.derive
   : low.aarch64.pbkdf2_vg.Pbkdf2 → Slice Std.U8 → Slice Std.U8 → Std.U32 → Slice Std.U8 →
     Result (Slice Std.U8)
-/-! ChaCha20-Poly1305's one pass: pyca/verified-garbage's SVE2 routines,
-behind one wrapper each, whose contracts `Rind.Aarch64.VgChaCha20Poly1305`
-restates, and aws-lc's NEON routines, which no proof covers yet. -/
+/-! ChaCha20-Poly1305's one pass: pyca/verified-garbage's SVE2 and NEON
+routines, behind one wrapper each, whose SVE2 contracts
+`Rind.Aarch64.VgChaCha20Poly1305` restates, and aws-lc's NEON routines, which
+no proof covers yet. -/
 
 opaque low.aarch64.cpu.HaveSve2.check : Result (Option low.aarch64.cpu.HaveSve2)
 
@@ -532,6 +533,14 @@ opaque low.aarch64.chacha20poly1305.seal_neon
     Result ((Std.Array Std.U8 16#usize) × (Slice Std.U8))
 
 opaque low.aarch64.chacha20poly1305.open_neon
+  : Std.Array Std.U8 32#usize → Std.Array Std.U8 12#usize → Slice Std.U8 → Slice Std.U8 →
+    Std.Array Std.U8 16#usize → Result (Bool × (Slice Std.U8))
+
+opaque low.aarch64.chacha20poly1305.seal_aws_lc
+  : Std.Array Std.U8 32#usize → Std.Array Std.U8 12#usize → Slice Std.U8 → Slice Std.U8 →
+    Result ((Std.Array Std.U8 16#usize) × (Slice Std.U8))
+
+opaque low.aarch64.chacha20poly1305.open_aws_lc
   : Std.Array Std.U8 32#usize → Std.Array Std.U8 12#usize → Slice Std.U8 → Slice Std.U8 →
     Result ((Std.Array Std.U8 16#usize) × (Slice Std.U8))
 

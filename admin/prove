@@ -422,7 +422,6 @@ result_key() {
 # an axiom beyond HOL Light's.
 hol_light_proofs=(
     "aarch64 bignum_eq.bin rind::low::aarch64::bignum_eq::bignum_eq"
-    "aarch64 sha512_block_data_order_hw.o rind::low::aarch64::sha512::sha512_block_data_order_hw"
     "aarch64 bn_mul_mont.o rind::low::aarch64::mont::bn_mul_mont"
     "aarch64 ct_compare_bytes.bin rind::low::aarch64::cpu::ct_compare_bytes"
     "aarch64 ct_compare_16.bin rind::low::aarch64::cpu::ct_compare_16"
@@ -541,7 +540,7 @@ hol_light_compile() {
 # campaign that loading it runs is one of those it adds by hand. The SHA
 # extensions' instructions run only where the CPU has them.
 cosim() {
-    local dir=$out/cosim root=$PWD sha=0 cases=1000
+    local dir=$out/cosim root=$PWD sha=0 cases=1500
     local aarch32=thirdparty/s2n-bignum/aarch32/proofs
     hold cosim
     rm -rf "$dir"
@@ -567,7 +566,7 @@ cosim() {
         -o "$dir/aarch32-runner" "$aarch32/cosim_runner.c" "$aarch32/cosim_start.S" -lgcc
     hol_light_compile "$dir" aarch32
     (cd "$dir" && S2N_BIGNUM_SEMATEST_CASES=$cases S2N_BIGNUM_SEMATEST_SECONDS=1200 \
-        RIND_AARCH32_EXECUTOR="qemu-arm -cpu cortex-a15 $root/$dir/aarch32-runner" \
+        RIND_AARCH32_EXECUTOR="qemu-arm -cpu max $root/$dir/aarch32-runner" \
         ./aarch32.native) | grep -v -e '^OK: ' -e '^Stepping to state' -e '^CPU time'
     hol_light_compile "$dir" cosim
     (cd "$dir" && TMPDIR="$root/$dir/tmp" S2N_BIGNUM_SEMATEST_CASES=1 RIND_COSIM_SHA=$sha \
@@ -1738,6 +1737,8 @@ extract aarch64 Aarch64 "${hashes[@]}" "${assembly[@]}" \
     --start-from crate::low::aarch64::chacha20poly1305::open \
     --include crate::low::aarch64::chacha20poly1305::seal \
     --include crate::low::aarch64::chacha20poly1305::open \
+    --include crate::low::aarch64::chacha20poly1305::seal_runs_vg \
+    --include crate::low::aarch64::chacha20poly1305::open_runs_vg \
     --start-from crate::mid::chacha20::ChaCha20::apply_keystream \
     --include crate::low::aarch64::chacha20 \
     --opaque crate::low::aarch64::chacha20::VgState \
