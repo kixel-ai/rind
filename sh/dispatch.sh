@@ -162,7 +162,13 @@ fi
 
 # sh/select.sh narrows this to the changed crates and their dependents.
 module rs '^(rind[^/]*/|fuzz/|thirdparty/|Cargo\.(toml|lock)$|\.rustfmt(\.unstable)?\.toml$|flake\.(nix|lock)$)' \
-    tools='cargo jq rustfmt-unstable' check-tools='cargo-nextest clippy-driver' compiles check fix
+    tools='cargo jq rustfmt-unstable' check-tools='cargo-nextest clippy-driver python3' compiles check fix
+# The map admin/test-scope scopes `just check`'s rind tests by, against the
+# tests `cargo nextest list` finds: on a change to the map, its script, or a
+# test, or one adding or deleting a file under rind/src/{low,mid,high}/ (see
+# below), but not an edit there, which changes no mapping.
+module scope '^(admin/test-scope(\.toml)?$|rind/tests/)' \
+    tools='python3 cargo cargo-nextest clippy-driver' compiles check
 # rind's aarch64, armv7, portable, and wasm32 builds, which the host's own
 # build skips, and which a toolchain bump can break. A change under one
 # backend's low/ directory checks only the builds of that backend (see
@@ -228,6 +234,10 @@ module vet '(^|/)Cargo\.(toml|lock)$|^supply-chain/' \
 # so moving code can leave one matching nothing.
 module mutants '^(rind[^/]*/src/|\.cargo/mutants\.toml$|admin/mutants$)' \
     tools='cargo-mutants python3'
+# proofs/README.md's TCB & Axiom Ledger counts the axioms the Lean files
+# declare, and fails on a `sorry` or an axiom its groups do not name.
+module ledger '^(proofs/(README\.md|.*\.lean)$|AUDIT\.md$|admin/(ledger|prove)$)' \
+    tools='python3 git' check fix
 # An adapter's manifest holds both its version and its upstream requirement.
 module versions '^(rind-[^/]+/Cargo\.toml$|sh/adapter-versions\.sh$)' \
     tools='cargo jq' check
@@ -245,17 +255,18 @@ module license '^(rind/src/|rind/LICENSE$|rind-python/LICENSE$|admin/scan-licens
 # TESTING.md's table names every export, test, and vector file.
 module testing '^(TESTING\.md$|admin/testing$|rind/(src|tests)/|fuzz/)' \
     tools='python3' check
-# AUDIT.md's pins table is generated from the files that hold the pins, and
-# the quests it links name gaps that finishing them closes.
-module audit '^(AUDIT\.md$|admin/(audit|import-[a-z-]+|prove-bytes|sync-(acvp|vectors))$|thirdparty/s2n-bignum/RIND\.md$|(rind/)?Cargo\.(toml|lock)$|quest/)' \
+# AUDIT.md's pins table is generated from the files that hold the pins, its
+# `unsafe` table must name every area whose Rust files hold `unsafe`, and the
+# quests it links name gaps that finishing them closes.
+module audit '^(AUDIT\.md$|admin/(audit|import-[a-z-]+|prove-bytes|sync-(acvp|vectors))$|thirdparty/s2n-bignum/RIND\.md$|(rind/)?Cargo\.(toml|lock)$|quest/|.*\.rs$)' \
     tools='python3 git' check fix
 # COMPATIBILITY.md is generated from the CPU scans.
 module compat '^(COMPATIBILITY\.md$|admin/x86-cpus?(/|$))' \
     tools='python3' check fix
 # BENCHMARKS.md and the README's comparison are generated from the results,
 # the verified-code table, and the gap decisions, which link the quests that
-# close them.
-module bench '^(BENCHMARKS\.md$|README\.md$|benchmarks/|admin/bench-report|quest/)' \
+# close them. Its reproduction command names flake.nix's pinned toolchain.
+module bench '^(BENCHMARKS\.md$|README\.md$|benchmarks/|admin/bench-report|quest/|flake\.nix$)' \
     tools='python3' check
 # The landing page, on a diff to its own code, the shell and CI setup it builds
 # in, or a repository file site/inputs.txt lists, which it reads or links with
@@ -347,6 +358,16 @@ done
 deleted=
 [[ -n "$all" ]] || deleted=$(git diff --name-only --no-renames --diff-filter=D "$merge_base")
 
+# Whether the branch added or deleted a file under rind/src/{low,mid,high}/,
+# a rename's two sides included, which can change admin/test-scope's map.
+layout=
+if [[ -z "$all" ]]; then
+    layout=$({
+        git diff --name-only --no-renames --diff-filter=AD "$merge_base"
+        git ls-files --others --exclude-standard
+    } | grep -E '^rind/src/(low|mid|high)/' || true)
+fi
+
 selected=()
 missing=()
 for module in "${modules[@]}"; do
@@ -355,7 +376,7 @@ for module in "${modules[@]}"; do
     fi
     pattern=${scope[$module]}
     if [[ -z "$all" && -n "$pattern" ]] && ! grep -qE "$pattern" "$changed" &&
-        ! [[ "$module" == site && -n "$deleted" ]]; then
+        ! [[ "$module" == site && -n "$deleted" ]] && ! [[ "$module" == scope && -n "$layout" ]]; then
         continue
     fi
     # The host's build already covers its own backend. A plain assignment, so
@@ -464,7 +485,24 @@ step() {
     local listed=$logs/$2.files packages libs backends target targets
     case "$1:$2" in
         check:rs)
-            mapfile -t packages < <(sh/select.sh "$changed" "$all")
+            # The local loop leaves out rind's dependents on a change to its
+            # private low-level code (sh/select.sh), and runs only rind's
+            # tests for the primitive families the diff touches
+            # (admin/test-scope); ci runs every test.
+            local select=() rind='' rest=() scoped=() filter='' i
+            [[ "$action" == ci ]] || select=(--no-dependents-on-low)
+            mapfile -t packages < <(sh/select.sh "$changed" "$all" "${select[@]}")
+            for ((i = 0; i < ${#packages[@]}; i++)); do
+                if [[ "${packages[i]}" == -p && "${packages[i + 1]:-}" == rind ]]; then
+                    rind=1
+                    i=$((i + 1))
+                else
+                    rest+=("${packages[i]}")
+                fi
+            done
+            if [[ "$action" == check && -n "$rind" ]]; then
+                filter=$(python3 admin/test-scope args "$changed" "$merge_base") || return 1
+            fi
             # Every member, without `--all`, which would also format the path
             # dependencies outside the workspace: thirdparty/'s vendored
             # forks, which keep their upstream's format.
@@ -478,9 +516,28 @@ step() {
             local RUSTC_WORKSPACE_WRAPPER CARGO_BUILD_WARNINGS=deny
             RUSTC_WORKSPACE_WRAPPER=$(command -v clippy-driver)
             export RUSTC_WORKSPACE_WRAPPER CARGO_BUILD_WARNINGS
+            # A unit test admin/test-scope.toml names may have been renamed by
+            # an edit that selects no `scope` module. Listed with the package
+            # and target arguments of the run that tests rind, so the two
+            # share a build.
+            if [[ -n "$filter" ]]; then
+                run python3 admin/test-scope units -p rind --lib
+            elif [[ -n "$rind" || ${#packages[@]} -eq 0 || " ${packages[*]} " == *" --workspace "* ]]; then
+                run python3 admin/test-scope units "${packages[@]}" --tests
+            fi
             # nextest runs the test binaries in parallel but not doc tests. Like
             # `cargo test`, it passes a selection with no tests.
-            run cargo nextest run "${packages[@]}" --tests --locked --no-tests=warn --cargo-profile test-fast
+            if [[ -n "$filter" ]]; then
+                # The other crates in a run of their own, so the filter never
+                # drops their tests.
+                mapfile -t scoped <<<"$filter"
+                run cargo nextest run -p rind "${scoped[@]}" --locked --no-tests=warn --cargo-profile test-fast
+                if ((${#rest[@]} > 0)); then
+                    run cargo nextest run "${rest[@]}" --tests --locked --no-tests=warn --cargo-profile test-fast
+                fi
+            else
+                run cargo nextest run "${packages[@]}" --tests --locked --no-tests=warn --cargo-profile test-fast
+            fi
             # The local loop stops at the tests but for the FIPS crates' own
             # changes, below; ci goes on.
             if [[ "$action" == ci ]]; then
@@ -545,6 +602,14 @@ step() {
                 # tests' build never shares, so clippy there would only cost.
                 RUSTC_WORKSPACE_WRAPPER='' RUSTDOCFLAGS='--deny warnings' run cargo doc "${libs[@]}" --no-deps --locked --profile test-fast
             fi
+            ;;
+        check:scope)
+            # Under the wrapper and warnings `rs` builds rind's tests with,
+            # so the two share one build.
+            local RUSTC_WORKSPACE_WRAPPER CARGO_BUILD_WARNINGS=deny
+            RUSTC_WORKSPACE_WRAPPER=$(command -v clippy-driver)
+            export RUSTC_WORKSPACE_WRAPPER CARGO_BUILD_WARNINGS
+            run python3 admin/test-scope check
             ;;
         fix:rs)
             mapfile -t packages < <(sh/select.sh "$changed" "$all")
@@ -738,6 +803,8 @@ step() {
         check:testing) run python3 admin/testing ;;
         check:audit) run python3 admin/audit check ;;
         fix:audit) run python3 admin/audit fix ;;
+        check:ledger) run python3 admin/ledger check ;;
+        fix:ledger) run python3 admin/ledger fix ;;
         check:compat)
             run python3 admin/x86-cpu markdown-table >"$logs/compat.md"
             run diff -u COMPATIBILITY.md "$logs/compat.md"

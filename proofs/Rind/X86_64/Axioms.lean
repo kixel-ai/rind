@@ -9,10 +9,12 @@ import Rind.X86_64.Pbkdf2
 import Rind.X86_64.ChaCha20
 import Rind.X86_64.AesGcm
 import Rind.X86_64.ChaCha20Poly1305
+import Rind.X86_64.VgChaCha20Poly1305
 import Rind.X86_64.ChaCha20Cipher
 import Rind.X86_64.GcmKey
 import Rind.X86_64.Ed25519
 import Rind.X86_64.Ed25519Ifma
+import Rind.X86_64.Ed25519Verify
 import Rind.X86_64.RsaDispatch
 import Rind.X86_64.Sha3
 import Rind.X86_64.AesKw
@@ -47,12 +49,19 @@ aws-lc's SSSE3 routine in `Rind.X86_64.ChaCha20Cipher`, for X25519 and Ed25519 o
 AVX-512 IFMA in `Rind.X86_64.VgCurve25519`, and for P-256's public key, ECDH,
 and ECDSA verification in `Rind.X86_64.VgP256`, and for P-384's `d·G`,
 which key generation and each ECDSA signature's nonce point take, and its
-ECDSA verification, in `Rind.X86_64.VgP384`; and nothing else.
-ChaCha20-Poly1305's theorems also take aws-lc's one-pass routines as the
-hypothesis `RunsChaCha20Poly1305`, which no axiom states. ChaCha20's
-`apply_keystream` takes the hypothesis `LinuxBuild`, which no axiom states
-either, where `new` picks no VG routine and finds SSSE3, since rind's HOL Light
-proof of the SSSE3 routine covers the Linux build's object, not Apple's.
+ECDSA verification, in `Rind.X86_64.VgP384`, and for ChaCha20-Poly1305's
+and XChaCha20-Poly1305's one pass on AVX-512 IFMA in
+`Rind.X86_64.VgChaCha20Poly1305`; and nothing else.
+Ed25519 verification also takes its multi-scalar multiplication,
+`low::x86_64::adx_mux::edwards25519_msm`, as the hypothesis `RunsMsm`, and
+the edwards25519 group's orders, which HOL Light proves, as the hypothesis
+`EdOrders`. ChaCha20-Poly1305's theorems also take the hypothesis
+`RunsChaCha20Poly1305`, which no axiom states, whose `OnePass` takes aws-lc's
+one-pass routines on CPUs without IFMA. None of these three states an axiom.
+ChaCha20's `apply_keystream` takes the hypothesis `LinuxBuild`, which no axiom
+states either, where `new` picks no VG routine and finds SSSE3, since rind's
+HOL Light proof of the SSSE3 routine covers the Linux build's object, not
+Apple's.
 RSA's Montgomery products at the widths aws-lc's 4x and 8x routines take, but
 for s2n-bignum's Karatsuba routines, take them as the hypothesis
 `AwsLcMont`, which no axiom states either.
@@ -431,15 +440,24 @@ change to the trust base.
 #guard_msgs in
 #print axioms chacha20_poly1305_new
 
-/-- info: 'rind.x86_64.chacha20_poly1305_seal' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'rind.x86_64.chacha20_poly1305_seal' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ vg_chacha20_poly1305_seal_ifma_spec] -/
 #guard_msgs in
 #print axioms chacha20_poly1305_seal
 
-/-- info: 'rind.x86_64.chacha20_poly1305_seal_append_tag' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'rind.x86_64.chacha20_poly1305_seal_append_tag' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ vg_chacha20_poly1305_seal_ifma_spec] -/
 #guard_msgs in
 #print axioms chacha20_poly1305_seal_append_tag
 
-/-- info: 'rind.x86_64.chacha20_poly1305_seal_append_tag_vec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'rind.x86_64.chacha20_poly1305_seal_append_tag_vec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ vg_chacha20_poly1305_seal_ifma_spec] -/
 #guard_msgs in
 #print axioms chacha20_poly1305_seal_append_tag_vec
 
@@ -447,7 +465,8 @@ change to the trust base.
  Classical.choice,
  Quot.sound,
  ct_compare_16_spec,
- ct_compare_bytes_spec] -/
+ ct_compare_bytes_spec,
+ vg_chacha20_poly1305_open_ifma_spec] -/
 #guard_msgs in
 #print axioms chacha20_poly1305_open_separate_tag
 
@@ -455,7 +474,8 @@ change to the trust base.
  Classical.choice,
  Quot.sound,
  ct_compare_16_spec,
- ct_compare_bytes_spec] -/
+ ct_compare_bytes_spec,
+ vg_chacha20_poly1305_open_ifma_spec] -/
 #guard_msgs in
 #print axioms chacha20_poly1305_open
 
@@ -463,7 +483,10 @@ change to the trust base.
 #guard_msgs in
 #print axioms randomized_nonce_key_new
 
-/-- info: 'rind.x86_64.randomized_nonce_key_seal_append_tag_vec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'rind.x86_64.randomized_nonce_key_seal_append_tag_vec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ vg_chacha20_poly1305_seal_ifma_spec] -/
 #guard_msgs in
 #print axioms randomized_nonce_key_seal_append_tag_vec
 
@@ -471,7 +494,8 @@ change to the trust base.
  Classical.choice,
  Quot.sound,
  ct_compare_16_spec,
- ct_compare_bytes_spec] -/
+ ct_compare_bytes_spec,
+ vg_chacha20_poly1305_open_ifma_spec] -/
 #guard_msgs in
 #print axioms randomized_nonce_key_open
 
@@ -624,6 +648,41 @@ change to the trust base.
 /-- info: 'rind.x86_64.ed25519_key_pair_public_key' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms ed25519_key_pair_public_key
+
+/-- info: 'rind.x86_64.ed25519_key_pair_verify' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ bignum_cmp_lt_spec,
+ bignum_madd_n25519_alt_spec,
+ bignum_madd_n25519_spec,
+ bignum_mod_n25519_spec,
+ bignum_mul_p25519_alt_spec,
+ bignum_mul_p25519_spec,
+ bignum_neg_p25519_spec,
+ compress_avx_spec,
+ edwards25519_decode_alt_spec,
+ edwards25519_decode_spec,
+ sha512_block_data_order_avx2_spec] -/
+#guard_msgs in
+#print axioms ed25519_key_pair_verify
+
+/-- info: 'rind.x86_64.ed25519_public_key_new' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ bignum_cmp_lt_spec,
+ bignum_eq_spec,
+ bignum_madd_n25519_alt_spec,
+ bignum_madd_n25519_spec,
+ bignum_mod_n25519_spec,
+ bignum_mul_p25519_alt_spec,
+ bignum_mul_p25519_spec,
+ bignum_neg_p25519_spec,
+ compress_avx_spec,
+ edwards25519_decode_alt_spec,
+ edwards25519_decode_spec,
+ sha512_block_data_order_avx2_spec] -/
+#guard_msgs in
+#print axioms ed25519_public_key_new
 
 /-- info: 'rind.x86_64.ed25519_generate_ifma' depends on axioms: [propext, Classical.choice, Quot.sound, vg_ed25519_key_pair_spec] -/
 #guard_msgs in
