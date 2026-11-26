@@ -203,9 +203,24 @@ def listing(args):
     return found
 
 
+# Rust snippets and the lines of each that signature_lines finds.
+SIGNATURES = [
+    ("fn private() {\n    body();\n}\n", set()),
+    ("pub(crate) fn internal() {}\n", set()),
+    ("/// Doc.\n#[must_use]\npub fn f(\n    a: u8,\n) -> u8 {\n    a\n}\n", {2, 3, 4, 5}),
+    ("pub fn one() -> u8 { 1 }\nfn after() {}\n", {1}),
+    ("pub trait T {\n    fn m(&self);\n}\nfn after() {}\n", {1, 2, 3}),
+    ("impl Clone for X {\n    fn clone(&self) -> Self {\n        *self\n    }\n}\n", {1}),
+    ("pub static S: A = A {\n    field: 1,\n};\n", {1}),
+]
+
+
 def check_command():
     families, units, tests = load()
     errors = []
+    for text, want in SIGNATURES:
+        if signature_lines(text) != want:
+            errors.append(f"signature_lines finds {sorted(signature_lines(text))}, not {sorted(want)}, in {text!r}")
     every = listing(["--tests"])
     lib = {name for binary, name in every if binary == "rind"}
 

@@ -27,7 +27,12 @@ With [Nix](https://nixos.org), `nix develop` (or direnv) provides CI's
 toolchain. `just check` is the local loop over what the branch changed: it
 checks formatting (`just fix` applies it), builds the tests of the changed
 crates and their dependents in one pass with clippy as the compiler wrapper,
-runs them, and runs the repository lints that take a second. `just ci` runs CI's whole gate over the same diff,
+runs them, and runs the repository lints that take a second.
+A change to rind's private code under `rind/src/low/` skips its dependents, and
+one to `rind/src/{low,mid,high}/` runs only rind's tests for the primitive
+families it touches, by the map in `admin/test-scope.toml`; a test added to
+`rind/tests/`, or a primitive's new file, needs its entry there, which `just
+check` checks. `just ci` runs CI's whole gate over the same diff,
 adding the other targets' builds, the docs, and the cross, MSRV, wasm,
 adapter, and constant-time modules. Both run three modules at a time
 (`sh/dispatch.sh` lists the `CHECK_*` variables that change that); the
