@@ -155,7 +155,7 @@ theorem toPoly_shift_split (m : BitVec 64) :
     · simp [show 32 + (j - 64) = j - 32 by omega, show j - 32 < 64 by omega]
     · rw [BitVec.getLsbD_of_ge m (32 + (j - 64)) (by omega), BitVec.getLsbD_of_ge m (j - 32) (by omega)]
 
-/-- `gcm_mul64_split` is the carry-less product, its high word first. -/
+/-- `gcm_mul64_split` is the carry-less product, its low word first. -/
 @[step]
 theorem gcm_mul64_split_spec (a b : U64) :
     gcm_mul64_split a b ⦃ r => toPoly r.1.bv + X ^ 64 * toPoly r.2.bv = toPoly a.bv * toPoly b.bv ⦄ := by

@@ -9,13 +9,15 @@ open Aeneas Aeneas.Std Result rind.vale rind.simd Polynomial
 `mid/portable/aes_gcm.rs`'s `Portable`: aws-lc's bitsliced AES in 32-bit
 words, `Rind.Armv7.AesNohwCtr`'s counter mode, and its integer GHASH,
 `Rind.Armv7.GhashNohw`'s, composed by `Parts::tagged`. `tagged_spec` proves
-`tagged` for any `Parts` whose table hashes, whose `encrypt_block` is AES, and
-whose `ctr` is GCTR, so the NEON and crypto-extension compositions need only
-those; `Portable` is proven to be one. `AesGcm::new`, with the CPU checks
-finding neither extension, keys `Portable`, and its `encrypt`, `decrypt`,
-`encrypt_any`, and `decrypt_any` are then Vale's `gcm_encrypt_LE` and
-`gcm_decrypt_LE`, over `Rind.Armv7.CtEqual`'s restatement of HOL Light's
-proofs of the compares.
+`tagged` for any `Parts` whose table hashes, whose `encrypt_block` is AES, whose
+`ctr` is GCTR, and whose `pass` is the trait's default, so the NEON and
+crypto-extension compositions need only those; `Portable` is proven to be one.
+`AesGcm::new`, with the CPU checks finding neither extension, keys `Portable`,
+and its `encrypt`, `decrypt`, and `encrypt_any` are then Vale's
+`gcm_encrypt_LE` and `gcm_decrypt_LE`, and `decrypt_any` is `gcmDecryptTrunc`,
+which compares only the first `tag.length` bytes of the tag, all of them for
+`decrypt`, over `Rind.Armv7.CtEqual`'s restatement of HOL Light's proofs of the
+compares.
 -/
 
 local notation "P" => Polynomial (ZMod 2)
@@ -443,8 +445,8 @@ theorem tagged_tail_spec (ENC : Bool) (alg : Algorithm) (kw : List (BitVec 32)) 
     exact ⟨ht1l, ht1, hx1⟩
 
 /-- `tagged`, for any `Parts` that hashes, encrypts, and counts as GCM's do:
-GCTR from the block after `compute_iv_BE`'s counter block, and the tag GCTR
-from that block on `gcm_hash` of the AAD and the ciphertext. -/
+GCTR from `inc32 J0`, the block after `compute_iv_BE`'s counter block `J0`, and
+the tag GCTR from `J0` on `gcm_hash` of the AAD and the ciphertext. -/
 theorem tagged_spec (ENC : Bool) (alg : Algorithm) (kw : List (BitVec 32)) {S T : Type}
     (PI : mid.aes_gcm.Parts S T) (key : S) (hP : PartsFor alg kw PI key) (iv aad inout : Slice U8)
     (hiv : iv.length < 2 ^ 61) (haad : 8 * aad.length < 2 ^ 64) (hin : 8 * inout.length < 2 ^ 64) :

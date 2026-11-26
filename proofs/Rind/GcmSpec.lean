@@ -246,9 +246,10 @@ noncomputable def gcmTag (alg : Algorithm) (key iv cipher auth : List (BitVec 8)
   let hLE := aesEncrypt alg keyLE (mkfour 0 0 0 0)
   gctrEncrypt (computeIvBE hLE iv) (leQuad32ToBytes (gcmHash hLE auth cipher)) alg keyLE
 
-/-- SP 800-38D's authenticated decryption under a tag of `tag.length` bytes,
-at most 16: `gcm_decrypt_LE`'s plaintext, and whether `tag` is the first
-bytes of the tag, `MSB_t` of it. -/
+/-- `gcm_decrypt_LE`'s plaintext, and whether `tag` is the first `tag.length`
+bytes of the tag, `MSB_t` of it as SP 800-38D compares. SP 800-38D permits only
+tag lengths of 4, 8, 12, 13, 14, 15, or 16 bytes, but this takes any, an empty
+`tag` included, which always matches. -/
 noncomputable def gcmDecryptTrunc (alg : Algorithm) (key iv cipher auth tag : List (BitVec 8)) :
     List (BitVec 8) × Bool :=
   ((gcmDecrypt alg key iv cipher auth tag).1, (gcmTag alg key iv cipher auth).take tag.length == tag)
