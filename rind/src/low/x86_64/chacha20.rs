@@ -211,7 +211,9 @@ unsafe fn cipher_ssse3_4x(
     // `ssse3` cpu feature. Its 32-bit counter adds the block index mod 2^32,
     // so it wraps once the counter plus the blocks passes 2^32, which can be
     // before 2^32 blocks. Callers rule that out with `check_counter`, apart
-    // from the nonempty check above.
+    // from the nonempty check above. That bounds the blocks that supply
+    // output, not the ones computed: the routine's fourth lane may wrap past
+    // the last block, whose keystream nothing reads.
     unsafe {
         asm_call!(unsafe extern "sysv64" chacha20_ctr32_ssse3_4x(ptr, ptr, len, key, counter_nonce))
     }

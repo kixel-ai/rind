@@ -43,7 +43,7 @@ ChaCha20-Poly1305 on the no AVX2 column's aws-lc ⚡ (see
 | AES block, AES-CTR | Graviola + aws-lc |  |  | aws-lc |  |
 | AES-KW, AES-KWP | Graviola + rind |  |  | aws-lc + rind |  |
 | AES-CBC | Graviola + aws-lc + rind |  |  | aws-lc + rind |  |
-| ChaCha20 | verified-garbage ✓ + Graviola + HACL* ✓ | aws-lc ✓ + HACL* ✓ |  |  | HACL* ✓ |
+| ChaCha20 | verified-garbage ✓ + Graviola + HACL* ✓ | aws-lc ✓ (Linux only) + HACL* ✓ |  |  | HACL* ✓ |
 | ChaCha20 (header protection) | HACL* ✓ + rind |  |  |  |  |
 | ChaCha20-Poly1305, XChaCha20-Poly1305 | verified-garbage | aws-lc ⚡ |  | HACL* ✓ + aws-lc ⚡ + Graviola ⚡ | HACL* ✓ + Graviola ⚡ |
 | MD5 | rind |  |  |  |  |

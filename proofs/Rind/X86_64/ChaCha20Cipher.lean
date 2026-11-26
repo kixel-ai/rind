@@ -24,14 +24,16 @@ rind's naked function, as rind's Linux build emits it, computes s2n-bignum's
 around it. `admin/prove` checks the HOL Light proof against the object code
 rind's release build emits, its instructions, relocations, and the table they
 read, on s2n-bignum's x86 model with the instructions rind adds to it, which
-`admin/prove cosim` checks against the CPU. The theorem's hypotheses hold for
-every call `cipher_ssse3_4x`'s safety contract allows: the buffer is nonempty
-and overlaps neither the code, the table, nor the 336 bytes from the 328 below
-the stack pointer, where the routine keeps its frame, through the return
-address; it ends at or below 2^64, as x86_64's user addresses do; the ABI
-aligns the stack pointer to 16 bytes before the call, and the linker places
-the table, which its type aligns to 16 bytes, within the reach of the five
-instructions that address it. The 32-bit block counter wraps, in the
+`admin/prove cosim` checks against the CPU. The safety contract itself
+asks only for a nonempty buffer; the theorem's other hypotheses hold of every
+call for facts outside it, trusted like the restatement: the buffer is a live
+`&mut [u8]` allocation, so it overlaps neither the code, the table, nor the
+336 bytes from the 328 below the stack pointer, where the routine keeps its
+frame, through the return address (the call's own frame, which the buffer
+predates), and it ends at or below 2^64, as x86_64's user addresses do; the
+ABI aligns the stack pointer to 16 bytes before the call; and the linker
+places the table, which its type aligns to 16 bytes, within the reach of the
+five instructions that address it. The 32-bit block counter wraps, in the
 routine and in the spec alike. The restatement, and that the wrapper passes
 the key, counter, nonce, and buffer the theorem names, are trusted.
 

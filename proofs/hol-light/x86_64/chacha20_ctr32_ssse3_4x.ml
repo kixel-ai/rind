@@ -1234,8 +1234,8 @@ let chacha_el k t = mk_comb(mk_comb(`EL:num->int32 list->int32`, mk_small_numera
 
 let chacha_xlist j = mk_list(map (fun k -> chacha_xv k j) (0--15), `:int32`);;
 
-(* The rotate-by-16 mask, which xmm7 holds at the loop's head, and the
-   rotate-by-8 one, which r10 and r11 point to. *)
+(* The rotate-by-16 mask, which xmm7 holds at the loop's head and r10 also
+   points to, and the rotate-by-8 one, which r11 points to. *)
 let CHACHA_DR_GOAL =
   let tm = mk_imp(
    `aligned 16 (rp10:int64) /\ aligned 16 (rp11:int64) /\ aligned 16 (stk:int64) /\
