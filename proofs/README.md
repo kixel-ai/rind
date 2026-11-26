@@ -130,14 +130,16 @@ those inputs, in any worktree, restores in under a second.
   `low::arm::cpu` on armv7, return zero exactly when their inputs are equal,
   and `CT_COMPARE_16_SAFE` and `CT_COMPARE_BYTES_SAFE`, in s2n-bignum's style,
   that their trace of loads and branches is a function of the addresses and
-  length alone, each load in bounds. Both functions are `#[inline(never)]`
-  with fixed registers, so the proof covers their one copy. armv7's are on
-  the fork's AArch32 model below, which is A32 only, so they cover the
-  targets that build A32, such as `armv7-unknown-linux-gnueabihf`, whose
-  bytes `admin/prove` checks. `armv7-linux-androideabi` and the `thumbv7`
-  targets build these functions as Thumb-2, which no proof covers; rustc
-  refuses `#[instruction_set(arm::a32)]` on armv7's Linux and Android
-  targets, which would otherwise force A32.
+  length alone, each load in bounds. On x86_64 and aarch64 both functions
+  are `#[inline(never)]` with fixed registers, so the proof covers their
+  one copy. On armv7 they are A32 routines in a `global_asm!`, which
+  `admin/prove` finds by their symbols without rind's version, and the
+  theorems, on the fork's AArch32 model below, cover each from entry to
+  return for a caller in A32 or T32, so every armv7 target, the Thumb-2
+  Rust of `armv7-linux-androideabi` and the `thumbv7` targets included,
+  runs the code they are about. `ct_compare_bytes` saves R4 and LR in the
+  8 bytes below SP, which its theorems assume aligned, below 2^32, and
+  apart from the code and, for `CT_COMPARE_BYTES_CORRECT`, the strings.
 - `x86_64/ecp_nistz256_point_add_affine.ml` and
   `x86_64/ecp_nistz256_point_add_affinex.ml`:
   `ECP_NISTZ256_POINT_ADD_AFFINE_SUBROUTINE_CORRECT` and
@@ -162,8 +164,8 @@ known-answer tests `admin/prove hol-light` runs, the SHA extensions and
 other instructions an s2n-bignum pull request adds to the x86 model, rind's
 own additions to it, which `x86/proofs/rind_cosim.ml` checks against the CPU
 with the pull request's, and `aarch32/`, an AArch32 model of the A32
-integer instructions armv7's assembly runs, which
-`aarch32/proofs/simulator.ml` checks against qemu-arm.
+instructions armv7's assembly runs, which `aarch32/proofs/simulator.ml`
+checks against qemu-arm.
 `nix develop .#hol-light --command admin/prove cosim` runs both
 cosimulations, on an x86_64 CPU with AVX2.
 
