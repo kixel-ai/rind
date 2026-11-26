@@ -206,7 +206,12 @@ RELEASE = re.compile(
 BRANCH = re.compile(r"j(?!mp$)[a-z]+|loop\w*")
 END = {"ret", "ud2", "int3", "hlt"}
 TARGET = re.compile(r"^(?:0x)?([0-9a-f]+)(?: <.*>)?$")
-REGISTER = re.compile(r"r[a-z0-9]+")
+# Each 64-bit x86 register's names for its parts, which write it too.
+ALIASES = {
+    **{"r" + x: {"r" + x, "e" + x, x, x[0] + "l", x[0] + "h"} for x in ("ax", "bx", "cx", "dx")},
+    **{"r" + x: {"r" + x, "e" + x, x, x + "l"} for x in ("si", "di", "bp", "sp")},
+    **{"r%d" % n: {"r%d" % n + s for s in ("", "d", "w", "b")} for n in range(8, 16)},
+}
 
 # Mnemonics each VARTIME pattern must refuse, then must allow, checked
 # before every scan.
@@ -522,6 +527,32 @@ def mitigated(objects, node):
             sys.exit("ct-vartime: a jump table in {} points at {:#x}, outside an instruction".format(
                 objects.section_name(node), target))
     switched = set()
+
+    def dispatches(i):
+        """Whether the `jmp` at `i` adds a table's entry to the table's
+        start, as LLVM dispatches, rather than calling a function pointer.
+        LLVM may schedule other instructions among the three, so the walk
+        back passes any that neither names their registers nor branches."""
+        to = insns[i][2]
+        add = earlier(i, to)
+        if add is None or insns[add][1] != "add" or not insns[add][2].startswith(to + ", "):
+            return False
+        table = insns[add][2][len(to) + 2:]
+        load = earlier(add, to, table)
+        m = load is not None and re.fullmatch(r"(r\w+), dword ptr \[(r\w+) \+ 4\*r\w+\]", insns[load][2])
+        return insns[load][1] == "movsxd" and m and m[1] == to and m[2] == table
+
+    def earlier(i, *registers):
+        """The last instruction before `i` in its block naming `registers`."""
+        names = set().union(*(ALIASES.get(r, {r}) for r in registers))
+        for j in range(i - 1, -1, -1):
+            _, mnemonic, operands = insns[j]
+            if mnemonic == "call" or mnemonic in END or mnemonic == "jmp" or BRANCH.fullmatch(mnemonic):
+                return None
+            if names & set(re.findall(r"\w+", operands)):
+                return j
+        return None
+
     named = collections.defaultdict(list)
     for offset, target in objects.relocs.get(node, ()):
         named[bisect.bisect_right(offsets, offset) - 1].append(objects.target_name(node[0], target))
@@ -538,8 +569,7 @@ def mitigated(objects, node):
         # A jump with a relocation leaves the section, as a tail call.
         jump = mnemonic == "jmp" or BRANCH.fullmatch(mnemonic)
         to = TARGET.match(operands) if jump and not names else None
-        # A jump table's dispatch jumps through a register, never memory.
-        if mnemonic == "jmp" and not names and REGISTER.fullmatch(operands) and tables:
+        if mnemonic == "jmp" and not names and tables and dispatches(i):
             switched.add(objects.function(node, offsets[i]))
             return [index[t] for t in tables]
         if jump and not names and not to:
