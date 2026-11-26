@@ -810,10 +810,15 @@ have some different options depending on CPU features:
   a time and the ninth alone. This is Graviola's, and not verified.
 - Its 8-wide Keccak-f also runs on its own for two to eight states on x86-64
   with AVX-512 F and VL: ML-DSA's matrix, secret, and mask expansion, eight
-  polynomials at a time, and ML-KEM-512's noise sampling. On Zen 5 eight
+  polynomials at a time, and ML-KEM-512's and ML-KEM-1024's noise sampling
+  and their matrix sampling four polynomials at a time. On Zen 5 eight
   states took 192 ns, against 291 ns for four on s2n-bignum's AVX2 routine
-  and 172 ns for one on its scalar one, so one state still runs alone. Its
-  rotations are `vprolq`. `proofs/` takes it as a hypothesis.
+  and 172 ns for one on its scalar one, so four states run on it too, and
+  one still runs alone. Running ML-KEM's four states on it took 2-5% off
+  ML-KEM-512's key generation, encapsulation, and decapsulation on Emerald
+  Rapids and Granite Rapids Xeons, and moved ML-KEM-1024's by less than
+  their noise. Its rotations are `vprolq`. `proofs/` takes it as a
+  hypothesis.
 - We have s2n-bignum's verified 4-wide Keccak-f using AVX2 on x86-64, and its
   single-state Keccak-f otherwise.
 - We have s2n-bignum's verified 2-wide Keccak-f using Neon+SHA3 on Apple
