@@ -213,9 +213,7 @@ core::arch::global_asm!(
 pub(in crate::low) fn ct_compare_bytes(a: &[u8], b: &[u8]) -> u8 {
     let len = a.len().min(b.len());
     // SAFETY: reads `len` bytes from `a` and `b`, which both hold.
-    let acc = unsafe {
-        asm_call!(unsafe extern "C" compare_bytes(a.as_ptr(), b.as_ptr(), len))
-    };
+    let acc = unsafe { asm_call!(unsafe extern "C" compare_bytes(a.as_ptr(), b.as_ptr(), len)) };
     acc as u8
 }
 

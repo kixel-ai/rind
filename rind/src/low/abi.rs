@@ -986,6 +986,11 @@ mod tests {
             "traced",
             "test-only hints, which touch no register",
         ),
+        (
+            "arm/keccak1600_armv4.rs",
+            "keccak_f1600_neon_regs",
+            "an entry on registers that only `keccak_f1600_neon`, whose harness call covers it, reaches",
+        ),
     ];
 
     const DISPATCHED: &str = "picked into a function pointer that `asm_call!` calls";
@@ -1051,9 +1056,16 @@ mod tests {
             }
         }
 
+        // A `global_asm!`'s `sym` operand names the routine it defines, not
+        // an internal entry.
+        let blocks: Vec<&str> = text
+            .match_indices("asm!(")
+            .filter(|&(at, _)| !text[..at].ends_with("global_"))
+            .map(|(at, _)| parenthesized(&text[at + 4..]))
+            .collect();
         names.retain(|name| {
             !name.is_empty()
-                && !text.contains(&format!("sym {name}"))
+                && !blocks.iter().any(|b| b.contains(&format!("sym {name}")))
                 && !text.contains(&format!("{name} = {name}"))
         });
         names.sort();
