@@ -12,9 +12,11 @@ theorems `Rind.Aarch64.S2nBignum` restates, and `partial` the last partial
 block. `Rind.S2nGcm` proves the kernels' specs are Vale's, so `cipher` is
 Vale's GCTR from the block after the counter block and GHASH over the AAD's
 and the ciphertext's padded blocks, `tagged_from` is GCTR and `gcm_hash` at
-every length, and `tagged` with a 96-bit nonce is `gcm_encrypt_LE` and
-`gcm_decrypt_LE`. AES-192 keys past `short`'s lengths run other code, not yet
-proven.
+every length below `2 ^ 61` bytes, and `tagged` with a 96-bit nonce is
+`gcm_encrypt_LE` and `gcm_decrypt_LE`. With a table for the cores with SHA3
+each theorem also takes `KernelBuffersLow`, the `_alt` kernels' requirement
+that the blocks' address plus their length is below 2^63. AES-192 keys past
+`short`'s lengths run other code, not yet proven.
 -/
 
 local notation "P" => Polynomial (ZMod 2)

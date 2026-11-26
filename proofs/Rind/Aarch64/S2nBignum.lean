@@ -432,19 +432,24 @@ axiom sha3_keccak4_f1600_alt_spec (a : Std.Array (Std.Array U64 25#usize) 4#usiz
 
 /-! ### AES-GCM's stitched kernels
 
-`low::aarch64::aes_gcm::stitched` runs one of eight kernels on its whole
-blocks in place, `in_p = out_p`, with `len_bits` the blocks times 128, which
+`low::aarch64::aes_gcm::stitched` runs one of these eight kernels, for an
+AES-128 or AES-256 key (an AES-192 key runs aws-lc's kernels, which no theorem
+here covers), on its whole blocks in place, `in_p = out_p`, with `len_bits` the blocks times 128, which
 `hn` keeps from wrapping. Each theorem's `bytes128` reads are a block's 16
 bytes little endian, `loadBytes`, as the vectors of round keys and table
 entries hold them. The `_alt` kernels, which the cores with SHA3 run, also
 require `val in_p + 16 * gcm_wb_blocks len_bits < 2 EXP 63`, which their
 restatements take as `KernelBuffersLow`. -/
 
-/-- That the blocks rind hands s2n-bignum's `_alt` AES-GCM kernels end below
-address 2^63, as their theorems require. The model has no addresses, so this
-names the condition, and every theorem resting on those kernels takes it as a
-hypothesis. Untagged user-space addresses on aarch64 Linux and macOS meet it;
-top-byte-tagged pointers, such as Android's heap pointers, do not. -/
+/-- That the address of the blocks rind hands s2n-bignum's `_alt` AES-GCM
+kernels, plus their length in bytes, is below 2^63, as their theorems require.
+The model has no addresses, so this names the condition for every `_alt` call
+a proof using it covers, not for one buffer: evidence about one allocation
+does not establish it for another, and `stitched`'s caller does not check it.
+Untagged user-space addresses on aarch64 Linux and macOS meet it; a pointer
+whose top byte sets bit 63, as the top-byte heap tags of Android's Bionic
+(`0xB4`) do, breaks it, whereas an MTE tag, in bits 59 to 56, does not by
+itself. -/
 opaque KernelBuffersLow : Prop
 
 open rind.s2n rind.simd in
