@@ -3,39 +3,25 @@
  *)
 
 (* ========================================================================= *)
-(* GHASH on NEON without the crypto extension: aws-lc's gcm_init_neon and    *)
-(* gcm_ghash_neon, as rind's build emits them.                               *)
+(* aws-lc's gcm_ghash_neon, as rind's build emits it.                       *)
 (* ========================================================================= *)
+
+(* The A32 routine `gcm_ghash_neon` in rind's low::arm::ghash_armv4, which
+   armv7 runs for GHASH without the crypto extension, with the key
+   gcm_init_neon twisted. Its theorems hold for a caller in A32 or T32, so
+   they cover every armv7 target. *)
 
 needs "aarch32/proofs/base.ml";;
 needs "common/ghash_nist_bridge.ml";;
 needs "common/karatsuba_pmul.ml";;
 
-(* admin/prove writes the section `.text.rind.ghash_armv4`, which the
-   global_asm! block in rind's low::arm::ghash_armv4 pushes, to
-   armv7/ghash_armv4.bin, as rind's release build for
-   armv7-unknown-linux-gnueabihf emits it, and the definition fails unless
-   its bytes are these. gcm_init_neon is at offset 0 and gcm_ghash_neon at
-   0x40; the words between are padding. *)
-let ghash_armv4_mc = define_assert_word_list "ghash_armv4_mc"
-  (term_of_bytes (load_file "armv7/ghash_armv4.bin"))
+(* admin/prove writes the routine's bytes, as rind's release build for
+   armv7-unknown-linux-gnueabihf emits them, to armv7/gcm_ghash_neon.bin,
+   and the definition fails unless they are these. The routine is A32 on
+   every target. *)
+let gcm_ghash_neon_mc = define_assert_word_list "gcm_ghash_neon_mc"
+  (term_of_bytes (load_file "armv7/gcm_ghash_neon.bin"))
 [
-  0xf42177cd; (* vld1.64 {d7}, [r1]! *)
-  0xf3c60e51; (* vmov.i8 q8, #0xe1 *)
-  0xf42167cf; (* vld1.64 {d6}, [r1] *)
-  0xf2f915b1; (* vshl.i64 d17, d17, #0x39 *)
-  0xf3c100b0; (* vshr.u64 d16, d16, #0x3f *)
-  0xf3ff2c47; (* vdup.8 q9, d7[7] *)
-  0xf3c1a096; (* vshr.u64 d26, d6, #0x3f *)
-  0xf2c92072; (* vshr.s8 q9, q9, #0x7 *)
-  0xf28165d6; (* vshl.i64 q3, q3, #0x1 *)
-  0xf24001f2; (* vand q8, q8, q9 *)
-  0xf227713a; (* vorr d7, d7, d26 *)
-  0xf3066170; (* veor q3, q3, q8 *)
-  0xec806b04; (* vstmia r0, {d6, d7} *)
-  0xe12fff1e; (* bx lr *)
-  0xe320f000; (* nop *)
-  0xe320f000; (* nop *)
   0xf42017cd; (* vld1.64 {d1}, [r0]! *)
   0xf42007cd; (* vld1.64 {d0}, [r0]! *)
   0xf2c3de3f; (* vmov.i64 d29, #0xffffffffffff *)
@@ -179,7 +165,7 @@ let ghash_armv4_mc = define_assert_word_list "ghash_armv4_mc"
   0xf3000154; (* veor q0, q0, q2 *)
   0xf3000174; (* veor q0, q0, q10 *)
   0xe2533010; (* subs r3, r3, #16 *)
-  0x1affff77; (* bne 0x60 *)
+  0x1affff77; (* bne 0x20 *)
   0xf3b00040; (* vrev64.8 q0, q0 *)
   0xe2400010; (* sub r0, r0, #16 *)
   0xf40017cd; (* vst1.64 {d1}, [r0]! *)
@@ -187,7 +173,7 @@ let ghash_armv4_mc = define_assert_word_list "ghash_armv4_mc"
   0xe12fff1e  (* bx lr *)
 ];;
 
-let GHASH_ARMV4_EXEC = AARCH32_MK_EXEC_RULE ghash_armv4_mc;;
+let GCM_GHASH_NEON_EXEC = AARCH32_MK_EXEC_RULE gcm_ghash_neon_mc;;
 
 (* ------------------------------------------------------------------------- *)
 (* Carry-less products of shifted bytes, the pieces vmull.p8 computes.       *)
@@ -491,71 +477,8 @@ let GHASH_ACC_STEP = prove
      polyval_dot (word_xor (ghash_polyval_acc ht acc (list_of_seq f i)) (f i)) ht`,
   REWRITE_TAC[GSYM ADD1; list_of_seq; GHASH_ACC_APPEND; ghash_polyval_acc]);;
 
-(* ------------------------------------------------------------------------- *)
-(* gcm_init_neon: the key, twisted.                                          *)
-(* ------------------------------------------------------------------------- *)
-
-(* rind passes H as two words, its first eight bytes as a big-endian number
-   and then its last eight, so word_join hi lo is H's big-endian value. The
-   routine stores ghash_twist of it, H times x modulo GHASH's polynomial in
-   s2n-bignum's POLYVAL form, the only entry of Htable that gcm_ghash_neon
-   reads. *)
-let GCM_INIT_NEON_CORRECT = prove
- (`!htable hp hi lo pc.
-     aarch32_nowrap hp 16 /\ aligned 16 htable /\ aarch32_nowrap htable 16 /\
-     nonoverlapping (word pc,0x294) (htable,16)
-     ==> ensures aarch32
-          (\s. aligned_bytes_loaded s (word pc) ghash_armv4_mc /\
-               read PC s = word pc /\
-               C_ARGUMENTS [htable; hp] s /\
-               read (memory :> bytes64 hp) s = hi /\
-               read (memory :> bytes64 (word_add hp (word 8))) s = lo)
-          (\s. read PC s = word (pc + 0x34) /\
-               read (memory :> bytes128 htable) s =
-               ghash_twist (word_join hi lo))
-          (MAYCHANGE [PC; R1] ,, MAYCHANGE [Q3; Q8; Q9; Q13] ,,
-           MAYCHANGE [memory :> bytes128 htable] ,, MAYCHANGE [events])`,
-  REWRITE_TAC[C_ARGUMENTS; fst GHASH_ARMV4_EXEC; NONOVERLAPPING_CLAUSES] THEN
-  REPEAT STRIP_TAC THEN
-  MAP_EVERY (fun (v,c) -> GHOST_INTRO_TAC v c)
-   [`q3:int128`,`read Q3`; `q8:int128`,`read Q8`;
-    `q9:int128`,`read Q9`; `q13:int128`,`read Q13`] THEN
-  ENSURES_INIT_TAC "s0" THEN
-  AARCH32_STEPS_TAC GHASH_ARMV4_EXEC (1--13) THEN
-  ENSURES_FINAL_STATE_TAC THEN
-  REWRITE_TAC[el 1 (CONJUNCTS READ_MEMORY_BYTESIZED_SPLIT)] THEN
-  ASM_REWRITE_TAC[] THEN
-  REWRITE_TAC[ghash_twist; POLYVAL_TWIST_CONST] THEN
-  CONV_TAC(TOP_DEPTH_CONV WORD_SIMPLE_SUBWORD_CONV) THEN
-  COND_CASES_TAC THEN POP_ASSUM MP_TAC THEN BITBLAST_TAC);;
-
-let GCM_INIT_NEON_SUBROUTINE_CORRECT = prove
- (`!htable hp hi lo pc returnaddress.
-     aarch32_nowrap hp 16 /\ aligned 16 htable /\ aarch32_nowrap htable 16 /\
-     nonoverlapping (word pc,0x294) (htable,16) /\
-     aligned 4 returnaddress
-     ==> ensures aarch32
-          (\s. aligned_bytes_loaded s (word pc) ghash_armv4_mc /\
-               read PC s = word pc /\
-               read LR s = returnaddress /\
-               C_ARGUMENTS [htable; hp] s /\
-               read (memory :> bytes64 hp) s = hi /\
-               read (memory :> bytes64 (word_add hp (word 8))) s = lo)
-          (\s. read PC s = returnaddress /\
-               read (memory :> bytes128 htable) s =
-               ghash_twist (word_join hi lo))
-          (MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI ,,
-           MAYCHANGE [memory :> bytes128 htable])`,
-  REWRITE_TAC[fst GHASH_ARMV4_EXEC] THEN
-  AARCH32_ADD_RETURN_NOSTACK_TAC GHASH_ARMV4_EXEC
-    (REWRITE_RULE[fst GHASH_ARMV4_EXEC] GCM_INIT_NEON_CORRECT));;
-
-(* ------------------------------------------------------------------------- *)
-(* gcm_ghash_neon: GHASH over whole blocks.                                  *)
-(* ------------------------------------------------------------------------- *)
-
-(* The loop's state at its head, pc + 0x60, after i blocks, and at its
-   SUBS and BNE, pc + 0x27c, after i + 1: Xi and the blocks are big-endian
+(* The loop's state at its head, pc + 0x20, after i blocks, and at its
+   SUBS and BNE, pc + 0x23c, after i + 1: Xi and the blocks are big-endian
    numbers, so the fold is s2n-bignum's POLYVAL form of GHASH over their
    byte reversals, with the twisted key ht. *)
 let GHASH_NEON_INV = `\i s.
@@ -580,17 +503,17 @@ let GCM_GHASH_NEON_CORRECT = prove
      0 < n /\ 16 * n < 2 EXP 32 /\ LENGTH blocks = n /\
      aligned 16 htable /\ aarch32_nowrap htable 16 /\
      aarch32_nowrap xi 16 /\ aarch32_nowrap inp (16 * n) /\
-     nonoverlapping (word pc,0x294) (xi,16)
+     nonoverlapping (word pc,0x254) (xi,16)
      ==> ensures aarch32
-          (\s. aligned_bytes_loaded s (word pc) ghash_armv4_mc /\
-               read PC s = word (pc + 0x40) /\
+          (\s. aligned_bytes_loaded s (word pc) gcm_ghash_neon_mc /\
+               read PC s = word pc /\
                C_ARGUMENTS [xi; htable; inp; word(16 * n)] s /\
                read (memory :> bytes128 xi) s = x /\
                read (memory :> bytes128 htable) s = ghash_twist h /\
                (!i. i < n
                     ==> read (memory :> bytes128 (word_add inp (word(16 * i)))) s =
                         EL i blocks))
-          (\s. read PC s = word (pc + 0x290) /\
+          (\s. read PC s = word (pc + 0x250) /\
                read (memory :> bytes128 xi) s =
                word_bytereverse
                 (nist_ghash h (word_bytereverse x) (MAP word_bytereverse blocks)))
@@ -598,7 +521,7 @@ let GCM_GHASH_NEON_CORRECT = prove
            MAYCHANGE [Q0; Q1; Q2; Q3; Q8; Q9; Q10; Q11; Q13; Q14; Q15] ,,
            MAYCHANGE SOME_FLAGS ,, MAYCHANGE [memory :> bytes128 xi] ,,
            MAYCHANGE [events])`,
-  REWRITE_TAC[C_ARGUMENTS; SOME_FLAGS; fst GHASH_ARMV4_EXEC;
+  REWRITE_TAC[C_ARGUMENTS; SOME_FLAGS; fst GCM_GHASH_NEON_EXEC;
               NONOVERLAPPING_CLAUSES] THEN
   REPEAT GEN_TAC THEN STRIP_TAC THEN
   SUBGOAL_THEN
@@ -611,7 +534,7 @@ let GCM_GHASH_NEON_CORRECT = prove
    [REWRITE_TAC[GHASH_READ_BLOCKS; ADD_CLAUSES]; ALL_TAC] THEN
   REWRITE_TAC[NIST_GHASH_IS_POLYVAL] THEN
   ABBREV_TAC `ht = ghash_twist h` THEN
-  ENSURES_WHILE_PUP_TAC `n:num` `pc + 0x60` `pc + 0x27c` GHASH_NEON_INV THEN
+  ENSURES_WHILE_PUP_TAC `n:num` `pc + 0x20` `pc + 0x23c` GHASH_NEON_INV THEN
   ASM_REWRITE_TAC[] THEN REPEAT CONJ_TAC THENL
    [(* There is a block. *)
     ASM_ARITH_TAC;
@@ -624,7 +547,7 @@ let GCM_GHASH_NEON_CORRECT = prove
       `q14:int128`,`read Q14`; `q15:int128`,`read Q15`] THEN
     ENSURES_INIT_TAC "s0" THEN
     REPEAT(FIRST_X_ASSUM(STRIP_ASSUME_TAC o MATCH_MP GHASH_BYTES128_HALVES)) THEN
-    AARCH32_STEPS_TAC GHASH_ARMV4_EXEC (1--8) THEN
+    AARCH32_STEPS_TAC GCM_GHASH_NEON_EXEC (1--8) THEN
     RULE_ASSUM_TAC(CONV_RULE(TRY_CONV(RAND_CONV
       (TOP_DEPTH_CONV WORD_SIMPLE_SUBWORD_CONV)))) THEN
     RULE_ASSUM_TAC(REWRITE_RULE[GHASH_REV64_BYTES; AARCH32_JOIN_HALVES]) THEN
@@ -668,24 +591,24 @@ let GCM_GHASH_NEON_CORRECT = prove
                                  ghash_blocks_num f j m`) o concl)) THEN
     ASM_REWRITE_TAC[ADD_CLAUSES] THEN
     DISCH_THEN(STRIP_ASSUME_TAC o MATCH_MP GHASH_BYTES128_HALVES) THEN
-    AARCH32_STEPS_TAC GHASH_ARMV4_EXEC (1--4) THEN
+    AARCH32_STEPS_TAC GCM_GHASH_NEON_EXEC (1--4) THEN
     RULE_ASSUM_TAC(CONV_RULE(TRY_CONV(RAND_CONV
       (TOP_DEPTH_CONV WORD_SIMPLE_SUBWORD_CONV)))) THEN
     RULE_ASSUM_TAC(REWRITE_RULE[GHASH_REV64_BYTES]) THEN
     ABBREV_TAC `y = word_xor (word_bytereverse b) (a:int128)` THEN
-    AARCH32_STEPS_TAC GHASH_ARMV4_EXEC (5--41) THEN
+    AARCH32_STEPS_TAC GCM_GHASH_NEON_EXEC (5--41) THEN
     PMUL_P8_TAC `Q0`
      `word_pmul (word_subword (ht:int128) (0,64):int64)
                 (word_subword (y:int128) (0,64):int64):int128` THEN
     ABBREV_TAC `plo = word_pmul (word_subword (ht:int128) (0,64):int64)
                                 (word_subword (y:int128) (0,64):int64):int128` THEN
     FORGET_TAC [`Q8`; `Q9`; `Q10`; `Q11`] THEN
-    AARCH32_STEPS_TAC GHASH_ARMV4_EXEC [42] THEN
+    AARCH32_STEPS_TAC GCM_GHASH_NEON_EXEC [42] THEN
     RULE_ASSUM_TAC(CONV_RULE(TRY_CONV(RAND_CONV
       (TOP_DEPTH_CONV WORD_SIMPLE_SUBWORD_CONV)))) THEN
     ABBREV_TAC `ymid = word_xor (word_subword y (0,64))
                                 (word_subword (y:int128) (64,64)):int64` THEN
-    AARCH32_STEPS_TAC GHASH_ARMV4_EXEC (43--79) THEN
+    AARCH32_STEPS_TAC GCM_GHASH_NEON_EXEC (43--79) THEN
     PMUL_P8_TAC `Q1`
      `word_pmul (word_xor (word_subword (ht:int128) (0,64))
                           (word_subword ht (64,64)):int64)
@@ -694,14 +617,14 @@ let GCM_GHASH_NEON_CORRECT = prove
                                            (word_subword ht (64,64)):int64)
                                  (ymid:int64):int128` THEN
     FORGET_TAC [`Q8`; `Q9`; `Q10`; `Q11`] THEN
-    AARCH32_STEPS_TAC GHASH_ARMV4_EXEC (80--116) THEN
+    AARCH32_STEPS_TAC GCM_GHASH_NEON_EXEC (80--116) THEN
     PMUL_P8_TAC `Q2`
      `word_pmul (word_subword (ht:int128) (64,64):int64)
                 (word_subword (y:int128) (64,64):int64):int128` THEN
     ABBREV_TAC `phh = word_pmul (word_subword (ht:int128) (64,64):int64)
                                 (word_subword (y:int128) (64,64):int64):int128` THEN
     FORGET_TAC [`Q8`; `Q9`; `Q10`; `Q11`] THEN
-    AARCH32_STEPS_TAC GHASH_ARMV4_EXEC (117--135) THEN
+    AARCH32_STEPS_TAC GCM_GHASH_NEON_EXEC (117--135) THEN
     ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
     (* The code's Karatsuba tidy-up and shift reduction compute Gueron's
        Proposition 3 reduction of the product, as a linear map of the three
@@ -717,13 +640,13 @@ let GCM_GHASH_NEON_CORRECT = prove
     X_GEN_TAC `i:num` THEN STRIP_TAC THEN ENSURES_INIT_TAC "s0" THEN
     UNDISCH_TAC `read ZF (s0:aarch32state) <=> (i:num) = n` THEN
     ASM_REWRITE_TAC[] THEN DISCH_TAC THEN
-    AARCH32_STEPS_TAC GHASH_ARMV4_EXEC [1] THEN
+    AARCH32_STEPS_TAC GCM_GHASH_NEON_EXEC [1] THEN
     ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[];
 
     (* Out: Xi, back in the byte order of a block. *)
     REWRITE_TAC[GHASH_MAP_BYTEREVERSE] THEN ASM_REWRITE_TAC[] THEN
     ENSURES_INIT_TAC "s0" THEN
-    AARCH32_STEPS_TAC GHASH_ARMV4_EXEC (1--5) THEN
+    AARCH32_STEPS_TAC GCM_GHASH_NEON_EXEC (1--5) THEN
     ENSURES_FINAL_STATE_TAC THEN
     REWRITE_TAC[el 1 (CONJUNCTS READ_MEMORY_BYTESIZED_SPLIT)] THEN
     ASM_REWRITE_TAC[] THEN
@@ -735,11 +658,11 @@ let GCM_GHASH_NEON_SUBROUTINE_CORRECT = prove
      0 < n /\ 16 * n < 2 EXP 32 /\ LENGTH blocks = n /\
      aligned 16 htable /\ aarch32_nowrap htable 16 /\
      aarch32_nowrap xi 16 /\ aarch32_nowrap inp (16 * n) /\
-     nonoverlapping (word pc,0x294) (xi,16) /\
-     aligned 4 returnaddress
+     nonoverlapping (word pc,0x254) (xi,16) /\
+     aarch32_bx_target returnaddress
      ==> ensures aarch32
-          (\s. aligned_bytes_loaded s (word pc) ghash_armv4_mc /\
-               read PC s = word (pc + 0x40) /\
+          (\s. aligned_bytes_loaded s (word pc) gcm_ghash_neon_mc /\
+               read PC s = word pc /\
                read LR s = returnaddress /\
                C_ARGUMENTS [xi; htable; inp; word(16 * n)] s /\
                read (memory :> bytes128 xi) s = x /\
@@ -753,6 +676,6 @@ let GCM_GHASH_NEON_SUBROUTINE_CORRECT = prove
                 (nist_ghash h (word_bytereverse x) (MAP word_bytereverse blocks)))
           (MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI ,,
            MAYCHANGE [memory :> bytes128 xi])`,
-  REWRITE_TAC[fst GHASH_ARMV4_EXEC] THEN
-  AARCH32_ADD_RETURN_NOSTACK_TAC GHASH_ARMV4_EXEC
-    (REWRITE_RULE[fst GHASH_ARMV4_EXEC] GCM_GHASH_NEON_CORRECT));;
+  REWRITE_TAC[fst GCM_GHASH_NEON_EXEC] THEN
+  AARCH32_ADD_RETURN_NOSTACK_TAC GCM_GHASH_NEON_EXEC
+    (REWRITE_RULE[fst GCM_GHASH_NEON_EXEC] GCM_GHASH_NEON_CORRECT));;

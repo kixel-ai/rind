@@ -5,9 +5,10 @@
 //!
 //! The assembly is aws-lc's, imported by `admin/import-aws-lc`. It builds the
 //! 128-bit product from NEON's 8-bit polynomial multiplies, so its timing is
-//! independent of the key and data. `proofs/hol-light/armv7/ghash_armv4.ml`
-//! proves, on s2n-bignum's AArch32 model, that the A32 code rind links
-//! computes SP 800-38D's GHASH; no theorem yet covers its constant time.
+//! independent of the key and data. `proofs/hol-light/armv7/gcm_init_neon.ml`
+//! and `gcm_ghash_neon.ml` prove, on s2n-bignum's AArch32 model, that the code
+//! rind links computes SP 800-38D's GHASH; no theorem yet covers its constant
+//! time.
 
 use super::cpu::HaveNeon;
 use crate::low;
@@ -21,15 +22,12 @@ unsafe extern "C" {
 }
 
 // As in `aesv8_armx`: ARM mode with NEON, then the target's `.fpu` again.
-// The routines take a section of their own, which `admin/prove` reads as the
-// object code their proof is about.
 core::arch::global_asm!(
-    ".pushsection .text.rind.ghash_armv4,\"ax\",%progbits",
+    ".text",
     ".fpu neon",
     ".code 32",
     include_str!("aws_lc/ghash-armv4.s"),
     ".fpu vfpv3",
-    ".popsection",
     gcm_init_neon = sym gcm_init_neon,
     gcm_ghash_neon = sym gcm_ghash_neon,
 );
