@@ -686,7 +686,9 @@ impl ServerSetup {
     /// RFC 9807 6.3.2.2's fake record: this setup's fake public key, a random
     /// masking key, and a zero envelope. Its KE2 takes the same steps as a
     /// registered one's, and no client that cannot guess a password tells
-    /// the two apart; its login then fails at [`ServerLogin::finish`].
+    /// the two apart; its login then fails at [`ServerLogin::finish`]. The
+    /// caller must look the record up in a way that does not reveal whether
+    /// the account has one, such as the same query and cache path for both.
     ///
     /// A KE1 or record for another suite is refused with
     /// [`Error::Unsupported`], and a session whose context or identities are

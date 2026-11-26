@@ -776,10 +776,11 @@ pub mod spake2plus {
 /// uploading a [`opaque::RegistrationRecord`]; each login then runs RFC
 /// 9807's three-message 3DH exchange, which gives both sides a
 /// [`opaque::SessionKey`] only if the client knew the password, and the
-/// client an [`opaque::ExportKey`] for its own data. A stolen record allows
-/// only an offline guessing attack, each guess paced by Argon2id, and a
-/// [`opaque::ServerSetup`] answers an unknown account indistinguishably from
-/// a registered one. Each side's state is a type its next step consumes, so
+/// client an [`opaque::ExportKey`] for its own data. A stolen record together
+/// with the server's setup allows an offline guessing attack, each guess
+/// paced by Argon2id; a record alone does not, but it does let its holder
+/// tell the account exists. A [`opaque::ServerSetup`] answers an unknown
+/// account indistinguishably from a registered one. Each side's state is a type its next step consumes, so
 /// no step runs twice or out of order.
 ///
 /// Registration, unlike login, must run over a channel that authenticates
