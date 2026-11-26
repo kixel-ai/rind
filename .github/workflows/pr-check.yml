@@ -5,7 +5,7 @@ name: PR check
 # order) fails here first, plus the slower ones the queue leaves out, whose
 # result rests on the PR's own diff: the site, the semver marks, the
 # binary-size record, and the mutants pins. Advisory: main's ruleset requires
-# only `Queue build / Build`, which no job here replaces. The cross, MSRV,
+# only queue-build.yml's contexts, which no job here replaces. The cross, MSRV,
 # wasm, no-std, adapter-API, constant-time, structure, Python, Dart, OpenSSL,
 # and patch modules gate no merge: check.yml runs every module over main
 # nightly, as `just release-check` does before a release.

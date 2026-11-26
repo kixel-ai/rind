@@ -1357,20 +1357,29 @@ statics are built wholly by quoted code.
 
 `admin/prove` translates the portable backend too, under `--cfg
 rind_portable`, the cfg CI's portable jobs build with, on x86_64, into
-`Rind/Portable/`: the hash, HMAC, KDF, and header-protection paths, and the
-Keccak-f above, alone. None of that Rust picks by pointer width or CPU, and Aeneas's `usize` is either
-width, so the theorems hold on every target the backend builds for. The
+`Rind/Portable/`: the hash, HMAC, KDF, and header-protection paths, down to
+the SHA-2 block functions, and the Keccak-f above, alone. None of that Rust picks by pointer width or CPU, and Aeneas's `usize` is either
+width, so the theorems hold on every target the backend builds for, but
+for two bodies the extraction leaves out: ESP-IDF Xtensa's SHA-256,
+`low/portable/sha256_iram.rs`, and 32-bit microcontrollers' SHA-512,
+`low::generic::sha512_rolled`, which
+[the rolled-SHA-2 quest](../quest/m4/verified/rolled-sha2-esp.md) covers. The
 x86_64 proofs of SHA-256's padding, the SHA-512 family, HMAC's keyed states,
 the digest, HMAC, HKDF, and PBKDF2 APIs, and ChaCha20 header protection are
 written for it with the target renamed, as for aarch64, over what differs:
 
-- `Rind/Portable/Sha512Entry.lean`: `RunsSha512`, which assumes the entry
-  checks, as no dispatch picks a routine, and the contract of SHA-512's block
-  function, `low::generic::sha512`, aws-lc's C in Rust, which no proof covers
-  yet, in the form the SHA-512 proof takes it.
-- `Rind/Portable/ShaBlocks.lean`: `Sha256Blocks` and `Sha1Blocks`, as on the
-  other targets the entry checks and the contracts of SHA-256's and SHA-1's
-  block functions, `low::generic::sha256`, aws-lc's C in Rust, and
+- `Rind/Portable/Sha256Compress.lean` and `Rind/Portable/Sha512Compress.lean`:
+  SHA-256's and SHA-512's block functions, `low::generic::sha256` and
+  `low::generic::sha512`, aws-lc's C in Rust, compute FIPS 180-4's
+  compression of each whole block in turn. Each round and schedule step is a
+  function the unrolled passes call with the working variables renamed, so
+  one lemma covers every round, and `Window` says which pass's word each slot
+  of the sixteen-word schedule window holds.
+- `Rind/Portable/Sha512Entry.lean`: `RunsSha512`, which assumes only the
+  entry checks, as no dispatch picks a routine, and states SHA-512's block
+  function's theorem in the form the SHA-512 proof takes it.
+- `Rind/Portable/ShaBlocks.lean`: `Sha256Blocks` and `Sha1Blocks`, the entry
+  checks, and for SHA-1 the contract of its block function,
   `low::generic::sha1`, which no proof covers here.
 - `Rind/Portable/Compare.lean` and `Rind/Portable/CtEqual.lean`: the
   constant-time compares behind `hmac::verify` and `pbkdf2::Secret::verify`,
@@ -1402,9 +1411,6 @@ these quests prove its code, whose proofs then run on this translation:
   `Rind/X86_64/RsaDispatch.lean` proves over the Montgomery products as
   hypotheses, and [signing](/quest/m4/verified/rsa-sign.md), both over
   `low/generic/mont.rs`'s products, on 64-bit limbs here;
-- SHA-256 and SHA-512: `low::generic::sha256` and `low::generic::sha512`,
-  the block functions `Sha256Blocks` and `RunsSha512` stand for here, in
-  [the portable SHA-2 quest](/quest/m4/verified/portable-sha2-lean.md);
 - SHA-1: `low::generic::sha1`, the block function `Sha1Blocks` stands for
   here, in [SHA-1's quest](/quest/m5/verified/sha1.md);
 - MD5: [its own quest](/quest/m5/verified/md5.md).
@@ -1538,7 +1544,7 @@ proof after those.
 - `admin/prove` copies the other `Rind/X86_64/` models and proofs to
   `Rind/Aarch64/` with the target renamed, and the hash, KDF, and
   header-protection ones to `Rind/Portable/`.
-- `Rind/Portable/{TypesExternal,FunsExternal,Compare,Sha512Entry,ShaBlocks,CtEqual}.lean`:
+- `Rind/Portable/{TypesExternal,FunsExternal,Compare,Sha256Compress,Sha512Compress,Sha512Entry,ShaBlocks,CtEqual}.lean`:
   the portable backend's opaque items, its compares' hand model, and its own
   proofs, which [the portable backend](#the-portable-backend) describes.
 - `Rind/NistGroup.lean`: that the NIST curves' `nist.add` is the addition of

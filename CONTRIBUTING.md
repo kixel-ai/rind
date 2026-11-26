@@ -43,6 +43,16 @@ tests run minutes at `opt-level = 0`. For a bare test run, pass it as
 `cargo nextest run --cargo-profile test-fast`; `admin/ctgrind` and the other
 dev builds stay unoptimized.
 
+`cargo vet --locked` fails when the published rind crate's dependencies gain
+a crate or version no audit covers, as [SECURITY.md](SECURITY.md#supply-chain)
+describes. Plain `cargo vet` first fetches the imported audits and the
+publishers of new versions into `supply-chain/imports.lock`, which may cover
+it: a release by a publisher `supply-chain/audits.toml` trusts passes once
+recorded, and `cargo vet trust` renews a trust whose `end` date has passed.
+Otherwise review its code with `cargo vet diff` or `cargo vet inspect` and
+record the review with `cargo vet certify`. A new exemption needs the
+maintainer's approval.
+
 # Commits
 
 PRs land on `main` as squash commits, so the PR title becomes the commit subject in `git log`; the body keeps the PR's commit messages and co-author trailers, not the PR description.
@@ -72,7 +82,8 @@ On release-plz's release PR it runs only the site's check, over the whole site, 
 release-plz's release PR skips it, since the queue's `just ci` and `just release-check` still run on it.
 The required `Queue build / Build` check skips on pull requests; the merge group runs `just ci` against the merge group's base on the self-hosted runner, and that job's own result decides the group.
 It runs only the host's Rust checks and the quick repository lints (`CHECK_QUEUE` in `sh/dispatch.sh`), leaving the PR check's slower modules to the PR, and every other check, the Intel SDE models, `regenerate`, and `prove` among them, to its schedule: a break two PRs make only together shows there, on `main`, and is fixed there. It uploads Cargo's build timings as the `cargo-timings` artifact.
-That build lives in `.github/workflows/queue-build.yml`, which the merge group calls from `main`, so a PR's edit to it runs only after the PR lands.
+Beside it, `Queue build / Build aarch64 macOS` and `Queue build / Build aarch64 Linux` run the group's `rs` module, its tests, natively on aarch64, in two VMs on the maintainer's Mac mini (`admin/mac-mini-runners`), and skip on pull requests the same way; once main's ruleset requires their contexts, each fails the group as `Build` does.
+These builds live in `.github/workflows/queue-build.yml`, which the merge group calls from `main`, so a PR's edit to it runs only after the PR lands.
 A PR the queue drops for a failed build or a conflict gets a Codex fixer, which requeues it or hands it back with a diagnosis.
 The admin bypass of `main`'s ruleset is for emergencies.
 
@@ -113,7 +124,7 @@ It creates a GitHub Release for each tag it pushes, with its changelog entry as 
 If creating one fails, the release job stops there and alerts, leaving later crates and pyrind's PyPI upload undone. Rerun the failed `Release` run, which finishes them but skips the tag already pushed, then create that tag's Release by hand with `gh release create <tag> --verify-tag --latest=false --title <tag> --notes-file <its CHANGELOG.md entry>`, passing `--latest` for rind's.
 
 A release PR merges only after `just release-check` passes at its head, so nothing publishes that the full suite has not passed.
-It dispatches every scheduled workflow but `bench` and `dart-libraries` on the PR's branch, so each runs its whole scheduled matrix on the head, and waits for them all, which takes as long as the slowest. Mutation testing covers every change since the previous release.
+It dispatches every scheduled workflow but `bench`, `dart-libraries`, and `Scorecard` on the PR's branch, so each runs its whole scheduled matrix on the head, and waits for them all, which takes as long as the slowest. Mutation testing covers every change since the previous release.
 An agent merging a release PR, as `/quest-merge` does, runs it first.
 It records the result as the `release-check` status on the head the runs tested, so a release-plz update to the PR needs a new run.
 `just ci` fails a scheduled workflow that a dispatch would not run whole.
