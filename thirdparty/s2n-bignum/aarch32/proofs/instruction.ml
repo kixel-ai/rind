@@ -18,18 +18,24 @@
    https://developer.arm.com/documentation/ddi0406/latest
 
    The state is the A32 instruction set's, at user level: R0-R12, SP, LR,
-   the program counter, the NZCV flags, the Advanced SIMD registers Q0-Q15,
-   and flat 32-bit memory. It omits Thumb (T32), the GE and Q flags, VFP's
-   S registers, FPSCR, banked registers, exceptions, and the system
-   registers. The Advanced SIMD and crypto-extension instructions follow
-   DDI 0406's chapter A7 and DDI 0487's F6 pseudocode.
+   the program counter with the T bit, the NZCV flags, the Advanced SIMD
+   registers Q0-Q15, and flat 32-bit memory. It omits T32's instructions,
+   the GE and Q flags, VFP's S registers, FPSCR, banked registers,
+   exceptions, and the system registers. The Advanced SIMD and
+   crypto-extension instructions follow DDI 0406's chapter A7 and DDI 0487's
+   F6 pseudocode.
 
-   A branch to a register's or a loaded word's value interworks: bit 0 of
-   the target selects Thumb, which this state cannot hold, and a target with
-   bit 1 set alone is UNPREDICTABLE. So BX and a load
-   into PC take only a target aligned to four bytes, and allow every next
-   state otherwise, as s2n-bignum's models do an instruction whose side
-   condition fails: a proof that reaches one proves nothing.
+   A branch to a register's or a loaded word's value interworks, as
+   `BXWritePC` says: bit 0 of the target is the T bit, which selects T32 at
+   the target with that bit cleared, and a target with bit 1 set alone is
+   UNPREDICTABLE. PC holds the T bit as its bit 0, as LR and BX's operand
+   do, so BX and a load into PC step to an aligned target or to one with
+   bit 0 set (`aarch32_bx_target`), and allow every next state otherwise,
+   as s2n-bignum's models do an instruction whose side condition fails: a
+   proof that reaches one proves nothing. The fetch takes only an aligned
+   PC, so a state in T32 steps nowhere: a proof ends there, as a
+   subroutine's return to a T32 caller does, which is all a T32 caller
+   needs of A32 code.
 
    Unaligned word loads and stores are architectural on ARMv7 and later when
    SCTLR.A is clear, as Linux and Android leave it at user level, so LDR and
@@ -755,12 +761,18 @@ let aarch32_BL = define
          PC := pc_next ,,
          events := CONS (EventJump (pc,pc_next)) (read events s)) s`;;
 
+(* Where BX and a load into PC may go: an A32 address, aligned to four
+   bytes, or a T32 one, whose bit 0 is the T bit. *)
+
+let aarch32_bx_target = define
+ `aarch32_bx_target (a:int32) <=> aligned 4 a \/ bit 0 a`;;
+
 let aarch32_BX = define
  `aarch32_BX Rm =
     \s:aarch32state.
         let pc = word_sub (read PC s) (word 4) in
         let pc_next:int32 = read Rm s in
-        (if aligned 4 pc_next then
+        (if aarch32_bx_target pc_next then
            PC := pc_next ,,
            events := CONS (EventJump (pc,pc_next)) (read events s)
          else ASSIGNS entirety) s`;;
@@ -851,7 +863,7 @@ let aarch32_LDR_PC = define
         let pc_next:int32 = read (memory :> bytes32 addr) s in
         (if aarch32_nowrap addr 4 then
            if aarch32_condition cond s then
-             if aligned 4 addr /\ aligned 4 pc_next then
+             if aligned 4 addr /\ aarch32_bx_target pc_next then
                PC := pc_next ,,
                events := CONS (EventJump (pc,pc_next))
                               (CONS (EventLoad (addr,4)) (read events s)) ,,
@@ -965,7 +977,7 @@ let aarch32_LDM_PC = define
         let pc_next:int32 = read (memory :> bytes32 (word_add base pcoff)) s in
         (if aarch32_nowrap (word_add base off) len then
            if aarch32_condition cond s then
-             if aligned 4 base /\ aligned 4 pc_next then
+             if aligned 4 base /\ aarch32_bx_target pc_next then
                aarch32_loads regs base off s
                 (PC := pc_next ,,
                  events := CONS (EventJump (pc,pc_next))

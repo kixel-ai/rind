@@ -7,7 +7,8 @@ the checks are thinnest. Each section is a map: it says what holds and
 links the document with the detail.
 
 Report a vulnerability as [SECURITY.md](SECURITY.md) says, never in an issue
-or pull request.
+or pull request. What the formal proofs trust, on one page, is [the TCB & Axiom
+Ledger](proofs/README.md#tcb--axiom-ledger).
 
 ## Scope
 
@@ -274,8 +275,8 @@ establishes, and what it does not:
 ## Where the checks are thinnest
 
 Built from TESTING.md's tables, ALGORITHMS.md's ✓ marks,
-`benchmarks/verified.toml`, and the nightly coverage run of 2026-11-13 at
-`67a476ff`. Every primitive has a differential test and vectors, but for
+`benchmarks/verified.toml`, and the nightly coverage gate's
+`admin/coverage.allow`. Every primitive has a differential test and vectors, but for
 random bytes, which have neither, and the constant-time compare, which has
 no published vectors. These are the places where a check is weak, and what
 still reaches each.
@@ -327,36 +328,44 @@ Constant time is checked by no tool on:
   which ctgrind, `admin/ct-sde`, and `admin/ct-qemu` cover for one or two
   secrets.
 
-Functions no test runs, from the nightly coverage report: in the `rind`
-crate, 80 of 2,889 on Linux and 76 of 2,589 on macOS, most in `high/`
-(`hpke.rs`, `spake2plus.rs`, `blind_rsa.rs`, `oprf.rs`, `vrf.rs`, and
-`signature.rs`); and in the adapters and bindings, 127 in rind-aws-lc-rs, 33
-in rind-ring, 23 in rind-python, and 12 or fewer in each of the rest.
+Functions no test runs: the nightly `coverage` workflow fails on a
+published function that no tier runs, unless `admin/coverage.allow` gives
+a reason. It allows the unpublished rind-fips and rind-openssl and rind's
+FIPS code, which only rind-fips runs; the decryption keys' wipes that drop
+glue never reaches; error arms for failures no test can cause; and pyrind's
+and rind-dart's functions their 0.4 reshapes rewrite, which
 [Every published function runs under a test](/quest/m2/confidence/uncovered-functions.md)
-closes them. The report's "Measure coverage" step lists each file.
+then tests.
 
 ## `unsafe`
 
-`unsafe` appears only in `low`, the FIPS build's DRBG handle, the bindings,
-rind-openssl, and test code. Every block in `rind`, rind-dart, and
-rind-openssl carries a `SAFETY:` comment, which clippy's
+`unsafe` appears only in `low`, the FIPS build's DRBG handle, rind-aws-lc-rs's
+KEM keys, the bindings, rind-openssl, and test code. Every block in `rind`,
+rind-dart, and rind-openssl carries a `SAFETY:` comment, which clippy's
 `undocumented_unsafe_blocks` lint enforces in CI.
-Counted outside comments and literals by `admin/audit unsafe` at `2abc90e9`:
+CI's `admin/audit check` fails when `unsafe` (outside comments and literals)
+appears in an area the table does not name, or an area it names holds none.
+`admin/audit unsafe` prints each area's current count; the table leaves the
+counts out, since nearly every change to `low` moves them:
 
-| Area | `unsafe` | What it is | What justifies it |
-|---|---|---|---|
-| `rind/src/low/x86_64` | 453 | `asm!`, naked functions, and intrinsics | [`rind::doc::inline_assembly_safety`](rind/src/low/inline_assembly_safety.rs), with the calling-convention, bounds, and `admin/prove bytes` checks above |
-| `rind/src/low/aarch64` | 304 | the same | the same |
-| `rind/src/low/arm` | 89 | `global_asm!` and the calls into it | the same |
-| `rind/src/low/generic` | 22 | SSE2 intrinsics in `aes_nohw`, `ReuseCache`'s one-time initialization, the volatile wipe, a cast between same-layout arrays, and MD5's empty `asm!` barrier | each block's `SAFETY:` comment; Miri checks `ReuseCache` and the wipe |
-| `rind/src/low/portable` | 3 | volatile writes and reads for the wipe and the constant-time compare | the same |
-| other `rind/src/low` files | 89 | test harnesses (`abi`, `guard_pages`, `ct_binsec`, `tests`, `vartime_planted`), the `asm_call!` macro, and `Mcdt`'s MXCSR loads and `cpuid` | test code, but for the macro and `Mcdt`, which `SAFETY:` comments and `admin/ct-vartime` cover |
-| `rind/src/mid` | 2 | a test's call into aws-lc | test code |
-| `rind/src` | 10 | the FIPS build's DRBG handle, its test's `fork`, and a test helper | `SAFETY:` comments |
-| `rind-dart` | 235 | the C ABI Dart's FFI calls | `SAFETY:` comments, `dart test`, and ctgrind over its exports |
-| `rind-python` | 6 | Python's buffer protocol | `SAFETY:` comments |
-| `rind-openssl` | 245 | the C ABI OpenSSL's core calls, and the `OSSL_PARAM` arrays it passes | `SAFETY:` comments, `fuzz::openssl`, and OpenSSL's own tests with it loaded |
-| `rind-fips` | 608 | the unpublished FIPS module's C ABI | out of scope until published |
+<!-- admin/audit unsafe: begin -->
+| Area | What it is | What justifies it |
+|---|---|---|
+| `rind/src/low/x86_64` | `asm!`, naked functions, and intrinsics | [`rind::doc::inline_assembly_safety`](rind/src/low/inline_assembly_safety.rs), with the calling-convention, bounds, and `admin/prove bytes` checks above |
+| `rind/src/low/aarch64` | the same | the same |
+| `rind/src/low/arm` | `global_asm!` and the calls into it | the same |
+| `rind/src/low/generic` | SSE2 intrinsics in `aes_nohw`, Argon2's memory of blocks set one at a time, `ReuseCache`'s one-time initialization, the volatile wipe, a cast between same-layout arrays, the link section that puts SHA-256's constants in ESP-IDF's internal RAM, and MD5's empty `asm!` barrier | each block's `SAFETY:` comment; Miri checks `ReuseCache` and the wipe |
+| `rind/src/low/portable` | volatile writes and reads for the wipe and the constant-time compare, and Xtensa `asm!` in SHA-256 for ESP-IDF | the same |
+| other `rind/src/low` files | test harnesses (`abi`, `guard_pages`, `ct_binsec`, `vartime_planted`), the `asm_call!` macro, and `Mcdt`'s MXCSR loads and `cpuid` | test code, but for the macro and `Mcdt`, which `SAFETY:` comments and `admin/ct-vartime` cover |
+| `rind/src/mid` | a test's call into aws-lc | test code |
+| `rind/src/fips_rng.rs` | the FIPS build's DRBG handle and its test's `fork` | `SAFETY:` comments |
+| `rind/src/test.rs` | a test helper | `SAFETY:` comments |
+| `rind-aws-lc-rs/src` | `Send` and `Sync` for the KEM keys, bounded as aws-lc-rs bounds them | `SAFETY:` comments, and a compile-time check that what the keys hold is `Send` and `Sync` |
+| `rind-dart` | the C ABI Dart's FFI calls | `SAFETY:` comments, `dart test`, and ctgrind over its exports |
+| `rind-python` | Python's buffer protocol | `SAFETY:` comments |
+| `rind-openssl` | the C ABI OpenSSL's core calls, and the `OSSL_PARAM` arrays it passes | `SAFETY:` comments, `fuzz::openssl`, and OpenSSL's own tests with it loaded |
+| `rind-fips` | the unpublished FIPS module's C ABI | out of scope until published |
+<!-- admin/audit unsafe: end -->
 
-The rest, in `rind/tests`, rind-rcgen's tests, the fuzz targets, `admin`,
-and the unpublished bench, timing, and cpuid crates, is test code or tooling.
+The rest, in each crate's `tests`, the fuzz targets, `admin`, and the
+unpublished ACVP, bench, timing, and cpuid crates, is test code or tooling.
