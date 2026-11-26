@@ -8,6 +8,7 @@ proofs/Rind/*/Types.lean
 proofs/Rind/*/Funs.lean
 proofs/Rind/*/Kdf/Types.lean
 proofs/Rind/*/Kdf/Funs.lean
+proofs/Rind/Aarch64/X25519Bytes.lean
 proofs/Rind/Aarch64/X25519.lean
 proofs/Rind/Aarch64/P384.lean
 proofs/Rind/Aarch64/P384Dispatch.lean
@@ -39,6 +40,7 @@ proofs/Rind/Aarch64/HkdfAes.lean
 proofs/Rind/Aarch64/AesModesApi.lean
 proofs/Rind/Aarch64/AesKw.lean
 proofs/Rind/Aarch64/Pbkdf2.lean
+proofs/Rind/Aarch64/MlKemTables.lean
 proofs/Rind/Portable/QuicDispatch.lean
 proofs/Rind/Portable/DigestAlgorithm.lean
 proofs/Rind/Portable/DigestDispatch.lean
@@ -65,6 +67,11 @@ proofs/Rind/Aarch64/P384Ecdsa.lean
 proofs/Rind/Aarch64/P384Signature.lean
 proofs/Rind/Aarch64/MlKemCoding.lean
 proofs/Rind/Armv7/QuicDispatch.lean
+proofs/Rind/Armv7/Dispatch.lean
+proofs/Rind/Armv7/P256Dispatch.lean
+proofs/Rind/Armv7/P384Dispatch.lean
+proofs/Rind/Armv7/X25519Bytes.lean
+proofs/Rind/Armv7/X25519.lean
 proofs/Rind/Armv7/ChaCha20.lean
 patch/*/Cargo.lock
 __pycache__/
