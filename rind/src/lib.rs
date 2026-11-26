@@ -781,7 +781,9 @@ pub mod spake2plus {
 /// with the server's setup allows an offline guessing attack, each guess
 /// paced by Argon2id; a record alone does not, but it does let its holder
 /// tell the account exists. A [`opaque::ServerSetup`] answers an unknown
-/// account indistinguishably from a registered one. Each side's state is a
+/// account indistinguishably from a registered one, if the caller's lookup
+/// does not reveal whether the account exists (see
+/// [`opaque::ServerSetup::login`]). Each side's state is a
 /// type its next step consumes, so no step runs twice or out of order, but
 /// nothing stops a client from sending the same KE1 again, or from stopping
 /// after KE2 so that [`opaque::ServerLogin::finish`] never runs: rate-limit
