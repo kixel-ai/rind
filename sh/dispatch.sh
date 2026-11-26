@@ -139,8 +139,9 @@ push_paths() {
 
 # The merge queue's build gates on checks that otherwise run only in a
 # workflow of their own, when the group touches their inputs.
-# The group's build is the one self-hosted job queue-build.yml runs, on x86_64,
-# so `vg` checks only x86_64's code; the nightly `prove` covers aarch64's.
+# Only the group's x86_64 build sets CHECK_QUEUE (its aarch64 jobs run `rs`
+# alone), so `vg` checks only x86_64's code; the nightly `prove` covers
+# aarch64's.
 if [[ "$action" == ci && -n "${CHECK_QUEUE:-}" ]]; then
     # pyca/verified-garbage's code against its Lean models, as `prove`'s vg
     # job runs it, with a fixed seed, on the paths that start `prove` on
@@ -160,7 +161,7 @@ if [[ "$action" == ci && -n "${CHECK_QUEUE:-}" ]]; then
 fi
 
 # sh/select.sh narrows this to the changed crates and their dependents.
-module rs '^(rind[^/]*/|fuzz/|thirdparty/|Cargo\.(toml|lock)$|\.rustfmt(\.unstable)?\.toml$)' \
+module rs '^(rind[^/]*/|fuzz/|thirdparty/|Cargo\.(toml|lock)$|\.rustfmt(\.unstable)?\.toml$|flake\.(nix|lock)$)' \
     tools='cargo jq rustfmt-unstable' check-tools='cargo-nextest clippy-driver' compiles check fix
 # rind's aarch64, armv7, portable, and wasm32 builds, which the host's own
 # build skips, and which a toolchain bump can break. A change under one
