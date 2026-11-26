@@ -443,7 +443,8 @@ def low.aarch64.aes_cbc.aese_chained (y b : core.core_arch.arm_shared.neon.uint8
   core.core_arch.arm_shared.neon.generated.vaeseq_u8 y b
 
 /-! s2n-bignum's ML-KEM polynomial routines: the NTTs, mulcache, and
-sampler behind wrappers that pass their tables, the rest called directly. -/
+sampler behind wrappers that pass their tables, the rest called directly,
+and mlkem-native's NEON ciphertext compression. -/
 
 opaque low.aarch64.mlkem.mlkem_ntt
   : Array Std.I16 256#usize → Result (Array Std.I16 256#usize)
@@ -477,6 +478,18 @@ opaque low.aarch64.mlkem_tobytes.mlkem_tobytes
 
 opaque low.aarch64.mlkem_tomont.mlkem_tomont
   : Array Std.I16 256#usize → Result (Array Std.I16 256#usize)
+
+opaque low.aarch64.mlkem.mlkem_compress_d4
+  : Array Std.U8 128#usize → Array Std.I16 256#usize → Result (Array Std.U8 128#usize)
+
+opaque low.aarch64.mlkem.mlkem_compress_d5
+  : Array Std.U8 160#usize → Array Std.I16 256#usize → Result (Array Std.U8 160#usize)
+
+opaque low.aarch64.mlkem.mlkem_compress_d10
+  : Array Std.U8 320#usize → Array Std.I16 256#usize → Result (Array Std.U8 320#usize)
+
+opaque low.aarch64.mlkem.mlkem_compress_d11
+  : Array Std.U8 352#usize → Array Std.I16 256#usize → Result (Array Std.U8 352#usize)
 
 /-! pyca/verified-garbage's ML-KEM-768 routines, behind their Rust wrappers,
 whose contracts `Rind.Aarch64.VgMlKem` states, and the check for the SHA-3
