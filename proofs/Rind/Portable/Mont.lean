@@ -3004,4 +3004,92 @@ theorem mont_mul_limbs_loop_spec (x y m : Slice U64) (n0 : U64) (n : Usize) (hn 
       done
   · exact ⟨hend, hi, hinv⟩
 
+/-- A Montgomery product's last step: `V = R + 2^(64k) T` below `2m` less
+`m` where `T` is set or `R` is not below `m` gives `V mod m`. -/
+theorem cond_sub {R T M Bk r1 b bel : Nat} (hRlt : R < Bk) (hMk : M < Bk) (hr1 : r1 < Bk) (hT : T ≤ 1)
+    (hX : R + Bk * T < 2 * M) (hb : b ≤ 1) (hbel : bel = if R < M then 1 else 0)
+    (h : (r1 : Int) - Bk * b = R - (if T = 0 ∧ bel = 1 then 0 else M)) : r1 = (R + Bk * T) % M := by
+  have hM0 : 0 < M := by omega
+  rcases (show T = 0 ∨ T = 1 by omega) with ht | ht
+  · subst ht
+    simp only [mul_zero, add_zero] at hX ⊢
+    by_cases hRM : R < M
+    · have hb1 : bel = 1 := by rw [hbel]; simp [hRM]
+      simp only [hb1, and_self, ↓reduceIte, Nat.cast_zero, sub_zero] at h
+      rw [Nat.mod_eq_of_lt hRM]
+      rcases (show b = 0 ∨ b = 1 by omega) with rfl | rfl <;> push_cast at h <;> omega
+    · have hb0 : bel = 0 := by rw [hbel]; simp [hRM]
+      simp only [hb0, zero_ne_one, and_false, ↓reduceIte] at h
+      rw [Nat.mod_eq_sub_mod (by omega), Nat.mod_eq_of_lt (by omega)]
+      rcases (show b = 0 ∨ b = 1 by omega) with rfl | rfl <;> push_cast at h <;> omega
+  · subst ht
+    simp only [one_ne_zero, false_and, ↓reduceIte] at h
+    simp only [mul_one] at hX ⊢
+    rw [Nat.mod_eq_sub_mod (by omega), Nat.mod_eq_of_lt (by omega)]
+    rcases (show b = 0 ∨ b = 1 by omega) with rfl | rfl <;> push_cast at h <;> omega
+
+/-- `mont_mul_limbs`: CIOS's `x y / 2^(64k) mod m` in `t`'s low `k` limbs,
+for `t` of `k + 2` zero limbs. -/
+theorem mont_mul_limbs_spec (t x y m : Slice U64) (n0 : U64) (hk1 : 1 ≤ m.length)
+    (hx : x.length = m.length) (hy : y.length = m.length) (ht : t.val = List.replicate (m.length + 2) 0#u64)
+    (hmax : m.length + 2 ≤ Usize.max) (hY : wordsNat y.val < wordsNat m.val)
+    (hn0 : (m.val[0]!.val * n0.val + 1) % 2 ^ 64 = 0) :
+    low.generic.limb64.mont.mont_mul_limbs t x y m n0 ⦃ r =>
+      r.length = m.length + 2 ∧ wordsNat (r.val.take m.length) < wordsNat m.val ∧
+        wordsNat (r.val.take m.length) * 2 ^ (64 * m.length) % wordsNat m.val =
+          wordsNat x.val * wordsNat y.val % wordsNat m.val ⦄ := by
+  unfold low.generic.limb64.mont.mont_mul_limbs
+  have hmL : m.val.length = m.length := rfl
+  have hxL : x.val.length = m.length := hx
+  have hM0 : 0 < wordsNat m.val := by omega
+  step with mont_mul_limbs_loop_spec x y m n0 m.len (by simp) hx hy hk1 hmax hY hn0
+    { start := 0#usize, «end» := m.len } t (by simp) (by simp)
+    ⟨by simp [ht], by rw [ht, List.take_replicate, wordsNat_replicate_zero]; omega, 0, by simp,
+      by simp [ht, List.take_replicate, wordsNat_replicate_zero, wordsNat_nil]⟩ as ⟨t1, hI⟩
+  obtain ⟨ht1l, hV, Q, hQ, hVQ⟩ := hI
+  rw [List.take_of_length_le (l := x.val) (by omega)] at hVQ
+  have ht1L : t1.val.length = m.length + 2 := ht1l
+  step as ⟨s, hs, hsl⟩
+  have hsv : s.val = t1.val.take m.length := by rw [hs]; simp [List.slice]
+  have hsL : s.length = m.length := by simp only [Slice.length]; rw [hsv, List.length_take]; omega
+  step with cmp_lt_limbs_spec s m (by rw [hsL]) as ⟨below, hbelow⟩
+  step as ⟨tk, htk⟩
+  simp only [lift, bind_ok]
+  step as ⟨s1, back, hs1, hs1l, hback⟩
+  have hs1v : s1.val = t1.val.take m.length := by rw [hs1]; simp [List.slice]
+  have hs1L : s1.length = m.length := by simp only [Slice.length]; rw [hs1v, List.length_take]; omega
+  have htk' : tk = t1.val[m.length]! := by rw [htk, ← getElem!_pos]; simp
+  set R := wordsNat (t1.val.take m.length) with hR
+  set M := wordsNat m.val with hMdef
+  have hRlt : R < 2 ^ (64 * m.length) := by
+    have := wordsNat_lt' (t1.val.take m.length); rwa [List.length_take, Nat.min_eq_left (by omega)] at this
+  have hVsplit := wordsNat_take_succ' t1.val m.length (by omega)
+  rw [← htk'] at hVsplit
+  have hMk : M < 2 ^ (64 * m.length) := by have := wordsNat_lt' m.val; rwa [hmL] at this
+  have htkb : tk.val ≤ 1 := by
+    by_contra h
+    have : 2 ^ (64 * m.length) * 2 ≤ 2 ^ (64 * m.length) * tk.val := Nat.mul_le_mul_left _ (by omega)
+    omega
+  have hbel : below.val ≤ 1 := by rw [hbelow]; split <;> simp
+  have hbit : (tk ||| (below ^^^ 1#u64)).val ≤ 1 := by
+    rw [or_not_val _ _ htkb hbel]; split <;> simp
+  step with sub_limbs_masked_spec s1 m _ (neg_bit_mask _ hbit) (by rw [hs1L]) as ⟨r1, hr1l, b, hb, hr1⟩
+  have hmasked : masked (core.num.U64.wrapping_sub 0#u64 (tk ||| (below ^^^ 1#u64))) M =
+      if tk.val = 0 ∧ below.val = 1 then 0 else M := by
+    unfold masked
+    rw [neg_bit_val _ hbit, or_not_val _ _ htkb hbel]
+    by_cases hc : tk.val = 0 ∧ below.val = 1 <;> simp [hc]
+  rw [hmasked, hs1L, hs1v, ← hR] at hr1
+  rw [hsv, ← hR] at hbelow
+  have hr1L : r1.val.length = m.length := by simp only [Slice.length] at hr1l hs1L; omega
+  have hr1lt : wordsNat r1.val < 2 ^ (64 * m.length) := by have := wordsNat_lt' r1.val; rwa [hr1L] at this
+  have hR1 := cond_sub hRlt hMk hr1lt htkb (by rw [← hVsplit]; exact hV) hb hbelow hr1
+  rw [← hVsplit] at hR1
+  have hbv : (back r1).val = r1.val ++ t1.val.drop m.length := by
+    rw [hback, setSlice_eq _ _ _ (by omega)]; simp [hr1L]
+  refine ⟨?_, ?_, ?_⟩
+  · simp only [Slice.length]; rw [hbv, List.length_append, hr1L, List.length_drop]; omega
+  · rw [hbv, List.take_left' hr1L, hR1]; exact Nat.mod_lt _ hM0
+  · rw [hbv, List.take_left' hr1L, hR1, Nat.mod_mul_mod, mul_comm, hVQ, Nat.add_mul_mod_self_right]
+
 end rind.portable
