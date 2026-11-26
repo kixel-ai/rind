@@ -489,6 +489,11 @@ step() {
                     rest+=("${packages[i]}")
                 fi
             done
+            if [[ -n "$rind" || ${#packages[@]} -eq 0 || " ${packages[*]} " == *" --workspace "* ]]; then
+                # A unit test admin/test-scope.toml names may have been
+                # renamed by an edit that selects no `scope` module.
+                run python3 admin/test-scope units
+            fi
             if [[ "$action" == check && -n "$rind" ]]; then
                 filter=$(python3 admin/test-scope args "$changed" "$merge_base") || return 1
             fi

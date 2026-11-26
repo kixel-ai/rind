@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 # Usage: admin/test-scope args CHANGED_FILE MERGE_BASE
+#        admin/test-scope units
 #        admin/test-scope check
 #
 # Scopes `just check`'s rind tests to the primitive families a diff touches,
@@ -13,6 +14,10 @@
 # every test, when a changed path under rind/ lies outside rind/src/{low,mid,
 # high}/, belongs to no family, or changes a public item's signature in mid/
 # or high/, whose change can break a test binary the scoped run never builds.
+#
+# `units` fails when a [units] name's function is gone from its module's
+# source, which a rename in rind/src/ does without triggering `check`; `just
+# check` and `just ci` run it on every change to rind.
 #
 # `check` fails unless the map covers every test and file: every test under
 # rind/tests/ is listed, every listed test and unit test exists, every family
@@ -199,10 +204,14 @@ def missing_units(units):
     return missing
 
 
-def args_command(changed_file, merge_base):
-    families, units, tests = load()
+def units_command():
+    _, units, _ = load()
     if missing := missing_units(units):
         sys.exit("\n".join(f"error: {MAP.name}: [units] names {name}, which its module no longer defines" for name in missing))
+
+
+def args_command(changed_file, merge_base):
+    families, units, tests = load()
     changed = [line for line in pathlib.Path(changed_file).read_text().splitlines() if line]
     touched, why = scope(families, changed, merge_base)
     if touched is None:
@@ -300,10 +309,12 @@ def main():
     match sys.argv[1:]:
         case ["args", changed_file, merge_base]:
             args_command(changed_file, merge_base)
+        case ["units"]:
+            units_command()
         case ["check"]:
             check_command()
         case _:
-            sys.exit("usage: admin/test-scope args CHANGED_FILE MERGE_BASE | check")
+            sys.exit("usage: admin/test-scope args CHANGED_FILE MERGE_BASE | units | check")
 
 
 if __name__ == "__main__":
