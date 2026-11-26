@@ -173,6 +173,18 @@ variable (s : VG.X86_64.State)
 @[simp] theorem xmm_setMem (m : Mem) : (setMem s m).xmm = s.xmm := rfl
 @[simp] theorem others_setMem (m : Mem) : others (setMem s m) = others s := rfl
 
+@[simp] theorem gpr_execImul (d r r' : Reg) : (execImul d r s).gpr r' =
+    if r' = d then s.gpr d * s.gpr r else s.gpr r' := by
+  simp only [execImul, VG.X86_64.State.setReg, VG.X86_64.State.setFlags]
+  split_ifs
+  · rw [BitVec.ofInt_mul, BitVec.ofInt_toInt, BitVec.ofInt_toInt]
+  · rfl
+@[simp] theorem mem_execImul (d r : Reg) : (execImul d r s).mem = s.mem := rfl
+@[simp] theorem rd_execImul (d r : Reg) : (execImul d r s).rd = s.rd := rfl
+@[simp] theorem wr_execImul (d r : Reg) : (execImul d r s).wr = s.wr := rfl
+@[simp] theorem xmm_execImul (d r : Reg) : (execImul d r s).xmm = s.xmm := rfl
+@[simp] theorem others_execImul (d r : Reg) : others (execImul d r s) = others s := rfl
+
 variable (r : Reg)
 @[simp] theorem gpr_execMul (r' : Reg) : (execMul r s).gpr r' =
     if r' = .rdx then mulHi (s.gpr .rax) (s.gpr r) else if r' = .rax then mulLo (s.gpr .rax) (s.gpr r)
@@ -284,9 +296,17 @@ theorem disp_pos (b : BitVec 64) (L : Nat) (h : L % 8 = 0 ∧ 0 < L ∧ L < 2 ^ 
   simp only [BitVec.toNat_mul, BitVec.toNat_ofNat]
   omega
 
-theorem ofNat_add_ofNat (n a c : Nat) :
-    BitVec.ofNat 64 (n + a) + BitVec.ofNat 64 c = BitVec.ofNat 64 (n + (a + c)) := by
-  rw [BitVec.ofNat_add_ofNat, Nat.add_assoc]
+theorem ea_comb (b x y : BitVec 64) : b + x * 8#64 + y * 8#64 = b + (x + y) * 8#64 := by
+  rw [BitVec.add_mul, BitVec.add_assoc]
+
+theorem ofNat_add_pos (n L : Nat) (_h : L < 2 ^ 63) :
+    BitVec.ofNat 64 n + BitVec.ofNat 64 L = BitVec.ofNat 64 (n + L) := BitVec.ofNat_add_ofNat ..
+
+theorem ofNat_add_neg (n L : Nat) (h : 2 ^ 63 ≤ L ∧ L < 2 ^ 64 ∧ 2 ^ 64 - L ≤ n) :
+    BitVec.ofNat 64 n + BitVec.ofNat 64 L = BitVec.ofNat 64 (n - (2 ^ 64 - L)) := by
+  apply BitVec.eq_of_toNat_eq
+  simp only [BitVec.toNat_add, BitVec.toNat_ofNat]
+  omega
 
 theorem ofNat_sub_ofNat (n a c : Nat) (h : c ≤ a) :
     BitVec.ofNat 64 (n + a) - BitVec.ofNat 64 c = BitVec.ofNat 64 (n + (a - c)) := by
