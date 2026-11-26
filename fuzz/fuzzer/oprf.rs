@@ -11,7 +11,8 @@
 //! the same key, and rind evaluates the crate's clients' blinded elements to
 //! what they finalize to the direct outputs. An untampered exchange
 //! finalizes to the server's direct evaluation of each input. A tampered
-//! element is refused exactly when the crate cannot decode it, and a
+//! element is refused exactly when the crate cannot decode it, or, on the NIST
+//! suites, when its tag is not one RFC 9497 allows, and a
 //! tampered exchange is refused, or, in the OPRF mode, which cannot tell,
 //! finalizes to another output, rather than panicking or finalizing to the
 //! right one.
@@ -94,8 +95,8 @@ fuzz_target!(|input: Input| {
 
 /// Whether `element` has a tag RFC 9497 3.3.2 allows: the NIST suites encode
 /// an element SEC1-compressed, tagged `0x02` or `0x03`, but the crates also
-/// decode the compact tag `0x05`, as an element with an even `y`, which rind
-/// refuses. ristretto255 has no tag.
+/// decode the compact tag `0x05`, an `x` alone, which rind refuses.
+/// ristretto255 has no tag.
 fn tagged(index: usize, element: &[u8]) -> bool {
     index == 0 || matches!(element.first(), Some(0x02 | 0x03))
 }

@@ -17,7 +17,8 @@
 //! the reference's signature, which both verify. Too few signers, a
 //! tampered commitment, or a tampered share is refused where its step
 //! documents, rather than panicking or aggregating, and a tampered
-//! signature verifies on rind exactly when it does on the reference.
+//! signature verifies on rind exactly when it does on the reference, unless
+//! P-256's `R` takes a tag RFC 9591 forbids, which rind refuses.
 //!
 //! On armv7 and the portable backend, frost-ed25519 and frost-ristretto255
 //! run curve25519-dalek, as rind does, so there only frost-p256 is
@@ -68,8 +69,8 @@ fuzz_target!(|input: Input| {
 
 /// One round of FROST in `$suite`, against `$frost`. `$sec1` is whether the
 /// suite encodes an element SEC1-compressed, as RFC 9591 6.4 does P-256's,
-/// which `frost-p256` also decodes in the compact tag `0x05`, as an element
-/// with an even `y`. rind refuses it.
+/// which `frost-p256` also decodes in the compact tag `0x05`, an `x` alone.
+/// rind refuses it.
 macro_rules! differential {
     ($frost:ident, $suite:expr, $sec1:expr, $input:expr) => {{
         use std::collections::BTreeMap;
