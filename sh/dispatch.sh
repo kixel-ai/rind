@@ -440,6 +440,20 @@ names() {
     return 1
 }
 
+# Whether the Cargo arguments, as sh/select.sh prints them, select a target
+# `--tests` builds, which `cargo metadata` lists with `test` set. A build of
+# none compiles no unit, so its `--timings` fails with "no timing data found".
+has_tests() {
+    local arg crates=()
+    (($#)) || return 0
+    for arg; do
+        [[ "$arg" != --workspace ]] || return 0
+        [[ "$arg" == -p ]] || crates+=("$arg")
+    done
+    cargo metadata --format-version 1 --no-deps --locked |
+        jq -e --args '[.packages[] | select(.name | IN($ARGS.positional[])) | .targets[] | select(.test)] | length > 0' "${crates[@]}" >/dev/null
+}
+
 # One module's check or fix, run through `run`.
 step() {
     local listed=$logs/$2.files packages libs backends target targets
@@ -479,9 +493,10 @@ step() {
             # CI keeps Cargo's per-crate build timings of the two main builds,
             # which queue-build.yml uploads, so a compile regression shows
             # without profiling by hand. The test build's is taken by whichever
-            # command builds the test binaries first.
+            # command builds the test binaries first, and a selection with no
+            # test targets takes it from the all-targets build instead.
             local timings=()
-            ! github || timings=(--timings)
+            ! github || ! has_tests "${packages[@]}" || timings=(--timings)
             # A unit test admin/test-scope.toml names may have been renamed by
             # an edit that selects no `scope` module. Listed with the package
             # and target arguments of the run that tests rind, so the two
