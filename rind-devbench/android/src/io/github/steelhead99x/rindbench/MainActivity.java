@@ -52,6 +52,8 @@ public class MainActivity extends Activity {
     private View resultsCard;
     private TextView picksLbl;
     private boolean wide, showingRun;
+    // The window is too short for the picker card even empty: fitPicker collapses it.
+    private boolean squeezed;
     private Flow libFlow, secFlow;
     private TextView deviceLbl, statusLbl, currentLbl, scoreLbl, behindLbl, collectorLbl;
     private ProgressBar progress;
@@ -316,10 +318,14 @@ public class MainActivity extends Activity {
      * The run card's natural height is measured and reserved first; on a
      * narrow screen the run panel below then keeps some room, though never
      * ahead of the picker's minimum, and the picker never takes from the
-     * controls to reach that minimum. Runs after each layout of the body.
+     * controls to reach that minimum. Where even the card's padding and a
+     * strip of chips do not fit, the whole card collapses (a line in the run
+     * panel says so) and comes back once a layout has the room. Runs after
+     * each layout of the body.
      */
     private void fitPicker() {
-        if (pickCard.getVisibility() != View.VISIBLE || body.getHeight() == 0 || leftCol.getWidth() == 0) return;
+        // Folded for a run, the picker is not shown and needs no room.
+        if ((showingRun && !wide) || body.getHeight() == 0 || leftCol.getWidth() == 0) return;
         View run = leftCol.getChildAt(1);
         int colWidth = leftCol.getWidth();
         int cardWidth = pickCard.getWidth() > 0 ? pickCard.getWidth() : colWidth;
@@ -329,12 +335,20 @@ public class MainActivity extends Activity {
         // The run card at its natural height, not the height a full column
         // squeezed it to.
         run.measure(MeasureSpecs.exactly(colWidth), MeasureSpecs.unspecified());
-        int gap = ((LinearLayout.LayoutParams) run.getLayoutParams()).topMargin;
+        // The gap above the run card while the picker shows (foldPicker drops
+        // it while the picker is collapsed).
+        int gap = dp(12);
         // Wide, the column is the body's height; narrow, the column sits above
         // the run panel in the body.
         int room = body.getHeight() - run.getMeasuredHeight() - gap;
         if (!wide) room = Math.max(Math.min(dp(80), room), room - dp(12) - dp(110));
-        int want = natural > room ? Math.max(0, room - pad) : ViewGroup.LayoutParams.WRAP_CONTENT;
+        // Too short for the card's padding and a strip of chips: collapse the
+        // whole card, so its padding cannot push the controls off, until a
+        // later layout has the room again.
+        boolean squeeze = room < pad + dp(32);
+        if (squeeze != squeezed) { squeezed = squeeze; foldPicker(); }
+        if (squeeze) return;
+        int want = natural > room ? room - pad : ViewGroup.LayoutParams.WRAP_CONTENT;
         LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) pickScroll.getLayoutParams();
         if (lp.height != want) { lp.height = want; pickScroll.setLayoutParams(lp); }
     }
@@ -349,11 +363,17 @@ public class MainActivity extends Activity {
      */
     private void foldPicker() {
         boolean fold = showingRun && !wide;
-        pickCard.setVisibility(fold ? View.GONE : View.VISIBLE);
-        picksLbl.setVisibility(fold ? View.VISIBLE : View.GONE);
+        boolean hide = fold || squeezed;
+        pickCard.setVisibility(hide ? View.GONE : View.VISIBLE);
+        // Collapsed before a run, the line says how to get the picker back.
+        if (squeezed && !showingRun) picksLbl.setText("Make the window taller to pick libraries and operations.");
+        picksLbl.setVisibility(hide ? View.VISIBLE : View.GONE);
         // The run card's top margin assumes something above it in the column.
         View run = leftCol.getChildAt(1);
-        if (run != null) ((LinearLayout.LayoutParams) run.getLayoutParams()).topMargin = fold ? 0 : dp(12);
+        if (run != null) {
+            ((LinearLayout.LayoutParams) run.getLayoutParams()).topMargin = hide ? 0 : dp(12);
+            run.requestLayout();
+        }
     }
 
     // ---- the collector fills itself in: USB (adb reverse) first, then the LAN address baked in at build time.
