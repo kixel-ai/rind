@@ -288,9 +288,16 @@ public class MainActivity extends Activity {
         findCollector(null);
     }
 
-    /** Wide screens put the picker and the run side by side; narrow ones stack them. */
+    /**
+     * Wide screens put the picker and the run side by side; narrow ones stack
+     * them. Side by side needs height as well as width: a half-width column
+     * must hold the run card, whose consent line wraps there, and a picker
+     * worth scrolling, so a short landscape phone stacks, where the picker
+     * shrinks and folds away during a run.
+     */
     private void arrange(Configuration c) {
-        wide = c.orientation == Configuration.ORIENTATION_LANDSCAPE && c.screenWidthDp >= 600;
+        wide = c.orientation == Configuration.ORIENTATION_LANDSCAPE && c.screenWidthDp >= 600
+                && c.screenHeightDp >= 480;
         foldPicker();
         body.setOrientation(wide ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL);
         LinearLayout.LayoutParams l, r;
@@ -302,27 +309,39 @@ public class MainActivity extends Activity {
             r = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1); r.topMargin = dp(12);
         }
         leftCol.setLayoutParams(l); resultsCard.setLayoutParams(r);
-        // A cap fitPicker set for a short portrait screen doesn't carry over.
+        // A cap fitPicker set for the other orientation doesn't carry over: the
+        // body's next layout runs fitPicker again for this one.
         LinearLayout.LayoutParams p = (LinearLayout.LayoutParams) pickScroll.getLayoutParams();
         if (p.height != ViewGroup.LayoutParams.WRAP_CONTENT) { p.height = ViewGroup.LayoutParams.WRAP_CONTENT; pickScroll.setLayoutParams(p); }
     }
     @Override public void onConfigurationChanged(Configuration c) { super.onConfigurationChanged(c); arrange(c); }
 
     /**
-     * On a short screen, cap the picker's height so the run controls and some
-     * of the run panel always fit: the chips that do not fit scroll inside the
-     * picker, and the Start button is never pushed off. Runs after each layout
-     * of the body.
+     * Cap the picker's height so the run card (mode, consent, Start/Stop)
+     * always fits below it in its column, wide or narrow: the chips that do
+     * not fit scroll inside the picker, and the controls are never pushed off.
+     * The run card's natural height is measured and reserved first; on a
+     * narrow screen the run panel below then keeps some room, though never
+     * ahead of the picker's minimum, and the picker never takes from the
+     * controls to reach that minimum. Runs after each layout of the body.
      */
     private void fitPicker() {
-        if (wide || pickCard.getVisibility() != View.VISIBLE || body.getHeight() == 0) return;
+        if (pickCard.getVisibility() != View.VISIBLE || body.getHeight() == 0 || leftCol.getWidth() == 0) return;
         View run = leftCol.getChildAt(1);
-        int cardWidth = pickCard.getWidth() > 0 ? pickCard.getWidth() : body.getWidth();
+        int colWidth = leftCol.getWidth();
+        int cardWidth = pickCard.getWidth() > 0 ? pickCard.getWidth() : colWidth;
         int pad = pickCard.getPaddingTop() + pickCard.getPaddingBottom();
         pickChips.measure(MeasureSpecs.exactly(cardWidth - pickCard.getPaddingLeft() - pickCard.getPaddingRight()), MeasureSpecs.unspecified());
         int natural = pickChips.getMeasuredHeight() + pad;
-        int room = body.getHeight() - run.getHeight() - dp(12) - dp(12) - dp(110);
-        int want = natural > room ? Math.max(dp(80), room) - pad : ViewGroup.LayoutParams.WRAP_CONTENT;
+        // The run card at its natural height, not the height a full column
+        // squeezed it to.
+        run.measure(MeasureSpecs.exactly(colWidth), MeasureSpecs.unspecified());
+        int gap = ((LinearLayout.LayoutParams) run.getLayoutParams()).topMargin;
+        // Wide, the column is the body's height; narrow, the column sits above
+        // the run panel in the body.
+        int room = body.getHeight() - run.getMeasuredHeight() - gap;
+        if (!wide) room = Math.max(Math.min(dp(80), room), room - dp(12) - dp(110));
+        int want = natural > room ? Math.max(0, room - pad) : ViewGroup.LayoutParams.WRAP_CONTENT;
         LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) pickScroll.getLayoutParams();
         if (lp.height != want) { lp.height = want; pickScroll.setLayoutParams(lp); }
     }
