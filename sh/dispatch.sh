@@ -49,7 +49,9 @@ all=
 if [[ "$base" == --all ]]; then
     all=1
 else
-    sh/changed.sh "$base" >"$changed"
+    # Resolved once, since the deletions below need it too.
+    merge_base=$(sh/changed.sh --merge-base "$base")
+    sh/changed.sh "$merge_base" >"$changed"
 
     # These files hold the map and the recipes that call it, and match no
     # module, so a change to them would otherwise validate none of it.
@@ -137,8 +139,9 @@ push_paths() {
 
 # The merge queue's build gates on checks that otherwise run only in a
 # workflow of their own, when the group touches their inputs.
-# The group's build is the one self-hosted job queue-build.yml runs, on x86_64,
-# so `vg` checks only x86_64's code; the nightly `prove` covers aarch64's.
+# Only the group's x86_64 build sets CHECK_QUEUE (its aarch64 jobs run `rs`
+# alone), so `vg` checks only x86_64's code; the nightly `prove` covers
+# aarch64's.
 if [[ "$action" == ci && -n "${CHECK_QUEUE:-}" ]]; then
     # pyca/verified-garbage's code against its Lean models, as `prove`'s vg
     # job runs it, with a fixed seed, on the paths that start `prove` on
@@ -158,8 +161,14 @@ if [[ "$action" == ci && -n "${CHECK_QUEUE:-}" ]]; then
 fi
 
 # sh/select.sh narrows this to the changed crates and their dependents.
-module rs '^(rind[^/]*/|fuzz/|thirdparty/|Cargo\.(toml|lock)$|\.rustfmt(\.unstable)?\.toml$)' \
-    tools='cargo jq rustfmt-unstable' check-tools='cargo-nextest clippy-driver' compiles check fix
+module rs '^(rind[^/]*/|fuzz/|thirdparty/|Cargo\.(toml|lock)$|\.rustfmt(\.unstable)?\.toml$|flake\.(nix|lock)$)' \
+    tools='cargo jq rustfmt-unstable' check-tools='cargo-nextest clippy-driver python3' compiles check fix
+# The map admin/test-scope scopes `just check`'s rind tests by, against the
+# tests `cargo nextest list` finds: on a change to the map, its script, or a
+# test, or one adding or deleting a file under rind/src/{low,mid,high}/ (see
+# below), but not an edit there, which changes no mapping.
+module scope '^(admin/test-scope(\.toml)?$|rind/tests/)' \
+    tools='python3 cargo cargo-nextest clippy-driver' compiles check
 # rind's aarch64, armv7, portable, and wasm32 builds, which the host's own
 # build skips, and which a toolchain bump can break. A change under one
 # backend's low/ directory checks only the builds of that backend (see
@@ -216,6 +225,11 @@ module fixtures '^(rind/(src/|Cargo\.toml$|build\.rs$)|rind-rustls/(src/|Cargo\.
 # Advisories, licenses, and sources move with any manifest or the policy.
 module deny '(^|/)Cargo\.(toml|lock)$|^deny\.toml$' \
     tools='cargo-deny' check
+# Audits of the published rind crate's dependencies, which a lockfile or
+# manifest change can add to, against supply-chain/'s audits, imports, and
+# exemptions.
+module vet '(^|/)Cargo\.(toml|lock)$|^supply-chain/' \
+    tools='cargo-vet' check
 # .cargo/mutants.toml's exclusions name mutants by file, line, and function,
 # so moving code can leave one matching nothing.
 module mutants '^(rind[^/]*/src/|\.cargo/mutants\.toml$|admin/mutants$)' \
@@ -223,6 +237,10 @@ module mutants '^(rind[^/]*/src/|\.cargo/mutants\.toml$|admin/mutants$)' \
 # An adapter's manifest holds both its version and its upstream requirement.
 module versions '^(rind-[^/]+/Cargo\.toml$|sh/adapter-versions\.sh$)' \
     tools='cargo jq' check
+# A published crate's public API against the merge-base's: a break needs a `!`
+# mark, and an adapter's one that names it (sh/semver.sh).
+module semver '^(rind[^/]*/(src/|Cargo\.toml$)|sh/semver\.sh$)' \
+    tools='cargo cargo-semver-checks jq' compiles
 # Each adapter's API against its upstream's, which reaches rind only through a
 # lockfile change, as read by the flake's rustdoc. rind-object-store and
 # rind-rand-core have none to copy.
@@ -245,9 +263,20 @@ module compat '^(COMPATIBILITY\.md$|admin/x86-cpus?(/|$))' \
 # close them.
 module bench '^(BENCHMARKS\.md$|README\.md$|benchmarks/|admin/bench-report|quest/)' \
     tools='python3' check
-# The landing page reads and links files across the repository, and its build
-# takes seconds, so it runs on every diff rather than keep a list.
-module site '' \
+# The landing page, on a diff to its own code, the shell and CI setup it builds
+# in, or a repository file site/inputs.txt lists, which it reads or links with
+# an anchor; a diff that deletes or renames a file selects it too (see below),
+# since its link check catches a link to a file that is gone.
+site_inputs=
+while IFS= read -r input; do
+    [[ -n "$input" && "$input" != '#'* ]] || continue
+    [[ "$input" =~ ^[A-Za-z0-9_./-]+$ ]] || {
+        echo "error: site/inputs.txt lists '$input', which sh/dispatch.sh cannot match" >&2
+        exit 2
+    }
+    site_inputs+="|${input//./\\.}\$"
+done <site/inputs.txt
+module site "^(site/|sh/site\.sh$|flake\.(nix|lock)$|\.github/(workflows/pr-check\.yml$|actions/(just|nix)/)$site_inputs)" \
     tools='nix'
 # Quest documents form one graph, so any change validates the whole tree, as
 # does a bump of the flake-pinned validator.
@@ -319,6 +348,21 @@ for word in ${CHECK_MODULES:-}; do
     if [[ "$word" == -* ]]; then skip[$name]=1; else only[$name]=1; fi
 done
 
+# Whether the branch deleted a path, a rename's old one included, which
+# sh/changed.sh lists among the changed ones without saying so.
+deleted=
+[[ -n "$all" ]] || deleted=$(git diff --name-only --no-renames --diff-filter=D "$merge_base")
+
+# Whether the branch added or deleted a file under rind/src/{low,mid,high}/,
+# a rename's two sides included, which can change admin/test-scope's map.
+layout=
+if [[ -z "$all" ]]; then
+    layout=$({
+        git diff --name-only --no-renames --diff-filter=AD "$merge_base"
+        git ls-files --others --exclude-standard
+    } | grep -E '^rind/src/(low|mid|high)/' || true)
+fi
+
 selected=()
 missing=()
 for module in "${modules[@]}"; do
@@ -326,7 +370,8 @@ for module in "${modules[@]}"; do
         continue
     fi
     pattern=${scope[$module]}
-    if [[ -z "$all" && -n "$pattern" ]] && ! grep -qE "$pattern" "$changed"; then
+    if [[ -z "$all" && -n "$pattern" ]] && ! grep -qE "$pattern" "$changed" &&
+        ! [[ "$module" == site && -n "$deleted" ]] && ! [[ "$module" == scope && -n "$layout" ]]; then
         continue
     fi
     # The host's build already covers its own backend. A plain assignment, so
@@ -435,7 +480,24 @@ step() {
     local listed=$logs/$2.files packages libs backends target targets
     case "$1:$2" in
         check:rs)
-            mapfile -t packages < <(sh/select.sh "$changed" "$all")
+            # The local loop leaves out rind's dependents on a change to its
+            # private low-level code (sh/select.sh), and runs only rind's
+            # tests for the primitive families the diff touches
+            # (admin/test-scope); ci runs every test.
+            local select=() rind='' rest=() scoped=() filter='' i
+            [[ "$action" == ci ]] || select=(--no-dependents-on-low)
+            mapfile -t packages < <(sh/select.sh "$changed" "$all" "${select[@]}")
+            for ((i = 0; i < ${#packages[@]}; i++)); do
+                if [[ "${packages[i]}" == -p && "${packages[i + 1]:-}" == rind ]]; then
+                    rind=1
+                    i=$((i + 1))
+                else
+                    rest+=("${packages[i]}")
+                fi
+            done
+            if [[ "$action" == check && -n "$rind" ]]; then
+                filter=$(python3 admin/test-scope args "$changed" "$merge_base") || return 1
+            fi
             # Every member, without `--all`, which would also format the path
             # dependencies outside the workspace: thirdparty/'s vendored
             # forks, which keep their upstream's format.
@@ -449,9 +511,28 @@ step() {
             local RUSTC_WORKSPACE_WRAPPER CARGO_BUILD_WARNINGS=deny
             RUSTC_WORKSPACE_WRAPPER=$(command -v clippy-driver)
             export RUSTC_WORKSPACE_WRAPPER CARGO_BUILD_WARNINGS
+            # A unit test admin/test-scope.toml names may have been renamed by
+            # an edit that selects no `scope` module. Listed with the package
+            # and target arguments of the run that tests rind, so the two
+            # share a build.
+            if [[ -n "$filter" ]]; then
+                run python3 admin/test-scope units -p rind --lib
+            elif [[ -n "$rind" || ${#packages[@]} -eq 0 || " ${packages[*]} " == *" --workspace "* ]]; then
+                run python3 admin/test-scope units "${packages[@]}" --tests
+            fi
             # nextest runs the test binaries in parallel but not doc tests. Like
             # `cargo test`, it passes a selection with no tests.
-            run cargo nextest run "${packages[@]}" --tests --locked --no-tests=warn --cargo-profile test-fast
+            if [[ -n "$filter" ]]; then
+                # The other crates in a run of their own, so the filter never
+                # drops their tests.
+                mapfile -t scoped <<<"$filter"
+                run cargo nextest run -p rind "${scoped[@]}" --locked --no-tests=warn --cargo-profile test-fast
+                if ((${#rest[@]} > 0)); then
+                    run cargo nextest run "${rest[@]}" --tests --locked --no-tests=warn --cargo-profile test-fast
+                fi
+            else
+                run cargo nextest run "${packages[@]}" --tests --locked --no-tests=warn --cargo-profile test-fast
+            fi
             # The local loop stops at the tests but for the FIPS crates' own
             # changes, below; ci goes on.
             if [[ "$action" == ci ]]; then
@@ -516,6 +597,14 @@ step() {
                 # tests' build never shares, so clippy there would only cost.
                 RUSTC_WORKSPACE_WRAPPER='' RUSTDOCFLAGS='--deny warnings' run cargo doc "${libs[@]}" --no-deps --locked --profile test-fast
             fi
+            ;;
+        check:scope)
+            # Under the wrapper and warnings `rs` builds rind's tests with,
+            # so the two share one build.
+            local RUSTC_WORKSPACE_WRAPPER CARGO_BUILD_WARNINGS=deny
+            RUSTC_WORKSPACE_WRAPPER=$(command -v clippy-driver)
+            export RUSTC_WORKSPACE_WRAPPER CARGO_BUILD_WARNINGS
+            run python3 admin/test-scope check
             ;;
         fix:rs)
             mapfile -t packages < <(sh/select.sh "$changed" "$all")
@@ -693,7 +782,12 @@ step() {
             ;;
         check:structure) run admin/structure ;;
         check:deny) run cargo deny --locked check ;;
+        check:vet) run cargo vet --locked ;;
         check:versions) run sh/adapter-versions.sh ;;
+        check:semver)
+            # An unscoped run compares with the default base, not `--all`.
+            if [[ -n "$all" ]]; then run sh/semver.sh; else run sh/semver.sh "$base"; fi
+            ;;
         check:adapters) run python3 admin/adapter-api ;;
         check:quest) run quest check ;;
         check:license) run bash admin/scan-license ;;

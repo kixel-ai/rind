@@ -171,7 +171,8 @@ opaque low.generic.zeroise.zeroise_value {T : Type} (ZeroableInst : low.generic.
   T → Result T
 
 /-! ChaCha20-Poly1305's routines: pyca/verified-garbage's AVX-512 IFMA seal
-and open, behind one wrapper each, which no theorem is about yet; aws-lc's
+and open, behind one wrapper each, whose contracts
+`Rind.X86_64.VgChaCha20Poly1305` restates; aws-lc's
 one-pass seal and open, behind their Rust wrapper, whose contract
 `Rind.X86_64.ChaCha20Poly1305`'s `OnePass` states as a hypothesis; and the
 separate passes CPUs without SSE4.1 run, which no theorem is about. -/
@@ -882,8 +883,8 @@ path from the CPU: with AVX2, s2n-bignum's routines, mlkem-native's code
 with the AVX2 layout's tables, and mlkem-native's AVX2 compression;
 without it, `low::generic::mlkem_poly`, a port of mlkem-native's portable
 C, and for 12-bit unpacking and compression `low::generic::mlkem`'s Rust,
-which `Rind/Aarch64/MlKemGeneric.lean` proves on aarch64; its reordering is
-a no-op, since that path keeps the natural order. -/
+whose unpacking `Rind/Aarch64/MlKemGeneric.lean` proves on aarch64; its
+reordering is a no-op, since that path keeps the natural order. -/
 
 opaque low.x86_64.mlkem.mlkem_ntt
   : Array Std.I16 256#usize → Result (Array Std.I16 256#usize)

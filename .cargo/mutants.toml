@@ -4,6 +4,11 @@
 # Runs each mutant's tests in parallel, in about half `cargo test`'s time.
 test_tool = "nextest"
 
+# A mutant that hangs a test is killed at twice the baseline test run, not the
+# default five times, which the weekly campaign measured at up to an hour each:
+# a mutant that only runs every test, as a missed one does, takes the baseline.
+timeout_multiplier = 2
+
 exclude_globs = [
   # Constants imported with aws-lc's, BoringSSL's, and OpenSSL's assembly,
   # which proofs and differential tests own.
@@ -200,6 +205,7 @@ exclude_re = [
   'rind/src/low/aarch64/aes_gcm\.rs:\d+:\d+: replace \+ with \* in tagged_from$',
   'rind/src/low/aarch64/bignum_copy_row_from_table_mux\.rs:\d+:\d+: replace match guard width\.is_multiple_of\(8\) with false in bignum_copy_row_from_table$',
   'rind/src/low/aarch64/chacha20\.rs:\d+:\d+: delete match arm .* in ChaCha20::cipher$',
+  'rind/src/low/aarch64/chacha20poly1305\.rs:\d+:\d+: replace seal_runs_vg -> bool with (true|false)$',
   'rind/src/low/aarch64/cpu\.rs:\d+:\d+: replace prefetch_ro with \(\)$',
   # Invisible to a test: whether the speculation barrier after setting DIT
   # runs, and which one.
@@ -304,7 +310,7 @@ exclude_re = [
   # Pinned to its line: the `cpu_denied` of a release build or one without
   # an OS, which tests never are. The debug build's, under the same name, is
   # caught.
-  'rind/src/low/mod\.rs:231:\d+: replace cpu_denied -> bool with true$',
+  'rind/src/low/mod\.rs:234:\d+: replace cpu_denied -> bool with true$',
   # The FIPS module's `SystemRandom`, compiled only under `--cfg rind_fips`,
   # which no mutation run sets; `fips_rng`'s tests cover what it calls.
   # Pinned to its line: the other `fill`, under the same name, is caught.
