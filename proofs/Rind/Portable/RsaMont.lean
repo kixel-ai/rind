@@ -8,7 +8,8 @@ open Aeneas Aeneas.Std Result rind.spec rind.spec.rsa
 take, to `MAX_WORDS`: below `SEPARATE` limbs CIOS, and from there the whole
 product, by Karatsuba from `KARATSUBA_MUL` limbs or a square's from
 `KARATSUBA_SQR`, reduced by `redc`. `Rind.Portable.Mont` proves each from
-its loops, so `mont_products` rests on no axiom.
+its loops, so `mont_products` rests on no axiom beyond Lean's own three,
+`propext`, `Classical.choice`, and `Quot.sound`.
 
 The RSA proofs `admin/prove` writes from x86_64's import this as x86_64's
 import theirs, and take from here what x86_64's take from s2n-bignum's

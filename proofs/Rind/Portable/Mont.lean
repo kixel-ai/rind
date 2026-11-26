@@ -1394,7 +1394,7 @@ theorem or_not_val (t c : U64) (ht : t.val ≤ 1) (hc : c.val ≤ 1) :
     rcases (show c.val = 0 ∨ c.val = 1 by omega) with h2 | h2 <;> simp [h1, h2]
 
 /-- `redc`: for `t` below `2^(64p)·m`, `p` limbs beyond the odd `m`'s `k`,
-the `k` limbs from `p` are `t / 2^(64p)` modulo `m`. -/
+the `k` limbs from `p` are `t·2^(-64p)` modulo `m`, the inverse taken modulo `m`. -/
 @[step]
 theorem redc_spec (t m : Slice U64) (n0 : U64) (hk1 : 1 ≤ m.length) (hkt : m.length ≤ t.length)
     (hn0 : (wordsNat m.val * n0.val + 1) % 2 ^ 64 = 0)
@@ -3027,7 +3027,7 @@ theorem cond_sub {R T M Bk r1 b bel : Nat} (hRlt : R < Bk) (hMk : M < Bk) (hr1 :
     rw [Nat.mod_eq_sub_mod (by omega), Nat.mod_eq_of_lt (by omega)]
     rcases (show b = 0 ∨ b = 1 by omega) with rfl | rfl <;> push_cast at h <;> omega
 
-/-- `mont_mul_limbs`: CIOS's `x y / 2^(64k) mod m` in `t`'s low `k` limbs,
+/-- `mont_mul_limbs`: CIOS's `x·y·2^(-64k) mod m` in `t`'s low `k` limbs,
 for `t` of `k + 2` zero limbs. -/
 theorem mont_mul_limbs_spec (t x y m : Slice U64) (n0 : U64) (hk1 : 1 ≤ m.length)
     (hx : x.length = m.length) (hy : y.length = m.length) (ht : t.val = List.replicate (m.length + 2) 0#u64)
@@ -3129,7 +3129,7 @@ theorem join_spec (x z : Slice U64) (h : z.length ≤ x.length) :
   rw [setSlice_zero_full _ _ (by simp [List.slice]; omega)]
   simp [List.slice]
 
-/-- `mont_sqr_limbs`: `x^2 / 2^(64k) mod m` in `t`'s top `k` limbs. -/
+/-- `mont_sqr_limbs`: `x^2·2^(-64k) mod m` in `t`'s top `k` limbs. -/
 theorem mont_sqr_limbs_spec (t x m : Slice U64) (n0 : U64) (hk1 : 1 ≤ m.length) (hk : m.length ≤ 128)
     (hx : x.length = m.length) (ht : t.length = 2 * m.length) (hX : wordsNat x.val < wordsNat m.val)
     (hn0 : (wordsNat m.val * n0.val + 1) % 2 ^ 64 = 0) :
