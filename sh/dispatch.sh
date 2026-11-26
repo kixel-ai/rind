@@ -139,8 +139,9 @@ push_paths() {
 
 # The merge queue's build gates on checks that otherwise run only in a
 # workflow of their own, when the group touches their inputs.
-# The group's build is the one self-hosted job queue-build.yml runs, on x86_64,
-# so `vg` checks only x86_64's code; the nightly `prove` covers aarch64's.
+# Only the group's x86_64 build sets CHECK_QUEUE (its aarch64 jobs run `rs`
+# alone), so `vg` checks only x86_64's code; the nightly `prove` covers
+# aarch64's.
 if [[ "$action" == ci && -n "${CHECK_QUEUE:-}" ]]; then
     # pyca/verified-garbage's code against its Lean models, as `prove`'s vg
     # job runs it, with a fixed seed, on the paths that start `prove` on
@@ -160,7 +161,7 @@ if [[ "$action" == ci && -n "${CHECK_QUEUE:-}" ]]; then
 fi
 
 # sh/select.sh narrows this to the changed crates and their dependents.
-module rs '^(rind[^/]*/|fuzz/|thirdparty/|Cargo\.(toml|lock)$|\.rustfmt(\.unstable)?\.toml$)' \
+module rs '^(rind[^/]*/|fuzz/|thirdparty/|Cargo\.(toml|lock)$|\.rustfmt(\.unstable)?\.toml$|flake\.(nix|lock)$)' \
     tools='cargo jq rustfmt-unstable' check-tools='cargo-nextest clippy-driver' compiles check fix
 # rind's aarch64, armv7, portable, and wasm32 builds, which the host's own
 # build skips, and which a toolchain bump can break. A change under one
@@ -218,6 +219,11 @@ module fixtures '^(rind/(src/|Cargo\.toml$|build\.rs$)|rind-rustls/(src/|Cargo\.
 # Advisories, licenses, and sources move with any manifest or the policy.
 module deny '(^|/)Cargo\.(toml|lock)$|^deny\.toml$' \
     tools='cargo-deny' check
+# Audits of the published rind crate's dependencies, which a lockfile or
+# manifest change can add to, against supply-chain/'s audits, imports, and
+# exemptions.
+module vet '(^|/)Cargo\.(toml|lock)$|^supply-chain/' \
+    tools='cargo-vet' check
 # .cargo/mutants.toml's exclusions name mutants by file, line, and function,
 # so moving code can leave one matching nothing.
 module mutants '^(rind[^/]*/src/|\.cargo/mutants\.toml$|admin/mutants$)' \
@@ -225,6 +231,10 @@ module mutants '^(rind[^/]*/src/|\.cargo/mutants\.toml$|admin/mutants$)' \
 # An adapter's manifest holds both its version and its upstream requirement.
 module versions '^(rind-[^/]+/Cargo\.toml$|sh/adapter-versions\.sh$)' \
     tools='cargo jq' check
+# A published crate's public API against the merge-base's: a break needs a `!`
+# mark, and an adapter's one that names it (sh/semver.sh).
+module semver '^(rind[^/]*/(src/|Cargo\.toml$)|sh/semver\.sh$)' \
+    tools='cargo cargo-semver-checks jq' compiles
 # Each adapter's API against its upstream's, which reaches rind only through a
 # lockfile change, as read by the flake's rustdoc. rind-object-store and
 # rind-rand-core have none to copy.
@@ -712,7 +722,12 @@ step() {
             ;;
         check:structure) run admin/structure ;;
         check:deny) run cargo deny --locked check ;;
+        check:vet) run cargo vet --locked ;;
         check:versions) run sh/adapter-versions.sh ;;
+        check:semver)
+            # An unscoped run compares with the default base, not `--all`.
+            if [[ -n "$all" ]]; then run sh/semver.sh; else run sh/semver.sh "$base"; fi
+            ;;
         check:adapters) run python3 admin/adapter-api ;;
         check:quest) run quest check ;;
         check:license) run bash admin/scan-license ;;

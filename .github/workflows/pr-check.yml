@@ -3,7 +3,7 @@ name: PR check
 # `just ci` over the PR's diff against its base, the same selection and modules
 # the merge queue runs, so a check that fails in the queue (an unstable-rustfmt
 # import order, stale mutants pins) fails here first. Advisory: main's ruleset
-# requires only `Queue build / Build`, which no job here replaces. check.yml
+# requires only queue-build.yml's contexts, which no job here replaces. check.yml
 # runs the unscoped suite on main; queue-build.yml runs the group on the queue's
 # own runner.
 #
@@ -33,6 +33,8 @@ jobs:
       # READMEs the release publishes, before it lands.
       BASE: ${{ startsWith(github.head_ref, 'release-plz-') && github.event.pull_request.user.login == 'moq-bot[bot]' && '--all' || format('origin/{0}', github.base_ref) }}
       CHECK_MODULES: ${{ startsWith(github.head_ref, 'release-plz-') && github.event.pull_request.user.login == 'moq-bot[bot]' && 'site' || '' }}
+      # The squash commit's subject, which sh/semver.sh reads for a `!`.
+      PR_TITLE: ${{ github.event.pull_request.title }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

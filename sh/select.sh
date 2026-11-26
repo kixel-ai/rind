@@ -4,9 +4,9 @@
 #
 # Usage: sh/select.sh CHANGED_FILE [ALL] [--lib]
 # A change outside any crate's directory (the root manifest, the lockfile,
-# thirdparty/ test vectors) can reach every crate, so it selects --workspace,
-# as does a non-empty ALL. --lib keeps only the crates with a library, which
-# `cargo test --doc` requires.
+# thirdparty/ test vectors, the flake's toolchain) can reach every crate, so it
+# selects --workspace, as does a non-empty ALL. --lib keeps only the crates with
+# a library, which `cargo test --doc` requires.
 set -euo pipefail
 
 usage="usage: sh/select.sh CHANGED_FILE [ALL] [--lib]"
@@ -42,7 +42,7 @@ while IFS= read -r path; do
     done
     if [[ "$path" == */* && -n "${dirs[$dir]:-}" ]]; then
         selected[${dirs[$dir]}]=1
-    elif grep -qE '^(thirdparty/|Cargo\.(toml|lock)$|\.rustfmt(\.unstable)?\.toml$)' <<<"$path"; then
+    elif grep -qE '^(thirdparty/|Cargo\.(toml|lock)$|\.rustfmt(\.unstable)?\.toml$|flake\.(nix|lock)$)' <<<"$path"; then
         echo --workspace
         exit
     fi
