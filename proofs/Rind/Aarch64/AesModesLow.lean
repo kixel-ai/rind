@@ -1444,7 +1444,7 @@ theorem by8_spec {T : Type} (inst : low.generic.ctr.Ctr8 T) (key : T) (nonce : S
         hlen1]
       simp only [show (128#usize).val = 128 by simp]
       have ht : i - chunks.val.length * 128 < tail.val.length := by omega
-      rw [hW _ ht, htl', getElem!_drop', ← hcl', show chunks.val.length * 128 + (i - chunks.val.length * 128) = i by omega,
+      rw [hW _ ht, htl', rind.spec.getElem!_drop', ← hcl', show chunks.val.length * 128 + (i - chunks.val.length * 128) = i by omega,
         show 8 * chunks.val.length + (i - chunks.val.length * 128) / 16 = i / 16 by omega,
         show (i - chunks.val.length * 128) % 16 = i % 16 by omega]
   step as ⟨b, hb⟩

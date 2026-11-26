@@ -49,6 +49,8 @@ which key generation and each ECDSA signature's nonce point take, and its
 ECDSA verification, in `Rind.X86_64.VgP384`; and nothing else.
 ChaCha20-Poly1305's theorems also take aws-lc's one-pass routines as the
 hypothesis `RunsChaCha20Poly1305`, which no axiom states.
+SHA-3's and SHAKE's theorems take rind's eight-way AVX-512 Keccak-f as part
+of the hypothesis `RunsSha3`, which no axiom states either.
 RSA's Montgomery products at the widths aws-lc's 4x and 8x routines take, but
 for s2n-bignum's Karatsuba routines, take them as the hypothesis
 `AwsLcMont`, which no axiom states either. ChaCha20's

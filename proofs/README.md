@@ -787,10 +787,10 @@ and aarch64, from rind's Rust sponge to s2n-bignum's Keccak-f routines, in
 - `shake_new_spec`, `shake_read_spec`: a `Shake` reader on a `Sponge` that
   has absorbed a message fills each `read`'s output with the next bytes of
   SHAKE on it, as ML-DSA's H (SHAKE256) and SampleInBall;
-- `shake4x_new_spec`, `shake4x_squeeze_spec`: `Shake4x` absorbs one to four
+- `shake8x_new_spec`, `shake8x_squeeze_spec`: `Shake8x` absorbs one to eight
   inputs shorter than a block, and each `squeeze` writes each lane's next
   whole blocks of SHAKE on its input, as ML-DSA's ExpandA (SHAKE128),
-  ExpandS, and ExpandMask (SHAKE256).
+  ExpandS, and ExpandMask (SHAKE256), and ML-KEM-512's noise (SHAKE256).
 
 The sponge is `Rind/Sha3.lean`'s, over bytes, which `sha3_256_eq` and its
 siblings, `shake128_eq` and `shake256_eq`, prove FIPS 202's as SymCrypt's
@@ -798,10 +798,11 @@ Lean spec (`Rind/SymCrypt/Sha3.lean`, MIT) states it. Keccak-f is
 s2n-bignum's `keccak 24` on lanes, the spec its routines' theorems state,
 which `Rind/Keccak.lean` proves SymCrypt's KECCAK-f[1600].
 `Rind/<Arch>/KeccakDispatch.lean` proves what rind's dispatch to the one-,
-two-, and four-state routines computes, from those theorems. Each theorem
-assumes `RunsSha3`: rind's entry guard and CPU checks pass. x86_64's AVX-512
-eight-way Keccak, which ML-KEM-1024's sampler runs, is not
-proven; ML-KEM-768 runs pyca/verified-garbage's code there instead.
+two-, four-, and eight-state routines computes, from those theorems. Each
+theorem assumes `RunsSha3`: rind's entry guard and CPU checks pass, and on
+x86_64, rind's own AVX-512 eight-way Keccak-f, which `Shake8x` and
+ML-KEM-1024's sampler run, computes Keccak-f on each state. No proof covers
+that kernel yet; ML-KEM-768 runs pyca/verified-garbage's code there instead.
 Wherever rind's sampler runs for ML-KEM-768, it samples eight of its nine
 polynomials four at a time and the ninth alone, never eight at a time.
 

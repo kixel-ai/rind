@@ -786,6 +786,12 @@ have some different options depending on CPU features:
   ML-KEM-768's nine could, but rind skips it for ML-KEM-768, including when
   it falls back from verified-garbage's routines, and samples eight four at
   a time and the ninth alone. This is Graviola's, and not verified.
+- Its 8-wide Keccak-f also runs on its own for two to eight states on x86-64
+  with AVX-512 F and VL: ML-DSA's matrix, secret, and mask expansion, eight
+  polynomials at a time, and ML-KEM-512's noise sampling. On Zen 5 eight
+  states took 192 ns, against 291 ns for four on s2n-bignum's AVX2 routine
+  and 172 ns for one on its scalar one, so one state still runs alone. Its
+  rotations are `vprolq`. `proofs/` takes it as a hypothesis.
 - We have s2n-bignum's verified 4-wide Keccak-f using AVX2 on x86-64, and its
   single-state Keccak-f otherwise.
 - We have s2n-bignum's verified 2-wide Keccak-f using Neon+SHA3 on Apple
@@ -825,7 +831,10 @@ through split slices, which leave its butterflies without bounds checks;
 indexing as the C does left portable signing 1.07-1.12x slower than
 aws-lc-rs. Keccak-f, which expands the matrix and samples the secrets, the
 mask, and the challenge, runs as ML-KEM's does (see
-[ML-KEM](#ml-kem)), four states at a time where the CPU allows.
+[ML-KEM](#ml-kem)): eight states at a time on x86_64 with AVX-512, which
+on Zen 5 took 0.59-0.62x the time for key generation, 0.59-0.67x for
+verification from an encoded key, which expands the matrix, and 0.80-0.88x
+for signing, and four at a time where the CPU allows otherwise.
 
 Signing declassifies which attempt it accepts, and why it rejects the
 others, as mldsa-native does: FIPS 204's security argument makes them
