@@ -432,6 +432,29 @@
             '';
           };
 
+          # HOL Light at the commit s2n-bignum's CI checks the fork's base
+          # with, `HOLLIGHT_COMMIT` in its `.github/workflows/ci.yml`: the
+          # fork's GHASH and POLYVAL specs need the algebra libraries it
+          # revamped, `Library/finite_fields.ml` among them, which nixpkgs'
+          # older commit lacks.
+          hol-light-pkg = pkgs.hol_light.overrideAttrs (old: {
+            version = "0-unstable-2026-11-10";
+            src = pkgs.fetchFromGitHub {
+              owner = "jrh13";
+              repo = "hol-light";
+              rev = "e5236a5839b4d08dc2536b325cea0af855e6c379";
+              hash = "sha256-cHXMXEs144IcEEbr+7HrbnwkUnTT+72+7yZVopCj7Q0=";
+            };
+            # nixpkgs' patch, which links findlib into the toplevel, as an
+            # edit: the Makefile's lines moved since its commit.
+            patches = [ ];
+            postPatch = (old.postPatch or "") + ''
+              substituteInPlace Makefile --replace-fail \
+                "ocamlfind ocamlmktop -package zarith -o ocaml-hol" \
+                "ocamlfind ocamlmktop -package zarith,findlib -o ocaml-hol"
+            '';
+          });
+
           # The Charon and Aeneas that Beneficial AI Foundation's Lean proofs
           # of curve25519-dalek translate it with, the tag their
           # `curve25519-dalek/lean/AENEAS_VERSION.txt` names at
@@ -480,7 +503,7 @@
                   "armv7-unknown-linux-gnueabihf"
                 ];
               })
-              pkgs.hol_light
+              hol-light-pkg
               pkgs.ocamlPackages.ocaml
               pkgs.ocamlPackages.findlib
               pkgs.ocamlPackages.camlp5

@@ -450,6 +450,8 @@ hol_light_proofs=(
     "x86_64 ct_compare_16.bin rind::low::x86_64::cpu::ct_compare_16"
     "armv7 ct_compare_bytes.bin ct_compare_bytes"
     "armv7 ct_compare_16.bin ct_compare_16"
+    "armv7 gcm_init_neon.bin gcm_init_neon"
+    "armv7 gcm_ghash_neon.bin gcm_ghash_neon"
     "x86_64 sha512_block_data_order_avx2.o rind::low::x86_64::sha512::sha512_block_data_order_avx2"
     "x86_64 sha256_block_data_order_avx2.o rind::low::x86_64::sha256::sha256_block_data_order_avx2"
     "x86_64 bn_mul_mont_nohw.o rind::low::x86_64::mont::bn_mul_mont_nohw"
