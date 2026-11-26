@@ -25,7 +25,8 @@ around it. `admin/prove` checks the HOL Light proof against the object code
 rind's release build emits, its instructions, relocations, and the table they
 read, on s2n-bignum's x86 model with the instructions rind adds to it, which
 `admin/prove cosim` checks against the CPU, but for the `rep ret` (`F3 C3`) the
-routine returns with, which leaves the harness and is checked by neither. The safety contract itself
+routine returns with, which the proof steps as `RET` and cosimulation omits
+because the return leaves its harness. The safety contract itself
 asks only for a nonempty buffer; the theorem's other hypotheses hold of every
 call for facts outside it, trusted like the restatement: the buffer is a live
 `&mut [u8]` allocation, so it overlaps neither the code, the table, nor the

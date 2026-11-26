@@ -1441,8 +1441,8 @@ kernel, aws-lc's SSSE3 routine, and HACL*'s rounds, in
 `Rind/X86_64/ChaCha20Cipher.lean`:
 
 - `chacha20_apply_keystream`, on any CPU (where it runs the SSSE3 routine it
-  assumes `LinuxBuild`, rind's Linux build; an x86_64 Mac's SSSE3 routine is
-  Apple's copy, which no proof covers): a buffer that needs more blocks
+  assumes `LinuxBuild`, rind's `x86_64-unknown-linux-gnu` build; an x86_64 Mac's
+  SSSE3 routine is Apple's copy, which no proof covers): a buffer that needs more blocks
   than remain before the 32-bit block counter wraps is refused with
   `WrongLength` and left as it is, and otherwise it becomes RFC 8439's
   encryption of it under the key, the block counter, and the nonce.
