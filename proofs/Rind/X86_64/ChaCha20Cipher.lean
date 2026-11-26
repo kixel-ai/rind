@@ -264,10 +264,10 @@ counter, and the nonce, if the counter covers it before it wraps; otherwise
 `WrongLength`, with the buffer unchanged. -/
 theorem apply_keystream_spec (he : ∃ e, low.entry.Entry.new_secret = ok e)
     (hu : ∃ s, VgState.uninit = ok s)
-    (a : Option low.x86_64.cpu.HaveAvx512Vl) (b : Option low.x86_64.cpu.HaveAvx2)
-    (s : Option low.x86_64.cpu.HaveSsse3) (ha : low.x86_64.cpu.HaveAvx512Vl.check = ok a)
-    (hb : low.x86_64.cpu.HaveAvx2.check = ok b) (hs : low.x86_64.cpu.HaveSsse3.check = ok s)
-    (hlinux : ¬ (a.isSome ∨ b.isSome) → s.isSome → LinuxBuild) (k : mid.chacha20.ChaCha20)
+    (va : Option low.x86_64.cpu.HaveAvx512Vl) (vb : Option low.x86_64.cpu.HaveAvx2)
+    (vs : Option low.x86_64.cpu.HaveSsse3) (ha : low.x86_64.cpu.HaveAvx512Vl.check = ok va)
+    (hb : low.x86_64.cpu.HaveAvx2.check = ok vb) (hs : low.x86_64.cpu.HaveSsse3.check = ok vs)
+    (hlinux : ¬ (va.isSome ∨ vb.isSome) → vs.isSome → LinuxBuild) (k : mid.chacha20.ChaCha20)
     (nonce : Std.Array U8 12#usize) (counter : U32) (inout : Slice U8) :
     k.apply_keystream nonce counter inout ⦃ r inout' =>
       if counter.val + (inout.length + 63) / 64 ≤ 2 ^ 32 then
@@ -301,14 +301,14 @@ theorem apply_keystream_spec (he : ∃ e, low.entry.Entry.new_secret = ok e)
       have hcv : cc.counter_nonce.val[0]!.val = counter.val := by
         have := congrArg BitVec.toNat hcn0
         simpa only [UScalar.bv_toNat] using this
-      have hsc : cc.ssse3.isSome → s.isSome := by
+      have hsc : cc.ssse3.isSome → vs.isSome := by
         intro h
         first
           | exact h
-          | (rw [← ‹cc.ssse3 = s›]; exact h)
-          | (rw [‹s = cc.ssse3›]; exact h)
+          | (rw [← ‹cc.ssse3 = vs›]; exact h)
+          | (rw [‹vs = cc.ssse3›]; exact h)
           | simp_all
-      have hvg : cc.vg = none → ¬ (a.isSome ∨ b.isSome) := by
+      have hvg : cc.vg = none → ¬ (va.isSome ∨ vb.isSome) := by
         intro hv h
         have := cc_post2.mpr h
         simp [hv] at this
