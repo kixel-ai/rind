@@ -58,7 +58,7 @@ LEAN_MODEL = re.compile(
     r"|^proofs/Rind/(SymCrypt/|Portable/Keccak\.lean)"
     # The specs `proofs/Rind` states its theorems against, at its top level.
     r"|^proofs/Rind/(Core|Spec|Bytes|HashSpec|GhashSpec|Gf128|Vale|ValeBytes|Lanes|Keccak|Sha2|AesInverse|Aes|AesModes"
-    r"|AesModesBytes|AesKw|Rsa|Ed25519|MlKem|S2nChaCha20Poly1305|S2nMlKem|S2nSha256|S2nSha512)\.lean$"
+    r"|AesModesBytes|AesKw|Rsa|Ed25519|MlKem|MlKemPacking|S2nChaCha20Poly1305|S2nMlKem|S2nSha256|S2nSha512)\.lean$"
     r"|/(SignatureBuffer|GcmKey|HkdfExpand|AesGcmModel)\.lean$"
 )
 LEAN_AXIOMS = "Lean TCB: files that state axioms"

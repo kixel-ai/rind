@@ -1,11 +1,14 @@
 import Rind.Armv7.ChaCha20
+import Rind.Armv7.X25519
 import Rind.Armv7.AesNohwKey
 import Rind.Armv7.AesGcm
 open rind.armv7
 
 /-!
-The axioms each theorem rests on, beyond Lean's own: none. A change here is a
-change to the trust base.
+The axioms each theorem rests on, beyond Lean's own: none but X25519's, which
+rest on `Rind.Armv7.Dalek`'s restatements of Beneficial AI Foundation's
+theorems about curve25519-dalek's `mul_clamped` and `mul_base_clamped`. A
+change here is a change to the trust base.
 -/
 
 /-- info: 'rind.armv7.chacha20_new' depends on axioms: [propext, Classical.choice, Quot.sound] -/
@@ -15,6 +18,26 @@ change to the trust base.
 /-- info: 'rind.armv7.chacha20_mask' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms chacha20_mask
+
+/-- info: 'rind.armv7.x25519_generate' depends on axioms: [propext, Classical.choice, Quot.sound, dalek_mul_base_clamped_spec] -/
+#guard_msgs in
+#print axioms x25519_generate
+
+/-- info: 'rind.armv7.x25519_from_scalar' depends on axioms: [propext, Classical.choice, Quot.sound, dalek_mul_base_clamped_spec] -/
+#guard_msgs in
+#print axioms x25519_from_scalar
+
+/-- info: 'rind.armv7.x25519_public_key' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms x25519_public_key
+
+/-- info: 'rind.armv7.x25519_agree' depends on axioms: [propext, Classical.choice, Quot.sound, dalek_mul_clamped_spec] -/
+#guard_msgs in
+#print axioms x25519_agree
+
+/-- info: 'rind.armv7.x25519_shared_secret' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms x25519_shared_secret
 
 /-!
 The bitsliced AES's theorems rest on Lean's own axioms and on the ones

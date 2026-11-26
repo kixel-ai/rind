@@ -91,4 +91,4 @@ quest = "/quest/m2/speed/p256-one-shot-verify.md"
 [[gap]]
 operations = ["aes192-gcm/*/key"]
 on = ["x86_64"]
-quest = "/quest/m2/speed/aes192-key-expansion.md"
+reason = "[kixel-ai/rind#1035](https://github.com/kixel-ai/rind/pull/1035) copies the key in constant-size moves, which removed a store-forwarding stall that AES-192 alone paid, 10 ns of its 112; the next refresh rechecks it."
