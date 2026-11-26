@@ -33,6 +33,12 @@ adapter, and constant-time modules. Both run three modules at a time
 (`sh/dispatch.sh` lists the `CHECK_*` variables that change that); the
 scheduled workflows' tools are in [TESTING.md](TESTING.md#running-the-tools).
 
+Both build their tests under the `test-fast` profile in `Cargo.toml`, a lightly
+optimized dev build with assertions and overflow checks on, since the slowest
+tests run minutes at `opt-level = 0`. For a bare test run, pass it as
+`cargo nextest run --cargo-profile test-fast`; `admin/ctgrind` and the other
+dev builds stay unoptimized.
+
 # Commits
 
 PRs land on `main` as squash commits, so the PR title becomes the commit subject in `git log`; the body keeps the PR's commit messages and co-author trailers, not the PR description.
@@ -57,6 +63,8 @@ The scheduled workflows run as [TESTING.md](TESTING.md#scheduled-workflows) list
 PRs land on `main` through GitHub's merge queue, one PR at a time, as squash commits.
 Queue the reviewed head with `quest merge <pr> --land <sha>` (`/quest-merge` does this).
 `pr-check.yml` runs `just ci` over the PR's diff on a GitHub-hosted runner, so a check that the PR's own changes fail shows red here first; it does not rerun when main moves, so the queue can still fail a group it passed. It is advisory, since main's ruleset requires only the queue's build.
+On release-plz's release PR it runs only the site's check, over the whole site, since the queue's `just ci` and `just release-check` still run on it.
+`pr-macos.yml` runs rind's debug tests on a GitHub-hosted Apple-silicon runner when a PR changes `rind/`, the root `Cargo.toml`, or `Cargo.lock`, so a macOS-only break shows on its PR rather than first in the nightly `build`; it is advisory too.
 release-plz's release PR skips it, since the queue's `just ci` and `just release-check` still run on it.
 The required `Queue build / Build` check skips on pull requests; the merge group runs `just ci` against the merge group's base on the self-hosted runner, and that job's own result decides the group.
 When the group's diff touches the inputs of `regenerate` or of `prove`, that build also runs `regenerate`, or `prove`'s x86_64 `vg`, beside its other checks (`CHECK_QUEUE` in `sh/dispatch.sh`), so a change cannot land that breaks them on `main`; `vg`'s aarch64 job runs only nightly. When the group's diff reaches x86_64 code, the build also runs the tests under the Intel SDE models `admin/x86-cpu` lists (`admin/x86-cpu all`): in full on one model for each distinct set of dispatch paths, and each other model's assertion of its paths.
@@ -92,6 +100,8 @@ Never vendor an upstream file unchanged from an older base, or only the changed 
 A PR that adds such a workaround adds its entry there and names the entry in the workaround's comment; a PR that drops one removes it from its entry, and deletes the entry once it lists no workaround.
 
 # Releases
+
+`just ci` runs `sh/semver.sh` over each published crate a PR changes ([STABILITY.md](STABILITY.md#checked-before-every-release)): a breaking change to `rind` needs `!` in the PR title, and an adapter's needs `!` with the adapter's name as the scope, as in `fix(rind-ring)!:` with its patch version set by hand, or a move to its upstream's next breaking release.
 
 release-plz opens a release PR from `main`, and publishing happens only when that PR merges.
 release-plz owns crate versions.
