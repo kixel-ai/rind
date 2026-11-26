@@ -359,7 +359,7 @@ the count is stale or `unsafe` appears in an area the table does not name:
 | `rind-aws-lc-rs/src` | 4 | `Send` and `Sync` for the KEM keys, bounded as aws-lc-rs bounds them | `SAFETY:` comments, and a compile-time check that what the keys hold is `Send` and `Sync` |
 | `rind-dart` | 247 | the C ABI Dart's FFI calls | `SAFETY:` comments, `dart test`, and ctgrind over its exports |
 | `rind-python` | 6 | Python's buffer protocol | `SAFETY:` comments |
-| `rind-openssl` | 205 | the C ABI OpenSSL's core calls, and the `OSSL_PARAM` arrays it passes | `SAFETY:` comments, `fuzz::openssl`, and OpenSSL's own tests with it loaded |
+| `rind-openssl` | 326 | the C ABI OpenSSL's core calls, and the `OSSL_PARAM` arrays it passes | `SAFETY:` comments, `fuzz::openssl`, and OpenSSL's own tests with it loaded |
 | `rind-fips` | 629 | the unpublished FIPS module's C ABI | out of scope until published |
 <!-- admin/audit unsafe: end -->
 
