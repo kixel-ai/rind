@@ -246,8 +246,8 @@ module license '^(rind/src/|rind/LICENSE$|rind-python/LICENSE$|admin/scan-licens
 module testing '^(TESTING\.md$|admin/testing$|rind/(src|tests)/|fuzz/)' \
     tools='python3' check
 # AUDIT.md's pins table is generated from the files that hold the pins, its
-# `unsafe` table from every Rust file, and the quests it links name gaps that
-# finishing them closes.
+# `unsafe` table must name every area whose Rust files hold `unsafe`, and the
+# quests it links name gaps that finishing them closes.
 module audit '^(AUDIT\.md$|admin/(audit|import-[a-z-]+|prove-bytes|sync-(acvp|vectors))$|thirdparty/s2n-bignum/RIND\.md$|(rind/)?Cargo\.(toml|lock)$|quest/|.*\.rs$)' \
     tools='python3 git' check fix
 # COMPATIBILITY.md is generated from the CPU scans.

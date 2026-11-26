@@ -342,25 +342,27 @@ then tests.
 KEM keys, the bindings, rind-openssl, and test code. Every block in `rind`,
 rind-dart, and rind-openssl carries a `SAFETY:` comment, which clippy's
 `undocumented_unsafe_blocks` lint enforces in CI.
-Counted outside comments and literals by `admin/audit`, which CI fails when
-the count is stale or `unsafe` appears in an area the table does not name:
+CI's `admin/audit check` fails when `unsafe` (outside comments and literals)
+appears in an area the table does not name, or an area it names holds none.
+`admin/audit unsafe` prints each area's current count; the table leaves the
+counts out, since nearly every change to `low` moves them:
 
 <!-- admin/audit unsafe: begin -->
-| Area | `unsafe` | What it is | What justifies it |
-|---|---|---|---|
-| `rind/src/low/x86_64` | 722 | `asm!`, naked functions, and intrinsics | [`rind::doc::inline_assembly_safety`](rind/src/low/inline_assembly_safety.rs), with the calling-convention, bounds, and `admin/prove bytes` checks above |
-| `rind/src/low/aarch64` | 514 | the same | the same |
-| `rind/src/low/arm` | 113 | `global_asm!` and the calls into it | the same |
-| `rind/src/low/generic` | 29 | SSE2 intrinsics in `aes_nohw`, Argon2's memory of blocks set one at a time, `ReuseCache`'s one-time initialization, the volatile wipe, a cast between same-layout arrays, the link section that puts SHA-256's constants in ESP-IDF's internal RAM, and MD5's empty `asm!` barrier | each block's `SAFETY:` comment; Miri checks `ReuseCache` and the wipe |
-| `rind/src/low/portable` | 13 | volatile writes and reads for the wipe and the constant-time compare, and Xtensa `asm!` in SHA-256 for ESP-IDF | the same |
-| other `rind/src/low` files | 94 | test harnesses (`abi`, `guard_pages`, `ct_binsec`, `vartime_planted`), the `asm_call!` macro, and `Mcdt`'s MXCSR loads and `cpuid` | test code, but for the macro and `Mcdt`, which `SAFETY:` comments and `admin/ct-vartime` cover |
-| `rind/src/mid` | 2 | a test's call into aws-lc | test code |
-| `rind/src` | 12 | the FIPS build's DRBG handle, its test's `fork`, and a test helper | `SAFETY:` comments |
-| `rind-aws-lc-rs/src` | 4 | `Send` and `Sync` for the KEM keys, bounded as aws-lc-rs bounds them | `SAFETY:` comments, and a compile-time check that what the keys hold is `Send` and `Sync` |
-| `rind-dart` | 247 | the C ABI Dart's FFI calls | `SAFETY:` comments, `dart test`, and ctgrind over its exports |
-| `rind-python` | 6 | Python's buffer protocol | `SAFETY:` comments |
-| `rind-openssl` | 326 | the C ABI OpenSSL's core calls, and the `OSSL_PARAM` arrays it passes | `SAFETY:` comments, `fuzz::openssl`, and OpenSSL's own tests with it loaded |
-| `rind-fips` | 629 | the unpublished FIPS module's C ABI | out of scope until published |
+| Area | What it is | What justifies it |
+|---|---|---|
+| `rind/src/low/x86_64` | `asm!`, naked functions, and intrinsics | [`rind::doc::inline_assembly_safety`](rind/src/low/inline_assembly_safety.rs), with the calling-convention, bounds, and `admin/prove bytes` checks above |
+| `rind/src/low/aarch64` | the same | the same |
+| `rind/src/low/arm` | `global_asm!` and the calls into it | the same |
+| `rind/src/low/generic` | SSE2 intrinsics in `aes_nohw`, Argon2's memory of blocks set one at a time, `ReuseCache`'s one-time initialization, the volatile wipe, a cast between same-layout arrays, the link section that puts SHA-256's constants in ESP-IDF's internal RAM, and MD5's empty `asm!` barrier | each block's `SAFETY:` comment; Miri checks `ReuseCache` and the wipe |
+| `rind/src/low/portable` | volatile writes and reads for the wipe and the constant-time compare, and Xtensa `asm!` in SHA-256 for ESP-IDF | the same |
+| other `rind/src/low` files | test harnesses (`abi`, `guard_pages`, `ct_binsec`, `vartime_planted`), the `asm_call!` macro, and `Mcdt`'s MXCSR loads and `cpuid` | test code, but for the macro and `Mcdt`, which `SAFETY:` comments and `admin/ct-vartime` cover |
+| `rind/src/mid` | a test's call into aws-lc | test code |
+| `rind/src` | the FIPS build's DRBG handle, its test's `fork`, and a test helper | `SAFETY:` comments |
+| `rind-aws-lc-rs/src` | `Send` and `Sync` for the KEM keys, bounded as aws-lc-rs bounds them | `SAFETY:` comments, and a compile-time check that what the keys hold is `Send` and `Sync` |
+| `rind-dart` | the C ABI Dart's FFI calls | `SAFETY:` comments, `dart test`, and ctgrind over its exports |
+| `rind-python` | Python's buffer protocol | `SAFETY:` comments |
+| `rind-openssl` | the C ABI OpenSSL's core calls, and the `OSSL_PARAM` arrays it passes | `SAFETY:` comments, `fuzz::openssl`, and OpenSSL's own tests with it loaded |
+| `rind-fips` | the unpublished FIPS module's C ABI | out of scope until published |
 <!-- admin/audit unsafe: end -->
 
 The rest, in each crate's `tests`, the fuzz targets, `admin`, and the
