@@ -15,8 +15,10 @@ summary when there is one. With `--base`, it builds REV's tree too and adds
 its sums and the change, so a pull request's check shows what it does to
 rind's size; any change passes, for a reviewer to weigh. `--json` prints this
 tree's sums as JSON instead, which the weekly bench saves for BENCHMARKS.md.
-The sums are one toolchain's, and `nm` reads them only from ELF: elsewhere
-the programs are only built, which still checks that they compile.
+The sums are one toolchain's, and both trees build with this tree's, so it
+shows no change when REV's toolchain differs, nor when REV's fixtures fail to
+build. `nm` reads the sums only from ELF: elsewhere the programs are only
+built, which still checks that they compile.
 
 The fixtures float on the newest rustls for admin/build-cost, and which of
 rind's code a program keeps depends on its other crates, so each builds here
@@ -78,7 +80,9 @@ def build_env():
         k: v
         for k, v in os.environ.items()
         if not k.startswith(("CARGO_PROFILE_", "CARGO_TARGET_", "CARGO_BUILD_"))
-        and k not in ("RUSTFLAGS", "CARGO_INCREMENTAL")
+        # rind reads VALGRIND_BUG_494162 at compile time, building in ADX
+        # whatever the CPU says.
+        and k not in ("RUSTFLAGS", "CARGO_INCREMENTAL", "VALGRIND_BUG_494162")
     }
     # Empty, it also overrides the flags of a cargo configuration file.
     env["CARGO_ENCODED_RUSTFLAGS"] = ""
@@ -175,11 +179,6 @@ def extract(rev):
     return BASE_TREE
 
 
-def is_elf(binary):
-    with open(binary, "rb") as f:
-        return f.read(4) == b"\x7fELF"
-
-
 def measure(binary):
     """The bytes rind and rind-rustls define in `binary`."""
     nm = subprocess.run(
@@ -198,11 +197,25 @@ def measure(binary):
 
 
 def sizes(tree, host, env):
-    """Each fixture's bytes of rind in `tree`, or None off ELF."""
+    """Each fixture's bytes of rind in `tree`."""
     binaries = {fixture: build(tree, fixture, host, env, False) for fixture in BUILDS}
-    if not all(is_elf(b) for b in binaries.values()):
-        return None
     return {fixture: measure(binary) for fixture, binary in binaries.items()}
+
+
+def base_sizes(rev, host, env):
+    """REV's sums, or None and why they would not compare with this tree's."""
+    # Both trees build in this tree's dev shell, so a toolchain change would
+    # show as none.
+    toolchain = subprocess.run(["git", "diff", "--quiet", rev, "--", "flake.nix", "flake.lock"], cwd=ROOT)
+    if toolchain.returncode == 1:
+        return None, f"the toolchain changed since {rev[:12]}, so only this tree's sums show"
+    toolchain.check_returncode()
+    try:
+        return sizes(extract(rev), host, env), None
+    except subprocess.CalledProcessError:
+        # Not this tree's failure: the fixtures run in no merge gate, so its
+        # base may hold a break no check caught.
+        return None, f"{rev[:12]}'s fixtures did not build, so only this tree's sums show"
 
 
 def table(target, head, base=None, rev=None):
@@ -241,22 +254,28 @@ def main():
         for fixture in BUILDS:
             build(ROOT, fixture, target, env, True)
         return
-    head = sizes(ROOT, target, env)
-    if head is None:
+    # nm reads sizes only from ELF.
+    if re.search(r"-(apple|windows)", target):
         if args.json:
             sys.exit(f"error: {target} binaries are not ELF, which nm reads sizes from")
+        for fixture in BUILDS:
+            build(ROOT, fixture, target, env, False)
         print(f"built; {target} binaries are not ELF, which nm reads sizes from")
         return
+    # The base first, so the head's binaries are the ones left to inspect.
+    base, why = base_sizes(args.base, target, env) if args.base else (None, None)
+    head = sizes(ROOT, target, env)
     if args.json:
         rustc_version = version.splitlines()[0]
         print(json.dumps({"schema": 1, "target": target, "rustc": rustc_version, "bytes": head}, indent=1))
         return
-    base = sizes(extract(args.base), target, env) if args.base else None
     report = table(target, head, base, args.base and args.base[:12])
+    if why:
+        report += f"\nNo change shown: {why}.\n"
     print(report, end="")
     if summary := os.environ.get("GITHUB_STEP_SUMMARY"):
         with open(summary, "a") as f:
-            f.write("\n" + report)
+            f.write("\n" + report + "\n")
 
 
 if __name__ == "__main__":

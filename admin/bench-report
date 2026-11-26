@@ -2570,18 +2570,23 @@ def gate(args):
 
 
 def save_sizes(run, scratch):
-    """Saves the bytes of rind `run` measured, or drops the last run's, so
-    the report never pairs one run's tiers with another's sizes."""
-    got = subprocess.run(
-        ["gh", "run", "download", str(run["databaseId"]), "--repo", REPO, "--name", "binary-size", "--dir", scratch],
-        capture_output=True,
+    """Saves the bytes of rind `run` measured, or drops the last run's when
+    it measured none, so the report never pairs one run's tiers with another's
+    sizes."""
+    artifacts = output(
+        ["gh", "api", f"repos/{REPO}/actions/runs/{run['databaseId']}/artifacts", "--paginate"]
+        + ["--jq", '.artifacts[] | select(.name == "binary-size") | .name']
     )
-    path = os.path.join(scratch, "binary-size.json")
-    if got.returncode != 0 or not os.path.exists(path):
+    if not artifacts.strip():
         print(f"bench-report: run {run['databaseId']} measured no binary sizes", file=sys.stderr)
         if os.path.exists(SIZES):
             os.remove(SIZES)
         return
+    subprocess.run(
+        ["gh", "run", "download", str(run["databaseId"]), "--repo", REPO, "--name", "binary-size", "--dir", scratch],
+        check=True,
+    )
+    path = os.path.join(scratch, "binary-size.json")
     with open(path) as f:
         measured = json.load(f)
     shutil.rmtree(scratch)

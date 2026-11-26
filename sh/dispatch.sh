@@ -771,9 +771,9 @@ step() {
             run python3 admin/bench-report render --check
             ;;
         # Each fixture is its own workspace and resolves its own lockfile.
-        # Over the whole tree there is no base to compare with.
+        # `--all` has no base to compare with.
         check:fixtures)
-            if [[ -n "$all" ]]; then run admin/binary-size; else run admin/binary-size --base "$merge_base"; fi
+            if [[ -z "${merge_base:-}" ]]; then run admin/binary-size; else run admin/binary-size --base "$merge_base"; fi
             ;;
         check:patch) run sh/patch.sh ;;
         fix:patch) run cargo fmt --manifest-path patch/fixture/Cargo.toml ;;
