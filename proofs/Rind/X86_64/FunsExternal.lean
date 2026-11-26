@@ -278,19 +278,25 @@ opaque low.x86_64.bignum_neg_p25519.bignum_neg_p25519
 opaque low.x86_64.bignum_cmp_lt.bignum_cmp_lt
   : Slice Std.U64 → Slice Std.U64 → Result Std.U64
 
-/-! Ed25519 verification's half-size check, which no theorem covers yet:
-the multi-scalar multiplication's dispatch and the field product it needs. -/
+opaque low.x86_64.bignum_mul_p25519.bignum_mul_p25519
+  :
+  Array Std.U64 4#usize → Array Std.U64 4#usize → Array Std.U64 4#usize →
+    Result (Array Std.U64 4#usize)
+
+opaque low.x86_64.bignum_mul_p25519_alt.bignum_mul_p25519_alt
+  :
+  Array Std.U64 4#usize → Array Std.U64 4#usize → Array Std.U64 4#usize →
+    Result (Array Std.U64 4#usize)
+
+/-! Ed25519 verification's multi-scalar multiplication, whose contract
+`Rind.X86_64.Ed25519Verify` takes as the hypothesis `RunsMsm` until a proof
+covers it. -/
 
 opaque low.x86_64.adx_mux.edwards25519_msm
   :
   Array Std.U64 12#usize → Array Std.U64 4#usize → Array (Array Std.U64
     4#usize) 2#usize → Array (Array Std.U64 16#usize) 2#usize → Result
     (Array Std.U64 12#usize)
-
-opaque low.x86_64.adx_mux.bignum_mul_p25519
-  :
-  Array Std.U64 4#usize → Array Std.U64 4#usize → Array Std.U64 4#usize →
-    Result (Array Std.U64 4#usize)
 
 /-! The wipe a drop runs, which no theorem calls. -/
 

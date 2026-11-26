@@ -6,8 +6,8 @@ open Aeneas Aeneas.Std Result rind.spec
 
 aarch64's verification still recomputes `R` with s2n-bignum's
 `edwards25519_scalarmuldouble`, whose contract proves it, while x86_64's
-checks a multiple of the equation with half-size scalars, which nothing
-proves yet (`quest/m4/verified/ed25519-half-scalar.md`). So these theorems,
+checks a multiple of the equation with half-size scalars, which
+`Rind.X86_64.Ed25519Verify` proves. So these theorems,
 unlike the rest of `Rind.Aarch64.Ed25519`, are not written from the x86_64
 file, and live here.
 -/
