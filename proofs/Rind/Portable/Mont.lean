@@ -1335,4 +1335,117 @@ theorem redc_loop1_spec (m : Slice U64) (n0 : U64) (k p : Usize) (T : Nat) (hk :
       rw [this] at hI; exact hI
   · exact hinv
 
+/-- `0 - b` for a bit `b`: no limb, or every one. -/
+theorem neg_bit_val (b : U64) (hb : b.val ≤ 1) :
+    (core.num.U64.wrapping_sub 0#u64 b).val = if b.val = 0 then 0 else 2 ^ 64 - 1 := by
+  rcases (show b.val = 0 ∨ b.val = 1 by omega) with h | h <;> simp [core.num.U64.wrapping_sub_val_eq, u64_size, h]
+
+theorem neg_bit_mask (b : U64) (hb : b.val ≤ 1) : IsMask (core.num.U64.wrapping_sub 0#u64 b) := by
+  unfold IsMask; rw [neg_bit_val b hb]; split <;> simp
+
+theorem or_not_val (t c : U64) (ht : t.val ≤ 1) (hc : c.val ≤ 1) :
+    (t ||| (c ^^^ 1#u64)).val = if t.val = 0 ∧ c.val = 1 then 0 else 1 := by
+  rw [UScalar.val_or, UScalar.val_xor, show (1#u64).val = 1 by simp]
+  rcases (show t.val = 0 ∨ t.val = 1 by omega) with h1 | h1 <;>
+    rcases (show c.val = 0 ∨ c.val = 1 by omega) with h2 | h2 <;> simp [h1, h2]
+
+/-- `redc`: for `t` below `2^(64p)·m`, `p` limbs beyond the odd `m`'s `k`,
+the `k` limbs from `p` are `t / 2^(64p)` modulo `m`. -/
+@[step]
+theorem redc_spec (t m : Slice U64) (n0 : U64) (hk1 : 1 ≤ m.length) (hkt : m.length ≤ t.length)
+    (hn0 : (wordsNat m.val * n0.val + 1) % 2 ^ 64 = 0)
+    (hT : wordsNat t.val < 2 ^ (64 * (t.length - m.length)) * wordsNat m.val) :
+    low.generic.limb64.mont.redc t m n0 ⦃ r =>
+      r.length = t.length ∧ wordsNat (r.val.drop (t.length - m.length)) < wordsNat m.val ∧
+      wordsNat (r.val.drop (t.length - m.length)) * 2 ^ (64 * (t.length - m.length)) % wordsNat m.val =
+        wordsNat t.val % wordsNat m.val ⦄ := by
+  unfold low.generic.limb64.mont.redc
+  have hmL : m.val.length = m.length := rfl
+  have htL : t.val.length = t.length := rfl
+  have hn : (m.val[0]!.val * n0.val + 1) % 2 ^ 64 = 0 := by
+    rw [← wordsNat_mod_limb _ (by omega), Nat.add_mod, Nat.mul_mod, Nat.mod_mod, ← Nat.mul_mod, ← Nat.add_mod]
+    exact hn0
+  step as ⟨pp, hpp⟩
+  have hppv : pp.val = t.length - m.length := by scalar_tac
+  set p := t.length - m.length with hpdef
+  set k := m.length with hkdef
+  set M := wordsNat m.val
+  set T := wordsNat t.val
+  step with redc_loop0_spec m n0 m.len pp T (by simp) hn t 0#u128 0#usize
+    ⟨by simp [Slice.length] at hppv ⊢; omega, by simp, by simp, by simp [wordsNat_nil], 0, by simp, by simp [T]⟩
+    as ⟨t1, top, i1, hI1⟩
+  step with redc_loop1_spec m n0 m.len pp T (by simp) (by simp; omega) hn t1 top i1 hI1 as ⟨t2, top1, hI2⟩
+  obtain ⟨ht2l, -, htop, hlow, Q, hQ, hval⟩ := hI2
+  simp only [Slice.len_val] at ht2l hval
+  rw [hppv] at ht2l hlow hQ hval
+  have ht2L : t2.val.length = p + k := ht2l
+  step as ⟨r, back, hr, hrl, hback⟩
+  have hrL : r.length = k := by simp only [Slice.length] at hrl ⊢; omega
+  step with cmp_lt_limbs_spec r m (by omega) as ⟨below, hbelow⟩
+  -- `t2` is `R` above `p` zero limbs, with `top` above it.
+  have hR : wordsNat t2.val = 2 ^ (64 * p) * wordsNat r.val := by
+    rw [wordsNat_take_drop t2.val p, hlow, List.length_take, Nat.min_eq_left (by omega), hr, hppv]
+    simp
+  set R := wordsNat r.val
+  have hMk : M < 2 ^ (64 * k) := wordsNat_lt' m.val
+  have hX : 2 ^ (64 * p) * (R + 2 ^ (64 * k) * top1.val) = T + M * Q := by
+    rw [← hval, hR, show 64 * (p + k) = 64 * p + 64 * k by ring, pow_add]; ring
+  have hXlt : R + 2 ^ (64 * k) * top1.val < 2 * M := by
+    have h1 : M * Q < M * 2 ^ (64 * p) := Nat.mul_lt_mul_of_pos_left hQ (by
+      rcases Nat.eq_zero_or_pos M with h | h
+      · rw [h, mul_zero] at hT; omega
+      · exact h)
+    have h2 : 2 ^ (64 * p) * (R + 2 ^ (64 * k) * top1.val) < 2 ^ (64 * p) * (2 * M) := by
+      rw [hX]; nlinarith
+    exact Nat.lt_of_mul_lt_mul_left h2
+  have htop1 : top1.val ≤ 1 := by
+    by_contra h
+    have : 2 ^ (64 * k) * 2 ≤ 2 ^ (64 * k) * top1.val := Nat.mul_le_mul_left _ (by omega)
+    omega
+  have hbel : below.val ≤ 1 := by rw [hbelow]; split <;> simp
+  have hcast : (UScalar.cast .U64 top1).val = top1.val := by rw [cast_u64_val, Nat.mod_eq_of_lt (by omega)]
+  have hbit : (UScalar.cast .U64 top1 ||| (below ^^^ 1#u64)).val ≤ 1 := by
+    rw [or_not_val _ _ (by omega) hbel]; split <;> simp
+  simp only [lift, bind_ok]
+  step with sub_limbs_masked_spec r m _ (neg_bit_mask _ hbit) (by omega) as ⟨r1, hr1l, b, hb, hr1⟩
+  have hr1L : r1.val.length = k := by simp only [Slice.length] at hr1l hrL; omega
+  have hdrop : (back r1).val.drop p = r1.val := by
+    rw [hback, hppv]; exact drop_setSlice _ _ _ (by omega)
+  have hmasked : masked (core.num.U64.wrapping_sub 0#u64 (UScalar.cast .U64 top1 ||| (below ^^^ 1#u64))) M =
+      if top1.val = 0 ∧ below.val = 1 then 0 else M := by
+    unfold masked
+    rw [neg_bit_val _ hbit, or_not_val _ _ (by omega) hbel, hcast]
+    by_cases hc : top1.val = 0 ∧ below.val = 1 <;> simp [hc]
+  rw [hmasked, hrL] at hr1
+  have hr1lt : wordsNat r1.val < 2 ^ (64 * k) := by have := wordsNat_lt' r1.val; rwa [hr1L] at this
+  have hRlt : R < 2 ^ (64 * k) := by have := wordsNat_lt' r.val; simp only [Slice.length] at hrL; rwa [hrL] at this
+  have hM0 : 0 < M := by
+    rcases Nat.eq_zero_or_pos M with h | h
+    · rw [h, mul_zero] at hT; omega
+    · exact h
+  have hR1 : wordsNat r1.val = (R + 2 ^ (64 * k) * top1.val) % M := by
+    rw [show (2 : Int) ^ (64 * k) = ((2 ^ (64 * k) : Nat) : Int) by push_cast; rfl] at hr1
+    generalize 2 ^ (64 * k) = B at *
+    rcases (show top1.val = 0 ∨ top1.val = 1 by omega) with ht | ht
+    · rw [ht] at hr1 hXlt ⊢
+      simp only [mul_zero, add_zero] at hXlt ⊢
+      by_cases hRM : R < M
+      · have hb1 : below.val = 1 := by rw [hbelow]; exact if_pos hRM
+        simp only [hb1, and_self, ↓reduceIte, Nat.cast_zero, sub_zero] at hr1
+        rw [Nat.mod_eq_of_lt hRM]
+        rcases (show b = 0 ∨ b = 1 by omega) with rfl | rfl <;> push_cast at hr1 <;> omega
+      · have hb0 : below.val = 0 := by rw [hbelow]; exact if_neg hRM
+        simp only [hb0, zero_ne_one, and_false, ↓reduceIte] at hr1
+        rw [Nat.mod_eq_sub_mod (by omega), Nat.mod_eq_of_lt (by omega)]
+        rcases (show b = 0 ∨ b = 1 by omega) with rfl | rfl <;> push_cast at hr1 <;> omega
+    · rw [ht] at hr1 hXlt ⊢
+      simp only [one_ne_zero, false_and, ↓reduceIte] at hr1
+      simp only [mul_one] at hXlt ⊢
+      rw [Nat.mod_eq_sub_mod (by omega), Nat.mod_eq_of_lt (by omega)]
+      rcases (show b = 0 ∨ b = 1 by omega) with rfl | rfl <;> push_cast at hr1 <;> omega
+  refine ⟨?_, ?_, ?_⟩
+  · simp only [Slice.length]; rw [hback, List.length_setSlice!, ht2L]; omega
+  · rw [hdrop, hR1]; exact Nat.mod_lt _ hM0
+  · rw [hdrop, hR1, Nat.mod_mul_mod, mul_comm, hX, Nat.add_mul_mod_self_left]
+
 end rind.portable
