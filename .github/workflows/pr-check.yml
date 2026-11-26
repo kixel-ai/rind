@@ -3,7 +3,7 @@ name: PR check
 # `just ci` over the PR's diff against its base, the same selection and modules
 # the merge queue runs, so a check that fails in the queue (an unstable-rustfmt
 # import order, stale mutants pins) fails here first. Advisory: main's ruleset
-# requires only `Queue build / Build`, which no job here replaces. check.yml
+# requires only queue-build.yml's contexts, which no job here replaces. check.yml
 # runs the unscoped suite on main; queue-build.yml runs the group on the queue's
 # own runner.
 #

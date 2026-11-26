@@ -1134,3 +1134,23 @@ fn signatures_debug_as_bytes() {
         format!("Signature({:?})", signature.as_ref())
     );
 }
+
+/// A modulus a bit under an algorithm's floor verifies only once the floor is
+/// counted in whole bytes, as ring counts it.
+#[test]
+fn byte_floor_takes_a_modulus_a_bit_short() {
+    let key = rsa::KeyPair::from_pkcs1(include_bytes!("../rsa/rsa2047.der")).unwrap();
+    assert_eq!(key.public_key().modulus_bits(), 2047);
+    let signature = key.sign(&rsa::sign::PKCS1_SHA256, b"message").unwrap();
+    let public = key.public_key();
+
+    let bits = rsa::verify::PKCS1_SHA256.floor_in_bytes();
+    assert!(
+        public
+            .verify(&rsa::verify::PKCS1_SHA256, b"message", signature.as_ref())
+            .is_err()
+    );
+    public
+        .verify(&bits, b"message", signature.as_ref())
+        .unwrap();
+}
