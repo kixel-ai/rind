@@ -12,11 +12,11 @@
 //! whether open authenticated, which its contract lets it reveal. Those proofs
 //! are over its models of the instructions, which `admin/prove vg` cosimulates.
 //! `proofs/Rind/Aarch64/VgChaCha20Poly1305.lean` takes those theorems as
-//! axioms about `seal_sve2` and `open_sve2` and proves `seal` and `open`
-//! from them on SVE2 CPUs. The aws-lc assembly is not formally verified: its
-//! correctness rests on its use and testing in BoringSSL and aws-lc. rind
-//! tests every path against RFC 8439, Wycheproof, aws-lc-rs, and separate
-//! ChaCha20 and Poly1305 passes.
+//! axioms about `seal_sve2`, `open_sve2`, `seal_neon`, and `open_neon` and
+//! proves `seal` and `open` from them wherever those routines run. The aws-lc
+//! assembly is not formally verified: its correctness rests on its use and
+//! testing in BoringSSL and aws-lc. rind tests every path against RFC 8439,
+//! Wycheproof, aws-lc-rs, and separate ChaCha20 and Poly1305 passes.
 //!
 //! VG's routines zero their stack scratch before returning, which AGENTS.md
 //! allows an imported proven routine: VG defines each routine with that
