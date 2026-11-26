@@ -157,7 +157,23 @@ rand_core-voprf = { package = "rand_core", version = "0.6", features = ["getrand
 
 # These cover every algorithm, so a build that leaves one out skips them.
 [[test]]
-name = "crosschecks"
+name = "crosschecks_curves"
+required-features = ["ml-dsa", "slh-dsa"]
+
+[[test]]
+name = "crosschecks_pq"
+required-features = ["ml-dsa", "slh-dsa"]
+
+[[test]]
+name = "crosschecks_protocols"
+required-features = ["ml-dsa", "slh-dsa"]
+
+[[test]]
+name = "crosschecks_rsa"
+required-features = ["ml-dsa", "slh-dsa"]
+
+[[test]]
+name = "crosschecks_symmetric"
 required-features = ["ml-dsa", "slh-dsa"]
 
 [[test]]

@@ -49,7 +49,9 @@ all=
 if [[ "$base" == --all ]]; then
     all=1
 else
-    sh/changed.sh "$base" >"$changed"
+    # Resolved once, since the deletions below need it too.
+    merge_base=$(sh/changed.sh --merge-base "$base")
+    sh/changed.sh "$merge_base" >"$changed"
 
     # These files hold the map and the recipes that call it, and match no
     # module, so a change to them would otherwise validate none of it.
@@ -137,8 +139,9 @@ push_paths() {
 
 # The merge queue's build gates on checks that otherwise run only in a
 # workflow of their own, when the group touches their inputs.
-# The group's build is the one self-hosted job queue-build.yml runs, on x86_64,
-# so `vg` checks only x86_64's code; the nightly `prove` covers aarch64's.
+# Only the group's x86_64 build sets CHECK_QUEUE (its aarch64 jobs run `rs`
+# alone), so `vg` checks only x86_64's code; the nightly `prove` covers
+# aarch64's.
 if [[ "$action" == ci && -n "${CHECK_QUEUE:-}" ]]; then
     # pyca/verified-garbage's code against its Lean models, as `prove`'s vg
     # job runs it, with a fixed seed, on the paths that start `prove` on
@@ -158,7 +161,7 @@ if [[ "$action" == ci && -n "${CHECK_QUEUE:-}" ]]; then
 fi
 
 # sh/select.sh narrows this to the changed crates and their dependents.
-module rs '^(rind[^/]*/|fuzz/|thirdparty/|Cargo\.(toml|lock)$|\.rustfmt(\.unstable)?\.toml$)' \
+module rs '^(rind[^/]*/|fuzz/|thirdparty/|Cargo\.(toml|lock)$|\.rustfmt(\.unstable)?\.toml$|flake\.(nix|lock)$)' \
     tools='cargo jq rustfmt-unstable' check-tools='cargo-nextest clippy-driver' compiles check fix
 # rind's aarch64, armv7, portable, and wasm32 builds, which the host's own
 # build skips, and which a toolchain bump can break. A change under one
@@ -216,6 +219,11 @@ module fixtures '^(rind/(src/|Cargo\.toml$|build\.rs$)|rind-rustls/(src/|Cargo\.
 # Advisories, licenses, and sources move with any manifest or the policy.
 module deny '(^|/)Cargo\.(toml|lock)$|^deny\.toml$' \
     tools='cargo-deny' check
+# Audits of the published rind crate's dependencies, which a lockfile or
+# manifest change can add to, against supply-chain/'s audits, imports, and
+# exemptions.
+module vet '(^|/)Cargo\.(toml|lock)$|^supply-chain/' \
+    tools='cargo-vet' check
 # .cargo/mutants.toml's exclusions name mutants by file, line, and function,
 # so moving code can leave one matching nothing.
 module mutants '^(rind[^/]*/src/|\.cargo/mutants\.toml$|admin/mutants$)' \
@@ -223,6 +231,10 @@ module mutants '^(rind[^/]*/src/|\.cargo/mutants\.toml$|admin/mutants$)' \
 # An adapter's manifest holds both its version and its upstream requirement.
 module versions '^(rind-[^/]+/Cargo\.toml$|sh/adapter-versions\.sh$)' \
     tools='cargo jq' check
+# A published crate's public API against the merge-base's: a break needs a `!`
+# mark, and an adapter's one that names it (sh/semver.sh).
+module semver '^(rind[^/]*/(src/|Cargo\.toml$)|sh/semver\.sh$)' \
+    tools='cargo cargo-semver-checks jq' compiles
 # Each adapter's API against its upstream's, which reaches rind only through a
 # lockfile change, as read by the flake's rustdoc. rind-object-store and
 # rind-rand-core have none to copy.
@@ -245,9 +257,20 @@ module compat '^(COMPATIBILITY\.md$|admin/x86-cpus?(/|$))' \
 # close them.
 module bench '^(BENCHMARKS\.md$|README\.md$|benchmarks/|admin/bench-report|quest/)' \
     tools='python3' check
-# The landing page reads and links files across the repository, and its build
-# takes seconds, so it runs on every diff rather than keep a list.
-module site '' \
+# The landing page, on a diff to its own code, the shell and CI setup it builds
+# in, or a repository file site/inputs.txt lists, which it reads or links with
+# an anchor; a diff that deletes or renames a file selects it too (see below),
+# since its link check catches a link to a file that is gone.
+site_inputs=
+while IFS= read -r input; do
+    [[ -n "$input" && "$input" != '#'* ]] || continue
+    [[ "$input" =~ ^[A-Za-z0-9_./-]+$ ]] || {
+        echo "error: site/inputs.txt lists '$input', which sh/dispatch.sh cannot match" >&2
+        exit 2
+    }
+    site_inputs+="|${input//./\\.}\$"
+done <site/inputs.txt
+module site "^(site/|sh/site\.sh$|flake\.(nix|lock)$|\.github/(workflows/pr-check\.yml$|actions/(just|nix)/)$site_inputs)" \
     tools='nix'
 # Quest documents form one graph, so any change validates the whole tree, as
 # does a bump of the flake-pinned validator.
@@ -319,6 +342,11 @@ for word in ${CHECK_MODULES:-}; do
     if [[ "$word" == -* ]]; then skip[$name]=1; else only[$name]=1; fi
 done
 
+# Whether the branch deleted a path, a rename's old one included, which
+# sh/changed.sh lists among the changed ones without saying so.
+deleted=
+[[ -n "$all" ]] || deleted=$(git diff --name-only --no-renames --diff-filter=D "$merge_base")
+
 selected=()
 missing=()
 for module in "${modules[@]}"; do
@@ -326,7 +354,8 @@ for module in "${modules[@]}"; do
         continue
     fi
     pattern=${scope[$module]}
-    if [[ -z "$all" && -n "$pattern" ]] && ! grep -qE "$pattern" "$changed"; then
+    if [[ -z "$all" && -n "$pattern" ]] && ! grep -qE "$pattern" "$changed" &&
+        ! [[ "$module" == site && -n "$deleted" ]]; then
         continue
     fi
     # The host's build already covers its own backend. A plain assignment, so
@@ -451,28 +480,28 @@ step() {
             export RUSTC_WORKSPACE_WRAPPER CARGO_BUILD_WARNINGS
             # nextest runs the test binaries in parallel but not doc tests. Like
             # `cargo test`, it passes a selection with no tests.
-            run cargo nextest run "${packages[@]}" --tests --locked --no-tests=warn
+            run cargo nextest run "${packages[@]}" --tests --locked --no-tests=warn --cargo-profile test-fast
             # The local loop stops at the tests but for the FIPS crates' own
             # changes, below; ci goes on.
             if [[ "$action" == ci ]]; then
                 # What --tests leaves unbuilt, and so unlinted: benches,
                 # examples, binaries that set `test = false`, such as the fuzz
                 # targets, and a library no test links.
-                run cargo build "${packages[@]}" --all-targets --locked
+                run cargo build "${packages[@]}" --all-targets --locked --profile test-fast
                 if names rind "${packages[@]}"; then
                     # rind's `zeroize` feature, whose impls the zeroing test
                     # holds to their claim: it requires `ZeroizeOnDrop` of
                     # every type it checks.
-                    run cargo nextest run -p rind --features zeroize --test zeroing --locked
+                    run cargo nextest run -p rind --features zeroize --test zeroing --locked --cargo-profile test-fast
                     # rind without the algorithms its features hold, as the
                     # adapters build it: no combination may leave dead code, a
                     # key of an algorithm left out is refused by its feature's
                     # name, and the other signature types' encodings fit its
                     # smaller buffers. rind has no bench or example, so
                     # --tests builds all its targets.
-                    run cargo nextest run -p rind --no-default-features --tests --locked -E 'test(high::signature::)'
+                    run cargo nextest run -p rind --no-default-features --tests --locked --cargo-profile test-fast -E 'test(high::signature::)'
                     for features in ml-dsa slh-dsa; do
-                        run cargo clippy -p rind --no-default-features --features "$features" --lib --locked -- --deny warnings
+                        run cargo clippy -p rind --no-default-features --features "$features" --lib --locked --profile test-fast -- --deny warnings
                     done
                 fi
             fi
@@ -500,21 +529,21 @@ step() {
                         --features "$features" --locked --target-dir target/fips-module -- --deny warnings
                 done
                 if [[ -n "$all" ]] || grep -q '^rind-fips/' "$changed"; then
-                    run cargo nextest run -p rind-fips --features __break_tests --locked
+                    run cargo nextest run -p rind-fips --features __break_tests --locked --cargo-profile test-fast
                 fi
                 # rind-acvp has no bench or example, so --tests builds all its
                 # targets.
-                run cargo nextest run -p rind-acvp --features module --tests --locked
+                run cargo nextest run -p rind-acvp --features module --tests --locked --cargo-profile test-fast
             fi
             [[ "$action" == ci ]] || return 0
             # Doc tests need a library. No packages at all means the workspace.
             mapfile -t libs < <(sh/select.sh "$changed" "$all" --lib)
             if ((${#libs[@]} > 0 || ${#packages[@]} == 0)); then
-                run cargo test "${libs[@]}" --locked --doc
+                run cargo test "${libs[@]}" --locked --doc --profile test-fast
                 # A broken or private intra-doc link renders as plain text on
                 # docs.rs. Its dependencies build in check mode, which the
                 # tests' build never shares, so clippy there would only cost.
-                RUSTC_WORKSPACE_WRAPPER='' RUSTDOCFLAGS='--deny warnings' run cargo doc "${libs[@]}" --no-deps --locked
+                RUSTC_WORKSPACE_WRAPPER='' RUSTDOCFLAGS='--deny warnings' run cargo doc "${libs[@]}" --no-deps --locked --profile test-fast
             fi
             ;;
         fix:rs)
@@ -693,7 +722,12 @@ step() {
             ;;
         check:structure) run admin/structure ;;
         check:deny) run cargo deny --locked check ;;
+        check:vet) run cargo vet --locked ;;
         check:versions) run sh/adapter-versions.sh ;;
+        check:semver)
+            # An unscoped run compares with the default base, not `--all`.
+            if [[ -n "$all" ]]; then run sh/semver.sh; else run sh/semver.sh "$base"; fi
+            ;;
         check:adapters) run python3 admin/adapter-api ;;
         check:quest) run quest check ;;
         check:license) run bash admin/scan-license ;;

@@ -18,8 +18,9 @@ qemu. iOS devices' code is only built.
   [ALGORITHMS.md](ALGORITHMS.md)), `rind::cpu::has_aes_hardware()` is false, and
   rind-rustls and rind-dimpl prefer ChaCha20-Poly1305. Where the CPU has
   SVE2, as Armv9 cores from Neoverse N2 and Cortex-A710 on do,
-  ChaCha20-Poly1305 runs [verified-garbage]'s SVE2 assembly, and aws-lc's
-  NEON assembly otherwise. Where the CPU has DIT, as Armv8.4 cores and
+  ChaCha20-Poly1305 runs [verified-garbage]'s SVE2 assembly; otherwise it
+  runs verified-garbage's NEON assembly or aws-lc's, whichever is faster at
+  the message's length (see [ALGORITHMS.md](ALGORITHMS.md)). Where the CPU has DIT, as Armv8.4 cores and
   Apple's do, secret-dependent code runs with data-independent timing, set
   and cleared in each call unless `rind::cpu::Dit::hold()` holds it across a
   batch of calls, as Arm
