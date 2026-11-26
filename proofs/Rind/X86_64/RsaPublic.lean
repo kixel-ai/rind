@@ -98,7 +98,7 @@ theorem mont_args_of (x y n : RsaInt) (n0 : U64) (hk : n.used.val ≤ 128) (hk2 
     (hx : wordsNat (lowWords x n.used) < wordsNat (lowWords n n.used))
     (hy : wordsNat (lowWords y n.used) < wordsNat (lowWords n n.used)) :
     MontArgs (lowWords x n.used) (lowWords y n.used) (lowWords n n.used) n0 := by
-  refine ⟨?_, ?_, ?_, hodd, hn0, hx, hy⟩ <;> simp only [lowWords_length _ hk] <;> omega
+  refine ⟨?_, ?_, ?_, ?_, hodd, hn0, hx, hy⟩ <;> simp only [lowWords_length _ hk] <;> omega
 
 /-- A Montgomery product's result, as a congruence. -/
 theorem mont_result_of {x y m r : List U64} (h : MontResult x y m r) :
@@ -340,14 +340,14 @@ theorem mont_neg_inverse_spec (n : RsaInt) (hk : 1 ≤ n.used.val) (hk' : n.used
 
 /-- What `RsaPublicKey::new` establishes about a key: the modulus `n` of
 `k` words is odd, `n0` is `-n⁻¹ mod 2^64`, the montifier is `R² mod n` for
-`R = 2^(64k)`, the exponent is odd and above one, and the modulus has 1024
+`R = 2^(64k)`, the exponent is odd and above one, and the modulus has 1017
 to 8192 bits, its top word nonzero. -/
 def PubKeyInv (key : mid.rsa_pub.RsaPublicKey) : Prop :=
   let k := key.n.used.val
   let N := wordsNat (lowWords key.n k)
   2 ≤ k ∧ k ≤ 128 ∧ N % 2 = 1 ∧ (N * key.n0.val + 1) % 2 ^ 64 = 0 ∧
     wordsNat (lowWords key.montifier k) = 2 ^ (128 * k) % N ∧ key.e.val % 2 = 1 ∧ 3 ≤ key.e.val ∧
-    1024 ≤ N.size ∧ N.size ≤ 8192 ∧ 2 ^ (64 * (k - 1)) ≤ N
+    1017 ≤ N.size ∧ N.size ≤ 8192 ∧ 2 ^ (64 * (k - 1)) ≤ N
 
 theorem div_pow_log2 (e : Nat) (he : e ≠ 0) : e / 2 ^ e.log2 = 1 := by
   apply Nat.div_eq_of_lt_le

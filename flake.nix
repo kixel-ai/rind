@@ -233,11 +233,11 @@
             installPhase = "install -D ct-qemu-plugin.so $out/lib/ct-qemu-plugin.so";
           };
 
-          # OpenSSL's `evp_test` and its X25519 and Ed25519 data, from the
-          # source of the OpenSSL the dev shell has. `sh/openssl.sh` runs them
-          # with rind-openssl loaded and preferred. A static build, so the
-          # test runs the library it was built with, and the default provider
-          # inside it.
+          # OpenSSL's `evp_test` and its X25519, Ed25519, ML-KEM, and ML-DSA
+          # data, from the source of the OpenSSL the dev shell has.
+          # `sh/openssl.sh` runs them with rind-openssl loaded and preferred.
+          # A static build, so the test runs the library it was built with,
+          # and the default provider inside it.
           openssl-evp-test = pkgs.stdenv.mkDerivation {
             pname = "openssl-evp-test";
             inherit (pkgs.openssl) version src;
@@ -251,6 +251,7 @@
             installPhase = ''
               install -D test/evp_test $out/bin/evp_test
               install -D -t $out/share/evp_test test/recipes/30-test_evp_data/evppkey_{ecx,ecx_sigalg,ecx_kem,mismatch_ecx}.txt
+              install -D -t $out/share/evp_test test/recipes/30-test_evp_data/evppkey_ml_{kem,dsa}_*.txt
             '';
           };
 
@@ -519,6 +520,8 @@
                   # git already brings this one.
                   perl
                   cargo-deny
+                  # Audits of rind's own dependencies (supply-chain/).
+                  cargo-vet
                   # `just powerset` and the quality lints workflow.
                   cargo-hack
                   # admin/mutants and the mutants workflow.
@@ -640,7 +643,7 @@
               ];
             };
 
-            # The `dart` module of `just check` runs rind-dart's Dart package
+            # The `dart` module of `just ci` runs rind-dart's Dart package
             # in it. Its own shell, since the SDK would add over 200 MB to
             # the closure every CI job downloads.
             dart = mkDevShell {
@@ -685,7 +688,7 @@
               shellHook = pkgs.lib.optionalString (system == "x86_64-linux") sde-certs;
             };
 
-            # `just check` runs `sh/site.sh` in it, which builds site/, the
+            # `just ci` runs `sh/site.sh` in it, which builds site/, the
             # landing page, with Bun, and loads it in headless Chromium. Its own
             # shell, since Chromium would add hundreds of MB to the closure
             # every CI job downloads.
@@ -705,7 +708,7 @@
                 };
               };
 
-            # `just check` runs `sh/openssl.sh` in it, which builds rind-openssl
+            # `just ci` runs `sh/openssl.sh` in it, which builds rind-openssl
             # and runs OpenSSL's `evp_test` with it.
             openssl = mkDevShell {
               packages = [
@@ -715,7 +718,7 @@
               env.OPENSSL_EVP_TEST = openssl-evp-test;
             };
 
-            # `just check` runs `admin/ct-vartime` in it: llvm-objdump, and the
+            # `just ci` runs `admin/ct-vartime` in it: llvm-objdump, and the
             # standard library of each target it builds rind's rlib for.
             ct-vartime = mkDevShell {
               packages = [
@@ -868,7 +871,7 @@
             armv7 = mkDevShell armv7-shell;
 
             # `just qemu aarch64` tests the aarch64 build under qemu in it, and
-            # `just check`'s cross module lints rind's tests for aarch64 in it,
+            # `just ci`'s cross module lints rind's tests for aarch64 in it,
             # where the aws-lc-rs dev-dependency needs an aarch64 C compiler.
             aarch64 = qemu-shell {
               target = "aarch64-unknown-linux-gnu";

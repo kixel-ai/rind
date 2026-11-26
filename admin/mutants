@@ -530,13 +530,27 @@ case $(uname -sm) in
     "Linux aarch64") host=aarch64-unknown-linux-gnu ;;
     *) host="$(uname -sm)" ;;
 esac
+# macOS on Apple silicon takes the aarch64 campaign, which only lists here,
+# so a listing, as the self-test runs, works there too.
+case $host in
+    "Darwin arm64") default_campaign=aarch64-unknown-linux-gnu ;;
+    *) default_campaign=$host ;;
+esac
+
+# Ed25519 verification's multi-scalar multiplication, which only the x86_64
+# backend compiles under a `cfg`, though cargo-mutants mutates it anyway:
+# on the other campaigns every one of its mutants survives, each costing a
+# whole test run.
+x86_64_only=(
+    rind/src/low/generic/edwards25519_msm.rs rind/src/mid/half_size.rs
+)
 
 # Only armv7 and the portable backend compile these.
 portable=(
     'rind/src/low/portable/**' 'rind/src/mid/portable/**'
     rind/src/low/generic/order.rs
 )
-campaign=${target:-$host}
+campaign=${target:-$default_campaign}
 if [ -n "$portable_backend" ]; then
     [ -z "$target" ] && [ "$campaign" = x86_64-unknown-linux-gnu ] || {
         echo "admin/mutants: --portable runs only on Linux x86_64, without --target" >&2
@@ -564,6 +578,7 @@ case $campaign in
         triple=AARCH64_UNKNOWN_LINUX_GNU
         skip=(
             'rind/src/low/x86_64/**' 'rind/src/low/arm/**' "${portable[@]}"
+            "${x86_64_only[@]}"
             rind/src/low/generic/mlkem_poly.rs
             rind/src/low/generic/sha1.rs rind/src/low/generic/sha256.rs
         )
@@ -584,6 +599,7 @@ case $campaign in
             'rind/src/low/x86_64/**' 'rind/src/low/aarch64/**' 'rind/src/low/arm/**'
             rind/src/low/generic/limb32.rs
             rind/src/low/generic/p256_mul32.rs rind/src/low/generic/p384_mul32.rs
+            "${x86_64_only[@]}"
         )
         rows=()
         ;;

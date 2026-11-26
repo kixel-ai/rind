@@ -175,15 +175,18 @@ mod generic {
     ))]
     pub(super) mod sha256;
     // FIPS 180-4 §4.2.2, one copy. The ESP-IDF Xtensa compressor and the
-    // portable one above both read it. aarch64 tests compile neither reader,
-    // so the table stays out: clippy denies an unused static.
+    // portable one above both read it, as do aarch64's interleaved SLH-DSA
+    // lanes. Other aarch64 builds compile no reader, so the table stays out
+    // there: clippy denies an unused static.
     #[cfg(any(
         rind_backend = "portable",
+        all(feature = "slh-dsa", rind_backend = "aarch64"),
         all(test, any(rind_backend = "arm", rind_backend = "x86_64"))
     ))]
     pub(super) mod sha256_k;
     // SLH-DSA's SHA-256 lanes one at a time, which x86_64 runs with the SHA
-    // extensions or without AVX2.
+    // extensions or without AVX2, and aarch64 without the SHA-256
+    // instructions or for a group of one or two lanes.
     #[cfg(feature = "slh-dsa")]
     pub(super) mod sha256x8;
     // The portable backend's SHA-512, and its round constants. Tests compile
@@ -620,7 +623,7 @@ cfg_if::cfg_if! {
         pub(crate) use aarch64::sha1::{sha1_compress_blocks, sha1_compress_padded};
         pub(crate) use aarch64::sha256::{sha256_compress_blocks, sha256_finish};
         #[cfg(feature = "slh-dsa")]
-        pub(crate) use generic::sha256x8::sha256_finish_x8;
+        pub(crate) use aarch64::sha256x8::sha256_finish_x8;
         pub(crate) use aarch64::sha3_keccak_f1600_mux::sha3_keccak_f1600;
         pub(crate) use aarch64::sha3_keccak4_f1600_mux::sha3_keccak4_f1600;
         pub(crate) use aarch64::sha3_keccak_nof4_f1600::sha3_keccak_nof4_f1600;
@@ -628,7 +631,8 @@ cfg_if::cfg_if! {
 
         pub(crate) use aarch64::chacha20;
         pub(crate) use aarch64::chacha20poly1305;
-        pub(crate) use generic::mlkem::{mlkem_compress_d4, mlkem_compress_d5, mlkem_compress_d10, mlkem_compress_d11, mlkem_frombytes, mlkem_unpack};
+        pub(crate) use aarch64::mlkem::{mlkem_compress_d4, mlkem_compress_d5, mlkem_compress_d10, mlkem_compress_d11};
+        pub(crate) use generic::mlkem::{mlkem_frombytes, mlkem_unpack};
     } else if #[cfg(rind_backend = "arm")] {
         pub(in crate::low) use arm::cpu::{enter_cpu_state, zero_bytes, ct_compare_bytes, ct_compare_16, leave_cpu_state};
         pub(crate) use arm::aes::{AesDecKey, AesKey};

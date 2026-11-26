@@ -281,8 +281,23 @@ rind_static() {
         fi
     done < <(relocations "$obj" "$section")
     "$tools/llvm-objcopy" --dump-section="$section=$dest.section" "$obj" "$dest.o"
-    tail -c +$((16#$value + 1)) "$dest.section" | head -c $((16#$size)) >"$dest"
+    head -c $((16#$value + 16#$size)) "$dest.section" | tail -c +$((16#$value + 1)) >"$dest"
     rm "$dest.section" "$dest.o"
+}
+
+# Writes to `dest` the bytes of the `global_asm!` routine `name`, whose symbol
+# `aws_lc_symbol!` qualifies by rind's version, through the size its `.size`
+# gives, as rind's release build for `arch` Linux emits them, failing if a
+# relocation falls in them.
+asm_routine() {
+    local arch=$1 name=$2 dest=$3 sym
+    sym=$(awk -F '\t' -v n="$name" '$2 ~ ("^rind_[0-9]+_[0-9]+_[0-9]+_" n "$") { print $2 }' \
+        "$(rind_index "$arch")" | sort -u)
+    if [[ -z $sym || $(wc -l <<<"$sym") != 1 ]]; then
+        echo "admin/prove: rind's $arch build defines no one routine $name" >&2
+        return 1
+    fi
+    rind_static "$arch" "$sym" "$dest"
 }
 
 # Writes to `dest` an object holding the naked Rust function at `path`, as
@@ -411,25 +426,26 @@ result_key() {
     [[ -z $key_only ]] || cat "$out/keys/$name" >&3
 }
 
-# rind's own HOL Light proofs, each of the `asm!` block in a Rust function or
-# of a naked one, on the model, tactics, and specs of rind's fork of
-# s2n-bignum in `thirdparty/s2n-bignum`, which `RIND.md` there describes.
-# Each `<arch>/<file>.ml` reads its object code from `<arch>/<file>.bin`, the
-# block's bytes, which `asm_block` writes, or `<arch>/<file>.o`, the naked
+# rind's own HOL Light proofs, each of the `asm!` block in a Rust function,
+# of a naked one, or of a `global_asm!` routine, on the model, tactics, and
+# specs of rind's fork of s2n-bignum in `thirdparty/s2n-bignum`, which
+# `RIND.md` there describes. Each `<arch>/<file>.ml` reads its object code
+# from `<arch>/<file>.bin`, the block's bytes, which `asm_block` writes, or
+# the routine's, which `asm_routine` writes for a path that is the routine's
+# symbol without rind's version, or from `<arch>/<file>.o`, the naked
 # function's object, which `asm_function` writes, and asserts it is what it
 # lists. A target's proofs compile into one program, as s2n-bignum's
 # `tools/build-proof.sh` compiles each of its own, which fails on an error or
 # an axiom beyond HOL Light's.
 hol_light_proofs=(
     "aarch64 bignum_eq.bin rind::low::aarch64::bignum_eq::bignum_eq"
-    "aarch64 sha512_block_data_order_hw.o rind::low::aarch64::sha512::sha512_block_data_order_hw"
     "aarch64 bn_mul_mont.o rind::low::aarch64::mont::bn_mul_mont"
     "aarch64 ct_compare_bytes.bin rind::low::aarch64::cpu::ct_compare_bytes"
     "aarch64 ct_compare_16.bin rind::low::aarch64::cpu::ct_compare_16"
     "x86_64 ct_compare_bytes.bin rind::low::x86_64::cpu::ct_compare_bytes"
     "x86_64 ct_compare_16.bin rind::low::x86_64::cpu::ct_compare_16"
-    "armv7 ct_compare_bytes.bin rind::low::arm::cpu::ct_compare_bytes"
-    "armv7 ct_compare_16.bin rind::low::arm::cpu::ct_compare_16"
+    "armv7 ct_compare_bytes.bin ct_compare_bytes"
+    "armv7 ct_compare_16.bin ct_compare_16"
     "x86_64 sha512_block_data_order_avx2.o rind::low::x86_64::sha512::sha512_block_data_order_avx2"
     "x86_64 sha256_block_data_order_avx2.o rind::low::x86_64::sha256::sha256_block_data_order_avx2"
     "x86_64 bn_mul_mont_nohw.o rind::low::x86_64::mont::bn_mul_mont_nohw"
@@ -496,7 +512,11 @@ hol_light_objects() {
         read -r parch file path <<<"$proof"
         [[ $parch == "$arch" ]] || continue
         case $file in
-        *.bin) asm_block "$arch" "$path" "$dir/$file" ;;
+        *.bin) if [[ $path == *::* ]]; then
+            asm_block "$arch" "$path" "$dir/$file"
+        else
+            asm_routine "$arch" "$path" "$dir/$file"
+        fi ;;
         *.o) asm_function "$arch" "$path" "$dir/$file" ;;
         esac
     done
@@ -541,7 +561,7 @@ hol_light_compile() {
 # campaign that loading it runs is one of those it adds by hand. The SHA
 # extensions' instructions run only where the CPU has them.
 cosim() {
-    local dir=$out/cosim root=$PWD sha=0 cases=1000
+    local dir=$out/cosim root=$PWD sha=0 cases=1500
     local aarch32=thirdparty/s2n-bignum/aarch32/proofs
     hold cosim
     rm -rf "$dir"
@@ -567,7 +587,7 @@ cosim() {
         -o "$dir/aarch32-runner" "$aarch32/cosim_runner.c" "$aarch32/cosim_start.S" -lgcc
     hol_light_compile "$dir" aarch32
     (cd "$dir" && S2N_BIGNUM_SEMATEST_CASES=$cases S2N_BIGNUM_SEMATEST_SECONDS=1200 \
-        RIND_AARCH32_EXECUTOR="qemu-arm -cpu cortex-a15 $root/$dir/aarch32-runner" \
+        RIND_AARCH32_EXECUTOR="qemu-arm -cpu max $root/$dir/aarch32-runner" \
         ./aarch32.native) | grep -v -e '^OK: ' -e '^Stepping to state' -e '^CPU time'
     hol_light_compile "$dir" cosim
     (cd "$dir" && TMPDIR="$root/$dir/tmp" S2N_BIGNUM_SEMATEST_CASES=1 RIND_COSIM_SHA=$sha \
@@ -578,7 +598,10 @@ cosim() {
 # Checks pyca/verified-garbage's (VG's) code for this CPU's target against
 # VG's Lean models, so a theorem of VG's about a routine rind vendors from it
 # is about rind's machine code: `admin/import-vg-models --check` that
-# `proofs/verified-garbage` holds VG's models at its REV; `admin/vg-bytes`
+# `proofs/verified-garbage` holds VG's models at its REV; `admin/vg-binding`
+# that each routine rind vendors is one an axiom's VG theorem covers or is
+# listed as uncovered;
+# `admin/vg-bytes`
 # that VG's machine code, and each routine rind vendors, is the text VG's
 # proofs are about; and the cosimulation, which runs each distinct
 # instruction of VG's code, for `VG_COSIM_CASES` random states each from the
@@ -607,6 +630,7 @@ vg() {
     mkdir -p "$dir"
     admin/upstream verified-garbage
     admin/import-vg-models --check "$upstream"
+    admin/vg-binding "$upstream"
     hold scratch
     build_asm "$arch"
     rind_index "$arch" >/dev/null
@@ -943,7 +967,7 @@ routine_layout() {
 # Each routine rind imports with a published proof, against the object code
 # that proof checked, which `admin/prove-bytes` describes. Vale's and aws-lc's
 # are assembled here from their upstream's text, at the revision of their
-# proofs, with the GNU assembler.
+# proofs, with the GNU assembler; mlkem-native's proofs list their bytes.
 bytes() {
     local dir=$out/bytes arch kind path name obj sym target found
     hold scratch
@@ -956,6 +980,7 @@ bytes() {
     hacl=.tmp/upstream/hacl-star aws_lc=.tmp/upstream/aws-lc@$(admin/prove-bytes aws-lc-revision)
     admin/upstream hacl-star
     admin/upstream aws-lc "${aws_lc#*@}"
+    admin/upstream mlkem-native
     # `-L` keeps the local symbols that size aws-lc's tables.
     x86_64-linux-gnu-as -o "$dir/vale.o" "$hacl/dist/vale/aesgcm-x86_64-linux.S"
     x86_64-linux-gnu-cpp -I "$aws_lc/include" "$aws_lc/generated-src/linux-x86_64/crypto/fipsmodule/sha512-x86_64.S" |
@@ -978,7 +1003,13 @@ bytes() {
             read -r rind_obj rind_sym <<<"$found"
             read -r section value size < <(symbol_bounds "$rind_obj" "$rind_sym")
             routine_layout "$rind_obj" "$section" $((16#$value)) $((16#$value + 16#$size)) "$dir/$arch/$name.bin"
+        fi
+        if [[ $kind == naked ]]; then
             object_routine "$dir/$obj" "$sym" "$dir/$arch/$name.proof"
+        elif [[ $kind == listed && $obj != - ]]; then
+            # A naked function whose proof lists its bytes, and here the
+            # static it reads its table from.
+            rind_static "$arch" "$obj" "$dir/$arch/$name.table"
         fi
         found=$(rind_symbol "$arch" "$path")
         relocation_data "${found%% *}" "$dir/$arch/$name.bin.relocs" "$dir/$arch/$name.bin.data" "$arch"
@@ -1099,7 +1130,7 @@ aarch64_aes_gcm_items() {
         'fn mul8(' 'fn _mul_h(' 'fn _mul8(' "pub(crate) struct Aggregate<'a> {" "impl<'a> Aggregate<'a> {" \
         'fn reverse(' 'fn vmull_p64_fix(' 'fn vmull_high_p64_fix(' 'fn zero(' 'fn from_u128(' 'fn to_u128(' \
         'const GF128_POLY_HI:' 'const GF128_POLY_CARRY_MASK:'
-    items rind/src/low/aarch64/aes_gcm.rs 'fn short<' 'static KEEP:' 'fn encrypt<' 'fn load(' 'fn store('
+    items rind/src/low/aarch64/aes_gcm.rs 'fn short<' 'static KEEP:' 'fn encrypt<' 'fn load(' 'fn store(' 'fn stitched<'
 }
 check_quote Aarch64/AesGcmModel aarch64_aes_gcm_items
 select_items() {
@@ -1254,6 +1285,13 @@ only_quoted rind/src/aead.rs "$out/AeadDispatch.rs" '= Algorithm \{'
 # models `signature::rsa::PublicKey` above it.
 # x86_64's RSA reaches `Digest::ct_equal`, so every target starts from it,
 # for the HMAC model all share.
+# ML-KEM's construction is translated from its key generation, key parsing,
+# encapsulation, and decapsulation, generic over the parameter set, down to
+# its polynomial routines in `low`, which are opaque. The sets' `Params`
+# impls are not translated, so the translation takes a set's impl as a
+# parameter: see UPSTREAM.md, "Aeneas cannot translate an auto trait's
+# built-in impl". x86_64's eight-way matrix sampler, which only ML-KEM-1024
+# runs and which passes function pointers, is opaque.
 # See UPSTREAM.md, "Aeneas cannot translate several kinds of Rust".
 # The hash, HMAC, and header-protection paths, which every target translates,
 # and the curves', signatures', SHA-3 sponge's, and AES modes', which only the
@@ -1368,7 +1406,13 @@ assembly=(
     --start-from crate::mid::mlkem::decompress
     --start-from 'crate::mid::mlkem::_::from_message_bits'
     --start-from 'crate::mid::mlkem::_::to_message_bits'
+    --start-from crate::mid::mlkem::DecapKey::keygen_mitigated
+    --start-from crate::mid::mlkem::DecapKey::decaps_mitigated
+    --start-from crate::mid::mlkem::DecapKey::encapsulation_key
+    --start-from crate::mid::mlkem::EncapKey::parse_mitigated
+    --start-from crate::mid::mlkem::EncapKey::encaps_mitigated
     --include crate::low::generic::ct_copy::ct_select_i16
+    --include crate::low::generic::ct_copy::ct_copy
 )
 extract() {
     local arch=$1 dir=$2
@@ -1477,7 +1521,7 @@ extract_kdf() {
 
 # Charon's builds take target directories of their own, the portable
 # translation's apart from x86_64's: Cargo can reuse a build script's output
-# across builds whose cfgs differ, such as `just check`'s portable cross builds,
+# across builds whose cfgs differ, such as `just ci`'s portable cross builds,
 # leaving `rind_backend` naming another backend than the one compiled.
 #
 # Each is keyed by the toolchain Charon builds with, since Cargo reuses a build
@@ -1650,7 +1694,8 @@ extract x86_64 X86_64 "${hashes[@]}" "${assembly[@]}" \
     --start-from crate::low::x86_64::mlkem768_vg::Encaps::check_ek \
     --start-from crate::low::x86_64::mlkem768_vg::Encaps::encaps \
     --start-from crate::low::x86_64::mlkem768_vg::KeyPair::keygen \
-    --start-from crate::low::x86_64::mlkem768_vg::KeyPair::decaps
+    --start-from crate::low::x86_64::mlkem768_vg::KeyPair::decaps \
+    --opaque crate::mid::mlkem::sample_ntt::sample_ntt_8x
 extract aarch64 Aarch64 "${hashes[@]}" "${assembly[@]}" \
     --include crate::low::aarch64::sha512::sha512_compress_blocks \
     --start-from crate::mid::p256::PrivateKey::from_bytes \
@@ -1703,10 +1748,6 @@ extract aarch64 Aarch64 "${hashes[@]}" "${assembly[@]}" \
     --opaque crate::low::aarch64::aes_cbc::aese_chained \
     --include crate::low::generic::mlkem \
     --start-from crate::low::generic::mlkem::mlkem_frombytes \
-    --start-from crate::low::generic::mlkem::mlkem_compress_d4 \
-    --start-from crate::low::generic::mlkem::mlkem_compress_d5 \
-    --start-from crate::low::generic::mlkem::mlkem_compress_d10 \
-    --start-from crate::low::generic::mlkem::mlkem_compress_d11 \
     --start-from crate::low::aarch64::mlkem768_vg::Encaps::check_ek \
     --start-from crate::low::aarch64::mlkem768_vg::Encaps::encaps \
     --include crate::low::aarch64::pbkdf2_vg \
@@ -1720,6 +1761,8 @@ extract aarch64 Aarch64 "${hashes[@]}" "${assembly[@]}" \
     --start-from crate::low::aarch64::chacha20poly1305::open \
     --include crate::low::aarch64::chacha20poly1305::seal \
     --include crate::low::aarch64::chacha20poly1305::open \
+    --include crate::low::aarch64::chacha20poly1305::seal_runs_vg \
+    --include crate::low::aarch64::chacha20poly1305::open_runs_vg \
     --start-from crate::mid::chacha20::ChaCha20::apply_keystream \
     --include crate::low::aarch64::chacha20 \
     --opaque crate::low::aarch64::chacha20::VgState \
@@ -1744,7 +1787,7 @@ extract aarch64 Aarch64 "${hashes[@]}" "${assembly[@]}" \
     --opaque 'crate::low::aarch64::ghash::_::add' \
     --include crate::low::aarch64::aes_gcm \
     --opaque crate::low::aarch64::aes_gcm::short \
-    --opaque crate::low::aarch64::aes_gcm::cipher
+    --opaque crate::low::aarch64::aes_gcm::stitched
 
 # The AEAD key's conversion is x86_64's alone: the AEAD API's model and proofs
 # are x86_64's, as AES-GCM's are.
@@ -1756,14 +1799,15 @@ extract_armv7
 
 # The portable backend, which builds only under the cfg CI's portable jobs
 # build with, here on x86_64: the hashes, down to the SHA-2 block functions in
-# `low::generic`, which are opaque, and the Keccak-f.
-# `proofs/Rind/Portable/Compare.lean`
+# `low::generic`, and the Keccak-f. `proofs/Rind/Portable/Compare.lean`
 # models its constant-time compares, which read through raw pointers and
 # `black_box`. The error type and `into_public`, which the other targets reach
 # through their curves, are start points of their own here.
 portable_cfg='--cfg rind_portable --cfg curve25519_dalek_backend="serial"'
 portable_target=$prove_target-portable
 CARGO_TARGET_DIR=$portable_target RUSTFLAGS=$portable_cfg extract x86_64 Portable "${hashes[@]}" --include crate::low::portable::sha \
+    --include crate::low::generic::sha256 --include crate::low::generic::sha256_k \
+    --include crate::low::generic::sha512 \
     --start-from crate::error::Error --start-from crate::low::ct::into_public \
     --start-from crate::low::portable::keccak::sha3_keccak4_f1600 \
     --start-from crate::low::portable::keccak::sha3_keccak_nof4_f1600 \
