@@ -850,20 +850,18 @@ on no axiom:
   and `cbd3_field` show carry nothing from one field into the next, by
   arithmetic rather than `bv_decide`.
 
-On aarch64, where s2n-bignum has no routine for them, rind runs
-`low::generic::mlkem`'s Rust for ciphertext compression and 12-bit
-unpacking, which `Rind/Aarch64/MlKemGeneric.lean` proves, on no axiom:
-
-- `compress_spec`, and `mlkem_compress_d4_spec` to `mlkem_compress_d11_spec`
-  for its wrappers: `compress::<D, L>` writes FIPS 203's
-  `ByteEncode_D(Compress_D(f))` for coefficients in `[0, q)`. Its multiply
-  and shift is the rounded quotient only on that range, which
-  `compress_exact_4` and its siblings check value by value, as the Rust test
-  `compress_is_exact` does;
-- `mlkem_frombytes_spec`: `mlkem_frombytes` writes each raw 12-bit field, in
-  `[0, 4096)`, so each coefficient is `ByteDecode_12`'s modulo `q` but not
-  yet reduced (`Holds 0 4095`); the `mlkem_reduce` after it, whose axiom is
-  the quest's, makes it canonical.
+On aarch64, where s2n-bignum has no routine for it, rind runs
+`low::generic::mlkem`'s Rust for 12-bit unpacking, which
+`Rind/Aarch64/MlKemGeneric.lean` proves, on no axiom: `mlkem_frombytes`
+writes each raw 12-bit field, in `[0, 4096)`, so each coefficient is
+`ByteDecode_12`'s modulo `q` but not yet reduced (`Holds 0 4095`); the
+`mlkem_reduce` after it, whose axiom is the quest's, makes it canonical.
+Ciphertext compression there is mlkem-native's NEON assembly, which HOL Light
+proves, though `admin/prove bytes` does not yet check rind's build against
+those proofs, as for x86_64's AVX2 compression
+([quest](/quest/m4/verified/mlkem-compress-bytes.md)); its bridge to
+`Compress` is the construction quest's, as for x86_64's AVX2
+compression.
 
 `Rind/MlKemCoding.lean` states what they need of the spec, with no Rust:
 `ByteEncode_bit`, `ByteDecode_get`, and `SamplePolyCBD_get` give each bit or
@@ -1525,8 +1523,8 @@ proof after those.
   coding, compression, and CBD sampling bit by bit and coefficient by
   coefficient; `Rind/X86_64/MlKemCoding.lean`, on both targets: that rind's
   decompression, message coding, and CBD sampling are FIPS 203's;
-  `Rind/Aarch64/MlKemGeneric.lean`: that aarch64's Rust compression and
-  12-bit unpacking are.
+  `Rind/Aarch64/MlKemGeneric.lean`: that aarch64's Rust 12-bit
+  unpacking is.
 - `Rind/<Arch>/ShaBlocks.lean`: SHA-1 and SHA-256's block functions on each
   target, SHA-1's padded last blocks, and SHA-256's padded last blocks and
   finish; `Rind/Aarch64/Sha256Hw.lean`, the axiom for aarch64's routine with
