@@ -48,14 +48,14 @@ lists every one declared, and fails CI on a `sorry` or an axiom its groups
 do not name. [The trust base](#trust-base) says what each trusted item is.
 
 <!-- admin/ledger: begin -->
-Every `axiom` the tracked Lean files declare, 170 in 23 files, `sorry` none:
+Every `axiom` the tracked Lean files declare, 170 in 24 files, `sorry` none:
 
 | Restates | Axioms | Files under `proofs/Rind/` | Checked |
 |---|---|---|---|
 | s2n-bignum's HOL Light theorems of its assembly | 115 | `Aarch64/S2nBignum` 45, `X86_64/S2nBignum` 70 | published proofs; `admin/prove bytes` checks rind's build emits the code they are about |
-| pyca/verified-garbage's Lean theorems of its assembly | 36 | `Aarch64/VgChaCha20` 3, `Aarch64/VgChaCha20Poly1305` 2, `Aarch64/VgMlKem` 2, `Aarch64/VgP256` 3, `Aarch64/VgP384` 2, `Aarch64/VgPbkdf2` 4, `X86_64/VgChaCha20` 3, `X86_64/VgCurve25519` 5, `X86_64/VgMlKem` 4, `X86_64/VgP256` 3, `X86_64/VgP384` 2, `X86_64/VgRsa` 3 | published proofs; `admin/vg-binding` checks each axiom cites the theorem of its routine, and `admin/vg-bytes` that rind runs that routine's bytes |
+| pyca/verified-garbage's Lean theorems of its assembly | 37 | `Aarch64/VgChaCha20` 3, `Aarch64/VgChaCha20Poly1305` 2, `Aarch64/VgMlKem` 2, `Aarch64/VgP256` 3, `Aarch64/VgP384` 2, `Aarch64/VgPbkdf2` 4, `Aarch64/VgSha512` 1, `X86_64/VgChaCha20` 3, `X86_64/VgCurve25519` 5, `X86_64/VgMlKem` 4, `X86_64/VgP256` 3, `X86_64/VgP384` 2, `X86_64/VgRsa` 3 | published proofs; `admin/vg-binding` checks each axiom cites the theorem of its routine, and `admin/vg-bytes` that rind runs that routine's bytes |
 | Vale's procedures for HACL\*'s AES-GCM | 5 | `X86_64/ValeAesGcm` 5 | published proofs; `admin/prove bytes` checks the object code |
-| aws-lc-verification's NSym proof of SHA-384/512 (aarch64) and rind's HOL Light proof of the AVX2 routine (x86_64) | 4 | `Aarch64/AwsLc` 2, `X86_64/AwsLc` 2 | a published proof and rind's own; `admin/prove bytes` and `admin/prove hol-light` check the object code |
+| aws-lc-verification's NSym proof of SHA-384/512 (aarch64) and rind's HOL Light proof of the AVX2 routine (x86_64) | 3 | `Aarch64/AwsLc` 1, `X86_64/AwsLc` 2 | a published proof and rind's own; `admin/prove bytes` and `admin/prove hol-light` check the object code |
 | rind's own HOL Light proofs of its assembly, and rind's Lean proof of the SHA-256 crypto-extension routine | 7 | `Aarch64/Sha256Hw` 1, `X86_64/CtEqual` 2, `X86_64/RsaMont` 1, `X86_64/Sha256Shaext` 2, `X86_64/ShaBlocks` 1 | rind's proofs, in `proofs/hol-light/` and `Rind/Aarch64/Sha256HwAsm.lean`, checked against the bytes rind's build emits |
 | HOL Light theorems of AES-CTR and AES-CBC that no proof states yet | 3 | `X86_64/AesModesLow` 3 | **assumed, not proven**: [the AES modes quest](/quest/m4/verified/aes-modes.md) owns them |
 
