@@ -583,8 +583,8 @@ cosim() {
 # instruction of VG's code, for `VG_COSIM_CASES` random states each from the
 # seed `VG_COSIM_SEED`, on this CPU, or where it lacks a feature the
 # instruction needs, under Intel SDE or qemu-aarch64, and fails unless every
-# end state is the one VG's model gives; on aarch64, also each instruction of
-# the functions rind proves in its own extension of that model
+# end state is the one VG's model gives; also each instruction of the
+# functions rind proves in its own extension of that model
 # (`proofs/verified-garbage/RindIsa/`). The groups split into a fixed number
 # of parts, each seeded from its index, so a seed gives the same cases on
 # every machine.
@@ -641,13 +641,11 @@ vg() {
             "$cpu" "$dir/part.$part.cpu" "$emulated" "$dir/part.$part.emu" &
         pids+=($!)
     done
-    # On aarch64, the instructions of the functions rind proves in its own
-    # extension of VG's model too, as one more part.
-    if [[ $arch == aarch64 ]]; then
-        "$cosim" aarch64 --rind "$cases" $((seed * parts + parts)) \
-            "$cpu" "$dir/part.rind.cpu" "$emulated" "$dir/part.rind.emu" &
-        pids+=($!)
-    fi
+    # The instructions of the functions rind proves in its own extension of
+    # VG's model of this target too, as one more part.
+    "$cosim" "$arch" --rind "$cases" $((seed * parts + parts)) \
+        "$cpu" "$dir/part.rind.cpu" "$emulated" "$dir/part.rind.emu" &
+    pids+=($!)
     for pid in "${pids[@]}"; do
         wait "$pid" || failed=1
     done
@@ -692,14 +690,16 @@ spec_tests() {
 }
 
 # Checks that each function rind proves in its own extension of VG's AArch64
-# model, `proofs/verified-garbage/RindIsa/`, is in rind's build the machine
-# code its theorem is about: `rind-asm` prints each function's words and
-# relocations, from the program the theorem names, and the words each static
-# it reads begins with; this prints the same of rind's release build, from
-# the object `asm_function` writes and the statics `rind_static` writes, and
-# fails unless the two are the same. A relocation must reach the start of the
-# one read-only section `asm_function` keeps, which must be the static the
-# program names.
+# and x86_64 models, `proofs/verified-garbage/RindIsa/`, is in rind's build
+# the machine code its theorem is about: `rind-asm` prints each function's
+# words and relocations on aarch64, and its bytes on x86_64, from the program
+# the theorem names, and the words each static it reads begins with; this
+# prints the same of rind's release build, from the object `asm_function`
+# writes and the statics `rind_static` writes, and fails unless the two are
+# the same. On aarch64 a relocation must reach the start of the one read-only
+# section `asm_function` keeps, which must be the static the program names;
+# on x86_64, whose proven functions read no static, the function must have
+# none.
 rind_isa() {
     local dir=$out/rind-isa kind a b c n=0 rodata sym
     local -A statics=()
@@ -707,8 +707,10 @@ rind_isa() {
     rm -rf "$dir"
     mkdir -p "$dir"
     (cd proofs/verified-garbage && lake build -q rind-asm)
-    proofs/verified-garbage/.lake/build/bin/rind-asm >"$dir/want"
+    proofs/verified-garbage/.lake/build/bin/rind-asm aarch64 >"$dir/want"
+    proofs/verified-garbage/.lake/build/bin/rind-asm x86_64 >>"$dir/want"
     build_asm aarch64
+    build_asm x86_64
     # Each static's Rust symbol, to the program's name for it.
     while read -r kind a b _; do
         if [[ $kind == static ]]; then
@@ -721,6 +723,16 @@ rind_isa() {
         function)
             n=$((n + 1))
             echo "function $a"
+            if [[ $a == rind::low::x86_64::* ]]; then
+                asm_function x86_64 "$a" "$dir/$n.o"
+                if [[ -n $(relocations "$dir/$n.o" .text) ]]; then
+                    echo "admin/prove: $a has relocations, which rind's x86_64 model does not lay out" >&2
+                    return 1
+                fi
+                "$tools/llvm-objcopy" -O binary --only-section=.text "$dir/$n.o" "$dir/$n.text"
+                od -An -v -tx1 -w16 "$dir/$n.text" | awk '{ $1 = $1; gsub(/ /, ""); printf "text %04x %s\n", 16 * (NR - 1), $0 }'
+                continue
+            fi
             asm_function aarch64 "$a" "$dir/$n.o"
             "$tools/llvm-objcopy" -O binary --only-section=.text "$dir/$n.o" "$dir/$n.text"
             od -An -v -tx4 -w4 "$dir/$n.text" | awk '{ print "insn " $1 }'

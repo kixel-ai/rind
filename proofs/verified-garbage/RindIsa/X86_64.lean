@@ -28,7 +28,7 @@ lets it rely on, and only above `lo`, which its theorem states the stack
 holds: a guard page below the stack is the system's, beyond the model.
 
 `admin/prove vg` cosimulates each of these instructions against the CPU
-(`Cosim/Rind.lean`), and `admin/prove lean` checks that each program's bytes
+(`Cosim/RindX86_64.lean`), and `admin/prove lean` checks that each program's bytes
 (`layout`) are the ones rind's build emits.
 -/
 
