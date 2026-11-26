@@ -7,6 +7,7 @@ homepage = "https://rind.kixel.ai"
 license = "(Apache-2.0 OR ISC OR MIT-0) AND (Apache-2.0 OR ISC OR MIT) AND Apache-2.0 AND ISC AND BSD-3-Clause AND MIT"
 readme = "README.md"
 description = "Pure-Rust cryptography for MoQ, forked from graviola"
+keywords = ["crypto", "tls", "quic", "post-quantum", "pure-rust"]
 categories = ["network-programming", "cryptography"]
 rust-version.workspace = true
 

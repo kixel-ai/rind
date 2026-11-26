@@ -650,12 +650,7 @@ opaque low.aarch64.cpu.ct_compare_16
 
 opaque low.aarch64.cpu.ct_compare_bytes : Slice Std.U8 → Slice Std.U8 → Result Std.U8
 
-/-! AES-GCM's stitched kernels and the separate passes around them, which no
-proof covers yet, and aws-lc's NEON GHASH table. -/
-
-opaque low.aarch64.aes_gcm.cipher
-  : Bool → low.aarch64.aes.AesKey → low.aarch64.ghash.Ghash → Array Std.U8 16#usize → Slice Std.U8 →
-    Slice Std.U8 → Result (low.aarch64.ghash.Ghash × Slice Std.U8)
+/-! aws-lc's NEON GHASH table. -/
 
 opaque low.aarch64.ghash_neon_armv8.NeonTable.new
   : Array Std.U8 16#usize → Result low.aarch64.ghash_neon_armv8.NeonTable
