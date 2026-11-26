@@ -5,8 +5,9 @@
 //! and X25519 where the CPU has NEON, and for the ARMv8 crypto extension
 //! where the CPU has it, and OpenSSL's for Keccak-f.
 
-/// The symbol for an aws-lc routine, qualified by rind's version so two
-/// semver-incompatible copies of rind can link into one binary.
+/// The symbol for an assembly routine, aws-lc's or rind's own, qualified by
+/// rind's version so two semver-incompatible copies of rind can link into
+/// one binary.
 macro_rules! aws_lc_symbol {
     ($name:literal) => {
         concat!(
