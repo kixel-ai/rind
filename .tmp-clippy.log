@@ -1,0 +1,8 @@
+quest gate: waiting for the load average to fall
+quest gate: waiting for commands queued earlier to start
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+   Compiling libc v0.2.191
+   Compiling getrandom v0.4.3
+    Checking rind v0.3.2 (/Users/kixelated/worktrees/rind/t3-867de8ed-73175fce549993b3/rind)
+    Finished `dev` profile [unoptimized] target(s) in 5.35s

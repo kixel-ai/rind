@@ -1,0 +1,5 @@
+   Compiling libc v0.2.191
+   Compiling getrandom v0.4.3
+   Compiling cfg-if v1.0.5
+   Compiling rind v0.3.2 (/Users/kixelated/worktrees/rind/t3-867de8ed-73175fce549993b3/rind)
+    Finished `release` profile [optimized] target(s) in 29.14s
