@@ -139,7 +139,7 @@ def signature_lines(text):
         start = i
         # Each attribute above, a multi-line one from its closing `]` up to
         # its `#[`, with no comment or item end between.
-        while start > 0 and lines[start - 1].rstrip().endswith("]"):
+        while start > 0 and (ATTRIBUTE.match(lines[start - 1]) or lines[start - 1].rstrip().endswith("]")):
             k = start - 1
             while k > 0 and not ATTRIBUTE.match(lines[k]) and not lines[k].lstrip().startswith("//") and not ENDS_LINE.search(lines[k - 1]):
                 k -= 1
@@ -240,6 +240,7 @@ SIGNATURES = [
     ("pub static S: A = A {\n    field: 1,\n};\n", {1}),
     ("fn a() {}\n#[cfg(any(\n    x,\n))]\n#[inline]\npub fn f() {}\n", {2, 3, 4, 5, 6}),
     ("/// See [x]\npub fn g() {}\n", {2}),
+    ("#[must_use] // why\npub fn h() {}\n", {1, 2}),
 ]
 
 
