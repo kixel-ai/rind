@@ -257,6 +257,35 @@ fn oprf() {
 }
 
 #[test]
+fn opaque() {
+    use rind::opaque::*;
+    // Each suite with its record's length.
+    for (suite, record_len) in [
+        (&RISTRETTO255_SHA512_ARGON2ID, 192),
+        (&P256_SHA256_ARGON2ID, 129),
+    ] {
+        let setup = ServerSetup::generate(suite).unwrap();
+        check_zeroed_on_drop(Box::pin(setup.to_bytes()));
+        let (registration, _) = ClientRegistration::start(suite, b"password").unwrap();
+        check_zeroed_on_drop(Box::pin(registration));
+        // A record whose client key is the server's, so no Argon2id runs.
+        let mut record = setup.public_key().to_vec();
+        record.resize(record_len, 0xa5);
+        let record = RegistrationRecord::new(suite, &record).unwrap();
+        let (client, ke1) = ClientLogin::start(suite, b"password").unwrap();
+        let credential = Credential {
+            identifier: b"user",
+            record: Some(&record),
+        };
+        let (server, _) = setup.login(&ke1, &credential, &Session::default()).unwrap();
+        check_zeroed_on_drop(Box::pin(client));
+        check_zeroed_on_drop(Box::pin(server));
+        check_zeroed_on_drop(Box::pin(record));
+        check_zeroed_on_drop(Box::pin(setup));
+    }
+}
+
+#[test]
 fn frost() {
     use rind::frost::*;
     for suite in [&ED25519_SHA512, &RISTRETTO255_SHA512, &P256_SHA256] {
@@ -290,6 +319,12 @@ fn mlkem() {
             .unwrap()
             .decapsulate(&ciphertext);
         check_zeroed_on_drop(Box::pin(decapsulated));
+        check_zeroed_on_drop(Box::pin(key.to_seed().unwrap()));
+        let bytes = key.to_bytes();
+        check_zeroed_on_drop(Box::pin(
+            DecapsulationKey::<A>::new(bytes.as_ref()).unwrap(),
+        ));
+        check_zeroed_on_drop(Box::pin(bytes));
         check_zeroed_on_drop(Box::pin(key));
     }
     check::<MlKem512>();

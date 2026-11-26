@@ -1,15 +1,14 @@
 name: PR check
 
-# `just ci` over the PR's diff against its base, the same selection and modules
-# the merge queue runs, so a check that fails in the queue (an unstable-rustfmt
-# import order, stale mutants pins) fails here first. Advisory: main's ruleset
-# requires only `Queue build / Build`, which no job here replaces. check.yml
-# runs the unscoped suite on main; queue-build.yml runs the group on the queue's
-# own runner.
-#
-# It leaves no module out: `just ci --all` took 14 minutes on a hosted runner
-# with main's Rust cache (rs 10, vartime 5, dart 4, cross 3, the rest in
-# parallel), and a diff reaches fewer.
+# `just ci` over the PR's diff against its base: the merge queue's selection
+# and modules, so a check that fails in the queue (an unstable-rustfmt import
+# order) fails here first, plus the slower ones the queue leaves out, whose
+# result rests on the PR's own diff: the site, the semver marks, the
+# binary-size record, and the mutants pins. Advisory: main's ruleset requires
+# only queue-build.yml's contexts, which no job here replaces. The cross, MSRV,
+# wasm, no-std, adapter-API, constant-time, structure, Python, Dart, OpenSSL,
+# and patch modules gate no merge: check.yml runs every module over main
+# nightly, as `just release-check` does before a release.
 on:
   pull_request:
     branches: [main]
@@ -22,16 +21,19 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # release-plz's release PR, which only bumps versions and changelogs, skips
-  # this: a `release-plz-` branch that moq-bot, release.yml's app, opened.
-  # The queue's `just ci` still runs on it.
   check:
     name: Check
-    if: ${{ !(startsWith(github.head_ref, 'release-plz-') && github.event.pull_request.user.login == 'moq-bot[bot]') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
-      BASE: origin/${{ github.base_ref }}
+      # release-plz's release PR, a `release-plz-` branch that moq-bot,
+      # release.yml's app, opened, only bumps versions and changelogs, so it
+      # builds no Rust here. It still checks the whole site, which quotes the
+      # READMEs the release publishes, before it lands.
+      BASE: ${{ startsWith(github.head_ref, 'release-plz-') && github.event.pull_request.user.login == 'moq-bot[bot]' && '--all' || format('origin/{0}', github.base_ref) }}
+      CHECK_MODULES: ${{ startsWith(github.head_ref, 'release-plz-') && github.event.pull_request.user.login == 'moq-bot[bot]' && 'site' || '' }}
+      # The squash commit's subject, which sh/semver.sh reads for a `!`.
+      PR_TITLE: ${{ github.event.pull_request.title }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

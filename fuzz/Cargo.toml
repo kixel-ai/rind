@@ -73,7 +73,8 @@ p521 = { version = "0.14", default-features = false, features = ["ecdh", "ecdsa"
 # and the portable backend where every crate covering a curve runs rind's.
 num-bigint = "0.5"
 hpke-rs = { version = "0.8", default-features = false, features = ["hazmat", "rustcrypto", "std"] }
-blind-rsa-signatures = { version = "0.18", default-features = false }
+# rind's fork: UPSTREAM.md's "blind-rsa-signatures 0.18 does not build on rsa 0.10.0".
+blind-rsa-signatures = { path = "../thirdparty/blind-rsa-signatures", default-features = false }
 akd_core = { version = "0.13", default-features = false, features = ["vrf"] }
 vrf-rfc9381 = { version = "0.0.7", default-features = false, features = ["p256"] }
 voprf = { version = "0.5", default-features = false, features = ["alloc", "ristretto255-ciphersuite"] }
@@ -81,6 +82,10 @@ p256-voprf = { package = "p256", version = "0.13", default-features = false, fea
 p384-voprf = { package = "p384", version = "0.13", default-features = false, features = ["hash2curve", "voprf"] }
 p521-voprf = { package = "p521", version = "0.13.3", default-features = false, features = ["hash2curve", "voprf"] }
 rand_core-voprf = { package = "rand_core", version = "0.6", features = ["getrandom"] }
+# RFC 9807's OPAQUE, which aws-lc-rs does not offer, with the SHA-2 its
+# suites name.
+opaque-ke = { version = "4.0.1", default-features = false, features = ["ristretto255"] }
+sha2-opaque = { package = "sha2", version = "0.10", default-features = false }
 # SPAKE2+, which aws-lc-rs does not offer; `test-utils` takes the ephemeral
 # scalars the fuzzer writes.
 pakery-crypto = { version = "0.6.2", default-features = false, features = ["std", "p256"] }
@@ -313,6 +318,13 @@ bench = false
 [[bin]]
 name = "frost"
 path = "fuzzer/frost.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "opaque"
+path = "fuzzer/opaque.rs"
 test = false
 doc = false
 bench = false

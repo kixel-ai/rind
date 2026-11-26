@@ -233,11 +233,11 @@
             installPhase = "install -D ct-qemu-plugin.so $out/lib/ct-qemu-plugin.so";
           };
 
-          # OpenSSL's `evp_test` and its X25519 and Ed25519 data, from the
-          # source of the OpenSSL the dev shell has. `sh/openssl.sh` runs them
-          # with rind-openssl loaded and preferred. A static build, so the
-          # test runs the library it was built with, and the default provider
-          # inside it.
+          # OpenSSL's `evp_test` and its X25519, Ed25519, ML-KEM, and ML-DSA
+          # data, from the source of the OpenSSL the dev shell has.
+          # `sh/openssl.sh` runs them with rind-openssl loaded and preferred.
+          # A static build, so the test runs the library it was built with,
+          # and the default provider inside it.
           openssl-evp-test = pkgs.stdenv.mkDerivation {
             pname = "openssl-evp-test";
             inherit (pkgs.openssl) version src;
@@ -251,6 +251,7 @@
             installPhase = ''
               install -D test/evp_test $out/bin/evp_test
               install -D -t $out/share/evp_test test/recipes/30-test_evp_data/evppkey_{ecx,ecx_sigalg,ecx_kem,mismatch_ecx}.txt
+              install -D -t $out/share/evp_test test/recipes/30-test_evp_data/evppkey_ml_{kem,dsa}_*.txt
             '';
           };
 
@@ -431,6 +432,57 @@
             '';
           };
 
+          # HOL Light at the commit s2n-bignum's CI checks the fork's base
+          # with, `HOLLIGHT_COMMIT` in its `.github/workflows/ci.yml`: the
+          # fork's GHASH and POLYVAL specs need the algebra libraries it
+          # revamped, `Library/finite_fields.ml` among them, which nixpkgs'
+          # older commit lacks.
+          hol-light-pkg = pkgs.hol_light.overrideAttrs (old: {
+            version = "0-unstable-2026-11-10";
+            src = pkgs.fetchFromGitHub {
+              owner = "jrh13";
+              repo = "hol-light";
+              rev = "e5236a5839b4d08dc2536b325cea0af855e6c379";
+              hash = "sha256-cHXMXEs144IcEEbr+7HrbnwkUnTT+72+7yZVopCj7Q0=";
+            };
+            # nixpkgs' patch, which links findlib into the toplevel, as an
+            # edit: the Makefile's lines moved since its commit.
+            patches = [ ];
+            postPatch = (old.postPatch or "") + ''
+              substituteInPlace Makefile --replace-fail \
+                "ocamlfind ocamlmktop -package zarith -o ocaml-hol" \
+                "ocamlfind ocamlmktop -package zarith,findlib -o ocaml-hol"
+            '';
+          });
+
+          # The Charon and Aeneas that Beneficial AI Foundation's Lean proofs
+          # of curve25519-dalek translate it with, the tag their
+          # `curve25519-dalek/lean/AENEAS_VERSION.txt` names at
+          # `admin/import-dalek`'s REV, run with the same nightly as rind's.
+          # `admin/prove dalek` runs them, from `$DALEK_AENEAS`, to check that
+          # the dalek rind builds translates to the code those proofs are about.
+          aeneas-dalek-release = "nightly-2026.11.10-0d21a9e";
+          aeneas-dalek = aeneas.overrideAttrs {
+            version = aeneas-dalek-release;
+            src = pkgs.fetchurl {
+              url = "https://github.com/AeneasVerif/aeneas/releases/download/${aeneas-dalek-release}/aeneas-linux-${aeneas-tarball.${system}.arch}.tar.gz";
+              hash =
+                {
+                  x86_64-linux = "sha256-n5v1/VJwy4NAdAcrJGiukKTFptUDx2IpOkGakowt9Zs=";
+                  aarch64-linux = "sha256-EgRADVVDMHQzbaicKb404sha+A9ukeSiZ6skiJcAoAI=";
+                }
+                .${system};
+            };
+            # BAIF's translation builds `core` and `alloc` for its own target
+            # specs, so it needs no sysroot of rind's.
+            installPhase = ''
+              install -Dm755 -t $out/bin aeneas charon charon-driver
+              wrapProgram $out/bin/charon \
+                --set CHARON_TOOLCHAIN_IS_IN_PATH 1 \
+                --prefix PATH : ${rust-charon}/bin
+            '';
+          };
+
           # `admin/prove hol-light` and `admin/prove bytes` run in it: HOL
           # Light, the OCaml it compiles the proofs with, as s2n-bignum's
           # `tools/build-proof.sh` does, the Rust whose build emits the object
@@ -451,7 +503,7 @@
                   "armv7-unknown-linux-gnueabihf"
                 ];
               })
-              pkgs.hol_light
+              hol-light-pkg
               pkgs.ocamlPackages.ocaml
               pkgs.ocamlPackages.findlib
               pkgs.ocamlPackages.camlp5
@@ -519,6 +571,8 @@
                   # git already brings this one.
                   perl
                   cargo-deny
+                  # Audits of rind's own dependencies (supply-chain/).
+                  cargo-vet
                   # `just powerset` and the quality lints workflow.
                   cargo-hack
                   # admin/mutants and the mutants workflow.
@@ -640,7 +694,7 @@
               ];
             };
 
-            # The `dart` module of `just check` runs rind-dart's Dart package
+            # The `dart` module of `just ci` runs rind-dart's Dart package
             # in it. Its own shell, since the SDK would add over 200 MB to
             # the closure every CI job downloads.
             dart = mkDevShell {
@@ -685,7 +739,7 @@
               shellHook = pkgs.lib.optionalString (system == "x86_64-linux") sde-certs;
             };
 
-            # `just check` runs `sh/site.sh` in it, which builds site/, the
+            # `just ci` runs `sh/site.sh` in it, which builds site/, the
             # landing page, with Bun, and loads it in headless Chromium. Its own
             # shell, since Chromium would add hundreds of MB to the closure
             # every CI job downloads.
@@ -705,7 +759,7 @@
                 };
               };
 
-            # `just check` runs `sh/openssl.sh` in it, which builds rind-openssl
+            # `just ci` runs `sh/openssl.sh` in it, which builds rind-openssl
             # and runs OpenSSL's `evp_test` with it.
             openssl = mkDevShell {
               packages = [
@@ -715,7 +769,7 @@
               env.OPENSSL_EVP_TEST = openssl-evp-test;
             };
 
-            # `just check` runs `admin/ct-vartime` in it: llvm-objdump, and the
+            # `just ci` runs `admin/ct-vartime` in it: llvm-objdump, and the
             # standard library of each target it builds rind's rlib for.
             ct-vartime = mkDevShell {
               packages = [
@@ -754,6 +808,7 @@
                 pkgs.git
                 pkgs.curl
               ];
+              DALEK_AENEAS = "${aeneas-dalek}/bin";
             };
 
             # `admin/prove vg` and the prove workflow's `vg` jobs run in it:
@@ -868,7 +923,7 @@
             armv7 = mkDevShell armv7-shell;
 
             # `just qemu aarch64` tests the aarch64 build under qemu in it, and
-            # `just check`'s cross module lints rind's tests for aarch64 in it,
+            # `just ci`'s cross module lints rind's tests for aarch64 in it,
             # where the aws-lc-rs dev-dependency needs an aarch64 C compiler.
             aarch64 = qemu-shell {
               target = "aarch64-unknown-linux-gnu";
