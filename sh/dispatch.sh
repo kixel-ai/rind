@@ -440,6 +440,23 @@ names() {
     return 1
 }
 
+# Whether the Cargo arguments after WHICH, as sh/select.sh prints them, select
+# a target that `--tests` (WHICH is tests) or `--all-targets` builds: one
+# `cargo metadata` lists, with `test` set for the first, whose required
+# features are all on by default, which is none. A build of none compiles no
+# unit, so its `--timings` fails with "no timing data found in log".
+has_targets() {
+    local which=$1 arg crates=()
+    shift
+    (($#)) || return 0
+    for arg; do
+        [[ "$arg" != --workspace ]] || return 0
+        [[ "$arg" == -p ]] || crates+=("$arg")
+    done
+    cargo metadata --format-version 1 --no-deps --locked |
+        jq -e --arg which "$which" --args '[.packages[] | select(.name | IN($ARGS.positional[])) | .targets[] | select((.["required-features"] // []) == [] and (if $which == "tests" then .test else (.kind | index("custom-build") | not) end))] | length > 0' "${crates[@]}" >/dev/null
+}
+
 # One module's check or fix, run through `run`.
 step() {
     local listed=$logs/$2.files packages libs backends target targets
@@ -479,9 +496,11 @@ step() {
             # CI keeps Cargo's per-crate build timings of the two main builds,
             # which queue-build.yml uploads, so a compile regression shows
             # without profiling by hand. The test build's is taken by whichever
-            # command builds the test binaries first.
-            local timings=()
-            ! github || timings=(--timings)
+            # command builds the test binaries first. A build that selects no
+            # target has no timings to report, so it passes none.
+            local timings=() build_timings=()
+            ! github || ! has_targets tests "${packages[@]}" || timings=(--timings)
+            ! github || ! has_targets all "${packages[@]}" || build_timings=(--timings)
             # A unit test admin/test-scope.toml names may have been renamed by
             # an edit that selects no `scope` module. Listed with the package
             # and target arguments of the run that tests rind, so the two
@@ -510,7 +529,7 @@ step() {
                 # What --tests leaves unbuilt, and so unlinted: benches,
                 # examples, binaries that set `test = false`, such as the fuzz
                 # targets, and a library no test links.
-                run cargo build "${packages[@]}" --all-targets --locked --profile test-fast "${timings[@]}"
+                run cargo build "${packages[@]}" --all-targets --locked --profile test-fast "${build_timings[@]}"
                 if names rind "${packages[@]}"; then
                     # rind's `zeroize` feature, whose impls the zeroing test
                     # holds to their claim: it requires `ZeroizeOnDrop` of
