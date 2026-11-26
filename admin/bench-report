@@ -2569,37 +2569,25 @@ def gate(args):
     print(f"Every gap over {SLOWER}× has a decision in benchmarks/gaps.toml.")
 
 
-def save_sizes(run, scratch):
-    """Saves the bytes of rind `run` measured, or drops the last run's when
-    it measured none, so the report never pairs one run's tiers with another's
-    sizes."""
+def run_sizes(run, scratch):
+    """The bytes of rind `run` measured, None if it measured none, failing
+    when they exist but cannot be read."""
     artifacts = output(
         ["gh", "api", f"repos/{REPO}/actions/runs/{run['databaseId']}/artifacts", "--paginate"]
         + ["--jq", '.artifacts[] | select(.name == "binary-size") | .name']
     )
     if not artifacts.strip():
-        print(f"bench-report: run {run['databaseId']} measured no binary sizes", file=sys.stderr)
-        if os.path.exists(SIZES):
-            os.remove(SIZES)
-        return
+        return None
     subprocess.run(
         ["gh", "run", "download", str(run["databaseId"]), "--repo", REPO, "--name", "binary-size", "--dir", scratch],
         check=True,
     )
-    path = os.path.join(scratch, "binary-size.json")
-    with open(path) as f:
+    with open(os.path.join(scratch, "binary-size.json")) as f:
         measured = json.load(f)
-    shutil.rmtree(scratch)
     if set(measured["bytes"]) != set(SIZED):
         fail(f"run {run['databaseId']} measured {', '.join(measured['bytes'])}, not {', '.join(SIZED)}")
-    with open(SIZES, "w") as f:
-        json.dump(
-            {"schema": 1, "run": run["databaseId"], "url": run["url"], "commit": run["headSha"], "date": run["createdAt"]}
-            | {k: measured[k] for k in ("target", "rustc", "bytes")},
-            f,
-            indent=1,
-        )
-        f.write("\n")
+    saved = {"schema": 1, "run": run["databaseId"], "url": run["url"], "commit": run["headSha"], "date": run["createdAt"]}
+    return saved | {k: measured[k] for k in ("target", "rustc", "bytes")}
 
 
 def weekly(args):
@@ -2633,6 +2621,10 @@ def weekly(args):
             incomplete.append(f"{run['databaseId']} lacks {', '.join(dict(TIERS)[k] for k in sorted(missing))}")
             continue
         tiers.sort(key=lambda t: order.get((t["target"], t["portable"], t["tier"]), len(order)))
+        # Read before either file is written, so a failure leaves both as
+        # they were: the report never pairs one run's tiers with another's
+        # sizes.
+        sizes = run_sizes(run, os.path.join(scratch, "binary-size"))
         os.makedirs(DATA_DIR, exist_ok=True)
         with open(os.path.join(DATA_DIR, "tiers.json"), "w") as f:
             json.dump(
@@ -2648,8 +2640,15 @@ def weekly(args):
                 indent=1,
             )
             f.write("\n")
+        if sizes:
+            with open(SIZES, "w") as f:
+                json.dump(sizes, f, indent=1)
+                f.write("\n")
+        else:
+            print(f"bench-report: run {run['databaseId']} measured no binary sizes", file=sys.stderr)
+            if os.path.exists(SIZES):
+                os.remove(SIZES)
         shutil.rmtree(scratch)
-        save_sizes(run, scratch)
         print(f"bench-report: tiers from run {run['databaseId']}", file=sys.stderr)
         return
     fail("no completed weekly bench run on main timed every tier" + "".join(f"; run {r}" for r in incomplete))

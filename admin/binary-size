@@ -16,8 +16,8 @@ its sums and the change, so a pull request's check shows what it does to
 rind's size; any change passes, for a reviewer to weigh. `--json` prints this
 tree's sums as JSON instead, which the weekly bench saves for BENCHMARKS.md.
 The sums are one toolchain's, and both trees build with this tree's, so it
-shows no change when REV's toolchain differs, nor when REV's fixtures fail to
-build. `nm` reads the sums only from ELF: elsewhere the programs are only
+shows no change when REV's dev shell has another rustc, nor when REV's
+fixtures fail to build. `nm` reads the sums only from ELF: elsewhere the programs are only
 built, which still checks that they compile.
 
 The fixtures float on the newest rustls for admin/build-cost, and which of
@@ -204,14 +204,24 @@ def sizes(tree, host, env):
 
 def base_sizes(rev, host, env):
     """REV's sums, or None and why they would not compare with this tree's."""
-    # Both trees build in this tree's dev shell, so a toolchain change would
-    # show as none.
-    toolchain = subprocess.run(["git", "diff", "--quiet", rev, "--", "flake.nix", "flake.lock"], cwd=ROOT)
-    if toolchain.returncode == 1:
-        return None, f"the toolchain changed since {rev[:12]}, so only this tree's sums show"
-    toolchain.check_returncode()
+    tree = extract(rev)
+    # Both trees build with this tree's toolchain, so a change to it would
+    # show as none. Only a flake edit can make one, and most edit something
+    # else, so REV's own dev shell names its rustc.
+    flake = subprocess.run(["git", "diff", "--quiet", rev, "--", "flake.nix", "flake.lock"], cwd=ROOT)
+    if flake.returncode == 1:
+        ours = subprocess.run(["rustc", "-vV"], env=env, check=True, capture_output=True, text=True).stdout
+        theirs = subprocess.run(
+            ["nix", "develop", f"path:{tree}", "--command", "rustc", "-vV"], capture_output=True, text=True
+        )
+        if theirs.returncode != 0:
+            return None, f"{rev[:12]}'s dev shell did not start, so its toolchain is unknown"
+        if theirs.stdout != ours:
+            return None, f"the toolchain changed since {rev[:12]}, so only this tree's sums show"
+    else:
+        flake.check_returncode()
     try:
-        return sizes(extract(rev), host, env), None
+        return sizes(tree, host, env), None
     except subprocess.CalledProcessError:
         # Not this tree's failure: the fixtures run in no merge gate, so its
         # base may hold a break no check caught.
