@@ -813,8 +813,9 @@ given FIPS 202's round constants and nothing of the CPU. Each round is
 `keccak_round` written out, which `round_spec` proves by unfolding.
 
 ML-KEM's polynomial arithmetic, against FIPS 203 as SymCrypt's Lean spec
-(`Rind/SymCrypt/MlKem.lean`, MIT) states it, and of rind's Rust only the
-coding below it; the rest has
+(`Rind/SymCrypt/MlKem.lean`, MIT) states it, and of rind's Rust the coding
+below it and, on aarch64, ML-KEM-768's K-PKE decryption; encryption, key
+generation, and the Fujisaki-Okamoto transform that decapsulation needs have
 [its quest](/quest/m4/verified/mlkem-construction.md):
 
 - `NTT_get`, `NTTInv_get` (`Rind/MlKem.lean`): Algorithms 9 and 10 compute
@@ -1660,6 +1661,10 @@ Beyond Lean's kernel:
 - That `Rind/SymCrypt/MlKem.lean` is FIPS 203, as SymCrypt's authors state,
   and that `Rind/S2nMlKem.lean` transliterates the s2n-bignum ML-KEM specs it
   names.
+- That `Rind/MlKemPacking.lean`'s `numOfWords` and `wordsOfNum`
+  transliterate s2n-bignum's `num_of_wordlist` and `wordlist_of_num`, and its
+  `compressD` mlkem-native's `compress_d`, in which the ML-KEM routines'
+  axioms state their results.
 - That `admin/prove`'s text comparison of aarch64's rejection-sampling table
   with s2n-bignum's reads both correctly.
 - That `Rind/S2nGcm.lean` transliterates the s2n-bignum AES and GHASH specs

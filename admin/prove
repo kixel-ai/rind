@@ -1092,6 +1092,7 @@ aes_gcm_items() {
 check_quote X86_64/AesGcmModel aes_gcm_items
 check_quote X86_64/TypesExternal items rind/src/low/x86_64/chacha20.rs 'struct VgState('
 check_quote Aarch64/TypesExternal items rind/src/low/aarch64/chacha20.rs 'struct VgState('
+check_quote Aarch64/FunsExternal items rind/src/low/aarch64/mlkem.rs 'pub(crate) fn mlkem_rej_uniform_vartime('
 aarch64_aes_gcm_items() {
     items rind/src/low/aarch64/ghash.rs 'macro_rules! mul {' 'macro_rules! reduce {' \
         '    pub(crate) fn add(&mut self, bytes: &[u8]) {' '    fn one_block(' '    fn eight_blocks(' \

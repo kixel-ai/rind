@@ -461,7 +461,16 @@ opaque low.aarch64.mlkem_mulcache_compute.mlkem_mulcache_compute
     Array Std.I16 128#usize → Result (Array Std.I16 128#usize)
 
 /-- The sampler behind its wrapper, which passes rind's table, too long a
-literal for Lean to elaborate: `admin/prove` checks its text is s2n-bignum's. -/
+literal for Lean to elaborate: `admin/prove` checks the table's text is
+s2n-bignum's, and that the wrapper is this one, which passes it:
+
+```rust
+pub(crate) fn mlkem_rej_uniform_vartime(r: &mut [i16; 256], input: &[u8]) -> u64 {
+    super::mlkem_rej_uniform_vartime::mlkem_rej_uniform_vartime(r, input, &MLKEM_REJ_UNIFORM_TABLE)
+}
+
+```
+-/
 opaque low.aarch64.mlkem.mlkem_rej_uniform_vartime
   : Array Std.I16 256#usize → Slice Std.U8 → Result (Std.U64 × (Array Std.I16 256#usize))
 
