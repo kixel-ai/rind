@@ -1088,9 +1088,10 @@ CPU-feature checks pick Vale's tier (`RunsValeAesGcm`) or the SSE tier
 (`Algorithm`'s `expand` and `Sealer`'s `Ops`), and `seal_in_place_append_tag`,
 which is generic over its buffer.
 
-On aarch64, AES-GCM is proven on CPUs with the crypto extension for short
-messages, below the AEAD API; its GHASH key setup and hashing are proven at
-every length. `Rind/Aarch64/GhashPmull.lean` proves
+On aarch64, AES-GCM is proven below the AEAD API on CPUs with the crypto
+extension: for short messages with every key size, and at every length below
+2^61 bytes with AES-128 and AES-256 keys; its GHASH key setup and hashing are proven at every
+length. `Rind/Aarch64/GhashPmull.lean` proves
 that `GhashTable::new` builds the PMULL table of H to H^8, each shifted as
 Vale's `shift_key_1` does (`ghash_table_new_spec`), and that `Ghash::add` on
 it is the Horner rule on the padded blocks, Vale's `ghash_LE`
@@ -1116,9 +1117,29 @@ the tag on `gcm_hash` from the counter block it is given
 (`tagged_from_short_spec`), so `tagged` with a 96-bit nonce is
 `gcm_encrypt_LE` and `gcm_decrypt_LE` (`tagged_seal_short_spec`,
 `tagged_open_short_spec`). The lemmas both targets' AES-GCM proofs use are in
-`Rind/GcmSpec.lean`. Longer messages, which run s2n-bignum's AES-GCM kernels,
-or for AES-192 aws-lc's stitched kernels or rind's AES-CTR and GHASH in turn,
-and the AEAD API above `tagged` remain to prove.
+`Rind/GcmSpec.lean`. Longer messages run `cipher`, which hands the whole
+blocks to one of s2n-bignum's eight stitched AES-GCM kernels, for AES-128 or
+AES-256, sealing or opening, on cores with or without SHA3, whose theorems
+`Rind/Aarch64/S2nBignum.lean` restates over `Rind/S2nGcm.lean`'s
+transliteration of their HOL Light specs. `Rind/S2nGcm.lean` proves those
+specs are Vale's: FIPS 197's rounds as s2n-bignum writes them are
+`eval_cipher` (`aes128Cipher_eq`, `aes256Cipher_eq`), each counter block's
+keystream is `gctr_encrypt_block`'s (`aesCtrBlock_eq`), the bit-reflected
+GHASH is `ghash_LE` (`toPoly_nistGhash`), and the POLYVAL table the kernels
+read is the PMULL table's (`toPoly_hPower`). `Rind/Aarch64/AesGcmLong.lean`
+proves that `stitched` is GCTR and GHASH over the blocks (`stitched_spec`),
+that `partial` is `short`'s last chunk (`partial_spec`), so `cipher` is GCTR
+from the block after the counter block and GHASH over the AAD and the
+ciphertext (`cipher_spec`), and `tagged_from` and `tagged` at every length
+below 2^61 bytes are GCTR and the tag on `gcm_hash` (`tagged_from_spec`) and `gcm_encrypt_LE` and
+`gcm_decrypt_LE` (`tagged_seal_spec`, `tagged_open_spec`). With a table for
+the cores with SHA3, each takes `KernelBuffersLow`, which names the `_alt`
+kernels' requirement that the blocks' address plus their length is below
+2^63, as a hypothesis: untagged user-space addresses meet it, and a pointer
+tag that sets bit 63 breaks it. AES-192 past the
+short path, which runs aws-lc's stitched kernels on cores with SHA3 and
+rind's AES-CTR and GHASH in turn otherwise, and the AEAD API above `tagged`
+remain to prove.
 
 `aead::gcm::Key`, which takes an IV of any length and tags of any
 `TagLength`, is proven on the same tiers, in `Rind/X86_64/GcmKey.lean`, a
@@ -1496,8 +1517,10 @@ proof after those.
   counter blocks, for the x86_64 routines' HOL Light proofs; and
   `Rind/GhashSpec.lean` and
   `Rind/X86_64/{Ghash,PartialBlock,AesGcmGlue,AesGcm,GhashClmul,AesGcmBy8,AesGcmClmul,AesGcmAead,AesGcmAny,GhashAvx512,AesGcmAvx512}.lean`:
-  the AES-GCM proof, on x86_64 alone; `Rind/Aarch64/{AesGcmModel,GhashPmull}.lean`,
-  aarch64's hand model and its PMULL GHASH proof; `Rind/X86_64/GcmKey.lean`, the hand model
+  the AES-GCM proof, on x86_64 alone; `Rind/Aarch64/{AesGcmModel,GhashPmull,AesGcmShort,AesGcm,AesGcmLong}.lean`,
+  aarch64's hand model and its PMULL GHASH and AES-GCM proofs;
+  `Rind/S2nGcm.lean`, s2n-bignum's AES and GHASH specs, transliterated, and
+  their proofs that they are Vale's; `Rind/X86_64/GcmKey.lean`, the hand model
   of `aead::gcm::Key` and its proofs; `Rind/X86_64/ChaCha20Poly1305.lean`, the
   ChaCha20-Poly1305 and XChaCha20-Poly1305 proof above aws-lc's routines;
   `Rind/VgChaCha20Poly1305.lean`, the proof that pyca/verified-garbage's
@@ -1613,6 +1636,8 @@ Beyond Lean's kernel:
 - That `Rind/SymCrypt/MlKem.lean` is FIPS 203, as SymCrypt's authors state,
   and that `Rind/S2nMlKem.lean` transliterates the s2n-bignum ML-KEM specs it
   names.
+- That `Rind/S2nGcm.lean` transliterates the s2n-bignum AES and GHASH specs
+  it names.
 - That `Rind/Sha2.lean` restates cryptol-specs' SHA-512, its
   `processBlock_Common` as FIPS 180-4's, `Rind/S2nSha256.lean` and
   `Rind/S2nSha512.lean` transliterate s2n-bignum's SHA-256 and SHA-512 specs,
@@ -1724,7 +1749,8 @@ Run through a spec proven equal to them rather than themselves:
 messages only, as HOL Light's message schedules, transliterated, recurse
 without sharing, while FIPS 180-4's, which they are proven equal to, run on
 every vector; `Rind/S2nMlKem.lean`'s specs, which its bridges prove are FIPS
-203's NTT, NTT⁻¹, and products, with no executable whole; and VG's specs,
+203's NTT, NTT⁻¹, and products, with no executable whole; `Rind/S2nGcm.lean`'s
+AES and GHASH, which its bridges prove are Vale's; and VG's specs,
 which `Rind/Vg*.lean` prove are `Rind/Spec.lean`'s. Not run: `hkeysReqsPub`
 and the P-256 and P-384 representation predicates, preconditions on a
 routine's state rather than functions of inputs that vectors exercise.
