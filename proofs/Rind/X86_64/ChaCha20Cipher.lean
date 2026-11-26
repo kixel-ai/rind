@@ -301,10 +301,18 @@ theorem apply_keystream_spec (he : ∃ e, low.entry.Entry.new_secret = ok e)
       have hcv : cc.counter_nonce.val[0]!.val = counter.val := by
         have := congrArg BitVec.toNat hcn0
         simpa only [UScalar.bv_toNat] using this
-      step with cipher_all_spec hu cc
-        (fun hv hs' => hlinux (fun h => by have := cc_post2.mpr h; simp [hv] at this)
-          (by first | exact hs' | (rw [← ‹cc.ssse3 = s›]; exact hs')
-            | (rw [‹s = cc.ssse3›]; exact hs') | simp_all)) inout
+      have hsc : cc.ssse3.isSome → s.isSome := by
+        intro h
+        first
+          | exact h
+          | (rw [← ‹cc.ssse3 = s›]; exact h)
+          | (rw [‹s = cc.ssse3›]; exact h)
+          | simp_all
+      have hvg : cc.vg = none → ¬ (a.isSome ∨ b.isSome) := by
+        intro hv h
+        have := cc_post2.mpr h
+        simp [hv] at this
+      step with cipher_all_spec hu cc (fun hv hs' => hlinux (hvg hv) (hsc hs')) inout
         (by rw [hcv]; exact hc) as ⟨c', inout1, h1⟩
       step*
     · subst r_post
