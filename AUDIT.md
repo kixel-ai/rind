@@ -127,6 +127,7 @@ The pins, as `admin/audit` renders them from the files that hold them, so
 | blind-rsa-signatures | `45d0abfa829c` | `admin/sync-vectors` | RFC 9474 test vectors |
 | RFC 9497 | `5d7d94c8dc75` | `admin/sync-vectors` | OPRF test vectors |
 | RFC 9591 | `127452b93acb` | `admin/sync-vectors` | FROST test vectors |
+| RFC 9807 | `78597fc81b79` | `admin/sync-vectors` | OPAQUE test vectors |
 | cfg-if | 1.0.5 | `Cargo.lock` | a macro for `cfg` blocks |
 | curve25519-dalek | 5.0.0 | `Cargo.lock` | X25519, Ed25519, and ristretto255 on armv7 and the portable backend |
 | fiat-crypto | 0.3.0 | `Cargo.lock` | the NIST curves' field arithmetic on armv7 and the portable backend |
@@ -358,6 +359,7 @@ counts out, since nearly every change to `low` moves them:
 | `rind/src/low/portable` | volatile writes and reads for the wipe and the constant-time compare, and Xtensa `asm!` in SHA-256 for ESP-IDF | the same |
 | other `rind/src/low` files | test harnesses (`abi`, `guard_pages`, `ct_binsec`, `vartime_planted`), the `asm_call!` macro, and `Mcdt`'s MXCSR loads and `cpuid` | test code, but for the macro and `Mcdt`, which `SAFETY:` comments and `admin/ct-vartime` cover |
 | `rind/src/mid` | a test's call into aws-lc | test code |
+| `rind/src/high/opaque` | a test's read-back of a dropped key's bytes | test code, with its `SAFETY:` comment |
 | `rind/src/fips_rng.rs` | the FIPS build's DRBG handle and its test's `fork` | `SAFETY:` comments |
 | `rind/src/test.rs` | a test helper | `SAFETY:` comments |
 | `rind-aws-lc-rs/src` | `Send` and `Sync` for the KEM keys, bounded as aws-lc-rs bounds them | `SAFETY:` comments, and a compile-time check that what the keys hold is `Send` and `Sync` |

@@ -84,6 +84,7 @@ proofs/Rind/Armv7/P384Dispatch.lean
 proofs/Rind/Armv7/X25519Bytes.lean
 proofs/Rind/Armv7/X25519.lean
 proofs/Rind/Armv7/ChaCha20.lean
+proofs/Rind/Armv7/CtEqual.lean
 patch/*/Cargo.lock
 __pycache__/
 site/node_modules/

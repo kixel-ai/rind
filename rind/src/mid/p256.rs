@@ -492,12 +492,14 @@ impl AffineMontPoint {
             return Err(KeyFormatError::NotOnCurve.into());
         }
 
+        // Always negate and select, so the parity of a key, which OPAQUE's
+        // server decodes for a real and a fake record alike, takes no branch.
         let y = y.demont();
-        let y = match y.0[0] & 1 == u64::from(tag & 1) {
-            true => y,
-            false => y.negate_mod_p(),
-        };
-        Ok(Self::from_xy(x, y.as_mont()))
+        let negated = y.negate_mod_p();
+        let flip = (y.0[0] ^ u64::from(tag)) & 1;
+        let mut limbs = [0u64; 4];
+        low::bignum_mux(flip, &mut limbs, &negated.0, &y.0);
+        Ok(Self::from_xy(x, FieldElement(limbs).as_mont()))
     }
 
     fn x_scalar(&self) -> Scalar {

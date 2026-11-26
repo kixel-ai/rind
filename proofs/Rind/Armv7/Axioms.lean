@@ -1,6 +1,7 @@
 import Rind.Armv7.ChaCha20
 import Rind.Armv7.X25519
 import Rind.Armv7.AesNohwKey
+import Rind.Armv7.AesGcm
 open rind.armv7
 
 /-!
@@ -42,16 +43,21 @@ change here is a change to the trust base.
 The bitsliced AES's theorems rest on Lean's own axioms and on the ones
 `bv_decide` adds, one a call: each states that Lean's compiled LRAT checker
 accepted a SAT solver's certificate for one bit-vector identity of the S-box
-circuit, a round step, a key schedule step, or the batch layout. `#bv_axioms` fails on any other.
+circuit, a round step, a key schedule step, the batch layout, or a counter or
+GHASH step. `#bv_axioms` fails on any other but the ones it names after the
+theorem: AES-GCM's tag check also rests on `Rind.Armv7.CtEqual`'s
+restatement of rind's HOL Light proofs of its constant-time compares.
 -/
 
 open Lean Elab Command in
-/-- Fails unless the theorem rests only on Lean's axioms and `bv_decide`'s. -/
-elab "#bv_axioms " id:ident : command => do
+/-- Fails unless the theorem rests only on Lean's axioms, `bv_decide`'s, and
+the ones named after it. -/
+elab "#bv_axioms " id:ident extra:ident* : command => do
   let thm ← liftCoreM <| realizeGlobalConstNoOverloadWithInfo id
+  let allowed ← liftCoreM <| extra.toList.mapM realizeGlobalConstNoOverloadWithInfo
   let axs ← liftCoreM <| collectAxioms thm
   let other := axs.filter fun a =>
-    a != ``propext && a != ``Classical.choice && a != ``Quot.sound &&
+    a != ``propext && a != ``Classical.choice && a != ``Quot.sound && !allowed.contains a &&
       (a.toString.splitOn "._native.bv_decide.ax_").length != 2
   unless other.isEmpty do throwError "{thm} depends on axioms: {other}"
 
@@ -59,3 +65,8 @@ elab "#bv_axioms " id:ident : command => do
 #bv_axioms encrypt_block_spec
 #bv_axioms new_schedule_spec
 #bv_axioms schedule_encrypt_block
+#bv_axioms aes_gcm_new_spec
+#bv_axioms aes_gcm_encrypt_spec
+#bv_axioms aes_gcm_decrypt_spec ct_compare_16_spec ct_compare_bytes_spec
+#bv_axioms aes_gcm_encrypt_any_spec
+#bv_axioms aes_gcm_decrypt_any_spec ct_compare_16_spec ct_compare_bytes_spec
