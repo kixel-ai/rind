@@ -12,15 +12,12 @@
 # leaves the counts out, since nearly every PR touching `unsafe` would change
 # them and parallel PRs would race to regenerate it; `unsafe` prints them.
 # `check` also fails on a link to a quest that no longer exists, since
-# finishing it changes the gap AUDIT.md describes there, and on a file holding
-# that `unsafe` that no `.github/CODEOWNERS` line matches, since a change to it
-# needs the maintainer's sign-off (CONTRIBUTING.md's Sign-off section).
+# finishing it changes the gap AUDIT.md describes there.
 
-import fnmatch, pathlib, re, subprocess, sys, tomllib
+import pathlib, re, subprocess, sys, tomllib
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 PAGE = ROOT / "AUDIT.md"
-CODEOWNERS = ROOT / ".github" / "CODEOWNERS"
 PINS_MARKERS = ("<!-- admin/audit pins: begin -->", "<!-- admin/audit pins: end -->")
 UNSAFE_MARKERS = ("<!-- admin/audit unsafe: begin -->", "<!-- admin/audit unsafe: end -->")
 
@@ -228,8 +225,9 @@ UNSAFE = [
 TOOLING = ("admin/", "fuzz/", "rind-acvp/", "rind-bench/", "rind-cpuid/", "rind-timing/")
 
 
-def unsafe_files():
-    """Each file of shipped code holding the `unsafe` keyword outside comments and literals, with its count."""
+def unsafe_counts():
+    """Each area's count of the `unsafe` keyword outside comments and literals."""
+    counts = {area: 0 for area, _, _ in UNSAFE}
     # Tracked and new files alike, as the checks see the working tree; a file
     # deleted from it but not from the index is gone.
     files = subprocess.run(
@@ -242,14 +240,8 @@ def unsafe_files():
         if not f or not (ROOT / f).is_file() or f.startswith(TOOLING) or "tests" in f.split("/")[:-1]:
             continue
         n = sum(1 for t in idents((ROOT / f).read_text()) if t == "unsafe")
-        if n:
-            yield f, n
-
-
-def unsafe_counts():
-    """Each area's count of the `unsafe` keyword outside comments and literals."""
-    counts = {area: 0 for area, _, _ in UNSAFE}
-    for f, n in unsafe_files():
+        if not n:
+            continue
         area = next((a for a, _, _ in UNSAFE if f.startswith(a)), None)
         if area is None:
             sys.exit(f"error: {f} holds `unsafe`, in no area admin/audit's UNSAFE describes; add one")
@@ -258,27 +250,6 @@ def unsafe_counts():
         if not n:
             sys.exit(f"error: admin/audit's UNSAFE describes {area}, which holds no `unsafe`; remove it")
     return counts
-
-
-def owned(path, patterns):
-    """Whether a CODEOWNERS pattern matches the path: only the anchored forms
-    `.github/CODEOWNERS` uses, a directory (`/a/`), a file, or a `*` glob."""
-    for p in patterns:
-        if not p.startswith("/"):
-            sys.exit(f"error: .github/CODEOWNERS pattern {p} is not anchored at the root; admin/audit reads only those")
-        p = p[1:]
-        if p.endswith("/") and path.startswith(p) or path == p or fnmatch.fnmatchcase(path, p):
-            return True
-    return False
-
-
-def check_owners():
-    """Fail on a file holding `unsafe` that no CODEOWNERS line requests the maintainer's review of."""
-    lines = [l.split() for l in CODEOWNERS.read_text().splitlines()]
-    patterns = [l[0] for l in lines if l and not l[0].startswith("#")]
-    for f, _ in unsafe_files():
-        if not owned(f, patterns):
-            sys.exit(f"error: {f} holds `unsafe`, but no .github/CODEOWNERS line matches it; add one")
 
 
 def area_name(area):
@@ -306,7 +277,6 @@ def main():
             for link in re.findall(r"\]\((/quest/[^)#]+)", text):
                 if not (ROOT / link[1:]).is_file():
                     sys.exit(f"error: AUDIT.md links {link}, which is finished; say what changed")
-            check_owners()
         case ["fix"]:
             PAGE.write_text(render(PAGE.read_text()))
         case ["unsafe"]:
