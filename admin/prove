@@ -6,7 +6,7 @@
 #
 # Each target's translation is its own namespace, but they share global names,
 # so no Lean module imports both. The aarch64 hand models and its X25519,
-# SHA-512, ChaCha20, Ed25519, SHA-1, SHA-256, HMAC, digest, HKDF, and PBKDF2 proofs are the
+# SHA-512, ChaCha20, Ed25519, SHA-1, SHA-256, HMAC, digest, HKDF, PBKDF2, and AEAD API proofs are the
 # x86_64 ones with the target renamed, which this writes too, all but each
 # target's own `ShaBlocks.lean` and `HashAxioms.lean`; aarch64 alone also
 # translates `mid::pbkdf2_vg`, which only its CPUs run, and proves it in its
@@ -1947,8 +1947,16 @@ extract aarch64 Aarch64 "${hashes[@]}" "${assembly[@]}" \
     --start-from crate::low::aarch64::pbkdf2_vg::Pbkdf2::sha512 \
     --start-from 'crate::low::aarch64::pbkdf2_vg::_::derive' \
     --opaque 'crate::low::aarch64::pbkdf2_vg::_::derive' \
-    --start-from crate::low::aarch64::chacha20poly1305::seal \
-    --start-from crate::low::aarch64::chacha20poly1305::open \
+    --start-from '{impl crate::aead::Cipher for crate::mid::aes_gcm::AesGcm}' \
+    --start-from crate::aead::Key \
+    --start-from crate::aead::AlgorithmId \
+    --opaque crate::aead::Algorithm \
+    --opaque crate::aead::Sealer \
+    --opaque crate::aead::Ops \
+    --start-from '{impl crate::aead::Cipher for crate::mid::chacha20poly1305::ChaCha20Poly1305}' \
+    --start-from crate::mid::xchacha20poly1305::XChaCha20Poly1305::new \
+    --start-from crate::mid::xchacha20poly1305::XChaCha20Poly1305::encrypt \
+    --start-from crate::mid::xchacha20poly1305::XChaCha20Poly1305::decrypt \
     --include crate::low::aarch64::chacha20poly1305::seal \
     --include crate::low::aarch64::chacha20poly1305::open \
     --include crate::low::aarch64::chacha20poly1305::seal_runs_vg \
@@ -1979,8 +1987,8 @@ extract aarch64 Aarch64 "${hashes[@]}" "${assembly[@]}" \
     --opaque crate::low::aarch64::aes_gcm::short \
     --opaque crate::low::aarch64::aes_gcm::stitched
 
-# The AEAD key's conversion is x86_64's alone: the AEAD API's model and proofs
-# are x86_64's, as AES-GCM's are.
+# The AEAD key's conversion from HKDF's output is x86_64's alone: aarch64's
+# AEAD proofs are ChaCha20-Poly1305's, not yet AES-GCM's above the cipher.
 extract_kdf x86_64 X86_64 --start-from '{impl core::convert::From for crate::aead::Key}'
 extract_kdf aarch64 Aarch64 --include crate::mid::pbkdf2_vg \
     --include 'crate::mid::sha1::_::BLOCK_SZ' --include 'crate::mid::sha1::_::OUTPUT_SZ' \
@@ -2014,11 +2022,10 @@ for file in Dispatch QuicDispatch P256Dispatch P256Agree P384Dispatch X25519Byte
     DigestDispatch Sha512 ChaCha20 SignatureBuffer Ed25519 \
     Blockwise Sha Hmac HmacDispatch HkdfExpand Kdf/TypesExternal Kdf/FunsExternal \
     CtEqual HmacApi DigestApi Hkdf Pbkdf2 Sha3 AesCipher HkdfAes AesModesApi AesKw P256 EcdsaDispatch Naf P256Ecdsa P256Signature \
-    P384Ecdsa P384Signature MlKemCoding; do
+    P384Ecdsa P384Signature MlKemCoding AeadDispatch AeadVec ChaCha20Poly1305Api; do
     sed 's/X86_64/Aarch64/g; s/x86_64/aarch64/g' "proofs/Rind/X86_64/$file.lean" >"proofs/Rind/Aarch64/$file.lean"
 done
-# The AEAD model imports nothing aarch64 has, and no aarch64 translation reaches it.
-sed -i '/Rind.Aarch64.AeadDispatch/d' proofs/Rind/Aarch64/Kdf/TypesExternal.lean
+# aarch64's KDF translation does not reach the AEAD key's conversion.
 sed -i '/-- BEGIN aead/,/-- END aead/d' proofs/Rind/Aarch64/Kdf/FunsExternal.lean
 # aarch64 translates `mid::pbkdf2_vg`, which the other targets leave opaque.
 sed -i '/-- BEGIN vg/,/-- END vg/d' proofs/Rind/Aarch64/Kdf/TypesExternal.lean proofs/Rind/Aarch64/Kdf/FunsExternal.lean
