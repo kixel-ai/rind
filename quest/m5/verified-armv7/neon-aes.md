@@ -16,4 +16,4 @@ Decided 2026-11-18 (maintainer, [kixel-ai/rind#619](https://github.com/kixel-ai/
 
 ## Related
 
-- [armv7's AES-GCM in Rust](/quest/m5/verified-armv7/prove.md) - shares the SP 800-38D spec
+- [armv7's AES-GCM API](/quest/m5/verified-armv7/aead.md) - proves `aead::Key` over `AesGcm`, whose `tagged_spec` this tier's `PartsFor` instance feeds
