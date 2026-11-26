@@ -1,4 +1,4 @@
-import Rind.Aarch64.AesGcm
+import Rind.Aarch64.AesGcmComposed
 import Rind.Aarch64.S2nBignum
 import Rind.Aarch64.AesModesLow
 open Aeneas Aeneas.Std Result rind.vale rind.simd Polynomial
@@ -6,17 +6,20 @@ open Aeneas Aeneas.Std Result rind.vale rind.simd Polynomial
 /-!
 # rind's AES-GCM on aarch64 past `short`'s lengths
 
-`cipher` with the crypto extension's AES-128 or AES-256 key and a PMULL
-table: `stitched` runs s2n-bignum's kernel on the whole blocks, whose
-theorems `Rind.Aarch64.S2nBignum` restates, and `partial` the last partial
-block. `Rind.S2nGcm` proves the kernels' specs are Vale's, so `cipher` is
-Vale's GCTR from the block after the counter block and GHASH over the AAD's
-and the ciphertext's padded blocks, `tagged_from` is GCTR and `gcm_hash` at
-every length below `2 ^ 61` bytes, and `tagged` with a 96-bit nonce is
-`gcm_encrypt_LE` and `gcm_decrypt_LE`. With a table for the cores with SHA3
-each theorem also takes `KernelBuffersLow`, the `_alt` kernels' requirement
-that the blocks' address plus their length is below 2^63. AES-192 keys past
-`short`'s lengths run other code, not yet proven.
+`cipher` with the crypto extension's key and a PMULL table: for an AES-128
+or AES-256 key, `stitched` runs s2n-bignum's kernel on the whole blocks,
+whose theorems `Rind.Aarch64.S2nBignum` restates, and `partial` the last
+partial block; for an AES-192 key on a table without `eight_way`, the cores
+without SHA3, `composed` runs AES-CTR and GHASH in turn, which
+`Rind.Aarch64.AesGcmComposed` proves. `Rind.S2nGcm` proves the kernels'
+specs are Vale's, so `cipher` is Vale's GCTR from the block after the counter
+block and GHASH over the AAD's and the ciphertext's padded blocks,
+`tagged_from` is GCTR and `gcm_hash` at every length below `2 ^ 61` bytes,
+and `tagged` with a 96-bit nonce is `gcm_encrypt_LE` and `gcm_decrypt_LE`.
+With a table for the cores with SHA3 each theorem also takes
+`KernelBuffersLow`, the `_alt` kernels' requirement that the blocks' address
+plus their length is below 2^63, and a key other than AES-192, whose
+eight-way kernels, aws-lc's, no proof covers.
 -/
 
 local notation "P" => Polynomial (ZMod 2)
@@ -383,13 +386,13 @@ theorem blocks_out (alg : Algorithm) (kw : List (BitVec 32)) (j0 : Quad32) (W W'
   rw [getElem!_pos (W.map (·.val)) k (by simpa using hk), List.getElem_map, short.chunkOut, ← getElem!_pos W k hk,
     ← getElem!_pos W' k (by omega), ← inc32_inc32, ← h k hk, store_load, List.take_of_length_le (by simp)]
 
-/-- `cipher` with an AES-128 or AES-256 key on the crypto extension and a
-PMULL table for its hash key: GCTR from the block after `j0`, and GHASH
+/-- `cipher` with a key on the crypto extension and a PMULL table for its
+hash key, AES-192 only without `eight_way`: GCTR from the block after `j0`, and GHASH
 from `x` over the AAD's blocks, then the ciphertext's. -/
 theorem cipher_spec (ENC : Bool) (hk : low.aarch64.aes.HwKey) (alg : Algorithm) (kw : List (BitVec 32))
-    (hkey : HwKeyIs alg kw hk) (h192 : alg ≠ .AES_192) (t : low.aarch64.ghash.PmullTable)
+    (hkey : HwKeyIs alg kw hk) (t : low.aarch64.ghash.PmullTable)
     (ht : TableFor (polyLE (aesEncrypt alg kw (mkfour 0 0 0 0))) t)
-    (haddr : t.eight_way.isSome → KernelBuffersLow) (x : V) (j0 : Quad32)
+    (h192 : t.eight_way.isSome → alg ≠ .AES_192) (haddr : t.eight_way.isSome → KernelBuffersLow) (x : V) (j0 : Quad32)
     (y0 : Std.Array U8 16#usize) (hy : loadBytes y0.val = reverseBytesQuad32 j0) (aad inout : Slice U8)
     (hin : inout.length < 2 ^ 61) :
     low.aarch64.aes_gcm.cipher ENC (.Hw hk) ⟨.Pmull t, x⟩ y0 aad inout ⦃ r =>
@@ -405,8 +408,17 @@ theorem cipher_spec (ENC : Bool) (hk : low.aarch64.aes.HwKey) (alg : Algorithm) 
   intro c1 hc1
   rcases hk with k | k | k
   rotate_left
-  · exact absurd hkey.1 h192
+  · cases hew : t.eight_way with
+    | some _ => exact absurd hkey.1 (h192 (by rw [hew]; rfl))
+    | none =>
+      simp only [hew]
+      apply WP.spec_mono (composed.composed_spec ENC _ alg kw hkey H (small_toPoly _) t ht x1 (inc32 j0 1) c1 hc1
+        inout)
+      rintro ⟨g, out⟩ ⟨hgt, hl, hout, hg⟩
+      refine ⟨hgt, hl, hout, ?_⟩
+      rw [hg, hp1, ← ghashPoly_append, List.map_append]
   all_goals
+    have h192 : alg ≠ .AES_192 := by rw [hkey.1]; decide
     simp only
     step with as_chunks_mut_spec 16#usize inout (by decide) as ⟨W, R, back, hWl, hWi, hR, hback⟩
     simp only [low.aarch64.ghash.Ghash.state, low.aarch64.ghash.to_u128, bind_ok]
@@ -486,13 +498,14 @@ theorem tag_load (m : Std.Array U8 16#usize) (y : V) :
   refine (load_to_be _).trans ((congrArg reverseBytesQuad32 h).trans ?_)
   rw [rev_xor, rev_rev]
 
-/-- `tagged_from` with an AES-128 or AES-256 key on the crypto extension and
-a PMULL table, at any length: GCTR from the block after `j0`, and the tag
+/-- `tagged_from` with a key on the crypto extension and a PMULL table,
+AES-192 only without `eight_way`, at any length: GCTR from the block after `j0`, and the tag
 GCTR from `j0` on `gcm_hash` of the AAD and the ciphertext. -/
 theorem tagged_from_spec (ENC : Bool) (hk : low.aarch64.aes.HwKey) (alg : Algorithm) (kw : List (BitVec 32))
-    (hkey : HwKeyIs alg kw hk) (h192 : alg ≠ .AES_192) (t : low.aarch64.ghash.PmullTable)
+    (hkey : HwKeyIs alg kw hk) (t : low.aarch64.ghash.PmullTable)
     (ht : TableFor (polyLE (aesEncrypt alg kw (mkfour 0 0 0 0))) t)
-    (haddr : t.eight_way.isSome → KernelBuffersLow) (j0 : Quad32) (y0 : Std.Array U8 16#usize)
+    (h192 : t.eight_way.isSome → alg ≠ .AES_192) (haddr : t.eight_way.isSome → KernelBuffersLow) (j0 : Quad32)
+    (y0 : Std.Array U8 16#usize)
     (hy : loadBytes y0.val = reverseBytesQuad32 j0) (aad inout : Slice U8) (hin : inout.length < 2 ^ 61) :
     low.aarch64.aes_gcm.tagged_from ENC (.Hw hk) (.Pmull t) y0 aad inout ⦃ r =>
       r.2.length = inout.length ∧
@@ -515,7 +528,7 @@ theorem tagged_from_spec (ENC : Bool) (hk : low.aarch64.aes.HwKey) (alg : Algori
     cases ENC <;> simp only [Bool.false_eq_true, ite_false, ite_true, low.aarch64.aes_gcm.SHORT_SEAL_BLOCKS,
       low.aarch64.aes_gcm.SHORT_OPEN_BLOCKS] at hshort ⊢ <;> scalar_tac)]
   simp only [low.aarch64.ghash.Ghash.new, pmull.zero_eq, bind_ok]
-  apply WP.spec_bind (cipher_spec ENC hk alg kw hkey h192 t ht haddr 0 j0 y0 hy aad inout hin)
+  apply WP.spec_bind (cipher_spec ENC hk alg kw hkey t ht h192 haddr 0 j0 y0 hy aad inout hin)
   rintro ⟨⟨gt, gc⟩, out⟩ ⟨hgt, hl, hout, hgh⟩
   dsimp only at hgt hl hout hgh ⊢
   subst hgt
@@ -540,12 +553,13 @@ theorem tagged_from_spec (ENC : Bool) (hk : low.aarch64.aes.HwKey) (alg : Algori
       hc])
   rw [gctr_block, ← hg, ← hy, bvs_load, tag_load, load_store, BitVec.xor_comm]
 
-/-- `tagged` sealing with a 96-bit nonce, an AES-128 or AES-256 key on the
-crypto extension, and a PMULL table is Vale's `gcm_encrypt_LE`. -/
+/-- `tagged` sealing with a 96-bit nonce, a key on the crypto extension, and a
+PMULL table, AES-192 only without `eight_way`, is Vale's `gcm_encrypt_LE`. -/
 theorem tagged_seal_spec (hk : low.aarch64.aes.HwKey) (alg : Algorithm) (kw : List (BitVec 32))
-    (hkey : HwKeyIs alg kw hk) (h192 : alg ≠ .AES_192) (t : low.aarch64.ghash.PmullTable)
+    (hkey : HwKeyIs alg kw hk) (t : low.aarch64.ghash.PmullTable)
     (ht : TableFor (polyLE (aesEncrypt alg kw (mkfour 0 0 0 0))) t)
-    (haddr : t.eight_way.isSome → KernelBuffersLow) (nonce : Std.Array U8 12#usize)
+    (h192 : t.eight_way.isSome → alg ≠ .AES_192) (haddr : t.eight_way.isSome → KernelBuffersLow)
+    (nonce : Std.Array U8 12#usize)
     (aad inout : Slice U8) (hin : inout.length < 2 ^ 61) :
     low.aarch64.aes_gcm.tagged true (.Hw hk) (.Pmull t) nonce aad inout ⦃ r =>
       r.2.length = inout.length ∧ (bvs r.2.val, bvs r.1.val) =
@@ -553,20 +567,21 @@ theorem tagged_seal_spec (hk : low.aarch64.aes.HwKey) (alg : Algorithm) (kw : Li
   unfold low.aarch64.aes_gcm.tagged
   apply WP.spec_bind (counter_block_eq (aesEncrypt alg kw (mkfour 0 0 0 0)) nonce)
   intro y0 hy
-  apply WP.spec_mono (tagged_from_spec true hk alg kw hkey h192 t ht haddr _ y0 hy aad inout hin)
+  apply WP.spec_mono (tagged_from_spec true hk alg kw hkey t ht h192 haddr _ y0 hy aad inout hin)
   rintro r ⟨hl, ho, htag⟩
   refine ⟨hl, ?_⟩
   simp only [ite_true] at htag
   simp only [gcmEncrypt, seqNat8ToSeqNat32LE_seqNat32ToSeqNat8LE]
   rw [← ho, ← htag]
 
-/-- `tagged` opening with a 96-bit nonce, an AES-128 or AES-256 key on the
-crypto extension, and a PMULL table is Vale's `gcm_decrypt_LE`, its tag the
-one `open` compares. -/
+/-- `tagged` opening with a 96-bit nonce, a key on the crypto extension, and a
+PMULL table, AES-192 only without `eight_way`, is Vale's `gcm_decrypt_LE`,
+its tag the one `open` compares. -/
 theorem tagged_open_spec (hk : low.aarch64.aes.HwKey) (alg : Algorithm) (kw : List (BitVec 32))
-    (hkey : HwKeyIs alg kw hk) (h192 : alg ≠ .AES_192) (t : low.aarch64.ghash.PmullTable)
+    (hkey : HwKeyIs alg kw hk) (t : low.aarch64.ghash.PmullTable)
     (ht : TableFor (polyLE (aesEncrypt alg kw (mkfour 0 0 0 0))) t)
-    (haddr : t.eight_way.isSome → KernelBuffersLow) (nonce : Std.Array U8 12#usize)
+    (h192 : t.eight_way.isSome → alg ≠ .AES_192) (haddr : t.eight_way.isSome → KernelBuffersLow)
+    (nonce : Std.Array U8 12#usize)
     (aad inout : Slice U8) (hin : inout.length < 2 ^ 61) :
     low.aarch64.aes_gcm.tagged false (.Hw hk) (.Pmull t) nonce aad inout ⦃ r =>
       r.2.length = inout.length ∧ ∀ tag : List (BitVec 8),
@@ -575,7 +590,7 @@ theorem tagged_open_spec (hk : low.aarch64.aes.HwKey) (alg : Algorithm) (kw : Li
   unfold low.aarch64.aes_gcm.tagged
   apply WP.spec_bind (counter_block_eq (aesEncrypt alg kw (mkfour 0 0 0 0)) nonce)
   intro y0 hy
-  apply WP.spec_mono (tagged_from_spec false hk alg kw hkey h192 t ht haddr _ y0 hy aad inout hin)
+  apply WP.spec_mono (tagged_from_spec false hk alg kw hkey t ht h192 haddr _ y0 hy aad inout hin)
   rintro r ⟨hl, ho, htag⟩
   refine ⟨hl, fun tag => ?_⟩
   simp only [Bool.false_eq_true, ite_false] at htag
