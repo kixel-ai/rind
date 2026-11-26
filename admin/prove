@@ -281,7 +281,7 @@ rind_static() {
         fi
     done < <(relocations "$obj" "$section")
     "$tools/llvm-objcopy" --dump-section="$section=$dest.section" "$obj" "$dest.o"
-    tail -c +$((16#$value + 1)) "$dest.section" | head -c $((16#$size)) >"$dest"
+    head -c $((16#$value + 16#$size)) "$dest.section" | tail -c +$((16#$value + 1)) >"$dest"
     rm "$dest.section" "$dest.o"
 }
 
