@@ -174,10 +174,10 @@ module patch '^(patch/|rind-ring/|(rind/)?Cargo\.toml$|sh/patch\.sh$)' \
 module structure '^(rind/(src/|Cargo\.toml$)|admin/structure$)' \
     tools='cargo cargo-modules'
 # admin/build-cost builds these against rind's public API, and
-# admin/binary-size holds what rind adds to each to its record, which any
-# change to rind's code or the toolchain can move.
-module fixtures '^(rind/(src/|Cargo\.toml$|build\.rs$)|rind-rustls/(src/|Cargo\.toml$|build\.rs$)|Cargo\.toml$|flake\.(nix|lock)$|admin/build-cost-fixtures/(rind|rustls)/|admin/binary-size(\.txt|-[a-z]+\.lock)?$)' \
-    tools='cargo nm python3' compiles pr fix
+# admin/binary-size reports what the diff does to rind's size in each, which
+# any change to rind's code or the toolchain can move, passing whatever it is.
+module fixtures '^(rind/(src/|Cargo\.toml$|build\.rs$)|rind-rustls/(src/|Cargo\.toml$|build\.rs$)|Cargo\.toml$|flake\.(nix|lock)$|admin/build-cost-fixtures/(rind|rustls)/|admin/binary-size(-[a-z]+\.lock)?$)' \
+    tools='cargo git nm python3' compiles pr
 # Advisories, licenses, and sources move with any manifest or the policy.
 module deny '(^|/)Cargo\.(toml|lock)$|^deny\.toml$' \
     tools='cargo-deny' check
@@ -790,8 +790,10 @@ step() {
             run python3 admin/bench-report render --check
             ;;
         # Each fixture is its own workspace and resolves its own lockfile.
-        check:fixtures) run admin/binary-size ;;
-        fix:fixtures) run admin/binary-size --write ;;
+        # `--all` has no base to compare with.
+        check:fixtures)
+            if [[ -z "${merge_base:-}" ]]; then run admin/binary-size; else run admin/binary-size --base "$merge_base"; fi
+            ;;
         check:patch) run sh/patch.sh ;;
         fix:patch) run cargo fmt --manifest-path patch/fixture/Cargo.toml ;;
         check:py) run sh/python.sh test ;;
