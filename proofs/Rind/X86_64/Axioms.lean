@@ -58,8 +58,9 @@ for s2n-bignum's Karatsuba routines, take them as the hypothesis
 hypothesis `Ssse3`; `Rind.X86_64.ChaCha20Avx2` proves rind's two-block kernel
 over `Rind.X86_64.Simd`'s models of the AVX2 intrinsics. The generator
 tables' point selects rest on no axiom, only on the hand model in
-`Rind.X86_64.PointSelectModel`, as RSA's table gather does on
-`Rind.X86_64.GatherModel`. P-256's generator multiplication also rests
+`Rind.X86_64.PointSelectModel`, as RSA's AVX2 table gather does on
+`Rind.X86_64.GatherModel`; without AVX2, the gather rests on s2n-bignum's
+`bignum_copy_row_from_table`. P-256's generator multiplication also rests
 on `p256_point_add_affine_spec` in `Rind.X86_64.S2nBignum`, which restates
 rind's HOL Light proofs of aws-lc's mixed addition. A change here is a
 change to the trust base.
