@@ -18,25 +18,46 @@ pub type Section = (&'static str, &'static str, fn(&mut Run));
 /// parts of each file's cases, SHA-2 by hash, and PBKDF2 by hash.
 pub const SECTIONS: &[Section] = &[
     ("mlkem1024.0", "mlkem", |run| {
-        mlkem::<rind::kem::MlKem1024>(run, "1024", 0, 4)
+        mlkem::<rind::kem::MlKem1024>(run, "1024", 0, 8)
     }),
     ("mlkem1024.1", "mlkem", |run| {
-        mlkem::<rind::kem::MlKem1024>(run, "1024", 1, 4)
+        mlkem::<rind::kem::MlKem1024>(run, "1024", 1, 8)
     }),
     ("mlkem1024.2", "mlkem", |run| {
-        mlkem::<rind::kem::MlKem1024>(run, "1024", 2, 4)
+        mlkem::<rind::kem::MlKem1024>(run, "1024", 2, 8)
     }),
     ("mlkem1024.3", "mlkem", |run| {
-        mlkem::<rind::kem::MlKem1024>(run, "1024", 3, 4)
+        mlkem::<rind::kem::MlKem1024>(run, "1024", 3, 8)
+    }),
+    ("mlkem1024.4", "mlkem", |run| {
+        mlkem::<rind::kem::MlKem1024>(run, "1024", 4, 8)
+    }),
+    ("mlkem1024.5", "mlkem", |run| {
+        mlkem::<rind::kem::MlKem1024>(run, "1024", 5, 8)
+    }),
+    ("mlkem1024.6", "mlkem", |run| {
+        mlkem::<rind::kem::MlKem1024>(run, "1024", 6, 8)
+    }),
+    ("mlkem1024.7", "mlkem", |run| {
+        mlkem::<rind::kem::MlKem1024>(run, "1024", 7, 8)
     }),
     ("mlkem768.0", "mlkem", |run| {
-        mlkem::<rind::kem::MlKem768>(run, "768", 0, 2)
+        mlkem::<rind::kem::MlKem768>(run, "768", 0, 4)
     }),
     ("mlkem768.1", "mlkem", |run| {
-        mlkem::<rind::kem::MlKem768>(run, "768", 1, 2)
+        mlkem::<rind::kem::MlKem768>(run, "768", 1, 4)
     }),
-    ("mlkem512", "mlkem", |run| {
-        mlkem::<rind::kem::MlKem512>(run, "512", 0, 1)
+    ("mlkem768.2", "mlkem", |run| {
+        mlkem::<rind::kem::MlKem768>(run, "768", 2, 4)
+    }),
+    ("mlkem768.3", "mlkem", |run| {
+        mlkem::<rind::kem::MlKem768>(run, "768", 3, 4)
+    }),
+    ("mlkem512.0", "mlkem", |run| {
+        mlkem::<rind::kem::MlKem512>(run, "512", 0, 2)
+    }),
+    ("mlkem512.1", "mlkem", |run| {
+        mlkem::<rind::kem::MlKem512>(run, "512", 1, 2)
     }),
     ("sha2-sha384", "digests", |run| sha2(run, "sha384")),
     ("sha2-sha512", "digests", |run| sha2(run, "sha512")),
