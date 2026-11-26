@@ -6,7 +6,9 @@ computation is proven. [Charon](https://github.com/AeneasVerif/charon) and
 [Aeneas](https://github.com/AeneasVerif/aeneas) translate the Rust to Lean, and
 the theorems are about that translation.
 
-`nix develop .#prove --command admin/prove` translates the Rust and checks
+`nix develop .#prove --command admin/prove`, which needs x86_64 Linux with
+AVX2 (aarch64 macOS runs `admin/prove lean`, as [TESTING.md](../TESTING.md)
+describes), translates the Rust and checks
 every proof against the translation, after the HOL Light proofs below and
 `admin/prove bytes`, which checks that each imported routine those proofs
 build on, from s2n-bignum, Vale, and aws-lc, is in rind's build the object

@@ -96,6 +96,18 @@ session)
     ;;
 esac
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
+# What this host cannot run of `lean`'s checks, which the run names at its end
+# and fails for, so a partial run never passes as the whole one. On macOS that
+# is the intrinsic vectors, which run x86_64's instructions on this CPU. Decided
+# before any translation, so a key this host cannot compute fails at once.
+skipped=()
+if [[ $(uname -sm) != "Linux x86_64" ]] || ! grep -qw avx2 /proc/cpuinfo; then
+    skipped+=("the intrinsic vectors (admin/simd-vectors.rs needs an x86_64 Linux CPU with AVX2)")
+fi
+if [[ -n $key_only && $only == lean && ${#skipped[@]} -gt 0 ]]; then
+    echo "admin/prove: no key for a host that cannot run ${skipped[*]}" >&2
+    exit 1
+fi
 out=.tmp/prove
 mkdir -p "$out"
 tools=$(rustc --print sysroot)/lib/rustlib/$(rustc -vV | sed -n 's/^host: //p')/bin
@@ -2142,17 +2154,6 @@ if ! diff <(echo "$rind_rej") <(tr -d ' ' <<<"$s2n_rej" | tr ',' '\n') >/dev/nul
 fi
 
 [ "${PROVE_TRANSLATE_ONLY:-}" ] && exit 0
-# What this host cannot run of the checks below, which the run names at its end
-# and fails for, so a partial run never passes as the whole one. On macOS that
-# is the intrinsic vectors, which run x86_64's instructions on this CPU.
-skipped=()
-if [[ $(uname -sm) != "Linux x86_64" ]] || ! grep -qw avx2 /proc/cpuinfo; then
-    skipped+=("the intrinsic vectors (admin/simd-vectors.rs needs an x86_64 Linux CPU with AVX2)")
-fi
-if [[ -n $key_only && ${#skipped[@]} -gt 0 ]]; then
-    echo "admin/prove: no key for a host that cannot run ${skipped[*]}" >&2
-    exit 1
-fi
 # Each hand model of a CPU intrinsic, a `core.core_arch` definition but its
 # vector types' own, is tested against the instruction: `admin/simd-vectors.rs`
 # runs each x86_64 one on this CPU and writes `#guard`s that the models compute
