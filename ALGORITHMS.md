@@ -738,8 +738,10 @@ OPAQUE (RFC 9807) is rind's too, over the OPRF above in its base mode and
 the same groups' constant-time multiplications for its 3DH key exchange,
 with HKDF, HMAC, and the transcript over the suite's SHA-2, and the client's
 Argon2id below. Registration, login, and the fake response to an unknown
-account run in constant time in the password, the OPRF seed, the server's
-and client's private keys, and the masking key; the client declassifies the
+account run in constant time in the OPRF seed, the server's and client's
+private keys, and the masking key. The client's Argon2id stretch is not
+constant time in the password: after the first half of its first pass, its
+memory addresses depend on password-derived data. The client declassifies the
 server's public key it unmasks only once the envelope's tag has
 authenticated it. RFC 9807's vectors and the `opaque-ke` crate cover the
 composition; nothing in it is proven.

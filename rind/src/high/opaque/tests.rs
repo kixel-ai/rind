@@ -308,7 +308,9 @@ impl Run<'_> {
         };
         let (server_login, ke2) = server.login(&ke1, &credential, &self.login)?;
         let (ke3, client_key, export_key) = client.finish(&ke2, &self.login)?;
-        let server_key = server_login.finish(&ke3)?;
+        // A client that accepted the server's MAC shares the server's keys, so
+        // a wrong password or session must fail above, not here.
+        let server_key = server_login.finish(&ke3).unwrap();
         for key in [client_key.as_ref(), server_key.as_ref()] {
             ct::public_slice(key);
         }
@@ -517,6 +519,9 @@ fn refuses_tampered_messages() {
             let mut bytes = ke1.as_ref().to_vec();
             bytes[i] ^= 1;
             let Ok(tampered) = Ke1::new(suite, &bytes) else {
+                // Only a byte of an encoded element can fail to load.
+                let npk = with_ake!(suite, G => G::LENS.npk);
+                assert!(!(npk..npk + NN).contains(&i), "byte {i}");
                 continue;
             };
             let (server_login, ke2) = server.login(&tampered, &credential, &session).unwrap();
@@ -794,6 +799,21 @@ fn setup_encoding() {
     }
 }
 
+/// Drops `value` in place and checks every byte of it reads zero after.
+/// `tests/zeroing.rs` does this for the other key types, but a returned key
+/// takes a login, which only the identity-stretch suites here run cheaply.
+#[allow(unsafe_code)]
+fn assert_wiped_on_drop<T>(value: T) {
+    let mut value = core::mem::ManuallyDrop::new(value);
+    // SAFETY: dropped once, and the value stays in place, so its bytes can be
+    // read back; they are plain integers, never a pointer.
+    let bytes = unsafe {
+        core::mem::ManuallyDrop::drop(&mut value);
+        core::slice::from_raw_parts((&raw const *value).cast::<u8>(), size_of::<T>())
+    };
+    assert!(bytes.iter().all(|&b| b == 0));
+}
+
 #[test]
 fn debug_shows_no_secret() {
     let suite = &RISTRETTO255_IDENTITY;
@@ -833,6 +853,8 @@ fn debug_shows_no_secret() {
     );
     let (ke3, session_key, _) = client.finish(&ke2, &Session::default()).unwrap();
     assert_eq!(format!("{session_key:?}"), "SessionKey(..)");
+    assert_wiped_on_drop(session_key);
+    assert_wiped_on_drop(export_key);
     for (shown, name) in [
         (format!("{request:?}"), "RegistrationRequest(["),
         (format!("{response:?}"), "RegistrationResponse(["),

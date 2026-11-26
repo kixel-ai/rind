@@ -587,10 +587,11 @@ impl ServerSetup {
     ///
     /// A wrong length is refused with [`Error::KeyRejected`], as is a private
     /// key outside 1 to the group order less one, or a fake public key that
-    /// does not decode. The setup must come from [`Self::generate`] or its
-    /// [`Self::to_bytes`]: one whose fake public key has a known private key
-    /// lets anyone check an unknown account's KE2 MAC, which tells it from a
-    /// registered one. [`ServerLogin::finish`] still refuses its logins.
+    /// does not decode. The fake public key must have been generated at
+    /// random with its private key discarded, as [`Self::generate`] and
+    /// opaque-ke's setups do: one whose private key is known lets anyone
+    /// check an unknown account's KE2 MAC, which tells it from a registered
+    /// one. [`ServerLogin::finish`] still refuses its logins.
     pub fn from_bytes(suite: &'static Suite, bytes: &[u8]) -> Result<Self, Error> {
         let _entry = Entry::new_secret();
         with_ake!(suite, G => {
