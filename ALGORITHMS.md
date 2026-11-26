@@ -834,7 +834,9 @@ mask, and the challenge, runs as ML-KEM's does (see
 [ML-KEM](#ml-kem)): eight states at a time on x86_64 with AVX-512, which
 on Zen 5 took 0.59-0.62x the time for key generation, 0.59-0.67x for
 verification from an encoded key, which expands the matrix, and 0.80-0.88x
-for signing, and four at a time where the CPU allows otherwise.
+for signing, and on a Xeon 6975P-C (Granite Rapids) 0.67-0.73x for key
+generation and 0.85-0.96x for signing; four at a time where the CPU allows
+otherwise.
 
 Signing declassifies which attempt it accepts, and why it rejects the
 others, as mldsa-native does: FIPS 204's security argument makes them
