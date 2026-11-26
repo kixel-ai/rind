@@ -39,6 +39,16 @@ tests run minutes at `opt-level = 0`. For a bare test run, pass it as
 `cargo nextest run --cargo-profile test-fast`; `admin/ctgrind` and the other
 dev builds stay unoptimized.
 
+`cargo vet --locked` fails when the published rind crate's dependencies gain
+a crate or version no audit covers, as [SECURITY.md](SECURITY.md#supply-chain)
+describes. Plain `cargo vet` first fetches the imported audits and the
+publishers of new versions into `supply-chain/imports.lock`, which may cover
+it: a release by a publisher `supply-chain/audits.toml` trusts passes once
+recorded, and `cargo vet trust` renews a trust whose `end` date has passed.
+Otherwise review its code with `cargo vet diff` or `cargo vet inspect` and
+record the review with `cargo vet certify`. A new exemption needs the
+maintainer's approval.
+
 # Commits
 
 PRs land on `main` as squash commits, so the PR title becomes the commit subject in `git log`; the body keeps the PR's commit messages and co-author trailers, not the PR description.
@@ -67,6 +77,7 @@ On release-plz's release PR it runs only the site's check, over the whole site, 
 `pr-macos.yml` runs rind's debug tests on a GitHub-hosted Apple-silicon runner when a PR changes `rind/`, the root `Cargo.toml`, or `Cargo.lock`, so a macOS-only break shows on its PR rather than first in the nightly `build`; it is advisory too.
 release-plz's release PR skips it, since the queue's `just ci` and `just release-check` still run on it.
 The required `Queue build / Build` check skips on pull requests; the merge group runs `just ci` against the merge group's base on the self-hosted runner, and that job's own result decides the group.
+Beside it, `Queue build / Build aarch64 macOS` and `Queue build / Build aarch64 Linux` run the group's `rs` module, its tests, natively on aarch64, in two VMs on the maintainer's Mac mini (`admin/mac-mini-runners`), and skip on pull requests the same way; once main's ruleset requires their contexts, each fails the group as `Build` does.
 When the group's diff touches the inputs of `regenerate` or of `prove`, that build also runs `regenerate`, or `prove`'s x86_64 `vg`, beside its other checks (`CHECK_QUEUE` in `sh/dispatch.sh`), so a change cannot land that breaks them on `main`; `vg`'s aarch64 job runs only nightly. When the group's diff reaches x86_64 code, the build also runs the tests under the Intel SDE models `admin/x86-cpu` lists (`admin/x86-cpu all`): in full on one model for each distinct set of dispatch paths, and each other model's assertion of its paths.
 That build lives in `.github/workflows/queue-build.yml`, which the merge group calls from `main`, so a PR's edit to it runs only after the PR lands.
 A PR the queue drops for a failed build or a conflict gets a Codex fixer, which requeues it or hands it back with a diagnosis.
@@ -105,11 +116,14 @@ A PR that adds such a workaround adds its entry there and names the entry in the
 
 release-plz opens a release PR from `main`, and publishing happens only when that PR merges.
 release-plz owns crate versions.
+Correct a release's notes on `main`, never with a commit on the release PR's branch: release-plz force-pushes a PR it alone wrote, but closes one carrying a commit of anyone else's and opens a new PR without it, which happens on each merge to `main` that touches a crate, so every correction would be pushed again and `just release-check` rerun.
+Release-plz regenerates the notes from commit titles on every run, so a correction is input to that: a pattern in `.release-plz.toml`'s `[changelog]` that rewrites an entry's title (release-plz runs each twice, so a pattern must not match its own output), a `commit_parsers` entry that skips one, or a migration note in its `body` template, keyed on the crate and version.
+Delete an entry once its release ships.
 It creates a GitHub Release for each tag it pushes, with its changelog entry as the body, and only rind's marked latest.
 If creating one fails, the release job stops there and alerts, leaving later crates and pyrind's PyPI upload undone. Rerun the failed `Release` run, which finishes them but skips the tag already pushed, then create that tag's Release by hand with `gh release create <tag> --verify-tag --latest=false --title <tag> --notes-file <its CHANGELOG.md entry>`, passing `--latest` for rind's.
 
 A release PR merges only after `just release-check` passes at its head, so nothing publishes that the full suite has not passed.
-It dispatches every scheduled workflow but `bench` and `dart-libraries` on the PR's branch, so each runs its whole scheduled matrix on the head, and waits for them all, which takes as long as the slowest. Mutation testing covers every change since the previous release.
+It dispatches every scheduled workflow but `bench`, `dart-libraries`, and `Scorecard` on the PR's branch, so each runs its whole scheduled matrix on the head, and waits for them all, which takes as long as the slowest. Mutation testing covers every change since the previous release.
 An agent merging a release PR, as `/quest-merge` does, runs it first.
 It records the result as the `release-check` status on the head the runs tested, so a release-plz update to the PR needs a new run.
 `just ci` fails a scheduled workflow that a dispatch would not run whole.

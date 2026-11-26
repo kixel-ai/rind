@@ -19,14 +19,16 @@ import Rind.Aarch64.MlKemGeneric
 import Rind.Aarch64.MlKemPke
 import Rind.Aarch64.GhashPmull
 import Rind.Aarch64.AesGcm
+import Rind.Aarch64.AesGcmLong
 import Rind.Aarch64.VgChaCha20Poly1305
 import Rind.Aarch64.VgChaCha20
 open rind.aarch64
 
 /-!
 The axioms each theorem rests on, beyond Lean's own: s2n-bignum's contracts
-in `Rind.Aarch64.S2nBignum` for X25519, P-256, P-384, Ed25519, and the
-Keccak-f of SHA-3 and ML-KEM's SHAKE; for the SHA-512 family, for HMAC,
+in `Rind.Aarch64.S2nBignum` for X25519, P-256, P-384, Ed25519, the
+Keccak-f of SHA-3 and ML-KEM's SHAKE, and AES-GCM with AES-128 and AES-256
+keys past the short path; for the SHA-512 family, for HMAC,
 HKDF, and PBKDF2, which cover SHA-384 and SHA-512, and for Ed25519's hashes,
 aws-lc's scalar routine's in `Rind.Aarch64.AwsLc` and, on the SHA-512
 instructions, pyca/verified-garbage's Lean proof of its block function,
@@ -50,7 +52,10 @@ P-384's comb table select rests on no axiom, only on the hand model in
 `Rind.Aarch64.PointSelectModel`. The PMULL GHASH's table and `Ghash::add`, and
 AES-GCM's counter blocks and its `tagged_from` and `tagged` on short messages
 with the crypto extension's key, rest on no axiom, only on the hand model in
-`Rind.Aarch64.AesGcmModel`.
+`Rind.Aarch64.AesGcmModel`. The all-length `tagged_from` and `tagged` proofs,
+with an AES-128 or AES-256 key, rest also on s2n-bignum's stitched kernels'
+contracts, and on cores with SHA3 take the `_alt` kernels' address bound as
+the hypothesis `KernelBuffersLow`, which no axiom states.
 ML-KEM's decompression, message coding, CBD sampling, and 12-bit unpacking
 rest on no axiom.
 ChaCha20-Poly1305's one pass on SVE2 rests on the axioms restating
@@ -925,6 +930,48 @@ A change here is a change to the trust base.
 /-- info: 'rind.aarch64.tagged_open_short_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms tagged_open_short_spec
+
+/-- info: 'rind.aarch64.long.tagged_from_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ aes128_gcm_dec_alt_spec,
+ aes128_gcm_dec_spec,
+ aes128_gcm_enc_alt_spec,
+ aes128_gcm_enc_spec,
+ aes256_gcm_dec_alt_spec,
+ aes256_gcm_dec_spec,
+ aes256_gcm_enc_alt_spec,
+ aes256_gcm_enc_spec] -/
+#guard_msgs in
+#print axioms long.tagged_from_spec
+
+/-- info: 'rind.aarch64.long.tagged_seal_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ aes128_gcm_dec_alt_spec,
+ aes128_gcm_dec_spec,
+ aes128_gcm_enc_alt_spec,
+ aes128_gcm_enc_spec,
+ aes256_gcm_dec_alt_spec,
+ aes256_gcm_dec_spec,
+ aes256_gcm_enc_alt_spec,
+ aes256_gcm_enc_spec] -/
+#guard_msgs in
+#print axioms long.tagged_seal_spec
+
+/-- info: 'rind.aarch64.long.tagged_open_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ aes128_gcm_dec_alt_spec,
+ aes128_gcm_dec_spec,
+ aes128_gcm_enc_alt_spec,
+ aes128_gcm_enc_spec,
+ aes256_gcm_dec_alt_spec,
+ aes256_gcm_dec_spec,
+ aes256_gcm_enc_alt_spec,
+ aes256_gcm_enc_spec] -/
+#guard_msgs in
+#print axioms long.tagged_open_spec
 
 /-- info: 'rind.aarch64.chacha20_poly1305_seal_sve2_spec' depends on axioms: [propext,
  Classical.choice,
