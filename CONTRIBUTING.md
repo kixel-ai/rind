@@ -39,6 +39,16 @@ tests run minutes at `opt-level = 0`. For a bare test run, pass it as
 `cargo nextest run --cargo-profile test-fast`; `admin/ctgrind` and the other
 dev builds stay unoptimized.
 
+`cargo vet --locked` fails when the published rind crate's dependencies gain
+a crate or version no audit covers, as [SECURITY.md](SECURITY.md#supply-chain)
+describes. Plain `cargo vet` first fetches the imported audits and the
+publishers of new versions into `supply-chain/imports.lock`, which may cover
+it: a release by a publisher `supply-chain/audits.toml` trusts passes once
+recorded, and `cargo vet trust` renews a trust whose `end` date has passed.
+Otherwise review its code with `cargo vet diff` or `cargo vet inspect` and
+record the review with `cargo vet certify`. A new exemption needs the
+maintainer's approval.
+
 # Commits
 
 PRs land on `main` as squash commits, so the PR title becomes the commit subject in `git log`; the body keeps the PR's commit messages and co-author trailers, not the PR description.
@@ -109,7 +119,7 @@ It creates a GitHub Release for each tag it pushes, with its changelog entry as 
 If creating one fails, the release job stops there and alerts, leaving later crates and pyrind's PyPI upload undone. Rerun the failed `Release` run, which finishes them but skips the tag already pushed, then create that tag's Release by hand with `gh release create <tag> --verify-tag --latest=false --title <tag> --notes-file <its CHANGELOG.md entry>`, passing `--latest` for rind's.
 
 A release PR merges only after `just release-check` passes at its head, so nothing publishes that the full suite has not passed.
-It dispatches every scheduled workflow but `bench` and `dart-libraries` on the PR's branch, so each runs its whole scheduled matrix on the head, and waits for them all, which takes as long as the slowest. Mutation testing covers every change since the previous release.
+It dispatches every scheduled workflow but `bench`, `dart-libraries`, and `Scorecard` on the PR's branch, so each runs its whole scheduled matrix on the head, and waits for them all, which takes as long as the slowest. Mutation testing covers every change since the previous release.
 An agent merging a release PR, as `/quest-merge` does, runs it first.
 It records the result as the `release-check` status on the head the runs tested, so a release-plz update to the PR needs a new run.
 `just ci` fails a scheduled workflow that a dispatch would not run whole.
