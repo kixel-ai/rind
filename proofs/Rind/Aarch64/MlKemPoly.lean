@@ -154,6 +154,10 @@ theorem add_get (f g : Polynomial) (p : ℕ) (hp : p < 256) : (f + g)[p]! = f[p]
 def dot3 (X Y : ℕ → Polynomial) : Polynomial :=
   MultiplyNTTs (X 0) (Y 0) + MultiplyNTTs (X 1) (Y 1) + MultiplyNTTs (X 2) (Y 2)
 
+theorem dite_true' {α : Type} {c : Prop} [Decidable c] {a : c → α} {b : ¬c → α} (h : c) :
+    dite c a b = a h := by
+  simp [h]
+
 theorem flat_length {T : Type} {n : Usize} : ∀ l : List (Std.Array T n),
     (l.flatMap (·.val)).length = l.length * n.val
   | [] => by simp
@@ -183,13 +187,13 @@ theorem as_flattened_spec {T : Type} {N : Usize} (s : Slice (Std.Array T N))
     (h : s.length * N.val ≤ Usize.max) :
     core.slice.SliceArray.as_flattened s ⦃ r => r.val = s.val.flatMap (·.val) ⦄ := by
   simp only [core.slice.SliceArray.as_flattened]
-  rw [dite_eq_left_of_eq_true (eq_true (by rw [flat_length]; exact h))]
+  rw [dite_true' ((by rw [flat_length]; exact h))]
   exact (WP.spec_ok _).2 (Slice.from_val _ _)
 
 theorem try_from_ok {T : Type} (N : Usize) (s : Slice T) (h : s.length = N.val) :
     core.array.TryFromSharedArraySlice.try_from N s = ok (.Ok (Std.Array.from s.val h)) := by
   unfold core.array.TryFromSharedArraySlice.try_from
-  rw [dite_eq_left_of_eq_true (eq_true (by scalar_tac))]
+  rw [dite_true' ((by scalar_tac))]
 
 theorem N_eq : mid.mlkem.N = 256#usize := by unfold mid.mlkem.N; rfl
 
@@ -560,6 +564,142 @@ theorem to_bytes_spec {n : Usize} {MC : Type}
   have : (back out1).val[j]! = out1.val[j]! := by rw [hback _ hl1]
   rw [this]
   exact hq1 j hj
+
+/-! ## Coefficient-wise sums -/
+
+theorem ite_pos {α : Type} {c : Prop} [Decidable c] {a b : α} (h : c) : (if c then a else b) = a := by
+  simp [h]
+
+theorem ite_neg {α : Type} {c : Prop} [Decidable c] {a b : α} (h : ¬c) : (if c then a else b) = b := by
+  simp [h]
+
+theorem bmod16 (x : ℤ) (h1 : -32768 ≤ x) (h2 : x ≤ 32767) : Int.bmod x (2 ^ IScalarTy.I16.numBits) = x := by
+  have : (2 : ℕ) ^ IScalarTy.I16.numBits = 65536 := rfl
+  rw [this]
+  unfold Int.bmod
+  dsimp only
+  split <;> omega
+
+theorem sub_get (f g : Polynomial) (p : ℕ) (hp : p < 256) : (f - g)[p]! = f[p]! - g[p]! := by
+  rw [getElem!_pos (f - g) p hp, getElem!_pos f p hp, getElem!_pos g p hp]
+  show (Vector.zipWith (· - ·) f g)[p] = _
+  simp
+
+theorem array_set_getElem! (a : Poly) (i : Usize) (x : I16) (p : ℕ) (hi : i.val < 256) :
+    (a.set i x).val[p]! = if p = i.val then x else a.val[p]! := by
+  rw [Std.Array.set_val_eq]
+  split_ifs with h
+  · subst h
+    exact getElem!_set_self _ _ _ (by simp [hi])
+  · exact getElem!_set_ne _ _ _ _ (Ne.symm h)
+
+/-- The loop of `Coeffs::sub`: each coefficient's difference, wrapping. -/
+theorem sub_loop_spec (a t : Poly)
+    (hb : ∀ p < 256, -32768 ≤ (a.val[p]!).val - (t.val[p]!).val ∧ (a.val[p]!).val - (t.val[p]!).val ≤ 32767)
+    (it : core.ops.range.Range Usize) (hs : it.start.val = 0) (he : it.end.val = 256) :
+    mid.mlkem.CoeffsArrayI16256Normal.sub_loop it (a, ()) (t, ()) ⦃ r =>
+      ∀ p < 256, (r.1.val[p]!).val = (a.val[p]!).val - (t.val[p]!).val ⦄ := by
+  unfold mid.mlkem.CoeffsArrayI16256Normal.sub_loop
+  apply WP.spec_mono (range_loop 256 (fun c (s : mid.mlkem.Coeffs Poly mid.mlkem.Normal) =>
+    ∀ p < 256, (s.1.val[p]!).val = if p < c then (a.val[p]!).val - (t.val[p]!).val else (a.val[p]!).val)
+    _ ?_ it (a, ()) he (by omega) (fun p hp => by simp [hs]))
+  · intro r hr p hp
+    rw [hr p hp, ite_pos (hp)]
+  · intro it s he hs hinv
+    simp only
+    unfold mid.mlkem.CoeffsArrayI16256Normal.sub_loop.body
+    obtain ⟨sa, pd⟩ := s
+    step as ⟨o', it1, ho, he1⟩
+    split_ifs at ho with hlt
+    · obtain ⟨rfl, hst⟩ := ho
+      simp only
+      step as ⟨x, hx⟩
+      step as ⟨y, hy⟩
+      step as ⟨z, hz⟩
+      step as ⟨a2, ha2⟩
+      refine ⟨by rw [he1]; exact he, hst, by omega, fun p hp => ?_⟩
+      rw [ha2, array_set_getElem! _ _ _ _ (by omega)]
+      split_ifs with h1 h2 h2
+      · subst h1
+        rw [hz, core.num.I16.wrapping_sub_val_eq, hx, hy, ← getElem!_pos, ← getElem!_pos]
+        have := hinv it.start.val hp
+        rw [ite_neg ((by omega))] at this
+        rw [this]
+        exact bmod16 _ (hb _ hp).1 (hb _ hp).2
+      · omega
+      · rw [hinv p hp, ite_pos ((by omega))]
+      · rw [hinv p hp, ite_neg ((by omega))]
+    · obtain ⟨rfl, hst⟩ := ho
+      apply (WP.spec_ok _).2
+      have : it.start.val = 256 := by omega
+      rw [this] at hinv
+      exact hinv
+
+/-- `Coeffs::sub`: the difference, reduced into `[0, q)`, of polynomials
+whose coefficients' differences fit an `i16`. -/
+theorem sub_spec (a t : Poly) (F G : Polynomial) (ha : Congr a.val F) (ht : Congr t.val G)
+    (hb : ∀ p < 256, -32768 ≤ (a.val[p]!).val - (t.val[p]!).val ∧ (a.val[p]!).val - (t.val[p]!).val ≤ 32767) :
+    mid.mlkem.CoeffsArrayI16256Normal.sub (a, ()) (t, ()) ⦃ r => Holds 0 3328 256 r.1.val (F - G) ⦄ := by
+  unfold mid.mlkem.CoeffsArrayI16256Normal.sub
+  rw [N_eq]
+  apply WP.spec_bind (sub_loop_spec a t hb { start := 0#usize, «end» := 256#usize } rfl rfl)
+  intro r1 hr1
+  obtain ⟨r1, pd⟩ := r1
+  step with mlkem_reduce_spec r1 (F - G) (fun p hp => by
+      rw [hr1 p hp, sub_get _ _ _ hp, ← ha p hp, ← ht p hp]; push_cast; rfl) as ⟨r2, hr2⟩
+  exact (WP.spec_ok _).2 hr2
+
+/-- The loop of `Coeffs::add` on one polynomial: each coefficient's sum, wrapping. -/
+theorem add_loop_spec (a t : Poly)
+    (hb : ∀ p < 256, -32768 ≤ (a.val[p]!).val + (t.val[p]!).val ∧ (a.val[p]!).val + (t.val[p]!).val ≤ 32767)
+    (it : core.ops.range.Range Usize) (hs : it.start.val = 0) (he : it.end.val = 256) :
+    mid.mlkem.CoeffsArrayI16256Normal.add_loop it (a, ()) t ⦃ r =>
+      ∀ p < 256, (r.1.val[p]!).val = (a.val[p]!).val + (t.val[p]!).val ⦄ := by
+  unfold mid.mlkem.CoeffsArrayI16256Normal.add_loop
+  apply WP.spec_mono (range_loop 256 (fun c (s : mid.mlkem.Coeffs Poly mid.mlkem.Normal) =>
+    ∀ p < 256, (s.1.val[p]!).val = if p < c then (a.val[p]!).val + (t.val[p]!).val else (a.val[p]!).val)
+    _ ?_ it (a, ()) he (by omega) (fun p hp => by simp [hs]))
+  · intro r hr p hp
+    rw [hr p hp, ite_pos (hp)]
+  · intro it s he hs hinv
+    simp only
+    unfold mid.mlkem.CoeffsArrayI16256Normal.add_loop.body
+    obtain ⟨sa, pd⟩ := s
+    step as ⟨o', it1, ho, he1⟩
+    split_ifs at ho with hlt
+    · obtain ⟨rfl, hst⟩ := ho
+      simp only
+      step as ⟨x, hx⟩
+      step as ⟨y, hy⟩
+      step as ⟨z, hz⟩
+      step as ⟨a2, ha2⟩
+      refine ⟨by rw [he1]; exact he, hst, by omega, fun p hp => ?_⟩
+      rw [ha2, array_set_getElem! _ _ _ _ (by omega)]
+      split_ifs with h1 h2 h2
+      · subst h1
+        rw [hz, core.num.I16.wrapping_add_val_eq, hx, hy, ← getElem!_pos, ← getElem!_pos]
+        have := hinv it.start.val hp
+        rw [ite_neg ((by omega))] at this
+        rw [this]
+        exact bmod16 _ (hb _ hp).1 (hb _ hp).2
+      · omega
+      · rw [hinv p hp, ite_pos ((by omega))]
+      · rw [hinv p hp, ite_neg ((by omega))]
+    · obtain ⟨rfl, hst⟩ := ho
+      apply (WP.spec_ok _).2
+      have : it.start.val = 256 := by omega
+      rw [this] at hinv
+      exact hinv
+
+/-- `Coeffs::add` on one polynomial: each coefficient's sum, of polynomials
+whose coefficients' sums fit an `i16`. -/
+theorem add1_spec (a t : Poly)
+    (hb : ∀ p < 256, -32768 ≤ (a.val[p]!).val + (t.val[p]!).val ∧ (a.val[p]!).val + (t.val[p]!).val ≤ 32767) :
+    mid.mlkem.CoeffsArrayI16256Normal.add (a, ()) t ⦃ r =>
+      ∀ p < 256, (r.1.val[p]!).val = (a.val[p]!).val + (t.val[p]!).val ⦄ := by
+  unfold mid.mlkem.CoeffsArrayI16256Normal.add
+  rw [N_eq]
+  exact add_loop_spec a t hb { start := 0#usize, «end» := 256#usize } rfl rfl
 
 end MlKemPoly
 
