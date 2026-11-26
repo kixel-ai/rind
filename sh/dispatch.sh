@@ -225,6 +225,10 @@ module mutants '^(rind[^/]*/src/|\.cargo/mutants\.toml$|admin/mutants$)' \
 # An adapter's manifest holds both its version and its upstream requirement.
 module versions '^(rind-[^/]+/Cargo\.toml$|sh/adapter-versions\.sh$)' \
     tools='cargo jq' check
+# A published crate's public API against the merge-base's: a break needs a `!`
+# mark, and an adapter's one that names it (sh/semver.sh).
+module semver '^(rind[^/]*/(src/|Cargo\.toml$)|sh/semver\.sh$)' \
+    tools='cargo cargo-semver-checks jq' compiles
 # Each adapter's API against its upstream's, which reaches rind only through a
 # lockfile change, as read by the flake's rustdoc. rind-object-store and
 # rind-rand-core have none to copy.
@@ -713,6 +717,10 @@ step() {
         check:structure) run admin/structure ;;
         check:deny) run cargo deny --locked check ;;
         check:versions) run sh/adapter-versions.sh ;;
+        check:semver)
+            # An unscoped run compares with the default base, not `--all`.
+            if [[ -n "$all" ]]; then run sh/semver.sh; else run sh/semver.sh "$base"; fi
+            ;;
         check:adapters) run python3 admin/adapter-api ;;
         check:quest) run quest check ;;
         check:license) run bash admin/scan-license ;;
