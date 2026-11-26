@@ -63,7 +63,7 @@ theorem select_spec (bit x y : U64) (hb : bit.val ≤ 1) :
 theorem word_spec (x : Slice U64) (i : Usize) :
     low.generic.bignum.word x i ⦃ r => r.val = if i.val < x.length then x.val[i.val]!.val else 0 ⦄ := by
   unfold low.generic.bignum.word core.slice.Slice.get core.option.OptionShared0T.copied
-  simp only [core.slice.index.SliceIndexUsizeSlice, core.slice.index.Usize.get, bind_ok, WP.spec_ok]
+  simp only [core.slice.index.Usize.get, bind_ok, WP.spec_ok]
   split
   · rename_i h
     rw [Slice.getElem?_Usize_eq, List.getElem?_eq_getElem (by simpa [Slice.length] using h)]
@@ -249,9 +249,9 @@ theorem bitsize_loop_spec (x : Slice U64) (hx : x.length < 2 ^ 26)
       by_cases h0 : i4.val = 0
       · simp only [h0, ↓reduceIte] at hi7
         simp only [hi7, ↓reduceIte, h0, Nat.mul_zero, Nat.add_zero, hv]
-      · simp only [h0, ↓reduceIte, one_ne_zero] at hi7
+      · simp only [h0, ↓reduceIte] at hi7
         simp only [hi7, one_ne_zero, ↓reduceIte, core.num.U64.wrapping_sub_val_eq,
-          core.convert.num.FromU64U32.from_val_eq, u64_size]
+          core.convert.num.FromU64U32.from_val_eq]
         have hX : wordsNat (x.val.take it.start.val) < 2 ^ (64 * it.start.val) := by
           have := wordsNat_lt' (x.val.take it.start.val)
           rwa [List.length_take, Nat.min_eq_left hlt'.le] at this
@@ -261,7 +261,7 @@ theorem bitsize_loop_spec (x : Slice U64) (hx : x.length < 2 ^ 26)
           have h2 : 0 < i4.val.size := Nat.size_pos.mpr (Nat.pos_of_ne_zero h0)
           omega
         have hA : i3.val = it.start.val * 64 + 64 := by rw [hi3, hi2, hi1v]
-        have hsz : UScalar.size UScalarTy.U64 = 2 ^ 64 := by simp [UScalar.size, UScalarTy.numBits, u64_size]
+        have hsz : UScalar.size UScalarTy.U64 = 2 ^ 64 := by simp [u64_size]
         have hlen : it.start.val < 2 ^ 26 := by simp only [Slice.length] at hlt hx; omega
         rw [hA, hsz]
         rw [show it.start.val * 64 + 64 + (2 ^ 64 - (core.num.U64.leading_zeros i4).val) =
@@ -380,7 +380,7 @@ theorem negmodinv_loop_spec (x : U64) (iter : core.ops.range.Range I32) (inv : U
       have hn := newton_step x.val v.val _ (hv hodd)
       have hk : min (5 * 2 ^ iter1.start.val.toNat) 64 = min (2 * min (5 * 2 ^ it.start.val.toNat) 64) 64 := by
         rw [hst, show (it.start.val + 1).toNat = it.start.val.toNat + 1 by omega, pow_succ]; omega
-      have hsz : UScalar.size UScalarTy.U64 = 2 ^ 64 := by simp [UScalar.size, UScalarTy.numBits, u64_size]
+      have hsz : UScalar.size UScalarTy.U64 = 2 ^ 64 := by simp [u64_size]
       rw [hk]
       simpa [core.num.U64.wrapping_mul_val_eq, core.num.U64.wrapping_sub_val_eq, hsz] using hn
   · exact ⟨hend, hs0, hs4, hinv⟩
@@ -412,7 +412,7 @@ theorem bignum_negmodinv_spec (z x : Slice U64) (hz : z.length = 1) (hx : x.leng
           (wordsNat x.val * wordsNat r.val + 1) % 2 ^ (64 * z.length) = 0) ⦄ := by
   unfold low.generic.bignum.bignum_negmodinv
   step*
-  have hsz : UScalar.size UScalarTy.U64 = 2 ^ 64 := by simp [UScalar.size, UScalarTy.numBits, u64_size]
+  have hsz : UScalar.size UScalarTy.U64 = 2 ^ 64 := by simp [u64_size]
   have hxv : x.val = [x1] := by
     have hl : x.val.length = 1 := hx
     obtain ⟨w, hw⟩ := List.length_eq_one_iff.mp hl

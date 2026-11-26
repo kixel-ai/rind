@@ -576,7 +576,7 @@ theorem from_fn_spec {T F : Type} [Inhabited T] (N : Usize) (n : Nat) (hn : N.va
     obtain ⟨hl, hget⟩ := List.forall₂_iff_get.mp hys
     simp only [List.length_attach, List.length_range] at hl
     change (if h : ys.length = N.val then ok (Std.Array.from ys h) else fail .panic) ⦃ a => ∀ k < N.val, P k a.val[k]! ⦄
-    rw [dif_pos hl.symm, WP.spec_ok]
+    rw [dite_eq_left hl.symm, WP.spec_ok]
     intro k hk
     have := hget k (by simp; omega) (by omega)
     simpa [getElem!_pos ys k (by omega)] using this
@@ -597,7 +597,7 @@ theorem closure_spec (u : U64) (y : Std.Array U64 4#usize) (i : Usize) (hi : i.v
   step with Array.index_usize_spec y i (by simpa using hi) as ⟨yi, hyi⟩
   have hb : u.val * yi.val < 2 ^ 128 := by
     have := mul_add_limb_bound u.val yi.val 0 0 u.hBounds yi.hBounds (by norm_num) (by norm_num); omega
-  simp only [lift, bind_ok, WP.spec_ok, core.num.U128.wrapping_mul_val_eq, from_u128_val, UScalar.size,
+  simp only [core.num.U128.wrapping_mul_val_eq, from_u128_val, UScalar.size,
     UScalarTy.numBits]
   refine ⟨rfl, ?_⟩
   rw [Nat.mod_eq_of_lt hb, hyi, getElem!_pos _ _ (by simpa using hi)]
@@ -824,7 +824,7 @@ theorem as_chunks_mut4_spec (s : Slice U64) :
   simp only [WP.spec_ok]
   refine ⟨hl, hf, fun c t hct => ?_⟩
   simp only [flat] at hct ⊢
-  rw [dif_pos hct, Slice.from_val]
+  rw [dite_eq_left hct, Slice.from_val]
 
 theorem mul_add2_tail_loop_spec (u v : U64) (y x0 : Slice U64) (hy : y.length = x0.length) (C : Nat)
     (iter : core.ops.range.Range Usize) (c0 c1 : U128) (prev : U64) (x : Slice U64)
@@ -1474,11 +1474,11 @@ theorem redc_spec (t m : Slice U64) (n0 : U64) (hk1 : 1 ≤ m.length) (hkt : m.l
     · rw [ht] at hr1 hXlt ⊢
       simp only [mul_zero, add_zero] at hXlt ⊢
       by_cases hRM : R < M
-      · have hb1 : below.val = 1 := by rw [hbelow]; exact if_pos hRM
+      · have hb1 : below.val = 1 := by rw [hbelow]; exact ite_eq_left hRM
         simp only [hb1, and_self, ↓reduceIte, Nat.cast_zero, sub_zero] at hr1
         rw [Nat.mod_eq_of_lt hRM]
         rcases (show b = 0 ∨ b = 1 by omega) with rfl | rfl <;> push_cast at hr1 <;> omega
-      · have hb0 : below.val = 0 := by rw [hbelow]; exact if_neg hRM
+      · have hb0 : below.val = 0 := by rw [hbelow]; exact ite_eq_right hRM
         simp only [hb0, zero_ne_one, and_false, ↓reduceIte] at hr1
         rw [Nat.mod_eq_sub_mod (by omega), Nat.mod_eq_of_lt (by omega)]
         rcases (show b = 0 ∨ b = 1 by omega) with rfl | rfl <;> push_cast at hr1 <;> omega
@@ -1611,7 +1611,7 @@ theorem copied_spec (o : Option U64) :
 theorem unwrap_get (l : List U64) (i : Nat) : core.option.Option.unwrap_or l[i]? 0#u64 = l[i]! := by
   by_cases h : i < l.length
   · simp [h, getElem!_pos, core.option.Option.unwrap_or]
-  · simp [h, core.option.Option.unwrap_or, List.getElem!_eq_getElem?_getD]; rfl
+  · simp [h, core.option.Option.unwrap_or]; rfl
 
 theorem wordsNat_take_succ_any (l : List U64) (i : Nat) :
     wordsNat (l.take (i + 1)) = wordsNat (l.take i) + 2 ^ (64 * i) * l[i]!.val := by
@@ -1625,7 +1625,7 @@ theorem xor_mask_val (a flip : U64) (h : IsMask flip) :
     (a ^^^ flip).val = if flip.val = 0 then a.val else 2 ^ 64 - 1 - a.val := by
   rcases h with h | h
   · rw [UScalar.val_xor, h]; simp
-  · rw [ite_cond_eq_false _ _ (by rw [h]; simp)]
+  · rw [ite_eq_right_of_eq_false _ _ (by rw [h]; simp)]
     have : flip.bv = BitVec.allOnes 64 := by
       apply BitVec.eq_of_toNat_eq; rw [BitVec.toNat_allOnes]; exact h
     show (a.bv ^^^ flip.bv).toNat = 2 ^ 64 - 1 - a.bv.toNat
@@ -1799,7 +1799,7 @@ theorem abs_diff_spec (z x y : Slice U64) (hx : x.length ≤ z.length) (hy : y.l
   simp only [lift, bind_ok]
   step with abs_diff_loop1_spec z1 _ (neg_bit_mask bw hbw) bw.val { start := 0#usize, «end» := z1.len } z1
     (core.convert.num.FromU128U64.from bw) (by simp) (by simp) rfl (by rw [from_u128_val]; exact hbw) rfl
-    (by simp [xorSum, wordsNat_nil, from_u128_val]) as ⟨z2, hz2l, c, hc, hz2⟩
+    (by simp [xorSum, wordsNat_nil]) as ⟨z2, hz2l, c, hc, hz2⟩
   refine ⟨by rw [hz2l, hz1l], ?_⟩
   have hX := wordsNat_lt_of_le x.val z.length hx
   have hY := wordsNat_lt_of_le y.val z.length hy
@@ -1999,7 +1999,7 @@ theorem add_middle_loop1_spec (z0 d : Slice U64) (h : Usize) (top : U128) (htop 
           step as ⟨di, hdi⟩
           refine ⟨?_, ?_⟩
           · rw [from_u128_val]; exact u64_lt di
-          · rw [from_u128_val, ite_cond_eq_true _ _ (eq_true hcmp), hdi, ← getElem!_pos]
+          · rw [from_u128_val, ite_eq_left_of_eq_true _ _ (eq_true hcmp), hdi, ← getElem!_pos]
         · rename_i hcmp
           rw [Nat.compare_eq_eq, hdL] at hcmp
           simp only [WP.spec_ok]
@@ -2064,7 +2064,7 @@ theorem add_middle_spec (z d : Slice U64) (h : Usize) (negative : U64) (hneg : n
   step with add_middle_loop0_spec z d h (core.num.U64.wrapping_sub 0#u64 negative) (neg_bit_mask negative hneg)
     negative.val hd (by omega) hmax { start := 0#usize, «end» := d.len } d (core.convert.num.FromU128U64.from negative)
     (by simp) (by simp) rfl (by rw [from_u128_val]; omega) rfl
-    (by simp [xorSum, wordsNat_nil, from_u128_val]) as ⟨d1, carry1, hd1l, hc1, hd1⟩
+    (by simp [xorSum, wordsNat_nil]) as ⟨d1, carry1, hd1l, hc1, hd1⟩
   have hzL : z.val.length = z.length := rfl
   have hdL : d.val.length = d.length := rfl
   rw [hd, List.take_of_length_le (l := z.val.drop (2 * h.val)) (by simp; omega)] at hd1
@@ -2094,7 +2094,7 @@ theorem add_middle_spec (z d : Slice U64) (h : Usize) (negative : U64) (hneg : n
     (by simp [hi3]) (by simp) rfl (by simp) rfl (by simp [aSum, wordsNat_nil]) as ⟨z1, hz1l, c, hc, hz1⟩
   have hd1L : d1.val.length = 2 * h.val := by rw [show d1.val.length = d1.length from rfl, hd1l, hd]
   unfold aSum at hz1
-  rw [List.take_of_length_le (by omega), if_pos (by omega), hd1L] at hz1
+  rw [List.take_of_length_le (by omega), ite_eq_left (by omega), hd1L] at hz1
   have hMn : M = wordsNat d1.val + 2 ^ (64 * (2 * h.val)) * top.val := by
     zify [hge] at htop ⊢; rw [hmid, htop]
   rw [← hMn] at hz1
@@ -2804,7 +2804,7 @@ theorem sqr_limbs_spec (n : Nat) : ∀ (z x scratch : Slice U64), x.length = n �
 
 theorem getElem!_set_self' {α : Type} [Inhabited α] (l : List α) (i : Nat) (v : α) (h : i < l.length) :
     (l.set i v)[i]! = v := by
-  simp [List.getElem!_eq_getElem?_getD, h]
+  simp [h]
 
 /-- The carries of a CIOS step fit where it puts them. -/
 theorem cios_carries (tn c c2 : Nat) (htn : tn < 2 ^ 64) (hc : c < 2 ^ 64) (hc2 : c2 < 2 ^ 64) :
@@ -3001,7 +3001,6 @@ theorem mont_mul_limbs_loop_spec (x y m : Slice U64) (n0 : U64) (n : Usize) (hn 
       unfold CiosInv
       rw [hst]
       exact ⟨hs2L, cios_bound hV (u64_lt xi) (u64_lt u) hY hV', _, hQ', hVQ'⟩
-      done
   · exact ⟨hend, hi, hinv⟩
 
 /-- A Montgomery product's last step: `V = R + 2^(64k) T` below `2m` less

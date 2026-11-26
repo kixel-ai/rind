@@ -220,10 +220,10 @@ restated as a work list:
 
 1. rind's own hand-written arithmetic with no proof, the ⚡ and "rind" cells of
    ALGORITHMS.md, such as parts of P-384 and P-521, x86_64 SHA-256, the
-   portable RSA multiplication, and armv7 Ed25519.
+   portable RSA multiplication on 32-bit limbs, and armv7 Ed25519.
 2. Code ported by hand from C or from another Rust backend: aws-lc's
-   constant-time SSE2 AES and integer GHASH, aws-lc's C SHA-2 for the portable
-   backend, and curve25519-dalek's AVX2 backend, ported to intrinsics.
+   constant-time SSE2 AES and integer GHASH, and curve25519-dalek's AVX2
+   backend, ported to intrinsics.
 3. Imported assembly that runs without a proof: aws-lc's ChaCha20-Poly1305 on
    x86_64 and aarch64, RSAZ, Montgomery multiplication without ADX, the AVX2
    SHA-2, VAES AES-GCM, and all of armv7's.

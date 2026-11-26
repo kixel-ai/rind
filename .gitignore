@@ -55,6 +55,14 @@ proofs/Rind/Portable/HmacApi.lean
 proofs/Rind/Portable/DigestApi.lean
 proofs/Rind/Portable/Hkdf.lean
 proofs/Rind/Portable/Pbkdf2.lean
+proofs/Rind/Portable/RsaPublic.lean
+proofs/Rind/Portable/RsaBytes.lean
+proofs/Rind/Portable/RsaIfma.lean
+proofs/Rind/Portable/RsaVerify.lean
+proofs/Rind/Portable/RsaPss.lean
+proofs/Rind/Portable/RsaKey.lean
+proofs/Rind/Portable/SignatureBuffer.lean
+proofs/Rind/Portable/RsaDispatch.lean
 proofs/Rind/Aarch64/Sha3.lean
 proofs/Rind/Aarch64/P256.lean
 proofs/Rind/Aarch64/EcdsaDispatch.lean
