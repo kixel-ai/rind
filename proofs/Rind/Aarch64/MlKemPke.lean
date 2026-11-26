@@ -222,6 +222,79 @@ theorem kpke_decrypt_spec {X : Type} (P : mid.mlkem.Params X Vec Mat EkBytes CtB
   unfold decrypt
   simp only [hU]
 
+/-! ## FIPS 203's `K-PKE.Decrypt` -/
+
+theorem sub_getElem! (l : List U8) (off len i : ℕ) (hi : i < len) : (sub l off len)[i]! = l[off + i]! := by
+  simp only [sub, List.getElem!_eq_getElem?_getD, List.getElem?_take, hi, ite_true, List.getElem?_drop]
+
+theorem toVec_getElem (n : ℕ) (l : List U8) (h : l.length = n) (i : ℕ) (hi : i < n) :
+    (toVec n l h)[i] = (l[i]!).bv := by
+  simp only [toVec, bv, Vector.getElem_mk, List.getElem_toArray, List.getElem_map]
+  rw [getElem!_pos l i (by omega)]
+
+theorem slice_toVec {n : ℕ} (l : List U8) (h : l.length = n) (off len : ℕ) (h' : off + len ≤ n) :
+    slice (toVec n l h) off len h' = toVec len (sub l off len) (sub_length _ _ _ (by omega)) := by
+  apply Vector.ext
+  intro i hi
+  simp only [slice, Vector.getElem_ofFn, toVec_getElem, sub_getElem! _ _ _ _ hi]
+
+theorem innerProductNTT_768 (v w : PolyVector q (k .ML_KEM_768)) :
+    PolyVector.innerProductNTT v w = MultiplyNTTs v[0] w[0] + MultiplyNTTs v[1] w[1] + MultiplyNTTs v[2] w[2] := by
+  unfold PolyVector.innerProductNTT
+  simp [Id.run, Aeneas.SRRange.forIn'_eq_forIn'_range', Aeneas.SRRange.size, k, List.range'_succ, Polynomial.zero_add]
+  rfl
+
+/-- `dk`'s three encoded polynomials as `K-PKE`'s decryption key. -/
+def dkPke (dk : Enc) : 𝔹 1152 :=
+  toVec 1152 (dk.val.flatMap (·.val)) (by rw [flat_length, dk.property]; rfl)
+
+theorem sub_flat (dk : Enc) (j off len : ℕ) (hj : j < 3) (ho : off = 384 * j) (hl : len = 384) :
+    sub (dk.val.flatMap (·.val)) off len = (dk.val[j]!).val := by
+  subst ho hl
+  have hl : (dk.val.flatMap (·.val)).length = 1152 := by rw [flat_length, dk.property]; rfl
+  have hd : dk.val.length = 3 := dk.property
+  apply List.ext_getElem
+  · rw [sub_length _ _ _ (by omega), (dk.val[j]!).property]; rfl
+  · intro p h1 h2
+    have hp : p < 384 := by rw [sub_length _ _ _ (by omega)] at h1; exact h1
+    rw [← getElem!_pos (sub _ _ _) p h1, ← getElem!_pos _ p h2, sub_getElem! _ _ _ _ hp]
+    exact flat_getElem! dk.val j p (by omega) hp
+
+theorem slice_cast {n n' : ℕ} (v : 𝔹 n) (h : n = n') (off len : ℕ) (h1 : off + len ≤ n') :
+    slice (v.cast h) off len h1 = slice v off len (by omega) := by
+  apply Vector.ext
+  intro i hi
+  simp [slice]
+
+theorem sub_sub0 (l : List U8) (a off len : ℕ) (h : off + len ≤ a) : sub (sub l 0 a) off len = sub l off len := by
+  simp only [sub, List.drop_zero, List.drop_take, List.take_take]
+  congr 1
+  omega
+
+/-- `decrypt` is `K-PKE.Decrypt`'s `w`. -/
+theorem decrypt_fips (dk : Enc) (c : CtBytes) :
+    ByteEncode 1 (Polynomial.Compress 1 (decrypt dk c.val c.property)) =
+      K_PKE.Decrypt .ML_KEM_768 (dkPke dk) (toVec 1088 c.val c.property) := by
+  unfold K_PKE.Decrypt
+  rw [show toVec 1088 c.val c.property =
+    toVec (32 * (dᵤ .ML_KEM_768 * k .ML_KEM_768 + dᵥ .ML_KEM_768)) c.val c.property from rfl]
+  simp only [innerProductNTT_768, PolyVector.NTT, PolyVector.Decompress, PolyVector.ByteDecode,
+    Vector.getElem_map, Vector.getElem_ofFn, slice_cast, slice_toVec, dkPke]
+  simp (disch := decide) only [sub_sub0]
+  simp only [sub_flat dk 0 (32 * 12 * 0) (32 * 12) (by decide) rfl rfl,
+    sub_flat dk 1 (32 * 12 * 1) (32 * 12) (by decide) rfl rfl, sub_flat dk 2 (32 * 12 * 2) (32 * 12) (by decide) rfl rfl]
+  rfl
+
+/-- `kpke_decrypt` is FIPS 203's `K-PKE.Decrypt` for ML-KEM-768. -/
+theorem kpke_decrypt_fips {X : Type} (P : mid.mlkem.Params X Vec Mat EkBytes CtBytes DkBytes Cache Enc)
+    (hP : Is768 P) (key : mid.mlkem.DecapKey X Vec Mat EkBytes CtBytes DkBytes Cache Enc) (c : CtBytes) :
+    mid.mlkem.DecapKey.kpke_decrypt P key c ⦃ m =>
+      toVec 32 m.val m.property = K_PKE.Decrypt .ML_KEM_768 (dkPke key.dk_pke) (toVec 1088 c.val c.property) ⦄ := by
+  apply WP.spec_mono (kpke_decrypt_spec P hP key c)
+  intro m hm
+  rw [← decrypt_fips]
+  exact hm
+
 end MlKemPke
 
 end rind.aarch64
