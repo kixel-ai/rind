@@ -1459,8 +1459,9 @@ secret!(
     ///
     /// A login returns it only after the server authenticated. It is stable
     /// only across logins with one record: registering again, even with the
-    /// same password, gives a new key, so migrate or keep the old key's data
-    /// before replacing a record.
+    /// same password, gives a new key that cannot decrypt what the old one
+    /// did, so re-encrypt the data under the new key before replacing a
+    /// record, or keep the old key until you have.
     ExportKey
 );
 
