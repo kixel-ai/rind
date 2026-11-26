@@ -613,7 +613,9 @@ and `aes_gcm_decrypt_any_spec` state `AesGcm`'s API against Vale's
 `Rind/Armv7/CtEqual.lean`, which `admin/prove` writes from x86_64's, and its
 restatement of the HOL Light proofs of armv7's compares; `#bv_axioms` in
 `Rind/Armv7/Axioms.lean` admits only those and `bv_decide`'s. The ✓ waits for
-the other armv7 tiers, since both armv7 benchmark rows have NEON and an armv7
+the AEAD API above `AesGcm`, which the benchmarks call,
+[armv7's AES-GCM AEAD API](/quest/m5/verified-armv7/aead.md), and for the
+other armv7 tiers, since both armv7 benchmark rows have NEON and an armv7
 entry in `benchmarks/verified.toml` names no CPU features:
 [armv7's NEON AES and GHASH](/quest/m5/verified-armv7/neon-aes.md) and
 [armv7's assembly](/quest/m5/verified-armv7/assembly.md).
