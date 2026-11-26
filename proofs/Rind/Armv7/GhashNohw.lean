@@ -13,7 +13,7 @@ Karatsuba product of 64-bit and then 128-bit halves; and the reduction folds
 by the reflected modulus to the same Montgomery residue as the PCLMULQDQ
 code's `mulModel` (`polyval_bv`), so each block's multiply is Vale's
 `gf128_mul_rev` by the key, which `NohwTable::new` shifts as `shift_key_1`
-does (`new_spec`), and `NohwTable::ghash` is GHASH on the blocks'
+does (`table_new_spec`), and `NohwTable::ghash` is GHASH on the blocks'
 polynomials (`ghash_spec`).
 -/
 
@@ -288,7 +288,7 @@ theorem skBV_halves (x : BitVec 128) :
 
 /-- `NohwTable::new` shifts the key, as POLYVAL's `mulX_POLYVAL` does, which
 is `skBV`. -/
-theorem new_spec (h : Std.Array U8 16#usize) :
+theorem table_new_spec (h : Std.Array U8 16#usize) :
     NohwTable.new h ⦃ t => TableFor (toPoly (blockBE h.val)) t ⦄ := by
   unfold NohwTable.new
   step*

@@ -1813,10 +1813,11 @@ for file in QuicDispatch DigestAlgorithm DigestDispatch Sha512 ChaCha20 Blockwis
 done
 sed -i '/Rind.Portable.AeadDispatch/d' proofs/Rind/Portable/Kdf/TypesExternal.lean
 sed -i '/-- BEGIN aead/,/-- END aead/d' proofs/Rind/Portable/Kdf/FunsExternal.lean
-# armv7's header-protection model and ChaCha20 proof are x86_64's with the
-# target renamed.
-for file in QuicDispatch ChaCha20; do
-    sed 's/X86_64/Armv7/g; s/x86_64/armv7/g' "proofs/Rind/X86_64/$file.lean" >"proofs/Rind/Armv7/$file.lean"
+# armv7's header-protection model, ChaCha20 proof, and compares' restatement
+# are x86_64's with the target renamed; armv7's compares live in `low::arm::cpu`.
+for file in QuicDispatch ChaCha20 CtEqual; do
+    sed 's/X86_64/Armv7/g; s/x86_64/armv7/g; s/low\.armv7\.cpu/low.arm.cpu/g' \
+        "proofs/Rind/X86_64/$file.lean" >"proofs/Rind/Armv7/$file.lean"
 done
 
 [ "${PROVE_TRANSLATE_ONLY:-}" ] && exit 0
