@@ -119,7 +119,7 @@ These changes land only on the maintainer's explicit approval, which an agent ne
 
 `.github/CODEOWNERS` requests the maintainer's review on the paths these live in; main's ruleset does not require it, since GitHub does not let authors approve their own PRs.
 `admin/audit check` fails when a file of shipped code holding `unsafe` matches no CODEOWNERS line, so a PR that adds `unsafe` in a new file adds its path there.
-GitHub reads CODEOWNERS from the base branch, so that PR's author requests the maintainer's review by hand. The maintainer's own PR needs no request, and the maintainer's sign-off comment on it counts.
+GitHub reads CODEOWNERS from the base branch, so the author of any change above that the base's CODEOWNERS does not cover, such as that new file or `unsafe` in an integration test, requests the maintainer's review by hand. The maintainer's own PR needs no request, and the maintainer's sign-off comment on it counts.
 
 Everything else, including new safe Rust, tests, docs, and benchmarks, needs no sign-off beyond the queue's checks.
 
