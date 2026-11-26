@@ -1199,7 +1199,14 @@ They take the tier's key powers as hypotheses: `Avx512Powers`, that
 PCLMULQDQ table `from_powers` builds from them. BoringSSL's
 `gcm_init_vpclmulqdq_avx512` sets both up, and
 [the VAES quest](/quest/m4/verified/aes-gcm-x86-vaes.md) proves it, the
-kernels the tier runs from 2 KB, and the tier's seals and opens.
+kernels the tier runs from 2 KB, and the tier's seals and opens. Toward it,
+`Rind/S2nGcmAe.lean` proves s2n-bignum's SP 800-38D, `common/gcm.ml`, Vale's:
+GCTR from any counter block is `gctr_encrypt_LE`'s blocks (`gctr_eq`), and
+`gcm_ae` and `gcm_ad` with a 96-bit IV and whole blocks are `gcm_encrypt_LE`
+and `gcm_decrypt_LE` (`gcmAe_eq`, `gcmAd_eq`) for any cipher that is Vale's
+AES under the key, as FIPS 197's AES-128 and AES-256 are under s2n-bignum's
+key schedules, which are `key_to_round_keys_LE` (`aes128KeyExpansion_eq`,
+`aes256KeyExpansion_eq`).
 
 ChaCha20-Poly1305 and XChaCha20-Poly1305 on x86_64 CPUs that pass rind's
 check for pyca/verified-garbage's IFMA routines
@@ -1326,7 +1333,7 @@ the signature API's `rsa::PublicKey` to the Montgomery products, in
 transliterates it:
 
 - `rsa_signature_new_spec`, `rsa_signature_from_spki_spec`: a key
-  `PublicKey::new` or `PublicKey::from_spki` returns has a modulus N of 1024
+  `PublicKey::new` or `PublicKey::from_spki` returns has a modulus N of 1017
   to 8192 bits and an exponent E;
 - `rsa_signature_from_components_spec`: the same for a key
   `PublicKey::from_components` returns, with N and E its components read
@@ -1342,8 +1349,8 @@ transliterates it:
 
 Below the API, `Rind/X86_64/RsaKey.lean` proves key loading
 (`from_components_spec`): components with no leading zero byte, an odd
-modulus of 1024 to 8192 bits, and an odd exponent from 3 to below 2^33 load,
-and a loaded key holds them, with an odd modulus of 1024 to 8192 bits, an
+modulus of 1017 to 8192 bits, and an odd exponent from 3 to below 2^33 load,
+and a loaded key holds them, with an odd modulus of 1017 to 8192 bits, an
 odd exponent of at least 3, R^2 mod N, and `mont_neg_inverse`'s
 -N^-1 mod 2^64. R^2 mod N is `pub_montifier`'s, or, for a modulus of a
 multiple of four words whose top bit is set on a CPU with BMI2 and ADX,
@@ -1550,7 +1557,8 @@ proof after those.
   the AES-GCM proof, on x86_64 alone; `Rind/Aarch64/{AesGcmModel,GhashPmull,AesGcmShort,AesGcm,AesGcmLong}.lean`,
   aarch64's hand model and its PMULL GHASH and AES-GCM proofs;
   `Rind/S2nGcm.lean`, s2n-bignum's AES and GHASH specs, transliterated, and
-  their proofs that they are Vale's; `Rind/X86_64/GcmKey.lean`, the hand model
+  their proofs that they are Vale's; `Rind/S2nGcmAe.lean`, its GCM-AE,
+  GCM-AD, and AES key schedules, likewise; `Rind/X86_64/GcmKey.lean`, the hand model
   of `aead::gcm::Key` and its proofs; `Rind/X86_64/ChaCha20Poly1305.lean`, the
   ChaCha20-Poly1305 and XChaCha20-Poly1305 proof above aws-lc's and
   pyca/verified-garbage's routines, and `Rind/X86_64/VgChaCha20Poly1305.lean`,
@@ -1669,8 +1677,8 @@ Beyond Lean's kernel:
 - That `Rind/SymCrypt/MlKem.lean` is FIPS 203, as SymCrypt's authors state,
   and that `Rind/S2nMlKem.lean` transliterates the s2n-bignum ML-KEM specs it
   names.
-- That `Rind/S2nGcm.lean` transliterates the s2n-bignum AES and GHASH specs
-  it names.
+- That `Rind/S2nGcm.lean` and `Rind/S2nGcmAe.lean` transliterate the
+  s2n-bignum AES, GHASH, GCM, and key-schedule specs they name.
 - That `Rind/Sha2.lean` restates cryptol-specs' SHA-512, its
   `processBlock_Common` as FIPS 180-4's, `Rind/S2nSha256.lean` and
   `Rind/S2nSha512.lean` transliterate s2n-bignum's SHA-256 and SHA-512 specs,
@@ -1685,9 +1693,9 @@ Beyond Lean's kernel:
   Lean's `Classical.epsilon` does.
 - That `Rind/Vale.lean` transliterates Vale's AES and GF(2^128) specs and
   `hkeys_reqs_pub`, with the round functions Vale's AES spec assumes read as
-  FIPS 197's, the S-box and `MixColumns` opaque; that `Rind/AesInverse.lean`
-  transliterates FIPS 197's equivalent inverse cipher, its inverse S-box and
-  `InvMixColumns` opaque as those are; and that `Rind/Aes.lean`'s header
+  FIPS 197's, the S-box and `MixColumns` irreducible; that
+  `Rind/AesInverse.lean` transliterates FIPS 197's equivalent inverse cipher,
+  its inverse S-box and `InvMixColumns` opaque; and that `Rind/Aes.lean`'s header
   mask is RFC 9001's, `Rind/AesModes.lean`'s CTR and CBC SP 800-38A's with
   RFC 5652's PKCS#7 padding, and `Rind/AesKw.lean`'s KW and KWP SP 800-38F's.
 - That `Rind/X86_64/Simd.lean`'s and `Rind/Aarch64/Neon.lean`'s intrinsics
@@ -1783,7 +1791,8 @@ messages only, as HOL Light's message schedules, transliterated, recurse
 without sharing, while FIPS 180-4's, which they are proven equal to, run on
 every vector; `Rind/S2nMlKem.lean`'s specs, which its bridges prove are FIPS
 203's NTT, NTT⁻¹, and products, with no executable whole; `Rind/S2nGcm.lean`'s
-AES and GHASH, which its bridges prove are Vale's; and VG's specs,
+AES and GHASH and `Rind/S2nGcmAe.lean`'s GCM and key schedules, which their
+bridges prove are Vale's; and VG's specs,
 which `Rind/Vg*.lean` prove are `Rind/Spec.lean`'s. Not run: `hkeysReqsPub`
 and the P-256 and P-384 representation predicates, preconditions on a
 routine's state rather than functions of inputs that vectors exercise.
