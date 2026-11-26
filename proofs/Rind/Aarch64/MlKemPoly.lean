@@ -17,7 +17,7 @@ namespace rind.aarch64
 
 namespace MlKemPoly
 
-open MlKemCoding MlKemRoutines
+open MlKemCoding MlKemRoutines MlKemGeneric
 
 abbrev Poly := Std.Array I16 256#usize
 
@@ -84,12 +84,15 @@ theorem set_length {α : Type} (s : Slice α) (i : Usize) (x : α) : (s.set i x)
   simp [Slice.length, Slice.set_val_eq]
 
 /-- `Coeffs::zero`: every coefficient zero. -/
-theorem zero_spec {n : Usize} {D : Type} (inst : mid.mlkem.FixedArray (Std.Array Poly n) Poly)
+theorem zero_eq {n : Usize} {D : Type} (inst : mid.mlkem.FixedArray (Std.Array Poly n) Poly)
     (hi : IsArray inst) (d : mid.mlkem.Domain D) :
-    mid.mlkem.Coeffs.zero inst d ⦃ r => r.1 = Std.Array.repeat n (Std.Array.repeat 256#usize 0#i16) ⦄ := by
+    mid.mlkem.Coeffs.zero inst d = ok (Std.Array.repeat n (Std.Array.repeat 256#usize 0#i16), ()) := by
   unfold mid.mlkem.Coeffs.zero
-  simp only [hi.filled, bind_ok]
-  exact (WP.spec_ok _).2 rfl
+  simp [hi.filled]
+  rfl
+
+theorem zero1_eq {D : Type} (d : mid.mlkem.Domain D) :
+    mid.mlkem.CoeffsArrayI16256D.zero d = ok (Std.Array.repeat 256#usize 0#i16, ()) := rfl
 
 theorem ntt_loop_spec (n : ℕ) (F : ℕ → Polynomial) (polys : Slice Poly) (hl : polys.length = n)
     (h : ∀ j < n, Holds (-8191) 8191 256 (polys.val[j]!).val (F j))
@@ -117,6 +120,11 @@ theorem ntt_loop_spec (n : ℕ) (F : ℕ → Polynomial) (polys : Slice Poly) (h
     · obtain ⟨rfl, hst⟩ := ho
       apply (WP.spec_ok _).2
       exact ⟨by omega, rfl⟩
+
+theorem zero1_spec {D : Type} (d : mid.mlkem.Domain D) :
+    mid.mlkem.CoeffsArrayI16256D.zero d ⦃ r => r.1 = Std.Array.repeat 256#usize 0#i16 ⦄ := by
+  unfold mid.mlkem.CoeffsArrayI16256D.zero
+  exact (WP.spec_ok _).2 rfl
 
 /-- `Coeffs::ntt`: FIPS 203's `NTT` of each polynomial, of coefficients below
 `2 ^ 13` in magnitude. -/
@@ -175,13 +183,13 @@ theorem as_flattened_spec {T : Type} {N : Usize} (s : Slice (Std.Array T N))
     (h : s.length * N.val ≤ Usize.max) :
     core.slice.SliceArray.as_flattened s ⦃ r => r.val = s.val.flatMap (·.val) ⦄ := by
   simp only [core.slice.SliceArray.as_flattened]
-  rw [dite_cond_eq_true (eq_true (by rw [flat_length]; exact h))]
+  rw [dite_eq_left_of_eq_true (eq_true (by rw [flat_length]; exact h))]
   exact (WP.spec_ok _).2 (Slice.from_val _ _)
 
 theorem try_from_ok {T : Type} (N : Usize) (s : Slice T) (h : s.length = N.val) :
     core.array.TryFromSharedArraySlice.try_from N s = ok (.Ok (Std.Array.from s.val h)) := by
   unfold core.array.TryFromSharedArraySlice.try_from
-  rw [dite_cond_eq_true (eq_true (by scalar_tac))]
+  rw [dite_eq_left_of_eq_true (eq_true (by scalar_tac))]
 
 theorem N_eq : mid.mlkem.N = 256#usize := by unfold mid.mlkem.N; rfl
 
@@ -262,6 +270,296 @@ theorem basemul_spec (r : Poly) (a b : Slice Poly) (bt : Slice (Std.Array I16 12
     rw [cast_of_modEq (hr' i hi).1, basemul3Even_eq _ _ _ _ _ _ _ _ _ i hi hc0 hc1 hc2,
       hx0, hx1, hx2, hy0, hy1, hy2]
   · rw [cast_of_modEq (hr' i hi).2, basemul3Odd_eq _ _ _ _ _ _ i hi, hx0, hx1, hx2, hy0, hy1, hy2]
+
+/-! ## Per-polynomial loops -/
+
+/-- `a`'s values are congruent to `F`'s coefficients. -/
+def Congr (a : List I16) (F : Polynomial) : Prop := ∀ p < 256, ((a[p]!).val : Zq) = F[p]!
+
+/-- `a`'s values times Montgomery's factor `2 ^ 16` are `F`'s coefficients. -/
+def Mont (a : List I16) (F : Polynomial) : Prop := ∀ p < 256, (2 : Zq) ^ 16 * ((a[p]!).val : Zq) = F[p]!
+
+theorem Holds.congr {lo hi : ℤ} {a : List I16} {F : Polynomial} (h : Holds lo hi 256 a F) : Congr a F :=
+  fun p hp => (h p hp).2.2
+
+theorem array_length {T : Type} {n : Usize} (s : Slice T) (a : Std.Array T n) (h : s.val = a.val) :
+    s.length = n.val := by
+  show s.val.length = _
+  rw [h]
+  exact a.property
+
+theorem mul_cache_loop_spec (n : ℕ) (F : ℕ → Polynomial) (polys : Slice Poly)
+    (out : Slice (Std.Array I16 128#usize)) (hl : out.length = n) (hp : polys.length = n)
+    (h : ∀ j < n, Congr (polys.val[j]!).val (F j))
+    (it : core.ops.range.Range Usize) (hs : it.start.val = 0) (he : it.end.val = n) :
+    mid.mlkem.CoeffsVNtt.mul_cache_loop it out polys ⦃ y =>
+      y.length = n ∧ ∀ j < n, CacheHolds (y.val[j]!).val (F j) ⦄ := by
+  unfold mid.mlkem.CoeffsVNtt.mul_cache_loop
+  apply WP.spec_mono (slice_loop (α := Std.Array I16 128#usize) n (fun _ _ _ => True)
+    (fun j _ b => CacheHolds b.val (F j)) _ ?_ out hl (fun _ _ => trivial) it hs he)
+  · intro y hy
+    exact hy
+  · intro it s he hs hl' _
+    simp only
+    unfold mid.mlkem.CoeffsVNtt.mul_cache_loop.body
+    step as ⟨o', it1, ho, he1⟩
+    split_ifs at ho with hlt
+    · obtain ⟨rfl, hst⟩ := ho
+      simp only
+      step as ⟨a, back', ha, hb⟩
+      subst hb
+      step as ⟨x, hx⟩
+      step with mlkem_mulcache_compute_spec a x (F it.start.val)
+          (by rw [hx, ← getElem!_pos]; exact h _ (by omega))
+        as ⟨a1, ha1⟩
+      refine ⟨by rw [he1]; exact he, hst, by omega, by rw [set_length]; exact hl',
+        by rw [set_getElem!_self _ _ _ (by omega)]; exact ha1, fun j hj => set_getElem!_ne _ _ _ _ hj⟩
+    · obtain ⟨rfl, hst⟩ := ho
+      apply (WP.spec_ok _).2
+      exact ⟨by omega, rfl⟩
+
+/-- `Coeffs::mul_cache`: each polynomial's mulcache. -/
+theorem mul_cache_spec {n : Usize} {Enc : Type}
+    (vec : mid.mlkem.Vector (Std.Array Poly n) (Std.Array (Std.Array I16 128#usize) n) Enc)
+    (h1 : IsArray vec.FixedArraySelfArrayI16256Inst) (h2 : IsArray vec.FixedArraySelf_MulCacheArrayI16128Inst)
+    (v : Std.Array Poly n) (F : ℕ → Polynomial) (h : ∀ j < n.val, Congr (v.val[j]!).val (F j)) :
+    mid.mlkem.CoeffsVNtt.mul_cache vec (v, ()) ⦃ r =>
+      ∀ j < n.val, CacheHolds (r.1.val[j]!).val (F j) ⦄ := by
+  unfold mid.mlkem.CoeffsVNtt.mul_cache
+  simp only [h2.filled, h2.as_mut, h1.as_ref, bind_ok]
+  step as ⟨out, back, hov, hol, hback⟩
+  step as ⟨polys, hpv⟩
+  step with mul_cache_loop_spec n.val F polys out hol (array_length polys v hpv)
+      (fun j hj => by rw [hpv]; exact h j hj)
+      { start := 0#usize, «end» := Slice.len out } rfl (by rw [Slice.len_val]; exact hol)
+    as ⟨out1, hl1, hq1⟩
+  apply (WP.spec_ok _).2
+  intro j hj
+  rw [hback _ hl1]
+  exact hq1 j hj
+
+theorem inverse_ntt_loop_spec (n : ℕ) (G : ℕ → Polynomial) (polys : Slice Poly) (hl : polys.length = n)
+    (h : ∀ j < n, Mont (polys.val[j]!).val (G j))
+    (it : core.ops.range.Range Usize) (hs : it.start.val = 0) (he : it.end.val = n) :
+    mid.mlkem.CoeffsVNtt.inverse_ntt_loop it polys ⦃ y =>
+      y.length = n ∧ ∀ j < n, Holds (-26624) 26624 256 (y.val[j]!).val (NTTInv (G j)) ⦄ := by
+  unfold mid.mlkem.CoeffsVNtt.inverse_ntt_loop
+  apply WP.spec_mono (slice_loop (α := Poly) n (fun j a _ => Mont a.val (G j))
+    (fun j _ b => Holds (-26624) 26624 256 b.val (NTTInv (G j))) _ ?_ polys hl h it hs he)
+  · intro y hy
+    exact hy
+  · intro it s he hs hl hpre
+    simp only
+    unfold mid.mlkem.CoeffsVNtt.inverse_ntt_loop.body
+    step as ⟨o', it1, ho, he1⟩
+    split_ifs at ho with hlt
+    · obtain ⟨rfl, hst⟩ := ho
+      simp only
+      step as ⟨a, back', ha, hb⟩
+      subst hb
+      step with mlkem_intt_spec a (G it.start.val) (by rw [ha, ← getElem!_pos]; exact hpre (by omega))
+        as ⟨a1, ha1⟩
+      refine ⟨by rw [he1]; exact he, hst, by omega, by rw [set_length]; exact hl,
+        by rw [set_getElem!_self _ _ _ (by omega)]; exact ha1, fun j hj => set_getElem!_ne _ _ _ _ hj⟩
+    · obtain ⟨rfl, hst⟩ := ho
+      apply (WP.spec_ok _).2
+      exact ⟨by omega, rfl⟩
+
+/-- `Coeffs::inverse_ntt`: FIPS 203's `NTTInv` of each `G j`, of coefficients
+`G j` times `2 ^ -16`. -/
+theorem inverse_ntt_spec {n : Usize} {MC Enc : Type} (vec : mid.mlkem.Vector (Std.Array Poly n) MC Enc)
+    (hi : IsArray vec.FixedArraySelfArrayI16256Inst)
+    (v : Std.Array Poly n) (G : ℕ → Polynomial) (h : ∀ j < n.val, Mont (v.val[j]!).val (G j)) :
+    mid.mlkem.CoeffsVNtt.inverse_ntt vec (v, ()) ⦃ r =>
+      VHolds (-26624) 26624 n.val r.1.val (fun j => NTTInv (G j)) ⦄ := by
+  unfold mid.mlkem.CoeffsVNtt.inverse_ntt
+  rw [hi.as_mut]
+  step as ⟨polys, back, hpv, hpl, hback⟩
+  step with inverse_ntt_loop_spec n.val G polys hpl (fun j hj => by rw [hpv]; exact h j hj)
+      { start := 0#usize, «end» := Slice.len polys } rfl (by rw [Slice.len_val]; exact hpl)
+    as ⟨polys1, hl1, hq1⟩
+  apply (WP.spec_ok _).2
+  intro j hj
+  rw [hback _ hl1]
+  exact hq1 j hj
+
+/-- `Coeffs::dot_and_inverse_ntt`: `NTTInv` of the scalar product, given the
+second vector's mulcache. -/
+theorem dot_and_inverse_ntt_spec {Enc : Type}
+    (vec : mid.mlkem.Vector (Std.Array Poly 3#usize) (Std.Array (Std.Array I16 128#usize) 3#usize) Enc)
+    (h1 : IsArray vec.FixedArraySelfArrayI16256Inst) (h2 : IsArray vec.FixedArraySelf_MulCacheArrayI16128Inst)
+    (x y : Std.Array Poly 3#usize) (yc : Std.Array (Std.Array I16 128#usize) 3#usize) (X Y : ℕ → Polynomial)
+    (hx : VHolds (-4096) 4096 3 x.val X) (hy : ∀ j < 3, Congr (y.val[j]!).val (Y j))
+    (hc : ∀ j < 3, CacheHolds (yc.val[j]!).val (Y j)) :
+    mid.mlkem.CoeffsVNtt.dot_and_inverse_ntt vec (x, ()) (y, ()) (yc, ()) ⦃ r =>
+      Holds (-26624) 26624 256 r.1.val (NTTInv (dot3 X Y)) ⦄ := by
+  unfold mid.mlkem.CoeffsVNtt.dot_and_inverse_ntt mid.mlkem.CoeffsArrayI16256Ntt.inverse_ntt
+  simp only [h1.as_ref, h2.as_ref, zero1_eq]
+  apply spec_bind_ok
+  step as ⟨s1, hs1⟩
+  step as ⟨s2, hs2⟩
+  step as ⟨s3, hs3⟩
+  step with basemul_spec _ s1 s2 s3 X Y (array_length s1 x hs1) (array_length s2 y hs2)
+      (array_length s3 yc hs3) (by rw [hs1]; exact hx) (by rw [hs2]; exact hy) (by rw [hs3]; exact hc)
+    as ⟨a1, ha1⟩
+  step with mlkem_intt_spec a1 (dot3 X Y) ha1 as ⟨a2, ha2⟩
+  exact (WP.spec_ok _).2 ha2
+
+theorem reduce_loop_spec (n : ℕ) (F : ℕ → Polynomial) (polys : Slice Poly) (hl : polys.length = n)
+    (h : ∀ j < n, Congr (polys.val[j]!).val (F j))
+    (it : core.ops.range.Range Usize) (hs : it.start.val = 0) (he : it.end.val = n) :
+    mid.mlkem.Coeffs.reduce_in_place_loop it polys ⦃ y =>
+      y.length = n ∧ ∀ j < n, Holds 0 3328 256 (y.val[j]!).val (F j) ⦄ := by
+  unfold mid.mlkem.Coeffs.reduce_in_place_loop
+  apply WP.spec_mono (slice_loop (α := Poly) n (fun j a _ => Congr a.val (F j))
+    (fun j _ b => Holds 0 3328 256 b.val (F j)) _ ?_ polys hl h it hs he)
+  · intro y hy
+    exact hy
+  · intro it s he hs hl hpre
+    simp only
+    unfold mid.mlkem.Coeffs.reduce_in_place_loop.body
+    step as ⟨o', it1, ho, he1⟩
+    split_ifs at ho with hlt
+    · obtain ⟨rfl, hst⟩ := ho
+      simp only
+      step as ⟨a, back', ha, hb⟩
+      subst hb
+      step with mlkem_reduce_spec a (F it.start.val) (by rw [ha, ← getElem!_pos]; exact hpre (by omega))
+        as ⟨a1, ha1⟩
+      refine ⟨by rw [he1]; exact he, hst, by omega, by rw [set_length]; exact hl,
+        by rw [set_getElem!_self _ _ _ (by omega)]; exact ha1, fun j hj => set_getElem!_ne _ _ _ _ hj⟩
+    · obtain ⟨rfl, hst⟩ := ho
+      apply (WP.spec_ok _).2
+      exact ⟨by omega, rfl⟩
+
+/-- `Coeffs::reduce_in_place`: each coefficient reduced into `[0, q)`. -/
+theorem reduce_in_place_spec {n : Usize} {D : Type} (inst : mid.mlkem.FixedArray (Std.Array Poly n) Poly)
+    (hi : IsArray inst) (d : mid.mlkem.Domain D)
+    (v : Std.Array Poly n) (F : ℕ → Polynomial) (h : ∀ j < n.val, Congr (v.val[j]!).val (F j)) :
+    mid.mlkem.Coeffs.reduce_in_place inst d (v, ()) ⦃ r => VHolds 0 3328 n.val r.1.val F ⦄ := by
+  unfold mid.mlkem.Coeffs.reduce_in_place
+  rw [hi.as_mut]
+  step as ⟨polys, back, hpv, hpl, hback⟩
+  step with reduce_loop_spec n.val F polys hpl (fun j hj => by rw [hpv]; exact h j hj)
+      { start := 0#usize, «end» := Slice.len polys } rfl (by rw [Slice.len_val]; exact hpl)
+    as ⟨polys1, hl1, hq1⟩
+  apply (WP.spec_ok _).2
+  intro j hj
+  rw [hback _ hl1]
+  exact hq1 j hj
+
+/-- The 12-bit decoding of 384 bytes. -/
+abbrev decode12 (b : Std.Array U8 384#usize) : Polynomial :=
+  ByteDecode (toVec (32 * 12) b.val b.property) (by omega)
+
+theorem from_bytes_loop_spec (n : ℕ) (bytes : Slice (Std.Array U8 384#usize)) (polys : Slice Poly)
+    (hl : polys.length = n) (hb : bytes.length = n)
+    (it : core.ops.range.Range Usize) (hs : it.start.val = 0) (he : it.end.val = n) :
+    mid.mlkem.CoeffsVNtt.from_bytes_loop it polys bytes ⦃ y =>
+      y.length = n ∧ ∀ j < n, Holds 0 3328 256 (y.val[j]!).val (decode12 (bytes.val[j]!)) ⦄ := by
+  unfold mid.mlkem.CoeffsVNtt.from_bytes_loop
+  apply WP.spec_mono (slice_loop (α := Poly) n (fun _ _ _ => True)
+    (fun j _ b => Holds 0 3328 256 b.val (decode12 (bytes.val[j]!))) _ ?_ polys hl
+    (fun _ _ => trivial) it hs he)
+  · intro y hy
+    exact hy
+  · intro it s he hs hl _
+    simp only
+    unfold mid.mlkem.CoeffsVNtt.from_bytes_loop.body
+    step as ⟨o', it1, ho, he1⟩
+    split_ifs at ho with hlt
+    · obtain ⟨rfl, hst⟩ := ho
+      simp only
+      step as ⟨a, back', ha, hb'⟩
+      subst hb'
+      step as ⟨x, hx⟩
+      step with mlkem_frombytes_spec a x as ⟨a2, ha2⟩
+      step as ⟨a3, back2, ha3, hb2⟩
+      subst hb2
+      have ha3' : a3 = a2 := by
+        rw [ha3, ← getElem!_pos, set_getElem!_self _ _ _ (by omega)]
+      subst ha3'
+      step with mlkem_reduce_spec a3 _ (Holds.congr ha2) as ⟨a4, ha4⟩
+      have hx' : x = bytes.val[it.start.val]! := by rw [hx, ← getElem!_pos]
+      subst hx'
+      refine ⟨by rw [he1]; exact he, hst, by omega, by rw [set_length, set_length]; exact hl,
+        by rw [set_getElem!_self _ _ _ (by rw [set_length]; omega)]; exact ha4, fun j hj => ?_⟩
+      rw [set_getElem!_ne _ _ _ _ hj, set_getElem!_ne _ _ _ _ hj]
+    · obtain ⟨rfl, hst⟩ := ho
+      apply (WP.spec_ok _).2
+      exact ⟨by omega, rfl⟩
+
+/-- `Coeffs::from_bytes`: FIPS 203's `ByteDecode_12` of each 384 bytes, each
+coefficient in `[0, q)`. -/
+theorem from_bytes_spec {n : Usize} {MC : Type}
+    (vec : mid.mlkem.Vector (Std.Array Poly n) MC (Std.Array (Std.Array U8 384#usize) n))
+    (h1 : IsArray vec.FixedArraySelfArrayI16256Inst) (h3 : IsArray vec.FixedArraySelf_EncodedArrayU8384Inst)
+    (bytes : Std.Array (Std.Array U8 384#usize) n) :
+    mid.mlkem.CoeffsVNtt.from_bytes vec bytes ⦃ r =>
+      VHolds 0 3328 n.val r.1.val (fun j => decode12 (bytes.val[j]!)) ⦄ := by
+  unfold mid.mlkem.CoeffsVNtt.from_bytes
+  simp only [zero_eq _ h1, h1.as_mut, h3.as_ref]
+  apply spec_bind_ok
+  step as ⟨polys, back, hpv, hpl, hback⟩
+  step as ⟨b1, hb1⟩
+  step with from_bytes_loop_spec n.val b1 polys hpl (array_length b1 bytes hb1)
+      { start := 0#usize, «end» := Slice.len polys } rfl (by rw [Slice.len_val]; exact hpl)
+    as ⟨polys1, hl1, hq1⟩
+  apply (WP.spec_ok _).2
+  intro j hj
+  rw [hback _ hl1, ← hb1]
+  exact hq1 j hj
+
+theorem to_bytes_loop_spec (n : ℕ) (F : ℕ → Polynomial) (polys : Slice Poly)
+    (out : Slice (Std.Array U8 384#usize)) (hl : out.length = n) (hp : polys.length = n)
+    (h : ∀ j < n, Holds 0 3328 256 (polys.val[j]!).val (F j))
+    (it : core.ops.range.Range Usize) (hs : it.start.val = 0) (he : it.end.val = n) :
+    mid.mlkem.CoeffsVNtt.to_bytes_loop it out polys ⦃ y =>
+      y.length = n ∧ ∀ j < n, toVec (32 * 12) (y.val[j]!).val (y.val[j]!).property = ByteEncode 12 (F j) ⦄ := by
+  unfold mid.mlkem.CoeffsVNtt.to_bytes_loop
+  apply WP.spec_mono (slice_loop (α := Std.Array U8 384#usize) n (fun _ _ _ => True)
+    (fun j _ b => toVec (32 * 12) b.val b.property = ByteEncode 12 (F j)) _ ?_ out hl
+    (fun _ _ => trivial) it hs he)
+  · intro y hy
+    exact hy
+  · intro it s he hs hl' _
+    simp only
+    unfold mid.mlkem.CoeffsVNtt.to_bytes_loop.body
+    step as ⟨o', it1, ho, he1⟩
+    split_ifs at ho with hlt
+    · obtain ⟨rfl, hst⟩ := ho
+      simp only
+      step as ⟨a, back', ha, hb⟩
+      subst hb
+      step as ⟨x, hx⟩
+      step with mlkem_tobytes_spec a x (F it.start.val) (by rw [hx, ← getElem!_pos]; exact h _ (by omega))
+        as ⟨a1, ha1⟩
+      refine ⟨by rw [he1]; exact he, hst, by omega, by rw [set_length]; exact hl',
+        by rw [set_getElem!_self _ _ _ (by omega)]; exact ha1, fun j hj => set_getElem!_ne _ _ _ _ hj⟩
+    · obtain ⟨rfl, hst⟩ := ho
+      apply (WP.spec_ok _).2
+      exact ⟨by omega, rfl⟩
+
+/-- `Coeffs::to_bytes`: FIPS 203's `ByteEncode_12` of each polynomial, of
+coefficients in `[0, q)`. -/
+theorem to_bytes_spec {n : Usize} {MC : Type}
+    (vec : mid.mlkem.Vector (Std.Array Poly n) MC (Std.Array (Std.Array U8 384#usize) n))
+    (h1 : IsArray vec.FixedArraySelfArrayI16256Inst) (h3 : IsArray vec.FixedArraySelf_EncodedArrayU8384Inst)
+    (v : Std.Array Poly n) (F : ℕ → Polynomial) (h : VHolds 0 3328 n.val v.val F) :
+    mid.mlkem.CoeffsVNtt.to_bytes vec (v, ()) ⦃ r =>
+      ∀ j < n.val, toVec (32 * 12) (r.val[j]!).val (r.val[j]!).property = ByteEncode 12 (F j) ⦄ := by
+  unfold mid.mlkem.CoeffsVNtt.to_bytes
+  simp only [h3.filled, h3.as_mut, h1.as_ref, bind_ok]
+  step as ⟨out, back, hov, hol, hback⟩
+  step as ⟨polys, hpv⟩
+  step with to_bytes_loop_spec n.val F polys out hol (array_length polys v hpv)
+      (fun j hj => by rw [hpv]; exact h j hj)
+      { start := 0#usize, «end» := Slice.len out } rfl (by rw [Slice.len_val]; exact hol)
+    as ⟨out1, hl1, hq1⟩
+  intro j hj
+  have : (back out1).val[j]! = out1.val[j]! := by rw [hback _ hl1]
+  rw [this]
+  exact hq1 j hj
 
 end MlKemPoly
 
