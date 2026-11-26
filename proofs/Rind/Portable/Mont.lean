@@ -987,4 +987,352 @@ theorem mul_add2_spec (x y : Slice U64) (u v : U64) (c : U128) (hc : c.val < 2 ^
   zify at hxs1 hxr1 ⊢
   linear_combination hxs1 + (2 ^ (64 * (4 * (x.length / 4))) : Int) * hxr1
 
+/-! ## `redc` -/
+
+theorem setSlice_eq {α : Type} (s w : List α) (i : Nat) (hw : i + w.length ≤ s.length) :
+    s.setSlice! i w = s.take i ++ w ++ s.drop (i + w.length) := by
+  simp only [List.setSlice!]
+  rw [show min w.length (s.length - i) = w.length by omega, List.take_length]
+
+theorem window_eq {α : Type} (s : List α) (i n : Nat) :
+    s = s.take i ++ s.slice i (i + n) ++ s.drop (i + n) := by
+  simp only [List.slice, Nat.add_sub_cancel_left, List.append_assoc]
+  conv_lhs => rw [← List.take_append_drop i s, ← List.take_append_drop n (s.drop i)]
+  rw [List.drop_drop]
+
+/-- Writing `w` over the limbs at `i` adds the difference there. -/
+theorem wordsNat_window (s w : List U64) (i : Nat) (hw : i + w.length ≤ s.length) :
+    wordsNat (s.setSlice! i w) + 2 ^ (64 * i) * wordsNat (s.slice i (i + w.length)) =
+      wordsNat s + 2 ^ (64 * i) * wordsNat w := by
+  have hsl : (s.slice i (i + w.length)).length = w.length := by simp [List.slice_length]; omega
+  conv_rhs => rw [window_eq s i w.length]
+  rw [setSlice_eq s w i hw]
+  simp only [wordsNat_append, List.length_append, List.length_take, hsl, Nat.min_eq_left (by omega : i ≤ s.length)]
+  ring
+
+theorem getElem!_set_ne' {α : Type} [Inhabited α] (l : List α) (i j : Nat) (x : α) (h : i ≠ j) :
+    (l.set i x)[j]! = l[j]! := by
+  simp [List.getElem!_eq_getElem?_getD, List.getElem?_set_ne h]
+
+/-- Writing `x` at limb `j` adds the difference there. -/
+theorem wordsNat_set (s : List U64) (j : Nat) (x : U64) (hj : j < s.length) :
+    wordsNat (s.set j x) + 2 ^ (64 * j) * s[j]!.val = wordsNat s + 2 ^ (64 * j) * x.val := by
+  have h := wordsNat_window s [x] j (by simp; omega)
+  have h1 : s.setSlice! j [x] = s.set j x := by
+    rw [setSlice_eq s [x] j (by simp; omega), List.set_eq_take_append_cons_drop]
+    simp [hj]
+  have h2 : s.slice j (j + [x].length) = [s[j]!] := by
+    simp only [List.slice, List.length_singleton, Nat.add_sub_cancel_left, getElem!_pos s j hj]
+    exact List.take_one_drop_eq_of_lt_length hj
+  rw [h1, h2] at h
+  simpa [wordsNat_cons, wordsNat_nil] using h
+
+theorem take_setSlice {α : Type} (s w : List α) (i c : Nat) (hw : i + w.length ≤ s.length) (hc : c ≤ w.length) :
+    (s.setSlice! i w).take (i + c) = s.take i ++ w.take c := by
+  have hA : (s.take i).length = i := by simp; omega
+  have := List.take_length_add_append (l₁ := s.take i) (l₂ := w ++ s.drop (i + w.length)) c
+  rw [hA] at this
+  rw [setSlice_eq s w i hw, List.append_assoc, this, List.take_append_of_le_length hc]
+
+theorem drop_setSlice {α : Type} (s w : List α) (i : Nat) (hw : i + w.length = s.length) :
+    (s.setSlice! i w).drop i = w := by
+  rw [setSlice_eq s w i (by omega), List.append_assoc, List.drop_append_of_le_length (by simp; omega)]
+  simp [show i + w.length = s.length from hw]
+
+theorem wordsNat_mod_limb (l : List U64) (h : 1 ≤ l.length) : wordsNat l % 2 ^ 64 = l[0]!.val := by
+  obtain ⟨a, l, rfl⟩ : ∃ a l', l = a :: l' := ⟨l.head (by rintro rfl; simp at h), l.tail, by simp⟩
+  rw [wordsNat_cons, Nat.add_mul_mod_self_left, Nat.mod_eq_of_lt (u64_lt a)]
+  simp
+
+theorem wordsNat_mod_limbs2 (l : List U64) (h : 2 ≤ l.length) :
+    wordsNat l % 2 ^ 128 = l[0]!.val + 2 ^ 64 * l[1]!.val := by
+  rw [show (2 : Nat) ^ 128 = 2 ^ (64 * 2) by norm_num, ← wordsNat_take_mod]
+  obtain ⟨a, b, l, rfl⟩ : ∃ a b l', l = a :: b :: l' := by
+    match l, h with
+    | a :: b :: l', _ => exact ⟨a, b, l', rfl⟩
+  simp [wordsNat_cons, wordsNat_nil]
+
+/-- A multiple `u = a·n0 mod 2^64` of `m0`, for `n0 = -m0⁻¹`, clears `a`'s
+low limb. -/
+theorem clear_limb {a n0 m0 : Nat} (hn : (m0 * n0 + 1) % 2 ^ 64 = 0) :
+    (a + (a * n0 % 2 ^ 64) * m0) % 2 ^ 64 = 0 := by
+  have h : a + (a * n0 % 2 ^ 64) * m0 ≡ a * (m0 * n0 + 1) [MOD 2 ^ 64] := by
+    have := ((Nat.mod_modEq (a * n0) (2 ^ 64)).mul_right m0).add_left a
+    rw [show a * (m0 * n0 + 1) = a + a * n0 * m0 by ring]; exact this
+  unfold Nat.ModEq at h
+  rw [h, Nat.mul_mod, hn]; simp
+
+/-- `redc`'s two steps a pass clear two limbs: `u` the low one, and `v` the
+next, as the first step's sum leaves it. -/
+theorem clear_two {a0 a1 m0 m1 n0 u v : Nat} (hn : (m0 * n0 + 1) % 2 ^ 64 = 0) (hu : u = a0 * n0 % 2 ^ 64)
+    (hv : v = ((u * m1 + a1 + (u * m0 + a0) / 2 ^ 64) % 2 ^ 64) * n0 % 2 ^ 64) :
+    (a0 + 2 ^ 64 * a1 + (u + 2 ^ 64 * v) * (m0 + 2 ^ 64 * m1)) % 2 ^ 128 = 0 := by
+  have hc0 : (u * m0 + a0) % 2 ^ 64 = 0 := by
+    have := clear_limb (a := a0) hn; rw [← hu] at this; rw [← this]; ring_nf
+  have hc := Nat.mod_add_div (u * m0 + a0) (2 ^ 64)
+  rw [hc0, zero_add] at hc
+  set c := (u * m0 + a0) / 2 ^ 64
+  set nx := u * m1 + a1 + c
+  have he0 : (nx + v * m0) % 2 ^ 64 = 0 := by
+    have := clear_limb (a := nx) hn
+    rw [hv, Nat.mod_mul_mod]; rw [← this]
+  have he := Nat.mod_add_div (nx + v * m0) (2 ^ 64)
+  rw [he0, zero_add] at he
+  set e := (nx + v * m0) / 2 ^ 64
+  have : a0 + 2 ^ 64 * a1 + (u + 2 ^ 64 * v) * (m0 + 2 ^ 64 * m1) = 2 ^ 128 * (e + v * m1) := by
+    simp only [nx] at he
+    zify at hc he ⊢
+    linear_combination -hc - (2 ^ 64 : Int) * he
+  rw [this, Nat.mul_mod_right]
+
+/-- `redc`'s state after clearing `i` limbs of `t`, from `T`: those limbs
+are zero, and `t`, with `top` above limb `i + k`, is `T` plus a multiple of
+`M` below `2^(64i)`. -/
+def RedcInv (T M k p : Nat) (t : Slice U64) (top : U128) (i : Nat) : Prop :=
+  t.length = p + k ∧ i ≤ p ∧ top.val < 2 ^ 64 ∧ wordsNat (t.val.take i) = 0 ∧
+    ∃ Q, Q < 2 ^ (64 * i) ∧ wordsNat t.val + 2 ^ (64 * (i + k)) * top.val = T + M * Q
+
+theorem redc_loop0_spec (m : Slice U64) (n0 : U64) (k p : Usize) (T : Nat) (hk : k.val = m.length)
+    (hn : (m.val[0]!.val * n0.val + 1) % 2 ^ 64 = 0)
+    (t : Slice U64) (top : U128) (i : Usize) (hinv : RedcInv T (wordsNat m.val) k.val p.val t top i.val) :
+    low.generic.limb64.mont.redc_loop0 t m n0 k p top i ⦃ r =>
+      RedcInv T (wordsNat m.val) k.val p.val r.1 r.2.1 r.2.2.val ⦄ := by
+  unfold low.generic.limb64.mont.redc_loop0
+  apply loop.spec_decr_nat (fun x => p.val + 1 - x.2.2.val)
+    (fun x : Slice U64 × U128 × Usize => RedcInv T (wordsNat m.val) k.val p.val x.1 x.2.1 x.2.2.val)
+  · rintro ⟨t, top, i⟩ hI
+    dsimp only at hI ⊢
+    unfold low.generic.limb64.mont.redc_loop0.body
+    have hI' := hI
+    obtain ⟨htl, hip, htop, hlow, Q, hQ, hval⟩ := hI'
+    have htmax : t.length ≤ Usize.max := t.property
+    split
+    · rename_i hk2
+      step as ⟨i1, hi1⟩
+      split
+      · rename_i hlt
+        have hk2' : 2 ≤ k.val := by scalar_tac
+        have hlt' : i.val + 1 < p.val := by scalar_tac
+        have htL : t.val.length = p.val + k.val := htl
+        have hmL : m.val.length = k.val := hk.symm
+        step as ⟨ti, hti⟩
+        step as ⟨u, hu⟩
+        step as ⟨m0, hm0⟩
+        step with mul_add_limb_spec u m0 ti 0#u128 (by simp) as ⟨s0, hs0⟩
+        step as ⟨cy, hcy, _⟩
+        step as ⟨m1, hm1⟩
+        step as ⟨ti1, hti1⟩
+        have hs0b : s0.val < 2 ^ 128 := by
+          rw [hs0]; exact mul_add_limb_bound _ _ _ _ u.hBounds m0.hBounds ti.hBounds (by norm_num)
+        have hcyv : cy.val = s0.val / 2 ^ 64 := by rw [hcy]; simp [Nat.shiftRight_eq_div_pow]
+        step with mul_add_limb_spec u m1 ti1 cy (by rw [hcyv]; omega) as ⟨nx, hnx⟩
+        step as ⟨nxl, hnxl⟩
+        step as ⟨v, hv⟩
+        step as ⟨ik, hik⟩
+        step as ⟨w, back, hw, hwl, hback⟩
+        step with mul_add2_spec w m u v 0#u128 (by simp) (by simp only [Slice.length] at hwl ⊢; omega)
+          as ⟨rest, w1, hw1l, hw1⟩
+        step as ⟨tk, htk⟩
+        simp only [lift, bind_ok]
+        step as ⟨t2, ht2⟩
+        step as ⟨ik1, hik1⟩
+        step as ⟨tk1, htk1⟩
+        step as ⟨rh, hrh, _⟩
+        step as ⟨sh, hsh, _⟩
+        step as ⟨ik2, hik2⟩
+        step as ⟨t3, ht3⟩
+        step as ⟨top1, htop1, _⟩
+        step as ⟨i2, hi2⟩
+        set sum := core.num.U128.wrapping_add (core.num.U128.wrapping_add (core.convert.num.FromU128U64.from tk)
+          (core.convert.num.FromU128U64.from (UScalar.cast UScalarTy.U64 rest))) top with hsumdef
+        set sum1 := core.num.U128.wrapping_add (core.num.U128.wrapping_add (core.convert.num.FromU128U64.from tk1) rh)
+          sh with hsum1def
+        have hiL : i.val + k.val ≤ t.val.length := by omega
+        have hwL : w.val.length = k.val := by simp only [Slice.length] at hwl; omega
+        have hw1L : w1.val.length = k.val := by simp only [Slice.length] at hw1l; omega
+        have huv : u.val = ti.val * n0.val % 2 ^ 64 := by
+          rw [hu]; simp [core.num.U64.wrapping_mul_val_eq, u64_size]
+        have hvv : v.val = nx.val % 2 ^ 64 * n0.val % 2 ^ 64 := by
+          rw [hv, hnxl]; simp [core.num.U64.wrapping_mul_val_eq, cast_u64_val, u64_size, Nat.mod_mul_mod]
+        have hrhv : rh.val = rest.val / 2 ^ 64 := by rw [hrh]; simp [Nat.shiftRight_eq_div_pow]
+        have hrestb := rest.hBounds
+        simp only [UScalarTy.numBits] at hrestb
+        have hsumv : sum.val = tk.val + rest.val % 2 ^ 64 + top.val := by
+          rw [hsumdef]
+          have := u64_lt tk
+          have : rest.val % 2 ^ 64 < 2 ^ 64 := Nat.mod_lt _ (by norm_num)
+          simp only [core.num.U128.wrapping_add_val_eq, from_u128_val, cast_u64_val, UScalar.size,
+            UScalarTy.numBits]
+          rw [Nat.mod_eq_of_lt (by omega), Nat.mod_eq_of_lt (by omega)]
+        have hshv : sh.val = sum.val / 2 ^ 64 := by rw [hsh]; simp [Nat.shiftRight_eq_div_pow]
+        have hsum1v : sum1.val = tk1.val + rh.val + sh.val := by
+          rw [hsum1def]
+          have := u64_lt tk1
+          have : rh.val < 2 ^ 64 := by rw [hrhv]; omega
+          have : sh.val < 4 := by rw [hshv, hsumv]; have := u64_lt tk; omega
+          simp only [core.num.U128.wrapping_add_val_eq, from_u128_val, UScalar.size, UScalarTy.numBits]
+          rw [Nat.mod_eq_of_lt (by omega), Nat.mod_eq_of_lt (by omega)]
+        have htop1v : top1.val = sum1.val / 2 ^ 64 := by rw [htop1]; simp [Nat.shiftRight_eq_div_pow]
+        have hbv : (back w1).val = t.val.setSlice! i.val w1.val := by rw [hback]; simp [Slice.setSlice!_val]
+        have hbL : (back w1).val.length = p.val + k.val := by rw [hbv, List.length_setSlice!]; omega
+        have htkb : (back w1).val[i.val + k.val]! = tk := by rw [htk, ← getElem!_pos, hik]
+        have htkv : tk = t.val[i.val + k.val]! := by
+          rw [← htkb, hbv]
+          exact List.getElem!_setSlice!_same _ _ _ _ (Or.inr (by omega))
+        have ht2v : t2.val = (back w1).val.set (i.val + k.val) (UScalar.cast .U64 sum) := by
+          rw [ht2, ← hik]; simp
+        have htk1b : t2.val[i.val + k.val + 1]! = tk1 := by rw [htk1, ← getElem!_pos, hik1, hik]
+        have ht3v : t3.val = t2.val.set (i.val + k.val + 1) (UScalar.cast .U64 sum1) := by
+          rw [ht3]; simp [hik2, hik]
+        have hmk : List.take w.length m.val = m.val := List.take_of_length_le (by simp only [Slice.length]; omega)
+        have hw1' : wordsNat w1.val + 2 ^ (64 * k.val) * rest.val =
+            wordsNat w.val + (u.val + 2 ^ 64 * v.val) * wordsNat m.val := by
+          rw [hmk, show w.length = k.val by simp only [Slice.length]; omega] at hw1; simpa using hw1
+        have hW := wordsNat_window t.val w1.val i.val (by omega)
+        rw [hw1L, show t.val.slice i.val (i.val + k.val) = w.val by rw [hw, hik], ← hbv] at hW
+        have hS2 := wordsNat_set (back w1).val (i.val + k.val) (UScalar.cast .U64 sum) (by omega)
+        rw [← ht2v, htkb, cast_u64_val] at hS2
+        have ht2L : t2.val.length = p.val + k.val := by rw [ht2v, List.length_set]; exact hbL
+        have hS3 := wordsNat_set t2.val (i.val + k.val + 1) (UScalar.cast .U64 sum1) (by omega)
+        rw [← ht3v, htk1b, cast_u64_val] at hS3
+        have hrmd := Nat.mod_add_div rest.val (2 ^ 64)
+        have hsmd := Nat.mod_add_div sum.val (2 ^ 64)
+        have hs1md := Nat.mod_add_div sum1.val (2 ^ 64)
+        rw [hrhv, hshv] at hsum1v
+        have hBi : u.val + 2 ^ 64 * v.val + 1 ≤ 2 ^ 128 := by
+          have := u64_lt u; have := u64_lt v; omega
+        -- The pass clears limbs `i` and `i + 1`.
+        have hclear : wordsNat w1.val % 2 ^ 128 = 0 := by
+          have h1 : wordsNat w1.val % 2 ^ 128 = (wordsNat w.val + (u.val + 2 ^ 64 * v.val) * wordsNat m.val) % 2 ^ 128 := by
+            rw [← hw1', show 64 * k.val = 128 + 64 * (k.val - 2) by omega, pow_add, mul_assoc,
+              Nat.add_mul_mod_self_left]
+          have hw0 : w.val[0]! = ti := by
+            rw [hw, List.getElem!_slice _ _ _ _ ⟨by omega, by omega⟩, hti, ← getElem!_pos]; simp
+          have hw1v : w.val[1]! = ti1 := by
+            rw [hw, List.getElem!_slice _ _ _ _ ⟨by omega, by omega⟩, hti1, ← getElem!_pos, hi1]
+          have hWm : wordsNat w.val ≡ ti.val + 2 ^ 64 * ti1.val [MOD 2 ^ 128] := by
+            unfold Nat.ModEq
+            rw [wordsNat_mod_limbs2 _ (by omega), hw0, hw1v, Nat.mod_eq_of_lt]
+            have := u64_lt ti; have := u64_lt ti1; omega
+          have hm0v : m.val[0]! = m0 := by rw [hm0, ← getElem!_pos]
+          have hm1v : m.val[1]! = m1 := by rw [hm1, ← getElem!_pos]
+          have hMm : wordsNat m.val ≡ m0.val + 2 ^ 64 * m1.val [MOD 2 ^ 128] := by
+            unfold Nat.ModEq
+            rw [wordsNat_mod_limbs2 _ (by omega), hm0v, hm1v, Nat.mod_eq_of_lt]
+            have := u64_lt m0; have := u64_lt m1; omega
+          have hsum := hWm.add (hMm.mul_left (u.val + 2 ^ 64 * v.val))
+          unfold Nat.ModEq at hsum
+          rw [h1, hsum]
+          refine clear_two (n0 := n0.val) (by rw [← hm0v]; exact hn) huv ?_
+          rw [hvv, hnx, hcyv, hs0]; simp
+        refine ⟨⟨?_, by omega, ?_, ?_, Q + 2 ^ (64 * i.val) * (u.val + 2 ^ 64 * v.val), ?_, ?_⟩, by omega⟩
+        · simp only [Slice.length]; rw [ht3v, List.length_set]; exact ht2L
+        · rw [htop1v]; have := u64_lt tk1; have := u64_lt tk; omega
+        · have htake : t3.val.take (i.val + 2) = t.val.take i.val ++ w1.val.take 2 := by
+            rw [ht3v, List.take_set_of_le (by omega), ht2v, List.take_set_of_le (by omega), hbv,
+              take_setSlice _ _ _ _ (by omega) (by omega)]
+          rw [hi2, htake, wordsNat_append, hlow, wordsNat_take_mod, show 64 * 2 = 128 by rfl, hclear]
+          simp
+        · rw [hi2, show 64 * (i.val + 2) = 64 * i.val + 128 by ring, pow_add]
+          calc Q + 2 ^ (64 * i.val) * (u.val + 2 ^ 64 * v.val)
+              < 2 ^ (64 * i.val) * (u.val + 2 ^ 64 * v.val + 1) := by rw [Nat.mul_add_one]; omega
+            _ ≤ 2 ^ (64 * i.val) * 2 ^ 128 := Nat.mul_le_mul_left _ hBi
+        · rw [hi2, htop1v]
+          zify at hS3 hS2 hW hw1' hval hs1md hsum1v hrmd hsmd hsumv ⊢
+          linear_combination hS3 + hS2 + hW + (2 ^ (64 * i.val) : Int) * hw1' + hval +
+            (2 ^ (64 * (i.val + k.val + 1)) : Int) * (hs1md + hsum1v) +
+            (2 ^ (64 * (i.val + k.val)) : Int) * (hrmd + hsmd + hsumv)
+      · simp only [WP.spec_ok]; exact hI
+    · simp only [WP.spec_ok]; exact hI
+  · exact hinv
+
+theorem redc_loop1_spec (m : Slice U64) (n0 : U64) (k p : Usize) (T : Nat) (hk : k.val = m.length)
+    (hk1 : 1 ≤ k.val) (hn : (m.val[0]!.val * n0.val + 1) % 2 ^ 64 = 0)
+    (t : Slice U64) (top : U128) (i : Usize) (hinv : RedcInv T (wordsNat m.val) k.val p.val t top i.val) :
+    low.generic.limb64.mont.redc_loop1 t m n0 k p top i ⦃ r =>
+      RedcInv T (wordsNat m.val) k.val p.val r.1 r.2 p.val ⦄ := by
+  unfold low.generic.limb64.mont.redc_loop1
+  apply loop.spec_decr_nat (fun x => p.val - x.2.2.val)
+    (fun x : Slice U64 × U128 × Usize => RedcInv T (wordsNat m.val) k.val p.val x.1 x.2.1 x.2.2.val)
+  · rintro ⟨t, top, i⟩ hI
+    dsimp only at hI ⊢
+    unfold low.generic.limb64.mont.redc_loop1.body
+    have hI' := hI
+    obtain ⟨htl, hip, htop, hlow, Q, hQ, hval⟩ := hI'
+    have htmax : t.length ≤ Usize.max := t.property
+    split
+    · rename_i hlt
+      have hlt' : i.val < p.val := by scalar_tac
+      have htL : t.val.length = p.val + k.val := htl
+      have hmL : m.val.length = k.val := hk.symm
+      step as ⟨ti, hti⟩
+      step as ⟨u, hu⟩
+      step as ⟨ik, hik⟩
+      step as ⟨w, back, hw, hwl, hback⟩
+      step with mul_add_spec w m u (by simp only [Slice.length] at hwl ⊢; omega) as ⟨cy, w1, hw1l, hcy, hw1⟩
+      step as ⟨tk, htk⟩
+      simp only [lift, bind_ok]
+      step as ⟨t2, ht2⟩
+      step as ⟨top1, htop1, _⟩
+      step as ⟨i2, hi2⟩
+      set sum := core.num.U128.wrapping_add (core.num.U128.wrapping_add (core.convert.num.FromU128U64.from tk) cy)
+        top with hsumdef
+      have hwL : w.val.length = k.val := by simp only [Slice.length] at hwl; omega
+      have hw1L : w1.val.length = k.val := by simp only [Slice.length] at hw1l; omega
+      have huv : u.val = ti.val * n0.val % 2 ^ 64 := by
+        rw [hu]; simp [core.num.U64.wrapping_mul_val_eq, u64_size]
+      have hsumv : sum.val = tk.val + cy.val + top.val := by
+        rw [hsumdef]
+        have := u64_lt tk
+        simp only [core.num.U128.wrapping_add_val_eq, from_u128_val, UScalar.size, UScalarTy.numBits]
+        rw [Nat.mod_eq_of_lt (by omega), Nat.mod_eq_of_lt (by omega)]
+      have htop1v : top1.val = sum.val / 2 ^ 64 := by rw [htop1]; simp [Nat.shiftRight_eq_div_pow]
+      have hbv : (back w1).val = t.val.setSlice! i.val w1.val := by rw [hback]; simp [Slice.setSlice!_val]
+      have hbL : (back w1).val.length = p.val + k.val := by rw [hbv, List.length_setSlice!]; omega
+      have htkb : (back w1).val[i.val + k.val]! = tk := by rw [htk, ← getElem!_pos, hik]
+      have ht2v : t2.val = (back w1).val.set (i.val + k.val) (UScalar.cast .U64 sum) := by
+        rw [ht2]; simp [hik]
+      have hw1' : wordsNat w1.val + 2 ^ (64 * k.val) * cy.val = wordsNat w.val + u.val * wordsNat m.val := by
+        rw [show w.length = k.val by simp only [Slice.length]; omega] at hw1; exact hw1
+      have hW := wordsNat_window t.val w1.val i.val (by omega)
+      rw [hw1L, show t.val.slice i.val (i.val + k.val) = w.val by rw [hw, hik], ← hbv] at hW
+      have hS := wordsNat_set (back w1).val (i.val + k.val) (UScalar.cast .U64 sum) (by omega)
+      rw [← ht2v, htkb, cast_u64_val] at hS
+      have hsmd := Nat.mod_add_div sum.val (2 ^ 64)
+      -- The step clears limb `i`.
+      have hclear : wordsNat w1.val % 2 ^ 64 = 0 := by
+        have h1 : wordsNat w1.val % 2 ^ 64 = (wordsNat w.val + u.val * wordsNat m.val) % 2 ^ 64 := by
+          rw [← hw1', show 64 * k.val = 64 + 64 * (k.val - 1) by omega, pow_add, mul_assoc,
+            Nat.add_mul_mod_self_left]
+        have hw0 : w.val[0]! = ti := by
+          rw [hw, List.getElem!_slice _ _ _ _ ⟨by omega, by omega⟩, hti, ← getElem!_pos]; simp
+        have hWm : wordsNat w.val ≡ ti.val [MOD 2 ^ 64] := by
+          unfold Nat.ModEq; rw [wordsNat_mod_limb _ (by omega), hw0, Nat.mod_eq_of_lt (u64_lt ti)]
+        have hMm : wordsNat m.val ≡ m.val[0]!.val [MOD 2 ^ 64] := by
+          unfold Nat.ModEq; rw [wordsNat_mod_limb _ (by omega), Nat.mod_eq_of_lt (u64_lt _)]
+        have hsum := hWm.add (hMm.mul_left u.val)
+        unfold Nat.ModEq at hsum
+        rw [h1, hsum, huv]
+        exact clear_limb hn
+      refine ⟨⟨?_, by omega, ?_, ?_, Q + 2 ^ (64 * i.val) * u.val, ?_, ?_⟩, by omega⟩
+      · simp only [Slice.length]; rw [ht2v, List.length_set]; exact hbL
+      · rw [htop1v, hsumv]; have := u64_lt tk; omega
+      · have htake : t2.val.take (i.val + 1) = t.val.take i.val ++ w1.val.take 1 := by
+          rw [ht2v, List.take_set_of_le (by omega), hbv, take_setSlice _ _ _ _ (by omega) (by omega)]
+        rw [hi2, htake, wordsNat_append, hlow, wordsNat_take_mod, show 64 * 1 = 64 by rfl, hclear]
+        simp
+      · rw [hi2, show 64 * (i.val + 1) = 64 * i.val + 64 by ring, pow_add]
+        calc Q + 2 ^ (64 * i.val) * u.val
+            < 2 ^ (64 * i.val) * (u.val + 1) := by rw [Nat.mul_add_one]; omega
+          _ ≤ 2 ^ (64 * i.val) * 2 ^ 64 := Nat.mul_le_mul_left _ (u64_lt u)
+      · rw [hi2, htop1v]
+        zify at hS hW hw1' hval hsmd hsumv ⊢
+        linear_combination hS + hW + (2 ^ (64 * i.val) : Int) * hw1' + hval +
+          (2 ^ (64 * (i.val + k.val)) : Int) * (hsmd + hsumv)
+    · rename_i hge
+      have : i.val = p.val := by scalar_tac
+      simp only [WP.spec_ok]
+      rw [this] at hI; exact hI
+  · exact hinv
+
 end rind.portable
