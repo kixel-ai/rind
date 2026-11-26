@@ -2,7 +2,7 @@
 
 ## Goal
 
-ChaCha20-Poly1305 and XChaCha20-Poly1305, TLS's and QUIC's other AEAD, and `cipher::ChaCha20` earn the ✓ on x86_64 CPUs with SSE4.1, every tier from Westmere up.
+ChaCha20-Poly1305 and XChaCha20-Poly1305, TLS's and QUIC's other AEAD, and `cipher::ChaCha20` earn the ✓ on x86_64 CPUs with SSE4.1, every tier from Westmere up, in rind's Linux build: an x86_64 Mac's SSSE3 ChaCha20 is Apple's copy, which no proof covers and this epic leaves out.
 
 ## Plan
 
