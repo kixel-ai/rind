@@ -162,4 +162,98 @@ theorem prologueA_ok (s : S) (k : Nat) (sp0 : Addr) (rest : List Region)
          obtain ⟨h1, h2, h3, h4, h5⟩ := hr
          simp only [h1, h2, h3, h4, h5, ↓reduceIte])
 
+set_option hygiene false in
+/-- Stack moves, and probes of the claimed stack. -/
+macro "walk_disch" : tactic => `(tactic| no_recover first
+  | decide
+  | (simp only [hwr, hrsp, List.headD_cons, List.tail_cons, wr_setWr, gpr_setWr, wr_setMem, gpr_setMem, gpr_setReg,
+      wr_setReg, reduceCtorEq, ↓reduceIte, ne_eq, not_false_eq_true, List.cons_ne_nil]; done)
+  | (try simp only [hwr, hrsp, List.headD_cons, List.tail_cons, wr_setWr, gpr_setWr, wr_setMem, gpr_setMem,
+      gpr_setReg, wr_setReg, rd_setReg, rd_setWr, reduceCtorEq, ↓reduceIte]) <;>
+     first
+      | (refine inR (List.mem_append_right _ List.mem_cons_self) ?_; simp only; bv_omega)
+      | bv_omega)
+
+/-- Runs a stack walk's instructions but `moveSp`. -/
+syntax "walk_run " "[" Lean.Parser.Tactic.simpLemma,* "]" : tactic
+set_option hygiene false in
+macro_rules
+  | `(tactic| walk_run [$xs,*]) => `(tactic|
+    simp (config := { maxSteps := 1000000 }) (disch := walk_disch) only [$xs,*, hrsp, hwr,
+      execAcc_cons, execAcc_nil, load64_of, Rind.X86_64.exec, Rind.X86_64.addrs, VG.X86_64.addrs, srcAddrs,
+      VG.X86_64.exec, execAlu, readSrc, Option.map_some, Option.bind_some, State.ea, m, mx, ofInt_lit, Int.reduceNeg,
+      Int.reduceMod, Int.reduceToNat, Int.reducePow, mul_ofNat_one, ofNat_zero, add_zero', Nat.reduceAdd,
+      Nat.reduceSub, Nat.reducePow, gpr_setReg, mem_setReg, rd_setReg, wr_setReg, gpr_arithFlags, mem_arithFlags,
+      rd_arithFlags, wr_arithFlags, gpr_setWr, mem_setWr, rd_setWr, wr_setWr, List.headD_cons, List.tail_cons,
+      reduceCtorEq, ↓reduceIte, List.map_nil, List.map_cons, List.append_nil, List.nil_append, List.cons_append])
+
+/-- What a stack move leaves unchanged: the general registers but `gs`, memory, and the rest but `wr`. -/
+structure FrameS (s s' : S) (gs : List Reg) : Prop where
+  gpr : ∀ r, r ∉ gs → s'.vg.gpr r = s.vg.gpr r
+  mem : s'.vg.mem = s.vg.mem
+  others : others s'.vg = others s.vg
+  xmm : s'.vg.xmm = s.vg.xmm
+  mxcsr : s'.vg.mxcsr = s.vg.mxcsr
+  lo : s'.lo = s.lo
+
+set_option maxHeartbeats 2000000 in
+theorem prologueB_ok (s : S) (q tp P : Addr) (L : Nat) (rest : List Region)
+    (hrsp : s.vg.gpr .rsp = q) (hr10 : s.vg.gpr .r10 = tp) (hr11 : s.vg.gpr .r11 = P)
+    (hwr : s.vg.wr = ⟨q, L⟩ :: rest) (hL : 8 ≤ L) (hle : tp.toNat + P.toNat ≤ q.toNat)
+    (hlo : s.lo.toNat ≤ tp.toNat) :
+    ∃ s', execBlock I prologueB s = some (s', [.addr (tp + P)]) ∧
+      s'.vg.gpr .rsp = tp + P ∧ s'.vg.gpr .r10 = tp ∧ s'.vg.wr = ⟨tp + P, L + (q.toNat - (tp + P).toNat)⟩ :: rest ∧
+      s'.vg.cf = some (decide ((tp + P).toNat < tp.toNat)) ∧ s'.vg.zf = some (tp + P - tp == 0) ∧
+      FrameS s s' [.rsp, .r11] := by
+  apply ex_of_eq
+  · rw [execBlock_acc]
+    walk_run [prologueB, hr10, hr11]
+    rw [moveSp_down]
+    walk_run [prologueB, hr10, hr11]
+    all_goals (first | walk_disch | skip)
+    rfl
+  · rfl
+  · simp only [gpr_setReg, gpr_setWr, gpr_arithFlags, wr_setReg, wr_setWr, wr_arithFlags, hrsp, hwr,
+      List.headD_cons, List.tail_cons, reduceCtorEq, ↓reduceIte, cf_arithFlags, zf_arithFlags]
+    repeat' apply And.intro
+    all_goals first
+      | trivial
+      | rfl
+      | skip
+    · refine ⟨fun r hr => ?_, rfl, rfl, rfl, rfl, rfl⟩
+      simp only [List.mem_cons, List.not_mem_nil, or_false, not_or] at hr
+      simp only [gpr_arithFlags, gpr_setReg, gpr_setWr, hr.1, hr.2, ↓reduceIte]
+
+theorem walk_addr (tp X : Addr) : tp + (X + BitVec.ofNat 64 4096) + BitVec.ofNat 64 18446744073709547520 = tp + X := by
+  bv_decide
+
+set_option maxHeartbeats 2000000 in
+theorem walk_ok (s : S) (tp X : Addr) (L : Nat) (rest : List Region)
+    (hrsp : s.vg.gpr .rsp = tp + (X + BitVec.ofNat 64 4096)) (hr10 : s.vg.gpr .r10 = tp)
+    (hwr : s.vg.wr = ⟨tp + (X + BitVec.ofNat 64 4096), L⟩ :: rest)
+    (hno : tp.toNat + X.toNat + 4096 < 2 ^ 64) (hlo : s.lo.toNat ≤ tp.toNat) :
+    ∃ s', execBlock I walk s = some (s', [.addr (tp + X)]) ∧
+      s'.vg.gpr .rsp = tp + X ∧ s'.vg.gpr .r10 = tp ∧
+      s'.vg.wr = ⟨tp + X, L + ((tp + (X + BitVec.ofNat 64 4096)).toNat - (tp + X).toNat)⟩ :: rest ∧
+      s'.vg.cf = some (decide ((tp + X).toNat < tp.toNat)) ∧ s'.vg.zf = some (tp + X - tp == 0) ∧
+      FrameS s s' [.rsp, .r11] := by
+  apply ex_of_eq
+  · rw [execBlock_acc]
+    walk_run [walk, hr10, walk_addr]
+    rw [moveSp_down]
+    walk_run [walk, hr10, walk_addr]
+    all_goals (first | walk_disch | skip)
+    rfl
+  · rfl
+  · simp only [gpr_setReg, gpr_setWr, gpr_arithFlags, wr_setReg, wr_setWr, wr_arithFlags, hrsp, hwr,
+      List.headD_cons, List.tail_cons, reduceCtorEq, ↓reduceIte, cf_arithFlags, zf_arithFlags]
+    repeat' apply And.intro
+    all_goals first
+      | trivial
+      | rfl
+      | skip
+    · refine ⟨fun r hr => ?_, rfl, rfl, rfl, rfl, rfl⟩
+      simp only [List.mem_cons, List.not_mem_nil, or_false, not_or] at hr
+      simp only [gpr_arithFlags, gpr_setReg, gpr_setWr, hr.1, hr.2, ↓reduceIte]
+
 end rind.x86_64.mul4x
