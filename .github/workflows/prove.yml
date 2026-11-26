@@ -51,6 +51,7 @@ on:
       - admin/import-mlkem-native
       - admin/import-vg
       - admin/import-vg-models
+      - admin/vg-binding
       - admin/vg-bytes
       - admin/vg-cosim-runner.rs
       - admin/spec-tests/**

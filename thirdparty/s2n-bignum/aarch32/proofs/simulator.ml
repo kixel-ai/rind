@@ -24,7 +24,8 @@
  * Advanced SIMD transfer's alignment qualifier holds of it. A branch
  * lands 8 or 4 bytes before the instruction, or 8, 12, or 16 past it, where
  * the executor has a landing slot, and falling through lands at 4, as a
- * branch to there does too.
+ * branch to there does too. BX and a load into PC may also interwork to the
+ * T32 slot 20 past it, at 21 with the T bit, PC's bit 0, set.
  *
  * The executor's greeting gives the instruction's and the buffer's addresses.
  * Each theorem assumes them of `pc` and the buffer, so that it can say what
@@ -305,10 +306,13 @@ let make_misc_case input =
            (random_register () lsl 12) lor random_register () in
   { case_instruction = instruction; case_memop = false; case_input = input };;
 
-(* How far from the instruction each of the executor's landing slots is. *)
+(* How far from the instruction each of the executor's landing slots is, and
+   where BX or a load into PC lands in its T32 slot, with bit 0 set. *)
 let landings = [-8; -4; 4; 8; 12; 16];;
+let t32_landing = 21;;
 
 let random_landing () =
+  let landings = t32_landing :: landings in
   num (Lazy.force slot_address + el (Random.int (length landings)) landings);;
 
 let make_bl_case input =
