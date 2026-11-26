@@ -56,7 +56,7 @@ The versions of each library's crates that `rind-bench` built, from `Cargo.lock`
 | RustCrypto + dalek | `ed25519-dalek` | 3.0.0 |
 | RustCrypto + dalek | `x25519-dalek` | 3.0.0 |
 | RustCrypto + dalek | `hpke` | 0.15.1 on `nixos`, `fedora`, `kixtop`, `ovh-iad`, `ovh-sea` |
-| RustCrypto + dalek | `blind-rsa-signatures` | 0.18.0 on `nixos`, `fedora`, `kixtop`, `ovh-iad`, `ovh-sea` |
+| RustCrypto + dalek | `blind-rsa-signatures` | 0.18.0 (rind's fork in `thirdparty/blind-rsa-signatures`) on `nixos`, `fedora`, `kixtop`, `ovh-iad`, `ovh-sea` |
 | RustCrypto + dalek | `voprf` | 0.6.0-pre.2 on `nixos`, `fedora`, `kixtop`, `ovh-iad`, `ovh-sea` |
 | RustCrypto + dalek | `vrf-rfc9381` | 0.0.7 on `nixos`, `fedora`, `kixtop`, `ovh-iad`, `ovh-sea` |
 | RustCrypto + dalek | `spake2plus` | 0.1.0 on `nixos`, `fedora`, `kixtop`, `ovh-iad`, `ovh-sea` |

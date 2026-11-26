@@ -169,9 +169,9 @@ def idents(src):
             yield m["ident"]
 
 
-# Each area of shipped code that may hold `unsafe`, longest prefix first
-# where one nests in another: its path, what the `unsafe` there is, and what
-# justifies it.
+# Each area of shipped code that may hold `unsafe`, a directory or a file,
+# longest prefix first where one nests in another: its path, what the
+# `unsafe` there is, and what justifies it.
 UNSAFE = [
     (
         "rind/src/low/x86_64/",
@@ -201,7 +201,8 @@ UNSAFE = [
         "test code, but for the macro and `Mcdt`, which `SAFETY:` comments and `admin/ct-vartime` cover",
     ),
     ("rind/src/mid/", "a test's call into aws-lc", "test code"),
-    ("rind/src/", "the FIPS build's DRBG handle, its test's `fork`, and a test helper", "`SAFETY:` comments"),
+    ("rind/src/fips_rng.rs", "the FIPS build's DRBG handle and its test's `fork`", "`SAFETY:` comments"),
+    ("rind/src/test.rs", "a test helper", "`SAFETY:` comments"),
     (
         "rind-aws-lc-rs/src/",
         "`Send` and `Sync` for the KEM keys, bounded as aws-lc-rs bounds them",

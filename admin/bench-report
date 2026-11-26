@@ -476,9 +476,14 @@ def os_name():
 def bench_versions(lock):
     """Each package's version that rind-bench builds, from a Cargo.lock's
     text, with the commit of one from git, such as verified-garbage, whose
-    version never changes: the one rind-bench names, or every one it reaches.
-    A workspace crate's entry also lists its dev-dependencies, so the walk
-    passes through none but rind-bench."""
+    version never changes, and the directory of a fork rind vendors, such as
+    blind-rsa-signatures, whose crates.io release differs: the one rind-bench
+    names, or every one it reaches. A workspace crate's entry also lists its
+    dev-dependencies, so the walk passes through none but rind-bench."""
+    forks = {}
+    for path in tomllib.loads(open(os.path.join(ROOT, "Cargo.toml")).read())["workspace"].get("exclude", []):
+        with open(os.path.join(ROOT, path, "Cargo.toml"), "rb") as f:
+            forks[tomllib.load(f)["package"]["name"]] = path
     packages = tomllib.loads(lock)["package"]
     by_name = {}
     for p in packages:
@@ -493,7 +498,11 @@ def bench_versions(lock):
 
     def version(p):
         commit = re.search(r"^git\+[^#]*#([0-9a-f]+)$", p.get("source", ""))
-        return f"{p['version']} ({commit[1][:8]})" if commit else p["version"]
+        if commit:
+            return f"{p['version']} ({commit[1][:8]})"
+        if "source" not in p and p["name"] in forks:
+            return f"{p['version']} (rind's fork in `{forks[p['name']]}`)"
+        return p["version"]
 
     (bench,) = by_name["rind-bench"]
     direct = [resolve(d) for d in bench["dependencies"]]

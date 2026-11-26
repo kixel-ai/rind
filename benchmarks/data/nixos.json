@@ -41,7 +41,7 @@
    "ed25519-dalek": "3.0.0",
    "x25519-dalek": "3.0.0",
    "hpke": "0.15.1",
-   "blind-rsa-signatures": "0.18.0",
+   "blind-rsa-signatures": "0.18.0 (rind's fork in `thirdparty/blind-rsa-signatures`)",
    "voprf": "0.6.0-pre.2",
    "vrf-rfc9381": "0.0.7",
    "spake2plus": "0.1.0",
