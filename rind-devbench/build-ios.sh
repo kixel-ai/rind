@@ -1,7 +1,13 @@
 #!/bin/bash
 # Builds librind_devbench.a for iOS (aarch64-apple-ios) at low priority.
 set -u
-cd "$(dirname "$0")"
+# A relative CARGO_TARGET_DIR is the caller's: resolve it before the cd below,
+# so cargo and the caller use the same directory.
+case "${CARGO_TARGET_DIR:-}" in
+  ""|/*) ;;
+  *) export CARGO_TARGET_DIR="$PWD/$CARGO_TARGET_DIR" ;;
+esac
+cd "$(dirname "$0")" || exit 1
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 export IPHONEOS_DEPLOYMENT_TARGET=17.0 MACOSX_DEPLOYMENT_TARGET=14.0
 export PATH=$HOME/.cargo/bin:$PATH
