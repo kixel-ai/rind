@@ -139,7 +139,11 @@ mod tests {
         let mut rng = Rng(7);
         for _ in 0..8 {
             let inputs = inputs(&mut rng);
-            ct::secret_slice(inputs.as_flattened());
+            // Only PRF's seed is secret: its counter and SHAKE's padding are
+            // public, and `shake256_batch` checks the padding byte.
+            for input in &inputs {
+                ct::secret_slice(&input[..32]);
+            }
             let mut ours = [[0; 128]; 8];
             mlkem_shake256_8x(&inputs, &mut ours, 8, |inputs, outputs, count| {
                 for (input, output) in inputs.iter().zip(outputs.iter_mut()).take(count) {
