@@ -1255,9 +1255,9 @@ pyca/verified-garbage's AVX2 and AVX-512 VL routines, rind's two-block AVX2
 kernel, aws-lc's SSSE3 routine, and HACL*'s rounds, in
 `Rind/X86_64/ChaCha20Cipher.lean`:
 
-- `chacha20_apply_keystream`, on any CPU in rind's Linux build (it assumes
-  `LinuxBuild`; an x86_64 Mac's SSSE3 routine is Apple's copy, which no proof
-  covers): a buffer that needs more blocks
+- `chacha20_apply_keystream`, on any CPU (where it runs the SSSE3 routine it
+  assumes `LinuxBuild`, rind's Linux build; an x86_64 Mac's SSSE3 routine is
+  Apple's copy, which no proof covers): a buffer that needs more blocks
   than remain before the 32-bit block counter wraps is refused with
   `WrongLength` and left as it is, and otherwise it becomes RFC 8439's
   encryption of it under the key, the block counter, and the nonce.
@@ -1276,14 +1276,18 @@ below. `Rind/X86_64/ChaCha20Avx2.lean` proves the kernel, `kernel`, over
 `Rind/X86_64/Simd.lean`'s models of the AVX2 intrinsics it calls, which
 `admin/prove` tests against the CPU: each double round is RFC 8439's inner
 block on both blocks' states at once, and the stored and XORed keystream is
-the two blocks'. Without AVX2 but with SSSE3, `cipher` runs aws-lc's
+the two blocks'. Where `new` picked no VG routine but found SSSE3 (a CPU
+without AVX2, or with AVX2 but not the BMI2 VG needs), `cipher` runs aws-lc's
 `ChaCha20_ctr32_ssse3_4x` from 129 bytes, in place, whose HOL Light proof
 steps its setup, the four blocks' rounds, each 256-byte group's XOR, and the
 tail of fewer than 256 bytes, by induction over the groups.
-`chacha20_apply_keystream` assumes `RunsCipher`: rind's build assembled the
-Linux object the HOL Light proof covers (`LinuxBuild`, which no axiom states),
-the entry guard admits the call, constructing the VG state succeeds (the model leaves `VgState::uninit`
-opaque), and the CPU-feature checks return, whatever they find.
+`chacha20_apply_keystream` assumes `RunsCipher`: the entry guard admits the
+call, constructing the VG state succeeds (the model leaves `VgState::uninit`
+opaque), the CPU-feature checks return, whatever they find, and, where `new`
+picks no VG routine and finds SSSE3, so that `cipher` can run the SSSE3 routine,
+rind's build assembled the Linux object the HOL Light proof covers
+(`LinuxBuild`, which no axiom states). A CPU with AVX2 and BMI2 needs no such
+premise.
 
 ChaCha20 on aarch64, from `cipher::ChaCha20` down to pyca/verified-garbage's
 NEON and SVE2 routines, in `Rind/Aarch64/VgChaCha20.lean`:
