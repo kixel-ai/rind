@@ -381,10 +381,11 @@ theorem garner_h {P s1 s2 qInv d h : Nat} (hP : 0 < P)
 
 /-- What `RsaPrivateKey::new` establishes about a key, as its private
 operation by rind's exponentiations needs: its public key meets `PubKeyInv`
-with the modulus `n = p·q`; the primes `p` and `q` are odd, above one, and as
-wide, `k` words; their montifiers are `R² mod p` and `R² mod q`, for
-`R = 2^(64k)`; `p0` and `q0` are `-p⁻¹` and `-q⁻¹ mod 2^64`; `dp` and `dq` fit
-their arrays; `iqmp` is below `p`; and `iqmp_mont` is `iqmp·R mod p`. -/
+with the modulus `n = p·q`; the factors `p` and `q`, which it does not require
+to be prime, are odd, above one, and as wide, `k` words; their montifiers are
+`R² mod p` and `R² mod q`, for `R = 2^(64k)`; `p0` and `q0` are `-p⁻¹` and
+`-q⁻¹ mod 2^64`; `dp` and `dq` fit their arrays; `iqmp` is below `p`; and
+`iqmp_mont` is `iqmp·R mod p`. -/
 def PrivKeyInv (key : mid.rsa_priv.RsaPrivateKey) : Prop :=
   PubKeyInv key.public ∧ key.q.used = key.p.used ∧ key.p.used.val ≤ 64 ∧ 2 ≤ key.p.used.val ∧
     wordsNat (lowWords key.p key.p.used) % 2 = 1 ∧ wordsNat (lowWords key.q key.p.used) % 2 = 1 ∧
