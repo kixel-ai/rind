@@ -110,6 +110,118 @@ theorem decompress_vector_loop_spec (bytes : Slice U8) (hb : 960 ≤ bytes.val.l
       apply (WP.spec_ok _).2
       exact ⟨by omega, rfl⟩
 
+theorem kpke_decrypt_spec {X : Type} (P : mid.mlkem.Params X Vec Mat EkBytes CtBytes DkBytes Cache Enc)
+    (hP : Is768 P) (key : mid.mlkem.DecapKey X Vec Mat EkBytes CtBytes DkBytes Cache Enc) (c : CtBytes) :
+    mid.mlkem.DecapKey.kpke_decrypt P key c ⦃ m =>
+      toVec (32 * 1) m.val m.property =
+        ByteEncode 1 (Polynomial.Compress 1 (decrypt key.dk_pke c.val c.property)) ⦄ := by
+  unfold mid.mlkem.DecapKey.kpke_decrypt
+  simp only [hP.ct.as_ref, hP.DU, hP.K, hP.DV, zero_eq _ hP.vec, zero1_eq, hP.vec.as_mut]
+  step as ⟨s, hs⟩
+  have h10 : (10#usize).val = 10 := rfl
+  have h4 : (4#usize).val = 4 := rfl
+  simp only [h10, h4]
+  step as ⟨i1, hi1⟩
+  step as ⟨i3, hi3⟩
+  have hsl : s.length = 1088 := by show s.val.length = _; rw [hs]; exact c.property
+  step as ⟨c_1, c_2, hl1, hl2, hv1, hv2⟩
+  have hc1l : c_1.length = 960 := by rw [hl1, hi3, hi1]
+  have hc1 : 960 ≤ c_1.val.length := by
+    show 960 ≤ c_1.length
+    omega
+  apply spec_bind_ok
+  refine WP.spec_bind (Pₘ := fun (r : mid.mlkem.Coeffs Vec mid.mlkem.Normal) =>
+    VHolds 0 3328 3 r.1.val (decompU c_1.val hc1)) ?_ ?_
+  · generalize Std.Array.repeat 3#usize (Std.Array.repeat 256#usize 0#i16) = z0
+    show (do
+      let (s1, as_mut_back) ← Array.Insts.CoreConvertAsMutSlice.as_mut z0
+      let s2 ← mid.mlkem.decompress_vector 10#usize 320#usize c_1 s1
+      ok ((as_mut_back s2, ()) : mid.mlkem.Coeffs Vec mid.mlkem.Normal)) ⦃ _ ⦄
+    simp only [Array.Insts.CoreConvertAsMutSlice.as_mut]
+    unfold mid.mlkem.decompress_vector
+    apply spec_bind_ok
+    refine WP.spec_bind (decompress_vector_loop_spec c_1 hc1 _ ?_ _ ?_ ?_) ?_
+    · simp [Slice.length]
+    · rfl
+    · show (Slice.len _).val = 3
+      rw [Slice.len_val]
+      simp [Slice.length]
+    intro s2 ⟨hl2', hq2⟩
+    apply (WP.spec_ok _).2
+    have hl2'' : s2.length = (3#usize).val := hl2'
+    beta_reduce
+    rw [dite_true' hl2'']
+    intro j hj
+    rw [Std.Array.from_val]
+    exact hq2 j hj
+  intro u hu
+  obtain ⟨u, upd⟩ := u
+  generalize Std.Array.repeat 256#usize 0#i16 = z1
+  have hc2l : c_2.val.length = (128#usize).val := by
+    show c_2.length = _
+    rw [hl2, hsl, hi3, hi1]
+    rfl
+  have hcl : c.val.length = 1088 := c.property
+  have hc2v : c_2.val = sub c.val 960 128 := by
+    rw [hv2, hi3, hi1, hs]
+    simp only [sub]
+    rw [List.take_of_length_le (by rw [List.length_drop]; omega)]
+  rw [try_from_ok 128#usize c_2 hc2l]
+  apply spec_bind_ok
+  apply spec_bind_ok
+  apply spec_bind_ok
+  refine WP.spec_bind (Pₘ := fun (r : mid.mlkem.Coeffs (Std.Array I16 256#usize) mid.mlkem.Normal) =>
+    Holds 0 3328 256 r.1.val (decompV c.val c.property)) ?_ ?_
+  · show (do
+      let a3 ← mid.mlkem.decompress 4#usize (Std.Array.from c_2.val hc2l) z1
+      ok ((a3, ()) : mid.mlkem.Coeffs (Std.Array I16 256#usize) mid.mlkem.Normal)) ⦃ _ ⦄
+    apply WP.spec_bind (decompress_spec 4#usize (L := 128#usize) (by decide) (by decide)
+      (Std.Array.from c_2.val hc2l) z1)
+    intro a3 ha3
+    apply (WP.spec_ok _).2
+    unfold decompV
+    convert ha3 using 4
+    · rfl
+    · rfl
+    · rw [Std.Array.from_val, hc2v]
+  intro a ha
+  obtain ⟨a, pda⟩ := a
+  apply WP.spec_bind (from_bytes_spec P.VectorInst hP.vec hP.enc key.dk_pke)
+  intro sh hsh
+  obtain ⟨sh, pds⟩ := sh
+  apply WP.spec_bind (ntt_spec _ hP.vec u (decompU c_1.val hc1)
+    (fun j hj => Holds.mono (hu j hj) (by norm_num) (by norm_num)))
+  intro uh huh
+  obtain ⟨uh, pdu⟩ := uh
+  apply WP.spec_bind (mul_cache_spec P.VectorInst hP.vec hP.cache uh _ (fun j hj => Holds.congr (huh j hj)))
+  intro uc huc
+  obtain ⟨uc, pdc⟩ := uc
+  apply WP.spec_bind (dot_and_inverse_ntt_spec P.VectorInst hP.vec hP.cache sh uh uc _ _
+    (fun j hj => Holds.mono (hsh j hj) (by norm_num) (by norm_num)) (fun j hj => Holds.congr (huh j hj)) huc)
+  intro t ht
+  obtain ⟨t, pdt⟩ := t
+  apply WP.spec_bind (sub_spec a t _ _ (Holds.congr ha) (Holds.congr ht) (fun p hp => by
+    have h1 := ha p hp
+    have h2 := ht p hp
+    dsimp only at h1 h2
+    constructor <;> omega))
+  intro w hw
+  apply WP.spec_mono (to_message_bits_spec w _ hw)
+  intro m hm
+  rw [hm]
+  have hU : decompU c_1.val hc1 = decompU c.val (by omega) := by
+    funext j
+    unfold decompU
+    split_ifs with hj
+    · congr 3
+      rw [hv1, hi3, hi1, hs]
+      simp only [sub, List.drop_take, List.take_take]
+      congr 1
+      omega
+    · rfl
+  unfold decrypt
+  simp only [hU]
+
 end MlKemPke
 
 end rind.aarch64
