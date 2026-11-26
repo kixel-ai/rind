@@ -894,8 +894,9 @@ x86_64 these assume `NoCurveIfma`, that the CPU lacks AVX-512 IFMA:
 - `ed25519_public_key_new`: a public key is refused unless it is 32 bytes,
   refused if its low 255 bits are one of libsodium's seven small-order
   y-coordinates, refused unless it encodes a point of the group, and
-  otherwise its `verify` accepts exactly the signatures RFC 8032 verifies with
-  that point: 64 bytes, S below L, and R the encoding of SB - kA;
+  otherwise its `verify` accepts exactly the signatures `ed25519Verifies`
+  accepts with that point: 64 bytes, S below L, and R the encoding of SB - kA,
+  for k the hash reduced mod L, rind's cofactorless check;
 - `ed25519_key_pair_verify`: a key pair's public key verifies the same way,
   with its point the base point times its secret scalar (on aarch64, for a
   scalar whose multiple is a point of the group).

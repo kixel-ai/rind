@@ -17,6 +17,11 @@ hold for every call from safe Rust: the `&mut` result cannot overlap an input
 or the routine's code, and the routine's stack lies below the caller's
 frame. Its total correctness (`ensures`) gives the `ok`.
 
+A leaf that needs a CPU feature (the ADX and BMI2 `bignum_mul_p25519`) has no
+check of its own, so its axiom holds only where its mux selected it: each such
+leaf's mux theorem takes that as its `Runs` hypothesis, and nothing else calls
+the leaf.
+
 The restatement, and that rind's inline assembly is s2n-bignum's object code
 with the wrapper passing the arguments the theorem names, are trusted.
 -/
