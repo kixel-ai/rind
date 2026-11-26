@@ -331,8 +331,9 @@ crate, 80 of 2,889 on Linux and 76 of 2,589 on macOS, most in `high/`
 (`hpke.rs`, `spake2plus.rs`, `blind_rsa.rs`, `oprf.rs`, `vrf.rs`, and
 `signature.rs`); and in the adapters and bindings, 127 in rind-aws-lc-rs, 33
 in rind-ring, 23 in rind-python, and 12 or fewer in each of the rest.
-[Every published function runs under a test](/quest/m2/confidence/uncovered-functions.md)
-closes them. The report's "Measure coverage" step lists each file.
+The nightly coverage gate now requires every published function to run under
+a test or have a reason in `admin/coverage.allow`. The report's "Measure
+coverage" step lists each file.
 
 ## `unsafe`
 
