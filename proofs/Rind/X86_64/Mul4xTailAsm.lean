@@ -128,4 +128,169 @@ theorem sub_ok (s : S) (j k c : Nat) (ap bp np n0p tp rp x0 x1 x2 x3 : BitVec 64
   intro y2 b3 y3 b4 y4 b5 y5 b6
   tail_block [sub, hrdi, hrsi, hrcx, hr14, hr15, hrax, hrdx, hrbx, hrbp, hcf, hN, hT]
 
+section
+variable (s : VG.X86_64.State) (d : XReg) (v : BitVec 128)
+@[simp] theorem gpr_setXmm : (s.setXmm d v).gpr = s.gpr := rfl
+@[simp] theorem mem_setXmm : (s.setXmm d v).mem = s.mem := rfl
+@[simp] theorem rd_setXmm : (s.setXmm d v).rd = s.rd := rfl
+@[simp] theorem wr_setXmm : (s.setXmm d v).wr = s.wr := rfl
+@[simp] theorem cf_setXmm : (s.setXmm d v).cf = s.cf := rfl
+@[simp] theorem zf_setXmm : (s.setXmm d v).zf = s.zf := rfl
+@[simp] theorem others_setXmm : others (s.setXmm d v) = others s := rfl
+@[simp] theorem xmm_setXmm (r : XReg) : (s.setXmm d v).xmm r = if r = d then v else s.xmm r := rfl
+end
+
+/-- What a block leaves unchanged, but the vector registers too. -/
+structure FrameX (s s' : S) (gs : List Reg) : Prop where
+  gpr : ∀ r, r ∉ gs → s'.vg.gpr r = s.vg.gpr r
+  others : others s'.vg = others s.vg
+  wr : s'.vg.wr = s.vg.wr
+  lo : s'.lo = s.lo
+
+def subTailTrace (np tp rp : Addr) (j : Nat) : List Leak :=
+  [.addr (wa rp j), .addr (wa tp (j + 4)), .addr (wa np (j + 2)), .addr (wa rp (j + 1)), .addr (wa np (j + 3)),
+   .addr (wa rp (j + 2)), .addr (wa rp (j + 3))]
+
+set_option maxHeartbeats 8000000 in
+theorem subTail_ok (s : S) (j : Nat) (ap bp np n0p tp rp x0 x1 x2 x3 : BitVec 64) (b : Bool) (t n : Nat → BitVec 64)
+    (ar : Arrays s (j + 4) ap bp np n0p tp) (out : Out s (j + 4) np tp rp)
+    (hrdi : s.vg.gpr .rdi = rp) (hrsi : s.vg.gpr .rsi = tp) (hrcx : s.vg.gpr .rcx = np)
+    (hr14 : s.vg.gpr .r14 = BitVec.ofNat 64 j) (hr9 : s.vg.gpr .r9 = BitVec.ofNat 64 (j + 4))
+    (hrax : s.vg.gpr .rax = x0) (hrdx : s.vg.gpr .rdx = x1) (hrbx : s.vg.gpr .rbx = x2)
+    (hrbp : s.vg.gpr .rbp = x3) (hcf : s.vg.cf = some b)
+    (hN : ∀ i < j + 4, s.vg.mem.readW (wa np i) 64 = n i)
+    (hT : ∀ i ≤ j + 4, s.vg.mem.readW (wa tp i) 64 = t i) :
+    let y2 := x2 - n (j + 2) - (BitVec.ofBool b).setWidth 64
+    let b3 := decide (x2.toNat < (n (j + 2)).toNat + b.toNat)
+    let y3 := x3 - n (j + 3) - (BitVec.ofBool b3).setWidth 64
+    let b4 := decide (x3.toNat < (n (j + 3)).toNat + b3.toNat)
+    let mask := t (j + 4) - 0 - (BitVec.ofBool b4).setWidth 64
+    let x4 := shufDwords ((0 : BitVec 64) ++ mask) 0
+    ∃ s', execBlock I subTail s = some (s', subTailTrace np tp rp j) ∧
+      s'.vg.xmm .xmm0 = XBinOp.eval .pxor (s.vg.xmm .xmm0) (s.vg.xmm .xmm0) ∧ s'.vg.xmm .xmm4 = x4 ∧
+      s'.vg.xmm .xmm5 = XBinOp.eval .pxor (XBinOp.eval .pcmpeqd (s.vg.xmm .xmm5) (s.vg.xmm .xmm5)) x4 ∧
+      s'.vg.gpr .r15 = BitVec.ofNat 64 ((j + 4) / 4) ∧ s'.vg.gpr .rax = 0 ∧
+      s'.vg.mem = (((s.vg.mem.writeW (wa rp j) x0).writeW (wa rp (j + 1)) x1).writeW (wa rp (j + 2)) y2).writeW
+        (wa rp (j + 3)) y3 ∧
+      FrameX s s' [.rax, .rdx, .rbx, .rbp, .r15] := by
+  obtain ⟨hk, hap, hbp, hnp, hn0p, htp, sepA, sepB, sepN, sepN0, rA, rB, rN, rN0, rT⟩ := ar
+  obtain ⟨hrp, sepPT, sepPN, rP⟩ := out
+  intro y2 b3 y3 b4 mask x4
+  apply ex_of_eq
+  · rw [execBlock_acc]
+    tail_run [subTail, hrdi, hrsi, hrcx, hr14, hr9, hrax, hrdx, hrbx, hrbp, hcf, hN, hT, XOp.exec, execAlu32,
+      readSrc32, VG.X86_64.State.setReg32, gpr_setXmm, mem_setXmm, rd_setXmm, wr_setXmm, cf_setXmm, xmm_setXmm,
+      ofNat_shr, execShift, Nat.reduceLeDiff, and_self, signExtend_zero']
+    rfl
+  · rfl
+  · repeat' apply And.intro
+    all_goals try refine FrameX.mk (fun r hr => ?_) ?_ ?_ rfl
+    all_goals try simp only [List.mem_cons, List.not_mem_nil, or_false, not_or] at hr
+    all_goals try simp (config := { maxSteps := 4000000 }) only [gpr_setReg, mem_setReg, wr_setReg, xmm_setReg,
+      others_setReg, gpr_arithFlags, mem_arithFlags, wr_arithFlags, xmm_arithFlags, others_arithFlags, gpr_setFlags,
+      mem_setFlags, wr_setFlags, xmm_setFlags, others_setFlags, gpr_setMem, mem_setMem, wr_setMem, xmm_setMem,
+      others_setMem, gpr_setXmm, mem_setXmm, wr_setXmm, xmm_setXmm, others_setXmm, reduceCtorEq, ↓reduceIte, *]
+    all_goals first
+      | with_reducible rfl
+      | decide
+
+/-! ## The copy -/
+
+theorem readW_writeW_disj (m : Mem) (a b : Addr) {w : Nat} (v : BitVec w) (w' : Nat)
+    (h : w / 8 ≤ (b - a).toNat ∧ w' / 8 ≤ (a - b).toNat) : (m.writeW a v).readW b w' = m.readW b w' := by
+  simp only [Mem.readW, Mem.writeW]
+  congr 1
+  apply read_congr
+  intro k hk
+  apply write_other
+  obtain ⟨h1, h2⟩ := h
+  have : (b + BitVec.ofNat 64 k - a).toNat = (b - a).toNat + k := by
+    have : (BitVec.ofNat 64 k).toNat = k := by simp; omega
+    bv_omega
+  omega
+
+section
+variable (s : VG.X86_64.State)
+theorem load128_of {a : Addr} (h : InRegions (s.rd ++ s.wr) a 16) : s.load128 a = some (s.mem.readW a 128) := by
+  simp [State.load128, h]
+theorem store128_of {a : Addr} {v : BitVec 128} (h : InRegions s.wr a 16) :
+    s.store128 a v = some (setMem s (s.mem.writeW a v)) := by
+  simp [State.store128, h, setMem]
+end
+
+/-- `dec`'s flags, folded. -/
+theorem exec_dec (d : Reg) (s : S) : Rind.X86_64.exec (.dec d) s =
+    some { s with vg := (s.vg.setFlags s.vg.cf (some (subOverflow (s.vg.gpr d) 1 (s.vg.gpr d - 1)))
+      (some (s.vg.gpr d - 1 == 0)) (some (s.vg.gpr d - 1).msb)).setReg d (s.vg.gpr d - 1) } := rfl
+
+theorem mul_ofNat_one (x : BitVec 64) : x * BitVec.ofNat 64 1 = x := BitVec.mul_one x
+
+theorem mul8_add (x y : BitVec 64) : x * 8#64 + y * 8#64 = (x + y) * 8#64 := by rw [BitVec.add_mul]
+
+set_option hygiene false in
+/-- `tail_disch`, and 16-byte accesses apart. -/
+macro "copy_disch" : tactic => `(tactic| no_recover first
+  | decide
+  | (try simp only [rd_setReg, wr_setReg, rd_arithFlags, wr_arithFlags, rd_setFlags, wr_setFlags, rd_setMem,
+        wr_setMem, rd_setXmm, wr_setXmm]) <;>
+     first
+      | (refine inR (List.mem_append_right _ rT) ?_; simp only; bv_omega)
+      | (refine inR (List.mem_append_right _ rP) ?_; simp only; bv_omega)
+      | (refine inR rT ?_; simp only; bv_omega)
+      | (refine inR rP ?_; simp only; bv_omega)
+      | (constructor <;> bv_omega)
+      | omega)
+
+def copyTrace (tp rp : Addr) (j : Nat) : List Leak :=
+  [.addr (wa tp j), .addr (wa rp j), .addr (wa tp (j + 2)), .addr (wa tp j), .addr (wa rp (j + 2)),
+   .addr (wa rp j), .addr (wa tp (j + 2)), .addr (wa rp (j + 2))]
+
+set_option maxHeartbeats 8000000 in
+theorem copy_ok (s : S) (j k c : Nat) (ap bp np n0p tp rp : BitVec 64)
+    (hjk : j + 4 ≤ k) (ar : Arrays s k ap bp np n0p tp) (out : Out s k np tp rp)
+    (al0 : (wa tp j).toNat % 16 = 0) (al1 : (wa tp (j + 2)).toNat % 16 = 0)
+    (hrdi : s.vg.gpr .rdi = rp) (hrsp : s.vg.gpr .rsp = tp)
+    (hrax : s.vg.gpr .rax = BitVec.ofNat 64 j * 8#64) (hr15 : s.vg.gpr .r15 = BitVec.ofNat 64 c) :
+    let M := s.vg.mem
+    let x0 := s.vg.xmm .xmm0
+    let x4 := s.vg.xmm .xmm4
+    let x5 := s.vg.xmm .xmm5
+    let y0 := XBinOp.eval .por (XBinOp.eval .pand (M.readW (wa tp j) 128) x4) (XBinOp.eval .pand (M.readW (wa rp j) 128) x5)
+    let y1 := XBinOp.eval .por (XBinOp.eval .pand (M.readW (wa tp (j + 2)) 128) x4)
+      (XBinOp.eval .pand (M.readW (wa rp (j + 2)) 128) x5)
+    ∃ s', execBlock I copy s = some (s', copyTrace tp rp j) ∧
+      s'.vg.xmm .xmm0 = x0 ∧ s'.vg.xmm .xmm4 = x4 ∧ s'.vg.xmm .xmm5 = x5 ∧
+      s'.vg.gpr .rax = BitVec.ofNat 64 (j + 4) * 8#64 ∧
+      s'.vg.gpr .r15 = BitVec.ofNat 64 c - 1 ∧ s'.vg.zf = some (BitVec.ofNat 64 c - 1 == 0) ∧
+      s'.vg.mem = (((M.writeW (wa tp j) x0).writeW (wa rp j) y0).writeW (wa tp (j + 2)) x0).writeW (wa rp (j + 2)) y1 ∧
+      FrameX s s' [.rax, .r15] := by
+  obtain ⟨hk, hap, hbp, hnp, hn0p, htp, sepA, sepB, sepN, sepN0, rA, rB, rN, rN0, rT⟩ := ar
+  obtain ⟨hrp, sepPT, sepPN, rP⟩ := out
+  intro M x0 x4 x5 y0 y1
+  apply ex_of_eq
+  · rw [execBlock_acc]
+    simp (config := { maxSteps := 4000000 }) (disch := copy_disch) only [copy, hrdi, hrsp, hrax, hr15, al0, al1,
+      execAcc_cons, execAcc_nil, load128_of, store128_of, ↓exec_dec, Rind.X86_64.exec, Rind.X86_64.addrs, VG.X86_64.addrs,
+      VG.X86_64.exec, XOp.exec, Option.map_some, Option.bind_some, State.ea, m, mx, ofInt_lit, Int.reduceNeg,
+      Int.reduceMod, Int.reduceToNat, Int.reducePow, mul_ofNat_one, ea_pos, disp_pos, ea_comb, mul8_add, ofNat_add_pos,
+      Nat.reduceAdd, Nat.reduceSub, Nat.reduceDiv, Nat.reducePow, Nat.reduceMod, Nat.add_zero, ofNat_zero, add_zero',
+      readW_writeW_disj, gpr_setReg, mem_setReg, rd_setReg, wr_setReg, gpr_arithFlags, mem_arithFlags,
+      rd_arithFlags, wr_arithFlags, gpr_setMem, mem_setMem, rd_setMem, wr_setMem, gpr_setXmm, mem_setXmm, rd_setXmm,
+      wr_setXmm, xmm_setXmm, xmm_setMem, reduceCtorEq, ↓reduceIte, List.map_nil, List.map_cons, List.append_nil,
+      List.nil_append, List.cons_append]
+    rfl
+  · rfl
+  · repeat' apply And.intro
+    all_goals try refine FrameX.mk (fun r hr => ?_) ?_ ?_ rfl
+    all_goals try simp only [List.mem_cons, List.not_mem_nil, or_false, not_or] at hr
+    all_goals try simp (config := { maxSteps := 4000000 }) only [gpr_setReg, mem_setReg, wr_setReg, xmm_setReg,
+      others_setReg, gpr_arithFlags, mem_arithFlags, wr_arithFlags, xmm_arithFlags, others_arithFlags, gpr_setFlags,
+      mem_setFlags, wr_setFlags, xmm_setFlags, others_setFlags, gpr_setMem, mem_setMem, wr_setMem, xmm_setMem,
+      others_setMem, gpr_setXmm, mem_setXmm, wr_setXmm, xmm_setXmm, others_setXmm, zf_arithFlags, zf_setReg,
+      zf_setFlags, zf_setXmm, zf_setMem, reduceCtorEq,
+      ↓reduceIte, *]
+    all_goals first
+      | with_reducible rfl
+      | skip
+
 end rind.x86_64.mul4x
