@@ -17,46 +17,46 @@ pub type Section = (&'static str, &'static str, fn(&mut Run));
 /// than about 15 minutes and a runner's four cores stay busy: ML-KEM into
 /// parts of each file's cases, SHA-2 by hash, and PBKDF2 by hash.
 pub const SECTIONS: &[Section] = &[
-    ("mlkem1024.0", "mlkem", |run| {
+    ("mlkem1024.0", "mlkem.a", |run| {
         mlkem::<rind::kem::MlKem1024>(run, "1024", 0, 8)
     }),
-    ("mlkem1024.1", "mlkem", |run| {
+    ("mlkem1024.1", "mlkem.a", |run| {
         mlkem::<rind::kem::MlKem1024>(run, "1024", 1, 8)
     }),
-    ("mlkem1024.2", "mlkem", |run| {
+    ("mlkem1024.2", "mlkem.a", |run| {
         mlkem::<rind::kem::MlKem1024>(run, "1024", 2, 8)
     }),
-    ("mlkem1024.3", "mlkem", |run| {
+    ("mlkem1024.3", "mlkem.a", |run| {
         mlkem::<rind::kem::MlKem1024>(run, "1024", 3, 8)
     }),
-    ("mlkem1024.4", "mlkem", |run| {
+    ("mlkem1024.4", "mlkem.b", |run| {
         mlkem::<rind::kem::MlKem1024>(run, "1024", 4, 8)
     }),
-    ("mlkem1024.5", "mlkem", |run| {
+    ("mlkem1024.5", "mlkem.b", |run| {
         mlkem::<rind::kem::MlKem1024>(run, "1024", 5, 8)
     }),
-    ("mlkem1024.6", "mlkem", |run| {
+    ("mlkem1024.6", "mlkem.b", |run| {
         mlkem::<rind::kem::MlKem1024>(run, "1024", 6, 8)
     }),
-    ("mlkem1024.7", "mlkem", |run| {
+    ("mlkem1024.7", "mlkem.b", |run| {
         mlkem::<rind::kem::MlKem1024>(run, "1024", 7, 8)
     }),
-    ("mlkem768.0", "mlkem", |run| {
+    ("mlkem768.0", "mlkem.c", |run| {
         mlkem::<rind::kem::MlKem768>(run, "768", 0, 4)
     }),
-    ("mlkem768.1", "mlkem", |run| {
+    ("mlkem768.1", "mlkem.c", |run| {
         mlkem::<rind::kem::MlKem768>(run, "768", 1, 4)
     }),
-    ("mlkem768.2", "mlkem", |run| {
+    ("mlkem768.2", "mlkem.c", |run| {
         mlkem::<rind::kem::MlKem768>(run, "768", 2, 4)
     }),
-    ("mlkem768.3", "mlkem", |run| {
+    ("mlkem768.3", "mlkem.c", |run| {
         mlkem::<rind::kem::MlKem768>(run, "768", 3, 4)
     }),
-    ("mlkem512.0", "mlkem", |run| {
+    ("mlkem512.0", "mlkem.b", |run| {
         mlkem::<rind::kem::MlKem512>(run, "512", 0, 2)
     }),
-    ("mlkem512.1", "mlkem", |run| {
+    ("mlkem512.1", "mlkem.b", |run| {
         mlkem::<rind::kem::MlKem512>(run, "512", 1, 2)
     }),
     ("sha2-sha384", "digests", |run| sha2(run, "sha384")),
@@ -2055,7 +2055,14 @@ fn mlkem<A: rind::kem::Algorithm>(run: &mut Run, set: &str, part: usize, parts: 
         );
     }
     let file = format!("mlkem_{set}_semi_expanded_decaps_test");
-    for (_, t) in part_of(wycheproof(run, &file), part, parts) {
+    // Nine cases, which the first part runs alone: each part runs a file's
+    // cases, or none of them, so that no part's source ran no vectors.
+    let semi = if part == 0 {
+        wycheproof(run, &file)
+    } else {
+        Vec::new()
+    };
+    for (_, t) in semi {
         // Nor decapsulation keys and ciphertexts of other lengths.
         if unhex(js(&t, "dk")).len() != 768 * k + 96 || unhex(js(&t, "c")).len() != expected_c(set)
         {

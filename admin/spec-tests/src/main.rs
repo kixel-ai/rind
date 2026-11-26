@@ -9,8 +9,8 @@
 //! `SPEC_TESTS_GROUP=<group>` runs only the sections of one of `GROUPS`, which
 //! `prove.yml` runs as the rows of its `spec-tests` job, each on its own
 //! runner, so that the job's time is the slowest group's, not the sum. A group
-//! checks that its own specs ran on enough cases, and fails a section that
-//! runs a spec of another group, so the groups together check every spec.
+//! checks that the specs of its family ran on enough cases, and fails a section
+//! that runs a spec of another family, so the groups together check every spec.
 //!
 //! Each section of `cases` runs on its own thread with its own server, and
 //! its own random source, from the seed and the section's name, so a seed
@@ -99,14 +99,18 @@ const SPECS: &[&str] = &[
     "mlkem-decaps",
 ];
 
-/// The groups the sections run in, which `prove.yml` runs apart: each spec
-/// belongs to the group `group_of` names, and only that group's sections ask
-/// it. Keep the `group` axis of `prove.yml`'s `spec-tests` job to these.
-pub const GROUPS: &[&str] = &["mlkem", "digests", "rest"];
+/// The groups the sections run in, which `prove.yml` runs apart. Keep the
+/// `group` axis of `prove.yml`'s `spec-tests` job to these. A group name's
+/// part before a `.` is its family: the specs of a family are checked in each
+/// of its groups, which split a family's sections to run them in parallel.
+pub const GROUPS: &[&str] = &["mlkem.a", "mlkem.b", "mlkem.c", "digests", "rest"];
 
-/// The group whose sections run `spec`, ML-KEM's, the digests', or the rest's,
-/// the slowest balanced against each other.
-fn group_of(spec: &str) -> &'static str {
+fn family(group: &str) -> &str {
+    group.split_once('.').map_or(group, |(family, _)| family)
+}
+
+/// The family whose sections run `spec`: ML-KEM's, the digests', or the rest's.
+fn family_of(spec: &str) -> &'static str {
     if spec.starts_with("mlkem") {
         "mlkem"
     } else if spec.starts_with("sha") || spec.starts_with("shake") {
@@ -522,10 +526,10 @@ fn main() -> ExitCode {
                         // runs on vectors, so another section's of the same
                         // spec, such as another ML-KEM set's, cannot stand in.
                         for (spec, [v, r]) in &run.counts {
-                            if SPECS.contains(&spec.as_str()) && group_of(spec) != *section_group {
+                            if SPECS.contains(&spec.as_str()) && family_of(spec) != family(section_group) {
                                 failures.push(format!(
-                                    "{name}: {spec} belongs to the {} group, not {section_group}",
-                                    group_of(spec)
+                                    "{name}: {spec} belongs to the {} family, not {section_group}'s",
+                                    family_of(spec)
                                 ));
                             }
                             if *v > 0
@@ -590,7 +594,7 @@ fn main() -> ExitCode {
     );
     for spec in SPECS
         .iter()
-        .filter(|s| group.is_none_or(|g| group_of(s) == g))
+        .filter(|s| group.is_none_or(|g| family_of(s) == family(g)))
     {
         let [v, r] = counts.get(*spec).copied().unwrap_or_default();
         let t = times.get(*spec).copied().unwrap_or_default();
