@@ -474,7 +474,8 @@ step() {
             export RUSTC_WORKSPACE_WRAPPER CARGO_BUILD_WARNINGS
             # CI keeps Cargo's per-crate build timings of the two main builds,
             # which queue-build.yml uploads, so a compile regression shows
-            # without profiling by hand.
+            # without profiling by hand. The test build's is taken by whichever
+            # command builds the test binaries first.
             local timings=()
             ! github || timings=(--timings)
             # A unit test admin/test-scope.toml names may have been renamed by
@@ -484,7 +485,7 @@ step() {
             if [[ -n "$filter" ]]; then
                 run python3 admin/test-scope units -p rind --lib
             elif [[ -n "$rind" || ${#packages[@]} -eq 0 || " ${packages[*]} " == *" --workspace "* ]]; then
-                run python3 admin/test-scope units "${packages[@]}" --tests
+                run python3 admin/test-scope units "${packages[@]}" --tests "${timings[@]}"
             fi
             # nextest runs the test binaries in parallel but not doc tests. Like
             # `cargo test`, it passes a selection with no tests.
