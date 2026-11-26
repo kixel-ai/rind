@@ -326,8 +326,12 @@ theorem mul_toNat (a b : BitVec 64) :
   rw [Nat.mod_eq_of_lt (by omega : a.toNat * b.toNat / 2 ^ 64 < 2 ^ 64)]
   omega
 
-theorem mul_le (a b : BitVec 64) : a.toNat * b.toNat ≤ (2 ^ 64 - 1) * (2 ^ 64 - 1) :=
-  Nat.mul_le_mul (by have := a.isLt; omega) (by have := b.isLt; omega)
+theorem mul_le (a b : BitVec 64) : a.toNat * b.toNat + 2 * 2 ^ 64 ≤ 2 ^ 64 * 2 ^ 64 + 1 := by
+  have ha : a.toNat ≤ 2 ^ 64 - 1 := by have := a.isLt; omega
+  have hb : b.toNat ≤ 2 ^ 64 - 1 := by have := b.isLt; omega
+  have := Nat.mul_le_mul ha hb
+  have e : (2 ^ 64 - 1) * (2 ^ 64 - 1) + 2 * 2 ^ 64 = 2 ^ 64 * 2 ^ 64 + 1 := by norm_num
+  omega
 
 theorem ofBool_toNat (c : Bool) : ((BitVec.ofBool c).setWidth 64).toNat = c.toNat := by
   cases c <;> rfl
@@ -358,7 +362,6 @@ def acc (p : BitVec 64 × BitVec 64) (d : BitVec 64) : BitVec 64 × BitVec 64 :=
 theorem mac_toNat (a b c : BitVec 64) :
     (mac a b c).2.toNat * 2 ^ 64 + (mac a b c).1.toNat = a.toNat * b.toNat + c.toNat := by
   have h1 := mul_toNat a b; have h2 := mul_le a b; have h3 := c.isLt
-  have hW : (2 ^ 64 - 1) * (2 ^ 64 - 1) + 2 ^ 64 ≤ 2 ^ 64 * 2 ^ 64 := by norm_num
   show (mulHi a b + (BitVec.ofBool (carry c (mulLo a b))).setWidth 64).toNat * 2 ^ 64 + (c + mulLo a b).toNat = _
   rw [addc_toNat _ _ _ (by linarith)]
   linarith

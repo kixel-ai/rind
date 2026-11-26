@@ -1,21 +1,11 @@
 import RindIsa.X86_64.Mul4x
-import Rind.X86_64.Asm
+import Rind.X86_64.Mul4xModel
 
 open VG VG.X86_64 Rind.X86_64.Mul4x rind.x86_64.asm
 
 set_option linter.unusedSimpArgs false
 
 namespace rind.x86_64.mul4x
-
-/-! ## The word-serial step -/
-
-/-- A word of a pass with no `t` to add (the first): with `c = (cA, cN)`,
-`a·b + cA` and `n·q + cN` plus the former's low word; the latter's low word,
-and the two high words, the next word's `c`. -/
-def step0 (a n b q : BitVec 64) (c : BitVec 64 × BitVec 64) : BitVec 64 × (BitVec 64 × BitVec 64) :=
-  let A := mac a b c.1
-  let N := acc (mac n q c.2) A.1
-  (N.1, (A.2, N.2))
 
 /-- What a block leaves unchanged: the general registers but `gs`, and the rest of the state but memory and
 the flags. -/
@@ -131,12 +121,6 @@ theorem first_ok (s : S) (j k : Nat) (ap bp np n0p tp b q cA cN : BitVec 64) (a 
   intro w0 w1 w2 w3
   mul4x_block [first, hrsi, hrcx, hrsp, hr15, hrbx, hrbp, hr10, hr13, hrax, hr9, hA, hN]
 
-/-- A word of an outer pass: `step0`, with `t` added to `a·b + cA`. -/
-def step (a n t b q : BitVec 64) (c : BitVec 64 × BitVec 64) : BitVec 64 × (BitVec 64 × BitVec 64) :=
-  let A := acc (mac a b c.1) t
-  let N := acc (mac n q c.2) A.1
-  (N.1, (A.2, N.2))
-
 def innerTrace (ap np tp : Addr) (j : Nat) : List Leak :=
   [.addr (wa np (j + 1)), .addr (wa tp (j + 1)), .addr (wa ap (j + 2)), .addr (wa tp j),
    .addr (wa np (j + 2)), .addr (wa tp (j + 2)), .addr (wa ap (j + 3)), .addr (wa tp (j + 1)),
@@ -197,10 +181,6 @@ def firstTailTrace (ap np tp : Addr) (j : Nat) : List Leak :=
   [.addr (wa np (j + 1)), .addr (wa ap (j + 2)), .addr (wa tp j),
    .addr (wa np (j + 2)), .addr ap, .addr (wa tp (j + 1)), .addr (wa tp (j + 2)), .addr (wa tp (j + 3))]
 
-/-- The pass's top two words, from the last word's `(cA, cN)` and, in an outer pass, `t`'s top word. -/
-def top0 (c : BitVec 64 × BitVec 64) : BitVec 64 × BitVec 64 :=
-  (c.2 + c.1, (BitVec.ofBool (carry c.2 c.1)).setWidth 64)
-
 set_option maxHeartbeats 8000000 in
 theorem firstTail_ok (s : S) (j k i : Nat) (ap bp np n0p tp b q cA cN : BitVec 64) (a n : Nat → BitVec 64)
     (hj : 5 ≤ j) (hjk : j + 3 = k) (ar : Arrays s k ap bp np n0p tp)
@@ -220,9 +200,6 @@ theorem firstTail_ok (s : S) (j k i : Nat) (ap bp np n0p tp b q cA cN : BitVec 6
   obtain ⟨hk, hap, hbp, hnp, hn0p, htp, sepA, sepB, sepN, sepN0, rA, rB, rN, rN0, rT⟩ := ar
   intro w0 w1
   mul4x_block [firstTail, hrsi, hrcx, hrsp, hr15, hrbx, hrbp, hr10, hr13, hrax, hr14, hA, hN, hA0]
-
-/-- `top0` with `t`'s top word added. -/
-def top (c : BitVec 64 × BitVec 64) (t : BitVec 64) : BitVec 64 × BitVec 64 := acc (top0 c) t
 
 def outerTailTrace (ap np tp : Addr) (j k : Nat) : List Leak :=
   [.addr (wa np (j + 1)), .addr (wa tp (j + 1)), .addr (wa ap (j + 2)), .addr (wa tp j),
