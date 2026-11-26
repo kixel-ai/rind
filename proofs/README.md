@@ -138,6 +138,20 @@ those inputs, in any worktree, restores in under a second.
   targets build these functions as Thumb-2, which no proof covers; rustc
   refuses `#[instruction_set(arm::a32)]` on armv7's Linux and Android
   targets, which would otherwise force A32.
+- `x86_64/p256_montjmixadd.ml`, `x86_64/p256_montjmixadd_alt.ml`, and
+  `aarch64/p256_montjmixadd.ml`: `P256_MONTJMIXADD_SAME_X_SUBROUTINE_CORRECT`
+  and `P256_MONTJMIXADD_ALT_SAME_X_SUBROUTINE_CORRECT`, rind's proofs that the
+  blocks in `low::x86_64::p256_montjmixadd::p256_montjmixadd`,
+  `low::x86_64::p256_montjmixadd_alt::p256_montjmixadd_alt`, and
+  `low::aarch64::p256_montjmixadd::p256_montjmixadd`, which is s2n-bignum's
+  `p256_montjmixadd_alt`, leave the sum's z zero when the two points are
+  equal or opposite, the case s2n-bignum's correctness theorem excludes. Each
+  file carries s2n-bignum's definitions and lemmas for its routine and
+  replays its simulation: the routine's z is z1 times x2 z1² - x1, zero mod p
+  when the points' x's agree. `p256_montjmixadd_spec` in
+  `Rind/<Arch>/S2nBignum.lean` restates it with s2n-bignum's theorem for
+  unequal points, so P-256 verification adds first and compares y's only
+  when z is zero.
 - `x86_64/ecp_nistz256_point_add_affine.ml` and
   `x86_64/ecp_nistz256_point_add_affinex.ml`:
   `ECP_NISTZ256_POINT_ADD_AFFINE_SUBROUTINE_CORRECT` and
@@ -508,8 +522,8 @@ twin multiplication reads a 385-digit width-5 NAF of e/s, whose multiples of G
 come from the comb's first table, and of r/s over Q's odd multiples, which a
 key caches, and `Rind/P384Multiples.lean` proves the laws by which its sum is
 e/s·G + r/s·Q and that every finite point on the curve has order n
-(`p384_order`). As for P-256, verification settles equal and opposite points
-by cases before s2n-bignum's `p384_montjadd` and `p384_montjmixadd`, whose
+(`p384_order`). Verification settles equal and opposite points by cases
+before s2n-bignum's `p384_montjadd` and `p384_montjmixadd`, whose
 contracts exclude them, and the theorems assume `Drbg`, `Fills`, `Held`, and
 P-384's `Cached`, its keys' caches.
 

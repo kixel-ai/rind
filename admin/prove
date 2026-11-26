@@ -425,6 +425,7 @@ hol_light_proofs=(
     "aarch64 bn_mul_mont.o rind::low::aarch64::mont::bn_mul_mont"
     "aarch64 ct_compare_bytes.bin rind::low::aarch64::cpu::ct_compare_bytes"
     "aarch64 ct_compare_16.bin rind::low::aarch64::cpu::ct_compare_16"
+    "aarch64 p256_montjmixadd.bin rind::low::aarch64::p256_montjmixadd::p256_montjmixadd"
     "x86_64 ct_compare_bytes.bin rind::low::x86_64::cpu::ct_compare_bytes"
     "x86_64 ct_compare_16.bin rind::low::x86_64::cpu::ct_compare_16"
     "armv7 ct_compare_bytes.bin rind::low::arm::cpu::ct_compare_bytes"
@@ -437,6 +438,7 @@ hol_light_proofs=(
     "x86_64 sha256_finish_shaext.bin rind::low::x86_64::sha256::sha256_finish_shaext"
     "x86_64 ecp_nistz256_point_add_affine.o rind::low::x86_64::ecp_nistz256::ecp_nistz256_point_add_affine"
     "x86_64 ecp_nistz256_point_add_affinex.o rind::low::x86_64::ecp_nistz256::ecp_nistz256_point_add_affinex"
+    "x86_64 p256_montjmixadd.bin rind::low::x86_64::p256_montjmixadd::p256_montjmixadd"
     "x86_64 p256_montjmixadd_alt.bin rind::low::x86_64::p256_montjmixadd_alt::p256_montjmixadd_alt"
 )
 # The statics the proofs above read through a register, each `<arch>/<file>`

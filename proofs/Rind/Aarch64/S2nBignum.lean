@@ -206,12 +206,16 @@ axiom p256_montjdouble_spec (p3 p1 : Std.Array U64 12#usize) :
       ∀ P, p256Represents P (tripleNat p1.val) → p256Represents (p256Add P P) (tripleNat r.val) ⦄
 
 /-- `P256_MONTJMIXADD_ALT_SUBROUTINE_CORRECT`,
-https://github.com/awslabs/s2n-bignum/blob/3f01260ff1bd2577abf0117ce45aa008bc243a80/arm/proofs/p256_montjmixadd_alt.ml#L2104 -/
+https://github.com/awslabs/s2n-bignum/blob/3f01260ff1bd2577abf0117ce45aa008bc243a80/arm/proofs/p256_montjmixadd_alt.ml#L2104,
+for unequal points, and rind's `P256_MONTJMIXADD_ALT_SAME_X_SUBROUTINE_CORRECT`,
+in `proofs/hol-light/aarch64/p256_montjmixadd.ml`, for equal or opposite ones,
+whose sum's z is zero. -/
 @[step]
 axiom p256_montjmixadd_spec (p3 p1 : Std.Array U64 12#usize) (p2 : Std.Array U64 8#usize) :
     low.aarch64.p256_montjmixadd.p256_montjmixadd p3 p1 p2 ⦃ r =>
       ∀ P1 P2, p256Represents P1 (tripleNat p1.val) → p256Represents2 P2 (pairNat p2.val) →
-        P1 ≠ P2 → p256Represents (p256Add P1 P2) (tripleNat r.val) ⦄
+        (P1 ≠ P2 → p256Represents (p256Add P1 P2) (tripleNat r.val)) ∧
+        (P1 = P2 ∨ P1 = p256Neg P2 → (tripleNat r.val).2.2 = 0) ⦄
 
 /-! ### P-384 -/
 

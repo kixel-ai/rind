@@ -2830,8 +2830,9 @@ let P256_SAME_X_MONT = prove
         (x2a == i * zp2 * x2) (mod p)
         ==> (x2a == x1) (mod p)`,
   REPEAT GEN_TAC THEN STRIP_TAC THEN
-  TRANS_TAC INT_CONG_TRANS `i * zp2 * x2:int` THEN ASM_REWRITE_TAC[] THEN
-  TRANS_TAC INT_CONG_TRANS `i * (i * z1 pow 2) * x2:int` THEN
+  MATCH_MP_TAC INT_CONG_TRANS THEN EXISTS_TAC `i * zp2 * x2:int` THEN
+  ASM_REWRITE_TAC[] THEN
+  MATCH_MP_TAC INT_CONG_TRANS THEN EXISTS_TAC `i * (i * z1 pow 2) * x2:int` THEN
   ASM_SIMP_TAC[INT_CONG_MUL; INT_CONG_REFL] THEN
   MATCH_MP_TAC(INTEGER_RULE
    `!i r w x1 p:int. (i * r == &1) (mod p) /\ (i * x1 == i * w) (mod p)
@@ -2947,12 +2948,13 @@ let P256_MONTJMIXADD_ALT_SAME_X_CORRECT = time prove
   DISCH_THEN(MP_TAC o MATCH_MP P256_SAME_X) THEN
   REWRITE_TAC[GSYM INT_OF_NUM_MUL; GSYM INT_OF_NUM_POW] THEN DISCH_TAC THEN
   SUBGOAL_THEN `xd = 0` SUBST1_TAC THENL
-   [ALL_TAC; REWRITE_TAC[MULT_CLAUSES; INT_REM_ZERO]] THEN
+   [ALL_TAC; REWRITE_TAC[INT_MUL_LZERO; INT_MUL_RZERO; INT_REM_ZERO]] THEN
   REWRITE_TAC[GSYM INT_OF_NUM_EQ] THEN
   FIRST_X_ASSUM(SUBST1_TAC o check (fun th ->
     is_eq(concl th) && lhs(concl th) = `&xd:int`)) THEN
   REWRITE_TAC[INT_REM_EQ_0] THEN
-  MATCH_MP_TAC(INTEGER_RULE `(a:int == b) (mod p) ==> p divides (a - b)`) THEN
+  MATCH_MP_TAC(INTEGER_RULE
+   `!a b p:int. (a == b) (mod p) ==> p divides (a - b)`) THEN
   MATCH_MP_TAC P256_SAME_X_MONT THEN
   MAP_EVERY EXISTS_TAC
    [`&(inverse_mod p_256 (2 EXP 256)):int`; `(&2:int) pow 256`;
@@ -2966,3 +2968,58 @@ let P256_MONTJMIXADD_ALT_SAME_X_CORRECT = time prove
   MATCH_MP_TAC P256_REM_CONG THEN
   FIRST_X_ASSUM(fun th ->
     MATCH_ACCEPT_TAC(REWRITE_RULE[GSYM INT_OF_NUM_MUL; GSYM INT_OF_NUM_POW] th)));;
+
+let P256_MONTJMIXADD_ALT_SAME_X_NOIBT_SUBROUTINE_CORRECT = time prove
+ (`!p3 p1 t1 p2 t2 pc stackpointer returnaddress.
+        ALL (nonoverlapping (word_sub stackpointer (word 240),240))
+            [(word pc,LENGTH p256_montjmixadd_alt_tmc); (p1,96); (p2,64)] /\
+        ALL (nonoverlapping (p3,96))
+            [(word pc,LENGTH p256_montjmixadd_alt_tmc); (word_sub stackpointer (word 240),248)]
+        ==> ensures x86
+             (\s. bytes_loaded s (word pc) p256_montjmixadd_alt_tmc /\
+                  read RIP s = word pc /\
+                  read RSP s = stackpointer /\
+                  read (memory :> bytes64 stackpointer) s = returnaddress /\
+                  C_ARGUMENTS [p3; p1; p2] s /\
+                  bignum_triple_from_memory (p1,4) s = t1 /\
+                  bignum_pair_from_memory (p2,4) s = t2)
+             (\s. read RIP s = returnaddress /\
+                  read RSP s = word_add stackpointer (word 8) /\
+                  !P1 P2. represents_p256 P1 t1 /\
+                          represents2_p256 P2 t2 /\
+                          (P1 = P2 \/ P1 = group_inv p256_group P2)
+                          ==> bignum_from_memory(word_add p3 (word 64),4) s =
+                              0)
+          (MAYCHANGE [RSP] ,, MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI ,,
+           MAYCHANGE [memory :> bytes(p3,96);
+                      memory :> bytes(word_sub stackpointer (word 240),240)])`,
+  X86_PROMOTE_RETURN_STACK_TAC p256_montjmixadd_alt_tmc
+    P256_MONTJMIXADD_ALT_SAME_X_CORRECT
+    `[RBX; RBP; R12; R13; R14; R15]` 240);;
+
+let P256_MONTJMIXADD_ALT_SAME_X_SUBROUTINE_CORRECT = time prove
+ (`!p3 p1 t1 p2 t2 pc stackpointer returnaddress.
+        ALL (nonoverlapping (word_sub stackpointer (word 240),240))
+            [(word pc,LENGTH p256_montjmixadd_alt_mc); (p1,96); (p2,64)] /\
+        ALL (nonoverlapping (p3,96))
+            [(word pc,LENGTH p256_montjmixadd_alt_mc); (word_sub stackpointer (word 240),248)]
+        ==> ensures x86
+             (\s. bytes_loaded s (word pc) p256_montjmixadd_alt_mc /\
+                  read RIP s = word pc /\
+                  read RSP s = stackpointer /\
+                  read (memory :> bytes64 stackpointer) s = returnaddress /\
+                  C_ARGUMENTS [p3; p1; p2] s /\
+                  bignum_triple_from_memory (p1,4) s = t1 /\
+                  bignum_pair_from_memory (p2,4) s = t2)
+             (\s. read RIP s = returnaddress /\
+                  read RSP s = word_add stackpointer (word 8) /\
+                  !P1 P2. represents_p256 P1 t1 /\
+                          represents2_p256 P2 t2 /\
+                          (P1 = P2 \/ P1 = group_inv p256_group P2)
+                          ==> bignum_from_memory(word_add p3 (word 64),4) s =
+                              0)
+          (MAYCHANGE [RSP] ,, MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI ,,
+           MAYCHANGE [memory :> bytes(p3,96);
+                      memory :> bytes(word_sub stackpointer (word 240),240)])`,
+  MATCH_ACCEPT_TAC(ADD_IBT_RULE
+    P256_MONTJMIXADD_ALT_SAME_X_NOIBT_SUBROUTINE_CORRECT));;
