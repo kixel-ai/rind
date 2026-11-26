@@ -1716,6 +1716,12 @@ extract aarch64 Aarch64 "${hashes[@]}" "${assembly[@]}" \
     --opaque crate::low::aarch64::aes_cbc::aese_chained \
     --include crate::low::generic::mlkem \
     --start-from crate::low::generic::mlkem::mlkem_frombytes \
+    --include crate::low::aarch64::mlkem \
+    --opaque crate::low::aarch64::mlkem::mlkem_compress_d4 \
+    --opaque crate::low::aarch64::mlkem::mlkem_compress_d5 \
+    --opaque crate::low::aarch64::mlkem::mlkem_compress_d10 \
+    --opaque crate::low::aarch64::mlkem::mlkem_compress_d11 \
+    --opaque crate::low::aarch64::mlkem::mlkem_rej_uniform_vartime \
     --start-from crate::low::aarch64::mlkem768_vg::Encaps::check_ek \
     --start-from crate::low::aarch64::mlkem768_vg::Encaps::encaps \
     --include crate::low::aarch64::pbkdf2_vg \
@@ -1817,6 +1823,54 @@ sed -i '/-- BEGIN aead/,/-- END aead/d' proofs/Rind/Portable/Kdf/FunsExternal.le
 for file in QuicDispatch ChaCha20; do
     sed 's/X86_64/Armv7/g; s/x86_64/armv7/g' "proofs/Rind/X86_64/$file.lean" >"proofs/Rind/Armv7/$file.lean"
 done
+
+# The elements of the HOL Light list `$2` that `$1` defines, as Lean writes
+# them: `-- &1600` is -1600 and `&630` is 630.
+hol_list() {
+    local list
+    list=$(awk -v n="$2" '$0 ~ "^let " n " = " { on = 1 } on { printf "%s ", $0 } on && /`;;/ { exit }' "$1" |
+        sed -E 's/^[^`]*`//; s/^[^[]*\[//; s/\].*$//; s/-- &/-/g; s/&//g; s/;/,/g; s/[[:space:]]+/ /g; s/^ //; s/ $//')
+    if [[ -z $list ]]; then
+        echo "admin/prove: no list $2 in $1" >&2
+        return 1
+    fi
+    echo "$list"
+}
+
+# The tables s2n-bignum's aarch64 ML-KEM theorems assume, from its HOL Light
+# sources, so that no hand copy of them is trusted:
+# `proofs/Rind/Aarch64/MlKemRoutines.lean` checks rind's against them.
+{
+    echo "-- Written by admin/prove from thirdparty/s2n-bignum/arm/proofs: the tables"
+    echo "-- s2n-bignum's ML-KEM theorems assume. Do not edit."
+    echo "namespace rind.aarch64.MlKemTables"
+    for row in \
+        "mlkem_ntt ntt_zetas_layer01234 nttZetasLayer01234 Int" \
+        "mlkem_ntt ntt_zetas_layer56 nttZetasLayer56 Int" \
+        "mlkem_intt intt_zetas_layer01234 inttZetasLayer01234 Int" \
+        "mlkem_intt intt_zetas_layer56 inttZetasLayer56 Int" \
+        "mlkem_mulcache_compute mulcache_zetas mulcacheZetas Int" \
+        "mlkem_mulcache_compute mulcache_zetas_twisted mulcacheZetasTwisted Int"; do
+        read -r file name lean type <<<"$row"
+        echo "/-- \`$name\`, from \`arm/proofs/$file.ml\`. -/"
+        echo "def $lean : List $type := [$(hol_list "thirdparty/s2n-bignum/arm/proofs/$file.ml" "$name")]"
+    done
+    echo "end rind.aarch64.MlKemTables"
+} >proofs/Rind/Aarch64/MlKemTables.lean
+# The rejection sampler's 4096-byte table is too long a literal for Lean to
+# elaborate, so the translation leaves its wrapper opaque, and this checks the
+# table it passes is s2n-bignum's, each -1 the byte 255.
+rej_table() {
+    awk '/MLKEM_REJ_UNIFORM_TABLE: \[i8; 4096\] = \[/ { on = 1; next } on && /^\];/ { exit }
+        on { sub(/\/\/.*/, ""); printf "%s", $0 }' "$1" |
+        tr -d ' ' | tr ',' '\n' | sed '/^$/d; s/^-1$/255/'
+}
+if ! diff <(rej_table rind/src/low/aarch64/mlkem.rs) \
+    <(hol_list thirdparty/s2n-bignum/arm/proofs/mlkem_rej_uniform_VARIABLE_TIME.ml mlkem_rej_uniform_table |
+        tr -d ' ' | tr ',' '\n') >/dev/null; then
+    echo "admin/prove: rind's aarch64 rejection table is not s2n-bignum's" >&2
+    exit 1
+fi
 
 [ "${PROVE_TRANSLATE_ONLY:-}" ] && exit 0
 # Each hand model of a CPU intrinsic, a `core.core_arch` definition but its

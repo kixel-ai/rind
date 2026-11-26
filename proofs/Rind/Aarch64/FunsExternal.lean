@@ -442,19 +442,26 @@ def low.aarch64.aes_cbc.aese_chained (y b : core.core_arch.arm_shared.neon.uint8
     Result core.core_arch.arm_shared.neon.uint8x16_t :=
   core.core_arch.arm_shared.neon.generated.vaeseq_u8 y b
 
-/-! s2n-bignum's ML-KEM polynomial routines: the NTTs, mulcache, and
-sampler behind wrappers that pass their tables, the rest called directly,
-and mlkem-native's NEON ciphertext compression. -/
+/-! s2n-bignum's ML-KEM polynomial routines, whose contracts
+`Rind.Aarch64.MlKemRoutines` states: the NTTs, mulcache, and sampler take the
+tables the translated wrappers in `low::aarch64::mlkem` pass, and the rest
+are called directly. mlkem-native's NEON ciphertext compression follows,
+behind wrappers that pass its table themselves. -/
 
-opaque low.aarch64.mlkem.mlkem_ntt
-  : Array Std.I16 256#usize → Result (Array Std.I16 256#usize)
+opaque low.aarch64.mlkem_ntt.mlkem_ntt
+  : Array Std.I16 256#usize → Array Std.I16 80#usize → Array Std.I16 384#usize →
+    Result (Array Std.I16 256#usize)
 
-opaque low.aarch64.mlkem.mlkem_intt
-  : Array Std.I16 256#usize → Result (Array Std.I16 256#usize)
+opaque low.aarch64.mlkem_intt.mlkem_intt
+  : Array Std.I16 256#usize → Array Std.I16 80#usize → Array Std.I16 384#usize →
+    Result (Array Std.I16 256#usize)
 
-opaque low.aarch64.mlkem.mlkem_mulcache_compute
-  : Array Std.I16 128#usize → Array Std.I16 256#usize → Result (Array Std.I16 128#usize)
+opaque low.aarch64.mlkem_mulcache_compute.mlkem_mulcache_compute
+  : Array Std.I16 128#usize → Array Std.I16 256#usize → Array Std.I16 128#usize →
+    Array Std.I16 128#usize → Result (Array Std.I16 128#usize)
 
+/-- The sampler behind its wrapper, which passes rind's table, too long a
+literal for Lean to elaborate: `admin/prove` checks its text is s2n-bignum's. -/
 opaque low.aarch64.mlkem.mlkem_rej_uniform_vartime
   : Array Std.I16 256#usize → Slice Std.U8 → Result (Std.U64 × (Array Std.I16 256#usize))
 
