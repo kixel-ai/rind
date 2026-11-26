@@ -18,7 +18,8 @@ never measured. DIR (default `.tmp/bench-report/<commit>`) gets one
 `<host>.json` per host, with its CPU, OS, toolchain, and library versions.
 
 `weekly` saves the latest weekly `bench` run's results on main, with gh, as
-the report's CPU tiers. `render` writes BENCHMARKS.md and its SVGs, among
+the report's CPU tiers, and that run's measure of rind's bytes in
+admin/build-cost-fixtures' programs. `render` writes BENCHMARKS.md and its SVGs, among
 them the overview the README shows, and benchmarks/report.json, the same
 report as data for the site's benchmarks page, from benchmarks/data, the verified code in
 benchmarks/verified.toml, and the decision on each gap in
@@ -937,6 +938,9 @@ NAMES = {
     },
 }
 
+# Where `weekly` saves the run's bytes of rind, from admin/binary-size.
+SIZES = os.path.join(DATA_DIR, "binary-size.json")
+
 # Each build of admin/build-cost, as the report names it.
 BUILDS = {
     "rind": "rind",
@@ -952,6 +956,8 @@ BUILDS = {
     "rustls-aws-lc-rs": "rustls + aws-lc-rs",
     "rustls-ring": "rustls + ring",
 }
+# The admin/build-cost build of each program admin/binary-size measures.
+SIZED = {"rind": "rind", "rustls": "rustls-rind"}
 
 # The libraries the README compares rind with, by library, each with the
 # page a reader goes to.
@@ -2213,7 +2219,25 @@ def methodology(hosts, shown):
     return md
 
 
-def report(hosts, tiers, verified, gaps):
+def size_table(sizes):
+    """rind's bytes in each program, from the weekly run that measured them."""
+    return [
+        "### rind's own bytes",
+        "",
+        f"What rind and rind-rustls add to the rind and rustls + rind-rustls programs, by `admin/binary-size` in "
+        f"the weekly `bench` workflow's [run]({sizes['url']}) of {sizes['date'][:10]} at "
+        f"{commit_link(sizes['commit'])}, with {sizes['rustc']} for {sizes['target']}: the bytes of their "
+        "functions and tables the linker kept, in a release build with one codegen unit. A pull request's "
+        "check reports its change to them.",
+        "",
+        "| Build | rind's bytes |",
+        "|---|---:|",
+        *(f"| {BUILDS[SIZED[f]]} | {n:,} |" for f, n in sizes["bytes"].items()),
+        "",
+    ]
+
+
+def report(hosts, tiers, verified, gaps, sizes=None):
     """BENCHMARKS.md, its SVGs, the site's data, and the README with its
     comparison, by path."""
     files = {}
@@ -2315,6 +2339,7 @@ def report(hosts, tiers, verified, gaps):
             "its size; the vendored build is the static figure. verified-garbage has no P-256 key generation, so "
             "its binary imports a random scalar instead, and no rustls provider, so it has no rustls build.",
             "",
+            *(size_table(sizes) if sizes else []),
         ]
     for name in shown:
         cost = hosts[name].get("build_cost")
@@ -2407,7 +2432,7 @@ def report(hosts, tiers, verified, gaps):
         "shares it with other gated work, so its numbers are noisier than the weekly",
         "`bench` workflow's runners, which give the clean ones; it skips any host that is still busy, and writes their results and the hosts' details as JSON under",
         "`.tmp/bench-report/`. `admin/bench-report weekly` saves the latest weekly",
-        "`bench` run's results, and `admin/bench-report render --from DIR` copies a",
+        "`bench` run's results and binary sizes, and `admin/bench-report render --from DIR` copies a",
         "collection's measured hosts into `benchmarks/data/` and writes",
         "`BENCHMARKS.md`, its SVGs, which the README shows too, the README's comparison table, and",
         "`benchmarks/verified.toml`, and",
@@ -2447,6 +2472,10 @@ def render(args):
         with open(tiers_path) as f:
             tiers = json.load(f)
     verified = load_verified()
+    sizes = None
+    if os.path.exists(SIZES):
+        with open(SIZES) as f:
+            sizes = json.load(f)
     generated = sorted(glob.glob(os.path.join(REPORT_DIR, "*.svg")))
     if os.path.exists(REPORT):
         generated.append(REPORT)
@@ -2456,7 +2485,7 @@ def render(args):
         if not args.check:
             fail("no results in benchmarks/data: run `collect`, then `render --from DIR`")
         return
-    files = report(hosts, tiers, verified, load_gaps(hosts, tiers))
+    files = report(hosts, tiers, verified, load_gaps(hosts, tiers), sizes)
     if args.check:
         stale = [p for p in files if not os.path.exists(p) or open(p).read() != files[p]]
         stale += [p for p in generated if p not in files]
@@ -2540,6 +2569,34 @@ def gate(args):
     print(f"Every gap over {SLOWER}× has a decision in benchmarks/gaps.toml.")
 
 
+def save_sizes(run, scratch):
+    """Saves the bytes of rind `run` measured, or drops the last run's, so
+    the report never pairs one run's tiers with another's sizes."""
+    got = subprocess.run(
+        ["gh", "run", "download", str(run["databaseId"]), "--repo", REPO, "--name", "binary-size", "--dir", scratch],
+        capture_output=True,
+    )
+    path = os.path.join(scratch, "binary-size.json")
+    if got.returncode != 0 or not os.path.exists(path):
+        print(f"bench-report: run {run['databaseId']} measured no binary sizes", file=sys.stderr)
+        if os.path.exists(SIZES):
+            os.remove(SIZES)
+        return
+    with open(path) as f:
+        measured = json.load(f)
+    shutil.rmtree(scratch)
+    if set(measured["bytes"]) != set(SIZED):
+        fail(f"run {run['databaseId']} measured {', '.join(measured['bytes'])}, not {', '.join(SIZED)}")
+    with open(SIZES, "w") as f:
+        json.dump(
+            {"schema": 1, "run": run["databaseId"], "url": run["url"], "commit": run["headSha"], "date": run["createdAt"]}
+            | {k: measured[k] for k in ("target", "rustc", "bytes")},
+            f,
+            indent=1,
+        )
+        f.write("\n")
+
+
 def weekly(args):
     """Saves the latest weekly bench's results on main as the CPU tiers,
     from a run that timed every tier, since the report reads an empty cell as
@@ -2587,6 +2644,7 @@ def weekly(args):
             )
             f.write("\n")
         shutil.rmtree(scratch)
+        save_sizes(run, scratch)
         print(f"bench-report: tiers from run {run['databaseId']}", file=sys.stderr)
         return
     fail("no completed weekly bench run on main timed every tier" + "".join(f"; run {r}" for r in incomplete))
