@@ -52,6 +52,7 @@ on:
       - admin/upstream
       - admin/import-dalek
       - admin/dalek-closure
+      - admin/import-mlkem-native
       - admin/import-vg
       - admin/import-vg-models
       - admin/vg-bytes

@@ -30,7 +30,7 @@ PINS = [
     ("OpenSSL", "copied code", "admin/import-openssl", REV),
     ("HACL\\*", "Vale's x86_64 AES-GCM", "admin/import-hacl", REV),
     ("pyca/verified-garbage", "copied code and the Lean ISA models its proofs rest on", "admin/import-vg", REV),
-    ("mlkem-native", "aarch64 ML-KEM ciphertext compression", "admin/import-mlkem-native", REV),
+    ("mlkem-native", "aarch64 ML-KEM ciphertext compression, and the HOL Light proofs of it and of x86_64's", "admin/import-mlkem-native", REV),
     (
         "s2n-bignum",
         "assembly and the HOL Light proofs of it",
