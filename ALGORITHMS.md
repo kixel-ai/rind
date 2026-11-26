@@ -666,8 +666,12 @@ row of the base point table, at width 6 for P256, as its aarch64 row holds 32
 multiples, so every addition is a mixed one. A key's second verification
 also builds 17Q to 31Q, so that `u2`'s digits widen to 6 from then on: a key
 verified once never pays for them. s2n-bignum's point
-additions are proven only for unequal points, so each addition first
-compares x's and settles equal or opposite points by cases. The portable
+additions are proven only for unequal points, so P-384's and P-521's first
+compare x's and settle equal or opposite points by cases. P-256's mixed
+addition is also proven, by rind's own HOL Light lemma, to leave z zero for
+equal or opposite points, as rind's own formula over fiat-crypto's field on
+armv7 and the portable backend does by construction, so P-256 adds first and compares y's only when z is
+zero. The portable
 backend's P521 runs the whole chain in fiat-crypto's limbs, rather than
 converting each coordinate to and from words at every point routine, and
 reads the x's difference from the addition's own first steps. Each curve

@@ -86,7 +86,7 @@ reason = "`kixtop`'s data predates rind running verified-garbage's `vg_sha512_co
 [[gap]]
 operations = ["p256-ecdsa-verify/*"]
 on = ["no ADX"]
-quest = "/quest/m2/speed/p256-one-shot-verify.md"
+reason = "Not yet re-measured: the weekly data predates verification adding first and checking for equal points only at a zero z ([kixel-ai/rind#1074](https://github.com/kixel-ai/rind/pull/1074)), after which this row took 1.075× aws-lc-rs's time on the tier's Xeon 6975P-C, against 1.15× before; a Core Ultra 7 270K with ADX denied measured 1.12× before and after. What remains is setup for a key used once, the inversion and batch conversion that make P to 15P affine, which aws-lc-rs skips. Keeping them Jacobian, or building only P to 7P, measured no faster on x86_64, so the setup stays."
 
 [[gap]]
 operations = ["aes192-gcm/*/key"]
