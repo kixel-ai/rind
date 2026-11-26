@@ -265,7 +265,8 @@ if [ "${1:-}" = --expand-diff-self-test ]; then
     fi
     rm -f "$missing"
     # The shell must pass cargo-mutants the rewritten diff, and leave the
-    # caller's file alone. A fake cargo records the arguments.
+    # caller's file alone. A fake cargo records the arguments. Each run names
+    # x86_64's campaign, which lists on any host, macOS's included.
     bindir=$(mktemp -d)
     argsfile=$(mktemp)
     sample=$(mktemp)
@@ -291,7 +292,7 @@ diff --git a/rind/src/low/generic/aes_nohw.rs b/rind/src/low/generic/aes_nohw.rs
  context
 +added
 EOF
-    PATH="$bindir:$PATH" "$0" --in-diff "$sample" --list
+    PATH="$bindir:$PATH" "$0" --target x86_64-unknown-linux-gnu --in-diff "$sample" --list
     if grep -q 'portable/\.\./generic/aes_nohw.rs' "$sample"; then
         echo "admin/mutants: --in-diff rewrote the caller's diff" >&2
         exit 1
@@ -302,12 +303,12 @@ EOF
     fi
     # The other ways to name the diff, and a non-UTF-8 byte in another file.
     printf 'diff --git a/x.txt b/x.txt\n--- a/x.txt\n+++ b/x.txt\n@@ -1 +1 @@\n-\xff\n+\xfe\n' >>"$sample"
-    PATH="$bindir:$PATH" "$0" --list --in-diff /dev/stdin <"$sample"
+    PATH="$bindir:$PATH" "$0" --target x86_64-unknown-linux-gnu --list --in-diff /dev/stdin <"$sample"
     grep -q 'portable/\.\./generic/aes_nohw.rs' "$argsfile" ||
         { echo "admin/mutants: --in-diff /dev/stdin lost the diff" >&2; exit 1; }
     grep -qa $'^+\xfe$' "$argsfile" ||
         { echo "admin/mutants: a non-UTF-8 byte did not pass through" >&2; exit 1; }
-    PATH="$bindir:$PATH" "$0" --list "-D=$sample"
+    PATH="$bindir:$PATH" "$0" --target x86_64-unknown-linux-gnu --list "-D=$sample"
     grep -q 'portable/\.\./generic/aes_nohw.rs' "$argsfile" ||
         { echo "admin/mutants: -D=FILE lost the diff" >&2; exit 1; }
     rm -rf "$bindir" "$argsfile" "$sample"
