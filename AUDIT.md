@@ -34,6 +34,9 @@ needs. A backend requires only what its target enables at compile time, so
 rind runs on every CPU its target does, and each other feature only picks a
 faster path.
 
+[AUDIT-SCOPE.md](AUDIT-SCOPE.md) scopes a phased third-party audit of this
+code.
+
 ## Threat model
 
 rind assumes an attacker who:
@@ -68,8 +71,11 @@ Outside the model:
   Apple asks, so no instruction after it runs speculatively without DIT;
   rind sets DIT on other aarch64 cores too, where Arm asks for no barrier.
 - A compromised toolchain, build machine, or dependency. `cargo deny`
-  checks crates against RustSec's advisories, licenses, and sources; nothing
-  checks a release's build is reproducible.
+  checks crates against RustSec's advisories, licenses, and sources, and
+  `cargo vet` holds the published crate's dependencies to audits; a release's
+  prebuilt libraries and wheels are built twice and must match, but on one
+  runner with one toolchain, which a compromise would reach both times
+  (see [SECURITY.md](SECURITY.md#supply-chain)).
 - A compiler or flags other than CI's: constant time is checked on the
   builds CI makes for Linux, so a user's own toolchain, a non-Linux target,
   or a wasm engine may emit code no check has seen.
@@ -107,6 +113,7 @@ The pins, as `admin/audit` renders them from the files that hold them, so
 | OpenSSL | `2f4e3a5fec05` | `admin/import-openssl` | copied code |
 | HACL\* | `f557259007db` | `admin/import-hacl` | Vale's x86_64 AES-GCM |
 | pyca/verified-garbage | `0aa40d6c21fd` | `admin/import-vg` | copied code and the Lean ISA models its proofs rest on |
+| mlkem-native | `58721ebde4b6` | `admin/import-mlkem-native` | aarch64 ML-KEM ciphertext compression |
 | s2n-bignum | `3f01260ff1bd` | `thirdparty/s2n-bignum/RIND.md` | assembly and the HOL Light proofs of it |
 | aws-lc | `c21d40da4bbe` | `admin/prove-bytes` | the routines aws-lc-verification's SHA-384/512 proofs are about |
 | ACVP-Server | `975de31eb83d` | `admin/sync-acvp` | test vectors |
@@ -142,9 +149,9 @@ only for crates.
 How copied code is regenerated and checked:
 
 - `admin/import-aws-lc`, `admin/import-boringssl`, `admin/import-openssl`,
-  `admin/import-hacl`, and `admin/import-vg` fetch their upstream at its
-  `REV` and write its assembly under `rind/src/low` as Rust naked functions
-  or `global_asm!`.
+  `admin/import-hacl`, `admin/import-vg`, and `admin/import-mlkem-native`
+  fetch their upstream at its `REV` and write its assembly under
+  `rind/src/low` as Rust naked functions or `global_asm!`.
 - `admin/parse-asm` transliterates s2n-bignum's assembly, from rind's fork
   in `thirdparty/s2n-bignum`, into Rust `asm!`. The fork's
   [RIND.md](thirdparty/s2n-bignum/RIND.md) lists every file that differs
@@ -293,8 +300,7 @@ Hand-written arithmetic no proof covers, by where it came from:
   [TESTING.md](TESTING.md#vector-suites) describes.
 - **Ports to Rust**: mlkem-native's and mldsa-native's C, outside their CBMC
   proofs; curve25519-dalek's AVX2 backend, for Ed25519 verification on
-  x86_64 without ADX; aws-lc's constant-time SSE2 AES and integer GHASH; and
-  aws-lc's C SHA-256 and SHA-384/512, the portable backend's.
+  x86_64 without ADX; and aws-lc's constant-time SSE2 AES and integer GHASH.
   `low::generic::mldsa_poly::backend_matches_port` checks the ML-DSA port
   against the AVX2 and Neon routines.
 - **curve25519-dalek's serial backend**, X25519, Ed25519, and ristretto255

@@ -910,20 +910,18 @@ on no axiom:
   and `cbd3_field` show carry nothing from one field into the next, by
   arithmetic rather than `bv_decide`.
 
-On aarch64, where s2n-bignum has no routine for them, rind runs
-`low::generic::mlkem`'s Rust for ciphertext compression and 12-bit
-unpacking, which `Rind/Aarch64/MlKemGeneric.lean` proves, on no axiom:
-
-- `compress_spec`, and `mlkem_compress_d4_spec` to `mlkem_compress_d11_spec`
-  for its wrappers: `compress::<D, L>` writes FIPS 203's
-  `ByteEncode_D(Compress_D(f))` for coefficients in `[0, q)`. Its multiply
-  and shift is the rounded quotient only on that range, which
-  `compress_exact_4` and its siblings check value by value, as the Rust test
-  `compress_is_exact` does;
-- `mlkem_frombytes_spec`: `mlkem_frombytes` writes each raw 12-bit field, in
-  `[0, 4096)`, so each coefficient is `ByteDecode_12`'s modulo `q` but not
-  yet reduced (`Holds 0 4095`); the `mlkem_reduce` after it, whose axiom is
-  the quest's, makes it canonical.
+On aarch64, where s2n-bignum has no routine for it, rind runs
+`low::generic::mlkem`'s Rust for 12-bit unpacking, which
+`Rind/Aarch64/MlKemGeneric.lean` proves, on no axiom: `mlkem_frombytes`
+writes each raw 12-bit field, in `[0, 4096)`, so each coefficient is
+`ByteDecode_12`'s modulo `q` but not yet reduced (`Holds 0 4095`); the
+`mlkem_reduce` after it, whose axiom is the quest's, makes it canonical.
+Ciphertext compression there is mlkem-native's NEON assembly, which HOL Light
+proves, though `admin/prove bytes` does not yet check rind's build against
+those proofs, as for x86_64's AVX2 compression
+([quest](/quest/m4/verified/mlkem-compress-bytes.md)); its bridge to
+`Compress` is the construction quest's, as for x86_64's AVX2
+compression.
 
 `Rind/MlKemCoding.lean` states what they need of the spec, with no Rust:
 `ByteEncode_bit`, `ByteDecode_get`, and `SamplePolyCBD_get` give each bit or
@@ -1419,20 +1417,29 @@ statics are built wholly by quoted code.
 
 `admin/prove` translates the portable backend too, under `--cfg
 rind_portable`, the cfg CI's portable jobs build with, on x86_64, into
-`Rind/Portable/`: the hash, HMAC, KDF, and header-protection paths, and the
-Keccak-f above, alone. None of that Rust picks by pointer width or CPU, and Aeneas's `usize` is either
-width, so the theorems hold on every target the backend builds for. The
+`Rind/Portable/`: the hash, HMAC, KDF, and header-protection paths, down to
+the SHA-2 block functions, and the Keccak-f above, alone. None of that Rust picks by pointer width or CPU, and Aeneas's `usize` is either
+width, so the theorems hold on every target the backend builds for, but
+for two bodies the extraction leaves out: ESP-IDF Xtensa's SHA-256,
+`low/portable/sha256_iram.rs`, and 32-bit microcontrollers' SHA-512,
+`low::generic::sha512_rolled`, which
+[the rolled-SHA-2 quest](../quest/m4/verified/rolled-sha2-esp.md) covers. The
 x86_64 proofs of SHA-256's padding, the SHA-512 family, HMAC's keyed states,
 the digest, HMAC, HKDF, and PBKDF2 APIs, and ChaCha20 header protection are
 written for it with the target renamed, as for aarch64, over what differs:
 
-- `Rind/Portable/Sha512Entry.lean`: `RunsSha512`, which assumes the entry
-  checks, as no dispatch picks a routine, and the contract of SHA-512's block
-  function, `low::generic::sha512`, aws-lc's C in Rust, which no proof covers
-  yet, in the form the SHA-512 proof takes it.
-- `Rind/Portable/ShaBlocks.lean`: `Sha256Blocks` and `Sha1Blocks`, as on the
-  other targets the entry checks and the contracts of SHA-256's and SHA-1's
-  block functions, `low::generic::sha256`, aws-lc's C in Rust, and
+- `Rind/Portable/Sha256Compress.lean` and `Rind/Portable/Sha512Compress.lean`:
+  SHA-256's and SHA-512's block functions, `low::generic::sha256` and
+  `low::generic::sha512`, aws-lc's C in Rust, compute FIPS 180-4's
+  compression of each whole block in turn. Each round and schedule step is a
+  function the unrolled passes call with the working variables renamed, so
+  one lemma covers every round, and `Window` says which pass's word each slot
+  of the sixteen-word schedule window holds.
+- `Rind/Portable/Sha512Entry.lean`: `RunsSha512`, which assumes only the
+  entry checks, as no dispatch picks a routine, and states SHA-512's block
+  function's theorem in the form the SHA-512 proof takes it.
+- `Rind/Portable/ShaBlocks.lean`: `Sha256Blocks` and `Sha1Blocks`, the entry
+  checks, and for SHA-1 the contract of its block function,
   `low::generic::sha1`, which no proof covers here.
 - `Rind/Portable/Compare.lean` and `Rind/Portable/CtEqual.lean`: the
   constant-time compares behind `hmac::verify` and `pbkdf2::Secret::verify`,
@@ -1464,9 +1471,6 @@ these quests prove its code, whose proofs then run on this translation:
   `Rind/X86_64/RsaDispatch.lean` proves over the Montgomery products as
   hypotheses, and [signing](/quest/m4/verified/rsa-sign.md), both over
   `low/generic/mont.rs`'s products, on 64-bit limbs here;
-- SHA-256 and SHA-512: `low::generic::sha256` and `low::generic::sha512`,
-  the block functions `Sha256Blocks` and `RunsSha512` stand for here, in
-  [the portable SHA-2 quest](/quest/m4/verified/portable-sha2-lean.md);
 - SHA-1: `low::generic::sha1`, the block function `Sha1Blocks` stands for
   here, in [SHA-1's quest](/quest/m5/verified/sha1.md);
 - MD5: [its own quest](/quest/m5/verified/md5.md).
@@ -1585,8 +1589,8 @@ proof after those.
   coding, compression, and CBD sampling bit by bit and coefficient by
   coefficient; `Rind/X86_64/MlKemCoding.lean`, on both targets: that rind's
   decompression, message coding, and CBD sampling are FIPS 203's;
-  `Rind/Aarch64/MlKemGeneric.lean`: that aarch64's Rust compression and
-  12-bit unpacking are.
+  `Rind/Aarch64/MlKemGeneric.lean`: that aarch64's Rust 12-bit
+  unpacking is.
 - `Rind/<Arch>/ShaBlocks.lean`: SHA-1 and SHA-256's block functions on each
   target, SHA-1's padded last blocks, and SHA-256's padded last blocks and
   finish; `Rind/Aarch64/Sha256Hw.lean`, the axiom for aarch64's routine with
@@ -1600,7 +1604,7 @@ proof after those.
 - `admin/prove` copies the other `Rind/X86_64/` models and proofs to
   `Rind/Aarch64/` with the target renamed, and the hash, KDF, and
   header-protection ones to `Rind/Portable/`.
-- `Rind/Portable/{TypesExternal,FunsExternal,Compare,Sha512Entry,ShaBlocks,CtEqual}.lean`:
+- `Rind/Portable/{TypesExternal,FunsExternal,Compare,Sha256Compress,Sha512Compress,Sha512Entry,ShaBlocks,CtEqual}.lean`:
   the portable backend's opaque items, its compares' hand model, and its own
   proofs, which [the portable backend](#the-portable-backend) describes.
 - `Rind/NistGroup.lean`: that the NIST curves' `nist.add` is the addition of
