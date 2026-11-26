@@ -571,11 +571,13 @@ step() {
             ;;
         check:scope)
             # Under the wrapper and warnings `rs` builds rind's tests with,
-            # so the two share one build.
-            local RUSTC_WORKSPACE_WRAPPER CARGO_BUILD_WARNINGS=deny
+            # so the two share one build, and timed in CI as `rs` is, since
+            # whichever lane gets there first compiles the tests.
+            local RUSTC_WORKSPACE_WRAPPER CARGO_BUILD_WARNINGS=deny timings=()
             RUSTC_WORKSPACE_WRAPPER=$(command -v clippy-driver)
             export RUSTC_WORKSPACE_WRAPPER CARGO_BUILD_WARNINGS
-            run python3 admin/test-scope check
+            ! github || timings=(--timings)
+            run python3 admin/test-scope check "${timings[@]}"
             ;;
         fix:rs)
             mapfile -t packages < <(sh/select.sh "$changed" "$all")
