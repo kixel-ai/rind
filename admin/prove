@@ -2050,12 +2050,13 @@ for file in QuicDispatch DigestAlgorithm DigestDispatch Sha512 ChaCha20 Blockwis
 done
 sed -i '/Rind.Portable.AeadDispatch/d' proofs/Rind/Portable/Kdf/TypesExternal.lean
 sed -i '/-- BEGIN aead/,/-- END aead/d' proofs/Rind/Portable/Kdf/FunsExternal.lean
-# armv7's header-protection and agreement models and ChaCha20 and X25519
-# proofs are x86_64's with the target renamed. X25519's are over
+# armv7's header-protection, agreement, and compares' models and ChaCha20 and
+# X25519 proofs are x86_64's with the target renamed. X25519's are over
 # `Rind.Armv7.Curve25519`'s dispatch where x86_64's are over s2n-bignum's:
-# the CPU check that picks the routine is NEON's.
-for file in QuicDispatch Dispatch P256Dispatch P384Dispatch ChaCha20 X25519Bytes X25519; do
-    sed 's/X86_64/Armv7/g; s/x86_64/armv7/g; s/Rind\.Armv7\.S2nBignum/Rind.Armv7.Curve25519/; s/low\.armv7\.curve25519_ifma\.Curve25519Ifma/low.arm.cpu.HaveNeon/g; s/CurveIfma/DalekCpu/g' \
+# the CPU check that picks the routine is NEON's. armv7's compares live in
+# `low::arm::cpu`.
+for file in QuicDispatch Dispatch P256Dispatch P384Dispatch ChaCha20 CtEqual X25519Bytes X25519; do
+    sed 's/X86_64/Armv7/g; s/x86_64/armv7/g; s/low\.armv7\.cpu/low.arm.cpu/g; s/Rind\.Armv7\.S2nBignum/Rind.Armv7.Curve25519/; s/low\.armv7\.curve25519_ifma\.Curve25519Ifma/low.arm.cpu.HaveNeon/g; s/CurveIfma/DalekCpu/g' \
         "proofs/Rind/X86_64/$file.lean" >"proofs/Rind/Armv7/$file.lean"
 done
 

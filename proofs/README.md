@@ -785,10 +785,32 @@ compact form and the transpose, each at every bit position by `bv_decide`, as
 against the FIPS 197 functions Vale's spec names: `sbox` and `mixColumns` are
 irreducible definitions rather than opaque ones, so these proofs alone unfold
 them, through `sbox_eq` and `mixColumns_eq`, and `Rind/AesSbox.lean` has the
-kernel check the S-box table against a decision tree on its input's bits. No
-theorem yet states that `ctr32` is counter mode, or anything of GHASH and the
-GCM above them, so [armv7's AES-GCM](/quest/m5/verified-armv7/prove.md) has
-no ✓.
+kernel check the S-box table against a decision tree on its input's bits.
+
+AES-GCM on that tier, `mid/portable/aes_gcm.rs`'s `Portable`, is proven from
+the key to the API. `Rind/Armv7/AesNohwCtr.lean` proves that `ctr32` XORs in
+GCTR's keystream from the counter block it is handed (`ctr32_spec`,
+`aes_key_ctr32_spec`), and `Rind/Armv7/GhashNohw.lean` that `ghash_nohw.rs`'s
+32-bit Karatsuba multiply and reduction fold blocks into GHASH, against
+`Rind/Gf128.lean`. `Rind/Armv7/AesGcm.lean` proves `Parts::tagged`, which
+encrypt and decrypt share, for any `Parts` whose table hashes, whose
+`encrypt_block` is AES, and whose `ctr` is GCTR (`PartsFor`, `tagged_spec`),
+so the NEON and crypto-extension compositions need only those three, and
+`portable_partsFor` that `Portable` is one. Under `RunsPortable`, that the
+entry guard passes and the CPU checks find neither the crypto extension nor
+NEON, `aes_gcm_new_spec` keys `Portable` with the key's words, and
+`aes_gcm_encrypt_spec`, `aes_gcm_decrypt_spec`, `aes_gcm_encrypt_any_spec`,
+and `aes_gcm_decrypt_any_spec` state `AesGcm`'s API against Vale's
+`gcm_encrypt_LE` and `gcm_decrypt_LE`, as x86_64's do. The tag check rests on
+`Rind/Armv7/CtEqual.lean`, which `admin/prove` writes from x86_64's, and its
+restatement of the HOL Light proofs of armv7's compares; `#bv_axioms` in
+`Rind/Armv7/Axioms.lean` admits only those and `bv_decide`'s. The ✓ waits for
+the AEAD API above `AesGcm`, which the benchmarks call,
+[armv7's AES-GCM AEAD API](/quest/m5/verified-armv7/aead.md), and for the
+other armv7 tiers, since both armv7 benchmark rows have NEON and an armv7
+entry in `benchmarks/verified.toml` names no CPU features:
+[armv7's NEON AES and GHASH](/quest/m5/verified-armv7/neon-aes.md) and
+[armv7's assembly](/quest/m5/verified-armv7/assembly.md).
 
 Theorems that run an entry guard assume `Runs`: rind's CPU-feature checks
 pass, which no input affects. `Rind/<Arch>/P256Table.lean` proves that each
@@ -1709,9 +1731,8 @@ these quests prove its code, whose proofs then run on this translation:
 - ChaCha20-Poly1305:
   [Graviola's Poly1305 and the separate-pass glue](/quest/m5/verified/chacha20-poly1305-portable.md);
 - AES and AES-GCM: rind's `aes_nohw.c` and `gcm_nohw.c` ports, in
-  [armv7's Rust proofs](/quest/m5/verified-armv7/prove.md) and
-  [x86_64 without AES-NI](/quest/m5/verified/x86-no-aesni.md), which share one
-  source file across word widths;
+  [x86_64 without AES-NI](/quest/m5/verified/x86-no-aesni.md), whose source
+  `Rind/Armv7/` proves in 32-bit words;
 - X25519: [its own quest](/quest/m5/verified/x25519-portable.md), over armv7's
   proof and its dalek axioms;
 - Ed25519: curve25519-dalek's serial backend under rind's glue, in
