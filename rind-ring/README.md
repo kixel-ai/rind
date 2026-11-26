@@ -80,7 +80,7 @@ too, fails to build:
 rind-ring builds for `wasm32-wasip2`, where CI runs its tests under wasmtime,
 and for `wasm32-unknown-unknown`, the browser, where its
 `wasm32_unknown_unknown_js` feature takes the JavaScript random source, as
-ring's does. Neither needs the C compiler targeting wasm that ring needs.
+ring's does, and CI runs ring's own tests in Node. Neither needs the C compiler targeting wasm that ring needs.
 rind's constant-time checks do not cover wasm; [PLATFORMS.md](https://github.com/kixel-ai/rind/blob/main/PLATFORMS.md) says why.
 
 License: Apache-2.0 OR ISC OR MIT-0

@@ -72,6 +72,10 @@ fn blind_rsa() {
         include_bytes!("../src/high/rsa/rsa8192.pkcs8.der"),
     )
     .unwrap();
+    // The client's blinding holds the blind's inverse and the message's
+    // random prefix.
+    let (_, blinding) = key.public_key().blind(b"message").unwrap();
+    check_zeroed_on_drop(Box::pin(blinding));
     check_zeroed_on_drop(Box::pin(key));
 }
 
@@ -253,6 +257,35 @@ fn oprf() {
 }
 
 #[test]
+fn opaque() {
+    use rind::opaque::*;
+    // Each suite with its record's length.
+    for (suite, record_len) in [
+        (&RISTRETTO255_SHA512_ARGON2ID, 192),
+        (&P256_SHA256_ARGON2ID, 129),
+    ] {
+        let setup = ServerSetup::generate(suite).unwrap();
+        check_zeroed_on_drop(Box::pin(setup.to_bytes()));
+        let (registration, _) = ClientRegistration::start(suite, b"password").unwrap();
+        check_zeroed_on_drop(Box::pin(registration));
+        // A record whose client key is the server's, so no Argon2id runs.
+        let mut record = setup.public_key().to_vec();
+        record.resize(record_len, 0xa5);
+        let record = RegistrationRecord::new(suite, &record).unwrap();
+        let (client, ke1) = ClientLogin::start(suite, b"password").unwrap();
+        let credential = Credential {
+            identifier: b"user",
+            record: Some(&record),
+        };
+        let (server, _) = setup.login(&ke1, &credential, &Session::default()).unwrap();
+        check_zeroed_on_drop(Box::pin(client));
+        check_zeroed_on_drop(Box::pin(server));
+        check_zeroed_on_drop(Box::pin(record));
+        check_zeroed_on_drop(Box::pin(setup));
+    }
+}
+
+#[test]
 fn frost() {
     use rind::frost::*;
     for suite in [&ED25519_SHA512, &RISTRETTO255_SHA512, &P256_SHA256] {
@@ -286,6 +319,12 @@ fn mlkem() {
             .unwrap()
             .decapsulate(&ciphertext);
         check_zeroed_on_drop(Box::pin(decapsulated));
+        check_zeroed_on_drop(Box::pin(key.to_seed().unwrap()));
+        let bytes = key.to_bytes();
+        check_zeroed_on_drop(Box::pin(
+            DecapsulationKey::<A>::new(bytes.as_ref()).unwrap(),
+        ));
+        check_zeroed_on_drop(Box::pin(bytes));
         check_zeroed_on_drop(Box::pin(key));
     }
     check::<MlKem512>();
@@ -296,10 +335,6 @@ fn mlkem() {
 #[test]
 fn hpke() {
     use rind::hpke::*;
-    let suite = Suite {
-        kdf: &HKDF_SHA256,
-        aead: &AES_128_GCM,
-    };
     for kem in [
         &DHKEM_X25519_HKDF_SHA256,
         &DHKEM_P256_HKDF_SHA256,
@@ -307,14 +342,25 @@ fn hpke() {
         &DHKEM_P521_HKDF_SHA512,
     ] {
         let key = PrivateKey::generate(kem).unwrap();
-        let (enc, sender) = Sender::new(suite, key.public_key(), b"info").unwrap();
-        check_zeroed_on_drop(Box::pin(sender));
-        check_zeroed_on_drop(Box::pin(
-            Recipient::new(suite, &key, enc.as_ref(), b"info").unwrap(),
-        ));
-        check_zeroed_on_drop(Box::pin(
-            Exporter::recipient(&HKDF_SHA512, &key, enc.as_ref(), b"info").unwrap(),
-        ));
+        // Each AEAD keys the sealing contexts differently.
+        for aead in [&AES_128_GCM, &AES_256_GCM, &CHACHA20_POLY1305] {
+            let suite = Suite {
+                kdf: &HKDF_SHA256,
+                aead,
+            };
+            let (enc, sender) = Sender::new(suite, key.public_key(), b"info").unwrap();
+            check_zeroed_on_drop(Box::pin(sender));
+            check_zeroed_on_drop(Box::pin(
+                Recipient::new(suite, &key, enc.as_ref(), b"info").unwrap(),
+            ));
+        }
+        for kdf in [&HKDF_SHA256, &HKDF_SHA384, &HKDF_SHA512] {
+            let (enc, exporter) = Exporter::sender(kdf, key.public_key(), b"info").unwrap();
+            check_zeroed_on_drop(Box::pin(exporter));
+            check_zeroed_on_drop(Box::pin(
+                Exporter::recipient(kdf, &key, enc.as_ref(), b"info").unwrap(),
+            ));
+        }
         check_zeroed_on_drop(Box::pin(PrivateKey::derive(kem, b"ikm").unwrap()));
         check_zeroed_on_drop(Box::pin(key));
     }
@@ -324,9 +370,26 @@ fn hpke() {
 fn hkdf() {
     use rind::hkdf::*;
 
-    let salt = Salt::new(&HKDF_SHA256, b"salt");
-    check_zeroed_on_drop(Box::pin(salt.extract(b"ikm").unwrap()));
-    check_zeroed_on_drop(Box::pin(salt));
+    // An `Okm` holds only references to its `Prk` and info, so the keys it
+    // converts into are what hold its bytes.
+    for algorithm in [&legacy::HKDF_SHA1, &HKDF_SHA256, &HKDF_SHA384, &HKDF_SHA512] {
+        let salt = Salt::new(algorithm, b"salt");
+        let prk = salt.extract(b"ikm").unwrap();
+        let info: &[&[u8]] = &[b"info"];
+        check_zeroed_on_drop(Box::pin(Prk::from(prk.expand(info, algorithm).unwrap())));
+        check_zeroed_on_drop(Box::pin(rind::hmac::Key::from(
+            prk.expand(info, &rind::hmac::HMAC_SHA256).unwrap(),
+        )));
+        check_zeroed_on_drop(Box::pin(rind::aead::Key::from(
+            prk.expand(info, &rind::aead::AES_256_GCM).unwrap(),
+        )));
+        check_zeroed_on_drop(Box::pin(rind::aead::quic::HeaderProtectionKey::from(
+            prk.expand(info, &rind::aead::quic::CHACHA20).unwrap(),
+        )));
+        check_zeroed_on_drop(Box::pin(Prk::new(algorithm, &[0xff; 32])));
+        check_zeroed_on_drop(Box::pin(prk));
+        check_zeroed_on_drop(Box::pin(salt));
+    }
 }
 
 #[test]

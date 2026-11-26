@@ -50,9 +50,9 @@ pub fn rind_dit() -> rind::cpu::Dit {
 /// A group for rind's rows timed again without [`rind_dit`], named
 /// `dit-per-call/{name}`, so the report shows what a caller holding no guard
 /// pays for rind setting DIT around each call. On every aarch64 target, the
-/// one architecture with DIT: rind toggles it only on Apple today, so the
-/// other aarch64 rows match the held ones and are the "before" for setting it
-/// on every core. Elsewhere they could only ever repeat the held ones.
+/// one architecture with DIT; where the OS reports none, as on GitHub's
+/// arm64 runners, they match the held rows. Elsewhere they could only ever
+/// repeat the held ones.
 #[allow(dead_code)]
 pub fn dit_per_call<'a>(
     c: &'a mut Criterion,

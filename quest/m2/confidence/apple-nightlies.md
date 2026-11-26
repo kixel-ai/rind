@@ -6,11 +6,7 @@ The scheduled jobs that need Apple silicon run on the maintainer's Mac mini inst
 
 ## Plan
 
-Planned with the maintainer on 2026-11-10 ([the runner quest](/quest/m0/mac-mini-runner.md) holds the shared decisions).
+Planned with the maintainer on 2026-11-10. The Mac mini (Apple M5 Pro, `ssh mini`, admin account `kixelated`, Nix installed, `sudo` needs a password) also runs the merge queue's two aarch64 runners as tart VMs (`admin/mac-mini-runners`, landed in [kixel-ai/rind#1022](https://github.com/kixel-ai/rind/pull/1022)), benchmarks, Apple-silicon nightlies, and agents.
 
 - Survey the workflows' macOS jobs (`build.yml`'s macOS and iOS rows, `dart` rows; `mutants.yml` has no macOS campaign) and move each one that gains from the machine; leave hosted runners where a clean VM matters, such as release builds.
 - Keep each moved job under `quest gate` so it shares the machine with the queue and agents.
-
-## Required
-
-- [The merge queue runs rind's tests natively on aarch64](/quest/m0/mac-mini-runner.md) - the machine, set up as a self-hosted runner

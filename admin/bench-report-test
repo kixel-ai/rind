@@ -5,6 +5,7 @@ Usage: admin/bench-report-test
 """
 
 import contextlib
+import copy
 import fcntl
 import importlib.machinery
 import importlib.util
@@ -75,7 +76,7 @@ def hosts():
             "kixtop",
             "arm64",
             "macOS 15.1 (24.1.0)",
-            {"aes": 1, "pmull": 1, "sha2": 1, "sha3": 1},
+            {"aes": 1, "dit": 1, "pmull": 1, "sha2": 1, "sha3": 1},
             [("x25519-ecdh/{lib}", "rind", 20000.0), ("x25519-ecdh/{lib}", "ring", 40000.0)],
         ),
     }
@@ -235,6 +236,10 @@ class Render(unittest.TestCase):
             h["kixtop"]["results"].append({"operation": op, "library": "rind", "ns": ns})
         md = br.report(h, None, VERIFIED, [])[br.REPORT]
         self.assertIn("takes rind 60 ns more a call than holding it, in the row timed both ways", md)
+        # Where the OS hides DIT, rind sets none, and the difference is noise.
+        hidden = copy.deepcopy(h)
+        hidden["kixtop"]["rind_cpu"]["cpuid"]["dit"] = 0
+        self.assertNotIn("more a call than holding it", br.report(hidden, None, VERIFIED, [])[br.REPORT])
         # Only aarch64 has DIT, so an x86_64 host never lists the rows as untimed.
         nixos = md.split("### `nixos`")[1].split("### `desktop`")[0]
         self.assertNotIn("DIT set per call", nixos)
@@ -266,6 +271,18 @@ class Render(unittest.TestCase):
         )
         self.assertIn("| Operation | rind | aws-lc-rs | ring | OpenSSL |", md)
         self.assertIn("| X25519 | 30.00 µs ✓ | - | 33.00 µs ✓ | 300.00 µs |", md)
+
+    def test_build_cost_names_each_program_binary_size_measures(self):
+        sizes = {
+            "url": "https://github.com/kixel-ai/rind/actions/runs/1",
+            "date": "2026-11-28T12:23:00Z",
+            "commit": "0" * 40,
+            "rustc": "rustc 1.98.1",
+            "target": "x86_64-unknown-linux-gnu",
+            "bytes": {"rind": 893481, "rustls": 3836722},
+        }
+        md = br.report(hosts(), None, VERIFIED, [], sizes)[br.REPORT]
+        self.assertIn("| rind | 893,481 |\n| rustls + rind-rustls | 3,836,722 |", md)
 
     def test_leaves_out_a_library_the_cpu_lacks_features_for(self):
         regex = re.compile(br.operation_regex({"graviola": ["adx"]}))

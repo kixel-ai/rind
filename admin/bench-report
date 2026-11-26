@@ -18,7 +18,8 @@ never measured. DIR (default `.tmp/bench-report/<commit>`) gets one
 `<host>.json` per host, with its CPU, OS, toolchain, and library versions.
 
 `weekly` saves the latest weekly `bench` run's results on main, with gh, as
-the report's CPU tiers. `render` writes BENCHMARKS.md and its SVGs, among
+the report's CPU tiers, and that run's measure of rind's bytes in
+admin/build-cost-fixtures' programs. `render` writes BENCHMARKS.md and its SVGs, among
 them the overview the README shows, and benchmarks/report.json, the same
 report as data for the site's benchmarks page, from benchmarks/data, the verified code in
 benchmarks/verified.toml, and the decision on each gap in
@@ -74,12 +75,12 @@ HOSTS = {
     },
     "kixtop": {
         "jobs": 4,
-        "note": "The maintainer's MacBook, in daily use. Its cores have DIT, and this run timed rind two ways. "
-        "The AES-GCM, ChaCha20-Poly1305, header protection, SHA-2, HMAC, and HKDF rows hold "
-        "`rind::cpu::Dit::hold()` across calls, as MoQ does and as the report's rind column assumes. rind's other "
-        "rows set DIT around each call. In the run before, rows timed both ways paid 20 to 120 ns a call for that "
-        "toggle, so the other primitive rows likely overstate rind's time until re-measured holding DIT. In the rustls rows, holding DIT would also run rustls' own "
-        "code with it on, a cost not yet measured, so which way they would move is open.",
+        "note": "The maintainer's MacBook Air, in daily use. Its cores have DIT, and every rind row holds "
+        "`rind::cpu::Dit::hold()` across calls, as MoQ does, so the rustls rows run rustls' own code with DIT on "
+        "too. On every logical CPU, rind-rustls's handshakes gain less than aws-lc-rs's from the 6 efficiency "
+        "cores: more of their time is multiplication-heavy assembly, which those cores run at 34-45% of a "
+        "performance core's speed. The Air has no fan, so its performance cores slow within a minute there, "
+        "giving those cores a larger share.",
     },
     "ovh-iad": {
         "jobs": 4,
@@ -473,15 +474,50 @@ def os_name():
     return f"{pretty} (Linux {platform.release()})"
 
 
-def locked_versions():
-    """Each package's versions in Cargo.lock, with the commit of one from git,
-    such as verified-garbage, whose version never changes."""
-    versions = {}
-    with open(os.path.join(ROOT, "Cargo.lock")) as f:
-        pattern = r'\[\[package\]\]\nname = "([^"]+)"\nversion = "([^"]+)"(?:\nsource = "git\+[^"#]*#([0-9a-f]+)")?'
-        for name, version, commit in re.findall(pattern, f.read()):
-            versions.setdefault(name, []).append(f"{version} ({commit[:8]})" if commit else version)
-    return versions
+def bench_versions(lock):
+    """Each package's version that rind-bench builds, from a Cargo.lock's
+    text, with the commit of one from git, such as verified-garbage, whose
+    version never changes, and the directory of a fork rind vendors, such as
+    blind-rsa-signatures, whose crates.io release differs: the one rind-bench
+    names, or every one it reaches. A workspace crate's entry also lists its
+    dev-dependencies, so the walk passes through none but rind-bench."""
+    forks = {}
+    for path in tomllib.loads(open(os.path.join(ROOT, "Cargo.toml")).read())["workspace"].get("exclude", []):
+        with open(os.path.join(ROOT, path, "Cargo.toml"), "rb") as f:
+            forks[tomllib.load(f)["package"]["name"]] = path
+    packages = tomllib.loads(lock)["package"]
+    by_name = {}
+    for p in packages:
+        by_name.setdefault(p["name"], []).append(p)
+
+    def resolve(dep):
+        name, _, version = dep.partition(" ")
+        found = [p for p in by_name[name] if not version or p["version"] == version]
+        if len(found) != 1:
+            fail(f"Cargo.lock's {dep} names {len(found)} packages, not one")
+        return found[0]
+
+    def version(p):
+        commit = re.search(r"^git\+[^#]*#([0-9a-f]+)$", p.get("source", ""))
+        if commit:
+            return f"{p['version']} ({commit[1][:8]})"
+        if "source" not in p and p["name"] in forks:
+            return f"{p['version']} (rind's fork in `{forks[p['name']]}`)"
+        return p["version"]
+
+    (bench,) = by_name["rind-bench"]
+    direct = [resolve(d) for d in bench["dependencies"]]
+    seen, stack, reached = set(), list(direct), {}
+    while stack:
+        p = stack.pop()
+        if (p["name"], p["version"]) in seen:
+            continue
+        seen.add((p["name"], p["version"]))
+        reached.setdefault(p["name"], set()).add(version(p))
+        if "source" in p:
+            stack += [resolve(d) for d in p.get("dependencies", [])]
+    versions = {name: ", ".join(sorted(v)) for name, v in reached.items()}
+    return versions | {p["name"]: version(p) for p in direct}
 
 
 def toolchain(env):
@@ -525,10 +561,9 @@ def run(args):
     env["RIND_BENCH_CPUS"] = str(result["cpu"]["logical_cpus"])
     cargo, versions, openssl = toolchain(env)
     result["toolchain"] = versions
-    locked = locked_versions()
-    result["libraries"] = {
-        lib: {crate: ", ".join(locked.get(crate, ["?"])) for crate in crates} for lib, crates in CRATES.items()
-    }
+    with open(os.path.join(ROOT, "Cargo.lock")) as f:
+        locked = bench_versions(f.read())
+    result["libraries"] = {lib: {crate: locked.get(crate, "?") for crate in crates} for lib, crates in CRATES.items()}
     # The OpenSSL the benchmarks link, beside its crates.
     result["libraries"]["openssl"]["linked"] = output([openssl, "version"], env)
 
@@ -903,6 +938,9 @@ NAMES = {
     },
 }
 
+# Where `weekly` saves the run's bytes of rind, from admin/binary-size.
+SIZES = os.path.join(DATA_DIR, "binary-size.json")
+
 # Each build of admin/build-cost, as the report names it.
 BUILDS = {
     "rind": "rind",
@@ -918,6 +956,8 @@ BUILDS = {
     "rustls-aws-lc-rs": "rustls + aws-lc-rs",
     "rustls-ring": "rustls + ring",
 }
+# The admin/build-cost build of each program admin/binary-size measures.
+SIZED = {"rind": "rind", "rustls": "rustls-rind"}
 
 # The libraries the README compares rind with, by library, each with the
 # page a reader goes to.
@@ -926,6 +966,7 @@ COMPARED = {
     "aws-lc-rs": "https://github.com/aws/aws-lc-rs",
     "ring": "https://github.com/briansmith/ring",
     "rustcrypto": "https://github.com/RustCrypto",
+    "openssl": "https://github.com/sfackler/rust-openssl",
 }
 
 # The comparison's algorithms, as patterns over a row name, which each match
@@ -965,6 +1006,13 @@ INTEGRATIONS = [r"rustls-", r"quic-header-protection/", re.escape(DIT_PER_CALL)]
 # than that library's API, by library and algorithm, with what it runs.
 OUTSIDE_API = {
     ("aws-lc-rs", "XChaCha20-Poly1305"): "aws-lc has it, through aws-lc-sys",
+}
+
+# Why a library's column lacks an algorithm it has, by library and algorithm,
+# shown only while the results time none of its rows under that library.
+UNTIMED = {
+    ("openssl", "SHA-3"): "OpenSSL has it, not yet timed",
+    ("openssl", "HPKE"): "OpenSSL has it, but the openssl crate does not",
 }
 
 # A comparison cell with no data behind it, which must never read as "none".
@@ -1233,9 +1281,10 @@ DIT_COST_ROWS = [
 
 def dit_cost(host):
     """What setting DIT around each call costs rind over holding it, on a
-    host that times both, as report lines. rind sets DIT only on Apple, so
-    elsewhere the two rows run the same code and differ only by noise."""
-    if host_os(host) != "macos":
+    host that times both, as report lines. rind sets DIT only where the OS
+    reports it, so elsewhere the two rows run the same code and differ only
+    by noise."""
+    if not host.get("rind_cpu", {}).get("cpuid", {}).get("dit"):
         return []
     t = times(host)
     pairs = [(t.get(row_name(DIT_PER_CALL + op), {}), t.get(row_name(op), {})) for op in DIT_COST_ROWS]
@@ -1803,6 +1852,9 @@ def comparison_table(hosts, verified):
     for (lib, name), why in OUTSIDE_API.items():
         if lib not in COMPARED or name not in dict(ALGORITHMS):
             fail(f"OUTSIDE_API names {lib} and {name}, which the comparison lacks")
+    for (lib, name), why in UNTIMED.items():
+        if lib not in COMPARED or name not in dict(ALGORITHMS):
+            fail(f"UNTIMED names {lib} and {name}, which the comparison lacks")
     offered = {lib: set() for lib in COMPARED}
     for h in hosts.values():
         for row, libs in times(h).items():
@@ -1823,8 +1875,9 @@ def comparison_table(hosts, verified):
                 if b["name"] == lib:
                     tools.update(b["tools"])
                     built = True
+        notes = OUTSIDE_API | UNTIMED
         lacks = [
-            f"{name} ({OUTSIDE_API[lib, name]})" if (lib, name) in OUTSIDE_API else name
+            f"{name} ({notes[lib, name]})" if (lib, name) in notes else name
             for name in timed
             if name not in offered[lib] or (lib, name) in OUTSIDE_API
         ]
@@ -2121,7 +2174,82 @@ def site_data(hosts, tiers, verified, gaps):
     return data
 
 
-def report(hosts, tiers, verified, gaps):
+def methodology(hosts, shown):
+    """How the hosts' times were taken, and the versions each timed."""
+    toolchain = pinned_toolchain()
+    criterion = " ".join(CRITERION_ARGS[1:])
+    md = [
+        "## Methodology",
+        "",
+        "Each host runs `cargo bench -p rind-bench --features __bench_openssl`, passing criterion "
+        f"`{criterion}` and a filter for the report's rows, as `criterion_args` in its "
+        "`benchmarks/data/<host>.json` records.",
+        "",
+        "On aarch64, every rind row except those marked *DIT set per call* holds a `rind::cpu::Dit::hold()` guard "
+        "across the timed loop "
+        "(`rind_dit` in `rind-bench/benches/criterion/mod.rs`), so it pays for turning DIT on and off once, as "
+        "a caller holding the guard around a batch of calls does. A caller holding none pays it on every call: "
+        "the rows marked *DIT set per call* time rind that way. On x86_64 the guard does nothing, and no other "
+        "library sets DIT.",
+        "",
+        "To time a row without Nix, install the pinned toolchain and run its bench target, here AES-128-GCM's "
+        "rows. aws-lc-rs and ring need a C compiler, and on Unix the OpenSSL column needs OpenSSL 3's headers "
+        "and pkg-config.",
+        "",
+        "```sh",
+        f"rustup toolchain install {toolchain}",
+        f"cargo +{toolchain} bench -p rind-bench --features __bench_openssl --bench aes_gcm -- {criterion} "
+        "'^aes128-gcm/'",
+        "```",
+        "",
+        "### Versions",
+        "",
+        "The versions of each library's crates that `rind-bench` built, from `Cargo.lock` at each host's "
+        "measured commit, and the OpenSSL each host linked. A version some hosts did not build names the hosts that did.",
+        "",
+        "| Library | Crate | Version |",
+        "|---|---|---|",
+    ]
+    libs = {lib: None for host in shown for lib in hosts[host].get("libraries", {})}
+    for lib in libs:
+        crates = {c: None for host in shown for c in hosts[host].get("libraries", {}).get(lib, {})}
+        for crate in crates:
+            by_version = {}
+            for host in shown:
+                version = hosts[host].get("libraries", {}).get(lib, {}).get(crate, "?")
+                if version != "?":
+                    by_version.setdefault(version, []).append(f"`{host}`")
+            if not by_version:
+                continue
+            if len(by_version) == 1 and sum(map(len, by_version.values())) == len(shown):
+                cell = next(iter(by_version))
+            else:
+                cell = "; ".join(f"{v} on {', '.join(h)}" for v, h in by_version.items())
+            name = COLUMNS.get(lib, "rustls" if lib == "tls" else lib)
+            md.append(f"| {name} | {'linked library' if crate == 'linked' else f'`{crate}`'} | {cell} |")
+    md.append("")
+    return md
+
+
+def size_table(sizes):
+    """rind's bytes in each program, from the weekly run that measured them."""
+    return [
+        "### rind's own bytes",
+        "",
+        f"What rind and rind-rustls add to the rind and rustls + rind-rustls programs, by `admin/binary-size` in "
+        f"the weekly `bench` workflow's [run]({sizes['url']}) of {sizes['date'][:10]} at "
+        f"{commit_link(sizes['commit'])}, with {sizes['rustc']} for {sizes['target']}: the bytes of their "
+        "functions and tables the linker kept, in a release build with one codegen unit. A pull request's "
+        "check reports its change to them.",
+        "",
+        "| Build | rind's bytes |",
+        "|---|---:|",
+        *(f"| {BUILDS[SIZED[f]]} | {n:,} |" for f, n in sizes["bytes"].items()),
+        "",
+    ]
+
+
+def report(hosts, tiers, verified, gaps, sizes=None):
     """BENCHMARKS.md, its SVGs, the site's data, and the README with its
     comparison, by path."""
     files = {}
@@ -2154,6 +2282,8 @@ def report(hosts, tiers, verified, gaps):
         "`admin/bench-report` only when idle. Times are criterion's estimates.",
         "",
     ]
+    if shown:
+        md += methodology(hosts, shown)
     if shown:
         md += [
             "## Speed",
@@ -2221,6 +2351,7 @@ def report(hosts, tiers, verified, gaps):
             "its size; the vendored build is the static figure. verified-garbage has no P-256 key generation, so "
             "its binary imports a random scalar instead, and no rustls provider, so it has no rustls build.",
             "",
+            *(size_table(sizes) if sizes else []),
         ]
     for name in shown:
         cost = hosts[name].get("build_cost")
@@ -2313,7 +2444,7 @@ def report(hosts, tiers, verified, gaps):
         "shares it with other gated work, so its numbers are noisier than the weekly",
         "`bench` workflow's runners, which give the clean ones; it skips any host that is still busy, and writes their results and the hosts' details as JSON under",
         "`.tmp/bench-report/`. `admin/bench-report weekly` saves the latest weekly",
-        "`bench` run's results, and `admin/bench-report render --from DIR` copies a",
+        "`bench` run's results and binary sizes, and `admin/bench-report render --from DIR` copies a",
         "collection's measured hosts into `benchmarks/data/` and writes",
         "`BENCHMARKS.md`, its SVGs, which the README shows too, the README's comparison table, and",
         "`benchmarks/verified.toml`, and",
@@ -2353,6 +2484,10 @@ def render(args):
         with open(tiers_path) as f:
             tiers = json.load(f)
     verified = load_verified()
+    sizes = None
+    if os.path.exists(SIZES):
+        with open(SIZES) as f:
+            sizes = json.load(f)
     generated = sorted(glob.glob(os.path.join(REPORT_DIR, "*.svg")))
     if os.path.exists(REPORT):
         generated.append(REPORT)
@@ -2362,7 +2497,7 @@ def render(args):
         if not args.check:
             fail("no results in benchmarks/data: run `collect`, then `render --from DIR`")
         return
-    files = report(hosts, tiers, verified, load_gaps(hosts, tiers))
+    files = report(hosts, tiers, verified, load_gaps(hosts, tiers), sizes)
     if args.check:
         stale = [p for p in files if not os.path.exists(p) or open(p).read() != files[p]]
         stale += [p for p in generated if p not in files]
@@ -2446,6 +2581,27 @@ def gate(args):
     print(f"Every gap over {SLOWER}× has a decision in benchmarks/gaps.toml.")
 
 
+def run_sizes(run, scratch):
+    """The bytes of rind `run` measured, None if it measured none, failing
+    when they exist but cannot be read."""
+    artifacts = output(
+        ["gh", "api", f"repos/{REPO}/actions/runs/{run['databaseId']}/artifacts", "--paginate"]
+        + ["--jq", '.artifacts[] | select(.name == "binary-size") | .name']
+    )
+    if not artifacts.strip():
+        return None
+    subprocess.run(
+        ["gh", "run", "download", str(run["databaseId"]), "--repo", REPO, "--name", "binary-size", "--dir", scratch],
+        check=True,
+    )
+    with open(os.path.join(scratch, "binary-size.json")) as f:
+        measured = json.load(f)
+    if set(measured["bytes"]) != set(SIZED):
+        fail(f"run {run['databaseId']} measured {', '.join(measured['bytes'])}, not {', '.join(SIZED)}")
+    saved = {"schema": 1, "run": run["databaseId"], "url": run["url"], "commit": run["headSha"], "date": run["createdAt"]}
+    return saved | {k: measured[k] for k in ("target", "rustc", "bytes")}
+
+
 def weekly(args):
     """Saves the latest weekly bench's results on main as the CPU tiers,
     from a run that timed every tier, since the report reads an empty cell as
@@ -2477,6 +2633,10 @@ def weekly(args):
             incomplete.append(f"{run['databaseId']} lacks {', '.join(dict(TIERS)[k] for k in sorted(missing))}")
             continue
         tiers.sort(key=lambda t: order.get((t["target"], t["portable"], t["tier"]), len(order)))
+        # Read before either file is written, so a failure leaves both as
+        # they were: the report never pairs one run's tiers with another's
+        # sizes.
+        sizes = run_sizes(run, os.path.join(scratch, "binary-size"))
         os.makedirs(DATA_DIR, exist_ok=True)
         with open(os.path.join(DATA_DIR, "tiers.json"), "w") as f:
             json.dump(
@@ -2492,6 +2652,14 @@ def weekly(args):
                 indent=1,
             )
             f.write("\n")
+        if sizes:
+            with open(SIZES, "w") as f:
+                json.dump(sizes, f, indent=1)
+                f.write("\n")
+        else:
+            print(f"bench-report: run {run['databaseId']} measured no binary sizes", file=sys.stderr)
+            if os.path.exists(SIZES):
+                os.remove(SIZES)
         shutil.rmtree(scratch)
         print(f"bench-report: tiers from run {run['databaseId']}", file=sys.stderr)
         return

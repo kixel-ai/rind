@@ -30,14 +30,10 @@ Decided 2026-11-12 (maintainer, rust2's /quest-unblock): keep rind-openmls out o
 
 Decided 2026-11-23 (maintainer, /quest-run): ✅ publish rind-rand-core 0.10.0 by hand from main before the release, since it builds against rind 0.3.2, so the release ships it as a patch on rind 0.4 (rejected: release = false like rind-openmls, publishing by hand after 0.4.0). The maintainer published it from `main` at 1072fa4f7 the same day, added its trusted publisher for `release.yml` and the `publish` environment, and turned on "require trusted publishing".
 
-Each change documents its own migration in MIGRATING.md, so this quest adds none. Delete it once 0.4.0 is published.
+Each change documents its own migration in MIGRATING.md, so this quest adds none. Delete it once 0.4.0 is published, with the 0.4 corrections in `.release-plz.toml`'s `[changelog]`.
 
 The benchmark report is refreshed once before each minor release (maintainer, 2026-11-09), so this quest requires that run. The first ran in [kixel-ai/rind#619](https://github.com/kixel-ai/rind/pull/619); a second, decided 2026-11-21 in [kixel-ai/rind#949](https://github.com/kixel-ai/rind/pull/949), measures what 0.4 ships. Whoever plans the next minor release's quest creates the next run at the same path, from the last one in git history, and requires it.
 
 ## Waiting
 
 - Maintainer: leave the release PR, [kixel-ai/rind#511](https://github.com/kixel-ai/rind/pull/511) or whichever replaces it, unmerged until every quest under `Required` is on `main` and MoQ's PR is ready, then merge it once `just release-check` passes at its head. An agent cannot: a release PR merges on the maintainer's approval (`CONTRIBUTING.md`'s Reviews section), and leaving rind alone out of the release (`release = false`) would not hold it, since every adapter's fix requires rind 0.4, which is why the hold is the unmerged PR. Check: `cargo search rind` shows 0.4.0.
-
-## Required
-
-- [Benchmark report refresh, before rind 0.4 is released](/quest/m2/bench/report-refresh.md) - the report regenerated on every host, with its gaps triaged

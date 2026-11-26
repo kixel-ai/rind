@@ -61,9 +61,6 @@ omitted = [
   "digest::SHA224*",
   "hmac::HMAC_SHA224",
   "encoding::PqdsaPrivateKeyRaw",
-  "kem::DecapsulationKey::new",
-  "kem::DecapsulationKey::key_bytes",
-  "kem::DecapsulationKeyBytes",
   "rand::unsealed",
   "rsa::KeyPair::sign_digest",
   "signature::RsaKeyPair::sign_digest",
@@ -94,7 +91,7 @@ test_logging = []
 unstable = []
 
 [dependencies]
-rind = { version = "0.3.2", path = "../rind" }
+rind = { version = "0.3.2", path = "../rind", default-features = false, features = ["ml-dsa"] }
 # Caches an RSA key per algorithm without `std`'s `OnceLock`; rustls already
 # depends on it the same way.
 once_cell = { version = "1.21", default-features = false, features = ["alloc", "race"] }

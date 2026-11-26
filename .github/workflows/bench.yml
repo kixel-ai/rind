@@ -19,6 +19,9 @@ on:
         type: string
         default: ""
 
+permissions:
+  contents: read
+
 # A newer run on a ref replaces an older one, except a bisect step's: each
 # counts its own commit, so none may cancel another or the weekly run.
 concurrency:
@@ -463,6 +466,27 @@ jobs:
                 (to_entries[] | .value as $v | ([$v["aws-lc-rs"], $v.ring, $v.rustcrypto] | map(select(.)) | min) as $best
                   | "| \(.key) | \($v.rind | time) | \($v["aws-lc-rs"] | time) | \($v.ring | time) | \($v.rustcrypto | time) | \(if $v.rind and $best then $v.rind / $best * 100 | round / 100 else "-" end) | \($v["verified-garbage"] | time) | \(if $v.rind and $v["verified-garbage"] then $v.rind / $v["verified-garbage"] * 100 | round / 100 else "-" end) |")' |
             tee -a "$GITHUB_STEP_SUMMARY"
+
+  # What rind and rind-rustls add to admin/build-cost-fixtures' programs, in
+  # the dev shell's toolchain, which `admin/bench-report weekly` puts in
+  # BENCHMARKS.md's build cost from scheduled runs alone.
+  binary-size:
+    if: github.event_name == 'schedule' || inputs.benches == ''
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/nix
+
+      - name: Measure
+        run: nix develop --command admin/binary-size --json >binary-size.json
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: binary-size
+          path: binary-size.json
 
   # Fails the scheduled run, and so alerts, on a gap over 10% that
   # benchmarks/gaps.toml holds no decision for and that the previous
