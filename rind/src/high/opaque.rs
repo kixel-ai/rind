@@ -7,8 +7,11 @@
 //! OPRF's hash. Every step is RFC 9807's, written once over the group.
 //!
 //! Everything derived from the password, the server's private key, its OPRF
-//! seed, or a record's masking key runs in constant time. A peer's elements
-//! are decoded as public data. The client declassifies the server's public
+//! seed, or a record's masking key runs in constant time, except Argon2id's
+//! data-dependent addressing after its first pass's first half, which reads
+//! memory at password-derived indexes: the cost of its memory hardness, which
+//! RFC 9106 and RFC 9807 accept. A peer's elements are decoded as public
+//! data. The client declassifies the server's public
 //! key, which it unmasks with a password-derived pad, only once the
 //! envelope's tag has authenticated it.
 
@@ -1178,8 +1181,10 @@ pub struct ServerLogin {
 
 impl ServerLogin {
     /// Checks the client's KE3, by RFC 9807 6.2.4's `ServerFinish`,
-    /// returning the session key once it proves the client knew the
-    /// password.
+    /// returning the session key once it proves the client holds the
+    /// credential its record binds. That is the password's derived key, but
+    /// a client may keep it and skip re-entering the password (RFC 9807
+    /// 10.13), so a login is no proof the user typed it.
     ///
     /// A KE3 that does not verify, as from a wrong password or an unknown
     /// account, fails with [`Error::BadSignature`]; one for another suite is
@@ -1451,7 +1456,10 @@ secret!(
     /// login, for the application to encrypt its own data under, as RFC
     /// 9807 section 10.4 describes.
     ///
-    /// A login returns it only after the server authenticated.
+    /// A login returns it only after the server authenticated. It is stable
+    /// only across logins with one record: registering again, even with the
+    /// same password, gives a new key, so migrate or keep the old key's data
+    /// before replacing a record.
     ExportKey
 );
 

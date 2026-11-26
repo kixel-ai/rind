@@ -109,6 +109,10 @@ macro_rules! run {
         };
         let context = (!input.context.is_empty()).then_some(&input.context[..]);
         let password = &input.password[..];
+        // opaque-ke's blinding refuses a password longer than a `u16`.
+        if password.len() > usize::from(u16::MAX) {
+            return;
+        }
         let identifier = &input.credential_identifier[..];
 
         // An opaque-ke client registers, through a request both load or
