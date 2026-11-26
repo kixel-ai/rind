@@ -16,7 +16,10 @@
 # to each, as Wycheproof's ECDSA vectors do to every curve, and so does one
 # running a family's primitive inside another's protocol, as HPKE's do to its
 # KEMs', KDFs', and AEADs' families. A hash a scheme fixes internally, such as
-# Ed25519's SHA-512, does not make its tests the hash's.
+# Ed25519's SHA-512, does not make its tests the hash's, unless only such
+# schemes reach its code, as only ML-KEM and ML-DSA run SHAKE four lanes at a
+# time. A `[units]` name is checked against the source on every scoped run,
+# since renaming a unit test changes no file this map's self-test watches.
 
 [families]
 aes = ['aes[\w-]*', 'vpaes[\w-]*', 'bsaes[\w-]*', 'ghash[\w-]*', 'gcm\w*', 'compute_iv_stdcall', 'ctr', 'quic']
@@ -47,6 +50,8 @@ vrf = ['vrf']
 [units]
 "high::hpke::tests::every_suite_round_trips" = ["aes", "chacha", "hash", "curve25519", "p256", "p384", "p521"]
 "high::hpke::tests::rfc9180" = ["aes", "chacha", "hash", "curve25519", "p256", "p384", "p521"]
+"high::hpke::tests::rfc9180_edge_cases" = ["aes", "hash", "curve25519", "p256"]
+"high::kem::tests::cctv_unlucky_sample" = ["sha3"]
 "high::frost::tests::rfc9591_ed25519" = ["curve25519"]
 "high::frost::tests::rfc9591_ristretto255" = ["curve25519"]
 "high::frost::tests::ed25519_signatures_are_ed25519" = ["curve25519"]
@@ -95,10 +100,10 @@ ed25519_key_generation = ["curve25519"]
 "pkcs8_attributes::v2_without_public_key" = ["p256", "p384", "p521", "curve25519", "rsa", "mldsa"]
 
 [tests.crosschecks_pq]
-"ml_dsa_44::" = ["mldsa"]
-"ml_dsa_65::" = ["mldsa"]
-"ml_dsa_87::" = ["mldsa"]
-"mlkem::" = ["mlkem"]
+"ml_dsa_44::" = ["mldsa", "sha3"]
+"ml_dsa_65::" = ["mldsa", "sha3"]
+"ml_dsa_87::" = ["mldsa", "sha3"]
+"mlkem::" = ["mlkem", "sha3"]
 "slh_dsa_sha2_128f::" = ["slhdsa"]
 "slh_dsa_sha2_128s::" = ["slhdsa"]
 "slh_dsa_sha2_192f::" = ["slhdsa"]

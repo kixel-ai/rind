@@ -180,8 +180,29 @@ def scope(families, changed, merge_base):
     return touched, None
 
 
+def missing_units(units):
+    """The [units] names whose function no longer exists in their module's source.
+
+    `check` lists every unit test, but runs only when the map or the tests
+    change, not when a rename in rind/src/ leaves a name here stale.
+    """
+    missing = []
+    for name in units:
+        *modules, function = name.split("::")
+        files = []
+        for i in range(1, len(modules) + 1):
+            base = ROOT / "rind/src" / "/".join(modules[:i])
+            files += [base.with_suffix(".rs"), base / "mod.rs"]
+        pattern = re.compile(rf"\bfn {function}\b")
+        if not any(f.exists() and pattern.search(f.read_text()) for f in files):
+            missing.append(name)
+    return missing
+
+
 def args_command(changed_file, merge_base):
     families, units, tests = load()
+    if missing := missing_units(units):
+        sys.exit("\n".join(f"error: {MAP.name}: [units] names {name}, which its module no longer defines" for name in missing))
     changed = [line for line in pathlib.Path(changed_file).read_text().splitlines() if line]
     touched, why = scope(families, changed, merge_base)
     if touched is None:
