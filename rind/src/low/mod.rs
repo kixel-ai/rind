@@ -389,7 +389,9 @@ cfg_if::cfg_if! {
         pub(crate) use x86_64::aes_ctr;
         pub(crate) use x86_64::aes_gcm;
         #[cfg(test)]
-        pub(crate) use x86_64::{ct_sde, cpu::HaveAvx512Vl};
+        pub(crate) use x86_64::ct_sde;
+        #[cfg(all(test, feature = "ml-dsa"))]
+        pub(crate) use x86_64::cpu::HaveAvx512Vl;
         pub(crate) use x86_64::bignum_add::bignum_add;
         pub(crate) use x86_64::bignum_add_p25519::bignum_add_p25519;
         pub(crate) use x86_64::bignum_add_p256::bignum_add_p256;
