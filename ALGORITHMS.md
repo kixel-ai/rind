@@ -814,10 +814,10 @@ have some different options depending on CPU features:
   and their matrix sampling four polynomials at a time. On Zen 5 eight
   states took 192 ns, against 291 ns for four on s2n-bignum's AVX2 routine
   and 172 ns for one on its scalar one, so four states run on it too, and
-  one still runs alone. Running ML-KEM's four states on it took ML-KEM-512
-  from 0.95, 0.91, and 0.65 of aws-lc-rs's time for key generation,
-  encapsulation, and decapsulation to 0.91, 0.87, and 0.63 on an Emerald
-  Rapids Xeon. Its rotations are `vprolq`. `proofs/` takes it as a
+  one still runs alone. Running ML-KEM's four states on it took 2-5% off
+  ML-KEM-512's key generation, encapsulation, and decapsulation on Emerald
+  Rapids and Granite Rapids Xeons, and moved ML-KEM-1024's by less than
+  their noise. Its rotations are `vprolq`. `proofs/` takes it as a
   hypothesis.
 - We have s2n-bignum's verified 4-wide Keccak-f using AVX2 on x86-64, and its
   single-state Keccak-f otherwise.
