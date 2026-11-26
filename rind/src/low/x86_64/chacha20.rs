@@ -24,7 +24,7 @@
 //! at every length the block counter covers on those, HACL*'s rounds, and the
 //! aws-lc SSSE3 routine, whose object code
 //! `proofs/hol-light/x86_64/chacha20_ctr32_ssse3_4x.ml` proves against RFC
-//! 8439 in HOL Light, of the Linux build, in place on a nonempty buffer.
+//! 8439 in HOL Light, of the `x86_64-unknown-linux-gnu` build, in place on a nonempty buffer.
 
 use core::arch::x86_64::*;
 use core::mem::MaybeUninit;

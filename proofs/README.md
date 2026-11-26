@@ -136,7 +136,10 @@ those inputs, in any worktree, restores in under a second.
   from 328 below the stack pointer, which needs the stack pointer plus 8 to be
   16-byte aligned at entry, as the ABI leaves it; its table, which `admin/prove` extracts
   with the code since the build places it in the function's own read-only
-  section on Linux, must be 16-byte aligned. It is of the Linux build's object:
+  section on Linux, must be 16-byte aligned. Its other premises, the buffer's
+  disjointness from the code, table, and frame and its end at or below 2^64,
+  are listed in `Rind/X86_64/ChaCha20Cipher.lean`'s module doc. It is of the
+  `x86_64-unknown-linux-gnu` build's object, not musl's or Apple's:
   Apple's `aws_lc/ChaCha20_ctr32_ssse3_4x.apple.s` lacks the entry's
   `.align 32`, so its branches can land at other offsets, and its two tables
   are separate statics, not one section, so no proof covers it.
@@ -1470,7 +1473,7 @@ tail of fewer than 256 bytes, by induction over the groups.
 call, constructing the VG state succeeds (the model leaves `VgState::uninit`
 opaque), the CPU-feature checks return, whatever they find, and, where `new`
 picks no VG routine and finds SSSE3, so that `cipher` can run the SSSE3 routine,
-rind's build assembled the Linux object the HOL Light proof covers
+rind's build assembled the `x86_64-unknown-linux-gnu` object the HOL Light proof covers
 (`LinuxBuild`, which no axiom states). A CPU with AVX2 and BMI2 needs no such
 premise.
 
