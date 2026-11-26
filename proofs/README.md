@@ -65,6 +65,7 @@ Every Lean file that declares an `axiom`, by the source it restates; no file hol
 | s2n-bignum's HOL Light theorems of its assembly | `Aarch64/S2nBignum`, `X86_64/S2nBignum` | published proofs; `admin/prove bytes` checks rind's build emits the code they are about |
 | s2n-bignum's HOL Light theorems of its ML-KEM routines, and mlkem-native's of its compression routines | `Aarch64/MlKemRoutines` | published proofs; `admin/prove bytes` checks rind's build emits the code they are about, and `admin/prove` that the tables rind passes are s2n-bignum's |
 | pyca/verified-garbage's Lean theorems of its assembly | `Aarch64/VgChaCha20`, `Aarch64/VgChaCha20Poly1305`, `Aarch64/VgMlKem`, `Aarch64/VgP256`, `Aarch64/VgP384`, `Aarch64/VgPbkdf2`, `Aarch64/VgSha512`, `X86_64/VgChaCha20`, `X86_64/VgChaCha20Poly1305`, `X86_64/VgCurve25519`, `X86_64/VgMlKem`, `X86_64/VgP256`, `X86_64/VgP384`, `X86_64/VgRsa` | published proofs; `admin/vg-binding` checks each axiom cites the theorem of its routine, and `admin/vg-bytes` that rind runs that routine's bytes |
+| Beneficial AI Foundation's Lean theorems of curve25519-dalek, in its X25519 spec that `admin/import-dalek` vendors | `Armv7/Dalek` | published proofs; `admin/prove dalek` checks that every definition `mul_clamped` and `mul_base_clamped` reach in armv7's configuration is the text BAIF's proofs are about |
 | Vale's procedures for HACL\*'s AES-GCM | `X86_64/ValeAesGcm` | published proofs; `admin/prove bytes` checks the object code |
 | aws-lc-verification's NSym proof of SHA-384/512 (aarch64) and rind's HOL Light proof of the AVX2 routine (x86_64) | `Aarch64/AwsLc`, `X86_64/AwsLc` | a published proof and rind's own; `admin/prove bytes` and `admin/prove hol-light` check the object code |
 | rind's own HOL Light proofs of its assembly, and rind's Lean proof of the SHA-256 crypto-extension routine | `Aarch64/Sha256Hw`, `X86_64/CtEqual`, `X86_64/RsaMont`, `X86_64/Sha256Shaext`, `X86_64/ShaBlocks` | rind's proofs, in `proofs/hol-light/` and `Rind/Aarch64/Sha256HwAsm.lean`, checked against the bytes rind's build emits |
@@ -409,6 +410,37 @@ the `adrp` and `add` the linker fills and the final `ret`, as VG's are not.
   keeps under weaker hypotheses: the state may overlap the blocks or the
   table, and the table's address is a symbol, not an `adrp` range.
 
+## curve25519-dalek's proofs
+
+[Beneficial AI Foundation](https://github.com/Beneficial-AI-Foundation/curve25519-dalek-fork)
+(BAIF) proves curve25519-dalek's serial backends in Lean, through Charon and
+Aeneas as here, in its fork of the crate. Its theorems have no `sorry` and
+rest on Lean's axioms and three of BAIF's own, which model the `alloc`,
+`subtle`, and `zeroize` functions dalek calls. rind runs that backend on
+armv7, and `Rind/Armv7/Dalek.lean` restates BAIF's theorems about the two
+functions armv7's X25519 calls, `MontgomeryPoint::mul_clamped` and
+`mul_base_clamped`, as axioms about the translation's opaque declarations of
+them. `curve25519-dalek/` holds the spec modules those statements name,
+`ForHumans/Specs/X25519.lean` and the modules of BAIF's it imports, which
+`admin/import-dalek` copies byte for byte at the commit it pins, with the
+fork's license; `lakefile.toml` requires BAIF's elliptic-curve library at the
+revision that commit pins.
+
+BAIF's theorems are about its translation of the fork's source, and rind
+builds the crates.io release, so `admin/prove dalek`, which `admin/prove
+lean` runs, checks that the two are the same code. It translates the release
+as BAIF's `scripts/aeneas-translate.sh` translates the fork: with the Aeneas
+release BAIF pins, the flake's `aeneas-dalek`, BAIF's translation patches,
+Charon options, and four configurations, and the features rind's manifest
+asks of dalek, which must be the ones BAIF builds with. `admin/dalek-closure`
+then fails unless every definition the two functions reach in the
+configuration armv7 builds, 32-bit with precomputed tables, has BAIF's text.
+A patch that does not apply to the release is reported and skipped, so a
+definition it would have changed fails that comparison if X25519 reaches it.
+One patch writes the code of the ladder's `mul_bits_be` and `bits_le` into
+their caller, so the comparison reads BAIF's copy: `admin/prove`'s
+`dalek_copied` names them, and their source must be the fork's.
+
 ## What is proven
 
 X25519 on x86_64 and aarch64, from the agreement API's `PrivateKey` to
@@ -435,6 +467,18 @@ check returns no token (`o = none`, and every aarch64 CPU), and VG's
 specs both transliterate RFC 7748, but HOL Light's stays opaque, so no proof
 equates them. On IFMA CPUs the theorems rest on the axioms
 `vg_x25519_base_spec` and `vg_x25519_exchange_spec`.
+
+X25519 on armv7 CPUs without NEON, from the same `PrivateKey` to
+curve25519-dalek's serial 32-bit backend, in the same five theorems, which
+`admin/prove` writes for armv7 from `Rind/X86_64/X25519.lean` over
+`Rind/Armv7/Curve25519.lean`'s dispatch. There `cpuX25519 o` is
+`dalekX25519`: Beneficial AI Foundation's (BAIF's) `curve25519.X25519` of
+the 32 little-endian bytes, as `Rind/Dalek.lean` reads it. The theorems take
+a CPU without NEON, `DalekCpu o`, since with NEON the shared secret runs
+BoringSSL's NEON ladder, which no proof covers yet; the public key runs dalek
+on every CPU, but its theorems share that hypothesis with the rest. They rest
+on the axioms `dalek_mul_base_clamped_spec` and `dalek_mul_clamped_spec`,
+which [curve25519-dalek's proofs](#curve25519-daleks-proofs) describes.
 
 P-256 ECDH on x86_64 and aarch64, from the same `PrivateKey` to s2n-bignum's
 routines, in `Rind/X86_64/P256Agree.lean` and `Rind/X86_64/P256.lean`, which
@@ -1543,7 +1587,9 @@ these quests prove its code, whose proofs then run on this translation:
   [armv7's Rust proofs](/quest/m5/verified-armv7/prove.md) and
   [x86_64 without AES-NI](/quest/m5/verified/x86-no-aesni.md), which share one
   source file across word widths;
-- X25519 and Ed25519: curve25519-dalek's serial backend under rind's glue, in
+- X25519: [its own quest](/quest/m5/verified/x25519-portable.md), over armv7's
+  proof and its dalek axioms;
+- Ed25519: curve25519-dalek's serial backend under rind's glue, in
   [armv7's Curve25519](/quest/m5/verified-armv7/curve25519.md);
 - P-256, P-384, and P-521: [armv7's NIST curves](/quest/m5/verified-armv7/nist-curves.md),
   whose point arithmetic `low/generic/limb64.rs` builds again over
@@ -1568,6 +1614,8 @@ proof after those.
   `verified-garbage/RindIsa/`, rind's extension of them and its programs,
   with `rind-asm`; and `verified-garbage/Cosim/`, the cosimulation of both,
   which [verified-garbage's models](#verified-garbages-models) describes.
+- `curve25519-dalek/`: BAIF's curve25519-dalek specs, copied, which
+  [curve25519-dalek's proofs](#curve25519-daleks-proofs) describes.
 - `Rind/<Arch>/{Types,Funs}.lean`: Aeneas's translation, which `admin/prove`
   writes and git ignores.
 - `Rind/<Arch>/{Types,Funs}External.lean` and `Rind/Core.lean`: what the
@@ -1617,8 +1665,13 @@ proof after those.
   `Rind/X86_64/Kdf/{TypesExternal,FunsExternal}.lean`, of what the HKDF and
   PBKDF2 pass leaves opaque, and `Rind/Aarch64/Kdf/VgExternal.lean`, of what
   aarch64's alone does.
+- `Rind/Armv7/Curve25519.lean`: armv7's X25519 dispatch, over
+  `Rind/Armv7/Dalek.lean`, the axioms restating BAIF's theorems, and
+  `Rind/Dalek.lean`, BAIF's X25519 and byte encodings as those proofs read
+  them.
 - `Rind/X86_64/{X25519,Sha512,ChaCha20,Ed25519}.lean`: the X25519, SHA-512,
-  ChaCha20, and Ed25519 proofs, `Rind/X86_64/Ed25519Ifma.lean`, Ed25519's on
+  ChaCha20, and Ed25519 proofs, with `Rind/X86_64/X25519Bytes.lean`, X25519's
+  byte and limb conversions, `Rind/X86_64/Ed25519Ifma.lean`, Ed25519's on
   pyca/verified-garbage's IFMA routines, `Rind/X86_64/VgCurve25519.lean`, the
   axioms restating those routines' theorems, and `Rind/VgCurve25519.lean`,
   VG's X25519 and byte encodings as those proofs read them, `Rind/X86_64/{Blockwise,Sha,Hmac}.lean`,
@@ -1827,6 +1880,10 @@ Beyond Lean's kernel:
   own theorems, with the fork's additions to the x86 model, from
   awslabs/s2n-bignum#450 and rind's own, which
   `admin/prove cosim` checks against the CPU as s2n-bignum checks its own.
+- For armv7's X25519, BAIF's Lean proofs of curve25519-dalek and their three
+  axioms, the restatement of each theorem as an axiom, and the translation
+  `admin/prove dalek` compares, which shows the release rind builds is the
+  code BAIF's proofs are about.
 - The translation ignores drops, which here wipe keys and keyed state and
   restore CPU state, and computes nothing an output
   depends on.
