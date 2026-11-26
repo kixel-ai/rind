@@ -36,9 +36,9 @@ pub(crate) fn bignum_add(z: &mut [u64], x: &[u64], y: &[u64]) -> u64 {
 /// In the case of a zero bignum as input the result is 0
 pub(crate) fn bignum_bitsize(x: &[u64]) -> usize {
     let mut bits = 0;
-    for (i, w) in x.iter().enumerate() {
-        let here = (i as u64 * 64 + 64).wrapping_sub(u64::from(w.leading_zeros()));
-        bits = select(nonzero(*w), here, bits);
+    for i in 0..x.len() {
+        let here = (i as u64 * 64 + 64).wrapping_sub(u64::from(x[i].leading_zeros()));
+        bits = select(nonzero(x[i]), here, bits);
     }
     bits as usize
 }
