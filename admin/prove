@@ -1375,7 +1375,7 @@ assembly=(
     --start-from crate::mid::sha3::Sponge::finish
     --start-from 'crate::mid::sha3::Sha3Context::_'
     --start-from 'crate::mid::sha3::Shake::_'
-    --start-from 'crate::mid::sha3::Shake4x::_'
+    --start-from 'crate::mid::sha3::Shake8x::_'
     --start-from crate::mid::aes::AesCtr::new
     --start-from crate::mid::aes::AesCtr::apply_keystream
     --start-from crate::mid::aes_cbc::AesCbcEncryptingKey::new
@@ -1608,6 +1608,9 @@ extract x86_64 X86_64 "${hashes[@]}" "${assembly[@]}" \
     --opaque crate::low::x86_64::sha512::path \
     --include crate::low::x86_64::sha3_keccak4_f1600_shim \
     --include crate::low::x86_64::sha3_keccak_nof4_f1600 \
+    --include crate::low::x86_64::sha3_keccak8_f1600 \
+    --opaque crate::low::x86_64::sha3_keccak8_f1600::permute \
+    --include crate::low::generic::keccak8 \
     --start-from '{impl crate::aead::Cipher for crate::mid::aes_gcm::AesGcm}' \
     --start-from crate::mid::aes_gcm::AesGcm::encrypt_any \
     --start-from crate::mid::aes_gcm::AesGcm::decrypt_any \
@@ -1733,6 +1736,7 @@ extract aarch64 Aarch64 "${hashes[@]}" "${assembly[@]}" \
     --include crate::low::aarch64::sha3_keccak_f1600_mux \
     --include crate::low::aarch64::sha3_keccak4_f1600_mux \
     --include crate::low::aarch64::sha3_keccak_nof4_f1600 \
+    --include crate::low::generic::keccak8 \
     --include crate::low::aarch64::sha256 \
     --opaque crate::low::aarch64::sha256::compress_hw \
     --opaque crate::low::aarch64::sha256::compress_nohw \

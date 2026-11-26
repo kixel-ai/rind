@@ -56,7 +56,9 @@ Ed25519 verification also takes its multi-scalar multiplication,
 the edwards25519 group's orders, which HOL Light proves, as the hypothesis
 `EdOrders`. ChaCha20-Poly1305's theorems also take the hypothesis
 `RunsChaCha20Poly1305`, which no axiom states, whose `OnePass` takes aws-lc's
-one-pass routines on CPUs without IFMA. None of these three states an axiom.
+one-pass routines on CPUs without IFMA.
+SHA-3's and SHAKE's theorems take rind's eight-way AVX-512 Keccak-f as part
+of the hypothesis `RunsSha3`. None of these four states an axiom.
 RSA's Montgomery products at the widths aws-lc's 4x and 8x routines take, but
 for s2n-bignum's Karatsuba routines, take them as the hypothesis
 `AwsLcMont`, which no axiom states either. ChaCha20's
