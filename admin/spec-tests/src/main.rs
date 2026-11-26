@@ -446,6 +446,11 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
+    // A section in a group the workflow never runs would pass every row.
+    if let Some((name, g, _)) = cases::SECTIONS.iter().find(|(_, g, _)| !GROUPS.contains(g)) {
+        eprintln!("spec-tests: section {name} is in {g:?}, which is not in GROUPS");
+        return ExitCode::from(2);
+    }
     let sections: Vec<_> = cases::SECTIONS
         .iter()
         .filter(|(name, g, _)| {
