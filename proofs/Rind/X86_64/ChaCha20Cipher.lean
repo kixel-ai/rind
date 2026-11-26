@@ -24,7 +24,8 @@ rind's naked function, as rind's Linux build emits it, computes s2n-bignum's
 around it. `admin/prove` checks the HOL Light proof against the object code
 rind's release build emits, its instructions, relocations, and the table they
 read, on s2n-bignum's x86 model with the instructions rind adds to it, which
-`admin/prove cosim` checks against the CPU. The safety contract itself
+`admin/prove cosim` checks against the CPU, but for the `rep ret` (`F3 C3`) the
+routine returns with, which leaves the harness and is checked by neither. The safety contract itself
 asks only for a nonempty buffer; the theorem's other hypotheses hold of every
 call for facts outside it, trusted like the restatement: the buffer is a live
 `&mut [u8]` allocation, so it overlaps neither the code, the table, nor the
@@ -194,8 +195,9 @@ namespace rind.x86_64
 open low.x86_64.chacha20 (VgState)
 
 /-- rind's build assembled `ChaCha20_ctr32_ssse3_4x.linux.s`, the object its HOL
-Light proof covers, not Apple's copy. Nothing states it: it holds of an
-x86_64 Linux build, and a caller on another OS must not claim it. -/
+Light proof covers, not Apple's copy. `admin/prove` checks the object of the
+`x86_64-unknown-linux-gnu` target only, so a musl build is outside it too.
+Nothing states it: a caller on another target must not claim it. -/
 opaque LinuxBuild : Prop
 
 /-! ## The dispatch, `ChaCha20::cipher` -/
@@ -254,8 +256,9 @@ theorem cipher_all_spec (hu : ∃ s, VgState.uninit = ok s)
 /-- rind runs ChaCha20 on this CPU: the entry guard admits the call, a VG state
 can be made, the CPU-feature checks return, whatever they find, and, where
 `new` picks no VG routine and finds SSSE3, so that `cipher` can run aws-lc's
-SSSE3 routine, the build assembled the Linux object (`LinuxBuild`). A CPU with
-AVX2 needs no such premise. None reads an input. -/
+SSSE3 routine, the build assembled the Linux object (`LinuxBuild`). A CPU where
+either VG feature check returns a token (AVX2 with BMI2, which they require)
+needs no such premise. None reads an input. -/
 def RunsCipher : Prop :=
   (∃ e, low.entry.Entry.new_secret = ok e) ∧ (∃ s, VgState.uninit = ok s) ∧
   ∃ a b s, low.x86_64.cpu.HaveAvx512Vl.check = ok a ∧ low.x86_64.cpu.HaveAvx2.check = ok b ∧

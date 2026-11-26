@@ -210,7 +210,8 @@ theorem words_spec {B : Usize} (W : Usize) (bytes : Std.Array U8 B) (hB : B.val 
   simp [List.getElem_range', List.getElem?_eq_getElem h2]
 
 /-- `ChaCha20::new` holds the key and the counter and nonce as words, picks a
-VG routine where the CPU has AVX2, and keeps the SSSE3 check's result. -/
+VG routine where either VG feature check returns a token (AVX2 with the BMI2
+they require), and keeps the SSSE3 check's result. -/
 @[step]
 theorem new_spec (key : Std.Array U8 32#usize) (counter_nonce : Std.Array U8 16#usize)
     (a : Option low.x86_64.cpu.HaveAvx512Vl) (b : Option low.x86_64.cpu.HaveAvx2)
