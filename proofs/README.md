@@ -855,22 +855,42 @@ On aarch64, where s2n-bignum has no routine for it, rind runs
 `Rind/Aarch64/MlKemGeneric.lean` proves, on no axiom: `mlkem_frombytes`
 writes each raw 12-bit field, in `[0, 4096)`, so each coefficient is
 `ByteDecode_12`'s modulo `q` but not yet reduced (`Holds 0 4095`); the
-`mlkem_reduce` after it, whose axiom is the quest's, makes it canonical.
+`mlkem_reduce` after it makes it canonical.
 Ciphertext compression there is mlkem-native's NEON assembly, which HOL Light
 proves, though `admin/prove bytes` does not yet check rind's build against
 those proofs, as for x86_64's AVX2 compression
-([quest](/quest/m4/verified/mlkem-compress-bytes.md)); its bridge to
-`Compress` is the construction quest's, as for x86_64's AVX2
-compression.
+([quest](/quest/m4/verified/mlkem-compress-bytes.md)).
+
+`Rind/Aarch64/MlKemRoutines.lean` restates the HOL Light theorems about the
+routines aarch64's ML-KEM runs as one axiom per wrapper in
+`low::aarch64::mlkem`: s2n-bignum's NTT, inverse NTT, mulcache, base
+multiplication, reduction, Montgomery conversion, 12-bit packing, and
+rejection sampling, and mlkem-native's compression to 4 and 10 bits, the
+only widths ML-KEM-768 takes, as `mlkem_basemul_k3` is its only base
+multiplication. The zeta tables the theorems assume are not trusted: `admin/prove`
+writes s2n-bignum's from its HOL Light sources into `MlKemTables`, and the
+kernel checks rind's against them. The rejection sampler's 4096-byte table,
+too long a literal for Lean, is the exception: its wrapper stays opaque, and
+`admin/prove` checks the table's text is s2n-bignum's. The specs after the
+axioms state each routine in FIPS 203's terms, and
+`Rind/Aarch64/MlKemPoly.lean` lifts them to `mid::mlkem`'s vectors: the NTT,
+mulcache, inverse NTT, dot product, reduction, 12-bit coding, and
+coefficient-wise sums and differences.
+
+`kpke_decrypt_fips` (`Rind/Aarch64/MlKemPke.lean`): on aarch64,
+`DecapKey::kpke_decrypt` is FIPS 203's `K-PKE.Decrypt` (Algorithm 15) for
+ML-KEM-768, on those axioms. Aeneas does not translate a set's `Params` impl,
+so the theorem takes it as a parameter, and `Is768` states what ML-KEM-768's
+is: its constants, and its types' `FixedArray` impls those of arrays.
 
 `Rind/MlKemCoding.lean` states what they need of the spec, with no Rust:
 `ByteEncode_bit`, `ByteDecode_get`, and `SamplePolyCBD_get` give each bit or
 coefficient of FIPS 203's `ByteEncode`, `ByteDecode`, and `SamplePolyCBD`,
 which the spec writes as loops, and `Compress_val` and `Decompress_val` give
 `Compress` and `Decompress`, which it writes as rounded rationals, as
-quotients of naturals. Nothing above these calls them yet: K-PKE, the
-Fujisaki-Okamoto transform, SampleNTT, and the other encodings are the
-quest's.
+quotients of naturals. K-PKE's decryption calls them; its encryption and key
+generation, the Fujisaki-Okamoto transform, SampleNTT, and x86_64's
+encodings are the quest's.
 
 Ed25519 on x86_64 and aarch64, from the signature API's `ed25519::KeyPair`
 and `ed25519::PublicKey` to s2n-bignum's routines and the SHA-512 proof above, in
@@ -1524,7 +1544,11 @@ proof after those.
   coefficient; `Rind/X86_64/MlKemCoding.lean`, on both targets: that rind's
   decompression, message coding, and CBD sampling are FIPS 203's;
   `Rind/Aarch64/MlKemGeneric.lean`: that aarch64's Rust 12-bit
-  unpacking is.
+  unpacking is; `Rind/MlKemPacking.lean`: packed words as FIPS 203's
+  `ByteEncode`; `Rind/Aarch64/MlKemRoutines.lean`: the axioms for aarch64's
+  ML-KEM routines and their specs in FIPS 203's terms;
+  `Rind/Aarch64/MlKemPoly.lean`: `mid::mlkem`'s vector operations over them;
+  `Rind/Aarch64/MlKemPke.lean`: ML-KEM-768's K-PKE decryption.
 - `Rind/<Arch>/ShaBlocks.lean`: SHA-1 and SHA-256's block functions on each
   target, SHA-1's padded last blocks, and SHA-256's padded last blocks and
   finish; `Rind/Aarch64/Sha256Hw.lean`, the axiom for aarch64's routine with
@@ -1588,8 +1612,8 @@ Beyond Lean's kernel:
   compiled checker accepted a SAT solver's certificate.
 - That `Rind/HashSpec.lean` transliterates FIPS 180-4, RFC 2104, RFC 5869,
   and RFC 8018.
-- The restatement of each s2n-bignum and aws-lc-verification theorem, and of
-  each of rind's own HOL Light theorems, as an axiom, under the composition rule in the
+- The restatement of each s2n-bignum, mlkem-native, and aws-lc-verification
+  theorem, and of each of rind's own HOL Light theorems, as an axiom, under the composition rule in the
   [verification epic](/quest/m4/verified/README.md#composition-rule), and on aarch64 the
   caveats aws-lc-verification lists for its NSym proof. It lets a
   group-membership fact a proof must decide be its defining equation, so
@@ -1607,6 +1631,8 @@ Beyond Lean's kernel:
 - That `Rind/SymCrypt/MlKem.lean` is FIPS 203, as SymCrypt's authors state,
   and that `Rind/S2nMlKem.lean` transliterates the s2n-bignum ML-KEM specs it
   names.
+- That `admin/prove`'s text comparison of aarch64's rejection-sampling table
+  with s2n-bignum's reads both correctly.
 - That `Rind/Sha2.lean` restates cryptol-specs' SHA-512, its
   `processBlock_Common` as FIPS 180-4's, `Rind/S2nSha256.lean` and
   `Rind/S2nSha512.lean` transliterate s2n-bignum's SHA-256 and SHA-512 specs,
