@@ -50,7 +50,7 @@ P-384's comb table select rests on no axiom, only on the hand model in
 `Rind.Aarch64.PointSelectModel`. The PMULL GHASH's table and `Ghash::add`, and
 AES-GCM's counter blocks and its `tagged_from` and `tagged` on short messages
 with the crypto extension's key, rest on no axiom, only on the hand model in
-`Rind.Aarch64.AesGcmModel`. Their proofs at every length, with an AES-128 or
+`Rind.Aarch64.AesGcmModel`. The all-length `tagged_from` and `tagged` proofs, with an AES-128 or
 AES-256 key, rest also on s2n-bignum's stitched kernels' contracts, and on
 cores with SHA3 take the `_alt` kernels' address bound as the hypothesis
 `KernelBuffersLow`, which no axiom states.
