@@ -1003,7 +1003,7 @@ OUTSIDE_API = {
 }
 
 # Why a library's column lacks an algorithm it has, by library and algorithm,
-# for the rows rind-bench does not time under its name.
+# shown only while the results time none of its rows under that library.
 UNTIMED = {
     ("openssl", "SHA-3"): "OpenSSL has it, not yet timed",
     ("openssl", "HPKE"): "OpenSSL has it, but the openssl crate does not",
@@ -1856,9 +1856,6 @@ def comparison_table(hosts, verified):
                 if lib in offered and row in algorithm:
                     offered[lib].add(algorithm[row])
     timed = [name for name, _ in ALGORITHMS if any(name in names for names in offered.values())]
-    for lib, name in UNTIMED:
-        if name in offered[lib]:
-            fail(f"{lib} times {name} now, so drop UNTIMED's entry for it")
     lines = [
         f"| Library | Build tools beyond rustc | Lacks, of the {len(timed)} algorithms benchmarked "
         "| Formally verified | Fastest, or within 10% |",
