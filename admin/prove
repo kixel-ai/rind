@@ -942,7 +942,7 @@ routine_layout() {
 # Each routine rind imports with a published proof, against the object code
 # that proof checked, which `admin/prove-bytes` describes. Vale's and aws-lc's
 # are assembled here from their upstream's text, at the revision of their
-# proofs, with the GNU assembler.
+# proofs, with the GNU assembler; mlkem-native's proofs list their bytes.
 bytes() {
     local dir=$out/bytes arch kind path name obj sym target found
     hold scratch
@@ -955,6 +955,7 @@ bytes() {
     hacl=.tmp/upstream/hacl-star aws_lc=.tmp/upstream/aws-lc@$(admin/prove-bytes aws-lc-revision)
     admin/upstream hacl-star
     admin/upstream aws-lc "${aws_lc#*@}"
+    admin/upstream mlkem-native
     # `-L` keeps the local symbols that size aws-lc's tables.
     x86_64-linux-gnu-as -o "$dir/vale.o" "$hacl/dist/vale/aesgcm-x86_64-linux.S"
     x86_64-linux-gnu-cpp -I "$aws_lc/include" "$aws_lc/generated-src/linux-x86_64/crypto/fipsmodule/sha512-x86_64.S" |
@@ -977,7 +978,13 @@ bytes() {
             read -r rind_obj rind_sym <<<"$found"
             read -r section value size < <(symbol_bounds "$rind_obj" "$rind_sym")
             routine_layout "$rind_obj" "$section" $((16#$value)) $((16#$value + 16#$size)) "$dir/$arch/$name.bin"
+        fi
+        if [[ $kind == naked ]]; then
             object_routine "$dir/$obj" "$sym" "$dir/$arch/$name.proof"
+        elif [[ $kind == listed && $obj != - ]]; then
+            # A naked function whose proof lists its bytes, and here the
+            # static it reads its table from.
+            rind_static "$arch" "$obj" "$dir/$arch/$name.table"
         fi
         found=$(rind_symbol "$arch" "$path")
         relocation_data "${found%% *}" "$dir/$arch/$name.bin.relocs" "$dir/$arch/$name.bin.data" "$arch"
@@ -1098,7 +1105,7 @@ aarch64_aes_gcm_items() {
         'fn mul8(' 'fn _mul_h(' 'fn _mul8(' "pub(crate) struct Aggregate<'a> {" "impl<'a> Aggregate<'a> {" \
         'fn reverse(' 'fn vmull_p64_fix(' 'fn vmull_high_p64_fix(' 'fn zero(' 'fn from_u128(' 'fn to_u128(' \
         'const GF128_POLY_HI:' 'const GF128_POLY_CARRY_MASK:'
-    items rind/src/low/aarch64/aes_gcm.rs 'fn short<' 'static KEEP:' 'fn encrypt<' 'fn load(' 'fn store('
+    items rind/src/low/aarch64/aes_gcm.rs 'fn short<' 'static KEEP:' 'fn encrypt<' 'fn load(' 'fn store(' 'fn stitched<'
 }
 check_quote Aarch64/AesGcmModel aarch64_aes_gcm_items
 select_items() {
@@ -1774,7 +1781,7 @@ extract aarch64 Aarch64 "${hashes[@]}" "${assembly[@]}" \
     --opaque 'crate::low::aarch64::ghash::_::add' \
     --include crate::low::aarch64::aes_gcm \
     --opaque crate::low::aarch64::aes_gcm::short \
-    --opaque crate::low::aarch64::aes_gcm::cipher
+    --opaque crate::low::aarch64::aes_gcm::stitched
 
 # The AEAD key's conversion is x86_64's alone: the AEAD API's model and proofs
 # are x86_64's, as AES-GCM's are.
