@@ -39,10 +39,10 @@ five instructions that address it. The 32-bit block counter wraps, in the
 routine and in the spec alike. The restatement, and that the wrapper passes
 the key, counter, nonce, and buffer the theorem names, are trusted.
 
-The proof is of the Linux build's object only. Apple's build assembles its own
+The proof is of the `x86_64-unknown-linux-gnu` build's object only. Apple's build assembles its own
 copy, `ChaCha20_ctr32_ssse3_4x.apple.s`, which lacks the entry's `.align 32`,
 so its branches can land at other offsets, and whose two tables are separate
-statics, not one section, so nothing here covers an x86_64 Mac. The axiom and
+statics, not one section, so nothing here covers an x86_64 Mac's SSSE3 routine. The axiom and
 `RunsCipher` take `LinuxBuild`, that rind's build assembled the Linux object,
 as a hypothesis, which no axiom states; `cipher_all_spec` and `RunsCipher` take
 it only where `new` picks no VG routine and finds SSSE3, so a CPU that runs
@@ -326,10 +326,12 @@ theorem apply_keystream_spec (he : ∃ e, low.entry.Entry.new_secret = ok e)
   · rw [Slice.len_val] at r_post
     split_ifs at r_post ⊢ <;> subst r_post <;> simp_all
 
-/-- ChaCha20 on any x86_64 CPU, in rind's Linux build where it runs the SSSE3
-routine: RFC 8439's encryption of the buffer under the key, the block counter, and the nonce, if the counter
-covers it before it wraps; otherwise `WrongLength`, with the buffer unchanged.
-An x86_64 Mac's SSSE3 routine is Apple's copy, which no proof covers. -/
+/-- ChaCha20 on any x86_64 CPU: RFC 8439's encryption of the buffer under the
+key, the block counter, and the nonce, if the counter covers it before it
+wraps; otherwise `WrongLength`, with the buffer unchanged. Where `new` picks no
+VG routine and finds SSSE3, this holds of rind's `x86_64-unknown-linux-gnu`
+build (`LinuxBuild`); an x86_64 Mac's SSSE3 routine is Apple's copy, which no
+proof covers. -/
 theorem chacha20_apply_keystream (h : RunsCipher) (k : mid.chacha20.ChaCha20)
     (nonce : Std.Array U8 12#usize) (counter : U32) (inout : Slice U8) :
     k.apply_keystream nonce counter inout ⦃ r inout' =>

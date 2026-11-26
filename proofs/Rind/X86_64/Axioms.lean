@@ -38,7 +38,8 @@ rind's HOL Light proofs of its routines for the SHA extensions in
 `Rind.X86_64.ShaBlocks`; Vale's in
 `Rind.X86_64.ValeAesGcm` for AES-GCM, rind's HOL Light proof of aws-lc's
 `bn_mul_mont_nohw` in `Rind.X86_64.RsaMont` for RSA's Montgomery products at
-the widths aws-lc's 4x and 8x routines do not take, rind's HOL Light proofs
+the widths aws-lc's 4x and 8x routines do not take, and its Lean proof there
+of `bn_mul4x_mont` for the 4x products without BMI2 and ADX, rind's HOL Light proofs
 of its constant-time compares in `Rind.X86_64.CtEqual` for HMAC's and PBKDF2's
 `verify`, AES-GCM's tag check, ChaCha20-Poly1305's one-pass tag check,
 RSASSA-PSS's hash compare, and key wrap's `unwrap` and
@@ -63,14 +64,13 @@ takes them on CPUs without IFMA, and the AEAD API above it takes the one pass
 as the hypotheses `Seals` and `Opens`.
 SHA-3's and SHAKE's theorems take rind's eight-way AVX-512 Keccak-f as part
 of the hypothesis `RunsSha3`. None of these four states an axiom.
-ChaCha20's `apply_keystream` takes the hypothesis `LinuxBuild`, which no axiom
-states either, where `new` picks no VG routine and finds SSSE3, since rind's
-HOL Light proof of the SSSE3 routine covers the Linux build's object, not
-Apple's.
-RSA's Montgomery products at the widths aws-lc's 4x and 8x routines take, but
-for s2n-bignum's Karatsuba routines, take them as the hypothesis
-`AwsLcMont`, which no axiom states either.
-`Rind.X86_64.ChaCha20Avx2` proves rind's two-block kernel
+RSA's Montgomery products at the widths aws-lc's `bn_mulx4x_mont` and
+`bn_sqr8x_mont` take, but for s2n-bignum's Karatsuba routines, take those as
+the hypothesis `AwsLcMont`, which no axiom states either. ChaCha20's
+`apply_keystream` takes the hypothesis `LinuxBuild`, which no axiom states
+either, where `new` picks no VG routine and finds SSSE3, since rind's HOL Light
+proof of the SSSE3 routine covers the `x86_64-unknown-linux-gnu` build's object,
+not Apple's; `Rind.X86_64.ChaCha20Avx2` proves rind's two-block kernel
 over `Rind.X86_64.Simd`'s models of the AVX2 intrinsics. The generator
 tables' point selects rest on no axiom, only on the hand model in
 `Rind.X86_64.PointSelectModel`, as RSA's AVX2 table gather does on
@@ -428,12 +428,20 @@ change to the trust base.
 /-- info: 'rind.x86_64.chacha20_apply_keystream' depends on axioms: [propext,
  Classical.choice,
  Quot.sound,
- chacha20_ctr32_ssse3_4x_spec,
  vg_chacha20_apply_avx2_spec,
  vg_chacha20_apply_avx512vl_spec,
  vg_chacha20_init_spec] -/
 #guard_msgs in
 #print axioms chacha20_apply_keystream
+
+/-- info: 'rind.x86_64.chacha20_apply_keystream_ssse3' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ vg_chacha20_apply_avx2_spec,
+ vg_chacha20_apply_avx512vl_spec,
+ vg_chacha20_init_spec] -/
+#guard_msgs in
+#print axioms chacha20_apply_keystream_ssse3
 
 /-- info: 'rind.x86_64.avx2.kernel' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
@@ -1077,6 +1085,7 @@ change to the trust base.
  bignum_ksqr_16_32_spec,
  bignum_ksqr_32_64_spec,
  bignum_optsub_spec,
+ mul4x_spec,
  nohw_spec] -/
 #guard_msgs in
 #print axioms mont_products

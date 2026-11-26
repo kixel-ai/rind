@@ -68,7 +68,7 @@ Every Lean file that declares an `axiom`, by the source it restates; no file hol
 | Beneficial AI Foundation's Lean theorems of curve25519-dalek, in its X25519 spec that `admin/import-dalek` vendors | `Armv7/Dalek` | published proofs; `admin/prove dalek` checks that every definition `mul_clamped` and `mul_base_clamped` reach in armv7's configuration is the text BAIF's proofs are about |
 | Vale's procedures for HACL\*'s AES-GCM | `X86_64/ValeAesGcm` | published proofs; `admin/prove bytes` checks the object code |
 | aws-lc-verification's NSym proof of SHA-384/512 (aarch64) and rind's HOL Light proof of the AVX2 routine (x86_64) | `Aarch64/AwsLc`, `X86_64/AwsLc` | a published proof and rind's own; `admin/prove bytes` and `admin/prove hol-light` check the object code |
-| rind's own HOL Light proofs of its assembly, and rind's Lean proof of the SHA-256 crypto-extension routine | `Aarch64/Sha256Hw`, `X86_64/ChaCha20Cipher`, `X86_64/CtEqual`, `X86_64/RsaMont`, `X86_64/Sha256Shaext`, `X86_64/ShaBlocks` | rind's proofs, in `proofs/hol-light/` and `Rind/Aarch64/Sha256HwAsm.lean`, checked against the bytes rind's build emits |
+| rind's own HOL Light proofs of its assembly, and rind's Lean proofs of the SHA-256 crypto-extension routine (aarch64) and `bn_mul4x_mont` (x86_64) | `Aarch64/Sha256Hw`, `X86_64/ChaCha20Cipher`, `X86_64/CtEqual`, `X86_64/RsaMont`, `X86_64/Sha256Shaext`, `X86_64/ShaBlocks` | rind's proofs, in `proofs/hol-light/`, `Rind/Aarch64/Sha256HwAsm.lean`, and `Rind/X86_64/Mul4xProof.lean`, checked against the bytes rind's build emits |
 | HOL Light theorems of AES-CTR and AES-CBC that no proof states yet | `X86_64/AesModesLow` | **assumed, not proven**: [the AES modes quest](/quest/m4/verified/aes-modes.md) owns them |
 
 Hand models of Rust Aeneas cannot translate, each quoting the Rust it models:
@@ -410,6 +410,35 @@ the static's `.rodata`, and the static's bytes. `admin/prove vg` cosimulates
 each distinct instruction and branch condition of those programs
 (`Cosim/Rind.lean`, `--rind`) as it does VG's, comparing `x29` too, but for
 the `adrp` and `add` the linker fills and the final `ret`, as VG's are not.
+
+`verified-garbage/RindIsa/X86_64.lean` extends VG's x86_64 model the same
+way: its state is VG's with `lo`, the lowest address the stack may reach, and
+it adds the push, `lea`, `neg`, `dec`, aligned 128-bit load and store, and
+`ja` aws-lc's code uses, a stack pointer move that claims the region it
+passes over as writable and forgets what a release leaves below it, and the
+padding (`.align` and the `jmp` over it), which runs as no instructions.
+`admin/prove lean` compares each x86_64 program's bytes with the Linux build
+the same way, `rind-asm x86_64` printing them, and `admin/prove vg`
+cosimulates its instructions and branches (`Cosim/RindX86_64.lean`) but for
+the padding, whose bytes that comparison checks.
+
+- `Rind/X86_64/Mul4xProof.lean`: `bn_mul4x_mont_correct`, that
+  `low::x86_64::mont::bn_mul4x_mont`, aws-lc's 4x Montgomery multiplication
+  without BMI2 and ADX, run from a state its `Pre` holds of (a width `k`
+  that is a multiple of four from eight and below `2^32`, `n0` the
+  `-m⁻¹ mod 2^64` of `m`, `a` below `m`, writes to `rp` only, `rp` disjoint
+  from `m`, every argument outside the `8k + 1104` bytes below the stack
+  pointer it owns, and room for that frame above `lo`), writes the Montgomery
+  product `a·b·2^(-64k) mod m` to `rp`, below `m`, returns 1, and changes no
+  other memory outside that frame and no register SysV makes the callee
+  save; that its trace is a function of its pointers, width, and stack
+  pointer (`ConstantTime`); and that some state meets `Pre`. The other
+  `Mul4x*` files build it: `Mul4xModel` the words a pass computes,
+  `Mul4xAsm` and `Mul4xHeadAsm` the program's blocks, `Mul4xHead` the
+  prologue and page walk, `Mul4xLoop` and `Mul4xOuter` the passes,
+  `Mul4xSub`, `Mul4xTailAsm`, and `Mul4xFinal` the subtraction and the
+  constant-time copy.
+  `Rind/X86_64/RsaMont.lean` restates it as `mul4x_spec`.
 
 - `Rind/Aarch64/Sha256HwAsm.lean`: `sha256_block_data_order_hw_correct`,
   that `low::aarch64::sha256::sha256_block_data_order_hw`, aws-lc's routine
@@ -1462,8 +1491,8 @@ pyca/verified-garbage's AVX2 and AVX-512 VL routines, rind's two-block AVX2
 kernel, aws-lc's SSSE3 routine, and HACL*'s rounds, in
 `Rind/X86_64/ChaCha20Cipher.lean`:
 
-- `chacha20_apply_keystream`, on any CPU (where it runs the SSSE3 routine it
-  assumes `LinuxBuild`, rind's `x86_64-unknown-linux-gnu` build; an x86_64 Mac's
+- `chacha20_apply_keystream`, on any CPU (where `new` picks no VG routine and
+  finds SSSE3 it assumes `LinuxBuild`, rind's `x86_64-unknown-linux-gnu` build; an x86_64 Mac's
   SSSE3 routine is Apple's copy, which no proof covers): a buffer that needs more blocks
   than remain before the 32-bit block counter wraps is refused with
   `WrongLength` and left as it is, and otherwise it becomes RFC 8439's
@@ -1493,7 +1522,7 @@ call, constructing the VG state succeeds (the model leaves `VgState::uninit`
 opaque), the CPU-feature checks return, whatever they find, and, where `new`
 picks no VG routine and finds SSSE3, so that `cipher` can run the SSSE3 routine,
 rind's build assembled the `x86_64-unknown-linux-gnu` object the HOL Light proof covers
-(`LinuxBuild`, which no axiom states). A CPU with AVX2 and BMI2 needs no such
+(`LinuxBuild`, which no axiom states). A CPU where either VG feature check returns a token needs no such
 premise.
 
 ChaCha20 on aarch64, from `cipher::ChaCha20` down to pyca/verified-garbage's
@@ -1567,8 +1596,11 @@ under eight words or not a multiple of four, from `nohw_spec`, which restates
 rind's HOL Light proof of `bn_mul_mont_nohw` below, of the Linux build's
 object, so not of the macOS one ([its quest](/quest/m4/verified/apple-bytes.md));
 and from `AwsLcMont`, that
-aws-lc's unproven 4x and 8x routines return theirs, at every other width and
-CPU.
+aws-lc's unproven `bn_mulx4x_mont` and `bn_sqr8x_mont` return theirs, at every
+other width and CPU. Its products through `bn_mul4x_mont`, without BMI2 and
+ADX, follow from `mul4x_spec`, which restates `Mul4xProof.lean`'s theorem
+above, but `mont_products` still takes `AwsLcMont` at those widths, since it
+does not name the CPU.
 `PublicKey::verify` reaches each algorithm's verification through a function
 pointer, and every loader encodes the key through `Buffer::write`, which
 `Rind/X86_64/RsaDispatch.lean` models for these two algorithms. On aarch64 the products are aws-lc's, so these proofs are not

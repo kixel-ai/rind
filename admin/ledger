@@ -69,8 +69,8 @@ GROUPS = [
     ),
     (
         r"(X86_64/(CtEqual|RsaMont|ShaBlocks|Sha256Shaext|ChaCha20Cipher)|Aarch64/Sha256Hw)\.lean",
-        "rind's own HOL Light proofs of its assembly, and rind's Lean proof of the SHA-256 crypto-extension routine",
-        "rind's proofs, in `proofs/hol-light/` and `Rind/Aarch64/Sha256HwAsm.lean`, checked against the bytes rind's build emits",
+        "rind's own HOL Light proofs of its assembly, and rind's Lean proofs of the SHA-256 crypto-extension routine (aarch64) and `bn_mul4x_mont` (x86_64)",
+        "rind's proofs, in `proofs/hol-light/`, `Rind/Aarch64/Sha256HwAsm.lean`, and `Rind/X86_64/Mul4xProof.lean`, checked against the bytes rind's build emits",
     ),
     (
         r"X86_64/AesModesLow\.lean",
