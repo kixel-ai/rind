@@ -225,6 +225,14 @@ those inputs, in any worktree, restores in under a second.
   `Rind/<Arch>/S2nBignum.lean` restates it with s2n-bignum's theorem for
   unequal points, so P-256 verification adds first and compares y's only
   when z is zero.
+- `x86_64/p384_montjmixadd.ml`, `x86_64/p384_montjmixadd_alt.ml`, and
+  `aarch64/p384_montjmixadd.ml`: `P384_MONTJMIXADD_SAME_X_SUBROUTINE_CORRECT`
+  and `P384_MONTJMIXADD_ALT_SAME_X_SUBROUTINE_CORRECT`, the same for P-384's
+  blocks in `low::x86_64::p384_montjmixadd::p384_montjmixadd`,
+  `low::x86_64::p384_montjmixadd_alt::p384_montjmixadd_alt`, and
+  `low::aarch64::p384_montjmixadd::p384_montjmixadd`, which is s2n-bignum's
+  `p384_montjmixadd_alt`, which `p384_montjmixadd_spec` in
+  `Rind/<Arch>/S2nBignum.lean` restates.
 - `armv7/gcm_init_neon.ml` and `armv7/gcm_ghash_neon.ml`:
   `GCM_INIT_NEON_SUBROUTINE_CORRECT` and
   `GCM_GHASH_NEON_SUBROUTINE_CORRECT`, rind's proofs that aws-lc's NEON
@@ -700,10 +708,11 @@ twin multiplication reads a 385-digit width-5 NAF of e/s, whose multiples of G
 come from the comb's first table, and of r/s over Q's odd multiples, which a
 key caches, and `Rind/P384Multiples.lean` proves the laws by which its sum is
 e/s·G + r/s·Q and that every finite point on the curve has order n
-(`p384_order`). Verification settles equal and opposite points by cases
-before s2n-bignum's `p384_montjadd` and `p384_montjmixadd`, whose
-contracts exclude them, and the theorems assume `Drbg`, `Fills`, `Held`, and
-P-384's `Cached`, its keys' caches.
+(`p384_order`). Verification adds each term by s2n-bignum's
+`p384_montjmixadd` first and compares y's only when the sum's z is zero, which
+rind's HOL Light lemma above proves equal or opposite points leave, and the
+theorems assume `Drbg`, `Fills`, `Held`, and P-384's `Cached`, its keys'
+caches.
 
 Where pyca/verified-garbage's checks pass, P-384 runs VG's routines: its
 `d·G` for key generation and each signature's k·G, on every x86_64 and
