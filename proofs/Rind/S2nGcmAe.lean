@@ -1,3 +1,9 @@
+-- Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+-- SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
+--
+-- A transliteration of s2n-bignum's GCM-AE, GCM-AD, and AES key-schedule
+-- specs; see LICENSE.
+
 import Rind.S2nGcm
 
 /-!
