@@ -39,6 +39,7 @@ proofs/Rind/Aarch64/HkdfAes.lean
 proofs/Rind/Aarch64/AesModesApi.lean
 proofs/Rind/Aarch64/AesKw.lean
 proofs/Rind/Aarch64/Pbkdf2.lean
+proofs/Rind/Aarch64/MlKemTables.lean
 proofs/Rind/Portable/QuicDispatch.lean
 proofs/Rind/Portable/DigestAlgorithm.lean
 proofs/Rind/Portable/DigestDispatch.lean

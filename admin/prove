@@ -281,8 +281,23 @@ rind_static() {
         fi
     done < <(relocations "$obj" "$section")
     "$tools/llvm-objcopy" --dump-section="$section=$dest.section" "$obj" "$dest.o"
-    tail -c +$((16#$value + 1)) "$dest.section" | head -c $((16#$size)) >"$dest"
+    head -c $((16#$value + 16#$size)) "$dest.section" | tail -c +$((16#$value + 1)) >"$dest"
     rm "$dest.section" "$dest.o"
+}
+
+# Writes to `dest` the bytes of the `global_asm!` routine `name`, whose symbol
+# `aws_lc_symbol!` qualifies by rind's version, through the size its `.size`
+# gives, as rind's release build for `arch` Linux emits them, failing if a
+# relocation falls in them.
+asm_routine() {
+    local arch=$1 name=$2 dest=$3 sym
+    sym=$(awk -F '\t' -v n="$name" '$2 ~ ("^rind_[0-9]+_[0-9]+_[0-9]+_" n "$") { print $2 }' \
+        "$(rind_index "$arch")" | sort -u)
+    if [[ -z $sym || $(wc -l <<<"$sym") != 1 ]]; then
+        echo "admin/prove: rind's $arch build defines no one routine $name" >&2
+        return 1
+    fi
+    rind_static "$arch" "$sym" "$dest"
 }
 
 # Writes to `dest` an object holding the naked Rust function at `path`, as
@@ -411,11 +426,13 @@ result_key() {
     [[ -z $key_only ]] || cat "$out/keys/$name" >&3
 }
 
-# rind's own HOL Light proofs, each of the `asm!` block in a Rust function or
-# of a naked one, on the model, tactics, and specs of rind's fork of
-# s2n-bignum in `thirdparty/s2n-bignum`, which `RIND.md` there describes.
-# Each `<arch>/<file>.ml` reads its object code from `<arch>/<file>.bin`, the
-# block's bytes, which `asm_block` writes, or `<arch>/<file>.o`, the naked
+# rind's own HOL Light proofs, each of the `asm!` block in a Rust function,
+# of a naked one, or of a `global_asm!` routine, on the model, tactics, and
+# specs of rind's fork of s2n-bignum in `thirdparty/s2n-bignum`, which
+# `RIND.md` there describes. Each `<arch>/<file>.ml` reads its object code
+# from `<arch>/<file>.bin`, the block's bytes, which `asm_block` writes, or
+# the routine's, which `asm_routine` writes for a path that is the routine's
+# symbol without rind's version, or from `<arch>/<file>.o`, the naked
 # function's object, which `asm_function` writes, and asserts it is what it
 # lists. A target's proofs compile into one program, as s2n-bignum's
 # `tools/build-proof.sh` compiles each of its own, which fails on an error or
@@ -427,8 +444,8 @@ hol_light_proofs=(
     "aarch64 ct_compare_16.bin rind::low::aarch64::cpu::ct_compare_16"
     "x86_64 ct_compare_bytes.bin rind::low::x86_64::cpu::ct_compare_bytes"
     "x86_64 ct_compare_16.bin rind::low::x86_64::cpu::ct_compare_16"
-    "armv7 ct_compare_bytes.bin rind::low::arm::cpu::ct_compare_bytes"
-    "armv7 ct_compare_16.bin rind::low::arm::cpu::ct_compare_16"
+    "armv7 ct_compare_bytes.bin ct_compare_bytes"
+    "armv7 ct_compare_16.bin ct_compare_16"
     "x86_64 sha512_block_data_order_avx2.o rind::low::x86_64::sha512::sha512_block_data_order_avx2"
     "x86_64 sha256_block_data_order_avx2.o rind::low::x86_64::sha256::sha256_block_data_order_avx2"
     "x86_64 bn_mul_mont_nohw.o rind::low::x86_64::mont::bn_mul_mont_nohw"
@@ -495,7 +512,11 @@ hol_light_objects() {
         read -r parch file path <<<"$proof"
         [[ $parch == "$arch" ]] || continue
         case $file in
-        *.bin) asm_block "$arch" "$path" "$dir/$file" ;;
+        *.bin) if [[ $path == *::* ]]; then
+            asm_block "$arch" "$path" "$dir/$file"
+        else
+            asm_routine "$arch" "$path" "$dir/$file"
+        fi ;;
         *.o) asm_function "$arch" "$path" "$dir/$file" ;;
         esac
     done
@@ -577,7 +598,10 @@ cosim() {
 # Checks pyca/verified-garbage's (VG's) code for this CPU's target against
 # VG's Lean models, so a theorem of VG's about a routine rind vendors from it
 # is about rind's machine code: `admin/import-vg-models --check` that
-# `proofs/verified-garbage` holds VG's models at its REV; `admin/vg-bytes`
+# `proofs/verified-garbage` holds VG's models at its REV; `admin/vg-binding`
+# that each routine rind vendors is one an axiom's VG theorem covers or is
+# listed as uncovered;
+# `admin/vg-bytes`
 # that VG's machine code, and each routine rind vendors, is the text VG's
 # proofs are about; and the cosimulation, which runs each distinct
 # instruction of VG's code, for `VG_COSIM_CASES` random states each from the
@@ -606,6 +630,7 @@ vg() {
     mkdir -p "$dir"
     admin/upstream verified-garbage
     admin/import-vg-models --check "$upstream"
+    admin/vg-binding "$upstream"
     hold scratch
     build_asm "$arch"
     rind_index "$arch" >/dev/null
@@ -1099,6 +1124,7 @@ aes_gcm_items() {
 check_quote X86_64/AesGcmModel aes_gcm_items
 check_quote X86_64/TypesExternal items rind/src/low/x86_64/chacha20.rs 'struct VgState('
 check_quote Aarch64/TypesExternal items rind/src/low/aarch64/chacha20.rs 'struct VgState('
+check_quote Aarch64/FunsExternal items rind/src/low/aarch64/mlkem.rs 'pub(crate) fn mlkem_rej_uniform_vartime('
 aarch64_aes_gcm_items() {
     items rind/src/low/aarch64/ghash.rs 'macro_rules! mul {' 'macro_rules! reduce {' \
         '    pub(crate) fn add(&mut self, bytes: &[u8]) {' '    fn one_block(' '    fn eight_blocks(' \
@@ -1350,7 +1376,7 @@ assembly=(
     --start-from crate::mid::sha3::Sponge::finish
     --start-from 'crate::mid::sha3::Sha3Context::_'
     --start-from 'crate::mid::sha3::Shake::_'
-    --start-from 'crate::mid::sha3::Shake4x::_'
+    --start-from 'crate::mid::sha3::Shake8x::_'
     --start-from crate::mid::aes::AesCtr::new
     --start-from crate::mid::aes::AesCtr::apply_keystream
     --start-from crate::mid::aes_cbc::AesCbcEncryptingKey::new
@@ -1593,6 +1619,7 @@ extract x86_64 X86_64 "${hashes[@]}" "${assembly[@]}" \
     --include crate::low::x86_64::adx_mux::edwards25519_decode \
     --include crate::low::x86_64::adx_mux::edwards25519_scalarmulbase \
     --include crate::low::x86_64::adx_mux::bignum_madd_n25519 \
+    --include crate::low::x86_64::adx_mux::bignum_mul_p25519 \
     --include crate::low::x86_64::sha1_mux \
     --opaque crate::low::x86_64::sha1_mux::path \
     --opaque crate::low::x86_64::sha1_mux::sha1_compress_blocks \
@@ -1602,6 +1629,9 @@ extract x86_64 X86_64 "${hashes[@]}" "${assembly[@]}" \
     --opaque crate::low::x86_64::sha512::path \
     --include crate::low::x86_64::sha3_keccak4_f1600_shim \
     --include crate::low::x86_64::sha3_keccak_nof4_f1600 \
+    --include crate::low::x86_64::sha3_keccak8_f1600 \
+    --opaque crate::low::x86_64::sha3_keccak8_f1600::permute \
+    --include crate::low::generic::keccak8 \
     --start-from '{impl crate::aead::Cipher for crate::mid::aes_gcm::AesGcm}' \
     --start-from crate::mid::aes_gcm::AesGcm::encrypt_any \
     --start-from crate::mid::aes_gcm::AesGcm::decrypt_any \
@@ -1712,6 +1742,7 @@ extract aarch64 Aarch64 "${hashes[@]}" "${assembly[@]}" \
     --include crate::low::aarch64::sha3_keccak_f1600_mux \
     --include crate::low::aarch64::sha3_keccak4_f1600_mux \
     --include crate::low::aarch64::sha3_keccak_nof4_f1600 \
+    --include crate::low::generic::keccak8 \
     --include crate::low::aarch64::sha256 \
     --opaque crate::low::aarch64::sha256::compress_hw \
     --opaque crate::low::aarch64::sha256::compress_nohw \
@@ -1728,6 +1759,12 @@ extract aarch64 Aarch64 "${hashes[@]}" "${assembly[@]}" \
     --opaque crate::low::aarch64::aes_cbc::aese_chained \
     --include crate::low::generic::mlkem \
     --start-from crate::low::generic::mlkem::mlkem_frombytes \
+    --include crate::low::aarch64::mlkem \
+    --opaque crate::low::aarch64::mlkem::mlkem_compress_d4 \
+    --opaque crate::low::aarch64::mlkem::mlkem_compress_d5 \
+    --opaque crate::low::aarch64::mlkem::mlkem_compress_d10 \
+    --opaque crate::low::aarch64::mlkem::mlkem_compress_d11 \
+    --opaque crate::low::aarch64::mlkem::mlkem_rej_uniform_vartime \
     --start-from crate::low::aarch64::mlkem768_vg::Encaps::check_ek \
     --start-from crate::low::aarch64::mlkem768_vg::Encaps::encaps \
     --include crate::low::aarch64::pbkdf2_vg \
@@ -1852,6 +1889,58 @@ done
 for file in QuicDispatch ChaCha20; do
     sed 's/X86_64/Armv7/g; s/x86_64/armv7/g' "proofs/Rind/X86_64/$file.lean" >"proofs/Rind/Armv7/$file.lean"
 done
+
+# The elements of the HOL Light list `$2` that `$1` defines, as Lean writes
+# them: `-- &1600` is -1600 and `&630` is 630.
+hol_list() {
+    local list
+    list=$(awk -v n="$2" '$0 ~ "^let " n " = " { on = 1 } on { printf "%s ", $0 } on && /`;;/ { exit }' "$1" |
+        sed -E 's/^[^`]*`//; s/^[^[]*\[//; s/\].*$//; s/-- &/-/g; s/&//g; s/;/,/g; s/[[:space:]]+/ /g; s/^ //; s/ $//')
+    if [[ -z $list ]]; then
+        echo "admin/prove: no list $2 in $1" >&2
+        return 1
+    fi
+    echo "$list"
+}
+
+# The tables s2n-bignum's aarch64 ML-KEM theorems assume, from its HOL Light
+# sources, so that no hand copy of them is trusted:
+# `proofs/Rind/Aarch64/MlKemRoutines.lean` checks rind's against them.
+{
+    echo "-- Written by admin/prove from thirdparty/s2n-bignum/arm/proofs: the tables"
+    echo "-- s2n-bignum's ML-KEM theorems assume. Do not edit."
+    echo "namespace rind.aarch64.MlKemTables"
+    for row in \
+        "mlkem_ntt ntt_zetas_layer01234 nttZetasLayer01234 Int" \
+        "mlkem_ntt ntt_zetas_layer56 nttZetasLayer56 Int" \
+        "mlkem_intt intt_zetas_layer01234 inttZetasLayer01234 Int" \
+        "mlkem_intt intt_zetas_layer56 inttZetasLayer56 Int" \
+        "mlkem_mulcache_compute mulcache_zetas mulcacheZetas Int" \
+        "mlkem_mulcache_compute mulcache_zetas_twisted mulcacheZetasTwisted Int"; do
+        read -r file name lean type <<<"$row"
+        echo "/-- \`$name\`, from \`arm/proofs/$file.ml\`. -/"
+        echo "def $lean : List $type := [$(hol_list "thirdparty/s2n-bignum/arm/proofs/$file.ml" "$name")]"
+    done
+    echo "end rind.aarch64.MlKemTables"
+} >proofs/Rind/Aarch64/MlKemTables.lean
+# The rejection sampler's 4096-byte table is too long a literal for Lean to
+# elaborate, so the translation leaves its wrapper opaque, and this checks the
+# table it passes is s2n-bignum's, each -1 the byte 255.
+rej_table() {
+    awk '/MLKEM_REJ_UNIFORM_TABLE: \[i8; 4096\] = \[/ { on = 1; next } on && /^\];/ { exit }
+        on { sub(/\/\/.*/, ""); printf "%s", $0 }' "$1" |
+        tr -d ' ' | tr ',' '\n' | sed '/^$/d; s/^-1$/255/'
+}
+rind_rej=$(rej_table rind/src/low/aarch64/mlkem.rs)
+s2n_rej=$(hol_list thirdparty/s2n-bignum/arm/proofs/mlkem_rej_uniform_VARIABLE_TIME.ml mlkem_rej_uniform_table) || exit 1
+if [[ $(wc -l <<<"$rind_rej") -ne 4096 ]]; then
+    echo "admin/prove: no 4096-entry rejection table in rind/src/low/aarch64/mlkem.rs" >&2
+    exit 1
+fi
+if ! diff <(echo "$rind_rej") <(tr -d ' ' <<<"$s2n_rej" | tr ',' '\n') >/dev/null; then
+    echo "admin/prove: rind's aarch64 rejection table is not s2n-bignum's" >&2
+    exit 1
+fi
 
 [ "${PROVE_TRANSLATE_ONLY:-}" ] && exit 0
 # Each hand model of a CPU intrinsic, a `core.core_arch` definition but its
