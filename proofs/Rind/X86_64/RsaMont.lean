@@ -9,12 +9,12 @@ open Aeneas Aeneas.Std Result rind.spec rind.spec.rsa
 and the modulus's width. With BMI2 and ADX at 16 and 32 words they run
 s2n-bignum's Karatsuba routines and 8n reduction, which `karatsuba_products`
 proves from s2n-bignum's theorems. From eight words at a multiple of four
-they run aws-lc's `bn_mul4x_mont` or `bn_mulx4x_mont`, and squaring at a
-multiple of eight its `bn_sqr8x_mont`, which no proof covers: `AwsLcMont`
-states what they compute. Every other width runs aws-lc's
-`bn_mul_mont_nohw`, whose HOL Light proof `nohw_spec` restates, so
-`mont_products` proves those widths on any CPU, and the rest given
-`AwsLcMont`.
+they run aws-lc's `bn_mul4x_mont`, whose Lean proof `mul4x_spec` restates,
+or with BMI2 and ADX its `bn_mulx4x_mont`, and squaring at a multiple of
+eight its `bn_sqr8x_mont`, which no proof covers: `AwsLcMont` states what
+those two compute. Every other width runs aws-lc's `bn_mul_mont_nohw`,
+whose HOL Light proof `nohw_spec` restates, so `mont_products` proves those
+widths on any CPU, and the rest given `AwsLcMont`.
 
 rind's HOL Light proof `BN_MUL_MONT_NOHW_SUBROUTINE_CORRECT`, in
 `proofs/hol-light/x86_64/bn_mul_mont_nohw.ml` at rind's commit, is of the
@@ -54,14 +54,15 @@ def MontProducts (k : Nat) : Prop :=
   (∀ z x m : Slice U64, ∀ n0 : U64, m.length = k → z.length = k → MontArgs x.val x.val m.val n0 →
     low.x86_64.mont.mont_sqr z x m n0 ⦃ r => MontResult x.val x.val m.val r.val ⦄)
 
-/-- aws-lc's 4x and 8x Montgomery products return their results, at every
-width each takes: `bn_mul4x_mont` and its `mulx` form for a multiple of four
+/-- aws-lc's unproven 4x and 8x Montgomery products return their results,
+at every width each takes: `bn_mulx4x_mont`, the `mulx` form of
+`bn_mul4x_mont` that `mul4x` runs given BMI2 and ADX, for a multiple of four
 from eight, and `bn_sqr8x_mont` for a multiple of eight. No proof covers
 them. -/
 def AwsLcMont : Prop :=
-  (∀ z x y m : Slice U64, ∀ n0 : U64, ∀ adx, z.length = m.length → 8 ≤ m.length →
+  (∀ z x y m : Slice U64, ∀ n0 : U64, ∀ t, z.length = m.length → 8 ≤ m.length →
     m.length % 4 = 0 → MontArgs x.val y.val m.val n0 →
-    low.x86_64.mont.mul4x z x y m n0 adx ⦃ r => MontResult x.val y.val m.val r.val ⦄) ∧
+    low.x86_64.mont.mul4x z x y m n0 (some t) ⦃ r => MontResult x.val y.val m.val r.val ⦄) ∧
   (∀ z x m : Slice U64, ∀ n0 : U64, ∀ adx, z.length = m.length → 8 ≤ m.length →
     m.length % 8 = 0 → MontArgs x.val x.val m.val n0 →
     low.x86_64.mont.sqr8x z x m n0 adx ⦃ r => MontResult x.val x.val m.val r.val ⦄)
@@ -127,6 +128,48 @@ theorem nohw_result (z x y m : Slice U64) (n0 : U64) (hz : z.length = m.length)
   rintro r ⟨hrl, hr⟩
   rw [hz] at hrl hr
   exact MontResult.of_inverse hargs hrl hr
+
+/-! ## aws-lc's `bn_mul4x_mont` -/
+
+/-- `bn_mul4x_mont_correct`, rind's Lean theorem in
+`Rind/X86_64/Mul4xProof.lean`, which the same build checks: the naked
+function `bn_mul4x_mont`, as rind's Linux release build emits it, run in
+rind's extension of pyca/verified-garbage's x86_64 model, writes to `z` the
+Montgomery product of `k`-word `x` and `y` modulo `m`, below `m`, for `k` a
+multiple of four from eight and below `2^32`, `n0` the `-m⁻¹ mod 2^64` of
+`m`, and `x` below `m`. `mul4x` runs it without BMI2 and ADX.
+
+Its hypotheses hold for every call `mul4x` makes: `z`, `x`, `y`, and `m` are
+`k` words; `z` is a `&mut` slice, so disjoint from `m` and from the frame of
+up to `8k + 1104` bytes below the stack pointer the routine owns, which the
+stack holds, as Aeneas's model takes every call's frame to; `x`, `y`, and
+`m` are shared slices outside that frame; and `n0` is read through a
+reference to the word `mul4x` passes, in its caller's frame above the
+stack pointer. `admin/prove lean` checks that the theorem's program is the
+Linux build's object; Apple's build assembles its own copy,
+`bn_mul4x_mont.apple.s`, which no check compares. The restatement, and that
+the wrapper passes the pointers and width the theorem names, are trusted. -/
+@[step]
+axiom mul4x_spec (z x y m : Slice U64) (n0 : U64) (hz : z.length = m.length)
+    (hx : x.length = m.length) (hy : y.length = m.length) (h8 : 8 ≤ m.length) (h4 : m.length % 4 = 0)
+    (hbig : m.length < 2 ^ 32) (hn0 : (wordsNat m.val * n0.val + 1) % 2 ^ 64 = 0)
+    (hxm : wordsNat x.val < wordsNat m.val) :
+    low.x86_64.mont.mul4x z x y m n0 none ⦃ r => MontResult x.val y.val m.val r.val ⦄
+
+/-- `mul4x` returns the Montgomery product of its arguments: by
+`mul4x_spec` without BMI2 and ADX, and given `h4x`, `AwsLcMont`'s
+statement of `bn_mulx4x_mont`, with them. -/
+theorem mul4x_result (h4x : ∀ z x y m : Slice U64, ∀ n0 : U64, ∀ t, z.length = m.length → 8 ≤ m.length →
+      m.length % 4 = 0 → MontArgs x.val y.val m.val n0 →
+      low.x86_64.mont.mul4x z x y m n0 (some t) ⦃ r => MontResult x.val y.val m.val r.val ⦄)
+    (z x y m : Slice U64) (n0 : U64) (adx : Option low.x86_64.cpu.HaveBmi2Adx) (hz : z.length = m.length)
+    (h8 : 8 ≤ m.length) (h4 : m.length % 4 = 0) (hargs : MontArgs x.val y.val m.val n0) :
+    low.x86_64.mont.mul4x z x y m n0 adx ⦃ r => MontResult x.val y.val m.val r.val ⦄ := by
+  cases adx with
+  | none =>
+    obtain ⟨hx, hy, -, hbig, -, hn0, hxm, -⟩ := hargs
+    exact mul4x_spec z x y m n0 hz hx hy h8 h4 hbig hn0 hxm
+  | some t => exact h4x z x y m n0 t hz h8 h4 hargs
 
 /-! ## s2n-bignum's 8n reduction, `redc_8n` -/
 
@@ -237,7 +280,7 @@ set_option hygiene false in
 macro_rules
   | `(tactic| mont_awslc) => `(tactic| first
     | exact h8x _ _ _ _ _ hz (by scalar_tac) (of_multiple hlen ‹_› ‹_›) hargs
-    | exact h4x _ _ _ _ _ _ hz (by scalar_tac) (of_multiple hlen ‹_› ‹_›) hargs
+    | exact mul4x_result h4x _ _ _ _ _ _ hz (by scalar_tac) (of_multiple hlen ‹_› ‹_›) hargs
     | exact nohw_result _ _ _ _ _ hz hargs
     | (split <;> mont_awslc)
     | (step with core.num.Usize.is_multiple_of.spec; mont_awslc)

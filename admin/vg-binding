@@ -51,8 +51,6 @@ DECL = re.compile(r"^\s*(?:@\[[^\]]*\]\s*)*(?:(?:private|protected|noncomputable
 UNCOVERED = {
     "x86_64": {},
     "aarch64": {
-        "vg_chacha20_poly1305_open_neon": "no proof of rind's aarch64 ChaCha20-Poly1305 yet; [its quest](/quest/m4/verified/chacha20-poly1305-aarch64.md) restates VG's",
-        "vg_chacha20_poly1305_seal_neon": "the same",
         "vg_rsa_public_precompute": "rind's aarch64 RSA is not proven yet; [its quest](/quest/m4/verified/rsa-aarch64-mont-import.md) restates VG's",
     },
 }
