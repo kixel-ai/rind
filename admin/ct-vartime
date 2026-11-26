@@ -23,7 +23,9 @@
 # On the x86_64 backend, it also fails if a function reached from one rind
 # exports, which is all its callers can call, holds an instruction in MCDT
 # that can run outside Intel's MXCSR mitigation, `rind::low::Mcdt`. In a
-# function that calls MITIGATION, it follows the control flow, so an
+# function that calls MITIGATION, it follows the control flow, through
+# every target of the function's jump tables where it jumps through a
+# register, and fails at an indirect jump it cannot bound. So an
 # instruction, and whatever a call there reaches, counts as mitigated only
 # where every path from the function's start calls MITIGATION with no call
 # in RELEASE since: the mitigation must dominate it. Nothing in `admin/ct-vartime.toml`
@@ -41,7 +43,8 @@
 # multiply inside the mitigation and three outside it: in a function that
 # never enters it, and before and after the mitigation in one that does.
 # Each outside must be found, so a scan that finds nothing fails, and the
-# one inside must not.
+# one inside must not. It also adds a `match` under the mitigation whose
+# arms multiply, whose jump table the scan must follow, and find nothing.
 #
 # Run it in `nix develop .#ct-vartime`, which has llvm-objdump and each
 # target's standard library.
@@ -203,6 +206,7 @@ RELEASE = re.compile(
 BRANCH = re.compile(r"j(?!mp$)[a-z]+|loop\w*")
 END = {"ret", "ud2", "int3", "hlt"}
 TARGET = re.compile(r"^(?:0x)?([0-9a-f]+)(?: <.*>)?$")
+REGISTER = re.compile(r"r[a-z0-9]+")
 
 # Mnemonics each VARTIME pattern must refuse, then must allow, checked
 # before every scan.
@@ -269,6 +273,10 @@ PLANTED = {
     "rind::low::vartime_planted::planted_mcdt_after": ["x86_64-unknown-linux-gnu"],
 }
 
+# A function `rind/src/low/vartime_planted.rs` plants that switches through
+# a jump table under the mitigation, which the MXCSR scan must follow.
+SWITCHED = "rind::low::vartime_planted::planted_mcdt_switch"
+
 # x86 prefixes, which llvm-objdump prints as their own word before the
 # mnemonic, as it does encoding markers such as `{evex}`.
 PREFIXES = {
@@ -281,7 +289,7 @@ SECTION = re.compile(r"^Disassembly of section (.+):$")
 LABEL = re.compile(r"^([0-9a-f]+) <(.+)>:$")
 INSN = re.compile(r"^\s+([0-9a-f]+):\s+(.*)$")
 RELOCS = re.compile(r"^RELOCATION RECORDS FOR \[(.+)\]:$")
-RELOC = re.compile(r"^([0-9a-f]+) \S+\s+(\S+?)(?:[+-]0x[0-9a-f]+)?$")
+RELOC = re.compile(r"^([0-9a-f]+) (\S+)\s+(\S+?)(?:([+-]0x[0-9a-f]+))?$")
 # ELFv2's local entry offset, as in `0x60`, may follow a symbol's size.
 SYMBOL = re.compile(r"^([0-9a-f]+) (.{7}) (\S+)\t[0-9a-f]+ (?:0x[0-9a-f]+ )?(\.hidden |\.protected |\.internal )?(.+)$")
 # Unwind tables and debug info, which point at every function, call nothing.
@@ -376,14 +384,19 @@ class Objects:
                 self.defined.setdefault(name, (member, section))
 
         self.relocs = collections.defaultdict(list)
+        # x86's 32-bit PC-relative relocations with their addends, which
+        # `jump_tables` reads.
+        self.pcrel = collections.defaultdict(list)
         section = None
         for line in run([*args, "-r"], **quiet).splitlines():
             if m := MEMBER.match(line):
                 member = m[1].rsplit("/", 1)[-1] + "(" + m[2] + ")"
             elif m := RELOCS.match(line):
                 section = None if METADATA.match(m[1]) else m[1]
-            elif section and (m := RELOC.match(line)) and m[2] != "*ABS*":
-                self.relocs[(member, section)].append((int(m[1], 16), m[2]))
+            elif section and (m := RELOC.match(line)) and m[3] != "*ABS*":
+                self.relocs[(member, section)].append((int(m[1], 16), m[3]))
+                if m[2] == "R_X86_64_PC32":
+                    self.pcrel[(member, section)].append((int(m[1], 16), m[3], int(m[4] or "0", 16)))
 
         # An ELFv1 function's symbol names its descriptor in `.opd`, whose
         # first word points at its code. Each code section takes the name of
@@ -464,13 +477,51 @@ class Objects:
         return defined
 
 
+def jump_tables(objects, node):
+    """Every offset in x86 section `node` that its jump tables hold. In
+    position-independent code, LLVM lowers a `match` to a table of each
+    target's 32-bit offset from the table's start, which `node` loads with a
+    `lea`, and jumps through a register. Each entry is a PC32 relocation into
+    `node` at the target plus the entry's distance from the table's start."""
+    starts = collections.defaultdict(set)
+    for _, target, addend in objects.pcrel.get(node, ()):
+        to = objects.resolve(node[0], target)
+        if to is not None and to != node:
+            # The relocation is a `lea`'s last four bytes, so the address
+            # it loads is four past where its addend points.
+            starts[to].add(addend + 4)
+    targets = set()
+    for data, bases in starts.items():
+        bases = sorted(bases)
+        for offset, target, addend in objects.pcrel.get(data, ()):
+            if objects.resolve(data[0], target) != node:
+                continue
+            # The entry belongs to the table that starts last before it.
+            i = bisect.bisect_right(bases, offset) - 1
+            if i < 0:
+                sys.exit("ct-vartime: {:#x} in {} points into {} before any table it loads".format(
+                    offset, data[1], objects.section_name(node)))
+            targets.add(addend - (offset - bases[i]))
+    return targets
+
+
 def mitigated(objects, node):
     """Which instructions of x86 section `node` run with the mitigation held
     on every path from the start of its function, which a relocation's
-    offset in the instruction finds: `covered(offset)`."""
+    offset in the instruction finds: `covered(offset)`, and the functions
+    whose jump tables it followed."""
     insns = objects.insns[node]
     offsets = [offset for offset, _, _ in insns]
     index = {offset: i for i, offset in enumerate(offsets)}
+    # An indirect jump may reach any of the section's jump tables' targets.
+    # Joining a target from a table no path there loads only takes a
+    # mitigation away, so it can make the scan stricter but never laxer.
+    tables = sorted(jump_tables(objects, node))
+    for target in tables:
+        if target not in index:
+            sys.exit("ct-vartime: a jump table in {} points at {:#x}, outside an instruction".format(
+                objects.section_name(node), target))
+    switched = set()
     named = collections.defaultdict(list)
     for offset, target in objects.relocs.get(node, ()):
         named[bisect.bisect_right(offsets, offset) - 1].append(objects.target_name(node[0], target))
@@ -487,6 +538,10 @@ def mitigated(objects, node):
         # A jump with a relocation leaves the section, as a tail call.
         jump = mnemonic == "jmp" or BRANCH.fullmatch(mnemonic)
         to = TARGET.match(operands) if jump and not names else None
+        # A jump table's dispatch jumps through a register, never memory.
+        if mnemonic == "jmp" and not names and REGISTER.fullmatch(operands) and tables:
+            switched.add(objects.function(node, offsets[i]))
+            return [index[t] for t in tables]
         if jump and not names and not to:
             sys.exit("ct-vartime: {} at {:#x} jumps indirectly in {}, which the MXCSR scan cannot follow".format(
                 mnemonic, offsets[i], objects.section_name(node)))
@@ -527,16 +582,16 @@ def mitigated(objects, node):
     def at(offset):
         return offsets[bisect.bisect_right(offsets, offset) - 1] in covered
 
-    return at
+    return at, switched
 
 
 def scan(objects, starts, pattern, helpers=None, barrier=None):
     """Every instruction matching `pattern` reached from `starts`, and every
     call to a routine in `helpers`, as {function: Counter(what)}, with a path
-    from a start to each, how many sections were reached, and how many it
-    followed for the mitigation. In a section
-    that calls `barrier`, what runs while it is held, by `mitigated`, is
-    neither searched nor left."""
+    from a start to each, how many sections were reached, how many it
+    followed for the mitigation, and the functions among them whose jump
+    tables it followed. In a section that calls `barrier`, what runs while
+    it is held, by `mitigated`, is neither searched nor left."""
     parent = {}
     queue = collections.deque()
     for node in starts:
@@ -546,12 +601,14 @@ def scan(objects, starts, pattern, helpers=None, barrier=None):
     findings = collections.defaultdict(collections.Counter)
     paths = {}
     followed = 0
+    switched = set()
     while queue:
         node = queue.popleft()
         relocs = objects.relocs.get(node, ())
         covered = None
         if barrier and any(objects.target_name(node[0], target) == barrier for _, target in relocs):
-            covered = mitigated(objects, node)
+            covered, tables = mitigated(objects, node)
+            switched |= tables
             followed += 1
         for offset, mnemonic, _ in objects.insns.get(node, ()):
             if pattern.fullmatch(mnemonic) and not (covered and covered(offset)):
@@ -580,7 +637,7 @@ def scan(objects, starts, pattern, helpers=None, barrier=None):
             node = parent[node]
         return names[1:]
 
-    return findings, {f: path(n) for f, n in paths.items()}, len(parent), followed
+    return findings, {f: path(n) for f, n in paths.items()}, len(parent), followed, switched
 
 
 def describe(counts):
@@ -599,15 +656,18 @@ def check(tool, target, rind, others, public):
         node for node in objects.insns
         if node[0] in roots and any("rind::" in objects.name(l) for _, l in objects.labels[node])
     ]
-    findings, paths, reached, _ = scan(objects, starts, VARTIME[arch], helpers=HELPERS)
+    findings, paths, reached, _, _ = scan(objects, starts, VARTIME[arch], helpers=HELPERS)
     lines = ["{}: reached {} sections".format(target, reached)]
     failed = False
 
     if target == "x86_64-unknown-linux-gnu":
         exported = sorted(node for node in objects.exported if node[0] in roots)
-        mcdt, mcdt_paths, mcdt_reached, followed = scan(objects, exported, MCDT, barrier=MITIGATION)
-        lines.append("{}: reached {} sections from {} exported outside the MXCSR mitigation, following {} that enter it".format(
-            target, mcdt_reached, len(exported), followed))
+        mcdt, mcdt_paths, mcdt_reached, followed, switched = scan(objects, exported, MCDT, barrier=MITIGATION)
+        lines.append("{}: reached {} sections from {} exported outside the MXCSR mitigation, following {} that enter it, {} through jump tables".format(
+            target, mcdt_reached, len(exported), followed, len(switched)))
+        if SWITCHED not in switched:
+            lines.append("FAIL {}: followed no jump table".format(SWITCHED))
+            failed = True
         for function, counts in sorted(mcdt.items()):
             if function in PLANTED:
                 findings[function].update(counts)
