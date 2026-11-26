@@ -25,6 +25,57 @@ uninstall` drops it, and `lake cache clean` in `proofs/` empties it at any
 time, since each checkout keeps its own links and its next build puts them
 back.
 
+## TCB & Axiom Ledger
+
+A Lean theorem here is as good as everything it trusts. Beyond Lean's kernel
+and the lemmas Mathlib and Aeneas prove:
+
+| Trusted | For | What checks it |
+|---|---|---|
+| Charon and Aeneas, with Aeneas's models of `core` and `Rind/Core.lean`'s | the Lean translation computes what the Rust does; drops are ignored | upstream's tests only |
+| Hand models of Rust Aeneas cannot translate, below | each computes what the Rust it quotes does | `admin/prove` fails when a quote no longer matches the source; [the hand-model quest](/quest/m4/verified/aeneas-fn-pointers.md) retires them |
+| Transliterated specs: FIPS 180-4, RFCs, s2n-bignum's, Vale's, and SymCrypt's | each is the standard it names | [`admin/spec-tests`](#the-spec-tests) runs each on published vectors and random inputs |
+| Intrinsic models, `Rind/X86_64/Simd.lean` and `Rind/Aarch64/Neon.lean` | each computes what its instruction does | `admin/simd-vectors.rs`, `admin/neon-vectors.rs`, and `admin/avx512-vectors.rs` run it on hardware |
+| Imported theorems restated as axioms, below | an upstream proof is about the Rust wrapper's arguments and result | each docstring cites the theorem at the pinned revision, [the composition rule](/quest/m4/verified/README.md#composition-rule) bounds what it says, and for VG's, `admin/vg-binding` |
+| Assembly's object code | rind's build emits the instructions a proof is about, assembler and linker included | `admin/prove bytes`, `admin/prove lean`, and `admin/vg-bytes` compare the bytes |
+| Instruction models: HOL Light's kernel, s2n-bignum's x86 and Arm models, VG's Lean models, rind's extensions | each instruction does what the CPU does | `admin/prove cosim` and `admin/prove vg` run each on the CPU, under Intel SDE, or under qemu |
+| Lean's compiler, where the constructs below appear | compiled code agrees with the kernel's | none |
+| The CPU | it implements its architecture manual | none |
+
+Lean's compiler, trusted beyond the kernel wherever one of these appears:
+
+| Construct | Trusts |
+|---|---|
+| `bv_decide`, `bv_check` | each call adds an axiom that Lean's compiled LRAT checker accepted a SAT solver's certificate |
+| `native_decide`, `decide +native` | each would add an axiom that Lean's compiled code evaluated a proposition as the kernel would; `admin/ledger` fails on any |
+| `@[implemented_by]`, `@[extern]` | the compiler runs another definition than the one proofs use, as for the AES S-boxes' tables, which `sboxFast_eq` and `invSboxFast_eq` prove equal |
+
+Which axioms each top-level theorem rests on, through every definition it
+uses, `Rind/<Arch>/Axioms.lean` pins, so growing it fails the build. `admin/ledger`
+lists every file that declares one, and fails CI on a `sorry`, a `native_decide`,
+or an axiom in a file its groups do not name. It holds no counts, which would
+go stale whenever another pull request lands first. [The trust base](#trust-base)
+says what each trusted item is.
+
+<!-- admin/ledger: begin -->
+Every Lean file that declares an `axiom`, by the source it restates; no file holds a `sorry`:
+
+| Restates | Files under `proofs/Rind/` | Checked |
+|---|---|---|
+| s2n-bignum's HOL Light theorems of its assembly | `Aarch64/S2nBignum`, `X86_64/S2nBignum` | published proofs; `admin/prove bytes` checks rind's build emits the code they are about |
+| pyca/verified-garbage's Lean theorems of its assembly | `Aarch64/VgChaCha20`, `Aarch64/VgChaCha20Poly1305`, `Aarch64/VgMlKem`, `Aarch64/VgP256`, `Aarch64/VgP384`, `Aarch64/VgPbkdf2`, `Aarch64/VgSha512`, `X86_64/VgChaCha20`, `X86_64/VgChaCha20Poly1305`, `X86_64/VgCurve25519`, `X86_64/VgMlKem`, `X86_64/VgP256`, `X86_64/VgP384`, `X86_64/VgRsa` | published proofs; `admin/vg-binding` checks each axiom cites the theorem of its routine, and `admin/vg-bytes` that rind runs that routine's bytes |
+| Vale's procedures for HACL\*'s AES-GCM | `X86_64/ValeAesGcm` | published proofs; `admin/prove bytes` checks the object code |
+| aws-lc-verification's NSym proof of SHA-384/512 (aarch64) and rind's HOL Light proof of the AVX2 routine (x86_64) | `Aarch64/AwsLc`, `X86_64/AwsLc` | a published proof and rind's own; `admin/prove bytes` and `admin/prove hol-light` check the object code |
+| rind's own HOL Light proofs of its assembly, and rind's Lean proof of the SHA-256 crypto-extension routine | `Aarch64/Sha256Hw`, `X86_64/CtEqual`, `X86_64/RsaMont`, `X86_64/Sha256Shaext`, `X86_64/ShaBlocks` | rind's proofs, in `proofs/hol-light/` and `Rind/Aarch64/Sha256HwAsm.lean`, checked against the bytes rind's build emits |
+| HOL Light theorems of AES-CTR and AES-CBC that no proof states yet | `X86_64/AesModesLow` | **assumed, not proven**: [the AES modes quest](/quest/m4/verified/aes-modes.md) owns them |
+
+Hand models of Rust Aeneas cannot translate, each quoting the Rust it models:
+
+- `Aarch64`: `AesGcmModel`, `PointSelectModel`, `TypesExternal`
+- `Portable`: `Compare`
+- `X86_64`: `AeadDispatch`, `AesGcmModel`, `DigestAlgorithm`, `DigestDispatch`, `Dispatch`, `EcdsaDispatch`, `GcmKey`, `HkdfExpand`, `HmacDispatch`, `P256Dispatch`, `P384Dispatch`, `PointSelectModel`, `QuicDispatch`, `RsaDispatch`, `SignatureBuffer`, `TypesExternal`
+<!-- admin/ledger: end -->
+
 ## HOL Light proofs
 
 `hol-light/<arch>/` holds rind's own [HOL Light](https://hol-light.github.io/)
@@ -130,14 +181,16 @@ those inputs, in any worktree, restores in under a second.
   `low::arm::cpu` on armv7, return zero exactly when their inputs are equal,
   and `CT_COMPARE_16_SAFE` and `CT_COMPARE_BYTES_SAFE`, in s2n-bignum's style,
   that their trace of loads and branches is a function of the addresses and
-  length alone, each load in bounds. Both functions are `#[inline(never)]`
-  with fixed registers, so the proof covers their one copy. armv7's are on
-  the fork's AArch32 model below, which is A32 only, so they cover the
-  targets that build A32, such as `armv7-unknown-linux-gnueabihf`, whose
-  bytes `admin/prove` checks. `armv7-linux-androideabi` and the `thumbv7`
-  targets build these functions as Thumb-2, which no proof covers; rustc
-  refuses `#[instruction_set(arm::a32)]` on armv7's Linux and Android
-  targets, which would otherwise force A32.
+  length alone, each load in bounds. On x86_64 and aarch64 both functions
+  are `#[inline(never)]` with fixed registers, so the proof covers their
+  one copy. On armv7 they are A32 routines in a `global_asm!`, which
+  `admin/prove` finds by their symbols without rind's version, and the
+  theorems, on the fork's AArch32 model below, cover each from entry to
+  return for a caller in A32 or T32, so every armv7 target, the Thumb-2
+  Rust of `armv7-linux-androideabi` and the `thumbv7` targets included,
+  runs the code they are about. `ct_compare_bytes` saves R4 and LR in the
+  8 bytes below SP, which its theorems assume aligned, below 2^32, and
+  apart from the code and, for `CT_COMPARE_BYTES_CORRECT`, the strings.
 - `x86_64/ecp_nistz256_point_add_affine.ml` and
   `x86_64/ecp_nistz256_point_add_affinex.ml`:
   `ECP_NISTZ256_POINT_ADD_AFFINE_SUBROUTINE_CORRECT` and
@@ -162,8 +215,8 @@ known-answer tests `admin/prove hol-light` runs, the SHA extensions and
 other instructions an s2n-bignum pull request adds to the x86 model, rind's
 own additions to it, which `x86/proofs/rind_cosim.ml` checks against the CPU
 with the pull request's, and `aarch32/`, an AArch32 model of the A32
-integer instructions armv7's assembly runs, which
-`aarch32/proofs/simulator.ml` checks against qemu-arm.
+instructions armv7's assembly runs, which `aarch32/proofs/simulator.ml`
+checks against qemu-arm.
 `nix develop .#hol-light --command admin/prove cosim` runs both
 cosimulations, on an x86_64 CPU with AVX2.
 
@@ -250,9 +303,20 @@ of them: what rests on ChaCha20's is stated over `Rind/Spec.lean`, and
 change their proofs cannot absorb fails the Lean build. A
 pin that changes the others shows the change in its diff, against which that
 re-pin must review the adaptation, for a change to the spec, and the axioms,
-for one to the contracts. Every re-pin also moves the axioms' links to VG's theorems and
-checks that the registrations they cite still emit the routines rind runs:
-`admin/vg-bytes` checks the code, not which theorem covers it.
+for one to the contracts. Every re-pin also moves the axioms' links to VG's theorems.
+`admin/vg-bytes` checks the code, not which theorem covers it, so
+`admin/vg-binding` does, from rind's side, in `admin/prove vg`: each axiom
+names the routines it covers, each of which VG's text has, and the contract
+VG's generated documentation gives each, which the files the axiom links
+state; each link is at the pinned revision, lands on a theorem, definition, or
+registration, and none of VG's files holds a `sorry` or an `axiom`; and every
+routine rind vendors is one an axiom covers, through the calls in VG's text, or
+one its `UNCOVERED` table lists with the quest that proves it. VG emits each
+routine from an artifact whose `Verified` proof its emitter checks rests on
+Lean's standard axioms, so a routine's theorem is its artifact's, and the
+axiom's docstring is where rind says which. What this does not check is that
+the theorem's statement is the axiom's: a reviewer reads that, as the
+paragraphs above say.
 
 `Rind/<Arch>/VgP256.lean` restates VG's contracts for the P-256 public key,
 ECDH, and ECDSA verification routines rind runs, one axiom per wrapper in

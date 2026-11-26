@@ -7,7 +7,8 @@ the checks are thinnest. Each section is a map: it says what holds and
 links the document with the detail.
 
 Report a vulnerability as [SECURITY.md](SECURITY.md) says, never in an issue
-or pull request.
+or pull request. What the formal proofs trust, on one page, is [the TCB & Axiom
+Ledger](proofs/README.md#tcb--axiom-ledger).
 
 ## Scope
 
