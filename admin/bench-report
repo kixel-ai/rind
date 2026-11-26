@@ -960,6 +960,7 @@ COMPARED = {
     "aws-lc-rs": "https://github.com/aws/aws-lc-rs",
     "ring": "https://github.com/briansmith/ring",
     "rustcrypto": "https://github.com/RustCrypto",
+    "openssl": "https://github.com/sfackler/rust-openssl",
 }
 
 # The comparison's algorithms, as patterns over a row name, which each match
@@ -999,6 +1000,13 @@ INTEGRATIONS = [r"rustls-", r"quic-header-protection/", re.escape(DIT_PER_CALL)]
 # than that library's API, by library and algorithm, with what it runs.
 OUTSIDE_API = {
     ("aws-lc-rs", "XChaCha20-Poly1305"): "aws-lc has it, through aws-lc-sys",
+}
+
+# Why a library's column lacks an algorithm it has, by library and algorithm,
+# for the rows rind-bench does not time under its name.
+UNTIMED = {
+    ("openssl", "SHA-3"): "OpenSSL has it, not yet timed",
+    ("openssl", "HPKE"): "OpenSSL has it, but the openssl crate does not",
 }
 
 # A comparison cell with no data behind it, which must never read as "none".
@@ -1838,6 +1846,9 @@ def comparison_table(hosts, verified):
     for (lib, name), why in OUTSIDE_API.items():
         if lib not in COMPARED or name not in dict(ALGORITHMS):
             fail(f"OUTSIDE_API names {lib} and {name}, which the comparison lacks")
+    for (lib, name), why in UNTIMED.items():
+        if lib not in COMPARED or name not in dict(ALGORITHMS):
+            fail(f"UNTIMED names {lib} and {name}, which the comparison lacks")
     offered = {lib: set() for lib in COMPARED}
     for h in hosts.values():
         for row, libs in times(h).items():
@@ -1845,6 +1856,9 @@ def comparison_table(hosts, verified):
                 if lib in offered and row in algorithm:
                     offered[lib].add(algorithm[row])
     timed = [name for name, _ in ALGORITHMS if any(name in names for names in offered.values())]
+    for lib, name in UNTIMED:
+        if name in offered[lib]:
+            fail(f"{lib} times {name} now, so drop UNTIMED's entry for it")
     lines = [
         f"| Library | Build tools beyond rustc | Lacks, of the {len(timed)} algorithms benchmarked "
         "| Formally verified | Fastest, or within 10% |",
@@ -1858,8 +1872,9 @@ def comparison_table(hosts, verified):
                 if b["name"] == lib:
                     tools.update(b["tools"])
                     built = True
+        notes = OUTSIDE_API | UNTIMED
         lacks = [
-            f"{name} ({OUTSIDE_API[lib, name]})" if (lib, name) in OUTSIDE_API else name
+            f"{name} ({notes[lib, name]})" if (lib, name) in notes else name
             for name in timed
             if name not in offered[lib] or (lib, name) in OUTSIDE_API
         ]
