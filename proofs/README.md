@@ -302,7 +302,12 @@ specs, which `Rind/VgChaCha20Poly1305.lean` imports and proves is
 states only what the wrapper returns, not VG's wipe of its stack scratch or
 what the routine may leak. The contracts they restate, VG's
 `Spec/ChaCha20Poly1305/Contract.lean`, are not vendored, so a re-pin
-compares them at VG's new commit.
+compares them at VG's new commit. `Rind/X86_64/VgChaCha20Poly1305.lean`
+restates those about the x86_64 AVX-512 IFMA routines the same way, VG's
+registrations `sealReg` and `openReg` at the `ifma` variant, which add the
+clearing of the routines' stack and registers to `Shared.seal_verified` and
+`Shared.open_verified`, as one axiom per wrapper in
+`low::x86_64::chacha20poly1305`.
 
 ### rind's own proofs on VG's models
 
@@ -1196,11 +1201,13 @@ PCLMULQDQ table `from_powers` builds from them. BoringSSL's
 [the VAES quest](/quest/m4/verified/aes-gcm-x86-vaes.md) proves it, the
 kernels the tier runs from 2 KB, and the tier's seals and opens.
 
-ChaCha20-Poly1305 and XChaCha20-Poly1305 on x86_64 CPUs with SSE4.1 that
-fail rind's check for pyca/verified-garbage's IFMA routines
+ChaCha20-Poly1305 and XChaCha20-Poly1305 on x86_64 CPUs that pass rind's
+check for pyca/verified-garbage's IFMA routines
 (`HaveIfmaForVgChaCha20Poly1305`: AVX-512 IFMA, with AVX, AVX2, and AVX-512 F
-and VL), from the AEAD API's `Key` and `RandomizedNonceKey` down to the call of aws-lc's
-one-pass routines, in `Rind/X86_64/ChaCha20Poly1305.lean`:
+and VL), and on CPUs with SSE4.1 that fail it, from the AEAD API's `Key` and
+`RandomizedNonceKey` down to VG's routines on the first and the call of
+aws-lc's one-pass routines on the second, in
+`Rind/X86_64/ChaCha20Poly1305.lean`:
 
 - `chacha20_poly1305_new`: a key that is not 32 bytes is refused, and
   otherwise the key holds its bytes;
@@ -1222,17 +1229,21 @@ HChaCha20, which derives XChaCha20's subkey, runs HACL*'s rounds, which
 `low/generic/chacha20.rs`, which this proof does not cover; the output loop
 stays inside the unrolled `hchacha20` so Aeneas still extracts
 `hchacha20_loop`. The theorems assume `RunsChaCha20Poly1305`: rind's
-CPU-feature checks find SSE4.1 but not what VG's IFMA routines need, and `OnePass`, that aws-lc's one-pass
-routines compute RFC 8439's AEAD, which no proof covers yet;
+CPU-feature checks find what VG's IFMA routines need, or find SSE4.1 but not
+that and `OnePass` holds, that aws-lc's one-pass routines compute RFC 8439's
+AEAD, which no proof covers yet;
 [the ChaCha20-Poly1305 quest](/quest/m4/verified/chacha20-poly1305-x86/aead.md)
 owns their HOL Light proofs, against the s2n-bignum fork's `common/chacha20poly1305.ml`,
 which `Rind/S2nChaCha20Poly1305.lean` proves is `Rind/Spec.lean`'s RFC 8439
-for a 32-byte key and a 12-byte nonce. CPUs that pass that check run
-pyca/verified-garbage's IFMA one pass, and CPUs that fail it and lack SSE4.1
-the separate ChaCha20 and Poly1305 passes, which no theorem here covers; the model leaves VG's
-one pass opaque until
-[its quest](/quest/m2/verified-garbage/chacha20-poly1305-x86-proof.md)
-imports VG's theorems. `AeadDispatch` models
+for a 32-byte key and a 12-byte nonce. On CPUs with IFMA they rest instead on
+the axioms `vg_chacha20_poly1305_seal_ifma_spec` and
+`vg_chacha20_poly1305_open_ifma_spec` in `Rind/X86_64/VgChaCha20Poly1305.lean`,
+which restate VG's theorems and from which `seal_ifma_spec` and
+`open_ifma_spec` prove the one pass computes RFC 8439's AEAD at every
+length, so the theorems earn the ✓ there. VG's open leaves zeros where the
+tag is wrong and aws-lc's the plaintext; the `mid` glue zeroes it either way.
+CPUs that fail the check and lack SSE4.1 run the separate ChaCha20 and
+Poly1305 passes, which no theorem here covers. `AeadDispatch` models
 `RandomizedNonceKey`, which reaches the system's random source, and
 `Rind/ChaCha20Poly1305Test.lean` checks `Rind/Spec.lean`'s transliterations
 against RFC 8439's and draft-irtf-cfrg-xchacha-03's test vectors.
@@ -1522,7 +1533,9 @@ proof after those.
   `Rind/S2nGcm.lean`, s2n-bignum's AES and GHASH specs, transliterated, and
   their proofs that they are Vale's; `Rind/X86_64/GcmKey.lean`, the hand model
   of `aead::gcm::Key` and its proofs; `Rind/X86_64/ChaCha20Poly1305.lean`, the
-  ChaCha20-Poly1305 and XChaCha20-Poly1305 proof above aws-lc's routines;
+  ChaCha20-Poly1305 and XChaCha20-Poly1305 proof above aws-lc's and
+  pyca/verified-garbage's routines, and `Rind/X86_64/VgChaCha20Poly1305.lean`,
+  the x86_64 one pass over VG's IFMA routines;
   `Rind/VgChaCha20Poly1305.lean`, the proof that pyca/verified-garbage's
   ChaCha20-Poly1305 spec is `Rind/Spec.lean`'s, and
   `Rind/Aarch64/VgChaCha20Poly1305.lean`, the aarch64 one pass over its SVE2
