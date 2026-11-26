@@ -2,7 +2,7 @@
 
 ## Goal
 
-ChaCha20-Poly1305 and XChaCha20-Poly1305 earn the ✓ on x86_64 CPUs without SSE4.1 (Core 2, Nehalem, and SSE2-only virtual CPUs), where rind runs ChaCha20 and Poly1305 in separate passes.
+ChaCha20-Poly1305 and XChaCha20-Poly1305 earn the ✓ on x86_64 CPUs without SSE4.1 (Core 2, Nehalem, and SSE2-only virtual CPUs), where rind runs ChaCha20 and Poly1305 in separate passes, in rind's Linux build: the SSSE3 ChaCha20 an x86_64 Mac assembles is Apple's copy, which the proof does not cover and this quest leaves out.
 
 ## Plan
 
