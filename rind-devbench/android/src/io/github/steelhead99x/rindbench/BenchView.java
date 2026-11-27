@@ -302,9 +302,11 @@ final class BenchView extends LinearLayout {
         // or autostart from them; the other extras only preselect the picker.
         // As the preset buttons, nothing changes while a run is going: its collector was fixed at Start.
         if (running) return;
-        if (Collector.RUNNER && it.hasExtra("host")) {
-            String newHost = it.getStringExtra("host");
-            int newPort = it.getIntExtra("port", Collector.PORT);
+        // A host that isn't a non-blank string, or a port out of range, leaves the collector as it is.
+        String newHost = Collector.RUNNER ? it.getStringExtra("host") : null;
+        if (newHost != null) newHost = newHost.trim();
+        int newPort = it.getIntExtra("port", Collector.PORT);
+        if (newHost != null && !newHost.isEmpty() && newPort > 0 && newPort <= 65535) {
             boolean changed = !newHost.equals(runnerHost) || newPort != runnerPort;
             runnerHost = newHost;
             runnerPort = newPort;
@@ -601,6 +603,11 @@ final class BenchView extends LinearLayout {
     }
 
     private void startTapped() {
+        // Any start, the person's or the runner's own, takes the place of a queued autostart.
+        if (autostart != null) {
+            ui.removeCallbacks(autostart);
+            autostart = null;
+        }
         if (!agree.isChecked() || !catalogReady || running) return;
         List<String> libs = new ArrayList<>(), secs = new ArrayList<>();
         for (Map.Entry<String, CompoundButton> e : libSw.entrySet()) if (e.getValue().isChecked()) libs.add(e.getKey());
