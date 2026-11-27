@@ -1032,7 +1032,12 @@ aarch64 decides once per process whether the CPU has the crypto extension.
 With it, AES-GCM runs s2n-bignum's kernels, which interleave AES-CTR and GHASH
 over whole blocks: by 8 on a core with SHA3, using its three-way XOR, as aws-lc
 does on Apple and Neoverse V cores, and by 4 otherwise. They run in place,
-which their theorems allow. Up to 15 blocks of AAD and message
+which their theorems allow. The by-8 kernels' theorems also require the
+blocks' address plus their length to be below 2^63, so with an AES-128 or
+AES-256 key a buffer whose pointer tag sets bit 63, as Android's heap tags do,
+runs the by-4 kernels, checked on each call: `PmullTable::eight_way` says only
+that the core can run by 8. AES-192 runs aws-lc's by-8 kernels on such a core
+whatever the address. Up to 15 blocks of AAD and message
 sealed, or 31 opened, rind's own Rust runs instead: one pass that encrypts
 every counter block and the tag's, and hashes every block with one reduction
 per eight. It measured 0.41-0.97x the kernels' time on Neoverse N2 and

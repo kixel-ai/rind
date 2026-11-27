@@ -1526,10 +1526,14 @@ CPU-feature checks pick Vale's tier (`RunsValeAesGcm`) or the SSE tier
 (`Algorithm`'s `expand` and `Sealer`'s `Ops`), and `seal_in_place_append_tag`,
 which is generic over its buffer.
 
-On aarch64, AES-GCM is proven below the AEAD API on CPUs with the crypto
-extension: for short messages with every key size, and at every length below
-2^61 bytes with AES-128 and AES-256 keys; its GHASH key setup and hashing are proven at every
-length. `Rind/Aarch64/GhashPmull.lean` proves
+On aarch64, AES-GCM is proven from the AEAD API down on CPUs with the
+crypto extension, for the AAD below 2^61 bytes and the message lengths the
+API takes (up to 2^36 - 32 bytes), with AES-128 and AES-256 keys, and with
+AES-192 keys on cores without SHA3. `tagged_from` and `tagged` below it are
+proven at every length below 2^61 bytes with the same keys, and on cores with
+SHA3 with AES-192 keys only for short messages, which no AEAD theorem states,
+since `RunsAesGcm` excludes AES-192 there. Its GHASH key setup and hashing
+are proven at every length. `Rind/Aarch64/GhashPmull.lean` proves
 that `GhashTable::new` builds the PMULL table of H to H^8, each shifted as
 Vale's `shift_key_1` does (`ghash_table_new_spec`), and that `Ghash::add` on
 it is the Horner rule on the padded blocks, Vale's `ghash_LE`
@@ -1570,18 +1574,29 @@ that `partial` is `short`'s last chunk (`partial_spec`), so `cipher` is GCTR
 from the block after the counter block and GHASH over the AAD and the
 ciphertext (`cipher_spec`), and `tagged_from` and `tagged` at every length
 below 2^61 bytes are GCTR and the tag on `gcm_hash` (`tagged_from_spec`) and `gcm_encrypt_LE` and
-`gcm_decrypt_LE` (`tagged_seal_spec`, `tagged_open_spec`). With a table for
-the cores with SHA3, each takes `KernelBuffersLow`, which names the `_alt`
-kernels' requirement that the blocks' address plus their length is below
-2^63, as a hypothesis: untagged user-space addresses meet it, and a pointer
-tag that sets bit 63 breaks it. AES-192 past the
-short path, which runs aws-lc's stitched kernels on cores with SHA3 and
-rind's AES-CTR and GHASH in turn otherwise, and the AEAD API above `tagged`
-remain to prove.
+`gcm_decrypt_LE` (`tagged_seal_spec`, `tagged_open_spec`). On the cores
+with SHA3, `stitched` runs the `_alt` kernels only after comparing the
+blocks' address plus their length with 2^63, as their theorems require, which
+the hand model leaves opaque as `KernelBuffersLow`; a pointer tag that sets
+bit 63, as Android's heap tags do, runs the four-way kernels, so the proofs
+cover either branch. AES-192 past the
+short path runs aws-lc's eight-way kernels on cores with SHA3, which nothing
+proves, and otherwise `composed`, rind's AES-CTR and then GHASH over each
+128-byte chunk: `Rind/Aarch64/AesGcmComposed.lean` proves it GCTR and GHASH
+(`composed_spec`) from `Rind/Aarch64/AesModesLow.lean`'s CTR proof and
+`ghash_add_spec`, so `cipher_spec` and the theorems above it take AES-192 on a
+table without `eight_way`. `Rind/Aarch64/AesGcmAead.lean` and
+`Rind/Aarch64/AesGcmAny.lean` state `AesGcm`'s key setup, `encrypt`,
+`decrypt`, `encrypt_any`, and `decrypt_any`, and the AEAD API above them, as
+x86_64's files of those names do, under `RunsAesGcm alg`: the entry guard
+passes, the CPU-feature checks find the crypto extension, and, where they find
+SHA3, the key is not AES-192.
 
 `aead::gcm::Key`, which takes an IV of any length and tags of any
 `TagLength`, is proven on the same tiers, in `Rind/X86_64/GcmKey.lean`, a
-hand model over `AeadDispatch` that quotes `rind/src/aead/gcm.rs`. Its `new`
+hand model over `AeadDispatch` that quotes `rind/src/aead/gcm.rs`, and on
+aarch64 in the copy `admin/prove` makes of it, which passes `RunsAesGcm` the
+key's algorithm. Its `new`
 for AES-128, AES-192, or AES-256 holds the `aead::Key` for the algorithm,
 which refuses a key of another length (`gcm_key_new`). For an IV of 1 to
 2^61 - 1 bytes and the same AAD and message lengths, its
@@ -2103,7 +2118,7 @@ beyond Lean's own.
   counter blocks, for the x86_64 routines' HOL Light proofs; and
   `Rind/GhashSpec.lean` and
   `Rind/X86_64/{Ghash,PartialBlock,AesGcmGlue,AesGcm,GhashClmul,AesGcmBy8,AesGcmClmul,AesGcmAead,AesGcmApi,AesGcmAny,GhashAvx512,AesGcmAvx512}.lean`:
-  the AES-GCM proof, on x86_64 alone; `Rind/Aarch64/{AesGcmModel,GhashPmull,AesGcmShort,AesGcm,AesGcmLong}.lean`,
+  the AES-GCM proof, on x86_64 alone; `Rind/Aarch64/{AesGcmModel,GhashPmull,AesGcmShort,AesGcm,AesGcmComposed,AesGcmLong,AesGcmAead,AesGcmAny}.lean`,
   aarch64's hand model and its PMULL GHASH and AES-GCM proofs;
   `Rind/S2nGcm.lean`, s2n-bignum's AES and GHASH specs, transliterated, and
   their proofs that they are Vale's; `Rind/S2nGcmAe.lean`, its GCM-AE,
