@@ -7,7 +7,7 @@ set_option linter.unusedSimpArgs false
 /-!
 # aws-lc's `bn_sqrx8x_mont`, proven given `bn_sqrx8x_internal`
 
-`bn_sqrx8x_mont_correct`: the routine `RindIsa/X86_64/Sqrx8xMont.lean` gives
+`bn_sqrx8x_mont_correct_of`: the routine `RindIsa/X86_64/Sqrx8xMont.lean` gives
 as `prog`, which `admin/prove lean` checks is the machine code of rind's naked
 function `low::x86_64::mont::bn_sqrx8x_mont` as rind's Linux release build
 emits it, run in rind's extension of VG's x86_64 model
@@ -435,13 +435,13 @@ theorem pre_witness : Pre witness := by
 /-- Given `bn_sqrx8x_internal`'s contract, the routine computes the Montgomery square of its argument, keeping what
 the System V ABI and its contract require; its trace depends only on its arguments and the stack pointer; and some
 state meets its precondition. -/
-theorem bn_sqrx8x_mont_correct (inT : Nat → Addr → Addr → Addr → List Leak) (hin : Internal inT) :
+theorem bn_sqrx8x_mont_correct_of (inT : Nat → Addr → Addr → Addr → List Leak) (hin : Internal inT) :
     (∀ s, Pre s → ∃ t s', Exec I Rind.X86_64.Sqrx8xMont.prog s t s' ∧ Post s s') ∧
       ConstantTime I Pre Pub Rind.X86_64.Sqrx8xMont.prog ∧ ∃ s, Pre s :=
   ⟨fun s h => let ⟨s', e, p⟩ := correct inT hin s h; ⟨_, s', e, p⟩, constant_time inT hin, _, pre_witness⟩
 
 end rind.x86_64.sqrx8xmont
 
-/-- info: 'rind.x86_64.sqrx8xmont.bn_sqrx8x_mont_correct' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'rind.x86_64.sqrx8xmont.bn_sqrx8x_mont_correct_of' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms rind.x86_64.sqrx8xmont.bn_sqrx8x_mont_correct
+#print axioms rind.x86_64.sqrx8xmont.bn_sqrx8x_mont_correct_of
