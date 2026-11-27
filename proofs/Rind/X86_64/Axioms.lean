@@ -17,6 +17,7 @@ import Rind.X86_64.Ed25519Ifma
 import Rind.X86_64.Ed25519Verify
 import Rind.X86_64.RsaDispatch
 import Rind.X86_64.RsaPrivate
+import Rind.X86_64.RsaPrivKey
 import Rind.X86_64.Sha3
 import Rind.X86_64.AesKw
 import Rind.X86_64.P256Signature
@@ -28,8 +29,9 @@ open rind.x86_64
 /-!
 The axioms each theorem rests on, beyond Lean's own: s2n-bignum's contracts
 in `Rind.X86_64.S2nBignum` for X25519, P-256 key generation, ECDH, and
-ECDSA, P-384, Ed25519, RSA verification and the private operation, and the
-Keccak-f of SHA-3 and ML-KEM's SHAKE; for the SHA-512 family, for HMAC, HKDF,
+ECDSA, P-384, Ed25519, RSA verification, key loading, and the private
+operation, and the Keccak-f of SHA-3 and ML-KEM's SHAKE; for the SHA-512
+family, for HMAC, HKDF,
 and PBKDF2, which cover SHA-384 and SHA-512, and for Ed25519's hashes, aws-lc's
 AVX routine's in `Rind.X86_64.AwsLc` and rind's HOL Light proof there of
 OpenSSL's AVX2 routine; for SHA-256, which the theorems over every HMAC algorithm cover,
@@ -1104,6 +1106,22 @@ change to the trust base.
  rsa_ifma_public_spec] -/
 #guard_msgs in
 #print axioms private_op_rsa2048_spec
+
+/-- info: 'rind.x86_64.rsa_private_key_new_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ bignum_bitsize_spec,
+ bignum_cmp_lt_spec,
+ bignum_eq_spec,
+ bignum_modadd_spec,
+ bignum_montifier_spec,
+ bignum_montredc_spec,
+ bignum_mul_spec,
+ bignum_negmodinv_spec,
+ bignum_optsub_spec,
+ rsa_vg_precompute_spec] -/
+#guard_msgs in
+#print axioms rsa_private_key_new_spec
 
 /-- info: 'rind.x86_64.sha3_family_digest' depends on axioms: [propext, Classical.choice, Quot.sound, sha3_keccak_f1600_spec] -/
 #guard_msgs in

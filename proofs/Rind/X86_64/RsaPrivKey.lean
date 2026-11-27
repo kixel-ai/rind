@@ -7,12 +7,12 @@ open Aeneas Aeneas.Std Result rind.spec rind.spec.rsa
 
 `RsaPrivateKey::new` checks a key's components as aws-lc's `RSA_check_key`
 does, all but primality, and computes the Montgomery constants the private
-operation takes. This proves that a key it returns meets `PrivKeyInv`, which
-`private_op_spec` takes, and `CrtKey`, RFC 8017's relations between the
-components: `dP = d mod (p - 1)`, `dP·e ≡ 1 (mod p - 1)`, the same for `q`,
-and `qInv·q ≡ 1 (mod p)`. Its components are the values it was given, and
-pyca/verified-garbage's IFMA CRT does not run for it on a CPU without
-AVX-512 IFMA.
+operation takes. `rsa_private_key_new_spec` proves that, on a CPU where
+pyca/verified-garbage's IFMA CRT does not run, a key it returns meets
+`PrivKeyInv`, which `private_op_spec` takes, and holds the values it was
+given, and that those meet `CrtRelations`, RFC 8017's relations between the
+components: `n = p·q`, `dP = d mod (p - 1)`, `dP·e ≡ 1 (mod p - 1)`, the
+same for `q`, and `qInv < p` with `qInv·q ≡ 1 (mod p)`.
 -/
 
 namespace rind.x86_64
@@ -790,6 +790,10 @@ theorem iqmp_inverse {P Q IQ k a : Nat} (hP : 1 < P) (hodd : P % 2 = 1)
   rw [Nat.mod_eq_of_lt hP] at this
   exact this.symm
 
+end PrivKey
+
+open PrivKey
+
 /-- The width, in words, a private key works at: its wider prime's. -/
 def keyWords (P Q : Nat) : Nat := max ((P.size + 63) / 64) ((Q.size + 63) / 64)
 
@@ -813,7 +817,7 @@ def CrtRelations (N P Q D DP DQ QINV E : Nat) : Prop :=
 /-- What `RsaPrivateKey::new` returns for its components: a key that meets
 `PrivKeyInv`, as the private operation needs, holds them, and they meet
 `CrtRelations`; pyca/verified-garbage's CRT does not run for it. -/
-def KeyLoaded (p q dp dq iqmp : low.posint.PosInt 64#usize) (d n : RsaInt) (e : U64)
+def PrivKeyLoaded (p q dp dq iqmp : low.posint.PosInt 64#usize) (d n : RsaInt) (e : U64)
     (key : mid.rsa_priv.RsaPrivateKey) : Prop :=
   PrivKeyInv key ∧ key.ifma.w = 0#usize ∧ key.public.n = n ∧ key.public.e = e ∧
     key.p.used.val = keyWords (wordsNat (lowWords p p.used)) (wordsNat (lowWords q q.used)) ∧
@@ -838,7 +842,7 @@ theorem rsa_private_key_new_spec (hrun : Runs) (h : low.entry.Entry.assert_held 
     (htight : n.used.val = 0 ∨ 2 ^ (64 * (n.used.val - 1)) ≤ wordsNat (lowWords n n.used))
     (hP : MontProducts (keyWords (wordsNat (lowWords p p.used)) (wordsNat (lowWords q q.used)))) :
     mid.rsa_priv.RsaPrivateKey.new p q d dp dq iqmp n e ⦃ r => match r with
-      | .Ok key => KeyLoaded p q dp dq iqmp d n e key
+      | .Ok key => PrivKeyLoaded p q dp dq iqmp d n e key
       | .Err _ => True ⦄ := by
   unfold mid.rsa_priv.RsaPrivateKey.new
   set P := wordsNat (lowWords p p.used) with hPdef
@@ -865,7 +869,7 @@ theorem rsa_private_key_new_spec (hrun : Runs) (h : low.entry.Entry.assert_held 
       let e1 ← error.Error.Insts.CoreConvertFromKeyFormatError.from k
       ok (core.result.Result.Err e1) : Result (core.result.Result mid.rsa_priv.RsaPrivateKey error.Error)) ⦃ r =>
         match r with
-        | .Ok key => KeyLoaded p q dp dq iqmp d n e key
+        | .Ok key => PrivKeyLoaded p q dp dq iqmp d n e key
         | .Err _ => True ⦄ := by
     intro k; simp [error.Error.Insts.CoreConvertFromKeyFormatError.from, WP.spec_ok]
   split
@@ -1061,14 +1065,12 @@ theorem rsa_private_key_new_spec (hrun : Runs) (h : low.entry.Entry.assert_held 
   step as ⟨s2, hs2, hs2l⟩
   step as ⟨s3, hs3, hs3l⟩
   step with ifma_crt_new_none hifma as ⟨ic, hic⟩
-  dsimp only [KeyLoaded, PrivKeyInv]
+  dsimp only [PrivKeyLoaded, PrivKeyInv]
   refine ⟨⟨hpub, hq3u, hk64, by rw [hp3u]; omega, by rw [hp3v]; exact hPo, by rw [hq3v]; exact hQo,
     by rw [hp3v]; omega, by rw [hq3v]; omega, by rw [hvn, hp3v, hq3v]; exact hb11t.symm, hp0,
     by rw [hq3v]; exact hq0, by rw [hpmv, hp3v], by rw [hq3v]; exact hqmv, by rw [hdp1u]; omega, by rw [hdq1u]; omega,
     by rw [hIQK, hp3v]; exact hb12t, by rw [himv', hIQK, hp3v]⟩,
     hic, hvn, hve, hp3u, hp3v, hq3v, rfl, hDP1, hDQ1, hIQK,
     hb11t.symm, h9a.symm, by rw [← h9a]; exact h9b, h10a.symm, by rw [← h10a]; exact h10b, hb12t, hinv⟩
-
-end PrivKey
 
 end rind.x86_64
