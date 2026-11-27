@@ -82,7 +82,7 @@ Have at least these sections:
 - **Alternatives**: any alternative approaches considered.
 - **Follow-ups**: any issues encountered or quests created.
 
-Run `just check` before every push and `just ci` before opening a PR or marking it ready: CI runs no checks on pull requests, so these local runs are the only checks a PR gets before the merge queue. To test on another platform, such as macOS, run the checks on a host that has it over SSH.
+Run `just check` before every push, and `just ci` on each head that goes to review or into the merge queue: before opening a PR, marking it ready, or pushing to a ready one. CI runs no checks on pull requests, so these local runs are the only checks a PR gets before the merge queue. A PR no agent wrote, such as Dependabot's or release-plz's, gets its `just ci` from whoever reviews it, before its pick. To test on another platform, such as macOS, run the checks on a host that has it over SSH.
 
 The scheduled workflows run as [TESTING.md](TESTING.md#scheduled-workflows) lists, or on demand with `gh workflow run <name> --ref <branch>`, a `bench` or `ctgrind` dispatch naming only what the change reaches. None of them runs on a pull request: dispatch the ones your change reaches on your branch before review, and mutate a diff with `admin/mutants --in-diff`. `prove` also runs on each push to main that reaches it, checking the bytes, and the HOL Light and Lean proofs and the cosimulation for inputs main has not passed. Its proofs gate no merge: a failure on main alerts, and a release waits for them (see [Releases](#releases)). `admin/mutants` runs a whole campaign only on GitHub-hosted runners.
 PRs land on `main` through GitHub's merge queue, one PR at a time, as squash commits.
