@@ -75,6 +75,8 @@ final class BenchView extends LinearLayout {
     private int runnerPort = Collector.PORT;
     private final Runnable poll = this::poll;
     private final boolean restored;
+    /** Between the activity's onStart and onStop. */
+    private boolean onScreen = true;
 
     /**
      * `restored`: the activity is being recreated from saved state, after a
@@ -400,8 +402,9 @@ final class BenchView extends LinearLayout {
             if (!run.equals(clearedRun)) showFinished(st, false);
             return;
         }
-        // A launch's autostart is consumed by its first view: never by one restored from saved state.
-        if (Collector.RUNNER && !restored && intent != null && intent.getBooleanExtra("autostart", false)) {
+        // A launch's autostart is consumed by its first view: never by one restored from saved state,
+        // nor while the operator has left the app, since a runner's run needs the screen it set up.
+        if (Collector.RUNNER && !restored && onScreen && intent != null && intent.getBooleanExtra("autostart", false)) {
             agree.setChecked(true);
             startTapped();
         }
@@ -628,6 +631,11 @@ final class BenchView extends LinearLayout {
         } catch (Exception e) {
             return new JSONObject();
         }
+    }
+
+    /** The activity's onStart and onStop. */
+    void setOnScreen(boolean on) {
+        onScreen = on;
     }
 
     /** Stops polling, for the activity's onDestroy: a recreated activity's new view picks the run up. */

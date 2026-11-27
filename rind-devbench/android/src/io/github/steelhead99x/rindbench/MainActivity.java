@@ -203,6 +203,16 @@ public class MainActivity extends Activity {
         if (bench != null) bench.onChromeRelayout();
     }
 
+    @Override protected void onStart() {
+        super.onStart();
+        if (bench != null) bench.setOnScreen(true);
+    }
+
+    @Override protected void onStop() {
+        if (bench != null) bench.setOnScreen(false);
+        super.onStop();
+    }
+
     @Override protected void onDestroy() {
         if (bench != null) bench.dispose();
         super.onDestroy();
