@@ -15,7 +15,7 @@ How long rind and the usual Rust crypto libraries take for the same operations, 
 | `ovh-iad` | Intel Core Processor (Haswell, no TSX) | NixOS 26.11 (Zokor) (Linux 6.18.40) | 2026-11-27 at [`8656d89b`](https://github.com/kixel-ai/rind/commit/8656d89bd9ade57720e72802fd6096b8b2bcdc82) |
 | `ovh-sea` | Intel Core Processor (Haswell, no TSX) | NixOS 26.11 (Zokor) (Linux 6.18.40) | 2026-11-27 at [`8656d89b`](https://github.com/kixel-ai/rind/commit/8656d89bd9ade57720e72802fd6096b8b2bcdc82) |
 
-Each host builds with the pinned toolchain in the Nix dev shell, and runs `admin/bench-report` only when idle.
+Each host builds with the pinned toolchain in the Nix dev shell. A dedicated host runs `admin/bench-report` only when idle. A host that CI runners and agent sessions keep busy runs it on two whole cores it keeps that work off for the timing, so the work shares only the caches and power budget, and it times no every-logical-CPU rows.
 
 ## Methodology
 
@@ -92,7 +92,7 @@ The versions of each library's crates that `rind-bench` built, from `Cargo.lock`
 
 Each row is one operation and each column one library. Each cell holds a square per host, colored by that library's time over the fastest library's on the same host, as the legend shows. A shield in a square marks verified code. Each square's tooltip, in the SVG opened on its own, gives its time; the tables below each host give them all. A library with no square doesn't offer the operation, or the host didn't time it, as its section says.
 
-The rustls rows run both peers in one process. The every-logical-CPU rows run one handshake per thread on all of the host's logical CPUs at once, each thread with its own client and server, and give the machine's time per handshake; each host's text gives rind-rustls's throughput there over its one-thread rate. A full handshake over rind-rustls's default provider, both peers, makes 245 heap allocations with an ECDSA P-256 certificate on x86_64, which `rind-rustls/tests/allocations.rs` pins. Over rustls's aws-lc-rs provider it makes 214 through Rust's allocator and about 90 more in AWS-LC's C code, which only a process-wide count such as valgrind's sees (2026-11-13).
+The rustls rows run both peers in one process. The every-logical-CPU rows run one handshake per thread on all of a dedicated host's logical CPUs at once, each thread with its own client and server, and give the machine's time per handshake; each host's text gives rind-rustls's throughput there over its one-thread rate. A full handshake over rind-rustls's default provider, both peers, makes 245 heap allocations with an ECDSA P-256 certificate on x86_64, which `rind-rustls/tests/allocations.rs` pins. Over rustls's aws-lc-rs provider it makes 214 through Rust's allocator and about 90 more in AWS-LC's C code, which only a process-wide count such as valgrind's sees (2026-11-13).
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="benchmarks/overview-dark.svg">
@@ -373,7 +373,7 @@ rind-rustls on all 24 logical CPUs runs full handshakes at 10.2 times and resume
 
 Measured 2026-11-24 at [`d481966c`](https://github.com/kixel-ai/rind/commit/d481966c12a136fa82b10afbf81e25d26f7fb0cd), on Fedora Linux 45 (Workstation Edition) (Linux 7.3.3-300.fc45.x86_64) with rustc 1.98.1 (48a229cea 2026-09-01).
 
-The maintainer's Fedora workstation and the report's only AVX-512 host, so the one whose table times rind's AVX-512 AES-GCM, IFMA RSA, and 8-way ML-KEM sampler against every library. It also runs CI runners and agent sessions, so its times are noisier than the other dedicated hosts'. Zen 5 keeps its clock with 512-bit vectors, so this host cannot show what they cost on the Intel cores that slow down.
+The maintainer's Fedora workstation and the report's only AVX-512 host, so the one whose table times rind's AVX-512 AES-GCM, IFMA RSA, and 8-way ML-KEM sampler against every library. Zen 5 keeps its clock with 512-bit vectors, so this host cannot show what they cost on the Intel cores that slow down.
 
 Not timed on `fedora`: one record, AES-128-GCM, 64 B, one record, AES-128-GCM, 256 B, one record, AES-128-GCM, 1 KB, one record, ChaCha20-Poly1305, 64 B, one record, ChaCha20-Poly1305, 256 B, one record, ChaCha20-Poly1305, 1 KB, SLH-DSA-SHA2-128s key generation, SLH-DSA-SHA2-128s sign, SLH-DSA-SHA2-128s verify, SLH-DSA-SHA2-128f key generation, SLH-DSA-SHA2-128f sign, SLH-DSA-SHA2-128f verify, SLH-DSA-SHAKE-128f key generation, SLH-DSA-SHAKE-128f sign, SLH-DSA-SHAKE-128f verify.
 
@@ -1521,7 +1521,10 @@ A ✓ means a published, machine-checked proof shows that all the code computing
 `admin/build-cost`, on each benchmark host in turn over ssh, in the Nix dev
 shell and under `quest gate`, which waits for the host to have room but
 shares it with other gated work, so its numbers are noisier than the weekly
-`bench` workflow's runners, which give the clean ones; it skips any host that is still busy, and writes their results and the hosts' details as JSON under
+`bench` workflow's runners, which give the clean ones. On a host that CI runners
+and agent sessions share, it times the benchmarks on two whole cores it keeps
+other work off for the run, which needs systemd and passwordless sudo there.
+It skips any other host that is still busy, and writes their results and the hosts' details as JSON under
 `.tmp/bench-report/`. `admin/bench-report weekly` saves the latest weekly
 `bench` run's results and binary sizes, and `admin/bench-report render --from DIR` copies a
 collection's measured hosts into `benchmarks/data/` and writes
