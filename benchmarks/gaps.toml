@@ -49,9 +49,14 @@ on = ["nixos", "ovh-iad", "ovh-sea", "x86_64"]
 quest = "/quest/m2/speed/ristretto255-avx2.md"
 
 [[gap]]
-operations = ["aes*-gcm*"]
+operations = ["aes256-gcm/1350B"]
 on = ["fedora"]
-quest = "/quest/m2/speed/zen5-vg-aes-gcm.md"
+quest = "/quest/m2/speed/zen5-aes-gcm-short-kernel.md"
+
+[[gap]]
+operations = ["aes*-gcm*/16KB"]
+on = ["fedora"]
+reason = "Measured before [kixel-ai/rind#1139](https://github.com/kixel-ai/rind/pull/1139), which runs pyca/verified-garbage's AVX-512 seal and open on Zen 5 from 6 KB: under rind's API on `fedora` it took 16 KB seals to 0.90 to 0.94 of the time before and opens to 0.88 to 0.94, which brings these rows within 10% of VG's own API by this data's times. The next refresh rechecks them."
 
 [[gap]]
 operations = ["aes*-gcm*/16KB"]

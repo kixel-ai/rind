@@ -179,7 +179,35 @@ impl HaveAvx512ForAesGcm {
             false => None,
         }
     }
+
+    /// pyca/verified-garbage's AVX-512 AES-GCM, where it is faster for long
+    /// messages: on AMD's family 1Ah (Zen 5), and nowhere else measured.
+    pub(crate) fn vg(self) -> Option<HaveAvx512ForVgAesGcm> {
+        has(FAMILY_1AH).then(|| self.vg_anywhere())
+    }
+
+    /// pyca/verified-garbage's AVX-512 AES-GCM, which runs on every CPU this
+    /// token is for, whether or not it is faster there.
+    pub(crate) fn vg_anywhere(self) -> HaveAvx512ForVgAesGcm {
+        const {
+            assert!(
+                (AES_GCM_BASE | AVX512F | AVX512BW | AVX512VL | VPCLMULQDQ | VAES) & VG_AES_GCM
+                    == VG_AES_GCM
+            )
+        };
+        HaveAvx512ForVgAesGcm(())
+    }
 }
+
+/// Proof that the CPU has what pyca/verified-garbage's AVX-512 AES-GCM runs:
+/// SSSE3, PCLMULQDQ, AVX, AVX2, AVX-512 F and BW, VAES, VPCLMULQDQ, and
+/// AES-NI, its `_FEATURES` for seal and open, of which its key preparation
+/// needs a subset.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct HaveAvx512ForVgAesGcm(());
+
+const VG_AES_GCM: u32 =
+    SSSE3 | PCLMULQDQ | AVX | AVX2 | AVX512F | AVX512BW | VAES | VPCLMULQDQ | AES;
 
 /// Token type reflecting the check for CPU features needed for VAES-AES-GCM
 /// on 256-bit vectors.
@@ -533,6 +561,8 @@ const AVX512FP16: u32 = 1 << 22;
 const INTEL: u32 = 1 << 30;
 /// AMD's family 19h (Zen 3 and 4), by CPUID leaf 1's family and vendor.
 const FAMILY_19H: u32 = 1 << 21;
+/// AMD's family 1Ah (Zen 5), likewise.
+const FAMILY_1AH: u32 = 1 << 23;
 /// What rind's AVX2 kernels use, for [`HaveAvx2`].
 const AVX2_KERNELS: u32 = AVX | AVX2 | BMI1 | BMI2 | POPCNT | SSSE3;
 /// What the AES-GCM kernels for wider vectors build on: the AVX2 ISA, AES-NI
@@ -629,10 +659,14 @@ fn detect() -> u32 {
         0
     };
     let found = decode(registers()) | ENABLED | valgrind;
-    let vendor = [(INTEL, "intel"), (FAMILY_19H, "family19h")]
-        .into_iter()
-        .filter(|&(bit, name)| found & bit != 0 && !super::super::cpu_denied(name))
-        .fold(0, |features, (bit, _)| features | bit);
+    let vendor = [
+        (INTEL, "intel"),
+        (FAMILY_19H, "family19h"),
+        (FAMILY_1AH, "family1ah"),
+    ]
+    .into_iter()
+    .filter(|&(bit, name)| found & bit != 0 && !super::super::cpu_denied(name))
+    .fold(0, |features, (bit, _)| features | bit);
     NAMED
         .iter()
         .filter(|&&(bit, name)| found & bit != 0 && !super::super::cpu_denied(name))
@@ -714,6 +748,7 @@ fn decode(r: Registers) -> u32 {
             0
         };
     set(r.amd && family == 0x19, FAMILY_19H);
+    set(r.amd && family == 0x1a, FAMILY_1AH);
     set(bit(r.ecx1, 1), PCLMULQDQ);
     set(bit(r.ecx1, 9), SSSE3);
     set(bit(r.ecx1, 19), SSE41);
@@ -834,7 +869,7 @@ mod tests {
     #[test]
     fn detects_what_std_does() {
         assert_eq!(
-            (decode(registers()) | ENABLED) & !(INTEL | FAMILY_19H),
+            (decode(registers()) | ENABLED) & !(INTEL | FAMILY_19H | FAMILY_1AH),
             std_detected()
         );
     }
@@ -952,10 +987,11 @@ mod tests {
     }
 
     /// AMD's family 19h is leaf 1's family 0xf plus extended family 0xa, as on
-    /// Zen 4's models 0x11 and 0x61, and Zen 3's 0x21; no other vendor's, and
-    /// no other family, such as Zen 5's 0x1a or Zen 2's 0x17.
+    /// Zen 4's models 0x11 and 0x61, and Zen 3's 0x21, and family 1Ah plus
+    /// 0xb, as on Zen 5; no other vendor's, and no other family, such as Zen
+    /// 2's 0x17.
     #[test]
-    fn decodes_amd_family_19h() {
+    fn decodes_amd_families() {
         let zen4 = Registers {
             amd: true,
             eax1: 0x00a1_0f11,
@@ -978,13 +1014,23 @@ mod tests {
             }),
             INTEL
         );
-        for eax1 in [
-            0x00b4_0f41,
-            0x0086_0f01,
-            0x0000_0f11,
-            0x0000_1911,
-            0x0010_0f11,
-        ] {
+        // Zen 5's model 0x44 is family 1Ah.
+        assert_eq!(
+            decode(Registers {
+                eax1: 0x00b4_0f41,
+                ..zen4
+            }),
+            FAMILY_1AH
+        );
+        assert_eq!(
+            decode(Registers {
+                amd: false,
+                eax1: 0x00b4_0f41,
+                ..zen4
+            }),
+            0
+        );
+        for eax1 in [0x0086_0f01, 0x0000_0f11, 0x0000_1911, 0x0010_0f11] {
             assert_eq!(decode(Registers { eax1, ..zen4 }), 0, "{eax1:#x}");
         }
     }

@@ -30,6 +30,9 @@ fn main() {
         };
     let amd = (id.ebx, id.edx, id.ecx) == (0x6874_7541, 0x6974_6e65, 0x444d_4163);
     let zen4 = amd && family == 0x19 && is_x86_feature_detected!("avx512ifma");
+    // Family 1Ah is Zen 5's, whose AES-GCM runs verified-garbage's AVX-512
+    // code for long messages.
+    let zen5 = amd && family == 0x1a;
 
     // Every feature `rind/src/low/x86_64/cpu.rs` reads, so the scans show
     // which dispatch paths each CPU selects, plus `sha512`, which rind records
@@ -37,6 +40,7 @@ fn main() {
     let cpuid = [
         ("intel", intel),
         ("zen4", zen4),
+        ("zen5", zen5),
         ("adx", is_x86_feature_detected!("adx")),
         ("aes", is_x86_feature_detected!("aes")),
         ("vaes", is_x86_feature_detected!("vaes")),

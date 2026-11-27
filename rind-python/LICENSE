@@ -277,7 +277,9 @@ pyca/verified-garbage <https://github.com/pyca/verified-garbage>
   verification on x86_64 with BMI2 and ADX, ECDH and verification
   also with AVX-512 IFMA, and on aarch64; P-384's d·G on x86_64 and
   aarch64, and its ECDSA verification on x86_64 with BMI2 and ADX and
-  on aarch64; and the Keccak, hash, arithmetic, field, scalar, and
+  on aarch64; AES-GCM's seal and open on x86_64 with AVX-512, VAES,
+  and VPCLMULQDQ, over the key context its preparation routine makes;
+  and the Keccak, hash, arithmetic, field, scalar, AES, GHASH, and
   point routines and tables they call.
   Copyright (c) Individual contributors.
   License: Apache-2.0 OR BSD-3-Clause, which the files keep.
