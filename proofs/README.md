@@ -278,8 +278,9 @@ those inputs, in any worktree, restores in under a second.
   FIPS 197's cipher of its block, as the fork's `common/fips197.ml` states
   its rounds, under AES-128, AES-192, or AES-256 round keys in the form
   `vpaes_schedule` gives them: the first through vpaes's input transform,
-  the middle ones mixed and transformed, and the last as it is. It rests on
-  `VPAES_ENCRYPT_SUBROUTINE_CORRECT`, that the routine computes
+  the middle ones mixed, transformed, and xored with 0x5b, and the last
+  xored with 0x63, each permuted as ShiftRows has left that round's state.
+  It rests on `VPAES_ENCRYPT_SUBROUTINE_CORRECT`, that the routine computes
   `vpaes_cipher`, vpaes's rounds of `vtbl` lookups as the code runs them,
   and `VPAES_CIPHER`, that those rounds are FIPS 197's on a state whose
   bytes pass through vpaes's GF(2)-linear transform, permuted as ShiftRows

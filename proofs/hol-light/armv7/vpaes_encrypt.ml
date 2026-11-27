@@ -649,8 +649,10 @@ let VPAES_TB_XOR = prove
  (`!a b. vpaes_tb (word_xor a b) = word_xor (vpaes_tb a) (vpaes_tb b)`,
   REWRITE_TAC[VPAES_TB_TLIN; vpaes_tlin] THEN BITBLAST_TAC);;
 
-(* The S-box output tables, at the indices of a transformed byte: with the
-   key's 0x5b, T of the S-box; T of its double; and the S-box. *)
+(* The S-box output tables, at the indices of a transformed byte: sb1's
+   are T of the S-box xor 0x5b, which the key's 0x5b cancels; sb2's T of
+   its double xor 0x4e; and sbo's the S-box xor 0x63, which the last key's
+   0x63 cancels. *)
 let VPAES_SB1_BYTE = prove
  (`!s. word_xor (aarch32_tbl 2 (word 0x3bf7ccc10d2ed9ef3618d415fae22300) (vpaes_job (vpaes_tb s)))
                 (aarch32_tbl 2 (word 0xa5df7a6e142af544b19be18fcb503e00) (vpaes_iob (vpaes_tb s))) =
