@@ -66,6 +66,10 @@ final class BenchView extends LinearLayout {
     private String keysDir, colHost;
     private int colPort = Collector.PORT;
     private String colHow = "";
+    /** The key fixtures, copied and exported once per process; see the constructor. */
+    private static String sharedKeysDir;
+    /** The native run whose results the person cleared, so a recreated view doesn't bring them back. */
+    private static String clearedRun = "";
     /** The collector a device-runner build was given by intent; a failed probe never forgets it. */
     private String runnerHost;
     private int runnerPort = Collector.PORT;
@@ -206,8 +210,15 @@ final class BenchView extends LinearLayout {
         findCollector();
         ui.postDelayed(() -> { if (!running && !collectorOK) findCollector(); }, 4000);
         new Thread(() -> {
-            keysDir = copyKeys();
-            Native.setenv("RIND_BENCH_KEYS_DIR", keysDir);
+            // Once per process: a run outlives its activity, and a recreated view must not rewrite the
+            // key files that run reads, nor call setenv while its threads read the environment.
+            synchronized (BenchView.class) {
+                if (sharedKeysDir == null) {
+                    sharedKeysDir = copyKeys();
+                    Native.setenv("RIND_BENCH_KEYS_DIR", sharedKeysDir);
+                }
+                keysDir = sharedKeysDir;
+            }
             String cat = Native.catalog();
             ui.post(() -> loaded(cat, intent));
         }, "devbench-catalog").start();
@@ -368,9 +379,16 @@ final class BenchView extends LinearLayout {
         countsChanged();
         agreeChanged();
         // The run lives in the native library, past this activity: after a recreation, such as a
-        // dark mode switch mid-run, pick it up instead of offering Start again.
-        if (alreadyRunning()) {
+        // dark mode switch, pick up a run that's going, or show the results of one that finished.
+        JSONObject st = nativeStatus();
+        if (st.optBoolean("running")) {
             enterRunning();
+            return;
+        }
+        String run = st.optString("run_id", "");
+        if (!run.isEmpty()) {
+            // A recreated activity gets its intent again: autostart only the process's first run.
+            if (!run.equals(clearedRun)) showFinished(st, false);
             return;
         }
         if (Collector.RUNNER && intent != null && intent.getBooleanExtra("autostart", false)) {
@@ -571,6 +589,7 @@ final class BenchView extends LinearLayout {
 
     private void clearTapped() {
         if (running) return;
+        clearedRun = nativeStatus().optString("run_id", "");
         agree.setChecked(false);
         setAgreeEnabled(true);
         resultsTeaser.setText("");
@@ -589,11 +608,11 @@ final class BenchView extends LinearLayout {
         findCollector();
     }
 
-    private static boolean alreadyRunning() {
+    private static JSONObject nativeStatus() {
         try {
-            return new JSONObject(Native.status()).optBoolean("running");
+            return new JSONObject(Native.status());
         } catch (Exception e) {
-            return false;
+            return new JSONObject();
         }
     }
 
@@ -625,29 +644,42 @@ final class BenchView extends LinearLayout {
                 String warm = isWarm() ? " (warm)" : "";
                 setBody(done + " of " + total + (cur.isEmpty() ? "" : " · " + cur) + warm);
             } else {
-                boolean stopped = s.optBoolean("stopped");
-                Theme.haptic(statusCard, !stopped);
-                statusTitle.setText(stopped ? "Stopped" : "Done");
-                int errs = s.optInt("errors");
-                String errTxt = errs > 0 ? " (" + errs + " errors)" : "";
-                setBody(String.format(Locale.US, "%d tests in %.0f s%s",
-                        s.optInt("done"), s.optDouble("elapsed_s", 0), errTxt));
-            }
-            renderResults(s.optJSONObject("results"));
-            if (!still) {
-                host.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-                startBtn.setVisibility(VISIBLE);
-                stopBtn.setVisibility(GONE);
-                clearBtn.setVisibility(VISIBLE);
-                setAgreeEnabled(true);
-                setControlsEnabled(true);
-                agreeChanged();
+                showFinished(s, true);
                 return;
             }
+            renderResults(s.optJSONObject("results"));
         } catch (Exception e) {
             setBody("Status error.");
         }
         ui.postDelayed(poll, 1000);
+    }
+
+    /** A finished run's state: as poll sees it end, or as a recreated view finds it. */
+    private void showFinished(JSONObject s, boolean justEnded) {
+        running = false;
+        boolean stopped = s.optBoolean("stopped");
+        if (justEnded) Theme.haptic(statusCard, !stopped);
+        statusTitle.setText(stopped ? "Stopped" : "Done");
+        int errs = s.optInt("errors");
+        String errTxt = errs > 0 ? " (" + errs + " errors)" : "";
+        setBody(String.format(Locale.US, "%d tests in %.0f s%s",
+                s.optInt("done"), s.optDouble("elapsed_s", 0), errTxt));
+        int total = Math.max(1, s.optInt("total"));
+        progress.setMax(total);
+        progress.setProgress(s.optInt("done") > 0 ? total : 0);
+        progress.setVisibility(VISIBLE);
+        try {
+            renderResults(s.optJSONObject("results"));
+        } catch (Exception e) {
+            setBody("Status error.");
+        }
+        host.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        startBtn.setVisibility(VISIBLE);
+        stopBtn.setVisibility(GONE);
+        clearBtn.setVisibility(VISIBLE);
+        setAgreeEnabled(true);
+        setControlsEnabled(true);
+        agreeChanged();
     }
 
     private void renderResults(JSONObject res) throws Exception {
