@@ -260,6 +260,13 @@ fn resumed_handshake(c: &mut Criterion) {
 /// full handshake. The threads live for the whole row, so per-thread state a
 /// provider sets up on first use, such as aws-lc's, is not timed.
 fn threaded_handshake(c: &mut Criterion) {
+    // CodSpeed's harness skips `iter_custom`, so the instruction count never
+    // counts these rows, yet their setup would run in every process of this
+    // target, and its threads' allocations, which the scheduler orders, would
+    // move the heap under the rows after it.
+    if cfg!(feature = "__bench_codspeed") {
+        return;
+    }
     let threads = thread::available_parallelism().unwrap().get();
     // bench-report reports these rows as running on every logical CPU, so a
     // run held to fewer, by affinity or a cgroup quota, must not pass for one.

@@ -183,10 +183,12 @@ establishes, and what it does not:
   against the independent oracle [TESTING.md's primitives
   table](TESTING.md#primitives) names, a Rust implementation that shares no
   code with the path rind runs, on the same tiers. Where rind runs aws-lc's
-  own routine, as for ChaCha20-Poly1305 on x86_64 and aarch64 or RSA's RSAZ
+  own routine, as for ChaCha20-Poly1305 on x86_64 or RSA's RSAZ
   exponentiation, aws-lc-rs compares that routine with itself, so it checks
-  rind's glue around it, and the oracle checks the routine. wasm runs none,
-  since aws-lc does not build for it.
+  rind's glue around it, and the oracle checks the routine. On aarch64 rind
+  runs its own structured copy of aws-lc's ChaCha20-Poly1305, which
+  aws-lc-rs's original checks. wasm runs none, since aws-lc does not build
+  for it.
 - **Fuzz targets**, weekly for twenty minutes each against aws-lc-rs,
   replayed on every tier and against the portable backend. The ECVRF, OPRF,
   and blind RSA targets compare rind with itself, so they find panics and
@@ -285,17 +287,20 @@ still reaches each.
 Hand-written arithmetic no proof covers, by where it came from:
 
 - **aws-lc's, BoringSSL's, and OpenSSL's assembly** that rind runs without a
-  ✓, such as ChaCha20-Poly1305 on x86_64 and aarch64, RSAZ, Montgomery
-  multiplication off ADX, the AVX2 and SHA512-instruction SHA-2, VAES
-  AES-GCM, and all of armv7's. Vectors and fuzzing reach each on its tier;
-  aws-lc-rs, which runs that code too, checks only the glue, and the
-  independent oracle checks the routine.
+  ✓, such as ChaCha20-Poly1305 on x86_64, RSAZ, Montgomery multiplication
+  off ADX, the AVX2 and SHA512-instruction SHA-2, VAES AES-GCM, and all of
+  armv7's. Vectors and fuzzing reach each on its tier; aws-lc-rs, which runs
+  that code too, checks only the glue, and the independent oracle checks the
+  routine. rind's structured copy of aws-lc's aarch64 ChaCha20-Poly1305 is
+  proven constant-time but not correct, and aws-lc-rs's original checks it.
 - **Graviola's** code under AES, GHASH, SHA-256, HMAC, P-256, P-384,
   ML-KEM, and RSA, wherever ALGORITHMS.md names it. Vectors, differential
   tests independent of it, and fuzzing reach each.
 - **rind's own**, which ALGORITHMS.md marks ⚡, such as its parts of P-384 and
   P-521, x86_64 SHA-256, the portable RSA multiplication but its Montgomery
-  products on 64-bit limbs, and armv7 Ed25519. Vectors, independent differential tests, and fuzzing reach each,
+  products on 64-bit limbs, and armv7 Ed25519, whose Lean proof holds only
+  over a contract for aws-lc's unproven 32-bit ARM SHA-384/512, and so earns
+  no ✓. Vectors, independent differential tests, and fuzzing reach each,
   and each Montgomery routine's unit tests compare it with proven or
   portable arithmetic on edge-case limbs, as
   [TESTING.md](TESTING.md#vector-suites) describes.
@@ -305,9 +310,15 @@ Hand-written arithmetic no proof covers, by where it came from:
   `low::generic::mldsa_poly::backend_matches_port` checks the ML-DSA port
   against the AVX2 and Neon routines.
 - **curve25519-dalek's serial backend**, X25519, Ed25519, and ristretto255
-  on armv7 and the portable backend. There ristretto255's differential test
-  compares dalek with itself, so beside RFC 9496's and RFC 9497's vectors
-  only the textbook reference in `rind/src/test/reference.rs` checks it.
+  on armv7 and the portable backend. Beneficial AI Foundation's Lean proofs,
+  which `proofs/` restates as axioms, cover the functions armv7's X25519
+  and Ed25519 call, but neither earns a ✓ yet: X25519's shared secret runs
+  BoringSSL's unproven NEON ladder on every armv7 CPU the benchmarks run,
+  and Ed25519 hashes with aws-lc's unproven 32-bit ARM SHA-512. Nothing
+  checks that the portable backend's 64-bit build is the code those proofs
+  are about. On both, ristretto255's differential test compares dalek with
+  itself, so beside RFC 9496's and RFC 9497's vectors only the textbook
+  reference in `rind/src/test/reference.rs` checks it.
 - **x86_64 P-256's mixed addition on macOS**, aws-lc's: rind's HOL Light
   proofs check the Linux build's object, and Apple's text can place the
   routines' helpers at other offsets.

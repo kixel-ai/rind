@@ -1,13 +1,15 @@
 import Rind.Armv7.ChaCha20
 import Rind.Armv7.X25519
+import Rind.Armv7.Ed25519
 import Rind.Armv7.AesNohwKey
-import Rind.Armv7.AesGcm
+import Rind.Armv7.GcmKey
+import Rind.Armv7.GhashNeon
 open rind.armv7
 
 /-!
-The axioms each theorem rests on, beyond Lean's own: none but X25519's, which
-rest on `Rind.Armv7.Dalek`'s restatements of Beneficial AI Foundation's
-theorems about curve25519-dalek's `mul_clamped` and `mul_base_clamped`. A
+The axioms each theorem rests on, beyond Lean's own: none but X25519's and
+Ed25519's, which rest on `Rind.Armv7.Dalek`'s restatements of Beneficial AI
+Foundation's theorems about the curve25519-dalek functions they call. A
 change here is a change to the trust base.
 -/
 
@@ -39,6 +41,62 @@ change here is a change to the trust base.
 #guard_msgs in
 #print axioms x25519_shared_secret
 
+/-- info: 'rind.armv7.ed25519_generate' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ dalek_compress_spec,
+ dalek_from_bytes_mod_order_spec,
+ dalek_mul_base_spec] -/
+#guard_msgs in
+#print axioms ed25519_generate
+
+/-- info: 'rind.armv7.ed25519_from_seed_and_public_key' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ dalek_compress_spec,
+ dalek_from_bytes_mod_order_spec,
+ dalek_mul_base_spec] -/
+#guard_msgs in
+#print axioms ed25519_from_seed_and_public_key
+
+/-- info: 'rind.armv7.ed25519_sign' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ dalek_compress_spec,
+ dalek_from_bytes_mod_order_wide_spec,
+ dalek_mul_base_spec,
+ dalek_scalar_add_spec,
+ dalek_scalar_mul_spec] -/
+#guard_msgs in
+#print axioms ed25519_sign
+
+/-- info: 'rind.armv7.ed25519_key_pair_public_key' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms ed25519_key_pair_public_key
+
+/-- info: 'rind.armv7.ed25519_key_pair_verify' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ dalek_compress_spec,
+ dalek_from_bytes_mod_order_wide_spec,
+ dalek_from_canonical_bytes_spec,
+ dalek_neg_spec,
+ dalek_vartime_double_scalar_mul_basepoint_spec] -/
+#guard_msgs in
+#print axioms ed25519_key_pair_verify
+
+/-- info: 'rind.armv7.ed25519_public_key_new' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ dalek_compress_spec,
+ dalek_decompress_spec,
+ dalek_from_bytes_mod_order_wide_spec,
+ dalek_from_canonical_bytes_spec,
+ dalek_neg_spec,
+ dalek_vartime_double_scalar_mul_basepoint_spec] -/
+#guard_msgs in
+#print axioms ed25519_public_key_new
+
 /-!
 The bitsliced AES's theorems rest on Lean's own axioms and on the ones
 `bv_decide` adds, one a call: each states that Lean's compiled LRAT checker
@@ -46,7 +104,8 @@ accepted a SAT solver's certificate for one bit-vector identity of the S-box
 circuit, a round step, a key schedule step, the batch layout, or a counter or
 GHASH step. `#bv_axioms` fails on any other but the ones it names after the
 theorem: AES-GCM's tag check also rests on `Rind.Armv7.CtEqual`'s
-restatement of rind's HOL Light proofs of its constant-time compares.
+restatement of rind's HOL Light proofs of its constant-time compares. So do
+the AEAD API's and the custom-IV key's theorems above `AesGcm`.
 -/
 
 open Lean Elab Command in
@@ -70,3 +129,22 @@ elab "#bv_axioms " id:ident extra:ident* : command => do
 #bv_axioms aes_gcm_decrypt_spec ct_compare_16_spec ct_compare_bytes_spec
 #bv_axioms aes_gcm_encrypt_any_spec
 #bv_axioms aes_gcm_decrypt_any_spec ct_compare_16_spec ct_compare_bytes_spec
+#bv_axioms aes_gcm_new
+#bv_axioms aes_gcm_seal
+#bv_axioms aes_gcm_seal_append_tag
+#bv_axioms aes_gcm_seal_append_tag_vec
+#bv_axioms aes_gcm_open_separate_tag ct_compare_16_spec ct_compare_bytes_spec
+#bv_axioms aes_gcm_open ct_compare_16_spec ct_compare_bytes_spec
+#bv_axioms gcm_key_new
+#bv_axioms gcm_key_seal
+#bv_axioms gcm_key_seal_append_tag
+#bv_axioms gcm_key_open_separate_tag ct_compare_16_spec ct_compare_bytes_spec
+#bv_axioms gcm_key_open ct_compare_16_spec ct_compare_bytes_spec
+
+/-!
+NEON GHASH's theorems also rest on `Rind.Armv7.GhashNeon`'s restatements of
+rind's HOL Light proofs of `gcm_init_neon` and `gcm_ghash_neon`.
+-/
+
+#bv_axioms neon_ghashFor neon_table_ghash_spec
+#bv_axioms neon_new_ghashFor neon_table_new_spec neon_table_ghash_spec

@@ -145,6 +145,74 @@ axiom bignum_mul_p25519_alt_spec (z x y : Std.Array U64 4#usize) :
     low.x86_64.bignum_mul_p25519_alt.bignum_mul_p25519_alt z x y ⦃ r =>
       wordsNat r.val = wordsNat x.val * wordsNat y.val % p25519 ⦄
 
+/-! ### Edwards points
+
+The points s2n-bignum's routines read and write, which Ed25519 verification's
+multi-scalar multiplication runs. -/
+
+/-- HOL Light's `edwards25519_projective P (X,Y,Z)` of the twelve words `q`:
+the coordinates are reduced, `Z` is not zero, and `x = X/Z` and `y = Y/Z` mod
+`p`. HOL Light also requires `P`'s own coordinates to be reduced, which this
+leaves to the caller (`edOnCurve P` says it): `P = (p, 1)` passes here as
+`(0, 1)`. -/
+def Projective (P : EdPoint) (q : List U64) : Prop :=
+  wordsNat (q.take 4) < p25519 ∧ wordsNat ((q.drop 4).take 4) < p25519 ∧
+    wordsNat ((q.drop 8).take 4) < p25519 ∧ wordsNat ((q.drop 8).take 4) ≠ 0 ∧
+    (wordsNat (q.take 4) : Int) ≡ P.1 * wordsNat ((q.drop 8).take 4) [ZMOD p25519] ∧
+    (wordsNat ((q.drop 4).take 4) : Int) ≡ P.2 * wordsNat ((q.drop 8).take 4) [ZMOD p25519]
+
+/-- HOL Light's `edwards25519_exprojective P (X,Y,Z,W)` of the sixteen words
+`q`: `Projective`, with `W = XY/Z` reduced; the same caller condition on `P`
+applies. -/
+def ExProjective (P : EdPoint) (q : List U64) : Prop :=
+  Projective P q ∧ wordsNat ((q.drop 12).take 4) < p25519 ∧
+    (wordsNat ((q.drop 12).take 4) * wordsNat ((q.drop 8).take 4) : Int) ≡
+      wordsNat (q.take 4) * wordsNat ((q.drop 4).take 4) [ZMOD p25519]
+
+/-- `EDWARDS25519_EPADD_SUBROUTINE_CORRECT`,
+https://github.com/awslabs/s2n-bignum/blob/3f01260ff1bd2577abf0117ce45aa008bc243a80/x86/proofs/edwards25519_epadd.ml#L2525 -/
+@[step]
+axiom edwards25519_epadd_spec (p3 p1 p2 : Std.Array U64 16#usize) :
+    low.x86_64.edwards25519_epadd.edwards25519_epadd p3 p1 p2 ⦃ r =>
+      ∀ P1 P2, edOnCurve P1 → edOnCurve P2 → ExProjective P1 p1.val → ExProjective P2 p2.val →
+        ExProjective (edMul P1 P2) r.val ⦄
+
+/-- `EDWARDS25519_EPADD_ALT_SUBROUTINE_CORRECT`,
+https://github.com/awslabs/s2n-bignum/blob/3f01260ff1bd2577abf0117ce45aa008bc243a80/x86/proofs/edwards25519_epadd_alt.ml#L2579 -/
+@[step]
+axiom edwards25519_epadd_alt_spec (p3 p1 p2 : Std.Array U64 16#usize) :
+    low.x86_64.edwards25519_epadd_alt.edwards25519_epadd_alt p3 p1 p2 ⦃ r =>
+      ∀ P1 P2, edOnCurve P1 → edOnCurve P2 → ExProjective P1 p1.val → ExProjective P2 p2.val →
+        ExProjective (edMul P1 P2) r.val ⦄
+
+/-- `EDWARDS25519_EPDOUBLE_SUBROUTINE_CORRECT`,
+https://github.com/awslabs/s2n-bignum/blob/3f01260ff1bd2577abf0117ce45aa008bc243a80/x86/proofs/edwards25519_epdouble.ml#L2129 -/
+@[step]
+axiom edwards25519_epdouble_spec (p3 : Std.Array U64 16#usize) (p1 : Std.Array U64 12#usize) :
+    low.x86_64.edwards25519_epdouble.edwards25519_epdouble p3 p1 ⦃ r =>
+      ∀ P1, edOnCurve P1 → Projective P1 p1.val → ExProjective (edMul P1 P1) r.val ⦄
+
+/-- `EDWARDS25519_EPDOUBLE_ALT_SUBROUTINE_CORRECT`,
+https://github.com/awslabs/s2n-bignum/blob/3f01260ff1bd2577abf0117ce45aa008bc243a80/x86/proofs/edwards25519_epdouble_alt.ml#L2179 -/
+@[step]
+axiom edwards25519_epdouble_alt_spec (p3 : Std.Array U64 16#usize) (p1 : Std.Array U64 12#usize) :
+    low.x86_64.edwards25519_epdouble_alt.edwards25519_epdouble_alt p3 p1 ⦃ r =>
+      ∀ P1, edOnCurve P1 → Projective P1 p1.val → ExProjective (edMul P1 P1) r.val ⦄
+
+/-- `EDWARDS25519_PDOUBLE_SUBROUTINE_CORRECT`,
+https://github.com/awslabs/s2n-bignum/blob/3f01260ff1bd2577abf0117ce45aa008bc243a80/x86/proofs/edwards25519_pdouble.ml#L1960 -/
+@[step]
+axiom edwards25519_pdouble_spec (p3 : Std.Array U64 12#usize) (p1 : Std.Array U64 12#usize) :
+    low.x86_64.edwards25519_pdouble.edwards25519_pdouble p3 p1 ⦃ r =>
+      ∀ P1, edOnCurve P1 → Projective P1 p1.val → Projective (edMul P1 P1) r.val ⦄
+
+/-- `EDWARDS25519_PDOUBLE_ALT_SUBROUTINE_CORRECT`,
+https://github.com/awslabs/s2n-bignum/blob/3f01260ff1bd2577abf0117ce45aa008bc243a80/x86/proofs/edwards25519_pdouble_alt.ml#L2000 -/
+@[step]
+axiom edwards25519_pdouble_alt_spec (p3 : Std.Array U64 12#usize) (p1 : Std.Array U64 12#usize) :
+    low.x86_64.edwards25519_pdouble_alt.edwards25519_pdouble_alt p3 p1 ⦃ r =>
+      ∀ P1, edOnCurve P1 → Projective P1 p1.val → Projective (edMul P1 P1) r.val ⦄
+
 /-- `BIGNUM_LT_SUBROUTINE_CORRECT`, for the slices' lengths as `m` and `n`,
 https://github.com/awslabs/s2n-bignum/blob/3f01260ff1bd2577abf0117ce45aa008bc243a80/x86/proofs/bignum_lt.ml#L412 -/
 @[step]
@@ -675,6 +743,15 @@ axiom bignum_negmodinv_spec (z x : Slice U64) (hx : x.length = z.length) :
         (wordsNat x.val % 2 = 1 →
           (wordsNat x.val * wordsNat r.val + 1) % 2 ^ (64 * z.length) = 0) ⦄
 
+/-- `BIGNUM_MONTIFIER_SUBROUTINE_CORRECT`, for `z`'s length as `k`, with the
+temporary buffer `t` of at least `k` words, which the wrapper asserts,
+https://github.com/awslabs/s2n-bignum/blob/3f01260ff1bd2577abf0117ce45aa008bc243a80/x86/proofs/bignum_montifier.ml#L3115 -/
+@[step]
+axiom bignum_montifier_spec (z m t : Slice U64) (hm : m.length = z.length) (ht : z.length ≤ t.length) :
+    low.x86_64.bignum_montifier.bignum_montifier z m t ⦃ r =>
+      r.1.length = z.length ∧
+        (wordsNat m.val % 2 = 1 → wordsNat r.1.val = 2 ^ (128 * z.length) % wordsNat m.val) ⦄
+
 /-- `BIGNUM_MONTREDC_SUBROUTINE_CORRECT`, for `z`'s length as `k` and `x`'s as
 `r`, whose `inverse_mod n (2^(64p))` is any `i` with `2^(64p)·i ≡ 1 (mod n)`,
 and whose bound on `r` holds for any slice of `u64`, of under `2^60`
@@ -849,6 +926,34 @@ theorem bignum_mul_p25519_mux_spec (h : Runs) (z x y : Std.Array U64 4#usize) :
       wordsNat r.val = wordsNat x.val * wordsNat y.val % p25519 ⦄ := by
   obtain ⟨-, -, ⟨t, ht⟩, -⟩ := h
   unfold low.x86_64.adx_mux.bignum_mul_p25519
+  rw [ht]
+  cases t <;> step*
+
+@[step]
+theorem edwards25519_epadd_mux_spec (h : Runs) (p3 p1 p2 : Std.Array U64 16#usize) :
+    low.x86_64.adx_mux.edwards25519_epadd p3 p1 p2 ⦃ r =>
+      ∀ P1 P2, edOnCurve P1 → edOnCurve P2 → ExProjective P1 p1.val → ExProjective P2 p2.val →
+        ExProjective (edMul P1 P2) r.val ⦄ := by
+  obtain ⟨-, -, ⟨t, ht⟩, -⟩ := h
+  unfold low.x86_64.adx_mux.edwards25519_epadd
+  rw [ht]
+  cases t <;> step*
+
+@[step]
+theorem edwards25519_epdouble_mux_spec (h : Runs) (p3 : Std.Array U64 16#usize) (p1 : Std.Array U64 12#usize) :
+    low.x86_64.adx_mux.edwards25519_epdouble p3 p1 ⦃ r =>
+      ∀ P1, edOnCurve P1 → Projective P1 p1.val → ExProjective (edMul P1 P1) r.val ⦄ := by
+  obtain ⟨-, -, ⟨t, ht⟩, -⟩ := h
+  unfold low.x86_64.adx_mux.edwards25519_epdouble
+  rw [ht]
+  cases t <;> step*
+
+@[step]
+theorem edwards25519_pdouble_mux_spec (h : Runs) (p3 p1 : Std.Array U64 12#usize) :
+    low.x86_64.adx_mux.edwards25519_pdouble p3 p1 ⦃ r =>
+      ∀ P1, edOnCurve P1 → Projective P1 p1.val → Projective (edMul P1 P1) r.val ⦄ := by
+  obtain ⟨-, -, ⟨t, ht⟩, -⟩ := h
+  unfold low.x86_64.adx_mux.edwards25519_pdouble
   rw [ht]
   cases t <;> step*
 

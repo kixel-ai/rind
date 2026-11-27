@@ -76,8 +76,8 @@ The modules:
   scalar.
 - `ed25519`: Ed25519 key pairs, from a seed or PKCS#8, and public keys,
   which refuse a point of small order.
-- `ml_dsa`: ML-DSA-44, ML-DSA-65, and ML-DSA-87 (pure, with the empty
-  context), whose parameter set is a type, so a key of one set fails to
+- `ml_dsa`: ML-DSA-44, ML-DSA-65, and ML-DSA-87 (pure, under a
+  context string), whose parameter set is a type, so a key of one set fails to
   compile where another's is expected and a signature is a fixed-size
   array.
 - `slh_dsa`: SLH-DSA's twelve parameter sets (FIPS 205, pure, with the empty

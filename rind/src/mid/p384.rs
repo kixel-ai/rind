@@ -1264,10 +1264,10 @@ impl Scalar {
     }
 
     /// The width-`W` non-adjacent form of this scalar, by
-    /// [`util::public_naf`].
+    /// [`low::public_naf`].
     fn public_naf<const W: u32>(&self) -> [i8; 385] {
         let mut digits = [0; 385];
-        util::public_naf::<W>(&self.0, &mut digits);
+        low::public_naf::<W>(&self.0, &mut digits);
         digits
     }
 }
