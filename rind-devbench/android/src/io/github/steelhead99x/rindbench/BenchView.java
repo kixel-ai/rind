@@ -235,6 +235,7 @@ final class BenchView extends LinearLayout {
         statusCard.addView(new View(host), new LayoutParams(LayoutParams.MATCH_PARENT, 0, 1));
 
         colR.addView(statusCard, new LayoutParams(LayoutParams.MATCH_PARENT, 0, 1));
+        statusCard.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> fitTeaser());
 
         onChromeRelayout();
         presetChanged();
@@ -264,6 +265,7 @@ final class BenchView extends LinearLayout {
         }
         colL.setLayoutParams(lpL);
         colR.setLayoutParams(lpR);
+        resultsTeaser.setMaxLines(Integer.MAX_VALUE);
         // In landscape the collector card sits on top of the status column, so the
         // run controls (consent and Start) get the whole left column. On a phone
         // (about 400dp tall) both cards in one column squeezed Start to a sliver.
@@ -272,6 +274,17 @@ final class BenchView extends LinearLayout {
             ((LinearLayout) collectorCard.getParent()).removeView(collectorCard);
             want.addView(collectorCard, 0);
         }
+    }
+
+    /** Drops teaser lines until View results fits in the status card (phone landscape is short). */
+    private void fitTeaser() {
+        if (resultsBtn.getVisibility() != VISIBLE || resultsTeaser.getVisibility() != VISIBLE) return;
+        int lines = Math.min(resultsTeaser.getLineCount(), resultsTeaser.getMaxLines());
+        // A full status card squeezes the button (LinearLayout gives it only what is left) or pushes it past the edge.
+        boolean squeezed = resultsBtn.getHeight() < resultsBtn.getMinimumHeight()
+                || resultsBtn.getBottom() > statusCard.getHeight() - statusCard.getPaddingBottom();
+        if (squeezed && lines > 1)
+            ui.post(() -> resultsTeaser.setMaxLines(lines - 1));
     }
 
     void applyIntent(Intent it) {
@@ -682,6 +695,7 @@ final class BenchView extends LinearLayout {
                 tease.append(e.getKey().replace("/{lib}", "")).append("  ").append(rind == null ? "-" : fmt(rind)).append('\n');
             }
             if (byOp.size() > 4) tease.append("+").append(byOp.size() - 4).append(" more");
+            resultsTeaser.setMaxLines(Integer.MAX_VALUE);
             resultsTeaser.setText(tease.toString().trim());
             resultsTeaser.setVisibility(VISIBLE);
             resultsBtn.setVisibility(VISIBLE);
