@@ -39,6 +39,14 @@ offset in the static, here 0. `admin/prove lean` checks that the static
 rind's build emits begins with those words and that the instruction's
 relocation reaches its start.
 
+A call: rind's `bn_sqrx8x_mont` calls `bn_sqrx8x_internal`, a function of
+its own, by `call rel32`, which VG's code never makes. It is VG's
+`Code.call`, run by `call` and `ret` below: the call pushes a return
+address the model does not know, growing the stack as a push does, and the
+return faults unless `rsp` and that word are as the call left them. The
+callee's body is its own proven program, and `rind-asm` and `admin/prove
+lean` check that the call's relocation names that function.
+
 `admin/prove vg` cosimulates each of these instructions against the CPU
 (`Cosim/RindX86_64.lean`), and `admin/prove lean` checks that each program's bytes
 and relocations (`layout`) are the ones rind's build emits.
