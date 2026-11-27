@@ -3,7 +3,7 @@ mod common;
 mod ossl_ec;
 use std::hint::black_box;
 
-use common::Dit;
+use common::{Dit, dit};
 
 // verified-garbage has no key generation: a random scalar, drawn again until
 // it is in range, and its public key.
@@ -54,11 +54,6 @@ fn openssl_curve() -> ossl_ec::Curve {
         openssl::nid::Nid::SECP521R1,
         openssl::hash::MessageDigest::sha512(),
     )
-}
-
-/// The guard rind's rows that take no other input hold.
-fn dit() -> Dit<()> {
-    Dit::hold(())
 }
 
 fn aws_rng() -> aws_lc_rs::rand::SystemRandom {

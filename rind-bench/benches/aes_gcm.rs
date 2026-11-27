@@ -4,7 +4,7 @@ mod ossl_aead;
 
 use std::hint::black_box;
 
-use common::{AEAD_ROWS, Aead, Dit, QUIC_AAD};
+use common::{AEAD_ROWS, Aead, Dit, QUIC_AAD, dit};
 
 const NONCE: [u8; 12] = [0; 12];
 
@@ -175,10 +175,6 @@ fn verified_garbage_open(open: &mut Open<(verified_garbage::aead::aes_gcm::AesGc
     key.decrypt_in_place(&NONCE, aad, pt, tag).unwrap();
 }
 
-fn dit() -> Dit<()> {
-    Dit::hold(())
-}
-
 /// Sealing, then expanding a key and its GHASH table, as each QUIC
 /// connection and derived track key pays. Each call drops its key, so the
 /// key's wiping is timed too. Every path names its crate from the root,
@@ -291,12 +287,12 @@ macro_rules! seal {
             s.key.encrypt_in_place(&NONCE, s.aad, &mut s.buf).unwrap()
         }
 
-        #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+        #[cfg(graviola)]
         fn graviola_seal(row: Aead) -> Seal<(::graviola::aead::AesGcm, [u8; 16])> {
             Seal::new((::graviola::aead::AesGcm::new(&KEY), [0; 16]), row)
         }
 
-        #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+        #[cfg(graviola)]
         #[bench(args = ROWS, setup = graviola_seal)]
         fn graviola(s: &mut Seal<(::graviola::aead::AesGcm, [u8; 16])>) {
             let (key, tag) = &mut s.key;
@@ -445,14 +441,14 @@ macro_rules! open_more {
                 .unwrap();
         }
 
-        #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+        #[cfg(graviola)]
         fn graviola_open(row: Aead) -> Open<(graviola::aead::AesGcm, [u8; 16])> {
             Open::new(row, &rind::aead::$alg, &KEY, |tag| {
                 (graviola::aead::AesGcm::new(&KEY), tag)
             })
         }
 
-        #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+        #[cfg(graviola)]
         #[bench(args = ROWS, setup = graviola_open)]
         fn graviola(open: &mut Open<(graviola::aead::AesGcm, [u8; 16])>) {
             let aad = open.aad;

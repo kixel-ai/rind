@@ -178,12 +178,12 @@ mod chacha20poly1305 {
         s.key.encrypt_in_place(&NONCE, s.aad, &mut s.buf).unwrap()
     }
 
-    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+    #[cfg(graviola)]
     fn graviola_seal(row: Aead) -> Seal<(graviola::aead::ChaCha20Poly1305, [u8; 16])> {
         Seal::new((graviola::aead::ChaCha20Poly1305::new(KEY), [0; 16]), row)
     }
 
-    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+    #[cfg(graviola)]
     #[bench(args = AEAD_ROWS, setup = graviola_seal)]
     fn graviola(s: &mut Seal<(graviola::aead::ChaCha20Poly1305, [u8; 16])>) {
         let (key, tag) = &mut s.key;
@@ -329,12 +329,12 @@ mod chacha20poly1305_open {
         key.decrypt_in_place(&NONCE, aad, pt, tag).unwrap();
     }
 
-    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+    #[cfg(graviola)]
     fn graviola_open(row: Aead) -> Open<(graviola::aead::ChaCha20Poly1305, [u8; 16])> {
         Open::new(row, |tag| (graviola::aead::ChaCha20Poly1305::new(KEY), tag))
     }
 
-    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+    #[cfg(graviola)]
     #[bench(args = AEAD_ROWS, setup = graviola_open)]
     fn graviola(open: &mut Open<(graviola::aead::ChaCha20Poly1305, [u8; 16])>) {
         let aad = open.aad;

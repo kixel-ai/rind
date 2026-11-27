@@ -6,10 +6,12 @@
 //! RustCrypto rows encode and decode theirs too: `voprf` hands over decoded
 //! points, and timing it without that would leave out the point decodings
 //! and encodings rind's rows pay, each about a tenth of a multiplication.
-mod criterion;
-use std::hint::black_box;
+mod common;
 
-use criterion::{BatchSize, Criterion, Throughput, criterion_group, criterion_main};
+use std::hint::black_box;
+use std::sync::Once;
+
+use common::Dit;
 use getrandom::SysRng;
 use p384::NistP384;
 use rind::oprf::{RISTRETTO255_SHA512, voprf as rind_voprf};
@@ -22,17 +24,47 @@ const INPUT: &[u8] = b"a Privacy Pass token input";
 const SEED: [u8; 32] = [0x42; 32];
 const INFO: &[u8] = b"rind-bench";
 
-fn oprf(c: &mut Criterion) {
-    // Both derive the same key, and so the same output, by RFC 9497's
-    // DeriveKeyPair.
-    let rind_server = rind::oprf::ServerKey::derive(&RISTRETTO255_SHA512, &SEED, INFO).unwrap();
-    let server = OprfServer::<Ristretto255>::new_from_seed(&SEED, INFO).unwrap();
+/// Both derive the same key, and so the same output, by RFC 9497's
+/// DeriveKeyPair.
+fn rind_oprf_server() -> rind::oprf::ServerKey {
+    rind::oprf::ServerKey::derive(&RISTRETTO255_SHA512, &SEED, INFO).unwrap()
+}
+
+fn oprf_server() -> OprfServer<Ristretto255> {
+    OprfServer::<Ristretto255>::new_from_seed(&SEED, INFO).unwrap()
+}
+
+fn voprf_suite() -> &'static rind::oprf::Suite {
+    &rind::oprf::P384_SHA384
+}
+
+fn rind_voprf_server() -> rind_voprf::ServerKey {
+    rind_voprf::ServerKey::derive(voprf_suite(), &SEED, INFO).unwrap()
+}
+
+fn voprf_server() -> VoprfServer<NistP384> {
+    VoprfServer::<NistP384>::new_from_seed(&SEED, INFO).unwrap()
+}
+
+/// Checks, once a process, that both libraries give the same output, and
+/// that the timed path, blind to finalize, gives it on both. Every row's
+/// setup runs it.
+fn check_interop() {
+    static CHECKED: Once = Once::new();
+    CHECKED.call_once(|| {
+        oprf_interop();
+        voprf_interop();
+    });
+}
+
+fn oprf_interop() {
+    let rind_server = rind_oprf_server();
+    let server = oprf_server();
     let output = server.evaluate(INPUT).unwrap();
     assert_eq!(
         rind_server.evaluate(INPUT).unwrap().as_ref(),
         output.as_slice()
     );
-    // The timed path, blind to finalize, gives that same output on both.
     let (blind, blinded) = rind::oprf::Blind::new(&RISTRETTO255_SHA512, INPUT).unwrap();
     let evaluated = rind_server.blind_evaluate(blinded.as_ref()).unwrap();
     assert_eq!(
@@ -42,76 +74,20 @@ fn oprf(c: &mut Criterion) {
     let blinded = OprfClient::<Ristretto255>::blind(INPUT, &mut SysRng).unwrap();
     let evaluated = server.blind_evaluate(&blinded.message);
     assert_eq!(blinded.state.finalize(INPUT, &evaluated).unwrap(), output);
-
-    let mut group = c.benchmark_group("oprf-ristretto255-blind");
-    group.throughput(Throughput::Elements(1));
-    group.bench_function("rind", |b| {
-        let _dit = criterion::rind_dit();
-        b.iter(|| black_box(rind::oprf::Blind::new(&RISTRETTO255_SHA512, INPUT).unwrap()));
-    });
-    group.bench_function("rustcrypto", |b| {
-        b.iter(|| {
-            let blinded = OprfClient::<Ristretto255>::blind(INPUT, &mut SysRng).unwrap();
-            black_box((blinded.state, blinded.message.serialize()))
-        });
-    });
-    group.finish();
-
-    let mut group = c.benchmark_group("oprf-ristretto255-evaluate");
-    group.throughput(Throughput::Elements(1));
-    group.bench_function("rind", |b| {
-        let _dit = criterion::rind_dit();
-        let (_, blinded) = rind::oprf::Blind::new(&RISTRETTO255_SHA512, INPUT).unwrap();
-        b.iter(|| black_box(rind_server.blind_evaluate(blinded.as_ref()).unwrap()));
-    });
-    group.bench_function("rustcrypto", |b| {
-        let blinded = OprfClient::<Ristretto255>::blind(INPUT, &mut SysRng).unwrap();
-        let blinded = blinded.message.serialize();
-        b.iter(|| {
-            let blinded = BlindedElement::<Ristretto255>::deserialize(&blinded).unwrap();
-            black_box(server.blind_evaluate(&blinded).serialize())
-        });
-    });
-    group.finish();
-
-    // rind's finalize consumes its blind, so each iteration blinds afresh,
-    // untimed.
-    let mut group = c.benchmark_group("oprf-ristretto255-finalize");
-    group.throughput(Throughput::Elements(1));
-    group.bench_function("rind", |b| {
-        let _dit = criterion::rind_dit();
-        b.iter_batched(
-            || {
-                let (blind, blinded) = rind::oprf::Blind::new(&RISTRETTO255_SHA512, INPUT).unwrap();
-                (blind, rind_server.blind_evaluate(blinded.as_ref()).unwrap())
-            },
-            |(blind, evaluated)| black_box(blind.finalize(evaluated.as_ref()).unwrap()),
-            BatchSize::SmallInput,
-        );
-    });
-    group.bench_function("rustcrypto", |b| {
-        let blinded = OprfClient::<Ristretto255>::blind(INPUT, &mut SysRng).unwrap();
-        let evaluated = server.blind_evaluate(&blinded.message).serialize();
-        b.iter(|| {
-            let evaluated = EvaluationElement::<Ristretto255>::deserialize(&evaluated).unwrap();
-            black_box(blinded.state.finalize(INPUT, &evaluated).unwrap())
-        });
-    });
 }
 
-fn voprf(c: &mut Criterion) {
-    let suite = &rind::oprf::P384_SHA384;
-    let rind_server = rind_voprf::ServerKey::derive(suite, &SEED, INFO).unwrap();
-    let rind_public = rind_voprf::PublicKey::new(suite, rind_server.public_key().as_ref()).unwrap();
-    let server = VoprfServer::<NistP384>::new_from_seed(&SEED, INFO).unwrap();
+fn voprf_interop() {
+    let rind_server = rind_voprf_server();
+    let rind_public =
+        rind_voprf::PublicKey::new(voprf_suite(), rind_server.public_key().as_ref()).unwrap();
+    let server = voprf_server();
     let output = server.evaluate(INPUT).unwrap();
     assert_eq!(
         rind_server.evaluate(INPUT).unwrap().as_ref(),
         output.as_slice()
     );
-    // The timed path, blind to finalize with the proof, gives that same
-    // output on both.
-    let (blind, blinded) = rind_voprf::Blind::new(suite, INPUT).unwrap();
+    // The timed path checks the proof too.
+    let (blind, blinded) = rind_voprf::Blind::new(voprf_suite(), INPUT).unwrap();
     let (evaluated, proof) = rind_server.blind_evaluate(blinded.as_ref()).unwrap();
     assert_eq!(
         blind
@@ -132,77 +108,224 @@ fn voprf(c: &mut Criterion) {
         )
         .unwrap();
     assert_eq!(finalized, output);
-
-    let mut group = c.benchmark_group("voprf-p384-blind");
-    group.throughput(Throughput::Elements(1));
-    group.bench_function("rind", |b| {
-        let _dit = criterion::rind_dit();
-        b.iter(|| black_box(rind_voprf::Blind::new(suite, INPUT).unwrap()));
-    });
-    group.bench_function("rustcrypto", |b| {
-        b.iter(|| {
-            let blinded = VoprfClient::<NistP384>::blind(INPUT, &mut SysRng).unwrap();
-            black_box((blinded.state, blinded.message.serialize()))
-        });
-    });
-    group.finish();
-
-    // The evaluation includes the proof.
-    let mut group = c.benchmark_group("voprf-p384-evaluate");
-    group.throughput(Throughput::Elements(1));
-    group.bench_function("rind", |b| {
-        let _dit = criterion::rind_dit();
-        let (_, blinded) = rind_voprf::Blind::new(suite, INPUT).unwrap();
-        b.iter(|| black_box(rind_server.blind_evaluate(blinded.as_ref()).unwrap()));
-    });
-    group.bench_function("rustcrypto", |b| {
-        let blinded = VoprfClient::<NistP384>::blind(INPUT, &mut SysRng).unwrap();
-        let blinded = blinded.message.serialize();
-        b.iter(|| {
-            let blinded = BlindedElement::<NistP384>::deserialize(&blinded).unwrap();
-            let evaluated = server.blind_evaluate(&mut SysRng, &blinded);
-            black_box((evaluated.message.serialize(), evaluated.proof.serialize()))
-        });
-    });
-    group.finish();
-
-    // The finalize includes the proof's verification.
-    let mut group = c.benchmark_group("voprf-p384-finalize");
-    group.throughput(Throughput::Elements(1));
-    group.bench_function("rind", |b| {
-        let _dit = criterion::rind_dit();
-        b.iter_batched(
-            || {
-                let (blind, blinded) = rind_voprf::Blind::new(suite, INPUT).unwrap();
-                (blind, rind_server.blind_evaluate(blinded.as_ref()).unwrap())
-            },
-            |(blind, (evaluated, proof))| {
-                black_box(
-                    blind
-                        .finalize(evaluated.as_ref(), proof.as_ref(), &rind_public)
-                        .unwrap(),
-                )
-            },
-            BatchSize::SmallInput,
-        );
-    });
-    group.bench_function("rustcrypto", |b| {
-        let blinded = VoprfClient::<NistP384>::blind(INPUT, &mut SysRng).unwrap();
-        let evaluated = server.blind_evaluate(&mut SysRng, &blinded.message);
-        let (message, proof) = (evaluated.message.serialize(), evaluated.proof.serialize());
-        let public_key = server.get_public_key();
-        b.iter(|| {
-            let message = EvaluationElement::<NistP384>::deserialize(&message).unwrap();
-            let proof = Proof::<NistP384>::deserialize(&proof).unwrap();
-            black_box(
-                blinded
-                    .state
-                    .finalize(INPUT, &message, &proof, public_key)
-                    .unwrap(),
-            )
-        });
-    });
 }
 
-criterion_group!(benches, oprf, voprf);
-criterion_main!(benches);
+fn checked() {
+    check_interop();
+}
+
+fn rind_checked() -> Dit<()> {
+    check_interop();
+    Dit::hold(())
+}
+
+mod oprf_ristretto255_blind {
+    use super::*;
+    use swole::bench;
+
+    #[bench(setup = rind_checked)]
+    fn rind(_: &Dit<()>) {
+        black_box(rind::oprf::Blind::new(&RISTRETTO255_SHA512, INPUT).unwrap());
+    }
+
+    #[bench(setup = checked)]
+    fn rustcrypto(_: &()) {
+        let blinded = OprfClient::<Ristretto255>::blind(INPUT, &mut SysRng).unwrap();
+        black_box((blinded.state, blinded.message.serialize()));
+    }
+}
+
+mod oprf_ristretto255_evaluate {
+    use super::*;
+    use swole::bench;
+
+    type Rind = Dit<(rind::oprf::ServerKey, rind::oprf::BlindedElement)>;
+
+    fn rind_input() -> Rind {
+        check_interop();
+        let (_, blinded) = rind::oprf::Blind::new(&RISTRETTO255_SHA512, INPUT).unwrap();
+        Dit::hold((rind_oprf_server(), blinded))
+    }
+
+    #[bench(setup = rind_input)]
+    fn rind(input: &Rind) {
+        let (server, blinded) = &**input;
+        black_box(server.blind_evaluate(blinded.as_ref()).unwrap());
+    }
+
+    type RustCrypto = (OprfServer<Ristretto255>, Vec<u8>);
+
+    fn rustcrypto_input() -> RustCrypto {
+        check_interop();
+        let blinded = OprfClient::<Ristretto255>::blind(INPUT, &mut SysRng).unwrap();
+        (oprf_server(), blinded.message.serialize().to_vec())
+    }
+
+    #[bench(setup = rustcrypto_input)]
+    fn rustcrypto((server, blinded): &RustCrypto) {
+        let blinded = BlindedElement::<Ristretto255>::deserialize(blinded).unwrap();
+        black_box(server.blind_evaluate(&blinded).serialize());
+    }
+}
+
+/// rind's finalize consumes its blind, so each call blinds afresh, untimed.
+mod oprf_ristretto255_finalize {
+    use super::*;
+    use swole::bench;
+
+    /// A blind and its evaluation, with the DIT guard held across the call
+    /// that consumes them.
+    type Rind = (
+        rind::cpu::Dit,
+        rind::oprf::Blind,
+        rind::oprf::EvaluatedElement,
+    );
+
+    fn rind_input() -> Rind {
+        check_interop();
+        let (blind, blinded) = rind::oprf::Blind::new(&RISTRETTO255_SHA512, INPUT).unwrap();
+        let evaluated = rind_oprf_server().blind_evaluate(blinded.as_ref()).unwrap();
+        (rind::cpu::Dit::hold(), blind, evaluated)
+    }
+
+    #[bench(setup = rind_input)]
+    fn rind((dit, blind, evaluated): Rind) -> impl Sized + use<> {
+        (blind.finalize(evaluated.as_ref()).unwrap(), dit)
+    }
+
+    type RustCrypto = (OprfClient<Ristretto255>, Vec<u8>);
+
+    fn rustcrypto_input() -> RustCrypto {
+        check_interop();
+        let blinded = OprfClient::<Ristretto255>::blind(INPUT, &mut SysRng).unwrap();
+        let evaluated = oprf_server().blind_evaluate(&blinded.message).serialize();
+        (blinded.state, evaluated.to_vec())
+    }
+
+    #[bench(setup = rustcrypto_input)]
+    fn rustcrypto((client, evaluated): &RustCrypto) {
+        let evaluated = EvaluationElement::<Ristretto255>::deserialize(evaluated).unwrap();
+        black_box(client.finalize(INPUT, &evaluated).unwrap());
+    }
+}
+
+mod voprf_p384_blind {
+    use super::*;
+    use swole::bench;
+
+    #[bench(setup = rind_checked)]
+    fn rind(_: &Dit<()>) {
+        black_box(rind_voprf::Blind::new(voprf_suite(), INPUT).unwrap());
+    }
+
+    #[bench(setup = checked)]
+    fn rustcrypto(_: &()) {
+        let blinded = VoprfClient::<NistP384>::blind(INPUT, &mut SysRng).unwrap();
+        black_box((blinded.state, blinded.message.serialize()));
+    }
+}
+
+/// The evaluation includes the proof.
+mod voprf_p384_evaluate {
+    use super::*;
+    use swole::bench;
+
+    type Rind = Dit<(rind_voprf::ServerKey, rind::oprf::BlindedElement)>;
+
+    fn rind_input() -> Rind {
+        check_interop();
+        let (_, blinded) = rind_voprf::Blind::new(voprf_suite(), INPUT).unwrap();
+        Dit::hold((rind_voprf_server(), blinded))
+    }
+
+    #[bench(setup = rind_input)]
+    fn rind(input: &Rind) {
+        let (server, blinded) = &**input;
+        black_box(server.blind_evaluate(blinded.as_ref()).unwrap());
+    }
+
+    type RustCrypto = (VoprfServer<NistP384>, Vec<u8>);
+
+    fn rustcrypto_input() -> RustCrypto {
+        check_interop();
+        let blinded = VoprfClient::<NistP384>::blind(INPUT, &mut SysRng).unwrap();
+        (voprf_server(), blinded.message.serialize().to_vec())
+    }
+
+    #[bench(setup = rustcrypto_input)]
+    fn rustcrypto((server, blinded): &RustCrypto) {
+        let blinded = BlindedElement::<NistP384>::deserialize(blinded).unwrap();
+        let evaluated = server.blind_evaluate(&mut SysRng, &blinded);
+        black_box((evaluated.message.serialize(), evaluated.proof.serialize()));
+    }
+}
+
+/// The finalize includes the proof's verification.
+mod voprf_p384_finalize {
+    use super::*;
+    use swole::bench;
+
+    /// A blind, its evaluation and proof, and the server's public key, with
+    /// the DIT guard held across the call that consumes them.
+    type Rind = (
+        rind::cpu::Dit,
+        rind_voprf::Blind,
+        rind_voprf::EvaluatedElements,
+        rind_voprf::Proof,
+        rind_voprf::PublicKey,
+    );
+
+    fn rind_input() -> Rind {
+        check_interop();
+        let server = rind_voprf_server();
+        let public_key =
+            rind_voprf::PublicKey::new(voprf_suite(), server.public_key().as_ref()).unwrap();
+        let (blind, blinded) = rind_voprf::Blind::new(voprf_suite(), INPUT).unwrap();
+        let (evaluated, proof) = server.blind_evaluate(blinded.as_ref()).unwrap();
+        (rind::cpu::Dit::hold(), blind, evaluated, proof, public_key)
+    }
+
+    #[bench(setup = rind_input)]
+    fn rind((dit, blind, evaluated, proof, public_key): Rind) -> impl Sized + use<> {
+        let output = blind
+            .finalize(evaluated.as_ref(), proof.as_ref(), &public_key)
+            .unwrap();
+        (output, dit, public_key)
+    }
+
+    struct RustCrypto {
+        client: VoprfClient<NistP384>,
+        message: Vec<u8>,
+        proof: Vec<u8>,
+        server: VoprfServer<NistP384>,
+    }
+
+    fn rustcrypto_input() -> RustCrypto {
+        check_interop();
+        let server = voprf_server();
+        let blinded = VoprfClient::<NistP384>::blind(INPUT, &mut SysRng).unwrap();
+        let evaluated = server.blind_evaluate(&mut SysRng, &blinded.message);
+        RustCrypto {
+            client: blinded.state,
+            message: evaluated.message.serialize().to_vec(),
+            proof: evaluated.proof.serialize().to_vec(),
+            server,
+        }
+    }
+
+    #[bench(setup = rustcrypto_input)]
+    fn rustcrypto(input: &RustCrypto) {
+        let message = EvaluationElement::<NistP384>::deserialize(&input.message).unwrap();
+        let proof = Proof::<NistP384>::deserialize(&input.proof).unwrap();
+        black_box(
+            input
+                .client
+                .finalize(INPUT, &message, &proof, input.server.get_public_key())
+                .unwrap(),
+        );
+    }
+}
+
+fn main() {
+    swole::main();
+}

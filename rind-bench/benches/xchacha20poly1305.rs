@@ -137,12 +137,12 @@ mod xchacha20poly1305 {
         test_rind_chacha(&s.key, s.aad, &mut s.buf, *len);
     }
 
-    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+    #[cfg(graviola)]
     fn graviola_seal(row: Aead) -> Seal<(graviola::aead::XChaCha20Poly1305, [u8; 16])> {
         Seal::new((graviola::aead::XChaCha20Poly1305::new(KEY), [0; 16]), row)
     }
 
-    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+    #[cfg(graviola)]
     #[bench(args = AEAD_ROWS, setup = graviola_seal)]
     fn graviola(s: &mut Seal<(graviola::aead::XChaCha20Poly1305, [u8; 16])>) {
         let (key, tag) = &mut s.key;

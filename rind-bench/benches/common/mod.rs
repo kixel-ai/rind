@@ -131,6 +131,11 @@ impl<T> Dit<T> {
     }
 }
 
+/// The setup of a rind row with no input of its own: only the guard.
+pub fn dit() -> Dit<()> {
+    Dit::hold(())
+}
+
 impl<T> Deref for Dit<T> {
     type Target = T;
 

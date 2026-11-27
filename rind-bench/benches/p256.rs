@@ -3,7 +3,7 @@ mod common;
 mod ossl_ec;
 use std::hint::black_box;
 
-use common::Dit;
+use common::{Dit, dit};
 
 // verified-garbage has no key generation: a random scalar, drawn again until
 // it is in range, and its public key.
@@ -41,11 +41,6 @@ fn openssl_curve() -> ossl_ec::Curve {
         openssl::nid::Nid::X9_62_PRIME256V1,
         openssl::hash::MessageDigest::sha256(),
     )
-}
-
-/// The guard rind's rows that take no other input hold.
-fn dit() -> Dit<()> {
-    Dit::hold(())
 }
 
 fn ring_rng() -> ring::rand::SystemRandom {
@@ -171,7 +166,7 @@ mod p256_ecdh {
         black_box(our_private_key.exchange(&peer).unwrap());
     }
 
-    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+    #[cfg(graviola)]
     #[bench]
     fn graviola() {
         use graviola::key_agreement::p256::{PrivateKey, PublicKey};
@@ -246,7 +241,7 @@ mod p256_keygen {
         black_box(vg_generate());
     }
 
-    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+    #[cfg(graviola)]
     #[bench]
     fn graviola() {
         let key = graviola::key_agreement::p256::PrivateKey::new_random().unwrap();
@@ -349,7 +344,7 @@ mod p256_ecdsa_verify {
         public_key.verify::<Sha256>(MESSAGE, SIGNATURE).unwrap();
     }
 
-    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+    #[cfg(graviola)]
     #[bench]
     fn graviola() {
         use graviola::hashing::Sha256;
@@ -567,7 +562,7 @@ mod p256_ecdsa_sign {
         black_box(signing_key.sign::<Sha256>(MESSAGE).unwrap());
     }
 
-    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+    #[cfg(graviola)]
     fn graviola_key() -> (
         graviola::signing::ecdsa::SigningKey<graviola::signing::ecdsa::P256>,
         [u8; 64],
@@ -576,7 +571,7 @@ mod p256_ecdsa_sign {
         (SigningKey::<P256>::generate().unwrap(), [0; 64])
     }
 
-    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+    #[cfg(graviola)]
     #[bench(setup = graviola_key)]
     fn graviola(
         (signing_key, signature): &mut (

@@ -2,7 +2,7 @@ mod common;
 
 use std::hint::black_box;
 
-use common::Dit;
+use common::{Dit, dit};
 
 const PUBLIC_KEY: &[u8; 32] = b"\x7d\x4d\x0e\x7f\x61\x53\xa6\x9b\x62\x42\xb5\x22\xab\xbe\xe6\x85\xfd\xa4\x42\x0f\x88\x34\xb1\x08\xc3\xbd\xae\x36\x9e\xf5\x49\xfa";
 const MESSAGE: &[u8] = b"\x54\x65\x73\x74";
@@ -10,10 +10,6 @@ const SIGNATURE: &[u8; 64] = b"\x7c\x38\xe0\x26\xf2\x9e\x14\xaa\xbd\x05\x9a\x0f\
 
 /// The message the signing rows sign.
 const SIGNED: &[u8] = b"\x31\x32\x33\x34\x30\x30";
-
-fn rind_dit() -> Dit<()> {
-    Dit::hold(())
-}
 
 fn rind_public_key() -> rind::ed25519::PublicKey {
     rind::ed25519::PublicKey::new(PUBLIC_KEY).unwrap()
@@ -72,18 +68,18 @@ mod ed25519_keygen {
         black_box(key.to_pkcs8_der().unwrap());
     }
 
-    #[bench(setup = rind_dit)]
+    #[bench(setup = dit)]
     fn rind(_dit: &Dit<()>) {
         let our_private_key = rind::ed25519::KeyPair::generate().unwrap();
         black_box(our_private_key.to_pkcs8());
     }
 
-    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+    #[cfg(graviola)]
     fn pkcs8() -> [u8; 128] {
         [0; 128]
     }
 
-    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+    #[cfg(graviola)]
     #[bench(setup = pkcs8)]
     fn graviola(pkcs8: &mut [u8; 128]) {
         let key = graviola::signing::eddsa::Ed25519SigningKey::generate().unwrap();
@@ -174,12 +170,12 @@ mod ed25519_verify {
         rind_verify(public_key);
     }
 
-    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+    #[cfg(graviola)]
     fn graviola_key() -> graviola::signing::eddsa::Ed25519VerifyingKey {
         graviola::signing::eddsa::Ed25519VerifyingKey::from_bytes(PUBLIC_KEY).unwrap()
     }
 
-    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+    #[cfg(graviola)]
     #[bench(setup = graviola_key)]
     fn graviola(public_key: &graviola::signing::eddsa::Ed25519VerifyingKey) {
         public_key.verify(SIGNATURE, MESSAGE).unwrap();
@@ -263,12 +259,12 @@ mod ed25519_sign {
         rind_sign(signing_key);
     }
 
-    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+    #[cfg(graviola)]
     fn graviola_key() -> graviola::signing::eddsa::Ed25519SigningKey {
         graviola::signing::eddsa::Ed25519SigningKey::generate().unwrap()
     }
 
-    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+    #[cfg(graviola)]
     #[bench(setup = graviola_key)]
     fn graviola(signing_key: &graviola::signing::eddsa::Ed25519SigningKey) {
         black_box(signing_key.sign(SIGNED));

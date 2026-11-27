@@ -159,7 +159,7 @@ macro_rules! openssl {
 }
 
 /// Graviola's row.
-#[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+#[cfg(graviola)]
 macro_rules! graviola {
     ($hash:ident) => {
         #[bench(args = HASH_SIZES, setup = input)]
@@ -210,7 +210,7 @@ mod hmac_sha256 {
         32
     );
     libcrux!(hmac_sha2_256, 32);
-    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+    #[cfg(graviola)]
     graviola!(Sha256);
     #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
     openssl!(sha256);
@@ -228,7 +228,7 @@ mod hmac_sha384 {
         48
     );
     libcrux!(hmac_sha2_384, 48);
-    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+    #[cfg(graviola)]
     graviola!(Sha384);
     #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
     openssl!(sha384);

@@ -74,7 +74,7 @@ mod sha256 {
         verified_garbage::hashes::sha256::Sha256
     );
 
-    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+    #[cfg(graviola)]
     #[bench(args = HASH_SIZES, setup = input)]
     fn graviola(input: &[u8]) -> impl Sized + use<> {
         let mut ctx = graviola::hashing::sha2::Sha256Context::new();
@@ -105,7 +105,7 @@ mod sha512 {
         verified_garbage::hashes::sha512::Sha512
     );
 
-    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+    #[cfg(graviola)]
     #[bench(args = HASH_SIZES, setup = input)]
     fn graviola(input: &[u8]) -> impl Sized + use<> {
         let mut ctx = graviola::hashing::sha2::Sha512Context::new();

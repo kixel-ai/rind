@@ -2,7 +2,7 @@ mod common;
 
 use std::hint::black_box;
 
-use common::Dit;
+use common::{Dit, dit};
 
 const PUBLIC_KEY: &[u8; 32] = b"\xe6\xdb\x68\x67\x58\x30\x30\xdb\x35\x94\xc1\xa4\x24\xb1\x5f\x7c\x72\x66\x24\xec\x26\xb3\x35\x3b\x10\xa9\x03\xa6\xd0\xab\x1c\x4c";
 
@@ -15,10 +15,6 @@ fn ring_rng() -> ring::rand::SystemRandom {
 
 fn aws_rng() -> aws_lc_rs::rand::SystemRandom {
     aws_lc_rs::rand::SystemRandom::new()
-}
-
-fn rind_dit() -> Dit<()> {
-    Dit::hold(())
 }
 
 // Checks verified-garbage's public key and exchange against rind's, from a
@@ -115,7 +111,7 @@ mod x25519_ecdh {
         black_box(shared_secret.as_bytes());
     }
 
-    #[bench(setup = rind_dit)]
+    #[bench(setup = dit)]
     fn rind(_dit: &Dit<()>) {
         rind_ecdh()
     }
@@ -134,7 +130,7 @@ mod x25519_ecdh {
         black_box(our_private_key.exchange(&peer).unwrap());
     }
 
-    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+    #[cfg(graviola)]
     #[bench]
     fn graviola() {
         use graviola::key_agreement::x25519::{PrivateKey, PublicKey};
@@ -195,14 +191,14 @@ mod x25519_keygen {
         black_box(x25519_dalek::PublicKey::from(&key));
     }
 
-    #[bench(setup = rind_dit)]
+    #[bench(setup = dit)]
     fn rind(_dit: &Dit<()>) {
         use rind::agreement::*;
         let key = PrivateKey::generate(&X25519).unwrap();
         black_box(key.public_key());
     }
 
-    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+    #[cfg(graviola)]
     #[bench]
     fn graviola() {
         let key = graviola::key_agreement::x25519::PrivateKey::new_random().unwrap();

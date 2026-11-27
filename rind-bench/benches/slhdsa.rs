@@ -2,7 +2,7 @@ mod common;
 
 use std::hint::black_box;
 
-use common::Dit;
+use common::{Dit, dit};
 
 #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
 mod ossl {
@@ -43,10 +43,6 @@ mod ossl {
 // The message every library signs. SLH-DSA signs without rejection, so its
 // time does not depend on the randomness each signature draws.
 const MESSAGE: &[u8] = b"rind SLH-DSA benchmark message";
-
-fn rind_dit() -> Dit<()> {
-    Dit::hold(())
-}
 
 /// A RustCrypto key from `N`-byte seeds: its `SigningKey::new` wants a
 /// rand_core 0.10 RNG too.
@@ -92,7 +88,7 @@ macro_rules! slh_dsa {
                 );
             }
 
-            #[bench(setup = rind_dit)]
+            #[bench(setup = dit)]
             fn rind(_dit: &Dit<()>) {
                 use rind::slh_dsa::{KeyPair, $rind};
                 let key = KeyPair::<$rind>::generate().unwrap();

@@ -2,7 +2,7 @@ mod common;
 
 use std::hint::black_box;
 
-use common::{Dit, SIZES, Size};
+use common::{Dit, SIZES, Size, dit};
 
 const IV: [u8; 16] = [0; 16];
 
@@ -21,10 +21,6 @@ fn aws_aes(key_len: usize) -> &'static aws_lc_rs::cipher::Algorithm {
         24 => &AES_192,
         _ => &AES_256,
     }
-}
-
-fn dit() -> Dit<()> {
-    Dit::hold(())
 }
 
 /// A key and the buffer it encrypts in place each call: the same buffer, so

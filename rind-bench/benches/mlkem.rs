@@ -2,7 +2,7 @@ mod common;
 
 use std::hint::black_box;
 
-use common::Dit;
+use common::{Dit, dit};
 
 #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
 mod ossl {
@@ -125,10 +125,6 @@ fn vg_agrees_with_rind() {
     );
 }
 
-fn rind_dit() -> Dit<()> {
-    Dit::hold(())
-}
-
 /// A set's key generation against aws-lc-rs, libcrux, and rind.
 macro_rules! keygen_rows {
     ($set:ident, $aws:ident, $libcrux:ident) => {
@@ -147,7 +143,7 @@ macro_rules! keygen_rows {
             black_box($libcrux::generate_key_pair(rand).into_parts());
         }
 
-        #[bench(setup = rind_dit)]
+        #[bench(setup = dit)]
         fn rind(_dit: &Dit<()>) {
             use rind::kem::*;
             black_box(DecapsulationKey::<$set>::generate().unwrap());
@@ -354,7 +350,7 @@ mod mlkem768_keygen {
         black_box(vg_generate());
     }
 
-    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+    #[cfg(graviola)]
     #[bench]
     fn graviola() {
         use graviola::key_agreement::mlkem768::DecapKey;
@@ -410,13 +406,13 @@ mod mlkem768_encaps {
         black_box(encaps.encapsulate().unwrap());
     }
 
-    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+    #[cfg(graviola)]
     fn graviola_key() -> [u8; 1184] {
         use graviola::key_agreement::mlkem768::DecapKey;
         DecapKey::generate().unwrap().encapsulation_key().as_bytes()
     }
 
-    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+    #[cfg(graviola)]
     #[bench(setup = graviola_key)]
     fn graviola(encaps: &[u8; 1184]) {
         use graviola::key_agreement::mlkem768::EncapKey;
@@ -489,7 +485,7 @@ mod mlkem768_decaps {
 
     /// Decapsulation consumes its key, so each call gets a new key and
     /// ciphertext, made untimed.
-    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+    #[cfg(graviola)]
     fn graviola_pair() -> (
         graviola::key_agreement::mlkem768::DecapKey,
         graviola::key_agreement::mlkem768::Ciphertext,
@@ -500,7 +496,7 @@ mod mlkem768_decaps {
         (decaps, ciphertext)
     }
 
-    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+    #[cfg(graviola)]
     #[bench(setup = graviola_pair)]
     fn graviola(
         (decaps, ciphertext): (
@@ -567,7 +563,7 @@ mod mlkem768_combined {
         black_box(decaps.decapsulate(&ciphertext));
     }
 
-    #[bench(setup = rind_dit)]
+    #[bench(setup = dit)]
     fn rind(_dit: &Dit<()>) {
         use rind::kem::*;
         let decaps = DecapsulationKey::<MlKem768>::generate().unwrap();
@@ -588,7 +584,7 @@ mod mlkem768_combined {
         black_box(decaps.decapsulate(&ciphertext).unwrap());
     }
 
-    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+    #[cfg(graviola)]
     #[bench]
     fn graviola() {
         use graviola::key_agreement::mlkem768::{DecapKey, EncapKey};

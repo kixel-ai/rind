@@ -2,7 +2,7 @@ mod common;
 
 use std::hint::black_box;
 
-use common::Dit;
+use common::{Dit, dit};
 
 #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
 mod ossl {
@@ -46,10 +46,6 @@ const MESSAGE: &[u8] = b"rind ML-DSA benchmark message";
 
 // The longest signature, ML-DSA-87's.
 const MAX_SIGNATURE_LEN: usize = 4627;
-
-fn rind_dit() -> Dit<()> {
-    Dit::hold(())
-}
 
 // One parameter set's key generation, signing, and verification, each library
 // by its own name for the set.
@@ -96,7 +92,7 @@ macro_rules! ml_dsa {
                 black_box(SigningKey::<$rustcrypto>::generate());
             }
 
-            #[bench(setup = rind_dit)]
+            #[bench(setup = dit)]
             fn rind(_dit: &Dit<()>) {
                 use rind::ml_dsa::{KeyPair, $rind};
                 let key = KeyPair::<$rind>::generate().unwrap();
