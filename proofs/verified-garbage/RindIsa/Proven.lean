@@ -5,6 +5,8 @@ import RindIsa.X86_64.Mul4x
 import RindIsa.X86_64.GcmInitAvx2
 import RindIsa.X86_64.Mulx4x
 import RindIsa.X86_64.PolyHashAd
+import RindIsa.X86_64.Sqrx8x
+import RindIsa.X86_64.Sqrx8xMont
 
 /-! The functions rind proves in its models of AArch64 and x86_64, which
 `rind-asm` prints and `vg-cosim --rind` cosimulates. -/
@@ -57,6 +59,8 @@ def proven : List Proven :=
    { path := "rind::low::x86_64::chacha20poly1305::seal_avx2", prog := ChaCha20Poly1305.sealAvx2,
      ret := repRet,
      statics := [(ChaCha20Poly1305.constsName, "rind::low::x86_64::chacha20poly1305::CONSTS",
-       ChaCha20Poly1305.consts)] }]
+       ChaCha20Poly1305.consts)] },
+   { path := "rind::low::x86_64::mont::bn_sqrx8x_internal", prog := Sqrx8x.prog, ret := repRet, statics := [] },
+   { path := "rind::low::x86_64::mont::bn_sqrx8x_mont", prog := Sqrx8xMont.prog, ret := repRet, statics := [] }]
 
 end Rind.X86_64

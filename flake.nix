@@ -2,7 +2,9 @@
   description = "rind - pure-Rust cryptography for MoQ";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    # quest's nixpkgs, so every repository's dev shell gets the same C compiler and mbx
+    # shares build scripts, proc-macros, and the crates built on them across repositories.
+    nixpkgs.follows = "quest/nixpkgs";
     flake-utils.url = "github:numtide/flake-utils";
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
@@ -12,7 +14,6 @@
     # .claude/skills call. Bump the rev to upgrade them.
     quest = {
       url = "github:kixel-ai/quest";
-      inputs.nixpkgs.follows = "nixpkgs";
       inputs.flake-utils.follows = "flake-utils";
     };
     # swole, which runs rind-bench's benchmarks: it counts the weekly bench's

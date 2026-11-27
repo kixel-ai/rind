@@ -386,6 +386,7 @@ def condPub (a : Taint) : Rind.X86_64.Cond → Bool
   | .vg c => vgCondPub a c
   | .a | .be => a.cf && a.zso
   | .g | .ge | .l | .le => a.zso
+  | .rcxz | .rcxnz => a.pub .rcx
 
 /-- What VG's arithmetic and logic instruction `op` of `d` and `src` leaves
 the runs agreeing on, from `a`. -/
@@ -502,6 +503,7 @@ theorem cond_eq (hA : AgreeV names a g₁ g₂) {c : Rind.X86_64.Cond} (hc : con
   | g | ge | l | le =>
     obtain ⟨hz, hs, ho⟩ := hA.zso hc
     simp [Rind.X86_64.eval, hz, hs, ho]
+  | rcxz | rcxnz => simp [Rind.X86_64.eval, hA.gpr hc]
 
 /-- `aluStep`'s soundness, for VG's 64-bit and 32-bit forms alike, from
 what each computes once it has read its source. -/
