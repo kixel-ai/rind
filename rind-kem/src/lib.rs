@@ -21,9 +21,12 @@ use zeroize::Zeroize;
 /// The 64-byte seed `d || z` a decapsulation key is made from.
 pub type Seed = Array<u8, U64>;
 
-/// A parameter set: its rind algorithm and its encodings' sizes.
+/// A parameter set: its rind algorithm and its encodings' sizes. Sealed: only
+/// [`MlKem512`], [`MlKem768`] and [`MlKem1024`] implement it, so a set's sizes
+/// always match its rind algorithm's encodings, which the conversions rely on.
 pub trait ParameterSet:
-    kem::Kem<DecapsulationKey = DecapsulationKey<Self>, EncapsulationKey = EncapsulationKey<Self>>
+    sealed::Sealed
+    + kem::Kem<DecapsulationKey = DecapsulationKey<Self>, EncapsulationKey = EncapsulationKey<Self>>
 {
     /// rind's algorithm for this set.
     type Rind: rind::kem::Algorithm;
@@ -31,11 +34,17 @@ pub trait ParameterSet:
     type EncapsulationKeySize: ArraySize;
 }
 
+mod sealed {
+    pub trait Sealed {}
+}
+
 macro_rules! sets {
     ($($(#[$meta:meta])* $name:ident, $module:ident, $ek:ty, $ct:ty;)*) => {$(
         $(#[$meta])*
         #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
         pub struct $name;
+
+        impl sealed::Sealed for $name {}
 
         impl ParameterSet for $name {
             type Rind = rind::kem::$name;
