@@ -180,8 +180,8 @@ opaque low.arm.cpu.ct_compare_16
 
 opaque low.arm.cpu.ct_compare_bytes : Slice Std.U8 → Slice Std.U8 → Result Std.U8
 
-/-! aws-lc's AES and GHASH assembly for the crypto extension and for NEON,
-which no proof covers. -/
+/-! aws-lc's AES and GHASH assembly for the crypto extension, and its AES
+for NEON, which no proof covers. -/
 
 opaque low.arm.aesv8_armx.AesHwKey.new
   : Slice Std.U8 → low.arm.cpu.HaveCryptoExt → Result low.arm.aesv8_armx.AesHwKey
@@ -209,6 +209,9 @@ opaque low.arm.vpaes_armv7.NeonKey.encrypt_block
 opaque low.arm.vpaes_armv7.NeonKey.ctr32
   : low.arm.vpaes_armv7.NeonKey → Array Std.U8 16#usize → Slice (Array Std.U8 16#usize) →
     Result (Slice (Array Std.U8 16#usize))
+
+/-! aws-lc's GHASH for NEON, whose HOL Light proofs `Rind.Armv7.GhashNeon`
+restates. -/
 
 opaque low.arm.ghash_armv4.NeonTable.new
   : Array Std.U8 16#usize → low.arm.cpu.HaveNeon → Result low.arm.ghash_armv4.NeonTable

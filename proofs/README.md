@@ -66,11 +66,11 @@ Every Lean file that declares an `axiom`, by the source it restates; no file hol
 |---|---|---|
 | s2n-bignum's HOL Light theorems of its assembly, and rind's own of code it runs | `Aarch64/S2nBignum`, `X86_64/S2nBignum` | published proofs, and rind's in `proofs/hol-light/`, which `admin/prove hol-light` checks; `admin/prove bytes` checks rind's build emits the code they are about |
 | s2n-bignum's HOL Light theorems of its ML-KEM routines, and mlkem-native's of its compression routines | `Aarch64/MlKemRoutines` | published proofs; `admin/prove bytes` checks rind's build emits the code they are about, and `admin/prove` that the tables rind passes are s2n-bignum's |
-| pyca/verified-garbage's Lean theorems of its assembly | `Aarch64/VgChaCha20`, `Aarch64/VgChaCha20Poly1305`, `Aarch64/VgMlKem`, `Aarch64/VgP256`, `Aarch64/VgP384`, `Aarch64/VgPbkdf2`, `Aarch64/VgSha512`, `X86_64/VgChaCha20`, `X86_64/VgChaCha20Poly1305`, `X86_64/VgCurve25519`, `X86_64/VgMlKem`, `X86_64/VgP256`, `X86_64/VgP384`, `X86_64/VgRsa` | published proofs; `admin/vg-binding` checks each axiom cites the theorem of its routine, and `admin/vg-bytes` that rind runs that routine's bytes |
+| pyca/verified-garbage's Lean theorems of its assembly | `Aarch64/VgChaCha20`, `Aarch64/VgChaCha20Poly1305`, `Aarch64/VgChaCha20Poly1305Ct`, `Aarch64/VgMlKem`, `Aarch64/VgP256`, `Aarch64/VgP384`, `Aarch64/VgPbkdf2`, `Aarch64/VgSha512`, `X86_64/VgChaCha20`, `X86_64/VgChaCha20Poly1305`, `X86_64/VgCurve25519`, `X86_64/VgMlKem`, `X86_64/VgMlKem768Ct`, `X86_64/VgP256`, `X86_64/VgP384`, `X86_64/VgRsa` | published proofs; `admin/vg-binding` checks each axiom cites the theorem of its routine, and `admin/vg-bytes` that rind runs that routine's bytes |
 | Beneficial AI Foundation's Lean theorems of curve25519-dalek, in its X25519 spec that `admin/import-dalek` vendors | `Armv7/Dalek` | published proofs; `admin/prove dalek` checks that every definition `mul_clamped` and `mul_base_clamped` reach in armv7's configuration is the text BAIF's proofs are about |
 | Vale's procedures for HACL\*'s AES-GCM | `X86_64/ValeAesGcm` | published proofs; `admin/prove bytes` checks the object code |
 | aws-lc-verification's NSym proof of SHA-384/512 (aarch64) and rind's HOL Light proof of the AVX2 routine (x86_64) | `Aarch64/AwsLc`, `X86_64/AwsLc` | a published proof and rind's own; `admin/prove bytes` and `admin/prove hol-light` check the object code |
-| rind's own HOL Light proofs of its assembly, and rind's Lean proofs of the SHA-256 crypto-extension routine (aarch64) and `bn_mul4x_mont` (x86_64) | `Aarch64/Sha256Hw`, `X86_64/ChaCha20Cipher`, `X86_64/CtEqual`, `X86_64/RsaMont`, `X86_64/Sha256Shaext`, `X86_64/ShaBlocks` | rind's proofs, in `proofs/hol-light/`, `Rind/Aarch64/Sha256HwAsm.lean`, and `Rind/X86_64/Mul4xProof.lean`, checked against the bytes rind's build emits |
+| rind's own HOL Light proofs of its assembly, and rind's Lean proofs of the SHA-256 crypto-extension routine (aarch64) and `bn_mul4x_mont` (x86_64) | `Aarch64/Sha256Hw`, `Armv7/GhashNeon`, `X86_64/ChaCha20Cipher`, `X86_64/CtEqual`, `X86_64/RsaMont`, `X86_64/Sha256Shaext`, `X86_64/ShaBlocks` | rind's proofs, in `proofs/hol-light/`, `Rind/Aarch64/Sha256HwAsm.lean`, and `Rind/X86_64/Mul4xProof.lean`, checked against the bytes rind's build emits |
 | HOL Light theorems of AES-CTR and AES-CBC that no proof states yet | `X86_64/AesModesLow` | **assumed, not proven**: [the AES modes quest](/quest/m4/verified/aes-modes.md) owns them |
 
 Hand models of Rust Aeneas cannot translate, each quoting the Rust it models:
@@ -251,7 +251,10 @@ those inputs, in any worktree, restores in under a second.
   key, which its `NIST_GHASH_IS_POLYVAL` relates to `nist_ghash`. Both are
   A32 routines in a `global_asm!` that `admin/prove` finds by their
   symbols, and the theorems cover each from entry to return for a caller in
-  A32 or T32, so every armv7 target. No Lean theorem restates them yet.
+  A32 or T32, so every armv7 target. `Rind/Armv7/GhashNeon.lean` restates
+  them about `NeonTable::new` and `NeonTable::ghash`, and
+  `neon_new_ghashFor` proves the table `new` builds hashes as `GhashFor`
+  asks, which `Parts::tagged`'s proof takes.
 - `x86_64/ecp_nistz256_point_add_affine.ml` and
   `x86_64/ecp_nistz256_point_add_affinex.ml`:
   `ECP_NISTZ256_POINT_ADD_AFFINE_SUBROUTINE_CORRECT` and
@@ -301,6 +304,14 @@ for this CPU's target:
   `admin/vg-bytes` assembles with nixpkgs' LLVM; a branch or call need only
   reach the same instruction or function, since the assembler lays those
   out, and an encoding that differs but disassembles the same is reported;
+  each static a vendored routine reaches, through its relocations and those of
+  the statics it reaches, has VG's size, bytes, and relocations;
+- that the text of each `Prog` the leakage axioms are about (aarch64's
+  ChaCha20-Poly1305 in `Cosim/Progs.lean`, x86_64's ML-KEM-768 in
+  `Cosim/ProgsX86_64.lean`), and of each function it calls, which `vg-print`
+  prints, is VG's assembly for it: `admin/vg-bytes --progs` compares them, so
+  VG's vendored printer is trusted to print a `Prog` as the text of the code
+  it builds, which is not checked;
 - that each distinct instruction of VG's code ends, from random states, in
   the state VG's model gives. `Cosim/` parses each instruction's text back to
   every instruction of the model that prints as exactly that text, runs the
@@ -413,9 +424,17 @@ for the ML-KEM-768 routines rind runs as one axiom per wrapper in
 `low::<arch>::mlkem768_vg`. Each states only what the wrapper returns,
 not VG's wipe of its scratch or what the routine may leak. The contracts
 they restate, VG's `Spec/MlKem/Contract.lean` and `Spec/MlKem/EncapsH.lean`,
-are not vendored, so a re-pin compares them at VG's new commit. No theorem rests
+are vendored by `admin/import-vg-models` with the modules of VG's `Impl/` the
+x86_64 leakage axioms below need, so a re-pin that changes them fails
+`admin/import-vg-models --check`. No theorem rests
 on them yet: the ✓ also needs rind's glue in `mid/mlkem.rs` proven, and its
-fallback to rind's arithmetic.
+fallback to rind's arithmetic. The ten axioms in
+`Rind/X86_64/VgMlKem768Ct.lean` state `VG.ConstantTime` of x86_64's key
+generation and decapsulation with AVX-512 and of encapsulation, with `H(ek)`
+given or not, at each of its four widths, over `Cosim.ProgsX86_64`, VG's own
+`Prog` terms (the routine and the scrub VG appends), which `vg-print` and
+`admin/vg-bytes --progs` bind to VG's assembly text; no theorem about rind's
+wrappers uses them.
 
 `Rind/Aarch64/VgChaCha20Poly1305.lean` restates VG's theorems about the
 aarch64 SVE2 and NEON ChaCha20-Poly1305 routines rind runs, `seal_framed` and
@@ -426,9 +445,13 @@ specs, which `Rind/VgChaCha20Poly1305.lean` imports and proves is
 `Rind/Spec.lean`'s, so a re-pin that changes the spec fails there. Each axiom
 states only what the wrapper returns, not VG's wipe of its stack scratch or
 what the routine may leak. The contracts they restate, VG's
-`Spec/ChaCha20Poly1305/Contract.lean`, are not vendored, so a re-pin
-compares them at VG's new commit. `Rind/X86_64/VgChaCha20Poly1305.lean`
-restates those about the x86_64 AVX-512 IFMA routines the same way, VG's
+`Spec/ChaCha20Poly1305/Contract.lean`, are vendored by `admin/import-vg-models`
+with the modules of VG's `Impl/` they need, so a re-pin that changes them
+fails `admin/import-vg-models --check`. The two leakage axioms in
+`Rind/Aarch64/VgChaCha20Poly1305Ct.lean` state `VG.ConstantTime` of the SVE2
+seal and open over `Cosim.Progs`, VG's own `Prog` terms, and `vg-print` with
+`admin/vg-bytes --progs` binds those terms to VG's assembly text.
+`Rind/X86_64/VgChaCha20Poly1305.lean` restates VG's theorems about the x86_64 AVX-512 IFMA routines the same way, VG's
 registrations `sealReg` and `openReg` at the `ifma` variant, which add the
 clearing of the routines' stack and registers to `Shared.seal_verified` and
 `Shared.open_verified`, as one axiom per wrapper in
@@ -455,8 +478,8 @@ the `adrp` and `add` the linker fills and the final `ret`, as VG's are not.
 
 `verified-garbage/RindIsa/X86_64.lean` extends VG's x86_64 model the same
 way: its state is VG's with `lo`, the lowest address the stack may reach, and
-it adds the push, `lea`, `neg`, `dec`, aligned 128-bit load and store, and
-`ja` aws-lc's code uses, a stack pointer move that claims the region it
+it adds the push, `lea`, `neg`, `dec`, `shrd`, aligned 128-bit load and
+store, and `ja` aws-lc's code uses, a stack pointer move that claims the region it
 passes over as writable and forgets what a release leaves below it, and the
 padding (`.align` and the `jmp` over it), which runs as no instructions.
 `admin/prove lean` compares each x86_64 program's bytes with the Linux build
@@ -481,6 +504,25 @@ the padding, whose bytes that comparison checks.
   `Mul4xSub`, `Mul4xTailAsm`, and `Mul4xFinal` the subtraction and the
   constant-time copy.
   `Rind/X86_64/RsaMont.lean` restates it as `mul4x_spec`.
+
+- `Rind/X86_64/PolyHashAdProof.lean`: `poly_hash_ad_internal_correct`, that
+  `low::x86_64::chacha20poly1305::poly_hash_ad_internal`, rind's copy of
+  aws-lc's AAD hash laid out as structured code
+  (`RindIsa/X86_64/PolyHashAd.lean`), run from a state its `Pre` holds of
+  (`rcx` pointing to `r8` bytes of AAD, readable if there are any, and `rbp`
+  to `r`'s two words, each below `2^60` as clamping leaves them), leaves in
+  `(r10, r11, r12)` an accumulator below `5 · 2^128` that is, modulo `p`,
+  RFC 8439's with that `r` over the AAD zero-padded to whole blocks
+  (`padBlocks`), and
+  changes no memory and no register but `rax`, `rdx`, `rcx`, `r8`, `r9`, and
+  `r10` to `r15`; that its trace is a function of the AAD's address and
+  length and `r`'s address (`ConstantTime`); and that some state meets
+  `Pre`. `Rind/Poly1305Limbs.lean` holds what the x86_64 and aarch64 proofs
+  of aws-lc's one-pass routines share: `padBlocks`, the partial reduction
+  both keep the accumulator below `5 · 2^128` with, and memory as bytes.
+  `PolyHashAdModel` proves the limbs aws-lc's `poly_mul` computes are that
+  reduction of the product, and `PolyHashAdAsm` runs the program's blocks.
+  No axiom restates it yet: the proofs of seal and open that call it will.
 
 - `Rind/Aarch64/Sha256HwAsm.lean`: `sha256_block_data_order_hw_correct`,
   that `low::aarch64::sha256::sha256_block_data_order_hw`, aws-lc's routine
@@ -803,7 +845,8 @@ the key to the API. `Rind/Armv7/AesNohwCtr.lean` proves that `ctr32` XORs in
 GCTR's keystream from the counter block it is handed (`ctr32_spec`,
 `aes_key_ctr32_spec`), and `Rind/Armv7/GhashNohw.lean` that `ghash_nohw.rs`'s
 32-bit Karatsuba multiply and reduction fold blocks into GHASH, against
-`Rind/Gf128.lean`. `Rind/Armv7/AesGcm.lean` proves `Parts::tagged`, which
+`Rind/Gf128.lean`, and `Rind/Armv7/GhashNeon.lean` that NEON's `NeonTable`
+does, over the HOL Light proofs of its routines. `Rind/Armv7/AesGcm.lean` proves `Parts::tagged`, which
 encrypt and decrypt share, for any `Parts` whose table hashes, whose
 `encrypt_block` is AES, and whose `ctr` is GCTR (`PartsFor`, `tagged_spec`),
 so the NEON and crypto-extension compositions need only those three, and
@@ -1905,11 +1948,16 @@ proof after those.
   `Rind/VgChaCha20Poly1305.lean`, the proof that pyca/verified-garbage's
   ChaCha20-Poly1305 spec is `Rind/Spec.lean`'s, and
   `Rind/Aarch64/VgChaCha20Poly1305.lean`, the aarch64 one pass over its SVE2
-  and NEON routines; `Rind/VgChaCha20.lean`, the proof that pyca/verified-garbage's
-  ChaCha20 spec is `Rind/Spec.lean`'s, `Rind/VgChaCha20Glue.lean`, what both
-  targets' `cipher::ChaCha20` proofs share, and
-  `Rind/{X86_64,Aarch64}/VgChaCha20.lean`, each target's glue over VG's
-  routines.
+  and NEON routines, and `Rind/Aarch64/VgChaCha20Poly1305Ct.lean`, the two axioms that
+  state the leakage of the SVE2 ones over `verified-garbage/Cosim/Progs.lean`
+  (`Cosim/PrintMain.lean`'s `vg-print` prints them for `admin/vg-bytes`), and
+  `Rind/X86_64/VgMlKem768Ct.lean`, the ten that state ML-KEM-768's over
+  `Cosim/ProgsX86_64.lean`; `Rind/VgChaCha20.lean`, the proof that
+  pyca/verified-garbage's ChaCha20 spec is `Rind/Spec.lean`'s,
+  `Rind/VgChaCha20Glue.lean`, what both targets' `cipher::ChaCha20` proofs
+  share, and `Rind/{X86_64,Aarch64}/VgChaCha20.lean`, each target's glue over
+  VG's routines; `Rind/VgOutcome.lean` and `Rind/<Arch>/VgMlKem.lean`, the axioms
+  restating what VG's ML-KEM-768 routines return.
 - `Rind/Rsa.lean` and `Rind/RsaLemmas.lean`: RFC 8017's verification,
   transliterated, and its lemmas; `Rind/X86_64/{RsaBytes,RsaMont,RsaPublic,RsaKey,RsaVerify,RsaPss}.lean`:
   the RSA verification proof, on x86_64 alone,
