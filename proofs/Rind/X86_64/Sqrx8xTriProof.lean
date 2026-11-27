@@ -12,13 +12,6 @@ set_option linter.unusedSimpArgs false
 
 namespace rind.x86_64.sqrx8x
 
-theorem Arr.frame {s s' : S} {k : Nat} {ap np fp : Addr} {gs : List Reg} (ar : Arr s k ap np fp)
-    (h : Frame s s' gs) : Arr s' k ap np fp := by
-  obtain ⟨hk, hap, hnp, hfp, sepA, sepN, rA, rN, rF⟩ := ar
-  rw [← h.rd, ← h.wr] at rA rN
-  rw [← h.wr] at rF
-  exact ⟨hk, hap, hnp, hfp, sepA, sepN, rA, rN, rF⟩
-
 /-- A word written leaves another, apart from it, as it was. -/
 theorem readW_writeW_wa (M : Mem) (p q : Addr) (x y : Nat) (v : BitVec 64) (hp : p.toNat + 8 * x + 8 ≤ 2 ^ 64)
     (hq : q.toNat + 8 * y + 8 ≤ 2 ^ 64)

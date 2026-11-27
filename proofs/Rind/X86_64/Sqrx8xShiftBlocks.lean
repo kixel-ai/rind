@@ -57,10 +57,6 @@ theorem shift_ok (s : S) (k i : Nat) (ap np fp : Addr) (a : Nat → BitVec 64) (
   sqrx_blockx [Rind.X86_64.Sqrx8x.shift, hrc, hrdi, hrdx, hcf, hof, hA, ↓BitVec.ofNat_add_ofNat, ofNat_idx]
   all_goals first | acct | (rw [show (4#64 : BitVec 64) * 8#64 = 32#64 by decide])
 
-/-- An XMM register's low half, as `movq` reads it. -/
-theorem extract_lo (x : BitVec 128) : x.extractLsb' 0 64 = x.setWidth 64 := by
-  apply BitVec.eq_of_toNat_eq; simp [BitVec.extractLsb'_toNat]
-
 /-- `lea rcx, [rbp + r9 - 64]`: `np`'s last eight words. -/
 theorem np_end (np : Addr) (k : Nat) (hk : 8 ≤ k ∧ k < 2 ^ 29) :
     np + BitVec.ofNat 64 (8 * k) * 1#64 + 18446744073709551552#64 = wa np (k - 8) := by

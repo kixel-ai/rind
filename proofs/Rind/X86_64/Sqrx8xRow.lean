@@ -77,10 +77,6 @@ theorem rcx_inc' (j : Nat) (h : j < 8) :
 theorem rcx_zf (j : Nat) (h : j < 8) : (BitVec.ofNat 64 (2 ^ 64 - 8 + j) + 1 == 0) = !decide (j + 1 < 8) := by
   interval_cases j <;> decide
 
-theorem rcx_of (j : Nat) (h : j < 8) :
-    addOverflow (BitVec.ofNat 64 (2 ^ 64 - 8 + j)) 1 (BitVec.ofNat 64 (2 ^ 64 - 8 + j) + 1) = false := by
-  interval_cases j <;> decide
-
 /-- An inner run's carries out are zero: its accumulator and product fit in nine words. -/
 theorem innerF_flags (x a0 a1 a2 a3 a4 a5 a6 a7 r8 r9 r10 r11 r12 r13 r14 r15 : BitVec 64) :
     let F := innerF x a0 a1 a2 a3 a4 a5 a6 a7 r8 r9 r10 r11 r12 r13 r14 r15 false false

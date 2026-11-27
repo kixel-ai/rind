@@ -81,18 +81,6 @@ theorem val_wrs (M : Mem) (fp : Addr) (q N : Nat) (ws : List (BitVec 64)) (hq : 
     push_cast
     linear_combination h1 + h2
 
-theorem gsum_split (g : Nat → Nat) (m n : Nat) :
-    gsum g (m + n) = gsum g m + 2 ^ (64 * m) * gsum (fun i => g (m + i)) n := by
-  induction n with
-  | zero => simp [gsum]
-  | succ n ih =>
-    rw [← Nat.add_assoc, gsum, gsum, ih, show 64 * (m + n) = 64 * m + 64 * n by ring, Nat.pow_add]
-    ring
-
-/-- Splits a value at word `m`. -/
-theorem val_split (f : Nat → BitVec 64) (m n : Nat) :
-    val f (m + n) = val f m + 2 ^ (64 * m) * val (fun i => f (m + i)) n := gsum_split _ m n
-
 theorem hsum_eq_val (f : Nat → BitVec 64) :
     hsum [f 0, f 1, f 2, f 3, f 4, f 5, f 6, f 7] = val f 8 := by
   simp only [hsum, val, gsum]; ring

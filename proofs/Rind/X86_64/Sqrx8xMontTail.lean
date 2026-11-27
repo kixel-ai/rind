@@ -204,9 +204,6 @@ theorem post_rbx (p : Addr) (k : Nat) (hk : k < 2 ^ 29) :
   simp only [BitVec.toNat_add, BitVec.toNat_sub, BitVec.toNat_mul, BitVec.toNat_ofNat]
   omega
 
-theorem extract_lo (x : BitVec 128) : x.extractLsb' 0 64 = x.setWidth 64 :=
-  (BitVec.setWidth_eq_extractLsb' (by omega)).symm
-
 theorem post_ok (s : S) (k : Nat) (wsp rp : Addr) (hk8 : 8 ≤ k) (hk : k < 2 ^ 29) (h8 : k % 8 = 0)
     (hr8 : s.vg.gpr .r8 = wa (wsp - 8#64) (2 * k + 7)) (hrcx : s.vg.gpr .rcx = BitVec.ofNat 64 (2 ^ 64 - 8 * k))
     (hx1 : sqrx8x.xlo s .xmm1 = rp) :
@@ -219,7 +216,7 @@ theorem post_ok (s : S) (k : Nat) (wsp rp : Addr) (hk8 : 8 ≤ k) (hk : k < 2 ^ 
   apply ex_of_eq
   · rw [execBlock_acc]
     reg_run [Rind.X86_64.Sqrx8xMont.post, hr8, hrcx, hx1, mul_ofNat_one, post_rbx (wsp) k hk, sar5 k hk8 hk h8,
-      lsb4 k hk8 hk h8, Nat.reduceLeDiff, and_self, extract_lo, gpr_setFlags, cf_setFlags, xmm_setReg]
+      lsb4 k hk8 hk h8, Nat.reduceLeDiff, and_self, sqrx8x.extract_lo, gpr_setFlags, cf_setFlags, xmm_setReg]
     rfl
   · rfl
   · refine ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, ⟨fun r hr => ?_, rfl, rfl, rfl, rfl⟩⟩

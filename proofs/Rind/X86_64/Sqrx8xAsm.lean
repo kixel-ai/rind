@@ -40,6 +40,33 @@ structure Arr (s : S) (k : Nat) (ap np fp : Addr) : Prop where
   rN : ⟨np, 8 * k⟩ ∈ s.vg.rd ++ s.vg.wr
   rF : ∃ L, 8 * (2 * k + 9) ≤ L ∧ ⟨fp, L⟩ ∈ s.vg.wr
 
+theorem Arr.frame {s s' : S} {k : Nat} {ap np fp : Addr} {gs : List Reg} (ar : Arr s k ap np fp)
+    (h : Frame s s' gs) : Arr s' k ap np fp := by
+  obtain ⟨hk, hap, hnp, hfp, sepA, sepN, rA, rN, rF⟩ := ar
+  rw [← h.rd, ← h.wr] at rA rN
+  rw [← h.wr] at rF
+  exact ⟨hk, hap, hnp, hfp, sepA, sepN, rA, rN, rF⟩
+
+/-- An XMM register's low half, as `movq` reads it. -/
+theorem extract_lo (x : BitVec 128) : x.extractLsb' 0 64 = x.setWidth 64 := by
+  apply BitVec.eq_of_toNat_eq; simp [BitVec.extractLsb'_toNat]
+
+theorem rcx_of (j : Nat) (h : j < 8) :
+    addOverflow (BitVec.ofNat 64 (2 ^ 64 - 8 + j)) 1 (BitVec.ofNat 64 (2 ^ 64 - 8 + j) + 1) = false := by
+  interval_cases j <;> decide
+
+theorem gsum_split (g : Nat → Nat) (m n : Nat) :
+    gsum g (m + n) = gsum g m + 2 ^ (64 * m) * gsum (fun i => g (m + i)) n := by
+  induction n with
+  | zero => simp [gsum]
+  | succ n ih =>
+    rw [← Nat.add_assoc, gsum, gsum, ih, show 64 * (m + n) = 64 * m + 64 * n by ring, Nat.pow_add]
+    ring
+
+/-- Splits a value at word `m`. -/
+theorem val_split (f : Nat → BitVec 64) (m n : Nat) :
+    val f (m + n) = val f m + 2 ^ (64 * m) * val (fun i => f (m + i)) n := gsum_split _ m n
+
 open Lean Meta Elab Tactic in
 /-- Clears the hypotheses about the machine's state, which `bv_omega` would otherwise case split on to no use:
 an address's bounds take only the arrays' bounds and the indices'. -/
