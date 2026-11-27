@@ -174,10 +174,10 @@ module patch '^(patch/|rind-ring/|(rind/)?Cargo\.toml$|sh/patch\.sh$)' \
 module structure '^(rind/(src/|Cargo\.toml$)|admin/structure$)' \
     tools='cargo cargo-modules'
 # admin/build-cost builds these against rind's public API, and
-# admin/binary-size holds what rind adds to each to its record, which any
-# change to rind's code or the toolchain can move.
-module fixtures '^(rind/(src/|Cargo\.toml$|build\.rs$)|rind-rustls/(src/|Cargo\.toml$|build\.rs$)|Cargo\.toml$|flake\.(nix|lock)$|admin/build-cost-fixtures/(rind|rustls)/|admin/binary-size(\.txt|-[a-z]+\.lock)?$)' \
-    tools='cargo nm python3' compiles pr fix
+# admin/binary-size reports what the diff does to rind's size in each, which
+# any change to rind's code or the toolchain can move, passing whatever it is.
+module fixtures '^(rind/(src/|Cargo\.toml$|build\.rs$)|rind-rustls/(src/|Cargo\.toml$|build\.rs$)|Cargo\.toml$|flake\.(nix|lock)$|admin/build-cost-fixtures/(rind|rustls)/|admin/binary-size(-[a-z]+\.lock)?$)' \
+    tools='cargo git nm python3' compiles pr
 # Advisories, licenses, and sources move with any manifest or the policy.
 module deny '(^|/)Cargo\.(toml|lock)$|^deny\.toml$' \
     tools='cargo-deny' check
@@ -440,6 +440,23 @@ names() {
     return 1
 }
 
+# Whether the Cargo arguments after WHICH, as sh/select.sh prints them, select
+# a target that `--tests` (WHICH is tests) or `--all-targets` builds: one
+# `cargo metadata` lists, with `test` set for the first, whose required
+# features are all on by default, which is none. A build of none compiles no
+# unit, so its `--timings` fails with "no timing data found in log".
+has_targets() {
+    local which=$1 arg crates=()
+    shift
+    (($#)) || return 0
+    for arg; do
+        [[ "$arg" != --workspace ]] || return 0
+        [[ "$arg" == -p ]] || crates+=("$arg")
+    done
+    cargo metadata --format-version 1 --no-deps --locked |
+        jq -e --arg which "$which" --args '[.packages[] | select(.name | IN($ARGS.positional[])) | .targets[] | select((.["required-features"] // []) == [] and (if $which == "tests" then .test else (.kind | index("custom-build") | not) end))] | length > 0' "${crates[@]}" >/dev/null
+}
+
 # One module's check or fix, run through `run`.
 step() {
     local listed=$logs/$2.files packages libs backends target targets
@@ -479,9 +496,11 @@ step() {
             # CI keeps Cargo's per-crate build timings of the two main builds,
             # which queue-build.yml uploads, so a compile regression shows
             # without profiling by hand. The test build's is taken by whichever
-            # command builds the test binaries first.
-            local timings=()
-            ! github || timings=(--timings)
+            # command builds the test binaries first. A build that selects no
+            # target has no timings to report, so it passes none.
+            local timings=() build_timings=()
+            ! github || ! has_targets tests "${packages[@]}" || timings=(--timings)
+            ! github || ! has_targets all "${packages[@]}" || build_timings=(--timings)
             # A unit test admin/test-scope.toml names may have been renamed by
             # an edit that selects no `scope` module. Listed with the package
             # and target arguments of the run that tests rind, so the two
@@ -510,7 +529,7 @@ step() {
                 # What --tests leaves unbuilt, and so unlinted: benches,
                 # examples, binaries that set `test = false`, such as the fuzz
                 # targets, and a library no test links.
-                run cargo build "${packages[@]}" --all-targets --locked --profile test-fast "${timings[@]}"
+                run cargo build "${packages[@]}" --all-targets --locked --profile test-fast "${build_timings[@]}"
                 if names rind "${packages[@]}"; then
                     # rind's `zeroize` feature, whose impls the zeroing test
                     # holds to their claim: it requires `ZeroizeOnDrop` of
@@ -771,8 +790,10 @@ step() {
             run python3 admin/bench-report render --check
             ;;
         # Each fixture is its own workspace and resolves its own lockfile.
-        check:fixtures) run admin/binary-size ;;
-        fix:fixtures) run admin/binary-size --write ;;
+        # `--all` has no base to compare with.
+        check:fixtures)
+            if [[ -z "${merge_base:-}" ]]; then run admin/binary-size; else run admin/binary-size --base "$merge_base"; fi
+            ;;
         check:patch) run sh/patch.sh ;;
         fix:patch) run cargo fmt --manifest-path patch/fixture/Cargo.toml ;;
         check:py) run sh/python.sh test ;;

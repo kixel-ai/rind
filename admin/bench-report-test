@@ -272,6 +272,18 @@ class Render(unittest.TestCase):
         self.assertIn("| Operation | rind | aws-lc-rs | ring | OpenSSL |", md)
         self.assertIn("| X25519 | 30.00 µs ✓ | - | 33.00 µs ✓ | 300.00 µs |", md)
 
+    def test_build_cost_names_each_program_binary_size_measures(self):
+        sizes = {
+            "url": "https://github.com/kixel-ai/rind/actions/runs/1",
+            "date": "2026-11-28T12:23:00Z",
+            "commit": "0" * 40,
+            "rustc": "rustc 1.98.1",
+            "target": "x86_64-unknown-linux-gnu",
+            "bytes": {"rind": 893481, "rustls": 3836722},
+        }
+        md = br.report(hosts(), None, VERIFIED, [], sizes)[br.REPORT]
+        self.assertIn("| rind | 893,481 |\n| rustls + rind-rustls | 3,836,722 |", md)
+
     def test_leaves_out_a_library_the_cpu_lacks_features_for(self):
         regex = re.compile(br.operation_regex({"graviola": ["adx"]}))
         for row in ["x25519-ecdh/rind", "p256-ecdh/p256-rustcrypto", "aes128-gcm/openssl/32B"]:
@@ -363,6 +375,19 @@ class Verified(unittest.TestCase):
 
     def test_checked_in_table_loads(self):
         br.load_verified()
+
+    def test_zen4_earns_the_chacha20poly1305_tick_only_from_800_bytes(self):
+        ifma = {"avx": 1, "avx2": 1, "avx512f": 1, "avx512vl": 1, "avx512ifma": 1}
+        table = br.load_verified()
+        for zen4, rows in [
+            (0, ["chacha20poly1305/32B", "chacha20poly1305/1350B", "xchacha20poly1305/16KB"]),
+            (1, ["chacha20poly1305/1350B", "chacha20poly1305/16KB", "xchacha20poly1305/1350B"]),
+        ]:
+            h = {"cpu": {"arch": "x86_64"}, "os": "Linux", "rind_cpu": {"cpuid": ifma | {"zen4": zen4}}}
+            for row in rows:
+                self.assertIsNotNone(br.proof_for(table, "rind", row, h), (zen4, row))
+        h = {"cpu": {"arch": "x86_64"}, "os": "Linux", "rind_cpu": {"cpuid": ifma | {"zen4": 1}}}
+        self.assertIsNone(br.proof_for(table, "rind", "chacha20poly1305/32B", h))
 
 
 class Gaps(unittest.TestCase):

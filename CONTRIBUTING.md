@@ -34,7 +34,9 @@ families it touches, by the map in `admin/test-scope.toml`; a test added to
 `rind/tests/`, or a primitive's new file, needs its entry there, which `just
 check` checks. `just ci` runs the PR check's gate over the same diff, adding
 the Rust targets' other builds and the docs, the site, the semver marks, the
-binary-size record, and the mutants pins. `just ci --all` (`just gate`) runs
+mutants pins, and `admin/binary-size`, which reports in the job summary what
+the diff does to rind's bytes in two small programs, passing whatever the
+change. `just ci --all` (`just gate`) runs
 every module over the whole tree, the cross, MSRV, wasm, no-std, adapter-API,
 constant-time, structure, Python, Dart, OpenSSL, and patch modules among
 them, which gate no merge and run nightly; `CHECK_MODULES=cross just ci` runs
