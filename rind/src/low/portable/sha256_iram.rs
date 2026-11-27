@@ -166,16 +166,19 @@ fn round(
 struct RoundConstants(*const u32);
 
 impl RoundConstants {
+    /// The first sixteen words of `k`, which is always `K`: a parameter so
+    /// that the translation passes its own `K` to the model.
     #[inline(always)]
-    fn first() -> Self {
-        Self(K.as_ptr())
+    fn first(k: &'static [u32; 64]) -> Self {
+        Self(k.as_ptr())
     }
 
     /// Word `I` of the sixteen from `self`.
     ///
     /// # Safety
     ///
-    /// `self` is at `K[0]`, `K[16]`, `K[32]`, or `K[48]`, and `I < 16`.
+    /// `self` is at `k[0]`, `k[16]`, `k[32]`, or `k[48]` of the table it
+    /// started at, and `I < 16`.
     #[inline(always)]
     unsafe fn get<const I: usize>(self) -> u32 {
         // SAFETY: `self.0.add(I)` stays inside `K`, as the caller promises.
@@ -345,7 +348,7 @@ fn sha256_compress_block(state: &mut [u32; 8], block: &[u8; 64]) {
     let mut h = state[7];
 
     let mut w = Window::new();
-    let kp = RoundConstants::first();
+    let kp = RoundConstants::first(&K);
     message_rounds!(
         w, block, kp, a, b, c, d, e, f, g, h, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15
     );

@@ -2057,9 +2057,16 @@ CARGO_TARGET_DIR=$prove_target-mcu RUSTFLAGS=$mcu_cfg extract armv7a-none-eabi M
     --opaque crate::low::portable::sha::iram::RoundConstants \
     --opaque crate::low::portable::sha::iram::Window \
     --opaque crate::low::portable::sha::iram::Blocks \
+    --opaque 'crate::low::portable::sha::iram::_::first' \
+    --opaque 'crate::low::portable::sha::iram::_::new' \
+    --opaque 'crate::low::portable::sha::iram::_::get' \
+    --opaque 'crate::low::portable::sha::iram::_::set' \
+    --opaque 'crate::low::portable::sha::iram::_::next' \
+    --opaque 'crate::low::portable::sha::iram::_::block' \
     --include crate::low::generic::sha256_k \
     --include crate::low::generic::sha512::K \
     --include crate::low::generic::sha512_rolled \
+    --opaque crate::mid::sha3 \
     --start-from crate::error::Error --start-from crate::low::ct::into_public
 
 mkdir -p proofs/Rind/Aarch64/Kdf

@@ -116,9 +116,11 @@ fn sha512_compress_block(state: &mut [u64; 8], block: &[u8; 128]) {
 pub(crate) fn sha512_compress_blocks(state: &mut [u64; 8], blocks: &[u8]) {
     assert!(blocks.len().is_multiple_of(128));
 
-    let (chunks, _) = blocks.as_chunks::<128>();
-    for block in chunks {
+    // Not a `for` over `as_chunks`, whose loop Aeneas cannot translate.
+    let mut rest = blocks;
+    while let Some((block, tail)) = rest.split_first_chunk::<128>() {
         sha512_compress_block(state, block);
+        rest = tail;
     }
 }
 
