@@ -17,6 +17,7 @@ import Rind.X86_64.Ed25519Ifma
 import Rind.X86_64.Ed25519Verify
 import Rind.X86_64.RsaDispatch
 import Rind.X86_64.RsaPrivate
+import Rind.X86_64.RsaPrivKey
 import Rind.X86_64.Sha3
 import Rind.X86_64.AesKw
 import Rind.X86_64.P256Signature
@@ -30,8 +31,9 @@ open rind.x86_64
 /-!
 The axioms each theorem rests on, beyond Lean's own: s2n-bignum's contracts
 in `Rind.X86_64.S2nBignum` for X25519, P-256 key generation, ECDH, and
-ECDSA, P-384, Ed25519, RSA verification and the private operation, and the
-Keccak-f of SHA-3 and ML-KEM's SHAKE; for the SHA-512 family, for HMAC, HKDF,
+ECDSA, P-384, Ed25519, RSA verification, key loading, and the private
+operation, and the Keccak-f of SHA-3 and ML-KEM's SHAKE; for the SHA-512
+family, for HMAC, HKDF,
 and PBKDF2, which cover SHA-384 and SHA-512, and for Ed25519's hashes, aws-lc's
 AVX routine's in `Rind.X86_64.AwsLc` and rind's HOL Light proof there of
 OpenSSL's AVX2 routine; for SHA-256, which the theorems over every HMAC algorithm cover,
@@ -40,8 +42,8 @@ rind's HOL Light proofs of its routines for the SHA extensions in
 `Rind.X86_64.ShaBlocks`; Vale's in
 `Rind.X86_64.ValeAesGcm` for AES-GCM, rind's HOL Light proof of aws-lc's
 `bn_mul_mont_nohw` in `Rind.X86_64.RsaMont` for RSA's Montgomery products at
-the widths aws-lc's 4x and 8x routines do not take, and its Lean proof there
-of `bn_mul4x_mont` for the 4x products without BMI2 and ADX, rind's HOL Light proofs
+the widths aws-lc's 4x and 8x routines do not take, and its Lean proofs there
+of `bn_mul4x_mont` and `bn_mulx4x_mont` for the 4x products, rind's HOL Light proofs
 of its constant-time compares in `Rind.X86_64.CtEqual` for HMAC's and PBKDF2's
 `verify`, AES-GCM's tag check, ChaCha20-Poly1305's one-pass tag check,
 RSASSA-PSS's hash compare, and key wrap's `unwrap` and
@@ -65,9 +67,9 @@ AVX2 port. ChaCha20-Poly1305's one pass also takes aws-lc's routines as the
 hypotheses `RunsSeal` and `RunsOpen`, which no axiom states, whose `OnePass`
 takes them on CPUs without IFMA, and on Zen 4 for short messages, and the AEAD API above it takes the one pass
 as the hypotheses `Seals` and `Opens`. None of these hypotheses states an axiom.
-RSA's Montgomery products at the widths aws-lc's `bn_mulx4x_mont` and
-`bn_sqr8x_mont` take, but for s2n-bignum's Karatsuba routines, take those as
-the hypothesis `AwsLcMont`, which no axiom states either. ChaCha20's
+RSA's Montgomery squares at the widths aws-lc's `bn_sqr8x_mont` takes, but
+for s2n-bignum's Karatsuba routines, take it as the hypothesis `AwsLcMont`,
+which no axiom states either. ChaCha20's
 `apply_keystream` takes the hypothesis `LinuxBuild`, which no axiom states
 either, where `new` picks no VG routine and finds SSSE3, since rind's HOL Light
 proof of the SSSE3 routine covers the `x86_64-unknown-linux-gnu` build's object,
@@ -1094,6 +1096,7 @@ change to the trust base.
  bignum_ksqr_32_64_spec,
  bignum_optsub_spec,
  mul4x_spec,
+ mulx4x_spec,
  nohw_spec] -/
 #guard_msgs in
 #print axioms mont_products
@@ -1120,6 +1123,22 @@ change to the trust base.
  rsa_ifma_public_spec] -/
 #guard_msgs in
 #print axioms private_op_rsa2048_spec
+
+/-- info: 'rind.x86_64.rsa_private_key_new_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ bignum_bitsize_spec,
+ bignum_cmp_lt_spec,
+ bignum_eq_spec,
+ bignum_modadd_spec,
+ bignum_montifier_spec,
+ bignum_montredc_spec,
+ bignum_mul_spec,
+ bignum_negmodinv_spec,
+ bignum_optsub_spec,
+ rsa_vg_precompute_spec] -/
+#guard_msgs in
+#print axioms rsa_private_key_new_spec
 
 /-- info: 'rind.x86_64.sha3_family_digest' depends on axioms: [propext, Classical.choice, Quot.sound, sha3_keccak_f1600_spec] -/
 #guard_msgs in

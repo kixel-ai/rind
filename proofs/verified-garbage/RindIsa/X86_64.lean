@@ -9,13 +9,14 @@ frames of under a page. aws-lc's Montgomery routines make their own frame:
 they push the callee-saved registers, move `rsp` down past their scratch
 space by `lea`, a page at a time with a probing load at each, and restore
 `rsp` from a saved copy in one `lea`. They also use `neg`, `dec`, `ja`,
-aligned `movdqa` to and from memory, and padding the assembler lays out;
-aws-lc's Poly1305 also uses `shrd`. BoringSSL's AES-GCM routines read
-`vpshufd`'s source from memory, return with a plain `ret`, and read their
-constant tables by RIP-relative addressing (`rip`), which VG's code reaches
-only through a register `lea` loads. This model is VG's with those added:
-its state is VG's with the lowest address the stack may reach, its
-instructions are VG's, run by VG's
+aligned `movdqa` to and from memory, `imul` of a memory operand, encodings
+of VG's `mov` and `mulx` longer than VG's encoder emits, which aws-lc writes
+as bytes, and padding the assembler lays out; aws-lc's Poly1305 also uses
+`shrd`. BoringSSL's AES-GCM routines read `vpshufd`'s source from memory,
+return with a plain `ret`, and read their constant tables by RIP-relative
+addressing (`rip`), which VG's code reaches only through a register `lea`
+loads. This model is VG's with those added: its state is VG's with the
+lowest address the stack may reach, its instructions are VG's, run by VG's
 semantics, and those below, each transcribing the pseudocode of the Intel
 SDM Vol. 2 the docs cite, in VG's style, so that the leakage model of
 `TCB/Code.lean` applies unchanged: every memory access faults outside the
@@ -96,6 +97,15 @@ inductive Instr
   | movdqaLoad (d : XReg) (m : MemOp)
   /-- `movdqa XMMWORD PTR m, xmm` (`66 0F 7F /r`) -/
   | movdqaStore (m : MemOp) (s : XReg)
+  /-- `imul r64, QWORD PTR m` (`REX.W 0F AF /r`) -/
+  | imulMem (d : Reg) (m : MemOp)
+  /-- `mov r64, r64` (`REX.W 89 /r`) after `n` address-size prefixes (`67`),
+  which aws-lc writes as `.byte 0x67` to pad its code -/
+  | movPad (n : Nat) (d s : Reg)
+  /-- `mulx hi, lo, QWORD PTR [b + d]` (`VEX.LZ.F2.0F38.W1 F6 /r`) with a
+  32-bit displacement (ModR/M `mod = 10`), however short `d` is, as aws-lc
+  writes it in bytes -/
+  | mulxD32 (hi lo : Reg) (m : MemOp)
   /-- `vpshufd xmm, XMMWORD PTR m, imm8` (`VEX.128.66.0F.WIG 70 /r ib`) -/
   | vpshufdLoad (d : XReg) (m : MemOp) (order : BitVec 8)
   /-- `op`, its memory operand the start of the static `name`, whose words
@@ -170,6 +180,17 @@ def static256 (ws : List (BitVec 64)) : Option (BitVec 256) :=
   general-protection exception (#GP) will be generated": so it faults
   unless the address is a multiple of 16. The legacy SSE form leaves bits
   511:128 of the register unchanged (`setXmm`).
+* "IMUL" (`REX.W 0F AF /r`, `IMUL r64, r/m64`) with a memory source: as
+  VG's `execImul` with the quadword at `m` for the register source,
+  `TMP_XP := DEST ∗ SRC; DEST := TruncateToOperandSize(TMP_XP)`, CF and OF
+  set if the sign-extended result differs from `TMP_XP`, SF and ZF
+  undefined; it faults outside the readable regions.
+* `movPad`: VG's `mov` between registers. "Using this prefix [67H] … when
+  operands for the instruction do not reside in memory is reserved", SDM
+  Vol. 2, §2.1.1: the model takes the prefix to change nothing, as aws-lc's
+  use of it as padding assumes, and `admin/prove vg` checks on the CPU.
+* `mulxD32`: VG's `mulx` of the memory operand, whose encoding (SDM Vol. 2,
+  §2.1.5, "32-bit displacement") changes only the instruction's length.
 * "PSHUFD" (VEX.128 encoded version): `DEST[127:0]` as PSHUFD's of `SRC`
   (`shufDwords`), `DEST[MAXVL-1:128] := 0` (`setV .l128`); `SRC` the 16
   bytes at the address, little-endian, with no alignment required.
@@ -216,6 +237,13 @@ def exec : Instr → State → Option State
   | .movdqaStore m r, s =>
     let a := s.vg.ea m
     if a.toNat % 16 = 0 then (s.vg.store128 a (s.vg.xmm r)).map fun g => { s with vg := g } else none
+  | .imulMem d m, s => (s.vg.load64 (s.vg.ea m)).map fun b =>
+    let t := (s.vg.gpr d).toInt * b.toInt
+    let r : BitVec 64 := BitVec.ofInt 64 t
+    let o := r.toInt != t
+    { s with vg := (s.vg.setFlags (some o) (some o) none none).setReg d r }
+  | .movPad _ d r, s => (VG.X86_64.exec (.mov d (.reg r)) s.vg).map fun g => { s with vg := g }
+  | .mulxD32 hi lo m, s => (VG.X86_64.exec (.mulx hi lo (.mem m)) s.vg).map fun g => { s with vg := g }
   | .vpshufdLoad d m o, s =>
     (s.vg.load128 (s.vg.ea m)).map fun v => { s with vg := s.vg.setV .l128 d (shufDwords v o) 0 }
   | .rip (.vbin op .l128 d a) _ ws, s =>
@@ -230,21 +258,26 @@ def exec : Instr → State → Option State
 
 /-- The addresses an instruction accesses: VG's for its own, and for the
 others the quadword a push stores, the 16 bytes a `movdqa` or `vpshufd`
-moves, and a static's offset, 0, as VG's table instructions leak: the
-static's address does not depend on the data. -/
+moves, the memory operand an `imul` or a `mulx` reads, and a static's
+offset, 0, as VG's table instructions leak: the static's address does not
+depend on the data. -/
 def addrs : Instr → State → List Addr
   | .vg i, s => VG.X86_64.addrs i s.vg
   | .push _, s => [s.vg.gpr .rsp - 8]
-  | .movdqaLoad _ m, s | .movdqaStore m _, s | .vpshufdLoad _ m _, s => [s.vg.ea m]
+  | .movdqaLoad _ m, s | .movdqaStore m _, s | .vpshufdLoad _ m _, s | .imulMem _ m, s
+  | .mulxD32 _ _ m, s => [s.vg.ea m]
   | .rip .., _ => [0]
-  | .lea .., _ | .leaRsp _, _ | .neg _, _ | .dec _, _ | .shrd .., _ | .align _, _ | .jmpAlign _, _ => []
+  | .lea .., _ | .leaRsp _, _ | .neg _, _ | .dec _, _ | .shrd .., _ | .movPad .., _ | .align _, _
+  | .jmpAlign _, _ => []
 
 /-- The CPU features beyond the baseline: VG's for its own and for the
-forms of VG's instructions `rip` reads a static by, AVX for `vpshufd`, and
-none for the others, which are x86-64 and SSE2 baseline instructions. -/
+forms of VG's instructions `rip` reads a static by, AVX for `vpshufd`,
+`mulx`'s for `mulxD32`, and none for the others, which are x86-64 and SSE2
+baseline instructions. -/
 def Instr.requires : Instr → List String
   | .vg i => i.requires
   | .vpshufdLoad .. => ["avx"]
+  | .mulxD32 .. => ["bmi2"]
   | .rip (.vbin op len d a) .. => (VG.X86_64.Instr.vbinLoad op len d a { base := .rax }).requires
   | .rip (.vbroadcasti128 d) .. => (VG.X86_64.Instr.vbroadcasti128 d { base := .rax }).requires
   | _ => []
@@ -306,10 +339,25 @@ def vexRip (pp map l v op r : Nat) : List Nat :=
   if map == 1 then [0xC5, rb <<< 7 ||| vv <<< 3 ||| l <<< 2 ||| pp] ++ tail
   else [0xC4, rb <<< 7 ||| 1 <<< 6 ||| 1 <<< 5 ||| map, vv <<< 3 ||| l <<< 2 ||| pp] ++ tail
 
+/-- `mulxD32`'s bytes: VEX's three-byte form (`C4`, `R̄X̄B̄` and map `0F38`,
+then `W1`, `vvvv` the low half's register inverted, `L0`, `F2`), `F6`,
+ModR/M with `mod = 10`, a SIB for an `rsp` or `r12` base, and the 32-bit
+displacement. `none` with an index, which aws-lc's bytes have none of. -/
+def mulxD32Bytes (hi lo : Reg) (m : MemOp) : Option (List Nat) :=
+  if m.index.isSome then none
+  else
+    let b := Enc.reg m.base
+    let sib := if b % 8 == 4 then [0x24] else []
+    some ([0xC4, (1 - Enc.reg hi / 8 % 2) <<< 7 ||| 1 <<< 6 ||| (1 - b / 8 % 2) <<< 5 ||| 2,
+      0x80 ||| (15 - Enc.reg lo % 16) <<< 3 ||| 3, 0xF6,
+      0x80 ||| (Enc.reg hi % 8) <<< 3 ||| (if sib.isEmpty then b % 8 else 4)] ++ sib ++
+      Enc.le 4 (m.disp % 2 ^ 32).toNat)
+
 /-- The bytes of an instruction at byte offset `o`: VG's encoding of its own
 (`Instr.encode`); `push` `50+rd`, with `REX.B` for `r8`–`r15`; `lea`,
-`neg`, `dec`, `shrd`, `movdqa`, and `vpshufd` as their docs give, in VG's
-encoder's forms; `rip`'s as the register forms' VG encodes (`VBinOp.opc`,
+`neg`, `dec`, `shrd`, `movdqa`, `vpshufd`, and `imul` as their docs give,
+in VG's encoder's forms; `movPad` as `n` bytes `67` then VG's `mov`;
+`mulxD32`'s; `rip`'s as the register forms' VG encodes (`VBinOp.opc`,
 "VBROADCAST" `VEX.256.66.0F38.W0 5A /r`) with a RIP-relative operand; and
 the padding, `none` unless `n` is a power of two up to 64 and the jump's
 reach (`EB cb`, at most 127) covers it. -/
@@ -328,6 +376,9 @@ def Instr.encode (o : Nat) : Instr → Option (List Nat)
     let (pp, map, c, _) := op.opc
     some (vexRip pp map (Enc.len l) (Enc.xreg a) c (Enc.xreg d))
   | .rip (.vbroadcasti128 d) .. => some (vexRip 1 2 1 0 0x5A (Enc.xreg d))
+  | .imulMem d m => Enc.legacy [] true [0x0F, 0xAF] (Enc.reg d) (Enc.RM.mem m)
+  | .movPad n d r => (Enc.legacy [] true [0x89] (Enc.reg r) (Enc.RM.reg (Enc.reg d))).map (List.replicate n 0x67 ++ ·)
+  | .mulxD32 hi lo m => mulxD32Bytes hi lo m
   | .align n => if n ∈ [1, 2, 4, 8, 16, 32, 64] then some (padding (padLen n o)) else none
   | .jmpAlign n =>
     if n ∈ [1, 2, 4, 8, 16, 32, 64] then some ([0xEB, padLen n (o + 2)] ++ padding (padLen n (o + 2)))

@@ -397,6 +397,14 @@ opaque low.x86_64.cpu.HaveBmi2Adx.check
 opaque low.x86_64.cpu.HaveAvx512ForRsa.check
   : Result (Option low.x86_64.cpu.HaveAvx512ForRsa)
 
+opaque low.x86_64.cpu.HaveAvx512ForRsa.fp16
+  : low.x86_64.cpu.HaveAvx512ForRsa → Result Bool
+
+/-- Wiping VG's CRT values, which no proof observes: the translation ignores
+drops. -/
+opaque low.x86_64.rsa_ifma.IfmaCrt.Insts.CoreOpsDropDrop.drop
+  : low.x86_64.rsa_ifma.IfmaCrt → Result low.x86_64.rsa_ifma.IfmaCrt
+
 /-- pyca/verified-garbage's AVX-512 IFMA public operation and CRT, behind
 the Rust that sizes their scratch and calls them, which `Rind.X86_64.VgRsa`
 states. -/
@@ -897,6 +905,9 @@ opaque high.curve.P521.Insts.RindHighAgreementAgreePrivateKey.load
 opaque low.x86_64.bignum_negmodinv.bignum_negmodinv
   : Slice Std.U64 → Slice Std.U64 → Result (Slice Std.U64)
 
+opaque low.x86_64.bignum_montifier.bignum_montifier
+  : Slice Std.U64 → Slice Std.U64 → Slice Std.U64 → Result ((Slice Std.U64) × (Slice Std.U64))
+
 opaque low.x86_64.bignum_bitsize.bignum_bitsize
   : Slice Std.U64 → Result Std.Usize
 
@@ -955,8 +966,9 @@ opaque low.x86_64.bignum_copy_row_from_table.bignum_copy_row_from_table
 
 /-! aws-lc's Montgomery products, behind their Rust wrappers, which
 `Rind.X86_64.RsaMont` states: `nohw_spec` restates rind's HOL Light proof of
-`bn_mul_mont_nohw`, `mul4x_spec` its Lean proof of `bn_mul4x_mont`, and
-`AwsLcMont` the others for the theorems that need them. -/
+`bn_mul_mont_nohw`, `mul4x_spec` and `mulx4x_spec` its Lean proofs of
+`bn_mul4x_mont` and `bn_mulx4x_mont`, and `AwsLcMont` `bn_sqr8x_mont` for
+the theorems that need it. -/
 
 opaque low.x86_64.mont.nohw
   :
