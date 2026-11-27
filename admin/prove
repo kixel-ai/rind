@@ -456,6 +456,77 @@ rooted_hash() {
         done
 }
 
+# Translations, which take most of a run's time: an edit to the proofs alone
+# changes none. Each entry holds what one translation wrote, under a key that
+# hashes everything it reads, so every checkout and host shares it. With
+# `RIND_PROVE_CACHE_HOST`, an SSH host, a miss here reads that host's cache,
+# and a new entry goes there too, so one host serves every other's agents. An
+# unreachable host fails the run, since setting it says the host is there.
+# Entries unread for 14 days go.
+translations=${XDG_CACHE_HOME:-$HOME/.cache}/rind/translations
+mkdir -p "$translations"
+find "$translations" -type f -mtime +14 -delete
+# The SSH host's cache, as its own shell expands it.
+remote_translations='"${XDG_CACHE_HOME:-$HOME/.cache}/rind/translations"'
+
+# Runs the command after `$1`, a key, and `$2`, the directory it writes,
+# which this empties first, or takes what an earlier run under that key wrote
+# there from the cache. Each step's status is checked by hand, since a
+# caller's `||` turns off `set -e` in here.
+cached() {
+    local key=$1 dest=$2 entry status=0
+    shift 2
+    entry=$translations/$key.tar.gz
+    rm -rf "$dest"
+    mkdir -p "$dest"
+    if [[ ! -f $entry && -n ${RIND_PROVE_CACHE_HOST:-} ]]; then
+        ssh -o BatchMode=yes "$RIND_PROVE_CACHE_HOST" \
+            "f=$remote_translations/$key.tar.gz; [ -f \"\$f\" ] || exit 3; touch \"\$f\" && cat \"\$f\"" \
+            </dev/null >"$entry.$$" || status=$?
+        case $status in
+        0) mv "$entry.$$" "$entry" ;;
+        3) rm "$entry.$$" ;;
+        *)
+            rm "$entry.$$"
+            echo "admin/prove: cannot read the translation cache on RIND_PROVE_CACHE_HOST, $RIND_PROVE_CACHE_HOST" >&2
+            return 1
+            ;;
+        esac
+    fi
+    if [[ -f $entry ]]; then
+        touch "$entry" && tar -xzf "$entry" -C "$dest"
+        return
+    fi
+    "$@" || return
+    tar -czf "$entry.$$" -C "$dest" . && mv "$entry.$$" "$entry" || return
+    if [[ -n ${RIND_PROVE_CACHE_HOST:-} ]]; then
+        ssh -o BatchMode=yes "$RIND_PROVE_CACHE_HOST" \
+            "d=$remote_translations; mkdir -p \"\$d\" && cat >\"\$d/$key.tar.gz.\$\$\" &&
+                mv \"\$d/$key.tar.gz.\$\$\" \"\$d/$key.tar.gz\" && find \"\$d\" -type f -mtime +14 -exec rm -f {} +" \
+            <"$entry" || {
+            echo "admin/prove: cannot write the translation cache on RIND_PROVE_CACHE_HOST, $RIND_PROVE_CACHE_HOST" >&2
+            return 1
+        }
+    fi
+}
+
+# Runs Aeneas, `$1`, on the `.llbc` file `$2` with the options after them,
+# into `$3`, through the cache. The key is the `.llbc`, hashed as
+# `rooted_hash` hashes it, since Charon writes the destination's path into
+# it; Aeneas's version; and the options. Charon itself runs every time: it
+# costs little once its target directory is warm, and the key would otherwise
+# have to name every file the crate's build reads.
+aeneas_cached() {
+    local aeneas=$1 llbc=$2 dest=$3 key
+    shift 3
+    key=$({
+        "$aeneas" -version
+        printf '%q\n' "$@"
+        rooted_hash "$llbc" | cut -d' ' -f1
+    } | sha256sum | cut -d' ' -f1) || return
+    cached "$key" "$dest" "$aeneas" "$@" -dest "$dest" "$llbc"
+}
+
 # Writes to `$out/keys/<name>`, and with `key` prints, the key the prove
 # workflow caches the result of the check `name` under, `<name>-<hash>`. The
 # workflow saves it once the check passes on main; main's nightly and
@@ -780,6 +851,21 @@ dalek_copied=(
     src/montgomery.rs:mul_bits_be
     src/scalar.rs:bits_le
 )
+# BAIF's translation of its workspace in `$1/work`, with the configurations
+# after it and `charon_opts`, into `$1/lean`, for `dalek`.
+dalek_translate() {
+    local dir=$1
+    shift
+    # Unset, not empty: cargo takes an empty CARGO_ENCODED_RUSTFLAGS over
+    # each configuration's flags.
+    (cd "$dir/work/curve25519-dalek" && env -u RUSTFLAGS -u CARGO_ENCODED_RUSTFLAGS CARGO_TARGET_DIR=$PWD/../target \
+        "$DALEK_AENEAS/charon" cargo --preset=aeneas "$@" "${charon_opts[@]}" \
+        --dest-file "$PWD/../../curve25519_dalek.llbc" \
+        -- --locked --no-default-features --features alloc,zeroize -Zjson-target-spec -Zbuild-std=core,alloc) &&
+        "$DALEK_AENEAS/aeneas" -backend lean -split-files -namespace Curve25519Dalek \
+            -dest "$dir/lean" -subdir Curve25519Dalek "$dir/curve25519_dalek.llbc"
+}
+
 # Checks that the curve25519-dalek rind builds on armv7 is the code BAIF's
 # proofs at `admin/import-dalek`'s REV are about, in every definition
 # `dalek_roots` reach: that it is the crates.io release Cargo.lock pins with
@@ -793,7 +879,7 @@ dalek_copied=(
 # longer applies to the release is skipped: a definition it would have
 # changed then differs.
 dalek() {
-    local dir=$out/dalek fork=.tmp/upstream/curve25519-dalek lean src features bits triple spec patch
+    local dir=$out/dalek fork=.tmp/upstream/curve25519-dalek lean src features bits triple spec patch key
     local targets=() charon_opts
     hold dalek
     rm -rf "$dir"
@@ -867,16 +953,20 @@ PY
         export "CARGO_TARGET_${bits}BIT_NOTABLES_RUSTFLAGS=--cfg curve25519_dalek_backend=\"serial\""
     done
     eval "$(sed -n '/^charon_opts=(/,/^)/p' "$lean/scripts/aeneas-translate.sh")"
-    # Unset, not empty: cargo takes an empty CARGO_ENCODED_RUSTFLAGS over
-    # each configuration's flags.
-    (cd "$dir/work/curve25519-dalek" && env -u RUSTFLAGS -u CARGO_ENCODED_RUSTFLAGS CARGO_TARGET_DIR=$PWD/../target \
-        "$DALEK_AENEAS/charon" cargo --preset=aeneas "${targets[@]}" "${charon_opts[@]}" \
-        --dest-file "$PWD/../../curve25519_dalek.llbc" \
-        -- --locked --no-default-features --features alloc,zeroize -Zjson-target-spec -Zbuild-std=core,alloc)
-    "$DALEK_AENEAS/aeneas" -backend lean -split-files -namespace Curve25519Dalek \
-        -dest "$dir" -subdir Curve25519Dalek "$dir/curve25519_dalek.llbc" >"$dir/aeneas.log" 2>&1 ||
-        { tail -20 "$dir/aeneas.log" >&2; return 1; }
-    admin/dalek-closure "$lean/Curve25519Dalek" "$dir/Curve25519Dalek" 32bit-tables "${dalek_roots[@]}"
+    # The translation reads nothing but the workspace, the configurations,
+    # the options, and the release of Charon and Aeneas, which name their
+    # toolchain, so they key it, Charon's build included: `$dir` starts empty,
+    # so that build is cold every run.
+    key=$({
+        realpath -e "$DALEK_AENEAS"
+        declare -f dalek_translate
+        declare -p charon_opts
+        env | grep '^CARGO_TARGET_.*BIT_.*TABLES_RUSTFLAGS=' | LC_ALL=C sort
+        cd "$dir" && files_hash work ./*.json
+    } | sha256sum | cut -d' ' -f1)
+    cached "$key" "$dir/lean" dalek_translate "$dir" "${targets[@]}" >"$dir/translate.log" 2>&1 ||
+        { tail -20 "$dir/translate.log" >&2; return 1; }
+    admin/dalek-closure "$lean/Curve25519Dalek" "$dir/lean/Curve25519Dalek" 32bit-tables "${dalek_roots[@]}"
     release dalek
 }
 
@@ -1706,13 +1796,11 @@ extract() {
 # Translates `$out/<dir, lowercased>.llbc` into `proofs/Rind/<dir>/{Types,Funs}.lean`.
 to_lean() {
     local dir=$1
-    rm -rf "$out/lean"
     # x86_64's generator table rows are 512-word literals, and Ed25519's
     # tables of B's odd multiples 1024-word ones, which elaborate past Aeneas's
     # default recursion depth of 2048.
-    aeneas -backend lean -split-files -abort-on-error \
-        -no-progress-bar -max-recdepth 8192 -dest "$out/lean" -subdir "Rind/$dir" \
-        -namespace "rind.${dir,,}" "$out/${dir,,}.llbc"
+    aeneas_cached aeneas "$out/${dir,,}.llbc" "$out/lean" -backend lean -split-files -abort-on-error \
+        -no-progress-bar -max-recdepth 8192 -subdir "Rind/$dir" -namespace "rind.${dir,,}"
     cp "$out/lean/Rind/$dir/Types.lean" "$out/lean/Rind/$dir/Funs.lean" "proofs/Rind/$dir/"
 }
 
@@ -1844,10 +1932,8 @@ extract_kdf() {
         "$@" \
         --dest-file "$PWD/../$out/${dir,,}-kdf.llbc" \
         -- -p rind --lib --target "$arch-unknown-linux-gnu")
-    rm -rf "$out/lean"
-    aeneas -backend lean -split-files -abort-on-error \
-        -no-progress-bar -dest "$out/lean" -subdir "Rind/$dir/Kdf" \
-        -namespace "rind.${dir,,}.kdf" "$out/${dir,,}-kdf.llbc"
+    aeneas_cached aeneas "$out/${dir,,}-kdf.llbc" "$out/lean" -backend lean -split-files -abort-on-error \
+        -no-progress-bar -subdir "Rind/$dir/Kdf" -namespace "rind.${dir,,}.kdf"
     mkdir -p "proofs/Rind/$dir/Kdf"
     # Aeneas names both of `ZeroablePrimitive`'s `Copy` clauses, which
     # `NonZeroU32::get` brings in, `markerCopyInst`, which Lean refuses as a
