@@ -1,7 +1,7 @@
 import RindIsa.X86_64.PolyHashAd
 
 /-!
-# ChaCha20-Poly1305 seal and open with AVX2
+# ChaCha20-Poly1305's AVX2 seal
 
 rind's naked function `low::x86_64::chacha20poly1305::seal_avx2`, its
 structured copy of the AVX2 half of aws-lc's `chacha20_poly1305_seal`

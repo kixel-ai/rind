@@ -62,9 +62,11 @@ importer writes at its pin, so a reviewer reads the importer and its pin
 ([AUDIT.md's Provenance](AUDIT.md#provenance)), not the output. rind's
 structured copy of aws-lc's aarch64 ChaCha20-Poly1305
 (`rind/src/low/aarch64/chacha20poly1305/`) is hand-written: no importer
-writes it. Its x86_64 AVX2 seal's (`rind/src/low/x86_64/chacha20poly1305/`)
-is generated, by `admin/chacha20poly1305-x86/generate`, which a reviewer
-reads with the Lean program it also writes. Hand-written lines include each file's inline unit tests. Tests under `rind/tests` and
+writes it. rind's structured copy of aws-lc's x86_64 AVX2 seal
+(`rind/src/low/x86_64/chacha20poly1305/`) is generated, by
+`admin/chacha20poly1305-x86/generate`, which a reviewer reads with the Lean
+program it also writes, and which fails if the aws-lc text it copies
+changes. Hand-written lines include each file's inline unit tests. Tests under `rind/tests` and
 `rind/src/test`, vectors, fuzz targets, and tooling are not counted, since
 they are not what ships. The Lean split is by file name, from
 [`proofs/README.md`'s layout](proofs/README.md#layout), and is a reading aid:

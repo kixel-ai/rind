@@ -9,9 +9,11 @@ tree of aws-lc's blocks laid out as `Code`'s `ite` and `loop`.
 Usage: admin/chacha20poly1305-x86/generate
 
 `admin/regenerate` runs it after `admin/import-aws-lc`, and fails if either
-output differs from the committed one.
+output differs from the committed one. The tree restates aws-lc's jumps and
+compares, so it fails too if the aws-lc text it copies changes: a changed
+routine needs its tree re-derived.
 """
-import re, sys, os
+import hashlib, re, sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from blocks import parse
 from translate import tr, normalize, COND
@@ -56,18 +58,36 @@ class Loop(Node):
 
 
 class Routine:
-    def __init__(s, path):
-        s.blocks = {b.name: b for b in parse(path)}
+    def __init__(s, path, first, last, shared, digest):
+        """aws-lc's routine in `path`: the blocks from `first` to `last` and
+        the `shared` ones it jumps to. The tree restates their jumps and
+        compares, so generation fails unless their text, labels and jumps
+        included, still hashes to the `digest` the tree was written for."""
+        blocks = parse(path)
+        s.blocks = {b.name: b for b in blocks}
+        names = [b.name for b in blocks]
+        s.text = names[names.index(first):names.index(last) + 1] + list(shared)
+        text = ''.join(f'{n} {s.blocks[n].term}\n' + ''.join(t + '\n' for _, t in s.blocks[n].lines)
+                       for n in s.text)
+        got = hashlib.sha256(text.encode()).hexdigest()
+        assert got == digest, f'aws-lc changed {first}: re-derive its tree, then take digest {got}'
         s.used = set()
 
-    def blk(s, name, drop=(), sub=None, drop_last=0):
-        """The instructions of aws-lc's block `name`, but those `drop` names
-        (exactly, or its last `drop_last`), the `call` inlined."""
+    def done(s, restates):
+        """Fails unless the tree took every block of the routine that holds
+        an instruction but those it `restates`."""
+        left = {n for n in s.text if s.blocks[n].lines} - s.used
+        assert left == set(restates), sorted(left ^ set(restates))
+
+    def blk(s, name, drop=(), sub=None, tail=()):
+        """The instructions of aws-lc's block `name`, but its `rep ret`, those
+        `drop` names, and the `tail` it ends with, the `call` inlined."""
         b = s.blocks[name]
         s.used.add(name)
-        lines = [normalize(t) for _, t in b.lines if '0xf3' not in t]
-        if drop_last:
-            lines = lines[:-drop_last]
+        lines = [normalize(t) for _, t in b.lines if t != '.byte\t0xf3,0xc3']
+        if tail:
+            assert lines[-len(tail):] == list(tail), (name, lines[-len(tail):])
+            lines = lines[:-len(tail)]
         for d in drop:
             assert d in lines, (name, d)
             lines.remove(d)
@@ -109,7 +129,7 @@ def hashad_lines():
     out = []
     for raw in open(HASHAD_S):
         t = raw.rstrip('\n')
-        if not t.strip() or t.lstrip().startswith('#') or '0xf3,0xc3' in t:
+        if not t.strip() or t.lstrip().startswith('#') or t == '\t.byte\t0xf3,0xc3':
             continue
         out.append(t)
     return out
@@ -150,7 +170,7 @@ class Emit:
         if isinstance(node, Ins):
             out = []
             if node.note:
-                out.append(f'# {node.note}')
+                out.append(f"# rind's {node.note}" if node.note in FRAME else f'# {node.note}')
             for t in node.lines:
                 if t.startswith('.align '):
                     n = int(t.split()[1])
@@ -270,6 +290,13 @@ PROLOGUE = X('pushq\t%rbp', 'pushq\t%rbx', 'pushq\t%r12', 'pushq\t%r13', 'pushq\
              'movq\t%rdx,%rbx', 'movq\t%r8,0+0+32(%rbp)', 'movq\t%rbx,8+0+32(%rbp)')
 PROLOGUE.note = 'prologue'
 
+# The notes of rind's frame, which names no aws-lc block.
+FRAME = {
+    'prologue': "rind's prologue: aws-lc's entry, but for saving `r9`, adding `extra_in`'s length, and "
+                "testing `ia32cap`",
+    'epilogue': "rind's epilogue: aws-lc's, but returning the tag in `rax` and `rdx`",
+}
+
 EPILOGUE_OLD = ['addq\t$288 + 0 + 32,%rsp', 'popq\t%r9', 'movq\t%r10,(%r9)', 'movq\t%r11,8(%r9)',
                 'popq\t%r15', 'popq\t%r14', 'popq\t%r13', 'popq\t%r12', 'popq\t%rbx', 'popq\t%rbp']
 EPILOGUE = ['movq\t%r10,%rax', 'movq\t%r11,%rdx', 'addq\t$288 + 0 + 32,%rsp',
@@ -279,8 +306,6 @@ EPILOGUE = ['movq\t%r10,%rax', 'movq\t%r11,%rdx', 'addq\t$288 + 0 + 32,%rsp',
 def seal_tail(r):
     """The seal's last partial block, length block, and tag: aws-lc's
     `seal_sse_tail_16` on, without `extra_in`."""
-    dlb = r.blk('do_length_block', drop_last=len(EPILOGUE_OLD))
-    assert dlb.xs[-1].lines[-1] == 'adcq\t8+0+16(%rbp),%r11', dlb.xs[-1].lines[-3:]
     return Seq(
         r.blk('seal_sse_tail_16'),
         Ite('e', X(), Seq(
@@ -289,7 +314,7 @@ def seal_tail(r):
             r.blk('seal_sse_tail_16_compose+1', sub={'movdqu\t%xmm15,%xmm0': 'movdqa\t%xmm15,%xmm0'}),
             Loop(r.blk('seal_sse_tail_16_extract'), 'ne'),
             r.blk('process_partial_block'))),
-        dlb,
+        r.blk('do_length_block', tail=EPILOGUE_OLD),
         Ins(EPILOGUE, 'epilogue'))
 
 
@@ -305,7 +330,12 @@ def x3x2(r, head, x3, x2, note):
 
 
 def seal_avx2():
-    r = Routine(os.path.join(AWS, 'chacha20_poly1305_seal.linux.s'))
+    r = Routine(os.path.join(AWS, 'chacha20_poly1305_seal.linux.s'),
+                'chacha20_poly1305_seal_avx2', 'seal_avx2_exit',
+                ['seal_sse_tail_16', 'seal_sse_tail_16+1', 'seal_sse_tail_16_compose',
+                 'seal_sse_tail_16_compose+1', 'seal_sse_tail_16_extract', 'process_partial_block',
+                 'do_length_block'],
+                '76c646faaca7e731d539b397bc735114df9c964f50f81bb0d5cdd0da8661a4e2')
     t = lambda n: f'seal_avx2_tail_{n}'
     rnd = lambda n, k: f'seal_avx2_tail_{n}_rounds_and_{k}xhash'
     tails = {n: Seq(x3x2(r, t(n), rnd(n, 3), rnd(n, 2), t(n)), r.blk(rnd(n, 2) + '+2'))
@@ -323,7 +353,7 @@ def seal_avx2():
             Ite('le', X(), Seq(r.blk('seal_avx2_main_loop'), r.blk('seal_avx2_main_loop_rounds'),
                                X('cmpq\t$512,%rbx')))),
             'g', 'seal_avx2_main_loop'),
-        r.blk('seal_avx2_main_loop_rounds_entry+2', drop_last=1))
+        r.blk('seal_avx2_main_loop_rounds_entry+2', tail=['cmpq\t$384,%rbx']))
     dispatch = Seq(
         X('cmpq\t$384,%rbx'),
         Ite('a', tails[512], Seq(
@@ -343,13 +373,13 @@ def seal_avx2():
         Loop(r.blk('seal_avx2_init_rounds'), 'ne'),
         r.blk('seal_avx2_init_rounds+1'),
         Ite('be', X(), Seq(
-            r.blk('seal_avx2_init_rounds+2', drop_last=1),
+            r.blk('seal_avx2_init_rounds+2', tail=['cmpq\t$128,%rbx']),
             X('cmpq\t$512,%rbx'),
             Ite('be', X(), main_loop),
             dispatch)))
     body = Seq(
         PROLOGUE,
-        r.blk('chacha20_poly1305_seal_avx2', drop_last=1),
+        r.blk('chacha20_poly1305_seal_avx2', tail=['cmpq\t$192,%rbx']),
         X('cmpq\t$320,%rbx'),
         Ite('be', short, long, 'seal_avx2_320'),
         r.blk('seal_avx2_short_hash_remainder'),
@@ -360,6 +390,11 @@ def seal_avx2():
         Ite('b', X(), r.blk('seal_avx2_short_tail+1')),
         r.blk('seal_avx2_exit'),
         seal_tail(r))
+    # The compares of aws-lc's dispatch chains, which `cmpq` restates in the
+    # order the tree tests them.
+    r.done(['chacha20_poly1305_seal_avx2+1', 'seal_avx2_init_rounds+3', 'seal_avx2_init_rounds+4',
+            'seal_avx2_init_rounds+5', 'seal_avx2_main_loop_rounds_entry+3',
+            'seal_avx2_main_loop_rounds_entry+4'])
     return body
 
 
@@ -404,7 +439,7 @@ def main(asm_dir, lean_path):
         ns = lean_name[0].upper() + lean_name[1:]
         out = [f'namespace {ns}\n']
         for name, note, lines, terms in e.defs:
-            out.append(f'/-- aws-lc\'s `{note}`. -/' if note else '')
+            out.append(f'/-- {FRAME.get(note, f"aws-lc\'s `{note}`")}. -/' if note else '')
             out.append(f'def {name} : List Instr :=\n  [' + ',\n   '.join(terms) + ']\n')
         out.append(f'end {ns}\n')
         out.append(f'/-- {what[0].upper() + what[1:]}, but for its `ret`. -/')

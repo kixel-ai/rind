@@ -261,8 +261,6 @@ def tr(s):
             return f'.vg (.movdquLoad {b.xr()} {a.memop()})'
         if a.kind == 'x' and b.kind == 'mem':
             return f'.vg (.movdquStore {b.memop()} {a.xr()})'
-        if a.kind == 'sym' and b.kind == 'x':
-            return f'.xload .movdqu {b.xr()} {a.mem()}'
     if mn in XBIN and n == 2:
         a, b = ops
         if a.kind == 'x':

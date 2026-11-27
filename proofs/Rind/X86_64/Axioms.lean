@@ -63,8 +63,8 @@ routines (which no theorem about rind's wrappers uses), in
 `Rind.X86_64.VgMlKem768Ct`; and nothing else.
 Ed25519 verification takes the hypothesis `MsmS2n`, that the CPU runs its
 multi-scalar multiplication over s2n-bignum's point routines rather than the
-AVX2 port. ChaCha20-Poly1305's one pass also takes aws-lc's routines as the
-hypotheses `RunsSeal` and `RunsOpen`, which no axiom states, whose `OnePass`
+AVX2 port. ChaCha20-Poly1305's one pass also takes aws-lc's routines and rind's copy of
+its AVX2 seal as the hypotheses `RunsSeal` and `RunsOpen`, which no axiom states, whose `OnePass`
 takes them on CPUs without IFMA, and on Zen 4 for short messages, and the AEAD API above it takes the one pass
 as the hypotheses `Seals` and `Opens`. None of these hypotheses states an axiom.
 RSA's Montgomery squares at the widths aws-lc's `bn_sqr8x_mont` takes, but

@@ -125,8 +125,9 @@ fn open_ifma(
 
 /// The routines' argument block: aws-lc's `chacha20_poly1305_seal_data`,
 /// whose first 48 bytes are its `chacha20_poly1305_open_data`, then the
-/// word rind's copies read in place of `OPENSSL_ia32cap_P[2]`. On return,
-/// the tag overwrites the start of the key.
+/// word rind's copies read in place of `OPENSSL_ia32cap_P[2]`. aws-lc's
+/// routines overwrite the start of the key with the tag; `seal_avx2` only
+/// reads the block and returns the tag.
 #[repr(C, align(16))]
 struct Data {
     key: [u8; 32],
@@ -165,8 +166,8 @@ fn one_pass(
     let ptr = inout.as_mut_ptr();
     // SAFETY: `inout` is `inout.len()` readable and writable bytes, which the
     // routines allow to alias exactly, `aad` is `aad.len()` readable bytes,
-    // and `data` is the block they read and write. The tokens prove SSE4.1,
-    // and AVX2 and BMI2 where `ia32cap` picks the AVX2 half and for
+    // and `data` is the block they read, and aws-lc's write. The tokens prove
+    // SSE4.1, and AVX2 and BMI2 where `ia32cap` picks the AVX2 half and for
     // `seal_avx2`.
     unsafe {
         match (seal, avx2) {
@@ -391,19 +392,19 @@ mod tests {
     // The CPU's fastest path hides the others from every other test, so each
     // path the CPU runs is checked against separate passes directly, under a
     // key `admin/ctgrind` keeps secret: every message length through the
-    // AVX2 half's 512-byte loop and the tails after it, AAD lengths around
-    // aws-lc's 13-byte TLS case and its 16-byte blocks, and longer messages
-    // through VG's wider loops, and opening under a tag one bit off, which
-    // VG's routine answers by zeroing the message. Valgrind hides AVX-512,
-    // so ctgrind checks only the AVX2 and SSE4.1 routines, and
-    // `ct_sde_chacha20poly1305` VG's.
+    // AVX2 half's first 512-byte loop and each of its four tails after it
+    // (lengths 961 to 1472), AAD lengths around aws-lc's 13-byte TLS case
+    // and its 16-byte blocks, and longer messages through VG's wider loops,
+    // and opening under a tag one bit off, which VG's routine answers by
+    // zeroing the message. Valgrind hides AVX-512, so ctgrind checks only the
+    // AVX2 and SSE4.1 routines, and `ct_sde_chacha20poly1305` VG's.
     #[test]
     fn paths_match() {
         let key = core::array::from_fn(|i| i as u8);
         ct::secret_slice(&key);
         let nonce = core::array::from_fn(|i| (i * 7) as u8);
         let input: Vec<u8> = (0..16384 + 15).map(|i| (i * 13 + 5) as u8).collect();
-        let lens = (0..=1100)
+        let lens = (0..=1472)
             .map(|len| (len, 13))
             .chain((0..=48).map(|aad| (300, aad)))
             .chain([2047, 4097, 8191, 16384 + 15].map(|len| (len, 13)));

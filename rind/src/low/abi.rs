@@ -139,7 +139,8 @@ impl<T: InRegister> Ret for T {
     }
 }
 
-/// Two words, which the System V ABI returns in `rax` and `rdx`.
+/// Two words, which the System V ABI returns in `rax` and `rdx`: only for
+/// `extern "sysv64"` routines, since Win64 returns them in `xmm0`.
 #[cfg(target_arch = "x86_64")]
 impl Ret for u128 {
     fn returned(words: Words, call: impl FnOnce(&Words) -> Self) -> Self {

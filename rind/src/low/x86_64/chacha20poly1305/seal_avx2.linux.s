@@ -8,7 +8,7 @@
 # `proofs/verified-garbage/RindIsa/X86_64/ChaCha20Poly1305.lean`, whose bytes
 # `admin/prove lean` checks this assembles to. Each comment names the aws-lc
 # block the instructions after it come from.
-# prologue
+# rind's prologue
 	pushq	%rbp
 .cfi_adjust_cfa_offset	8
 .cfi_offset	%rbp,-16
@@ -3144,7 +3144,7 @@
 	cmovcq	%r15,%r12
 	addq	0+0+16(%rbp),%r10
 	adcq	8+0+16(%rbp),%r11
-# epilogue
+# rind's epilogue
 	movq	%r10,%rax
 	movq	%r11,%rdx
 	addq	$288 + 0 + 32,%rsp

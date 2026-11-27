@@ -1,7 +1,7 @@
 import RindIsa.X86_64.PolyHashAd
 
 /-!
-# ChaCha20-Poly1305 seal and open with AVX2
+# ChaCha20-Poly1305's AVX2 seal
 
 rind's naked function `low::x86_64::chacha20poly1305::seal_avx2`, its
 structured copy of the AVX2 half of aws-lc's `chacha20_poly1305_seal`
@@ -79,7 +79,7 @@ def seqs : List (Prog isa) → Prog isa
 
 namespace SealAvx2
 
-/-- aws-lc's `prologue`. -/
+/-- rind's prologue: aws-lc's entry, but for saving `r9`, adding `extra_in`'s length, and testing `ia32cap`. -/
 def prologue : List Instr :=
   [.push .rbp,
    .push .rbx,
@@ -2883,7 +2883,7 @@ def doLengthBlock : List Instr :=
    .vg (.alu .add .r10 (.mem (m .rbp 16))),
    .vg (.alu .adc .r11 (.mem (m .rbp 24)))]
 
-/-- aws-lc's `epilogue`. -/
+/-- rind's epilogue: aws-lc's, but returning the tag in `rax` and `rdx`. -/
 def epilogue : List Instr :=
   [.vg (.mov .rax (.reg .r10)),
    .vg (.mov .rdx (.reg .r11)),
