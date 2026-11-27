@@ -192,8 +192,7 @@ theorem mul4x_result (z x y m : Slice U64) (n0 : U64) (adx : Option low.x86_64.c
 
 /-! ## rind's `bn_sqrx8x_mont` -/
 
-/-- `bn_sqrx8x_mont_correct` and `bn_sqrx8x_internal_correct`, rind's Lean
-theorems in `Rind/X86_64/Sqrx8xMontProof.lean` and
+/-- `bn_sqrx8x_mont_correct`, rind's Lean theorem in
 `Rind/X86_64/Sqrx8xInternal.lean`, which the same build checks: the naked
 function `bn_sqrx8x_mont`, rind's copy of aws-lc's `bn_sqr8x_mont` that
 always squares by `bn_sqrx8x_internal`, and that routine, as rind's Linux
