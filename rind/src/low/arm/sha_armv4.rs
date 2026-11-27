@@ -157,7 +157,7 @@ pub(crate) fn sha512_compress_blocks(state: &mut [u64; 8], blocks: &[u8]) {
 ///
 /// # Safety
 ///
-/// `blocks` must hold at least one whole block.
+/// `blocks` must be a whole number of blocks, at least one.
 unsafe fn compress_neon(_: HaveNeon, state: &mut [u64; 8], blocks: &[u8]) {
     // SAFETY: `blocks` is `len / 128` readable blocks, at least one, and the
     // token proves the CPU has NEON.
@@ -170,7 +170,7 @@ unsafe fn compress_neon(_: HaveNeon, state: &mut [u64; 8], blocks: &[u8]) {
 ///
 /// # Safety
 ///
-/// `blocks` must hold at least one whole block.
+/// `blocks` must be a whole number of blocks, at least one.
 unsafe fn compress_nohw(state: &mut [u64; 8], blocks: &[u8]) {
     // SAFETY: `blocks` is `len / 128` readable blocks, at least one.
     unsafe {

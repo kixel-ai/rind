@@ -7,12 +7,12 @@ import Rind.Armv7.GhashNeon
 open rind.armv7
 
 /-!
-The axioms each theorem rests on, beyond Lean's own: none but X25519's and
-Ed25519's, which rest on `Rind.Armv7.Dalek`'s restatements of Beneficial AI
+The axioms each theorem rests on, beyond Lean's own. X25519's and
+Ed25519's rest on `Rind.Armv7.Dalek`'s restatements of Beneficial AI
 Foundation's theorems about the curve25519-dalek functions they call, and
 Ed25519's on `Rind.Armv7.Sha512Entry`'s restatement of the HOL Light proof of
-aws-lc's NEON SHA-512 routine too. A change here is a change to the trust
-base.
+aws-lc's NEON SHA-512 routine too; the AES and GHASH theorems' are below. A
+change here is a change to the trust base.
 -/
 
 /-- info: 'rind.armv7.chacha20_new' depends on axioms: [propext, Classical.choice, Quot.sound] -/

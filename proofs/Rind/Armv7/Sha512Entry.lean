@@ -25,13 +25,14 @@ Trusted: the restatement, and that each call meets the theorem's premises,
 which every call `compress_neon`'s safety contract allows does. `state` and
 `blocks` do not overlap, since one is borrowed mutably while the other is
 borrowed, and neither overlaps the code or the 64 bytes below the stack
-pointer where the routine saves d8-d15, and no Rust object wraps the address
-space; `state` is 8-byte aligned, as `[u64; 8]` is
-on armv7, the stack pointer 4-byte aligned, as the AAPCS keeps it, and the
-code, which starts at `K512`, 32-byte aligned by its `.align 5`; `blocks` is
-a whole number of blocks, at least one, and a slice on armv7 spans fewer than
-2^31 bytes, so `128 * n < 2 ^ 32`. The routine's constant time is not
-proven.
+pointer where the routine saves d8-d15; no Rust object, and not those 64
+bytes, which lie in the stack, wraps the address space; `state` is 8-byte
+aligned, as `[u64; 8]` is on armv7, the stack pointer 4-byte aligned, as the
+AAPCS keeps it, and the code, which starts at `K512`, 32-byte aligned by its
+`.align 5`; the return address is one `bx` takes back to the caller, as the
+`bl` or `blx` of an A32 or T32 caller leaves it; `blocks` is a whole number
+of blocks, at least one, and a slice on armv7 spans fewer than 2^31 bytes,
+so `128 * n < 2 ^ 32`. The routine's constant time is not proven.
 -/
 
 namespace rind.armv7

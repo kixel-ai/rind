@@ -1362,7 +1362,9 @@ decodes with dalek's lenient `decompress` after refusing a y at or above p
 and an x of zero with the sign bit set, and the theorems prove those checks
 make it `edDecode`. They rest on the axioms `Rind/Armv7/Dalek.lean` restates
 for the dalek functions each calls, which
-[curve25519-dalek's proofs](#curve25519-daleks-proofs) describes.
+[curve25519-dalek's proofs](#curve25519-daleks-proofs) describes, and those
+that hash on `Rind/Armv7/Sha512Entry.lean`'s restatement of
+`armv7/sha512_armv4.ml`'s theorem.
 
 Ed25519 on x86_64 CPUs with AVX-512 IFMA, from the same API to
 pyca/verified-garbage's key-pair derivation, signing, and verification, in
