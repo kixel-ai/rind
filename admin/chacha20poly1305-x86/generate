@@ -62,13 +62,13 @@ class Routine:
         """aws-lc's routine in `path`: the blocks from `first` to `last` and
         the `shared` ones it jumps to. The tree restates their jumps and
         compares, so generation fails unless their text, labels and jumps
-        included, still hashes to the `digest` the tree was written for."""
+        included, and their alignment, still hashes to the `digest` the tree was written for."""
         blocks = parse(path)
         s.blocks = {b.name: b for b in blocks}
         names = [b.name for b in blocks]
         s.text = names[names.index(first):names.index(last) + 1] + list(shared)
-        text = ''.join(f'{n} {s.blocks[n].term}\n' + ''.join(t + '\n' for _, t in s.blocks[n].lines)
-                       for n in s.text)
+        text = ''.join(f'{n} {s.blocks[n].term}\n' + ''.join(a + '\n' for a in s.blocks[n].aligns)
+                       + ''.join(t + '\n' for _, t in s.blocks[n].lines) for n in s.text)
         got = hashlib.sha256(text.encode()).hexdigest()
         assert got == digest, f'aws-lc changed {first}: re-derive its tree, then take digest {got}'
         s.used = set()
@@ -335,7 +335,7 @@ def seal_avx2():
                 ['seal_sse_tail_16', 'seal_sse_tail_16+1', 'seal_sse_tail_16_compose',
                  'seal_sse_tail_16_compose+1', 'seal_sse_tail_16_extract', 'process_partial_block',
                  'do_length_block'],
-                '76c646faaca7e731d539b397bc735114df9c964f50f81bb0d5cdd0da8661a4e2')
+                '37fddb6b3008caa3cd0c0c3ebf856c5833c598dad55b9d35eeb4d300d5f51b2a')
     t = lambda n: f'seal_avx2_tail_{n}'
     rnd = lambda n, k: f'seal_avx2_tail_{n}_rounds_and_{k}xhash'
     tails = {n: Seq(x3x2(r, t(n), rnd(n, 3), rnd(n, 2), t(n)), r.blk(rnd(n, 2) + '+2'))

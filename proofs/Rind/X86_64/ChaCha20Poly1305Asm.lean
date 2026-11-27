@@ -7,9 +7,11 @@ open VG VG.X86_64 Rind.X86_64.ChaCha20Poly1305 rind.x86_64.taint
 # rind's copy of aws-lc's AVX2 ChaCha20-Poly1305 seal runs in constant time
 
 `seal_avx2_constant_time`: the program `RindIsa/X86_64/ChaCha20Poly1305.lean`
-gives as `sealAvx2`, which `admin/prove lean` checks is the machine code of
-rind's naked function `low::x86_64::chacha20poly1305::seal_avx2` as rind's
-Linux release build emits it, takes the same branches and accesses the same
+gives as `sealAvx2`, the body of rind's naked function
+`low::x86_64::chacha20poly1305::seal_avx2` before its `rep ret` (`admin/prove
+lean` checks that body then `rep ret` is the machine code rind's Linux
+release build emits, but the trace here ends before the return's stack read
+and jump), takes the same branches and accesses the same
 addresses in any two runs that both finish without a fault in rind's
 extension of VG's x86_64 model that agree on the arguments `rdi`, `rsi`,
 `rdx`, `rcx`, `r8`, and `r9` (the output, input, length, AAD, AAD length,
