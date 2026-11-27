@@ -3,57 +3,50 @@ package io.github.steelhead99x.rindbench;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.res.Configuration;
-import android.graphics.Typeface;
-import android.graphics.drawable.ColorDrawable;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.Window;
 import android.view.WindowInsets;
-import android.widget.Button;
+import android.widget.FrameLayout;
+import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
 /**
- * Root chrome: logo + rind-bench title, Bench / Learn / Contender.
- * Portrait uses a bottom tab bar; landscape uses a left rail.
+ * Root chrome: a top app bar with the full "rind-bench" title, then
+ * Bench / Learn / Contender. Window size class picks the navigation:
+ * compact width (under 600dp) gets a bottom navigation bar, medium and
+ * expanded width (phone landscape, tablets) get a navigation rail.
  */
 public class MainActivity extends Activity {
-    private LinearLayout root, header, tabBar, sidebar, railTabs, content;
+    static final int WIDE_DP = 600;
     private static final String[] TAB_NAMES = {"Bench", "Learn", "Contender"};
-    private static final String[] TAB_HINTS = {
-            "Run speed tests on this phone.",
-            "Short answers about how this app works.",
-            "Join a live demo or talk. Off by default."
-    };
+    private static final String[] TAB_ICONS = {"ic_speed", "ic_help", "ic_groups"};
+
+    private LinearLayout root, appBar, column, navBar, rail;
+    private FrameLayout content;
     private final View[] pages = new View[3];
-    private final Button[] tabsBottom = new Button[3], tabsRail = new Button[3];
+    private final NavItem[] barItems = new NavItem[3], railItems = new NavItem[3];
     private int selected;
     private BenchView bench;
     private ContenderView contender;
-    private Button detailsBtn;
+    private ImageButton detailsBtn;
     private int insetL, insetT, insetR, insetB;
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
-        requestWindowFeature(Window.FEATURE_NO_TITLE);
-        Window w = getWindow();
-        w.setStatusBarColor(Theme.INK);
-        w.setNavigationBarColor(Theme.INK2);
-        w.setBackgroundDrawable(new ColorDrawable(Theme.INK));
-        if (Build.VERSION.SDK_INT >= 30) w.setDecorFitsSystemWindows(false);
-        else w.getDecorView().setSystemUiVisibility(
-                View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
+        Theme.init(this);
+        Theme.styleWindow(getWindow());
 
         root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(Theme.INK);
+        root.setBackgroundColor(Theme.surface);
         root.setOnApplyWindowInsetsListener((v, insets) -> {
             if (Build.VERSION.SDK_INT >= 30) {
-                android.graphics.Insets s = insets.getInsets(WindowInsets.Type.systemBars());
+                android.graphics.Insets s = insets.getInsets(
+                        WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
                 insetL = s.left; insetT = s.top; insetR = s.right; insetB = s.bottom;
             } else {
                 insetL = insets.getSystemWindowInsetLeft();
@@ -69,81 +62,102 @@ public class MainActivity extends Activity {
         LearnView learn = new LearnView(this);
         contender = new ContenderView(this);
         pages[0] = bench; pages[1] = learn; pages[2] = contender;
-        for (View p : pages) p.setVisibility(View.GONE);
 
-        detailsBtn = Theme.chip(this, "Details");
-        detailsBtn.setContentDescription("Details. Shows device, chip, and build commit.");
-        detailsBtn.setOnClickListener(v -> { if (bench != null) bench.openDetails(); });
+        appBar = makeAppBar();
+        content = new FrameLayout(this);
+        for (View p : pages) {
+            p.setVisibility(View.GONE);
+            content.addView(p, new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        }
+        column = new LinearLayout(this);
+        column.setOrientation(LinearLayout.VERTICAL);
 
-        header = makeHeader();
-
-        content = new LinearLayout(this);
-        content.setOrientation(LinearLayout.VERTICAL);
-        for (View p : pages) content.addView(p, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-
-        tabBar = makeTabRow(tabsBottom, true);
-        sidebar = new LinearLayout(this);
-        sidebar.setOrientation(LinearLayout.VERTICAL);
-        sidebar.setBackgroundColor(Theme.INK2);
-        sidebar.setPadding(Theme.dpi(this, 12), Theme.dpi(this, 16), Theme.dpi(this, 12), Theme.dpi(this, 16));
-        railTabs = makeTabRow(tabsRail, false);
+        navBar = new LinearLayout(this);
+        navBar.setOrientation(LinearLayout.HORIZONTAL);
+        navBar.setBackgroundColor(Theme.surfaceContainer);
+        rail = new LinearLayout(this);
+        rail.setOrientation(LinearLayout.VERTICAL);
+        rail.setGravity(Gravity.CENTER_HORIZONTAL);
+        rail.setBackgroundColor(Theme.surface);
+        for (int i = 0; i < 3; i++) {
+            barItems[i] = new NavItem(i, false);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+            navBar.addView(barItems[i].view, lp);
+            railItems[i] = new NavItem(i, true);
+            LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            rp.bottomMargin = Theme.dpi(this, 12);
+            rail.addView(railItems[i].view, rp);
+        }
         relayout();
         selectTab(0);
         setContentView(root);
     }
 
-    private LinearLayout makeHeader() {
+    private LinearLayout makeAppBar() {
         LinearLayout h = new LinearLayout(this);
         h.setOrientation(LinearLayout.HORIZONTAL);
         h.setGravity(Gravity.CENTER_VERTICAL);
-        ImageView logo = new ImageView(this);
-        int id = getResources().getIdentifier("rindlogo", "drawable", getPackageName());
-        if (id != 0) logo.setImageResource(id);
-        logo.setContentDescription("rind-bench");
-        int s = Theme.dpi(this, 38);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(s, s);
-        lp.rightMargin = Theme.dpi(this, 10);
-        h.addView(logo, lp);
-
-        TextView title = Theme.label(this, "rind-bench", 24, 32, Theme.TEXT, Typeface.BOLD, 1);
-        title.setAccessibilityHeading(true);
-        h.addView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        h.setBackgroundColor(Theme.surface);
+        h.setMinimumHeight(Theme.dpi(this, 64));
+        TextView title = Theme.heading(this, "rind-bench", Theme.Type.TITLE_LARGE, Theme.onSurface);
+        title.setSingleLine(false);
+        LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+        tl.topMargin = tl.bottomMargin = Theme.dpi(this, 8);
+        h.addView(title, tl);
+        detailsBtn = Theme.iconButton(this, "ic_info", "Details");
+        detailsBtn.setTooltipText("Details");
+        detailsBtn.setOnClickListener(v -> { if (bench != null) bench.openDetails(); });
+        h.addView(detailsBtn);
         return h;
     }
 
-    private LinearLayout makeTabRow(Button[] store, boolean horizontal) {
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(horizontal ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL);
-        for (int i = 0; i < 3; i++) {
-            Button b = Theme.secondary(this, TAB_NAMES[i]);
-            b.setTag(i);
-            b.setContentDescription(TAB_NAMES[i] + ". " + TAB_HINTS[i]);
-            final int idx = i;
-            b.setOnClickListener(v -> selectTab(idx));
-            LinearLayout.LayoutParams lp = horizontal
-                    ? new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1)
-                    : new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            if (horizontal && i < 2) lp.rightMargin = Theme.dpi(this, 8);
-            if (!horizontal && i < 2) lp.bottomMargin = Theme.dpi(this, 8);
-            row.addView(b, lp);
-            store[i] = b;
+    /** M3 navigation bar / rail destination: icon in an active-indicator pill, label below. */
+    private final class NavItem {
+        final LinearLayout view;
+        final FrameLayout pill;
+        final ImageView icon;
+        final TextView label;
+        final int index;
+
+        NavItem(int i, boolean forRail) {
+            index = i;
+            view = new LinearLayout(MainActivity.this);
+            view.setOrientation(LinearLayout.VERTICAL);
+            view.setGravity(Gravity.CENTER_HORIZONTAL);
+            int top = forRail ? 4 : 12, bottom = forRail ? 4 : 16;
+            view.setPadding(Theme.dpi(MainActivity.this, 4), Theme.dpi(MainActivity.this, top),
+                    Theme.dpi(MainActivity.this, 4), Theme.dpi(MainActivity.this, bottom));
+            view.setMinimumWidth(Theme.dpi(MainActivity.this, forRail ? 80 : 48));
+            view.setMinimumHeight(Theme.dpi(MainActivity.this, forRail ? 56 : 80));
+            pill = new FrameLayout(MainActivity.this);
+            icon = Theme.iconView(MainActivity.this, TAB_ICONS[i], Theme.onSurfaceVariant);
+            pill.addView(icon, new FrameLayout.LayoutParams(Theme.dpi(MainActivity.this, 24),
+                    Theme.dpi(MainActivity.this, 24), Gravity.CENTER));
+            view.addView(pill, new LinearLayout.LayoutParams(Theme.dpi(MainActivity.this, forRail ? 56 : 64),
+                    Theme.dpi(MainActivity.this, 32)));
+            label = Theme.text(MainActivity.this, TAB_NAMES[i], Theme.Type.LABEL_MEDIUM, Theme.onSurfaceVariant);
+            label.setGravity(Gravity.CENTER);
+            label.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+            LinearLayout.LayoutParams ll = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            ll.topMargin = Theme.dpi(MainActivity.this, 4);
+            view.addView(label, ll);
+            view.setBackground(Theme.ripple(Theme.onSurface, null, null));
+            view.setFocusable(true);
+            view.setClickable(true);
+            view.setOnClickListener(v -> selectTab(index));
         }
-        if (horizontal) {
-            LinearLayout wrap = new LinearLayout(this);
-            wrap.setOrientation(LinearLayout.VERTICAL);
-            wrap.setBackgroundColor(Theme.INK2);
-            View topLine = new View(this);
-            topLine.setBackgroundColor(Theme.LINE);
-            wrap.addView(topLine, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Theme.dpi(this, 2)));
-            LinearLayout inner = new LinearLayout(this);
-            inner.setOrientation(LinearLayout.VERTICAL);
-            inner.setPadding(Theme.dpi(this, 12), Theme.dpi(this, 6), Theme.dpi(this, 12), Theme.dpi(this, 6));
-            inner.addView(row, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-            wrap.addView(inner, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-            return wrap;
+
+        void setSelected(boolean on) {
+            pill.setBackground(on ? Theme.shape(Theme.secondaryContainer, Theme.dp(MainActivity.this, 16)) : null);
+            icon.setImageDrawable(Theme.icon(MainActivity.this, TAB_ICONS[index],
+                    on ? Theme.onSecondaryContainer : Theme.onSurfaceVariant));
+            label.setTextColor(on ? Theme.onSurface : Theme.onSurfaceVariant);
+            view.setSelected(on);
+            view.setContentDescription(TAB_NAMES[index] + (on ? ", selected" : "") + ", tab " + (index + 1) + " of 3");
         }
-        return row;
     }
 
     private void selectTab(int i) {
@@ -154,64 +168,38 @@ public class MainActivity extends Activity {
                     ? View.IMPORTANT_FOR_ACCESSIBILITY_YES
                     : View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
         }
-        if (detailsBtn != null) detailsBtn.setVisibility(i == 0 ? View.VISIBLE : View.GONE);
-        styleTabs(tabsBottom);
-        styleTabs(tabsRail);
+        detailsBtn.setVisibility(i == 0 ? View.VISIBLE : View.GONE);
+        for (int n = 0; n < 3; n++) { barItems[n].setSelected(n == i); railItems[n].setSelected(n == i); }
     }
 
-    private void styleTabs(Button[] tabs) {
-        for (Button b : tabs) {
-            if (b == null) continue;
-            int i = (Integer) b.getTag();
-            boolean on = i == selected;
-            Theme.styleButton(b, on, true);
-            b.setSelected(on);
-            b.setContentDescription(TAB_NAMES[i] + (on ? ", selected. " : ". ") + TAB_HINTS[i]);
-        }
-    }
-
-    private boolean isLandscape() {
-        return getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE
-                && getResources().getDisplayMetrics().widthPixels > getResources().getDisplayMetrics().heightPixels;
+    static boolean isWide(Activity a) {
+        return a.getResources().getConfiguration().screenWidthDp >= WIDE_DP;
     }
 
     private void relayout() {
         root.removeAllViews();
-        sidebar.removeAllViews();
-        if (header.getParent() instanceof ViewGroup) ((ViewGroup) header.getParent()).removeView(header);
-        if (railTabs.getParent() instanceof ViewGroup) ((ViewGroup) railTabs.getParent()).removeView(railTabs);
-        if (detailsBtn.getParent() instanceof ViewGroup) ((ViewGroup) detailsBtn.getParent()).removeView(detailsBtn);
-        boolean land = isLandscape();
-        root.setPadding(insetL, insetT, insetR, land ? insetB : 0);
-        if (land) {
+        column.removeAllViews();
+        int s4 = Theme.dpi(this, 16);
+        boolean wide = isWide(this);
+        appBar.setPaddingRelative(s4 + (wide ? 0 : insetL), insetT, Theme.dpi(this, 4) + insetR, 0);
+        column.addView(appBar, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        column.addView(content, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+        if (wide) {
             root.setOrientation(LinearLayout.HORIZONTAL);
-            sidebar.addView(header);
-            View spacer = new View(this);
-            sidebar.addView(spacer, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Theme.dpi(this, 20)));
-            sidebar.addView(railTabs);
-            View flex = new View(this);
-            sidebar.addView(flex, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
-            sidebar.addView(detailsBtn, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-            LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(Theme.dpi(this, 210), ViewGroup.LayoutParams.MATCH_PARENT);
-            root.addView(sidebar, slp);
-            LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1);
-            clp.leftMargin = Theme.dpi(this, 8);
-            root.addView(content, clp);
+            rail.setPadding(insetL, insetT + Theme.dpi(this, 12), 0, insetB);
+            content.setPadding(0, 0, insetR, insetB);
+            root.addView(rail, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            root.addView(column, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1));
         } else {
             root.setOrientation(LinearLayout.VERTICAL);
-            header.addView(detailsBtn, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-            LinearLayout.LayoutParams hlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            hlp.leftMargin = Theme.dpi(this, 16);
-            hlp.rightMargin = Theme.dpi(this, 16);
-            hlp.topMargin = Theme.dpi(this, 6);
-            hlp.bottomMargin = Theme.dpi(this, 6);
-            root.addView(header, hlp);
-            root.addView(content, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
-            tabBar.setPadding(0, 0, 0, insetB);
-            root.addView(tabBar, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            content.setPadding(insetL, 0, insetR, 0);
+            navBar.setPadding(insetL, 0, insetR, insetB);
+            root.addView(column, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+            root.addView(navBar, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         }
-        styleTabs(tabsBottom);
-        styleTabs(tabsRail);
         if (bench != null) bench.onChromeRelayout();
     }
 
