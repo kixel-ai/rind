@@ -38,6 +38,8 @@ jobs:
 
   build:
     strategy:
+      # Every row reports, so one platform's failure hides no other's.
+      fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
@@ -463,16 +465,16 @@ jobs:
             minutes: 40
           - target: armv7-linux-androideabi
             expect: RIND_TEST_ARM_NEON=1 RIND_TEST_ARM_CRYPTO_EXT=1
-            minutes: 70
+            minutes: 105
           - target: x86_64-linux-android
             expect: ""
-            minutes: 20
+            minutes: 25
           - target: i686-linux-android
             expect: ""
             minutes: 270
           - target: arm-linux-androideabi
             expect: ""
-            minutes: 130
+            minutes: 140
 
     runs-on: ubuntu-latest
     steps:
@@ -498,7 +500,7 @@ jobs:
 
       # Optimised for qemu, but keeping the checks a debug build has. cross
       # runs the tests inside its image, which has no nextest, so the hang
-      # bound is the step's: twice its slowest healthy run.
+      # bound is the step's: about twice its slowest healthy run.
       - name: Run tests
         timeout-minutes: ${{ matrix.minutes }}
         env:
