@@ -70,7 +70,7 @@ Every Lean file that declares an `axiom`, by the source it restates; no file hol
 | Beneficial AI Foundation's Lean theorems of curve25519-dalek, in its X25519 spec that `admin/import-dalek` vendors | `Armv7/Dalek` | published proofs; `admin/prove dalek` checks that every definition `mul_clamped` and `mul_base_clamped` reach in armv7's configuration is the text BAIF's proofs are about |
 | Vale's procedures for HACL\*'s AES-GCM | `X86_64/ValeAesGcm` | published proofs; `admin/prove bytes` checks the object code |
 | aws-lc-verification's NSym proof of SHA-384/512 (aarch64) and rind's HOL Light proof of the AVX2 routine (x86_64) | `Aarch64/AwsLc`, `X86_64/AwsLc` | a published proof and rind's own; `admin/prove bytes` and `admin/prove hol-light` check the object code |
-| rind's own HOL Light proofs of its assembly, and rind's Lean proofs of the SHA-256 crypto-extension routine (aarch64) and `bn_mul4x_mont` (x86_64) | `Aarch64/Sha256Hw`, `Armv7/GhashNeon`, `X86_64/ChaCha20Cipher`, `X86_64/CtEqual`, `X86_64/RsaMont`, `X86_64/Sha256Shaext`, `X86_64/ShaBlocks` | rind's proofs, in `proofs/hol-light/`, `Rind/Aarch64/Sha256HwAsm.lean`, and `Rind/X86_64/Mul4xProof.lean`, checked against the bytes rind's build emits |
+| rind's own HOL Light proofs of its assembly, and rind's Lean proofs of the SHA-256 crypto-extension routine (aarch64) and `bn_mul4x_mont` and `bn_mulx4x_mont` (x86_64) | `Aarch64/Sha256Hw`, `Armv7/GhashNeon`, `X86_64/ChaCha20Cipher`, `X86_64/CtEqual`, `X86_64/RsaMont`, `X86_64/Sha256Shaext`, `X86_64/ShaBlocks` | rind's proofs, in `proofs/hol-light/`, `Rind/Aarch64/Sha256HwAsm.lean`, `Rind/X86_64/Mul4xProof.lean`, and `Rind/X86_64/Mulx4xProof.lean`, checked against the bytes rind's build emits |
 | HOL Light theorems of AES-CTR and AES-CBC that no proof states yet | `X86_64/AesModesLow` | **assumed, not proven**: [the AES modes quest](/quest/m4/verified/aes-modes.md) owns them |
 
 Hand models of Rust Aeneas cannot translate, each quoting the Rust it models:
@@ -528,6 +528,18 @@ the padding, whose bytes that comparison checks.
   `Mul4xSub`, `Mul4xTailAsm`, and `Mul4xFinal` the subtraction and the
   constant-time copy.
   `Rind/X86_64/RsaMont.lean` restates it as `mul4x_spec`.
+
+- `Rind/X86_64/Mulx4xProof.lean`: `bn_mulx4x_mont_correct`, the same of
+  `low::x86_64::mont::bn_mulx4x_mont`, aws-lc's 4x Montgomery multiplication
+  by `mulx`, `adcx`, and `adox`, which `mul4x` runs given BMI2 and ADX, for a
+  width below `2^29`, since the routine scales it to bytes in 32 bits, and a
+  frame of `8k + 248` bytes, 128-byte aligned. The other `Mulx4x*` files
+  build it: `Mulx4xModel` the words a pass computes, `Mulx4xAsm` the passes'
+  blocks, `Mulx4xHead` the prologue, page walk, and frame's slots,
+  `Mulx4xLoop` and `Mulx4xPass` the passes, and `Mulx4xTail` and
+  `Mulx4xFinal` the subtraction and the constant-time copy, over
+  `Mul4xSub`'s selection.
+  `Rind/X86_64/RsaMont.lean` restates it as `mulx4x_spec`.
 
 - `Rind/X86_64/PolyHashAdProof.lean`: `poly_hash_ad_internal_correct`, that
   `low::x86_64::chacha20poly1305::poly_hash_ad_internal`, rind's copy of
@@ -1775,12 +1787,13 @@ with BMI2 and ADX, from s2n-bignum's theorems; on any CPU at a width that is
 under eight words or not a multiple of four, from `nohw_spec`, which restates
 rind's HOL Light proof of `bn_mul_mont_nohw` below, of the Linux build's
 object, so not of the macOS one ([its quest](/quest/m4/verified/apple-bytes.md));
-and from `AwsLcMont`, that
-aws-lc's unproven `bn_mulx4x_mont` and `bn_sqr8x_mont` return theirs, at every
-other width and CPU. Its products through `bn_mul4x_mont`, without BMI2 and
-ADX, follow from `mul4x_spec`, which restates `Mul4xProof.lean`'s theorem
-above, but `mont_products` still takes `AwsLcMont` at those widths, since it
-does not name the CPU.
+and below `2^29` words from `AwsLcMont`, that
+aws-lc's unproven `bn_sqr8x_mont` returns its squares, at every
+other width and CPU. Its products through `bn_mul4x_mont` and
+`bn_mulx4x_mont` follow from `mul4x_spec` and `mulx4x_spec`, which restate
+`Mul4xProof.lean`'s and `Mulx4xProof.lean`'s theorems above, but
+`mont_products` still takes `AwsLcMont` at those widths, since it states
+products and squares together.
 `PublicKey::verify` reaches each algorithm's verification through a function
 pointer, and every loader encodes the key through `Buffer::write`, which
 `Rind/X86_64/RsaDispatch.lean` models for these two algorithms. On aarch64 the products are aws-lc's, so these proofs are not
