@@ -11,8 +11,9 @@
 #   admin/mac-mini-runners register     register both runners in kixel-ai's
 #                                       rind-queue runner group, reading a
 #                                       registration token on stdin
-#   admin/mac-mini-runners services     install each runner's service from this
-#                                       script, restarting one whose unit changed
+#   admin/mac-mini-runners services     install each runner's service and host
+#                                       LaunchAgent from this script, restarting
+#                                       one whose unit changed
 #   admin/mac-mini-runners ssh VM [CMD] a shell in VM (macos or linux)
 #
 # setup is idempotent: it starts a provisioned VM and leaves it alone. To
@@ -85,10 +86,11 @@ ssh_vm() {
         -o LogLevel=ERROR -o ConnectTimeout=10 -o ServerAliveInterval=10 -o BatchMode=yes "admin@$ip" "$@"
 }
 
-# Runs the VM under a LaunchAgent, which restarts it if it exits. A VM already
-# running from the same agent is left alone, so setup never kills a job.
+# Runs the VM under a LaunchAgent, which restarts it if it exits. $2 is 1 to
+# reload a loaded agent whose plist changed (explicit maintenance in services),
+# or 0 to leave a loaded agent running so setup never kills a job in flight.
 start() {
-    local vm=$1 label plist new
+    local vm=$1 upgrade=${2:-0} label plist new loaded=0
     label=dev.kixelated.$(vm_name "$vm")
     plist=$HOME/Library/LaunchAgents/$label.plist
     new=$(
@@ -108,12 +110,29 @@ start() {
 </plist>
 EOF
     )
-    if [[ -e "$plist" && "$(<"$plist")" == "$new" ]] && launchctl print "gui/$(id -u)/$label" >/dev/null 2>&1; then
+    if launchctl print "gui/$(id -u)/$label" >/dev/null 2>&1; then
+        loaded=1
+    fi
+    if [[ "$loaded" = 1 && "$upgrade" = 0 ]]; then
+        return
+    fi
+    if [[ "$loaded" = 1 && -e "$plist" && "$(<"$plist")" == "$new" ]]; then
         return
     fi
     mkdir -p "${plist%/*}"
     printf '%s\n' "$new" >"$plist"
-    launchctl bootout "gui/$(id -u)/$label" 2>/dev/null || true
+    if [[ "$loaded" = 1 ]]; then
+        local tries=0
+        launchctl bootout "gui/$(id -u)/$label" || true
+        while launchctl print "gui/$(id -u)/$label" >/dev/null 2>&1; do
+            tries=$((tries + 1))
+            [[ $tries -le 1200 ]] || {
+                echo "error: launchd still holds gui/$(id -u)/$label 120s after bootout" >&2
+                return 1
+            }
+            sleep 0.1
+        done
+    fi
     launchctl bootstrap "gui/$(id -u)" "$plist"
 }
 
@@ -517,7 +536,7 @@ register() {
     done
 }
 
-# Installs each registered runner's service from this script.
+# Installs each registered runner's service and host LaunchAgent from this script.
 services() {
     local vm
     tart_tool
@@ -525,6 +544,7 @@ services() {
         provisioned "$vm"
         wait_ssh "$vm"
         install_service "$vm" 1
+        start "$vm" 1
     done
 }
 
