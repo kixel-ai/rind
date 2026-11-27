@@ -16,7 +16,8 @@ argon2 = { version = "0.6", default-features = false, features = ["alloc"] }
 aws-lc-rs = { version = "1.19", features = ["non-fips"], default-features = false }
 # For XChaCha20-Poly1305, which aws-lc-rs does not expose.
 aws-lc-sys = { version = "0.47", default-features = false }
-blind-rsa-signatures = "0.18"
+# rind's fork: UPSTREAM.md's "blind-rsa-signatures 0.18 does not build on rsa 0.10.0".
+blind-rsa-signatures = { path = "../thirdparty/blind-rsa-signatures" }
 chacha20poly1305 = "0.11"
 criterion = "0.8"
 ed25519-dalek = { version = "3", features = ["alloc", "pkcs8", "rand_core"] }
@@ -81,6 +82,8 @@ rustls-openssl = { version = "0.4", default-features = false }
 
 [features]
 __bench_openssl = []
+# The weekly instruction count's build: CodSpeed's Criterion, whose markers
+# swole reads, and no rustls Graviola rows, which Valgrind cannot list.
 __bench_codspeed = ["dep:codspeed-criterion-compat"]
 
 [[bench]]

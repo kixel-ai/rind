@@ -11,7 +11,9 @@ use crate::mid;
 use crate::mid::rng::{RandomSource, SystemRandom};
 
 pub(crate) mod hash_to_curve;
-mod precomp;
+// Visible to `low`: on x86_64, pyca/verified-garbage's `d·G` reads this table
+// too (admin/import-vg, `SHARED`).
+pub(crate) mod precomp;
 
 /// A P-256 public key.
 #[derive(Clone, Debug)]
@@ -490,12 +492,14 @@ impl AffineMontPoint {
             return Err(KeyFormatError::NotOnCurve.into());
         }
 
+        // Always negate and select, so the parity of a key, which OPAQUE's
+        // server decodes for a real and a fake record alike, takes no branch.
         let y = y.demont();
-        let y = match y.0[0] & 1 == u64::from(tag & 1) {
-            true => y,
-            false => y.negate_mod_p(),
-        };
-        Ok(Self::from_xy(x, y.as_mont()))
+        let negated = y.negate_mod_p();
+        let flip = (y.0[0] ^ u64::from(tag)) & 1;
+        let mut limbs = [0u64; 4];
+        low::bignum_mux(flip, &mut limbs, &negated.0, &y.0);
+        Ok(Self::from_xy(x, FieldElement(limbs).as_mont()))
     }
 
     fn x_scalar(&self) -> Scalar {
@@ -824,7 +828,7 @@ impl JacobianMontPoint {
 
         // The first point is infinity, with a zero `z`, when its digit is zero.
         let (digit, sign) = windows[0];
-        point.select_w7(&precomp::CURVE_GENERATOR_PRECOMP[0], digit, sign);
+        point.select_w7(&precomp::CURVE_GENERATOR_PRECOMP.0[0], digit, sign);
         let mut result = Self::from_affine(&point);
         low::bignum_mux(
             digit.into(),
@@ -836,7 +840,7 @@ impl JacobianMontPoint {
         #[allow(clippy::needless_range_loop)]
         for w in 1..37 {
             let (digit, sign) = windows[w];
-            point.select_w7(&precomp::CURVE_GENERATOR_PRECOMP[w], digit, sign);
+            point.select_w7(&precomp::CURVE_GENERATOR_PRECOMP.0[w], digit, sign);
             low::p256_point_add_affine(&mut result.xyz, &point.xy);
         }
         result
@@ -862,6 +866,9 @@ impl JacobianMontPoint {
             None => p.public_naf::<5>(),
             Some(_) => p.public_naf::<6>(),
         };
+        #[cfg(rind_backend = "x86_64")]
+        let g_multiples = &precomp::CURVE_GENERATOR_PRECOMP.0[0][..];
+        #[cfg(not(rind_backend = "x86_64"))]
         let g_multiples = &precomp::CURVE_GENERATOR_PRECOMP[0][..];
 
         let mut result = Self::infinity();
@@ -939,21 +946,24 @@ impl JacobianMontPoint {
 
     /// `self + p`, for any points, including at infinity, equal, or opposite.
     ///
-    /// `p256_montjmixadd` is proven only for unequal points, so points with
-    /// the same x never reach it.
+    /// `p256_montjmixadd` is proven to add unequal points, and to leave z
+    /// zero when the points are equal or opposite, so it adds first, and
+    /// only a zero z, a sum at infinity or of equal points, needs the check
+    /// that tells the two apart.
     fn public_add_affine(&self, p: &AffineMontPoint) -> Self {
         if self.public_is_infinity() {
             return Self::from_affine(p);
         }
 
-        // `p` scaled to this point's z.
-        let z2 = self.z().mont_sqr();
-        if !p.x().mont_mul(&z2).public_eq(&self.x()) {
-            let mut sum = *self;
-            sum.add_inplace_affine(p);
+        let mut sum = *self;
+        sum.add_inplace_affine(p);
+        if !sum.public_is_infinity() {
             return sum;
         }
-        match p.y().mont_mul(&z2.mont_mul(&self.z())).public_eq(&self.y()) {
+        // The points have the same x, so they are equal if their y's are,
+        // with `p`'s scaled to this point's z.
+        let z3 = self.z().mont_sqr().mont_mul(&self.z());
+        match p.y().mont_mul(&z3).public_eq(&self.y()) {
             true => self.double(),
             false => Self::infinity(),
         }
@@ -1452,8 +1462,13 @@ fn booth_recode_w7(v: u8) -> (u8, u8) {
 /// 37 rows of the 64 multiples `i * 2^(7 * j) * G`, one row per 7-bit window.
 ///
 /// 37 := 256 / 7 + 1, as Booth recoding carries into a window above the top bit.
+///
+/// On a cache line's boundary: pyca/verified-garbage's `d·G` reads the table
+/// too, 32 bytes at a time, and measured 1.3% slower where those loads
+/// crossed lines.
 #[cfg(rind_backend = "x86_64")]
-type AffineMontPointTable = [[u64; 512]; 37];
+#[repr(C, align(64))]
+pub(crate) struct AffineMontPointTable(pub(crate) [[u64; 512]; 37]);
 
 /// 43 rows of the 32 multiples `i * 2^(6 * j) * G`, one row per 6-bit window.
 ///
@@ -1666,7 +1681,7 @@ mod tests {
             assert_eq!(sum[..32], bytes[..], "{words:x?}");
             assert_eq!(sum[32], 0, "{words:x?}");
             // One window for each row of the generator table.
-            assert_eq!(windows, precomp::CURVE_GENERATOR_PRECOMP.len());
+            assert_eq!(windows, generator_rows().len());
         }
     }
 
@@ -1790,11 +1805,20 @@ mod tests {
         println!("montify n = {:016x?}", Scalar::montifier().0);
     }
 
+    /// The generator table's rows, which x86_64 wraps to align.
+    fn generator_rows() -> &'static [impl AsRef<[u64]> + 'static] {
+        #[cfg(rind_backend = "x86_64")]
+        return &precomp::CURVE_GENERATOR_PRECOMP.0;
+        #[cfg(not(rind_backend = "x86_64"))]
+        return &precomp::CURVE_GENERATOR_PRECOMP;
+    }
+
     #[test]
     fn base_point_precomp() {
         let mut base = JacobianMontPoint::from_affine(&CURVE_GENERATOR);
-        for row in &precomp::CURVE_GENERATOR_PRECOMP {
+        for row in generator_rows() {
             let mut multiple = base;
+            let row = row.as_ref();
             for (i, entry) in (1..).zip(row.as_chunks::<8>().0) {
                 assert_eq!(&multiple.as_affine().xy, entry);
                 multiple = match i {
@@ -1946,6 +1970,46 @@ mod tests {
             assert_eq!(BN_bn2binpad(rem.0, out.as_mut_ptr(), 32), 32);
             out
         }
+    }
+
+    /// The sum of equal or opposite points, which `public_add_affine` finds
+    /// by the zero z the mixed addition leaves, with a z other than one.
+    #[test]
+    fn public_add_affine_edges() {
+        let g = JacobianMontPoint::from_affine(&CURVE_GENERATOR);
+        let g2 = g.double();
+        let negate = |p: &JacobianMontPoint| {
+            let mut r = *p;
+            r.xyz[JacobianMontPoint::Y].copy_from_slice(&p.y().negate_mod_p().0);
+            r
+        };
+        // 2G again, as 4G - 2G, with another z.
+        let g2_again = g2.double().add(&negate(&g2));
+        assert_ne!(g2_again.z().0, g2.z().0);
+        let infinity = JacobianMontPoint::infinity();
+        let mut neg_g = CURVE_GENERATOR;
+        neg_g.negate_y();
+
+        assert_eq!(
+            g.public_add_affine(&CURVE_GENERATOR).as_affine().xy,
+            g2.as_affine().xy
+        );
+        assert_eq!(
+            g2_again.public_add_affine(&g2.as_affine()).as_affine().xy,
+            g2.double().as_affine().xy
+        );
+        assert!(
+            negate(&g2_again)
+                .public_add_affine(&g2.as_affine())
+                .public_is_infinity()
+        );
+        assert!(g.public_add_affine(&neg_g).public_is_infinity());
+        assert_eq!(infinity.public_add_affine(&CURVE_GENERATOR).xyz, g.xyz);
+        // Unequal points, one with a z other than one.
+        assert_eq!(
+            g2_again.public_add_affine(&CURVE_GENERATOR).as_affine().xy,
+            g2.add(&g).as_affine().xy
+        );
     }
 
     /// `p256_montjadd` is unspecified for equal or opposite points. Addition

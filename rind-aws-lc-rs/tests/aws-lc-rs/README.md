@@ -39,12 +39,8 @@ or skip those cases where a test covers more:
   (`legacy-des`); and the streaming cipher contexts (`src/cipher/streaming.rs`).
 - SHA-224, Keccak-256 (`unstable`), ECDSA with SHA-1, SHA-224, or SHA-3, and
   ECDSA on secp256k1.
-- `RsaKeyPair::sign_digest`, `Digest::import_less_safe`,
-  `rsa::KeyPair::from_components` and `KeyPairComponents`, and PKCS#1 v1.5
+- `RsaKeyPair::sign_digest`, `Digest::import_less_safe`, and PKCS#1 v1.5
   encryption.
-- ML-KEM-512 and ML-KEM-1024, and `kem::DecapsulationKey::new` and
-  `key_bytes`, which every test in `src/kem.rs` but `ciphertext` and
-  `test_kem_wrong_sizes` needs.
 - `awslc_version` and `try_fips_self_test`, and everything under the `fips`
   feature.
 
@@ -52,7 +48,7 @@ Tests of aws-lc-rs's private code, which no public item reaches the same way,
 are left out too:
 
 - The tests in `src/buffer.rs`, `src/cbb.rs`, `src/endian.rs`,
-  `src/evp_pkey.rs`, `src/pqdsa.rs`, `src/ptr.rs`, `src/io/der.rs`,
+  `src/evp_pkey.rs`, `src/pqdsa.rs`, `src/ptr.rs`,
   `src/aead/poly1305.rs`, `src/cipher/aes.rs`, `src/cipher/block.rs`,
   `src/cipher/chacha.rs`, and `src/cipher/key.rs`, and those of the harness
   itself in `src/test.rs`.
@@ -69,6 +65,9 @@ Each follows from a difference the README lists under
 ["Behaves differently"](../../README.md#behaves-differently), or reaches a
 private item through the public one that calls it or holds the same value:
 
+- `kem::DecapsulationKey::new` refuses zeroed bytes, and a key it loads gives
+  its `encapsulation_key()`, so `test_decapsulation_key_zeroed_bytes` expects
+  the refusal and `test_kem_e2e` the encapsulation key.
 - A comparison of `KeyRejected`'s text only checks that the key is refused,
   since a `KeyRejected` from rind's own checks gives rind's reason.
 - RSA `verify_digest` is expected to fail.

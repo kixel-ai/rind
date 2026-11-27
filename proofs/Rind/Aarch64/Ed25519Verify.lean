@@ -1,4 +1,5 @@
 import Rind.Aarch64.Ed25519
+import Rind.Ed25519Group
 open Aeneas Aeneas.Std Result rind.spec
 
 /-!
@@ -6,8 +7,8 @@ open Aeneas Aeneas.Std Result rind.spec
 
 aarch64's verification still recomputes `R` with s2n-bignum's
 `edwards25519_scalarmuldouble`, whose contract proves it, while x86_64's
-checks a multiple of the equation with half-size scalars, which nothing
-proves yet (`quest/m4/verified/ed25519-half-scalar.md`). So these theorems,
+checks a multiple of the equation with half-size scalars, which
+`Rind.X86_64.Ed25519Verify` proves. So these theorems,
 unlike the rest of `Rind.Aarch64.Ed25519`, are not written from the x86_64
 file, and live here.
 -/
@@ -113,11 +114,9 @@ theorem high_verify_spec (h : Runs) (hd : RunsDouble) (hs : RunsSha512) (vk : hi
 
 open Classical in
 /-- Verification with a key pair's public key: RFC 8032's verification with
-its seed's public key, whose point is the base point times its secret scalar,
-for a scalar whose multiple is a point of the group. -/
+its seed's public key, whose point is the base point times its secret scalar. -/
 theorem ed25519_key_pair_verify (h : Runs) (hd : RunsDouble) (hs : RunsSha512) (kp : high.signature.ed25519.KeyPair)
-    (seed : List U8) (hkp : KeyPairOf kp seed) (hA : edOnCurve (edPow edB (ed25519Scalar seed)))
-    (msg sig : Slice U8) (hm : msg.length + 64 < 2 ^ 64) :
+    (seed : List U8) (hkp : KeyPairOf kp seed) (msg sig : Slice U8) (hm : msg.length + 64 < 2 ^ 64) :
     (do
       let pk ← high.signature.ed25519.KeyPair.public_key kp
       high.signature.ed25519.PublicKey.verify pk msg sig) ⦃ r =>
@@ -128,7 +127,7 @@ theorem ed25519_key_pair_verify (h : Runs) (hd : RunsDouble) (hs : RunsSha512) (
   simp only [bind_ok]
   have hb : (mid.ed25519.VerifyingKey.bytes kp.«public»).val = ed25519PublicKey seed := by rw [hpub]; exact hkb
   rw [← hb]
-  exact high_verify_spec h hd hs kp.«public» _ hA (by rw [hpub]; exact hkpt) sig msg hm
+  exact high_verify_spec h hd hs kp.«public» _ (edOnCurve_pow edOnCurve_B _) (by rw [hpub]; exact hkpt) sig msg hm
 
 open Classical in
 /-- An Ed25519 public key parsed from its encoding: refused unless it is 32

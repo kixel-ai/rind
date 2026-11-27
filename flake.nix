@@ -11,10 +11,14 @@
     # The quest CLI, which also serves the quest guide and skills the stubs in
     # .claude/skills call. Bump the rev to upgrade them.
     quest = {
-      url = "github:moq-dev/quest";
+      url = "github:kixel-ai/quest";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.flake-utils.follows = "flake-utils";
     };
+    # swole, which counts the weekly bench's instructions under the Valgrind
+    # its own nixpkgs pins. Bumping the rev can move every count, and a new
+    # Valgrind starts new series: keep its nixpkgs, not ours.
+    swole.url = "github:kixel-ai/swole/159bf5fe993f34c56dc6dc27612947f2becdf654";
   };
 
   outputs =
@@ -23,6 +27,7 @@
       flake-utils,
       rust-overlay,
       quest,
+      swole,
       ...
     }:
     flake-utils.lib.eachSystem
@@ -233,11 +238,11 @@
             installPhase = "install -D ct-qemu-plugin.so $out/lib/ct-qemu-plugin.so";
           };
 
-          # OpenSSL's `evp_test` and its X25519 and Ed25519 data, from the
-          # source of the OpenSSL the dev shell has. `sh/openssl.sh` runs them
-          # with rind-openssl loaded and preferred. A static build, so the
-          # test runs the library it was built with, and the default provider
-          # inside it.
+          # OpenSSL's `evp_test` and its X25519, Ed25519, ML-KEM, and ML-DSA
+          # data, from the source of the OpenSSL the dev shell has.
+          # `sh/openssl.sh` runs them with rind-openssl loaded and preferred.
+          # A static build, so the test runs the library it was built with,
+          # and the default provider inside it.
           openssl-evp-test = pkgs.stdenv.mkDerivation {
             pname = "openssl-evp-test";
             inherit (pkgs.openssl) version src;
@@ -251,6 +256,7 @@
             installPhase = ''
               install -D test/evp_test $out/bin/evp_test
               install -D -t $out/share/evp_test test/recipes/30-test_evp_data/evppkey_{ecx,ecx_sigalg,ecx_kem,mismatch_ecx}.txt
+              install -D -t $out/share/evp_test test/recipes/30-test_evp_data/evppkey_ml_{kem,dsa}_*.txt
             '';
           };
 
@@ -361,16 +367,22 @@
           # built together. Bump the tag, both hashes, and `rust-charon` with
           # `proofs/lakefile.toml`'s Aeneas revision.
           aeneas-release = "nightly-2026.11.03-ab34bd2";
+          # `target` is the release asset's `aeneas-<target>.tar.gz`.
           aeneas-tarball = {
             x86_64-linux = {
-              arch = "x86_64";
+              target = "linux-x86_64";
               hash = "sha256-7Q4zbFBtrTfk4cU/bMTW1ZWdfjr6sv1Vrq0oB3VlH14=";
             };
             aarch64-linux = {
-              arch = "aarch64";
+              target = "linux-aarch64";
               hash = "sha256-010M/V6/mqFYvTEvLPOoB2ppHyewhgX2Zk39twWtF14=";
             };
+            aarch64-darwin = {
+              target = "macos-aarch64";
+              hash = "sha256-4QqS2JtDSmVN3h8xwqZhGRNCYDQfmjdjq2P/5hOtb5g=";
+            };
           };
+          isDarwin = pkgs.stdenv.hostPlatform.isDarwin;
 
           # The nightly Charon's driver links against: its `rust-toolchain`.
           rust-charon = pkgs.rust-bin.nightly."2026-09-17".minimal.override {
@@ -384,6 +396,7 @@
               "x86_64-unknown-linux-gnu"
               "aarch64-unknown-linux-gnu"
               "armv7-unknown-linux-gnueabihf"
+              "armv7a-none-eabi"
             ];
           };
 
@@ -398,18 +411,33 @@
             [source.vendored-sources]
             directory = "$(rustc --print sysroot)/lib/rustlib/src/rust/library/vendor"
             END
-            for target in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu armv7-unknown-linux-gnueabihf; do
+            for target in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu armv7-unknown-linux-gnueabihf armv7a-none-eabi; do
               sysroot=$(cargo miri setup --target=$target --print-sysroot)
             done
             mkdir -p $out
             cp -a $sysroot/. $out/
           '';
 
-          aeneas = pkgs.stdenv.mkDerivation {
+          # macOS: Charon's driver links `librustc_driver` and `libLLVM` by bare
+          # name, so Charon's wrapper adds their directory to the loader's
+          # fallback path. Not `DYLD_LIBRARY_PATH`, which also reaches the
+          # build scripts' linker and makes it load Rust's `libLLVM`, which
+          # aborts.
+          darwin-install = ''
+            cp -r libs $out/bin/libs
+            wrapProgram $out/bin/charon --set DYLD_FALLBACK_LIBRARY_PATH ${rust-charon}/lib
+          '';
+
+          # The Linux release is patched to Nix's loader; the macOS one needs
+          # no patching, only its `libgmp` in `libs/` beside `aeneas`, where
+          # its binary looks, and Charon's loader path.
+          aeneas-linux = pkgs.stdenv.mkDerivation {
             pname = "aeneas";
             version = aeneas-release;
             src = pkgs.fetchurl {
-              url = "https://github.com/AeneasVerif/aeneas/releases/download/${aeneas-release}/aeneas-linux-${aeneas-tarball.${system}.arch}.tar.gz";
+              url = "https://github.com/AeneasVerif/aeneas/releases/download/${aeneas-release}/aeneas-${
+                aeneas-tarball.${system}.target
+              }.tar.gz";
               inherit (aeneas-tarball.${system}) hash;
             };
             sourceRoot = ".";
@@ -430,6 +458,73 @@
                 --prefix PATH : ${rust-charon}/bin
             '';
           };
+          aeneas =
+            if isDarwin then
+              aeneas-linux.overrideAttrs (old: {
+                unpackCmd = old.unpackCmd + " libs";
+                nativeBuildInputs = [ pkgs.makeWrapper ];
+                buildInputs = [ ];
+                # Stripping would invalidate the release's signatures.
+                dontStrip = true;
+                installPhase = old.installPhase + darwin-install;
+              })
+            else
+              aeneas-linux;
+
+          # HOL Light at the commit s2n-bignum's CI checks the fork's base
+          # with, `HOLLIGHT_COMMIT` in its `.github/workflows/ci.yml`: the
+          # fork's GHASH and POLYVAL specs need the algebra libraries it
+          # revamped, `Library/finite_fields.ml` among them, which nixpkgs'
+          # older commit lacks.
+          hol-light-pkg = pkgs.hol_light.overrideAttrs (old: {
+            version = "0-unstable-2026-11-10";
+            src = pkgs.fetchFromGitHub {
+              owner = "jrh13";
+              repo = "hol-light";
+              rev = "e5236a5839b4d08dc2536b325cea0af855e6c379";
+              hash = "sha256-cHXMXEs144IcEEbr+7HrbnwkUnTT+72+7yZVopCj7Q0=";
+            };
+            # nixpkgs' patch, which links findlib into the toplevel, as an
+            # edit: the Makefile's lines moved since its commit.
+            patches = [ ];
+            postPatch = (old.postPatch or "") + ''
+              substituteInPlace Makefile --replace-fail \
+                "ocamlfind ocamlmktop -package zarith -o ocaml-hol" \
+                "ocamlfind ocamlmktop -package zarith,findlib -o ocaml-hol"
+            '';
+          });
+
+          # The Charon and Aeneas that Beneficial AI Foundation's Lean proofs
+          # of curve25519-dalek translate it with, the tag their
+          # `curve25519-dalek/lean/AENEAS_VERSION.txt` names at
+          # `admin/import-dalek`'s REV, run with the same nightly as rind's.
+          # `admin/prove dalek` runs them, from `$DALEK_AENEAS`, to check that
+          # the dalek rind builds translates to the code those proofs are about.
+          aeneas-dalek-release = "nightly-2026.11.10-0d21a9e";
+          aeneas-dalek = aeneas.overrideAttrs (old: {
+            version = aeneas-dalek-release;
+            src = pkgs.fetchurl {
+              url = "https://github.com/AeneasVerif/aeneas/releases/download/${aeneas-dalek-release}/aeneas-${
+                aeneas-tarball.${system}.target
+              }.tar.gz";
+              hash =
+                {
+                  x86_64-linux = "sha256-n5v1/VJwy4NAdAcrJGiukKTFptUDx2IpOkGakowt9Zs=";
+                  aarch64-linux = "sha256-EgRADVVDMHQzbaicKb404sha+A9ukeSiZ6skiJcAoAI=";
+                  aarch64-darwin = "sha256-4eH+c3qB6VT5ikslnin49OczZXkRJkg4dODHbGGxUio=";
+                }
+                .${system};
+            };
+            # BAIF's translation builds `core` and `alloc` for its own target
+            # specs, so it needs no sysroot of rind's.
+            installPhase = ''
+              install -Dm755 -t $out/bin aeneas charon charon-driver
+              wrapProgram $out/bin/charon \
+                --set CHARON_TOOLCHAIN_IS_IN_PATH 1 \
+                --prefix PATH : ${rust-charon}/bin
+            ''
+            + pkgs.lib.optionalString isDarwin darwin-install;
+          });
 
           # `admin/prove hol-light` and `admin/prove bytes` run in it: HOL
           # Light, the OCaml it compiles the proofs with, as s2n-bignum's
@@ -451,7 +546,7 @@
                   "armv7-unknown-linux-gnueabihf"
                 ];
               })
-              pkgs.hol_light
+              hol-light-pkg
               pkgs.ocamlPackages.ocaml
               pkgs.ocamlPackages.findlib
               pkgs.ocamlPackages.camlp5
@@ -519,6 +614,10 @@
                   # git already brings this one.
                   perl
                   cargo-deny
+                  # Audits of rind's own dependencies (supply-chain/).
+                  cargo-vet
+                  # `just powerset` and the quality lints workflow.
+                  cargo-hack
                   # admin/mutants and the mutants workflow.
                   cargo-mutants
                   cargo-nextest
@@ -638,7 +737,7 @@
               ];
             };
 
-            # The `dart` module of `just check` runs rind-dart's Dart package
+            # The `dart` module of `just ci` runs rind-dart's Dart package
             # in it. Its own shell, since the SDK would add over 200 MB to
             # the closure every CI job downloads.
             dart = mkDevShell {
@@ -649,10 +748,16 @@
             };
 
             # `coverage.yml` runs `admin/coverage` in it. On x86_64 Linux it
-            # adds `sde`, for the pass that covers the AVX-512 paths.
+            # adds `sde`, for the pass that covers the AVX-512 paths, and on
+            # Linux the armv7 shell's toolchain, for the armv7 tier.
             coverage = mkDevShell {
               packages = [
-                (rust-stable.minimal.override { extensions = [ "llvm-tools" ]; })
+                (rust-stable.minimal.override {
+                  extensions = [ "llvm-tools" ];
+                  targets = pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [
+                    "armv7-unknown-linux-gnueabihf"
+                  ];
+                })
                 pkgs.cargo-llvm-cov
                 # aws-lc-rs builds C.
                 pkgs.cmake
@@ -663,14 +768,21 @@
                 pkgs.git
               ]
               ++ python-shell.packages
+              # The armv7 compiler stays off PATH, where its setup hook would
+              # make it every build's `cc`; the armv7 shell's variables name it
+              # by path.
+              ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [
+                pkgs.qemu-user
+                pkgs.util-linux
+              ]
               ++ pkgs.lib.optionals (system == "x86_64-linux") [ sde ];
 
-              inherit (python-shell) env;
+              env = python-shell.env // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux armv7-shell.env;
 
               shellHook = pkgs.lib.optionalString (system == "x86_64-linux") sde-certs;
             };
 
-            # `just check` runs `sh/site.sh` in it, which builds site/, the
+            # `just ci` runs `sh/site.sh` in it, which builds site/, the
             # landing page, with Bun, and loads it in headless Chromium. Its own
             # shell, since Chromium would add hundreds of MB to the closure
             # every CI job downloads.
@@ -690,7 +802,7 @@
                 };
               };
 
-            # `just check` runs `sh/openssl.sh` in it, which builds rind-openssl
+            # `just ci` runs `sh/openssl.sh` in it, which builds rind-openssl
             # and runs OpenSSL's `evp_test` with it.
             openssl = mkDevShell {
               packages = [
@@ -700,7 +812,35 @@
               env.OPENSSL_EVP_TEST = openssl-evp-test;
             };
 
-            # `just check` runs `admin/ct-vartime` in it: llvm-objdump, and the
+            # `admin/prove` and the prove workflow run in it. Lake fetches the
+            # Lean toolchain that `proofs/lean-toolchain` names, whose bundled
+            # `leantar` reads Mathlib's cache, which nixpkgs' Lean cannot.
+            # See UPSTREAM.md, "nixpkgs' Lean cannot read Mathlib's cache".
+            # On macOS it translates and builds the Lean proofs but runs no
+            # HOL Light, `vg`, or cosimulation; `admin/prove` provides GNU
+            # tools there, since it uses their `sed -i`, `realpath -e`, and
+            # `sha256sum`.
+            prove = mkDevShell {
+              inputsFrom = [ hol-light ];
+              packages = [
+                aeneas
+                pkgs.elan
+                pkgs.git
+                pkgs.curl
+              ]
+              ++ pkgs.lib.optionals isDarwin [
+                pkgs.bash
+                pkgs.coreutils
+                pkgs.findutils
+                pkgs.gawk
+                pkgs.gnugrep
+                pkgs.gnused
+                pkgs.gnutar
+              ];
+              DALEK_AENEAS = "${aeneas-dalek}/bin";
+            };
+
+            # `just ci` runs `admin/ct-vartime` in it: llvm-objdump, and the
             # standard library of each target it builds rind's rlib for.
             ct-vartime = mkDevShell {
               packages = [
@@ -726,21 +866,6 @@
           }
           # Linux only, since valgrind and qemu-user need a Linux host.
           // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
-            # `admin/prove` and the prove workflow run in it. Linux only, as
-            # Aeneas releases for it. Lake fetches the Lean toolchain that
-            # `proofs/lean-toolchain` names, whose bundled `leantar` reads
-            # Mathlib's cache, which nixpkgs' Lean cannot.
-            # See UPSTREAM.md, "nixpkgs' Lean cannot read Mathlib's cache".
-            prove = mkDevShell {
-              inputsFrom = [ hol-light ];
-              packages = [
-                aeneas
-                pkgs.elan
-                pkgs.git
-                pkgs.curl
-              ];
-            };
-
             # `admin/prove vg` and the prove workflow's `vg` jobs run in it:
             # the Rust that compiles VG's naked functions and rind's, with the
             # targets the bytes check reads; nixpkgs' LLVM, whose `llvm-mc`
@@ -801,12 +926,27 @@
             # `just wasm` runs the portable backend's tests on wasm32-wasip2
             # in it, under wasmtime. The toolchain is the default shell's,
             # which already carries the target.
-            wasm = mkDevShell {
-              packages = [
-                rust-toolchain
-                pkgs.wasmtime
-              ];
-            };
+            # `just wasm` runs in it: wasmtime for WASI, and for the browser's
+            # target wasm-bindgen's test runner in Node. The runner must be
+            # the one wasm-bindgen release Cargo.lock pins.
+            wasm =
+              let
+                lock = builtins.fromTOML (builtins.readFile ./Cargo.lock);
+                pinned = builtins.filter (p: p.name == "wasm-bindgen") lock.package;
+                wasm-bindgen =
+                  if builtins.length pinned == 1 then
+                    builtins.head pinned
+                  else
+                    throw "Cargo.lock pins ${toString (builtins.length pinned)} wasm-bindgen releases; the wasm shell's test runner must match exactly one";
+              in
+              mkDevShell {
+                packages = [
+                  rust-toolchain
+                  pkgs.wasmtime
+                  pkgs."wasm-bindgen-cli_${builtins.replaceStrings [ "." ] [ "_" ] wasm-bindgen.version}"
+                  pkgs.nodejs
+                ];
+              };
 
             # `just miri` and the miri workflow run in it: Charon's nightly,
             # which already carries Miri, rather than a second nightly.
@@ -838,7 +978,7 @@
             armv7 = mkDevShell armv7-shell;
 
             # `just qemu aarch64` tests the aarch64 build under qemu in it, and
-            # `just check`'s cross module lints rind's tests for aarch64 in it,
+            # `just ci`'s cross module lints rind's tests for aarch64 in it,
             # where the aws-lc-rs dev-dependency needs an aarch64 C compiler.
             aarch64 = qemu-shell {
               target = "aarch64-unknown-linux-gnu";
@@ -974,6 +1114,33 @@
               ];
 
               shellHook = sde-certs;
+            };
+
+            # The bench workflow's instruction counts, `swole run` and
+            # `swole compare <base>`, which build rind-bench with its C
+            # baselines. swole counts on x86_64 Linux only.
+            bench = mkDevShell {
+              packages = [
+                rust-stable.minimal
+                swole.packages.${system}.default
+                # sh/bench-select.sh lists the bench targets with it.
+                pkgs.jq
+                pkgs.cmake
+                pkgs.pkg-config
+                pkgs.openssl
+              ];
+              # Valgrind hides ADX, which every CPU since Broadwell has, so
+              # rind takes its ADX routines anyway, as under `admin/ctgrind`.
+              # See UPSTREAM.md, "Valgrind hides ADX from `cpuid`".
+              env.VALGRIND_BUG_494162 = "1";
+              # swole lists the benchmarks natively, where that forced
+              # ADX would fault on a CPU without it, such as Haswell.
+              shellHook = ''
+                if ! grep -qw adx /proc/cpuinfo; then
+                  echo "the bench shell needs a CPU with ADX (Broadwell or later)" >&2
+                  exit 1
+                fi
+              '';
             };
           };
 

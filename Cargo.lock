@@ -221,14 +221,26 @@ dependencies = [
 
 [[package]]
 name = "argon2"
+version = "0.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3c3610892ee6e0cbce8ae2700349fcf8f98adb0dbfbee85aec3c9179d29cc072"
+dependencies = [
+ "base64ct",
+ "blake2 0.10.6",
+ "cpufeatures 0.2.17",
+ "password-hash 0.5.0",
+]
+
+[[package]]
+name = "argon2"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "134c52ddac6d63c576bef8168db10c83c49c26444ecbc68060fef078925a901c"
 dependencies = [
  "base64ct",
- "blake2",
+ "blake2 0.11.0",
  "cpufeatures 0.3.1",
- "password-hash",
+ "password-hash 0.6.1",
 ]
 
 [[package]]
@@ -434,6 +446,15 @@ name = "bitflags"
 version = "2.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ded4057c258ba199e2d26386d3af3780957ecaee6c4ef4041c6b4b8b97c0b06"
+
+[[package]]
+name = "blake2"
+version = "0.10.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "46502ad458c9a52b69d4d4d32775c788b7a1b85e8bc9d482d92250fc0e3f8efe"
+dependencies = [
+ "digest 0.10.7",
+]
 
 [[package]]
 name = "blake2"
@@ -1675,9 +1696,9 @@ checksum = "00b0228411908ca8685dba7fc2cdd70ec9990a6e753e89b6ac91a84c40fbaf4b"
 
 [[package]]
 name = "form_urlencoded"
-version = "1.2.2"
+version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb4cb245038516f5f85277875cdaa4f7d2c9a0fa0468de06ed190163b1581fcf"
+checksum = "afa489199eaffb1211795df1c6236ce1ad0d41a6fa45250add73e3b02420f06e"
 dependencies = [
  "percent-encoding",
 ]
@@ -1898,9 +1919,9 @@ checksum = "e4eba85ea1d0a966a983acd07deee566e67395d2d96b6fb39e62b5a833f1eb0b"
 
 [[package]]
 name = "graviola"
-version = "0.4.4"
+version = "0.4.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a1a15622a211648cbf64f485e0369791466d133eb6578fd99e4a61230c88a6aa"
+checksum = "bc0377ccc5ef095424121430046e475cf06658e23475b1af526655cfad0b86b2"
 dependencies = [
  "cfg-if",
  "getrandom 0.4.3",
@@ -3728,6 +3749,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c08d65885ee38876c4f86fa503fb49d7b507c2b62552df7c70b2fce627e06381"
 
 [[package]]
+name = "opaque-ke"
+version = "4.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ded22991b43cd15561b62b2e1cf9ace1344a8534eebec96202d5c96a77a6616a"
+dependencies = [
+ "argon2 0.5.3",
+ "curve25519-dalek 4.1.3",
+ "derive-where",
+ "digest 0.10.7",
+ "displaydoc",
+ "elliptic-curve 0.13.8",
+ "generic-array",
+ "hkdf 0.12.4",
+ "hmac 0.12.1",
+ "rand 0.8.8",
+ "subtle",
+ "voprf 0.5.0",
+ "zeroize",
+]
+
+[[package]]
 name = "openmls"
 version = "0.9.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4043,6 +4085,17 @@ dependencies = [
  "redox_syscall",
  "smallvec",
  "windows-link",
+]
+
+[[package]]
+name = "password-hash"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "346f04948ba92c43e8469c1ee6736c7563d71012b17d40745260fe106aac2166"
+dependencies = [
+ "base64ct",
+ "rand_core 0.6.4",
+ "subtle",
 ]
 
 [[package]]
@@ -4530,6 +4583,15 @@ checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
 
 [[package]]
 name = "rand"
+version = "0.8.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e058c7de0b26af77780c769414d6257830bb240f3c38477dbc2c16e5f54d6d4c"
+dependencies = [
+ "rand_core 0.6.4",
+]
+
+[[package]]
+name = "rand"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b9ef1d0d795eb7d84685bca4f72f3649f064e6641543d3a8c415898726a57b41"
@@ -4712,10 +4774,10 @@ dependencies = [
  "aes-gcm 0.11.1",
  "aes-kw",
  "akd_core",
- "argon2",
+ "argon2 0.6.0",
  "aws-lc-rs",
  "aws-lc-sys",
- "blake2",
+ "blake2 0.11.0",
  "blind-rsa-signatures",
  "cbc",
  "cfg-if",
@@ -4748,6 +4810,7 @@ dependencies = [
  "ml-dsa",
  "ml-kem",
  "num-bigint 0.5.1",
+ "opaque-ke",
  "p256 0.13.2",
  "p256 0.14.0",
  "p384 0.13.1",
@@ -4764,11 +4827,13 @@ dependencies = [
  "serde",
  "serde_json",
  "sha1",
+ "sha2 0.10.9",
  "sha2 0.11.1",
  "sha3 0.12.0",
  "slh-dsa",
  "voprf 0.5.0",
  "vrf-rfc9381",
+ "zeroize",
 ]
 
 [[package]]
@@ -4784,11 +4849,12 @@ dependencies = [
 
 [[package]]
 name = "rind-aws-lc-rs"
-version = "1.0.4"
+version = "1.0.3"
 dependencies = [
  "aws-lc-rs",
  "crabgrind 0.4.0",
  "hex",
+ "once_cell",
  "proptest",
  "rind",
  "serde",
@@ -4802,7 +4868,7 @@ name = "rind-bench"
 version = "0.1.0"
 dependencies = [
  "aes-gcm 0.11.1",
- "argon2",
+ "argon2 0.6.0",
  "aws-lc-rs",
  "aws-lc-sys",
  "blind-rsa-signatures",
@@ -4868,7 +4934,7 @@ version = "0.1.0"
 
 [[package]]
 name = "rind-dart"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "crabgrind 0.4.0",
  "rind",
@@ -4915,7 +4981,7 @@ dependencies = [
  "aes-gcm 0.11.1",
  "aes-kw",
  "akd_core",
- "argon2",
+ "argon2 0.6.0",
  "arrayvec",
  "aws-lc-rs",
  "aws-lc-sys",
@@ -4926,6 +4992,9 @@ dependencies = [
  "ctr 0.10.1",
  "curve25519-dalek 5.0.0",
  "dimpl",
+ "frost-ed25519",
+ "frost-p256",
+ "frost-ristretto255",
  "ghash 0.6.0",
  "hkdf 0.13.0",
  "hmac 0.13.0",
@@ -4938,25 +5007,33 @@ dependencies = [
  "ml-dsa",
  "ml-kem",
  "num-bigint 0.5.1",
+ "opaque-ke",
  "p256 0.13.2",
  "p256 0.14.0",
  "p384 0.13.1",
  "p384 0.14.0",
  "p521 0.13.3",
  "p521 0.14.0",
+ "pakery-crypto",
+ "pakery-spake2plus",
  "pbkdf2",
  "pkcs8 0.11.0",
+ "pyo3",
  "rand_core 0.6.4",
  "rcgen",
  "rind",
+ "rind-dart",
  "rind-dimpl",
+ "rind-fips",
  "rind-openssl",
+ "rind-python",
  "rind-rcgen",
  "rind-rustls",
  "rind-str0m",
  "rsa",
  "rustls",
  "sha1",
+ "sha2 0.10.9",
  "sha2 0.11.1",
  "sha3 0.12.0",
  "slh-dsa",
@@ -5022,11 +5099,21 @@ version = "0.1.3"
 dependencies = [
  "pyo3",
  "rind",
+ "zeroize",
+]
+
+[[package]]
+name = "rind-rand-core"
+version = "0.10.0"
+dependencies = [
+ "p256 0.14.0",
+ "rand_core 0.10.1",
+ "rind",
 ]
 
 [[package]]
 name = "rind-rcgen"
-version = "0.14.5"
+version = "0.14.4"
 dependencies = [
  "base64ct",
  "crabgrind 0.4.0",
@@ -5041,7 +5128,7 @@ dependencies = [
 
 [[package]]
 name = "rind-ring"
-version = "0.17.5"
+version = "0.17.4"
 dependencies = [
  "aws-lc-rs",
  "crabgrind 0.4.0",
@@ -5053,6 +5140,7 @@ dependencies = [
  "serde",
  "serde_json",
  "untrusted 0.9.0",
+ "wasm-bindgen-test",
 ]
 
 [[package]]
@@ -5061,6 +5149,7 @@ version = "0.23.4"
 dependencies = [
  "crabgrind 0.4.0",
  "env_logger",
+ "getrandom 0.4.3",
  "hex",
  "http",
  "http-body-util",
@@ -5069,8 +5158,10 @@ dependencies = [
  "hyper-util",
  "rind",
  "rustls",
+ "rustls-pki-types",
  "tokio",
  "tokio-rustls",
+ "wasm-bindgen-test",
 ]
 
 [[package]]
@@ -5243,9 +5334,9 @@ dependencies = [
 
 [[package]]
 name = "rustls-pki-types"
-version = "1.15.1"
+version = "1.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2f4925028c7eb5d1fcdaf196971378ed9d2c1c4efc7dc5d011256f76c99c0a96"
+checksum = "102f35f7de7b06d8c61f1cff6592f5253e0dea431c74867aad5dfd70f44663fb"
 dependencies = [
  "web-time",
  "zeroize",
@@ -6113,9 +6204,9 @@ checksum = "8ecb6da28b8a351d773b68d5825ac39017e680750f980f3a1a85cd8dd28a47c1"
 
 [[package]]
 name = "url"
-version = "2.5.8"
+version = "2.5.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ff67a8a4397373c3ef660812acab3268222035010ab8680ec4215f38ba3d0eed"
+checksum = "f00cd2407bb42c0ef17be88d4cf020f5cceffd121665bac9b8b9493a369b3b1a"
 dependencies = [
  "form_urlencoded",
  "idna",
