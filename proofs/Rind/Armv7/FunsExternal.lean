@@ -150,6 +150,21 @@ opaque mid.p521.PublicKey.from_x962_uncompressed
 opaque mid.p521.PrivateKey.diffie_hellman
   : mid.p521.PrivateKey → mid.p521.PublicKey → Result (core.result.Result mid.p521.SharedSecret error.Error)
 
+/-! ChaCha20-Poly1305, which `aead::Key` holds and whose armv7 code no proof
+covers yet. -/
+
+opaque mid.chacha20poly1305.ChaCha20Poly1305.new
+  : Array Std.U8 32#usize → Result mid.chacha20poly1305.ChaCha20Poly1305
+
+opaque mid.chacha20poly1305.ChaCha20Poly1305.encrypt
+  : mid.chacha20poly1305.ChaCha20Poly1305 → Array Std.U8 12#usize → Slice Std.U8 → Slice Std.U8 →
+    Array Std.U8 16#usize →
+    Result ((core.result.Result Unit error.Error) × (Slice Std.U8) × (Array Std.U8 16#usize))
+
+opaque mid.chacha20poly1305.ChaCha20Poly1305.decrypt
+  : mid.chacha20poly1305.ChaCha20Poly1305 → Array Std.U8 12#usize → Slice Std.U8 → Slice Std.U8 →
+    Array Std.U8 16#usize → Result ((core.result.Result Unit error.Error) × (Slice Std.U8))
+
 /-! The CPU feature checks. `Rind.Armv7.AesGcm`'s theorems take each one's
 answer as a hypothesis: no feature, on the CPUs they are about. -/
 

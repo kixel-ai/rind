@@ -1639,9 +1639,10 @@ to_lean() {
 }
 
 # armv7's translation reaches the header-protection API, ChaCha20's the one
-# armv7 path that is Rust down to code a proof covers; the AES-GCM API, down
-# to the bitsliced AES and integer GHASH a CPU with neither NEON nor the
-# crypto extension runs; and the agreement API, down to the curve25519-dalek
+# armv7 path that is Rust down to code a proof covers; the AES-GCM API, from
+# its `aead::Key` cipher impl down to the bitsliced AES and integer GHASH a
+# CPU with neither NEON nor the crypto extension runs, with ChaCha20-Poly1305
+# below its cipher impl opaque, since `aead::Key` holds it; and the agreement API, down to the curve25519-dalek
 # functions X25519 runs on a CPU without NEON, and for the public key on every
 # CPU, whose BAIF theorems `Rind/Armv7/Dalek.lean` restates. The rest of
 # armv7's operations, the NIST curves' among them, run assembly, which no
@@ -1661,6 +1662,14 @@ extract_armv7() {
         --start-from crate::mid::aes_gcm::AesGcm::decrypt \
         --start-from crate::mid::aes_gcm::AesGcm::encrypt_any \
         --start-from crate::mid::aes_gcm::AesGcm::decrypt_any \
+        --start-from '{impl crate::aead::Cipher for crate::mid::aes_gcm::AesGcm}' \
+        --start-from '{impl crate::aead::Cipher for crate::mid::chacha20poly1305::ChaCha20Poly1305}' \
+        --start-from crate::aead::Key \
+        --start-from crate::aead::AlgorithmId \
+        --opaque crate::aead::Algorithm \
+        --opaque crate::aead::Sealer \
+        --opaque crate::aead::Ops \
+        --opaque crate::mid::chacha20poly1305 \
         --start-from '{impl crate::high::agreement::Agree for crate::high::agreement::X25519Curve}' \
         --start-from '{impl crate::high::agreement::Agree for crate::high::curve::P256}' \
         --start-from '{impl crate::high::agreement::Agree for crate::high::curve::P384}' \
@@ -2160,10 +2169,24 @@ done
 # `Rind.Armv7.Curve25519`'s dispatch where x86_64's are over s2n-bignum's:
 # the CPU check that picks the routine is NEON's. armv7's compares live in
 # `low::arm::cpu`.
-for file in QuicDispatch Dispatch P256Dispatch P384Dispatch ChaCha20 CtEqual X25519Bytes X25519; do
+for file in QuicDispatch Dispatch P256Dispatch P384Dispatch ChaCha20 CtEqual X25519Bytes X25519 AeadDispatch AeadVec \
+    AesGcmApi GcmKey; do
     sed 's/X86_64/Armv7/g; s/x86_64/armv7/g; s/low\.armv7\.cpu/low.arm.cpu/g; s/Rind\.Armv7\.S2nBignum/Rind.Armv7.Curve25519/; s/low\.armv7\.curve25519_ifma\.Curve25519Ifma/low.arm.cpu.HaveNeon/g; s/CurveIfma/DalekCpu/g' \
         "proofs/Rind/X86_64/$file.lean" >"proofs/Rind/Armv7/$file.lean"
 done
+# armv7's AEAD model leaves out `RandomizedNonceKey`, whose XChaCha20-Poly1305
+# its translation does not reach. Its AES-GCM API and custom-IV key are over
+# `Rind.Armv7.AesGcm`, which proves under x86_64's names what x86_64's
+# `AesGcmAead` and `AesGcmAny` do.
+sed -i '/-- BEGIN xchacha/,/-- END xchacha/d' proofs/Rind/Armv7/AeadDispatch.lean
+sed -i 's/^import Rind\.Armv7\.AesGcmAead$/import Rind.Armv7.AesGcm/' proofs/Rind/Armv7/AesGcmApi.lean
+sed -i 's/^import Rind\.Armv7\.AesGcmAny$/import Rind.Armv7.AesGcmApi/' proofs/Rind/Armv7/GcmKey.lean
+if grep -q 'xchacha' proofs/Rind/Armv7/AeadDispatch.lean ||
+    ! grep -qx 'import Rind.Armv7.AesGcm' proofs/Rind/Armv7/AesGcmApi.lean ||
+    ! grep -qx 'import Rind.Armv7.AesGcmApi' proofs/Rind/Armv7/GcmKey.lean; then
+    echo "admin/prove: proofs/Rind/X86_64/{AeadDispatch,AesGcmApi,GcmKey}.lean no longer have the lines armv7's copies rewrite" >&2
+    exit 1
+fi
 
 # The elements of the HOL Light list `$2` that `$1` defines, as Lean writes
 # them: `-- &1600` is -1600 and `&630` is 630.
