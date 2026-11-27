@@ -90,7 +90,7 @@ ssh_vm() {
 # reload a loaded agent whose plist changed (explicit maintenance in services),
 # or 0 to leave a loaded agent running so setup never kills a job in flight.
 start() {
-    local vm=$1 upgrade=${2:-0} label plist new loaded=0
+    local vm=$1 upgrade=${2:-0} label plist new tmp loaded=0
     label=dev.kixelated.$(vm_name "$vm")
     plist=$HOME/Library/LaunchAgents/$label.plist
     new=$(
@@ -119,20 +119,32 @@ EOF
     if [[ "$loaded" = 1 && -e "$plist" && "$(<"$plist")" == "$new" ]]; then
         return
     fi
+    mkdir -p "${plist%/*}"
+    tmp=$(mktemp "${plist}.XXXXXX")
+    if ! { printf '%s\n' "$new" >"$tmp" && chmod 644 "$tmp"; }; then
+        rm -f "$tmp"
+        return 1
+    fi
     if [[ "$loaded" = 1 ]]; then
         local tries=0
         launchctl bootout "gui/$(id -u)/$label" || true
         while launchctl print "gui/$(id -u)/$label" >/dev/null 2>&1; do
             tries=$((tries + 1))
             [[ $tries -le 1200 ]] || {
+                rm -f "$tmp"
                 echo "error: launchd still holds gui/$(id -u)/$label 120s after bootout" >&2
                 return 1
             }
             sleep 0.1
         done
     fi
-    mkdir -p "${plist%/*}"
-    printf '%s\n' "$new" >"$plist"
+    if ! mv "$tmp" "$plist"; then
+        rm -f "$tmp"
+        if [[ "$loaded" = 1 && -e "$plist" ]]; then
+            launchctl bootstrap "gui/$(id -u)" "$plist" || true
+        fi
+        return 1
+    fi
     launchctl bootstrap "gui/$(id -u)" "$plist"
 }
 
