@@ -19,8 +19,8 @@ Baseline (2026-11-27):
 
 Approach:
 1. **Single `spec-server` build job in `.github/workflows/prove.yml`:**
-   - Add a `spec-server-build` job (`runs-on: ubuntu-24.04`) that runs `nix develop .#prove --command bash -euo pipefail -c 'cd proofs && lake build spec-server'` (optionally backed by `actions/cache` keyed on `proofs/lean-toolchain` + `proofs/lake-manifest.json` + spec inputs) and uploads `proofs/.lake/build/bin/spec-server` as a workflow artifact.
-   - Have the 5 `spec-tests` matrix shards depend on `spec-server-build`, download the binary, and run only the `spec-tests` Rust driver against it (skipping `lake build spec-server` when a prebuilt binary path is provided via env var or CLI flag to `admin/prove spec-tests`).
+   - Add a `spec-server-build` job (`runs-on: ubuntu-24.04`) that runs the existing `lean_deps` Mathlib/Aeneas cache prefetch before `lake build spec-server` (optionally backed by `actions/cache` keyed on `proofs/lean-toolchain` + `proofs/lake-manifest.json` + spec inputs) and uploads `proofs/.lake/build/bin/spec-server` as a workflow artifact.
+   - Have the 5 `spec-tests` matrix shards depend on `spec-server-build`, download the binary, and run only the `spec-tests` Rust driver against it (skipping both `lean_deps` and `lake build spec-server` in the shards when a prebuilt binary path is provided via env var or CLI flag to `admin/prove spec-tests`).
    - Verify `sh/select-jobs.sh` still handles `-f jobs=spec-tests` cleanly (including its `spec-server-build` dependency).
 2. **Scoped `admin/prove lean [Module...]`:**
    - Extend `admin/prove` so passing module targets after `lean` (e.g., `admin/prove lean Rind.X86_64.AesGcm`) runs `lake build "$@"` instead of bare `lake build`, and skips unrelated architecture extractions when the requested modules only belong to one target directory (while refusing to emit or save a whole-`lean` cache key on a partial run).

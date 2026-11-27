@@ -20,8 +20,8 @@ Baseline (2026-11-27):
 Approach:
 1. **Lever 1 - Lean 4 `module` system (`module` + `public` + `.olean.private`):**
    - Identify the highest-fanout shared hub modules not yet using `module` (such as `Axioms.lean`, `Spec/*`, `FunsExternal.lean`, `TypesExternal.lean`, `S2nBignum.lean`, `AwsLc.lean`), convert the top hubs to `module`, and measure before/after (a) downstream modules rebuilt on a proof-body-only edit and (b) peak RSS during `lake build`.
-2. **Lever 2 - Tactic profiler (`-Dprofiler=true`) and mega-file splits:**
-   - Run `lake build -Dprofiler=true -Dprofiler.threshold=500` across `Rind` to rank the top 20 slowest declarations and files (separating elaboration, tactic search like broad `simp`/`omega`/`bv_decide`/`ring`, and kernel typechecking).
+2. **Lever 2 - Tactic profiler and mega-file splits:**
+   - Enable `profiler = true` and `profiler.threshold = 500` in the `Rind` library's `leanOptions` in `proofs/lakefile.toml` (since Lake's CLI rejects `-D` flags) for the measurement run across `Rind`, ranking the top 20 slowest declarations and files (separating elaboration, tactic search like broad `simp`/`omega`/`bv_decide`/`ring`, and kernel typechecking).
    - Fix the highest-ROI tactic hot spots (e.g., replacing broad `simp` with `simp only [...]`) and measure splitting the single slowest mega-file (`Portable/Mont.lean` or whichever file leads the critical path).
 3. **Lever 3 - Intra-file parallelism (`Elab.async` / `--threads`) and `leanc` C codegen:**
    - Benchmark `Elab.async` and thread counts on the slowest Lean files (wall time, CPU time, peak RSS).
