@@ -256,6 +256,21 @@ those inputs, in any worktree, restores in under a second.
   them about `NeonTable::new` and `NeonTable::ghash`, and
   `neon_new_ghashFor` proves the table `new` builds hashes as `GhashFor`
   asks, which `Parts::tagged`'s proof takes.
+- `armv7/sha256_armv4.ml`: `SHA256_BLOCK_DATA_ORDER_HW_SUBROUTINE_CORRECT`,
+  rind's proof that aws-lc's `sha256_block_data_order_hw` in
+  `low::arm::sha_armv4`, which armv7 runs where the CPU has the crypto
+  extension, stores to the state s2n-bignum's FIPS 180-4 spec,
+  `sha256_hash_blocks`, of its blocks from the state, for one block up.
+  Stepping keeps each Q register a `sha256_quad` of the spec's words, so
+  each `sha256h` and `sha256h2` pair is four of the spec's rounds,
+  `SHA256H_STEP`, and each `sha256su0` and `sha256su1` pair four words of
+  its message schedule. The routine reaches K256 through an offset in a
+  literal word before it, so `admin/prove` extracts the code from K256
+  through the routine's end, `K256..sha256_block_data_order_hw`, with
+  `sha256_block_data_order_nohw` and `_neon` between, and the proof reads
+  K256's words and the literal from that code. The theorem covers the
+  routine from entry to return for a caller in A32 or T32, so every armv7
+  target. No Lean theorem restates it yet.
 - `x86_64/ecp_nistz256_point_add_affine.ml` and
   `x86_64/ecp_nistz256_point_add_affinex.ml`:
   `ECP_NISTZ256_POINT_ADD_AFFINE_SUBROUTINE_CORRECT` and
@@ -1093,13 +1108,14 @@ Lean spec (`Rind/SymCrypt/Sha3.lean`, MIT) states it. Keccak-f is
 s2n-bignum's `keccak 24` on lanes, the spec its routines' theorems state,
 which `Rind/Keccak.lean` proves SymCrypt's KECCAK-f[1600].
 `Rind/<Arch>/KeccakDispatch.lean` proves what rind's dispatch to the one-,
-two-, four-, and eight-state routines computes, from those theorems. Each
-theorem assumes `RunsSha3`: rind's entry guard and CPU checks pass, and on
-x86_64, rind's own AVX-512 eight-way Keccak-f, which `Shake8x` and
-ML-KEM-1024's sampler run, computes Keccak-f on each state. No proof covers
-that kernel yet; ML-KEM-768 runs pyca/verified-garbage's code there instead.
-Wherever rind's sampler runs for ML-KEM-768, it samples eight of its nine
-polynomials four at a time and the ninth alone, never eight at a time.
+two-, four-, and eight-state routines computes, from those theorems and, on
+x86_64 with AVX-512, from `Rind/X86_64/Keccak8Avx512.lean`'s proof of rind's
+own eight-way Keccak-f, which `Shake8x` and ML-KEM's samplers run. That proof
+is over `Rind/X86_64/Simd.lean`'s models of the AVX-512 intrinsics the kernel
+calls and `Rind/X86_64/FunsExternal.lean`'s hand model of `set_row`, its one
+store through a pointer: each round of its 25 vectors is `keccakRound` on
+each state's lanes, by unfolding both, and its transposes transpose. Each
+theorem assumes `RunsSha3`: rind's entry guard and CPU checks pass.
 
 The portable backend's Keccak-f, which its SHA-3, ML-KEM, and ML-DSA run, in
 `Rind/Portable/Keccak.lean`, over a translation of `low/portable/keccak.rs`
@@ -1239,12 +1255,18 @@ addition and multiples of the twisted Edwards group in `Rind/Edwards.lean`,
 with no axiom. Each theorem
 assumes `Runs` and `RunsSha512`, and each with a message bounds it at
 2^64 - 64 bytes. The two that verify also assume, on aarch64, `RunsDouble`,
-which holds on every aarch64 CPU, and on x86_64 `RunsMsm`, the contract of
-the multi-scalar multiplication `low::x86_64::adx_mux::edwards25519_msm`,
-which nothing proves yet (`quest/m4/verified/ed25519-half-scalar.md`).
-x86_64's also assume `EdOrders`, the group's orders, which HOL Light proves
-and Lean does not yet: every point times 8L, and the base point times L, is
-the identity. From them `Rind/Ed25519Group.lean`'s `half_size_iff` proves
+which holds on every aarch64 CPU, and on x86_64 `MsmS2n`, that the CPU runs
+the multi-scalar multiplication over s2n-bignum's point routines (it has BMI2
+and ADX, or lacks AVX2) rather than the AVX2 port, which
+`quest/m4/verified/ed25519-avx2-verify.md` plans to prove. `Rind/X86_64/Ed25519Msm.lean`
+proves that multiplication, `low::generic::edwards25519_msm`, computes
+`[b]B + [s0]P0 + [s1]P1` over the contracts of s2n-bignum's
+`edwards25519_epadd`, `edwards25519_epdouble`, and `edwards25519_pdouble` and
+their `_alt` twins, axioms in `Rind/X86_64/S2nBignum.lean`, with its static
+tables of `B`'s and `[2^128]B`'s odd multiples checked in the kernel and its
+recoding's sum from `Rind/X86_64/Naf.lean`. `Rind/Ed25519Group.lean` proves
+the group's orders: every point times 8L, and the base point times L, is the
+identity. From them its `half_size_iff` proves
 that the half-size check accepts exactly what `ed25519Verifies` does, and
 `Rind/X86_64/HalfSize.lean` proves that `mid::half_size::split` returns
 `u ≡ v k (mod 8L)` with `v` odd and below 2^128. Both targets'
@@ -2080,11 +2102,14 @@ beyond Lean's own.
   Foundation's curve25519-dalek simulation under the MIT license;
   `Rind/Ed25519Group.lean`: that `d` is a non-square, so `edMul` and `edPow`
   are that group's addition and multiples, that `L` is prime, by a Pratt
-  certificate, and `half_size_iff`, the half-size check's argument;
+  certificate, the group's orders, and `half_size_iff`, the half-size check's
+  argument;
   `Rind/X86_64/HalfSize.lean`: `mid::half_size::split`.
-- `Rind/X86_64/Naf.lean`, on both targets: that `mid::util::public_naf`
-  writes a scalar's width-5 or width-6 non-adjacent form, for any number of
-  words, which P-256's and P-384's ECDSA verification reads.
+- `Rind/X86_64/Naf.lean`, on both targets: that `low::generic::naf::public_naf`
+  writes a scalar's width-5, width-6, or width-8 non-adjacent form, for any
+  number of words, which P-256's and P-384's ECDSA verification and Ed25519's
+  multi-scalar multiplication read; `Rind/X86_64/Ed25519Msm.lean`: that
+  multiplication, its static tables included.
 - `Rind/X86_64/P256Dispatch.lean`, `Rind/X86_64/P256Agree.lean`, and
   `Rind/X86_64/P256.lean`: the hand model of P-256's key generation, and the
   P-256 agreement and key generation proofs, on both targets.
