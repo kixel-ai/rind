@@ -31,6 +31,6 @@ slow-timeout = { period = "120s", terminate-after = 10 }
 slow-timeout = { period = "300s", terminate-after = 18 }
 
 # Miri, nextest's profile under `cargo miri nextest` (sh/miri.sh). The slowest
-# measured: the VOPRF round trip on x86_64, 4511 s.
+# measured: the VOPRF round trip on x86_64, 6332 s.
 [profile.default-miri]
-slow-timeout = { period = "600s", terminate-after = 18 }
+slow-timeout = { period = "600s", terminate-after = 24 }
