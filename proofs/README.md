@@ -545,19 +545,26 @@ the `adrp` and `add` the linker fills and the final `ret`, as VG's are not.
 `verified-garbage/RindIsa/X86_64.lean` extends VG's x86_64 model the same
 way: its state is VG's with `lo`, the lowest address the stack may reach, and
 it adds the push, `lea`, `neg`, `dec`, `shrd`, aligned 128-bit load and
-store, and `ja` aws-lc's code uses, a stack pointer move that claims the region it
+store, and `ja` aws-lc's code uses, and the rest of what aws-lc's AVX2
+ChaCha20-Poly1305 seal uses (pop, `add` and `sub` of `rsp`, `inc`, `cmov` on
+its own conditions, the signed branches and `jbe`, SSE4.1's byte insert and
+extract and `pextrq`, legacy SSE instructions with an aligned memory
+source, aligned `vmovdqa`, and operands RIP-relative to a static, which
+address memory as any other), a stack pointer move that claims the region it
 passes over as writable and forgets what a release leaves below it, and the
-padding (`.align` and the `jmp` over it), which runs as no instructions.
-For BoringSSL's AVX2 AES-GCM code it adds `vpshufd` from memory and
-RIP-relative operands (`rip`) that read the start of a static, as the words
-the program names, leaking offset 0 as VG's table instructions do.
-`admin/prove lean` compares each x86_64 program's bytes and relocations with
-the Linux build the same way, `rind-asm x86_64` printing them: the function
-must be the whole of its own section, and each `rip` operand's
-`R_X86_64_PC32` relocation must reach the static it names, whose bytes must
-begin with the program's words. `admin/prove vg` cosimulates its
-instructions and branches (`Cosim/RindX86_64.lean`), a `rip` operand reading
-words placed after its instruction, but for the padding, whose bytes that
+padding (`.align` and the `jmp` over it), which runs as no instructions. It
+lays out `ite` and `loop` as the AArch64 model does. For BoringSSL's AVX2
+AES-GCM code it adds `vpshufd` from memory and RIP-relative operands
+(`rip`) that read the start of a static, as the words the program names,
+leaking offset 0 as VG's table instructions do. `admin/prove lean` compares
+each x86_64 program's bytes and relocations with the Linux build the same
+way, `rind-asm x86_64` printing them: the function must be the whole of its
+own section, and each RIP-relative operand's `R_X86_64_PC32` relocation must
+reach the static it names, with the program's addend, whose bytes must begin
+with the program's words. `admin/prove vg` cosimulates its instructions and
+branches (`Cosim/RindX86_64.lean`), a `rip` operand reading words placed
+after its instruction and any other RIP-relative operand's displacement
+pointed at the data the case compares, but for the padding, whose bytes that
 comparison checks.
 
 - `Rind/X86_64/Mul4xProof.lean`: `bn_mul4x_mont_correct`, that
@@ -698,6 +705,19 @@ comparison checks.
   register but its scratch ones and `v20`, and its trace is a function of
   the AAD's address and length. `Rind/Aarch64/Asm.lean` holds the symbolic
   execution they share.
+
+- `Rind/X86_64/Taint.lean`: `constantTime_of_check`, the same check for
+  rind's x86_64 model. It tracks CF apart from ZF, SF, and OF, since `dec`
+  and `inc` keep CF, and the stack pointer as a register.
+
+- `Rind/X86_64/ChaCha20Poly1305Asm.lean`: `seal_avx2_constant_time`, that
+  rind's copy of aws-lc's AVX2 ChaCha20-Poly1305 seal,
+  `RindIsa/X86_64/ChaCha20Poly1305.lean`'s `sealAvx2`, takes the same
+  branches and addresses for any two states that agree on the arguments
+  `rdi`, `rsi`, `rdx`, `rcx`, `r8`, and `r9`, the stack pointer, and the
+  constants' address, whatever the key, nonce, message, and AAD: `check`
+  accepts the program, which the kernel computes. That it computes RFC
+  8439's seal, part of `OnePass`, is not yet proven.
 
 ## curve25519-dalek's proofs
 
@@ -1792,12 +1812,11 @@ them at every length, assuming `RunsSeal` or `RunsOpen` of that length: rind's
 CPU-feature checks find what VG's IFMA routines need there, which Zen 4's
 `check_seal` and `check_open` deny to a seal of fewer than 800 bytes and an
 open of fewer than 512, or find SSE4.1 but not that and
-`OnePass` holds, that aws-lc's one-pass routines compute RFC 8439's AEAD,
-which no proof covers yet;
+`OnePass` holds, that aws-lc's one-pass routines, and rind's structured copy
+of its AVX2 seal, compute RFC 8439's AEAD, which no proof covers yet;
+`Rind/X86_64/ChaCha20Poly1305Asm.lean` proves the copy constant-time, and
 [the ChaCha20-Poly1305 quest](/quest/m4/verified/chacha20-poly1305-x86/aead.md)
-owns their HOL Light proofs, against the s2n-bignum fork's `common/chacha20poly1305.ml`,
-which `Rind/S2nChaCha20Poly1305.lean` proves is `Rind/Spec.lean`'s RFC 8439
-for a 32-byte key and a 12-byte nonce. On CPUs with IFMA, but for Zen 4 at the
+owns the rest, on rind's x86_64 model against `Rind/Spec.lean`. On CPUs with IFMA, but for Zen 4 at the
 short lengths above, they rest instead on
 the axioms `vg_chacha20_poly1305_seal_ifma_spec` and
 `vg_chacha20_poly1305_open_ifma_spec` in `Rind/X86_64/VgChaCha20Poly1305.lean`,

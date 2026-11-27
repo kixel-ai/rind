@@ -26,10 +26,6 @@ def hex (n w : Nat) : String :=
 def leHex {w : Nat} (n : Nat) (ws : List (BitVec w)) : String :=
   String.join (ws.map fun x => String.join ((List.range n).map fun i => hex 2 (x.toNat >>> (8 * i))))
 
-/-- A relocation's addend as `llvm-objdump` appends it to the symbol. -/
-def addend (a : Int) : String :=
-  if a = 0 then "" else (if a < 0 then "-0x" else "+0x") ++ String.ofList (Nat.toDigits 16 a.natAbs)
-
 def aarch64 : IO UInt32 := do
   for p in Rind.AArch64.proven do
     let some (ws, rs) := Rind.AArch64.function p.prog
@@ -42,6 +38,12 @@ def aarch64 : IO UInt32 := do
     for (sym, path, words) in p.statics do
       IO.println s!"static {sym} {path} {leHex 4 words}"
   return 0
+
+/-- A relocation's addend as `llvm-objdump -r` prints it after its target:
+`+0x6c`, `-0x4`, or nothing for 0. -/
+def addend (a : Int) : String :=
+  let h := String.ofList (Nat.toDigits 16 a.natAbs)
+  if a < 0 then s!"-0x{h}" else if a = 0 then "" else s!"+0x{h}"
 
 /-- The calls in `c`: each callee's name and program. -/
 def calls : VG.Prog Rind.X86_64.isa → List (String × VG.Prog Rind.X86_64.isa)

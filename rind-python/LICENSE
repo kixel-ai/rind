@@ -177,10 +177,11 @@ aws-lc <https://github.com/aws/aws-lc>, from OpenSSL and BoringSSL
     License: ISC.
 
   - For x86_64, the chacha20_poly1305_open and _seal routines, the
-    poly_hash_ad_internal helper, and the tables of
-    chacha20_poly1305_x86_64, and for aarch64 the table of
-    chacha20_poly1305_armv8 and chacha20poly1305/, rind's structured copy
-    of its chacha20_poly1305_open and _seal routines with
+    poly_hash_ad_internal helper, the tables of chacha20_poly1305_x86_64,
+    and chacha20poly1305/, rind's structured copy of the AVX2 half of its
+    _seal routine with poly_hash_ad_internal inlined, and for aarch64 the
+    table of chacha20_poly1305_armv8 and chacha20poly1305/, rind's
+    structured copy of its chacha20_poly1305_open and _seal routines with
     poly_hash_ad_internal inlined (ChaCha20-Poly1305), which aws-lc takes
     from BoringSSL. Both are pregenerated from Perl scripts written by
     Vlad Krasnov.

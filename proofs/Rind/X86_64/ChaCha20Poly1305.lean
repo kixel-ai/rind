@@ -15,20 +15,24 @@ message's length run pyca/verified-garbage's IFMA one pass, whose theorems
 `Rind.X86_64.VgChaCha20Poly1305` imports as axioms, so on them the theorems
 here earn the ✓: every length, but on Zen 4 a seal of fewer than 800 bytes
 and an open of fewer than 512. CPUs that fail the check and pass
-`HaveSse41`'s run aws-lc's one-pass routines, which the theorems take as the hypothesis
-`OnePass`: that they compute RFC 8439's ciphertext and tag. No proof covers
-those routines yet, so on those CPUs no theorem here earns the ✓. CPUs that
+`HaveSse41`'s run aws-lc's one-pass routines, but for the AVX2 seal, rind's
+structured copy of aws-lc's, which the theorems take as the hypothesis
+`OnePass`: that they compute RFC 8439's ciphertext and tag.
+`Rind.X86_64.ChaCha20Poly1305Asm` proves the copy constant-time, but no
+proof covers what any of them computes yet, so on those CPUs no theorem here
+earns the ✓. CPUs that
 fail both run the separate passes, which no theorem here covers yet.
 -/
 
 namespace rind.x86_64
 
-/-- aws-lc's one-pass routines, behind `one_pass`, compute RFC 8439's AEAD for
-a message of at most 2^38 - 64 bytes, as many as its 32-bit block counter
-covers from block 1: sealing leaves the ChaCha20 ciphertext in place and
-returns the Poly1305 tag over the AAD and it, and opening leaves the
-plaintext and returns the tag over the AAD and the ciphertext it was given.
-Either half, AVX2 or SSE4.1, computes the same. -/
+/-- The one-pass routines behind `one_pass`, aws-lc's and rind's structured
+copy of aws-lc's AVX2 seal, compute RFC 8439's AEAD for a message of at most
+2^38 - 64 bytes, as many as its 32-bit block counter covers from block 1:
+sealing leaves the ChaCha20 ciphertext in place and returns the Poly1305 tag
+over the AAD and it, and opening leaves the plaintext and returns the tag
+over the AAD and the ciphertext it was given. Either half, AVX2 or SSE4.1,
+computes the same. -/
 def OnePass : Prop :=
   ∀ sse41 avx2 (key : Std.Array U8 32#usize) (nonce : Std.Array U8 12#usize) (aad inout : Slice U8),
     inout.length ≤ 2 ^ 38 - 64 →
@@ -47,7 +51,8 @@ bytes on this CPU: its entry guard passes and holds, and of its CPU-feature
 checks, either `HaveIfmaForVgChaCha20Poly1305`'s `check_seal` passes and
 `HaveSse41`'s, which the dispatch reads first, returns, so it runs
 pyca/verified-garbage's one pass, or the first fails and `HaveSse41`'s passes,
-so it runs aws-lc's, and `OnePass` holds. None reads an input but the length,
+so it runs rind's copy of aws-lc's AVX2 seal, or aws-lc's SSE4.1 one without
+AVX2, and `OnePass` holds. None reads an input but the length,
 which each takes as any `Usize` of value `len`. -/
 def RunsSeal (len : Nat) : Prop :=
   (∃ e, low.entry.Entry.new_secret = ok e) ∧ low.entry.Entry.assert_held = ok () ∧

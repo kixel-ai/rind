@@ -548,7 +548,9 @@ IMPORTS_64 = [
     # ChaCha20-Poly1305 in one pass, with SSE4.1 or AVX2. The routine picks
     # its AVX2 half from aws-lc's `OPENSSL_ia32cap_P`, which rind does not
     # have, so rind's copy reads the same bits from the data block rind
-    # passes it instead, as rind picks each path once per process.
+    # passes it instead, as rind picks each path once per process. rind seals
+    # with AVX2 through its structured copy, which
+    # `admin/chacha20poly1305-x86/generate` writes from the seal's text here.
     {
         "arch": "x86_64",
         "source": "chacha20_poly1305_x86_64.S",
