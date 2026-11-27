@@ -1133,10 +1133,13 @@
               # See UPSTREAM.md, "Valgrind hides ADX from `cpuid`".
               env.VALGRIND_BUG_494162 = "1";
               # swole's preload fixes the randomness reaching glibc, but
-              # aws-lc's DRBG also mixes in RDRAND, which Valgrind runs on
-              # the host. Masking it (CPUID.1:ECX bit 30) leaves aws-lc only
-              # the preloaded getrandom, so its rows, and rows whose inputs
-              # it makes, such as ML-DSA's rejection loop, repeat exactly.
+              # aws-lc seeds its DRBG from CPU jitter, timed on the host's
+              # clock, and mixes in RDRAND, which Valgrind runs on the host.
+              # Building it without jitter and masking RDRAND (CPUID.1:ECX
+              # bit 30) leaves it only the preloaded getrandom, so its rows,
+              # and every row whose inputs it makes, such as ML-DSA's
+              # rejection loop, repeat exactly.
+              env.AWS_LC_SYS_NO_JITTER_ENTROPY = "1";
               env.OPENSSL_ia32cap = "~0x4000000000000000";
               # swole lists the benchmarks natively, where that forced
               # ADX would fault on a CPU without it, such as Haswell.
