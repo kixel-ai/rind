@@ -16,7 +16,7 @@ permissions:
   contents: read
 
 jobs:
-  # Its context, `Queue build / Build`, is the one main's ruleset requires, so
+  # Its context, `Queue build / Build`, is one main's ruleset requires, so
   # the group's result is this job's own: a failed, cancelled, or timed-out
   # build fails the group with no job after it waiting on a hosted runner.
   build:
@@ -65,8 +65,8 @@ jobs:
   # natively on aarch64, where rind runs its own assembly and dispatch, which
   # two PRs can break together. It runs only the `rs` module, whose result
   # depends on the host; the lints and other targets' builds do not. It reports
-  # its own context, as `Build` does, which main's ruleset requires. macOS on
-  # Apple silicon is left to each PR's pr-macos.yml and the nightly build.
+  # its own context, which main's ruleset requires, as it does `Build`'s. A
+  # macOS-only break two PRs make together shows first in the nightly `build`.
   linux-aarch64:
     name: Build aarch64 Linux
     if: github.event_name == 'merge_group'

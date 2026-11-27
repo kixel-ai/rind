@@ -3,8 +3,9 @@ name: PR check
 # `just ci` over the PR's diff against its base: the merge queue's selection
 # and modules, so a check that fails in the queue (an unstable-rustfmt import
 # order) fails here first, plus the slower ones the queue leaves out, whose
-# result rests on the PR's own diff: the site, the semver marks, the
-# binary-size record, and the mutants pins. Advisory: main's ruleset requires
+# result rests on the PR's own diff: the site, the semver marks, the mutants
+# pins, and the binary-size change, which admin/binary-size reports in the job
+# summary without failing on it. Advisory: main's ruleset requires
 # only queue-build.yml's contexts, which no job here replaces. The cross, MSRV,
 # wasm, no-std, adapter-API, constant-time, structure, Python, Dart, OpenSSL,
 # and patch modules gate no merge: check.yml runs every module over main

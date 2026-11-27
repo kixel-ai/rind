@@ -4,9 +4,9 @@ use std::hint::black_box;
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 
 fn rsa_key_generation(c: &mut Criterion) {
-    // All these are gated under `NOISY_BENCHMARKS` for the benefit of codspeed,
-    // which runs each test once and expects deterministic results.  RSA key generation
-    // certainly is not that.
+    // Gated under `NOISY_BENCHMARKS` for the weekly instruction count, which
+    // runs each benchmark once and expects a deterministic count: RSA key
+    // generation is not.
     if option_env!("NOISY_BENCHMARKS").is_none() {
         return;
     }

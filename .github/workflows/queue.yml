@@ -47,9 +47,9 @@ jobs:
   # queue-build.yml runs only after it lands.
   #
   # Its jobs report `Queue build / Build` and `Queue build / Build aarch64
-  # Linux`, which main's ruleset requires, with no job after them waiting on a hosted runner. The call runs on pull
-  # requests too, where that job skips without a runner; a call skipped here
-  # would report no context at all.
+  # Linux`, which main's ruleset requires, with no job after them waiting on a
+  # hosted runner. The call runs on pull requests too, where those jobs skip
+  # without a runner; a call skipped here would report no context at all.
   build:
     name: Queue build
     if: github.event_name != 'workflow_dispatch'

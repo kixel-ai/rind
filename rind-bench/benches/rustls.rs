@@ -20,10 +20,12 @@ use rustls::{
 
 /// The providers this build and CPU have. The setup below runs every
 /// provider, whatever criterion's filter, so it can't leave Graviola to it.
+/// The instruction count lists benchmarks natively but counts them under
+/// Valgrind, which hides ADX, so its build leaves Graviola out of both.
 fn providers() -> impl Iterator<Item = &'static str> {
     ["ring", "aws-lc-rs", "rind"]
         .into_iter()
-        .chain(graviola_runs().then_some("graviola"))
+        .chain((!cfg!(feature = "__bench_codspeed") && graviola_runs()).then_some("graviola"))
         .chain(cfg!(all(feature = "__bench_openssl", target_family = "unix")).then_some("openssl"))
 }
 
@@ -258,6 +260,13 @@ fn resumed_handshake(c: &mut Criterion) {
 /// full handshake. The threads live for the whole row, so per-thread state a
 /// provider sets up on first use, such as aws-lc's, is not timed.
 fn threaded_handshake(c: &mut Criterion) {
+    // CodSpeed's harness skips `iter_custom`, so the instruction count never
+    // counts these rows, yet their setup would run in every process of this
+    // target, and its threads' allocations, which the scheduler orders, would
+    // move the heap under the rows after it.
+    if cfg!(feature = "__bench_codspeed") {
+        return;
+    }
     let threads = thread::available_parallelism().unwrap().get();
     // bench-report reports these rows as running on every logical CPU, so a
     // run held to fewer, by affinity or a cgroup quota, must not pass for one.

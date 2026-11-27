@@ -17,12 +17,14 @@ import Rind.Aarch64.AesModesApi
 import Rind.Aarch64.MlKemCoding
 import Rind.Aarch64.MlKemGeneric
 import Rind.Aarch64.MlKemPke
+import Rind.Aarch64.MlKemEncrypt
 import Rind.Aarch64.GhashPmull
 import Rind.Aarch64.AesGcm
 import Rind.Aarch64.AesGcmLong
 import Rind.Aarch64.ChaCha20Poly1305
 import Rind.Aarch64.VgChaCha20Poly1305
 import Rind.Aarch64.VgChaCha20
+import Rind.Aarch64.VgChaCha20Poly1305Ct
 open rind.aarch64
 
 /-!
@@ -58,7 +60,7 @@ with an AES-128 or AES-256 key, rest also on s2n-bignum's stitched kernels'
 contracts, and on cores with SHA3 take the `_alt` kernels' address bound as
 the hypothesis `KernelBuffersLow`, which no axiom states.
 ML-KEM's decompression, message coding, CBD sampling, and 12-bit unpacking
-rest on no axiom.
+rest on no axiom; its noise sampling, `sample_poly_cbd`, rests on SHAKE256's.
 ChaCha20-Poly1305's one pass on pyca/verified-garbage's SVE2 and NEON
 routines rests on the axioms restating its theorems for them in
 `Rind.Aarch64.VgChaCha20Poly1305`, and its open on rind's HOL Light proofs
@@ -66,6 +68,9 @@ of its constant-time compares where aws-lc's runs; at the lengths aws-lc's
 routines run, it also takes their contract as the hypothesis `AwsLc`, which
 no axiom states. The AEAD API above it rests on none, taking the one pass as
 the hypotheses `Seals` and `Opens`.
+Its two axioms that VG's SVE2 routines are constant time under their contracts,
+in `Rind.Aarch64.VgChaCha20Poly1305Ct`, are used by no theorem about rind's
+wrappers.
 ChaCha20's `apply_keystream` rests on the axioms restating
 pyca/verified-garbage's theorems for its routines in `Rind.Aarch64.VgChaCha20`;
 at every length it also takes rind's NEON code's contract as the hypothesis
@@ -862,6 +867,35 @@ A change here is a change to the trust base.
 #guard_msgs in
 #print axioms MlKemPke.kpke_decrypt_fips
 
+/-- info: 'rind.aarch64.MlKemCbd.sample_poly_cbd_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ sha3_keccak2_f1600_spec,
+ sha3_keccak4_f1600_alt_spec,
+ sha3_keccak4_f1600_spec,
+ sha3_keccak_f1600_alt_spec,
+ sha3_keccak_f1600_spec] -/
+#guard_msgs in
+#print axioms MlKemCbd.sample_poly_cbd_spec
+
+/-- info: 'rind.aarch64.MlKemEncrypt.kpke_encrypt_fips' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ sha3_keccak2_f1600_spec,
+ sha3_keccak4_f1600_alt_spec,
+ sha3_keccak4_f1600_spec,
+ sha3_keccak_f1600_alt_spec,
+ sha3_keccak_f1600_spec,
+ MlKemRoutines.mlkem_basemul_k3_axiom,
+ MlKemRoutines.mlkem_compress_d10_axiom,
+ MlKemRoutines.mlkem_compress_d4_axiom,
+ MlKemRoutines.mlkem_intt_axiom,
+ MlKemRoutines.mlkem_mulcache_compute_axiom,
+ MlKemRoutines.mlkem_ntt_axiom,
+ MlKemRoutines.mlkem_reduce_axiom] -/
+#guard_msgs in
+#print axioms MlKemEncrypt.kpke_encrypt_fips
+
 /-- info: 'rind.aarch64.MlKemPoly.to_bytes_spec' depends on axioms: [propext,
  Classical.choice,
  Quot.sound,
@@ -1113,3 +1147,15 @@ A change here is a change to the trust base.
  vg_chacha20_init_spec] -/
 #guard_msgs in
 #print axioms chacha20_apply_keystream
+
+/-- info: 'rind.aarch64.vg_chacha20_poly1305_seal_sve2_ct' depends on axioms: [propext,
+ Quot.sound,
+ vg_chacha20_poly1305_seal_sve2_ct] -/
+#guard_msgs in
+#print axioms vg_chacha20_poly1305_seal_sve2_ct
+
+/-- info: 'rind.aarch64.vg_chacha20_poly1305_open_sve2_ct' depends on axioms: [propext,
+ Quot.sound,
+ vg_chacha20_poly1305_open_sve2_ct] -/
+#guard_msgs in
+#print axioms vg_chacha20_poly1305_open_sve2_ct
