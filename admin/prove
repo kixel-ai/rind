@@ -1448,7 +1448,9 @@ only_quoted rind/src/aead.rs "$out/AeadDispatch.rs" '= Algorithm \{'
 # `proofs/Rind/X86_64/Simd.lean` and `proofs/Rind/Aarch64/Neon.lean` model.
 # Then Ed25519 from
 # `high::signature::ed25519`'s key pair and public key, which call no function
-# pointer, down to s2n-bignum's routines and the SHA-512 context. On x86_64, ChaCha20-Poly1305 and
+# pointer, down to s2n-bignum's routines and the SHA-512 context, with x86_64's
+# multi-scalar multiplication for verification over s2n-bignum's point
+# routines, whose AVX2 port is opaque. On x86_64, ChaCha20-Poly1305 and
 # XChaCha20-Poly1305 from their keys down to the call of aws-lc's one-pass
 # routine, which is opaque, as are the separate passes CPUs without SSE4.1
 # run, with HChaCha20 over HACL*'s rounds.
@@ -1554,6 +1556,7 @@ hashes=(
     --include crate::low::generic::blockwise
     --include crate::low::generic::ct_equal
     --include crate::low::generic::chacha20
+    --include crate::low::generic::naf
 )
 assembly=(
     --start-from '{impl crate::high::agreement::Agree for crate::high::agreement::X25519Curve}'
@@ -1663,10 +1666,11 @@ extract() {
 to_lean() {
     local dir=$1
     rm -rf "$out/lean"
-    # x86_64's generator table rows are 512-word literals, which elaborate
-    # past Aeneas's default recursion depth of 2048.
+    # x86_64's generator table rows are 512-word literals, and Ed25519's
+    # tables of B's odd multiples 1024-word ones, which elaborate past Aeneas's
+    # default recursion depth of 2048.
     aeneas -backend lean -split-files -abort-on-error \
-        -no-progress-bar -max-recdepth 4096 -dest "$out/lean" -subdir "Rind/$dir" \
+        -no-progress-bar -max-recdepth 8192 -dest "$out/lean" -subdir "Rind/$dir" \
         -namespace "rind.${dir,,}" "$out/${dir,,}.llbc"
     cp "$out/lean/Rind/$dir/Types.lean" "$out/lean/Rind/$dir/Funs.lean" "proofs/Rind/$dir/"
 }
@@ -1879,6 +1883,11 @@ extract x86_64 X86_64 "${hashes[@]}" "${assembly[@]}" \
     --include crate::low::x86_64::adx_mux::edwards25519_scalarmulbase \
     --include crate::low::x86_64::adx_mux::bignum_madd_n25519 \
     --include crate::low::x86_64::adx_mux::bignum_mul_p25519 \
+    --include crate::low::x86_64::adx_mux::edwards25519_msm \
+    --include crate::low::x86_64::adx_mux::edwards25519_epadd \
+    --include crate::low::x86_64::adx_mux::edwards25519_epdouble \
+    --include crate::low::x86_64::adx_mux::edwards25519_pdouble \
+    --include crate::low::generic::edwards25519_msm \
     --include crate::low::x86_64::sha1_mux \
     --opaque crate::low::x86_64::sha1_mux::path \
     --opaque crate::low::x86_64::sha1_mux::sha1_compress_blocks \
