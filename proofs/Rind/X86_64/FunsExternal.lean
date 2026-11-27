@@ -230,12 +230,28 @@ opaque low.x86_64.chacha20.cipher_ssse3_4x
   : low.x86_64.cpu.HaveSsse3 → Std.Array Std.U32 8#usize → Std.Array Std.U32 4#usize →
     Slice Std.U8 → Result (Slice Std.U8)
 
-/-! rind's eight-way AVX-512 Keccak-f, which `RunsSha3` takes to compute
-Keccak-f on each state. -/
+/-! The eight-way AVX-512 Keccak-f's store of one vector to a state's lanes,
+which goes through a raw pointer, modelled by hand. `admin/prove` fails unless
+this quote is still that Rust:
 
-opaque low.x86_64.sha3_keccak8_f1600.permute
-  : Array (Array Std.U64 25#usize) 8#usize → Array Std.U64 24#usize →
-    low.x86_64.cpu.HaveAvx512Vl → Result (Array (Array Std.U64 25#usize) 8#usize)
+```rust
+fn set_row(s: &mut [u64; 25], i: usize, v: __m512i) {
+    // SAFETY: the eight lanes are 64 bytes, exactly the width of one `__m512i`.
+    unsafe { _mm512_storeu_si512(s[i..i + 8].as_mut_ptr().cast(), v) }
+}
+
+```
+
+The slice `s[i..i + 8]` panics unless `i + 8 ≤ 25`, and an unaligned store
+writes `v`'s 64-bit elements to it in order, element 0 first. -/
+
+/-- `set_row`: lanes `i` to `i + 7` of `s` replaced by `v`'s elements. -/
+def low.x86_64.sha3_keccak8_f1600.set_row (s : Array Std.U64 25#usize) (i : Std.Usize)
+    (v : core.core_arch.x86.__m512i) : Result (Array Std.U64 25#usize) :=
+  if h : i.val + 8 ≤ 25 then
+    ok (Array.make 25#usize (s.val.take i.val ++ (List.range 8).map (fun k => ⟨rind.simd.lane64x8 v k⟩) ++
+      s.val.drop (i.val + 8)) (by simp; omega))
+  else fail .panic
 
 /-! s2n-bignum's Ed25519 routines, transliterated to inline assembly. -/
 
