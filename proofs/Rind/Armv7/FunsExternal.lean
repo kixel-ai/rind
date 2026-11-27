@@ -34,9 +34,13 @@ def low.generic.zeroise.zeroise {T : Type _} (_ZeroableInst : low.generic.zerois
     (v : Slice T) : Result (Slice T) :=
   ok (low.generic.zeroise.wiped v)
 
-/-- SHA-512's block function, which runs aws-lc's `sha512-armv4` assembly:
-`Rind.Armv7.Sha512Entry`'s `RunsSha512` takes its contract. -/
-opaque low.arm.sha_armv4.sha512_compress_blocks
+/-! aws-lc's `sha512-armv4` routines, behind their Rust wrappers, which
+`Rind.Armv7.Sha512Entry` states. -/
+
+opaque low.arm.sha_armv4.compress_neon
+  : low.arm.cpu.HaveNeon → Array Std.U64 8#usize → Slice Std.U8 → Result (Array Std.U64 8#usize)
+
+opaque low.arm.sha_armv4.compress_nohw
   : Array Std.U64 8#usize → Slice Std.U8 → Result (Array Std.U64 8#usize)
 
 /-- `ZeroableRef::new`, as `Rind.Armv7.Dispatch` models a `ZeroableRef`: its

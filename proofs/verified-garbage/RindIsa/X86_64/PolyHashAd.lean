@@ -19,8 +19,8 @@ bottom. This copy, `rind/src/low/x86_64/poly_hash_ad.s`, is aws-lc's
 instructions in this structure, which `layout` lays out: the 13-byte path
 jumps to the function's one return, and the block loop tests again at its
 bottom; the byte loads are `movzbl`, VG's form of aws-lc's `movzbq`.
-`admin/prove lean` checks that `function prog` is its bytes as rind's Linux
-release build emits it.
+`admin/prove lean` checks that `function prog repRet` is its bytes as rind's
+Linux release build emits it.
 -/
 
 namespace Rind.X86_64.PolyHashAd

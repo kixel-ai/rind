@@ -17,11 +17,7 @@ namespace rind.armv7
 
 open low.portable.aes_nohw
 
-/-! ## GCTR byte by byte -/
-
-/-- Byte `j` of GCTR's keystream from counter block `icb`. -/
-def ksByte (alg : Algorithm) (kw : List (BitVec 32)) (icb : Quad32) (j : Nat) : BitVec 8 :=
-  byte (aesEncrypt alg kw (reverseBytesQuad32 (inc32 icb (j / 16)))) (j % 16)
+/-! ## Appending -/
 
 theorem getElem!_append_lt {α : Type _} [Inhabited α] (a b : List α) {j : Nat} (h : j < a.length) :
     (a ++ b)[j]! = a[j]! := by
@@ -30,83 +26,6 @@ theorem getElem!_append_lt {α : Type _} [Inhabited α] (a b : List α) {j : Nat
 theorem getElem!_append_ge {α : Type _} [Inhabited α] (a b : List α) {j : Nat} (h : a.length ≤ j) :
     (a ++ b)[j]! = b[j - a.length]! := by
   simp [List.getElem!_eq_getElem?_getD, List.getElem?_append_right h]
-
-theorem getElem!_leSeq : ∀ (qs : List Quad32) {j : Nat}, j < 16 * qs.length →
-    (leSeqQuad32ToBytes qs)[j]! = byte qs[j / 16]! (j % 16)
-  | [], j, h => by simp at h
-  | q :: qs, j, h => by
-    rw [leSeqQuad32ToBytes, List.flatMap_cons, ← leSeqQuad32ToBytes]
-    have hq : (leQuad32ToBytes q).length = 16 := by simp [leQuad32ToBytes]
-    by_cases hj : j < 16
-    · rw [getElem!_append_lt _ _ (by omega), leQuad32ToBytes_getElem! _ hj, Nat.div_eq_of_lt hj,
-        Nat.mod_eq_of_lt hj, List.getElem!_cons_zero]
-    · rw [getElem!_append_ge _ _ (by omega), hq, getElem!_leSeq qs (by simp at h; omega),
-        show j / 16 = (j - 16) / 16 + 1 by omega, List.getElem!_cons_succ, show (j - 16) % 16 = j % 16 by omega]
-
-theorem gctrRec_getElem! (icb : Quad32) (alg : Algorithm) (kw : List (BitVec 32)) :
-    ∀ (ps : List Quad32) (i k : Nat), k < ps.length →
-      (gctrEncryptRecursive icb alg kw ps i)[k]! = gctrEncryptBlock icb ps[k]! alg kw (i + k)
-  | [], _, _, h => by simp at h
-  | p :: ps, i, 0, _ => by simp [gctrEncryptRecursive]
-  | p :: ps, i, k + 1, h => by
-    rw [gctrEncryptRecursive, List.getElem!_cons_succ, List.getElem!_cons_succ,
-      gctrRec_getElem! icb alg kw ps (i + 1) k (by simp at h; omega), show i + 1 + k = i + (k + 1) by omega]
-
-theorem length_leBytesToSeqQuad32 (p : List (BitVec 8)) : (leBytesToSeqQuad32 p).length = p.length / 16 := by
-  rw [leBytesToSeqQuad32_eq, List.length_map, chunksOf_length]
-
-theorem byte_leBytesToSeq (p : List (BitVec 8)) {j : Nat} (hj : j < 16 * (p.length / 16)) :
-    byte (leBytesToSeqQuad32 p)[j / 16]! (j % 16) = p[j]! := by
-  rw [leBytesToSeqQuad32_eq]
-  simp only [chunksOf, List.map_map]
-  rw [getElem!_range_map _ (by omega), Function.comp_apply, byte_leBytesToQuad32 _ (Nat.mod_lt _ (by omega)),
-    getElem!_take_drop _ _ _ _ (Nat.mod_lt _ (by omega)), show 16 * (j / 16) + j % 16 = j by omega]
-
-/-- Byte `j` of GCTR's output is byte `j` of its input XORed with its keystream's. -/
-theorem gctr_getElem! (icb : Quad32) (p : List (BitVec 8)) (alg : Algorithm) (kw : List (BitVec 32))
-    {j : Nat} (hj : j < p.length) :
-    (gctrEncrypt icb p alg kw)[j]! = p[j]! ^^^ ksByte alg kw icb j := by
-  have hrec : ∀ (b : List (BitVec 8)) {j : Nat}, j < 16 * (b.length / 16) →
-      (leSeqQuad32ToBytes (gctrEncryptRecursive icb alg kw (leBytesToSeqQuad32 b) 0))[j]! =
-        b[j]! ^^^ ksByte alg kw icb j := by
-    intro b j hj
-    have hl := length_leBytesToSeqQuad32 b
-    rw [getElem!_leSeq _ (by rw [length_gctr, hl]; exact hj), gctrRec_getElem! _ _ _ _ 0 _ (by rw [hl]; omega),
-      gctrEncryptBlock, byte_xor, byte_leBytesToSeq b hj, Nat.zero_add, ksByte]
-  unfold gctrEncrypt
-  dsimp only
-  split
-  · exact hrec p (by omega)
-  · rename_i hne
-    have hlt : (p.take (p.length - p.length % 16)).length = p.length - p.length % 16 := by simp
-    have hl1 : (leSeqQuad32ToBytes (gctrEncryptRecursive icb alg kw
-        (leBytesToSeqQuad32 (p.take (p.length - p.length % 16))) 0)).length = p.length - p.length % 16 := by
-      rw [length_leSeqQuad32ToBytes, length_gctr, length_leBytesToSeqQuad32, hlt]; omega
-    by_cases hjn : j < p.length - p.length % 16
-    · rw [getElem!_append_lt _ _ (by omega), hrec _ (by rw [hlt]; omega)]
-      simp [hjn, hj]
-    · rw [getElem!_append_ge _ _ (by omega), hl1]
-      have hk : j - (p.length - p.length % 16) < p.length % 16 := by omega
-      have hq : (leQuad32ToBytes (gctrEncryptBlock icb
-          (leBytesToQuad32 (padTo128Bits (p.drop (p.length - p.length % 16))))
-          alg kw ((p.length - p.length % 16) / 16))).length = 16 := by simp [leQuad32ToBytes]
-      have hd : (p.drop (p.length - p.length % 16)).length = p.length % 16 := by simp; omega
-      rw [List.getElem!_eq_getElem?_getD, List.getElem?_take, ite_eq_left hk, ← List.getElem!_eq_getElem?_getD,
-        leQuad32ToBytes_getElem! _ (by omega), gctrEncryptBlock, byte_xor, byte_leBytesToQuad32 _ (by omega),
-        padTo128Bits, ite_eq_right (by rw [hd]; omega), getElem!_append_lt _ _ (by rw [hd]; exact hk)]
-      have e1 : (p.drop (p.length - p.length % 16))[j - (p.length - p.length % 16)]! = p[j]! := by
-        simp [List.getElem!_eq_getElem?_getD, List.getElem?_drop, show p.length - p.length % 16 +
-          (j - (p.length - p.length % 16)) = j by omega]
-      rw [e1, ksByte, show j / 16 = (p.length - p.length % 16) / 16 by omega,
-        show j % 16 = j - (p.length - p.length % 16) by omega]
-
-/-- Bytes that are GCTR's byte by byte are GCTR's output. -/
-theorem eq_gctr (icb : Quad32) (p : List (BitVec 8)) (alg : Algorithm) (kw : List (BitVec 32))
-    (out : List (BitVec 8)) (hl : out.length = p.length)
-    (h : ∀ j < p.length, out[j]! = p[j]! ^^^ ksByte alg kw icb j) : out = gctrEncrypt icb p alg kw := by
-  apply List.ext_getElem (by rw [hl, length_gctrEncrypt])
-  intro j h1 h2
-  rw [← getElem!_pos out j h1, ← getElem!_pos _ j h2, h j (by omega), gctr_getElem! _ _ _ _ (by omega)]
 
 /-! ## Counter blocks -/
 
@@ -279,29 +198,6 @@ theorem ivec_ctr (J : Quad32) (ivec : Std.Array U8 16#usize) (hiv : blockQ ivec 
   rw [getLsbD_lane32, hj, getLsbD_reverseBytesQuad32 _ (by omega), blockQ, getLsbD_ofBytes _ (by omega)]
   simp only [BitVec.getLsbD_append, hk, decide_true, Bool.true_and]
   interval_cases k <;> simp
-
-theorem getElem!_flatMapN {N : Usize} (hN : 0 < N.val) (l : List (Std.Array U8 N)) {j : Nat}
-    (hj : j < N.val * l.length) :
-    (l.flatMap (·.val))[j]! = (l[j / N.val]!).val[j % N.val]! := by
-  induction l generalizing j with
-  | nil => simp at hj
-  | cons a l ih =>
-    have ha : a.val.length = N.val := a.property
-    rw [List.flatMap_cons]
-    by_cases h : j < N.val
-    · rw [getElem!_append_lt _ _ (by omega), Nat.div_eq_of_lt h, Nat.mod_eq_of_lt h, List.getElem!_cons_zero]
-    · have hj' : j - N.val < N.val * l.length := by
-        simp only [List.length_cons, Nat.mul_add, Nat.mul_one] at hj; omega
-      have e2 : (j - N.val) % N.val = j % N.val := (Nat.mod_eq_sub_mod (by omega)).symm
-      rw [getElem!_append_ge _ _ (by omega), ha, ih hj',
-        show j / N.val = (j - N.val) / N.val + 1 by
-          rw [Nat.div_eq_sub_div hN (by omega)],
-        List.getElem!_cons_succ, e2]
-
-theorem length_flatMapN {N : Usize} (l : List (Std.Array U8 N)) : (l.flatMap (·.val)).length = N.val * l.length := by
-  induction l with
-  | nil => rfl
-  | cons a l ih => simp [List.flatMap_cons, ih, Nat.mul_add]; omega
 
 /-- One 32-byte chunk's bytes from `iter.start` on, XORed with the keystream. -/
 theorem ctr32_inner_spec (alg : Algorithm) (kw : List (BitVec 32)) (J : Quad32) (n : Usize)
@@ -486,44 +382,6 @@ theorem ctr32_loop1_spec (alg : Algorithm) (kw : List (BitVec 32)) (J : Quad32)
 theorem div_ceil_spec (a b : Usize) (hb : b.val ≠ 0) :
     core.num.Usize.div_ceil a b ⦃ r => r.val = (a.val + b.val - 1) / b.val ⦄ := by
   simp [core.num.Usize.div_ceil, hb]
-
-/-- What `as_chunks_mut` writes back, whole chunks then the rest, each byte
-of the input XORed with `f` of its position, byte by byte. -/
-theorem chunks_assemble {N : Usize} (hN : 0 < N.val) (f : Nat → BitVec 8) (inout : Slice U8)
-    (chunks c1 : Slice (Std.Array U8 N)) (tail t1 : Slice U8)
-    (hcl : chunks.length = inout.length / N.val)
-    (hc : ∀ i (h : i < chunks.val.length), (chunks.val[i]).val = (inout.val.drop (i * N.val)).take N.val)
-    (ht : tail.val = inout.val.drop (inout.length / N.val * N.val))
-    (h1l : c1.length = chunks.length)
-    (h1 : ∀ q < chunks.length, ∀ i < N.val,
-      (c1.val[q]!).val[i]!.bv = (chunks.val[q]!).val[i]!.bv ^^^ f (N.val * q + i))
-    (t1l : t1.length = tail.length)
-    (ht1 : ∀ i < tail.length, t1.val[i]!.bv = tail.val[i]!.bv ^^^ f (N.val * chunks.length + i))
-    (r : List U8) (hr : r = c1.val.flatMap (·.val) ++ t1.val) :
-    r.length = inout.length ∧ ∀ j < inout.length, r[j]!.bv = inout.val[j]!.bv ^^^ f j := by
-  have e0 : inout.length = inout.val.length := rfl
-  have e1 : chunks.length = chunks.val.length := rfl
-  have e2 : c1.length = c1.val.length := rfl
-  have e3 : tail.length = tail.val.length := rfl
-  have e4 : t1.length = t1.val.length := rfl
-  have htl : tail.val.length = inout.length - inout.length / N.val * N.val := by rw [ht]; simp
-  have hfl : (c1.val.flatMap (·.val)).length = N.val * c1.val.length := length_flatMapN c1.val
-  have hdm := Nat.div_mul_le_self inout.length N.val
-  have hcm : N.val * chunks.length = inout.length / N.val * N.val := by rw [hcl, Nat.mul_comm]
-  have hcc : N.val * c1.val.length = N.val * chunks.length := by rw [← e2, h1l]
-  refine ⟨by rw [hr, List.length_append, hfl]; omega, fun j hj => ?_⟩
-  rw [hr]
-  by_cases hjc : j < N.val * chunks.length
-  · have hq : j / N.val < chunks.length := by
-      rw [Nat.div_lt_iff_lt_mul hN, Nat.mul_comm]; exact hjc
-    have hjm : j % N.val < N.val := Nat.mod_lt _ hN
-    have hjd : N.val * (j / N.val) + j % N.val = j := Nat.div_add_mod j N.val
-    rw [getElem!_append_lt _ _ (by omega), getElem!_flatMapN hN _ (by omega),
-      h1 _ hq _ hjm, hjd, getElem!_pos chunks.val (j / N.val) (by omega), hc _ (by omega)]
-    simp [List.getElem!_eq_getElem?_getD, hjm, Nat.mul_comm (j / N.val), hjd]
-  · rw [getElem!_append_ge _ _ (by omega), hfl, ← e2, h1l, ht1 _ (by omega),
-      show N.val * chunks.length + (j - N.val * chunks.length) = j by omega, ht]
-    simp [List.getElem!_eq_getElem?_getD, ← hcm, show N.val * chunks.length + (j - N.val * chunks.length) = j by omega]
 
 /-- `ctr32` XORs GCTR's keystream from counter block `J` into `inout`, given
 `ivec` holds `J`. -/

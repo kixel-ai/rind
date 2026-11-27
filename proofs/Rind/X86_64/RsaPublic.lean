@@ -94,7 +94,7 @@ theorem lowWords_length {N : Usize} (p : low.posint.PosInt N) {k : Nat} (hk : k 
 
 /-- A Montgomery product's arguments, from their values. -/
 theorem mont_args_of {N : Usize} (x y n : low.posint.PosInt N) (n0 : U64) (hk : n.used.val ≤ N.val)
-    (hk2 : 2 ≤ n.used.val) (hk32 : n.used.val < 2 ^ 32)
+    (hk2 : 2 ≤ n.used.val) (hk29 : n.used.val < 2 ^ 29)
     (hodd : wordsNat (lowWords n n.used) % 2 = 1)
     (hn0 : (wordsNat (lowWords n n.used) * n0.val + 1) % 2 ^ 64 = 0)
     (hx : wordsNat (lowWords x n.used) < wordsNat (lowWords n n.used))

@@ -12,7 +12,10 @@ space by `lea`, a page at a time with a probing load at each, and restore
 aligned `movdqa` to and from memory, `imul` of a memory operand, encodings
 of VG's `mov` and `mulx` longer than VG's encoder emits, which aws-lc writes
 as bytes, and padding the assembler lays out; aws-lc's Poly1305 also uses
-`shrd`. This model is VG's with those added: its state is VG's with the
+`shrd`. BoringSSL's AES-GCM routines read `vpshufd`'s source from memory,
+return with a plain `ret`, and read their constant tables by RIP-relative
+addressing (`rip`), which VG's code reaches only through a register `lea`
+loads. This model is VG's with those added: its state is VG's with the
 lowest address the stack may reach, its instructions are VG's, run by VG's
 semantics, and those below, each transcribing the pseudocode of the Intel
 SDM Vol. 2 the docs cite, in VG's style, so that the leakage model of
@@ -29,9 +32,16 @@ function reaches its stack only at or above `rsp`, as the System V ABI
 lets it rely on, and only above `lo`, which its theorem states the stack
 holds: a guard page below the stack is the system's, beyond the model.
 
+A static: as for VG's table instructions (`aluTbl`, `vmovdquTbl`), an
+immutable object of the words the instruction names, which no writable
+memory overlaps, so a read of it gives those words and leaks only its
+offset in the static, here 0. `admin/prove lean` checks that the static
+rind's build emits begins with those words and that the instruction's
+relocation reaches its start.
+
 `admin/prove vg` cosimulates each of these instructions against the CPU
 (`Cosim/RindX86_64.lean`), and `admin/prove lean` checks that each program's bytes
-(`layout`) are the ones rind's build emits.
+and relocations (`layout`) are the ones rind's build emits.
 -/
 
 namespace Rind.X86_64
@@ -64,6 +74,16 @@ def eval : Cond → VG.X86_64.State → Option Bool
   | .a, s => s.cf.bind fun c => s.zf.map fun z => !c && !z
   | .rcxz, s => some (s.gpr .rcx == 0)
   | .rcxnz, s => some (s.gpr .rcx != 0)
+
+/-- An AVX instruction whose memory operand is the start of a static,
+`[rip + name]`. -/
+inductive RipOp
+  /-- `op xmm1, xmm2, XMMWORD PTR [rip + name]` or `op ymm1, ymm2, YMMWORD PTR
+  [rip + name]`: VG's `vbinLoad op len dst src1` with the static as `src2`. -/
+  | vbin (op : VBinOp) (len : VLen) (dst src1 : XReg)
+  /-- `vbroadcasti128 ymm, XMMWORD PTR [rip + name]` (`VEX.256.66.0F38.W0 5A /r`) -/
+  | vbroadcasti128 (dst : XReg)
+  deriving DecidableEq, Repr
 
 inductive Instr
   /-- An instruction of VG's model, with VG's semantics. -/
@@ -98,6 +118,11 @@ inductive Instr
   32-bit displacement (ModR/M `mod = 10`), however short `d` is, as aws-lc
   writes it in bytes -/
   | mulxD32 (hi lo : Reg) (m : MemOp)
+  /-- `vpshufd xmm, XMMWORD PTR m, imm8` (`VEX.128.66.0F.WIG 70 /r ib`) -/
+  | vpshufdLoad (d : XReg) (m : MemOp) (order : BitVec 8)
+  /-- `op`, its memory operand the start of the static `name`, whose words
+  are `words`, by RIP-relative addressing. -/
+  | rip (op : RipOp) (name : String) (words : List (BitVec 64))
   /-- The assembler's padding to the next multiple of `n` bytes, `n` a power
   of two up to 64, which runs as no instructions: see `padding`. -/
   | align (n : Nat)
@@ -130,6 +155,15 @@ def moveSp (s : State) (v : Addr) : Option State :=
         wr := ⟨v, n - d⟩ :: g.wr.tail, mem := lose g.mem sp d g.unknowns
         unknowns := fun i => g.unknowns (i + 2 * ((d + 7) / 8)) } }
     else none
+
+/-- The first 16 bytes of a static of `words`, little-endian, its first word
+lowest; `none` if it has fewer. -/
+def static128 (ws : List (BitVec 64)) : Option (BitVec 128) :=
+  if 2 ≤ ws.length then some (ws.getD 1 0 ++ ws.getD 0 0) else none
+
+/-- Its first 32 bytes. -/
+def static256 (ws : List (BitVec 64)) : Option (BitVec 256) :=
+  if 4 ≤ ws.length then some (ws.getD 3 0 ++ ws.getD 2 0 ++ ws.getD 1 0 ++ ws.getD 0 0) else none
 
 /-- Semantics:
 * VG's instructions: VG's `exec`, on VG's part of the state.
@@ -179,6 +213,18 @@ def moveSp (s : State) (v : Addr) : Option State :=
   use of it as padding assumes, and `admin/prove vg` checks on the CPU.
 * `mulxD32`: VG's `mulx` of the memory operand, whose encoding (SDM Vol. 2,
   §2.1.5, "32-bit displacement") changes only the instruction's length.
+* "PSHUFD" (VEX.128 encoded version): `DEST[127:0]` as PSHUFD's of `SRC`
+  (`shufDwords`), `DEST[MAXVL-1:128] := 0` (`setV .l128`); `SRC` the 16
+  bytes at the address, little-endian, with no alignment required.
+* `rip`: VG's `vbinLoad` and `vbroadcasti128`, their memory operand the
+  first 16 or 32 bytes of the static (`static128`, `static256`); it faults
+  if the static has fewer. In 64-bit mode ModR/M `mod = 00`, `r/m = 101`
+  addresses `RIP + disp32` (SDM Vol. 2 §2.2.1.6, "RIP-Relative Addressing":
+  "adding displacement to the 64-bit RIP of the next instruction"), and the
+  linker writes `disp32` as `S + A - P` (System V AMD64 psABI §4.4,
+  `R_X86_64_PC32`), which with the addend `A = -4` the layout gives, `P` the
+  displacement's address and the instruction ending with it, is the
+  static's address `S`.
 * The padding (`align`, `jmpAlign`): no change. Its bytes are `padding`'s,
   long NOPs, which access no memory (SDM Vol. 2, "NOP": "The memory operand
   form of the instruction allows software to create a byte sequence of “no
@@ -231,24 +277,43 @@ def exec : Instr → State → Option State
     { s with vg := (s.vg.setFlags (some o) (some o) none none).setReg d r }
   | .movPad _ d r, s => (VG.X86_64.exec (.mov d (.reg r)) s.vg).map fun g => { s with vg := g }
   | .mulxD32 hi lo m, s => (VG.X86_64.exec (.mulx hi lo (.mem m)) s.vg).map fun g => { s with vg := g }
+  | .vpshufdLoad d m o, s =>
+    (s.vg.load128 (s.vg.ea m)).map fun v => { s with vg := s.vg.setV .l128 d (shufDwords v o) 0 }
+  | .rip (.vbin op .l128 d a) _ ws, s =>
+    (static128 ws).map fun v => { s with vg := s.vg.setV .l128 d (op.sse.eval (s.vg.lane a 0) v) 0 }
+  | .rip (.vbin op .l256 d a) _ ws, s =>
+    (static256 ws).map fun v =>
+      let g := s.vg.setV .l256 d (op.sse.eval (s.vg.lane a 0) (v.extractLsb' 0 128))
+        (op.sse.eval (s.vg.lane a 1) (v.extractLsb' 128 128))
+      { s with vg := g }
+  | .rip (.vbroadcasti128 d) _ ws, s => (static128 ws).map fun v => { s with vg := s.vg.setV .l256 d v v }
   | .align _, s | .jmpAlign _, s => some s
 
 /-- The addresses an instruction accesses: VG's for its own, and for the
-others the quadword a push stores, the 16 bytes a `movdqa` moves, or the
-memory operand an `imul` or a `mulx` reads. -/
+others the quadword a push stores, the 16 bytes a `movdqa` or `vpshufd`
+moves, the memory operand an `imul` or a `mulx` reads, and a static's
+offset, 0, as VG's table instructions leak: the static's address does not
+depend on the data. -/
 def addrs : Instr → State → List Addr
   | .vg i, s => VG.X86_64.addrs i s.vg
   | .push _, s => [s.vg.gpr .rsp - 8]
-  | .movdqaLoad _ m, s | .movdqaStore m _, s | .imulMem _ m, s | .mulxD32 _ _ m, s => [s.vg.ea m]
+  | .movdqaLoad _ m, s | .movdqaStore m _, s | .vpshufdLoad _ m _, s | .imulMem _ m, s
+  | .mulxD32 _ _ m, s => [s.vg.ea m]
+  | .rip .., _ => [0]
   | .lea .., _ | .leaRsp _, _ | .neg _, _ | .dec _, _ | .inc _, _ | .sar .., _ | .shrd .., _ | .movPad .., _
   | .align _, _
   | .jmpAlign _, _ => []
 
-/-- The CPU features beyond the baseline: VG's for its own and `mulx`'s,
-none for the others, which are x86-64 and SSE2 baseline instructions. -/
+/-- The CPU features beyond the baseline: VG's for its own and for the
+forms of VG's instructions `rip` reads a static by, AVX for `vpshufd`,
+`mulx`'s for `mulxD32`, and none for the others, which are x86-64 and SSE2
+baseline instructions. -/
 def Instr.requires : Instr → List String
   | .vg i => i.requires
+  | .vpshufdLoad .. => ["avx"]
   | .mulxD32 .. => ["bmi2"]
+  | .rip (.vbin op len d a) .. => (VG.X86_64.Instr.vbinLoad op len d a { base := .rax }).requires
+  | .rip (.vbroadcasti128 d) .. => (VG.X86_64.Instr.vbroadcasti128 d { base := .rax }).requires
   | _ => []
 
 /-- The model. No program here calls or makes a frame of VG's kind, so
@@ -298,6 +363,16 @@ decreasing_by omega
 /-- The bytes from `o` to the next multiple of `n`. -/
 def padLen (n o : Nat) : Nat := (n - o % n) % n
 
+/-- A VEX instruction (VG's `Enc.vex`, `W = 0`) whose `r/m` operand is
+RIP-relative: ModR/M `mod = 00`, `r/m = 101`, then a zero `disp32` for the
+linker to fill, as the last four bytes. -/
+def vexRip (pp map l v op r : Nat) : List Nat :=
+  let rb := 1 - r / 8 % 2
+  let vv := 15 - v % 16
+  let tail := [op, (r % 8) <<< 3 ||| 5, 0, 0, 0, 0]
+  if map == 1 then [0xC5, rb <<< 7 ||| vv <<< 3 ||| l <<< 2 ||| pp] ++ tail
+  else [0xC4, rb <<< 7 ||| 1 <<< 6 ||| 1 <<< 5 ||| map, vv <<< 3 ||| l <<< 2 ||| pp] ++ tail
+
 /-- `mulxD32`'s bytes: VEX's three-byte form (`C4`, `R̄X̄B̄` and map `0F38`,
 then `W1`, `vvvv` the low half's register inverted, `L0`, `F2`), `F6`,
 ModR/M with `mod = 10`, a SIB for an `rsp` or `r12` base, and the 32-bit
@@ -314,10 +389,12 @@ def mulxD32Bytes (hi lo : Reg) (m : MemOp) : Option (List Nat) :=
 
 /-- The bytes of an instruction at byte offset `o`: VG's encoding of its own
 (`Instr.encode`); `push` `50+rd`, with `REX.B` for `r8`–`r15`; `lea`,
-`neg`, `dec`, `shrd`, `movdqa`, and `imul` as their docs give, in VG's
-encoder's forms; `movPad` as `n` bytes `67` then VG's `mov`; `mulxD32`'s; and
-the padding, `none` unless `n` is a power of two up to 64 and the jump's reach
-(`EB cb`, at most 127) covers it. -/
+`neg`, `dec`, `shrd`, `movdqa`, `vpshufd`, and `imul` as their docs give,
+in VG's encoder's forms; `movPad` as `n` bytes `67` then VG's `mov`;
+`mulxD32`'s; `rip`'s as the register forms' VG encodes (`VBinOp.opc`,
+"VBROADCAST" `VEX.256.66.0F38.W0 5A /r`) with a RIP-relative operand; and
+the padding, `none` unless `n` is a power of two up to 64 and the jump's
+reach (`EB cb`, at most 127) covers it. -/
 def Instr.encode (o : Nat) : Instr → Option (List Nat)
   | .vg i => i.encode.map List.flatten
   | .push r => some (Enc.plusReg false [] 0x50 (Enc.reg r))
@@ -330,6 +407,11 @@ def Instr.encode (o : Nat) : Instr → Option (List Nat)
   | .shrd d r n => if n < 256 then Enc.legacy [] true [0x0F, 0xAC] (Enc.reg r) (Enc.RM.reg (Enc.reg d)) [n] else none
   | .movdqaLoad d m => Enc.sse 1 1 0x6F (Enc.xreg d) (Enc.RM.mem m)
   | .movdqaStore m r => Enc.sse 1 1 0x7F (Enc.xreg r) (Enc.RM.mem m)
+  | .vpshufdLoad d m n => Enc.vex 1 1 false 0 0 0x70 (Enc.xreg d) (Enc.RM.mem m) [n.toNat]
+  | .rip (.vbin op l d a) .. =>
+    let (pp, map, c, _) := op.opc
+    some (vexRip pp map (Enc.len l) (Enc.xreg a) c (Enc.xreg d))
+  | .rip (.vbroadcasti128 d) .. => some (vexRip 1 2 1 0 0x5A (Enc.xreg d))
   | .imulMem d m => Enc.legacy [] true [0x0F, 0xAF] (Enc.reg d) (Enc.RM.mem m)
   | .movPad n d r => (Enc.legacy [] true [0x89] (Enc.reg r) (Enc.RM.reg (Enc.reg d))).map (List.replicate n 0x67 ++ ·)
   | .mulxD32 hi lo m => mulxD32Bytes hi lo m
@@ -378,49 +460,80 @@ def entry : Prog isa → Nat → Nat
   | .loop b _, o => entry b o
   | _, _ => 0
 
-/-- The machine code of a program from byte offset `o` on, as rind's build
-emits aws-lc's text and rind's own copies of it: each instruction's bytes;
-a do-while loop as its body then the `Jcc` that branches back to its entry;
-`if c then t else e` as a `Jcc` to `t`'s entry, `e`, a `jmp` past `t`, then
-`t`; and `if c then (nothing) else e` as a `Jcc` past `e`, then `e`. Each
-jump is short where its displacement fits a byte and near otherwise, the
-first sizes, short before near and the `Jcc`'s before the `jmp`'s, whose
-jumps reach their targets: what LLVM's assembler reaches by relaxing the
-jumps that do not reach, from all short. `none` for any other control
-flow, which no program here has, and for an instruction that does not
-encode. -/
-def layout : Prog isa → Nat → Option (List Nat)
+/-- A relocation the linker resolves in a program's machine code: the byte
+offset of the field it fills, its ELF type, the symbol it names, and its
+addend. -/
+structure Reloc where
+  off : Nat
+  type : String
+  sym : String
+  addend : Int
+  deriving DecidableEq, Repr
+
+/-- The relocations of an instruction laid out at `o` as `bs`: `rip`'s
+`disp32`, its last four bytes, `R_X86_64_PC32` against the static with the
+addend `-4`, which makes the address it gives the static's start. -/
+def Instr.relocs (o : Nat) (bs : List Nat) : Instr → List Reloc
+  | .rip _ name _ => [⟨o + bs.length - 4, "R_X86_64_PC32", name, -4⟩]
+  | _ => []
+
+/-- The machine code of a program from byte offset `o` on, and its
+relocations, as rind's build emits aws-lc's and BoringSSL's text and rind's
+own copies of aws-lc's: each instruction's bytes; a do-while loop as its
+body then the `Jcc` that branches back to its entry; `if c then t else e` as
+a `Jcc` to `t`'s entry, `e`, a `jmp` past `t`, then `t`; and
+`if c then (nothing) else e` as a `Jcc` past `e`, then `e`. Each jump is
+short where its displacement fits a byte and near otherwise, the first
+sizes, short before near and the `Jcc`'s before the `jmp`'s, whose jumps
+reach their targets: what LLVM's assembler reaches by relaxing the jumps
+that do not reach, from all short. `none` for any other control flow, which
+no program here has, and for an instruction that does not encode. -/
+def layout : Prog isa → Nat → Option (List Nat × List Reloc)
   | .block is, o =>
-    is.foldlM (init := []) fun bs i => (i.encode (o + bs.length)).map (bs ++ ·)
+    is.foldlM (init := ([], [])) fun (bs, rs) i =>
+      (i.encode (o + bs.length)).map fun b => (bs ++ b, rs ++ i.relocs (o + bs.length) b)
   | .seq a b, o => do
-    let ba ← layout a o
-    let bb ← layout b (o + ba.length)
-    return ba ++ bb
+    let (ba, ra) ← layout a o
+    let (bb, rb) ← layout b (o + ba.length)
+    return (ba ++ bb, ra ++ rb)
   | .loop body c, o => do
-    let bb ← layout body o
+    let (bb, rb) ← layout body o
     let j ← jcc c (o + bb.length) (o + entry body o)
-    return bb ++ j
+    return (bb ++ j, rb)
   | .ite c (.block []) e, o =>
     [2, 4, 6, 7].firstM fun jc => do
-      let be ← layout e (o + jc)
+      let (be, re) ← layout e (o + jc)
       let j ← jcc c o (o + jc + be.length)
-      if j.length = jc then return j ++ be else none
+      if j.length = jc then return (j ++ be, re) else none
   | .ite c t e, o =>
     [(2, 2), (2, 5), (4, 2), (4, 5), (6, 2), (6, 5), (7, 2), (7, 5)].firstM fun (jc, jm) => do
-      let be ← layout e (o + jc)
+      let (be, re) ← layout e (o + jc)
       let p := o + jc + be.length
-      let bt ← layout t (p + jm)
+      let (bt, rt) ← layout t (p + jm)
       let j ← jcc c o (p + jm + entry t (p + jm))
       let k := jmp p (p + jm + bt.length)
-      if j.length = jc ∧ k.length = jm then return j ++ be ++ k ++ bt else none
+      if j.length = jc ∧ k.length = jm then return (j ++ be ++ k ++ bt, re ++ rt) else none
   | _, _ => none
 
 /-- `rep ret` (`F3 C3`), aws-lc's return. -/
 def repRet : List Nat := [0xF3, 0xC3]
 
-/-- The machine code of a function whose body is `c`, from a section start:
-the body, then `rep ret`. -/
-def function (c : Prog isa) : Option (List Nat) :=
-  (layout c 0).map (· ++ repRet)
+/-- `ret` (`C3`), BoringSSL's. -/
+def plainRet : List Nat := [0xC3]
+
+/-- The machine code of a function whose body is `c`, from a section start,
+and its relocations: the body, then its return, `ret`'s bytes. -/
+def function (c : Prog isa) (ret : List Nat) : Option (List Nat × List Reloc) :=
+  (layout c 0).map fun (bs, rs) => (bs ++ ret, rs)
+
+/-- The statics `rip` instructions in `c` read: each its name and words. -/
+def statics : Prog isa → List (String × List (BitVec 64))
+  | .block is => is.filterMap fun
+    | .rip _ name ws => some (name, ws)
+    | _ => none
+  | .seq a b => statics a ++ statics b
+  | .loop b _ => statics b
+  | .ite _ t e => statics t ++ statics e
+  | _ => []
 
 end Rind.X86_64

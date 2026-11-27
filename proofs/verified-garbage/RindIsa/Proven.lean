@@ -1,6 +1,7 @@
 import RindIsa.AArch64.ChaCha20Poly1305
 import RindIsa.AArch64.Sha256Hw
 import RindIsa.X86_64.Mul4x
+import RindIsa.X86_64.GcmInitAvx2
 import RindIsa.X86_64.Mulx4x
 import RindIsa.X86_64.PolyHashAd
 import RindIsa.X86_64.Sqrx8x
@@ -34,16 +35,25 @@ end Rind.AArch64
 
 namespace Rind.X86_64
 
-/-- A function rind proves in its model of x86_64, and its body's program,
-which reads no static. -/
+/-- A function rind proves in its model of x86_64, its body's program, its
+return's bytes (`repRet` or `plainRet`), and the statics it reads: each its
+name in the program, its Rust path, and the words it begins with. -/
 structure Proven where
   path : String
   prog : VG.Prog isa
+  ret : List Nat
+  statics : List (String × String × List (BitVec 64))
 
 def proven : List Proven :=
-  [{ path := "rind::low::x86_64::mont::bn_mul4x_mont", prog := Mul4x.prog },
-   { path := "rind::low::x86_64::mont::bn_mulx4x_mont", prog := Mulx4x.prog },
-   { path := "rind::low::x86_64::chacha20poly1305::poly_hash_ad_internal", prog := PolyHashAd.prog },
-   { path := "rind::low::x86_64::mont::bn_sqrx8x_internal", prog := Sqrx8x.prog }]
+  [{ path := "rind::low::x86_64::mont::bn_mul4x_mont", prog := Mul4x.prog, ret := repRet, statics := [] },
+   { path := "rind::low::x86_64::mont::bn_mulx4x_mont", prog := Mulx4x.prog, ret := repRet, statics := [] },
+   { path := "rind::low::x86_64::chacha20poly1305::poly_hash_ad_internal", prog := PolyHashAd.prog, ret := repRet,
+     statics := [] },
+   { path := "rind::low::x86_64::aes_gcm_vaes::gcm_init_vpclmulqdq_avx2", prog := GcmInitAvx2.prog,
+     ret := plainRet,
+     statics := [(GcmInitAvx2.carryName, "rind::low::x86_64::aes_gcm_vaes::AVX2_GFPOLY_AND_INTERNAL_CARRYBIT",
+         GcmInitAvx2.carry),
+       (GcmInitAvx2.gfpolyName, "rind::low::x86_64::aes_gcm_vaes::AVX2_GFPOLY", GcmInitAvx2.gfpoly)] },
+   { path := "rind::low::x86_64::mont::bn_sqrx8x_internal", prog := Sqrx8x.prog, ret := repRet, statics := [] }]
 
 end Rind.X86_64

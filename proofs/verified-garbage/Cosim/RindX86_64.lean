@@ -43,7 +43,7 @@ def extCase (i : Rind.X86_64.Instr) : Gen (Option (Img × Img × Nat)) := do
     let mut img ← randomImg
     match i with
     | .push _ => img := img.setReg .rsp (windowBase + windowLen - 8 * (← below 4))
-    | .lea _ m | .leaRsp m | .imulMem _ m | .mulxD32 _ _ m => img ← placeMem img m
+    | .lea _ m | .leaRsp m | .vpshufdLoad _ m _ | .imulMem _ m | .mulxD32 _ _ m => img ← placeMem img m
     | .movdqaLoad _ m | .movdqaStore m _ =>
       img ← placeMem img m
       let a := (img.state.ea m).toNat
@@ -57,9 +57,16 @@ def extCase (i : Rind.X86_64.Instr) : Gen (Option (Img × Img × Nat)) := do
       return some (img, out, mask)
   return none
 
-/-- The machine code of `i`. -/
+/-- The machine code of `i`: for `rip`, with its `disp32` 2, then `jmp`
+(`EB cb`) over the static's words, so it reads them. -/
 def code (i : Rind.X86_64.Instr) : Option ByteArray :=
-  (i.encode 0).map fun bs => ⟨(bs.map (·.toUInt8)).toArray⟩
+  (i.encode 0).map fun bs =>
+    let bs : List Nat := match i with
+      | .rip _ _ ws =>
+        let tbl := ws.flatMap fun (w : BitVec 64) => Enc.le 8 w.toNat
+        bs.take (bs.length - 4) ++ [2, 0, 0, 0, 0xEB, tbl.length] ++ tbl
+      | _ => bs
+    ⟨(bs.map (·.toUInt8)).toArray⟩
 
 /-- A branch on `c` to `targetAddr`, `jcc rel32`; `ja` is `0F 87`. `jrcxz`
 reaches only a byte's displacement, so `rcxz` branches by it to a `jmp
