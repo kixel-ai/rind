@@ -411,10 +411,11 @@ def main(asm_dir, lean_path):
         out.append(f'def {lean_name} : Prog isa :=\n  open {ns} in\n  {term}\n')
         lean_progs.append('\n'.join(l for l in out if l is not None))
     cb = consts_bytes()
-    rows = ',\n   '.join(', '.join(f'0x{b:02x}' for b in cb[i:i + 16]) for i in range(0, len(cb), 16))
+    ws = [int.from_bytes(bytes(cb[i:i + 8]), 'little') for i in range(0, len(cb), 8)]
+    rows = ',\n   '.join(', '.join(f'0x{w:016x}' for w in ws[i:i + 4]) for i in range(0, len(ws), 4))
     with open(lean_path, 'w') as f:
         f.write(LEAN_HEADER)
-        f.write(f'def consts : List Nat :=\n  [{rows}]\n\n')
+        f.write(f'def consts : List (BitVec 64) :=\n  [{rows}]\n\n')
         f.write(LEAN_HELPERS)
         f.write('\n'.join(lean_progs))
         f.write('\nend Rind.X86_64.ChaCha20Poly1305\n')

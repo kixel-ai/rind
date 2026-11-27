@@ -24,9 +24,9 @@ than through `data`, so it no longer saves `r9`; and its last partial block
 copies `xmm15` with `movdqa` rather than `movdqu`, the same move. ALGORITHMS.md
 lists it as a deliberate change.
 
-`admin/prove lean` checks that `function sealAvx2` is the function's bytes
-and relocations as rind's build emits them, and that the static `CONSTS`
-is `consts`' bytes.
+`admin/prove lean` checks that `function sealAvx2 repRet` is the function's
+bytes and relocations as rind's build emits them, and that the static
+`CONSTS` begins with `consts`' words.
 -/
 
 namespace Rind.X86_64.ChaCha20Poly1305
@@ -36,7 +36,7 @@ open VG VG.X86_64
 /-- The name of the static of constants. -/
 def constsName : String := "chacha20_consts"
 
-/-- The static's bytes: aws-lc's `chacha20_consts` (RFC 8439's ChaCha20
-constant twice, the `pshufb` masks rotating each 32-bit lane left by 8 and
-16, the counter increments, and RFC 8439's Poly1305 clamp of `r`), then its
-`and_masks`, which keep the first 1 to 16 bytes of a block. -/
+/-- The static's words, little-endian: aws-lc's `chacha20_consts` (RFC
+8439's ChaCha20 constant twice, the `pshufb` masks rotating each 32-bit lane
+left by 8 and 16, the counter increments, and RFC 8439's Poly1305 clamp of
+`r`), then its `and_masks`, which keep the first 1 to 16 bytes of a block. -/

@@ -918,15 +918,17 @@ spec_tests() {
 # Checks that each function rind proves in its own extension of VG's AArch64
 # and x86_64 models, `proofs/verified-garbage/RindIsa/`, is in rind's build
 # the machine code its theorem is about: `rind-asm` prints each function's
-# words on aarch64 and its bytes on x86_64, and its relocations, from the
-# program the theorem names, and the bytes each static it reads begins with;
-# this prints the same of rind's release build, from the object
-# `asm_function` writes and the statics `rind_static` writes, and fails
-# unless the two are the same. A relocation must reach into the one
-# read-only section `asm_function` keeps, which must be the static the
-# program names.
+# words and relocations on aarch64, and its bytes on x86_64, from the program
+# the theorem names, and the words each static it reads begins with; this
+# prints the same of rind's release build, from the object `asm_function`
+# writes, or on x86_64 the function's own section, and the statics
+# `rind_static` writes, and fails unless the two are the same. Every
+# relocation must reach a static the program names: on aarch64 the start of
+# the one read-only section `asm_function` keeps, and on x86_64 a read-only
+# section of the function's object, with the addend the program gives,
+# that the static starts.
 rind_isa() {
-    local dir=$out/rind-isa kind a b c n=0 rodata sym arch
+    local dir=$out/rind-isa kind a b c n=0 rodata obj sym arch section size secsize off type target base
     local -A statics=()
     hold scratch
     rm -rf "$dir"
@@ -936,13 +938,14 @@ rind_isa() {
     proofs/verified-garbage/.lake/build/bin/rind-asm x86_64 >>"$dir/want"
     build_asm aarch64
     build_asm x86_64
-    # Each static's Rust symbol, to the program's name for it.
+    # Each static's Rust symbol, to the program's name for it, in the build
+    # of the function it follows.
     while read -r kind a b _; do
         case $kind in
-        function) arch=$(isa_arch "$a") ;;
+        function) arch=${a#rind::low::} arch=${arch%%::*} ;;
         static)
             read -r _ sym <<<"$(rind_symbol "$arch" "$b")"
-            statics[$arch:$(stable_name <<<"$sym")]=$a
+            statics[$(stable_name <<<"$sym")]=$a
             ;;
         esac
     done <"$dir/want"
@@ -950,22 +953,40 @@ rind_isa() {
         case $kind in
         function)
             n=$((n + 1))
-            arch=$(isa_arch "$a")
+            arch=${a#rind::low::} arch=${arch%%::*}
             echo "function $a"
-            asm_function "$arch" "$a" "$dir/$n.o"
-            "$tools/llvm-objcopy" -O binary --only-section=.text "$dir/$n.o" "$dir/$n.text"
             if [[ $arch == x86_64 ]]; then
-                od -An -v -tx1 -w16 "$dir/$n.text" | awk '{ $1 = $1; gsub(/ /, ""); printf "text %04x %s\n", 16 * (NR - 1), $0 }'
-            else
-                od -An -v -tx4 -w4 "$dir/$n.text" | awk '{ print "insn " $1 }'
-            fi
-            rodata=$("$tools/llvm-objdump" -t "$dir/$n.o" | awk '$1 ~ /^0+$/ && $3 == "O" && $4 == ".rodata" { print $NF }')
-            # An x86_64 target carries its addend: `.rodata-0x4`.
-            relocations "$dir/$n.o" .text | while read -r off type target; do
-                if [[ $target =~ ^\.rodata([-+].*)?$ && -n $rodata && -n ${statics[$arch:$rodata]:-} ]]; then
-                    target=${statics[$arch:$rodata]}${BASH_REMATCH[1]}
+                read -r obj sym <<<"$(rind_symbol x86_64 "$a")"
+                read -r section _ size < <(symbol_bounds "$obj" "$sym")
+                secsize=$("$tools/llvm-objdump" -h "$obj" | awk -v s="$section" '$2 == s { print $3 }')
+                if [[ $section != ".text.$sym" || $((16#$size)) != $((16#${secsize:-0})) ]]; then
+                    echo "admin/prove: $a is not the whole of its own section" >&2
+                    return 1
                 fi
-                echo "reloc $((16#$off)) $type $target"
+                "$tools/llvm-objcopy" --dump-section="$section=$dir/$n.text" "$obj" "$dir/$n.o"
+                od -An -v -tx1 -w16 "$dir/$n.text" | awk '{ $1 = $1; gsub(/ /, ""); printf "text %04x %s\n", 16 * (NR - 1), $0 }'
+                relocations "$obj" "$section" | while read -r off type target; do
+                    base=${target%%[-+]0x*} rodata=
+                    [[ $base != .rodata.* ]] ||
+                        rodata=$("$tools/llvm-objdump" -t "$obj" | awk -v s="$base" '$1 ~ /^0+$/ && $3 == "O" && $4 == s { print $NF }')
+                    if [[ -z $rodata || -z ${statics[$(stable_name <<<"$rodata")]:-} ]]; then
+                        echo "admin/prove: $a relocates against $target, which starts no static its program names" >&2
+                        exit 1
+                    fi
+                    echo "reloc $((16#$off)) $type ${statics[$(stable_name <<<"$rodata")]}${target#"$base"}"
+                done
+                continue
+            fi
+            asm_function aarch64 "$a" "$dir/$n.o"
+            "$tools/llvm-objcopy" -O binary --only-section=.text "$dir/$n.o" "$dir/$n.text"
+            od -An -v -tx4 -w4 "$dir/$n.text" | awk '{ print "insn " $1 }'
+            rodata=$("$tools/llvm-objdump" -t "$dir/$n.o" | awk '$1 ~ /^0+$/ && $3 == "O" && $4 == ".rodata" { print $NF }')
+            relocations "$dir/$n.o" .text | while read -r off type target; do
+                if [[ $target != .rodata || -z $rodata || -z ${statics[$rodata]:-} ]]; then
+                    echo "admin/prove: $a relocates against $target, which starts no static its program names" >&2
+                    exit 1
+                fi
+                echo "reloc $((16#$off)) $type ${statics[$rodata]}"
             done
             ;;
         static)
@@ -976,10 +997,6 @@ rind_isa() {
     done <"$dir/want" >"$dir/got"
     release scratch
     diff -u --label rind-asm --label "rind's build" "$dir/want" "$dir/got"
-}
-# The architecture of a function `rind-asm` names, from its Rust path.
-isa_arch() {
-    if [[ $1 == rind::low::x86_64::* ]]; then echo x86_64; else echo aarch64; fi
 }
 
 # The file each target's proofs load first, which its session images hold
@@ -2158,8 +2175,7 @@ extract aarch64 Aarch64 "${hashes[@]}" "${assembly[@]}" \
     --opaque crate::low::aarch64::aes_gcm::short \
     --opaque crate::low::aarch64::aes_gcm::stitched
 
-# The AEAD key's conversion from HKDF's output is x86_64's alone: aarch64's
-# AEAD proofs are ChaCha20-Poly1305's, not yet AES-GCM's above the cipher.
+# The AEAD key's conversion from HKDF's output is proven on x86_64 alone.
 extract_kdf x86_64 X86_64 --start-from '{impl core::convert::From for crate::aead::Key}'
 extract_kdf aarch64 Aarch64 --include crate::mid::pbkdf2_vg \
     --include 'crate::mid::sha1::_::BLOCK_SZ' --include 'crate::mid::sha1::_::OUTPUT_SZ' \
@@ -2241,6 +2257,17 @@ sed -i '/-- BEGIN aead/,/-- END aead/d' proofs/Rind/Aarch64/Kdf/FunsExternal.lea
 # aarch64 translates `mid::pbkdf2_vg`, which the other targets leave opaque.
 sed -i '/-- BEGIN vg/,/-- END vg/d' proofs/Rind/Aarch64/Kdf/TypesExternal.lean proofs/Rind/Aarch64/Kdf/FunsExternal.lean
 sed -i 's/^public import Rind.Aarch64.HkdfExpand$/&\npublic import Rind.Aarch64.Kdf.VgExternal/' proofs/Rind/Aarch64/Kdf/FunsExternal.lean
+# aarch64's `RunsAesGcm` takes the key's algorithm, since AES-192 with SHA3
+# runs kernels nothing proves, so `GcmKey` passes it on.
+sed 's/X86_64/Aarch64/g; s/x86_64/aarch64/g
+    s/^theorem gcm_key_new (h : RunsAesGcm) (algorithm : cipher.Algorithm) (alg : Algorithm)$/theorem gcm_key_new (algorithm : cipher.Algorithm) (alg : Algorithm) (h : RunsAesGcm alg)/
+    s/(aes_gcm_new h alg A hAlg key)/(aes_gcm_new alg h A hAlg key)/' \
+    proofs/Rind/X86_64/GcmKey.lean >proofs/Rind/Aarch64/GcmKey.lean
+if ! grep -qF '(h : RunsAesGcm alg)' proofs/Rind/Aarch64/GcmKey.lean ||
+    ! grep -qF '(aes_gcm_new alg h A hAlg key)' proofs/Rind/Aarch64/GcmKey.lean; then
+    echo "admin/prove: proofs/Rind/X86_64/GcmKey.lean no longer has the lines aarch64's copy rewrites" >&2
+    exit 1
+fi
 # The portable backend's hash, HMAC, KDF, and header-protection proofs are the
 # x86_64 ones with the target renamed, over its own block functions' contracts
 # in `Sha512Entry.lean` and `ShaBlocks.lean`, and its compares' proof in
