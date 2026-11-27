@@ -6,13 +6,13 @@
 # are bounded by `timeout` where they run.
 
 # Native runs: `just check` and `just ci` (test-fast), build.yml's debug and
-# release rows, and the sanitizers. The slowest measured: AddressSanitizer's
-# SLH-DSA small-signature crosschecks, 204 s on ubuntu-latest.
+# release rows, and the sanitizers. The slowest measured: SLH-DSA's ACVP
+# signing in windows-latest's debug build, 326 s.
 [profile.default]
-slow-timeout = { period = "60s", terminate-after = 10 }
+slow-timeout = { period = "60s", terminate-after = 15 }
 
 # RSA-8192 key generation, whose prime search takes a random time, ran past
-# 30 minutes in i686-windows's debug build of the portable backend; and
+# 36 minutes in i686-windows's debug build of the portable backend; and
 # rind-acvp's offline answers, which with SLOW_TESTS hash 15 GiB on every CPU
 # path, 631 s on ubuntu-24.04. Every profile takes this override.
 [[profile.default.overrides]]
@@ -25,10 +25,10 @@ slow-timeout = { period = "120s", terminate-after = 60 }
 [profile.emulated]
 slow-timeout = { period = "120s", terminate-after = 10 }
 
-# valgrind, through admin/ctgrind. The slowest measured: the VOPRF's largest
-# batch in the x86_64 debug build, 2065 s.
+# valgrind, through admin/ctgrind. The slowest measured: Wycheproof's RSA-OAEP
+# decryption in the portable backend's 64-bit debug build, 2222 s.
 [profile.ctgrind]
-slow-timeout = { period = "300s", terminate-after = 15 }
+slow-timeout = { period = "300s", terminate-after = 18 }
 
 # Miri, nextest's profile under `cargo miri nextest` (sh/miri.sh). The slowest
 # measured: the VOPRF round trip on x86_64, 4511 s.
