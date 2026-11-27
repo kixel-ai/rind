@@ -87,7 +87,7 @@ On release-plz's release PR it runs only the site's check, over the whole site, 
 release-plz's release PR skips it, since the queue's `just ci` and `just release-check` still run on it.
 The required `Queue build / Build` check skips on pull requests; the merge group runs `just ci` against the merge group's base on the self-hosted runner, and that job's own result decides the group.
 It runs only the host's Rust checks and the quick repository lints (`CHECK_QUEUE` in `sh/dispatch.sh`), leaving the PR check's slower modules to the PR, and every other check, the Intel SDE models, `regenerate`, and `prove` among them, to its schedule: a break two PRs make only together shows there, on `main`, and is fixed there. It uploads Cargo's build timings as the `cargo-timings` artifact.
-Beside it, `Queue build / Build aarch64 macOS` and `Queue build / Build aarch64 Linux` run the group's `rs` module, its tests, natively on aarch64, in two VMs on the maintainer's Mac mini (`admin/mac-mini-runners`), and skip on pull requests the same way; once main's ruleset requires their contexts, each fails the group as `Build` does.
+Beside it, the required `Queue build / Build aarch64 Linux` runs the group's `rs` module, its tests, natively on aarch64, in a VM on the maintainer's Mac mini (`admin/mac-mini-runners`), skips on pull requests the same way, and fails the group as `Build` does.
 These builds live in `.github/workflows/queue-build.yml`, which the merge group calls from `main`, so a PR's edit to it runs only after the PR lands.
 A PR the queue drops for a failed build or a conflict gets a Codex fixer, which requeues it or hands it back with a diagnosis.
 The admin bypass of `main`'s ruleset is for emergencies.
