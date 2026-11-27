@@ -5,10 +5,13 @@
 //! for SHA-1 and SHA-256 where the CPU has it, else NEON where it has that,
 //! and integer code otherwise.
 //!
-//! The assembly is aws-lc's, imported by `admin/import-aws-lc`. It is not
-//! formally verified: its correctness rests on its use and testing in OpenSSL,
-//! BoringSSL, and aws-lc, and on rind's tests of it against the portable code,
-//! CAVP, and aws-lc-rs.
+//! The assembly is aws-lc's, imported by `admin/import-aws-lc`.
+//! `proofs/hol-light/armv7/sha256_armv4.ml` proves, on s2n-bignum's AArch32
+//! model, that the code rind links for SHA-256 with the crypto extension
+//! computes FIPS 180-4's compression. The other routines are not formally
+//! verified: their correctness rests on their use and testing in OpenSSL,
+//! BoringSSL, and aws-lc, and on rind's tests of them against the portable
+//! code, CAVP, and aws-lc-rs.
 
 use super::cpu::{HaveCryptoExt, HaveNeon};
 

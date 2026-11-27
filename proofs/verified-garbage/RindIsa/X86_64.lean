@@ -11,9 +11,9 @@ space by `lea`, a page at a time with a probing load at each, and restore
 `rsp` from a saved copy in one `lea`. They also use `neg`, `dec`, `ja`,
 aligned `movdqa` to and from memory, `imul` of a memory operand, encodings
 of VG's `mov` and `mulx` longer than VG's encoder emits, which aws-lc writes
-as bytes, and padding the assembler lays out.
-This model is VG's with those added: its state is VG's with the lowest
-address the stack may reach, its instructions are VG's, run by VG's
+as bytes, and padding the assembler lays out; aws-lc's Poly1305 also uses
+`shrd`. This model is VG's with those added: its state is VG's with the
+lowest address the stack may reach, its instructions are VG's, run by VG's
 semantics, and those below, each transcribing the pseudocode of the Intel
 SDM Vol. 2 the docs cite, in VG's style, so that the leakage model of
 `TCB/Code.lean` applies unchanged: every memory access faults outside the
@@ -70,6 +70,9 @@ inductive Instr
   | neg (d : Reg)
   /-- `dec r64` (`REX.W FF /1`) -/
   | dec (d : Reg)
+  /-- `shrd r64, r64, imm8` (`REX.W 0F AC /r ib`): `d` shifted right by `n`,
+  filled from the low bits of `s` -/
+  | shrd (d s : Reg) (n : Nat)
   /-- `movdqa xmm, XMMWORD PTR m` (`66 0F 6F /r`) -/
   | movdqaLoad (d : XReg) (m : MemOp)
   /-- `movdqa XMMWORD PTR m, xmm` (`66 0F 7F /r`) -/
@@ -130,6 +133,13 @@ def moveSp (s : State) (v : Addr) : Option State :=
 * "DEC": `DEST := DEST – 1`; "The CF flag is not affected. The OF, SF, ZF,
   AF, and PF flags are set according to the result": those of the
   subtraction `DEST - 1`.
+* "SHRD" (`REX.W 0F AC /r ib`), for a count `n` from 1 to 63 (larger
+  counts are not modelled: they fault): `DEST` is `DEST` shifted right `n`
+  bits, filled from the right of `SRC`; "the CF flag is filled with the last
+  bit shifted out of the destination operand"; "For a 1-bit shift, the OF
+  flag is set if a sign change occurred; otherwise, it is cleared. For shifts
+  greater than 1 bit, the OF flag is undefined"; "The SF, ZF, and PF flags are
+  set according to the value of the result", as VG's `shld`.
 * "MOVDQA" (`66 0F 6F /r`, `66 0F 7F /r`): `DEST := SRC`, 16 bytes,
   little-endian; "When the source or destination operand is a memory
   operand, the operand must be aligned on a 16-byte boundary or a
@@ -168,6 +178,13 @@ def exec : Instr → State → Option State
     let a := s.vg.gpr d
     let r := a - 1
     some { s with vg := ({ arithFlags s.vg r false (subOverflow a 1 r) with cf := s.vg.cf }).setReg d r }
+  | .shrd d r n, s =>
+    if 1 ≤ n ∧ n ≤ 63 then
+      let a := s.vg.gpr d
+      let v := (a >>> n) ||| (s.vg.gpr r <<< (64 - n))
+      some { s with vg := (s.vg.setFlags (some (a.getLsbD (n - 1))) (if n = 1 then some (v.msb != a.msb) else none)
+        (some (v == 0)) (some v.msb)).setReg d v }
+    else none
   | .movdqaLoad d m, s =>
     let a := s.vg.ea m
     if a.toNat % 16 = 0 then (s.vg.load128 a).map fun v => { s with vg := s.vg.setXmm d v } else none
@@ -190,7 +207,8 @@ def addrs : Instr → State → List Addr
   | .vg i, s => VG.X86_64.addrs i s.vg
   | .push _, s => [s.vg.gpr .rsp - 8]
   | .movdqaLoad _ m, s | .movdqaStore m _, s | .imulMem _ m, s | .mulxD32 _ _ m, s => [s.vg.ea m]
-  | .lea .., _ | .leaRsp _, _ | .neg _, _ | .dec _, _ | .movPad .., _ | .align _, _ | .jmpAlign _, _ => []
+  | .lea .., _ | .leaRsp _, _ | .neg _, _ | .dec _, _ | .shrd .., _ | .movPad .., _ | .align _, _
+  | .jmpAlign _, _ => []
 
 /-- The CPU features beyond the baseline: VG's for its own and `mulx`'s,
 none for the others, which are x86-64 and SSE2 baseline instructions. -/
@@ -262,9 +280,9 @@ def mulxD32Bytes (hi lo : Reg) (m : MemOp) : Option (List Nat) :=
 
 /-- The bytes of an instruction at byte offset `o`: VG's encoding of its own
 (`Instr.encode`); `push` `50+rd`, with `REX.B` for `r8`–`r15`; `lea`,
-`neg`, `dec`, `movdqa`, and `imul` as their docs give, in VG's encoder's
-forms; `movPad` as `n` bytes `67` then VG's `mov`; `mulxD32`'s; and the
-padding, `none` unless `n` is a power of two up to 64 and the jump's reach
+`neg`, `dec`, `shrd`, `movdqa`, and `imul` as their docs give, in VG's
+encoder's forms; `movPad` as `n` bytes `67` then VG's `mov`; `mulxD32`'s; and
+the padding, `none` unless `n` is a power of two up to 64 and the jump's reach
 (`EB cb`, at most 127) covers it. -/
 def Instr.encode (o : Nat) : Instr → Option (List Nat)
   | .vg i => i.encode.map List.flatten
@@ -273,6 +291,7 @@ def Instr.encode (o : Nat) : Instr → Option (List Nat)
   | .leaRsp m => Enc.legacy [] true [0x8D] (Enc.reg .rsp) (Enc.RM.mem m)
   | .neg d => Enc.legacy [] true [0xF7] 3 (Enc.RM.reg (Enc.reg d))
   | .dec d => Enc.legacy [] true [0xFF] 1 (Enc.RM.reg (Enc.reg d))
+  | .shrd d r n => if n < 256 then Enc.legacy [] true [0x0F, 0xAC] (Enc.reg r) (Enc.RM.reg (Enc.reg d)) [n] else none
   | .movdqaLoad d m => Enc.sse 1 1 0x6F (Enc.xreg d) (Enc.RM.mem m)
   | .movdqaStore m r => Enc.sse 1 1 0x7F (Enc.xreg r) (Enc.RM.mem m)
   | .imulMem d m => Enc.legacy [] true [0x0F, 0xAF] (Enc.reg d) (Enc.RM.mem m)
@@ -300,6 +319,14 @@ def jcc (c : Cond) (o t : Nat) : List Nat :=
   if -128 ≤ d ∧ d < 128 then [0x70 + c.cc, (d % 256).toNat]
   else [0x0F, 0x80 + c.cc] ++ Enc.le 4 (((t : Int) - (o + 6)) % 2 ^ 32).toNat
 
+/-- A `jmp` from offset `o` to offset `t`, short (`EB cb`) when the
+displacement fits a byte, else near (`E9 cd`), as LLVM's assembler relaxes
+it. -/
+def jmp (o t : Nat) : List Nat :=
+  let d : Int := (t : Int) - (o + 2)
+  if -128 ≤ d ∧ d < 128 then [0xEB, (d % 256).toNat]
+  else [0xE9] ++ Enc.le 4 (((t : Int) - (o + 5)) % 2 ^ 32).toNat
+
 /-- The bytes a jump into `c`, laid out from `o`, skips: those of the
 padding it begins with, as the assembler puts a label after its `.align`. -/
 def entry : Prog isa → Nat → Nat
@@ -309,12 +336,16 @@ def entry : Prog isa → Nat → Nat
   | _, _ => 0
 
 /-- The machine code of a program from byte offset `o` on, as rind's build
-emits aws-lc's text: each instruction's bytes; a do-while loop as its body
-then the `Jcc` that branches back to its entry; and `if c then t else e`
-as a `Jcc` to `t`'s entry, `e`, a short `jmp` (`EB cb`) past `t`, then `t`.
-`none` for any other control flow, which no program here has, for an
-instruction that does not encode, and for a `jmp` or a `Jcc` to `t` that
-does not reach in a byte, which LLVM would relax and this does not. -/
+emits aws-lc's text and rind's own copies of it: each instruction's bytes;
+a do-while loop as its body then the `Jcc` that branches back to its entry;
+`if c then t else e` as a `Jcc` to `t`'s entry, `e`, a `jmp` past `t`, then
+`t`; and `if c then (nothing) else e` as a `Jcc` past `e`, then `e`. Each
+jump is short where its displacement fits a byte and near otherwise, the
+first sizes, short before near and the `Jcc`'s before the `jmp`'s, whose
+jumps reach their targets: what LLVM's assembler reaches by relaxing the
+jumps that do not reach, from all short. `none` for any other control
+flow, which no program here has, and for an instruction that does not
+encode. -/
 def layout : Prog isa → Nat → Option (List Nat)
   | .block is, o =>
     is.foldlM (init := []) fun bs i => (i.encode (o + bs.length)).map (bs ++ ·)
@@ -325,13 +356,19 @@ def layout : Prog isa → Nat → Option (List Nat)
   | .loop body c, o => do
     let bb ← layout body o
     return bb ++ jcc c (o + bb.length) (o + entry body o)
-  | .ite c t e, o => do
-    let be ← layout e (o + 2)
-    let bt ← layout t (o + 2 + be.length + 2)
-    let dt := be.length + 2 + entry t (o + 2 + be.length + 2)
-    if dt < 128 ∧ bt.length < 128 then
-      return [0x70 + c.cc, dt] ++ be ++ [0xEB, bt.length] ++ bt
-    else none
+  | .ite c (.block []) e, o =>
+    [2, 6].firstM fun jc => do
+      let be ← layout e (o + jc)
+      let j := jcc c o (o + jc + be.length)
+      if j.length = jc then return j ++ be else none
+  | .ite c t e, o =>
+    [(2, 2), (2, 5), (6, 2), (6, 5)].firstM fun (jc, jm) => do
+      let be ← layout e (o + jc)
+      let p := o + jc + be.length
+      let bt ← layout t (p + jm)
+      let j := jcc c o (p + jm + entry t (p + jm))
+      let k := jmp p (p + jm + bt.length)
+      if j.length = jc ∧ k.length = jm then return j ++ be ++ k ++ bt else none
   | _, _ => none
 
 /-- `rep ret` (`F3 C3`), aws-lc's return. -/

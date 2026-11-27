@@ -39,8 +39,8 @@ LINK = "proofs/README.md#tcb--axiom-ledger"
 GROUPS = [
     (
         r"(X86_64|Aarch64)/S2nBignum\.lean",
-        "s2n-bignum's HOL Light theorems of its assembly",
-        "published proofs; `admin/prove bytes` checks rind's build emits the code they are about",
+        "s2n-bignum's HOL Light theorems of its assembly, and rind's own of code it runs",
+        "published proofs, and rind's in `proofs/hol-light/`, which `admin/prove hol-light` checks; `admin/prove bytes` checks rind's build emits the code they are about",
     ),
     (
         r"Aarch64/MlKemRoutines\.lean",
@@ -68,7 +68,7 @@ GROUPS = [
         "a published proof and rind's own; `admin/prove bytes` and `admin/prove hol-light` check the object code",
     ),
     (
-        r"(X86_64/(CtEqual|RsaMont|ShaBlocks|Sha256Shaext|ChaCha20Cipher)|Aarch64/Sha256Hw)\.lean",
+        r"(X86_64/(CtEqual|RsaMont|ShaBlocks|Sha256Shaext|ChaCha20Cipher)|Aarch64/Sha256Hw|Armv7/GhashNeon)\.lean",
         "rind's own HOL Light proofs of its assembly, and rind's Lean proofs of the SHA-256 crypto-extension routine (aarch64) and `bn_mul4x_mont` and `bn_mulx4x_mont` (x86_64)",
         "rind's proofs, in `proofs/hol-light/`, `Rind/Aarch64/Sha256HwAsm.lean`, `Rind/X86_64/Mul4xProof.lean`, and `Rind/X86_64/Mulx4xProof.lean`, checked against the bytes rind's build emits",
     ),

@@ -21,15 +21,7 @@ Recommendations for the implementer:
 - One PR: Criterion can leave only once every target has moved, and `admin/bench-report` would otherwise read two formats.
 - `admin/bench-report`, the weekly `gate`, and `BENCHMARKS.md`'s refresh read Criterion's IDs and `target/criterion/**/benchmark.json`. Move them to the harness's output in the same PR, and keep each row's operation and library recoverable from its name.
 - Keep each benchmark's name where the harness can, so Kixel Quest's instruction series and the gate's `--previous` comparison continue. Name in the PR the ones that change; a gate across the rename compares nothing for them for one run.
-- The Graviola rows that #1013 leaves out of the count build, since Valgrind hides ADX, and `rsa_gen`'s `NOISY_BENCHMARKS` gate need a home in the harness's terms, without a cargo feature to switch harnesses.
+- The Graviola rows that #1013 leaves out of the count build, since Valgrind hides ADX, and `rsa_gen`'s `NOISY_BENCHMARKS` gate need a home in the harness's terms, without a cargo feature to switch harnesses, as does the count build's skip of rustls's threaded rows, whose setup's threads would move the heap under the rows after it.
 - Update `TESTING.md`, `CONTRIBUTING.md`, and every comment that names CodSpeed.
 
 Public API: none.
-
-## Required
-
-- [The Valgrind runner](/quest/m2/bench/valgrind-runner.md) - moves the weekly count to rust2-bench, now swole, which this rewrite builds on
-
-## Related
-
-- `quest/m2/bench/deterministic-counts.md`, which [kixel-ai/rind#1013](https://github.com/kixel-ai/rind/pull/1013) adds - the same counts' noise
