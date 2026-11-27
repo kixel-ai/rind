@@ -10,14 +10,16 @@ set_option linter.unusedSimpArgs false
 # The AAD hash in rind's copy of aws-lc's aarch64 ChaCha20-Poly1305
 
 Seal and open inline aws-lc's `poly_hash_ad_internal` on each of their two
-paths: `adBlocks` hashes the AAD's whole blocks, `x4` bytes from `x3`, which
-the `cmp x4, #16` before it compared, and `adTail` the partial block left,
-zero-padded. `adBlocks_ok` and `adTail_ok` run them on rind's model: from
-an accumulator `(x8, x9, x10)` that is, modulo `p`, RFC 8439's over the AAD
-so far, with `r` in `(x16, x17)`, each half below `2^60` as clamping leaves
-it, and 1 in `x15`, they leave the accumulator over the whole AAD
-zero-padded to whole blocks (`padBlocks`, `Rind.Poly1305Limbs`), below
-`5 · 2^128`; and their traces depend only on the AAD's address and length.
+paths: `adBlocks` hashes the AAD's whole blocks, `x4` bytes from `x3`, after
+the `cmp x4, #16` before it, and `adTail` the partial block left,
+zero-padded. `ad_ok` runs them on rind's model: from an accumulator in
+`(x8, x9, x10)` below `5 · 2^128` that is, modulo `p`, `a`, with `r` in
+`(x16, x17)`, each word below `2^60` as clamping leaves them, and 1 in
+`x15`, they leave the accumulator below `5 · 2^128` and, modulo `p`,
+RFC 8439's from `a` over the AAD zero-padded to whole blocks (`padBlocks`,
+`Rind.Poly1305Limbs`); they change no memory and no register but `x3`,
+`x4`, `x8` to `x14`, and `v20`; and their traces, `blocksTrace` and
+`tailTrace`, are functions of the AAD's address and length alone.
 -/
 
 namespace rind.aarch64.chacha20poly1305asm
@@ -30,8 +32,11 @@ def polyLoad : Ins := .ldpPost .x11 .x12 .x3 16
 /-- Count a block off `x4`, and compare the bytes left with 16. -/
 def subCmp : List Ins := [.vg (.subImm .x .x4 .x4 16), .cmpImm .x4 16]
 
+/-- The 16 bytes at `x3`, hashed. -/
+def polyBlock : List Ins := [polyLoad] ++ polyAdd ++ polyMul
+
 /-- One whole block of the AAD. -/
-def adBlock : List Ins := [polyLoad] ++ polyAdd ++ polyMul ++ subCmp
+def adBlock : List Ins := polyBlock ++ subCmp
 
 /-- The AAD's whole blocks, if any. -/
 def adBlocks : Prog I := .ite (.flags .lt) (.block []) (.loop (.block adBlock) (.flags .ge))
@@ -396,7 +401,7 @@ theorem block_step (c : Ctx) (s0 : S) (ok : c.Ok s0) (j : Nat) (s : S) (inv : BI
   rw [x4₂, hsub] at d4 dfl
   refine ⟨s₃, Exec.block ?_, ?_, ?_⟩
   · have := execBlock_append_of (execBlock_append_of x₁ x₂) x₃
-    simpa [adBlock, blockTrace, hx3, List.append_assoc] using this
+    simpa [adBlock, polyBlock, blockTrace, hx3, List.append_assoc] using this
   · show some (CondCode.holds s₃.vg .ge) = _
     rw [dfl.ge, BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by omega)]
     by_cases h : 16 * (j + 1 + 1) ≤ c.len <;> simp [h] <;> omega

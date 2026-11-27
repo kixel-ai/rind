@@ -555,8 +555,9 @@ the padding, whose bytes that comparison checks.
   `r10` to `r15`; that its trace is a function of the AAD's address and
   length and `r`'s address (`ConstantTime`); and that some state meets
   `Pre`. `Rind/Poly1305Limbs.lean` holds what the x86_64 and aarch64 proofs
-  of aws-lc's one-pass routines share: `padBlocks`, the partial reduction
-  both keep the accumulator below `5 · 2^128` with, and memory as bytes.
+  of aws-lc's one-pass routines share: `padBlocks`, the three limbs and the
+  partial reduction both keep the accumulator below `5 · 2^128` with, and
+  memory as bytes.
   `PolyHashAdModel` proves the limbs aws-lc's `poly_mul` computes are that
   reduction of the product, and `PolyHashAdAsm` runs the program's blocks.
   No axiom restates it yet: the proofs of seal and open that call it will.
@@ -594,6 +595,22 @@ the padding, whose bytes that comparison checks.
   address, whatever the key, nonce, message, and AAD: `check` accepts each
   program, which the kernel computes. That they compute RFC 8439's AEAD,
   the rest of `AwsLc`, is not yet proven.
+
+- `Rind/Aarch64/ChaCha20Poly1305Named.lean`, `ChaCha20Poly1305Poly.lean`,
+  and `ChaCha20Poly1305Ad.lean`: the first parts of that proof.
+  `ChaCha20Poly1305Named` restates `sealProg` and `openProg` in named
+  blocks, `sealNamed` and `openNamed`, equal to them by `rfl`: Poly1305's
+  multiply-and-reduce, all 31 copies; the inlined AAD hash; and ChaCha20's
+  double round over one, two, or three blocks. `ChaCha20Poly1305Poly` runs
+  Poly1305's block step on the model and proves it a step of RFC 8439's
+  accumulator modulo `p` (`acc_step`), from `Rind/Poly1305Limbs.lean`'s
+  `limbs` and `reduce`. `ChaCha20Poly1305Ad` proves the inlined AAD hash,
+  `ad_ok`: from `r` in `(x16, x17)`, each word below `2^60`, and an
+  accumulator below `5 · 2^128`, it leaves the accumulator over the AAD
+  zero-padded to whole blocks (`padBlocks`), changes no memory and no
+  register but its scratch ones and `v20`, and its trace is a function of
+  the AAD's address and length. `Rind/Aarch64/Asm.lean` holds the symbolic
+  execution they share.
 
 ## curve25519-dalek's proofs
 
