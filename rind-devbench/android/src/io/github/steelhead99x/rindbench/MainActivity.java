@@ -169,6 +169,7 @@ public class MainActivity extends Activity {
                     : View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
         }
         detailsBtn.setVisibility(i == 0 ? View.VISIBLE : View.GONE);
+        if (bench != null) bench.setTabShown(i == 0);
         for (int n = 0; n < 3; n++) { barItems[n].setSelected(n == i); railItems[n].setSelected(n == i); }
     }
 
@@ -236,6 +237,8 @@ public class MainActivity extends Activity {
     @Override protected void onNewIntent(Intent i) {
         super.onNewIntent(i);
         setIntent(i);
-        if (bench != null) bench.applyIntent(i);
+        // A device runner's launch asks for the Bench tab's run, so it brings that tab up.
+        if (Collector.RUNNER && i != null && i.getBooleanExtra("autostart", false)) selectTab(0);
+        if (bench != null) bench.newLaunch(i);
     }
 }

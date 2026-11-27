@@ -63,6 +63,7 @@ CAPTURE --out DIR` splits a collector capture into one JSON per run.
 ## Device runners
 Both apps support an unattended run with no one looking at the screen (on Android, only a `DEVICE_RUNNER=1` build):
 - `autostart` waits 3 s after the list of tests loads, so a runner can capture the picker before the run starts.
+  On Android each launch with `autostart` starts one run, also when the app is already open (it arrives as a new intent) or a run has finished (its results are cleared first). Such a launch shows the Bench tab, and one that brings the app back from the background starts once the app is on screen. A launch is dropped, not queued, when a run is going; leaving the app or the Bench tab before the run starts cancels it. Restoring the activity never starts a run.
 - At each screen state (`ready`, `run`, `done`), the app logs one line:
   `RINDBENCH_LAYOUT {"phase":"ready","w":390,"h":844,"wide":false,"folded":false,"fits":true,"clipped":[]}`.
   On Android it goes to logcat with tag `RindBench`. On iOS it goes to stderr (seen with `devicectl … --console`) and the device log.

@@ -49,9 +49,13 @@ final class ContenderClient {
         String location = "";
         Exception err;
         String body() { return raw == null ? "" : new String(raw, StandardCharsets.UTF_8); }
+        boolean ok() { return code >= 200 && code < 300; }
+        /** The body as a JSON object, or null when it isn't one or carries an "error". */
         JSONObject json() {
-            try { return raw == null ? null : new JSONObject(new String(raw, StandardCharsets.UTF_8)); }
-            catch (Exception e) { return null; }
+            try {
+                JSONObject o = raw == null ? null : new JSONObject(new String(raw, StandardCharsets.UTF_8));
+                return o == null || o.has("error") ? null : o;
+            } catch (Exception e) { return null; }
         }
     }
 
@@ -115,8 +119,10 @@ final class ContenderClient {
                 done.done(h);
                 return;
             }
-            JSONObject json = r.json();
-            if (json != null) {
+            // Only a 2xx JSON body that names the service is a healthy one: an error page
+            // or a 500's JSON error body is not.
+            JSONObject json = r.ok() ? r.json() : null;
+            if (json != null && !json.optString("name", "").isEmpty()) {
                 h.serviceName = json.optString("name", "");
                 h.isLabReferee = "moq-contender-referee".equals(h.serviceName);
                 h.status = AVAILABLE;
@@ -144,6 +150,11 @@ final class ContenderClient {
                     || body.contains("Log in to moq-bench.dev")
                     || json == null) {
                 done.done(null, "Session service not available yet.");
+                return;
+            }
+            // A session is a 2xx answer that names it; anything else, such as a 500, is no session.
+            if (!r.ok() || (json.optString("name", "").isEmpty() && json.optString("title", "").isEmpty())) {
+                done.done(null, "Could not open that session.");
                 return;
             }
             Session s = new Session();

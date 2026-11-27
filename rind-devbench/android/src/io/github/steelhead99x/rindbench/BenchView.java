@@ -77,8 +77,14 @@ final class BenchView extends LinearLayout {
     private final boolean restored;
     /** Between the activity's onStart and onStop. */
     private boolean onScreen = true;
-    /** A device runner's pending autostart, which leaving the screen cancels. */
+    /** A device runner's pending autostart, which leaving the screen or the Bench tab cancels. */
     private Runnable autostart;
+    /** A runner launch with `autostart` not yet scheduled: each fresh launch sets it, and scheduling consumes it. */
+    private boolean launchPending;
+    /** Whether the Bench tab is the one shown, as MainActivity's tab selection sets it. */
+    private boolean tabShown = true;
+    /** Set once the list of tests has loaded, so a launch before then waits for it. */
+    private boolean loadedOnce;
 
     /**
      * `restored`: the activity is being recreated from saved state, after a
@@ -91,6 +97,8 @@ final class BenchView extends LinearLayout {
         super(host);
         this.host = host;
         this.restored = restored;
+        // A restored activity gets its old intent again: only a fresh launch asks for a run.
+        launchPending = Collector.RUNNER && !restored && intent != null && intent.getBooleanExtra("autostart", false);
         setBackgroundColor(Theme.surface);
         setContentDescription("Bench page");
         int s2 = Theme.dpi(host, 8), s4 = Theme.dpi(host, 16);
@@ -401,28 +409,67 @@ final class BenchView extends LinearLayout {
         // The run lives in the native library, past this activity: after a recreation, such as a
         // dark mode switch, pick up a run that's going, or show the results of one that finished.
         JSONObject st = nativeStatus();
+        loadedOnce = true;
         if (st.optBoolean("running")) {
             enterRunning();
+            scheduleAutostart();
             return;
         }
         String run = st.optString("run_id", "");
         if (!run.isEmpty()) {
-            // A recreated activity gets its intent again: autostart only the process's first run.
             if (!run.equals(clearedRun)) showFinished(st, false);
+        } else {
+            reportLayout("ready");
+        }
+        // A finished run's results stay up, but a fresh runner launch still starts its own run.
+        scheduleAutostart();
+    }
+
+    /**
+     * A runner launch that reaches the activity already open (onNewIntent): its options apply as
+     * applyIntent's do, and its autostart counts as a fresh one.
+     */
+    void newLaunch(Intent it) {
+        applyIntent(it);
+        if (Collector.RUNNER && it != null && it.getBooleanExtra("autostart", false)) {
+            launchPending = true;
+            if (loadedOnce) scheduleAutostart();
+        }
+    }
+
+    /**
+     * Consumes a pending launch's autostart: one run, 3 s later, so a runner can capture the picker
+     * first (README). A launch that brings the app back reaches onNewIntent before onStart, so while
+     * the app is off screen the launch waits for onStart; onStop drops it. It is dropped, not kept
+     * for later, when a run is already going or the Bench tab isn't shown.
+     */
+    private void scheduleAutostart() {
+        if (!launchPending || !onScreen) return;
+        launchPending = false;
+        cancelAutostart();
+        if (running) {
+            android.util.Log.i("RindBench", "autostart ignored: a run is going");
             return;
         }
-        // A launch's autostart is consumed by its first view: never by one restored from saved state,
-        // nor while the operator has left the app, since a runner's run needs the screen it set up.
-        reportLayout("ready");
-        if (Collector.RUNNER && !restored && onScreen && intent != null && intent.getBooleanExtra("autostart", false)) {
-            // Three seconds after the list loads, so a runner can capture the picker before the run (README).
-            autostart = () -> {
-                autostart = null;
-                if (!onScreen || running) return;
-                agree.setChecked(true);
-                startTapped();
-            };
-            ui.postDelayed(autostart, 3000);
+        if (!tabShown) {
+            android.util.Log.i("RindBench", "autostart ignored: the Bench tab isn't shown");
+            return;
+        }
+        autostart = () -> {
+            autostart = null;
+            if (!onScreen || !tabShown || running) return;
+            // A finished run's results are cleared as the Clear button does, so Start can run.
+            if (!nativeStatus().optString("run_id", "").isEmpty()) clearTapped();
+            agree.setChecked(true);
+            startTapped();
+        };
+        ui.postDelayed(autostart, 3000);
+    }
+
+    private void cancelAutostart() {
+        if (autostart != null) {
+            ui.removeCallbacks(autostart);
+            autostart = null;
         }
     }
 
@@ -604,10 +651,7 @@ final class BenchView extends LinearLayout {
 
     private void startTapped() {
         // Any start, the person's or the runner's own, takes the place of a queued autostart.
-        if (autostart != null) {
-            ui.removeCallbacks(autostart);
-            autostart = null;
-        }
+        cancelAutostart();
         if (!agree.isChecked() || !catalogReady || running) return;
         List<String> libs = new ArrayList<>(), secs = new ArrayList<>();
         for (Map.Entry<String, CompoundButton> e : libSw.entrySet()) if (e.getValue().isChecked()) libs.add(e.getKey());
@@ -712,10 +756,19 @@ final class BenchView extends LinearLayout {
     /** The activity's onStart and onStop. */
     void setOnScreen(boolean on) {
         onScreen = on;
-        if (!on && autostart != null) {
-            ui.removeCallbacks(autostart);
-            autostart = null;
+        if (!on) {
+            // Leaving the app drops a launch's autostart, queued or still waiting.
+            launchPending = false;
+            cancelAutostart();
+        } else if (loadedOnce) {
+            scheduleAutostart();
         }
+    }
+
+    /** MainActivity's tab selection: leaving the Bench tab cancels a queued autostart. */
+    void setTabShown(boolean shown) {
+        tabShown = shown;
+        if (!shown) cancelAutostart();
     }
 
     /** Stops polling, for the activity's onDestroy: a recreated activity's new view picks the run up. */

@@ -292,7 +292,7 @@ final class ContenderView extends LinearLayout {
             setStatus("Enter a code", ASK, "Type the session code or scan its QR code.", false);
             return;
         }
-        setStatus("Joining session…", BUSY, "Checking code " + code + ".", false);
+        setStatus("Looking up session…", BUSY, "Checking code " + code + ".", false);
         client.lookupSession(code, (session, error) -> ui.post(() -> {
             if (!enabledOn) return;
             if (error != null || session == null) {
@@ -315,8 +315,10 @@ final class ContenderView extends LinearLayout {
                 rankBody.setText("Waiting for the presenter to start.");
             sessionCard.setVisibility(VISIBLE);
             joinCard.setVisibility(GONE);
-            setStatus("Joined", OK,
-                    "Only scrubbed results are shared when the presenter starts.", false);
+            // The lookup only finds the session: "Joined" waits for a join the service confirms,
+            // which this app doesn't send yet.
+            setStatus("Session found", OK,
+                    "Not joined yet: the app only looks a session up for now. Only scrubbed results are ever shared.", false);
         }));
     }
 
