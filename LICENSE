@@ -284,7 +284,10 @@ pyca/verified-garbage <https://github.com/pyca/verified-garbage>
   What: the Lean ISA models, the ML-KEM, SHA-3, SHA-512, X25519, Poly1305, and
   ChaCha20-Poly1305 specs, and the RSA, ChaCha20, Ed25519, P-256, P-384, and
   PBKDF2 specs and contracts rind's proofs import or restate, with the MD5, SHA-1,
-  SHA-2, and HMAC specs PBKDF2's import,
+  SHA-2, and HMAC specs PBKDF2's import, and, for rind's leakage axioms, the
+  ML-KEM and ChaCha20-Poly1305 contracts and the implementation code (Impl/)
+  of the aarch64 SVE2 ChaCha20-Poly1305 and x86_64 ML-KEM-768 routines, with
+  the Impl/ and proof framework (Proof/Framework/) modules it imports,
   under proofs/verified-garbage/VerifiedGarbage, which admin/import-vg-models
   copies byte for byte from verified-garbage
   at the same commit, so they carry no SPDX comment; this entry names

@@ -113,9 +113,11 @@ mkdir -p "$out"
 tools=$(rustc --print sysroot)/lib/rustlib/$(rustc -vV | sed -n 's/^host: //p')/bin
 
 # Prints the target triple of `arch` Linux: armv7's names its hard-float ABI.
+# A whole triple, such as `armv7a-none-eabi`, is itself.
 triple() {
     case $1 in
     armv7) echo armv7-unknown-linux-gnueabihf ;;
+    *-*) echo "$1" ;;
     *) echo "$1-unknown-linux-gnu" ;;
     esac
 }
@@ -657,12 +659,23 @@ vg() {
     admin/upstream verified-garbage
     admin/import-vg-models --check "$upstream"
     admin/vg-binding "$upstream"
+    # `lake build` alone builds only the default target (vg-cosim).
+    (cd proofs/verified-garbage && lake build vg-cosim vg-print)
+    local vgprint=proofs/verified-garbage/.lake/build/bin/vg-print
+    if [[ ! -x $vgprint ]]; then
+        echo "admin/prove: lake build did not produce $vgprint" >&2
+        return 1
+    fi
+    # The text of each `Prog` rind's axioms about VG's leakage are about, which
+    # `admin/vg-bytes` checks is VG's assembly (so VG's printer is trusted to
+    # print that `Prog` as it does, which it does not check).
+    "$vgprint" "$arch" >"$dir/progs.txt"
+    local progs=(--progs "$dir/progs.txt")
     hold scratch
     build_asm "$arch"
     rind_index "$arch" >/dev/null
-    admin/vg-bytes "$upstream" "$arch" "$dir" --rind "$out/asm/$arch-units"/*.rcgu.o
+    admin/vg-bytes "$upstream" "$arch" "$dir" "${progs[@]}" --rind "$out/asm/$arch-units"/*.rcgu.o
     release scratch
-    (cd proofs/verified-garbage && lake build)
     rustc --edition 2024 -O -o "$dir/runner" admin/vg-cosim-runner.rs
     # A case that faults must name its instruction and fail the run, on the
     # CPU and under the emulator.
@@ -1332,6 +1345,8 @@ check_quote X86_64/HmacDispatch items rind/src/high/hmac.rs 'pub struct Algorith
 check_quote X86_64/HkdfExpand items rind/src/high/hkdf.rs '    fn expand_into('
 check_quote Portable/Compare items rind/src/low/portable/cpu.rs 'pub(in crate::low) fn ct_compare_bytes(' \
     'pub(in crate::low) fn ct_compare_16('
+check_quote Mcu/Sha256IramModel items rind/src/low/portable/sha256_iram.rs 'struct RoundConstants(' \
+    'impl RoundConstants {' 'struct Window(' 'impl Window {' 'struct Blocks<' "impl<'a> Blocks<'a> {"
 check_quote X86_64/SignatureBuffer items rind/src/high/signature.rs 'impl<const N: usize> Buffer<N> {'
 rsa_items() {
     items rind/src/high/signature.rs 'enum HashId {' 'impl HashId {'
@@ -1607,7 +1622,7 @@ extract() {
     shift 2
     (cd rind && charon cargo --preset=aeneas "$@" \
         --dest-file "$PWD/../$out/${dir,,}.llbc" \
-        -- -p rind --lib --target "$arch-unknown-linux-gnu")
+        -- -p rind --lib --target "$(triple "$arch")")
     to_lean "$dir"
 }
 
@@ -1759,7 +1774,8 @@ rustc_version=$(rustc -vV)
 toolchain=$(printf '%s\n' "$charon_path" "$rustc_version" | sha256sum)
 prove_target=$PWD/target/prove-${toolchain:0:16}
 mkdir -p target
-find "$PWD/target" -mindepth 1 -maxdepth 1 -name 'prove*' ! -name "prove-${toolchain:0:16}" ! -name "prove-${toolchain:0:16}-portable" -exec rm -rf {} +
+find "$PWD/target" -mindepth 1 -maxdepth 1 -name 'prove*' ! -name "prove-${toolchain:0:16}" ! -name "prove-${toolchain:0:16}-portable" \
+    ! -name "prove-${toolchain:0:16}-mcu" -exec rm -rf {} +
 export CARGO_TARGET_DIR=$prove_target
 
 extract x86_64 X86_64 "${hashes[@]}" "${assembly[@]}" \
@@ -2065,6 +2081,34 @@ CARGO_TARGET_DIR=$portable_target RUSTFLAGS=$portable_cfg extract x86_64 Portabl
     --include crate::low::generic::limb64::mont
 CARGO_TARGET_DIR=$portable_target RUSTFLAGS=$portable_cfg extract_kdf x86_64 Portable
 
+# The portable backend on 32-bit microcontrollers, `target_os = "espidf"` or
+# `"none"`, whose SHA-2 differs from the other targets': SHA-384/512 is the
+# rolled loop in `low::generic::sha512_rolled`, and on ESP-IDF Xtensa SHA-256
+# is `low/portable/sha256_iram.rs`. `armv7a-none-eabi` selects the first
+# itself. Charon cannot build for Xtensa, whose esp toolchain is a fork of
+# Rust, so `rind_sha256_iram` forces the second, and the translation reads
+# that module's Rust fallbacks for its Xtensa `asm!`.
+# `proofs/Rind/Mcu/Sha256IramModel.lean` models the window and the two raw
+# pointer cursors it leaves opaque. The hashes alone: no other operation
+# differs here.
+mcu_cfg='--cfg rind_portable --cfg rind_sha256_iram --cfg getrandom_backend="custom"'
+CARGO_TARGET_DIR=$prove_target-mcu RUSTFLAGS=$mcu_cfg extract armv7a-none-eabi Mcu "${hashes[@]}" \
+    --include crate::low::portable::sha \
+    --opaque crate::low::portable::sha::iram::RoundConstants \
+    --opaque crate::low::portable::sha::iram::Window \
+    --opaque crate::low::portable::sha::iram::Blocks \
+    --opaque 'crate::low::portable::sha::iram::_::first' \
+    --opaque 'crate::low::portable::sha::iram::_::new' \
+    --opaque 'crate::low::portable::sha::iram::_::get' \
+    --opaque 'crate::low::portable::sha::iram::_::set' \
+    --opaque 'crate::low::portable::sha::iram::_::next' \
+    --opaque 'crate::low::portable::sha::iram::_::block' \
+    --include crate::low::generic::sha256_k \
+    --include crate::low::generic::sha512::K \
+    --include crate::low::generic::sha512_rolled \
+    --opaque crate::mid::sha3 \
+    --start-from crate::error::Error --start-from crate::low::ct::into_public
+
 mkdir -p proofs/Rind/Aarch64/Kdf
 # P-256's generator multiplication and its table differ per target, so each
 # target has its own `P256Base` stating it, and `P256KeyCheck` for the key
@@ -2094,6 +2138,13 @@ for file in QuicDispatch DigestAlgorithm DigestDispatch Sha512 ChaCha20 Blockwis
 done
 sed -i '/Rind.Portable.AeadDispatch/d' proofs/Rind/Portable/Kdf/TypesExternal.lean
 sed -i '/-- BEGIN aead/,/-- END aead/d' proofs/Rind/Portable/Kdf/FunsExternal.lean
+# 32-bit microcontrollers' hash, HMAC, and header-protection proofs and
+# compares' models are the portable backend's with the namespace renamed, over
+# `Rind/Mcu/`'s own block functions' proofs: the Rust paths are the same.
+for file in QuicDispatch DigestAlgorithm DigestDispatch Sha512 ChaCha20 Blockwise Sha Hmac HmacDispatch HmacApi DigestApi \
+    Compare CtEqual; do
+    sed 's/Rind\.Portable/Rind.Mcu/g; s/rind\.portable/rind.mcu/g' "proofs/Rind/Portable/$file.lean" >"proofs/Rind/Mcu/$file.lean"
+done
 # So are RSA verification's, over its own `RsaMont.lean`, without the sections
 # marked as x86_64's alone, its AVX-512 IFMA public operation and
 # pyca/verified-garbage's R² mod n, and with the lines marked as the portable
