@@ -70,7 +70,7 @@ Every Lean file that declares an `axiom`, by the source it restates; no file hol
 | Beneficial AI Foundation's Lean theorems of curve25519-dalek, in its X25519 and Edwards specs that `admin/import-dalek` vendors | `Armv7/Dalek` | published proofs; `admin/prove dalek` checks that every definition the restated functions reach in armv7's configuration is the text BAIF's proofs are about, but for one pinned pair that differs only in local names |
 | Vale's procedures for HACL\*'s AES-GCM | `X86_64/ValeAesGcm` | published proofs; `admin/prove bytes` checks the object code |
 | aws-lc-verification's NSym proof of SHA-384/512 (aarch64) and rind's HOL Light proof of the AVX2 routine (x86_64) | `Aarch64/AwsLc`, `X86_64/AwsLc` | a published proof and rind's own; `admin/prove bytes` and `admin/prove hol-light` check the object code |
-| rind's own HOL Light proofs of its assembly, and rind's Lean proofs of the SHA-256 crypto-extension routine (aarch64) and `bn_mul4x_mont` and `bn_mulx4x_mont` (x86_64) | `Aarch64/Sha256Hw`, `Armv7/GhashNeon`, `Armv7/Sha512Entry`, `X86_64/ChaCha20Cipher`, `X86_64/CtEqual`, `X86_64/RsaMont`, `X86_64/Sha256Shaext`, `X86_64/ShaBlocks` | rind's proofs, in `proofs/hol-light/`, `Rind/Aarch64/Sha256HwAsm.lean`, `Rind/X86_64/Mul4xProof.lean`, and `Rind/X86_64/Mulx4xProof.lean`, checked against the bytes rind's build emits |
+| rind's own HOL Light proofs of its assembly, and rind's Lean proofs of the SHA-256 crypto-extension routine (aarch64) and `bn_mul4x_mont`, `bn_mulx4x_mont`, and `bn_sqrx8x_mont` (x86_64) | `Aarch64/Sha256Hw`, `Armv7/GhashNeon`, `Armv7/Sha512Entry`, `X86_64/ChaCha20Cipher`, `X86_64/CtEqual`, `X86_64/RsaMont`, `X86_64/Sha256Shaext`, `X86_64/ShaBlocks` | rind's proofs, in `proofs/hol-light/`, `Rind/Aarch64/Sha256HwAsm.lean`, `Rind/X86_64/Mul4xProof.lean`, `Rind/X86_64/Mulx4xProof.lean`, and `Rind/X86_64/Sqrx8xInternal.lean`, checked against the bytes rind's build emits |
 | HOL Light theorems of AES-CTR and AES-CBC that no proof states yet | `X86_64/AesModesLow` | **assumed, not proven**: [the AES modes quest](/quest/m4/verified/aes-modes.md) owns them |
 
 Hand models of Rust Aeneas cannot translate, each quoting the Rust it models:
@@ -589,6 +589,29 @@ comparison checks.
   `Mulx4xFinal` the subtraction and the constant-time copy, over
   `Mul4xSub`'s selection.
   `Rind/X86_64/RsaMont.lean` restates it as `mulx4x_spec`.
+
+- `Rind/X86_64/Sqrx8xInternal.lean`: `bn_sqrx8x_mont_correct`, the same of
+  the Montgomery square of `low::x86_64::mont::bn_sqrx8x_mont`, rind's copy
+  of aws-lc's `bn_sqr8x_mont` that always squares by `bn_sqrx8x_internal`
+  (`RindIsa/X86_64/Sqrx8xMont.lean`), which `sqr8x` runs given BMI2 and ADX,
+  for a width that is a multiple of eight from eight and below `2^29`, a
+  frame of `48k + 184` bytes, and a stack pointer below `2^63`, as every
+  user-space stack is, since the squaring's carry chain needs its frame not
+  to straddle `2^63`. The routine calls `bn_sqrx8x_internal`
+  (`RindIsa/X86_64/Sqrx8x.lean`), rind's structured copy of aws-lc's, which
+  `rind-asm` and `admin/prove` check is the function the call's relocation
+  names. `bn_sqrx8x_internal_correct` proves its contract, `Sqrx8xSpec`'s
+  `InPre` and `InPost`: it leaves `(a² + Q·m)/2^(64k)` for some `Q` below
+  `2^(64k)` in the frame's upper `k` words and a carry bit in `rax`, with a
+  trace of its width, pointers, and frame alone. The other
+  `Sqrx8x*` files build it: `Sqrx8xSetup` the entry and the frame's zeroing,
+  `Sqrx8xTri*`, `Sqrx8xRow`, `Sqrx8xPass`, and `Sqrx8xOuter` the triangle of
+  cross products, `Sqrx8xShift*` their doubling and the squares' sum,
+  `Sqrx8xSquare` those joined, `Sqrx8xRed*` the reduction, and
+  `Sqrx8xMontHead`, `Sqrx8xMontTail`, `Sqrx8xMontFinal`, and
+  `Sqrx8xMontProof` the routine around the call, its subtraction, and its
+  constant-time copy.
+  `Rind/X86_64/RsaMont.lean` restates it as `sqrx8x_spec`.
 
 - `Rind/X86_64/PolyHashAdProof.lean`: `poly_hash_ad_internal_correct`, that
   `low::x86_64::chacha20poly1305::poly_hash_ad_internal`, rind's copy of
@@ -1935,10 +1958,12 @@ not a multiple of eight, from `nohw_spec`, which restates rind's HOL Light
 proof of `bn_mul_mont_nohw` below, of the Linux build's object, so not of the
 macOS one ([its quest](/quest/m4/verified/apple-bytes.md)), and from eight
 words at a multiple of four from `mul4x_spec` and `mulx4x_spec`, which restate
-`Mul4xProof.lean`'s and `Mulx4xProof.lean`'s theorems above; and from
-`AwsLcMont`, that aws-lc's unproven `bn_sqr8x_mont` returns its squares, at
-the other multiples of eight, all below `2^29` words, the most
-`bn_mulx4x_mont` takes, which `MontArgs` bounds.
+`Mul4xProof.lean`'s and `Mulx4xProof.lean`'s theorems above, and squaring at
+a multiple of eight with BMI2 and ADX from `sqrx8x_spec`, which restates
+`Sqrx8xInternal.lean`'s; and without them from `AwsLcMont`, that aws-lc's
+unproven `bn_sqr8x_mont` returns its squares, at the other multiples of
+eight, all below `2^29` words, the most `bn_mulx4x_mont` and
+`bn_sqrx8x_mont` take, which `MontArgs` bounds.
 `PublicKey::verify` reaches each algorithm's verification through a function
 pointer, and every loader encodes the key through `Buffer::write`, which
 `Rind/X86_64/RsaDispatch.lean` models for these two algorithms. On aarch64 the products are aws-lc's, so these proofs are not
@@ -1957,8 +1982,9 @@ project's Lean proof; otherwise it is rind's, with primes of 16 or 32 words,
 where aws-lc's dual RSAZ does not run (`NoRsazPair`), given `MontProducts` at
 the primes' width. `private_op_rsa2048_spec` discharges the products, by
 s2n-bignum's Karatsuba routines at 16 and 32 words, and the dual RSAZ for
-RSA-2048; RSA-4096's 64-word modulus still needs `AwsLcMont` for its fault
-check's products. `Rind/X86_64/RsaExp.lean` proves
+RSA-2048; RSA-4096's fault check's products at its 64-word modulus follow
+from `mont_products` with BMI2 and ADX, which no theorem joins to
+`private_op_spec` yet. `Rind/X86_64/RsaExp.lean` proves
 `mont_exp`'s fixed-window exponentiation on that path, and
 `Rind/X86_64/RsaGather.lean` its table gather on both paths `HaveAvx2::check`
 picks, over `Rind/X86_64/GatherModel.lean`'s hand model of the AVX2 one.

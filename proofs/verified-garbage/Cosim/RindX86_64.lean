@@ -68,10 +68,15 @@ def code (i : Rind.X86_64.Instr) : Option ByteArray :=
       | _ => bs
     ⟨(bs.map (·.toUInt8)).toArray⟩
 
-/-- A branch on `c` to `targetAddr`, `jcc rel32`; `ja` is `0F 87`. -/
+/-- A branch on `c` to `targetAddr`, `jcc rel32`; `ja` is `0F 87`. `jrcxz`
+reaches only a byte's displacement, so `rcxz` branches by it to a `jmp
+rel32` there, past which a `jmp` skips when not taken, and `rcxnz` is the
+`jrcxz` past a `jmp rel32` that `layout` lays it out as. -/
 def jccOf : Rind.X86_64.Cond → ByteArray
   | .vg c => jcc c
   | .a => ByteArray.mk #[0x0F, 0x87] ++ rel32 (insnAddr + 6)
+  | .rcxz => ByteArray.mk #[0xE3, 0x02, 0xEB, 0x05, 0xE9] ++ rel32 (insnAddr + 9)
+  | .rcxnz => ByteArray.mk #[0xE3, 0x05, 0xE9] ++ rel32 (insnAddr + 7)
 
 /-- A case of a branch on `c`: taken or not, and nothing else changed. -/
 def branchOf (c : Rind.X86_64.Cond) : Gen (Option (Img × Bool)) := do
