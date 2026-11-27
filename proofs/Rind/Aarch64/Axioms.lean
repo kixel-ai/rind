@@ -18,6 +18,7 @@ import Rind.Aarch64.MlKemCoding
 import Rind.Aarch64.MlKemGeneric
 import Rind.Aarch64.MlKemPke
 import Rind.Aarch64.MlKemEncrypt
+import Rind.Aarch64.MlKemSample
 import Rind.Aarch64.GhashPmull
 import Rind.Aarch64.AesGcm
 import Rind.Aarch64.AesGcmLong
@@ -895,6 +896,19 @@ A change here is a change to the trust base.
  MlKemRoutines.mlkem_reduce_axiom] -/
 #guard_msgs in
 #print axioms MlKemEncrypt.kpke_encrypt_fips
+
+/-- info: 'rind.aarch64.MlKemSample.decoded_new_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ sha3_keccak2_f1600_spec,
+ sha3_keccak4_f1600_alt_spec,
+ sha3_keccak4_f1600_spec,
+ sha3_keccak_f1600_alt_spec,
+ sha3_keccak_f1600_spec,
+ MlKemRoutines.mlkem_reduce_axiom,
+ MlKemRoutines.mlkem_rej_uniform_vartime_axiom] -/
+#guard_msgs in
+#print axioms MlKemSample.decoded_new_spec
 
 /-- info: 'rind.aarch64.MlKemPoly.to_bytes_spec' depends on axioms: [propext,
  Classical.choice,

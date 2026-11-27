@@ -1,18 +1,28 @@
-import Rind.Aarch64.MlKemPke
-import Rind.Aarch64.MlKemCbd
+import Rind.Aarch64.MlKemEncrypt
 import Rind.Aarch64.Sha3
 import Rind.MlKemSample
 open Aeneas Aeneas.Std Result rind.spec Spec Spec.MLKEM rind.spec.mlkem rind.spec.s2n
 
 /-!
 # ML-KEM's matrix sampling on aarch64
+
+`sample_ntt` over the four-way SHAKE128 (`shake128x4_squeeze_spec`), the
+sponge (`squeezing_squeeze_spec`), and s2n-bignum's rejection sampling
+(`mlkem_rej_uniform_vartime_axiom`) writes each polynomial of a `k` by `k`
+matrix as SHAKE128's first 256 candidates below `q` on its input (`Sampled`),
+which `sampleNTT_sampled` shows is FIPS 203's `SampleNTT`. aarch64 has no
+eight-way sampler, so this covers every `k`; `sample_transposed_spec` states
+`Coeffs::sample` for ML-KEM-768's transposed matrix, and `decoded_new_spec`
+`Decoded::new`, whose result `kpke_encrypt_fips` takes. Each assumes that
+`SampleNTT` finishes on the matrix's inputs (`Halts`): FIPS 203's loop has no
+bound that holds for every input.
 -/
 
 namespace rind.aarch64
 
 namespace MlKemSample
 
-open MlKemCoding MlKemRoutines MlKemPoly MlKemPke
+open MlKemCoding MlKemRoutines MlKemPoly MlKemPke MlKemEncrypt
 open MlKemCbd (try_from_mut_spec unwrap_mut_spec)
 
 /-! ## s2n-bignum's rejection sampling keeps `accepted`'s candidates -/
@@ -96,24 +106,6 @@ theorem filled_full (W K : List ℕ) (base : ℕ) (out : List I16) (done : ℕ)
   refine ⟨h1, by simp; omega, fun k hk => ?_⟩
   rw [h3 k hk, getElem!_pos _ (base + k) (by omega), getElem!_pos _ (base + k) (by simp; omega),
     List.getElem_append_left]
-
-/-- A candidate `if` keeps, written if there is room, as `tail_case` does. -/
-theorem filled_keep (W : List ℕ) (base : ℕ) (out : List I16) (done : ℕ) (x : ℕ) (v : I16) (hv : v.val = x)
-    (h : Filled W base out done) :
-    Filled (W ++ if x < q then [x] else []) base
-      (if x < q ∧ done < out.length then out.set done v else out)
-      (if x < q ∧ done < out.length then done + 1 else done) := by
-  by_cases hx : x < q
-  · by_cases hd : done < out.length
-    · simp only [hx, hd, and_self, ite_true]
-      exact filled_push W base out done x v hv h hd
-    · simp only [hx, hd, and_false, ite_false, ite_true]
-      exact filled_full W [x] base out done h hd
-  · simp only [hx, false_and, ite_false, List.append_nil]
-    exact h
-
-theorem filled_length {W : List ℕ} {base : ℕ} {out : List I16} {done : ℕ} (h : Filled W base out done) :
-    done ≤ out.length := h.1
 
 /-! ## `tail_case` -/
 
@@ -666,8 +658,6 @@ def MatInv (rho : Std.Array U8 32#usize) (transposed : Bool) (k : Usize)
   s.1.length = k.val * k.val ∧ s.2.2.2.val ≤ k.val * k.val ∧ s.2.1.val = s.2.2.2.val / k.val ∧
     s.2.2.1.val = s.2.2.2.val % k.val ∧ MatSampled (bv rho.val) transposed k.val s.2.2.2.val s.1.val
 
-theorem bv_length (l : List U8) : (bv l).length = l.length := by simp [bv]
-
 /-- `sample_ntt`'s first loop samples four polynomials at a time while four
 remain. -/
 theorem batches_spec (h : RunsSha3) (rho : Std.Array U8 32#usize) (transposed : Bool) (k : Usize)
@@ -898,6 +888,96 @@ theorem sample_transposed_spec (h : RunsSha3) (inst : mid.mlkem.FixedArray Mat P
   refine ⟨by rw [hs]; omega, by rw [hs]; omega, ?_⟩
   rw [hs, getElem!_pos (SampleNTT _) c hc, sampleNTT_sampled _ (hH i hi3 j hj3) c hc]
   simp
+
+/-! ## `Decoded::new` -/
+
+theorem try_from32 (s : Slice U8) (h : s.length = 32) :
+    ∃ a : Std.Array U8 32#usize, core.array.TryFromSharedArraySlice.try_from 32#usize s = ok (.Ok a) ∧
+      a.val = s.val := by
+  have hs : s.len = 32#usize := by scalar_tac
+  unfold core.array.TryFromSharedArraySlice.try_from
+  rw [dite_eq_left hs]
+  exact ⟨_, rfl, by simp [Std.Array.from_val]⟩
+
+/-- `as_flattened_mut` views arrays as their bytes in order, and writes back
+array `j` from bytes `N j` to `N (j + 1)`. -/
+theorem as_flattened_mut_back_spec {N : Usize} (s : Slice (Std.Array U8 N))
+    (h : (s.val.flatMap (·.val)).length ≤ Usize.max) :
+    core.slice.SliceArray.as_flattened_mut s ⦃ f back => f.val = s.val.flatMap (·.val) ∧
+      ∀ t : Slice U8, t.length = s.length * N.val → (back t).length = s.length ∧
+        ∀ j < s.length, ((back t).val[j]!).val = sub t.val (N.val * j) N.val ⦄ := by
+  unfold core.slice.SliceArray.as_flattened_mut
+  simp only
+  rw [dite_eq_left_of_eq_true (eq_true h)]
+  simp only [WP.spec_ok, WP.uncurry'_pair]
+  refine ⟨by simp, fun t ht => ⟨by simp [Slice.length], fun j hj => ?_⟩⟩
+  have hj' : j < s.val.length := hj
+  simp only [Slice.from_val, List.getElem!_eq_getElem?_getD, List.getElem?_mapIdx,
+    List.getElem?_eq_getElem hj', Option.map_some, Option.getD_some]
+  rw [Std.Array.from_slice_val _ _ (by
+    simp only [Slice.from_val, List.length_take, List.length_drop]
+    have : t.val.length = s.val.length * N.val := ht
+    have : (j + 1) * N.val ≤ s.val.length * N.val := Nat.mul_le_mul_right _ (by omega)
+    rw [Nat.succ_mul] at this
+    omega)]
+  simp only [Slice.from_val, sub, Nat.mul_comm j]
+
+theorem toVec_congr (n : ℕ) (l l' : List U8) (h : l.length = n) (h' : l'.length = n) (e : l = l') :
+    toVec n l h = toVec n l' h' := by
+  subst e; rfl
+
+/-- `t̂`'s polynomial `j`, as `K-PKE.Encrypt` decodes it from `ek`, is the
+12-bit decoding of `ek`'s 384 bytes from `384 j`. -/
+theorem decode_t_hat (ek : EkBytes) (b : Std.Array U8 384#usize) (j : ℕ) (hj : j < 3)
+    (hb : b.val = sub ek.val (384 * j) 384) :
+    decode12 b =
+      (PolyVector.ByteDecode (k := k .ML_KEM_768) 12 (slice (toVec 1184 ek.val ek.property) 0 1152))[j]! := by
+  have hek : ek.val.length = 1184 := ek.property
+  interval_cases j <;>
+  · unfold decode12 PolyVector.ByteDecode
+    simp (disch := decide) only [vget!, Vector.getElem_ofFn, slice_toVec]
+    congr 1
+    apply toVec_congr
+    rw [hb, sub_sub0 _ _ _ _ (by decide)]
+
+open scoped Spec.Notations in
+/-- `Decoded::new` of an ML-KEM-768 encapsulation key decodes `t̂` and samples
+the transposed matrix, as `K-PKE.Encrypt` reads them from `ek`, given that
+`SampleNTT` finishes on each of the matrix's inputs. -/
+theorem decoded_new_spec (h : RunsSha3) {X : Type}
+    (P : mid.mlkem.Params X Vec Mat EkBytes CtBytes DkBytes Cache Enc) (hP : Is768 P) (ek : EkBytes)
+    (hH : ∀ i : ℕ, i < 3 → ∀ j : ℕ, j < 3 →
+      Halts (slice (toVec 1184 ek.val ek.property) 1152 32 ‖ #v[(i : Byte)] ‖ #v[(j : Byte)]).toList) :
+    mid.mlkem.Decoded.new P ek ⦃ d => DecodedHolds d
+      (fun j => (PolyVector.ByteDecode (k := k .ML_KEM_768) 12 (slice (toVec 1184 ek.val ek.property) 0 1152))[j]!)
+      (fun i j => SampleNTT (slice (toVec 1184 ek.val ek.property) 1152 32 ‖ #v[(i : Byte)] ‖ #v[(j : Byte)])) ⦄ := by
+  have hek : ek.val.length = 1184 := ek.property
+  unfold mid.mlkem.Decoded.new
+  simp only [hP.ek.as_ref, hP.K, hP.enc.filled, hP.enc.as_mut, bind_ok]
+  step as ⟨s, hs⟩
+  step as ⟨i1, hi1⟩
+  step as ⟨t_hat, rho, htl, hrl, htv, hrv⟩
+  step as ⟨s1, back, hs1v, hs1l, hback⟩
+  have hfl : (s1.val.flatMap (·.val)).length = 1152 := by
+    rw [flat_length]; simp [hs1l]
+  step with as_flattened_mut_back_spec s1 (by rw [hfl]; scalar_tac) as ⟨s2, fback, hs2v, hfback⟩
+  step as ⟨s3, hs3⟩
+  obtain ⟨hl4, hc4⟩ := hfback s3 (by rw [hs3, htl, hi1, hs1l])
+  step with from_bytes_spec P.VectorInst hP.vec hP.enc (back (fback s3)) as ⟨c, hc⟩
+  obtain ⟨a1, ha1, ha1v⟩ := try_from32 rho (by rw [hrl, hi1]; simp [Slice.length, hs, hek])
+  rw [ha1]
+  simp only [core.result.Result.unwrap, bind_ok]
+  have hρ : bv a1.val = (slice (toVec 1184 ek.val ek.property) 1152 32).toList := by
+    rw [ha1v, hrv, hs, hi1, slice_toVec, MlKemCbd.toVec_toList, sub,
+      List.take_of_length_le (by simp [hek])]
+  step with sample_transposed_spec h P.FixedArraySelf_MatrixArrayI16256Inst hP.mat a1 _ hρ hH as ⟨c1, hc1⟩
+  refine ⟨fun j hj => ?_, hc1⟩
+  have hbj : ((back (fback s3)).val[j]!).val = sub ek.val (384 * j) 384 := by
+    rw [hback _ (by rw [hl4, hs1l]), hc4 j (by rw [hs1l]; exact hj), hs3, htv, hi1, hs,
+      show List.take (3 * 384) ek.val = sub ek.val 0 (3 * 384) by simp [sub],
+      sub_sub0 _ _ _ _ (by omega)]
+  rw [← decode_t_hat ek _ j hj hbj]
+  exact hc j hj
 
 end MlKemSample
 

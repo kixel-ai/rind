@@ -10,7 +10,9 @@ it reads are bytes `3k` to `3k + 3` of `SHAKE128(B)`, which `xofByte`
 gives one at a time, and `sampleNTT_eq` that `SampleNTT(B)` is the first 256
 of `accepted`, the 12-bit candidates below `q` those bytes hold, once the
 first `3t` bytes hold 256 of them (`Halts`). Without that, FIPS 203's loop
-never finishes: no bound on it holds for every input.
+never finishes: no bound on it holds for every input. `sampled` names those
+256 candidates without the `t`, and `sampleNTT_sampled` restates
+`sampleNTT_eq` over it.
 -/
 
 namespace rind.spec.mlkem
