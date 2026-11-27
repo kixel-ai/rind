@@ -639,7 +639,8 @@ def run(args):
     if "graviola" in result["refused"]:
         env["RIND_BENCH_NO_GRAVIOLA"] = "1"
     # The report's rows, built and listed: only the report's libraries, so a
-    # bench's extra row (slhdsa's fips205) costs no time and ranks nothing.
+    # bench's extra row (slhdsa's fips205) runs once, to list it, and is
+    # neither timed nor ranked.
     bench_args = ["--features", "__bench_openssl"]
     names = bench_names(cargo, env, bench_args, match=operation_of)
     listed = os.path.join(env["CARGO_TARGET_DIR"], "bench-report.benchmarks")
@@ -2255,7 +2256,8 @@ def methodology(hosts, shown):
         "",
         "To time rows without Nix, install the pinned toolchain and swole, and time a bench target, here "
         "AES-GCM's rows, or name rows in a file given by `--benchmarks`. aws-lc-rs and ring need a C compiler, "
-        "and on Unix the OpenSSL column needs OpenSSL 3's headers and pkg-config.",
+        "and on Unix the OpenSSL column needs OpenSSL 3's headers and pkg-config, and OpenSSL 3.5 for its "
+        "post-quantum rows.",
         "",
         "```sh",
         f"rustup toolchain install {toolchain}",

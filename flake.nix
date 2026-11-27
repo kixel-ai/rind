@@ -19,7 +19,7 @@
     # instructions under the Valgrind its own nixpkgs pins, and times the
     # native rows and the benchmark report's hosts. Bumping the rev can move
     # every count, and a new Valgrind starts new series: keep its nixpkgs, not
-    # ours. Cargo.lock pins rind-bench's `swole` harness: move both together.
+    # ours. rind-bench/Cargo.toml pins its `swole` harness: move both together.
     swole.url = "github:kixel-ai/swole/8486c8e51ea20c81d76a6848fdb2d88d86783d99";
   };
 

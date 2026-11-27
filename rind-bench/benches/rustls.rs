@@ -51,14 +51,32 @@ impl fmt::Display for Provider {
     }
 }
 
+/// Whether Graviola runs here: it panics on a CPU without the features its
+/// `verify_cpu_features` asserts.
+#[cfg(all(graviola, target_arch = "x86_64"))]
+fn graviola_runs() -> bool {
+    use std::arch::is_x86_feature_detected as has;
+    has!("aes") && has!("pclmulqdq") && has!("bmi1") && has!("adx") && has!("avx") && has!("avx2")
+}
+
+#[cfg(all(graviola, target_arch = "aarch64"))]
+fn graviola_runs() -> bool {
+    use std::arch::is_aarch64_feature_detected as has;
+    has!("neon") && has!("aes") && has!("pmull") && has!("sha2")
+}
+
 impl Provider {
-    /// The providers this build has. The weekly instruction count leaves
-    /// Graviola's rows out by name: it asserts ADX, which Valgrind hides,
-    /// when it builds a provider.
+    /// The providers this build has that run on this CPU. Graviola asserts
+    /// its CPU features when it builds a provider, and swole builds every
+    /// row's argument list in each benchmark's process, so a CPU without
+    /// them, such as Haswell, has no Graviola row rather than every row
+    /// panicking. The weekly count leaves Graviola's rows out by name.
     fn all() -> Vec<Self> {
         let mut all = vec![Self::Ring, Self::AwsLcRs, Self::Rind];
         #[cfg(graviola)]
-        all.push(Self::Graviola);
+        if graviola_runs() {
+            all.push(Self::Graviola);
+        }
         #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
         all.push(Self::Openssl);
         all

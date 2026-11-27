@@ -25,7 +25,7 @@ A host whose record holds `criterion_args` instead was timed with criterion, bef
 
 On aarch64, every rind row except those marked *DIT set per call* holds a `rind::cpu::Dit::hold()` guard across its calls (`Dit` in `rind-bench/benches/common/mod.rs`), so it pays for turning DIT on and off once, as a caller holding the guard around a batch of calls does. A caller holding none pays it on every call: the rows marked *DIT set per call* time rind that way. On x86_64 the guard does nothing, and no other library sets DIT.
 
-To time rows without Nix, install the pinned toolchain and swole, and time a bench target, here AES-GCM's rows, or name rows in a file given by `--benchmarks`. aws-lc-rs and ring need a C compiler, and on Unix the OpenSSL column needs OpenSSL 3's headers and pkg-config.
+To time rows without Nix, install the pinned toolchain and swole, and time a bench target, here AES-GCM's rows, or name rows in a file given by `--benchmarks`. aws-lc-rs and ring need a C compiler, and on Unix the OpenSSL column needs OpenSSL 3's headers and pkg-config, and OpenSSL 3.5 for its post-quantum rows.
 
 ```sh
 rustup toolchain install 1.98.1

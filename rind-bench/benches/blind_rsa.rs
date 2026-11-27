@@ -129,7 +129,10 @@ mod blind_rsa2048_finalize {
 
     /// The keys, and the blinding and the server's reply the next call
     /// finalizes.
-    type Finalize = (Keys, Option<(rind::blind_rsa::Blinding, Vec<u8>)>);
+    type Finalize = (
+        Keys,
+        Option<(rind::blind_rsa::Blinding, rind::blind_rsa::BlindSignature)>,
+    );
 
     fn rind_input() -> Dit<Finalize> {
         Dit::hold((keys(), None))
@@ -139,13 +142,13 @@ mod blind_rsa2048_finalize {
         let (keys, next) = &mut **input;
         let (blinded, blinding) = keys.rind_public.blind(MESSAGE).unwrap();
         let reply = keys.rind.blind_sign(blinded.as_ref()).unwrap();
-        *next = Some((blinding, reply.as_ref().to_vec()));
+        *next = Some((blinding, reply));
     }
 
     #[bench(setup = rind_input, before = blind)]
     fn rind(input: &mut Dit<Finalize>) {
         let (blinding, reply) = input.1.take().unwrap();
-        black_box(blinding.finalize(&reply).unwrap());
+        black_box(blinding.finalize(reply.as_ref()).unwrap());
     }
 
     fn rustcrypto_input() -> (Keys, BlindingResult, BlindSignature) {
