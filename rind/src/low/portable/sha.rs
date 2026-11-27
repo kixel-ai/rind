@@ -11,10 +11,11 @@
 //! Two exceptions are for small instruction caches. On 32-bit
 //! microcontrollers (ESP-IDF or no OS), SHA-384/512 is the rolled loop in
 //! `generic::sha512_rolled`, whose code 32-bit codegen keeps to a few
-//! kilobytes. On ESP-IDF Xtensa, SHA-256 is rind's own unproven compression
-//! in `sha256_iram`, run from internal RAM, at about 0.65-0.74 of HACL*'s
-//! time from flash on a Seeed XIAO ESP32-S3 from 1200 B to 16 KB. Host tests
-//! call that body by name, on its Rust fallbacks.
+//! kilobytes. On ESP-IDF Xtensa, SHA-256 is rind's own compression in
+//! `sha256_iram`, run from internal RAM, at about 0.65-0.74 of HACL*'s time
+//! from flash on a Seeed XIAO ESP32-S3 from 1200 B to 16 KB. Host tests call
+//! that body by name, on its Rust fallbacks. `proofs/Rind/Mcu/` proves both
+//! against FIPS 180-4, with this dispatch.
 
 pub(crate) use crate::low::generic::sha1::sha1_compress_blocks;
 

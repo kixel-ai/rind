@@ -2,14 +2,16 @@ module
 public import Aeneas
 public import Rind.Mcu.Types
 public import Rind.Mcu.Compare
+public import Rind.Mcu.Sha256IramModel
 @[expose] public section
 open Aeneas Aeneas.Std Result
 set_option linter.dupNamespace false
 
 /-!
-The functions the translation for 32-bit microcontrollers leaves opaque, beside the compares
-`Rind.Mcu.Compare` models. No proof assumes anything about them beyond
-what each theorem takes as a hypothesis.
+The functions the translation for 32-bit microcontrollers leaves opaque,
+beside the compares `Rind.Mcu.Compare` models and the IRAM SHA-256's helpers
+`Rind.Mcu.Sha256IramModel` models. No proof assumes anything about them
+beyond what each theorem takes as a hypothesis.
 -/
 
 namespace rind.mcu
@@ -26,8 +28,6 @@ opaque low.entry.Entry.new_secret : Result low.entry.Entry
 
 /-- Whether an entry guard is held, which a debug build asserts. -/
 opaque low.entry.Entry.assert_held : Result Unit
-
-opaque low.entry.Entry.new_public : Result low.entry.Entry
 
 /-! AES, which no proof covers on this backend. -/
 
@@ -53,8 +53,6 @@ opaque mid.md5.Md5Context.update : mid.md5.Md5Context → Slice Std.U8 → Resul
 
 opaque mid.md5.Md5Context.finish : mid.md5.Md5Context → Result (Array Std.U8 16#usize)
 
-opaque mid.md5.Md5Context.Insts.CoreCloneClone.clone : mid.md5.Md5Context → Result mid.md5.Md5Context
-
 /-! SHA-3, whose sponge this translation leaves out. -/
 
 opaque mid.sha3.Sha3Context.new
@@ -65,26 +63,5 @@ opaque mid.sha3.Sha3Context.update {R : Std.Usize} {OUT : Std.Usize}
 
 opaque mid.sha3.Sha3Context.finish {R : Std.Usize} {OUT : Std.Usize}
   : mid.sha3.Sha3Context R OUT → Result (Array Std.U8 OUT)
-
-opaque mid.sha3.Sha3Context.Insts.CoreCloneClone.clone {R : Std.Usize} {OUT : Std.Usize}
-  : mid.sha3.Sha3Context R OUT → Result (mid.sha3.Sha3Context R OUT)
-
-/-! RSA's DER parsing and encoding, which the ✓ leaves out. -/
-
-opaque high.rsa.pkcs1_components
-  : Slice Std.U8 → Result (core.result.Result ((Slice Std.U8) × (Slice Std.U8)) error.Error)
-
-opaque high.rsa.spki_components
-  : Slice Std.U8 → Result (core.result.Result ((Slice Std.U8) × (Slice Std.U8)) error.Error)
-
-opaque high.rsa.VerifyingKey.to_pkcs1_der
-  : high.rsa.VerifyingKey → Slice Std.U8 →
-    Result ((core.result.Result (Slice Std.U8) error.Error) × (Slice Std.U8))
-
-/-- `ZeroableRef::new`: its value, as `low.generic.zeroise.ZeroableRef` models
-it. -/
-def low.generic.zeroise.ZeroableRef.new {T : Type} (value : T) :
-    Result (low.generic.zeroise.ZeroableRef T) :=
-  ok value
 
 end rind.mcu

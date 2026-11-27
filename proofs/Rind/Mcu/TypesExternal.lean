@@ -7,8 +7,10 @@ open Aeneas Aeneas.Std Result
 set_option linter.dupNamespace false
 
 /-! The rind types the translation for 32-bit microcontrollers leaves opaque.
-`Rind.Mcu.QuicDispatch` and `Rind.Mcu.DigestDispatch` model the last
-two, and `Rind.Mcu.DigestAlgorithm` `Algorithm` and `Digest`. -/
+`Rind.Mcu.QuicDispatch` and `Rind.Mcu.DigestDispatch` model `Masker` and
+`Ops`, `Rind.Mcu.DigestAlgorithm` `Algorithm` and `Digest`, and
+`Rind.Mcu.Sha256IramModel` the methods of the last three, the IRAM SHA-256's
+cursors and window, which read through raw pointers or `MaybeUninit`. -/
 
 namespace rind.mcu
 
@@ -37,8 +39,16 @@ nothing, since `Hashing::start` builds the only one, of `C`'s own
 `HashContext` functions, which the model calls directly. -/
 @[reducible] def high.digest.Ops (_C : Type) : Type := Unit
 
-/-- A `&'static T` that a wiped value may hold: the `T`, since only the drop
-that wipes it leaves it `None`. -/
-@[reducible] def low.generic.zeroise.ZeroableRef (T : Type) : Type := T
+/-- `RoundConstants`, a pointer into SHA-256's constants: the table it
+started at and the index it points to. -/
+@[reducible] def low.portable.sha.iram.RoundConstants : Type := Std.Array Std.U32 64#usize × Nat
+
+/-- `Window`, the sixteen-word schedule window: each slot's word, or `none`
+until it is written. -/
+@[reducible] def low.portable.sha.iram.Window : Type := Std.Array (Option Std.U32) 16#usize
+
+/-- `Blocks`, a pointer into a slice of whole blocks: the slice and the
+offset it points to. -/
+@[reducible] def low.portable.sha.iram.Blocks : Type := Slice Std.U8 × Nat
 
 end rind.mcu

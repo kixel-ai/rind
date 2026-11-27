@@ -1307,6 +1307,8 @@ check_quote X86_64/HmacDispatch items rind/src/high/hmac.rs 'pub struct Algorith
 check_quote X86_64/HkdfExpand items rind/src/high/hkdf.rs '    fn expand_into('
 check_quote Portable/Compare items rind/src/low/portable/cpu.rs 'pub(in crate::low) fn ct_compare_bytes(' \
     'pub(in crate::low) fn ct_compare_16('
+check_quote Mcu/Sha256IramModel items rind/src/low/portable/sha256_iram.rs 'struct RoundConstants(' \
+    'impl RoundConstants {' 'struct Window(' 'impl Window {' 'struct Blocks<' "impl<'a> Blocks<'a> {"
 check_quote X86_64/SignatureBuffer items rind/src/high/signature.rs 'impl<const N: usize> Buffer<N> {'
 rsa_items() {
     items rind/src/high/signature.rs 'enum HashId {' 'impl HashId {'

@@ -23,7 +23,8 @@
 //! probe of the same tree reported a 4,256-byte block and 4,357 bytes of
 //! IRAM sections; that probe is not the firmware image. HMAC and HKDF
 //! were not in that pass. Host tests take the Rust fallbacks below, not
-//! this asm.
+//! this asm, and so does the Lean proof, `proofs/Rind/Mcu/Sha256Iram.lean`,
+//! which trusts each asm block to compute what its fallback does.
 //!
 //! LLVM's Xtensa backend expands `rotate_right` into a shift pair and an
 //! `or`. `ssai` plus `src` is the two-instruction rotate, and each rotate
