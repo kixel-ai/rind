@@ -187,6 +187,11 @@ impl VgKey {
     /// Decrypts `inout` in place under `nonce` if `tag` is its tag over
     /// `aad` and the ciphertext, and returns whether it is, a secret. If not,
     /// `inout` keeps the ciphertext.
+    ///
+    /// VG's routine decrypts only once the tag matches, so it branches on the
+    /// result: its contract (`VG.Spec.Gcm`'s `openLeak`) lets it reveal
+    /// whether the open authenticated, as its ChaCha20-Poly1305's does, and
+    /// `mid::aes_gcm` declassifies and branches on that result anyway.
     pub(crate) fn open(
         &self,
         nonce: &[u8; 12],
