@@ -10,7 +10,8 @@ words `admin/prove lean` checks rind's build emits, run in the model from
 random states and on the CPU from the same ones, as `Cosim/AArch64.lean`
 runs VG's: VG's own instructions through its cases, the others through
 `extCase`, which also compares `x29`. `adrSym`'s `adrp` and `add`, which the
-linker fills, are not cosimulated, as VG's are not.
+linker fills, and `align`'s NOPs, which `layout` places, are not cosimulated,
+as VG's are not.
 -/
 
 namespace Cosim.Rind
@@ -82,6 +83,7 @@ def blocks (n : Nat) : Gen (Except String (List (Block × List String))) := do
   let mut out := []
   for i in is.eraseDups do
     if let .vg (.adrSym ..) := i then continue
+    if let .vg (.align _) := i then continue
     let text := reprStr i
     let some bytes := code i | return .error s!"{text}: does not encode"
     let mut cases := #[]
