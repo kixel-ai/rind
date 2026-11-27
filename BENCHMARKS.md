@@ -15,19 +15,22 @@ How long rind and the usual Rust crypto libraries take for the same operations, 
 | `ovh-iad` | Intel Core Processor (Haswell, no TSX) | NixOS 26.11 (Zokor) (Linux 6.18.40) | 2026-11-24 at [`3f76a53f`](https://github.com/kixel-ai/rind/commit/3f76a53f35ae185f0e9ea0a58f3455766fc4d643) |
 | `ovh-sea` | Intel Core Processor (Haswell, no TSX) | NixOS 26.11 (Zokor) (Linux 6.18.40) | 2026-11-24 at [`3f76a53f`](https://github.com/kixel-ai/rind/commit/3f76a53f35ae185f0e9ea0a58f3455766fc4d643) |
 
-Each host builds with the pinned toolchain in the Nix dev shell, and runs `admin/bench-report` only when idle. Times are criterion's estimates.
+Each host builds with the pinned toolchain in the Nix dev shell, and runs `admin/bench-report` only when idle.
 
 ## Methodology
 
-Each host runs `cargo bench -p rind-bench --features __bench_openssl`, passing criterion `--warm-up-time 1 --measurement-time 3` and a filter for the report's rows, as `criterion_args` in its `benchmarks/data/<host>.json` records.
+Each host lists the report's rows by running each of `rind-bench`'s once, then times them with [swole](https://github.com/kixel-ai/swole), which `flake.nix` pins, as `swole_args` in its `benchmarks/data/<host>.json` records: `swole bench` runs each row in a process of its own, in samples of as many calls as fill a millisecond, for a second and ten samples at least, and takes the samples' median time a call.
 
-On aarch64, every rind row except those marked *DIT set per call* holds a `rind::cpu::Dit::hold()` guard across the timed loop (`rind_dit` in `rind-bench/benches/criterion/mod.rs`), so it pays for turning DIT on and off once, as a caller holding the guard around a batch of calls does. A caller holding none pays it on every call: the rows marked *DIT set per call* time rind that way. On x86_64 the guard does nothing, and no other library sets DIT.
+A host whose record holds `criterion_args` instead was timed with criterion, before `rind-bench` moved to swole: `nixos`, `desktop`, `fedora`, `kixtop`, `ovh-iad`, `ovh-sea`.
 
-To time a row without Nix, install the pinned toolchain and run its bench target, here AES-128-GCM's rows. aws-lc-rs and ring need a C compiler, and on Unix the OpenSSL column needs OpenSSL 3's headers and pkg-config.
+On aarch64, every rind row except those marked *DIT set per call* holds a `rind::cpu::Dit::hold()` guard across its calls (`Dit` in `rind-bench/benches/common/mod.rs`), so it pays for turning DIT on and off once, as a caller holding the guard around a batch of calls does. A caller holding none pays it on every call: the rows marked *DIT set per call* time rind that way. On x86_64 the guard does nothing, and no other library sets DIT.
+
+To time rows without Nix, install the pinned toolchain and swole, and time a bench target, here AES-GCM's rows, or name rows in a file given by `--benchmarks`. aws-lc-rs and ring need a C compiler, and on Unix the OpenSSL column needs OpenSSL 3's headers and pkg-config, and OpenSSL 3.5 for its post-quantum rows.
 
 ```sh
 rustup toolchain install 1.98.1
-cargo +1.98.1 bench -p rind-bench --features __bench_openssl --bench aes_gcm -- --warm-up-time 1 --measurement-time 3 '^aes128-gcm/'
+cargo install --locked --git https://github.com/kixel-ai/swole --rev 8486c8e51ea20c81d76a6848fdb2d88d86783d99 cargo-swole
+RUSTUP_TOOLCHAIN=1.98.1 swole bench -- -p rind-bench --features __bench_openssl --bench aes_gcm
 ```
 
 ### Versions

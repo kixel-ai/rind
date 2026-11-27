@@ -446,20 +446,22 @@ pass. Each runs on demand with
 `gh workflow run <name> --ref <branch>`; a dispatched `bench` measures every
 bench target unless `-f benches='aes_gcm sha2'` names the ones to measure,
 and each CPU-tier row then times only those of them it covers.
+rind-bench's benchmarks are kixel-ai/swole `#[bench]` functions, which the
+`swole` that `flake.nix` pins with Valgrind counts and times.
 `bench`'s `instructions` job counts each benchmark's instructions under
-Valgrind with kixel-ai/swole's `swole`, which `flake.nix` pins with
-Valgrind, and uploads them for Kixel Quest, which bisects a count that moved
-by dispatching the workflow with `benchmarks`, the IDs to count. Valgrind
+Valgrind with `swole sim`, and uploads them for Kixel Quest, which bisects a
+count that moved by dispatching the workflow with `benchmarks`, the names to
+count. Its other jobs time the CPU tiers with `swole bench`. Valgrind
 hides AVX-512, VAES, VPCLMULQDQ, and the SHA extensions, and the `bench` shell
 sets `VALGRIND_BUG_494162`, so the counts measure the x86_64 tier with AVX2
 and ADX, Broadwell's to Cooper Lake's, on any host CPU that has them, and counts
 compare only under one `swole` fingerprint. swole fixes the randomness glibc
 hands out, and the `bench` shell builds aws-lc without CPU-jitter seeding and
-masks RDRAND from it, so each count repeats exactly on one commit. Benchmark
-sets must not depend on the CPU, since the runner lists them natively and
-counts them under Valgrind: `rsa_gen`, which registers nothing without
-`NOISY_BENCHMARKS`, is left out, and the count build drops the Graviola
-handshakes. A dispatched
+masks RDRAND from it, so each count repeats exactly on one commit, RSA key
+generation's included. The job lists the benchmarks natively and counts them
+under Valgrind, so it leaves out by name the rows a count would get wrong:
+the Graviola handshakes, which assert ADX, and the threaded handshakes,
+which count what the scheduler runs. A dispatched
 `ctgrind` runs every job unless `-f jobs='x86_64-sde:rsa4096 armv7:no-neon'`
 names some, each whole or narrowed to the rows with the named matrix values,
 as `sh/select-jobs.sh` describes, and a dispatched `prove` every job unless
