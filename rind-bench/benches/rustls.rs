@@ -20,10 +20,12 @@ use rustls::{
 
 /// The providers this build and CPU have. The setup below runs every
 /// provider, whatever criterion's filter, so it can't leave Graviola to it.
+/// The instruction count lists benchmarks natively but counts them under
+/// Valgrind, which hides ADX, so its build leaves Graviola out of both.
 fn providers() -> impl Iterator<Item = &'static str> {
     ["ring", "aws-lc-rs", "rind"]
         .into_iter()
-        .chain(graviola_runs().then_some("graviola"))
+        .chain((!cfg!(feature = "__bench_codspeed") && graviola_runs()).then_some("graviola"))
         .chain(cfg!(all(feature = "__bench_openssl", target_family = "unix")).then_some("openssl"))
 }
 

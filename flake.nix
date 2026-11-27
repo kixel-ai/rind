@@ -15,6 +15,10 @@
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.flake-utils.follows = "flake-utils";
     };
+    # swole, which counts the weekly bench's instructions under the Valgrind
+    # its own nixpkgs pins. Bumping the rev can move every count, and a new
+    # Valgrind starts new series: keep its nixpkgs, not ours.
+    swole.url = "github:kixel-ai/swole/159bf5fe993f34c56dc6dc27612947f2becdf654";
   };
 
   outputs =
@@ -23,6 +27,7 @@
       flake-utils,
       rust-overlay,
       quest,
+      swole,
       ...
     }:
     flake-utils.lib.eachSystem
@@ -391,6 +396,7 @@
               "x86_64-unknown-linux-gnu"
               "aarch64-unknown-linux-gnu"
               "armv7-unknown-linux-gnueabihf"
+              "armv7a-none-eabi"
             ];
           };
 
@@ -405,7 +411,7 @@
             [source.vendored-sources]
             directory = "$(rustc --print sysroot)/lib/rustlib/src/rust/library/vendor"
             END
-            for target in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu armv7-unknown-linux-gnueabihf; do
+            for target in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu armv7-unknown-linux-gnueabihf armv7a-none-eabi; do
               sysroot=$(cargo miri setup --target=$target --print-sysroot)
             done
             mkdir -p $out
@@ -1108,6 +1114,33 @@
               ];
 
               shellHook = sde-certs;
+            };
+
+            # The bench workflow's instruction counts, `swole run` and
+            # `swole compare <base>`, which build rind-bench with its C
+            # baselines. swole counts on x86_64 Linux only.
+            bench = mkDevShell {
+              packages = [
+                rust-stable.minimal
+                swole.packages.${system}.default
+                # sh/bench-select.sh lists the bench targets with it.
+                pkgs.jq
+                pkgs.cmake
+                pkgs.pkg-config
+                pkgs.openssl
+              ];
+              # Valgrind hides ADX, which every CPU since Broadwell has, so
+              # rind takes its ADX routines anyway, as under `admin/ctgrind`.
+              # See UPSTREAM.md, "Valgrind hides ADX from `cpuid`".
+              env.VALGRIND_BUG_494162 = "1";
+              # swole lists the benchmarks natively, where that forced
+              # ADX would fault on a CPU without it, such as Haswell.
+              shellHook = ''
+                if ! grep -qw adx /proc/cpuinfo; then
+                  echo "the bench shell needs a CPU with ADX (Broadwell or later)" >&2
+                  exit 1
+                fi
+              '';
             };
           };
 

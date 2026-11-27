@@ -538,7 +538,7 @@ theorem add_affine_spec (_hr : Runs) (pt : mid.p256.JacobianMontPoint) (p : mid.
       simp only [WP.spec_ok]
       exact hsum (fun h => hb1f (hb1.mpr (hsame (Or.inl h))))
 
-/-! ## Non-adjacent form, `mid::util::public_naf`, which `Rind.X86_64.Naf` proves -/
+/-! ## Non-adjacent form, `low::generic::naf::public_naf`, which `Rind.X86_64.Naf` proves -/
 
 @[step]
 theorem scalar_naf_spec (W : U32) (hW : W.val = 5 ∨ W.val = 6) (s : mid.p256.Scalar) :
@@ -547,7 +547,7 @@ theorem scalar_naf_spec (W : U32) (hW : W.val = 5 ∨ W.val = 6) (s : mid.p256.S
   unfold mid.p256.Scalar.public_naf
   step as ⟨sl, hsl⟩
   step as ⟨s1, back, hs1, hback⟩
-  step with naf_spec W hW sl 256 (by rw [hsl]; simp) (by norm_num) (by rw [hsl]; simp) s1
+  step with naf_spec W (hW.imp_right Or.inl) sl 256 (by rw [hsl]; simp) (by norm_num) (by rw [hsl]; simp) s1
       (by rw [Slice.length, hs1]; exact (Array.repeat 257#usize 0#i8).property) as
     ⟨s2, hl2, hv2, hd2⟩
   have hv : (back s2).val = s2.val := by
@@ -603,27 +603,6 @@ theorem negate_y_spec (pt : mid.p256.AffineMontPoint) (P : P256Point)
 
 /-! ## Twin multiplication, `JacobianMontPoint::public_twin_multiply` -/
 
-@[step]
-theorem rev_next_spec (r : core.iter.adapters.rev.Rev (core.ops.range.Range Usize)) :
-    core.iter.adapters.rev.Rev.Insts.CoreIterTraitsIteratorIterator.next
-      (core.ops.range.Range.Insts.DoubleEndedIterator core.iter.range.StepUsize) r ⦃ o r' =>
-      r'.iter.start = r.iter.start ∧
-        (if r.iter.start.val < r.iter.end.val then o = some r'.iter.end ∧ r'.iter.end.val + 1 = r.iter.end.val
-          else o = none) ⦄ := by
-  unfold core.iter.adapters.rev.Rev.Insts.CoreIterTraitsIteratorIterator.next
-  simp only [
-    core.ops.range.Range.Insts.CoreIterTraitsDoubleEndedIterator.next_back, core.iter.range.StepUsize,
-    core.iter.range.UScalarStep, core.iter.range.UScalarStep.backward_checked]
-  by_cases hlt : r.iter.start.val < r.iter.end.val
-  · have hb : liftFun2 core.cmp.impls.PartialOrdUsize.lt r.iter.start r.iter.end = ok true := by
-      simp [liftFun2, core.cmp.impls.PartialOrdUsize.lt, hlt]
-    have h1 : (1#usize).val ≤ r.iter.end.val := by simp; omega
-    simp only [hb, bind_ok, ↓reduceIte, h1, ↓reduceDIte, hlt]
-    simp [UScalar.ofNatCore_val_eq]; omega
-  · have hb : liftFun2 core.cmp.impls.PartialOrdUsize.lt r.iter.start r.iter.end = ok false := by
-      simp [liftFun2, core.cmp.impls.PartialOrdUsize.lt, hlt]
-    simp [hb, hlt, WP.spec_ok]
-
 theorem pairNat_take8 (l : List U64) : pairNat (l.take 8) = pairNat l := by
   simp [pairNat, List.take_take, List.drop_take]
 
@@ -642,15 +621,6 @@ theorem lookup_spec (row : Slice U64) (hrow : 256 ≤ row.length) (idx : U8) (h1
   rw [ha]
   simp only [Slice.from_val, List.getElem_ofFn, Array.from_val, Fin.val_cast, pairNat_take8]
   congr 2; rw [hi1, hiv]; ring
-
-@[step]
-theorem unsigned_abs_spec (x : I8) : core.num.I8.unsigned_abs x ⦃ r => r.val = x.val.natAbs ⦄ := by
-  unfold core.num.I8.unsigned_abs
-  simp only [WP.spec_ok]
-  have := x.hBounds
-  simp only [IScalarTy.numBits] at this
-  show (BitVec.ofNat 8 x.val.natAbs).toNat = _
-  rw [BitVec.toNat_ofNat]; omega
 
 instance : Inhabited mid.p256.AffineMontPoint := ⟨⟨Array.repeat 8#usize 0#u64⟩⟩
 
