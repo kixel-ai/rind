@@ -183,10 +183,12 @@ establishes, and what it does not:
   against the independent oracle [TESTING.md's primitives
   table](TESTING.md#primitives) names, a Rust implementation that shares no
   code with the path rind runs, on the same tiers. Where rind runs aws-lc's
-  own routine, as for ChaCha20-Poly1305 on x86_64 and aarch64 or RSA's RSAZ
+  own routine, as for ChaCha20-Poly1305 on x86_64 or RSA's RSAZ
   exponentiation, aws-lc-rs compares that routine with itself, so it checks
-  rind's glue around it, and the oracle checks the routine. wasm runs none,
-  since aws-lc does not build for it.
+  rind's glue around it, and the oracle checks the routine. On aarch64 rind
+  runs its own structured copy of aws-lc's ChaCha20-Poly1305, which
+  aws-lc-rs's original checks. wasm runs none, since aws-lc does not build
+  for it.
 - **Fuzz targets**, weekly for twenty minutes each against aws-lc-rs,
   replayed on every tier and against the portable backend. The ECVRF, OPRF,
   and blind RSA targets compare rind with itself, so they find panics and
@@ -285,11 +287,12 @@ still reaches each.
 Hand-written arithmetic no proof covers, by where it came from:
 
 - **aws-lc's, BoringSSL's, and OpenSSL's assembly** that rind runs without a
-  ✓, such as ChaCha20-Poly1305 on x86_64 and aarch64, RSAZ, Montgomery
-  multiplication off ADX, the AVX2 and SHA512-instruction SHA-2, VAES
-  AES-GCM, and all of armv7's. Vectors and fuzzing reach each on its tier;
-  aws-lc-rs, which runs that code too, checks only the glue, and the
-  independent oracle checks the routine.
+  ✓, such as ChaCha20-Poly1305 on x86_64, RSAZ, Montgomery multiplication
+  off ADX, the AVX2 and SHA512-instruction SHA-2, VAES AES-GCM, and all of
+  armv7's. Vectors and fuzzing reach each on its tier; aws-lc-rs, which runs
+  that code too, checks only the glue, and the independent oracle checks the
+  routine. rind's structured copy of aws-lc's aarch64 ChaCha20-Poly1305 is
+  proven constant-time but not correct, and aws-lc-rs's original checks it.
 - **Graviola's** code under AES, GHASH, SHA-256, HMAC, P-256, P-384,
   ML-KEM, and RSA, wherever ALGORITHMS.md names it. Vectors, differential
   tests independent of it, and fuzzing reach each.

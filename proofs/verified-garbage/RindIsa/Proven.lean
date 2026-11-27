@@ -1,3 +1,4 @@
+import RindIsa.AArch64.ChaCha20Poly1305
 import RindIsa.AArch64.Sha256Hw
 import RindIsa.X86_64.Mul4x
 import RindIsa.X86_64.GcmInitAvx2
@@ -18,7 +19,15 @@ structure Proven where
 
 def proven : List Proven :=
   [{ path := "rind::low::aarch64::sha256::sha256_block_data_order_hw", prog := Sha256Hw.prog,
-     statics := [(Sha256Hw.kName, "rind::low::aarch64::sha256::K256", Sha256Hw.table)] }]
+     statics := [(Sha256Hw.kName, "rind::low::aarch64::sha256::K256", Sha256Hw.table)] },
+   { path := "rind::low::aarch64::chacha20poly1305::chacha20_poly1305_seal",
+     prog := ChaCha20Poly1305.sealProg,
+     statics := [(ChaCha20Poly1305.constsName, "rind::low::aarch64::chacha20poly1305::CHACHA20_CONSTS",
+       ChaCha20Poly1305.consts)] },
+   { path := "rind::low::aarch64::chacha20poly1305::chacha20_poly1305_open",
+     prog := ChaCha20Poly1305.openProg,
+     statics := [(ChaCha20Poly1305.constsName, "rind::low::aarch64::chacha20poly1305::CHACHA20_CONSTS",
+       ChaCha20Poly1305.consts)] }]
 
 end Rind.AArch64
 
