@@ -236,13 +236,6 @@ jobs:
           toolchain: stable
           targets: ${{ matrix.target }}
 
-      # The swole flake.nix pins, which times the rows, built for the runner.
-      - name: Install swole
-        run: |
-          rev=$(jq -r '.nodes.swole.locked.rev' flake.lock)
-          cargo install --locked --git https://github.com/kixel-ai/swole --rev "$rev" --root "$RUNNER_TEMP/swole" cargo-swole
-          echo "$RUNNER_TEMP/swole/bin" >>"$GITHUB_PATH"
-
       # A dispatch that names bench targets runs those of the row's; a row
       # timing none of them skips the rest. A portable row leaves out the
       # protocols whose only baseline is RustCrypto: its CPU detection can't
@@ -270,6 +263,14 @@ jobs:
           # The bench targets whose rustcrypto rows the native rows time, as
           # the filter in "Run benchmarks" names their groups: change both.
           RUSTCRYPTO_ONLY: argon2|slhdsa|blind_rsa|oprf|vrf|spake2plus
+
+      # The swole flake.nix pins, which times the rows, built for the runner.
+      - name: Install swole
+        if: steps.select.outputs.skip != 'true'
+        run: |
+          rev=$(jq -r '.nodes.swole.locked.rev' flake.lock)
+          cargo install --locked --git https://github.com/kixel-ai/swole --rev "$rev" --root "$RUNNER_TEMP/swole" cargo-swole
+          echo "$RUNNER_TEMP/swole/bin" >>"$GITHUB_PATH"
 
       # Hosted hardware can change under the same label. The personality
       # makes the kernel list the features the target's code sees, such as
