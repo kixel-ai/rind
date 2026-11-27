@@ -581,7 +581,8 @@ step() {
             # Doc tests need a library. No packages at all means the workspace.
             mapfile -t libs < <(sh/select.sh "$changed" "$all" --lib)
             if ((${#libs[@]} > 0 || ${#packages[@]} == 0)); then
-                run cargo test "${libs[@]}" --locked --doc --profile test-fast
+                # nextest runs no doc tests, so this bounds theirs.
+                run timeout 15m cargo test "${libs[@]}" --locked --doc --profile test-fast
                 # A broken or private intra-doc link renders as plain text on
                 # docs.rs. Its dependencies build in check mode, which the
                 # tests' build never shares, so clippy there would only cost.

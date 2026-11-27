@@ -3,9 +3,9 @@
 # included, on rind-openmls: checks out openmls at the release Cargo.lock
 # pins, swaps its openmls_rust_crypto for a crate re-exporting rind-openmls,
 # which has the same API, and tests openmls with every ciphersuite the
-# provider offers. Extra arguments go to `cargo test`.
+# provider offers. Extra arguments go to `cargo nextest run`.
 #
-# Usage: sh/openmls.sh [cargo test arguments]
+# Usage: sh/openmls.sh [cargo nextest run arguments]
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
@@ -51,5 +51,9 @@ openmls_memory_storage = { path = "memory_storage" }
 EOF
 
 cd "$dir"
-CARGO_TARGET_DIR="$root/target/openmls" cargo test -p openmls --no-default-features \
+# rind's hang bound, from rind's config: this copy of openmls has none.
+CARGO_TARGET_DIR="$root/target/openmls" cargo nextest run --config-file "$root/.config/nextest.toml" -p openmls --no-default-features \
+    --features extensions-draft,extensions-draft-test-dependencies,all-ciphersuites "$@"
+# nextest runs no doc tests; this bounds theirs.
+CARGO_TARGET_DIR="$root/target/openmls" timeout 15m cargo test --doc -p openmls --no-default-features \
     --features extensions-draft,extensions-draft-test-dependencies,all-ciphersuites "$@"

@@ -126,6 +126,7 @@
               })
               armv7-cc
               pkgs.qemu-user
+              pkgs.cargo-nextest
             ]
             # sh/armv7.sh asks setarch whether the host runs AArch32 code.
             ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.util-linux ];
@@ -169,6 +170,7 @@
                   targets = [ target ];
                 })
                 cc
+                pkgs.cargo-nextest
               ]
               ++ pkgs.lib.optional (!native) pkgs.qemu-user;
 
@@ -918,6 +920,7 @@
               packages = [
                 rust-stable.minimal
                 acvptool
+                pkgs.cargo-nextest
                 # The aws-lc-rs dev-dependency builds C.
                 pkgs.cmake
               ];
@@ -945,6 +948,7 @@
                   pkgs.wasmtime
                   pkgs."wasm-bindgen-cli_${builtins.replaceStrings [ "." ] [ "_" ] wasm-bindgen.version}"
                   pkgs.nodejs
+                  pkgs.cargo-nextest
                 ];
               };
 
@@ -1109,6 +1113,7 @@
                 sde
                 # x86-cpu.yml answers ACVP's sets on Diamond Rapids with it.
                 acvptool
+                cargo-nextest
                 # `admin/ct-sde` runs SDE without ASLR by its `setarch`.
                 util-linux
               ];

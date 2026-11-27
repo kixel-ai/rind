@@ -55,6 +55,12 @@ tests run minutes at `opt-level = 0`. For a bare test run, pass it as
 `cargo nextest run --cargo-profile test-fast`; `admin/ctgrind` and the other
 dev builds stay unoptimized.
 
+Run Rust tests with `cargo nextest run`, never plain `cargo test`:
+`.config/nextest.toml` ends a test that runs past its profile's hang bound,
+about twice the slowest healthy test, so a deadlock fails the run instead of
+holding it until the job's timeout. nextest runs no doc tests, so run those as
+`timeout 15m cargo test --doc`.
+
 `cargo vet --locked` fails when the published rind crate's dependencies gain
 a crate or version no audit covers, as [SECURITY.md](SECURITY.md#supply-chain)
 describes. Plain `cargo vet` first fetches the imported audits and the

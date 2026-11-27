@@ -1,0 +1,24 @@
+# Every Rust test run in rind goes through nextest, whose slow-timeout is the
+# hang bound: a test still running after `period` times `terminate-after` is
+# killed and fails. Each bound is about twice the slowest healthy test the
+# profile's runs measured, so a slow runner passes and a deadlock ends.
+# NEXTEST_PROFILE picks the profile; doc tests, which nextest does not run,
+# are bounded by `timeout` where they run.
+
+# Native builds: `just check` and `just ci` (test-fast), and build.yml's
+# debug and release rows.
+[profile.default]
+slow-timeout = { period = "60s", terminate-after = 30 }
+
+# qemu-user, wasmtime, and Intel SDE: sh/armv7.sh, sh/qemu.sh, sh/wasm.sh,
+# and x86-cpu.yml's ACVP check.
+[profile.emulated]
+slow-timeout = { period = "120s", terminate-after = 60 }
+
+# valgrind, through admin/ctgrind.
+[profile.ctgrind]
+slow-timeout = { period = "300s", terminate-after = 12 }
+
+# Miri, through sh/miri.sh: nextest's profile under `cargo miri nextest`.
+[profile.default-miri]
+slow-timeout = { period = "600s", terminate-after = 18 }

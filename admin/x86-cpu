@@ -24,6 +24,11 @@ ARCHIVE = "target/x86-cpu-tests.tar"
 # `cargo test` runs it in and where it finds its vector files.
 TESTS = "target/x86-cpu-tests.tsv"
 
+# The hang bound on each binary, since one process runs all of its tests: about
+# four times the slowest healthy run, rind's library tests, 645 s on Cannon
+# Lake and 618 s on Diamond Rapids, which vary with the runner's CPU.
+BINARY_TIMEOUT = 45 * 60
+
 # Every model skips aws-lc-rs's `large_digest` tests, which hash 8 GiB per
 # hash and took 21 to 28 minutes per SHA model under SDE. They check the
 # length counter, which no CPU path changes, and run natively in build.yml.
@@ -224,16 +229,21 @@ def run(model, exe, package, args, out):
     target = os.environ.get("CARGO_TARGET_DIR", "target")
     os.makedirs(os.path.join(target, "tmp"), exist_ok=True)
     print(f"Running {exe} in {package} on {name}", file=out, flush=True)
-    return (
-        subprocess.run(
-            ["sde", "-" + sde, "--", os.path.abspath(exe)] + SKIP + args,
-            cwd=package,
-            env=env,
-            stdout=out,
-            stderr=subprocess.STDOUT,
-        ).returncode
-        == 0
-    )
+    try:
+        return (
+            subprocess.run(
+                ["sde", "-" + sde, "--", os.path.abspath(exe)] + SKIP + args,
+                cwd=package,
+                env=env,
+                stdout=out,
+                stderr=subprocess.STDOUT,
+                timeout=BINARY_TIMEOUT,
+            ).returncode
+            == 0
+        )
+    except subprocess.TimeoutExpired:
+        print(f"{exe} on {name} ran past {BINARY_TIMEOUT} s", file=out, flush=True)
+        return False
 
 
 mode = sys.argv[1]
