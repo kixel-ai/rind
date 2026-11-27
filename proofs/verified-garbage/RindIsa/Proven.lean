@@ -1,5 +1,6 @@
 import RindIsa.AArch64.ChaCha20Poly1305
 import RindIsa.AArch64.Sha256Hw
+import RindIsa.X86_64.ChaCha20Poly1305
 import RindIsa.X86_64.Mul4x
 import RindIsa.X86_64.Mulx4x
 import RindIsa.X86_64.PolyHashAd
@@ -33,15 +34,20 @@ end Rind.AArch64
 
 namespace Rind.X86_64
 
-/-- A function rind proves in its model of x86_64, and its body's program,
-which reads no static. -/
+/-- A function rind proves in its model of x86_64, its body's program, and
+the statics it reads: each its symbol in the program, its Rust path, and the
+bytes it begins with. -/
 structure Proven where
   path : String
   prog : VG.Prog isa
+  statics : List (String × String × List Nat) := []
 
 def proven : List Proven :=
   [{ path := "rind::low::x86_64::mont::bn_mul4x_mont", prog := Mul4x.prog },
    { path := "rind::low::x86_64::mont::bn_mulx4x_mont", prog := Mulx4x.prog },
-   { path := "rind::low::x86_64::chacha20poly1305::poly_hash_ad_internal", prog := PolyHashAd.prog }]
+   { path := "rind::low::x86_64::chacha20poly1305::poly_hash_ad_internal", prog := PolyHashAd.prog },
+   { path := "rind::low::x86_64::chacha20poly1305::seal_avx2", prog := ChaCha20Poly1305.sealAvx2,
+     statics := [(ChaCha20Poly1305.constsName, "rind::low::x86_64::chacha20poly1305::CONSTS",
+       ChaCha20Poly1305.consts)] }]
 
 end Rind.X86_64

@@ -65,6 +65,9 @@ impl State {
     }
 }
 
+/// What a routine leaves in `r0`.
+pub(super) type Returned = Word;
+
 pub(super) type Trampoline = unsafe extern "C" fn(Word, *const Word, Word) -> Word;
 
 pub(super) fn trampoline(_: Convention) -> Trampoline {

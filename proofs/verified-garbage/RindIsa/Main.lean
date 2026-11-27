@@ -10,7 +10,9 @@ for `admin/prove lean` to compare with rind's build: for each, a line
 instruction word, in hex, one `reloc <byte offset> <type> <symbol>` for each
 relocation, and one `static <symbol> <Rust path> <bytes>` for each static,
 the bytes it must begin with, in hex; on x86_64 one line `text <offset>
-<bytes>` for each 16 bytes of its section, in hex.
+<bytes>` for each 16 bytes of its section, in hex, one `reloc <byte offset>
+R_X86_64_PC32 <symbol><addend>` for each relocation, and one `static` line
+for each static, as on aarch64.
 -/
 
 def hex (n w : Nat) : String :=
@@ -34,13 +36,23 @@ def aarch64 : IO UInt32 := do
       IO.println s!"static {sym} {path} {leHex words}"
   return 0
 
+/-- A relocation's addend as `llvm-objdump -r` prints it after its target:
+`+0x6c`, `-0x4`, or nothing for 0. -/
+def addend (a : Int) : String :=
+  let h := String.ofList (Nat.toDigits 16 a.natAbs)
+  if a < 0 then s!"-0x{h}" else if a = 0 then "" else s!"+0x{h}"
+
 def x86_64 : IO UInt32 := do
   for p in Rind.X86_64.proven do
-    let some bs := Rind.X86_64.function p.prog
+    let some (bs, rs) := Rind.X86_64.function p.prog
       | IO.eprintln s!"rind-asm: {p.path} does not encode"; return 1
     IO.println s!"function {p.path}"
     for i in List.range ((bs.length + 15) / 16) do
       IO.println s!"text {hex 4 (16 * i)} {String.join (((bs.drop (16 * i)).take 16).map (hex 2))}"
+    for r in rs do
+      IO.println s!"reloc {r.off} R_X86_64_PC32 {r.sym}{addend r.addend}"
+    for (sym, path, bytes) in p.statics do
+      IO.println s!"static {sym} {path} {String.join (bytes.map (hex 2))}"
   return 0
 
 def main : List String → IO UInt32

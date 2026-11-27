@@ -918,16 +918,15 @@ spec_tests() {
 # Checks that each function rind proves in its own extension of VG's AArch64
 # and x86_64 models, `proofs/verified-garbage/RindIsa/`, is in rind's build
 # the machine code its theorem is about: `rind-asm` prints each function's
-# words and relocations on aarch64, and its bytes on x86_64, from the program
-# the theorem names, and the words each static it reads begins with; this
-# prints the same of rind's release build, from the object `asm_function`
-# writes and the statics `rind_static` writes, and fails unless the two are
-# the same. On aarch64 a relocation must reach the start of the one read-only
-# section `asm_function` keeps, which must be the static the program names;
-# on x86_64, whose proven functions read no static, the function must have
-# none.
+# words on aarch64 and its bytes on x86_64, and its relocations, from the
+# program the theorem names, and the bytes each static it reads begins with;
+# this prints the same of rind's release build, from the object
+# `asm_function` writes and the statics `rind_static` writes, and fails
+# unless the two are the same. A relocation must reach into the one
+# read-only section `asm_function` keeps, which must be the static the
+# program names.
 rind_isa() {
-    local dir=$out/rind-isa kind a b c n=0 rodata sym
+    local dir=$out/rind-isa kind a b c n=0 rodata sym arch
     local -A statics=()
     hold scratch
     rm -rf "$dir"
@@ -939,45 +938,48 @@ rind_isa() {
     build_asm x86_64
     # Each static's Rust symbol, to the program's name for it.
     while read -r kind a b _; do
-        if [[ $kind == static ]]; then
-            read -r _ sym <<<"$(rind_symbol aarch64 "$b")"
-            statics[$(stable_name <<<"$sym")]=$a
-        fi
+        case $kind in
+        function) arch=$(isa_arch "$a") ;;
+        static)
+            read -r _ sym <<<"$(rind_symbol "$arch" "$b")"
+            statics[$arch:$(stable_name <<<"$sym")]=$a
+            ;;
+        esac
     done <"$dir/want"
     while read -r kind a b c; do
         case $kind in
         function)
             n=$((n + 1))
+            arch=$(isa_arch "$a")
             echo "function $a"
-            if [[ $a == rind::low::x86_64::* ]]; then
-                asm_function x86_64 "$a" "$dir/$n.o"
-                if [[ -n $(relocations "$dir/$n.o" .text) ]]; then
-                    echo "admin/prove: $a has relocations, which rind's x86_64 model does not lay out" >&2
-                    return 1
-                fi
-                "$tools/llvm-objcopy" -O binary --only-section=.text "$dir/$n.o" "$dir/$n.text"
-                od -An -v -tx1 -w16 "$dir/$n.text" | awk '{ $1 = $1; gsub(/ /, ""); printf "text %04x %s\n", 16 * (NR - 1), $0 }'
-                continue
-            fi
-            asm_function aarch64 "$a" "$dir/$n.o"
+            asm_function "$arch" "$a" "$dir/$n.o"
             "$tools/llvm-objcopy" -O binary --only-section=.text "$dir/$n.o" "$dir/$n.text"
-            od -An -v -tx4 -w4 "$dir/$n.text" | awk '{ print "insn " $1 }'
+            if [[ $arch == x86_64 ]]; then
+                od -An -v -tx1 -w16 "$dir/$n.text" | awk '{ $1 = $1; gsub(/ /, ""); printf "text %04x %s\n", 16 * (NR - 1), $0 }'
+            else
+                od -An -v -tx4 -w4 "$dir/$n.text" | awk '{ print "insn " $1 }'
+            fi
             rodata=$("$tools/llvm-objdump" -t "$dir/$n.o" | awk '$1 ~ /^0+$/ && $3 == "O" && $4 == ".rodata" { print $NF }')
+            # An x86_64 target carries its addend: `.rodata-0x4`.
             relocations "$dir/$n.o" .text | while read -r off type target; do
-                if [[ $target == .rodata && -n $rodata && -n ${statics[$rodata]:-} ]]; then
-                    target=${statics[$rodata]}
+                if [[ $target =~ ^\.rodata([-+].*)?$ && -n $rodata && -n ${statics[$arch:$rodata]:-} ]]; then
+                    target=${statics[$arch:$rodata]}${BASH_REMATCH[1]}
                 fi
                 echo "reloc $((16#$off)) $type $target"
             done
             ;;
         static)
-            rind_static aarch64 "$b" "$dir/static"
+            rind_static "$arch" "$b" "$dir/static"
             echo "static $a $b $(od -An -v -tx1 "$dir/static" | tr -d ' \n' | head -c ${#c})"
             ;;
         esac
     done <"$dir/want" >"$dir/got"
     release scratch
     diff -u --label rind-asm --label "rind's build" "$dir/want" "$dir/got"
+}
+# The architecture of a function `rind-asm` names, from its Rust path.
+isa_arch() {
+    if [[ $1 == rind::low::x86_64::* ]]; then echo x86_64; else echo aarch64; fi
 }
 
 # The file each target's proofs load first, which its session images hold

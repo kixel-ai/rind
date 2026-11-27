@@ -161,13 +161,18 @@ fn one_pass(
     // SAFETY: `inout` is `inout.len()` readable and writable bytes, which the
     // routines allow to alias exactly, `aad` is `aad.len()` readable bytes,
     // and `data` is the block they read and write. The tokens prove SSE4.1,
-    // and AVX2 and BMI2 where `ia32cap` picks the AVX2 half.
+    // and AVX2 and BMI2 where `ia32cap` picks the AVX2 half and for
+    // `seal_avx2`.
     unsafe {
-        match seal {
-            true => {
+        match (seal, avx2) {
+            (true, Some(_)) => {
+                let tag: u128 = asm_call!(unsafe extern "sysv64" seal_avx2(ptr, ptr, inout.len(), aad.as_ptr(), aad.len(), &data));
+                return tag.to_le_bytes();
+            }
+            (true, None) => {
                 asm_call!(unsafe extern "sysv64" chacha20_poly1305_seal(ptr, ptr, inout.len(), aad.as_ptr(), aad.len(), &mut data))
             }
-            false => {
+            (false, _) => {
                 asm_call!(unsafe extern "sysv64" chacha20_poly1305_open(ptr, ptr, inout.len(), aad.as_ptr(), aad.len(), &mut data))
             }
         }
@@ -178,17 +183,25 @@ fn one_pass(
 }
 
 /// The ChaCha20 constant, rotation masks, counter increments, and Poly1305
-/// clamp, which the routines load across.
+/// clamp, which the routines load across, then the masks keeping the first
+/// 1 to 16 bytes of a block, which the seal routines load. rind's copies
+/// read both from this one static, `{chacha20_consts}+192` for the masks,
+/// as `proofs/verified-garbage/RindIsa/X86_64/ChaCha20Poly1305.lean` lays
+/// them out.
 #[repr(C, align(64))]
-struct Consts([u8; 192]);
+struct Consts {
+    chacha20: [u8; 192],
+    and_masks: [u8; 256],
+}
 
-/// Masks keeping the first 1 to 16 bytes of a block, for the seal routine.
+/// The masks again, for aws-lc's seal routine, which names them apart.
 #[repr(C, align(64))]
 struct AndMasks([u8; 256]);
 
-static CHACHA20_CONSTS: Consts = Consts(include!(
-    "aws_lc/chacha20_poly1305_x86_64.chacha20_consts.rs"
-));
+static CONSTS: Consts = Consts {
+    chacha20: include!("aws_lc/chacha20_poly1305_x86_64.chacha20_consts.rs"),
+    and_masks: include!("aws_lc/chacha20_poly1305_x86_64.and_masks.rs"),
+};
 static AND_MASKS: AndMasks = AndMasks(include!("aws_lc/chacha20_poly1305_x86_64.and_masks.rs"));
 
 // The routines take the System V ABI on every OS, since their text is
@@ -207,14 +220,14 @@ unsafe extern "sysv64" fn chacha20_poly1305_open(
     #[cfg(not(target_vendor = "apple"))]
     core::arch::naked_asm!(
         include_str!("aws_lc/chacha20_poly1305_open.linux.s"),
-        chacha20_consts = sym CHACHA20_CONSTS,
+        chacha20_consts = sym CONSTS,
         poly_hash_ad_internal = sym poly_hash_ad_internal,
         options(att_syntax),
     );
     #[cfg(target_vendor = "apple")]
     core::arch::naked_asm!(
         include_str!("aws_lc/chacha20_poly1305_open.apple.s"),
-        chacha20_consts = sym CHACHA20_CONSTS,
+        chacha20_consts = sym CONSTS,
         poly_hash_ad_internal = sym poly_hash_ad_internal,
         options(att_syntax),
     );
@@ -232,7 +245,7 @@ unsafe extern "sysv64" fn chacha20_poly1305_seal(
     #[cfg(not(target_vendor = "apple"))]
     core::arch::naked_asm!(
         include_str!("aws_lc/chacha20_poly1305_seal.linux.s"),
-        chacha20_consts = sym CHACHA20_CONSTS,
+        chacha20_consts = sym CONSTS,
         and_masks = sym AND_MASKS,
         poly_hash_ad_internal = sym poly_hash_ad_internal,
         options(att_syntax),
@@ -240,9 +253,46 @@ unsafe extern "sysv64" fn chacha20_poly1305_seal(
     #[cfg(target_vendor = "apple")]
     core::arch::naked_asm!(
         include_str!("aws_lc/chacha20_poly1305_seal.apple.s"),
-        chacha20_consts = sym CHACHA20_CONSTS,
+        chacha20_consts = sym CONSTS,
         and_masks = sym AND_MASKS,
         poly_hash_ad_internal = sym poly_hash_ad_internal,
+        options(att_syntax),
+    );
+}
+
+/// Encrypts `len` bytes from `input` to `out` under `data`'s key, counter,
+/// and nonce, the counter 0, and returns the tag over the AAD and the
+/// ciphertext, its first eight bytes in the low half: rind's structured copy
+/// of the AVX2 half of aws-lc's `chacha20_poly1305_seal`, which
+/// `proofs/verified-garbage/RindIsa/X86_64/ChaCha20Poly1305.lean` lays out
+/// as `sealAvx2`, and which `proofs/Rind/X86_64/ChaCha20Poly1305Asm.lean`
+/// proves constant-time. It returns the tag in `rax` and `rdx` where aws-lc
+/// writes it to `data`, which spares it reloading `data`'s address from its
+/// frame.
+#[unsafe(naked)]
+unsafe extern "sysv64" fn seal_avx2(
+    out: *mut u8,
+    input: *const u8,
+    len: usize,
+    aad: *const u8,
+    aad_len: usize,
+    data: *const Data,
+) -> u128 {
+    // aws-lc's alignment and CFI, as for `poly_hash_ad_internal` below.
+    #[cfg(not(target_vendor = "apple"))]
+    core::arch::naked_asm!(
+        ".align 64",
+        ".cfi_startproc",
+        ".cfi_def_cfa rsp, 8",
+        include_str!("chacha20poly1305/seal_avx2.linux.s"),
+        ".cfi_endproc",
+        chacha20_consts = sym CONSTS,
+        options(att_syntax),
+    );
+    #[cfg(target_vendor = "apple")]
+    core::arch::naked_asm!(
+        include_str!("chacha20poly1305/seal_avx2.apple.s"),
+        chacha20_consts = sym CONSTS,
         options(att_syntax),
     );
 }
