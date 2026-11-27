@@ -548,6 +548,7 @@ hol_light_proofs=(
     "armv7 gcm_init_neon.bin gcm_init_neon"
     "armv7 gcm_ghash_neon.bin gcm_ghash_neon"
     "armv7 sha256_armv4.bin K256..sha256_block_data_order_hw"
+    "armv7 sha512_armv4.bin K512..sha512_block_data_order_neon"
     "armv7 vpaes_encrypt.bin _vpaes_consts..vpaes_encrypt"
     "x86_64 sha512_block_data_order_avx2.o rind::low::x86_64::sha512::sha512_block_data_order_avx2"
     "x86_64 sha256_block_data_order_avx2.o rind::low::x86_64::sha256::sha256_block_data_order_avx2"
@@ -1779,8 +1780,8 @@ to_lean() {
 # below its cipher impl opaque, since `aead::Key` holds it; the agreement API,
 # down to the curve25519-dalek functions X25519 runs on a CPU without NEON,
 # and for the public key on every CPU; and the signature API's Ed25519, down
-# to dalek's point and scalar functions and SHA-512's block function, whose
-# assembly no proof covers yet.
+# to dalek's point and scalar functions and the wrappers around aws-lc's
+# SHA-512 routines, which `Rind/Armv7/Sha512Entry.lean` states.
 # `Rind/Armv7/Dalek.lean` restates BAIF's theorems about those dalek
 # functions. Of dalek's and subtle's code, the translation reads `Scalar`,
 # `CtOption`, and the trivial functions Ed25519 calls, which need no theorem,
@@ -1850,6 +1851,7 @@ extract_armv7() {
         --include crate::low::generic::chacha20 \
         --include crate::low::generic::ct_equal \
         --include crate::low::generic::blockwise \
+        --include crate::low::arm::sha_armv4::sha512_compress_blocks \
         --include curve25519_dalek::scalar::Scalar \
         --include curve25519_dalek::scalar::clamp_integer \
         --include '{impl core::clone::Clone for curve25519_dalek::edwards::EdwardsPoint}' \
@@ -2212,8 +2214,7 @@ extract aarch64 Aarch64 "${hashes[@]}" "${assembly[@]}" \
     --opaque crate::low::aarch64::aes_gcm::short \
     --opaque crate::low::aarch64::aes_gcm::stitched
 
-# The AEAD key's conversion from HKDF's output is x86_64's alone: aarch64's
-# AEAD proofs are ChaCha20-Poly1305's, not yet AES-GCM's above the cipher.
+# The AEAD key's conversion from HKDF's output is proven on x86_64 alone.
 extract_kdf x86_64 X86_64 --start-from '{impl core::convert::From for crate::aead::Key}'
 extract_kdf aarch64 Aarch64 --include crate::mid::pbkdf2_vg \
     --include 'crate::mid::sha1::_::BLOCK_SZ' --include 'crate::mid::sha1::_::OUTPUT_SZ' \
@@ -2295,6 +2296,17 @@ sed -i '/-- BEGIN aead/,/-- END aead/d' proofs/Rind/Aarch64/Kdf/FunsExternal.lea
 # aarch64 translates `mid::pbkdf2_vg`, which the other targets leave opaque.
 sed -i '/-- BEGIN vg/,/-- END vg/d' proofs/Rind/Aarch64/Kdf/TypesExternal.lean proofs/Rind/Aarch64/Kdf/FunsExternal.lean
 sed -i 's/^public import Rind.Aarch64.HkdfExpand$/&\npublic import Rind.Aarch64.Kdf.VgExternal/' proofs/Rind/Aarch64/Kdf/FunsExternal.lean
+# aarch64's `RunsAesGcm` takes the key's algorithm, since AES-192 with SHA3
+# runs kernels nothing proves, so `GcmKey` passes it on.
+sed 's/X86_64/Aarch64/g; s/x86_64/aarch64/g
+    s/^theorem gcm_key_new (h : RunsAesGcm) (algorithm : cipher.Algorithm) (alg : Algorithm)$/theorem gcm_key_new (algorithm : cipher.Algorithm) (alg : Algorithm) (h : RunsAesGcm alg)/
+    s/(aes_gcm_new h alg A hAlg key)/(aes_gcm_new alg h A hAlg key)/' \
+    proofs/Rind/X86_64/GcmKey.lean >proofs/Rind/Aarch64/GcmKey.lean
+if ! grep -qF '(h : RunsAesGcm alg)' proofs/Rind/Aarch64/GcmKey.lean ||
+    ! grep -qF '(aes_gcm_new alg h A hAlg key)' proofs/Rind/Aarch64/GcmKey.lean; then
+    echo "admin/prove: proofs/Rind/X86_64/GcmKey.lean no longer has the lines aarch64's copy rewrites" >&2
+    exit 1
+fi
 # The portable backend's hash, HMAC, KDF, and header-protection proofs are the
 # x86_64 ones with the target renamed, over its own block functions' contracts
 # in `Sha512Entry.lean` and `ShaBlocks.lean`, and its compares' proof in

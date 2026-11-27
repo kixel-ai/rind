@@ -14,10 +14,10 @@ the components: `n = p·q`, `dP = d mod (p - 1)`, `dP·e ≡ 1 (mod p - 1)`, the
 same for `q`, and `qInv < p` with `qInv·q ≡ 1 (mod p)`. Beyond the entry
 guard and the inputs' representation (each within its width, its words above
 that width zero, and `n`'s top word nonzero), it assumes that
-`HaveAvx512ForRsa::check` returns none, so pyca/verified-garbage's IFMA CRT
-is not set up (a CPU with AVX-512 IFMA fails it even for a key size VG's CRT
-does not take, such as 3072 bits without AVX512_FP16), and that
-`MontProducts` holds at the wider prime's width.
+`HaveAvx512ForRsa`'s CPU checks return, for AVX-512 IFMA and AVX512_FP16, and
+that `MontProducts` holds at the wider prime's width. Where `IfmaCrt::new`
+sets pyca/verified-garbage's AVX-512 IFMA CRT up, `precompute_spec` proves
+its values against `VG.Spec.Rsa.privatePrecompute`, as `IfmaCrtInv` states.
 It characterizes the keys `new` returns, not which inputs it accepts.
 -/
 
@@ -742,13 +742,348 @@ theorem contains_usize (lo hi x : Usize) :
   by_cases h1 : lo.val ≤ x.val <;>
     simp [core.ops.range.RangeInclusive.contains, core.cmp.impls.PartialOrdUsize.le, liftFun2, h1]
 
-/-- On a CPU without AVX-512 IFMA, pyca/verified-garbage's CRT does not run. -/
-theorem ifma_crt_new_none (h : low.x86_64.cpu.HaveAvx512ForRsa.check = ok none) (n nm p q : Slice U64) :
-    low.x86_64.rsa_ifma.IfmaCrt.new n nm p q ⦃ r => r.w = 0#usize ⦄ := by
-  unfold low.x86_64.rsa_ifma.IfmaCrt.new low.x86_64.rsa_ifma.IfmaCrt.try_new
-  simp [h, core.option.Option.Insts.CoreOpsTry_traitTry.branch,
-    core.option.Option.Insts.CoreOpsTry_traitFromResidualOptionNever.from_residual,
-    core.option.Option.unwrap_or, WP.spec_ok]
+/-! ## `IfmaCrt::new`: pyca/verified-garbage's CRT values -/
+
+/-- `from_words` holds `words`, at most `N` of them, as a clean value of
+their width. -/
+theorem from_words_spec (N : Usize) (words : Slice U64) (hl : words.length ≤ N.val) :
+    low.posint.PosInt.from_words N words ⦃ r => ∃ x, r = .Ok x ∧ x.used.val = words.length ∧
+      lowWords x x.used = words.val ∧ Clean x ⦄ := by
+  unfold low.posint.PosInt.from_words low.posint.PosInt.zero
+  step*
+  have hv : (index_mut_back s1).val = words.val ++ List.replicate (N.val - words.length) 0#u64 := by
+    rw [s_post2, s1_post, Array.repeat_val]
+    have := setSlice!_append [] (List.replicate words.length 0#u64) (List.replicate (N.val - words.length) 0#u64)
+      words.val (by simp [Slice.length])
+    rw [List.nil_append, ← List.replicate_add, Nat.add_sub_cancel' hl] at this
+    simpa [Slice.length] using this
+  have hlw : lowWords ({ words := index_mut_back s1, used := words.len } : low.posint.PosInt N)
+      (words.len).val = words.val := by
+    simp only [lowWords]
+    rw [hv, Slice.len_val, List.take_left' rfl]
+  refine ⟨_, rfl, by simp, hlw, ?_⟩
+  unfold Clean
+  rw [hlw]
+  simp only
+  rw [hv, wordsNat_append, wordsNat_replicate_zero, mul_zero, add_zero]
+
+/-- `VG.Spec.Rsa.privatePrecompute` of an odd modulus of `2w` words, its top
+word nonzero, and factors `P` and `Q` that fit `w` words, from 16: the
+modulus's words and `R² mod N`'s, then `R_p² mod P`'s and `R_q² mod Q`'s,
+`w` words each. -/
+theorem private_precompute_eq (n nm pm qm : List U64) (P Q w : Nat) (hw : 16 ≤ w) (hw32 : w ≤ 32)
+    (hn : n.length = 2 * w) (hnm : nm.length = 2 * w) (hpm : pm.length = w) (hqm : qm.length = w)
+    (hodd : wordsNat n % 2 = 1) (htop : 2 ^ (64 * (2 * w - 1)) ≤ wordsNat n)
+    (hpq : P * Q = wordsNat n) (hP : P < 2 ^ (64 * w)) (hQ : Q < 2 ^ (64 * w))
+    (hnmv : wordsNat nm = 2 ^ (128 * (2 * w)) % wordsNat n)
+    (hpmv : wordsNat pm = 2 ^ (128 * w) % P) (hqmv : wordsNat qm = 2 ^ (128 * w) % Q) :
+    VG.Spec.Rsa.privatePrecompute (VG.Spec.Rsa.i2osp (wordsNat n) (octetLen (wordsNat n)))
+        (VG.Spec.Rsa.i2osp P (8 * w)) (VG.Spec.Rsa.i2osp Q (8 * w)) =
+      some ((n ++ nm ++ pm ++ qm).map (·.bv)) := by
+  generalize hN : wordsNat n = N at *
+  have hNw : N < 2 ^ (64 * (2 * w)) := by have := wordsNat_lt' n; rwa [hn, hN] at this
+  have hsz1 := Nat.size_le.mpr hNw
+  have hsz2 : 64 * (2 * w - 1) < N.size := Nat.lt_size.mpr htop
+  have hk : (octetLen N + 7) / 8 = 2 * w := by unfold octetLen; omega
+  have h256 : ∀ x, x < 2 ^ (64 * w) → x < 256 ^ (8 * w) := fun x hx => by
+    rwa [show (256 : Nat) = 2 ^ 8 by rfl, ← pow_mul, show 8 * (8 * w) = 64 * w by ring]
+  have hpw : VG.Spec.Rsa.primeWords (8 * w) = w := by
+    unfold VG.Spec.Rsa.primeWords VG.Spec.Rsa.modulusWords; omega
+  unfold VG.Spec.Rsa.privatePrecompute VG.Spec.Rsa.publicPrecompute VG.Spec.Rsa.primeR2
+  simp only [vg_os2ip_i2osp _ _ (lt_256_octetLen N), vg_os2ip_i2osp _ _ (h256 P hP),
+    vg_os2ip_i2osp _ _ (h256 Q hQ), vg_i2osp_length, hpq, vg_modulus_valid N hodd (by omega) (by omega),
+    ↓reduceIte, Option.map_some, hpw, VG.Spec.Rsa.modulusWords, hk, List.map_append, Option.some.injEq]
+  have e1 := vg_toWords_wordsNat n
+  have e2 := vg_toWords_wordsNat nm
+  have e3 := vg_toWords_wordsNat pm
+  have e4 := vg_toWords_wordsNat qm
+  rw [hN, hn] at e1
+  rw [hnmv, hnm] at e2
+  rw [hpmv, hpm] at e3
+  rw [hqmv, hqm] at e4
+  rw [e1, e2, e3, e4]
+
+set_option maxHeartbeats 1000000 in
+/-- `IfmaCrt::precompute` lays out pyca/verified-garbage's CRT values for an
+odd modulus `n` of `2w` words, its top word nonzero, `R² mod n`'s words
+`nm`, and primes `p` and `q` of `w` words each whose product is `n`. -/
+theorem precompute_spec (n nm p q : Slice U64) (w : Nat) (hw16 : 16 ≤ w) (hw32 : w ≤ 32)
+    (hpw : p.length = w) (hqw : q.length = w) (hn : n.length = 2 * w) (hnm : nm.length = 2 * w)
+    (hnmv : wordsNat nm.val = 2 ^ (128 * (2 * w)) % wordsNat n.val) :
+    low.x86_64.rsa_ifma.IfmaCrt.precompute n nm p q ⦃ r => ∀ c, r = some c →
+      c.w.val = w ∧ c.pre.val.take (2 * w) = n.val ∧ c.p.val.take w = p.val ∧ c.q.val.take w = q.val ∧
+      VG.Spec.Rsa.privatePrecompute (VG.Spec.Rsa.i2osp (wordsNat n.val) (octetLen (wordsNat n.val)))
+          (VG.Spec.Rsa.i2osp (wordsNat p.val) (8 * w)) (VG.Spec.Rsa.i2osp (wordsNat q.val) (8 * w)) =
+        some ((c.pre.val.take (6 * w)).map (·.bv)) ⦄ := by
+  unfold low.x86_64.rsa_ifma.IfmaCrt.precompute
+  have h64 : (64#usize : Usize).val = 64 := rfl
+  have h32 : (32#usize : Usize).val = 32 := rfl
+  step with from_words_spec 64#usize n (by rw [h64]; omega) as ⟨r, x, hr, hxu, hxv, hxc⟩
+  subst hr
+  simp only [core.result.Result.ok, core.option.Option.Insts.CoreOpsTry_traitTry.branch, bind_ok]
+  step with from_words_spec 32#usize p (by rw [h32]; omega) as ⟨r1, y, hr1, hyu, hyv, hyc⟩
+  subst hr1
+  step with from_words_spec 32#usize q (by rw [h32]; omega) as ⟨r2, z, hr2, hzu, hzv, hzc⟩
+  subst hr2
+  step with is_even_spec x (by rw [h64]; omega) hxc as ⟨b, hb⟩
+  split
+  · simp
+  rename_i hbe
+  have hNo : wordsNat n.val % 2 = 1 := by
+    have : b = false := by simpa using hbe
+    rw [hb, hxv] at this; simpa using this
+  unfold low.posint.PosInt.as_words
+  step*
+  have hs : s.val = n.val := by rw [← hxv]; simp [lowWords, s_post]
+  have hpl : p.len.val = w := by rw [Slice.len_val]; exact hpw
+  have htop : 2 ^ (64 * (2 * w - 1)) ≤ wordsNat n.val := by
+    have ht := wordsNat_top n.val (2 * w - 1) (by simp only [Slice.length] at hn; omega)
+    have hi2v : n.val[2 * w - 1]! = i2 := by
+      have hlt : i1.val < s.val.length := by
+        have : s.val.length = 2 * w := by rw [hs]; exact hn
+        omega
+      rw [i2_post, ← getElem!_pos s.val i1.val hlt, hs, i1_post, i_post, hpl]
+    have h1 : 1 ≤ i2.val := by
+      rename_i hi20
+      have : i2.val ≠ 0 := fun h0 => hi20 (UScalar.eq_of_val_eq (by simpa using h0))
+      omega
+    rw [ht, hi2v]
+    calc 2 ^ (64 * (2 * w - 1)) = 2 ^ (64 * (2 * w - 1)) * 1 := (mul_one _).symm
+      _ ≤ 2 ^ (64 * (2 * w - 1)) * i2.val := Nat.mul_le_mul_left _ h1
+      _ ≤ _ := Nat.le_add_left _ _
+  step with posint_mul_spec 64#usize y z (by rw [h32, h64]) (by rw [hyu, h32]; omega)
+    (by rw [hzu, h32]; omega) as ⟨pq, hpqu, hpqv⟩
+  step with equals_spec pq x (by rw [hpqu, h64]; omega) (by rw [hxu, h64]; omega) as ⟨b1, hb1⟩
+  simp only [low.ct.into_public, bind_ok]
+  split
+  swap
+  · simp
+  rename_i hb1t
+  rw [hb1, decide_eq_true_eq, hpqv, hyv, hzv, hxv] at hb1t
+  have hodd2 : Odd (wordsNat p.val * wordsNat q.val) := by rw [hb1t]; exact Nat.odd_iff.mpr hNo
+  obtain ⟨hPo, hQo⟩ := Nat.odd_mul.mp hodd2
+  rw [Nat.odd_iff] at hPo hQo
+  step*
+  case h =>
+    show i.val ≤ (index_mut_back3 s9).val.length
+    rw [s8_post2, List.length_setSlice!]
+    have h1 : pre_n.val.length = i4.val := pre_n_post
+    omega
+  case h =>
+    rw [s10_post1]
+    show (index_mut_back3 s9).val.length - i.val = nm.val.length
+    rw [s8_post2, List.length_setSlice!]
+    have h1 : pre_n.val.length = i4.val := pre_n_post
+    have h2 : nm.val.length = 2 * w := hnm
+    omega
+  case h =>
+    show p.len.val ≤ pre_p.val.length
+    have h1 : pre_p.val.length = s7.val.length - i4.val := pre_n_post1
+    have h2 : s7.val.length = i3.val := s7_post1
+    omega
+  step with montifier_spec y (by rw [h32]; omega) (by rw [hyv]; exact hPo) as ⟨pi, hpiu, hpiv⟩
+  step*
+  case h =>
+    show pi.used.val ≤ pi.words.to_slice.val.length
+    have h1 : pi.words.to_slice.val.length = 32 := by simp
+    rw [hpiu, h1]
+    omega
+  case h =>
+    show p.len.val ≤ (index_mut_back5 s14).val.length
+    rw [s12_post2, List.length_setSlice!]
+    have h1 : pre_p.val.length = s7.val.length - i4.val := pre_n_post1
+    have h2 : s7.val.length = i3.val := s7_post1
+    omega
+  step with montifier_spec z (by rw [h32]; omega) (by rw [hzv]; exact hQo) as ⟨pi1, hpi1u, hpi1v⟩
+  step*
+  case h =>
+    show pi1.used.val ≤ pi1.words.to_slice.val.length
+    have h1 : pi1.words.to_slice.val.length = 32 := by simp
+    rw [hpi1u, h1]
+    omega
+  case h =>
+    show s15.val.length = s16.val.length
+    rw [s15_post, List.length_drop, s12_post2, List.length_setSlice!]
+    have h1 : pre_p.val.length = s7.val.length - i4.val := pre_n_post1
+    have h2 : s7.val.length = i3.val := s7_post1
+    have h3 : s16.val.length = pi1.used.val := s16_post1
+    rw [h3, hpi1u]
+    omega
+  intro c hc
+  cases hc
+  -- The values each write leaves, from zeros.
+  have hs7v : s7.val = List.replicate (6 * w) 0#u64 := by
+    have h192 : (192#usize : Usize).val = 192 := rfl
+    rw [s7_post, i3_post, hpl, List.slice, Array.repeat_val, List.drop_zero, List.take_replicate, h192]
+    congr 1
+    omega
+  have hpn : pre_n.val = List.replicate (2 * w) 0#u64 ++ List.replicate (2 * w) 0#u64 := by
+    rw [pre_n_post2, hs7v, i4_post, hpl, List.take_replicate, ← List.replicate_add]; congr 1; omega
+  have hpp : pre_p.val = List.replicate w 0#u64 ++ List.replicate w 0#u64 := by
+    rw [pre_n_post3, hs7v, i4_post, hpl, List.drop_replicate, ← List.replicate_add]; congr 1; omega
+  have hb3 : (index_mut_back3 s9).val = n.val ++ List.replicate (2 * w) 0#u64 := by
+    have := setSlice!_append [] (List.replicate (2 * w) 0#u64) (List.replicate (2 * w) 0#u64) n.val
+      (by simp only [List.length_replicate]; exact hn)
+    rw [s8_post2, s9_post, hs, hpn]
+    simpa using this
+  have hb4 : (index_mut_back4 s11).val = n.val ++ nm.val := by
+    rw [s10_post2, hb3, s11_post, i_post, hpl,
+      setSlice!_end _ _ _ (by simp only [List.length_append, List.length_replicate]; rw [show nm.val.length = 2 * w from hnm, show n.val.length = 2 * w from hn]),
+      List.take_left' hn]
+  have hs13v : s13.val = lowWords pi y.used := by simp [lowWords, s13_post, hpiu]
+  have hs16v : s16.val = lowWords pi1 z.used := by simp [lowWords, s16_post, hpi1u]
+  have hs13l : s13.val.length = w := by
+    have : s13.length = pi.used.val := s13_post1
+    rw [hpiu, hyu, hpw] at this; exact this
+  have hs16l : s16.val.length = w := by
+    have : s16.length = pi1.used.val := s16_post1
+    rw [hpi1u, hzu, hqw] at this; exact this
+  have hb5 : (index_mut_back5 s14).val = s13.val ++ List.replicate w 0#u64 := by
+    have := setSlice!_append [] (List.replicate w 0#u64) (List.replicate w 0#u64) s13.val
+      (by simp only [List.length_replicate]; exact hs13l)
+    rw [s12_post2, s14_post, hpp]
+    simpa using this
+  have hb6 : (index_mut_back6 s17).val = s13.val ++ s16.val := by
+    rw [s15_post2, hb5, s17_post, hpl,
+      setSlice!_end _ _ _ (by simp only [List.length_append, List.length_replicate]; rw [hs13l, hs16l]),
+      List.take_left' hs13l]
+  obtain ⟨hsplit, -⟩ := pre_n_post4 (index_mut_back4 s11) (index_mut_back6 s17)
+    (by
+      show (index_mut_back4 s11).val.length = _
+      rw [hb4, i4_post, hpl, List.length_append, show n.val.length = 2 * w from hn,
+        show nm.val.length = 2 * w from hnm]
+      omega)
+    (by
+      show (index_mut_back6 s17).val.length = _
+      rw [hb6, List.length_append, hs13l, hs16l]
+      have h1 : s7.val.length = i3.val := s7_post1
+      omega)
+  have hpre : (index_mut_back2 (split_at_mut_back (index_mut_back4 s11, index_mut_back6 s17))).val.take (6 * w) =
+      n.val ++ nm.val ++ s13.val ++ s16.val := by
+    have hl : (split_at_mut_back (index_mut_back4 s11, index_mut_back6 s17)).val.length = 6 * w := by
+      rw [hsplit, List.length_append, hb4, hb6, List.length_append, List.length_append, hs13l, hs16l,
+        show n.val.length = 2 * w from hn, show nm.val.length = 2 * w from hnm]
+      omega
+    have h192 : (Array.repeat 192#usize 0#u64).val.length = 192 := (Array.repeat 192#usize 0#u64).property
+    have := take_setSlice! (Array.repeat 192#usize 0#u64).val
+      (split_at_mut_back (index_mut_back4 s11, index_mut_back6 s17)).val 0 (by rw [h192, hl]; omega)
+    rw [List.take_zero, List.nil_append, zero_add, hl] at this
+    rw [s7_post2, this, hsplit, hb4, hb6]
+    simp only [List.append_assoc]
+  have hzero : ∀ (l : List U64) (k : Nat), l.length = k → k ≤ 32 →
+      ((Array.repeat 32#usize 0#u64).val.setSlice! 0 l).take k = l := fun l k hl hk => by
+    have := take_setSlice! (Array.repeat 32#usize 0#u64).val l 0 (by simp; omega)
+    rwa [List.take_zero, List.nil_append, zero_add, hl] at this
+  have hs2v : s2.val = p.val := by rw [← hyv]; simp [lowWords, s2_post]
+  have hs5v : s5.val = q.val := by rw [← hzv]; simp [lowWords, s5_post]
+  have hP : wordsNat p.val < 2 ^ (64 * w) := by have := wordsNat_lt' p.val; rwa [show p.val.length = w from hpw] at this
+  have hQ : wordsNat q.val < 2 ^ (64 * w) := by have := wordsNat_lt' q.val; rwa [show q.val.length = w from hqw] at this
+  have hvg := private_precompute_eq n.val nm.val s13.val s16.val (wordsNat p.val) (wordsNat q.val) w hw16 hw32
+    hn hnm hs13l hs16l hNo htop hb1t hP hQ hnmv
+    (by rw [hs13v, hpiv, hyv, hyu, hpw])
+    (by rw [hs16v, hpi1v, hzv, hzu, hqw])
+  refine ⟨hpl, ?_, ?_, ?_, ?_⟩
+  · rw [show 2 * w = min (2 * w) (6 * w) by omega, ← List.take_take, hpre, List.append_assoc,
+      List.append_assoc, List.take_left' hn]
+  · rw [s1_post2, s3_post, hs2v]; exact hzero _ _ hpw (by omega)
+  · rw [s4_post2, s6_post, hs5v]; exact hzero _ _ hqw (by omega)
+  · rw [hpre]; exact hvg
+
+/-- What `IfmaCrt::new` holds when it sets pyca/verified-garbage's CRT up
+for a modulus `n` and primes `p` and `q`: a CPU whose AVX-512 check passes;
+the primes' width `w`, 16, 24, or 32 words and half the modulus's; the
+modulus's and primes' words; and `VG.Spec.Rsa.privatePrecompute`'s words. -/
+def IfmaCrtSet (n p q : Slice U64) (c : low.x86_64.rsa_ifma.IfmaCrt) : Prop :=
+  (∃ t, low.x86_64.cpu.HaveAvx512ForRsa.check = ok (some t)) ∧
+    (c.w.val = 16 ∨ c.w.val = 24 ∨ c.w.val = 32) ∧ c.w.val = p.length ∧ n.length = 2 * c.w.val ∧
+    c.pre.val.take (2 * c.w.val) = n.val ∧ c.p.val.take c.w.val = p.val ∧ c.q.val.take c.w.val = q.val ∧
+    VG.Spec.Rsa.privatePrecompute (VG.Spec.Rsa.i2osp (wordsNat n.val) (octetLen (wordsNat n.val)))
+        (VG.Spec.Rsa.i2osp (wordsNat p.val) (8 * c.w.val)) (VG.Spec.Rsa.i2osp (wordsNat q.val) (8 * c.w.val)) =
+      some ((c.pre.val.take (6 * c.w.val)).map (·.bv))
+
+/-- `IfmaCrt::try_new` returns VG's CRT values, as `IfmaCrtSet` says, or
+none: on a CPU whose AVX-512 check fails, at a width other than 16, 24 with
+AVX512_FP16, or 32 words, or for inputs `precompute` refuses. -/
+theorem try_new_spec (hifma : IfmaCheckReturns)
+    (hfp16 : ∀ t, ∃ b, low.x86_64.cpu.HaveAvx512ForRsa.fp16 t = ok b) (n nm p q : Slice U64)
+    (hnmv : wordsNat nm.val = 2 ^ (128 * n.length) % wordsNat n.val) :
+    low.x86_64.rsa_ifma.IfmaCrt.try_new n nm p q ⦃ r => ∀ c, r = some c → IfmaCrtSet n p q c ⦄ := by
+  obtain ⟨o, ho⟩ := hifma
+  unfold low.x86_64.rsa_ifma.IfmaCrt.try_new
+  simp only [ho, bind_ok]
+  cases o with
+  | none =>
+    simp [core.option.Option.Insts.CoreOpsTry_traitTry.branch,
+      core.option.Option.Insts.CoreOpsTry_traitFromResidualOptionNever.from_residual, WP.spec_ok]
+  | some t =>
+  simp only [core.option.Option.Insts.CoreOpsTry_traitTry.branch, bind_ok]
+  refine WP.spec_bind (Pₘ := fun b : Bool => b = true → p.length = 16 ∨ p.length = 32) ?_ ?_
+  · split <;> simp_all [WP.spec_ok]
+  intro b hb
+  refine WP.spec_bind (Pₘ := fun sized : Bool => sized = true → p.length = 16 ∨ p.length = 24 ∨ p.length = 32)
+    ?_ ?_
+  · split
+    · rename_i hbt
+      simp only [WP.spec_ok]
+      intro _
+      rcases hb hbt with h | h <;> omega
+    · split
+      · rename_i h24
+        obtain ⟨b', hb'⟩ := hfp16 t
+        rw [hb', WP.spec_ok]
+        intro _
+        have : (Slice.len p).val = 24 := by rw [h24]; rfl
+        rw [Slice.len_val] at this
+        omega
+      · simp [WP.spec_ok]
+  intro sized hsized
+  split
+  swap
+  · simp [WP.spec_ok]
+  rename_i hst
+  have hw := hsized hst
+  split
+  · simp [WP.spec_ok]
+  rename_i hqw
+  step as ⟨i2, hi2⟩
+  case hmax =>
+    have : (Slice.len p).val ≤ 32 := by rw [Slice.len_val]; omega
+    scalar_tac
+  split
+  · simp [WP.spec_ok]
+  rename_i hnw
+  split
+  · simp [WP.spec_ok]
+  rename_i hnmw
+  simp only [bne_iff_ne, ne_eq, not_not] at hqw hnw hnmw
+  have hpl : (Slice.len p).val = p.length := Slice.len_val p
+  have hql : q.length = p.length := by rw [← Slice.len_val q, hqw, hpl]
+  have hnl : n.length = 2 * p.length := by rw [← Slice.len_val n, hnw, hi2, hpl]
+  have hnml : nm.length = 2 * p.length := by rw [← Slice.len_val nm, hnmw, hi2, hpl]
+  step with precompute_spec n nm p q p.length (by omega) (by omega) rfl hql hnl hnml (by rw [hnmv, hnl])
+    as ⟨r, hr⟩
+  rename_i c hc
+  obtain ⟨hcw, hpre, hp, hq, hvg⟩ := hr c hc
+  unfold IfmaCrtSet
+  rw [hcw]
+  exact ⟨⟨t, ho⟩, by omega, rfl, hnl, hpre, hp, hq, hvg⟩
+
+/-- `IfmaCrt::new` sets pyca/verified-garbage's CRT up, as `IfmaCrtSet`
+says, or leaves it off, `w = 0`. -/
+theorem ifma_crt_new_spec (hifma : IfmaCheckReturns)
+    (hfp16 : ∀ t, ∃ b, low.x86_64.cpu.HaveAvx512ForRsa.fp16 t = ok b) (n nm p q : Slice U64)
+    (hnmv : wordsNat nm.val = 2 ^ (128 * n.length) % wordsNat n.val) :
+    low.x86_64.rsa_ifma.IfmaCrt.new n nm p q ⦃ r => r.w = 0#usize ∨ IfmaCrtSet n p q r ⦄ := by
+  unfold low.x86_64.rsa_ifma.IfmaCrt.new
+  refine WP.spec_bind (try_new_spec hifma hfp16 n nm p q hnmv) ?_
+  intro o ho
+  cases o with
+  | none => simp [core.option.Option.unwrap_or, WP.spec_ok]
+  | some c =>
+    simp only [core.option.Option.unwrap_or, WP.spec_ok]
+    exact Or.inr (ho c rfl)
+
+/-! ## The rest of `RsaPrivateKey::new` -/
 
 theorem secret_from {N : Usize} (pi : low.posint.PosInt N) :
     low.posint.SecretPosInt.Insts.CoreConvertFromPosInt.from pi = ok pi := by
@@ -822,10 +1157,10 @@ def CrtRelations (N P Q D DP DQ QINV E : Nat) : Prop :=
 
 /-- What `RsaPrivateKey::new` returns for its components: a key that meets
 `PrivKeyInv`, as the private operation needs, holds them, and they meet
-`CrtRelations`; pyca/verified-garbage's CRT does not run for it. -/
+`CrtRelations`. -/
 def PrivKeyLoaded (p q dp dq iqmp : low.posint.PosInt 64#usize) (d n : RsaInt) (e : U64)
     (key : mid.rsa_priv.RsaPrivateKey) : Prop :=
-  PrivKeyInv key ∧ key.ifma.w = 0#usize ∧ key.public.n = n ∧ key.public.e = e ∧
+  PrivKeyInv key ∧ key.public.n = n ∧ key.public.e = e ∧
     key.p.used.val = keyWords (wordsNat (lowWords p p.used)) (wordsNat (lowWords q q.used)) ∧
     wordsNat (lowWords key.p key.p.used) = wordsNat (lowWords p p.used) ∧
     wordsNat (lowWords key.q key.p.used) = wordsNat (lowWords q q.used) ∧
@@ -840,7 +1175,7 @@ def PrivKeyLoaded (p q dp dq iqmp : low.posint.PosInt 64#usize) (d n : RsaInt) (
 /-- `RsaPrivateKey::new` refuses components it cannot use, without fault, and
 otherwise returns a key it loaded from them. -/
 theorem rsa_private_key_new_spec (hrun : Runs) (h : low.entry.Entry.assert_held = ok ())
-    (hifma : low.x86_64.cpu.HaveAvx512ForRsa.check = ok none)
+    (hifma : IfmaCheckReturns) (hfp16 : ∀ t, ∃ b, low.x86_64.cpu.HaveAvx512ForRsa.fp16 t = ok b)
     (p q dp dq iqmp : low.posint.PosInt 64#usize) (d n : RsaInt) (e : U64)
     (hpu : p.used.val ≤ 64) (hqu : q.used.val ≤ 64) (hdpu : dp.used.val ≤ 64) (hdqu : dq.used.val ≤ 64)
     (hiu : iqmp.used.val ≤ 64) (hdu : d.used.val ≤ 128) (hnu : n.used.val ≤ 128)
@@ -1070,13 +1405,29 @@ theorem rsa_private_key_new_spec (hrun : Runs) (h : low.entry.Entry.assert_held 
   step as ⟨s1, hs1, hs1l⟩
   step as ⟨s2, hs2, hs2l⟩
   step as ⟨s3, hs3, hs3l⟩
-  step with ifma_crt_new_none hifma as ⟨ic, hic⟩
+  have hsv : s.val = lowWords val.n val.n.used := by simp [lowWords, hs]
+  have hs1v : s1.val = lowWords val.montifier val.n.used := by simp [lowWords, hs1]
+  have hs2v : s2.val = lowWords p3 p3.used := by simp [lowWords, hs2]
+  have hs3v : s3.val = lowWords q3 p3.used := by simp [lowWords, hs3, hq3u]
+  have hnmv : wordsNat s1.val = 2 ^ (128 * s.length) % wordsNat s.val := by
+    obtain ⟨-, -, -, -, hm, -⟩ := hpub
+    rw [hs1v, hsv, hsl]; exact hm
+  step with ifma_crt_new_spec hifma hfp16 s s1 s2 s3 hnmv as ⟨ic, hic⟩
   dsimp only [PrivKeyLoaded, PrivKeyInv]
   refine ⟨⟨hpub, hq3u, hk64, by rw [hp3u]; omega, by rw [hp3v]; exact hPo, by rw [hq3v]; exact hQo,
     by rw [hp3v]; omega, by rw [hq3v]; omega, by rw [hvn, hp3v, hq3v]; exact hb11t.symm, hp0,
     by rw [hq3v]; exact hq0, by rw [hpmv, hp3v], by rw [hq3v]; exact hqmv, by rw [hdp1u]; omega, by rw [hdq1u]; omega,
-    by rw [hIQK, hp3v]; exact hb12t, by rw [himv', hIQK, hp3v]⟩,
-    hic, hvn, hve, hp3u, hp3v, hq3v, rfl, hDP1, hDQ1, hIQK,
+    by rw [hIQK, hp3v]; exact hb12t, by rw [himv', hIQK, hp3v], ?_⟩,
+    hvn, hve, hp3u, hp3v, hq3v, rfl, hDP1, hDQ1, hIQK,
     hb11t.symm, h9a.symm, by rw [← h9a]; exact h9b, h10a.symm, by rw [← h10a]; exact h10b, hb12t, hinv⟩
+  -- pyca/verified-garbage's CRT values, where `IfmaCrt::new` set them up.
+  dsimp only [IfmaCrtInv]
+  rcases hic with hw0 | ⟨hck, hw3, hwp, hnw, hpre, hpp, hqq, hvg⟩
+  · exact Or.inl hw0
+  rw [hsv, hs2v, hs3v] at hvg
+  refine Or.inr ⟨UScalar.eq_of_val_eq (by rw [hwp, hs2l]), hck, hw3, by rw [← hsl, hnw], by rw [hpre, hsv],
+    by rw [hpp, hs2v], by rw [hqq, hs3v], ?_, ?_, hvg⟩
+  · exact clean_lowWords hdp1c (by rw [hdp1u, h64]; omega) (by rw [hdp1u, hp3u]; omega)
+  · exact clean_lowWords hdq1c (by rw [hdq1u, h64]; omega) (by rw [hdq1u, hp3u]; omega)
 
 end rind.x86_64
