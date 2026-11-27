@@ -202,6 +202,9 @@ fn transpose(r: [__m512i; 8]) -> [__m512i; 8] {
 
 /// Keccak-f1600 on the eight states whose lane `i` is in the elements of
 /// `state[i]`.
+//
+// A range loop, since Aeneas translates no iterator over `rc`.
+#[allow(clippy::needless_range_loop)]
 #[target_feature(enable = "avx512f")]
 pub(super) fn keccak8_f1600(state: &mut [__m512i; 25], rc: &[u64; 24]) {
     for i in 0..24 {

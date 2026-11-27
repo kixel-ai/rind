@@ -11,7 +11,8 @@ set_option linter.dupNamespace false
 /-!
 The rind functions the x86_64 translation leaves opaque, beside those
 `Rind.X86_64.AesGcmModel`, `Rind.X86_64.PointSelectModel`, and
-`Rind.X86_64.GatherModel` model. No proof assumes anything about them beyond what
+`Rind.X86_64.GatherModel` model, and the eight-way Keccak-f's `set_row`,
+which this file models by hand, quoting its Rust. No proof assumes anything about them beyond what
 `Rind.X86_64.S2nBignum`, `Rind.X86_64.AwsLc`, `Rind.X86_64.ValeAesGcm`,
 `Rind.X86_64.VgRsa`, `Rind.X86_64.VgChaCha20`, and `Rind.X86_64.RsaMont`'s
 `nohw_spec` state for s2n-bignum's, aws-lc's, Vale's, and

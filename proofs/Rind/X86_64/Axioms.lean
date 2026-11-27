@@ -62,9 +62,7 @@ the edwards25519 group's orders, which HOL Light proves, as the hypothesis
 `EdOrders`. ChaCha20-Poly1305's one pass also takes aws-lc's routines as the
 hypotheses `RunsSeal` and `RunsOpen`, which no axiom states, whose `OnePass`
 takes them on CPUs without IFMA, and on Zen 4 for short messages, and the AEAD API above it takes the one pass
-as the hypotheses `Seals` and `Opens`.
-SHA-3's and SHAKE's theorems take rind's eight-way AVX-512 Keccak-f as part
-of the hypothesis `RunsSha3`. None of these four states an axiom.
+as the hypotheses `Seals` and `Opens`. None of these states an axiom.
 RSA's Montgomery products at the widths aws-lc's `bn_mulx4x_mont` and
 `bn_sqr8x_mont` take, but for s2n-bignum's Karatsuba routines, take those as
 the hypothesis `AwsLcMont`, which no axiom states either. ChaCha20's
@@ -72,7 +70,10 @@ the hypothesis `AwsLcMont`, which no axiom states either. ChaCha20's
 either, where `new` picks no VG routine and finds SSSE3, since rind's HOL Light
 proof of the SSSE3 routine covers the `x86_64-unknown-linux-gnu` build's object,
 not Apple's; `Rind.X86_64.ChaCha20Avx2` proves rind's two-block kernel
-over `Rind.X86_64.Simd`'s models of the AVX2 intrinsics. The generator
+over `Rind.X86_64.Simd`'s models of the AVX2 intrinsics, and
+`Rind.X86_64.Keccak8Avx512` rind's eight-way Keccak-f, which SHA-3's and
+SHAKE's theorems take on AVX-512, over its models of the AVX-512 ones and
+`Rind.X86_64.FunsExternal`'s hand model of its one store. The generator
 tables' point selects rest on no axiom, only on the hand model in
 `Rind.X86_64.PointSelectModel`, as RSA's AVX2 table gather does on
 `Rind.X86_64.GatherModel`; without AVX2, the gather rests on s2n-bignum's
