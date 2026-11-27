@@ -94,8 +94,8 @@ theorem reduce_mod (t : Nat) : reduce t % p = t % p := by
   simp only [reduce, p]
   omega
 
-/-- The accumulator plus a block, times a clamped `r`, reduces below
-`5 · 2^128` again. -/
+/-- The accumulator plus a block, times an `r` below `2^124`, as clamping
+leaves it, reduces below `5 · 2^128` again. -/
 theorem reduce_lt {h r : Nat} (hh : h < 7 * 2 ^ 128) (hr : r < 2 ^ 124) : reduce (h * r) < 5 * 2 ^ 128 := by
   have : h * r < 7 * 2 ^ 128 * 2 ^ 124 := Nat.mul_lt_mul'' hh hr
   unfold reduce

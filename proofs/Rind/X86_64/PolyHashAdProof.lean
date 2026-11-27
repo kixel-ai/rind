@@ -125,8 +125,8 @@ abbrev Ctx.r (c : Ctx) : Nat := c.r0.toNat + 2 ^ 64 * c.r1.toNat
 /-- The registers the routine changes. -/
 abbrev clobbers : List Reg := [.rax, .rdx, .rcx, .r8, .r9, .r10, .r11, .r12, .r13, .r14, .r15]
 
-/-- `s0` holds `c`: its memory, `r` at `kp` clamped, and the AAD readable if
-there is any. -/
+/-- `s0` holds `c`: its memory, `r` at `kp` with each word below `2^60`, and
+the AAD readable if there is any. -/
 structure Ctx.Ok (c : Ctx) (s0 : S) : Prop where
   mem : s0.vg.mem = c.M
   key : Key s0 c.kp c.r0 c.r1

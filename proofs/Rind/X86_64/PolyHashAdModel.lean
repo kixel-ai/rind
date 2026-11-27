@@ -9,8 +9,8 @@ open VG VG.X86_64 rind.x86_64.asm rind.spec.poly1305
 `mulOut` is what the block `PolyHashAd.mul` leaves in the accumulator's three
 limbs, as rind's x86_64 model computes it, step by step; `limbs_mulOut`
 shows it is `reduce` of the accumulator times `r` (`Rind.Poly1305Limbs`),
-exactly, for an accumulator below `7 · 2^128` and the clamped halves of `r`
-below `2^60`.
+exactly, for an accumulator below `7 · 2^128` and halves of `r` below
+`2^60`, as clamping leaves them.
 -/
 
 namespace rind.x86_64.polyhashad
