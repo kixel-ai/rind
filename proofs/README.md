@@ -272,6 +272,26 @@ those inputs, in any worktree, restores in under a second.
   K256's words and the literal from that code. The theorem covers the
   routine from entry to return for a caller in A32 or T32, so every armv7
   target. No Lean theorem restates it yet.
+- `armv7/vpaes_encrypt.ml`: `VPAES_ENCRYPT_FIPS197_SUBROUTINE_CORRECT`,
+  rind's proof that aws-lc's `vpaes_encrypt` in `low::arm::vpaes_armv7`,
+  which armv7 runs for an AES block without the crypto extension, stores
+  FIPS 197's cipher of its block, as the fork's `common/fips197.ml` states
+  its rounds, under AES-128, AES-192, or AES-256 round keys in the form
+  `vpaes_schedule` gives them: the first through vpaes's input transform,
+  the middle ones mixed and transformed, and the last as it is. It rests on
+  `VPAES_ENCRYPT_SUBROUTINE_CORRECT`, that the routine computes
+  `vpaes_cipher`, vpaes's rounds of `vtbl` lookups as the code runs them,
+  and `VPAES_CIPHER`, that those rounds are FIPS 197's on a state whose
+  bytes pass through vpaes's GF(2)-linear transform, permuted as ShiftRows
+  has left them; each round's lanes are a bit-blasted identity over the
+  S-box outputs, once the 256 bytes check the S-box tables. Stepping keeps
+  each `vtbl` lane folded until its index is known and names each round's
+  intermediate values. `admin/prove` extracts the code from
+  `_vpaes_consts` through the routine's end, resolving its two calls to
+  `_vpaes_preheat` and `_vpaes_encrypt_core` as the linker does. The
+  theorem covers the routine from entry to return for a caller in A32 or
+  T32, so every armv7 target. vpaes's key setup, the one that writes this
+  schedule, remains to prove, and no Lean theorem restates it yet.
 - `x86_64/ecp_nistz256_point_add_affine.ml` and
   `x86_64/ecp_nistz256_point_add_affinex.ml`:
   `ECP_NISTZ256_POINT_ADD_AFFINE_SUBROUTINE_CORRECT` and
