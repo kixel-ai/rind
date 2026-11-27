@@ -293,12 +293,16 @@ axiom p384_montjdouble_spec (p3 p1 : Std.Array U64 18#usize) :
       ∀ P, p384Represents P (tripleNat6 p1.val) → p384Represents (p384Add P P) (tripleNat6 r.val) ⦄
 
 /-- `P384_MONTJMIXADD_ALT_SUBROUTINE_CORRECT`,
-https://github.com/awslabs/s2n-bignum/blob/3f01260ff1bd2577abf0117ce45aa008bc243a80/arm/proofs/p384_montjmixadd_alt.ml#L3891 -/
+https://github.com/awslabs/s2n-bignum/blob/3f01260ff1bd2577abf0117ce45aa008bc243a80/arm/proofs/p384_montjmixadd_alt.ml#L3891,
+for unequal points, and rind's `P384_MONTJMIXADD_ALT_SAME_X_SUBROUTINE_CORRECT`,
+in `proofs/hol-light/aarch64/p384_montjmixadd.ml`, for equal or opposite
+ones, whose sum's z is zero. -/
 @[step]
 axiom p384_montjmixadd_spec (p3 p1 : Std.Array U64 18#usize) (p2 : Std.Array U64 12#usize) :
     low.aarch64.p384_montjmixadd.p384_montjmixadd p3 p1 p2 ⦃ r =>
       ∀ P1 P2, p384Represents P1 (tripleNat6 p1.val) → p384Represents2 P2 (pairNat6 p2.val) →
-        P1 ≠ P2 → p384Represents (p384Add P1 P2) (tripleNat6 r.val) ⦄
+        (P1 ≠ P2 → p384Represents (p384Add P1 P2) (tripleNat6 r.val)) ∧
+        (P1 = P2 ∨ P1 = p384Neg P2 → (tripleNat6 r.val).2.2 = 0) ⦄
 
 /-- `BIGNUM_NEG_P384_SUBROUTINE_CORRECT`,
 https://github.com/awslabs/s2n-bignum/blob/3f01260ff1bd2577abf0117ce45aa008bc243a80/arm/proofs/bignum_neg_p384.ml#L99 -/
@@ -443,18 +447,8 @@ here covers), on its whole blocks in place, `in_p = out_p`, with `len_bits` the 
 bytes little endian, `loadBytes`, as the vectors of round keys and table
 entries hold them. The `_alt` kernels, which the cores with SHA3 run, also
 require `val in_p + 16 * gcm_wb_blocks len_bits < 2 EXP 63`, which their
-restatements take as `KernelBuffersLow`. -/
-
-/-- That the address of the blocks rind hands s2n-bignum's `_alt` AES-GCM
-kernels, plus their length in bytes, is below 2^63, as their theorems require.
-The model has no addresses, so this names the condition for every `_alt` call
-a proof using it covers, not for one buffer: evidence about one allocation
-does not establish it for another, and `stitched`'s caller does not check it.
-Untagged user-space addresses on aarch64 Linux and macOS meet it; a pointer
-whose top byte sets bit 63, as the top-byte heap tags of Android's Bionic
-(`0xB4`) do, breaks it, whereas an MTE tag, in bits 59 to 56, does not by
-itself. -/
-opaque KernelBuffersLow : Prop
+restatements take as `KernelBuffersLow blocks`, the compare `stitched` makes
+before it runs one. -/
 
 open rind.s2n rind.simd in
 /-- What s2n-bignum's AES-GCM kernels require of their buffers: the tag
@@ -512,7 +506,7 @@ axiom aes128_gcm_enc_alt_spec (blocks : Slice (Std.Array U8 16#usize)) (tag ivec
     (keys : Std.Array core.core_arch.arm_shared.neon.uint8x16_t 11#usize)
     (htable : Std.Array core.core_arch.arm_shared.neon.uint64x2_t 12#usize) (tag0 : BitVec 128) (nonce : BitVec 96)
     (c : Nat) (rk : List (BitVec 128)) (inblock : Nat → BitVec 128) (hn : blocks.length < 2 ^ 57)
-    (haddr : KernelBuffersLow)
+    (haddr : low.aarch64.aes_gcm.KernelBuffersLow blocks)
     (hin : GcmKernelIn blocks tag ivec keys.val tag0 nonce c rk inblock)
     (hh : htable.val = htable8 (ghashTwist (aes128Cipher 0#128 rk))) :
     low.aarch64.aes128_gcm_enc_alt.aes128_gcm_enc_alt blocks tag ivec keys htable ⦃ r =>
@@ -526,7 +520,7 @@ axiom aes128_gcm_dec_alt_spec (blocks : Slice (Std.Array U8 16#usize)) (tag ivec
     (keys : Std.Array core.core_arch.arm_shared.neon.uint8x16_t 11#usize)
     (htable : Std.Array core.core_arch.arm_shared.neon.uint64x2_t 12#usize) (tag0 : BitVec 128) (nonce : BitVec 96)
     (c : Nat) (rk : List (BitVec 128)) (inblock : Nat → BitVec 128) (hn : blocks.length < 2 ^ 57)
-    (haddr : KernelBuffersLow)
+    (haddr : low.aarch64.aes_gcm.KernelBuffersLow blocks)
     (hin : GcmKernelIn blocks tag ivec keys.val tag0 nonce c rk inblock)
     (hh : htable.val = htable8 (ghashTwist (aes128Cipher 0#128 rk))) :
     low.aarch64.aes128_gcm_dec_alt.aes128_gcm_dec_alt blocks tag ivec keys htable ⦃ r =>
@@ -564,7 +558,7 @@ axiom aes256_gcm_enc_alt_spec (blocks : Slice (Std.Array U8 16#usize)) (tag ivec
     (keys : Std.Array core.core_arch.arm_shared.neon.uint8x16_t 15#usize)
     (htable : Std.Array core.core_arch.arm_shared.neon.uint64x2_t 12#usize) (tag0 : BitVec 128) (nonce : BitVec 96)
     (c : Nat) (rk : List (BitVec 128)) (inblock : Nat → BitVec 128) (hn : blocks.length < 2 ^ 57)
-    (haddr : KernelBuffersLow)
+    (haddr : low.aarch64.aes_gcm.KernelBuffersLow blocks)
     (hin : GcmKernelIn blocks tag ivec keys.val tag0 nonce c rk inblock)
     (hh : htable.val = htable8 (ghashTwist (aes256Cipher 0#128 rk))) :
     low.aarch64.aes256_gcm_enc_alt.aes256_gcm_enc_alt blocks tag ivec keys htable ⦃ r =>
@@ -578,7 +572,7 @@ axiom aes256_gcm_dec_alt_spec (blocks : Slice (Std.Array U8 16#usize)) (tag ivec
     (keys : Std.Array core.core_arch.arm_shared.neon.uint8x16_t 15#usize)
     (htable : Std.Array core.core_arch.arm_shared.neon.uint64x2_t 12#usize) (tag0 : BitVec 128) (nonce : BitVec 96)
     (c : Nat) (rk : List (BitVec 128)) (inblock : Nat → BitVec 128) (hn : blocks.length < 2 ^ 57)
-    (haddr : KernelBuffersLow)
+    (haddr : low.aarch64.aes_gcm.KernelBuffersLow blocks)
     (hin : GcmKernelIn blocks tag ivec keys.val tag0 nonce c rk inblock)
     (hh : htable.val = htable8 (ghashTwist (aes256Cipher 0#128 rk))) :
     low.aarch64.aes256_gcm_dec_alt.aes256_gcm_dec_alt blocks tag ivec keys htable ⦃ r =>

@@ -59,8 +59,10 @@ lines, and whether it is generated, tab-separated, for an auditor's own
 spreadsheet. "Generated" is code an importer or `admin/parse-asm` writes, or
 an imported `.s` file; `admin/regenerate` fails if it differs from what the
 importer writes at its pin, so a reviewer reads the importer and its pin
-([AUDIT.md's Provenance](AUDIT.md#provenance)), not the output. Hand-written
-lines include each file's inline unit tests. Tests under `rind/tests` and
+([AUDIT.md's Provenance](AUDIT.md#provenance)), not the output. rind's
+structured copy of aws-lc's aarch64 ChaCha20-Poly1305
+(`rind/src/low/aarch64/chacha20poly1305/`) is hand-written: no importer
+writes it. Hand-written lines include each file's inline unit tests. Tests under `rind/tests` and
 `rind/src/test`, vectors, fuzz targets, and tooling are not counted, since
 they are not what ships. The Lean split is by file name, from
 [`proofs/README.md`'s layout](proofs/README.md#layout), and is a reading aid:
@@ -167,7 +169,7 @@ says how to run them. The ones an auditor will want:
 | Constant time, symbolically | `nix develop .#binsec --command admin/ct-binsec` | Checks each `ct_binsec_...` region for every secret. |
 | Constant time under SDE and qemu | `nix develop .#sde --command admin/ct-sde`; `nix develop .#ct-qemu --command admin/ct-qemu` | The AVX-512, VAES, SHA extension, and armv7 crypto paths valgrind cannot run. |
 | Variable-time instructions | `nix develop .#ct-vartime --command admin/ct-vartime` | Scans release builds for divisions and floating point. |
-| HOL Light and Lean proofs | `nix develop .#prove --command admin/prove` | Also `admin/prove bytes`, which checks the release build holds the bytes each proof is about. |
+| HOL Light and Lean proofs | `nix develop .#prove --command admin/prove`, on x86_64 Linux with AVX2 (aarch64 macOS runs only `admin/prove lean`, per [TESTING.md](TESTING.md)) | Also `admin/prove bytes`, which checks the release build holds the bytes each proof is about. |
 | Imported code matches its pin | `nix develop .#regenerate --command admin/regenerate` | Reruns every importer; fails on a difference. |
 | Zeroing and heap scratch | `nix develop --command cargo test -p rind --test zeroing --test heap_scratch` | |
 
@@ -226,8 +228,11 @@ restated as a work list:
    constant-time SSE2 AES and integer GHASH, and curve25519-dalek's AVX2
    backend, ported to intrinsics.
 3. Imported assembly that runs without a proof: aws-lc's ChaCha20-Poly1305 on
-   x86_64 and aarch64, RSAZ, Montgomery multiplication without ADX, the AVX2
-   SHA-2, VAES AES-GCM, and all of armv7's.
+   x86_64, RSAZ, Montgomery multiplication without ADX, the AVX2 SHA-2, VAES
+   AES-GCM, and all of armv7's; and rind's structured copy of aws-lc's
+   aarch64 ChaCha20-Poly1305, read in its four `.s` files rather than through
+   the importer, which Lean proves constant-time but not that it computes the
+   AEAD.
 4. The Lean trust base: for each restated axiom, that it is the upstream
    theorem at the pinned revision with the preconditions rind's call sites
    meet; for each hand model, that it is what the Rust it quotes does; for

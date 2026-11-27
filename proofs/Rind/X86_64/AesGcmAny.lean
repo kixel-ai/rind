@@ -1,4 +1,4 @@
-import Rind.X86_64.AesGcmAead
+import Rind.X86_64.AesGcmApi
 open Aeneas Aeneas.Std Result rind.vale rind.simd
 
 /-!
@@ -17,25 +17,6 @@ IV's padded blocks and its bit length unless the IV is 96 bits, the rest is
 local notation "P" => Polynomial (ZMod 2)
 
 namespace rind.x86_64
-
-/-! ## Slices -/
-
-/-- `try_into` of a slice of length `N` to an array holds the slice's bytes. -/
-theorem try_from_len (N : Usize) (s : Slice U8) (h : s.length = N.val) :
-    ∃ a : Std.Array U8 N, core.array.TryFromSharedArraySlice.try_from N s = ok (.Ok a) ∧
-      a.val = s.val := by
-  have hs : s.len = N := by scalar_tac
-  unfold core.array.TryFromSharedArraySlice.try_from
-  rw [dite_eq_left hs]
-  refine ⟨_, rfl, ?_⟩
-  simp [Std.Array.from_val]
-
-/-- `try_into` of a slice of another length fails. -/
-theorem try_from_ne (N : Usize) (s : Slice U8) (h : s.length ≠ N.val) :
-    core.array.TryFromSharedArraySlice.try_from N s = ok (.Err ()) := by
-  have hs : ¬ s.len = N := by intro he; apply h; rw [← he]; scalar_tac
-  unfold core.array.TryFromSharedArraySlice.try_from
-  rw [dite_eq_right hs]
 
 /-! ## The refusals -/
 
