@@ -31,6 +31,6 @@ Approach:
 
 ## Related
 
-- [Share Lean/Aeneas proof cache over Tailscale and cut rind-ci CPU](/quest/m0/proof-cache-and-ci-cpu.md) - shared cross-host proof cache and `nixos` `rind-ci` work
+- [Aeneas translation cache and SSH-shared Lake outputs](https://github.com/kixel-ai/rind/pull/1138) - shared cross-host proof cache and `nixos` `rind-ci` work
 - [Split charon/aeneas Funs.lean per algorithm family, parallelize, and cache](/quest/m2/split-aeneas-extractions.md) - breaks monolithic `Funs.lean` invalidations
 - [Spike and benchmark Lean 4.35 speedup levers on rind's proof corpus](/quest/m2/lean-speed-spikes.md) - measures `module` system, tactic profiling, `Elab.async`, and `leanc` flags
