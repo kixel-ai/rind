@@ -186,7 +186,8 @@ final class Theme {
 
     static TextView heading(Context c, CharSequence s, Type r, int color) {
         TextView t = text(c, s, r, color);
-        t.setAccessibilityHeading(true);
+        // API 28; the app runs from 26, where the call would throw NoSuchMethodError.
+        if (Build.VERSION.SDK_INT >= 28) t.setAccessibilityHeading(true);
         return t;
     }
 
@@ -233,6 +234,8 @@ final class Theme {
      */
     static final class M3Button extends Button {
         String label = "", iconName;
+        /** The description relabel() last set, so a later label replaces it but a caller's own is kept. */
+        private CharSequence autoDesc;
         int fgOn, fgOff;
         M3Button(Context c) { super(c, null, 0); }
         @Override public void setEnabled(boolean e) { super.setEnabled(e); relabel(); }
@@ -250,7 +253,11 @@ final class Theme {
                     : android.text.style.DynamicDrawableSpan.ALIGN_BASELINE;
             sb.setSpan(new android.text.style.ImageSpan(d, align), 0, 1, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
             setText(sb);
-            if (getContentDescription() == null || label.contentEquals(getContentDescription())) setContentDescription(label);
+            CharSequence cd = getContentDescription();
+            if (cd == null || (autoDesc != null && autoDesc.toString().contentEquals(cd))) {
+                setContentDescription(label);
+                autoDesc = label;
+            }
         }
     }
 
