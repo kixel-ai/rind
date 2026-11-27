@@ -252,10 +252,6 @@ theorem pass_spec (ENC : Bool) (alg : Algorithm) (kw : List (BitVec 32)) {S T : 
 
 /-! ## `tagged` -/
 
-theorem getElem!_set_of_ne {α : Type _} [Inhabited α] (l : List α) {i j : Nat} (x : α) (h : i ≠ j) :
-    (l.set i x)[j]! = l[j]! := by
-  simp [List.getElem!_eq_getElem?_getD, List.getElem?_set_ne h]
-
 theorem getElem!_take_lt {α : Type _} [Inhabited α] (l : List α) {k n : Nat} (h : k < n) :
     (l.take n)[k]! = l[k]! := by
   simp [List.getElem!_eq_getElem?_getD, h]
@@ -279,19 +275,6 @@ theorem bvs_gctrBytes (alg : Algorithm) (kw : List (BitVec 32)) (J : Quad32) (l 
   have h1 : j < (gctrBytes alg kw J l).length := by rw [length_gctrBytes]; exact hj
   rw [getElem!_pos _ j (by simpa using h1), getElem!_pos _ j (by simpa using hj), List.getElem_map,
     List.getElem_map, ← getElem!_pos _ j h1, ← getElem!_pos l j hj, getElem!_gctrBytes _ _ _ _ hj]
-
-theorem ksByte_inc (alg : Algorithm) (kw : List (BitVec 32)) (J : Quad32) (n i : Nat) :
-    ksByte alg kw (inc32 J n) i = ksByte alg kw J (16 * n + i) := by
-  rw [ksByte, ksByte, inc32_inc32, show n + i / 16 = (16 * n + i) / 16 by omega,
-    show i % 16 = (16 * n + i) % 16 by omega]
-
-theorem eq_of_bv (a b : List U8) (hl : a.length = b.length) (h : ∀ j < a.length, a[j]!.bv = b[j]!.bv) :
-    a = b := by
-  apply List.ext_getElem hl
-  intro j h1 h2
-  have := h j h1
-  rw [getElem!_pos a j h1, getElem!_pos b j h2] at this
-  exact (UScalar.eq_equiv_bv_eq _ _).mpr this
 
 theorem padBlocks_append (a b : List U8) (ha : a.length % 16 = 0) :
     padBlocks (a ++ b) = padBlocks a ++ padBlocks b := by

@@ -9,8 +9,9 @@ open Aeneas Aeneas.Std Result rind.spec
 On armv7, rind's Ed25519 is `mid::ed25519`'s portable code over
 curve25519-dalek's point and scalar arithmetic, whose Beneficial AI
 Foundation (BAIF) theorems `Rind.Armv7.Dalek` restates, and SHA-512, which
-`Rind.Armv7.Sha512Context` proves over its block function's contract,
-`RunsSha512`. The `ed25519_*` theorems state what the signature API's
+`Rind.Armv7.Sha512Context` proves down to aws-lc's NEON routine, whose HOL
+Light proof `Rind.Armv7.Sha512Entry` restates, on CPUs with NEON, as
+`RunsSha512` states. The `ed25519_*` theorems state what the signature API's
 `ed25519` module returns, in `Rind.Ed25519`'s terms, as x86_64's and
 aarch64's do: `Rind.DalekEdwards` reads BAIF's group of points in those terms.
 Above `mid::ed25519` the code is every target's, so those proofs follow

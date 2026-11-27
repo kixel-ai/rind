@@ -1120,6 +1120,7 @@ change to the trust base.
  bignum_mul_spec,
  bignum_negmodinv_spec,
  bignum_optsub_spec,
+ ifma_crt_spec,
  rsa_ifma_public_spec] -/
 #guard_msgs in
 #print axioms private_op_rsa2048_spec

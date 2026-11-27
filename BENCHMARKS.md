@@ -15,19 +15,22 @@ How long rind and the usual Rust crypto libraries take for the same operations, 
 | `ovh-iad` | Intel Core Processor (Haswell, no TSX) | NixOS 26.11 (Zokor) (Linux 6.18.40) | 2026-11-24 at [`3f76a53f`](https://github.com/kixel-ai/rind/commit/3f76a53f35ae185f0e9ea0a58f3455766fc4d643) |
 | `ovh-sea` | Intel Core Processor (Haswell, no TSX) | NixOS 26.11 (Zokor) (Linux 6.18.40) | 2026-11-24 at [`3f76a53f`](https://github.com/kixel-ai/rind/commit/3f76a53f35ae185f0e9ea0a58f3455766fc4d643) |
 
-Each host builds with the pinned toolchain in the Nix dev shell, and runs `admin/bench-report` only when idle. Times are criterion's estimates.
+Each host builds with the pinned toolchain in the Nix dev shell, and runs `admin/bench-report` only when idle.
 
 ## Methodology
 
-Each host runs `cargo bench -p rind-bench --features __bench_openssl`, passing criterion `--warm-up-time 1 --measurement-time 3` and a filter for the report's rows, as `criterion_args` in its `benchmarks/data/<host>.json` records.
+Each host lists the report's rows by running each of `rind-bench`'s once, then times them with [swole](https://github.com/kixel-ai/swole), which `flake.nix` pins, as `swole_args` in its `benchmarks/data/<host>.json` records: `swole bench` runs each row in a process of its own, in samples of as many calls as fill a millisecond, for a second and ten samples at least, and takes the samples' median time a call.
 
-On aarch64, every rind row except those marked *DIT set per call* holds a `rind::cpu::Dit::hold()` guard across the timed loop (`rind_dit` in `rind-bench/benches/criterion/mod.rs`), so it pays for turning DIT on and off once, as a caller holding the guard around a batch of calls does. A caller holding none pays it on every call: the rows marked *DIT set per call* time rind that way. On x86_64 the guard does nothing, and no other library sets DIT.
+A host whose record holds `criterion_args` instead was timed with criterion, before `rind-bench` moved to swole: `nixos`, `desktop`, `fedora`, `kixtop`, `ovh-iad`, `ovh-sea`.
 
-To time a row without Nix, install the pinned toolchain and run its bench target, here AES-128-GCM's rows. aws-lc-rs and ring need a C compiler, and on Unix the OpenSSL column needs OpenSSL 3's headers and pkg-config.
+On aarch64, every rind row except those marked *DIT set per call* holds a `rind::cpu::Dit::hold()` guard across its calls (`Dit` in `rind-bench/benches/common/mod.rs`), so it pays for turning DIT on and off once, as a caller holding the guard around a batch of calls does. A caller holding none pays it on every call: the rows marked *DIT set per call* time rind that way. On x86_64 the guard does nothing, and no other library sets DIT.
+
+To time rows without Nix, install the pinned toolchain and swole, and time a bench target, here AES-GCM's rows, or name rows in a file given by `--benchmarks`. aws-lc-rs and ring need a C compiler, and on Unix the OpenSSL column needs OpenSSL 3's headers and pkg-config, and OpenSSL 3.5 for its post-quantum rows.
 
 ```sh
 rustup toolchain install 1.98.1
-cargo +1.98.1 bench -p rind-bench --features __bench_openssl --bench aes_gcm -- --warm-up-time 1 --measurement-time 3 '^aes128-gcm/'
+cargo install --locked --git https://github.com/kixel-ai/swole --rev 8486c8e51ea20c81d76a6848fdb2d88d86783d99 cargo-swole
+RUSTUP_TOOLCHAIN=1.98.1 swole bench -- -p rind-bench --features __bench_openssl --bench aes_gcm
 ```
 
 ### Versions
@@ -544,18 +547,18 @@ rind-rustls on all 10 logical CPUs runs full handshakes at 5.0 times and resumed
 | one record, ChaCha20-Poly1305, 64 B | - | - | - | - | - | - | - | - |
 | one record, ChaCha20-Poly1305, 256 B | - | - | - | - | - | - | - | - |
 | one record, ChaCha20-Poly1305, 1 KB | - | - | - | - | - | - | - | - |
-| AES-128-GCM seal, 32 B | 10 ns | 49 ns | 42 ns | 24 ns | 78 ns | 53 ns | 70 ns | 93 ns |
-| AES-128-GCM seal, 1350 B | 162 ns | 181 ns | 208 ns | 216 ns | 215 ns | 634 ns | 198 ns | 231 ns |
-| AES-128-GCM seal, 16 KB | 1.44 µs | 1.46 µs | 1.96 µs | 2.32 µs | 1.59 µs | 7.06 µs | 1.51 µs | 1.56 µs |
-| AES-128-GCM open, 32 B | 13 ns | 47 ns | 39 ns | 28 ns | 86 ns | 66 ns | 67 ns | 98 ns |
-| AES-128-GCM open, 1350 B | 168 ns | 195 ns | 247 ns | 236 ns | 228 ns | 660 ns | 197 ns | 237 ns |
-| AES-128-GCM open, 16 KB | 1.56 µs | 1.58 µs | 2.19 µs | 2.48 µs | 1.72 µs | 7.02 µs | 1.66 µs | 1.69 µs |
-| AES-256-GCM seal, 32 B | 11 ns | 52 ns | 45 ns | 25 ns | 80 ns | 54 ns | 66 ns | 92 ns |
-| AES-256-GCM seal, 1350 B | 188 ns | 203 ns | 218 ns | 248 ns | 260 ns | 653 ns | 221 ns | 255 ns |
-| AES-256-GCM seal, 16 KB | 1.71 µs | 1.73 µs | 2.07 µs | 2.73 µs | 2.16 µs | 7.34 µs | 1.79 µs | 1.84 µs |
-| AES-256-GCM open, 32 B | 13 ns | 50 ns | 40 ns | 41 ns | 85 ns | 67 ns | 67 ns | 93 ns |
-| AES-256-GCM open, 1350 B | 191 ns | 218 ns | 252 ns | 269 ns | 264 ns | 673 ns | 225 ns | 263 ns |
-| AES-256-GCM open, 16 KB | 1.81 µs | 1.83 µs | 2.25 µs | 2.91 µs | 2.19 µs | 7.36 µs | 1.92 µs | 1.97 µs |
+| AES-128-GCM seal, 32 B | 10 ns ✓ | 49 ns | 42 ns | 24 ns | 78 ns | 53 ns | 70 ns | 93 ns |
+| AES-128-GCM seal, 1350 B | 162 ns ✓ | 181 ns | 208 ns | 216 ns | 215 ns | 634 ns | 198 ns | 231 ns |
+| AES-128-GCM seal, 16 KB | 1.44 µs ✓ | 1.46 µs | 1.96 µs | 2.32 µs | 1.59 µs | 7.06 µs | 1.51 µs | 1.56 µs |
+| AES-128-GCM open, 32 B | 13 ns ✓ | 47 ns | 39 ns | 28 ns | 86 ns | 66 ns | 67 ns | 98 ns |
+| AES-128-GCM open, 1350 B | 168 ns ✓ | 195 ns | 247 ns | 236 ns | 228 ns | 660 ns | 197 ns | 237 ns |
+| AES-128-GCM open, 16 KB | 1.56 µs ✓ | 1.58 µs | 2.19 µs | 2.48 µs | 1.72 µs | 7.02 µs | 1.66 µs | 1.69 µs |
+| AES-256-GCM seal, 32 B | 11 ns ✓ | 52 ns | 45 ns | 25 ns | 80 ns | 54 ns | 66 ns | 92 ns |
+| AES-256-GCM seal, 1350 B | 188 ns ✓ | 203 ns | 218 ns | 248 ns | 260 ns | 653 ns | 221 ns | 255 ns |
+| AES-256-GCM seal, 16 KB | 1.71 µs ✓ | 1.73 µs | 2.07 µs | 2.73 µs | 2.16 µs | 7.34 µs | 1.79 µs | 1.84 µs |
+| AES-256-GCM open, 32 B | 13 ns ✓ | 50 ns | 40 ns | 41 ns | 85 ns | 67 ns | 67 ns | 93 ns |
+| AES-256-GCM open, 1350 B | 191 ns ✓ | 218 ns | 252 ns | 269 ns | 264 ns | 673 ns | 225 ns | 263 ns |
+| AES-256-GCM open, 16 KB | 1.81 µs ✓ | 1.83 µs | 2.25 µs | 2.91 µs | 2.19 µs | 7.36 µs | 1.92 µs | 1.97 µs |
 | ChaCha20-Poly1305 seal, 32 B | 150 ns | 164 ns | 150 ns | 373 ns | 196 ns | 170 ns ✓ | 216 ns | 195 ns |
 | ChaCha20-Poly1305 seal, 1350 B | 763 ns | 775 ns | 757 ns | 1.83 µs | 1.24 µs | 1.97 µs ✓ | 841 ns | 757 ns |
 | ChaCha20-Poly1305 seal, 16 KB | 8.08 µs | 7.75 µs | 7.68 µs | 15.49 µs | 12.84 µs | 22.01 µs ✓ | 7.45 µs | 5.51 µs |
@@ -1500,6 +1503,7 @@ A ✓ means a published, machine-checked proof shows that all the code computing
 | rind | `quic-header-protection/aes128`, `quic-header-protection/aes256` | aarch64 with aes, pmull, sha2 | [rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch Aeneas cannot translate, which assumes each key's mask is its own cipher's, the only one rind builds, and of the NEON intrinsics as Arm's manual defines them, tested on an aarch64 CPU, of its header-protection API's AES-128 and AES-256 against RFC 9001 and Vale's FIPS 197 spec](https://github.com/kixel-ai/rind/blob/main/proofs/Rind/Aarch64/AesKey.lean) |
 | rind | `aes128-gcm/*`, `aes128-gcm-open/*`, `aes256-gcm/*`, `aes256-gcm-open/*` | x86_64 with aes, pclmulqdq, ssse3, sse4.1, avx, movbe without vaes | [rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch, of the by-8 AES-GCM and PCLMULQDQ GHASH Aeneas cannot translate, and of the SIMD intrinsics as Intel's manual defines them, of its AEAD API's AES-GCM key setup, seal, and open, for every AAD and message length it takes, down to HACL*'s Vale AES-GCM routines and, for seals under 129 bytes and AAD or messages of 2^32 bytes or more, rind's by-8 AES-CTR and PCLMULQDQ GHASH against Vale's gcm_encrypt_LE and gcm_decrypt_LE without their bound of 2^32 bytes, composed with Vale's F* proofs of Gcm_blocks_stdcall, Gcm_blocks_decrypt_stdcall, and Compute_iv_stdcall, of the code Vale prints at HACL* f557259007db, which rind imports, and with rind's HOL Light proofs of its constant-time tag compare](https://github.com/kixel-ai/rind/blob/main/proofs/Rind/X86_64/AesGcmApi.lean) |
 | rind | `aes128-gcm/*`, `aes128-gcm-open/*`, `aes256-gcm/*`, `aes256-gcm-open/*` | x86_64 with aes, pclmulqdq, ssse3, sse4.1 without avx | [rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch, of the by-8 AES-GCM and PCLMULQDQ GHASH Aeneas cannot translate, and of the SIMD intrinsics as Intel's manual defines them, of its AEAD API's AES-GCM key setup, seal, and open, for every AAD and message length it takes, down to its by-8 AES-CTR and PCLMULQDQ GHASH, against Vale's gcm_encrypt_LE and gcm_decrypt_LE without their bound of 2^32 bytes, composed with rind's HOL Light proofs of its constant-time tag compare](https://github.com/kixel-ai/rind/blob/main/proofs/Rind/X86_64/AesGcmApi.lean) |
+| rind | `aes128-gcm/*`, `aes128-gcm-open/*`, `aes256-gcm/*`, `aes256-gcm-open/*` | aarch64 with aes, pmull, sha2 | [rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch, the NEON transmutes, the one-pass short path, and the kernel dispatch Aeneas cannot translate, and of the NEON intrinsics as Arm's manual defines them, tested on an aarch64 CPU, of its AEAD API's AES-GCM key setup, seal, and open, for every AAD and message length it takes, down to its PMULL GHASH, its one-pass AES-GCM for short messages, and s2n-bignum's aes128_gcm_enc, aes128_gcm_dec, aes256_gcm_enc, and aes256_gcm_dec for the whole blocks of longer ones, and on cores with SHA3 their _alt forms, which rind runs only when the blocks' address plus their length is below 2^63, as their proofs require, against Vale's gcm_encrypt_LE and gcm_decrypt_LE, composed with s2n-bignum's HOL Light proofs of those kernels at 3f01260f and with rind's HOL Light proofs of its constant-time tag compare](https://github.com/kixel-ai/rind/blob/main/proofs/Rind/Aarch64/AesGcmAead.lean) |
 | rind | `chacha20poly1305/*`, `xchacha20poly1305/*` | aarch64 with sve2 | [rind's Lean proof, through Aeneas and a hand model of the function-pointer dispatch Aeneas cannot translate, of its AEAD API's ChaCha20-Poly1305 and XChaCha20-Poly1305 key setup, seal, and open against RFC 8439 and draft-irtf-cfrg-xchacha-03, for every AAD and message length it takes, HChaCha20 over HACL*'s rounds included, down to pyca/verified-garbage's vg_chacha20_poly1305_seal_sve2 and vg_chacha20_poly1305_open_sve2, which rind runs at every length on CPUs with SVE2, composed with pyca/verified-garbage's Lean proofs of those routines against its model of its own machine code, which rind vendors, whose instructions rind cosimulates against that model, and rind's Lean proof that that project's RFC 8439 spec is its own](https://github.com/kixel-ai/rind/blob/main/proofs/Rind/Aarch64/ChaCha20Poly1305.lean) |
 | rind | `chacha20poly1305/*`, `xchacha20poly1305/*` | x86_64 with avx, avx2, avx512f, avx512vl, avx512ifma without zen4 | [rind's Lean proof, through Aeneas and a hand model of the function-pointer dispatch Aeneas cannot translate, of its AEAD API's ChaCha20-Poly1305 and XChaCha20-Poly1305 key setup, seal, and open against RFC 8439 and draft-irtf-cfrg-xchacha-03, for every AAD and message length it takes, HChaCha20 over HACL*'s rounds included, down to pyca/verified-garbage's vg_chacha20_poly1305_seal_ifma and vg_chacha20_poly1305_open_ifma, which rind runs at every length on CPUs with AVX-512 IFMA, composed with pyca/verified-garbage's Lean proofs of those routines against its model of its own machine code, which rind vendors, whose instructions rind cosimulates against its ISA models, and rind's Lean proof that that project's RFC 8439 spec is its own](https://github.com/kixel-ai/rind/blob/main/proofs/Rind/X86_64/ChaCha20Poly1305.lean) |
 | rind | `chacha20poly1305/1350B`, `chacha20poly1305/16KB`, `xchacha20poly1305/1350B`, `xchacha20poly1305/16KB` | x86_64 with avx, avx2, avx512f, avx512vl, avx512ifma, zen4 | [rind's Lean proof, through Aeneas and a hand model of the function-pointer dispatch Aeneas cannot translate, of its AEAD API's ChaCha20-Poly1305 and XChaCha20-Poly1305 key setup, seal, and open against RFC 8439 and draft-irtf-cfrg-xchacha-03, for every AAD and message length it takes, HChaCha20 over HACL*'s rounds included, down to pyca/verified-garbage's vg_chacha20_poly1305_seal_ifma and vg_chacha20_poly1305_open_ifma, which rind runs on Zen 4 for seals of 800 bytes or more and opens of 512 or more, composed with pyca/verified-garbage's Lean proofs of those routines against its model of its own machine code, which rind vendors, whose instructions rind cosimulates against its ISA models, and rind's Lean proof that that project's RFC 8439 spec is its own](https://github.com/kixel-ai/rind/blob/main/proofs/Rind/X86_64/ChaCha20Poly1305.lean) |
