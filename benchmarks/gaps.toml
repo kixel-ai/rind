@@ -24,11 +24,6 @@ on = ["no AES-NI", "SSE2"]
 reason = "Without SSE4.1 rind runs Graviola's scalar Poly1305 rather than port BoringSSL's SSE2 `poly1305_vec.c` for CPUs older than Westmere, as ALGORITHMS.md records."
 
 [[gap]]
-operations = ["quic-header-protection/aes128", "quic-header-protection/aes256"]
-on = ["kixtop"]
-reason = "AES header protection on aarch64 reaches the key's cipher through an indirect call, as ALGORITHMS.md notes, which costs 3.75 ns against aws-lc-rs's 2.89 ns for one AES-128 block, and 3.72 against 3.13 for AES-256."
-
-[[gap]]
 operations = ["aes*-gcm*", "rustls-bulk/*", "aes*-ctr/*", "aes*-cbc-*"]
 on = ["portable"]
 reason = "The portable backend runs aws-lc's `aes_nohw.c` in its 64-bit configuration, four blocks a pass ([#621](https://github.com/kixel-ai/rind/pull/621)), while this row builds aws-lc's C for x86_64, where it bitslices eight blocks into SSE2 registers: the configuration aws-lc itself runs on the other 64-bit targets the backend is for is rind's. In [run 44941104585](https://github.com/kixel-ai/rind/actions/runs/44941104585) AES-256-GCM measured 1.10× at 16 KB, AES-CTR 1.18 to 1.35× from 1200 B, and CBC decryption 1.22 to 1.30×; shorter messages and the other AES-GCM rows are within 10%."
@@ -84,14 +79,9 @@ on = ["desktop"]
 reason = "Deliberate: pyca/verified-garbage runs the SHA512 instructions on `desktop`'s Arrow Lake, taking 0.24 to 0.66 of rind's time, and rind does not, since Intel's data-independent-timing list omits `VSHA512RNDS2`, `VSHA512MSG1`, and `VSHA512MSG2` (PLATFORMS.md). rind's AVX2 routine still beats every other library there, at 0.87 to 0.99 of the next fastest's time."
 
 [[gap]]
-operations = ["chacha20poly1305/*"]
+operations = ["dit-per-call/*"]
 on = ["kixtop"]
-reason = "Not yet re-measured: `kixtop`'s data predates CPUs without SVE2 running pyca/verified-garbage's NEON one pass where it is faster ([kixel-ai/rind#1023](https://github.com/kixel-ai/rind/pull/1023)). On an Apple M5 Pro, a different host, sealing 16 KB under rind's glue took 0.70 of aws-lc's time, the row VG led by 1.47× on `kixtop`. The next refresh of `kixtop` compares current rind with VG on these rows and drops the entry if the gap is gone."
-
-[[gap]]
-operations = ["sha512/*"]
-on = ["kixtop"]
-reason = "`kixtop`'s data predates rind running verified-garbage's `vg_sha512_compress_sha512` on the SHA-512 instructions, which under rind's glue took 0.81 to 0.88 of aws-lc's routine's time at every block count on an Apple M5 Pro and 0.96 to 0.97 on the weekly tier's Neoverse N2 ([run 45582697087](https://github.com/kixel-ai/rind/actions/runs/45582697087)), so its next refresh should close this gap."
+reason = "Deliberate: these rows time rind without a `rind::cpu::Dit::hold()` guard, so it sets DIT around each call, which took 33 to 43 ns a call on `kixtop`'s Apple M4 (52.3 against 9.33 ns to seal 32 B with AES-128-GCM while holding it, 187 against 154 with ChaCha20-Poly1305). The other libraries leave DIT off, so their times buy no data-independent timing. A caller making many short calls holds the guard, as MoQ does, and rind's own rows show that cost gone."
 
 [[gap]]
 operations = ["p256-ecdsa-verify/*"]

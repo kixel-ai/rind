@@ -9,7 +9,7 @@ Usage:
   admin/bench-report summary DIR
 
 `collect` copies one commit to each host in turn, waits for room under
-`quest gate` and for any lease it has, or holds the host, builds rind-bench there in the commit's Nix dev shell with
+`quest gate` and for any lease it has, builds rind-bench there in the commit's Nix dev shell with
 its pinned toolchain, and times every operation in OPERATIONS for every
 library that offers it, then measures each library's build cost with
 admin/build-cost. It runs here for the host this is, and over ssh for the
@@ -50,7 +50,6 @@ import re
 import resource
 import shlex
 import shutil
-import signal
 import socket
 import subprocess
 import sys
@@ -61,20 +60,16 @@ import tomllib
 # destination where it isn't the name, and `note` describes the machine in the
 # report. Other work on a host with a `lease` holds that lock file with
 # flock(1) for its whole run, so collect holds it too, or skips the host as
-# busy, and leaves no copy, build, or download cache behind. A host with
-# `hold` also runs CI runners and agent sessions, which keep it busy for days,
-# so collect's run there holds it instead of waiting for room: see hold().
+# busy, and leaves no copy, build, or download cache behind.
 VPS_NOTE = "OVH VPS in {}, 4 shared vCPUs: other tenants add noise that a dedicated host's times lack."
 HOSTS = {
-    "nixos": {"jobs": 16, "hold": True},
-    "desktop": {"jobs": 12, "hold": True},
+    "nixos": {"jobs": 16},
+    "desktop": {"jobs": 12},
     "fedora": {
         "jobs": 16,
-        "hold": True,
         "note": "The maintainer's Fedora workstation and the report's only AVX-512 host, so the one whose table "
         "times rind's AVX-512 AES-GCM, IFMA RSA, and 8-way ML-KEM sampler against every library. It also runs CI "
-        "runners and agent sessions, which its run confines to one core, though they still share its caches "
-        "and power, so its times are noisier than the other dedicated hosts'. Zen 5 keeps its "
+        "runners and agent sessions, so its times are noisier than the other dedicated hosts'. Zen 5 keeps its "
         "clock with 512-bit vectors, so this host cannot show what they cost on the Intel cores that slow down.",
     },
     "kixtop": {
@@ -104,15 +99,6 @@ HOSTS = {
 # CPUs, or one CPU, busy: enough to change clock speeds and shared caches
 # under a single-threaded benchmark.
 BUSY_SHARE = 0.1
-
-# The top-level cgroup slice a held run measures in, outside every slice a
-# hold confines. A dash would nest it under another slice.
-HOLD_SLICE = "benchreport.slice"
-
-# The transient timer that releases a hold if its run dies without doing so,
-# and how long after the hold starts, longer than a host's run takes.
-HOLD_RELEASE_UNIT = "bench-report-release"
-HOLD_RELEASE_AFTER = "2h"
 
 # Where each host keeps each collection's copy and result, and the build they
 # share, under its home directory; this host uses the checkout's `.tmp/` instead.
@@ -461,85 +447,6 @@ class Busy(Exception):
     pass
 
 
-def parse_cpu_list(text):
-    """The CPUs in a kernel CPU list such as `0-3,8`."""
-    cpus = []
-    for part in text.strip().split(","):
-        first, _, last = part.partition("-")
-        cpus.extend(range(int(first), int(last or first) + 1))
-    return cpus
-
-
-def held_cpus(siblings, limit):
-    """The CPUs other work keeps while a run holds the host: the last whole
-    cores, as `siblings(cpu)` lists each one's, that fit under `limit` CPUs,
-    so none shares a core with a benchmark. Linux numbers a hybrid CPU's
-    efficiency cores last, so the benchmarks keep its performance cores."""
-    held = []
-    for cpu in reversed(range(cpu_count())):
-        if cpu in held:
-            continue
-        core = siblings(cpu)
-        if len(held) + len(core) > int(limit):
-            break
-        held.extend(core)
-    if not held:
-        fail(f"no whole core fits under the busy limit of {limit:.1f} CPUs, so a hold cannot leave other work any")
-    return sorted(held)
-
-
-def core_siblings(cpu):
-    with open(f"/sys/devices/system/cpu/cpu{cpu}/topology/thread_siblings_list") as f:
-        return parse_cpu_list(f.read())
-
-
-def sudo(*cmd, check=True):
-    return subprocess.run(["sudo", "-n", *cmd], check=check)
-
-
-def hold(args):
-    """Runs `run` again with the host held: every other top-level cgroup
-    slice, which holds every CI runner, agent session, and Nix build, is
-    confined to the host's last core or two, and the run measures in a slice
-    of its own on the rest. Other work slows instead of stopping, nothing
-    waits for it to drain, and it keeps under the busy limit on cores no
-    benchmark runs on, which a thread sharing one would slow by a third. The
-    hold ends with the run, or after HOLD_RELEASE_AFTER if the run dies
-    without ending it. Needs systemd and passwordless sudo."""
-    if sys.platform != "linux":
-        fail(f"{args.host}: a hold needs Linux's cgroups")
-    held = held_cpus(core_siblings, busy_limit())
-    cpus = ",".join(map(str, held))
-    free = ",".join(str(cpu) for cpu in range(cpu_count()) if cpu not in held)
-    slices = sorted(n for n in os.listdir("/sys/fs/cgroup") if n.endswith(".slice") and n != HOLD_SLICE)
-    release = "; ".join(f"systemctl set-property --runtime {s} AllowedCPUs=" for s in slices)
-    # A timer an earlier run left would end this hold early.
-    sudo("systemctl", "stop", "--quiet", f"{HOLD_RELEASE_UNIT}.timer", check=False)
-    timer = ["systemd-run", "--quiet", "--collect", f"--unit={HOLD_RELEASE_UNIT}", f"--on-active={HOLD_RELEASE_AFTER}"]
-    sudo(*timer, "sh", "-c", release)
-
-    def stop(signum, frame):
-        sys.exit(128 + signum)
-
-    for signum in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
-        signal.signal(signum, stop)
-    try:
-        for s in slices:
-            sudo("systemctl", "set-property", "--runtime", s, f"AllowedCPUs={cpus}")
-        print(f"bench-report: {args.host}: held, other work on CPUs {cpus}", file=sys.stderr)
-        # sudo drops the environment, which holds the dev shell, so pass it on;
-        # setpriv drops root's groups, which sudo would keep.
-        scope = ["systemd-run", "--scope", "--quiet", f"--slice={HOLD_SLICE}", f"--property=AllowedCPUs={free}", "--"]
-        user = ["setpriv", f"--reuid={os.getuid()}", f"--regid={os.getgid()}", "--init-groups", "--"]
-        env = ["env", "-i", *(f"{k}={v}" for k, v in os.environ.items())]
-        again = [sys.executable, os.path.abspath(__file__), *sys.argv[1:], "--held", cpus]
-        code = sudo(*scope, *user, *env, *again, check=False).returncode
-    finally:
-        sudo("sh", "-c", release, check=False)
-        sudo("systemctl", "stop", "--quiet", f"{HOLD_RELEASE_UNIT}.timer", check=False)
-    sys.exit(code)
-
-
 def output(cmd, env=None):
     return subprocess.run(cmd, capture_output=True, text=True, check=True, env=env).stdout.strip()
 
@@ -624,8 +531,6 @@ def toolchain(env):
 
 
 def run(args):
-    if args.hold and args.held is None:
-        hold(args)
     started = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
     result = {
         "schema": 1,
@@ -651,11 +556,8 @@ def run(args):
     env = dict(os.environ, CARGO_BUILD_JOBS=str(args.jobs), CARGO_TERM_COLOR="never")
     env["CARGO_TARGET_DIR"] = os.path.abspath(args.target_dir)
     # The every-logical-CPU rows refuse to run on fewer CPUs than this, so the
-    # report's CPU count is what they measured: all of them, or all a hold
-    # leaves the run.
-    if args.held is not None:
-        result["cpu"]["bench_cpus"] = cpu_count() - len(parse_cpu_list(args.held))
-    env["RIND_BENCH_CPUS"] = str(result["cpu"].get("bench_cpus", cpu_count()))
+    # report's "all N logical CPUs" is what they measured.
+    env["RIND_BENCH_CPUS"] = str(result["cpu"]["logical_cpus"])
     cargo, versions, openssl = toolchain(env)
     result["toolchain"] = versions
     with open(os.path.join(ROOT, "Cargo.lock")) as f:
@@ -702,8 +604,6 @@ def run(args):
         "other_busy_cpus_during_run": other,
         "noisy": other > busy_limit(),
     }
-    if args.held is not None:
-        load["held_other_work_to_cpus"] = args.held
 
     results = []
     for path in sorted(glob.glob(os.path.join(criterion_dir, "**", "new", "benchmark.json"), recursive=True)):
@@ -829,18 +729,13 @@ def collect_host(host, commit, out_dir):
         f"--host {q(host)} --commit {q(commit)} --jobs {HOSTS[host]['jobs']} "
         f"--target-dir ../target --out result.json"
     )
-    if HOSTS[host].get("hold"):
-        # The hold makes room at once; a gate would wait for it, and its scope
-        # would sit in a slice the hold confines.
-        cmd += " --hold"
-    else:
-        # The gate admits the run only while the host has room, but other
-        # gated work may share it, so these numbers are noisier than the
-        # weekly runners'. The gate is this checkout's quest, so a commit
-        # pinning an older one still runs, in its own dev shell.
-        with open(os.path.join(ROOT, "flake.lock")) as f:
-            quest = json.load(f)["nodes"]["quest"]["locked"]
-        cmd = f"nix shell github:{quest['owner']}/{quest['repo']}/{quest['rev']} --command quest gate {cmd}"
+    # The gate admits the run only while the host has room, but other gated
+    # work may share it, so these numbers are noisier than the weekly
+    # runners'. The gate is this checkout's quest, so a commit pinning an
+    # older one still runs, in its own dev shell.
+    with open(os.path.join(ROOT, "flake.lock")) as f:
+        quest = json.load(f)["nodes"]["quest"]["locked"]
+    cmd = f"nix shell github:{quest['owner']}/{quest['repo']}/{quest['rev']} --command quest gate {cmd}"
     if "lease" in HOSTS[host]:
         # Crate downloads too, so that removing the work directory leaves nothing.
         cmd = f'CARGO_HOME="$PWD/../cargo" {cmd}'
@@ -1889,12 +1784,7 @@ def scaling(host):
             parts.append(f"{kind} handshakes at {rind_one / rind_all:.1f} times")
     if not parts:
         return []
-    cpus = host["cpu"]["logical_cpus"]
-    if "bench_cpus" in host["cpu"]:
-        where = f"on {host['cpu']['bench_cpus']} of its {cpus} logical CPUs, all but those its hold left other work,"
-    else:
-        where = f"on all {cpus} logical CPUs"
-    return [f"rind-rustls {where} runs {and_list(parts)} its one-thread rate.", ""]
+    return [f"rind-rustls on all {host['cpu']['logical_cpus']} logical CPUs runs {and_list(parts)} its one-thread rate.", ""]
 
 
 def host_table(host, verified):
@@ -2369,8 +2259,7 @@ def report(hosts, tiers, verified, gaps):
             "the host didn't time it, as its section says.",
             "",
             "The rustls rows run both peers in one process. The every-logical-CPU rows run one handshake per "
-            "thread on all of the host's logical CPUs at once, or all but the core or two a hold leaves other work on "
-            "a host CI runners and agent sessions share, each thread with its own client and server, and give the "
+            "thread on all of the host's logical CPUs at once, each thread with its own client and server, and give the "
             "machine's time per handshake; each host's text gives rind-rustls's throughput there over its "
             "one-thread rate. A full handshake over rind-rustls's default provider, both peers, makes 245 heap "
             "allocations with an ECDSA P-256 certificate on x86_64, which `rind-rustls/tests/allocations.rs` pins. "
@@ -2514,10 +2403,8 @@ def report(hosts, tiers, verified, gaps):
         "",
         "`admin/bench-report collect` runs the report's benchmarks, then",
         "`admin/build-cost`, on each benchmark host in turn over ssh, in the Nix dev",
-        "shell. On a host that CI runners and agent sessions share, it holds the host",
-        "for the run, confining all other work to the last core or two; elsewhere it",
-        "runs under `quest gate`, which waits for the host to have room but shares it",
-        "with other gated work. Either way its numbers are noisier than the weekly",
+        "shell and under `quest gate`, which waits for the host to have room but",
+        "shares it with other gated work, so its numbers are noisier than the weekly",
         "`bench` workflow's runners, which give the clean ones; it skips any host that is still busy, and writes their results and the hosts' details as JSON under",
         "`.tmp/bench-report/`. `admin/bench-report weekly` saves the latest weekly",
         "`bench` run's results, and `admin/bench-report render --from DIR` copies a",
@@ -2738,8 +2625,6 @@ def main():
     p.add_argument("--jobs", type=int, required=True)
     p.add_argument("--target-dir", required=True)
     p.add_argument("--out", required=True)
-    p.add_argument("--hold", action="store_true", help="hold the host for the run")
-    p.add_argument("--held", metavar="CPUS", help="the CPUs a hold left other work, set by --hold")
     p.set_defaults(func=run)
 
     args = parser.parse_args()

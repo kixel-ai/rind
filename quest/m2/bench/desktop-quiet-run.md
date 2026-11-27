@@ -1,24 +1,27 @@
-# [S] The benchmark report gets a quiet run on desktop
+# [S] The report has a dependable way to benchmark hosts that CI runners and agent sessions share
 
 ## Goal
 
-`desktop`'s data in `benchmarks/data/` comes from a quiet, successful `admin/bench-report collect` at a commit on `main` that has rind 0.4's breaking changes, rendered into `BENCHMARKS.md` with its gaps triaged as a report refresh does. The bench epic's README records a dependable way to get a quiet window on a host that CI runners and agent sessions share.
+`admin/bench-report collect` gets usable data from `nixos`, `desktop`, and `fedora`, which also run CI runners and agent sessions, without waiting for a quiet window that does not come and without starving the other work, and the bench epic's README records how.
 
 ## Plan
 
-Decided 2026-11-24 (maintainer): ✅ refresh with the quiet hosts and re-measure nixos, desktop, and fedora in a follow-up quest (rejected: hold 0.4 until every host runs quiet; pause the runners and sessions now). The maintainer asked for this quest, so it is kept.
+Decided 2026-11-24 (maintainer): ✅ refresh with the quiet hosts and re-measure nixos, desktop, and fedora in a follow-up quest (rejected: hold 0.4 until every host runs quiet; pause the runners and sessions now).
 
-- The 0.4 refresh ([kixel-ai/rind#991](https://github.com/kixel-ai/rind/pull/991)) got quiet runs on `nixos` and `fedora` after about ten hours of retries, so only `desktop` remains. Its data is from 2026-11-07 at `9e7f6a5a`.
-- Over 21 hours (2026-11-24, 02:14 to 23:35 UTC), that PR tried `desktop` 91 times, about every ten minutes, with `admin/bench-report`'s own busy and noise checks unchanged:
-  - 89 tries found 2.4 to 23.8 of its 24 CPUs busy before the build, against the limit of 2.4.
-  - The 2 runs that started were noisy, with 14.4 and 14.7 other CPUs busy.
-  - Its load average stayed around 25 to 32, from agents' Rust builds, Lean, HOL Light, and qemu jobs.
-- Retrying alone did not work within a day, so first find a way to get the window. The options:
-  - a hold that `quest gate` honors, so no new gated work starts on the host while `collect` runs and the work already running drains. This needs a `quest` change.
-  - running `collect` at an hour when the fleet is idle.
-  - the maintainer pausing the host's runners and sessions for 45 minutes.
-- Then run `admin/bench-report collect --host desktop` and `render --from`.
-  - Triage new gaps into speed quests or reasons in `benchmarks/gaps.toml`.
-  - Read its every-logical-CPU handshake rows against its last run and against aws-lc-rs.
-- The refresh's collections predate [kixel-ai/rind#964](https://github.com/kixel-ai/rind/pull/964), so no host times its SLH-DSA, one-record rustls, and DIT-per-call rows yet. Once the window works, collect every host the same way, so those rows get host data, triaging their gaps like any other.
-- Record what got the window in [the bench epic's README](/quest/m2/bench/README.md), so the next minor release's refresh can use it on every shared host.
+Decided 2026-11-26 (maintainer, during [kixel-ai/rind#1103](https://github.com/kixel-ai/rind/pull/1103)): ✅ shared hosts run at about twice their CPU count because their work is bursty, so a benchmark cannot expect a quiet shared host (rejected: holding the host for the run).
+
+- The 0.4 refresh ([kixel-ai/rind#991](https://github.com/kixel-ai/rind/pull/991)) tried `desktop` 91 times over 21 hours without a window under `admin/bench-report`'s busy limit (10% of the CPUs).
+- [kixel-ai/rind#1103](https://github.com/kixel-ai/rind/pull/1103) tried a hold: for the run, `collect` confined every other top-level cgroup slice to the host's last whole core (`AllowedCPUs`) and measured in a slice of its own. It gave quiet runs at once (`desktop` 2.01 other CPUs busy against 2.4, `nixos` 0.44 against 3.2, `fedora` 2.03 against 3.2), and #1103 keeps `desktop`'s and `nixos`'s. It was rejected: mbx sized its pool from the confined cpuset at one CPU, so each permit cost all of its memory budget and every agent's gated work stalled for the run.
+- The hold also found two measurement traps for any design that confines other work: a benchmark thread the scheduler places on the confined core runs about a third slower (`fedora`'s P-384 ECDH measured 1.30× its last run, every other row level), and the every-logical-CPU rows wait on whichever thread shares that core, which slowed every library's by 25 to 30%. Pinning the benchmarks to the CPUs left free fixes both.
+- On systemd 262 (`nixos`), `systemctl set-property --runtime <slice> AllowedCPUs=` did not restore the slice's cpuset; setting the whole range explicitly did.
+
+## Waiting
+
+- Maintainer: how should the report get data from hosts that CI runners and agent sessions keep at about twice their CPU count?
+  - Reserve two cores (Recommended) - collect pins the benchmarks to the host's last two whole cores and keeps other work off only those, so it keeps every other core for the run and mbx sizes its pool from them; the every-logical-CPU rows leave those hosts. First trial it on one host against its last quiet run, since a loaded neighbour still shares the L3 cache and the power budget, and keep it only if the ratios agree within the 10% bar.
+  - Dedicated hosts only - the report keeps `kixtop`, the OVH VPSes, and `mac-mini` once [its quest](/quest/m2/bench/mac-mini.md) lands, and drops `nixos`, `desktop`, and `fedora`, so the only AVX-512 and Arrow Lake tables go, leaving the weekly CPU tier table to cover AVX-512.
+  - Load-annotated rows - collect runs under `quest gate` as before, drops the busy refusal, and the report marks each shared host's rows with the load they ran under, as the proposal in [kixel-ai/rind#938](https://github.com/kixel-ai/rind/pull/938) measures; its 2026-11-19 A/B runs drifted 0.87 to 1.22 at such loads, against the 10% bar.
+
+## Related
+
+- [Mac mini](/quest/m2/bench/mac-mini.md) - a dedicated host

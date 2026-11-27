@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""Tests admin/bench-report's rendering on synthetic results, its lease, and
-the CPUs its hold leaves other work.
+"""Tests admin/bench-report's rendering on synthetic results, and its lease.
 
 Usage: admin/bench-report-test
 """
@@ -534,32 +533,6 @@ class HostScript(unittest.TestCase):
         self.assertFalse(os.path.exists(self.work))
         with open(self.lock) as other:
             fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)
-
-
-class HeldCpus(unittest.TestCase):
-    def setUp(self):
-        self.cpu_count = br.cpu_count
-        self.addCleanup(setattr, br, "cpu_count", self.cpu_count)
-
-    def held(self, cpus, siblings):
-        br.cpu_count = lambda: cpus
-        return br.held_cpus(siblings, br.busy_limit())
-
-    def test_keeps_the_last_cores_under_the_limit(self):
-        # 24 cores without SMT: 2 of the 2.4 the limit allows.
-        self.assertEqual(self.held(24, lambda cpu: [cpu]), [22, 23])
-
-    def test_keeps_whole_cores(self):
-        # 16 SMT cores numbered as Linux does, CPU n beside n + 16: the third
-        # CPU the 3.2 limit allows would split a core.
-        self.assertEqual(self.held(32, lambda cpu: sorted({cpu % 16, cpu % 16 + 16})), [15, 31])
-
-    def test_refuses_a_host_with_no_core_to_spare(self):
-        with self.assertRaises(SystemExit):
-            self.held(4, lambda cpu: sorted({cpu % 2, cpu % 2 + 2}))
-
-    def test_parses_kernel_cpu_lists(self):
-        self.assertEqual(br.parse_cpu_list("0-2,8\n"), [0, 1, 2, 8])
 
 
 class Comparison(unittest.TestCase):
