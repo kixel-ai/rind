@@ -585,8 +585,8 @@ def cpu_list(cpus):
     return ",".join(map(str, cpus))
 
 
-def sudo(*cmd, check=True):
-    return subprocess.run(["sudo", "-n", *cmd], check=check)
+def sudo(*cmd, check=True, **kwargs):
+    return subprocess.run(["sudo", "-n", *cmd], check=check, **kwargs)
 
 
 def reserve(cmd, env, cpus):
@@ -606,7 +606,7 @@ def reserve(cmd, env, cpus):
     everything = f"0-{cpu_count() - 1}"
     release = "; ".join(f"systemctl set-property --runtime {s} AllowedCPUs={everything}" for s in slices)
     # A timer an earlier run left would end this reservation early.
-    sudo("systemctl", "stop", "--quiet", f"{RESERVE_RELEASE_UNIT}.timer", check=False)
+    sudo("systemctl", "stop", "--quiet", f"{RESERVE_RELEASE_UNIT}.timer", check=False, stderr=subprocess.DEVNULL)
     timer = ["systemd-run", "--quiet", "--collect", f"--unit={RESERVE_RELEASE_UNIT}"]
     sudo(*timer, f"--on-active={RESERVE_RELEASE_AFTER}", "sh", "-c", release)
 
@@ -628,7 +628,7 @@ def reserve(cmd, env, cpus):
         return sudo(*scope, "--", *user, "--", *clean, *cmd, check=False).returncode
     finally:
         sudo("sh", "-c", release, check=False)
-        sudo("systemctl", "stop", "--quiet", f"{RESERVE_RELEASE_UNIT}.timer", check=False)
+        sudo("systemctl", "stop", "--quiet", f"{RESERVE_RELEASE_UNIT}.timer", check=False, stderr=subprocess.DEVNULL)
         for signum in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
             signal.signal(signum, signal.SIG_DFL)
 
