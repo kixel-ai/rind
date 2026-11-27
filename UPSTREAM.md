@@ -89,7 +89,7 @@ Each upstream rind changes, with where its fork is vendored and where the list o
 ### Valgrind cannot run x86_64's newest extensions
 
 - **Breaks:** valgrind (through 3.27) decodes no AVX-512, VAES, VPCLMULQDQ, or SHA instruction and hides them from `cpuid`, so ctgrind never reaches the code that uses them.
-- **Workaround:** `admin/ct-sde` compares Intel SDE traces of those paths for two secrets, through the `ct_sde` tests (`rind/src/low/x86_64/ct_sde.rs`), in `ctgrind.yml`'s `x86_64-sde` job, all but AVX-512 ML-KEM, which samples only the public matrix. Unlike ctgrind it sees only addresses, not variable-time instructions.
+- **Workaround:** `admin/ct-sde` compares Intel SDE traces of those paths for two secrets, through the `ct_sde` tests (`rind/src/low/x86_64/ct_sde.rs`), in `ctgrind.yml`'s `x86_64-sde` job, all but Graviola's AVX-512 ML-KEM sampler, which reads only the public matrix, and verified-garbage's ML-KEM-768, whose leakage is its proven contract and whose Rust `admin/ct-binsec` checks with its routines stubbed. Unlike ctgrind it sees only addresses, not variable-time instructions.
 - **Reported:** no.
 - **Goes when:** valgrind decodes them and reports them in `cpuid`, and ctgrind runs on a host that has them; `admin/ct-sde` then duplicates ctgrind.
 
