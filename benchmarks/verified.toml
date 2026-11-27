@@ -325,7 +325,7 @@ operations = ["aes128-gcm/*", "aes128-gcm-open/*", "aes256-gcm/*", "aes256-gcm-o
 arch = "x86_64"
 cpu = ["aes", "pclmulqdq", "ssse3", "sse4.1", "avx", "movbe", "!vaes"]
 proof = "rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch, of the by-8 AES-GCM and PCLMULQDQ GHASH Aeneas cannot translate, and of the SIMD intrinsics as Intel's manual defines them, of its AEAD API's AES-GCM key setup, seal, and open, for every AAD and message length it takes, down to HACL*'s Vale AES-GCM routines and, for seals under 129 bytes and AAD or messages of 2^32 bytes or more, rind's by-8 AES-CTR and PCLMULQDQ GHASH against Vale's gcm_encrypt_LE and gcm_decrypt_LE without their bound of 2^32 bytes, composed with Vale's F* proofs of Gcm_blocks_stdcall, Gcm_blocks_decrypt_stdcall, and Compute_iv_stdcall, of the code Vale prints at HACL* f557259007db, which rind imports, and with rind's HOL Light proofs of its constant-time tag compare"
-link = "https://github.com/kixel-ai/rind/blob/main/proofs/Rind/X86_64/AesGcmAead.lean"
+link = "https://github.com/kixel-ai/rind/blob/main/proofs/Rind/X86_64/AesGcmApi.lean"
 
 [[verified]]
 library = "rind"
@@ -333,7 +333,7 @@ operations = ["aes128-gcm/*", "aes128-gcm-open/*", "aes256-gcm/*", "aes256-gcm-o
 arch = "x86_64"
 cpu = ["aes", "pclmulqdq", "ssse3", "sse4.1", "!avx"]
 proof = "rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch, of the by-8 AES-GCM and PCLMULQDQ GHASH Aeneas cannot translate, and of the SIMD intrinsics as Intel's manual defines them, of its AEAD API's AES-GCM key setup, seal, and open, for every AAD and message length it takes, down to its by-8 AES-CTR and PCLMULQDQ GHASH, against Vale's gcm_encrypt_LE and gcm_decrypt_LE without their bound of 2^32 bytes, composed with rind's HOL Light proofs of its constant-time tag compare"
-link = "https://github.com/kixel-ai/rind/blob/main/proofs/Rind/X86_64/AesGcmAead.lean"
+link = "https://github.com/kixel-ai/rind/blob/main/proofs/Rind/X86_64/AesGcmApi.lean"
 
 [[verified]]
 library = "rind"
@@ -381,7 +381,7 @@ link = "https://github.com/awslabs/aws-lc-verification/blob/797302470c1703cbb1a3
 library = "rind"
 operations = ["sha256/*", "sha512/*", "hmac-sha256/*", "hkdf-sha256/*"]
 arch = "portable"
-proof = "rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch and of HKDF-Expand's loop over its info slices, which Aeneas cannot translate, of its digest, HMAC, and HKDF APIs' SHA-256 and SHA-512 against FIPS 180-4, RFC 2104, and RFC 5869, padding and the block functions low::generic::sha256 and low::generic::sha512 (aws-lc's C, ported to Rust) included; not ESP-IDF Xtensa's SHA-256 or 32-bit microcontrollers' SHA-512, which run other bodies"
+proof = "rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch and of HKDF-Expand's loop over its info slices, which Aeneas cannot translate, of its digest, HMAC, and HKDF APIs' SHA-256 and SHA-512 against FIPS 180-4, RFC 2104, and RFC 5869, padding and the block functions low::generic::sha256 and low::generic::sha512 (aws-lc's C, ported to Rust) included; on 32-bit microcontrollers, the digest and HMAC APIs over the bodies those run, rind's rolled SHA-512 and ESP-IDF Xtensa's IRAM SHA-256, the latter trusting its asm rotates and block load to compute what their Rust fallbacks do, but not HKDF"
 link = "https://github.com/kixel-ai/rind/blob/main/proofs/Rind/Portable/Sha256Compress.lean"
 
 [[verified]]

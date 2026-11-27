@@ -113,9 +113,11 @@ mkdir -p "$out"
 tools=$(rustc --print sysroot)/lib/rustlib/$(rustc -vV | sed -n 's/^host: //p')/bin
 
 # Prints the target triple of `arch` Linux: armv7's names its hard-float ABI.
+# A whole triple, such as `armv7a-none-eabi`, is itself.
 triple() {
     case $1 in
     armv7) echo armv7-unknown-linux-gnueabihf ;;
+    *-*) echo "$1" ;;
     *) echo "$1-unknown-linux-gnu" ;;
     esac
 }
@@ -657,12 +659,23 @@ vg() {
     admin/upstream verified-garbage
     admin/import-vg-models --check "$upstream"
     admin/vg-binding "$upstream"
+    # `lake build` alone builds only the default target (vg-cosim).
+    (cd proofs/verified-garbage && lake build vg-cosim vg-print)
+    local vgprint=proofs/verified-garbage/.lake/build/bin/vg-print
+    if [[ ! -x $vgprint ]]; then
+        echo "admin/prove: lake build did not produce $vgprint" >&2
+        return 1
+    fi
+    # The text of each `Prog` rind's axioms about VG's leakage are about, which
+    # `admin/vg-bytes` checks is VG's assembly (so VG's printer is trusted to
+    # print that `Prog` as it does, which it does not check).
+    "$vgprint" "$arch" >"$dir/progs.txt"
+    local progs=(--progs "$dir/progs.txt")
     hold scratch
     build_asm "$arch"
     rind_index "$arch" >/dev/null
-    admin/vg-bytes "$upstream" "$arch" "$dir" --rind "$out/asm/$arch-units"/*.rcgu.o
+    admin/vg-bytes "$upstream" "$arch" "$dir" "${progs[@]}" --rind "$out/asm/$arch-units"/*.rcgu.o
     release scratch
-    (cd proofs/verified-garbage && lake build)
     rustc --edition 2024 -O -o "$dir/runner" admin/vg-cosim-runner.rs
     # A case that faults must name its instruction and fail the run, on the
     # CPU and under the emulator.
@@ -1354,6 +1367,8 @@ check_quote X86_64/HmacDispatch items rind/src/high/hmac.rs 'pub struct Algorith
 check_quote X86_64/HkdfExpand items rind/src/high/hkdf.rs '    fn expand_into('
 check_quote Portable/Compare items rind/src/low/portable/cpu.rs 'pub(in crate::low) fn ct_compare_bytes(' \
     'pub(in crate::low) fn ct_compare_16('
+check_quote Mcu/Sha256IramModel items rind/src/low/portable/sha256_iram.rs 'struct RoundConstants(' \
+    'impl RoundConstants {' 'struct Window(' 'impl Window {' 'struct Blocks<' "impl<'a> Blocks<'a> {"
 check_quote X86_64/SignatureBuffer items rind/src/high/signature.rs 'impl<const N: usize> Buffer<N> {'
 rsa_items() {
     items rind/src/high/signature.rs 'enum HashId {' 'impl HashId {'
@@ -1636,7 +1651,7 @@ extract() {
     shift 2
     (cd rind && charon cargo --preset=aeneas "$@" \
         --dest-file "$PWD/../$out/${dir,,}.llbc" \
-        -- -p rind --lib --target "$arch-unknown-linux-gnu")
+        -- -p rind --lib --target "$(triple "$arch")")
     to_lean "$dir"
 }
 
@@ -1653,12 +1668,14 @@ to_lean() {
 }
 
 # armv7's translation reaches the header-protection API, ChaCha20's the one
-# armv7 path that is Rust down to code a proof covers; the AES-GCM API, down
-# to the bitsliced AES and integer GHASH a CPU with neither NEON nor the
-# crypto extension runs; the agreement API, down to the curve25519-dalek
-# functions X25519 runs on a CPU without NEON, and for the public key on every
-# CPU; and the signature API's Ed25519, down to dalek's point and scalar
-# functions and SHA-512's block function, whose assembly no proof covers yet.
+# armv7 path that is Rust down to code a proof covers; the AES-GCM API, from
+# its `aead::Key` cipher impl down to the bitsliced AES and integer GHASH a
+# CPU with neither NEON nor the crypto extension runs, with ChaCha20-Poly1305
+# below its cipher impl opaque, since `aead::Key` holds it; the agreement API,
+# down to the curve25519-dalek functions X25519 runs on a CPU without NEON,
+# and for the public key on every CPU; and the signature API's Ed25519, down
+# to dalek's point and scalar functions and SHA-512's block function, whose
+# assembly no proof covers yet.
 # `Rind/Armv7/Dalek.lean` restates BAIF's theorems about those dalek
 # functions. Of dalek's and subtle's code, the translation reads `Scalar`,
 # `CtOption`, and the trivial functions Ed25519 calls, which need no theorem,
@@ -1682,6 +1699,14 @@ extract_armv7() {
         --start-from crate::mid::aes_gcm::AesGcm::decrypt \
         --start-from crate::mid::aes_gcm::AesGcm::encrypt_any \
         --start-from crate::mid::aes_gcm::AesGcm::decrypt_any \
+        --start-from '{impl crate::aead::Cipher for crate::mid::aes_gcm::AesGcm}' \
+        --start-from '{impl crate::aead::Cipher for crate::mid::chacha20poly1305::ChaCha20Poly1305}' \
+        --start-from crate::aead::Key \
+        --start-from crate::aead::AlgorithmId \
+        --opaque crate::aead::Algorithm \
+        --opaque crate::aead::Sealer \
+        --opaque crate::aead::Ops \
+        --opaque crate::mid::chacha20poly1305 \
         --start-from '{impl crate::high::agreement::Agree for crate::high::agreement::X25519Curve}' \
         --start-from '{impl crate::high::agreement::Agree for crate::high::curve::P256}' \
         --start-from '{impl crate::high::agreement::Agree for crate::high::curve::P384}' \
@@ -1804,7 +1829,8 @@ rustc_version=$(rustc -vV)
 toolchain=$(printf '%s\n' "$charon_path" "$rustc_version" | sha256sum)
 prove_target=$PWD/target/prove-${toolchain:0:16}
 mkdir -p target
-find "$PWD/target" -mindepth 1 -maxdepth 1 -name 'prove*' ! -name "prove-${toolchain:0:16}" ! -name "prove-${toolchain:0:16}-portable" -exec rm -rf {} +
+find "$PWD/target" -mindepth 1 -maxdepth 1 -name 'prove*' ! -name "prove-${toolchain:0:16}" ! -name "prove-${toolchain:0:16}-portable" \
+    ! -name "prove-${toolchain:0:16}-mcu" -exec rm -rf {} +
 export CARGO_TARGET_DIR=$prove_target
 
 extract x86_64 X86_64 "${hashes[@]}" "${assembly[@]}" \
@@ -2110,6 +2136,34 @@ CARGO_TARGET_DIR=$portable_target RUSTFLAGS=$portable_cfg extract x86_64 Portabl
     --include crate::low::generic::limb64::mont
 CARGO_TARGET_DIR=$portable_target RUSTFLAGS=$portable_cfg extract_kdf x86_64 Portable
 
+# The portable backend on 32-bit microcontrollers, `target_os = "espidf"` or
+# `"none"`, whose SHA-2 differs from the other targets': SHA-384/512 is the
+# rolled loop in `low::generic::sha512_rolled`, and on ESP-IDF Xtensa SHA-256
+# is `low/portable/sha256_iram.rs`. `armv7a-none-eabi` selects the first
+# itself. Charon cannot build for Xtensa, whose esp toolchain is a fork of
+# Rust, so `rind_sha256_iram` forces the second, and the translation reads
+# that module's Rust fallbacks for its Xtensa `asm!`.
+# `proofs/Rind/Mcu/Sha256IramModel.lean` models the window and the two raw
+# pointer cursors it leaves opaque. The hashes alone: no other operation
+# differs here.
+mcu_cfg='--cfg rind_portable --cfg rind_sha256_iram --cfg getrandom_backend="custom"'
+CARGO_TARGET_DIR=$prove_target-mcu RUSTFLAGS=$mcu_cfg extract armv7a-none-eabi Mcu "${hashes[@]}" \
+    --include crate::low::portable::sha \
+    --opaque crate::low::portable::sha::iram::RoundConstants \
+    --opaque crate::low::portable::sha::iram::Window \
+    --opaque crate::low::portable::sha::iram::Blocks \
+    --opaque 'crate::low::portable::sha::iram::_::first' \
+    --opaque 'crate::low::portable::sha::iram::_::new' \
+    --opaque 'crate::low::portable::sha::iram::_::get' \
+    --opaque 'crate::low::portable::sha::iram::_::set' \
+    --opaque 'crate::low::portable::sha::iram::_::next' \
+    --opaque 'crate::low::portable::sha::iram::_::block' \
+    --include crate::low::generic::sha256_k \
+    --include crate::low::generic::sha512::K \
+    --include crate::low::generic::sha512_rolled \
+    --opaque crate::mid::sha3 \
+    --start-from crate::error::Error --start-from crate::low::ct::into_public
+
 mkdir -p proofs/Rind/Aarch64/Kdf
 # P-256's generator multiplication and its table differ per target, so each
 # target has its own `P256Base` stating it, and `P256KeyCheck` for the key
@@ -2139,6 +2193,13 @@ for file in QuicDispatch DigestAlgorithm DigestDispatch Sha512Context Sha512 Cha
 done
 sed -i '/Rind.Portable.AeadDispatch/d' proofs/Rind/Portable/Kdf/TypesExternal.lean
 sed -i '/-- BEGIN aead/,/-- END aead/d' proofs/Rind/Portable/Kdf/FunsExternal.lean
+# 32-bit microcontrollers' hash, HMAC, and header-protection proofs and
+# compares' models are the portable backend's with the namespace renamed, over
+# `Rind/Mcu/`'s own block functions' proofs: the Rust paths are the same.
+for file in QuicDispatch DigestAlgorithm DigestDispatch Sha512 ChaCha20 Blockwise Sha Hmac HmacDispatch HmacApi DigestApi \
+    Compare CtEqual; do
+    sed 's/Rind\.Portable/Rind.Mcu/g; s/rind\.portable/rind.mcu/g' "proofs/Rind/Portable/$file.lean" >"proofs/Rind/Mcu/$file.lean"
+done
 # So are RSA verification's, over its own `RsaMont.lean`, without the sections
 # marked as x86_64's alone, its AVX-512 IFMA public operation and
 # pyca/verified-garbage's R² mod n, and with the lines marked as the portable
@@ -2149,18 +2210,31 @@ for file in RsaPublic RsaBytes RsaIfma RsaVerify RsaPss RsaKey SignatureBuffer R
         -e 's/ (hifma : IfmaCheckReturns)//; s/ hifma / /' -e 's/X86_64/Portable/g; s/x86_64/portable/g' \
         "proofs/Rind/X86_64/$file.lean" >"proofs/Rind/Portable/$file.lean"
 done
-# armv7's header-protection, agreement, and compares' models and ChaCha20,
-# X25519, and SHA-512 context proofs are x86_64's with the target renamed.
-# X25519's are over `Rind.Armv7.Curve25519`'s dispatch where x86_64's are over
-# s2n-bignum's: the CPU check that picks the routine is NEON's. armv7's
-# compares live in `low::arm::cpu`. SHA-512's context is over
+# armv7's header-protection, agreement, AEAD, and compares' models and its
+# ChaCha20, X25519, AEAD, and SHA-512 context proofs are x86_64's with the
+# target renamed. X25519's are over `Rind.Armv7.Curve25519`'s dispatch where
+# x86_64's are over s2n-bignum's: the CPU check that picks the routine is
+# NEON's. armv7's compares live in `low::arm::cpu`. SHA-512's context is over
 # `Rind/Armv7/Sha512Entry.lean`'s block-function contract, as the portable
 # backend's is.
 for file in QuicDispatch Dispatch P256Dispatch P384Dispatch ChaCha20 CtEqual X25519Bytes X25519 Blockwise \
-    Sha512Context; do
+    Sha512Context AeadDispatch AeadVec AesGcmApi GcmKey; do
     sed 's/X86_64/Armv7/g; s/x86_64/armv7/g; s/low\.armv7\.cpu/low.arm.cpu/g; s/Rind\.Armv7\.S2nBignum/Rind.Armv7.Curve25519/; s/low\.armv7\.curve25519_ifma\.Curve25519Ifma/low.arm.cpu.HaveNeon/g; s/CurveIfma/DalekCpu/g; s/Rind\.Armv7\.AwsLc/Rind.Armv7.Sha512Entry/' \
         "proofs/Rind/X86_64/$file.lean" >"proofs/Rind/Armv7/$file.lean"
 done
+# armv7's AEAD model leaves out `RandomizedNonceKey`, whose XChaCha20-Poly1305
+# its translation does not reach. Its AES-GCM API and custom-IV key are over
+# `Rind.Armv7.AesGcm`, which proves under x86_64's names what x86_64's
+# `AesGcmAead` and `AesGcmAny` do.
+sed -i '/-- BEGIN xchacha/,/-- END xchacha/d' proofs/Rind/Armv7/AeadDispatch.lean
+sed -i 's/^import Rind\.Armv7\.AesGcmAead$/import Rind.Armv7.AesGcm/' proofs/Rind/Armv7/AesGcmApi.lean
+sed -i 's/^import Rind\.Armv7\.AesGcmAny$/import Rind.Armv7.AesGcmApi/' proofs/Rind/Armv7/GcmKey.lean
+if grep -q 'xchacha' proofs/Rind/Armv7/AeadDispatch.lean ||
+    ! grep -qx 'import Rind.Armv7.AesGcm' proofs/Rind/Armv7/AesGcmApi.lean ||
+    ! grep -qx 'import Rind.Armv7.AesGcmApi' proofs/Rind/Armv7/GcmKey.lean; then
+    echo "admin/prove: proofs/Rind/X86_64/{AeadDispatch,AesGcmApi,GcmKey}.lean no longer have the lines armv7's copies rewrite" >&2
+    exit 1
+fi
 
 # The elements of the HOL Light list `$2` that `$1` defines, as Lean writes
 # them: `-- &1600` is -1600 and `&630` is 630.

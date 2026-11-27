@@ -10,7 +10,7 @@ Runs, each in `low/arm/`, in rough order of use:
 
 - aws-lc's `sha_armv4`: SHA-256 and SHA-1 with the crypto extension, and SHA-256, SHA-1, and SHA-512 on NEON and without;
 - aws-lc's `chacha-armv4` (integer below 192 bytes, NEON above) and its NEON Poly1305, under rind's port of `poly1305_arm.c`;
-- aws-lc's `aesv8-armx` and `ghashv8-armx`, under rind's AES-GCM composition;
+- aws-lc's `aesv8-armx` and `ghashv8-armx`, under rind's AES-GCM composition, which is proven above `AesGcm` on any `GcmReady` key (`Rind/Armv7/AesGcm.lean`): this tier proves that `AesGcm::new` with the crypto extension keys `Hw` with `PartsFor` its `Arm`, and extends `RunsAesGcm` and `aes_gcm_new_spec` to it;
 - OpenSSL's `keccak1600-armv4`, integer and NEON, under ML-KEM and SHA-3;
 - aws-lc's `bn_mul8x_mont_neon` and `bn_mul_mont_nohw`, under RSA.
 
