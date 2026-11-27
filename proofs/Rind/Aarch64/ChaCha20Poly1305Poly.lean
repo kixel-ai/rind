@@ -91,17 +91,29 @@ theorem and3_toNat (x : BitVec 64) : (x &&& Rind.AArch64.bitMask 2 0).toNat = x.
   rw [bitMask3, show (3#64 : BitVec 64) = BitVec.ofNat 64 (2 ^ 2 - 1) from rfl, BitVec.toNat_and,
     BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by norm_num), Nat.and_two_pow_sub_one_eq_mod]
 
+theorem andm4_eq (x : BitVec 64) : x &&& Rind.AArch64.bitMask 62 62 = (x >>> 2) <<< 2 := by
+  rw [show Rind.AArch64.bitMask 62 62 = ~~~(3 : BitVec 64) by decide]
+  ext i hi
+  simp only [BitVec.getElem_and, BitVec.getElem_not, BitVec.getElem_shiftLeft, BitVec.getElem_ushiftRight]
+  by_cases h2 : i < 2
+  · rcases (by omega : i = 0 ∨ i = 1) with rfl | rfl <;> simp
+  · have h3 : (3 : BitVec 64)[i] = false := by
+      rw [← BitVec.getLsbD_eq_getElem, show (3 : BitVec 64) = BitVec.ofNat 64 3 from rfl, BitVec.getLsbD_ofNat]
+      simp only [hi, decide_true, Bool.true_and]
+      apply Nat.testBit_lt_two_pow
+      calc 3 < 2 ^ 2 := by norm_num
+        _ ≤ 2 ^ i := Nat.pow_le_pow_right (by norm_num) (by omega)
+    rw [h3, show 2 + (i - 2) = i by omega, BitVec.getLsbD_eq_getElem hi]
+    simp [h2]
+
 theorem andm4_toNat (x : BitVec 64) : (x &&& Rind.AArch64.bitMask 62 62).toNat = x.toNat / 4 * 4 := by
-  have e : x &&& Rind.AArch64.bitMask 62 62 = (x >>> 2) <<< 2 := by rw [bitMask_m4]; bv_decide
-  rw [e, BitVec.toNat_shiftLeft, BitVec.toNat_ushiftRight, Nat.shiftRight_eq_div_pow, Nat.shiftLeft_eq]
+  rw [andm4_eq, BitVec.toNat_shiftLeft, BitVec.toNat_ushiftRight, Nat.shiftRight_eq_div_pow, Nat.shiftLeft_eq]
   have := x.isLt
   rw [Nat.mod_eq_of_lt (by omega)]
 
 theorem extr_toNat (x y : BitVec 64) : ((y ++ x).extractLsb' 2 64).toNat = x.toNat / 4 + y.toNat % 4 * 2 ^ 62 := by
-  have e : (y ++ x).extractLsb' 2 64 = (x >>> 2) ||| (y <<< 62) := by bv_decide
-  have hz : (x >>> 2) &&& (y <<< 62) = 0#64 := by bv_decide
-  rw [e, ← BitVec.add_eq_or_of_and_eq_zero _ _ hz, BitVec.toNat_add, BitVec.toNat_ushiftRight,
-    BitVec.toNat_shiftLeft, Nat.shiftRight_eq_div_pow, Nat.shiftLeft_eq]
+  rw [BitVec.extractLsb'_toNat, BitVec.toNat_append, ← Nat.shiftLeft_add_eq_or_of_lt x.isLt,
+    Nat.shiftLeft_eq, Nat.shiftRight_eq_div_pow]
   have := x.isLt
   omega
 
@@ -272,7 +284,6 @@ theorem acc_step (h0 h1 h2 w0 w1 r0 r1 : BitVec 64) (a m : Nat) (hr0 : r0.toNat 
 /-- The accumulator `(x8, x9, x10)` and `r`, `(x16, x17)`, of a state. -/
 abbrev acc (s : S) : BitVec 64 × BitVec 64 × BitVec 64 := (s.vg.gpr .x8, s.vg.gpr .x9, s.vg.gpr .x10)
 
-set_option maxHeartbeats 4000000 in
 /-- `polyMul` leaves `mulOut` of the accumulator and `r`. -/
 theorem polyMul_ok (s : S) :
     let o := mulOut (s.vg.gpr .x8) (s.vg.gpr .x9) (s.vg.gpr .x10) (s.vg.gpr .x16) (s.vg.gpr .x17)
@@ -303,3 +314,11 @@ theorem polyAdd_ok (s : S) :
   · a64_out
 
 end rind.aarch64.chacha20poly1305asm
+
+/-- info: 'rind.aarch64.chacha20poly1305asm.acc_step' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms rind.aarch64.chacha20poly1305asm.acc_step
+
+/-- info: 'rind.aarch64.chacha20poly1305asm.polyMul_ok' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms rind.aarch64.chacha20poly1305asm.polyMul_ok
