@@ -10,7 +10,8 @@ it reads are bytes `3k` to `3k + 3` of `SHAKE128(B)`, which `xofByte`
 gives one at a time, and `sampleNTT_eq` that `SampleNTT(B)` is the first 256
 of `accepted`, the 12-bit candidates below `q` those bytes hold, once the
 first `3t` bytes hold 256 of them (`Halts`). Without that, FIPS 203's loop
-never finishes: no bound on it holds for every input. `sampled` names those
+never finishes, and no proof shows that it finishes on every input, which
+would take all 2^272 of them. `sampled` names those
 256 candidates without the `t`, and `sampleNTT_sampled` restates
 `sampleNTT_eq` over it.
 -/
@@ -373,14 +374,17 @@ open Classical in
 /-- SHAKE128's first 256 candidates below `q` on `M`, where `SampleNTT` on
 `M` finishes. -/
 noncomputable def sampled (M : List Byte) : List ℕ :=
-  if h : Halts M then acc M (3 * Classical.choose h) else []
+  if h : Halts M then (acc M (3 * Classical.choose h)).take 256 else []
+
+theorem take_getElem! (l : List ℕ) (n k : ℕ) (h : k < n) : (l.take n)[k]! = l[k]! := by
+  simp [List.getElem!_eq_getElem?_getD, h]
 
 theorem sampled_getElem! (M : List Byte) (T : ℕ) (hT : 256 ≤ (acc M (3 * T)).length) (p : ℕ) (hp : p < 256) :
     (sampled M)[p]! = (acc M (3 * T))[p]! := by
   have hH : Halts M := ⟨T, hT⟩
   have := Classical.choose_spec hH
   unfold sampled
-  rw [dite_eq_left hH]
+  rw [dite_eq_left hH, take_getElem! _ _ _ hp]
   exact acc_agree M _ _ p (by omega) (by omega)
 
 /-- `SampleNTT(B)` is the first 256 candidates below `q` of `SHAKE128(B)`. -/

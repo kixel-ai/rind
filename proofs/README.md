@@ -1250,7 +1250,7 @@ axioms. `kpke_encrypt_spec` states the ciphertext from rind's side, and
 transposed matrix as `DecodedHolds` states, so `kpke_encrypt_fips` holds of
 the key's bytes, on the same axioms and s2n-bignum's rejection sampling's,
 given that FIPS 203's `SampleNTT` finishes on each of the matrix's nine inputs
-(`Halts`): its loop has no bound that holds for every input. `sample_ntt_spec`
+(`Halts`), which no proof shows for every input. `sample_ntt_spec`
 covers `sample_ntt` for every rank, since aarch64 has no eight-way sampler: it
 hashes four polynomials at a time through `shake128x4_squeeze_spec` and the
 rest one at a time, takes each one's first three blocks through the rejection

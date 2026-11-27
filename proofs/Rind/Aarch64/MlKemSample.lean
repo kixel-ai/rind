@@ -14,8 +14,8 @@ which `sampleNTT_sampled` shows is FIPS 203's `SampleNTT`. aarch64 has no
 eight-way sampler, so this covers every `k`; `sample_transposed_spec` states
 `Coeffs::sample` for ML-KEM-768's transposed matrix, and `decoded_new_spec`
 `Decoded::new`, whose result `kpke_encrypt_fips` takes. Each assumes that
-`SampleNTT` finishes on the matrix's inputs (`Halts`): FIPS 203's loop has no
-bound that holds for every input.
+`SampleNTT` finishes on the matrix's inputs (`Halts`), which no proof shows
+for every input.
 -/
 
 namespace rind.aarch64
@@ -362,9 +362,6 @@ theorem tail_case_spec (h : RunsSha3) (M : List Byte) (T c : ℕ) (sponge : mid.
   tail_loop_spec h M T _ _ c rfl sponge output 0#usize hs ⟨by simp, by simp, fun k hk => by simp at hk⟩ hT
 
 /-! ## `sample_from`, `sample_into`, and `sample_poly_ntt_4x` -/
-
-theorem take_getElem! (l : List ℕ) (n k : ℕ) (h : k < n) : (l.take n)[k]! = l[k]! := by
-  simp [List.getElem!_eq_getElem?_getD, h]
 
 /-- `out` holds SHAKE128's first 256 candidates below `q` on `M`. -/
 def Sampled (M : List Byte) (out : List I16) : Prop :=
