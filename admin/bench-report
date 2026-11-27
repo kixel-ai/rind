@@ -592,23 +592,29 @@ def sudo(*cmd, check=True, **kwargs):
     return subprocess.run(["sudo", "-n", *cmd], check=check, **kwargs)
 
 
+def reserve_lock():
+    """The host's reservation lock, held once this returns until the file it
+    returns is closed. A reserved run holds it from before its load sample
+    through the release, so another collection neither releases its cores,
+    stops its timer, nor runs on them meanwhile. Every collection on a host
+    runs as the user collect reaches it as."""
+    lock_dir = os.path.join(os.path.expanduser("~"), REMOTE_DIR)
+    os.makedirs(lock_dir, exist_ok=True)
+    lock = open(os.path.join(lock_dir, "reserve.lock"), "a")
+    fcntl.flock(lock, fcntl.LOCK_EX)
+    return lock
+
+
 def reserve(cmd, env, cpus):
     """Runs `cmd` as this user, with `env`, on the logical CPUs `cpus` alone,
     keeping every other top-level cgroup slice, which holds every CI runner,
     agent session, and Nix build, off them meanwhile, and returns its exit
     status. Other work keeps every other core, so it slows little and mbx
     sizes its pool from them. The reservation ends with `cmd`, or after
-    RESERVE_RELEASE_AFTER if this process dies without ending it. Needs
-    systemd and passwordless sudo."""
+    RESERVE_RELEASE_AFTER if this process dies without ending it. The caller
+    holds reserve_lock(). Needs systemd and passwordless sudo."""
     if sys.platform != "linux":
         fail("reserving cores needs Linux's cgroups")
-    # One reservation a host at a time, held through its release, so another
-    # collection neither releases this one's cores nor stops its timer. Every
-    # collection on a host runs as the user collect reaches it as.
-    lock_dir = os.path.join(os.path.expanduser("~"), REMOTE_DIR)
-    os.makedirs(lock_dir, exist_ok=True)
-    lock = open(os.path.join(lock_dir, "reserve.lock"), "a")
-    fcntl.flock(lock, fcntl.LOCK_EX)
     others = cpu_list(c for c in range(cpu_count()) if c not in cpus)
     slices = sorted(n for n in os.listdir("/sys/fs/cgroup") if n.endswith(".slice") and n != RESERVE_SLICE)
     # The whole range, since systemd 262 leaves the cpuset as it was for an
@@ -639,15 +645,19 @@ def reserve(cmd, env, cpus):
         scope.append(f"--property=AllowedCPUs={cpu_list(cpus)}")
         # setpriv drops root's groups, which sudo would keep.
         user = ["setpriv", f"--reuid={os.getuid()}", f"--regid={os.getgid()}", "--init-groups"]
-        load = "import json, os, sys; env = json.load(open(sys.argv[1])); os.execve(sys.argv[2], sys.argv[2:], env)"
+        load = (
+            "import json, os, sys; env = json.load(open(sys.argv[1])); os.unlink(sys.argv[1]); "
+            "os.execve(sys.argv[2], sys.argv[2:], env)"
+        )
         return sudo(*scope, "--", *user, "--", sys.executable, "-c", load, env_file, *cmd, check=False).returncode
     finally:
-        os.unlink(env_file)
+        # The command removes it once read, unless it never started.
+        if os.path.exists(env_file):
+            os.unlink(env_file)
         sudo("sh", "-c", release, check=False)
         sudo("systemctl", "stop", "--quiet", f"{RESERVE_RELEASE_UNIT}.timer", check=False, stderr=subprocess.DEVNULL)
         for signum in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
             signal.signal(signum, signal.SIG_DFL)
-        lock.close()
 
 
 def output(cmd, env=None):
@@ -796,7 +806,9 @@ def run(args):
     names = bench_names(
         cargo, env, bench_args, match=lambda i: operation_of(i) and not (reserved and EVERY_CPU.match(i))
     )
-    listed = os.path.join(env["CARGO_TARGET_DIR"], "bench-report.benchmarks")
+    # Beside the result, in this collection's own copy, since another may
+    # share the target directory.
+    listed = os.path.join(os.path.dirname(os.path.abspath(args.out)), "bench-report.benchmarks")
     with open(listed, "w") as f:
         f.writelines(f"{n}\n" for n in names)
 
@@ -807,8 +819,9 @@ def run(args):
             finish("busy", reason=str(e))
             fail(f"{args.host}: {e}")
 
-    times = os.path.join(env["CARGO_TARGET_DIR"], "bench-report.json")
+    times = os.path.join(os.path.dirname(listed), "bench-report.times.json")
     swole_args = ["bench", "--benchmarks", listed, "--out", times, "--", "-p", "rind-bench", *bench_args]
+    lock = reserve_lock() if reserved else None
     wall0 = time.monotonic()
     ticks0, reserved0 = cpu_times(), reserved and cpu_times(reserved)
     ours0 = resource.getrusage(resource.RUSAGE_CHILDREN)
@@ -823,6 +836,9 @@ def run(args):
     # whole system, and on a reserved run's own cores, which alone count.
     ours = (ours1.ru_utime + ours1.ru_stime) - (ours0.ru_utime + ours0.ru_stime)
     other = round(max(0.0, busy_cpus_since(ticks0) - ours / wall), 2)
+    if lock:
+        on_reserved = round(max(0.0, busy_cpus_since(reserved0, reserved) - ours / wall), 2)
+        lock.close()
     if reserved is None:
         load = {
             "limit_cpus": round(busy_limit(), 2),
@@ -833,7 +849,6 @@ def run(args):
         }
     else:
         limit = BUSY_SHARE * len(reserved)
-        on_reserved = round(max(0.0, busy_cpus_since(reserved0, reserved) - ours / wall), 2)
         load = {
             "reserved_cpus": cpu_list(reserved),
             "limit_cpus": round(limit, 2),
@@ -951,7 +966,9 @@ def collect_host(host, commit, out_dir):
         f"--host {q(host)} --commit {q(commit)} --jobs {HOSTS[host]['jobs']} "
         f"--target-dir ../target --out result.json"
     )
-    if HOSTS[host].get("reserve"):
+    # A revision older than the reservation takes its own idle-check path.
+    runner = output(["git", "-C", ROOT, "show", f"{commit}:admin/bench-report"])
+    if HOSTS[host].get("reserve") and '"--reserve"' in runner:
         cmd += " --reserve"
     # The gate admits the run only while the host has room, but other gated
     # work may share it, so these numbers are noisier than the weekly
