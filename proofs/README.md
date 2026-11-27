@@ -1354,10 +1354,13 @@ CPU-feature checks pick Vale's tier (`RunsValeAesGcm`) or the SSE tier
 which is generic over its buffer.
 
 On aarch64, AES-GCM is proven from the AEAD API down on CPUs with the
-crypto extension: at every length below 2^61 bytes with AES-128 and AES-256
-keys, and with AES-192 keys on cores without SHA3; on cores with SHA3, AES-192
-is proven only for short messages; its GHASH key setup and hashing are proven
-at every length. `Rind/Aarch64/GhashPmull.lean` proves
+crypto extension, for the AAD below 2^61 bytes and the message lengths the
+API takes (up to 2^36 - 32 bytes), with AES-128 and AES-256 keys, and with
+AES-192 keys on cores without SHA3. `tagged_from` and `tagged` below it are
+proven at every length below 2^61 bytes with the same keys, and on cores with
+SHA3 with AES-192 keys only for short messages, which no AEAD theorem states,
+since `RunsAesGcm` excludes AES-192 there. Its GHASH key setup and hashing
+are proven at every length. `Rind/Aarch64/GhashPmull.lean` proves
 that `GhashTable::new` builds the PMULL table of H to H^8, each shifted as
 Vale's `shift_key_1` does (`ghash_table_new_spec`), and that `Ghash::add` on
 it is the Horner rule on the padded blocks, Vale's `ghash_LE`
