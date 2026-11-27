@@ -62,6 +62,10 @@ public class MainActivity extends Activity {
     // Between Start and the run: the collector lookup runs on a thread, and
     // consent stays locked until begin() checks it again.
     private boolean starting;
+    // Bumped by each Start and by onStop: a collector lookup that returns
+    // after its request was superseded or the Activity left the screen starts
+    // nothing, though the autostart Runnable that launched it already ran.
+    private long startRequest;
     // Set in onDestroy: a lookup that returns after it starts nothing.
     private boolean destroyed;
     // Between onStart and onStop.
@@ -562,7 +566,10 @@ public class MainActivity extends Activity {
         starting = true; agree.setEnabled(false); agreeChanged();
         statusLbl.setText("Starting. Connecting to the computer that installed this app.");
         // Look again right before the run, so a cable plugged in (or Wi-Fi joined) since launch is used.
-        findCollector(() -> begin(libs, secs));
+        long request = ++startRequest;
+        findCollector(() -> {
+            if (request == startRequest) begin(libs, secs);
+        });
     }
 
     /** Gives consent back to the user after a start that did not happen. */
@@ -605,6 +612,11 @@ public class MainActivity extends Activity {
         // Leaving the Activity (Home, Recents, Back) cancels a pending
         // autostart: a runner's run needs the screen it set up.
         visible = false;
+        if (starting) {
+            ++startRequest;
+            starting = false;
+            notStarted("Start canceled when the app went to the background.");
+        }
         if (autostart != null) { ui.removeCallbacks(autostart); autostart = null; }
         super.onStop();
     }
