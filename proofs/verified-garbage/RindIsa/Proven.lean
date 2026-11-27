@@ -1,5 +1,6 @@
 import RindIsa.AArch64.Sha256Hw
 import RindIsa.X86_64.Mul4x
+import RindIsa.X86_64.PolyHashAd
 
 /-! The functions rind proves in its models of AArch64 and x86_64, which
 `rind-asm` prints and `vg-cosim --rind` cosimulates. -/
@@ -29,6 +30,7 @@ structure Proven where
   prog : VG.Prog isa
 
 def proven : List Proven :=
-  [{ path := "rind::low::x86_64::mont::bn_mul4x_mont", prog := Mul4x.prog }]
+  [{ path := "rind::low::x86_64::mont::bn_mul4x_mont", prog := Mul4x.prog },
+   { path := "rind::low::x86_64::chacha20poly1305::poly_hash_ad_internal", prog := PolyHashAd.prog }]
 
 end Rind.X86_64
