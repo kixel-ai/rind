@@ -29,11 +29,14 @@ elab "clear_words" : tactic => withMainContext do
   replaceMainGoal [g]
 
 /-- `omega` on indices, without the hypotheses about words' values. -/
-macro "iomega" : tactic => `(tactic| (clear_words; omega))
+macro "iomega" : tactic =>
+  `(tactic| first
+    | (clear_words; omega)
+    | (simp only [List.length_cons, List.length_nil, Nat.zero_add, Nat.reduceAdd]; clear_words; omega))
 
 /-- Reads through stores to other words, their bounds by `omega`. -/
 macro "rd_simp" : tactic => `(tactic|
-  simp (disch := (clear_words; omega)) only [readW_wrs, readW_writeW_wa, readW_writeW_self])
+  simp (disch := iomega) only [readW_wrs, readW_writeW_wa, readW_writeW_self])
 
 /-- The general-purpose registers but `rsp`. -/
 abbrev allRegs : List Reg :=

@@ -216,10 +216,10 @@ theorem spill_ok (s : S) (k R : Nat) (ap np fp : Addr) (v : Nat → BitVec 64)
       s'.vg.gpr .rdi = wa fp (16 * R + 23) ∧
       s'.vg.gpr .r9 = v (16 * R + 24) ∧ s'.vg.gpr .r10 = v (16 * R + 25) ∧ s'.vg.gpr .r11 = v (16 * R + 26) ∧
       s'.vg.gpr .r12 = v (16 * R + 27) ∧ s'.vg.gpr .r13 = v (16 * R + 28) ∧ s'.vg.gpr .r14 = v (16 * R + 29) ∧
-      s'.vg.gpr .r15 = v (16 * R + 30) ∧
+      s'.vg.gpr .r15 = v (16 * R + 30) ∧ s'.vg.cf = s.vg.cf ∧ s'.vg.of = s.vg.of ∧
       Frame s s' [.rdi, .r9, .r10, .r11, .r12, .r13, .r14, .r15] := by
   obtain ⟨hk, hap, hnp, hfp, sepA, sepN, rA, rN, LF, hLF, rF⟩ := ar
   sqrx_blockx [Rind.X86_64.Sqrx8x.spill, hrdi, hrcx, hv, ↓BitVec.ofNat_add_ofNat, ofNat_idx]
-  all_goals simp only [wa, Nat.add_assoc]
+  all_goals first | rfl | simp only [wa, Nat.add_assoc]
 
 end rind.x86_64.sqrx8x
