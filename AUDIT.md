@@ -186,8 +186,8 @@ establishes, and what it does not:
   own routine, as for ChaCha20-Poly1305 on x86_64 or RSA's RSAZ
   exponentiation, aws-lc-rs compares that routine with itself, so it checks
   rind's glue around it, and the oracle checks the routine. On aarch64 rind
-  runs its own structured copy of aws-lc's ChaCha20-Poly1305, which
-  aws-lc-rs's original checks. wasm runs none, since aws-lc does not build
+  runs its own structured copy of aws-lc's ChaCha20-Poly1305, and on x86_64
+  with AVX2 its copy of aws-lc's seal, which aws-lc-rs's originals check. wasm runs none, since aws-lc does not build
   for it.
 - **Fuzz targets**, weekly for twenty minutes each against aws-lc-rs,
   replayed on every tier and against the portable backend. The ECVRF, OPRF,
@@ -291,8 +291,9 @@ Hand-written arithmetic no proof covers, by where it came from:
   off ADX, the AVX2 and SHA512-instruction SHA-2, VAES AES-GCM, and all of
   armv7's. Vectors and fuzzing reach each on its tier; aws-lc-rs, which runs
   that code too, checks only the glue, and the independent oracle checks the
-  routine. rind's structured copy of aws-lc's aarch64 ChaCha20-Poly1305 is
-  proven constant-time but not correct, and aws-lc-rs's original checks it.
+  routine. rind's structured copies of aws-lc's aarch64 ChaCha20-Poly1305
+  and its x86_64 AVX2 seal are proven constant-time but not correct, and
+  aws-lc-rs's originals check them.
 - **Graviola's** code under AES, GHASH, SHA-256, HMAC, P-256, P-384,
   ML-KEM, and RSA, wherever ALGORITHMS.md names it. Vectors, differential
   tests independent of it, and fuzzing reach each.

@@ -8,9 +8,10 @@
 //! `HaveIfmaForVgChaCha20Poly1305::check_seal`). Otherwise aws-lc's
 //! `chacha20_poly1305_x86_64`, which interleaves ChaCha20 with Poly1305,
 //! imported by `admin/import-aws-lc`, with AVX2 where the CPU has it and
-//! SSE4.1 otherwise; CPUs with AVX-512 but no IFMA, which no measurement
-//! covered, keep it too. Without SSE4.1, ChaCha20 and Poly1305 run in
-//! separate passes.
+//! SSE4.1 otherwise, but for the AVX2 seal, which is rind's structured copy
+//! of aws-lc's, `seal_avx2`; CPUs with AVX-512 but no IFMA, which no
+//! measurement covered, keep it too. Without SSE4.1, ChaCha20 and Poly1305
+//! run in separate passes.
 //!
 //! VG proves in Lean that its routines meet RFC 8439 and take the same
 //! branches and memory addresses whatever the key, nonce, and data, but for
@@ -19,14 +20,18 @@
 //! cosimulates. `proofs/Rind/X86_64/VgChaCha20Poly1305.lean` takes those
 //! theorems as axioms about `seal_ifma` and `open_ifma`, and
 //! `proofs/Rind/X86_64/ChaCha20Poly1305.lean` proves `seal` and `open`, and
-//! the AEAD API above them, from them where VG's routines run. aws-lc's
-//! seal and open are not formally verified yet: their correctness rests on
-//! their use and testing in BoringSSL and aws-lc. The AAD hash they call is
-//! rind's restructured copy of aws-lc's, which
-//! `proofs/Rind/X86_64/PolyHashAdProof.lean` proves on rind's extension of
-//! VG's model hashes the AAD as RFC 8439 does, in constant time. rind tests
-//! both against RFC 8439, Wycheproof, aws-lc-rs, and separate ChaCha20 and
-//! Poly1305 passes.
+//! the AEAD API above them, from them where VG's routines run.
+//! `proofs/Rind/X86_64/ChaCha20Poly1305Asm.lean` proves on rind's extension
+//! of VG's model that `seal_avx2` takes the same branches and addresses
+//! whatever the key, nonce, and data, but not yet that it computes RFC
+//! 8439's seal. No proof covers aws-lc's open or its SSE4.1 seal yet. The
+//! correctness of all three rests on aws-lc's use and testing in BoringSSL
+//! and aws-lc, and the copy's on keeping aws-lc's instructions. The AAD hash
+//! aws-lc's routines call is rind's restructured copy of aws-lc's, which
+//! `proofs/Rind/X86_64/PolyHashAdProof.lean` proves on that model hashes the
+//! AAD as RFC 8439 does, in constant time. rind tests every path against
+//! RFC 8439, Wycheproof, aws-lc-rs, and separate ChaCha20 and Poly1305
+//! passes.
 //!
 //! VG's routines zero their stack scratch before returning, which AGENTS.md
 //! allows an imported proven routine: VG defines each routine with that
@@ -349,7 +354,7 @@ mod tests {
         }
         if HaveSse41::check().is_some() && HaveAvx2::check().is_some() {
             paths.push((
-                "aws-lc avx2",
+                "avx2",
                 |key, nonce, aad, inout| {
                     let (sse41, avx2) = (HaveSse41::check().unwrap(), HaveAvx2::check());
                     one_pass(sse41, avx2, key, nonce, aad, inout, true)
@@ -390,8 +395,8 @@ mod tests {
     // aws-lc's 13-byte TLS case and its 16-byte blocks, and longer messages
     // through VG's wider loops, and opening under a tag one bit off, which
     // VG's routine answers by zeroing the message. Valgrind hides AVX-512,
-    // so ctgrind checks only aws-lc's routines, and `ct_sde_chacha20poly1305`
-    // VG's.
+    // so ctgrind checks only the AVX2 and SSE4.1 routines, and
+    // `ct_sde_chacha20poly1305` VG's.
     #[test]
     fn paths_match() {
         let key = core::array::from_fn(|i| i as u8);

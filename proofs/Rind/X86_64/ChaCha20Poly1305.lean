@@ -15,9 +15,12 @@ message's length run pyca/verified-garbage's IFMA one pass, whose theorems
 `Rind.X86_64.VgChaCha20Poly1305` imports as axioms, so on them the theorems
 here earn the ✓: every length, but on Zen 4 a seal of fewer than 800 bytes
 and an open of fewer than 512. CPUs that fail the check and pass
-`HaveSse41`'s run aws-lc's one-pass routines, which the theorems take as the hypothesis
-`OnePass`: that they compute RFC 8439's ciphertext and tag. No proof covers
-those routines yet, so on those CPUs no theorem here earns the ✓. CPUs that
+`HaveSse41`'s run aws-lc's one-pass routines, but for the AVX2 seal, rind's
+structured copy of aws-lc's, which the theorems take as the hypothesis
+`OnePass`: that they compute RFC 8439's ciphertext and tag.
+`Rind.X86_64.ChaCha20Poly1305Asm` proves the copy constant-time, but no
+proof covers what any of them computes yet, so on those CPUs no theorem here
+earns the ✓. CPUs that
 fail both run the separate passes, which no theorem here covers yet.
 -/
 

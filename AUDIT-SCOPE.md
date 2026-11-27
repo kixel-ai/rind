@@ -62,7 +62,9 @@ importer writes at its pin, so a reviewer reads the importer and its pin
 ([AUDIT.md's Provenance](AUDIT.md#provenance)), not the output. rind's
 structured copy of aws-lc's aarch64 ChaCha20-Poly1305
 (`rind/src/low/aarch64/chacha20poly1305/`) is hand-written: no importer
-writes it. Hand-written lines include each file's inline unit tests. Tests under `rind/tests` and
+writes it. Its x86_64 AVX2 seal's (`rind/src/low/x86_64/chacha20poly1305/`)
+is generated, by `admin/chacha20poly1305-x86/generate`, which a reviewer
+reads with the Lean program it also writes. Hand-written lines include each file's inline unit tests. Tests under `rind/tests` and
 `rind/src/test`, vectors, fuzz targets, and tooling are not counted, since
 they are not what ships. The Lean split is by file name, from
 [`proofs/README.md`'s layout](proofs/README.md#layout), and is a reading aid:
@@ -229,10 +231,11 @@ restated as a work list:
    backend, ported to intrinsics.
 3. Imported assembly that runs without a proof: aws-lc's ChaCha20-Poly1305 on
    x86_64, RSAZ, Montgomery multiplication without ADX, the AVX2 SHA-2, VAES
-   AES-GCM, and all of armv7's; and rind's structured copy of aws-lc's
-   aarch64 ChaCha20-Poly1305, read in its four `.s` files rather than through
-   the importer, which Lean proves constant-time but not that it computes the
-   AEAD.
+   AES-GCM, and all of armv7's; rind's structured copy of aws-lc's aarch64
+   ChaCha20-Poly1305, read in its four `.s` files rather than through the
+   importer; and its copy of aws-lc's x86_64 AVX2 seal, read through
+   `admin/chacha20poly1305-x86/generate`. Lean proves both copies
+   constant-time but not that they compute the AEAD.
 4. The Lean trust base: for each restated axiom, that it is the upstream
    theorem at the pinned revision with the preconditions rind's call sites
    meet; for each hand model, that it is what the Rust it quotes does; for
