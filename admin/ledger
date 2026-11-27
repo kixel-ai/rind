@@ -54,8 +54,8 @@ GROUPS = [
     ),
     (
         r"Armv7/Dalek\.lean",
-        "Beneficial AI Foundation's Lean theorems of curve25519-dalek, in its X25519 spec that `admin/import-dalek` vendors",
-        "published proofs; `admin/prove dalek` checks that every definition `mul_clamped` and `mul_base_clamped` reach in armv7's configuration is the text BAIF's proofs are about",
+        "Beneficial AI Foundation's Lean theorems of curve25519-dalek, in its X25519 and Edwards specs that `admin/import-dalek` vendors",
+        "published proofs; `admin/prove dalek` checks that every definition the restated functions reach in armv7's configuration is the text BAIF's proofs are about, up to the names of `let`-bound locals",
     ),
     (
         r"X86_64/ValeAesGcm\.lean",

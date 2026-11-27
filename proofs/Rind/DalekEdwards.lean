@@ -2,6 +2,7 @@ import Rind.Ed25519Group
 import ForHumans.Specs.Edwards
 import Proofs.Curve25519.Edwards.Basepoint
 import Proofs.Curve25519.Edwards.Encoding
+import Proofs.Curve25519.Bytes
 open Aeneas Aeneas.Std rind.edwards
 
 /-!
@@ -200,5 +201,12 @@ theorem edValidEncode_canonical {n : Nat} (h : edValidEncode n) :
           Nat.cast_one, neg_one_sq]
     rw [curve25519.decodeNat_encodeNat] at hnone
     simp at hnone
+
+/-- BAIF's 32 bytes of a point's encoding, read back as a number: the
+encoding. -/
+theorem decodeLittleEndian_encode (P : curve25519.edwards.Point) :
+    curve25519.decodeLittleEndian (curve25519.encode P) = encodeNat P := by
+  rw [curve25519.encode, curve25519.decodeLittleEndian_encodeLittleEndian,
+    Nat.mod_eq_of_lt (by simpa using curve25519.encodeNat_lt_two_pow_256 P)]
 
 end rind.spec
