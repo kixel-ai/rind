@@ -9,12 +9,13 @@ open Aeneas Aeneas.Std Result rind.spec rind.spec.rsa
 and the modulus's width. With BMI2 and ADX at 16 and 32 words they run
 s2n-bignum's Karatsuba routines and 8n reduction, which `karatsuba_products`
 proves from s2n-bignum's theorems. From eight words at a multiple of four
-they run aws-lc's `bn_mul4x_mont`, whose Lean proof `mul4x_spec` restates,
-or with BMI2 and ADX its `bn_mulx4x_mont`, and squaring at a multiple of
-eight its `bn_sqr8x_mont`, which no proof covers: `AwsLcMont` states what
-those two compute. Every other width runs aws-lc's `bn_mul_mont_nohw`,
-whose HOL Light proof `nohw_spec` restates, so `mont_products` proves those
-widths on any CPU, and the rest given `AwsLcMont`.
+they run aws-lc's `bn_mul4x_mont`, or with BMI2 and ADX its
+`bn_mulx4x_mont`, whose Lean proofs `mul4x_spec` and `mulx4x_spec` restate,
+and squaring at a multiple of eight its `bn_sqr8x_mont`, which no proof
+covers: `AwsLcMont` states what it computes. Every other width runs aws-lc's
+`bn_mul_mont_nohw`, whose HOL Light proof `nohw_spec` restates, so
+`mont_products` proves those widths on any CPU, and the rest below `2^29`
+words, the most `bn_mulx4x_mont` takes, given `AwsLcMont`.
 
 rind's HOL Light proof `BN_MUL_MONT_NOHW_SUBROUTINE_CORRECT`, in
 `proofs/hol-light/x86_64/bn_mul_mont_nohw.ml` at rind's commit, is of the
@@ -54,15 +55,10 @@ def MontProducts (k : Nat) : Prop :=
   (∀ z x m : Slice U64, ∀ n0 : U64, m.length = k → z.length = k → MontArgs x.val x.val m.val n0 →
     low.x86_64.mont.mont_sqr z x m n0 ⦃ r => MontResult x.val x.val m.val r.val ⦄)
 
-/-- aws-lc's unproven 4x and 8x Montgomery products return their results,
-at every width each takes: `bn_mulx4x_mont`, the `mulx` form of
-`bn_mul4x_mont` that `mul4x` runs given BMI2 and ADX, for a multiple of four
-from eight, and `bn_sqr8x_mont` for a multiple of eight. No proof covers
-them. -/
+/-- aws-lc's unproven 8x Montgomery square, `bn_sqr8x_mont`, returns its
+result at every width it takes, a multiple of eight from eight. No proof
+covers it. -/
 def AwsLcMont : Prop :=
-  (∀ z x y m : Slice U64, ∀ n0 : U64, ∀ t, z.length = m.length → 8 ≤ m.length →
-    m.length % 4 = 0 → MontArgs x.val y.val m.val n0 →
-    low.x86_64.mont.mul4x z x y m n0 (some t) ⦃ r => MontResult x.val y.val m.val r.val ⦄) ∧
   (∀ z x m : Slice U64, ∀ n0 : U64, ∀ adx, z.length = m.length → 8 ≤ m.length →
     m.length % 8 = 0 → MontArgs x.val x.val m.val n0 →
     low.x86_64.mont.sqr8x z x m n0 adx ⦃ r => MontResult x.val x.val m.val r.val ⦄)
@@ -156,20 +152,39 @@ axiom mul4x_spec (z x y m : Slice U64) (n0 : U64) (hz : z.length = m.length)
     (hxm : wordsNat x.val < wordsNat m.val) :
     low.x86_64.mont.mul4x z x y m n0 none ⦃ r => MontResult x.val y.val m.val r.val ⦄
 
-/-- `mul4x` returns the Montgomery product of its arguments: by
-`mul4x_spec` without BMI2 and ADX, and given `h4x`, `AwsLcMont`'s
-statement of `bn_mulx4x_mont`, with them. -/
-theorem mul4x_result (h4x : ∀ z x y m : Slice U64, ∀ n0 : U64, ∀ t, z.length = m.length → 8 ≤ m.length →
-      m.length % 4 = 0 → MontArgs x.val y.val m.val n0 →
-      low.x86_64.mont.mul4x z x y m n0 (some t) ⦃ r => MontResult x.val y.val m.val r.val ⦄)
-    (z x y m : Slice U64) (n0 : U64) (adx : Option low.x86_64.cpu.HaveBmi2Adx) (hz : z.length = m.length)
-    (h8 : 8 ≤ m.length) (h4 : m.length % 4 = 0) (hargs : MontArgs x.val y.val m.val n0) :
+/-- `bn_mulx4x_mont_correct`, rind's Lean theorem in
+`Rind/X86_64/Mulx4xProof.lean`, which the same build checks: the naked
+function `bn_mulx4x_mont`, as rind's Linux release build emits it, run in
+rind's extension of pyca/verified-garbage's x86_64 model, writes to `z` the
+Montgomery product of `k`-word `x` and `y` modulo `m`, below `m`, for `k` a
+multiple of four from eight and below `2^29`, `n0` the `-m⁻¹ mod 2^64` of
+`m`, and `x` below `m`. `mul4x` runs it given BMI2 and ADX, the token `t`.
+The routine scales the width to bytes in 32 bits (`shl r9d, 3`), so the
+theorem needs `k < 2^29`, tighter than `MontArgs`'s `2^32`.
+
+Its hypotheses hold for every such call `mul4x` makes, as `mul4x_spec`'s
+do, but that the frame the routine owns is of up to `8k + 248` bytes below
+the stack pointer. `admin/prove lean` checks that the theorem's program is
+the Linux build's object; Apple's build assembles its own copy,
+`bn_mulx4x_mont.apple.s`, which no check compares. The restatement, and that
+the wrapper passes the pointers and width the theorem names, are trusted. -/
+@[step]
+axiom mulx4x_spec (z x y m : Slice U64) (n0 : U64) (t : low.x86_64.cpu.HaveBmi2Adx)
+    (hz : z.length = m.length) (hx : x.length = m.length) (hy : y.length = m.length) (h8 : 8 ≤ m.length)
+    (h4 : m.length % 4 = 0) (hbig : m.length < 2 ^ 29) (hn0 : (wordsNat m.val * n0.val + 1) % 2 ^ 64 = 0)
+    (hxm : wordsNat x.val < wordsNat m.val) :
+    low.x86_64.mont.mul4x z x y m n0 (some t) ⦃ r => MontResult x.val y.val m.val r.val ⦄
+
+/-- `mul4x` returns the Montgomery product of its arguments below `2^29`
+words: by `mul4x_spec` without BMI2 and ADX and `mulx4x_spec` with them. -/
+theorem mul4x_result (z x y m : Slice U64) (n0 : U64) (adx : Option low.x86_64.cpu.HaveBmi2Adx)
+    (hz : z.length = m.length) (h8 : 8 ≤ m.length) (h4 : m.length % 4 = 0) (h29 : m.length < 2 ^ 29)
+    (hargs : MontArgs x.val y.val m.val n0) :
     low.x86_64.mont.mul4x z x y m n0 adx ⦃ r => MontResult x.val y.val m.val r.val ⦄ := by
+  obtain ⟨hx, hy, -, hbig, -, hn0, hxm, -⟩ := hargs
   cases adx with
-  | none =>
-    obtain ⟨hx, hy, -, hbig, -, hn0, hxm, -⟩ := hargs
-    exact mul4x_spec z x y m n0 hz hx hy h8 h4 hbig hn0 hxm
-  | some t => exact h4x z x y m n0 t hz h8 h4 hargs
+  | none => exact mul4x_spec z x y m n0 hz hx hy h8 h4 hbig hn0 hxm
+  | some t => exact mulx4x_spec z x y m n0 t hz hx hy h8 h4 h29 hn0 hxm
 
 /-! ## s2n-bignum's 8n reduction, `redc_8n` -/
 
@@ -271,16 +286,16 @@ theorem of_multiple {b : Bool} {k : Usize} {d : Nat} {m : Slice U64} (hk : k.val
   rw [← hk, ← h1]; exact h2
 
 /-- Splits `mont_mul`'s or `mont_sqr`'s dispatch, and closes each branch by
-the routine it runs, given `h4x` and `h8x` from `AwsLcMont` for aws-lc's 4x
-and 8x routines, or refutes it, as it refutes those routines' branches given
-`hnarrow`, a width they do not take. -/
+the routine it runs, given `h29`, a width below `2^29`, for aws-lc's 4x
+routines and `h8x`, `AwsLcMont`, for its 8x one, or refutes it, as it refutes
+those routines' branches given `hnarrow`, a width they do not take. -/
 local syntax "mont_awslc" : tactic
 
 set_option hygiene false in
 macro_rules
   | `(tactic| mont_awslc) => `(tactic| first
     | exact h8x _ _ _ _ _ hz (by scalar_tac) (of_multiple hlen ‹_› ‹_›) hargs
-    | exact mul4x_result h4x _ _ _ _ _ _ hz (by scalar_tac) (of_multiple hlen ‹_› ‹_›) hargs
+    | exact mul4x_result _ _ _ _ _ _ hz (by scalar_tac) (of_multiple hlen ‹_› ‹_›) h29 hargs
     | exact nohw_result _ _ _ _ _ hz hargs
     | (split <;> mont_awslc)
     | (step with core.num.Usize.is_multiple_of.spec; mont_awslc)
@@ -288,8 +303,7 @@ macro_rules
 
 set_option maxHeartbeats 1000000 in
 theorem mont_mul_spec (z x y m : Slice U64) (n0 : U64) (o : Option low.x86_64.cpu.HaveBmi2Adx)
-    (hcheck : low.x86_64.cpu.HaveBmi2Adx.check = ok o)
-    (hroutines : AwsLcMont ∨ m.length < 8 ∨ m.length % 4 ≠ 0)
+    (hcheck : low.x86_64.cpu.HaveBmi2Adx.check = ok o) (hroutines : m.length < 2 ^ 29 ∨ m.length % 4 ≠ 0)
     (hz : z.length = m.length) (hargs : MontArgs x.val y.val m.val n0) :
     low.x86_64.mont.mont_mul z x y m n0 ⦃ r => MontResult x.val y.val m.val r.val ⦄ := by
   obtain ⟨hx, hy, hk2, -⟩ := id hargs
@@ -298,7 +312,7 @@ theorem mont_mul_spec (z x y m : Slice U64) (n0 : U64) (o : Option low.x86_64.cp
   rw [hcheck]
   simp only [bind_ok]
   have hlen : m.len.val = m.length := by simp
-  rcases hroutines with ⟨h4x, -⟩ | hnarrow
+  rcases hroutines with h29 | hnarrow
   · cases o <;> dsimp only
     · mont_awslc
     · split
@@ -315,7 +329,7 @@ theorem mont_mul_spec (z x y m : Slice U64) (n0 : U64) (o : Option low.x86_64.cp
 set_option maxHeartbeats 1000000 in
 theorem mont_sqr_spec (z x m : Slice U64) (n0 : U64) (o : Option low.x86_64.cpu.HaveBmi2Adx)
     (hcheck : low.x86_64.cpu.HaveBmi2Adx.check = ok o)
-    (hroutines : AwsLcMont ∨ m.length < 8 ∨ m.length % 4 ≠ 0)
+    (hroutines : AwsLcMont ∧ m.length < 2 ^ 29 ∨ m.length < 8 ∨ m.length % 4 ≠ 0)
     (hz : z.length = m.length) (hargs : MontArgs x.val x.val m.val n0) :
     low.x86_64.mont.mont_sqr z x m n0 ⦃ r => MontResult x.val x.val m.val r.val ⦄ := by
   obtain ⟨hx, -, hk2, -⟩ := id hargs
@@ -324,7 +338,7 @@ theorem mont_sqr_spec (z x m : Slice U64) (n0 : U64) (o : Option low.x86_64.cpu.
   rw [hcheck]
   simp only [bind_ok]
   have hlen : m.len.val = m.length := by simp
-  rcases hroutines with ⟨h4x, h8x⟩ | hnarrow
+  rcases hroutines with ⟨h8x, h29⟩ | hnarrow
   · cases o <;> dsimp only
     · mont_awslc
     · split
@@ -365,14 +379,15 @@ theorem karatsuba_products {k : Nat} (o : Option low.x86_64.cpu.HaveBmi2Adx)
 /-- rind's Montgomery products at width `k` return their results: on any
 CPU at a width aws-lc's 4x and 8x routines do not take, which runs
 `bn_mul_mont_nohw` but for s2n-bignum's Karatsuba routines, with BMI2 and
-ADX at 16 and 32 words, and at any other width given `AwsLcMont`. -/
+ADX at 16 and 32 words, and at any other width below `2^29` given
+`AwsLcMont`. -/
 theorem mont_products {k : Nat} (o : Option low.x86_64.cpu.HaveBmi2Adx)
     (hcheck : low.x86_64.cpu.HaveBmi2Adx.check = ok o)
-    (hroutines : AwsLcMont ∨ k < 8 ∨ k % 4 ≠ 0 ∨ o.isSome ∧ (k = 16 ∨ k = 32)) :
+    (hroutines : AwsLcMont ∧ k < 2 ^ 29 ∨ k < 8 ∨ k % 4 ≠ 0 ∨ o.isSome ∧ (k = 16 ∨ k = 32)) :
     MontProducts k := by
-  have general (h : AwsLcMont ∨ k < 8 ∨ k % 4 ≠ 0) : MontProducts k :=
-    ⟨fun z x y m n0 hm hz hargs => mont_mul_spec z x y m n0 o hcheck (by rw [hm]; exact h)
-        (by rw [hm, hz]) hargs,
+  have general (h : AwsLcMont ∧ k < 2 ^ 29 ∨ k < 8 ∨ k % 4 ≠ 0) : MontProducts k :=
+    ⟨fun z x y m n0 hm hz hargs => mont_mul_spec z x y m n0 o hcheck
+        (by rw [hm]; rcases h with ⟨-, h⟩ | h | h <;> omega) (by rw [hm, hz]) hargs,
       fun z x m n0 hm hz hargs => mont_sqr_spec z x m n0 o hcheck (by rw [hm]; exact h)
         (by rw [hm, hz]) hargs⟩
   rcases hroutines with h | h | h | ⟨hsome, hk⟩
