@@ -560,7 +560,7 @@ theorem crt_spec (havx : ∃ t, low.x86_64.cpu.HaveAvx2.check = ok t)
     · omega
     · exact h0
 
-theorem equals_spec (x y : RsaInt) (hx : x.used.val ≤ 128) (hy : y.used.val ≤ 128) :
+theorem equals_spec {N : Usize} (x y : low.posint.PosInt N) (hx : x.used.val ≤ N.val) (hy : y.used.val ≤ N.val) :
     low.posint.PosInt.equals x y ⦃ b =>
       b = decide (wordsNat (lowWords x x.used) = wordsNat (lowWords y y.used)) ⦄ := by
   unfold low.posint.PosInt.equals low.posint.PosInt.as_words

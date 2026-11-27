@@ -667,6 +667,15 @@ axiom bignum_negmodinv_spec (z x : Slice U64) (hx : x.length = z.length) :
         (wordsNat x.val % 2 = 1 →
           (wordsNat x.val * wordsNat r.val + 1) % 2 ^ (64 * z.length) = 0) ⦄
 
+/-- `BIGNUM_MONTIFIER_SUBROUTINE_CORRECT`, for `z`'s length as `k`, with the
+temporary buffer `t` of at least `k` words, which the wrapper asserts,
+https://github.com/awslabs/s2n-bignum/blob/3f01260ff1bd2577abf0117ce45aa008bc243a80/x86/proofs/bignum_montifier.ml#L3115 -/
+@[step]
+axiom bignum_montifier_spec (z m t : Slice U64) (hm : m.length = z.length) (ht : z.length ≤ t.length) :
+    low.x86_64.bignum_montifier.bignum_montifier z m t ⦃ r =>
+      r.1.length = z.length ∧
+        (wordsNat m.val % 2 = 1 → wordsNat r.1.val = 2 ^ (128 * z.length) % wordsNat m.val) ⦄
+
 /-- `BIGNUM_MONTREDC_SUBROUTINE_CORRECT`, for `z`'s length as `k` and `x`'s as
 `r`, whose `inverse_mod n (2^(64p))` is any `i` with `2^(64p)·i ≡ 1 (mod n)`,
 and whose bound on `r` holds for any slice of `u64`, of under `2^60`

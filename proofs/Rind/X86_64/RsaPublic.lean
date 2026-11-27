@@ -284,7 +284,7 @@ theorem public_op_loop_spec (n : RsaInt) (e n0 : U64) (c cm : RsaInt)
 
 /-! ## `public_op` -/
 
-theorem less_than_spec (x y : RsaInt) (hx : x.used.val ≤ 128) (hy : y.used.val ≤ 128) :
+theorem less_than_spec {N : Usize} (x y : low.posint.PosInt N) (hx : x.used.val ≤ N.val) (hy : y.used.val ≤ N.val) :
     low.posint.PosInt.less_than x y ⦃ b =>
       b = decide (wordsNat (lowWords x x.used) < wordsNat (lowWords y y.used)) ⦄ := by
   unfold low.posint.PosInt.less_than low.posint.PosInt.as_words

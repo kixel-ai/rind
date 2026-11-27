@@ -347,6 +347,14 @@ opaque low.x86_64.cpu.HaveBmi2Adx.check
 opaque low.x86_64.cpu.HaveAvx512ForRsa.check
   : Result (Option low.x86_64.cpu.HaveAvx512ForRsa)
 
+opaque low.x86_64.cpu.HaveAvx512ForRsa.fp16
+  : low.x86_64.cpu.HaveAvx512ForRsa → Result Bool
+
+/-- Wiping VG's CRT values, which no proof observes: the translation ignores
+drops. -/
+opaque low.x86_64.rsa_ifma.IfmaCrt.Insts.CoreOpsDropDrop.drop
+  : low.x86_64.rsa_ifma.IfmaCrt → Result low.x86_64.rsa_ifma.IfmaCrt
+
 /-- pyca/verified-garbage's AVX-512 IFMA public operation and CRT, behind
 the Rust that sizes their scratch and calls them, which `Rind.X86_64.VgRsa`
 states. -/
@@ -846,6 +854,9 @@ opaque high.curve.P521.Insts.RindHighAgreementAgreePrivateKey.load
 
 opaque low.x86_64.bignum_negmodinv.bignum_negmodinv
   : Slice Std.U64 → Slice Std.U64 → Result (Slice Std.U64)
+
+opaque low.x86_64.bignum_montifier.bignum_montifier
+  : Slice Std.U64 → Slice Std.U64 → Slice Std.U64 → Result ((Slice Std.U64) × (Slice Std.U64))
 
 opaque low.x86_64.bignum_bitsize.bignum_bitsize
   : Slice Std.U64 → Result Std.Usize

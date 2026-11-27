@@ -332,7 +332,7 @@ theorem from_secret_bytes_spec (bytes : Slice U8) (hN : bytes.length ≤ 1024) :
   simp
 -- END x86_64
 
-theorem len_bits_spec (p : RsaInt) (hu : p.used.val ≤ 128) :
+theorem len_bits_spec {N : Usize} (p : low.posint.PosInt N) (hu : p.used.val ≤ N.val) :
     low.posint.PosInt.len_bits p ⦃ r => r.val = (wordsNat (lowWords p p.used)).size ⦄ := by
   unfold low.posint.PosInt.len_bits low.posint.PosInt.as_words
   step*

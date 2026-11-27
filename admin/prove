@@ -1412,7 +1412,8 @@ only_quoted rind/src/aead.rs "$out/AeadDispatch.rs" '= Algorithm \{'
 # HMAC's keyed states are translated over any hash, and its
 # `Key` and `Context`, which hold function pointers, are not.
 # On x86_64, RSA verification is translated from `high::rsa::VerifyingKey`,
-# and the private operation from `RsaPrivateKey::private_op`, down to
+# and the private key's loading and operation from `RsaPrivateKey::new` and
+# `RsaPrivateKey::private_op`, down to
 # `low::posint`, `low::x86_64::mont_exp`, and the Montgomery products'
 # dispatch in `low::x86_64::mont`, whose s2n-bignum and aws-lc routines are
 # opaque, and to `RsaIfma::check`, `rsa_vg::Precompute::check`, and the RSAZ
@@ -1875,6 +1876,7 @@ extract x86_64 X86_64 "${hashes[@]}" "${assembly[@]}" \
     --include crate::low::x86_64::mont::karatsuba_mul \
     --include crate::low::x86_64::mont::karatsuba_sqr \
     --include crate::low::x86_64::mont::redc_8n \
+    --start-from crate::mid::rsa_priv::RsaPrivateKey::new \
     --start-from crate::mid::rsa_priv::RsaPrivateKey::private_op \
     --include crate::low::x86_64::mont_exp \
     --opaque crate::low::x86_64::mont_exp::power5 \
@@ -1883,6 +1885,9 @@ extract x86_64 X86_64 "${hashes[@]}" "${assembly[@]}" \
     --opaque 'crate::low::posint::_::mod_exp_pair_rsaz' \
     --opaque 'crate::low::posint::_::mod_exp_rsaz' \
     --include 'crate::low::x86_64::rsa_ifma::_::runs' \
+    --include 'crate::low::x86_64::rsa_ifma::_::new' \
+    --include 'crate::low::x86_64::rsa_ifma::_::try_new' \
+    --include 'crate::low::x86_64::rsa_ifma::_::precompute' \
     --include crate::low::x86_64::rsaz::Rsaz \
     --include 'crate::low::x86_64::rsaz::_::check' \
     --include crate::low::x86_64::rsaz_avx512::RsazAvx512 \
