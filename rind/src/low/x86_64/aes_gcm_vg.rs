@@ -10,7 +10,7 @@ use core::ptr;
 use core::sync::atomic::{AtomicPtr, Ordering};
 
 use super::aes::HwKey;
-use super::cpu::HaveAvx512ForVgAesGcm;
+use super::cpu::{HaveAvx512ForAesGcm, HaveAvx512ForVgAesGcm};
 use super::vg::vg_aes_gcm_open_prepared_vaes_vpclmul_avx512::vg_aes_gcm_open_prepared_vaes_vpclmul_avx512;
 use super::vg::vg_aes_gcm_prepare_vpclmul_avx512::vg_aes_gcm_prepare_vpclmul_avx512;
 use super::vg::vg_aes_gcm_seal_prepared_vaes_vpclmul_avx512::vg_aes_gcm_seal_prepared_vaes_vpclmul_avx512;
@@ -29,7 +29,14 @@ pub(crate) struct LazyVgKey {
 }
 
 impl LazyVgKey {
-    pub(crate) fn new(token: HaveAvx512ForVgAesGcm) -> Self {
+    /// An empty cell, on the CPUs where VG's AES-GCM is faster: see
+    /// [`HaveAvx512ForAesGcm::vg`].
+    pub(crate) fn new(token: HaveAvx512ForAesGcm) -> Option<Self> {
+        token.vg().map(Self::with)
+    }
+
+    /// An empty cell, on any CPU VG's AES-GCM runs on.
+    pub(crate) fn with(token: HaveAvx512ForVgAesGcm) -> Self {
         Self {
             ctx: AtomicPtr::new(ptr::null_mut()),
             token,
@@ -203,7 +210,6 @@ impl VgKey {
 mod tests {
     use super::*;
     use crate::low::x86_64::aes::AesKey;
-    use crate::low::x86_64::cpu::HaveAvx512ForAesGcm;
 
     // A thread that loses the race to make the context frees its own and
     // returns the winner's, which every later call returns too.
@@ -216,7 +222,7 @@ mod tests {
         let AesKey::Hw(key) = &key else {
             unreachable!("AVX-512 CPUs have AES-NI");
         };
-        let cell = LazyVgKey::new(token.vg_anywhere());
+        let cell = LazyVgKey::with(token.vg_anywhere());
         let won: *const VgKey = cell.get(key);
         assert_eq!(cell.init(key) as *const VgKey, won);
         assert_eq!(cell.get(key) as *const VgKey, won);
@@ -233,7 +239,7 @@ mod tests {
         let AesKey::Hw(key) = &key else {
             unreachable!("AVX-512 CPUs have AES-NI");
         };
-        let mut cell = LazyVgKey::new(token.vg_anywhere());
+        let mut cell = LazyVgKey::with(token.vg_anywhere());
         let _ = cell.get(key);
         cell.wipe();
         assert!(cell.ctx.get_mut().is_null());

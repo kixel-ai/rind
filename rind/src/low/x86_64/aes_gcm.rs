@@ -741,7 +741,7 @@ mod tests {
                 if let Some(token) = HaveAvx512ForAesGcm::check() {
                     for vg in [None, Some(token.vg_anywhere())] {
                         let mut table = GhashTableAvx512::new(u128::from_be_bytes(h), hw, token);
-                        table.vg = vg.map(LazyVgKey::new);
+                        table.vg = vg.map(LazyVgKey::with);
                         slow.push((AesKey::new(&key), GhashTable::Avx512(table)));
                     }
                 }
@@ -904,7 +904,7 @@ mod tests {
             panic!("AVX-512 VAES");
         };
         // VG's, from its length, as on Zen 5, whichever CPU SDE emulates.
-        avx512.vg = Some(LazyVgKey::new(avx512.token.vg_anywhere()));
+        avx512.vg = Some(LazyVgKey::with(avx512.token.vg_anywhere()));
         for len in [
             AVX512_MINIMUM_CIPHER_LEN,
             AVX512_KERNEL_MINIMUM_CIPHER_LEN,

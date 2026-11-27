@@ -246,7 +246,7 @@ impl GhashTableAvx512 {
     pub(crate) fn new(h: u128, hw: HaveAesHardware, token: HaveAvx512ForAesGcm) -> Self {
         let vaes = VaesKernel::avx512(h, token);
         let clmul = ClmulTable::from_powers(vaes.powers(), hw);
-        let vg = token.vg().map(LazyVgKey::new);
+        let vg = LazyVgKey::new(token);
         Self {
             clmul,
             vaes,
