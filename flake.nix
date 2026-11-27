@@ -1132,6 +1132,12 @@
               # rind takes its ADX routines anyway, as under `admin/ctgrind`.
               # See UPSTREAM.md, "Valgrind hides ADX from `cpuid`".
               env.VALGRIND_BUG_494162 = "1";
+              # swole's preload fixes the randomness reaching glibc, but
+              # aws-lc's DRBG also mixes in RDRAND, which Valgrind runs on
+              # the host. Masking it (CPUID.1:ECX bit 30) leaves aws-lc only
+              # the preloaded getrandom, so its rows, and rows whose inputs
+              # it makes, such as ML-DSA's rejection loop, repeat exactly.
+              env.OPENSSL_ia32cap = "~0x4000000000000000";
               # swole lists the benchmarks natively, where that forced
               # ADX would fault on a CPU without it, such as Haswell.
               shellHook = ''
