@@ -8,7 +8,7 @@ How long rind and the usual Rust crypto libraries take for the same operations, 
 
 | Host | CPU | OS | Measured |
 |---|---|---|---|
-| `nixos` | AMD Ryzen 9 5900XT 16-Core Processor | NixOS 26.11 (Zokor) (Linux 6.18.63) | 2026-11-26 at [`8656d89b`](https://github.com/kixel-ai/rind/commit/8656d89bd9ade57720e72802fd6096b8b2bcdc82) |
+| `nixos` | AMD Ryzen 9 5900XT 16-Core Processor | NixOS 26.11 (Zokor) (Linux 6.18.63) | 2026-11-27 at [`c23c1a7e`](https://github.com/kixel-ai/rind/commit/c23c1a7e52967892d09fdb514acf29d13d3ce6c1) |
 | `desktop` | Intel(R) Core(TM) Ultra 7 270K Plus | Ubuntu 26.04.1 LTS (Linux 7.0.0-44-generic) | 2026-11-26 at [`8656d89b`](https://github.com/kixel-ai/rind/commit/8656d89bd9ade57720e72802fd6096b8b2bcdc82) |
 | `fedora` | AMD Ryzen 9 9950X 16-Core Processor | Fedora Linux 45 (Workstation Edition) (Linux 7.3.3-300.fc45.x86_64) | 2026-11-24 at [`d481966c`](https://github.com/kixel-ai/rind/commit/d481966c12a136fa82b10afbf81e25d26f7fb0cd) |
 | `kixtop` | Apple M4 | macOS 26.6.2 (25.6.0) | 2026-11-26 at [`8656d89b`](https://github.com/kixel-ai/rind/commit/8656d89bd9ade57720e72802fd6096b8b2bcdc82) |
@@ -21,7 +21,7 @@ Each host builds with the pinned toolchain in the Nix dev shell. A dedicated hos
 
 Each host lists the report's rows by running each of `rind-bench`'s once, then times them with [swole](https://github.com/kixel-ai/swole), which `flake.nix` pins, as `swole_args` in its `benchmarks/data/<host>.json` records: `swole bench` runs each row in a process of its own, in samples of as many calls as fill a millisecond, for a second and ten samples at least, and takes the samples' median time a call.
 
-A host whose record holds `criterion_args` instead was timed with criterion, before `rind-bench` moved to swole: `nixos`, `desktop`, `fedora`, `kixtop`, `ovh-iad`, `ovh-sea`.
+A host whose record holds `criterion_args` instead was timed with criterion, before `rind-bench` moved to swole: `desktop`, `fedora`, `kixtop`, `ovh-iad`, `ovh-sea`.
 
 On aarch64, every rind row except those marked *DIT set per call* holds a `rind::cpu::Dit::hold()` guard across its calls (`Dit` in `rind-bench/benches/common/mod.rs`), so it pays for turning DIT on and off once, as a caller holding the guard around a batch of calls does. A caller holding none pays it on every call: the rows marked *DIT set per call* time rind that way. On x86_64 the guard does nothing, and no other library sets DIT.
 
@@ -101,9 +101,11 @@ The rustls rows run both peers in one process. The every-logical-CPU rows run on
 
 ### `nixos`: AMD Ryzen 9 5900XT 16-Core Processor
 
-Measured 2026-11-26 at [`8656d89b`](https://github.com/kixel-ai/rind/commit/8656d89bd9ade57720e72802fd6096b8b2bcdc82), on NixOS 26.11 (Zokor) (Linux 6.18.63) with rustc 1.98.1 (48a229cea 2026-09-01).
+Measured 2026-11-27 at [`c23c1a7e`](https://github.com/kixel-ai/rind/commit/c23c1a7e52967892d09fdb514acf29d13d3ce6c1), on NixOS 26.11 (Zokor) (Linux 6.18.63) with rustc 1.98.1 (48a229cea 2026-09-01).
 
-rind-rustls on all 32 logical CPUs runs full handshakes at 12.5 times and resumed handshakes at 12.4 times its one-thread rate.
+Timed on CPUs 14,15,30,31, two whole cores reserved for the run.
+
+Not timed on `nixos`: full handshake, X25519, every logical CPU, resumed handshake, X25519, every logical CPU.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="benchmarks/nixos-dark.svg">
@@ -115,122 +117,122 @@ rind-rustls on all 32 logical CPUs runs full handshakes at 12.5 times and resume
 
 | Operation | rind | aws-lc-rs | ring | RustCrypto + dalek | graviola | libcrux | OpenSSL | verified-garbage |
 |---|---|---|---|---|---|---|---|---|
-| full handshake, X25519MLKEM768 | 211.59 µs | 302.88 µs | - | - | 252.94 µs | - | 644.98 µs | - |
-| full handshake, X25519 | 184.34 µs | 266.43 µs | 288.55 µs | - | 210.45 µs | - | 555.22 µs | - |
-| full handshake, P-256 | 215.16 µs | 301.18 µs | 283.50 µs | - | 257.25 µs | - | 633.71 µs | - |
-| full handshake, Ed25519 certificate | 156.59 µs | 213.27 µs | 278.38 µs | - | 169.10 µs | - | 614.22 µs | - |
-| full handshake, RSA-2048 certificate | 512.68 µs | 625.33 µs | 644.48 µs | - | 547.45 µs | - | 882.18 µs | - |
-| resumed handshake, X25519 | 73.52 µs | 132.13 µs | 154.61 µs | - | 77.28 µs | - | 370.83 µs | - |
-| full handshake, X25519, every logical CPU | 14.74 µs | 22.19 µs | 20.81 µs | - | 17.46 µs | - | 59.02 µs | - |
-| resumed handshake, X25519, every logical CPU | 5.95 µs | 11.47 µs | 12.06 µs | - | 6.26 µs | - | 53.99 µs | - |
-| 1 MB transfer, AES-128-GCM | 272.77 µs | 427.34 µs | 271.34 µs | - | 434.01 µs | - | 477.50 µs | - |
-| 1 MB transfer, AES-256-GCM | 288.92 µs | 462.64 µs | 296.03 µs | - | 475.77 µs | - | 506.84 µs | - |
-| 1 MB transfer, ChaCha20-Poly1305 | 685.31 µs | 688.76 µs | 701.60 µs | - | 1.41 ms | - | 813.15 µs | - |
-| one record, AES-128-GCM, 64 B | 269 ns | 374 ns | 322 ns | - | 374 ns | - | 916 ns | - |
-| one record, AES-128-GCM, 256 B | 320 ns | 459 ns | 386 ns | - | 425 ns | - | 1.00 µs | - |
-| one record, AES-128-GCM, 1 KB | 510 ns | 772 ns | 562 ns | - | 690 ns | - | 1.28 µs | - |
-| one record, ChaCha20-Poly1305, 64 B | 418 ns | 435 ns | 409 ns | - | 659 ns | - | 1.29 µs | - |
-| one record, ChaCha20-Poly1305, 256 B | 513 ns | 539 ns | 535 ns | - | 1.08 µs | - | 1.46 µs | - |
-| one record, ChaCha20-Poly1305, 1 KB | 1.07 µs | 1.09 µs | 1.05 µs | - | 2.26 µs | - | 1.93 µs | - |
-| AES-128-GCM seal, 32 B | 37 ns | 75 ns | 54 ns | 96 ns | 68 ns | 312 ns | 119 ns | 52 ns |
-| AES-128-GCM seal, 1350 B | 170 ns | 285 ns | 188 ns | 450 ns | 313 ns | 4.61 µs | 326 ns | 194 ns |
-| AES-128-GCM seal, 16 KB | 1.40 µs | 2.56 µs | 1.46 µs | 4.32 µs | 2.68 µs | 53.79 µs | 2.64 µs | 1.47 µs |
-| AES-128-GCM open, 32 B | 33 ns | 73 ns | 58 ns | 103 ns | 66 ns | 317 ns | 126 ns | 52 ns |
-| AES-128-GCM open, 1350 B | 166 ns | 292 ns | 185 ns | 450 ns | 321 ns | 3.92 µs | 338 ns | 194 ns |
-| AES-128-GCM open, 16 KB | 1.48 µs | 2.72 µs | 1.49 µs | 4.31 µs | 2.78 µs | 44.41 µs | 2.77 µs | 1.58 µs |
-| AES-256-GCM seal, 32 B | 43 ns | 80 ns | 60 ns | 103 ns | 76 ns | 445 ns | 119 ns | 53 ns |
-| AES-256-GCM seal, 1350 B | 193 ns | 317 ns | 208 ns | 494 ns | 336 ns | 7.14 µs | 351 ns | 211 ns |
-| AES-256-GCM seal, 16 KB | 1.54 µs | 2.85 µs | 1.55 µs | 4.84 µs | 3.05 µs | 80.46 µs | 2.93 µs | 1.70 µs |
-| AES-256-GCM open, 32 B | 37 ns | 79 ns | 63 ns | 108 ns | 69 ns | 461 ns | 126 ns | 55 ns |
-| AES-256-GCM open, 1350 B | 175 ns | 321 ns | 211 ns | 504 ns | 346 ns | 7.07 µs | 347 ns | 220 ns |
-| AES-256-GCM open, 16 KB | 1.60 µs | 3.02 µs | 1.61 µs | 5.12 µs | 3.10 µs | 79.67 µs | 3.06 µs | 1.75 µs |
-| ChaCha20-Poly1305 seal, 32 B | 114 ns | 124 ns | 116 ns | 1.20 µs | 220 ns | 222 ns ✓ | 260 ns | 131 ns |
-| ChaCha20-Poly1305 seal, 1350 B | 530 ns | 535 ns | 531 ns | 2.04 µs | 1.08 µs | 2.36 µs ✓ | 771 ns | 573 ns |
-| ChaCha20-Poly1305 seal, 16 KB | 4.64 µs | 4.77 µs | 4.63 µs | 10.10 µs | 9.91 µs | 25.95 µs ✓ | 5.33 µs | 4.83 µs |
-| XChaCha20-Poly1305 seal, 32 B | 230 ns | 254 ns | - | 1.32 µs | 336 ns | 334 ns | - | - |
-| XChaCha20-Poly1305 seal, 1350 B | 650 ns | 692 ns | - | 2.10 µs | 1.23 µs | 2.44 µs | - | - |
-| XChaCha20-Poly1305 seal, 16 KB | 4.68 µs | 4.87 µs | - | 10.33 µs | 10.52 µs | 25.88 µs | - | - |
-| AES-128 header protection | 3 ns ✓ | 6 ns | 7 ns | - | - | - | - | 4 ns |
-| AES-256 header protection | 5 ns ✓ | 8 ns | 9 ns | - | - | - | - | 6 ns |
-| ChaCha20 header protection | 77 ns ✓ | 81 ns | 77 ns | - | - | - | - | 82 ns |
-| X25519 | 24.12 µs ✓ | 24.52 µs | 46.24 µs | 51.36 µs | 23.55 µs | 63.55 µs ✓ | 47.73 µs | 24.27 µs |
-| P-256 ECDH | 37.19 µs ✓ | 42.32 µs | 42.53 µs | 248.43 µs | 41.89 µs | 251.58 µs ✓ | 68.50 µs | 37.88 µs |
-| Ed25519 sign | 5.71 µs ✓ | 6.11 µs | 17.09 µs | 13.86 µs | 5.91 µs | 40.44 µs ✓ | 23.34 µs | 6.06 µs |
-| Ed25519 verify | 20.13 µs ✓ | 27.96 µs | 34.71 µs | 24.94 µs | 25.84 µs | 53.68 µs ✓ | 80.65 µs | 22.13 µs |
-| P-256 ECDSA sign | 8.86 µs ✓ | 12.09 µs | 13.21 µs | 58.19 µs | 10.60 µs | 89.23 µs ✓ | 16.49 µs | 8.51 µs |
-| P-256 ECDSA verify | 31.66 µs ✓ | 38.54 µs | 39.63 µs | 220.99 µs | 41.88 µs | 206.58 µs ✓ | 57.30 µs | 30.66 µs |
-| SHA-256, 64 B | 57 ns ✓ | 92 ns | 80 ns | 58 ns | 63 ns | 340 ns ✓ | 236 ns | 73 ns |
-| SHA-256, 1350 B | 591 ns ✓ | 621 ns | 635 ns | 599 ns | 611 ns | 3.65 µs ✓ | 758 ns | 606 ns |
-| SHA-256, 16 KB | 6.91 µs ✓ | 6.87 µs | 7.10 µs | 6.75 µs | 6.75 µs | 43.31 µs ✓ | 7.10 µs | 6.98 µs |
-| SHA-512, 64 B | 130 ns ✓ | 219 ns | 188 ns | 191 ns | 183 ns | 234 ns ✓ | 333 ns | 151 ns |
-| SHA-512, 1350 B | 1.22 µs ✓ | 1.78 µs | 1.76 µs | 1.85 µs | 1.83 µs | 2.40 µs ✓ | 1.45 µs | 1.36 µs |
-| SHA-512, 16 KB | 14.53 µs ✓ | 20.20 µs | 21.03 µs | 20.79 µs | 20.55 µs | 29.03 µs ✓ | 14.56 µs | 15.37 µs |
-| SHA3-256, 64 B | 248 ns ✓ | 279 ns | - | 279 ns | - | 275 ns | - | 238 ns |
-| SHA3-256, 1350 B | 2.10 µs ✓ | 2.12 µs | - | 2.70 µs | - | 2.64 µs | - | 2.25 µs |
-| SHA3-256, 16 KB | 25.08 µs ✓ | 24.99 µs | - | 32.20 µs | - | 31.88 µs | - | 26.17 µs |
-| SHA3-512, 64 B | 249 ns ✓ | 286 ns | - | 276 ns | - | 273 ns | - | 233 ns |
-| SHA3-512, 1350 B | 4.00 µs ✓ | 4.11 µs | - | 4.98 µs | - | 4.88 µs | - | 4.02 µs |
-| SHA3-512, 16 KB | 47.46 µs ✓ | 47.92 µs | - | 60.67 µs | - | 57.84 µs | - | 49.46 µs |
-| HMAC-SHA256, 64 B | 140 ns ✓ | 262 ns | 217 ns | 173 ns | 170 ns | 824 ns ✓ | 2.68 µs | 161 ns |
-| HMAC-SHA256, 1350 B | 671 ns ✓ | 797 ns | 774 ns | 707 ns | 704 ns | 4.16 µs ✓ | 3.18 µs | 694 ns |
-| HKDF-SHA256 extract and expand | 267 ns ✓ | 371 ns | 419 ns | 314 ns | - | 1.45 µs ✓ | 2.76 µs | 285 ns |
-| HKDF-SHA256 expand | 94 ns ✓ | 179 ns | 150 ns | 105 ns | - | 707 ns ✓ | 2.08 µs | 156 ns |
-| RSA-2048 PKCS#1 sign | 421.52 µs | 440.98 µs | 433.32 µs | 1.77 ms | 414.87 µs | - | 445.74 µs | 459.16 µs |
-| RSA-2048 PKCS#1 verify | 10.79 µs ✓ | 13.80 µs | 15.40 µs | 48.38 µs | 17.87 µs | - | 20.72 µs | 11.69 µs |
-| RSA-2048 PSS sign | 420.97 µs | 445.70 µs | 442.38 µs | 1.77 ms | 415.63 µs | 5.00 ms ✓ | 449.40 µs | 460.47 µs |
-| RSA-2048 PSS verify | 11.25 µs ✓ | 14.21 µs | 16.56 µs | 56.72 µs | 17.81 µs | 296.25 µs ✓ | 22.62 µs | 12.43 µs |
-| ML-KEM-768 key generation | 8.16 µs | 9.12 µs | - | 58.33 µs | 8.48 µs | 17.84 µs | 26.35 µs | 6.68 µs |
-| ML-KEM-768 encapsulate | 6.02 µs | 9.72 µs | - | 68.70 µs | 10.50 µs | 15.38 µs | 27.28 µs | 5.76 µs |
-| ML-KEM-768 decapsulate | 5.82 µs | 11.31 µs | - | 87.95 µs | 7.24 µs | 16.45 µs | 22.90 µs | 6.38 µs |
-| ML-KEM-1024 key generation | 11.89 µs | 12.65 µs | - | - | - | 23.67 µs | - | - |
-| ML-KEM-1024 encapsulate | 11.65 µs | 13.22 µs | - | - | - | 21.26 µs | - | - |
-| ML-KEM-1024 decapsulate | 7.71 µs | 15.83 µs | - | - | - | 22.98 µs | - | - |
-| ML-KEM-512 key generation | 5.08 µs | 5.81 µs | - | - | - | 12.87 µs | - | - |
-| ML-KEM-512 encapsulate | 5.56 µs | 6.28 µs | - | - | - | 11.07 µs | - | - |
-| ML-KEM-512 decapsulate | 4.89 µs | 7.54 µs | - | - | - | 11.69 µs | - | - |
-| ML-DSA-65 key generation | 28.43 µs | 34.08 µs | - | 253.47 µs | - | 45.99 µs | 133.61 µs | 48.55 µs |
-| ML-DSA-65 sign | 51.45 µs | 93.13 µs | - | 933.13 µs | - | 114.05 µs | 748.52 µs | 81.87 µs |
-| ML-DSA-65 verify | 6.17 µs | 30.79 µs | - | 104.59 µs | - | 47.77 µs | 135.65 µs | 24.24 µs |
-| ML-DSA-65 load and verify | 25.76 µs | 30.80 µs | - | 181.24 µs | - | 48.29 µs | 139.71 µs | - |
-| P-384 ECDH | 123.39 µs ✓ | 150.54 µs | 584.37 µs | 798.99 µs | 214.42 µs | - | 464.67 µs | 127.55 µs |
-| P-384 ECDSA sign | 26.42 µs ✓ | 64.40 µs | 322.90 µs | 186.26 µs | 108.96 µs | - | 155.48 µs | 23.83 µs |
-| P-384 ECDSA verify | 115.26 µs ✓ | 152.51 µs | 572.09 µs | 681.27 µs | 205.67 µs | - | 383.36 µs | 112.03 µs |
-| P-521 ECDH | 219.18 µs | 241.43 µs | - | 620.08 µs | - | - | 399.09 µs | 225.33 µs |
-| P-521 ECDSA sign | 56.50 µs | 127.99 µs | - | 146.59 µs | - | - | 193.51 µs | 59.04 µs |
-| P-521 ECDSA verify | 194.56 µs | 259.36 µs | - | 487.61 µs | - | - | 384.55 µs | 213.96 µs |
-| HPKE X25519 sender setup | 26.20 µs | 27.47 µs | - | 66.18 µs | - | 75.15 µs | - | - |
-| HPKE X25519 recipient setup | 19.68 µs | 26.72 µs | - | 56.38 µs | - | 69.32 µs | - | - |
-| HPKE AES-128-GCM seal, 1350 B | 185 ns | 472 ns | - | 446 ns | - | 4.12 µs | - | - |
-| HPKE AES-128-GCM open, 1350 B | 164 ns | 473 ns | - | 444 ns | - | 4.19 µs | - | - |
-| Blind RSA-2048 blind | 54.12 µs | - | - | 413.67 µs | - | - | - | - |
-| Blind RSA-2048 sign | 410.80 µs | - | - | 1.79 ms | - | - | - | - |
-| Blind RSA-2048 finalize | 11.10 µs | - | - | 55.38 µs | - | - | - | - |
-| Blind RSA-2048 verify | 10.97 µs | - | - | 48.87 µs | - | - | - | - |
-| OPRF ristretto255 blind | 37.84 µs | - | - | 35.99 µs | - | - | - | - |
-| OPRF ristretto255 evaluate | 27.70 µs | - | - | 29.09 µs | - | - | - | - |
-| OPRF ristretto255 finalize | 30.46 µs | - | - | 41.09 µs | - | - | - | - |
-| VOPRF P-384 blind | 130.72 µs | - | - | 734.74 µs | - | - | - | - |
-| VOPRF P-384 evaluate | 464.58 µs | - | - | 3.13 ms | - | - | - | - |
-| VOPRF P-384 finalize | 659.76 µs | - | - | 4.42 ms | - | - | - | - |
-| ECVRF edwards25519 prove | 77.06 µs | - | - | 98.25 µs | - | - | - | - |
-| ECVRF edwards25519 verify | 97.87 µs | - | - | 108.38 µs | - | - | - | - |
-| ECVRF P-256 prove | 87.29 µs | - | - | 532.34 µs | - | - | - | - |
-| ECVRF P-256 verify | 118.38 µs | - | - | 683.60 µs | - | - | - | - |
-| SPAKE2+ P-256 prover share | 40.62 µs | - | - | 401.12 µs | - | - | - | - |
-| SPAKE2+ P-256 verifier share and confirmation | 148.09 µs | - | - | 1.04 ms | - | - | - | - |
-| SPAKE2+ P-256 prover confirmation and key | 102.08 µs | - | - | 608.44 µs | - | - | - | - |
-| SPAKE2+ P-256 verifier key | 29 ns | - | - | 83 ns | - | - | - | - |
-| Argon2id 16 MiB t=1 p=1 | 2.78 ms | - | - | 4.19 ms | - | - | 5.74 ms | - |
-| Argon2id 64 MiB t=3 p=4 | 81.27 ms | - | - | 103.92 ms | - | - | 124.45 ms | - |
-| SLH-DSA-SHA2-128s key generation | 8.42 ms | - | - | 16.76 ms | - | - | 28.12 ms | - |
-| SLH-DSA-SHA2-128s sign | 63.37 ms | - | - | 127.58 ms | - | - | 214.60 ms | - |
-| SLH-DSA-SHA2-128s verify | 75.14 µs | - | - | 130.20 µs | - | - | 217.12 µs | - |
-| SLH-DSA-SHA2-128f key generation | 132.13 µs | - | - | 269.74 µs | - | - | 448.53 µs | - |
-| SLH-DSA-SHA2-128f sign | 3.06 ms | - | - | 6.35 ms | - | - | 10.34 ms | - |
-| SLH-DSA-SHA2-128f verify | 215.95 µs | - | - | 382.48 µs | - | - | 616.33 µs | - |
-| SLH-DSA-SHAKE-128f key generation | 443.59 µs | - | - | 2.77 ms | - | - | 1.17 ms | - |
-| SLH-DSA-SHAKE-128f sign | 10.42 ms | - | - | 64.73 ms | - | - | 27.71 ms | - |
-| SLH-DSA-SHAKE-128f verify | 738.31 µs | - | - | 3.97 ms | - | - | 1.70 ms | - |
+| full handshake, X25519MLKEM768 | 229.36 µs | 339.29 µs | - | - | 275.18 µs | - | 714.16 µs | - |
+| full handshake, X25519 | 209.67 µs | 307.89 µs | 315.98 µs | - | 242.78 µs | - | 617.83 µs | - |
+| full handshake, P-256 | 245.50 µs | 336.66 µs | 332.91 µs | - | 297.27 µs | - | 712.93 µs | - |
+| full handshake, Ed25519 certificate | 171.02 µs | 237.23 µs | 312.78 µs | - | 186.07 µs | - | 705.19 µs | - |
+| full handshake, RSA-2048 certificate | 597.54 µs | 707.91 µs | 713.17 µs | - | 623.62 µs | - | 1.01 ms | - |
+| resumed handshake, X25519 | 83.78 µs | 151.22 µs | 172.55 µs | - | 86.82 µs | - | 418.05 µs | - |
+| full handshake, X25519, every logical CPU | - | - | - | - | - | - | - | - |
+| resumed handshake, X25519, every logical CPU | - | - | - | - | - | - | - | - |
+| 1 MB transfer, AES-128-GCM | 302.40 µs | 481.39 µs | 300.66 µs | - | 470.69 µs | - | 527.10 µs | - |
+| 1 MB transfer, AES-256-GCM | 309.05 µs | 514.11 µs | 316.92 µs | - | 541.00 µs | - | 561.54 µs | - |
+| 1 MB transfer, ChaCha20-Poly1305 | 760.95 µs | 773.62 µs | 763.88 µs | - | 1.56 ms | - | 873.89 µs | - |
+| one record, AES-128-GCM, 64 B | 305 ns | 422 ns | 363 ns | - | 414 ns | - | 988 ns | - |
+| one record, AES-128-GCM, 256 B | 344 ns | 504 ns | 427 ns | - | 439 ns | - | 1.11 µs | - |
+| one record, AES-128-GCM, 1 KB | 543 ns | 865 ns | 603 ns | - | 757 ns | - | 1.48 µs | - |
+| one record, ChaCha20-Poly1305, 64 B | 450 ns | 501 ns | 471 ns | - | 738 ns | - | 1.45 µs | - |
+| one record, ChaCha20-Poly1305, 256 B | 607 ns | 642 ns | 584 ns | - | 1.24 µs | - | 1.70 µs | - |
+| one record, ChaCha20-Poly1305, 1 KB | 1.23 µs | 1.23 µs | 1.19 µs | - | 2.16 µs | - | 2.16 µs | - |
+| AES-128-GCM seal, 32 B | 41 ns | 81 ns | 60 ns | 101 ns | 77 ns | 346 ns | 136 ns | 60 ns |
+| AES-128-GCM seal, 1350 B | 182 ns | 308 ns | 201 ns | 469 ns | 336 ns | 4.44 µs | 370 ns | 211 ns |
+| AES-128-GCM seal, 16 KB | 1.46 µs | 2.90 µs | 1.46 µs | 4.53 µs | 3.09 µs | 50.47 µs | 3.02 µs | 1.55 µs |
+| AES-128-GCM open, 32 B | 36 ns | 84 ns | 64 ns | 112 ns | 73 ns | 353 ns | 128 ns | 60 ns |
+| AES-128-GCM open, 1350 B | 174 ns | 329 ns | 198 ns | 487 ns | 350 ns | 4.42 µs | 355 ns | 213 ns |
+| AES-128-GCM open, 16 KB | 1.56 µs | 3.06 µs | 1.57 µs | 4.63 µs | 3.08 µs | 50.42 µs | 2.98 µs | 1.68 µs |
+| AES-256-GCM seal, 32 B | 52 ns | 86 ns | 64 ns | 110 ns | 82 ns | 459 ns | 130 ns | 62 ns |
+| AES-256-GCM seal, 1350 B | 201 ns | 342 ns | 229 ns | 533 ns | 364 ns | 7.21 µs | 368 ns | 227 ns |
+| AES-256-GCM seal, 16 KB | 1.62 µs | 3.00 µs | 1.64 µs | 5.16 µs | 3.26 µs | 82.66 µs | 3.02 µs | 1.75 µs |
+| AES-256-GCM open, 32 B | 40 ns | 85 ns | 67 ns | 118 ns | 82 ns | 469 ns | 131 ns | 63 ns |
+| AES-256-GCM open, 1350 B | 188 ns | 344 ns | 219 ns | 540 ns | 368 ns | 7.30 µs | 375 ns | 228 ns |
+| AES-256-GCM open, 16 KB | 1.71 µs | 3.10 µs | 1.72 µs | 5.29 µs | 3.29 µs | 82.44 µs | 3.15 µs | 1.88 µs |
+| ChaCha20-Poly1305 seal, 32 B | 123 ns | 130 ns | 126 ns | 1.31 µs | 231 ns | 238 ns ✓ | 275 ns | 136 ns |
+| ChaCha20-Poly1305 seal, 1350 B | 576 ns | 582 ns | 583 ns | 2.13 µs | 1.17 µs | 2.51 µs ✓ | 807 ns | 605 ns |
+| ChaCha20-Poly1305 seal, 16 KB | 4.96 µs | 4.98 µs | 4.98 µs | 10.72 µs | 16.60 µs | 28.04 µs ✓ | 5.54 µs | 5.05 µs |
+| XChaCha20-Poly1305 seal, 32 B | 252 ns | 282 ns | - | 1.49 µs | 381 ns | 365 ns | - | - |
+| XChaCha20-Poly1305 seal, 1350 B | 709 ns | 744 ns | - | 2.25 µs | 1.36 µs | 2.79 µs | - | - |
+| XChaCha20-Poly1305 seal, 16 KB | 5.27 µs | 5.33 µs | - | 10.55 µs | 11.38 µs | 29.16 µs | - | - |
+| AES-128 header protection | 5 ns ✓ | 8 ns | 9 ns | - | - | - | - | 9 ns |
+| AES-256 header protection | 6 ns ✓ | 10 ns | 11 ns | - | - | - | - | 10 ns |
+| ChaCha20 header protection | 78 ns ✓ | 87 ns | 80 ns | - | - | - | - | 88 ns |
+| X25519 | 26.62 µs ✓ | 26.88 µs | 50.59 µs | 57.57 µs | 26.39 µs | 69.45 µs ✓ | 54.50 µs | 26.04 µs |
+| P-256 ECDH | 39.94 µs ✓ | 44.50 µs | 45.50 µs | 286.76 µs | 45.45 µs | 268.19 µs ✓ | 74.90 µs | 40.11 µs |
+| Ed25519 sign | 6.08 µs ✓ | 6.49 µs | 18.25 µs | 14.12 µs | 6.24 µs | 43.94 µs ✓ | 24.90 µs | 6.23 µs |
+| Ed25519 verify | 22.67 µs ✓ | 28.84 µs | 41.08 µs | 32.05 µs | 26.50 µs | 56.61 µs ✓ | 83.09 µs | 23.70 µs |
+| P-256 ECDSA sign | 9.65 µs ✓ | 13.02 µs | 14.33 µs | 73.06 µs | 11.33 µs | 96.02 µs ✓ | 18.82 µs | 9.45 µs |
+| P-256 ECDSA verify | 33.42 µs ✓ | 41.85 µs | 42.29 µs | 233.78 µs | 43.42 µs | 224.95 µs ✓ | 61.63 µs | 33.17 µs |
+| SHA-256, 64 B | 64 ns ✓ | 102 ns | 90 ns | 76 ns | 67 ns | 378 ns ✓ | 258 ns | 84 ns |
+| SHA-256, 1350 B | 621 ns ✓ | 716 ns | 657 ns | 649 ns | 637 ns | 3.84 µs ✓ | 823 ns | 658 ns |
+| SHA-256, 16 KB | 7.29 µs ✓ | 7.39 µs | 7.42 µs | 7.26 µs | 7.30 µs | 44.82 µs ✓ | 7.49 µs | 7.25 µs |
+| SHA-512, 64 B | 143 ns ✓ | 224 ns | 212 ns | 203 ns | 199 ns | 252 ns ✓ | 353 ns | 160 ns |
+| SHA-512, 1350 B | 1.33 µs ✓ | 1.91 µs | 1.91 µs | 1.92 µs | 1.89 µs | 2.64 µs ✓ | 1.55 µs | 1.47 µs |
+| SHA-512, 16 KB | 15.31 µs ✓ | 21.72 µs | 22.31 µs | 22.12 µs | 21.68 µs | 30.47 µs ✓ | 15.76 µs | 16.99 µs |
+| SHA3-256, 64 B | 252 ns ✓ | 292 ns | - | 292 ns | - | 294 ns | 446 ns | 249 ns |
+| SHA3-256, 1350 B | 2.24 µs ✓ | 2.28 µs | - | 2.80 µs | - | 2.77 µs | 2.43 µs | 2.32 µs |
+| SHA3-256, 16 KB | 26.89 µs ✓ | 26.82 µs | - | 33.62 µs | - | 33.22 µs | 27.54 µs | 27.82 µs |
+| SHA3-512, 64 B | 249 ns ✓ | 295 ns | - | 299 ns | - | 294 ns | 456 ns | 252 ns |
+| SHA3-512, 1350 B | 4.18 µs ✓ | 4.27 µs | - | 5.28 µs | - | 5.23 µs | 4.33 µs | 4.35 µs |
+| SHA3-512, 16 KB | 49.99 µs ✓ | 50.21 µs | - | 63.41 µs | - | 62.05 µs | 49.04 µs | 51.57 µs |
+| HMAC-SHA256, 64 B | 146 ns ✓ | 288 ns | 232 ns | 189 ns | 215 ns | 946 ns ✓ | 2.69 µs | 169 ns |
+| HMAC-SHA256, 1350 B | 704 ns ✓ | 852 ns | 807 ns | 781 ns | 740 ns | 4.70 µs ✓ | 3.27 µs | 737 ns |
+| HKDF-SHA256 extract and expand | 280 ns ✓ | 395 ns | 441 ns | 338 ns | - | 1.46 µs ✓ | 2.92 µs | 297 ns |
+| HKDF-SHA256 expand | 93 ns ✓ | 189 ns | 153 ns | 113 ns | - | 740 ns ✓ | 2.19 µs | 162 ns |
+| RSA-2048 PKCS#1 sign | 456.77 µs | 493.19 µs | 487.49 µs | 2.03 ms | 468.55 µs | - | 496.93 µs | 519.58 µs |
+| RSA-2048 PKCS#1 verify | 12.00 µs ✓ | 15.39 µs | 17.10 µs | 52.20 µs | 20.03 µs | - | 23.60 µs | 12.65 µs |
+| RSA-2048 PSS sign | 449.60 µs | 491.91 µs | 469.16 µs | 1.96 ms | 466.57 µs | 5.64 ms ✓ | 489.04 µs | 509.90 µs |
+| RSA-2048 PSS verify | 12.71 µs ✓ | 15.61 µs | 18.12 µs | 63.27 µs | 19.93 µs | 315.48 µs ✓ | 24.92 µs | 13.73 µs |
+| ML-KEM-768 key generation | 9.15 µs | 10.32 µs | - | 65.46 µs | 9.76 µs | 19.49 µs | 28.62 µs | 7.16 µs |
+| ML-KEM-768 encapsulate | 6.56 µs | 10.30 µs | - | 75.78 µs | 11.60 µs | 17.00 µs | 30.10 µs | 6.48 µs |
+| ML-KEM-768 decapsulate | 6.54 µs | 12.34 µs | - | 98.53 µs | 7.98 µs | 17.77 µs | 25.30 µs | 6.85 µs |
+| ML-KEM-1024 key generation | 13.06 µs | 14.17 µs | - | - | - | 25.85 µs | - | - |
+| ML-KEM-1024 encapsulate | 12.87 µs | 14.65 µs | - | - | - | 23.25 µs | - | - |
+| ML-KEM-1024 decapsulate | 8.60 µs | 17.84 µs | - | - | - | 24.84 µs | - | - |
+| ML-KEM-512 key generation | 5.44 µs | 6.10 µs | - | - | - | 13.97 µs | - | - |
+| ML-KEM-512 encapsulate | 5.82 µs | 6.67 µs | - | - | - | 12.18 µs | - | - |
+| ML-KEM-512 decapsulate | 5.22 µs | 8.26 µs | - | - | - | 12.95 µs | - | - |
+| ML-DSA-65 key generation | 30.52 µs | 35.97 µs | - | 273.39 µs | - | 47.90 µs | 141.68 µs | 50.90 µs |
+| ML-DSA-65 sign | 55.86 µs | 99.24 µs | - | 933.30 µs | - | 121.10 µs | 715.71 µs | 92.12 µs |
+| ML-DSA-65 verify | 6.85 µs | 33.52 µs | - | 120.13 µs | - | 53.74 µs | 149.87 µs | 28.12 µs |
+| ML-DSA-65 load and verify | 27.44 µs | 32.73 µs | - | 198.77 µs | - | 51.95 µs | 149.16 µs | - |
+| P-384 ECDH | 132.63 µs ✓ | 156.87 µs | 665.26 µs | 807.98 µs | 222.47 µs | - | 492.20 µs | 140.20 µs |
+| P-384 ECDSA sign | 29.66 µs ✓ | 73.47 µs | 359.38 µs | 203.04 µs | 126.18 µs | - | 186.65 µs | 27.35 µs |
+| P-384 ECDSA verify | 127.13 µs ✓ | 173.57 µs | 630.88 µs | 759.91 µs | 236.23 µs | - | 426.71 µs | 126.64 µs |
+| P-521 ECDH | 247.43 µs | 270.47 µs | - | 617.70 µs | - | - | 452.24 µs | 255.76 µs |
+| P-521 ECDSA sign | 63.85 µs | 141.19 µs | - | 152.07 µs | - | - | 214.15 µs | 68.09 µs |
+| P-521 ECDSA verify | 216.25 µs | 299.86 µs | - | 502.62 µs | - | - | 432.81 µs | 237.50 µs |
+| HPKE X25519 sender setup | 28.02 µs | 29.26 µs | - | 71.37 µs | - | 83.28 µs | - | - |
+| HPKE X25519 recipient setup | 20.96 µs | 28.65 µs | - | 56.70 µs | - | 73.21 µs | - | - |
+| HPKE AES-128-GCM seal, 1350 B | 197 ns | 485 ns | - | 504 ns | - | 4.57 µs | - | - |
+| HPKE AES-128-GCM open, 1350 B | 258 ns | 531 ns | - | 555 ns | - | 4.33 µs | - | - |
+| Blind RSA-2048 blind | 58.08 µs | - | - | 433.59 µs | - | - | - | - |
+| Blind RSA-2048 sign | 437.20 µs | - | - | 1.90 ms | - | - | - | - |
+| Blind RSA-2048 finalize | 11.83 µs | - | - | 59.34 µs | - | - | - | - |
+| Blind RSA-2048 verify | 11.47 µs | - | - | 52.31 µs | - | - | - | - |
+| OPRF ristretto255 blind | 41.69 µs | - | - | 38.30 µs | - | - | - | - |
+| OPRF ristretto255 evaluate | 30.17 µs | - | - | 34.96 µs | - | - | - | - |
+| OPRF ristretto255 finalize | 31.83 µs | - | - | 43.45 µs | - | - | - | - |
+| VOPRF P-384 blind | 144.32 µs | - | - | 798.61 µs | - | - | - | - |
+| VOPRF P-384 evaluate | 504.01 µs | - | - | 3.57 ms | - | - | - | - |
+| VOPRF P-384 finalize | 730.27 µs | - | - | 4.79 ms | - | - | - | - |
+| ECVRF edwards25519 prove | 84.32 µs | - | - | 105.52 µs | - | - | - | - |
+| ECVRF edwards25519 verify | 107.09 µs | - | - | 119.77 µs | - | - | - | - |
+| ECVRF P-256 prove | 91.60 µs | - | - | 573.78 µs | - | - | - | - |
+| ECVRF P-256 verify | 128.22 µs | - | - | 743.83 µs | - | - | - | - |
+| SPAKE2+ P-256 prover share | 43.06 µs | - | - | 437.15 µs | - | - | - | - |
+| SPAKE2+ P-256 verifier share and confirmation | 151.63 µs | - | - | 1.10 ms | - | - | - | - |
+| SPAKE2+ P-256 prover confirmation and key | 107.13 µs | - | - | 656.56 µs | - | - | - | - |
+| SPAKE2+ P-256 verifier key | 58 ns | - | - | 81 ns | - | - | - | - |
+| Argon2id 16 MiB t=1 p=1 | 2.85 ms | - | - | 4.48 ms | - | - | 6.15 ms | - |
+| Argon2id 64 MiB t=3 p=4 | 83.67 ms | - | - | 107.04 ms | - | - | 135.32 ms | - |
+| SLH-DSA-SHA2-128s key generation | 8.89 ms | - | - | 17.85 ms | - | - | 30.18 ms | - |
+| SLH-DSA-SHA2-128s sign | 66.66 ms | - | - | 138.79 ms | - | - | 226.91 ms | - |
+| SLH-DSA-SHA2-128s verify | 75.71 µs | - | - | 141.41 µs | - | - | 233.25 µs | - |
+| SLH-DSA-SHA2-128f key generation | 138.46 µs | - | - | 279.91 µs | - | - | 480.74 µs | - |
+| SLH-DSA-SHA2-128f sign | 3.35 ms | - | - | 6.58 ms | - | - | 10.93 ms | - |
+| SLH-DSA-SHA2-128f verify | 207.20 µs | - | - | 410.24 µs | - | - | 684.54 µs | - |
+| SLH-DSA-SHAKE-128f key generation | 482.31 µs | - | - | 2.86 ms | - | - | 1.29 ms | - |
+| SLH-DSA-SHAKE-128f sign | 10.91 ms | - | - | 66.57 ms | - | - | 30.02 ms | - |
+| SLH-DSA-SHAKE-128f verify | 743.46 µs | - | - | 3.99 ms | - | - | 1.76 ms | - |
 
 </details>
 
@@ -939,25 +941,6 @@ graviola isn't timed on `ovh-sea`: it requires ADX, which this CPU lacks.
 
 A cold `cargo build --release` of a minimal binary per library (AES-128-GCM, SHA-256, ECDSA P-256, and X25519) and of a rustls client per provider, by `admin/build-cost`: the median of three builds with an empty target directory and a warm download cache, their CPU time, the stripped binary's size, the build tools it needs beyond rustc and a linker, and the crates it compiles. The system OpenSSL build leaves the library itself out of its size; the vendored build is the static figure. verified-garbage has no P-256 key generation, so its binary imports a random scalar instead, and no rustls provider, so it has no rustls build.
 
-### `nixos`
-
-Measured 2026-11-26 at [`8656d89b`](https://github.com/kixel-ai/rind/commit/8656d89bd9ade57720e72802fd6096b8b2bcdc82), with rustc 1.98.1 (48a229cea 2026-09-01), gcc (GCC) 16.2.0, and 16 jobs.
-
-| Build | Wall s (range) | CPU s | Stripped MB | Tools needed | Crates |
-|---|---|---|---|---|---|
-| rind | 7.4 (7.4 to 7.4) | 26 | 1.29 | none | 5 |
-| aws-lc-rs | 16.3 (16.2 to 16.9) | 56 | 2.99 | cc | 14 |
-| ring | 6.7 (6.7 to 6.7) | 10 | 0.74 | cc | 9 |
-| RustCrypto + dalek | 4.0 (4.0 to 4.0) | 20 | 0.54 | none | 57 |
-| graviola | 2.6 (2.5 to 2.6) | 5 | 0.91 | none | 5 |
-| libcrux | 6.7 (6.7 to 6.8) | 16 | 0.75 | none | 27 |
-| verified-garbage | 2.0 (2.0 to 2.1) | 5 | 1.56 | none | 7 |
-| OpenSSL, the system's, linked dynamically | 3.8 (3.7 to 3.9) | 10 | 0.38 | cc, pkg-config | 18 |
-| OpenSSL, vendored | 23.7 (23.7 to 28.9) | 212 | 5.13 | cc, make, perl | 19 |
-| rustls + rind-rustls | 8.0 (7.7 to 8.2) | 42 | 5.27 | none | 14 |
-| rustls + aws-lc-rs | 19.8 (19.8 to 20.4) | 71 | 4.11 | cc | 20 |
-| rustls + ring | 10.1 (10.1 to 10.1) | 24 | 1.94 | cc | 16 |
-
 ### `desktop`
 
 Measured 2026-11-26 at [`8656d89b`](https://github.com/kixel-ai/rind/commit/8656d89bd9ade57720e72802fd6096b8b2bcdc82), with rustc 1.98.1 (48a229cea 2026-09-01), gcc (GCC) 16.2.0, and 12 jobs.
@@ -1450,7 +1433,7 @@ The CPU tiers rank every weekly benchmark but these, so none of them is a gap, w
 | OPRF ristretto255 blind, OPRF ristretto255 evaluate, `oprf-ristretto255-blind/*`, `oprf-ristretto255-evaluate/*` | `ovh-iad`, `ovh-sea` | 1.10× to 1.18× (RustCrypto + dalek) | [ristretto255's variable-base multiplication runs curve25519-dalek's AVX2 formulas](quest/m2/speed/ristretto255-avx2.md) |
 | `aes*-gcm*` | `fedora` | 1.11× to 1.22× (verified-garbage) | [AES-GCM on Zen 5 runs verified-garbage's AVX-512 kernels where they are faster](quest/m2/speed/zen5-vg-aes-gcm.md) |
 | RSA-2048 PKCS#1 verify, RSA-2048 PSS verify | `fedora` | 1.10× to 1.13× (verified-garbage) | Not like for like: pyca/verified-garbage's rows import the key on each call from components already parsed, while rind's parse the DER public key on each call, as `UnparsedPublicKey` and rustls do. With [#952](https://github.com/kixel-ai/rind/pull/952), which runs VG's `R² mod n` on key load, `fedora`'s first quiet run since measured 5.45 and 5.83 µs against VG's 4.84 and 5.29 (1.13 and 1.10×; aws-lc-rs 10.0 and 10.6): the difference is that per-call DER parse and re-encoding, the wipe of the key on drop that AGENTS.md requires, and the modulus's conversion to the routine's big-endian bytes. The next refresh rechecks it. |
-| P-384 ECDSA sign | `desktop`, `nixos` | 1.11× to 1.17× (verified-garbage) | 1.11× pyca/verified-garbage's time on `ovh-iad` (66.2 against 59.5 µs), and 1.08× in its other quiet run of the same commit, 1.17× on `desktop` (19.3 against 16.5 µs; aws-lc-rs 45.8), and 1.11× on `nixos` (26.4 against 23.8 µs, 1.08× in the 0.4 refresh), while `ovh-sea` measured 1.06× and `fedora` 1.06× (16.7 against 15.8 µs). rind already runs VG's `d·G` for each signature's `k·G` ([#847](https://github.com/kixel-ai/rind/pull/847)), so the difference is in rind's other steps, among them its hedged nonce: fresh randomness for each signature, as aws-lc-rs draws, where VG derives its nonce deterministically by RFC 6979. That behavior is deliberate, so it stays; the next refresh rechecks the margin. |
+| P-384 ECDSA sign | `desktop` | 1.17× (verified-garbage) | 1.11× pyca/verified-garbage's time on `ovh-iad` (66.2 against 59.5 µs), and 1.08× in its other quiet run of the same commit, 1.17× on `desktop` (19.3 against 16.5 µs; aws-lc-rs 45.8), and 1.11× on `nixos` (26.4 against 23.8 µs, 1.08× in the 0.4 refresh), while `ovh-sea` measured 1.06× and `fedora` 1.06× (16.7 against 15.8 µs). rind already runs VG's `d·G` for each signature's `k·G` ([#847](https://github.com/kixel-ai/rind/pull/847)), so the difference is in rind's other steps, among them its hedged nonce: fresh randomness for each signature, as aws-lc-rs draws, where VG derives its nonce deterministically by RFC 6979. That behavior is deliberate, so it stays; the next refresh rechecks the margin. |
 | SHA3-256, 64 B | `ovh-iad` | 1.12× (verified-garbage) | Noise: other tenants share `ovh-iad`'s VPS, whose load the report cannot see. rind took 539 ns against pyca/verified-garbage's 482 (1.12×), where its previous refresh measured 498 against the same 482 (1.03×) on the same SHA-3 code, and `ovh-sea` measured 1.03× (472 against 457), with SHA3-512 at 64 B 1.05× on both. The next refresh rechecks it. |
 | ChaCha20-Poly1305 seal, 16 KB | `desktop` | 1.13× (verified-garbage) | [ChaCha20-Poly1305 on Intel without AVX-512 runs verified-garbage's code where it is faster](quest/m2/speed/arrow-lake-vg-chacha20-poly1305.md) |
 | `sha512/*` | `desktop` | 1.51× to 4.12× (verified-garbage) | Deliberate: pyca/verified-garbage runs the SHA512 instructions on `desktop`'s Arrow Lake, taking 0.24 to 0.66 of rind's time, and rind does not, since Intel's data-independent-timing list omits `VSHA512RNDS2`, `VSHA512MSG1`, and `VSHA512MSG2` (PLATFORMS.md). rind's AVX2 routine still beats every other library there, at 0.87 to 0.99 of the next fastest's time. |
