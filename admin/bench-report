@@ -51,6 +51,7 @@ written to DIR are measurements, not history: rerun `collect` to refresh them.
 import argparse
 import ctypes
 import datetime
+import fcntl
 import fnmatch
 import glob
 import json
@@ -64,6 +65,7 @@ import signal
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 import tomllib
 
@@ -600,40 +602,52 @@ def reserve(cmd, env, cpus):
     systemd and passwordless sudo."""
     if sys.platform != "linux":
         fail("reserving cores needs Linux's cgroups")
+    # One reservation a host at a time, held through its release, so another
+    # collection neither releases this one's cores nor stops its timer. Every
+    # collection on a host runs as the user collect reaches it as.
+    lock_dir = os.path.join(os.path.expanduser("~"), REMOTE_DIR)
+    os.makedirs(lock_dir, exist_ok=True)
+    lock = open(os.path.join(lock_dir, "reserve.lock"), "a")
+    fcntl.flock(lock, fcntl.LOCK_EX)
     others = cpu_list(c for c in range(cpu_count()) if c not in cpus)
     slices = sorted(n for n in os.listdir("/sys/fs/cgroup") if n.endswith(".slice") and n != RESERVE_SLICE)
     # The whole range, since systemd 262 leaves the cpuset as it was for an
     # empty AllowedCPUs=.
     everything = f"0-{cpu_count() - 1}"
     release = "; ".join(f"systemctl set-property --runtime {s} AllowedCPUs={everything}" for s in slices)
-    # A timer an earlier run left would end this reservation early.
-    sudo("systemctl", "stop", "--quiet", f"{RESERVE_RELEASE_UNIT}.timer", check=False, stderr=subprocess.DEVNULL)
-    timer = ["systemd-run", "--quiet", "--collect", f"--unit={RESERVE_RELEASE_UNIT}"]
-    sudo(*timer, f"--on-active={RESERVE_RELEASE_AFTER}", "sh", "-c", release)
 
     def stop(signum, frame):
         sys.exit(128 + signum)
 
     for signum in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
         signal.signal(signum, stop)
+    # sudo drops the environment, which holds the dev shell, so a file only
+    # this user can read carries it: on sudo's command line, which other users
+    # see and sudo logs, it would expose any credential it holds.
+    fd, env_file = tempfile.mkstemp(prefix="bench-report-env.")
     try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(env, f)
+        # A timer an earlier run left would end this reservation early.
+        sudo("systemctl", "stop", "--quiet", f"{RESERVE_RELEASE_UNIT}.timer", check=False, stderr=subprocess.DEVNULL)
+        timer = ["systemd-run", "--quiet", "--collect", f"--unit={RESERVE_RELEASE_UNIT}"]
+        sudo(*timer, f"--on-active={RESERVE_RELEASE_AFTER}", "sh", "-c", release)
         for s in slices:
             sudo("systemctl", "set-property", "--runtime", s, f"AllowedCPUs={others}")
         print(f"bench-report: reserved CPUs {cpu_list(cpus)}", file=sys.stderr)
-        # Without --expand-environment=no, systemd-run would expand the `$` in
-        # env's values, such as the dev shell's shellHook.
-        scope = ["systemd-run", "--scope", "--quiet", "--expand-environment=no", f"--slice={RESERVE_SLICE}"]
+        scope = ["systemd-run", "--scope", "--quiet", f"--slice={RESERVE_SLICE}"]
         scope.append(f"--property=AllowedCPUs={cpu_list(cpus)}")
-        # sudo drops the environment, which holds the dev shell, so pass it on;
         # setpriv drops root's groups, which sudo would keep.
         user = ["setpriv", f"--reuid={os.getuid()}", f"--regid={os.getgid()}", "--init-groups"]
-        clean = ["env", "-i", *(f"{k}={v}" for k, v in env.items())]
-        return sudo(*scope, "--", *user, "--", *clean, *cmd, check=False).returncode
+        load = "import json, os, sys; env = json.load(open(sys.argv[1])); os.execve(sys.argv[2], sys.argv[2:], env)"
+        return sudo(*scope, "--", *user, "--", sys.executable, "-c", load, env_file, *cmd, check=False).returncode
     finally:
+        os.unlink(env_file)
         sudo("sh", "-c", release, check=False)
         sudo("systemctl", "stop", "--quiet", f"{RESERVE_RELEASE_UNIT}.timer", check=False, stderr=subprocess.DEVNULL)
         for signum in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
             signal.signal(signum, signal.SIG_DFL)
+        lock.close()
 
 
 def output(cmd, env=None):
