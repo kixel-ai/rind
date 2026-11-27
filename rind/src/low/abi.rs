@@ -135,14 +135,14 @@ trait InRegister {
 
 impl<T: InRegister> Ret for T {
     fn returned(words: Words, call: impl FnOnce(&Words) -> arch::Returned) -> Self {
-        T::from_word(call(&words) as Word)
+        T::from_word(arch::return_register(call(&words)))
     }
 }
 
 /// Two words, which the System V ABI returns in `rax` and `rdx`.
 #[cfg(target_arch = "x86_64")]
 impl Ret for u128 {
-    fn returned(words: Words, call: impl FnOnce(&Words) -> arch::Returned) -> Self {
+    fn returned(words: Words, call: impl FnOnce(&Words) -> Self) -> Self {
         call(&words)
     }
 }
@@ -511,6 +511,11 @@ mod arch {
     /// trampolines leave as it did.
     pub(super) type Returned = u128;
 
+    /// `rax`, the register a routine returns a word in.
+    pub(super) fn return_register(r: Returned) -> Word {
+        r as Word
+    }
+
     /// The trampolines' own convention is the same on every OS, unlike
     /// `extern "C"`, which on Windows also preserves what they canary.
     pub(super) type Trampoline = unsafe extern "sysv64" fn(Word, *const Word, Word) -> Returned;
@@ -767,6 +772,11 @@ mod arch {
 
     /// What a routine leaves in `x0`.
     pub(super) type Returned = Word;
+
+    /// `x0`, the register a routine returns a word in.
+    pub(super) fn return_register(r: Returned) -> Word {
+        r
+    }
 
     pub(super) type Trampoline = unsafe extern "C" fn(Word, *const Word, Word) -> Word;
 
