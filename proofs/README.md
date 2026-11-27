@@ -256,6 +256,21 @@ those inputs, in any worktree, restores in under a second.
   them about `NeonTable::new` and `NeonTable::ghash`, and
   `neon_new_ghashFor` proves the table `new` builds hashes as `GhashFor`
   asks, which `Parts::tagged`'s proof takes.
+- `armv7/sha256_armv4.ml`: `SHA256_BLOCK_DATA_ORDER_HW_SUBROUTINE_CORRECT`,
+  rind's proof that aws-lc's `sha256_block_data_order_hw` in
+  `low::arm::sha_armv4`, which armv7 runs where the CPU has the crypto
+  extension, stores to the state s2n-bignum's FIPS 180-4 spec,
+  `sha256_hash_blocks`, of its blocks from the state, for one block up.
+  Stepping keeps each Q register a `sha256_quad` of the spec's words, so
+  each `sha256h` and `sha256h2` pair is four of the spec's rounds,
+  `SHA256H_STEP`, and each `sha256su0` and `sha256su1` pair four words of
+  its message schedule. The routine reaches K256 through an offset in a
+  literal word before it, so `admin/prove` extracts the code from K256
+  through the routine's end, `K256..sha256_block_data_order_hw`, with
+  `sha256_block_data_order_nohw` and `_neon` between, and the proof reads
+  K256's words and the literal from that code. The theorem covers the
+  routine from entry to return for a caller in A32 or T32, so every armv7
+  target. No Lean theorem restates it yet.
 - `x86_64/ecp_nistz256_point_add_affine.ml` and
   `x86_64/ecp_nistz256_point_add_affinex.ml`:
   `ECP_NISTZ256_POINT_ADD_AFFINE_SUBROUTINE_CORRECT` and
