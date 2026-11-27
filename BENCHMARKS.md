@@ -1522,7 +1522,7 @@ shell and under `quest gate`, which waits for the host to have room but
 shares it with other gated work, so its numbers are noisier than the weekly
 `bench` workflow's runners, which give the clean ones; it skips any host that is still busy, and writes their results and the hosts' details as JSON under
 `.tmp/bench-report/`. `admin/bench-report weekly` saves the latest weekly
-`bench` run's results, and `admin/bench-report render --from DIR` copies a
+`bench` run's results and binary sizes, and `admin/bench-report render --from DIR` copies a
 collection's measured hosts into `benchmarks/data/` and writes
 `BENCHMARKS.md`, its SVGs, which the README shows too, the README's comparison table, and
 `benchmarks/verified.toml`, and
