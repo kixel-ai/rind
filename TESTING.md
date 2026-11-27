@@ -420,6 +420,12 @@ removes.
 `nix develop .#prove --command admin/prove` checks rind's HOL Light proofs of
 its assembly, then translates the Rust under proof to Lean with Aeneas and
 checks the proofs in [`proofs/`](proofs/README.md).
+On aarch64 macOS, `nix develop .#prove --command admin/prove lean` translates
+every target and builds the Lean proofs, so a proof iterates without a
+dispatched `prove` run. It cannot run the intrinsic vectors, which need an
+x86_64 Linux CPU with AVX2, so it names them as not run and exits nonzero, and
+it computes no cache key. The HOL Light proofs, `vg`, and the cosimulation are
+not run on macOS.
 
 ## Scheduled workflows
 
@@ -439,7 +445,19 @@ that main has not passed on the same inputs; a release waits for that run to
 pass. Each runs on demand with
 `gh workflow run <name> --ref <branch>`; a dispatched `bench` measures every
 bench target unless `-f benches='aes_gcm sha2'` names the ones to measure,
-and each CPU-tier row then times only those of them it covers. A dispatched
+and each CPU-tier row then times only those of them it covers.
+`bench`'s `instructions` job counts each benchmark's instructions under
+Valgrind with kixel-ai/swole's `swole`, which `flake.nix` pins with
+Valgrind, and uploads them for Kixel Quest, which bisects a count that moved
+by dispatching the workflow with `benchmarks`, the IDs to count. Valgrind
+hides AVX-512, VAES, VPCLMULQDQ, and the SHA extensions, and the `bench` shell
+sets `VALGRIND_BUG_494162`, so the counts measure the x86_64 tier with AVX2
+and ADX, Broadwell's to Cooper Lake's, on any host CPU that has them, and counts
+compare only under one `swole` fingerprint. Benchmark
+sets must not depend on the CPU, since the runner lists them natively and
+counts them under Valgrind: `rsa_gen`, which registers nothing without
+`NOISY_BENCHMARKS`, is left out, and the count build drops the Graviola
+handshakes. A dispatched
 `ctgrind` runs every job unless `-f jobs='x86_64-sde:rsa4096 armv7:no-neon'`
 names some, each whole or narrowed to the rows with the named matrix values,
 as `sh/select-jobs.sh` describes, and a dispatched `prove` every job unless
