@@ -119,8 +119,6 @@ EOF
     if [[ "$loaded" = 1 && -e "$plist" && "$(<"$plist")" == "$new" ]]; then
         return
     fi
-    mkdir -p "${plist%/*}"
-    printf '%s\n' "$new" >"$plist"
     if [[ "$loaded" = 1 ]]; then
         local tries=0
         launchctl bootout "gui/$(id -u)/$label" || true
@@ -133,6 +131,8 @@ EOF
             sleep 0.1
         done
     fi
+    mkdir -p "${plist%/*}"
+    printf '%s\n' "$new" >"$plist"
     launchctl bootstrap "gui/$(id -u)" "$plist"
 }
 
