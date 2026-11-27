@@ -146,15 +146,18 @@ final class BenchView extends LinearLayout {
 
         // Run status card.
         statusCard = Theme.card(host);
-        statusTitle = Theme.text(host, "Loading tests…", Theme.Type.TITLE_MEDIUM, Theme.onSurface);
+        statusTitle = Theme.text(host, "Loading tests…", Theme.Type.TITLE_MEDIUM, Theme.primary);
+        statusTitle.setTypeface(Typeface.create("sans-serif-condensed", Typeface.BOLD));
         statusTitle.setAccessibilityLiveRegion(ACCESSIBILITY_LIVE_REGION_POLITE);
         statusLbl = Theme.text(host, "", Theme.Type.BODY_MEDIUM, Theme.onSurfaceVariant);
         statusLbl.setVisibility(GONE);
         progress = Theme.progress(host);
         progress.setVisibility(GONE);
         progress.setContentDescription("Run progress");
-        resultsTeaser = Theme.text(host, "", Theme.Type.BODY_SMALL, Theme.onSurface);
+        resultsTeaser = Theme.text(host, "", Theme.Type.BODY_SMALL, Theme.onPrimaryContainer);
         resultsTeaser.setTypeface(Typeface.MONOSPACE);
+        resultsTeaser.setBackground(Theme.shape(Theme.primaryContainer, Theme.dp(host, 6)));
+        resultsTeaser.setPadding(s2, s2, s2, s2);
         resultsTeaser.setVisibility(GONE);
         resultsBtn = Theme.button(host, "View results", Theme.Btn.TONAL, null);
         resultsBtn.setOnClickListener(v -> openResults());
