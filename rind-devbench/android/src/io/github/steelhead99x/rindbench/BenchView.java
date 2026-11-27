@@ -110,8 +110,9 @@ final class BenchView extends LinearLayout {
         noteRow.addView(collectorNote, new LayoutParams(0, LayoutParams.WRAP_CONTENT, 1));
         noteRow.addView(retryBtn);
         collectorCard.addView(noteRow);
-        colL.addView(collectorCard);
-        space(colL, 8);
+        LayoutParams ccLp = new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
+        ccLp.bottomMargin = Theme.dpi(host, 8);
+        colL.addView(collectorCard, ccLp);
 
         // Run controls card
         runCard = Theme.card(host, Theme.LINE, 14, 12);
@@ -263,6 +264,14 @@ final class BenchView extends LinearLayout {
         }
         colL.setLayoutParams(lpL);
         colR.setLayoutParams(lpR);
+        // In landscape the collector card sits on top of the status column, so the
+        // run controls (consent and Start) get the whole left column. On a phone
+        // (about 400dp tall) both cards in one column squeezed Start to a sliver.
+        LinearLayout want = land ? colR : colL;
+        if (collectorCard.getParent() != want) {
+            ((LinearLayout) collectorCard.getParent()).removeView(collectorCard);
+            want.addView(collectorCard, 0);
+        }
     }
 
     void applyIntent(Intent it) {
