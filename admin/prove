@@ -1327,13 +1327,20 @@ check_quote X86_64/PointSelectModel select_items
 check_quote X86_64/GatherModel items rind/src/low/x86_64/mont_exp.rs 'fn gather_avx2(' \
     '#[target_feature(enable = "avx,avx2")]'
 check_quote X86_64/FunsExternal items rind/src/low/generic/zeroise.rs 'pub(crate) fn zeroise<'
-# The source of subtle and curve25519-dalek, the releases Cargo.lock pins,
-# whose getters armv7's translation reaches.
+# The source of the curve25519-dalek rind depends on for armv7, and of the
+# subtle that dalek depends on, whose getters armv7's translation reaches.
+# Followed along the dependency edges, since the workspace also resolves an
+# older dalek for tests.
 { read -r subtle_src; read -r dalek_src; } < <(cargo metadata --locked --format-version 1 \
     --filter-platform armv7-unknown-linux-gnueabihf | python3 -c 'import json, sys
-packages = json.load(sys.stdin)["packages"]
-for name in ("subtle", "curve25519-dalek"):
-    print(next(p["manifest_path"] for p in packages if p["name"] == name).rsplit("/", 1)[0])')
+m = json.load(sys.stdin)
+packages = {p["id"]: p for p in m["packages"]}
+nodes = {n["id"]: n for n in m["resolve"]["nodes"]}
+def dep(of, name):
+    return next(d["pkg"] for d in nodes[of]["deps"] if d["name"] == name)
+dalek = dep(next(i for i, p in packages.items() if p["name"] == "rind"), "curve25519_dalek")
+for pkg in (dep(dalek, "subtle"), dalek):
+    print(packages[pkg]["manifest_path"].rsplit("/", 1)[0])')
 armv7_getters() {
     items "$subtle_src/src/lib.rs" '    pub fn unwrap_u8(&self)' '    pub fn is_some(&self)'
     items "$dalek_src/src/scalar.rs" '    pub const fn as_bytes(&self)'

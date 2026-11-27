@@ -295,7 +295,9 @@ Hand-written arithmetic no proof covers, by where it came from:
   tests independent of it, and fuzzing reach each.
 - **rind's own**, which ALGORITHMS.md marks ⚡, such as its parts of P-384 and
   P-521, x86_64 SHA-256, the portable RSA multiplication but its Montgomery
-  products on 64-bit limbs, and armv7 Ed25519. Vectors, independent differential tests, and fuzzing reach each,
+  products on 64-bit limbs, and armv7 Ed25519, whose Lean proof holds only
+  over a contract for aws-lc's unproven 32-bit ARM SHA-384/512, and so earns
+  no ✓. Vectors, independent differential tests, and fuzzing reach each,
   and each Montgomery routine's unit tests compare it with proven or
   portable arithmetic on edge-case limbs, as
   [TESTING.md](TESTING.md#vector-suites) describes.
@@ -305,9 +307,15 @@ Hand-written arithmetic no proof covers, by where it came from:
   `low::generic::mldsa_poly::backend_matches_port` checks the ML-DSA port
   against the AVX2 and Neon routines.
 - **curve25519-dalek's serial backend**, X25519, Ed25519, and ristretto255
-  on armv7 and the portable backend. There ristretto255's differential test
-  compares dalek with itself, so beside RFC 9496's and RFC 9497's vectors
-  only the textbook reference in `rind/src/test/reference.rs` checks it.
+  on armv7 and the portable backend. Beneficial AI Foundation's Lean proofs,
+  which `proofs/` restates as axioms, cover the functions armv7's X25519
+  and Ed25519 call, but neither earns a ✓ yet: X25519's shared secret runs
+  BoringSSL's unproven NEON ladder on every armv7 CPU the benchmarks run,
+  and Ed25519 hashes with aws-lc's unproven 32-bit ARM SHA-512. Nothing
+  checks that the portable backend's 64-bit build is the code those proofs
+  are about. On both, ristretto255's differential test compares dalek with
+  itself, so beside RFC 9496's and RFC 9497's vectors only the textbook
+  reference in `rind/src/test/reference.rs` checks it.
 - **x86_64 P-256's mixed addition on macOS**, aws-lc's: rind's HOL Light
   proofs check the Linux build's object, and Apple's text can place the
   routines' helpers at other offsets.

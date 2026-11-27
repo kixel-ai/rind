@@ -67,7 +67,7 @@ Every Lean file that declares an `axiom`, by the source it restates; no file hol
 | s2n-bignum's HOL Light theorems of its assembly, and rind's own of code it runs | `Aarch64/S2nBignum`, `X86_64/S2nBignum` | published proofs, and rind's in `proofs/hol-light/`, which `admin/prove hol-light` checks; `admin/prove bytes` checks rind's build emits the code they are about |
 | s2n-bignum's HOL Light theorems of its ML-KEM routines, and mlkem-native's of its compression routines | `Aarch64/MlKemRoutines` | published proofs; `admin/prove bytes` checks rind's build emits the code they are about, and `admin/prove` that the tables rind passes are s2n-bignum's |
 | pyca/verified-garbage's Lean theorems of its assembly | `Aarch64/VgChaCha20`, `Aarch64/VgChaCha20Poly1305`, `Aarch64/VgChaCha20Poly1305Ct`, `Aarch64/VgMlKem`, `Aarch64/VgP256`, `Aarch64/VgP384`, `Aarch64/VgPbkdf2`, `Aarch64/VgSha512`, `X86_64/VgChaCha20`, `X86_64/VgChaCha20Poly1305`, `X86_64/VgCurve25519`, `X86_64/VgMlKem`, `X86_64/VgMlKem768Ct`, `X86_64/VgP256`, `X86_64/VgP384`, `X86_64/VgRsa` | published proofs; `admin/vg-binding` checks each axiom cites the theorem of its routine, and `admin/vg-bytes` that rind runs that routine's bytes |
-| Beneficial AI Foundation's Lean theorems of curve25519-dalek, in its X25519 and Edwards specs that `admin/import-dalek` vendors | `Armv7/Dalek` | published proofs; `admin/prove dalek` checks that every definition the restated functions reach in armv7's configuration is the text BAIF's proofs are about, up to the names of `let`-bound locals |
+| Beneficial AI Foundation's Lean theorems of curve25519-dalek, in its X25519 and Edwards specs that `admin/import-dalek` vendors | `Armv7/Dalek` | published proofs; `admin/prove dalek` checks that every definition the restated functions reach in armv7's configuration is the text BAIF's proofs are about, but for one pinned pair that differs only in local names |
 | Vale's procedures for HACL\*'s AES-GCM | `X86_64/ValeAesGcm` | published proofs; `admin/prove bytes` checks the object code |
 | aws-lc-verification's NSym proof of SHA-384/512 (aarch64) and rind's HOL Light proof of the AVX2 routine (x86_64) | `Aarch64/AwsLc`, `X86_64/AwsLc` | a published proof and rind's own; `admin/prove bytes` and `admin/prove hol-light` check the object code |
 | rind's own HOL Light proofs of its assembly, and rind's Lean proofs of the SHA-256 crypto-extension routine (aarch64) and `bn_mul4x_mont` (x86_64) | `Aarch64/Sha256Hw`, `Armv7/GhashNeon`, `X86_64/ChaCha20Cipher`, `X86_64/CtEqual`, `X86_64/RsaMont`, `X86_64/Sha256Shaext`, `X86_64/ShaBlocks` | rind's proofs, in `proofs/hol-light/`, `Rind/Aarch64/Sha256HwAsm.lean`, and `Rind/X86_64/Mul4xProof.lean`, checked against the bytes rind's build emits |
@@ -576,12 +576,12 @@ release BAIF pins, the flake's `aeneas-dalek`, BAIF's translation patches,
 Charon options, and four configurations, and the features rind's manifest
 asks of dalek, which must be the ones BAIF builds with. `admin/dalek-closure`
 then fails unless every definition the restated functions reach in the
-configuration armv7 builds, 32-bit with precomputed tables, has BAIF's text,
-up to the names of the locals its `let`s bind: the fork's
-`vartime_double_base` binds a value the release reads twice, and Aeneas names
-the locals after it. The comparison renames each `let`'s local by position,
-and a name that shadows another or one of the translation's builtins fails
-it. A patch that does not apply to the release is reported and skipped, so a
+configuration armv7 builds, 32-bit with precomputed tables, has BAIF's text.
+The one exception is `vartime_double_base`'s loop body: the fork binds each
+NAF digit to a local that release 5.0.0 doesn't have, so Aeneas names the
+body's locals apart, and `admin/dalek-closure`'s `REVIEWED` pins that pair of
+texts, read and found to differ only in those names, by their SHA-256. A
+change to either fails the check until someone reads it again. A patch that does not apply to the release is reported and skipped, so a
 definition it would have changed fails that comparison if the roots reach it.
 One patch writes the code of the ladder's `mul_bits_be` and `bits_le` into
 their caller, so the comparison reads BAIF's copy: `admin/prove`'s
@@ -1252,9 +1252,10 @@ follows x86_64's above `mid::ed25519`, whose portable code calls dalek. It
 hashes through `Rind/X86_64/Sha512Context.lean`'s proof of SHA-512's
 context, which `admin/prove` writes for armv7 over armv7's `RunsSha512`:
 that rind's entry checks pass, and the contract of aws-lc's `sha512-armv4`
-assembly, NEON's routine and the integer one, which
-[armv7's assembly](/quest/m5/verified-armv7/assembly.md) proves. The
-theorems that run code assume `Runs` and `RunsSha512`. `Point::from_bytes`
+assembly, NEON's routine and the integer one, which no proof covers yet:
+[armv7's assembly](/quest/m5/verified-armv7/assembly.md) proves it. The
+theorems that run code assume `Runs` and `RunsSha512`, so they hold only as
+far as that contract does, and armv7's Ed25519 earns no ✓ until it is proven. `Point::from_bytes`
 decodes with dalek's lenient `decompress` after refusing a y at or above p
 and an x of zero with the sign bit set, and the theorems prove those checks
 make it `edDecode`. They rest on the axioms `Rind/Armv7/Dalek.lean` restates

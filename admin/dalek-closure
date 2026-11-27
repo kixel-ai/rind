@@ -7,17 +7,17 @@ Each directory holds a translation's `Types.lean` and `Funs.lean`. From each
 root, a name in the first translation, this follows every name of the first
 translation's definitions that a reached definition's text names, and fails
 unless the second translation defines each reached name with the same text,
-up to what it names the locals its `let`s bind: BAIF's fork binds a value
-the release reads twice, which Aeneas names after the fork's variable, so the
-two translations of one function can name its locals apart. A definition's
-text leaves out its doc comment, which cites the Rust's source lines. A multi-target translation suffixes what differs between its targets
-with the target's name, `«32bit-tables»` and the like, so this follows only
-`configuration`'s: a name that holds another target's, or the other word
-size's backend, is not followed.
+or with the pair of texts `REVIEWED` pins for it. A definition's text leaves
+out its doc comment, which cites the Rust's source lines. A multi-target
+translation suffixes what differs between its targets with the target's
+name, `«32bit-tables»` and the like, so this follows only `configuration`'s:
+a name that holds another target's, or the other word size's backend, is not
+followed.
 
 `admin/prove dalek` runs it with BAIF's translation first and rind's second.
 """
 
+import hashlib
 import re
 import sys
 
@@ -55,94 +55,23 @@ def definitions(directory):
     return out
 
 
-TOKEN = re.compile(r'"(?:[^"\\]|\\.)*"|\d[\w#.]*|' + NAME.pattern + r"|←|=>|:=|\S")
-# What Aeneas's Lean names bare that is no local: a pattern of one binds
-# nothing, and a `let` that bound one would hide it.
-BUILTINS = {"some", "none", "ok", "fail", "div", "done", "cont", "true", "false", "lift", "massert", "loop"}
+# Definitions whose two texts were read and found to be one function, each
+# pinned by the SHA-256 of BAIF's texts and the release's, each joined by a
+# blank line. The fork's `vartime_double_base` binds each NAF digit through
+# its `add_naf_digit!` macro where release 5.0.0 reads `a_naf[i]` twice, so
+# Aeneas names the loop body's locals `digit`, `digit1`, and `i1` in BAIF's
+# translation and `i1` to `i4` in the release's; every other token is the
+# same. A change to either text fails the check until someone reads it again.
+REVIEWED = {
+    "backend.serial.scalar_mul.vartime_double_base.mul.«32bit-tables_loop1».body": (
+        "eda67fd46a53801dec2bd120c101742e4b78ddc29f4880c15beebaad75426adb",
+        "db463135a7866d7060dfaf614c8e7f3d212c04392a56c8f259255368577b39c5",
+    ),
+}
 
 
-class Shadowed(Exception):
-    pass
-
-
-def canonical(body):
-    """The definition's layout and tokens, with each local a `let` binds,
-    where the text binds or names it, replaced by the index of that `let`.
-
-    Each binder's scope is taken from the layout, as Lean's `do` takes it: a
-    `let`'s runs until a line indented less than the `let`, a `fun`'s until
-    a line indented less than the line that binds it, a pattern's until a
-    line indented no more than its arm, and a parameter's to the end. Each
-    holds the scope Lean gives the name, so the binder Lean picks for a name
-    is always in scope, and a name bound again while a binder of it is in
-    scope raises `Shadowed`, so the one in scope is Lean's.
-    """
-    out, active, lets, header = [], [], 0, True
-
-    def bind(name, kind, column, index=None):
-        if name in BUILTINS or any(b["name"] == name for b in active):
-            raise Shadowed(name)
-        active.append({"name": name, "kind": kind, "column": column, "index": index})
-
-    for line in body.split("\n"):
-        if not line.strip():
-            continue
-        indent = len(line) - len(line.lstrip())
-        active = [b for b in active if indent > b["column"] or (indent == b["column"] and b["kind"] != "pattern")]
-        out.append(("line", indent))
-        tokens = [(m.group(), m.start()) for m in TOKEN.finditer(line)]
-        i = 0
-        while i < len(tokens):
-            token, column = tokens[i]
-            local = lambda t: NAME.fullmatch(t) and "." not in t and t != "_"
-            if token == ":=":
-                header = False
-            if header and token in "([{" and i + 2 < len(tokens) and tokens[i + 2][0] == ":" \
-                    and local(tokens[i + 1][0]):
-                bind(tokens[i + 1][0], "param", -1)
-            if token == "fun" or (token == "|" and i == 0):
-                j = i + 1
-                while j < len(tokens) and tokens[j][0] != "=>":
-                    t = tokens[j][0]
-                    if local(t) and not (token == "|" and t in BUILTINS):
-                        bind(t, "pattern" if token == "|" else "fun", indent)
-                    j += 1
-            if token == "let":
-                out.append(("lit", token))
-                i += 1
-                while i < len(tokens) and tokens[i][0] not in ("←", ":=", ":"):
-                    t = tokens[i][0]
-                    if local(t):
-                        bind(t, "let", column, lets)
-                        out.append(("let", lets))
-                        lets += 1
-                    else:
-                        out.append(("lit", t))
-                    i += 1
-                continue
-            head, dot, rest = token.partition(".")
-            binder = next((b for b in reversed(active) if b["name"] == head), None)
-            if binder is not None and binder["kind"] == "let":
-                out.append(("let", binder["index"]))
-                if dot:
-                    out.append(("lit", "." + rest))
-            else:
-                out.append(("lit", token))
-            i += 1
-    return out
-
-
-def same(want, got):
-    """Whether two lists of a name's definitions agree, up to what each
-    definition names its `let`-bound locals."""
-    if want == got:
-        return True
-    if got is None or len(want) != len(got):
-        return False
-    try:
-        return all(canonical(w) == canonical(g) for w, g in zip(want, got))
-    except Shadowed:
-        return False
+def digest(texts):
+    return hashlib.sha256("\n\n".join(texts).encode()).hexdigest()
 
 
 def main():
@@ -177,11 +106,22 @@ def main():
                     if prefix not in reached and follow(prefix):
                         todo.append(prefix)
 
-    differ = sorted(n for n in reached if not same(want[n], got.get(n)))
+    def same(name):
+        if name not in got:
+            return False
+        return want[name] == got[name] or REVIEWED.get(name) == (digest(want[name]), digest(got[name]))
+
+    differ = sorted(n for n in reached if not same(n))
     for name in differ:
         print(f"admin/dalek-closure: {name} is not the definition BAIF's proofs are about", file=sys.stderr)
+    # A pin the check no longer needs would accept that pair of texts again
+    # if they came back unread.
+    stale = sorted(n for n in REVIEWED if n not in reached or want[n] == got.get(n))
+    for name in stale:
+        print(f"admin/dalek-closure: REVIEWED pins {name}, which no longer differs or is reached; remove it",
+              file=sys.stderr)
     print(f"admin/dalek-closure: {len(reached)} definitions reached, {len(differ)} differ", file=sys.stderr)
-    sys.exit(1 if differ else 0)
+    sys.exit(1 if differ or stale else 0)
 
 
 main()
