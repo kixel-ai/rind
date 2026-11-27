@@ -70,7 +70,7 @@ Every Lean file that declares an `axiom`, by the source it restates; no file hol
 | Beneficial AI Foundation's Lean theorems of curve25519-dalek, in its X25519 spec that `admin/import-dalek` vendors | `Armv7/Dalek` | published proofs; `admin/prove dalek` checks that every definition `mul_clamped` and `mul_base_clamped` reach in armv7's configuration is the text BAIF's proofs are about |
 | Vale's procedures for HACL\*'s AES-GCM | `X86_64/ValeAesGcm` | published proofs; `admin/prove bytes` checks the object code |
 | aws-lc-verification's NSym proof of SHA-384/512 (aarch64) and rind's HOL Light proof of the AVX2 routine (x86_64) | `Aarch64/AwsLc`, `X86_64/AwsLc` | a published proof and rind's own; `admin/prove bytes` and `admin/prove hol-light` check the object code |
-| rind's own HOL Light proofs of its assembly, and rind's Lean proofs of the SHA-256 crypto-extension routine (aarch64) and `bn_mul4x_mont` (x86_64) | `Aarch64/Sha256Hw`, `X86_64/ChaCha20Cipher`, `X86_64/CtEqual`, `X86_64/RsaMont`, `X86_64/Sha256Shaext`, `X86_64/ShaBlocks` | rind's proofs, in `proofs/hol-light/`, `Rind/Aarch64/Sha256HwAsm.lean`, and `Rind/X86_64/Mul4xProof.lean`, checked against the bytes rind's build emits |
+| rind's own HOL Light proofs of its assembly, and rind's Lean proofs of the SHA-256 crypto-extension routine (aarch64) and `bn_mul4x_mont` (x86_64) | `Aarch64/Sha256Hw`, `Armv7/GhashNeon`, `X86_64/ChaCha20Cipher`, `X86_64/CtEqual`, `X86_64/RsaMont`, `X86_64/Sha256Shaext`, `X86_64/ShaBlocks` | rind's proofs, in `proofs/hol-light/`, `Rind/Aarch64/Sha256HwAsm.lean`, and `Rind/X86_64/Mul4xProof.lean`, checked against the bytes rind's build emits |
 | HOL Light theorems of AES-CTR and AES-CBC that no proof states yet | `X86_64/AesModesLow` | **assumed, not proven**: [the AES modes quest](/quest/m4/verified/aes-modes.md) owns them |
 
 Hand models of Rust Aeneas cannot translate, each quoting the Rust it models:
@@ -243,7 +243,10 @@ those inputs, in any worktree, restores in under a second.
   key, which its `NIST_GHASH_IS_POLYVAL` relates to `nist_ghash`. Both are
   A32 routines in a `global_asm!` that `admin/prove` finds by their
   symbols, and the theorems cover each from entry to return for a caller in
-  A32 or T32, so every armv7 target. No Lean theorem restates them yet.
+  A32 or T32, so every armv7 target. `Rind/Armv7/GhashNeon.lean` restates
+  them about `NeonTable::new` and `NeonTable::ghash`, and
+  `neon_new_ghashFor` proves the table `new` builds hashes as `GhashFor`
+  asks, which `Parts::tagged`'s proof takes.
 - `x86_64/ecp_nistz256_point_add_affine.ml` and
   `x86_64/ecp_nistz256_point_add_affinex.ml`:
   `ECP_NISTZ256_POINT_ADD_AFFINE_SUBROUTINE_CORRECT` and
@@ -794,7 +797,8 @@ the key to the API. `Rind/Armv7/AesNohwCtr.lean` proves that `ctr32` XORs in
 GCTR's keystream from the counter block it is handed (`ctr32_spec`,
 `aes_key_ctr32_spec`), and `Rind/Armv7/GhashNohw.lean` that `ghash_nohw.rs`'s
 32-bit Karatsuba multiply and reduction fold blocks into GHASH, against
-`Rind/Gf128.lean`. `Rind/Armv7/AesGcm.lean` proves `Parts::tagged`, which
+`Rind/Gf128.lean`, and `Rind/Armv7/GhashNeon.lean` that NEON's `NeonTable`
+does, over the HOL Light proofs of its routines. `Rind/Armv7/AesGcm.lean` proves `Parts::tagged`, which
 encrypt and decrypt share, for any `Parts` whose table hashes, whose
 `encrypt_block` is AES, and whose `ctr` is GCTR (`PartsFor`, `tagged_spec`),
 so the NEON and crypto-extension compositions need only those three, and
