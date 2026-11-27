@@ -109,6 +109,18 @@ theorem reduce_step (h a m r : Nat) (ha : h % p = a % p) :
   rw [reduce_mod]
   exact ((Nat.ModEq.add_right m ha).add_right _).mul_right r
 
+/-- Three 64-bit limbs as a number. -/
+def limbs (h0 h1 h2 : BitVec 64) : Nat := h0.toNat + 2 ^ 64 * h1.toNat + 2 ^ 128 * h2.toNat
+
+/-- `reduce` of four limbs, the low two below `2^64`: the low 130 bits are
+the low two limbs and the third's low two bits, and the rest is the third's
+other bits and the fourth a word up. -/
+theorem reduce_limbs (t0 t1 t2 t3 : Nat) (h0 : t0 < 2 ^ 64) (h1 : t1 < 2 ^ 64) :
+    reduce (t0 + 2 ^ 64 * t1 + 2 ^ 128 * t2 + 2 ^ 192 * t3) =
+      t0 + 2 ^ 64 * t1 + 2 ^ 128 * (t2 % 4) + 5 * (t2 / 4 + 2 ^ 62 * t3) := by
+  unfold reduce
+  omega
+
 theorem leNum_cons (b : BitVec 8) (l : List (BitVec 8)) : leNum (b :: l) = b.toNat + 256 * leNum l := by
   simp [leNum, Nat.ofDigits_cons]
 

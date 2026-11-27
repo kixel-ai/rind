@@ -15,9 +15,6 @@ exactly, for an accumulator below `7 · 2^128` and halves of `r` below
 
 namespace rind.x86_64.polyhashad
 
-/-- Three limbs as a number. -/
-def limbs (h0 h1 h2 : BitVec 64) : Nat := h0.toNat + 2 ^ 64 * h1.toNat + 2 ^ 128 * h2.toNat
-
 /-- The carry out of `a + b + c`. -/
 def carry3 (a b : BitVec 64) (c : Bool) : Bool := decide (2 ^ 64 ≤ a.toNat + b.toNat + c.toNat)
 
@@ -201,13 +198,6 @@ theorem mulT_toNat (h0 h1 h2 r0 r1 : BitVec 64) (hh2 : h2.toNat < 7) (hr0 : r0.t
   generalize adcV (r1 * h2) f (carry (t2a + mulLo r1 h1) e) = t3 at s8 ⊢
   generalize carry (t2a + mulLo r1 h1) e = c7 at s7 k7 s8
   constructor <;> omega
-
-/-- `reduce` of four limbs, the low two below `2^64`. -/
-theorem reduce_limbs (t0 t1 t2 t3 : Nat) (h0 : t0 < 2 ^ 64) (h1 : t1 < 2 ^ 64) :
-    reduce (t0 + 2 ^ 64 * t1 + 2 ^ 128 * t2 + 2 ^ 192 * t3) =
-      t0 + 2 ^ 64 * t1 + 2 ^ 128 * (t2 % 4) + 5 * (t2 / 4 + 2 ^ 62 * t3) := by
-  unfold reduce
-  omega
 
 theorem limbs_mulOut (h0 h1 h2 r0 r1 : BitVec 64) (hh2 : h2.toNat < 7) (hr0 : r0.toNat < 2 ^ 60)
     (hr1 : r1.toNat < 2 ^ 60) :
