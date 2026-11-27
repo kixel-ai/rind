@@ -169,6 +169,17 @@ opaque low.x86_64.aes_gcm_vaes.VaesKernel.avx512
 opaque low.x86_64.aes_gcm_vaes.VaesKernel.avx2
   : Std.U128 → low.x86_64.cpu.HaveVaesAvx2ForAesGcm → Result low.x86_64.aes_gcm_vaes.VaesKernel
 
+opaque low.x86_64.aes_gcm_vg.LazyVgKey.get
+  : low.x86_64.aes_gcm_vg.LazyVgKey → low.x86_64.aes.HwKey → Result low.x86_64.aes_gcm_vg.VgKey
+
+opaque low.x86_64.aes_gcm_vg.VgKey.seal
+  : low.x86_64.aes_gcm_vg.VgKey → Std.Array U8 12#usize → Slice U8 → Slice U8 →
+    Result ((Std.Array U8 16#usize) × (Slice U8))
+
+opaque low.x86_64.aes_gcm_vg.VgKey.open
+  : low.x86_64.aes_gcm_vg.VgKey → Std.Array U8 12#usize → Slice U8 → Slice U8 →
+    Std.Array U8 16#usize → Result (Bool × (Slice U8))
+
 /-- Wiping a value, which no proof observes: the translation ignores drops. -/
 opaque low.generic.zeroise.zeroise_value {T : Type} (ZeroableInst : low.generic.zeroise.Zeroable T) :
   T → Result T

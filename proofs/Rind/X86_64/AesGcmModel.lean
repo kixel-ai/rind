@@ -397,7 +397,13 @@ impl GhashTableAvx512 {
     pub(crate) fn new(h: u128, hw: HaveAesHardware, token: HaveAvx512ForAesGcm) -> Self {
         let vaes = VaesKernel::avx512(h, token);
         let clmul = ClmulTable::from_powers(vaes.powers(), hw);
-        Self { clmul, vaes, token }
+        let vg = token.vg().map(LazyVgKey::new);
+        Self {
+            clmul,
+            vaes,
+            vg,
+            token,
+        }
     }
 
     /// H^16, H^15, ... H^1: descending, so a tail of `n` blocks multiplies
