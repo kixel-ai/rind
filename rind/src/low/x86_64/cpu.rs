@@ -256,15 +256,15 @@ std::thread_local! {
     static FORCE_AVX512_FOR_VG_MLKEM: core::cell::Cell<bool> = const { core::cell::Cell::new(false) };
 }
 
-/// Makes [`HaveAvx512ForVgMlKem::check`] pass on this thread from now on.
-///
-/// # Safety
-///
-/// Nothing may then run VG's AVX-512 ML-KEM-768 routines on a CPU without
-/// AVX-512 F, BW, and VL: only a test `admin/ct-binsec` runs, which stubs
-/// them, may call this.
+/// Makes [`HaveAvx512ForVgMlKem::check`] pass on this thread from now on,
+/// in a test `admin/ct-binsec` runs: it sets `RIND_CT_BINSEC` and stubs VG's
+/// AVX-512 routines, so none runs on a CPU without AVX-512 F, BW, and VL.
 #[cfg(test)]
-pub(crate) unsafe fn force_avx512_for_vg_mlkem() {
+pub(crate) fn force_avx512_for_vg_mlkem() {
+    assert!(
+        std::env::var_os("RIND_CT_BINSEC").is_some(),
+        "only admin/ct-binsec, which stubs VG's AVX-512 routines, may force them"
+    );
     FORCE_AVX512_FOR_VG_MLKEM.set(true);
 }
 

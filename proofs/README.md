@@ -451,7 +451,9 @@ generation and decapsulation with AVX-512 and of encapsulation, with `H(ek)`
 given or not, at each of its four widths, over `Cosim.ProgsX86_64`, VG's own
 `Prog` terms (the routine and the scrub VG appends), which `vg-print` and
 `admin/vg-bytes --progs` bind to VG's assembly text; no theorem about rind's
-wrappers uses them.
+wrappers uses them. They stand for the routines' leakage where
+`mid::mlkem::ct_binsec_mlkem768_vg` checks the Rust around them under BINSEC,
+each AVX-512 routine stubbed by its contract, in place of an SDE trace.
 
 `Rind/Aarch64/VgChaCha20Poly1305.lean` restates VG's theorems about the
 aarch64 SVE2 and NEON ChaCha20-Poly1305 routines rind runs, `seal_framed` and

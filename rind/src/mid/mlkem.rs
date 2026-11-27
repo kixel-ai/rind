@@ -1750,13 +1750,7 @@ mod tests {
     fn ct_binsec_mlkem768_vg() {
         use crate::low::ct_binsec::checked;
 
-        assert!(
-            std::env::var_os("RIND_CT_BINSEC").is_some(),
-            "only admin/ct-binsec, which stubs VG's AVX-512 routines, runs this"
-        );
-        // SAFETY: admin/ct-binsec stubs every VG routine this reaches, as the
-        // assertion above checks it runs this.
-        unsafe { low::force_avx512_for_vg_mlkem() };
+        low::force_avx512_for_vg_mlkem();
         let parsed = EncapKey::<MlKem768>::from_bytes(
             DecapKey::<MlKem768>::keygen_internal(&[1; 64])
                 .encapsulation_key()
