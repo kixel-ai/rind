@@ -99,11 +99,20 @@ impl GhashTable {
     }
 }
 
-impl Drop for GhashTable {
-    fn drop(&mut self) {
+impl GhashTable {
+    /// Wipes and frees what the table keeps on the heap, VG's key context:
+    /// a whole-value wipe of a key holding this table, which skips its drop,
+    /// must call this first.
+    pub(crate) fn release(&mut self) {
         if let Self::Avx512(GhashTableAvx512 { vg: Some(vg), .. }) = self {
             vg.wipe();
         }
+    }
+}
+
+impl Drop for GhashTable {
+    fn drop(&mut self) {
+        self.release();
         low::zeroise_value(self);
     }
 }

@@ -22,7 +22,11 @@ use crate::low;
 /// a message.
 ///
 /// All-zero bytes are the empty cell, so the key's whole-value wipe, after
-/// [`Self::wipe`] has wiped and freed the context, leaves one.
+/// [`Self::wipe`] has wiped and freed the context, leaves one. A wipe that
+/// skips this cell's drop must call [`Self::wipe`] first, or it leaks the
+/// context unwiped: see `GhashTable::release`. The context lives on the heap,
+/// not in the key, because 1 KB more to move and wipe took every key's setup
+/// and drop from about 80 ns to 105 ns on Zen 5.
 pub(crate) struct LazyVgKey {
     ctx: AtomicPtr<VgKey>,
     token: HaveAvx512ForVgAesGcm,
@@ -103,7 +107,7 @@ impl Drop for LazyVgKey {
 unsafe fn free(ctx: *mut VgKey) {
     // SAFETY: as the caller promises.
     let mut ctx = unsafe { Box::from_raw(ctx) };
-    low::zeroise(&mut ctx.ctx);
+    low::zeroise_value(&mut *ctx);
 }
 
 /// VG's prepared key context for one AES key: its key schedule, H, and 48
@@ -115,6 +119,10 @@ pub(crate) struct VgKey {
     rounds: usize,
     _token: HaveAvx512ForVgAesGcm,
 }
+
+// All-zero is the context of no key, which nothing reads, and the token is
+// zero-sized.
+impl low::Zeroable for VgKey {}
 
 impl VgKey {
     /// The context for `key`.

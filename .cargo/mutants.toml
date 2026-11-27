@@ -407,4 +407,11 @@ exclude_re = [
   # `paths_match` checks; only the time differs.
   'rind/src/low/x86_64/cpu\.rs:\d+:\d+: replace HaveAvx512ForAesGcm::vg -> Option<HaveAvx512ForVgAesGcm> with None$',
   'rind/src/low/x86_64/aes_gcm\.rs:\d+:\d+: replace >= with < in vg$',
+  # Wipe and free VG's AES-GCM context, which only Zen 5 makes through the
+  # API, where rind/tests/zeroing.rs checks every key that holds one leaks
+  # no block and frees none unwiped; the hosted runners are not Zen 5.
+  'rind/src/aead\.rs:\d+:\d+: replace (Key::release|Inner::release|<impl Cipher for AesGcm>::release) with \(\)$',
+  'rind/src/mid/aes_gcm\.rs:\d+:\d+: replace AesGcm::release with \(\)$',
+  'rind/src/low/x86_64/ghash\.rs:\d+:\d+: replace GhashTable::release with \(\)$',
+  'rind/src/low/x86_64/aes_gcm_vg\.rs:\d+:\d+: replace free with \(\)$',
 ]
