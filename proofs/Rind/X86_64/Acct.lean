@@ -73,12 +73,30 @@ theorem add_int (x y : BitVec 64) : ((x + y).toNat : ℤ) = x.toNat + y.toNat - 
 theorem mulLo_int (x y : BitVec 64) : ((mulLo x y).toNat : ℤ) = x.toNat * y.toNat - 2 ^ 64 * (mulHi x y).toNat := by
   have := mul_fact x y; zify at this; linarith
 
+theorem mulHi_le' (x y : BitVec 64) : (mulHi x y).toNat ≤ 2 ^ 64 - 2 := by
+  have h1 := mul_fact x y
+  have h2 : x.toNat * y.toNat ≤ (2 ^ 64 - 1) * (2 ^ 64 - 1) :=
+    Nat.mul_le_mul (by have := x.isLt; omega) (by have := y.isLt; omega)
+  have := (mulLo x y).isLt
+  omega
+
+/-- A product's high half, plus a carry, does not carry. -/
+@[simp] theorem adcC_mulHi (x y : BitVec 64) (c : Bool) : adcC (mulHi x y) 0 c = false := by
+  have := mulHi_le' x y; have := Bool.toNat_le c
+  have h0 : (0 : BitVec 64).toNat = 0 := rfl
+  simp only [adcC, decide_eq_false_iff_not, not_le, h0]
+  omega
+
+/-- `adcC_mulHi` for the zero a run leaves, `BitVec.ofNat 64 0`, which `0` does not match. -/
+@[simp] theorem adcC_mulHi0 (x y : BitVec 64) (c : Bool) : adcC (mulHi x y) 0#64 c = false := adcC_mulHi x y c
+
 /-- Proves an equation between weighted sums of a block's terms: each sum and each product's low half, in
 `ℤ`, is its inputs less `2^64` times its carry or high half, which leaves an identity of polynomials. -/
 macro "acct" : tactic => `(tactic| set_option exponentiation.threshold 4096 in (
   zify
   push_cast
-  simp only [adcS_int, add_int, mulLo_int, BitVec.toNat_zero, BitVec.ofNat_eq_ofNat, Nat.cast_zero]
+  simp only [adcS_int, add_int, mulLo_int, adcC_mulHi, adcC_mulHi0, Bool.toNat_false, BitVec.toNat_zero, BitVec.ofNat_eq_ofNat,
+    Nat.cast_zero, Nat.cast_ofNat, mul_zero, sub_zero]
   ring))
 
 theorem bool_le (c : Bool) : c.toNat ≤ 1 := Bool.toNat_le c

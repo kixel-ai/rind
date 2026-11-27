@@ -43,7 +43,8 @@ def Keeps (M M' : Mem) (fp : Addr) (k : Nat) : Prop :=
   ∀ y, 32 ≤ (y - wa fp 1).toNat → 8 * (2 * k + 2) ≤ (y - wa fp 7).toNat → M' y = M y
 
 /-- The routine's entry: its caller's `call` leaves the stack pointer at `fp`, `ap` in `rsi`, `8k` in `r9`, and
-zero in `xmm0`; `t`'s last two words are zero. -/
+zero in `xmm0`; `t`'s last two words are zero; and the frame is below `2^63`, as every user-space stack is, since
+a comparison of two of its pointers, whose overflow flag the next carry chain takes, overflows otherwise. -/
 structure InPre (s : S) (k : Nat) (ap np fp : Addr) (a n : Nat → BitVec 64) (n0 : BitVec 64) : Prop where
   ctx : Ctx s k ap np fp a n n0
   k29 : k < 2 ^ 29
@@ -53,6 +54,7 @@ structure InPre (s : S) (k : Nat) (ap np fp : Addr) (a n : Nat → BitVec 64) (n
   x0 : s.vg.xmm .xmm0 = 0
   t2k : tw s.vg.mem fp (2 * k) = 0
   t2k1 : tw s.vg.mem fp (2 * k + 1) = 0
+  h63 : fp.toNat + 8 * (2 * k + 9) ≤ 2 ^ 63
 
 /-- The routine's result: `t`'s upper `k` words and `rax`, a bit, times `2^(64k)` are `a² + Q·n` for some
 `Q < 2^(64k)`; `rcx` is `-8k`, `r8` the end of `t`, and `rbp` `np`; memory is as it was but in slots 1 to 4 and

@@ -54,6 +54,18 @@ elab "clear_state" : tactic => withMainContext do
       try g ← g.clear d.fvarId catch _ => pure ()
   replaceMainGoal [g]
 
+/-- Words `i` of `p` and `j` of `q`, neither wrapping, are apart if one ends before the other starts. -/
+theorem apart_wa (p q : Addr) (i j : Nat) (hp : p.toNat + 8 * i + 8 ≤ 2 ^ 64) (hq : q.toNat + 8 * j + 8 ≤ 2 ^ 64)
+    (h : p.toNat + 8 * i + 8 ≤ q.toNat + 8 * j ∨ q.toNat + 8 * j + 8 ≤ p.toNat + 8 * i) :
+    Apart (p + BitVec.ofNat 64 i * 8#64) (q + BitVec.ofNat 64 j * 8#64) := by
+  have ha : (p + BitVec.ofNat 64 i * 8#64).toNat = p.toNat + 8 * i := by
+    simp only [BitVec.toNat_add, BitVec.toNat_mul, BitVec.toNat_ofNat]; omega
+  have hb : (q + BitVec.ofNat 64 j * 8#64).toNat = q.toNat + 8 * j := by
+    simp only [BitVec.toNat_add, BitVec.toNat_mul, BitVec.toNat_ofNat]; omega
+  unfold Apart
+  rw [BitVec.toNat_sub, BitVec.toNat_sub, ha, hb]
+  omega
+
 set_option hygiene false in
 /-- Discharges the side conditions of a block's run. -/
 macro "sqrx_disch" : tactic => `(tactic| no_recover first
@@ -65,6 +77,7 @@ macro "sqrx_disch" : tactic => `(tactic| no_recover first
       | (refine inR rF ?_; simp only; clear_state; bv_omega)
       | (refine inR rA ?_; simp only; clear_state; bv_omega)
       | (refine inR rN ?_; simp only; clear_state; bv_omega)
+      | (apply apart_wa <;> omega)
       | (unfold Apart; clear_state; constructor <;> bv_omega)
       | omega)
 
