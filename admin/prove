@@ -302,10 +302,12 @@ symbol_bounds() {
 # Writes to `dest` the bytes of the static at `path`, as rind's release build
 # for `arch` Linux emits them, or, given `last`, from `path` through the end of
 # the symbol `last` after it in the same section, failing if a relocation
-# falls in them, which would leave bytes for the linker to fill. Given `last`,
-# it writes `last`'s offset in them, in decimal, to `dest` with `.offset` for
-# its extension, which the proof checks is the entry its theorems take, since
-# moving the symbol within unchanged bytes would leave them about other code.
+# falls in them, which would leave bytes for the linker to fill, unless it is
+# an A32 `bl` to a label in them, which it resolves as the linker would.
+# Given `last`, it writes `last`'s offset in them, in decimal, to `dest` with
+# `.offset` for its extension, which the proof checks is the entry its
+# theorems take, since moving the symbol within unchanged bytes would leave
+# them about other code.
 rind_static() {
     local arch=$1 path=$2 dest=$3 last=${4:-} found obj sym section value size end off
     found=$(rind_symbol "$arch" "$path")
@@ -324,8 +326,18 @@ rind_static() {
         end=$((16#$lvalue + 16#$lsize))
         echo $((16#$lvalue - 16#$value)) >"${dest%.*}.offset"
     fi
-    while read -r off _ _; do
+    local calls=() type target tsection tvalue
+    while read -r off type target; do
         if ((16#$off >= 16#$value && 16#$off < end)); then
+            # An A32 call to a label in the bytes, such as vpaes's to its
+            # local subroutines, which the linker resolves to the same
+            # displacement wherever it places them.
+            read -r tsection tvalue _ < <(symbol_bounds "$obj" "$target") || true
+            if [[ $type == R_ARM_CALL && $tsection == "$section" ]] &&
+                ((16#$tvalue >= 16#$value && 16#$tvalue < end)); then
+                calls+=("$((16#$off - 16#$value)) $((16#$tvalue - 16#$value))")
+                continue
+            fi
             echo "admin/prove: $path${last:+ through $last} has a relocation" >&2
             return 1
         fi
@@ -333,6 +345,30 @@ rind_static() {
     "$tools/llvm-objcopy" --dump-section="$section=$dest.section" "$obj" "$dest.o"
     head -c $((end)) "$dest.section" | tail -c +$((16#$value + 1)) >"$dest"
     rm "$dest.section" "$dest.o"
+    ((${#calls[@]} == 0)) || resolve_calls "$dest" "${calls[@]}"
+}
+
+# Resolves in the bytes at `dest` each `bl` at the offset given first in a
+# `calls` entry to the label at the offset given second, as the linker does an
+# R_ARM_CALL: its displacement is the label's offset plus the addend the
+# instruction holds, less its own offset, in words. Fails on any other
+# instruction, an unaligned label, or a displacement out of range.
+resolve_calls() {
+    python3 - "$@" <<'PY'
+import sys
+dest, calls = sys.argv[1], [tuple(map(int, c.split())) for c in sys.argv[2:]]
+code = bytearray(open(dest, "rb").read())
+for off, label in calls:
+    word = int.from_bytes(code[off:off + 4], "little")
+    if word >> 24 != 0xEB or label % 4 or off % 4:
+        sys.exit(f"admin/prove: the relocation at {off:#x} is not an A32 bl to an aligned label")
+    addend = ((word & 0xFFFFFF) ^ 0x800000) - 0x800000 << 2
+    disp = label + addend - off
+    if not -(1 << 25) <= disp < 1 << 25:
+        sys.exit(f"admin/prove: the bl at {off:#x} cannot reach {label:#x}")
+    code[off:off + 4] = (0xEB000000 | (disp >> 2) & 0xFFFFFF).to_bytes(4, "little")
+open(dest, "wb").write(code)
+PY
 }
 
 # Prints the symbol in rind's `arch` build of the `global_asm!` routine
@@ -592,6 +628,7 @@ hol_light_proofs=(
     "armv7 gcm_ghash_neon.bin gcm_ghash_neon"
     "armv7 sha256_armv4.bin K256..sha256_block_data_order_hw"
     "armv7 sha512_armv4.bin K512..sha512_block_data_order_neon"
+    "armv7 vpaes_encrypt.bin _vpaes_consts..vpaes_encrypt"
     "x86_64 sha512_block_data_order_avx2.o rind::low::x86_64::sha512::sha512_block_data_order_avx2"
     "x86_64 sha256_block_data_order_avx2.o rind::low::x86_64::sha256::sha256_block_data_order_avx2"
     "x86_64 bn_mul_mont_nohw.o rind::low::x86_64::mont::bn_mul_mont_nohw"
