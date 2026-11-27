@@ -420,6 +420,12 @@ removes.
 `nix develop .#prove --command admin/prove` checks rind's HOL Light proofs of
 its assembly, then translates the Rust under proof to Lean with Aeneas and
 checks the proofs in [`proofs/`](proofs/README.md).
+On aarch64 macOS, `nix develop .#prove --command admin/prove lean` translates
+every target and builds the Lean proofs, so a proof iterates without a
+dispatched `prove` run. It cannot run the intrinsic vectors, which need an
+x86_64 Linux CPU with AVX2, so it names them as not run and exits nonzero, and
+it computes no cache key. The HOL Light proofs, `vg`, and the cosimulation are
+not run on macOS.
 
 ## Scheduled workflows
 

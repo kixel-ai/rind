@@ -179,8 +179,11 @@ one-pass seal and open, behind their Rust wrapper, whose contract
 `Rind.X86_64.ChaCha20Poly1305`'s `OnePass` states as a hypothesis; and the
 separate passes CPUs without SSE4.1 run, which no theorem is about. -/
 
-opaque low.x86_64.cpu.HaveIfmaForVgChaCha20Poly1305.check
-  : Result (Option low.x86_64.cpu.HaveIfmaForVgChaCha20Poly1305)
+opaque low.x86_64.cpu.HaveIfmaForVgChaCha20Poly1305.check_seal
+  : Std.Usize → Result (Option low.x86_64.cpu.HaveIfmaForVgChaCha20Poly1305)
+
+opaque low.x86_64.cpu.HaveIfmaForVgChaCha20Poly1305.check_open
+  : Std.Usize → Result (Option low.x86_64.cpu.HaveIfmaForVgChaCha20Poly1305)
 
 opaque low.x86_64.chacha20poly1305.seal_ifma
   : low.x86_64.cpu.HaveIfmaForVgChaCha20Poly1305 → Std.Array Std.U8 32#usize →
