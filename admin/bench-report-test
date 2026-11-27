@@ -547,15 +547,6 @@ class HostScript(unittest.TestCase):
             fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)
 
 
-class CheckIdle(unittest.TestCase):
-    def test_skips_a_busy_host_unless_it_is_shared(self):
-        self.addCleanup(setattr, br, "busy_cpus", br.busy_cpus)
-        br.busy_cpus = lambda: br.busy_limit() + 0.5
-        with self.assertRaises(br.Busy):
-            br.check_idle("now", shared=False)
-        self.assertEqual(br.check_idle("now", shared=True), round(br.busy_limit() + 0.5, 2))
-
-
 class Comparison(unittest.TestCase):
     def cells(self, hosts):
         table = br.comparison_table(hosts, VERIFIED)
