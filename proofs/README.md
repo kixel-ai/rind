@@ -1586,9 +1586,11 @@ No length bound is needed: VG's spec and `Rind/Spec.lean`'s both wrap the
   `Opens` at `OpensNeon`'s where it finds none.
 
 Each assumes `RunsChaCha20Poly1305`: the entry guard admits the call and the
-SVE2 check returns. CPUs without SVE2 run aws-lc's `chacha20_poly1305_armv8`
-at the other lengths, which no proof covers yet, so `seals` and `opens`,
-which cover every length, assume its contract, `AwsLc`, there;
+SVE2 check returns. CPUs without SVE2 run rind's structured copy of aws-lc's
+`chacha20_poly1305_armv8` at the other lengths, which
+`Rind/Aarch64/ChaCha20Poly1305Asm.lean` proves constant-time but no proof yet
+shows computes the AEAD, so `seals` and `opens`, which cover every length,
+assume its contract, `AwsLc`, there;
 [the aarch64 aws-lc ChaCha20-Poly1305 quest](/quest/m4/verified/chacha20-poly1305-aarch64/aead.md)
 owns that proof.
 
