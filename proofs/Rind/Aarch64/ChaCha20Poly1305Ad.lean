@@ -12,10 +12,11 @@ set_option linter.unusedSimpArgs false
 Seal and open inline aws-lc's `poly_hash_ad_internal` on each of their two
 paths: `adBlocks` hashes the AAD's whole blocks, `x4` bytes from `x3`, after
 the `cmp x4, #16` before it, and `adTail` the partial block left,
-zero-padded. `ad_ok` runs them on rind's model: from an accumulator in
+zero-padded. `ad_ok` runs them on rind's model: from the flags of that
+`cmp`, fewer than `2^63` bytes of AAD, readable if any, an accumulator in
 `(x8, x9, x10)` below `5 · 2^128` that is, modulo `p`, `a`, with `r` in
 `(x16, x17)`, each word below `2^60` as clamping leaves them, and 1 in
-`x15`, they leave the accumulator below `5 · 2^128` and, modulo `p`,
+`x15` (`Ctx.Ok`, `BInv`), they leave the accumulator below `5 · 2^128` and, modulo `p`,
 RFC 8439's from `a` over the AAD zero-padded to whole blocks (`padBlocks`,
 `Rind.Poly1305Limbs`); they change no memory and no register but `x3`,
 `x4`, `x8` to `x14`, and `v20`; and their traces, `blocksTrace` and

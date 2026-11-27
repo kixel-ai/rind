@@ -605,8 +605,10 @@ the padding, whose bytes that comparison checks.
   Poly1305's block step on the model and proves it a step of RFC 8439's
   accumulator modulo `p` (`acc_step`), from `Rind/Poly1305Limbs.lean`'s
   `limbs` and `reduce`. `ChaCha20Poly1305Ad` proves the inlined AAD hash,
-  `ad_ok`: from `r` in `(x16, x17)`, each word below `2^60`, and an
-  accumulator below `5 · 2^128`, it leaves the accumulator over the AAD
+  `ad_ok`: from the flags of `cmp x4, #16`, `x4` bytes of AAD at `x3`,
+  fewer than `2^63` and readable if any, 1 in `x15`, `r` in `(x16, x17)`,
+  each word below `2^60`, and an accumulator below `5 · 2^128`
+  (`Ctx.Ok`, `BInv`), it leaves the accumulator over the AAD
   zero-padded to whole blocks (`padBlocks`), changes no memory and no
   register but its scratch ones and `v20`, and its trace is a function of
   the AAD's address and length. `Rind/Aarch64/Asm.lean` holds the symbolic
