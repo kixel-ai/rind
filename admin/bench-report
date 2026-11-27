@@ -2767,7 +2767,6 @@ def main():
 
     p = sub.add_parser("names", help="list the benchmarks cargo bench arguments select")
     p.add_argument("--match", metavar="REGEX", help="keep only the benchmarks whose ID this matches")
-    p.add_argument("cargo_args", nargs=argparse.REMAINDER, help="cargo bench's arguments, such as --bench sha2")
     p.set_defaults(func=names)
 
     p = sub.add_parser("results", help="print a swole bench --out file's times by benchmark ID")
@@ -2782,7 +2781,12 @@ def main():
     p.add_argument("--out", required=True)
     p.set_defaults(func=run)
 
-    args = parser.parse_args()
+    # `names` passes what it doesn't know to cargo bench, such as `--bench sha2`.
+    args, rest = parser.parse_known_args()
+    if args.command == "names":
+        args.cargo_args = rest
+    elif rest:
+        parser.error(f"unrecognized arguments: {' '.join(rest)}")
     args.func(args)
 
 

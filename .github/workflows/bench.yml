@@ -416,9 +416,9 @@ jobs:
             filter+='|^(argon2id|slhdsa|blind-rsa\d+|v?oprf|vrf|spake2plus)-[^/]+/rustcrypto$'
           fi
           read -ra args <<<"${{ steps.select.outputs.args }}"
-          cargo=("${config[@]}" -p rind-bench "${args[@]}" --target ${{ matrix.target }})
+          cargo=("${config[@]}" "${args[@]}" --target ${{ matrix.target }})
           admin/bench-report names --match "$filter" "${cargo[@]}" >"$RUNNER_TEMP/benchmarks"
-          swole bench --benchmarks "$RUNNER_TEMP/benchmarks" --out "$RUNNER_TEMP/times.json" -- "${cargo[@]}"
+          swole bench --benchmarks "$RUNNER_TEMP/benchmarks" --out "$RUNNER_TEMP/times.json" -- -p rind-bench "${cargo[@]}"
         env:
           CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER: arm-linux-gnueabihf-gcc
           CC_armv7_unknown_linux_gnueabihf: arm-linux-gnueabihf-gcc
