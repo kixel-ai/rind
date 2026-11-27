@@ -1218,9 +1218,10 @@ given FIPS 202's round constants and nothing of the CPU. Each round is
 
 ML-KEM's polynomial arithmetic, against FIPS 203 as SymCrypt's Lean spec
 (`Rind/SymCrypt/MlKem.lean`, MIT) states it, and of rind's Rust the coding
-below it and, on aarch64, ML-KEM-768's K-PKE decryption and encryption; key
-generation, the encapsulation-key checks, and the Fujisaki-Okamoto transform
-have [its quest](/quest/m4/verified/mlkem-construction.md):
+below it and, on aarch64, the matrix sampling and ML-KEM-768's K-PKE
+decryption and encryption; key generation, the encapsulation-key checks, and
+the Fujisaki-Okamoto transform have
+[its quest](/quest/m4/verified/mlkem-construction.md):
 
 - `NTT_get`, `NTTInv_get` (`Rind/MlKem.lean`): Algorithms 9 and 10 compute
   the residues FIPS 203's Equations (4.12) and (4.13) define, and back;
@@ -1304,14 +1305,28 @@ encapsulation key encodes (`DecodedHolds`), on the routines' and SHA-3's
 axioms. `kpke_encrypt_spec` states the ciphertext from rind's side, and
 `encrypt_eq` unrolls the spec's loops to the same terms.
 
+`decoded_new_spec` (`Rind/Aarch64/MlKemSample.lean`): on aarch64,
+`Decoded::new` of an ML-KEM-768 encapsulation key decodes `t̂` and samples the
+transposed matrix as `DecodedHolds` states, so `kpke_encrypt_fips` holds of
+the key's bytes, on the same axioms and s2n-bignum's rejection sampling's,
+given that FIPS 203's `SampleNTT` finishes on each of the matrix's nine inputs
+(`Halts`), which no proof shows for every input. `sample_ntt_spec`
+covers `sample_ntt` for every rank, since aarch64 has no eight-way sampler: it
+hashes four polynomials at a time through `shake128x4_squeeze_spec` and the
+rest one at a time, takes each one's first three blocks through the rejection
+sampler and then a block at a time through `tail_case`, and writes SHAKE128's
+first 256 12-bit candidates below `q`. `sampleNTT_eq` (`Rind/MlKemSample.lean`)
+shows, with no Rust, that those are `SampleNTT`'s, through the spec's
+incremental sponge.
+
 `Rind/MlKemCoding.lean` states what they need of the spec, with no Rust:
 `ByteEncode_bit`, `ByteDecode_get`, and `SamplePolyCBD_get` give each bit or
 coefficient of FIPS 203's `ByteEncode`, `ByteDecode`, and `SamplePolyCBD`,
 which the spec writes as loops, and `Compress_val` and `Decompress_val` give
 `Compress` and `Decompress`, which it writes as rounded rationals, as
 quotients of naturals. K-PKE's decryption and encryption call them; its key
-generation, the Fujisaki-Okamoto transform, SampleNTT, and x86_64's
-encodings are the quest's.
+generation, the Fujisaki-Okamoto transform, and x86_64's encodings are the
+quest's.
 
 Ed25519 on x86_64 and aarch64, from the signature API's `ed25519::KeyPair`
 and `ed25519::PublicKey` to s2n-bignum's routines and the SHA-512 proof above, in
@@ -2215,7 +2230,10 @@ beyond Lean's own.
   `Rind/Aarch64/MlKemPoly.lean`: `mid::mlkem`'s vector operations over them;
   `Rind/X86_64/MlKemCbd.lean`, on both targets: rind's noise sampling;
   `Rind/Aarch64/MlKemPke.lean`: ML-KEM-768's K-PKE decryption;
-  `Rind/Aarch64/MlKemEncrypt.lean`: its encryption.
+  `Rind/Aarch64/MlKemEncrypt.lean`: its encryption; `Rind/MlKemSample.lean`:
+  FIPS 203's `SampleNTT` as SHAKE128's first 256 candidates below `q`;
+  `Rind/Aarch64/MlKemSample.lean`: rind's matrix sampling and ML-KEM-768's
+  `Decoded::new`.
 - `Rind/<Arch>/ShaBlocks.lean`: SHA-1 and SHA-256's block functions on each
   target, SHA-1's padded last blocks, and SHA-256's padded last blocks and
   finish; `Rind/Aarch64/Sha256Hw.lean`, the axiom for aarch64's routine with
