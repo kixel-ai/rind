@@ -39,7 +39,7 @@ macro_rules! asm_call {
     test,
     all(
         rind_backend = "portable",
-        not(all(target_arch = "xtensa", target_os = "espidf"))
+        not(rind_sha256_iram)
     )
 ))]
 macro_rules! sixteen {
@@ -169,7 +169,7 @@ mod generic {
     #[cfg(any(
         all(
             rind_backend = "portable",
-            not(all(target_arch = "xtensa", target_os = "espidf"))
+            not(rind_sha256_iram)
         ),
         all(test, any(rind_backend = "arm", rind_backend = "x86_64"))
     ))]

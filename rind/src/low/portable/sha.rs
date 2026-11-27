@@ -20,18 +20,18 @@ pub(crate) use crate::low::generic::sha1::sha1_compress_blocks;
 
 // The IRAM body is what ESP-IDF Xtensa ships. Other builds compile it only
 // for the tests below, which call it by name.
-#[cfg(any(all(target_arch = "xtensa", target_os = "espidf"), test))]
+#[cfg(any(rind_sha256_iram, test))]
 #[path = "sha256_iram.rs"]
 mod iram;
 
 /// Compresses whole 64-byte `blocks` into `state`.
 pub(crate) fn sha256_compress_blocks(state: &mut [u32; 8], blocks: &[u8]) {
-    #[cfg(all(target_arch = "xtensa", target_os = "espidf"))]
+    #[cfg(rind_sha256_iram)]
     {
         assert!(blocks.len().is_multiple_of(64));
         iram::sha256_update_nblocks(state, blocks);
     }
-    #[cfg(not(all(target_arch = "xtensa", target_os = "espidf")))]
+    #[cfg(not(rind_sha256_iram))]
     crate::low::generic::sha256::sha256_compress_blocks(state, blocks);
 }
 
