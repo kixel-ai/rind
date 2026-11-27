@@ -121,13 +121,9 @@ exclude_re = [
   # Equivalent: a comparison whose two forms differ only where both branches
   # give the same result, or a step that computes the same value another way,
   # such as squaring rather than multiplying to the same power.
-  # Ed25519's non-adjacent forms: no digit is zero where its sign is tested,
-  # past 64 bits a window's extra bits are masked off, and a borrow never
-  # carries past bit 255 of a scalar below 2^255. With equal remainders,
-  # either of `split`'s rows may lead.
-  'rind/src/low/generic/edwards25519_msm\.rs:\d+:\d+: replace > with >= in edwards25519_msm$',
-  'rind/src/low/generic/edwards25519_msm\.rs:\d+:(18|21): replace < with <= in non_adjacent_form$',
-  'rind/src/low/generic/edwards25519_msm\.rs:\d+:(16|20): replace (> with >=|\+ with \*) in non_adjacent_form$',
+  # Ed25519's multiplication tests no zero digit's sign. With equal
+  # remainders, either of `split`'s rows may lead.
+  'rind/src/low/generic/edwards25519_msm\.rs:\d+:\d+: replace > with >= in add_digit$',
   'rind/src/mid/half_size\.rs:\d+:18: replace < with <= in split$',
   # ChaCha20's chunk length: with a whole chunk left, both branches give it.
   # The loop guard's `<`, at column 16, is caught.
@@ -175,7 +171,7 @@ exclude_re = [
   'rind/src/low/generic/p521\.rs:\d+:\d+: replace < with <= in p521_public_twin_multiply$',
   'rind/src/mid/p521\.rs:\d+:\d+: replace < with <= in JacobianPoint::public_twin_multiply_naf$',
   'rind/src/mid/rsa_priv/exponents\.rs:\d+:\d+: replace < with <= in (divide_exact_e|shift_right_secret)$',
-  'rind/src/mid/util\.rs:\d+:\d+: replace < with <= in public_naf$',
+  'rind/src/low/generic/naf\.rs:\d+:\d+: replace < with <= in public_naf$',
   # Equivalent: a constant no result depends on. `(q - 1) / n` truncates to
   # `q / n` and `(q + 1) / n`; decompose's `r0` never lies at `(q + 1) / 2`;
   # vpmuldq reads only the even lanes of ML-DSA's x86_64 `QDATA`; ExpandA's
@@ -196,7 +192,7 @@ exclude_re = [
   # Speed only: where Ed25519 verification's multiplication starts, as
   # doubling the identity leaves it; and which of two valid half-size rows
   # `split` returns, both odd and below 2^128.
-  'rind/src/low/generic/edwards25519_msm\.rs:\d+:\d+: replace != with == in edwards25519_msm$',
+  'rind/src/low/generic/edwards25519_msm\.rs:\d+:\d+: replace != with == in top$',
   'rind/src/mid/half_size\.rs:\d+:(29|51): replace (match guard .* with (true|false)|< with (==|>|<=)) in split$',
   # Speed only: which of several implementations runs, or how far ahead it
   # prefetches. Each implementation is tested on its own against the others.
@@ -310,7 +306,7 @@ exclude_re = [
   # Pinned to its line: the `cpu_denied` of a release build or one without
   # an OS, which tests never are. The debug build's, under the same name, is
   # caught.
-  'rind/src/low/mod\.rs:228:\d+: replace cpu_denied -> bool with true$',
+  'rind/src/low/mod\.rs:229:\d+: replace cpu_denied -> bool with true$',
   # The FIPS module's `SystemRandom`, compiled only under `--cfg rind_fips`,
   # which no mutation run sets; `fips_rng`'s tests cover what it calls.
   # Pinned to its line: the other `fill`, under the same name, is caught.
