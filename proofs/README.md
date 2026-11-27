@@ -1815,17 +1815,14 @@ return their results at the modulus's width of k words, and
 `IfmaCheckReturns`, that the CPU check for AVX-512 IFMA returns.
 `Rind/X86_64/RsaMont.lean`'s `mont_products` proves it at 16 and 32 words
 with BMI2 and ADX, from s2n-bignum's theorems; on any CPU at a width that is
-under eight words or not a multiple of four, from `nohw_spec`, which restates
-rind's HOL Light proof of `bn_mul_mont_nohw` below, of the Linux build's
-object, so not of the macOS one ([its quest](/quest/m4/verified/apple-bytes.md));
-and from `AwsLcMont`, that
-aws-lc's unproven `bn_sqr8x_mont` returns its squares, at every
-other width and CPU, all below `2^29` words, the most `bn_mulx4x_mont` takes,
-which `MontArgs` bounds. Its products through `bn_mul4x_mont` and
-`bn_mulx4x_mont` follow from `mul4x_spec` and `mulx4x_spec`, which restate
-`Mul4xProof.lean`'s and `Mulx4xProof.lean`'s theorems above, but
-`mont_products` still takes `AwsLcMont` at those widths, since it states
-products and squares together.
+not a multiple of eight, from `nohw_spec`, which restates rind's HOL Light
+proof of `bn_mul_mont_nohw` below, of the Linux build's object, so not of the
+macOS one ([its quest](/quest/m4/verified/apple-bytes.md)), and from eight
+words at a multiple of four from `mul4x_spec` and `mulx4x_spec`, which restate
+`Mul4xProof.lean`'s and `Mulx4xProof.lean`'s theorems above; and from
+`AwsLcMont`, that aws-lc's unproven `bn_sqr8x_mont` returns its squares, at
+the other multiples of eight, all below `2^29` words, the most
+`bn_mulx4x_mont` takes, which `MontArgs` bounds.
 `PublicKey::verify` reaches each algorithm's verification through a function
 pointer, and every loader encodes the key through `Buffer::write`, which
 `Rind/X86_64/RsaDispatch.lean` models for these two algorithms. On aarch64 the products are aws-lc's, so these proofs are not

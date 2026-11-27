@@ -14,9 +14,9 @@ they run aws-lc's `bn_mul4x_mont`, or with BMI2 and ADX its
 and squaring at a multiple of eight its `bn_sqr8x_mont`, which no proof
 covers: `AwsLcMont` states what it computes. Every other width runs aws-lc's
 `bn_mul_mont_nohw`, whose HOL Light proof `nohw_spec` restates, so
-`mont_products` proves those widths on any CPU, and the rest given
-`AwsLcMont`. `MontArgs` bounds every width below `2^29` words, the most
-`bn_mulx4x_mont` takes.
+`mont_products` proves every width on any CPU but the multiples of eight
+`bn_sqr8x_mont` squares at, which it takes given `AwsLcMont`. `MontArgs`
+bounds every width below `2^29` words, the most `bn_mulx4x_mont` takes.
 
 rind's HOL Light proof `BN_MUL_MONT_NOHW_SUBROUTINE_CORRECT`, in
 `proofs/hol-light/x86_64/bn_mul_mont_nohw.ml` at rind's commit, is of the
@@ -323,7 +323,7 @@ theorem mont_mul_spec (z x y m : Slice U64) (n0 : U64) (o : Option low.x86_64.cp
 set_option maxHeartbeats 1000000 in
 theorem mont_sqr_spec (z x m : Slice U64) (n0 : U64) (o : Option low.x86_64.cpu.HaveBmi2Adx)
     (hcheck : low.x86_64.cpu.HaveBmi2Adx.check = ok o)
-    (hroutines : AwsLcMont ∨ m.length < 8 ∨ m.length % 4 ≠ 0)
+    (hroutines : AwsLcMont ∨ m.length < 8 ∨ m.length % 8 ≠ 0)
     (hz : z.length = m.length) (hargs : MontArgs x.val x.val m.val n0) :
     low.x86_64.mont.mont_sqr z x m n0 ⦃ r => MontResult x.val x.val m.val r.val ⦄ := by
   obtain ⟨hx, -, hk2, -⟩ := id hargs
@@ -371,14 +371,14 @@ theorem karatsuba_products {k : Nat} (o : Option low.x86_64.cpu.HaveBmi2Adx)
       exact karatsuba_sqr_spec z x m n0 (by omega) (by omega) hargs
 
 /-- rind's Montgomery products at width `k` return their results: on any
-CPU at a width aws-lc's 4x and 8x routines do not take, which runs
-`bn_mul_mont_nohw` but for s2n-bignum's Karatsuba routines, with BMI2 and
-ADX at 16 and 32 words, and at any other width given `AwsLcMont`. -/
+CPU at a width aws-lc's `bn_sqr8x_mont` does not take, with BMI2 and ADX at
+16 and 32 words, where s2n-bignum's Karatsuba routines run instead, and at
+any other width given `AwsLcMont`. -/
 theorem mont_products {k : Nat} (o : Option low.x86_64.cpu.HaveBmi2Adx)
     (hcheck : low.x86_64.cpu.HaveBmi2Adx.check = ok o)
-    (hroutines : AwsLcMont ∨ k < 8 ∨ k % 4 ≠ 0 ∨ o.isSome ∧ (k = 16 ∨ k = 32)) :
+    (hroutines : AwsLcMont ∨ k < 8 ∨ k % 8 ≠ 0 ∨ o.isSome ∧ (k = 16 ∨ k = 32)) :
     MontProducts k := by
-  have general (h : AwsLcMont ∨ k < 8 ∨ k % 4 ≠ 0) : MontProducts k :=
+  have general (h : AwsLcMont ∨ k < 8 ∨ k % 8 ≠ 0) : MontProducts k :=
     ⟨fun z x y m n0 hm hz hargs => mont_mul_spec z x y m n0 o hcheck (by rw [hm, hz]) hargs,
       fun z x m n0 hm hz hargs => mont_sqr_spec z x m n0 o hcheck (by rw [hm]; exact h)
         (by rw [hm, hz]) hargs⟩
