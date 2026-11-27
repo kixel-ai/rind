@@ -638,9 +638,9 @@ fn detect() -> u32 {
         (FAMILY_19H, "family19h"),
         (FAMILY_1AH, "family1ah"),
     ]
-        .into_iter()
-        .filter(|&(bit, name)| found & bit != 0 && !super::super::cpu_denied(name))
-        .fold(0, |features, (bit, _)| features | bit);
+    .into_iter()
+    .filter(|&(bit, name)| found & bit != 0 && !super::super::cpu_denied(name))
+    .fold(0, |features, (bit, _)| features | bit);
     NAMED
         .iter()
         .filter(|&&(bit, name)| found & bit != 0 && !super::super::cpu_denied(name))
@@ -1004,12 +1004,7 @@ mod tests {
             }),
             0
         );
-        for eax1 in [
-            0x0086_0f01,
-            0x0000_0f11,
-            0x0000_1911,
-            0x0010_0f11,
-        ] {
+        for eax1 in [0x0086_0f01, 0x0000_0f11, 0x0000_1911, 0x0010_0f11] {
             assert_eq!(decode(Registers { eax1, ..zen4 }), 0, "{eax1:#x}");
         }
     }

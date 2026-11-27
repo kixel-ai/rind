@@ -221,4 +221,21 @@ mod tests {
         assert_eq!(cell.init(key) as *const VgKey, won);
         assert_eq!(cell.get(key) as *const VgKey, won);
     }
+
+    // Wiping frees the context and leaves the cell empty, as a whole-value
+    // wipe would.
+    #[test]
+    fn wipe_empties_the_cell() {
+        let Some(token) = HaveAvx512ForAesGcm::check() else {
+            return;
+        };
+        let key = AesKey::new(&[7; 16]);
+        let AesKey::Hw(key) = &key else {
+            unreachable!("AVX-512 CPUs have AES-NI");
+        };
+        let mut cell = LazyVgKey::new(token.vg_anywhere());
+        let _ = cell.get(key);
+        cell.wipe();
+        assert!(cell.ctx.get_mut().is_null());
+    }
 }

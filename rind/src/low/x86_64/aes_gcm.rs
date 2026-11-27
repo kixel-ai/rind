@@ -760,8 +760,10 @@ mod tests {
             .flat_map(|n| [n.saturating_sub(1), n, n + 1]);
             let mut msg_lens = vec![
                 0, 1, 15, 16, 17, 95, 96, 97, 112, 127, 128, 129, 255, 256, 257, 287, 288, 289,
-                1000, 5000, 16384 + 17,
+                1000, 5000,
             ];
+            // A TLS record's 16 KB, and a partial block, on VG's side.
+            msg_lens.push(16384 + 17);
             msg_lens.extend(crossovers);
             msg_lens.sort_unstable();
             msg_lens.dedup();
@@ -903,7 +905,11 @@ mod tests {
         };
         // VG's, from its length, as on Zen 5, whichever CPU SDE emulates.
         avx512.vg = Some(LazyVgKey::new(avx512.token.vg_anywhere()));
-        for len in [AVX512_MINIMUM_CIPHER_LEN, AVX512_KERNEL_MINIMUM_CIPHER_LEN, VG_FROM] {
+        for len in [
+            AVX512_MINIMUM_CIPHER_LEN,
+            AVX512_KERNEL_MINIMUM_CIPHER_LEN,
+            VG_FROM,
+        ] {
             traced_seal_open(&mut rng, &key, &table, len + 200);
         }
     }
