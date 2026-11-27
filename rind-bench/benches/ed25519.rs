@@ -29,8 +29,9 @@ fn rind_sign(signing_key: &rind::ed25519::KeyPair) {
 
 // Generate a fresh key and make a PKCS8 document of it.
 mod ed25519_keygen {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     fn ring_rng() -> ring::rand::SystemRandom {
         ring::rand::SystemRandom::new()
@@ -126,8 +127,9 @@ mod ed25519_keygen {
 // Each library parses the key once, outside the timed call, where its API
 // allows.
 mod ed25519_verify {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     fn ring_key() -> ring::signature::UnparsedPublicKey<&'static [u8; 32]> {
         ring::signature::UnparsedPublicKey::new(&ring::signature::ED25519, PUBLIC_KEY)
@@ -211,8 +213,9 @@ mod ed25519_verify {
 }
 
 mod ed25519_sign {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     fn ring_key() -> ring::signature::Ed25519KeyPair {
         use ring::{rand, signature};
@@ -319,8 +322,9 @@ mod ed25519_sign {
 #[cfg(target_arch = "aarch64")]
 mod dit_per_call {
     mod ed25519_verify {
-        use super::super::*;
         use swole::bench;
+
+        use super::super::*;
 
         #[bench(setup = rind_public_key)]
         fn rind(public_key: &rind::ed25519::PublicKey) {
@@ -329,8 +333,9 @@ mod dit_per_call {
     }
 
     mod ed25519_sign {
-        use super::super::*;
         use swole::bench;
+
+        use super::super::*;
 
         #[bench(setup = rind_signing_key)]
         fn rind(signing_key: &rind::ed25519::KeyPair) {

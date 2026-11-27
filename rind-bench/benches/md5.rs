@@ -12,8 +12,9 @@ fn rind_input(size: Size) -> Dit<Vec<u8>> {
 
 // A module named after the crate, so the crate is `::md5` inside it.
 mod md5 {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     // aws-lc's MD5, which aws-lc-rs does not export, through aws-lc-sys.
     #[bench(args = HASH_SIZES, setup = input)]

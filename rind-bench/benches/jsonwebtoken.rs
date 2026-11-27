@@ -123,8 +123,9 @@ macro_rules! rows {
             use super::*;
 
             mod aws_lc_rs {
-                use super::*;
                 use swole::bench;
+
+                use super::*;
 
                 fn input() -> Input {
                     Input::new(Algorithm::$algorithm, &aws_lc::DEFAULT_PROVIDER)
@@ -142,8 +143,9 @@ macro_rules! rows {
             }
 
             mod rind {
-                use super::*;
                 use swole::bench;
+
+                use super::*;
 
                 fn input() -> Dit<Input> {
                     Dit::hold(Input::new(

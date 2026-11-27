@@ -61,8 +61,9 @@ macro_rules! ml_dsa {
     ) => {
         // Generate a key pair, and its public key.
         mod $keygen {
-            use super::*;
             use swole::bench;
+
+            use super::*;
 
             #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
             #[bench(setup = ossl::require)]
@@ -130,8 +131,9 @@ macro_rules! ml_dsa {
 
         // Sign with hedged randomness and the empty context.
         mod $sign {
-            use super::*;
             use swole::bench;
+
+            use super::*;
 
             #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
             fn openssl_key() -> openssl::pkey::PKey<openssl::pkey::Private> {
@@ -230,8 +232,9 @@ macro_rules! ml_dsa {
         // Verify one signature. Each library parses the public key once,
         // outside the timed call, and the signature in it.
         mod $verify {
-            use super::*;
             use swole::bench;
+
+            use super::*;
 
             /// A rind public key's encoding and a signature it verifies.
             fn signed() -> (Vec<u8>, Vec<u8>) {
@@ -346,8 +349,9 @@ macro_rules! ml_dsa {
         // Load a public key and verify one signature with it, as a TLS
         // handshake does with its peer's certificate.
         mod $load_verify {
-            use super::*;
             use swole::bench;
+
+            use super::*;
 
             /// A rind public key's encoding and a signature it verifies.
             fn signed() -> (Vec<u8>, Vec<u8>) {

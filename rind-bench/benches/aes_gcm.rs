@@ -193,8 +193,9 @@ macro_rules! seal {
         const KEY: [u8; $len] = [0; $len];
 
         pub mod ring {
-            use super::*;
             use swole::bench;
+
+            use super::*;
 
             #[bench]
             fn key() {
@@ -205,8 +206,9 @@ macro_rules! seal {
         }
 
         pub mod aws_lc_rs {
-            use super::*;
             use swole::bench;
+
+            use super::*;
 
             #[bench]
             fn key() {
@@ -218,8 +220,9 @@ macro_rules! seal {
         }
 
         pub mod rind {
-            use super::*;
             use swole::bench;
+
+            use super::*;
 
             #[bench(setup = dit)]
             fn key(_: &Dit<()>) {
@@ -228,8 +231,9 @@ macro_rules! seal {
         }
 
         pub mod verified_garbage {
-            use super::*;
             use swole::bench;
+
+            use super::*;
 
             #[bench]
             fn key() {
@@ -492,8 +496,9 @@ macro_rules! open_more {
 }
 
 mod aes128_gcm {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     seal!(
         16,
@@ -508,8 +513,9 @@ mod aes128_gcm {
 }
 
 mod aes256_gcm {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     seal!(
         32,
@@ -524,8 +530,9 @@ mod aes256_gcm {
 }
 
 mod aes128_gcm_open {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     open!(16, AES_128_GCM);
     open_more!(
@@ -538,8 +545,9 @@ mod aes128_gcm_open {
 }
 
 mod aes256_gcm_open {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     open!(32, AES_256_GCM);
     open_more!(
@@ -554,14 +562,16 @@ mod aes256_gcm_open {
 /// AES-192-GCM, which only aws-lc-rs of the other libraries offers, both
 /// ways: WebCrypto and pyca take 192-bit keys.
 mod aes192_gcm {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     const KEY: [u8; 24] = [0; 24];
 
     pub mod aws_lc_rs {
-        use super::*;
         use swole::bench;
+
+        use super::*;
 
         #[bench]
         fn key() {
@@ -576,8 +586,9 @@ mod aes192_gcm {
     }
 
     pub mod rind {
-        use super::*;
         use swole::bench;
+
+        use super::*;
 
         #[bench(setup = dit)]
         fn key(_: &Dit<()>) {
@@ -586,8 +597,9 @@ mod aes192_gcm {
     }
 
     pub mod verified_garbage {
-        use super::*;
         use swole::bench;
+
+        use super::*;
 
         #[bench]
         fn key() {
@@ -628,8 +640,9 @@ mod aes192_gcm {
 }
 
 mod aes192_gcm_open {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     open!(24, AES_192_GCM);
 }
@@ -639,8 +652,9 @@ mod dit_per_call {
     use super::*;
 
     mod aes128_gcm {
-        use super::*;
         use swole::bench;
+
+        use super::*;
 
         fn seal(row: Aead) -> Seal<rind::aead::Key> {
             let key = rind::aead::Key::new(&rind::aead::AES_128_GCM, &[0; 16]).unwrap();

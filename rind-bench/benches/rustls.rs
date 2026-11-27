@@ -597,8 +597,9 @@ fn rustls_records(pair: &mut Pair) {
 /// the largest share of a record. See `common::Dit`.
 #[cfg(target_arch = "aarch64")]
 mod dit_per_call {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     fn pair(records: Records) -> Pair {
         Pair {

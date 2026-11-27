@@ -101,8 +101,9 @@ impl<K> Seal<K> {
 }
 
 mod xchacha20poly1305 {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     fn aws_seal(row: Aead) -> Seal<AwsXChaCha> {
         Seal::new(AwsXChaCha::new(&KEY), row)

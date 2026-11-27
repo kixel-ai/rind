@@ -71,8 +71,9 @@ fn openssl_verify(public_key: &[u8], pss: bool, message: &[u8], signature: &[u8]
 }
 
 mod rsa2048_pkcs1_sha256_verify {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     type Ring = ring::signature::UnparsedPublicKey<&'static [u8]>;
     type Aws = aws_lc_rs::signature::UnparsedPublicKey<&'static [u8]>;
@@ -163,8 +164,9 @@ mod rsa2048_pkcs1_sha256_verify {
 
 /// A key parsed once, as a JWT verifier holds it, keeps its setup.
 mod rsa2048_pkcs1_sha256_verify_parsed {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     type Aws = aws_lc_rs::signature::ParsedPublicKey;
 
@@ -206,8 +208,9 @@ mod rsa2048_pkcs1_sha256_verify_parsed {
 }
 
 mod rsa1024_pkcs1_sha1_verify {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     type Ring = ring::signature::UnparsedPublicKey<&'static [u8]>;
     type Aws = aws_lc_rs::signature::UnparsedPublicKey<&'static [u8]>;
@@ -261,8 +264,9 @@ mod rsa1024_pkcs1_sha1_verify {
 }
 
 mod rsa2048_pss_sha256_verify {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     type Ring = ring::signature::UnparsedPublicKey<Vec<u8>>;
     type Aws = aws_lc_rs::signature::UnparsedPublicKey<Vec<u8>>;
@@ -401,10 +405,10 @@ mod rsa2048_pss_sha256_verify {
 }
 
 mod rsa2048_oaep_sha256_encrypt {
-    use super::*;
+    use rind::rsa::{DecryptingKey, EncryptingKey, OAEP_SHA256};
     use swole::bench;
 
-    use rind::rsa::{DecryptingKey, EncryptingKey, OAEP_SHA256};
+    use super::*;
 
     const PLAINTEXT: [u8; 32] = [0; 32];
 
@@ -476,8 +480,9 @@ mod rsa2048_oaep_sha256_encrypt {
 macro_rules! verify_size {
     ($name:ident, $pkcs8:literal) => {
         mod $name {
-            use super::*;
             use swole::bench;
+
+            use super::*;
 
             type Ring = ring::signature::UnparsedPublicKey<Vec<u8>>;
             type Aws = aws_lc_rs::signature::UnparsedPublicKey<Vec<u8>>;

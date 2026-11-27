@@ -43,8 +43,9 @@ fn rind_ecdh() {
 }
 
 mod x25519_ecdh {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
     #[bench]
@@ -155,8 +156,9 @@ mod x25519_ecdh {
 #[cfg(target_arch = "aarch64")]
 mod dit_per_call {
     mod x25519_ecdh {
-        use super::super::*;
         use swole::bench;
+
+        use super::super::*;
 
         #[bench]
         fn rind() {
@@ -168,8 +170,9 @@ mod dit_per_call {
 // Generate a key and its public key: the fixed-base multiplication alone,
 // where `x25519-ecdh` adds the variable-base one.
 mod x25519_keygen {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     #[bench(setup = ring_rng)]
     fn ring(rng: &ring::rand::SystemRandom) {
@@ -231,8 +234,9 @@ mod x25519_keygen {
 // Agree with a stored key, loaded once, as WebCrypto's `deriveBits` and
 // node's `ECDH` do: the variable-base multiplication alone.
 mod x25519_ecdh_stored {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     fn aws_key() -> aws_lc_rs::agreement::PrivateKey {
         use aws_lc_rs::agreement;

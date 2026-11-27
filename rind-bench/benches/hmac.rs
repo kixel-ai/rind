@@ -69,8 +69,9 @@ macro_rules! rows {
         }
 
         mod ring {
-            use super::*;
             use swole::bench;
+
+            use super::*;
 
             fn keyed(size: Size) -> (::ring::hmac::Key, Vec<u8>) {
                 (
@@ -86,8 +87,9 @@ macro_rules! rows {
         }
 
         mod aws_lc_rs {
-            use super::*;
             use swole::bench;
+
+            use super::*;
 
             fn keyed(size: Size) -> (::aws_lc_rs::hmac::Key, Vec<u8>) {
                 (
@@ -105,8 +107,9 @@ macro_rules! rows {
         }
 
         mod rind {
-            use super::*;
             use swole::bench;
+
+            use super::*;
 
             fn keyed(size: Size) -> Dit<(::rind::hmac::Key, Vec<u8>)> {
                 Dit::hold((::rind::hmac::Key::new(&$rind, &KEY), size.zeros()))
@@ -121,8 +124,9 @@ macro_rules! rows {
 
         // Its keyed state, cloned per message, is the key schedule reused.
         mod verified_garbage {
-            use super::*;
             use swole::bench;
+
+            use super::*;
 
             fn keyed(size: Size) -> (::verified_garbage::hmac::Hmac<$vg>, Vec<u8>) {
                 (
@@ -184,8 +188,9 @@ macro_rules! libcrux {
 }
 
 mod hmac_sha1 {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     rows!(
         HMAC_SHA1_FOR_LEGACY_USE_ONLY,
@@ -199,8 +204,9 @@ mod hmac_sha1 {
 }
 
 mod hmac_sha256 {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     rows!(
         HMAC_SHA256,
@@ -217,8 +223,9 @@ mod hmac_sha256 {
 }
 
 mod hmac_sha384 {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     rows!(
         HMAC_SHA384,

@@ -272,22 +272,25 @@ macro_rules! decaps_rows {
 }
 
 mod mlkem512_keygen {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     keygen_rows!(MlKem512, ML_KEM_512, mlkem512);
 }
 
 mod mlkem512_encaps {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     encaps_rows!(MlKem512, ML_KEM_512, mlkem512, MlKem512PublicKey);
 }
 
 mod mlkem512_decaps {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     decaps_rows!(
         MlKem512,
@@ -299,22 +302,25 @@ mod mlkem512_decaps {
 }
 
 mod mlkem1024_keygen {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     keygen_rows!(MlKem1024, ML_KEM_1024, mlkem1024);
 }
 
 mod mlkem1024_encaps {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     encaps_rows!(MlKem1024, ML_KEM_1024, mlkem1024, MlKem1024PublicKey);
 }
 
 mod mlkem1024_decaps {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     decaps_rows!(
         MlKem1024,
@@ -327,8 +333,9 @@ mod mlkem1024_decaps {
 
 // client first operation
 mod mlkem768_keygen {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     keygen_rows!(MlKem768, ML_KEM_768, mlkem768);
 
@@ -360,8 +367,9 @@ mod mlkem768_keygen {
 
 // server operation
 mod mlkem768_encaps {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     encaps_rows!(MlKem768, ML_KEM_768, mlkem768, MlKem768PublicKey);
 
@@ -423,8 +431,9 @@ mod mlkem768_encaps {
 
 // client second operation
 mod mlkem768_decaps {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     decaps_rows!(
         MlKem768,
@@ -510,8 +519,9 @@ mod mlkem768_decaps {
 
 // combined operation: keygen, encaps-encode, encaps-decode, encaps, decaps
 mod mlkem768_combined {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
     #[bench(setup = ossl::require)]

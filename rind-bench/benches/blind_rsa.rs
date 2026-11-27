@@ -68,8 +68,9 @@ fn rind_keys() -> Dit<Keys> {
 }
 
 mod blind_rsa2048_blind {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     #[bench(setup = rind_keys)]
     fn rind(keys: &Dit<Keys>) {
@@ -87,8 +88,9 @@ mod blind_rsa2048_blind {
 }
 
 mod blind_rsa2048_sign {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     fn rind_input() -> Dit<(Keys, Vec<u8>)> {
         let keys = keys();
@@ -121,8 +123,9 @@ fn rustcrypto_blinded() -> (Keys, BlindingResult) {
 // rind's finalize consumes its blinding, so before each call a step blinds
 // afresh, untimed. Both check the unblinded signature, as RFC 9474 requires.
 mod blind_rsa2048_finalize {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     /// The keys, and the blinding and the server's reply the next call
     /// finalizes.
@@ -162,8 +165,9 @@ mod blind_rsa2048_finalize {
 }
 
 mod blind_rsa2048_verify {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     /// The keys and a token rind signed with them.
     fn signed() -> (Keys, Vec<u8>) {

@@ -86,8 +86,9 @@ fn vg_digest() -> [u8; 32] {
 }
 
 mod p256_ecdh {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
     #[bench(setup = openssl_curve)]
@@ -192,8 +193,9 @@ mod p256_ecdh {
 }
 
 mod p256_keygen {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
     #[bench]
@@ -255,8 +257,9 @@ mod p256_keygen {
 }
 
 mod p256_ecdsa_keygen {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     #[bench]
     fn aws_lc_rs() {
@@ -291,8 +294,9 @@ fn rind_verify() {
 }
 
 mod p256_ecdsa_verify {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     fn ring_key() -> ring::signature::UnparsedPublicKey<&'static [u8]> {
         ring::signature::UnparsedPublicKey::new(
@@ -388,8 +392,9 @@ mod p256_ecdsa_verify {
 
 // A key parsed once, as a JWT verifier holds it, keeps its multiplication table.
 mod p256_ecdsa_verify_parsed {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     fn aws_key() -> aws_lc_rs::signature::ParsedPublicKey {
         use aws_lc_rs::signature;
@@ -414,8 +419,9 @@ mod p256_ecdsa_verify_parsed {
 
 // A digest the caller computed, as node's `createVerify` holds it.
 mod p256_ecdsa_verify_digest {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     fn aws_input() -> (
         aws_lc_rs::signature::ParsedPublicKey,
@@ -474,8 +480,9 @@ mod p256_ecdsa_verify_digest {
 }
 
 mod p256_ecdsa_sign {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     fn ring_key() -> (ring::signature::EcdsaKeyPair, ring::rand::SystemRandom) {
         use ring::signature;
@@ -622,8 +629,9 @@ mod p256_ecdsa_sign {
 
 // A digest the caller computed, as node's `createSign` holds it.
 mod p256_ecdsa_sign_digest {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     fn aws_input() -> (
         aws_lc_rs::signature::EcdsaKeyPair,
@@ -687,8 +695,9 @@ mod p256_ecdsa_sign_digest {
 // Agree with a stored key, loaded once, as WebCrypto's `deriveBits` and
 // node's `ECDH` do: the variable-base multiplication alone.
 mod p256_ecdh_stored {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     fn aws_key() -> aws_lc_rs::agreement::PrivateKey {
         use aws_lc_rs::agreement;

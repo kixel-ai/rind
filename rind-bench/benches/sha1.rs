@@ -12,8 +12,9 @@ fn rind_input(size: Size) -> Dit<Vec<u8>> {
 
 // A module named after the crate, so the crate is `::sha1` inside it.
 mod sha1 {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     #[bench(args = HASH_SIZES, setup = input)]
     fn ring(input: &[u8]) -> ring::digest::Digest {

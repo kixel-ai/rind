@@ -120,8 +120,9 @@ fn rind_checked() -> Dit<()> {
 }
 
 mod oprf_ristretto255_blind {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     #[bench(setup = rind_checked)]
     fn rind(_: &Dit<()>) {
@@ -136,8 +137,9 @@ mod oprf_ristretto255_blind {
 }
 
 mod oprf_ristretto255_evaluate {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     type Rind = Dit<(rind::oprf::ServerKey, rind::oprf::BlindedElement)>;
 
@@ -170,8 +172,9 @@ mod oprf_ristretto255_evaluate {
 
 /// rind's finalize consumes its blind, so each call blinds afresh, untimed.
 mod oprf_ristretto255_finalize {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     /// A blind and its evaluation, with the DIT guard held across the call
     /// that consumes them.
@@ -210,8 +213,9 @@ mod oprf_ristretto255_finalize {
 }
 
 mod voprf_p384_blind {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     #[bench(setup = rind_checked)]
     fn rind(_: &Dit<()>) {
@@ -227,8 +231,9 @@ mod voprf_p384_blind {
 
 /// The evaluation includes the proof.
 mod voprf_p384_evaluate {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     type Rind = Dit<(rind_voprf::ServerKey, rind::oprf::BlindedElement)>;
 
@@ -262,8 +267,9 @@ mod voprf_p384_evaluate {
 
 /// The finalize includes the proof's verification.
 mod voprf_p384_finalize {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     /// A blind, its evaluation and proof, and the server's public key, with
     /// the DIT guard held across the call that consumes them.

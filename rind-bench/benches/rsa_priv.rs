@@ -86,8 +86,9 @@ fn graviola_key() -> graviola::signing::rsa::SigningKey {
 }
 
 mod rsa2048_pkcs1_sha256_sign {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     #[bench(setup = ring_key)]
     fn ring((key, rng): &(ring::rsa::KeyPair, ring::rand::SystemRandom)) -> [u8; 256] {
@@ -178,8 +179,9 @@ mod rsa2048_pkcs1_sha256_sign {
 }
 
 mod rsa2048_pss_sha256_sign {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     #[bench(setup = ring_key)]
     fn ring((key, rng): &(ring::rsa::KeyPair, ring::rand::SystemRandom)) -> [u8; 256] {
@@ -410,10 +412,10 @@ sign_size!(
 );
 
 mod rsa2048_oaep_sha256_decrypt {
-    use super::*;
+    use rind::rsa::{DecryptingKey, OAEP_SHA256};
     use swole::bench;
 
-    use rind::rsa::{DecryptingKey, OAEP_SHA256};
+    use super::*;
 
     const PLAINTEXT: [u8; 32] = [0; 32];
 
@@ -508,8 +510,9 @@ mod rsa2048_oaep_sha256_decrypt {
 macro_rules! load {
     ($name:ident, $der:literal) => {
         mod $name {
-            use super::*;
             use swole::bench;
+
+            use super::*;
 
             const PRIVATE_KEY: &[u8] = include_bytes!($der);
 

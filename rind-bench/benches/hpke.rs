@@ -150,8 +150,9 @@ fn libcrux_key() -> (
 
 /// Encapsulate to the recipient's parsed public key and derive the context.
 mod hpke_x25519_setup_sender {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     fn rind_input() -> Dit<rind::hpke::PrivateKey> {
         Dit::hold(rind_key())
@@ -199,8 +200,9 @@ mod hpke_x25519_setup_sender {
 
 /// Decapsulate the sender's key and derive the same context.
 mod hpke_x25519_setup_recipient {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     fn rind_input() -> Dit<(rind::hpke::PrivateKey, rind::hpke::EncapsulatedKey)> {
         let private_key = rind_key();
@@ -292,8 +294,9 @@ mod hpke_x25519_setup_recipient {
 /// place into a reused buffer; aws-lc-rs (through rustls) and hpke-rs only
 /// return a new one.
 mod hpke_x25519_aes128_gcm_seal {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     fn buffer() -> Vec<u8> {
         Vec::with_capacity(MESSAGE.len() + 16)
@@ -364,8 +367,9 @@ mod hpke_x25519_aes128_gcm_seal {
 /// once, so each call gets a fresh context and ciphertext, made untimed, and
 /// returns them to be dropped untimed too.
 mod hpke_x25519_aes128_gcm_open {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     type Rind = (rind::cpu::Dit, rind::hpke::Recipient, Vec<u8>);
 

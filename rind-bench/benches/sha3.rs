@@ -78,8 +78,9 @@ macro_rules! rows {
 }
 
 mod sha3_256 {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     rows!(
         SHA3_256,
@@ -91,8 +92,9 @@ mod sha3_256 {
 }
 
 mod sha3_384 {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     rows!(
         SHA3_384,
@@ -104,8 +106,9 @@ mod sha3_384 {
 }
 
 mod sha3_512 {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     rows!(
         SHA3_512,

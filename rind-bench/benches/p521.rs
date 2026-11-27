@@ -118,8 +118,9 @@ fn vg_digest() -> [u8; 64] {
 }
 
 mod p521_ecdh {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     fn aws_input() -> (aws_lc_rs::rand::SystemRandom, Vec<u8>) {
         (aws_rng(), public_key())
@@ -204,8 +205,9 @@ mod p521_ecdh {
 }
 
 mod p521_keygen {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     #[bench(setup = aws_rng)]
     fn aws_lc_rs(rng: &aws_lc_rs::rand::SystemRandom) {
@@ -229,8 +231,9 @@ mod p521_keygen {
 }
 
 mod p521_ecdsa_verify {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     type AwsKey = aws_lc_rs::signature::UnparsedPublicKey<Vec<u8>>;
 
@@ -299,8 +302,9 @@ mod p521_ecdsa_verify {
 
 // A key parsed once, as a JWT verifier holds it, keeps its multiplication table.
 mod p521_ecdsa_verify_parsed {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     fn aws_input() -> (aws_lc_rs::signature::ParsedPublicKey, Vec<u8>) {
         (aws_verify_key(), signature())
@@ -324,8 +328,9 @@ mod p521_ecdsa_verify_parsed {
 
 // A digest the caller computed, as node's `createVerify` holds it.
 mod p521_ecdsa_verify_digest {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     fn aws_input() -> (
         aws_lc_rs::signature::ParsedPublicKey,
@@ -388,8 +393,9 @@ mod p521_ecdsa_verify_digest {
 }
 
 mod p521_ecdsa_sign {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     fn aws_key() -> (
         aws_lc_rs::signature::EcdsaKeyPair,
@@ -458,8 +464,9 @@ mod p521_ecdsa_sign {
 
 // A digest the caller computed, as node's `createSign` holds it.
 mod p521_ecdsa_sign_digest {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     fn aws_input() -> (
         aws_lc_rs::signature::EcdsaKeyPair,
@@ -513,8 +520,9 @@ mod p521_ecdsa_sign_digest {
 // Agree with a stored key, loaded once, as WebCrypto's `deriveBits` and
 // node's `ECDH` do: the variable-base multiplication alone.
 mod p521_ecdh_stored {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     fn aws_key() -> (aws_lc_rs::agreement::PrivateKey, Vec<u8>) {
         use aws_lc_rs::agreement;

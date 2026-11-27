@@ -68,8 +68,9 @@ macro_rules! rows {
 }
 
 mod pbkdf2_sha1 {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     rows!(
         PBKDF2_HMAC_SHA1,
@@ -80,8 +81,9 @@ mod pbkdf2_sha1 {
 }
 
 mod pbkdf2_sha256 {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     rows!(
         PBKDF2_HMAC_SHA256,
@@ -92,8 +94,9 @@ mod pbkdf2_sha256 {
 }
 
 mod pbkdf2_sha384 {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     rows!(
         PBKDF2_HMAC_SHA384,
@@ -104,8 +107,9 @@ mod pbkdf2_sha384 {
 }
 
 mod pbkdf2_sha512 {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     rows!(
         PBKDF2_HMAC_SHA512,

@@ -64,8 +64,9 @@ macro_rules! slh_dsa {
     ) => {
         // Generate a key pair, and its public key.
         mod $keygen {
-            use super::*;
             use swole::bench;
+
+            use super::*;
 
             #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
             #[bench(setup = ossl::require)]
@@ -98,8 +99,9 @@ macro_rules! slh_dsa {
 
         // Sign with fresh randomness and the empty context.
         mod $sign {
-            use super::*;
             use swole::bench;
+
+            use super::*;
 
             #[cfg(all(feature = "__bench_openssl", target_family = "unix"))]
             fn openssl_key() -> openssl::pkey::PKey<openssl::pkey::Private> {
@@ -149,8 +151,9 @@ macro_rules! slh_dsa {
         // Verify one signature. Each library parses the public key once,
         // outside the timed call, and the signature in it.
         mod $verify {
-            use super::*;
             use swole::bench;
+
+            use super::*;
 
             /// A rind public key, raw and as an SPKI, and a signature it
             /// verifies.

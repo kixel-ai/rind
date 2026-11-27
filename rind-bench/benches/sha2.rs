@@ -64,8 +64,9 @@ macro_rules! rows {
 }
 
 mod sha256 {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     rows!(
         SHA256,
@@ -95,8 +96,9 @@ mod sha256 {
 }
 
 mod sha512 {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     rows!(
         SHA512,
@@ -126,8 +128,9 @@ mod sha512 {
 }
 
 mod sha512_256 {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     rows!(
         SHA512_256,
@@ -139,8 +142,9 @@ mod sha512_256 {
 
 /// Many small updates show the cost of dispatching each one on the algorithm.
 mod sha256_updates {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     const CHUNKS: [Size; 2] = [Size::new(1, "1B"), Size::new(16, "16B")];
 

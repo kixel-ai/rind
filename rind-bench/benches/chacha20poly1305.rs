@@ -103,8 +103,9 @@ impl<K> Open<K> {
 }
 
 mod chacha20poly1305 {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     fn ring_seal(row: Aead) -> Seal<ring::aead::LessSafeKey> {
         let key = ring::aead::UnboundKey::new(&ring::aead::CHACHA20_POLY1305, &KEY).unwrap();
@@ -217,8 +218,9 @@ mod chacha20poly1305 {
 
 /// Decrypting and verifying each size's ciphertext, as a receiver pays.
 mod chacha20poly1305_open {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     fn ring_open(row: Aead) -> Open<(ring::aead::LessSafeKey, ring::aead::Tag)> {
         Open::new(row, |tag| {
@@ -378,8 +380,9 @@ mod dit_per_call {
     use super::*;
 
     mod chacha20poly1305 {
-        use super::*;
         use swole::bench;
+
+        use super::*;
 
         fn seal(row: Aead) -> Seal<rind::aead::Key> {
             let key = rind::aead::Key::new(&rind::aead::CHACHA20_POLY1305, &KEY).unwrap();

@@ -60,16 +60,18 @@ macro_rules! rows {
 // lane of 16 MiB in one pass.
 #[allow(non_snake_case)]
 mod argon2id_16MiB_t1_p1 {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     rows!(1 << 14, 1, 1);
 }
 
 #[allow(non_snake_case)]
 mod argon2id_64MiB_t3_p4 {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     rows!(1 << 16, 3, 4);
 }

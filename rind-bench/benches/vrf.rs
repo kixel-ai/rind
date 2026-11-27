@@ -77,9 +77,10 @@ fn rind_proof(
 }
 
 mod vrf_edwards25519_prove {
-    use super::*;
     use swole::bench;
     use vrf_rfc9381::ec::edwards25519::tai::EdVrfEdwards25519TaiSecretKey;
+
+    use super::*;
 
     fn rind_input() -> Dit<rind::vrf::KeyPair> {
         rind_key(&rind::vrf::ECVRF_EDWARDS25519_SHA512_TAI)
@@ -108,9 +109,10 @@ mod vrf_edwards25519_prove {
 }
 
 mod vrf_p256_prove {
-    use super::*;
     use swole::bench;
     use vrf_rfc9381::ec::p256::tai::EcVrfP256TaiSecretKey;
+
+    use super::*;
 
     fn rind_input() -> Dit<rind::vrf::KeyPair> {
         rind_key(&rind::vrf::ECVRF_P256_SHA256_TAI)
@@ -136,11 +138,12 @@ mod vrf_p256_prove {
 }
 
 mod vrf_edwards25519_verify {
-    use super::*;
     use swole::bench;
     use vrf_rfc9381::ec::edwards25519::tai::{
         EdVrfEdwards25519Tai, EdVrfEdwards25519TaiPublicKey, EdVrfEdwards25519TaiSecretKey,
     };
+
+    use super::*;
 
     type Rind = Dit<(rind::vrf::PublicKey, rind::vrf::Proof)>;
 
@@ -172,9 +175,10 @@ mod vrf_edwards25519_verify {
 }
 
 mod vrf_p256_verify {
-    use super::*;
     use swole::bench;
     use vrf_rfc9381::ec::p256::tai::{EcVrfP256Tai, EcVrfP256TaiPublicKey, EcVrfP256TaiSecretKey};
+
+    use super::*;
 
     type Rind = Dit<(rind::vrf::PublicKey, rind::vrf::Proof)>;
 

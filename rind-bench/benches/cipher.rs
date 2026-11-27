@@ -95,20 +95,23 @@ macro_rules! ctr {
 }
 
 mod aes128_ctr {
-    use super::*;
     use swole::bench;
+
+    use super::*;
     ctr!(16);
 }
 
 mod aes192_ctr {
-    use super::*;
     use swole::bench;
+
+    use super::*;
     ctr!(24);
 }
 
 mod aes256_ctr {
-    use super::*;
     use swole::bench;
+
+    use super::*;
     ctr!(32);
 }
 
@@ -264,38 +267,44 @@ macro_rules! cbc {
 }
 
 mod aes128_cbc_encrypt {
-    use super::*;
     use swole::bench;
+
+    use super::*;
     cbc!(16, true);
 }
 
 mod aes128_cbc_decrypt {
-    use super::*;
     use swole::bench;
+
+    use super::*;
     cbc!(16, false);
 }
 
 mod aes192_cbc_encrypt {
-    use super::*;
     use swole::bench;
+
+    use super::*;
     cbc!(24, true);
 }
 
 mod aes192_cbc_decrypt {
-    use super::*;
     use swole::bench;
+
+    use super::*;
     cbc!(24, false);
 }
 
 mod aes256_cbc_encrypt {
-    use super::*;
     use swole::bench;
+
+    use super::*;
     cbc!(32, true);
 }
 
 mod aes256_cbc_decrypt {
-    use super::*;
     use swole::bench;
+
+    use super::*;
     cbc!(32, false);
 }
 
@@ -307,8 +316,9 @@ macro_rules! cbc_key {
         const KEY: [u8; $len] = [0; $len];
 
         pub mod aws_lc_rs {
-            use super::*;
             use swole::bench;
+
+            use super::*;
 
             #[bench]
             fn decrypt() {
@@ -319,8 +329,9 @@ macro_rules! cbc_key {
         }
 
         pub mod rind {
-            use super::*;
             use swole::bench;
+
+            use super::*;
 
             #[bench(setup = dit)]
             fn decrypt(_: &Dit<()>) {
@@ -351,8 +362,9 @@ mod aes256_cbc_key {
 /// The bare ChaCha20 stream cipher, a fresh nonce per message. aws-lc-rs and
 /// ring expose no ChaCha20 without Poly1305.
 mod chacha20 {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     const KEY: [u8; 32] = [7; 32];
     const NONCE: [u8; 12] = [9; 12];
@@ -496,20 +508,23 @@ mod quic_header_protection {
     }
 
     mod aes128 {
-        use super::*;
         use swole::bench;
+
+        use super::*;
         hp!(16, AES_128, true);
     }
 
     mod aes256 {
-        use super::*;
         use swole::bench;
+
+        use super::*;
         hp!(32, AES_256, true);
     }
 
     mod chacha20 {
-        use super::*;
         use swole::bench;
+
+        use super::*;
         hp!(32, CHACHA20, false);
     }
 }

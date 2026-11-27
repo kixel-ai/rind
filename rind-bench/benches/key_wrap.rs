@@ -83,50 +83,58 @@ macro_rules! rows {
 }
 
 mod aes128_kw_wrap {
-    use super::*;
     use swole::bench;
+
+    use super::*;
     rows!(16, Kw, false, false);
 }
 
 mod aes128_kw_unwrap {
-    use super::*;
     use swole::bench;
+
+    use super::*;
     rows!(16, Kw, false, true);
 }
 
 mod aes128_kwp_wrap {
-    use super::*;
     use swole::bench;
+
+    use super::*;
     rows!(16, Kwp, true, false);
 }
 
 mod aes128_kwp_unwrap {
-    use super::*;
     use swole::bench;
+
+    use super::*;
     rows!(16, Kwp, true, true);
 }
 
 mod aes256_kw_wrap {
-    use super::*;
     use swole::bench;
+
+    use super::*;
     rows!(32, Kw, false, false);
 }
 
 mod aes256_kw_unwrap {
-    use super::*;
     use swole::bench;
+
+    use super::*;
     rows!(32, Kw, false, true);
 }
 
 mod aes256_kwp_wrap {
-    use super::*;
     use swole::bench;
+
+    use super::*;
     rows!(32, Kwp, true, false);
 }
 
 mod aes256_kwp_unwrap {
-    use super::*;
     use swole::bench;
+
+    use super::*;
     rows!(32, Kwp, true, true);
 }
 

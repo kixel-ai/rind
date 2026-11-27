@@ -95,8 +95,9 @@ fn rustcrypto() -> RustCrypto {
 }
 
 mod spake2plus_p256_prover_start {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     fn rind_input() -> Dit<ProverSecrets> {
         Dit::hold(secrets())
@@ -115,8 +116,9 @@ mod spake2plus_p256_prover_start {
 
 /// The verifier's share and its confirmation of the prover's share.
 mod spake2plus_p256_verifier_start {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     type Rind = Dit<(VerifierRecord, rind::spake2plus::Share<Rfc9383>)>;
 
@@ -149,8 +151,9 @@ mod spake2plus_p256_verifier_start {
 /// Each side's finish consumes its state, so each call runs the steps before
 /// it untimed, and returns its output, which drops untimed.
 mod spake2plus_p256_prover_finish {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     /// The prover's state and the verifier's reply, with the DIT guard held
     /// across the call that consumes them.
@@ -198,8 +201,9 @@ mod spake2plus_p256_prover_finish {
 }
 
 mod spake2plus_p256_verifier_finish {
-    use super::*;
     use swole::bench;
+
+    use super::*;
 
     /// The verifier's state and the prover's confirmation, with the DIT
     /// guard held across the call that consumes them.
