@@ -20,11 +20,9 @@ import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
 import android.view.WindowManager;
-import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
-import android.graphics.Typeface;
 
 import com.google.zxing.BinaryBitmap;
 import com.google.zxing.PlanarYUVLuminanceSource;
@@ -50,33 +48,40 @@ public class QrScannerActivity extends Activity implements SurfaceHolder.Callbac
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        getWindow().setStatusBarColor(Theme.INK);
-        getWindow().setNavigationBarColor(Theme.INK);
+        Theme.init(this);
+        // Camera screens stay dark in either theme: black behind the preview, light bar text and icons.
+        getWindow().setStatusBarColor(0xFF000000);
+        getWindow().setNavigationBarColor(0xFF000000);
         FrameLayout root = new FrameLayout(this);
-        root.setBackgroundColor(Theme.INK);
+        root.setBackgroundColor(0xFF000000);
         preview = new SurfaceView(this);
         preview.getHolder().addCallback(this);
         root.addView(preview, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
         LinearLayout bar = new LinearLayout(this);
         bar.setOrientation(LinearLayout.HORIZONTAL);
-        bar.setBackgroundColor(0xCC13101B);
-        int p = Theme.dpi(this, 12);
-        bar.setPadding(p, p, p, p);
+        bar.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        bar.setBackgroundColor(0x99000000);
+        bar.setMinimumHeight(Theme.dpi(this, 64));
+        int p = Theme.dpi(this, 4);
+        bar.setPadding(p, 0, Theme.dpi(this, 16), 0);
         bar.setOnApplyWindowInsetsListener((view, insets) -> {
             int top = android.os.Build.VERSION.SDK_INT >= 30
                     ? insets.getInsets(android.view.WindowInsets.Type.systemBars()).top
                     : insets.getSystemWindowInsetTop();
-            view.setPadding(p, p + top, p, p);
+            view.setPadding(p, top, Theme.dpi(this, 16), 0);
             return insets;
         });
-        TextView title = Theme.label(this, "Scan a session code", 18, 24, Theme.TEXT, Typeface.BOLD, 1);
-        title.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
-        Button cancel = Theme.secondary(this, "Cancel");
-        cancel.setContentDescription("Cancel scan");
+        android.widget.ImageButton cancel = Theme.iconButton(this, "ic_close", "Cancel scan");
+        cancel.setImageDrawable(Theme.icon(this, "ic_close", 0xFFFFFFFF));
+        cancel.setBackground(Theme.ripple(0xFFFFFFFF, null, null));
         cancel.setOnClickListener(v -> finish());
-        bar.addView(title);
+        TextView title = Theme.heading(this, "Scan a session code", Theme.Type.TITLE_LARGE, 0xFFFFFFFF);
+        LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1);
+        tl.setMarginStart(Theme.dpi(this, 4));
+        tl.topMargin = tl.bottomMargin = Theme.dpi(this, 8);
         bar.addView(cancel);
+        bar.addView(title, tl);
         FrameLayout.LayoutParams blp = new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT);
         blp.gravity = android.view.Gravity.TOP;
