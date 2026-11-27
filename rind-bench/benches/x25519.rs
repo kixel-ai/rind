@@ -209,8 +209,8 @@ mod x25519_keygen {
     }
 
     #[bench]
-    fn libcrux() -> impl Sized + use<> {
-        libcrux_ecdh::x25519_key_gen(&mut getrandom::SysRng).unwrap()
+    fn libcrux() {
+        black_box(libcrux_ecdh::x25519_key_gen(&mut getrandom::SysRng).unwrap());
     }
 
     fn vg_checked() {

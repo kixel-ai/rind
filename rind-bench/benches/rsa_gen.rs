@@ -42,9 +42,9 @@ macro_rules! generation {
             // RustCrypto takes seconds per 4096-bit key.
             $(
                 #[bench]
-                fn $rustcrypto() -> rsa::PrivateKey {
+                fn $rustcrypto() {
                     use getrandom::{SysRng, rand_core::UnwrapErr};
-                    rsa::PrivateKey::new(&mut UnwrapErr(SysRng), $bits).unwrap()
+                    black_box(rsa::PrivateKey::new(&mut UnwrapErr(SysRng), $bits).unwrap());
                 }
             )?
         }
