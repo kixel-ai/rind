@@ -17,6 +17,7 @@ import Rind.Aarch64.AesModesApi
 import Rind.Aarch64.MlKemCoding
 import Rind.Aarch64.MlKemGeneric
 import Rind.Aarch64.MlKemPke
+import Rind.Aarch64.MlKemEncrypt
 import Rind.Aarch64.GhashPmull
 import Rind.Aarch64.AesGcm
 import Rind.Aarch64.AesGcmLong
@@ -61,7 +62,7 @@ taking their address bound from the compare `stitched` makes before running
 one, `KernelBuffersLow` in the hand model. AES-192 past the short path, proven
 only on cores without SHA3, runs `composed`, which rests on no axiom.
 ML-KEM's decompression, message coding, CBD sampling, and 12-bit unpacking
-rest on no axiom.
+rest on no axiom; its noise sampling, `sample_poly_cbd`, rests on SHAKE256's.
 ChaCha20-Poly1305's one pass on pyca/verified-garbage's SVE2 and NEON
 routines rests on the axioms restating its theorems for them in
 `Rind.Aarch64.VgChaCha20Poly1305`, and its open on rind's HOL Light proofs
@@ -864,6 +865,35 @@ A change here is a change to the trust base.
  MlKemRoutines.mlkem_reduce_axiom] -/
 #guard_msgs in
 #print axioms MlKemPke.kpke_decrypt_fips
+
+/-- info: 'rind.aarch64.MlKemCbd.sample_poly_cbd_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ sha3_keccak2_f1600_spec,
+ sha3_keccak4_f1600_alt_spec,
+ sha3_keccak4_f1600_spec,
+ sha3_keccak_f1600_alt_spec,
+ sha3_keccak_f1600_spec] -/
+#guard_msgs in
+#print axioms MlKemCbd.sample_poly_cbd_spec
+
+/-- info: 'rind.aarch64.MlKemEncrypt.kpke_encrypt_fips' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ sha3_keccak2_f1600_spec,
+ sha3_keccak4_f1600_alt_spec,
+ sha3_keccak4_f1600_spec,
+ sha3_keccak_f1600_alt_spec,
+ sha3_keccak_f1600_spec,
+ MlKemRoutines.mlkem_basemul_k3_axiom,
+ MlKemRoutines.mlkem_compress_d10_axiom,
+ MlKemRoutines.mlkem_compress_d4_axiom,
+ MlKemRoutines.mlkem_intt_axiom,
+ MlKemRoutines.mlkem_mulcache_compute_axiom,
+ MlKemRoutines.mlkem_ntt_axiom,
+ MlKemRoutines.mlkem_reduce_axiom] -/
+#guard_msgs in
+#print axioms MlKemEncrypt.kpke_encrypt_fips
 
 /-- info: 'rind.aarch64.MlKemPoly.to_bytes_spec' depends on axioms: [propext,
  Classical.choice,

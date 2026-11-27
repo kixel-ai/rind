@@ -376,6 +376,19 @@ class Verified(unittest.TestCase):
     def test_checked_in_table_loads(self):
         br.load_verified()
 
+    def test_zen4_earns_the_chacha20poly1305_tick_only_from_800_bytes(self):
+        ifma = {"avx": 1, "avx2": 1, "avx512f": 1, "avx512vl": 1, "avx512ifma": 1}
+        table = br.load_verified()
+        for zen4, rows in [
+            (0, ["chacha20poly1305/32B", "chacha20poly1305/1350B", "xchacha20poly1305/16KB"]),
+            (1, ["chacha20poly1305/1350B", "chacha20poly1305/16KB", "xchacha20poly1305/1350B"]),
+        ]:
+            h = {"cpu": {"arch": "x86_64"}, "os": "Linux", "rind_cpu": {"cpuid": ifma | {"zen4": zen4}}}
+            for row in rows:
+                self.assertIsNotNone(br.proof_for(table, "rind", row, h), (zen4, row))
+        h = {"cpu": {"arch": "x86_64"}, "os": "Linux", "rind_cpu": {"cpuid": ifma | {"zen4": 1}}}
+        self.assertIsNone(br.proof_for(table, "rind", "chacha20poly1305/32B", h))
+
 
 class Gaps(unittest.TestCase):
     def setUp(self):

@@ -6,7 +6,9 @@ computation is proven. [Charon](https://github.com/AeneasVerif/charon) and
 [Aeneas](https://github.com/AeneasVerif/aeneas) translate the Rust to Lean, and
 the theorems are about that translation.
 
-`nix develop .#prove --command admin/prove` translates the Rust and checks
+`nix develop .#prove --command admin/prove`, which needs x86_64 Linux with
+AVX2 (aarch64 macOS runs `admin/prove lean`, as [TESTING.md](../TESTING.md)
+describes), translates the Rust and checks
 every proof against the translation, after the HOL Light proofs below and
 `admin/prove bytes`, which checks that each imported routine those proofs
 build on, from s2n-bignum, Vale, and aws-lc, is in rind's build the object
@@ -1029,9 +1031,9 @@ given FIPS 202's round constants and nothing of the CPU. Each round is
 
 ML-KEM's polynomial arithmetic, against FIPS 203 as SymCrypt's Lean spec
 (`Rind/SymCrypt/MlKem.lean`, MIT) states it, and of rind's Rust the coding
-below it and, on aarch64, ML-KEM-768's K-PKE decryption; encryption, key
-generation, and the Fujisaki-Okamoto transform that decapsulation needs have
-[its quest](/quest/m4/verified/mlkem-construction.md):
+below it and, on aarch64, ML-KEM-768's K-PKE decryption and encryption; key
+generation, the encapsulation-key checks, and the Fujisaki-Okamoto transform
+have [its quest](/quest/m4/verified/mlkem-construction.md):
 
 - `NTT_get`, `NTTInv_get` (`Rind/MlKem.lean`): Algorithms 9 and 10 compute
   the residues FIPS 203's Equations (4.12) and (4.13) define, and back;
@@ -1101,12 +1103,26 @@ ML-KEM-768, on those axioms. Aeneas does not translate a set's `Params` impl,
 so the theorem takes it as a parameter, and `Is768` states what ML-KEM-768's
 is: its constants, and its types' `FixedArray` impls those of arrays.
 
+`sample_poly_cbd_spec` (`Rind/X86_64/MlKemCbd.lean`, which `admin/prove` also
+writes for aarch64): `mid::mlkem::sample_poly_cbd` with η = 2 writes FIPS
+203's `SamplePolyCBD_2(PRF_2(σ, N))` into each polynomial it fills, `N`
+counting up from its first, each coefficient in `[-2, 2]`, hashing up to four
+inputs at once through `shake256_batch_spec`, so it rests on SHA-3's axioms.
+ML-KEM-512's η₁ of 3 runs another path, which it leaves out.
+
+`kpke_encrypt_fips` (`Rind/Aarch64/MlKemEncrypt.lean`): on aarch64,
+`Decoded::kpke_encrypt` is FIPS 203's `K-PKE.Encrypt` (Algorithm 14) for
+ML-KEM-768, given a `Decoded` whose `t̂` and transposed matrix are those the
+encapsulation key encodes (`DecodedHolds`), on the routines' and SHA-3's
+axioms. `kpke_encrypt_spec` states the ciphertext from rind's side, and
+`encrypt_eq` unrolls the spec's loops to the same terms.
+
 `Rind/MlKemCoding.lean` states what they need of the spec, with no Rust:
 `ByteEncode_bit`, `ByteDecode_get`, and `SamplePolyCBD_get` give each bit or
 coefficient of FIPS 203's `ByteEncode`, `ByteDecode`, and `SamplePolyCBD`,
 which the spec writes as loops, and `Compress_val` and `Decompress_val` give
 `Compress` and `Decompress`, which it writes as rounded rationals, as
-quotients of naturals. K-PKE's decryption calls them; its encryption and key
+quotients of naturals. K-PKE's decryption and encryption call them; its key
 generation, the Fujisaki-Okamoto transform, SampleNTT, and x86_64's
 encodings are the quest's.
 
@@ -1134,8 +1150,7 @@ x86_64 these assume `NoCurveIfma`, that the CPU lacks AVX-512 IFMA:
   accepts with that point: 64 bytes, S below L, and R the encoding of SB - kA,
   for k the hash reduced mod L, rind's cofactorless check;
 - `ed25519_key_pair_verify`: a key pair's public key verifies the same way,
-  with its point the base point times its secret scalar (on aarch64, for a
-  scalar whose multiple is a point of the group).
+  with its point the base point times its secret scalar.
 
 The spec, in `Rind/Ed25519.lean`, is RFC 8032 over HOL Light's
 `edwards25519_group`, whose multiplication and power transliterate HOL Light's
@@ -1153,10 +1168,9 @@ and Lean does not yet: every point times 8L, and the base point times L, is
 the identity. From them `Rind/Ed25519Group.lean`'s `half_size_iff` proves
 that the half-size check accepts exactly what `ed25519Verifies` does, and
 `Rind/X86_64/HalfSize.lean` proves that `mid::half_size::split` returns
-`u ≡ v k (mod 8L)` with `v` odd and below 2^128. That a multiple of the base
-point is a point of the group, which aarch64's `ed25519_key_pair_verify`
-assumes, follows from the group law, which aarch64's theorems do not use
-yet. The `ed25519` module calls no function pointer, so these theorems are
+`u ≡ v k (mod 8L)` with `v` odd and below 2^128. Both targets'
+`ed25519_key_pair_verify` take the base point's multiples to be points of the
+group from `Rind/Ed25519Group.lean`'s `edOnCurve_pow`. The `ed25519` module calls no function pointer, so these theorems are
 about its translation, with no hand model.
 
 Ed25519 on x86_64 CPUs with AVX-512 IFMA, from the same API to
@@ -1497,14 +1511,17 @@ does. Each target's `ChaCha20Poly1305.lean` proves those where a proof covers
 the one pass.
 
 On x86_64, `Rind/X86_64/ChaCha20Poly1305.lean`'s `seals` and `opens` prove
-them at every length, assuming `RunsChaCha20Poly1305`: rind's CPU-feature
-checks find what VG's IFMA routines need, or find SSE4.1 but not that and
+them at every length, assuming `RunsSeal` or `RunsOpen` of that length: rind's
+CPU-feature checks find what VG's IFMA routines need there, which Zen 4's
+`check_seal` and `check_open` deny to a seal of fewer than 800 bytes and an
+open of fewer than 512, or find SSE4.1 but not that and
 `OnePass` holds, that aws-lc's one-pass routines compute RFC 8439's AEAD,
 which no proof covers yet;
 [the ChaCha20-Poly1305 quest](/quest/m4/verified/chacha20-poly1305-x86/aead.md)
 owns their HOL Light proofs, against the s2n-bignum fork's `common/chacha20poly1305.ml`,
 which `Rind/S2nChaCha20Poly1305.lean` proves is `Rind/Spec.lean`'s RFC 8439
-for a 32-byte key and a 12-byte nonce. On CPUs with IFMA they rest instead on
+for a 32-byte key and a 12-byte nonce. On CPUs with IFMA, but for Zen 4 at the
+short lengths above, they rest instead on
 the axioms `vg_chacha20_poly1305_seal_ifma_spec` and
 `vg_chacha20_poly1305_open_ifma_spec` in `Rind/X86_64/VgChaCha20Poly1305.lean`,
 which restate VG's theorems and from which `seal_ifma_spec` and
@@ -1917,7 +1934,9 @@ proof after those.
   `ByteEncode`; `Rind/Aarch64/MlKemRoutines.lean`: the axioms for aarch64's
   ML-KEM routines and their specs in FIPS 203's terms;
   `Rind/Aarch64/MlKemPoly.lean`: `mid::mlkem`'s vector operations over them;
-  `Rind/Aarch64/MlKemPke.lean`: ML-KEM-768's K-PKE decryption.
+  `Rind/X86_64/MlKemCbd.lean`, on both targets: rind's noise sampling;
+  `Rind/Aarch64/MlKemPke.lean`: ML-KEM-768's K-PKE decryption;
+  `Rind/Aarch64/MlKemEncrypt.lean`: its encryption.
 - `Rind/<Arch>/ShaBlocks.lean`: SHA-1 and SHA-256's block functions on each
   target, SHA-1's padded last blocks, and SHA-256's padded last blocks and
   finish; `Rind/Aarch64/Sha256Hw.lean`, the axiom for aarch64's routine with
