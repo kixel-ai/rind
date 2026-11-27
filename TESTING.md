@@ -9,7 +9,7 @@ A primitive is checked five ways:
 - **Vectors**: published known-answer tests, from [Wycheproof] (each file's
   name below, in `thirdparty/vectors/wycheproof/testvectors_v1/`), NIST's CAVP
   (`thirdparty/vectors/cavp/`) and [ACVP](thirdparty/acvp/README.md) samples, the RFCs, [CCTV], and the [aws-lc and BoringSSL
-  files](thirdparty/vectors/README.md), run by `cargo test`.
+  files](thirdparty/vectors/README.md), run by `cargo nextest run`.
 - **Fuzz target**: a `fuzz/fuzzer/` target that compares rind with aws-lc-rs
   and with the row's independent oracle on fuzzed input, and fails on any
   disagreement. aws-lc-rs decides what to accept, and the oracle checks the
@@ -22,7 +22,7 @@ A primitive is checked five ways:
 - **Differential test**: a test in one of `rind/tests/crosschecks_*.rs`, a
   binary per family of primitives, that compares rind with aws-lc-rs and with its **independent oracle**, a Rust implementation
   that shares no code with the path rind runs on that tier, run by
-  `cargo test`. aws-lc-rs runs some of the same code rind does, such as
+  `cargo nextest run`. aws-lc-rs runs some of the same code rind does, such as
   s2n-bignum's, mlkem-native's, and aws-lc's own assembly, so on those paths
   it checks only rind's glue around the routine, and the oracle checks the
   routine. A protocol's oracle implements the protocol; the rows it builds
@@ -74,7 +74,7 @@ at every length up to 1100 bytes and, for the AEADs, 2000 to 2600 around
 AES-GCM's 512-bit kernel, so an access outside it faults. Valgrind
 cannot decode the fastest tiers and AddressSanitizer does not instrument
 assembly, so this is the only bounds check on them. It is an ordinary unit
-test on Unix, so it runs wherever the [tier table](#tiers) runs `cargo test`;
+test on Unix, so it runs wherever the [tier table](#tiers) runs the tests;
 `planted_over_read_faults` shows a read one byte past either end kills a
 forked child.
 
@@ -85,7 +85,7 @@ or when a row names no independent oracle or a crate rind does not depend on for
 
 ## Tiers
 
-`cargo test` runs the vectors and the differential tests together, so each
+The tests run the vectors and the differential tests together, so each
 tier's row says where all of them run, which fuzz targets reach it, and which
 constant-time checks. A primitive's cell on a tier is its row in the
 [primitives table](#primitives) narrowed to what the tier's row runs. A
@@ -156,7 +156,7 @@ neither as rind uses them. [rind-acvp](rind-acvp/README.md)'s offline test
 answers the sets for rind-fips's module through aws-lc's `acvptool`, on each
 CPU path, with the sets it builds for what the samples lack.
 
-These suites run wherever the [tier table](#tiers) runs `cargo test`, including
+These suites run wherever the [tier table](#tiers) runs the tests, including
 the forced portable backend. The nightly `build.yml` runs the million-case
 accumulation in native release builds, on every denied x86_64/aarch64 tier,
 and through `just portable`. `just armv7` and `x86-cpu.yml`'s SDE models use

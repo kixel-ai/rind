@@ -117,8 +117,8 @@ module() {
 }
 
 # sh/select.sh narrows this to the changed crates and their dependents.
-module rs '^(rind[^/]*/|fuzz/|thirdparty/|Cargo\.(toml|lock)$|\.rustfmt(\.unstable)?\.toml$|flake\.(nix|lock)$)' \
-    tools='cargo jq rustfmt-unstable' check-tools='cargo-nextest clippy-driver python3' compiles check fix
+module rs '^(rind[^/]*/|fuzz/|thirdparty/|Cargo\.(toml|lock)$|\.rustfmt(\.unstable)?\.toml$|\.config/nextest\.toml$|flake\.(nix|lock)$)' \
+    tools='cargo jq rustfmt-unstable' check-tools='cargo-nextest clippy-driver python3 timeout' compiles check fix
 # The map admin/test-scope scopes `just check`'s rind tests by, against the
 # tests `cargo nextest list` finds: on a change to the map, its script, or a
 # test, or one adding or deleting a file under rind/src/{low,mid,high}/ (see
@@ -581,7 +581,16 @@ step() {
             # Doc tests need a library. No packages at all means the workspace.
             mapfile -t libs < <(sh/select.sh "$changed" "$all" --lib)
             if ((${#libs[@]} > 0 || ${#packages[@]} == 0)); then
-                run cargo test "${libs[@]}" --locked --doc --profile test-fast
+                # nextest runs no doc tests, so this bounds theirs. timeout
+                # leads a process group of its own and kills all of it at the
+                # deadline, a deadlocked doctest included. A lane cancel's
+                # TERM goes to the lane's group, so the trap forwards it to
+                # timeout, which passes it on to its group. `$!` is set as
+                # soon as the fork returns, before a pending trap runs.
+                trap 'kill -TERM "$!" 2>/dev/null; stop; exit 143' TERM
+                timeout 5m cargo test "${libs[@]}" --locked --doc --profile test-fast &
+                wait "$!"
+                trap 'stop; exit 143' TERM
                 # A broken or private intra-doc link renders as plain text on
                 # docs.rs. Its dependencies build in check mode, which the
                 # tests' build never shares, so clippy there would only cost.
