@@ -19,8 +19,8 @@ VG's x86_64 model from a state `Pre` holds of, terminates in one that `Post`
 relates it to: for the key `H` in the two words at `rsi`, high first, the
 table's first eight blocks are H^8 down to H^1, each shifted as Vale's
 `shift_key_1` does (the form `Rind/X86_64/GhashClmul.lean`'s `TableFor`
-states), and its next 128 bytes each block's halves XORed in BoringSSL's
-order; no other memory changes, and the general registers and those the
+states), and its next 64 bytes each block's halves XORed in BoringSSL's
+order; no other memory changes, the table's last 64 bytes included, and the general registers and those the
 System V ABI makes the callee save are as they were. Its trace is a function
 of its two pointers alone (`ConstantTime`, with `Pub`), and some state meets
 `Pre`.
@@ -561,15 +561,15 @@ def karaBlock : Nat → Nat
   | 0 => 0 | 1 => 2 | 2 => 1 | 3 => 3 | 4 => 4 | 5 => 6 | 6 => 5 | _ => 7
 
 /-- What the routine ensures: the table's block `i` is H^(8-i), each shifted, for the key `H` at `rsi`; its next
-128 bytes are each block's halves XORed, in `karaBlock`'s order; memory but the table is unchanged; and so are
-the general registers, what the System V ABI makes the callee keep, and the regions. -/
+64 bytes are each block's halves XORed, in `karaBlock`'s order; memory from the table's byte 192 on is unchanged;
+and so are the general registers, what the System V ABI makes the callee keep, and the regions. -/
 structure Post (s s' : S) : Prop where
   pow : ∀ i < 8, toPoly (s'.vg.mem.readW (s.vg.gpr .rdi + BitVec.ofNat 64 (16 * i)) 128) =
     shiftKey1 128 gf128ModulusLowTerms (gPower (toPoly (key s)) (8 - i))
   kara : ∀ j < 8, s'.vg.mem.readW (s.vg.gpr .rdi + BitVec.ofNat 64 (128 + 8 * j)) 64 =
     lo (s'.vg.mem.readW (s.vg.gpr .rdi + BitVec.ofNat 64 (16 * karaBlock j)) 128) ^^^
       hi (s'.vg.mem.readW (s.vg.gpr .rdi + BitVec.ofNat 64 (16 * karaBlock j)) 128)
-  mem : ∀ y, 256 ≤ (y - s.vg.gpr .rdi).toNat → s'.vg.mem y = s.vg.mem y
+  mem : ∀ y, 192 ≤ (y - s.vg.gpr .rdi).toNat → s'.vg.mem y = s.vg.mem y
   gpr : s'.vg.gpr = s.vg.gpr
   abi : abiPreserved s.vg s'.vg
   rd : s'.vg.rd = s.vg.rd
@@ -676,7 +676,7 @@ theorem correct (s : S) (h : Pre s) : ∃ s', Exec I Rind.X86_64.GcmInitAvx2.pro
         (s.vg.gpr .rdi + BitVec.ofNat 64 128) (kv (pw (key s) 7) (pw (key s) 5) ++ kv (pw (key s) 8) (pw (key s) 6)) := by
     rw [m₁₁, m₁₀, m₉, m₈, m₇, m₆, m₅, m₄, m₃, m₂, m₁, ea_K K₉, ea_K K₈, ea_K K₈, ea_K K₅, ea_K K₄, ea_K K₄]
     simp only [ymm_lane, o₉, o₅, e₈30, e₈31, e₈40, e₈41, e₄30, e₄31, e₄40, e₄41, BitVec.ofInt_ofNat]
-  have hmem : ∀ y, 256 ≤ (y - s.vg.gpr .rdi).toNat → s₁₁.vg.mem y = s.vg.mem y := by
+  have hmem : ∀ y, 192 ≤ (y - s.vg.gpr .rdi).toNat → s₁₁.vg.mem y = s.vg.mem y := by
     intro y hy
     rw [hM]
     repeat rw [writeW_other _ _ _ _ (by bv_omega)]
@@ -701,7 +701,7 @@ theorem correct (s : S) (h : Pre s) : ∃ s', Exec I Rind.X86_64.GcmInitAvx2.pro
     congr 1
     apply read_congr
     intro c hc
-    exact hmem _ (hret c (by omega))
+    exact hmem _ (le_trans (by norm_num) (hret c (by omega)))
 
 theorem constant_time : ConstantTime I Pre Pub Rind.X86_64.GcmInitAvx2.prog := by
   intro s₁ s₂ t₁ t₂ s₁' s₂' h₁ h₂ ⟨e0, e1⟩ x₁ x₂

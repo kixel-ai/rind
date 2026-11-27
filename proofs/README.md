@@ -538,8 +538,9 @@ comparison checks.
   (reads of the key's 16 bytes, writes of the table's 256, the return
   address outside the table), writes H^8 down to H^1 of the key at `rsi`,
   each shifted as Vale's `shift_key_1` does, to the table's first 128 bytes
-  and each one's halves XORed, in BoringSSL's order, to the next 128, and
-  changes no other memory and no general register; that its trace is a
+  and each one's halves XORed, in BoringSSL's order, to the next 64, and
+  changes no other memory, the table's last 64 bytes included, and no
+  general register; that its trace is a
   function of its two pointers (`ConstantTime`); and that some state meets
   `Pre`. Nothing restates it yet: the Rust that calls it and the kernels
   that read its table are [the VAES

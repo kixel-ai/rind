@@ -879,12 +879,11 @@ spec_tests() {
 # the theorem names, and the words each static it reads begins with; this
 # prints the same of rind's release build, from the object `asm_function`
 # writes, or on x86_64 the function's own section, and the statics
-# `rind_static` writes, and fails unless the two are the same. On aarch64 a
-# relocation must reach the start of the one read-only section
-# `asm_function` keeps, which must be the static the program names; on
-# x86_64 each must reach a read-only section of the function's object, with
-# the addend the program gives, and the object starting that section must be
-# the static the program names.
+# `rind_static` writes, and fails unless the two are the same. Every
+# relocation must reach a static the program names: on aarch64 the start of
+# the one read-only section `asm_function` keeps, and on x86_64 a read-only
+# section of the function's object, with the addend the program gives,
+# that the static starts.
 rind_isa() {
     local dir=$out/rind-isa kind a b c n=0 rodata obj sym arch section size secsize off type target base
     local -A statics=()
@@ -924,13 +923,14 @@ rind_isa() {
                 "$tools/llvm-objcopy" --dump-section="$section=$dir/$n.text" "$obj" "$dir/$n.o"
                 od -An -v -tx1 -w16 "$dir/$n.text" | awk '{ $1 = $1; gsub(/ /, ""); printf "text %04x %s\n", 16 * (NR - 1), $0 }'
                 relocations "$obj" "$section" | while read -r off type target; do
-                    base=${target%%[-+]0x*}
-                    if [[ $base == .rodata.* ]]; then
+                    base=${target%%[-+]0x*} rodata=
+                    [[ $base != .rodata.* ]] ||
                         rodata=$("$tools/llvm-objdump" -t "$obj" | awk -v s="$base" '$1 ~ /^0+$/ && $3 == "O" && $4 == s { print $NF }')
-                        [[ -z $rodata || -z ${statics[$(stable_name <<<"$rodata")]:-} ]] ||
-                            target=${statics[$(stable_name <<<"$rodata")]}${target#"$base"}
+                    if [[ -z $rodata || -z ${statics[$(stable_name <<<"$rodata")]:-} ]]; then
+                        echo "admin/prove: $a relocates against $target, which starts no static its program names" >&2
+                        exit 1
                     fi
-                    echo "reloc $((16#$off)) $type $target"
+                    echo "reloc $((16#$off)) $type ${statics[$(stable_name <<<"$rodata")]}${target#"$base"}"
                 done
                 continue
             fi
@@ -939,10 +939,11 @@ rind_isa() {
             od -An -v -tx4 -w4 "$dir/$n.text" | awk '{ print "insn " $1 }'
             rodata=$("$tools/llvm-objdump" -t "$dir/$n.o" | awk '$1 ~ /^0+$/ && $3 == "O" && $4 == ".rodata" { print $NF }')
             relocations "$dir/$n.o" .text | while read -r off type target; do
-                if [[ $target == .rodata && -n $rodata && -n ${statics[$rodata]:-} ]]; then
-                    target=${statics[$rodata]}
+                if [[ $target != .rodata || -z $rodata || -z ${statics[$rodata]:-} ]]; then
+                    echo "admin/prove: $a relocates against $target, which starts no static its program names" >&2
+                    exit 1
                 fi
-                echo "reloc $((16#$off)) $type $target"
+                echo "reloc $((16#$off)) $type ${statics[$rodata]}"
             done
             ;;
         static)
