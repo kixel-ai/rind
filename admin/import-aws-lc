@@ -31,7 +31,8 @@ runs on through changes of width, written as bytes, for routines that load
 across its labels. An import's `tables_of` names an earlier import whose
 tables match its own, which it checks and writes none of. Helpers, the local routines the others `bl` to, become
 naked functions of their own, reached the same way, as are the routines of
-another import that a routine `calls`. An `inner` label, an entry point
+another import that a routine `calls`, and its `owned` helpers, which rind
+replaces with its own copies and this writes none of. An `inner` label, an entry point
 inside a routine that falls through to it, does not end the routine, which
 drops the label line; one naming a helper gives that helper its own copy from
 the label on, which opens a CFI frame of its own where the copy closes one.
@@ -555,7 +556,9 @@ IMPORTS_64 = [
         "tables": ["chacha20_consts", "and_masks"],
         "packed": ["chacha20_consts"],
         "routines": ["chacha20_poly1305_open", "chacha20_poly1305_seal"],
-        "helpers": ["poly_hash_ad_internal"],
+        # rind's structured copy, which `proofs/Rind/X86_64/PolyHashAd.lean`
+        # proves, in `rind/src/low/x86_64/poly_hash_ad.s`.
+        "owned": ["poly_hash_ad_internal"],
         "labels": ["process_extra_in_trailer"],
         "carries": {
             "chacha20_poly1305_open": ["chacha20_poly1305_open_avx2"],
@@ -983,9 +986,10 @@ def import_64(aws_lc):
                     rs = os.path.join(out_dir, f"{stem}.{operand}.rs")
                     write(rs, header("//", spec, source) + ["["] + rows + ["]"])
 
-            # And a helper with or without it.
+            # And a helper with or without it, rind's own copies included.
             helpers = spec.get("helpers", [])
-            operands |= {s: (name.lstrip("_"), 0) for name in helpers for s in (name, local + name)}
+            owned = spec.get("owned", [])
+            operands |= {s: (name.lstrip("_"), 0) for name in helpers + owned for s in (name, local + name)}
             # Routines of another import that these call.
             operands |= {prefix + name: (name, 0) for name in spec.get("calls", [])}
             # Entries that share a routine's own, by the routine.

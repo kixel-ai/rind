@@ -236,19 +236,25 @@ unsafe extern "sysv64" fn chacha20_poly1305_seal(
 }
 
 /// Hashes the AAD into the Poly1305 state the two routines keep in
-/// registers and on their stack frame; only they call it.
+/// registers and on their stack frame; only they call it. rind's own copy
+/// of aws-lc's, in the structure `proofs/Rind/X86_64/PolyHashAd.lean`
+/// proves.
 #[unsafe(naked)]
 unsafe extern "sysv64" fn poly_hash_ad_internal() {
+    // aws-lc's alignment, which raises the section's on ELF but would pad
+    // after the label on Mach-O, whose functions share one, as
+    // `admin/import-aws-lc` says; and its CFI, which Apple's flavor lacks.
     #[cfg(not(target_vendor = "apple"))]
     core::arch::naked_asm!(
-        include_str!("aws_lc/poly_hash_ad_internal.linux.s"),
+        ".align 64",
+        ".cfi_startproc",
+        ".cfi_def_cfa rsp, 8",
+        include_str!("poly_hash_ad.s"),
+        ".cfi_endproc",
         options(att_syntax),
     );
     #[cfg(target_vendor = "apple")]
-    core::arch::naked_asm!(
-        include_str!("aws_lc/poly_hash_ad_internal.apple.s"),
-        options(att_syntax),
-    );
+    core::arch::naked_asm!(include_str!("poly_hash_ad.s"), options(att_syntax));
 }
 
 #[cfg(test)]
