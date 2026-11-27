@@ -1,6 +1,5 @@
 package io.github.steelhead99x.rindbench;
 
-import android.app.Activity;
 import android.content.Context;
 import android.content.res.ColorStateList;
 import android.content.res.Configuration;
@@ -129,6 +128,7 @@ final class Theme {
 
     /** Transparent bars, light or dark icons to match the theme. */
     static void styleWindow(Window w) {
+        w.getDecorView(); // creates the decor so the insets controller exists
         w.setStatusBarColor(Color.TRANSPARENT);
         w.setNavigationBarColor(Color.TRANSPARENT);
         w.setBackgroundDrawable(new ColorDrawable(surface));
@@ -229,12 +229,39 @@ final class Theme {
         return new ColorStateList(new int[][]{new int[]{android.R.attr.state_enabled}, new int[]{}}, new int[]{on, off});
     }
 
+    /**
+     * Button whose optional leading icon is an inline image span, so icon and
+     * label stay centred together and the icon greys out with the label.
+     */
+    static final class M3Button extends Button {
+        String label = "", iconName;
+        int fgOn, fgOff;
+        M3Button(Context c) { super(c, null, 0); }
+        @Override public void setEnabled(boolean e) { super.setEnabled(e); relabel(); }
+        void setLabel(String l) { label = l; relabel(); }
+        void relabel() {
+            int color = isEnabled() ? fgOn : fgOff;
+            setTextColor(color);
+            if (iconName == null) { setText(label); return; }
+            Drawable d = icon(getContext(), iconName, color);
+            if (d == null) { setText(label); return; }
+            int s = dpi(getContext(), 18);
+            d.setBounds(0, 0, s, s);
+            android.text.SpannableStringBuilder sb = new android.text.SpannableStringBuilder("\uFFFC\u2002" + label);
+            int align = Build.VERSION.SDK_INT >= 29 ? android.text.style.DynamicDrawableSpan.ALIGN_CENTER
+                    : android.text.style.DynamicDrawableSpan.ALIGN_BASELINE;
+            sb.setSpan(new android.text.style.ImageSpan(d, align), 0, 1, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            setText(sb);
+            if (getContentDescription() == null || label.contentEquals(getContentDescription())) setContentDescription(label);
+        }
+    }
+
     // ---- Buttons. 48dp tall (40dp visual + touch), fully rounded, sentence case.
     enum Btn { FILLED, TONAL, OUTLINED, TEXT }
 
     static Button button(Context c, String title, Btn kind, String iconName) {
-        Button b = new Button(c, null, 0);
-        b.setText(title);
+        M3Button b = new M3Button(c);
+        b.label = title;
         b.setAllCaps(false);
         b.setGravity(Gravity.CENTER);
         type(b, Type.LABEL_LARGE);
@@ -248,7 +275,7 @@ final class Theme {
         return b;
     }
 
-    static void styleButton(Button b, Btn kind, String iconName) {
+    static void styleButton(Button b, Btn kind, String iconName) {  // b must come from button()
         Context c = b.getContext();
         float r = dp(c, 24);
         int fg, bg;
@@ -267,22 +294,9 @@ final class Theme {
         InsetDrawable inset = new InsetDrawable(g, 0, dpi(c, 4), 0, dpi(c, 4));
         InsetDrawable mask = new InsetDrawable(shape(Color.WHITE, r), 0, dpi(c, 4), 0, dpi(c, 4));
         b.setBackground(ripple(fg, inset, mask));
-        ColorStateList fgList = enabledList(fg, fgOff);
-        b.setTextColor(fgList);
-        if (iconName != null) {
-            Drawable d = icon(c, iconName, fg);
-            if (d != null) {
-                int s = dpi(c, 18);
-                d.setBounds(0, 0, s, s);
-                d.setTintList(fgList);
-                b.setCompoundDrawablesRelative(d, null, null, null);
-                b.setCompoundDrawablePadding(dpi(c, 8));
-                int hp = kind == Btn.TEXT ? 12 : 16;
-                b.setPaddingRelative(dpi(c, hp), b.getPaddingTop(), dpi(c, kind == Btn.TEXT ? 16 : 24), b.getPaddingBottom());
-            }
-        } else {
-            b.setCompoundDrawablesRelative(null, null, null, null);
-        }
+        M3Button m = (M3Button) b;
+        m.fgOn = fg; m.fgOff = fgOff; m.iconName = iconName;
+        m.relabel();
     }
 
     static ImageButton iconButton(Context c, String iconName, String desc) {
@@ -299,8 +313,8 @@ final class Theme {
 
     // ---- Segmented button (two or more options, single select).
     static Button segment(Context c, String title, int index, int count) {
-        Button b = new Button(c, null, 0);
-        b.setText(title);
+        M3Button b = new M3Button(c);
+        b.label = title;
         b.setAllCaps(false);
         b.setGravity(Gravity.CENTER);
         type(b, Type.LABEL_LARGE);
@@ -329,14 +343,12 @@ final class Theme {
         int over = ic[0] == 0 ? 0 : -dpi(c, 1);
         b.setBackground(ripple(onSurface, new InsetDrawable(g, over, dpi(c, 4), 0, dpi(c, 4)),
                 new InsetDrawable(m, over, dpi(c, 4), 0, dpi(c, 4))));
-        int fg = enabled ? (selected ? onSecondaryContainer : onSurface) : alpha(onSurface, 0.38f);
-        b.setTextColor(fg);
-        b.setEnabled(enabled);
+        M3Button mb = (M3Button) b;
+        mb.fgOn = selected ? onSecondaryContainer : onSurface;
+        mb.fgOff = alpha(onSurface, 0.38f);
+        mb.iconName = selected ? "ic_check" : null;
         b.setSelected(selected);
-        Drawable d = selected ? icon(c, "ic_check", fg) : null;
-        if (d != null) { int s = dpi(c, 18); d.setBounds(0, 0, s, s); }
-        b.setCompoundDrawablesRelative(d, null, null, null);
-        b.setCompoundDrawablePadding(dpi(c, 8));
+        b.setEnabled(enabled);
     }
 
     // ---- Selection controls.
@@ -352,6 +364,7 @@ final class Theme {
         s.setMinimumHeight(dpi(c, 48));
         s.setMinHeight(dpi(c, 48));
         s.setSwitchPadding(0);
+        s.setSwitchMinWidth(dpi(c, 52));
         return s;
     }
 
@@ -387,15 +400,15 @@ final class Theme {
 
     private static Drawable thumb(Context c, int sizeDp, int color) {
         // 26 x 32 box so two thumbs make the 52dp track; the dot is centred in it.
+        // LayerDrawable (not InsetDrawable) so the insets don't count as padding.
         GradientDrawable g = new GradientDrawable();
         g.setShape(GradientDrawable.OVAL);
         g.setColor(color);
         int bw = dpi(c, 26), bh = dpi(c, 32), s = dpi(c, sizeDp);
+        g.setSize(s, s);
         int ix = (bw - s) / 2, iy = (bh - s) / 2;
-        InsetDrawable d = new InsetDrawable(g, ix, iy, bw - s - ix, bh - s - iy) {
-            @Override public int getIntrinsicWidth() { return bw; }
-            @Override public int getIntrinsicHeight() { return bh; }
-        };
+        LayerDrawable d = new LayerDrawable(new Drawable[]{g});
+        d.setLayerInset(0, ix, iy, bw - s - ix, bh - s - iy);
         return d;
     }
 
@@ -469,6 +482,41 @@ final class Theme {
         v.setFocusable(true);
         v.setClickable(true);
         v.setOnClickListener(l);
+    }
+
+    /**
+     * Makes a whole row the single touch and TalkBack target for a switch or
+     * checkbox inside it (M3 list item with a trailing or leading control).
+     */
+    static void toggleRow(View row, android.widget.CompoundButton cb, String desc, Class<?> role) {
+        cb.setClickable(false);
+        cb.setFocusable(false);
+        cb.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        clickable(row, v -> { if (cb.isEnabled()) cb.toggle(); });
+        row.setContentDescription(desc);
+        row.setAccessibilityDelegate(new View.AccessibilityDelegate() {
+            @Override public void onInitializeAccessibilityNodeInfo(View h, android.view.accessibility.AccessibilityNodeInfo info) {
+                super.onInitializeAccessibilityNodeInfo(h, info);
+                info.setClassName(role.getName());
+                info.setCheckable(true);
+                info.setChecked(cb.isChecked());
+                info.setEnabled(cb.isEnabled());
+            }
+        });
+    }
+
+    /** Vertical column capped at maxDp wide and centred, for readable line lengths on tablets. */
+    static LinearLayout readable(Context c, int maxDp) {
+        int max = dpi(c, maxDp);
+        LinearLayout l = new LinearLayout(c) {
+            @Override protected void onMeasure(int w, int h) {
+                int size = View.MeasureSpec.getSize(w);
+                if (size > max) w = View.MeasureSpec.makeMeasureSpec(max, View.MeasureSpec.EXACTLY);
+                super.onMeasure(w, h);
+            }
+        };
+        l.setOrientation(LinearLayout.VERTICAL);
+        return l;
     }
 
     static View divider(Context c) {
