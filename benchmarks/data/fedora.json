@@ -84,6 +84,7 @@
  "rind_cpu": {
   "cpuid": {
    "intel": 0,
+   "zen4": 0,
    "adx": 1,
    "aes": 1,
    "vaes": 1,

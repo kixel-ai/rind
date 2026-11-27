@@ -2,7 +2,7 @@
 
 ## Goal
 
-`OnePass` in `proofs/Rind/X86_64/ChaCha20Poly1305.lean` is discharged, so ChaCha20-Poly1305 and XChaCha20-Poly1305 earn the ✓ on x86_64 CPUs with SSE4.1 but without AVX-512 IFMA.
+`OnePass` in `proofs/Rind/X86_64/ChaCha20Poly1305.lean` is discharged, so ChaCha20-Poly1305 and XChaCha20-Poly1305 earn the ✓ on x86_64 CPUs with SSE4.1 wherever `HaveIfmaForVgChaCha20Poly1305`'s check for the message's length fails: without AVX-512 IFMA, and on Zen 4 sealing under 800 bytes and opening under 512.
 
 ## Plan
 
@@ -13,4 +13,4 @@
 - Model: of the 68 mnemonics seal and open use in rind's release build (llvm-objdump), VG's model and rind's extension lack the conditions of `jbe`, `jg`, `jge`, `jl`, and `cmovg`, and `inc`, `pinsrb`, `pextrb`, and `pextrq`; add them to `RindIsa/X86_64.lean`, which `admin/prove vg` cosimulates.
 - Restate them in `Rind/X86_64/` as axioms about `one_pass` that give `OnePass`, record them in `Axioms.lean`, and add the `verified.toml` entries.
 - Seal and open are 8,138 instructions; s2n-bignum's proofs of its aarch64 AES-GCM routines run 11,000 to 14,000 lines, a guide to the scale. #1119's proof of `poly_hash_ad_internal`, whose block arithmetic seal and open repeat, runs about 1,000 lines.
-- pyca/verified-garbage (VG) measured slower on 2026-11-13 (ChaCha20-Poly1305 on x86_64 up to 1.14x rind's time with AVX-512 and 1.68x without AVX2), so rind keeps this code ([the m2 VG epic](/quest/m2/verified-garbage/README.md)). `fedora`'s Zen 5 at VG `0aa40d6c` reopened AVX-512, and [kixel-ai/rind#953](https://github.com/kixel-ai/rind/pull/953) moved CPUs with AVX-512 IFMA to VG at every length, so this quest covers the CPUs without IFMA, where `RunsChaCha20Poly1305` takes `OnePass`; on CPUs with IFMA it rests on VG's theorems, which `proofs/Rind/X86_64/VgChaCha20Poly1305.lean` imports.
+- pyca/verified-garbage (VG) measured slower on 2026-11-13 (ChaCha20-Poly1305 on x86_64 up to 1.14x rind's time with AVX-512 and 1.68x without AVX2), so rind keeps this code ([the m2 VG epic](/quest/m2/verified-garbage/README.md)). `fedora`'s Zen 5 at VG `0aa40d6c` reopened AVX-512, and [kixel-ai/rind#953](https://github.com/kixel-ai/rind/pull/953) moved CPUs with AVX-512 IFMA to VG at every length, and [kixel-ai/rind#1108](https://github.com/kixel-ai/rind/pull/1108) kept Zen 4 on aws-lc's below 800 bytes sealing and 512 opening, so this quest covers the CPUs and lengths that fail that check, where `RunsSeal` and `RunsOpen` take `OnePass`; the rest rests on VG's theorems, which `proofs/Rind/X86_64/VgChaCha20Poly1305.lean` imports.
