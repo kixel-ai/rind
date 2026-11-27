@@ -133,7 +133,7 @@ theorem aes_gcm_encrypt_any_spec (he : ∃ e, low.entry.Entry.new_secret = ok e)
   have hiv' : iv.length < 2 ^ 61 := by omega
   apply WP.spec_bind (initial_counter_spec (aesEncrypt alg kw (mkfour 0 0 0 0)) t ht iv hiv')
   intro y0 hy
-  apply WP.spec_bind (long.tagged_from_spec true hk alg kw hhk t ht (fun h => (hsha h).2) (fun h => (hsha h).1) _ y0 hy
+  apply WP.spec_bind (long.tagged_from_spec true hk alg kw hhk t ht hsha _ y0 hy
     aad inout (by omega))
   rintro ⟨tag, out⟩ ⟨hlen, hout, htag⟩
   simp only [ite_true] at htag
@@ -192,7 +192,7 @@ theorem aes_gcm_decrypt_any_spec (he : ∃ e, low.entry.Entry.new_secret = ok e)
   have hiv' : iv.length < 2 ^ 61 := by omega
   apply WP.spec_bind (initial_counter_spec (aesEncrypt alg kw (mkfour 0 0 0 0)) t ht iv hiv')
   intro y0 hy
-  apply WP.spec_bind (long.tagged_from_spec false hk alg kw hhk t ht (fun h => (hsha h).2) (fun h => (hsha h).1) _ y0 hy
+  apply WP.spec_bind (long.tagged_from_spec false hk alg kw hhk t ht hsha _ y0 hy
     aad inout (by omega))
   rintro ⟨want, out⟩ ⟨hlen, hout, htag⟩
   simp only [Bool.false_eq_true, ite_false] at htag

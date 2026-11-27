@@ -9,10 +9,9 @@ open Aeneas Aeneas.Std Result rind.vale rind.simd
 With the crypto extension, rind keys AES on its instructions and GHASH on a
 PMULL table, and `tagged` is AES-GCM at every length, which
 `Rind.Aarch64.AesGcm` and `Rind.Aarch64.AesGcmLong` prove. This file states
-it for `AesGcm` and its AEAD API. Two cases stay outside: on cores with SHA3,
-the `_alt` kernels need `KernelBuffersLow`, which `RunsAesGcm` assumes, and an
-AES-192 key runs aws-lc's unproven eight-way kernels, so `RunsAesGcm` holds
-for AES-192 only on cores without SHA3.
+it for `AesGcm` and its AEAD API. One case stays outside: on cores with SHA3
+an AES-192 key runs aws-lc's unproven eight-way kernels, so `RunsAesGcm`
+holds for AES-192 only on cores without SHA3.
 -/
 
 namespace rind.aarch64
@@ -21,10 +20,9 @@ open rind.aarch64.long
 
 /-- rind runs proven AES-GCM for `alg` on this CPU: its entry guard passes,
 its CPU-feature checks find the crypto extension, and, if they find SHA3, the
-stitched kernels' buffers end below 2^63 and the key is not AES-192, whose
-eight-way kernels no proof covers. None reads an input. -/
+key is not AES-192, whose eight-way kernels no proof covers. None reads an input. -/
 def RunsAesGcm (alg : Algorithm) : Prop :=
-  RunsAesHw ∧ ∃ o, low.aarch64.cpu.HaveSha3.check = ok o ∧ (o.isSome → KernelBuffersLow ∧ alg ≠ .AES_192)
+  RunsAesHw ∧ ∃ o, low.aarch64.cpu.HaveSha3.check = ok o ∧ (o.isSome → alg ≠ .AES_192)
 
 /-- An AES-GCM key for the AES key `kw` and `alg`: FIPS 197's round keys on
 the crypto extension, and the PMULL table of the GHASH key's powers, which
@@ -32,7 +30,7 @@ has `eight_way` only when the kernels it picks are proven to run. -/
 def GcmReady (alg : Algorithm) (kw : List (BitVec 32)) (g : mid.aes_gcm.AesGcm) : Prop :=
   ∃ hk t, g.key = .Hw hk ∧ HwKeyIs alg kw hk ∧ g.gh = .Pmull t ∧
     pmull.TableFor (polyLE (aesEncrypt alg kw (mkfour 0 0 0 0))) t ∧
-    (t.eight_way.isSome → KernelBuffersLow ∧ alg ≠ .AES_192)
+    (t.eight_way.isSome → alg ≠ .AES_192)
 
 theorem load_zero : loadBytes (Std.Array.repeat 16#usize 0#u8).val = mkfour 0 0 0 0 := by
   decide
@@ -102,7 +100,7 @@ theorem aes_gcm_encrypt_spec (he : ∃ e, low.entry.Entry.new_secret = ok e) (al
   unfold mid.aes_gcm.AesGcm.encrypt low.aarch64.aes_gcm.seal
   rw [he, bind_ok]
   step*
-  apply WP.spec_bind (tagged_seal_spec hk alg kw hhk t ht (fun h => (hsha h).2) (fun h => (hsha h).1) nonce
+  apply WP.spec_bind (tagged_seal_spec hk alg kw hhk t ht hsha nonce
     aad inout (by omega))
   rintro ⟨tg, out⟩ ⟨hl, h⟩
   step*
@@ -128,7 +126,7 @@ theorem aes_gcm_decrypt_spec (he : ∃ e, low.entry.Entry.new_secret = ok e)
   unfold mid.aes_gcm.AesGcm.decrypt low.aarch64.aes_gcm.open
   rw [he, bind_ok]
   step*
-  step with tagged_open_spec hk alg kw hhk t ht (fun h => (hsha h).2) (fun h => (hsha h).1) nonce aad inout
+  step with tagged_open_spec hk alg kw hhk t ht hsha nonce aad inout
     (by omega) as ⟨res, hl, h⟩
   obtain ⟨tg, out⟩ := res
   simp only at hl h

@@ -56,9 +56,9 @@ AES-GCM's counter blocks and its `tagged_from` and `tagged` on short messages
 with the crypto extension's key, rest on no axiom, only on the hand model in
 `Rind.Aarch64.AesGcmModel`. The all-length `tagged_from` and `tagged` proofs,
 and the AEAD API and `gcm::Key` above them, rest also on s2n-bignum's
-stitched kernels' contracts for AES-128 and AES-256 keys, and on cores with
-SHA3 take the `_alt` kernels' address bound as the hypothesis
-`KernelBuffersLow`, which no axiom states. AES-192 past the short path, proven
+stitched kernels' contracts for AES-128 and AES-256 keys, the `_alt` ones'
+taking their address bound from the compare `stitched` makes before running
+one, `KernelBuffersLow` in the hand model. AES-192 past the short path, proven
 only on cores without SHA3, runs `composed`, which rests on no axiom.
 ML-KEM's decompression, message coding, CBD sampling, and 12-bit unpacking
 rest on no axiom.

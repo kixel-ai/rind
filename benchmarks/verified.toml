@@ -55,8 +55,8 @@
 # x86_64 with AES-NI but no VAES, whose Rust, key setup and by-8 kernels
 # included, `proofs/` proves against Vale's specs, and with AVX and MOVBE
 # against Vale's theorems for its routines, and on aarch64 with the crypto
-# extension but no SHA3, whose Rust `proofs/` proves against Vale's specs and
-# s2n-bignum's theorems for its kernels. On the portable backend, SHA-256
+# extension, whose Rust `proofs/` proves against Vale's specs and s2n-bignum's
+# theorems for its kernels. On the portable backend, SHA-256
 # and the SHA-512 family, with HMAC and HKDF over them, whose Rust `proofs/`
 # proves against FIPS 180-4, block functions included, ChaCha20 header
 # protection, and RSA-2048 PKCS#1 v1.5 and PSS SHA-256 verification on 64-bit
@@ -339,8 +339,8 @@ link = "https://github.com/kixel-ai/rind/blob/main/proofs/Rind/X86_64/AesGcmAead
 library = "rind"
 operations = ["aes128-gcm/*", "aes128-gcm-open/*", "aes256-gcm/*", "aes256-gcm-open/*"]
 arch = "aarch64"
-cpu = ["aes", "pmull", "sha2", "!sha3"]
-proof = "rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch, the NEON transmutes, the one-pass short path, and the kernel dispatch Aeneas cannot translate, and of the NEON intrinsics as Arm's manual defines them, tested on an aarch64 CPU, of its AEAD API's AES-GCM key setup, seal, and open, for every AAD and message length it takes, down to its PMULL GHASH, its one-pass AES-GCM for short messages, and s2n-bignum's aes128_gcm_enc, aes128_gcm_dec, aes256_gcm_enc, and aes256_gcm_dec for the whole blocks of longer ones, against Vale's gcm_encrypt_LE and gcm_decrypt_LE, composed with s2n-bignum's HOL Light proofs of those kernels at 3f01260f and with rind's HOL Light proofs of its constant-time tag compare; not on cores with SHA3, whose _alt kernels need the blocks' address plus their length below 2^63, which nothing proves"
+cpu = ["aes", "pmull", "sha2"]
+proof = "rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch, the NEON transmutes, the one-pass short path, and the kernel dispatch Aeneas cannot translate, and of the NEON intrinsics as Arm's manual defines them, tested on an aarch64 CPU, of its AEAD API's AES-GCM key setup, seal, and open, for every AAD and message length it takes, down to its PMULL GHASH, its one-pass AES-GCM for short messages, and s2n-bignum's aes128_gcm_enc, aes128_gcm_dec, aes256_gcm_enc, and aes256_gcm_dec for the whole blocks of longer ones, and on cores with SHA3 their _alt forms, which rind runs only when the blocks' address plus their length is below 2^63, as their proofs require, against Vale's gcm_encrypt_LE and gcm_decrypt_LE, composed with s2n-bignum's HOL Light proofs of those kernels at 3f01260f and with rind's HOL Light proofs of its constant-time tag compare"
 link = "https://github.com/kixel-ai/rind/blob/main/proofs/Rind/Aarch64/AesGcmAead.lean"
 
 [[verified]]

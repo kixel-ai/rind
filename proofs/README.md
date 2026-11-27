@@ -1384,11 +1384,12 @@ that `partial` is `short`'s last chunk (`partial_spec`), so `cipher` is GCTR
 from the block after the counter block and GHASH over the AAD and the
 ciphertext (`cipher_spec`), and `tagged_from` and `tagged` at every length
 below 2^61 bytes are GCTR and the tag on `gcm_hash` (`tagged_from_spec`) and `gcm_encrypt_LE` and
-`gcm_decrypt_LE` (`tagged_seal_spec`, `tagged_open_spec`). With a table for
-the cores with SHA3, each takes `KernelBuffersLow`, which names the `_alt`
-kernels' requirement that the blocks' address plus their length is below
-2^63, as a hypothesis: untagged user-space addresses meet it, and a pointer
-tag that sets bit 63 breaks it. AES-192 past the
+`gcm_decrypt_LE` (`tagged_seal_spec`, `tagged_open_spec`). On the cores
+with SHA3, `stitched` runs the `_alt` kernels only after comparing the
+blocks' address plus their length with 2^63, as their theorems require, which
+the hand model leaves opaque as `KernelBuffersLow`; a pointer tag that sets
+bit 63, as Android's heap tags do, runs the four-way kernels, so the proofs
+cover either branch. AES-192 past the
 short path runs aws-lc's eight-way kernels on cores with SHA3, which nothing
 proves, and otherwise `composed`, rind's AES-CTR and then GHASH over each
 128-byte chunk: `Rind/Aarch64/AesGcmComposed.lean` proves it GCTR and GHASH
@@ -1399,7 +1400,7 @@ table without `eight_way`. `Rind/Aarch64/AesGcmAead.lean` and
 `decrypt`, `encrypt_any`, and `decrypt_any`, and the AEAD API above them, as
 x86_64's files of those names do, under `RunsAesGcm alg`: the entry guard
 passes, the CPU-feature checks find the crypto extension, and, where they find
-SHA3, `KernelBuffersLow` holds and the key is not AES-192.
+SHA3, the key is not AES-192.
 
 `aead::gcm::Key`, which takes an IV of any length and tags of any
 `TagLength`, is proven on the same tiers, in `Rind/X86_64/GcmKey.lean`, a
