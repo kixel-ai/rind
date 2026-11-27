@@ -314,7 +314,8 @@ Hand-written arithmetic no proof covers, by where it came from:
   which `proofs/` restates as axioms, cover the functions armv7's X25519
   and Ed25519 call, but neither earns a ✓ yet: X25519's shared secret runs
   BoringSSL's unproven NEON ladder on every armv7 CPU the benchmarks run,
-  and Ed25519 hashes with aws-lc's unproven 32-bit ARM SHA-512. Nothing
+  and Ed25519's proof covers only CPUs with NEON, since a CPU without it
+  hashes with aws-lc's unproven integer 32-bit ARM SHA-512. Nothing
   checks that the portable backend's 64-bit build is the code those proofs
   are about. On both, ristretto255's differential test compares dalek with
   itself, so beside RFC 9496's and RFC 9497's vectors only the textbook

@@ -9,8 +9,10 @@ open rind.armv7
 /-!
 The axioms each theorem rests on, beyond Lean's own: none but X25519's and
 Ed25519's, which rest on `Rind.Armv7.Dalek`'s restatements of Beneficial AI
-Foundation's theorems about the curve25519-dalek functions they call. A
-change here is a change to the trust base.
+Foundation's theorems about the curve25519-dalek functions they call, and
+Ed25519's on `Rind.Armv7.Sha512Entry`'s restatement of the HOL Light proof of
+aws-lc's NEON SHA-512 routine too. A change here is a change to the trust
+base.
 -/
 
 /-- info: 'rind.armv7.chacha20_new' depends on axioms: [propext, Classical.choice, Quot.sound] -/
@@ -46,7 +48,8 @@ change here is a change to the trust base.
  Quot.sound,
  dalek_compress_spec,
  dalek_from_bytes_mod_order_spec,
- dalek_mul_base_spec] -/
+ dalek_mul_base_spec,
+ sha512_block_data_order_neon_spec] -/
 #guard_msgs in
 #print axioms ed25519_generate
 
@@ -55,7 +58,8 @@ change here is a change to the trust base.
  Quot.sound,
  dalek_compress_spec,
  dalek_from_bytes_mod_order_spec,
- dalek_mul_base_spec] -/
+ dalek_mul_base_spec,
+ sha512_block_data_order_neon_spec] -/
 #guard_msgs in
 #print axioms ed25519_from_seed_and_public_key
 
@@ -66,7 +70,8 @@ change here is a change to the trust base.
  dalek_from_bytes_mod_order_wide_spec,
  dalek_mul_base_spec,
  dalek_scalar_add_spec,
- dalek_scalar_mul_spec] -/
+ dalek_scalar_mul_spec,
+ sha512_block_data_order_neon_spec] -/
 #guard_msgs in
 #print axioms ed25519_sign
 
@@ -81,7 +86,8 @@ change here is a change to the trust base.
  dalek_from_bytes_mod_order_wide_spec,
  dalek_from_canonical_bytes_spec,
  dalek_neg_spec,
- dalek_vartime_double_scalar_mul_basepoint_spec] -/
+ dalek_vartime_double_scalar_mul_basepoint_spec,
+ sha512_block_data_order_neon_spec] -/
 #guard_msgs in
 #print axioms ed25519_key_pair_verify
 
@@ -93,7 +99,8 @@ change here is a change to the trust base.
  dalek_from_bytes_mod_order_wide_spec,
  dalek_from_canonical_bytes_spec,
  dalek_neg_spec,
- dalek_vartime_double_scalar_mul_basepoint_spec] -/
+ dalek_vartime_double_scalar_mul_basepoint_spec,
+ sha512_block_data_order_neon_spec] -/
 #guard_msgs in
 #print axioms ed25519_public_key_new
 
