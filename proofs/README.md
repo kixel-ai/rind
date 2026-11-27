@@ -256,6 +256,21 @@ those inputs, in any worktree, restores in under a second.
   them about `NeonTable::new` and `NeonTable::ghash`, and
   `neon_new_ghashFor` proves the table `new` builds hashes as `GhashFor`
   asks, which `Parts::tagged`'s proof takes.
+- `armv7/sha256_armv4.ml`: `SHA256_BLOCK_DATA_ORDER_HW_SUBROUTINE_CORRECT`,
+  rind's proof that aws-lc's `sha256_block_data_order_hw` in
+  `low::arm::sha_armv4`, which armv7 runs where the CPU has the crypto
+  extension, stores to the state s2n-bignum's FIPS 180-4 spec,
+  `sha256_hash_blocks`, of its blocks from the state, for one block up.
+  Stepping keeps each Q register a `sha256_quad` of the spec's words, so
+  each `sha256h` and `sha256h2` pair is four of the spec's rounds,
+  `SHA256H_STEP`, and each `sha256su0` and `sha256su1` pair four words of
+  its message schedule. The routine reaches K256 through an offset in a
+  literal word before it, so `admin/prove` extracts the code from K256
+  through the routine's end, `K256..sha256_block_data_order_hw`, with
+  `sha256_block_data_order_nohw` and `_neon` between, and the proof reads
+  K256's words and the literal from that code. The theorem covers the
+  routine from entry to return for a caller in A32 or T32, so every armv7
+  target. No Lean theorem restates it yet.
 - `x86_64/ecp_nistz256_point_add_affine.ml` and
   `x86_64/ecp_nistz256_point_add_affinex.ml`:
   `ECP_NISTZ256_POINT_ADD_AFFINE_SUBROUTINE_CORRECT` and
@@ -877,19 +892,24 @@ does, over the HOL Light proofs of its routines. `Rind/Armv7/AesGcm.lean` proves
 encrypt and decrypt share, for any `Parts` whose table hashes, whose
 `encrypt_block` is AES, and whose `ctr` is GCTR (`PartsFor`, `tagged_spec`),
 so the NEON and crypto-extension compositions need only those three, and
-`portable_partsFor` that `Portable` is one. Under `RunsPortable`, that the
+`portable_partsFor` that `Portable` is one. Under `RunsAesGcm`, that the
 entry guard passes and the CPU checks find neither the crypto extension nor
-NEON, `aes_gcm_new_spec` keys `Portable` with the key's words, and
+NEON, `aes_gcm_new_spec` keys `Portable` with the key's words. On any
+`GcmReady` key, one whose tier's `Parts` are `PartsFor`,
 `aes_gcm_encrypt_spec`, `aes_gcm_decrypt_spec`, `aes_gcm_encrypt_any_spec`,
 and `aes_gcm_decrypt_any_spec` state `AesGcm`'s API against Vale's
-`gcm_encrypt_LE` and `gcm_decrypt_LE`, as x86_64's do. The tag check rests on
+`gcm_encrypt_LE` and `gcm_decrypt_LE` under x86_64's names, so
+`Rind/Armv7/AesGcmApi.lean` and `Rind/Armv7/GcmKey.lean`, which
+`admin/prove` writes from x86_64's, prove the AEAD API's `Key` and
+`aead::gcm::Key` above them, over `Rind/Armv7/AeadDispatch.lean`, x86_64's
+model without `RandomizedNonceKey`, whose XChaCha20-Poly1305 armv7's
+translation leaves out. The tag check rests on
 `Rind/Armv7/CtEqual.lean`, which `admin/prove` writes from x86_64's, and its
 restatement of the HOL Light proofs of armv7's compares; `#bv_axioms` in
 `Rind/Armv7/Axioms.lean` admits only those and `bv_decide`'s. The ✓ waits for
-the AEAD API above `AesGcm`, which the benchmarks call,
-[armv7's AES-GCM AEAD API](/quest/m5/verified-armv7/aead.md), and for the
-other armv7 tiers, since both armv7 benchmark rows have NEON and an armv7
-entry in `benchmarks/verified.toml` names no CPU features:
+the other armv7 tiers, whose `AesGcm::new` and `Parts` remain to prove, since
+both armv7 benchmark rows have NEON and an armv7 entry in
+`benchmarks/verified.toml` names no CPU features:
 [armv7's NEON AES and GHASH](/quest/m5/verified-armv7/neon-aes.md) and
 [armv7's assembly](/quest/m5/verified-armv7/assembly.md).
 
@@ -1379,7 +1399,8 @@ AES-128-GCM, AES-192-GCM, and AES-256-GCM on x86_64 CPUs with AES-NI and
 PCLMULQDQ, from the AEAD API's `Key` down to HACL*'s Vale AES-GCM routines on
 CPUs with AVX and MOVBE but no VAES, and to rind's own by-8 AES-CTR and GHASH
 on CPUs without AVX and for what Vale's routines do not take, in
-`Rind/X86_64/AesGcmAead.lean`:
+`Rind/X86_64/AesGcmAead.lean` and, above `AesGcm`, `Rind/X86_64/AesGcmApi.lean`,
+which `admin/prove` copies to armv7:
 
 - `aes_gcm_new`: a key that is not the algorithm's length is refused, and
   otherwise the key holds FIPS 197's round keys for its bytes, as Vale's
@@ -1991,7 +2012,7 @@ beyond Lean's own.
   `hol-light/x86_64/aes_hw_spec.ml`, AES on the AES-NI instructions and CTR32's
   counter blocks, for the x86_64 routines' HOL Light proofs; and
   `Rind/GhashSpec.lean` and
-  `Rind/X86_64/{Ghash,PartialBlock,AesGcmGlue,AesGcm,GhashClmul,AesGcmBy8,AesGcmClmul,AesGcmAead,AesGcmAny,GhashAvx512,AesGcmAvx512}.lean`:
+  `Rind/X86_64/{Ghash,PartialBlock,AesGcmGlue,AesGcm,GhashClmul,AesGcmBy8,AesGcmClmul,AesGcmAead,AesGcmApi,AesGcmAny,GhashAvx512,AesGcmAvx512}.lean`:
   the AES-GCM proof, on x86_64 alone; `Rind/Aarch64/{AesGcmModel,GhashPmull,AesGcmShort,AesGcm,AesGcmLong}.lean`,
   aarch64's hand model and its PMULL GHASH and AES-GCM proofs;
   `Rind/S2nGcm.lean`, s2n-bignum's AES and GHASH specs, transliterated, and

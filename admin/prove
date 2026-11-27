@@ -296,37 +296,69 @@ symbol_bounds() {
 }
 
 # Writes to `dest` the bytes of the static at `path`, as rind's release build
-# for `arch` Linux emits them, failing if a relocation falls in them, which
-# would leave bytes for the linker to fill.
+# for `arch` Linux emits them, or, given `last`, from `path` through the end of
+# the symbol `last` after it in the same section, failing if a relocation
+# falls in them, which would leave bytes for the linker to fill. Given `last`,
+# it writes `last`'s offset in them, in decimal, to `dest` with `.offset` for
+# its extension, which the proof checks is the entry its theorems take, since
+# moving the symbol within unchanged bytes would leave them about other code.
 rind_static() {
-    local arch=$1 path=$2 dest=$3 found obj sym section value size off
+    local arch=$1 path=$2 dest=$3 last=${4:-} found obj sym section value size end off
     found=$(rind_symbol "$arch" "$path")
     read -r obj sym <<<"$found"
     read -r section value size < <(symbol_bounds "$obj" "$sym")
+    end=$((16#$value + 16#$size))
+    if [[ -n $last ]]; then
+        local lobj lsym lsection lvalue lsize
+        found=$(rind_symbol "$arch" "$last")
+        read -r lobj lsym <<<"$found"
+        read -r lsection lvalue lsize < <(symbol_bounds "$lobj" "$lsym")
+        if [[ $lobj != "$obj" || $lsection != "$section" ]] || ((16#$lvalue < 16#$value)); then
+            echo "admin/prove: $last does not follow $path in its section" >&2
+            return 1
+        fi
+        end=$((16#$lvalue + 16#$lsize))
+        echo $((16#$lvalue - 16#$value)) >"${dest%.*}.offset"
+    fi
     while read -r off _ _; do
-        if ((16#$off >= 16#$value && 16#$off < 16#$value + 16#$size)); then
-            echo "admin/prove: $path has a relocation" >&2
+        if ((16#$off >= 16#$value && 16#$off < end)); then
+            echo "admin/prove: $path${last:+ through $last} has a relocation" >&2
             return 1
         fi
     done < <(relocations "$obj" "$section")
     "$tools/llvm-objcopy" --dump-section="$section=$dest.section" "$obj" "$dest.o"
-    head -c $((16#$value + 16#$size)) "$dest.section" | tail -c +$((16#$value + 1)) >"$dest"
+    head -c $((end)) "$dest.section" | tail -c +$((16#$value + 1)) >"$dest"
     rm "$dest.section" "$dest.o"
 }
 
-# Writes to `dest` the bytes of the `global_asm!` routine `name`, whose symbol
-# `aws_lc_symbol!` qualifies by rind's version, through the size its `.size`
-# gives, as rind's release build for `arch` Linux emits them, failing if a
-# relocation falls in them.
-asm_routine() {
-    local arch=$1 name=$2 dest=$3 sym
-    sym=$(awk -F '\t' -v n="$name" '$2 ~ ("^rind_[0-9]+_[0-9]+_[0-9]+_" n "$") { print $2 }' \
+# Prints the symbol in rind's `arch` build of the `global_asm!` routine
+# `name`, which `aws_lc_symbol!` qualifies by rind's version, or else of the
+# label `name`, failing unless it defines exactly one.
+routine_symbol() {
+    local arch=$1 name=$2 sym
+    sym=$(awk -F '\t' -v n="$name" '$2 ~ ("^rind_[0-9]+_[0-9]+_[0-9]+_" n "$") || $2 == n { print $2 }' \
         "$(rind_index "$arch")" | sort -u)
     if [[ -z $sym || $(wc -l <<<"$sym") != 1 ]]; then
         echo "admin/prove: rind's $arch build defines no one routine $name" >&2
         return 1
     fi
-    rind_static "$arch" "$sym" "$dest"
+    echo "$sym"
+}
+
+# Writes to `dest` the bytes of the `global_asm!` routine `name` through the
+# size its `.size` gives, as rind's release build for `arch` Linux emits them,
+# failing if a relocation falls in them. A `name` of `first..last` is the
+# bytes from the label or routine `first` through the end of the routine
+# `last`, for routines that read a table or literal outside their own `.size`,
+# as `sha256-armv4`'s read K256 from before the first of them, with `last`'s
+# offset in them beside them, which `rind_static` writes.
+asm_routine() {
+    local arch=$1 name=$2 dest=$3 first last=
+    first=$(routine_symbol "$arch" "${name%%..*}")
+    if [[ $name == *..* ]]; then
+        last=$(routine_symbol "$arch" "${name##*..}")
+    fi
+    rind_static "$arch" "$first" "$dest" "$last"
 }
 
 # Writes to `dest` an object holding the naked Rust function at `path`, as
@@ -461,9 +493,9 @@ result_key() {
 # `RIND.md` there describes. Each `<arch>/<file>.ml` reads its object code
 # from `<arch>/<file>.bin`, the block's bytes, which `asm_block` writes, or
 # the routine's, which `asm_routine` writes for a path that is the routine's
-# symbol without rind's version, or from `<arch>/<file>.o`, the naked
-# function's object, which `asm_function` writes, and asserts it is what it
-# lists. A target's proofs compile into one program, as s2n-bignum's
+# symbol without rind's version, or a `first..last` range of them, or from
+# `<arch>/<file>.o`, the naked function's object, which `asm_function` writes,
+# and asserts it is what it lists. A target's proofs compile into one program, as s2n-bignum's
 # `tools/build-proof.sh` compiles each of its own, which fails on an error or
 # an axiom beyond HOL Light's.
 hol_light_proofs=(
@@ -479,6 +511,7 @@ hol_light_proofs=(
     "armv7 ct_compare_16.bin ct_compare_16"
     "armv7 gcm_init_neon.bin gcm_init_neon"
     "armv7 gcm_ghash_neon.bin gcm_ghash_neon"
+    "armv7 sha256_armv4.bin K256..sha256_block_data_order_hw"
     "x86_64 sha512_block_data_order_avx2.o rind::low::x86_64::sha512::sha512_block_data_order_avx2"
     "x86_64 sha256_block_data_order_avx2.o rind::low::x86_64::sha256::sha256_block_data_order_avx2"
     "x86_64 bn_mul_mont_nohw.o rind::low::x86_64::mont::bn_mul_mont_nohw"
@@ -1639,9 +1672,10 @@ to_lean() {
 }
 
 # armv7's translation reaches the header-protection API, ChaCha20's the one
-# armv7 path that is Rust down to code a proof covers; the AES-GCM API, down
-# to the bitsliced AES and integer GHASH a CPU with neither NEON nor the
-# crypto extension runs; and the agreement API, down to the curve25519-dalek
+# armv7 path that is Rust down to code a proof covers; the AES-GCM API, from
+# its `aead::Key` cipher impl down to the bitsliced AES and integer GHASH a
+# CPU with neither NEON nor the crypto extension runs, with ChaCha20-Poly1305
+# below its cipher impl opaque, since `aead::Key` holds it; and the agreement API, down to the curve25519-dalek
 # functions X25519 runs on a CPU without NEON, and for the public key on every
 # CPU, whose BAIF theorems `Rind/Armv7/Dalek.lean` restates. The rest of
 # armv7's operations, the NIST curves' among them, run assembly, which no
@@ -1661,6 +1695,14 @@ extract_armv7() {
         --start-from crate::mid::aes_gcm::AesGcm::decrypt \
         --start-from crate::mid::aes_gcm::AesGcm::encrypt_any \
         --start-from crate::mid::aes_gcm::AesGcm::decrypt_any \
+        --start-from '{impl crate::aead::Cipher for crate::mid::aes_gcm::AesGcm}' \
+        --start-from '{impl crate::aead::Cipher for crate::mid::chacha20poly1305::ChaCha20Poly1305}' \
+        --start-from crate::aead::Key \
+        --start-from crate::aead::AlgorithmId \
+        --opaque crate::aead::Algorithm \
+        --opaque crate::aead::Sealer \
+        --opaque crate::aead::Ops \
+        --opaque crate::mid::chacha20poly1305 \
         --start-from '{impl crate::high::agreement::Agree for crate::high::agreement::X25519Curve}' \
         --start-from '{impl crate::high::agreement::Agree for crate::high::curve::P256}' \
         --start-from '{impl crate::high::agreement::Agree for crate::high::curve::P384}' \
@@ -2160,10 +2202,24 @@ done
 # `Rind.Armv7.Curve25519`'s dispatch where x86_64's are over s2n-bignum's:
 # the CPU check that picks the routine is NEON's. armv7's compares live in
 # `low::arm::cpu`.
-for file in QuicDispatch Dispatch P256Dispatch P384Dispatch ChaCha20 CtEqual X25519Bytes X25519; do
+for file in QuicDispatch Dispatch P256Dispatch P384Dispatch ChaCha20 CtEqual X25519Bytes X25519 AeadDispatch AeadVec \
+    AesGcmApi GcmKey; do
     sed 's/X86_64/Armv7/g; s/x86_64/armv7/g; s/low\.armv7\.cpu/low.arm.cpu/g; s/Rind\.Armv7\.S2nBignum/Rind.Armv7.Curve25519/; s/low\.armv7\.curve25519_ifma\.Curve25519Ifma/low.arm.cpu.HaveNeon/g; s/CurveIfma/DalekCpu/g' \
         "proofs/Rind/X86_64/$file.lean" >"proofs/Rind/Armv7/$file.lean"
 done
+# armv7's AEAD model leaves out `RandomizedNonceKey`, whose XChaCha20-Poly1305
+# its translation does not reach. Its AES-GCM API and custom-IV key are over
+# `Rind.Armv7.AesGcm`, which proves under x86_64's names what x86_64's
+# `AesGcmAead` and `AesGcmAny` do.
+sed -i '/-- BEGIN xchacha/,/-- END xchacha/d' proofs/Rind/Armv7/AeadDispatch.lean
+sed -i 's/^import Rind\.Armv7\.AesGcmAead$/import Rind.Armv7.AesGcm/' proofs/Rind/Armv7/AesGcmApi.lean
+sed -i 's/^import Rind\.Armv7\.AesGcmAny$/import Rind.Armv7.AesGcmApi/' proofs/Rind/Armv7/GcmKey.lean
+if grep -q 'xchacha' proofs/Rind/Armv7/AeadDispatch.lean ||
+    ! grep -qx 'import Rind.Armv7.AesGcm' proofs/Rind/Armv7/AesGcmApi.lean ||
+    ! grep -qx 'import Rind.Armv7.AesGcmApi' proofs/Rind/Armv7/GcmKey.lean; then
+    echo "admin/prove: proofs/Rind/X86_64/{AeadDispatch,AesGcmApi,GcmKey}.lean no longer have the lines armv7's copies rewrite" >&2
+    exit 1
+fi
 
 # The elements of the HOL Light list `$2` that `$1` defines, as Lean writes
 # them: `-- &1600` is -1600 and `&630` is 630.
