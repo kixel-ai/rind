@@ -101,7 +101,7 @@ public class MainActivity extends Activity {
         h.setGravity(Gravity.CENTER_VERTICAL);
         h.setBackgroundColor(Theme.surface);
         h.setMinimumHeight(Theme.dpi(this, 64));
-        ImageView mark = Theme.brandImage(this, "moq_dev_mark", "moq.dev");
+        ImageView mark = Theme.brandImage(this, "rindlogo");
         LinearLayout.LayoutParams markSize = new LinearLayout.LayoutParams(
                 Theme.dpi(this, 40), Theme.dpi(this, 40));
         markSize.setMarginEnd(Theme.dpi(this, 12));

@@ -1,12 +1,11 @@
 # Android brand assets
 
-The Android app uses the [moq.dev palette](https://github.com/moq-dev/moq.dev/blob/77d39e45682b8896476e325e94b024974d28efd8/src/layouts/global.css)
-for its night theme. The day theme adapts the same slate and green roles
-for light surfaces.
+The toolbar uses the app's existing Rind mark, a compact rendition of the
+[project logo](https://github.com/kixel-ai/rind/blob/main/admin/logo.png).
+Rind green identifies controls and active navigation.
 
-The moq.dev mark in the toolbar is the official
-[favicon](https://github.com/moq-dev/moq.dev/blob/77d39e45682b8896476e325e94b024974d28efd8/public/layout/favicon.svg).
-The wordmark in Details is the official
-[homepage logo](https://github.com/moq-dev/moq.dev/blob/77d39e45682b8896476e325e94b024974d28efd8/public/home/logo.svg).
-Both are rasterized from those assets for use on Android. The app bundles
-their [MIT notice](res/raw/moq_dev_brand_license.txt).
+The flight-display palette uses [Kixel's](https://kixel.ai/) graphite and
+amber in the display surfaces and timing readout. The Details sheet uses
+the [Kixel favicon](https://kixel.ai/favicon.svg), rasterized for Android,
+beside the publisher name. The day palette adapts the same roles for
+light surfaces.

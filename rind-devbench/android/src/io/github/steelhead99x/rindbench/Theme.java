@@ -51,34 +51,33 @@ final class Theme {
         onErrorContainer = dark ? 0xFFFFDAD6 : 0xFF410002;
     }
 
-    /** Night follows moq.dev's slate and Signal Green roles. Day adapts them for light surfaces. */
+    /** Rind green identifies controls. Kixel graphite and amber frame the timing display. */
     private static void instrumentColors() {
         if (dark) {
-            primary = 0xFF22C55E; onPrimary = 0xFF052E14;
-            primaryContainer = 0xFF163B2B; onPrimaryContainer = 0xFF4ADE80;
-            secondaryContainer = 0xFF1D3B32; onSecondaryContainer = 0xFFB5F5CE;
-            surface = 0xFF0F172A; surfaceContainerLow = 0xFF111B2F; surfaceContainer = 0xFF131D33;
-            surfaceContainerHigh = 0xFF1A2540; surfaceContainerHighest = 0xFF23314D;
-            onSurface = 0xFFEEF2F8; onSurfaceVariant = 0xFFC4CDDC;
-            outline = 0xFF8C99B0; outlineVariant = 0xFF2C3A57;
+            primary = 0xFFA1C702; onPrimary = 0xFF192400;
+            primaryContainer = 0xFF35270E; onPrimaryContainer = 0xFFFFB020;
+            secondaryContainer = 0xFF2B3613; onSecondaryContainer = 0xFFDAEE9A;
+            surface = 0xFF07090D; surfaceContainerLow = 0xFF0D1118; surfaceContainer = 0xFF121820;
+            surfaceContainerHigh = 0xFF1B2430; surfaceContainerHighest = 0xFF253140;
+            onSurface = 0xFFE7ECF2; onSurfaceVariant = 0xFFB5C0CE;
+            outline = 0xFF8B96A5; outlineVariant = 0xFF2A3340;
         } else {
-            primary = 0xFF166534; onPrimary = 0xFFFFFFFF;
-            primaryContainer = 0xFFD6F5DF; onPrimaryContainer = 0xFF14532D;
-            secondaryContainer = 0xFFDCEDE5; onSecondaryContainer = 0xFF164531;
-            surface = 0xFFF6F8FC; surfaceContainerLow = 0xFFFCFDFE; surfaceContainer = 0xFFEAF0F7;
-            surfaceContainerHigh = 0xFFE0E8F2; surfaceContainerHighest = 0xFFD4DFED;
-            onSurface = 0xFF0F172A; onSurfaceVariant = 0xFF405069;
-            outline = 0xFF52637B; outlineVariant = 0xFF9EAFC3;
+            primary = 0xFF4D6500; onPrimary = 0xFFFFFFFF;
+            primaryContainer = 0xFFFBEBCB; onPrimaryContainer = 0xFF704400;
+            secondaryContainer = 0xFFDFE9BE; onSecondaryContainer = 0xFF334700;
+            surface = 0xFFF5F6F8; surfaceContainerLow = 0xFFFCFDFE; surfaceContainer = 0xFFEBEEF2;
+            surfaceContainerHigh = 0xFFE1E6ED; surfaceContainerHighest = 0xFFD7DEE7;
+            onSurface = 0xFF161C24; onSurfaceVariant = 0xFF425064;
+            outline = 0xFF566579; outlineVariant = 0xFF9FAFC1;
         }
     }
 
-    /** The pinned moq.dev art retains its original colors. See android/BRANDING.md. */
-    static ImageView brandImage(Context c, String name, String description) {
+    /** Brand art retains its original colors. */
+    static ImageView brandImage(Context c, String name) {
         ImageView image = new ImageView(c);
         image.setImageResource(c.getResources().getIdentifier(name, "drawable", c.getPackageName()));
         image.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        if (description == null) image.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        else image.setContentDescription(description);
+        image.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         return image;
     }
 

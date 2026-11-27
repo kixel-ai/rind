@@ -1003,14 +1003,18 @@ final class BenchView extends LinearLayout {
         String col = (colHost == null || colHost.isEmpty()) ? "None" : (colHost + ":" + colPort + " (" + colHow + ")");
         LinearLayout panel = new LinearLayout(host);
         panel.setOrientation(VERTICAL);
-        ImageView wordmark = Theme.brandImage(host, "moq_dev_wordmark", "moq.dev");
-        wordmark.setBackground(Theme.shape(0xFF0F172A, Theme.dp(host, 8)));
+        LinearLayout publisher = new LinearLayout(host);
+        publisher.setGravity(Gravity.CENTER_VERTICAL);
         int inset = Theme.dpi(host, 8);
-        wordmark.setPadding(inset, inset, inset, inset);
-        LayoutParams logo = new LayoutParams(Theme.dpi(host, 176), Theme.dpi(host, 48));
-        logo.setMarginStart(Theme.dpi(host, 24));
-        logo.bottomMargin = Theme.dpi(host, 8);
-        panel.addView(wordmark, logo);
+        ImageView mark = Theme.brandImage(host, "kixel_mark");
+        LayoutParams logo = new LayoutParams(Theme.dpi(host, 30), Theme.dpi(host, 30));
+        logo.setMarginEnd(inset);
+        publisher.addView(mark, logo);
+        publisher.addView(Theme.text(host, "Kixel AI", Theme.Type.TITLE_SMALL, Theme.onSurface));
+        LayoutParams publisherSize = new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
+        publisherSize.setMarginStart(Theme.dpi(host, 24));
+        publisherSize.bottomMargin = inset;
+        panel.addView(publisher, publisherSize);
         panel.addView(Sheet.body(host, detailsText + "\nCollector: " + col, true));
         Sheet.show(host, "Details", panel);
     }
