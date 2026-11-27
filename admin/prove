@@ -757,6 +757,16 @@ vg() {
 dalek_roots=(
     montgomery.MontgomeryPoint.mul_clamped
     montgomery.MontgomeryPoint.mul_base_clamped
+    'edwards.CompressedEdwardsY.decompress.«32bit-tables»'
+    'edwards.«EdwardsPoint32bit-tables».compress'
+    'edwards.EdwardsPoint.«32bit-tables».Insts.«CoreOpsArithNegEdwardsPoint32bit-tables».neg'
+    'edwards.«EdwardsPoint32bit-tables».mul_base'
+    'edwards.«EdwardsPoint32bit-tables».vartime_double_scalar_mul_basepoint'
+    scalar.Scalar.from_bytes_mod_order
+    scalar.Scalar.from_bytes_mod_order_wide
+    scalar.Scalar.from_canonical_bytes
+    scalar.Scalar.Insts.CoreOpsArithMulScalarScalar.mul
+    scalar.Scalar.Insts.CoreOpsArithAddScalarScalar.add
 )
 # The functions whose code a BAIF translation patch on the roots' path copies
 # into their caller, as `file:function`. `montgomery-MontgomeryPoint-mul.patch`
@@ -1354,6 +1364,25 @@ funs_external_items() {
     items rind/src/low/generic/zeroise.rs 'pub(crate) fn zeroise<'
 }
 check_quote X86_64/FunsExternal funs_external_items
+# The source of the curve25519-dalek rind depends on for armv7, and of the
+# subtle that dalek depends on, whose getters armv7's translation reaches.
+# Followed along the dependency edges, since the workspace also resolves an
+# older dalek for tests.
+{ read -r subtle_src; read -r dalek_src; } < <(cargo metadata --locked --format-version 1 \
+    --filter-platform armv7-unknown-linux-gnueabihf | python3 -c 'import json, sys
+m = json.load(sys.stdin)
+packages = {p["id"]: p for p in m["packages"]}
+nodes = {n["id"]: n for n in m["resolve"]["nodes"]}
+def dep(of, name):
+    return next(d["pkg"] for d in nodes[of]["deps"] if d["name"] == name)
+dalek = dep(next(i for i, p in packages.items() if p["name"] == "rind"), "curve25519_dalek")
+for pkg in (dep(dalek, "subtle"), dalek):
+    print(packages[pkg]["manifest_path"].rsplit("/", 1)[0])')
+armv7_getters() {
+    items "$subtle_src/src/lib.rs" '    pub fn unwrap_u8(&self)' '    pub fn is_some(&self)'
+    items "$dalek_src/src/scalar.rs" '    pub const fn as_bytes(&self)'
+}
+check_quote Armv7/FunsExternal armv7_getters
 check_quote Aarch64/PointSelectModel items rind/src/low/aarch64/bignum_point_select.rs \
     'pub(crate) fn bignum_aff_point_select_p384(' 'fn select<' '#[target_feature(enable = "neon")]'
 check_quote X86_64/AeadDispatch items rind/src/aead.rs 'pub struct Algorithm ' 'impl Algorithm {' \
@@ -1563,15 +1592,11 @@ hashes=(
     --include crate::low::generic::chacha20
     --include crate::low::generic::naf
 )
-assembly=(
-    --start-from '{impl crate::high::agreement::Agree for crate::high::agreement::X25519Curve}'
-    --start-from '{impl crate::high::agreement::Agree for crate::high::curve::P256}'
-    --start-from '{impl crate::high::agreement::Agree for crate::high::curve::P384}'
-    --start-from '{impl crate::high::agreement::Agree for crate::high::curve::P521}'
-    --start-from '{impl core::convert::AsRef for crate::high::agreement::PublicKey}'
-    --start-from '{impl core::convert::AsRef for crate::high::agreement::SharedSecret}'
-    --start-from crate::high::agreement::PrivateKey
-    --start-from crate::high::agreement::AlgorithmId
+# Ed25519 from `high::signature::ed25519`'s key pair and public key, which
+# call no function pointer, which every target with a proof of its curve
+# arithmetic translates: s2n-bignum's on x86_64 and aarch64, and
+# curve25519-dalek's on armv7.
+ed25519=(
     --start-from crate::high::ed25519::Ed25519VerifyingKey::from_bytes
     --start-from crate::high::ed25519::Ed25519VerifyingKey::verify
     --start-from crate::high::ed25519::Ed25519VerifyingKey::as_bytes
@@ -1587,6 +1612,17 @@ assembly=(
     --start-from crate::high::signature::ed25519::PublicKey::verify
     --start-from '{impl core::convert::AsRef for crate::high::signature::ed25519::PublicKey}'
     --start-from '{impl core::convert::AsRef for crate::high::signature::ed25519::Signature}'
+)
+assembly=(
+    --start-from '{impl crate::high::agreement::Agree for crate::high::agreement::X25519Curve}'
+    --start-from '{impl crate::high::agreement::Agree for crate::high::curve::P256}'
+    --start-from '{impl crate::high::agreement::Agree for crate::high::curve::P384}'
+    --start-from '{impl crate::high::agreement::Agree for crate::high::curve::P521}'
+    --start-from '{impl core::convert::AsRef for crate::high::agreement::PublicKey}'
+    --start-from '{impl core::convert::AsRef for crate::high::agreement::SharedSecret}'
+    --start-from crate::high::agreement::PrivateKey
+    --start-from crate::high::agreement::AlgorithmId
+    "${ed25519[@]}"
     --start-from crate::high::signature::Buffer::new
     --start-from crate::high::ecdsa::EncodedPoint::copy_from
     --start-from '{impl core::convert::AsRef for crate::high::signature::ecdsa::Signature}'
@@ -1684,12 +1720,20 @@ to_lean() {
 # armv7 path that is Rust down to code a proof covers; the AES-GCM API, from
 # its `aead::Key` cipher impl down to the bitsliced AES and integer GHASH a
 # CPU with neither NEON nor the crypto extension runs, with ChaCha20-Poly1305
-# below its cipher impl opaque, since `aead::Key` holds it; and the agreement API, down to the curve25519-dalek
-# functions X25519 runs on a CPU without NEON, and for the public key on every
-# CPU, whose BAIF theorems `Rind/Armv7/Dalek.lean` restates. The rest of
-# armv7's operations, the NIST curves' among them, run assembly, which no
-# instruction model covers yet, or Rust its own proof quests translate.
-# `Rind/Armv7/{Types,Funs}External.lean` define what it leaves opaque.
+# below its cipher impl opaque, since `aead::Key` holds it; the agreement API,
+# down to the curve25519-dalek functions X25519 runs on a CPU without NEON,
+# and for the public key on every CPU; and the signature API's Ed25519, down
+# to dalek's point and scalar functions and SHA-512's block function, whose
+# assembly no proof covers yet.
+# `Rind/Armv7/Dalek.lean` restates BAIF's theorems about those dalek
+# functions. Of dalek's and subtle's code, the translation reads `Scalar`,
+# `CtOption`, and the trivial functions Ed25519 calls, which need no theorem,
+# but not the bodies of three getters, which `FunsExternal` models and quotes.
+# SHA-256's digest is reached too, since `Rind/Armv7/Blockwise.lean`, x86_64's,
+# covers it. The rest of armv7's operations, the NIST curves' among
+# them, run assembly, which no instruction model covers yet, or Rust its own
+# proof quests translate. `Rind/Armv7/{Types,Funs}External.lean` define what
+# it leaves opaque.
 extract_armv7() {
     (cd rind && charon cargo --preset=aeneas \
         --start-from '{impl crate::aead::quic::Mask for crate::mid::chacha20::ChaCha20}' \
@@ -1720,6 +1764,8 @@ extract_armv7() {
         --start-from '{impl core::convert::AsRef for crate::high::agreement::SharedSecret}' \
         --start-from crate::high::agreement::PrivateKey \
         --start-from crate::high::agreement::AlgorithmId \
+        "${ed25519[@]}" \
+        --start-from crate::low::generic::blockwise::sha256_digest \
         --opaque crate::high::agreement::Algorithm \
         --opaque crate::high::agreement::Ops \
         --opaque crate::high::agreement::x25519_from_pkcs8 \
@@ -1747,6 +1793,13 @@ extract_armv7() {
         --include crate::low::ct \
         --include crate::low::generic::chacha20 \
         --include crate::low::generic::ct_equal \
+        --include crate::low::generic::blockwise \
+        --include curve25519_dalek::scalar::Scalar \
+        --include curve25519_dalek::scalar::clamp_integer \
+        --include '{impl core::clone::Clone for curve25519_dalek::edwards::EdwardsPoint}' \
+        --include subtle::Choice \
+        --include subtle::CtOption \
+        --include '{impl core::convert::From<subtle::CtOption<_>> for core::option::Option<_>}' \
         --include crate::low::portable::aes \
         --include crate::low::portable::aes_nohw \
         --include crate::low::portable::ghash_nohw \
@@ -2175,7 +2228,7 @@ mkdir -p proofs/Rind/Aarch64/Kdf
 # check x86_64 shortcuts; key generation and ECDSA above them are shared.
 # Each target's `P384KeyCheck` reads its own translation of the key check.
 for file in Dispatch QuicDispatch P256Dispatch P256Agree P384Dispatch X25519Bytes X25519 P384 P384Table P384Keygen DigestAlgorithm \
-    DigestDispatch Sha512 ChaCha20 SignatureBuffer Ed25519 \
+    DigestDispatch Sha512Context Sha512 ChaCha20 SignatureBuffer Ed25519 \
     Blockwise Sha Hmac HmacDispatch HkdfExpand Kdf/TypesExternal Kdf/FunsExternal \
     CtEqual HmacApi DigestApi Hkdf Pbkdf2 Sha3 AesCipher HkdfAes AesModesApi AesKw P256 EcdsaDispatch Naf P256Ecdsa P256Signature \
     P384Ecdsa P384Signature MlKemCoding MlKemCbd AeadDispatch AeadVec ChaCha20Poly1305Api; do
@@ -2191,7 +2244,7 @@ sed -i 's/^public import Rind.Aarch64.HkdfExpand$/&\npublic import Rind.Aarch64.
 # in `Sha512Entry.lean` and `ShaBlocks.lean`, and its compares' proof in
 # `CtEqual.lean`.
 mkdir -p proofs/Rind/Portable/Kdf
-for file in QuicDispatch DigestAlgorithm DigestDispatch Sha512 ChaCha20 Blockwise Sha Hmac HmacDispatch \
+for file in QuicDispatch DigestAlgorithm DigestDispatch Sha512Context Sha512 ChaCha20 Blockwise Sha Hmac HmacDispatch \
     HkdfExpand Kdf/TypesExternal Kdf/FunsExternal HmacApi DigestApi Hkdf Pbkdf2; do
     sed 's/X86_64/Portable/g; s/x86_64/portable/g; s/Rind\.Portable\.AwsLc/Rind.Portable.Sha512Entry/' \
         "proofs/Rind/X86_64/$file.lean" >"proofs/Rind/Portable/$file.lean"
@@ -2201,8 +2254,8 @@ sed -i '/-- BEGIN aead/,/-- END aead/d' proofs/Rind/Portable/Kdf/FunsExternal.le
 # 32-bit microcontrollers' hash, HMAC, and header-protection proofs and
 # compares' models are the portable backend's with the namespace renamed, over
 # `Rind/Mcu/`'s own block functions' proofs: the Rust paths are the same.
-for file in QuicDispatch DigestAlgorithm DigestDispatch Sha512 ChaCha20 Blockwise Sha Hmac HmacDispatch HmacApi DigestApi \
-    Compare CtEqual; do
+for file in QuicDispatch DigestAlgorithm DigestDispatch Sha512Context Sha512 ChaCha20 Blockwise Sha Hmac HmacDispatch \
+    HmacApi DigestApi Compare CtEqual; do
     sed 's/Rind\.Portable/Rind.Mcu/g; s/rind\.portable/rind.mcu/g' "proofs/Rind/Portable/$file.lean" >"proofs/Rind/Mcu/$file.lean"
 done
 # So are RSA verification's, over its own `RsaMont.lean`, without the sections
@@ -2215,14 +2268,16 @@ for file in RsaPublic RsaBytes RsaIfma RsaVerify RsaPss RsaKey SignatureBuffer R
         -e 's/ (hifma : IfmaCheckReturns)//; s/ hifma / /' -e 's/X86_64/Portable/g; s/x86_64/portable/g' \
         "proofs/Rind/X86_64/$file.lean" >"proofs/Rind/Portable/$file.lean"
 done
-# armv7's header-protection, agreement, and compares' models and ChaCha20 and
-# X25519 proofs are x86_64's with the target renamed. X25519's are over
-# `Rind.Armv7.Curve25519`'s dispatch where x86_64's are over s2n-bignum's:
-# the CPU check that picks the routine is NEON's. armv7's compares live in
-# `low::arm::cpu`.
-for file in QuicDispatch Dispatch P256Dispatch P384Dispatch ChaCha20 CtEqual X25519Bytes X25519 AeadDispatch AeadVec \
-    AesGcmApi GcmKey; do
-    sed 's/X86_64/Armv7/g; s/x86_64/armv7/g; s/low\.armv7\.cpu/low.arm.cpu/g; s/Rind\.Armv7\.S2nBignum/Rind.Armv7.Curve25519/; s/low\.armv7\.curve25519_ifma\.Curve25519Ifma/low.arm.cpu.HaveNeon/g; s/CurveIfma/DalekCpu/g' \
+# armv7's header-protection, agreement, AEAD, and compares' models and its
+# ChaCha20, X25519, AEAD, and SHA-512 context proofs are x86_64's with the
+# target renamed. X25519's are over `Rind.Armv7.Curve25519`'s dispatch where
+# x86_64's are over s2n-bignum's: the CPU check that picks the routine is
+# NEON's. armv7's compares live in `low::arm::cpu`. SHA-512's context is over
+# `Rind/Armv7/Sha512Entry.lean`'s block-function contract, as the portable
+# backend's is.
+for file in QuicDispatch Dispatch P256Dispatch P384Dispatch ChaCha20 CtEqual X25519Bytes X25519 Blockwise \
+    Sha512Context AeadDispatch AeadVec AesGcmApi GcmKey; do
+    sed 's/X86_64/Armv7/g; s/x86_64/armv7/g; s/low\.armv7\.cpu/low.arm.cpu/g; s/Rind\.Armv7\.S2nBignum/Rind.Armv7.Curve25519/; s/low\.armv7\.curve25519_ifma\.Curve25519Ifma/low.arm.cpu.HaveNeon/g; s/CurveIfma/DalekCpu/g; s/Rind\.Armv7\.AwsLc/Rind.Armv7.Sha512Entry/' \
         "proofs/Rind/X86_64/$file.lean" >"proofs/Rind/Armv7/$file.lean"
 done
 # armv7's AEAD model leaves out `RandomizedNonceKey`, whose XChaCha20-Poly1305

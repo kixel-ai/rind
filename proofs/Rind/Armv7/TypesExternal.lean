@@ -52,6 +52,11 @@ opaque mid.p521.PrivateKey : Type
 
 opaque mid.p521.PublicKey : Type
 
+/-- curve25519-dalek's point, which the translation leaves opaque: rind only
+passes it between dalek's functions, and `Rind.Armv7.Dalek` states what they
+do to the point it represents. -/
+opaque curve25519_dalek.edwards.EdwardsPoint : Type
+
 /-- ChaCha20-Poly1305's key, which `aead::Key` holds and whose armv7 code no
 proof covers yet. -/
 opaque mid.chacha20poly1305.ChaCha20Poly1305 : Type
