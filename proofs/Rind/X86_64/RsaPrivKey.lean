@@ -11,11 +11,13 @@ operation takes. `rsa_private_key_new_spec` proves that a key it returns
 meets `PrivKeyInv`, which `private_op_spec` takes, and holds the values it
 was given, and that those meet `CrtRelations`, RFC 8017's relations between
 the components: `n = p·q`, `dP = d mod (p - 1)`, `dP·e ≡ 1 (mod p - 1)`, the
-same for `q`, and `qInv < p` with `qInv·q ≡ 1 (mod p)`. It takes two
-hypotheses: `HaveAvx512ForRsa::check` returns none, so
-pyca/verified-garbage's IFMA CRT is not set up (a CPU with AVX-512 IFMA
-fails it even for a key size VG's CRT does not take, such as 3072 bits
-without AVX512_FP16), and `MontProducts` holds at the wider prime's width.
+same for `q`, and `qInv < p` with `qInv·q ≡ 1 (mod p)`. Beyond the entry
+guard and the inputs' representation (each within its width, its words above
+that width zero, and `n`'s top word nonzero), it assumes that
+`HaveAvx512ForRsa::check` returns none, so pyca/verified-garbage's IFMA CRT
+is not set up (a CPU with AVX-512 IFMA fails it even for a key size VG's CRT
+does not take, such as 3072 bits without AVX512_FP16), and that
+`MontProducts` holds at the wider prime's width.
 It characterizes the keys `new` returns, not which inputs it accepts.
 -/
 
