@@ -130,10 +130,22 @@ final class BenchView extends LinearLayout {
         clearBtn.setOnClickListener(v -> clearTapped());
         resultsBtn.setVisibility(GONE);
         clearBtn.setVisibility(GONE);
-        statusCard.addView(statusTitle);
+        // Header: state and summary on the left, View results on the right so it
+        // stays in view on short screens (phone landscape) without scrolling.
+        LinearLayout head = new LinearLayout(host);
+        head.setOrientation(HORIZONTAL);
+        head.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout headText = new LinearLayout(host);
+        headText.setOrientation(VERTICAL);
+        headText.addView(statusTitle);
         LayoutParams sl = new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
         sl.topMargin = Theme.dpi(host, 4);
-        statusCard.addView(statusLbl, sl);
+        headText.addView(statusLbl, sl);
+        head.addView(headText, new LayoutParams(0, LayoutParams.WRAP_CONTENT, 1));
+        LayoutParams rb = new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
+        rb.setMarginStart(s2);
+        head.addView(resultsBtn, rb);
+        statusCard.addView(head);
         LayoutParams pl = new LayoutParams(LayoutParams.MATCH_PARENT, Theme.dpi(host, 4));
         pl.topMargin = Theme.dpi(host, 12);
         statusCard.addView(progress, pl);
@@ -143,12 +155,10 @@ final class BenchView extends LinearLayout {
         LinearLayout acts = new LinearLayout(host);
         acts.setOrientation(HORIZONTAL);
         acts.setGravity(Gravity.CENTER_VERTICAL);
-        acts.addView(resultsBtn);
-        LayoutParams cl = new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
-        cl.setMarginStart(s2);
-        acts.addView(clearBtn, cl);
+        acts.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+        acts.addView(clearBtn);
         LayoutParams al = new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
-        al.topMargin = Theme.dpi(host, 8);
+        al.topMargin = Theme.dpi(host, 4);
         statusCard.addView(acts, al);
 
         // Footer: consent and Start, always on screen.
@@ -236,11 +246,12 @@ final class BenchView extends LinearLayout {
         LayoutParams card = new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
         card.leftMargin = card.rightMargin = s4;
         card.topMargin = Theme.dpi(host, 8);
+        card.bottomMargin = Theme.dpi(host, 8);
         if (wide) {
             setOrientation(HORIZONTAL);
             colA.addView(testsBlock);
-            colB.addView(collector.view);
             colB.addView(statusCard, card);
+            colB.addView(collector.view);
             rightPane.addView(footer, foot);
             addView(leftPane, new LayoutParams(0, LayoutParams.MATCH_PARENT, 1));
             View rule = new View(host);
@@ -249,9 +260,9 @@ final class BenchView extends LinearLayout {
             addView(rightPane, new LayoutParams(0, LayoutParams.MATCH_PARENT, 1));
         } else {
             setOrientation(VERTICAL);
-            colA.addView(collector.view);
             colA.addView(testsBlock);
             colA.addView(statusCard, card);
+            colA.addView(collector.view);
             leftPane.addView(footer, foot);
             addView(leftPane, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
         }
