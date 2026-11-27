@@ -2056,7 +2056,7 @@ for file in Dispatch QuicDispatch P256Dispatch P256Agree P384Dispatch X25519Byte
     DigestDispatch Sha512 ChaCha20 SignatureBuffer Ed25519 \
     Blockwise Sha Hmac HmacDispatch HkdfExpand Kdf/TypesExternal Kdf/FunsExternal \
     CtEqual HmacApi DigestApi Hkdf Pbkdf2 Sha3 AesCipher HkdfAes AesModesApi AesKw P256 EcdsaDispatch Naf P256Ecdsa P256Signature \
-    P384Ecdsa P384Signature MlKemCoding AeadDispatch AeadVec ChaCha20Poly1305Api; do
+    P384Ecdsa P384Signature MlKemCoding MlKemCbd AeadDispatch AeadVec ChaCha20Poly1305Api; do
     sed 's/X86_64/Aarch64/g; s/x86_64/aarch64/g' "proofs/Rind/X86_64/$file.lean" >"proofs/Rind/Aarch64/$file.lean"
 done
 # aarch64's KDF translation does not reach the AEAD key's conversion.
