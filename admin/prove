@@ -1005,54 +1005,59 @@ lean_deps() {
 # platform, since Lake's hashes may differ between them; their artifacts are
 # hard links into a pool that holds each once. Entries unread for 14 days go,
 # and with them the artifacts no other entry holds. From `proofs/`.
-lake_fetched=${XDG_CACHE_HOME:-$HOME/.cache}/rind/lake-fetched
 lake_platform=$(uname -s)-$(uname -m)
 # On the SSH host, given the platform: prints the first of the commits after
 # it that has an entry, marking the entry read.
 lake_remote_find='d=${XDG_CACHE_HOME:-$HOME/.cache}/rind/lake/$1; shift
 for r in "$@"; do if [ -f "$d/$r/outputs.jsonl" ]; then touch "$d/$r"; echo "$r"; exit 0; fi; done'
 # On the SSH host, given the platform and a commit: stores the staged
-# outputs on stdin as that commit's entry, unless it has one, then prunes.
+# outputs on stdin as that commit's entry, unless it has one, then prunes,
+# under a lock, since two uploads can hold the same new artifact.
 lake_remote_put='set -e; d=${XDG_CACHE_HOME:-$HOME/.cache}/rind/lake/$1; t=$d/tmp.$$
 mkdir -p "$d/pool" "$t"; tar -xf - -C "$t"
+exec 9>"$d/lock"; flock 9
 for f in "$t"/*; do n=${f##*/}; [ "$n" = outputs.jsonl ] && continue
 if [ -e "$d/pool/$n" ]; then ln -f "$d/pool/$n" "$f"; else ln "$f" "$d/pool/$n"; fi; done
 if [ -e "$d/$2" ]; then rm -rf "$t"; else mv "$t" "$d/$2"; fi
 find "$d" -mindepth 1 -maxdepth 1 \( -name "tmp.*" -mtime +1 -o -name "[0-9a-f]*" -mtime +14 \) -exec rm -rf {} +
 find "$d/pool" -type f -links 1 -exec rm -f {} +'
 
-# Takes the nearest commit's entry into Lake's cache, unless this host
-# already took it.
+# Takes the nearest commit's entry into Lake's cache, unless this checkout
+# already took it, which `.lake/rind-fetched` records.
 lake_get() {
-    local rev stage=../$out/lake-stage
+    local rev stage=../$out/lake-stage cache input
     [[ -n ${RIND_PROVE_CACHE_HOST:-} ]] || return 0
-    mkdir -p "$lake_fetched"
-    find "$lake_fetched" -type f -mtime +14 -delete
     # shellcheck disable=SC2046 # one argument per commit
     rev=$(ssh -o BatchMode=yes "$RIND_PROVE_CACHE_HOST" "sh -c '$lake_remote_find' sh $lake_platform" \
         $(git rev-list --first-parent -n 100 HEAD) </dev/null) || {
         echo "admin/prove: cannot read the Lake cache on RIND_PROVE_CACHE_HOST, $RIND_PROVE_CACHE_HOST" >&2
         return 1
     }
-    [[ -n $rev && ! -e $lake_fetched/$lake_platform-$rev ]] || return 0
+    [[ -n $rev && $rev != "$(cat .lake/rind-fetched 2>/dev/null)" ]] || return 0
     rm -rf "$stage"
     mkdir -p "$stage"
     ssh -o BatchMode=yes "$RIND_PROVE_CACHE_HOST" \
         "tar -cf - -C \"\${XDG_CACHE_HOME:-\$HOME/.cache}/rind/lake/$lake_platform/$rev\" ." </dev/null |
         tar -xf - -C "$stage"
-    # Over this host's own outputs for the same inputs, so the entry's
-    # importers match: see UPSTREAM.md, "Lean's `.olean` differs between
-    # builds of the same inputs".
-    lake cache unstage --force-overwrite "$stage"
-    rm -rf "$stage"
-    touch "$lake_fetched/$lake_platform-$rev"
+    # The entry's outputs replace this host's own for the same inputs, and
+    # this checkout's build, so the entry's importers match: see UPSTREAM.md,
+    # "Lean's `.olean` differs between builds of the same inputs". Only the
+    # mappings go, not `--force-overwrite`'s artifacts, which another
+    # checkout's build may be reading; an artifact's name is its content's.
+    cache=$(lake env printenv LAKE_CACHE_DIR)
+    sed -n 's/^\["\([0-9a-f]*\)",.*/\1/p' "$stage/outputs.jsonl" | while read -r input; do
+        rm -f "$cache/outputs/rind/$input.json"
+    done
+    lake cache unstage "$stage"
+    rm -rf "$stage" .lake/build
+    echo "$rev" >.lake/rind-fetched
 }
 
 # Leaves the outputs of the build whose mappings are in `$1` as this commit's
-# entry, unless it has one.
+# entry, unless it has one or the proofs differ from the commit's.
 lake_put() {
     local rev stage=../$out/lake-stage found
-    [[ -n ${RIND_PROVE_CACHE_HOST:-} ]] || return 0
+    [[ -n ${RIND_PROVE_CACHE_HOST:-} && -z $(git status --porcelain --untracked-files=all -- .) ]] || return 0
     rev=$(git rev-parse HEAD)
     found=$(ssh -o BatchMode=yes "$RIND_PROVE_CACHE_HOST" "sh -c '$lake_remote_find' sh $lake_platform $rev" </dev/null) || {
         echo "admin/prove: cannot read the Lake cache on RIND_PROVE_CACHE_HOST, $RIND_PROVE_CACHE_HOST" >&2
@@ -1067,7 +1072,7 @@ lake_put() {
         return 1
     }
     rm -rf "$stage"
-    touch "$lake_fetched/$lake_platform-$rev"
+    echo "$rev" >.lake/rind-fetched
 }
 
 # Tests the Lean specs the proofs trust, as `admin/spec-tests` describes:
@@ -2576,7 +2581,8 @@ dalek
 cd proofs
 lean_deps
 lake_get
-lake build -o "../$out/lake-outputs.jsonl"
+# The mappings, which archive each module's outputs, only for `lake_put`.
+lake build ${RIND_PROVE_CACHE_HOST:+-o "../$out/lake-outputs.jsonl"}
 lake_put "../$out/lake-outputs.jsonl"
 [[ ${#skipped[@]} -gt 0 ]] || lake env lean "../$out/SimdVectors.lean"
 cd ..
