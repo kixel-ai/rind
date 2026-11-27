@@ -59,6 +59,15 @@ public class MainActivity extends Activity {
     private View resultsCard;
     private TextView picksLbl;
     private boolean wide, showingRun;
+    // Between Start and the run: the collector lookup runs on a thread, and
+    // consent stays locked until begin() checks it again.
+    private boolean starting;
+    // Set in onDestroy: a lookup that returns after it starts nothing.
+    private boolean destroyed;
+    // Between onStart and onStop.
+    private boolean visible;
+    // A device runner's pending autostart, which onStop cancels.
+    private Runnable autostart;
     // The window is too short for the picker card even empty: fitPicker collapses it.
     private boolean squeezed;
     private Flow libFlow, secFlow;
@@ -467,7 +476,16 @@ public class MainActivity extends Activity {
         } catch (Exception e) { statusLbl.setText("Could not read the list of tests: " + e); }
         agreeChanged();
         reportLayout("ready");
-        if (Collector.RUNNER && getIntent().getBooleanExtra("autostart", false)) ui.postDelayed(() -> { agree.setChecked(true); startTapped(); }, 3000);
+        if (Collector.RUNNER && getIntent().getBooleanExtra("autostart", false)) {
+            autostart = () -> {
+                autostart = null;
+                // Only for the Activity still on screen: not one that is
+                // closing, closed, or left for another app.
+                if (destroyed || isFinishing() || !visible) return;
+                agree.setChecked(true); startTapped();
+            };
+            ui.postDelayed(autostart, 3000);
+        }
     }
 
     /**
@@ -531,22 +549,34 @@ public class MainActivity extends Activity {
         return out;
     }
 
-    private void agreeChanged() { setEnabledLook(startBtn, agree.isChecked() && catalog != null && !polling); }
+    private void agreeChanged() { setEnabledLook(startBtn, agree.isChecked() && catalog != null && !polling && !starting); }
 
     private void startTapped() {
-        if (!agree.isChecked() || catalog == null || polling) return;
+        if (!agree.isChecked() || catalog == null || polling || starting || destroyed) return;
         List<String> libs = new ArrayList<>(), secs = new ArrayList<>();
         for (Map.Entry<String, TextView> e : libChips.entrySet()) if (e.getValue().isSelected()) libs.add(e.getKey());
         for (Map.Entry<String, TextView> e : secChips.entrySet()) if (e.getValue().isSelected()) secs.add(e.getKey());
         if (moreChip != null && moreChip.isSelected()) secs.addAll(moreSections);
         if (libs.isEmpty() || secs.isEmpty()) { statusLbl.setText("Pick at least one library and one operation"); return; }
-        setEnabledLook(startBtn, false);
+        // Consent cannot change while the lookup runs; begin() checks it again.
+        starting = true; agree.setEnabled(false); agreeChanged();
         statusLbl.setText("Starting. Connecting to the computer that installed this app.");
         // Look again right before the run, so a cable plugged in (or Wi-Fi joined) since launch is used.
         findCollector(() -> begin(libs, secs));
     }
 
+    /** Gives consent back to the user after a start that did not happen. */
+    private void notStarted(String why) {
+        statusLbl.setText(why); agree.setEnabled(true); agreeChanged();
+    }
+
     private void begin(List<String> libs, List<String> secs) {
+        starting = false;
+        // The Activity closed while the lookup ran: start nothing, send nothing.
+        if (destroyed || isFinishing()) return;
+        // Consent is locked from Start, but check it here, where the run and
+        // its upload begin, so no path can start one without it.
+        if (!agree.isChecked()) { notStarted("Not started: the consent box is not ticked."); return; }
         try {
             JSONObject cfg = new JSONObject();
             cfg.put("libraries", new JSONArray(libs)); cfg.put("sections", new JSONArray(secs));
@@ -556,7 +586,7 @@ public class MainActivity extends Activity {
             if (colHost != null) { cfg.put("host", colHost); cfg.put("port", colPort); }
             JSONObject env = new JSONObject(); env.put("RIND_BENCH_KEYS_DIR", keysDir); cfg.put("env", env);
             if (Native.start(cfg.toString()) != 0) {
-                statusLbl.setText("Could not start: " + new JSONObject(Native.status()).optString("start_error")); agreeChanged(); return;
+                notStarted("Could not start: " + new JSONObject(Native.status()).optString("start_error")); return;
             }
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
             startBtn.setVisibility(View.GONE); clearBtn.setVisibility(View.GONE);
@@ -566,7 +596,25 @@ public class MainActivity extends Activity {
             showingRun = true; foldPicker();
             polling = true; ran = true; ui.post(this::poll);
             reportLayout("run");
-        } catch (Exception e) { statusLbl.setText("Could not start: " + e); agreeChanged(); }
+        } catch (Exception e) { notStarted("Could not start: " + e); }
+    }
+
+    @Override protected void onStart() { super.onStart(); visible = true; }
+
+    @Override protected void onStop() {
+        // Leaving the Activity (Home, Recents, Back) cancels a pending
+        // autostart: a runner's run needs the screen it set up.
+        visible = false;
+        if (autostart != null) { ui.removeCallbacks(autostart); autostart = null; }
+        super.onStop();
+    }
+
+    @Override protected void onDestroy() {
+        // Drop the pending poll, layout reports, autostart and any lookup's
+        // start, so a closed Activity starts no run.
+        destroyed = true;
+        ui.removeCallbacksAndMessages(null);
+        super.onDestroy();
     }
 
     private void stopTapped() { Native.stop(); setEnabledLook(stopBtn, false); statusLbl.setText("Stopping after the current row…"); }
