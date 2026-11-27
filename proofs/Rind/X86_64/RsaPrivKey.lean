@@ -1,4 +1,5 @@
 import Rind.X86_64.RsaPrivate
+import Rind.X86_64.RsaKey
 open Aeneas Aeneas.Std Result rind.spec rind.spec.rsa
 
 /-!
@@ -371,7 +372,6 @@ theorem reduce_even_loop1_spec {N M : Usize} (sw : Std.Array U64 N) (mw : Std.Ar
     (hbM : 2 ^ bits.val ≤ wordsNat (mw.val.take k.val)) (hjl : j.val < sw.val.length)
     (hw : (sw.val[j.val]'hjl).val = w)
     (hs : iter.iter.start.val = 0) (he : iter.iter.end.val * bits.val ≤ 64)
-    (hR0 : R0 < wordsNat (mw.val.take k.val))
     (ha : a.used = k) (hb : b.used = k) (hau : addend.used = k)
     (had : addend.words.val.drop 1 = List.replicate (M.val - 1) 0#u64)
     (hv : wordsNat (lowWords (held a b in_b) k) =
@@ -502,7 +502,7 @@ theorem reduce_even_loop0_spec {N M : Usize} (sw : Std.Array U64 N) (mw : Std.Ar
       step with reduce_even_loop1_spec sw mw k bits j iter2 a b addend in_b
         (wordsNat (lowWords (held a b in_b) k)) (sw.val[j.val]'hjl).val hk hk1 hbits hbM hjl rfl
         (by rw [hiter2]; rfl) (by rw [hiter2, hi1, Nat.mul_comm, hbP])
-        hR0 ha hb hau had
+        ha hb hau had
         (by
           rw [hiter2, hi1, hbP, Nat.sub_self, pow_zero, mul_one, Nat.div_eq_of_lt hw64, add_zero]
           exact (Nat.mod_eq_of_lt hR0).symm)
@@ -595,6 +595,479 @@ theorem reduce_even_spec {N M : Usize} (self : low.posint.PosInt N) (m : low.pos
   · simp only [held, ↓reduceIte] at hv
     simp only [↓reduceIte, WP.spec_ok]
     exact ⟨hb1, hv⟩
+
+/-! ## The other `PosInt` helpers key loading runs -/
+
+theorem one_spec (N : Usize) (hN : 1 ≤ N.val) :
+    low.posint.PosInt.one N ⦃ r => r.used.val = 1 ∧ r.words.val = 1#u64 :: List.replicate (N.val - 1) 0#u64 ⦄ := by
+  unfold low.posint.PosInt.one low.posint.PosInt.zero
+  step*
+  refine ⟨rfl, ?_⟩
+  obtain ⟨j, hj⟩ : ∃ j, N.val = j + 1 := ⟨N.val - 1, by omega⟩
+  simp [a_post, Array.repeat_val, hj, List.replicate_succ]
+
+theorem sub_spec {N : Usize} (self b : low.posint.PosInt N) (hu : self.used.val ≤ N.val)
+    (hle : wordsNat (lowWords b self.used) ≤ wordsNat (lowWords self self.used)) :
+    low.posint.PosInt.sub self b ⦃ r => r.used = self.used ∧
+      wordsNat (lowWords r self.used) = wordsNat (lowWords self self.used) - wordsNat (lowWords b self.used) ⦄ := by
+  unfold low.posint.PosInt.sub low.posint.PosInt.zero low.posint.PosInt.as_mut_words
+    low.posint.PosInt.as_words low.posint.PosInt.as_words_with_len_of
+  step*
+  obtain ⟨s, back⟩ := x
+  dsimp only at *
+  step as ⟨s1, hs1, hs1l⟩
+  step as ⟨s2, hs2, hs2l⟩
+  have hs1v : s1.val = lowWords self self.used := by simp [lowWords, hs1]
+  have hs2v : s2.val = lowWords b self.used := by simp [lowWords, hs2]
+  step with bignum_optsub_spec s s1 s2 1#u64 (by rw [hs1l, x_post1]) (by rw [hs2l, x_post1])
+    as ⟨s3, hs3l, hs3v⟩
+  rw [ite_eq_right Nat.one_ne_zero, ite_eq_left (show wordsNat s2.val ≤ wordsNat s1.val by rw [hs1v, hs2v]; exact hle), hs1v, hs2v]
+    at hs3v
+  have hlw := (mont_into_post { self with words := Array.repeat N 0#u64 } self back x_post2 hu s3
+    (by rw [hs3l, x_post1])).1
+  rw [hlw, hs3v]
+
+theorem word_spec (N : Usize) (w : U64) (hN : 1 ≤ N.val) :
+    low.posint.PosInt.word N w ⦃ r => r.used.val = 1 ∧ r.words.val = w :: List.replicate (N.val - 1) 0#u64 ⦄ := by
+  unfold low.posint.PosInt.word low.posint.PosInt.zero low.posint.PosInt.push_word
+  have hN0 : ¬ (0#usize = N) := by intro h; rw [← h] at hN; simp at hN
+  simp only [bind_ok, hN0, ↓reduceIte]
+  step as ⟨a, ha⟩
+  step as ⟨i, hi⟩
+  simp only [bind_ok, core.result.Result.unwrap, WP.spec_ok]
+  refine ⟨by rw [hi], ?_⟩
+  obtain ⟨j, hj⟩ : ∃ j, N.val = j + 1 := ⟨N.val - 1, by omega⟩
+  simp [ha, Array.repeat_val, hj, List.replicate_succ]
+
+theorem montifier_spec {N : Usize} (self : low.posint.PosInt N) (hu : self.used.val ≤ N.val)
+    (hodd : wordsNat (lowWords self self.used) % 2 = 1) :
+    low.posint.PosInt.montifier self ⦃ r => r.used = self.used ∧
+      wordsNat (lowWords r self.used) = 2 ^ (128 * self.used.val) % wordsNat (lowWords self self.used) ⦄ := by
+  unfold low.posint.PosInt.montifier low.posint.PosInt.zero low.posint.PosInt.as_mut_words
+    low.posint.PosInt.as_words
+  step*
+  obtain ⟨s, back⟩ := x
+  dsimp only at *
+  step as ⟨s1, hs1, hs1l⟩
+  step as ⟨y, hy, hyl, hyback⟩
+  obtain ⟨t, back1⟩ := y
+  dsimp only at *
+  have hs1v : s1.val = lowWords self self.used := by simp [lowWords, hs1]
+  step with bignum_montifier_spec s s1 t (by rw [hs1l, x_post1]) (by rw [hyl, x_post1])
+    as ⟨s3, t3, hs3l, hs3v⟩
+  have hv := hs3v (by rw [hs1v]; exact hodd)
+  rw [hs1v, x_post1] at hv
+  have hlw := (mont_into_post { self with words := Array.repeat N 0#u64 } self back x_post2 hu s3
+    (by rw [hs3l, x_post1])).1
+  rw [hlw, hv]
+
+/-- A value's parity is its low word's. -/
+theorem wordsNat_mod_two (l : List U64) (h : 0 < l.length) : wordsNat l % 2 = (l[0]'h).val % 2 := by
+  cases l with
+  | nil => simp at h
+  | cons x l =>
+    simp only [List.getElem_cons_zero, wordsNat_cons]
+    rw [show (2 : Nat) ^ 64 = 2 * 2 ^ 63 by norm_num, mul_assoc, Nat.add_mul_mod_self_left]
+
+theorem is_even_spec {N : Usize} (self : low.posint.PosInt N) (hN : 1 ≤ N.val) (hc : Clean self) :
+    low.posint.PosInt.is_even self ⦃ b => b = decide (wordsNat (lowWords self self.used) % 2 = 0) ⦄ := by
+  unfold low.posint.PosInt.is_even
+  step*
+  have hl : 0 < self.words.val.length := by have := self.words.property; omega
+  have hi1 : i1.val = i.val % 2 := by rw [i1_post, UScalar.val_and]; simp [Nat.and_one_is_mod]
+  have hP : wordsNat (lowWords self self.used) % 2 = i.val % 2 := by
+    rw [← hc, wordsNat_mod_two _ hl, i_post]
+  rw [decide_eq_decide, UScalar.eq_equiv, hi1, hP]
+  exact Iff.rfl
+
+/-! ## `exponents_agree`: RFC 8017's relations between `d`, `dP`, and `e` -/
+
+/-- `exponents_agree` checks that `dp` is `d mod (p - 1)` and an inverse of
+`e` modulo `p - 1`, for a `p` of at least three whose top word is nonzero. -/
+theorem exponents_agree_spec (p dp e : low.posint.PosInt 64#usize) (d : low.posint.PosInt 128#usize)
+    (hpu1 : 1 ≤ p.used.val) (hpu : p.used.val ≤ 64)
+    (htop : 2 ^ (64 * (p.used.val - 1)) < wordsNat (lowWords p p.used))
+    (h3 : 3 ≤ wordsNat (lowWords p p.used))
+    (hdu : d.used.val ≤ 128) (hdpu : dp.used.val ≤ 64) (heu : e.used.val ≤ 64) :
+    mid.rsa_priv.exponents_agree p d dp e ⦃ b =>
+      b = true ↔
+        (wordsNat (lowWords d d.used) % (wordsNat (lowWords p p.used) - 1) = wordsNat (lowWords dp dp.used) ∧
+          wordsNat (lowWords d d.used) % (wordsNat (lowWords p p.used) - 1) * wordsNat (lowWords e e.used) %
+            (wordsNat (lowWords p p.used) - 1) = 1) ⦄ := by
+  unfold mid.rsa_priv.exponents_agree
+  set P := wordsNat (lowWords p p.used) with hP
+  have h64 : (64#usize : Usize).val = 64 := rfl
+  have h128 : (128#usize : Usize).val = 128 := rfl
+  step with one_spec 64#usize (by rw [h64]; omega) as ⟨o, hou, how⟩
+  have hov : wordsNat (lowWords o p.used) = 1 := wordsNat_first o 1#u64 p.used.val hpu1 how
+  step with sub_spec p o (by rw [h64]; exact hpu) (by rw [hov]; omega) as ⟨p1, hp1u, hp1v⟩
+  rw [hov] at hp1v
+  have hp1v' : wordsNat (lowWords p1 p1.used) = P - 1 := by rw [hp1u]; exact hp1v
+  step with reduce_even_spec d p1 (by rw [h64, h128]; omega) (by rw [hp1u]; exact hpu1)
+    (by rw [hp1u, h64]; exact hpu) (by rw [h128]; exact hdu) (by rw [hp1v', hp1u]; omega)
+    (by rw [hp1v']; omega) as ⟨dpp, hdppu, hdppv⟩
+  rw [hp1v'] at hdppv
+  have hdppu' : dpp.used.val = p.used.val := by rw [hdppu, hp1u]
+  step with posint_mul_spec 128#usize dpp e (by rw [h64, h128]) (by rw [hdppu', h64]; exact hpu)
+    (by rw [h64]; exact heu) as ⟨dpe, hdpeu, hdpev⟩
+  step with equals_spec dpp dp (by rw [hdppu', h64]; exact hpu) (by rw [h64]; exact hdpu) as ⟨b, hb⟩
+  step with reduce_even_spec dpe p1 (by rw [h64, h128]; omega) (by rw [hp1u]; exact hpu1)
+    (by rw [hp1u, h64]; exact hpu) (by rw [h128, hdpeu]; omega) (by rw [hp1v', hp1u]; omega)
+    (by rw [hp1v']; omega) as ⟨r1, hr1u, hr1v⟩
+  rw [hp1v'] at hr1v
+  step with fixed_one_spec p1 (by rw [hp1u]; exact hpu1) (by rw [hp1u, h64]; exact hpu) as ⟨o1, ho1u, ho1v⟩
+  step with equals_spec r1 o1 (by rw [hr1u, hp1u, h64]; exact hpu) (by rw [ho1u, hp1u, h64]; exact hpu)
+    as ⟨b1, hb1⟩
+  have hdppv' : wordsNat (lowWords dpp dpp.used) = wordsNat (lowWords d d.used) % (P - 1) := by
+    rw [hdppu]; exact hdppv
+  rw [hb, hb1, hr1u, ho1u, ho1v, hr1v, hdpev, hdppv']
+  simp
+
+/-! ## `RsaPrivateKey::new` -/
+
+theorem div_ceil_spec (a b : Usize) (hb : 0 < b.val) :
+    core.num.Usize.div_ceil a b ⦃ r => r.val = (a.val + b.val - 1) / b.val ⦄ := by
+  unfold core.num.Usize.div_ceil
+  simp [show ¬ b.val = 0 by omega, WP.spec_ok, UScalar.ofNatCore_val_eq]
+
+theorem contains_usize (lo hi x : Usize) :
+    core.ops.range.RangeInclusive.contains core.cmp.PartialOrdUsize core.cmp.PartialOrdUsize
+      core.cmp.PartialOrdUsize ⟨lo, hi, false⟩ x = ok (decide (lo.val ≤ x.val ∧ x.val ≤ hi.val)) := by
+  by_cases h1 : lo.val ≤ x.val <;>
+    simp [core.ops.range.RangeInclusive.contains, core.cmp.impls.PartialOrdUsize.le, liftFun2, h1]
+
+/-- On a CPU without AVX-512 IFMA, pyca/verified-garbage's CRT does not run. -/
+theorem ifma_crt_new_none (h : low.x86_64.cpu.HaveAvx512ForRsa.check = ok none) (n nm p q : Slice U64) :
+    low.x86_64.rsa_ifma.IfmaCrt.new n nm p q ⦃ r => r.w = 0#usize ⦄ := by
+  unfold low.x86_64.rsa_ifma.IfmaCrt.new low.x86_64.rsa_ifma.IfmaCrt.try_new
+  simp [h, core.option.Option.Insts.CoreOpsTry_traitTry.branch,
+    core.option.Option.Insts.CoreOpsTry_traitFromResidualOptionNever.from_residual,
+    core.option.Option.unwrap_or, WP.spec_ok]
+
+theorem secret_from {N : Usize} (pi : low.posint.PosInt N) :
+    low.posint.SecretPosInt.Insts.CoreConvertFromPosInt.from pi = ok pi := by
+  simp [low.posint.SecretPosInt.Insts.CoreConvertFromPosInt.from, low.ct.into_secret]
+
+theorem secret_deref {N : Usize} (pi : low.posint.SecretPosInt N) :
+    low.posint.SecretPosInt.Insts.CoreOpsDerefDerefPosInt.deref pi = ok pi := rfl
+
+/-- A clean value fits the words its bit length needs. -/
+theorem fits_size {N : Usize} (p : low.posint.PosInt N) (w : Nat)
+    (hw : (wordsNat (lowWords p p.used)).size ≤ 64 * w) :
+    wordsNat (lowWords p p.used) < 2 ^ (64 * w) :=
+  lt_of_lt_of_le (Nat.lt_size_self _) (Nat.pow_le_pow_right (by norm_num) hw)
+
+/-- An odd value of at least two is above the power of two its top word
+starts at, at the width its bit length needs. -/
+theorem top_word_lt (X w : Nat) (hw : w = (X.size + 64 - 1) / 64) (hodd : X % 2 = 1) (h2 : 2 ≤ X) :
+    2 ^ (64 * (w - 1)) < X := by
+  have hs : 1 ≤ X.size := Nat.size_pos.mpr (by omega)
+  have hle : 2 ^ (64 * (w - 1)) ≤ X := Nat.lt_size.mp (by omega)
+  rcases Nat.lt_or_eq_of_le hle with h | h
+  · exact h
+  · exfalso
+    rcases Nat.eq_zero_or_pos (64 * (w - 1)) with h0 | h0
+    · rw [h0] at h; omega
+    · rw [← Nat.succ_pred_eq_of_pos h0, Nat.pow_succ] at h; omega
+
+/-- A Montgomery form of `C mod M` is `C·R mod M`. -/
+theorem mont_pow_one_eq {M R C : Nat} {a : List U64} (h : MontPow M R (C % M) 1 a) :
+    wordsNat a = C * R % M := by
+  obtain ⟨hlt, hmod⟩ := h
+  rw [pow_one] at hmod
+  unfold Nat.ModEq at hmod
+  rw [← Nat.mod_eq_of_lt hlt, hmod, Nat.mul_mod, Nat.mod_mod, ← Nat.mul_mod]
+
+/-- The Montgomery product of `qInv`'s Montgomery form and `q mod p` is one
+just when `qInv` inverts `q` modulo `p`. -/
+theorem iqmp_inverse {P Q IQ k a : Nat} (hP : 1 < P) (hodd : P % 2 = 1)
+    (ha : a = IQ * 2 ^ k % P) (h : 1 * 2 ^ k % P = a * (Q % P) % P) : IQ * Q % P = 1 := by
+  have h1 : 1 * 2 ^ k ≡ IQ * Q * 2 ^ k [MOD P] := by
+    show 1 * 2 ^ k % P = IQ * Q * 2 ^ k % P
+    rw [h, ha, ← Nat.mul_mod, Nat.mul_right_comm]
+  have := mont_cancel (coprime_two_pow_odd hodd k) h1
+  unfold Nat.ModEq at this
+  rw [Nat.mod_eq_of_lt hP] at this
+  exact this.symm
+
+/-- The width, in words, a private key works at: its wider prime's. -/
+def keyWords (P Q : Nat) : Nat := max ((P.size + 63) / 64) ((Q.size + 63) / 64)
+
+/-- The key's width is its primes' wider, at most 64 words for primes of at
+most 4096 bits. -/
+theorem keyWords_bounds (P Q pw qw : Nat) (hpw : pw = (P.size + 64 - 1) / 64) (hqw : qw = (Q.size + 64 - 1) / 64)
+    (hP : P.size ≤ 4096) (hQ : Q.size ≤ 4096) :
+    pw ≤ keyWords P Q ∧ qw ≤ keyWords P Q ∧ keyWords P Q ≤ 64 ∧
+      (P.size < Q.size → pw ≤ qw ∧ qw = keyWords P Q) ∧ (¬ P.size < Q.size → qw ≤ pw ∧ pw = keyWords P Q) := by
+  unfold keyWords
+  refine ⟨?_, ?_, ?_, fun h => ⟨?_, ?_⟩, fun h => ⟨?_, ?_⟩⟩ <;> omega
+
+/-- RFC 8017's relations between a private key's components, which
+`RsaPrivateKey::new` checks: `n = p·q`; `dP` is `d mod (p - 1)` and inverts
+`e` modulo `p - 1`, and `dQ` the same for `q`; and `qInv` is below `p` and
+inverts `q` modulo `p`. -/
+def CrtRelations (N P Q D DP DQ QINV E : Nat) : Prop :=
+  N = P * Q ∧ DP = D % (P - 1) ∧ DP * E % (P - 1) = 1 ∧ DQ = D % (Q - 1) ∧ DQ * E % (Q - 1) = 1 ∧
+    QINV < P ∧ QINV * Q % P = 1
+
+/-- What `RsaPrivateKey::new` returns for its components: a key that meets
+`PrivKeyInv`, as the private operation needs, holds them, and they meet
+`CrtRelations`; pyca/verified-garbage's CRT does not run for it. -/
+def KeyLoaded (p q dp dq iqmp : low.posint.PosInt 64#usize) (d n : RsaInt) (e : U64)
+    (key : mid.rsa_priv.RsaPrivateKey) : Prop :=
+  PrivKeyInv key ∧ key.ifma.w = 0#usize ∧ key.public.n = n ∧ key.public.e = e ∧
+    key.p.used.val = keyWords (wordsNat (lowWords p p.used)) (wordsNat (lowWords q q.used)) ∧
+    wordsNat (lowWords key.p key.p.used) = wordsNat (lowWords p p.used) ∧
+    wordsNat (lowWords key.q key.p.used) = wordsNat (lowWords q q.used) ∧
+    wordsNat (lowWords key.d key.d.used) = wordsNat (lowWords d d.used) ∧
+    wordsNat (lowWords key.dp key.dp.used) = wordsNat (lowWords dp dp.used) ∧
+    wordsNat (lowWords key.dq key.dq.used) = wordsNat (lowWords dq dq.used) ∧
+    wordsNat (lowWords key.iqmp key.p.used) = wordsNat (lowWords iqmp iqmp.used) ∧
+    CrtRelations (wordsNat (lowWords n n.used)) (wordsNat (lowWords p p.used)) (wordsNat (lowWords q q.used))
+      (wordsNat (lowWords d d.used)) (wordsNat (lowWords dp dp.used)) (wordsNat (lowWords dq dq.used))
+      (wordsNat (lowWords iqmp iqmp.used)) e.val
+
+/-- `RsaPrivateKey::new` refuses components it cannot use, without fault, and
+otherwise returns a key it loaded from them. -/
+theorem rsa_private_key_new_spec (hrun : Runs) (h : low.entry.Entry.assert_held = ok ())
+    (hifma : low.x86_64.cpu.HaveAvx512ForRsa.check = ok none)
+    (p q dp dq iqmp : low.posint.PosInt 64#usize) (d n : RsaInt) (e : U64)
+    (hpu : p.used.val ≤ 64) (hqu : q.used.val ≤ 64) (hdpu : dp.used.val ≤ 64) (hdqu : dq.used.val ≤ 64)
+    (hiu : iqmp.used.val ≤ 64) (hdu : d.used.val ≤ 128) (hnu : n.used.val ≤ 128)
+    (hpc : Clean p) (hqc : Clean q) (hdpc : Clean dp) (hdqc : Clean dq) (hic : Clean iqmp)
+    (htight : n.used.val = 0 ∨ 2 ^ (64 * (n.used.val - 1)) ≤ wordsNat (lowWords n n.used))
+    (hP : MontProducts (keyWords (wordsNat (lowWords p p.used)) (wordsNat (lowWords q q.used)))) :
+    mid.rsa_priv.RsaPrivateKey.new p q d dp dq iqmp n e ⦃ r => match r with
+      | .Ok key => KeyLoaded p q dp dq iqmp d n e key
+      | .Err _ => True ⦄ := by
+  unfold mid.rsa_priv.RsaPrivateKey.new
+  set P := wordsNat (lowWords p p.used) with hPdef
+  set Q := wordsNat (lowWords q q.used) with hQdef
+  have h64 : (64#usize : Usize).val = 64 := rfl
+  have h128 : (128#usize : Usize).val = 128 := rfl
+  step with len_bits_spec n (by rw [h128]; exact hnu) as ⟨i, hi⟩
+  split
+  · simp [error.Error.Insts.CoreConvertFromKeyFormatError.from,
+      WP.spec_ok]
+  rename_i hnbits
+  step with len_bits_spec p (by rw [h64]; exact hpu) as ⟨i1, hi1⟩
+  simp only [low.ct.into_public, bind_ok]
+  step with len_bits_spec q (by rw [h64]; exact hqu) as ⟨i2, hi2⟩
+  try simp only [← hPdef] at hi1
+  try simp only [← hQdef] at hi2
+  have e8 : (8#usize : Usize).val = 8 := rfl
+  have e1024 : (1024#usize : Usize).val = 1024 := rfl
+  have e4096 : (4096#usize : Usize).val = 4096 := rfl
+  step with div_ceil_spec i1 8#usize (by decide) as ⟨plen, hplen⟩
+  step with is_even_spec p (by rw [h64]; omega) hpc as ⟨b, hb⟩
+  step with is_even_spec q (by rw [h64]; omega) hqc as ⟨b1, hb1⟩
+  have herr : ∀ k, (do
+      let e1 ← error.Error.Insts.CoreConvertFromKeyFormatError.from k
+      ok (core.result.Result.Err e1) : Result (core.result.Result mid.rsa_priv.RsaPrivateKey error.Error)) ⦃ r =>
+        match r with
+        | .Ok key => KeyLoaded p q dp dq iqmp d n e key
+        | .Err _ => True ⦄ := by
+    intro k; simp [error.Error.Insts.CoreConvertFromKeyFormatError.from, WP.spec_ok]
+  split
+  · exact herr _
+  rename_i hbb
+  have hPo : P % 2 = 1 := by
+    have : b = false := by simp_all
+    rw [hb] at this; simpa using this
+  have hQo : Q % 2 = 1 := by
+    have : b1 = false := by simp_all
+    rw [hb1] at this; simpa using this
+  split
+  · exact herr _
+  rename_i hq2
+  have hq2' : 2 ≤ Q.size := by
+    rw [← hi2]; have : ¬ i2.val < 2 := fun h' => hq2 (by scalar_tac); omega
+  simp only [mid.rsa_priv.MIN_PRIVATE_MODULUS_BYTES, mid.rsa_priv.MAX_PRIVATE_MODULUS_BYTES,
+    mid.rsa_priv.MIN_PRIVATE_MODULUS_BITS, mid.rsa_priv.MAX_PRIVATE_MODULUS_BITS]
+  step as ⟨i3, hi3⟩
+  step as ⟨i4, hi4⟩
+  simp only [core.ops.range.RangeInclusive.new, bind_ok, contains_usize]
+  split
+  swap
+  · exact herr _
+  rename_i hlen
+  simp only [decide_eq_true_eq] at hlen
+  have hPs1 : 1017 ≤ P.size := by
+    have := hlen.1; simp only [hi3, hplen, hi1] at this; omega
+  have hPs2 : P.size ≤ 4096 := by
+    have := hlen.2; simp only [hi4, hplen, hi1] at this; omega
+  have hQs2 : Q.size ≤ 4096 := by
+    have := Nat.size_le.mpr (lt_of_lt_of_le (wordsNat_lt' (lowWords q q.used))
+      (Nat.pow_le_pow_right (by norm_num) (show 64 * (lowWords q q.used).length ≤ 4096 by
+        rw [lowWords_length q (by rw [h64]; exact hqu)]; omega)))
+    exact this
+  step with div_ceil_spec i1 64#usize (by decide) as ⟨pw, hpw⟩
+  step with div_ceil_spec i2 64#usize (by decide) as ⟨qw, hqw⟩
+  simp only [hi1, hi2] at hpw hqw
+  have hpwr : 16 ≤ pw.val ∧ pw.val ≤ 64 := by omega
+  have hqwr : 1 ≤ qw.val ∧ qw.val ≤ 64 := by omega
+  have hPfit : P < 2 ^ (64 * pw.val) := fits_size p pw.val (by show P.size ≤ _; omega)
+  have hQfit : Q < 2 ^ (64 * qw.val) := fits_size q qw.val (by show Q.size ≤ _; omega)
+  step with fit_spec p pw (by rw [h64]; omega) (by rw [h64]; exact hpu) hpc as ⟨b4, p1, hp1u, hp1c, hp1v, hb4⟩
+  step with fit_spec q qw (by rw [h64]; omega) (by rw [h64]; exact hqu) hqc as ⟨b5, q1, hq1u, hq1c, hq1v, hb5⟩
+  step with fit_spec dp pw (by rw [h64]; omega) (by rw [h64]; exact hdpu) hdpc
+    as ⟨b6, dp1, hdp1u, hdp1c, hdp1v, hb6⟩
+  step with fit_spec dq qw (by rw [h64]; omega) (by rw [h64]; exact hdqu) hdqc
+    as ⟨b7, dq1, hdq1u, hdq1c, hdq1v, hb7⟩
+  step with fit_spec iqmp pw (by rw [h64]; omega) (by rw [h64]; exact hiu) hic
+    as ⟨b8, iqmp1, hi1u, hi1c, hi1v, hb8⟩
+  rw [← hPdef, Nat.mod_eq_of_lt hPfit] at hp1v
+  rw [← hQdef, Nat.mod_eq_of_lt hQfit] at hq1v
+  step with rsa_public_key_new_spec hrun h n e hnu htight as ⟨r, hr⟩
+  cases r with
+  | Err err =>
+    simp [core.result.Result.Insts.CoreOpsTry.branch,
+      core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual, WP.spec_ok]
+  | Ok val =>
+  obtain ⟨hvn, hve, hpub, hvnu⟩ := hr
+  simp only [core.result.Result.Insts.CoreOpsTry.branch, bind_ok, secret_from, secret_deref]
+  have hP2 : 2 ≤ P := Nat.lt_size.mp (show 1 < P.size by omega)
+  have hQ2 : 2 ≤ Q := Nat.lt_size.mp (show 1 < Q.size by omega)
+  step with word_spec 64#usize e (by rw [h64]; omega) as ⟨e1, he1u, he1w⟩
+  have he1v : wordsNat (lowWords e1 e1.used) = e.val := by
+    rw [he1u]; exact wordsNat_first e1 e 1 le_rfl he1w
+  step with exponents_agree_spec p1 dp1 e1 d (by rw [hp1u]; omega) (by rw [hp1u]; omega)
+    (by rw [hp1u, hp1v]; exact top_word_lt P pw.val hpw hPo hP2) (by rw [hp1u, hp1v]; omega) hdu
+    (by rw [hdp1u]; omega) (by rw [he1u]; omega) as ⟨b9, hb9⟩
+  step with exponents_agree_spec q1 dq1 e1 d (by rw [hq1u]; omega) (by rw [hq1u]; omega)
+    (by rw [hq1u, hq1v]; exact top_word_lt Q qw.val hqw hQo hQ2) (by rw [hq1u, hq1v]; omega) hdu
+    (by rw [hdq1u]; omega) (by rw [he1u]; omega) as ⟨b10, hb10⟩
+  obtain ⟨hKp, hKq, hK64, hKlt, hKge⟩ := keyWords_bounds P Q pw.val qw.val hpw hqw hPs2 hQs2
+  -- The narrower prime takes the wider one's width, which its clean words
+  -- above its own leave its value at.
+  refine WP.spec_bind (Pₘ := fun r : low.posint.PosInt 64#usize × low.posint.PosInt 64#usize =>
+    r.1.used.val = keyWords P Q ∧ r.2.used = r.1.used ∧
+      wordsNat (lowWords r.1 r.1.used) = P ∧ wordsNat (lowWords r.2 r.1.used) = Q) ?_ ?_
+  · split
+    · rename_i hlt
+      have hlt' : P.size < Q.size := by rw [← hi1, ← hi2]; exact hlt
+      simp only [low.posint.SecretPosInt.Insts.CoreOpsDerefDerefMutPosInt.deref_mut, low.posint.PosInt.expand,
+        bind_ok]
+      apply (WP.spec_ok _).mpr
+      refine ⟨?_, rfl, ?_, ?_⟩
+      · show q1.used.val = keyWords P Q
+        rw [hq1u]; exact (hKlt hlt').2
+      · show wordsNat (lowWords p1 q1.used.val) = P
+        rw [clean_lowWords hp1c (by rw [hp1u, h64]; omega) (by rw [hp1u, hq1u]; exact (hKlt hlt').1), hp1u, hp1v]
+      · show wordsNat (lowWords q1 q1.used.val) = Q
+        rw [hq1u, hq1v]
+    · rename_i hlt
+      have hlt' : ¬ P.size < Q.size := by rw [← hi1, ← hi2]; exact hlt
+      simp only [low.posint.SecretPosInt.Insts.CoreOpsDerefDerefMutPosInt.deref_mut, low.posint.PosInt.expand,
+        bind_ok]
+      apply (WP.spec_ok _).mpr
+      refine ⟨?_, rfl, ?_, ?_⟩
+      · show p1.used.val = keyWords P Q
+        rw [hp1u]; exact (hKge hlt').2
+      · show wordsNat (lowWords p1 p1.used.val) = P
+        rw [hp1u, hp1v]
+      · show wordsNat (lowWords q1 p1.used.val) = Q
+        rw [clean_lowWords hq1c (by rw [hq1u, h64]; omega) (by rw [hq1u, hp1u]; exact (hKge hlt').1), hq1u, hq1v]
+  rintro ⟨p3, q3⟩ ⟨hp3u, hq3u, hp3v, hq3v⟩
+  simp only at hp3u hq3u hp3v hq3v ⊢
+  have hk64 : p3.used.val ≤ (64#usize : Usize).val := by rw [hp3u, h64]; exact hK64
+  have hq3u' : q3.used.val = p3.used.val := by rw [hq3u]
+  have hq3k : q3.used.val ≤ (64#usize : Usize).val := by rw [hq3u']; exact hk64
+  have hP' : MontProducts p3.used.val := by rw [hp3u]; exact hP
+  step with montifier_spec p3 hk64 (by rw [hp3v]; exact hPo) as ⟨pm, hpmu, hpmv⟩
+  step with montifier_spec q3 hq3k (by rw [hq3u, hq3v]; exact hQo) as ⟨qm, hqmu, hqmv⟩
+  rw [hq3u, hq3v] at hqmv
+  step with widen_spec 128#usize iqmp1 (by rw [h64, h128]; omega) (by rw [hi1u, h64]; omega)
+    as ⟨iw, hiwu, hiww⟩
+  have hiwv : wordsNat (lowWords iw iw.used) = wordsNat (lowWords iqmp1 pw) := by
+    have hl : (lowWords iqmp1 iqmp1.used).length = iqmp1.used.val :=
+      lowWords_length _ (by rw [hi1u, h64]; omega)
+    show wordsNat (iw.words.val.take iw.used.val) = _
+    rw [hiww, hiwu, List.take_left' hl, hi1u]
+  have hIQ1lt : wordsNat (lowWords iqmp1 pw) < 2 ^ (64 * pw.val) := by
+    rw [hi1v]; exact Nat.mod_lt _ (by positivity)
+  have hRK : 2 ^ (64 * pw.val) ≤ 2 ^ (64 * p3.used.val) :=
+    Nat.pow_le_pow_right (by norm_num) (by rw [hp3u]; omega)
+  step with posint_reduce_spec iw p3 pm (by rw [h64, h128]; omega) hP' (by rw [hp3u]; omega) hk64
+    (by rw [hp3u]; omega) (by rw [hiwu, hi1u, h128]; omega) (by rw [hiwu, hi1u]; omega)
+    (by rw [hp3v]; exact hPo) (by rw [hp3v]; omega) hpmv
+    (by
+      rw [hiwv, hp3v]
+      calc _ < 2 ^ (64 * pw.val) := hIQ1lt
+        _ ≤ 2 ^ (64 * p3.used.val) := hRK
+        _ ≤ 2 ^ (64 * p3.used.val) * P := Nat.le_mul_of_pos_right _ (by omega))
+    as ⟨ir, hiru, hirv⟩
+  rw [hiwv, hp3v] at hirv
+  step with to_montgomery_spec ir pm p3 hP' (by rw [hp3u]; omega) (by rw [hp3u]; omega) hk64
+    (by rw [hp3v]; exact hPo) (by rw [hirv, hp3v]; exact Nat.mod_lt _ (by omega)) hpmv as ⟨im, himu, himv⟩
+  step with mont_neg_inverse_spec p3 (by rw [hp3u]; omega) hk64 (by rw [hp3v]; exact hPo) as ⟨p0, hp0⟩
+  step with mont_neg_inverse_spec q3 (by rw [hq3u']; rw [hp3u]; omega) hq3k (by rw [hq3u, hq3v]; exact hQo)
+    as ⟨q0, hq0⟩
+  rw [hq3u, hq3v] at hq0
+  step with posint_mul_spec 128#usize p3 q3 (by rw [h64, h128]) hk64 hq3k as ⟨pq, hpqu, hpqv⟩
+  rw [hp3v, hq3u, hq3v] at hpqv
+  step with widen_spec 128#usize q3 (by rw [h64, h128]; omega) hq3k as ⟨qwide, hqwu, hqww⟩
+  have hqwidev : wordsNat (lowWords qwide qwide.used) = Q := by
+    have hl : (lowWords q3 q3.used).length = q3.used.val := lowWords_length _ hq3k
+    show wordsNat (qwide.words.val.take qwide.used.val) = _
+    rw [hqww, hqwu, List.take_left' hl, hq3u, hq3v]
+  step with posint_reduce_spec qwide p3 pm (by rw [h64, h128]; omega) hP' (by rw [hp3u]; omega) hk64
+    (by rw [hp3u]; omega) (by rw [hqwu, hq3u', h128]; omega) (by rw [hqwu, hq3u', hp3u]; omega)
+    (by rw [hp3v]; exact hPo) (by rw [hp3v]; omega) hpmv
+    (by
+      rw [hqwidev, hp3v]
+      calc _ < 2 ^ (64 * qw.val) := hQfit
+        _ ≤ 2 ^ (64 * p3.used.val) := Nat.pow_le_pow_right (by norm_num) (by rw [hp3u]; omega)
+        _ ≤ 2 ^ (64 * p3.used.val) * P := Nat.le_mul_of_pos_right _ (by omega))
+    as ⟨qp, hqpu, hqpv⟩
+  rw [hqwidev, hp3v] at hqpv
+  step with equals_spec pq val.n (by rw [hpqu, h128]; omega) (by rw [hvn, h128]; exact hnu) as ⟨b11, hb11⟩
+  step with less_than_spec iqmp1 p3 (by rw [hi1u, h64]; omega) hk64 as ⟨b12, hb12⟩
+  step with posint_mont_mul_spec im qp p3 p0 hP' hk64
+    (mont_args_of im qp p3 p0 hk64 (by rw [hp3u]; omega) (by rw [hp3u]; omega) (by rw [hp3v]; exact hPo) hp0
+      himv.1 (by rw [hqpv, hp3v]; exact Nat.mod_lt _ (by omega))) as ⟨pi14, h14u, h14v⟩
+  step with fixed_one_spec p3 (by rw [hp3u]; omega) hk64 as ⟨one, honeu, honev⟩
+  step with equals_spec pi14 one (by rw [h14u]; exact hk64) (by rw [honeu]; exact hk64) as ⟨b13, hb13⟩
+  split
+  swap
+  · exact herr _
+  rename_i hall
+  simp only [Bool.and_eq_true, and_assoc] at hall
+  obtain ⟨-, -, hb6t, hb7t, hb8t, hb9t, hb10t, hb11t, hb12t, hb13t⟩ := hall
+  have hDP1 : wordsNat (lowWords dp1 dp1.used) = wordsNat (lowWords dp dp.used) := by
+    rw [hdp1u, hdp1v]; exact Nat.mod_eq_of_lt (hb6.mp hb6t)
+  have hDQ1 : wordsNat (lowWords dq1 dq1.used) = wordsNat (lowWords dq dq.used) := by
+    rw [hdq1u, hdq1v]; exact Nat.mod_eq_of_lt (hb7.mp hb7t)
+  have hIQ1 : wordsNat (lowWords iqmp1 pw) = wordsNat (lowWords iqmp iqmp.used) := by
+    rw [hi1v]; exact Nat.mod_eq_of_lt (hb8.mp hb8t)
+  have hIQK : wordsNat (lowWords iqmp1 p3.used) = wordsNat (lowWords iqmp iqmp.used) := by
+    rw [clean_lowWords hi1c (by rw [hi1u, h64]; omega) (by rw [hi1u, hp3u]; omega), hi1u, hIQ1]
+  obtain ⟨h9a, h9b⟩ := hb9.mp hb9t
+  simp only [hp1u, hp1v, hDP1, he1v] at h9a h9b
+  obtain ⟨h10a, h10b⟩ := hb10.mp hb10t
+  simp only [hq1u, hq1v, hDQ1, he1v] at h10a h10b
+  rw [hb11, decide_eq_true_eq, hpqv, hvn] at hb11t
+  rw [hb12, decide_eq_true_eq, hi1u, hIQ1, hp3v] at hb12t
+  rw [hb13, decide_eq_true_eq, h14u, honeu, honev] at hb13t
+  rw [hp3v, hirv, hIQ1] at himv
+  have himv' := mont_pow_one_eq himv
+  have h14 := h14v.2.2
+  rw [lowWords_length p3 hk64, hb13t, hp3v, hqpv] at h14
+  have hinv := iqmp_inverse (by omega) hPo himv' h14
+  unfold low.posint.PosInt.as_words mid.rsa_pub.RsaPublicKey.montifier_words low.posint.PosInt.as_words_with_len_of
+  have hvnk : val.n.used.val ≤ 128 := by rw [hvn]; exact hnu
+  step as ⟨s, hs, hsl⟩
+  step as ⟨s1, hs1, hs1l⟩
+  step as ⟨s2, hs2, hs2l⟩
+  step as ⟨s3, hs3, hs3l⟩
+  step with ifma_crt_new_none hifma as ⟨ic, hic⟩
+  dsimp only [KeyLoaded, PrivKeyInv]
+  refine ⟨⟨hpub, hq3u, hk64, by rw [hp3u]; omega, by rw [hp3v]; exact hPo, by rw [hq3v]; exact hQo,
+    by rw [hp3v]; omega, by rw [hq3v]; omega, by rw [hvn, hp3v, hq3v]; exact hb11t.symm, hp0,
+    by rw [hq3v]; exact hq0, by rw [hpmv, hp3v], by rw [hq3v]; exact hqmv, by rw [hdp1u]; omega, by rw [hdq1u]; omega,
+    by rw [hIQK, hp3v]; exact hb12t, by rw [himv', hIQK, hp3v]⟩,
+    hic, hvn, hve, hp3u, hp3v, hq3v, rfl, hDP1, hDQ1, hIQK,
+    hb11t.symm, h9a.symm, by rw [← h9a]; exact h9b, h10a.symm, by rw [← h10a]; exact h10b, hb12t, hinv⟩
 
 end PrivKey
 
