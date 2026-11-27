@@ -85,6 +85,11 @@ final class BenchView extends LinearLayout {
     private boolean tabShown = true;
     /** Set once the list of tests has loaded, so a launch before then waits for it. */
     private boolean loadedOnce;
+    /**
+     * Launches that arrived while the list loaded, in order, each with whether it sets the whole
+     * selection (a runner's) or only what it names; the loaded list then takes them over the first's.
+     */
+    private final List<Object[]> laterLaunches = new ArrayList<>();
 
     /**
      * `restored`: the activity is being recreated from saved state, after a
@@ -406,10 +411,15 @@ final class BenchView extends LinearLayout {
         }
         countsChanged();
         agreeChanged();
+        JSONObject st = nativeStatus();
+        // The launches that came while the list loaded, over the first launch's selection, before
+        // anything can start a run from it; none changes the selection of a run that's going.
+        if (!st.optBoolean("running"))
+            for (Object[] l : laterLaunches) applySelection((Intent) l[0], (Boolean) l[1]);
+        laterLaunches.clear();
+        loadedOnce = true;
         // The run lives in the native library, past this activity: after a recreation, such as a
         // dark mode switch, pick up a run that's going, or show the results of one that finished.
-        JSONObject st = nativeStatus();
-        loadedOnce = true;
         if (st.optBoolean("running")) {
             enterRunning();
             scheduleAutostart();
@@ -432,8 +442,15 @@ final class BenchView extends LinearLayout {
     void newLaunch(Intent it) {
         applyIntent(it);
         boolean runnerLaunch = Collector.RUNNER && it != null && it.getBooleanExtra("autostart", false);
-        // The list's first load reads the launch's selection; once it is up, a later launch sets it here.
-        if (loadedOnce && !running) applySelection(it, runnerLaunch);
+        // The list's first load reads the first launch's selection; a later one sets it here once the
+        // list is up, or, while it loads, once it has (`loaded`), over the first launch's.
+        if (loadedOnce) {
+            if (!running) applySelection(it, runnerLaunch);
+        } else if (it != null && (runnerLaunch || it.hasExtra("libraries") || it.hasExtra("sections"))) {
+            // A runner's launch sets the whole selection, so what came before it no longer matters.
+            if (runnerLaunch) laterLaunches.clear();
+            laterLaunches.add(new Object[]{it, runnerLaunch});
+        }
         if (runnerLaunch) {
             launchPending = true;
             if (loadedOnce) scheduleAutostart();
