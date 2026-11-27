@@ -449,10 +449,17 @@ it adds the push, `lea`, `neg`, `dec`, aligned 128-bit load and store, and
 `ja` aws-lc's code uses, a stack pointer move that claims the region it
 passes over as writable and forgets what a release leaves below it, and the
 padding (`.align` and the `jmp` over it), which runs as no instructions.
-`admin/prove lean` compares each x86_64 program's bytes with the Linux build
-the same way, `rind-asm x86_64` printing them, and `admin/prove vg`
-cosimulates its instructions and branches (`Cosim/RindX86_64.lean`) but for
-the padding, whose bytes that comparison checks.
+For BoringSSL's AVX2 AES-GCM code it adds `vpshufd` from memory and
+RIP-relative operands (`rip`) that read the start of a static, as the words
+the program names, leaking offset 0 as VG's table instructions do.
+`admin/prove lean` compares each x86_64 program's bytes and relocations with
+the Linux build the same way, `rind-asm x86_64` printing them: the function
+must be the whole of its own section, and each `rip` operand's
+`R_X86_64_PC32` relocation must reach the static it names, whose bytes must
+begin with the program's words. `admin/prove vg` cosimulates its
+instructions and branches (`Cosim/RindX86_64.lean`), a `rip` operand reading
+words placed after its instruction, but for the padding, whose bytes that
+comparison checks.
 
 - `Rind/X86_64/Mul4xProof.lean`: `bn_mul4x_mont_correct`, that
   `low::x86_64::mont::bn_mul4x_mont`, aws-lc's 4x Montgomery multiplication
@@ -471,6 +478,19 @@ the padding, whose bytes that comparison checks.
   `Mul4xSub`, `Mul4xTailAsm`, and `Mul4xFinal` the subtraction and the
   constant-time copy.
   `Rind/X86_64/RsaMont.lean` restates it as `mul4x_spec`.
+
+- `Rind/X86_64/GcmInitAvx2.lean`: `gcm_init_vpclmulqdq_avx2_correct`, that
+  `low::x86_64::aes_gcm_vaes::gcm_init_vpclmulqdq_avx2`, BoringSSL's key
+  setup for its AVX2 AES-GCM routines, run from a state its `Pre` holds of
+  (reads of the key's 16 bytes, writes of the table's 256, the return
+  address outside the table), writes H^8 down to H^1 of the key at `rsi`,
+  each shifted as Vale's `shift_key_1` does, to the table's first 128 bytes
+  and each one's halves XORed, in BoringSSL's order, to the next 128, and
+  changes no other memory and no general register; that its trace is a
+  function of its two pointers (`ConstantTime`); and that some state meets
+  `Pre`. Nothing restates it yet: the Rust that calls it and the kernels
+  that read its table are [the VAES
+  quest](/quest/m4/verified/aes-gcm-x86-vaes.md)'s.
 
 - `Rind/Aarch64/Sha256HwAsm.lean`: `sha256_block_data_order_hw_correct`,
   that `low::aarch64::sha256::sha256_block_data_order_hw`, aws-lc's routine

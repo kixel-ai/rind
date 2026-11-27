@@ -261,6 +261,19 @@ theorem readW_writeW_self (m : Mem) (a : Addr) (v : BitVec 64) : (m.writeW a v).
 theorem readW_writeW_eq (m : Mem) (a b : Addr) (v : BitVec 64) (h : a = b) :
     (m.writeW a v).readW b 64 = v := h ▸ readW_writeW_self m a v
 
+theorem readW_writeW_disj (m : Mem) (a b : Addr) {w : Nat} (v : BitVec w) (w' : Nat)
+    (h : w / 8 ≤ (b - a).toNat ∧ w' / 8 ≤ (a - b).toNat) : (m.writeW a v).readW b w' = m.readW b w' := by
+  simp only [Mem.readW, Mem.writeW]
+  congr 1
+  apply read_congr
+  intro k hk
+  apply write_other
+  obtain ⟨h1, h2⟩ := h
+  have : (b + BitVec.ofNat 64 k - a).toNat = (b - a).toNat + k := by
+    have : (BitVec.ofNat 64 k).toNat = k := by simp; omega
+    bv_omega
+  omega
+
 /-- An access `n` bytes long at `a`, which lies in the region `r` of `rs`. -/
 theorem inR {rs : List Region} {r : Region} {a : Addr} {n : Nat} (hr : r ∈ rs)
     (h : (a - r.base).toNat + n ≤ r.len) : InRegions rs a n := ⟨r, hr, h⟩
