@@ -27,4 +27,4 @@ export CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS=true
 export CARGO_PROFILE_RELEASE_OVERFLOW_CHECKS=true
 SLOW_TESTS=1 cargo nextest run "${packages[@]}" --locked --release --target "$target"
 # nextest runs no doc tests; this bounds theirs (.config/nextest.toml).
-timeout 15m cargo test --doc "${packages[@]}" --locked --release --target "$target"
+timeout 5m cargo test --doc "${packages[@]}" --locked --release --target "$target"

@@ -59,7 +59,7 @@ Run Rust tests with `cargo nextest run`, never plain `cargo test`:
 `.config/nextest.toml` ends a test that runs past its profile's hang bound,
 about twice the slowest healthy test, so a deadlock fails the run instead of
 holding it until the job's timeout. nextest runs no doc tests, so run those as
-`timeout 15m cargo test --doc`.
+`timeout 5m cargo test --doc`.
 
 `cargo vet --locked` fails when the published rind crate's dependencies gain
 a crate or version no audit covers, as [SECURITY.md](SECURITY.md#supply-chain)

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import subprocess, json, os, sys, glob, tarfile
+import subprocess, json, os, signal, sys, glob, tarfile
 
 # Run it at the workspace root in `nix develop .#sde`, which has the Intel SDE
 # build x86-cpu.yml runs.
@@ -229,19 +229,20 @@ def run(model, exe, package, args, out):
     target = os.environ.get("CARGO_TARGET_DIR", "target")
     os.makedirs(os.path.join(target, "tmp"), exist_ok=True)
     print(f"Running {exe} in {package} on {name}", file=out, flush=True)
+    # In a session of its own, so a timeout kills SDE's instrumented child too.
+    proc = subprocess.Popen(
+        ["sde", "-" + sde, "--", os.path.abspath(exe)] + SKIP + args,
+        cwd=package,
+        env=env,
+        stdout=out,
+        stderr=subprocess.STDOUT,
+        start_new_session=True,
+    )
     try:
-        return (
-            subprocess.run(
-                ["sde", "-" + sde, "--", os.path.abspath(exe)] + SKIP + args,
-                cwd=package,
-                env=env,
-                stdout=out,
-                stderr=subprocess.STDOUT,
-                timeout=BINARY_TIMEOUT,
-            ).returncode
-            == 0
-        )
+        return proc.wait(timeout=BINARY_TIMEOUT) == 0
     except subprocess.TimeoutExpired:
+        os.killpg(proc.pid, signal.SIGKILL)
+        proc.wait()
         print(f"{exe} on {name} ran past {BINARY_TIMEOUT} s", file=out, flush=True)
         return False
 

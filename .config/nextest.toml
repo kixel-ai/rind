@@ -2,8 +2,9 @@
 # hang bound: a test still running after `period` times `terminate-after` is
 # killed and fails. Each bound is about twice the slowest healthy test its
 # profile's runs measured, so a slow runner passes and a deadlock ends.
-# NEXTEST_PROFILE picks the profile; doc tests, which nextest does not run,
-# are bounded by `timeout` where they run.
+# NEXTEST_PROFILE picks the profile. Doc tests, which nextest does not run,
+# are bounded at 5 minutes where they run, against 28 s at their slowest
+# (macos-15-intel), which leaves room for rebuilding the libraries.
 
 # Native runs: `just check` and `just ci` (test-fast), build.yml's debug and
 # release rows, and the sanitizers. The slowest measured: SLH-DSA's ACVP
@@ -16,7 +17,7 @@ slow-timeout = { period = "60s", terminate-after = 15 }
 # rind-acvp's offline answers, which with SLOW_TESTS hash 15 GiB on every CPU
 # path, 631 s on ubuntu-24.04. Every profile takes this override.
 [[profile.default.overrides]]
-filter = 'test(/rsa8192_/) | test(=every_cpu_path_answers_every_set)'
+filter = 'test(/rsa8192_/) | test(=rsa::key_generation_8192) | test(=every_cpu_path_answers_every_set)'
 slow-timeout = { period = "120s", terminate-after = 60 }
 
 # qemu-user, wasmtime, and Intel SDE: sh/armv7.sh, sh/qemu.sh, sh/wasm.sh,

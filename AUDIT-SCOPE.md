@@ -163,7 +163,7 @@ says how to run them. The ones an auditor will want:
 
 | What | Command | Notes |
 |---|---|---|
-| Unit tests, vectors, differential tests | `nix develop --command cargo test --workspace` | Wycheproof, CAVP, ACVP, CCTV, and RFC vectors, and aws-lc-rs as a differential oracle. `SLOW_TESTS=1` adds the large sets. |
+| Unit tests, vectors, differential tests | `nix develop --command cargo nextest run --workspace` | Wycheproof, CAVP, ACVP, CCTV, and RFC vectors, and aws-lc-rs as a differential oracle. `SLOW_TESTS=1` adds the large sets. |
 | CI's whole gate | `nix develop --command just gate` | CI's gate over every crate, with the lints, structure, license, adapter-API, and constant-time scans among them. `just ci` and `just check` pick checks from the branch's diff, so on a clean checkout of a tag they can skip the ones a source change would trigger. |
 | Constant time under valgrind | `nix develop .#ctgrind --command admin/ctgrind` | Weekly in CI. Sees only the paths the tests take. |
 | Constant time, symbolically | `nix develop .#binsec --command admin/ct-binsec` | Checks each `ct_binsec_...` region for every secret. |
@@ -171,7 +171,7 @@ says how to run them. The ones an auditor will want:
 | Variable-time instructions | `nix develop .#ct-vartime --command admin/ct-vartime` | Scans release builds for divisions and floating point. |
 | HOL Light and Lean proofs | `nix develop .#prove --command admin/prove`, on x86_64 Linux with AVX2 (aarch64 macOS runs only `admin/prove lean`, per [TESTING.md](TESTING.md)) | Also `admin/prove bytes`, which checks the release build holds the bytes each proof is about. |
 | Imported code matches its pin | `nix develop .#regenerate --command admin/regenerate` | Reruns every importer; fails on a difference. |
-| Zeroing and heap scratch | `nix develop --command cargo test -p rind --test zeroing --test heap_scratch` | |
+| Zeroing and heap scratch | `nix develop --command cargo nextest run -p rind --test zeroing --test heap_scratch` | |
 
 The audit should name a commit, ideally a release tag, and the auditor should
 report the commit each finding was made at, since the proofs and `regenerate`

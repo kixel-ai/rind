@@ -81,7 +81,7 @@ jobs:
       - name: Run tests (debug)
         run: cargo nextest run
       - name: Run doc tests (debug)
-        timeout-minutes: 15
+        timeout-minutes: 5
         run: cargo test --doc
       - name: Run tests (debug, --no-default-features)
         run: cargo nextest run --no-default-features
@@ -147,7 +147,7 @@ jobs:
       - name: Run tests (debug)
         run: cargo nextest run -p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-rand-core -p rind-ring -p rind-aws-lc-rs -p rind-dimpl -p rind-openmls -p rind-str0m
       - name: Run doc tests (debug)
-        timeout-minutes: 15
+        timeout-minutes: 5
         run: cargo test --doc -p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-rand-core -p rind-ring -p rind-aws-lc-rs -p rind-dimpl -p rind-openmls -p rind-str0m
       - name: Run tests (release)
         run: env SLOW_TESTS=1 cargo nextest run -p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-rand-core -p rind-ring -p rind-aws-lc-rs -p rind-dimpl -p rind-openmls -p rind-str0m --release
@@ -176,7 +176,7 @@ jobs:
       - name: Run tests (debug)
         run: cargo nextest run -p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-rand-core -p rind-ring -p rind-aws-lc-rs -p rind-dimpl -p rind-openmls -p rind-str0m --locked
       - name: Run doc tests (debug)
-        timeout-minutes: 15
+        timeout-minutes: 5
         run: cargo test --doc -p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-rand-core -p rind-ring -p rind-aws-lc-rs -p rind-dimpl -p rind-openmls -p rind-str0m --locked
       - name: Run tests (release)
         run: env SLOW_TESTS=1 cargo nextest run -p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-rand-core -p rind-ring -p rind-aws-lc-rs -p rind-dimpl -p rind-openmls -p rind-str0m --locked --release
