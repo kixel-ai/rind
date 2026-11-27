@@ -26,10 +26,6 @@ Recommendations for the implementer:
 
 Public API: none.
 
-## Required
-
-- [The Valgrind runner](/quest/m2/bench/valgrind-runner.md) - moves the weekly count to rust2-bench, now swole, which this rewrite builds on
-
 ## Related
 
-- `quest/m2/bench/deterministic-counts.md`, which [kixel-ai/rind#1013](https://github.com/kixel-ai/rind/pull/1013) adds - the same counts' noise
+- [Deterministic counts](/quest/m2/bench/deterministic-counts.md) - the same counts' noise

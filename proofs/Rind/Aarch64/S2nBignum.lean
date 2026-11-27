@@ -293,12 +293,16 @@ axiom p384_montjdouble_spec (p3 p1 : Std.Array U64 18#usize) :
       ∀ P, p384Represents P (tripleNat6 p1.val) → p384Represents (p384Add P P) (tripleNat6 r.val) ⦄
 
 /-- `P384_MONTJMIXADD_ALT_SUBROUTINE_CORRECT`,
-https://github.com/awslabs/s2n-bignum/blob/3f01260ff1bd2577abf0117ce45aa008bc243a80/arm/proofs/p384_montjmixadd_alt.ml#L3891 -/
+https://github.com/awslabs/s2n-bignum/blob/3f01260ff1bd2577abf0117ce45aa008bc243a80/arm/proofs/p384_montjmixadd_alt.ml#L3891,
+for unequal points, and rind's `P384_MONTJMIXADD_ALT_SAME_X_SUBROUTINE_CORRECT`,
+in `proofs/hol-light/aarch64/p384_montjmixadd.ml`, for equal or opposite
+ones, whose sum's z is zero. -/
 @[step]
 axiom p384_montjmixadd_spec (p3 p1 : Std.Array U64 18#usize) (p2 : Std.Array U64 12#usize) :
     low.aarch64.p384_montjmixadd.p384_montjmixadd p3 p1 p2 ⦃ r =>
       ∀ P1 P2, p384Represents P1 (tripleNat6 p1.val) → p384Represents2 P2 (pairNat6 p2.val) →
-        P1 ≠ P2 → p384Represents (p384Add P1 P2) (tripleNat6 r.val) ⦄
+        (P1 ≠ P2 → p384Represents (p384Add P1 P2) (tripleNat6 r.val)) ∧
+        (P1 = P2 ∨ P1 = p384Neg P2 → (tripleNat6 r.val).2.2 = 0) ⦄
 
 /-- `BIGNUM_NEG_P384_SUBROUTINE_CORRECT`,
 https://github.com/awslabs/s2n-bignum/blob/3f01260ff1bd2577abf0117ce45aa008bc243a80/arm/proofs/bignum_neg_p384.ml#L99 -/

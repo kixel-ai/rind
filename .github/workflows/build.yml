@@ -44,7 +44,10 @@ jobs:
             rustc: stable
           - os: ubuntu-latest
             rustc: nightly
-          # macos-latest is aarch64; macos-15-intel is the x86_64 runner.
+          # macos-latest is aarch64; macos-15-intel is the x86_64 runner. The
+          # Mac mini runs this row's tests about 1.8 times as fast, but the
+          # nightly's wall time is macos-15-intel's, and the mini has no third
+          # macOS VM slot (see admin/mac-mini-runners), so the row stays hosted.
           - os: macos-latest
             rustc: stable
           - os: macos-15-intel
