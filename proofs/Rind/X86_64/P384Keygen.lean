@@ -218,7 +218,7 @@ theorem add_inplace_affine_spec (_h : Runs) (pt : mid.p384.JacobianMontPoint) (p
   rw [hr]
   refine ⟨fun h0 => by simp [h0], fun h0 P1 P2 h1 h2 hne => ?_⟩
   simp only [h0, ↓reduceIte, jrep]
-  exact ha P1 P2 h1 h2 hne
+  exact (ha P1 P2 h1 h2).1 hne
 
 theorem double_inplace_n_spec (_h : Runs) (iter : core.ops.range.Range Usize) (pt : mid.p384.JacobianMontPoint)
     (P : nist.Point) (hP : jrep P pt) (hle : iter.start.val ≤ iter.end.val) :

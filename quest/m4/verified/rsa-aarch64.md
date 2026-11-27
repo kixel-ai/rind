@@ -13,7 +13,8 @@ RSA verification and signing earn the ✓ on aarch64: the glue `proofs/Rind/X86_
 - Apple: byte-check or prove `bn_mul_mont.apple.s`. The cheapest route is a byte check against the Linux object modulo the entry's alignment, as `admin/prove bytes` compares other builds' objects, if the two differ only in directives and branch offsets; otherwise a HOL Light proof of the Apple object as for the Linux one.
 - Report: `verified.toml` rows for RSA verification and signing with `arch = "aarch64"`, and `proofs/README.md` updated.
 
+The portable backend already proves the same verification glue in [kixel-ai/rind#1085](https://github.com/kixel-ai/rind/pull/1085).
+
 ## Related
 
 - [RSA signing is proven](/quest/m4/verified/rsa-sign.md) - runs the same products for its private operation
-- [The portable backend's RSA verification is proven](/quest/m4/verified/rsa-verify-portable.md) - the same glue on another target
