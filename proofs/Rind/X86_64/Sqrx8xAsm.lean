@@ -204,7 +204,7 @@ theorem inner_ok (s : S) (k c d n : Nat) (ap np fp x : BitVec 64) (cf of : Bool)
       s'.vg.gpr .r12 = F.r12 ∧ s'.vg.gpr .r13 = F.r13 ∧ s'.vg.gpr .r14 = F.r14 ∧ s'.vg.gpr .r15 = F.r15 ∧
       s'.vg.cf = some F.cf ∧ s'.vg.zf = some (s.vg.gpr .rcx + 1 == 0) ∧
       s'.vg.of = some (addOverflow (s.vg.gpr .rcx) 1 (s.vg.gpr .rcx + 1)) ∧
-      s'.vg.mem = s.vg.mem.writeW (wa fp d) F.w ∧
+      s'.vg.mem = s.vg.mem.writeW (wa fp d) F.w ∧ s'.vg.gpr .rbx = 0 ∧
       Frame s s' [.rax, .rbx, .rcx, .rdx, .r8, .r9, .r10, .r11, .r12, .r13, .r14, .r15] := by
   obtain ⟨hk, hap, hnp, hfp, sepA, sepN, rA, rN, LF, hLF, rF⟩ := ar
   intro F

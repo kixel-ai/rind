@@ -52,6 +52,33 @@ elab "word_bounds " h:ident : tactic => withMainContext do
     let (_, g) ← (← g.assert (← mkFreshUserName `hb) (← inferType pf) pf).intro1P
     replaceMainGoal [g]
 
+set_option exponentiation.threshold 4096 in
+/-- In the last row, where `t`'s word `16R + 8` is still zero, chunk A leaves no mask. -/
+theorem mask_last (w0 w1 o10 o11 o12 o13 o14 o15 r9 r10 r11 r12 r13 r14 r15 b0 b1 b2 b3 b4 b5 b6 b7 : BitVec 64)
+    (h : w1.toNat * 2 ^ 128 + w0.toNat * 2 ^ 64 + o10.toNat * 2 ^ 192 + o11.toNat * 2 ^ 256 + o12.toNat * 2 ^ 320 +
+      o13.toNat * 2 ^ 384 + o14.toNat * 2 ^ 448 + o15.toNat * 2 ^ 512 + 1 * 2 ^ 576 =
+      r10.toNat * 2 ^ 128 + r11.toNat * 2 ^ 192 + r12.toNat * 2 ^ 256 + r13.toNat * 2 ^ 320 + r14.toNat * 2 ^ 384 +
+      r15.toNat * 2 ^ 448 + r9.toNat * 2 ^ 64 + b0.toNat * b1.toNat * 2 ^ 64 + b0.toNat * b2.toNat * 2 ^ 128 +
+      b0.toNat * b3.toNat * 2 ^ 192 + b0.toNat * b4.toNat * 2 ^ 256 + b0.toNat * b5.toNat * 2 ^ 320 +
+      b0.toNat * b6.toNat * 2 ^ 384 + b0.toNat * b7.toNat * 2 ^ 448) : False := by
+  have e : r10.toNat * 2 ^ 128 + r11.toNat * 2 ^ 192 + r12.toNat * 2 ^ 256 + r13.toNat * 2 ^ 320 + r14.toNat * 2 ^ 384 +
+      r15.toNat * 2 ^ 448 + r9.toNat * 2 ^ 64 + b0.toNat * b1.toNat * 2 ^ 64 + b0.toNat * b2.toNat * 2 ^ 128 +
+      b0.toNat * b3.toNat * 2 ^ 192 + b0.toNat * b4.toNat * 2 ^ 256 + b0.toNat * b5.toNat * 2 ^ 320 +
+      b0.toNat * b6.toNat * 2 ^ 384 + b0.toNat * b7.toNat * 2 ^ 448 =
+      2 ^ 64 * (hsum [r9, r10, r11, r12, r13, r14, r15] + b0.toNat * hsum [b1, b2, b3, b4, b5, b6, b7]) := by
+    simp only [hsum]; ring
+  have h1 := hsum_lt [r9, r10, r11, r12, r13, r14, r15]
+  have h2 := hsum_lt [b1, b2, b3, b4, b5, b6, b7]
+  simp only [List.length_cons, List.length_nil] at h1 h2
+  have h3 : b0.toNat * hsum [b1, b2, b3, b4, b5, b6, b7] ≤ (2 ^ 64 - 1) * (2 ^ 448 - 1) :=
+    Nat.mul_le_mul (by have := b0.isLt; omega) (by omega)
+  rw [e] at h
+  have h4 : 2 ^ 576 ≤ 2 ^ 64 * (hsum [r9, r10, r11, r12, r13, r14, r15] + b0.toNat * hsum [b1, b2, b3, b4, b5, b6, b7]) := by
+    rw [← h]; omega
+  generalize hsum [r9, r10, r11, r12, r13, r14, r15] = X at h1 h4
+  generalize b0.toNat * hsum [b1, b2, b3, b4, b5, b6, b7] = Y at h3 h4
+  omega
+
 /-- `tri`, as its chunks. -/
 theorem tri_split : Rind.X86_64.Sqrx8x.tri = triA ++ (triB ++ (triC ++ (triD ++ (triE ++ triF)))) := rfl
 
@@ -76,6 +103,7 @@ theorem tri_ok (s : S) (k R : Nat) (ap np fp : Addr) (b : Nat → BitVec 64) (u8
       s'.vg.gpr .rsi = wa ap (8 * R + 8) ∧
       s'.vg.zf = some (wa ap (8 * R + 8) - s.vg.mem.readW (wa fp 2) 64 == 0) ∧
       s'.vg.gpr .rcx = 0 - (BitVec.ofBool mc).setWidth 64 ∧
+      (u8 = 0 → mc = false) ∧
       s'.vg.gpr .rbp = 0 ∧
       w0.toNat * 2 ^ 64 + w1.toNat * 2 ^ 128 + w2.toNat * 2 ^ 192 + w3.toNat * 2 ^ 256 + w4.toNat * 2 ^ 320 +
         w5.toNat * 2 ^ 384 + w6.toNat * 2 ^ 448 + w7.toNat * 2 ^ 512 + mc.toNat * 2 ^ 576 +
@@ -99,6 +127,14 @@ theorem tri_ok (s : S) (k R : Nat) (ap np fp : Addr) (b : Nat → BitVec 64) (u8
   -- A
   obtain ⟨s1, x1, w0, w1, mc, m1, d1, c1, p1, cf1, of1, e1, F1⟩ :=
     triA_ok s k R ap np fp b u8 hR ar hrsi hrdi hrsp hA hrbp hrdx hcf hof hu
+  have hmc : u8 = 0 → mc = false := by
+    intro h0
+    cases mc
+    · rfl
+    · exfalso
+      have h00 : (0 : BitVec 64).toNat = 0 := rfl
+      rw [h0, h00, Nat.zero_mul, Nat.add_zero, Bool.toNat_true] at e1
+      exact mask_last _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ e1
   have rsi1 := (F1.gpr .rsi (by decide)).trans hrsi
   have rdi1 := (F1.gpr .rdi (by decide)).trans hrdi
   have rsp1 := (F1.gpr .rsp (by decide)).trans hrsp
@@ -164,7 +200,7 @@ theorem tri_ok (s : S) (k R : Nat) (ap np fp : Addr) (b : Nat → BitVec 64) (u8
       .r13, .r14, .r15]) → ∀ {s s' : S}, Frame s s' gs →
       Frame s s' [.rax, .rbx, .rcx, .rdx, .rsi, .rbp, .r8, .r9, .r10, .r11, .r12, .r13, .r14, .r15] :=
     fun _ hg _ _ h => h.mono hg
-  refine ⟨s6, ?_, w0, w1, w2, w3, w4, w5, w6, w7, mc, ?_, rsi6, ?_, ?_, ?_, ?_, ?_⟩
+  refine ⟨s6, ?_, w0, w1, w2, w3, w4, w5, w6, w7, mc, ?_, rsi6, ?_, ?_, hmc, ?_, ?_, ?_⟩
   · rw [tri_split, execBlock_append, x1, Option.bind_some, execBlock_append, x2, Option.bind_some,
       execBlock_append, x3, Option.bind_some, execBlock_append, x4, Option.bind_some, execBlock_append, x5,
       Option.bind_some, x6]

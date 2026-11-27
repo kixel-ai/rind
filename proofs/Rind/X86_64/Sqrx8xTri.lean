@@ -30,6 +30,25 @@ macro_rules
       | with_reducible rfl
       | skip))
 
+theorem hsum_append (ws : List (BitVec 64)) (w : BitVec 64) :
+    hsum (ws ++ [w]) = hsum ws + w.toNat * 2 ^ (64 * ws.length) := by
+  induction ws with
+  | nil => show w.toNat + 2 ^ 64 * 0 = 0 + w.toNat * 2 ^ (64 * 0); omega
+  | cons x ws ih =>
+    rw [List.cons_append, hsum, ih, hsum, List.length_cons, show 64 * (ws.length + 1) = 64 + 64 * ws.length by ring,
+      Nat.pow_add]
+    ring
+
+theorem hsum_lt (ws : List (BitVec 64)) : hsum ws < 2 ^ (64 * ws.length) := by
+  induction ws with
+  | nil => show 0 < 2 ^ (64 * 0); omega
+  | cons x ws ih =>
+    rw [hsum, List.length_cons, show 64 * (ws.length + 1) = 64 + 64 * ws.length by ring, Nat.pow_add]
+    have := x.isLt
+    have : 2 ^ 64 * hsum ws + 2 ^ 64 ≤ 2 ^ 64 * 2 ^ (64 * ws.length) := by
+      rw [← Nat.mul_succ]; exact Nat.mul_le_mul_left _ ih
+    omega
+
 /-- The products `b i · b j`, `i < j`, of eight words, each at its weight. -/
 def diag8 (b : Nat → BitVec 64) : Nat :=
   (b 0).toNat * (b 1).toNat * 2 ^ 64 +

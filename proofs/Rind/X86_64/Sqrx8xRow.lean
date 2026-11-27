@@ -33,25 +33,6 @@ theorem readW_wrs (M : Mem) (fp q : Addr) (p y : Nat) (ws : List (BitVec 64))
     simp only [List.length_cons] at hp h
     rw [wrs, ih _ _ (by omega) (by omega), readW_writeW_wa _ _ _ _ _ _ (by omega) hq (by omega)]
 
-theorem hsum_append (ws : List (BitVec 64)) (w : BitVec 64) :
-    hsum (ws ++ [w]) = hsum ws + w.toNat * 2 ^ (64 * ws.length) := by
-  induction ws with
-  | nil => show w.toNat + 2 ^ 64 * 0 = 0 + w.toNat * 2 ^ (64 * 0); omega
-  | cons x ws ih =>
-    rw [List.cons_append, hsum, ih, hsum, List.length_cons, show 64 * (ws.length + 1) = 64 + 64 * ws.length by ring,
-      Nat.pow_add]
-    ring
-
-theorem hsum_lt (ws : List (BitVec 64)) : hsum ws < 2 ^ (64 * ws.length) := by
-  induction ws with
-  | nil => show 0 < 2 ^ (64 * 0); omega
-  | cons x ws ih =>
-    rw [hsum, List.length_cons, show 64 * (ws.length + 1) = 64 + 64 * ws.length by ring, Nat.pow_add]
-    have := x.isLt
-    have : 2 ^ 64 * hsum ws + 2 ^ 64 ≤ 2 ^ 64 * 2 ^ (64 * ws.length) := by
-      rw [← Nat.mul_succ]; exact Nat.mul_le_mul_left _ ih
-    omega
-
 theorem eval_ne {s : S} {z : Bool} (h : s.vg.zf = some z) : I.eval (Rind.X86_64.Cond.vg .ne) s = some (!z) := by
   simp only [Rind.X86_64.isa, Rind.X86_64.eval, VG.X86_64.eval, h, Option.map_some]
 
@@ -76,6 +57,7 @@ structure BInv (s₁ s : S) (k R J : Nat) (ap np fp : Addr) (a : Nat → BitVec 
   rdx : s.vg.gpr .rdx = a (8 * R + j)
   cf : s.vg.cf = some false
   of : s.vg.of = some false
+  rbx : 0 < j → s.vg.gpr .rbx = 0
   sum : ∃ ws : List (BitVec 64), ws.length = j ∧ s.vg.mem = wrs s₁.vg.mem fp (8 * R + 8 * J) ws ∧
     hsum ws + 2 ^ (64 * j) * hsum (accR s) = hsum (accR s₁) + val (fun i => a (8 * R + i)) j * hsum (blk8 a (8 * J))
 
@@ -144,7 +126,7 @@ theorem inner_step (s₁ : S) (k R J : Nat) (ap np fp : Addr) (a : Nat → BitVe
     intro i hi
     rw [hmem, readW_wrs _ _ _ _ _ _ (by omega) (by omega) (by omega)]
     exact hA i hi
-  obtain ⟨s', hx, ocx, odx, o8, o9, o10, o11, o12, o13, o14, o15, ocf, ozf, oof, omem, oF⟩ :=
+  obtain ⟨s', hx, ocx, odx, o8, o9, o10, o11, o12, o13, o14, o15, ocf, ozf, oof, omem, obx, oF⟩ :=
     inner_ok s k (8 * J) (8 * R + 8 * J + j + 7) (8 * R + j + 1) ap np fp (a (8 * R + j)) false false a
       (by omega) (by omega) (by omega) (ar.frame hF) ((g .rbp (by decide)).trans hrbp) hI.rdx
       (by rw [g .rdi (by decide), hrdi, hI.rcx, wa_rcx _ _ _ (by omega)]; congr 1; omega)
@@ -157,7 +139,7 @@ theorem inner_step (s₁ : S) (k R J : Nat) (ap np fp : Addr) (a : Nat → BitVe
     (a (8 * J + 5)) (a (8 * J + 6)) (a (8 * J + 7)) (s.vg.gpr .r8) (s.vg.gpr .r9) (s.vg.gpr .r10)
     (s.vg.gpr .r11) (s.vg.gpr .r12) (s.vg.gpr .r13) (s.vg.gpr .r14) (s.vg.gpr .r15) false false = F
     at o8 o9 o10 o11 o12 o13 o14 o15 ocf omem fcf fof fsum
-  refine ⟨s', Exec.block hx, ?_, by omega, hF.trans (oF.mono (by decide)), ?_, ?_, ?_, ?_,
+  refine ⟨s', Exec.block hx, ?_, by omega, hF.trans (oF.mono (by decide)), ?_, ?_, ?_, ?_, fun _ => obx,
     ⟨ws ++ [F.w], by simp [hlen], ?_, ?_⟩⟩
   · rw [eval_ne ozf, hI.rcx, rcx_zf j hj, Bool.not_not]
   · rw [ocx, hI.rcx, rcx_inc j hj]
@@ -193,7 +175,8 @@ theorem innerLoop_ok (s₁ : S) (k R J : Nat) (ap np fp : Addr) (a : Nat → Bit
         (innerLoopTrace ap fp R J) s' ∧
       BInv s₁ s' k R J ap np fp a 8 := by
   have h0 : BInv s₁ s₁ k R J ap np fp a 0 :=
-    ⟨by omega, Frame.refl _ _, hrcx, by simpa using hrdx, hcf, hof, ⟨[], rfl, rfl, by simp [hsum, val, gsum]⟩⟩
+    ⟨by omega, Frame.refl _ _, hrcx, by simpa using hrdx, hcf, hof, fun h => absurd h (by omega),
+      ⟨[], rfl, rfl, by simp [hsum, val, gsum]⟩⟩
   obtain ⟨s', hx, hI'⟩ := loop_ok (body := .block Rind.X86_64.Sqrx8x.inner) (c := Rind.X86_64.Cond.vg .ne)
     (fun j s => BInv s₁ s k R J ap np fp a j) (fun j => j < 8) (fun j => decide (j + 1 < 8))
     (fun j => innerTrace ap fp (8 * J) (8 * R + 8 * J + j + 7) (8 * R + j + 1)) 1
