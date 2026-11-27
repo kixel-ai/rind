@@ -375,7 +375,7 @@ jobs:
   profile:
     name: profile (${{ matrix.profile }})
     needs: select
-    if: ${{ !cancelled() && github.event_name != 'pull_request' && (!inputs.jobs || contains(fromJSON(needs.select.outputs.jobs || '[]'), 'profile')) }}
+    if: ${{ !cancelled() && (!inputs.jobs || contains(fromJSON(needs.select.outputs.jobs || '[]'), 'profile')) }}
     strategy:
       fail-fast: false
       matrix:

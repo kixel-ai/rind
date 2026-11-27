@@ -3,7 +3,7 @@ name: Check
 permissions:
   contents: read
 
-# The unscoped backstop for the PR check's and the queue's diff-scoped gate,
+# The unscoped backstop for the local `just ci`'s and the queue's diff-scoped gate,
 # and the one run of the modules that gate leaves out: every module on main's
 # head once a day, rather than on each push, which the next push cancelled a
 # quarter of the time.

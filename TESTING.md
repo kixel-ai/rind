@@ -436,8 +436,8 @@ each hours from the others, as their `cron:` lines set, so no two fill the
 organization's 60 concurrent hosted jobs together, and off the hour, which
 GitHub delays most. `build`, `sanitizers`, `coverage`, `lints`, `prove`,
 `python`, `dart-libraries`, and `regenerate` run daily, and `Check` runs
-`just ci --all` on main's head daily as the backstop for the PR check's and
-the merge queue's diff-scoped gate, and the one run of the modules that gate
+`just ci --all` on main's head daily as the backstop for the local `just ci`'s
+and the merge queue's diff-scoped gate, and the one run of the modules that gate
 leaves out. OpenSSF `Scorecard` scores main on Monday and whenever branch
 protection changes, and runs only on main. `prove` also runs each push to main that reaches it,
 checking the bytes, and the HOL Light and Lean proofs and the cosimulation

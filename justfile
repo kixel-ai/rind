@@ -17,7 +17,7 @@ default:
 check $BASE="":
     sh/dispatch.sh check "$BASE"
 
-# Run the PR check's gate over the branch diff against BASE; missing tools fail.
+# Run the pre-PR gate over the branch diff against BASE; missing tools fail.
 ci $BASE="":
     CI_STRICT=1 sh/dispatch.sh ci "$BASE"
 
