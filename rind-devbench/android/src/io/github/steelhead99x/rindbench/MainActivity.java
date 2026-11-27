@@ -35,8 +35,10 @@ import java.util.*;
  * computer ran `adb reverse tcp:PORT tcp:PORT`), then the LAN address baked in
  * at build time (Collector.java). Results are always saved on the phone too.
  *
- * adb: am start -n io.github.steelhead99x.rindbench/.MainActivity [--es host H --ei port P]
- *      [--es libraries "rind,ring"] [--es sections "AEADs"] [--es preset quick|full] [--ez autostart true]
+ * adb: am start -n io.github.steelhead99x.rindbench/.MainActivity
+ *      [--es libraries "rind,ring"] [--es sections "AEADs"] [--es preset quick|full]
+ * Those extras only preselect: the Activity is exported, so any app could pass
+ * them, and none can tick consent, start a run, or name the collector.
  */
 public class MainActivity extends Activity {
     static final int BG = Color.rgb(13, 15, 20), CARD = Color.rgb(24, 27, 34), LINE = Color.rgb(44, 48, 58),
@@ -384,8 +386,6 @@ public class MainActivity extends Activity {
     // ---- the collector fills itself in: USB (adb reverse) first, then the LAN address baked in at build time.
     private List<String[]> candidates() {
         List<String[]> c = new ArrayList<>();
-        Intent it = getIntent();
-        if (it.hasExtra("host")) c.add(new String[]{it.getStringExtra("host"), String.valueOf(it.getIntExtra("port", Collector.PORT)), "set by adb"});
         c.add(new String[]{"127.0.0.1", String.valueOf(Collector.PORT), "over USB"});
         if (!Collector.HOST.isEmpty()) c.add(new String[]{Collector.HOST, String.valueOf(Collector.PORT), "over Wi-Fi"});
         return c;
@@ -464,7 +464,6 @@ public class MainActivity extends Activity {
             ready();
         } catch (Exception e) { statusLbl.setText("Could not read the list of tests: " + e); }
         agreeChanged();
-        if (getIntent().getBooleanExtra("autostart", false)) { agree.setChecked(true); startTapped(); }
     }
 
     private void ready() {
