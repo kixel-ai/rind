@@ -1984,8 +1984,9 @@ beyond Lean's own.
   `RunsSha512`, and `Rind/Armv7/Sha512Context.lean`, which `admin/prove`
   writes from x86_64's `Rind/X86_64/Sha512Context.lean`.
 - `Rind/X86_64/{X25519,Sha512,ChaCha20,Ed25519}.lean`: the X25519, SHA-512,
-  ChaCha20, and Ed25519 proofs, with `Rind/X86_64/X25519Bytes.lean`, X25519's
-  byte and limb conversions, `Rind/X86_64/Ed25519Ifma.lean`, Ed25519's on
+  ChaCha20, and Ed25519 proofs, with `Rind/X86_64/Sha512Context.lean`,
+  SHA-512's context, which armv7's Ed25519 hashes through too,
+  `Rind/X86_64/X25519Bytes.lean`, X25519's byte and limb conversions, `Rind/X86_64/Ed25519Ifma.lean`, Ed25519's on
   pyca/verified-garbage's IFMA routines, `Rind/X86_64/VgCurve25519.lean`, the
   axioms restating those routines' theorems, and `Rind/VgCurve25519.lean`,
   VG's X25519 and byte encodings as those proofs read them, `Rind/X86_64/{Blockwise,Sha,Hmac}.lean`,

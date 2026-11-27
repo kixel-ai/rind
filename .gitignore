@@ -70,6 +70,7 @@ proofs/Rind/Portable/RsaDispatch.lean
 proofs/Rind/Mcu/QuicDispatch.lean
 proofs/Rind/Mcu/DigestAlgorithm.lean
 proofs/Rind/Mcu/DigestDispatch.lean
+proofs/Rind/Mcu/Sha512Context.lean
 proofs/Rind/Mcu/Sha512.lean
 proofs/Rind/Mcu/ChaCha20.lean
 proofs/Rind/Mcu/Blockwise.lean

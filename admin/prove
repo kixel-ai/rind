@@ -2196,8 +2196,8 @@ sed -i '/-- BEGIN aead/,/-- END aead/d' proofs/Rind/Portable/Kdf/FunsExternal.le
 # 32-bit microcontrollers' hash, HMAC, and header-protection proofs and
 # compares' models are the portable backend's with the namespace renamed, over
 # `Rind/Mcu/`'s own block functions' proofs: the Rust paths are the same.
-for file in QuicDispatch DigestAlgorithm DigestDispatch Sha512 ChaCha20 Blockwise Sha Hmac HmacDispatch HmacApi DigestApi \
-    Compare CtEqual; do
+for file in QuicDispatch DigestAlgorithm DigestDispatch Sha512Context Sha512 ChaCha20 Blockwise Sha Hmac HmacDispatch \
+    HmacApi DigestApi Compare CtEqual; do
     sed 's/Rind\.Portable/Rind.Mcu/g; s/rind\.portable/rind.mcu/g' "proofs/Rind/Portable/$file.lean" >"proofs/Rind/Mcu/$file.lean"
 done
 # So are RSA verification's, over its own `RsaMont.lean`, without the sections
