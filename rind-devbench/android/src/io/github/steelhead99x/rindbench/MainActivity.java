@@ -58,7 +58,7 @@ public class MainActivity extends Activity {
             return insets;
         });
 
-        bench = new BenchView(this, getIntent());
+        bench = new BenchView(this, getIntent(), b != null);
         LearnView learn = new LearnView(this);
         contender = new ContenderView(this);
         pages[0] = bench; pages[1] = learn; pages[2] = contender;

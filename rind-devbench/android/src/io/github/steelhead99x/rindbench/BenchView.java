@@ -74,10 +74,19 @@ final class BenchView extends LinearLayout {
     private String runnerHost;
     private int runnerPort = Collector.PORT;
     private final Runnable poll = this::poll;
+    private final boolean restored;
 
-    BenchView(Activity host, Intent intent) {
+    /**
+     * `restored`: the activity is being recreated from saved state, after a
+     * configuration change or after Android killed the process. Its launch
+     * intent comes back with it, so a device runner's autostart must not fire
+     * again; the native run state alone can't tell, since process death
+     * clears it.
+     */
+    BenchView(Activity host, Intent intent, boolean restored) {
         super(host);
         this.host = host;
+        this.restored = restored;
         setBackgroundColor(Theme.surface);
         setContentDescription("Bench page");
         int s2 = Theme.dpi(host, 8), s4 = Theme.dpi(host, 16);
@@ -391,7 +400,8 @@ final class BenchView extends LinearLayout {
             if (!run.equals(clearedRun)) showFinished(st, false);
             return;
         }
-        if (Collector.RUNNER && intent != null && intent.getBooleanExtra("autostart", false)) {
+        // A launch's autostart is consumed by its first view: never by one restored from saved state.
+        if (Collector.RUNNER && !restored && intent != null && intent.getBooleanExtra("autostart", false)) {
             agree.setChecked(true);
             startTapped();
         }
@@ -432,8 +442,12 @@ final class BenchView extends LinearLayout {
 
     private java.util.List<String[]> candidates() {
         java.util.List<String[]> c = new ArrayList<>();
-        if (runnerHost != null && !runnerHost.isEmpty())
+        // A runner's collector, set by intent, is the only candidate: when it's down, results
+        // save on the phone and go nowhere else, rather than to whichever collector answers.
+        if (runnerHost != null && !runnerHost.isEmpty()) {
             c.add(new String[]{runnerHost, String.valueOf(runnerPort), "set by adb"});
+            return c;
+        }
         c.add(new String[]{"127.0.0.1", String.valueOf(Collector.PORT), "over USB"});
         if (Collector.HOST != null && !Collector.HOST.isEmpty())
             c.add(new String[]{Collector.HOST, String.valueOf(Collector.PORT), "over Wi-Fi"});
