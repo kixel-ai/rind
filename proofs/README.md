@@ -70,7 +70,7 @@ Every Lean file that declares an `axiom`, by the source it restates; no file hol
 | Beneficial AI Foundation's Lean theorems of curve25519-dalek, in its X25519 and Edwards specs that `admin/import-dalek` vendors | `Armv7/Dalek` | published proofs; `admin/prove dalek` checks that every definition the restated functions reach in armv7's configuration is the text BAIF's proofs are about, but for one pinned pair that differs only in local names |
 | Vale's procedures for HACL\*'s AES-GCM | `X86_64/ValeAesGcm` | published proofs; `admin/prove bytes` checks the object code |
 | aws-lc-verification's NSym proof of SHA-384/512 (aarch64) and rind's HOL Light proof of the AVX2 routine (x86_64) | `Aarch64/AwsLc`, `X86_64/AwsLc` | a published proof and rind's own; `admin/prove bytes` and `admin/prove hol-light` check the object code |
-| rind's own HOL Light proofs of its assembly, and rind's Lean proofs of the SHA-256 crypto-extension routine (aarch64) and `bn_mul4x_mont` and `bn_mulx4x_mont` (x86_64) | `Aarch64/Sha256Hw`, `Armv7/GhashNeon`, `X86_64/ChaCha20Cipher`, `X86_64/CtEqual`, `X86_64/RsaMont`, `X86_64/Sha256Shaext`, `X86_64/ShaBlocks` | rind's proofs, in `proofs/hol-light/`, `Rind/Aarch64/Sha256HwAsm.lean`, `Rind/X86_64/Mul4xProof.lean`, and `Rind/X86_64/Mulx4xProof.lean`, checked against the bytes rind's build emits |
+| rind's own HOL Light proofs of its assembly, and rind's Lean proofs of the SHA-256 crypto-extension routine (aarch64) and `bn_mul4x_mont` and `bn_mulx4x_mont` (x86_64) | `Aarch64/Sha256Hw`, `Armv7/GhashNeon`, `Armv7/Sha512Entry`, `X86_64/ChaCha20Cipher`, `X86_64/CtEqual`, `X86_64/RsaMont`, `X86_64/Sha256Shaext`, `X86_64/ShaBlocks` | rind's proofs, in `proofs/hol-light/`, `Rind/Aarch64/Sha256HwAsm.lean`, `Rind/X86_64/Mul4xProof.lean`, and `Rind/X86_64/Mulx4xProof.lean`, checked against the bytes rind's build emits |
 | HOL Light theorems of AES-CTR and AES-CBC that no proof states yet | `X86_64/AesModesLow` | **assumed, not proven**: [the AES modes quest](/quest/m4/verified/aes-modes.md) owns them |
 
 Hand models of Rust Aeneas cannot translate, each quoting the Rust it models:
@@ -272,6 +272,24 @@ those inputs, in any worktree, restores in under a second.
   K256's words and the literal from that code. The theorem covers the
   routine from entry to return for a caller in A32 or T32, so every armv7
   target. No Lean theorem restates it yet.
+- `armv7/sha512_armv4.ml`: `SHA512_BLOCK_DATA_ORDER_NEON_SUBROUTINE_CORRECT`,
+  rind's proof that aws-lc's `sha512_block_data_order_neon` in
+  `low::arm::sha_armv4`, which armv7 runs where the CPU has NEON, stores to
+  the state s2n-bignum's FIPS 180-4 spec, `sha512_hash_blocks`, of its
+  blocks from the state, for one block up. Its first 16 rounds are
+  straight-line D-register code and its other 64 a loop of four 16-round
+  passes on a constant counter, which stepping unrolls, so stepping a
+  block's 2,897 instructions keeps each Q register a join of two of the
+  spec's words:
+  each state word is the round's `a` or `e` it was, the round's sums fold
+  into the next round's, and the schedule's vector operations, split into
+  their lanes, fold into `sha512_msg_schedule`. The routine reaches K512
+  through an `adr` back to it, so `admin/prove` extracts the code from
+  K512 through the routine's end, `K512..sha512_block_data_order_neon`,
+  with `sha512_block_data_order_nohw` between. The theorem covers the
+  routine from entry to return for a caller in A32 or T32, so every armv7
+  target, and `Rind/Armv7/Sha512Entry.lean` restates it about
+  `compress_neon`. The integer routine has no proof yet.
 - `x86_64/ecp_nistz256_point_add_affine.ml` and
   `x86_64/ecp_nistz256_point_add_affinex.ml`:
   `ECP_NISTZ256_POINT_ADD_AFFINE_SUBROUTINE_CORRECT` and
@@ -451,7 +469,9 @@ generation and decapsulation with AVX-512 and of encapsulation, with `H(ek)`
 given or not, at each of its four widths, over `Cosim.ProgsX86_64`, VG's own
 `Prog` terms (the routine and the scrub VG appends), which `vg-print` and
 `admin/vg-bytes --progs` bind to VG's assembly text; no theorem about rind's
-wrappers uses them.
+wrappers uses them. They stand for the routines' leakage where
+`mid::mlkem::ct_binsec_mlkem768_vg` checks the Rust around them under BINSEC,
+each AVX-512 routine stubbed by its contract, in place of an SDE trace.
 
 `Rind/Aarch64/VgChaCha20Poly1305.lean` restates VG's theorems about the
 aarch64 SVE2 and NEON ChaCha20-Poly1305 routines rind runs, `seal_framed` and
@@ -507,10 +527,17 @@ it adds the push, `lea`, `neg`, `dec`, `shrd`, aligned 128-bit load and
 store, and `ja` aws-lc's code uses, a stack pointer move that claims the region it
 passes over as writable and forgets what a release leaves below it, and the
 padding (`.align` and the `jmp` over it), which runs as no instructions.
-`admin/prove lean` compares each x86_64 program's bytes with the Linux build
-the same way, `rind-asm x86_64` printing them, and `admin/prove vg`
-cosimulates its instructions and branches (`Cosim/RindX86_64.lean`) but for
-the padding, whose bytes that comparison checks.
+For BoringSSL's AVX2 AES-GCM code it adds `vpshufd` from memory and
+RIP-relative operands (`rip`) that read the start of a static, as the words
+the program names, leaking offset 0 as VG's table instructions do.
+`admin/prove lean` compares each x86_64 program's bytes and relocations with
+the Linux build the same way, `rind-asm x86_64` printing them: the function
+must be the whole of its own section, and each `rip` operand's
+`R_X86_64_PC32` relocation must reach the static it names, whose bytes must
+begin with the program's words. `admin/prove vg` cosimulates its
+instructions and branches (`Cosim/RindX86_64.lean`), a `rip` operand reading
+words placed after its instruction, but for the padding, whose bytes that
+comparison checks.
 
 - `Rind/X86_64/Mul4xProof.lean`: `bn_mul4x_mont_correct`, that
   `low::x86_64::mont::bn_mul4x_mont`, aws-lc's 4x Montgomery multiplication
@@ -555,11 +582,26 @@ the padding, whose bytes that comparison checks.
   `r10` to `r15`; that its trace is a function of the AAD's address and
   length and `r`'s address (`ConstantTime`); and that some state meets
   `Pre`. `Rind/Poly1305Limbs.lean` holds what the x86_64 and aarch64 proofs
-  of aws-lc's one-pass routines share: `padBlocks`, the partial reduction
-  both keep the accumulator below `5 · 2^128` with, and memory as bytes.
+  of aws-lc's one-pass routines share: `padBlocks`, the three limbs and the
+  partial reduction both keep the accumulator below `5 · 2^128` with, and
+  memory as bytes.
   `PolyHashAdModel` proves the limbs aws-lc's `poly_mul` computes are that
   reduction of the product, and `PolyHashAdAsm` runs the program's blocks.
   No axiom restates it yet: the proofs of seal and open that call it will.
+
+- `Rind/X86_64/GcmInitAvx2.lean`: `gcm_init_vpclmulqdq_avx2_correct`, that
+  `low::x86_64::aes_gcm_vaes::gcm_init_vpclmulqdq_avx2`, BoringSSL's key
+  setup for its AVX2 AES-GCM routines, run from a state its `Pre` holds of
+  (reads of the key's 16 bytes, writes of the table's 256, the return
+  address outside the table), writes H^8 down to H^1 of the key at `rsi`,
+  each shifted as Vale's `shift_key_1` does, to the table's first 128 bytes
+  and each one's halves XORed, in BoringSSL's order, to the next 64, and
+  changes no other memory, the table's last 64 bytes included, and no
+  general register; that its trace is a
+  function of its two pointers (`ConstantTime`); and that some state meets
+  `Pre`. Nothing restates it yet: the Rust that calls it and the kernels
+  that read its table are [the VAES
+  quest](/quest/m4/verified/aes-gcm-x86-vaes.md)'s.
 
 - `Rind/Aarch64/Sha256HwAsm.lean`: `sha256_block_data_order_hw_correct`,
   that `low::aarch64::sha256::sha256_block_data_order_hw`, aws-lc's routine
@@ -594,6 +636,24 @@ the padding, whose bytes that comparison checks.
   address, whatever the key, nonce, message, and AAD: `check` accepts each
   program, which the kernel computes. That they compute RFC 8439's AEAD,
   the rest of `AwsLc`, is not yet proven.
+
+- `Rind/Aarch64/ChaCha20Poly1305Named.lean`, `ChaCha20Poly1305Poly.lean`,
+  and `ChaCha20Poly1305Ad.lean`: the first parts of that proof.
+  `ChaCha20Poly1305Named` restates `sealProg` and `openProg` in named
+  blocks, `sealNamed` and `openNamed`, equal to them by `rfl`: Poly1305's
+  multiply-and-reduce, all 31 copies; the inlined AAD hash; and ChaCha20's
+  double round over one, two, or three blocks. `ChaCha20Poly1305Poly` runs
+  Poly1305's block step on the model and proves it a step of RFC 8439's
+  accumulator modulo `p` (`acc_step`), from `Rind/Poly1305Limbs.lean`'s
+  `limbs` and `reduce`. `ChaCha20Poly1305Ad` proves the inlined AAD hash,
+  `ad_ok`: from the flags of `cmp x4, #16`, `x4` bytes of AAD at `x3`,
+  fewer than `2^63` and readable if any, 1 in `x15`, `r` in `(x16, x17)`,
+  each word below `2^60`, and an accumulator below `5 · 2^128`
+  (`Ctx.Ok`, `BInv`), it leaves the accumulator over the AAD
+  zero-padded to whole blocks (`padBlocks`), changes no memory and no
+  register but its scratch ones and `v20`, and its trace is a function of
+  the AAD's address and length. `Rind/Aarch64/Asm.lean` holds the symbolic
+  execution they share.
 
 ## curve25519-dalek's proofs
 
@@ -1158,9 +1218,10 @@ given FIPS 202's round constants and nothing of the CPU. Each round is
 
 ML-KEM's polynomial arithmetic, against FIPS 203 as SymCrypt's Lean spec
 (`Rind/SymCrypt/MlKem.lean`, MIT) states it, and of rind's Rust the coding
-below it and, on aarch64, ML-KEM-768's K-PKE decryption and encryption; key
-generation, the encapsulation-key checks, and the Fujisaki-Okamoto transform
-have [its quest](/quest/m4/verified/mlkem-construction.md):
+below it and, on aarch64, the matrix sampling and ML-KEM-768's K-PKE
+decryption and encryption; key generation, the encapsulation-key checks, and
+the Fujisaki-Okamoto transform have
+[its quest](/quest/m4/verified/mlkem-construction.md):
 
 - `NTT_get`, `NTTInv_get` (`Rind/MlKem.lean`): Algorithms 9 and 10 compute
   the residues FIPS 203's Equations (4.12) and (4.13) define, and back;
@@ -1244,14 +1305,28 @@ encapsulation key encodes (`DecodedHolds`), on the routines' and SHA-3's
 axioms. `kpke_encrypt_spec` states the ciphertext from rind's side, and
 `encrypt_eq` unrolls the spec's loops to the same terms.
 
+`decoded_new_spec` (`Rind/Aarch64/MlKemSample.lean`): on aarch64,
+`Decoded::new` of an ML-KEM-768 encapsulation key decodes `t̂` and samples the
+transposed matrix as `DecodedHolds` states, so `kpke_encrypt_fips` holds of
+the key's bytes, on the same axioms and s2n-bignum's rejection sampling's,
+given that FIPS 203's `SampleNTT` finishes on each of the matrix's nine inputs
+(`Halts`), which no proof shows for every input. `sample_ntt_spec`
+covers `sample_ntt` for every rank, since aarch64 has no eight-way sampler: it
+hashes four polynomials at a time through `shake128x4_squeeze_spec` and the
+rest one at a time, takes each one's first three blocks through the rejection
+sampler and then a block at a time through `tail_case`, and writes SHAKE128's
+first 256 12-bit candidates below `q`. `sampleNTT_eq` (`Rind/MlKemSample.lean`)
+shows, with no Rust, that those are `SampleNTT`'s, through the spec's
+incremental sponge.
+
 `Rind/MlKemCoding.lean` states what they need of the spec, with no Rust:
 `ByteEncode_bit`, `ByteDecode_get`, and `SamplePolyCBD_get` give each bit or
 coefficient of FIPS 203's `ByteEncode`, `ByteDecode`, and `SamplePolyCBD`,
 which the spec writes as loops, and `Compress_val` and `Decompress_val` give
 `Compress` and `Decompress`, which it writes as rounded rationals, as
 quotients of naturals. K-PKE's decryption and encryption call them; its key
-generation, the Fujisaki-Okamoto transform, SampleNTT, and x86_64's
-encodings are the quest's.
+generation, the Fujisaki-Okamoto transform, and x86_64's encodings are the
+quest's.
 
 Ed25519 on x86_64 and aarch64, from the signature API's `ed25519::KeyPair`
 and `ed25519::PublicKey` to s2n-bignum's routines and the SHA-512 proof above, in
@@ -1311,16 +1386,21 @@ backend, in the same six theorems, in `Rind/Armv7/Ed25519.lean`, which
 follows x86_64's above `mid::ed25519`, whose portable code calls dalek. It
 hashes through `Rind/X86_64/Sha512Context.lean`'s proof of SHA-512's
 context, which `admin/prove` writes for armv7 over armv7's `RunsSha512`:
-that rind's entry checks pass, and the contract of aws-lc's `sha512-armv4`
-assembly, NEON's routine and the integer one, which no proof covers yet:
+that rind's entry checks pass and the CPU has NEON, so SHA-512 runs aws-lc's
+NEON routine, which `armv7/sha512_armv4.ml` proves and
+`Rind/Armv7/Sha512Entry.lean` restates. The integer routine, which a CPU
+without NEON runs, has no proof yet:
 [armv7's assembly](/quest/m5/verified-armv7/assembly.md) proves it. The
-theorems that run code assume `Runs` and `RunsSha512`, so they hold only as
-far as that contract does, and armv7's Ed25519 earns no ✓ until it is proven. `Point::from_bytes`
+theorems that run code assume `Runs` and `RunsSha512`, so they hold on CPUs
+with NEON, and armv7's Ed25519 earns no ✓ until the integer routine is
+proven too, since no armv7 row names a CPU feature. `Point::from_bytes`
 decodes with dalek's lenient `decompress` after refusing a y at or above p
 and an x of zero with the sign bit set, and the theorems prove those checks
 make it `edDecode`. They rest on the axioms `Rind/Armv7/Dalek.lean` restates
 for the dalek functions each calls, which
-[curve25519-dalek's proofs](#curve25519-daleks-proofs) describes.
+[curve25519-dalek's proofs](#curve25519-daleks-proofs) describes, and those
+that hash on `Rind/Armv7/Sha512Entry.lean`'s restatement of
+`armv7/sha512_armv4.ml`'s theorem.
 
 Ed25519 on x86_64 CPUs with AVX-512 IFMA, from the same API to
 pyca/verified-garbage's key-pair derivation, signing, and verification, in
@@ -1503,10 +1583,14 @@ CPU-feature checks pick Vale's tier (`RunsValeAesGcm`) or the SSE tier
 (`Algorithm`'s `expand` and `Sealer`'s `Ops`), and `seal_in_place_append_tag`,
 which is generic over its buffer.
 
-On aarch64, AES-GCM is proven below the AEAD API on CPUs with the crypto
-extension: for short messages with every key size, and at every length below
-2^61 bytes with AES-128 and AES-256 keys; its GHASH key setup and hashing are proven at every
-length. `Rind/Aarch64/GhashPmull.lean` proves
+On aarch64, AES-GCM is proven from the AEAD API down on CPUs with the
+crypto extension, for the AAD below 2^61 bytes and the message lengths the
+API takes (up to 2^36 - 32 bytes), with AES-128 and AES-256 keys, and with
+AES-192 keys on cores without SHA3. `tagged_from` and `tagged` below it are
+proven at every length below 2^61 bytes with the same keys, and on cores with
+SHA3 with AES-192 keys only for short messages, which no AEAD theorem states,
+since `RunsAesGcm` excludes AES-192 there. Its GHASH key setup and hashing
+are proven at every length. `Rind/Aarch64/GhashPmull.lean` proves
 that `GhashTable::new` builds the PMULL table of H to H^8, each shifted as
 Vale's `shift_key_1` does (`ghash_table_new_spec`), and that `Ghash::add` on
 it is the Horner rule on the padded blocks, Vale's `ghash_LE`
@@ -1547,18 +1631,29 @@ that `partial` is `short`'s last chunk (`partial_spec`), so `cipher` is GCTR
 from the block after the counter block and GHASH over the AAD and the
 ciphertext (`cipher_spec`), and `tagged_from` and `tagged` at every length
 below 2^61 bytes are GCTR and the tag on `gcm_hash` (`tagged_from_spec`) and `gcm_encrypt_LE` and
-`gcm_decrypt_LE` (`tagged_seal_spec`, `tagged_open_spec`). With a table for
-the cores with SHA3, each takes `KernelBuffersLow`, which names the `_alt`
-kernels' requirement that the blocks' address plus their length is below
-2^63, as a hypothesis: untagged user-space addresses meet it, and a pointer
-tag that sets bit 63 breaks it. AES-192 past the
-short path, which runs aws-lc's stitched kernels on cores with SHA3 and
-rind's AES-CTR and GHASH in turn otherwise, and the AEAD API above `tagged`
-remain to prove.
+`gcm_decrypt_LE` (`tagged_seal_spec`, `tagged_open_spec`). On the cores
+with SHA3, `stitched` runs the `_alt` kernels only after comparing the
+blocks' address plus their length with 2^63, as their theorems require, which
+the hand model leaves opaque as `KernelBuffersLow`; a pointer tag that sets
+bit 63, as Android's heap tags do, runs the four-way kernels, so the proofs
+cover either branch. AES-192 past the
+short path runs aws-lc's eight-way kernels on cores with SHA3, which nothing
+proves, and otherwise `composed`, rind's AES-CTR and then GHASH over each
+128-byte chunk: `Rind/Aarch64/AesGcmComposed.lean` proves it GCTR and GHASH
+(`composed_spec`) from `Rind/Aarch64/AesModesLow.lean`'s CTR proof and
+`ghash_add_spec`, so `cipher_spec` and the theorems above it take AES-192 on a
+table without `eight_way`. `Rind/Aarch64/AesGcmAead.lean` and
+`Rind/Aarch64/AesGcmAny.lean` state `AesGcm`'s key setup, `encrypt`,
+`decrypt`, `encrypt_any`, and `decrypt_any`, and the AEAD API above them, as
+x86_64's files of those names do, under `RunsAesGcm alg`: the entry guard
+passes, the CPU-feature checks find the crypto extension, and, where they find
+SHA3, the key is not AES-192.
 
 `aead::gcm::Key`, which takes an IV of any length and tags of any
 `TagLength`, is proven on the same tiers, in `Rind/X86_64/GcmKey.lean`, a
-hand model over `AeadDispatch` that quotes `rind/src/aead/gcm.rs`. Its `new`
+hand model over `AeadDispatch` that quotes `rind/src/aead/gcm.rs`, and on
+aarch64 in the copy `admin/prove` makes of it, which passes `RunsAesGcm` the
+key's algorithm. Its `new`
 for AES-128, AES-192, or AES-256 holds the `aead::Key` for the algorithm,
 which refuses a key of another length (`gcm_key_new`). For an IV of 1 to
 2^61 - 1 bytes and the same AAD and message lengths, its
@@ -1815,16 +1910,14 @@ return their results at the modulus's width of k words, and
 `IfmaCheckReturns`, that the CPU check for AVX-512 IFMA returns.
 `Rind/X86_64/RsaMont.lean`'s `mont_products` proves it at 16 and 32 words
 with BMI2 and ADX, from s2n-bignum's theorems; on any CPU at a width that is
-under eight words or not a multiple of four, from `nohw_spec`, which restates
-rind's HOL Light proof of `bn_mul_mont_nohw` below, of the Linux build's
-object, so not of the macOS one ([its quest](/quest/m4/verified/apple-bytes.md));
-and below `2^29` words from `AwsLcMont`, that
-aws-lc's unproven `bn_sqr8x_mont` returns its squares, at every
-other width and CPU. Its products through `bn_mul4x_mont` and
-`bn_mulx4x_mont` follow from `mul4x_spec` and `mulx4x_spec`, which restate
-`Mul4xProof.lean`'s and `Mulx4xProof.lean`'s theorems above, but
-`mont_products` still takes `AwsLcMont` at those widths, since it states
-products and squares together.
+not a multiple of eight, from `nohw_spec`, which restates rind's HOL Light
+proof of `bn_mul_mont_nohw` below, of the Linux build's object, so not of the
+macOS one ([its quest](/quest/m4/verified/apple-bytes.md)), and from eight
+words at a multiple of four from `mul4x_spec` and `mulx4x_spec`, which restate
+`Mul4xProof.lean`'s and `Mulx4xProof.lean`'s theorems above; and from
+`AwsLcMont`, that aws-lc's unproven `bn_sqr8x_mont` returns its squares, at
+the other multiples of eight, all below `2^29` words, the most
+`bn_mulx4x_mont` takes, which `MontArgs` bounds.
 `PublicKey::verify` reaches each algorithm's verification through a function
 pointer, and every loader encodes the key through `Buffer::write`, which
 `Rind/X86_64/RsaDispatch.lean` models for these two algorithms. On aarch64 the products are aws-lc's, so these proofs are not
@@ -1835,11 +1928,13 @@ RSA's private operation on x86_64, in `Rind/X86_64/RsaPrivate.lean`:
 `WrongLength` a c not below N, and otherwise returns RSASP1 of c in its CRT
 form, `rsasp1Crt` in `Rind/Rsa.lean`, which raised to E modulo N is c, or
 refuses with `Fault` where it is not. It holds for a key meeting `PrivKeyInv`,
-the values `RsaPrivateKey::new` computes, with primes of 16 or 32 words, on a
-CPU with BMI2 and ADX, where
-pyca/verified-garbage's IFMA CRT does not run (`ifma.w = 0`) and neither does
-aws-lc's dual RSAZ (`NoRsazPair`), given `MontProducts` at the primes' and the
-modulus's widths. `private_op_rsa2048_spec` discharges the products, by
+the values `RsaPrivateKey::new` computes, on a CPU with BMI2 and ADX, given
+`MontProducts` at the modulus's width. Where the key set
+pyca/verified-garbage's AVX-512 IFMA CRT up, the CRT is VG's, through the
+axiom `ifma_crt_spec`, which `Rind/X86_64/VgRsa.lean` restates from that
+project's Lean proof; otherwise it is rind's, with primes of 16 or 32 words,
+where aws-lc's dual RSAZ does not run (`NoRsazPair`), given `MontProducts` at
+the primes' width. `private_op_rsa2048_spec` discharges the products, by
 s2n-bignum's Karatsuba routines at 16 and 32 words, and the dual RSAZ for
 RSA-2048; RSA-4096's 64-word modulus still needs `AwsLcMont` for its fault
 check's products. `Rind/X86_64/RsaExp.lean` proves
@@ -1847,12 +1942,14 @@ check's products. `Rind/X86_64/RsaExp.lean` proves
 `Rind/X86_64/RsaGather.lean` its table gather on both paths `HaveAvx2::check`
 picks, over `Rind/X86_64/GatherModel.lean`'s hand model of the AVX2 one.
 `Rind/X86_64/RsaPrivKey.lean`'s `rsa_private_key_new_spec` proves that a key
-`RsaPrivateKey::new` returns meets `PrivKeyInv` with `ifma.w = 0`, holds the
-components it was given, and that those meet RFC 8017's relations
-(`CrtRelations`): everything aws-lc's `RSA_check_key` checks but the primes'
-primality. It holds where `HaveAvx512ForRsa::check` returns none, which a CPU
-with AVX-512 IFMA fails even for a key size VG's CRT does not take, and given
-`MontProducts` at the wider prime's width. Below it, the file proves
+`RsaPrivateKey::new` returns meets `PrivKeyInv`, holds the components it was
+given, and that those meet RFC 8017's relations (`CrtRelations`): everything
+aws-lc's `RSA_check_key` checks but the primes' primality. Where
+`IfmaCrt::new` sets VG's CRT up, its values are
+`VG.Spec.Rsa.privatePrecompute`'s (`IfmaCrtInv`). It holds given that
+`HaveAvx512ForRsa`'s CPU checks return, for AVX-512 IFMA
+(`IfmaCheckReturns`) and AVX512_FP16, and `MontProducts` at the wider prime's
+width. Below it, the file proves
 `exponents_agree` and the `PosInt` routines key loading runs, among them
 `fit` and `reduce_even`.
 
@@ -2054,7 +2151,7 @@ beyond Lean's own.
   them; `Rind/Armv7/Ed25519.lean`, armv7's Ed25519, over the same axioms and
   `Rind/DalekEdwards.lean`, BAIF's Edwards points and encodings in
   `Rind/Ed25519.lean`'s terms, with `Rind/Armv7/Sha512Entry.lean`, armv7's
-  `RunsSha512`, and `Rind/Armv7/Sha512Context.lean`, which `admin/prove`
+  `RunsSha512` and the axiom restating `armv7/sha512_armv4.ml`'s theorem, and `Rind/Armv7/Sha512Context.lean`, which `admin/prove`
   writes from x86_64's `Rind/X86_64/Sha512Context.lean`.
 - `Rind/X86_64/{X25519,Sha512,ChaCha20,Ed25519}.lean`: the X25519, SHA-512,
   ChaCha20, and Ed25519 proofs, with `Rind/X86_64/Sha512Context.lean`,
@@ -2078,7 +2175,7 @@ beyond Lean's own.
   counter blocks, for the x86_64 routines' HOL Light proofs; and
   `Rind/GhashSpec.lean` and
   `Rind/X86_64/{Ghash,PartialBlock,AesGcmGlue,AesGcm,GhashClmul,AesGcmBy8,AesGcmClmul,AesGcmAead,AesGcmApi,AesGcmAny,GhashAvx512,AesGcmAvx512}.lean`:
-  the AES-GCM proof, on x86_64 alone; `Rind/Aarch64/{AesGcmModel,GhashPmull,AesGcmShort,AesGcm,AesGcmLong}.lean`,
+  the AES-GCM proof, on x86_64 alone; `Rind/Aarch64/{AesGcmModel,GhashPmull,AesGcmShort,AesGcm,AesGcmComposed,AesGcmLong,AesGcmAead,AesGcmAny}.lean`,
   aarch64's hand model and its PMULL GHASH and AES-GCM proofs;
   `Rind/S2nGcm.lean`, s2n-bignum's AES and GHASH specs, transliterated, and
   their proofs that they are Vale's; `Rind/S2nGcmAe.lean`, its GCM-AE,
@@ -2133,7 +2230,10 @@ beyond Lean's own.
   `Rind/Aarch64/MlKemPoly.lean`: `mid::mlkem`'s vector operations over them;
   `Rind/X86_64/MlKemCbd.lean`, on both targets: rind's noise sampling;
   `Rind/Aarch64/MlKemPke.lean`: ML-KEM-768's K-PKE decryption;
-  `Rind/Aarch64/MlKemEncrypt.lean`: its encryption.
+  `Rind/Aarch64/MlKemEncrypt.lean`: its encryption; `Rind/MlKemSample.lean`:
+  FIPS 203's `SampleNTT` as SHAKE128's first 256 candidates below `q`;
+  `Rind/Aarch64/MlKemSample.lean`: rind's matrix sampling and ML-KEM-768's
+  `Decoded::new`.
 - `Rind/<Arch>/ShaBlocks.lean`: SHA-1 and SHA-256's block functions on each
   target, SHA-1's padded last blocks, and SHA-256's padded last blocks and
   finish; `Rind/Aarch64/Sha256Hw.lean`, the axiom for aarch64's routine with

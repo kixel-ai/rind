@@ -289,7 +289,8 @@ Hand-written arithmetic no proof covers, by where it came from:
 - **aws-lc's, BoringSSL's, and OpenSSL's assembly** that rind runs without a
   ✓, such as ChaCha20-Poly1305 on x86_64, RSAZ, Montgomery multiplication
   off ADX, the AVX2 and SHA512-instruction SHA-2, VAES AES-GCM, and all of
-  armv7's. Vectors and fuzzing reach each on its tier; aws-lc-rs, which runs
+  armv7's but its NEON GHASH, its SHA-256 with the crypto extension, and its
+  NEON SHA-384/512. Vectors and fuzzing reach each on its tier; aws-lc-rs, which runs
   that code too, checks only the glue, and the independent oracle checks the
   routine. rind's structured copy of aws-lc's aarch64 ChaCha20-Poly1305 is
   proven constant-time but not correct, and aws-lc-rs's original checks it.
@@ -299,8 +300,8 @@ Hand-written arithmetic no proof covers, by where it came from:
 - **rind's own**, which ALGORITHMS.md marks ⚡, such as its parts of P-384 and
   P-521, x86_64 SHA-256, the portable RSA multiplication but its Montgomery
   products on 64-bit limbs, and armv7 Ed25519, whose Lean proof holds only
-  over a contract for aws-lc's unproven 32-bit ARM SHA-384/512, and so earns
-  no ✓. Vectors, independent differential tests, and fuzzing reach each,
+  on CPUs with NEON, since a CPU without it hashes with aws-lc's unproven
+  integer 32-bit ARM SHA-384/512, and so earns no ✓. Vectors, independent differential tests, and fuzzing reach each,
   and each Montgomery routine's unit tests compare it with proven or
   portable arithmetic on edge-case limbs, as
   [TESTING.md](TESTING.md#vector-suites) describes.
@@ -314,7 +315,8 @@ Hand-written arithmetic no proof covers, by where it came from:
   which `proofs/` restates as axioms, cover the functions armv7's X25519
   and Ed25519 call, but neither earns a ✓ yet: X25519's shared secret runs
   BoringSSL's unproven NEON ladder on every armv7 CPU the benchmarks run,
-  and Ed25519 hashes with aws-lc's unproven 32-bit ARM SHA-512. Nothing
+  and Ed25519's proof covers only CPUs with NEON, since a CPU without it
+  hashes with aws-lc's unproven integer 32-bit ARM SHA-512. Nothing
   checks that the portable backend's 64-bit build is the code those proofs
   are about. On both, ristretto255's differential test compares dalek with
   itself, so beside RFC 9496's and RFC 9497's vectors only the textbook

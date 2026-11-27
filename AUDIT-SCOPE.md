@@ -229,7 +229,8 @@ restated as a work list:
    backend, ported to intrinsics.
 3. Imported assembly that runs without a proof: aws-lc's ChaCha20-Poly1305 on
    x86_64, RSAZ, Montgomery multiplication without ADX, the AVX2 SHA-2, VAES
-   AES-GCM, and all of armv7's; and rind's structured copy of aws-lc's
+   AES-GCM, and all of armv7's but its NEON GHASH, its SHA-256 with the
+   crypto extension, and its NEON SHA-384/512; and rind's structured copy of aws-lc's
    aarch64 ChaCha20-Poly1305, read in its four `.s` files rather than through
    the importer, which Lean proves constant-time but not that it computes the
    AEAD.

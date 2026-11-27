@@ -284,15 +284,36 @@ class Render(unittest.TestCase):
         md = br.report(hosts(), None, VERIFIED, [], sizes)[br.REPORT]
         self.assertIn("| rind | 893,481 |\n| rustls + rind-rustls | 3,836,722 |", md)
 
+    def test_reads_a_benchmark_name_as_its_report_row(self):
+        for name, id in [
+            ("rind-bench/benches/sha2.rs::sha256::rind[64B]", "sha256/rind/64B"),
+            ("rind-bench/benches/aes_gcm.rs::aes128_gcm::ring::key", "aes128-gcm/ring/key"),
+            ("rind-bench/benches/rustls.rs::rustls_records[aes128-gcm/rind/64B]", "rustls-records/aes128-gcm/rind/64B"),
+            ("rind-bench/benches/argon2.rs::argon2id_16MiB_t1_p1::rustcrypto", "argon2id-16MiB-t1-p1/rustcrypto"),
+        ]:
+            self.assertEqual(br.bench_id(name), id)
+        for name in ["sha256::rind[64B]", "rind-bench/benches/sha2.rs::sha-256::rind", "rind-bench/benches/sha2.rs::sha256[]"]:
+            with self.assertRaises(SystemExit, msg=name):
+                br.bench_id(name)
+        self.assertEqual(br.operation_of("p256-ecdh/p256-rustcrypto"), ("p256-ecdh/{lib}", "p256-rustcrypto"))
+        for row in ["x25519-ecdh/rind/extra", "slhdsa-sha2-128s-sign/fips205"]:
+            self.assertIsNone(br.operation_of(row), row)
+
+    def test_reads_a_swole_bench_run_by_benchmark_id(self):
+        out = {
+            "samples": [
+                {"commit": "0" * 40, "metrics": {"a.rs::x25519_ecdh::rind": {"time (x86_64-1)": {"value": 9.0}}}},
+                {"metrics": {"a.rs::x25519_ecdh::rind": {"time (x86_64-1)": {"value": 7.5}}}},
+            ],
+            "units": {"time (x86_64-1)": "ns"},
+        }
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "out.json")
+            with open(path, "w") as f:
+                json.dump(out, f)
+            self.assertEqual(br.swole_times(path), [{"id": "x25519-ecdh/rind", "ns": 7.5}])
+
     def test_leaves_out_a_library_the_cpu_lacks_features_for(self):
-        regex = re.compile(br.operation_regex({"graviola": ["adx"]}))
-        for row in ["x25519-ecdh/rind", "p256-ecdh/p256-rustcrypto", "aes128-gcm/openssl/32B"]:
-            self.assertTrue(regex.match(row), row)
-        for row in ["x25519-ecdh/graviola", "aes128-gcm/graviola/32B", "x25519-ecdh/rind/extra", "slhdsa-sha2-128s-sign/fips205"]:
-            self.assertFalse(regex.match(row), row)
-        self.assertTrue(re.match(br.operation_regex(), "slhdsa-sha2-128s-sign/rustcrypto"))
-        self.assertFalse(re.match(br.operation_regex(), "slhdsa-sha2-128s-sign/fips205"))
-        self.assertIsNone(br.operation_of("slhdsa-sha2-128s-sign/fips205"))
         everyone = hosts()
         everyone["desktop"]["refused"] = {"graviola": ["bmi1", "adx"]}
         md = br.report(everyone, None, VERIFIED, [])[br.REPORT]
