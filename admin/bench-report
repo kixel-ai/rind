@@ -61,7 +61,10 @@ import tomllib
 # destination where it isn't the name, and `note` describes the machine in the
 # report. Other work on a host with a `lease` holds that lock file with
 # flock(1) for its whole run, so collect holds it too, or skips the host as
-# busy, and leaves no copy, build, or download cache behind.
+# busy, and leaves no copy, build, or download cache behind. A `shared` host
+# runs CI runners and agents that never leave it under the busy limit, so its
+# run starts once the gate admits it and records the load as noisy instead of
+# skipping the host.
 VPS_NOTE = "OVH VPS in {}, 4 shared vCPUs: other tenants add noise that a dedicated host's times lack."
 HOSTS = {
     "nixos": {"jobs": 16},
@@ -81,6 +84,15 @@ HOSTS = {
         "cores: more of their time is multiplication-heavy assembly, which those cores run at 34-45% of a "
         "performance core's speed. The Air has no fan, so its performance cores slow within a minute there, "
         "giving those cores a larger share.",
+    },
+    "mini": {
+        "jobs": 8,
+        "shared": True,
+        "note": "The maintainer's Mac mini, the report's desktop Apple-silicon host beside `kixtop`'s fanless laptop. "
+        "Its cores have DIT, and every rind row holds "
+        "`rind::cpu::Dit::hold()` as on `kixtop`. It also runs the merge queue's two aarch64 runner VMs and agent "
+        "sessions, which never leave it under the busy limit, so it measures beside them and its times are noisier "
+        "than the other dedicated hosts'.",
     },
     "ovh-iad": {
         "jobs": 4,
@@ -437,9 +449,9 @@ def busy_cpus(seconds=5):
     return busy_cpus_since(start)
 
 
-def check_idle(when):
+def check_idle(when, shared):
     busy = busy_cpus()
-    if busy > busy_limit():
+    if busy > busy_limit() and not shared:
         raise Busy(f"{busy:.1f} of {cpu_count()} CPUs busy {when} (limit {busy_limit():.1f})")
     return round(busy, 2)
 
@@ -532,6 +544,7 @@ def toolchain(env):
 
 
 def run(args):
+    shared = HOSTS.get(args.host, {}).get("shared", False)
     started = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
     result = {
         "schema": 1,
@@ -549,7 +562,7 @@ def run(args):
             f.write("\n")
 
     try:
-        idle_before_build = check_idle("before the build")
+        idle_before_build = check_idle("before the build", shared)
     except Busy as e:
         finish("busy", reason=str(e))
         fail(f"{args.host}: {e}")
@@ -580,7 +593,7 @@ def run(args):
     }
 
     try:
-        idle_before_run = check_idle("before the benchmarks")
+        idle_before_run = check_idle("before the benchmarks", shared)
     except Busy as e:
         finish("busy", reason=str(e))
         fail(f"{args.host}: {e}")
@@ -2277,9 +2290,11 @@ def report(hosts, tiers, verified, gaps, sizes=None):
         md.append("")
     if missing:
         md += [f"Not measured yet: {', '.join(missing)}.", ""]
+    shared = [f"`{n}`" for n in shown if HOSTS[n].get("shared")]
+    beside = f", except {and_list(shared)}, which CI runners and agent sessions never leave idle, so runs beside them" if shared else ""
     md += [
         "Each host builds with the pinned toolchain in the Nix dev shell, and runs "
-        "`admin/bench-report` only when idle. Times are criterion's estimates.",
+        f"`admin/bench-report` only when idle{beside}. Times are criterion's estimates.",
         "",
     ]
     if shown:
@@ -2442,7 +2457,8 @@ def report(hosts, tiers, verified, gaps, sizes=None):
         "`admin/build-cost`, on each benchmark host in turn over ssh, in the Nix dev",
         "shell and under `quest gate`, which waits for the host to have room but",
         "shares it with other gated work, so its numbers are noisier than the weekly",
-        "`bench` workflow's runners, which give the clean ones; it skips any host that is still busy, and writes their results and the hosts' details as JSON under",
+        "`bench` workflow's runners, which give the clean ones; it skips any host that is still busy, but measures one",
+        "that CI runners and agent sessions never leave idle beside them, and writes their results and the hosts' details as JSON under",
         "`.tmp/bench-report/`. `admin/bench-report weekly` saves the latest weekly",
         "`bench` run's results and binary sizes, and `admin/bench-report render --from DIR` copies a",
         "collection's measured hosts into `benchmarks/data/` and writes",

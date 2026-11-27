@@ -262,7 +262,7 @@ class Render(unittest.TestCase):
         md = files[br.REPORT]
         self.assertIn("on three machines", md)
         self.assertIn("Not timed on `kixtop`: full handshake, X25519MLKEM768, ", md)
-        self.assertIn("Not measured yet: `fedora`, `ovh-iad`, `ovh-sea`.", md)
+        self.assertIn("Not measured yet: `fedora`, `mini`, `ovh-iad`, `ovh-sea`.", md)
         self.assertNotIn("`ovh-iad` |", md)
         self.assertIn("No weekly results yet.", md)
         self.assertEqual(
@@ -545,6 +545,15 @@ class HostScript(unittest.TestCase):
         self.assertFalse(os.path.exists(self.work))
         with open(self.lock) as other:
             fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+
+class CheckIdle(unittest.TestCase):
+    def test_skips_a_busy_host_unless_it_is_shared(self):
+        self.addCleanup(setattr, br, "busy_cpus", br.busy_cpus)
+        br.busy_cpus = lambda: br.busy_limit() + 0.5
+        with self.assertRaises(br.Busy):
+            br.check_idle("now", shared=False)
+        self.assertEqual(br.check_idle("now", shared=True), round(br.busy_limit() + 0.5, 2))
 
 
 class Comparison(unittest.TestCase):
