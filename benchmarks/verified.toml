@@ -392,7 +392,7 @@ link = "https://github.com/awslabs/aws-lc-verification/blob/797302470c1703cbb1a3
 library = "rind"
 operations = ["sha256/*", "sha512/*", "hmac-sha256/*", "hkdf-sha256/*"]
 arch = "portable"
-proof = "rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch and of HKDF-Expand's loop over its info slices, which Aeneas cannot translate, of its digest, HMAC, and HKDF APIs' SHA-256 and SHA-512 against FIPS 180-4, RFC 2104, and RFC 5869, padding and the block functions low::generic::sha256 and low::generic::sha512 (aws-lc's C, ported to Rust) included; not ESP-IDF Xtensa's SHA-256 or 32-bit microcontrollers' SHA-512, which run other bodies"
+proof = "rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch and of HKDF-Expand's loop over its info slices, which Aeneas cannot translate, of its digest, HMAC, and HKDF APIs' SHA-256 and SHA-512 against FIPS 180-4, RFC 2104, and RFC 5869, padding and the block functions low::generic::sha256 and low::generic::sha512 (aws-lc's C, ported to Rust) included; on 32-bit microcontrollers, the digest and HMAC APIs over the bodies those run, rind's rolled SHA-512 and ESP-IDF Xtensa's IRAM SHA-256, the latter trusting its asm rotates and block load to compute what their Rust fallbacks do, but not HKDF"
 link = "https://github.com/kixel-ai/rind/blob/main/proofs/Rind/Portable/Sha256Compress.lean"
 
 [[verified]]

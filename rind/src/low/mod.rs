@@ -35,13 +35,7 @@ macro_rules! asm_call {
 /// sixteen and the eight working variables rotated one place from the round
 /// before, so they rename instead of moving. The portable SHA-256 and
 /// SHA-512 bodies use it.
-#[cfg(any(
-    test,
-    all(
-        rind_backend = "portable",
-        not(all(target_arch = "xtensa", target_os = "espidf"))
-    )
-))]
+#[cfg(any(test, all(rind_backend = "portable", not(rind_sha256_iram))))]
 macro_rules! sixteen {
     ($round:ident, $a:ident, $b:ident, $c:ident, $d:ident, $e:ident, $f:ident, $g:ident, $h:ident) => {
         $round!(0, $a, $b, $c, $d, $e, $f, $g, $h);
@@ -168,10 +162,7 @@ mod generic {
     ))]
     pub(super) mod sha1;
     #[cfg(any(
-        all(
-            rind_backend = "portable",
-            not(all(target_arch = "xtensa", target_os = "espidf"))
-        ),
+        all(rind_backend = "portable", not(rind_sha256_iram)),
         all(test, any(rind_backend = "arm", rind_backend = "x86_64"))
     ))]
     pub(super) mod sha256;
