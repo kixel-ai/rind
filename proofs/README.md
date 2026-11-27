@@ -445,8 +445,8 @@ the `adrp` and `add` the linker fills and the final `ret`, as VG's are not.
 
 `verified-garbage/RindIsa/X86_64.lean` extends VG's x86_64 model the same
 way: its state is VG's with `lo`, the lowest address the stack may reach, and
-it adds the push, `lea`, `neg`, `dec`, aligned 128-bit load and store, and
-`ja` aws-lc's code uses, a stack pointer move that claims the region it
+it adds the push, `lea`, `neg`, `dec`, `shrd`, aligned 128-bit load and
+store, and `ja` aws-lc's code uses, a stack pointer move that claims the region it
 passes over as writable and forgets what a release leaves below it, and the
 padding (`.align` and the `jmp` over it), which runs as no instructions.
 `admin/prove lean` compares each x86_64 program's bytes with the Linux build
@@ -471,6 +471,24 @@ the padding, whose bytes that comparison checks.
   `Mul4xSub`, `Mul4xTailAsm`, and `Mul4xFinal` the subtraction and the
   constant-time copy.
   `Rind/X86_64/RsaMont.lean` restates it as `mul4x_spec`.
+
+- `Rind/X86_64/PolyHashAdProof.lean`: `poly_hash_ad_internal_correct`, that
+  `low::x86_64::chacha20poly1305::poly_hash_ad_internal`, rind's copy of
+  aws-lc's AAD hash laid out as structured code
+  (`RindIsa/X86_64/PolyHashAd.lean`), run from a state its `Pre` holds of
+  (`rcx` pointing to `r8` bytes of AAD, readable if there are any, and `rbp`
+  to `r`'s two words, each below `2^60` as clamping leaves them), leaves in
+  `(r10, r11, r12)` an accumulator below `5 · 2^128` that is, modulo `p`,
+  RFC 8439's over the AAD zero-padded to whole blocks (`padBlocks`), and
+  changes no memory and no register but `rax`, `rdx`, `rcx`, `r8`, `r9`, and
+  `r10` to `r15`; that its trace is a function of the AAD's address and
+  length and `r`'s address (`ConstantTime`); and that some state meets
+  `Pre`. `Rind/Poly1305Limbs.lean` holds what the x86_64 and aarch64 proofs
+  of aws-lc's one-pass routines share: `padBlocks`, the partial reduction
+  both keep the accumulator below `5 · 2^128` with, and memory as bytes.
+  `PolyHashAdModel` proves the limbs aws-lc's `poly_mul` computes are that
+  reduction of the product, and `PolyHashAdAsm` runs the program's blocks.
+  No axiom restates it yet: the proofs of seal and open that call it will.
 
 - `Rind/Aarch64/Sha256HwAsm.lean`: `sha256_block_data_order_hw_correct`,
   that `low::aarch64::sha256::sha256_block_data_order_hw`, aws-lc's routine

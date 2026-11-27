@@ -79,23 +79,32 @@ def mul : List Instr :=
    .vg (.alu .adc .r11 (.reg .r9)),
    .vg (.alu .adc .r12 (.imm 0))]
 
-/-- The 13-byte AAD: its bytes 0 to 7 and 8 to 12, the second word read from
-byte 5 and shifted, with the one bit above, times `r`. -/
-def fast : List Instr :=
+/-- The 13-byte AAD as the accumulator: its bytes 0 to 7 and 8 to 12, the
+second word read from byte 5 and shifted, with the one bit above. -/
+def load13 : List Instr :=
   [.vg (.mov .r10 (.mem (m .rcx 0))),
    .vg (.mov .r11 (.mem (m .rcx 5))),
    .vg (.shift .shr .r11 24),
-   .vg (.mov .r12 (.imm 1))] ++ mul
+   .vg (.mov .r12 (.imm 1))]
 
-/-- A 16-byte block, with the one bit above, times `r`; then the next block,
-and whether 16 bytes are left. -/
-def block : List Instr :=
+/-- The 13-byte AAD, times `r`. -/
+def fast : List Instr := load13 ++ mul
+
+/-- Add the 16-byte block at `rcx`, with the one bit above. -/
+def addBlock : List Instr :=
   [.vg (.alu .add .r10 (.mem (m .rcx 0))),
    .vg (.alu .adc .r11 (.mem (m .rcx 8))),
-   .vg (.alu .adc .r12 (.imm 1))] ++ mul ++
+   .vg (.alu .adc .r12 (.imm 1))]
+
+/-- Step to the next block, and compare what is left with 16 bytes. -/
+def next : List Instr :=
   [.lea .rcx (m .rcx 16),
    .vg (.alu .sub .r8 (.imm 16)),
    .vg (.alu .cmp .r8 (.imm 16))]
+
+/-- A 16-byte block, with the one bit above, times `r`; then the next block,
+and whether 16 bytes are left. -/
+def block : List Instr := addBlock ++ mul ++ next
 
 /-- The last, partial block: clear `(r13, r14)` and point `rcx` past it. -/
 def tailInit : List Instr :=
@@ -114,11 +123,14 @@ def tailByte : List Instr :=
    .dec .rcx,
    .dec .r8]
 
-/-- The partial block, with the one bit above, times `r`. -/
-def tailHash : List Instr :=
+/-- Add the partial block in `(r13, r14)`, with the one bit above. -/
+def addTail : List Instr :=
   [.vg (.alu .add .r10 (.reg .r13)),
    .vg (.alu .adc .r11 (.reg .r14)),
-   .vg (.alu .adc .r12 (.imm 1))] ++ mul
+   .vg (.alu .adc .r12 (.imm 1))]
+
+/-- The partial block, with the one bit above, times `r`. -/
+def tailHash : List Instr := addTail ++ mul
 
 /-- Any AAD but 13 bytes: the whole blocks, then the partial one, if any. -/
 def general : Prog isa :=

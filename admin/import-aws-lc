@@ -556,7 +556,7 @@ IMPORTS_64 = [
         "tables": ["chacha20_consts", "and_masks"],
         "packed": ["chacha20_consts"],
         "routines": ["chacha20_poly1305_open", "chacha20_poly1305_seal"],
-        # rind's structured copy, which `proofs/Rind/X86_64/PolyHashAd.lean`
+        # rind's structured copy, which `proofs/Rind/X86_64/PolyHashAdProof.lean`
         # proves, in `rind/src/low/x86_64/poly_hash_ad.s`.
         "owned": ["poly_hash_ad_internal"],
         "labels": ["process_extra_in_trailer"],
