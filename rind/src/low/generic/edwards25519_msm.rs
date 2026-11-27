@@ -53,17 +53,38 @@ pub(crate) fn edwards25519_msm(
 
 /// The width-8 non-adjacent forms of `base`'s two 128-bit halves and the
 /// width-5 forms of `scalars`.
+///
+/// Each form gets only the digits its value needs, the rest left zero: the
+/// scalars have about 128 bits, and stepping through all 257 digits of every
+/// form cost 4% of a verification.
+#[inline(always)]
 pub(crate) fn non_adjacent_forms(base: &[u64; 4], scalars: &[[u64; 4]; 2]) -> [[i8; 257]; 4] {
     let mut nafs = [[0; 257]; 4];
-    public_naf::<8>(&[base[0], base[1], 0, 0], &mut nafs[0]);
-    public_naf::<8>(&[base[2], base[3], 0, 0], &mut nafs[1]);
-    public_naf::<5>(&scalars[0], &mut nafs[2]);
-    public_naf::<5>(&scalars[1], &mut nafs[3]);
+    public_naf::<8>(&base[..2], &mut nafs[0][..129]);
+    public_naf::<8>(&base[2..], &mut nafs[1][..129]);
+    scalar_naf(&scalars[0], &mut nafs[2]);
+    scalar_naf(&scalars[1], &mut nafs[3]);
     nafs
+}
+
+/// Writes the width-5 form of `k` over its words up to the highest nonzero.
+#[inline(always)]
+fn scalar_naf(k: &[u64; 4], digits: &mut [i8; 257]) {
+    let words = if k[3] != 0 {
+        4
+    } else if k[2] != 0 {
+        3
+    } else if k[1] != 0 {
+        2
+    } else {
+        1
+    };
+    public_naf::<5>(&k[..words], &mut digits[..64 * words + 1]);
 }
 
 /// One past the highest nonzero digit of any form, where the loop starts,
 /// since doubling the identity leaves it.
+#[inline(always)]
 pub(crate) fn top(nafs: &[[i8; 257]; 4]) -> usize {
     for i in (0..257).rev() {
         if nafs[0][i] != 0 || nafs[1][i] != 0 || nafs[2][i] != 0 || nafs[3][i] != 0 {
@@ -78,6 +99,7 @@ const IDENTITY: [u64; 16] = [0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0];
 
 /// Adds `[digit]P` to `acc`, for `table` the odd multiples of `P` and a
 /// digit zero or odd and below twice the table's length in magnitude.
+#[inline(always)]
 fn add_digit(acc: &mut [u64; 16], table: &[[u64; 16]], digit: i8) {
     if digit != 0 {
         let entry = &table[usize::from(digit.unsigned_abs() / 2)];

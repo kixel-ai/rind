@@ -1,7 +1,7 @@
 import Rind.X86_64.Ed25519
 import Rind.X86_64.Naf
 open Aeneas Aeneas.Std Result rind.spec rind.edwards
-open rind.x86_64.Naf (nafVal nafDigit nafVal_drop naf_spec)
+open rind.x86_64.Naf (nafVal nafDigit nafVal_drop naf_spec nafVal_append)
 
 /-!
 # Ed25519 verification's multi-scalar multiplication on x86_64
@@ -79,11 +79,11 @@ theorem projective_spec (point : Std.Array U64 16#usize) :
 
 /-! ## Writing part of a point -/
 
-/-- `&mut a[..n]`: the first `n` words, which write back over `a`'s. -/
-theorem index_mut_to_spec {N : Usize} (a : Std.Array U64 N) (n : Usize) (hn : n.val ≤ N.val) :
-    core.array.Array.index_mut (core.ops.index.IndexMutSlice (core.slice.index.SliceIndexRangeToUsizeSlice U64)) a
+/-- `&mut a[..n]`: the first `n` elements, which write back over `a`'s. -/
+theorem index_mut_to_spec {T : Type} {N : Usize} (a : Std.Array T N) (n : Usize) (hn : n.val ≤ N.val) :
+    core.array.Array.index_mut (core.ops.index.IndexMutSlice (core.slice.index.SliceIndexRangeToUsizeSlice T)) a
       { «end» := n } ⦃ s back =>
-      s.length = n.val ∧ ∀ t : Slice U64, t.length = n.val → (back t).val = t.val ++ a.val.drop n.val ⦄ := by
+      s.length = n.val ∧ ∀ t : Slice T, t.length = n.val → (back t).val = t.val ++ a.val.drop n.val ⦄ := by
   have hl : a.val.length = N.val := a.property
   unfold core.array.Array.index_mut
   simp only [core.ops.index.IndexMutSlice, core.slice.index.Slice.index_mut,
@@ -490,6 +490,108 @@ theorem top_spec (nafs : Std.Array (Std.Array I8 257#usize) 4#usize) :
   exact top_loop_spec nafs iter (by simp [iter_post]) (by simp [iter_post])
     (fun k _ j hj hj' => absurd hj' (by simp [iter_post] at hj; omega))
 
+/-- Digits that are all zero read as zero. -/
+theorem nafVal_eq_zero (l : List I8) (h : ∀ x ∈ l, x.val = 0) : nafVal l = 0 := by
+  induction l with
+  | nil => rfl
+  | cons d ds ih =>
+    simp only [nafVal]
+    rw [h d (by simp), ih (fun x hx => h x (by simp [hx]))]
+    simp
+
+/-- Digits followed by zeros: the same number, and every digit still one. -/
+theorem pad_zeros (A : Int) (r tail : List I8) (htail : ∀ x ∈ tail, x.val = 0)
+    (hr : ∀ j < r.length, nafDigit A (r[j]!).val) :
+    nafVal (r ++ tail) = nafVal r ∧ ∀ j : Nat, nafDigit A (((r ++ tail)[j]! : I8)).val := by
+  refine ⟨by rw [nafVal_append, nafVal_eq_zero tail htail, mul_zero, add_zero], fun j => ?_⟩
+  by_cases hj : j < r.length
+  · rw [List.getElem!_eq_getElem?_getD, List.getElem?_append_left hj, ← List.getElem!_eq_getElem?_getD]
+    exact hr j hj
+  · left
+    rw [List.getElem!_eq_getElem?_getD, List.getElem?_append_right (by omega)]
+    cases h : tail[j - r.length]? with
+    | none => rfl
+    | some x => exact htail x (List.mem_of_getElem? h)
+
+/-- Words that are zero from `n` on add nothing. -/
+theorem wordsNat_take_of_zero (l : List U64) (n : Nat) (h : ∀ x ∈ l.drop n, x.val = 0) :
+    wordsNat (l.take n) = wordsNat l := by
+  have hz : l.drop n = List.replicate (l.drop n).length 0#u64 := by
+    apply List.eq_replicate_iff.mpr
+    refine ⟨rfl, fun x hx => ?_⟩
+    have := h x hx
+    exact UScalar.eq_of_val_eq (by simpa using this)
+  rw [rind.spec.rsa.wordsNat_take_drop l n, hz, rind.spec.rsa.wordsNat_replicate_zero]
+  simp
+
+/-- `scalar_naf` writes `k`'s width-5 form over zeros. -/
+@[step]
+theorem scalar_naf_spec (k : Std.Array U64 4#usize) (digits : Std.Array I8 257#usize)
+    (hz : ∀ x ∈ digits.val, x.val = 0) :
+    low.generic.edwards25519_msm.scalar_naf k digits ⦃ r =>
+      (∀ j : Nat, nafDigit 16 (r.val[j]! : I8).val) ∧ nafVal r.val = wordsNat k.val ⦄ := by
+  have hkl : k.val.length = 4 := k.property
+  have hdl : digits.val.length = 257 := digits.property
+  have tail : ∀ (w : Usize), 1 ≤ w.val → w.val ≤ 4 → wordsNat (k.val.take w.val) = wordsNat k.val →
+      (do
+        let s ← core.slice.index.SliceIndexRangeToUsizeSlice.index { «end» := w } k.to_slice
+        let i1 ← 64#usize * w
+        let i2 ← i1 + 1#usize
+        let (s1, index_mut_back) ← core.array.Array.index_mut (core.ops.index.IndexMutSlice
+          (core.slice.index.SliceIndexRangeToUsizeSlice Std.I8)) digits { «end» := i2 }
+        let s2 ← low.generic.naf.public_naf 5#u32 s s1
+        ok (index_mut_back s2)) ⦃ r => (∀ j : Nat, nafDigit 16 (r.val[j]! : I8).val) ∧ nafVal r.val = wordsNat k.val ⦄ := by
+    intro w hw1 hw4 hwk
+    step as ⟨s, hs0, hsl⟩
+    have hs : s.val = k.val.take w.val := by simp_all [List.slice]
+    step as ⟨i1, hi1⟩
+    step as ⟨i2, hi2⟩
+    step with index_mut_to_spec digits i2 (by simp; omega) as ⟨s1, back, hs1, hback⟩
+    step with naf_spec 5#u32 (by simp) s (64 * w.val) (by rw [hsl]) (by omega) (by omega) s1
+      (by rw [hs1]; omega) as ⟨r, hrl, hrv, hrd⟩
+    rw [hback r (by rw [hrl]; omega)]
+    have hp := pad_zeros 16 r.val (digits.val.drop i2.val) (fun x hx => hz x (List.mem_of_mem_drop hx))
+      (fun j hj => by simpa using hrd j (by simp [Slice.length] at hrl; omega))
+    refine ⟨hp.2, ?_⟩
+    rw [hp.1, hrv, hs, hwk]
+  have hk4 : k.val = [k.val[0], k.val[1], k.val[2], k.val[3]] := by
+    apply List.ext_getElem (by simp [hkl])
+    intro n h1 h2
+    simp only [hkl] at h1
+    interval_cases n <;> simp
+  unfold low.generic.edwards25519_msm.scalar_naf
+  step as ⟨i, hi⟩
+  split
+  · simp only [bind_ok]
+    exact tail 4#usize (by simp) (by simp) (by rw [List.take_of_length_le (by simp [hkl])])
+  · rename_i h3
+    step as ⟨i1, hi1⟩
+    split
+    · simp only [bind_ok]
+      refine tail 3#usize (by simp) (by simp) (wordsNat_take_of_zero _ _ ?_)
+      intro x hx
+      rw [hk4] at hx
+      simp at hx
+      clear hk4 tail
+      obtain rfl := hx
+      simp_all
+    · step as ⟨i2, hi2⟩
+      split
+      · simp only [bind_ok]
+        refine tail 2#usize (by simp) (by simp) (wordsNat_take_of_zero _ _ ?_)
+        intro x hx
+        rw [hk4] at hx
+        simp at hx
+        clear hk4 tail
+        rcases hx with rfl | rfl <;> simp_all
+      · simp only [bind_ok]
+        refine tail 1#usize (by simp) (by simp) (wordsNat_take_of_zero _ _ ?_)
+        intro x hx
+        rw [hk4] at hx
+        simp at hx
+        clear hk4 tail
+        rcases hx with rfl | rfl | rfl <;> simp_all
+
 /-- `non_adjacent_forms` writes the width-8 forms of `base`'s halves and the
 width-5 forms of the scalars. -/
 @[step]
@@ -501,75 +603,74 @@ theorem non_adjacent_forms_spec (base : Std.Array U64 4#usize) (scalars : Std.Ar
       nafVal (nafs.val[2]! : Std.Array I8 257#usize).val = wordsNat (scalars.val[0]!).val ∧
       nafVal (nafs.val[3]! : Std.Array I8 257#usize).val = wordsNat (scalars.val[1]!).val ⦄ := by
   unfold low.generic.edwards25519_msm.non_adjacent_forms
-  have hrep : ∀ (a : Std.Array I8 257#usize), a.val.length = 257 := fun a => a.property
-  step as ⟨i0, hi0⟩
-  step as ⟨i1, hi1⟩
-  simp only [lift, bind_ok]
+  have hbl : base.val.length = 4 := base.property
+  step as ⟨s, hs0, hsl⟩
+  have hs : s.val = base.val.take 2 := by simp_all [List.slice]
   step as ⟨a1, back1, ha1, hback1⟩
-  simp only [Array.to_slice_mut]
-  step with naf_spec 8#u32 (by simp) (Std.Array.make 4#usize [i0, i1, 0#u64, 0#u64]).to_slice 256
-    (by simp [Slice.length]) (by decide) (by simp [Slice.length]) a1.to_slice (by simp [Slice.length, hrep])
-    as ⟨s2, hs2l, hs2v, hs2d⟩
-  step as ⟨i2, hi2⟩
-  step as ⟨i3, hi3⟩
+  step with index_mut_to_spec a1 129#usize (by simp) as ⟨s1, b1, hs1, hb1⟩
+  step with naf_spec 8#u32 (by simp) s 128 (by simp [Slice.length, hs, hbl]) (by decide)
+    (by simp [Slice.length, hs, hbl]) s1 (by rw [hs1]) as ⟨s2, hs2l, hs2v, hs2d⟩
+  step as ⟨s3, hs3, _⟩
   step as ⟨a3, back2, ha3, hback2⟩
-  step with naf_spec 8#u32 (by simp) (Std.Array.make 4#usize [i2, i3, 0#u64, 0#u64]).to_slice 256
-    (by simp [Slice.length]) (by decide) (by simp [Slice.length]) a3.to_slice (by simp [Slice.length, hrep])
-    as ⟨s5, hs5l, hs5v, hs5d⟩
+  step with index_mut_to_spec a3 129#usize (by simp) as ⟨s4, b3, hs4, hb3⟩
+  step with naf_spec 8#u32 (by simp) s3 128 (by simp [Slice.length, hs3, hbl]) (by decide)
+    (by simp [Slice.length, hs3, hbl]) s4 (by rw [hs4]) as ⟨s5, hs5l, hs5v, hs5d⟩
   step as ⟨a4, ha4⟩
-  step as ⟨a6, back3, ha6, hback3⟩
-  step with naf_spec 5#u32 (by simp) a4.to_slice 256
-    (by simp [Slice.length]) (by decide) (by simp [Slice.length]) a6.to_slice (by simp [Slice.length, hrep])
-    as ⟨s8, hs8l, hs8v, hs8d⟩
-  step as ⟨a7, ha7⟩
-  step as ⟨a9, back4, ha9, hback4⟩
-  step with naf_spec 5#u32 (by simp) a7.to_slice 256
-    (by simp [Slice.length]) (by decide) (by simp [Slice.length]) a9.to_slice (by simp [Slice.length, hrep])
-    as ⟨s11, hs11l, hs11v, hs11d⟩
-  have hfs : ∀ (a : Std.Array I8 257#usize) (t : Slice I8), t.length = 256 + 1 → (a.from_slice t).val = t.val :=
-    fun a t ht => Array.from_slice_val _ _ ht
-  have hF : (back4 (a9.from_slice s11)).val = [a1.from_slice s2, a3.from_slice s5, a6.from_slice s8,
-      a9.from_slice s11] := by
-    subst hback4 hback3 hback2 hback1
+  step as ⟨a6, back4, ha6, hback4⟩
+  have hZ : ∀ x ∈ (Std.Array.repeat 257#usize 0#i8).val, x.val = 0 := by
+    intro x hx
+    rw [Std.Array.repeat_val, List.mem_replicate] at hx
+    rw [hx.2]; rfl
+  have hz6 : a6 = Std.Array.repeat 257#usize 0#i8 := by
+    subst ha6 hback4 hback2 hback1
     generalize Std.Array.repeat 257#usize 0#i8 = z
     simp [Std.Array.set_val_eq, Std.Array.repeat, List.replicate]
-  have hbl : base.val.length = 4 := base.property
-  have hb2 : List.take 2 base.val = [i0, i1] := by
-    rw [hi0, hi1]
-    apply List.ext_getElem (by simp [hbl])
-    intro n h1 h2
-    simp at h1 h2
-    interval_cases n <;> simp
-  have hd2 : List.drop 2 base.val = [i2, i3] := by
-    rw [hi2, hi3]
-    apply List.ext_getElem (by simp [hbl])
-    intro n h1 h2
-    simp [hbl] at h1 h2
-    interval_cases n <;> simp
-  have hpad : ∀ a b : U64, wordsNat [a, b, 0#u64, 0#u64] = wordsNat [a, b] := by
-    intro a b; simp [wordsNat, Nat.ofDigits]
-  have hsl : ∀ (k : Std.Array U64 4#usize) (hk : 0 < scalars.val.length), k = scalars.val[0] →
-      k.to_slice.val = (scalars.val[0]!).val := by
-    intro k hk h; rw [h, Array.val_to_slice, getElem!_pos scalars.val 0 hk]
-  have hsl1 : ∀ (k : Std.Array U64 4#usize) (hk : 1 < scalars.val.length), k = scalars.val[1] →
-      k.to_slice.val = (scalars.val[1]!).val := by
-    intro k hk h; rw [h, Array.val_to_slice, getElem!_pos scalars.val 1 hk]
+  step with scalar_naf_spec a4 a6 (hz6 ▸ hZ) as ⟨a7, ha7d, ha7v⟩
+  step as ⟨a8, ha8⟩
+  step as ⟨a9, back5, ha9, hback5⟩
+  have hz9 : a9 = Std.Array.repeat 257#usize 0#i8 := by
+    subst ha9 hback5 hback4 hback2 hback1
+    generalize Std.Array.repeat 257#usize 0#i8 = z
+    simp [Std.Array.set_val_eq, Std.Array.repeat, List.replicate]
+  step with scalar_naf_spec a8 a9 (hz9 ▸ hZ) as ⟨a10, ha10d, ha10v⟩
+  have hz1 : a1 = Std.Array.repeat 257#usize 0#i8 := by
+    subst ha1
+    generalize Std.Array.repeat 257#usize 0#i8 = z
+    simp [Std.Array.repeat, List.replicate]
+  have hz3 : a3 = Std.Array.repeat 257#usize 0#i8 := by
+    subst ha3 hback2 hback1
+    generalize Std.Array.repeat 257#usize 0#i8 = z
+    simp [Std.Array.set_val_eq, Std.Array.repeat, List.replicate]
+  have hF : (back5 a10).val = [b1 s2, b3 s5, a7, a10] := by
+    subst hback5 hback4 hback2 hback1
+    generalize Std.Array.repeat 257#usize 0#i8 = z
+    simp [Std.Array.set_val_eq, Std.Array.repeat, List.replicate]
+  have hp1 := pad_zeros 128 s2.val (a1.val.drop 129) (fun x hx => hZ x (hz1 ▸ List.mem_of_mem_drop hx))
+    (fun j hj => by simpa using hs2d j (by simp [Slice.length] at hs2l; omega))
+  have hp3 := pad_zeros 128 s5.val (a3.val.drop 129) (fun x hx => hZ x (hz3 ▸ List.mem_of_mem_drop hx))
+    (fun j hj => by simpa using hs5d j (by simp [Slice.length] at hs5l; omega))
+  rw [← hb1 s2 (by rw [hs2l])] at hp1
+  rw [← hb3 s5 (by rw [hs5l])] at hp3
+  have hsc : ∀ (i : Nat) (h : i < 2) (a : Std.Array U64 4#usize), a = scalars.val[i]'(by
+      have : scalars.val.length = 2 := scalars.property; omega) → a.val = (scalars.val[i]!).val := by
+    intro i h a ha
+    rw [ha, getElem!_pos]
   refine ⟨?_, ?_, ?_, ?_, ?_⟩
-  · intro k hk j hj
+  · intro k hk j _
     rw [hF]
     interval_cases k
-    · simpa [hfs _ _ hs2l] using hs2d j hj
-    · simpa [hfs _ _ hs5l] using hs5d j hj
-    · simpa [hfs _ _ hs8l] using hs8d j hj
-    · simpa [hfs _ _ hs11l] using hs11d j hj
+    · exact hp1.2 j
+    · exact hp3.2 j
+    · exact ha7d j
+    · exact ha10d j
   · rw [hF]; simp only [List.getElem!_cons_zero]
-    rw [hfs _ _ hs2l, hs2v, hb2, Array.val_to_slice, Std.Array.make_val, hpad]
+    rw [hp1.1, hs2v, hs]
   · rw [hF]; simp only [List.getElem!_cons_succ, List.getElem!_cons_zero]
-    rw [hfs _ _ hs5l, hs5v, hd2, Array.val_to_slice, Std.Array.make_val, hpad]
+    rw [hp3.1, hs5v, hs3, Array.val_to_slice]
   · rw [hF]; simp only [List.getElem!_cons_succ, List.getElem!_cons_zero]
-    rw [hfs _ _ hs8l, hs8v, hsl a4 _ ha4]
+    rw [ha7v, hsc 0 (by omega) a4 ha4]
   · rw [hF]; simp only [List.getElem!_cons_succ, List.getElem!_cons_zero]
-    rw [hfs _ _ hs11l, hs11v, hsl1 a7 _ ha7]
+    rw [ha10v, hsc 1 (by omega) a8 ha8]
 
 /-! ## The loop -/
 
@@ -730,14 +831,6 @@ theorem loop_spec (h : Runs) (nafs : Std.Array (Std.Array I8 257#usize) 4#usize)
   · exact ⟨hi, ha⟩
 
 /-! ## The multiplication -/
-
-theorem nafVal_eq_zero (l : List I8) (h : ∀ x ∈ l, x.val = 0) : nafVal l = 0 := by
-  induction l with
-  | nil => rfl
-  | cons d ds ih =>
-    simp only [nafVal]
-    rw [h d (by simp), ih (fun x hx => h x (by simp [hx]))]
-    simp
 
 /-- `B` and the two points' sum by `base` and the two scalars, as words. -/
 @[step]
