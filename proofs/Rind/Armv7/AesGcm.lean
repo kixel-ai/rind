@@ -655,7 +655,8 @@ def RunsAesGcm : Prop :=
   low.arm.cpu.HaveCryptoExt.check = ok none ∧ low.arm.cpu.HaveNeon.check = ok none
 
 /-- `AesGcm::new`, finding neither the crypto extension nor NEON, keys
-`Portable` with the key's words. -/
+`Portable` with the key's words, which the theorem states as `GcmReady`, all
+that `encrypt` and `decrypt` need. -/
 theorem aes_gcm_new_spec (h : RunsAesGcm) (alg : Algorithm) (key : Slice U8) (hk : KeyLen alg key.length) :
     mid.aes_gcm.AesGcm.new key ⦃ g => GcmReady alg (seqNat8ToSeqNat32LE (bvs key.val)) g ⦄ := by
   obtain ⟨⟨e, he⟩, hce, hneon⟩ := h
