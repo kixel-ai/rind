@@ -19,7 +19,9 @@
 # so a run checks the paths the host's CPU takes, short of the features in
 # `UNDECODED`, whose instructions BINSEC cannot read and which this denies
 # through `--cfg rind_cpu_disable`, as `admin/ctgrind`'s jobs deny theirs.
-# `RIND_CPU_DISABLE_*` in the environment denies more.
+# `RIND_CPU_DISABLE_*` in the environment denies more. A test may force the
+# CPU check of a routine in `CONTRACTS`, which this stubs, to check the Rust
+# around it on any CPU.
 #
 # Run it in `nix develop .#binsec`.
 
@@ -129,24 +131,28 @@ UNDECODED = {
 
 # pyca/verified-garbage's routines whose leakage rind imports as VG's proven
 # contract, `proofs/Rind/<Arch>/Vg*Ct.lean`, and which BINSEC cannot decode,
-# by name: the arguments, by position, each writes a secret to, and how many
-# bytes. A test forces the CPU check that picks them, so that BINSEC checks
-# the Rust around them, which replaces each with a write of fresh secret
-# bytes to each output that returns success, 1, and gdb's native run with a
-# return of 1 that writes nothing, since its CPU may lack their features. A
-# routine leaks nothing else its contract keeps secret, and each fails only
-# on public data, which the stubs' success fixes. So a check passes only if
-# the Rust that calls the routine branches on and indexes by no secret the
-# routine takes or gives.
+# by name: how many pointer arguments each takes, the (argument, length) of
+# each output it writes, and the (argument, offset, length) of each input its
+# contract lets its trace depend on, besides the pointers. A test forces the
+# CPU check that picks them, so that BINSEC checks the Rust around them, which
+# replaces each with a stub that loads through every pointer and branches on
+# each byte its contract leaks, so that a secret pointer or leaked byte
+# fails, writes fresh secret bytes to each output, and returns success, 1.
+# gdb's native run, whose CPU may lack their features, returns 1 at once and
+# writes nothing. Each fails only on public data, which the stubs' success
+# fixes. So a check passes only if the Rust that calls the routine gives it
+# public pointers and public leaked bytes, and branches on and indexes by
+# none of the secrets it gives or takes.
 CONTRACTS = {
     "x86_64": {
         # (seed, ek, dk, scratch), (dk, ct, key, scratch), (ek, m, key, ct,
-        # scratch), and (ek, h, m, key, ct, scratch):
+        # scratch), and (ek, h, m, key, ct, scratch), each leaking `ρ`, the
+        # last 32 bytes of `ek`, which `dk` holds after `dkPKE`:
         # `Rind.X86_64.VgMlKem768Ct`.
-        "vg_mlkem768_keygen_avx512": [(1, 1184), (2, 2400)],
-        "vg_mlkem768_decaps_avx512": [(2, 32)],
-        "vg_mlkem768_encaps_avx512": [(2, 32), (3, 1088)],
-        "vg_mlkem768_encaps_h_avx512": [(3, 32), (4, 1088)],
+        "vg_mlkem768_keygen_avx512": (4, [(1, 1184), (2, 2400)], []),
+        "vg_mlkem768_decaps_avx512": (4, [(2, 32)], [(0, 2304, 32)]),
+        "vg_mlkem768_encaps_avx512": (5, [(2, 32), (3, 1088)], [(0, 1152, 32)]),
+        "vg_mlkem768_encaps_h_avx512": (6, [(3, 32), (4, 1088)], [(0, 1152, 32)]),
     },
 }
 
@@ -593,9 +599,14 @@ def contract_stubs(target, addrs):
     word = WORD[arch(target)]
     out = ""
     for name, addr in sorted(addrs.items()):
-        outputs = CONTRACTS[arch(target)][name]
-        args = ", ".join("vg{}".format(i) for i in range(max(i for i, _ in outputs) + 1))
-        out += "\nreplace {:#x} ({}) by\n".format(addr, args)
+        count, outputs, leaked = CONTRACTS[arch(target)][name]
+        args = ["vg{}".format(i) for i in range(count)]
+        out += "\nreplace {:#x} ({}) by\n".format(addr, ", ".join(args))
+        for a in args:
+            out += "  libc_i := uext{} @[{}]\n".format(word, a)
+        for i, offset, size in leaked:
+            out += "  for i<{}> in {} to {} do\n".format(word, offset, offset + size - 1)
+            out += "    if @[vg{} + i] = 0 then\n      libc_i := 0\n    end\n  end\n".format(i)
         for i, size in outputs:
             out += "  for i<{}> in 0 to {} do\n    @[vg{} + i] := secret\n  end\n".format(word, size - 1, i)
         out += "  return 1\nend\n"
@@ -603,9 +614,9 @@ def contract_stubs(target, addrs):
 
 
 def contract_offsets(exe, target):
-    """The address in the test binary of each routine in `CONTRACTS` it
-    holds, by name. A build without one, such as the portable backend's,
-    reaches none of them."""
+    """The address in the test binary of each routine in `CONTRACTS`, by
+    name: every one, or none in a build that holds none, such as the portable
+    backend's. A build that holds only some has renamed the rest."""
     names = CONTRACTS.get(arch(target), {})
     out = subprocess.run(["nm", "--defined-only", "-C", exe], stdout=subprocess.PIPE, check=True, encoding="utf-8").stdout
     found = {}
@@ -614,6 +625,8 @@ def contract_offsets(exe, target):
             if m[2] in found:
                 sys.exit("ct-binsec: the test binary holds {} twice".format(m[2]))
             found[m[2]] = int(m[1], 16)
+    if found and len(found) != len(names):
+        sys.exit("ct-binsec: the test binary holds no {}".format(", ".join(sorted(set(names) - set(found)))))
     return found
 
 

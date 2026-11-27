@@ -1734,21 +1734,20 @@ mod tests {
     // Valgrind and BINSEC run no AVX-512, so neither reaches
     // pyca/verified-garbage's ML-KEM-768 key generation and decapsulation,
     // nor its AVX-512 encapsulation. Each routine's leakage is VG's proven
-    // contract, which `Rind.X86_64.VgMlKem768Ct` imports; this checks the
-    // Rust around them, as it runs where the CPU has AVX-512: the test
-    // forces the routines' CPU check, and `admin/ct-binsec` stubs each
+    // contract, which `Rind.X86_64.VgMlKem768Ct` imports; these check the
+    // Rust around them, as it runs where the CPU has AVX-512: the tests
+    // force the routines' CPU check, and `admin/ct-binsec` stubs each
     // routine by its contract (`CONTRACTS`), so that its outputs are fresh
-    // secrets. The region generates a key from a secret seed, encapsulates a
-    // secret message to its public key, with the key's hash, and to the same
-    // key parsed, without it, and decapsulates the ciphertext. A VG routine
-    // fails only at a `SampleNTT` bound reached on `𝜌`, which is public, so
-    // the stubs succeed, and the fallback to rind's arithmetic is
-    // `ct_binsec_mlkem768`'s and ctgrind's to check.
+    // secrets and a secret `ρ` it is given fails. The region generates a key
+    // from a secret seed, encapsulates a secret message to its public key,
+    // with the key's hash, and to the same key parsed, without it, and
+    // decapsulates the ciphertext. A VG routine fails only at a `SampleNTT`
+    // bound reached on `ρ`, which is public, so the stubs succeed; with
+    // `fallback`, encapsulation and decapsulation then discard what they
+    // returned, and run rind's arithmetic on the key VG generated.
     #[cfg(rind_backend = "x86_64")]
-    #[test]
-    #[ignore = "admin/ct-binsec runs it under BINSEC"]
-    fn ct_binsec_mlkem768_vg() {
-        use crate::low::ct_binsec::checked;
+    fn mlkem768_vg(fallback: bool) {
+        use low::ct::into_secret;
 
         low::force_avx512_for_vg_mlkem();
         let parsed = EncapKey::<MlKem768>::from_bytes(
@@ -1757,12 +1756,30 @@ mod tests {
                 .as_bytes(),
         )
         .unwrap();
-        checked(|| {
-            let dk = DecapKey::<MlKem768>::keygen_internal(&[1; 64]);
+        low::ct_binsec::checked(|| {
+            let dk = DecapKey::<MlKem768>::keygen_internal(&into_secret([1; 64]));
             assert!(dk.ek_pke.decoded.is_none(), "VG's key generation ran");
-            let (_, c) = dk.encapsulation_key().encaps_internal(Message([2; 32]));
-            core::hint::black_box(parsed.encaps_internal(Message([2; 32])));
-            dk.decaps(&c)
+            FORCE_FALLBACK.set(fallback);
+            let m = || Message(into_secret([2; 32]));
+            let (_, c) = dk.encapsulation_key().encaps_internal(m());
+            core::hint::black_box(parsed.encaps_internal(m()));
+            let k = dk.decaps(&c);
+            FORCE_FALLBACK.set(false);
+            k
         });
+    }
+
+    #[cfg(rind_backend = "x86_64")]
+    #[test]
+    #[ignore = "admin/ct-binsec runs it under BINSEC"]
+    fn ct_binsec_mlkem768_vg() {
+        mlkem768_vg(false);
+    }
+
+    #[cfg(rind_backend = "x86_64")]
+    #[test]
+    #[ignore = "admin/ct-binsec runs it under BINSEC"]
+    fn ct_binsec_mlkem768_vg_fallback() {
+        mlkem768_vg(true);
     }
 }
