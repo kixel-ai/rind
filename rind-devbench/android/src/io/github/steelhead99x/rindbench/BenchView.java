@@ -1,20 +1,22 @@
 package io.github.steelhead99x.rindbench;
 
 import android.app.Activity;
-import android.app.Dialog;
 import android.content.Context;
 import android.content.Intent;
-import android.content.res.Configuration;
 import android.graphics.Typeface;
 import android.os.Handler;
 import android.os.Looper;
-import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.widget.Button;
+import android.widget.CheckBox;
+import android.widget.CompoundButton;
+import android.widget.ImageButton;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.Switch;
 import android.widget.TextView;
@@ -33,24 +35,31 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.TreeMap;
 
-/** Bench page: fills the remaining height, no page scroll, plain short copy. */
+/**
+ * Bench page. Compact width: one scrolling column with consent and Start
+ * pinned at the bottom. Medium/expanded width (phone landscape, tablets):
+ * two panes, test setup on the left; collector, run status, consent and
+ * Start on the right. Panes scroll, so large font sizes wrap instead of
+ * truncating, and consent and Start stay pinned and visible.
+ */
 final class BenchView extends LinearLayout {
     private final Activity host;
     private final Handler ui = new Handler(Looper.getMainLooper());
-    private final LinearLayout colL, colR, page;
-    private TextView timingHint, agreeL, startHint, collectorTitle, collectorAddr, collectorNote;
-    private TextView statusTitle, statusLbl, resultsTeaser;
-    private View collectorDot;
-    private LinearLayout collectorCard, runCard, statusCard;
+    private final LinearLayout leftPane, rightPane, colA, colB, footer, testsBlock;
+    private final ScrollView scrollA, scrollB;
+    private TextView timingHint, statusTitle, statusLbl, resultsTeaser;
+    private Theme.Row collector, libsRow, groupsRow, consentRow;
+    private LinearLayout statusCard;
     private Button quickBtn, fullBtn;
     private boolean fullPreset;
     private Switch agree;
-    private Button startBtn, stopBtn, clearBtn, libsBtn, groupsBtn, shareBtn, retryBtn, resultsBtn;
-    private SegBar progress;
+    private ImageButton shareBtn;
+    private Button startBtn, stopBtn, clearBtn, retryBtn, resultsBtn;
+    private ProgressBar progress;
     private boolean running, collectorOK, catalogReady;
     private JSONObject catalog;
-    private final Map<String, Switch> libSw = new LinkedHashMap<>();
-    private final Map<String, Switch> secSw = new LinkedHashMap<>();
+    private final Map<String, CompoundButton> libSw = new LinkedHashMap<>();
+    private final Map<String, CompoundButton> secSw = new LinkedHashMap<>();
     private final List<View> libRows = new ArrayList<>(), groupRows = new ArrayList<>(), moreRows = new ArrayList<>();
     private String resultsText = "";
     private String detailsText = "Loading device and build details...";
@@ -62,180 +71,121 @@ final class BenchView extends LinearLayout {
     BenchView(Activity host, Intent intent) {
         super(host);
         this.host = host;
-        setOrientation(VERTICAL);
-        setBackgroundColor(Theme.INK);
+        setBackgroundColor(Theme.surface);
         setContentDescription("Bench page");
+        int s2 = Theme.dpi(host, 8), s4 = Theme.dpi(host, 16);
 
-        page = new LinearLayout(host);
-        colL = new LinearLayout(host);
-        colR = new LinearLayout(host);
-        colL.setOrientation(VERTICAL);
-        colR.setOrientation(VERTICAL);
-        page.addView(colL, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
-        page.addView(colR, new LayoutParams(LayoutParams.MATCH_PARENT, 0, 1));
-        addView(page, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
-        int pad = Theme.dpi(host, 16);
-        page.setPadding(pad, Theme.dpi(host, 4), pad, Theme.dpi(host, 8));
-
-        // Collector card
-        collectorCard = Theme.card(host, Theme.LINE, 14, 10);
-        LinearLayout dotRow = new LinearLayout(host);
-        dotRow.setOrientation(HORIZONTAL);
-        dotRow.setGravity(Gravity.CENTER_VERTICAL);
-        collectorDot = new View(host);
-        int d = Theme.dpi(host, 12);
-        LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(d, d);
-        dlp.rightMargin = Theme.dpi(host, 8);
-        collectorDot.setLayoutParams(dlp);
-        collectorDot.setBackground(oval(Theme.MUTED));
-        collectorDot.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
-        collectorTitle = Theme.label(host, "Checking collector...", 18, 24, Theme.TEXT, Typeface.BOLD, 1);
-        collectorAddr = Theme.label(host, "", 16, 20, Theme.TEXT, Typeface.BOLD, 1);
-        collectorAddr.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
-        dotRow.addView(collectorDot);
-        dotRow.addView(collectorTitle, new LayoutParams(0, LayoutParams.WRAP_CONTENT, 1));
-        dotRow.addView(collectorAddr);
-        collectorCard.addView(dotRow);
-
-        space(collectorCard, 6);
-        LinearLayout noteRow = new LinearLayout(host);
-        noteRow.setOrientation(HORIZONTAL);
-        noteRow.setGravity(Gravity.CENTER_VERTICAL);
-        collectorNote = Theme.label(host, "Results also save on this phone.", 16, 20, Theme.MUTED, Typeface.NORMAL, 1);
-        collectorNote.setEllipsize(TextUtils.TruncateAt.END);
-        retryBtn = Theme.chip(host, "Retry");
+        // Collector status: one quiet row, secondary to the run controls.
+        retryBtn = Theme.button(host, "Retry", Theme.Btn.TEXT, null);
         retryBtn.setContentDescription("Retry collector connection");
         retryBtn.setOnClickListener(v -> findCollector());
         retryBtn.setVisibility(GONE);
-        noteRow.addView(collectorNote, new LayoutParams(0, LayoutParams.WRAP_CONTENT, 1));
-        noteRow.addView(retryBtn);
-        collectorCard.addView(noteRow);
-        LayoutParams ccLp = new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
-        ccLp.bottomMargin = Theme.dpi(host, 8);
-        colL.addView(collectorCard, ccLp);
+        collector = Theme.row(host, "Checking collector…", null, "ic_cloud_off", retryBtn);
+        Theme.type(collector.headline, Theme.Type.BODY_MEDIUM);
+        Theme.type(collector.supporting, Theme.Type.BODY_SMALL);
+        collector.view.setFocusable(true);
 
-        // Run controls card
-        runCard = Theme.card(host, Theme.LINE, 14, 12);
-        LinearLayout segWrap = new LinearLayout(host);
-        segWrap.setOrientation(HORIZONTAL);
-        segWrap.setBackground(Theme.segmentedBg(host));
-        int sp = Theme.dpi(host, 3);
-        segWrap.setPadding(sp, sp, sp, sp);
-        segWrap.setContentDescription("Test length");
-        quickBtn = segButton("Quick test");
-        fullBtn = segButton("Full test");
+        // Test setup.
+        testsBlock = new LinearLayout(host);
+        testsBlock.setOrientation(VERTICAL);
+        testsBlock.addView(Theme.subheader(host, "Tests"));
+        LinearLayout seg = new LinearLayout(host);
+        seg.setOrientation(HORIZONTAL);
+        seg.setPadding(s4, 0, s4, 0);
+        seg.setContentDescription("Test length");
+        quickBtn = Theme.segment(host, "Quick test", 0, 2);
+        fullBtn = Theme.segment(host, "Full test", 1, 2);
         quickBtn.setOnClickListener(v -> { if (!running) { fullPreset = false; presetChanged(); } });
         fullBtn.setOnClickListener(v -> { if (!running) { fullPreset = true; presetChanged(); } });
-        LayoutParams qLp = new LayoutParams(0, LayoutParams.WRAP_CONTENT, 1);
-        qLp.rightMargin = sp;
-        segWrap.addView(quickBtn, qLp);
-        segWrap.addView(fullBtn, new LayoutParams(0, LayoutParams.WRAP_CONTENT, 1));
+        // MATCH_PARENT height keeps both halves the same height when one wraps or carries the check icon.
+        seg.addView(quickBtn, new LayoutParams(0, LayoutParams.MATCH_PARENT, 1));
+        seg.addView(fullBtn, new LayoutParams(0, LayoutParams.MATCH_PARENT, 1));
+        testsBlock.addView(seg);
+        timingHint = Theme.text(host, "", Theme.Type.BODY_SMALL, Theme.onSurfaceVariant);
+        timingHint.setPadding(s4, Theme.dpi(host, 4), s4, s2);
+        testsBlock.addView(timingHint);
+        libsRow = Theme.row(host, "Libraries", null, null, chevron());
+        Theme.clickable(libsRow.view, v -> openLibraries());
+        groupsRow = Theme.row(host, "Groups", null, null, chevron());
+        Theme.clickable(groupsRow.view, v -> openGroups());
+        testsBlock.addView(libsRow.view);
+        testsBlock.addView(groupsRow.view);
 
-        timingHint = Theme.label(host, "", 16, 20, Theme.MUTED, Typeface.NORMAL, 1);
-        timingHint.setEllipsize(TextUtils.TruncateAt.END);
+        // Run status card.
+        statusCard = Theme.card(host);
+        statusTitle = Theme.text(host, "Loading tests…", Theme.Type.TITLE_MEDIUM, Theme.onSurface);
+        statusTitle.setAccessibilityLiveRegion(ACCESSIBILITY_LIVE_REGION_POLITE);
+        statusLbl = Theme.text(host, "", Theme.Type.BODY_MEDIUM, Theme.onSurfaceVariant);
+        statusLbl.setVisibility(GONE);
+        progress = Theme.progress(host);
+        progress.setVisibility(GONE);
+        progress.setContentDescription("Run progress");
+        resultsTeaser = Theme.text(host, "", Theme.Type.BODY_MEDIUM, Theme.onSurface);
+        resultsTeaser.setTypeface(Typeface.MONOSPACE);
+        resultsTeaser.setVisibility(GONE);
+        resultsBtn = Theme.button(host, "View results", Theme.Btn.TONAL, null);
+        resultsBtn.setOnClickListener(v -> openResults());
+        clearBtn = Theme.button(host, "Clear", Theme.Btn.TEXT, null);
+        clearBtn.setContentDescription("Clear results");
+        clearBtn.setOnClickListener(v -> clearTapped());
+        resultsBtn.setVisibility(GONE);
+        clearBtn.setVisibility(GONE);
+        statusCard.addView(statusTitle);
+        LayoutParams sl = new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
+        sl.topMargin = Theme.dpi(host, 4);
+        statusCard.addView(statusLbl, sl);
+        LayoutParams pl = new LayoutParams(LayoutParams.MATCH_PARENT, Theme.dpi(host, 4));
+        pl.topMargin = Theme.dpi(host, 12);
+        statusCard.addView(progress, pl);
+        LayoutParams tl = new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
+        tl.topMargin = Theme.dpi(host, 12);
+        statusCard.addView(resultsTeaser, tl);
+        LinearLayout acts = new LinearLayout(host);
+        acts.setOrientation(HORIZONTAL);
+        acts.setGravity(Gravity.CENTER_VERTICAL);
+        acts.addView(resultsBtn);
+        LayoutParams cl = new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
+        cl.setMarginStart(s2);
+        acts.addView(clearBtn, cl);
+        LayoutParams al = new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
+        al.topMargin = Theme.dpi(host, 8);
+        statusCard.addView(acts, al);
 
-        libsBtn = Theme.chip(host, "Libraries");
-        libsBtn.setContentDescription("Libraries. Choose which libraries to test.");
-        libsBtn.setOnClickListener(v -> openLibraries());
-        groupsBtn = Theme.chip(host, "Groups");
-        groupsBtn.setContentDescription("Groups. Choose which test groups to run.");
-        groupsBtn.setOnClickListener(v -> openGroups());
-        LinearLayout customize = new LinearLayout(host);
-        customize.setOrientation(HORIZONTAL);
-        LayoutParams hp = new LayoutParams(0, LayoutParams.WRAP_CONTENT, 1);
-        hp.rightMargin = Theme.dpi(host, 8);
-        customize.addView(libsBtn, hp);
-        customize.addView(groupsBtn, new LayoutParams(0, LayoutParams.WRAP_CONTENT, 1));
-
-        agree = new Switch(host);
-        agree.setThumbTintList(Theme.peelSwitch());
-        agree.setTrackTintList(Theme.peelSwitch());
-        agree.setContentDescription("I agree to share timings");
-        Theme.minTarget(agree, 48);
-        agree.setOnCheckedChangeListener((v, on) -> agreeChanged());
-        agreeL = Theme.label(host, "I agree to share timings", 16, 22, Theme.TEXT, Typeface.BOLD, 2);
-        shareBtn = Theme.chip(host, "What's shared");
-        shareBtn.setContentDescription("What's shared. Opens the list of what is sent.");
+        // Footer: consent and Start, always on screen.
+        footer = new LinearLayout(host);
+        footer.setOrientation(VERTICAL);
+        footer.setBackgroundColor(Theme.surface);
+        footer.addView(Theme.divider(host));
+        shareBtn = Theme.iconButton(host, "ic_info", "What's shared");
+        shareBtn.setTooltipText("What's shared");
         shareBtn.setOnClickListener(v -> openShare());
-        LinearLayout agreeRow = new LinearLayout(host);
-        agreeRow.setOrientation(HORIZONTAL);
-        agreeRow.setGravity(Gravity.CENTER_VERTICAL);
-        agreeRow.setMinimumHeight(Theme.dpi(host, 48));
-        LayoutParams as = new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
-        as.rightMargin = Theme.dpi(host, 8);
-        agreeRow.addView(agree, as);
-        LayoutParams al = new LayoutParams(0, LayoutParams.WRAP_CONTENT, 1);
-        al.rightMargin = Theme.dpi(host, 8);
-        agreeRow.addView(agreeL, al);
-        agreeRow.addView(shareBtn, new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
-        agreeL.setOnClickListener(v -> { if (agree.isEnabled()) agree.toggle(); });
-
-        startBtn = Theme.primary(host, "Start");
+        agree = Theme.switchM3(host, "I agree to share timings");
+        agree.setOnCheckedChangeListener((v, on) -> agreeChanged());
+        consentRow = Theme.row(host, "I agree to share timings", "Timings and device info only", null, shareBtn, agree);
+        Theme.toggleRow(consentRow.view, agree, "I agree to share timings. Timings and device info only.", Switch.class);
+        footer.addView(consentRow.view);
+        startBtn = Theme.button(host, "Start", Theme.Btn.FILLED, "ic_play");
         startBtn.setEnabled(false);
-        Theme.styleButton(startBtn, true, false);
         startBtn.setOnClickListener(v -> startTapped());
-        stopBtn = Theme.secondary(host, "Stop");
+        stopBtn = Theme.button(host, "Stop", Theme.Btn.TONAL, "ic_stop");
         stopBtn.setOnClickListener(v -> stopTapped());
         stopBtn.setVisibility(GONE);
-        clearBtn = Theme.secondary(host, "Clear");
-        clearBtn.setOnClickListener(v -> clearTapped());
-        clearBtn.setVisibility(GONE);
-        LinearLayout action = new LinearLayout(host);
-        action.setOrientation(HORIZONTAL);
-        LayoutParams ap = new LayoutParams(0, LayoutParams.WRAP_CONTENT, 1);
-        LayoutParams cp = new LayoutParams(0, LayoutParams.WRAP_CONTENT, 1);
-        cp.leftMargin = Theme.dpi(host, 10);
-        action.addView(startBtn, ap);
-        action.addView(stopBtn, new LayoutParams(0, LayoutParams.WRAP_CONTENT, 1));
-        action.addView(clearBtn, cp);
+        LayoutParams bl = new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
+        bl.leftMargin = bl.rightMargin = s4;
+        bl.bottomMargin = s2;
+        footer.addView(startBtn, bl);
+        footer.addView(stopBtn, new LayoutParams(bl));
 
-        startHint = Theme.label(host, "Turn on I agree to start.", 16, 20, Theme.GOLD, Typeface.BOLD, 1);
-        startHint.setEllipsize(TextUtils.TruncateAt.END);
-        startHint.setContentDescription("Turn on I agree to start.");
-
-        runCard.addView(segWrap);
-        space(runCard, 8);
-        runCard.addView(timingHint);
-        space(runCard, 8);
-        runCard.addView(customize);
-        space(runCard, 8);
-        runCard.addView(agreeRow);
-        space(runCard, 8);
-        runCard.addView(action);
-        space(runCard, 6);
-        runCard.addView(startHint);
-        colL.addView(runCard);
-        space(colL, 8);
-
-        // Status card: expands to fill remaining height with no dead space.
-        statusCard = Theme.card(host, Theme.LINE, 14, 12);
-        statusTitle = Theme.label(host, "Ready", 20, 26, Theme.TEXT, Typeface.BOLD, 1);
-        progress = new SegBar(host);
-        statusLbl = Theme.label(host, "Pick Quick or Full, then tap Start.", 16, 22, Theme.TEXT, Typeface.NORMAL, 1);
-        statusLbl.setEllipsize(TextUtils.TruncateAt.END);
-        resultsTeaser = Theme.label(host, "", 15, 20, Theme.TEXT, Typeface.NORMAL, 0);
-        resultsTeaser.setTypeface(Typeface.MONOSPACE);
-        resultsBtn = Theme.chip(host, "View results");
-        resultsBtn.setContentDescription("View results. Opens the full results list.");
-        resultsBtn.setOnClickListener(v -> openResults());
-        resultsBtn.setVisibility(GONE);
-        resultsTeaser.setVisibility(GONE);
-
-        statusCard.addView(statusTitle);
-        space(statusCard, 8);
-        statusCard.addView(progress, new LayoutParams(LayoutParams.MATCH_PARENT, Theme.dpi(host, 24)));
-        space(statusCard, 8);
-        statusCard.addView(statusLbl);
-        LayoutParams teaseLp = new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
-        teaseLp.topMargin = Theme.dpi(host, 8);
-        statusCard.addView(resultsTeaser, teaseLp);
-        LayoutParams resLp = new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
-        resLp.topMargin = Theme.dpi(host, 8);
-        statusCard.addView(resultsBtn, resLp);
-        statusCard.addView(new View(host), new LayoutParams(LayoutParams.MATCH_PARENT, 0, 1));
-
-        colR.addView(statusCard, new LayoutParams(LayoutParams.MATCH_PARENT, 0, 1));
-        statusCard.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> fitTeaser());
+        colA = column();
+        colB = column();
+        scrollA = scroller(colA);
+        scrollB = scroller(colB);
+        leftPane = new LinearLayout(host);
+        leftPane.setOrientation(VERTICAL);
+        leftPane.addView(scrollA, new LayoutParams(LayoutParams.MATCH_PARENT, 0, 1));
+        rightPane = new LinearLayout(host);
+        rightPane.setOrientation(VERTICAL);
+        rightPane.addView(scrollB, new LayoutParams(LayoutParams.MATCH_PARENT, 0, 1));
 
         onChromeRelayout();
         presetChanged();
@@ -250,41 +200,61 @@ final class BenchView extends LinearLayout {
         }, "devbench-catalog").start();
     }
 
-    void onChromeRelayout() {
-        boolean land = getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE
-                && getResources().getDisplayMetrics().widthPixels > getResources().getDisplayMetrics().heightPixels;
-        page.setOrientation(land ? HORIZONTAL : VERTICAL);
-        LayoutParams lpL = (LayoutParams) colL.getLayoutParams();
-        LayoutParams lpR = (LayoutParams) colR.getLayoutParams();
-        if (land) {
-            lpL.width = 0; lpL.height = LayoutParams.MATCH_PARENT; lpL.weight = 1; lpL.rightMargin = Theme.dpi(host, 12);
-            lpR.width = 0; lpR.height = LayoutParams.MATCH_PARENT; lpR.weight = 1;
-        } else {
-            lpL.width = LayoutParams.MATCH_PARENT; lpL.height = LayoutParams.WRAP_CONTENT; lpL.weight = 0; lpL.rightMargin = 0;
-            lpR.width = LayoutParams.MATCH_PARENT; lpR.height = 0; lpR.weight = 1;
-        }
-        colL.setLayoutParams(lpL);
-        colR.setLayoutParams(lpR);
-        resultsTeaser.setMaxLines(Integer.MAX_VALUE);
-        // In landscape the collector card sits on top of the status column, so the
-        // run controls (consent and Start) get the whole left column. On a phone
-        // (about 400dp tall) both cards in one column squeezed Start to a sliver.
-        LinearLayout want = land ? colR : colL;
-        if (collectorCard.getParent() != want) {
-            ((LinearLayout) collectorCard.getParent()).removeView(collectorCard);
-            want.addView(collectorCard, 0);
-        }
+    private ImageView chevron() {
+        ImageView v = Theme.iconView(host, "ic_chevron_right", Theme.onSurfaceVariant);
+        v.setLayoutParams(new LayoutParams(Theme.dpi(host, 24), Theme.dpi(host, 24)));
+        return v;
     }
 
-    /** Drops teaser lines until View results fits in the status card (phone landscape is short). */
-    private void fitTeaser() {
-        if (resultsBtn.getVisibility() != VISIBLE || resultsTeaser.getVisibility() != VISIBLE) return;
-        int lines = Math.min(resultsTeaser.getLineCount(), resultsTeaser.getMaxLines());
-        // A full status card squeezes the button (LinearLayout gives it only what is left) or pushes it past the edge.
-        boolean squeezed = resultsBtn.getHeight() < resultsBtn.getMinimumHeight()
-                || resultsBtn.getBottom() > statusCard.getHeight() - statusCard.getPaddingBottom();
-        if (squeezed && lines > 1)
-            ui.post(() -> resultsTeaser.setMaxLines(lines - 1));
+    private LinearLayout column() {
+        LinearLayout l = new LinearLayout(host);
+        l.setOrientation(VERTICAL);
+        l.setPadding(0, 0, 0, Theme.dpi(host, 16));
+        return l;
+    }
+
+    private ScrollView scroller(View child) {
+        ScrollView s = new ScrollView(host);
+        s.setFillViewport(true);
+        s.addView(child, new ScrollView.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+        return s;
+    }
+
+    private static void detach(View v) {
+        if (v.getParent() instanceof ViewGroup) ((ViewGroup) v.getParent()).removeView(v);
+    }
+
+    /** Re-flows the panes for the current window size class. */
+    void onChromeRelayout() {
+        boolean wide = MainActivity.isWide(host);
+        int s4 = Theme.dpi(host, 16);
+        removeAllViews();
+        colA.removeAllViews();
+        colB.removeAllViews();
+        detach(collector.view); detach(testsBlock); detach(statusCard); detach(footer);
+        LayoutParams foot = new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
+        LayoutParams card = new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
+        card.leftMargin = card.rightMargin = s4;
+        card.topMargin = Theme.dpi(host, 8);
+        if (wide) {
+            setOrientation(HORIZONTAL);
+            colA.addView(testsBlock);
+            colB.addView(collector.view);
+            colB.addView(statusCard, card);
+            rightPane.addView(footer, foot);
+            addView(leftPane, new LayoutParams(0, LayoutParams.MATCH_PARENT, 1));
+            View rule = new View(host);
+            rule.setBackgroundColor(Theme.outlineVariant);
+            addView(rule, new LayoutParams(Math.max(1, Theme.dpi(host, 1)), LayoutParams.MATCH_PARENT));
+            addView(rightPane, new LayoutParams(0, LayoutParams.MATCH_PARENT, 1));
+        } else {
+            setOrientation(VERTICAL);
+            colA.addView(collector.view);
+            colA.addView(testsBlock);
+            colA.addView(statusCard, card);
+            leftPane.addView(footer, foot);
+            addView(leftPane, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+        }
     }
 
     void applyIntent(Intent it) {
@@ -301,39 +271,15 @@ final class BenchView extends LinearLayout {
         if ("quick".equals(it.getStringExtra("preset"))) { fullPreset = false; presetChanged(); }
     }
 
-    private Button segButton(String title) {
-        Button b = new Button(host, null, android.R.attr.borderlessButtonStyle);
-        b.setText(title);
-        b.setAllCaps(false);
-        b.setMinHeight(Theme.dpi(host, 44));
-        b.setMinimumHeight(Theme.dpi(host, 44));
-        b.setPadding(Theme.dpi(host, 10), Theme.dpi(host, 6), Theme.dpi(host, 10), Theme.dpi(host, 6));
-        b.setSingleLine(true);
-        if (android.os.Build.VERSION.SDK_INT >= 26) {
-            b.setAutoSizeTextTypeUniformWithConfiguration(14, 17, 1, android.util.TypedValue.COMPLEX_UNIT_SP);
-        } else {
-            b.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, Theme.sp(host, 16, 20));
-        }
-        b.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
-        return b;
-    }
-
-    private static android.graphics.drawable.GradientDrawable oval(int color) {
-        android.graphics.drawable.GradientDrawable g = new android.graphics.drawable.GradientDrawable();
-        g.setShape(android.graphics.drawable.GradientDrawable.OVAL);
-        g.setColor(color);
-        return g;
-    }
-
-    private static void space(LinearLayout root, int dp) {
-        View v = new View(root.getContext());
-        root.addView(v, new LayoutParams(LayoutParams.MATCH_PARENT, Theme.dpi(root.getContext(), dp)));
+    private void setBody(String s) {
+        statusLbl.setText(s);
+        statusLbl.setVisibility(s == null || s.isEmpty() ? GONE : VISIBLE);
     }
 
     private void presetChanged() {
         boolean full = fullPreset;
-        Theme.styleSegment(quickBtn, !full, !running);
-        Theme.styleSegment(fullBtn, full, !running);
+        Theme.selectSegment(quickBtn, !full, !running);
+        Theme.selectSegment(fullBtn, full, !running);
         quickBtn.setContentDescription("Quick test" + (!full ? ", selected" : ""));
         fullBtn.setContentDescription("Full test" + (full ? ", selected" : ""));
         timingHint.setText(full ? "3 rounds, 10 × 100 ms, 300 ms warm-up" : "1 round, 5 × 50 ms, 150 ms warm-up");
@@ -341,15 +287,17 @@ final class BenchView extends LinearLayout {
 
     private void countsChanged() {
         int lon = 0, gon = 0, mon = 0, mall = 0, gall = 0;
-        for (Switch s : libSw.values()) if (s.isChecked()) lon++;
-        for (Map.Entry<String, Switch> e : secSw.entrySet()) {
+        for (CompoundButton s : libSw.values()) if (s.isChecked()) lon++;
+        for (Map.Entry<String, CompoundButton> e : secSw.entrySet()) {
             if (e.getKey().startsWith("More: ")) { mall++; if (e.getValue().isChecked()) mon++; }
             else { gall++; if (e.getValue().isChecked()) gon++; }
         }
-        libsBtn.setText("Libraries " + lon + "/" + libSw.size());
-        groupsBtn.setText(mon > 0
-                ? ("Groups " + gon + "/" + gall + " +" + mon)
-                : ("Groups " + gon + "/" + gall));
+        String libs = libSw.isEmpty() ? "" : lon == libSw.size() ? "All " + lon + " selected" : lon + " of " + libSw.size() + " selected";
+        String groups = gall == 0 ? "" : gon + " of " + gall + " selected" + (mon > 0 ? ", plus " + mon + " more" : "");
+        libsRow.setSupporting(libs);
+        groupsRow.setSupporting(groups);
+        libsRow.view.setContentDescription("Libraries" + (libs.isEmpty() ? "" : ", " + libs));
+        groupsRow.view.setContentDescription("Groups" + (groups.isEmpty() ? "" : ", " + groups));
         agreeChanged();
     }
 
@@ -383,21 +331,21 @@ final class BenchView extends LinearLayout {
             for (int i = 0; i < libs.length(); i++) {
                 String l = libs.getString(i);
                 boolean on = wantLibs.isEmpty() || wantLibs.contains(l);
-                libRows.add(switchRow(l + " (" + lc.getOrDefault(l, 0) + ")", on, true, libSw, l));
+                libRows.add(checkRow(l, lc.getOrDefault(l, 0), on, true, libSw, l));
             }
             for (int i = 0; i < secs.length(); i++) {
                 String s = secs.getString(i);
                 int n = sc.getOrDefault(s, 0);
                 boolean on = n > 0 && (wantSecs.isEmpty() ? !s.startsWith("More: ") : wantSecs.contains(s));
-                View row = switchRow(s + " (" + n + ")", on, n > 0, secSw, s);
+                View row = checkRow(s.startsWith("More: ") ? s.substring(6) : s, n, on, n > 0, secSw, s);
                 if (s.startsWith("More: ")) moreRows.add(row); else groupRows.add(row);
             }
             if (!running && resultsText.isEmpty()) {
                 statusTitle.setText("Ready");
-                statusLbl.setText("Pick Quick or Full, then tap Start.");
+                setBody("");
             }
         } catch (Exception e) {
-            statusLbl.setText("Could not load tests.");
+            statusTitle.setText("Could not load tests");
         }
         countsChanged();
         agreeChanged();
@@ -413,27 +361,30 @@ final class BenchView extends LinearLayout {
         return out;
     }
 
-    private View switchRow(String title, boolean on, boolean en, Map<String, Switch> dict, String key) {
+    /** Multi-select list item for the Libraries and Groups sheets. */
+    private View checkRow(String title, int count, boolean on, boolean en, Map<String, CompoundButton> dict, String key) {
         LinearLayout row = new LinearLayout(host);
         row.setOrientation(HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setMinimumHeight(Theme.dpi(host, 48));
-        Switch sw = new Switch(host);
-        sw.setChecked(on);
-        sw.setEnabled(en);
-        sw.setThumbTintList(Theme.peelSwitch());
-        sw.setTrackTintList(Theme.peelSwitch());
-        sw.setContentDescription(title);
-        sw.setOnCheckedChangeListener((v, c) -> countsChanged());
-        Theme.minTarget(sw, 48);
-        dict.put(key, sw);
-        TextView l = Theme.label(host, title, 16, 22, en ? Theme.TEXT : Theme.MUTED, Typeface.NORMAL, 1);
-        l.setEllipsize(TextUtils.TruncateAt.END);
-        LayoutParams sl = new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
-        sl.rightMargin = Theme.dpi(host, 10);
-        row.addView(sw, sl);
-        row.addView(l, new LayoutParams(0, LayoutParams.WRAP_CONTENT, 1));
-        l.setOnClickListener(v -> { if (sw.isEnabled()) sw.toggle(); });
+        row.setMinimumHeight(Theme.dpi(host, 56));
+        row.setPaddingRelative(Theme.dpi(host, 12), Theme.dpi(host, 4), Theme.dpi(host, 24), Theme.dpi(host, 4));
+        CheckBox cb = Theme.checkBox(host);
+        cb.setChecked(on);
+        cb.setEnabled(en);
+        cb.setOnCheckedChangeListener((v, c) -> countsChanged());
+        dict.put(key, cb);
+        TextView l = Theme.text(host, title, Theme.Type.BODY_LARGE, Theme.onSurface);
+        TextView n = Theme.text(host, String.valueOf(count), Theme.Type.BODY_MEDIUM, Theme.onSurfaceVariant);
+        LayoutParams lp = new LayoutParams(0, LayoutParams.WRAP_CONTENT, 1);
+        lp.setMarginStart(Theme.dpi(host, 4));
+        lp.setMarginEnd(Theme.dpi(host, 16));
+        row.addView(cb);
+        row.addView(l, lp);
+        row.addView(n);
+        String noun = count == 1 ? " test" : " tests";
+        Theme.toggleRow(row, cb, title + ", " + count + noun, CheckBox.class);
+        row.setEnabled(en);
+        if (!en) { l.setAlpha(0.38f); n.setAlpha(0.38f); }
         return row;
     }
 
@@ -462,30 +413,26 @@ final class BenchView extends LinearLayout {
         }, "collector-probe").start();
     }
 
+    private void showCollector(String icon, int tint, String title, String sub, boolean retry) {
+        collector.leading.setImageDrawable(Theme.icon(host, icon, tint));
+        collector.headline.setText(title);
+        collector.setSupporting(sub);
+        retryBtn.setVisibility(retry ? VISIBLE : GONE);
+        collector.view.setContentDescription(title + (sub.isEmpty() ? "" : ". " + sub));
+    }
+
     private void applyCollector(String[] h) {
         if (h != null) {
             colHost = h[0]; colPort = Integer.parseInt(h[1]); colHow = h[2];
             collectorOK = true;
-            collectorTitle.setText("Connected");
-            collectorTitle.setTextColor(Theme.PEEL);
-            collectorDot.setBackground(oval(Theme.PEEL));
-            collectorAddr.setText(colHost + ":" + colPort);
-            collectorNote.setText(("over USB".equals(colHow) ? "USB ready." : "Collector ready.") + " Saves on phone too.");
-            Theme.setCardAccent(collectorCard, Theme.PEEL_MID);
-            retryBtn.setVisibility(GONE);
-            collectorCard.setContentDescription("Collector connected at " + colHost + ":" + colPort);
+            showCollector("ic_cloud_done", Theme.primary, "Collector connected",
+                    colHost + ":" + colPort + ("over USB".equals(colHow) ? " over USB" : ""), false);
         } else {
             collectorOK = false;
             String[] d = candidates().get(candidates().size() - 1);
             colHost = d[0]; colPort = Integer.parseInt(d[1]); colHow = "not reachable now";
-            collectorTitle.setText("Not connected");
-            collectorTitle.setTextColor(Theme.HIT);
-            collectorDot.setBackground(oval(Theme.HIT));
-            collectorAddr.setText(colHost + ":" + colPort);
-            collectorNote.setText("Results still save on this phone.");
-            Theme.setCardAccent(collectorCard, Theme.HIT);
-            retryBtn.setVisibility(VISIBLE);
-            collectorCard.setContentDescription("Collector not connected at " + colHost + ":" + colPort);
+            showCollector("ic_cloud_off", Theme.onSurfaceVariant, "Collector not connected",
+                    "Results save on this phone", true);
         }
     }
 
@@ -493,43 +440,45 @@ final class BenchView extends LinearLayout {
         if (sink == null || sink.isEmpty()) return;
         if ("connected".equals(sink)) {
             collectorOK = true;
-            collectorTitle.setText("Sending");
-            collectorTitle.setTextColor(Theme.PEEL);
-            collectorDot.setBackground(oval(Theme.PEEL));
-            collectorNote.setText("Saving here and to collector.");
-            Theme.setCardAccent(collectorCard, Theme.PEEL_MID);
-            retryBtn.setVisibility(GONE);
+            showCollector("ic_cloud_upload", Theme.primary, "Sending to collector",
+                    "Results also save on this phone", false);
         } else if ("unreachable".equals(sink)) {
             collectorOK = false;
-            collectorTitle.setText("Not connected");
-            collectorTitle.setTextColor(Theme.HIT);
-            collectorDot.setBackground(oval(Theme.HIT));
-            collectorNote.setText("Results save on this phone.");
-            Theme.setCardAccent(collectorCard, Theme.HIT);
-            retryBtn.setVisibility(VISIBLE);
+            showCollector("ic_cloud_off", Theme.onSurfaceVariant, "Collector not connected",
+                    "Results save on this phone", true);
         }
     }
 
     private void agreeChanged() {
         boolean on = agree.isChecked() && catalogReady && !running;
         startBtn.setEnabled(on);
-        Theme.styleButton(startBtn, true, on);
-        if (running) startHint.setText("Tap Stop to quit after this test.");
-        else if (!catalogReady) startHint.setText("Loading tests...");
-        else if (!agree.isChecked()) startHint.setText("Turn on I agree to start.");
-        else startHint.setText("Ready to start.");
-        startHint.setTextColor(on ? Theme.PEEL : Theme.GOLD);
-        startHint.setContentDescription(startHint.getText());
+        if (!catalogReady) startBtn.setContentDescription("Start, loading tests");
+        else if (!agree.isChecked()) startBtn.setContentDescription("Start, turn on I agree to share timings first");
+        else startBtn.setContentDescription("Start");
+    }
+
+    private void setControlsEnabled(boolean en) {
+        Theme.selectSegment(quickBtn, !fullPreset, en);
+        Theme.selectSegment(fullBtn, fullPreset, en);
+        libsRow.setEnabled(en);
+        groupsRow.setEnabled(en);
+    }
+
+    private void setAgreeEnabled(boolean en) {
+        agree.setEnabled(en);
+        consentRow.setEnabled(en);
+        shareBtn.setEnabled(true);
+        shareBtn.setAlpha(1f);
     }
 
     private void startTapped() {
         if (!agree.isChecked() || !catalogReady || running) return;
         List<String> libs = new ArrayList<>(), secs = new ArrayList<>();
-        for (Map.Entry<String, Switch> e : libSw.entrySet()) if (e.getValue().isChecked()) libs.add(e.getKey());
-        for (Map.Entry<String, Switch> e : secSw.entrySet()) if (e.getValue().isChecked()) secs.add(e.getKey());
+        for (Map.Entry<String, CompoundButton> e : libSw.entrySet()) if (e.getValue().isChecked()) libs.add(e.getKey());
+        for (Map.Entry<String, CompoundButton> e : secSw.entrySet()) if (e.getValue().isChecked()) secs.add(e.getKey());
         if (libs.isEmpty() || secs.isEmpty()) {
             statusTitle.setText("Nothing picked");
-            statusLbl.setText("Turn on at least one library and group.");
+            setBody("Turn on at least one library and group.");
             return;
         }
         try {
@@ -552,12 +501,12 @@ final class BenchView extends LinearLayout {
             cfg.put("env", env);
             if (Native.start(cfg.toString()) != 0) {
                 statusTitle.setText("Could not start");
-                statusLbl.setText(new JSONObject(Native.status()).optString("start_error"));
+                setBody(new JSONObject(Native.status()).optString("start_error"));
                 return;
             }
         } catch (Exception e) {
             statusTitle.setText("Could not start");
-            statusLbl.setText(String.valueOf(e));
+            setBody(String.valueOf(e));
             return;
         }
         Theme.haptic(startBtn, true);
@@ -566,15 +515,16 @@ final class BenchView extends LinearLayout {
         clearBtn.setVisibility(GONE);
         stopBtn.setVisibility(VISIBLE);
         stopBtn.setEnabled(true);
-        Theme.styleButton(stopBtn, false, true);
-        agree.setEnabled(false);
+        setAgreeEnabled(false);
         running = true;
-        Theme.styleSegment(quickBtn, !fullPreset, false); Theme.styleSegment(fullBtn, fullPreset, false);
-        libsBtn.setEnabled(false); groupsBtn.setEnabled(false);
+        setControlsEnabled(false);
         resultsTeaser.setVisibility(GONE);
         resultsBtn.setVisibility(GONE);
+        progress.setMax(1);
+        progress.setProgress(0);
+        progress.setVisibility(VISIBLE);
         statusTitle.setText("Starting");
-        statusLbl.setText("Warming up...");
+        setBody("Warming up…");
         findCollector();
         agreeChanged();
         ui.post(poll);
@@ -584,29 +534,26 @@ final class BenchView extends LinearLayout {
         Theme.haptic(stopBtn, false);
         Native.stop();
         stopBtn.setEnabled(false);
-        Theme.styleButton(stopBtn, false, false);
         statusTitle.setText("Stopping");
-        statusLbl.setText("Stopping after this test...");
+        setBody("Stops after the current test.");
     }
 
     private void clearTapped() {
         if (running) return;
         agree.setChecked(false);
-        agree.setEnabled(true);
+        setAgreeEnabled(true);
         resultsTeaser.setText("");
         resultsTeaser.setVisibility(GONE);
         resultsText = "";
         resultsBtn.setVisibility(GONE);
         clearBtn.setVisibility(GONE);
-        startBtn.setText("Start");
         startBtn.setVisibility(VISIBLE);
         stopBtn.setVisibility(GONE);
-        Theme.styleSegment(quickBtn, !fullPreset, true); Theme.styleSegment(fullBtn, fullPreset, true);
-        libsBtn.setEnabled(true); groupsBtn.setEnabled(true);
-        progress.setProgress(0, 24, false);
-        Theme.setCardAccent(statusCard, Theme.LINE);
+        setControlsEnabled(true);
+        progress.setProgress(0);
+        progress.setVisibility(GONE);
         statusTitle.setText("Ready");
-        statusLbl.setText("Pick Quick or Full, then tap Start.");
+        setBody("");
         agreeChanged();
         findCollector();
     }
@@ -624,39 +571,37 @@ final class BenchView extends LinearLayout {
             boolean still = s.optBoolean("running");
             running = still;
             int done = s.optInt("done"), total = Math.max(1, s.optInt("total"));
-            progress.setProgress(still ? (int) Math.floor(24.0 * done / total) : (done > 0 ? 24 : 0), 24, still);
+            progress.setMax(total);
+            progress.setProgress(still ? done : (done > 0 ? total : 0));
+            progress.setContentDescription("Run progress, " + (still ? done : (done > 0 ? total : 0)) + " of " + total);
             updateCollectorFromSink(s.optString("sink"));
             if (still) {
                 statusTitle.setText("Running " + s.optInt("round") + " of " + s.optInt("rounds"));
                 String cur = s.optString("current", "");
                 String warm = isWarm() ? " (warm)" : "";
-                statusLbl.setText(done + " of " + total + (cur.isEmpty() ? "" : " · " + cur) + warm);
-                Theme.setCardAccent(statusCard, Theme.GOLD);
+                setBody(done + " of " + total + (cur.isEmpty() ? "" : " · " + cur) + warm);
             } else {
                 boolean stopped = s.optBoolean("stopped");
                 Theme.haptic(statusCard, !stopped);
                 statusTitle.setText(stopped ? "Stopped" : "Done");
                 int errs = s.optInt("errors");
                 String errTxt = errs > 0 ? " (" + errs + " errors)" : "";
-                statusLbl.setText(String.format(Locale.US, "%d tests in %.0f s%s",
+                setBody(String.format(Locale.US, "%d tests in %.0f s%s",
                         s.optInt("done"), s.optDouble("elapsed_s", 0), errTxt));
-                Theme.setCardAccent(statusCard, stopped ? Theme.GOLD : Theme.PEEL);
             }
             renderResults(s.optJSONObject("results"));
             if (!still) {
                 host.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
                 startBtn.setVisibility(VISIBLE);
-                startBtn.setText("Start");
                 stopBtn.setVisibility(GONE);
                 clearBtn.setVisibility(VISIBLE);
-                agree.setEnabled(true);
-                Theme.styleSegment(quickBtn, !fullPreset, true); Theme.styleSegment(fullBtn, fullPreset, true);
-                libsBtn.setEnabled(true); groupsBtn.setEnabled(true);
+                setAgreeEnabled(true);
+                setControlsEnabled(true);
                 agreeChanged();
                 return;
             }
         } catch (Exception e) {
-            statusLbl.setText("Status error.");
+            setBody("Status error.");
         }
         ui.postDelayed(poll, 1000);
     }
@@ -695,7 +640,6 @@ final class BenchView extends LinearLayout {
                 tease.append(e.getKey().replace("/{lib}", "")).append("  ").append(rind == null ? "-" : fmt(rind)).append('\n');
             }
             if (byOp.size() > 4) tease.append("+").append(byOp.size() - 4).append(" more");
-            resultsTeaser.setMaxLines(Integer.MAX_VALUE);
             resultsTeaser.setText(tease.toString().trim());
             resultsTeaser.setVisibility(VISIBLE);
             resultsBtn.setVisibility(VISIBLE);
@@ -731,89 +675,51 @@ final class BenchView extends LinearLayout {
         return dst.getAbsolutePath();
     }
 
-    private void presentSheet(String title, View content) {
-        Dialog d = new Dialog(host, android.R.style.Theme_DeviceDefault_NoActionBar);
-        LinearLayout box = new LinearLayout(host);
-        box.setOrientation(VERTICAL);
-        box.setBackgroundColor(Theme.INK);
-        int pad = Theme.dpi(host, 16);
-        box.setPadding(pad, pad + Theme.dpi(host, 12), pad, pad);
-        box.setOnApplyWindowInsetsListener((v, insets) -> {
-            if (android.os.Build.VERSION.SDK_INT >= 30) {
-                android.graphics.Insets s = insets.getInsets(android.view.WindowInsets.Type.systemBars());
-                v.setPadding(pad + s.left, pad + s.top, pad + s.right, pad + s.bottom);
-            } else {
-                v.setPadding(pad + insets.getSystemWindowInsetLeft(), pad + insets.getSystemWindowInsetTop(),
-                        pad + insets.getSystemWindowInsetRight(), pad + insets.getSystemWindowInsetBottom());
-            }
-            return insets;
-        });
-        LinearLayout top = new LinearLayout(host);
-        top.setOrientation(HORIZONTAL);
-        top.setGravity(Gravity.CENTER_VERTICAL);
-        TextView t = Theme.label(host, title, 24, 32, Theme.TEXT, Typeface.BOLD, 1);
-        t.setAccessibilityHeading(true);
-        top.addView(t, new LayoutParams(0, LayoutParams.WRAP_CONTENT, 1));
-        Button done = Theme.chip(host, "Done");
-        done.setOnClickListener(v -> d.dismiss());
-        top.addView(done);
-        box.addView(top);
-        space(box, 16);
-        ScrollView sc = new ScrollView(host);
-        if (content.getParent() instanceof ViewGroup) ((ViewGroup) content.getParent()).removeView(content);
-        sc.addView(content, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
-        box.addView(sc, new LayoutParams(LayoutParams.MATCH_PARENT, 0, 1));
-        d.setContentView(box);
-        d.show();
-    }
-
-    private LinearLayout sectionStack(String title, List<View> rows, String empty) {
+    private LinearLayout listSection(String title, List<View> rows, String empty) {
         LinearLayout s = new LinearLayout(host);
         s.setOrientation(VERTICAL);
-        s.addView(Theme.label(host, title, 18, 24, Theme.TEXT, Typeface.BOLD, 1));
-        space(s, 10);
-        if (rows.isEmpty()) s.addView(Theme.label(host, empty, 16, 22, Theme.MUTED, Typeface.NORMAL, 0));
-        else for (View r : rows) {
-            if (r.getParent() instanceof ViewGroup) ((ViewGroup) r.getParent()).removeView(r);
-            s.addView(r);
-            space(s, 8);
+        if (title != null) {
+            TextView h = Theme.subheader(host, title);
+            h.setPaddingRelative(Theme.dpi(host, 24), Theme.dpi(host, 16), Theme.dpi(host, 24), Theme.dpi(host, 4));
+            s.addView(h);
         }
+        if (rows.isEmpty()) s.addView(Sheet.body(host, empty, false));
+        else for (View r : rows) { detach(r); s.addView(r); }
         return s;
     }
 
-    private void openLibraries() { presentSheet("Libraries", sectionStack("Libraries in this run", libRows, "No libraries found.")); }
+    private void openLibraries() { Sheet.show(host, "Libraries", listSection(null, libRows, "No libraries found.")); }
 
     private void openGroups() {
         LinearLayout s = new LinearLayout(host);
         s.setOrientation(VERTICAL);
-        s.addView(sectionStack("Default groups", groupRows, "None."));
-        space(s, 18);
-        s.addView(sectionStack("More groups (off by default)", moreRows, "None."));
-        presentSheet("Groups", s);
+        s.addView(listSection("Default groups", groupRows, "None."));
+        s.addView(listSection("More groups, off by default", moreRows, "None."));
+        Sheet.show(host, "Groups", s);
     }
 
     private void openShare() {
-        TextView t = Theme.label(host,
+        Sheet.show(host, "What's shared", Sheet.body(host,
                 "When you agree and tap Start, this app runs CPU tests that warm your phone.\n\n"
                 + "It sends only timings plus your phone model, chip, system version, and CPU features to the collector. "
                 + "It never sends your name, account, serial number, or location.\n\n"
-                + "Results always save on this phone too, and you can tap Stop anytime.",
-                16, 22, Theme.TEXT, Typeface.NORMAL, 0);
-        presentSheet("What's shared", t);
+                + "Results always save on this phone too, and you can tap Stop anytime.", false));
     }
 
     void openDetails() {
         String col = (colHost == null || colHost.isEmpty()) ? "None" : (colHost + ":" + colPort + " (" + colHow + ")");
-        TextView t = Theme.label(host, detailsText + "\nCollector: " + col,
-                16, 22, Theme.TEXT, Typeface.NORMAL, 0);
-        t.setTypeface(Typeface.MONOSPACE);
-        presentSheet("Details", t);
+        Sheet.show(host, "Details", Sheet.body(host, detailsText + "\nCollector: " + col, true));
     }
 
     private void openResults() {
-        TextView tv = Theme.label(host, resultsText.isEmpty() ? "(no results yet)" : resultsText, 15, 20, Theme.TEXT, Typeface.NORMAL, 0);
+        // Results are a table: keep columns aligned and scroll sideways instead of wrapping.
+        TextView tv = Sheet.body(host, resultsText.isEmpty() ? "No results yet." : resultsText, true);
+        Theme.type(tv, Theme.Type.BODY_SMALL);
         tv.setTypeface(Typeface.MONOSPACE);
+        tv.setHorizontallyScrolling(false);
         tv.setContentDescription("Results");
-        presentSheet("Results", tv);
+        android.widget.HorizontalScrollView h = new android.widget.HorizontalScrollView(host);
+        h.addView(tv, new android.widget.HorizontalScrollView.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
+        Sheet.show(host, "Results", h);
     }
 }
