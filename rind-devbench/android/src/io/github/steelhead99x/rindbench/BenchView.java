@@ -1001,7 +1001,18 @@ final class BenchView extends LinearLayout {
 
     void openDetails() {
         String col = (colHost == null || colHost.isEmpty()) ? "None" : (colHost + ":" + colPort + " (" + colHow + ")");
-        Sheet.show(host, "Details", Sheet.body(host, detailsText + "\nCollector: " + col, true));
+        LinearLayout panel = new LinearLayout(host);
+        panel.setOrientation(VERTICAL);
+        ImageView wordmark = Theme.brandImage(host, "moq_dev_wordmark", "moq.dev");
+        wordmark.setBackground(Theme.shape(0xFF0F172A, Theme.dp(host, 8)));
+        int inset = Theme.dpi(host, 8);
+        wordmark.setPadding(inset, inset, inset, inset);
+        LayoutParams logo = new LayoutParams(Theme.dpi(host, 176), Theme.dpi(host, 48));
+        logo.setMarginStart(Theme.dpi(host, 24));
+        logo.bottomMargin = Theme.dpi(host, 8);
+        panel.addView(wordmark, logo);
+        panel.addView(Sheet.body(host, detailsText + "\nCollector: " + col, true));
+        Sheet.show(host, "Details", panel);
     }
 
     private void openResults() {

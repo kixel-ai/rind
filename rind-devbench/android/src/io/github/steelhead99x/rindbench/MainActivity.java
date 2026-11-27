@@ -24,7 +24,7 @@ import android.widget.TextView;
 public class MainActivity extends Activity {
     static final int WIDE_DP = 600;
     private static final String[] TAB_NAMES = {"Bench", "Learn", "Contender"};
-    private static final String[] TAB_ICONS = {"ic_speed", "ic_help", "ic_groups"};
+    private static final String[] TAB_ICONS = {"ic_attitude", "ic_help", "ic_groups"};
 
     private LinearLayout root, appBar, column, navBar, rail;
     private FrameLayout content;
@@ -101,15 +101,11 @@ public class MainActivity extends Activity {
         h.setGravity(Gravity.CENTER_VERTICAL);
         h.setBackgroundColor(Theme.surface);
         h.setMinimumHeight(Theme.dpi(this, 64));
-        FrameLayout instrument = new FrameLayout(this);
-        instrument.setBackground(Theme.shape(Theme.primaryContainer, Theme.dp(this, 8)));
-        ImageView gauge = Theme.iconView(this, "ic_attitude", Theme.onPrimaryContainer);
-        instrument.addView(gauge, new FrameLayout.LayoutParams(
-                Theme.dpi(this, 22), Theme.dpi(this, 22), Gravity.CENTER));
-        LinearLayout.LayoutParams instrumentSize = new LinearLayout.LayoutParams(
-                Theme.dpi(this, 36), Theme.dpi(this, 36));
-        instrumentSize.setMarginEnd(Theme.dpi(this, 12));
-        h.addView(instrument, instrumentSize);
+        ImageView mark = Theme.brandImage(this, "moq_dev_mark", "moq.dev");
+        LinearLayout.LayoutParams markSize = new LinearLayout.LayoutParams(
+                Theme.dpi(this, 40), Theme.dpi(this, 40));
+        markSize.setMarginEnd(Theme.dpi(this, 12));
+        h.addView(mark, markSize);
         TextView title = Theme.heading(this, "rind-bench", Theme.Type.TITLE_LARGE, Theme.onSurface);
         title.setSingleLine(false);
         title.setTypeface(android.graphics.Typeface.create("sans-serif-condensed", android.graphics.Typeface.BOLD));
