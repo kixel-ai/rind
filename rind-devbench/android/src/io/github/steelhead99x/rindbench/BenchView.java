@@ -509,6 +509,13 @@ final class BenchView extends LinearLayout {
         ui.postDelayed(autostart, 3000);
     }
 
+    /** A start that didn't happen, for a device runner: RINDBENCH_RUN {"started":false,"reason":...}. */
+    private static void notStarted(String reason) {
+        try {
+            android.util.Log.w("RindBench", "RINDBENCH_RUN " + new JSONObject().put("started", false).put("reason", reason));
+        } catch (Exception ignored) {}
+    }
+
     private void cancelAutostart() {
         if (autostart != null) {
             ui.removeCallbacks(autostart);
@@ -695,13 +702,19 @@ final class BenchView extends LinearLayout {
     private void startTapped() {
         // Any start, the person's or the runner's own, takes the place of a queued autostart.
         cancelAutostart();
-        if (!agree.isChecked() || !catalogReady || running) return;
+        if (running) return;
+        if (!agree.isChecked() || !catalogReady) {
+            notStarted(!catalogReady ? "the list of tests hasn't loaded" : "consent isn't given");
+            return;
+        }
         List<String> libs = new ArrayList<>(), secs = new ArrayList<>();
         for (Map.Entry<String, CompoundButton> e : libSw.entrySet()) if (e.getValue().isChecked()) libs.add(e.getKey());
         for (Map.Entry<String, CompoundButton> e : secSw.entrySet()) if (e.getValue().isChecked()) secs.add(e.getKey());
         if (libs.isEmpty() || secs.isEmpty()) {
             statusTitle.setText("Nothing picked");
             setBody("Turn on at least one library and group.");
+            // A runner launch whose names matched nothing ends here: say so, as a refused native start does.
+            notStarted(libs.isEmpty() ? "no library is picked" : "no group is picked");
             return;
         }
         try {
@@ -723,7 +736,7 @@ final class BenchView extends LinearLayout {
             env.put("RIND_BENCH_KEYS_DIR", keysDir);
             cfg.put("env", env);
             if (Native.start(cfg.toString()) != 0) {
-                android.util.Log.w("RindBench", "RINDBENCH_RUN {\"started\":false}");
+                notStarted("the native start failed");
                 statusTitle.setText("Could not start");
                 setBody(new JSONObject(Native.status()).optString("start_error"));
                 return;

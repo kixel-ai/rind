@@ -147,8 +147,17 @@ final class ContenderClient {
             JSONObject json = r.json();
             if (r.code == 302 || r.code == 401 || r.code == 403
                     || r.location.contains("cloudflareaccess.com")
-                    || body.contains("Log in to moq-bench.dev")
-                    || json == null) {
+                    || body.contains("Log in to moq-bench.dev")) {
+                done.done(null, "Session service not available yet.");
+                return;
+            }
+            // The service answered, but with an error: a JSON error body, or a 4xx or 5xx. That code can't be
+            // opened; the service itself is up, so don't say it isn't.
+            if (isErrorBody(body) || (r.code >= 400 && json == null)) {
+                done.done(null, "Could not open that session.");
+                return;
+            }
+            if (json == null) {
                 done.done(null, "Session service not available yet.");
                 return;
             }
@@ -217,4 +226,14 @@ final class ContenderClient {
                 + "GET /api/sessions/{code}/status\n"
                 + "POST /api/sessions/{code}/results";
     }
+
+    /** Whether body is a JSON object carrying an "error", as the service answers a code it can't open. */
+    private static boolean isErrorBody(String body) {
+        try {
+            return new JSONObject(body).has("error");
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
 }
