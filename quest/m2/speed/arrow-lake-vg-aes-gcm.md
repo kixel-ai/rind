@@ -19,4 +19,3 @@ Found by `desktop`'s first run on two reserved cores ([kixel-ai/rind#1103](https
 ## Related
 
 - [Arrow Lake ChaCha20-Poly1305](/quest/m2/speed/arrow-lake-vg-chacha20-poly1305.md) - the same comparison for the other AEAD on the same host
-- [Zen 5 AES-GCM](/quest/m2/speed/zen5-vg-aes-gcm.md) - the same comparison against VG's AVX-512 kernels
