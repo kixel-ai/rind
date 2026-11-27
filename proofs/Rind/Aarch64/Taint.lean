@@ -16,7 +16,8 @@ not know. It treats every vector register and every byte of memory as
 different in the two runs, so a value loaded from memory is too.
 
 `constantTime_of_check`: where `check` succeeds, the program is
-constant-time (`ConstantTime`) for `Agree` of the registers it started with.
+constant-time (`ConstantTime`) for `Agree` of the registers it started with:
+it compares two runs that both finish without a fault.
 Running `check` on a program of thousands of instructions is a computation
 the kernel checks (`decide +kernel`), so the proof of each program is one
 line, and rests on no axiom beyond Lean's.
@@ -737,8 +738,9 @@ theorem check_sound {names : List String} :
   | .frame .., _, _, h, _, _, _, _, _, _, _, _, _ => by simp [check] at h
   | .icall .., _, _, h, _, _, _, _, _, _, _, _, _ => by simp [check] at h
 
-/-- Where `check` succeeds from `a`, `c` is constant-time for any two states
-that agree on what `a` names, the stack pointer, and the statics `names`. -/
+/-- Where `check` succeeds from `a`, `c` is constant-time for any two runs,
+both finishing without a fault, from states that agree on what `a` names,
+the stack pointer, and the statics `names`. -/
 theorem constantTime_of_check {names : List String} {c : Prog Rind.AArch64.isa} {a a' : Taint}
     (h : check names c a = some a') : ConstantTime Rind.AArch64.isa (fun _ => True) (Agree names a) c :=
   fun _ _ _ _ _ _ _ _ hA e₁ e₂ => (check_sound h hA e₁ e₂).1

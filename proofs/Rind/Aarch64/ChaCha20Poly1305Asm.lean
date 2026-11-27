@@ -11,8 +11,9 @@ open VG VG.AArch64 Rind.AArch64.ChaCha20Poly1305 rind.aarch64.taint
 which `admin/prove lean` checks are the machine code of rind's naked
 functions `low::aarch64::chacha20poly1305::chacha20_poly1305_seal` and
 `chacha20_poly1305_open` as rind's Linux release build emits them, take the
-same branches and access the same addresses in any two runs in rind's
-extension of VG's AArch64 model that agree on the arguments `x0`–`x5` (the
+same branches and access the same addresses in any two runs that both finish
+without a fault in rind's extension of VG's AArch64 model that agree on the
+arguments `x0`–`x5` (the
 output, input, length, AAD, AAD length, and the data block's address), the
 stack pointer, and the constants' address (`Pub`): whatever the key, nonce,
 message, and AAD. `check` (`Rind/Aarch64/Taint.lean`) shows it for each

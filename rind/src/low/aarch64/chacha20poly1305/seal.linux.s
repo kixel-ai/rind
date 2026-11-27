@@ -1042,7 +1042,7 @@
 	adc	x10, x10, xzr      // At this point acc2 has the value of 4 at most
 .Lchacha_poly_seal_128_ad_tail_end:
 .Lchacha_poly_seal_128_end:
-    // This part of the function handles the storage and authentication of the last [0,320) bytes
+    // This part of the function handles the storage and authentication of the last [0,320] bytes
     // We assume A0-A4 ... D0-D4 hold at least inl (320 max) bytes of the stream data.
 	cmp	x2, #64
 	b.lt	.Lchacha_poly_seal_tail_64_end
@@ -1258,7 +1258,7 @@
 .Lchacha_poly_seal_tail_16_end:
 	cbz	x2, .Lchacha_poly_seal_tail_partial_end
 
-	eor	v20.16b, v20.16b, v20.16b // Use T0 to load the plaintext/extra in
+	eor	v20.16b, v20.16b, v20.16b // Use T0 to load the plaintext
 	eor	v21.16b, v21.16b, v21.16b // Use T1 to generate an AND mask that will only mask the ciphertext bytes
 	not	v22.16b, v20.16b
 
@@ -1284,7 +1284,7 @@
 	subs	x6, x6, #1
 	b.gt	.Lchacha_poly_seal_tail_store
 
-    // Hash in the final ct block concatenated with extra_in
+    // Hash in the final ct block, zero-padded to 16 bytes
 	mov	x11, v21.d[0]
 	mov	x12, v21.d[1]
 	adds	x8, x8, x11

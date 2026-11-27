@@ -18,7 +18,7 @@
     - the ChaCha20 double round over one, three, or five blocks;
     - the keystream XOR and stores.
   - Prove the Poly1305 block step at the level of numbers: 3 limbs times a clamped 2-limb `r`, partially reduced mod 2^130 − 5. Put it in a file the [x86_64 child](/quest/m4/verified/chacha20-poly1305-x86/aead.md) can import, since aws-lc's x86_64 routines use the same limb schedule.
-  - A throwaway interpreter for `Code` ran both programs in the model against the spec at 22 lengths from 1 to 1000 bytes, every branch path, all matching: the model and the programs agree with RFC 8439 there, so a failing proof step is the proof's, not the code's.
+  - A throwaway interpreter for `Code` ran both programs in the model against the spec at 22 lengths from 1 to 1000 bytes, every branch path, all matching: the model and the programs agree with RFC 8439 at those lengths.
 - Then restate the theorems in `Rind/Aarch64/` as axioms about `seal_aws_lc` and `open_aws_lc` that give `AwsLc`, as `Rind/Aarch64/Sha256Hw.lean` restates SHA-256's, and record them in `Axioms.lean`. Add the `verified.toml` entry for `chacha20poly1305/*` and `xchacha20poly1305/*` on aarch64 without SVE2 (`cpu = ["!sve2"]`), replacing the epic's 1350 B and 16 KB one if it has landed. Until `kixtop` is measured at a revision with [kixel-ai/rind#1023](https://github.com/kixel-ai/rind/pull/1023), which moved those two rows to VG's NEON routine, the entry leaves them out, as the epic's README and `benchmarks/verified.toml` say.
 - Seal and open are 1,172 and 1,813 instruction words with the inlined helper and alignment.
 

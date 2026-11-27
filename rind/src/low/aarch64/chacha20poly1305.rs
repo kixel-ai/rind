@@ -8,8 +8,9 @@
 //! Poly1305. The copy keeps aws-lc's instructions but inlines its AAD helper
 //! and lays each routine's control flow out as the `ite` and `loop` of rind's
 //! Lean model of AArch64, where `RindIsa/AArch64/ChaCha20Poly1305.lean` holds
-//! each routine as one program; `admin/prove lean` checks that rind's build
-//! emits that program's bytes.
+//! each routine as one program; `admin/prove lean` checks that rind's Linux
+//! build emits that program's bytes. The `.apple.s` bodies, which it does not
+//! check, hold the same instructions in Apple's syntax.
 //!
 //! VG proves in Lean that its routines meet RFC 8439 and take the same
 //! branches and memory addresses whatever the key, nonce, and data, but for
