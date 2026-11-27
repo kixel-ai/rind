@@ -3,7 +3,9 @@
 //! ChaCha20-Poly1305 in one pass: pyca/verified-garbage's AVX-512 IFMA
 //! routines, imported by `admin/import-vg`, where the CPU has AVX512_IFMA,
 //! at every length, since they matched or beat aws-lc's at every size
-//! measured on Zen 5 and Granite Rapids. Otherwise aws-lc's
+//! measured on Zen 5 and Granite Rapids; on Zen 4, only from 800 bytes
+//! sealing and 512 opening, below which aws-lc's were faster (see
+//! `HaveIfmaForVgChaCha20Poly1305::check_seal`). Otherwise aws-lc's
 //! `chacha20_poly1305_x86_64`, which interleaves ChaCha20 with Poly1305,
 //! imported by `admin/import-aws-lc`, with AVX2 where the CPU has it and
 //! SSE4.1 otherwise; CPUs with AVX-512 but no IFMA, which no measurement
@@ -17,15 +19,15 @@
 //! cosimulates. `proofs/Rind/X86_64/VgChaCha20Poly1305.lean` takes those
 //! theorems as axioms about `seal_ifma` and `open_ifma`, and
 //! `proofs/Rind/X86_64/ChaCha20Poly1305.lean` proves `seal` and `open`, and
-//! the AEAD API above them, from them on IFMA CPUs. The aws-lc assembly is
-//! not formally verified: its correctness rests on its use and testing in
-//! BoringSSL and aws-lc. rind tests both against RFC 8439, Wycheproof,
+//! the AEAD API above them, from them where VG's routines run. The aws-lc
+//! assembly is not formally verified: its correctness rests on its use and
+//! testing in BoringSSL and aws-lc. rind tests both against RFC 8439, Wycheproof,
 //! aws-lc-rs, and separate ChaCha20 and Poly1305 passes.
 //!
 //! VG's routines zero their stack scratch before returning, which AGENTS.md
 //! allows an imported proven routine: VG defines each routine with that
 //! wipe, offers none without it, and its proofs are of the instructions as
-//! emitted. They outrun aws-lc's code with that cost included.
+//! emitted. Where they run, they outrun aws-lc's code with that cost included.
 
 use super::cpu::{HaveAvx2, HaveIfmaForVgChaCha20Poly1305, HaveSse41};
 use super::vg::vg_chacha20_poly1305_open_ifma::vg_chacha20_poly1305_open_ifma;
@@ -35,7 +37,10 @@ use crate::low::{Mcdt, ct_equal};
 
 /// Encrypts `inout` in place, returning the tag over `aad` and the ciphertext.
 pub(crate) fn seal(key: &[u8; 32], nonce: &[u8; 12], aad: &[u8], inout: &mut [u8]) -> [u8; 16] {
-    match (HaveIfmaForVgChaCha20Poly1305::check(), HaveSse41::check()) {
+    match (
+        HaveIfmaForVgChaCha20Poly1305::check_seal(inout.len()),
+        HaveSse41::check(),
+    ) {
         (Some(ifma), _) => seal_ifma(ifma, key, nonce, aad, inout),
         (None, Some(sse41)) => one_pass(sse41, HaveAvx2::check(), key, nonce, aad, inout, true),
         (None, None) => separate::seal(key, nonce, aad, inout),
@@ -51,7 +56,10 @@ pub(crate) fn open(
     inout: &mut [u8],
     tag: &[u8; 16],
 ) -> bool {
-    match (HaveIfmaForVgChaCha20Poly1305::check(), HaveSse41::check()) {
+    match (
+        HaveIfmaForVgChaCha20Poly1305::check_open(inout.len()),
+        HaveSse41::check(),
+    ) {
         (Some(ifma), _) => open_ifma(ifma, key, nonce, aad, inout, tag),
         (None, Some(sse41)) => ct_equal(
             &one_pass(sse41, HaveAvx2::check(), key, nonce, aad, inout, false),
@@ -367,6 +375,26 @@ mod tests {
         // VG's routines set MXCSR's status flags where they hash with
         // vectors, which their wrappers undo.
         assert_eq!(crate::low::mcdt::mxcsr(), before);
+    }
+
+    // The dispatch picks a path by length on Zen 4, so every length around
+    // where it switches takes it, as well as the paths above.
+    #[test]
+    fn dispatch_matches() {
+        let key = [7u8; 32];
+        let nonce = [9u8; 12];
+        let input: Vec<u8> = (0..1100).map(|i| (i * 13 + 5) as u8).collect();
+        for len in (0..=1100)
+            .filter(|len| len % 7 == 0 || (500..=520).contains(len) || (790..=810).contains(len))
+        {
+            let mut sealed = input[..len].to_vec();
+            let tag = separate::seal(&key, &nonce, b"aad", &mut sealed);
+            let mut ours = input[..len].to_vec();
+            assert_eq!(seal(&key, &nonce, b"aad", &mut ours), tag, "{len} bytes");
+            assert_eq!(ours, sealed, "{len} bytes");
+            assert!(open(&key, &nonce, b"aad", &mut ours, &tag), "{len} bytes");
+            assert_eq!(ours, input[..len], "{len} bytes");
+        }
     }
 
     // Intel SDE runs VG's routines, which valgrind cannot, under
