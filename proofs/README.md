@@ -1791,8 +1791,8 @@ RSA's private operation on x86_64, in `Rind/X86_64/RsaPrivate.lean`:
 `WrongLength` a c not below N, and otherwise returns RSASP1 of c in its CRT
 form, `rsasp1Crt` in `Rind/Rsa.lean`, which raised to E modulo N is c, or
 refuses with `Fault` where it is not. It holds for a key meeting `PrivKeyInv`,
-the values `RsaPrivateKey::new` computes, which no proof yet shows it does,
-with primes of 16 or 32 words, on a CPU with BMI2 and ADX, where
+the values `RsaPrivateKey::new` computes, with primes of 16 or 32 words, on a
+CPU with BMI2 and ADX, where
 pyca/verified-garbage's IFMA CRT does not run (`ifma.w = 0`) and neither does
 aws-lc's dual RSAZ (`NoRsazPair`), given `MontProducts` at the primes' and the
 modulus's widths. `private_op_rsa2048_spec` discharges the products, by
@@ -1802,6 +1802,15 @@ check's products. `Rind/X86_64/RsaExp.lean` proves
 `mont_exp`'s fixed-window exponentiation on that path, and
 `Rind/X86_64/RsaGather.lean` its table gather on both paths `HaveAvx2::check`
 picks, over `Rind/X86_64/GatherModel.lean`'s hand model of the AVX2 one.
+`Rind/X86_64/RsaPrivKey.lean`'s `rsa_private_key_new_spec` proves that a key
+`RsaPrivateKey::new` returns meets `PrivKeyInv` with `ifma.w = 0`, holds the
+components it was given, and that those meet RFC 8017's relations
+(`CrtRelations`): everything aws-lc's `RSA_check_key` checks but the primes'
+primality. It holds where `HaveAvx512ForRsa::check` returns none, which a CPU
+with AVX-512 IFMA fails even for a key size VG's CRT does not take, and given
+`MontProducts` at the wider prime's width. Below it, the file proves
+`exponents_agree` and the `PosInt` routines key loading runs, among them
+`fit` and `reduce_even`.
 
 `admin/prove` fails if a hand model's quote no longer matches the source, if
 the source names `Ops`, builds a `Masker`, or writes its `mask` outside the
