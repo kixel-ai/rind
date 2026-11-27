@@ -619,7 +619,9 @@ def reserve(cmd, env, cpus):
         for s in slices:
             sudo("systemctl", "set-property", "--runtime", s, f"AllowedCPUs={others}")
         print(f"bench-report: reserved CPUs {cpu_list(cpus)}", file=sys.stderr)
-        scope = ["systemd-run", "--scope", "--quiet", f"--slice={RESERVE_SLICE}"]
+        # Without --expand-environment=no, systemd-run would expand the `$` in
+        # env's values, such as the dev shell's shellHook.
+        scope = ["systemd-run", "--scope", "--quiet", "--expand-environment=no", f"--slice={RESERVE_SLICE}"]
         scope.append(f"--property=AllowedCPUs={cpu_list(cpus)}")
         # sudo drops the environment, which holds the dev shell, so pass it on;
         # setpriv drops root's groups, which sudo would keep.
@@ -746,8 +748,10 @@ def run(args):
     env = dict(os.environ, CARGO_BUILD_JOBS=str(args.jobs), CARGO_TERM_COLOR="never")
     env["CARGO_TARGET_DIR"] = os.path.abspath(args.target_dir)
     # The every-logical-CPU rows refuse to run on fewer CPUs than this, so the
-    # report's "all N logical CPUs" is what they measured.
-    env["RIND_BENCH_CPUS"] = str(result["cpu"]["logical_cpus"])
+    # report's "all N logical CPUs" is what they measured. A reserved run
+    # times none, but listing still runs each once, on the reserved cores.
+    if not args.reserve:
+        env["RIND_BENCH_CPUS"] = str(result["cpu"]["logical_cpus"])
     cargo, versions, openssl = toolchain(env)
     result["toolchain"] = versions
     with open(os.path.join(ROOT, "Cargo.lock")) as f:
