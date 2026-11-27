@@ -52,6 +52,18 @@ public class QrScannerActivity extends Activity implements SurfaceHolder.Callbac
         // Camera screens stay dark in either theme: black behind the preview, light bar text and icons.
         getWindow().setStatusBarColor(0xFF000000);
         getWindow().setNavigationBarColor(0xFF000000);
+        // The light theme asks for dark bar icons, which would vanish on black; on Android 15
+        // the bars are transparent over the preview, so set light icons in both themes.
+        getWindow().getDecorView(); // creates the decor so the insets controller exists
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            android.view.WindowInsetsController ic = getWindow().getInsetsController();
+            if (ic != null) ic.setSystemBarsAppearance(0, android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+                    | android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS);
+        } else {
+            View d = getWindow().getDecorView();
+            d.setSystemUiVisibility(d.getSystemUiVisibility()
+                    & ~(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR));
+        }
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(0xFF000000);
         preview = new SurfaceView(this);
