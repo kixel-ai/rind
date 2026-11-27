@@ -35,4 +35,3 @@ Extended with the maintainer on 2026-11-21 after profiling the last 15 self-host
 ## Related
 
 - [The merge queue builds through mbx, warm across groups](/quest/m0/queue-warm-target.md) - activates `mbx` in `flake.nix` and `queue-build.yml` so local worktrees and the thin merge queue build warm
-- [Apple-silicon nightlies run on the Mac mini](/quest/m2/confidence/apple-nightlies.md) - takes the aarch64 and macOS heavy jobs off hosted runners
