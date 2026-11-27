@@ -89,7 +89,7 @@ Each upstream rind changes, with where its fork is vendored and where the list o
 ### Valgrind cannot run x86_64's newest extensions
 
 - **Breaks:** valgrind (through 3.27) decodes no AVX-512, VAES, VPCLMULQDQ, or SHA instruction and hides them from `cpuid`, so ctgrind never reaches the code that uses them.
-- **Workaround:** `admin/ct-sde` compares Intel SDE traces of those paths for two secrets, through the `ct_sde` tests (`rind/src/low/x86_64/ct_sde.rs`), in `ctgrind.yml`'s `x86_64-sde` job, all but AVX-512 ML-KEM, which samples only the public matrix. Unlike ctgrind it sees only addresses, not variable-time instructions.
+- **Workaround:** `admin/ct-sde` compares Intel SDE traces of those paths for two secrets, through the `ct_sde` tests (`rind/src/low/x86_64/ct_sde.rs`), in `ctgrind.yml`'s `x86_64-sde` job, all but Graviola's AVX-512 ML-KEM sampler, which reads only the public matrix, and verified-garbage's ML-KEM-768, whose leakage is its proven contract and whose Rust `admin/ct-binsec` checks with its routines stubbed. Unlike ctgrind it sees only addresses, not variable-time instructions.
 - **Reported:** no.
 - **Goes when:** valgrind decodes them and reports them in `cpuid`, and ctgrind runs on a host that has them; `admin/ct-sde` then duplicates ctgrind.
 
@@ -378,3 +378,11 @@ Each upstream rind changes, with where its fork is vendored and where the list o
 - **Workaround:** each job that runs `sde` (`coverage.yml`, `ctgrind.yml`, `fuzz.yml`, `x86-cpu.yml`) first sets `kernel.apparmor_restrict_unprivileged_userns=0`.
 - **Reported:** no.
 - **Goes when:** the runner image allows the Nix store's bubblewrap a user namespace.
+
+### macOS 27.2's audiomxd spins without a console user
+
+- **Breaks:** once `autoLoginUser` is removed and a headless macOS 27.2 Tart VM reboots with no console user logged in, `audiomxd` enters a tight XPC retry loop in `BTAudioRoutingRequest` (`UpdateAudioState failed to start XPC: kUnexpectedErr (No user logged in)` -> `audioaccessoryd died`), hammering `configd` and `logd` and burning ~1.8 host cores continuously on the Mac mini even while the runner is idle.
+- **Reproduce:** boot the `macos-golden-gate-vanilla` Tart image without `autoLoginUser` and check `ps -Ao pid,pcpu,time,comm` and `/usr/bin/log show --predicate 'process == "audiomxd"'`.
+- **Workaround:** `admin/mac-mini-runners` disables the `BluetoothFeatures/SmartRoutingMacOS` feature flag in `/Library/Preferences/FeatureFlags/Domain/BluetoothFeatures.plist` and launches the VM with `tart run --no-graphics --no-audio`.
+- **Reported:** no (Apple Feedback).
+- **Goes when:** a newer macOS runner image stops spinning `audiomxd` when no console user is logged in.

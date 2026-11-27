@@ -204,7 +204,7 @@ macro_rules! ml_dsa {
 
             #[bench(setup = rind_key)]
             fn rind(key: &Dit<rind::ml_dsa::KeyPair<rind::ml_dsa::$rind>>) {
-                black_box(key.sign(MESSAGE).unwrap());
+                black_box(key.sign(b"", MESSAGE).unwrap());
             }
 
             /// A random key, after checking rind verifies its signature.
@@ -216,7 +216,7 @@ macro_rules! ml_dsa {
                 let key = $vg_signing::from_seed(&seed).unwrap();
                 PublicKey::<$rind>::new(key.verifying_key().as_bytes())
                     .unwrap()
-                    .verify(MESSAGE, &key.sign(MESSAGE, b"").unwrap())
+                    .verify(b"", MESSAGE, &key.sign(MESSAGE, b"").unwrap())
                     .unwrap();
                 key
             }
@@ -240,7 +240,7 @@ macro_rules! ml_dsa {
             fn signed() -> (Vec<u8>, Vec<u8>) {
                 use rind::ml_dsa::{KeyPair, $rind};
                 let key = KeyPair::<$rind>::generate().unwrap();
-                let signature = key.sign(MESSAGE).unwrap();
+                let signature = key.sign(b"", MESSAGE).unwrap();
                 (
                     key.public_key().as_ref().to_vec(),
                     signature.as_ref().to_vec(),
@@ -324,7 +324,7 @@ macro_rules! ml_dsa {
             #[bench(setup = rind_key)]
             fn rind(fixture: &Dit<(rind::ml_dsa::PublicKey<rind::ml_dsa::$rind>, Vec<u8>)>) {
                 let (key, signature) = &**fixture;
-                key.verify(MESSAGE, signature).unwrap();
+                key.verify(b"", MESSAGE, signature).unwrap();
             }
 
             fn vg_key() -> (verified_garbage::$vg::$vg_verifying, Vec<u8>) {
@@ -357,7 +357,7 @@ macro_rules! ml_dsa {
             fn signed() -> (Vec<u8>, Vec<u8>) {
                 use rind::ml_dsa::{KeyPair, $rind};
                 let key = KeyPair::<$rind>::generate().unwrap();
-                let signature = key.sign(MESSAGE).unwrap();
+                let signature = key.sign(b"", MESSAGE).unwrap();
                 (
                     key.public_key().as_ref().to_vec(),
                     signature.as_ref().to_vec(),
@@ -419,7 +419,7 @@ macro_rules! ml_dsa {
                 use rind::ml_dsa::{PublicKey, $rind};
                 let (public_key, signature) = &**fixture;
                 let key = PublicKey::<$rind>::new(public_key).unwrap();
-                key.verify(MESSAGE, signature).unwrap();
+                key.verify(b"", MESSAGE, signature).unwrap();
             }
         }
     };
