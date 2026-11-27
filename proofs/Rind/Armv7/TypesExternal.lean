@@ -17,8 +17,8 @@ opaque low.entry.Entry : Type
 opaque mid.aes.Aes : Type
 
 /-! The CPU feature tokens, and the keys and GHASH tables of the assembly they
-gate, which no proof covers: `Rind.Armv7.AesGcm`'s theorems are about a CPU
-with neither feature. -/
+gate: `Rind.Armv7.AesGcm`'s theorems are about a CPU with neither feature,
+and only NEON's GHASH table is proven, in `Rind.Armv7.GhashNeon`. -/
 
 /-- The token that the CPU has the crypto extension. -/
 opaque low.arm.cpu.HaveCryptoExt : Type

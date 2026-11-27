@@ -24,7 +24,7 @@
 
 [families]
 aes = ['aes[\w-]*', 'vpaes[\w-]*', 'bsaes[\w-]*', 'ghash[\w-]*', 'gcm\w*', 'compute_iv_stdcall', 'ctr', 'quic']
-chacha = ['x?chacha[\w-]*', 'ChaCha20\w*', 'poly1305[\w-]*', 'poly_hash_ad_internal', 'vg_chacha20\w*', 'vg_poly1305\w*', 'quic']
+chacha = ['x?chacha[\w-]*', 'ChaCha20\w*', 'poly1305[\w-]*', 'poly_hash_ad(_internal)?', 'vg_chacha20\w*', 'vg_poly1305\w*', 'quic']
 hash = [
     'sha1[\w-]*', 'sha256[\w-]*', 'sha512[\w-]*', 'sha2', 'sha(_\w+)?', 'vg_(sha1|sha256|sha384|sha512|hmac|pbkdf2)\w*',
     'md5', 'digest', 'hash', 'hmac', 'hmac_drbg', 'hkdf', 'pbkdf2[\w-]*',
