@@ -1321,10 +1321,21 @@ fn check_ml_dsa<P: ml_dsa::ParameterSet>([seed, noseed, verify]: [&str; 3], arc:
         // It signs from that form what its public key verifies.
         let verifier = ml_dsa::PublicKey::<P>::new(&public_key).unwrap();
         for test in group.tests.iter().filter(|test| test.pure()) {
-            let signature = key.sign(&test.msg).unwrap();
-            verifier.verify(&test.msg, signature.as_ref()).unwrap();
+            if test.has("InvalidContext") {
+                assert_eq!(
+                    key.sign(&test.ctx, &test.msg).err(),
+                    Some(Error::WrongLength),
+                    "{noseed} {}",
+                    test.id
+                );
+            } else {
+                let signature = key.sign(&test.ctx, &test.msg).unwrap();
+                verifier
+                    .verify(&test.ctx, &test.msg, signature.as_ref())
+                    .unwrap();
+            }
             assert_eq!(
-                verifier.verify(&test.msg, &test.sig).is_ok(),
+                verifier.verify(&test.ctx, &test.msg, &test.sig).is_ok(),
                 test.result == ExpectedResult::Valid,
                 "{noseed} {}",
                 test.id
