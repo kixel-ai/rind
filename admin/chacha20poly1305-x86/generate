@@ -439,7 +439,8 @@ def main(asm_dir, lean_path):
         ns = lean_name[0].upper() + lean_name[1:]
         out = [f'namespace {ns}\n']
         for name, note, lines, terms in e.defs:
-            out.append(f'/-- {FRAME.get(note, f"aws-lc\'s `{note}`")}. -/' if note else '')
+            doc = FRAME.get(note, "aws-lc's `" + str(note) + "`")
+            out.append(f'/-- {doc}. -/' if note else '')
             out.append(f'def {name} : List Instr :=\n  [' + ',\n   '.join(terms) + ']\n')
         out.append(f'end {ns}\n')
         out.append(f'/-- {what[0].upper() + what[1:]}, but for its `ret`. -/')
