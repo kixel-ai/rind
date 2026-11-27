@@ -68,6 +68,7 @@ Both apps support an unattended run with no one looking at the screen (on Androi
   On Android it goes to logcat with tag `RindBench`. On iOS it goes to stderr (seen with `devicectl … --console`) and the device log.
   `w` and `h` are in points (iOS) or dp (Android).
 - `fits` is false when the run controls are cut off or off screen, or when the run panel can't show its status or score. `"picker"` in `clipped` means some chips are out of view (they scroll inside the picker), which a short screen allows.
+  On Android the library and group pickers open in sheets, so `folded` is always true and `clipped` never names `"picker"`; `"score"` there is the results preview, and `"status"` the status card, either out of view in its scrolling pane.
 - The run itself ends with a `done` or `stopped` line at the collector.
 
 ## DIT and SHA-3: the A/B/C/D matrix for an iPad

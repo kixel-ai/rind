@@ -77,6 +77,8 @@ final class BenchView extends LinearLayout {
     private final boolean restored;
     /** Between the activity's onStart and onStop. */
     private boolean onScreen = true;
+    /** A device runner's pending autostart, which leaving the screen cancels. */
+    private Runnable autostart;
 
     /**
      * `restored`: the activity is being recreated from saved state, after a
@@ -298,15 +300,20 @@ final class BenchView extends LinearLayout {
         // The launcher is exported, so any app can send these extras. Only a
         // device-runner build (build-apk.sh with DEVICE_RUNNER=1) takes a collector
         // or autostart from them; the other extras only preselect the picker.
+        // As the preset buttons, nothing changes while a run is going: its collector was fixed at Start.
+        if (running) return;
         if (Collector.RUNNER && it.hasExtra("host")) {
-            runnerHost = it.getStringExtra("host");
-            runnerPort = it.getIntExtra("port", Collector.PORT);
+            String newHost = it.getStringExtra("host");
+            int newPort = it.getIntExtra("port", Collector.PORT);
+            boolean changed = !newHost.equals(runnerHost) || newPort != runnerPort;
+            runnerHost = newHost;
+            runnerPort = newPort;
             colHost = runnerHost;
             colPort = runnerPort;
             colHow = "set by adb";
+            // After setup, probe the new target; a probe of the old one still out is then ignored.
+            if (changed && probeGen > 0) findCollector();
         }
-        // As the preset buttons, a preset can't change while a run is going.
-        if (running) return;
         if ("full".equals(it.getStringExtra("preset"))) { fullPreset = true; presetChanged(); }
         if ("quick".equals(it.getStringExtra("preset"))) { fullPreset = false; presetChanged(); }
     }
@@ -404,10 +411,65 @@ final class BenchView extends LinearLayout {
         }
         // A launch's autostart is consumed by its first view: never by one restored from saved state,
         // nor while the operator has left the app, since a runner's run needs the screen it set up.
+        reportLayout("ready");
         if (Collector.RUNNER && !restored && onScreen && intent != null && intent.getBooleanExtra("autostart", false)) {
-            agree.setChecked(true);
-            startTapped();
+            // Three seconds after the list loads, so a runner can capture the picker before the run (README).
+            autostart = () -> {
+                autostart = null;
+                if (!onScreen || running) return;
+                agree.setChecked(true);
+                startTapped();
+            };
+            ui.postDelayed(autostart, 3000);
         }
+    }
+
+    /**
+     * One machine-readable line per screen state, for a device runner checking the screen without a person:
+     *   RINDBENCH_LAYOUT {"phase":"ready","w":411,"h":914,"wide":false,"folded":true,"fits":true,"clipped":[]}
+     * w and h are dp. The library and group pickers open in sheets, so "folded" is true. "clipped" names the
+     * run controls, the status card, and the results preview ("score") when one is cut off or out of view;
+     * fits is false when any is.
+     */
+    private void reportLayout(String phase) {
+        ui.postDelayed(() -> {
+            try {
+                List<String> clipped = new ArrayList<>();
+                if (!onView(footer) || !whole(footer)) clipped.add("run controls");
+                if (!onView(statusCard)) clipped.add("status");
+                if (resultsTeaser.getVisibility() == VISIBLE && !onView(resultsTeaser)) clipped.add("score");
+                float d = getResources().getDisplayMetrics().density;
+                View root = host.getWindow().getDecorView();
+                JSONObject o = new JSONObject();
+                o.put("phase", phase);
+                o.put("w", Math.round(root.getWidth() / d));
+                o.put("h", Math.round(root.getHeight() / d));
+                o.put("wide", MainActivity.isWide(host));
+                o.put("folded", true);
+                o.put("fits", clipped.isEmpty());
+                o.put("clipped", new JSONArray(clipped));
+                android.util.Log.i("RindBench", "RINDBENCH_LAYOUT " + o);
+            } catch (Exception e) {
+                android.util.Log.w("RindBench", "RINDBENCH_LAYOUT failed: " + e);
+            }
+        }, 600);
+    }
+
+    /** Whether all of v is on screen: shown, laid out, and not clipped by a scrolling pane or the window. */
+    private static boolean onView(View v) {
+        android.graphics.Rect r = new android.graphics.Rect();
+        return v.isShown() && v.getWidth() > 0 && v.getGlobalVisibleRect(r)
+                && r.width() >= v.getWidth() && r.height() >= v.getHeight();
+    }
+
+    /** Whether v got all the height it asks for at its width. Re-lays out afterwards, since measure() overwrites its size. */
+    private static boolean whole(View v) {
+        if (v.getWidth() == 0) return false;
+        v.measure(MeasureSpec.makeMeasureSpec(v.getWidth(), MeasureSpec.EXACTLY),
+                MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED));
+        boolean ok = v.getMeasuredHeight() <= v.getHeight() + 1;
+        v.requestLayout();
+        return ok;
     }
 
     private static java.util.Set<String> csv(String s) {
@@ -457,10 +519,16 @@ final class BenchView extends LinearLayout {
         return c;
     }
 
+    /** Counts probes, so a slow one that finishes after a newer one started can't overwrite its answer. */
+    private int probeGen;
+
     private void findCollector() {
+        // The targets as of now: an intent or Retry since may have changed them.
+        final int gen = ++probeGen;
+        final List<String[]> targets = candidates();
         new Thread(() -> {
             String[] hit = null;
-            for (String[] c : candidates()) {
+            for (String[] c : targets) {
                 try (Socket s = new Socket()) {
                     s.connect(new InetSocketAddress(c[0], Integer.parseInt(c[1])), 2000);
                     hit = c;
@@ -468,7 +536,7 @@ final class BenchView extends LinearLayout {
                 } catch (Exception ignored) {}
             }
             final String[] h = hit;
-            ui.post(() -> applyCollector(h));
+            ui.post(() -> { if (gen == probeGen) applyCollector(h); });
         }, "collector-probe").start();
     }
 
@@ -594,6 +662,7 @@ final class BenchView extends LinearLayout {
         findCollector();
         agreeChanged();
         ui.post(poll);
+        reportLayout("run");
     }
 
     private void stopTapped() {
@@ -636,6 +705,10 @@ final class BenchView extends LinearLayout {
     /** The activity's onStart and onStop. */
     void setOnScreen(boolean on) {
         onScreen = on;
+        if (!on && autostart != null) {
+            ui.removeCallbacks(autostart);
+            autostart = null;
+        }
     }
 
     /** Stops polling, for the activity's onDestroy: a recreated activity's new view picks the run up. */
@@ -702,6 +775,7 @@ final class BenchView extends LinearLayout {
         setAgreeEnabled(true);
         setControlsEnabled(true);
         agreeChanged();
+        reportLayout("done");
     }
 
     private void renderResults(JSONObject res) throws Exception {
