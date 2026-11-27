@@ -1145,12 +1145,18 @@ addition and multiples of the twisted Edwards group in `Rind/Edwards.lean`,
 with no axiom. Each theorem
 assumes `Runs` and `RunsSha512`, and each with a message bounds it at
 2^64 - 64 bytes. The two that verify also assume, on aarch64, `RunsDouble`,
-which holds on every aarch64 CPU, and on x86_64 `RunsMsm`, the contract of
-the multi-scalar multiplication `low::x86_64::adx_mux::edwards25519_msm`,
-which nothing proves yet (`quest/m4/verified/ed25519-half-scalar.md`).
-x86_64's also assume `EdOrders`, the group's orders, which HOL Light proves
-and Lean does not yet: every point times 8L, and the base point times L, is
-the identity. From them `Rind/Ed25519Group.lean`'s `half_size_iff` proves
+which holds on every aarch64 CPU, and on x86_64 `MsmS2n`, that the CPU runs
+the multi-scalar multiplication over s2n-bignum's point routines (it has BMI2
+and ADX, or lacks AVX2) rather than the AVX2 port, which
+`quest/m4/verified/ed25519-avx2-verify.md` plans to prove. `Rind/X86_64/Ed25519Msm.lean`
+proves that multiplication, `low::generic::edwards25519_msm`, computes
+`[b]B + [s0]P0 + [s1]P1` over the contracts of s2n-bignum's
+`edwards25519_epadd`, `edwards25519_epdouble`, and `edwards25519_pdouble` and
+their `_alt` twins, axioms in `Rind/X86_64/S2nBignum.lean`, with its static
+tables of `B`'s and `[2^128]B`'s odd multiples checked in the kernel and its
+recoding's sum from `Rind/X86_64/Naf.lean`. `Rind/Ed25519Group.lean` proves
+the group's orders: every point times 8L, and the base point times L, is the
+identity. From them its `half_size_iff` proves
 that the half-size check accepts exactly what `ed25519Verifies` does, and
 `Rind/X86_64/HalfSize.lean` proves that `mid::half_size::split` returns
 `u ≡ v k (mod 8L)` with `v` odd and below 2^128. That a multiple of the base
@@ -1933,11 +1939,14 @@ proof after those.
   Foundation's curve25519-dalek simulation under the MIT license;
   `Rind/Ed25519Group.lean`: that `d` is a non-square, so `edMul` and `edPow`
   are that group's addition and multiples, that `L` is prime, by a Pratt
-  certificate, and `half_size_iff`, the half-size check's argument;
+  certificate, the group's orders, and `half_size_iff`, the half-size check's
+  argument;
   `Rind/X86_64/HalfSize.lean`: `mid::half_size::split`.
-- `Rind/X86_64/Naf.lean`, on both targets: that `mid::util::public_naf`
-  writes a scalar's width-5 or width-6 non-adjacent form, for any number of
-  words, which P-256's and P-384's ECDSA verification reads.
+- `Rind/X86_64/Naf.lean`, on both targets: that `low::generic::naf::public_naf`
+  writes a scalar's width-5, width-6, or width-8 non-adjacent form, for any
+  number of words, which P-256's and P-384's ECDSA verification and Ed25519's
+  multi-scalar multiplication read; `Rind/X86_64/Ed25519Msm.lean`: that
+  multiplication, its static tables included.
 - `Rind/X86_64/P256Dispatch.lean`, `Rind/X86_64/P256Agree.lean`, and
   `Rind/X86_64/P256.lean`: the hand model of P-256's key generation, and the
   P-256 agreement and key generation proofs, on both targets.

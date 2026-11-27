@@ -55,15 +55,14 @@ which key generation and each ECDSA signature's nonce point take, and its
 ECDSA verification, in `Rind.X86_64.VgP384`, and for ChaCha20-Poly1305's
 and XChaCha20-Poly1305's one pass on AVX-512 IFMA in
 `Rind.X86_64.VgChaCha20Poly1305`; and nothing else.
-Ed25519 verification also takes its multi-scalar multiplication,
-`low::x86_64::adx_mux::edwards25519_msm`, as the hypothesis `RunsMsm`, and
-the edwards25519 group's orders, which HOL Light proves, as the hypothesis
-`EdOrders`. ChaCha20-Poly1305's one pass also takes aws-lc's routines as the
+Ed25519 verification takes the hypothesis `MsmS2n`, that the CPU runs its
+multi-scalar multiplication over s2n-bignum's point routines rather than the
+AVX2 port. ChaCha20-Poly1305's one pass also takes aws-lc's routines as the
 hypothesis `RunsChaCha20Poly1305`, which no axiom states, whose `OnePass`
 takes them on CPUs without IFMA, and the AEAD API above it takes the one pass
 as the hypotheses `Seals` and `Opens`.
 SHA-3's and SHAKE's theorems take rind's eight-way AVX-512 Keccak-f as part
-of the hypothesis `RunsSha3`. None of these four states an axiom.
+of the hypothesis `RunsSha3`. None of these hypotheses states an axiom.
 RSA's Montgomery products at the widths aws-lc's `bn_mulx4x_mont` and
 `bn_sqr8x_mont` take, but for s2n-bignum's Karatsuba routines, take those as
 the hypothesis `AwsLcMont`, which no axiom states either. ChaCha20's
@@ -655,6 +654,12 @@ change to the trust base.
  compress_avx_spec,
  edwards25519_decode_alt_spec,
  edwards25519_decode_spec,
+ edwards25519_epadd_alt_spec,
+ edwards25519_epadd_spec,
+ edwards25519_epdouble_alt_spec,
+ edwards25519_epdouble_spec,
+ edwards25519_pdouble_alt_spec,
+ edwards25519_pdouble_spec,
  sha512_block_data_order_avx2_spec] -/
 #guard_msgs in
 #print axioms ed25519_key_pair_verify
@@ -673,6 +678,12 @@ change to the trust base.
  compress_avx_spec,
  edwards25519_decode_alt_spec,
  edwards25519_decode_spec,
+ edwards25519_epadd_alt_spec,
+ edwards25519_epadd_spec,
+ edwards25519_epdouble_alt_spec,
+ edwards25519_epdouble_spec,
+ edwards25519_pdouble_alt_spec,
+ edwards25519_pdouble_spec,
  sha512_block_data_order_avx2_spec] -/
 #guard_msgs in
 #print axioms ed25519_public_key_new

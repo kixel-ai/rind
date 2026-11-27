@@ -290,15 +290,45 @@ opaque low.x86_64.bignum_mul_p25519_alt.bignum_mul_p25519_alt
   Array Std.U64 4#usize → Array Std.U64 4#usize → Array Std.U64 4#usize →
     Result (Array Std.U64 4#usize)
 
-/-! Ed25519 verification's multi-scalar multiplication, whose contract
-`Rind.X86_64.Ed25519Verify` takes as the hypothesis `RunsMsm` until a proof
-covers it. -/
+/-! s2n-bignum's Edwards point routines, which Ed25519 verification's
+multi-scalar multiplication runs, and that multiplication's AVX2 port, which
+no proof covers yet (`quest/m4/verified/ed25519-avx2-verify.md`). -/
 
-opaque low.x86_64.adx_mux.edwards25519_msm
+opaque low.x86_64.edwards25519_epadd.edwards25519_epadd
+  :
+  Array Std.U64 16#usize → Array Std.U64 16#usize → Array Std.U64 16#usize
+    → Result (Array Std.U64 16#usize)
+
+opaque low.x86_64.edwards25519_epadd_alt.edwards25519_epadd_alt
+  :
+  Array Std.U64 16#usize → Array Std.U64 16#usize → Array Std.U64 16#usize
+    → Result (Array Std.U64 16#usize)
+
+opaque low.x86_64.edwards25519_epdouble.edwards25519_epdouble
+  :
+  Array Std.U64 16#usize → Array Std.U64 12#usize → Result (Array Std.U64
+    16#usize)
+
+opaque low.x86_64.edwards25519_epdouble_alt.edwards25519_epdouble_alt
+  :
+  Array Std.U64 16#usize → Array Std.U64 12#usize → Result (Array Std.U64
+    16#usize)
+
+opaque low.x86_64.edwards25519_pdouble.edwards25519_pdouble
+  :
+  Array Std.U64 12#usize → Array Std.U64 12#usize → Result (Array Std.U64
+    12#usize)
+
+opaque low.x86_64.edwards25519_pdouble_alt.edwards25519_pdouble_alt
+  :
+  Array Std.U64 12#usize → Array Std.U64 12#usize → Result (Array Std.U64
+    12#usize)
+
+opaque low.x86_64.edwards25519_msm_avx2.edwards25519_msm
   :
   Array Std.U64 12#usize → Array Std.U64 4#usize → Array (Array Std.U64
-    4#usize) 2#usize → Array (Array Std.U64 16#usize) 2#usize → Result
-    (Array Std.U64 12#usize)
+    4#usize) 2#usize → Array (Array Std.U64 16#usize) 2#usize →
+    low.x86_64.cpu.HaveAvx2 → Result (Array Std.U64 12#usize)
 
 /-! The wipe, which writes zeros over a slice through raw pointers, which Aeneas
 cannot translate, so this models it: it returns, leaving the zeros `wiped`

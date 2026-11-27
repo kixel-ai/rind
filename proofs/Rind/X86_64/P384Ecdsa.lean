@@ -393,7 +393,7 @@ theorem add_affine_spec (_hr : Runs) (pt : mid.p384.JacobianMontPoint) (p : mid.
         as ⟨r, hr⟩
       exact hr
 
-/-! ## Non-adjacent form, `mid::util::public_naf`, which `Rind.X86_64.Naf` proves -/
+/-! ## Non-adjacent form, `low::generic::naf::public_naf`, which `Rind.X86_64.Naf` proves -/
 
 @[step]
 theorem scalar_naf_spec (W : U32) (hW : W.val = 5 ∨ W.val = 6) (s : mid.p384.Scalar) :
@@ -402,7 +402,7 @@ theorem scalar_naf_spec (W : U32) (hW : W.val = 5 ∨ W.val = 6) (s : mid.p384.S
   unfold mid.p384.Scalar.public_naf
   step as ⟨sl, hsl⟩
   step as ⟨s1, back, hs1, hback⟩
-  step with naf_spec W hW sl 384 (by rw [hsl]; simp) (by norm_num) (by rw [hsl]; simp) s1
+  step with naf_spec W (hW.imp_right Or.inl) sl 384 (by rw [hsl]; simp) (by norm_num) (by rw [hsl]; simp) s1
       (by rw [Slice.length, hs1]; exact (Array.repeat 385#usize 0#i8).property) as
     ⟨s2, hl2, hv2, hd2⟩
   have hv : (back s2).val = s2.val := by
