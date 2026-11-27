@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Run `just check`, `just fix`, or `just ci` over one resolved branch diff.
 # check, the local loop before a push, runs only the Rust tests and the
-# repository lints that take a second. ci over a diff runs the PR check's
-# gate: check's modules, adding the Rust targets' other builds and docs, and
-# the modules marked `pr` below. CHECK_QUEUE=1 leaves the `pr` ones out, for
+# repository lints that take a second. ci over a diff, the run before opening
+# or updating a PR, runs check's modules, adding the Rust targets' other builds
+# and docs, and the modules marked `pr` below. CHECK_QUEUE=1 leaves the `pr` ones out, for
 # the merge queue. `ci --all`, check.yml's nightly run, runs every module over
 # the whole tree.
 # check and ci run CHECK_JOBS lanes of modules at once (default 3); 1 runs
@@ -80,11 +80,11 @@ fi
 #                      and lanes run concurrently. Cargo's build directory
 #                      lock already serializes builds sharing a target.
 #   check              `just check` runs it too, as do the merge queue and
-#                      the PR check.
-#   pr                 The PR check runs it too, but not the merge queue,
-#                      where it would cost every group minutes to catch only
-#                      a break two PRs make together, which check.yml's
-#                      nightly run catches. A module marked neither `check`
+#                      `just ci` over a diff.
+#   pr                 `just ci` over a diff runs it too, but not the merge
+#                      queue, where it would cost every group minutes to
+#                      catch only a break two PRs make together, which
+#                      check.yml's nightly run catches. A module marked neither `check`
 #                      nor `pr` runs only there.
 #   fix                `just fix` runs it too.
 declare -A scope=() tools=() check_tools=() compiles=() lane=()
@@ -237,7 +237,7 @@ while IFS= read -r input; do
     }
     site_inputs+="|${input//./\\.}\$"
 done <site/inputs.txt
-module site "^(site/|sh/site\.sh$|flake\.(nix|lock)$|\.github/(workflows/pr-check\.yml$|actions/(just|nix)/)$site_inputs)" \
+module site "^(site/|sh/site\.sh$|flake\.(nix|lock)$|\.github/actions/(just|nix)/$site_inputs)" \
     tools='nix' pr
 # Quest documents form one graph, so any change validates the whole tree, as
 # does a bump of the flake-pinned validator.
@@ -310,7 +310,7 @@ for word in ${CHECK_MODULES:-}; do
 done
 
 # ci over a diff runs the gate's modules alone, unless CHECK_MODULES names
-# others: check's and, but for the merge queue, the PR check's. A diff to the
+# others: check's and, but for the merge queue, the `pr` ones. A diff to the
 # orchestration that reads as every path keeps to them too; `--all` does not.
 declare -A gate=()
 if [[ "$action" == ci && "$base" != --all ]] && ((${#only[@]} == 0)); then

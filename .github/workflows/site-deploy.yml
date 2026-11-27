@@ -64,8 +64,8 @@ jobs:
           bun install --frozen-lockfile
           bun run build
 
-      # Wrangler has a lockfile of its own, so pull requests' site builds skip
-      # its runtime.
+      # Wrangler has a lockfile of its own, so `just ci`'s site builds skip its
+      # runtime.
       - name: Install Wrangler
         timeout-minutes: 1
         working-directory: site/deploy

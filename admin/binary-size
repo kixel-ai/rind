@@ -12,8 +12,8 @@ it measures a build about 0.5% smaller than a default release.
 
 It prints each sum as a Markdown table, also into the GitHub Actions job
 summary when there is one. With `--base`, it builds REV's tree too and adds
-its sums and the change, so a pull request's check shows what it does to
-rind's size; any change passes, for a reviewer to weigh. `--json` prints this
+its sums and the change, so a local `just ci` over a diff shows what it does
+to rind's size; any change passes, for a reviewer to weigh. `--json` prints this
 tree's sums as JSON instead, which the weekly bench saves for BENCHMARKS.md.
 The sums are one toolchain's, and both trees build with this tree's, so it
 shows no change when REV's dev shell has another rustc, nor when REV's
