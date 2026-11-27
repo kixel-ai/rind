@@ -1029,9 +1029,9 @@ given FIPS 202's round constants and nothing of the CPU. Each round is
 
 ML-KEM's polynomial arithmetic, against FIPS 203 as SymCrypt's Lean spec
 (`Rind/SymCrypt/MlKem.lean`, MIT) states it, and of rind's Rust the coding
-below it and, on aarch64, ML-KEM-768's K-PKE decryption; encryption, key
-generation, and the Fujisaki-Okamoto transform that decapsulation needs have
-[its quest](/quest/m4/verified/mlkem-construction.md):
+below it and, on aarch64, ML-KEM-768's K-PKE decryption and encryption; key
+generation, the encapsulation-key checks, and the Fujisaki-Okamoto transform
+have [its quest](/quest/m4/verified/mlkem-construction.md):
 
 - `NTT_get`, `NTTInv_get` (`Rind/MlKem.lean`): Algorithms 9 and 10 compute
   the residues FIPS 203's Equations (4.12) and (4.13) define, and back;
