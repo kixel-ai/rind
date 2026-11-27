@@ -10,10 +10,11 @@ set_option linter.unusedSimpArgs false
 
 rind's structured copy of aws-lc's AAD hash (`RindIsa/X86_64/PolyHashAd.lean`),
 proved on rind's x86_64 model: from `r8` bytes of AAD at `rcx` and `r`'s two
-clamped words at `rbp`, it leaves in `(r10, r11, r12)` an accumulator below
-`5 · 2^128` that is, modulo `p`, RFC 8439's over the AAD zero-padded to whole
-blocks (`padBlocks`, `Rind.Poly1305Limbs`), and it is constant-time in
-everything but those three registers.
+words at `rbp`, each below `2^60`, it leaves in `(r10, r11, r12)` an
+accumulator below `5 · 2^128` that is, modulo `p`, RFC 8439's with that `r`
+over the AAD zero-padded to whole blocks (`padBlocks`, `Rind.Poly1305Limbs`),
+and its trace depends only on `rcx`, `r8`, and `rbp`, not on the AAD's bytes
+or `r`'s value.
 -/
 
 namespace rind.x86_64.polyhashad
@@ -455,17 +456,19 @@ def ctxOf (s : S) : Ctx :=
     s.vg.mem.readW (s.vg.gpr .rbp + 8#64) 64⟩
 
 /-- `rcx` points to `r8` bytes of AAD, readable if there are any, and `rbp`
-to `r`'s two words, clamped below `2^60` each, as aws-lc's seal and open
-call it. -/
+to `r`'s two words, each below `2^60` as RFC 8439's clamp leaves them, as
+aws-lc's seal and open call it. -/
 structure Pre (s : S) : Prop where
   ad : len s ≠ 0 → InRegions (s.vg.rd ++ s.vg.wr) (s.vg.gpr .rcx) (len s)
   key : InRegions (s.vg.rd ++ s.vg.wr) (s.vg.gpr .rbp) 16
   r0 : (s.vg.mem.readW (s.vg.gpr .rbp) 64).toNat < 2 ^ 60
   r1 : (s.vg.mem.readW (s.vg.gpr .rbp + 8#64) 64).toNat < 2 ^ 60
 
-/-- The accumulator in `(r10, r11, r12)`, below `5 · 2^128`, is RFC 8439's
-over the AAD zero-padded to whole blocks, modulo `p`; memory and every
-register but the accumulator's and the scratch ones stay as they were. -/
+/-- The accumulator in `(r10, r11, r12)`, below `5 · 2^128`, is, modulo `p`,
+RFC 8439's with the `r` at `rbp` over the AAD zero-padded to whole blocks,
+which is the RFC's own when that `r` is clamped, as seal's and open's is.
+Memory and every register but the accumulator's and the scratch ones stay
+as they were. -/
 structure Post (s s' : S) : Prop where
   acc : limbs (s'.vg.gpr .r10) (s'.vg.gpr .r11) (s'.vg.gpr .r12) % p =
     padBlocks (ctxOf s).r 0 (ctxOf s).x

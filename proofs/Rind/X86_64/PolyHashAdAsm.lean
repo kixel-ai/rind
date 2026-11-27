@@ -107,7 +107,8 @@ theorem init_ok (s : S) :
   · rfl
   · pha_out
 
-/-- `cmp r8, k` sets ZF and CF from `r8 - k` and changes nothing else. -/
+/-- `cmp r8, k` sets ZF and CF from `r8 - k`, and changes no memory or
+register. It also sets SF and OF, which no block here reads. -/
 theorem cmp_ok (s : S) (k : BitVec 32) :
     ∃ s', execBlock I [.vg (.alu .cmp .r8 (.imm k))] s = some (s', []) ∧
       s'.vg.zf = some (s.vg.gpr .r8 - k.signExtend 64 == 0) ∧

@@ -481,7 +481,8 @@ the padding, whose bytes that comparison checks.
   (`rcx` pointing to `r8` bytes of AAD, readable if there are any, and `rbp`
   to `r`'s two words, each below `2^60` as clamping leaves them), leaves in
   `(r10, r11, r12)` an accumulator below `5 · 2^128` that is, modulo `p`,
-  RFC 8439's over the AAD zero-padded to whole blocks (`padBlocks`), and
+  RFC 8439's with that `r` over the AAD zero-padded to whole blocks
+  (`padBlocks`), and
   changes no memory and no register but `rax`, `rdx`, `rcx`, `r8`, `r9`, and
   `r10` to `r15`; that its trace is a function of the AAD's address and
   length and `r`'s address (`ConstantTime`); and that some state meets
