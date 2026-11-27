@@ -238,4 +238,123 @@ theorem copy_step (s₀ : S) (k : Nat) (np rp wsp : Addr) (t n : Nat → BitVec 
 def copyLoopTrace (rp wsp : Addr) (k : Nat) : List Leak :=
   loopTrace (fun j => copyTrace rp wsp (k + 6 + j) k j) 4 0 (k / 4 - 1)
 
+/-! ## The phase -/
+
+/-- `t`'s upper `k` words, from word `k + 6` of the frame, and the internal routine's top bit `c` above them. -/
+def ut (M : Mem) (wsp : Addr) (k : Nat) (c : Bool) (i : Nat) : BitVec 64 :=
+  if i < k then M.readW (wa wsp (k + 6 + i)) 64 else (BitVec.ofBool c).setWidth 64
+
+theorem ut_mask (M : Mem) (wsp : Addr) (k : Nat) (c : Bool) (n : Nat → BitVec 64) :
+    mask (ut M wsp k c) n k =
+      (BitVec.ofBool c).setWidth 64 - 0 - (BitVec.ofBool (borrow (ut M wsp k c) n k)).setWidth 64 := by
+  simp only [mask, ut, Nat.lt_irrefl, ↓reduceIte]
+
+theorem val_ut (M : Mem) (wsp : Addr) (k : Nat) (c : Bool) :
+    val (ut M wsp k c) (k + 1) = val (fun i => M.readW (wa wsp (k + 6 + i)) 64) k + 2 ^ (64 * k) * c.toNat := by
+  show val (ut M wsp k c) k + (ut M wsp k c k).toNat * 2 ^ (64 * k) = _
+  rw [show val (ut M wsp k c) k = val (fun i => M.readW (wa wsp (k + 6 + i)) 64) k from
+    gsum_congr fun i hi => by simp only [ut, hi, ↓reduceIte]]
+  simp only [ut, Nat.lt_irrefl, ↓reduceIte, ofBool_toNat]
+  ring
+
+/-- A word that is 0 or 1 is its low bit. -/
+theorem bit_eq (x : BitVec 64) (h : x.toNat ≤ 1) : x = (BitVec.ofBool (decide (x.toNat = 1))).setWidth 64 := by
+  apply BitVec.eq_of_toNat_eq; rw [ofBool_toNat]
+  by_cases h1 : x.toNat = 1 <;> simp [h1]
+  all_goals omega
+
+theorem bit_toNat (x : BitVec 64) (h : x.toNat ≤ 1) : (decide (x.toNat = 1)).toNat = x.toNat := by
+  by_cases h1 : x.toNat = 1 <;> simp [h1]
+  all_goals omega
+
+set_option maxHeartbeats 4000000 in
+/-- `post`, the loop of `sub`, `subTail`, and the loop of `copy`, after the internal routine's return: `rp` is
+`t`'s upper half and top bit modulo `n`, for that below `2n`. -/
+theorem tail_ok (s : S) (k : Nat) (np rp wsp fp sp0 : Addr) (n : Nat → BitVec 64)
+    (hk8 : 8 ≤ k) (hk0 : k % 8 = 0) (ar : TArr s k np rp wsp) (al : wsp.toNat % 16 = 0) (hfp : wsp - 8#64 = fp)
+    (hrsp : s.vg.gpr .rsp = wsp) (hr8 : s.vg.gpr .r8 = wa fp (2 * k + 7))
+    (hrcx : s.vg.gpr .rcx = BitVec.ofNat 64 (2 ^ 64 - 8 * k)) (hx1 : sqrx8x.xlo s .xmm1 = rp)
+    (hrbp : s.vg.gpr .rbp = np) (hrax : (s.vg.gpr .rax).toNat ≤ 1)
+    (hN : ∀ i < k, s.vg.mem.readW (wa np i) 64 = n i) (h5 : s.vg.mem.readW (wa wsp 5) 64 = sp0)
+    (hlt : val (ut s.vg.mem wsp k (decide ((s.vg.gpr .rax).toNat = 1))) (k + 1) < 2 * val n k) :
+    ∃ s₁ s₂ s₃ s₄, Exec I (.block Rind.X86_64.Sqrx8xMont.post) s [] s₁ ∧
+      Exec I (.loop (.block Rind.X86_64.Sqrx8xMont.sub) (Rind.X86_64.Cond.vg .ne)) s₁ (subLoopTrace np rp wsp k) s₂ ∧
+      Exec I (.block Rind.X86_64.Sqrx8xMont.subTail) s₂ (subTailTrace wsp) s₃ ∧
+      Exec I (.loop (.block Rind.X86_64.Sqrx8xMont.copy) (Rind.X86_64.Cond.vg .ne)) s₃ (copyLoopTrace rp wsp k) s₄ ∧
+      s₄.vg.gpr .rsp = wsp ∧ s₄.vg.gpr .rsi = sp0 ∧ s₄.vg.wr = s.vg.wr ∧ others s₄.vg = others s.vg ∧
+      s₄.lo = s.lo ∧
+      (∀ y, 8 * (2 * k + 8) ≤ (y - wsp).toNat → 8 * k ≤ (y - rp).toNat → s₄.vg.mem y = s.vg.mem y) ∧
+      val (fun i => s₄.vg.mem.readW (wa rp i) 64) k < val n k ∧
+      val (fun i => s₄.vg.mem.readW (wa rp i) 64) k % val n k =
+        val (ut s.vg.mem wsp k (decide ((s.vg.gpr .rax).toNat = 1))) (k + 1) % val n k := by
+  have hrp := ar.hrp
+  have hw := ar.hw
+  have hk := ar.k29
+  have sepP := ar.sepP
+  subst hfp
+  obtain ⟨s₁, hx1', p_bx, p_9, p_dx, p_di, p_cx, p_cf, pmem, pF⟩ := post_ok s k wsp rp hk8 hk hk0 hr8 hrcx hx1
+  generalize hc : decide ((s.vg.gpr .rax).toNat = 1) = c at hlt ⊢
+  let t := ut s.vg.mem wsp k c
+  have ar1 := ar.frame pF
+  have hT1 : ∀ i < k, s₁.vg.mem.readW (wa wsp (k + 6 + i)) 64 = t i := fun i hi => by
+    rw [pmem]; simp only [t, ut, hi, ↓reduceIte]
+  have hN1 : ∀ i < k, s₁.vg.mem.readW (wa np i) 64 = n i := fun i hi => by rw [pmem]; exact hN i hi
+  -- The loop of `sub`.
+  have hI1 : SubInv s₁ s₁ k np rp wsp t n 0 :=
+    ⟨rfl, Frame.refl _ _, by rw [p_bx], by rw [pF.gpr .rbp (by decide), hrbp, wa_zero], by rw [p_di, wa_zero],
+      by rw [p_cx, Nat.sub_zero], p_cf, Agree.refl _ _ _, fun i hi => absurd hi (Nat.not_lt_zero _)⟩
+  obtain ⟨s₂, hx2, hI2⟩ := loop_ok (body := .block Rind.X86_64.Sqrx8xMont.sub) (c := Rind.X86_64.Cond.vg .ne)
+    (fun j s' => SubInv s₁ s' k np rp wsp t n j) (fun j => j + 4 ≤ k) (fun j => decide (j + 4 < k))
+    (fun j => subTrace np rp wsp (k + 6 + j) j) 4
+    (fun j s' hI hR => sub_step s₁ k np rp wsp t n hk0 ar1 hN1 hT1 j s' hI hR)
+    (k / 4 - 1) 0 s₁ hI1 (fun i hi => by omega) (fun i hi => by simp; omega) (by simp; omega)
+  rw [show 0 + 4 * (k / 4 - 1 + 1) = k by omega] at hI2
+  have F2 := hI2.frame
+  have keepT : ∀ i < 2 * k + 8, s₂.vg.mem.readW (wa wsp i) 64 = s₁.vg.mem.readW (wa wsp i) 64 := fun i hi =>
+    apartW hI2.agree le_rfl hrp hw (by rcases sepP with h | h <;> omega) hi
+  -- `subTail`.
+  have hrax2 : s₂.vg.gpr .rax = (BitVec.ofBool c).setWidth 64 := by
+    rw [F2.gpr .rax (by decide), pF.gpr .rax (by decide), ← hc]; exact bit_eq _ hrax
+  obtain ⟨s₃, hx3, o_ax, o_bx, o_di, o_si, o_x1, o_x0, omem, oF⟩ :=
+    subTail_ok s₂ k np rp wsp sp0 c (borrow t n k) (ar1.frame F2)
+      (by rw [F2.gpr .rsp (by decide), pF.gpr .rsp (by decide), hrsp]) hrax2 hI2.cf
+      (by rw [hI2.rbx, show k + 6 + k = 2 * k + 6 by omega]) hI2.rdi (by rw [F2.gpr .r9 (by decide), p_9])
+      (by rw [keepT 5 (by omega), pmem]; exact h5)
+  rw [← ut_mask] at o_x1
+  -- The arithmetic.
+  have hpos : 0 < val n k := by omega
+  obtain ⟨hm, hsl, hsm⟩ := select_nat t n k hpos hlt
+  -- The loop of `copy`.
+  have ar3 := (ar1.frame F2).frameX oF
+  have hT3 : ∀ i < k, s₃.vg.mem.readW (wa wsp (k + 6 + i)) 64 = t i := fun i hi => by
+    rw [omem, keepT _ (by omega)]; exact hT1 i hi
+  have hD3 : ∀ i < k, s₃.vg.mem.readW (wa rp i) 64 = diff t n i := fun i hi => by rw [omem]; exact hI2.words i hi
+  have hdx3 : s₃.vg.gpr .rdx = BitVec.ofNat 64 (2 ^ 64 - 8 * k) := by
+    rw [oF.gpr .rdx (by decide), F2.gpr .rdx (by decide), p_dx]
+  have hI3 : CopyInv s₃ s₃ k rp wsp (select t n k) 0 :=
+    ⟨rfl, ⟨fun _ _ => rfl, rfl, rfl, rfl⟩, o_x0, rfl, by rw [o_bx], by rw [o_di, wa_zero],
+      by rw [oF.gpr .r9 (by decide), F2.gpr .r9 (by decide), p_9, Nat.sub_zero], fun _ _ _ _ => rfl,
+      fun i hi => absurd hi (Nat.not_lt_zero _)⟩
+  obtain ⟨s₄, hx4, hI4⟩ := loop_ok (body := .block Rind.X86_64.Sqrx8xMont.copy) (c := Rind.X86_64.Cond.vg .ne)
+    (fun j s' => CopyInv s₃ s' k rp wsp (select t n k) j) (fun j => j + 4 ≤ k) (fun j => decide (j + 4 < k))
+    (fun j => copyTrace rp wsp (k + 6 + j) k j) 4
+    (fun j s' hI hR => copy_step s₃ k np rp wsp t n hk0 ar3 al hm o_x1 hT3 hD3 hdx3 j s' hI hR)
+    (k / 4 - 1) 0 s₃ hI3 (fun i hi => by omega) (fun i hi => by simp; omega) (by simp; omega)
+  rw [show 0 + 4 * (k / 4 - 1 + 1) = k by omega] at hI4
+  have F4 := hI4.frame
+  have hR : val (fun i => s₄.vg.mem.readW (wa rp i) 64) k = val (select t n k) k :=
+    gsum_congr fun i hi => by dsimp only; rw [hI4.words i hi]
+  refine ⟨s₁, s₂, s₃, s₄, Exec.block hx1', hx2, Exec.block hx3, hx4,
+    by rw [F4.gpr .rsp (by decide), oF.gpr .rsp (by decide), F2.gpr .rsp (by decide), pF.gpr .rsp (by decide), hrsp],
+    by rw [F4.gpr .rsi (by decide), o_si], by rw [F4.wr, oF.wr, F2.wr, pF.wr],
+    by rw [F4.others, oF.others, F2.others, pF.others], by rw [F4.lo, oF.lo, F2.lo, pF.lo], ?_,
+    by rw [hR]; exact hsl, by rw [hR]; exact hsm⟩
+  intro y hy1 hy2
+  have W6 : (wa wsp 6).toNat = wsp.toNat + 48 := wa_toNat hw (by omega)
+  have Wk : (wa wsp (k + 6)).toNat = wsp.toNat + 8 * (k + 6) := wa_toNat hw (by omega)
+  have := y.isLt
+  have := wsp.isLt
+  rw [dist] at hy1
+  rw [hI4.agree y (by rw [dist, W6]; omega) (by rw [dist, Wk]; omega) hy2, omem, hI2.agree y hy2, pmem]
+
 end rind.x86_64.sqrx8xmont
