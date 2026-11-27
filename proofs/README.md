@@ -1134,8 +1134,7 @@ x86_64 these assume `NoCurveIfma`, that the CPU lacks AVX-512 IFMA:
   accepts with that point: 64 bytes, S below L, and R the encoding of SB - kA,
   for k the hash reduced mod L, rind's cofactorless check;
 - `ed25519_key_pair_verify`: a key pair's public key verifies the same way,
-  with its point the base point times its secret scalar (on aarch64, for a
-  scalar whose multiple is a point of the group).
+  with its point the base point times its secret scalar.
 
 The spec, in `Rind/Ed25519.lean`, is RFC 8032 over HOL Light's
 `edwards25519_group`, whose multiplication and power transliterate HOL Light's
@@ -1153,10 +1152,9 @@ and Lean does not yet: every point times 8L, and the base point times L, is
 the identity. From them `Rind/Ed25519Group.lean`'s `half_size_iff` proves
 that the half-size check accepts exactly what `ed25519Verifies` does, and
 `Rind/X86_64/HalfSize.lean` proves that `mid::half_size::split` returns
-`u ≡ v k (mod 8L)` with `v` odd and below 2^128. That a multiple of the base
-point is a point of the group, which aarch64's `ed25519_key_pair_verify`
-assumes, follows from the group law, which aarch64's theorems do not use
-yet. The `ed25519` module calls no function pointer, so these theorems are
+`u ≡ v k (mod 8L)` with `v` odd and below 2^128. Both targets'
+`ed25519_key_pair_verify` take the base point's multiples to be points of the
+group from `Rind/Ed25519Group.lean`'s `edOnCurve_pow`. The `ed25519` module calls no function pointer, so these theorems are
 about its translation, with no hand model.
 
 Ed25519 on x86_64 CPUs with AVX-512 IFMA, from the same API to
