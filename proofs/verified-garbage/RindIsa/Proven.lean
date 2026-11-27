@@ -5,6 +5,7 @@ import RindIsa.X86_64.GcmInitAvx2
 import RindIsa.X86_64.Mulx4x
 import RindIsa.X86_64.PolyHashAd
 import RindIsa.X86_64.Sqrx8x
+import RindIsa.X86_64.Sqrx8xMont
 
 /-! The functions rind proves in its models of AArch64 and x86_64, which
 `rind-asm` prints and `vg-cosim --rind` cosimulates. -/
@@ -54,6 +55,7 @@ def proven : List Proven :=
      statics := [(GcmInitAvx2.carryName, "rind::low::x86_64::aes_gcm_vaes::AVX2_GFPOLY_AND_INTERNAL_CARRYBIT",
          GcmInitAvx2.carry),
        (GcmInitAvx2.gfpolyName, "rind::low::x86_64::aes_gcm_vaes::AVX2_GFPOLY", GcmInitAvx2.gfpoly)] },
-   { path := "rind::low::x86_64::mont::bn_sqrx8x_internal", prog := Sqrx8x.prog, ret := repRet, statics := [] }]
+   { path := "rind::low::x86_64::mont::bn_sqrx8x_internal", prog := Sqrx8x.prog, ret := repRet, statics := [] },
+   { path := "rind::low::x86_64::mont::bn_sqrx8x_mont", prog := Sqrx8xMont.prog, ret := repRet, statics := [] }]
 
 end Rind.X86_64

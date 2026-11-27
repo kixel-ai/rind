@@ -316,10 +316,34 @@ def Instr.requires : Instr → List String
   | .rip (.vbroadcasti128 d) .. => (VG.X86_64.Instr.vbroadcasti128 d { base := .rax }).requires
   | _ => []
 
-/-- The model. No program here calls or makes a frame of VG's kind, so
-calls, returns, and VG's pushes and pops fault: a function's return is the
-`ret` `function` appends, to the return address its theorem shows it
-keeps. -/
+/-- SDM Vol. 2, "CALL", near call: `RSP := RSP − 8; Memory[RSP] := RIP`
+(`Push(RIP)`, where `RIP` is the address of the next instruction), then the
+jump; no flags are affected. As VG's `call`, the return address the next of
+the state's unknowns, which nothing constrains; but the stack grows as a
+push grows it (`moveSp`), faulting below `lo`, and the store faults outside
+`wr`. -/
+def call (s : State) : Option State :=
+  (moveSp s (s.vg.gpr .rsp - 8)).bind fun s' =>
+    (s'.vg.store64 (s'.vg.gpr .rsp) (s.vg.unknowns 0)).map fun g =>
+      { s' with vg := { g with unknowns := fun n => g.unknowns (n + 1) } }
+
+/-- SDM Vol. 2, "RET", near return: `RIP := Pop()`, i.e. `RIP :=
+Memory[RSP]; RSP := RSP + 8`; no flags are affected. As VG's `ret`, it
+returns after the call instruction if `RSP` and the return address at
+`[RSP]` are those the call left (`s₁`), and otherwise faults; and the stack
+shrinks as `lea rsp` shrinks it (`moveSp`), releasing the return address's
+quadword. -/
+def ret (s₁ s₂ : State) : Option State :=
+  if s₂.vg.gpr .rsp = s₁.vg.gpr .rsp ∧
+      s₂.vg.mem.readW (s₂.vg.gpr .rsp) 64 = s₁.vg.mem.readW (s₁.vg.gpr .rsp) 64 then
+    moveSp s₂ (s₂.vg.gpr .rsp + 8)
+  else none
+
+/-- The model. A direct call (`Code.call`) and its return are `call` and
+`ret`, which access the return address's quadword, as VG's do. No program
+here makes a frame of VG's kind, so VG's pushes and pops fault. A
+function's own return is the `ret` `function` appends, to the return
+address its theorem shows it keeps. -/
 abbrev isa : ISA where
   State := State
   Instr := Instr
@@ -327,10 +351,10 @@ abbrev isa : ISA where
   exec := exec
   addrs := addrs
   eval c s := Rind.X86_64.eval c s.vg
-  call _ := none
-  callAddrs _ := []
-  ret _ _ := none
-  retAddrs _ := []
+  call := call
+  callAddrs s := [s.vg.gpr .rsp - 8]
+  ret := ret
+  retAddrs s := [s.vg.gpr .rsp]
   writesSp
     | .push _ | .leaRsp _ => true
     | _ => false
@@ -481,8 +505,12 @@ def Instr.relocs (o : Nat) (bs : List Nat) : Instr → List Reloc
 relocations, as rind's build emits aws-lc's and BoringSSL's text and rind's
 own copies of aws-lc's: each instruction's bytes; a do-while loop as its
 body then the `Jcc` that branches back to its entry; `if c then t else e` as
-a `Jcc` to `t`'s entry, `e`, a `jmp` past `t`, then `t`; and
-`if c then (nothing) else e` as a `Jcc` past `e`, then `e`. Each jump is
+a `Jcc` to `t`'s entry, `e`, a `jmp` past `t`, then `t`;
+`if c then (nothing) else e` as a `Jcc` past `e`, then `e`; and a call of
+the function `name` as `call rel32` (`E8 cd`), whose displacement the
+linker fills: four zero bytes, as the object holds them, and an
+`R_X86_64_PLT32` relocation at their offset against `name` with the addend
+`-4`, which makes the target `name`'s start. Each jump is
 short where its displacement fits a byte and near otherwise, the first
 sizes, short before near and the `Jcc`'s before the `jmp`'s, whose jumps
 reach their targets: what LLVM's assembler reaches by relaxing the jumps
@@ -513,6 +541,7 @@ def layout : Prog isa → Nat → Option (List Nat × List Reloc)
       let j ← jcc c o (p + jm + entry t (p + jm))
       let k := jmp p (p + jm + bt.length)
       if j.length = jc ∧ k.length = jm then return (j ++ be ++ k ++ bt, re ++ rt) else none
+  | .call name _, o => some ([0xE8, 0, 0, 0, 0], [⟨o + 1, "R_X86_64_PLT32", name, -4⟩])
   | _, _ => none
 
 /-- `rep ret` (`F3 C3`), aws-lc's return. -/
