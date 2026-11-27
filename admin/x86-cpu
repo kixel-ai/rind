@@ -241,10 +241,13 @@ def run(model, exe, package, args, out):
     try:
         return proc.wait(timeout=BINARY_TIMEOUT) == 0
     except subprocess.TimeoutExpired:
-        os.killpg(proc.pid, signal.SIGKILL)
-        proc.wait()
         print(f"{exe} on {name} ran past {BINARY_TIMEOUT} s", file=out, flush=True)
         return False
+    finally:
+        # A timeout or an interrupt, such as Ctrl-C, leaves the session running.
+        if proc.poll() is None:
+            os.killpg(proc.pid, signal.SIGKILL)
+            proc.wait()
 
 
 mode = sys.argv[1]
