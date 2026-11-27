@@ -723,10 +723,21 @@ final class BenchView extends LinearLayout {
             env.put("RIND_BENCH_KEYS_DIR", keysDir);
             cfg.put("env", env);
             if (Native.start(cfg.toString()) != 0) {
+                android.util.Log.w("RindBench", "RINDBENCH_RUN {\"started\":false}");
                 statusTitle.setText("Could not start");
                 setBody(new JSONObject(Native.status()).optString("start_error"));
                 return;
             }
+            // What the run takes, for a device runner checking a launch's selection without a person:
+            //   RINDBENCH_RUN {"started":true,"preset":"quick","libraries":[...],"sections":[...],"host":...,"port":...}
+            JSONObject run = new JSONObject();
+            run.put("started", true);
+            run.put("preset", full ? "full" : "quick");
+            run.put("libraries", cfg.get("libraries"));
+            run.put("sections", cfg.get("sections"));
+            run.put("host", colHost);
+            run.put("port", colPort);
+            android.util.Log.i("RindBench", "RINDBENCH_RUN " + run);
         } catch (Exception e) {
             statusTitle.setText("Could not start");
             setBody(String.valueOf(e));
