@@ -99,7 +99,7 @@ start() {
 <dict>
   <key>Label</key><string>$label</string>
   <key>ProgramArguments</key>
-  <array><string>$tart</string><string>run</string><string>--no-graphics</string><string>$(vm_name "$vm")</string></array>
+  <array><string>$tart</string><string>run</string><string>--no-graphics</string><string>--no-audio</string><string>$(vm_name "$vm")</string></array>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
   <key>StandardOutPath</key><string>$state/$vm.log</string>
@@ -152,6 +152,25 @@ if [ ! -e /var/db/.rind-queue-admin-password ]; then
 fi
 sudo defaults delete /Library/Preferences/com.apple.loginwindow autoLoginUser 2>/dev/null || true
 sudo rm -f /etc/kcpassword
+# Without a console user, macOS 27.2's audiomxd spins in BTAudioRoutingRequest
+# trying to start XPC in a missing user session (~1.8 host cores idle). Takes
+# effect on the next reboot. See UPSTREAM.md, "macOS 27.2's audiomxd spins
+# without a console user".
+sudo mkdir -p /Library/Preferences/FeatureFlags/Domain
+sudo tee /Library/Preferences/FeatureFlags/Domain/BluetoothFeatures.plist >/dev/null <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>SmartRoutingMacOS</key>
+  <dict>
+    <key>Enabled</key>
+    <false/>
+  </dict>
+</dict>
+</plist>
+EOF
+sudo chmod 644 /Library/Preferences/FeatureFlags/Domain/BluetoothFeatures.plist
 printf 'PasswordAuthentication no\nKbdInteractiveAuthentication no\n' | sudo tee /etc/ssh/sshd_config.d/10-key-only.conf >/dev/null
 # Only globally routable addresses, DHCP, and DNS to the host's resolver on
 # tart's network, as the x86_64 runner's egress rules allow on its host; the
@@ -272,6 +291,24 @@ GUEST
         service-macos)
             cat <<'GUEST'
 set -euo pipefail
+# Installed here as well as during provisioning so `services` updates existing
+# VMs before a reboot. See UPSTREAM.md, "macOS 27.2's audiomxd spins without a
+# console user".
+sudo mkdir -p /Library/Preferences/FeatureFlags/Domain
+sudo tee /Library/Preferences/FeatureFlags/Domain/BluetoothFeatures.plist >/dev/null <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>SmartRoutingMacOS</key>
+  <dict>
+    <key>Enabled</key>
+    <false/>
+  </dict>
+</dict>
+</plist>
+EOF
+sudo chmod 644 /Library/Preferences/FeatureFlags/Domain/BluetoothFeatures.plist
 label=dev.kixelated.rind-queue-runner
 loaded() { sudo launchctl print "system/$label" >/dev/null 2>&1; }
 # A loaded service is left alone unless this is the explicit upgrade, and then
