@@ -431,10 +431,36 @@ final class BenchView extends LinearLayout {
      */
     void newLaunch(Intent it) {
         applyIntent(it);
-        if (Collector.RUNNER && it != null && it.getBooleanExtra("autostart", false)) {
+        boolean runnerLaunch = Collector.RUNNER && it != null && it.getBooleanExtra("autostart", false);
+        // The list's first load reads the launch's selection; once it is up, a later launch sets it here.
+        if (loadedOnce && !running) applySelection(it, runnerLaunch);
+        if (runnerLaunch) {
             launchPending = true;
             if (loadedOnce) scheduleAutostart();
         }
+    }
+
+    /**
+     * A later launch's `libraries` and `sections` extras, on the loaded list. A runner's autostart
+     * launch sets both, as a first launch does, a missing extra meaning the default (every library,
+     * every group but the More ones), so it never runs the last launch's choice; any other launch
+     * changes only what it names, leaving the person's own choices.
+     */
+    private void applySelection(Intent it, boolean whole) {
+        if (it == null) return;
+        boolean libs = whole || it.hasExtra("libraries"), secs = whole || it.hasExtra("sections");
+        java.util.Set<String> wantLibs = csv(it.getStringExtra("libraries"));
+        java.util.Set<String> wantSecs = csv(it.getStringExtra("sections"));
+        if (libs)
+            for (Map.Entry<String, CompoundButton> e : libSw.entrySet())
+                e.getValue().setChecked(wantLibs.isEmpty() || wantLibs.contains(e.getKey()));
+        if (secs)
+            for (Map.Entry<String, CompoundButton> e : secSw.entrySet()) {
+                String s = e.getKey();
+                e.getValue().setChecked(e.getValue().isEnabled()
+                        && (wantSecs.isEmpty() ? !s.startsWith("More: ") : wantSecs.contains(s)));
+            }
+        if (libs || secs) countsChanged();
     }
 
     /**
@@ -768,7 +794,11 @@ final class BenchView extends LinearLayout {
     /** MainActivity's tab selection: leaving the Bench tab cancels a queued autostart. */
     void setTabShown(boolean shown) {
         tabShown = shown;
-        if (!shown) cancelAutostart();
+        if (!shown) {
+            // As leaving the app does: a launch still waiting for the list is dropped too, not revived on return.
+            launchPending = false;
+            cancelAutostart();
+        }
     }
 
     /** Stops polling, for the activity's onDestroy: a recreated activity's new view picks the run up. */
