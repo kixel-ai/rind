@@ -237,4 +237,35 @@ theorem seqNat8ToSeqNat32LE_seqNat32ToSeqNat8LE :
       List.cons_append, List.cons_append, List.nil_append, seqNat8ToSeqNat32LE_cons4, ← e, word_bytes,
       seqNat8ToSeqNat32LE_seqNat32ToSeqNat8LE ws]
 
+/-! ## Tags -/
+
+/-- AES-GCM's tag over the ciphertext `cipher`, as `gcm_encrypt_LE_def` and
+`gcm_decrypt_LE_def` compute it. -/
+noncomputable def gcmTag (alg : Algorithm) (key iv cipher auth : List (BitVec 8)) : List (BitVec 8) :=
+  let keyLE := seqNat8ToSeqNat32LE key
+  let hLE := aesEncrypt alg keyLE (mkfour 0 0 0 0)
+  gctrEncrypt (computeIvBE hLE iv) (leQuad32ToBytes (gcmHash hLE auth cipher)) alg keyLE
+
+/-- `gcm_decrypt_LE`'s plaintext, and whether `tag` is the first `tag.length`
+bytes of the tag, `MSB_t` of it as SP 800-38D compares. SP 800-38D permits only
+tag lengths of 4, 8, 12, 13, 14, 15, or 16 bytes, but this takes any, an empty
+`tag` included, which always matches. -/
+noncomputable def gcmDecryptTrunc (alg : Algorithm) (key iv cipher auth tag : List (BitVec 8)) :
+    List (BitVec 8) × Bool :=
+  ((gcmDecrypt alg key iv cipher auth tag).1, (gcmTag alg key iv cipher auth).take tag.length == tag)
+
+theorem gcmEncrypt_tag (alg : Algorithm) (key iv plain auth : List (BitVec 8)) :
+    (gcmEncrypt alg key iv plain auth).2 = gcmTag alg key iv (gcmEncrypt alg key iv plain auth).1 auth := rfl
+
+theorem length_gcmTag (alg : Algorithm) (key iv cipher auth : List (BitVec 8)) :
+    (gcmTag alg key iv cipher auth).length = 16 := by
+  rw [gcmTag, length_gctrEncrypt]; simp [leQuad32ToBytes]
+
+/-- A tag of 16 bytes is checked whole, as `gcm_decrypt_LE` does. -/
+theorem gcmDecryptTrunc_full (alg : Algorithm) (key iv cipher auth tag : List (BitVec 8))
+    (h : tag.length = 16) :
+    gcmDecryptTrunc alg key iv cipher auth tag = gcmDecrypt alg key iv cipher auth tag := by
+  rw [gcmDecryptTrunc, h, List.take_of_length_le (by rw [length_gcmTag])]
+  rfl
+
 end rind.vale

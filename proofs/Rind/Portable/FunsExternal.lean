@@ -9,20 +9,10 @@ set_option linter.dupNamespace false
 /-!
 The functions the portable translation leaves opaque, beside the compares
 `Rind.Portable.Compare` models. No proof assumes anything about them beyond
-what `Rind.Portable.Hacl` states for HACL*'s SHA-2 block functions and what
-each theorem takes as a hypothesis.
+what each theorem takes as a hypothesis.
 -/
 
 namespace rind.portable
-
-/-! HACL*'s SHA-2 block functions, as libcrux-sha2 ships them, which Charon
-cannot translate. -/
-
-opaque libcrux_sha2.hacl.sha256_update_nblocks
-  : Std.U32 → Slice Std.U8 → Slice Std.U32 → Result (Slice Std.U32)
-
-opaque libcrux_sha2.hacl.sha512_update_nblocks
-  : Std.U32 → Slice Std.U8 → Slice Std.U64 → Result (Slice Std.U64)
 
 /-! SHA-1's block function, whose contract `Rind.Portable.ShaBlocks` states as
 a hypothesis. -/
@@ -36,6 +26,8 @@ opaque low.entry.Entry.new_secret : Result low.entry.Entry
 
 /-- Whether an entry guard is held, which a debug build asserts. -/
 opaque low.entry.Entry.assert_held : Result Unit
+
+opaque low.entry.Entry.new_public : Result low.entry.Entry
 
 /-! AES, which no proof covers on this backend. -/
 
@@ -76,6 +68,18 @@ opaque mid.sha3.Sha3Context.finish {R : Std.Usize} {OUT : Std.Usize}
 
 opaque mid.sha3.Sha3Context.Insts.CoreCloneClone.clone {R : Std.Usize} {OUT : Std.Usize}
   : mid.sha3.Sha3Context R OUT → Result (mid.sha3.Sha3Context R OUT)
+
+/-! RSA's DER parsing and encoding, which the ✓ leaves out. -/
+
+opaque high.rsa.pkcs1_components
+  : Slice Std.U8 → Result (core.result.Result ((Slice Std.U8) × (Slice Std.U8)) error.Error)
+
+opaque high.rsa.spki_components
+  : Slice Std.U8 → Result (core.result.Result ((Slice Std.U8) × (Slice Std.U8)) error.Error)
+
+opaque high.rsa.VerifyingKey.to_pkcs1_der
+  : high.rsa.VerifyingKey → Slice Std.U8 →
+    Result ((core.result.Result (Slice Std.U8) error.Error) × (Slice Std.U8))
 
 /-- `ZeroableRef::new`: its value, as `low.generic.zeroise.ZeroableRef` models
 it. -/

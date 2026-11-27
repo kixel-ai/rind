@@ -67,17 +67,23 @@ mod high;
 /// Errors.  Common to all layers.
 mod error;
 
+#[cfg(feature = "zeroize")]
+mod zeroize_on_drop;
+
 /// The FIPS module's random generator, which [`mid::rng`] draws from in the
 /// module's build.
-#[cfg(any(test, rind_fips))]
+#[cfg(all(any(test, rind_fips), feature = "ml-dsa", feature = "slh-dsa"))]
 mod fips_rng;
 
 /// What the FIPS module (`rind-fips`) needs beyond the public API: its
 /// self-tests, its error state, and its errors' codes. Only the module's own
-/// build compiles it.
-#[cfg(any(test, rind_fips))]
+/// build compiles it, with every algorithm.
+#[cfg(all(any(test, rind_fips), feature = "ml-dsa", feature = "slh-dsa"))]
 #[doc(hidden)]
 pub mod fips;
+
+#[cfg(all(rind_fips, not(all(feature = "ml-dsa", feature = "slh-dsa"))))]
+compile_error!("the FIPS module builds rind with its default features");
 
 /// Test infrastructure.
 #[cfg(test)]
@@ -173,8 +179,8 @@ pub mod agreement {
 /// ```
 pub mod kem {
     pub use crate::high::kem::{
-        Algorithm, Ciphertext, DecapsulationKey, EncapsulationKey, MlKem512, MlKem768, MlKem1024,
-        SharedSecret,
+        Algorithm, Ciphertext, DecapsulationKey, DecapsulationKeyBytes, EncapsulationKey, MlKem512,
+        MlKem768, MlKem1024, Seed, SharedSecret,
     };
 }
 
@@ -276,8 +282,8 @@ pub mod rsa {
         OaepAlgorithm, Plaintext,
     };
     pub use crate::high::signature::rsa::{
-        KeyPair, PssSaltLength, PublicKey, PublicKeyComponents, Signature, SigningAlgorithm,
-        VerificationAlgorithm,
+        KeyPair, KeyPairComponents, PssSaltLength, PublicKey, PublicKeyComponents, Signature,
+        SigningAlgorithm, VerificationAlgorithm,
     };
     pub use crate::mid::rsa_key_size::RsaKeySize as KeySize;
 
@@ -567,6 +573,8 @@ pub mod ed25519 {
 /// The parameter set is a type, so a key of one set fails to compile where
 /// another's is expected, and a signature is a fixed-size array.
 ///
+/// The `ml-dsa` Cargo feature, on by default, builds this module.
+///
 /// ```
 /// # fn main() -> Result<(), rind::Error> {
 /// use rind::ml_dsa::{KeyPair, MlDsa65, PublicKey};
@@ -579,6 +587,7 @@ pub mod ed25519 {
 /// # Ok(())
 /// # }
 /// ```
+#[cfg(feature = "ml-dsa")]
 pub mod ml_dsa {
     pub use crate::high::signature::ml_dsa::{KeyPair, ParameterSet, PublicKey, Seed, Signature};
     pub use crate::mid::mldsa::{MlDsa44, MlDsa65, MlDsa87};
@@ -590,6 +599,8 @@ pub mod ml_dsa {
 /// The parameter set is a type, so a key of one set fails to compile where
 /// another's is expected. A signature, up to 49,856 bytes, lives on the
 /// heap.
+///
+/// The `slh-dsa` Cargo feature, on by default, builds this module.
 ///
 /// ```
 /// # fn main() -> Result<(), rind::Error> {
@@ -603,6 +614,7 @@ pub mod ml_dsa {
 /// # Ok(())
 /// # }
 /// ```
+#[cfg(feature = "slh-dsa")]
 pub mod slh_dsa {
     pub use crate::high::signature::slh_dsa::{KeyPair, ParameterSet, PublicKey, Signature};
     pub use crate::mid::slhdsa::{
@@ -753,6 +765,78 @@ pub mod spake2plus {
     pub use super::high::spake2plus::{
         Confirm, MATTER_PASE, MatterPase, ProverAwaiting, ProverSecrets, RFC9383, Rfc9383, Session,
         Share, SharedKey, Suite, VerifierAwaiting, VerifierRecord,
+    };
+}
+
+/// OPAQUE ([RFC 9807]): a password-authenticated key exchange in which the
+/// server never sees the password, in RFC 9807's two Argon2id
+/// configurations, over ristretto255 and over P-256.
+///
+/// A client registers by blinding its password with the server's OPRF and
+/// uploading a [`opaque::RegistrationRecord`]; each login then runs RFC
+/// 9807's three-message 3DH exchange, which gives both sides a
+/// [`opaque::SessionKey`] only if the client holds the credential its record
+/// binds, which a client may keep instead of the password, and gives the
+/// client an [`opaque::ExportKey`] for its own data. A stolen record together
+/// with the server's setup allows an offline guessing attack, each guess
+/// paced by Argon2id; a record alone does not, but it does let its holder
+/// tell the account exists. A [`opaque::ServerSetup`] answers an unknown
+/// account indistinguishably from a registered one, if the caller's lookup
+/// does not reveal whether the account exists (see
+/// [`opaque::ServerSetup::login`]). Each side's state is a
+/// type its next step consumes, so no step runs twice or out of order, but
+/// nothing stops a client from sending the same KE1 again, or from stopping
+/// after KE2 so that [`opaque::ServerLogin::finish`] never runs: rate-limit
+/// the attempts before sending a KE2, and count each as failed unless a valid
+/// KE3 arrives (RFC 9807 9.2).
+///
+/// Registration, unlike login, must run over a channel that authenticates
+/// the server and keeps the messages confidential and unaltered, such as
+/// TLS (RFC 9807 3.2): the record carries the masking key that hides
+/// whether an account exists, which an eavesdropper would otherwise learn
+/// (RFC 9807 10.10).
+///
+/// Each step that stretches the password runs Argon2id at 2 GiB, so this
+/// example is not run as a test.
+///
+/// ```no_run
+/// # fn main() -> Result<(), rind::Error> {
+/// use rind::opaque::{
+///     ClientLogin, ClientRegistration, Credential, RISTRETTO255_SHA512_ARGON2ID, ServerSetup,
+///     Session,
+/// };
+///
+/// let suite = &RISTRETTO255_SHA512_ARGON2ID;
+/// let server = ServerSetup::generate(suite)?;
+/// let session = Session::default();
+///
+/// // Registration, over TLS: the server stores the record under the
+/// // account's identifier.
+/// let (client, request) = ClientRegistration::start(suite, b"password")?;
+/// let response = server.register(&request, b"alice")?;
+/// let (record, _export_key) = client.finish(&response, &session)?;
+///
+/// // Login.
+/// let (client, ke1) = ClientLogin::start(suite, b"password")?;
+/// let credential = Credential {
+///     identifier: b"alice",
+///     record: Some(&record),
+/// };
+/// let (server_login, ke2) = server.login(&ke1, &credential, &session)?;
+/// let (ke3, client_key, _export_key) = client.finish(&ke2, &session)?;
+/// let server_key = server_login.finish(&ke3)?;
+/// assert_eq!(client_key.as_ref(), server_key.as_ref());
+/// # Ok(())
+/// # }
+/// ```
+///
+/// [RFC 9807]: https://www.rfc-editor.org/rfc/rfc9807.html
+pub mod opaque {
+    pub use super::high::opaque::{
+        ClientLogin, ClientRegistration, Credential, ExportKey, Ke1, Ke2, Ke3,
+        P256_SHA256_ARGON2ID, RISTRETTO255_SHA512_ARGON2ID, RegistrationRecord,
+        RegistrationRequest, RegistrationResponse, ServerLogin, ServerSetup, Session, SessionKey,
+        SetupBytes, Suite,
     };
 }
 

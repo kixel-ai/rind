@@ -1,5 +1,7 @@
 import Rind.X86_64.RsaBytes
+-- BEGIN x86_64
 import Rind.X86_64.VgRsa
+-- END x86_64
 open Aeneas Aeneas.Std Result rind.spec rind.spec.rsa
 
 /-!
@@ -10,10 +12,15 @@ pyca/verified-garbage's public operation for 2048-, 3072-, and 4096-bit
 moduli with `e = 65537`, through `public_op_ifma`, which `VgRsa.lean`'s
 axiom states. This proves `public_op_ifma`'s glue: the key's precomputed
 words, the exponent's and the input's bytes, and the result's words.
+
+`admin/prove` writes the portable backend's copy without the sections marked
+as this target's alone: its `public_op` has no IFMA path, and its
+`public_op_spec` takes no `IfmaCheckReturns`.
 -/
 
 namespace rind.x86_64
 
+-- BEGIN x86_64
 /-! ## `VG.Spec.Rsa`'s encodings, as rind's -/
 
 theorem vg_os2ip_map_bv (l : List U8) : VG.Spec.Rsa.os2ip (l.map (·.bv)) = beNat l :=
@@ -82,6 +89,7 @@ theorem vg_toWords_wordsNat (l : List U64) : VG.Spec.Rsa.toWords (wordsNat l) l.
       rw [show 64 * (i + 1) = 64 + 64 * i by ring, pow_add, ← Nat.div_div_eq_div_mul]
       congr 1
       rw [Nat.add_mul_div_left _ _ (by norm_num), Nat.div_eq_of_lt (by simpa using a.hBounds), Nat.zero_add]
+-- END x86_64
 
 /-! ## `to_bytes_fixed` and `from_secret_bytes` -/
 
@@ -189,6 +197,7 @@ theorem to_bytes_fixed_spec {N : Usize} (self : low.posint.PosInt N) (out : Slic
   exact to_bytes_fixed_loop_spec self out out.len hN _ rfl (by simp) out
     ⟨rfl, rfl, by simp [beNat, leNat, Nat.mod_one]⟩
 
+-- BEGIN x86_64
 /-- Setting word `q` adds its change, at its place. -/
 theorem wordsNat_set (l : List U64) (q : Nat) (v : U64) (hq : q < l.length) :
     wordsNat (l.set q v) + l[q].val * 2 ^ (64 * q) = wordsNat l + v.val * 2 ^ (64 * q) := by
@@ -204,13 +213,13 @@ theorem wordsNat_set (l : List U64) (q : Nat) (v : U64) (hq : q < l.length) :
 set_option maxHeartbeats 1000000 in
 /-- `from_secret_bytes`'s loop, with the low `i` bytes read: the words hold
 the number they encode. -/
-theorem from_secret_bytes_loop1_spec {N : Usize} (bytes : Slice U8) (len : Usize) (hlen : bytes.length = len.val)
+theorem from_secret_bytes_loop2_spec {N : Usize} (bytes : Slice U8) (len : Usize) (hlen : bytes.length = len.val)
     (hN : len.val ≤ 8 * N.val) (iter : core.ops.range.Range Usize) (hend : iter.end = len)
     (hstart : iter.start.val ≤ len.val) (r : low.posint.PosInt N)
     (hinv : wordsNat r.words.val = beNat (bytes.val.drop (len.val - iter.start.val))) :
-    low.posint.PosInt.from_secret_bytes_loop1 iter bytes r len ⦃ o =>
+    low.posint.PosInt.from_secret_bytes_loop2 iter bytes r len ⦃ o =>
       o.used = r.used ∧ wordsNat o.words.val = beNat bytes.val ⦄ := by
-  unfold low.posint.PosInt.from_secret_bytes_loop1
+  unfold low.posint.PosInt.from_secret_bytes_loop2
   apply loop.spec_decr_nat (fun x => x.1.end.val - x.1.start.val)
     (fun x : core.ops.range.Range Usize × low.posint.PosInt N => x.1.end = len ∧
       x.1.start.val ≤ len.val ∧ x.2.used = r.used ∧
@@ -218,7 +227,7 @@ theorem from_secret_bytes_loop1_spec {N : Usize} (bytes : Slice U8) (len : Usize
   · rintro ⟨it, r1⟩ ⟨he, hs, hu, hv⟩
     simp only at he hs hu hv
     have hev : it.end.val = len.val := by rw [he]
-    unfold low.posint.PosInt.from_secret_bytes_loop1.body
+    unfold low.posint.PosInt.from_secret_bytes_loop2.body
     step as ⟨op, iter1, hop, hend1⟩
     cases op with
     | none =>
@@ -308,14 +317,11 @@ theorem from_secret_bytes_spec (bytes : Slice U8) (hN : bytes.length ≤ 1024) :
       p.used.val = (bytes.length + 7) / 8 ∧ wordsNat p.words.val = beNat bytes.val ⦄ := by
   unfold low.posint.PosInt.from_secret_bytes low.posint.PosInt.zero
   step as ⟨i1, hi1⟩
-  step as ⟨i2, hi2⟩
   have hbl : bytes.length = bytes.val.length := rfl
-  have hne : ¬ (Slice.len bytes = i2) := by
-    intro h; have := congrArg UScalar.val h; simp at this; omega
   have hle : ¬ (Slice.len bytes > i1) := by
     intro h; have : (Slice.len bytes).val > i1.val := h; simp at this; omega
-  simp only [hne, hle, ↓reduceIte]
-  step with from_secret_bytes_loop1_spec bytes (Slice.len bytes) (by simp) (by simp; omega)
+  simp only [hle, ↓reduceIte]
+  step with from_secret_bytes_loop2_spec bytes (Slice.len bytes) (by simp) (by simp; omega)
     { start := 0#usize, «end» := Slice.len bytes } rfl (by simp)
     { words := Array.repeat 128#usize 0#u64, used := 0#usize }
     (by rw [Array.repeat_val, wordsNat_replicate_zero]; simp [beNat, leNat]) as ⟨r1, hu, hv⟩
@@ -324,6 +330,7 @@ theorem from_secret_bytes_spec (bytes : Slice U8) (hN : bytes.length ≤ 1024) :
   refine ⟨_, rfl, ?_, hv⟩
   rw [UScalar.ofNatCore_val_eq]
   simp
+-- END x86_64
 
 theorem len_bits_spec (p : RsaInt) (hu : p.used.val ≤ 128) :
     low.posint.PosInt.len_bits p ⦃ r => r.val = (wordsNat (lowWords p p.used)).size ⦄ := by
@@ -358,6 +365,7 @@ theorem lt_octetLen (N x : Nat) (hx : x < N) : x < 256 ^ octetLen N := by
     _ ≤ 2 ^ (8 * octetLen N) := Nat.pow_le_pow_right (by norm_num) (by unfold octetLen; omega)
     _ = 256 ^ octetLen N := by rw [pow_mul]; norm_num
 
+-- BEGIN x86_64
 /-- `RsaIfma::check`'s CPU check returns, whichever features it finds. -/
 def IfmaCheckReturns : Prop := ∃ t, low.x86_64.cpu.HaveAvx512ForRsa.check = ok t
 
@@ -510,6 +518,8 @@ theorem public_op_ifma_spec (key : mid.rsa_pub.RsaPublicKey) (hinv : PubKeyInv k
   · rw [UScalar.eq_equiv, hmu, s12_post1, hw]
   · rw [lowWords, wordsNat_take_mod, hmv', hs12v, he, Nat.mod_eq_of_lt (lt_trans hR hNw)]
 
+-- END x86_64
+
 /-- RSAVP1: `public_op` raises `c` to the public exponent modulo the
 modulus, or refuses a `c` not below it. -/
 theorem public_op_spec (key : mid.rsa_pub.RsaPublicKey) (hinv : PubKeyInv key)
@@ -544,6 +554,7 @@ theorem public_op_spec (key : mid.rsa_pub.RsaPublicKey) (hinv : PubKeyInv key)
         wordsNat (lowWords c c.used) := by
       simp only [lowWords]; rw [wordsNat_take_mod, hcw]
       exact Nat.mod_eq_of_lt (lt_trans hlt hNR)
+    -- BEGIN x86_64
     -- With the exponent 65537 and a 2048-, 3072-, or 4096-bit modulus, on a
     -- CPU with AVX-512 IFMA, pyca/verified-garbage's public operation.
     step with rsa_ifma_check_spec key hinv hifma as ⟨o, ho⟩
@@ -553,6 +564,7 @@ theorem public_op_spec (key : mid.rsa_pub.RsaPublicKey) (hinv : PubKeyInv key)
       apply WP.spec_mono (public_op_ifma_spec key hinv ifma he' hk' _ (by rw [hcw]; exact hlt))
       rintro r ⟨m, rfl, hmu, hmv⟩
       exact ⟨hlt, hmu, by rw [hmv, hcw]⟩
+    -- END x86_64
     -- Otherwise, square-and-multiply.
     -- `to_montgomery` takes `c` to `c·R`.
     unfold low.posint.PosInt.to_montgomery low.posint.PosInt.mont_mul low.posint.PosInt.zero
@@ -560,7 +572,7 @@ theorem public_op_spec (key : mid.rsa_pub.RsaPublicKey) (hinv : PubKeyInv key)
     have hmlt : wordsNat (lowWords key.montifier key.n.used) < wordsNat (lowWords key.n key.n.used) := by
       rw [hmont]; exact Nat.mod_lt _ (by omega)
     step with mont_mul_into_spec _ key.montifier _ key.n n0' hP hk
-      (mont_args_of _ _ key.n n0' hk hk2 hodd hn0' (by rw [hc1]; exact hlt) hmlt) as ⟨cm, hcmu, hcmr, _⟩
+      (mont_args_of _ _ key.n n0' hk hk2 (by omega) hodd hn0' (by rw [hc1]; exact hlt) hmlt) as ⟨cm, hcmu, hcmr, _⟩
     obtain ⟨hcmN, hcmv⟩ := mont_result_of hcmr
     rw [lowWords_length _ hk, hc1, hmont] at hcmv
     have hcmC : wordsNat (lowWords cm key.n.used) ≡
