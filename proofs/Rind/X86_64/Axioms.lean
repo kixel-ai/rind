@@ -23,6 +23,7 @@ import Rind.X86_64.P256Signature
 import Rind.X86_64.P384Signature
 import Rind.X86_64.PointSelect
 import Rind.X86_64.MlKemCoding
+import Rind.X86_64.MlKemCbd
 open rind.x86_64
 
 /-!
@@ -1267,3 +1268,11 @@ change to the trust base.
 /-- info: 'rind.x86_64.MlKemCoding.sample_cbd3_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms MlKemCoding.sample_cbd3_spec
+
+/-- info: 'rind.x86_64.MlKemCbd.sample_poly_cbd_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ sha3_keccak4_f1600_alt_spec,
+ sha3_keccak_f1600_spec] -/
+#guard_msgs in
+#print axioms MlKemCbd.sample_poly_cbd_spec
