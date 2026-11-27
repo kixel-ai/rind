@@ -39,8 +39,8 @@ LINK = "proofs/README.md#tcb--axiom-ledger"
 GROUPS = [
     (
         r"(X86_64|Aarch64)/S2nBignum\.lean",
-        "s2n-bignum's HOL Light theorems of its assembly",
-        "published proofs; `admin/prove bytes` checks rind's build emits the code they are about",
+        "s2n-bignum's HOL Light theorems of its assembly, and rind's own of code it runs",
+        "published proofs, and rind's in `proofs/hol-light/`, which `admin/prove hol-light` checks; `admin/prove bytes` checks rind's build emits the code they are about",
     ),
     (
         r"Aarch64/MlKemRoutines\.lean",
