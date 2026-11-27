@@ -43,7 +43,7 @@ def extCase (i : Rind.X86_64.Instr) : Gen (Option (Img × Img × Nat)) := do
     let mut img ← randomImg
     match i with
     | .push _ => img := img.setReg .rsp (windowBase + windowLen - 8 * (← below 4))
-    | .lea _ m | .leaRsp m => img ← placeMem img m
+    | .lea _ m | .leaRsp m | .imulMem _ m | .mulxD32 _ _ m => img ← placeMem img m
     | .movdqaLoad _ m | .movdqaStore m _ =>
       img ← placeMem img m
       let a := (img.state.ea m).toNat
