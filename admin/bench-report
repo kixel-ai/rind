@@ -379,7 +379,7 @@ def bench_id(name):
     `_`, then the argument."""
     file, sep, path = name.partition("::")
     m = re.fullmatch(r"([A-Za-z0-9_:]+)(?:\[(.+)\])?", path)
-    if not (file and sep and m):
+    if not (file.endswith(".rs") and sep and m):
         fail(f"{name!r} is not a rind-bench benchmark's name")
     path, arg = m.groups()
     path = path.replace("::", "/").replace("_", "-")
