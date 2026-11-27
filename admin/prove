@@ -1143,9 +1143,11 @@ spec_tests() {
 # relocation must reach a static the program names: on aarch64 the start of
 # the one read-only section `asm_function` keeps, and on x86_64 a read-only
 # section of the function's object, with the addend the program gives,
-# that the static starts.
+# that the static starts, or a call (`R_X86_64_PLT32`) of a function rind
+# defines, printed by its Rust path, which `rind-asm` checks is one it
+# proves, of the same program as the call names.
 rind_isa() {
-    local dir=$out/rind-isa kind a b c n=0 rodata obj sym arch section size secsize off type target base
+    local dir=$out/rind-isa kind a b c n=0 rodata obj sym arch section size secsize off type target base callee
     local -A statics=()
     hold scratch
     rm -rf "$dir"
@@ -1184,6 +1186,16 @@ rind_isa() {
                 od -An -v -tx1 -w16 "$dir/$n.text" | awk '{ $1 = $1; gsub(/ /, ""); printf "text %04x %s\n", 16 * (NR - 1), $0 }'
                 relocations "$obj" "$section" | while read -r off type target; do
                     base=${target%%[-+]0x*} rodata=
+                    if [[ $type == R_X86_64_PLT32 ]]; then
+                        # A call of a local function may name its section, which holds it alone.
+                        callee=$(awk -F '\t' -v s="${base#.text.}" '$2 == s { print $3 }' "$(rind_index x86_64)")
+                        if [[ -z $callee || $(wc -l <<<"$callee") != 1 ]]; then
+                            echo "admin/prove: $a calls $target, which is not one function rind defines" >&2
+                            exit 1
+                        fi
+                        echo "reloc $((16#$off)) $type $callee${target#"$base"}"
+                        continue
+                    fi
                     [[ $base != .rodata.* ]] ||
                         rodata=$("$tools/llvm-objdump" -t "$obj" | awk -v s="$base" '$1 ~ /^0+$/ && $3 == "O" && $4 == s { print $NF }')
                     if [[ -z $rodata || -z ${statics[$(stable_name <<<"$rodata")]:-} ]]; then

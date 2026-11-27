@@ -411,7 +411,10 @@ IMPORTS_64 = [
         "perlasm": "crypto/fipsmodule/bn/asm/x86_64-mont5.pl",
         "copyright": "Copyright 2011-2016 The OpenSSL Project Authors. All Rights Reserved.",
         "tables": ["inc"],
-        "routines": ["bn_sqr8x_internal", "bn_sqrx8x_internal", "bn_powerx5"],
+        "routines": ["bn_sqr8x_internal", "bn_powerx5"],
+        # rind's structured copy, which `proofs/Rind/X86_64/Sqrx8xInternal.lean`
+        # proves, in `rind/src/low/x86_64/sqrx8x_internal.s`.
+        "owned": ["bn_sqrx8x_internal"],
         "inner": [
             "__bn_sqr8x_internal",
             "__bn_sqr8x_reduction",

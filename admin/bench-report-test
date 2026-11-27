@@ -581,6 +581,24 @@ class HostScript(unittest.TestCase):
             fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)
 
 
+class Reserve(unittest.TestCase):
+    @staticmethod
+    def smt(cores):
+        """A host's core siblings with two threads a core, numbered as Linux
+        numbers them: each core's second thread `cores` after its first."""
+        return lambda cpu: sorted({cpu % cores, cpu % cores + cores})
+
+    def test_takes_both_threads_of_the_last_two_cores(self):
+        self.assertEqual(br.reserved_cpus(list(range(32)), self.smt(16)), [14, 15, 30, 31])
+
+    def test_takes_the_last_performance_cores_of_a_hybrid_cpu(self):
+        self.assertEqual(br.reserved_cpus(list(range(8)), lambda cpu: [cpu]), [6, 7])
+
+    def test_refuses_too_few_cores(self):
+        with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
+            br.reserved_cpus([0, 1], self.smt(1))
+
+
 class Comparison(unittest.TestCase):
     def cells(self, hosts):
         table = br.comparison_table(hosts, VERIFIED)

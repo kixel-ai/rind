@@ -66,7 +66,8 @@ runner_sha256=670adb2f268fe21dcbb58b3db0e0aa9d5b3bddfe2c651481336e561ff86de945
 # root in $state, so the LaunchAgents' path outlives garbage collection.
 tart_tool() {
     local rev
-    rev=$(jq -er .nodes.nixpkgs.locked.rev "$root/flake.lock")
+    # The root's nixpkgs follows quest's, so it is quest's node's input.
+    rev=$(jq -er '.nodes[.nodes[.nodes.root.inputs.quest].inputs.nixpkgs].locked.rev' "$root/flake.lock")
     NIXPKGS_ALLOW_UNFREE=1 nix build --impure --out-link "$state/tart" "github:NixOS/nixpkgs/$rev#tart"
     tart=$state/tart/bin/tart
 }

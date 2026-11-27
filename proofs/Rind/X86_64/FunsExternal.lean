@@ -986,7 +986,8 @@ opaque low.x86_64.bignum_copy_row_from_table.bignum_copy_row_from_table
 /-! aws-lc's Montgomery products, behind their Rust wrappers, which
 `Rind.X86_64.RsaMont` states: `nohw_spec` restates rind's HOL Light proof of
 `bn_mul_mont_nohw`, `mul4x_spec` and `mulx4x_spec` its Lean proofs of
-`bn_mul4x_mont` and `bn_mulx4x_mont`, and `AwsLcMont` `bn_sqr8x_mont` for
+`bn_mul4x_mont` and `bn_mulx4x_mont`, `sqrx8x_spec` its Lean proof of
+`bn_sqrx8x_mont`, and `AwsLcMont` `bn_sqr8x_mont` without BMI2 and ADX for
 the theorems that need it. -/
 
 opaque low.x86_64.mont.nohw

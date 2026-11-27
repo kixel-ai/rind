@@ -59,7 +59,7 @@ wasm:
 miri TARGET="x86_64-unknown-linux-gnu":
     nix develop .#miri --command sh/miri.sh {{TARGET}}
 
-# Run openmls's own test suite on rind-openmls, passing ARGS to cargo test.
+# Run openmls's own test suite on rind-openmls, passing ARGS to cargo nextest run.
 openmls *ARGS:
     nix develop --command sh/openmls.sh {{ARGS}}
 

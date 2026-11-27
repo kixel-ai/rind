@@ -25,4 +25,6 @@ cargo clippy "${packages[@]}" --locked --target "$target" --all-targets -- --den
 # Optimised, as the armv7 run is, but keeping the checks a debug build has.
 export CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS=true
 export CARGO_PROFILE_RELEASE_OVERFLOW_CHECKS=true
-SLOW_TESTS=1 cargo test "${packages[@]}" --locked --release --target "$target"
+SLOW_TESTS=1 cargo nextest run "${packages[@]}" --locked --release --target "$target"
+# nextest runs no doc tests; this bounds theirs (.config/nextest.toml).
+timeout 5m cargo test --doc "${packages[@]}" --locked --release --target "$target"

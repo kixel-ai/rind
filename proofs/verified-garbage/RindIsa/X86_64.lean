@@ -39,6 +39,14 @@ offset in the static, here 0. `admin/prove lean` checks that the static
 rind's build emits begins with those words and that the instruction's
 relocation reaches its start.
 
+A call: rind's `bn_sqrx8x_mont` calls `bn_sqrx8x_internal`, a function of
+its own, by `call rel32`, which VG's code never makes. It is VG's
+`Code.call`, run by `call` and `ret` below: the call pushes a return
+address the model does not know, growing the stack as a push does, and the
+return faults unless `rsp` and that word are as the call left them. The
+callee's body is its own proven program, and `rind-asm` and `admin/prove
+lean` check that the call's relocation names that function.
+
 `admin/prove vg` cosimulates each of these instructions against the CPU
 (`Cosim/RindX86_64.lean`), and `admin/prove lean` checks that each program's bytes
 and relocations (`layout`) are the ones rind's build emits.
@@ -54,18 +62,26 @@ structure State where
   vg : VG.X86_64.State
   lo : Addr
 
-/-- Branch conditions: VG's, and `ja`. -/
+/-- Branch conditions: VG's, `ja`, and `rcx`'s being zero or not, which
+read no flag. -/
 inductive Cond
   | vg (c : VG.X86_64.Cond)
   /-- `ja`: CF = 0 and ZF = 0 -/
   | a
+  /-- `jrcxz`: RCX = 0 -/
+  | rcxz
+  /-- RCX ≠ 0: `jrcxz` past a `jmp`, which x86 has no one instruction for -/
+  | rcxnz
   deriving DecidableEq, Repr
 
-/-- SDM Vol. 2, "Jcc": A, "above (CF=0 and ZF=0)"; VG's for its own. `none`,
-and so a fault, if a flag it reads is undefined. -/
+/-- SDM Vol. 2, "Jcc": A, "above (CF=0 and ZF=0)", and JRCXZ, "Jump short
+if RCX register is 0"; VG's for its own. `none`, and so a fault, if a flag
+it reads is undefined. -/
 def eval : Cond → VG.X86_64.State → Option Bool
   | .vg c, s => VG.X86_64.eval c s
   | .a, s => s.cf.bind fun c => s.zf.map fun z => !c && !z
+  | .rcxz, s => some (s.gpr .rcx == 0)
+  | .rcxnz, s => some (s.gpr .rcx != 0)
 
 /-- An AVX instruction whose memory operand is the start of a static,
 `[rip + name]`. -/
@@ -90,6 +106,10 @@ inductive Instr
   | neg (d : Reg)
   /-- `dec r64` (`REX.W FF /1`) -/
   | dec (d : Reg)
+  /-- `inc r64` (`REX.W FF /0`) -/
+  | inc (d : Reg)
+  /-- `sar r64, imm8` (`REX.W C1 /7 ib`) -/
+  | sar (d : Reg) (n : Nat)
   /-- `shrd r64, r64, imm8` (`REX.W 0F AC /r ib`): `d` shifted right by `n`,
   filled from the low bits of `s` -/
   | shrd (d s : Reg) (n : Nat)
@@ -167,6 +187,16 @@ def static256 (ws : List (BitVec 64)) : Option (BitVec 256) :=
 * "DEC": `DEST := DEST – 1`; "The CF flag is not affected. The OF, SF, ZF,
   AF, and PF flags are set according to the result": those of the
   subtraction `DEST - 1`.
+* "INC": `DEST := DEST + 1`; "The CF flag is not affected. The OF, SF, ZF,
+  AF, and PF flags are set according to the result": those of the addition
+  `DEST + 1`.
+* "SAL/SAR/SHL/SHR", SAR by an immediate count `n` from 1 to 63 (larger
+  counts are not modelled: they fault): `DEST` shifted right `n` bits,
+  filled with its sign bit; "the CF flag contains the value of the last bit
+  shifted out of the destination operand"; "The OF flag is affected only on
+  1-bit shifts. For left shifts … For the SAR instruction, the OF flag is
+  cleared for all 1-bit shifts", and "is undefined" for longer ones; "The
+  SF, ZF, and PF flags are set according to the result."
 * "SHRD" (`REX.W 0F AC /r ib`), for a count `n` from 1 to 63 (larger
   counts are not modelled: they fault): `DEST` is `DEST` shifted right `n`
   bits, filled from the right of `SRC`; "the CF flag is filled with the last
@@ -224,6 +254,17 @@ def exec : Instr → State → Option State
     let a := s.vg.gpr d
     let r := a - 1
     some { s with vg := ({ arithFlags s.vg r false (subOverflow a 1 r) with cf := s.vg.cf }).setReg d r }
+  | .inc d, s =>
+    let a := s.vg.gpr d
+    let r := a + 1
+    some { s with vg := ({ arithFlags s.vg r false (addOverflow a 1 r) with cf := s.vg.cf }).setReg d r }
+  | .sar d n, s =>
+    if 1 ≤ n ∧ n ≤ 63 then
+      let a := s.vg.gpr d
+      let v := a.sshiftRight n
+      some { s with vg := (s.vg.setFlags (some (a.getLsbD (n - 1))) (if n = 1 then some false else none)
+        (some (v == 0)) (some v.msb)).setReg d v }
+    else none
   | .shrd d r n, s =>
     if 1 ≤ n ∧ n ≤ 63 then
       let a := s.vg.gpr d
@@ -267,7 +308,8 @@ def addrs : Instr → State → List Addr
   | .movdqaLoad _ m, s | .movdqaStore m _, s | .vpshufdLoad _ m _, s | .imulMem _ m, s
   | .mulxD32 _ _ m, s => [s.vg.ea m]
   | .rip .., _ => [0]
-  | .lea .., _ | .leaRsp _, _ | .neg _, _ | .dec _, _ | .shrd .., _ | .movPad .., _ | .align _, _
+  | .lea .., _ | .leaRsp _, _ | .neg _, _ | .dec _, _ | .inc _, _ | .sar .., _ | .shrd .., _ | .movPad .., _
+  | .align _, _
   | .jmpAlign _, _ => []
 
 /-- The CPU features beyond the baseline: VG's for its own and for the
@@ -282,10 +324,34 @@ def Instr.requires : Instr → List String
   | .rip (.vbroadcasti128 d) .. => (VG.X86_64.Instr.vbroadcasti128 d { base := .rax }).requires
   | _ => []
 
-/-- The model. No program here calls or makes a frame of VG's kind, so
-calls, returns, and VG's pushes and pops fault: a function's return is the
-`ret` `function` appends, to the return address its theorem shows it
-keeps. -/
+/-- SDM Vol. 2, "CALL", near call: `RSP := RSP − 8; Memory[RSP] := RIP`
+(`Push(RIP)`, where `RIP` is the address of the next instruction), then the
+jump; no flags are affected. As VG's `call`, the return address the next of
+the state's unknowns, which nothing constrains; but the stack grows as a
+push grows it (`moveSp`), faulting below `lo`, and the store faults outside
+`wr`. -/
+def call (s : State) : Option State :=
+  (moveSp s (s.vg.gpr .rsp - 8)).bind fun s' =>
+    (s'.vg.store64 (s'.vg.gpr .rsp) (s.vg.unknowns 0)).map fun g =>
+      { s' with vg := { g with unknowns := fun n => g.unknowns (n + 1) } }
+
+/-- SDM Vol. 2, "RET", near return: `RIP := Pop()`, i.e. `RIP :=
+Memory[RSP]; RSP := RSP + 8`; no flags are affected. As VG's `ret`, it
+returns after the call instruction if `RSP` and the return address at
+`[RSP]` are those the call left (`s₁`), and otherwise faults; and the stack
+shrinks as `lea rsp` shrinks it (`moveSp`), releasing the return address's
+quadword. -/
+def ret (s₁ s₂ : State) : Option State :=
+  if s₂.vg.gpr .rsp = s₁.vg.gpr .rsp ∧
+      s₂.vg.mem.readW (s₂.vg.gpr .rsp) 64 = s₁.vg.mem.readW (s₁.vg.gpr .rsp) 64 then
+    moveSp s₂ (s₂.vg.gpr .rsp + 8)
+  else none
+
+/-- The model. A direct call (`Code.call`) and its return are `call` and
+`ret`, which access the return address's quadword, as VG's do. No program
+here makes a frame of VG's kind, so VG's pushes and pops fault. A
+function's own return is the `ret` `function` appends, to the return
+address its theorem shows it keeps. -/
 abbrev isa : ISA where
   State := State
   Instr := Instr
@@ -293,10 +359,10 @@ abbrev isa : ISA where
   exec := exec
   addrs := addrs
   eval c s := Rind.X86_64.eval c s.vg
-  call _ := none
-  callAddrs _ := []
-  ret _ _ := none
-  retAddrs _ := []
+  call := call
+  callAddrs s := [s.vg.gpr .rsp - 8]
+  ret := ret
+  retAddrs s := [s.vg.gpr .rsp]
   writesSp
     | .push _ | .leaRsp _ => true
     | _ => false
@@ -368,6 +434,8 @@ def Instr.encode (o : Nat) : Instr → Option (List Nat)
   | .leaRsp m => Enc.legacy [] true [0x8D] (Enc.reg .rsp) (Enc.RM.mem m)
   | .neg d => Enc.legacy [] true [0xF7] 3 (Enc.RM.reg (Enc.reg d))
   | .dec d => Enc.legacy [] true [0xFF] 1 (Enc.RM.reg (Enc.reg d))
+  | .inc d => Enc.legacy [] true [0xFF] 0 (Enc.RM.reg (Enc.reg d))
+  | .sar d n => if n < 256 then Enc.legacy [] true [0xC1] 7 (Enc.RM.reg (Enc.reg d)) [n] else none
   | .shrd d r n => if n < 256 then Enc.legacy [] true [0x0F, 0xAC] (Enc.reg r) (Enc.RM.reg (Enc.reg d)) [n] else none
   | .movdqaLoad d m => Enc.sse 1 1 0x6F (Enc.xreg d) (Enc.RM.mem m)
   | .movdqaStore m r => Enc.sse 1 1 0x7F (Enc.xreg r) (Enc.RM.mem m)
@@ -385,21 +453,14 @@ def Instr.encode (o : Nat) : Instr → Option (List Nat)
     else none
 
 /-- The condition code of a `Jcc` (SDM Vol. 2, "Jcc", `7x cb`, `0F 8x cd`):
-B 2, AE 3, E 4, NE 5, A 7. -/
+B 2, AE 3, E 4, NE 5, A 7; `rcxz` and `rcxnz` have none. -/
 def Cond.cc : Cond → Nat
   | .vg .b => 2
   | .vg .ae => 3
   | .vg .e => 4
   | .vg .ne => 5
   | .a => 7
-
-/-- A `Jcc` from offset `o` to offset `t`, short (`7x cb`) when the
-displacement fits a byte, else near (`0F 8x cd`), as LLVM's assembler
-relaxes it. -/
-def jcc (c : Cond) (o t : Nat) : List Nat :=
-  let d : Int := (t : Int) - (o + 2)
-  if -128 ≤ d ∧ d < 128 then [0x70 + c.cc, (d % 256).toNat]
-  else [0x0F, 0x80 + c.cc] ++ Enc.le 4 (((t : Int) - (o + 6)) % 2 ^ 32).toNat
+  | .rcxz | .rcxnz => 0
 
 /-- A `jmp` from offset `o` to offset `t`, short (`EB cb`) when the
 displacement fits a byte, else near (`E9 cd`), as LLVM's assembler relaxes
@@ -408,6 +469,20 @@ def jmp (o t : Nat) : List Nat :=
   let d : Int := (t : Int) - (o + 2)
   if -128 ≤ d ∧ d < 128 then [0xEB, (d % 256).toNat]
   else [0xE9] ++ Enc.le 4 (((t : Int) - (o + 5)) % 2 ^ 32).toNat
+
+/-- A branch on `c` from offset `o` to offset `t`: a `Jcc`, short (`7x cb`)
+when the displacement fits a byte, else near (`0F 8x cd`), as LLVM's
+assembler relaxes it; for `rcxz`, `jrcxz` (`E3 cb`), which has only the
+short form, so `none` if it does not reach; and for `rcxnz`, a `jrcxz` past
+a `jmp` to `t`. -/
+def jcc (c : Cond) (o t : Nat) : Option (List Nat) :=
+  let d : Int := (t : Int) - (o + 2)
+  match c with
+  | .rcxz => if -128 ≤ d ∧ d < 128 then some [0xE3, (d % 256).toNat] else none
+  | .rcxnz => let j := jmp (o + 2) t; some ([0xE3, j.length] ++ j)
+  | _ =>
+    if -128 ≤ d ∧ d < 128 then some [0x70 + c.cc, (d % 256).toNat]
+    else some ([0x0F, 0x80 + c.cc] ++ Enc.le 4 (((t : Int) - (o + 6)) % 2 ^ 32).toNat)
 
 /-- The bytes a jump into `c`, laid out from `o`, skips: those of the
 padding it begins with, as the assembler puts a label after its `.align`. -/
@@ -438,8 +513,12 @@ def Instr.relocs (o : Nat) (bs : List Nat) : Instr → List Reloc
 relocations, as rind's build emits aws-lc's and BoringSSL's text and rind's
 own copies of aws-lc's: each instruction's bytes; a do-while loop as its
 body then the `Jcc` that branches back to its entry; `if c then t else e` as
-a `Jcc` to `t`'s entry, `e`, a `jmp` past `t`, then `t`; and
-`if c then (nothing) else e` as a `Jcc` past `e`, then `e`. Each jump is
+a `Jcc` to `t`'s entry, `e`, a `jmp` past `t`, then `t`;
+`if c then (nothing) else e` as a `Jcc` past `e`, then `e`; and a call of
+the function `name` as `call rel32` (`E8 cd`), whose displacement the
+linker fills: four zero bytes, as the object holds them, and an
+`R_X86_64_PLT32` relocation at their offset against `name` with the addend
+`-4`, which makes the target `name`'s start. Each jump is
 short where its displacement fits a byte and near otherwise, the first
 sizes, short before near and the `Jcc`'s before the `jmp`'s, whose jumps
 reach their targets: what LLVM's assembler reaches by relaxing the jumps
@@ -455,20 +534,22 @@ def layout : Prog isa → Nat → Option (List Nat × List Reloc)
     return (ba ++ bb, ra ++ rb)
   | .loop body c, o => do
     let (bb, rb) ← layout body o
-    return (bb ++ jcc c (o + bb.length) (o + entry body o), rb)
+    let j ← jcc c (o + bb.length) (o + entry body o)
+    return (bb ++ j, rb)
   | .ite c (.block []) e, o =>
-    [2, 6].firstM fun jc => do
+    [2, 4, 6, 7].firstM fun jc => do
       let (be, re) ← layout e (o + jc)
-      let j := jcc c o (o + jc + be.length)
+      let j ← jcc c o (o + jc + be.length)
       if j.length = jc then return (j ++ be, re) else none
   | .ite c t e, o =>
-    [(2, 2), (2, 5), (6, 2), (6, 5)].firstM fun (jc, jm) => do
+    [(2, 2), (2, 5), (4, 2), (4, 5), (6, 2), (6, 5), (7, 2), (7, 5)].firstM fun (jc, jm) => do
       let (be, re) ← layout e (o + jc)
       let p := o + jc + be.length
       let (bt, rt) ← layout t (p + jm)
-      let j := jcc c o (p + jm + entry t (p + jm))
+      let j ← jcc c o (p + jm + entry t (p + jm))
       let k := jmp p (p + jm + bt.length)
       if j.length = jc ∧ k.length = jm then return (j ++ be ++ k ++ bt, re ++ rt) else none
+  | .call name _, o => some ([0xE8, 0, 0, 0, 0], [⟨o + 1, "R_X86_64_PLT32", name, -4⟩])
   | _, _ => none
 
 /-- `rep ret` (`F3 C3`), aws-lc's return. -/

@@ -14,7 +14,9 @@ Usage:
 `quest gate` and for any lease it has, builds rind-bench there in the commit's Nix dev shell with
 its pinned toolchain, and times every operation in OPERATIONS for every
 library that offers it, then measures each library's build cost with
-admin/build-cost. It runs here for the host this is, and over ssh for the
+admin/build-cost. On a host that CI runners and agent sessions share, it
+times them on two cores it reserves for the run, and measures no build
+cost: see reserve(). It runs here for the host this is, and over ssh for the
 others. A host that is busy, unreachable, or fails is recorded and skipped,
 never measured. DIR (default `.tmp/bench-report/<commit>`) gets one
 `<host>.json` per host, with its CPU, OS, toolchain, and library versions.
@@ -49,6 +51,7 @@ written to DIR are measurements, not history: rerun `collect` to refresh them.
 import argparse
 import ctypes
 import datetime
+import fcntl
 import fnmatch
 import glob
 import json
@@ -58,9 +61,11 @@ import re
 import resource
 import shlex
 import shutil
+import signal
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 import tomllib
 
@@ -68,16 +73,18 @@ import tomllib
 # destination where it isn't the name, and `note` describes the machine in the
 # report. Other work on a host with a `lease` holds that lock file with
 # flock(1) for its whole run, so collect holds it too, or skips the host as
-# busy, and leaves no copy, build, or download cache behind.
+# busy, and leaves no copy, build, or download cache behind. A host with
+# `reserve` also runs CI runners and agent sessions, which keep it at about
+# twice its CPU count, so collect times it on cores it reserves: see reserve().
 VPS_NOTE = "OVH VPS in {}, 4 shared vCPUs: other tenants add noise that a dedicated host's times lack."
 HOSTS = {
-    "nixos": {"jobs": 16},
-    "desktop": {"jobs": 12},
+    "nixos": {"jobs": 16, "reserve": True},
+    "desktop": {"jobs": 12, "reserve": True},
     "fedora": {
         "jobs": 16,
+        "reserve": True,
         "note": "The maintainer's Fedora workstation and the report's only AVX-512 host, so the one whose table "
-        "times rind's AVX-512 AES-GCM, IFMA RSA, and 8-way ML-KEM sampler against every library. It also runs CI "
-        "runners and agent sessions, so its times are noisier than the other dedicated hosts'. Zen 5 keeps its "
+        "times rind's AVX-512 AES-GCM, IFMA RSA, and 8-way ML-KEM sampler against every library. Zen 5 keeps its "
         "clock with 512-bit vectors, so this host cannot show what they cost on the Intel cores that slow down.",
     },
     "kixtop": {
@@ -107,6 +114,23 @@ HOSTS = {
 # CPUs, or one CPU, busy: enough to change clock speeds and shared caches
 # under a single-threaded benchmark.
 BUSY_SHARE = 0.1
+
+# How many whole cores a shared host's run reserves for the benchmarks.
+RESERVED_CORES = 2
+
+# The top-level cgroup slice a reserved run's benchmarks run in, outside every
+# slice the reservation keeps off their cores. A dash would nest it under another.
+RESERVE_SLICE = "benchreport.slice"
+
+# The transient timer that releases a reservation if its run dies without
+# doing so, and how long after the reservation starts: longer than the
+# benchmarks take.
+RESERVE_RELEASE_UNIT = "bench-report-release"
+RESERVE_RELEASE_AFTER = "3h"
+
+# The every-logical-CPU rows, which a reserved run leaves out: two cores
+# cannot time them, and the other cores are busy.
+EVERY_CPU = re.compile(r"^rustls-[a-z]+-handshake-threads/")
 
 # Where each host keeps each collection's copy and result, and the build they
 # share, under its home directory; this host uses the checkout's `.tmp/` instead.
@@ -462,8 +486,19 @@ def busy_limit():
     return max(1.0, BUSY_SHARE * cpu_count())
 
 
-def cpu_times():
-    """The system's (busy, total) CPU time in clock ticks."""
+def cpu_times(cpus=None):
+    """The system's (busy, total) CPU time in clock ticks, or only that of
+    the logical CPUs in `cpus`, on Linux."""
+    if cpus is not None:
+        busy = total = 0
+        with open("/proc/stat") as f:
+            for line in f:
+                name, *fields = line.split()
+                if name.startswith("cpu") and name[3:] and int(name[3:]) in cpus:
+                    fields = [int(x) for x in fields[:8]]
+                    busy += sum(fields) - fields[3] - fields[4]
+                    total += sum(fields)
+        return busy, total
     if sys.platform == "darwin":
         # host_statistics(HOST_CPU_LOAD_INFO): user, system, idle, nice.
         libc = ctypes.CDLL(None)
@@ -474,17 +509,19 @@ def cpu_times():
         user, system, idle, nice = ticks
         return user + system + nice, user + system + idle + nice
     # The first eight fields, since user and nice already count guest time.
+    # The per-CPU lines above read them the same way.
     with open("/proc/stat") as f:
         fields = [int(x) for x in f.readline().split()[1:9]]
     idle = fields[3] + fields[4]
     return sum(fields) - idle, sum(fields)
 
 
-def busy_cpus_since(start):
-    """How many logical CPUs were busy on average since `start`, a cpu_times()."""
+def busy_cpus_since(start, cpus=None):
+    """How many logical CPUs were busy on average since `start`, a
+    cpu_times(cpus), of all of them or of those in `cpus`."""
     # macOS's counters are 32 bits, so they wrap after weeks of uptime.
-    busy, total = ((now - then) % 2**32 for now, then in zip(cpu_times(), start))
-    return busy / max(1, total) * cpu_count()
+    busy, total = ((now - then) % 2**32 for now, then in zip(cpu_times(cpus), start))
+    return busy / max(1, total) * (cpu_count() if cpus is None else len(cpus))
 
 
 def busy_cpus(seconds=5):
@@ -503,6 +540,124 @@ def check_idle(when):
 
 class Busy(Exception):
     pass
+
+
+def parse_cpu_list(text):
+    """The CPUs in a kernel CPU list such as `0-3,8`."""
+    cpus = []
+    for part in text.strip().split(","):
+        first, _, last = part.partition("-")
+        cpus.extend(range(int(first), int(last or first) + 1))
+    return cpus
+
+
+def reserved_cpus(candidates, siblings):
+    """The logical CPUs of the last RESERVED_CORES whole cores among
+    `candidates`, as `siblings(cpu)` lists each one's core."""
+    reserved, cores = [], 0
+    for cpu in reversed(candidates):
+        if cpu in reserved:
+            continue
+        core = siblings(cpu)
+        if not set(core) <= set(candidates):
+            fail(f"CPU {cpu}'s core holds CPUs {core}, not all of them candidates")
+        reserved.extend(core)
+        cores += 1
+        if cores == RESERVED_CORES:
+            return sorted(reserved)
+    fail(f"{len(candidates)} CPUs hold fewer than {RESERVED_CORES} whole cores to reserve")
+
+
+def reserve_candidates():
+    """The logical CPUs a reservation may take: a hybrid Intel CPU's
+    performance cores, which Linux lists in /sys/devices/cpu_core, since the
+    other hosts' tables time those; otherwise every CPU."""
+    try:
+        with open("/sys/devices/cpu_core/cpus") as f:
+            return parse_cpu_list(f.read())
+    except FileNotFoundError:
+        return list(range(cpu_count()))
+
+
+def core_siblings(cpu):
+    with open(f"/sys/devices/system/cpu/cpu{cpu}/topology/thread_siblings_list") as f:
+        return parse_cpu_list(f.read())
+
+
+def cpu_list(cpus):
+    return ",".join(map(str, cpus))
+
+
+def sudo(*cmd, check=True, **kwargs):
+    return subprocess.run(["sudo", "-n", *cmd], check=check, **kwargs)
+
+
+def reserve_lock():
+    """The host's reservation lock, held once this returns until the file it
+    returns is closed. A reserved run holds it from before its load sample
+    through the release, so another collection neither releases its cores,
+    stops its timer, nor runs on them meanwhile. Every collection on a host
+    runs as the user collect reaches it as."""
+    lock_dir = os.path.join(os.path.expanduser("~"), REMOTE_DIR)
+    os.makedirs(lock_dir, exist_ok=True)
+    lock = open(os.path.join(lock_dir, "reserve.lock"), "a")
+    fcntl.flock(lock, fcntl.LOCK_EX)
+    return lock
+
+
+def reserve(cmd, env, cpus):
+    """Runs `cmd` as this user, with `env`, on the logical CPUs `cpus` alone,
+    keeping every other top-level cgroup slice, which holds every CI runner,
+    agent session, and Nix build, off them meanwhile, and returns its exit
+    status. Other work keeps every other core, so it slows little and mbx
+    sizes its pool from them. The reservation ends with `cmd`, or after
+    RESERVE_RELEASE_AFTER if this process dies without ending it. The caller
+    holds reserve_lock(). Needs systemd and passwordless sudo."""
+    if sys.platform != "linux":
+        fail("reserving cores needs Linux's cgroups")
+    others = cpu_list(c for c in range(cpu_count()) if c not in cpus)
+    slices = sorted(n for n in os.listdir("/sys/fs/cgroup") if n.endswith(".slice") and n != RESERVE_SLICE)
+    # The whole range, since systemd 262 leaves the cpuset as it was for an
+    # empty AllowedCPUs=.
+    everything = f"0-{cpu_count() - 1}"
+    release = "; ".join(f"systemctl set-property --runtime {s} AllowedCPUs={everything}" for s in slices)
+
+    def stop(signum, frame):
+        sys.exit(128 + signum)
+
+    for signum in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
+        signal.signal(signum, stop)
+    # sudo drops the environment, which holds the dev shell, so a file only
+    # this user can read carries it: on sudo's command line, which other users
+    # see and sudo logs, it would expose any credential it holds.
+    fd, env_file = tempfile.mkstemp(prefix="bench-report-env.")
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(env, f)
+        # A timer an earlier run left would end this reservation early.
+        sudo("systemctl", "stop", "--quiet", f"{RESERVE_RELEASE_UNIT}.timer", check=False, stderr=subprocess.DEVNULL)
+        timer = ["systemd-run", "--quiet", "--collect", f"--unit={RESERVE_RELEASE_UNIT}"]
+        sudo(*timer, f"--on-active={RESERVE_RELEASE_AFTER}", "sh", "-c", release)
+        for s in slices:
+            sudo("systemctl", "set-property", "--runtime", s, f"AllowedCPUs={others}")
+        print(f"bench-report: reserved CPUs {cpu_list(cpus)}", file=sys.stderr)
+        scope = ["systemd-run", "--scope", "--quiet", f"--slice={RESERVE_SLICE}"]
+        scope.append(f"--property=AllowedCPUs={cpu_list(cpus)}")
+        # setpriv drops root's groups, which sudo would keep.
+        user = ["setpriv", f"--reuid={os.getuid()}", f"--regid={os.getgid()}", "--init-groups"]
+        load = (
+            "import json, os, sys; env = json.load(open(sys.argv[1])); os.unlink(sys.argv[1]); "
+            "os.execve(sys.argv[2], sys.argv[2:], env)"
+        )
+        return sudo(*scope, "--", *user, "--", sys.executable, "-c", load, env_file, *cmd, check=False).returncode
+    finally:
+        # The command removes it once read, unless it never started.
+        if os.path.exists(env_file):
+            os.unlink(env_file)
+        sudo("sh", "-c", release, check=False)
+        sudo("systemctl", "stop", "--quiet", f"{RESERVE_RELEASE_UNIT}.timer", check=False, stderr=subprocess.DEVNULL)
+        for signum in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
+            signal.signal(signum, signal.SIG_DFL)
 
 
 def output(cmd, env=None):
@@ -605,17 +760,23 @@ def run(args):
             json.dump(result, f, indent=1)
             f.write("\n")
 
-    try:
-        idle_before_build = check_idle("before the build")
-    except Busy as e:
-        finish("busy", reason=str(e))
-        fail(f"{args.host}: {e}")
+    # A reserved run's host is never idle, and its benchmarks share no core
+    # with other work, so only their own cores' load counts.
+    reserved = reserved_cpus(reserve_candidates(), core_siblings) if args.reserve else None
+    if reserved is None:
+        try:
+            idle_before_build = check_idle("before the build")
+        except Busy as e:
+            finish("busy", reason=str(e))
+            fail(f"{args.host}: {e}")
 
     env = dict(os.environ, CARGO_BUILD_JOBS=str(args.jobs), CARGO_TERM_COLOR="never")
     env["CARGO_TARGET_DIR"] = os.path.abspath(args.target_dir)
     # The every-logical-CPU rows refuse to run on fewer CPUs than this, so the
-    # report's "all N logical CPUs" is what they measured.
-    env["RIND_BENCH_CPUS"] = str(result["cpu"]["logical_cpus"])
+    # report's "all N logical CPUs" is what they measured. A reserved run
+    # times none, but listing still runs each once, on the reserved cores.
+    if not args.reserve:
+        env["RIND_BENCH_CPUS"] = str(result["cpu"]["logical_cpus"])
     cargo, versions, openssl = toolchain(env)
     result["toolchain"] = versions
     with open(os.path.join(ROOT, "Cargo.lock")) as f:
@@ -642,36 +803,59 @@ def run(args):
     # bench's extra row (slhdsa's fips205) runs once, to list it, and is
     # neither timed nor ranked.
     bench_args = ["--features", "__bench_openssl"]
-    names = bench_names(cargo, env, bench_args, match=operation_of)
-    listed = os.path.join(env["CARGO_TARGET_DIR"], "bench-report.benchmarks")
+    names = bench_names(
+        cargo, env, bench_args, match=lambda i: operation_of(i) and not (reserved and EVERY_CPU.match(i))
+    )
+    # Beside the result, in this collection's own copy, since another may
+    # share the target directory.
+    listed = os.path.join(os.path.dirname(os.path.abspath(args.out)), "bench-report.benchmarks")
     with open(listed, "w") as f:
         f.writelines(f"{n}\n" for n in names)
 
-    try:
-        idle_before_run = check_idle("before the benchmarks")
-    except Busy as e:
-        finish("busy", reason=str(e))
-        fail(f"{args.host}: {e}")
+    if reserved is None:
+        try:
+            idle_before_run = check_idle("before the benchmarks")
+        except Busy as e:
+            finish("busy", reason=str(e))
+            fail(f"{args.host}: {e}")
 
-    times = os.path.join(env["CARGO_TARGET_DIR"], "bench-report.json")
+    times = os.path.join(os.path.dirname(listed), "bench-report.times.json")
     swole_args = ["bench", "--benchmarks", listed, "--out", times, "--", "-p", "rind-bench", *bench_args]
+    lock = reserve_lock() if reserved else None
     wall0 = time.monotonic()
-    ticks0 = cpu_times()
+    ticks0, reserved0 = cpu_times(), reserved and cpu_times(reserved)
     ours0 = resource.getrusage(resource.RUSAGE_CHILDREN)
-    subprocess.run([swole_bin, *swole_args], env=env, check=True)
+    if reserved is None:
+        subprocess.run([swole_bin, *swole_args], env=env, check=True)
+    elif (code := reserve([swole_bin, *swole_args], env, reserved)) != 0:
+        fail(f"{args.host}: swole bench exited with {code}")
     ours1 = resource.getrusage(resource.RUSAGE_CHILDREN)
     wall = time.monotonic() - wall0
 
-    # Other work during the run: the system's busy CPUs less the benchmarks'.
+    # Other work during the run: the busy CPUs less the benchmarks', on the
+    # whole system, and on a reserved run's own cores, which alone count.
     ours = (ours1.ru_utime + ours1.ru_stime) - (ours0.ru_utime + ours0.ru_stime)
     other = round(max(0.0, busy_cpus_since(ticks0) - ours / wall), 2)
-    load = {
-        "limit_cpus": round(busy_limit(), 2),
-        "busy_cpus_before_build": idle_before_build,
-        "busy_cpus_before_run": idle_before_run,
-        "other_busy_cpus_during_run": other,
-        "noisy": other > busy_limit(),
-    }
+    if lock:
+        on_reserved = round(max(0.0, busy_cpus_since(reserved0, reserved) - ours / wall), 2)
+        lock.close()
+    if reserved is None:
+        load = {
+            "limit_cpus": round(busy_limit(), 2),
+            "busy_cpus_before_build": idle_before_build,
+            "busy_cpus_before_run": idle_before_run,
+            "other_busy_cpus_during_run": other,
+            "noisy": other > busy_limit(),
+        }
+    else:
+        limit = BUSY_SHARE * len(reserved)
+        load = {
+            "reserved_cpus": cpu_list(reserved),
+            "limit_cpus": round(limit, 2),
+            "other_busy_cpus_on_reserved": on_reserved,
+            "other_busy_cpus_during_run": other,
+            "noisy": on_reserved > limit,
+        }
 
     results = []
     for timed in swole_times(times):
@@ -687,7 +871,9 @@ def run(args):
         swole_args=[a for a in swole_args if a not in (listed, times, "--benchmarks", "--out")],
         load=load,
         results=results,
-        build_cost=build_cost(env, args.jobs, result["refused"]),
+        # A cold build's wall time on a host other work keeps busy measures
+        # that work, so only dedicated hosts measure build cost.
+        **({} if reserved else {"build_cost": build_cost(env, args.jobs, result["refused"])}),
     )
 
 
@@ -780,6 +966,10 @@ def collect_host(host, commit, out_dir):
         f"--host {q(host)} --commit {q(commit)} --jobs {HOSTS[host]['jobs']} "
         f"--target-dir ../target --out result.json"
     )
+    # A revision older than the reservation takes its own idle-check path.
+    runner = output(["git", "-C", ROOT, "show", f"{commit}:admin/bench-report"])
+    if HOSTS[host].get("reserve") and '"--reserve"' in runner:
+        cmd += " --reserve"
     # The gate admits the run only while the host has room, but other gated
     # work may share it, so these numbers are noisier than the weekly
     # runners'. The gate is this checkout's quest, so a commit pinning an
@@ -2341,8 +2531,10 @@ def report(hosts, tiers, verified, gaps, sizes=None):
     if missing:
         md += [f"Not measured yet: {', '.join(missing)}.", ""]
     md += [
-        "Each host builds with the pinned toolchain in the Nix dev shell, and runs "
-        "`admin/bench-report` only when idle.",
+        "Each host builds with the pinned toolchain in the Nix dev shell. A dedicated host runs "
+        "`admin/bench-report` only when idle. A host that CI runners and agent sessions keep busy runs it on "
+        "two whole cores it keeps that work off for the timing, so the work shares only the caches and power "
+        "budget, and it times no every-logical-CPU rows and no build cost.",
         "",
     ]
     if shown:
@@ -2358,7 +2550,8 @@ def report(hosts, tiers, verified, gaps, sizes=None):
             "the host didn't time it, as its section says.",
             "",
             "The rustls rows run both peers in one process. The every-logical-CPU rows run one handshake per "
-            "thread on all of the host's logical CPUs at once, each thread with its own client and server, and give the "
+            "thread on all of a dedicated host's logical CPUs at once, each thread with its own client and server, "
+            "and give the "
             "machine's time per handshake; each host's text gives rind-rustls's throughput there over its "
             "one-thread rate. A full handshake over rind-rustls's default provider, both peers, makes 245 heap "
             "allocations with an ECDSA P-256 certificate on x86_64, which `rind-rustls/tests/allocations.rs` pins. "
@@ -2381,6 +2574,11 @@ def report(hosts, tiers, verified, gaps, sizes=None):
             f"Measured {measured(h)}, on {h['os']} with {h['toolchain']['rustc']}.",
             "",
             *([HOSTS[name]["note"], ""] if "note" in HOSTS[name] else []),
+            *(
+                [f"Timed on CPUs {h['load']['reserved_cpus']}, two whole cores reserved for the run.", ""]
+                if "reserved_cpus" in h.get("load", {})
+                else []
+            ),
             *([f"Not timed on `{name}`: {', '.join(untimed)}.", ""] if untimed else []),
             *scaling(h),
             *dit_cost(h),
@@ -2505,7 +2703,11 @@ def report(hosts, tiers, verified, gaps, sizes=None):
         "`admin/build-cost`, on each benchmark host in turn over ssh, in the Nix dev",
         "shell and under `quest gate`, which waits for the host to have room but",
         "shares it with other gated work, so its numbers are noisier than the weekly",
-        "`bench` workflow's runners, which give the clean ones; it skips any host that is still busy, and writes their results and the hosts' details as JSON under",
+        "`bench` workflow's runners, which give the clean ones. On a host that CI runners",
+        "and agent sessions share, it times the benchmarks on two whole cores it keeps",
+        "other work off for the run, and skips the build cost; this needs systemd and",
+        "passwordless sudo there.",
+        "It skips any other host that is still busy, and writes their results and the hosts' details as JSON under",
         "`.tmp/bench-report/`. `admin/bench-report weekly` saves the latest weekly",
         "`bench` run's results and binary sizes, and `admin/bench-report render --from DIR` copies a",
         "collection's measured hosts into `benchmarks/data/` and writes",
@@ -2781,6 +2983,7 @@ def main():
     p.add_argument("--jobs", type=int, required=True)
     p.add_argument("--target-dir", required=True)
     p.add_argument("--out", required=True)
+    p.add_argument("--reserve", action="store_true", help="time the benchmarks on cores reserved for them")
     p.set_defaults(func=run)
 
     # `names` passes what it doesn't know to cargo bench, such as `--bench sha2`.
