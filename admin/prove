@@ -42,7 +42,11 @@
 # `x86_64` or `aarch64`, which `session` below describes. Run it in the flake's
 # `prove` dev shell: `nix develop .#prove --command admin/prove`, or for the
 # HOL Light proofs, the cosimulation, the bytes alone, or a session, `nix
-# develop .#hol-light --command admin/prove hol-light`. `key`, given
+# develop .#hol-light --command admin/prove hol-light`. A run keeps Aeneas's
+# translations and the Lean proofs' Lake outputs for the next, in
+# `~/.cache/rind/` and Lake's own cache; `RIND_PROVE_CACHE_HOST`, an SSH host
+# set alike on every host, the one it names included, shares them through
+# that host, as `cached` and `lake_get` below describe. `key`, given
 # `hol-light <arch>`, `cosim`, or `lean`, checks nothing either: it prints the
 # key that check's result is cached under, which `result_key` below
 # describes, running only what the key hashes; `lean`'s runs in the `prove`
@@ -458,7 +462,7 @@ rooted_hash() {
 
 # Translations, which take most of a run's time: an edit to the proofs alone
 # changes none. Each entry holds what one translation wrote, under a key that
-# hashes everything it reads, so every checkout and host shares it. With
+# hashes everything it reads, so checkouts and hosts share it. With
 # `RIND_PROVE_CACHE_HOST`, an SSH host, a miss here reads that host's cache,
 # and a new entry goes there too, so one host serves every other's agents. An
 # unreachable host fails the run, since setting it says the host is there.
@@ -513,7 +517,9 @@ cached() {
 # Runs Aeneas, `$1`, on the `.llbc` file `$2` with the options after them,
 # into `$3`, through the cache. The key is the `.llbc`, hashed as
 # `rooted_hash` hashes it, since Charon writes the destination's path into
-# it; Aeneas's version; and the options. Charon itself runs every time: it
+# it; Aeneas's version; and the options. Charon lists one of its maps in
+# another order on macOS than on Linux, so the two share no entries. Charon
+# itself runs every time: it
 # costs little once its target directory is warm, and the key would otherwise
 # have to name every file the crate's build reads.
 aeneas_cached() {
@@ -1034,10 +1040,9 @@ lake_get() {
     ssh -o BatchMode=yes "$RIND_PROVE_CACHE_HOST" \
         "tar -cf - -C \"\${XDG_CACHE_HOME:-\$HOME/.cache}/rind/lake/$lake_platform/$rev\" ." </dev/null |
         tar -xf - -C "$stage"
-    # Over this host's own outputs for the same inputs: Lean's `.olean`s are
-    # not byte for byte the same from one build to the next, and an importer's
-    # inputs hash its imports' `.olean`s, so only the entry's own make its
-    # importers match its mappings.
+    # Over this host's own outputs for the same inputs, so the entry's
+    # importers match: see UPSTREAM.md, "Lean's `.olean` differs between
+    # builds of the same inputs".
     lake cache unstage --force-overwrite "$stage"
     rm -rf "$stage"
     touch "$lake_fetched/$lake_platform-$rev"

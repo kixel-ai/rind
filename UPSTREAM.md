@@ -242,6 +242,14 @@ Each upstream rind changes, with where its fork is vendored and where the list o
 - **Reported:** no.
 - **Goes when:** Mathlib's cache and Lake's release archives unpack through Lake's artifact cache, or Reservoir serves Mathlib's outputs.
 
+### Lean's `.olean` differs between builds of the same inputs
+
+- **Breaks:** two builds of a module whose inputs Lake hashes the same can write `.olean` files that differ, and Lake hashes an importer's inputs over its imports' `.olean` files. So a host that built a module itself matches none of the importers another host's Lake outputs hold for it, and builds them again.
+- **Reproduce:** build `proofs/` at one commit on two Linux hosts, each without the other's outputs: the same input hash's `outputs/rind/<hash>.json` in each Lake cache names the same `.ilean`, `.c`, and `.ir`, but another `.olean`.
+- **Workaround:** `admin/prove`'s `lake_get` unstages a shared entry with `--force-overwrite`, so this host takes that entry's outputs over its own for the same inputs.
+- **Reported:** no.
+- **Goes when:** Lean writes the same `.olean` for the same inputs, or Lake hashes an importer over its imports' inputs.
+
 ## Mutation testing
 
 ### cargo-mutants cannot see into `cfg_if!`
