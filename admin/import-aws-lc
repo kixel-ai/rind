@@ -685,7 +685,9 @@ IMPORTS_64 = [
             + [f"eor v{i}.16b, v{i}.16b, v{i}.16b // vpxor %xmm{i}, %xmm{i}, %xmm{i}" for i in range(8)],
         },
     },
-    # ChaCha20-Poly1305 in one pass, with NEON.
+    # The constants of ChaCha20-Poly1305 in one pass, with NEON. The routines
+    # are rind's structured copy, `low/aarch64/chacha20poly1305/`, which
+    # rind's Lean model lays out, so they are no longer imported.
     {
         "arch": "aarch64",
         "source": "chacha20_poly1305_armv8.S",
@@ -695,8 +697,7 @@ IMPORTS_64 = [
         "notice": ["Copyright (c) 2020, CloudFlare Ltd.", "SPDX-License-Identifier: ISC"],
         "tables": ["chacha20_consts"],
         "packed": ["chacha20_consts"],
-        "routines": ["chacha20_poly1305_seal", "chacha20_poly1305_open"],
-        "helpers": ["poly_hash_ad_internal"],
+        "routines": [],
     },
 ]
 

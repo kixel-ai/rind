@@ -480,7 +480,15 @@ VG's own are, about the bytes rind's build emits. VG's aarch64 model lacks
 some of what aws-lc's code uses, so `verified-garbage/RindIsa/AArch64.lean`
 extends it, trusted as VG's is: its state is VG's with the frame pointer
 `x29`, and its instructions are VG's, with VG's semantics, and LD1 and ST1 of
-one to four registers, and aws-lc's frame of `x29` and `x30`. Each routine is
+one to four registers, aws-lc's frame of `x29` and `x30`, and the rest of
+what aws-lc's NEON ChaCha20-Poly1305 uses (LD4R, CMP, SUBS, and ADDS of an
+immediate, AND of a bit mask, ADC of the zero register, NEG, MOV between
+registers, post-index LDP, byte loads and stores, UMOV of a byte, and STP
+and LDP of `d` registers through `sp`). Its branches are VG's CBZ and CBNZ
+and B.cond on the flags, and it lays an `ite` out as a branch to the `then`
+code placed after the `else` code and a jump over it, or, with no `then`
+code, a branch past the `else` code, and a `loop` as its body and a branch
+back. Each routine is
 a `Code` program there, such as `RindIsa/AArch64/Sha256Hw.lean`'s, which
 `RindIsa/Proven.lean` lists with the Rust path of the naked function it is
 and the statics it reads. `admin/prove lean` builds `rind-asm`, which prints
@@ -555,6 +563,24 @@ the padding, whose bytes that comparison checks.
   replaces HOL Light's `SHA256_HW_SUBROUTINE_CORRECT`, whose conclusions it
   keeps under weaker hypotheses: the state may overlap the blocks or the
   table, and the table's address is a symbol, not an `adrp` range.
+
+- `Rind/Aarch64/Taint.lean`: `constantTime_of_check`, that a program of
+  rind's AArch64 model that `check` accepts is constant-time (VG's
+  `ConstantTime`) for two states agreeing on the registers it starts from,
+  the stack pointer, and the statics it names. `check` tracks which
+  general-purpose registers, and whether the flags, agree between two such
+  runs, finds each loop's invariant by iterating to a fixed point, treats
+  memory and the vector registers as secret, and fails at an address or
+  branch condition it cannot show agrees or an instruction it does not know.
+
+- `Rind/Aarch64/ChaCha20Poly1305Asm.lean`: `seal_constant_time` and
+  `open_constant_time`, that rind's copy of aws-lc's NEON ChaCha20-Poly1305
+  seal and open, `RindIsa/AArch64/ChaCha20Poly1305.lean`'s `sealProg` and
+  `openProg`, take the same branches and addresses for any two states that
+  agree on the arguments `x0`–`x5`, the stack pointer, and the constants'
+  address, whatever the key, nonce, message, and AAD: `check` accepts each
+  program, which the kernel computes. That they compute RFC 8439's AEAD,
+  the rest of `AwsLc`, is not yet proven.
 
 ## curve25519-dalek's proofs
 
@@ -1632,9 +1658,11 @@ No length bound is needed: VG's spec and `Rind/Spec.lean`'s both wrap the
   `Opens` at `OpensNeon`'s where it finds none.
 
 Each assumes `RunsChaCha20Poly1305`: the entry guard admits the call and the
-SVE2 check returns. CPUs without SVE2 run aws-lc's `chacha20_poly1305_armv8`
-at the other lengths, which no proof covers yet, so `seals` and `opens`,
-which cover every length, assume its contract, `AwsLc`, there;
+SVE2 check returns. CPUs without SVE2 run rind's structured copy of aws-lc's
+`chacha20_poly1305_armv8` at the other lengths, which
+`Rind/Aarch64/ChaCha20Poly1305Asm.lean` proves constant-time but no proof yet
+shows computes the AEAD, so `seals` and `opens`, which cover every length,
+assume its contract, `AwsLc`, there;
 [the aarch64 aws-lc ChaCha20-Poly1305 quest](/quest/m4/verified/chacha20-poly1305-aarch64/aead.md)
 owns that proof.
 
