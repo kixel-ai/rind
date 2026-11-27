@@ -170,7 +170,7 @@ Each crate's README shows its setup.
 | [rind-object-store][] | S3, Azure, and GCS request signing through [object_store](https://github.com/apache/arrow-rs-object-store) |
 | [rind-rcgen][] | certificates through [rcgen](https://github.com/rustls/rcgen) |
 | [rind-rand-core][] | rind's random source as a [rand_core](https://github.com/rust-random/rand) RNG, such as RustCrypto's crates take |
-| [rind-digest][], [rind-aead][], [rind-signature][] | [RustCrypto](https://github.com/RustCrypto)'s `digest`, `aead`, and `signature` traits (`Digest`, `Mac`, `Aead`, `Signer`, `Verifier`), one crate per trait crate; not yet published |
+| [rind-digest][], [rind-aead][], [rind-signature][], [rind-kem][] | [RustCrypto](https://github.com/RustCrypto)'s `digest`, `aead`, `signature`, and `kem` traits (`Digest`, `Mac`, `Aead`, `Signer`, `Verifier`, `Encapsulate`, `Decapsulate`), one crate per trait crate; not yet published |
 | [rind-openssl][] | X25519, Ed25519, ML-KEM, and ML-DSA for whatever links OpenSSL 3, as a provider its configuration loads; built from source |
 | [rind-dart][] | Dart and Flutter, through FFI, as the `rind` package on [pub.dev](https://pub.dev/packages/rind) |
 | [rind_cryptography][] | Dart and Flutter, as the `rind_cryptography` package, with the `cryptography` package's API on rind |
@@ -370,6 +370,7 @@ from other projects keeps its source's license, which [LICENSE] lists.
 [rind-digest]: https://github.com/kixel-ai/rind/tree/main/rind-digest
 [rind-aead]: https://github.com/kixel-ai/rind/tree/main/rind-aead
 [rind-signature]: https://github.com/kixel-ai/rind/tree/main/rind-signature
+[rind-kem]: https://github.com/kixel-ai/rind/tree/main/rind-kem
 [rind-dart]: https://github.com/kixel-ai/rind/tree/main/rind-dart
 [rind_cryptography]: https://github.com/kixel-ai/rind/tree/main/rind-dart/cryptography
 [rind-python]: https://github.com/kixel-ai/rind/tree/main/rind-python

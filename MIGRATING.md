@@ -505,14 +505,13 @@ dependency and its `use` lines change. It offers the same ciphersuites; its
 | `OpenMlsRustCrypto`, `RustCrypto`, `RandError`, `MemoryStorage`, `MemoryStorageError` | the same names in `rind_openmls` |
 | the `test-utils` and `extensions-draft` features | the same features |
 
-### rind-digest, rind-aead, rind-signature
+### rind-digest, rind-aead, rind-signature, rind-kem
 
 These give rind's algorithms RustCrypto's traits, one crate per trait crate, so
-code generic over `Digest`, `Mac`, `Aead`, `Signer`, and `Verifier` runs on rind
+code generic over `Digest`, `Mac`, `Aead`, `Signer`, `Verifier`, and the KEM traits runs on rind
 by naming a different type, and a new major of one trait crate bumps only its
 own adapter. Each module keeps the path of the RustCrypto crate it stands in
-for. Each README lists what rind cannot back: `kem`'s traits, whose crate
-`rind-kem` waits on rind's `kem::Message`.
+for. Each README lists what rind cannot back.
 
 | RustCrypto | rind adapter | rind's own |
 |---|---|---|
@@ -525,7 +524,7 @@ for. Each README lists what rind cannot back: `kem`'s traits, whose crate
 | `p256::ecdsa`, `p384::ecdsa`, `p521::ecdsa` | `rind_signature::{p256, p384, p521}::ecdsa` | `ecdsa::{KeyPair, PublicKey}` |
 | `ml_dsa::{SigningKey, VerifyingKey}` | `rind_signature::ml_dsa` | `ml_dsa::{KeyPair, PublicKey}` |
 | `rsa::pkcs1v15`, `rsa::pss` | `rind_signature::rsa`, over `rind_digest::sha2` hashes | `rsa::{KeyPair, PublicKey}` |
-| `ml_kem` | none yet | `kem::{DecapsulationKey, EncapsulationKey}` |
+| `ml_kem::{MlKem512, MlKem768, MlKem1024}`, `ml_kem::{DecapsulationKey, EncapsulationKey}` | `rind_kem` | `kem::{DecapsulationKey, EncapsulationKey, Message}` |
 
 The differences: rind signs ECDSA, ML-DSA, and PSS with fresh randomness where
 RustCrypto's `Signer` is deterministic (ECDSA, ML-DSA), so a signature differs
@@ -533,7 +532,10 @@ for the same key and message and verifies under both; PKCS#1 v1.5 and Ed25519
 are byte for byte the same. rind refuses a small-order Ed25519 key and an RSA
 modulus under 2048 bits or over 8192 bits, which RustCrypto accepts, so RSA's
 `VerifyingKey` and `SigningKey` are built with `try_new` and `TryFrom`, and a
-refused AEAD open leaves a cleared buffer.
+refused AEAD open leaves a cleared buffer. ML-KEM is byte for byte the same,
+including the implicit-rejection secret for an altered ciphertext; rind-kem's
+keys come only from a 64-byte seed or `Generate`, not `ml-kem`'s deprecated
+expanded form.
 
 ## Crates with their own crypto backend
 

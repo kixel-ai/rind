@@ -19,6 +19,7 @@ members = [
   "rind-digest",
   "rind-aead",
   "rind-signature",
+  "rind-kem",
   "rind-rustls",
   "rind-str0m",
   "rind-jsonwebtoken",

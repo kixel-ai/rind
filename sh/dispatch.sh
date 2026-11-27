@@ -189,7 +189,7 @@ module cross '^(rind/(src/|tests/|Cargo\.toml$|build\.rs$)|rind-bench/Cargo\.tom
     tools="$cross_tools" compiles
 # The published adapters' wasm32 builds, and the tests the nightly runs there.
 # rind's manifest picks the random source rind-ring's browser feature reaches.
-module wasm '^(rind/Cargo\.toml$|rind-(aws-lc-rs|ring|digest|aead|signature|rustls|rcgen|jsonwebtoken|dimpl|str0m|openmls|object-store|rand-core)/(src/|tests/|Cargo\.toml$)|admin/wasm-fixture/|Cargo\.(toml|lock)$|flake\.(nix|lock)$)' \
+module wasm '^(rind/Cargo\.toml$|rind-(aws-lc-rs|ring|digest|aead|signature|kem|rustls|rcgen|jsonwebtoken|dimpl|str0m|openmls|object-store|rand-core)/(src/|tests/|Cargo\.toml$)|admin/wasm-fixture/|Cargo\.(toml|lock)$|flake\.(nix|lock)$)' \
     tools='cargo jq' compiles
 # The adapters that build without `std`, on a target with none: rind-ring and
 # rind-rustls, as ring 0.17 and rustls 0.23 build, and rind-aws-lc-rs, which
