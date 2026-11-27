@@ -23,9 +23,10 @@ them from `Rind.X86_64.AwsLc`.
 
 Trusted: the restatement, and that each call meets the theorem's premises,
 which every call `compress_neon`'s safety contract allows does. `state` and
-`blocks` are distinct allocations, neither overlapping the code or the 64
-bytes below the stack pointer where the routine saves d8-d15, and no Rust
-object wraps the address space; `state` is 8-byte aligned, as `[u64; 8]` is
+`blocks` do not overlap, since one is borrowed mutably while the other is
+borrowed, and neither overlaps the code or the 64 bytes below the stack
+pointer where the routine saves d8-d15, and no Rust object wraps the address
+space; `state` is 8-byte aligned, as `[u64; 8]` is
 on armv7, the stack pointer 4-byte aligned, as the AAPCS keeps it, and the
 code, which starts at `K512`, 32-byte aligned by its `.align 5`; `blocks` is
 a whole number of blocks, at least one, and a slice on armv7 spans fewer than
