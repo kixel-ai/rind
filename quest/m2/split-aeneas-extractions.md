@@ -19,7 +19,7 @@ Baseline (2026-11-27):
 Approach:
 1. **Parallelize and content-address `charon`/`aeneas` extractions:**
    - Give each `to_lean` / `extract` / `extract_kdf` / `extract_armv7` invocation its own scratch directory under `$out/lean-<name>` (and per-target `CARGO_TARGET_DIR` isolation where needed) so all extractions run concurrently.
-   - Cache extracted `{Types,Funs}.lean` artifacts locally (and optionally against the shared Tailscale cache from `proof-cache-and-ci-cpu.md` once available), keying on every input that affects translation: `charon_path`, `rustc -vV`, `aeneas -version`, extraction flags, target triple and effective target/cfg configuration (including `RUSTFLAGS` / `CARGO_ENCODED_RUSTFLAGS`), `.cargo/config.toml`, root and crate `Cargo.toml` manifests, `Cargo.lock`, `rind/build.rs`, `rind/src/**` (and any local/vendored path crates Charon traverses), and `admin/prove`'s extraction/post-processing steps. Preserve file mtimes when generated outputs are byte-identical so Lake never sees spurious dirty timestamps.
+   - Cache extracted `{Types,Funs}.lean` artifacts locally (and optionally against the shared cache from [kixel-ai/rind#1138](https://github.com/kixel-ai/rind/pull/1138)), keying on every input that affects translation: `charon_path`, `rustc -vV`, `aeneas -version`, extraction flags, target triple and effective target/cfg configuration (including `RUSTFLAGS` / `CARGO_ENCODED_RUSTFLAGS`), `.cargo/config.toml`, root and crate `Cargo.toml` manifests, `Cargo.lock`, `rind/build.rs`, `rind/src/**` (and any local/vendored path crates Charon traverses), and `admin/prove`'s extraction/post-processing steps. Preserve file mtimes when generated outputs are byte-identical so Lake never sees spurious dirty timestamps.
 2. **Split monolithic `X86_64` and `Aarch64` extractions by algorithm family:**
    - Following `extract_kdf`'s proven pattern (`proofs/Rind/<Arch>/Kdf/{Types,Funs}.lean` + `{Types,Funs}External.lean`), split independent algorithm families out of the monolith into their own namespaces (such as `MlKem`, `Rsa`, `P256`/`P384`/`Ecdsa`, `Ed25519`/`X25519`, `Aes`, `ChaCha`, `Sha`).
    - Keep shared foundational primitives (e.g., `Error`, `low::ct`, core hash contracts) in a small shared base extraction or opaque boundary so families do not duplicate heavy definitions, and preserve `admin/prove`'s global-name isolation invariant.
@@ -31,7 +31,7 @@ Approach:
 
 ## Related
 
-- [Share Lean/Aeneas proof cache over Tailscale and cut rind-ci CPU](/quest/m0/proof-cache-and-ci-cpu.md) - shared cross-host cache work
+- [Aeneas translation cache and SSH-shared Lake outputs](https://github.com/kixel-ai/rind/pull/1138) - shared cross-host cache work
 - [Build spec-server once in prove.yml and add scoped admin/prove lean targets](/quest/m0/spec-server-single-build.md) - scoped `admin/prove lean <Module>` runs
 - [Spike and benchmark Lean 4.35 speedup levers on rind's proof corpus](/quest/m2/lean-speed-spikes.md) - `module` system and tactic profiling
 - [rind's HOL Light proofs are ported to Lean](/quest/m5/verified/hol-light-to-lean.md) - will add ~19.7k more lines of Lean proofs benefiting from split extractions

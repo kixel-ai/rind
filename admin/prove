@@ -42,7 +42,11 @@
 # `x86_64` or `aarch64`, which `session` below describes. Run it in the flake's
 # `prove` dev shell: `nix develop .#prove --command admin/prove`, or for the
 # HOL Light proofs, the cosimulation, the bytes alone, or a session, `nix
-# develop .#hol-light --command admin/prove hol-light`. `key`, given
+# develop .#hol-light --command admin/prove hol-light`. A run keeps Aeneas's
+# translations and the Lean proofs' Lake outputs for the next, in
+# `~/.cache/rind/` and Lake's own cache; `RIND_PROVE_CACHE_HOST`, an SSH host
+# set alike on every host, the one it names included, shares them through
+# that host, as `cached` and `lake_get` below describe. `key`, given
 # `hol-light <arch>`, `cosim`, or `lean`, checks nothing either: it prints the
 # key that check's result is cached under, which `result_key` below
 # describes, running only what the key hashes; `lean`'s runs in the `prove`
@@ -415,7 +419,9 @@ stable_name() {
 # descriptor, which holds it already rather than waiting on itself. `scratch`
 # guards what every run and session rewrites: the asm build and its symbol
 # index. `hol-light` and `cosim` guard their own directories under `$out` for
-# a whole run. Everything else a run writes is its own.
+# a whole run. `lake` guards `proofs/.lake/build`, which `lake_get` may
+# remove, from a build to the last command that reads it. Everything else a
+# run writes is its own.
 declare -A held
 hold() {
     local fd
@@ -454,6 +460,79 @@ rooted_hash() {
             printf '%s  %s\n' "$(sed -E -e "s|$root|@ROOT@|g" -e "s|$cargo|@CARGO@|g" \
                 -e "/^ *Source: '[^']*', lines [0-9]+:[0-9]+-[0-9]+:[0-9]+/d" "$file" | sha256sum | cut -d' ' -f1)" "$file"
         done
+}
+
+# Translations, which take most of a run's time: an edit to the proofs alone
+# changes none. Each entry holds what one translation wrote, under a key that
+# hashes everything it reads, so checkouts and hosts share it. With
+# `RIND_PROVE_CACHE_HOST`, an SSH host, a miss here reads that host's cache,
+# and a new entry goes there too, so one host serves every other's agents. An
+# unreachable host fails the run, since setting it says the host is there.
+# Entries unread for 14 days go.
+translations=${XDG_CACHE_HOME:-$HOME/.cache}/rind/translations
+mkdir -p "$translations"
+find "$translations" -type f -mtime +14 -delete
+# The SSH host's cache, as its own shell expands it.
+remote_translations='"${XDG_CACHE_HOME:-$HOME/.cache}/rind/translations"'
+
+# Runs the command after `$1`, a key, and `$2`, the directory it writes,
+# which this empties first, or takes what an earlier run under that key wrote
+# there from the cache. Each step's status is checked by hand, since a
+# caller's `||` turns off `set -e` in here.
+cached() {
+    local key=$1 dest=$2 entry status=0
+    shift 2
+    entry=$translations/$key.tar.gz
+    rm -rf "$dest"
+    mkdir -p "$dest"
+    if [[ ! -f $entry && -n ${RIND_PROVE_CACHE_HOST:-} ]]; then
+        ssh -o BatchMode=yes "$RIND_PROVE_CACHE_HOST" \
+            "f=$remote_translations/$key.tar.gz; [ -f \"\$f\" ] || exit 3; touch \"\$f\" && cat \"\$f\"" \
+            </dev/null >"$entry.$$" || status=$?
+        case $status in
+        0) mv "$entry.$$" "$entry" ;;
+        3) rm "$entry.$$" ;;
+        *)
+            rm "$entry.$$"
+            echo "admin/prove: cannot read the translation cache on RIND_PROVE_CACHE_HOST, $RIND_PROVE_CACHE_HOST" >&2
+            return 1
+            ;;
+        esac
+    fi
+    if [[ -f $entry ]]; then
+        touch "$entry" && tar -xzf "$entry" -C "$dest"
+        return
+    fi
+    "$@" || return
+    tar -czf "$entry.$$" -C "$dest" . && mv "$entry.$$" "$entry" || return
+    if [[ -n ${RIND_PROVE_CACHE_HOST:-} ]]; then
+        ssh -o BatchMode=yes "$RIND_PROVE_CACHE_HOST" \
+            "d=$remote_translations; mkdir -p \"\$d\" && cat >\"\$d/$key.tar.gz.\$\$\" &&
+                mv \"\$d/$key.tar.gz.\$\$\" \"\$d/$key.tar.gz\" && find \"\$d\" -type f -mtime +14 -exec rm -f {} +" \
+            <"$entry" || {
+            echo "admin/prove: cannot write the translation cache on RIND_PROVE_CACHE_HOST, $RIND_PROVE_CACHE_HOST" >&2
+            return 1
+        }
+    fi
+}
+
+# Runs Aeneas, `$1`, on the `.llbc` file `$2` with the options after them,
+# into `$3`, through the cache. The key is the `.llbc`, hashed as
+# `rooted_hash` hashes it, since Charon writes the destination's path into
+# it; Aeneas's version; and the options. Charon lists one of its maps in
+# another order on macOS than on Linux, so the two share no entries. Charon
+# itself runs every time: it
+# costs little once its target directory is warm, and the key would otherwise
+# have to name every file the crate's build reads.
+aeneas_cached() {
+    local aeneas=$1 llbc=$2 dest=$3 key
+    shift 3
+    key=$({
+        "$aeneas" -version
+        printf '%q\n' "$@"
+        rooted_hash "$llbc" | cut -d' ' -f1
+    } | sha256sum | cut -d' ' -f1) || return
+    cached "$key" "$dest" "$aeneas" "$@" -dest "$dest" "$llbc"
 }
 
 # Writes to `$out/keys/<name>`, and with `key` prints, the key the prove
@@ -781,6 +860,21 @@ dalek_copied=(
     src/montgomery.rs:mul_bits_be
     src/scalar.rs:bits_le
 )
+# BAIF's translation of its workspace in `$1/work`, with the configurations
+# after it and `charon_opts`, into `$1/lean`, for `dalek`.
+dalek_translate() {
+    local dir=$1
+    shift
+    # Unset, not empty: cargo takes an empty CARGO_ENCODED_RUSTFLAGS over
+    # each configuration's flags.
+    (cd "$dir/work/curve25519-dalek" && env -u RUSTFLAGS -u CARGO_ENCODED_RUSTFLAGS CARGO_TARGET_DIR=$PWD/../target \
+        "$DALEK_AENEAS/charon" cargo --preset=aeneas "$@" "${charon_opts[@]}" \
+        --dest-file "$PWD/../../curve25519_dalek.llbc" \
+        -- --locked --no-default-features --features alloc,zeroize -Zjson-target-spec -Zbuild-std=core,alloc) &&
+        "$DALEK_AENEAS/aeneas" -backend lean -split-files -namespace Curve25519Dalek \
+            -dest "$dir/lean" -subdir Curve25519Dalek "$dir/curve25519_dalek.llbc"
+}
+
 # Checks that the curve25519-dalek rind builds on armv7 is the code BAIF's
 # proofs at `admin/import-dalek`'s REV are about, in every definition
 # `dalek_roots` reach: that it is the crates.io release Cargo.lock pins with
@@ -794,7 +888,7 @@ dalek_copied=(
 # longer applies to the release is skipped: a definition it would have
 # changed then differs.
 dalek() {
-    local dir=$out/dalek fork=.tmp/upstream/curve25519-dalek lean src features bits triple spec patch
+    local dir=$out/dalek fork=.tmp/upstream/curve25519-dalek lean src features bits triple spec patch key
     local targets=() charon_opts
     hold dalek
     rm -rf "$dir"
@@ -868,16 +962,20 @@ PY
         export "CARGO_TARGET_${bits}BIT_NOTABLES_RUSTFLAGS=--cfg curve25519_dalek_backend=\"serial\""
     done
     eval "$(sed -n '/^charon_opts=(/,/^)/p' "$lean/scripts/aeneas-translate.sh")"
-    # Unset, not empty: cargo takes an empty CARGO_ENCODED_RUSTFLAGS over
-    # each configuration's flags.
-    (cd "$dir/work/curve25519-dalek" && env -u RUSTFLAGS -u CARGO_ENCODED_RUSTFLAGS CARGO_TARGET_DIR=$PWD/../target \
-        "$DALEK_AENEAS/charon" cargo --preset=aeneas "${targets[@]}" "${charon_opts[@]}" \
-        --dest-file "$PWD/../../curve25519_dalek.llbc" \
-        -- --locked --no-default-features --features alloc,zeroize -Zjson-target-spec -Zbuild-std=core,alloc)
-    "$DALEK_AENEAS/aeneas" -backend lean -split-files -namespace Curve25519Dalek \
-        -dest "$dir" -subdir Curve25519Dalek "$dir/curve25519_dalek.llbc" >"$dir/aeneas.log" 2>&1 ||
-        { tail -20 "$dir/aeneas.log" >&2; return 1; }
-    admin/dalek-closure "$lean/Curve25519Dalek" "$dir/Curve25519Dalek" 32bit-tables "${dalek_roots[@]}"
+    # The translation reads nothing but the workspace, the configurations,
+    # the options, and the release of Charon and Aeneas, which name their
+    # toolchain, so they key it, Charon's build included: `$dir` starts empty,
+    # so that build is cold every run.
+    key=$({
+        realpath -e "$DALEK_AENEAS"
+        declare -f dalek_translate
+        declare -p charon_opts
+        env | grep '^CARGO_TARGET_.*BIT_.*TABLES_RUSTFLAGS=' | LC_ALL=C sort
+        cd "$dir" && files_hash work ./*.json
+    } | sha256sum | cut -d' ' -f1)
+    cached "$key" "$dir/lean" dalek_translate "$dir" "${targets[@]}" >"$dir/translate.log" 2>&1 ||
+        { tail -20 "$dir/translate.log" >&2; return 1; }
+    admin/dalek-closure "$lean/Curve25519Dalek" "$dir/lean/Curve25519Dalek" 32bit-tables "${dalek_roots[@]}"
     release dalek
 }
 
@@ -901,6 +999,85 @@ lean_deps() {
     fi
 }
 
+# The proofs' Lake outputs, shared through `RIND_PROVE_CACHE_HOST` as
+# `translations` are: a build there leaves an entry under the commit it built
+# on, its input-to-output mappings and the artifacts they name, and a build
+# here first takes the entry of the nearest commit on its first-parent line.
+# Lake replays a module only when its inputs hash as a mapping says, so any
+# entry is safe to take, and the nearest shares the most. Entries are per
+# platform, since Lake's hashes may differ between them; their artifacts are
+# hard links into a pool that holds each once. Entries unread for 14 days go,
+# and with them the artifacts no other entry holds. From `proofs/`.
+lake_platform=$(uname -s)-$(uname -m)
+# On the SSH host, given the platform: prints the first of the commits after
+# it that has an entry, marking the entry read.
+lake_remote_find='d=${XDG_CACHE_HOME:-$HOME/.cache}/rind/lake/$1; shift
+for r in "$@"; do if [ -f "$d/$r/outputs.jsonl" ]; then touch "$d/$r"; echo "$r"; exit 0; fi; done'
+# On the SSH host, given the platform and a commit: stores the staged
+# outputs on stdin as that commit's entry, unless it has one, then prunes,
+# under a lock, since two uploads can hold the same new artifact.
+lake_remote_put='set -e; d=${XDG_CACHE_HOME:-$HOME/.cache}/rind/lake/$1; t=$d/tmp.$$
+mkdir -p "$d/pool" "$t"; tar -xf - -C "$t"
+exec 9>"$d/lock"; flock 9
+for f in "$t"/*; do n=${f##*/}; [ "$n" = outputs.jsonl ] && continue
+if [ -e "$d/pool/$n" ]; then ln -f "$d/pool/$n" "$f"; else ln "$f" "$d/pool/$n"; fi; done
+if [ -e "$d/$2" ]; then rm -rf "$t"; else mv "$t" "$d/$2"; fi
+find "$d" -mindepth 1 -maxdepth 1 \( -name "tmp.*" -mtime +1 -o -name "[0-9a-f]*" -mtime +14 \) -exec rm -rf {} +
+find "$d/pool" -type f -links 1 -exec rm -f {} +'
+
+# Takes the nearest commit's entry into Lake's cache, unless this checkout
+# already took it, which `.lake/rind-fetched` records.
+lake_get() {
+    local rev stage=../$out/lake-stage cache input
+    [[ -n ${RIND_PROVE_CACHE_HOST:-} ]] || return 0
+    # shellcheck disable=SC2046 # one argument per commit
+    rev=$(ssh -o BatchMode=yes "$RIND_PROVE_CACHE_HOST" "sh -c '$lake_remote_find' sh $lake_platform" \
+        $(git rev-list --first-parent -n 100 HEAD) </dev/null) || {
+        echo "admin/prove: cannot read the Lake cache on RIND_PROVE_CACHE_HOST, $RIND_PROVE_CACHE_HOST" >&2
+        return 1
+    }
+    [[ -n $rev && $rev != "$(cat .lake/rind-fetched 2>/dev/null)" ]] || return 0
+    rm -rf "$stage"
+    mkdir -p "$stage"
+    ssh -o BatchMode=yes "$RIND_PROVE_CACHE_HOST" \
+        "tar -cf - -C \"\${XDG_CACHE_HOME:-\$HOME/.cache}/rind/lake/$lake_platform/$rev\" ." </dev/null |
+        tar -xf - -C "$stage"
+    # The entry's outputs replace this host's own for the same inputs, and
+    # this checkout's build, so the entry's importers match: see UPSTREAM.md,
+    # "Lean's `.olean` differs between builds of the same inputs". Only the
+    # mappings go, not `--force-overwrite`'s artifacts, which another
+    # checkout's build may be reading; an artifact's name is its content's.
+    cache=$(lake env printenv LAKE_CACHE_DIR)
+    sed -n 's/^\["\([0-9a-f]*\)",.*/\1/p' "$stage/outputs.jsonl" | while read -r input; do
+        rm -f "$cache/outputs/rind/$input.json"
+    done
+    lake cache unstage "$stage"
+    rm -rf "$stage" .lake/build
+    echo "$rev" >.lake/rind-fetched
+}
+
+# Leaves the outputs of the build whose mappings are in `$1` as this commit's
+# entry, unless it has one or the proofs differ from the commit's.
+lake_put() {
+    local rev stage=../$out/lake-stage found
+    [[ -n ${RIND_PROVE_CACHE_HOST:-} && -z $(git status --porcelain --untracked-files=all -- .) ]] || return 0
+    rev=$(git rev-parse HEAD)
+    found=$(ssh -o BatchMode=yes "$RIND_PROVE_CACHE_HOST" "sh -c '$lake_remote_find' sh $lake_platform $rev" </dev/null) || {
+        echo "admin/prove: cannot read the Lake cache on RIND_PROVE_CACHE_HOST, $RIND_PROVE_CACHE_HOST" >&2
+        return 1
+    }
+    [[ -z $found ]] || return 0
+    rm -rf "$stage"
+    lake cache stage "$1" "$stage"
+    tar -cf - -C "$stage" . |
+        ssh -o BatchMode=yes "$RIND_PROVE_CACHE_HOST" "sh -c '$lake_remote_put' sh $lake_platform $rev" || {
+        echo "admin/prove: cannot write the Lake cache on RIND_PROVE_CACHE_HOST, $RIND_PROVE_CACHE_HOST" >&2
+        return 1
+    }
+    rm -rf "$stage"
+    echo "$rev" >.lake/rind-fetched
+}
+
 # Tests the Lean specs the proofs trust, as `admin/spec-tests` describes:
 # builds them as `proofs/`'s `spec-server`, and runs each on its published
 # vectors in `thirdparty/vectors/` and on `SPEC_TESTS_RANDOM` random inputs
@@ -911,9 +1088,11 @@ lean_deps() {
 spec_tests() {
     local random=${SPEC_TESTS_RANDOM:-8} seed=${SPEC_TESTS_SEED:-1} full=()
     [[ -z ${SPEC_TESTS_FULL:-} ]] || full=(full)
+    hold lake
     (cd proofs && lake build spec-server)
     CARGO_TARGET_DIR=$PWD/target cargo run --release --locked -q -p spec-tests -- \
         proofs/.lake/build/bin/spec-server thirdparty/vectors "$seed" "$random" "${full[@]}"
+    release lake
 }
 
 # Checks that each function rind proves in its own extension of VG's AArch64
@@ -1726,13 +1905,11 @@ extract() {
 # Translates `$out/<dir, lowercased>.llbc` into `proofs/Rind/<dir>/{Types,Funs}.lean`.
 to_lean() {
     local dir=$1
-    rm -rf "$out/lean"
     # x86_64's generator table rows are 512-word literals, and Ed25519's
     # tables of B's odd multiples 1024-word ones, which elaborate past Aeneas's
     # default recursion depth of 2048.
-    aeneas -backend lean -split-files -abort-on-error \
-        -no-progress-bar -max-recdepth 8192 -dest "$out/lean" -subdir "Rind/$dir" \
-        -namespace "rind.${dir,,}" "$out/${dir,,}.llbc"
+    aeneas_cached aeneas "$out/${dir,,}.llbc" "$out/lean" -backend lean -split-files -abort-on-error \
+        -no-progress-bar -max-recdepth 8192 -subdir "Rind/$dir" -namespace "rind.${dir,,}"
     cp "$out/lean/Rind/$dir/Types.lean" "$out/lean/Rind/$dir/Funs.lean" "proofs/Rind/$dir/"
 }
 
@@ -1865,10 +2042,8 @@ extract_kdf() {
         "$@" \
         --dest-file "$PWD/../$out/${dir,,}-kdf.llbc" \
         -- -p rind --lib --target "$arch-unknown-linux-gnu")
-    rm -rf "$out/lean"
-    aeneas -backend lean -split-files -abort-on-error \
-        -no-progress-bar -dest "$out/lean" -subdir "Rind/$dir/Kdf" \
-        -namespace "rind.${dir,,}.kdf" "$out/${dir,,}-kdf.llbc"
+    aeneas_cached aeneas "$out/${dir,,}-kdf.llbc" "$out/lean" -backend lean -split-files -abort-on-error \
+        -no-progress-bar -subdir "Rind/$dir/Kdf" -namespace "rind.${dir,,}.kdf"
     mkdir -p "proofs/Rind/$dir/Kdf"
     # Aeneas names both of `ZeroablePrimitive`'s `Copy` clauses, which
     # `NonZeroU32::get` brings in, `markerCopyInst`, which Lean refuses as a
@@ -2438,11 +2613,16 @@ fi
 [[ -z $key_only ]] || exit 0
 
 dalek
+hold lake
 cd proofs
 lean_deps
-lake build
+lake_get
+# The mappings, which archive each module's outputs, only for `lake_put`.
+lake build ${RIND_PROVE_CACHE_HOST:+-o "../$out/lake-outputs.jsonl"}
+lake_put "../$out/lake-outputs.jsonl"
 [[ ${#skipped[@]} -gt 0 ]] || lake env lean "../$out/SimdVectors.lean"
 cd ..
+release lake
 # The spec tests compile Mathlib to C to link `spec-server`, so CI runs them
 # in a job of their own: `prove.yml`'s `spec-tests`.
 if [[ -z $only ]]; then
