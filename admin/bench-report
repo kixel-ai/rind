@@ -501,13 +501,16 @@ def hold(args):
     """Runs `run` again with the host held: every other top-level cgroup
     slice, which holds every CI runner, agent session, and Nix build, is
     confined to the host's last core or two, and the run measures in a slice
-    of its own. Other work slows instead of stopping, nothing waits for it to
-    drain, and it keeps under the busy limit off the benchmarks' cores. The
+    of its own on the rest. Other work slows instead of stopping, nothing
+    waits for it to drain, and it keeps under the busy limit on cores no
+    benchmark runs on, which a thread sharing one would slow by a third. The
     hold ends with the run, or after HOLD_RELEASE_AFTER if the run dies
     without ending it. Needs systemd and passwordless sudo."""
     if sys.platform != "linux":
         fail(f"{args.host}: a hold needs Linux's cgroups")
-    cpus = ",".join(map(str, held_cpus(core_siblings, busy_limit())))
+    held = held_cpus(core_siblings, busy_limit())
+    cpus = ",".join(map(str, held))
+    free = ",".join(str(cpu) for cpu in range(cpu_count()) if cpu not in held)
     slices = sorted(n for n in os.listdir("/sys/fs/cgroup") if n.endswith(".slice") and n != HOLD_SLICE)
     release = "; ".join(f"systemctl set-property --runtime {s} AllowedCPUs=" for s in slices)
     # A timer an earlier run left would end this hold early.
@@ -526,7 +529,7 @@ def hold(args):
         print(f"bench-report: {args.host}: held, other work on CPUs {cpus}", file=sys.stderr)
         # sudo drops the environment, which holds the dev shell, so pass it on;
         # setpriv drops root's groups, which sudo would keep.
-        scope = ["systemd-run", "--scope", "--quiet", f"--slice={HOLD_SLICE}", "--"]
+        scope = ["systemd-run", "--scope", "--quiet", f"--slice={HOLD_SLICE}", f"--property=AllowedCPUs={free}", "--"]
         user = ["setpriv", f"--reuid={os.getuid()}", f"--regid={os.getgid()}", "--init-groups", "--"]
         env = ["env", "-i", *(f"{k}={v}" for k, v in os.environ.items())]
         again = [sys.executable, os.path.abspath(__file__), *sys.argv[1:], "--held", cpus]
@@ -648,8 +651,11 @@ def run(args):
     env = dict(os.environ, CARGO_BUILD_JOBS=str(args.jobs), CARGO_TERM_COLOR="never")
     env["CARGO_TARGET_DIR"] = os.path.abspath(args.target_dir)
     # The every-logical-CPU rows refuse to run on fewer CPUs than this, so the
-    # report's "all N logical CPUs" is what they measured.
-    env["RIND_BENCH_CPUS"] = str(result["cpu"]["logical_cpus"])
+    # report's CPU count is what they measured: all of them, or all a hold
+    # leaves the run.
+    if args.held is not None:
+        result["cpu"]["bench_cpus"] = cpu_count() - len(parse_cpu_list(args.held))
+    env["RIND_BENCH_CPUS"] = str(result["cpu"].get("bench_cpus", cpu_count()))
     cargo, versions, openssl = toolchain(env)
     result["toolchain"] = versions
     with open(os.path.join(ROOT, "Cargo.lock")) as f:
@@ -1883,7 +1889,12 @@ def scaling(host):
             parts.append(f"{kind} handshakes at {rind_one / rind_all:.1f} times")
     if not parts:
         return []
-    return [f"rind-rustls on all {host['cpu']['logical_cpus']} logical CPUs runs {and_list(parts)} its one-thread rate.", ""]
+    cpus = host["cpu"]["logical_cpus"]
+    if "bench_cpus" in host["cpu"]:
+        where = f"on {host['cpu']['bench_cpus']} of its {cpus} logical CPUs, all but those its hold left other work,"
+    else:
+        where = f"on all {cpus} logical CPUs"
+    return [f"rind-rustls {where} runs {and_list(parts)} its one-thread rate.", ""]
 
 
 def host_table(host, verified):
@@ -2358,7 +2369,8 @@ def report(hosts, tiers, verified, gaps):
             "the host didn't time it, as its section says.",
             "",
             "The rustls rows run both peers in one process. The every-logical-CPU rows run one handshake per "
-            "thread on all of the host's logical CPUs at once, each thread with its own client and server, and give the "
+            "thread on all of the host's logical CPUs at once, or all but the core or two a hold leaves other work on "
+            "a host CI runners and agent sessions share, each thread with its own client and server, and give the "
             "machine's time per handshake; each host's text gives rind-rustls's throughput there over its "
             "one-thread rate. A full handshake over rind-rustls's default provider, both peers, makes 245 heap "
             "allocations with an ECDSA P-256 certificate on x86_64, which `rind-rustls/tests/allocations.rs` pins. "
