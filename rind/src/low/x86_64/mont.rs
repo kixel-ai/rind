@@ -192,19 +192,24 @@ pub(super) unsafe extern "sysv64" fn bn_sqr8x_internal() {
 }
 
 /// `bn_sqr8x_internal` by `mulx`, `adcx`, and `adox`, which only
-/// `bn_sqr8x_mont` and `bn_powerx5` call, likewise.
+/// `bn_sqr8x_mont` and `bn_powerx5` call, likewise: rind's structured copy
+/// of aws-lc's, which `proofs/` proves.
 #[unsafe(naked)]
 pub(super) unsafe extern "sysv64" fn bn_sqrx8x_internal() {
+    // aws-lc's alignment, which raises the section's on ELF but would pad
+    // after the label on Mach-O, whose functions share one, as
+    // `admin/import-aws-lc` says; and its CFI, which Apple's flavor lacks.
     #[cfg(not(target_vendor = "apple"))]
     core::arch::naked_asm!(
-        include_str!("aws_lc/bn_sqrx8x_internal.linux.s"),
-        options(att_syntax)
+        ".align 32",
+        ".cfi_startproc",
+        ".cfi_def_cfa rsp, 8",
+        include_str!("sqrx8x_internal.s"),
+        ".cfi_endproc",
+        options(att_syntax),
     );
     #[cfg(target_vendor = "apple")]
-    core::arch::naked_asm!(
-        include_str!("aws_lc/bn_sqrx8x_internal.apple.s"),
-        options(att_syntax)
-    );
+    core::arch::naked_asm!(include_str!("sqrx8x_internal.s"), options(att_syntax));
 }
 
 #[unsafe(naked)]
