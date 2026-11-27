@@ -19,10 +19,14 @@
 //! cosimulates. `proofs/Rind/X86_64/VgChaCha20Poly1305.lean` takes those
 //! theorems as axioms about `seal_ifma` and `open_ifma`, and
 //! `proofs/Rind/X86_64/ChaCha20Poly1305.lean` proves `seal` and `open`, and
-//! the AEAD API above them, from them where VG's routines run. The aws-lc
-//! assembly is not formally verified: its correctness rests on its use and
-//! testing in BoringSSL and aws-lc. rind tests both against RFC 8439, Wycheproof,
-//! aws-lc-rs, and separate ChaCha20 and Poly1305 passes.
+//! the AEAD API above them, from them where VG's routines run. aws-lc's
+//! seal and open are not formally verified yet: their correctness rests on
+//! their use and testing in BoringSSL and aws-lc. The AAD hash they call is
+//! rind's restructured copy of aws-lc's, which
+//! `proofs/Rind/X86_64/PolyHashAdProof.lean` proves on rind's extension of
+//! VG's model hashes the AAD as RFC 8439 does, in constant time. rind tests
+//! both against RFC 8439, Wycheproof, aws-lc-rs, and separate ChaCha20 and
+//! Poly1305 passes.
 //!
 //! VG's routines zero their stack scratch before returning, which AGENTS.md
 //! allows an imported proven routine: VG defines each routine with that
@@ -244,19 +248,26 @@ unsafe extern "sysv64" fn chacha20_poly1305_seal(
 }
 
 /// Hashes the AAD into the Poly1305 state the two routines keep in
-/// registers and on their stack frame; only they call it.
+/// registers and on their stack frame; only they call it. rind's own copy
+/// of aws-lc's, in the structure
+/// `proofs/verified-garbage/RindIsa/X86_64/PolyHashAd.lean` lays out, which
+/// `proofs/Rind/X86_64/PolyHashAdProof.lean` proves.
 #[unsafe(naked)]
 unsafe extern "sysv64" fn poly_hash_ad_internal() {
+    // aws-lc's alignment, which raises the section's on ELF but would pad
+    // after the label on Mach-O, whose functions share one, as
+    // `admin/import-aws-lc` says; and its CFI, which Apple's flavor lacks.
     #[cfg(not(target_vendor = "apple"))]
     core::arch::naked_asm!(
-        include_str!("aws_lc/poly_hash_ad_internal.linux.s"),
+        ".align 64",
+        ".cfi_startproc",
+        ".cfi_def_cfa rsp, 8",
+        include_str!("poly_hash_ad.s"),
+        ".cfi_endproc",
         options(att_syntax),
     );
     #[cfg(target_vendor = "apple")]
-    core::arch::naked_asm!(
-        include_str!("aws_lc/poly_hash_ad_internal.apple.s"),
-        options(att_syntax),
-    );
+    core::arch::naked_asm!(include_str!("poly_hash_ad.s"), options(att_syntax));
 }
 
 #[cfg(test)]
