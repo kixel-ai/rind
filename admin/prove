@@ -1034,7 +1034,11 @@ lake_get() {
     ssh -o BatchMode=yes "$RIND_PROVE_CACHE_HOST" \
         "tar -cf - -C \"\${XDG_CACHE_HOME:-\$HOME/.cache}/rind/lake/$lake_platform/$rev\" ." </dev/null |
         tar -xf - -C "$stage"
-    lake cache unstage "$stage"
+    # Over this host's own outputs for the same inputs: Lean's `.olean`s are
+    # not byte for byte the same from one build to the next, and an importer's
+    # inputs hash its imports' `.olean`s, so only the entry's own make its
+    # importers match its mappings.
+    lake cache unstage --force-overwrite "$stage"
     rm -rf "$stage"
     touch "$lake_fetched/$lake_platform-$rev"
 }
