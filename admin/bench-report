@@ -7,6 +7,8 @@ Usage:
   admin/bench-report render [--from DIR] [--check]
   admin/bench-report gate DIR [--previous DIR]
   admin/bench-report summary DIR
+  admin/bench-report names [--match REGEX] [CARGO_ARGS...]
+  admin/bench-report results METRICS
 
 `collect` copies one commit to each host in turn, waits for room under
 `quest gate` and for any lease it has, builds rind-bench there in the commit's Nix dev shell with
@@ -34,6 +36,11 @@ run, given by `--previous`, showed too. The weekly bench runs it.
 
 `summary` prints a Markdown table of a collection: rind's time per operation
 and host, against the fastest other library's.
+
+`names` prints the names of the rind-bench benchmarks CARGO_ARGS select, such
+as `--bench sha2`, a line each, by running each once natively as swole lists
+them, keeping those whose ID matches REGEX. `results` prints the IDs and times
+of a `swole bench --out` file as JSON. The weekly bench's native rows run both.
 
 `run` is the host side of `collect`, run from the copied checkout. Results
 written to DIR are measurements, not history: rerun `collect` to refresh them.
@@ -105,16 +112,16 @@ BUSY_SHARE = 0.1
 # share, under its home directory; this host uses the checkout's `.tmp/` instead.
 REMOTE_DIR = ".cache/rind-bench-report"
 
-# Criterion's timing, shortened from 3 s of warm-up and 5 s of measurement so
-# that a host's run takes about half an hour.
-CRITERION_ARGS = ["--noplot", "--warm-up-time", "1", "--measurement-time", "3"]
+# What swole adds to RUSTFLAGS for every build, so a listing builds what swole
+# then times rather than a second copy.
+SWOLE_CFG = "--cfg=codspeed"
 
 # The prefix of a row rind-bench times rind alone in, without `Dit::hold()`,
 # naming the row it repeats.
 DIT_PER_CALL = "dit-per-call/"
 
-# The report's operations by section, most common first, as criterion IDs
-# with `{lib}` in the library's place. Each is timed for every library
+# The report's operations by section, most common first, as benchmark IDs
+# (see `bench_id`) with `{lib}` in the library's place. Each is timed for every library
 # rind-bench has a row for.
 SECTIONS = [
     # Both peers in one process.
@@ -365,19 +372,60 @@ def fail(message):
     sys.exit(f"bench-report: {message}")
 
 
-def operation_regex(refused=()):
-    """A criterion filter matching exactly the report's operations, without
-    the libraries in `refused`."""
-    # Name the report's libraries rather than match any, so a bench's extra
-    # row (slhdsa's fips205) costs no time and ranks nothing. The regex crate
-    # has no lookahead, so `refused` drops out of the list too.
-    lib = "(" + "|".join(re.escape(row) for row, name in LIBRARIES.items() if name not in refused) + ")"
-    ops = "|".join(re.escape(op).replace(re.escape("{lib}"), lib) for op in OPERATIONS)
-    return f"^({ops})$"
+def bench_id(name):
+    """The ID of a swole benchmark's name, as rind-bench/benches/common/mod.rs
+    describes it: `rind-bench/benches/sha2.rs::sha256::rind[32B]` is
+    `sha256/rind/32B`, the path after the file with `/` for `::` and `-` for
+    `_`, then the argument."""
+    file, sep, path = name.partition("::")
+    m = re.fullmatch(r"([A-Za-z0-9_:]+)(?:\[(.+)\])?", path)
+    if not (file and sep and m):
+        fail(f"{name!r} is not a rind-bench benchmark's name")
+    path, arg = m.groups()
+    path = path.replace("::", "/").replace("_", "-")
+    return f"{path}/{arg}" if arg else path
+
+
+def bench_names(cargo, env, args, match=None):
+    """The rind-bench benchmarks `args` select, as swole names them, by running
+    each once natively as swole lists them, keeping those whose ID `match`
+    keeps."""
+    env = dict(env)
+    env["RUSTFLAGS"] = f"{env['RUSTFLAGS']} {SWOLE_CFG}" if env.get("RUSTFLAGS") else SWOLE_CFG
+    out = subprocess.run(
+        cargo + ["bench", "-q", "-p", "rind-bench", *args], env=env, check=True, stdout=subprocess.PIPE, text=True
+    ).stdout
+    names = [line[len("swole ran ") :] for line in out.splitlines() if line.startswith("swole ran ")]
+    if not names:
+        fail(f"cargo bench {' '.join(args)} ran no benchmark")
+    return [n for n in names if match is None or match(bench_id(n))]
+
+
+def swole_times(path):
+    """Each benchmark's ID and nanoseconds a call in a `swole bench --out` file."""
+    with open(path) as f:
+        samples = json.load(f)["samples"]
+    # With a base, the base's sample comes first; the run's own is last.
+    times = []
+    for name, measures in samples[-1]["metrics"].items():
+        (measure,) = [m for m in measures if m.startswith("time (")]
+        times.append({"id": bench_id(name), "ns": measures[measure]["value"]})
+    return times
+
+
+def swole():
+    """The swole flake.nix pins, built."""
+    out = subprocess.run(
+        ["nix", "build", f"path:{ROOT}#swole", "--no-link", "--print-out-paths"],
+        check=True,
+        stdout=subprocess.PIPE,
+        text=True,
+    ).stdout
+    return os.path.join(out.strip(), "bin", "swole")
 
 
 def operation_of(full_id):
-    """The operation and library of a criterion ID, or None if it is not one."""
+    """The operation and library of a benchmark ID, or None if it is not one."""
     for op in OPERATIONS:
         pattern = "^" + re.escape(op).replace(re.escape("{lib}"), "([^/]+)") + "$"
         m = re.match(pattern, full_id)
@@ -391,6 +439,15 @@ def pinned_toolchain():
         m = re.search(r'rust-bin\.stable\."([0-9.]+)"', f.read())
     if not m:
         fail("flake.nix names no pinned stable toolchain")
+    return m.group(1)
+
+
+def pinned_swole():
+    """The commit of kixel-ai/swole that flake.nix pins."""
+    with open(os.path.join(ROOT, "flake.nix")) as f:
+        m = re.search(r'swole\.url = "github:kixel-ai/swole/([0-9a-f]{40})"', f.read())
+    if not m:
+        fail("flake.nix pins no swole commit")
     return m.group(1)
 
 
@@ -567,8 +624,7 @@ def run(args):
     # The OpenSSL the benchmarks link, beside its crates.
     result["libraries"]["openssl"]["linked"] = output([openssl, "version"], env)
 
-    bench = cargo + ["bench", "-p", "rind-bench", "--features", "__bench_openssl"]
-    subprocess.run(bench + ["--no-run"], env=env, check=True)
+    swole_bin = swole()
     # The CPU features rind reads, which pick its paths on this host.
     result["rind_cpu"] = json.loads(output(cargo + ["run", "-q", "--release", "-p", "rind-cpuid"], env))
     # Each library this CPU lacks a required feature for, with the features.
@@ -578,6 +634,17 @@ def run(args):
         for lib, features in REQUIRED.items()
         if (missing := [f for f in features.get(host_arch(result), []) if not cpuid[f]])
     }
+    # rind-bench leaves out Graviola's rows where it would panic, as listing
+    # them runs each once.
+    if "graviola" in result["refused"]:
+        env["RIND_BENCH_NO_GRAVIOLA"] = "1"
+    # The report's rows, built and listed: only the report's libraries, so a
+    # bench's extra row (slhdsa's fips205) costs no time and ranks nothing.
+    bench_args = ["--features", "__bench_openssl"]
+    names = bench_names(cargo, env, bench_args, match=operation_of)
+    listed = os.path.join(env["CARGO_TARGET_DIR"], "bench-report.benchmarks")
+    with open(listed, "w") as f:
+        f.writelines(f"{n}\n" for n in names)
 
     try:
         idle_before_run = check_idle("before the benchmarks")
@@ -585,13 +652,12 @@ def run(args):
         finish("busy", reason=str(e))
         fail(f"{args.host}: {e}")
 
-    criterion_dir = os.path.join(env["CARGO_TARGET_DIR"], "criterion")
-    shutil.rmtree(criterion_dir, ignore_errors=True)
-    criterion_args = CRITERION_ARGS + [operation_regex(result["refused"])]
+    times = os.path.join(env["CARGO_TARGET_DIR"], "bench-report.json")
+    swole_args = ["bench", "--benchmarks", listed, "--out", times, "--", "-p", "rind-bench", *bench_args]
     wall0 = time.monotonic()
     ticks0 = cpu_times()
     ours0 = resource.getrusage(resource.RUSAGE_CHILDREN)
-    subprocess.run(bench + ["--"] + criterion_args, env=env, check=True)
+    subprocess.run([swole_bin, *swole_args], env=env, check=True)
     ours1 = resource.getrusage(resource.RUSAGE_CHILDREN)
     wall = time.monotonic() - wall0
 
@@ -607,34 +673,17 @@ def run(args):
     }
 
     results = []
-    for path in sorted(glob.glob(os.path.join(criterion_dir, "**", "new", "benchmark.json"), recursive=True)):
-        with open(path) as f:
-            meta = json.load(f)
-        found = operation_of(meta["full_id"])
-        if found is None:
-            continue
-        op, lib = found
-        with open(os.path.join(os.path.dirname(path), "estimates.json")) as f:
-            estimates = json.load(f)
-        estimate = estimates.get("slope") or estimates["mean"]
-        results.append(
-            {
-                "operation": op,
-                "library": LIBRARIES[lib],
-                "id": meta["full_id"],
-                "ns": estimate["point_estimate"],
-                "ns_low": estimate["confidence_interval"]["lower_bound"],
-                "ns_high": estimate["confidence_interval"]["upper_bound"],
-                "throughput": meta.get("throughput"),
-            }
-        )
+    for timed in swole_times(times):
+        op, lib = operation_of(timed["id"])
+        results.append({"operation": op, "library": LIBRARIES[lib], **timed})
     order = {op: i for i, op in enumerate(OPERATIONS)}
     results.sort(key=lambda r: (order[r["operation"]], r["library"]))
     finished = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
     finish(
         "ok",
         finished=finished,
-        criterion_args=criterion_args,
+        # What timed the report's rows, less the files it read and wrote.
+        swole_args=[a for a in swole_args if a not in (listed, times, "--benchmarks", "--out")],
         load=load,
         results=results,
         build_cost=build_cost(env, args.jobs, result["refused"]),
@@ -2177,29 +2226,41 @@ def site_data(hosts, tiers, verified, gaps):
 def methodology(hosts, shown):
     """How the hosts' times were taken, and the versions each timed."""
     toolchain = pinned_toolchain()
-    criterion = " ".join(CRITERION_ARGS[1:])
     md = [
         "## Methodology",
         "",
-        "Each host runs `cargo bench -p rind-bench --features __bench_openssl`, passing criterion "
-        f"`{criterion}` and a filter for the report's rows, as `criterion_args` in its "
-        "`benchmarks/data/<host>.json` records.",
+        "Each host lists the report's rows by running each of `rind-bench`'s once, then times them with "
+        "[swole](https://github.com/kixel-ai/swole), which `flake.nix` pins, as `swole_args` in its "
+        "`benchmarks/data/<host>.json` records: `swole bench` runs each row in a process of its own, in samples "
+        "of as many calls as fill a millisecond, for a second and ten samples at least, and takes the samples' "
+        "median time a call.",
+        *(
+            [
+                "",
+                "A host whose record holds `criterion_args` instead was timed with criterion, before `rind-bench` "
+                "moved to swole: "
+                + ", ".join(f"`{n}`" for n in shown if "criterion_args" in hosts[n])
+                + ".",
+            ]
+            if any("criterion_args" in hosts[n] for n in shown)
+            else []
+        ),
         "",
         "On aarch64, every rind row except those marked *DIT set per call* holds a `rind::cpu::Dit::hold()` guard "
-        "across the timed loop "
-        "(`rind_dit` in `rind-bench/benches/criterion/mod.rs`), so it pays for turning DIT on and off once, as "
+        "across its calls "
+        "(`Dit` in `rind-bench/benches/common/mod.rs`), so it pays for turning DIT on and off once, as "
         "a caller holding the guard around a batch of calls does. A caller holding none pays it on every call: "
         "the rows marked *DIT set per call* time rind that way. On x86_64 the guard does nothing, and no other "
         "library sets DIT.",
         "",
-        "To time a row without Nix, install the pinned toolchain and run its bench target, here AES-128-GCM's "
-        "rows. aws-lc-rs and ring need a C compiler, and on Unix the OpenSSL column needs OpenSSL 3's headers "
-        "and pkg-config.",
+        "To time rows without Nix, install the pinned toolchain and swole, and time a bench target, here "
+        "AES-GCM's rows, or name rows in a file given by `--benchmarks`. aws-lc-rs and ring need a C compiler, "
+        "and on Unix the OpenSSL column needs OpenSSL 3's headers and pkg-config.",
         "",
         "```sh",
         f"rustup toolchain install {toolchain}",
-        f"cargo +{toolchain} bench -p rind-bench --features __bench_openssl --bench aes_gcm -- {criterion} "
-        "'^aes128-gcm/'",
+        f"cargo install --locked --git https://github.com/kixel-ai/swole --rev {pinned_swole()} cargo-swole",
+        f"RUSTUP_TOOLCHAIN={toolchain} swole bench -- -p rind-bench --features __bench_openssl --bench aes_gcm",
         "```",
         "",
         "### Versions",
@@ -2279,7 +2340,7 @@ def report(hosts, tiers, verified, gaps, sizes=None):
         md += [f"Not measured yet: {', '.join(missing)}.", ""]
     md += [
         "Each host builds with the pinned toolchain in the Nix dev shell, and runs "
-        "`admin/bench-report` only when idle. Times are criterion's estimates.",
+        "`admin/bench-report` only when idle.",
         "",
     ]
     if shown:
@@ -2666,6 +2727,17 @@ def weekly(args):
     fail("no completed weekly bench run on main timed every tier" + "".join(f"; run {r}" for r in incomplete))
 
 
+def names(args):
+    match = re.compile(args.match).search if args.match else None
+    for name in bench_names(["cargo"], os.environ, args.cargo_args, match=match):
+        print(name)
+
+
+def results(args):
+    json.dump(swole_times(args.metrics), sys.stdout, indent=1)
+    print()
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -2692,6 +2764,15 @@ def main():
     p.add_argument("dir", help="the run's downloaded bench-* artifacts")
     p.add_argument("--previous", metavar="DIR", help="the previous run's, to fail only on a gap both show")
     p.set_defaults(func=gate)
+
+    p = sub.add_parser("names", help="list the benchmarks cargo bench arguments select")
+    p.add_argument("--match", metavar="REGEX", help="keep only the benchmarks whose ID this matches")
+    p.add_argument("cargo_args", nargs=argparse.REMAINDER, help="cargo bench's arguments, such as --bench sha2")
+    p.set_defaults(func=names)
+
+    p = sub.add_parser("results", help="print a swole bench --out file's times by benchmark ID")
+    p.add_argument("metrics")
+    p.set_defaults(func=results)
 
     p = sub.add_parser("run", help="the host side of collect")
     p.add_argument("--host", required=True)

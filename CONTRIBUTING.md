@@ -16,14 +16,17 @@ revisions it pins, so a plain clone runs every test. `SLOW_TESTS=1` adds
 the large sets, such as CCTV's million ML-KEM vectors, which the nightly
 `build` workflow runs on every CPU tier.
 
-Run performance benchmarks:
+`cargo bench` runs each benchmark once, as a check. The benchmarks are
+[swole](https://github.com/kixel-ai/swole) `#[bench]` functions, and the swole
+that `flake.nix` pins times them. From the dev shell, time a change's
+benchmarks paired with main's, on any host:
 ```shell
-cargo bench
+nix run .#swole -- bench main -- -p rind-bench --bench sha2
 ```
 
 On x86_64 Linux with ADX (Broadwell or later), count a change's instructions against main's under Valgrind, as the weekly bench does ([TESTING.md](TESTING.md#scheduled-workflows) says what it counts):
 ```shell
-nix develop .#bench --command swole compare main -- -p rind-bench --features __bench_codspeed --bench sha2
+nix develop .#bench --command swole sim main -- -p rind-bench --bench sha2
 ```
 
 [BENCHMARKS.md](BENCHMARKS.md#updating-this-report) says how to refresh the benchmark report.

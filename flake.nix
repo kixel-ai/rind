@@ -15,10 +15,12 @@
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.flake-utils.follows = "flake-utils";
     };
-    # swole, which counts the weekly bench's instructions under the Valgrind
-    # its own nixpkgs pins. Bumping the rev can move every count, and a new
-    # Valgrind starts new series: keep its nixpkgs, not ours.
-    swole.url = "github:kixel-ai/swole/159bf5fe993f34c56dc6dc27612947f2becdf654";
+    # swole, which runs rind-bench's benchmarks: it counts the weekly bench's
+    # instructions under the Valgrind its own nixpkgs pins, and times the
+    # native rows and the benchmark report's hosts. Bumping the rev can move
+    # every count, and a new Valgrind starts new series: keep its nixpkgs, not
+    # ours. Cargo.lock pins rind-bench's `swole` harness: move both together.
+    swole.url = "github:kixel-ai/swole/8486c8e51ea20c81d76a6848fdb2d88d86783d99";
   };
 
   outputs =
@@ -1116,8 +1118,8 @@
               shellHook = sde-certs;
             };
 
-            # The bench workflow's instruction counts, `swole run` and
-            # `swole compare <base>`, which build rind-bench with its C
+            # The bench workflow's instruction counts, `swole sim` and
+            # `swole sim <base>`, which build rind-bench with its C
             # baselines. swole counts on x86_64 Linux only.
             bench = mkDevShell {
               packages = [
@@ -1125,6 +1127,8 @@
                 swole.packages.${system}.default
                 # sh/bench-select.sh lists the bench targets with it.
                 pkgs.jq
+                # `admin/bench-report names` lists the benchmarks to count.
+                pkgs.python3
                 pkgs.cmake
                 pkgs.pkg-config
                 pkgs.openssl
@@ -1152,6 +1156,10 @@
               '';
             };
           };
+
+          # The swole the bench shell counts with, which times anywhere: the
+          # weekly bench's native rows and `admin/bench-report` build it.
+          packages.swole = swole.packages.${system}.default;
 
           formatter = pkgs.nixfmt-tree;
         }

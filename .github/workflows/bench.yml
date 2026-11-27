@@ -35,8 +35,7 @@ jobs:
   # Each benchmark's instruction count under Valgrind, from `swole` in
   # the flake's `bench` shell, which an agent runs locally to the same count.
   # Kixel Quest reads the `kixel-metrics` artifact and bisects a count that
-  # moved through the `benchmarks` input. rsa_gen times nothing without
-  # NOISY_BENCHMARKS, so it is left out.
+  # moved through the `benchmarks` input.
   instructions:
     runs-on: ubuntu-24.04
     permissions:
@@ -50,29 +49,30 @@ jobs:
 
       # The bench targets the dispatch asked for, narrowed to those holding a
       # benchmark it names, as `metrics.json` names them:
-      # `rind-bench/benches/<target>.rs::<group>::...`.
+      # `rind-bench/benches/<target>.rs::<module>::...`. Without names, every
+      # benchmark those targets list but the rows UNCOUNTED matches.
       - name: Select benchmarks
         id: select
         run: |
           selected=$(nix develop .#bench --command sh/bench-select.sh '')
-          read -ra selected <<<"$selected"
-          benches=()
-          for name in "${selected[@]}"; do
-            [ "$name" = rsa_gen ] || benches+=("$name")
-          done
+          read -ra benches <<<"$selected"
+          list=$RUNNER_TEMP/benchmarks
           if [ -n "$BENCHMARKS" ]; then
-            printf '%s\n' "$BENCHMARKS" | sed '/^$/d' >"$RUNNER_TEMP/benchmarks"
-            mapfile -t named < <(sed 's/::.*//; s#^rind-bench/benches/##; s/\.rs$//' "$RUNNER_TEMP/benchmarks" | sort -u)
+            printf '%s\n' "$BENCHMARKS" | sed '/^$/d' >"$list"
+            mapfile -t named < <(sed 's/::.*//; s#^rind-bench/benches/##; s/\.rs$//' "$list" | sort -u)
             kept=()
             for name in "${benches[@]}"; do
               printf '%s\n' "${named[@]}" | grep -qxF -- "$name" && kept+=("$name")
             done
             benches=("${kept[@]}")
-            echo "list=$RUNNER_TEMP/benchmarks" >>"$GITHUB_OUTPUT"
+            echo "named=true" >>"$GITHUB_OUTPUT"
+          elif [ ${#benches[@]} -gt 0 ]; then
+            nix develop .#bench --command admin/bench-report names "${benches[@]/#/--bench=}" >"$RUNNER_TEMP/listed"
+            grep -vE "$UNCOUNTED" "$RUNNER_TEMP/listed" >"$list"
           fi
           if [ ${#benches[@]} -eq 0 ]; then
             # A bisect step that counts nothing must fail, not pass empty.
-            [ -z "$BENCHMARKS" ] || { echo "No counted bench target holds the benchmarks named: each must start rind-bench/benches/<target>.rs::, and rsa_gen is never counted"; exit 1; }
+            [ -z "$BENCHMARKS" ] || { echo "No bench target holds the benchmarks named: each must start rind-bench/benches/<target>.rs::"; exit 1; }
             echo "skip=true" >>"$GITHUB_OUTPUT"
             echo "This job counts none of: $BENCHES"
           fi
@@ -80,6 +80,12 @@ jobs:
         env:
           BENCHES: ${{ inputs.benches }}
           BENCHMARKS: ${{ inputs.benchmarks }}
+          # The rows a count would get wrong. rustls's threaded rows count
+          # what each thread runs while the others wait, which the scheduler
+          # decides. Graviola's rustls rows exist only where Graviola runs,
+          # and it asserts ADX, which Valgrind hides, when it builds a
+          # provider.
+          UNCOUNTED: '^rind-bench/benches/rustls\.rs::(rustls_(full|resumed)_handshake_threads\[|.*\[[^]]*/graviola[]/])'
 
       # A bisect step names benchmarks with `--benchmarks`, some of which a
       # commit before one was added, or after a rename, lacks. With
@@ -90,13 +96,13 @@ jobs:
         if: steps.select.outputs.skip != 'true'
         run: |
           read -ra benches <<<"$SELECTED"
-          args=(--out metrics.json)
-          [ -z "$LIST" ] || args+=(--benchmarks "$LIST" --allow-missing)
-          nix develop .#bench --command swole run "${args[@]}" -- \
-            -p rind-bench --features __bench_codspeed "${benches[@]/#/--bench=}"
+          args=(--out metrics.json --benchmarks "$RUNNER_TEMP/benchmarks")
+          [ "$NAMED" != true ] || args+=(--allow-missing)
+          nix develop .#bench --command swole sim "${args[@]}" -- \
+            -p rind-bench "${benches[@]/#/--bench=}"
         env:
           SELECTED: ${{ steps.select.outputs.benches }}
-          LIST: ${{ steps.select.outputs.list }}
+          NAMED: ${{ steps.select.outputs.named }}
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: steps.select.outputs.skip != 'true'
@@ -230,6 +236,13 @@ jobs:
           toolchain: stable
           targets: ${{ matrix.target }}
 
+      # The swole flake.nix pins, which times the rows, built for the runner.
+      - name: Install swole
+        run: |
+          rev=$(jq -r '.nodes.swole.locked.rev' flake.lock)
+          cargo install --locked --git https://github.com/kixel-ai/swole --rev "$rev" --root "$RUNNER_TEMP/swole" cargo-swole
+          echo "$RUNNER_TEMP/swole/bin" >>"$GITHUB_PATH"
+
       # A dispatch that names bench targets runs those of the row's; a row
       # timing none of them skips the rest. A portable row leaves out the
       # protocols whose only baseline is RustCrypto: its CPU detection can't
@@ -282,7 +295,8 @@ jobs:
           sudo apt-get install -y gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf libc6:armhf libssl-dev:armhf
 
       # Only rind, the libraries it is measured against, and
-      # pyca/verified-garbage, whose code rind takes where it is faster.
+      # pyca/verified-garbage, whose code rind takes where it is faster:
+      # listed natively, then timed by swole.
       # VG_CPU_FEATURES lists the features verified-garbage may use, so
       # `vg_deny` names those the CPU has, by its names, less those the tier
       # denies; it panics on a feature the CPU lacks, and on one named without
@@ -397,21 +411,22 @@ jobs:
           filter="(^|/)($libs)(/|\$)"
           # RustCrypto, where aws-lc-rs and ring offer nothing to time rind
           # against: Argon2id, SLH-DSA, and the protocols. These are the
-          # groups of the bench targets in RUSTCRYPTO_ONLY: change both.
+          # operations of the bench targets in RUSTCRYPTO_ONLY: change both.
           if [ "${{ matrix.portable }}" != true ]; then
             filter+='|^(argon2id|slhdsa|blind-rsa\d+|v?oprf|vrf|spake2plus)-[^/]+/rustcrypto$'
           fi
-          cargo bench "${config[@]}" -p rind-bench ${{ steps.select.outputs.args }} --target ${{ matrix.target }} -- --noplot "$filter"
+          read -ra args <<<"${{ steps.select.outputs.args }}"
+          cargo=("${config[@]}" -p rind-bench "${args[@]}" --target ${{ matrix.target }})
+          admin/bench-report names --match "$filter" "${cargo[@]}" >"$RUNNER_TEMP/benchmarks"
+          swole bench --benchmarks "$RUNNER_TEMP/benchmarks" --out "$RUNNER_TEMP/times.json" -- "${cargo[@]}"
         env:
-          # Times RSA key generation too, which varies from run to run.
-          NOISY_BENCHMARKS: 1
           CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER: arm-linux-gnueabihf-gcc
           CC_armv7_unknown_linux_gnueabihf: arm-linux-gnueabihf-gcc
           CXX_armv7_unknown_linux_gnueabihf: arm-linux-gnueabihf-g++
           ARMV7_UNKNOWN_LINUX_GNUEABIHF_OPENSSL_INCLUDE_DIR: /usr/include
           ARMV7_UNKNOWN_LINUX_GNUEABIHF_OPENSSL_LIB_DIR: /usr/lib/arm-linux-gnueabihf
 
-      # Every benchmark's estimate, which the gate job checks and
+      # Every benchmark's time by ID, which the gate job checks and
       # `admin/bench-report weekly` turns into BENCHMARKS.md's CPU-tier
       # heatmap.
       - name: Save results
@@ -424,12 +439,8 @@ jobs:
           for f in avx512f avx512bw avx512vl vaes vpclmulqdq; do
             grep -m1 '^flags' /proc/cpuinfo | grep -qw "$f" || avx512=false
           done
-          find target/criterion -path '*/new/benchmark.json' | sort |
-            while read -r f; do
-              jq -c --slurpfile e "${f%benchmark.json}estimates.json" \
-                '{id: .full_id, ns: ($e[0].slope // $e[0].mean).point_estimate}' "$f"
-            done |
-            jq -s --arg target "$TARGET" --argjson portable "$PORTABLE" --arg tier "$TIER" \
+          admin/bench-report results "$RUNNER_TEMP/times.json" |
+            jq --arg target "$TARGET" --argjson portable "$PORTABLE" --arg tier "$TIER" \
               --arg cpu "$(lscpu | sed -n 's/^Model name: *//p' | head -n1)" --arg commit "$GITHUB_SHA" \
               --argjson avx512 "$avx512" \
               '{schema: 1, target: $target, portable: $portable, tier: $tier, cpu: $cpu, avx512: $avx512, commit: $commit, results: .}' \
@@ -445,20 +456,17 @@ jobs:
           name: bench-${{ matrix.target }}${{ matrix.portable && '-portable' || '' }}${{ matrix.cpu && format('-{0}', matrix.cpu) || '' }}
           path: bench-results.json
 
-      # One row per benchmark, in run order, with rind's time over the fastest
-      # baseline's, and over verified-garbage's. RustCrypto is a baseline only
+      # One row per benchmark, with rind's time over the fastest baseline's,
+      # and over verified-garbage's. RustCrypto is a baseline only
       # where aws-lc-rs and ring offer nothing, the one place it is timed.
       - name: Summarize
         if: steps.select.outputs.skip != 'true'
         shell: bash
         run: |
-          find target/criterion -path '*/new/benchmark.json' -printf '%T@ %p\n' | sort -n | cut -d' ' -f2- |
-            while read -r f; do
-              jq -c --slurpfile e "${f%benchmark.json}estimates.json" '.full_id | split("/")
+          jq -c '.results[] | .ns as $ns | .id | split("/")
                 | {lib: map(select(. == "rind" or . == "aws-lc-rs" or . == "ring" or . == "rustcrypto" or . == "verified-garbage"))[0],
                    key: map(if . == "rind" or . == "aws-lc-rs" or . == "ring" or . == "rustcrypto" or . == "verified-garbage" then "*" else . end) | join("/"),
-                   ns: ($e[0].slope // $e[0].mean).point_estimate}' "$f"
-            done |
+                   ns: $ns}' bench-results.json |
             jq -rs 'def time: if . == null then "-" elif . < 1e3 then "\(round) ns"
                       elif . < 1e6 then "\(. / 10 | round / 100) µs" else "\(. / 1e4 | round / 100) ms" end;
               reduce (.[] | select(.lib)) as $b ({}; .[$b.key][$b.lib] = $b.ns)
