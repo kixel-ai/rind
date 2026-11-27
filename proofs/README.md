@@ -1087,13 +1087,14 @@ Lean spec (`Rind/SymCrypt/Sha3.lean`, MIT) states it. Keccak-f is
 s2n-bignum's `keccak 24` on lanes, the spec its routines' theorems state,
 which `Rind/Keccak.lean` proves SymCrypt's KECCAK-f[1600].
 `Rind/<Arch>/KeccakDispatch.lean` proves what rind's dispatch to the one-,
-two-, four-, and eight-state routines computes, from those theorems. Each
-theorem assumes `RunsSha3`: rind's entry guard and CPU checks pass, and on
-x86_64, rind's own AVX-512 eight-way Keccak-f, which `Shake8x` and
-ML-KEM-1024's sampler run, computes Keccak-f on each state. No proof covers
-that kernel yet; ML-KEM-768 runs pyca/verified-garbage's code there instead.
-Wherever rind's sampler runs for ML-KEM-768, it samples eight of its nine
-polynomials four at a time and the ninth alone, never eight at a time.
+two-, four-, and eight-state routines computes, from those theorems and, on
+x86_64 with AVX-512, from `Rind/X86_64/Keccak8Avx512.lean`'s proof of rind's
+own eight-way Keccak-f, which `Shake8x` and ML-KEM's samplers run. That proof
+is over `Rind/X86_64/Simd.lean`'s models of the AVX-512 intrinsics the kernel
+calls and `Rind/X86_64/FunsExternal.lean`'s hand model of `set_row`, its one
+store through a pointer: each round of its 25 vectors is `keccakRound` on
+each state's lanes, by unfolding both, and its transposes transpose. Each
+theorem assumes `RunsSha3`: rind's entry guard and CPU checks pass.
 
 The portable backend's Keccak-f, which its SHA-3, ML-KEM, and ML-DSA run, in
 `Rind/Portable/Keccak.lean`, over a translation of `low/portable/keccak.rs`

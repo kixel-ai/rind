@@ -1349,7 +1349,11 @@ select_items() {
 check_quote X86_64/PointSelectModel select_items
 check_quote X86_64/GatherModel items rind/src/low/x86_64/mont_exp.rs 'fn gather_avx2(' \
     '#[target_feature(enable = "avx,avx2")]'
-check_quote X86_64/FunsExternal items rind/src/low/generic/zeroise.rs 'pub(crate) fn zeroise<'
+funs_external_items() {
+    items rind/src/low/x86_64/sha3_keccak8_f1600.rs 'fn set_row('
+    items rind/src/low/generic/zeroise.rs 'pub(crate) fn zeroise<'
+}
+check_quote X86_64/FunsExternal funs_external_items
 check_quote Aarch64/PointSelectModel items rind/src/low/aarch64/bignum_point_select.rs \
     'pub(crate) fn bignum_aff_point_select_p384(' 'fn select<' '#[target_feature(enable = "neon")]'
 check_quote X86_64/AeadDispatch items rind/src/aead.rs 'pub struct Algorithm ' 'impl Algorithm {' \
@@ -1898,7 +1902,7 @@ extract x86_64 X86_64 "${hashes[@]}" "${assembly[@]}" \
     --include crate::low::x86_64::sha3_keccak4_f1600_shim \
     --include crate::low::x86_64::sha3_keccak_nof4_f1600 \
     --include crate::low::x86_64::sha3_keccak8_f1600 \
-    --opaque crate::low::x86_64::sha3_keccak8_f1600::permute \
+    --opaque crate::low::x86_64::sha3_keccak8_f1600::set_row \
     --include crate::low::generic::keccak8 \
     --start-from '{impl crate::aead::Cipher for crate::mid::aes_gcm::AesGcm}' \
     --start-from crate::mid::aes_gcm::AesGcm::encrypt_any \
