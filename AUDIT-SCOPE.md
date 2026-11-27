@@ -167,7 +167,7 @@ says how to run them. The ones an auditor will want:
 | Constant time, symbolically | `nix develop .#binsec --command admin/ct-binsec` | Checks each `ct_binsec_...` region for every secret. |
 | Constant time under SDE and qemu | `nix develop .#sde --command admin/ct-sde`; `nix develop .#ct-qemu --command admin/ct-qemu` | The AVX-512, VAES, SHA extension, and armv7 crypto paths valgrind cannot run. |
 | Variable-time instructions | `nix develop .#ct-vartime --command admin/ct-vartime` | Scans release builds for divisions and floating point. |
-| HOL Light and Lean proofs | `nix develop .#prove --command admin/prove` | Also `admin/prove bytes`, which checks the release build holds the bytes each proof is about. |
+| HOL Light and Lean proofs | `nix develop .#prove --command admin/prove`, on x86_64 Linux with AVX2 (aarch64 macOS runs only `admin/prove lean`, per [TESTING.md](TESTING.md)) | Also `admin/prove bytes`, which checks the release build holds the bytes each proof is about. |
 | Imported code matches its pin | `nix develop .#regenerate --command admin/regenerate` | Reruns every importer; fails on a difference. |
 | Zeroing and heap scratch | `nix develop --command cargo test -p rind --test zeroing --test heap_scratch` | |
 
