@@ -4,8 +4,11 @@
 # of its own, as an unprivileged guest user behind a guest firewall that admits
 # only the internet, so a group's code reaches neither the host's account,
 # which holds the maintainer's credentials, nor the host, its LAN, or the
-# tailnet. Run as that account: tart needs no root, and a LaunchAgent per VM
-# keeps it running.
+# tailnet. Run as the host's account: tart needs no root, and a LaunchAgent per
+# VM keeps it running. macOS runs two macOS VMs at once, and the host's other
+# runner (kixel-release-macos) holds the second slot, so another macOS runner,
+# such as one for the nightlies, cannot get a VM of its own: tart refuses a
+# third with "The number of VMs exceeds the system limit".
 #
 #   admin/mac-mini-runners setup        create, provision, and start both VMs
 #   admin/mac-mini-runners register     register both runners in kixel-ai's

@@ -2,6 +2,7 @@ import Rind.Armv7.ChaCha20
 import Rind.Armv7.X25519
 import Rind.Armv7.AesNohwKey
 import Rind.Armv7.AesGcm
+import Rind.Armv7.GhashNeon
 open rind.armv7
 
 /-!
@@ -70,3 +71,11 @@ elab "#bv_axioms " id:ident extra:ident* : command => do
 #bv_axioms aes_gcm_decrypt_spec ct_compare_16_spec ct_compare_bytes_spec
 #bv_axioms aes_gcm_encrypt_any_spec
 #bv_axioms aes_gcm_decrypt_any_spec ct_compare_16_spec ct_compare_bytes_spec
+
+/-!
+NEON GHASH's theorems also rest on `Rind.Armv7.GhashNeon`'s restatements of
+rind's HOL Light proofs of `gcm_init_neon` and `gcm_ghash_neon`.
+-/
+
+#bv_axioms neon_ghashFor neon_table_ghash_spec
+#bv_axioms neon_new_ghashFor neon_table_new_spec neon_table_ghash_spec
