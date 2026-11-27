@@ -52,6 +52,11 @@ opaque mid.p521.PrivateKey : Type
 
 opaque mid.p521.PublicKey : Type
 
+/-- curve25519-dalek's point, which the translation leaves opaque: rind only
+passes it between dalek's functions, and `Rind.Armv7.Dalek` states what they
+do to the point it represents. -/
+opaque curve25519_dalek.edwards.EdwardsPoint : Type
+
 /-- A `&'static T` that a wiped value may hold, as `Rind.Armv7.Dispatch` models it:
 the `T`, since only the drop that wipes it leaves it `None`. -/
 @[reducible] def low.generic.zeroise.ZeroableRef (T : Type) : Type := T

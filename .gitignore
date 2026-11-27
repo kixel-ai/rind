@@ -20,6 +20,7 @@ proofs/Rind/Aarch64/P256Dispatch.lean
 proofs/Rind/Aarch64/P256Agree.lean
 proofs/Rind/Aarch64/DigestAlgorithm.lean
 proofs/Rind/Aarch64/DigestDispatch.lean
+proofs/Rind/Aarch64/Sha512Context.lean
 proofs/Rind/Aarch64/Sha512.lean
 proofs/Rind/Aarch64/ChaCha20.lean
 proofs/Rind/Aarch64/Blockwise.lean
@@ -44,6 +45,7 @@ proofs/Rind/Aarch64/MlKemTables.lean
 proofs/Rind/Portable/QuicDispatch.lean
 proofs/Rind/Portable/DigestAlgorithm.lean
 proofs/Rind/Portable/DigestDispatch.lean
+proofs/Rind/Portable/Sha512Context.lean
 proofs/Rind/Portable/Sha512.lean
 proofs/Rind/Portable/ChaCha20.lean
 proofs/Rind/Portable/Blockwise.lean
@@ -86,6 +88,8 @@ proofs/Rind/Armv7/X25519Bytes.lean
 proofs/Rind/Armv7/X25519.lean
 proofs/Rind/Armv7/ChaCha20.lean
 proofs/Rind/Armv7/CtEqual.lean
+proofs/Rind/Armv7/Blockwise.lean
+proofs/Rind/Armv7/Sha512Context.lean
 patch/*/Cargo.lock
 __pycache__/
 site/node_modules/
