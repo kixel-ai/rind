@@ -15,12 +15,9 @@ Decided 2026-11-26 (maintainer, during [kixel-ai/rind#1103](https://github.com/k
 - The hold also found two measurement traps for any design that confines other work: a benchmark thread the scheduler places on the confined core runs about a third slower (`fedora`'s P-384 ECDH measured 1.30× its last run, every other row level), and the every-logical-CPU rows wait on whichever thread shares that core, which slowed every library's by 25 to 30%. Pinning the benchmarks to the CPUs left free fixes both.
 - On systemd 262 (`nixos`), `systemctl set-property --runtime <slice> AllowedCPUs=` did not restore the slice's cpuset; setting the whole range explicitly did.
 
-## Waiting
+Decided 2026-11-27 (maintainer, during [kixel-ai/rind#1103](https://github.com/kixel-ai/rind/pull/1103)): ✅ reserve two cores: `collect` pins the benchmarks to the host's last two whole cores and keeps other work off only those, so the other work keeps every other core and mbx sizes its pool from them, and the every-logical-CPU rows leave shared hosts; trial it on one host against that host's last quiet run, and keep it only if the ratios agree within the 10% bar (rejected: dedicated hosts only; load-annotated rows, as [kixel-ai/rind#938](https://github.com/kixel-ai/rind/pull/938) proposes).
 
-- Maintainer: how should the report get data from hosts that CI runners and agent sessions keep at about twice their CPU count?
-  - Reserve two cores (Recommended) - collect pins the benchmarks to the host's last two whole cores and keeps other work off only those, so it keeps every other core for the run and mbx sizes its pool from them; the every-logical-CPU rows leave those hosts. First trial it on one host against its last quiet run, since a loaded neighbour still shares the L3 cache and the power budget, and keep it only if the ratios agree within the 10% bar.
-  - Dedicated hosts only - the report keeps `kixtop`, the OVH VPSes, and `mac-mini` once [its quest](/quest/m2/bench/mac-mini.md) lands, and drops `nixos`, `desktop`, and `fedora`, so the only AVX-512 and Arrow Lake tables go, leaving the weekly CPU tier table to cover AVX-512.
-  - Load-annotated rows - collect runs under `quest gate` as before, drops the busy refusal, and the report marks each shared host's rows with the load they ran under, as the proposal in [kixel-ai/rind#938](https://github.com/kixel-ai/rind/pull/938) measures; its 2026-11-19 A/B runs drifted 0.87 to 1.22 at such loads, against the 10% bar.
+- On a hybrid Intel CPU (`desktop`), the last two whole cores are the last two performance cores, `/sys/devices/cpu_core/cpus`, since the other hosts' tables time performance cores and Linux numbers the efficiency cores last.
 
 ## Related
 
