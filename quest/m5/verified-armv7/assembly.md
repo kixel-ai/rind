@@ -8,7 +8,7 @@ Every assembly routine armv7 runs is proven on the AArch32 model in `thirdparty/
 
 Runs, each in `low/arm/`, in rough order of use:
 
-- aws-lc's `sha_armv4`: SHA-1 with the crypto extension, and SHA-256, SHA-1, and SHA-512 on NEON and without; SHA-256 with the crypto extension is proven ([kixel-ai/rind#1129](https://github.com/kixel-ai/rind/pull/1129), `proofs/hol-light/armv7/sha256_armv4.ml`), and what remains of it is the Lean axiom restating `SHA256_BLOCK_DATA_ORDER_HW_SUBROUTINE_CORRECT` for `low::arm::sha_armv4::sha256_compress_blocks`, as `Rind/X86_64/Sha256Shaext.lean` restates x86_64's, composed with the hash proofs once armv7's translation reaches them;
+- aws-lc's `sha_armv4`: SHA-1 with the crypto extension, and SHA-256, SHA-1, and SHA-512 on NEON and without; SHA-256 with the crypto extension is proven ([kixel-ai/rind#1129](https://github.com/kixel-ai/rind/pull/1129), `proofs/hol-light/armv7/sha256_armv4.ml`), and what remains of it is the Lean axiom restating `SHA256_BLOCK_DATA_ORDER_HW_SUBROUTINE_CORRECT` for the crypto-extension call alone in `low::arm::sha_armv4::sha256_compress_blocks`, as `Rind/X86_64/Sha256Shaext.lean` restates x86_64's, composed through that function's empty-input return and CPU dispatch, and with the hash proofs once armv7's translation reaches them;
 - aws-lc's `chacha-armv4` (integer below 192 bytes, NEON above) and its NEON Poly1305, under rind's port of `poly1305_arm.c`;
 - aws-lc's `aesv8-armx` and `ghashv8-armx`, under rind's AES-GCM composition;
 - OpenSSL's `keccak1600-armv4`, integer and NEON, under ML-KEM and SHA-3;

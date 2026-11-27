@@ -298,7 +298,10 @@ symbol_bounds() {
 # Writes to `dest` the bytes of the static at `path`, as rind's release build
 # for `arch` Linux emits them, or, given `last`, from `path` through the end of
 # the symbol `last` after it in the same section, failing if a relocation
-# falls in them, which would leave bytes for the linker to fill.
+# falls in them, which would leave bytes for the linker to fill. Given `last`,
+# it writes `last`'s offset in them, in decimal, to `dest` with `.offset` for
+# its extension, which the proof checks is the entry its theorems take, since
+# moving the symbol within unchanged bytes would leave them about other code.
 rind_static() {
     local arch=$1 path=$2 dest=$3 last=${4:-} found obj sym section value size end off
     found=$(rind_symbol "$arch" "$path")
@@ -315,6 +318,7 @@ rind_static() {
             return 1
         fi
         end=$((16#$lvalue + 16#$lsize))
+        echo $((16#$lvalue - 16#$value)) >"${dest%.*}.offset"
     fi
     while read -r off _ _; do
         if ((16#$off >= 16#$value && 16#$off < end)); then
@@ -346,7 +350,8 @@ routine_symbol() {
 # failing if a relocation falls in them. A `name` of `first..last` is the
 # bytes from the label or routine `first` through the end of the routine
 # `last`, for routines that read a table or literal outside their own `.size`,
-# as `sha256-armv4`'s read K256 from before the first of them.
+# as `sha256-armv4`'s read K256 from before the first of them, with `last`'s
+# offset in them beside them, which `rind_static` writes.
 asm_routine() {
     local arch=$1 name=$2 dest=$3 first last=
     first=$(routine_symbol "$arch" "${name%%..*}")

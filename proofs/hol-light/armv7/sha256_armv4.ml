@@ -1901,6 +1901,18 @@ let sha256_armv4_mc = define_assert_word_list "sha256_armv4_mc"
 
 let SHA256_ARMV4_EXEC = AARCH32_MK_EXEC_RULE sha256_armv4_mc;;
 
+(* admin/prove writes sha256_block_data_order_hw's offset from K256 in rind's
+   build to armv7/sha256_armv4.offset, and this fails unless it is 0x1b20,
+   the entry the theorems take, so the symbol rind calls is the code they
+   are about. *)
+let () =
+  let offset =
+    int_of_string (String.trim (Bytes.to_string
+                                 (load_file "armv7/sha256_armv4.offset"))) in
+  if offset <> 0x1b20 then
+    failwith ("sha256_armv4: sha256_block_data_order_hw is at " ^
+              string_of_int offset ^ ", not 0x1b20");;
+
 (* ------------------------------------------------------------------------- *)
 (* Reading the code's own words: the literal and K256.                       *)
 (* ------------------------------------------------------------------------- *)
