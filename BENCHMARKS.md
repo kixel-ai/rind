@@ -15,7 +15,7 @@ How long rind and the usual Rust crypto libraries take for the same operations, 
 | `ovh-iad` | Intel Core Processor (Haswell, no TSX) | NixOS 26.11 (Zokor) (Linux 6.18.40) | 2026-11-27 at [`8656d89b`](https://github.com/kixel-ai/rind/commit/8656d89bd9ade57720e72802fd6096b8b2bcdc82) |
 | `ovh-sea` | Intel Core Processor (Haswell, no TSX) | NixOS 26.11 (Zokor) (Linux 6.18.40) | 2026-11-27 at [`8656d89b`](https://github.com/kixel-ai/rind/commit/8656d89bd9ade57720e72802fd6096b8b2bcdc82) |
 
-Each host builds with the pinned toolchain in the Nix dev shell. A dedicated host runs `admin/bench-report` only when idle. A host that CI runners and agent sessions keep busy runs it on two whole cores it keeps that work off for the timing, so the work shares only the caches and power budget, and it times no every-logical-CPU rows.
+Each host builds with the pinned toolchain in the Nix dev shell. A dedicated host runs `admin/bench-report` only when idle. A host that CI runners and agent sessions keep busy runs it on two whole cores it keeps that work off for the timing, so the work shares only the caches and power budget, and it times no every-logical-CPU rows and no build cost.
 
 ## Methodology
 
@@ -1523,7 +1523,8 @@ shell and under `quest gate`, which waits for the host to have room but
 shares it with other gated work, so its numbers are noisier than the weekly
 `bench` workflow's runners, which give the clean ones. On a host that CI runners
 and agent sessions share, it times the benchmarks on two whole cores it keeps
-other work off for the run, which needs systemd and passwordless sudo there.
+other work off for the run, and skips the build cost; this needs systemd and
+passwordless sudo there.
 It skips any other host that is still busy, and writes their results and the hosts' details as JSON under
 `.tmp/bench-report/`. `admin/bench-report weekly` saves the latest weekly
 `bench` run's results and binary sizes, and `admin/bench-report render --from DIR` copies a

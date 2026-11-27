@@ -15,7 +15,8 @@ Usage:
 its pinned toolchain, and times every operation in OPERATIONS for every
 library that offers it, then measures each library's build cost with
 admin/build-cost. On a host that CI runners and agent sessions share, it
-times them on two cores it reserves for the run: see reserve(). It runs here for the host this is, and over ssh for the
+times them on two cores it reserves for the run, and measures no build
+cost: see reserve(). It runs here for the host this is, and over ssh for the
 others. A host that is busy, unreachable, or fails is recorded and skipped,
 never measured. DIR (default `.tmp/bench-report/<commit>`) gets one
 `<host>.json` per host, with its CPU, OS, toolchain, and library versions.
@@ -841,7 +842,9 @@ def run(args):
         swole_args=[a for a in swole_args if a not in (listed, times, "--benchmarks", "--out")],
         load=load,
         results=results,
-        build_cost=build_cost(env, args.jobs, result["refused"]),
+        # A cold build's wall time on a host other work keeps busy measures
+        # that work, so only dedicated hosts measure build cost.
+        **({} if reserved else {"build_cost": build_cost(env, args.jobs, result["refused"])}),
     )
 
 
@@ -2500,7 +2503,7 @@ def report(hosts, tiers, verified, gaps, sizes=None):
         "Each host builds with the pinned toolchain in the Nix dev shell. A dedicated host runs "
         "`admin/bench-report` only when idle. A host that CI runners and agent sessions keep busy runs it on "
         "two whole cores it keeps that work off for the timing, so the work shares only the caches and power "
-        "budget, and it times no every-logical-CPU rows.",
+        "budget, and it times no every-logical-CPU rows and no build cost.",
         "",
     ]
     if shown:
@@ -2671,7 +2674,8 @@ def report(hosts, tiers, verified, gaps, sizes=None):
         "shares it with other gated work, so its numbers are noisier than the weekly",
         "`bench` workflow's runners, which give the clean ones. On a host that CI runners",
         "and agent sessions share, it times the benchmarks on two whole cores it keeps",
-        "other work off for the run, which needs systemd and passwordless sudo there.",
+        "other work off for the run, and skips the build cost; this needs systemd and",
+        "passwordless sudo there.",
         "It skips any other host that is still busy, and writes their results and the hosts' details as JSON under",
         "`.tmp/bench-report/`. `admin/bench-report weekly` saves the latest weekly",
         "`bench` run's results and binary sizes, and `admin/bench-report render --from DIR` copies a",
