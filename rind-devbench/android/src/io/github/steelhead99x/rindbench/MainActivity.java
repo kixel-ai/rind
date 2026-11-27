@@ -203,6 +203,11 @@ public class MainActivity extends Activity {
         if (bench != null) bench.onChromeRelayout();
     }
 
+    @Override protected void onDestroy() {
+        if (bench != null) bench.dispose();
+        super.onDestroy();
+    }
+
     @Override public void onConfigurationChanged(Configuration cfg) {
         super.onConfigurationChanged(cfg);
         relayout();

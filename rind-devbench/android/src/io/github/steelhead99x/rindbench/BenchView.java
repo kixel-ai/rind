@@ -66,6 +66,9 @@ final class BenchView extends LinearLayout {
     private String keysDir, colHost;
     private int colPort = Collector.PORT;
     private String colHow = "";
+    /** The collector a device-runner build was given by intent; a failed probe never forgets it. */
+    private String runnerHost;
+    private int runnerPort = Collector.PORT;
     private final Runnable poll = this::poll;
 
     BenchView(Activity host, Intent intent) {
@@ -274,10 +277,14 @@ final class BenchView extends LinearLayout {
         // device-runner build (build-apk.sh with DEVICE_RUNNER=1) takes a collector
         // or autostart from them; the other extras only preselect the picker.
         if (Collector.RUNNER && it.hasExtra("host")) {
-            colHost = it.getStringExtra("host");
-            colPort = it.getIntExtra("port", Collector.PORT);
+            runnerHost = it.getStringExtra("host");
+            runnerPort = it.getIntExtra("port", Collector.PORT);
+            colHost = runnerHost;
+            colPort = runnerPort;
             colHow = "set by adb";
         }
+        // As the preset buttons, a preset can't change while a run is going.
+        if (running) return;
         if ("full".equals(it.getStringExtra("preset"))) { fullPreset = true; presetChanged(); }
         if ("quick".equals(it.getStringExtra("preset"))) { fullPreset = false; presetChanged(); }
     }
@@ -360,6 +367,12 @@ final class BenchView extends LinearLayout {
         }
         countsChanged();
         agreeChanged();
+        // The run lives in the native library, past this activity: after a recreation, such as a
+        // dark mode switch mid-run, pick it up instead of offering Start again.
+        if (alreadyRunning()) {
+            enterRunning();
+            return;
+        }
         if (Collector.RUNNER && intent != null && intent.getBooleanExtra("autostart", false)) {
             agree.setChecked(true);
             startTapped();
@@ -401,8 +414,8 @@ final class BenchView extends LinearLayout {
 
     private java.util.List<String[]> candidates() {
         java.util.List<String[]> c = new ArrayList<>();
-        if (colHost != null && !colHost.isEmpty() && "set by adb".equals(colHow))
-            c.add(new String[]{colHost, String.valueOf(colPort), "set by adb"});
+        if (runnerHost != null && !runnerHost.isEmpty())
+            c.add(new String[]{runnerHost, String.valueOf(runnerPort), "set by adb"});
         c.add(new String[]{"127.0.0.1", String.valueOf(Collector.PORT), "over USB"});
         if (Collector.HOST != null && !Collector.HOST.isEmpty())
             c.add(new String[]{Collector.HOST, String.valueOf(Collector.PORT), "over Wi-Fi"});
@@ -440,7 +453,9 @@ final class BenchView extends LinearLayout {
                     colHost + ":" + colPort + ("over USB".equals(colHow) ? " over USB" : ""), false);
         } else {
             collectorOK = false;
-            String[] d = candidates().get(candidates().size() - 1);
+            // A runner's own collector stays the target while it's down; otherwise the last place tried.
+            List<String[]> all = candidates();
+            String[] d = runnerHost != null && !runnerHost.isEmpty() ? all.get(0) : all.get(all.size() - 1);
             colHost = d[0]; colPort = Integer.parseInt(d[1]); colHow = "not reachable now";
             showCollector("ic_cloud_off", Theme.onSurfaceVariant, "Collector not connected",
                     "Results save on this phone", true);
@@ -521,6 +536,11 @@ final class BenchView extends LinearLayout {
             return;
         }
         Theme.haptic(startBtn, true);
+        enterRunning();
+    }
+
+    /** Shows a run as going and polls it: one this view started, or one already going when it was made. */
+    private void enterRunning() {
         host.getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         startBtn.setVisibility(GONE);
         clearBtn.setVisibility(GONE);
@@ -567,6 +587,19 @@ final class BenchView extends LinearLayout {
         setBody("");
         agreeChanged();
         findCollector();
+    }
+
+    private static boolean alreadyRunning() {
+        try {
+            return new JSONObject(Native.status()).optBoolean("running");
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /** Stops polling, for the activity's onDestroy: a recreated activity's new view picks the run up. */
+    void dispose() {
+        ui.removeCallbacksAndMessages(null);
     }
 
     private boolean isWarm() {
