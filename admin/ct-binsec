@@ -136,7 +136,7 @@ UNDECODED = {
 # contract lets its trace depend on, besides the pointers. A test forces the
 # CPU check that picks them, so that BINSEC checks the Rust around them, which
 # replaces each with a stub that loads through every pointer and branches on
-# each byte its contract leaks, so that a secret pointer or leaked byte
+# each bit its contract leaks, so that a secret pointer or leaked byte
 # fails, writes fresh secret bytes to each output, and returns success, 1.
 # gdb's native run, whose CPU may lack their features, returns 1 at once and
 # writes nothing. Each fails only on public data, which the stubs' success
@@ -606,7 +606,11 @@ def contract_stubs(target, addrs):
             out += "  libc_i := uext{} @[{}]\n".format(word, a)
         for i, offset, size in leaked:
             out += "  for i<{}> in {} to {} do\n".format(word, offset, offset + size - 1)
-            out += "    if @[vg{} + i] = 0 then\n      libc_i := 0\n    end\n  end\n".format(i)
+            # Each bit, so that a byte whose secret part leaves it nonzero
+            # still fails.
+            for b in range(8):
+                out += "    if @[vg{} + i]{{{}}} then\n      libc_i := 0\n    end\n".format(i, b)
+            out += "  end\n"
         for i, size in outputs:
             out += "  for i<{}> in 0 to {} do\n    @[vg{} + i] := secret\n  end\n".format(word, size - 1, i)
         out += "  return 1\nend\n"
