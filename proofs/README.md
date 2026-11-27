@@ -1808,8 +1808,9 @@ copies the portable proofs over it with the namespace renamed:
   Its rotates and block load are Xtensa `asm!`, which Aeneas does not read:
   the translation, like the host tests, takes the Rust each block stands in
   for, so the ✓ trusts those few instructions to compute what that Rust
-  does. `admin/esp32s3-sha256-layout` checks their exact sequences and the
-  body's placement, which no proof covers.
+  does. `admin/esp32s3-sha256-layout` checks the body's placement and the
+  instruction pattern of each block, not that a block computes what its
+  Rust does, which stays an assumption.
 - `Rind/Mcu/Sha256IramModel.lean`: the hand model of the body's raw-pointer
   cursors over the round constants and the blocks, and of its window of
   uninitialised words. Each model fails where the Rust would be undefined,
