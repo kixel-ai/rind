@@ -59,12 +59,14 @@ per library on how to move it to rind.
 | [aws-lc-rs](https://github.com/aws/aws-lc-rs) | [cc](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#build-cost) | XChaCha20-Poly1305 (aws-lc has it, through aws-lc-sys), Blind RSA, OPRF, VRF, SPAKE2+, Argon2id | [x86_64: SHA-512 (some CPUs)](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#verified-code) | [126 of its 464 times](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#speed) |
 | [ring](https://github.com/briansmith/ring) | [cc](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#build-cost) | XChaCha20-Poly1305, SHA-3, P-521, ML-KEM, ML-DSA, HPKE, Blind RSA, OPRF, VRF, SPAKE2+, Argon2id | [none](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#verified-code) | [75 of its 304 times](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#speed) |
 | [RustCrypto + dalek](https://github.com/RustCrypto) | [none](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#build-cost) | none | [none](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#verified-code) | [39 of its 452 times](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#speed) |
+| [OpenSSL](https://github.com/sfackler/rust-openssl) | [cc, pkg-config](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#build-cost) | XChaCha20-Poly1305, SHA-3 (OpenSSL has it, not yet timed), HPKE (OpenSSL has it, but the openssl crate does not), Blind RSA, OPRF, VRF, SPAKE2+ | [none](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#verified-code) | [33 of its 358 times](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#speed) |
 <!-- end comparison -->
 
 Build tools are what a minimal binary needs, algorithms count only what
 [BENCHMARKS.md][benchmarks] times, a proof counts only when it covers an
 operation's whole computation, and the last column counts each library's
-times against the fastest library's on the same machine.
+times against the fastest library's on the same machine. OpenSSL's build
+tools link the system's library; vendoring it needs make and perl too.
 
 What the table leaves out favors the others:
 
@@ -72,15 +74,18 @@ What the table leaves out favors the others:
   AWS-LC-FIPS module. Its newest releases build
   [AWS-LC-FIPS 4.x][aws-lc-rs-fips], which an accredited lab has tested and
   NIST is still reviewing, and older releases build earlier modules that
-  hold [NIST certificates][aws-lc-fips]. rind has no FIPS validation.
+  hold [NIST certificates][aws-lc-fips]. OpenSSL 3.1.2's FIPS provider holds
+  a [FIPS 140-3 certificate][openssl-fips], and later OpenSSL releases can
+  load it. rind has no FIPS validation.
 - **Audits.** ring was in scope of [Cure53's 2020 audit of
   rustls][rustls-audit]. RustCrypto's [aes-gcm][rustcrypto-aes-gcm] and
   [chacha20poly1305][rustcrypto-chacha] have had an audit by NCC Group, and
   its [rsa][rustcrypto-rsa] crate an earlier one its code has since diverged
   from, it says; its p256, ml-kem, and ml-dsa crates say they have had none.
   rind has had no third-party audit.
-- **Maturity and reach.** ring has run in production for years, and
-  RustCrypto covers far more algorithms.
+- **Maturity and reach.** OpenSSL has run in production for decades, and
+  ring and aws-lc-rs for years; rind is new. RustCrypto covers far more
+  algorithms.
 
 ## Switch in one line
 
@@ -328,6 +333,7 @@ from other projects keeps its source's license, which [LICENSE] lists.
 [aws-lc-rs]: https://github.com/aws/aws-lc-rs
 [aws-lc-rs-fips]: https://github.com/aws/aws-lc-rs/blob/main/aws-lc-rs/README.md#fips
 [aws-lc-fips]: https://github.com/aws/aws-lc/blob/main/crypto/fipsmodule/FIPS.md#validations
+[openssl-fips]: https://openssl-library.org/source/
 [rustls-audit]: https://github.com/rustls/rustls/blob/main/audit/TLS-01-report.pdf
 [rustcrypto-aes-gcm]: https://github.com/RustCrypto/AEADs/tree/master/aes-gcm#security-notes
 [rustcrypto-chacha]: https://github.com/RustCrypto/AEADs/tree/master/chacha20poly1305#security-notes
