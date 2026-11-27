@@ -23,6 +23,8 @@ import Rind.X86_64.P256Signature
 import Rind.X86_64.P384Signature
 import Rind.X86_64.PointSelect
 import Rind.X86_64.MlKemCoding
+import Rind.X86_64.VgMlKem768Ct
+import Rind.X86_64.MlKemCbd
 open rind.x86_64
 
 /-!
@@ -54,13 +56,15 @@ and ECDSA verification in `Rind.X86_64.VgP256`, and for P-384's `d·G`,
 which key generation and each ECDSA signature's nonce point take, and its
 ECDSA verification, in `Rind.X86_64.VgP384`, and for ChaCha20-Poly1305's
 and XChaCha20-Poly1305's one pass on AVX-512 IFMA in
-`Rind.X86_64.VgChaCha20Poly1305`; and nothing else.
+`Rind.X86_64.VgChaCha20Poly1305`, and, for the leakage of its ML-KEM-768
+routines (which no theorem about rind's wrappers uses), in
+`Rind.X86_64.VgMlKem768Ct`; and nothing else.
 Ed25519 verification also takes its multi-scalar multiplication,
 `low::x86_64::adx_mux::edwards25519_msm`, as the hypothesis `RunsMsm`, and
 the edwards25519 group's orders, which HOL Light proves, as the hypothesis
 `EdOrders`. ChaCha20-Poly1305's one pass also takes aws-lc's routines as the
-hypothesis `RunsChaCha20Poly1305`, which no axiom states, whose `OnePass`
-takes them on CPUs without IFMA, and the AEAD API above it takes the one pass
+hypotheses `RunsSeal` and `RunsOpen`, which no axiom states, whose `OnePass`
+takes them on CPUs without IFMA, and on Zen 4 for short messages, and the AEAD API above it takes the one pass
 as the hypotheses `Seals` and `Opens`.
 SHA-3's and SHAKE's theorems take rind's eight-way AVX-512 Keccak-f as part
 of the hypothesis `RunsSha3`. None of these four states an axiom.
@@ -1267,3 +1271,77 @@ change to the trust base.
 /-- info: 'rind.x86_64.MlKemCoding.sample_cbd3_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms MlKemCoding.sample_cbd3_spec
+
+/-- info: 'rind.x86_64.vg_mlkem768_keygen_avx512_ct' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ vg_mlkem768_keygen_avx512_ct] -/
+#guard_msgs in
+#print axioms vg_mlkem768_keygen_avx512_ct
+
+/-- info: 'rind.x86_64.vg_mlkem768_encaps_h_avx512_ct' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ vg_mlkem768_encaps_h_avx512_ct] -/
+#guard_msgs in
+#print axioms vg_mlkem768_encaps_h_avx512_ct
+
+/-- info: 'rind.x86_64.vg_mlkem768_encaps_avx512_ct' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ vg_mlkem768_encaps_avx512_ct] -/
+#guard_msgs in
+#print axioms vg_mlkem768_encaps_avx512_ct
+
+/-- info: 'rind.x86_64.vg_mlkem768_decaps_avx512_ct' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ vg_mlkem768_decaps_avx512_ct] -/
+#guard_msgs in
+#print axioms vg_mlkem768_decaps_avx512_ct
+
+/-- info: 'rind.x86_64.vg_mlkem768_encaps_h_avx2_ct' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ vg_mlkem768_encaps_h_avx2_ct] -/
+#guard_msgs in
+#print axioms vg_mlkem768_encaps_h_avx2_ct
+
+/-- info: 'rind.x86_64.vg_mlkem768_encaps_avx2_ct' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ vg_mlkem768_encaps_avx2_ct] -/
+#guard_msgs in
+#print axioms vg_mlkem768_encaps_avx2_ct
+
+/-- info: 'rind.x86_64.vg_mlkem768_encaps_h_avx_ct' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ vg_mlkem768_encaps_h_avx_ct] -/
+#guard_msgs in
+#print axioms vg_mlkem768_encaps_h_avx_ct
+
+/-- info: 'rind.x86_64.vg_mlkem768_encaps_avx_ct' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ vg_mlkem768_encaps_avx_ct] -/
+#guard_msgs in
+#print axioms vg_mlkem768_encaps_avx_ct
+
+/-- info: 'rind.x86_64.vg_mlkem768_encaps_h_ct' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ vg_mlkem768_encaps_h_ct] -/
+#guard_msgs in
+#print axioms vg_mlkem768_encaps_h_ct
+
+/-- info: 'rind.x86_64.vg_mlkem768_encaps_ct' depends on axioms: [propext, Classical.choice, Quot.sound, vg_mlkem768_encaps_ct] -/
+#guard_msgs in
+#print axioms vg_mlkem768_encaps_ct
+/-- info: 'rind.x86_64.MlKemCbd.sample_poly_cbd_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ sha3_keccak4_f1600_alt_spec,
+ sha3_keccak_f1600_spec] -/
+#guard_msgs in
+#print axioms MlKemCbd.sample_poly_cbd_spec

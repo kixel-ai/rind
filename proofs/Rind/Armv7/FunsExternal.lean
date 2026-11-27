@@ -150,6 +150,21 @@ opaque mid.p521.PublicKey.from_x962_uncompressed
 opaque mid.p521.PrivateKey.diffie_hellman
   : mid.p521.PrivateKey → mid.p521.PublicKey → Result (core.result.Result mid.p521.SharedSecret error.Error)
 
+/-! ChaCha20-Poly1305, which `aead::Key` holds and whose armv7 code no proof
+covers yet. -/
+
+opaque mid.chacha20poly1305.ChaCha20Poly1305.new
+  : Array Std.U8 32#usize → Result mid.chacha20poly1305.ChaCha20Poly1305
+
+opaque mid.chacha20poly1305.ChaCha20Poly1305.encrypt
+  : mid.chacha20poly1305.ChaCha20Poly1305 → Array Std.U8 12#usize → Slice Std.U8 → Slice Std.U8 →
+    Array Std.U8 16#usize →
+    Result ((core.result.Result Unit error.Error) × (Slice Std.U8) × (Array Std.U8 16#usize))
+
+opaque mid.chacha20poly1305.ChaCha20Poly1305.decrypt
+  : mid.chacha20poly1305.ChaCha20Poly1305 → Array Std.U8 12#usize → Slice Std.U8 → Slice Std.U8 →
+    Array Std.U8 16#usize → Result ((core.result.Result Unit error.Error) × (Slice Std.U8))
+
 /-! The CPU feature checks. `Rind.Armv7.AesGcm`'s theorems take each one's
 answer as a hypothesis: no feature, on the CPUs they are about. -/
 
@@ -165,8 +180,8 @@ opaque low.arm.cpu.ct_compare_16
 
 opaque low.arm.cpu.ct_compare_bytes : Slice Std.U8 → Slice Std.U8 → Result Std.U8
 
-/-! aws-lc's AES and GHASH assembly for the crypto extension and for NEON,
-which no proof covers. -/
+/-! aws-lc's AES and GHASH assembly for the crypto extension, and its AES
+for NEON, which no proof covers. -/
 
 opaque low.arm.aesv8_armx.AesHwKey.new
   : Slice Std.U8 → low.arm.cpu.HaveCryptoExt → Result low.arm.aesv8_armx.AesHwKey
@@ -194,6 +209,9 @@ opaque low.arm.vpaes_armv7.NeonKey.encrypt_block
 opaque low.arm.vpaes_armv7.NeonKey.ctr32
   : low.arm.vpaes_armv7.NeonKey → Array Std.U8 16#usize → Slice (Array Std.U8 16#usize) →
     Result (Slice (Array Std.U8 16#usize))
+
+/-! aws-lc's GHASH for NEON, whose HOL Light proofs `Rind.Armv7.GhashNeon`
+restates. -/
 
 opaque low.arm.ghash_armv4.NeonTable.new
   : Array Std.U8 16#usize → low.arm.cpu.HaveNeon → Result low.arm.ghash_armv4.NeonTable
