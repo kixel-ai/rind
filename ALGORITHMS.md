@@ -145,8 +145,8 @@ with portable Rust in place of the assembly armv7 runs regardless.
 | ChaCha20-Poly1305, XChaCha20-Poly1305 | verified-garbage ✓ + HACL* ✓ | verified-garbage ✓ + aws-lc ⚡ + HACL* ✓ |  | HACL* ✓ + Graviola |
 | MD5 | rind |  |  |  |
 | SHA-1 | rind | aws-lc |  | rind |
-| SHA-256 | aws-lc ⚡ | aws-lc |  | aws-lc ✓ except ESP-IDF Xtensa, where rind's 16-round body runs from IRAM |
-| SHA-384, SHA-512, SHA-512/256 | verified-garbage ✓ | aws-lc ✓ | aws-lc ⚡ | aws-lc ✓, except rind's rolled loop on 32-bit microcontrollers |
+| SHA-256 | aws-lc ⚡ | aws-lc |  | aws-lc ✓, except ESP-IDF Xtensa, where rind's 16-round body ✓ runs from IRAM |
+| SHA-384, SHA-512, SHA-512/256 | verified-garbage ✓ | aws-lc ✓ | aws-lc ⚡ | aws-lc ✓, except rind's rolled loop ✓ on 32-bit microcontrollers |
 | SHA3-256, SHA3-384, SHA3-512 | s2n-bignum ✓ + Graviola |  | OpenSSL ⚡ + Graviola | rind + Graviola |
 | HMAC | Graviola ⚡ |  |  |  |
 | HKDF | rind ⚡ |  |  |  |
@@ -190,12 +190,15 @@ with portable Rust in place of the assembly armv7 runs regardless.
   rind's rolled loop in `generic::sha512_rolled`, a few kilobytes of code
   for a small instruction cache. On a Seeed XIAO ESP32-S3 it took about
   0.033 of HACL*'s time, whose unrolled body, about 47 KiB in 32-bit
-  codegen, missed that cache.
+  codegen, missed that cache. [`proofs/`](proofs/README.md) proves it in
+  Lean against FIPS 180-4.
 - portable, ESP-IDF Xtensa: SHA-256 is rind's own FIPS 180-4 compression
   in `low/portable/sha256_iram.rs`, sixteen rounds unrolled and the
   schedule body run three times, placed in IRAM with `K` in `.dram1`.
-  Nothing proves it. Its window follows Graviola's portable SHA-256, and
-  its rotates and block load are Xtensa `asm!`. On that board it took
+  Its window follows Graviola's portable SHA-256, and its rotates and
+  block load are Xtensa `asm!`. [`proofs/`](proofs/README.md) proves it in
+  Lean against FIPS 180-4 through the Rust each `asm!` block stands in for,
+  so the ✓ trusts those few instructions to compute what that Rust does. On that board it took
   about 0.65-0.74 of HACL*'s time from flash from 1200 B to 16 KB, and
   0.76 of HACL* placed in IRAM, for 4,516 more bytes of IRAM. Host tests
   check its Rust fallbacks against FIPS 180-4, `generic::sha256`, and
@@ -238,7 +241,7 @@ tests use [Wycheproof]'s vectors.
 | Source | How rind uses it | License | What is verified |
 |---|---|---|---|
 | [Graviola] | copied: rind began as a copy of it, and rind-rustls of its rustls-graviola; its aarch64 ChaCha20 and its Poly1305 began as [cifra], CC0-1.0; the ESP-IDF Xtensa SHA-256 window and round constants follow its portable SHA-256 | Apache-2.0 OR ISC OR MIT-0 | nothing |
-| rind | its own code | Apache-2.0 OR ISC OR MIT-0 | nothing |
+| rind | its own code | Apache-2.0 OR ISC OR MIT-0 | [`proofs/`](proofs/README.md) proves its rolled SHA-384/512 block function for 32-bit microcontrollers and its ESP-IDF Xtensa SHA-256 against FIPS 180-4 in Lean, the latter through the Rust its `asm!` rotates and block load stand in for, whose instructions it trusts |
 | [Argon2's reference] | ported: its AVX2 BlaMka rounds, `blamka-round-opt.h`, to Rust intrinsics, for Argon2id on x86_64 CPUs with AVX2 | CC0-1.0 OR Apache-2.0, taken under CC0-1.0 | nothing |
 | [s2n-bignum] | copied: its assembly for the elliptic curves, RSA, ML-KEM, ML-DSA, Keccak-f, and aarch64 AES-GCM, transliterated into Rust `asm!` by `admin/parse-asm`, which ends each x86_64 routine using 256-bit registers with `vzeroupper` | Apache-2.0 OR ISC OR MIT-0; its ML-KEM, ML-DSA, and aarch64 Keccak-f routines (from mlkem-native and mldsa-native) Apache-2.0 OR ISC OR MIT; its x86_64 single-state Keccak-f (from OpenSSL) Apache-2.0 | HOL Light proofs ([x86_64](https://github.com/awslabs/s2n-bignum/tree/3f01260ff1bd2577abf0117ce45aa008bc243a80/x86/proofs), [aarch64](https://github.com/awslabs/s2n-bignum/tree/3f01260ff1bd2577abf0117ce45aa008bc243a80/arm/proofs)) that each routine's object code computes its specified result for all inputs; some also prove that its memory accesses stay in bounds and that its branches and addresses depend on no secret. `admin/prove bytes` checks that rind's build of each routine holds the instructions its proof lists, with the differences [below](#s2n-bignums-constant-time-theorems), so the proofs are of rind's code. The aarch64 AES-GCM kernels' theorems cover the in-place calls rind makes. |
 | [HACL\*] | dependency, through libcrux-hacl-rs and libcrux-poly1305; copied, from libcrux-chacha20poly1305: the ChaCha20 rounds, for HChaCha20 and QUIC header protection and for x86_64's ChaCha20 up to one block, 128 bytes without AVX2, and every length without SSSE3, and armv7's ChaCha20 state setup, and every ChaCha20 length on the portable backend; copied, by `admin/import-hacl`: Vale's x86_64 AES-GCM assembly, as Rust naked functions | Apache-2.0; Vale's AES-GCM routines port OpenSSL's `aesni_gcm`, Apache-2.0 | [F\* proofs](https://github.com/hacl-star/hacl-star/tree/f557259007db9933442dde10aa995c1b00bd3446) of memory safety, functional correctness, and secret independence of the F\* source. libcrux's Rust is compiled mechanically from HACL\*'s verified C, and that step is not itself verified. rind's code that loads the rounds' state and XORs their keystream is not covered, except for header protection and x86_64's ChaCha20, which rind's own Lean proofs cover with the rounds. Vale's [F\* proofs](https://github.com/hacl-star/hacl-star/blob/f557259007db9933442dde10aa995c1b00bd3446/vale/code/arch/x64/interop/Vale.Wrapper.X64.GCMencryptOpt.fsti) that its x86_64 AES-GCM, as Vale prints it, computes AES-128-GCM and AES-256-GCM, tag check included, for any AAD and message under 2^32 bytes, in place or not, from the counter block its own routine computes, which rind runs for it, and the round keys and GHASH key powers its own routines compute. `admin/prove bytes` checks that rind's copies of the routines it runs assemble to the instructions of Vale's printed text. rind computes those keys and powers itself, and its tests check them byte for byte against Vale's routines. [`proofs/`](proofs/README.md) proves that code, and rind's Rust that splits the message into the routines' blocks and copies the partial ones, as EverCrypt's proven Low\* wrapper does, from its AEAD API down to Vale's routines. |

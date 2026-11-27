@@ -76,6 +76,7 @@ Every Lean file that declares an `axiom`, by the source it restates; no file hol
 Hand models of Rust Aeneas cannot translate, each quoting the Rust it models:
 
 - `Aarch64`: `AesGcmModel`, `FunsExternal`, `PointSelectModel`, `TypesExternal`
+- `Mcu`: `Sha256IramModel`
 - `Portable`: `Compare`
 - `X86_64`: `AeadDispatch`, `AesGcmModel`, `DigestAlgorithm`, `DigestDispatch`, `Dispatch`, `EcdsaDispatch`, `FunsExternal`, `GatherModel`, `GcmKey`, `HkdfExpand`, `HmacDispatch`, `P256Dispatch`, `P384Dispatch`, `PointSelectModel`, `QuicDispatch`, `RsaDispatch`, `SignatureBuffer`, `TypesExternal`
 <!-- admin/ledger: end -->
@@ -1764,11 +1765,8 @@ routines and Montgomery products, and the Keccak-f above, alone. None of
 that Rust picks by CPU, and Aeneas's `usize` is either width, so the
 theorems hold on every target the backend builds for, but RSA's on 32-bit
 limbs, which most 32-bit targets run and the translation, on x86_64, leaves
-out,
-and two bodies the extraction leaves out too: ESP-IDF Xtensa's SHA-256,
-`low/portable/sha256_iram.rs`, and 32-bit microcontrollers' SHA-512,
-`low::generic::sha512_rolled`, which
-[the rolled-SHA-2 quest](../quest/m4/verified/rolled-sha2-esp.md) covers. The
+out, and the two SHA-2 bodies 32-bit microcontrollers run instead, which
+[the next section](#32-bit-microcontrollers) proves. The
 x86_64 proofs of SHA-256's padding, the SHA-512 family, HMAC's keyed states,
 the digest, HMAC, HKDF, and PBKDF2 APIs, ChaCha20 header protection, and
 RSA verification are written for it with the target renamed, as for
@@ -1838,6 +1836,46 @@ these quests prove its code, whose proofs then run on this translation:
 
 [The re-audit](/quest/m4/verified/re-audit.md) plans whatever still lacks a
 proof after those.
+
+## 32-bit microcontrollers
+
+On 32-bit microcontrollers, ESP-IDF or no OS, the portable backend runs two
+SHA-2 bodies of its own for their small instruction caches: SHA-384/512's
+rolled loop, `low::generic::sha512_rolled`, and on ESP-IDF Xtensa SHA-256's
+sixteen-round body in IRAM, `low/portable/sha256_iram.rs`. `admin/prove`
+translates them into `Rind/Mcu/` from a second portable build, for
+`armv7a-none-eabi`, a 32-bit no-OS target, so the cfgs pick the rolled
+SHA-512 as they do on every such target. Charon cannot build an Xtensa
+target without Espressif's toolchain, so that build forces the IRAM
+SHA-256's cfg, `rind_sha256_iram`, which `build.rs` sets on ESP-IDF Xtensa
+alone: the dispatch the translation reads is the one that target compiles.
+The rest of this translation is the portable one's, and `admin/prove`
+copies the portable proofs over it with the namespace renamed:
+
+- `Rind/Mcu/Sha512Rolled.lean`: the rolled block function computes
+  FIPS 180-4's compression of each whole block in turn. `Last16` says the
+  sixteen-word window holds the sixteen schedule words before the round,
+  wherever the loop is.
+- `Rind/Mcu/Sha256Iram.lean`: the IRAM body computes FIPS 180-4's
+  compression of each whole block in turn, with the same window invariant
+  over its sixteen unrolled rounds and three passes of its schedule body.
+  Its rotates and block load are Xtensa `asm!`, which Aeneas does not read:
+  the translation, like the host tests, takes the Rust each block stands in
+  for, so the ✓ trusts those few instructions to compute what that Rust
+  does. `admin/esp32s3-sha256-layout` checks the body's placement and the
+  instruction pattern of each block, not that a block computes what its
+  Rust does, which stays an assumption.
+- `Rind/Mcu/Sha256IramModel.lean`: the hand model of the body's raw-pointer
+  cursors over the round constants and the blocks, and of its window of
+  uninitialised words. Each model fails where the Rust would be undefined,
+  so the proof that the body succeeds shows it keeps their safety contracts.
+- `Rind/Mcu/ShaBlocks.lean` and `Rind/Mcu/Sha512Entry.lean`: the portable
+  files of those names over these bodies' theorems.
+
+`Rind/Sha2Rounds.lean` holds the round, schedule, and compression lemmas
+these proofs share with the portable backend's. `Rind/Mcu/HashAxioms.lean`
+and `Rind/Mcu/Axioms.lean` check the axioms each theorem rests on: none
+beyond Lean's own.
 
 ## Layout
 
@@ -1998,6 +2036,12 @@ proof after those.
 - `Rind/Portable/{TypesExternal,FunsExternal,Compare,Sha256Compress,Sha512Compress,Sha512Entry,ShaBlocks,CtEqual,Mont,RsaMont,Bignum}.lean`:
   the portable backend's opaque items, its compares' hand model, and its own
   proofs, which [the portable backend](#the-portable-backend) describes.
+- `admin/prove` copies the portable backend's hash, HMAC, and
+  header-protection files to `Rind/Mcu/` with the namespace renamed.
+  `Rind/Mcu/{TypesExternal,FunsExternal,Sha256IramModel,Sha256Iram,Sha512Rolled,Sha512Entry,ShaBlocks,HashAxioms,Axioms}.lean`:
+  the microcontroller build's opaque items, the IRAM SHA-256's hand model,
+  and its own proofs, which [32-bit microcontrollers](#32-bit-microcontrollers)
+  describes, over `Rind/Sha2Rounds.lean`'s lemmas.
 - `Rind/NistGroup.lean`: that the NIST curves' `nist.add` is the addition of
   Mathlib's group of points on the curve; `Rind/NistOrder.lean`: that every
   finite point has order n, by counting the curve's points;
@@ -2046,6 +2090,9 @@ Beyond Lean's kernel:
   `Rind/Core.lean`'s.
 - That each hand model computes what the Rust it quotes does. They add no
   axiom.
+- That each Xtensa `asm!` block in `low/portable/sha256_iram.rs`, two
+  rotate instructions or a load and byte swap, computes what the Rust that
+  stands in for it on other targets does, which `Rind/Mcu/` translates.
 - For the theorems that rest on `bv_decide`, the bitsliced AES's among them,
   Lean's compiler and its LRAT checker: each call adds an axiom that the
   compiled checker accepted a SAT solver's certificate.
