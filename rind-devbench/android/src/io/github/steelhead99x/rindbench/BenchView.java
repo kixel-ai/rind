@@ -276,7 +276,10 @@ final class BenchView extends LinearLayout {
 
     void applyIntent(Intent it) {
         if (it == null) return;
-        if (it.hasExtra("host")) {
+        // The launcher is exported, so any app can send these extras. Only a
+        // device-runner build (build-apk.sh with DEVICE_RUNNER=1) takes a collector
+        // or autostart from them; the other extras only preselect the picker.
+        if (Collector.RUNNER && it.hasExtra("host")) {
             colHost = it.getStringExtra("host");
             colPort = it.getIntExtra("port", Collector.PORT);
             colHow = "set by adb";
@@ -385,7 +388,7 @@ final class BenchView extends LinearLayout {
         }
         countsChanged();
         agreeChanged();
-        if (intent != null && intent.getBooleanExtra("autostart", false)) {
+        if (Collector.RUNNER && intent != null && intent.getBooleanExtra("autostart", false)) {
             agree.setChecked(true);
             startTapped();
         }

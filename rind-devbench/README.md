@@ -42,6 +42,7 @@ CAPTURE --out DIR` splits a collector capture into one JSON per run.
 - iPad: sign + install with your own Apple developer account (e.g. plumesign), start `tools/listen-devbench.sh`
   on the collector computer, open "RindBench All", agree, Start.
 - Android: `adb install -r RindBench-android.apk`;
-  the collector fills itself in (127.0.0.1:9103 via `adb reverse`, else the LAN address given to build-apk.sh as `COLLECTOR_HOST`); headless:
+  the collector fills itself in (127.0.0.1:9103 via `adb reverse`, else the LAN address given to build-apk.sh as `COLLECTOR_HOST`); headless, from an APK built with
+  `DEVICE_RUNNER=1 android/build-apk.sh` (a normal build ignores `autostart`, `host` and `port`, since any app on the phone can start the launcher):
   `adb shell am start -n io.github.steelhead99x.rindbench/.MainActivity --es preset quick --es libraries rind,ring --es sections AEADs --ez autostart true`;
   results also in `/sdcard/Android/data/io.github.steelhead99x.rindbench/files/`.
