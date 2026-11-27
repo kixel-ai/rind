@@ -728,7 +728,7 @@ class Signature(unittest.TestCase):
             return der(0x30, der_integer(n) + der_integer(e))
 
         e = unsigned(65537)
-        for bits in (1024, 1025, 2047, 8192):
+        for bits in (1017, 1023, 1024, 1025, 2047, 8192):
             n = modulus(bits)
             key = rsa.PublicKey.from_components(unsigned(n), e)
             self.assertEqual(key.modulus_len(), (bits + 7) // 8)
@@ -737,7 +737,7 @@ class Signature(unittest.TestCase):
             self.assertEqual(bytes(rsa.PublicKey(pkcs1(n))), pkcs1(n))
             self.assertEqual(bytes(rsa.PublicKey.from_spki(key.to_spki())), pkcs1(n))
         for n, e_bytes in (
-            (modulus(1023), e),  # below 1024 bits
+            (modulus(1016), e),  # below the 128-byte parse floor
             (modulus(8193), e),  # above 8192 bits
             (modulus(2048) + 1, e),  # even
             (modulus(2048), unsigned(1)),
@@ -772,11 +772,10 @@ class Signature(unittest.TestCase):
             for signature in (b"", bytes(at.modulus_len()), bytes(at.modulus_len() + 1)):
                 with self.assertRaises(pyrind.BadSignature):
                     at.verify(algorithm, b"m", signature)
-            if floor > 1024:
-                below = rsa.PublicKey.from_components(unsigned(modulus(floor - 1)), e)
-                for signature in (b"", bytes(below.modulus_len())):
-                    with self.assertRaises(pyrind.KeyRejected):
-                        below.verify(algorithm, b"m", signature)
+            below = rsa.PublicKey.from_components(unsigned(modulus(floor - 1)), e)
+            for signature in (b"", bytes(below.modulus_len())):
+                with self.assertRaises(pyrind.KeyRejected):
+                    below.verify(algorithm, b"m", signature)
 
         # RSA-OAEP's floor is 2048 bits, refused as the key loads.
         oaep = rsa.OAEP_SHA256
