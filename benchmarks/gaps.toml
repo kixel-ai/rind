@@ -64,9 +64,9 @@ on = ["ovh-iad", "desktop", "nixos"]
 reason = "1.11× pyca/verified-garbage's time on `ovh-iad` (66.2 against 59.5 µs), and 1.08× in its other quiet run of the same commit, 1.17× on `desktop` (19.3 against 16.5 µs; aws-lc-rs 45.8), and 1.11× on `nixos` (26.4 against 23.8 µs, 1.08× in the 0.4 refresh), while `ovh-sea` measured 1.06× and `fedora` 1.06× (16.7 against 15.8 µs). rind already runs VG's `d·G` for each signature's `k·G` ([#847](https://github.com/kixel-ai/rind/pull/847)), so the difference is in rind's other steps, among them its hedged nonce: fresh randomness for each signature, as aws-lc-rs draws, where VG derives its nonce deterministically by RFC 6979. That behavior is deliberate, so it stays; the next refresh rechecks the margin."
 
 [[gap]]
-operations = ["mlkem768-encaps", "xchacha20poly1305/16KB"]
+operations = ["sha3-256/64B"]
 on = ["ovh-iad"]
-reason = "Noise: other tenants share `ovh-iad`'s VPS, whose load the report cannot see. Its first quiet run of the same commit measured both within 10%, ML-KEM-768 encapsulation at 1.01× pyca/verified-garbage's time (rind runs VG's routine there) and XChaCha20-Poly1305 at 16 KB at 0.98× aws-lc-rs's, as `ovh-sea` did (0.99 and 1.03×); that run's own four gaps, 1.12 to 1.24×, were within 10% in this one. The next refresh rechecks them."
+reason = "Noise: other tenants share `ovh-iad`'s VPS, whose load the report cannot see. rind took 539 ns against pyca/verified-garbage's 482 (1.12×), where its previous refresh measured 498 against the same 482 (1.03×) on the same SHA-3 code, and `ovh-sea` measured 1.03× (472 against 457), with SHA3-512 at 64 B 1.05× on both. The next refresh rechecks it."
 
 [[gap]]
 operations = ["chacha20poly1305/16KB"]
