@@ -120,7 +120,7 @@ final class BenchView extends LinearLayout {
         progress = Theme.progress(host);
         progress.setVisibility(GONE);
         progress.setContentDescription("Run progress");
-        resultsTeaser = Theme.text(host, "", Theme.Type.BODY_MEDIUM, Theme.onSurface);
+        resultsTeaser = Theme.text(host, "", Theme.Type.BODY_SMALL, Theme.onSurface);
         resultsTeaser.setTypeface(Typeface.MONOSPACE);
         resultsTeaser.setVisibility(GONE);
         resultsBtn = Theme.button(host, "View results", Theme.Btn.TONAL, null);
