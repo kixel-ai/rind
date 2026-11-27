@@ -10,9 +10,10 @@ exponentiations modulo the primes, by `PosInt::mod_exp_pair`, recombined by
 Garner's formula, then checked by the public operation. This proves it for a
 key meeting `PrivKeyInv`, with primes of 16 or 32 words, on a CPU with BMI2
 and ADX, where `mont_exp` runs rind's Montgomery products, and where neither
-pyca/verified-garbage's IFMA CRT nor aws-lc's dual RSAZ runs. That
-`RsaPrivateKey::new` establishes `PrivKeyInv`, and the IFMA CRT's path, are
-left to proofs to come.
+pyca/verified-garbage's IFMA CRT nor aws-lc's dual RSAZ runs.
+`RsaPrivKey.lean`'s `rsa_private_key_new_spec` proves that
+`RsaPrivateKey::new` establishes `PrivKeyInv`; the IFMA CRT's path is left
+to proofs to come.
 -/
 
 namespace rind.x86_64

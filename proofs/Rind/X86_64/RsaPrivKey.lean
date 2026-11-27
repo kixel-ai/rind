@@ -7,12 +7,16 @@ open Aeneas Aeneas.Std Result rind.spec rind.spec.rsa
 
 `RsaPrivateKey::new` checks a key's components as aws-lc's `RSA_check_key`
 does, all but primality, and computes the Montgomery constants the private
-operation takes. `rsa_private_key_new_spec` proves that, on a CPU where
-pyca/verified-garbage's IFMA CRT does not run, a key it returns meets
-`PrivKeyInv`, which `private_op_spec` takes, and holds the values it was
-given, and that those meet `CrtRelations`, RFC 8017's relations between the
-components: `n = p·q`, `dP = d mod (p - 1)`, `dP·e ≡ 1 (mod p - 1)`, the
-same for `q`, and `qInv < p` with `qInv·q ≡ 1 (mod p)`.
+operation takes. `rsa_private_key_new_spec` proves that a key it returns
+meets `PrivKeyInv`, which `private_op_spec` takes, and holds the values it
+was given, and that those meet `CrtRelations`, RFC 8017's relations between
+the components: `n = p·q`, `dP = d mod (p - 1)`, `dP·e ≡ 1 (mod p - 1)`, the
+same for `q`, and `qInv < p` with `qInv·q ≡ 1 (mod p)`. It takes two
+hypotheses: `HaveAvx512ForRsa::check` returns none, so
+pyca/verified-garbage's IFMA CRT is not set up (a CPU with AVX-512 IFMA
+fails it even for a key size VG's CRT does not take, such as 3072 bits
+without AVX512_FP16), and `MontProducts` holds at the wider prime's width.
+It characterizes the keys `new` returns, not which inputs it accepts.
 -/
 
 namespace rind.x86_64

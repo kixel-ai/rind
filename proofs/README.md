@@ -1676,11 +1676,13 @@ check's products. `Rind/X86_64/RsaExp.lean` proves
 `mont_exp`'s fixed-window exponentiation on that path, and
 `Rind/X86_64/RsaGather.lean` its table gather on both paths `HaveAvx2::check`
 picks, over `Rind/X86_64/GatherModel.lean`'s hand model of the AVX2 one.
-`Rind/X86_64/RsaPrivKey.lean`'s `rsa_private_key_new_spec` proves that, on a
-CPU where that IFMA CRT does not run, a key `RsaPrivateKey::new` accepts meets
-`PrivKeyInv` with `ifma.w = 0`, holds the components it was given, and that
-those meet RFC 8017's relations (`CrtRelations`): everything aws-lc's
-`RSA_check_key` checks but the primes' primality. Below it, the file proves
+`Rind/X86_64/RsaPrivKey.lean`'s `rsa_private_key_new_spec` proves that a key
+`RsaPrivateKey::new` returns meets `PrivKeyInv` with `ifma.w = 0`, holds the
+components it was given, and that those meet RFC 8017's relations
+(`CrtRelations`): everything aws-lc's `RSA_check_key` checks but the primes'
+primality. It holds where `HaveAvx512ForRsa::check` returns none, which a CPU
+with AVX-512 IFMA fails even for a key size VG's CRT does not take, and given
+`MontProducts` at the wider prime's width. Below it, the file proves
 `exponents_agree` and the `PosInt` routines key loading runs, among them
 `fit` and `reduce_even`.
 
