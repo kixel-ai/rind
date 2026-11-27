@@ -8,8 +8,7 @@ open Aeneas Aeneas.Std Result
 
 Models of the standard-library items rind's translation and theorems use that
 Aeneas's library lacks, each following the Rust standard library, and opaque
-declarations for the random source, whose draw the functional spec leaves out,
-and for `core::array::from_fn`, which only AES's header protection calls.
+declarations for the random source, whose draw the functional spec leaves out.
 `Rind.X86_64.Simd` models the x86_64 intrinsics.
 -/
 
@@ -37,11 +36,23 @@ def core.result.Result.map {T E U F : Type _} (inst : core.ops.function.FnOnce F
 def core.slice.Slice.first {T : Type _} (s : Slice T) : Result (Option T) :=
   Std.Result.ok s.val.head?
 
+/-- `Option<&T>::copied`, of a value Aeneas passes by copy already. -/
+def core.option.OptionShared0T.copied {T : Type _} (_ : core.marker.Copy T) (o : Option T) :
+    Result (Option T) :=
+  Std.Result.ok o
+
 /-- `<[T]>::split_first`. -/
 def core.slice.Slice.split_first {T : Type _} (s : Slice T) : Result (Option (T × Slice T)) :=
   match h : s.val with
   | [] => Std.Result.ok none
   | x :: rest => Std.Result.ok (some (x, .from rest (by have := s.property; simp [h] at this; omega)))
+
+/-- `<[T]>::split_last`: the last element, then the ones before it. -/
+def core.slice.Slice.split_last {T : Type _} (s : Slice T) : Result (Option (T × Slice T)) :=
+  match s.val.getLast? with
+  | none => Std.Result.ok none
+  | some x => Std.Result.ok (some (x, .from s.val.dropLast (by
+      have := s.property; simp only [List.length_dropLast]; omega)))
 
 /-- `Option`'s `?`: continue with the value, or break with `None`. -/
 def core.option.Option.Insts.CoreOpsTry_traitTry.branch {T : Type _} :
@@ -75,6 +86,22 @@ def core.slice.SliceArray.as_flattened_mut {T : Type _} {N : Std.Usize} (s : Sli
         (by simp))
   else Std.Result.fail .panic
 
+/-- `<[[T; N]]>::as_flattened`: the arrays' elements in order. Rust's length
+never overflows for an element with a size, so the failure is unreachable. -/
+def core.slice.SliceArray.as_flattened {T : Type _} {N : Std.Usize} (s : Slice (Array T N)) :
+    Result (Slice T) :=
+  let flat := s.val.flatMap (·.val)
+  if h : flat.length ≤ Usize.max then Std.Result.ok (Slice.from flat h)
+  else Std.Result.fail .panic
+
+/-- `<Option<T> as Clone>::clone`: the value's own clone, if there is one. -/
+def core.option.Option.Insts.CoreCloneClone.clone {T : Type _} (inst : core.clone.Clone T) :
+    Option T → Result (Option T)
+  | none => Std.Result.ok none
+  | some x => do
+    let y ← inst.clone x
+    Std.Result.ok (some y)
+
 /-- `<[T; N]>::map`: `f` called on each element in order. -/
 def core.array.Array.map {T F U : Type _} {N : Std.Usize} (inst : core.ops.function.FnMut F T U)
     (a : Array T N) (f : F) : Result (Array U N) := do
@@ -104,8 +131,16 @@ def Shared0Slice.Insts.CoreCmpPartialEqArray.eq {T U : Type _} {N : Std.Usize}
     (inst : core.cmp.PartialEq T U) (s : Slice T) (a : Array U N) : Result Bool :=
   core.slice.cmp.PartialEqSlice.eq inst s a.to_slice
 
+/-- `i16::wrapping_neg`: the negation modulo 2^16. -/
+def core.num.I16.wrapping_neg (x : Std.I16) : Result Std.I16 :=
+  Std.Result.ok ⟨-x.bv⟩
+
 /-- `i32::wrapping_neg`: the negation modulo 2^32. -/
 def core.num.I32.wrapping_neg (x : Std.I32) : Result Std.I32 :=
+  Std.Result.ok ⟨-x.bv⟩
+
+/-- `u64::wrapping_neg`: the negation modulo 2^64. -/
+def core.num.U64.wrapping_neg (x : Std.U64) : Result Std.U64 :=
   Std.Result.ok ⟨-x.bv⟩
 
 /-- `i8::unsigned_abs`. -/
@@ -236,6 +271,10 @@ def Shared0U64.Insts.CoreOpsBitShrUsizeU64.shr (x : Std.U64) (y : Std.Usize) : R
 def Shared0U8.Insts.CoreOpsBitBitAndU8U8.bitand (x y : Std.U8) : Result Std.U8 :=
   Std.Result.ok (x &&& y)
 
+/-- `<&u64 as BitAnd<u64>>::bitand`. -/
+def Shared0U64.Insts.CoreOpsBitBitAndU64U64.bitand (x y : Std.U64) : Result Std.U64 :=
+  Std.Result.ok (x &&& y)
+
 /-- `<Vec<T> as AsMut<[T]>>::as_mut`: the whole vector, which writes back to it. -/
 def alloc.vec.Vec.Insts.CoreConvertAsMutSlice.as_mut {T : Type _} (_A : Type _) (v : alloc.vec.Vec T) :
     Result ((Slice T) × (Slice T → alloc.vec.Vec T)) :=
@@ -306,9 +345,13 @@ opaque getrandom.error.Error : Type
 opaque getrandom.fill :
   Slice Std.U8 → Result ((core.result.Result Unit getrandom.error.Error) × (Slice Std.U8))
 
-/-- `core::array::from_fn`. -/
-opaque core.array.from_fn {T F : Type _} (N : Std.Usize)
-    (_ : core.ops.function.FnMut F Std.Usize T) : F → Result (Array T N)
+/-- `core::array::from_fn`: `f` called on each index in order. -/
+def core.array.from_fn {T F : Type _} (N : Std.Usize)
+    (inst : core.ops.function.FnMut F Std.Usize T) (f : F) : Result (Array T N) := do
+  let (l, _) ← (List.range N.val).attach.foldlM (fun (acc, f) ⟨i, hi⟩ => do
+    let (y, f) ← inst.call_mut f (UScalar.ofNatCore i (Nat.lt_trans (List.mem_range.mp hi) N.hBounds))
+    ok (acc ++ [y], f)) ([], f)
+  if h : l.length = N.val then ok (Array.from l h) else fail .panic
 
 /-- `u32::swap_bytes`: the four bytes in the other order. -/
 def core.num.U32.swap_bytes (x : Std.U32) : Result Std.U32 :=

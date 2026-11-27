@@ -4,8 +4,7 @@
 
 [rind-acvp](/rind-acvp/README.md) answers ACVP test sets for every
 algorithm in rind's FIPS module, including the ones the module does not
-offer yet, and answers fresh sets from NIST's demo server, not only the
-sample sets `admin/sync-acvp` keeps.
+offer yet, on the sample sets `admin/sync-acvp` keeps.
 
 ## Plan
 
@@ -17,13 +16,9 @@ sealing with internal IVs (`ivGen: internal`), which the module offers since
 and answered: `AES-GCM/seal` takes an empty nonce, and replies the
 ciphertext, tag, and the 12-byte IV the module generated in one string, as
 aws-lc's `acvptool` reads it; the offline test checks each IV and tag by
-opening. What remains:
+opening.
 
-- Once a credential exists, run fresh demo sets for every registered
-  algorithm, once per CPU mask, in a scheduled job, as the offline test
-  runs the samples.
-
-## Waiting
-
-- NIST: issues ACVP demo server credentials, a TLS client certificate per organization, so fresh sets run before the lab's production run. Requested on 2026-11-20. An agent cannot contact NIST. Done once the credential arrives and this item is deleted.
-- Maintainer: store the credential NIST issues as a repository secret, once it arrives, and delete this item. Optional until the lab is engaged: the offline runs cover the wrapper meanwhile.
+- Decided 2026-11-24 (maintainer, /quest-run): ✅ no NIST ACVP demo
+  server credentials (rejected: request them now; defer the request). The
+  offline sample runs cover the wrapper; the lab's production run is the
+  first against NIST's server.

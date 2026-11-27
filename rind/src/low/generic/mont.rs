@@ -24,10 +24,15 @@
 //! and from `KARATSUBA_MUL` and `KARATSUBA_SQR` limbs, products and
 //! squares split by Karatsuba's method (Knuth, TAOCP 4.3.3), as aws-lc's C
 //! does. Their loops add two rows a pass, in two carry chains, where one
-//! chain's latency would bound them.
+//! chain's latency would bound them, forming a block of each pass's products
+//! before the chains that add them.
 //!
 //! The crossovers are where each measured faster on x86_64 at both limb
 //! widths, and are the same in limbs for both.
+
+// Loops index rather than iterate or zip, which Aeneas cannot translate, so
+// `proofs/` can prove them.
+#![allow(clippy::needless_range_loop)]
 
 use super::super::bignum::{MAX_WORDS, nonzero, select, word};
 use super::{Limb, Wide, join, limbs};
@@ -35,6 +40,10 @@ use crate::low::ct;
 
 /// Limbs in a 64-bit word.
 const PER_WORD: usize = (u64::BITS / Limb::BITS) as usize;
+
+/// The limbs of `mul_add2`'s block, which forms its products before the chains
+/// that add them: eight at 32 bits, four at 64.
+const BLOCK: usize = if Limb::BITS == 32 { 8 } else { 4 };
 
 /// `MAX_WORDS` in limbs.
 const MAX_LIMBS: usize = MAX_WORDS * PER_WORD;
@@ -157,9 +166,12 @@ pub(crate) fn bignum_mul(z: &mut [u64], x: &[u64], y: &[u64]) {
 pub(crate) fn mont_mul(z: &mut [u64], x: &[u64], y: &[u64], m: &[u64], n0: u64) {
     let k = m.len();
     assert!(k >= 1 && z.len() == k && x.len() == k && y.len() == k);
-    let mut buf = [[0; MAX_LIMBS]; 3];
-    let [x_limbs, y_limbs, m_limbs] = &mut buf;
-    let (x, y, m) = (limbs(x, x_limbs), limbs(y, y_limbs), limbs(m, m_limbs));
+    let (mut x_limbs, mut y_limbs, mut m_limbs) = ([0; MAX_LIMBS], [0; MAX_LIMBS], [0; MAX_LIMBS]);
+    let (x, y, m) = (
+        limbs(x, &mut x_limbs),
+        limbs(y, &mut y_limbs),
+        limbs(m, &mut m_limbs),
+    );
     let n = m.len();
     // The low limb of `-m^-1 mod 2^64` is `-m^-1` mod a limb.
     let n0 = n0 as Limb;
@@ -173,7 +185,8 @@ pub(crate) fn mont_mul(z: &mut [u64], x: &[u64], y: &[u64], m: &[u64], n0: u64) 
         let t = &mut t[..2 * n];
         // The limb count is public, so this branch leaks nothing.
         if n < KARATSUBA_MUL {
-            mul_limbs(t, x, y, &mut []);
+            let mut none = [0; 0];
+            mul_limbs(t, x, y, &mut none);
         } else {
             mul_limbs(t, x, y, &mut [0; SCRATCH]);
         }
@@ -211,19 +224,13 @@ pub(crate) fn mont_sqr(z: &mut [u64], x: &[u64], m: &[u64], n0: u64) {
 ))]
 fn mont_mul_limbs(t: &mut [Limb], x: &[Limb], y: &[Limb], m: &[Limb], n0: Limb) {
     let n = m.len();
-    let t = &mut t[..n + 2];
-    for x in x {
-        let sum = Wide::from(t[n]).wrapping_add(mul_add(&mut t[..n], y, *x));
+    for i in 0..n {
+        let sum = Wide::from(t[n]).wrapping_add(mul_add(&mut t[..n], y, x[i]));
         t[n] = sum as Limb;
         t[n + 1] = (sum >> Limb::BITS) as Limb;
 
         let u = t[0].wrapping_mul(n0);
-        let mut carry = mul_add_limb(u, m[0], t[0], 0) >> Limb::BITS;
-        for j in 1..n {
-            let s = mul_add_limb(u, m[j], t[j], carry);
-            t[j - 1] = s as Limb;
-            carry = s >> Limb::BITS;
-        }
+        let carry = add_shift(t, m, u);
         let sum = Wide::from(t[n]).wrapping_add(carry);
         t[n - 1] = sum as Limb;
         t[n] = t[n + 1].wrapping_add((sum >> Limb::BITS) as Limb);
@@ -233,12 +240,32 @@ fn mont_mul_limbs(t: &mut [Limb], x: &[Limb], y: &[Limb], m: &[Limb], n0: Limb) 
     sub_limbs_masked(&mut t[..n], m, keep);
 }
 
+/// `t[..n] := (t[..n] + u m) / 2^b`, for the `u` that makes the sum's low
+/// limb zero, returning the carry out of the top limb.
+#[cfg(any(
+    rind_backend = "portable",
+    all(test, any(rind_backend = "x86_64", rind_backend = "aarch64"))
+))]
+#[inline(always)]
+fn add_shift(t: &mut [Limb], m: &[Limb], u: Limb) -> Wide {
+    let s = mul_add_limb(u, m[0], t[0], 0);
+    // Zero by the choice of `u`, and written over below.
+    t[0] = s as Limb;
+    let mut carry = (s >> Limb::BITS) as Limb;
+    for j in 1..m.len() {
+        let s = mul_add_limb(u, m[j], t[j], Wide::from(carry));
+        t[j - 1] = s as Limb;
+        carry = (s >> Limb::BITS) as Limb;
+    }
+    Wide::from(carry)
+}
+
 /// `t[n..] := x^2 / 2^bn mod m`, for `x` below the odd `m`, each `n` limbs
 /// of `b` bits, where `t` is `2n` limbs and `n0` is `-m^-1 mod 2^b`.
 fn mont_sqr_limbs(t: &mut [Limb], x: &[Limb], m: &[Limb], n0: Limb) {
-    let t = &mut t[..2 * x.len()];
     if x.len() < KARATSUBA_SQR {
-        sqr_limbs(t, x, &mut []);
+        let mut none = [0; 0];
+        sqr_limbs(t, x, &mut none);
     } else {
         sqr_limbs(t, x, &mut [0; SCRATCH]);
     }
@@ -263,15 +290,14 @@ fn mul_limbs(z: &mut [Limb], x: &[Limb], y: &[Limb], scratch: &mut [Limb]) {
     let z = &mut z[..2 * n];
     if n < KARATSUBA_MUL {
         z.fill(0);
-        let pairs = x.as_chunks::<2>();
-        for (i, [u, v]) in pairs.0.iter().enumerate() {
-            let i = 2 * i;
-            let rest = mul_add2(&mut z[i..i + n], y, *u, *v, 0);
+        for j in 0..n / 2 {
+            let i = 2 * j;
+            let rest = mul_add2(&mut z[i..i + n], y, x[i], x[i + 1], 0);
             z[i + n] = rest as Limb;
             z[i + n + 1] = (rest >> Limb::BITS) as Limb;
         }
-        if let [u] = pairs.1 {
-            z[2 * n - 1] = mul_add(&mut z[n - 1..2 * n - 1], y, *u) as Limb;
+        if n % 2 == 1 {
+            z[2 * n - 1] = mul_add(&mut z[n - 1..2 * n - 1], y, x[n - 1]) as Limb;
         }
         return;
     }
@@ -300,7 +326,8 @@ fn sqr_limbs(z: &mut [Limb], x: &[Limb], scratch: &mut [Limb]) {
     if n < KARATSUBA_SQR {
         // Each pair of rows, x[i] and x[i + 1] times the limbs above them.
         z.fill(0);
-        for i in (0..n.saturating_sub(1)).step_by(2) {
+        for j in 0..n / 2 {
+            let i = 2 * j;
             let s = mul_add_limb(x[i], x[i + 1], z[2 * i + 1], 0);
             z[2 * i + 1] = s as Limb;
             let rest = mul_add2(
@@ -317,15 +344,15 @@ fn sqr_limbs(z: &mut [Limb], x: &[Limb], scratch: &mut [Limb]) {
         // The products sum to below x^2 / 2, so doubling them cannot
         // overflow.
         let mut out = 0;
-        for z in z.iter_mut() {
-            let next = *z >> (Limb::BITS - 1);
-            *z = *z << 1 | out;
+        for i in 0..2 * n {
+            let next = z[i] >> (Limb::BITS - 1);
+            z[i] = z[i] << 1 | out;
             out = next;
         }
 
         let mut carry = 0;
-        for (i, x) in x.iter().enumerate() {
-            let s = mul_add_limb(*x, *x, z[2 * i], carry);
+        for i in 0..n {
+            let s = mul_add_limb(x[i], x[i], z[2 * i], carry);
             z[2 * i] = s as Limb;
             let s = Wide::from(z[2 * i + 1]).wrapping_add(s >> Limb::BITS);
             z[2 * i + 1] = s as Limb;
@@ -349,21 +376,21 @@ fn sqr_limbs(z: &mut [Limb], x: &[Limb], scratch: &mut [Limb]) {
 /// where `x < y` and zero otherwise.
 fn abs_diff(z: &mut [Limb], x: &[Limb], y: &[Limb]) -> Limb {
     let mut borrow = 0;
-    for (i, z) in z.iter_mut().enumerate() {
+    for i in 0..z.len() {
         let x = x.get(i).copied().unwrap_or(0);
         let y = y.get(i).copied().unwrap_or(0);
         let (diff, b1) = x.overflowing_sub(y);
         let (diff, b2) = diff.overflowing_sub(borrow);
-        *z = diff;
+        z[i] = diff;
         borrow = Limb::from(b1 | b2);
     }
     // x - y wrapped to 2^bk + x - y where x < y; its complement plus one
     // is y - x.
     let flip = Limb::wrapping_sub(0, borrow);
     let mut carry = Wide::from(borrow);
-    for z in z.iter_mut() {
-        let s = Wide::from(*z ^ flip).wrapping_add(carry);
-        *z = s as Limb;
+    for i in 0..z.len() {
+        let s = Wide::from(z[i] ^ flip).wrapping_add(carry);
+        z[i] = s as Limb;
         carry = s >> Limb::BITS;
     }
     borrow
@@ -380,27 +407,27 @@ fn abs_diff(z: &mut [Limb], x: &[Limb], y: &[Limb]) -> Limb {
 fn add_middle(z: &mut [Limb], d: &mut [Limb], h: usize, negative: Limb) {
     let flip = Limb::wrapping_sub(0, negative);
     let mut carry = Wide::from(negative);
-    for (i, d) in d.iter_mut().enumerate() {
+    for i in 0..d.len() {
         let z2 = z.get(2 * h + i).copied().unwrap_or(0);
         let s = Wide::from(z[i])
             .wrapping_add(Wide::from(z2))
-            .wrapping_add(Wide::from(*d ^ flip))
+            .wrapping_add(Wide::from(d[i] ^ flip))
             .wrapping_add(carry);
-        *d = s as Limb;
+        d[i] = s as Limb;
         carry = s >> Limb::BITS;
     }
     let top = carry.wrapping_sub(Wide::from(negative));
 
     // The whole product fits `z`, so the last carry is zero.
     let mut carry = 0;
-    for (i, z) in z[h..].iter_mut().enumerate() {
+    for i in 0..z.len() - h {
         let add = match i.cmp(&d.len()) {
             core::cmp::Ordering::Less => Wide::from(d[i]),
             core::cmp::Ordering::Equal => top,
             core::cmp::Ordering::Greater => 0,
         };
-        let s = Wide::from(*z).wrapping_add(add).wrapping_add(carry);
-        *z = s as Limb;
+        let s = Wide::from(z[h + i]).wrapping_add(add).wrapping_add(carry);
+        z[h + i] = s as Limb;
         carry = s >> Limb::BITS;
     }
 }
@@ -424,8 +451,8 @@ fn redc(t: &mut [Limb], m: &[Limb], n0: Limb) {
     // comes from, so each pass takes one step.
     while k > 1 && i + 1 < p {
         let u = t[i].wrapping_mul(n0);
-        let low = mul_add_limb(u, m[0], t[i], 0) >> Limb::BITS;
-        let next = mul_add_limb(u, m[1], t[i + 1], low);
+        let carry = mul_add_limb(u, m[0], t[i], 0) >> Limb::BITS;
+        let next = mul_add_limb(u, m[1], t[i + 1], carry);
         let v = (next as Limb).wrapping_mul(n0);
         let rest = mul_add2(&mut t[i..i + k], m, u, v, 0);
         let sum = Wide::from(t[i + k])
@@ -457,16 +484,41 @@ fn redc(t: &mut [Limb], m: &[Limb], n0: Limb) {
 /// that fits a limb, returning what lands above them, which fits `Wide`.
 ///
 /// Its two products a limb are summed in two carry chains, which run side
-/// by side where one chain's latency would bound `mul_add`.
+/// by side where one chain's latency would bound `mul_add`. A block of limbs
+/// forms its products first, which depend only on `u`, `v`, and `y`, so a core
+/// overlaps them with the chains that add them: four limbs at 64 bits and
+/// eight at 32, which measured fastest across x86_64 and aarch64, as a
+/// longer block of the wider products costs registers x86_64 lacks.
 fn mul_add2(x: &mut [Limb], y: &[Limb], u: Limb, v: Limb, c: Wide) -> Wide {
     let (mut c0, mut c1, mut prev) = (c, 0, 0);
-    for (x, y) in x.iter_mut().zip(y) {
-        let s0 = mul_add_limb(u, *y, *x, c0);
+    let y = &y[..x.len()];
+    let (xs, x_rest) = x.as_chunks_mut::<BLOCK>();
+    let (ys, y_rest) = y.as_chunks::<BLOCK>();
+    for b in 0..xs.len() {
+        let (x, y) = (&mut xs[b], &ys[b]);
+        let pu: [Wide; BLOCK] =
+            core::array::from_fn(|k| Wide::from(u).wrapping_mul(Wide::from(y[k])));
+        let pv: [Wide; BLOCK] = core::array::from_fn(|k| {
+            let below = if k == 0 { prev } else { y[k - 1] };
+            Wide::from(v).wrapping_mul(Wide::from(below))
+        });
+        for k in 0..BLOCK {
+            // Each sum is at most (2^b - 1)^2 + 2 (2^b - 1) = 2^2b - 1.
+            let s0 = pu[k].wrapping_add(Wide::from(x[k])).wrapping_add(c0);
+            c0 = s0 >> Limb::BITS;
+            let s1 = pv[k].wrapping_add(Wide::from(s0 as Limb)).wrapping_add(c1);
+            x[k] = s1 as Limb;
+            c1 = s1 >> Limb::BITS;
+        }
+        prev = y[BLOCK - 1];
+    }
+    for i in 0..x_rest.len() {
+        let s0 = mul_add_limb(u, y_rest[i], x_rest[i], c0);
         c0 = s0 >> Limb::BITS;
         let s1 = mul_add_limb(v, prev, s0 as Limb, c1);
-        *x = s1 as Limb;
+        x_rest[i] = s1 as Limb;
         c1 = s1 >> Limb::BITS;
-        prev = *y;
+        prev = y_rest[i];
     }
     // At most (2^b - 1)^2 + 2 (2^b - 1).
     mul_add_limb(v, prev, c0 as Limb, c1)
@@ -474,10 +526,11 @@ fn mul_add2(x: &mut [Limb], y: &[Limb], u: Limb, v: Limb, c: Wide) -> Wide {
 
 /// `x += y * u`, returning the carry out of the top limb.
 fn mul_add(x: &mut [Limb], y: &[Limb], u: Limb) -> Wide {
+    let y = &y[..x.len()];
     let mut carry = 0;
-    for (x, y) in x.iter_mut().zip(y) {
-        let t = mul_add_limb(u, *y, *x, carry);
-        *x = t as Limb;
+    for i in 0..x.len() {
+        let t = mul_add_limb(u, y[i], x[i], carry);
+        x[i] = t as Limb;
         carry = t >> Limb::BITS;
     }
     carry
@@ -516,9 +569,10 @@ fn neg_inverse(m: Limb) -> Limb {
 
 /// `bignum_cmp_lt` for limbs of one length.
 fn cmp_lt_limbs(x: &[Limb], y: &[Limb]) -> Limb {
+    let y = &y[..x.len()];
     let mut borrow = 0;
-    for (x, y) in x.iter().zip(y) {
-        let (diff, b1) = x.overflowing_sub(*y);
+    for i in 0..x.len() {
+        let (diff, b1) = x[i].overflowing_sub(y[i]);
         let (_, b2) = diff.overflowing_sub(borrow);
         borrow = Limb::from(b1 | b2);
     }
@@ -527,12 +581,84 @@ fn cmp_lt_limbs(x: &[Limb], y: &[Limb]) -> Limb {
 
 /// `x := x - y` where `keep` is all ones.
 fn sub_limbs_masked(x: &mut [Limb], y: &[Limb], keep: Limb) {
+    let y = &y[..x.len()];
     let mut borrow = 0;
-    for (x, y) in x.iter_mut().zip(y) {
-        let (diff, b1) = x.overflowing_sub(y & keep);
+    for i in 0..x.len() {
+        let (diff, b1) = x[i].overflowing_sub(y[i] & keep);
         let (diff, b2) = diff.overflowing_sub(borrow);
-        *x = diff;
+        x[i] = diff;
         borrow = Limb::from(b1 | b2);
+    }
+}
+
+/// `mul_add2` against a plain sum of its rows and an all-ones closed form,
+/// at every width past its block's remainders, on any backend, since it is
+/// the portable code whatever else runs.
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod mul_add2_tests {
+    use proptest::prelude::*;
+
+    use super::*;
+
+    /// `acc += row * m` from limb `at`, with the carry rippling to the top.
+    fn add_row(acc: &mut [Limb], row: &[Limb], m: Limb, at: usize) {
+        let mut carry: Wide = 0;
+        for (i, a) in acc[at..].iter_mut().enumerate() {
+            let y = row.get(i).copied().unwrap_or(0);
+            let s = mul_add_limb(m, y, *a, carry);
+            *a = s as Limb;
+            carry = s >> Limb::BITS;
+        }
+        assert_eq!(carry, 0);
+    }
+
+    proptest! {
+        #[test]
+        fn rows(
+            (x, y) in (0..40usize).prop_flat_map(|n| (
+                prop::collection::vec(any::<Limb>(), n),
+                prop::collection::vec(any::<Limb>(), n),
+            )),
+            u in any::<Limb>(),
+            v in any::<Limb>(),
+            c in any::<Limb>(),
+        ) {
+            let n = x.len();
+            let mut acc = x.clone();
+            acc.extend([0; 2]);
+            add_row(&mut acc, &[c], 1, 0);
+            add_row(&mut acc, &y, u, 0);
+            add_row(&mut acc, &y, v, 1);
+
+            let mut ours = x;
+            let rest = mul_add2(&mut ours, &y, u, v, Wide::from(c));
+            prop_assert_eq!(&ours[..], &acc[..n]);
+            prop_assert_eq!(rest, Wide::from(acc[n]) | Wide::from(acc[n + 1]) << Limb::BITS);
+        }
+    }
+
+    /// Of all-ones `x`, `y`, `u`, and `v`, the sum is
+    /// `(2^bn - 1) 2^2b + c`, for any `n` of two or more.
+    #[test]
+    fn ones() {
+        for n in 2..40 {
+            for c in [0, 1, Limb::MAX] {
+                let mut x = vec![Limb::MAX; n];
+                let rest = mul_add2(
+                    &mut x,
+                    &vec![Limb::MAX; n],
+                    Limb::MAX,
+                    Limb::MAX,
+                    Wide::from(c),
+                );
+                let mut want = vec![Limb::MAX; n];
+                want[..2].fill(0);
+                want[0] = c;
+                assert_eq!(x, want, "n = {n}, c = {c}");
+                assert_eq!(rest, Wide::MAX, "n = {n}, c = {c}");
+            }
+        }
     }
 }
 
