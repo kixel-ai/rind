@@ -1081,7 +1081,7 @@ fn cloned_public_keys_outlive_their_key_pairs() {
 fn keys_shared_across_threads() {
     let pair = ecdsa::KeyPair::from_pkcs8(&ecdsa::sign::P256_SHA256_ASN1, P256).unwrap();
     let signer = ml_dsa::KeyPair::<ml_dsa::MlDsa44>::from_seed(&[1; 32]).unwrap();
-    let signature = signer.sign(MESSAGE).unwrap();
+    let signature = signer.sign(b"", MESSAGE).unwrap();
     let public = ml_dsa::PublicKey::<ml_dsa::MlDsa44>::new(signer.public_key().as_ref()).unwrap();
     std::thread::scope(|s| {
         for _ in 0..4 {
@@ -1089,7 +1089,7 @@ fn keys_shared_across_threads() {
                 for _ in 0..2 {
                     let ecdsa = pair.sign(MESSAGE).unwrap();
                     pair.public_key().verify(MESSAGE, ecdsa.as_ref()).unwrap();
-                    public.verify(MESSAGE, signature.as_ref()).unwrap();
+                    public.verify(b"", MESSAGE, signature.as_ref()).unwrap();
                 }
             });
         }
