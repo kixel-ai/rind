@@ -200,7 +200,7 @@ macro_rules! ml_dsa {
                 let key = KeyPair::<$rind>::generate().unwrap();
 
                 b.iter(|| {
-                    black_box(key.sign(MESSAGE).unwrap());
+                    black_box(key.sign(b"", MESSAGE).unwrap());
                 })
             });
 
@@ -214,7 +214,7 @@ macro_rules! ml_dsa {
                 let key = $vg_signing::from_seed(&seed).unwrap();
                 PublicKey::<$rind>::new(key.verifying_key().as_bytes())
                     .unwrap()
-                    .verify(MESSAGE, &key.sign(MESSAGE, b"").unwrap())
+                    .verify(b"", MESSAGE, &key.sign(MESSAGE, b"").unwrap())
                     .unwrap();
 
                 b.iter(|| {
@@ -231,7 +231,7 @@ macro_rules! ml_dsa {
             let (public_key, signature) = {
                 use rind::ml_dsa::{KeyPair, $rind};
                 let key = KeyPair::<$rind>::generate().unwrap();
-                let signature = key.sign(MESSAGE).unwrap();
+                let signature = key.sign(b"", MESSAGE).unwrap();
                 (
                     key.public_key().as_ref().to_vec(),
                     signature.as_ref().to_vec(),
@@ -296,7 +296,7 @@ macro_rules! ml_dsa {
                 let key = PublicKey::<$rind>::new(&public_key).unwrap();
 
                 b.iter(|| {
-                    key.verify(MESSAGE, &signature).unwrap();
+                    key.verify(b"", MESSAGE, &signature).unwrap();
                 })
             });
 
@@ -376,7 +376,7 @@ macro_rules! ml_dsa {
 
                 b.iter(|| {
                     let key = PublicKey::<$rind>::new(&public_key).unwrap();
-                    key.verify(MESSAGE, &signature).unwrap();
+                    key.verify(b"", MESSAGE, &signature).unwrap();
                 })
             });
             group.finish();
