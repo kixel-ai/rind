@@ -512,6 +512,7 @@ hol_light_proofs=(
     "armv7 gcm_init_neon.bin gcm_init_neon"
     "armv7 gcm_ghash_neon.bin gcm_ghash_neon"
     "armv7 sha256_armv4.bin K256..sha256_block_data_order_hw"
+    "armv7 sha512_armv4.bin K512..sha512_block_data_order_neon"
     "x86_64 sha512_block_data_order_avx2.o rind::low::x86_64::sha512::sha512_block_data_order_avx2"
     "x86_64 sha256_block_data_order_avx2.o rind::low::x86_64::sha256::sha256_block_data_order_avx2"
     "x86_64 bn_mul_mont_nohw.o rind::low::x86_64::mont::bn_mul_mont_nohw"
@@ -1742,8 +1743,8 @@ to_lean() {
 # below its cipher impl opaque, since `aead::Key` holds it; the agreement API,
 # down to the curve25519-dalek functions X25519 runs on a CPU without NEON,
 # and for the public key on every CPU; and the signature API's Ed25519, down
-# to dalek's point and scalar functions and SHA-512's block function, whose
-# assembly no proof covers yet.
+# to dalek's point and scalar functions and the wrappers around aws-lc's
+# SHA-512 routines, which `Rind/Armv7/Sha512Entry.lean` states.
 # `Rind/Armv7/Dalek.lean` restates BAIF's theorems about those dalek
 # functions. Of dalek's and subtle's code, the translation reads `Scalar`,
 # `CtOption`, and the trivial functions Ed25519 calls, which need no theorem,
@@ -1813,6 +1814,7 @@ extract_armv7() {
         --include crate::low::generic::chacha20 \
         --include crate::low::generic::ct_equal \
         --include crate::low::generic::blockwise \
+        --include crate::low::arm::sha_armv4::sha512_compress_blocks \
         --include curve25519_dalek::scalar::Scalar \
         --include curve25519_dalek::scalar::clamp_integer \
         --include '{impl core::clone::Clone for curve25519_dalek::edwards::EdwardsPoint}' \

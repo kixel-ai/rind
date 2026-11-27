@@ -70,7 +70,7 @@ Every Lean file that declares an `axiom`, by the source it restates; no file hol
 | Beneficial AI Foundation's Lean theorems of curve25519-dalek, in its X25519 and Edwards specs that `admin/import-dalek` vendors | `Armv7/Dalek` | published proofs; `admin/prove dalek` checks that every definition the restated functions reach in armv7's configuration is the text BAIF's proofs are about, but for one pinned pair that differs only in local names |
 | Vale's procedures for HACL\*'s AES-GCM | `X86_64/ValeAesGcm` | published proofs; `admin/prove bytes` checks the object code |
 | aws-lc-verification's NSym proof of SHA-384/512 (aarch64) and rind's HOL Light proof of the AVX2 routine (x86_64) | `Aarch64/AwsLc`, `X86_64/AwsLc` | a published proof and rind's own; `admin/prove bytes` and `admin/prove hol-light` check the object code |
-| rind's own HOL Light proofs of its assembly, and rind's Lean proofs of the SHA-256 crypto-extension routine (aarch64) and `bn_mul4x_mont` and `bn_mulx4x_mont` (x86_64) | `Aarch64/Sha256Hw`, `Armv7/GhashNeon`, `X86_64/ChaCha20Cipher`, `X86_64/CtEqual`, `X86_64/RsaMont`, `X86_64/Sha256Shaext`, `X86_64/ShaBlocks` | rind's proofs, in `proofs/hol-light/`, `Rind/Aarch64/Sha256HwAsm.lean`, `Rind/X86_64/Mul4xProof.lean`, and `Rind/X86_64/Mulx4xProof.lean`, checked against the bytes rind's build emits |
+| rind's own HOL Light proofs of its assembly, and rind's Lean proofs of the SHA-256 crypto-extension routine (aarch64) and `bn_mul4x_mont` and `bn_mulx4x_mont` (x86_64) | `Aarch64/Sha256Hw`, `Armv7/GhashNeon`, `Armv7/Sha512Entry`, `X86_64/ChaCha20Cipher`, `X86_64/CtEqual`, `X86_64/RsaMont`, `X86_64/Sha256Shaext`, `X86_64/ShaBlocks` | rind's proofs, in `proofs/hol-light/`, `Rind/Aarch64/Sha256HwAsm.lean`, `Rind/X86_64/Mul4xProof.lean`, and `Rind/X86_64/Mulx4xProof.lean`, checked against the bytes rind's build emits |
 | HOL Light theorems of AES-CTR and AES-CBC that no proof states yet | `X86_64/AesModesLow` | **assumed, not proven**: [the AES modes quest](/quest/m4/verified/aes-modes.md) owns them |
 
 Hand models of Rust Aeneas cannot translate, each quoting the Rust it models:
@@ -272,6 +272,24 @@ those inputs, in any worktree, restores in under a second.
   K256's words and the literal from that code. The theorem covers the
   routine from entry to return for a caller in A32 or T32, so every armv7
   target. No Lean theorem restates it yet.
+- `armv7/sha512_armv4.ml`: `SHA512_BLOCK_DATA_ORDER_NEON_SUBROUTINE_CORRECT`,
+  rind's proof that aws-lc's `sha512_block_data_order_neon` in
+  `low::arm::sha_armv4`, which armv7 runs where the CPU has NEON, stores to
+  the state s2n-bignum's FIPS 180-4 spec, `sha512_hash_blocks`, of its
+  blocks from the state, for one block up. Its first 16 rounds are
+  straight-line D-register code and its other 64 a loop of four 16-round
+  passes on a constant counter, which stepping unrolls, so stepping a
+  block's 2,897 instructions keeps each Q register a join of two of the
+  spec's words:
+  each state word is the round's `a` or `e` it was, the round's sums fold
+  into the next round's, and the schedule's vector operations, split into
+  their lanes, fold into `sha512_msg_schedule`. The routine reaches K512
+  through an `adr` back to it, so `admin/prove` extracts the code from
+  K512 through the routine's end, `K512..sha512_block_data_order_neon`,
+  with `sha512_block_data_order_nohw` between. The theorem covers the
+  routine from entry to return for a caller in A32 or T32, so every armv7
+  target, and `Rind/Armv7/Sha512Entry.lean` restates it about
+  `compress_neon`. The integer routine has no proof yet.
 - `x86_64/ecp_nistz256_point_add_affine.ml` and
   `x86_64/ecp_nistz256_point_add_affinex.ml`:
   `ECP_NISTZ256_POINT_ADD_AFFINE_SUBROUTINE_CORRECT` and
@@ -571,8 +589,9 @@ comparison checks.
   `r10` to `r15`; that its trace is a function of the AAD's address and
   length and `r`'s address (`ConstantTime`); and that some state meets
   `Pre`. `Rind/Poly1305Limbs.lean` holds what the x86_64 and aarch64 proofs
-  of aws-lc's one-pass routines share: `padBlocks`, the partial reduction
-  both keep the accumulator below `5 · 2^128` with, and memory as bytes.
+  of aws-lc's one-pass routines share: `padBlocks`, the three limbs and the
+  partial reduction both keep the accumulator below `5 · 2^128` with, and
+  memory as bytes.
   `PolyHashAdModel` proves the limbs aws-lc's `poly_mul` computes are that
   reduction of the product, and `PolyHashAdAsm` runs the program's blocks.
   No axiom restates it yet: the proofs of seal and open that call it will.
@@ -624,6 +643,24 @@ comparison checks.
   address, whatever the key, nonce, message, and AAD: `check` accepts each
   program, which the kernel computes. That they compute RFC 8439's AEAD,
   the rest of `AwsLc`, is not yet proven.
+
+- `Rind/Aarch64/ChaCha20Poly1305Named.lean`, `ChaCha20Poly1305Poly.lean`,
+  and `ChaCha20Poly1305Ad.lean`: the first parts of that proof.
+  `ChaCha20Poly1305Named` restates `sealProg` and `openProg` in named
+  blocks, `sealNamed` and `openNamed`, equal to them by `rfl`: Poly1305's
+  multiply-and-reduce, all 31 copies; the inlined AAD hash; and ChaCha20's
+  double round over one, two, or three blocks. `ChaCha20Poly1305Poly` runs
+  Poly1305's block step on the model and proves it a step of RFC 8439's
+  accumulator modulo `p` (`acc_step`), from `Rind/Poly1305Limbs.lean`'s
+  `limbs` and `reduce`. `ChaCha20Poly1305Ad` proves the inlined AAD hash,
+  `ad_ok`: from the flags of `cmp x4, #16`, `x4` bytes of AAD at `x3`,
+  fewer than `2^63` and readable if any, 1 in `x15`, `r` in `(x16, x17)`,
+  each word below `2^60`, and an accumulator below `5 · 2^128`
+  (`Ctx.Ok`, `BInv`), it leaves the accumulator over the AAD
+  zero-padded to whole blocks (`padBlocks`), changes no memory and no
+  register but its scratch ones and `v20`, and its trace is a function of
+  the AAD's address and length. `Rind/Aarch64/Asm.lean` holds the symbolic
+  execution they share.
 
 - `Rind/X86_64/Taint.lean`: `constantTime_of_check`, the same check for
   rind's x86_64 model. It tracks CF apart from ZF, SF, and OF, since `dec`
@@ -1354,16 +1391,21 @@ backend, in the same six theorems, in `Rind/Armv7/Ed25519.lean`, which
 follows x86_64's above `mid::ed25519`, whose portable code calls dalek. It
 hashes through `Rind/X86_64/Sha512Context.lean`'s proof of SHA-512's
 context, which `admin/prove` writes for armv7 over armv7's `RunsSha512`:
-that rind's entry checks pass, and the contract of aws-lc's `sha512-armv4`
-assembly, NEON's routine and the integer one, which no proof covers yet:
+that rind's entry checks pass and the CPU has NEON, so SHA-512 runs aws-lc's
+NEON routine, which `armv7/sha512_armv4.ml` proves and
+`Rind/Armv7/Sha512Entry.lean` restates. The integer routine, which a CPU
+without NEON runs, has no proof yet:
 [armv7's assembly](/quest/m5/verified-armv7/assembly.md) proves it. The
-theorems that run code assume `Runs` and `RunsSha512`, so they hold only as
-far as that contract does, and armv7's Ed25519 earns no ✓ until it is proven. `Point::from_bytes`
+theorems that run code assume `Runs` and `RunsSha512`, so they hold on CPUs
+with NEON, and armv7's Ed25519 earns no ✓ until the integer routine is
+proven too, since no armv7 row names a CPU feature. `Point::from_bytes`
 decodes with dalek's lenient `decompress` after refusing a y at or above p
 and an x of zero with the sign bit set, and the theorems prove those checks
 make it `edDecode`. They rest on the axioms `Rind/Armv7/Dalek.lean` restates
 for the dalek functions each calls, which
-[curve25519-dalek's proofs](#curve25519-daleks-proofs) describes.
+[curve25519-dalek's proofs](#curve25519-daleks-proofs) describes, and those
+that hash on `Rind/Armv7/Sha512Entry.lean`'s restatement of
+`armv7/sha512_armv4.ml`'s theorem.
 
 Ed25519 on x86_64 CPUs with AVX-512 IFMA, from the same API to
 pyca/verified-garbage's key-pair derivation, signing, and verification, in
@@ -2113,7 +2155,7 @@ beyond Lean's own.
   them; `Rind/Armv7/Ed25519.lean`, armv7's Ed25519, over the same axioms and
   `Rind/DalekEdwards.lean`, BAIF's Edwards points and encodings in
   `Rind/Ed25519.lean`'s terms, with `Rind/Armv7/Sha512Entry.lean`, armv7's
-  `RunsSha512`, and `Rind/Armv7/Sha512Context.lean`, which `admin/prove`
+  `RunsSha512` and the axiom restating `armv7/sha512_armv4.ml`'s theorem, and `Rind/Armv7/Sha512Context.lean`, which `admin/prove`
   writes from x86_64's `Rind/X86_64/Sha512Context.lean`.
 - `Rind/X86_64/{X25519,Sha512,ChaCha20,Ed25519}.lean`: the X25519, SHA-512,
   ChaCha20, and Ed25519 proofs, with `Rind/X86_64/Sha512Context.lean`,
