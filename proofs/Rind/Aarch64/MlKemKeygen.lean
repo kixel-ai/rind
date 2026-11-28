@@ -652,16 +652,22 @@ theorem rho_enc3 (ek : EkBytes) (T : ℕ → Polynomial) (ρ : 𝔹 32) (h : bv 
   have h2 := (ByteEncode 12 (T 2) (by omega)).length_toList
   simp [List.drop_append, h0, h1, h2]
 
-/-- The encapsulation key `ek` holds `E`: its bytes, their hash `H(E)`, and the
-decoded `t̂` and transposed matrix `kpke_encrypt_fips` takes. -/
+/-- The decoded form of the encapsulation key `E`: `t̂`'s polynomials and the
+transposed matrix, as `K-PKE.Encrypt` reads them from `E`, which
+`kpke_encrypt_fips` takes. -/
+abbrev EkDecoded {X : Type} (D : mid.mlkem.Decoded X Vec Mat EkBytes CtBytes DkBytes Cache Enc) (E : 𝔹 1184) :
+    Prop :=
+  DecodedHolds D (fun j => (PolyVector.ByteDecode (k := k .ML_KEM_768) 12 (slice E 0 1152))[j]!)
+    (fun i j => SampleNTT (slice E 1152 32 ‖ #v[(i : Byte)] ‖ #v[(j : Byte)]))
+
+/-- The encapsulation key `ek` holds `E`: its bytes, their hash `H(E)`, and
+its decoded form. -/
 structure EkHolds {X : Type} (ek : mid.mlkem.EncapKey X Vec Mat EkBytes CtBytes DkBytes Cache Enc) (E : 𝔹 1184) :
     Prop where
   bytes : toVec 1184 ek.bytes.val ek.bytes.property = E
   h_ek : toVec 32 ek.h_ek.val ek.h_ek.property = H E
   hashed : ek.hashed = true
-  decoded : ∃ D, ek.decoded = some D ∧
-    DecodedHolds D (fun j => (PolyVector.ByteDecode (k := k .ML_KEM_768) 12 (slice E 0 1152))[j]!)
-      (fun i j => SampleNTT (slice E 1152 32 ‖ #v[(i : Byte)] ‖ #v[(j : Byte)]))
+  decoded : ∃ D, ek.decoded = some D ∧ EkDecoded D E
 
 /-- `kpke_keygen` is FIPS 203's `K-PKE.KeyGen` for ML-KEM-768, and the
 encapsulation key it returns holds its encoding, given that `SampleNTT`

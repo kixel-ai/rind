@@ -19,6 +19,7 @@ import Rind.Aarch64.MlKemGeneric
 import Rind.Aarch64.MlKemPke
 import Rind.Aarch64.MlKemEncrypt
 import Rind.Aarch64.MlKemSample
+import Rind.Aarch64.MlKemKem
 import Rind.Aarch64.GhashPmull
 import Rind.Aarch64.AesGcm
 import Rind.Aarch64.AesGcmLong
@@ -44,7 +45,8 @@ crypto extension, a trusted axiom: the kernel checks the proof,
 cannot reach the routine through the opaque wrapper, for the theorems over
 every HMAC algorithm; rind's HOL Light proofs of its
 constant-time compares in `Rind.Aarch64.CtEqual` for HMAC's and PBKDF2's
-`verify`, key wrap's `unwrap` and `unwrap_padded`, and AES-GCM's open; for P-256's public
+`verify`, key wrap's `unwrap` and `unwrap_padded`, AES-GCM's open, and ML-KEM-768's
+decapsulation; for P-256's public
 key, ECDH, and ECDSA verification, pyca/verified-garbage's Lean proofs of its
 routines, which `Rind.Aarch64.VgP256` restates; for P-384's `d·G`, which
 key generation and each ECDSA signature's nonce point take, and its ECDSA
@@ -52,7 +54,7 @@ verification, pyca/verified-garbage's Lean proofs of its routines, which
 `Rind.Aarch64.VgP384` restates; for PBKDF2 on
 pyca/verified-garbage's routines, its contracts in `Rind.Aarch64.VgPbkdf2`;
 for ML-KEM-768, s2n-bignum's and mlkem-native's contracts for its routines in
-`Rind.Aarch64.MlKemRoutines`; and nothing else.
+`Rind.Aarch64.MlKemRoutines`, and SHA-3's for its hashes; and nothing else.
 P-384's comb table select rests on no axiom, only on the hand model in
 `Rind.Aarch64.PointSelectModel`. The PMULL GHASH's table and `Ghash::add`, and
 AES-GCM's counter blocks and its `tagged_from` and `tagged` on short messages
@@ -912,6 +914,133 @@ A change here is a change to the trust base.
  MlKemRoutines.mlkem_rej_uniform_vartime_axiom] -/
 #guard_msgs in
 #print axioms MlKemSample.decoded_new_spec
+
+/-- info: 'rind.aarch64.MlKemKeygen.kpke_keygen_fips' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ sha3_keccak2_f1600_spec,
+ sha3_keccak4_f1600_alt_spec,
+ sha3_keccak4_f1600_spec,
+ sha3_keccak_f1600_alt_spec,
+ sha3_keccak_f1600_spec,
+ MlKemRoutines.mlkem_basemul_k3_axiom,
+ MlKemRoutines.mlkem_mulcache_compute_axiom,
+ MlKemRoutines.mlkem_ntt_axiom,
+ MlKemRoutines.mlkem_reduce_axiom,
+ MlKemRoutines.mlkem_rej_uniform_vartime_axiom,
+ MlKemRoutines.mlkem_tobytes_axiom,
+ MlKemRoutines.mlkem_tomont_axiom] -/
+#guard_msgs in
+#print axioms MlKemKeygen.kpke_keygen_fips
+
+/-- info: 'rind.aarch64.MlKemKem.encaps_rind_fips' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ sha3_keccak2_f1600_spec,
+ sha3_keccak4_f1600_alt_spec,
+ sha3_keccak4_f1600_spec,
+ sha3_keccak_f1600_alt_spec,
+ sha3_keccak_f1600_spec,
+ MlKemRoutines.mlkem_basemul_k3_axiom,
+ MlKemRoutines.mlkem_compress_d10_axiom,
+ MlKemRoutines.mlkem_compress_d4_axiom,
+ MlKemRoutines.mlkem_intt_axiom,
+ MlKemRoutines.mlkem_mulcache_compute_axiom,
+ MlKemRoutines.mlkem_ntt_axiom,
+ MlKemRoutines.mlkem_reduce_axiom] -/
+#guard_msgs in
+#print axioms MlKemKem.encaps_rind_fips
+
+/-- info: 'rind.aarch64.MlKemKem.decaps_rind_fips' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ ct_compare_16_spec,
+ ct_compare_bytes_spec,
+ sha3_keccak2_f1600_spec,
+ sha3_keccak4_f1600_alt_spec,
+ sha3_keccak4_f1600_spec,
+ sha3_keccak_f1600_alt_spec,
+ sha3_keccak_f1600_spec,
+ MlKemRoutines.mlkem_basemul_k3_axiom,
+ MlKemRoutines.mlkem_compress_d10_axiom,
+ MlKemRoutines.mlkem_compress_d4_axiom,
+ MlKemRoutines.mlkem_intt_axiom,
+ MlKemRoutines.mlkem_mulcache_compute_axiom,
+ MlKemRoutines.mlkem_ntt_axiom,
+ MlKemRoutines.mlkem_reduce_axiom] -/
+#guard_msgs in
+#print axioms MlKemKem.decaps_rind_fips
+
+/-- info: 'rind.aarch64.MlKemKem.keygen_mitigated_fips' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ sha3_keccak2_f1600_spec,
+ sha3_keccak4_f1600_alt_spec,
+ sha3_keccak4_f1600_spec,
+ sha3_keccak_f1600_alt_spec,
+ sha3_keccak_f1600_spec,
+ MlKemRoutines.mlkem_basemul_k3_axiom,
+ MlKemRoutines.mlkem_mulcache_compute_axiom,
+ MlKemRoutines.mlkem_ntt_axiom,
+ MlKemRoutines.mlkem_reduce_axiom,
+ MlKemRoutines.mlkem_rej_uniform_vartime_axiom,
+ MlKemRoutines.mlkem_tobytes_axiom,
+ MlKemRoutines.mlkem_tomont_axiom] -/
+#guard_msgs in
+#print axioms MlKemKem.keygen_mitigated_fips
+
+/-- info: 'rind.aarch64.MlKemKem.decaps_mitigated_fips' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ ct_compare_16_spec,
+ ct_compare_bytes_spec,
+ sha3_keccak2_f1600_spec,
+ sha3_keccak4_f1600_alt_spec,
+ sha3_keccak4_f1600_spec,
+ sha3_keccak_f1600_alt_spec,
+ sha3_keccak_f1600_spec,
+ MlKemRoutines.mlkem_basemul_k3_axiom,
+ MlKemRoutines.mlkem_compress_d10_axiom,
+ MlKemRoutines.mlkem_compress_d4_axiom,
+ MlKemRoutines.mlkem_intt_axiom,
+ MlKemRoutines.mlkem_mulcache_compute_axiom,
+ MlKemRoutines.mlkem_ntt_axiom,
+ MlKemRoutines.mlkem_reduce_axiom] -/
+#guard_msgs in
+#print axioms MlKemKem.decaps_mitigated_fips
+
+/-- info: 'rind.aarch64.MlKemKem.encaps_mitigated_fips' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ sha3_keccak2_f1600_spec,
+ sha3_keccak4_f1600_alt_spec,
+ sha3_keccak4_f1600_spec,
+ sha3_keccak_f1600_alt_spec,
+ sha3_keccak_f1600_spec,
+ MlKemRoutines.mlkem_basemul_k3_axiom,
+ MlKemRoutines.mlkem_compress_d10_axiom,
+ MlKemRoutines.mlkem_compress_d4_axiom,
+ MlKemRoutines.mlkem_intt_axiom,
+ MlKemRoutines.mlkem_mulcache_compute_axiom,
+ MlKemRoutines.mlkem_ntt_axiom,
+ MlKemRoutines.mlkem_reduce_axiom,
+ MlKemRoutines.mlkem_rej_uniform_vartime_axiom] -/
+#guard_msgs in
+#print axioms MlKemKem.encaps_mitigated_fips
+
+/-- info: 'rind.aarch64.MlKemKem.parse_mitigated_fips' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ sha3_keccak2_f1600_spec,
+ sha3_keccak4_f1600_alt_spec,
+ sha3_keccak4_f1600_spec,
+ sha3_keccak_f1600_alt_spec,
+ sha3_keccak_f1600_spec,
+ MlKemRoutines.mlkem_reduce_axiom,
+ MlKemRoutines.mlkem_rej_uniform_vartime_axiom,
+ MlKemRoutines.mlkem_tobytes_axiom] -/
+#guard_msgs in
+#print axioms MlKemKem.parse_mitigated_fips
 
 /-- info: 'rind.aarch64.MlKemPoly.to_bytes_spec' depends on axioms: [propext,
  Classical.choice,

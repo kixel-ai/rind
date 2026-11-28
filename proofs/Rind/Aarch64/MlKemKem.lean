@@ -117,13 +117,6 @@ theorem bv_append32 (m h : Std.Array U8 32#usize) :
   rw [vappend_toList, toVec_toList, toVec_toList]
   simp [bv]
 
-/-- `K-PKE.Encrypt`'s view of an encapsulation key `E`: `t̂`'s polynomials and
-the transposed matrix, as `DecodedHolds` takes them. -/
-abbrev EkDecoded {X : Type} (D : mid.mlkem.Decoded X Vec Mat EkBytes CtBytes DkBytes Cache Enc) (E : 𝔹 1184) :
-    Prop :=
-  DecodedHolds D (fun j => (PolyVector.ByteDecode (k := k .ML_KEM_768) 12 (slice E 0 1152))[j]!)
-    (fun i j => SampleNTT (slice E 1152 32 ‖ #v[(i : Byte)] ‖ #v[(j : Byte)]))
-
 /-- `encaps_rind` is FIPS 203's `ML-KEM.Encaps_internal` for ML-KEM-768, given
 the key's hash `H(E)` and a decoded form whose `t̂` and transposed matrix are
 those `E` encodes. -/
