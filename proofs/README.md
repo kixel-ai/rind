@@ -741,8 +741,18 @@ comparison checks.
   and `decLoop_constant_time`: each main loop, run any number of times,
   takes the same branches and addresses in any two runs that agree on
   `x0`, `x2`, `x5`, `x6`, `x10`, `x11`, and the stack pointer (`LoopPub`),
-  which `check` shows. The kernels' entry and tails, and the functional
-  proof of the loop around the iterations, are not yet proven: [the
+  which `check` shows.
+
+- `Rind/Aarch64/AesGcm8x192MainLoop.lean`: `encMainLoop_ok` and
+  `decMainLoop_ok`, each main loop run in place from iteration 0 (`LoopInv`)
+  until its compare says stop after `m + 1` iterations, within the `N`
+  groups of eight blocks `LoopStatic` allows (the keys, table, and constant
+  readable and outside the buffer, the buffer writable, `128 N` below
+  `2^64`): the buffer's first `m + 1` groups hold their AES-192 CTR outputs
+  (`memAfter`), `v19` the GHASH of every group but the last of those it
+  hashed (`accAfter`), and `LoopInv` holds at iteration `m + 1`. The
+  kernels' entry, prepretail, and tails are not yet proven, nor are the
+  whole functions programs of the model: [the
   quest](/quest/m4/verified/aes-gcm-aarch64-192.md) says what remains.
 
 - `Rind/X86_64/Taint.lean`: `constantTime_of_check`, the same check for
