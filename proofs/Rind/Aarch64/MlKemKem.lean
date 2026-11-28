@@ -189,6 +189,11 @@ theorem toVec_inj (n : ℕ) (l l' : List U8) (h : l.length = n) (h' : l'.length 
   · intro e
     exact toVec_congr n l l' h h' e
 
+theorem bv_inj (l l' : List U8) : bv l = bv l' ↔ l = l' := by
+  constructor
+  · exact fun e => List.map_injective_iff.mpr (fun a b hab => by cases a; cases b; simp_all) e
+  · intro e; rw [e]
+
 /-- Bytes that are SHAKE256's first 32 of `M` are `J(M)`. -/
 theorem j_eq {n : ℕ} (x : List U8) (hl : x.length = 32) (M : 𝔹 n) (hx : bv x = shake256 M.toList 32) :
     toVec 32 x hl = J M := by
@@ -441,6 +446,89 @@ theorem encaps_mitigated_fips (h : RunsSha3) (hvg : NoVgEncaps) {X : Type}
     simp only [decoded_clone P hP, bind_ok]
     step with encap_key_new_spec h P hP ek.bytes _ as ⟨ek', hb', hh', hs', hd'⟩
     exact encaps_rind_fips h P hP ek' _ (h_eq _ _ _ (by rw [toVec_toList]; exact hh')) _ hD m
+
+/-! ## The encapsulation key check -/
+
+theorem slice_ne_spec (x y : Slice U8) :
+    core.cmp.impls.PartialEqShared.ne (Slice.Insts.CoreCmpPartialEqSlice core.cmp.PartialEqU8) x y ⦃ b =>
+      b ↔ x.val ≠ y.val ⦄ := by
+  unfold core.cmp.impls.PartialEqShared.ne
+  apply WP.spec_mono (core.cmp.PartialEq.ne.trait_default.spec (Slice.Insts.CoreCmpPartialEqSlice core.cmp.PartialEqU8) x y
+    (core.slice.cmp.PartialEqSlice.eq_homo_spec core.cmp.PartialEqU8 x y (fun a b => by simp [liftFun2])))
+  intro b hb
+  rw [hb, ne_eq, ne_eq, Slice.eq_iff]
+
+/-- `Encaps.KeyCheck`'s body, for every parameter set: unfolding it at
+ML-KEM-768's lengths makes the kernel recurse too deep. -/
+theorem keyCheck_def (p : ParameterSet) (E : 𝔹 (384 * k p + 32)) :
+    Encaps.KeyCheck p E = decide (PolyVector.ByteEncode 12 (PolyVector.ByteDecode (k := k p) 12
+      (slice E 0 (384 * k p) (by omega)) (by omega)) (by omega) = (slice E 0 (384 * k p) (by omega)).cast (by
+        cases p <;> rfl)) := rfl
+
+/-- FIPS 203's encapsulation key check for ML-KEM-768: `ByteEncode_12` of the
+decoded `t̂` is the key's first 1152 bytes. -/
+theorem keycheck_iff (E : 𝔹 1184) :
+    Encaps.KeyCheck .ML_KEM_768 E = true ↔
+      enc3 (fun j => (PolyVector.ByteDecode (k := k .ML_KEM_768) 12 (slice E 0 1152))[j]!) =
+        (slice E 0 1152).toList := by
+  rw [keyCheck_def, decide_eq_true_iff, ← Vector.toList_inj, Vector.toList_cast, encode12_3]
+  unfold enc3
+  simp (disch := decide) only [vget!]
+
+/-- `parse_mitigated`, which `Params::parse` runs, is FIPS 203's encapsulation
+key check for ML-KEM-768 on aarch64 without the SHA-3 instructions, where
+rind's arithmetic runs: it accepts the key exactly when `Encaps.KeyCheck` does,
+and the key it returns holds its bytes, their hash, and its decoded form
+(`EkHolds`), given that `SampleNTT` finishes on each of the matrix's inputs,
+which it samples before the check. -/
+theorem parse_mitigated_fips (h : RunsSha3) (hvg : NoVgEncaps) {X : Type}
+    (P : mid.mlkem.Params X Vec Mat EkBytes CtBytes DkBytes Cache Enc) (hP : Is768 P) (input : EkBytes)
+    (hH : ∀ i : ℕ, i < 3 → ∀ j : ℕ, j < 3 →
+      Halts (slice (toVec 1184 input.val input.property) 1152 32 ‖ #v[(i : Byte)] ‖ #v[(j : Byte)]).toList) :
+    mid.mlkem.EncapKey.parse_mitigated P input ⦃ r => match r with
+      | .Ok ek => Encaps.KeyCheck .ML_KEM_768 (toVec 1184 input.val input.property) = true ∧
+          EkHolds ek (toVec 1184 input.val input.property)
+      | .Err _ => Encaps.KeyCheck .ML_KEM_768 (toVec 1184 input.val input.property) = false ⦄ := by
+  have hil : input.val.length = 1184 := input.property
+  unfold mid.mlkem.EncapKey.parse_mitigated
+  simp only [vg_encaps_none hvg P hP, hP.K, hP.ek.as_ref, hP.enc.as_ref, hP.ek.clone, bind_ok]
+  step with decoded_new_spec h P hP input hH as ⟨D, hD⟩
+  obtain ⟨⟨th, ⟨⟩⟩, ta⟩ := D
+  step as ⟨s, hs⟩
+  step as ⟨i1, hi1⟩
+  step as ⟨t_hat, ht1, ht2⟩
+  refine WP.spec_bind (to_bytes_spec P.VectorInst hP.vec hP.enc th _ hD.t_hat) ?_
+  intro enc henc
+  step as ⟨s1, hs1⟩
+  step with as_flattened_spec s1 (by rw [array_length s1 enc hs1]; scalar_tac) as ⟨s2, hs2⟩
+  step with slice_ne_spec t_hat s2 as ⟨b, hb⟩
+  have hts : bv t_hat.val = (slice (toVec 1184 input.val input.property) 0 1152).toList := by
+    rw [slice_toVec, toVec_toList, ht1, hi1, hs]
+    simp [List.slice, sub]
+  have hencb : bv s2.val = enc3 (fun j =>
+      (PolyVector.ByteDecode (k := k .ML_KEM_768) 12 (slice (toVec 1184 input.val input.property) 0 1152))[j]!) := by
+    rw [hs2, hs1]
+    exact bv_flat3 enc.val enc.property _ (fun j hj => henc j hj)
+  have hkc : b = true ↔ Encaps.KeyCheck .ML_KEM_768 (toVec 1184 input.val input.property) = false := by
+    rw [hb, ← Bool.not_eq_true, keycheck_iff, ← hts, ← hencb, ne_eq, bv_inj, eq_comm]
+  split
+  · rename_i hbt
+    have hk := hkc.mp hbt
+    unfold error.Error.Insts.CoreConvertFromKeyFormatError.from
+    simp only [bind_ok, WP.spec_ok]
+    exact hk
+  · rename_i hbf
+    have hk : Encaps.KeyCheck .ML_KEM_768 (toVec 1184 input.val input.property) = true := by
+      cases hc : Encaps.KeyCheck .ML_KEM_768 (toVec 1184 input.val input.property)
+      · exact absurd (hkc.mpr hc) hbf
+      · rfl
+    step with encap_key_new_spec h P hP input _ as ⟨ek, hb', hh', hs', hd'⟩
+    have hh2 : bv ek.h_ek.val = sha3_256 (toVec 1184 ek.bytes.val ek.bytes.property).toList := by
+      rw [toVec_toList, hb']; exact hh'
+    refine ⟨hk, ⟨by rw [hb'], ?_, hs', _, hd', hD⟩⟩
+    rw [h_eq _ _ _ hh2]
+    congr 1
+    rw [hb']
 
 end MlKemKem
 
