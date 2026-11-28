@@ -1139,7 +1139,9 @@ spec_tests() {
 # the theorem names, and the words each static it reads begins with; this
 # prints the same of rind's release build, from the object `asm_function`
 # writes, or on x86_64 the function's own section, and the statics
-# `rind_static` writes, and fails unless the two are the same. Every
+# `rind_static` writes, and fails unless the two are the same. Each aarch64
+# block rind proves ahead of its function (`provenBlocks`) must be words in a
+# row of that function's. Every
 # relocation must reach a static the program names: on aarch64 the start of
 # the one read-only section `asm_function` keeps, and on x86_64 a read-only
 # section of the function's object, with the addend the program gives,
@@ -1147,7 +1149,7 @@ spec_tests() {
 # defines, printed by its Rust path, which `rind-asm` checks is one it
 # proves, of the same program as the call names.
 rind_isa() {
-    local dir=$out/rind-isa kind a b c n=0 rodata obj sym arch section size secsize off type target base callee
+    local dir=$out/rind-isa kind a b c n=0 rodata obj sym arch section size secsize off type target base callee words
     local -A statics=()
     hold scratch
     rm -rf "$dir"
@@ -1221,6 +1223,13 @@ rind_isa() {
         static)
             rind_static "$arch" "$b" "$dir/static"
             echo "static $a $b $(od -An -v -tx1 "$dir/static" | tr -d ' \n' | head -c ${#c})"
+            ;;
+        block)
+            n=$((n + 1))
+            asm_function aarch64 "$a" "$dir/$n.o"
+            "$tools/llvm-objcopy" -O binary --only-section=.text "$dir/$n.o" "$dir/$n.text"
+            words=$(od -An -v -tx4 -w4 "$dir/$n.text" | tr -d ' ' | paste -sd, -)
+            if [[ ,$words, == *,$b,* ]]; then echo "block $a $b"; else echo "block $a absent"; fi
             ;;
         esac
     done <"$dir/want" >"$dir/got"

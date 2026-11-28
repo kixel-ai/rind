@@ -5,8 +5,10 @@ import RindIsa.Proven
 # Cosimulating rind's extension of VG's AArch64 model
 
 Each distinct instruction and branch of the functions rind proves in its
-model (`RindIsa/Proven.lean`), as its machine code (`Instr.encode`), the
-words `admin/prove lean` checks rind's build emits, run in the model from
+model (`RindIsa/Proven.lean`), and of the blocks it proves lemmas about
+ahead of their functions (`provenBlocks`), as its machine code
+(`Instr.encode`), the words `admin/prove lean` checks rind's build emits,
+run in the model from
 random states and on the CPU from the same ones, as `Cosim/AArch64.lean`
 runs VG's: VG's own instructions through its cases, the others through
 `extCase`, which also compares `x29`. `adrSym`'s `adrp` and `add`, which the
@@ -61,6 +63,9 @@ def extCase (i : Rind.AArch64.Instr) : Gen (Option (Img × Img)) := do
       img := { img with sp := BitVec.ofNat 64 (← spIn (windowBase - off) (windowBase + windowLen - 16 - off)) }
     | .ldpDPost .. =>
       img := { img with sp := BitVec.ofNat 64 (← spIn windowBase (windowBase + windowLen - 16)) }
+    | .ldpQ _ _ n off => img := img.setReg n (windowBase + (← below (windowLen - off - 32 + 1)))
+    | .ldpQPost _ _ n _ | .stpQPost _ _ n _ => img := img.setReg n (windowBase + (← below (windowLen - 32 + 1)))
+    | .ldrD _ n => img := img.setReg n (windowBase + (← below (windowLen - 8 + 1)))
     | _ => pure ()
     if let some s' := Rind.AArch64.exec i ⟨img.state, img.gpr[29]!⟩ then
       let out := ofState img s'.vg
@@ -76,10 +81,12 @@ def condCase : Rind.AArch64.Cond → Gen (Option (Img × Bool))
 def code (i : Rind.AArch64.Instr) : Option ByteArray :=
   i.encode.map fun ws => ws.foldl pushU32 .empty
 
-/-- The blocks of every function rind proves, `n` cases each, with the CPU
-features each needs; or why there are none. -/
+/-- The blocks of every function rind proves, and the blocks it proves ahead
+of their functions, `n` cases each, with the CPU features each needs; or why
+there are none. -/
 def blocks (n : Nat) : Gen (Except String (List (Block × List String))) := do
   let (is, cs) := proven.foldl (fun (is, cs) p => let (i, c) := parts p.prog; (is ++ i, cs ++ c)) ([], [])
+  let is := is ++ (provenBlocks.map (·.2)).flatten
   let mut out := []
   for i in is.eraseDups do
     if let .vg (.adrSym ..) := i then continue

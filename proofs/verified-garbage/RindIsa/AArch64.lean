@@ -8,7 +8,8 @@ instructions VG's own code uses. rind proves code VG did not write, aws-lc's
 assembly among it, which also uses the frame pointer `x29`, the multiple
 structure forms of LD1 and ST1, LD4R, aws-lc's frame of `x29` and `x30`, a
 frame of `d8`–`d15`, the immediate forms of SUBS, ADDS and AND, the zero
-register as an operand, post- and pre-indexed loads and stores, UMOV of a
+register as an operand, post- and pre-indexed loads and stores, LDP and STP
+of `q` registers, LDR of a `d` register, CMP of two registers, UMOV of a
 byte, and B.cond. This model is VG's with those added: its state is VG's with `x29`, and its
 instructions are VG's, run by VG's semantics on VG's part of the state, and
 those below, each transcribing the pseudocode of the Arm Architecture
@@ -84,6 +85,16 @@ inductive Instr
   | ldpD (t1 t2 : VReg) (off : Nat)
   /-- `ldp dt1, dt2, [sp], #imm` (LDP (SIMD&FP), 64-bit, post-index) -/
   | ldpDPost (t1 t2 : VReg) (imm : Nat)
+  /-- `ldp qt1, qt2, [xn, #off]` (LDP (SIMD&FP), 128-bit, signed offset) -/
+  | ldpQ (t1 t2 : VReg) (n : Reg) (off : Nat)
+  /-- `ldp qt1, qt2, [xn], #imm` (LDP (SIMD&FP), 128-bit, post-index) -/
+  | ldpQPost (t1 t2 : VReg) (n : Reg) (imm : Nat)
+  /-- `stp qt1, qt2, [xn], #imm` (STP (SIMD&FP), 128-bit, post-index) -/
+  | stpQPost (t1 t2 : VReg) (n : Reg) (imm : Nat)
+  /-- `ldr dt, [xn]` (LDR (immediate, SIMD&FP), 64-bit, unsigned offset 0) -/
+  | ldrD (t : VReg) (n : Reg)
+  /-- `cmp xn, xm` (alias of SUBS (shifted register), 64-bit, `Rd = 31`, no shift) -/
+  | cmpReg (n m : Reg)
   deriving DecidableEq, Repr
 
 /-- Branch conditions: VG's CBZ and CBNZ, and B.cond on a condition code
@@ -139,6 +150,20 @@ def ldD (g : VG.AArch64.State) (a : Addr) (t1 t2 : VReg) : Option VG.AArch64.Sta
   (g.load a 8).bind fun x => (g.load (a + 8) 8).map fun y =>
     (g.setV t1 (x.setWidth 128)).setV t2 (y.setWidth 128)
 
+/-- Load `q<t1>` from `a` and `q<t2>` from `b`, the address 16 bytes on, as
+LDP (SIMD&FP), 128-bit, does: `data1 = Mem[address, 16]; data2 =
+Mem[address + 16, 16]; V[t] = data1; V[t2] = data2`. `t1 = t2` is
+CONSTRAINED UNPREDICTABLE, so it faults. -/
+def ldQ (g : VG.AArch64.State) (a b : Addr) (t1 t2 : VReg) : Option VG.AArch64.State :=
+  if t1 = t2 then none else
+  (g.load a 16).bind fun x => (g.load b 16).map fun y => (g.setV t1 x).setV t2 y
+
+/-- Store `q<t1>` at `a` and `q<t2>` 16 bytes on, as STP (SIMD&FP), 128-bit,
+does: `data1 = V[t]; data2 = V[t2]; Mem[address, 16] = data1;
+Mem[address + 16, 16] = data2`. -/
+def stQ (g : VG.AArch64.State) (a : Addr) (t1 t2 : VReg) : Option VG.AArch64.State :=
+  (g.store a 16 (g.v t1)).bind fun g' => g'.store (a + BitVec.ofNat 64 16) 16 (g.v t2)
+
 /-- The 64-bit mask of `ones` one bits rotated right by `rot`, as DDI 0487
 J1.3 `DecodeBitMasks` gives it for `N = 1`, `imms = ones - 1`, `immr = rot`. -/
 def bitMask (ones rot : Nat) : BitVec 64 := (BitVec.ofNat 64 (2 ^ ones - 1)).rotateRight rot
@@ -192,6 +217,16 @@ def advance (g : VG.AArch64.State) (n : Reg) (base : Addr) (cnt : Nat) (post : B
 * "STP (SIMD&FP)", "LDP (SIMD&FP)", 64-bit, `Rn = SP`: `stD`, `ldD`, at `SP +
   off`, or pre-index at `SP - imm` (`SP[] = address`), or post-index at `SP`
   (`SP[] = address + imm`).
+
+* "LDP (SIMD&FP)", 128-bit (`opc = 10`): `ldQ` at `address = X[n] + off`,
+  or post-index at `address = X[n]`, then `X[n] = address + imm`; "STP
+  (SIMD&FP)", 128-bit, post-index: `stQ` at `X[n]`, then `X[n] = address +
+  imm`. Each offset is `imm7` times 16, here a multiple of 16 below 1024.
+* "LDR (immediate, SIMD&FP)", 64-bit, unsigned offset 0: `V[t] =
+  ZeroExtend(Mem[X[n], 8])`, a write of a 64-bit register zeroing the rest
+  of the vector register.
+* "SUBS (shifted register)", 64-bit, `Rd = 31`, no shift: `(-, nzcv) =
+  AddWithCarry(X[n], NOT(X[m]), '1')`, VG's `flagsAdd`.
 
 An access through `sp` faults unless it is 16-byte aligned, as Linux's
 SCTLR_EL1.SA0 makes it (DDI 0487 D1.3.10, "SP alignment checking"), and
@@ -276,6 +311,23 @@ def exec : Instr → State → Option State
     if s.vg.sp.toNat % 16 = 0 ∧ imm % 16 = 0 ∧ imm < 512 then
       (ldD s.vg s.vg.sp t1 t2).map fun g => { s with vg := { g with sp := s.vg.sp + BitVec.ofNat 64 imm } }
     else none
+  | .ldpQ t1 t2 n off, s =>
+    if off % 16 = 0 ∧ off < 1024 then
+      (ldQ s.vg (s.vg.gpr n + BitVec.ofNat 64 off) (s.vg.gpr n + BitVec.ofNat 64 (off + 16)) t1 t2).map
+        fun g => { s with vg := g }
+    else none
+  | .ldpQPost t1 t2 n imm, s =>
+    if imm % 16 = 0 ∧ imm < 1024 then
+      (ldQ s.vg (s.vg.gpr n) (s.vg.gpr n + BitVec.ofNat 64 16) t1 t2).map fun g =>
+        { s with vg := g.write .x n (s.vg.gpr n + BitVec.ofNat 64 imm) }
+    else none
+  | .stpQPost t1 t2 n imm, s =>
+    if imm % 16 = 0 ∧ imm < 1024 then
+      (stQ s.vg (s.vg.gpr n) t1 t2).map fun g =>
+        { s with vg := g.write .x n (s.vg.gpr n + BitVec.ofNat 64 imm) }
+    else none
+  | .ldrD t n, s => (s.vg.load (s.vg.gpr n) 8).map fun x => { s with vg := s.vg.setV t (x.setWidth 128) }
+  | .cmpReg n m, s => some { s with vg := s.vg.flagsAdd (s.vg.gpr n) (~~~(s.vg.gpr m)) true }
 
 /-- The addresses an instruction accesses: VG's for its own, and for the
 others each register's or doubleword's. -/
@@ -295,8 +347,12 @@ def addrs : Instr → State → List Addr
   | .stpD _ _ off, s | .ldpD _ _ off, s =>
     [s.vg.sp + BitVec.ofNat 64 off, s.vg.sp + BitVec.ofNat 64 off + 8]
   | .ldpDPost _ _ _, s => [s.vg.sp, s.vg.sp + 8]
+  | .ldpQ _ _ n off, s =>
+    [s.vg.gpr n + BitVec.ofNat 64 off, s.vg.gpr n + BitVec.ofNat 64 (off + 16)]
+  | .ldpQPost _ _ n _, s | .stpQPost _ _ n _, s => [s.vg.gpr n, s.vg.gpr n + BitVec.ofNat 64 16]
+  | .ldrD _ n, s => [s.vg.gpr n]
   | .cmpImm .., _ | .subsImm .., _ | .addsImm .., _ | .andImm .., _ | .adcZr .., _ | .neg .., _
-  | .movReg .., _ | .umovB .., _ => []
+  | .movReg .., _ | .umovB .., _ | .cmpReg .., _ => []
 
 /-- The CPU features beyond the baseline: VG's for its own, none for the
 others, which are A64 and AdvSIMD baseline instructions. -/
@@ -397,10 +453,25 @@ def Instr.encode : Instr → Option (List Nat)
   | .stpD t1 t2 off => dpair 0x6D000000 t1 t2 (off / 8)
   | .ldpD t1 t2 off => dpair 0x6D400000 t1 t2 (off / 8)
   | .ldpDPost t1 t2 imm => dpair 0x6CC00000 t1 t2 (imm / 8)
+  -- LDP and STP (SIMD&FP), 128-bit (`opc = 10`): `10 101 1 mode L imm7 Rt2 Rn Rt`,
+  -- `mode` 010 signed offset, 001 post-index, `imm7` the offset over 16.
+  | .ldpQ t1 t2 n off => qpair 0xAD400000 t1 t2 n off
+  | .ldpQPost t1 t2 n imm => qpair 0xACC00000 t1 t2 n imm
+  | .stpQPost t1 t2 n imm => qpair 0xAC800000 t1 t2 n imm
+  -- LDR (immediate, SIMD&FP), 64-bit, unsigned offset: `11 111 1 01 01 imm12 Rn Rt`, `imm12 = 0`.
+  | .ldrD t n => some [0xFD400000 ||| n.index <<< 5 ||| t.index]
+  -- SUBS (shifted register), 64-bit: `1 1 1 01011 00 0 Rm 000000 Rn Rd`, `Rd = 31`.
+  | .cmpReg n m => some [0xEB000000 ||| Enc.rdnm Enc.r31 n.index m.index]
 where
   /-- An STP or LDP (SIMD&FP) through `sp` with `imm7`. -/
   dpair (base : Nat) (t1 t2 : VReg) (imm7 : Nat) : Option (List Nat) :=
     if imm7 < 128 then some [base ||| imm7 <<< 15 ||| t2.index <<< 10 ||| Enc.r31 <<< 5 ||| t1.index]
+    else none
+  /-- An LDP or STP (SIMD&FP), 128-bit, through `n`, by `off`, a multiple of
+  16 below 1024. -/
+  qpair (base : Nat) (t1 t2 : VReg) (n : Reg) (off : Nat) : Option (List Nat) :=
+    if off % 16 = 0 ∧ off < 1024 then
+      some [base ||| (off / 16) <<< 15 ||| t2.index <<< 10 ||| n.index <<< 5 ||| t1.index]
     else none
 
 /-- A relocation the linker resolves in a program's machine code: the byte
