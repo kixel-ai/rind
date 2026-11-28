@@ -91,17 +91,6 @@ theorem encoded_point_as_ref_spec (ep : high.ecdsa.EncodedPoint) (h : ep.len.val
   step*
   simp [s_post, List.slice, Array.val_to_slice]
 
-/-- The system source's draws: `getrandom::fill`'s failure is `RngFailed`. -/
-theorem system_draws (hfill : Fills) : Draws mid.rng.SystemRandom.Insts.RindMidRngRandomSource := by
-  intro rng s
-  obtain ⟨⟨fr, fs⟩, hf⟩ := hfill s
-  simp only [
-    mid.rng.SystemRandom.Insts.RindMidRngRandomSource.fill, hf, bind_ok]
-  rcases fr with _ | e <;>
-    simp [core.result.Result.map_err,
-      
-      mid.rng.RandomSourceSystemRandom.fill.closure.Insts.CoreOpsFunctionFnOnceTupleErrorError.call_once]
-
 theorem signing_generate_spec (h : Runs) (hc : Cached) (hfill : Fills) :
     high.ecdsa.SigningKey.generate P256C ⦃ r =>
       (∀ key, r = .Ok key → ∃ d, SigningKeyOf key d) ∧ ∀ e, r = .Err e → e = .RngFailed ⦄ := by

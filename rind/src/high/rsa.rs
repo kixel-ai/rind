@@ -82,6 +82,61 @@ fn pkcs1_components(bytes: &[u8]) -> Result<(&[u8], &[u8]), Error> {
     ))
 }
 
+/// The big-endian integers of PKCS#1 `RSAPrivateKey` DER, refusing a
+/// multi-prime key and any negative integer.
+///
+/// The private integers are secret: only whether one is negative, as aws-lc
+/// refuses, is revealed.
+fn pkcs1_private_components(bytes: &[u8]) -> Result<Components<'_>, Error> {
+    let decoded = pkix::RSAPrivateKey::from_bytes(bytes).map_err(KeyFormatError::Asn1)?;
+
+    if !matches!(decoded.version, pkix::Version::two_prime) {
+        return Err(KeyFormatError::MultiPrimeRsa.into());
+    }
+
+    if decoded.modulus.is_negative() {
+        return Err(KeyFormatError::RsaModulus.into());
+    }
+    if decoded.publicExponent.is_negative() {
+        return Err(KeyFormatError::RsaExponent.into());
+    }
+    // Their sign bits are read without `Integer::is_negative`, whose
+    // `Option<bool>` branches on the bit.
+    let sign = |x: &asn1::Integer<'_>| x.as_bytes().first().map_or(0, |b| b >> 7);
+    if ct::into_public(sign(&decoded.prime1) | sign(&decoded.prime2)) != 0 {
+        return Err(KeyFormatError::RsaPrimes.into());
+    }
+    // One that is negative cannot agree with the others.
+    let others = sign(&decoded.privateExponent)
+        | sign(&decoded.exponent1)
+        | sign(&decoded.exponent2)
+        | sign(&decoded.coefficient);
+    if ct::into_public(others) != 0 {
+        return Err(KeyFormatError::MismatchedRsaComponents.into());
+    }
+    Ok(Components {
+        n: decoded.modulus.as_bytes(),
+        e: decoded.publicExponent.as_bytes(),
+        d: decoded.privateExponent.as_bytes(),
+        p: decoded.prime1.as_bytes(),
+        q: decoded.prime2.as_bytes(),
+        dp: decoded.exponent1.as_bytes(),
+        dq: decoded.exponent2.as_bytes(),
+        qi: decoded.coefficient.as_bytes(),
+    })
+}
+
+/// The PKCS#1 `RSAPrivateKey` DER inside PKCS#8 v1 DER, whose
+/// `privateKeyAlgorithm` must be one of [`KEY_ALGORITHMS`] with `NULL`
+/// parameters, as aws-lc requires.
+///
+/// This format is defined in
+/// [RFC5208](https://datatracker.ietf.org/doc/html/rfc5208#section-5)
+/// (and earlier standards, including the original PKCS#8 standard).
+fn pkcs8_private_key(bytes: &[u8]) -> Result<&[u8], Error> {
+    pkcs8::Key::decode(bytes, &KEY_ALGORITHMS, Some(asn1::Any::Null(asn1::Null)))?.v1_private_key()
+}
+
 /// How long an RSASSA-PSS salt is.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum PssSalt {
@@ -597,43 +652,7 @@ impl SigningKey {
     /// (and earlier standards, including the original PKCS#1 standard).
     pub(crate) fn from_pkcs1_der(bytes: &[u8]) -> Result<Self, Error> {
         let _entry = Entry::new_secret();
-        let decoded = pkix::RSAPrivateKey::from_bytes(bytes).map_err(KeyFormatError::Asn1)?;
-
-        if !matches!(decoded.version, pkix::Version::two_prime) {
-            return Err(KeyFormatError::MultiPrimeRsa.into());
-        }
-
-        if decoded.modulus.is_negative() {
-            return Err(KeyFormatError::RsaModulus.into());
-        }
-        if decoded.publicExponent.is_negative() {
-            return Err(KeyFormatError::RsaExponent.into());
-        }
-        // The private integers are secret: only whether one is negative, as
-        // aws-lc refuses, is revealed. Their sign bits are read without
-        // `Integer::is_negative`, whose `Option<bool>` branches on the bit.
-        let sign = |x: &asn1::Integer<'_>| x.as_ref().first().map_or(0, |b| b >> 7);
-        if ct::into_public(sign(&decoded.prime1) | sign(&decoded.prime2)) != 0 {
-            return Err(KeyFormatError::RsaPrimes.into());
-        }
-        // One that is negative cannot agree with the others.
-        let others = sign(&decoded.privateExponent)
-            | sign(&decoded.exponent1)
-            | sign(&decoded.exponent2)
-            | sign(&decoded.coefficient);
-        if ct::into_public(others) != 0 {
-            return Err(KeyFormatError::MismatchedRsaComponents.into());
-        }
-        Self::from_unsigned(&Components {
-            n: decoded.modulus.as_ref(),
-            e: decoded.publicExponent.as_ref(),
-            d: decoded.privateExponent.as_ref(),
-            p: decoded.prime1.as_ref(),
-            q: decoded.prime2.as_ref(),
-            dp: decoded.exponent1.as_ref(),
-            dq: decoded.exponent2.as_ref(),
-            qi: decoded.coefficient.as_ref(),
-        })
+        Self::from_unsigned(&pkcs1_private_components(bytes)?)
     }
 
     /// Loads an RSA signing key from its big-endian components.
@@ -737,8 +756,7 @@ impl SigningKey {
     /// [`KEY_ALGORITHMS`] with `NULL` parameters, as aws-lc requires.
     pub(crate) fn from_pkcs8_der(bytes: &[u8]) -> Result<Self, Error> {
         let _entry = Entry::new_secret();
-        pkcs8::Key::decode(bytes, &KEY_ALGORITHMS, Some(asn1::Any::Null(asn1::Null)))
-            .and_then(|k| Self::from_pkcs1_der(k.v1_private_key()?))
+        Self::from_pkcs1_der(pkcs8_private_key(bytes)?)
     }
 
     /// Returns the matching public key.
@@ -987,14 +1005,19 @@ impl SigningKey {
     }
 
     /// Writes `c` to the front of `signature` in exactly the modulus length.
+    ///
+    /// By index rather than `get_mut(..).ok_or(..)?`, whose Aeneas translation
+    /// does not type, so `proofs/` can prove RSA signing.
     fn to_signature<'a, const N: usize>(
         &self,
         c: &PosInt<N>,
         signature: &'a mut [u8],
     ) -> Result<&'a [u8], Error> {
-        let signature = signature
-            .get_mut(..self.0.modulus_len_bytes())
-            .ok_or(Error::WrongLength)?;
+        let k = self.0.modulus_len_bytes();
+        if signature.len() < k {
+            return Err(Error::WrongLength);
+        }
+        let signature = &mut signature[..k];
         i2osp(c, signature)?;
         Ok(signature)
     }

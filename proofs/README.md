@@ -2019,6 +2019,48 @@ width. Below it, the file proves
 `exponents_agree` and the `PosInt` routines key loading runs, among them
 `fit` and `reduce_even`.
 
+RSASSA-PKCS1-v1_5 and RSASSA-PSS signing with SHA-256 on x86_64, from the
+signature API's `rsa::KeyPair` to the private operation, in
+`Rind/X86_64/RsaDispatch.lean` over `Rind/X86_64/RsaSign.lean`, against RFC
+8017 as `Rind/Rsa.lean` transliterates it:
+
+- `rsa_key_pair_from_components_spec`, `rsa_key_pair_from_pkcs1_spec`,
+  `rsa_key_pair_from_pkcs8_spec`: a key pair `KeyPair::from_components`,
+  `from_pkcs1`, or `from_pkcs8` returns holds the two-prime RSA private key
+  its integers are (`RsaKeyPairOf`): one meeting `PrivKeyInv` whose
+  components meet `CrtRelations`, with its own public key, given
+  `MontProducts` at the wider prime's width. DER is opaque, as for public
+  keys, so the PKCS#1 and PKCS#8 theorems hold for whatever integers the
+  encoding holds;
+- `rsa_pkcs1_sha256_sign_spec`, `rsa_pss_sha256_sign_spec`: such a key
+  pair's `sign` with `sign::PKCS1_SHA256` returns RSASSA-PKCS1-V1_5-SIGN with
+  SHA-256's `DigestInfo`, and with `sign::PSS_SHA256` RSASSA-PSS-SIGN with
+  MGF1-SHA-256 and a 32-byte salt the system random source drew, both with
+  RSASP1 by the CRT, or refuses with `Fault` where the private operation's
+  fault check does, which two primes rule out, or, for PSS, with `RngFailed`
+  where the draw fails;
+- `rsa2048_pkcs1_sha256_sign_spec`, `rsa2048_pss_sha256_sign_spec`,
+  `rsa2048_key_pair_from_pkcs1_spec`: the same for RSA-2048 with primes of
+  1024 bits on a CPU with BMI2 and ADX, its products s2n-bignum's Karatsuba
+  routines at 16 and 32 words.
+
+Below the API, `Rind/X86_64/RsaSign.lean` proves `SigningKey`'s loading
+(`from_unsigned_priv_spec`, over `from_secret_bytes`) and signing:
+EMSA-PKCS1-v1_5's encoding, which verification's proof covers, and
+EMSA-PSS-ENCODE (`encode_pss_sig_spec`), over any hash meeting `HashSpec` and
+any random source whose draws return, with the salt it drew, which the
+functional spec leaves out. The signing theorems assume `Runs`,
+`Sha256Blocks`, messages of at most `maxInput` bytes, and
+`IfmaCheckReturns`, and, as `private_op_spec` does, `MontProducts` at the
+modulus's width and, where rind's CRT runs, at the primes' with
+`NoRsazPair`; PSS's also `Fills`, that the system random source returns. The
+loaders assume `Runs`, the entry guard, and that `HaveAvx512ForRsa`'s CPU
+checks return. A key pair `KeyPair::generate` returns is not covered yet:
+key generation's proof is [its quest's](/quest/m4/verified/rsa-sign.md) last
+item. `KeyPair::sign` reaches each algorithm through a function pointer and
+writes the signature with `Buffer::write`, which
+`Rind/X86_64/RsaDispatch.lean` models for these two algorithms.
+
 `admin/prove` fails if a hand model's quote no longer matches the source, if
 the source names `Ops`, builds a `Masker`, or writes its `mask` outside the
 dispatch models' quotes, if it builds a digest `Algorithm` outside
@@ -2267,12 +2309,13 @@ beyond Lean's own.
   share, and `Rind/{X86_64,Aarch64}/VgChaCha20.lean`, each target's glue over
   VG's routines; `Rind/VgOutcome.lean` and `Rind/<Arch>/VgMlKem.lean`, the axioms
   restating what VG's ML-KEM-768 routines return.
-- `Rind/Rsa.lean` and `Rind/RsaLemmas.lean`: RFC 8017's verification,
-  transliterated, and its lemmas; `Rind/X86_64/{RsaBytes,RsaMont,RsaPublic,RsaKey,RsaVerify,RsaPss}.lean`:
+- `Rind/Rsa.lean` and `Rind/RsaLemmas.lean`: RFC 8017's signing and
+  verification, transliterated, and its lemmas; `Rind/X86_64/{RsaBytes,RsaMont,RsaPublic,RsaKey,RsaVerify,RsaPss}.lean`:
   the RSA verification proof, on x86_64 alone,
   `Rind/X86_64/RsaDispatch.lean`, the hand model of the signature API's RSA
-  public keys and its theorems, and `Rind/X86_64/{RsaGather,RsaExp,RsaPrivate}.lean`:
-  the private operation's proof.
+  keys and its theorems, `Rind/X86_64/{RsaGather,RsaExp,RsaPrivate}.lean`:
+  the private operation's proof, and `Rind/X86_64/{RsaPrivKey,RsaSign}.lean`:
+  private key loading's and signing's.
 - `Rind/SymCrypt/{Defs,Sha3}.lean`: SymCrypt's Lean FIPS 202 spec, vendored;
   `Rind/Keccak.lean`: s2n-bignum's Keccak spec, transliterated, and its proof
   that it is SymCrypt's; `Rind/Sha3.lean`: the sponge over bytes, and its
@@ -2415,7 +2458,7 @@ Beyond Lean's kernel:
   `Rind/S2nSha512.lean` transliterate s2n-bignum's SHA-256 and SHA-512 specs,
   and `Rind/S2nChaCha20Poly1305.lean` rind's HOL Light ChaCha20-Poly1305 spec.
 - That `Rind/Rsa.lean` transliterates RFC 8017's RSASSA-PKCS1-v1_5 and
-  RSASSA-PSS verification.
+  RSASSA-PSS signing and verification and RSASP1 by the CRT.
 - That `Rind/Spec.lean`'s ChaCha20, Poly1305, and ChaCha20-Poly1305
   transliterate RFC 8439 and RFC 9001, its HChaCha20 and XChaCha20-Poly1305
   draft-irtf-cfrg-xchacha-03, its ECDSA FIPS 186-5, and
@@ -2503,10 +2546,11 @@ it:
 - `edDecode`, a choice, through `decodeC`, RFC 8032's square root, which
   `decodeC_spec` proves picks the point a valid encoding names and refuses
   every encoding that names none (`Ed25519.lean`);
-- `rsavp1`, which raises before it reduces, by square-and-multiply mod `n`,
-  and RSASSA-PKCS1-v1_5's and RSASSA-PSS's verifications, propositions with
-  existential witnesses, decided, PSS's computing MGF1's mask once
-  (`Rsa.lean`);
+- `rsavp1` and `rsasp1Crt`, which raise before they reduce, by
+  square-and-multiply mod `n` and mod each prime, RSASSA-PKCS1-v1_5's and
+  RSASSA-PSS's verifications, propositions with existential witnesses,
+  decided, PSS's computing MGF1's mask once, and their signings over
+  `rsasp1Crt`'s twin (`Rsa.lean`);
 - Vale's `gf128MulLE`, a product of Mathlib polynomials, through
   `Rind/Gf128.lean`'s bitwise multiplication, and GHASH and AES-GCM over it
   (`Gcm.lean`);

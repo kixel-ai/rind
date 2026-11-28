@@ -2,12 +2,13 @@ import Rind.Rsa
 import Rind.Pratt
 
 /-!
-# RSA signature verification, decided
+# RSA signatures, computed
 
 `Rind.Rsa` states verification as propositions with existential witnesses,
-and `rsavp1` computes `s ^ e` before reducing it. `rsavp1C` reduces as it
-squares, and `pkcs1v15VerifyC` and `pssVerifyC` decide the two
-verifications, each proven equivalent to its spec. The spec tests
+and `rsavp1` and `rsasp1Crt` raise before they reduce. `rsavp1C` and
+`rsasp1CrtC` reduce as they square, `pkcs1v15VerifyC` and `pssVerifyC`
+decide the two verifications, and `pkcs1v15SignC` and `pssSignC` compute the
+two signatures, each proven equal or equivalent to its spec. The spec tests
 (`Rind.SpecTest.Server`) run these.
 -/
 
@@ -86,5 +87,35 @@ theorem pssVerify_iff (n e : Nat) (H : List Byte → List Byte) (hLen : Nat) (M 
   rcases rsavp1C n e (os2ip S) with _ | m
   · simp
   · rcases h : i2osp m ((n.size - 1 + 7) / 8) with _ | EM <;> simp [h]
+
+/-- `rsasp1Crt`, by square-and-multiply mod each prime. -/
+def rsasp1CrtC (p q dP dQ qInv m : Nat) : Nat :=
+  let s₁ := powMod p (dP.log2 + 1) m dP
+  let s₂ := powMod q (dQ.log2 + 1) m dQ
+  let h := (((s₁ : Int) - s₂) * qInv % (p : Int)).toNat
+  s₂ + q * h
+
+theorem rsasp1Crt_eq (p q dP dQ qInv m : Nat) : rsasp1Crt p q dP dQ qInv m = rsasp1CrtC p q dP dQ qInv m := by
+  rw [rsasp1Crt, rsasp1CrtC, powMod_eq p _ m dP Nat.lt_log2_self, powMod_eq q _ m dQ Nat.lt_log2_self]
+
+/-- `rsassaPkcs1v15Sign`, by `rsasp1CrtC`. -/
+def pkcs1v15SignC (n p q dP dQ qInv : Nat) (H : List Byte → List Byte) (digestInfo M : List Byte) :
+    Option (List Byte) :=
+  (emsaPkcs1v15Encode H digestInfo M (octetLen n)).bind fun EM =>
+    i2osp (rsasp1CrtC p q dP dQ qInv (os2ip EM)) (octetLen n)
+
+theorem pkcs1v15Sign_eq (n p q dP dQ qInv : Nat) (H : List Byte → List Byte) (digestInfo M : List Byte) :
+    rsassaPkcs1v15Sign n p q dP dQ qInv H digestInfo M = pkcs1v15SignC n p q dP dQ qInv H digestInfo M := by
+  simp only [rsassaPkcs1v15Sign, pkcs1v15SignC, rsasp1Crt_eq]
+
+/-- `rsassaPssSign`, by `rsasp1CrtC`. -/
+def pssSignC (n p q dP dQ qInv : Nat) (H : List Byte → List Byte) (hLen : Nat) (M salt : List Byte) :
+    Option (List Byte) :=
+  (emsaPssEncode H hLen M salt (n.size - 1)).bind fun EM =>
+    i2osp (rsasp1CrtC p q dP dQ qInv (os2ip EM)) (octetLen n)
+
+theorem pssSign_eq (n p q dP dQ qInv : Nat) (H : List Byte → List Byte) (hLen : Nat) (M salt : List Byte) :
+    rsassaPssSign n p q dP dQ qInv H hLen M salt = pssSignC n p q dP dQ qInv H hLen M salt := by
+  simp only [rsassaPssSign, pssSignC, rsasp1Crt_eq]
 
 end rind.spec.rsa

@@ -1871,6 +1871,40 @@ fn rsa_components(der: &[u8]) -> (Vec<u8>, Vec<u8>) {
     (ints.remove(0), ints.remove(0))
 }
 
+/// The modulus, private exponent, and primes of PKCS#8 RSA private key DER.
+fn rsa_private(pkcs8: &[u8]) -> [Vec<u8>; 4] {
+    // OneAsymmetricKey: the version and algorithm, then the RSAPrivateKey in
+    // an octet string.
+    assert_eq!(pkcs8[0], 0x30);
+    let (_, mut rest) = der_len(&pkcs8[1..]);
+    for tag in [0x02, 0x30] {
+        assert_eq!(rest[0], tag);
+        let (len, tail) = der_len(&rest[1..]);
+        rest = &tail[len..];
+    }
+    assert_eq!(rest[0], 0x04);
+    let (len, tail) = der_len(&rest[1..]);
+    let key = &tail[..len];
+    // RSAPrivateKey: version, n, e, d, p, q, and the CRT values.
+    assert_eq!(key[0], 0x30);
+    let (_, mut rest) = der_len(&key[1..]);
+    let mut ints = Vec::new();
+    for _ in 0..6 {
+        assert_eq!(rest[0], 0x02);
+        let (len, tail) = der_len(&rest[1..]);
+        ints.push(tail[..len].to_vec());
+        rest = &tail[len..];
+    }
+    let [_, n, _, d, p, q] = <[Vec<u8>; 6]>::try_from(ints).unwrap();
+    [n, d, p, q]
+}
+
+/// A number's hex as RFC 9474's vectors write it, `0x` first, as the server
+/// reads it.
+fn num(s: &str) -> String {
+    h(s.strip_prefix("0x").unwrap_or(s))
+}
+
 fn rsa(run: &mut Run) {
     let mut files: Vec<(String, &str)> = Vec::new();
     for bits in [2048, 3072, 4096, 8192] {
@@ -1915,6 +1949,18 @@ fn rsa(run: &mut Run) {
                     js(&t, "result"),
                     &[],
                 );
+                // A signature generation vector's signature is the one
+                // RSASSA-PKCS1-V1_5-SIGN makes, from the key's primes.
+                if file.contains("_sig_gen_") && js(&t, "result") != "invalid" {
+                    let [n, d, p, q] =
+                        rsa_private(&unhex(&jh(&g, "privateKeyPkcs8"))).map(|x| hex(&x));
+                    run.check(
+                        Vector,
+                        &label,
+                        &["rsa-pkcs1-sign", op, &n, &d, &p, &q, &m],
+                        &s,
+                    );
+                }
             } else {
                 // The spec's MGF1 hashes with the message's hash.
                 if g["mgf"] != "MGF1" || hash_name(js(&g, "mgfSha")) != Some(op) {
@@ -1932,7 +1978,30 @@ fn rsa(run: &mut Run) {
         }
     }
 
-    use rind::rsa::{sign, verify};
+    // RFC 9474's vectors sign with RSASSA-PSS, SHA-384, and a salt of 48
+    // octets or none, from the key's primes.
+    run.source("rfc9474/test-vectors.json");
+    let file = run.path("rfc9474/test-vectors.json");
+    let vectors: Value = serde_json::from_str(&std::fs::read_to_string(file).unwrap()).unwrap();
+    for v in vectors.as_array().unwrap() {
+        run.check(
+            Vector,
+            &format!("rfc9474 {}", js(v, "name")),
+            &[
+                "rsa-pss-sign",
+                "sha384",
+                &num(js(v, "n")),
+                &num(js(v, "d")),
+                &num(js(v, "p")),
+                &num(js(v, "q")),
+                &h(js(v, "input_msg")),
+                &h(js(v, "salt")),
+            ],
+            &h(js(v, "sig")),
+        );
+    }
+
+    use rind::rsa::{PssSaltLength, SigningAlgorithm, sign, verify};
     let schemes: [(
         &str,
         &str,
@@ -1973,6 +2042,9 @@ fn rsa(run: &mut Run) {
         rind::rsa::KeyPair::generate(rind::rsa::KeySize::Rsa2048).unwrap(),
         rind::rsa::KeyPair::generate(rind::rsa::KeySize::Rsa3072).unwrap(),
     ];
+    let private = keys
+        .each_ref()
+        .map(|key| rsa_private(key.to_pkcs8().as_ref()).map(|x| hex(&x)));
     for (scheme, op, sign, verify, hlen) in schemes {
         for i in 0..run.random {
             let key = &keys[i % 2];
@@ -1980,6 +2052,30 @@ fn rsa(run: &mut Run) {
             let (n, e) = (hex(&n), hex(&e));
             let m = run.rng.message(300);
             let sig = key.sign(sign, &m).unwrap();
+            // The spec signs as rind does: PKCS#1 v1.5 deterministically, and
+            // PSS with the salt rind drew, which only an empty one fixes.
+            let [_, d, p, q] = &private[i % 2];
+            if scheme == "pkcs1" {
+                run.check(
+                    Rind,
+                    "random",
+                    &["rsa-pkcs1-sign", op, &n, d, p, q, &hex(&m)],
+                    &hex(sig.as_ref()),
+                );
+            } else {
+                let unsalted = match op {
+                    "sha256" => SigningAlgorithm::pss_sha256(PssSaltLength::Custom(0)),
+                    "sha384" => SigningAlgorithm::pss_sha384(PssSaltLength::Custom(0)),
+                    _ => SigningAlgorithm::pss_sha512(PssSaltLength::Custom(0)),
+                };
+                let unsalted = key.sign(&unsalted, &m).unwrap();
+                run.check(
+                    Rind,
+                    "random",
+                    &["rsa-pss-sign", op, &n, d, p, q, &hex(&m), "-"],
+                    &hex(unsalted.as_ref()),
+                );
+            }
             let mut bad = sig.as_ref().to_vec();
             let at = run.rng.below(bad.len());
             bad[at] ^= 1 << run.rng.below(8);
