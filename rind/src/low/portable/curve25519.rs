@@ -26,6 +26,11 @@ pub(crate) fn curve25519_x25519base(res: &mut [u64; 4], scalar: &[u64; 4]) {
 // functions and reuses those functions' proofs: the zip of a mutable iterator
 // they replace, Aeneas translates through backward functions no proof here
 // reasons about.
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "i < 4, so (i + 1) * 8 <= 32"
+)]
 pub(crate) fn to_bytes(v: &[u64; 4]) -> [u8; 32] {
     let mut r = [0u8; 4 * 8];
     for (i, word) in v.iter().enumerate() {
@@ -35,7 +40,15 @@ pub(crate) fn to_bytes(v: &[u64; 4]) -> [u8; 32] {
 }
 
 // `as_chunks` here would no longer be `mid::util`'s code.
-#[allow(clippy::chunks_exact_to_as_chunks)]
+#[allow(
+    clippy::chunks_exact_to_as_chunks,
+    reason = "keeps `mid::util`'s code, as the comment above says"
+)]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::unwrap_used,
+    reason = "ir < 4, and each of the 8-byte chunks converts to [u8; 8]"
+)]
 pub(crate) fn from_bytes(b: &[u8; 32]) -> [u64; 4] {
     let mut r = [0; 4];
     for (ir, b) in (0..4).zip(b.chunks_exact(8)) {

@@ -9,11 +9,19 @@
 /// `digits` needs one more digit than `k` has bits.
 ///
 /// The digits follow `k`'s bits, so it must not be secret.
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "callers pass a nonempty k and W of 5 or 8, so 1 << W fits and W >= 1; window stays below 2^W, so each step fits in i32; i < digits.len()"
+)]
 pub(crate) fn public_naf<const W: u32>(k: &[u64], digits: &mut [i8]) {
     // The low W bits of what remains of k, above the digits written.
     let mut window = (k[0] & ((1 << W) - 1)) as i32;
     // Indexed rather than `iter_mut`, which Aeneas cannot translate.
-    #[allow(clippy::needless_range_loop)]
+    #[allow(
+        clippy::needless_range_loop,
+        reason = "indexes, for Aeneas, as the comment above says"
+    )]
     for i in 0..digits.len() {
         digits[i] = 0;
         if window & 1 == 1 {

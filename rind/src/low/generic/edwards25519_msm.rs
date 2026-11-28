@@ -19,6 +19,11 @@ use crate::low::{
 /// Computes `res := [base]B + [scalars[0]]points[0] + [scalars[1]]points[1]`
 /// as reduced projective `(X, Y, Z)`, from points in reduced extended
 /// coordinates `(X, Y, Z, T)`, for scalars below 2^255.
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "i starts at top(&nafs) <= 257 and is decremented only while positive, so it indexes each 257-digit form"
+)]
 pub(crate) fn edwards25519_msm(
     res: &mut [u64; 12],
     base: &[u64; 4],
@@ -69,6 +74,11 @@ pub(crate) fn non_adjacent_forms(base: &[u64; 4], scalars: &[[u64; 4]; 2]) -> [[
 
 /// Writes the width-5 form of `k` over its words up to the highest nonzero.
 #[inline(always)]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "words is 1 to 4, so k[..words] fits k and 64 * words + 1 <= 257 digits"
+)]
 fn scalar_naf(k: &[u64; 4], digits: &mut [i8; 257]) {
     let words = if k[3] != 0 {
         4
@@ -85,6 +95,11 @@ fn scalar_naf(k: &[u64; 4], digits: &mut [i8; 257]) {
 /// One past the highest nonzero digit of any form, where the loop starts,
 /// since doubling the identity leaves it.
 #[inline(always)]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "i < 257, the length of each form"
+)]
 pub(crate) fn top(nafs: &[[i8; 257]; 4]) -> usize {
     for i in (0..257).rev() {
         if nafs[0][i] != 0 || nafs[1][i] != 0 || nafs[2][i] != 0 || nafs[3][i] != 0 {
@@ -100,6 +115,10 @@ const IDENTITY: [u64; 16] = [0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0];
 /// Adds `[digit]P` to `acc`, for `table` the odd multiples of `P` and a
 /// digit zero or odd and below twice the table's length in magnitude.
 #[inline(always)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "callers pass a digit odd and below twice the table's length in magnitude, so |digit| / 2 indexes it"
+)]
 fn add_digit(acc: &mut [u64; 16], table: &[[u64; 16]], digit: i8) {
     if digit != 0 {
         let entry = &table[usize::from(digit.unsigned_abs() / 2)];
@@ -113,6 +132,11 @@ fn add_digit(acc: &mut [u64; 16], table: &[[u64; 16]], digit: i8) {
 }
 
 /// `[P, 3P, 5P, ..., 15P]`, the odd multiples a width-5 form's digits take.
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "1 <= i < 8, the table's length"
+)]
 fn odd_multiples(point: &[u64; 16]) -> [[u64; 16]; 8] {
     let mut double = [0; 16];
     edwards25519_epdouble(&mut double, projective(point));
@@ -125,6 +149,10 @@ fn odd_multiples(point: &[u64; 16]) -> [[u64; 16]; 8] {
 }
 
 /// `-(x, y) = (-x, y)`, so `X` and `T` change sign.
+#[expect(
+    clippy::unwrap_used,
+    reason = "a 16-word point's first and last four words are 4-word arrays"
+)]
 fn neg(point: &[u64; 16]) -> [u64; 16] {
     let mut x = [0; 4];
     bignum_neg_p25519(&mut x, point[..4].try_into().unwrap());
@@ -137,6 +165,10 @@ fn neg(point: &[u64; 16]) -> [u64; 16] {
 }
 
 /// `(X, Y, Z)`.
+#[expect(
+    clippy::unwrap_used,
+    reason = "a 16-word point's first 12 words are a 12-word array"
+)]
 fn projective(point: &[u64; 16]) -> &[u64; 12] {
     point[..12].try_into().unwrap()
 }

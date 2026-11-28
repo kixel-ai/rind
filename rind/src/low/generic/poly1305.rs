@@ -76,6 +76,10 @@ impl Poly1305 {
         self.process_block(&block);
     }
 
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "Blockwise<16> leaves fewer than 16 bytes, so inp.len() < 16"
+    )]
     fn process_last_block(&mut self, inp: &[u8]) {
         let mut bytes = [0u8; 16];
         bytes[..inp.len()].copy_from_slice(inp);
@@ -92,7 +96,7 @@ impl Poly1305 {
 }
 
 fn read64(bytes: &[u8]) -> u64 {
-    u64::from_le_bytes(bytes.try_into().unwrap())
+    u64::from_le_bytes(bytes.try_into().expect("callers pass 8-byte ranges"))
 }
 
 fn add(h: &mut [u64; 3], x: &[u64; 3]) {
@@ -110,6 +114,10 @@ fn add(h: &mut [u64; 3], x: &[u64; 3]) {
 
 fn mul(h: &mut [u64; 3], r: &[u64; 2]) {
     fn mul64(a: u64, b: u64) -> (u64, u64) {
+        #[expect(
+            clippy::arithmetic_side_effects,
+            reason = "a 64-bit by 64-bit product fits in 128 bits"
+        )]
         let product = (a as u128) * (b as u128);
         (product as u64, (product >> 64) as u64)
     }

@@ -158,7 +158,10 @@ fn detect_once() -> bool {
 /// Whether `cpuid` names the vendor `GenuineIntel`.
 fn is_intel() -> bool {
     // `__cpuid` is safe from Rust 1.94 but `unsafe` on the 1.90 MSRV.
-    #[allow(unused_unsafe)]
+    #[allow(
+        unused_unsafe,
+        reason = "`__cpuid` is safe from Rust 1.94 but `unsafe` on the 1.90 MSRV"
+    )]
     // SAFETY: every CPU that runs SSE2 has `cpuid`.
     let leaf = unsafe { __cpuid(0) };
     // "Genu", "ineI", "ntel", little-endian.
@@ -170,7 +173,10 @@ fn is_intel() -> bool {
 /// and times the mitigation.
 fn reports_mcdt_no() -> bool {
     // `__cpuid` is safe from Rust 1.94 but `unsafe` on the 1.90 MSRV.
-    #[allow(unused_unsafe)]
+    #[allow(
+        unused_unsafe,
+        reason = "`__cpuid` is safe from Rust 1.94 but `unsafe` on the 1.90 MSRV"
+    )]
     // SAFETY: every CPU that runs SSE2 has `cpuid`, and leaves past the
     // highest it reports are not read.
     let mcdt_no = unsafe {
@@ -257,7 +263,10 @@ mod tests {
     #[test]
     fn reads_the_vendor() {
         // `__cpuid` is safe from Rust 1.94 but `unsafe` on the 1.90 MSRV.
-        #[allow(unused_unsafe)]
+        #[allow(
+            unused_unsafe,
+            reason = "`__cpuid` is safe from Rust 1.94 but `unsafe` on the 1.90 MSRV"
+        )]
         // SAFETY: every CPU that runs SSE2 has `cpuid`.
         let id = unsafe { __cpuid(0) };
         let vendor = [id.ebx, id.edx, id.ecx].map(u32::to_le_bytes);

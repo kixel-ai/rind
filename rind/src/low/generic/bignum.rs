@@ -35,7 +35,15 @@ pub(crate) fn bignum_add(z: &mut [u64], x: &[u64], y: &[u64]) -> u64 {
 ///
 /// In the case of a zero bignum as input the result is 0
 // Indexed rather than enumerated, which Aeneas cannot translate.
-#[allow(clippy::needless_range_loop)]
+#[allow(
+    clippy::needless_range_loop,
+    reason = "indexes, for Aeneas, as the comment above says"
+)]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "i < x.len(), and a slice of words is shorter than 2^61, so 64 * i + 64 fits in u64"
+)]
 pub(crate) fn bignum_bitsize(x: &[u64]) -> usize {
     let mut bits = 0;
     for i in 0..x.len() {
@@ -61,6 +69,11 @@ pub(crate) fn bignum_cmp_lt(x: &[u64], y: &[u64]) -> u64 {
 /// Given table: uint64_t[height*width], copy table[idx*width...(idx+1)*width-1]
 ///
 /// into z[0..width-1], reading every row.
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "callers pass z at least width words long and a table of height rows of width words, so row * width + width <= table.len()"
+)]
 pub(crate) fn bignum_copy_row_from_table(
     z: &mut [u64],
     table: &[u64],
@@ -87,6 +100,10 @@ pub(crate) fn bignum_copy_row_from_table(
 /// Input x[k]; output function return
 ///
 /// In the case of a zero bignum as input the result is 64 * k
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "a slice of words is shorter than 2^61, so 64 times its length fits in u64"
+)]
 pub(crate) fn bignum_ctz(x: &[u64]) -> usize {
     let mut zeros = 64 * x.len() as u64;
     for (i, w) in x.iter().enumerate().rev() {
@@ -101,6 +118,10 @@ pub(crate) fn bignum_ctz(x: &[u64]) -> usize {
 /// Input x[k]; output function return
 ///
 /// In the case of a zero bignum as input the result is 0
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "i < x.len(), shorter than 2^61, so i + 1 fits in u64"
+)]
 pub(crate) fn bignum_digitsize(x: &[u64]) -> usize {
     let mut digits = 0;
     for (i, w) in x.iter().enumerate() {
@@ -131,6 +152,10 @@ pub(crate) fn bignum_modsub(z: &mut [u64], x: &[u64], y: &[u64], m: &[u64]) {
 /// Input x[k]; output z[k]
 ///
 /// For one word, as `PosInt` takes it, and an odd x.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "z and x are one word each, asserted above"
+)]
 pub(crate) fn bignum_negmodinv(z: &mut [u64], x: &[u64]) {
     assert!(z.len() == 1 && x.len() == 1);
     // Correct to 5 bits, then Newton's iteration doubles that each time.

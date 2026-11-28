@@ -7,6 +7,11 @@
 ///
 /// This accepts an array of 384 bytes and unpacks them into 256 16-bit numbers
 /// in the range 0 <= a[i] < 2^12 (typically they will be < 3329, the ML-KEM prime).
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "i < 128, so 3 * i + 2 < 384 and 2 * i + 1 < 256"
+)]
 pub(crate) fn mlkem_frombytes(r: &mut [i16; 256], a: &[u8; 384]) {
     // Counted, not zipped: the proof is about Aeneas's translation, which
     // takes no iterator adapter.
@@ -64,6 +69,11 @@ pub(crate) fn mlkem_compress_d11(r: &mut [u8; 352], a: &[i16; 256]) {
 /// `r`: each eight coefficients become `D` bytes, little-endian bit order per
 /// `BitsToBytes`.
 #[cfg(any(not(rind_backend = "aarch64"), test))]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "D is 4, 5, 10 or 11 and L = 32 * D; i < 32 and j < 8, so 8 * i + j < 256, D * j < 128, D * i + D <= L, and D <= 16 bytes of a u128"
+)]
 fn compress<const D: usize, const L: usize>(r: &mut [u8; L], a: &[i16; 256]) {
     debug_assert_eq!(L, 32 * D);
     for i in 0..32 {
@@ -90,6 +100,10 @@ const Q_HALF: i16 = (Q + 1) / 2;
 #[expect(
     clippy::manual_range_contains,
     reason = "Aeneas's library has no `Range::contains`"
+)]
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "D is 4, 5, 10 or 11, so 1 << D is at least 1"
 )]
 fn compress_one<const D: usize>(x: i16) -> u16 {
     let public = crate::low::ct::into_public(x);

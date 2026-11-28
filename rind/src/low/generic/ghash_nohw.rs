@@ -97,6 +97,10 @@ fn gcm_mul64_wide(a: u64, b: u64) -> (u64, u64) {
     let b2 = b & 0x4444_4444_4444_4444;
     let b3 = b & 0x8888_8888_8888_8888;
 
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "a 64-bit by 64-bit product fits in 128 bits"
+    )]
     let m = |x: u64, y: u64| u128::from(x) * u128::from(y);
     let c0 = m(a0, b0) ^ m(a1, b3) ^ m(a2, b2) ^ m(a3, b1);
     let c1 = m(a0, b1) ^ m(a1, b0) ^ m(a2, b3) ^ m(a3, b2);
@@ -141,6 +145,10 @@ fn gcm_mul32_nohw(a: u32, b: u32) -> u64 {
     let b2 = b & 0x4444_4444;
     let b3 = b & 0x8888_8888;
 
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "a 32-bit by 32-bit product fits in 64 bits"
+    )]
     let m = |x: u32, y: u32| u64::from(x) * u64::from(y);
     let c0 = m(a0, b0) ^ m(a1, b3) ^ m(a2, b2) ^ m(a3, b1);
     let c1 = m(a0, b1) ^ m(a1, b0) ^ m(a2, b3) ^ m(a3, b2);

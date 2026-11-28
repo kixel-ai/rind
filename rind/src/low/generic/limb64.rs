@@ -29,6 +29,7 @@ fn limbs<'a, const N: usize>(x: &'a [u64], _buf: &'a mut [Limb; N]) -> &'a [Limb
 /// Copies `x`'s limbs into the words of `z`, as far as both go.
 fn join(x: &[Limb], z: &mut [u64]) {
     let n = x.len().min(z.len());
+    #[expect(clippy::indexing_slicing, reason = "n is the shorter of both lengths")]
     z[..n].copy_from_slice(&x[..n]);
 }
 

@@ -139,8 +139,7 @@ pub(crate) fn p384_montjadd(p3: &mut [u64; 18], p1: &[u64; 18], p2: &[u64; 18]) 
 /// `public_add_affine` relies on, and its x and y unspecified.
 pub(crate) fn p384_montjmixadd(p3: &mut [u64; 18], p1: &[u64; 18], p2: &[u64; 12]) {
     let [x1, y1, z1] = coords(p1);
-    let (xy2, _) = p2.as_chunks::<6>();
-    let (x2, y2) = (fe(&xy2[0]), fe(&xy2[1]));
+    let [x2, y2] = fes(p2);
 
     let z1sq = fe_sqr(&z1);
     let y2a = fe_mul(&z1sq, &fe_mul(&z1, &y2));
@@ -233,7 +232,10 @@ pub(crate) fn bignum_modadd(z: &mut [u64], x: &[u64], y: &[u64], m: &[u64]) {
 /// `_t` is s2n-bignum's scratch space, which this does not need.
 pub(crate) fn bignum_modinv(z: &mut [u64], a: &[u64], b: &[u64], _t: &mut [u64]) {
     assert_eq!(b, N);
-    let a = reduce(split(a.try_into().unwrap()), &split(&N));
+    let a = reduce(
+        split(a.try_into().expect("`mid::p384` passes 6-word scalars")),
+        &split(&N),
+    );
     let mut a_mont = Fs([0; LIMBS]);
     fs::fiat_p384_scalar_to_montgomery(
         &mut a_mont,
@@ -295,6 +297,11 @@ fn fe_invert(x: &Fe) -> Fe {
 /// `x^e` mod n_384 for a public exponent `e`, by a fixed 4-bit window.
 ///
 /// The exponent picks the table entries, so it must not be secret.
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "1 <= i < 16 = table.len(), each digit is masked to 0..16, and 4 * nibble < 64"
+)]
 fn fs_pow(x: &Fs, e: &[u64; 6]) -> Fs {
     let mut one = Fs([0; LIMBS]);
     fs::fiat_p384_scalar_set_one(&mut one);
@@ -330,7 +337,9 @@ fn fe(x: &[u64; 6]) -> Fe {
 }
 
 fn fs(x: &[u64]) -> Fs {
-    Fs(split(x.try_into().unwrap()))
+    Fs(split(
+        x.try_into().expect("`mid::p384` passes 6-word scalars"),
+    ))
 }
 
 fn fe_add(x: &Fe, y: &Fe) -> Fe {
@@ -407,25 +416,43 @@ fn opaque<T>(x: T) -> T {
 }
 
 fn coords(p: &[u64; 18]) -> [Fe; 3] {
-    let (words, _) = p.as_chunks::<6>();
-    [fe(&words[0]), fe(&words[1]), fe(&words[2])]
+    fes(p)
+}
+
+/// The first `M` field elements of `words`, six words each.
+fn fes<const M: usize>(words: &[u64]) -> [Fe; M] {
+    let mut r = [Fe([0; LIMBS]); M];
+    for (r, w) in r.iter_mut().zip(words.as_chunks::<6>().0) {
+        *r = fe(w);
+    }
+    r
 }
 
 fn point(x: &Fe, y: &Fe, z: &Fe) -> [u64; 18] {
     let mut r = [0u64; 18];
     let (words, _) = r.as_chunks_mut::<6>();
-    words[0] = join(&x.0);
-    words[1] = join(&y.0);
-    words[2] = join(&z.0);
+    for (w, c) in words.iter_mut().zip([x, y, z]) {
+        *w = join(&c.0);
+    }
     r
 }
 
 /// `x`'s limbs, low first.
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "LIMBS is 6 or 12 and i < LIMBS, so i * 6 / LIMBS < 6 and the shift is below 64"
+)]
 pub(super) fn split(x: &[u64; 6]) -> [Limb; LIMBS] {
     core::array::from_fn(|i| (x[i * 6 / LIMBS] >> (Limb::BITS as usize * i % 64)) as Limb)
 }
 
 /// The words of `x`'s limbs, low first.
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "LIMBS is 6 or 12 and i < LIMBS, so i * 6 / LIMBS < 6 and the shift is below 64"
+)]
 fn join(x: &[Limb; LIMBS]) -> [u64; 6] {
     let mut r = [0u64; 6];
     for (i, limb) in x.iter().enumerate() {

@@ -23,8 +23,15 @@ pub(crate) trait Ctr8 {
 ///
 /// A trait rather than a closure, since Aeneas cannot model a closure that
 /// writes through a reference it takes.
-#[allow(clippy::needless_range_loop)]
+#[allow(
+    clippy::needless_range_loop,
+    reason = "indexes, since Aeneas translates no loop that writes through an iterator's references"
+)]
 #[cfg(rind_backend = "aarch64")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "i < chunks.len(), and the tail of 128-byte chunks is shorter than buf's 128 bytes"
+)]
 pub(crate) fn by8(key: &impl Ctr8, nonce: &[u8; 12], counter: u32, inout: &mut [u8]) {
     let (chunks, tail) = inout.as_chunks_mut::<128>();
     let mut counter = counter;
@@ -57,6 +64,10 @@ pub(crate) trait Ctr32 {
 /// A trait rather than a closure, since Aeneas cannot model a closure that
 /// writes through a reference it takes.
 #[cfg(not(rind_backend = "portable"))]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "the tail of 16-byte chunks is shorter than buf's 16 bytes"
+)]
 pub(crate) fn blocks(key: &impl Ctr32, nonce: &[u8; 12], counter: u32, inout: &mut [u8]) {
     let (blocks, tail) = inout.as_chunks_mut::<16>();
     let mut ivec = [0u8; 16];

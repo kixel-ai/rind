@@ -40,7 +40,10 @@ use core::arch::x86_64::{
 #[inline(never)]
 fn planted_mcdt(secret: __m128i, by: __m128i) -> __m128i {
     // Safe from Rust 1.87 where SSE2 is enabled, `unsafe` before.
-    #[allow(unused_unsafe)]
+    #[allow(
+        unused_unsafe,
+        reason = "SSE2 intrinsics are safe from Rust 1.87 where SSE2 is enabled, `unsafe` before"
+    )]
     // SAFETY: every x86_64 target enables SSE2.
     unsafe {
         _mm_mul_epu32(secret, by)
@@ -60,7 +63,10 @@ fn planted_mcdt_mitigated(secret: __m128i, by: __m128i) -> __m128i {
 #[cfg(rind_backend = "x86_64")]
 #[inline(never)]
 fn planted_mcdt_before(secret: __m128i, by: __m128i) -> __m128i {
-    #[allow(unused_unsafe)]
+    #[allow(
+        unused_unsafe,
+        reason = "SSE2 intrinsics are safe from Rust 1.87 where SSE2 is enabled, `unsafe` before"
+    )]
     // SAFETY: every x86_64 target enables SSE2.
     let early = core::hint::black_box(unsafe { _mm_mul_epu32(secret, by) });
     let _mcdt = super::Mcdt::enter();
@@ -75,7 +81,10 @@ fn planted_mcdt_after(secret: __m128i, by: __m128i) -> __m128i {
         let _mcdt = super::Mcdt::enter();
         mitigated_mcdt(secret, by)
     };
-    #[allow(unused_unsafe)]
+    #[allow(
+        unused_unsafe,
+        reason = "SSE2 intrinsics are safe from Rust 1.87 where SSE2 is enabled, `unsafe` before"
+    )]
     // SAFETY: every x86_64 target enables SSE2.
     unsafe {
         _mm_mul_epu32(core::hint::black_box(mitigated), by)
@@ -89,7 +98,10 @@ fn planted_mcdt_after(secret: __m128i, by: __m128i) -> __m128i {
 #[inline(never)]
 fn planted_mcdt_switch(secret: __m128i, by: __m128i, which: usize) -> __m128i {
     let _mcdt = super::Mcdt::enter();
-    #[allow(unused_unsafe)]
+    #[allow(
+        unused_unsafe,
+        reason = "SSE2 intrinsics are safe from Rust 1.87 where SSE2 is enabled, `unsafe` before"
+    )]
     // SAFETY: every x86_64 target enables SSE2.
     unsafe {
         match which {
@@ -105,7 +117,10 @@ fn planted_mcdt_switch(secret: __m128i, by: __m128i, which: usize) -> __m128i {
 #[cfg(rind_backend = "x86_64")]
 #[inline(never)]
 fn mitigated_mcdt(secret: __m128i, by: __m128i) -> __m128i {
-    #[allow(unused_unsafe)]
+    #[allow(
+        unused_unsafe,
+        reason = "SSE2 intrinsics are safe from Rust 1.87 where SSE2 is enabled, `unsafe` before"
+    )]
     // SAFETY: every x86_64 target enables SSE2.
     unsafe {
         _mm_mul_epu32(secret, by)

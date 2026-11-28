@@ -18,6 +18,11 @@ macro_rules! MAJ {
     };
 }
 
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "every index is masked with & 15 into the 16-word window, and t + 4 < 80"
+)]
 fn sha1_compress_block(state: &mut [u32; 5], block: &[u8; 64]) {
     // This is a 16-word window into the whole W array.
     let mut w = [0u32; 16];
