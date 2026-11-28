@@ -136,6 +136,10 @@ models it: the key, since `Sealer::expand` builds every one with `C`'s own
 proves: what pyca/verified-garbage's AVX-512 VL ChaCha20 needs. -/
 opaque low.x86_64.cpu.HaveAvx512Vl : Type
 
+/-- The token proving the CPU has AVX-512 F, BW, VL, VBMI, and VBMI2, with
+what `HaveAvx2` proves: what the eight-way ML-KEM sampler needs. -/
+opaque low.x86_64.cpu.HaveAvx512ForMlKem : Type
+
 /-- pyca/verified-garbage's ChaCha20 streaming state, as its routines see it:
 the 768 bytes of memory they keep it in, all that VG's spec reads of it, as
 `Rind.VgChaCha20` proves. Rust leaves it uninitialised: `init` writes the bytes

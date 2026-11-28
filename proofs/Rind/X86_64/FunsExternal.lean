@@ -11,8 +11,9 @@ set_option linter.dupNamespace false
 /-!
 The rind functions the x86_64 translation leaves opaque, beside those
 `Rind.X86_64.AesGcmModel`, `Rind.X86_64.PointSelectModel`, and
-`Rind.X86_64.GatherModel` model, and the eight-way Keccak-f's `set_row`,
-which this file models by hand, quoting its Rust. No proof assumes anything about them beyond what
+`Rind.X86_64.GatherModel` model, and the eight-way Keccak-f's `set_row` and
+ML-KEM sampler's `load`, `store`, and `store_low`, which this file models by
+hand, quoting their Rust. No proof assumes anything about them beyond what
 `Rind.X86_64.S2nBignum`, `Rind.X86_64.AwsLc`, `Rind.X86_64.ValeAesGcm`,
 `Rind.X86_64.VgRsa`, `Rind.X86_64.VgChaCha20`, and `Rind.X86_64.RsaMont`'s
 `nohw_spec` state for s2n-bignum's, aws-lc's, Vale's, and
@@ -275,6 +276,59 @@ def low.x86_64.sha3_keccak8_f1600.set_row (s : Array Std.U64 25#usize) (i : Std.
     ok (Array.make 25#usize (s.val.take i.val ++ (List.range 8).map (fun k => ⟨rind.simd.lane64x8 v k⟩) ++
       s.val.drop (i.val + 8)) (by simp; omega))
   else fail .panic
+
+/-- The check for what the eight-way ML-KEM sampler needs. -/
+opaque low.x86_64.cpu.HaveAvx512ForMlKem.check : Result (Option low.x86_64.cpu.HaveAvx512ForMlKem)
+
+/-! The eight-way ML-KEM sampler's load and stores, which go through raw
+pointers, modelled by hand. `admin/prove` fails unless this quote is still
+that Rust:
+
+```rust
+fn load(bytes: &[u8; 64]) -> __m512i {
+    // SAFETY: `bytes` is 64 bytes, exactly the width of one `__m512i`.
+    unsafe { _mm512_loadu_si512(bytes.as_ptr().cast()) }
+}
+
+fn store(v: __m512i) -> [u64; 8] {
+    let mut r = [0u64; 8];
+    // SAFETY: `r` is 8 * 8 = 64 bytes, exactly the width of one `__m512i`.
+    unsafe { _mm512_storeu_si512(r.as_mut_ptr().cast(), v) };
+    r
+}
+
+fn store_low(out: &mut [i16], v: __m512i) {
+    let mask = if out.len() < 32 {
+        (1u32 << out.len()) - 1
+    } else {
+        u32::MAX
+    };
+    // SAFETY: the mask writes only the first `out.len()` elements, up to 32.
+    unsafe { _mm512_mask_storeu_epi16(out.as_mut_ptr(), mask, v) }
+}
+
+```
+
+An unaligned load reads 64 bytes into a vector, byte 0 lowest, and an
+unaligned store writes a vector's elements in order, element 0 first; the
+masked one writes the elements whose bits of its mask are set: the first
+`out.len()`, up to 32. -/
+
+/-- `load`: the vector of `bytes`, byte 0 lowest. -/
+def low.x86_64.mlkem_sample_poly_ntt_8x.load (bytes : Array Std.U8 64#usize) :
+    Result core.core_arch.x86.__m512i :=
+  ok (rind.simd.ofBytes64 fun i => (bytes.val[i]!).bv)
+
+/-- `store`: `v`'s eight 64-bit elements. -/
+def low.x86_64.mlkem_sample_poly_ntt_8x.store (v : core.core_arch.x86.__m512i) :
+    Result (Array Std.U64 8#usize) :=
+  ok (Array.make 8#usize ((List.range 8).map fun k => ⟨rind.simd.lane64x8 v k⟩) (by simp))
+
+/-- `store_low`: `out`'s first 32 elements replaced by `v`'s 16-bit elements. -/
+def low.x86_64.mlkem_sample_poly_ntt_8x.store_low (out : Slice Std.I16)
+    (v : core.core_arch.x86.__m512i) : Result (Slice Std.I16) :=
+  ok (Slice.from (out.val.mapIdx fun k x => if k < 32 then ⟨rind.simd.lane16x32 v k⟩ else x) (by
+    rw [List.length_mapIdx]; exact out.property))
 
 /-! s2n-bignum's Ed25519 routines, transliterated to inline assembly. -/
 
@@ -1085,12 +1139,6 @@ opaque low.x86_64.mlkem.mlkem_compress_d11
 
 opaque low.x86_64.mlkem.mlkem_unpack
   : Array Std.I16 256#usize → Result (Array Std.I16 256#usize)
-
-/-- ML-KEM-1024's eight-way matrix sampler, which hands the eight-way Keccak
-function pointers Aeneas cannot translate. No ✓ covers ML-KEM-1024. -/
-opaque mid.mlkem.sample_ntt.sample_ntt_8x
-  : Array Std.U8 32#usize → Bool → Slice (Array Std.I16 256#usize) →
-    Result (Slice (Array Std.I16 256#usize))
 
 /-! pyca/verified-garbage's ML-KEM-768 routines, behind their Rust wrappers,
 whose contracts `Rind.X86_64.VgMlKem` states, and the checks for the CPU

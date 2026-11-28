@@ -2613,16 +2613,16 @@ fi
 # `proofs/Rind/Aarch64/NeonVectors.lean` holds what `admin/neon-vectors.rs`
 # printed on an aarch64 CPU, which the `prove` workflow's `neon` job checks is
 # still what it prints. `proofs/Rind/X86_64/Avx512Vectors.lean` holds what
-# `admin/avx512-vectors.rs` printed on a CPU with AVX-512, VAES, and
-# VPCLMULQDQ, which this checks is still what it prints where this CPU has
-# them; no CI runner is sure to. Fail on a model none tests, so a new one
+# `admin/avx512-vectors.rs` printed on a CPU with AVX-512, VBMI and VBMI2
+# among it, VAES, and VPCLMULQDQ, or under Intel SDE, which this checks is
+# still what it prints where this CPU has them; no CI runner is sure to. Fail on a model none tests, so a new one
 # cannot go untested.
 if [[ ${#skipped[@]} -eq 0 ]]; then
     rustc --edition 2024 -O -o "$out/simd-vectors" admin/simd-vectors.rs
     "$out/simd-vectors" >"$out/SimdVectors.lean"
     has_avx512() {
         local feature
-        for feature in avx512f avx512bw avx512vl vaes vpclmulqdq; do
+        for feature in avx512f avx512bw avx512vl avx512vbmi avx512_vbmi2 vaes vpclmulqdq; do
             grep -qw "$feature" /proc/cpuinfo || return 1
         done
     }

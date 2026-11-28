@@ -356,3 +356,7 @@ def core.array.from_fn {T F : Type _} (N : Std.Usize)
 /-- `u32::swap_bytes`: the four bytes in the other order. -/
 def core.num.U32.swap_bytes (x : Std.U32) : Result Std.U32 :=
   Std.Result.ok ⟨x.bv.extractLsb' 0 8 ++ x.bv.extractLsb' 8 8 ++ x.bv.extractLsb' 16 8 ++ x.bv.extractLsb' 24 8⟩
+
+/-- `u32::count_ones`: how many of its bits are set. -/
+def core.num.U32.count_ones (x : Std.U32) : Result Std.U32 :=
+  Std.Result.ok ⟨BitVec.ofNat 32 ((List.range 32).filter fun i => x.bv.getLsbD i).length⟩
