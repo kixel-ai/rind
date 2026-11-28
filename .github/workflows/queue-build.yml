@@ -33,9 +33,9 @@ jobs:
       BASE: ${{ github.event.merge_group.base_sha }}
       # A failure ejects the group whatever else fails, so stop at the first.
       CHECK_FAIL_FAST: 1
-      # Only the host's Rust checks and the quick lints, leaving the PR
-      # check's slower modules to it and check.yml's nightly run, since every
-      # group waits on this build.
+      # Only the host's tests and the quick lints, since every group waits
+      # on this build: the rest of `rs` and the slower modules run on main
+      # after the merge, in check.yml.
       CHECK_QUEUE: 1
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -76,6 +76,8 @@ jobs:
       BASE: ${{ github.event.merge_group.base_sha }}
       CHECK_FAIL_FAST: 1
       CHECK_MODULES: rs
+      # The tests alone, as the build above runs them.
+      CHECK_QUEUE: 1
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

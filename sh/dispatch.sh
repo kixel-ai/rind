@@ -3,9 +3,10 @@
 # check, the local loop before a push, runs only the Rust tests and the
 # repository lints that take a second. ci over a diff runs the PR check's
 # gate: check's modules, adding the Rust targets' other builds and docs, and
-# the modules marked `pr` below. CHECK_QUEUE=1 leaves the `pr` ones out, for
-# the merge queue. `ci --all`, check.yml's nightly run, runs every module over
-# the whole tree.
+# the modules marked `pr` below. CHECK_QUEUE=1, for the merge queue, leaves
+# out the `pr` ones and those builds, running every test as ci does. `ci
+# --all`, check.yml's nightly run, runs every module over the whole tree; its
+# push run names every module in CHECK_MODULES over a diff.
 # check and ci run CHECK_JOBS lanes of modules at once (default 3); 1 runs
 # them in order and streams their output. CHECK_MODULES limits the selection to
 # the modules it names, or skips those named with a leading `-`; ci's may name
@@ -83,9 +84,9 @@ fi
 #                      the PR check.
 #   pr                 The PR check runs it too, but not the merge queue,
 #                      where it would cost every group minutes to catch only
-#                      a break two PRs make together, which check.yml's
-#                      nightly run catches. A module marked neither `check`
-#                      nor `pr` runs only there.
+#                      a break two PRs make together, which check.yml's run
+#                      on each push to main catches. A module marked neither
+#                      `check` nor `pr` runs only there and nightly.
 #   fix                `just fix` runs it too.
 declare -A scope=() tools=() check_tools=() compiles=() lane=()
 cis=()
@@ -291,6 +292,14 @@ esac
 
 verb=$action
 [[ "$verb" != ci ]] || verb=check
+
+# Whether `rs` goes on past the tests to the other targets' builds, rind's
+# feature sets, the FIPS module, the doc tests, and the docs, as ci does. The
+# merge queue stops at the tests, which every group waits on, and leaves the
+# rest to check.yml's run on each push to main: a break only two PRs make
+# together in one of those shows there.
+extended=
+[[ "$action" != ci || -n "${CHECK_QUEUE:-}" ]] || extended=1
 
 case "$action" in
     ci) modules=("${cis[@]}") ;;
@@ -523,9 +532,9 @@ step() {
             else
                 run cargo nextest run "${packages[@]}" --tests --locked --no-tests=warn --cargo-profile test-fast "${timings[@]}"
             fi
-            # The local loop stops at the tests but for the FIPS crates' own
-            # changes, below; ci goes on.
-            if [[ "$action" == ci ]]; then
+            # The local loop and the merge queue stop at the tests but for the
+            # FIPS crates' own changes, below; ci goes on.
+            if [[ -n "$extended" ]]; then
                 # What --tests leaves unbuilt, and so unlinted: benches,
                 # examples, binaries that set `test = false`, such as the fuzz
                 # targets, and a library no test links.
@@ -557,10 +566,11 @@ step() {
             # every vector set on each of this CPU's paths, with the dev
             # shell's acvptool. ci runs them whenever rind or the module
             # changes, since rind-acvp's answers come from rind's services;
-            # the local loop only under `--all` or when the FIPS crates
-            # themselves change, not for an edit to this script alone.
+            # the local loop and the merge queue only under `--all` or when
+            # the FIPS crates themselves change, not for an edit to this
+            # script alone.
             local fips=
-            if [[ "$action" == ci ]]; then
+            if [[ -n "$extended" ]]; then
                 if names rind-fips "${packages[@]}" || names rind-acvp "${packages[@]}"; then fips=1; fi
             elif [[ "$base" == --all ]] || grep -qE '^rind-(fips|acvp)/' "$changed"; then
                 fips=1
@@ -577,7 +587,7 @@ step() {
                 # targets.
                 run cargo nextest run -p rind-acvp --features module --tests --locked --cargo-profile test-fast
             fi
-            [[ "$action" == ci ]] || return 0
+            [[ -n "$extended" ]] || return 0
             # Doc tests need a library. No packages at all means the workspace.
             mapfile -t libs < <(sh/select.sh "$changed" "$all" --lib)
             if ((${#libs[@]} > 0 || ${#packages[@]} == 0)); then
