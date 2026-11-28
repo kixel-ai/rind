@@ -2546,10 +2546,11 @@ it:
 - `edDecode`, a choice, through `decodeC`, RFC 8032's square root, which
   `decodeC_spec` proves picks the point a valid encoding names and refuses
   every encoding that names none (`Ed25519.lean`);
-- `rsavp1`, which raises before it reduces, by square-and-multiply mod `n`,
-  and RSASSA-PKCS1-v1_5's and RSASSA-PSS's verifications, propositions with
-  existential witnesses, decided, PSS's computing MGF1's mask once
-  (`Rsa.lean`);
+- `rsavp1` and `rsasp1Crt`, which raise before they reduce, by
+  square-and-multiply mod `n` and mod each prime, RSASSA-PKCS1-v1_5's and
+  RSASSA-PSS's verifications, propositions with existential witnesses,
+  decided, PSS's computing MGF1's mask once, and their signings over
+  `rsasp1Crt`'s twin (`Rsa.lean`);
 - Vale's `gf128MulLE`, a product of Mathlib polynomials, through
   `Rind/Gf128.lean`'s bitwise multiplication, and GHASH and AES-GCM over it
   (`Gcm.lean`);
