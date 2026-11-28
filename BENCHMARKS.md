@@ -1480,7 +1480,7 @@ The CPU tiers rank every weekly benchmark but these, so none of them is a gap, w
 
 | Operation | On | rind's time over the fastest | Decision |
 |---|---|---|---|
-| `chacha20poly1305/*/16KB`, `chacha20poly1305-open/*/16KB`, `xchacha20poly1305/*/16KB` | no AES-NI tier, SSE2 tier | 1.11× to 1.18× (aws-lc-rs) | The weekly data predates rind hashing Poly1305 in SSE2 lanes there, a port of the BoringSSL `poly1305_vec.c` that aws-lc runs, which takes 3.8 instructions a byte of a 16 KB seal against aws-lc's 4.7 and the scalar path's 3.9. On a shared 2-core Xeon VM, forcing each tier, rind's 16 KB seal took 17.0 to 20.3 µs against 20.7 to 23.4 µs before without AES-NI, aws-lc-rs 17.6 to 18.7, and 33.1 to 35.3 µs against 35.8 to 39.2 on SSE2, aws-lc-rs 30.5 to 34.9, so the next refresh should close this gap. |
+| `chacha20poly1305/*/16KB`, `chacha20poly1305-open/*/16KB`, `xchacha20poly1305/*/16KB` | no AES-NI tier, SSE2 tier | 1.11× to 1.18× (aws-lc-rs) | [Poly1305 runs a vectorized SSE2 path on x86_64 CPUs without SSE4.1](quest/m2/speed/sse2-poly1305.md) |
 | AES-128 header protection, AES-256 header protection | `kixtop` | 1.19× to 1.30× (aws-lc-rs) | AES header protection on aarch64 reaches the key's cipher through an indirect call, as ALGORITHMS.md notes, which costs 3.75 ns against aws-lc-rs's 2.89 ns for one AES-128 block, and 3.72 against 3.13 for AES-256. |
 | `aes*-gcm*`, `rustls-bulk/*`, `aes*-ctr/*`, `aes*-cbc-*` | portable tier | 1.10× to 1.35× (aws-lc-rs) | [The portable backend's AES bitslices eight blocks a pass](quest/m2/speed/portable-aes-8way.md) |
 | `sha1/*`, `hmac-sha1/*` | portable tier | 1.11× to 1.24× (aws-lc-rs) | [The portable backend's SHA-1 is as fast as aws-lc's integer code](quest/m2/speed/portable-sha1.md) |

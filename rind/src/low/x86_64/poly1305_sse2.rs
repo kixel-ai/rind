@@ -1,4 +1,8 @@
-// SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
+// Copyright (c) 2014, Google Inc.
+// SPDX-License-Identifier: ISC
+//
+// aws-lc's `crypto/poly1305/poly1305_vec.c`, as aws-lc-sys 0.47.0 vendors
+// it, in Rust.
 
 //! Poly1305's long runs of whole blocks in SSE2, two blocks a pass in two
 //! lanes of 26-bit limbs: a port of BoringSSL's `poly1305_vec.c`, Andrew

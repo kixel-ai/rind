@@ -78,6 +78,7 @@ exclude_re = [
   'rind/src/low/x86_64/aes\.rs:\d+:\d+: replace \| with \^ in store$',
   'rind/src/low/x86_64/aes_gcm\.rs:\d+:\d+: replace \| with \^ in counter_block$',
   'rind/src/low/x86_64/chacha20poly1305\.rs:\d+:\d+: replace \| with \^$',
+  'rind/src/low/x86_64/poly1305_sse2\.rs:\d+:\d+: replace \| with \^ in to_limbs$',
   # Pinned to its line: a `const` has no name to match, and only `AES`'s
   # `1 << 0` survives.
   'rind/src/low/x86_64/cpu\.rs:446:\d+: replace << with >>$',
@@ -131,6 +132,9 @@ exclude_re = [
   'rind/src/low/generic/edwards25519_msm\.rs:\d+:(18|21): replace < with <= in non_adjacent_form$',
   'rind/src/low/generic/edwards25519_msm\.rs:\d+:(16|20): replace (> with >=|\+ with \*) in non_adjacent_form$',
   'rind/src/mid/half_size\.rs:\d+:18: replace < with <= in split$',
+  # Poly1305's SSE2 lanes: the threshold only moves where the faster path
+  # starts, and either side of it gives the same tag.
+  'rind/src/low/x86_64/poly1305_sse2\.rs:\d+:\d+: replace < with <= in blocks$',
   # ChaCha20's chunk length: with a whole chunk left, both branches give it.
   # The loop guard's `<`, at column 16, is caught.
   'rind/src/low/generic/chacha20\.rs:\d+:40: replace < with <= in cipher$',
