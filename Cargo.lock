@@ -5541,7 +5541,7 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 [[package]]
 name = "swole"
 version = "0.0.0"
-source = "git+https://github.com/kixel-ai/swole?rev=0deb5aebd1bca13b4f199cb76cfb1fc3bb460f60#0deb5aebd1bca13b4f199cb76cfb1fc3bb460f60"
+source = "git+https://github.com/kixel-ai/swole?rev=b031d30e870b4925e5dd44deece539e0ebad8f75#b031d30e870b4925e5dd44deece539e0ebad8f75"
 dependencies = [
  "inventory",
  "swole-macros",
@@ -5550,7 +5550,7 @@ dependencies = [
 [[package]]
 name = "swole-macros"
 version = "0.0.0"
-source = "git+https://github.com/kixel-ai/swole?rev=0deb5aebd1bca13b4f199cb76cfb1fc3bb460f60#0deb5aebd1bca13b4f199cb76cfb1fc3bb460f60"
+source = "git+https://github.com/kixel-ai/swole?rev=b031d30e870b4925e5dd44deece539e0ebad8f75#b031d30e870b4925e5dd44deece539e0ebad8f75"
 dependencies = [
  "proc-macro2",
  "quote",

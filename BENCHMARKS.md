@@ -29,7 +29,7 @@ To time rows without Nix, install the pinned toolchain and swole, and time a ben
 
 ```sh
 rustup toolchain install 1.98.1
-cargo install --locked --git https://github.com/kixel-ai/swole --rev 0deb5aebd1bca13b4f199cb76cfb1fc3bb460f60 cargo-swole
+cargo install --locked --git https://github.com/kixel-ai/swole --rev b031d30e870b4925e5dd44deece539e0ebad8f75 cargo-swole
 RUSTUP_TOOLCHAIN=1.98.1 swole bench -- -p rind-bench --features __bench_openssl --bench aes_gcm
 ```
 

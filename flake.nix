@@ -22,7 +22,7 @@
     # every count, and a new Valgrind starts new series: keep its nixpkgs, not
     # ours. rind-bench/Cargo.toml pins its `swole` harness: move both together,
     # and check admin/bench-report's SWOLE_BENCH_FLAGS still match its bench.rs.
-    swole.url = "github:kixel-ai/swole/0deb5aebd1bca13b4f199cb76cfb1fc3bb460f60";
+    swole.url = "github:kixel-ai/swole/b031d30e870b4925e5dd44deece539e0ebad8f75";
   };
 
   outputs =
