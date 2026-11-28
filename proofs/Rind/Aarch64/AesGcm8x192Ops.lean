@@ -262,6 +262,15 @@ theorem code_reduce (h m l : BitVec 128) :
   simp only [reduceModel, c64, clmul_c]
   ac_rfl
 
+/-- `code_reduce` in the decrypt loop's order, which folds the high term's
+product before its swap. -/
+theorem code_reduce' (h m l : BitVec 128) :
+    l ^^^ clmul (lo (m ^^^ h ^^^ l ^^^ clmul (lo h) 0xc200000000000000#64 ^^^ swap h)) 0xc200000000000000#64 ^^^
+        swap (m ^^^ h ^^^ l ^^^ clmul (lo h) 0xc200000000000000#64 ^^^ swap h) =
+      reduceModel h m l := by
+  simp only [reduceModel, c64, clmul_c]
+  ac_rfl
+
 /-! ## GHASH by a table of powers -/
 
 /-- The blocks `xs`, each with the power of `H` its place in the hash takes,
