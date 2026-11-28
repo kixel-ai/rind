@@ -1609,6 +1609,7 @@ check_quote X86_64/GatherModel items rind/src/low/x86_64/mont_exp.rs 'fn gather_
     '#[target_feature(enable = "avx,avx2")]'
 funs_external_items() {
     items rind/src/low/x86_64/sha3_keccak8_f1600.rs 'fn set_row('
+    items rind/src/low/x86_64/mlkem_sample_poly_ntt_8x.rs 'fn load(' 'fn store(' 'fn store_low('
     items rind/src/low/generic/zeroise.rs 'pub(crate) fn zeroise<'
 }
 check_quote X86_64/FunsExternal funs_external_items
@@ -2203,6 +2204,10 @@ extract x86_64 X86_64 "${hashes[@]}" "${assembly[@]}" \
     --include crate::low::x86_64::sha3_keccak8_f1600 \
     --opaque crate::low::x86_64::sha3_keccak8_f1600::set_row \
     --include crate::low::generic::keccak8 \
+    --include crate::low::x86_64::mlkem_sample_poly_ntt_8x \
+    --opaque crate::low::x86_64::mlkem_sample_poly_ntt_8x::load \
+    --opaque crate::low::x86_64::mlkem_sample_poly_ntt_8x::store \
+    --opaque crate::low::x86_64::mlkem_sample_poly_ntt_8x::store_low \
     --start-from '{impl crate::aead::Cipher for crate::mid::aes_gcm::AesGcm}' \
     --start-from crate::mid::aes_gcm::AesGcm::encrypt_any \
     --start-from crate::mid::aes_gcm::AesGcm::decrypt_any \
@@ -2291,8 +2296,7 @@ extract x86_64 X86_64 "${hashes[@]}" "${assembly[@]}" \
     --start-from crate::low::x86_64::mlkem768_vg::Encaps::check_ek \
     --start-from crate::low::x86_64::mlkem768_vg::Encaps::encaps \
     --start-from crate::low::x86_64::mlkem768_vg::KeyPair::keygen \
-    --start-from crate::low::x86_64::mlkem768_vg::KeyPair::decaps \
-    --opaque crate::mid::mlkem::sample_ntt::sample_ntt_8x
+    --start-from crate::low::x86_64::mlkem768_vg::KeyPair::decaps
 extract aarch64 Aarch64 "${hashes[@]}" "${assembly[@]}" \
     --include crate::low::aarch64::sha512::sha512_compress_blocks \
     --start-from crate::mid::p256::PrivateKey::from_bytes \
@@ -2475,7 +2479,7 @@ for file in Dispatch QuicDispatch P256Dispatch P256Agree P384Dispatch X25519Byte
     DigestDispatch Sha512Context Sha512 ChaCha20 SignatureBuffer Ed25519 \
     Blockwise Sha Hmac HmacDispatch HkdfExpand Kdf/TypesExternal Kdf/FunsExternal \
     CtEqual HmacApi DigestApi Hkdf Pbkdf2 Sha3 AesCipher HkdfAes AesModesApi AesKw P256 EcdsaDispatch Naf P256Ecdsa P256Signature \
-    P384Ecdsa P384Signature MlKemCoding MlKemCbd AeadDispatch AeadVec ChaCha20Poly1305Api; do
+    P384Ecdsa P384Signature MlKemCoding MlKemCbd MlKemTail AeadDispatch AeadVec ChaCha20Poly1305Api; do
     sed 's/X86_64/Aarch64/g; s/x86_64/aarch64/g' "proofs/Rind/X86_64/$file.lean" >"proofs/Rind/Aarch64/$file.lean"
 done
 # aarch64's KDF translation does not reach the AEAD key's conversion.
@@ -2609,16 +2613,16 @@ fi
 # `proofs/Rind/Aarch64/NeonVectors.lean` holds what `admin/neon-vectors.rs`
 # printed on an aarch64 CPU, which the `prove` workflow's `neon` job checks is
 # still what it prints. `proofs/Rind/X86_64/Avx512Vectors.lean` holds what
-# `admin/avx512-vectors.rs` printed on a CPU with AVX-512, VAES, and
-# VPCLMULQDQ, which this checks is still what it prints where this CPU has
-# them; no CI runner is sure to. Fail on a model none tests, so a new one
+# `admin/avx512-vectors.rs` printed on a CPU with AVX-512, VBMI and VBMI2
+# among it, VAES, and VPCLMULQDQ, or under Intel SDE, which this checks is
+# still what it prints where this CPU has them; no CI runner is sure to. Fail on a model none tests, so a new one
 # cannot go untested.
 if [[ ${#skipped[@]} -eq 0 ]]; then
     rustc --edition 2024 -O -o "$out/simd-vectors" admin/simd-vectors.rs
     "$out/simd-vectors" >"$out/SimdVectors.lean"
     has_avx512() {
         local feature
-        for feature in avx512f avx512bw avx512vl vaes vpclmulqdq; do
+        for feature in avx512f avx512bw avx512vl avx512vbmi avx512_vbmi2 vaes vpclmulqdq; do
             grep -qw "$feature" /proc/cpuinfo || return 1
         done
     }

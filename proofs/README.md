@@ -1282,8 +1282,9 @@ given FIPS 202's round constants and nothing of the CPU. Each round is
 
 ML-KEM's polynomial arithmetic, against FIPS 203 as SymCrypt's Lean spec
 (`Rind/SymCrypt/MlKem.lean`, MIT) states it, and of rind's Rust the coding
-below it and, on aarch64, the matrix sampling and ML-KEM-768's K-PKE
-decryption and encryption; key generation, the encapsulation-key checks, and
+below it, on aarch64 the matrix sampling and ML-KEM-768's K-PKE
+decryption and encryption, and on x86_64 with AVX-512 ML-KEM-1024's matrix
+sampling; key generation, the encapsulation-key checks, and
 the Fujisaki-Okamoto transform have
 [its quest](/quest/m4/verified/mlkem-construction.md):
 
@@ -1381,7 +1382,25 @@ rest one at a time, takes each one's first three blocks through the rejection
 sampler and then a block at a time through `tail_case`, and writes SHAKE128's
 first 256 12-bit candidates below `q`. `sampleNTT_eq` (`Rind/MlKemSample.lean`)
 shows, with no Rust, that those are `SampleNTT`'s, through the spec's
-incremental sponge.
+incremental sponge. `tail_case`'s proof and the inputs' layout are in
+`Rind/X86_64/MlKemTail.lean`, which `admin/prove` also writes for aarch64,
+since x86_64's eight-way sampling below runs them too.
+
+`sample_ntt_fips` (`Rind/X86_64/MlKemSample8x.lean`): on x86_64 with AVX-512
+F, BW, VL, VBMI, and VBMI2 (`RunsMlKem8x`), `sample_ntt` writes ML-KEM-1024's
+matrix, or its transpose, polynomial `4i + j` FIPS 203's
+`SampleNTT(ρ ‖ j ‖ i)`, or `SampleNTT(ρ ‖ i ‖ j)` for the transpose, given
+`Halts` of each input, on s2n-bignum's Keccak-f for the tails and no other
+axiom. It samples eight polynomials at a time on
+`low::x86_64::mlkem_sample_poly_ntt_8x`, which `sample_poly_ntt_8x_avx512_spec`
+proves: it lays each padded input into the eight-way Keccak-f's vectors,
+whose proof `Rind/X86_64/Keccak8Avx512.lean` gives, and of each of three
+blocks keeps the 12-bit candidates below `q`, 32 at a time, through
+`VPERMB`, `VPSRLVW`, `VPCMPUW`, and `VPCOMPRESSW` over `Rind/X86_64/Simd.lean`'s
+models and `Rind/X86_64/FunsExternal.lean`'s hand models of its load and
+stores, then hands back each tail's state, from which `tail_case` fills the
+rest. Without the CPU features it falls back to four at a time, whose x86_64
+rejection sampling no proof covers yet.
 
 `Rind/MlKemCoding.lean` states what they need of the spec, with no Rust:
 `ByteEncode_bit`, `ByteDecode_get`, and `SamplePolyCBD_get` give each bit or

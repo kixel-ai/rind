@@ -345,6 +345,11 @@ byte shuffle and 32-bit operations below act on each 128-bit lane as their
 /-- `__m512i`: 512 bits, 128-bit lane 0 lowest. -/
 @[reducible] def core.core_arch.x86.__m512i : Type := BitVec 512
 
+/-- `__m512i`'s `Clone`. -/
+def core.core_arch.x86.__m512i.Insts.CoreCloneClone.clone (x : core.core_arch.x86.__m512i) :
+    Result core.core_arch.x86.__m512i :=
+  ok x
+
 namespace rind.simd
 
 /-- A 512-bit vector's 64-bit element `i`. -/
@@ -359,6 +364,28 @@ def lane128 (x : BitVec 512) (j : Nat) : BitVec 128 := x.extractLsb' (128 * j) 1
 
 /-- The 512-bit vector of four 128-bit lanes, lane 0 lowest. -/
 def ofLanes128 (f : Nat → BitVec 128) : BitVec 512 := f 3 ++ f 2 ++ f 1 ++ f 0
+
+/-- The vector of `n` lanes of `w` bits, lane 0 lowest. -/
+def ofLanesLE (w n : Nat) (f : Nat → BitVec w) : BitVec (w * n) :=
+  (BitVec.ofBoolListLE ((List.range (w * n)).map fun k => (f (k / w)).getLsbD (k % w))).cast (by simp)
+
+/-- A 512-bit vector's byte `i`. -/
+def byte64 (x : BitVec 512) (i : Nat) : BitVec 8 := x.extractLsb' (8 * i) 8
+
+/-- The 512-bit vector of 64 bytes, byte 0 lowest. -/
+def ofBytes64 (f : Nat → BitVec 8) : BitVec 512 := ofLanesLE 8 64 f
+
+/-- A 512-bit vector's 16-bit element `i`. -/
+def lane16x32 (x : BitVec 512) (i : Nat) : BitVec 16 := x.extractLsb' (16 * i) 16
+
+/-- The 512-bit vector of 32 16-bit elements, element 0 lowest. -/
+def ofLanes16x32 (f : Nat → BitVec 16) : BitVec 512 := ofLanesLE 16 32 f
+
+/-- A 512-bit vector's 32-bit element `i`. -/
+def lane32x16 (x : BitVec 512) (i : Nat) : BitVec 32 := x.extractLsb' (32 * i) 32
+
+/-- The 512-bit vector of 16 32-bit elements, element 0 lowest. -/
+def ofLanes32x16 (f : Nat → BitVec 32) : BitVec 512 := ofLanesLE 32 16 f
 
 /-- `VPTERNLOG`'s bitwise function: bit `i` is the bit of `imm` that bits `i`
 of `a`, `b`, and `c` index, `a`'s the highest, as the union of the minterms
@@ -505,3 +532,42 @@ bit 0 of `IMM1` selects. -/
 def core.core_arch.x86.avx512f._mm512_extracti64x4_epi64 (IMM1 : Std.I32)
     (a : core.core_arch.x86.__m512i) : Result core.core_arch.x86.__m256i :=
   ok (a.extractLsb' (256 * (IMM1.bv.toNat % 2)) 256)
+
+/-- `_mm512_set1_epi16`: each 16-bit element `a`. -/
+def core.core_arch.x86.avx512f._mm512_set1_epi16 (a : Std.I16) : Result core.core_arch.x86.__m512i :=
+  ok (ofLanes16x32 fun _ => a.bv)
+
+/-- `_mm512_set1_epi32`: each 32-bit element `a`. -/
+def core.core_arch.x86.avx512f._mm512_set1_epi32 (a : Std.I32) : Result core.core_arch.x86.__m512i :=
+  ok (ofLanes32x16 fun _ => a.bv)
+
+/-- `_mm512_and_si512`, `VPANDQ`. -/
+def core.core_arch.x86.avx512f._mm512_and_si512 (a b : core.core_arch.x86.__m512i) :
+    Result core.core_arch.x86.__m512i :=
+  ok (a &&& b)
+
+/-- `_mm512_permutexvar_epi8`, `VPERMB`: byte `i` is the byte of `a` that the
+low six bits of byte `i` of `idx` select. -/
+def core.core_arch.x86.avx512vbmi._mm512_permutexvar_epi8 (idx a : core.core_arch.x86.__m512i) :
+    Result core.core_arch.x86.__m512i :=
+  ok (ofBytes64 fun i => byte64 a ((byte64 idx i).toNat % 64))
+
+/-- `_mm512_srlv_epi16`, `VPSRLVW`: each 16-bit element shifted right
+logically by the same element of `count`, or zero past 15. -/
+def core.core_arch.x86.avx512bw._mm512_srlv_epi16 (a count : core.core_arch.x86.__m512i) :
+    Result core.core_arch.x86.__m512i :=
+  ok (ofLanes16x32 fun i =>
+    if (lane16x32 count i).toNat > 15 then 0 else lane16x32 a i >>> (lane16x32 count i).toNat)
+
+/-- `_mm512_cmplt_epu16_mask`, `VPCMPUW` with less-than: bit `i` set where
+16-bit element `i` of `a` is below `b`'s, unsigned. -/
+def core.core_arch.x86.avx512bw._mm512_cmplt_epu16_mask (a b : core.core_arch.x86.__m512i) :
+    Result Std.U32 :=
+  ok ⟨ofLanesLE 1 32 fun i => BitVec.ofBool (lane16x32 a i < lane16x32 b i)⟩
+
+/-- `_mm512_maskz_compress_epi16`, `VPCOMPRESSW` zero-masked: the 16-bit
+elements of `a` whose bit of `k` is set, in order from element 0, then
+zeros. -/
+def core.core_arch.x86.avx512vbmi2._mm512_maskz_compress_epi16 (k : Std.U32)
+    (a : core.core_arch.x86.__m512i) : Result core.core_arch.x86.__m512i :=
+  ok (ofLanes16x32 fun i => (((List.range 32).filter fun j => k.bv.getLsbD j).map (lane16x32 a)).getD i 0)

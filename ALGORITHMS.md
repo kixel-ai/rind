@@ -810,7 +810,8 @@ have some different options depending on CPU features:
   ML-KEM-1024. ML-KEM-512's four polynomials never fill a batch of eight.
   ML-KEM-768's nine could, but rind skips it for ML-KEM-768, including when
   it falls back from verified-garbage's routines, and samples eight four at
-  a time and the ninth alone. This is Graviola's, and not verified.
+  a time and the ninth alone. This is Graviola's, which `proofs/` proves
+  computes FIPS 203's `SampleNTT`, given that it finishes.
 - Its 8-wide Keccak-f also runs on its own for two to eight states on x86-64
   with AVX-512 F and VL: ML-DSA's matrix, secret, and mask expansion, eight
   polynomials at a time, and ML-KEM-512's and ML-KEM-1024's noise sampling
@@ -820,8 +821,8 @@ have some different options depending on CPU features:
   one still runs alone. Running ML-KEM's four states on it took 2-5% off
   ML-KEM-512's key generation, encapsulation, and decapsulation on Emerald
   Rapids and Granite Rapids Xeons, and moved ML-KEM-1024's by less than
-  their noise. Its rotations are `vprolq`. `proofs/` takes it as a
-  hypothesis.
+  their noise. Its rotations are `vprolq`. `proofs/` proves it computes
+  Keccak-f.
 - We have s2n-bignum's verified 4-wide Keccak-f using AVX2 on x86-64, and its
   single-state Keccak-f otherwise.
 - We have s2n-bignum's verified 2-wide Keccak-f using Neon+SHA3 on Apple

@@ -142,11 +142,21 @@ const F: &str = "core.core_arch.x86.avx512f";
 const RANDOM: usize = 8;
 
 fn main() {
-    for feature in ["avx512f", "avx512bw", "avx512vl", "vaes", "vpclmulqdq"] {
+    for feature in [
+        "avx512f",
+        "avx512bw",
+        "avx512vl",
+        "avx512vbmi",
+        "avx512vbmi2",
+        "vaes",
+        "vpclmulqdq",
+    ] {
         let present = match feature {
             "avx512f" => std::arch::is_x86_feature_detected!("avx512f"),
             "avx512bw" => std::arch::is_x86_feature_detected!("avx512bw"),
             "avx512vl" => std::arch::is_x86_feature_detected!("avx512vl"),
+            "avx512vbmi" => std::arch::is_x86_feature_detected!("avx512vbmi"),
+            "avx512vbmi2" => std::arch::is_x86_feature_detected!("avx512vbmi2"),
             "vaes" => std::arch::is_x86_feature_detected!("vaes"),
             _ => std::arch::is_x86_feature_detected!("vpclmulqdq"),
         };
@@ -300,6 +310,56 @@ fn main() {
         guard(format!("{F}._mm512_setr_epi64 {}", args.join(" ")), q(r));
         let r = unsafe { _mm512_set1_epi64(e[0] ^ e[7]) };
         guard(format!("{F}._mm512_set1_epi64 ⟨{}#64⟩", (e[0] ^ e[7]) as u64), q(r));
+    }
+
+    // The eight-way ML-KEM sampler's intrinsics, after the rest so that
+    // adding them left the lines above as they were. Shift counts and
+    // compares need lanes near their edges, which random lanes rarely are.
+    let binary: [(&str, Binary); 3] = [
+        ("avx512f._mm512_and_si512", |a, b| unsafe { _mm512_and_si512(a, b) }),
+        ("avx512vbmi._mm512_permutexvar_epi8", |a, b| unsafe {
+            _mm512_permutexvar_epi8(a, b)
+        }),
+        ("avx512bw._mm512_srlv_epi16", |a, b| unsafe { _mm512_srlv_epi16(a, b) }),
+    ];
+    let counts = |x: [u128; 4]| x.map(|l| l & 0x001f_001f_001f_001f_001f_001f_001f_001f);
+    let mut ordered = Vec::new();
+    for &(a, b) in &pairs {
+        ordered.extend([(a, b), (b, a), (a, counts(b))]);
+    }
+    for (name, f) in binary {
+        for &(a, b) in &ordered {
+            let r = unsafe { f(v(a), v(b)) };
+            guard(format!("core.core_arch.x86.{name} {} {}", q(v(a)), q(v(b))), q(r));
+        }
+    }
+    let mut guard32 = |call: String, result: u32| {
+        writeln!(out, "#guard reducesTo (R := Std.U32) ( {call} ) ⟨{result}#32⟩").unwrap()
+    };
+    // Below Q, ML-KEM's prime, at it, and above, in every lane.
+    let near = |x: [u128; 4]| x.map(|l| (l & 0x0003_0003_0003_0003_0003_0003_0003_0003) + 0x0cff_0cff_0cff_0cff_0cff_0cff_0cff_0cff);
+    for &(a, b) in &ordered {
+        for (a, b) in [(a, b), (a, a), (near(a), near(b))] {
+            let r = unsafe { _mm512_cmplt_epu16_mask(v(a), v(b)) };
+            guard32(format!("core.core_arch.x86.avx512bw._mm512_cmplt_epu16_mask {} {}", q(v(a)), q(v(b))), r);
+        }
+    }
+    let mut guard = |call: String, result: String| {
+        writeln!(out, "#guard reducesTo (R := BitVec _) ( {call} ) {result}").unwrap()
+    };
+    for &a in &inputs {
+        for k in [0, u32::MAX, 0x5555_5555, 0xffff, rng.u64() as u32, rng.u64() as u32] {
+            let r = unsafe { _mm512_maskz_compress_epi16(k, v(a)) };
+            guard(
+                format!("core.core_arch.x86.avx512vbmi2._mm512_maskz_compress_epi16 ⟨{k}#32⟩ {}", q(v(a))),
+                q(r),
+            );
+        }
+        let e: [i32; 16] = unsafe { transmute(v(a)) };
+        let r = unsafe { _mm512_set1_epi32(e[0] ^ e[15]) };
+        guard(format!("{F}._mm512_set1_epi32 ⟨{}#32⟩", (e[0] ^ e[15]) as u32), q(r));
+        let r = unsafe { _mm512_set1_epi16((e[1] ^ e[14]) as i16) };
+        guard(format!("{F}._mm512_set1_epi16 ⟨{}#16⟩", (e[1] ^ e[14]) as u16), q(r));
     }
     print!("{out}");
 }

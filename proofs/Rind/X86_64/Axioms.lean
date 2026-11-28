@@ -26,6 +26,7 @@ import Rind.X86_64.PointSelect
 import Rind.X86_64.MlKemCoding
 import Rind.X86_64.VgMlKem768Ct
 import Rind.X86_64.MlKemCbd
+import Rind.X86_64.MlKemSample8x
 open rind.x86_64
 
 /-!
@@ -78,7 +79,12 @@ not Apple's; `Rind.X86_64.ChaCha20Avx2` proves rind's two-block kernel
 over `Rind.X86_64.Simd`'s models of the AVX2 intrinsics, and
 `Rind.X86_64.Keccak8Avx512` rind's eight-way Keccak-f, which SHA-3's and
 SHAKE's theorems take on AVX-512, over its models of the AVX-512 ones and
-`Rind.X86_64.FunsExternal`'s hand model of its one store. The generator
+`Rind.X86_64.FunsExternal`'s hand model of its one store. ML-KEM-1024's
+matrix sampling, `MlKemSample8x.sample_ntt_fips`, takes the hypothesis
+`RunsMlKem8x`, which no axiom states, that the CPU runs the eight-way
+sampler, whose AVX-512 body rests on that Keccak-f, those models, and
+`Rind.X86_64.FunsExternal`'s hand models of its load and stores, and its
+tails on s2n-bignum's Keccak-f; and `Halts`, as aarch64's sampling does. The generator
 tables' point selects rest on no axiom, only on the hand model in
 `Rind.X86_64.PointSelectModel`, as RSA's AVX2 table gather does on
 `Rind.X86_64.GatherModel`; without AVX2, the gather rests on s2n-bignum's
@@ -1379,3 +1385,10 @@ change to the trust base.
  sha3_keccak_f1600_spec] -/
 #guard_msgs in
 #print axioms MlKemCbd.sample_poly_cbd_spec
+
+/-- info: 'rind.x86_64.MlKemSample8x.sample_ntt_fips' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ sha3_keccak_f1600_spec] -/
+#guard_msgs in
+#print axioms MlKemSample8x.sample_ntt_fips
