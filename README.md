@@ -53,18 +53,20 @@ per library on how to move it to rind.
 ## Compared with the alternatives
 
 <!-- comparison: `admin/bench-report render` writes this table -->
-| Library | Build tools beyond rustc | Lacks, of the 22 algorithms benchmarked | Formally verified | Fastest, or within 10% |
+| Library | Build tools beyond rustc | Lacks, of the 23 algorithms benchmarked | Formally verified | Fastest, or within 10% |
 |---|---|---|---|---|
-| rind | [none](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#build-cost) | none | [aarch64: ChaCha20-Poly1305 (some CPUs), XChaCha20-Poly1305 (some CPUs), SHA-256 (some CPUs), SHA-512, SHA-3, HMAC (some CPUs), HKDF (some CPUs), X25519 (some CPUs), Ed25519 (some CPUs, some operations), P-256, P-384; portable: SHA-256, SHA-512, HMAC, HKDF; x86_64: AES-GCM (some CPUs), ChaCha20-Poly1305 (some CPUs), XChaCha20-Poly1305 (some CPUs), SHA-256 (some CPUs), SHA-512 (some CPUs), SHA-3, HMAC (some CPUs), HKDF (some CPUs), X25519, Ed25519 (some CPUs), P-256 (some CPUs), P-384, RSA (some CPUs, some operations)](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#verified-code) | [538 of its 560 times](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#speed) |
-| [aws-lc-rs](https://github.com/aws/aws-lc-rs) | [cc](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#build-cost) | XChaCha20-Poly1305 (aws-lc has it, through aws-lc-sys), Blind RSA, OPRF, VRF, SPAKE2+, Argon2id | [x86_64: SHA-512 (some CPUs)](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#verified-code) | [126 of its 464 times](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#speed) |
-| [ring](https://github.com/briansmith/ring) | [cc](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#build-cost) | XChaCha20-Poly1305, SHA-3, P-521, ML-KEM, ML-DSA, HPKE, Blind RSA, OPRF, VRF, SPAKE2+, Argon2id | [none](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#verified-code) | [75 of its 304 times](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#speed) |
-| [RustCrypto + dalek](https://github.com/RustCrypto) | [none](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#build-cost) | none | [none](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#verified-code) | [39 of its 452 times](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#speed) |
+| rind | [none](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#build-cost) | none | [aarch64: AES-GCM (some CPUs), ChaCha20-Poly1305 (some CPUs), XChaCha20-Poly1305 (some CPUs), SHA-256 (some CPUs), SHA-512, SHA-3, HMAC (some CPUs), HKDF (some CPUs), X25519 (some CPUs), Ed25519 (some CPUs, some operations), P-256, P-384; portable: SHA-256, SHA-512, HMAC, HKDF, RSA (some operations); x86_64: AES-GCM (some CPUs), ChaCha20-Poly1305 (some CPUs), XChaCha20-Poly1305 (some CPUs), SHA-256 (some CPUs), SHA-512 (some CPUs), SHA-3, HMAC (some CPUs), HKDF (some CPUs), X25519, Ed25519 (some CPUs), P-256 (some CPUs), P-384, RSA (some CPUs, some operations)](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#verified-code) | [677 of its 700 times](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#speed) |
+| [aws-lc-rs](https://github.com/aws/aws-lc-rs) | [cc](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#build-cost) | XChaCha20-Poly1305 (aws-lc has it, through aws-lc-sys), Blind RSA, OPRF, VRF, SPAKE2+, Argon2id, SLH-DSA | [x86_64: SHA-512 (some CPUs)](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#verified-code) | [130 of its 516 times](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#speed) |
+| [ring](https://github.com/briansmith/ring) | [cc](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#build-cost) | XChaCha20-Poly1305, SHA-3, P-521, ML-KEM, ML-DSA, HPKE, Blind RSA, OPRF, VRF, SPAKE2+, Argon2id, SLH-DSA | [none](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#verified-code) | [90 of its 336 times](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#speed) |
+| [RustCrypto + dalek](https://github.com/RustCrypto) | [none](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#build-cost) | none | [none](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#verified-code) | [36 of its 540 times](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#speed) |
+| [OpenSSL](https://github.com/sfackler/rust-openssl) | [cc, pkg-config](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#build-cost) | XChaCha20-Poly1305, HPKE (OpenSSL has it, but the openssl crate does not), Blind RSA, OPRF, VRF, SPAKE2+ | [none](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#verified-code) | [42 of its 468 times](https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#speed) |
 <!-- end comparison -->
 
 Build tools are what a minimal binary needs, algorithms count only what
 [BENCHMARKS.md][benchmarks] times, a proof counts only when it covers an
 operation's whole computation, and the last column counts each library's
-times against the fastest library's on the same machine.
+times against the fastest library's on the same machine. OpenSSL's build
+tools link the system's library; vendoring it needs make and perl too.
 
 What the table leaves out favors the others:
 
@@ -72,15 +74,18 @@ What the table leaves out favors the others:
   AWS-LC-FIPS module. Its newest releases build
   [AWS-LC-FIPS 4.x][aws-lc-rs-fips], which an accredited lab has tested and
   NIST is still reviewing, and older releases build earlier modules that
-  hold [NIST certificates][aws-lc-fips]. rind has no FIPS validation.
+  hold [NIST certificates][aws-lc-fips]. OpenSSL 3.1.2's FIPS provider holds
+  a [FIPS 140-3 certificate][openssl-fips], and later OpenSSL releases can
+  load it. rind has no FIPS validation.
 - **Audits.** ring was in scope of [Cure53's 2020 audit of
   rustls][rustls-audit]. RustCrypto's [aes-gcm][rustcrypto-aes-gcm] and
   [chacha20poly1305][rustcrypto-chacha] have had an audit by NCC Group, and
   its [rsa][rustcrypto-rsa] crate an earlier one its code has since diverged
   from, it says; its p256, ml-kem, and ml-dsa crates say they have had none.
   rind has had no third-party audit.
-- **Maturity and reach.** ring has run in production for years, and
-  RustCrypto covers far more algorithms.
+- **Maturity and reach.** OpenSSL has run in production for decades, and
+  ring and aws-lc-rs for years; rind is new. RustCrypto covers far more
+  algorithms.
 
 ## Switch in one line
 
@@ -127,7 +132,7 @@ ring and aws-lc-rs item to rind's.
 The `rind` crate's own API covers AES-GCM, ChaCha20-Poly1305, and
 XChaCha20-Poly1305, QUIC header protection, X25519 and ECDH, ML-KEM,
 HPKE, ECDSA, Ed25519, ML-DSA, SLH-DSA, and RSA signatures, RSA blind signatures, FROST threshold signatures, ECVRF, OPRFs, RSA-OAEP, SHA-1, SHA-2, and SHA-3,
-HMAC, HKDF, PBKDF2, Argon2id, SPAKE2+, and AES key wrap. Each algorithm is a constant or a type and each key
+HMAC, HKDF, PBKDF2, Argon2id, SPAKE2+, OPAQUE, and AES key wrap. Each algorithm is a constant or a type and each key
 type has one role, so misuse fails to compile:
 
 ```rust
@@ -226,22 +231,6 @@ let _dit = rind::cpu::Dit::hold();
 
 The guard covers every rind call its thread makes, including those through
 rind-rustls and the other adapters, and does nothing off aarch64.
-`rind::cpu::Dit::with(|| ...)` holds one over a closure, and
-`rind::cpu::Dit::batch(packets, |packet| ...)` over one batch of datagrams,
-releasing it when the closure returns or unwinds. Each rind call already
-toggles DIT at most once, however much it computes inside.
-
-After setting DIT, rind runs the speculation barrier Apple asks for on
-Apple's platforms: `sb` where the core has it, else `dsb nsh; isb sy`. On
-any other aarch64 core it runs none, which is what the Arm architecture
-requires (Arm ARM DDI 0487 M.d, sections C5.1.3.3 and B1.5.6): a write to
-PSTATE.DIT takes effect in program order, and instructions run
-speculatively after it count as running with DIT set. There, the guarantee
-rests on that architectural rule alone; we have not tested it on any core
-but Apple's, and Apple's cores are a separate case. The FIPS module's code
-keeps Apple's barrier on every target, its glibc Linux cores included.
-[The sources][dit-barrier] are collected for this split. Key wipes on drop
-run without DIT: a wipe stores zeros and loads nothing secret.
 
 ## Platforms
 
@@ -281,7 +270,7 @@ exporting, and naming things the same way, and no breaking change is planned.
   an adapter's patch release may move it to rind's next minor, and to that
   minor's `rust-version`. An adapter whose upstream needs a newer Rust than
   rind declares that one, as rind-openmls declares OpenMLS's 1.91, and CI
-  checks such a crate on its own `rust-version`.
+  does not yet check such a crate on its own `rust-version`.
 - [SECURITY.md][supported-versions] says which releases get security fixes,
   and [PLATFORMS.md][platforms] which targets and CPUs rind supports.
 
@@ -344,6 +333,7 @@ from other projects keeps its source's license, which [LICENSE] lists.
 [aws-lc-rs]: https://github.com/aws/aws-lc-rs
 [aws-lc-rs-fips]: https://github.com/aws/aws-lc-rs/blob/main/aws-lc-rs/README.md#fips
 [aws-lc-fips]: https://github.com/aws/aws-lc/blob/main/crypto/fipsmodule/FIPS.md#validations
+[openssl-fips]: https://openssl-library.org/source/
 [rustls-audit]: https://github.com/rustls/rustls/blob/main/audit/TLS-01-report.pdf
 [rustcrypto-aes-gcm]: https://github.com/RustCrypto/AEADs/tree/master/aes-gcm#security-notes
 [rustcrypto-chacha]: https://github.com/RustCrypto/AEADs/tree/master/chacha20poly1305#security-notes
@@ -389,5 +379,4 @@ from other projects keeps its source's license, which [LICENSE] lists.
 [platforms]: https://github.com/kixel-ai/rind/blob/main/PLATFORMS.md
 [architecture]: https://github.com/kixel-ai/rind/blob/main/ARCHITECTURE.md
 [audit]: https://github.com/kixel-ai/rind/blob/main/AUDIT.md
-[dit-barrier]: https://github.com/kixel-ai/rind/blob/main/benchmarks/apple-dit-barrier.md
 [stability]: https://github.com/kixel-ai/rind/blob/main/STABILITY.md
