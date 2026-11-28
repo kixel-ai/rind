@@ -9,9 +9,11 @@
 
 use core::marker::PhantomData;
 
-use ::rsa::pkcs1::{EncodeRsaPrivateKey, EncodeRsaPublicKey};
+use ::rsa::pkcs1::EncodeRsaPublicKey;
+use ::rsa::traits::{PrivateKeyParts, PublicKeyParts};
 use ::signature::{Error, MultipartSigner, MultipartVerifier, Signer, Verifier};
 use rind_digest::sha2::{Sha256, Sha384, Sha512};
+use zeroize::Zeroizing;
 
 mod sealed {
     pub trait Sealed {}
@@ -66,6 +68,45 @@ hash! {
 fn public_key_der(key: &::rsa::PublicKey) -> Result<rind::rsa::PublicKey, Error> {
     let der = key.to_pkcs1_der().map_err(|_| Error::new())?;
     rind::rsa::PublicKey::new(der.as_bytes()).map_err(|_| Error::new())
+}
+
+/// rind's key pair for `key`, loaded from its integers rather than DER.
+///
+/// `rsa`'s PKCS#1 encoder trims each integer's leading zeros and recomputes
+/// the CRT exponents by division, both in time that depends on the secret
+/// integers, and frees that division's scratch unwiped. Instead, each private
+/// integer is written big-endian at its full limb width, which reveals only
+/// the key's size, and rind reads it at that width. The CRT values are the
+/// ones `rsa` precomputed when it built the key; only `q⁻¹ mod p` leaves
+/// Montgomery form, by a constant-time reduction. Every buffer holding a
+/// private integer is wiped on drop.
+///
+/// A key whose precomputed values were cleared with
+/// `rsa::PrivateKey::clear_precomputed` is refused: call `precompute` first.
+fn key_pair(key: &::rsa::PrivateKey) -> Result<rind::rsa::KeyPair, Error> {
+    let [p, q] = key.primes() else {
+        return Err(Error::new());
+    };
+    let (Some(dp), Some(dq), Some(qinv)) = (key.dp(), key.dq(), key.qinv()) else {
+        return Err(Error::new());
+    };
+    let qi = Zeroizing::new(qinv.retrieve());
+    let secret = |x: &::rsa::BoxedUint| Zeroizing::new(x.to_be_bytes());
+    let components = rind::rsa::KeyPairComponents {
+        public_key: rind::rsa::PublicKeyComponents {
+            // Public, so trimmed of leading zeros, as rind requires, in
+            // variable time.
+            n: Zeroizing::new(key.n_bytes()),
+            e: Zeroizing::new(key.e_bytes()),
+        },
+        d: secret(key.d()),
+        p: secret(p),
+        q: secret(q),
+        dp: secret(dp),
+        dq: secret(dq),
+        qi: secret(&qi),
+    };
+    rind::rsa::KeyPair::from_components(&components).map_err(|_| Error::new())
 }
 
 /// RSASSA-PKCS1-v1_5, as `rsa::pkcs1v15`.
@@ -129,29 +170,31 @@ pub mod pkcs1v15 {
     }
 
     /// A private key that signs PKCS#1 v1.5 over `D`: rind's key pair, which
-    /// wipes itself on drop. The wrapper holds no other copy of the key; rsa's
-    /// key is encoded into a zeroizing document that rind parses, then dropped.
+    /// wipes its whole value, public key included, on drop. The wrapper is
+    /// only that pair: it holds no other copy of the key, and `rsa`'s key is
+    /// read into rind as wiped buffers, as [`key_pair`] describes.
+    #[repr(transparent)]
     pub struct SigningKey<D: Hash> {
         pair: rind::rsa::KeyPair,
-        verifying: VerifyingKey<D>,
+        hash: PhantomData<D>,
     }
 
     impl<D: Hash> SigningKey<D> {
         /// A signing key for `key`, which rind refuses if its modulus is under
         /// 2048 bits or it is otherwise not one it signs with.
         pub fn try_new(key: ::rsa::PrivateKey) -> Result<Self, Error> {
-            let der = key.to_pkcs1_der().map_err(|_| Error::new())?;
-            let pair = rind::rsa::KeyPair::from_pkcs1(der.as_bytes()).map_err(|_| Error::new())?;
-            let verifying = VerifyingKey {
-                key: pair.public_key().clone(),
+            Ok(Self {
+                pair: key_pair(&key)?,
                 hash: PhantomData,
-            };
-            Ok(Self { pair, verifying })
+            })
         }
 
         /// The public key.
         pub fn verifying_key(&self) -> VerifyingKey<D> {
-            self.verifying.clone()
+            VerifyingKey {
+                key: self.pair.public_key().clone(),
+                hash: PhantomData,
+            }
         }
     }
 
@@ -255,28 +298,29 @@ pub mod pss {
     }
 
     /// A private key that signs PSS over `D`: rind's key pair, which wipes
-    /// itself on drop, as the PKCS#1 v1.5 key does.
+    /// its whole value on drop, and nothing else, as the PKCS#1 v1.5 key is.
+    #[repr(transparent)]
     pub struct SigningKey<D: Hash> {
         pair: rind::rsa::KeyPair,
-        verifying: VerifyingKey<D>,
+        hash: PhantomData<D>,
     }
 
     impl<D: Hash> SigningKey<D> {
         /// A signing key for `key`, refused as [`super::pkcs1v15::SigningKey::try_new`] does.
         pub fn try_new(key: ::rsa::PrivateKey) -> Result<Self, Error> {
-            let der = key.to_pkcs1_der().map_err(|_| Error::new())?;
-            let pair = rind::rsa::KeyPair::from_pkcs1(der.as_bytes()).map_err(|_| Error::new())?;
-            let verifying = VerifyingKey {
-                key: pair.public_key().clone(),
-                any_salt: false,
+            Ok(Self {
+                pair: key_pair(&key)?,
                 hash: PhantomData,
-            };
-            Ok(Self { pair, verifying })
+            })
         }
 
         /// The public key.
         pub fn verifying_key(&self) -> VerifyingKey<D> {
-            self.verifying.clone()
+            VerifyingKey {
+                key: self.pair.public_key().clone(),
+                any_salt: false,
+                hash: PhantomData,
+            }
         }
     }
 

@@ -3,9 +3,10 @@
 //!
 //! Secret inputs are marked undefined, so memcheck flags any branch or memory
 //! index that depends on them. Outputs that are public by design are marked
-//! defined before the test checks them. `Generate` copies its seed into a
-//! buffer it wipes, and `Encapsulate` its 32 random bytes into rind's
-//! `kem::Message`, which zeroes them: both are new paths, checked here.
+//! defined before the test checks them. `Generate` draws its seed into a
+//! stack buffer rind loads the key from, and `Encapsulate` its 32 random
+//! bytes into rind's `kem::Message`, which zeroes them: both are new paths,
+//! checked here.
 
 use core::convert::Infallible;
 

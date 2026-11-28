@@ -22,6 +22,8 @@ p384 = { version = "0.14", default-features = false, features = ["ecdsa-core"] }
 p521 = { version = "0.14", default-features = false, features = ["ecdsa-core"] }
 ml-dsa = { version = "0.1.2", default-features = false }
 rsa = { version = "0.10", default-features = false, features = ["encoding", "pkcs1v15"] }
+# Wipes the private integers an `rsa` key is read into rind through.
+zeroize = { version = "1", default-features = false, features = ["alloc"] }
 
 [dev-dependencies]
 sha2 = "0.11"

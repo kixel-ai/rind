@@ -1,6 +1,7 @@
 //! ECDSA on each curve against RustCrypto's own: the same public key for the
-//! same scalar, each verifying the other's signatures in both encodings, and
-//! the malformed scalars, points, and signatures both refuse.
+//! same scalar, each verifying the other's signatures in both encodings, the
+//! same key from a compressed point, and the malformed scalars, points, and
+//! signatures both refuse.
 
 use signature::{MultipartSigner, MultipartVerifier, Signer, Verifier};
 
@@ -218,6 +219,48 @@ macro_rules! curve_tests {
                         "{what}: theirs"
                     );
                 }
+            }
+
+            /// A compressed SEC1 point loads as RustCrypto's `from_sec1_bytes`
+            /// loads it: the same key as its uncompressed form, verifying
+            /// RustCrypto's signatures; the other parity is another key, and an
+            /// x at or above the field's prime is refused by both.
+            #[test]
+            fn compressed_points_load_as_rustcrypto_does() {
+                let mut rng = Xorshift(0x0bad_cafe);
+                for _ in 0..8 {
+                    let secret = scalar(&mut rng);
+                    let theirs = rc::SigningKey::from_slice(&secret).unwrap();
+                    let compressed = theirs.verifying_key().to_sec1_point(true);
+                    let compressed = compressed.as_bytes();
+                    let uncompressed = theirs.verifying_key().to_sec1_point(false);
+                    assert_eq!(compressed.len(), 1 + SCALAR_LEN);
+                    let ours = rind::VerifyingKey::from_sec1_bytes(compressed).unwrap();
+                    assert_eq!(ours.to_sec1_bytes().as_ref(), uncompressed.as_bytes());
+                    assert_eq!(
+                        ours,
+                        rind::VerifyingKey::from_sec1_bytes(uncompressed.as_bytes()).unwrap()
+                    );
+                    let msg = rng.vec(100);
+                    let fixed: rc::Signature = theirs.sign(&msg);
+                    let der: rc::DerSignature = theirs.sign(&msg);
+                    ours.verify(&msg, &fixed).unwrap();
+                    ours.verify(&msg, &der).unwrap();
+
+                    // The other parity is the negated point: a valid key for
+                    // both, which the signature does not verify under.
+                    let mut flipped = compressed.to_vec();
+                    flipped[0] ^= 1;
+                    let other = rind::VerifyingKey::from_sec1_bytes(&flipped).unwrap();
+                    assert!(rc::VerifyingKey::from_sec1_bytes(&flipped).is_ok());
+                    assert_ne!(other, ours);
+                    assert!(other.verify(&msg, &fixed).is_err());
+                }
+                // x = 2^(8 * len) - 1 is at or above every curve's prime.
+                let mut too_big = vec![0xffu8; 1 + SCALAR_LEN];
+                too_big[0] = 0x02;
+                assert!(rind::VerifyingKey::from_sec1_bytes(&too_big).is_err());
+                assert!(rc::VerifyingKey::from_sec1_bytes(&too_big).is_err());
             }
 
             #[test]

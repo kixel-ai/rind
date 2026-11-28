@@ -26,6 +26,7 @@ macro_rules! curve {
 
                 /// A public key.
                 #[derive(Clone)]
+                #[repr(transparent)]
                 pub struct VerifyingKey {
                     key: ::rind::ecdsa::PublicKey,
                 }
@@ -33,10 +34,30 @@ macro_rules! curve {
                 impl VerifyingKey {
                     /// A public key from its SEC1 encoding, compressed or not, refused
                     /// as rind refuses one that is not a point on the curve.
+                    ///
+                    /// rind's ECDSA key takes only the uncompressed point, so a
+                    /// compressed one is decompressed by rind's key agreement public
+                    /// key on the same curve, which checks it is on the curve.
                     pub fn from_sec1_bytes(bytes: &[u8]) -> Result<Self, Error> {
-                        ::rind::ecdsa::PublicKey::new(&::rind::ecdsa::verify::$verify, bytes)
-                            .map(|key| Self { key })
-                            .map_err(|_| Error::new())
+                        let point =
+                            ::rind::agreement::PublicKey::new(&::rind::agreement::$ecdh, bytes)
+                                .map_err(|_| Error::new())?;
+                        ::rind::ecdsa::PublicKey::new(
+                            &::rind::ecdsa::verify::$verify,
+                            point.as_ref(),
+                        )
+                        .map(|key| Self { key })
+                        .map_err(|_| Error::new())
+                    }
+
+                    /// rind's public key as this wrapper, borrowed rather than
+                    /// copied, so a signing key's public key is the one inside rind's
+                    /// key pair, which that pair wipes on drop.
+                    fn from_rind(key: &::rind::ecdsa::PublicKey) -> &Self {
+                        // SAFETY: `VerifyingKey` is `repr(transparent)` over rind's
+                        // public key, so the two share a layout and the borrow's
+                        // lifetime carries over.
+                        unsafe { &*(key as *const ::rind::ecdsa::PublicKey).cast::<Self>() }
                     }
 
                     /// The uncompressed SEC1 encoding.
@@ -102,11 +123,12 @@ macro_rules! curve {
                     }
                 }
 
-                /// A signing key: rind's key pair, which wipes itself on drop. The
-                /// wrapper holds no other copy of the scalar.
+                /// A signing key: rind's key pair, which wipes its whole value,
+                /// public key included, on drop. The wrapper is only that pair: it
+                /// holds no other copy of the scalar or the public key.
+                #[repr(transparent)]
                 pub struct SigningKey {
                     pair: ::rind::ecdsa::KeyPair,
-                    verifying: VerifyingKey,
                 }
 
                 impl SigningKey {
@@ -132,15 +154,12 @@ macro_rules! curve {
                             private.public_key().as_ref(),
                         )
                         .map_err(|_| Error::new())?;
-                        let verifying = VerifyingKey {
-                            key: pair.public_key().clone(),
-                        };
-                        Ok(Self { pair, verifying })
+                        Ok(Self { pair })
                     }
 
                     /// The public key.
                     pub fn verifying_key(&self) -> &VerifyingKey {
-                        &self.verifying
+                        VerifyingKey::from_rind(self.pair.public_key())
                     }
                 }
 
@@ -155,14 +174,14 @@ macro_rules! curve {
                 impl fmt::Debug for SigningKey {
                     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                         f.debug_struct("SigningKey")
-                            .field("verifying_key", &self.verifying)
+                            .field("verifying_key", self.verifying_key())
                             .finish_non_exhaustive()
                     }
                 }
 
                 impl AsRef<VerifyingKey> for SigningKey {
                     fn as_ref(&self) -> &VerifyingKey {
-                        &self.verifying
+                        self.verifying_key()
                     }
                 }
 

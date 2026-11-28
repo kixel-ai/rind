@@ -16,7 +16,6 @@ use kem::{
     Ciphertext, Decapsulate, Decapsulator, Encapsulate, Generate, InvalidKey, Key, KeyExport,
     KeyInit, KeySizeUser, SharedKey, TryKeyInit,
 };
-use zeroize::Zeroize;
 
 /// The 64-byte seed `d || z` a decapsulation key is made from.
 pub type Seed = Array<u8, U64>;
@@ -80,7 +79,8 @@ sets! {
 }
 
 /// An encapsulation key: rind's, which checks FIPS 203's modulus as it
-/// loads and wipes itself on drop.
+/// loads.
+#[repr(transparent)]
 pub struct EncapsulationKey<P: ParameterSet> {
     key: rind::kem::EncapsulationKey<P::Rind>,
     set: PhantomData<P>,
@@ -92,6 +92,18 @@ impl<P: ParameterSet> Clone for EncapsulationKey<P> {
             key: self.key.clone(),
             set: PhantomData,
         }
+    }
+}
+
+impl<P: ParameterSet> EncapsulationKey<P> {
+    /// rind's key as this wrapper, borrowed rather than copied, so a
+    /// decapsulation key's encapsulation key is the one inside rind's
+    /// decapsulation key, which that key wipes on drop.
+    fn from_rind(key: &rind::kem::EncapsulationKey<P::Rind>) -> &Self {
+        // SAFETY: `EncapsulationKey` is `repr(transparent)` over rind's key
+        // (`set` is zero-sized), so the two share a layout and the borrow's
+        // lifetime carries over.
+        unsafe { &*(key as *const rind::kem::EncapsulationKey<P::Rind>).cast::<Self>() }
     }
 }
 
@@ -151,21 +163,22 @@ impl<P: ParameterSet> Encapsulate for EncapsulationKey<P> {
 }
 
 /// A decapsulation key, made from its 64-byte seed as `ml-kem`'s is: rind's,
-/// which wipes itself on drop, beside its encapsulation key.
+/// which wipes its whole value, encapsulation key included, on drop. The
+/// wrapper is only that key: it holds no other copy of either.
+#[repr(transparent)]
 pub struct DecapsulationKey<P: ParameterSet> {
     key: rind::kem::DecapsulationKey<P::Rind>,
-    public: EncapsulationKey<P>,
+    set: PhantomData<P>,
 }
 
 impl<P: ParameterSet> DecapsulationKey<P> {
     fn from_seed(seed: &[u8]) -> Self {
         let key = rind::kem::DecapsulationKey::<P::Rind>::from_seed(seed)
             .expect("a 64-byte seed is a key");
-        let public = EncapsulationKey {
-            key: key.public_key().clone(),
+        Self {
+            key,
             set: PhantomData,
-        };
-        Self { key, public }
+        }
     }
 }
 
@@ -195,16 +208,16 @@ impl<P: ParameterSet> KeyExport for DecapsulationKey<P> {
 }
 
 impl<P: ParameterSet> Generate for DecapsulationKey<P> {
-    /// A key from a seed of 64 bytes of `rng`, wiped once rind has it.
+    /// A key from a seed of 64 bytes of `rng`. The seed is a stack temporary
+    /// inside this call, which rind's policy leaves unwiped; the key rind
+    /// makes from it holds its own copy and wipes that on drop.
     fn try_generate_from_rng<R>(rng: &mut R) -> Result<Self, R::Error>
     where
         R: TryCryptoRng + ?Sized,
     {
         let mut seed = [0u8; 64];
-        let filled = rng.try_fill_bytes(&mut seed);
-        let key = filled.map(|()| Self::from_seed(&seed));
-        seed.zeroize();
-        key
+        rng.try_fill_bytes(&mut seed)?;
+        Ok(Self::from_seed(&seed))
     }
 }
 
@@ -212,7 +225,7 @@ impl<P: ParameterSet> Decapsulator for DecapsulationKey<P> {
     type Kem = P;
 
     fn encapsulation_key(&self) -> &EncapsulationKey<P> {
-        &self.public
+        EncapsulationKey::from_rind(self.key.public_key())
     }
 }
 

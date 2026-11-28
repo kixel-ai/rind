@@ -5024,7 +5024,6 @@ dependencies = [
  "kem",
  "ml-kem",
  "rind",
- "zeroize",
 ]
 
 [[package]]
@@ -5153,6 +5152,7 @@ dependencies = [
  "rsa",
  "sha2 0.11.1",
  "signature 3.0.0",
+ "zeroize",
 ]
 
 [[package]]

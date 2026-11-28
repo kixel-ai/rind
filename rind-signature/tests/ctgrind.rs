@@ -5,12 +5,9 @@
 //! index that depends on them. Outputs that are public by design are marked
 //! defined before the test checks them. The wrappers copy no key: each passes
 //! the bytes it is given to rind, which marks and wipes what it keeps.
-//! RSA is not here: its secret path is `rsa`'s own `to_pkcs1_der`, not this crate's. Under
-//! memcheck with the private exponent and primes marked secret, that encoder's bit-width
-//! and division steps (`bit_width_vartime`, `div_rem`) are flagged, so a test here would
-//! fail on `rsa`'s code until `rsa` encodes in constant time. The key is already an
-//! `rsa::PrivateKey` the caller built with `rsa`; rind's own RSA is checked in `rind`'s
-//! suite.
+//! RSA's import is this crate's own: it reads an `rsa::PrivateKey`'s private
+//! integers, which the test marks secret in place, at their full width into
+//! rind's component loader.
 
 use crabgrind::memcheck::{self, MemState};
 use crabgrind::valgrind::{self, RunningMode};
@@ -88,4 +85,39 @@ fn ml_dsa_seed() {
     sign::<MlDsa44>();
     sign::<MlDsa65>();
     sign::<MlDsa87>();
+}
+
+/// Both RSA signing keys import an `rsa` key whose private integers are
+/// secret: the private exponent, the primes, and the CRT values `rsa`
+/// precomputed. Only the modulus and public exponent are public.
+#[test]
+fn rsa_private_key() {
+    use rsa::pkcs8::DecodePrivateKey;
+    use rsa::traits::PrivateKeyParts;
+    use signature::{SignatureEncoding, Signer, Verifier};
+    type Hash = rind_digest::sha2::Sha256;
+
+    let key = rsa::PrivateKey::from_pkcs8_der(include_bytes!("data/rsa2048.pkcs8.der")).unwrap();
+    secret(key.d().as_words());
+    for prime in key.primes() {
+        secret(prime.as_ref().as_words());
+    }
+    secret(key.dp().unwrap().as_words());
+    secret(key.dq().unwrap().as_words());
+    secret(key.qinv().unwrap().as_montgomery().as_words());
+
+    let pkcs1 = rind_signature::rsa::pkcs1v15::SigningKey::<Hash>::try_new(key.clone()).unwrap();
+    let signature = pkcs1.try_sign(b"public message").unwrap();
+    public(&signature.to_bytes()[..]);
+    pkcs1
+        .verifying_key()
+        .verify(b"public message", &signature)
+        .unwrap();
+
+    let pss = rind_signature::rsa::pss::SigningKey::<Hash>::try_new(key).unwrap();
+    let signature = pss.try_sign(b"public message").unwrap();
+    public(&signature.to_bytes()[..]);
+    pss.verifying_key()
+        .verify(b"public message", &signature)
+        .unwrap();
 }

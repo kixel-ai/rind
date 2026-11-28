@@ -19,7 +19,7 @@ let (ciphertext, secret) = dk.encapsulation_key().encapsulate();
 assert_eq!(dk.decapsulate(&ciphertext), secret);
 ```
 
-Keys wipe themselves on drop, as rind's do. `Generate` copies the 64-byte seed it draws into a buffer it wipes once rind holds the key, and `Encapsulate` hands its 32 random bytes to rind's `kem::Message`, which zeroes them.
+Keys wipe themselves on drop, as rind's do: a decapsulation key is only rind's, whose wipe covers its encapsulation key too. `Generate` draws the 64-byte seed into a stack buffer it leaves unwiped, as rind leaves its stack temporaries, since the key rind makes holds and wipes its own copy, and `Encapsulate` hands its 32 random bytes to rind's `kem::Message`, which zeroes them.
 
 ## What rind cannot back
 

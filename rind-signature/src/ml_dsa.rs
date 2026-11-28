@@ -35,6 +35,7 @@ macro_rules! params {
 params!(MlDsa44, MlDsa65, MlDsa87);
 
 /// A public key.
+#[repr(transparent)]
 pub struct VerifyingKey<P: Params> {
     key: rind::ml_dsa::PublicKey<P::Rind>,
 }
@@ -48,6 +49,15 @@ impl<P: Params> Clone for VerifyingKey<P> {
 }
 
 impl<P: Params> VerifyingKey<P> {
+    /// rind's public key as this wrapper, borrowed rather than copied, so a
+    /// signing key's public key is the one inside rind's key pair, which that
+    /// pair wipes on drop.
+    fn from_rind(key: &rind::ml_dsa::PublicKey<P::Rind>) -> &Self {
+        // SAFETY: `VerifyingKey` is `repr(transparent)` over rind's public key,
+        // so the two share a layout and the borrow's lifetime carries over.
+        unsafe { &*(key as *const rind::ml_dsa::PublicKey<P::Rind>).cast::<Self>() }
+    }
+
     /// The key's encoding.
     pub fn encode(&self) -> EncodedVerifyingKey<P> {
         EncodedVerifyingKey::<P>::try_from(self.key.as_ref())
@@ -91,11 +101,12 @@ impl<P: Params> MultipartVerifier<Signature<P>> for VerifyingKey<P> {
     }
 }
 
-/// A signing key: rind's key pair, which wipes itself on drop. The wrapper
-/// holds no other copy of the seed.
+/// A signing key: rind's key pair, which wipes its whole value, public key
+/// included, on drop. The wrapper is only that pair: it holds no other copy of
+/// the seed or the public key.
+#[repr(transparent)]
 pub struct SigningKey<P: Params> {
     pair: rind::ml_dsa::KeyPair<P::Rind>,
-    verifying: VerifyingKey<P>,
 }
 
 impl<P: Params> SigningKey<P> {
@@ -103,15 +114,16 @@ impl<P: Params> SigningKey<P> {
     pub fn from_seed(seed: &Seed) -> Self {
         let pair = rind::ml_dsa::KeyPair::<P::Rind>::from_seed(seed.as_slice())
             .expect("a 32-byte seed is a key");
-        let verifying = VerifyingKey {
-            key: pair.public_key().clone(),
-        };
-        Self { pair, verifying }
+        Self { pair }
     }
 
     /// The public key.
     pub fn verifying_key(&self) -> VerifyingKey<P> {
-        self.verifying.clone()
+        self.verifying().clone()
+    }
+
+    fn verifying(&self) -> &VerifyingKey<P> {
+        VerifyingKey::from_rind(self.pair.public_key())
     }
 }
 
@@ -123,7 +135,7 @@ impl<P: Params> fmt::Debug for SigningKey<P> {
 
 impl<P: Params> AsRef<VerifyingKey<P>> for SigningKey<P> {
     fn as_ref(&self) -> &VerifyingKey<P> {
-        &self.verifying
+        self.verifying()
     }
 }
 
@@ -148,6 +160,6 @@ impl<P: Params> MultipartSigner<Signature<P>> for SigningKey<P> {
 
 impl<P: Params> Verifier<Signature<P>> for SigningKey<P> {
     fn verify(&self, msg: &[u8], signature: &Signature<P>) -> Result<(), Error> {
-        self.verifying.verify(msg, signature)
+        self.verifying().verify(msg, signature)
     }
 }

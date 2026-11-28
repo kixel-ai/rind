@@ -182,3 +182,46 @@ fn a_public_key_rind_refuses_is_an_error() {
     assert!(pss::VerifyingKey::<Hash>::try_new_with_auto_salt_len(key.clone()).is_err());
     assert!(pss::VerifyingKey::<Hash>::try_from(key).is_err());
 }
+
+/// rind's key from an `rsa` key is that key: its PKCS#8 matches rind's own
+/// import of the same file, so the two sign identically, in both schemes.
+#[test]
+fn an_imported_key_is_the_same_key() {
+    use rind_signature::rsa::{pkcs1v15, pss};
+    type Hash = rind_digest::sha2::Sha384;
+    let direct = ::rind::rsa::KeyPair::from_pkcs8(KEY).unwrap();
+    let ours = pkcs1v15::SigningKey::<Hash>::try_new(private_key()).unwrap();
+    let expected = direct
+        .sign(&::rind::rsa::sign::PKCS1_SHA384, b"same key")
+        .unwrap();
+    assert_eq!(
+        ours.try_sign(b"same key").unwrap().to_bytes().as_ref(),
+        expected.as_ref()
+    );
+    let pss_key = pss::SigningKey::<Hash>::try_new(private_key()).unwrap();
+    let pss_sig = pss_key.try_sign(b"same key").unwrap();
+    direct
+        .public_key()
+        .verify(
+            &::rind::rsa::verify::PSS_SHA384,
+            b"same key",
+            &pss_sig.to_bytes(),
+        )
+        .unwrap();
+}
+
+/// A key whose CRT values `rsa` was told to forget is refused, not
+/// recomputed in variable time, and loads again once `precompute` restores
+/// them.
+#[test]
+fn a_key_without_precomputed_values_is_refused() {
+    use rind_signature::rsa::{pkcs1v15, pss};
+    type Hash = rind_digest::sha2::Sha256;
+    let mut key = private_key();
+    key.clear_precomputed();
+    assert!(pkcs1v15::SigningKey::<Hash>::try_new(key.clone()).is_err());
+    assert!(pss::SigningKey::<Hash>::try_new(key.clone()).is_err());
+    key.precompute().unwrap();
+    assert!(pkcs1v15::SigningKey::<Hash>::try_new(key.clone()).is_ok());
+    assert!(pss::SigningKey::<Hash>::try_new(key).is_ok());
+}
