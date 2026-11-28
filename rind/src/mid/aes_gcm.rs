@@ -107,6 +107,10 @@ impl AesGcm {
     ///
     /// Also fails with [`Error::WrongLength`] if `iv` is empty or 2^61
     /// bytes or longer.
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "callers pass a tag_out of at most 16 bytes, the tag's length"
+    )]
     pub(crate) fn encrypt_any(
         &self,
         iv: &[u8],
@@ -132,6 +136,10 @@ impl AesGcm {
     ///
     /// Also fails with [`Error::WrongLength`], leaving `cipher_inout`
     /// unchanged, if `iv` is empty or 2^61 bytes or longer.
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "callers pass a tag of the key's tag length, at most 16"
+    )]
     pub(crate) fn decrypt_any(
         &self,
         iv: &[u8],

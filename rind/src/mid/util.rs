@@ -5,10 +5,17 @@
 // done better that way.
 
 // 32-bit ARM swaps out the curves that use some of these.
-#![cfg_attr(any(rind_backend = "arm", rind_backend = "portable"), allow(dead_code))]
+#![cfg_attr(
+    any(rind_backend = "arm", rind_backend = "portable"),
+    allow(
+        dead_code,
+        reason = "32-bit ARM and the portable backend run other code for some curves"
+    )
+)]
 
 macro_rules! little_endian {
     ([u64; $N:literal], $fn_array_to:ident, $fn_slice_to:ident, $fn_to_bytes:ident) => {
+        #[expect(clippy::indexing_slicing, reason = "ir < N, the length of r")]
         pub(crate) fn $fn_array_to(b: &[u8; $N * 8]) -> [u64; $N] {
             let mut r = [0; $N];
             for (ir, b) in (0..$N).zip(b.chunks_exact(8)) {
@@ -17,7 +24,7 @@ macro_rules! little_endian {
             r
         }
 
-        #[allow(dead_code)]
+        #[allow(dead_code, reason = "not every width's slice conversion has a caller")]
         pub(crate) fn $fn_slice_to(bytes: &[u8]) -> Option<[u64; $N]> {
             let as_array: [u8; $N * 8] = bytes.try_into().ok()?;
             Some($fn_array_to(&as_array))
@@ -25,7 +32,12 @@ macro_rules! little_endian {
 
         // Indexes rather than zipping `chunks_exact_mut`, which Aeneas cannot
         // translate, so `proofs/` can prove X25519's encoding.
-        #[allow(dead_code)]
+        #[allow(dead_code, reason = "not every width's encoding has a caller")]
+        #[expect(
+            clippy::arithmetic_side_effects,
+            clippy::indexing_slicing,
+            reason = "i < N, so (i + 1) * 8 <= 8 * N, the length of r"
+        )]
         pub(crate) fn $fn_to_bytes(v: &[u64; $N]) -> [u8; $N * 8] {
             let mut r = [0u8; $N * 8];
             for (i, word) in v.iter().enumerate() {
@@ -54,6 +66,7 @@ little_endian!(
 // compiled code is the same.
 macro_rules! big_endian {
     ([u64; $N:literal], $fn_array_to:ident, $fn_slice_to:ident, $fn_slice_any_size_to:ident, $fn_to_bytes:ident) => {
+        #[expect(clippy::arithmetic_side_effects, clippy::indexing_slicing, reason = "ir < N, so the slice is bytes 8 * (N - 1 - ir) to 8 * (N - ir) of 8 * N, and r[ir] is in bounds")]
         pub(crate) fn $fn_array_to(b: &[u8; $N * 8]) -> [u64; $N] {
             let mut r = [0; $N];
             for ir in 0..$N {
@@ -63,7 +76,7 @@ macro_rules! big_endian {
             r
         }
 
-        #[allow(dead_code)]
+        #[allow(dead_code, reason = "not every width's slice conversion has a caller")]
         pub(crate) fn $fn_slice_to(bytes: &[u8]) -> Option<[u64; $N]> {
             let as_array: [u8; $N * 8] = bytes.try_into().ok()?;
             Some($fn_array_to(&as_array))
@@ -75,6 +88,7 @@ macro_rules! big_endian {
                 return Some($fn_array_to(array));
             }
 
+            #[expect(clippy::arithmetic_side_effects, clippy::indexing_slicing, reason = "the caller checked bytes.len() < 8 * N")]
             fn add_leading_zeroes(bytes: &[u8]) -> [u64; $N] {
                 let mut tmp = [0u8; $N * 8];
                 tmp[$N * 8 - bytes.len()..].copy_from_slice(bytes);
@@ -103,6 +117,7 @@ macro_rules! big_endian {
             }
         }
 
+        #[expect(clippy::arithmetic_side_effects, clippy::indexing_slicing, reason = "iv < N, so the slice is bytes 8 * (N - 1 - iv) to 8 * (N - iv) of 8 * N")]
         pub(crate) fn $fn_to_bytes(v: &[u64; $N]) -> [u8; $N * 8] {
             let mut r = [0u8; $N * 8];
             for iv in 0..$N {

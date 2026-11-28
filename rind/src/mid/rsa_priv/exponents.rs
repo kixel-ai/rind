@@ -32,6 +32,11 @@ impl Exponents {
     /// have it, and like aws-lc this discards a key whose `d` is at most
     /// `2 ^ (nlen / 2)`. Only that verdict, and whether `e` divides
     /// `p - 1` or `q - 1`, is revealed.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "p and q are the primes of a supported key, 1 to MAX_PRIVATE_MODULUS_WORDS words each, so len * 2 fits and every slice is in bounds"
+    )]
     pub(super) fn derive(p: &[u64], q: &[u64]) -> Option<Self> {
         let len = p.len();
         let mut k = Self {
@@ -88,6 +93,11 @@ impl Exponents {
 ///
 /// This shifts by each power of two below the width in turn, keeping the
 /// result only where `shift` has that bit set.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "out is at most MAX_PRIVATE_MODULUS_WORDS * 2 words, so len * 64 fits, 1 << bit < len * 64, bits < 64 when nonzero, and i < len"
+)]
 pub(super) fn shift_right_secret(x: &[u64], shift: usize, out: &mut [u64]) {
     out.copy_from_slice(x);
     let len = out.len();
@@ -117,6 +127,11 @@ pub(super) fn shift_right_secret(x: &[u64], shift: usize, out: &mut [u64]) {
 /// iterations its worst case needs, counting the factors of two common to
 /// both. `x` then loses those factors by a secret shift, and the odd rest
 /// of the GCD by `divide_exact_odd`.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "x and y are 1 to MAX_PRIVATE_MODULUS_WORDS words, the scratch width, so len * 128 fits and u[0] and v[0] exist"
+)]
 fn divide_by_gcd(x: &[u64], y: &[u64], out: &mut [u64]) {
     let len = x.len();
     let mut s = Scratch::default();
@@ -173,6 +188,11 @@ impl Default for Scratch {
 /// This is exact (Hensel) division a bit at a time, lowest first: where
 /// `x` is odd, so is the quotient, and subtracting `g` makes `x` even
 /// before it halves (Jebelean, "An algorithm for exact division", 1993).
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "x and out are 1 to MAX_PRIVATE_MODULUS_WORDS words of equal width, so x.len() * 64 fits, x[0] exists, and i / 64 < out.len()"
+)]
 fn divide_exact_odd(x: &mut [u64], g: &[u64], out: &mut [u64]) {
     out.fill(0);
     for i in 0..x.len() * 64 {
@@ -258,6 +278,10 @@ fn divide_exact_e(x: &mut [u64]) {
 /// some CPUs: `2 ^ 16 = -1 (mod e)`, so `v`'s 16-bit digits alternate in
 /// sign.
 fn reduce_e(v: u64) -> u64 {
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "i is at most 3, so 16 * i < 64"
+    )]
     let digit = |v: u64, i: u32| (v >> (16 * i)) & 0xffff;
     // Positive, as 2e exceeds the two digits subtracted, and at most 2 ^ 18.
     let v = (digit(v, 0).wrapping_add(digit(v, 2)).wrapping_add(2 * E))
@@ -289,6 +313,11 @@ fn select(out: &mut [u64], x: &[u64], keep: u64) {
 }
 
 /// Halves `x` where `keep` is all ones.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "i < len = x.len(), so i + 1 cannot overflow"
+)]
 fn shift_right_1(x: &mut [u64], keep: u64) {
     let len = x.len();
     for i in 0..len {

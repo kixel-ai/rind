@@ -21,6 +21,10 @@ pub(crate) enum AesGcm {
 impl AesGcm {
     /// Expands a 16-, 24-, or 32-byte key, which the caller has checked,
     /// into an AES-128-GCM, AES-192-GCM, or AES-256-GCM key.
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "the caller checked key is 16, 24, or 32 bytes"
+    )]
     pub(crate) fn new(key: &[u8]) -> Self {
         let _entry = Entry::new_secret();
         // Mark a copy: the caller's buffer may be shared, or a promoted constant.
@@ -131,6 +135,10 @@ impl AesGcm {
     ///
     /// Also fails with [`Error::WrongLength`] if `iv` is empty or 2^61
     /// bytes or longer.
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "callers pass a tag_out of at most 16 bytes, the tag's length"
+    )]
     pub(crate) fn encrypt_any(
         &self,
         iv: &[u8],
@@ -160,6 +168,10 @@ impl AesGcm {
     ///
     /// Also fails with [`Error::WrongLength`], leaving `cipher_inout`
     /// unchanged, if `iv` is empty or 2^61 bytes or longer.
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "callers pass a tag of the key's tag length, at most 16"
+    )]
     pub(crate) fn decrypt_any(
         &self,
         iv: &[u8],
@@ -288,7 +300,14 @@ trait Parts {
 
     /// Encrypts (if `ENC`) or decrypts `inout` in place under `iv`, of any
     /// length, and returns its tag.
-    #[allow(clippy::needless_range_loop)]
+    #[allow(
+        clippy::needless_range_loop,
+        reason = "indexed, since Aeneas translates no loop that writes through an iterator's references"
+    )]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "i < chunks.len() in the first loop and i < 16, the block length, in the second"
+    )]
     fn tagged<const ENC: bool>(&self, iv: &[u8], aad: &[u8], inout: &mut [u8]) -> [u8; 16] {
         let table = self.table();
         let y0 = initial_counter(table, iv);
@@ -375,6 +394,10 @@ impl<K: BlocksKey, T: Ghash> Parts for Arm<K, T> {
         self.key.encrypt_block(block)
     }
 
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "i < tail.len(), under 16, the block length"
+    )]
     fn ctr(&self, ivec: &[u8; 16], inout: &mut [u8]) -> [u8; 16] {
         let (blocks, tail) = inout.as_chunks_mut::<16>();
         self.key.ctr32(ivec, blocks);
@@ -423,6 +446,10 @@ fn initial_counter(table: &impl Ghash, iv: &[u8]) -> [u8; 16] {
 }
 
 /// Folds `data` into `xi`, padding its last block with zeroes.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "tail is the remainder of 16-byte chunks, under 16 bytes"
+)]
 fn ghash(table: &impl Ghash, xi: &mut [u8; 16], data: &[u8]) {
     let (blocks, tail) = data.as_chunks::<16>();
     table.ghash(xi, blocks);

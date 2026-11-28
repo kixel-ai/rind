@@ -68,6 +68,10 @@ impl AesCtr {
     ///
     /// Fails with [`Error::WrongLength`] if `key` is not that algorithm's key
     /// length, or if `counter_bits` is not 1 to 128.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "counter_bits was checked to be 1 to 128, so 128 - counter_bits is a shift under 128"
+    )]
     pub fn new(algorithm: &'static Algorithm, key: &[u8], counter_bits: u8) -> Result<Self, Error> {
         let _entry = Entry::new_secret();
         if key.len() != algorithm.key_len || !(1..=128).contains(&counter_bits) {
@@ -89,6 +93,11 @@ impl AesCtr {
     /// Fails with [`Error::WrongLength`], leaving `inout` unchanged, if
     /// `inout` needs more than 2^`counter_bits` blocks: the counter would wrap
     /// onto a block already used, repeating keystream.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::unwrap_used,
+        reason = "word_mask < 2^32, so segment_blocks <= 2^32 and segment_blocks * 16 fit in u64, and a 16-byte block splits into 12 and 4 bytes"
+    )]
     pub fn apply_keystream(&self, counter_block: &[u8; 16], inout: &mut [u8]) -> Result<(), Error> {
         let _entry = Entry::new_secret();
         let blocks = inout.len().div_ceil(16) as u128;
@@ -152,6 +161,10 @@ impl low::Zeroable for AesCtr {}
 
 /// Fails with [`Error::WrongLength`] if `len` bytes need more blocks than
 /// remain from block `counter` before the 32-bit counter wraps.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "a u32 plus a byte count / 16, under 2^60, fits in u64"
+)]
 fn check_counter(counter: u32, len: usize) -> Result<(), Error> {
     if u64::from(counter) + len.div_ceil(16) as u64 > 1 << 32 {
         return Err(Error::WrongLength);
@@ -195,6 +208,10 @@ pub(super) fn expand_key(key: &[u8]) -> AesKey {
 /// halves, and the AES-192 expansion's first 16-byte load then reads across
 /// both, which store forwarding cannot serve: about 10 ns of a 100 ns key.
 #[inline(always)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "N is 16, 24, or 32, within the 32-byte copy"
+)]
 fn expand_copy<const N: usize>(key: &[u8]) -> AesKey {
     // Mark a copy: the caller's buffer may be shared, or a promoted constant.
     let mut copy = [0u8; 32];
@@ -217,6 +234,10 @@ pub(super) fn expand_dec_key(key: &[u8]) -> AesDecKey {
 /// Expands a copy of `key` for decryption, as [`expand_copy`] does for
 /// encryption.
 #[inline(always)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "N is 16, 24, or 32, within the 32-byte copy"
+)]
 fn expand_dec_copy<const N: usize>(key: &[u8]) -> AesDecKey {
     let mut copy = [0u8; 32];
     let copy_key = &mut copy[..N];

@@ -144,6 +144,10 @@ impl PrivateKey {
         }
     }
 
+    #[expect(
+        clippy::panic,
+        reason = "only a fault reaches the panic: a multiple of G by a scalar in [1, n) is on the curve"
+    )]
     fn public_point(&self) -> AffinePoint {
         let point = JacobianPoint::base_multiply(&self.scalar).as_affine();
         let point = low::ct::into_public(point);
@@ -158,6 +162,12 @@ impl PrivateKey {
     ///
     /// Through `HmacDrbg`, this is RFC6979's nonce generation; from the
     /// system RNG, it is a uniform key.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        clippy::unwrap_used,
+        reason = "r is Scalar::BYTES = 66 bytes, within the 72 a u64x9 holds, i < 9 in `from_fn`, and EXCESS_BITS is under 64"
+    )]
     fn generate(rng: &mut dyn RandomSource) -> Result<Self, Error> {
         for _ in 0..64 {
             let mut r = [0u8; Scalar::BYTES];
@@ -345,6 +355,10 @@ impl AffinePoint {
     const X: Range<usize> = 0..9;
     const Y: Range<usize> = 9..18;
 
+    #[expect(
+        clippy::unwrap_used,
+        reason = "x and y are FieldElement::BYTES = 66 bytes each, within the 72 a u64x9 holds"
+    )]
     fn from_x962_uncompressed(bytes: &[u8]) -> Result<Self, Error> {
         match bytes.first() {
             Some(0x04) => (),
@@ -385,6 +399,10 @@ impl AffinePoint {
     /// back, so an `x` with no point is refused rather than given one. No
     /// point of a curve of prime order has `y = 0`, so `y` and `p - y` differ
     /// in parity.
+    #[expect(
+        clippy::unwrap_used,
+        reason = "x was checked to be FieldElement::BYTES = 66 bytes, within the 72 a u64x9 holds"
+    )]
     fn from_x962_compressed(bytes: &[u8]) -> Result<Self, Error> {
         let (tag, x) = match bytes.split_first() {
             Some((&tag @ (0x02 | 0x03), x)) => (tag, x),
@@ -427,10 +445,18 @@ impl AffinePoint {
         r
     }
 
+    #[expect(
+        clippy::unwrap_used,
+        reason = "Self::X is 0..9, so the slice is 9 limbs"
+    )]
     fn x(&self) -> FieldElement {
         FieldElement(self.xy[Self::X].try_into().unwrap())
     }
 
+    #[expect(
+        clippy::unwrap_used,
+        reason = "Self::Y is 9..18, so the slice is 9 limbs"
+    )]
     fn y(&self) -> FieldElement {
         FieldElement(self.xy[Self::Y].try_into().unwrap())
     }
@@ -455,6 +481,10 @@ impl AffinePoint {
         low::bignum_eq(&lhs.0, &rhs.0)
     }
 
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "split_at_mut(1) leaves `indicator` one byte long"
+    )]
     fn as_bytes_uncompressed(&self) -> [u8; PublicKey::BYTES] {
         let mut r = [0u8; PublicKey::BYTES];
 
@@ -490,6 +520,11 @@ impl AffinePoint {
 
     /// Returns table[i - 1] for a public index > 0
     #[cfg(not(any(rind_backend = "arm", rind_backend = "portable")))]
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "callers pass a nonzero width-5 NAF digit's magnitude, 1 to 15, so offs + 18 <= 270 < 288"
+    )]
     fn public_lookup_comb(table: &[u64; 288], index: u8) -> Self {
         let offs = (index - 1) as usize * 18;
         let mut r = Self::default();
@@ -515,6 +550,11 @@ impl AffinePoint {
     ///
     /// Each sum adds 2P to an odd multiple below n, never equal, as
     /// `p521_jadd` requires, and none is at infinity.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "i is in 1..8, the length of `multiples`"
+    )]
     fn public_odd_multiples(&self) -> [Self; 8] {
         let p = JacobianPoint::from_affine(self);
         let p2 = p.double();
@@ -566,14 +606,26 @@ impl JacobianPoint {
         low::bignum_eq(&self.z().0, &[0; 9]) as u8
     }
 
+    #[expect(
+        clippy::unwrap_used,
+        reason = "Self::X is 0..9, so the slice is 9 limbs"
+    )]
     fn x(&self) -> FieldElement {
         FieldElement(self.xyz[Self::X].try_into().unwrap())
     }
 
+    #[expect(
+        clippy::unwrap_used,
+        reason = "Self::Y is 9..18, so the slice is 9 limbs"
+    )]
     fn y(&self) -> FieldElement {
         FieldElement(self.xyz[Self::Y].try_into().unwrap())
     }
 
+    #[expect(
+        clippy::unwrap_used,
+        reason = "Self::Z is 18..27, so the slice is 9 limbs"
+    )]
     fn z(&self) -> FieldElement {
         FieldElement(self.xyz[Self::Z].try_into().unwrap())
     }
@@ -654,6 +706,11 @@ impl JacobianPoint {
     /// `public_twin_multiply` from the digits, by the portable backend's own
     /// routine, which keeps its coordinates in its field's limbs.
     #[cfg(any(rind_backend = "arm", rind_backend = "portable"))]
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "i < 8 picks the even rows of the table's 16, and odd_multiples holds one or two rows, so its points fill at most the 16 of p_multiples"
+    )]
     fn public_twin_multiply_naf(
         g_digits: &[i8; 522],
         p_digits: &[i8; 522],
@@ -688,6 +745,10 @@ impl JacobianPoint {
     /// `public_twin_multiply` from the digits, composed from s2n-bignum's
     /// point routines.
     #[cfg(not(any(rind_backend = "arm", rind_backend = "portable")))]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "a width-5 digit's magnitude is at most 15 for one row and a width-6 one's at most 31 for two, so i / 8 < odd_multiples.len()"
+    )]
     fn public_twin_multiply_naf(
         g_digits: &[i8; 522],
         p_digits: &[i8; 522],
@@ -753,6 +814,11 @@ impl JacobianPoint {
 
     /// `points` in affine form, none at infinity, by one inversion of the
     /// product of their z's (Montgomery's trick).
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "i is in 0..8 or 1..8, within the eight points and prefixes"
+    )]
     fn public_batch_as_affine(points: &[Self; 8]) -> [AffinePoint; 8] {
         // `prefix[i]` is the product of the z's before `points[i]`.
         let mut prefix = [CURVE_ONE; 8];
@@ -788,6 +854,7 @@ impl JacobianPoint {
     /// x = X / z², so this checks X = r * z², and (r + n) * z² when that is
     /// below p, the only other x that reduces to `r`. Unlike computing x,
     /// that needs no inversion.
+    #[expect(clippy::indexing_slicing, reason = "i < 9, the limb count")]
     fn public_x_is(&self, r: &Scalar) -> bool {
         let z2 = self.z().sqr();
         let is = |x: [u64; 9]| FieldElement(x).mul(&z2).public_eq(&self.x());
@@ -863,6 +930,10 @@ impl FieldElement {
     const BYTES: usize = 66;
 
     /// Big-endian, from the 72 bytes of the words, whose top 7 bits are zero.
+    #[expect(
+        clippy::unwrap_used,
+        reason = "the slice is the last 66 of 72 bytes, Self::BYTES long"
+    )]
     fn as_bytes(&self) -> [u8; Self::BYTES] {
         util::u64x9_to_big_endian(&self.0)[72 - Self::BYTES..]
             .try_into()
@@ -955,6 +1026,10 @@ impl Scalar {
     /// is below n. Zero is accepted.
     ///
     /// Whether it is below n is public; the value stays secret.
+    #[expect(
+        clippy::unwrap_used,
+        reason = "66 bytes is within the 72 a u64x9 holds"
+    )]
     pub(crate) fn from_bytes_below_n(bytes: &[u8; Self::BYTES]) -> Option<Self> {
         let full = Self(util::big_endian_slice_any_size_to_u64x9(bytes).unwrap());
         low::ct::into_public(full.reduce_mod_n().private_eq(&full)).then_some(full)
@@ -993,6 +1068,10 @@ impl Scalar {
         }
     }
 
+    #[expect(
+        clippy::unwrap_used,
+        reason = "the slice is the last 66 of 72 bytes, Self::BYTES long"
+    )]
     pub(crate) fn as_bytes(&self) -> [u8; Self::BYTES] {
         util::u64x9_to_big_endian(&self.0)[72 - Self::BYTES..]
             .try_into()
@@ -1114,6 +1193,11 @@ impl BoothRecodeW5 {
 impl Iterator for BoothRecodeW5 {
     type Item = (u8, u8, bool);
 
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "the arm runs only for index in 5..=520, so offset + 1 <= 65 < 73 and index - 5 does not wrap"
+    )]
     fn next(&mut self) -> Option<Self::Item> {
         const MASK: u8 = (1 << (5 + 1)) - 1;
 
