@@ -357,18 +357,12 @@ mod tests {
 
         RELEASE.store(true, Ordering::Release);
         drawer.join().unwrap();
+        // A child hung instantiating is ended by the test runner's hang
+        // bound, which knows how slow this run may be.
         let mut status = 0;
-        for _ in 0..1000 {
-            // SAFETY: `pid` is our child and `status` a valid out pointer.
-            let done = unsafe { libc::waitpid(pid, &mut status, libc::WNOHANG) };
-            if done == pid {
-                assert!(libc::WIFEXITED(status) && libc::WEXITSTATUS(status) == 0);
-                return;
-            }
-            std::thread::sleep(core::time::Duration::from_millis(10));
-        }
-        // SAFETY: `pid` is our child, still running.
-        unsafe { libc::kill(pid, libc::SIGKILL) };
-        panic!("the forked child hung instantiating");
+        // SAFETY: `pid` is our child and `status` a valid out pointer.
+        let reaped = unsafe { libc::waitpid(pid, &mut status, 0) };
+        assert_eq!(reaped, pid, "waitpid failed");
+        assert!(libc::WIFEXITED(status) && libc::WEXITSTATUS(status) == 0);
     }
 }

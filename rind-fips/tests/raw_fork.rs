@@ -8,8 +8,6 @@
 #![cfg(all(rind_fips_module, any(target_arch = "x86_64", target_arch = "aarch64")))]
 
 use core::ffi::c_long;
-use std::thread;
-use std::time::{Duration, Instant};
 
 unsafe extern "C" {
     fn syscall(number: c_long, ...) -> c_long;
@@ -18,7 +16,6 @@ unsafe extern "C" {
     fn write(fd: i32, buf: *const u8, count: usize) -> isize;
     fn close(fd: i32) -> i32;
     fn waitpid(pid: i32, status: *mut i32, options: i32) -> i32;
-    fn kill(pid: i32, signal: i32) -> i32;
     fn _exit(status: i32) -> !;
 }
 
@@ -27,8 +24,6 @@ const SYS_CLONE: c_long = 56;
 #[cfg(target_arch = "aarch64")]
 const SYS_CLONE: c_long = 220;
 const SIGCHLD: c_long = 17;
-const WNOHANG: i32 = 1;
-const SIGKILL: i32 = 9;
 
 #[test]
 fn a_raw_fork_child_never_repeats_its_parent() {
@@ -63,27 +58,12 @@ fn a_raw_fork_child_never_repeats_its_parent() {
     rind_fips::rand::fill(&mut ours).unwrap();
 
     // The child's 32 bytes fit the pipe's buffer, so it exits without
-    // waiting for the read; one that hangs fails the test.
-    let deadline = Instant::now() + Duration::from_secs(10);
+    // waiting for the read; one that hangs is ended by the test runner's
+    // hang bound.
     let mut status = 0;
-    loop {
-        // SAFETY: `pid` is our child, and `status` writable.
-        match unsafe { waitpid(pid, &mut status, WNOHANG) } {
-            0 if Instant::now() < deadline => thread::sleep(Duration::from_millis(1)),
-            0 => {
-                // SAFETY: `pid` is our child, and `status` writable.
-                unsafe {
-                    kill(pid, SIGKILL);
-                    waitpid(pid, &mut status, 0);
-                }
-                panic!("the child hung");
-            }
-            reaped => {
-                assert_eq!(reaped, pid, "waitpid failed");
-                break;
-            }
-        }
-    }
+    // SAFETY: `pid` is our child, and `status` writable.
+    let reaped = unsafe { waitpid(pid, &mut status, 0) };
+    assert_eq!(reaped, pid, "waitpid failed");
     assert_eq!(status, 0, "the child failed to draw");
 
     let mut theirs = [0; 32];
