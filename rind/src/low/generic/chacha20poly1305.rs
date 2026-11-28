@@ -39,6 +39,11 @@ fn cipher(key: &[u8; 32], nonce: &[u8; 12], aad: &[u8], inout: &mut [u8], seal: 
     let mut poly = Poly1305::new(&poly_key);
 
     // AAD || pad(AAD) || ciphertext || pad(ciphertext) || len_64(AAD) || len_64(ciphertext)
+    #[expect(
+        clippy::indexing_slicing,
+        clippy::arithmetic_side_effects,
+        reason = "len % 16 < 16, so (16 - len % 16) % 16 is in 0..16, within the 16 zeroes"
+    )]
     let pad = |poly: &mut Poly1305, len: usize| poly.add_bytes(&[0u8; 16][..(16 - len % 16) % 16]);
     poly.add_bytes(aad);
     pad(&mut poly, aad.len());

@@ -224,7 +224,10 @@ impl<Id: AlgorithmIdentifier> DecapsulationKey<Id> {
     /// Decapsulates `ciphertext`, which fails only if it is the wrong
     /// length: a ciphertext altered or made for another key yields an
     /// unrelated secret (FIPS 203's implicit rejection).
-    #[allow(clippy::needless_pass_by_value)]
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "aws-lc-rs takes the ciphertext by value, so a drop-in does too"
+    )]
     pub fn decapsulate(&self, ciphertext: Ciphertext<'_>) -> Result<SharedSecret, Unspecified> {
         let secret: Box<[u8]> = each!(&self.key, key => {
             let ciphertext = rind::kem::Ciphertext::new(ciphertext.as_ref()).map_err(unspecified)?;

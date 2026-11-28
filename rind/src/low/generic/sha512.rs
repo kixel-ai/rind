@@ -26,7 +26,10 @@
     )),
     test
 ))]
-#[allow(clippy::too_many_arguments)]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "the eight working variables and the round's word and constant, inlined"
+)]
 #[inline(always)]
 fn round(
     w: u64,
@@ -63,6 +66,11 @@ fn round(
     test
 ))]
 #[inline(always)]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "j < 16, and each index is taken mod 16 into the 16-word window"
+)]
 fn schedule(x: &mut [u64; 16], j: usize) -> u64 {
     let w1 = x[(j + 1) % 16];
     let w14 = x[(j + 14) % 16];
@@ -84,6 +92,11 @@ fn schedule(x: &mut [u64; 16], j: usize) -> u64 {
     )),
     test
 ))]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "blocks.len() is a multiple of 128, asserted, so off + 128 <= blocks.len() while off < blocks.len(); j < 16 gives 8 * j + 7 < 128; i is 16 to 64 in steps of 16, so i + 15 < 80"
+)]
 pub(crate) fn sha512_compress_blocks(state: &mut [u64; 8], blocks: &[u8]) {
     assert!(blocks.len().is_multiple_of(128));
     let mut off = 0;

@@ -25,6 +25,10 @@ type SignedWide = i64;
 
 /// `x`'s limbs, low first, which `buf` holds.
 fn limbs<'a, const N: usize>(x: &[u64], buf: &'a mut [Limb; N]) -> &'a [Limb] {
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "x is a slice of 8-byte words, so 2 * x.len() fits in usize"
+    )]
     let buf = &mut buf[..2 * x.len()];
     for (pair, word) in buf.as_chunks_mut::<2>().0.iter_mut().zip(x) {
         *pair = [*word as u32, (*word >> 32) as u32];

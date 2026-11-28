@@ -66,7 +66,7 @@ impl OpenMlsCrypto for RustCrypto {
         okm_len: usize,
     ) -> Result<SecretVLBytes, CryptoError> {
         let hash_len = hash_type.size();
-        if prk.len() < hash_len || okm_len > 255 * hash_len {
+        if prk.len() < hash_len || hash_len.checked_mul(255).is_none_or(|max| okm_len > max) {
             return Err(CryptoError::HkdfOutputLengthInvalid);
         }
         let mut okm = vec![0; okm_len];
@@ -158,7 +158,15 @@ impl OpenMlsCrypto for RustCrypto {
                 if pk.len() > MAX_POINT_LEN {
                     return Err(CryptoError::CryptoLibraryError);
                 }
+                #[expect(
+                    clippy::arithmetic_side_effects,
+                    reason = "the OID and curve are a few constant bytes"
+                )]
                 let id_len = EC_PUBLIC_KEY.len() + algorithm.curve.len();
+                #[expect(
+                    clippy::arithmetic_side_effects,
+                    reason = "pk.len() <= MAX_POINT_LEN was checked, so every DER length fits in a byte"
+                )]
                 let spki = [
                     &[0x30, (5 + id_len + pk.len()) as u8, 0x30, id_len as u8],
                     &EC_PUBLIC_KEY[..],
@@ -176,6 +184,11 @@ impl OpenMlsCrypto for RustCrypto {
             .map_err(|_| CryptoError::InvalidSignature)
     }
 
+    #[expect(
+        clippy::indexing_slicing,
+        clippy::arithmetic_side_effects,
+        reason = "`ecdsa` gives a scalar_len of at most MAX_SCALAR_LEN, so the SEC1 encoding fits sec1 and its lengths fit in a byte, and key.len() == scalar_len was checked"
+    )]
     fn sign(&self, alg: SignatureScheme, data: &[u8], key: &[u8]) -> Result<Vec<u8>, CryptoError> {
         if alg == SignatureScheme::ED25519 {
             let key =
@@ -436,12 +449,12 @@ fn aead_key(
 /// Returns a buffer for an export of `len` bytes, refusing one longer than
 /// RFC 9180 allows, 255 of the KDF's hash outputs, before allocating it.
 fn exporter_buffer(config: &HpkeConfig, len: usize) -> Result<Vec<u8>, CryptoError> {
-    let hash_len = match config.1 {
-        HpkeKdfType::HkdfSha256 => 32,
-        HpkeKdfType::HkdfSha384 => 48,
-        HpkeKdfType::HkdfSha512 => 64,
+    let max_len = match config.1 {
+        HpkeKdfType::HkdfSha256 => 255 * 32,
+        HpkeKdfType::HkdfSha384 => 255 * 48,
+        HpkeKdfType::HkdfSha512 => 255 * 64,
     };
-    if len > 255 * hash_len {
+    if len > max_len {
         return Err(CryptoError::ExporterError);
     }
     Ok(vec![0; len])

@@ -298,7 +298,11 @@ fn ec_pub_components_from_private_key(
     let key = EcdsaKeyPair::from_pkcs8(signing, der).map_err(|_| ErrorKind::InvalidEcdsaKey)?;
 
     // An uncompressed point is 0x04 || x || y.
-    let point = &key.public_key().as_ref()[1..];
+    let point = key
+        .public_key()
+        .as_ref()
+        .get(1..)
+        .ok_or(ErrorKind::InvalidEcdsaKey)?;
     let (x, y) = point.split_at(point.len() / 2);
     Ok((curve, x.to_vec(), y.to_vec()))
 }

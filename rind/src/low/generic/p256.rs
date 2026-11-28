@@ -80,8 +80,7 @@ pub(crate) fn p256_montjadd(p3: &mut [u64; 12], p1: &[u64; 12], p2: &[u64; 12]) 
 /// p2 are equal or opposite finite points, the result's z is zero, as
 /// `public_add_affine` relies on, and its x and y unspecified.
 pub(crate) fn p256_montjmixadd(p3: &mut [u64; 12], p1: &[u64; 12], p2: &[u64; 8]) {
-    let (xy2, _) = p2.as_chunks::<4>();
-    *p3 = point(&jmixadd(&coords(p1), &[fe(&xy2[0]), fe(&xy2[1])]));
+    *p3 = point(&jmixadd(&coords(p1), &fes(p2)));
 }
 
 /// p3 := 2 * p1, as a Jacobian point over p_256 with Montgomery coordinates.
@@ -91,6 +90,11 @@ pub(crate) fn p256_montjdouble(p3: &mut [u64; 12], p1: &[u64; 12]) {
 
 /// res := scalar * P, for the Jacobian point P = `point` with Montgomery
 /// coordinates.  A result at infinity has a zero z.
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "1 <= i < 16 = table.len(), so i / 2 and i - 1 index the table"
+)]
 pub(crate) fn p256_montjscalarmul(res: &mut [u64; 12], scalar: &[u64; 4], point_in: &[u64; 12]) {
     let mut k = [0; 4];
     bignum_mod_n256(&mut k, scalar);
@@ -130,7 +134,7 @@ pub(crate) fn p256_montjscalarmul(res: &mut [u64; 12], scalar: &[u64; 4], point_
     };
 
     let mut windows = booth_w5(&k);
-    let (digit, _) = windows.next().unwrap();
+    let (digit, _) = windows.next().expect("booth_w5 yields 52 windows");
     let mut acc = lookup(digit, 0);
     for (digit, sign) in windows {
         for _ in 0..5 {
@@ -152,6 +156,11 @@ pub(crate) fn p256_montjscalarmul(res: &mut [u64; 12], scalar: &[u64; 4], point_
 /// negated above 32 with a carry into the next.  The accumulator then sums
 /// the windows below, a smaller integer than the entry in magnitude, so
 /// neither equals the other.
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "i < 43 rows, so bit = 6 * i <= 252 and word <= 3, and word + 1 is read only below 3, with 0 < 64 - shift"
+)]
 pub(crate) fn p256_scalarmulbase(res: &mut [u64; 8], scalar: &[u64; 4], table: &[[u64; 256]; 43]) {
     let mut k = [0; 4];
     bignum_mod_n256(&mut k, scalar);
@@ -174,8 +183,7 @@ pub(crate) fn p256_scalarmulbase(res: &mut [u64; 8], scalar: &[u64; 4], table: &
 
         let mut entry = [0; 8];
         row_select(&mut entry, row, digit);
-        let (xy, _) = entry.as_chunks::<4>();
-        let (x, y) = (fe(&xy[0]), fe(&xy[1]));
+        let [x, y] = fes(&entry);
         let y = select(carry, &y, &fe_opp(&y));
 
         // The mixed addition cannot add infinity, so a zero digit keeps the
@@ -230,7 +238,10 @@ pub(crate) fn bignum_modadd(z: &mut [u64], x: &[u64], y: &[u64], m: &[u64]) {
 /// `_t` is s2n-bignum's scratch space, which this does not need.
 pub(crate) fn bignum_modinv(z: &mut [u64], a: &[u64], b: &[u64], _t: &mut [u64]) {
     assert_eq!(b, N);
-    let a = reduce(split(a.try_into().unwrap()), &split(&N));
+    let a = reduce(
+        split(a.try_into().expect("`mid::p256` passes 4-word scalars")),
+        &split(&N),
+    );
     let mut a_mont = Fs([0; LIMBS]);
     fs::fiat_p256_scalar_to_montgomery(
         &mut a_mont,
@@ -352,6 +363,11 @@ fn jdouble(p1: &[Fe; 3]) -> [Fe; 3] {
 
 /// The 52 Booth-recoded 5-bit windows of `k`, highest first, each a digit
 /// and its sign, as `mid::p256`'s.
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "1 <= w <= 51 there, so bit = 5 * w - 1 <= 254 and bit / 8 + 1 <= 32 < 33 bytes"
+)]
 fn booth_w5(k: &[u64; 4]) -> impl Iterator<Item = (u8, u8)> {
     let mut bytes = [0u8; 33];
     for (chunk, word) in bytes.as_chunks_mut::<8>().0.iter_mut().zip(k) {
@@ -399,6 +415,11 @@ fn fe_invert(x: &Fe) -> Fe {
 /// `x^(n - 2)`, which is `x^-1` for a nonzero `x`, by 252 squarings and 51
 /// multiplications: runs of ones for the top half of `n - 2`, and a fixed
 /// 4-bit window, none of whose digits is zero, for the bottom half.
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "1 <= i < 15 = table.len(), and every nibble of n - 2's bottom half is nonzero, so digit - 1 is in 0..15"
+)]
 fn fs_invert(x: &Fs) -> Fs {
     let sqr_n = |x: &Fs, n: usize| (0..n).fold(*x, |acc, _| fs_sqr(&acc));
 
@@ -478,7 +499,9 @@ fn fe(x: &[u64; 4]) -> Fe {
 }
 
 fn fs(x: &[u64]) -> Fs {
-    Fs(split(x.try_into().unwrap()))
+    Fs(split(
+        x.try_into().expect("`mid::p256` passes 4-word scalars"),
+    ))
 }
 
 fn fe_add(x: &Fe, y: &Fe) -> Fe {
@@ -537,7 +560,13 @@ fn select(flag: u8, if_zero: &Fe, if_nonzero: &Fe) -> Fe {
 
 /// `if_nonzero` if `flag` is 1, else `if_zero`.
 fn select_point(flag: u8, if_zero: &[Fe; 3], if_nonzero: &[Fe; 3]) -> [Fe; 3] {
-    [0, 1, 2].map(|i| select(flag, &if_zero[i], &if_nonzero[i]))
+    let [x0, y0, z0] = if_zero;
+    let [x1, y1, z1] = if_nonzero;
+    [
+        select(flag, x0, x1),
+        select(flag, y0, y1),
+        select(flag, z0, z1),
+    ]
 }
 
 /// `if_nonzero` if `flag` is 1, else `if_zero`.
@@ -553,8 +582,16 @@ pub(super) fn opaque<T>(x: T) -> T {
 }
 
 fn coords(p: &[u64; 12]) -> [Fe; 3] {
-    let (words, _) = p.as_chunks::<4>();
-    [fe(&words[0]), fe(&words[1]), fe(&words[2])]
+    fes(p)
+}
+
+/// The first `M` field elements of `words`, four words each.
+fn fes<const M: usize>(words: &[u64]) -> [Fe; M] {
+    let mut r = [Fe([0; LIMBS]); M];
+    for (r, w) in r.iter_mut().zip(words.as_chunks::<4>().0) {
+        *r = fe(w);
+    }
+    r
 }
 
 fn point(p: &[Fe; 3]) -> [u64; 12] {
@@ -567,11 +604,21 @@ fn point(p: &[Fe; 3]) -> [u64; 12] {
 }
 
 /// `x`'s limbs, low first.
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "LIMBS is 4 or 8 and i < LIMBS, so i * 4 / LIMBS < 4 and the shift is below 64"
+)]
 pub(super) fn split(x: &[u64; 4]) -> [Limb; LIMBS] {
     core::array::from_fn(|i| (x[i * 4 / LIMBS] >> (Limb::BITS as usize * i % 64)) as Limb)
 }
 
 /// The words of `x`'s limbs, low first.
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "LIMBS is 4 or 8 and i < LIMBS, so i * 4 / LIMBS < 4 and the shift is below 64"
+)]
 fn join(x: &[Limb; LIMBS]) -> [u64; 4] {
     let mut r = [0u64; 4];
     for (i, limb) in x.iter().enumerate() {

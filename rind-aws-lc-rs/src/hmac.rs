@@ -87,7 +87,9 @@ impl Key {
         rng: &dyn rand::SecureRandom,
     ) -> Result<Self, error::Unspecified> {
         let mut key = [0u8; digest::MAX_OUTPUT_LEN];
-        let key = &mut key[..algorithm.tag_len()];
+        let key = key
+            .get_mut(..algorithm.tag_len())
+            .expect("every tag_len is at most MAX_OUTPUT_LEN");
         rng.fill(key)?;
         Ok(Self::new(algorithm, key))
     }
@@ -118,7 +120,9 @@ impl From<hkdf::Okm<'_, Algorithm>> for Key {
     fn from(okm: hkdf::Okm<'_, Algorithm>) -> Self {
         let algorithm = *okm.len();
         let mut key = [0u8; digest::MAX_OUTPUT_LEN];
-        let key = &mut key[..algorithm.tag_len()];
+        let key = key
+            .get_mut(..algorithm.tag_len())
+            .expect("every tag_len is at most MAX_OUTPUT_LEN");
         okm.fill_exact(key);
         Self::new(algorithm, key)
     }
@@ -193,7 +197,10 @@ pub struct Tag {
 impl Tag {
     fn new(tag: &[u8]) -> Self {
         let mut value = [0; digest::MAX_OUTPUT_LEN];
-        value[..tag.len()].copy_from_slice(tag);
+        value
+            .get_mut(..tag.len())
+            .expect("rind's tags are at most MAX_OUTPUT_LEN")
+            .copy_from_slice(tag);
         Self {
             value,
             len: tag.len(),
@@ -203,6 +210,8 @@ impl Tag {
 
 impl AsRef<[u8]> for Tag {
     fn as_ref(&self) -> &[u8] {
-        &self.value[..self.len]
+        self.value
+            .get(..self.len)
+            .expect("`new` keeps len at most MAX_OUTPUT_LEN")
     }
 }

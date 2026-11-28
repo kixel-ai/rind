@@ -50,13 +50,17 @@ fn ecb_round(algorithm: &'static cipher::Algorithm, key: &[u8], input: &[u8], ou
     let aes = Aes::new(algorithm, key).expect("SRTP master key length");
     let mut block: [u8; 16] = input.try_into().expect("SRTP key derivation block");
     aes.encrypt_block(&mut block);
-    output[..16].copy_from_slice(&block);
+    *output
+        .first_chunk_mut::<16>()
+        .expect("SRTP key derivation output") = block;
 }
 
 impl SupportedAes128CmSha1_80 for RindSrtp {
     fn create_cipher(&self, key: [u8; 16], _encrypt: bool) -> Box<dyn Aes128CmSha1_80Cipher> {
         // RFC 3711 counts over the whole block, IV + i mod 2^128, as aws-lc-rs does.
-        Box::new(Cm(AesCtr::new(&cipher::AES_128, &key, 128).unwrap()))
+        Box::new(Cm(AesCtr::new(&cipher::AES_128, &key, 128).expect(
+            "a 16-byte key is AES-128's, and 128 counter bits are valid",
+        )))
     }
 }
 
@@ -125,7 +129,7 @@ impl fmt::Debug for Gcm {
 impl Gcm {
     /// str0m passes the profile's key length.
     fn new(algorithm: &'static aead::Algorithm, key: &[u8]) -> Self {
-        Self(aead::Key::new(algorithm, key).unwrap())
+        Self(aead::Key::new(algorithm, key).expect("str0m passes the profile's key length"))
     }
 
     /// Writes the ciphertext then the tag into `output`.
@@ -137,7 +141,7 @@ impl Gcm {
         output: &mut [u8],
     ) -> Result<(), CryptoError> {
         let output = output
-            .get_mut(..input.len() + TAG_LEN)
+            .get_mut(..input.len().saturating_add(TAG_LEN))
             .ok_or_else(|| CryptoError::Other("AES-GCM output too short".into()))?;
         let (ciphertext, tag_out) = output.split_at_mut(input.len());
         ciphertext.copy_from_slice(input);

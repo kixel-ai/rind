@@ -15,7 +15,10 @@ impl fmt::Display for Unspecified {
 
 // aws-lc-rs overrides the deprecated `description` and `cause`, so a caller
 // still on them gets its answers.
-#[allow(deprecated)]
+#[allow(
+    deprecated,
+    reason = "overrides the deprecated methods aws-lc-rs overrides, as the comment above says"
+)]
 impl core::error::Error for Unspecified {
     fn description(&self) -> &str {
         "Unspecified"
@@ -132,7 +135,10 @@ impl fmt::Display for KeyRejected {
     }
 }
 
-#[allow(deprecated)]
+#[allow(
+    deprecated,
+    reason = "overrides the deprecated methods aws-lc-rs overrides, as `Unspecified` does"
+)]
 impl core::error::Error for KeyRejected {
     fn description(&self) -> &str {
         self.description_()

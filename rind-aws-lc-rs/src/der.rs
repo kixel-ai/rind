@@ -69,8 +69,10 @@ pub(crate) fn is_spki(der: &[u8]) -> bool {
 
 /// The bit length of a big-endian magnitude without leading zero bytes.
 pub(crate) fn bits(magnitude: &[u8]) -> usize {
-    8 * magnitude.len()
-        - magnitude
+    // Saturating, so an empty magnitude has no bits.
+    magnitude.len().saturating_mul(8).saturating_sub(
+        magnitude
             .first()
-            .map_or(8, |top| top.leading_zeros() as usize)
+            .map_or(8, |top| top.leading_zeros() as usize),
+    )
 }

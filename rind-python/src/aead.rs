@@ -37,11 +37,17 @@ fn seal_into<'py, T: AsRef<[u8]>>(
     plaintext: &[u8],
     seal: impl FnOnce(&mut [u8]) -> Result<T, rind::Error>,
 ) -> PyResult<Bound<'py, PyBytes>> {
-    bytes_with(py, plaintext, plaintext.len() + TAG_LEN, |out| {
-        let (body, tag) = out.split_at_mut(plaintext.len());
-        tag.copy_from_slice(seal(body).map_err(error)?.as_ref());
-        Ok(())
-    })
+    // Saturating, as `bytes_with` refuses any length past `isize::MAX`.
+    bytes_with(
+        py,
+        plaintext,
+        plaintext.len().saturating_add(TAG_LEN),
+        |out| {
+            let (body, tag) = out.split_at_mut(plaintext.len());
+            tag.copy_from_slice(seal(body).map_err(error)?.as_ref());
+            Ok(())
+        },
+    )
 }
 
 /// Copies `ciphertext`, less its tag, into a new `bytes`, and opens it there

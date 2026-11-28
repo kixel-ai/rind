@@ -287,7 +287,7 @@ macro_rules! call {
     };
     (@call $fty:ty, $f:expr $(, $arg:expr)*) => {{
         // `asm_call!` passes a function pointer field in parentheses.
-        #[allow(unused_parens)]
+        #[allow(unused_parens, reason = "`asm_call!` passes a function pointer field in parentheses")]
         let f: $fty = $f;
         $crate::low::abi::Routine::call(
             f,
@@ -914,7 +914,10 @@ mod tests {
             .unwrap_or_default()
     }
 
-    #[allow(clippy::too_many_arguments)]
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "eight words, the most an aarch64 routine takes, to check every argument arrives"
+    )]
     extern "C" fn c_words(
         a: usize,
         b: usize,

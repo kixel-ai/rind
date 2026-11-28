@@ -47,6 +47,11 @@ fn barrett_reduce(a: i16) -> i16 {
 }
 
 /// Forward number-theoretic transform from ML-KEM, in natural order.
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "len is a power of two at most 128, so 2 * len <= 256, and k counts the 127 blocks of all levels from 1, ending at 127 < ZETAS.len()"
+)]
 pub(crate) fn mlkem_ntt(r: &mut [i16; 256]) {
     let mut k = 1;
     let mut len = 128;
@@ -67,6 +72,11 @@ pub(crate) fn mlkem_ntt(r: &mut [i16; 256]) {
 
 /// Inverse number-theoretic transform from ML-KEM, in natural order, mapping
 /// the result into the Montgomery domain.
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "len is a power of two at most 128, so 2 * len <= 256, and k counts the 127 blocks of all levels down from 127, ending at 1"
+)]
 pub(crate) fn mlkem_intt(r: &mut [i16; 256]) {
     const F: i16 = 1441; // 2^32 / 128 mod q
     for x in r.iter_mut() {
@@ -95,7 +105,7 @@ pub(crate) fn mlkem_mulcache_compute(x: &mut [i16; 128], a: &[i16; 256]) {
     let (a, _) = a.as_chunks::<4>();
     for ((x, a), zeta) in x.iter_mut().zip(a).zip(&ZETAS[64..]) {
         x[0] = fqmul(a[1], *zeta);
-        x[1] = fqmul(a[3], -*zeta);
+        x[1] = fqmul(a[3], zeta.wrapping_neg());
     }
 }
 
@@ -134,6 +144,11 @@ pub(crate) fn mlkem_basemul_k4(
 
 /// Scalar product of `K`-element polynomial vectors: mlkem-native's
 /// `polyvec_basemul_acc_montgomery_cached`.
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "callers pass a and b of 256 * K and bt of 128 * K coefficients, with K from 2 to 4; i < 128 and k < K, so every index lies within them"
+)]
 fn basemul<const K: usize>(r: &mut [i16; 256], a: &[i16], b: &[i16], bt: &[i16]) {
     for i in 0..128 {
         let mut t0 = 0i32;
@@ -185,6 +200,11 @@ pub(crate) fn mlkem_tobytes(r: &mut [u8; 384], a: &[i16; 256]) {
 /// returning how many of `r` were written. Its time depends on which
 /// candidates are rejected, which is public: the bytes expand the public
 /// seed `rho`.
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "the loop stops once ctr reaches 256 = r.len(), and the second write checks it first, so ctr < 256 at each write"
+)]
 pub(crate) fn mlkem_rej_uniform_vartime(r: &mut [i16; 256], input: &[u8]) -> u64 {
     let mut ctr = 0;
     let (chunks, _) = input.as_chunks::<3>();

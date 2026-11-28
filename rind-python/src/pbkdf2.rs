@@ -66,7 +66,10 @@ impl Secret {
         let iterations = iterations_of(iterations)?;
         // PBKDF2 derives at most 2**32 - 1 hash outputs, refused here
         // before allocating them.
-        if length as u64 > u64::from(u32::MAX) * self.hash_len as u64 {
+        if u64::from(u32::MAX)
+            .checked_mul(self.hash_len as u64)
+            .is_none_or(|max| length as u64 > max)
+        {
             return Err(error(rind::Error::WrongLength));
         }
         PyBytes::new_with(py, length, |out| {

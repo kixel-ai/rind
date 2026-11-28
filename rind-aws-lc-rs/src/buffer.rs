@@ -73,7 +73,7 @@ macro_rules! generated_encodings {
             }
 
             impl $name<'static> {
-                #[allow(dead_code)]
+                #[allow(dead_code, reason = "not every buffer type this macro makes is built from a `Vec`")]
                 pub(crate) fn new(owned: alloc::vec::Vec<u8>) -> Self {
                     $crate::buffer::Buffer::new(owned).into()
                 }

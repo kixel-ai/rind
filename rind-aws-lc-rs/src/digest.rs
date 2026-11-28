@@ -25,7 +25,10 @@ pub struct Algorithm {
     pub(crate) id: AlgorithmId,
 }
 
-#[allow(non_camel_case_types)]
+#[allow(
+    non_camel_case_types,
+    reason = "named as aws-lc-rs names its algorithms"
+)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum AlgorithmId {
     SHA1,
@@ -50,7 +53,10 @@ impl Algorithm {
         note = "Unused by aws-lc-rs; retained for ring compatibility. Use `output_len()` to size an HMAC key."
     )]
     pub fn chaining_len(&self) -> usize {
-        #[allow(deprecated)]
+        #[allow(
+            deprecated,
+            reason = "the deprecated getter reads its own deprecated field"
+        )]
         self.chaining_len
     }
 
@@ -90,7 +96,10 @@ impl Eq for Algorithm {}
 macro_rules! algorithm {
     ($name:ident, $id:ident, $output_len:expr, $chaining_len:expr, $block_len:expr, $doc:expr) => {
         #[doc = $doc]
-        #[allow(deprecated)]
+        #[allow(
+            deprecated,
+            reason = "sets the deprecated field aws-lc-rs still carries"
+        )]
         pub const $name: Algorithm = Algorithm {
             output_len: $output_len,
             chaining_len: $chaining_len,

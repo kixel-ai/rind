@@ -41,7 +41,8 @@ pub(crate) static CHACHA20_POLY1305: Algorithm = Algorithm {
 impl quic::Algorithm for Algorithm {
     fn packet_key(&self, key: AeadKey, iv: Iv) -> Box<dyn quic::PacketKey> {
         Box::new(PacketKey {
-            key: aead::Key::new(self.packet, key.as_ref()).unwrap(),
+            key: aead::Key::new(self.packet, key.as_ref())
+                .expect("rustls derives the key at aead_key_len"),
             iv,
             confidentiality_limit: self.confidentiality_limit,
             integrity_limit: self.integrity_limit,
@@ -50,7 +51,8 @@ impl quic::Algorithm for Algorithm {
 
     fn header_protection_key(&self, key: AeadKey) -> Box<dyn quic::HeaderProtectionKey> {
         Box::new(HeaderProtectionKey(
-            aead::quic::HeaderProtectionKey::new(self.header, key.as_ref()).unwrap(),
+            aead::quic::HeaderProtectionKey::new(self.header, key.as_ref())
+                .expect("rustls derives the key at aead_key_len, the header key's too"),
         ))
     }
 

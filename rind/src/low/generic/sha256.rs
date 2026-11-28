@@ -27,7 +27,10 @@ use super::sha256_k::K;
 
 /// One round on the schedule word `w` and constant `k`: the new `d` and `h`
 /// of the working variables in their current order.
-#[allow(clippy::too_many_arguments)]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "the eight working variables and the round's word and constant, inlined"
+)]
 #[inline(always)]
 fn round(
     w: u32,
@@ -57,6 +60,11 @@ fn round(
 /// W[t] = σ1(W[t-2]) + W[t-7] + σ0(W[t-15]) + W[t-16], FIPS 180-4 §6.2.2,
 /// with each index taken mod 16 in the window.
 #[inline(always)]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "j < 16, and each index is taken mod 16 into the 16-word window"
+)]
 fn schedule(x: &mut [u32; 16], j: usize) -> u32 {
     let w1 = x[(j + 1) % 16];
     let w14 = x[(j + 14) % 16];
@@ -71,6 +79,11 @@ fn schedule(x: &mut [u32; 16], j: usize) -> u32 {
 }
 
 /// Compresses whole 64-byte `blocks` into `state`.
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "blocks.len() is a multiple of 64, asserted, so off + 64 <= blocks.len() while off < blocks.len(); j < 16 gives 4 * j + 3 < 64; i is 16, 32 or 48, so i + 15 < 64"
+)]
 pub(crate) fn sha256_compress_blocks(state: &mut [u32; 8], blocks: &[u8]) {
     assert!(blocks.len().is_multiple_of(64));
     let mut off = 0;

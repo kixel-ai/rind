@@ -77,7 +77,10 @@ pub(crate) mod private {
     use crate::error::{KeyRejected, Unspecified};
 
     /// A public key rind parsed, of the algorithm that parsed it.
-    #[allow(clippy::large_enum_variant)]
+    #[allow(
+        clippy::large_enum_variant,
+        reason = "one key per verification, so boxing the large ones would only add an allocation"
+    )]
     pub(crate) enum ParsedKey {
         Ecdsa(rind::ecdsa::PublicKey),
         Ed25519(rind::ed25519::PublicKey),
@@ -132,7 +135,10 @@ pub(crate) mod private {
 }
 
 /// A signature verification algorithm.
-#[allow(private_bounds)]
+#[allow(
+    private_bounds,
+    reason = "sealed, as aws-lc-rs's is: callers cannot implement it"
+)]
 pub trait VerificationAlgorithm: fmt::Debug + Sync + Any + private::Verify {
     /// Verifies `signature` over `msg` with the encoded `public_key`.
     #[cfg(feature = "ring-sig-verify")]
@@ -339,7 +345,10 @@ impl fmt::Debug for ParsedPublicKey {
     }
 }
 
-#[allow(non_camel_case_types)]
+#[allow(
+    non_camel_case_types,
+    reason = "named as aws-lc-rs names its algorithms"
+)]
 #[derive(Debug, Eq, PartialEq)]
 enum EcdsaCurve {
     ECDSA_P256,

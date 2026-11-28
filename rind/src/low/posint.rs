@@ -24,6 +24,10 @@ impl<const N: usize> PosInt<N> {
     /// Makes a minimum-width, single-word value.
     pub(crate) fn word(w: u64) -> Self {
         let mut r = Self::zero();
+        #[expect(
+            clippy::unwrap_used,
+            reason = "a zero uses no words, and every width rind makes is nonzero, so one word fits"
+        )]
         r.push_word(w).unwrap();
         r
     }
@@ -56,6 +60,11 @@ impl<const N: usize> PosInt<N> {
     ///
     /// This means `Self::zero().push_word(1)` == `Self::one()`,
     /// and notably that is not the same as `1 << 64`!
+    #[expect(
+        clippy::indexing_slicing,
+        clippy::arithmetic_side_effects,
+        reason = "used < N was checked above"
+    )]
     fn push_word(&mut self, word: u64) -> Result<(), Error> {
         if self.used == N {
             return Err(Error::WrongLength);
@@ -82,7 +91,16 @@ impl<const N: usize> PosInt<N> {
     // Indexes rather than taking `rchunks_exact` and returning early from
     // its loop, which Aeneas cannot translate, so `proofs/` can prove RSA's
     // encoding.
-    #[allow(clippy::needless_range_loop)]
+    #[allow(
+        clippy::needless_range_loop,
+        reason = "indexes, for Aeneas, as the comment above says"
+    )]
+    #[expect(
+        clippy::indexing_slicing,
+        clippy::arithmetic_side_effects,
+        clippy::unwrap_used,
+        reason = "N words fit in memory, so 8 * N does not overflow; bytes.len() <= 8 * N after the check, so i < full <= N, 8 <= end <= bytes.len(), and each slice is 8 bytes long"
+    )]
     pub(crate) fn from_bytes(bytes: &[u8]) -> Result<Self, Error> {
         let bytes = trim_leading_zeroes(bytes);
         if bytes.len() > N * 8 {
@@ -114,7 +132,15 @@ impl<const N: usize> PosInt<N> {
     /// zeroes included, and `fit` sets the width it needs.
     // Indexes, as `to_bytes_fixed` does, which Aeneas can translate, so
     // `proofs/` can prove RSA's public operation on AVX-512 IFMA.
-    #[allow(clippy::needless_range_loop)]
+    #[allow(
+        clippy::needless_range_loop,
+        reason = "indexes, for Aeneas, as the comment above says"
+    )]
+    #[expect(
+        clippy::indexing_slicing,
+        clippy::arithmetic_side_effects,
+        reason = "N words fit in memory, so 8 * N does not overflow; excess < bytes.len(); after that bytes.len() <= 8 * N, so i < len gives i / 8 < N and len - 1 - i < len"
+    )]
     pub(crate) fn from_secret_bytes(bytes: &[u8]) -> Result<Self, Error> {
         // Bytes beyond the words fit only if all are zero, as aws-lc's
         // `BN_bin2bn` accepts, so the check reveals only whether the value is
@@ -149,6 +175,10 @@ impl<const N: usize> PosInt<N> {
     #[must_use]
     // Indexes rather than skipping and taking `iter_mut`, which Aeneas
     // cannot translate, so `proofs/` can prove RSA's private key loading.
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "i < used <= N, the type's invariant"
+    )]
     pub(crate) fn fit(&mut self, words: usize) -> bool {
         assert!(words <= N);
         let mut high = 0;
@@ -162,6 +192,11 @@ impl<const N: usize> PosInt<N> {
 
     // Indexes rather than zipping reversed `as_chunks_mut`, which Aeneas
     // cannot translate, so `proofs/` can prove RSA's encoding.
+    #[expect(
+        clippy::indexing_slicing,
+        clippy::arithmetic_side_effects,
+        reason = "used <= N words fit in memory, so 8 * used does not overflow; out is 8 * used bytes and i < used, so 8 <= end <= out.len()"
+    )]
     pub(crate) fn to_bytes<'a>(&self, out: &'a mut [u8]) -> Result<&'a [u8], Error> {
         let required_bytes = self.used * 8;
         let Some(out) = out.get_mut(..required_bytes) else {
@@ -179,6 +214,11 @@ impl<const N: usize> PosInt<N> {
     /// Writes the low `out.len()` bytes of the value to `out`, big-endian,
     /// reading the same words whatever the value.
     // Indexes, as `to_bytes` does, which Aeneas can translate.
+    #[expect(
+        clippy::indexing_slicing,
+        clippy::arithmetic_side_effects,
+        reason = "i < len = out.len(), so len - 1 - i < len, and the word index is checked below N"
+    )]
     pub(crate) fn to_bytes_fixed(&self, out: &mut [u8]) {
         let len = out.len();
         for i in 0..len {
@@ -191,6 +231,11 @@ impl<const N: usize> PosInt<N> {
     ///
     /// This means, if the result is used in an ASN.1 encoded integer, the encoding
     /// is positive.
+    #[expect(
+        clippy::indexing_slicing,
+        clippy::arithmetic_side_effects,
+        reason = "used <= N words fit in memory, so 8 * used + 1 does not overflow, and out is that many bytes, at least one"
+    )]
     pub(crate) fn to_bytes_asn1<'a>(&self, out: &'a mut [u8]) -> Result<&'a [u8], Error> {
         let required_bytes = self.used * 8 + 1;
         let out = out.get_mut(..required_bytes).ok_or(Error::WrongLength)?;
@@ -225,6 +270,11 @@ impl<const N: usize> PosInt<N> {
     }
 
     /// Return true if `gcd(self, other)` is one
+    #[expect(
+        clippy::indexing_slicing,
+        clippy::arithmetic_side_effects,
+        reason = "N <= MAX_SCRATCH_WORDS, asserted at compile time, so N + N fits tmp"
+    )]
     pub(crate) fn is_coprime(&self, other: &Self) -> bool {
         const { assert!(N <= MAX_SCRATCH_WORDS) };
         // On the stack, so nothing derived from a key outlives the call.
@@ -309,6 +359,11 @@ impl<const N: usize> PosInt<N> {
     // Indexes, and shifts word pairs as `u128`s, rather than calling
     // closures, which Aeneas cannot translate, so `proofs/` can prove RSA's
     // key loading.
+    #[expect(
+        clippy::indexing_slicing,
+        clippy::arithmetic_side_effects,
+        reason = "k = used <= N, the type's invariant, and k >= 1 past the early return, which reads words[k - 1] only when k > 0; i - 1 is read only for i > 0, i + 1 only below k, and k + 1 fits as N words fit in memory"
+    )]
     pub(crate) fn pub_montifier(&self) -> Self {
         let k = self.used;
         if k == 0 || self.words[k - 1] == 0 {
@@ -429,7 +484,10 @@ impl<const N: usize> PosInt<N> {
 
     /// Bring `self` out of montgomery domain, self * M^-1 mod n.
     #[must_use]
-    #[allow(clippy::wrong_self_convention)]
+    #[allow(
+        clippy::wrong_self_convention,
+        reason = "the inverse of `to_montgomery`, named to pair with it"
+    )]
     pub(crate) fn from_montgomery(self, n: &Self) -> Self {
         // On x86_64, `mont_mul` by one measured faster than s2n-bignum's
         // generic `bignum_demont`, and the portable `bignum_demont` takes
@@ -448,6 +506,10 @@ impl<const N: usize> PosInt<N> {
 
     /// Returns a * b
     #[must_use]
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "a.used + b.used <= N + N <= M, asserted above, and M words fit in memory"
+    )]
     pub(crate) fn mul<const M: usize>(a: &Self, b: &Self) -> PosInt<M> {
         assert!(M >= N + N);
         let mut r = PosInt::<M>::zero();
@@ -598,6 +660,11 @@ impl<const N: usize> PosInt<N> {
     /// Computes `self` ^ `e` mod `n`, as the x86_64 `mont_exp` does, by a
     /// 5-bit window over `mont_mul` and `mont_sqr`.
     #[cfg(not(rind_backend = "x86_64"))]
+    #[expect(
+        clippy::indexing_slicing,
+        clippy::arithmetic_side_effects,
+        reason = "e.used <= N words fit in memory, so 64 * e.used does not overflow; table holds 32 rows of k words, and rows i < 32, i / 2, i - 1 for i >= 2, and 1 lie within it; lsb, a multiple of WINDOW at most top, stays at least WINDOW while positive"
+    )]
     pub(crate) fn mont_exp(&self, one_mont: Self, e: &Self, n: &Self, n_0: u64) -> Self {
         const WINDOW: usize = 5;
         let k = n.used;
@@ -654,6 +721,11 @@ impl<const N: usize> PosInt<N> {
     /// For that, `self` and `n` must be coprime: check with `is_coprime()`
     /// first.
     #[must_use]
+    #[expect(
+        clippy::indexing_slicing,
+        clippy::arithmetic_side_effects,
+        reason = "N <= MAX_SCRATCH_WORDS, asserted at compile time, so 3 * N fits temp"
+    )]
     pub(crate) fn mod_inverse(&self, n: &Self) -> Self {
         let mut r = Self::zero();
         r.used = n.used;
@@ -674,6 +746,11 @@ impl<const N: usize> PosInt<N> {
     ///
     /// Use `reduce()` if `m` is odd; it will be faster.
     #[must_use]
+    #[expect(
+        clippy::indexing_slicing,
+        clippy::arithmetic_side_effects,
+        reason = "bits is 1 or 64, so 64 / bits does not divide by zero and piece * bits and 64 - bits are below 64; j < i <= used <= N"
+    )]
     pub(crate) fn reduce_even<const M: usize>(&self, m: &PosInt<M>) -> PosInt<M> {
         assert!(M < N);
 
@@ -832,6 +909,11 @@ impl<const N: usize> Drop for SecretPosInt<N> {
 /// The `width` bits of `e` from bit `lsb` up, which must lie within it. Only
 /// the positions decide which words are read, so the bits may be secret.
 #[cfg(not(rind_backend = "x86_64"))]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "callers keep lsb + width <= 64 * e.len() with 1 <= width <= 5, so word < e.len(), word + 1 < e.len() when the window crosses a word, and shift < 64"
+)]
 fn window_bits(e: &[u64], lsb: usize, width: usize) -> u64 {
     let (word, shift) = (lsb / 64, lsb % 64);
     let mut bits = e[word] >> shift;
@@ -841,6 +923,11 @@ fn window_bits(e: &[u64], lsb: usize, width: usize) -> u64 {
     bits & ((1 << width) - 1)
 }
 
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "start < bytes.len() before each step, so start <= bytes.len()"
+)]
 fn trim_leading_zeroes(bytes: &[u8]) -> &[u8] {
     let mut start = 0;
     while start < bytes.len() && bytes[start] == 0x00 {
@@ -850,6 +937,10 @@ fn trim_leading_zeroes(bytes: &[u8]) -> &[u8] {
 }
 
 /// The word `i` from the top of `x`, or zero if it is not that wide.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "callers pass i >= 1, so j = x.len() - i < x.len()"
+)]
 fn word_below(x: &[u64], i: usize) -> u64 {
     match x.len().checked_sub(i) {
         Some(j) => x[j],
@@ -864,6 +955,11 @@ fn word_below(x: &[u64], i: usize) -> u64 {
 // Out of line, so `admin/ct-vartime`'s list of public divisions names this
 // function rather than its callers.
 #[inline(never)]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "k = d.len() >= 1 past the early return and u is as wide, so k - 1, i - 1 for i >= 1, and i < k index both; d's top bit is set, so d1 > 0; q < 2^64, so q * d1 <= num and q * d[i] + carry < 2^128; the refinement runs only while rem < 2^64 and q * d0 > 0"
+)]
 fn mul_word_mod(u: &mut [u64], d: &[u64]) {
     // Indexes rather than zipping or calling closures, which Aeneas cannot
     // translate, so `proofs/` can prove RSA's key loading.

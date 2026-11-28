@@ -117,7 +117,10 @@ mod generic {
     // AVX2, and what s2n-bignum has no Neon routine for. aarch64 runs the
     // rest only in tests, to check its routines against.
     #[cfg(feature = "ml-dsa")]
-    #[cfg_attr(all(rind_backend = "aarch64", not(test)), allow(dead_code))]
+    #[cfg_attr(
+        all(rind_backend = "aarch64", not(test)),
+        allow(dead_code, reason = "aarch64 runs it only in tests")
+    )]
     pub(crate) mod mldsa_poly;
     pub(crate) mod mlkem;
     // pyca/verified-garbage's ML-KEM-768 where it does not run: aarch64's
@@ -213,7 +216,13 @@ mod entry;
 /// crate. The variable drops the dot from `sse4.1`, since shells drop
 /// variables whose names have one. A target without an OS has no variables.
 #[cfg(all(rind_std, any(debug_assertions, rind_cpu_disable)))]
-#[cfg_attr(any(rind_backend = "portable", rind_backend = "arm"), allow(dead_code))]
+#[cfg_attr(
+    any(rind_backend = "portable", rind_backend = "arm"),
+    allow(
+        dead_code,
+        reason = "the portable backend asks only on x86, and arm only on Linux and Android"
+    )
+)]
 pub(crate) fn cpu_denied(id: &str) -> bool {
     // Set is enough, whatever the value. Silent, since detection runs inside
     // any call, where the caller may hold stdout's lock or have closed it.
@@ -223,21 +232,39 @@ pub(crate) fn cpu_denied(id: &str) -> bool {
 /// Denies nothing, in a release build or without an OS. The portable backend
 /// asks only on x86, and arm only on Linux and Android.
 #[cfg(not(all(rind_std, any(debug_assertions, rind_cpu_disable))))]
-#[cfg_attr(any(rind_backend = "portable", rind_backend = "arm"), allow(dead_code))]
+#[cfg_attr(
+    any(rind_backend = "portable", rind_backend = "arm"),
+    allow(
+        dead_code,
+        reason = "the portable backend asks only on x86, and arm only on Linux and Android"
+    )
+)]
 #[inline(always)]
 pub(crate) fn cpu_denied(_id: &str) -> bool {
     false
 }
 
 /// Whether the build reads `RIND_CPU_DISABLE_*`: where `cpu_denied` can deny.
-#[cfg_attr(any(rind_backend = "portable", rind_backend = "arm"), allow(dead_code))]
+#[cfg_attr(
+    any(rind_backend = "portable", rind_backend = "arm"),
+    allow(
+        dead_code,
+        reason = "only the x86_64 and aarch64 backends pick kernels by CPU feature"
+    )
+)]
 pub(crate) const CPU_DENIABLE: bool = cfg!(all(rind_std, any(debug_assertions, rind_cpu_disable)));
 
 /// Whether the target enables every CPU feature in `wanted`, in a build that
 /// cannot deny one. Each is then on every CPU the binary runs on, so a check
 /// for them is true at compile time, and the linker drops the kernels for
 /// CPUs without them.
-#[cfg_attr(any(rind_backend = "portable", rind_backend = "arm"), allow(dead_code))]
+#[cfg_attr(
+    any(rind_backend = "portable", rind_backend = "arm"),
+    allow(
+        dead_code,
+        reason = "only the x86_64 and aarch64 backends pick kernels by CPU feature"
+    )
+)]
 #[inline(always)]
 pub(crate) const fn cpu_enabled(deniable: bool, enabled: u32, wanted: u32) -> bool {
     !deniable && wanted & !enabled == 0
