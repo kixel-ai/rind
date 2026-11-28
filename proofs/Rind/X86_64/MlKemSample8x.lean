@@ -517,6 +517,183 @@ theorem passes_spec (M : List Byte) (c : ℕ) (bytes : Std.Array U8 232#usize) (
     rw [this] at hf
     exact ⟨hf, hother⟩
 
+/-! ## `squeeze_rate_and_reject` -/
+
+theorem store_spec (v : BitVec 512) :
+    low.x86_64.mlkem_sample_poly_ntt_8x.store v ⦃ r => ∀ p < 8, (r.val[p]!).bv = lane64x8 v p ⦄ := by
+  simp only [low.x86_64.mlkem_sample_poly_ntt_8x.store, WP.spec_ok]
+  intro p hp
+  simp only [Array.make_val]
+  rw [getElem!_pos _ p (by simp; omega), List.getElem_map, List.getElem_range]
+
+/-- `squeeze_rate_and_reject`'s first loop stores each vector of the rate. -/
+theorem rate_loop_spec (state : Std.Array core.core_arch.x86.__m512i 25#usize) (n : Usize) (hn : n.val = 21)
+    (rate : Std.Array (Std.Array U64 8#usize) 21#usize) :
+    low.x86_64.mlkem_sample_poly_ntt_8x.squeeze_rate_and_reject_loop0 { start := 0#usize, «end» := n } state rate
+      ⦃ r => ∀ l < 21, ∀ p < 8, ((r.val[l]!).val[p]!).bv = lane64x8 (state.val[l]!) p ⦄ := by
+  unfold low.x86_64.mlkem_sample_poly_ntt_8x.squeeze_rate_and_reject_loop0
+  apply range_loop 21 (fun t (r : Std.Array (Std.Array U64 8#usize) 21#usize) =>
+    ∀ l < t, ∀ p < 8, ((r.val[l]!).val[p]!).bv = lane64x8 (state.val[l]!) p) _ ?_
+    { start := 0#usize, «end» := n } rate (by simp [hn]) (by simp) (fun l hl => absurd hl (by simp))
+  rintro it r he hs hr
+  unfold low.x86_64.mlkem_sample_poly_ntt_8x.squeeze_rate_and_reject_loop0.body
+  step as ⟨o', it1, ho, he1⟩
+  split_ifs at ho with hlt
+  · obtain ⟨rfl, hst⟩ := ho
+    simp only
+    step as ⟨v, hv⟩
+    step with store_spec as ⟨a, ha⟩
+    step as ⟨r1, hr1⟩
+    refine ⟨by rw [he1]; exact he, hst, by omega, fun l hl p hp => ?_⟩
+    rw [hr1, Std.Array.set_val_eq]
+    by_cases hlt' : l = it.start.val
+    · subst hlt'
+      rw [MlKemCoding.getElem!_set_self _ _ _ (by simp; omega), ha p hp, hv, getElem!_pos]
+    · rw [MlKemCoding.getElem!_set_ne _ _ _ _ (Ne.symm hlt')]
+      exact hr l (by omega) p hp
+  · obtain ⟨rfl, hst⟩ := ho
+    apply (WP.spec_ok _).2
+    have : it.start.val = 21 := by omega
+    rw [this] at hr
+    exact hr
+
+/-- `squeeze_rate_and_reject`'s second loop lays polynomial `i`'s rate out as bytes. -/
+theorem bytes_loop_spec (rate : Std.Array (Std.Array U64 8#usize) 21#usize) (n : Usize) (hn : n.val = 21)
+    (i : Usize) (hi : i.val < 8) (bytes : Std.Array U8 232#usize) :
+    low.x86_64.mlkem_sample_poly_ntt_8x.squeeze_rate_and_reject_loop1_loop0 { start := 0#usize, «end» := n }
+      rate bytes i ⦃ r => ∀ m < 168, (r.val[m]!).bv = ((rate.val[m / 8]!).val[i.val]!).bv.toLEBytes[m % 8]! ⦄ := by
+  unfold low.x86_64.mlkem_sample_poly_ntt_8x.squeeze_rate_and_reject_loop1_loop0
+  apply WP.spec_mono (range_loop 21 (fun t (r : Std.Array U8 232#usize) =>
+    ∀ m < 8 * t, (r.val[m]!).bv = ((rate.val[m / 8]!).val[i.val]!).bv.toLEBytes[m % 8]!) _ ?_
+    { start := 0#usize, «end» := n } bytes (by simp [hn]) (by simp) (fun m hm => absurd hm (by simp)))
+  · intro r hr m hm; exact hr m (by omega)
+  rintro it r he hs hr
+  unfold low.x86_64.mlkem_sample_poly_ntt_8x.squeeze_rate_and_reject_loop1_loop0.body
+  step as ⟨o', it1, ho, he1⟩
+  split_ifs at ho with hlt
+  · obtain ⟨rfl, hst⟩ := ho
+    simp only
+    step as ⟨i1, hi1⟩
+    step as ⟨i2, hi2⟩
+    step with Array.index_mut_SliceIndexRangeUsizeSlice.step r { start := i1, «end» := i2 }
+      (by simp only; scalar_tac) (by simp only; scalar_tac) as ⟨s, back, hs, hsl, hback⟩
+    step as ⟨a, ha⟩
+    step as ⟨x, hx⟩
+    step as ⟨a1, ha1⟩
+    step as ⟨s1, hs1⟩
+    step with core.slice.Slice.copy_from_slice.step_spec as ⟨s2, hs2⟩
+    refine ⟨by rw [he1]; exact he, hst, by omega, fun m hm => ?_⟩
+    rw [hback, hs2, hs1, Std.Array.val_to_slice]
+    have hxa : x = (rate.val[it.start.val]!).val[i.val]! := by
+      subst ha
+      rw [getElem!_pos rate.val it.start.val (by simp; omega), getElem!_pos _ i.val (by simp; omega)]
+      exact hx
+    by_cases hmt : m < 8 * it.start.val
+    · rw [List.getElem!_setSlice!_prefix _ _ _ _ (by omega)]
+      exact hr m hmt
+    · have hm8 : m / 8 = it.start.val := by omega
+      rw [List.getElem!_setSlice!_middle _ _ _ _ ⟨by omega, by simp [ha1]; omega, by simp; omega⟩,
+        ← getElem!_bv, ha1, show bv (List.map UScalar.mk x.bv.toLEBytes) = x.bv.toLEBytes by
+          simp [bv, List.map_map, Function.comp_def], hm8, ← hxa, show m - i1.val = m % 8 by omega]
+  · obtain ⟨rfl, hst⟩ := ho
+    apply (WP.spec_ok _).2
+    have : it.start.val = 21 := by omega
+    rw [this] at hr
+    exact hr
+
+theorem getElem!_stateBytes (L : List (BitVec 64)) (j : ℕ) :
+    (stateBytes L)[j]! = (L[j / 8]!).toLEBytes[j % 8]! := by
+  have h := getElem!_sbl (L.map fun x => (⟨x⟩ : U64)) j
+  have e : sbl (L.map fun x => (⟨x⟩ : U64)) = stateBytes L := by
+    simp [sbl, List.map_map, Function.comp_def]
+  rw [e] at h
+  rw [h]
+  by_cases hj : j / 8 < L.length
+  · rw [getElem!_pos (L.map fun x => (⟨x⟩ : U64)) (j / 8) (by rw [List.length_map]; exact hj),
+      getElem!_pos L (j / 8) hj, List.getElem_map]
+  · rw [getElem!_neg (L.map fun x => (⟨x⟩ : U64)) (j / 8) (by rw [List.length_map]; exact hj),
+      getElem!_neg L (j / 8) hj]; rfl
+
+/-- Eight states whose bytes are SHAKE128's on `M p` after `c` blocks. -/
+def AtBlock (M : ℕ → List Byte) (S : ℕ → List (BitVec 64)) (c : ℕ) : Prop :=
+  ∀ p < 8, (S p).length = 25 ∧ stateBytes (S p) = keccakF^[c] (shake128Absorbed (M p))
+
+/-- Byte `m` of block `c` is byte `m` of the state that yields it. -/
+theorem xofByte_block (M : List Byte) (c m : ℕ) (hm : m < 168) :
+    xofByte M (168 * c + m) = (keccakF^[c] (shake128Absorbed M))[m]! := by
+  unfold xofByte
+  rw [show (168 * c + m) / 168 = c by omega, show (168 * c + m) % 168 = m by omega]
+
+set_option maxHeartbeats 1000000 in
+/-- The polynomials' loop: each takes the candidates of its block. -/
+theorem polys_spec (M : ℕ → List Byte) (S : ℕ → List (BitVec 64)) (c : ℕ) (hS : AtBlock M S c)
+    (n : Usize) (hn : n.val = 21) (rate : Std.Array (Std.Array U64 8#usize) 21#usize)
+    (hrate : ∀ l < 21, ∀ p < 8, ((rate.val[l]!).val[p]!).bv = (S p)[l]!)
+    (out : Std.Array (Std.Array I16 256#usize) 8#usize) (used : Std.Array Usize 8#usize)
+    (hf : ∀ p < 8, Filled (acc (M p) (168 * c)) 0 (out.val[p]!).val (used.val[p]!).val)
+    (bytes : Std.Array U8 232#usize) :
+    low.x86_64.mlkem_sample_poly_ntt_8x.squeeze_rate_and_reject_loop1 n { start := 0#usize, «end» := 8#usize }
+      out used rate spreadV qV twelveV shiftsV bytes ⦃ r =>
+      ∀ p < 8, Filled (acc (M p) (168 * (c + 1))) 0 (r.1.val[p]!).val (r.2.val[p]!).val ⦄ := by
+  unfold low.x86_64.mlkem_sample_poly_ntt_8x.squeeze_rate_and_reject_loop1
+  apply range_loop' 8 (fun t (s : Std.Array (Std.Array I16 256#usize) 8#usize × Std.Array Usize 8#usize ×
+      Std.Array U8 232#usize) =>
+      (∀ p < t, Filled (acc (M p) (168 * (c + 1))) 0 (s.1.val[p]!).val (s.2.1.val[p]!).val) ∧
+      ∀ p, t ≤ p → p < 8 → Filled (acc (M p) (168 * c)) 0 (s.1.val[p]!).val (s.2.1.val[p]!).val)
+    (fun (r : Std.Array (Std.Array I16 256#usize) 8#usize × Std.Array Usize 8#usize) =>
+      ∀ p < 8, Filled (acc (M p) (168 * (c + 1))) 0 (r.1.val[p]!).val (r.2.val[p]!).val) _ ?_
+    { start := 0#usize, «end» := 8#usize } (out, used, bytes) (by simp) (by simp)
+    ⟨fun p hp => absurd hp (by simp), fun p _ hp => hf p hp⟩
+  rintro it ⟨o, u, b⟩ he hs ⟨hdone, hrest⟩
+  simp only at hdone hrest
+  unfold low.x86_64.mlkem_sample_poly_ntt_8x.squeeze_rate_and_reject_loop1.body
+  step as ⟨o', it1, ho, he1⟩
+  split_ifs at ho with hlt
+  · obtain ⟨rfl, hst⟩ := ho
+    simp only
+    have ht : it.start.val < 8 := by omega
+    step with bytes_loop_spec rate n hn it.start ht b as ⟨b1, hb1⟩
+    step with groups_spec as ⟨g4, hg4⟩
+    have hrb : RateBytes (M it.start.val) c b1.val := by
+      intro m hm
+      obtain ⟨hlen, hbytes⟩ := hS it.start.val ht
+      rw [hb1 m hm, hrate _ (by omega) _ ht, xofByte_block _ _ _ hm, ← hbytes, getElem!_stateBytes]
+    step with passes_spec (M it.start.val) c b1 hrb it.start ht g4 hg4 o u
+      ⟨by rw [show gend 0 = 0 from rfl, Nat.add_zero]; exact hrest _ le_rfl ht,
+        fun p _ _ => ⟨rfl, rfl⟩⟩ as ⟨o1, u1, hinv1⟩
+    obtain ⟨hf1, hother⟩ := hinv1
+    refine ⟨by rw [he1]; exact he, hst, ht, fun p hp => ?_, fun p hp1 hp2 => ?_⟩
+    · by_cases hpi : p = it.start.val
+      · subst hpi
+        rw [show 168 * (c + 1) = 168 * c + gend 4 by unfold gend; omega]
+        exact hf1
+      · obtain ⟨e1, e2⟩ := hother p (by omega) hpi
+        rw [e1, e2]; exact hdone p (by omega)
+    · obtain ⟨e1, e2⟩ := hother p hp2 (by omega)
+      rw [e1, e2]; exact hrest p (by omega) hp2
+  · obtain ⟨rfl, hst⟩ := ho
+    apply (WP.spec_ok _).2
+    have : it.start.val = 8 := by omega
+    rw [this] at hdone
+    exact hdone
+
+/-- `squeeze_rate_and_reject` of eight states at block `c` keeps each one's
+candidates below `q` after those its polynomial holds, as many as fit. -/
+theorem squeeze_rate_and_reject_spec (M : ℕ → List Byte) (S : ℕ → List (BitVec 64)) (c : ℕ)
+    (hS : AtBlock M S c) (out : Std.Array (Std.Array I16 256#usize) 8#usize) (used : Std.Array Usize 8#usize)
+    (hf : ∀ p < 8, Filled (acc (M p) (168 * c)) 0 (out.val[p]!).val (used.val[p]!).val) :
+    low.x86_64.mlkem_sample_poly_ntt_8x.squeeze_rate_and_reject (vecs S) out used ⦃ r =>
+      ∀ p < 8, Filled (acc (M p) (168 * (c + 1))) 0 (r.1.val[p]!).val (r.2.val[p]!).val ⦄ := by
+  unfold low.x86_64.mlkem_sample_poly_ntt_8x.squeeze_rate_and_reject
+  step with rate_words_spec as ⟨n, hn⟩
+  step with rate_loop_spec (vecs S) n hn as ⟨rate, hrate⟩
+  rw [show low.x86_64.mlkem_sample_poly_ntt_8x.load low.x86_64.mlkem_sample_poly_ntt_8x.SPREAD = ok spreadV
+    from rfl, bind_ok]
+  simp only [lift, bind_ok, core.core_arch.x86.avx512f._mm512_set1_epi16,
+    core.core_arch.x86.avx512f._mm512_set1_epi32]
+  apply polys_spec M S c hS n hn rate (fun l hl p hp => by
+    rw [hrate l hl p hp, lane_vecs S l p (by omega) hp]) out used hf
+
 end MlKemSample8x
 
 end rind.x86_64
