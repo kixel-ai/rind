@@ -116,7 +116,8 @@ pub(crate) fn sha1_compress_blocks(state: &mut [u32; 5], blocks: &[u8]) {
     }
 }
 
-#[cfg(test)]
+// Miri and wasm builds have no `sha1` dev-dependency (rind/Cargo.toml).
+#[cfg(all(test, not(any(miri, target_family = "wasm"))))]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use proptest::collection::vec;
