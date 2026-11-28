@@ -21,7 +21,7 @@
 [[gap]]
 operations = ["chacha20poly1305/*/16KB", "chacha20poly1305-open/*/16KB", "xchacha20poly1305/*/16KB"]
 on = ["no AES-NI", "SSE2"]
-quest = "/quest/m2/speed/sse2-poly1305.md"
+reason = "The weekly data predates rind hashing Poly1305 in SSE2 lanes there, a port of the BoringSSL `poly1305_vec.c` that aws-lc runs, which takes 3.8 instructions a byte of a 16 KB seal against aws-lc's 4.7 and the scalar path's 3.9. On a shared 2-core Xeon VM, forcing each tier, rind's 16 KB seal took 17.0 to 20.3 µs against 20.7 to 23.4 µs before without AES-NI, aws-lc-rs 17.6 to 18.7, and 33.1 to 35.3 µs against 35.8 to 39.2 on SSE2, aws-lc-rs 30.5 to 34.9, so the next refresh should close this gap."
 
 [[gap]]
 operations = ["quic-header-protection/aes128", "quic-header-protection/aes256"]

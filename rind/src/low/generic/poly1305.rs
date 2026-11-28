@@ -200,7 +200,10 @@ fn full_reduce(h: &mut [u64; 3]) {
     let (g2, carry2a) = h[2].overflowing_sub((carry1a as u64).wrapping_add(carry1b as u64));
     let (_, carry2b) = g2.overflowing_sub(3);
 
-    let positive_mask = ((carry2a | carry2b) as u64).wrapping_sub(1);
+    // Through `black_box`, as `ct_copy` takes its mask, or LLVM can turn the
+    // select below into a branch on the secret, as it did once `finish`
+    // inlined into `tests::lanes_match_scalar`.
+    let positive_mask = core::hint::black_box((carry2a | carry2b) as u64).wrapping_sub(1);
     let negative_mask = !positive_mask;
     h[0] = (h[0] & negative_mask) | (g0 & positive_mask);
     h[1] = (h[1] & negative_mask) | (g1 & positive_mask);
