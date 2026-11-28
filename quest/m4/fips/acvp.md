@@ -10,18 +10,14 @@ offer yet, on the sample sets `admin/sync-acvp` keeps.
 
 The wrapper, its registration (ML-KEM at all three parameter sets), and its
 offline run on each CPU path landed in
-[kixel-ai/rind#789](https://github.com/kixel-ai/rind/pull/789). What
-remains:
+[kixel-ai/rind#789](https://github.com/kixel-ai/rind/pull/789). AES-GCM
+sealing with internal IVs (`ivGen: internal`), which the module offers since
+[kixel-ai/rind#771](https://github.com/kixel-ai/rind/pull/771), is registered
+and answered: `AES-GCM/seal` takes an empty nonce, and replies the
+ciphertext, tag, and the 12-byte IV the module generated in one string, as
+aws-lc's `acvptool` reads it; the offline test checks each IV and tag by
+opening.
 
-- Register and answer AES-GCM sealing with internal IVs (`ivGen:
-  internal`), which the module offers since
-  [kixel-ai/rind#771](https://github.com/kixel-ai/rind/pull/771): aws-lc's `acvptool` asks `AES-GCM/seal` with an empty nonce, and
-  reads the ciphertext, tag, and 12-byte IV back in one string.
-  The kept `ACVP-AES-GCM-1.0.json` sample holds only `ivGen: external`
-  groups, and the offline test keeps only decrypt groups, so add an offline
-  check that sends a synthetic `ivGen: internal` request with an empty
-  nonce and checks the returned ciphertext, tag, and 12-byte IV, by
-  decrypting them, before the lab's run is the first to seal.
 - Decided 2026-11-24 (maintainer, /quest-run): ✅ no NIST ACVP demo
   server credentials (rejected: request them now; defer the request). The
   offline sample runs cover the wrapper; the lab's production run is the
