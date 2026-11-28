@@ -12,7 +12,7 @@ aarch64 runs, about the opaque Rust wrapper around it: s2n-bignum's, at the
 revision rind transliterates (3f01260f), for the NTTs, the mulcache, base
 multiplication, reduction, Montgomery conversion, 12-bit packing, and
 rejection sampling, and mlkem-native's, at the revision
-`admin/import-mlkem-native` imports (58721ebd), for ciphertext compression.
+`admin/import-mlkem-native` imports (4d69d6b0), for ciphertext compression.
 Each theorem's preconditions on memory hold for every call from safe Rust:
 a `&mut` result cannot overlap an input, the routine's code, or its table,
 the routine's stack lies below the caller's frame, and the ABI keeps the
@@ -139,14 +139,14 @@ axiom mlkem_rej_uniform_vartime_axiom (r : Std.Array I16 256#usize) (input : Sli
 Each assumes coefficients in `[0, q)`. -/
 
 /-- `MLKEM_POLY_COMPRESS_D4_SUBROUTINE_CORRECT`,
-https://github.com/pq-code-package/mlkem-native/blob/58721ebde4b682bb3384ef7d11333e4f0ddb0164/proofs/hol_light/aarch64/proofs/mlkem_poly_compress_d4_aarch64_asm.ml#L203 -/
+https://github.com/pq-code-package/mlkem-native/blob/4d69d6b0358e678e3a694ea1bb8404a41770f68e/proofs/hol_light/aarch64/proofs/mlkem_poly_compress_d4_aarch64_asm.ml#L203 -/
 axiom mlkem_compress_d4_axiom (r : Std.Array U8 128#usize) (a : Std.Array I16 256#usize)
     (ha : ∀ i < 256, 0 ≤ (a.val[i]!).val ∧ (a.val[i]!).val ≤ 3328) :
     low.aarch64.mlkem.mlkem_compress_d4 r a ⦃ r' =>
       leNat r'.val = numOfWords 4 ((words a.val).map (compressD 4)) ⦄
 
 /-- `MLKEM_POLY_COMPRESS_D10_SUBROUTINE_CORRECT`,
-https://github.com/pq-code-package/mlkem-native/blob/58721ebde4b682bb3384ef7d11333e4f0ddb0164/proofs/hol_light/aarch64/proofs/mlkem_poly_compress_d10_aarch64_asm.ml#L765 -/
+https://github.com/pq-code-package/mlkem-native/blob/4d69d6b0358e678e3a694ea1bb8404a41770f68e/proofs/hol_light/aarch64/proofs/mlkem_poly_compress_d10_aarch64_asm.ml#L765 -/
 axiom mlkem_compress_d10_axiom (r : Std.Array U8 320#usize) (a : Std.Array I16 256#usize)
     (ha : ∀ i < 256, 0 ≤ (a.val[i]!).val ∧ (a.val[i]!).val ≤ 3328) :
     low.aarch64.mlkem.mlkem_compress_d10 r a ⦃ r' =>

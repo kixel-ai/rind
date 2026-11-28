@@ -3,7 +3,7 @@
 #
 # rind's structured copy of the AVX2 half of aws-lc's `chacha20_poly1305_seal`, from
 # crypto/cipher_extra/asm/chacha20_poly1305_x86_64.pl at aws-lc
-# 5ed12cce0fd4453f2f63300d44325ed14f845d6f: aws-lc's instructions, in the
+# d313cb9ce0014174205d54dce2fbd70b694afb8f: aws-lc's instructions, in the
 # structure of `sealAvx2` in
 # `proofs/verified-garbage/RindIsa/X86_64/ChaCha20Poly1305.lean`, whose bytes
 # `admin/prove lean` checks this assembles to. Each comment names the aws-lc

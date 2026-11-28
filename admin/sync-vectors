@@ -9,8 +9,8 @@
 # file a test newly reads goes in its list here.
 set -euo pipefail
 
-AWS_LC=5ed12cce0fd4453f2f63300d44325ed14f845d6f
-BORINGSSL=8f2554dc344d403fd6d628773d39637c323eb801
+AWS_LC=d313cb9ce0014174205d54dce2fbd70b694afb8f
+BORINGSSL=a003590712db258f80de823b660ee788589c98cf
 # RFC 9180's repository. hpkewg/hpke's revision of it repeats these vectors
 # unchanged; its edge-case appendix, Markdown only, is copied by hand into
 # rind/src/high/hpke.rs's tests.

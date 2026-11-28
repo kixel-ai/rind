@@ -9,7 +9,7 @@ aws-lc-verification's SAW proof that aws-lc's `sha512_block_data_order_avx`
 meets `sha512_block_data_order_array_spec`, at the revision rind's README
 cites (79730247), restated as an axiom about the opaque Rust wrapper
 `compress_avx` around rind's copy of that routine. rind copies it from aws-lc
-5ed12cce, whose `sha512-x86_64.pl` is the proven c21d40da's.
+d313cb9c, whose `sha512-x86_64.pl` is the proven c21d40da's.
 
 The spec's preconditions hold for every call `compress_avx`'s safety contract
 allows: `state` and `blocks` are distinct allocations, `blocks` is a whole

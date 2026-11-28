@@ -20,7 +20,7 @@ import re
 import subprocess
 import sys
 
-REV = "58721ebde4b682bb3384ef7d11333e4f0ddb0164"
+REV = "4d69d6b0358e678e3a694ea1bb8404a41770f68e"
 
 SOURCE = "mlkem/src/native/aarch64/src"
 OUT = os.path.join(os.path.dirname(__file__), "..", "rind", "src", "low", "aarch64", "mlkem_native")
