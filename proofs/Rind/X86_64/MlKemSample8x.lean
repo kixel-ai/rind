@@ -931,6 +931,138 @@ theorem sbl_of_lanes (r : Std.Array U64 25#usize) (S : List (BitVec 64)) (hS : S
   rw [List.length_map, hrl] at hl
   rw [getElem!_pos _ l (by simp [hrl, hl]), List.getElem_map, ← getElem!_pos r.val l (by omega), h l hl]
 
+/-- The loop that hands back the states of the polynomials not yet full. -/
+theorem tails_loop_spec (M : ℕ → List Byte) (S : ℕ → List (BitVec 64)) (hS : AtBlock M S 2)
+    (used : Std.Array Usize 8#usize) (a : Std.Array (Std.Array U64 25#usize) 8#usize) :
+    low.x86_64.mlkem_sample_poly_ntt_8x.sample_poly_ntt_8x_avx512_loop1 { start := 0#usize, «end» := 8#usize }
+      (vecs S) used a ⦃ r => ∀ p < 8, (used.val[p]!).val < 256 →
+        keccakF (sbl (r.val[p]!).val) = keccakF^[3] (shake128Absorbed (M p)) ⦄ := by
+  unfold low.x86_64.mlkem_sample_poly_ntt_8x.sample_poly_ntt_8x_avx512_loop1
+  apply range_loop 8 (fun n (r : Std.Array (Std.Array U64 25#usize) 8#usize) =>
+    ∀ p < n, (used.val[p]!).val < 256 →
+      keccakF (sbl (r.val[p]!).val) = keccakF^[3] (shake128Absorbed (M p))) _ ?_
+    { start := 0#usize, «end» := 8#usize } a rfl (Nat.zero_le _) (fun p hp => absurd hp (Nat.not_lt_zero _))
+  rintro it r he hs hr
+  unfold low.x86_64.mlkem_sample_poly_ntt_8x.sample_poly_ntt_8x_avx512_loop1.body
+  step as ⟨o', it1, ho, he1⟩
+  split_ifs at ho with hlt
+  · obtain ⟨rfl, hst⟩ := ho
+    simp only
+    have ht : it.start.val < 8 := by omega
+    step as ⟨u, hu⟩
+    have huv : u = used.val[it.start.val]! := by rw [hu, getElem!_pos]
+    split
+    · rename_i hlt256
+      step with extract_state_spec (vecs S) it.start ht as ⟨x, hx⟩
+      step as ⟨r1, hr1⟩
+      refine ⟨by rw [he1]; exact he, hst, ht, fun p hp hpu => ?_⟩
+      rw [hr1, Std.Array.set_val_eq]
+      by_cases hpi : p = it.start.val
+      · subst hpi
+        obtain ⟨hl, hb⟩ := hS _ ht
+        rw [MlKemCoding.getElem!_set_self _ _ _ (by simp; omega),
+          sbl_of_lanes x _ hl (fun l hl' => by rw [hx l hl', lane_vecs S l _ hl' ht]), hb,
+          ← Function.iterate_succ_apply' keccakF]
+      · rw [MlKemCoding.getElem!_set_ne _ _ _ _ (Ne.symm hpi)]
+        exact hr p (by omega) hpu
+    · rename_i hge
+      apply (WP.spec_ok _).2
+      refine ⟨by rw [he1]; exact he, hst, ht, fun p hp hpu => ?_⟩
+      have hpi : p ≠ it.start.val := by
+        intro h; subst h; rw [← huv] at hpu; exact hge (by scalar_tac)
+      simp only at hp
+      exact hr p (by omega) hpu
+  · obtain ⟨rfl, hst⟩ := ho
+    apply (WP.spec_ok _).2
+    have : it.start.val = 8 := by omega
+    rw [this] at hr
+    exact hr
+
+theorem getElem!_setupLanes (w : ℕ → BitVec 64) (k : ℕ) (hk : k < 25) :
+    (setupLanes w)[k]! = if k < 5 then w k else if k = 20 then 0x8000000000000000#64 else 0 := by
+  rw [setupLanes, getElem!_pos _ k (by simp; omega), List.getElem_map, List.getElem_range]
+
+theorem ofLanes64x8_zero : ofLanes64x8 (fun _ => 0) = 0 := by decide
+
+theorem i64_min_bv : core.num.I64.MIN.bv = 0x8000000000000000#64 := by decide
+
+theorem filled_nil (out : List I16) : Filled (acc M 0) 0 out 0 := by
+  refine ⟨Nat.zero_le _, ?_, fun k hk => absurd hk (Nat.not_lt_zero _)⟩
+  simp [shake128_map, accepted]
+
+/-- ML-KEM's eight-way sampler, with AVX-512: each polynomial holds the
+candidates below `q` of SHAKE128's first three blocks on its input, as many
+as fit, and each with fewer has the state that continues after them. -/
+theorem sample_poly_ntt_8x_avx512_spec (M : ℕ → List Byte)
+    (inputs : Std.Array (Std.Array U8 40#usize) 8#usize) (hin : Inputs8 inputs M)
+    (outputs : Std.Array (Std.Array I16 256#usize) 8#usize) (t : low.x86_64.cpu.HaveAvx512ForMlKem) :
+    low.x86_64.mlkem_sample_poly_ntt_8x.sample_poly_ntt_8x_avx512 inputs outputs t ⦃ r =>
+      ∀ p < 8, Filled (acc (M p) 504) 0 (r.2.val[p]!).val (r.1.used.val[p]!).val ∧
+        ((r.1.used.val[p]!).val < 256 →
+          keccakF (sbl (r.1.states.val[p]!).val) = keccakF^[3] (shake128Absorbed (M p))) ⦄ := by
+  unfold low.x86_64.mlkem_sample_poly_ntt_8x.sample_poly_ntt_8x_avx512
+  simp only [core.core_arch.x86.avx512f._mm512_setzero_si512, bind_ok]
+  step with words_loop_spec inputs _ (fun k hk => by
+    rw [Std.Array.repeat_val, List.getElem!_replicate _ (by simp; omega)]) as ⟨st1, hw, hz⟩
+  rw [set1_Q, bind_ok]
+  step with rate_words_spec as ⟨n, hn⟩
+  step as ⟨i1, hi1⟩
+  step as ⟨st2, hst2⟩
+  -- One padded block in each state.
+  set S0 : ℕ → List (BitVec 64) := fun p => setupLanes fun k => lane64x8 (st1.val[k]!) p with hS0
+  have hv2 : st2 = vecs S0 := by
+    rw [hst2]
+    apply Aeneas.Std.Array.ext
+    apply ext_getElem! (by simp [vecs])
+    intro k hk
+    have hk25 : k < 25 := by simpa using hk
+    rw [Std.Array.set_val_eq, vecs, Array.make_val,
+      getElem!_pos (List.map (fun k => ofLanes64x8 fun i => (S0 i)[k]!) (List.range 25)) k (by simp; omega),
+      List.getElem_map, List.getElem_range]
+    by_cases h20 : k = 20
+    · subst h20
+      rw [show i1.val = 20 by omega, MlKemCoding.getElem!_set_self _ _ _ (by simp)]
+      apply Q_congr
+      intro p hp
+      rw [hS0, getElem!_setupLanes _ _ (by omega), i64_min_bv]
+      rfl
+    · rw [MlKemCoding.getElem!_set_ne _ _ _ _ (by omega)]
+      by_cases h5 : k < 5
+      · conv_lhs => rw [← Q_lane (st1.val[k]!)]
+        apply Q_congr
+        intro p hp
+        rw [hS0, getElem!_setupLanes _ _ hk25, if_pos h5]
+      · rw [hz k (by omega) hk25, ← ofLanes64x8_zero]
+        apply Q_congr
+        intro p hp
+        rw [hS0, getElem!_setupLanes _ _ hk25, if_neg h5, if_neg h20]
+  have hA0 : AtBlock M (fun p => keccak 24 (S0 p)) 0 := by
+    intro p hp
+    obtain ⟨hMl, hinp⟩ := hin p hp
+    refine ⟨length_keccak24 _, ?_⟩
+    have hb : stateBytes (S0 p) = padded (M p) :=
+      stateBytes_setup (M p) hMl (inputs.val[p]!) hinp (fun k => lane64x8 (st1.val[k]!) p)
+        (fun l hl t ht => hw l hl p hp t ht)
+    rw [Function.iterate_zero_apply, absorbed_padded _ hMl, ← hb,
+      keccakF_stateBytes _ (by simp [hS0, setupLanes])]
+  rw [hv2]
+  step with keccak8_spec S0 as ⟨st3, hst3⟩
+  rw [hst3]
+  step with squeeze_rate_and_reject_spec M _ 0 hA0 outputs (Std.Array.repeat 8#usize 0#usize) (fun p hp => by
+    rw [Std.Array.repeat_val, List.getElem!_replicate _ (by simp; omega), Nat.mul_zero]
+    exact filled_nil _) as ⟨o1, u1, hf1⟩
+  step with keccak8_spec _ as ⟨st4, hst4⟩
+  rw [hst4]
+  have hA1 := atBlock_succ M _ 0 hA0
+  step with squeeze_rate_and_reject_spec M _ 1 hA1 o1 u1 hf1 as ⟨o2, u2, hf2⟩
+  step with keccak8_spec _ as ⟨st5, hst5⟩
+  rw [hst5]
+  have hA2 := atBlock_succ M _ 1 hA1
+  step with squeeze_rate_and_reject_spec M _ 2 hA2 o2 u2 hf2 as ⟨o3, u3, hf3⟩
+  step with tails_loop_spec M _ hA2 u3 _ as ⟨a2, ha2⟩
+  intro p hp
+  exact ⟨hf3 p hp, ha2 p hp⟩
+
 end MlKemSample8x
 
 end rind.x86_64
