@@ -2328,7 +2328,9 @@ beyond Lean's own.
   `Rind/P256Group.lean`: that `p256` is prime, by a Pratt certificate;
   `Rind/N256Prime.lean`: that `n256` is prime; `Rind/P256Multiples.lean`: the
   group laws and multiples ECDSA's twin multiplication relies on;
-  `Rind/P384Multiples.lean`: the same for P-384.
+  `Rind/P384Multiples.lean`: the same for P-384; `Rind/P521Group.lean`: that
+  `p521` and `n521` are prime, by Pratt certificates, and that G and its
+  multiples by [1, n) have order n, so `p521Pow` is Mathlib's group law.
 - `Rind/Edwards.lean`: the twisted Edwards group law, from the Beneficial AI
   Foundation's curve25519-dalek simulation under the MIT license;
   `Rind/Ed25519Group.lean`: that `d` is a non-square, so `edMul` and `edPow`
