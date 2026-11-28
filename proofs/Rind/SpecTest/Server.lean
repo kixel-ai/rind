@@ -73,6 +73,21 @@ def hashOf : String → Except String ((List Byte → List Byte) × Nat × Nat)
   | "sha512" => pure (sha512B, 128, 64)
   | h => throw s!"no hash {h}"
 
+/-- RFC 8017's `DigestInfo` prefix for a hash, by name. -/
+def digestInfoOf : String → Except String (List Byte)
+  | "sha1" => pure rsa.digestInfoSha1
+  | "sha256" => pure rsa.digestInfoSha256
+  | "sha384" => pure rsa.digestInfoSha384
+  | "sha512" => pure rsa.digestInfoSha512
+  | h => throw s!"no DigestInfo for {h}"
+
+/-- A two-prime RSA key's CRT values from its private exponent: `d mod
+(p - 1)`, `d mod (q - 1)`, and `q⁻¹ mod p` by Fermat, for a prime `p`, as RFC
+8017 section 3.2 defines them. The vectors give `d` alone, and rind's keys
+hold the same values. -/
+def crtOf (d p q : Nat) : Nat × Nat × Nat :=
+  (d % (p - 1), d % (q - 1), powMod p (p.log2 + 1) q (p - 2))
+
 /-- SHA-256 over s2n-bignum's block function: FIPS 180-4's padding, its
 words, and `sha256_hash_blocks` from the initial value. -/
 def sha256S2n (m : List Byte) : List Byte :=
@@ -318,17 +333,27 @@ def answer (args : List String) : Except String String := do
     return hex (ofU8 (leBytesOf 32 (upstream.x25519 (leNat (toU8 (← unhex k))) (leNat (toU8 (← unhex u))))))
   | ["rsa-pkcs1-verify", h, n, e, m, s] =>
     let (H, _, _) ← hashOf h
-    let di ← match h with
-      | "sha1" => pure rsa.digestInfoSha1
-      | "sha256" => pure rsa.digestInfoSha256
-      | "sha384" => pure rsa.digestInfoSha384
-      | "sha512" => pure rsa.digestInfoSha512
-      | _ => throw s!"no DigestInfo for {h}"
+    let di ← digestInfoOf h
     return bool (rsa.pkcs1v15VerifyC (beNum (← unhex n)) (beNum (← unhex e)) H di (← unhex m) (← unhex s))
   | ["rsa-pss-verify", h, n, e, m, s, sLen] =>
     let (H, _, len) ← hashOf h
     return bool (rsa.pssVerifyC (beNum (← unhex n)) (beNum (← unhex e)) H len (← unhex m) (← unhex s)
       (← nat sLen))
+  | ["rsa-pkcs1-sign", h, n, d, p, q, m] =>
+    let (H, _, _) ← hashOf h
+    let di ← digestInfoOf h
+    let (p, q) := (beNum (← unhex p), beNum (← unhex q))
+    let (dP, dQ, qInv) := crtOf (beNum (← unhex d)) p q
+    return match rsa.pkcs1v15SignC (beNum (← unhex n)) p q dP dQ qInv H di (← unhex m) with
+      | some S => hex S
+      | none => "none"
+  | ["rsa-pss-sign", h, n, d, p, q, m, salt] =>
+    let (H, _, len) ← hashOf h
+    let (p, q) := (beNum (← unhex p), beNum (← unhex q))
+    let (dP, dQ, qInv) := crtOf (beNum (← unhex d)) p q
+    return match rsa.pssSignC (beNum (← unhex n)) p q dP dQ qInv H len (← unhex m) (← unhex salt) with
+      | some S => hex S
+      | none => "none"
   | ["mlkem-keygen", set, d, z] =>
     let p ← paramOf set
     let (ek, dk) := Spec.MLKEM.KeyGen_internal p (← vec 32 (← unhex d)) (← vec 32 (← unhex z))

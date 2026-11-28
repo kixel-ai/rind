@@ -94,6 +94,8 @@ const SPECS: &[&str] = &[
     "x25519",
     "rsa-pkcs1-verify",
     "rsa-pss-verify",
+    "rsa-pkcs1-sign",
+    "rsa-pss-sign",
     "mlkem-keygen",
     "mlkem-encaps",
     "mlkem-decaps",
