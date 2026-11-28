@@ -7,7 +7,7 @@ Usage:
   admin/bench-report render [--from DIR] [--check]
   admin/bench-report gate DIR [--previous DIR]
   admin/bench-report summary DIR
-  admin/bench-report names [--match REGEX] [CARGO_ARGS...]
+  admin/bench-report names [--match REGEX] [--timed] [CARGO_ARGS...]
   admin/bench-report results METRICS
 
 `collect` copies one commit to each host in turn, waits for room under
@@ -41,7 +41,8 @@ and host, against the fastest other library's.
 
 `names` prints the names of the rind-bench benchmarks CARGO_ARGS select, such
 as `--bench sha2`, a line each, by running each once natively as swole lists
-them, keeping those whose ID matches REGEX. `results` prints the IDs and times
+them, keeping those whose ID matches REGEX, built as `swole sim` builds them or, with
+`--timed`, as `swole bench` does. `results` prints the IDs and times
 of a `swole bench --out` file as JSON. The weekly bench's native rows run both.
 
 `run` is the host side of `collect`, run from the copied checkout. Results
@@ -136,9 +137,11 @@ EVERY_CPU = re.compile(r"^rustls-[a-z]+-handshake-threads/")
 # share, under its home directory; this host uses the checkout's `.tmp/` instead.
 REMOTE_DIR = ".cache/rind-bench-report"
 
-# What swole adds to RUSTFLAGS for every build, so a listing builds what swole
-# then times rather than a second copy.
+# What swole adds to RUSTFLAGS for every build, and what `swole bench` adds
+# after it to keep the symbols it attributes time by, so a listing builds what
+# swole then counts or times rather than a second copy.
 SWOLE_CFG = "--cfg=codspeed"
+SWOLE_BENCH_FLAGS = "-Cdebuginfo=limited -Cstrip=none"
 
 # The prefix of a row rind-bench times rind alone in, without `Dit::hold()`,
 # naming the row it repeats.
@@ -410,12 +413,14 @@ def bench_id(name):
     return f"{path}/{arg}" if arg else path
 
 
-def bench_names(cargo, env, args, match=None):
+def bench_names(cargo, env, args, match=None, timed=False):
     """The rind-bench benchmarks `args` select, as swole names them, by running
     each once natively as swole lists them, keeping those whose ID `match`
-    keeps."""
+    keeps. `timed` builds them as `swole bench` does, rather than as `swole
+    sim` does."""
     env = dict(env)
-    env["RUSTFLAGS"] = f"{env['RUSTFLAGS']} {SWOLE_CFG}" if env.get("RUSTFLAGS") else SWOLE_CFG
+    ours = f"{SWOLE_CFG} {SWOLE_BENCH_FLAGS}" if timed else SWOLE_CFG
+    env["RUSTFLAGS"] = f"{env['RUSTFLAGS']} {ours}" if env.get("RUSTFLAGS") else ours
     out = subprocess.run(
         cargo + ["bench", "-q", "-p", "rind-bench", *args], env=env, check=True, stdout=subprocess.PIPE, text=True
     ).stdout
@@ -804,7 +809,11 @@ def run(args):
     # neither timed nor ranked.
     bench_args = ["--features", "__bench_openssl"]
     names = bench_names(
-        cargo, env, bench_args, match=lambda i: operation_of(i) and not (reserved and EVERY_CPU.match(i))
+        cargo,
+        env,
+        bench_args,
+        match=lambda i: operation_of(i) and not (reserved and EVERY_CPU.match(i)),
+        timed=True,
     )
     # Beside the result, in this collection's own copy, since another may
     # share the target directory.
@@ -2933,7 +2942,7 @@ def weekly(args):
 
 def names(args):
     match = re.compile(args.match).search if args.match else None
-    for name in bench_names(["cargo"], os.environ, args.cargo_args, match=match):
+    for name in bench_names(["cargo"], os.environ, args.cargo_args, match=match, timed=args.timed):
         print(name)
 
 
@@ -2971,6 +2980,7 @@ def main():
 
     p = sub.add_parser("names", help="list the benchmarks cargo bench arguments select")
     p.add_argument("--match", metavar="REGEX", help="keep only the benchmarks whose ID this matches")
+    p.add_argument("--timed", action="store_true", help="build them as swole bench does, not swole sim")
     p.set_defaults(func=names)
 
     p = sub.add_parser("results", help="print a swole bench --out file's times by benchmark ID")
