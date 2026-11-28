@@ -19,10 +19,9 @@ pub(super) fn sample_ntt(rho: &[u8; 32], transposed: bool, out: &mut [Poly]) {
 
     // ML-KEM-768 never samples eight at a time: it takes eight of its nine
     // polynomials four at a time, over the four-way SHAKE128 `proofs/`
-    // proves, and the ninth alone, so Graviola's unproven eight-way sampler is
-    // off its path. Where that would run, ML-KEM-768 runs
-    // pyca/verified-garbage's routines instead, so this costs nothing
-    // measurable. Only x86_64 has an eight-way sampler, and only
+    // proves, and the ninth alone. Where the eight-way sampler would run,
+    // ML-KEM-768 runs pyca/verified-garbage's routines instead, so this costs
+    // nothing measurable. Only x86_64 has an eight-way sampler, and only
     // ML-KEM-1024's sixteen polynomials split into eights.
     #[cfg(rind_backend = "x86_64")]
     if k == 4 {
