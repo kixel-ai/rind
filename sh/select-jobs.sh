@@ -13,8 +13,10 @@
 # its entry names their values. Entries are separated by single spaces, and
 # entries and a job's values may come in any order, but each only once.
 # Anything else, such as a typo, fails, so a dispatch never quietly runs
-# nothing. A workflow's concurrency group reads the input as typed, so two
-# spellings of one selection run side by side.
+# nothing. A workflow whose concurrency group reads `inputs.jobs`, as
+# ctgrind's does, instead requires the workflow's job order, and a job's values
+# its matrix's order, so one selection has one spelling and one group, which
+# cancels a duplicate run.
 #
 # It prints, for $GITHUB_OUTPUT, `jobs=`, a JSON array of the named job IDs,
 # and `exclude=`, a JSON object of each filtered job's matrix exclusions, both
@@ -69,6 +71,7 @@ yq -o=json . "$1" | jq -r --arg entries "$2" '
     def fail($msg): "sh/select-jobs.sh: \($msg)\n" | halt_error(1);
     (.jobs | keys_unsorted - ["select"]) as $ids
     | .jobs as $jobs
+    | (.concurrency.group // "" | tostring | contains("inputs.jobs")) as $ordered
     | ($entries | [splits("\\s+") | select(. != "")]) as $split
     | if $split == [] then fail("names no job")
       elif $split | join(" ") != $entries then fail("separate entries with single spaces, as the concurrency group reads them")
@@ -80,6 +83,8 @@ yq -o=json . "$1" | jq -r --arg entries "$2" '
         | .index = ($ids | index($id) // fail("no job \($id); jobs: \($ids | join(" "))"))] as $picks
     | if ([$picks[].index] | length) != ([$picks[].index] | unique | length) then
         fail("name each job once")
+      elif $ordered and [$picks[].index] != ([$picks[].index] | sort) then
+        fail("this workflow'\''s concurrency group reads the input as typed, so name the jobs in the workflow order: \($ids | join(" "))")
       else . end
     | ($picks | sort_by(.index)) as $picks
     | {
@@ -99,6 +104,8 @@ yq -o=json . "$1" | jq -r --arg entries "$2" '
                   else fail("\($id): \($name) names more than one axis") end] as $named
             | if ([$named[].index] | length) != ([$named[].index] | unique | length) then
                 fail("name each of \($id)'\''s values once")
+              elif $ordered and [$named[].index] != ([$named[].index] | sort) then
+                fail("this workflow'\''s concurrency group reads the input as typed, so name \($id)'\''s values in its matrix order: \([$all[].name] | join(" "))")
               else . end
             | ([$named[].axis] | unique) as $axes
             | if [$axes[] as $a | [$all[] | select(.axis == $a)] - [$named[] | del(.index)]] | any(. == []) then
