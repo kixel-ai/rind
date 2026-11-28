@@ -13,12 +13,16 @@
 
 // A parameter set's dimensions are associated constants, which stable Rust
 // cannot pass as `as_chunks`'s const argument in generic code.
-#![allow(clippy::chunks_exact_to_as_chunks)]
+#![expect(
+    clippy::chunks_exact_to_as_chunks,
+    reason = "as_chunks takes no associated constant in generic code"
+)]
 
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::fmt;
 use core::mem::ManuallyDrop;
+use core::num::NonZero;
 use core::panic::{RefUnwindSafe, UnwindSafe};
 
 use crate::Error;
@@ -225,16 +229,16 @@ params! {
 /// The length of a parameter set's public key encoding, which [`verify`]
 /// requires.
 pub(crate) const fn public_key_len<P: Params>() -> usize {
-    SEED_LEN + P::K * T1_PACKED
+    const { SEED_LEN + P::K * T1_PACKED }
 }
 
 /// The length of a parameter set's expanded private key encoding.
 pub(crate) const fn secret_key_len<P: Params>() -> usize {
-    2 * SEED_LEN + TR_LEN + (P::K + P::L) * P::ETA_PACKED + P::K * T0_PACKED
+    const { 2 * SEED_LEN + TR_LEN + (P::K + P::L) * P::ETA_PACKED + P::K * T0_PACKED }
 }
 
 const fn signature_len<P: Params>() -> usize {
-    P::CTILDE_LEN + P::L * P::Z_PACKED + P::OMEGA + P::K
+    const { P::CTILDE_LEN + P::L * P::Z_PACKED + P::OMEGA + P::K }
 }
 
 /// A key pair: the encodings FIPS 204 defines, the seed it was generated
@@ -254,12 +258,12 @@ pub(crate) struct KeyPair<P: Params> {
 /// The polynomials a key pair's expansion holds: `A`, then `s1`, `s2`, and
 /// `t0`.
 const fn secret_expansion_len<P: Params>() -> usize {
-    P::K * P::L + P::L + 2 * P::K
+    const { P::K * P::L + P::L + 2 * P::K }
 }
 
 /// The polynomials a public key's expansion holds: `A`, then `t1 * 2^d`.
 const fn public_expansion_len<P: Params>() -> usize {
-    P::K * P::L + P::K
+    const { P::K * P::L + P::K }
 }
 
 /// A public key of parameter set `P`: FIPS 204's encoding, and what its
@@ -466,7 +470,9 @@ pub(crate) fn tr(pk: &[u8]) -> [u8; TR_LEN] {
 
 /// The `tr` stored in expanded private key `sk`.
 fn tr_of<P: Params>(sk: &[u8]) -> &[u8; TR_LEN] {
-    sk[2 * SEED_LEN..2 * SEED_LEN + TR_LEN].try_into().unwrap()
+    sk.get(2 * SEED_LEN..)
+        .and_then(<[u8]>::first_chunk)
+        .expect("an expanded private key holds tr after rho and K")
 }
 
 /// `mu = H(tr || 0 || len(context) || context || message)`, pure ML-DSA's
@@ -596,36 +602,46 @@ fn keygen<P: Params>(seed: &[u8; SEED_LEN], pk: &mut [u8], sk: &mut [u8], expand
     h.absorb(seed);
     h.absorb(&[P::K as u8, P::L as u8]);
     Shake256::new(&h).read(&mut seeds);
-    let (rho, rest) = seeds.split_at(SEED_LEN);
-    let (rho_prime, key) = rest.split_at(64);
-    let rho: &[u8; SEED_LEN] = rho.try_into().unwrap();
+    let (rho, rest) = seeds
+        .split_first_chunk::<SEED_LEN>()
+        .expect("seeds holds rho, rho' and K");
+    let (rho_prime, key) = rest
+        .split_first_chunk::<64>()
+        .expect("seeds holds rho, rho' and K");
     low::ct::public_slice(rho);
 
-    let (a, rest) = expanded.split_at_mut(P::K * P::L);
-    let (s, t0) = rest.split_at_mut(P::L + P::K);
-    expand_s::<P>(rho_prime.try_into().unwrap(), s);
+    let (a, rest) = expanded.split_at_mut(const { P::K * P::L });
+    let (s, t0) = rest.split_at_mut(const { P::L + P::K });
+    expand_s::<P>(rho_prime, s);
     let (s1, s2) = s.split_at_mut(P::L);
 
-    let layout = SecretKeyLayout::<P>::new();
+    let SecretKeyParts {
+        rho: sk_rho,
+        key: sk_key,
+        tr: sk_tr,
+        s: sk_s,
+        t0: sk_t0,
+    } = SecretKeyParts::new_mut::<P>(sk);
     for (s, packed) in s1
         .iter()
         .chain(s2.iter())
-        .zip(sk[layout.s1.start..layout.s2.end].chunks_exact_mut(P::ETA_PACKED))
+        .zip(sk_s.chunks_exact_mut(P::ETA_PACKED))
     {
         pack_eta::<P>(packed, s);
     }
     ntt_all(s1);
 
-    pk[..SEED_LEN].copy_from_slice(rho);
+    let (pk_rho, pk_t1) = pk.split_at_mut(SEED_LEN);
+    pk_rho.copy_from_slice(rho);
     expand_a::<P>(rho, a);
-    compute_t::<P>(a, s1, s2, &mut pk[SEED_LEN..], t0, &mut sk[layout.t0]);
+    compute_t::<P>(a, s1, s2, pk_t1, t0, sk_t0);
     low::ct::public_slice(pk);
 
-    sk[..SEED_LEN].copy_from_slice(rho);
-    sk[SEED_LEN..2 * SEED_LEN].copy_from_slice(key);
+    sk_rho.copy_from_slice(rho);
+    sk_key.copy_from_slice(key);
     let mut h = Shake256Sponge::new();
     h.absorb(pk);
-    Shake256::new(&h).read(&mut sk[layout.tr]);
+    Shake256::new(&h).read(sk_tr);
     ntt_all(s2);
     ntt_all(t0);
 }
@@ -637,27 +653,47 @@ fn ntt_all(polys: &mut [Poly]) {
     }
 }
 
-/// Where an expanded private key's parts lie.
-struct SecretKeyLayout<P> {
-    tr: core::ops::Range<usize>,
-    s1: core::ops::Range<usize>,
-    s2: core::ops::Range<usize>,
-    t0: core::ops::Range<usize>,
-    _params: core::marker::PhantomData<P>,
+/// The parts of an expanded private key of [`secret_key_len`] bytes.
+struct SecretKeyParts<R, T> {
+    rho: R,
+    key: T,
+    tr: T,
+    /// `s1 || s2`, packed.
+    s: T,
+    /// `t0`, packed.
+    t0: T,
 }
 
-impl<P: Params> SecretKeyLayout<P> {
-    fn new() -> Self {
-        let tr = 2 * SEED_LEN..2 * SEED_LEN + TR_LEN;
-        let s1 = tr.end..tr.end + P::L * P::ETA_PACKED;
-        let s2 = s1.end..s1.end + P::K * P::ETA_PACKED;
-        let t0 = s2.end..s2.end + P::K * T0_PACKED;
+impl<'a> SecretKeyParts<&'a [u8; SEED_LEN], &'a [u8]> {
+    fn new<P: Params>(sk: &'a [u8]) -> Self {
+        let (rho, rest) = sk
+            .split_first_chunk::<SEED_LEN>()
+            .expect("an expanded private key starts with rho");
+        let (key, rest) = rest.split_at(SEED_LEN);
+        let (tr, rest) = rest.split_at(TR_LEN);
+        let (s, t0) = rest.split_at(const { (P::L + P::K) * P::ETA_PACKED });
         Self {
+            rho,
+            key,
             tr,
-            s1,
-            s2,
+            s,
             t0,
-            _params: core::marker::PhantomData,
+        }
+    }
+}
+
+impl<'a> SecretKeyParts<&'a mut [u8], &'a mut [u8]> {
+    fn new_mut<P: Params>(sk: &'a mut [u8]) -> Self {
+        let (rho, rest) = sk.split_at_mut(SEED_LEN);
+        let (key, rest) = rest.split_at_mut(SEED_LEN);
+        let (tr, rest) = rest.split_at_mut(TR_LEN);
+        let (s, t0) = rest.split_at_mut(const { (P::L + P::K) * P::ETA_PACKED });
+        Self {
+            rho,
+            key,
+            tr,
+            s,
+            t0,
         }
     }
 }
@@ -680,6 +716,11 @@ fn compute_t<P: Params>(
         .zip(t0_packed.as_chunks_mut::<T0_PACKED>().0)
         .enumerate()
     {
+        #[expect(
+            clippy::arithmetic_side_effects,
+            clippy::indexing_slicing,
+            reason = "i < K, and a holds K * L polynomials, so (i + 1) * L <= K * L"
+        )]
         let row = &a[i * P::L..(i + 1) * P::L];
         low::mldsa_pointwise_acc(&mut t.0, row, s1_hat);
         low::mldsa_intt(&mut t.0);
@@ -706,38 +747,44 @@ fn compute_t<P: Params>(
 fn public_key_from_secret<P: Params>(sk: &[u8], pk: &mut [u8], expanded: &mut [Poly]) -> bool {
     // Its arithmetic runs multiplies Intel's MXCSR mitigation covers.
     let _mcdt = low::Mcdt::enter();
-    let layout = SecretKeyLayout::<P>::new();
-    let rho: &[u8; SEED_LEN] = sk[..SEED_LEN].try_into().unwrap();
+    let SecretKeyParts {
+        rho,
+        tr: sk_tr,
+        s: sk_s,
+        t0: sk_t0,
+        ..
+    } = SecretKeyParts::new::<P>(sk);
     low::ct::public_slice(rho);
 
-    let (a, rest) = expanded.split_at_mut(P::K * P::L);
+    let (a, rest) = expanded.split_at_mut(const { P::K * P::L });
     let (s1, rest) = rest.split_at_mut(P::L);
     let (s2, t0) = rest.split_at_mut(P::K);
     let mut out_of_range = 0;
     for (s, packed) in s1
         .iter_mut()
         .chain(s2.iter_mut())
-        .zip(sk[layout.s1.start..layout.s2.end].chunks_exact(P::ETA_PACKED))
+        .zip(sk_s.chunks_exact(P::ETA_PACKED))
     {
         unpack_eta::<P>(s, packed);
-        out_of_range |= low::mldsa_chknorm(&s.0, (P::ETA + 1) as u64);
+        out_of_range |= low::mldsa_chknorm(&s.0, const { P::ETA + 1 } as u64);
     }
     ntt_all(s1);
 
     // A consistent `sk` holds the `t0` this recomputes, so the expansion
     // keeps the recomputed one.
-    pk[..SEED_LEN].copy_from_slice(rho);
+    let (pk_rho, pk_t1) = pk.split_at_mut(SEED_LEN);
+    pk_rho.copy_from_slice(rho);
     expand_a::<P>(rho, a);
-    let mut t0_packed = alloc::vec![0u8; P::K * T0_PACKED];
-    compute_t::<P>(a, s1, s2, &mut pk[SEED_LEN..], t0, &mut t0_packed);
-    let t0_matches = low::ct_equal(&t0_packed, &sk[layout.t0]);
+    let mut t0_packed = alloc::vec![0u8; const { P::K * T0_PACKED }];
+    compute_t::<P>(a, s1, s2, pk_t1, t0, &mut t0_packed);
+    let t0_matches = low::ct_equal(&t0_packed, sk_t0);
     low::zeroise(&mut t0_packed);
 
     let mut tr = [0u8; TR_LEN];
     let mut h = Shake256Sponge::new();
     h.absorb(pk);
     Shake256::new(&h).read(&mut tr);
-    let tr_matches = low::ct_equal(&tr, &sk[layout.tr]);
+    let tr_matches = low::ct_equal(&tr, sk_tr);
     low::ct::public_slice(pk);
     ntt_all(s2);
     ntt_all(t0);
@@ -757,13 +804,13 @@ fn sign_internal<P: Params>(
 ) -> Result<P::Signature, Error> {
     // Its arithmetic runs multiplies Intel's MXCSR mitigation covers.
     let _mcdt = low::Mcdt::enter();
-    let key = &sk[SEED_LEN..2 * SEED_LEN];
+    let key = SecretKeyParts::new::<P>(sk).key;
     let (k, l) = (P::K, P::L);
-    let (a, rest) = expanded.split_at(k * l);
+    let (a, rest) = expanded.split_at(const { P::K * P::L });
     let (s1, rest) = rest.split_at(l);
     let (s2, t0) = rest.split_at(k);
 
-    let mut scratch = Polys::new(2 * l + 2 * k);
+    let mut scratch = Polys::new(const { 2 * P::L + 2 * P::K });
     let (y, rest) = scratch.polys_mut().split_at_mut(l);
     let (y_hat, rest) = rest.split_at_mut(l);
     let (w0, w1) = rest.split_at_mut(k);
@@ -777,13 +824,13 @@ fn sign_internal<P: Params>(
 
     let mut signature = P::Signature::zeroed();
     let mut w1_packed = [0u8; 8 * 192];
-    let w1_packed = &mut w1_packed[..k * P::W1_PACKED];
+    let (w1_packed, _) = w1_packed.split_at_mut(const { P::K * P::W1_PACKED });
     let mut c_tilde = [0u8; 64];
-    let c_tilde = &mut c_tilde[..P::CTILDE_LEN];
+    let (c_tilde, _) = c_tilde.split_at_mut(P::CTILDE_LEN);
     let (mut c, mut tmp) = (Poly::ZERO, Poly::ZERO);
 
     let mut accepted = false;
-    'attempts: for kappa in (0..=MAX_KAPPA - l).step_by(l) {
+    'attempts: for kappa in (0..=const { MAX_KAPPA - P::L }).step_by(l) {
         expand_mask::<P>(&rho_prime, kappa as u16, y);
         y_hat.copy_from_slice(y);
         for y in y_hat.iter_mut() {
@@ -793,6 +840,11 @@ fn sign_internal<P: Params>(
         // w = A * y, split into high bits w1 and low bits w0. This slices by
         // index, as verification does, since zipping `chunks_exact` divides.
         for (i, (w0, w1)) in w0.iter_mut().zip(w1.iter_mut()).enumerate() {
+            #[expect(
+                clippy::arithmetic_side_effects,
+                clippy::indexing_slicing,
+                reason = "i < K, and a holds K * L polynomials, so (i + 1) * L <= K * L"
+            )]
             let row = &a[i * l..(i + 1) * l];
             low::mldsa_pointwise_acc(&mut w0.0, row, y_hat);
             low::mldsa_intt(&mut w0.0);
@@ -800,7 +852,13 @@ fn sign_internal<P: Params>(
             decompose::<P>(w1, w0);
         }
         for (i, w1) in w1.iter().enumerate() {
-            pack_w1::<P>(&mut w1_packed[i * P::W1_PACKED..(i + 1) * P::W1_PACKED], w1);
+            #[expect(
+                clippy::arithmetic_side_effects,
+                clippy::indexing_slicing,
+                reason = "i < K, and w1_packed is K * W1_PACKED bytes"
+            )]
+            let packed = &mut w1_packed[i * P::W1_PACKED..(i + 1) * P::W1_PACKED];
+            pack_w1::<P>(packed, w1);
         }
 
         let mut h = Shake256Sponge::new();
@@ -819,20 +877,31 @@ fn sign_internal<P: Params>(
             low::mldsa_intt(&mut tmp.0);
             sub(w0, &tmp);
             low::mldsa_reduce(&mut w0.0);
-            if rejected(low::mldsa_chknorm(&w0.0, (P::GAMMA2 - P::BETA) as u64)) {
+            if rejected(low::mldsa_chknorm(
+                &w0.0,
+                const { P::GAMMA2 - P::BETA } as u64,
+            )) {
                 continue 'attempts;
             }
         }
 
         // z = y + c * s1
-        let z_packed = &mut signature.as_mut()[P::CTILDE_LEN..P::CTILDE_LEN + l * P::Z_PACKED];
+        let (_, z_packed) = signature.as_mut().split_at_mut(P::CTILDE_LEN);
         for (i, (s1, y)) in s1.iter().zip(y.iter()).enumerate() {
+            #[expect(
+                clippy::arithmetic_side_effects,
+                clippy::indexing_slicing,
+                reason = "i < L, and z_packed holds L * Z_PACKED bytes before the hints"
+            )]
             let packed = &mut z_packed[i * P::Z_PACKED..(i + 1) * P::Z_PACKED];
             low::mldsa_pointwise(&mut tmp.0, &c.0, &s1.0);
             low::mldsa_intt(&mut tmp.0);
             add(&mut tmp, y);
             low::mldsa_reduce(&mut tmp.0);
-            if rejected(low::mldsa_chknorm(&tmp.0, (P::GAMMA1 - P::BETA) as u64)) {
+            if rejected(low::mldsa_chknorm(
+                &tmp.0,
+                const { P::GAMMA1 - P::BETA } as u64,
+            )) {
                 continue 'attempts;
             }
             pack_z::<P>(packed, &tmp);
@@ -855,7 +924,8 @@ fn sign_internal<P: Params>(
             continue 'attempts;
         }
 
-        signature.as_mut()[..P::CTILDE_LEN].copy_from_slice(c_tilde);
+        let (sig_c_tilde, _) = signature.as_mut().split_at_mut(P::CTILDE_LEN);
+        sig_c_tilde.copy_from_slice(c_tilde);
         low::ct::public_slice(signature.as_ref());
         accepted = true;
         break;
@@ -895,17 +965,26 @@ fn verify_internal<P: Params>(
         return Err(Error::BadSignature);
     }
     let (k, l) = (P::K, P::L);
+    let (rho, t1_bytes) = pk
+        .split_first_chunk::<SEED_LEN>()
+        .ok_or(Error::BadSignature)?;
     let (c_tilde, rest) = signature.split_at(P::CTILDE_LEN);
-    let (z_packed, hints) = rest.split_at(l * P::Z_PACKED);
+    let (z_packed, hints) = rest.split_at(const { P::L * P::Z_PACKED });
 
     let mut z = [Poly::ZERO; MAX_L];
-    let z = &mut z[..l];
+    let (z, _) = z.split_at_mut(P::L);
     // Verification slices by index: zipping `chunks_exact` with a run-time
     // size divides to count the chunks, which `admin/ct-vartime` refuses
     // wherever the compiler leaves `Zip::new` outlined.
     for (i, z) in z.iter_mut().enumerate() {
-        unpack_z::<P>(z, &z_packed[i * P::Z_PACKED..(i + 1) * P::Z_PACKED]);
-        if low::mldsa_chknorm(&z.0, (P::GAMMA1 - P::BETA) as u64) != 0 {
+        #[expect(
+            clippy::arithmetic_side_effects,
+            clippy::indexing_slicing,
+            reason = "i < L, and z_packed is L * Z_PACKED bytes"
+        )]
+        let packed = &z_packed[i * P::Z_PACKED..(i + 1) * P::Z_PACKED];
+        unpack_z::<P>(z, packed);
+        if low::mldsa_chknorm(&z.0, const { P::GAMMA1 - P::BETA } as u64) != 0 {
             return Err(Error::BadSignature);
         }
         low::mldsa_ntt(&mut z.0);
@@ -925,31 +1004,42 @@ fn verify_internal<P: Params>(
     let unkept = match kept {
         Some(_) => Vec::new(),
         None => {
-            let mut a = alloc::vec![Poly::ZERO; k * l];
-            expand_a::<P>(pk[..SEED_LEN].try_into().unwrap(), &mut a);
+            let mut a = alloc::vec![Poly::ZERO; const { P::K * P::L }];
+            expand_a::<P>(rho, &mut a);
             a
         }
     };
     let (a, kept_t1) = match kept {
         Some(expanded) => {
-            let (a, t1_hat) = expanded.split_at(k * l);
+            let (a, t1_hat) = expanded.split_at(const { P::K * P::L });
             (a, Some(t1_hat))
         }
         None => (&unkept[..], None),
     };
-    let t1_packed = pk[SEED_LEN..].as_chunks::<T1_PACKED>().0;
+    let t1_packed = t1_bytes.as_chunks::<T1_PACKED>().0;
     let mut c = Poly::ZERO;
     sample_in_ball::<P>(&mut c, c_tilde);
     low::mldsa_ntt(&mut c.0);
 
     // w1' = UseHint(h, A * z - c * t1 * 2^d)
     let mut w1_packed = [0u8; 8 * 192];
-    let w1_packed = &mut w1_packed[..k * P::W1_PACKED];
+    let (w1_packed, _) = w1_packed.split_at_mut(const { P::K * P::W1_PACKED });
     let (mut w1, mut ct1, mut h, mut t1) = (Poly::ZERO, Poly::ZERO, Poly::ZERO, Poly::ZERO);
     for i in 0..k {
-        let row = &a[i * l..(i + 1) * l];
-        let packed = &mut w1_packed[i * P::W1_PACKED..(i + 1) * P::W1_PACKED];
+        #[expect(
+            clippy::arithmetic_side_effects,
+            clippy::indexing_slicing,
+            reason = "i < K, and a holds K * L polynomials and w1_packed K * W1_PACKED bytes"
+        )]
+        let (row, packed) = (
+            &a[i * l..(i + 1) * l],
+            &mut w1_packed[i * P::W1_PACKED..(i + 1) * P::W1_PACKED],
+        );
         low::mldsa_pointwise_acc(&mut w1.0, row, z);
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "i < K, and kept_t1 holds K polynomials and t1_packed K encodings"
+        )]
         let t1_hat = match kept_t1 {
             Some(kept) => &kept[i],
             None => {
@@ -968,7 +1058,7 @@ fn verify_internal<P: Params>(
     }
 
     let mut c_tilde_prime = [0u8; 64];
-    let c_tilde_prime = &mut c_tilde_prime[..P::CTILDE_LEN];
+    let (c_tilde_prime, _) = c_tilde_prime.split_at_mut(P::CTILDE_LEN);
     let mut h = Shake256Sponge::new();
     h.absorb(mu);
     h.absorb(w1_packed);
@@ -983,9 +1073,12 @@ fn verify_internal<P: Params>(
 /// in the NTT domain.
 fn expand_public<P: Params>(pk: &[u8]) -> Box<[Poly]> {
     let mut expanded = alloc::vec![Poly::ZERO; public_expansion_len::<P>()].into_boxed_slice();
-    let (a, t1) = expanded.split_at_mut(P::K * P::L);
-    expand_a::<P>(pk[..SEED_LEN].try_into().unwrap(), a);
-    for (t1, packed) in t1.iter_mut().zip(pk[SEED_LEN..].as_chunks::<T1_PACKED>().0) {
+    let (a, t1) = expanded.split_at_mut(const { P::K * P::L });
+    let (rho, t1_bytes) = pk
+        .split_first_chunk::<SEED_LEN>()
+        .expect("verify_internal checked pk is public_key_len bytes");
+    expand_a::<P>(rho, a);
+    for (t1, packed) in t1.iter_mut().zip(t1_bytes.as_chunks::<T1_PACKED>().0) {
         t1_hat(t1, packed);
     }
     expanded
@@ -1028,22 +1121,29 @@ fn use_hint<P: Params>(a: &mut Poly, h: &Poly) {
 
 /// Packs the hints that move `w1` to the high bits of `w0 + w1 * 2 * gamma2`,
 /// returning false if there are more than `omega`. Its inputs are public.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "n < omega <= 80 at each increment, as indices holds omega"
+)]
 fn pack_hints<P: Params>(signature: &mut [u8], w0: &[Poly], w1: &[Poly]) -> bool {
-    let hints = &mut signature[signature_len::<P>() - P::OMEGA - P::K..];
+    let (_, hints) = signature.split_at_mut(const { signature_len::<P>() - P::OMEGA - P::K });
     hints.fill(0);
+    let (indices, counts) = hints.split_at_mut(P::OMEGA);
+    let minus_gamma2 = const { -P::GAMMA2 };
     let mut n = 0;
-    for (k, (w0, w1)) in w0.iter().zip(w1.iter()).enumerate() {
+    for ((w0, w1), count) in w0.iter().zip(w1.iter()).zip(counts) {
         for (j, (a0, a1)) in w0.0.iter().zip(w1.0.iter()).enumerate() {
-            let hint = *a0 > P::GAMMA2 || *a0 < -P::GAMMA2 || (*a0 == -P::GAMMA2 && *a1 != 0);
+            let hint = *a0 > P::GAMMA2 || *a0 < minus_gamma2 || (*a0 == minus_gamma2 && *a1 != 0);
             if hint {
-                if n == P::OMEGA {
+                // None once there are omega.
+                let Some(index) = indices.get_mut(n) else {
                     return false;
-                }
-                hints[n] = j as u8;
+                };
+                *index = j as u8;
                 n += 1;
             }
         }
-        hints[P::OMEGA + k] = n as u8;
+        *count = n as u8;
     }
     true
 }
@@ -1052,24 +1152,34 @@ fn pack_hints<P: Params>(signature: &mut [u8], w0: &[Poly], w1: &[Poly]) -> bool
 /// count falls or passes `omega`, each polynomial's indices strictly
 /// increase, and the padding is zero.
 fn hints_valid<P: Params>(hints: &[u8]) -> bool {
+    let (indices, counts) = hints.split_at(P::OMEGA);
     let mut old = 0;
-    for i in 0..P::K {
-        let new = hints[P::OMEGA + i] as usize;
-        if new < old || new > P::OMEGA {
+    for &count in counts {
+        let new = usize::from(count);
+        // None when the count falls or passes omega.
+        let Some(run) = indices.get(old..new) else {
             return false;
-        }
-        for j in old + 1..new {
-            if hints[j] <= hints[j - 1] {
-                return false;
-            }
+        };
+        if !run.is_sorted_by(|a, b| a < b) {
+            return false;
         }
         old = new;
     }
-    hints[old..P::OMEGA].iter().all(|b| *b == 0)
+    indices
+        .get(old..)
+        .is_some_and(|padding| padding.iter().all(|b| *b == 0))
 }
 
 /// Unpacks the `i`th polynomial's hints into `h`, from an encoding
 /// [`hints_valid`] accepts.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "i < K, so OMEGA + i < OMEGA + K, and the arm that subtracts has i >= 1"
+)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "hints is OMEGA + K bytes whose counts hints_valid checked never fall or pass OMEGA, and a u8 index is below N = 256"
+)]
 fn unpack_hints<P: Params>(h: &mut Poly, hints: &[u8], i: usize) {
     let old = match i {
         0 => 0,
@@ -1085,14 +1195,23 @@ fn unpack_hints<P: Params>(h: &mut Poly, hints: &[u8], i: usize) {
 /// coefficient order.
 fn expand_a<P: Params>(rho: &[u8; SEED_LEN], a: &mut [Poly]) {
     const FIRST: usize = 5 * SHAKE_128_R_BYTES;
+    let l = const { NonZero::new(P::L).expect("L is 4, 5 or 7") };
     for (batch, polys) in a.chunks_mut(8).enumerate() {
         let mut seeds = [[0u8; SEED_LEN + 2]; 8];
         for (n, seed) in seeds.iter_mut().enumerate() {
-            let index = (batch * 8 + n).min(P::K * P::L - 1);
+            #[expect(
+                clippy::arithmetic_side_effects,
+                reason = "batch * 8 + n < K * L + 8 <= 64"
+            )]
+            let index = (batch * 8 + n).min(const { P::K * P::L - 1 });
             seed[..SEED_LEN].copy_from_slice(rho);
-            seed[SEED_LEN] = (index % P::L) as u8;
-            seed[SEED_LEN + 1] = (index / P::L) as u8;
+            seed[SEED_LEN] = (index % l) as u8;
+            seed[SEED_LEN + 1] = (index / l) as u8;
         }
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "chunks_mut(8) yields at most 8 polys"
+        )]
         let mut xof = Shake128x8::new(&seeds[..polys.len()]);
         let mut buf = [[0u8; FIRST]; 8];
         xof.squeeze(&mut buf);
@@ -1100,10 +1219,15 @@ fn expand_a<P: Params>(rho: &[u8; SEED_LEN], a: &mut [Poly]) {
         for ((poly, buf), filled) in polys.iter_mut().zip(&buf).zip(&mut filled) {
             *filled = low::mldsa_rej_uniform_vartime(&mut poly.0, 0, buf);
         }
-        while filled[..polys.len()].iter().any(|f| *f < N) {
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "chunks_mut(8) yields at most 8 polys"
+        )]
+        let filled = &mut filled[..polys.len()];
+        while filled.iter().any(|f| *f < N) {
             let mut block = [[0u8; SHAKE_128_R_BYTES]; 8];
             xof.squeeze(&mut block);
-            for ((poly, block), filled) in polys.iter_mut().zip(&block).zip(&mut filled) {
+            for ((poly, block), filled) in polys.iter_mut().zip(&block).zip(filled.iter_mut()) {
                 *filled = low::mldsa_rej_uniform_vartime(&mut poly.0, *filled, block);
             }
         }
@@ -1120,7 +1244,7 @@ fn expand_s<P: Params>(rho_prime: &[u8; 64], s: &mut [Poly]) {
     // overwhelming probability, as mldsa-native's AVX2 and Neon routines
     // expect.
     const BLOCK: usize = SHAKE_256_R_BYTES;
-    let first = if P::ETA == 2 { BLOCK } else { 2 * BLOCK };
+    let first = const { if P::ETA == 2 { BLOCK } else { 2 * BLOCK } };
     let sample = |poly: &mut Poly, offset: usize, buf: &[u8]| match P::ETA {
         2 => low::mldsa_rej_uniform_eta2_vartime(&mut poly.0, offset, buf),
         _ => low::mldsa_rej_uniform_eta4_vartime(&mut poly.0, offset, buf),
@@ -1130,18 +1254,33 @@ fn expand_s<P: Params>(rho_prime: &[u8; 64], s: &mut [Poly]) {
         let mut seeds = [[0u8; 66]; 8];
         for (n, seed) in seeds.iter_mut().enumerate() {
             seed[..64].copy_from_slice(rho_prime);
-            seed[64..].copy_from_slice(&((batch * 8 + n) as u16).to_le_bytes());
+            #[expect(
+                clippy::arithmetic_side_effects,
+                reason = "batch * 8 + n < K + L + 8 <= 23"
+            )]
+            let nonce = (batch * 8 + n) as u16;
+            seed[64..].copy_from_slice(&nonce.to_le_bytes());
         }
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "chunks_mut(8) yields at most 8 polys"
+        )]
         let mut xof = Shake256x8::new(&seeds[..polys.len()]);
         let mut buf = [[0u8; 2 * BLOCK]; 8];
         xof.squeeze(&mut buf);
         let mut filled = [0; 8];
         for ((poly, buf), filled) in polys.iter_mut().zip(&buf).zip(&mut filled) {
-            *filled = sample(poly, 0, &buf[..first]);
+            let (first, _) = buf.split_at(first);
+            *filled = sample(poly, 0, first);
         }
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "chunks_mut(8) yields at most 8 polys"
+        )]
+        let filled = &mut filled[..polys.len()];
         // An eta = 2 polynomial continues from the second block squeezed.
         let mut extra = (P::ETA == 2).then_some(1);
-        while filled[..polys.len()].iter().any(|f| *f < N) {
+        while filled.iter().any(|f| *f < N) {
             let mut block = [[0u8; BLOCK]; 8];
             match extra.take() {
                 Some(_) => {
@@ -1151,7 +1290,7 @@ fn expand_s<P: Params>(rho_prime: &[u8; 64], s: &mut [Poly]) {
                 }
                 None => xof.squeeze(&mut block),
             }
-            for ((poly, block), filled) in polys.iter_mut().zip(&block).zip(&mut filled) {
+            for ((poly, block), filled) in polys.iter_mut().zip(&block).zip(filled.iter_mut()) {
                 if *filled < N {
                     *filled = sample(poly, *filled, block);
                 }
@@ -1167,19 +1306,38 @@ fn expand_mask<P: Params>(rho_prime: &[u8; 64], kappa: u16, y: &mut [Poly]) {
         let mut seeds = [[0u8; 66]; 8];
         for (n, seed) in seeds.iter_mut().enumerate() {
             seed[..64].copy_from_slice(rho_prime);
-            let nonce = kappa.wrapping_add((batch * 8 + n) as u16);
+            #[expect(
+                clippy::arithmetic_side_effects,
+                reason = "batch * 8 + n < L + 8 <= 15"
+            )]
+            let offset = (batch * 8 + n) as u16;
+            let nonce = kappa.wrapping_add(offset);
             seed[64..].copy_from_slice(&nonce.to_le_bytes());
         }
         let mut buf = [[0u8; BYTES]; 8];
-        Shake256x8::new(&seeds[..polys.len()]).squeeze(&mut buf);
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "chunks_mut(8) yields at most 8 polys"
+        )]
+        let seeds = &seeds[..polys.len()];
+        Shake256x8::new(seeds).squeeze(&mut buf);
         for (poly, buf) in polys.iter_mut().zip(&buf) {
-            unpack_z::<P>(poly, &buf[..P::Z_PACKED]);
+            let (packed, _) = buf.split_at(P::Z_PACKED);
+            unpack_z::<P>(poly, packed);
         }
     }
 }
 
 /// SampleInBall: the challenge `c`, with `tau` coefficients of 1 or -1, from
 /// public `c_tilde`.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "j <= i < N, the polynomial's length"
+)]
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "signs & 1 is 0 or 1, so 1 - 2 * (signs & 1) is 1 or -1"
+)]
 fn sample_in_ball<P: Params>(c: &mut Poly, c_tilde: &[u8]) {
     let mut h = Shake256Sponge::new();
     h.absorb(c_tilde);
@@ -1188,7 +1346,7 @@ fn sample_in_ball<P: Params>(c: &mut Poly, c_tilde: &[u8]) {
     xof.read(&mut signs);
     let mut signs = u64::from_le_bytes(signs);
     c.0 = [0; N];
-    for i in N - P::TAU..N {
+    for i in const { N - P::TAU }..N {
         let j = loop {
             let mut j = [0u8];
             xof.read(&mut j);
@@ -1354,8 +1512,8 @@ fn pack_z<P: Params>(r: &mut [u8], a: &Poly) {
 
 fn unpack_z<P: Params>(r: &mut Poly, a: &[u8]) {
     match P::GAMMA1_BITS {
-        17 => low::mldsa_polyz_unpack_17(&mut r.0, a.try_into().unwrap()),
-        _ => low::mldsa_polyz_unpack_19(&mut r.0, a.try_into().unwrap()),
+        17 => low::mldsa_polyz_unpack_17(&mut r.0, a.try_into().expect("a is Z_PACKED bytes")),
+        _ => low::mldsa_polyz_unpack_19(&mut r.0, a.try_into().expect("a is Z_PACKED bytes")),
     }
 }
 
