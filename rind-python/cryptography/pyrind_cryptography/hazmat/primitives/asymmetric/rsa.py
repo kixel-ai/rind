@@ -45,6 +45,10 @@ _PSS_VERIFY_ANY_SALT = {
 _OAEP = {"sha1": _rsa.legacy.OAEP_SHA1, "sha256": _rsa.OAEP_SHA256, "sha384": _rsa.OAEP_SHA384, "sha512": _rsa.OAEP_SHA512}
 
 
+# The smallest modulus rind parses: 128 bytes with up to seven leading zero bits, as ring sizes keys by their primes.
+_PARSE_FLOOR = 1017
+
+
 def _check_size(bits, low):
     """Refuses a modulus size rind lacks, from `low` bits to 8192, as unsupported rather than malformed."""
     if not low <= bits <= 8192:
@@ -165,7 +169,7 @@ class RSAPublicNumbers:
     def public_key(self, backend=None):
         """Loads the key."""
         _check_components(self._n, self._e)
-        _check_size(self._n.bit_length(), 1024)
+        _check_size(self._n.bit_length(), _PARSE_FLOOR)
         with _keys.loading():
             return RSAPublicKey(_rsa.PublicKey.from_components(_unsigned(self._n), _unsigned(self._e)))
 
@@ -232,12 +236,12 @@ class RSAPublicKey(metaclass=abc.ABCMeta):
 
     @classmethod
     def _from_spki(cls, der):
-        """Loads `SubjectPublicKeyInfo` DER, refusing a modulus under 1024 bits or over 8192 as unsupported."""
+        """Loads `SubjectPublicKeyInfo` DER, refusing a modulus under 1017 bits or over 8192 as unsupported."""
         return cls._load(_rsa.PublicKey.from_spki, der, lambda: _spki_rsa_key(der))
 
     @classmethod
     def _from_pkcs1(cls, der):
-        """Loads a PKCS#1 `RSAPublicKey`, refusing a modulus under 1024 bits or over 8192 as unsupported."""
+        """Loads a PKCS#1 `RSAPublicKey`, refusing a modulus under 1017 bits or over 8192 as unsupported."""
         return cls._load(_rsa.PublicKey, der, lambda: der)
 
     @classmethod
@@ -248,7 +252,7 @@ class RSAPublicKey(metaclass=abc.ABCMeta):
         except (ValueError, IndexError):
             ints = None
         if ints is not None and _well_formed(ints):
-            _check_size(ints[0].bit_length(), 1024)
+            _check_size(ints[0].bit_length(), _PARSE_FLOOR)
         with _keys.loading():
             return cls(parse(der))
 

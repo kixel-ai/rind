@@ -78,7 +78,7 @@ Within what works, it differs from pyca in these ways:
   the three curves.
 - RSA signs with SHA-256, SHA-384, or SHA-512, and PSS with a salt as long as
   the digest; it verifies PKCS#1 v1.5 with SHA-1 too, and PSS with any salt
-  under `PSS.AUTO`. Keys of 1024 to 2047 bits load only as public keys, and
+  under `PSS.AUTO`. Keys of 1017 to 2047 bits load only as public keys, and
   verify only PKCS#1 v1.5 with SHA-1, SHA-256, or SHA-512. `rsa_crt_iqmp`,
   `rsa_crt_dmp1`, `rsa_crt_dmq1`, and `rsa_recover_prime_factors` raise
   `UnsupportedAlgorithm`: they compute on the private key in Python's
