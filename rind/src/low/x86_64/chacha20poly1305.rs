@@ -8,7 +8,7 @@
 //! imported by `admin/import-aws-lc`, with AVX2 where the CPU has it and
 //! SSE4.1 otherwise; CPUs with AVX-512 but no IFMA, which no measurement
 //! covered, keep it too. Without SSE4.1, ChaCha20 and Poly1305 run in
-//! separate passes.
+//! separate passes, Poly1305's long runs in `poly1305_sse2`'s lanes.
 //!
 //! VG proves in Lean that its routines meet RFC 8439 and take the same
 //! branches and memory addresses whatever the key, nonce, and data, but for
