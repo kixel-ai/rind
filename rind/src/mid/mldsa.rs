@@ -811,20 +811,11 @@ fn sign_internal<P: Params>(
         sample_in_ball::<P>(&mut c, c_tilde);
         low::mldsa_ntt(&mut c.0);
 
-        // Each check below rejects less often than the one before, as
-        // mldsa-native orders them, so a rejected attempt skips the work the
-        // later ones need. First r0 = w0 - c * s2.
-        for (s2, w0) in s2.iter().zip(w0.iter_mut()) {
-            low::mldsa_pointwise(&mut tmp.0, &c.0, &s2.0);
-            low::mldsa_intt(&mut tmp.0);
-            sub(w0, &tmp);
-            low::mldsa_reduce(&mut w0.0);
-            if rejected(low::mldsa_chknorm(&w0.0, (P::GAMMA2 - P::BETA) as u64)) {
-                continue 'attempts;
-            }
-        }
-
-        // z = y + c * s1
+        // z = y + c * s1, checked first, as FIPS 204 and mldsa-native order
+        // it: once z is accepted, w0 - c * s2 = A * z - c * t is a function of
+        // public data, so the later checks may reveal their results, but no
+        // proof covers revealing them for an attempt whose z is rejected
+        // (Kiltz, Lyubashevsky, and Schaffner 2017, Lemma 4.3).
         let z_packed = &mut signature.as_mut()[P::CTILDE_LEN..P::CTILDE_LEN + l * P::Z_PACKED];
         for (i, (s1, y)) in s1.iter().zip(y.iter()).enumerate() {
             let packed = &mut z_packed[i * P::Z_PACKED..(i + 1) * P::Z_PACKED];
@@ -838,8 +829,16 @@ fn sign_internal<P: Params>(
             pack_z::<P>(packed, &tmp);
         }
 
-        // w0 - c * s2 + c * t0, for the hints.
-        for (t0, w0) in t0.iter().zip(w0.iter_mut()) {
+        // r0 = w0 - c * s2, then w0 - c * s2 + c * t0 for the hints.
+        for ((s2, t0), w0) in s2.iter().zip(t0.iter()).zip(w0.iter_mut()) {
+            low::mldsa_pointwise(&mut tmp.0, &c.0, &s2.0);
+            low::mldsa_intt(&mut tmp.0);
+            sub(w0, &tmp);
+            low::mldsa_reduce(&mut w0.0);
+            if rejected(low::mldsa_chknorm(&w0.0, (P::GAMMA2 - P::BETA) as u64)) {
+                continue 'attempts;
+            }
+
             low::mldsa_pointwise(&mut tmp.0, &c.0, &t0.0);
             low::mldsa_intt(&mut tmp.0);
             low::mldsa_reduce(&mut tmp.0);
