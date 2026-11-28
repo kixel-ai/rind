@@ -20,6 +20,8 @@ and `sealProg_eq` and `openProg_eq` check they are the same programs by
 * `doubleRound1`, `doubleRound2`, and `doubleRound3`: ChaCha20's double
   round over one, two, or three blocks, in the NEON registers aws-lc
   gives them;
+* `setup128` and `final128`: the short paths' three blocks before and after
+  their rounds;
 * `roundA` and `roundB`: the two halves of the double round over five
   blocks, four in vertical lanes and one in rows, which the initial rounds
   run back to back and the main loops' rounds with Poly1305 blocks
@@ -393,6 +395,45 @@ def roundB : List Ins :=
    vop (.ext .v14 .v14 .v14 8),
    vop (.ext .v19 .v19 .v19 4)]
 
+/-- The short paths' three blocks, from the constants in `v24` and the key, counter, and nonce rows in `v28` to `v30`: the next two counters in `v<i>`, `v<5 + i>`, `v<10 + i>`, `v<15 + i>` for `i` 0 and 1, and the counter itself, Poly1305's key, for `i` 2. -/
+def setup128 : List Ins :=
+  [vop (.logic .eor .v25 .v25 .v25),
+   .vg (.movz .x .x11 1 0),
+   vop (.ins .s4 .v25 0 .x11),
+   vop (.mov .v0 .v24),
+   vop (.mov .v1 .v24),
+   vop (.mov .v2 .v24),
+   vop (.mov .v5 .v28),
+   vop (.mov .v6 .v28),
+   vop (.mov .v7 .v28),
+   vop (.mov .v10 .v29),
+   vop (.mov .v11 .v29),
+   vop (.mov .v12 .v29),
+   vop (.mov .v17 .v30),
+   vop (.add .s4 .v15 .v17 .v25),
+   vop (.add .s4 .v16 .v15 .v25),
+   .vg (.movz .x .x6 10 0)]
+
+/-- The short paths' blocks with their states added back: the two key-stream blocks, and Poly1305's `r`, clamped, in `x16` and `x17`, and its `s` in `v27`. -/
+def final128 : List Ins :=
+  [vop (.add .s4 .v0 .v0 .v24),
+   vop (.add .s4 .v1 .v1 .v24),
+   vop (.add .s4 .v2 .v2 .v24),
+   vop (.add .s4 .v5 .v5 .v28),
+   vop (.add .s4 .v6 .v6 .v28),
+   vop (.add .s4 .v7 .v7 .v28),
+   vop (.add .s4 .v10 .v10 .v29),
+   vop (.add .s4 .v11 .v11 .v29),
+   vop (.add .s4 .v30 .v30 .v25),
+   vop (.add .s4 .v15 .v15 .v30),
+   vop (.add .s4 .v30 .v30 .v25),
+   vop (.add .s4 .v16 .v16 .v30),
+   vop (.logic .and .v2 .v2 .v27),
+   .vg (.umov .x .x16 .v2 0),
+   .vg (.umov .x .x17 .v2 1),
+   vop (.mov .v27 .v7),
+   .cmpImm .x4 16]
+
 /-- `sealProg`, in named blocks. -/
 def sealNamed : Prog I :=
   (seqs
@@ -413,46 +454,13 @@ def sealNamed : Prog I :=
         .cmpImm .x2 128]),
      (.ite (.flags .le) -- seal_128
        (seqs
-         [(.block
-            [vop (.logic .eor .v25 .v25 .v25),
-             .vg (.movz .x .x11 1 0),
-             vop (.ins .s4 .v25 0 .x11),
-             vop (.mov .v0 .v24),
-             vop (.mov .v1 .v24),
-             vop (.mov .v2 .v24),
-             vop (.mov .v5 .v28),
-             vop (.mov .v6 .v28),
-             vop (.mov .v7 .v28),
-             vop (.mov .v10 .v29),
-             vop (.mov .v11 .v29),
-             vop (.mov .v12 .v29),
-             vop (.mov .v17 .v30),
-             vop (.add .s4 .v15 .v17 .v25),
-             vop (.add .s4 .v16 .v15 .v25),
-             .vg (.movz .x .x6 10 0)]),
+         [(.block setup128),
           (.loop -- seal_128_rounds
             (.block
               (doubleRound3 ++
                [.subsImm .x6 .x6 1]))
             (.flags .hi)),
-          (.block
-            [vop (.add .s4 .v0 .v0 .v24),
-             vop (.add .s4 .v1 .v1 .v24),
-             vop (.add .s4 .v2 .v2 .v24),
-             vop (.add .s4 .v5 .v5 .v28),
-             vop (.add .s4 .v6 .v6 .v28),
-             vop (.add .s4 .v7 .v7 .v28),
-             vop (.add .s4 .v10 .v10 .v29),
-             vop (.add .s4 .v11 .v11 .v29),
-             vop (.add .s4 .v30 .v30 .v25),
-             vop (.add .s4 .v15 .v15 .v30),
-             vop (.add .s4 .v30 .v30 .v25),
-             vop (.add .s4 .v16 .v16 .v30),
-             vop (.logic .and .v2 .v2 .v27),
-             .vg (.umov .x .x16 .v2 0),
-             .vg (.umov .x .x17 .v2 1),
-             vop (.mov .v27 .v7),
-             .cmpImm .x4 16]),
+          (.block final128),
           adBlocks,
           adTail])
        (seqs
@@ -837,46 +845,13 @@ def openNamed : Prog I :=
         .cmpImm .x2 128]),
      (.ite (.flags .le) -- open_128
        (seqs
-         [(.block
-            [vop (.logic .eor .v25 .v25 .v25),
-             .vg (.movz .x .x11 1 0),
-             vop (.ins .s4 .v25 0 .x11),
-             vop (.mov .v0 .v24),
-             vop (.mov .v1 .v24),
-             vop (.mov .v2 .v24),
-             vop (.mov .v5 .v28),
-             vop (.mov .v6 .v28),
-             vop (.mov .v7 .v28),
-             vop (.mov .v10 .v29),
-             vop (.mov .v11 .v29),
-             vop (.mov .v12 .v29),
-             vop (.mov .v17 .v30),
-             vop (.add .s4 .v15 .v17 .v25),
-             vop (.add .s4 .v16 .v15 .v25),
-             .vg (.movz .x .x6 10 0)]),
+         [(.block setup128),
           (.loop -- open_128_rounds
             (.block
               (doubleRound3 ++
                [.subsImm .x6 .x6 1]))
             (.flags .hi)),
-          (.block
-            [vop (.add .s4 .v0 .v0 .v24),
-             vop (.add .s4 .v1 .v1 .v24),
-             vop (.add .s4 .v2 .v2 .v24),
-             vop (.add .s4 .v5 .v5 .v28),
-             vop (.add .s4 .v6 .v6 .v28),
-             vop (.add .s4 .v7 .v7 .v28),
-             vop (.add .s4 .v10 .v10 .v29),
-             vop (.add .s4 .v11 .v11 .v29),
-             vop (.add .s4 .v30 .v30 .v25),
-             vop (.add .s4 .v15 .v15 .v30),
-             vop (.add .s4 .v30 .v30 .v25),
-             vop (.add .s4 .v16 .v16 .v30),
-             vop (.logic .and .v2 .v2 .v27),
-             .vg (.umov .x .x16 .v2 0),
-             .vg (.umov .x .x17 .v2 1),
-             vop (.mov .v27 .v7),
-             .cmpImm .x4 16]),
+          (.block final128),
           adBlocks,
           adTail,
           (.block
