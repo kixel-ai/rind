@@ -1004,6 +1004,73 @@ theorem rsa_pss_sha256_sign_spec (h : Runs) (hb : Sha256Blocks) (hfill : Fills)
       refine Or.inr ⟨rfl, salt, hsl, bv EM, by rw [← hkN]; exact hEM, ?_⟩
       rw [os2ip_bv, ← hkey, ← hkN, ← hE]
       exact hne
+/-- A 2048-bit modulus fills 32 words, and primes of at most 1024 bits whose
+product it is fill 16: each has exactly 1024 bits. -/
+theorem rsa2048_widths (N P Q : Nat) (hn : N = P * Q) (hN : N.size = 2048) (hP : P.size ≤ 1024)
+    (hQ : Q.size ≤ 1024) : (N.size + 63) / 64 = 32 ∧ keyWords P Q = 16 := by
+  have hlt : N < 2 ^ (P.size + Q.size) := by
+    rw [hn, pow_add]
+    exact Nat.mul_lt_mul'' (Nat.lt_size_self P) (Nat.lt_size_self Q)
+  have := (Nat.size_le).mpr hlt
+  unfold keyWords
+  omega
+
+/-- `rsa_pkcs1_sha256_sign_spec` for RSA-2048 with primes of 1024 bits, on a
+CPU with BMI2 and ADX, by either CRT: the Montgomery products at both widths
+are s2n-bignum's, and the dual RSAZ never takes 16 words. -/
+theorem rsa2048_pkcs1_sha256_sign_spec (h : Runs) (hb : Sha256Blocks)
+    (t : low.x86_64.cpu.HaveBmi2Adx) (hadx : low.x86_64.cpu.HaveBmi2Adx.check = ok (some t))
+    (hifma : IfmaCheckReturns) (kp : high.signature.rsa.KeyPair) (N E D P Q DP DQ QINV : Nat)
+    (hkp : KeyPairOf kp N E D P Q DP DQ QINV) (hN : N.size = 2048) (hP : P.size ≤ 1024) (hQ : Q.size ≤ 1024)
+    (message : Slice U8) (hm : message.length ≤ maxInput) :
+    high.signature.rsa.KeyPair.sign kp high.signature.rsa.sign.PKCS1_SHA256 message ⦃ r =>
+      (∀ sig, r = .Ok sig → high.signature.rsa.Signature.Insts.CoreConvertAsRefSliceU8.as_ref sig ⦃ b =>
+        rsassaPkcs1v15Sign N P Q DP DQ QINV sha256.hash digestInfoSha256 (bv message.val) = some (bv b.val) ⦄) ∧
+      ∀ e, r = .Err e → e = .Fault ∧ ∃ EM, emsaPkcs1v15Encode sha256.hash digestInfoSha256 (bv message.val)
+        (octetLen N) = some EM ∧ rsasp1Crt P Q DP DQ QINV (os2ip EM) ^ E % N ≠ os2ip EM ⦄ := by
+  obtain ⟨h32, h16⟩ := rsa2048_widths N P Q hkp.2.2.2.2.2.2.2.2.2.2.1 hN hP hQ
+  exact rsa_pkcs1_sha256_sign_spec h hb t hadx hifma kp N E D P Q DP DQ QINV hkp
+    (by rw [h32]; exact karatsuba_products (some t) hadx rfl (Or.inr rfl))
+    (fun _ => ⟨by rw [h16]; exact karatsuba_products (some t) hadx rfl (Or.inl rfl), Or.inl h16,
+      Or.inl ⟨by omega, by omega, hifma⟩⟩) message hm
+
+/-- `rsa_pss_sha256_sign_spec` for RSA-2048 with primes of 1024 bits, on a
+CPU with BMI2 and ADX, by either CRT: the Montgomery products at both widths
+are s2n-bignum's, and the dual RSAZ never takes 16 words. -/
+theorem rsa2048_pss_sha256_sign_spec (h : Runs) (hb : Sha256Blocks) (hfill : Fills)
+    (t : low.x86_64.cpu.HaveBmi2Adx) (hadx : low.x86_64.cpu.HaveBmi2Adx.check = ok (some t))
+    (hifma : IfmaCheckReturns) (kp : high.signature.rsa.KeyPair) (N E D P Q DP DQ QINV : Nat)
+    (hkp : KeyPairOf kp N E D P Q DP DQ QINV) (hN : N.size = 2048) (hP : P.size ≤ 1024) (hQ : Q.size ≤ 1024)
+    (message : Slice U8) (hm : message.length ≤ maxInput) :
+    high.signature.rsa.KeyPair.sign kp high.signature.rsa.sign.PSS_SHA256 message ⦃ r =>
+      (∀ sig, r = .Ok sig → ∃ salt : List U8, salt.length = 32 ∧
+        high.signature.rsa.Signature.Insts.CoreConvertAsRefSliceU8.as_ref sig ⦃ b =>
+          rsassaPssSign N P Q DP DQ QINV sha256.hash 32 (bv message.val) (bv salt) = some (bv b.val) ⦄) ∧
+      ∀ e, r = .Err e → e = .RngFailed ∨ e = .Fault ∧ ∃ salt : List U8, salt.length = 32 ∧
+        ∃ EM, emsaPssEncode sha256.hash 32 (bv message.val) (bv salt) (N.size - 1) = some EM ∧
+          rsasp1Crt P Q DP DQ QINV (os2ip EM) ^ E % N ≠ os2ip EM ⦄ := by
+  obtain ⟨h32, h16⟩ := rsa2048_widths N P Q hkp.2.2.2.2.2.2.2.2.2.2.1 hN hP hQ
+  exact rsa_pss_sha256_sign_spec h hb hfill t hadx hifma kp N E D P Q DP DQ QINV hkp
+    (by rw [h32]; exact karatsuba_products (some t) hadx rfl (Or.inr rfl))
+    (fun _ => ⟨by rw [h16]; exact karatsuba_products (some t) hadx rfl (Or.inl rfl), Or.inl h16,
+      Or.inl ⟨by omega, by omega, hifma⟩⟩) message hm
+/-- `KeyPair::from_pkcs1` for RSA-2048 on a CPU with BMI2 and ADX: a key pair
+it returns whose primes have 1024 bits holds the two-prime RSA private key
+of the integers its PKCS#1 DER, which the ✓ leaves out, encodes, as
+`rsa2048_pkcs1_sha256_sign_spec` and `rsa2048_pss_sha256_sign_spec` take it. -/
+theorem rsa2048_key_pair_from_pkcs1_spec (h : Runs) (hheld : low.entry.Entry.assert_held = ok ())
+    (t : low.x86_64.cpu.HaveBmi2Adx) (hadx : low.x86_64.cpu.HaveBmi2Adx.check = ok (some t))
+    (hifma : IfmaCheckReturns) (hfp16 : ∀ t, ∃ b, low.x86_64.cpu.HaveAvx512ForRsa.fp16 t = ok b)
+    (der : Slice U8) (kp : high.signature.rsa.KeyPair)
+    (hkp : high.signature.rsa.KeyPair.from_pkcs1 der = ok (.Ok kp)) :
+    ∃ c : high.rsa.Components, (beNat c.p.val).size = 1024 → (beNat c.q.val).size = 1024 →
+      KeyPairOf kp (beNat c.n.val) (beNat c.e.val) (beNat c.d.val) (beNat c.p.val) (beNat c.q.val)
+        (beNat c.dp.val) (beNat c.dq.val) (beNat c.qi.val) := by
+  obtain ⟨c, hc⟩ := rsa_key_pair_from_pkcs1_spec h hheld hifma hfp16 der kp hkp
+  refine ⟨c, fun hp hq => hc ?_⟩
+  have : keyWords (beNat c.p.val) (beNat c.q.val) = 16 := by unfold keyWords; omega
+  rw [this]
+  exact karatsuba_products (some t) hadx rfl (Or.inl rfl)
 -- END x86_64
 
 end rind.x86_64
