@@ -94,8 +94,9 @@ opaque low.x86_64.ghash_ssse3_x86_64.Ssse3Table : Type
 opaque low.x86_64.ghash_nohw.NohwTable : Type
 opaque low.x86_64.aes_gcm_vaes.VaesKernel : Type
 
-/-- pyca/verified-garbage's AES-GCM key context, which a key on Zen 5 makes on
-its first long message, and the cell that holds it. -/
+/-- pyca/verified-garbage's AES-GCM key context, which a key on Zen 5 or on
+Intel's VAES cores without AVX-512 makes on its first long message, and the
+cell that holds it. -/
 opaque low.x86_64.aes_gcm_vg.LazyVgKey : Type
 opaque low.x86_64.aes_gcm_vg.VgKey : Type
 

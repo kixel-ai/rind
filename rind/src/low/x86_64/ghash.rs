@@ -59,8 +59,10 @@ macro_rules! reduce {
 pub(crate) enum GhashTable {
     Clmul(ClmulTable),
     /// VAES without AVX-512: Vale's AES-GCM or the PCLMULQDQ path for short
-    /// messages, and BoringSSL's 256-bit kernel for long ones.
-    VaesAvx2(ClmulTable, VaesKernel, AvxKernel),
+    /// messages, BoringSSL's 256-bit kernel for long ones, and
+    /// pyca/verified-garbage's key context, made on first use, for the
+    /// messages its AES-GCM is faster at, on the CPUs where it is.
+    VaesAvx2(ClmulTable, VaesKernel, AvxKernel, Option<LazyVgKey>),
     /// AVX and MOVBE without VAES: Vale's AES-GCM, and the PCLMULQDQ path
     /// for an AAD or message of 2^32 bytes or more, beyond Vale's proof.
     Avx(ClmulTable, AvxKernel),
@@ -87,7 +89,7 @@ impl GhashTable {
             let vaes = VaesKernel::avx2(h, token);
             let table = ClmulTable::from_powers(vaes.powers(), hw);
             let vale = AvxKernel::new(&table, h, token.avx_movbe());
-            return Self::VaesAvx2(table, vaes, vale);
+            return Self::VaesAvx2(table, vaes, vale, LazyVgKey::avx2(token));
         }
         if let Some(token) = HaveAvxMovbeForAesGcm::check() {
             let table = ClmulTable::new(h, hw);
@@ -104,7 +106,9 @@ impl GhashTable {
     /// a whole-value wipe of a key holding this table, which skips its drop,
     /// must call this first.
     pub(crate) fn release(&mut self) {
-        if let Self::Avx512(GhashTableAvx512 { vg: Some(vg), .. }) = self {
+        if let Self::Avx512(GhashTableAvx512 { vg: Some(vg), .. }) | Self::VaesAvx2(.., Some(vg)) =
+            self
+        {
             vg.wipe();
         }
     }
@@ -255,7 +259,7 @@ impl GhashTableAvx512 {
     pub(crate) fn new(h: u128, hw: HaveAesHardware, token: HaveAvx512ForAesGcm) -> Self {
         let vaes = VaesKernel::avx512(h, token);
         let clmul = ClmulTable::from_powers(vaes.powers(), hw);
-        let vg = LazyVgKey::new(token);
+        let vg = LazyVgKey::avx512(token);
         Self {
             clmul,
             vaes,

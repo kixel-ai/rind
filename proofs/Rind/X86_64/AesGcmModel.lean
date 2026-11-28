@@ -397,7 +397,7 @@ impl GhashTableAvx512 {
     pub(crate) fn new(h: u128, hw: HaveAesHardware, token: HaveAvx512ForAesGcm) -> Self {
         let vaes = VaesKernel::avx512(h, token);
         let clmul = ClmulTable::from_powers(vaes.powers(), hw);
-        let vg = LazyVgKey::new(token);
+        let vg = LazyVgKey::avx512(token);
         Self {
             clmul,
             vaes,
@@ -1162,7 +1162,7 @@ opaque low.x86_64.ghash.Ghash.add_by : low.x86_64.ghash.Ghash → List U8 → Re
 def low.x86_64.ghash.Ghash.addBytes (self : low.x86_64.ghash.Ghash) (bytes : List U8) :
     Result low.x86_64.ghash.Ghash :=
   match self.table with
-  | .Clmul table | .VaesAvx2 table _ _ | .Avx table _ => do
+  | .Clmul table | .VaesAvx2 table _ _ _ | .Avx table _ => do
     let current ← low.x86_64.ghash.ClmulTable.add table bytes self.current
     ok { self with current }
   | .Avx512 avx512 => do

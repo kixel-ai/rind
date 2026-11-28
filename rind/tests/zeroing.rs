@@ -563,7 +563,8 @@ fn aead() {
         let key = Key::new(algorithm, &[0xffu8; 32][..algorithm.key_len()]).unwrap();
         check_zeroed_on_drop(Box::pin(key));
         // A long message makes the state some CPUs keep for long messages,
-        // such as Zen 5's verified-garbage key context.
+        // such as the verified-garbage key context of Zen 5 and of Intel's
+        // VAES cores without AVX-512.
         check_heap_wiped(|| {
             let key = Key::new(algorithm, &[0xffu8; 32][..algorithm.key_len()]).unwrap();
             let nonce = Nonce::assume_unique_for_key([0; 12]);

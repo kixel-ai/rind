@@ -67,7 +67,9 @@ qemu. iOS devices' code is only built.
   since Sapphire Rapids, and aws-lc's dual AVX-512 RSAZ without it, as
   for the 3969- to 4032-bit keys VG's CRT does not take. On AMD's Zen 5,
   AES-GCM seals and opens of 6 KB or more run [verified-garbage]'s AVX-512
-  assembly, which is slower on Intel's cores and for shorter messages.
+  assembly, which is slower on Intel's AVX-512 cores and for shorter
+  messages. On Intel's VAES cores without AVX-512, such as Arrow Lake, those
+  of 10 KB or more run its 256-bit assembly.
 - 32-bit `arm` from ARMv7 on (tested on `armv7-unknown-linux-gnueabihf` and
   `armv7-linux-androideabi`) runs portable Rust instead, mostly from
   [libcrux] (see [ALGORITHMS.md](ALGORITHMS.md)), and needs no CPU features. RSA's

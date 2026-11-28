@@ -50,11 +50,14 @@ DECL = re.compile(r"^\s*(?:@\[[^\]]*\]\s*)*(?:(?:private|protected|noncomputable
 # others covers them too.
 UNCOVERED = {
     "x86_64": {
-        name: "rind's AVX-512 AES-GCM is not proven yet; [its quest](/quest/m4/verified/aes-gcm-x86-vaes.md) restates VG's"
+        name: "rind's VAES AES-GCM is not proven yet; [its quest](/quest/m4/verified/aes-gcm-x86-vaes.md) restates VG's"
         for name in [
             "vg_aes_gcm_prepare_vpclmul_avx512",
             "vg_aes_gcm_seal_prepared_vaes_vpclmul_avx512",
             "vg_aes_gcm_open_prepared_vaes_vpclmul_avx512",
+            "vg_aes_gcm_prepare_vpclmul",
+            "vg_aes_gcm_seal_prepared_vaes_vpclmul",
+            "vg_aes_gcm_open_prepared_vaes_vpclmul",
         ]
     },
     "aarch64": {

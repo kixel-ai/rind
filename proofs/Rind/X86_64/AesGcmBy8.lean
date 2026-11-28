@@ -252,7 +252,7 @@ end loop
 
 /-- A GHASH table whose hashing is `ClmulTable::add` with `t`. -/
 def ClmulOf (g : low.x86_64.ghash.GhashTable) (t : low.x86_64.ghash.ClmulTable) : Prop :=
-  g = .Clmul t ∨ (∃ a, g = .Avx t a) ∨ ∃ a b, g = .VaesAvx2 t a b
+  g = .Clmul t ∨ (∃ a, g = .Avx t a) ∨ ∃ a b c, g = .VaesAvx2 t a b c
 
 theorem addBytes_clmul (g : low.x86_64.ghash.Ghash) (t : low.x86_64.ghash.ClmulTable) (hg : ClmulOf g.table t)
     (bytes : List U8) :
@@ -262,7 +262,7 @@ theorem addBytes_clmul (g : low.x86_64.ghash.Ghash) (t : low.x86_64.ghash.ClmulT
         ok { g with current }) := by
   obtain ⟨tb, cur⟩ := g
   simp only at hg
-  rcases hg with rfl | ⟨a, rfl⟩ | ⟨a, b, rfl⟩ <;> rfl
+  rcases hg with rfl | ⟨a, rfl⟩ | ⟨a, b, c, rfl⟩ <;> rfl
 
 theorem length_bytes (q : BitVec 128) : (low.x86_64.aes_gcm.bytes q).length = 16 := by
   simp [low.x86_64.aes_gcm.bytes, storeBytes, leQuad32ToBytes]

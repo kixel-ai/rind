@@ -14,17 +14,31 @@ pub struct Table<const N: usize>(pub [u8; N]);
 #[rustfmt::skip]
 pub(crate) mod vg_aes_ctr32_vaes;
 #[rustfmt::skip]
+pub(crate) mod vg_aes_gcm_decrypt_blocks_prepared16_vaes_vpclmul;
+#[rustfmt::skip]
 pub(crate) mod vg_aes_gcm_decrypt_blocks_prepared_vaes_vpclmul_avx512;
+#[rustfmt::skip]
+pub(crate) mod vg_aes_gcm_decrypt_blocks_vaes_vpclmul;
 #[rustfmt::skip]
 pub(crate) mod vg_aes_gcm_decrypt_blocks_vaes_vpclmul_avx512;
 #[rustfmt::skip]
+pub(crate) mod vg_aes_gcm_encrypt_blocks_prepared16_vaes_vpclmul;
+#[rustfmt::skip]
 pub(crate) mod vg_aes_gcm_encrypt_blocks_prepared_vaes_vpclmul_avx512;
+#[rustfmt::skip]
+pub(crate) mod vg_aes_gcm_encrypt_blocks_vaes_vpclmul;
 #[rustfmt::skip]
 pub(crate) mod vg_aes_gcm_encrypt_blocks_vaes_vpclmul_avx512;
 #[rustfmt::skip]
+pub(crate) mod vg_aes_gcm_open_prepared_vaes_vpclmul;
+#[rustfmt::skip]
 pub(crate) mod vg_aes_gcm_open_prepared_vaes_vpclmul_avx512;
 #[rustfmt::skip]
+pub(crate) mod vg_aes_gcm_prepare_vpclmul;
+#[rustfmt::skip]
 pub(crate) mod vg_aes_gcm_prepare_vpclmul_avx512;
+#[rustfmt::skip]
+pub(crate) mod vg_aes_gcm_seal_prepared_vaes_vpclmul;
 #[rustfmt::skip]
 pub(crate) mod vg_aes_gcm_seal_prepared_vaes_vpclmul_avx512;
 #[rustfmt::skip]
