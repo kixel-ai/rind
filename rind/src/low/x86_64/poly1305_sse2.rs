@@ -23,9 +23,11 @@ use core::num::Wrapping;
 
 use crate::low::Mcdt;
 
-/// The fewest whole blocks `blocks` hashes in SSE2, below which the
-/// conversions to and from the lanes and the last multiply cost more than
-/// they save.
+/// The fewest whole blocks `blocks` hashes in SSE2. aws-lc's lanes start
+/// at three; rind keeps shorter runs on the scalar blocks, where the lanes'
+/// fixed cost, the powers and the conversions and last multiply, about 250
+/// instructions, weighs most. Untimed between 32 B and 1350 B, which both
+/// measured no slower.
 const MIN_BLOCKS: usize = 8;
 
 const MASK26: u64 = (1 << 26) - 1;
@@ -169,7 +171,7 @@ fn mul(a: &[__m128i; 5], p: &Power) -> [__m128i; 5] {
     // SAFETY: SSE2 is part of x86_64.
     unsafe {
         let (r, s) = (&p.r, &p.s);
-        let m = |x, y| _mm_mul_epu32(x, y);
+        let m = pmuludq;
         let sum = |terms: [__m128i; 5]| {
             terms
                 .into_iter()
@@ -214,6 +216,25 @@ fn mul(a: &[__m128i; 5], p: &Power) -> [__m128i; 5] {
             ]),
         ]
     }
+}
+
+/// The low 32 bits of each lane of `x` times those of `y`, as 64 bits.
+// `_mm_mul_epu32` would do, but LLVM lowers it as a 64x32-bit multiply,
+// two `pmuludq`, two shifts, and an add, wherever it cannot prove the first
+// operand's high half zero, as it cannot for limbs that took a carry: 5.3
+// instructions a byte of the 16 KB seal rather than 3.8.
+#[inline(always)]
+fn pmuludq(mut x: __m128i, y: __m128i) -> __m128i {
+    // SAFETY: register-only arithmetic, and SSE2 is part of x86_64.
+    unsafe {
+        core::arch::asm!(
+            "pmuludq {x}, {y}",
+            x = inout(xmm_reg) x,
+            y = in(xmm_reg) y,
+            options(pure, nomem, nostack, preserves_flags),
+        );
+    }
+    x
 }
 
 #[inline(always)]
