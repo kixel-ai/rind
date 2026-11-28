@@ -13,7 +13,14 @@ hash meeting `HashSpec` and any random source whose draws return, for the salt
 the source drew, which the functional spec leaves out. Signing refuses only
 where `private_op`'s fault check does, RSASP1's result raised to `e` modulo `n`
 not being the encoded message's representative, and, for PSS, where the
-random source fails.
+random source fails. The system source's draws are `Rind.X86_64.P256Ecdsa`'s
+`Draws`, given its `Fills`.
+
+Below the signature API's loaders, `from_unsigned_priv_spec` proves that a
+key `SigningKey::from_unsigned` returns is the one `RsaPrivateKey::new`
+loaded from the components' big-endian bytes (`KeyFrom`), over
+`from_secret_bytes_gen_spec`; `Rind.X86_64.RsaDispatch` builds the key pairs
+on it.
 -/
 
 namespace rind.spec.rsa
