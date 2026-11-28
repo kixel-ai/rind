@@ -14,10 +14,12 @@ use: AESE and AESMC run FIPS 197's rounds as Vale states them
 PMULL is the carry-less product `clmul` (`polyMul_eq`); EXT by eight bytes,
 TRN1, and TRN2 move the 64-bit halves `lo` and `hi`; REV64 is SP 800-38D's
 byte order with its halves swapped (`rev64b_eq`); and REV32 with ADD on 32-bit
-lanes steps the counter block (`add_ctr`).
+lanes steps the counter block (`add_ctr`). The loops' reduction of their
+three Karatsuba sums is `reduceModel`'s (`code_reduce`, `code_reduce'`), and
+SP 800-38D's GHASH by a table of the twisted key's powers is `reduceAll`
+(`nistGhash_reduceAll`). `aes192Cipher` states AES-192 as s2n-bignum states
+AES-128 and AES-256.
 -/
-
-local notation "P" => Polynomial (ZMod 2)
 
 set_option maxRecDepth 20000
 

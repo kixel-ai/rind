@@ -84,10 +84,12 @@ structure LoopPre (s : S) (nonce : BitVec 96) (c : Nat) (k : Nat → BitVec 128)
   rin : ∀ i < 8, InRegions (s.vg.rd ++ s.vg.wr) (s.vg.gpr .x0 + BitVec.ofNat 64 (16 * i)) 16
   rout : ∀ i < 8, InRegions s.vg.wr (s.vg.gpr .x2 + BitVec.ofNat 64 (16 * i)) 16
 
+/-- A run that ends in `x` with `P x` gives a state and trace. -/
 theorem ex2_of_eq {α : Type} {o : Option (α × List Leak)} {x : α} {t : List Leak} {P : α → Prop}
     (h : o = some (x, t)) (hp : P x) : ∃ s' t', o = some (s', t') ∧ P s' :=
   ⟨x, t, h, hp⟩
 
+/-- `add_zero` at the literal `0#64` the semantics leave. -/
 theorem add_zero64 (a : Addr) : a + 0#64 = a := BitVec.add_zero a
 
 /-- The condition flags. -/
@@ -99,6 +101,11 @@ def flags (g : VG.AArch64.State) : Bool × Bool × Bool × Bool := (g.nf, g.zf, 
 
 set_option maxHeartbeats 20000000 in
 set_option maxRecDepth 200000 in
+/-- One iteration of the encrypt loop: the eight blocks at `x0` XORed with
+the keystream of counters `c` to `c + 7` land in `v8`–`v15` and at `x2`,
+`v19` takes the GHASH of the eight blocks `v8`–`v15` held, the counter
+blocks move eight on, `x0` and `x2` step past the blocks, the flags are
+`cmp x0, x5`'s, and nothing else changes. -/
 theorem encLoop_ok (s : S) (nonce : BitVec 96) (c : Nat) (k : Nat → BitVec 128) (H : BitVec 128)
     (pre : LoopPre s nonce c k H) :
     ∃ s' t, execBlock I AesGcm8x192.encLoop s = some (s', t) ∧
@@ -198,6 +205,8 @@ theorem encLoop_ok (s : S) (nonce : BitVec 96) (c : Nat) (k : Nat → BitVec 128
 
 set_option maxHeartbeats 20000000 in
 set_option maxRecDepth 200000 in
+/-- One iteration of the decrypt loop, as `encLoop_ok`, but that the blocks
+it leaves in `v8`–`v15` are the ones it read. -/
 theorem decLoop_ok (s : S) (nonce : BitVec 96) (c : Nat) (k : Nat → BitVec 128) (H : BitVec 128)
     (pre : LoopPre s nonce c k H) :
     ∃ s' t, execBlock I AesGcm8x192.decLoop s = some (s', t) ∧
@@ -306,12 +315,14 @@ def LoopPub (s₁ s₂ : S) : Prop :=
     s₁.vg.gpr .x11 = s₂.vg.gpr .x11 ∧ s₁.vg.sp = s₂.vg.sp
 
 open rind.aarch64.taint in
+/-- `LoopPub` is `check`'s agreement on `loopStart`. -/
 theorem agree_of_loopPub {s₁ s₂ : S} (h : LoopPub s₁ s₂) : Agree [] loopStart s₁ s₂ := by
   obtain ⟨h0, h2, h5, h6, h10, h11, hsp⟩ := h
   refine ⟨fun r hr => ?_, fun hf => absurd hf (by decide), hsp, fun n hn => by simp at hn⟩
   cases r <;> first | assumption | exact absurd hr (by decide)
 
 open rind.aarch64.taint in
+/-- A loop `check` accepts from `loopStart` is constant-time for `LoopPub`. -/
 theorem loop_constant_time {body : List Ins}
     (h : (check [] (.loop (.block body) (.flags .lt)) loopStart).isSome = true) :
     ConstantTime I (fun _ => True) LoopPub (.loop (.block body) (.flags .lt)) := by
