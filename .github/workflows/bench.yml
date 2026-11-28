@@ -420,7 +420,7 @@ jobs:
           fi
           read -ra args <<<"${{ steps.select.outputs.args }}"
           cargo=("${config[@]}" "${args[@]}" --target ${{ matrix.target }})
-          admin/bench-report names --match "$filter" "${cargo[@]}" >"$RUNNER_TEMP/benchmarks"
+          admin/bench-report names --timed --match "$filter" "${cargo[@]}" >"$RUNNER_TEMP/benchmarks"
           swole bench --benchmarks "$RUNNER_TEMP/benchmarks" --out "$RUNNER_TEMP/times.json" -- -p rind-bench "${cargo[@]}"
         env:
           CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER: arm-linux-gnueabihf-gcc
