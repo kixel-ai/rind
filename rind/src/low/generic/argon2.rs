@@ -84,6 +84,11 @@ impl Argon2Memory {
     }
 
     /// Sets `lane`'s next block to `block`.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "Argon2 passes lane < lanes, the length of lanes and set; column < lane_len, asserted, is within the reservation, and column + 1 <= lane_len"
+    )]
     pub(crate) fn push(&mut self, lane: usize, block: Argon2Block) {
         let column = self.set[lane];
         assert!(column < self.lane_len);
@@ -92,6 +97,10 @@ impl Argon2Memory {
     }
 
     /// Block `column` of `lane`, which must be set.
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "Argon2 passes lane < lanes, the length of lanes and set"
+    )]
     pub(crate) fn block(&self, lane: usize, column: usize) -> &Argon2Block {
         assert!(column < self.set[lane]);
         // SAFETY: the block lies in the lane's reservation, since `set`
@@ -104,6 +113,11 @@ impl Argon2Memory {
     /// it where it is the lane's next unset block, as the first pass does,
     /// and xoring G into it where it is set, as later passes do. Every block
     /// read must be set, and neither the one written.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "lane_len >= 8, as RFC 9106 asks 8 blocks a lane; set and lanes are indexed by lane and reference_lane, which Argon2 keeps below lanes, so lane + 1 fits; head is column blocks and tail follows it, and pick reads i < set <= lane_len, never column; set[lane] < lane_len where it grows"
+    )]
     pub(crate) fn compress(
         &mut self,
         g: Argon2Kernel,
@@ -120,13 +134,17 @@ impl Argon2Memory {
         assert!(previous != column && (reference_lane, reference_column) != (lane, column));
 
         let (before, rest) = self.lanes.split_at_mut(lane);
-        let (current, after) = rest.split_first_mut().unwrap();
+        let (current, after) = rest
+            .split_first_mut()
+            .expect("set[lane] above indexed lane, so lanes has one from lane on");
         let other = match reference_lane < lane {
             true => Some(&before[reference_lane]),
             false => after.get(reference_lane.wrapping_sub(lane + 1)),
         };
         let (head, rest) = current.spare_capacity_mut().split_at_mut(column);
-        let (out_block, tail) = rest.split_first_mut().unwrap();
+        let (out_block, tail) = rest
+            .split_first_mut()
+            .expect("column < lane_len, asserted, and the lane reserved lane_len blocks");
         let pick = |i: usize| match i < column {
             true => &head[i],
             false => &tail[i - column - 1],
@@ -159,6 +177,10 @@ impl Argon2Memory {
 }
 
 impl Drop for Argon2Memory {
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "the allocator gave each reservation, so its size in bytes is at most isize::MAX"
+    )]
     fn drop(&mut self) {
         for mut lane in self.lanes.drain(..) {
             // SAFETY: the reservation holds `capacity` blocks, any of whose
@@ -204,8 +226,15 @@ impl Argon2Kernel {
 
 /// Writes G(`x`, `y`) to `out`.
 #[inline(always)]
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "row, column < 8 and v < 16, so every word index is below 128"
+)]
 pub(crate) fn argon2_compress(x: &Argon2Block, y: &Argon2Block, out: Argon2Out<'_>) {
-    let r = Argon2Block(core::array::from_fn(|i| x.0[i] ^ y.0[i]));
+    let mut r = x.clone();
+    for (r, y) in r.0.iter_mut().zip(&y.0) {
+        *r ^= y;
+    }
     let mut q = r.clone();
 
     // P over each row of sixteen consecutive words, then over each column of
@@ -222,14 +251,14 @@ pub(crate) fn argon2_compress(x: &Argon2Block, y: &Argon2Block, out: Argon2Out<'
         // the block once more.
         Argon2Out::Set(out) => {
             let out = out.as_mut_ptr().cast::<u64>();
-            for i in 0..128 {
+            for (i, (q, r)) in q.0.iter().zip(&r.0).enumerate() {
                 // SAFETY: the block is 128 words, any of which may be written.
-                unsafe { out.add(i).write(q.0[i] ^ r.0[i]) };
+                unsafe { out.add(i).write(q ^ r) };
             }
         }
         Argon2Out::Xor(out) => {
-            for i in 0..128 {
-                out.0[i] ^= q.0[i] ^ r.0[i];
+            for ((out, q), r) in out.0.iter_mut().zip(&q.0).zip(&r.0) {
+                *out ^= q ^ r;
             }
         }
     }
@@ -238,6 +267,10 @@ pub(crate) fn argon2_compress(x: &Argon2Block, y: &Argon2Block, out: Argon2Out<'
 // RFC 9106's P, over the sixteen words of `block` that `at` maps 0 through
 // 15 to.
 #[inline(always)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "argon2_compress passes an at that maps 0..16 below 128 = words.len()"
+)]
 fn permute(block: &mut Argon2Block, at: impl Fn(usize) -> usize) {
     let words = &mut block.0;
     let mut v = [0u64; 16];
@@ -260,6 +293,10 @@ fn permute(block: &mut Argon2Block, at: impl Fn(usize) -> usize) {
 // RFC 9106's GB: BLAKE2b's G with each addition `a + b` replaced by
 // `a + b + 2 * lo(a) * lo(b)`, and no message words.
 #[inline(always)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "permute passes a, b, c, and d below 16 = v.len()"
+)]
 fn gb(v: &mut [u64; 16], a: usize, b: usize, c: usize, d: usize) {
     v[a] = fbla(v[a], v[b]);
     v[d] = (v[d] ^ v[a]).rotate_right(32);

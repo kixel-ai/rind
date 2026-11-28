@@ -32,7 +32,10 @@
 
 // Loops index rather than iterate or zip, which Aeneas cannot translate, so
 // `proofs/` can prove them.
-#![allow(clippy::needless_range_loop)]
+#![allow(
+    clippy::needless_range_loop,
+    reason = "Aeneas cannot translate iterators or zips, and proofs/ proves these loops"
+)]
 
 use super::super::bignum::{MAX_WORDS, nonzero, select, word};
 use super::{Limb, Wide, join, limbs};
@@ -80,6 +83,11 @@ const SCRATCH: usize = 4 * MAX_LIMBS + 64;
 /// s2n-bignum's scratch space, which this does not need. Its time also
 /// depends on, and so reveals, m's width in limbs, as aws-lc's reveals its
 /// width in bits: an RSA key's encoding gives its primes' widths.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "m is odd, above one, and at most MAX_WORDS words, so 1 <= n <= MAX_LIMBS, top < n, 2 * n fits square, and Limb::BITS * n <= 8192"
+)]
 pub(crate) fn bignum_montifier(z: &mut [u64], m: &[u64], _t: &mut [u64]) {
     let mut m_limbs = [0; MAX_LIMBS];
     let m = limbs(m, &mut m_limbs);
@@ -123,6 +131,11 @@ pub(crate) fn bignum_montifier(z: &mut [u64], m: &[u64], _t: &mut [u64]) {
 /// is the lowest (p+k) digits of x, assuming x' <= 2^{64p} * m. That is,
 /// p-fold Montgomery reduction w.r.t. a k-digit modulus m giving a k-digit
 /// answer.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "PosInt passes p as m's length, at most MAX_WORDS words, so p + m.len() <= 2 * MAX_LIMBS; PER_WORD is 1 or 2; m is odd, so not empty"
+)]
 pub(crate) fn bignum_montredc(z: &mut [u64], x: &[u64], m: &[u64], p: u64) {
     let mut m_limbs = [0; MAX_LIMBS];
     let m = limbs(m, &mut m_limbs);
@@ -141,6 +154,11 @@ pub(crate) fn bignum_montredc(z: &mut [u64], x: &[u64], m: &[u64], p: u64) {
 /// Inputs x[m], y[n]; output z[k]
 ///
 /// Truncates the result in general unless k >= m + n
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "x and y are at most MAX_WORDS words each, so i + n < x.len() + y.len() <= 2 * MAX_LIMBS = product.len()"
+)]
 pub(crate) fn bignum_mul(z: &mut [u64], x: &[u64], y: &[u64]) {
     let (mut x_limbs, mut y_limbs) = ([0; MAX_LIMBS], [0; MAX_LIMBS]);
     let (x, y) = (limbs(x, &mut x_limbs), limbs(y, &mut y_limbs));
@@ -163,6 +181,11 @@ pub(crate) fn bignum_mul(z: &mut [u64], x: &[u64], y: &[u64]) {
     rind_backend = "portable",
     all(test, any(rind_backend = "x86_64", rind_backend = "aarch64"))
 ))]
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "m is at most MAX_WORDS words, so n <= MAX_LIMBS and n + 2 and 2 * n fit t"
+)]
 pub(crate) fn mont_mul(z: &mut [u64], x: &[u64], y: &[u64], m: &[u64], n0: u64) {
     let k = m.len();
     assert!(k >= 1 && z.len() == k && x.len() == k && y.len() == k);
@@ -200,6 +223,11 @@ pub(crate) fn mont_mul(z: &mut [u64], x: &[u64], y: &[u64], m: &[u64], n0: u64) 
     rind_backend = "portable",
     all(test, any(rind_backend = "x86_64", rind_backend = "aarch64"))
 ))]
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "m is at most MAX_WORDS words, so n <= MAX_LIMBS and 2 * n fits t"
+)]
 pub(crate) fn mont_sqr(z: &mut [u64], x: &[u64], m: &[u64], n0: u64) {
     let k = m.len();
     assert!(k >= 1 && z.len() == k && x.len() == k);
@@ -222,6 +250,11 @@ pub(crate) fn mont_sqr(z: &mut [u64], x: &[u64], m: &[u64], n0: u64) {
     rind_backend = "portable",
     all(test, any(rind_backend = "x86_64", rind_backend = "aarch64"))
 ))]
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "t is n + 2 limbs and x is n, for n = m.len() >= 1, so i < n, and n - 1 and n + 1 index t"
+)]
 fn mont_mul_limbs(t: &mut [Limb], x: &[Limb], y: &[Limb], m: &[Limb], n0: Limb) {
     let n = m.len();
     for i in 0..n {
@@ -247,6 +280,11 @@ fn mont_mul_limbs(t: &mut [Limb], x: &[Limb], y: &[Limb], m: &[Limb], n0: Limb) 
     all(test, any(rind_backend = "x86_64", rind_backend = "aarch64"))
 ))]
 #[inline(always)]
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "t is at least m.len() >= 1 limbs, so 1 <= j < m.len() indexes both, and j - 1 indexes t"
+)]
 fn add_shift(t: &mut [Limb], m: &[Limb], u: Limb) -> Wide {
     let s = mul_add_limb(u, m[0], t[0], 0);
     // Zero by the choice of `u`, and written over below.
@@ -285,6 +323,11 @@ fn mont_sqr_limbs(t: &mut [Limb], x: &[Limb], m: &[Limb], n0: Limb) {
     rind_backend = "portable",
     all(test, any(rind_backend = "x86_64", rind_backend = "aarch64"))
 ))]
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "z holds 2n limbs and y n, for n <= MAX_LIMBS; in the pair loop i + 1 < n, so i + n + 1 < 2n"
+)]
 fn mul_limbs(z: &mut [Limb], x: &[Limb], y: &[Limb], scratch: &mut [Limb]) {
     let n = x.len();
     let z = &mut z[..2 * n];
@@ -320,6 +363,11 @@ fn mul_limbs(z: &mut [Limb], x: &[Limb], y: &[Limb], scratch: &mut [Limb]) {
 /// once, doubled, plus the square of each limb: n(n + 1) / 2 products where
 /// a multiplication takes n^2. From there it splits as `mul_limbs` does,
 /// into `x0^2`, `x1^2`, and `(x0 - x1)^2`, which is always subtracted.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "z holds 2n limbs, for n <= MAX_LIMBS; in the pair loop i + 2 <= n, so 2 * i + 2 <= i + n and i + n + 1 < 2n; in the squares loop 2 * i + 1 < 2n"
+)]
 fn sqr_limbs(z: &mut [Limb], x: &[Limb], scratch: &mut [Limb]) {
     let n = x.len();
     let z = &mut z[..2 * n];
@@ -374,6 +422,7 @@ fn sqr_limbs(z: &mut [Limb], x: &[Limb], scratch: &mut [Limb]) {
 
 /// `z := |x - y|` over `z`'s length, which `x` and `y` fit, returning one
 /// where `x < y` and zero otherwise.
+#[expect(clippy::indexing_slicing, reason = "i < z.len() in both loops")]
 fn abs_diff(z: &mut [Limb], x: &[Limb], y: &[Limb]) -> Limb {
     let mut borrow = 0;
     for i in 0..z.len() {
@@ -404,6 +453,11 @@ fn abs_diff(z: &mut [Limb], x: &[Limb], y: &[Limb]) -> Limb {
 /// The sum is `x0 y1 + x1 y0`, below `2^(2bh + 1)`: `2h` limbs and a top
 /// limb of zero or one. `d` is subtracted as its complement plus one, which
 /// adds `2^2bh` that the top limb takes back.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "d is 2h limbs and z at least 2h, so h + i < z.len() for i < z.len() - h, and d[i] is read only for i < d.len()"
+)]
 fn add_middle(z: &mut [Limb], d: &mut [Limb], h: usize, negative: Limb) {
     let flip = Limb::wrapping_sub(0, negative);
     let mut carry = Wide::from(negative);
@@ -442,6 +496,11 @@ fn add_middle(z: &mut [Limb], d: &mut [Limb], h: usize, negative: Limb) {
 /// next, as it lands where the next pass's sum ends. The result is below
 /// 2m, as the multiples are below 2^bp * m too, so one subtraction reduces
 /// it.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "t is p + k limbs: i + 1 < p in the paired loop, so i + k + 1 < t.len(), whose k > 1 gives m[1]; i < p in the single-step loop"
+)]
 fn redc(t: &mut [Limb], m: &[Limb], n0: Limb) {
     let k = m.len();
     let p = t.len() - k;
@@ -489,6 +548,11 @@ fn redc(t: &mut [Limb], m: &[Limb], n0: Limb) {
 /// overlaps them with the chains that add them: four limbs at 64 bits and
 /// eight at 32, which measured fastest across x86_64 and aarch64, as a
 /// longer block of the wider products costs registers x86_64 lacks.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "y holds at least x.len() limbs, so xs and ys, and x_rest and y_rest, have equal lengths; k < BLOCK, and k - 1 is read only for k > 0"
+)]
 fn mul_add2(x: &mut [Limb], y: &[Limb], u: Limb, v: Limb, c: Wide) -> Wide {
     let (mut c0, mut c1, mut prev) = (c, 0, 0);
     let y = &y[..x.len()];
@@ -525,6 +589,10 @@ fn mul_add2(x: &mut [Limb], y: &[Limb], u: Limb, v: Limb, c: Wide) -> Wide {
 }
 
 /// `x += y * u`, returning the carry out of the top limb.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "y holds at least x.len() limbs, and i < x.len()"
+)]
 fn mul_add(x: &mut [Limb], y: &[Limb], u: Limb) -> Wide {
     let y = &y[..x.len()];
     let mut carry = 0;
@@ -558,6 +626,10 @@ fn mod_double(r: &mut [Limb], m: &[Limb]) {
 }
 
 /// `-m^-1` mod a limb, for an odd `m`.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "Limb::BITS is 32 or 64, so its log2 is 5 or 6, above 2"
+)]
 fn neg_inverse(m: Limb) -> Limb {
     // Correct to 5 bits, then Newton's iteration doubles that each time.
     let mut inv = m.wrapping_mul(3) ^ 2;
@@ -568,6 +640,10 @@ fn neg_inverse(m: Limb) -> Limb {
 }
 
 /// `bignum_cmp_lt` for limbs of one length.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "y holds at least x.len() limbs, and i < x.len()"
+)]
 fn cmp_lt_limbs(x: &[Limb], y: &[Limb]) -> Limb {
     let y = &y[..x.len()];
     let mut borrow = 0;
@@ -580,6 +656,10 @@ fn cmp_lt_limbs(x: &[Limb], y: &[Limb]) -> Limb {
 }
 
 /// `x := x - y` where `keep` is all ones.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "y holds at least x.len() limbs, and i < x.len()"
+)]
 fn sub_limbs_masked(x: &mut [Limb], y: &[Limb], keep: Limb) {
     let y = &y[..x.len()];
     let mut borrow = 0;

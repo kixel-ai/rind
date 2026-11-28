@@ -173,12 +173,20 @@ macro_rules! integer_word_ops {
 
         /// Shifts left by `N` logical bytes.
         #[inline(always)]
+        #[expect(
+            clippy::arithmetic_side_effects,
+            reason = "N is 4, 8, or 12, so N * BATCH_SIZE <= 48 is below Word::BITS"
+        )]
         pub(super) fn shift_left<const N: i32>(a: Word) -> Word {
             a << (N as usize * BATCH_SIZE)
         }
 
         /// Shifts right by `N` logical bytes.
         #[inline(always)]
+        #[expect(
+            clippy::arithmetic_side_effects,
+            reason = "N is 4, 8, or 12, so N * BATCH_SIZE <= 48 is below Word::BITS"
+        )]
         pub(super) fn shift_right<const N: i32>(a: Word) -> Word {
             a >> (N as usize * BATCH_SIZE)
         }
@@ -187,6 +195,10 @@ macro_rules! integer_word_ops {
         /// `mask` repeated to the word's width. `mask` and `mask << SHIFT`
         /// must not overlap.
         #[inline(always)]
+        #[expect(
+            clippy::arithmetic_side_effects,
+            reason = "Word::MAX / u32::MAX is 1 or 2^32 + 1, so mask times it is at most 2^64 - 1 and fits Word"
+        )]
         pub(super) fn swap_bits<const SHIFT: i32>(a: Word, b: Word, mask: u32) -> (Word, Word) {
             let mask = Word::from(mask) * (Word::MAX / Word::from(u32::MAX));
             let swap = ((a >> SHIFT) ^ b) & mask;
@@ -195,6 +207,10 @@ macro_rules! integer_word_ops {
 
         /// The `i`th group of `BATCH_SIZE` bits of `rcon`.
         #[inline(always)]
+        #[expect(
+            clippy::arithmetic_side_effects,
+            reason = "i < BLOCK_WORDS, so i * BATCH_SIZE < 8, and BATCH_SIZE is 2 or 4"
+        )]
         pub(super) fn rcon_slice(rcon: u8, i: usize) -> Word {
             Word::from((rcon >> (i * BATCH_SIZE)) & ((1 << BATCH_SIZE) - 1))
         }
@@ -256,8 +272,14 @@ mod word {
     #[inline(always)]
     pub(super) fn compact_block(input: &[u8; 16]) -> [Word; 2] {
         let (lo, hi) = input.split_at(8);
-        let a0 = compact_word(Word::from_le_bytes(lo.try_into().unwrap()));
-        let a1 = compact_word(Word::from_le_bytes(hi.try_into().unwrap()));
+        let a0 = compact_word(Word::from_le_bytes(
+            lo.try_into()
+                .expect("a 16-byte block splits into two 8-byte halves"),
+        ));
+        let a1 = compact_word(Word::from_le_bytes(
+            hi.try_into()
+                .expect("a 16-byte block splits into two 8-byte halves"),
+        ));
         [
             (a0 & 0x00000000ffffffff) | (a1 << 32),
             (a1 & 0xffffffff00000000) | (a0 >> 32),
@@ -317,6 +339,7 @@ mod word {
 
     /// Byte `k` of each of `a`, as a word.
     #[inline(always)]
+    #[expect(clippy::arithmetic_side_effects, reason = "k < 4, so 8 * k < 32")]
     fn byte_column(a: &[Word; 4], k: u32) -> Word {
         let [a0, a1, a2, a3] = *a;
         ((a0 >> (8 * k)) & 0xff)
@@ -417,8 +440,15 @@ impl Batch {
     /// apart, which puts the bits along the diagonals of each `BATCH_SIZE`
     /// square where the transpose expects them.
     #[inline(always)]
-    // Loops by index: Aeneas translates no loop that writes through an iterator's references.
-    #[allow(clippy::needless_range_loop)]
+    #[allow(
+        clippy::needless_range_loop,
+        reason = "Aeneas translates no loop that writes through an iterator's references"
+    )]
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "i < BATCH_SIZE and k < BLOCK_WORDS, so i + k * BATCH_SIZE < BATCH_SIZE * BLOCK_WORDS = 8 = w.len()"
+    )]
     fn set(&mut self, block: &Compact, i: usize) {
         for k in 0..BLOCK_WORDS {
             self.w[i + k * BATCH_SIZE] = block[k];
@@ -427,8 +457,15 @@ impl Batch {
 
     /// Block `i` of a compact batch.
     #[inline(always)]
-    // Loops by index: Aeneas translates no loop that writes through an iterator's references.
-    #[allow(clippy::needless_range_loop)]
+    #[allow(
+        clippy::needless_range_loop,
+        reason = "Aeneas translates no loop that writes through an iterator's references"
+    )]
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "i < BATCH_SIZE and k < BLOCK_WORDS, so i + k * BATCH_SIZE < BATCH_SIZE * BLOCK_WORDS = 8 = w.len()"
+    )]
     fn get(&self, i: usize) -> Compact {
         let mut block = [ZERO; BLOCK_WORDS];
         for k in 0..BLOCK_WORDS {
@@ -471,8 +508,11 @@ fn transpose(batch: &mut Batch) {
 
 /// Bitslices up to `BATCH_SIZE` blocks, leaving the rest zero.
 #[inline(always)]
-// Loops by index: Aeneas translates no loop that writes through an iterator's references.
-#[allow(clippy::needless_range_loop)]
+#[allow(
+    clippy::needless_range_loop,
+    reason = "Aeneas translates no loop that writes through an iterator's references"
+)]
+#[expect(clippy::indexing_slicing, reason = "i < input.len()")]
 fn to_batch(input: &[[u8; 16]]) -> Batch {
     assert!(input.len() <= BATCH_SIZE);
     let mut out = EMPTY;
@@ -485,8 +525,11 @@ fn to_batch(input: &[[u8; 16]]) -> Batch {
 
 /// Writes the first `out.len()` blocks of `batch`.
 #[inline(always)]
-// Loops by index: Aeneas translates no loop that writes through an iterator's references.
-#[allow(clippy::needless_range_loop)]
+#[allow(
+    clippy::needless_range_loop,
+    reason = "Aeneas translates no loop that writes through an iterator's references"
+)]
+#[expect(clippy::indexing_slicing, reason = "i < out.len()")]
 fn from_batch(out: &mut [[u8; 16]], batch: &Batch) {
     assert!(out.len() <= BATCH_SIZE);
     let mut copy = *batch;
@@ -838,6 +881,11 @@ fn propagate(v: Word) -> Word {
     )
 }
 
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "i in 1..=10, so i - 1 < 10 = RCON.len() and i < 15 = rd_key.len(); j < BLOCK_WORDS"
+)]
 fn setup_key_128(rd_key: &mut [Compact; 15], input: &[u8; 16]) {
     let mut block = compact_block(input);
     rd_key[0] = block;
@@ -854,6 +902,12 @@ fn setup_key_128(rd_key: &mut [Compact; 15], input: &[u8; 16]) {
     }
 }
 
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    clippy::unwrap_used,
+    reason = "input is 24 bytes, so split_at(16) leaves 16 and 8; i < 4, so 2 * i + 1 < 10 = RCON.len() and 3 * i + 3 < 15 = rd_key.len(); j < BLOCK_WORDS"
+)]
 fn setup_key_192(rd_key: &mut [Compact; 15], input: &[u8; 24]) {
     // Each key schedule iteration produces six words, but each block holds
     // four, so this keeps a sliding window of two blocks, filled to 1.5
@@ -927,6 +981,12 @@ fn setup_key_192(rd_key: &mut [Compact; 15], input: &[u8; 24]) {
     }
 }
 
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    clippy::unwrap_used,
+    reason = "input is 32 bytes, so split_at(16) leaves two 16-byte halves; half in 1..8, so half - 1 < 10 = RCON.len() and i = 2 * half <= 14, with i + 1 <= 13 as i = 14 breaks first; j < BLOCK_WORDS"
+)]
 fn setup_key_256(rd_key: &mut [Compact; 15], input: &[u8; 32]) {
     // Each key schedule iteration produces two round keys.
     let (lo, hi) = input.split_at(16);
@@ -968,6 +1028,10 @@ pub(crate) struct NohwKey {
 
 impl NohwKey {
     /// Expands a 16-, 24-, or 32-byte key.
+    #[expect(
+        clippy::unwrap_used,
+        reason = "each arm matched key.len() to its array's length"
+    )]
     pub(crate) fn new(key: &[u8]) -> Self {
         let mut rd_key = [[ZERO; BLOCK_WORDS]; 15];
         let rounds = match key.len() {
@@ -990,14 +1054,25 @@ impl NohwKey {
 
     /// The key's length in bytes, from its 10, 12, or 14 rounds.
     #[cfg(rind_backend = "x86_64")]
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "rounds is 10, 12, or 14, so rounds * 4 - 24 is 16, 24, or 32"
+    )]
     pub(crate) fn key_len(&self) -> usize {
         self.rounds * 4 - 24
     }
 
     /// The bitsliced round keys, aws-lc's `AES_NOHW_SCHEDULE`: `BATCH_SIZE`
     /// copies of each.
-    // Loops by index: Aeneas translates no loop that writes through an iterator's references.
-    #[allow(clippy::needless_range_loop)]
+    #[allow(
+        clippy::needless_range_loop,
+        reason = "Aeneas translates no loop that writes through an iterator's references"
+    )]
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "rounds <= 14, so r < 15 = keys.len() = rd_key.len()"
+    )]
     pub(crate) fn schedule(&self) -> Schedule {
         let mut keys = [EMPTY; 15];
         for r in 0..self.rounds + 1 {
@@ -1077,11 +1152,19 @@ impl crate::low::Zeroable for Schedule {}
 impl Schedule {
     /// The key's length in bytes, from its 10, 12, or 14 rounds.
     #[cfg(any(not(rind_backend = "x86_64"), test))]
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "rounds is 10, 12, or 14, so rounds * 4 - 24 is 16, 24, or 32"
+    )]
     pub(crate) fn key_len(&self) -> usize {
         self.rounds * 4 - 24
     }
 
     #[inline(always)]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "round < rounds <= 14 < 15 = keys.len()"
+    )]
     fn encrypt_batch(&self, batch: &mut Batch) {
         add_round_key(batch, &self.keys[0]);
         for round in 1..self.rounds {
@@ -1096,6 +1179,11 @@ impl Schedule {
     }
 
     #[inline(always)]
+    #[expect(
+        clippy::indexing_slicing,
+        clippy::unwrap_used,
+        reason = "rounds <= 14 < 15 = keys.len(), so the rounds + 1 >= 11 keys have a first and a last"
+    )]
     fn decrypt_batch(&self, batch: &mut Batch) {
         let keys = &self.keys[..=self.rounds];
         let (first, rest) = keys.split_first().unwrap();
@@ -1135,8 +1223,14 @@ impl Schedule {
     ///
     /// The counter blocks are `ivec`, then `ivec` with its last four bytes,
     /// a big-endian counter, incremented with 32-bit wrapping.
-    // Loops by index: Aeneas translates no loop that writes through an iterator's references.
-    #[allow(clippy::needless_range_loop)]
+    #[allow(
+        clippy::needless_range_loop,
+        reason = "Aeneas translates no loop that writes through an iterator's references"
+    )]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "n < chunks.len(), and i < 16 * BATCH_SIZE in a whole chunk and i < tail.len() < 16 * BATCH_SIZE in the tail, so i / 16 < BATCH_SIZE = stream.len()"
+    )]
     pub(crate) fn ctr32(&self, ivec: &[u8; 16], inout: &mut [u8]) {
         let [.., c0, c1, c2, c3] = *ivec;
         let mut ctr = u32::from_be_bytes([c0, c1, c2, c3]);
@@ -1162,8 +1256,14 @@ impl Schedule {
     /// The keystream of the `todo` counter blocks from `ivec` with `ctr` as
     /// its counter, at most `BATCH_SIZE`; the blocks past them are zero.
     #[inline(always)]
-    // Loops by index: Aeneas translates no loop that writes through an iterator's references.
-    #[allow(clippy::needless_range_loop)]
+    #[allow(
+        clippy::needless_range_loop,
+        reason = "Aeneas translates no loop that writes through an iterator's references"
+    )]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "i < BATCH_SIZE = ivs.len(), and ctr32 passes todo <= BATCH_SIZE"
+    )]
     fn keystream(&self, ivec: &[u8; 16], ctr: u32, todo: usize) -> [[u8; 16]; BATCH_SIZE] {
         let mut ivs = [*ivec; BATCH_SIZE];
         for i in 0..BATCH_SIZE {
@@ -1184,6 +1284,10 @@ impl Schedule {
     /// Encrypts whole blocks in place in CBC mode, the first chained from
     /// `iv`. CBC encryption is serial, so each block takes a batch of its
     /// own.
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "each block is one block, from slice::from_mut"
+    )]
     pub(crate) fn cbc_encrypt(&self, iv: &[u8; 16], blocks: &mut [[u8; 16]]) {
         let mut prev = *iv;
         for block in blocks {
@@ -1200,6 +1304,10 @@ impl Schedule {
 
     /// Decrypts whole blocks in place in CBC mode, the first chained from
     /// `iv`.
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "chunks_mut(BATCH_SIZE) gives chunk.len() <= BATCH_SIZE = copy.len()"
+    )]
     pub(crate) fn cbc_decrypt(&self, iv: &[u8; 16], blocks: &mut [[u8; 16]]) {
         let mut prev = *iv;
         for chunk in blocks.chunks_mut(BATCH_SIZE) {

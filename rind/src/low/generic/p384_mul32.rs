@@ -56,6 +56,11 @@ fn mul_wide(x: &[u32; 12], y: &[u32; 12]) -> [u32; 24] {
 /// Adds `x * yi` to `t` at word `I`, where words `I + 12` and up are zero.
 ///
 /// Each row is its own instance, so LLVM unrolls all twelve.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "I < 12 and j < 12, so I + j < I + 12 < 24 = t.len()"
+)]
 fn mul_row<const I: usize>(t: &mut [u32; 24], x: &[u32; 12], yi: u32) {
     let mut carry = 0;
     for (j, x) in x.iter().enumerate() {
@@ -66,6 +71,11 @@ fn mul_row<const I: usize>(t: &mut [u32; 24], x: &[u32; 12], yi: u32) {
 
 /// The 768-bit `x^2`: each product of two different words once, doubled,
 /// plus the square of each word.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "1 <= k < 24 = t.len() and i < 12, so 2 * i + 1 < 24"
+)]
 fn sqr_wide(x: &[u32; 12]) -> [u32; 24] {
     let mut t = [0; 24];
     sqr_row::<0>(&mut t, x);
@@ -97,6 +107,11 @@ fn sqr_wide(x: &[u32; 12]) -> [u32; 24] {
 
 /// Adds `x[I + 1..] * x[I]` to `t` at word `2I + 1`, where words `I + 12`
 /// and up are zero.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "I < j < 12 = x.len(), so I + j < I + 12 < 24 = t.len()"
+)]
 fn sqr_row<const I: usize>(t: &mut [u32; 24], x: &[u32; 12]) {
     let mut carry = 0;
     for j in I + 1..12 {
@@ -115,6 +130,11 @@ fn sqr_row<const I: usize>(t: &mut [u32; 24], x: &[u32; 12]) {
 /// word of t, two words added and two subtracted, and a carry of -2 to 3
 /// from column k - 1, so it stays within [-2^33, 3 * 2^32] and carries -2
 /// to 3 itself.  The result is below 2p < 2^385.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "i < 12, so i + 12 < 24 = col.len()"
+)]
 fn reduce_p(t: &[u32; 24]) -> [u32; 12] {
     let mut col = t.map(i64::from);
     for i in 0..12 {
@@ -139,6 +159,11 @@ fn reduce_p(t: &[u32; 24]) -> [u32; 12] {
 /// step i adds the multiple of `n 2^(32i)` that zeroes word i.  The running
 /// value stays below 2^768 + 2^384 n, so the 24 words and a carry above
 /// them hold it, and the result is below 2n.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "i < 12 and j < 12, so i + j < i + 12 < 24 = t.len()"
+)]
 fn reduce_n(t: &[u32; 24]) -> [u32; 12] {
     let n = split(&N);
     let mut t = *t;
@@ -152,7 +177,12 @@ fn reduce_n(t: &[u32; 24]) -> [u32; 12] {
         (t[i + 12], top) = add(t[i + 12], carry, top);
     }
     let (_, hi) = t.split_at(12);
-    subtract_if_above(hi.try_into().unwrap(), top, &n)
+    subtract_if_above(
+        hi.try_into()
+            .expect("t has 24 words, so those from word 12 up are 12"),
+        top,
+        &n,
+    )
 }
 
 /// `a * b + c + d` as its low and high words, which cannot overflow: one
