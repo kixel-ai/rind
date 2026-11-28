@@ -45,6 +45,11 @@ impl AesCbcEncryptingKey {
     /// Fails with [`Error::WrongLength`], leaving it padded but unencrypted,
     /// if `in_out` is a buffer whose `extend` does not grow what `as_mut`
     /// returns to whole blocks, as aws-lc-rs's `encrypt` refuses it.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "len % 16 < 16, so pad is 1 to 16"
+    )]
     pub fn encrypt<InOut>(&self, iv: CbcIv, in_out: &mut InOut) -> Result<(), Error>
     where
         InOut: AsMut<[u8]> + for<'a> Extend<&'a u8>,
@@ -140,6 +145,12 @@ impl AesCbcDecryptingKey {
     /// Fails with [`Error::DecryptFailed`], leaving `in_out` unchanged, if it
     /// is empty or not a whole number of 16-byte blocks, and clearing it if
     /// its padding is malformed. The padding check runs in constant time.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        clippy::unwrap_used,
+        reason = "blocks was checked nonempty, i < 16 indexes the last block, and `bad` is zero only for pad 1 to 16, at most in_out.len()"
+    )]
     pub fn decrypt<'a>(&self, iv: &[u8; 16], in_out: &'a mut [u8]) -> Result<&'a mut [u8], Error> {
         let _entry = Entry::new_secret();
         let (blocks, rest) = in_out.as_chunks_mut();

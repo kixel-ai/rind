@@ -193,6 +193,12 @@ impl Point {
     }
 
     /// `(X, Y, Z, T)`.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        clippy::unwrap_used,
+        reason = "i < 4, so each slice is 4 of the 16 limbs"
+    )]
     pub(crate) fn coordinates(&self) -> [Fe; 4] {
         let c = |i: usize| Fe(self.0[4 * i..4 * i + 4].try_into().unwrap());
         [c(0), c(1), c(2), c(3)]
@@ -203,6 +209,10 @@ impl Point {
     /// set.
     ///
     /// Only public encodings are decoded: whether one decodes is public.
+    #[expect(
+        clippy::unwrap_used,
+        reason = "0..4 and 4..8 are 4-limb slices of the 8-limb point"
+    )]
     pub(crate) fn from_bytes(bytes: &[u8; 32]) -> Option<Self> {
         let mut xy = [0u64; 8];
         if !low::edwards25519_decode(&mut xy, bytes) {
@@ -242,6 +252,10 @@ impl Point {
     }
 
     /// `[scalar]B`, for the curve's base point `B`.
+    #[expect(
+        clippy::unwrap_used,
+        reason = "0..4 and 4..8 are 4-limb slices of the 8-limb point"
+    )]
     pub(crate) fn mul_base(scalar: &Scalar) -> Self {
         let mut affine = [0u64; 8];
         low::edwards25519_scalarmulbase(&mut affine, &scalar.0);
@@ -277,6 +291,10 @@ impl Point {
     }
 
     /// `(X, Y, Z)`.
+    #[expect(
+        clippy::unwrap_used,
+        reason = "the first 12 of the 16 limbs convert to [u64; 12]"
+    )]
     fn projective(&self) -> &[u64; 12] {
         self.0[..12].try_into().unwrap()
     }
@@ -289,6 +307,11 @@ impl Point {
     /// negated for a negative digit. It does the work of s2n-bignum's
     /// `edwards25519_scalarmuldouble` without the base point's half, and
     /// stays in extended coordinates, so ristretto255 never inverts `Z`.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "i is in 2..9, the table length, so i / 2 and i - 1 are earlier entries"
+    )]
     pub(crate) fn mul(&self, scalar: &Scalar) -> Self {
         let mut table = [Self::IDENTITY.0; 9];
         table[1] = self.0;
@@ -375,7 +398,10 @@ impl Scalar {
 
     /// `self * other mod L`.
     // Only tests multiply scalars alone until FROST does.
-    #[cfg_attr(not(test), allow(dead_code))]
+    #[cfg_attr(
+        not(test),
+        allow(dead_code, reason = "only the tests multiply two scalars")
+    )]
     pub(crate) fn mul(&self, other: &Self) -> Self {
         self.mul_add(other, &Self([0; 4]))
     }
@@ -434,6 +460,11 @@ impl Scalar {
     ///
     /// Each digit takes the low nibble's carry into the next, so the top
     /// digit, under `L < 2^253`, ends at most 2.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "i < 32 bytes gives digits 2 * i + 1 < 64, and the carry loop's i < 63 keeps i + 1 < 64"
+    )]
     fn signed_radix_16(&self) -> [i8; 64] {
         let bytes = self.to_bytes();
         let mut digits = [0i8; 64];

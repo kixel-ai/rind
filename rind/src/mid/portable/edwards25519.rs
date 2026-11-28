@@ -43,6 +43,10 @@ impl Point {
         self.0.compress().0
     }
 
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "dalek's point operators are group operations, which cannot overflow or panic"
+    )]
     pub(crate) fn neg(&self) -> Self {
         Self(-self.0)
     }
@@ -58,11 +62,19 @@ impl Point {
         Self(EdwardsPoint::mul_base(&scalar.0))
     }
 
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "dalek's point operators are group operations, which cannot overflow or panic"
+    )]
     pub(crate) fn add(&self, other: &Self) -> Self {
         Self(self.0 + other.0)
     }
 
     /// `[scalar]self`, in constant time.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "dalek's point operators are group operations, which cannot overflow or panic"
+    )]
     pub(crate) fn mul(&self, scalar: &Scalar) -> Self {
         Self(self.0 * scalar.0)
     }
@@ -86,6 +98,11 @@ const P_MINUS_ONE: [u8; 32] = {
 /// Whether the little-endian `y` is below `p = 2^255 - 19`: whether, at its
 /// highest byte that differs from `p - 1`'s, it is the smaller, or no byte
 /// differs.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "i starts at y.len() and is decremented only while above zero, so it indexes y and P_MINUS_ONE, both 32 bytes"
+)]
 fn is_below_p(y: &[u8; 32]) -> bool {
     let mut i = y.len();
     while i > 0 {
@@ -123,13 +140,26 @@ impl Scalar {
     }
 
     /// `self * other mod L`.
-    // Only tests multiply scalars alone until FROST does.
-    #[cfg_attr(not(test), allow(dead_code))]
+    #[cfg_attr(
+        not(test),
+        allow(
+            dead_code,
+            reason = "only tests multiply scalars alone until FROST does"
+        )
+    )]
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "dalek's scalar operators are arithmetic mod L, which cannot overflow or panic"
+    )]
     pub(crate) fn mul(&self, other: &Self) -> Self {
         Self(self.0 * other.0)
     }
 
     /// `self * other + addend mod L`.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "dalek's scalar operators are arithmetic mod L, which cannot overflow or panic"
+    )]
     pub(crate) fn mul_add(&self, other: &Self, addend: &Self) -> Self {
         Self(self.0 * other.0 + addend.0)
     }
@@ -143,6 +173,10 @@ impl Scalar {
     }
 
     /// `-self mod L`.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "dalek's scalar operators are arithmetic mod L, which cannot overflow or panic"
+    )]
     pub(crate) fn neg(&self) -> Self {
         Self(-self.0)
     }

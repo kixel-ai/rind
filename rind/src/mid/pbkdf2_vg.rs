@@ -47,6 +47,10 @@ impl Algorithm {
 
     // Writes HMAC's key for `secret` to the start of `key`, returning its
     // length: the secret, or its hash where it is longer than a block.
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "secret.len() <= block <= 128 in the first case, and a digest is at most 64 bytes, within the 128-byte key"
+    )]
     fn hmac_key(self, secret: &[u8], key: &mut [u8; 128]) -> usize {
         let block = match self {
             Self::Sha1 => Sha1Context::BLOCK_SZ,
@@ -102,6 +106,10 @@ impl Key {
     }
 
     /// `pbkdf2::Secret::derive`.
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "len is the HMAC key's length, at most 128 bytes, the key's"
+    )]
     pub(crate) fn derive(
         &self,
         iterations: NonZeroU32,
@@ -119,6 +127,10 @@ impl Key {
     /// `pbkdf2::Secret::verify`, over the whole derived key, since VG's
     /// routine derives no block alone. That key is heap scratch derived from
     /// the secret, so it is wiped.
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "len is the HMAC key's length, at most 128 bytes, the key's"
+    )]
     pub(crate) fn verify(
         &self,
         iterations: NonZeroU32,

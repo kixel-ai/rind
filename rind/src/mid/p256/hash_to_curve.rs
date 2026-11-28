@@ -44,8 +44,10 @@ pub(crate) fn hash_to_scalar(msg: &[&[u8]], dst: &[u8]) -> Result<Scalar, Error>
     hash_to_curve::expand_message_xmd::<Sha256Context>(msg, dst, &mut uniform)?;
     // `hi * 2^256 + lo`, where `hi * R^2 / R` is `hi * 2^256` mod n.
     let (hi, lo) = uniform.split_at(16);
-    let lo = Scalar(util::big_endian_slice_to_u64x4(lo).unwrap()).reduce_mod_n();
-    let hi = Scalar(util::big_endian_slice_any_size_to_u64x4(hi).unwrap());
+    let lo = Scalar(util::big_endian_slice_to_u64x4(lo).expect("lo is the last 32 of 48 bytes"))
+        .reduce_mod_n();
+    let hi =
+        Scalar(util::big_endian_slice_any_size_to_u64x4(hi).expect("hi is 16 bytes, under 32"));
     Ok(lo.add(&hi.mont_mul(&Scalar(CURVE_ORDER_MM))))
 }
 
@@ -85,8 +87,10 @@ impl Curve for FieldElement {
     /// `as_mont` reduces any four words.
     fn from_wide(bytes: &[u8]) -> Self {
         let (hi, lo) = bytes.split_at(16);
-        let lo = Self(util::big_endian_slice_to_u64x4(lo).unwrap()).as_mont();
-        let hi = Self(util::big_endian_slice_any_size_to_u64x4(hi).unwrap());
+        let lo = Self(util::big_endian_slice_to_u64x4(lo).expect("lo is the last 32 of 48 bytes"))
+            .as_mont();
+        let hi =
+            Self(util::big_endian_slice_any_size_to_u64x4(hi).expect("hi is 16 bytes, under 32"));
         lo.add(&hi.as_mont().as_mont())
     }
 

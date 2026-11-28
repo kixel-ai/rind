@@ -16,6 +16,11 @@ use crate::low::{self, PosInt, ct};
 use crate::mid::rng::RandomSource;
 use crate::mid::rsa_key_size::RsaKeySize;
 
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "prime_bits() is 1024 to 4096, so bit / 64 < len = prime_bits() / 64 <= MAX_PRIVATE_MODULUS_WORDS and len * 2 is within d"
+)]
 pub(super) fn generate_key(
     size: RsaKeySize,
     candidate_random: &mut dyn RandomSource,
@@ -93,6 +98,11 @@ fn random_prime(
     }
 }
 
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "prime_bits() is 1024 to 4096, so bytes is 128 to 512, within MAX_PRIVATE_MODULUS_BYTES"
+)]
 fn random_prime_one(
     size: RsaKeySize,
     candidate_random: &mut dyn RandomSource,
@@ -124,7 +134,8 @@ fn is_prime(
     size: RsaKeySize,
     rng: &mut dyn RandomSource,
 ) -> Result<bool, Error> {
-    let small_primes = PosInt::from_bytes(PRODUCT_OF_SMALL_PRIMES).unwrap();
+    let small_primes = PosInt::from_bytes(PRODUCT_OF_SMALL_PRIMES)
+        .expect("the product of small primes is 1024 bits, within a MaxPosInt");
 
     if !public(candidate.is_coprime(&small_primes)) {
         return Ok(false);
@@ -168,6 +179,10 @@ struct MillerRabinParams<'a> {
 }
 
 impl<'a> MillerRabinParams<'a> {
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "w is a MaxPosInt, so len <= MAX_PRIVATE_MODULUS_WORDS"
+    )]
     fn new(w: &'a MaxPosInt) -> Result<Self, Error> {
         // 1. Let a be the largest integer such that 2 ^ a divides w - 1.
         let w1 = w.sub(&PosInt::word(1));
@@ -203,6 +218,11 @@ impl<'a> MillerRabinParams<'a> {
     /// Rather than draw `wlen` bits until they fall in range, which would
     /// reveal how far `w` is below a power of two, this draws 64 bits more
     /// and reduces them, so each base is within `2 ^ -64` of uniform.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "w is a MaxPosInt, so bytes <= MAX_PRIVATE_MODULUS_BYTES + 8, the buffer length"
+    )]
     fn random_base(&self, rng: &mut dyn RandomSource) -> Result<MaxPosInt, Error> {
         let bytes = self.w.as_words().len() * 8 + 8;
         let mut buffer = [0u8; MAX_PRIVATE_MODULUS_BYTES + 8];
@@ -217,6 +237,10 @@ impl<'a> MillerRabinParams<'a> {
     /// As aws-lc's `bn_miller_rabin_iteration`, this squares until `wlen`
     /// rather than `a`, which is secret, and exits early only for a
     /// composite.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "w is a MaxPosInt, so its word count times 64 is at most MAX_PRIVATE_MODULUS_BITS"
+    )]
     fn check_base(&self, b: &MaxPosInt) -> bool {
         // 4.3. z = b ^ m mod w.
         let mut z = b.to_montgomery(&self.w_montifier, self.w).mont_exp(

@@ -41,6 +41,10 @@ pub struct AesKek {
 impl AesKek {
     /// Expands `key` for `algorithm`, failing with [`Error::WrongLength`] if
     /// it is not that algorithm's key length.
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "key.len() equals the algorithm's key length, at most 32"
+    )]
     pub fn new(algorithm: &'static Algorithm, key: &[u8]) -> Result<Self, Error> {
         let _entry = Entry::new_secret();
         if key.len() != algorithm.key_len {
@@ -56,6 +60,10 @@ impl AesKek {
         })
     }
 
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "key_len is a key length `new` checked, at most 32"
+    )]
     fn key(&self) -> &[u8] {
         &self.key[..self.key_len]
     }
@@ -103,6 +111,10 @@ impl AesKek {
     /// Fails with [`Error::WrongLength`], leaving `wrapped` unchanged, if
     /// `key` is shorter than 16 bytes or not a multiple of 8, or `wrapped` is
     /// not 8 bytes longer.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "a slice is at most isize::MAX bytes, so key.len() + 8 fits in usize"
+    )]
     fn wrap(&self, key: &[u8], wrapped: &mut [u8]) -> Result<(), Error> {
         let _entry = Entry::new_secret();
         if key.len() < 16 || !key.len().is_multiple_of(8) || wrapped.len() != key.len() + 8 {
@@ -126,6 +138,11 @@ impl AesKek {
     /// this key, clearing `key`, or is shorter than 24 bytes or not a
     /// multiple of 8, and with [`Error::WrongLength`] if `key` is not 8 bytes
     /// shorter; a length failure leaves `key` unchanged.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::unwrap_used,
+        reason = "wrapped.len() >= 24 was checked, and split_at(8) leaves `a` 8 bytes"
+    )]
     fn unwrap(&self, wrapped: &[u8], key: &mut [u8]) -> Result<(), Error> {
         let _entry = Entry::new_secret();
         if wrapped.len() < 24 || !wrapped.len().is_multiple_of(8) {
@@ -158,6 +175,10 @@ impl AesKek {
     /// Fails with [`Error::WrongLength`], leaving `wrapped` unchanged, if
     /// `key` is empty or longer than `u32::MAX` bytes, or `wrapped` is not
     /// that length.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "a slice is at most isize::MAX bytes, so rounding its length up to 8 and adding 8 fits in usize"
+    )]
     fn wrap_padded(&self, key: &[u8], wrapped: &mut [u8]) -> Result<(), Error> {
         let _entry = Entry::new_secret();
         let Ok(len) = u32::try_from(key.len()) else {
@@ -199,6 +220,12 @@ impl AesKek {
     /// this key, clearing `key`, or is shorter than 16 bytes or not a
     /// multiple of 8, and with [`Error::WrongLength`] if `key` is not 8 bytes
     /// shorter; a length failure leaves `key` unchanged.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        clippy::unwrap_used,
+        reason = "wrapped.len() >= 16 and a multiple of 8 and key.len() = wrapped.len() - 8 were checked, so each fixed-size conversion fits, i < key.len(), and `bad` is zero only for claimed <= key.len()"
+    )]
     fn unwrap_padded<'a>(&self, wrapped: &[u8], key: &'a mut [u8]) -> Result<&'a mut [u8], Error> {
         let _entry = Entry::new_secret();
         if wrapped.len() < 16 || !wrapped.len().is_multiple_of(8) {
@@ -227,9 +254,10 @@ impl AesKek {
         // compiler splits `a & b` of two bools into a branch on each.
         let claimed = u64::from(u32::from_be_bytes(*aiv.last_chunk().unwrap()));
         let mut bad = black_box((key.len() as u64).wrapping_sub(claimed) >> 3);
-        // Indexed rather than iterating `enumerate().skip()`, which Aeneas
-        // cannot translate, so `proofs/` can prove it.
-        #[allow(clippy::needless_range_loop)]
+        #[allow(
+            clippy::needless_range_loop,
+            reason = "indexed rather than iterating `enumerate().skip()`, which Aeneas cannot translate, so `proofs/` can prove it"
+        )]
         for i in key.len() - 8..key.len() {
             // all ones if `i` is at or past the claimed length
             let past = ((i as u64).wrapping_sub(claimed) >> 63).wrapping_sub(1);
@@ -270,6 +298,10 @@ impl Zeroable for AesKek {}
 /// A stays in a register and each block is built afresh: copying it through
 /// one buffer the cipher returns into put store-to-load round trips on the
 /// serial chain, a few nanoseconds a block.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "r is under 2^61 blocks, so j * n < 6 * 2^61 fits in u64"
+)]
 fn wrap_blocks(aes: &AesKey, a: [u8; 8], r: &mut [[u8; 8]]) -> [u8; 8] {
     let n = r.len() as u64;
     let mut a = u64::from_ne_bytes(a);
@@ -285,7 +317,16 @@ fn wrap_blocks(aes: &AesKey, a: [u8; 8], r: &mut [[u8; 8]]) -> [u8; 8] {
 /// loop nested in another that writes through a reference nor one over
 /// `iter_mut`, so `proofs/` can prove it.
 #[inline(always)]
-#[allow(clippy::needless_range_loop)]
+#[allow(
+    clippy::needless_range_loop,
+    reason = "indexed, since Aeneas cannot translate a loop over `iter_mut`"
+)]
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    clippy::unwrap_used,
+    reason = "i < r.len(), t stays at most 6 * r.len() < 2^64, and a 16-byte block has 8-byte first and last chunks"
+)]
 fn wrap_pass(aes: &AesKey, mut a: u64, mut t: u64, r: &mut [[u8; 8]]) -> u64 {
     for i in 0..r.len() {
         t += 1;
@@ -298,6 +339,10 @@ fn wrap_pass(aes: &AesKey, mut a: u64, mut t: u64, r: &mut [[u8; 8]]) -> u64 {
 
 /// RFC 3394's unwrapping of `r` in place from the integrity value `a`,
 /// returning the initial value for the caller to check.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "j < 6 and r is under 2^61 blocks, so (6 - j) * n fits in u64"
+)]
 fn unwrap_blocks(aes: &AesDecKey, a: [u8; 8], r: &mut [[u8; 8]]) -> [u8; 8] {
     let n = r.len() as u64;
     let mut a = u64::from_ne_bytes(a);
@@ -310,6 +355,12 @@ fn unwrap_blocks(aes: &AesDecKey, a: [u8; 8], r: &mut [[u8; 8]]) -> [u8; 8] {
 /// One of unwrapping's six passes over `r`, from its last block, its steps
 /// counting down from `t`, as [`wrap_pass`] is shaped for Aeneas.
 #[inline(always)]
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    clippy::unwrap_used,
+    reason = "j < r.len(), so i = r.len() - 1 - j is a block index, t starts at (6 - j) * r.len() and falls by one per block, and a 16-byte block has 8-byte first and last chunks"
+)]
 fn unwrap_pass(aes: &AesDecKey, mut a: u64, mut t: u64, r: &mut [[u8; 8]]) -> u64 {
     for j in 0..r.len() {
         let i = r.len() - 1 - j;

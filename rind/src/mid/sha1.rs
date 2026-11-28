@@ -34,6 +34,11 @@ impl Sha1State {
     }
 
     /// The hash of the input so far followed by `message`, leaving this state as it was.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "i < 5 words gives (i + 1) * 4 <= 20, the output length"
+    )]
     pub(crate) fn finish_with(&self, message: &[u8]) -> [u8; Sha1Context::OUTPUT_SZ] {
         const BLOCK_SZ: usize = Sha1Context::BLOCK_SZ;
         let bits = self

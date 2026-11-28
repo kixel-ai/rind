@@ -195,6 +195,10 @@ impl VerifyingKey {
     }
 
     /// [`Self::verify`] on rind's own arithmetic, for the key's `point`.
+    #[expect(
+        clippy::unwrap_used,
+        reason = "sig is 64 bytes, so its split at 32 gives two 32-byte halves"
+    )]
     fn verify_rind(&self, point: &EdwardsPoint, sig: &[u8; 64], msg: &[u8]) -> bool {
         // Step: rfc8032 5.1.7.1 (A' := A is an invariant for `self`)
         let (r_sig, s) = sig.split_at(32);
@@ -321,6 +325,10 @@ impl EdwardsPoint {
 
     /// `(x, y, 1, x y)`, the point in extended coordinates.
     #[cfg(rind_backend = "x86_64")]
+    #[expect(
+        clippy::unwrap_used,
+        reason = "the 8-limb point splits into two 4-limb halves"
+    )]
     fn extended(&self) -> [u64; 16] {
         let mut t = [0u64; 4];
         low::bignum_mul_p25519(
@@ -338,6 +346,10 @@ impl EdwardsPoint {
     /// Compute `B := -A` for this curve point.
     ///
     /// In our affine representation, this is simply (x, y) := (-x, y).
+    #[expect(
+        clippy::unwrap_used,
+        reason = "the first 4 of the 8 limbs convert to [u64; 4]"
+    )]
     fn negate(&self) -> Self {
         let x = self.0[..4].try_into().unwrap();
         let mut x_neg = [0u64; 4];
@@ -397,6 +409,7 @@ struct UnreducedScalar([u64; 4]);
 impl UnreducedScalar {
     /// The secret scalar of a seed's SHA-512 digest: its first 32 bytes,
     /// clamped (RFC 8032 section 5.1.5, steps 2 and 3).
+    #[expect(clippy::unwrap_used, reason = "bytes 0..32 of 64 convert to [u8; 32]")]
     fn from_expanded(expanded: &[u8; 64]) -> Self {
         Self::clamp_from_le_bytes(expanded[0..32].try_into().unwrap())
     }

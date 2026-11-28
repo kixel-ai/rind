@@ -63,12 +63,18 @@ impl Blake2b {
         }
     }
 
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "used <= BLOCK_LEN, and take is at most BLOCK_LEN - used and data.len()"
+    )]
     pub(crate) fn update(&mut self, mut data: &[u8]) {
         // The last block is compressed differently, so a full buffer waits
         // until more data shows it is not the last.
         while !data.is_empty() {
             if self.used == BLOCK_LEN {
-                self.t += BLOCK_LEN as u128;
+                // RFC 7693 counts bytes mod 2^128.
+                self.t = self.t.wrapping_add(BLOCK_LEN as u128);
                 compress(&mut self.h, &self.buf, self.t, false);
                 self.used = 0;
             }
@@ -80,9 +86,13 @@ impl Blake2b {
     }
 
     /// Writes the hash to `out`, which must be the length given to `new`.
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "used <= BLOCK_LEN, the buffer length, and each chunk of out is at most 8 bytes, a word's"
+    )]
     pub(crate) fn finish(mut self, out: &mut [u8]) {
         assert_eq!(out.len(), self.out_len);
-        self.t += self.used as u128;
+        self.t = self.t.wrapping_add(self.used as u128);
         self.buf[self.used..].fill(0);
         compress(&mut self.h, &self.buf, self.t, true);
         for (out, h) in out.chunks_mut(8).zip(self.h) {
@@ -107,6 +117,10 @@ fn compress(h: &mut [u64; 8], block: &[u8; BLOCK_LEN], t: u128, last: bool) {
         v[14] = !v[14];
     }
 
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "every entry of SIGMA is below 16, the length of m"
+    )]
     for s in &SIGMA {
         g(&mut v, 0, 4, 8, 12, m[s[0]], m[s[1]]);
         g(&mut v, 1, 5, 9, 13, m[s[2]], m[s[3]]);
@@ -118,12 +132,16 @@ fn compress(h: &mut [u64; 8], block: &[u8; BLOCK_LEN], t: u128, last: bool) {
         g(&mut v, 3, 4, 9, 14, m[s[14]], m[s[15]]);
     }
 
-    for i in 0..8 {
-        h[i] ^= v[i] ^ v[i + 8];
+    for ((h, lo), hi) in h.iter_mut().zip(&v[..8]).zip(&v[8..]) {
+        *h ^= lo ^ hi;
     }
 }
 
 #[inline(always)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "callers pass a, b, c, and d below 16, the length of v"
+)]
 fn g(v: &mut [u64; 16], a: usize, b: usize, c: usize, d: usize, x: u64, y: u64) {
     v[a] = v[a].wrapping_add(v[b]).wrapping_add(x);
     v[d] = (v[d] ^ v[a]).rotate_right(32);
