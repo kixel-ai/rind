@@ -89,7 +89,7 @@ mod dit_toggle {
         use super::*;
 
         #[bench(setup = dit)]
-        fn rind(_: &Dit<()>) -> bool {
+        fn rind(_: &Dit<()>) -> Result<(), rind::Error> {
             rind::constant_time::verify(black_box(&[]), black_box(&[]))
         }
     }
@@ -132,7 +132,7 @@ mod dit_per_call {
             use super::*;
 
             #[bench]
-            fn rind() -> bool {
+            fn rind() -> Result<(), rind::Error> {
                 rind::constant_time::verify(black_box(&[]), black_box(&[]))
             }
         }
