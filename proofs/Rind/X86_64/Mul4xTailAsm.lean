@@ -1,4 +1,4 @@
-import Rind.X86_64.Mul4xAsm
+import Rind.X86_64.Mul4xRun
 
 /-! # bn_mul4x_mont's last blocks
 
@@ -195,20 +195,6 @@ theorem subTail_ok (s : S) (j : Nat) (ap bp np n0p tp rp x0 x1 x2 x3 : BitVec 64
       | decide
 
 /-! ## The copy -/
-
-section
-variable (s : VG.X86_64.State)
-theorem load128_of {a : Addr} (h : InRegions (s.rd ++ s.wr) a 16) : s.load128 a = some (s.mem.readW a 128) := by
-  simp [State.load128, h]
-theorem store128_of {a : Addr} {v : BitVec 128} (h : InRegions s.wr a 16) :
-    s.store128 a v = some (setMem s (s.mem.writeW a v)) := by
-  simp [State.store128, h, setMem]
-end
-
-/-- `dec`'s flags, folded. -/
-theorem exec_dec (d : Reg) (s : S) : Rind.X86_64.exec (.dec d) s =
-    some { s with vg := (s.vg.setFlags s.vg.cf (some (subOverflow (s.vg.gpr d) 1 (s.vg.gpr d - 1)))
-      (some (s.vg.gpr d - 1 == 0)) (some (s.vg.gpr d - 1).msb)).setReg d (s.vg.gpr d - 1) } := rfl
 
 theorem mul_ofNat_one (x : BitVec 64) : x * BitVec.ofNat 64 1 = x := BitVec.mul_one x
 

@@ -21,11 +21,14 @@ the code it releases.
 toolchain's directory under `~/.elan` and every checkout of a user shares, so
 a new worktree hard-links, or across filesystems copies, the Mathlib and
 Aeneas builds and the unchanged modules another checkout already fetched or
-built rather than unpacking or building its own. The cache outlives the
-worktrees: uninstalling the old toolchain after a bump with `elan toolchain
-uninstall` drops it, and `lake cache clean` in `proofs/` empties it at any
-time, since each checkout keeps its own links and its next build puts them
-back.
+built rather than unpacking or building its own, `spec-server`'s compiled
+objects and binary included. Lake finds that directory through elan, as in
+the `prove` dev shell: a toolchain's `lake` run without elan on `PATH` keeps
+a second cache in `~/.cache/lake` instead, unless `LAKE_CACHE_DIR` names the
+first. The cache outlives the worktrees: uninstalling the old toolchain
+after a bump with `elan toolchain uninstall` drops it, and `lake cache clean`
+in `proofs/` empties it at any time, since each checkout keeps its own links
+and its next build puts them back.
 
 ## TCB & Axiom Ledger
 
@@ -579,7 +582,8 @@ comparison checks.
   save; that its trace is a function of its pointers, width, and stack
   pointer (`ConstantTime`); and that some state meets `Pre`. The other
   `Mul4x*` files build it: `Mul4xModel` the words a pass computes,
-  `Mul4xAsm` and `Mul4xHeadAsm` the program's blocks, `Mul4xHead` the
+  `Mul4xRun` the tactics that run a block, which `Mulx4x*` and `Sqrx8x*`
+  share, `Mul4xAsm` and `Mul4xHeadAsm` the program's blocks, `Mul4xHead` the
   prologue and page walk, `Mul4xLoop` and `Mul4xOuter` the passes,
   `Mul4xSub`, `Mul4xTailAsm`, and `Mul4xFinal` the subtraction and the
   constant-time copy.
