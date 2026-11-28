@@ -222,7 +222,10 @@ impl Key {
 // Boxing the AES-GCM table would allocate for every key to save space only on
 // ChaCha20-Poly1305 keys; the 32-bit arm table is small, so the lint is allowed
 // rather than expected.
-#[allow(clippy::large_enum_variant)]
+#[allow(
+    clippy::large_enum_variant,
+    reason = "fires only where the AES-GCM table is large, and boxing it would allocate per key"
+)]
 #[repr(u8)]
 enum Inner {
     AesGcm(Sealer<AesGcm>),
@@ -353,6 +356,10 @@ impl Cipher for AesGcm {
 }
 
 impl Cipher for ChaCha20Poly1305 {
+    #[expect(
+        clippy::unwrap_used,
+        reason = "Key::new checked the key is CHACHA20_POLY1305's 32 bytes"
+    )]
     fn new(key: &[u8]) -> Self {
         Self::new(key.try_into().unwrap())
     }

@@ -144,6 +144,11 @@ impl Rind {
         self.check_len(out.len())?;
         let salted = self.salted(salt);
         let hash_len = self.0.algorithm().tag_len();
+        #[expect(
+            clippy::arithmetic_side_effects,
+            clippy::indexing_slicing,
+            reason = "offset < out.len() from the range, so len <= out.len() - offset and len <= hash_len"
+        )]
         for (index, offset) in (1..=u32::MAX).zip((0..out.len()).step_by(hash_len)) {
             let block = self.block(&salted, iterations, index);
             let len = hash_len.min(out.len() - offset);
@@ -168,6 +173,11 @@ impl Rind {
         let salted = self.salted(salt);
         let hash_len = self.0.algorithm().tag_len();
         let mut equal = true;
+        #[expect(
+            clippy::arithmetic_side_effects,
+            clippy::indexing_slicing,
+            reason = "offset < previously_derived.len() from the range, so len fits both slices"
+        )]
         for (index, offset) in (1..=u32::MAX).zip((0..previously_derived.len()).step_by(hash_len)) {
             let block = self.block(&salted, iterations, index);
             let len = hash_len.min(previously_derived.len() - offset);
@@ -204,7 +214,14 @@ impl Rind {
     //
     // A function each caller loops over, rather than one loop handing each
     // block to a closure, which Aeneas mistranslates when it captures `&mut`.
-    #[allow(clippy::needless_range_loop)]
+    #[allow(
+        clippy::needless_range_loop,
+        reason = "Aeneas cannot translate the zip it suggests"
+    )]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "sum is a digest of the key's hash, u another, so sum.len() = u.len() and i < sum.len()"
+    )]
     fn block(&self, salted: &hmac::Streaming, iterations: NonZeroU32, index: u32) -> Digest {
         let mut ctx = salted.clone();
         ctx.update(&index.to_be_bytes());

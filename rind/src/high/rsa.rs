@@ -33,7 +33,11 @@ pub(crate) static KEY_ALGORITHMS: [&asn1::ObjectId; 3] = [
 ///
 /// By index rather than folding through a closure, which Aeneas cannot
 /// translate, so `proofs/` can prove RSA key loading.
-#[allow(clippy::needless_range_loop)]
+#[allow(
+    clippy::needless_range_loop,
+    reason = "Aeneas cannot translate the iterator it suggests"
+)]
+#[expect(clippy::indexing_slicing, reason = "i < e.len() from the range")]
 fn public_exponent(e: &[u8]) -> Result<u64, Error> {
     if e.len() > 8 {
         return Err(KeyFormatError::RsaExponent.into());
@@ -99,6 +103,10 @@ impl PssSalt {
     fn len(self, em_len: usize, h_len: usize) -> usize {
         match self {
             Self::Hash => h_len,
+            #[expect(
+                clippy::arithmetic_side_effects,
+                reason = "h_len is a hash length, at most 64"
+            )]
             Self::Max => em_len.saturating_sub(h_len + 2),
             Self::Len(len) => len.into(),
         }
@@ -178,6 +186,10 @@ impl VerifyingKey {
         let len = spki
             .encode(&mut asn1::Encoder::new(output))
             .map_err(|_| Error::WrongLength)?;
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "encode returns the bytes it wrote into output, so len <= output.len()"
+        )]
         Ok(&output[..len])
     }
 
@@ -201,6 +213,10 @@ impl VerifyingKey {
         let used = pub_key
             .encode(&mut asn1::Encoder::new(output))
             .map_err(|_| Error::WrongLength)?;
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "encode returns the bytes it wrote into output, so used <= output.len()"
+        )]
         Ok(&output[..used])
     }
 
@@ -282,10 +298,18 @@ impl VerifyingKey {
         let m = self.0.public_op(c).map_err(|_| Error::BadSignature)?;
 
         let mut m_bytes = [0u8; rsa_pub::MAX_PUBLIC_MODULUS_BYTES];
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "a loaded modulus has at most MAX_PUBLIC_MODULUS_BYTES bytes"
+        )]
         let m_bytes = &mut m_bytes[..self.0.modulus_len_bytes()];
         i2osp(&m, m_bytes)?;
 
         let mut actual_m = [0u8; rsa_pub::MAX_PUBLIC_MODULUS_BYTES];
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "a loaded modulus has at most MAX_PUBLIC_MODULUS_BYTES bytes"
+        )]
         let actual_m = &mut actual_m[..self.0.modulus_len_bytes()];
         pkcs1::encode_pkcs1_sig(actual_m, digest_info, hash);
 
@@ -384,8 +408,16 @@ impl VerifyingKey {
         // RFC 8017 section 8.1.2: EM is only `ceil(emBits / 8)` octets, one
         // fewer than the modulus when its bit length is one more than a
         // multiple of eight, and `m` must fit them.
+        #[expect(
+            clippy::arithmetic_side_effects,
+            reason = "a loaded modulus has at least 1017 bits"
+        )]
         let em_bits = self.0.modulus_len_bits() - 1;
         let mut em = [0u8; rsa_pub::MAX_PUBLIC_MODULUS_BYTES];
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "a loaded modulus has at most 8192 bits, so ceil(em_bits / 8) <= em.len()"
+        )]
         let em = &mut em[..em_bits.div_ceil(8)];
         i2osp(&m, em).map_err(|_| Error::BadSignature)?;
 
@@ -412,6 +444,10 @@ impl VerifyingKey {
         let ciphertext = ciphertext.get_mut(..k).ok_or(Error::WrongLength)?;
 
         let mut em = [0u8; rsa_pub::MAX_PUBLIC_MODULUS_BYTES];
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "k is a loaded modulus length, at most em.len()"
+        )]
         let em = &mut em[..k];
         pkcs1::encode_oaep::<H>(em, &mut SystemRandom, message, label)?;
 
@@ -441,8 +477,16 @@ impl VerifyingKey {
         let n = &self.0.n;
 
         // RFC 8017 section 9.1.1, as `SigningKey::_sign_pss` encodes.
+        #[expect(
+            clippy::arithmetic_side_effects,
+            reason = "a loaded modulus has at least 1017 bits"
+        )]
         let em_bits = self.0.modulus_len_bits() - 1;
         let mut em = [0u8; rsa_pub::MAX_PUBLIC_MODULUS_BYTES];
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "a loaded modulus has at most 8192 bits, so ceil(em_bits / 8) <= em.len()"
+        )]
         let em = &mut em[..em_bits.div_ceil(8)];
         let s_len = salt.len(em.len(), hash.len());
         pkcs1::encode_pss_sig::<H>(em, em_bits, rng, hash, s_len)?;
@@ -455,7 +499,16 @@ impl VerifyingKey {
         // one at least `n`, or, for a key that is not a product of two
         // large primes, one sharing a factor with it.
         let mut candidate = [0u8; rsa_pub::MAX_PUBLIC_MODULUS_BYTES];
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "k is a loaded modulus length, at most candidate.len()"
+        )]
         let candidate = &mut candidate[..k];
+        #[expect(
+            clippy::arithmetic_side_effects,
+            clippy::indexing_slicing,
+            reason = "k = ceil(bits / 8) >= 128, so candidate is nonempty and 8 k - bits is in 0..8"
+        )]
         let (r, inverse) = loop {
             rng.fill(candidate)?;
             candidate[0] &= 0xff >> (k * 8 - self.0.modulus_len_bits());
@@ -533,6 +586,10 @@ type RsaInt = PosInt<{ rsa_pub::MAX_PUBLIC_MODULUS_BYTES / 8 }>;
 /// by `PosInt::from_bytes`, whose time depends on its leading zeros.
 fn secret_int(bytes: &[u8]) -> RsaInt {
     let mut words = [0u64; rsa_pub::MAX_PUBLIC_MODULUS_BYTES / 8];
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "callers pass at most a modulus length, MAX_PUBLIC_MODULUS_BYTES = 8 words.len()"
+    )]
     let words = &mut words[..bytes.len().div_ceil(8)];
     for (word, bytes) in words.iter_mut().zip(bytes.rchunks(8)) {
         *word = bytes.iter().fold(0, |w, b| w << 8 | u64::from(*b));
@@ -887,6 +944,10 @@ impl SigningKey {
         }
 
         let mut m = [0u8; rsa_pub::MAX_PUBLIC_MODULUS_BYTES];
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "a loaded modulus has at most MAX_PUBLIC_MODULUS_BYTES bytes"
+        )]
         let m = &mut m[..self.0.modulus_len_bytes()];
         pkcs1::encode_pkcs1_sig(m, digest_info, hash);
 
@@ -910,8 +971,16 @@ impl SigningKey {
         // RFC 8017 section 8.1.1: EM is only `ceil(emBits / 8)` octets, one
         // fewer than the modulus when its bit length is one more than a
         // multiple of eight.
+        #[expect(
+            clippy::arithmetic_side_effects,
+            reason = "a loaded modulus has at least 1017 bits"
+        )]
         let em_bits = self.0.modulus_len_bits() - 1;
         let mut em = [0u8; rsa_pub::MAX_PUBLIC_MODULUS_BYTES];
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "a loaded modulus has at most 8192 bits, so ceil(em_bits / 8) <= em.len()"
+        )]
         let em = &mut em[..em_bits.div_ceil(8)];
 
         let s_len = salt.len(em.len(), hash.as_ref().len());
@@ -960,6 +1029,10 @@ impl SigningKey {
         // 2c.  Convert the message representative m to an encoded message
         //      EM of length k octets, which `m` below the modulus fits.
         let mut em = [0u8; rsa_pub::MAX_PUBLIC_MODULUS_BYTES];
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "k is a loaded modulus length, at most em.len()"
+        )]
         let em = &mut em[..k];
         i2osp(&m, em)?;
 
@@ -1008,7 +1081,15 @@ impl SigningKey {
 /// Its excess is read by index rather than folded through a closure, and it
 /// returns nothing borrowed, which Aeneas cannot translate past a `?`, so
 /// `proofs/` can prove RSA verification.
-#[allow(clippy::needless_range_loop)]
+#[allow(
+    clippy::needless_range_loop,
+    reason = "Aeneas cannot translate the iterator it suggests"
+)]
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "i < excess.len() from the range, and the split leaves bytes.len() <= out.len()"
+)]
 fn i2osp<const N: usize>(x: &PosInt<N>, out: &mut [u8]) -> Result<(), Error> {
     let mut bytes = [0u8; rsa_pub::MAX_PUBLIC_MODULUS_BYTES];
     let bytes = x.to_bytes(&mut bytes)?;

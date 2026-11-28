@@ -141,7 +141,10 @@ impl Mask for ChaCha20 {
 // Boxing the AES key schedule would allocate for every key to save space only
 // on ChaCha20 keys; the 32-bit arm schedule is small, so the lint is allowed
 // rather than expected.
-#[allow(clippy::large_enum_variant)]
+#[allow(
+    clippy::large_enum_variant,
+    reason = "fires only where the AES key schedule is large, and boxing it would allocate per key"
+)]
 #[repr(u8)]
 enum Key {
     Aes(Masker<Aes>),

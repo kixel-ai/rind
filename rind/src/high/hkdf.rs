@@ -106,6 +106,10 @@ impl Prk {
     /// is more than 255 hash outputs. rind-fips also refuses an empty `info`,
     /// which FIPS 140-3 does not approve.
     pub fn fill(&self, info: &[&[u8]], out: &mut [u8]) -> Result<(), Error> {
+        #[expect(
+            clippy::arithmetic_side_effects,
+            reason = "tag_len is at most 64, so 255 times it fits in usize"
+        )]
         if out.len() > 255 * self.0.algorithm().tag_len() {
             return Err(Error::WrongLength);
         }
@@ -128,6 +132,10 @@ impl Prk {
             }
             ctx.update(&[counter]);
             let tag = ctx.finish();
+            #[expect(
+                clippy::indexing_slicing,
+                reason = "chunks_mut(tag_len) yields chunks of at most tag_len = tag.as_ref().len() bytes"
+            )]
             chunk.copy_from_slice(&tag.as_ref()[..chunk.len()]);
             block = Some(tag);
         }
@@ -187,6 +195,10 @@ impl From<Okm<'_, &'static aead::Algorithm>> for aead::Key {
     fn from(okm: Okm<'_, &'static aead::Algorithm>) -> Self {
         let algorithm = okm.len;
         let mut buf = [0u8; MAX_OUTPUT_LEN];
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "key lengths are at most 32 bytes, below MAX_OUTPUT_LEN = buf.len()"
+        )]
         let bytes = &mut buf[..algorithm.key_len()];
         okm.prk.expand_into(okm.info, bytes);
         Self::new(algorithm, bytes).expect("HKDF output is the algorithm's key length")
@@ -197,6 +209,10 @@ impl From<Okm<'_, &'static aead::quic::Algorithm>> for aead::quic::HeaderProtect
     fn from(okm: Okm<'_, &'static aead::quic::Algorithm>) -> Self {
         let algorithm = okm.len;
         let mut buf = [0u8; MAX_OUTPUT_LEN];
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "key lengths are at most 32 bytes, below MAX_OUTPUT_LEN = buf.len()"
+        )]
         let bytes = &mut buf[..algorithm.key_len()];
         okm.prk.expand_into(okm.info, bytes);
         Self::new(algorithm, bytes).expect("HKDF output is the algorithm's key length")
@@ -207,6 +223,10 @@ impl From<Okm<'_, &'static hmac::Algorithm>> for hmac::Key {
     fn from(okm: Okm<'_, &'static hmac::Algorithm>) -> Self {
         let algorithm = okm.len;
         let mut buf = [0u8; MAX_OUTPUT_LEN];
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "HMAC tags are at most MAX_OUTPUT_LEN = buf.len() bytes"
+        )]
         let bytes = &mut buf[..algorithm.tag_len()];
         okm.prk.expand_into(okm.info, bytes);
         Self::new(algorithm, bytes)
@@ -217,6 +237,10 @@ impl From<Okm<'_, &'static Algorithm>> for Prk {
     fn from(okm: Okm<'_, &'static Algorithm>) -> Self {
         let algorithm = okm.len;
         let mut buf = [0u8; MAX_OUTPUT_LEN];
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "HMAC tags are at most MAX_OUTPUT_LEN = buf.len() bytes"
+        )]
         let bytes = &mut buf[..algorithm.0.tag_len()];
         okm.prk.expand_into(okm.info, bytes);
         Self(hmac::Key::new(algorithm.0, bytes))

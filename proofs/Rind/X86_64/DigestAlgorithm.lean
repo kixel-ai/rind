@@ -120,6 +120,10 @@ impl Digest {
         }
     }
 
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "every output_len is at most MAX_OUTPUT_LEN = value.len()"
+    )]
     pub(crate) fn as_mut(&mut self) -> &mut [u8] {
         &mut self.value[..self.algorithm.output_len()]
     }
@@ -141,6 +145,10 @@ impl Digest {
 }
 
 impl AsRef<[u8]> for Digest {
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "every output_len is at most MAX_OUTPUT_LEN = value.len()"
+    )]
     fn as_ref(&self) -> &[u8] {
         &self.value[..self.algorithm.output_len()]
     }

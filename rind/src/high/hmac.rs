@@ -37,8 +37,16 @@ impl<H: Hash> HmacKey<H> {
         // shorten long keys
         if key.len() > key_block.len() {
             let h_key = H::hash(key);
+            #[expect(
+                clippy::indexing_slicing,
+                reason = "a hash output is shorter than its block"
+            )]
             key_block[..h_key.as_ref().len()].copy_from_slice(h_key.as_ref());
         } else {
+            #[expect(
+                clippy::indexing_slicing,
+                reason = "this branch has key.len() <= key_block.len()"
+            )]
             key_block[..key.len()].copy_from_slice(key);
         }
 

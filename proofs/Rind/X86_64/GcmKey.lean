@@ -106,6 +106,10 @@ impl Key {
                 let nonce = Nonce::assume_unique_for_key(nonce);
                 tag.bytes = self.key.seal_in_place_separate_tag(nonce, aad, in_out)?.0;
             }
+            #[expect(
+                clippy::indexing_slicing,
+                reason = "tag.len is a TagLength's byte count, at most 16 = tag.bytes.len()"
+            )]
             Err(_) => {
                 self.aes_gcm()
                     .encrypt_any(iv.0, aad, in_out, &mut tag.bytes[..tag.len])?;
@@ -193,6 +197,10 @@ pub struct Tag {
 }
 
 impl AsRef<[u8]> for Tag {
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "len is a TagLength's byte count, at most 16 = bytes.len()"
+    )]
     fn as_ref(&self) -> &[u8] {
         &self.bytes[..self.len]
     }

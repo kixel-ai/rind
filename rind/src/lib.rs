@@ -2,9 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 #![doc = include_str!("../README.md")]
 #![allow(
-    clippy::new_without_default,
-    clippy::result_unit_err,
-    clippy::too_many_arguments
+    clippy::too_many_arguments,
+    reason = "assembly ports and protocol steps take their operands flat, as the specs and C sources do"
 )]
 #![forbid(unused_must_use)]
 #![warn(
