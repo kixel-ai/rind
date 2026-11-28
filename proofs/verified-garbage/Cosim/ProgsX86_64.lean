@@ -3,8 +3,8 @@ import VerifiedGarbage.Impl.MlKem.X86_64.Wipe
 import VerifiedGarbage.Impl.Scrub.X86_64
 import VerifiedGarbage.Impl.Zeroize.X86_64
 import VerifiedGarbage.Proof.Framework.X86_64.ScrubChecks
-import VerifiedGarbage.Spec.MlKem.Contract
 import VerifiedGarbage.Spec.Ecdh.P256
+import VerifiedGarbage.Spec.MlKem.Contract
 import VerifiedGarbage.Spec.MlKem.EncapsH
 import VerifiedGarbage.TCB.X86_64.Target
 
