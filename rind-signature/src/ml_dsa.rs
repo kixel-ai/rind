@@ -96,7 +96,7 @@ impl<P: Params> Verifier<Signature<P>> for VerifyingKey<P> {
     fn verify(&self, msg: &[u8], signature: &Signature<P>) -> Result<(), Error> {
         let encoded = signature.encode();
         self.key
-            .verify(msg, encoded.as_slice())
+            .verify(b"", msg, encoded.as_slice())
             .map_err(|_| Error::new())
     }
 }
@@ -184,7 +184,7 @@ impl<P: Params> KeypairRef for SigningKey<P> {
 
 impl<P: Params> Signer<Signature<P>> for SigningKey<P> {
     fn try_sign(&self, msg: &[u8]) -> Result<Signature<P>, Error> {
-        let signature = self.pair.sign(msg).map_err(|_| Error::new())?;
+        let signature = self.pair.sign(b"", msg).map_err(|_| Error::new())?;
         let encoded =
             EncodedSignature::<P>::try_from(signature.as_ref()).map_err(|_| Error::new())?;
         Signature::decode(&encoded).ok_or_else(Error::new)

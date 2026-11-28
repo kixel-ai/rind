@@ -799,8 +799,10 @@ step() {
             RUSTFLAGS="$nostd --deny warnings" run cargo build --lib --locked --target x86_64-unknown-none \
                 -p rind-ring -p rind-rustls -p rind-aws-lc-rs --no-default-features \
                 --features=rind-ring/alloc,rind-rustls/tls12,rind-aws-lc-rs/ring-io,rind-aws-lc-rs/ring-sig-verify
+            # rind-signature is linted only: rsa's sha2 dependency fails
+            # LLVM codegen for its x86 backend on a target without SSE.
             RUSTFLAGS="$nostd --deny warnings" run cargo build --lib --locked --target x86_64-unknown-none \
-                -p rind-digest -p rind-aead -p rind-signature -p rind-kem --all-features
+                -p rind-digest -p rind-aead -p rind-kem --all-features
             ;;
         check:vartime)
             # Each backend's targets, as admin/ct-vartime names them; no
