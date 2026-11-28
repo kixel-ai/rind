@@ -98,8 +98,8 @@ theorem aesRound_eq (x k k' : BitVec 128) : aesRound x k ^^^ k' = evalRound (x ^
 theorem aesRounds192_eq (x : BitVec 128) (k : Nat → BitVec 128) :
     aesRounds192 x k ^^^ k 12 = evalCipher .AES_192 x (keys13 k) := by
   simp only [aesRounds192, evalCipher, nr, keys13, evalRounds, aese_eq]
-  simp only [aesRound_eq, BitVec.xor_assoc, BitVec.xor_self, BitVec.xor_zero]
-  simp [List.getElem!_eq_getElem?_getD, aesRound_eq, BitVec.xor_assoc, BitVec.xor_self, BitVec.xor_zero]
+  simp only [aesRound_eq]
+  simp
 
 /-! ## PMULL and the halves -/
 
@@ -141,7 +141,7 @@ theorem swap_xor (x y : BitVec 128) : swap (x ^^^ y) = swap x ^^^ swap y := by
 
 theorem lo_setWidth (x : BitVec 64) : lo (x.setWidth 128) = x := by
   apply BitVec.eq_of_getLsbD_eq; intro i hi'
-  simp [lo, BitVec.getLsbD_extractLsb', BitVec.getLsbD_setWidth, hi', show i < 128 by omega]
+  simp [lo, hi', show i < 128 by omega]
 
 /-- EXT of a register with itself by eight bytes swaps its halves. -/
 theorem ext_swap (x : BitVec 128) : ((x ++ x) >>> 64).extractLsb' 0 128 = swap x := by
@@ -150,7 +150,7 @@ theorem ext_swap (x : BitVec 128) : ((x ++ x) >>> 64).extractLsb' 0 128 = swap x
   simp only [BitVec.getLsbD_extractLsb', BitVec.getLsbD_ushiftRight, BitVec.getLsbD_append, hi',
     decide_true, Bool.true_and, Nat.zero_add]
   by_cases h : i < 64
-  · simp [show 64 + i < 128 by omega, show (i + 64) % 128 = i + 64 by omega, Nat.add_comm]
+  · simp [show (i + 64) % 128 = i + 64 by omega, Nat.add_comm]
     intro; omega
   · simp [show ¬ 64 + i < 128 by omega, show (i + 64) % 128 = i - 64 by omega, show 64 + i - 128 = i - 64 by omega]
 

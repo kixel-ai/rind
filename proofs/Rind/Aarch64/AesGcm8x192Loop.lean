@@ -144,7 +144,7 @@ theorem encLoop_ok (s : S) (nonce : BitVec 96) (c : Nat) (k : Nat → BitVec 128
     simp only [pows, List.length_cons, List.length_nil, Nat.reduceAdd, reduceAll, accum]
     congr 1 <;>
     · simp only [karaTerms, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, karatsubaMid_eq, trn1_d2,
-        trn2_d2, lo_xor, hi_xor, lo_swap, hi_swap, lo_append, hi_append, BitVec.xor_zero]
+        trn2_d2, lo_xor, hi_xor, lo_swap, hi_swap, lo_append, hi_append]
       ac_rfl
   · intro i hi
     interval_cases i <;>
@@ -154,15 +154,13 @@ theorem encLoop_ok (s : S) (nonce : BitVec 96) (c : Nat) (k : Nat → BitVec 128
   · simp only [v_setV, v_write, v_flagsAdd, v_setMem, reduceCtorEq, ↓reduceIte, C30, C31, add_ctr, Nat.add_assoc,
       Nat.reduceAdd]
   · simp only [gpr_write, gpr_setV, gpr_flagsAdd, gpr_setMem, reduceCtorEq, ↓reduceIte]
-  · simp only [gpr_write, gpr_setV, gpr_flagsAdd, gpr_setMem, reduceCtorEq, ↓reduceIte]
-  · simp only [mem_write, mem_setV, mem_flagsAdd, mem_setMem, v_setV, v_write, v_flagsAdd, v_setMem,
-      gpr_write, gpr_setV, gpr_flagsAdd, gpr_setMem, reduceCtorEq, ↓reduceIte]
+  · simp only [gpr_write, ↓reduceIte]
+  · simp only [mem_write, mem_setMem]
     simp only [write8, block, keystream, ← aesRounds192_eq]
     simp only [aesRounds192, aesRound, Nat.reduceMul, add_zero64, K0, K1, K2, K3, K4, K5, K6, K7, K8, K9, K10,
       K11, K12, C0, C1, C2, C3, C4, C30, C31, rev32b_rev32b, add_ctr, Nat.add_assoc, Nat.reduceAdd, Nat.add_zero,
       BitVec.xor_assoc]
-  · simp only [flags, nf_setMem, zf_setMem, vf_setMem, c_setMem, nf_write, zf_write, vf_write, c_write, nf_setV,
-      zf_setV, vf_setV, c_setV, gpr_write, gpr_setV, gpr_flagsAdd, gpr_setMem, reduceCtorEq, ↓reduceIte]
+  · simp only [flags, nf_setMem, zf_setMem, vf_setMem, c_setMem, nf_write, zf_write, vf_write, c_write]
     rfl
   · unfold clobbered
     a64_out
@@ -241,25 +239,23 @@ theorem decLoop_ok (s : S) (nonce : BitVec 96) (c : Nat) (k : Nat → BitVec 128
     simp only [pows, List.length_cons, List.length_nil, Nat.reduceAdd, reduceAll, accum]
     congr 1 <;>
     · simp only [karaTerms, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, karatsubaMid_eq, trn1_d2,
-        trn2_d2, lo_xor, hi_xor, lo_swap, hi_swap, lo_append, hi_append, BitVec.xor_zero]
+        trn2_d2, lo_xor, hi_xor, lo_swap, hi_swap, lo_append, hi_append]
       ac_rfl
   · intro i hi
     interval_cases i <;>
     · simp only [ctrReg, List.getElem!_cons_zero, List.getElem!_cons_succ, v_setV, v_write, v_flagsAdd,
         v_setMem, reduceCtorEq, ↓reduceIte, C0, C1, C2, C3, C4, C30, C31, rev32b_rev32b, add_ctr, Nat.add_assoc,
         Nat.reduceAdd, Nat.add_zero]
-  · simp only [v_setV, v_write, v_flagsAdd, v_setMem, reduceCtorEq, ↓reduceIte, C30, C31, add_ctr, Nat.add_assoc,
-      Nat.reduceAdd]
+  · simp only [v_setV, ↓reduceIte, C30, C31, add_ctr, Nat.add_assoc, Nat.reduceAdd]
   · simp only [gpr_write, gpr_setV, gpr_flagsAdd, gpr_setMem, reduceCtorEq, ↓reduceIte]
-  · simp only [gpr_write, gpr_setV, gpr_flagsAdd, gpr_setMem, reduceCtorEq, ↓reduceIte]
-  · simp only [mem_write, mem_setV, mem_flagsAdd, mem_setMem, v_setV, v_write, v_flagsAdd, v_setMem,
-      gpr_write, gpr_setV, gpr_flagsAdd, gpr_setMem, reduceCtorEq, ↓reduceIte]
+  · simp only [gpr_write, gpr_setV, ↓reduceIte]
+  · simp only [mem_write, mem_setV, mem_setMem]
     simp only [write8, block, keystream, ← aesRounds192_eq]
     simp only [aesRounds192, aesRound, Nat.reduceMul, add_zero64, K0, K1, K2, K3, K4, K5, K6, K7, K8, K9, K10,
       K11, K12, C0, C1, C2, C3, C4, C30, C31, rev32b_rev32b, add_ctr, Nat.add_assoc, Nat.reduceAdd, Nat.add_zero,
       BitVec.xor_assoc]
   · simp only [flags, nf_setMem, zf_setMem, vf_setMem, c_setMem, nf_write, zf_write, vf_write, c_write, nf_setV,
-      zf_setV, vf_setV, c_setV, gpr_write, gpr_setV, gpr_flagsAdd, gpr_setMem, reduceCtorEq, ↓reduceIte]
+      zf_setV, vf_setV, c_setV]
     rfl
   · unfold clobbered
     a64_out
