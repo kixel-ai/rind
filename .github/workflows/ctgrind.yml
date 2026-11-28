@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       jobs:
-        description: Job IDs to run, space-separated, in workflow order, each optionally narrowed to rows as `job:value,...`; empty runs all
+        description: Job IDs to run, space-separated, in any order, each optionally narrowed to rows as `job:value,...`; empty runs all
         type: string
         default: ""
 

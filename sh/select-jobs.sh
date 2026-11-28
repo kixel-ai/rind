@@ -10,16 +10,16 @@
 # axis, as `armv7:no-neon,debug` runs armv7's one debug no-NEON row. A job
 # whose `exclude` falls back to rows of its own, as ctgrind's `portable` does,
 # skips those when named whole, as the schedule does, and runs them only when
-# its entry names their values. Entries
-# are separated by single spaces and follow the workflow's job order, and a
-# job's values its matrix's order, so one selection has one spelling, and one
-# concurrency group. Anything else, such as a typo, fails, so a dispatch never
-# quietly runs nothing.
+# its entry names their values. Entries are separated by single spaces, and
+# entries and a job's values may come in any order, but each only once.
+# Anything else, such as a typo, fails, so a dispatch never quietly runs
+# nothing. A workflow's concurrency group reads the input as typed, so two
+# spellings of one selection run side by side.
 #
 # It prints, for $GITHUB_OUTPUT, `jobs=`, a JSON array of the named job IDs,
-# and `exclude=`, a JSON object of each filtered job's matrix exclusions. A
-# job checks the first in its `if:` and takes the second as its matrix's
-# `exclude`; only a matrix of literal axes, without `include`, takes a filter,
+# and `exclude=`, a JSON object of each filtered job's matrix exclusions, both
+# in workflow order. A job checks the first in its `if:` and takes the second
+# as its matrix's `exclude`; only a matrix of literal axes, without `include`, takes a filter,
 # since GitHub adds back an excluded row that an `include` names.
 #
 # `--check`, which `just ci` runs, fails a job of a workflow taking a `jobs`
@@ -78,9 +78,10 @@ yq -o=json . "$1" | jq -r --arg entries "$2" '
         | .values |= (if . == null then [] else split(",") end)
         | . as {$id}
         | .index = ($ids | index($id) // fail("no job \($id); jobs: \($ids | join(" "))"))] as $picks
-    | if [$picks[].index] != ([$picks[].index] | unique) then
-        fail("name each job once, in the workflow order: \($ids | join(" "))")
+    | if ([$picks[].index] | length) != ([$picks[].index] | unique | length) then
+        fail("name each job once")
       else . end
+    | ($picks | sort_by(.index)) as $picks
     | {
         jobs: [$picks[].id],
         exclude: [$picks[] | select(.values != []) | .id as $id | .values as $values
@@ -96,8 +97,8 @@ yq -o=json . "$1" | jq -r --arg entries "$2" '
                 | if length == 1 then .[0] | {index: .key} + .value
                   elif length == 0 then fail("\($id) has no row value \($name); values: \([$all[].name] | join(" "))")
                   else fail("\($id): \($name) names more than one axis") end] as $named
-            | if [$named[].index] != ([$named[].index] | unique) then
-                fail("name each of \($id)'\''s values once, in its matrix order: \([$all[].name] | join(" "))")
+            | if ([$named[].index] | length) != ([$named[].index] | unique | length) then
+                fail("name each of \($id)'\''s values once")
               else . end
             | ([$named[].axis] | unique) as $axes
             | if [$axes[] as $a | [$all[] | select(.axis == $a)] - [$named[] | del(.index)]] | any(. == []) then

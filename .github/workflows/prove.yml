@@ -31,7 +31,7 @@ on:
   workflow_dispatch:
     inputs:
       jobs:
-        description: Job IDs to run, space-separated, in workflow order; empty runs all
+        description: Job IDs to run, space-separated, in any order; empty runs all
         type: string
         default: ""
   push:
