@@ -871,4 +871,50 @@ theorem from_unsigned_priv_spec (hrun : Runs) (h : low.entry.Entry.assert_held =
       error.Error.Insts.CoreConvertFromKeyFormatError.from,
       high.rsa.SigningKey.from_unsigned.closure.Insts.CoreOpsFunctionFnOnceTupleErrorKeyFormatError.call_once]
 
+/-- `SigningKey::from_components` returns only a key it loaded from its
+components. -/
+theorem signing_from_components_spec (hrun : Runs) (h : low.entry.Entry.assert_held = ok ())
+    (hifma : IfmaCheckReturns) (hfp16 : ∀ t, ∃ b, low.x86_64.cpu.HaveAvx512ForRsa.fp16 t = ok b)
+    (c : high.rsa.Components) (hP : MontProducts (keyWords (beNat c.p.val) (beNat c.q.val))) :
+    high.rsa.SigningKey.from_components c ⦃ r => ∀ key, r = .Ok key → KeyFrom c key ⦄ := by
+  unfold high.rsa.SigningKey.from_components
+  step with new_secret_spec hrun
+  simp only [core.slice.Slice.first, core.option.Option.Insts.CoreCmpPartialEqOption.eq, bind_ok]
+  apply WP.spec_bind (Pₘ := fun _ => True)
+  · split <;> simp_all [core.cmp.impls.PartialEqShared.eq]
+  intro b _
+  split
+  · simp [error.Error.Insts.CoreConvertFromKeyFormatError.from]
+  apply WP.spec_bind (Pₘ := fun _ => True)
+  · split <;> simp_all [core.cmp.impls.PartialEqShared.eq]
+  intro b1 _
+  split
+  · simp [error.Error.Insts.CoreConvertFromKeyFormatError.from]
+  exact from_unsigned_priv_spec hrun h hifma hfp16 c hP
+
+/-- A signing key's public key is its own. -/
+theorem signing_public_key_spec (hrun : Runs) (key : high.rsa.SigningKey) :
+    high.rsa.SigningKey.public_key key ⦃ vk => vk = key.public ⦄ := by
+  unfold high.rsa.SigningKey.public_key mid.rsa_priv.RsaPrivateKey.public_key
+    mid.rsa_pub.RsaPublicKey.Insts.CoreCloneClone.clone
+  step with new_public_spec hrun
+  step with clone_spec as ⟨n, hn⟩
+  simp only [lift, core.clone.impls.CloneU64.clone, bind_ok]
+  step with clone_spec as ⟨m, hm⟩
+  subst hn hm
+  simp only [WP.spec_ok]
+
+/-- A public key meeting `PubKeyInv` is the RSA public key its modulus and
+exponent are, in exactly the modulus's words. -/
+theorem keyLoaded_of_inv (key : mid.rsa_pub.RsaPublicKey) (hinv : PubKeyInv key) :
+    KeyLoaded key (wordsNat (lowWords key.n key.n.used)) key.e.val := by
+  refine ⟨hinv, rfl, rfl, ?_⟩
+  obtain ⟨hk2, hk, -, -, -, -, -, -, -, htop⟩ := hinv
+  have hlt := wordsNat_lt' (lowWords key.n key.n.used)
+  rw [lowWords_length _ hk] at hlt
+  have h1 := (Nat.size_le).mpr hlt
+  have h2 : ¬ (wordsNat (lowWords key.n key.n.used)).size ≤ 64 * (key.n.used.val - 1) := by
+    rw [Nat.size_le]; omega
+  omega
+
 end rind.x86_64
