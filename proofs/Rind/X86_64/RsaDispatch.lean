@@ -679,13 +679,12 @@ def high.signature.rsa.KeyPair.sign (self : high.signature.rsa.KeyPair)
     Result (core.result.Result high.signature.rsa.Signature error.Error) :=
   high.signature.Buffer.write 1024#usize fun output => do
     let k ← high.rsa.SigningKey.modulus_len_bytes self.key
-    let (o, get_mut_back) ←
-      core.slice.Slice.get_mut (core.slice.index.SliceIndexRangeToUsizeSlice Std.U8) output { «end» := k }
-    match o with
-    | none => ok (.Err .WrongLength, get_mut_back none)
+    let o ← core.slice.Slice.get_mut (core.slice.index.SliceIndexRangeToUsizeSlice Std.U8) output { «end» := k }
+    match o.1 with
+    | none => ok (.Err .WrongLength, o.2 none)
     | some out =>
-      let (r, out1) ← algorithm.sign self.key out message
-      ok (r, get_mut_back (some out1))
+      let r ← algorithm.sign self.key out message
+      ok (r.1, o.2 (some r.2))
 
 /-- The `sign::PKCS1_SHA256` static, `signing(PKCS1_SHA256_SCHEME)`. -/
 def high.signature.rsa.sign.PKCS1_SHA256 : high.signature.rsa.SigningAlgorithm where
@@ -694,6 +693,64 @@ def high.signature.rsa.sign.PKCS1_SHA256 : high.signature.rsa.SigningAlgorithm w
 /-- The `sign::PSS_SHA256` static, `signing(PSS_SHA256_SCHEME)`. -/
 def high.signature.rsa.sign.PSS_SHA256 : high.signature.rsa.SigningAlgorithm where
   sign key out m := high.rsa.SigningKey.sign_pss_sha256 key .Hash out m
+
+/-- `KeyPair::sign` runs the algorithm's `sign` on the first `k` bytes of its
+buffer, `k` the modulus's length, and returns what that wrote. -/
+theorem key_pair_sign_of (h : Runs) (kp : high.signature.rsa.KeyPair) (hinv : PubKeyInv kp.key.public)
+    (algorithm : high.signature.rsa.SigningAlgorithm) (message : Slice U8)
+    (P : core.result.Result (Slice U8) error.Error → Prop)
+    (hs : ∀ out : Slice U8, out.length = octetLen (keyN kp.key) →
+      algorithm.sign kp.key out message ⦃ r sig' =>
+        P r ∧ ∀ s, r = .Ok s → sig'.length = out.length ∧ sig'.val.take s.length = s.val ⦄) :
+    high.signature.rsa.KeyPair.sign kp algorithm message ⦃ r =>
+      (∀ sig, r = .Ok sig → ∃ s, P (.Ok s) ∧
+        high.signature.rsa.Signature.Insts.CoreConvertAsRefSliceU8.as_ref sig ⦃ b => b.val = s.val ⦄) ∧
+      ∀ e, r = .Err e → P (.Err e) ⦄ := by
+  unfold high.signature.rsa.KeyPair.sign high.signature.Buffer.write high.signature.Buffer.new
+  simp only [lift, bind_ok, Array.to_slice_mut]
+  step with signing_modulus_len_bytes_spec h kp.key hinv as ⟨k, hk⟩
+  obtain ⟨-, -, -, -, -, -, -, -, hs2, -⟩ := hinv
+  have hk1024 : k.val ≤ 1024 := by rw [hk, octetLen]; unfold keyN; omega
+  have hzl : (Array.repeat 1024#usize 0#u8).to_slice.length = 1024 := by
+    simp only [Slice.length, Array.val_to_slice]; exact (Array.repeat 1024#usize 0#u8).property
+  have hle : k ≤ (Array.repeat 1024#usize 0#u8).to_slice.length := by rw [hzl]; exact hk1024
+  simp only [core.slice.Slice.get_mut, core.slice.index.SliceIndexRangeToUsizeSlice.get_mut, hle,
+    ↓reduceIte, bind_ok]
+  set Z := (Array.repeat 1024#usize 0#u8).to_slice with hZ
+  have hZL : Z.val.length = 1024 := hzl
+  simp only [Std.bind_assoc]
+  have hXl : (List.slice 0 k.val Z.val).length = k.val := by
+    rw [List.slice_zero_j, List.length_take]; omega
+  apply WP.spec_bind (hs (Slice.from (List.slice 0 k.val Z.val) (by scalar_tac)) (by
+    simp only [Slice.length, Slice.from_val]; rw [hXl, hk]))
+  rintro ⟨r, sig'⟩ ⟨hP, hok⟩
+  rcases r with sv | e
+  · obtain ⟨hl, ht⟩ := hok sv rfl
+    have hl' : sig'.val.length = k.val := by
+      have : sig'.length = _ := hl; show sig'.length = k.val; rw [this]
+      simp only [Slice.length, Slice.from_val]; exact hXl
+    simp only [bind_ok, WP.spec_ok]
+    refine ⟨fun sig hsig => ⟨sv, hP, ?_⟩, fun e h => nomatch h⟩
+    cases hsig
+    unfold high.signature.rsa.Signature.Insts.CoreConvertAsRefSliceU8.as_ref
+    have hsvl : sv.val.length ≤ k.val := by
+      have := congrArg List.length ht; rw [List.length_take] at this; omega
+    apply WP.spec_mono (buffer_as_ref_spec _ (by show sv.length ≤ 1024; have : sv.length = sv.val.length := rfl; omega))
+    intro b hb
+    rw [hb]
+    have hd : sig'.length = k.val := hl'
+    simp only [hd, ↓reduceDIte]
+    rw [Array.from_slice_val _ _ (by simp only [Slice.from_val]; rw [setSlice!_length', hZL]; rfl),
+      Slice.from_val]
+    have h1 := take_setSlice! Z.val sig'.val 0 (by omega)
+    simp only [Nat.zero_add, List.take_zero, List.nil_append] at h1
+    have : sv.len.val = sv.val.length := rfl
+    rw [this, ← Nat.min_eq_left hsvl, ← hl', ← List.take_take, h1]
+    exact ht
+  · simp only [bind_ok, WP.spec_ok]
+    refine ⟨fun sig h => (nomatch h), fun e' h => ?_⟩
+    cases h
+    exact hP
 
 /-- A key pair holding the two-prime RSA private key `(n, e, d, p, q, dP, dQ,
 qInv)`, which meets RFC 8017's relations but for the primes' primality, with
@@ -835,6 +892,56 @@ theorem rsa_key_pair_from_pkcs8_spec (h : Runs) (hheld : low.entry.Entry.assert_
       simp [core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual,
         core.convert.FromSame.from] at hr
   · simp at hkp
+/-- `KeyPair::sign(&sign::PKCS1_SHA256, ..)` with a key pair holding `(n, e,
+d, p, q, dP, dQ, qInv)`: RSASSA-PKCS1-V1_5-SIGN with SHA-256 and RSASP1 by
+the CRT, over Montgomery products at the modulus's width and, where rind's
+CRT runs, the primes'. It refuses only with `Fault`, where RSASP1's result
+raised to `e` modulo `n` is not the encoded message's representative, which
+two primes rule out. -/
+theorem rsa_pkcs1_sha256_sign_spec (h : Runs) (hb : Sha256Blocks)
+    (t : low.x86_64.cpu.HaveBmi2Adx) (hadx : low.x86_64.cpu.HaveBmi2Adx.check = ok (some t))
+    (hifma : IfmaCheckReturns) (kp : high.signature.rsa.KeyPair) (N E D P Q DP DQ QINV : Nat)
+    (hkp : KeyPairOf kp N E D P Q DP DQ QINV) (hPn : MontProducts ((N.size + 63) / 64))
+    (hcrt : kp.key.ifma.w = 0#usize → MontProducts (keyWords P Q) ∧
+      (keyWords P Q = 16 ∨ keyWords P Q = 32) ∧ NoRsazPair (keyWords P Q))
+    (message : Slice U8) (hm : message.length ≤ maxInput) :
+    high.signature.rsa.KeyPair.sign kp high.signature.rsa.sign.PKCS1_SHA256 message ⦃ r =>
+      (∀ sig, r = .Ok sig → high.signature.rsa.Signature.Insts.CoreConvertAsRefSliceU8.as_ref sig ⦃ b =>
+        rsassaPkcs1v15Sign N P Q DP DQ QINV sha256.hash digestInfoSha256 (bv message.val) = some (bv b.val) ⦄) ∧
+      ∀ e, r = .Err e → e = .Fault ∧ ∃ EM, emsaPkcs1v15Encode sha256.hash digestInfoSha256 (bv message.val)
+        (octetLen N) = some EM ∧ rsasp1Crt P Q DP DQ QINV (os2ip EM) ^ E % N ≠ os2ip EM ⦄ := by
+  obtain ⟨hinv, hpub, hkl, hD, hP, hQ, hDP, hDQ, hQI, hpw, hrel⟩ := hkp
+  obtain ⟨-, hN, hE, hused⟩ := hkl
+  rw [hpub] at hN hE hused
+  have hkN : keyN kp.key = N := hN
+  have hkey : ∀ c, keyRsasp1 kp.key c = rsasp1Crt P Q DP DQ QINV c := by
+    intro c; unfold keyRsasp1; rw [hP, hQ, hDP, hDQ, hQI]
+  have hs := key_pair_sign_of h kp hinv.1 high.signature.rsa.sign.PKCS1_SHA256 message
+    (fun r => ∃ EM : List U8, emsaPkcs1v15Encode sha256.hash digestInfoSha256 (bv message.val)
+      (octetLen (keyN kp.key)) = some (bv EM) ∧ SignedAs kp.key EM r)
+    (fun out hout => by
+      apply WP.spec_mono (sign_pkcs1_sha256_spec h hb t hadx hifma kp.key hinv (by rw [hused]; exact hPn)
+        (by rw [hpw]; exact hcrt) out message hm (by omega))
+      rintro ⟨r, sig'⟩ hr
+      obtain ⟨EM, hEM, hSA, hok⟩ := hr
+      exact ⟨⟨EM, hEM, hSA⟩, hok⟩)
+  apply WP.spec_mono hs
+  rintro r ⟨hok, herr⟩
+  refine ⟨fun sig hsig => ?_, fun e he => ?_⟩
+  · obtain ⟨s, ⟨EM, hEM, hSA⟩, has⟩ := hok sig hsig
+    apply WP.spec_mono has
+    intro b hb
+    simp only [SignedAs] at hSA
+    unfold rsassaPkcs1v15Sign
+    rw [← hkN, hEM, Option.bind_some, os2ip_bv, ← hkey, hb]
+    exact hSA
+  · obtain ⟨EM, hEM, hSA⟩ := herr e he
+    simp only [SignedAs] at hSA
+    obtain ⟨rfl, hne⟩ := hSA
+    refine ⟨rfl, bv EM, by rw [← hkN]; exact hEM, ?_⟩
+    rw [os2ip_bv, ← hkey, ← hkN, ← hE]
+    exact hne
+
 -- END x86_64
 
 end rind.x86_64
