@@ -375,6 +375,73 @@ theorem keygen_mitigated_fips (h : RunsSha3) {X : Type}
   unfold dkPke
   simp only [bv, List.map_append, toVec_toList]
 
+/-- `decaps_mitigated`, which `Params::decaps` runs, is FIPS 203's
+`ML-KEM.Decaps_internal` for ML-KEM-768 on aarch64, which runs rind's
+arithmetic, for a key whose encapsulation key holds its decoded form, as every
+key rind makes on aarch64 does. -/
+theorem decaps_mitigated_fips (h : RunsSha3) {X : Type}
+    (P : mid.mlkem.Params X Vec Mat EkBytes CtBytes DkBytes Cache Enc) (hP : Is768 P)
+    (key : mid.mlkem.DecapKey X Vec Mat EkBytes CtBytes DkBytes Cache Enc)
+    (D : mid.mlkem.Decoded X Vec Mat EkBytes CtBytes DkBytes Cache Enc) (hD : key.ek_pke.decoded = some D)
+    (hDH : EkDecoded D (toVec 1184 key.ek_pke.bytes.val key.ek_pke.bytes.property)) (c : CtBytes) :
+    mid.mlkem.DecapKey.decaps_mitigated P key c ⦃ k =>
+      toVec 32 k.val k.property =
+        Decaps_internal .ML_KEM_768 (dkBytes key.dk_pke key.ek_pke.bytes key.ek_pke.h_ek key.z)
+          (toVec 1088 c.val c.property) ⦄ := by
+  unfold mid.mlkem.DecapKey.decaps_mitigated
+  simp only [hD, core.option.Option.is_some, Option.isSome_some, ↓reduceIte]
+  exact decaps_rind_fips h P hP key D hD hDH c
+
+theorem decoded_clone {X : Type} (P : mid.mlkem.Params X Vec Mat EkBytes CtBytes DkBytes Cache Enc) (hP : Is768 P)
+    (D : mid.mlkem.Decoded X Vec Mat EkBytes CtBytes DkBytes Cache Enc) :
+    mid.mlkem.Decoded.Insts.CoreCloneClone.clone P D = ok D := by
+  obtain ⟨⟨t1, ⟨⟩⟩, ⟨t2, ⟨⟩⟩⟩ := D
+  unfold mid.mlkem.Decoded.Insts.CoreCloneClone.clone mid.mlkem.Coeffs.Insts.CoreCloneClone.clone
+  simp only [hP.vec.clone, hP.mat.clone, bind_ok]
+  erw [bind_ok, bind_ok]
+
+/-- pyca/verified-garbage's encapsulation does not run here: the CPU lacks the
+SHA-3 instructions it needs, so its check finds no token. -/
+def NoVgEncaps : Prop := low.aarch64.mlkem768_vg.Encaps.check = ok none
+
+theorem vg_encaps_none (hvg : NoVgEncaps) {X : Type}
+    (P : mid.mlkem.Params X Vec Mat EkBytes CtBytes DkBytes Cache Enc) (hP : Is768 P) :
+    mid.mlkem.vg_encaps P = ok none := by
+  unfold mid.mlkem.vg_encaps
+  simp only [hP.K, bind_ok]
+  exact hvg
+
+/-- `encaps_mitigated`, which `Params::encaps` runs, is FIPS 203's
+`ML-KEM.Encaps_internal` for ML-KEM-768 on aarch64 without the SHA-3
+instructions, where rind's arithmetic runs, for an encapsulation key whose
+bytes are `E`: through its decoded form and hash, if it holds them, and
+otherwise through `Decoded::new`, given that `SampleNTT` finishes on each of
+the matrix's inputs. -/
+theorem encaps_mitigated_fips (h : RunsSha3) (hvg : NoVgEncaps) {X : Type}
+    (P : mid.mlkem.Params X Vec Mat EkBytes CtBytes DkBytes Cache Enc) (hP : Is768 P)
+    (ek : mid.mlkem.EncapKey X Vec Mat EkBytes CtBytes DkBytes Cache Enc) (E : 𝔹 1184)
+    (hE : toVec 1184 ek.bytes.val ek.bytes.property = E)
+    (hdec : ∀ D, ek.decoded = some D → EkDecoded D E ∧ toVec 32 ek.h_ek.val ek.h_ek.property = H E)
+    (hH : ek.decoded = none → ∀ i : ℕ, i < 3 → ∀ j : ℕ, j < 3 →
+      Halts (slice E 1152 32 ‖ #v[(i : Byte)] ‖ #v[(j : Byte)]).toList)
+    (m : mid.mlkem.Message) :
+    mid.mlkem.EncapKey.encaps_mitigated P ek m ⦃ r =>
+      toVec 32 r.1.val r.1.property = (Encaps_internal .ML_KEM_768 E (toVec 32 m.val m.property)).1 ∧
+        toVec 1088 r.2.val r.2.property = (Encaps_internal .ML_KEM_768 E (toVec 32 m.val m.property)).2 ⦄ := by
+  unfold mid.mlkem.EncapKey.encaps_mitigated
+  simp only [low.ct.secret_slice, lift, bind_ok]
+  cases hd : ek.decoded with
+  | some D =>
+    obtain ⟨hD, hh⟩ := hdec D hd
+    exact encaps_rind_fips h P hP ek E hh D hD m
+  | none =>
+    simp only [vg_encaps_none hvg P hP, hP.ek.clone, bind_ok]
+    subst hE
+    step with decoded_new_spec h P hP ek.bytes (hH hd) as ⟨D, hD⟩
+    simp only [decoded_clone P hP, bind_ok]
+    step with encap_key_new_spec h P hP ek.bytes _ as ⟨ek', hb', hh', hs', hd'⟩
+    exact encaps_rind_fips h P hP ek' _ (h_eq _ _ _ (by rw [toVec_toList]; exact hh')) _ hD m
+
 end MlKemKem
 
 end rind.aarch64
