@@ -1,8 +1,8 @@
-import Rind.X86_64.Funs
+import Rind.X86_64.MlKem.Funs
 import Rind.X86_64.Blockwise
 import Rind.MlKemCoding
 import Rind.Bytes
-open Aeneas Aeneas.Std Result rind.spec Spec Spec.MLKEM rind.spec.mlkem
+open Aeneas Aeneas.Std Result rind.spec Spec Spec.MLKEM rind.spec.mlkem rind.x86_64.mlkem
 
 namespace rind.x86_64
 

@@ -2,7 +2,7 @@ import Rind.Aarch64.MlKemCoding
 import Rind.Aarch64.MlKemTables
 import Rind.S2nMlKem
 import Rind.MlKemPacking
-open Aeneas Aeneas.Std Result rind.spec Spec Spec.MLKEM rind.spec.mlkem rind.spec.s2n
+open Aeneas Aeneas.Std Result rind.spec Spec Spec.MLKEM rind.spec.mlkem rind.spec.s2n rind.aarch64.mlkem
 
 /-!
 # ML-KEM's polynomial routines on aarch64

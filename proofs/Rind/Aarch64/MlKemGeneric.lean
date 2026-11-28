@@ -1,5 +1,5 @@
 import Rind.Aarch64.MlKemCoding
-open Aeneas Aeneas.Std Result rind.spec Spec Spec.MLKEM rind.spec.mlkem
+open Aeneas Aeneas.Std Result rind.spec Spec Spec.MLKEM rind.spec.mlkem rind.aarch64.mlkem
 
 /-!
 # aarch64's ML-KEM 12-bit unpacking in Rust

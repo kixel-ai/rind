@@ -1,7 +1,7 @@
 import Rind.Aarch64.MlKemEncrypt
 import Rind.Aarch64.Sha3
 import Rind.MlKemSample
-open Aeneas Aeneas.Std Result rind.spec Spec Spec.MLKEM rind.spec.mlkem rind.spec.s2n
+open Aeneas Aeneas.Std Result rind.spec Spec Spec.MLKEM rind.spec.mlkem rind.spec.s2n rind.aarch64.mlkem
 
 /-!
 # ML-KEM's matrix sampling on aarch64
@@ -512,6 +512,8 @@ theorem shake_input_spec (rho : Std.Array U8 32#usize) (transposed : Bool) (i j 
   split
   · step as ⟨a, ha⟩
     step as ⟨a1, ha1⟩
+    step as ⟨pad, hpad⟩
+    subst hpad
     step as ⟨a2, ha2⟩
     rw [ha2, ha1, ha, shake_pad_byte_eq]
     simp only [Std.Array.set_val_eq, hb]
@@ -519,6 +521,8 @@ theorem shake_input_spec (rho : Std.Array U8 32#usize) (transposed : Bool) (i j 
     rfl
   · step as ⟨a, ha⟩
     step as ⟨a1, ha1⟩
+    step as ⟨pad, hpad⟩
+    subst hpad
     step as ⟨a2, ha2⟩
     rw [ha2, ha1, ha, shake_pad_byte_eq]
     simp only [Std.Array.set_val_eq, hb]

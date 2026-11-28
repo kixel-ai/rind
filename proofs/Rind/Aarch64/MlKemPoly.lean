@@ -1,6 +1,6 @@
 import Rind.Aarch64.MlKemRoutines
 import Rind.Aarch64.MlKemGeneric
-open Aeneas Aeneas.Std Result rind.spec Spec Spec.MLKEM rind.spec.mlkem rind.spec.s2n
+open Aeneas Aeneas.Std Result rind.spec Spec Spec.MLKEM rind.spec.mlkem rind.spec.s2n rind.aarch64.mlkem
 
 /-!
 # ML-KEM's polynomial vectors on aarch64
