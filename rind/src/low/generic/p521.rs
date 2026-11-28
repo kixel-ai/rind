@@ -74,6 +74,10 @@ pub(crate) fn bignum_mod_n521(z: &mut [u64; 9], x: &[u64; 9]) {
     let c: [Limb; (320 / Limb::BITS) as usize] = split(&C);
     // high * C, a limb of high at a time, each a product that a limb and
     // carry cannot overflow.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "shift < 64 / Limb::BITS, so Limb::BITS * shift < 64, and skip(shift) leaves i >= shift"
+    )]
     for shift in 0..(64 / Limb::BITS) as usize {
         let part = (high >> (Limb::BITS as usize * shift)) as Limb;
         let mut carry = 0;
@@ -118,6 +122,7 @@ pub(crate) fn p521_jadd(p3: &mut [u64; 27], p1: &[u64; 27], p2: &[u64; 27]) {
 ///
 /// p1's z must be nonzero, and p1 and p2 neither the same point nor
 /// opposites.
+#[expect(clippy::indexing_slicing, reason = "p2 is 18 words, two chunks of 9")]
 pub(crate) fn p521_jmixadd(p3: &mut [u64; 27], p1: &[u64; 27], p2: &[u64; 18]) {
     let (xy2, _) = p2.as_chunks::<9>();
     *p3 = point(&jmixadd(&coords(p1), &fe(&xy2[0]), &fe(&xy2[1])));
@@ -153,6 +158,11 @@ pub(crate) fn p521_jscalarmul(res: &mut [u64; 27], scalar: &[u64; 9], point_in: 
     p[1] = select(above_half, &p[1], &fe_opp(&p[1]));
 
     let mut table = [p; 16];
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "1 <= i < 16 = table.len(), so i / 2 and i - 1 index it too"
+    )]
     for i in 1..table.len() {
         table[i] = match i % 2 {
             1 => jdouble(&table[i / 2]),
@@ -172,7 +182,7 @@ pub(crate) fn p521_jscalarmul(res: &mut [u64; 27], scalar: &[u64; 9], point_in: 
     };
 
     let mut windows = booth_w5(&k);
-    let (digit, _) = windows.next().unwrap();
+    let (digit, _) = windows.next().expect("booth_w5 yields 105 windows");
     let mut acc = lookup(digit, 0);
     for (digit, sign) in windows {
         // Doubling keeps a zero z zero.
@@ -192,6 +202,11 @@ pub(crate) fn p521_jscalarmul(res: &mut [u64; 27], scalar: &[u64; 9], point_in: 
 
 /// The 105 Booth-recoded 5-bit windows of `k`, highest first, each a digit
 /// and its sign, as `mid::p521`'s.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "1 <= w <= 104 where bit = 5 * w - 1, so bit <= 519 and bit / 8 + 1 <= 65 < 73 = bytes.len()"
+)]
 fn booth_w5(k: &[u64; 9]) -> impl Iterator<Item = (u8, u8)> {
     let mut bytes = [0u8; 73];
     for (chunk, word) in bytes.as_chunks_mut::<8>().0.iter_mut().zip(k) {
@@ -292,6 +307,10 @@ pub(crate) struct Naf<'a> {
 /// handled: the accumulator at infinity, equal to the point added, which
 /// doubles, or opposite it, which gives infinity, with a zero z.
 pub(crate) fn p521_public_twin_multiply(res: &mut [u64; 27], g: &Naf<'_>, p: &Naf<'_>) {
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "each odd multiple is 18 words, two chunks of 9"
+    )]
     let table = |naf: &Naf<'_>| {
         let mut table = [[Fe([0; FE_LIMBS]); 2]; 16];
         for (entry, point) in table.iter_mut().zip(naf.odd_multiples) {
@@ -307,6 +326,10 @@ pub(crate) fn p521_public_twin_multiply(res: &mut [u64; 27], g: &Naf<'_>, p: &Na
     let mut acc: Option<[Fe; 3]> = None;
     for i in (0..522).rev() {
         acc = acc.map(|acc| jdouble(&acc));
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "i < 522 = digits.len(), and a NAF digit is odd and below 32 in magnitude, so its half indexes the 16 multiples"
+        )]
         for (digit, table) in [(p.digits[i], &p_table), (g.digits[i], &g_table)] {
             if digit == 0 {
                 continue;
@@ -437,6 +460,11 @@ fn fe_invert(x: &Fe) -> Fe {
 /// by a fixed 4-bit window starting at `e`'s top window.
 ///
 /// The exponent picks the table entries, so it must not be secret.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "1 <= i < 16 = table.len(); bit < 576, so bit / 64 < 9 = e.len(); a window is 4 bits, so below 16"
+)]
 fn mont_pow(x: &[Limb; LIMBS], e: &[u64; 9]) -> [Limb; LIMBS] {
     let one = mont_mul(&split(&ONE), &split(&MM));
     let mut table = [one; 16];
@@ -465,6 +493,11 @@ fn mont_pow(x: &[Limb; LIMBS], e: &[u64; 9]) -> [Limb; LIMBS] {
 /// Each step adds `x * y[i]`, then the multiple of n that zeroes the low
 /// limb, and drops it.  The running value stays below 2n, so the limbs and
 /// the two above them hold it, and one subtraction of n reduces it.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "t is LIMBS + 2 limbs and n LIMBS, and 1 <= j < LIMBS"
+)]
 fn mont_mul(x: &[Limb; LIMBS], y: &[Limb; LIMBS]) -> [Limb; LIMBS] {
     let n: [Limb; LIMBS] = split(&N);
     let mut t = [0; LIMBS + 2];
@@ -492,7 +525,7 @@ fn mont_mul(x: &[Limb; LIMBS], y: &[Limb; LIMBS]) -> [Limb; LIMBS] {
         t[LIMBS + 1] = 0;
     }
     // Below 2n < 2^576, so t[LIMBS] is zero.
-    subtract_n_if_above(&t[..LIMBS].try_into().unwrap())
+    subtract_n_if_above(&t[..LIMBS].try_into().expect("t[..LIMBS] is LIMBS limbs"))
 }
 
 /// `x - n` if `x` is at least n, else `x`, for `x` below 2n.
@@ -509,6 +542,10 @@ fn mul_add(a: Limb, b: Limb, c: Limb, carry: Wide) -> Wide {
 }
 
 /// `x + y`, and the carry out.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "from_fn gives i < LIMBS = x.len() = y.len()"
+)]
 fn add(x: &[Limb; LIMBS], y: &[Limb; LIMBS]) -> ([Limb; LIMBS], Limb) {
     let mut carry = 0;
     let r = core::array::from_fn(|i| {
@@ -522,6 +559,10 @@ fn add(x: &[Limb; LIMBS], y: &[Limb; LIMBS]) -> ([Limb; LIMBS], Limb) {
 }
 
 /// `x - y`, and 1 if it borrowed.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "from_fn gives i < LIMBS = x.len() = y.len()"
+)]
 fn sub(x: &[Limb; LIMBS], y: &[Limb; LIMBS]) -> ([Limb; LIMBS], Limb) {
     let mut borrow = 0;
     let r = core::array::from_fn(|i| {
@@ -535,16 +576,26 @@ fn sub(x: &[Limb; LIMBS], y: &[Limb; LIMBS]) -> ([Limb; LIMBS], Limb) {
 }
 
 /// `if_nonzero` if `flag` is 1, else `if_zero`.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "from_fn gives i < LIMBS = if_zero.len() = if_nonzero.len()"
+)]
 fn select_words(flag: u8, if_zero: &[Limb; LIMBS], if_nonzero: &[Limb; LIMBS]) -> [Limb; LIMBS] {
     let mask = Limb::from(flag).wrapping_neg();
     core::array::from_fn(|i| (if_nonzero[i] & mask) | (if_zero[i] & !mask))
 }
 
 fn scalar(x: &[u64]) -> [u64; 9] {
-    x.try_into().unwrap()
+    x.try_into().expect(
+        "s2n-bignum's contract gives x the modulus's length, asserted to be n_521's 9 words",
+    )
 }
 
 /// The limbs of `x`, low first.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "per_word = 64 / Limb::BITS is 1 or 2, so Limb::BITS * (i % per_word) < 64"
+)]
 fn split<const N: usize, const W: usize>(x: &[u64; N]) -> [Limb; W] {
     let per_word = (64 / Limb::BITS) as usize;
     core::array::from_fn(|i| {
@@ -554,6 +605,11 @@ fn split<const N: usize, const W: usize>(x: &[u64; N]) -> [Limb; W] {
 }
 
 /// The 64-bit words of a value mod n's limbs, low first.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "i < LIMBS, so i * 9 / LIMBS < 9 = r.len() and Limb::BITS * i % 64 < 64"
+)]
 fn join(x: &[Limb; LIMBS]) -> [u64; 9] {
     let mut r = [0u64; 9];
     for (i, limb) in x.iter().enumerate() {
@@ -564,6 +620,10 @@ fn join(x: &[Limb; LIMBS]) -> [u64; 9] {
 
 /// The bit at which fiat-crypto's limb `i` starts: limbs split 521 bits
 /// as evenly as they can, the wider first, as its `eval` lists them.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "i <= FE_LIMBS, so 521 * i fits usize, and FE_LIMBS is 9 or 19, not 0"
+)]
 const fn offset(i: usize) -> usize {
     (521 * i).div_ceil(FE_LIMBS)
 }
@@ -576,6 +636,11 @@ const fn offset(i: usize) -> usize {
 /// fiat-crypto's byte encoding, which costs a third of a field
 /// multiplication a round trip, and every routine here converts each
 /// operand and result.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "i < FE_LIMBS, so limb i spans bits offset(i) < offset(i + 1) <= 521: its words start / 64 and, where it crosses one, the next are below 9, and 1 <= width < 64, shift < 64"
+)]
 fn fe(x: &[u64; 9]) -> Fe {
     Fe(core::array::from_fn(|i| {
         let (start, width) = (offset(i), offset(i + 1) - offset(i));
@@ -594,6 +659,11 @@ fn fe(x: &[u64; 9]) -> Fe {
 /// above.  As `fiat_p521_to_bytes` does, this subtracts p, limb by limb
 /// with the borrow carried, then adds p back if that borrowed out, which
 /// leaves each limb within its width; then it packs the limbs into words.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "i < FE_LIMBS, so limb i spans bits offset(i) < offset(i + 1) <= 521: its words offset(i) / 64 and, where it crosses one, the next are below 9, and 1 <= width < 64, shift < 64"
+)]
 fn words(x: &Fe) -> [u64; 9] {
     // Each limb of p is all ones across its width.
     let mask = |i: usize| -> Limb { (1 << (offset(i + 1) - offset(i))) - 1 };
@@ -690,6 +760,10 @@ fn select(flag: u8, if_zero: &Fe, if_nonzero: &Fe) -> Fe {
 }
 
 /// `if_nonzero` if `flag` is 1, else `if_zero`.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "from_fn gives i < 3 = if_zero.len() = if_nonzero.len()"
+)]
 fn select_point(flag: u8, if_zero: &[Fe; 3], if_nonzero: &[Fe; 3]) -> [Fe; 3] {
     core::array::from_fn(|i| select(flag, &if_zero[i], &if_nonzero[i]))
 }
@@ -705,6 +779,7 @@ fn opaque<T>(x: T) -> T {
     core::hint::black_box(x)
 }
 
+#[expect(clippy::indexing_slicing, reason = "p is 27 words, three chunks of 9")]
 fn coords(p: &[u64; 27]) -> [Fe; 3] {
     let (words, _) = p.as_chunks::<9>();
     [fe(&words[0]), fe(&words[1]), fe(&words[2])]
@@ -800,7 +875,9 @@ const C: [u64; 5] = [
 ///
 /// Inputs that are secret in `mid::p521` are marked secret, so under
 /// `admin/ctgrind` these also check each routine is constant time in them.
-#[cfg(all(test, any(rind_backend = "x86_64", rind_backend = "aarch64")))]
+// `test` alone, so Clippy sees a test module and lets it panic.
+#[cfg(test)]
+#[cfg(any(rind_backend = "x86_64", rind_backend = "aarch64"))]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use proptest::prelude::*;

@@ -53,6 +53,11 @@ fn mul_wide(x: &[u32; 8], y: &[u32; 8]) -> [u32; 16] {
 ///
 /// Each row is its own instance, so LLVM unrolls all eight and keeps the
 /// product's words in registers, which a loop over the rows did not.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "I < 8 and j < 8, so I + j < I + 8 < 16 = t.len()"
+)]
 fn mul_row<const I: usize>(t: &mut [u32; 16], x: &[u32; 8], yi: u32) {
     let mut carry = 0;
     for (j, x) in x.iter().enumerate() {
@@ -63,6 +68,11 @@ fn mul_row<const I: usize>(t: &mut [u32; 16], x: &[u32; 8], yi: u32) {
 
 /// The 512-bit `x^2`: each product of two different words once, doubled,
 /// plus the square of each word.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "1 <= k < 16 = t.len() and i < 8, so 2 * i + 1 < 16"
+)]
 fn sqr_wide(x: &[u32; 8]) -> [u32; 16] {
     let mut t = [0; 16];
     sqr_row::<0>(&mut t, x);
@@ -90,6 +100,11 @@ fn sqr_wide(x: &[u32; 8]) -> [u32; 16] {
 
 /// Adds `x[I + 1..] * x[I]` to `t` at word `2I + 1`, where words `I + 8`
 /// and up are zero.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "I < j < 8 = x.len(), so I + j < I + 8 < 16 = t.len()"
+)]
 fn sqr_row<const I: usize>(t: &mut [u32; 16], x: &[u32; 8]) {
     let mut carry = 0;
     for j in I + 1..8 {
@@ -108,6 +123,11 @@ fn sqr_row<const I: usize>(t: &mut [u32; 16], x: &[u32; 8]) {
 /// three additions and one subtraction of a word, and a carry of -2 to 4
 /// from column k - 1, so it stays within (-2^33, 2^35) and carries -2 to 4
 /// itself.  The result is below 2p < 2^257.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "i < 8, so i + 8 < 16 = col.len()"
+)]
 fn reduce_p(t: &[u32; 16]) -> [u32; 8] {
     let mut col = t.map(i64::from);
     for i in 0..8 {
@@ -133,6 +153,11 @@ fn reduce_p(t: &[u32; 16]) -> [u32; 8] {
 /// step i adds the multiple of `n 2^(32i)` that zeroes word i.  The running
 /// value stays below 2^512 + 2^256 n, so the 16 words and a carry above
 /// them hold it, and the result is below 2n.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "i < 8 and j < 8, so i + j < i + 8 < 16 = t.len()"
+)]
 fn reduce_n(t: &[u32; 16]) -> [u32; 8] {
     let n = split(&N);
     let mut t = *t;
@@ -146,7 +171,12 @@ fn reduce_n(t: &[u32; 16]) -> [u32; 8] {
         (t[i + 8], top) = add(t[i + 8], carry, top);
     }
     let (_, hi) = t.split_at(8);
-    subtract_if_above(hi.try_into().unwrap(), top, &n)
+    subtract_if_above(
+        hi.try_into()
+            .expect("t has 16 words, so those from word 8 up are 8"),
+        top,
+        &n,
+    )
 }
 
 /// `x + 2^256 top - m` if that is not negative, else `x`, for `x + 2^256
