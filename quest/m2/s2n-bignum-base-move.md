@@ -1,0 +1,15 @@
+# [L] rind's s2n-bignum fork takes upstream's AES-GCM stack clearing and AVX-512 models
+
+## Goal
+
+`thirdparty/s2n-bignum`'s base moves from `3f01260f` to an upstream commit at or past `ff331f43` (awslabs/s2n-bignum's main on 2026-11-28), so rind's aarch64 AES-GCM kernels run upstream's code that clears its stack slots on return, and every HOL Light proof, `admin/prove bytes`, and the cosimulation pass on the new base.
+
+## Plan
+
+Found by the 2026-11-28 [upstream-updates](/quest/m2/upstream-updates.md) run. Under `thirdparty/s2n-bignum/RIND.md`'s rule, every file but its listed ones stays upstream's, so neither fix below can be taken alone: the base move is the only way in.
+
+- What it brings to code rind runs: #504 (`20dab011`) makes the 4x encrypt kernels `aes128_gcm_enc` and `aes256_gcm_enc` clear the up to four blocks of plaintext XOR last round key they leave in their freed stack frame, from which a separate memory disclosure would recover the AES key; rind's `rind/src/low/aarch64/aes{128,256}_gcm_enc.rs` have no clearing stores. AGENTS.md's wipe rule keeps such a wipe, since upstream builds it into the code it proves. #512 (`c0edd6b5`) stops the four non-`_alt` kernels using x29 and x30 (rind's copies save and restore both, so it fixes only frame-pointer unwinding). The `_alt` kernels' object code is unchanged (#504 encodes EOR3 as `.inst`; #522 is text only).
+- The merge of RIND.md's Changed files is not clean (2 conflicts in `x86/proofs/instruction.ml`, 1 in `decode.ml`, 8 in `x86.ml`), and some duplicates merge silently: #439 (`e95b39a1`, merged 2026-11-17) adds PCLMULQDQ, PSLLDQ, PSRLDQ, and VEX VPSHUFD, which rind's fork also adds. Drop rind's PSLLDQ, PSRLDQ, and VPSHUFD for upstream's (which decode only with the 66 prefix, as rind's do), keep rind's PSLLD/PSRLD in upstream's 0x72 case and its F3 RET beside #439's LEAVE, trim `rind_cosim.ml` and RIND.md's rows and "#439 open" notes, and check rind's VEX instructions against #462's and #468's zmm and zero-top changes. #462 (`421518da`), deferred by the 2026-11-14 run until a routine change, rides along.
+- Then: `admin/regenerate` (only the four non-`_alt` AES-GCM `.rs` files should change); follow upstream's HOL Light bump (#517, to `096417ca`) in `flake.nix`; fix the 8 `ARM_MACRO_SIM_ABBREV_TAC` calls in `proofs/hol-light/aarch64/p{256,384}_montjmixadd.ml` that #508 broke; rerun `admin/prove bytes`, `hol-light x86_64`, `hol-light aarch64`, `hol-light armv7` (its AArch32 model loads the arm AES and SHA definitions), and `cosim` (rind's x86_64 SHA-2 AVX2 proofs use VPSHUFD, whose upstream definition is worded differently). The Lean AES-GCM axioms are functional and stay.
+- Re-pin every `3f01260f` link (about 19 files: ALGORITHMS.md, AUDIT.md, BENCHMARKS.md and `benchmarks/`, `proofs/Rind/*.lean`), and bench the four changed kernels against main.
+- Upstream #415, #420, and #450 were still open; #500 (aarch64 `mldsa_rej_uniform` from mldsa-native's TBL/TRN1 version) is a speedup for a routine rind runs once it merges.
