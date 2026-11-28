@@ -19,7 +19,11 @@ operands RIP-relative to a static, legacy SSE instructions with an aligned
 memory source, and aligned `vmovdqa` to and from memory. BoringSSL's AES-GCM
 routines read `vpshufd`'s source from memory, return with a plain `ret`, and
 read their constant tables by RIP-relative addressing (`rip`), which VG's
-code reaches only through a register `lea` loads. This model is VG's with
+code reaches only through a register `lea` loads; the AVX-512 key setup
+also uses `vpternlogd` and `vbroadcasti32x4` of a static, the EVEX forms
+`vpxord` of `ymm` registers, `vshufi64x2`, and `vmovdqu8` to memory, which
+VG's code writes in their `vpxor`, `vshufi32x4`, and `vmovdqu32` forms, and
+a 32-bit `dec`. This model is VG's with
 those added: its state is VG's with the
 lowest address the stack may reach, its instructions are VG's, run by VG's
 semantics, and those below, each transcribing the pseudocode of the Intel
@@ -138,7 +142,18 @@ inductive RipOp
   | vbin (op : VBinOp) (len : VLen) (dst src1 : XReg)
   /-- `vbroadcasti128 ymm, XMMWORD PTR [rip + name]` (`VEX.256.66.0F38.W0 5A /r`) -/
   | vbroadcasti128 (dst : XReg)
+  /-- `vpternlogd xmm1, xmm2, XMMWORD PTR [rip + name], imm8`
+  (`EVEX.128.66.0F3A.W0 25 /r ib`): VG's `vpternlogd .l128 dst src1` with
+  the static as `src2`. -/
+  | vpternlogd (dst src1 : XReg) (imm : BitVec 8)
+  /-- `vbroadcasti32x4 zmm, XMMWORD PTR [rip + name]` (`EVEX.512.66.0F38.W0 5A /r`) -/
+  | vbroadcasti32x4 (dst : XReg)
   deriving DecidableEq, Repr
+
+/-- The bytes a `RipOp` encodes after its `disp32`: its immediate's. -/
+def RipOp.tail : RipOp → Nat
+  | .vpternlogd .. => 1
+  | _ => 0
 
 inductive Instr
   /-- An instruction of VG's model, with VG's semantics. -/
@@ -202,6 +217,14 @@ inductive Instr
   | mulxD32 (hi lo : Reg) (m : MemOp)
   /-- `vpshufd xmm, XMMWORD PTR m, imm8` (`VEX.128.66.0F.WIG 70 /r ib`) -/
   | vpshufdLoad (d : XReg) (m : MemOp) (order : BitVec 8)
+  /-- `vpxord ymm1, ymm2, ymm3` (`EVEX.256.66.0F.W0 EF /r`) -/
+  | vpxordY (d a b : XReg)
+  /-- `vshufi64x2 zmm1, zmm2, zmm3, imm8` (`EVEX.512.66.0F3A.W1 43 /r ib`) -/
+  | vshufi64x2 (d a b : XReg) (sel : BitVec 8)
+  /-- `vmovdqu8 ZMMWORD PTR m, zmm` (`EVEX.512.F2.0F.W0 7F /r`) -/
+  | vmovdqu8Store (m : MemOp) (s : XReg)
+  /-- `dec r32` (`FF /1`) -/
+  | dec32 (d : Reg)
   /-- `op`, its memory operand the start of the static `name`, whose words
   are `words`, by RIP-relative addressing. -/
   | rip (op : RipOp) (name : String) (words : List (BitVec 64))
@@ -326,9 +349,23 @@ def static256 (ws : List (BitVec 64)) : Option (BitVec 256) :=
 * "PSHUFD" (VEX.128 encoded version): `DEST[127:0]` as PSHUFD's of `SRC`
   (`shufDwords`), `DEST[MAXVL-1:128] := 0` (`setV .l128`); `SRC` the 16
   bytes at the address, little-endian, with no alignment required.
-* `rip`: VG's `vbinLoad` and `vbroadcasti128`, their memory operand the
-  first 16 or 32 bytes of the static (`static128`, `static256`); it faults
-  if the static has fewer. In 64-bit mode ModR/M `mod = 00`, `r/m = 101`
+* "VPXORD" (EVEX.256 encoded version, no write mask): `DEST[i+31:i] :=
+  SRC1[i+31:i] BITWISE XOR SRC2[i+31:i]` for each doubleword, `DEST[MAXVL-1:VL]
+  := 0`: VG's VEX.256 `vpxor`, which computes the same.
+* "VSHUFI64x2" (512-bit form, no write mask): `Select4` of `SRC1` and `SRC2`
+  by `imm8` as VSHUFI32x4, the two differing only in the granularity of the
+  write mask: VG's `vshufi32x4`.
+* "VMOVDQU8" (EVEX.512 encoded version, store form, no write mask):
+  `DEST[511:0] := SRC[511:0]`, with no alignment required: VG's
+  `vmovdqu32Store`, which stores the same.
+* "DEC" (`FF /1`, 32-bit operand): `DEST := DEST – 1` on the low 32 bits,
+  zero-extended to 64 (SDM Vol. 1 §3.4.1.1); the CF flag is not affected,
+  and OF, SF, and ZF are those of the 32-bit subtraction.
+* `rip`: VG's `vbinLoad`, `vbroadcasti128`, `vpternlogd`, and
+  `vbroadcasti32x4`, their memory operand the first 16 or 32 bytes of the
+  static (`static128`, `static256`); it faults if the static has fewer. An
+  immediate follows the displacement (`RipOp.tail`), and RIP is the address
+  of the instruction's end, past it. In 64-bit mode ModR/M `mod = 00`, `r/m = 101`
   addresses `RIP + disp32` (SDM Vol. 2 §2.2.1.6, "RIP-Relative Addressing":
   "adding displacement to the 64-bit RIP of the next instruction"), and the
   linker writes `disp32` as `S + A - P` (System V AMD64 psABI §4.4,
@@ -442,11 +479,21 @@ def exec : Instr → State → Option State
         (op.sse.eval (s.vg.lane a 1) (v.extractLsb' 128 128))
       { s with vg := g }
   | .rip (.vbroadcasti128 d) _ ws, s => (static128 ws).map fun v => { s with vg := s.vg.setV .l256 d v v }
+  | .rip (.vpternlogd d a n) _ ws, s =>
+    (static128 ws).map fun v => { s with vg := s.vg.setV .l128 d (ternlog (s.vg.lane d 0) (s.vg.lane a 0) v n) 0 }
+  | .rip (.vbroadcasti32x4 d) _ ws, s => (static128 ws).map fun v => { s with vg := s.vg.setZ d v v v v }
+  | .vpxordY d a b, s => (VG.X86_64.exec (.vop (.vbin .vpxor .l256 d a b)) s.vg).map fun g => { s with vg := g }
+  | .vshufi64x2 d a b n, s => (VG.X86_64.exec (.zop (.vshufi32x4 d a b n)) s.vg).map fun g => { s with vg := g }
+  | .vmovdqu8Store m r, s => (VG.X86_64.exec (.vmovdqu32Store m r) s.vg).map fun g => { s with vg := g }
+  | .dec32 d, s =>
+    let a := (s.vg.gpr d).setWidth 32
+    let r := a - 1
+    some { s with vg := ({ arithFlags s.vg r false (subOverflow a 1 r) with cf := s.vg.cf }).setReg32 d r }
   | .align _, s | .jmpAlign _, s => some s
 
 /-- The addresses an instruction accesses: VG's for its own, and for the
 others the quadword a push stores or a pop loads, the bytes a `movdqa`,
-`vmovdqa`, `vpshufd`, `pinsrb`, or `pextrb` moves, or the memory operand an
+`vmovdqa`, `vmovdqu8`, `vpshufd`, `pinsrb`, or `pextrb` moves, or the memory operand an
 `imul`, a `mulx`, or an SSE or AVX instruction reads, each at its start, as
 VG's; and a `rip` static's offset, 0, as VG's table instructions leak: the
 static's address does not depend on the data. -/
@@ -455,18 +502,21 @@ def addrs : Instr → State → List Addr
   | .push _, s => [s.vg.gpr .rsp - 8]
   | .pop _, s => [s.vg.gpr .rsp]
   | .movdqaLoad _ m, s | .movdqaStore m _, s | .vpshufdLoad _ m _, s | .imulMem _ m, s
-  | .mulxD32 _ _ m, s | .vmovdqaStore _ m _, s | .pinsrb _ m _, s | .pextrb m _ _, s => [s.vg.ea m]
+  | .mulxD32 _ _ m, s | .vmovdqaStore _ m _, s | .pinsrb _ m _, s | .pextrb m _ _, s
+  | .vmovdqu8Store m _, s => [s.vg.ea m]
   | .xload _ _ m, s | .vmovdqaLoad _ _ m, s => [m.ea s.vg]
   | .vbinSym _ _ _ _ m, s => [(Mem.sym m).ea s.vg]
   | .rip .., _ => [0]
   | .aluRsp .., _ | .lea .., _ | .leaSym .., _ | .leaRsp _, _ | .neg _, _ | .dec _, _ | .inc _, _
-  | .cmov .., _ | .sar .., _ | .shrd .., _ | .movPad .., _ | .pextrq .., _ | .align _, _ | .jmpAlign _, _ => []
+  | .cmov .., _ | .sar .., _ | .shrd .., _ | .movPad .., _ | .pextrq .., _ | .align _, _ | .jmpAlign _, _
+  | .vpxordY .., _ | .vshufi64x2 .., _ | .dec32 _, _ => []
 
 /-- The CPU features beyond the baseline: VG's for its own and for the
 forms of VG's instructions here and those `rip` reads a static by, SSE4.1
 for `pinsrb`, `pextrb`, and `pextrq`, AVX for `vmovdqa` and `vpshufd`,
-`mulx`'s for `mulxD32`, and none for the others, which are x86-64 and SSE2
-baseline instructions. -/
+`mulx`'s for `mulxD32`, AVX-512 F and VL for `vpxord` of `ymm` registers, F
+for `vshufi64x2`, BW for `vmovdqu8`, and none for the others, which are
+x86-64 and SSE2 baseline instructions. -/
 def Instr.requires : Instr → List String
   | .vg i => i.requires
   | .vpshufdLoad .. => ["avx"]
@@ -477,6 +527,11 @@ def Instr.requires : Instr → List String
   | .pinsrb .. | .pextrb .. | .pextrq .. => ["sse4.1"]
   | .rip (.vbin op len d a) .. => (VG.X86_64.Instr.vbinLoad op len d a { base := .rax }).requires
   | .rip (.vbroadcasti128 d) .. => (VG.X86_64.Instr.vbroadcasti128 d { base := .rax }).requires
+  | .rip (.vpternlogd d a n) .. => (VG.X86_64.Instr.vop (.vpternlogd .l128 d a a n)).requires
+  | .rip (.vbroadcasti32x4 d) .. => (VG.X86_64.Instr.vbroadcasti32x4 d { base := .rax }).requires
+  | .vpxordY .. => ["avx512f", "avx512vl"]
+  | .vshufi64x2 .. => ["avx512f"]
+  | .vmovdqu8Store .. => ["avx512bw"]
   | _ => []
 
 /-- SDM Vol. 2, "CALL", near call: `RSP := RSP − 8; Memory[RSP] := RIP`
@@ -593,6 +648,14 @@ def ripVex (pp map l v op r : Nat) : List Nat :=
   if map == 1 then [0xC5, rb <<< 7 ||| vv <<< 3 ||| l <<< 2 ||| pp, op] ++ ripModRM r
   else [0xC4, rb <<< 7 ||| 1 <<< 6 ||| 1 <<< 5 ||| map, vv <<< 3 ||| l <<< 2 ||| pp, op] ++ ripModRM r
 
+/-- `Enc.evex` with a RIP-relative operand, whose `X` and `B` are 0, so
+`P0`'s `X̄` and `B̄` are 1. -/
+def ripEvex (pp map : Nat) (w : Bool) (ll v op r : Nat) : List Nat :=
+  let p0 := (1 - r / 8 % 2) <<< 7 ||| 1 <<< 6 ||| 1 <<< 5 ||| (1 - r / 16 % 2) <<< 4 ||| map
+  let p1 := (if w then 0x80 else 0) ||| (15 - v % 16) <<< 3 ||| 4 ||| pp
+  let p2 := ll <<< 5 ||| (1 - v / 16 % 2) <<< 3
+  [0x62, p0, p1, p2, op] ++ ripModRM r
+
 /-- The condition code of a `Jcc` or `CMOVcc` (SDM Vol. 2, "Jcc", `7x cb`,
 `0F 8x cd`; "CMOVcc", `0F 4x`): B 2, AE 3, E 4, NE 5, BE 6, A 7, L C, GE D,
 LE E, G F; `rcxz` and `rcxnz` have none, so `jcc` lays them out by `jrcxz`
@@ -614,12 +677,15 @@ def Cond.cc : Cond → Nat
 (`Instr.encode`); `push` `50+rd` and `pop` `58+rd`, with `REX.B` for
 `r8`–`r15`; `aluRsp` as VG's `alu` into `rsp`; `lea`, `neg`, `dec`, `inc`,
 `cmov`, `shrd`, `movdqa`, `vmovdqa`, `vpshufd`, `pinsrb`, `pextrb`,
-`pextrq`, and `imul` as their docs give, and `xload` and `vbinSym` as VG's
+`pextrq`, `imul`, `vpxord`, `vshufi64x2`, `vmovdqu8`, and the 32-bit `dec`
+as their docs give, in VG's encoder's forms (`Enc.evex`, a store's 8-bit
+displacement scaled by 64), and `xload` and `vbinSym` as VG's
 encoding of its instruction with a memory operand, in VG's encoder's forms,
 a RIP-relative operand's displacement 0 (`ripModRM`); `movPad` as `n` bytes
 `67` then VG's `mov`; `mulxD32`'s; `rip`'s as the register forms' VG
-encodes (`VBinOp.opc`, "VBROADCAST" `VEX.256.66.0F38.W0 5A /r`) with a
-RIP-relative operand; and the padding, `none` unless `n` is a power of two
+encodes (`VBinOp.opc`, "VBROADCAST" `VEX.256.66.0F38.W0 5A /r` and
+`EVEX.512.66.0F38.W0 5A /r`, "VPTERNLOGD" `EVEX.128.66.0F3A.W0 25 /r ib`)
+with a RIP-relative operand; and the padding, `none` unless `n` is a power of two
 up to 64 and the jump's reach (`EB cb`, at most 127) covers it. -/
 def Instr.encode (o : Nat) : Instr → Option (List Nat)
   | .vg i => i.encode.map List.flatten
@@ -652,6 +718,12 @@ def Instr.encode (o : Nat) : Instr → Option (List Nat)
     let (pp, map, c, _) := op.opc
     some (vexRip pp map (Enc.len l) (Enc.xreg a) c (Enc.xreg d))
   | .rip (.vbroadcasti128 d) .. => some (vexRip 1 2 1 0 0x5A (Enc.xreg d))
+  | .rip (.vpternlogd d a n) .. => some (ripEvex 1 3 false 0 (Enc.xreg a) 0x25 (Enc.xreg d) ++ [n.toNat])
+  | .rip (.vbroadcasti32x4 d) .. => some (ripEvex 1 2 false 2 0 0x5A (Enc.xreg d))
+  | .vpxordY d a b => Enc.evex 1 1 false 1 (Enc.xreg a) 0xEF (Enc.xreg d) (.reg (Enc.xreg b))
+  | .vshufi64x2 d a b n => Enc.evex 1 3 true 2 (Enc.xreg a) 0x43 (Enc.xreg d) (.reg (Enc.xreg b)) (imm := [n.toNat])
+  | .vmovdqu8Store m r => Enc.evex 3 1 false 2 0 0x7F (Enc.xreg r) (.mem m) 64
+  | .dec32 d => Enc.legacy [] false [0xFF] 1 (Enc.RM.reg (Enc.reg d))
   | .imulMem d m => Enc.legacy [] true [0x0F, 0xAF] (Enc.reg d) (Enc.RM.mem m)
   | .movPad n d r => (Enc.legacy [] true [0x89] (Enc.reg r) (Enc.RM.reg (Enc.reg d))).map (List.replicate n 0x67 ++ ·)
   | .mulxD32 hi lo m => mulxD32Bytes hi lo m
@@ -707,13 +779,14 @@ structure Reloc where
   deriving DecidableEq, Repr
 
 /-- The relocations of an instruction laid out at `o` as `bs`: a
-RIP-relative operand's `disp32`, its last four bytes, `R_X86_64_PC32`
-against the static (System V AMD64 psABI §4.4, `S + A - P`, `P` the
-displacement's own address, four bytes before the instruction's end), with
-the addend that makes the address it gives `disp` bytes past the static's
-start: `-4` for `rip`, which reads the start. -/
+RIP-relative operand's `disp32`, its last four bytes but for an immediate
+after it (`RipOp.tail`), `R_X86_64_PC32` against the static (System V AMD64
+psABI §4.4, `S + A - P`, `P` the displacement's own address, four bytes and
+the immediate's before the instruction's end), with the addend that makes
+the address it gives `disp` bytes past the static's start: `-4` for `rip`,
+which reads the start, less the immediate's length. -/
 def Instr.relocs (o : Nat) (bs : List Nat) : Instr → List Reloc
-  | .rip _ name _ => [⟨o + bs.length - 4, "R_X86_64_PC32", name, -4⟩]
+  | .rip op name _ => [⟨o + bs.length - 4 - op.tail, "R_X86_64_PC32", name, -4 - op.tail⟩]
   | i => (i.sym.map fun m => ⟨o + bs.length - 4, "R_X86_64_PC32", m.name, m.disp - 4⟩).toList
 
 /-- The machine code of a program from byte offset `o` on, and its

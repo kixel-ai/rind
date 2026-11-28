@@ -60,7 +60,7 @@ def extCase (i : Rind.X86_64.Instr) : Gen (Option (Img × Img × Nat)) := do
     | .push _ => img := img.setReg .rsp (windowBase + windowLen - 8 * (← below 4))
     | .aluRsp .add _ => img := img.setReg .rsp (windowBase + 8 * (← below 4))
     | .lea _ m | .leaRsp m | .vpshufdLoad _ m _ | .imulMem _ m | .mulxD32 _ _ m | .pinsrb _ m _
-    | .pextrb m _ _ =>
+    | .pextrb m _ _ | .vmovdqu8Store m _ =>
       img ← placeMem img m
     | .movdqaLoad _ m | .movdqaStore m _ | .xload _ _ (.op m) | .vmovdqaLoad .l128 _ (.op m)
     | .vmovdqaStore .l128 m _ => img ← placeAligned img m 16
@@ -79,14 +79,15 @@ def extCase (i : Rind.X86_64.Instr) : Gen (Option (Img × Img × Nat)) := do
 
 /-- The machine code of `i` at `insnAddr`: a RIP-relative operand of aws-lc's
 code with its displacement, its last four bytes, the distance from its end
-to `symTarget`; `rip` with its `disp32` 2, then `jmp` (`EB cb`) over the
-static's words, so it reads them. -/
+to `symTarget`; `rip` with its `disp32` 2, then any immediate after it,
+then `jmp` (`EB cb`) over the static's words, so it reads them. -/
 def code (i : Rind.X86_64.Instr) : Option ByteArray :=
   (i.encode 0).map fun bs =>
     let bs : List Nat := match i, i.sym with
-      | .rip _ _ ws, _ =>
+      | .rip op _ ws, _ =>
         let tbl := ws.flatMap fun (w : BitVec 64) => Enc.le 8 w.toNat
-        bs.take (bs.length - 4) ++ [2, 0, 0, 0, 0xEB, tbl.length] ++ tbl
+        bs.take (bs.length - 4 - op.tail) ++ [2, 0, 0, 0] ++ bs.drop (bs.length - op.tail) ++
+          [0xEB, tbl.length] ++ tbl
       | _, some _ => bs.take (bs.length - 4) ++ Enc.le 4 (((symTarget : Int) - (insnAddr + bs.length)) % 2 ^ 32).toNat
       | _, none => bs
     ⟨(bs.map (·.toUInt8)).toArray⟩

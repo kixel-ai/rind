@@ -3,6 +3,7 @@ import RindIsa.AArch64.Sha256Hw
 import RindIsa.X86_64.ChaCha20Poly1305
 import RindIsa.X86_64.Mul4x
 import RindIsa.X86_64.GcmInitAvx2
+import RindIsa.X86_64.GcmInitAvx512
 import RindIsa.X86_64.Mulx4x
 import RindIsa.X86_64.PolyHashAd
 import RindIsa.X86_64.Sqrx8x
@@ -56,6 +57,11 @@ def proven : List Proven :=
      statics := [(GcmInitAvx2.carryName, "rind::low::x86_64::aes_gcm_vaes::AVX2_GFPOLY_AND_INTERNAL_CARRYBIT",
          GcmInitAvx2.carry),
        (GcmInitAvx2.gfpolyName, "rind::low::x86_64::aes_gcm_vaes::AVX2_GFPOLY", GcmInitAvx2.gfpoly)] },
+   { path := "rind::low::x86_64::aes_gcm_vaes::gcm_init_vpclmulqdq_avx512", prog := GcmInitAvx512.prog,
+     ret := plainRet,
+     statics := [(GcmInitAvx512.carryName, "rind::low::x86_64::aes_gcm_vaes::AVX512_GFPOLY_AND_INTERNAL_CARRYBIT",
+         GcmInitAvx512.carry),
+       (GcmInitAvx512.gfpolyName, "rind::low::x86_64::aes_gcm_vaes::AVX512_GFPOLY", GcmInitAvx512.gfpoly)] },
    { path := "rind::low::x86_64::chacha20poly1305::seal_avx2", prog := ChaCha20Poly1305.sealAvx2,
      ret := repRet,
      statics := [(ChaCha20Poly1305.constsName, "rind::low::x86_64::chacha20poly1305::CONSTS",
