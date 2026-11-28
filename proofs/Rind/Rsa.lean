@@ -6,9 +6,9 @@ public import Mathlib.Data.Nat.Size
 /-!
 # RSA signatures
 
-RFC 8017's RSASSA-PKCS1-v1_5 and RSASSA-PSS verification over any hash,
-transliterated from its sections 4, 5.2.2, 8, 9, and B.2.1, and its signature
-primitive by the CRT, from section 5.2.1. A hash is a
+RFC 8017's RSASSA-PKCS1-v1_5 and RSASSA-PSS signing and verification over
+any hash, transliterated from its sections 4, 5.2, 8, 9, and B.2.1, with its
+signature primitive by the CRT, from section 5.2.1. A hash is a
 function of the message's octets, as `Rind.HashSpec` defines SHA-1 and
 SHA-256, and the other proofs SHA-384 and SHA-512. The RFC bounds each
 hash's input, which the theorems that use these state.
@@ -115,6 +115,47 @@ def emsaPssVerify (H : List Byte → List Byte) (hLen : Nat) (M EM : List Byte)
   (∀ b ∈ DB.take psLen, b = 0x00) ∧ DB[psLen]? = some 0x01 ∧
   -- Steps 12 to 14.
   H (List.replicate 8 0x00 ++ mHash ++ salt) = H'
+
+/-- EMSA-PSS-ENCODE, section 9.1.1, with MGF1 over the same hash and the
+salt given, as randomness is outside a functional spec: `EM`, of
+`emLen = ceil(emBits / 8)` octets, or `none` ("encoding error") if `emLen`
+is under `hLen + sLen + 2`. Step 1's input limit is the caller's. -/
+def emsaPssEncode (H : List Byte → List Byte) (hLen : Nat) (M salt : List Byte) (emBits : Nat) :
+    Option (List Byte) :=
+  let emLen := (emBits + 7) / 8
+  let sLen := salt.length
+  -- Step 2.
+  let mHash := H M
+  -- Step 3.
+  if emLen < hLen + sLen + 2 then none
+  else
+    -- Steps 5 and 6.
+    let H' := H (List.replicate 8 0x00 ++ mHash ++ salt)
+    -- Steps 7 and 8.
+    let DB := List.replicate (emLen - sLen - hLen - 2) 0x00 ++ [0x01] ++ salt
+    -- Steps 9 to 11.
+    let dbMask := mgf1 H hLen H' (emLen - hLen - 1)
+    let maskedDB := (List.zipWith (· ^^^ ·) DB dbMask).modifyHead
+      fun b => b &&& BitVec.ofNat 8 (2 ^ (8 - (8 * emLen - emBits)) - 1)
+    -- Step 12.
+    some (maskedDB ++ H' ++ [0xbc])
+
+/-- RSASSA-PSS-SIGN, section 8.1.1, with RSASP1 by the CRT and the salt given:
+`S`, or `none` ("encoding error"). The message representative is below
+`2^(modBits - 1)`, so below `n`, which is RSASP1's range check. -/
+def rsassaPssSign (n p q dP dQ qInv : Nat) (H : List Byte → List Byte) (hLen : Nat) (M salt : List Byte) :
+    Option (List Byte) :=
+  (emsaPssEncode H hLen M salt (n.size - 1)).bind fun EM =>
+    i2osp (rsasp1Crt p q dP dQ qInv (os2ip EM)) (octetLen n)
+
+/-- RSASSA-PKCS1-V1_5-SIGN, section 8.2.1, with RSASP1 by the CRT: `S`, or
+`none` ("intended encoded message length too short"). The encoded message
+starts with a zero octet, so its representative is below `n`, which is
+RSASP1's range check. -/
+def rsassaPkcs1v15Sign (n p q dP dQ qInv : Nat) (H : List Byte → List Byte) (digestInfo M : List Byte) :
+    Option (List Byte) :=
+  (emsaPkcs1v15Encode H digestInfo M (octetLen n)).bind fun EM =>
+    i2osp (rsasp1Crt p q dP dQ qInv (os2ip EM)) (octetLen n)
 
 /-- RSASSA-PSS-VERIFY, section 8.1.2: whether `S` is a valid signature of
 `M` under `(n, e)` with a salt of `sLen` octets. -/

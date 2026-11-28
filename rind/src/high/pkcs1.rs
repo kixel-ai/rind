@@ -86,10 +86,14 @@ pub(crate) static DIGESTINFO_SHA512: &[u8] = &[
 /// `s_len` is the salt length, which `rng` fills.
 ///
 /// A salt too long for `emLen` is refused as the key's size.
+///
+/// By index rather than splitting, and over a generic source rather than a
+/// `dyn` one, neither of which Aeneas can translate, so `proofs/` can prove
+/// RSA signing.
 pub(crate) fn encode_pss_sig<H: Hash>(
     out: &mut [u8],
     em_bits: usize,
-    rng: &mut dyn RandomSource,
+    rng: &mut (impl RandomSource + ?Sized),
     hash: &[u8],
     s_len: usize,
 ) -> Result<(), Error> {
@@ -111,42 +115,37 @@ pub(crate) fn encode_pss_sig<H: Hash>(
     // 8.  Let DB = PS || 0x01 || salt; DB is an octet string of length
     //     emLen - hLen - 1.
     // (laid out first, so step 4 writes the salt in place)
-    let (db, h_bc) = out.split_at_mut(em_len - h_len - 1);
-    let (ps, ps_sep_salt) = db.split_at_mut(em_len - s_len - h_len - 2);
-    let (ps_sep, salt) = ps_sep_salt.split_first_mut().unwrap();
-    ps.fill(0x00);
-    *ps_sep = 0x01;
+    let db_len = em_len - h_len - 1;
+    let salt_start = db_len - s_len;
+    out[..salt_start - 1].fill(0x00);
+    out[salt_start - 1] = 0x01;
 
     // 4.  Generate a random octet string salt of length sLen; if sLen = 0,
     //     then salt is the empty string.
-    rng.fill(salt)?;
+    rng.fill(&mut out[salt_start..db_len])?;
 
     // 5.  Let
     //       M' = (0x)00 00 00 00 00 00 00 00 || mHash || salt;
     //     M' is an octet string of length 8 + hLen + sLen with eight
     //     initial zero octets.
-    let m_prime = [&[0u8; 8], hash, &*salt];
-
     // 6.  Let H = Hash(M'), an octet string of length hLen.
     let mut ctx = H::new();
-    for d in m_prime {
-        ctx.update(d);
-    }
+    ctx.update(&[0u8; 8]);
+    ctx.update(hash);
+    ctx.update(&out[salt_start..db_len]);
     let h = ctx.finish();
-    assert_eq!(h.as_ref().len(), h_len);
 
     // 9.  Let dbMask = MGF(H, emLen - hLen - 1).
     // 10. Let maskedDB = DB \xor dbMask.
-    mgf1_xor::<H>(h.as_ref(), h_len, db);
+    mgf1_xor::<H>(h.as_ref(), h_len, &mut out[..db_len]);
 
     // 11. Set the leftmost 8emLen - emBits bits of the leftmost octet in
     //     maskedDB to zero.
-    db[0] &= u8::MAX >> (8 * em_len - em_bits);
+    out[0] &= u8::MAX >> (8 * em_len - em_bits);
 
     // 12. Let EM = maskedDB || H || 0xbc.
-    let (bc, h_out) = h_bc.split_last_mut().unwrap();
-    h_out.copy_from_slice(h.as_ref());
-    *bc = 0xbc;
+    out[db_len..em_len - 1].copy_from_slice(h.as_ref());
+    out[em_len - 1] = 0xbc;
 
     // 13. Output EM.
     Ok(())

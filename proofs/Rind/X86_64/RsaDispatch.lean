@@ -151,6 +151,19 @@ const fn algorithm(verification: RsaVerification, min_bits: usize) -> Verificati
     }
 }
 
+pub struct SigningAlgorithm {
+    scheme: RsaScheme,
+    // The only path to the scheme's code, as `VerificationAlgorithm`'s.
+    sign: RsaSign,
+}
+
+const fn signing(scheme: RsaScheme) -> SigningAlgorithm {
+    SigningAlgorithm {
+        scheme,
+        sign: scheme.signer(),
+    }
+}
+
 const PKCS1_SHA256_SCHEME: RsaScheme = RsaScheme {
     padding: RsaPadding::Pkcs1,
     hash: HashId::Sha256,
@@ -159,6 +172,23 @@ const PKCS1_SHA256_SCHEME: RsaScheme = RsaScheme {
 const PSS_SHA256_SCHEME: RsaScheme = RsaScheme::pss(HashId::Sha256, PssSalt::Hash);
 
 pub(crate) const MIN_BITS: usize = 2048;
+
+pub struct KeyPairComponents<B> {
+    /// The modulus and public exponent, without leading zero bytes.
+    pub public_key: PublicKeyComponents<B>,
+    /// The private exponent.
+    pub d: B,
+    /// The first prime factor of the modulus.
+    pub p: B,
+    /// The second prime factor of the modulus.
+    pub q: B,
+    /// `d` mod `p - 1`.
+    pub dp: B,
+    /// `d` mod `q - 1`.
+    pub dq: B,
+    /// The inverse of `q` mod `p`.
+    pub qi: B,
+}
 
 pub struct PublicKey {
     key: rsa::VerifyingKey,
@@ -230,6 +260,99 @@ impl PublicKey {
         (algorithm.verify)(&self.key, algorithm.verification.salt(), signature, message)
     }
 }
+
+pub struct Signature(Buffer<MAX_PUBLIC_MODULUS_BYTES>);
+
+impl AsRef<[u8]> for Signature {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
+    }
+}
+
+pub struct KeyPair {
+    key: rsa::SigningKey,
+    public: PublicKey,
+}
+
+impl KeyPair {
+    /// Generates a key pair of `size` from the system random source.
+    ///
+    /// This is slow: about 30 milliseconds for 2048 bits, and 15 seconds or
+    /// more for 8192 bits, with no upper bound. Its timing reveals only which
+    /// candidate primes it discards.
+    pub fn generate(size: RsaKeySize) -> Result<Self, Error> {
+        Self::new(rsa::SigningKey::generate(size)?)
+    }
+
+    /// Loads a PKCS#8 v1 RSA private key, named `rsaEncryption`,
+    /// `id-RSAES-OAEP`, or `id-ea-rsa`.
+    pub fn from_pkcs8(der: &[u8]) -> Result<Self, Error> {
+        Self::new(rsa::SigningKey::from_pkcs8_der(der)?)
+    }
+
+    /// Loads a PKCS#1 `RSAPrivateKey`.
+    pub fn from_pkcs1(der: &[u8]) -> Result<Self, Error> {
+        Self::new(rsa::SigningKey::from_pkcs1_der(der)?)
+    }
+
+    /// Loads a private key from its big-endian integers, as a JWK carries
+    /// them, refusing one whose integers disagree.
+    pub fn from_components(
+        components: &KeyPairComponents<impl AsRef<[u8]>>,
+    ) -> Result<Self, Error> {
+        Self::new(rsa::SigningKey::from_components(&rsa::Components {
+            n: components.public_key.n.as_ref(),
+            e: components.public_key.e.as_ref(),
+            d: components.d.as_ref(),
+            p: components.p.as_ref(),
+            q: components.q.as_ref(),
+            dp: components.dp.as_ref(),
+            dq: components.dq.as_ref(),
+            qi: components.qi.as_ref(),
+        })?)
+    }
+
+    fn new(key: rsa::SigningKey) -> Result<Self, Error> {
+        let public = PublicKey::from_key(key.public_key())?;
+        Ok(Self { key, public })
+    }
+
+    /// Returns the public key, which verifies what this key pair signs.
+    pub fn public_key(&self) -> &PublicKey {
+        &self.public
+    }
+
+    /// The bit lengths of the primes `p` and `q`, for a loader that sizes
+    /// keys by them, as ring does.
+    ///
+    /// Loading a key already reveals them, as aws-lc treats them as public,
+    /// and the encoding's framing shows their byte lengths.
+    pub fn prime_bits(&self) -> [usize; 2] {
+        self.key.prime_bits()
+    }
+
+    /// Signs `message` with `algorithm`, as long as the modulus.
+    ///
+    /// A PSS salt too long for the modulus is refused as the key's size.
+    pub fn sign(&self, algorithm: &SigningAlgorithm, message: &[u8]) -> Result<Signature, Error> {
+        Buffer::write(|output| {
+            let output = output
+                .get_mut(..self.key.modulus_len_bytes())
+                .ok_or(Error::WrongLength)?;
+            (algorithm.sign)(&self.key, algorithm.scheme.salt(), output, message)
+        })
+        .map(Signature)
+    }
+
+    /// Encodes the private key as PKCS#8.
+    pub fn to_pkcs8(&self) -> Pkcs8 {
+        Pkcs8(Buffer::encode(|output| self.key.to_pkcs8_der(output)))
+    }
+}
+
+    pub static PKCS1_SHA256: SigningAlgorithm = signing(PKCS1_SHA256_SCHEME);
+
+    pub static PSS_SHA256: SigningAlgorithm = signing(PSS_SHA256_SCHEME);
 
     pub static PKCS1_SHA256: VerificationAlgorithm = verification(PKCS1_SHA256_SCHEME, MIN_BITS);
 

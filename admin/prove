@@ -1669,8 +1669,12 @@ rsa_items() {
     items rind/src/high/signature/rsa.rs 'enum RsaPadding {' 'struct RsaScheme {' 'type RsaSign =' \
         'type RsaVerify =' 'impl RsaScheme {' 'enum RsaVerification {' 'impl RsaVerification {' \
         'pub struct VerificationAlgorithm {' 'const fn verification(' 'const fn algorithm(' \
+        'pub struct SigningAlgorithm {' 'const fn signing(' \
         'const PKCS1_SHA256_SCHEME:' 'const PSS_SHA256_SCHEME:' 'pub(crate) const MIN_BITS:' \
+        'pub struct KeyPairComponents<B> {' \
         'pub struct PublicKey {' 'struct RsaPublicKeyDer(' 'impl PublicKey {' \
+        'pub struct Signature(' 'impl AsRef<[u8]> for Signature {' 'pub struct KeyPair {' 'impl KeyPair {' \
+        '    pub static PKCS1_SHA256: SigningAlgorithm' '    pub static PSS_SHA256: SigningAlgorithm' \
         '    pub static PKCS1_SHA256: VerificationAlgorithm' '    pub static PSS_SHA256: VerificationAlgorithm'
 }
 check_quote X86_64/RsaDispatch rsa_items
@@ -1770,8 +1774,9 @@ only_quoted rind/src/aead.rs "$out/AeadDispatch.rs" '= Algorithm \{'
 # HMAC's keyed states are translated over any hash, and its
 # `Key` and `Context`, which hold function pointers, are not.
 # On x86_64, RSA verification is translated from `high::rsa::VerifyingKey`,
-# and the private key's loading and operation from `RsaPrivateKey::new` and
-# `RsaPrivateKey::private_op`, down to
+# the private key's loading and operation from `RsaPrivateKey::new` and
+# `RsaPrivateKey::private_op`, and SHA-256 signing and key loading from
+# `high::rsa::SigningKey`, down to
 # `low::posint`, `low::x86_64::mont_exp`, and the Montgomery products'
 # dispatch in `low::x86_64::mont`, whose s2n-bignum and aws-lc routines are
 # opaque, and to `RsaIfma::check`, `rsa_vg::Precompute::check`, and the RSAZ
@@ -1782,7 +1787,7 @@ only_quoted rind/src/aead.rs "$out/AeadDispatch.rs" '= Algorithm \{'
 # `RsaIfma::public`, `IfmaCrt::crt`, and `Precompute::precompute`, which
 # `VgRsa.lean`'s axioms state. Its DER parsing and
 # encoding, which the ✓ leaves out, are opaque too, and `RsaDispatch.lean`
-# models `signature::rsa::PublicKey` above it.
+# models `signature::rsa::PublicKey` and `KeyPair` above it.
 # x86_64's RSA reaches `Digest::ct_equal`, so every target starts from it,
 # for the HMAC model all share.
 # ML-KEM's construction is translated from its key generation, key parsing,
@@ -2274,6 +2279,16 @@ extract x86_64 X86_64 "${hashes[@]}" "${assembly[@]}" \
     --include crate::low::x86_64::mont::redc_8n \
     --start-from crate::mid::rsa_priv::RsaPrivateKey::new \
     --start-from crate::mid::rsa_priv::RsaPrivateKey::private_op \
+    --start-from crate::high::rsa::SigningKey::from_components \
+    --start-from crate::high::rsa::SigningKey::from_pkcs1_der \
+    --start-from crate::high::rsa::SigningKey::from_pkcs8_der \
+    --start-from crate::high::rsa::SigningKey::public_key \
+    --start-from crate::high::rsa::SigningKey::modulus_len_bytes \
+    --start-from crate::high::rsa::SigningKey::sign_pkcs1_sha256 \
+    --start-from crate::high::rsa::SigningKey::sign_pss_sha256 \
+    --start-from '{impl core::convert::AsRef for crate::high::signature::rsa::Signature}' \
+    --opaque crate::high::rsa::pkcs1_private_components \
+    --opaque crate::high::rsa::pkcs8_private_key \
     --include crate::low::x86_64::mont_exp \
     --opaque crate::low::x86_64::mont_exp::power5 \
     --opaque crate::low::x86_64::mont_exp::gather_avx2 \

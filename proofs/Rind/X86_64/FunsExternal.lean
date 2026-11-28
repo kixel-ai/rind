@@ -1136,6 +1136,12 @@ opaque high.rsa.VerifyingKey.to_pkcs1_der
   high.rsa.VerifyingKey → Slice Std.U8 → Result ((core.result.Result (Slice
     Std.U8) error.Error) × (Slice Std.U8))
 
+opaque high.rsa.pkcs1_private_components
+  : Slice Std.U8 → Result (core.result.Result high.rsa.Components error.Error)
+
+opaque high.rsa.pkcs8_private_key
+  : Slice Std.U8 → Result (core.result.Result (Slice Std.U8) error.Error)
+
 /-- Whether the CPU runs pyca/verified-garbage's AVX-512 IFMA X25519 and
 Ed25519, and the wrappers of those routines, whose contracts
 `Rind.X86_64.VgCurve25519` restates. -/
