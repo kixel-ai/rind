@@ -52,6 +52,12 @@ core::arch::global_asm!(
 
 /// `z = x * y / 2^(64k) mod m`, for `x` and `y` below the odd `m`, where `k`
 /// is the length of each and `n0` is `-m^-1 mod 2^64`.
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "k >= 1 is asserted, so k - 1 indexes m and num = 2 * k >= 2, and k is a u64 slice's length, so \
+              2 * k fits in usize"
+)]
 pub(crate) fn mont_mul(z: &mut [u64], x: &[u64], y: &[u64], m: &[u64], n0: u64) {
     let k = m.len();
     assert!(k >= 1 && z.len() == k && x.len() == k && y.len() == k);
@@ -93,6 +99,11 @@ pub(crate) fn mont_sqr(z: &mut [u64], x: &[u64], m: &[u64], n0: u64) {
 /// One step of Montgomery reduction: adding `u * m` for `u = z * n0 mod 2^32`
 /// clears the low limb, and `(z + u * m) / 2^32 < (m + (2^32 - 1) m) / 2^32
 /// = m`, so no subtraction follows.
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "mont_mul passes z and m of equal length k > 1, so j < k and k - 1 index both"
+)]
 fn reduce_limb(z: &mut [u64], m: &[u64], n0: u32) {
     const LOW: u64 = u32::MAX as u64;
     let k = m.len();

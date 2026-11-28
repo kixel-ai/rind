@@ -132,6 +132,10 @@ impl NeonKey {
 
     /// The key's length in bytes, from the `nbits / 32 + 5` rounds that
     /// `vpaes_set_encrypt_key` stores.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "the stored rounds are 9, 11 or 13, so the result is 16 to 32"
+    )]
     pub(crate) fn key_len(&self) -> usize {
         (self.vpaes.rounds as usize - 5) * 4
     }
@@ -255,14 +259,14 @@ impl NeonDecKey {
         let mut chain = *iv;
         if !bulk.is_empty() {
             let io = bulk.as_mut_ptr().cast::<u8>();
-            // SAFETY: `io` is `16 * bulk.len()` readable and writable
+            // SAFETY: `io` is `size_of_val(bulk)` readable and writable
             // bytes, which aws-lc allows to alias, and `enc` 0, as the
             // routine requires. Only a `HaveNeon` token builds `self`.
             unsafe {
                 asm_call!(unsafe extern "C" bsaes_cbc_encrypt(
                     io,
                     io,
-                    16 * bulk.len(),
+                    size_of_val(bulk),
                     &self.bsaes,
                     &mut chain,
                     0,
@@ -296,7 +300,7 @@ impl low::generic::zeroise::Zeroable for NeonDecKey {}
 fn bsaes_blocks(blocks: usize) -> usize {
     match (blocks, blocks % 8) {
         (..8, _) => 0,
-        (_, ..6) => blocks - blocks % 8,
+        (_, ..6) => blocks & !7,
         _ => blocks,
     }
 }
@@ -305,7 +309,8 @@ fn bsaes_blocks(blocks: usize) -> usize {
 /// modulo 2^32.
 fn add32(ivec: &[u8; 16], n: usize) -> [u8; 16] {
     let mut r = *ivec;
-    let ctr = u32::from_be_bytes(ivec[12..].try_into().unwrap()).wrapping_add(n as u32);
+    let [.., a, b, c, d] = *ivec;
+    let ctr = u32::from_be_bytes([a, b, c, d]).wrapping_add(n as u32);
     r[12..].copy_from_slice(&ctr.to_be_bytes());
     r
 }

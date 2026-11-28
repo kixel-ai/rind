@@ -113,8 +113,8 @@ pub(crate) fn sha3_keccak4_f1600(a: &mut [[u64; 25]; 4], rc: &[u64; 24]) {
 /// Keccak-f[1600] on the first `N` states in `a`, one at a time.
 pub(crate) fn sha3_keccak_nof4_f1600<const N: usize>(a: &mut [[u64; 25]; 4], _rc: &[u64; 24]) {
     match HaveNeon::check() {
-        Some(neon) => a[..N].iter_mut().for_each(|a| permute_neon(neon, a)),
-        None => a[..N].iter_mut().for_each(permute_int),
+        Some(neon) => a.iter_mut().take(N).for_each(|a| permute_neon(neon, a)),
+        None => a.iter_mut().take(N).for_each(permute_int),
     }
 }
 
