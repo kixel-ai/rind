@@ -2401,9 +2401,11 @@ extract aarch64 Aarch64 "${hashes[@]}" "${assembly[@]}" \
     --opaque crate::low::aarch64::aes_gcm::short \
     --opaque crate::low::aarch64::aes_gcm::stitched
 
-# The AEAD key's conversion from HKDF's output is proven on x86_64 alone.
-extract_kdf x86_64 X86_64 --start-from '{impl core::convert::From for crate::aead::Key}'
-extract_kdf aarch64 Aarch64 --include crate::mid::pbkdf2_vg \
+# The AEAD key's conversion from HKDF's output, which the portable backend,
+# having no AEAD model, leaves out.
+aead_key_from=(--start-from '{impl core::convert::From for crate::aead::Key}')
+extract_kdf x86_64 X86_64 "${aead_key_from[@]}"
+extract_kdf aarch64 Aarch64 "${aead_key_from[@]}" --include crate::mid::pbkdf2_vg \
     --include 'crate::mid::sha1::_::BLOCK_SZ' --include 'crate::mid::sha1::_::OUTPUT_SZ' \
     --include 'crate::mid::sha2::_::BLOCK_SZ' --include 'crate::mid::sha2::_::OUTPUT_SZ'
 extract_armv7
@@ -2478,8 +2480,6 @@ for file in Dispatch QuicDispatch P256Dispatch P256Agree P384Dispatch X25519Byte
     P384Ecdsa P384Signature MlKemCoding MlKemCbd AeadDispatch AeadVec ChaCha20Poly1305Api; do
     sed 's/X86_64/Aarch64/g; s/x86_64/aarch64/g' "proofs/Rind/X86_64/$file.lean" >"proofs/Rind/Aarch64/$file.lean"
 done
-# aarch64's KDF translation does not reach the AEAD key's conversion.
-sed -i '/-- BEGIN aead/,/-- END aead/d' proofs/Rind/Aarch64/Kdf/FunsExternal.lean
 # aarch64 translates `mid::pbkdf2_vg`, which the other targets leave opaque.
 sed -i '/-- BEGIN vg/,/-- END vg/d' proofs/Rind/Aarch64/Kdf/TypesExternal.lean proofs/Rind/Aarch64/Kdf/FunsExternal.lean
 sed -i 's/^public import Rind.Aarch64.HkdfExpand$/&\npublic import Rind.Aarch64.Kdf.VgExternal/' proofs/Rind/Aarch64/Kdf/FunsExternal.lean
@@ -2492,6 +2492,18 @@ sed 's/X86_64/Aarch64/g; s/x86_64/aarch64/g
 if ! grep -qF '(h : RunsAesGcm alg)' proofs/Rind/Aarch64/GcmKey.lean ||
     ! grep -qF '(aes_gcm_new alg h A hAlg key)' proofs/Rind/Aarch64/GcmKey.lean; then
     echo "admin/prove: proofs/Rind/X86_64/GcmKey.lean no longer has the lines aarch64's copy rewrites" >&2
+    exit 1
+fi
+# So does `HkdfAead`, whose AES-GCM proofs are over aarch64's `AesGcmAead`.
+sed 's/X86_64/Aarch64/g; s/x86_64/aarch64/g
+    s/^import Rind\.Aarch64\.AesGcmApi$/import Rind.Aarch64.AesGcmAead/
+    s/(h : RunsAesGcm)/(h : RunsAesGcm alg)/
+    s/(rind\.aarch64\.aes_gcm_new h alg /(rind.aarch64.aes_gcm_new alg h /' \
+    proofs/Rind/X86_64/HkdfAead.lean >proofs/Rind/Aarch64/HkdfAead.lean
+if [[ $(grep -cF '(h : RunsAesGcm alg)' proofs/Rind/Aarch64/HkdfAead.lean) != 2 ]] ||
+    ! grep -qx 'import Rind.Aarch64.AesGcmAead' proofs/Rind/Aarch64/HkdfAead.lean ||
+    ! grep -qF '(rind.aarch64.aes_gcm_new alg h ' proofs/Rind/Aarch64/HkdfAead.lean; then
+    echo "admin/prove: proofs/Rind/X86_64/HkdfAead.lean no longer has the lines aarch64's copy rewrites" >&2
     exit 1
 fi
 # The portable backend's hash, HMAC, KDF, and header-protection proofs are the

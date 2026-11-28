@@ -12,6 +12,7 @@ import Rind.X86_64.ChaCha20Poly1305
 import Rind.X86_64.VgChaCha20Poly1305
 import Rind.X86_64.ChaCha20Cipher
 import Rind.X86_64.GcmKey
+import Rind.X86_64.HkdfAead
 import Rind.X86_64.Ed25519
 import Rind.X86_64.Ed25519Ifma
 import Rind.X86_64.Ed25519Verify
@@ -399,6 +400,28 @@ change to the trust base.
  sha512_block_data_order_avx2_spec] -/
 #guard_msgs in
 #print axioms kdf.prk_new_fill
+
+/-- info: 'rind.x86_64.kdf.aead_key_from_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ compress_avx_spec,
+ finish_padded_spec,
+ sha256_compress_blocks_avx2_spec,
+ sha256_compress_blocks_shaext_spec,
+ sha512_block_data_order_avx2_spec] -/
+#guard_msgs in
+#print axioms kdf.aead_key_from_spec
+
+/-- info: 'rind.x86_64.kdf.aead_key_from_chacha20_poly1305_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ compress_avx_spec,
+ finish_padded_spec,
+ sha256_compress_blocks_avx2_spec,
+ sha256_compress_blocks_shaext_spec,
+ sha512_block_data_order_avx2_spec] -/
+#guard_msgs in
+#print axioms kdf.aead_key_from_chacha20_poly1305_spec
 
 /-- info: 'rind.x86_64.kdf.derive_spec' depends on axioms: [propext,
  Classical.choice,

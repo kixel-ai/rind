@@ -8,12 +8,13 @@ open Aeneas Aeneas.Std Result rind.vale rind.spec
 
 `From<Okm<&'static aead::Algorithm>> for aead::Key` fills the algorithm's key
 length of HKDF-Expand into a buffer, then keys the algorithm with it through
-`Key::new`. This file composes that with `AesGcmApi`'s `aes_gcm_new`, so the key
-holds AES-GCM for the HKDF bytes, and with
-`ChaCha20Poly1305`'s `chacha20_poly1305_new`, so it holds ChaCha20-Poly1305
-for them. It lives apart from `Hkdf` because these proofs are x86_64's, and
-so `admin/prove` writes no aarch64 copy of it; `HkdfAes` holds the conversion
-to an AES header-protection key, which it does copy.
+`Key::new`. This file composes that with `aes_gcm_new`, so the key
+holds AES-GCM for the HKDF bytes, and with `chacha20_poly1305_new`, so it
+holds ChaCha20-Poly1305 for them. It lives apart from `Hkdf` because the
+portable backend, which takes `Hkdf`, has no AEAD model. `admin/prove` writes
+aarch64's copy, whose `RunsAesGcm` takes the key's algorithm, since AES-192 on
+cores with SHA3 runs kernels nothing proves; `HkdfAes` holds the conversion to
+an AES header-protection key.
 -/
 
 namespace rind.x86_64.kdf
@@ -21,7 +22,7 @@ namespace rind.x86_64.kdf
 /-- `Key::new` of the AES-GCM algorithm `alg` names, for key bytes of its length,
 through the translation's wrapper: the key holds AES-GCM for the
 bytes, as `aes_gcm_new` states, and the wrapper refuses only what `new` does. -/
-theorem aead_key_new_spec (h : RunsAesGcm) (alg : Algorithm) (algorithm : aead.Algorithm)
+theorem aead_key_new_spec (alg : Algorithm) (h : RunsAesGcm) (algorithm : aead.Algorithm)
     (halg : (algorithm = aead.AES_128_GCM ∧ alg = .AES_128) ∨ (algorithm = aead.AES_192_GCM ∧ alg = .AES_192) ∨
       (algorithm = aead.AES_256_GCM ∧ alg = .AES_256))
     (key : Slice U8) (hk : key.length = 4 * nk alg) :
@@ -29,16 +30,16 @@ theorem aead_key_new_spec (h : RunsAesGcm) (alg : Algorithm) (algorithm : aead.A
   unfold aead.Key.new
   apply WP.spec_bind (rind.x86_64.aes_gcm_new h alg algorithm halg key)
   intro r hr
-  rw [if_pos hk] at hr
+  rw [ite_eq_left hk] at hr
   obtain ⟨k, rfl, hk'⟩ := hr
   exact (WP.spec_ok _).mpr ⟨k, rfl, hk'⟩
 
 /-- `aead::Key`'s conversion from `Okm` holds AES-GCM for the `4 * nk` bytes
 of HKDF-Expand, for AES-128-GCM, AES-192-GCM, and AES-256-GCM. -/
-theorem aead_key_from_spec (h : RunsAesGcm) (a : high.hmac.Algorithm) (hr : RunsHmac a)
+theorem aead_key_from_spec (a : high.hmac.Algorithm) (hr : RunsHmac a)
     (prk : List Byte) (k : high.hmac.Key) (hk : KeyOf a prk k) (info : Slice (Slice U8))
     (hinfo : hmacBlock a + tagLen a + (infoBytes info).length + 1 ≤ maxInput)
-    (alg : Algorithm) (algorithm : aead.Algorithm)
+    (alg : Algorithm) (h : RunsAesGcm) (algorithm : aead.Algorithm)
     (halg : (algorithm = aead.AES_128_GCM ∧ alg = .AES_128) ∨ (algorithm = aead.AES_192_GCM ∧ alg = .AES_192) ∨
       (algorithm = aead.AES_256_GCM ∧ alg = .AES_256)) :
     aead.Key.Insts.CoreConvertFromOkm0SharedStaticAlgorithm.from
@@ -59,7 +60,7 @@ theorem aead_key_from_spec (h : RunsAesGcm) (a : high.hmac.Algorithm) (hr : Runs
   rintro bytes1 ⟨hl1, hl2⟩
   have hbv : bv bytes1.val = hkdfExpand (hmacOf a) (tagLen a) prk (bv (infoBytes info)) (4 * nk alg) := by
     rw [hl2, hblen]
-  apply WP.spec_bind (aead_key_new_spec h alg algorithm halg bytes1 (by rw [hl1, hblen]))
+  apply WP.spec_bind (aead_key_new_spec alg h algorithm halg bytes1 (by rw [hl1, hblen]))
   rintro r ⟨k', rfl, hk'⟩
   unfold core.result.Result.expect
   rw [hbv] at hk'
