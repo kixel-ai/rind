@@ -26,6 +26,10 @@ pub(crate) enum AesKey {
 
 impl AesKey {
     /// Expands `key`, which must be 16, 24, or 32 bytes.
+    #[expect(
+        clippy::unwrap_used,
+        reason = "each arm's match fixes key.len() to its array's length"
+    )]
     pub(crate) fn new(key: &[u8]) -> Self {
         match (key.len(), HaveCryptoExt::check()) {
             (16, Some(token)) => Self::Hw(HwKey::Aes128(AesKey128::new(
@@ -91,6 +95,10 @@ pub(crate) enum AesDecKey {
 
 impl AesDecKey {
     /// Expands `key`, which must be 16, 24, or 32 bytes.
+    #[expect(
+        clippy::unwrap_used,
+        reason = "each arm's match fixes key.len() to its array's length"
+    )]
     pub(crate) fn new(key: &[u8]) -> Self {
         match (key.len(), HaveCryptoExt::check()) {
             (16, Some(token)) => Self::Hw(HwDecKey::Aes128(
@@ -244,7 +252,15 @@ const RCON: [u32; 10] = [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0
 // expansions fill a local array, indexing their loops, and write `out` once:
 // Aeneas translates neither a loop that writes through a reference nor one
 // over an iterator of the round constants.
-#[allow(clippy::needless_range_loop)]
+#[allow(
+    clippy::needless_range_loop,
+    reason = "Aeneas translates no loop over an iterator of the round constants"
+)]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "i < 10 = RCON.len(), so i + 1 < 11 = rk.len()"
+)]
 #[target_feature(enable = "aes")]
 fn aes128_expand(key: &[u8; 16], out: &mut [uint8x16_t; 11]) {
     let mut t = load(key);
@@ -256,7 +272,17 @@ fn aes128_expand(key: &[u8; 16], out: &mut [uint8x16_t; 11]) {
     *out = rk;
 }
 
-#[allow(clippy::needless_range_loop)]
+#[allow(
+    clippy::needless_range_loop,
+    reason = "Aeneas translates no loop over an iterator of the round constants"
+)]
+#[expect(
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "key's halves are 16 bytes each; i < 7 <= RCON.len(), and the loop breaks at i = 6 before \
+              2 * i + 3 would reach 15 = rk.len()"
+)]
 #[target_feature(enable = "aes")]
 fn aes256_expand(key: &[u8; 32], out: &mut [uint8x16_t; 15]) {
     let mut a = load(key[..16].try_into().unwrap());
@@ -284,6 +310,13 @@ fn aes256_expand(key: &[u8; 32], out: &mut [uint8x16_t; 15]) {
 /// straddles the two. Each step's first word takes RotWord, SubWord, and the
 /// round constant of the step before's last, as `sub_rot_word` computes
 /// them from a vector's last word.
+#[expect(
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "key[..16] and key[16..] of a 24-byte key are 16 and 8 bytes; 1 <= step <= 8, so step - 1 < \
+              RCON.len() and every out index is at most 12 < 13 = out.len()"
+)]
 #[target_feature(enable = "aes")]
 fn aes192_expand(key: &[u8; 24]) -> [uint8x16_t; 13] {
     const ROT_WORD_1: [u8; 16] = [5, 6, 7, 4, 5, 6, 7, 4, 5, 6, 7, 4, 5, 6, 7, 4];
@@ -361,6 +394,11 @@ pub(super) fn store(v: uint8x16_t) -> [u8; 16] {
 }
 
 /// The round keys for `aesd` from those for `aese`.
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "N is 11, 13 or 15 round keys, so N - 1 - i is in 1..N - 1 for i in 1..N - 1"
+)]
 #[target_feature(enable = "aes")]
 fn invert_round_keys<const N: usize>(round_keys: &[uint8x16_t; N]) -> [uint8x16_t; N] {
     let mut out = [zero(); N];
@@ -372,6 +410,11 @@ fn invert_round_keys<const N: usize>(round_keys: &[uint8x16_t; N]) -> [uint8x16_
     out
 }
 
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "N is 11, 13 or 15 round keys, so N - 1 indexes the last"
+)]
 #[target_feature(enable = "aes")]
 fn hw_decrypt_block<const N: usize>(round_keys: &[uint8x16_t; N], block_inout: &mut [u8; 16]) {
     let mut block = load(block_inout);
@@ -488,6 +531,11 @@ pub(crate) fn _aes128_8_blocks(
 }
 
 /// One block under any key size, by its number of round keys.
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "N is 11, 13 or 15 round keys, so N - 2 and N - 1 index the last two"
+)]
 #[target_feature(enable = "aes")]
 fn aes_block<const N: usize>(round_keys: &[uint8x16_t; N], block: &[u8; 16]) -> [u8; 16] {
     let mut b = load(block);
@@ -622,7 +670,15 @@ pub(crate) fn _aes192_8_blocks(
 
 /// Eight blocks under any key size, by its number of round keys,
 /// interleaved as [`_aes128_8_blocks`] does.
-#[allow(clippy::needless_range_loop)]
+#[allow(
+    clippy::needless_range_loop,
+    reason = "Aeneas translates no loop that writes through an iterator"
+)]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "N is 11, 13 or 15 round keys, so r < N - 2 and N - 2, N - 1 index them; j < 8 = b.len()"
+)]
 #[target_feature(enable = "aes")]
 #[inline]
 pub(crate) fn _aes_8_blocks<const N: usize>(
@@ -641,7 +697,11 @@ pub(crate) fn _aes_8_blocks<const N: usize>(
 }
 
 /// An `aese` and `aesmc` round of each of eight blocks.
-#[allow(clippy::needless_range_loop)]
+#[allow(
+    clippy::needless_range_loop,
+    reason = "Aeneas translates no loop that writes through an iterator"
+)]
+#[expect(clippy::indexing_slicing, reason = "j < 8 = b.len()")]
 #[target_feature(enable = "aes")]
 #[inline]
 fn _aes_round_8(mut b: [uint8x16_t; 8], round_key: uint8x16_t) -> [uint8x16_t; 8] {

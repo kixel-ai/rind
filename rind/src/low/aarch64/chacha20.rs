@@ -42,6 +42,11 @@ pub(crate) struct ChaCha20 {
 }
 
 /// `bytes` as little-endian words.
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "i < W and B = 4 * W, so 4 * i + 3 < B"
+)]
 fn words<const B: usize, const W: usize>(bytes: &[u8; B]) -> [u32; W] {
     const { assert!(B == 4 * W) };
     let mut words = [0; W];
@@ -91,6 +96,10 @@ const VG_NEON_MIN_LEN: usize = 448;
 
 /// rind's NEON code: four blocks at a time, then one at a time in
 /// general-purpose registers.
+#[expect(
+    clippy::unwrap_used,
+    reason = "key is 8 words, so key[..4] and key[4..] are 4 each"
+)]
 fn cipher_neon(key: &[u32; 8], nonce: &[u32; 4], buffer: &mut [u8]) {
     let (key0, key1) = (key[..4].try_into().unwrap(), key[4..].try_into().unwrap());
     let mut nonce = *nonce;
@@ -286,6 +295,10 @@ fn core(key0: &[u32; 4], key1: &[u32; 4], nonce: &[u32; 4], out: &mut [u8; 64]) 
 
 // Process four ChaCha20 blocks in an interleaved manner and exclusive-or
 // the result onto the contents of `out`.
+#[expect(
+    clippy::unwrap_used,
+    reason = "each range of the 256-byte out is 16 bytes long"
+)]
 #[target_feature(enable = "neon")]
 fn core_x4(key0: &[u32; 4], key1: &[u32; 4], nonce: &[u32; 4], out: &mut [u8; 256]) {
     // Each block is computed from four inputs, all of which are [u32; 4]

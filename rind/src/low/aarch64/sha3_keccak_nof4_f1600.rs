@@ -15,7 +15,14 @@ use super::sha3_keccak4_f1600_alt::sha3_keccak4_f1600 as sha3_keccak4_f1600_alt;
 /// fewer run one at a time, since the hybrid always permutes all four.
 // The fallback indexes rather than iterates, which `proofs/` reasons about
 // more simply.
-#[allow(clippy::needless_range_loop)]
+#[allow(
+    clippy::needless_range_loop,
+    reason = "the fallback indexes, as the comment above says"
+)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "as_chunks_mut::<2> of the 4 states gives 2 pairs, and N is 1 to 4, so i < N <= a.len()"
+)]
 #[inline]
 pub(crate) fn sha3_keccak_nof4_f1600<const N: usize>(a: &mut [[u64; 25]; 4], rc: &[u64; 24]) {
     match super::cpu::HaveSha3::check_keccak() {
