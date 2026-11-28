@@ -13,7 +13,8 @@
 //! it made before the call, unmarked. `ct::into_secret` and `ct::into_public`
 //! take the value and return it, so the code reads only what the mark wrote:
 //! mark by value where the marked bytes are copied on, as from a buffer into
-//! a key.
+//! a key. They mark only the value's own bytes, so heap data, such as a
+//! `Vec`'s, still takes the slice marks.
 
 /// Runs `f` as the region BINSEC checks, after a first run that fixes what
 /// rind sets up lazily, such as the CPU features it detects.
