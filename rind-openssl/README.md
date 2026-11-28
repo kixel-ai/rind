@@ -35,7 +35,7 @@ It also sets `nodejs_conf`, since Node.js otherwise reads only its own section o
 
 Measured against OpenSSL 3.5.9's default provider, under load: X25519 and Ed25519 on an AMD Ryzen 9 9950X with `openssl speed`, with Node.js 24, and with Python's `cryptography`, changing only `OPENSSL_CONF`; ML-KEM and ML-DSA on an Apple M5 Pro with `openssl speed`.
 
-ML-KEM and ML-DSA need OpenSSL 3.5 or later, whose default provider has the encoders, decoders, and TLS hybrid group that use them.
+ML-KEM and ML-DSA need OpenSSL 3.5 or later, whose default provider has the encoders, decoders, and TLS hybrid group that use them; OpenSSL 3.0 also refuses rind's ML-DSA signature functions, which, like 3.5's own, offer no `sign_init`.
 
 OpenSSL's own encoders and decoders still read and write the keys, which move between the two providers as OpenSSL needs them.
 OpenSSL's `evp_test` passes on its X25519, Ed25519, ML-KEM, and ML-DSA data with this provider loaded and preferred, less the stanzas that ask for what is listed below, as [`sh/openssl.sh`](../sh/openssl.sh) runs it.

@@ -378,6 +378,9 @@ fn ml_kem() {
 
 #[test]
 fn ml_dsa() {
+    if !common::openssl_3_5("ml_dsa") {
+        return;
+    }
     let ctx = context();
     let message = b"rind as an OpenSSL provider";
     for algorithm in [c"ML-DSA-44", c"ML-DSA-65", c"ML-DSA-87"] {
