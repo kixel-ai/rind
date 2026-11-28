@@ -756,7 +756,7 @@ theorem key_pair_sign_of (h : Runs) (kp : high.signature.rsa.KeyPair) (hinv : Pu
 qInv)`, which meets RFC 8017's relations but for the primes' primality, with
 the values `RsaPrivateKey::new` computes from it, working at the wider
 prime's width, and its own public key. -/
-def KeyPairOf (kp : high.signature.rsa.KeyPair) (N E D P Q DP DQ QINV : Nat) : Prop :=
+def RsaKeyPairOf (kp : high.signature.rsa.KeyPair) (N E D P Q DP DQ QINV : Nat) : Prop :=
   PrivKeyInv kp.key ∧ kp.public.key = kp.key.public ∧ KeyLoaded kp.public.key N E ∧
     wordsNat (lowWords kp.key.d kp.key.d.used) = D ∧
     wordsNat (lowWords kp.key.p kp.key.p.used) = P ∧
@@ -771,7 +771,7 @@ def KeyPairOf (kp : high.signature.rsa.KeyPair) (N E D P Q DP DQ QINV : Nat) : P
 that key and its public key. -/
 theorem key_pair_new_ok (h : Runs) {c : high.rsa.Components} {key : high.rsa.SigningKey} (hk : KeyFrom c key)
     {kp : high.signature.rsa.KeyPair} (hkp : high.signature.rsa.KeyPair.new key = ok (.Ok kp)) :
-    KeyPairOf kp (beNat c.n.val) (beNat c.e.val) (beNat c.d.val) (beNat c.p.val) (beNat c.q.val)
+    RsaKeyPairOf kp (beNat c.n.val) (beNat c.e.val) (beNat c.d.val) (beNat c.p.val) (beNat c.q.val)
       (beNat c.dp.val) (beNat c.dq.val) (beNat c.qi.val) := by
   obtain ⟨hinv, hn, he, hd, hp, hq, hdp, hdq, hqi, hpw, hcrt⟩ := hk
   unfold high.signature.rsa.KeyPair.new at hkp
@@ -805,7 +805,7 @@ theorem rsa_key_pair_from_components_spec (h : Runs) (hheld : low.entry.Entry.as
     (n e d p q dp dq qi : Slice U8) (hP : MontProducts (keyWords (beNat p.val) (beNat q.val)))
     (kp : high.signature.rsa.KeyPair)
     (hkp : high.signature.rsa.KeyPair.from_components n e d p q dp dq qi = ok (.Ok kp)) :
-    KeyPairOf kp (beNat n.val) (beNat e.val) (beNat d.val) (beNat p.val) (beNat q.val) (beNat dp.val)
+    RsaKeyPairOf kp (beNat n.val) (beNat e.val) (beNat d.val) (beNat p.val) (beNat q.val) (beNat dp.val)
       (beNat dq.val) (beNat qi.val) := by
   unfold high.signature.rsa.KeyPair.from_components at hkp
   obtain ⟨r, hr, hkp⟩ := bind_eq_ok hkp
@@ -840,7 +840,7 @@ theorem key_pair_of_unsigned (h : Runs) (hheld : low.entry.Entry.assert_held = o
     {c : high.rsa.Components} {key : high.rsa.SigningKey} (hk : high.rsa.SigningKey.from_unsigned c = ok (.Ok key))
     (hP : MontProducts (keyWords (beNat c.p.val) (beNat c.q.val)))
     {kp : high.signature.rsa.KeyPair} (hkp : high.signature.rsa.KeyPair.new key = ok (.Ok kp)) :
-    KeyPairOf kp (beNat c.n.val) (beNat c.e.val) (beNat c.d.val) (beNat c.p.val) (beNat c.q.val)
+    RsaKeyPairOf kp (beNat c.n.val) (beNat c.e.val) (beNat c.d.val) (beNat c.p.val) (beNat c.q.val)
       (beNat c.dp.val) (beNat c.dq.val) (beNat c.qi.val) := by
   have hs := from_unsigned_priv_spec h hheld hifma hfp16 c hP
   rw [hk, WP.spec_ok] at hs
@@ -855,7 +855,7 @@ theorem rsa_key_pair_from_pkcs1_spec (h : Runs) (hheld : low.entry.Entry.assert_
     (der : Slice U8) (kp : high.signature.rsa.KeyPair)
     (hkp : high.signature.rsa.KeyPair.from_pkcs1 der = ok (.Ok kp)) :
     ∃ c : high.rsa.Components, MontProducts (keyWords (beNat c.p.val) (beNat c.q.val)) →
-      KeyPairOf kp (beNat c.n.val) (beNat c.e.val) (beNat c.d.val) (beNat c.p.val) (beNat c.q.val)
+      RsaKeyPairOf kp (beNat c.n.val) (beNat c.e.val) (beNat c.d.val) (beNat c.p.val) (beNat c.q.val)
         (beNat c.dp.val) (beNat c.dq.val) (beNat c.qi.val) := by
   unfold high.signature.rsa.KeyPair.from_pkcs1 at hkp
   obtain ⟨r, hr, hkp⟩ := bind_eq_ok hkp
@@ -873,7 +873,7 @@ theorem rsa_key_pair_from_pkcs8_spec (h : Runs) (hheld : low.entry.Entry.assert_
     (der : Slice U8) (kp : high.signature.rsa.KeyPair)
     (hkp : high.signature.rsa.KeyPair.from_pkcs8 der = ok (.Ok kp)) :
     ∃ c : high.rsa.Components, MontProducts (keyWords (beNat c.p.val) (beNat c.q.val)) →
-      KeyPairOf kp (beNat c.n.val) (beNat c.e.val) (beNat c.d.val) (beNat c.p.val) (beNat c.q.val)
+      RsaKeyPairOf kp (beNat c.n.val) (beNat c.e.val) (beNat c.d.val) (beNat c.p.val) (beNat c.q.val)
         (beNat c.dp.val) (beNat c.dq.val) (beNat c.qi.val) := by
   unfold high.signature.rsa.KeyPair.from_pkcs8 at hkp
   obtain ⟨r, hr, hkp⟩ := bind_eq_ok hkp
@@ -901,7 +901,7 @@ two primes rule out. -/
 theorem rsa_pkcs1_sha256_sign_spec (h : Runs) (hb : Sha256Blocks)
     (t : low.x86_64.cpu.HaveBmi2Adx) (hadx : low.x86_64.cpu.HaveBmi2Adx.check = ok (some t))
     (hifma : IfmaCheckReturns) (kp : high.signature.rsa.KeyPair) (N E D P Q DP DQ QINV : Nat)
-    (hkp : KeyPairOf kp N E D P Q DP DQ QINV) (hPn : MontProducts ((N.size + 63) / 64))
+    (hkp : RsaKeyPairOf kp N E D P Q DP DQ QINV) (hPn : MontProducts ((N.size + 63) / 64))
     (hcrt : kp.key.ifma.w = 0#usize → MontProducts (keyWords P Q) ∧
       (keyWords P Q = 16 ∨ keyWords P Q = 32) ∧ NoRsazPair (keyWords P Q))
     (message : Slice U8) (hm : message.length ≤ maxInput) :
@@ -952,7 +952,7 @@ representative, which two primes rule out. -/
 theorem rsa_pss_sha256_sign_spec (h : Runs) (hb : Sha256Blocks) (hfill : Fills)
     (t : low.x86_64.cpu.HaveBmi2Adx) (hadx : low.x86_64.cpu.HaveBmi2Adx.check = ok (some t))
     (hifma : IfmaCheckReturns) (kp : high.signature.rsa.KeyPair) (N E D P Q DP DQ QINV : Nat)
-    (hkp : KeyPairOf kp N E D P Q DP DQ QINV) (hPn : MontProducts ((N.size + 63) / 64))
+    (hkp : RsaKeyPairOf kp N E D P Q DP DQ QINV) (hPn : MontProducts ((N.size + 63) / 64))
     (hcrt : kp.key.ifma.w = 0#usize → MontProducts (keyWords P Q) ∧
       (keyWords P Q = 16 ∨ keyWords P Q = 32) ∧ NoRsazPair (keyWords P Q))
     (message : Slice U8) (hm : message.length ≤ maxInput) :
@@ -1021,7 +1021,7 @@ are s2n-bignum's, and the dual RSAZ never takes 16 words. -/
 theorem rsa2048_pkcs1_sha256_sign_spec (h : Runs) (hb : Sha256Blocks)
     (t : low.x86_64.cpu.HaveBmi2Adx) (hadx : low.x86_64.cpu.HaveBmi2Adx.check = ok (some t))
     (hifma : IfmaCheckReturns) (kp : high.signature.rsa.KeyPair) (N E D P Q DP DQ QINV : Nat)
-    (hkp : KeyPairOf kp N E D P Q DP DQ QINV) (hN : N.size = 2048) (hP : P.size ≤ 1024) (hQ : Q.size ≤ 1024)
+    (hkp : RsaKeyPairOf kp N E D P Q DP DQ QINV) (hN : N.size = 2048) (hP : P.size ≤ 1024) (hQ : Q.size ≤ 1024)
     (message : Slice U8) (hm : message.length ≤ maxInput) :
     high.signature.rsa.KeyPair.sign kp high.signature.rsa.sign.PKCS1_SHA256 message ⦃ r =>
       (∀ sig, r = .Ok sig → high.signature.rsa.Signature.Insts.CoreConvertAsRefSliceU8.as_ref sig ⦃ b =>
@@ -1040,7 +1040,7 @@ are s2n-bignum's, and the dual RSAZ never takes 16 words. -/
 theorem rsa2048_pss_sha256_sign_spec (h : Runs) (hb : Sha256Blocks) (hfill : Fills)
     (t : low.x86_64.cpu.HaveBmi2Adx) (hadx : low.x86_64.cpu.HaveBmi2Adx.check = ok (some t))
     (hifma : IfmaCheckReturns) (kp : high.signature.rsa.KeyPair) (N E D P Q DP DQ QINV : Nat)
-    (hkp : KeyPairOf kp N E D P Q DP DQ QINV) (hN : N.size = 2048) (hP : P.size ≤ 1024) (hQ : Q.size ≤ 1024)
+    (hkp : RsaKeyPairOf kp N E D P Q DP DQ QINV) (hN : N.size = 2048) (hP : P.size ≤ 1024) (hQ : Q.size ≤ 1024)
     (message : Slice U8) (hm : message.length ≤ maxInput) :
     high.signature.rsa.KeyPair.sign kp high.signature.rsa.sign.PSS_SHA256 message ⦃ r =>
       (∀ sig, r = .Ok sig → ∃ salt : List U8, salt.length = 32 ∧
@@ -1064,7 +1064,7 @@ theorem rsa2048_key_pair_from_pkcs1_spec (h : Runs) (hheld : low.entry.Entry.ass
     (der : Slice U8) (kp : high.signature.rsa.KeyPair)
     (hkp : high.signature.rsa.KeyPair.from_pkcs1 der = ok (.Ok kp)) :
     ∃ c : high.rsa.Components, (beNat c.p.val).size = 1024 → (beNat c.q.val).size = 1024 →
-      KeyPairOf kp (beNat c.n.val) (beNat c.e.val) (beNat c.d.val) (beNat c.p.val) (beNat c.q.val)
+      RsaKeyPairOf kp (beNat c.n.val) (beNat c.e.val) (beNat c.d.val) (beNat c.p.val) (beNat c.q.val)
         (beNat c.dp.val) (beNat c.dq.val) (beNat c.qi.val) := by
   obtain ⟨c, hc⟩ := rsa_key_pair_from_pkcs1_spec h hheld hifma hfp16 der kp hkp
   refine ⟨c, fun hp hq => hc ?_⟩

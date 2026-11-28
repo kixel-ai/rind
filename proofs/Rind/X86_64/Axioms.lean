@@ -31,8 +31,8 @@ open rind.x86_64
 /-!
 The axioms each theorem rests on, beyond Lean's own: s2n-bignum's contracts
 in `Rind.X86_64.S2nBignum` for X25519, P-256 key generation, ECDH, and
-ECDSA, P-384, Ed25519, RSA verification, key loading, and the private
-operation, and the Keccak-f of SHA-3 and ML-KEM's SHAKE; for the SHA-512
+ECDSA, P-384, Ed25519, RSA verification, signing, key loading, and the
+private operation, and the Keccak-f of SHA-3 and ML-KEM's SHAKE; for the SHA-512
 family, for HMAC, HKDF,
 and PBKDF2, which cover SHA-384 and SHA-512, and for Ed25519's hashes, aws-lc's
 AVX routine's in `Rind.X86_64.AwsLc` and rind's HOL Light proof there of
@@ -1142,6 +1142,171 @@ change to the trust base.
  rsa_vg_precompute_spec] -/
 #guard_msgs in
 #print axioms rsa_private_key_new_spec
+
+/-- info: 'rind.x86_64.rsa_pkcs1_sha256_sign_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ bignum_add_spec,
+ bignum_bitsize_spec,
+ bignum_cmp_lt_spec,
+ bignum_copy_row_from_table_spec,
+ bignum_digitsize_spec,
+ bignum_eq_spec,
+ bignum_modsub_spec,
+ bignum_montredc_spec,
+ bignum_mul_spec,
+ bignum_negmodinv_spec,
+ finish_padded_spec,
+ ifma_crt_spec,
+ rsa_ifma_public_spec,
+ sha256_compress_blocks_avx2_spec,
+ sha256_compress_blocks_shaext_spec] -/
+#guard_msgs in
+#print axioms rsa_pkcs1_sha256_sign_spec
+
+/-- info: 'rind.x86_64.rsa_pss_sha256_sign_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ bignum_add_spec,
+ bignum_bitsize_spec,
+ bignum_cmp_lt_spec,
+ bignum_copy_row_from_table_spec,
+ bignum_digitsize_spec,
+ bignum_eq_spec,
+ bignum_modsub_spec,
+ bignum_montredc_spec,
+ bignum_mul_spec,
+ bignum_negmodinv_spec,
+ finish_padded_spec,
+ ifma_crt_spec,
+ rsa_ifma_public_spec,
+ sha256_compress_blocks_avx2_spec,
+ sha256_compress_blocks_shaext_spec] -/
+#guard_msgs in
+#print axioms rsa_pss_sha256_sign_spec
+
+/-- info: 'rind.x86_64.rsa2048_pkcs1_sha256_sign_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ bignum_add_spec,
+ bignum_bitsize_spec,
+ bignum_cmp_lt_spec,
+ bignum_copy_row_from_table_spec,
+ bignum_digitsize_spec,
+ bignum_emontredc_8n_spec,
+ bignum_eq_spec,
+ bignum_kmul_16_32_spec,
+ bignum_kmul_32_64_spec,
+ bignum_ksqr_16_32_spec,
+ bignum_ksqr_32_64_spec,
+ bignum_modsub_spec,
+ bignum_montredc_spec,
+ bignum_mul_spec,
+ bignum_negmodinv_spec,
+ bignum_optsub_spec,
+ finish_padded_spec,
+ ifma_crt_spec,
+ rsa_ifma_public_spec,
+ sha256_compress_blocks_avx2_spec,
+ sha256_compress_blocks_shaext_spec] -/
+#guard_msgs in
+#print axioms rsa2048_pkcs1_sha256_sign_spec
+
+/-- info: 'rind.x86_64.rsa2048_pss_sha256_sign_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ bignum_add_spec,
+ bignum_bitsize_spec,
+ bignum_cmp_lt_spec,
+ bignum_copy_row_from_table_spec,
+ bignum_digitsize_spec,
+ bignum_emontredc_8n_spec,
+ bignum_eq_spec,
+ bignum_kmul_16_32_spec,
+ bignum_kmul_32_64_spec,
+ bignum_ksqr_16_32_spec,
+ bignum_ksqr_32_64_spec,
+ bignum_modsub_spec,
+ bignum_montredc_spec,
+ bignum_mul_spec,
+ bignum_negmodinv_spec,
+ bignum_optsub_spec,
+ finish_padded_spec,
+ ifma_crt_spec,
+ rsa_ifma_public_spec,
+ sha256_compress_blocks_avx2_spec,
+ sha256_compress_blocks_shaext_spec] -/
+#guard_msgs in
+#print axioms rsa2048_pss_sha256_sign_spec
+
+/-- info: 'rind.x86_64.rsa_key_pair_from_components_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ bignum_bitsize_spec,
+ bignum_cmp_lt_spec,
+ bignum_eq_spec,
+ bignum_modadd_spec,
+ bignum_montifier_spec,
+ bignum_montredc_spec,
+ bignum_mul_spec,
+ bignum_negmodinv_spec,
+ bignum_optsub_spec,
+ rsa_vg_precompute_spec] -/
+#guard_msgs in
+#print axioms rsa_key_pair_from_components_spec
+
+/-- info: 'rind.x86_64.rsa_key_pair_from_pkcs1_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ bignum_bitsize_spec,
+ bignum_cmp_lt_spec,
+ bignum_eq_spec,
+ bignum_modadd_spec,
+ bignum_montifier_spec,
+ bignum_montredc_spec,
+ bignum_mul_spec,
+ bignum_negmodinv_spec,
+ bignum_optsub_spec,
+ rsa_vg_precompute_spec] -/
+#guard_msgs in
+#print axioms rsa_key_pair_from_pkcs1_spec
+
+/-- info: 'rind.x86_64.rsa_key_pair_from_pkcs8_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ bignum_bitsize_spec,
+ bignum_cmp_lt_spec,
+ bignum_eq_spec,
+ bignum_modadd_spec,
+ bignum_montifier_spec,
+ bignum_montredc_spec,
+ bignum_mul_spec,
+ bignum_negmodinv_spec,
+ bignum_optsub_spec,
+ rsa_vg_precompute_spec] -/
+#guard_msgs in
+#print axioms rsa_key_pair_from_pkcs8_spec
+
+/-- info: 'rind.x86_64.rsa2048_key_pair_from_pkcs1_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ bignum_bitsize_spec,
+ bignum_cmp_lt_spec,
+ bignum_emontredc_8n_spec,
+ bignum_eq_spec,
+ bignum_kmul_16_32_spec,
+ bignum_kmul_32_64_spec,
+ bignum_ksqr_16_32_spec,
+ bignum_ksqr_32_64_spec,
+ bignum_modadd_spec,
+ bignum_montifier_spec,
+ bignum_montredc_spec,
+ bignum_mul_spec,
+ bignum_negmodinv_spec,
+ bignum_optsub_spec,
+ rsa_vg_precompute_spec] -/
+#guard_msgs in
+#print axioms rsa2048_key_pair_from_pkcs1_spec
 
 /-- info: 'rind.x86_64.sha3_family_digest' depends on axioms: [propext, Classical.choice, Quot.sound, sha3_keccak_f1600_spec] -/
 #guard_msgs in
