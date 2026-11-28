@@ -161,26 +161,43 @@ fn a_generic_function_runs_on_rind() {
     generic_sign_verify(&ours, &ours.verifying_key(), b"generic over Signer");
 }
 
-/// A public key `rsa` holds but rind refuses, as a modulus above 8192 bits: a
-/// verifying key from it is an error, never a panic, in both schemes and every
-/// constructor.
+/// A public key `rsa` holds but rind refuses, a modulus under 2048 or above
+/// 8192 bits: a verifying key from it is an error, never a panic, in both
+/// schemes and every constructor.
 #[test]
 fn a_public_key_rind_refuses_is_an_error() {
     use rind_signature::rsa::{pkcs1v15, pss};
     use rsa::BoxedUint;
 
-    // 2^8999 + 1 is odd and 9000 bits long; rsa takes it once its size limit is raised.
-    let modulus =
-        (BoxedUint::one_with_precision(9024) << 8999) | BoxedUint::one_with_precision(9024);
-    let exponent = BoxedUint::from(65537u64);
-    let key = rsa::PublicKey::new_with_size_limits(modulus, exponent, 1024..=16384).unwrap();
+    // 2^(bits - 1) + 1 is odd and `bits` long; rsa takes it once its size
+    // limit is raised. rind's parser takes 1024 and 2047 bits, for legacy
+    // algorithms, but verifies nothing under them.
+    for bits in [1024u32, 2047, 9000] {
+        let precision = bits.next_multiple_of(64);
+        let modulus = (BoxedUint::one_with_precision(precision) << (bits - 1))
+            | BoxedUint::one_with_precision(precision);
+        let exponent = BoxedUint::from(65537u64);
+        let key = rsa::PublicKey::new_with_size_limits(modulus, exponent, 1024..=16384).unwrap();
 
-    type Hash = rind_digest::sha2::Sha256;
-    assert!(pkcs1v15::VerifyingKey::<Hash>::try_new(key.clone()).is_err());
-    assert!(pkcs1v15::VerifyingKey::<Hash>::try_from(key.clone()).is_err());
-    assert!(pss::VerifyingKey::<Hash>::try_new(key.clone()).is_err());
-    assert!(pss::VerifyingKey::<Hash>::try_new_with_auto_salt_len(key.clone()).is_err());
-    assert!(pss::VerifyingKey::<Hash>::try_from(key).is_err());
+        type Hash = rind_digest::sha2::Sha256;
+        assert!(
+            pkcs1v15::VerifyingKey::<Hash>::try_new(key.clone()).is_err(),
+            "{bits}"
+        );
+        assert!(
+            pkcs1v15::VerifyingKey::<Hash>::try_from(key.clone()).is_err(),
+            "{bits}"
+        );
+        assert!(
+            pss::VerifyingKey::<Hash>::try_new(key.clone()).is_err(),
+            "{bits}"
+        );
+        assert!(
+            pss::VerifyingKey::<Hash>::try_new_with_auto_salt_len(key.clone()).is_err(),
+            "{bits}"
+        );
+        assert!(pss::VerifyingKey::<Hash>::try_from(key).is_err(), "{bits}");
+    }
 }
 
 /// rind's key from an `rsa` key is that key: its PKCS#8 matches rind's own

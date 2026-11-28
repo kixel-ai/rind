@@ -253,13 +253,12 @@ impl Message {
     }
 
     /// Encapsulates this message to `key`, returning the ciphertext to send to
-    /// the key's holder and the secret.
+    /// the key's holder and the secret. `self` is wiped as it drops here.
     pub fn encapsulate<A: Algorithm>(
-        mut self,
+        self,
         key: &EncapsulationKey<A>,
     ) -> (Ciphertext<A>, SharedSecret<A>) {
         let (secret, ciphertext) = key.key.encaps_message(mlkem::Message(self.0));
-        low::zeroise(&mut self.0);
         (Ciphertext(ciphertext), SharedSecret::new(secret))
     }
 }

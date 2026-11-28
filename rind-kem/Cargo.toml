@@ -10,8 +10,15 @@ categories = ["cryptography"]
 rust-version.workspace = true
 readme = "README.md"
 
+# `ml-kem`'s feature names: `getrandom` is kem's, for `Generate::generate` and
+# `encapsulate` without an RNG argument; `hazmat` documents
+# `encapsulate_deterministic`.
+[features]
+getrandom = ["kem/getrandom"]
+hazmat = []
+
 [dependencies]
-rind = { version = "0.3.2", path = "../rind" }
+rind = { version = "0.3.2", path = "../rind", default-features = false }
 kem = { version = "0.3.0", default-features = false }
 # kem's arrays are hybrid-array's, which sizes ML-KEM's larger encodings only
 # with `extra-sizes`, as `ml-kem` builds it.

@@ -63,9 +63,14 @@ hash! {
 }
 
 /// The key as rind holds it, parsed from its PKCS#1 `RSAPublicKey` DER. rind
-/// refuses keys `rsa` holds (a modulus under 1024 or over 8192 bits, say), so
-/// this can fail where `rsa`'s own `VerifyingKey::new` cannot.
+/// verifies only under a modulus of 2048 to 8192 bits, which `rsa` does not
+/// require, so this can fail where `rsa`'s own `VerifyingKey::new` cannot.
+/// rind's parser takes a modulus from 1017 bits for legacy algorithms, so the
+/// 2048-bit floor is checked here, rather than on every verification.
 fn public_key_der(key: &::rsa::PublicKey) -> Result<rind::rsa::PublicKey, Error> {
+    if key.n().bit_width_vartime() < 2048 {
+        return Err(Error::new());
+    }
     let der = key.to_pkcs1_der().map_err(|_| Error::new())?;
     rind::rsa::PublicKey::new(der.as_bytes()).map_err(|_| Error::new())
 }

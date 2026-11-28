@@ -13,10 +13,12 @@ macro_rules! curve {
         pub mod $module {
             /// The module path RustCrypto's curve crate puts its ECDSA types in.
             pub mod ecdsa {
+                use alloc::boxed::Box;
                 use core::fmt;
 
+                pub use ::signature::{self, Error};
                 use ::signature::{
-                    Error, KeypairRef, MultipartSigner, MultipartVerifier, Signer, Verifier,
+                    KeypairRef, MultipartSigner, MultipartVerifier, Signer, Verifier,
                 };
 
                 /// A fixed-size signature, `r || s`.
@@ -155,6 +157,12 @@ macro_rules! curve {
                         )
                         .map_err(|_| Error::new())?;
                         Ok(Self { pair })
+                    }
+
+                    /// The big-endian scalar, the bytes [`Self::from_bytes`] takes.
+                    pub fn to_bytes(&self) -> $field {
+                        <$field>::try_from(self.pair.to_scalar().as_ref())
+                            .expect("rind's scalar is the field's length")
                     }
 
                     /// The public key.

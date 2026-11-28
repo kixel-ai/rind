@@ -1,6 +1,8 @@
 //! Every hash and HMAC here against RustCrypto's own crate for the same
 //! algorithm, on fixed and pseudo-random inputs and at the edges.
 
+use digest::common::AlgorithmName;
+use digest::const_oid::AssociatedOid;
 use digest::{Digest, DynDigest, FixedOutputReset, KeyInit, Mac, Reset};
 
 /// A fixed-seed generator, so a failure reproduces.
@@ -30,11 +32,28 @@ fn digest_of<D: Digest>(data: &[u8]) -> Vec<u8> {
     D::digest(data).to_vec()
 }
 
-fn same_as_rustcrypto<Ours: Digest, Theirs: Digest>() {
+/// A type's `AlgorithmName`, as a string.
+fn name<T: AlgorithmName>() -> String {
+    struct Name<T>(core::marker::PhantomData<T>);
+    impl<T: AlgorithmName> core::fmt::Display for Name<T> {
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+            T::write_alg_name(f)
+        }
+    }
+    Name::<T>(core::marker::PhantomData).to_string()
+}
+
+fn same_as_rustcrypto<Ours, Theirs>()
+where
+    Ours: Digest + AlgorithmName + AssociatedOid,
+    Theirs: Digest + AlgorithmName + AssociatedOid,
+{
     assert_eq!(
         <Ours as Digest>::output_size(),
         <Theirs as Digest>::output_size()
     );
+    assert_eq!(name::<Ours>(), name::<Theirs>());
+    assert_eq!(Ours::OID, Theirs::OID);
     let mut rng = Xorshift(0x9e37_79b9_7f4a_7c15);
     for &len in LENGTHS {
         let data = rng.bytes(len);
@@ -159,6 +178,8 @@ macro_rules! hmac_tests {
         fn $test() {
             type Ours = rind_digest::hmac::Hmac<rind_digest::sha2::$hash>;
             type Theirs = hmac::Hmac<sha2::$hash>;
+            type OursReset = rind_digest::hmac::HmacReset<rind_digest::sha2::$hash>;
+            assert_eq!(name::<Ours>(), name::<Theirs>());
             let mut rng = Xorshift(0xd1b5_4a32_d192_ed03);
             let block = <rind_digest::sha2::$hash as digest::common::BlockSizeUser>::block_size();
             // Keys around the block size, which HMAC hashes when it is longer,
@@ -167,11 +188,9 @@ macro_rules! hmac_tests {
                 let key = rng.bytes(key_len);
                 for &len in &[0usize, 1, 63, 64, 65, 127, 128, 129, 1000] {
                     let data = rng.bytes(len);
-                    assert_eq!(
-                        generic_mac::<Ours>(&key, &data),
-                        generic_mac::<Theirs>(&key, &data),
-                        "key {key_len} bytes, message {len}"
-                    );
+                    let theirs = generic_mac::<Theirs>(&key, &data);
+                    assert_eq!(generic_mac::<Ours>(&key, &data), theirs, "key {key_len} bytes, message {len}");
+                    assert_eq!(generic_mac::<OursReset>(&key, &data), theirs, "key {key_len} bytes, message {len}");
                 }
             }
         }
@@ -206,7 +225,9 @@ fn hmac_verifies_and_refuses_as_rustcrypto_does() {
     // A truncated tag is accepted only through `verify_truncated_left`, as for
     // RustCrypto's own.
     assert!(ours.clone().verify_truncated_left(&tag[..16]).is_ok());
-    // Reset forgets the message and keeps the key.
+    // `HmacReset`'s reset forgets the message and keeps the key.
+    let mut ours = <rind_digest::hmac::HmacReset<Sha256> as KeyInit>::new_from_slice(key).unwrap();
+    Mac::update(&mut ours, b"message");
     let mut reused = ours.clone();
     Reset::reset(&mut reused);
     Mac::update(&mut reused, b"message");

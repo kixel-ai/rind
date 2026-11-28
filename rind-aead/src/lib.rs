@@ -1,9 +1,11 @@
 //! `aead` 0.6's traits on rind: AES-GCM and ChaCha20-Poly1305 as `Aead` and
 //! `AeadInOut`, with the 12-byte nonce and 16-byte tag RustCrypto's aliases fix.
 //!
-//! Each module mirrors the RustCrypto crate it stands in for (`aes_gcm`,
-//! `chacha20poly1305`). Every type is a thin wrapper that calls rind; nothing
-//! here is a primitive. The README lists what rind cannot back.
+//! Each module keeps the path, names, and re-exports of the RustCrypto crate it
+//! stands in for (`aes_gcm`, `chacha20poly1305`). Every type is a thin wrapper
+//! that calls rind; nothing here is a primitive. The README lists what rind
+//! cannot back.
+#![no_std]
 
 // One wrapper over rind's `aead::Key`, which holds the expanded key and wipes
 // it on drop. The wrapper copies no key bytes: `KeyInit::new` hands the slice
@@ -80,6 +82,16 @@ macro_rules! aead {
 /// aliases. Other nonce and tag lengths, and AES-192 (which `aes_gcm` offers
 /// only as `AesGcm<Aes192, U12>`), are not offered.
 pub mod aes_gcm {
+    use aead::array::Array;
+    use aead::consts::U16;
+    pub use aead::{self, AeadCore, AeadInOut, Error, Key, KeyInit, KeySizeUser};
+
+    /// A nonce of `NonceSize` bytes; rind's types take 12.
+    pub type Nonce<NonceSize> = Array<u8, NonceSize>;
+
+    /// A tag of `TagSize` bytes; rind's types make 16.
+    pub type Tag<TagSize = U16> = Array<u8, TagSize>;
+
     aead! {
         /// AES-128-GCM.
         Aes128Gcm, AES_128_GCM, U16;
@@ -90,6 +102,19 @@ pub mod aes_gcm {
 
 /// ChaCha20-Poly1305 (RFC 8439), as `chacha20poly1305` names it.
 pub mod chacha20poly1305 {
+    use aead::array::Array;
+    use aead::consts::{U12, U16, U32};
+    pub use aead::{self, AeadCore, AeadInOut, Error, KeyInit, KeySizeUser, consts};
+
+    /// A ChaCha20-Poly1305 key.
+    pub type Key = Array<u8, U32>;
+
+    /// A ChaCha20-Poly1305 nonce.
+    pub type Nonce = Array<u8, U12>;
+
+    /// A Poly1305 tag.
+    pub type Tag = Array<u8, U16>;
+
     aead! {
         /// ChaCha20-Poly1305 with a 12-byte nonce.
         ChaCha20Poly1305, CHACHA20_POLY1305, U32;

@@ -6,7 +6,7 @@ use core::mem::size_of;
 use core::ptr;
 use std::alloc::{Layout, dealloc};
 
-use kem::{Decapsulator, KeyInit};
+use kem::KeyInit;
 use rind_kem::{DecapsulationKey, MlKem512, MlKem768, MlKem1024, ParameterSet, Seed};
 
 #[test]

@@ -10,9 +10,20 @@ categories = ["cryptography"]
 rust-version.workspace = true
 readme = "README.md"
 
+# `aes-gcm`'s and `chacha20poly1305`'s feature names for what `aead` gives:
+# `alloc` the allocating `Aead`, `getrandom` and `rand_core` key and nonce
+# generation, and `arrayvec` and `bytes` their buffers.
+[features]
+default = ["alloc", "getrandom"]
+alloc = ["aead/alloc"]
+arrayvec = ["aead/arrayvec"]
+bytes = ["aead/bytes"]
+getrandom = ["aead/getrandom"]
+rand_core = ["aead/rand_core"]
+
 [dependencies]
-rind = { version = "0.3.2", path = "../rind" }
-aead = { version = "0.6.1", default-features = false, features = ["alloc"] }
+rind = { version = "0.3.2", path = "../rind", default-features = false }
+aead = { version = "0.6.1", default-features = false }
 
 [dev-dependencies]
 aes-gcm = "0.11"

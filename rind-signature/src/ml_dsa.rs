@@ -8,9 +8,15 @@
 
 use core::fmt;
 
-use ::ml_dsa::{EncodedSignature, EncodedVerifyingKey, MlDsaParams};
-pub use ::ml_dsa::{MlDsa44, MlDsa65, MlDsa87, Seed, Signature};
-use ::signature::{Error, KeypairRef, MultipartSigner, MultipartVerifier, Signer, Verifier};
+use ::ml_dsa::common::rand_core::TryCryptoRng;
+use ::ml_dsa::common::typenum::U32;
+pub use ::ml_dsa::common::{self, Generate, KeyExport, KeyInit, KeySizeUser};
+pub use ::ml_dsa::{
+    B32, EncodedSignature, EncodedVerifyingKey, MlDsa44, MlDsa65, MlDsa87, MlDsaParams, Seed,
+    Signature,
+};
+pub use ::signature::{self, Error, Keypair, SignatureEncoding, Signer, Verifier};
+use ::signature::{KeypairRef, MultipartSigner, MultipartVerifier};
 
 mod sealed {
     pub trait Sealed {}
@@ -117,6 +123,12 @@ impl<P: Params> SigningKey<P> {
         Self { pair }
     }
 
+    /// The 32-byte seed, which rind holds for every key made here.
+    pub fn to_seed(&self) -> Seed {
+        let seed = self.pair.to_seed().expect("made from a seed");
+        Seed::try_from(seed.as_ref()).expect("a 32-byte seed")
+    }
+
     /// The public key.
     pub fn verifying_key(&self) -> VerifyingKey<P> {
         self.verifying().clone()
@@ -124,6 +136,33 @@ impl<P: Params> SigningKey<P> {
 
     fn verifying(&self) -> &VerifyingKey<P> {
         VerifyingKey::from_rind(self.pair.public_key())
+    }
+}
+
+impl<P: Params> KeySizeUser for SigningKey<P> {
+    type KeySize = U32;
+}
+
+impl<P: Params> KeyInit for SigningKey<P> {
+    fn new(seed: &Seed) -> Self {
+        Self::from_seed(seed)
+    }
+}
+
+impl<P: Params> KeyExport for SigningKey<P> {
+    fn to_bytes(&self) -> Seed {
+        self.to_seed()
+    }
+}
+
+impl<P: Params> Generate for SigningKey<P> {
+    /// FIPS 204's `ML-DSA.KeyGen`: a key from a seed of 32 bytes of `rng`, a
+    /// stack temporary left unwiped, as rind leaves its own; rind's key pair
+    /// wipes its copy.
+    fn try_generate_from_rng<R: TryCryptoRng + ?Sized>(rng: &mut R) -> Result<Self, R::Error> {
+        let mut seed = Seed::default();
+        rng.try_fill_bytes(&mut seed)?;
+        Ok(Self::from_seed(&seed))
     }
 }
 

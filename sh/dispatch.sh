@@ -192,9 +192,9 @@ module cross '^(rind/(src/|tests/|Cargo\.toml$|build\.rs$)|rind-bench/Cargo\.tom
 module wasm '^(rind/Cargo\.toml$|rind-(aws-lc-rs|ring|digest|aead|signature|kem|rustls|rcgen|jsonwebtoken|dimpl|str0m|openmls|object-store|rand-core)/(src/|tests/|Cargo\.toml$)|admin/wasm-fixture/|Cargo\.(toml|lock)$|flake\.(nix|lock)$)' \
     tools='cargo jq' compiles
 # The adapters that build without `std`, on a target with none: rind-ring and
-# rind-rustls, as ring 0.17 and rustls 0.23 build, and rind-aws-lc-rs, which
-# aws-lc-rs cannot.
-module nostd '^(rind/Cargo\.toml$|rind-(ring|rustls|aws-lc-rs)/(src/|Cargo\.toml$)|Cargo\.(toml|lock)$|flake\.(nix|lock)$)' \
+# rind-rustls, as ring 0.17 and rustls 0.23 build, rind-aws-lc-rs, which
+# aws-lc-rs cannot, and the RustCrypto trait adapters, as their upstreams build.
+module nostd '^(rind/Cargo\.toml$|rind-(ring|rustls|aws-lc-rs|digest|aead|signature|kem)/(src/|Cargo\.toml$)|Cargo\.(toml|lock)$|flake\.(nix|lock)$)' \
     tools='cargo' compiles
 # Dependents may build each crate with the rust-version it declares. Plain
 # `cargo check` covers the lib and bin targets, all a dependent builds, so a
@@ -264,7 +264,8 @@ module semver '^(rind[^/]*/(src/|Cargo\.toml$)|sh/semver\.sh$)' \
     tools='cargo cargo-semver-checks jq' compiles
 # Each adapter's API against its upstream's, which reaches rind only through a
 # lockfile change, as read by the flake's rustdoc. rind-object-store and
-# rind-rand-core have none to copy.
+# rind-rand-core have none to copy, and the RustCrypto trait adapters check
+# theirs in tests/upstream.rs (admin/adapter-api says why).
 module adapters '^(rind/(src/|Cargo\.toml$)|rind-(aws-lc-rs|ring|rustls|rcgen|jsonwebtoken|dimpl|str0m|openmls)/(src/|Cargo\.toml$|README\.md$)|Cargo\.lock$|flake\.(nix|lock)$|admin/adapter-api$)' \
     tools='cargo python3' compiles
 module license '^(rind/src/|rind/LICENSE$|rind-python/LICENSE$|admin/scan-license$)' \
@@ -786,19 +787,24 @@ step() {
             # rind-ring with and without `alloc`, which gates RSA, and
             # rind-rustls without `std`, which gates what it gates in rustls,
             # with and without `tls12`; rind-aws-lc-rs has no `std` to turn
-            # off. x86_64-unknown-none builds rind's portable backend, as
-            # check:cross explains, and is built as well as linted for the
-            # same reason.
+            # off, nor have the RustCrypto trait adapters, whose features
+            # only turn on their trait crates' (rind-aead's `alloc` the
+            # allocating `Aead`). x86_64-unknown-none builds rind's portable
+            # backend, as check:cross explains, and is built as well as
+            # linted for the same reason.
             local nostd='--cfg getrandom_backend="custom" --cfg curve25519_dalek_backend="serial"' args
             for args in 'rind-ring --no-default-features' 'rind-ring --features=alloc' \
                 'rind-rustls --no-default-features' 'rind-rustls --no-default-features --features=tls12' \
-                rind-aws-lc-rs; do
+                rind-aws-lc-rs 'rind-aead --no-default-features' \
+                'rind-digest -p rind-aead -p rind-signature -p rind-kem --all-features'; do
                 # shellcheck disable=SC2086 # each row is a package and its flags
                 RUSTFLAGS="$nostd" run cargo clippy --lib --locked --target x86_64-unknown-none -p $args -- --deny warnings
             done
             RUSTFLAGS="$nostd --deny warnings" run cargo build --lib --locked --target x86_64-unknown-none \
                 -p rind-ring -p rind-rustls -p rind-aws-lc-rs --no-default-features \
                 --features=rind-ring/alloc,rind-rustls/tls12,rind-aws-lc-rs/ring-io,rind-aws-lc-rs/ring-sig-verify
+            RUSTFLAGS="$nostd --deny warnings" run cargo build --lib --locked --target x86_64-unknown-none \
+                -p rind-digest -p rind-aead -p rind-signature -p rind-kem --all-features
             ;;
         check:vartime)
             # Each backend's targets, as admin/ct-vartime names them; no

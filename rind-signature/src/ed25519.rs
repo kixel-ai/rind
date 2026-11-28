@@ -7,11 +7,26 @@
 
 use core::fmt;
 
-pub use ::ed25519::Signature;
-use signature::{Error, KeypairRef, MultipartSigner, MultipartVerifier, Signer, Verifier};
+pub use ::ed25519::{self, Signature};
+use crypto_common::rand_core::{CryptoRng, TryCryptoRng};
+use crypto_common::{Generate, InvalidKey, Key, KeySizeUser, TryKeyInit, typenum::U32};
+use signature::{Error, KeypairRef, MultipartSigner, MultipartVerifier};
+pub use signature::{Signer, Verifier};
+
+/// The error signing, verifying, and loading keys returns.
+pub type SignatureError = Error;
 
 /// The secret key bytes: Ed25519's 32-byte seed.
 pub type SecretKey = [u8; 32];
+
+/// The length of a signature.
+pub const SIGNATURE_LENGTH: usize = 64;
+/// The length of a secret key, the seed.
+pub const SECRET_KEY_LENGTH: usize = 32;
+/// The length of a public key.
+pub const PUBLIC_KEY_LENGTH: usize = 32;
+/// The length of a secret key followed by its public key.
+pub const KEYPAIR_LENGTH: usize = SECRET_KEY_LENGTH + PUBLIC_KEY_LENGTH;
 
 /// A public key, with `ed25519_dalek::VerifyingKey`'s name.
 #[derive(Clone)]
@@ -109,6 +124,38 @@ impl SigningKey {
         Self::try_from(secret_key.as_slice()).expect("a 32-byte seed is a key")
     }
 
+    /// The seed, the bytes [`Self::from_bytes`] takes.
+    pub fn to_bytes(&self) -> SecretKey {
+        let mut bytes = [0u8; 32];
+        bytes.copy_from_slice(self.pair.to_seed().as_ref());
+        bytes
+    }
+
+    /// The key a seed followed by its public key makes, refused unless the
+    /// public key is the seed's.
+    pub fn from_keypair_bytes(bytes: &[u8; 64]) -> Result<SigningKey, SignatureError> {
+        let (seed, public_key) = bytes.split_at(SECRET_KEY_LENGTH);
+        let pair = rind::ed25519::KeyPair::from_seed_and_public_key(seed, public_key)
+            .map_err(|_| Error::new())?;
+        Ok(Self { pair })
+    }
+
+    /// The seed followed by the public key, the bytes
+    /// [`Self::from_keypair_bytes`] takes.
+    pub fn to_keypair_bytes(&self) -> [u8; KEYPAIR_LENGTH] {
+        let mut bytes = [0u8; KEYPAIR_LENGTH];
+        bytes[..SECRET_KEY_LENGTH].copy_from_slice(self.pair.to_seed().as_ref());
+        bytes[SECRET_KEY_LENGTH..].copy_from_slice(self.verifying().as_bytes());
+        bytes
+    }
+
+    /// A key from a seed of 32 bytes of `csprng`.
+    pub fn generate<R: CryptoRng + ?Sized>(csprng: &mut R) -> SigningKey {
+        let mut secret = SecretKey::default();
+        csprng.fill_bytes(&mut secret);
+        Self::from_bytes(&secret)
+    }
+
     /// The public key.
     pub fn verifying_key(&self) -> VerifyingKey {
         self.verifying().clone()
@@ -128,6 +175,48 @@ impl TryFrom<&[u8]> for SigningKey {
         Ok(Self { pair })
     }
 }
+
+impl From<SecretKey> for SigningKey {
+    fn from(secret: SecretKey) -> Self {
+        Self::from_bytes(&secret)
+    }
+}
+
+impl From<&SecretKey> for SigningKey {
+    fn from(secret: &SecretKey) -> Self {
+        Self::from_bytes(secret)
+    }
+}
+
+impl KeySizeUser for SigningKey {
+    type KeySize = U32;
+}
+
+impl TryKeyInit for SigningKey {
+    fn new(key: &Key<Self>) -> Result<Self, InvalidKey> {
+        Ok(Self::from_bytes(&(*key).into()))
+    }
+}
+
+impl Generate for SigningKey {
+    /// A key from a seed of 32 bytes of `rng`, a stack temporary left
+    /// unwiped, as rind leaves its own; rind's key pair wipes its copy.
+    fn try_generate_from_rng<R: TryCryptoRng + ?Sized>(rng: &mut R) -> Result<Self, R::Error> {
+        let mut secret = SecretKey::default();
+        rng.try_fill_bytes(&mut secret)?;
+        Ok(Self::from_bytes(&secret))
+    }
+}
+
+// Compares the seeds in constant time, as `ed25519_dalek` does.
+impl PartialEq for SigningKey {
+    fn eq(&self, other: &Self) -> bool {
+        rind::constant_time::verify(self.pair.to_seed().as_ref(), other.pair.to_seed().as_ref())
+            .is_ok()
+    }
+}
+
+impl Eq for SigningKey {}
 
 impl fmt::Debug for SigningKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
