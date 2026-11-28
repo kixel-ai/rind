@@ -43,14 +43,13 @@
 # `prove` dev shell: `nix develop .#prove --command admin/prove`, or for the
 # HOL Light proofs, the cosimulation, the bytes alone, or a session, `nix
 # develop .#hol-light --command admin/prove hol-light`. A run keeps Aeneas's
-# translations and the Lean proofs' Lake outputs for the next, in
-# `~/.cache/rind/` and Lake's own cache; `RIND_PROVE_CACHE_HOST`, an SSH host
-# set alike on every host, the one it names included, shares them through
-# that host, as `cached` and `lake_get` below describe. `key`, given
-# `hol-light <arch>`, `cosim`, or `lean`, checks nothing either: it prints the
-# key that check's result is cached under, which `result_key` below
-# describes, running only what the key hashes; `lean`'s runs in the `prove`
-# dev shell, the others' in `hol-light`. `lean` also runs on aarch64 macOS, in
+# translations for the next in `~/.cache/rind/`, and shares them between
+# hosts through the artifact cache that `~/.config/artifact-cache/url` names,
+# as `cached` below describes; the Lean proofs' Lake outputs stay in Lake's
+# own cache. `key`, given `hol-light <arch>`, `cosim`, or `lean`, checks
+# nothing either: it prints the key that check's result is cached under,
+# which `result_key` below describes, running only what the key hashes;
+# `lean`'s runs in the `prove` dev shell, the others' in `hol-light`. `lean` also runs on aarch64 macOS, in
 # the same shell, where it names the checks the host cannot run, the intrinsic
 # vectors, and exits nonzero for them after everything else passes.
 set -euo pipefail
@@ -455,9 +454,8 @@ stable_name() {
 # descriptor, which holds it already rather than waiting on itself. `scratch`
 # guards what every run and session rewrites: the asm build and its symbol
 # index. `hol-light` and `cosim` guard their own directories under `$out` for
-# a whole run. `lake` guards `proofs/.lake/build`, which `lake_get` may
-# remove, from a build to the last command that reads it. Everything else a
-# run writes is its own.
+# a whole run. `lake` guards `proofs/.lake/build` from a build to the last
+# command that reads it. Everything else a run writes is its own.
 declare -A held
 hold() {
     local fd
@@ -500,37 +498,60 @@ rooted_hash() {
 
 # Translations, which take most of a run's time: an edit to the proofs alone
 # changes none. Each entry holds what one translation wrote, under a key that
-# hashes everything it reads, so checkouts and hosts share it. With
-# `RIND_PROVE_CACHE_HOST`, an SSH host, a miss here reads that host's cache,
-# and a new entry goes there too, so one host serves every other's agents. An
-# unreachable host fails the run, since setting it says the host is there.
-# Entries unread for 14 days go.
+# hashes everything it reads, so checkouts and hosts share it. Entries unread
+# for 14 days go. A miss here reads the artifact cache, an S3-style store
+# whose base URL `${XDG_CONFIG_HOME:-$HOME/.config}/artifact-cache/url`
+# holds, at `rind/translations/<key>.tar.gz`, and a new entry goes there too,
+# with the writers' token in `token` beside it, so one translation serves
+# every host. The store expires and evicts its own objects. A host without
+# the `url` file shares nothing; with it, an unreachable store or a missing
+# token fails the run, since the file says the store is there.
 translations=${XDG_CACHE_HOME:-$HOME/.cache}/rind/translations
 mkdir -p "$translations"
 find "$translations" -type f -mtime +14 -delete
-# The SSH host's cache, as its own shell expands it.
-remote_translations='"${XDG_CACHE_HOME:-$HOME/.cache}/rind/translations"'
+store='' store_token=''
+
+# Reads the artifact cache's URL and token into `store` and `store_token`, on
+# every run, so a host's change takes effect without a restart.
+artifact_cache() {
+    local dir=${XDG_CONFIG_HOME:-$HOME/.config}/artifact-cache
+    if [[ ! -e $dir/url ]]; then
+        echo "admin/prove: no $dir/url, so translations stay on this host" >&2
+        return
+    fi
+    store=$(<"$dir/url")
+    store=${store%/}
+    if [[ $store != http://* && $store != https://* ]]; then
+        echo "admin/prove: $dir/url holds no http(s) URL" >&2
+        exit 1
+    fi
+    [[ ! -s $dir/token ]] || store_token=$(<"$dir/token")
+    if [[ -z $store_token ]]; then
+        echo "admin/prove: $dir/url names an artifact cache, but $dir/token holds no token to write to it" >&2
+        exit 1
+    fi
+}
 
 # Runs the command after `$1`, a key, and `$2`, the directory it writes,
 # which this empties first, or takes what an earlier run under that key wrote
 # there from the cache. Each step's status is checked by hand, since a
 # caller's `||` turns off `set -e` in here.
 cached() {
-    local key=$1 dest=$2 entry status=0
+    local key=$1 dest=$2 entry object code
     shift 2
     entry=$translations/$key.tar.gz
+    object=$store/rind/translations/$key.tar.gz
     rm -rf "$dest"
     mkdir -p "$dest"
-    if [[ ! -f $entry && -n ${RIND_PROVE_CACHE_HOST:-} ]]; then
-        ssh -o BatchMode=yes "$RIND_PROVE_CACHE_HOST" \
-            "f=$remote_translations/$key.tar.gz; [ -f \"\$f\" ] || exit 3; touch \"\$f\" && cat \"\$f\"" \
-            </dev/null >"$entry.$$" || status=$?
-        case $status in
-        0) mv "$entry.$$" "$entry" ;;
-        3) rm "$entry.$$" ;;
+    if [[ ! -f $entry && -n $store ]]; then
+        # The store refuses objects over 1 GiB, so a longer body is not one.
+        code=$(curl -sS --max-filesize 1G -o "$entry.$$" -w '%{http_code}' "$object") || code=
+        case $code in
+        200) mv "$entry.$$" "$entry" ;;
+        404) rm -f "$entry.$$" ;;
         *)
-            rm "$entry.$$"
-            echo "admin/prove: cannot read the translation cache on RIND_PROVE_CACHE_HOST, $RIND_PROVE_CACHE_HOST" >&2
+            rm -f "$entry.$$"
+            echo "admin/prove: cannot read $object${code:+, HTTP $code}" >&2
             return 1
             ;;
         esac
@@ -541,12 +562,11 @@ cached() {
     fi
     "$@" || return
     tar -czf "$entry.$$" -C "$dest" . && mv "$entry.$$" "$entry" || return
-    if [[ -n ${RIND_PROVE_CACHE_HOST:-} ]]; then
-        ssh -o BatchMode=yes "$RIND_PROVE_CACHE_HOST" \
-            "d=$remote_translations; mkdir -p \"\$d\" && cat >\"\$d/$key.tar.gz.\$\$\" &&
-                mv \"\$d/$key.tar.gz.\$\$\" \"\$d/$key.tar.gz\" && find \"\$d\" -type f -mtime +14 -exec rm -f {} +" \
-            <"$entry" || {
-            echo "admin/prove: cannot write the translation cache on RIND_PROVE_CACHE_HOST, $RIND_PROVE_CACHE_HOST" >&2
+    if [[ -n $store ]]; then
+        # A file, not a pipe, since the store wants a Content-Length; the
+        # header through a file descriptor keeps the token out of `ps`.
+        curl -fsS -o /dev/null -T "$entry" -H @<(printf 'Authorization: Bearer %s\n' "$store_token") "$object" || {
+            echo "admin/prove: cannot write $object" >&2
             return 1
         }
     fi
@@ -1036,85 +1056,6 @@ lean_deps() {
     fi
 }
 
-# The proofs' Lake outputs, shared through `RIND_PROVE_CACHE_HOST` as
-# `translations` are: a build there leaves an entry under the commit it built
-# on, its input-to-output mappings and the artifacts they name, and a build
-# here first takes the entry of the nearest commit on its first-parent line.
-# Lake replays a module only when its inputs hash as a mapping says, so any
-# entry is safe to take, and the nearest shares the most. Entries are per
-# platform, since Lake's hashes may differ between them; their artifacts are
-# hard links into a pool that holds each once. Entries unread for 14 days go,
-# and with them the artifacts no other entry holds. From `proofs/`.
-lake_platform=$(uname -s)-$(uname -m)
-# On the SSH host, given the platform: prints the first of the commits after
-# it that has an entry, marking the entry read.
-lake_remote_find='d=${XDG_CACHE_HOME:-$HOME/.cache}/rind/lake/$1; shift
-for r in "$@"; do if [ -f "$d/$r/outputs.jsonl" ]; then touch "$d/$r"; echo "$r"; exit 0; fi; done'
-# On the SSH host, given the platform and a commit: stores the staged
-# outputs on stdin as that commit's entry, unless it has one, then prunes,
-# under a lock, since two uploads can hold the same new artifact.
-lake_remote_put='set -e; d=${XDG_CACHE_HOME:-$HOME/.cache}/rind/lake/$1; t=$d/tmp.$$
-mkdir -p "$d/pool" "$t"; tar -xf - -C "$t"
-exec 9>"$d/lock"; flock 9
-for f in "$t"/*; do n=${f##*/}; [ "$n" = outputs.jsonl ] && continue
-if [ -e "$d/pool/$n" ]; then ln -f "$d/pool/$n" "$f"; else ln "$f" "$d/pool/$n"; fi; done
-if [ -e "$d/$2" ]; then rm -rf "$t"; else mv "$t" "$d/$2"; fi
-find "$d" -mindepth 1 -maxdepth 1 \( -name "tmp.*" -mtime +1 -o -name "[0-9a-f]*" -mtime +14 \) -exec rm -rf {} +
-find "$d/pool" -type f -links 1 -exec rm -f {} +'
-
-# Takes the nearest commit's entry into Lake's cache, unless this checkout
-# already took it, which `.lake/rind-fetched` records.
-lake_get() {
-    local rev stage=../$out/lake-stage cache input
-    [[ -n ${RIND_PROVE_CACHE_HOST:-} ]] || return 0
-    # shellcheck disable=SC2046 # one argument per commit
-    rev=$(ssh -o BatchMode=yes "$RIND_PROVE_CACHE_HOST" "sh -c '$lake_remote_find' sh $lake_platform" \
-        $(git rev-list --first-parent -n 100 HEAD) </dev/null) || {
-        echo "admin/prove: cannot read the Lake cache on RIND_PROVE_CACHE_HOST, $RIND_PROVE_CACHE_HOST" >&2
-        return 1
-    }
-    [[ -n $rev && $rev != "$(cat .lake/rind-fetched 2>/dev/null)" ]] || return 0
-    rm -rf "$stage"
-    mkdir -p "$stage"
-    ssh -o BatchMode=yes "$RIND_PROVE_CACHE_HOST" \
-        "tar -cf - -C \"\${XDG_CACHE_HOME:-\$HOME/.cache}/rind/lake/$lake_platform/$rev\" ." </dev/null |
-        tar -xf - -C "$stage"
-    # The entry's outputs replace this host's own for the same inputs, and
-    # this checkout's build, so the entry's importers match: see UPSTREAM.md,
-    # "Lean's `.olean` differs between builds of the same inputs". Only the
-    # mappings go, not `--force-overwrite`'s artifacts, which another
-    # checkout's build may be reading; an artifact's name is its content's.
-    cache=$(lake env printenv LAKE_CACHE_DIR)
-    sed -n 's/^\["\([0-9a-f]*\)",.*/\1/p' "$stage/outputs.jsonl" | while read -r input; do
-        rm -f "$cache/outputs/rind/$input.json"
-    done
-    lake cache unstage "$stage"
-    rm -rf "$stage" .lake/build
-    echo "$rev" >.lake/rind-fetched
-}
-
-# Leaves the outputs of the build whose mappings are in `$1` as this commit's
-# entry, unless it has one or the proofs differ from the commit's.
-lake_put() {
-    local rev stage=../$out/lake-stage found
-    [[ -n ${RIND_PROVE_CACHE_HOST:-} && -z $(git status --porcelain --untracked-files=all -- .) ]] || return 0
-    rev=$(git rev-parse HEAD)
-    found=$(ssh -o BatchMode=yes "$RIND_PROVE_CACHE_HOST" "sh -c '$lake_remote_find' sh $lake_platform $rev" </dev/null) || {
-        echo "admin/prove: cannot read the Lake cache on RIND_PROVE_CACHE_HOST, $RIND_PROVE_CACHE_HOST" >&2
-        return 1
-    }
-    [[ -z $found ]] || return 0
-    rm -rf "$stage"
-    lake cache stage "$1" "$stage"
-    tar -cf - -C "$stage" . |
-        ssh -o BatchMode=yes "$RIND_PROVE_CACHE_HOST" "sh -c '$lake_remote_put' sh $lake_platform $rev" || {
-        echo "admin/prove: cannot write the Lake cache on RIND_PROVE_CACHE_HOST, $RIND_PROVE_CACHE_HOST" >&2
-        return 1
-    }
-    rm -rf "$stage"
-    echo "$rev" >.lake/rind-fetched
-}
-
 # Tests the Lean specs the proofs trust, as `admin/spec-tests` describes:
 # builds them as `proofs/`'s `spec-server`, and runs each on its published
 # vectors in `thirdparty/vectors/` and on `SPEC_TESTS_RANDOM` random inputs
@@ -1478,6 +1419,11 @@ bytes() {
     admin/prove-bytes check "$dir"
     release scratch
 }
+# Before the first check, so a missing token fails a run at once, but only
+# for the checks that translate.
+case $only in
+'' | dalek | lean) artifact_cache ;;
+esac
 if [[ -z $only || $only == bytes ]]; then
     bytes
 fi
@@ -2665,10 +2611,7 @@ dalek
 hold lake
 cd proofs
 lean_deps
-lake_get
-# The mappings, which archive each module's outputs, only for `lake_put`.
-lake build ${RIND_PROVE_CACHE_HOST:+-o "../$out/lake-outputs.jsonl"}
-lake_put "../$out/lake-outputs.jsonl"
+lake build
 [[ ${#skipped[@]} -gt 0 ]] || lake env lean "../$out/SimdVectors.lean"
 cd ..
 release lake
