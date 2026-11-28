@@ -58,7 +58,10 @@ pub struct KeyPair {
     serialized_der: Wiped,
 }
 
-#[allow(clippy::large_enum_variant)]
+#[allow(
+    clippy::large_enum_variant,
+    reason = "one key per `KeyPair`, so boxing the large ones would only add an allocation"
+)]
 enum Key {
     Ecdsa(EcdsaKeyPair),
     Ed25519(Ed25519KeyPair),

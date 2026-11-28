@@ -259,12 +259,10 @@ impl AsBigEndian<EcPublicKeyUncompressedBin<'static>> for PublicKey {
 
 /// Compresses an uncompressed X9.62 point, which is public.
 pub(crate) fn compress(uncompressed: &[u8]) -> Vec<u8> {
-    let coordinates = &uncompressed[1..];
+    let coordinates = uncompressed.get(1..).unwrap_or_default();
     let (x, y) = coordinates.split_at(coordinates.len() / 2);
-    let mut compressed = Vec::with_capacity(1 + x.len());
-    compressed.push(0x02 | (y[y.len() - 1] & 1));
-    compressed.extend_from_slice(x);
-    compressed
+    let parity = y.last().map_or(0, |y| y & 1);
+    [&[0x02 | parity][..], x].concat()
 }
 
 /// A peer's encoded public key, parsed only when used.
@@ -336,15 +334,15 @@ pub enum ParsedPublicKeyFormat {
 
 impl ParsedPublicKey {
     fn new(bytes: &[u8], algorithm: &'static Algorithm) -> Result<Self, KeyRejected> {
-        if bytes.is_empty() {
+        let Some(&first) = bytes.first() else {
             return Err(KeyRejected::unspecified());
-        }
+        };
         let (format, key) = match rind::agreement::PublicKey::from_spki(algorithm.rind(), bytes) {
             Ok(key) => (ParsedPublicKeyFormat::X509, key),
             Err(_) => {
                 let key = rind::agreement::PublicKey::new(algorithm.rind(), bytes)
                     .map_err(|_| KeyRejected::invalid_encoding())?;
-                let format = match (algorithm.id, bytes[0]) {
+                let format = match (algorithm.id, first) {
                     (AlgorithmId::X25519, _) => ParsedPublicKeyFormat::Raw,
                     (_, 0x02 | 0x03) => ParsedPublicKeyFormat::Compressed,
                     (_, 0x04) => ParsedPublicKeyFormat::Uncompressed,
@@ -459,7 +457,10 @@ impl fmt::Debug for EphemeralPrivateKey {
 
 /// Agrees on a secret with the peer's public key, consuming
 /// `my_private_key`, and returns `kdf` of it, as [`agree`] does.
-#[allow(clippy::needless_pass_by_value)]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "aws-lc-rs takes the peer's key by value, so a drop-in does too"
+)]
 pub fn agree_ephemeral<B: TryInto<ParsedPublicKey>, F, R, E>(
     my_private_key: EphemeralPrivateKey,
     peer_public_key: B,

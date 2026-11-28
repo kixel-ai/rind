@@ -195,7 +195,9 @@ impl UnboundCipherKey {
             return Err(Unspecified);
         }
         let mut key = Key::new([0; AES_256_KEY_LEN]);
-        key[..key_bytes.len()].copy_from_slice(key_bytes);
+        key.get_mut(..key_bytes.len())
+            .ok_or(Unspecified)?
+            .copy_from_slice(key_bytes);
         Ok(Self { algorithm, key })
     }
 
@@ -205,7 +207,9 @@ impl UnboundCipherKey {
     }
 
     fn bytes(&self) -> &[u8] {
-        &self.key[..self.algorithm.key_len]
+        self.key
+            .get(..self.algorithm.key_len)
+            .expect("every key_len is at most AES_256_KEY_LEN")
     }
 }
 
@@ -221,7 +225,10 @@ impl From<hkdf::Okm<'_, &'static Algorithm>> for UnboundCipherKey {
     fn from(okm: hkdf::Okm<'_, &'static Algorithm>) -> Self {
         let algorithm = *okm.len();
         let mut key = Key::new([0; AES_256_KEY_LEN]);
-        okm.fill_exact(&mut key[..algorithm.key_len]);
+        okm.fill_exact(
+            key.get_mut(..algorithm.key_len)
+                .expect("every key_len is at most AES_256_KEY_LEN"),
+        );
         Self { algorithm, key }
     }
 }
@@ -229,7 +236,13 @@ impl From<hkdf::Okm<'_, &'static Algorithm>> for UnboundCipherKey {
 mod private {
     /// What aws-lc-rs's `TryInto` turns an [`super::UnboundCipherKey`] into:
     /// callers can hold one but name no use for it.
-    pub struct SymmetricCipherKey(#[allow(dead_code)] pub(super) super::UnboundCipherKey);
+    pub struct SymmetricCipherKey(
+        #[allow(
+            dead_code,
+            reason = "held, never read, as aws-lc-rs's is to its callers"
+        )]
+        pub(super) super::UnboundCipherKey,
+    );
 }
 
 impl TryInto<private::SymmetricCipherKey> for UnboundCipherKey {

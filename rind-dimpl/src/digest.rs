@@ -11,11 +11,12 @@ pub(crate) static HASH: Hasher = Hasher;
 
 impl HashProvider for Hasher {
     fn create_hash(&self, algorithm: HashAlgorithm) -> Box<dyn dimpl::crypto::HashContext> {
-        // dimpl only asks for the hash of a suite this provider offers.
         let algorithm = match algorithm {
             HashAlgorithm::SHA256 => &digest::SHA256,
             HashAlgorithm::SHA384 => &digest::SHA384,
-            _ => panic!("no suite uses {algorithm:?}"),
+            _ => {
+                unreachable!("dimpl asks only for a suite's hash, and no suite uses {algorithm:?}")
+            }
         };
         Box::new(Running(digest::Context::new(algorithm)))
     }

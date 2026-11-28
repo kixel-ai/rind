@@ -12,7 +12,8 @@ use rustls::{ConnectionTrafficSecrets, ContentType, ProtocolVersion};
 
 /// rustls derives `key` at the algorithm's key length.
 fn aead_key(algorithm: &'static aead::Algorithm, key: &AeadKey) -> aead::Key {
-    aead::Key::new(algorithm, key.as_ref()).unwrap()
+    aead::Key::new(algorithm, key.as_ref())
+        .expect("rustls derives the key at the algorithm's key length")
 }
 
 /// The record nonce for `seq`, which never repeats under one key.
@@ -78,7 +79,7 @@ impl Tls12AeadAlgorithm for Chacha20Poly1305 {
         debug_assert_eq!(NONCE_LEN, iv.len());
         Ok(ConnectionTrafficSecrets::Chacha20Poly1305 {
             key,
-            iv: Iv::new(iv[..].try_into().unwrap()),
+            iv: Iv::new(iv.try_into().map_err(|_| UnsupportedOperationError)?),
         })
     }
 }
@@ -112,6 +113,10 @@ impl MessageEncrypter for Tls13Cipher {
         ))
     }
 
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "rustls passes a record's payload length, at most 2^14 bytes, so the overhead fits"
+    )]
     fn encrypted_payload_len(&self, payload_len: usize) -> usize {
         payload_len + 1 + TAG_LEN
     }
@@ -161,6 +166,10 @@ impl MessageEncrypter for ChaChaTls12Cipher {
         Ok(OutboundOpaqueMessage::new(m.typ, m.version, payload))
     }
 
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "rustls passes a record's payload length, at most 2^14 bytes, so the overhead fits"
+    )]
     fn encrypted_payload_len(&self, payload_len: usize) -> usize {
         payload_len + TAG_LEN
     }
@@ -246,7 +255,8 @@ impl Tls12AeadAlgorithm for TlsAesGcm {
     fn decrypter(&self, key: AeadKey, iv: &[u8]) -> Box<dyn MessageDecrypter> {
         Box::new(GcmTls12MessageDecrypter(
             aead_key(self.algorithm, &key),
-            iv.try_into().unwrap(),
+            iv.try_into()
+                .expect("rustls passes the key block shape's 4-byte fixed_iv_len"),
         ))
     }
 
@@ -279,19 +289,22 @@ impl MessageDecrypter for GcmTls12MessageDecrypter {
         seq: u64,
     ) -> Result<InboundPlainMessage<'a>, rustls::Error> {
         let payload = &msg.payload;
-        if payload.len() < AESGCM_OVERHEAD {
+        let Some((explicit, sealed)) = payload.split_first_chunk::<AESGCM_EXPLICIT_NONCE_LEN>()
+        else {
             return Err(rustls::Error::DecryptError);
-        }
+        };
+        let Some(plain_len) = sealed.len().checked_sub(TAG_LEN) else {
+            return Err(rustls::Error::DecryptError);
+        };
 
         let nonce = {
             let mut nonce = [0u8; 12];
             nonce[..4].copy_from_slice(&self.1);
-            nonce[4..].copy_from_slice(&payload[..8]);
+            nonce[4..].copy_from_slice(explicit);
             // The peer picks the explicit part; opening needs no uniqueness.
             aead::Nonce::assume_unique_for_key(nonce)
         };
 
-        let plain_len = payload.len() - AESGCM_OVERHEAD;
         let aad = make_tls12_aad(seq, msg.typ, msg.version, plain_len);
 
         let payload = &mut msg.payload;
@@ -304,9 +317,12 @@ impl MessageDecrypter for GcmTls12MessageDecrypter {
             return Err(rustls::Error::PeerSentOversizedRecord);
         }
 
-        Ok(msg.into_plain_message_range(
-            AESGCM_EXPLICIT_NONCE_LEN..AESGCM_EXPLICIT_NONCE_LEN + plain_len,
-        ))
+        #[expect(
+            clippy::arithmetic_side_effects,
+            reason = "plain_len is the payload's length less its explicit nonce and tag"
+        )]
+        let plain = AESGCM_EXPLICIT_NONCE_LEN..AESGCM_EXPLICIT_NONCE_LEN + plain_len;
+        Ok(msg.into_plain_message_range(plain))
     }
 }
 
@@ -333,7 +349,10 @@ impl MessageEncrypter for GcmTls12MessageEncrypter {
             .seal_in_place_separate_tag(
                 aead::Nonce::assume_unique_for_key(nonce.0),
                 &aad,
-                &mut payload.as_mut()[AESGCM_EXPLICIT_NONCE_LEN..],
+                payload
+                    .as_mut()
+                    .get_mut(AESGCM_EXPLICIT_NONCE_LEN..)
+                    .ok_or(rustls::Error::EncryptError)?,
             )
             .map_err(|_| rustls::Error::EncryptError)?;
         payload.extend_from_slice(tag.as_ref());
@@ -341,6 +360,10 @@ impl MessageEncrypter for GcmTls12MessageEncrypter {
         Ok(OutboundOpaqueMessage::new(msg.typ, msg.version, payload))
     }
 
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "rustls passes a record's payload length, at most 2^14 bytes, so the overhead fits"
+    )]
     fn encrypted_payload_len(&self, payload_len: usize) -> usize {
         payload_len + AESGCM_EXPLICIT_NONCE_LEN + TAG_LEN
     }
@@ -373,8 +396,6 @@ const MAX_FRAGMENT_LEN: usize = 16384;
 #[cfg(feature = "tls12")]
 // TLS1.2-specific
 const AESGCM_EXPLICIT_NONCE_LEN: usize = 8;
-#[cfg(feature = "tls12")]
-const AESGCM_OVERHEAD: usize = AESGCM_EXPLICIT_NONCE_LEN + TAG_LEN;
 
 #[cfg(test)]
 mod tests {

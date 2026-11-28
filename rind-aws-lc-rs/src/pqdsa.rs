@@ -16,7 +16,10 @@ use crate::wipe::Wiped;
 use crate::{Hex, pkcs8};
 
 /// An ML-DSA parameter set.
-#[allow(non_camel_case_types)]
+#[allow(
+    non_camel_case_types,
+    reason = "named as aws-lc-rs names its algorithms"
+)]
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) enum AlgorithmID {
     ML_DSA_44,
@@ -304,6 +307,10 @@ impl fmt::Debug for PqdsaKeyPair {
 }
 
 /// Wraps an expanded private key in PKCS#8 v1, as RFC 9881's `expandedKey`.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "ML-DSA's expanded keys are under 5 KiB, so the DER lengths stay far below usize::MAX"
+)]
 fn expanded_pkcs8(id: &AlgorithmID, key: &[u8]) -> Vec<u8> {
     /// A DER header with a two-byte length, which every ML-DSA key needs.
     fn header(out: &mut Vec<u8>, tag: u8, len: usize) {

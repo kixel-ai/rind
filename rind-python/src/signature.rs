@@ -86,7 +86,10 @@ fn rsa_key(
 }
 
 /// A public key and, for RSA, the algorithm it verifies with.
-#[allow(clippy::large_enum_variant)]
+#[allow(
+    clippy::large_enum_variant,
+    reason = "one key per Python object, which already lives on the heap"
+)]
 enum Key {
     Ecdsa(ecdsa::PublicKey),
     Ed25519(ed25519::PublicKey),

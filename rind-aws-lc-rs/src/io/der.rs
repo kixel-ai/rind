@@ -129,7 +129,9 @@ fn nonnegative_integer<'a>(
     let bytes = value.as_slice_less_safe();
     match bytes {
         [0] | [0x01..=0x7f, ..] => Ok(value),
-        [0, 0x80..=0xff, ..] => Ok(untrusted::Input::from(&bytes[1..])),
+        [0, rest @ ..] if rest.first().is_some_and(|top| *top >= 0x80) => {
+            Ok(untrusted::Input::from(rest))
+        }
         _ => Err(error::Unspecified),
     }
 }

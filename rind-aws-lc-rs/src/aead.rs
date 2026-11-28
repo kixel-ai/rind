@@ -21,7 +21,10 @@ pub struct Algorithm {
     id: AlgorithmId,
 }
 
-#[allow(non_camel_case_types)]
+#[allow(
+    non_camel_case_types,
+    reason = "named as aws-lc-rs names its algorithms"
+)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum AlgorithmId {
     AES_128_GCM,
@@ -141,7 +144,10 @@ impl From<&[u8; NONCE_LEN]> for Nonce {
 }
 
 /// Encodes each word little-endian.
-#[allow(useless_deprecated)]
+#[allow(
+    useless_deprecated,
+    reason = "aws-lc-rs deprecates this, so a caller sees the same warning"
+)]
 #[deprecated(
     since = "1.6.0",
     note = "Use `Nonce::assume_unique_for_key` with explicitly encoded bytes."
@@ -176,7 +182,10 @@ pub struct Aad<A: AsRef<[u8]>>(A);
 
 impl<A: AsRef<[u8]>> Aad<A> {
     /// Wraps `aad`.
-    #[allow(clippy::should_implement_trait)]
+    #[allow(
+        clippy::should_implement_trait,
+        reason = "aws-lc-rs's inherent `Aad::from`, which a drop-in keeps"
+    )]
     pub fn from(aad: A) -> Self {
         Self(aad)
     }
@@ -241,7 +250,9 @@ impl From<hkdf::Okm<'_, &'static Algorithm>> for UnboundKey {
     fn from(okm: hkdf::Okm<'_, &'static Algorithm>) -> Self {
         let algorithm = *okm.len();
         let mut key = [0u8; 32];
-        let key = &mut key[..algorithm.key_len()];
+        let key = key
+            .get_mut(..algorithm.key_len())
+            .expect("every key_len is at most 32");
         okm.fill_exact(key);
         Self::new(algorithm, key).expect("key_len bytes are a valid key")
     }
@@ -261,7 +272,10 @@ impl LessSafeKey {
 
     /// Opens the ciphertext `in_out` against the separate `tag`, and returns
     /// the plaintext, written over it.
-    #[allow(clippy::needless_pass_by_value)]
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "aws-lc-rs takes `aad` by value, so a drop-in does too"
+    )]
     pub fn open_in_place_separate_tag<'in_out, A>(
         &self,
         nonce: Nonce,
@@ -292,7 +306,7 @@ impl LessSafeKey {
             .open_in_place_separate_tag(nonce.into_rind(), aad, tag, opened)
             .map_err(error::unspecified)?;
         in_out.copy_within(start.., 0);
-        Ok(&mut in_out[..len])
+        in_out.get_mut(..len).ok_or(error::Unspecified)
     }
 
     /// Opens `in_out`, the ciphertext followed by its tag, and returns the plaintext.
@@ -434,7 +448,7 @@ impl LessSafeKey {
     where
         A: AsRef<[u8]>,
     {
-        if extra_out_and_tag.len() != extra_in.len() + TAG_LEN {
+        if extra_out_and_tag.len().checked_sub(extra_in.len()) != Some(TAG_LEN) {
             return Err(error::Unspecified);
         }
         let (extra_out, tag_out) = extra_out_and_tag.split_at_mut(extra_in.len());
@@ -753,7 +767,10 @@ impl RandomizedNonceKey {
 
     /// Seals `in_out` in place under a random nonce, appends the tag, and returns the nonce.
     // aws-lc-rs names the lifetime, so this does too.
-    #[allow(clippy::needless_lifetimes)]
+    #[allow(
+        clippy::needless_lifetimes,
+        reason = "aws-lc-rs names the lifetime, as the comment above says"
+    )]
     pub fn seal_in_place_append_tag<'a, A, InOut>(
         &self,
         aad: Aad<A>,
@@ -815,7 +832,7 @@ where
     let plaintext_len = in_out.as_mut().len();
     in_out.extend(&[0; TAG_LEN]);
     let in_out = in_out.as_mut();
-    if in_out.len() != plaintext_len + TAG_LEN {
+    if in_out.len().checked_sub(plaintext_len) != Some(TAG_LEN) {
         return Err(error::Unspecified);
     }
     Ok(in_out.split_at_mut(plaintext_len))
@@ -831,7 +848,7 @@ pub(crate) fn check_scatter(
     extra_out_and_tag: &[u8],
 ) -> Result<(), error::Unspecified> {
     match in_plaintext.len() == out_ciphertext.len()
-        && extra_out_and_tag.len() == extra_in.len() + TAG_LEN
+        && extra_out_and_tag.len().checked_sub(extra_in.len()) == Some(TAG_LEN)
     {
         true => Ok(()),
         false => Err(error::Unspecified),

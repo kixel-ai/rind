@@ -82,7 +82,9 @@ pub fn verify(
 
     // rind refuses a value this short, so derive its block and compare here.
     let mut derived = [0u8; digest::MAX_OUTPUT_LEN];
-    let derived = &mut derived[..previously_derived.len()];
+    let derived = derived
+        .get_mut(..previously_derived.len())
+        .ok_or(error::Unspecified)?;
     secret
         .derive(iterations, salt, derived)
         .map_err(error::unspecified)?;
