@@ -1,4 +1,4 @@
-# [M] The portable backend's AES bitslices eight blocks a pass
+# [L] The portable backend's AES bitslices eight blocks a pass
 
 ## Goal
 
