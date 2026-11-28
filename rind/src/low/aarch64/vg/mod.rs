@@ -5,11 +5,16 @@
 //! pyca/verified-garbage's verified routines that rind runs, and the
 //! routines and tables they reach: see admin/import-vg.
 
-#![allow(dead_code, unreachable_pub, unused_macros, clippy::all)]
+#![allow(
+    dead_code,
+    unreachable_pub,
+    unused_macros,
+    clippy::all,
+    reason = "imported verbatim: rind runs only some of the routines, tables and macros, and keeps upstream's style"
+)]
 
 /// The page of a `static`'s address, in the assembler syntax of the object format.
 #[cfg(target_vendor = "apple")]
-#[allow(unused_macros)]
 macro_rules! vg_sym_page {
     ($s:literal) => {
         concat!($s, "@PAGE")
@@ -17,7 +22,6 @@ macro_rules! vg_sym_page {
 }
 
 #[cfg(not(target_vendor = "apple"))]
-#[allow(unused_macros)]
 macro_rules! vg_sym_page {
     ($s:literal) => {
         $s
@@ -26,7 +30,6 @@ macro_rules! vg_sym_page {
 
 /// The offset of a `static`'s address in its page, in the assembler syntax of the object format.
 #[cfg(target_vendor = "apple")]
-#[allow(unused_macros)]
 macro_rules! vg_sym_pageoff {
     ($s:literal) => {
         concat!($s, "@PAGEOFF")
@@ -34,7 +37,6 @@ macro_rules! vg_sym_pageoff {
 }
 
 #[cfg(not(target_vendor = "apple"))]
-#[allow(unused_macros)]
 macro_rules! vg_sym_pageoff {
     ($s:literal) => {
         concat!(":lo12:", $s)

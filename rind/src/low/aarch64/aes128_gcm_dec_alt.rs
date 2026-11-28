@@ -1,5 +1,10 @@
 // generated source. do not edit.
-#![allow(non_upper_case_globals, unused_macros, unused_imports)]
+#![allow(
+    non_upper_case_globals,
+    unused_macros,
+    unused_imports,
+    reason = "generated: names follow the assembly, and not every file uses each macro or import"
+)]
 use crate::low::macros::*;
 
 // Copyright (c) 2020-2022 The OpenSSL Project Authors
@@ -176,6 +181,10 @@ use crate::low::macros::*;
 /// ensure the cumulative message length does not exceed 2^36 - 32 bytes
 /// (2^39 - 256 bits).
 #[inline(never)]
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "callers cap the message at 2^36 - 32 bytes, so blocks * 128 bits fits in usize"
+)]
 #[target_feature(enable = "aes,sha3")]
 pub(crate) unsafe fn aes128_gcm_dec_alt(
     inout: *mut [u8; 16],

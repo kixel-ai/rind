@@ -1,5 +1,10 @@
 // generated source. do not edit.
-#![allow(non_upper_case_globals, unused_macros, unused_imports)]
+#![allow(
+    non_upper_case_globals,
+    unused_macros,
+    unused_imports,
+    reason = "generated: names follow the assembly, and not every file uses each macro or import"
+)]
 use crate::low::macros::*;
 
 // Copyright (c) 2024 The mlkem-native project authors
