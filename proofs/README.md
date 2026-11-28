@@ -2033,20 +2033,26 @@ statics are built wholly by quoted code.
 `admin/prove` translates the portable backend too, under `--cfg
 rind_portable`, the cfg CI's portable jobs build with, on x86_64, into
 `Rind/Portable/`: the hash, HMAC, KDF, and header-protection paths, down to
-the SHA-2 block functions, RSA verification, down to `low::generic`'s word
-routines and Montgomery products, and the Keccak-f above, alone. None of
-that Rust picks by CPU, and Aeneas's `usize` is either width, so the
-theorems hold on every target the backend builds for, but RSA's on 32-bit
-limbs, which most 32-bit targets run and the translation, on x86_64, leaves
-out, and the two SHA-2 bodies 32-bit microcontrollers run instead, which
+the SHA-2 block functions, and the Keccak-f above, alone. None of that Rust
+picks by CPU, and Aeneas's `usize` is either width, so the theorems hold on
+every target the backend builds for, but the two SHA-2 bodies 32-bit
+microcontrollers run instead, which
 [the next section](#32-bit-microcontrollers) proves. The
 x86_64 proofs of SHA-256's padding, the SHA-512 family, HMAC's keyed states,
-the digest, HMAC, HKDF, and PBKDF2 APIs, ChaCha20 header protection, and
-RSA verification are written for it with the target renamed, as for
-aarch64, over what differs. RSA's lose the sections marked as x86_64's
-alone, its AVX-512 IFMA public operation and pyca/verified-garbage's
-`R² mod n`, which this backend never runs, and gain the lines marked as the
-portable backend's in their place:
+the digest, HMAC, HKDF, and PBKDF2 APIs, and ChaCha20 header protection are
+written for it with the target renamed, as for aarch64, over what differs.
+
+RSA verification has no proof here for now. Its Montgomery products' row
+`mul_add` issues four products a block before their carry chain, which
+measured portable RSA at 0.78 to 0.93 of aws-lc's C time against 0.85 to 0.97
+for the one-limb loop, and `Mont.lean`'s `mul_add_spec` covers only that
+loop. So `Mont.lean`, `Bignum.lean`, and `RsaMont.lean`, below, are parked in
+`proofs/parked/Rind/Portable/`, outside the `Rind` library's glob, which no
+build reads, and `admin/prove` no longer writes the x86_64 RSA verification
+proofs to `Rind/Portable/` (they lost the sections marked as x86_64's alone
+and gained the lines marked as the portable backend's).
+[Its quest](/quest/m4/verified/rsa-verify-portable-four-product.md) reproves
+`mul_add` over the blocks and brings them back:
 
 - `Rind/Portable/Sha256Compress.lean` and `Rind/Portable/Sha512Compress.lean`:
   SHA-256's and SHA-512's block functions, `low::generic::sha256` and
@@ -2065,16 +2071,16 @@ portable backend's in their place:
   constant-time compares behind `hmac::verify` and `pbkdf2::Secret::verify`,
   Rust here, read through raw pointers and `black_box`, so modelled by hand
   and proven, where x86_64 and aarch64 take HOL Light's theorems as axioms.
-- `Rind/Portable/Mont.lean`: `low::generic::mont`'s routines on 64-bit
+- `parked/Rind/Portable/Mont.lean`, parked: `low::generic::mont`'s routines on 64-bit
   limbs, each against `Nat` arithmetic: CIOS's interleaved loop, the
   schoolbook passes and Karatsuba's split of products and squares, with
   their scratch bounds as recursive functions checked at 128 limbs, and
   `redc`'s reduction with its final conditional subtraction.
-- `Rind/Portable/RsaMont.lean`: `mont_mul` and `mont_sqr` return
+- `parked/Rind/Portable/RsaMont.lean`, parked: `mont_mul` and `mont_sqr` return
   `MontResult` at every width to 128 words, so `mont_products` discharges
   the `MontProducts` hypothesis RSA's theorems take, and `Runs`, the entry
   checks, in place of x86_64's CPU checks.
-- `Rind/Portable/Bignum.lean`: `low::generic::bignum`'s comparison, bit
+- `parked/Rind/Portable/Bignum.lean`, parked: `low::generic::bignum`'s comparison, bit
   length, and `-n⁻¹ mod 2^64` by Newton's iteration, proven in the shapes of
   x86_64's s2n-bignum axioms.
 
@@ -2100,8 +2106,8 @@ these quests prove its code, whose proofs then run on this translation:
 - P-256, P-384, and P-521: [armv7's NIST curves](/quest/m5/verified-armv7/nist-curves.md),
   whose point arithmetic `low/generic/limb64.rs` builds again over
   fiat-crypto's 64-bit field and scalar arithmetic;
-- RSA: [signing](/quest/m4/verified/rsa-sign.md), over the products
-  verification's proof runs on here, and
+- RSA: [verification over the four-product `mul_add`](/quest/m4/verified/rsa-verify-portable-four-product.md),
+  [signing](/quest/m4/verified/rsa-sign.md), over the same products, and
   [verification on 32-bit limbs](/quest/m5/verified/rsa-portable-limb32.md);
 - SHA-1: `low::generic::sha1`, the block function `Sha1Blocks` stands for
   here, in [SHA-1's quest](/quest/m5/verified/sha1.md);
@@ -2312,11 +2318,15 @@ beyond Lean's own.
   `Rind/S2nChaCha20Poly1305.lean`, rind's HOL Light ChaCha20-Poly1305 spec,
   transliterated, and its proof that it is `Rind/Spec.lean`'s.
 - `admin/prove` copies the other `Rind/X86_64/` models and proofs to
-  `Rind/Aarch64/` with the target renamed, and the hash, KDF,
-  header-protection, and RSA verification ones to `Rind/Portable/`.
-- `Rind/Portable/{TypesExternal,FunsExternal,Compare,Sha256Compress,Sha512Compress,Sha512Entry,ShaBlocks,CtEqual,Mont,RsaMont,Bignum}.lean`:
+  `Rind/Aarch64/` with the target renamed, and the hash, KDF, and
+  header-protection ones to `Rind/Portable/`.
+- `Rind/Portable/{TypesExternal,FunsExternal,Compare,Sha256Compress,Sha512Compress,Sha512Entry,ShaBlocks,CtEqual}.lean`:
   the portable backend's opaque items, its compares' hand model, and its own
   proofs, which [the portable backend](#the-portable-backend) describes.
+- `parked/Rind/Portable/{Mont,RsaMont,Bignum}.lean`: the portable backend's
+  RSA verification proofs, which no build reads until
+  [their quest](/quest/m4/verified/rsa-verify-portable-four-product.md)
+  reproves them.
 - `admin/prove` copies the portable backend's hash, HMAC, and
   header-protection files to `Rind/Mcu/` with the namespace renamed.
   `Rind/Mcu/{TypesExternal,FunsExternal,Sha256IramModel,Sha256Iram,Sha512Rolled,Sha512Entry,ShaBlocks,HashAxioms,Axioms}.lean`:

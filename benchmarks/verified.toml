@@ -59,10 +59,11 @@
 # extension, whose Rust `proofs/` proves against Vale's specs and s2n-bignum's
 # theorems for its kernels. On the portable backend, SHA-256
 # and the SHA-512 family, with HMAC and HKDF over them, whose Rust `proofs/`
-# proves against FIPS 180-4, block functions included, ChaCha20 header
-# protection, and RSA-2048 PKCS#1 v1.5 and PSS SHA-256 verification on 64-bit
-# limbs, whose Rust `proofs/` proves against RFC 8017, Montgomery products
-# included. On AMD's x86_64 CPUs without AVX2, rind runs aws-lc's
+# proves against FIPS 180-4, block functions included, and ChaCha20 header
+# protection. Its RSA-2048 verification earns no ✓: its Montgomery products
+# issue four row products a block, which the parked proof in
+# `proofs/parked/` does not cover yet
+# (quest/m4/verified/rsa-verify-portable-four-product.md). On AMD's x86_64 CPUs without AVX2, rind runs aws-lc's
 # unproven scalar SHA-512, which is faster there, so SHA-512 does not earn the
 # ✓ there, nor does Ed25519 unless the CPU has AVX-512 IFMA. CPUs with the
 # SHA512 instructions run the proven AVX2 routine when they have its whole
@@ -416,20 +417,6 @@ operations = ["quic-header-protection/chacha20"]
 arch = "portable"
 proof = "rind's Lean proof, through Aeneas and a hand model of the function-pointer dispatch Aeneas cannot translate, which assumes each key's mask is its own cipher's, the only one rind builds, of its header-protection API's ChaCha20 against RFC 9001 and RFC 8439, HACL*'s rounds included"
 link = "https://github.com/kixel-ai/rind/blob/main/proofs/Rind/X86_64/ChaCha20.lean"
-
-[[verified]]
-library = "rind"
-operations = ["rsa2048-pkcs1-sha256-verify"]
-arch = "portable"
-proof = "rind's Lean proof, through Aeneas and a hand model of the function-pointer dispatch Aeneas cannot translate, of its signature API's RSASSA-PKCS1-v1_5 SHA-256 verification against RFC 8017, key loading's checks, R^2 mod n, and -n^-1 mod 2^64 included, down to low::generic's word routines and Montgomery products, CIOS below 16 limbs and Karatsuba products with Montgomery reduction above, on 64-bit limbs; not builds on 32-bit limbs, which most 32-bit targets run"
-link = "https://github.com/kixel-ai/rind/blob/main/proofs/Rind/Portable/RsaMont.lean"
-
-[[verified]]
-library = "rind"
-operations = ["rsa2048-pss-sha256-verify"]
-arch = "portable"
-proof = "rind's Lean proof, through Aeneas and a hand model of the function-pointer dispatch Aeneas cannot translate, of its signature API's RSASSA-PSS SHA-256 verification against RFC 8017, MGF1 and H' with SHA-256 and a 32-byte salt, key loading's checks, R^2 mod n, and -n^-1 mod 2^64 included, down to low::generic's word routines, Montgomery products, SHA-256 block function, and constant-time compare, on 64-bit limbs; not builds on 32-bit limbs, which most 32-bit targets run"
-link = "https://github.com/kixel-ai/rind/blob/main/proofs/Rind/Portable/RsaMont.lean"
 
 # libcrux: portable Rust that KaRaMeL generates from HACL*, with no CPU
 # dispatch. libcrux records no HACL* revision, so these link to HACL*'s main
