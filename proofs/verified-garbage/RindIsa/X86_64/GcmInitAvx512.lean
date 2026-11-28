@@ -12,7 +12,7 @@ GHASH key from the two words at `rsi`, high first, multiplies it by `x`
 table's 256 bytes: H^4 to H^1 to its last 64 bytes, then, four at a time,
 each set times H^4 below the one before, each product a schoolbook product
 folded twice by `gfpoly` (`x^63 + x^62 + x^57` in its high word), on 128,
-256, or 512 bits (`mul`).
+256, or 512 bits (`square`, `mul256`, `mul512`).
 
 `admin/prove lean` checks that `function prog plainRet` is the function's
 bytes and relocations as rind's Linux release build emits it, from
@@ -98,11 +98,9 @@ def powers : List Instr :=
    .vmovdqu8Store { base := .r8 } .xmm3,
    .vg (.mov32 .rax (.imm 3))]
 
-/-- One set of four powers: `zmm3`'s lanes times H^4 in `zmm4`, as `mul256`
-on 512 bits, stored 64 bytes below the set before. -/
-def body : List Instr :=
-  [.vg (.alu .sub .r8 (.imm 64)),
-   zop (.vpclmulqdq .xmm0 .xmm3 .xmm4 0x00),
+/-- `mul256` on 512 bits, into `zmm3`: `zmm3`'s lanes times `zmm4`'s. -/
+def mul512 : List Instr :=
+  [zop (.vpclmulqdq .xmm0 .xmm3 .xmm4 0x00),
    zop (.vpclmulqdq .xmm1 .xmm3 .xmm4 0x01),
    zop (.vpclmulqdq .xmm2 .xmm3 .xmm4 0x10),
    zop (.zbin .vpxord .xmm1 .xmm1 .xmm2),
@@ -112,9 +110,12 @@ def body : List Instr :=
    zop (.vpclmulqdq .xmm3 .xmm3 .xmm4 0x11),
    zop (.vpclmulqdq .xmm0 .xmm5 .xmm1 0x01),
    zop (.vpshufd .xmm1 .xmm1 0x4e),
-   zop (.vpternlogd .xmm3 .xmm1 .xmm0 0x96),
-   .vmovdqu8Store { base := .r8 } .xmm3,
-   .dec32 .rax]
+   zop (.vpternlogd .xmm3 .xmm1 .xmm0 0x96)]
+
+/-- One set of four powers: `zmm3`'s lanes times H^4 in `zmm4`, stored 64
+bytes below the set before. -/
+def body : List Instr :=
+  [.vg (.alu .sub .r8 (.imm 64))] ++ mul512 ++ [.vmovdqu8Store { base := .r8 } .xmm3, .dec32 .rax]
 
 /-- The function, but for its `ret`: three sets in the loop, then
 `vzeroupper`. -/
