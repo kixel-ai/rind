@@ -39,9 +39,6 @@ exclude_globs = [
 # mutant, saying so. `admin/mutants --pins` checks that each entry, and each
 # alternative in it, still matches a mutant.
 exclude_re = [
-  # Test helpers, in `tests` modules whose `cfg` also names an architecture.
-  # See UPSTREAM.md, "cargo-mutants misses compound `cfg(test)`s".
-  '\btests::',
   # The negative entries of ML-KEM's constant tables; every unary minus in
   # these files is one.
   'mlkem(_poly)?\.rs:\d+:\d+: delete -$',
@@ -111,7 +108,7 @@ exclude_re = [
   'rind/src/high/sec1\.rs:\d+:\d+: replace \+ with \*$',
   'rind/src/high/signature\.rs:\d+:48: replace \+ with \*$',
   # Pinned to its line: the next line's `+`, at the same column, is caught.
-  'rind/src/low/generic/mont\.rs:179:\d+: replace \+ with \* in mont_mul$',
+  'rind/src/low/generic/mont\.rs:202:\d+: replace \+ with \* in mont_mul$',
   'rind/src/low/x86_64/mlkem_sample_poly_ntt_8x\.rs:\d+:\d+: replace \+ with \* in _squeeze_rate_and_reject$',
   'rind/src/mid/rsa_priv\.rs:\d+:78: replace / with \*$',
   'rind/src/mid/rsa_priv\.rs:\d+:44: replace \+ with \*$',
@@ -147,7 +144,7 @@ exclude_re = [
   # `(t - 16) % 16` and `(t + 16) % 16` are the same window slot. The line is
   # the subtraction: a use above it moves the pin, and pinning the `(t - 7)`
   # line instead would skip a mutant the tests can kill.
-  'rind/src/low/generic/sha512_rolled\.rs:69:\d+: replace - with \+ in schedule$',
+  'rind/src/low/generic/sha512_rolled\.rs:74:\d+: replace - with \+ in schedule$',
   'rind/src/low/posint\.rs:\d+:\d+: delete match arm 0 in PosInt<N>::mont_exp$',
   'rind/src/low/posint\.rs:\d+:21: replace % with / in PosInt<N>::mont_exp$',
   'rind/src/low/posint\.rs:\d+:21: replace % with \+ in PosInt<N>::mont_exp$',
@@ -306,7 +303,7 @@ exclude_re = [
   # Pinned to its line: the `cpu_denied` of a release build or one without
   # an OS, which tests never are. The debug build's, under the same name, is
   # caught.
-  'rind/src/low/mod\.rs:229:\d+: replace cpu_denied -> bool with true$',
+  'rind/src/low/mod\.rs:242:\d+: replace cpu_denied -> bool with true$',
   # The FIPS module's `SystemRandom`, compiled only under `--cfg rind_fips`,
   # which no mutation run sets; `fips_rng`'s tests cover what it calls.
   # Pinned to its line: the other `fill`, under the same name, is caught.
@@ -343,14 +340,13 @@ exclude_re = [
   'rind/src/fips_rng\.rs:\d+:\d+: replace cast -> bool with true$',
   'rind/src/high/hmac_drbg\.rs:\d+:\d+: replace \+= with \*= in HmacDrbg<H>::generate$',
   'rind/src/high/rsa\.rs:\d+:\d+: delete match arm Error::Fault in SigningKey::decrypt_oaep$',
-  'rind/src/mid/mldsa\.rs:\d+:44: replace - with [+/] in sign_internal$',
   'rind/src/mid/mldsa\.rs:\d+:\d+: replace < with > in expand_a$',
   'rind/src/low/aarch64/sha1\.rs:\d+:\d+: replace match guard blocks\.is_empty\(\) with false in sha1_compress_blocks$',
   'rind/src/low/entry\.rs:\d+:\d+: replace - with / in <impl Drop for Entry>::drop$',
   'rind/src/low/entry\.rs:\d+:\d+: replace - with \+ in <impl Drop for Entry>::drop$',
   'rind/src/low/entry\.rs:\d+:\d+: replace Entry::assert_held with \(\)$',
   # Pinned to its line: the other branch's `*`, at the same column, is caught.
-  'rind/src/low/generic/blockwise\.rs:195:24: replace \* with / in pad$',
+  'rind/src/low/generic/blockwise\.rs:225:24: replace \* with / in pad$',
   'rind/src/mid/rsa_priv/exponents\.rs:\d+:\d+: replace >= with < in Exponents::derive$',
   'rind/src/mid/rsa_priv/exponents\.rs:\d+:36: replace \* with \+ in Exponents::derive$',
   'rind/src/mid/rsa_priv/generate\.rs:\d+:\d+: delete ! in MillerRabinParams<\x27a>::check_base$',

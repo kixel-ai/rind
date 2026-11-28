@@ -262,7 +262,7 @@ Each upstream rind changes, with where its fork is vendored and where the list o
 ### cargo-mutants misses compound `cfg(test)`s
 
 - **Breaks:** cargo-mutants skips code under a bare `#[cfg(test)]`, but not under one that also names an architecture, such as `cfg(all(test, rind_backend = "x86_64"))`, so it mutates test helpers.
-- **Workaround:** `.cargo/mutants.toml` excludes `rind/src/low/tests.rs` by glob and `\btests::` by regex.
+- **Workaround:** `.cargo/mutants.toml` excludes `rind/src/low/tests.rs` and `rind/src/low/guard_pages.rs` by glob, and rind's other test-only items take a bare `#[cfg(test)]` beside the `cfg` that names the architecture, which Clippy's test exemptions (`clippy.toml`) also need.
 - **Reported:** no.
 - **Goes when:** cargo-mutants treats any `cfg` that requires `test` as test-only.
 
