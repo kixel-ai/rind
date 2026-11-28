@@ -225,17 +225,29 @@ mod tests {
         assert_eq!(vg.public_key(&n), None);
     }
 
-    // VG's AVX-512 IFMA ECDH runs no instruction valgrind can, so
-    // `admin/ct-sde` checks it: a private key from the seed, with G as the
-    // peer. Verification takes no secret.
+    // VG's AVX-512 IFMA ECDH runs no instruction valgrind or BINSEC can. Its
+    // leakage is VG's proven contract, which `Rind.X86_64.VgP256Ct` imports;
+    // this checks the Rust around it, from rind's agreement API, as it runs
+    // where the CPU has IFMA: the test forces its CPU check, and
+    // `admin/ct-binsec` stubs the routine by its contract (`CONTRACTS`), so
+    // that its shared secret is fresh secrets and a secret byte of the peer's
+    // key it is given fails. The region loads a private key, whose public key
+    // VG's ADX routine derives, and agrees with G. Verification takes no
+    // secret.
     #[test]
-    #[ignore = "admin/ct-sde runs it under Intel SDE"]
-    fn ct_sde_p256_ifma_ecdh() {
-        use crate::low::ct_sde;
+    #[ignore = "admin/ct-binsec runs it under BINSEC"]
+    fn ct_binsec_p256_ifma_ecdh() {
+        use crate::agreement::{ECDH_P256, PrivateKey};
 
-        let ifma = HaveIfmaForVgP256::check().expect("AVX-512 IFMA");
-        let mut d = [0x5a; 32];
-        d[24..].copy_from_slice(&ct_sde::seed().to_be_bytes());
-        assert!(ct_sde::traced(|| ecdh(Width::Ifma(ifma), &d, &G)).is_some());
+        crate::low::force_vg_contracts();
+        let vg = P256::check().expect("BMI2, ADX, AVX, and AVX2");
+        assert!(
+            matches!(vg.width(), Width::Ifma(_)),
+            "the IFMA check is forced"
+        );
+        crate::low::ct_binsec::checked(|| {
+            let key = PrivateKey::from_scalar(&ECDH_P256, &[1; 32]).unwrap();
+            core::hint::black_box(key.agree(&G).is_ok())
+        });
     }
 }

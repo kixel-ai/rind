@@ -1,8 +1,10 @@
+import VerifiedGarbage.Impl.Ecdh.P256.X86_64.Ifma
 import VerifiedGarbage.Impl.MlKem.X86_64.Wipe
 import VerifiedGarbage.Impl.Scrub.X86_64
 import VerifiedGarbage.Impl.Zeroize.X86_64
 import VerifiedGarbage.Proof.Framework.X86_64.ScrubChecks
 import VerifiedGarbage.Spec.MlKem.Contract
+import VerifiedGarbage.Spec.Ecdh.P256
 import VerifiedGarbage.Spec.MlKem.EncapsH
 import VerifiedGarbage.TCB.X86_64.Target
 
@@ -10,7 +12,8 @@ import VerifiedGarbage.TCB.X86_64.Target
 # The code of VG's x86_64 routines that rind states leakage axioms about
 
 As `Cosim/Progs.lean`, for x86_64: each is the `Prog` pyca/verified-garbage's
-(VG's) `Artifacts/MlKem/X86_64.lean` registers a function as, at the
+(VG's) `Artifacts/MlKem/X86_64.lean` (or, for P-256 ECDH, its
+`Artifacts/EcdhP256/X86_64.lean`, at the end) registers a function as, at the
 implementation of `vg_mlkem_sample_ntt4` with AVX-512 (`Callee4.avx512`,
 `Sample4Impl.avx512`) and the AVX implementation of `vg_zeroize`
 (`vg_zeroize_avx_core`), the one pair `Wipe.skip` leaves for it.
@@ -88,5 +91,19 @@ def encapsAvx := encapsWith Callee4.scalar "" "vg_zeroize_avx_core" Impl.Zeroize
 def encapsHAvx := encapsHWith Callee4.scalar "" "vg_zeroize_avx_core" Impl.Zeroize.X86_64.zeroizeAvx .avx
 def encapsBase := encapsWith Callee4.scalar "" "vg_zeroize_core" Impl.Zeroize.X86_64.zeroize .sse
 def encapsHBase := encapsHWith Callee4.scalar "" "vg_zeroize_core" Impl.Zeroize.X86_64.zeroize .sse
+
+/-! ## P-256 ECDH with AVX512_IFMA
+
+`Artifacts/EcdhP256/X86_64.lean` registers `vg_ecdh_p256_ifma` as
+`RScrub.withScrubAllM` of `Impl.Ecdh.X86_64.exchangeP256Ifma`, whose contract
+is `Spec.Ecdh.Instance.exchangeContract Spec.EcKey.P256.inst X86_64.abi 16`
+(`ecdh_verified_ifma`), so with 16 bytes of stack. Its code writes `zmm16` to
+`zmm31` and leaves the same MXCSR in two runs, so it takes `scrubRegF`'s
+branch at the level `evex`, as ML-KEM-768's AVX-512 routines do. -/
+
+/-- `vg_ecdh_p256_ifma`, whose contract is `Spec.Ecdh.Instance.exchangeContract`. -/
+def ecdhP256Ifma : Prog VG.X86_64.isa :=
+  scrubbed ((Spec.Ecdh.Instance.exchangeSig Spec.EcKey.P256.inst).retBits VG.X86_64.abi.ptrBits) 16
+    Impl.Ecdh.X86_64.exchangeP256Ifma
 
 end Cosim.ProgsX86_64

@@ -66,7 +66,7 @@ Every Lean file that declares an `axiom`, by the source it restates; no file hol
 |---|---|---|
 | s2n-bignum's HOL Light theorems of its assembly, and rind's own of code it runs | `Aarch64/S2nBignum`, `X86_64/S2nBignum` | published proofs, and rind's in `proofs/hol-light/`, which `admin/prove hol-light` checks; `admin/prove bytes` checks rind's build emits the code they are about |
 | s2n-bignum's HOL Light theorems of its ML-KEM routines, and mlkem-native's of its compression routines | `Aarch64/MlKemRoutines` | published proofs; `admin/prove bytes` checks rind's build emits the code they are about, and `admin/prove` that the tables rind passes are s2n-bignum's |
-| pyca/verified-garbage's Lean theorems of its assembly | `Aarch64/VgChaCha20`, `Aarch64/VgChaCha20Poly1305`, `Aarch64/VgChaCha20Poly1305Ct`, `Aarch64/VgMlKem`, `Aarch64/VgP256`, `Aarch64/VgP384`, `Aarch64/VgPbkdf2`, `Aarch64/VgSha512`, `X86_64/VgChaCha20`, `X86_64/VgChaCha20Poly1305`, `X86_64/VgCurve25519`, `X86_64/VgMlKem`, `X86_64/VgMlKem768Ct`, `X86_64/VgP256`, `X86_64/VgP384`, `X86_64/VgRsa` | published proofs; `admin/vg-binding` checks each axiom cites the theorem of its routine, and `admin/vg-bytes` that rind runs that routine's bytes |
+| pyca/verified-garbage's Lean theorems of its assembly | `Aarch64/VgChaCha20`, `Aarch64/VgChaCha20Poly1305`, `Aarch64/VgChaCha20Poly1305Ct`, `Aarch64/VgMlKem`, `Aarch64/VgP256`, `Aarch64/VgP384`, `Aarch64/VgPbkdf2`, `Aarch64/VgSha512`, `X86_64/VgChaCha20`, `X86_64/VgChaCha20Poly1305`, `X86_64/VgCurve25519`, `X86_64/VgMlKem`, `X86_64/VgMlKem768Ct`, `X86_64/VgP256`, `X86_64/VgP256Ct`, `X86_64/VgP384`, `X86_64/VgRsa` | published proofs; `admin/vg-binding` checks each axiom cites the theorem of its routine, and `admin/vg-bytes` that rind runs that routine's bytes |
 | Beneficial AI Foundation's Lean theorems of curve25519-dalek, in its X25519 and Edwards specs that `admin/import-dalek` vendors | `Armv7/Dalek` | published proofs; `admin/prove dalek` checks that every definition the restated functions reach in armv7's configuration is the text BAIF's proofs are about, but for one pinned pair that differs only in local names |
 | Vale's procedures for HACL\*'s AES-GCM | `X86_64/ValeAesGcm` | published proofs; `admin/prove bytes` checks the object code |
 | aws-lc-verification's NSym proof of SHA-384/512 (aarch64) and rind's HOL Light proof of the AVX2 routine (x86_64) | `Aarch64/AwsLc`, `X86_64/AwsLc` | a published proof and rind's own; `admin/prove bytes` and `admin/prove hol-light` check the object code |
@@ -461,6 +461,15 @@ for the P-384 public key and ECDSA verification routines, over
 `VerifiedGarbage.Spec.EcKey.P384` and `Spec.Ecdsa.Verify.P384`, and
 `Rind/VgP384.lean` proves VG's P-384 matches rind's. The P-256 and P-384
 theorems below rest on them.
+The axiom in `Rind/X86_64/VgP256Ct.lean` states `VG.ConstantTime` of
+x86_64's ECDH with AVX-512 IFMA, over `Cosim.ProgsX86_64`'s `Prog` of it (the
+routine and the scrub VG appends, from the vendored `Impl/` closure, whose
+two tables of points `admin/import-vg-models --tables` writes and checks are
+VG's), which `vg-print` and `admin/vg-bytes --progs` bind to VG's assembly
+text; no theorem about rind's wrappers uses it. It stands for the routine's
+leakage where `low::x86_64::p256_vg::ct_binsec_p256_ifma_ecdh` checks the
+Rust around it under BINSEC, the routine stubbed by its contract, in place of
+an SDE trace.
 
 `Rind/VgPbkdf2.lean` proves VG's SHA-1, SHA-256, SHA-384, SHA-512, HMAC,
 and PBKDF2 specs, which `VerifiedGarbage.Spec.Pbkdf2.Generic` imports, are
@@ -2261,7 +2270,8 @@ beyond Lean's own.
   state the leakage of the SVE2 ones over `verified-garbage/Cosim/Progs.lean`
   (`Cosim/PrintMain.lean`'s `vg-print` prints them for `admin/vg-bytes`), and
   `Rind/X86_64/VgMlKem768Ct.lean`, the ten that state ML-KEM-768's over
-  `Cosim/ProgsX86_64.lean`; `Rind/VgChaCha20.lean`, the proof that
+  `Cosim/ProgsX86_64.lean` (as `Rind/X86_64/VgP256Ct.lean` states IFMA
+  P-256 ECDH's); `Rind/VgChaCha20.lean`, the proof that
   pyca/verified-garbage's ChaCha20 spec is `Rind/Spec.lean`'s,
   `Rind/VgChaCha20Glue.lean`, what both targets' `cipher::ChaCha20` proofs
   share, and `Rind/{X86_64,Aarch64}/VgChaCha20.lean`, each target's glue over

@@ -153,6 +153,9 @@ CONTRACTS = {
         "vg_mlkem768_decaps_avx512": (4, [(2, 32)], [(0, 2304, 32)]),
         "vg_mlkem768_encaps_avx512": (5, [(2, 32), (3, 1088)], [(0, 1152, 32)]),
         "vg_mlkem768_encaps_h_avx512": (6, [(3, 32), (4, 1088)], [(0, 1152, 32)]),
+        # (out, d, peer, scratch), leaking the peer's public key, all 65
+        # bytes: `Rind.X86_64.VgP256Ct`.
+        "vg_ecdh_p256_ifma": (4, [(0, 32)], [(2, 0, 65)]),
     },
 }
 

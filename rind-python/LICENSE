@@ -289,12 +289,15 @@ pyca/verified-garbage <https://github.com/pyca/verified-garbage>
   PBKDF2 specs and contracts rind's proofs import or restate, with the MD5, SHA-1,
   SHA-2, and HMAC specs PBKDF2's import, and, for rind's leakage axioms, the
   ML-KEM and ChaCha20-Poly1305 contracts and the implementation code (Impl/)
-  of the aarch64 SVE2 ChaCha20-Poly1305 and x86_64 ML-KEM-768 routines, with
-  the Impl/ and proof framework (Proof/Framework/) modules it imports,
+  of the aarch64 SVE2 ChaCha20-Poly1305, x86_64 ML-KEM-768, and x86_64
+  AVX-512 IFMA P-256 ECDH routines, with the Impl/, spec (Spec/), and proof
+  framework (Proof/Framework/) modules it imports,
   under proofs/verified-garbage/VerifiedGarbage, which admin/import-vg-models
   copies byte for byte from verified-garbage
-  at the same commit, so they carry no SPDX comment; this entry names
-  their license.
+  at the same commit, but for P-256's Impl/P256/CombTable7.lean and
+  GTable9.lean, tables of points that admin/import-vg-models --tables writes,
+  byte for byte as verified-garbage's, from arithmetic that script holds; so
+  they carry no SPDX comment; this entry names their license.
   Copyright (c) Individual contributors.
   License: Apache-2.0 OR BSD-3-Clause, taken under Apache-2.0.
   verified-garbage has no NOTICE file.
