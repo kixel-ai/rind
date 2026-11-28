@@ -823,6 +823,114 @@ theorem keccak8_spec (S : ℕ → List (BitVec 64)) :
   unfold low.x86_64.sha3_keccak8_f1600.keccak8_f1600
   exact rounds_spec S _ rc8_bv _ (vecs S) (by simp) (by simp) rfl
 
+/-- The setup's loop lays each input's five words into the vectors' lanes. -/
+theorem words_loop_spec (inputs : Std.Array (Std.Array U8 40#usize) 8#usize)
+    (states : Std.Array core.core_arch.x86.__m512i 25#usize) (hz : ∀ k < 25, states.val[k]! = 0) :
+    low.x86_64.mlkem_sample_poly_ntt_8x.sample_poly_ntt_8x_avx512_loop0 { start := 0#usize, «end» := 5#usize }
+      inputs states ⦃ r => (∀ k < 5, ∀ p < 8, ∀ t < 8,
+        (lane64x8 (r.val[k]!) p).toLEBytes[t]! = ((inputs.val[p]!).val[8 * k + t]!).bv) ∧
+        ∀ k, 5 ≤ k → k < 25 → r.val[k]! = 0 ⦄ := by
+  unfold low.x86_64.mlkem_sample_poly_ntt_8x.sample_poly_ntt_8x_avx512_loop0
+  apply range_loop 5 (fun n (r : Std.Array core.core_arch.x86.__m512i 25#usize) =>
+    (∀ k < n, ∀ p < 8, ∀ t < 8, (lane64x8 (r.val[k]!) p).toLEBytes[t]! = ((inputs.val[p]!).val[8 * k + t]!).bv) ∧
+      ∀ k, n ≤ k → k < 25 → r.val[k]! = 0) _ ?_ { start := 0#usize, «end» := 5#usize } states (by simp) (by simp)
+    ⟨fun k hk => absurd hk (by simp), fun k _ hk => hz k hk⟩
+  rintro it r he hs ⟨hw, hz'⟩
+  unfold low.x86_64.mlkem_sample_poly_ntt_8x.sample_poly_ntt_8x_avx512_loop0.body
+  step as ⟨o', it1, ho, he1⟩
+  split_ifs at ho with hlt
+  · obtain ⟨rfl, hst⟩ := ho
+    simp only
+    have hl5 : it.start.val < 5 := by omega
+    step as ⟨a0, ha0⟩
+    step with word_spec a0 it.start hl5 as ⟨w0, hw0⟩
+    step as ⟨a1, ha1⟩
+    step with word_spec a1 it.start hl5 as ⟨w1, hw1⟩
+    step as ⟨a2, ha2⟩
+    step with word_spec a2 it.start hl5 as ⟨w2, hw2⟩
+    step as ⟨a3, ha3⟩
+    step with word_spec a3 it.start hl5 as ⟨w3, hw3⟩
+    step as ⟨a4, ha4⟩
+    step with word_spec a4 it.start hl5 as ⟨w4, hw4⟩
+    step as ⟨a5, ha5⟩
+    step with word_spec a5 it.start hl5 as ⟨w5, hw5⟩
+    step as ⟨a6, ha6⟩
+    step with word_spec a6 it.start hl5 as ⟨w6, hw6⟩
+    step as ⟨a7, ha7⟩
+    step with word_spec a7 it.start hl5 as ⟨w7, hw7⟩
+    rw [setr_Q, bind_ok]
+    step as ⟨r1, hr1⟩
+    refine ⟨by rw [he1]; exact he, hst, hl5, fun k hk p hp t ht => ?_, fun k hk1 hk2 => ?_⟩
+    · rw [hr1, Std.Array.set_val_eq]
+      by_cases hkk : k = it.start.val
+      · subst hkk
+        rw [MlKemCoding.getElem!_set_self _ _ _ (by simp; omega), lane_Q _ _ hp]
+        have hget (j : ℕ) (hj : j < 8) (a : Std.Array U8 40#usize) (h : a = inputs.val[j]'(by simp; omega)) :
+            a = inputs.val[j]! := by rw [h, getElem!_pos]
+        interval_cases p <;> simp only [List.getElem!_cons_zero, List.getElem!_cons_succ]
+        · rw [hw0 t ht, hget 0 (by decide) a0 ha0]
+        · rw [hw1 t ht, hget 1 (by decide) a1 ha1]
+        · rw [hw2 t ht, hget 2 (by decide) a2 ha2]
+        · rw [hw3 t ht, hget 3 (by decide) a3 ha3]
+        · rw [hw4 t ht, hget 4 (by decide) a4 ha4]
+        · rw [hw5 t ht, hget 5 (by decide) a5 ha5]
+        · rw [hw6 t ht, hget 6 (by decide) a6 ha6]
+        · rw [hw7 t ht, hget 7 (by decide) a7 ha7]
+      · rw [MlKemCoding.getElem!_set_ne _ _ _ _ (Ne.symm hkk)]
+        exact hw k (by omega) p hp t ht
+    · rw [hr1, Std.Array.set_val_eq, MlKemCoding.getElem!_set_ne _ _ _ _ (by omega)]
+      exact hz' k (by omega) hk2
+  · obtain ⟨rfl, hst⟩ := ho
+    apply (WP.spec_ok _).2
+    have : it.start.val = 5 := by omega
+    rw [this] at hw hz'
+    exact ⟨hw, hz'⟩
+
+/-- `extract_state` collects state `index`'s lanes. -/
+theorem extract_state_spec (states : Std.Array core.core_arch.x86.__m512i 25#usize) (index : Usize)
+    (hi : index.val < 8) :
+    low.x86_64.mlkem_sample_poly_ntt_8x.extract_state states index ⦃ r =>
+      ∀ l < 25, (r.val[l]!).bv = lane64x8 (states.val[l]!) index.val ⦄ := by
+  unfold low.x86_64.mlkem_sample_poly_ntt_8x.extract_state
+  unfold low.x86_64.mlkem_sample_poly_ntt_8x.extract_state_loop
+  apply range_loop 25 (fun n (r : Std.Array U64 25#usize) =>
+    ∀ l < n, (r.val[l]!).bv = lane64x8 (states.val[l]!) index.val) _ ?_
+    { start := 0#usize, «end» := 25#usize } (Std.Array.repeat 25#usize 0#u64) rfl (Nat.zero_le _)
+    (fun l hl => absurd hl (Nat.not_lt_zero _))
+  rintro it r he hs hr
+  unfold low.x86_64.mlkem_sample_poly_ntt_8x.extract_state_loop.body
+  step as ⟨o', it1, ho, he1⟩
+  split_ifs at ho with hlt
+  · obtain ⟨rfl, hst⟩ := ho
+    simp only
+    step as ⟨v, hv⟩
+    step with store_spec as ⟨a, ha⟩
+    step as ⟨x, hx⟩
+    step as ⟨r1, hr1⟩
+    refine ⟨by rw [he1]; exact he, hst, by omega, fun l hl => ?_⟩
+    rw [hr1, Std.Array.set_val_eq]
+    by_cases hll : l = it.start.val
+    · subst hll
+      rw [MlKemCoding.getElem!_set_self _ _ _ (by simp; omega), hx, ← getElem!_pos, ha _ hi, hv, getElem!_pos]
+    · rw [MlKemCoding.getElem!_set_ne _ _ _ _ (Ne.symm hll)]
+      exact hr l (by omega)
+  · obtain ⟨rfl, hst⟩ := ho
+    apply (WP.spec_ok _).2
+    have : it.start.val = 25 := by omega
+    rw [this] at hr
+    exact hr
+
+/-- A state whose lanes are those of `S`. -/
+theorem sbl_of_lanes (r : Std.Array U64 25#usize) (S : List (BitVec 64)) (hS : S.length = 25)
+    (h : ∀ l < 25, (r.val[l]!).bv = S[l]!) : sbl r.val = stateBytes S := by
+  show stateBytes (r.val.map (·.bv)) = _
+  congr 1
+  apply ext_getElem! (by simp [hS])
+  intro l hl
+  have hrl : r.val.length = 25 := by simp
+  rw [List.length_map, hrl] at hl
+  rw [getElem!_pos _ l (by simp [hrl, hl]), List.getElem_map, ← getElem!_pos r.val l (by omega), h l hl]
+
 end MlKemSample8x
 
 end rind.x86_64
