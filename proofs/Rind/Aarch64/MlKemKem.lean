@@ -171,6 +171,148 @@ theorem encaps_rind_fips (h : RunsSha3) {X : Type}
   · rw [hc, hr]
     rfl
 
+/-! ## `Decaps_internal` -/
+
+/-- FIPS 203's encoding of a decapsulation key from its fields:
+`dkPKE ‖ ek ‖ h ‖ z`. -/
+def dkBytes (dkp : Enc) (ek : EkBytes) (hh z : Std.Array U8 32#usize) : 𝔹 2400 :=
+  toVec 2400 (dkp.val.flatMap (·.val) ++ ek.val ++ hh.val ++ z.val) (by
+    simp only [List.length_append, flat_length, dkp.property, ek.property, hh.property, z.property]; rfl)
+
+theorem toVec_inj (n : ℕ) (l l' : List U8) (h : l.length = n) (h' : l'.length = n) :
+    toVec n l h = toVec n l' h' ↔ l = l' := by
+  constructor
+  · intro e
+    have e' := congrArg Vector.toList e
+    rw [toVec_toList, toVec_toList] at e'
+    exact List.map_injective_iff.mpr (fun a b hab => by cases a; cases b; simp_all) e'
+  · intro e
+    exact toVec_congr n l l' h h' e
+
+/-- Bytes that are SHAKE256's first 32 of `M` are `J(M)`. -/
+theorem j_eq {n : ℕ} (x : List U8) (hl : x.length = 32) (M : 𝔹 n) (hx : bv x = shake256 M.toList 32) :
+    toVec 32 x hl = J M := by
+  apply Vector.toList_inj.mp
+  rw [toVec_toList, hx, shake256_eq]
+  unfold J
+  rw [shake256_congr (toB M.toList) M (by simp [toB])]
+
+/-- `Decaps_internal` for ML-KEM-768 on the encoding of a key's fields. -/
+theorem decaps_eq (dkp : Enc) (ek : EkBytes) (hh z : Std.Array U8 32#usize) (c : 𝔹 1088) :
+    Decaps_internal .ML_KEM_768 (dkBytes dkp ek hh z) c =
+      if c ≠ K_PKE.Encrypt .ML_KEM_768 (toVec 1184 ek.val ek.property) (K_PKE.Decrypt .ML_KEM_768 (dkPke dkp) c)
+          (G (K_PKE.Decrypt .ML_KEM_768 (dkPke dkp) c ‖ toVec 32 hh.val hh.property)).2
+      then J (toVec 32 z.val z.property ‖ c)
+      else (G (K_PKE.Decrypt .ML_KEM_768 (dkPke dkp) c ‖ toVec 32 hh.val hh.property)).1 := by
+  have hf : (dkp.val.flatMap (·.val)).length = 1152 := by rw [flat_length, dkp.property]; rfl
+  have he : ek.val.length = 1184 := ek.property
+  have hl : hh.val.length = 32 := hh.property
+  have e0 : slice (dkBytes dkp ek hh z) 0 1152 (by omega) = dkPke dkp := by
+    unfold dkBytes dkPke
+    rw [slice_toVec]
+    apply toVec_congr
+    simp [sub, hf]
+  have e1 : slice (dkBytes dkp ek hh z) 1152 1184 (by omega) = toVec 1184 ek.val ek.property := by
+    unfold dkBytes
+    rw [slice_toVec]
+    apply toVec_congr
+    simp [sub, hf, he]
+  have e2 : slice (dkBytes dkp ek hh z) 2336 32 (by omega) = toVec 32 hh.val hh.property := by
+    unfold dkBytes
+    rw [slice_toVec]
+    apply toVec_congr
+    simp [sub, List.drop_append, hf, he, hl]
+  have e3 : slice (dkBytes dkp ek hh z) 2368 32 (by omega) = toVec 32 z.val z.property := by
+    unfold dkBytes
+    rw [slice_toVec]
+    apply toVec_congr
+    have hz : z.val.length = 32 := z.property
+    simp [sub, List.drop_append, hf, he, hl, hz]
+  unfold Decaps_internal
+  dsimp only [k, Nat.reduceMul, Nat.reduceAdd]
+  rw [e0, e1, e2, e3]
+
+/-- `decaps_rind` is FIPS 203's `ML-KEM.Decaps_internal` for ML-KEM-768 on the
+encoding of the key's fields, given the decoded form of its encapsulation key. -/
+theorem decaps_rind_fips (h : RunsSha3) {X : Type}
+    (P : mid.mlkem.Params X Vec Mat EkBytes CtBytes DkBytes Cache Enc) (hP : Is768 P)
+    (key : mid.mlkem.DecapKey X Vec Mat EkBytes CtBytes DkBytes Cache Enc)
+    (D : mid.mlkem.Decoded X Vec Mat EkBytes CtBytes DkBytes Cache Enc) (hD : key.ek_pke.decoded = some D)
+    (hDH : EkDecoded D (toVec 1184 key.ek_pke.bytes.val key.ek_pke.bytes.property)) (c : CtBytes) :
+    mid.mlkem.DecapKey.decaps_rind P key c ⦃ k =>
+      toVec 32 k.val k.property =
+        Decaps_internal .ML_KEM_768 (dkBytes key.dk_pke key.ek_pke.bytes key.ek_pke.h_ek key.z)
+          (toVec 1088 c.val c.property) ⦄ := by
+  rw [decaps_eq]
+  unfold mid.mlkem.DecapKey.decaps_rind
+  simp only [hP.ct.as_ref, hD]
+  -- `m' ← K-PKE.Decrypt(dkPKE, c)`.
+  step with kpke_decrypt_fips P hP key c as ⟨m', hm'⟩
+  -- `(K', r') ← G(m' ‖ h)`.
+  step with sha3ctx_new_spec 72#usize 64#usize (by decide) (by decide) as ⟨g, hg⟩
+  step as ⟨s, hs⟩
+  step with sha3ctx_update_spec h (by decide) g [] hg s as ⟨g1, hg1⟩
+  step as ⟨s1, hs1⟩
+  step with sha3ctx_update_spec h (by decide) g1 _ hg1 s1 as ⟨g2, hg2⟩
+  step with sha3ctx_finish_spec h (by decide) g2 _ hg2 as ⟨kr, hkr⟩
+  step as ⟨s2, hs2⟩
+  step as ⟨k1, r1, hkl, hrl, hkv, hrv⟩
+  have hkrl : kr.val.length = 64 := kr.property
+  have hs2v : s2.val = kr.val := by rw [hs2, Std.Array.val_to_slice]
+  have hrl' : r1.length = 32 := by rw [hrl]; show s2.val.length - 32 = 32; rw [hs2v, hkrl]
+  rw [try_copy_eq 32#usize _ k1 hkl, try_copy_eq 32#usize _ r1 hrl']
+  simp only [core.result.Result.unwrap, bind_ok]
+  have hM : bv ([] ++ s.val ++ s1.val) =
+      (toVec 32 m'.val m'.property ‖ toVec 32 key.ek_pke.h_ek.val key.ek_pke.h_ek.property).toList := by
+    rw [List.nil_append, hs, hs1, Std.Array.val_to_slice, Std.Array.val_to_slice]
+    exact bv_append32 m' key.ek_pke.h_ek
+  rw [hM] at hkr
+  obtain ⟨hK, hR⟩ := g_eq kr.val hkrl _ hkr
+  have hk : toVec 32 (Std.Array.from (n := 32#usize) k1.val hkl).val (Std.Array.property _) =
+      (G (toVec 32 m'.val m'.property ‖ toVec 32 key.ek_pke.h_ek.val key.ek_pke.h_ek.property)).1 := by
+    rw [← hK]
+    apply toVec_congr
+    rw [Std.Array.from_val, hkv, hs2v]
+    rfl
+  have hr : toVec 32 (Std.Array.from (n := 32#usize) r1.val hrl').val (Std.Array.property _) =
+      (G (toVec 32 m'.val m'.property ‖ toVec 32 key.ek_pke.h_ek.val key.ek_pke.h_ek.property)).2 := by
+    rw [← hR]
+    apply toVec_congr
+    rw [Std.Array.from_val, hrv, hs2v]
+    simp [sub, List.take_of_length_le, hkrl]
+  -- `K̄ ← J(z ‖ c)`.
+  step with sponge_new_spec 136#usize (by decide) 31#u8 as ⟨j, hj⟩
+  step as ⟨s3, hs3⟩
+  step with sponge_absorb_spec h (by decide) j [] hj s3 as ⟨j1, hj1⟩
+  step as ⟨s4, hs4⟩
+  step with sponge_absorb_spec h (by decide) j1 _ hj1 s4 as ⟨j2, hj2⟩
+  step with sponge_finish_spec (by decide) j2 _ hj2 as ⟨ss, hss⟩
+  step as ⟨s5, back, hs5, hback⟩
+  step with squeezing_squeeze_spec h (by decide) ss _ _ 0 hss s5 as ⟨ss', s6, hs6l, hs6, _⟩
+  -- `c' ← K-PKE.Encrypt(ek, m', r')`.
+  step with kpke_encrypt_fips h P hP D _ hDH m' _ as ⟨c', hc'⟩
+  step as ⟨s7, hs7⟩
+  step with ct_equal_spec h.2.1 s4 s7 as ⟨b, hb⟩
+  step with ct_copy_spec b _ _ as ⟨a4, ha4⟩
+  have hs5l : s5.length = 32 := by show s5.val.length = _; rw [hs5]; rfl
+  have hbs : (back s6).val = s6.val := by
+    rw [hback, Std.Array.from_slice_val _ _ (by show s6.length = _; rw [hs6l, hs5l]; rfl)]
+  have hkbar : toVec 32 (back s6).val (Std.Array.property _) =
+      J (toVec 32 key.z.val key.z.property ‖ toVec 1088 c.val c.property) := by
+    rw [toVec_congr 32 _ s6.val _ (by show s6.length = 32; rw [hs6l, hs5l]) hbs]
+    apply j_eq
+    rw [hs6, hs5l, vappend_toList, toVec_toList, toVec_toList, Nat.mul_zero, List.drop_zero, Nat.zero_add,
+      List.nil_append, hs3, hs4, Std.Array.val_to_slice]
+    rfl
+  rw [← hm', ← hr, ← hc', ← hk]
+  have hcmp : (toVec 1088 c.val c.property ≠ toVec 1088 c'.val c'.property) ↔ ¬ c.val = c'.val := by
+    rw [ne_eq, toVec_inj]
+  by_cases hcc : c.val = c'.val
+  · have hbt : b = true := by rw [hb, hs4, hs7]; simp [hcc]
+    rw [ha4, hbt, MlKemPoly.ite_pos rfl, MlKemPoly.ite_neg (by rw [hcmp]; exact not_not.mpr hcc)]
+  · have hbf : b = false := by rw [hb, hs4, hs7]; simp [hcc]
+    rw [ha4, hbf, MlKemPoly.ite_neg (by simp), MlKemPoly.ite_pos (by rw [hcmp]; exact hcc), hkbar]
+
 end MlKemKem
 
 end rind.aarch64
