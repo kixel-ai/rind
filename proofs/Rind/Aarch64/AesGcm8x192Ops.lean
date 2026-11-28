@@ -118,6 +118,15 @@ theorem clmul_comm (a b : BitVec 64) : clmul a b = clmul b a :=
 theorem polyMul_eq (a b : BitVec 64) : polyMul a b = clmul a b := by
   rw [polyMul, foldl_polyMul, clmul_comm]; unfold clmul; rfl
 
+theorem clmul_c (x : BitVec 64) : clmul 0xc200000000000000#64 x = clmul x 0xc200000000000000#64 :=
+  clmul_comm _ _
+
+theorem byteswap128_eq (x : BitVec 128) : byteswap128 x = swap x := rfl
+theorem karatsubaMid_eq (x : BitVec 128) : karatsubaMid x = lo x ^^^ hi x := rfl
+theorem lo_zero : lo (0 : BitVec 128) = 0 := rfl
+theorem hi_zero : hi (0 : BitVec 128) = 0 := rfl
+theorem swap_zero : swap (0 : BitVec 128) = 0 := rfl
+
 theorem vdword_zero (x : BitVec 128) : vdword x 0 = lo x := rfl
 theorem vdword_one (x : BitVec 128) : vdword x 1 = hi x := rfl
 
@@ -241,5 +250,41 @@ theorem add_ctr (nonce : BitVec 96) (c : Nat) :
   · simp [vword_ctrBlock_succ nonce c (c + 1) (show 1 ≤ 3 - 1 by omega)]
   · simp [vword_ctrBlock_succ nonce c (c + 1) (show 1 ≤ 3 - 2 by omega)]
   · simp [vword_ctrBlock_zero, BitVec.ofNat_add]
+
+/-- The kernels' reduction of the Karatsuba terms `h`, `m`, and `l` (the
+products of the halves the loop calls high, middle, and low) is
+`reduceModel`'s, mirrored: it folds the high term into the middle and the
+middle into the low. -/
+theorem code_reduce (h m l : BitVec 128) :
+    l ^^^ clmul (lo (m ^^^ h ^^^ l ^^^ swap h ^^^ clmul (lo h) 0xc200000000000000#64)) 0xc200000000000000#64 ^^^
+        swap (m ^^^ h ^^^ l ^^^ swap h ^^^ clmul (lo h) 0xc200000000000000#64) =
+      reduceModel h m l := by
+  simp only [reduceModel, c64, clmul_c]
+  ac_rfl
+
+/-! ## GHASH by a table of powers -/
+
+/-- The blocks `xs`, each with the power of `H` its place in the hash takes,
+as the kernels' table holds them: the last with `H` itself. -/
+def pows (H : BitVec 128) : List (BitVec 128) → List (BitVec 128 × BitVec 128)
+  | [] => []
+  | y :: ys => (y, hPower (ghashTwist H) ys.length) :: pows H ys
+
+theorem sum_pows (H : BitVec 128) : ∀ xs : List (BitVec 128),
+    ((pows H xs).map fun p => toPoly (mulModel p.1 p.2)).sum = sumPow (toPoly H) (xs.map toPoly)
+  | [] => by simp [pows, sumPow_nil]
+  | y :: ys => by
+    rw [pows, List.map_cons, List.sum_cons, sum_pows H ys, List.map_cons, sumPow_cons, List.length_map,
+      mul_data _ _ _ (small_gPower _ (small_toPoly H) _) (toPoly_hPower H ys.length)]
+
+/-- SP 800-38D's GHASH of the blocks `x :: xs` from `acc` is the products of
+the first block plus the state, and of the rest, by the powers of the twisted
+key the kernels' table holds, reduced once. -/
+theorem nistGhash_reduceAll (H acc x : BitVec 128) (xs : List (BitVec 128)) :
+    nistGhash H acc (x :: xs) = reduceAll (pows H ((x ^^^ acc) :: xs)) := by
+  apply toPoly_inj
+  rw [toPoly_nistGhash, ghashPoly_eq _ _ _ (by simp), toPoly_reduceAll, sum_pows, List.map_cons, sumPow_cons,
+    List.map_cons, sumPow_cons, toPoly_xor, mulRev_add_left, List.length_cons, List.length_map]
+  ring
 
 end rind.aarch64.gcm8x192
