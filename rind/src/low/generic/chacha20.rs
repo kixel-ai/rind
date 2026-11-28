@@ -15,6 +15,10 @@
 // draft-irtf-cfrg-xchacha-03, these rounds included.
 
 #[inline]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "double_round passes a, b, c and d below 16, and every st is a 16-word state"
+)]
 fn quarter_round(st: &mut [u32], a: u32, b: u32, c: u32, d: u32) {
     let sta: u32 = st[a as usize];
     let stb: u32 = st[b as usize];
@@ -85,6 +89,11 @@ const SIGMA: [u32; 4] = [0x6170_7865, 0x3320_646e, 0x7962_2d32, 0x6b20_6574];
 // Indexes rather than splitting into chunks, which Aeneas cannot translate,
 // so `proofs/` can prove `chacha20_block`.
 #[inline]
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "i < 8 over the key and i < 4 over the nonce, so 4 * i + 3 < 32 and 12 + i < 16"
+)]
 fn state(key: &[u8; 32], nonce: &[u8; 16]) -> [u32; 16] {
     let mut st = [0u32; 16];
     st[..4].copy_from_slice(&SIGMA);
@@ -132,6 +141,11 @@ fn hchacha20_rounds(st: &mut [u32]) {
 // written out inside the unrolled function so Aeneas still extracts
 // `hchacha20_loop`. Pulling that loop into this function changes the proof.
 #[cfg(any(all(target_pointer_width = "32", rind_backend = "portable"), test))]
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "i < 8, so i + 8 < 16 = st.len() and 4 * (i + 1) <= 32 = out.len()"
+)]
 fn hchacha20_out(st: &[u32; 16]) -> [u8; 32] {
     let mut out = [0u8; 32];
     for i in 0..8 {
@@ -163,6 +177,11 @@ pub(crate) fn hchacha20(key: &[u8; 32], nonce: &[u8; 16]) -> [u8; 32] {
 /// rounds without the final addition, keeping words 0-3 and 12-15, as
 /// draft-irtf-cfrg-xchacha-03 specifies.
 #[cfg(not(all(target_pointer_width = "32", rind_backend = "portable")))]
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "i < 8, so i + 8 < 16 = st.len() and 4 * (i + 1) <= 32 = out.len()"
+)]
 pub(crate) fn hchacha20(key: &[u8; 32], nonce: &[u8; 16]) -> [u8; 32] {
     let mut st = state(key, nonce);
     rounds(&mut st);
@@ -185,6 +204,11 @@ pub(crate) fn chacha20_block(key: &[u8; 32], counter_nonce: &[u8; 16]) -> [u8; 6
 
 /// The keystream block for the state `input`.
 #[inline]
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "i < 16 = st.len() = input.len(), so 4 * (i + 1) <= 64 = out.len()"
+)]
 fn keystream(input: &[u32; 16]) -> [u8; 64] {
     let mut st = *input;
     rounds(&mut st);
@@ -205,6 +229,11 @@ fn keystream(input: &[u32; 16]) -> [u8; 64] {
     rind_backend = "portable",
     all(test, rind_backend = "aarch64")
 ))]
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "done < buffer.len() in the loop and n <= min(64, buffer.len() - done), so done + n <= buffer.len() and i < n = block.len() = ks.len()"
+)]
 pub(crate) fn cipher(key: &[u32; 8], counter_nonce: &[u32; 4], buffer: &mut [u8]) {
     let mut input = [0u32; 16];
     input[..4].copy_from_slice(&SIGMA);
