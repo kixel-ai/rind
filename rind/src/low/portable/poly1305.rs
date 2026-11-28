@@ -50,7 +50,8 @@ impl Hacl {
     }
 }
 
-#[cfg(all(test, target_pointer_width = "64"))]
+#[cfg(test)]
+#[cfg(target_pointer_width = "64")]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;

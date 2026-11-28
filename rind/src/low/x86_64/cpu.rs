@@ -1233,8 +1233,11 @@ mod tests {
             assert_eq!(check, expected, "check {i}");
         }
 
+        #[allow(
+            unused_unsafe,
+            reason = "`__cpuid` is safe from Rust 1.94 but `unsafe` on the 1.90 MSRV"
+        )]
         // SAFETY: every x86_64 CPU has `cpuid`.
-        #[allow(unused_unsafe)]
         let id = unsafe { __cpuid(0) };
         let vendor = [id.ebx, id.edx, id.ecx].map(u32::to_le_bytes);
         assert_eq!(

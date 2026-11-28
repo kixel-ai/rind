@@ -2027,7 +2027,7 @@ mod tests {
 
     /// `bytes mod n` by aws-lc, including a zero residue.
     #[cfg(not(any(miri, target_family = "wasm")))]
-    #[allow(unsafe_code)]
+    #[allow(unsafe_code, reason = "aws-lc's C bignum API is the oracle")]
     fn aws_reduce(bytes: &[u8]) -> [u8; 32] {
         use aws_lc_sys::{
             BN_CTX_free, BN_CTX_new, BN_bin2bn, BN_bn2binpad, BN_div, BN_free, BN_new,
@@ -2037,7 +2037,7 @@ mod tests {
         impl Drop for Owned {
             fn drop(&mut self) {
                 // SAFETY: `self.0` was allocated by aws-lc and is not used after this.
-                #[allow(unsafe_code)]
+                #[allow(unsafe_code, reason = "frees the aws-lc bignum this owns")]
                 unsafe {
                     BN_free(self.0)
                 }

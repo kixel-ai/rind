@@ -3,13 +3,11 @@
 
 /// Calls an `extern` assembly routine, through `abi`'s trampoline in tests,
 /// which checks it preserves what its ABI says it must.
-#[cfg(all(
-    test,
-    any(
-        rind_backend = "x86_64",
-        rind_backend = "aarch64",
-        rind_backend = "arm"
-    )
+#[cfg(test)]
+#[cfg(any(
+    rind_backend = "x86_64",
+    rind_backend = "aarch64",
+    rind_backend = "arm"
 ))]
 macro_rules! asm_call {
     (unsafe extern $abi:tt $f:tt($($arg:expr),* $(,)?)) => {
@@ -291,7 +289,8 @@ pub(crate) use generic::blockwise::{Blockwise, UpdateBlocks, pad, sha256_digest,
 pub(crate) use generic::chacha20::{chacha20_block, hchacha20};
 pub(crate) use generic::ct_copy::{ct_copy, ct_select_i16};
 pub(crate) use generic::ct_equal::ct_equal;
-#[cfg(all(test, any(rind_backend = "arm", rind_backend = "portable")))]
+#[cfg(test)]
+#[cfg(any(rind_backend = "arm", rind_backend = "portable"))]
 pub(crate) use generic::ghash::gcm_model;
 pub(crate) use generic::md5::md5_compress_blocks;
 pub(crate) use generic::naf::public_naf;
@@ -304,17 +303,16 @@ pub(crate) use mcdt::Mcdt;
 pub(crate) use portable::poly1305;
 pub(crate) use posint::{ModExp, PosInt, SecretPosInt};
 
-#[cfg(all(test, any(rind_backend = "x86_64", rind_backend = "aarch64")))]
+#[cfg(test)]
+#[cfg(any(rind_backend = "x86_64", rind_backend = "aarch64"))]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests;
 
-#[cfg(all(
-    test,
-    any(
-        rind_backend = "x86_64",
-        rind_backend = "aarch64",
-        rind_backend = "arm"
-    )
+#[cfg(test)]
+#[cfg(any(
+    rind_backend = "x86_64",
+    rind_backend = "aarch64",
+    rind_backend = "arm"
 ))]
 #[cfg_attr(coverage_nightly, coverage(off))]
 pub(crate) mod abi;
@@ -323,7 +321,8 @@ pub(crate) mod abi;
 // pages on every target, so ctgrind builds leave it out, and Miri cannot run
 // the PROT_NONE mappings it faults on.
 // See UPSTREAM.md, "Valgrind on ARM does not fault guard pages".
-#[cfg(all(test, unix, not(feature = "__ctgrind"), not(miri)))]
+#[cfg(test)]
+#[cfg(all(unix, not(feature = "__ctgrind"), not(miri)))]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod guard_pages;
 
@@ -412,7 +411,8 @@ cfg_if::cfg_if! {
         pub(crate) use x86_64::ct_sde;
         #[cfg(test)]
         pub(crate) use x86_64::cpu::force_avx512_for_vg_mlkem;
-        #[cfg(all(test, feature = "ml-dsa"))]
+        #[cfg(test)]
+        #[cfg(feature = "ml-dsa")]
         pub(crate) use x86_64::cpu::HaveAvx512Vl;
         pub(crate) use x86_64::bignum_add::bignum_add;
         pub(crate) use x86_64::bignum_add_p25519::bignum_add_p25519;

@@ -166,7 +166,8 @@ impl RsaPublicKey {
 
     /// `c^e mod n` by pyca/verified-garbage's routine, and by square and
     /// multiply on [`Self::mul`], for `c` below `n`, where the former runs.
-    #[cfg(all(test, rind_backend = "x86_64"))]
+    #[cfg(test)]
+    #[cfg(rind_backend = "x86_64")]
     pub(crate) fn public_op_both(&self, c: &RsaPosInt) -> Option<[RsaPosInt; 2]> {
         let ifma = low::RsaIfma::check(&self.n, self.e)?;
         let mut c = c.clone();

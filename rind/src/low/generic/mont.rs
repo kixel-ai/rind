@@ -746,7 +746,8 @@ mod mul_add2_tests {
 ///
 /// The values are marked secret, so under `admin/ctgrind` these also check
 /// each routine is constant time in them.
-#[cfg(all(test, any(rind_backend = "x86_64", rind_backend = "aarch64")))]
+#[cfg(test)]
+#[cfg(any(rind_backend = "x86_64", rind_backend = "aarch64"))]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use proptest::prelude::*;

@@ -247,7 +247,8 @@ pub(crate) fn bignum_modinv(z: &mut [u64], a: &[u64], b: &[u64], _t: &mut [u64])
 
 /// z := 2^768 mod m, for m = n_384
 // Checks the constant against s2n-bignum, which armv7 lacks.
-#[cfg(all(test, any(rind_backend = "x86_64", rind_backend = "aarch64")))]
+#[cfg(test)]
+#[cfg(any(rind_backend = "x86_64", rind_backend = "aarch64"))]
 pub(crate) fn bignum_montifier(z: &mut [u64], m: &[u64], _t: &mut [u64]) {
     assert_eq!(m, N);
     // to_montgomery multiplies by 2^384, so this is 2^384 * (2^384 mod n).
@@ -494,7 +495,8 @@ const N_MINUS_2: [u64; 6] = [
 ///
 /// Inputs that are secret in `mid::p384` are marked secret, so under
 /// `admin/ctgrind` these also check each routine is constant time in them.
-#[cfg(all(test, any(rind_backend = "x86_64", rind_backend = "aarch64")))]
+#[cfg(test)]
+#[cfg(any(rind_backend = "x86_64", rind_backend = "aarch64"))]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use proptest::prelude::*;

@@ -427,7 +427,8 @@ pub(crate) fn bignum_modinv(z: &mut [u64], a: &[u64], b: &[u64], _t: &mut [u64])
 
 /// z := 2^1152 mod m, for m = n_521
 // Checks the constant against s2n-bignum, which armv7 lacks.
-#[cfg(all(test, any(rind_backend = "x86_64", rind_backend = "aarch64")))]
+#[cfg(test)]
+#[cfg(any(rind_backend = "x86_64", rind_backend = "aarch64"))]
 pub(crate) fn bignum_montifier(z: &mut [u64], m: &[u64], _t: &mut [u64]) {
     assert_eq!(m, N);
     z.copy_from_slice(&MM);

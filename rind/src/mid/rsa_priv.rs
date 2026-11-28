@@ -296,7 +296,8 @@ impl RsaPrivateKey {
 
     /// The CRT by pyca/verified-garbage's IFMA routine and by rind's, where
     /// the former runs.
-    #[cfg(all(test, rind_backend = "x86_64"))]
+    #[cfg(test)]
+    #[cfg(rind_backend = "x86_64")]
     pub(crate) fn crt_both(&self, c: &RsaPosIntModN) -> Option<[RsaPosIntModN; 2]> {
         self.ifma
             .runs()
