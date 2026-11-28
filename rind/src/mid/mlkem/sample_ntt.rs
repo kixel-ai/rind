@@ -113,8 +113,10 @@ fn sample_poly_ntt_8x(inputs: &[[u8; 40]; 8], outputs: &mut [Poly; 8]) {
             }
         }
         None => {
-            let inputs: (&[[u8; 40]; 4], &[[u8; 40]; 4]) =
-                (inputs[..4].try_into().unwrap(), inputs[4..].try_into().unwrap());
+            let inputs: (&[[u8; 40]; 4], &[[u8; 40]; 4]) = (
+                inputs[..4].try_into().unwrap(),
+                inputs[4..].try_into().unwrap(),
+            );
             sample_poly_ntt_4x(inputs.0, (&mut outputs[..4]).try_into().unwrap());
             sample_poly_ntt_4x(inputs.1, (&mut outputs[4..]).try_into().unwrap());
         }
