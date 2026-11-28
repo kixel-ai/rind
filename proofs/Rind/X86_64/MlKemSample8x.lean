@@ -1189,6 +1189,173 @@ theorem sample_poly_ntt_8x_spec (h : RunsSha3) (h8 : RunsMlKem8x) (M : ℕ → L
   simp only
   exact tails_fill_spec h M hH outs tails ht
 
+/-! ## `sample_ntt` of ML-KEM-1024's matrix -/
+
+/-- The inputs `sample_ntt_8x` builds for eight polynomials from position `p0`. -/
+def Inputs8At (rho : List Byte) (transposed : Bool) (p0 n : ℕ)
+    (inputs : Std.Array (Std.Array U8 40#usize) 8#usize) : Prop :=
+  ∀ u < n, bv (inputs.val[u]!).val = matMsg rho transposed 4 (p0 + u) ++ shakePad :: List.replicate 5 0
+
+/-- `sample_ntt_8x`'s inner loop lays out eight polynomials' inputs from
+position `p0`. -/
+theorem inputs8_loop_spec (rho : Std.Array U8 32#usize) (transposed : Bool) (p0 : ℕ) (hp0 : p0 + 8 ≤ 16)
+    (i j : U8) (hi : i.val = p0 / 4) (hj : j.val = p0 % 4)
+    (inputs : Std.Array (Std.Array U8 40#usize) 8#usize) :
+    mid.mlkem.sample_ntt.sample_ntt_8x_loop0_loop0 { start := 0#usize, «end» := 8#usize } rho transposed i j
+      inputs ⦃ r => r.1.val = (p0 + 8) / 4 ∧ r.2.1.val = (p0 + 8) % 4 ∧
+        Inputs8At (bv rho.val) transposed p0 8 r.2.2 ⦄ := by
+  unfold mid.mlkem.sample_ntt.sample_ntt_8x_loop0_loop0
+  apply range_loop 8 (fun t (s : U8 × U8 × Std.Array (Std.Array U8 40#usize) 8#usize) =>
+    s.1.val = (p0 + t) / 4 ∧ s.2.1.val = (p0 + t) % 4 ∧ Inputs8At (bv rho.val) transposed p0 t s.2.2) _ ?_
+    { start := 0#usize, «end» := 8#usize } (i, j, inputs) rfl (Nat.zero_le _)
+    ⟨by simpa using hi, by simpa using hj, fun u hu => absurd hu (Nat.not_lt_zero _)⟩
+  rintro it ⟨i', j', ins⟩ he' hs' ⟨hi', hj', hin'⟩
+  simp only at hi' hj' hin' ⊢
+  unfold mid.mlkem.sample_ntt.sample_ntt_8x_loop0_loop0.body
+  step as ⟨o, it1, ho, he1⟩
+  split_ifs at ho with hlt
+  · obtain ⟨rfl, hst⟩ := ho
+    simp only
+    step with shake_input_pos rho transposed 4 (p0 + it.start.val) i' j' hi' hj' as ⟨a, ha⟩
+    step as ⟨a1, ha1⟩
+    step with next_index_spec 4#usize (by decide) (p0 + it.start.val) (by simp; omega) i' j' hi' hj'
+      as ⟨i2, j2, hi2, hj2⟩
+    refine ⟨by rw [he1]; exact he', hst, by omega, ?_, ?_, ?_⟩
+    · rw [hi2, hst]; rfl
+    · rw [hj2, hst]; rfl
+    · intro u hu
+      rw [ha1, Std.Array.set_val_eq]
+      by_cases hu' : u = it.start.val
+      · subst hu'
+        rw [MlKemCoding.getElem!_set_self _ _ _ (by simp; omega)]
+        exact ha
+      · rw [MlKemCoding.getElem!_set_ne _ _ _ _ (Ne.symm hu')]
+        exact hin' u (by omega)
+  · obtain ⟨rfl, hst⟩ := ho
+    apply (WP.spec_ok _).2
+    have : it.start.val = 8 := by omega
+    rw [this] at hi' hj' hin'
+    exact ⟨hi', hj', hin'⟩
+
+/-- `sample_ntt_8x`'s loop state: `done` polynomials sampled, a multiple of
+eight, at the row and column of the next. -/
+def MatInv8 (rho : Std.Array U8 32#usize) (transposed : Bool)
+    (s : Slice (Std.Array I16 256#usize) × U8 × U8 × Usize) : Prop :=
+  s.1.length = 16 ∧ s.2.2.2.val ≤ 16 ∧ s.2.2.2.val % 8 = 0 ∧ s.2.1.val = s.2.2.2.val / 4 ∧
+    s.2.2.1.val = s.2.2.2.val % 4 ∧ MatSampled (bv rho.val) transposed 4 s.2.2.2.val s.1.val
+
+set_option maxHeartbeats 1000000 in
+/-- `sample_ntt_8x` samples ML-KEM-1024's sixteen polynomials eight at a time. -/
+theorem sample_ntt_8x_spec (h : RunsSha3) (h8 : RunsMlKem8x) (rho : Std.Array U8 32#usize)
+    (transposed : Bool) (hH : ∀ p < 16, Halts (matMsg (bv rho.val) transposed 4 p))
+    (out : Slice (Std.Array I16 256#usize)) (i j : U8) (done : Usize)
+    (hinv : MatInv8 rho transposed (out, i, j, done)) :
+    mid.mlkem.sample_ntt.sample_ntt_8x_loop0 rho transposed out i j done ⦃ r =>
+      r.length = 16 ∧ MatSampled (bv rho.val) transposed 4 16 r.val ⦄ := by
+  unfold mid.mlkem.sample_ntt.sample_ntt_8x_loop0
+  apply loop.spec_decr_nat (fun x => 16 - x.2.2.2.val) (MatInv8 rho transposed) _ _ _ ?_ hinv
+  rintro ⟨o, i', j', d⟩ ⟨hl', hd', h8d, hi', hj', hs'⟩
+  simp only at hl' hd' h8d hi' hj' hs' ⊢
+  unfold mid.mlkem.sample_ntt.sample_ntt_8x_loop0.body
+  step as ⟨i1, hi1⟩
+  split
+  · rename_i hle
+    have hle' : d.val + 8 ≤ 16 := by
+      have : i1.val ≤ o.length := by scalar_tac
+      omega
+    step with inputs8_loop_spec rho transposed d.val hle' i' j' hi' hj' _ as ⟨i3, j1, ins, hi3, hj1, hins⟩
+    step as ⟨i4, hi4⟩
+    step as ⟨s, back, hsv, hsl, hback⟩
+    step with MlKemCbd.try_from_mut_spec 8#usize s (by rw [hsl]; scalar_tac) as ⟨r1, tback, hr1, htback⟩
+    subst hr1
+    step with MlKemCbd.unwrap_mut_spec core.fmt.DebugTryFromSliceError _ as ⟨outs, uback, houts, huback⟩
+    subst houts
+    have hrl : (bv rho.val).length = 32 := by rw [bv_length]; exact rho.property
+    step with sample_poly_ntt_8x_spec h h8 (fun u => matMsg (bv rho.val) transposed 4 (d.val + u))
+      (fun u hu => hH _ (by omega)) ins
+      (fun u hu => ⟨by rw [matMsg_length, hrl], hins u hu⟩) _ as ⟨outs1, hv⟩
+    have hval : (back (tback (uback outs1))).val = o.val.setSlice! d.val outs1.val := by
+      rw [hback, Slice.setSlice!_val, huback, htback]
+    refine ⟨⟨?_, ?_, ?_, ?_, ?_, ?_⟩, ?_⟩ <;> try dsimp only
+    · rw [hback, Slice.setSlice!_length]; exact hl'
+    · omega
+    · omega
+    · rw [hi3, hi4]
+    · rw [hj1, hi4]
+    · intro p hp
+      rw [hval]
+      by_cases hpd : p < d.val
+      · rw [List.getElem!_setSlice!_prefix _ _ _ _ hpd]
+        exact hs' p hpd
+      · have hol : outs1.val.length = 8 := outs1.property
+        rw [List.getElem!_setSlice!_middle _ _ _ _ ⟨by omega, by omega, by
+          have : o.val.length = 16 := hl'
+          omega⟩]
+        have := hv (p - d.val) (by omega)
+        rwa [show d.val + (p - d.val) = p by omega] at this
+    · omega
+  · rename_i hle
+    apply (WP.spec_ok _).2
+    have hd16 : d.val = 16 := by
+      have : ¬ i1.val ≤ o.length := by scalar_tac
+      have : o.length = 16 := hl'
+      omega
+    rw [hd16] at hs'
+    exact ⟨hl', hs'⟩
+
+/-- `sample_ntt` of ML-KEM-1024's matrix, row by row, or of its transpose, on
+a CPU with what the eight-way sampler needs: each polynomial is SHAKE128's
+first 256 candidates below `q` on its input. -/
+theorem sample_ntt_spec (h : RunsSha3) (h8 : RunsMlKem8x) (rho : Std.Array U8 32#usize) (transposed : Bool)
+    (out : Slice (Std.Array I16 256#usize)) (hl : out.length = 16)
+    (hH : ∀ p < 16, Halts (matMsg (bv rho.val) transposed 4 p)) :
+    mid.mlkem.sample_ntt.sample_ntt rho transposed out ⦃ r =>
+      r.length = 16 ∧ MatSampled (bv rho.val) transposed 4 16 r.val ⦄ := by
+  unfold mid.mlkem.sample_ntt.sample_ntt
+  have hrank : mid.mlkem.rank (Slice.len out) = ok 4#usize := by
+    unfold mid.mlkem.rank
+    rw [Slice.len_val, hl]
+    rfl
+  simp only [hrank, bind_ok, ite_true]
+  exact sample_ntt_8x_spec h h8 rho transposed hH out 0#u8 0#u8 0#usize
+    ⟨hl, by simp, by simp, by simp, by simp, fun p hp => absurd hp (by simp)⟩
+
+theorem vappend_toList {α : Type} {m n : ℕ} (a : Vector α m) (b : Vector α n) :
+    (Vector.append a b).toList = a.toList ++ b.toList :=
+  Vector.toList_append
+
+open scoped Spec.Notations in
+/-- `sample_ntt` of ML-KEM-1024's matrix on a CPU with what the eight-way
+sampler needs: polynomial `4i + j` is FIPS 203's `SampleNTT(ρ ‖ j ‖ i)`, the
+matrix's entry in row `i` and column `j`, or for the transpose
+`SampleNTT(ρ ‖ i ‖ j)`, given that `SampleNTT` finishes on each. -/
+theorem sample_ntt_fips (h : RunsSha3) (h8 : RunsMlKem8x) (rho : Std.Array U8 32#usize) (ρ : 𝔹 32)
+    (hρ : bv rho.val = ρ.toList) (transposed : Bool) (out : Slice (Std.Array I16 256#usize))
+    (hl : out.length = 16)
+    (hH : ∀ i : ℕ, i < 4 → ∀ j : ℕ, j < 4 → Halts (ρ ‖ #v[((if transposed then i else j : ℕ) : Byte)] ‖
+      #v[((if transposed then j else i : ℕ) : Byte)]).toList) :
+    mid.mlkem.sample_ntt.sample_ntt rho transposed out ⦃ r =>
+      ∀ i : ℕ, i < 4 → ∀ j : ℕ, j < 4 → Holds 0 3328 256 (r.val[4 * i + j]!).val
+        (SampleNTT (ρ ‖ #v[((if transposed then i else j : ℕ) : Byte)] ‖
+          #v[((if transposed then j else i : ℕ) : Byte)])) ⦄ := by
+  have hmsg (i j : ℕ) (hj : j < 4) :
+      matMsg (bv rho.val) transposed 4 (4 * i + j) = (ρ ‖ #v[((if transposed then i else j : ℕ) : Byte)] ‖
+        #v[((if transposed then j else i : ℕ) : Byte)]).toList := by
+    rw [vappend_toList, vappend_toList, ← hρ]
+    unfold matMsg
+    rw [show (4 * i + j) / 4 = i by omega, show (4 * i + j) % 4 = j by omega]
+    cases transposed <;> simp
+  apply WP.spec_mono (sample_ntt_spec h h8 rho transposed out hl (fun p hp => by
+    have := hH (p / 4) (by omega) (p % 4) (by omega)
+    rwa [← hmsg _ _ (by omega), show 4 * (p / 4) + p % 4 = p by omega] at this))
+  intro r ⟨_, hr⟩ i hi4 j hj4 c hc
+  have hs := hr (4 * i + j) (by omega) c hc
+  rw [hmsg _ _ hj4] at hs
+  have hlt := sampled_lt _ c hc (hH i hi4 j hj4)
+  refine ⟨by rw [hs]; omega, by rw [hs]; omega, ?_⟩
+  rw [hs, getElem!_pos (SampleNTT _) c hc, sampleNTT_sampled _ (hH i hi4 j hj4) c hc]
+  simp
+
 end MlKemSample8x
 
 end rind.x86_64
