@@ -1,5 +1,6 @@
 import Rind.X86_64.MlKemTail
 import Rind.X86_64.Keccak8Avx512
+import Rind.X86_64.MlKemCbd
 open Aeneas Aeneas.Std Result rind.spec Spec Spec.MLKEM rind.spec.mlkem rind.simd
 
 /-!
@@ -276,6 +277,245 @@ theorem filter_bits (x : U32) (n : ℕ) (hn : n ≤ 32) (p : ℕ → Bool)
   intro a ha
   simp only [List.mem_range] at ha
   rw [hx _ (by omega)]; simp [ha]
+
+/-! ## The intrinsics' results -/
+
+theorem load_spec (b : Std.Array U8 64#usize) :
+    low.x86_64.mlkem_sample_poly_ntt_8x.load b ⦃ r => r = ofBytes64 fun j => (b.val[j]!).bv ⦄ := by
+  simp [low.x86_64.mlkem_sample_poly_ntt_8x.load, WP.spec_ok]
+
+theorem permutexvar_spec (idx a : BitVec 512) :
+    core.core_arch.x86.avx512vbmi._mm512_permutexvar_epi8 idx a ⦃ r =>
+      r = ofBytes64 fun i => byte64 a ((byte64 idx i).toNat % 64) ⦄ := by
+  simp [core.core_arch.x86.avx512vbmi._mm512_permutexvar_epi8, WP.spec_ok]
+
+theorem srlv_spec (a cnt : BitVec 512) :
+    core.core_arch.x86.avx512bw._mm512_srlv_epi16 a cnt ⦃ r =>
+      r = ofLanes16x32 fun i => if (lane16x32 cnt i).toNat > 15 then 0 else
+        lane16x32 a i >>> (lane16x32 cnt i).toNat ⦄ := by
+  simp [core.core_arch.x86.avx512bw._mm512_srlv_epi16, WP.spec_ok]
+
+theorem and_spec (a b : BitVec 512) :
+    core.core_arch.x86.avx512f._mm512_and_si512 a b ⦃ r => r = a &&& b ⦄ := by
+  simp [core.core_arch.x86.avx512f._mm512_and_si512, WP.spec_ok]
+
+theorem cmplt_spec (a b : BitVec 512) :
+    core.core_arch.x86.avx512bw._mm512_cmplt_epu16_mask a b ⦃ r =>
+      ∀ i < 32, r.bv.getLsbD i = decide ((lane16x32 a i).toNat < (lane16x32 b i).toNat) ⦄ := by
+  simp only [core.core_arch.x86.avx512bw._mm512_cmplt_epu16_mask, WP.spec_ok]
+  exact fun i hi => cmplt_bit a b i hi
+
+theorem count_ones_spec (x : U32) :
+    core.num.U32.count_ones x ⦃ r => r.val = ((List.range 32).filter fun i => x.bv.getLsbD i).length ⦄ := by
+  simp only [core.num.U32.count_ones, WP.spec_ok]
+  have : ((List.range 32).filter fun i => x.bv.getLsbD i).length ≤ 32 :=
+    (List.length_filter_le _ _).trans (by simp)
+  show (BitVec.ofNat 32 _).toNat = _
+  rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by omega)]
+
+theorem compress_spec (k : U32) (a : BitVec 512) :
+    core.core_arch.x86.avx512vbmi2._mm512_maskz_compress_epi16 k a ⦃ r =>
+      ∀ t < 32, lane16x32 r t = (((List.range 32).filter fun j => k.bv.getLsbD j).map (lane16x32 a)).getD t 0 ⦄ := by
+  simp only [core.core_arch.x86.avx512vbmi2._mm512_maskz_compress_epi16, WP.spec_ok]
+  exact fun t ht => lane16x32_ofLanes16x32 _ t ht
+
+theorem store_low_spec (out : Slice I16) (v : BitVec 512) (h : out.length ≤ 32) :
+    low.x86_64.mlkem_sample_poly_ntt_8x.store_low out v ⦃ r =>
+      r.length = out.length ∧ ∀ t < out.length, r.val[t]! = ⟨lane16x32 v t⟩ ⦄ := by
+  simp only [low.x86_64.mlkem_sample_poly_ntt_8x.store_low, WP.spec_ok]
+  refine ⟨by simp [Slice.length, Slice.from_val], fun t ht => ?_⟩
+  have ht' : t < out.val.length := ht
+  rw [Slice.from_val, getElem!_pos _ t (by simp; omega), List.getElem_mapIdx, if_pos (by omega)]
+
+/-! ## A vector pass -/
+
+/-- `bytes` holds block `c` of SHAKE128 on `M`. -/
+def RateBytes (M : List Byte) (c : ℕ) (bytes : List U8) : Prop :=
+  ∀ m < 168, (bytes[m]!).bv = xofByte M (168 * c + m)
+
+/-- The bytes of the block the passes before pass `t` read. -/
+def gend (t : ℕ) : ℕ := min (48 * t) 168
+
+/-- Pass `t` reads the next 48 bytes, or the block's last 24. -/
+theorem acc_pass (M : List Byte) (c t : ℕ) (ht : t < 4) :
+    acc M (168 * c + gend (t + 1)) = acc M (168 * c + gend t) ++
+      accepted ((List.range (if t = 3 then 24 else 48)).map fun j => xofByte M (168 * c + 48 * t + j)) := by
+  have h1 : gend t = 48 * t := by unfold gend; omega
+  have h2 : gend (t + 1) = 48 * t + (if t = 3 then 24 else 48) := by unfold gend; split <;> omega
+  rw [h1, h2, ← Nat.add_assoc, acc, shake128_add, accepted_append _ _ (by simp [shake128_map]; omega)]
+
+/-- The passes over polynomial `i` before pass `t`: it holds the candidates
+of the bytes they read, and the rest are as they were. -/
+def GroupInv (M : List Byte) (c i : ℕ) (out0 : Std.Array (Std.Array I16 256#usize) 8#usize)
+    (used0 : Std.Array Usize 8#usize) (t : ℕ)
+    (s : Std.Array (Std.Array I16 256#usize) 8#usize × Std.Array Usize 8#usize) : Prop :=
+  Filled (acc M (168 * c + gend t)) 0 (s.1.val[i]!).val (s.2.val[i]!).val ∧
+    ∀ p < 8, p ≠ i → s.1.val[p]! = out0.val[p]! ∧ s.2.val[p]! = used0.val[p]!
+
+theorem i16_val_of_lt (x : BitVec 16) (h : x.toNat < 2 ^ 15) : (⟨x⟩ : I16).val = x.toNat := by
+  show x.toInt = _
+  rw [BitVec.toInt_eq_toNat_of_lt (by omega)]
+
+set_option maxHeartbeats 1000000 in
+/-- The passes over polynomial `i` of block `c` keep its candidates below `q`,
+as many as fit. -/
+theorem passes_spec (M : List Byte) (c : ℕ) (bytes : Std.Array U8 232#usize) (hb : RateBytes M c bytes.val)
+    (i : Usize) (hi : i.val < 8) (four : Usize) (h4 : four.val = 4)
+    (out0 : Std.Array (Std.Array I16 256#usize) 8#usize) (used0 : Std.Array Usize 8#usize)
+    (hinv : GroupInv M c i.val out0 used0 0 (out0, used0)) :
+    low.x86_64.mlkem_sample_poly_ntt_8x.squeeze_rate_and_reject_loop1_loop1 four
+      { start := 0#usize, «end» := four } out0 used0 spreadV qV twelveV shiftsV bytes i ⦃ r =>
+      GroupInv M c i.val out0 used0 4 r ⦄ := by
+  unfold low.x86_64.mlkem_sample_poly_ntt_8x.squeeze_rate_and_reject_loop1_loop1
+  apply range_loop 4 (GroupInv M c i.val out0 used0) _ ?_ { start := 0#usize, «end» := four } (out0, used0)
+    (by simp [h4]) (by simp) hinv
+  rintro it ⟨out, used⟩ he hs ⟨hf, hother⟩
+  simp only at hf hother
+  unfold low.x86_64.mlkem_sample_poly_ntt_8x.squeeze_rate_and_reject_loop1_loop1.body
+  step as ⟨o', it1, ho, he1⟩
+  split_ifs at ho with hlt
+  · obtain ⟨rfl, hst⟩ := ho
+    simp only
+    have ht : it.start.val < 4 := by omega
+    step as ⟨u, hu⟩
+    have huv : u = used.val[i.val]! := by rw [hu, getElem!_pos]
+    split
+    · rename_i hlt256
+      have hu256 : u.val < 256 := by scalar_tac
+      step with group_bytes_spec as ⟨gb, hgb⟩
+      step as ⟨offset, hoff⟩
+      step as ⟨i4, hi4⟩
+      step with core.slice.index.SliceIndexRangeUsizeSlice.index.step_spec as ⟨sl, hsl, hsll⟩
+      rw [MlKemCbd.try_from_eq 64#usize sl (by rw [hsll]; simp; omega)]
+      simp only [bind_ok, core.result.Result.unwrap]
+      step with load_spec as ⟨raw, hraw⟩
+      step with permutexvar_spec as ⟨mi, hmi⟩
+      step with srlv_spec as ⟨mi1, hmi1⟩
+      step with and_spec as ⟨cands, hcands⟩
+      have hcv : cands = candV raw := by rw [hcands, hmi1, hmi]; rfl
+      -- The bytes the pass reads.
+      have hoffv : offset.val = 48 * it.start.val := by rw [hoff, hgb]; ring
+      have hg (j : ℕ) (hj : j < (if it.start.val = 3 then 24 else 48)) :
+          byte64 raw j = xofByte M (168 * c + 48 * it.start.val + j) := by
+        have hj64 : j < 64 := by split at hj <;> omega
+        rw [hraw, byte64_ofBytes64 _ _ hj64, Std.Array.from_val, hsl,
+          List.getElem!_slice _ _ _ _ ⟨by simp; scalar_tac, by scalar_tac⟩, hoffv, Std.Array.val_to_slice,
+          hb (48 * it.start.val + j) (by split at hj <;> omega), Nat.add_assoc]
+      have hlanes (k : ℕ) (hk : k < 32) : (lane16x32 cands k).toNat = cand (byte64 raw) k := by
+        rw [hcv]; exact candV_lane raw k hk
+      step with cmplt_spec as ⟨acc0, hacc0⟩
+      have hacc0' (k : ℕ) (hk : k < 32) : acc0.bv.getLsbD k = decide (cand (byte64 raw) k < 3329) := by
+        rw [hacc0 k hk, hlanes k hk, lane_qV k hk]
+      step as ⟨i5, hi5⟩
+      have hA : (if it.start = i5 then (do
+          let i6 ← low.x86_64.mlkem_sample_poly_ntt_8x.LAST_GROUP
+          ok (acc0 &&& i6)) else ok acc0) ⦃ (a : U32) => ∀ k < 32, a.bv.getLsbD k =
+            (decide (k < (if it.start.val = 3 then 16 else 32)) && decide (cand (byte64 raw) k < 3329)) ⦄ := by
+        split
+        · rename_i hg3
+          have h3 : it.start.val = 3 := by have := congrArg UScalar.val hg3; scalar_tac
+          apply WP.spec_bind last_group_spec
+          intro lg hlg
+          apply (WP.spec_ok _).2
+          intro k hk
+          have hbit : lg.bv.getLsbD k = decide (k < 16) := by
+            have : lg.bv.toNat = 2 ^ 16 - 1 := hlg
+            rw [BitVec.getLsbD, this, Nat.testBit_two_pow_sub_one]
+          change (UScalar.bv (acc0 &&& lg)).getLsbD k = _
+          rw [UScalar.bv_and, BitVec.getLsbD_and, hacc0' k hk, hbit]
+          simp only [h3, ite_true]
+          rw [Bool.and_comm]
+        · rename_i hg3
+          have h3 : it.start.val ≠ 3 := by intro h; exact hg3 (by scalar_tac)
+          apply (WP.spec_ok _).2
+          intro k hk
+          rw [hacc0' k hk]
+          simp [h3, hk]
+      apply WP.spec_bind hA
+      intro acc1 hacc1
+      -- The candidates the pass keeps.
+      set valid := if it.start.val = 3 then 16 else 32 with hvalid
+      set g := byte64 raw with hgdef
+      have hL := filter_bits acc1 valid (by rw [hvalid]; split <;> omega)
+        (fun k => decide (cand g k < 3329)) hacc1
+      set L := (List.range 32).filter fun j => acc1.bv.getLsbD j with hLdef
+      have hLlen : L.length ≤ 32 := (List.length_filter_le _ _).trans (by simp)
+      have hLlt : ∀ x ∈ L, x < 32 := by
+        intro x hx; rw [hLdef, List.mem_filter, List.mem_range] at hx; exact hx.1
+      -- The candidates as bytes of the stream.
+      set K := L.map (cand g) with hKdef
+      have hK : accepted ((List.range (if it.start.val = 3 then 24 else 48)).map
+          fun j => xofByte M (168 * c + 48 * it.start.val + j)) = K := by
+        rw [List.map_congr_left (fun j hj => (hg j (List.mem_range.mp hj)).symm)]
+        have hm : (if it.start.val = 3 then 24 else 48) = 3 * (valid / 2) := by
+          rw [hvalid]; split <;> rfl
+        rw [hm, accepted_cand, show 2 * (valid / 2) = valid by rw [hvalid]; split <;> rfl,
+          hKdef, hL, List.filter_map]
+        rfl
+      step as ⟨room, hroom⟩
+      step with count_ones_spec as ⟨n1, hn1⟩
+      step as ⟨accepted', hacc'⟩
+      have haccv : accepted'.val = L.length := by
+        rw [hacc', UScalar.cast_val_eq, hn1]; exact Nat.mod_eq_of_lt (by scalar_tac)
+      have hT : (if accepted' < room then ok accepted' else ok room : Result Usize) ⦃ (tk : Usize) =>
+          tk.val = min L.length (256 - u.val) ⦄ := by
+        split
+        · apply (WP.spec_ok _).2; scalar_tac
+        · apply (WP.spec_ok _).2; scalar_tac
+      apply WP.spec_bind hT
+      intro take htake
+      step with compress_spec as ⟨comp, hcomp⟩
+      step as ⟨a1, back, ha1, hback⟩
+      step as ⟨i7, hi7⟩
+      step with Array.index_mut_SliceIndexRangeUsizeSlice.step a1 { start := u, «end» := i7 }
+        (by simp only; scalar_tac) (by simp only; scalar_tac) as ⟨s1, back1, hs1, hs1l, hback1⟩
+      step with store_low_spec s1 comp (by rw [hs1l]; scalar_tac) as ⟨s2, hs2l, hs2⟩
+      step as ⟨i8, hi8⟩
+      step as ⟨a2, ha2⟩
+      refine ⟨by rw [he1]; exact he, hst, ht, ?_, ?_⟩
+      · simp only
+        have ha1v : a1 = out.val[i.val]! := by rw [ha1, getElem!_pos]
+        rw [hback, Std.Array.set_val_eq, MlKemCoding.getElem!_set_self _ _ _ (by simp; omega),
+          hback1, ha2, Std.Array.set_val_eq, MlKemCoding.getElem!_set_self _ _ _ (by simp; omega),
+          hst, acc_pass M c _ ht, hK, hi8]
+        have hd : u.val < a1.val.length := by simp; omega
+        have hf' : Filled (acc M (168 * c + gend it.start.val)) 0 a1.val u.val := by
+          rw [ha1v, huv]; exact hf
+        have hs2v : s2.val.length = take.val := by
+          have : s2.val.length = s2.length := rfl
+          rw [this, hs2l, hs1l]; scalar_tac
+        have := filled_append _ K a1.val s2.val u.val hd hf'
+          (by rw [hs2v, htake, hKdef, List.length_map]; simp)
+          (fun t htt => by
+            rw [hs2v] at htt
+            have htt' : t < s1.length := by rw [hs1l, hi7]; omega
+            have htL : t < L.length := by rw [htake] at htt; omega
+            rw [hs2 t htt', hcomp t (by omega), List.getD_eq_getElem?_getD, List.getElem?_map,
+              List.getElem?_eq_getElem htL, Option.map_some, Option.getD_some]
+            have hLt := hLlt _ (List.getElem_mem htL)
+            have hlt4 := cand_lt g L[t]
+            rw [i16_val_of_lt _ (by rw [hlanes _ hLt]; omega), hlanes _ hLt, hKdef,
+              getElem!_pos _ t (by simp; omega), List.getElem_map])
+        rw [hs2v] at this
+        exact this
+      · intro p hp hpi
+        simp only
+        rw [hback, Std.Array.set_val_eq, MlKemCoding.getElem!_set_ne _ _ _ _ (Ne.symm hpi), ha2,
+          Std.Array.set_val_eq, MlKemCoding.getElem!_set_ne _ _ _ _ (Ne.symm hpi)]
+        exact hother p hp hpi
+    · rename_i hge
+      have hu256 : ¬ u.val < 256 := by scalar_tac
+      apply (WP.spec_ok _).2
+      refine ⟨by rw [he1]; exact he, hst, ht, ?_, hother⟩
+      obtain ⟨K, hK⟩ := acc_prefix M (show 168 * c + gend it.start.val ≤ 168 * c + gend (it.start.val + 1) by
+        unfold gend; omega)
+      rw [hst, ← hK]
+      exact filled_full _ _ _ _ _ hf (by rw [← huv]; simp; omega)
+  · obtain ⟨rfl, hst⟩ := ho
+    apply (WP.spec_ok _).2
+    have : it.start.val = 4 := by omega
+    rw [this] at hf
+    exact ⟨hf, hother⟩
 
 end MlKemSample8x
 
