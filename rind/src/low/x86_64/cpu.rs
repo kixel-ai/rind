@@ -267,7 +267,7 @@ pub(crate) struct HaveAvx512ForVgMlKem(());
 impl HaveAvx512ForVgMlKem {
     pub(crate) fn check() -> Option<Self> {
         #[cfg(test)]
-        if FORCE_AVX512_FOR_VG_MLKEM.get() {
+        if FORCE_VG_CONTRACTS.get() {
             return Some(Self(()));
         }
         has(AVX | AVX2 | AVX512F | AVX512BW | AVX512VL).then_some(Self(()))
@@ -276,24 +276,27 @@ impl HaveAvx512ForVgMlKem {
 
 #[cfg(test)]
 std::thread_local! {
-    /// Whether [`HaveAvx512ForVgMlKem::check`] passes on this thread whatever
-    /// the CPU has: for `admin/ct-binsec`, which stubs VG's AVX-512 routines
-    /// by their contracts, natively too, so that BINSEC checks the Rust
-    /// around them on a CPU without AVX-512 and with AVX-512 denied. Set
-    /// only by [`force_avx512_for_vg_mlkem`].
-    static FORCE_AVX512_FOR_VG_MLKEM: core::cell::Cell<bool> = const { core::cell::Cell::new(false) };
+    /// Whether [`HaveAvx512ForVgMlKem::check`] and [`HaveIfmaForVgP256::check`]
+    /// pass on this thread whatever the CPU has: for `admin/ct-binsec`, which
+    /// stubs the VG routines they pick by their contracts (its `CONTRACTS`),
+    /// natively too, so that BINSEC checks the Rust around them on a CPU
+    /// without AVX-512 and with AVX-512 denied. Set only by
+    /// [`force_vg_contracts`].
+    static FORCE_VG_CONTRACTS: core::cell::Cell<bool> = const { core::cell::Cell::new(false) };
 }
 
-/// Makes [`HaveAvx512ForVgMlKem::check`] pass on this thread from now on,
-/// in a test `admin/ct-binsec` runs: it sets `RIND_CT_BINSEC` and stubs VG's
-/// AVX-512 routines, so none runs on a CPU without AVX-512 F, BW, and VL.
+/// Makes [`HaveAvx512ForVgMlKem::check`] and [`HaveIfmaForVgP256::check`]
+/// pass on this thread from now on, in a test `admin/ct-binsec` runs: it sets
+/// `RIND_CT_BINSEC` and stubs VG's ML-KEM-768 routines and its IFMA ECDH, so
+/// none runs on a CPU without their features. IFMA ECDSA verification is not
+/// stubbed, so a forcing test verifies nothing.
 #[cfg(test)]
-pub(crate) fn force_avx512_for_vg_mlkem() {
+pub(crate) fn force_vg_contracts() {
     assert!(
         std::env::var_os("RIND_CT_BINSEC").is_some(),
         "only admin/ct-binsec, which stubs VG's AVX-512 routines, may force them"
     );
-    FORCE_AVX512_FOR_VG_MLKEM.set(true);
+    FORCE_VG_CONTRACTS.set(true);
 }
 
 /// Proof that the CPU has what RSA with AVX-512 IFMA runs: AVX-512 F, VL,
@@ -527,6 +530,10 @@ pub(crate) struct HaveIfmaForVgP256(());
 
 impl HaveIfmaForVgP256 {
     pub(crate) fn check() -> Option<Self> {
+        #[cfg(test)]
+        if FORCE_VG_CONTRACTS.get() {
+            return Some(Self(()));
+        }
         has(BMI2 | ADX | AVX | AVX2 | AVX512F | AVX512VL | AVX512IFMA).then_some(Self(()))
     }
 }

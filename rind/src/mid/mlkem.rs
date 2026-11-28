@@ -1749,7 +1749,7 @@ mod tests {
     fn mlkem768_vg(fallback: bool) {
         use low::ct::into_secret;
 
-        low::force_avx512_for_vg_mlkem();
+        low::force_vg_contracts();
         let parsed = EncapKey::<MlKem768>::from_bytes(
             DecapKey::<MlKem768>::keygen_internal(&[1; 64])
                 .encapsulation_key()

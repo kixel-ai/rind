@@ -25,6 +25,7 @@ import Rind.X86_64.P384Signature
 import Rind.X86_64.PointSelect
 import Rind.X86_64.MlKemCoding
 import Rind.X86_64.VgMlKem768Ct
+import Rind.X86_64.VgP256Ct
 import Rind.X86_64.MlKemCbd
 open rind.x86_64
 
@@ -60,8 +61,9 @@ which key generation and each ECDSA signature's nonce point take, and its
 ECDSA verification, in `Rind.X86_64.VgP384`, and for ChaCha20-Poly1305's
 and XChaCha20-Poly1305's one pass on AVX-512 IFMA in
 `Rind.X86_64.VgChaCha20Poly1305`, and, for the leakage of its ML-KEM-768
-routines (which no theorem about rind's wrappers uses), in
-`Rind.X86_64.VgMlKem768Ct`; and nothing else.
+routines and of its P-256 ECDH on AVX-512 IFMA (which no theorem about
+rind's wrappers uses), in `Rind.X86_64.VgMlKem768Ct` and
+`Rind.X86_64.VgP256Ct`; and nothing else.
 Ed25519 verification takes the hypothesis `MsmS2n`, that the CPU runs its
 multi-scalar multiplication over s2n-bignum's point routines rather than the
 AVX2 port. ChaCha20-Poly1305's one pass also takes aws-lc's routines and rind's copy of
@@ -1372,6 +1374,10 @@ change to the trust base.
 /-- info: 'rind.x86_64.vg_mlkem768_encaps_ct' depends on axioms: [propext, Classical.choice, Quot.sound, vg_mlkem768_encaps_ct] -/
 #guard_msgs in
 #print axioms vg_mlkem768_encaps_ct
+
+/-- info: 'rind.x86_64.vg_ecdh_p256_ifma_ct' depends on axioms: [propext, Classical.choice, Quot.sound, vg_ecdh_p256_ifma_ct] -/
+#guard_msgs in
+#print axioms vg_ecdh_p256_ifma_ct
 /-- info: 'rind.x86_64.MlKemCbd.sample_poly_cbd_spec' depends on axioms: [propext,
  Classical.choice,
  Quot.sound,

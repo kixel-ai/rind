@@ -384,7 +384,7 @@ cfg_if::cfg_if! {
         #[cfg(test)]
         pub(crate) use x86_64::ct_sde;
         #[cfg(test)]
-        pub(crate) use x86_64::cpu::force_avx512_for_vg_mlkem;
+        pub(crate) use x86_64::cpu::force_vg_contracts;
         #[cfg(all(test, feature = "ml-dsa"))]
         pub(crate) use x86_64::cpu::HaveAvx512Vl;
         pub(crate) use x86_64::bignum_add::bignum_add;

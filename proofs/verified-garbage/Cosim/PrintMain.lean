@@ -71,7 +71,8 @@ def x86_64Routines : List (String × Prog X86_64.isa) :=
    ("vg_mlkem768_encaps_avx", Cosim.ProgsX86_64.encapsAvx),
    ("vg_mlkem768_encaps_h_avx", Cosim.ProgsX86_64.encapsHAvx),
    ("vg_mlkem768_encaps", Cosim.ProgsX86_64.encapsBase),
-   ("vg_mlkem768_encaps_h", Cosim.ProgsX86_64.encapsHBase)]
+   ("vg_mlkem768_encaps_h", Cosim.ProgsX86_64.encapsHBase),
+   ("vg_ecdh_p256_ifma", Cosim.ProgsX86_64.ecdhP256Ifma)]
 
 def main (args : List String) : IO UInt32 := do
   let ok ← if args == ["aarch64"] then printRoutines aarch64Routines

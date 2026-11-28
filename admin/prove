@@ -1478,6 +1478,11 @@ bytes() {
     admin/prove-bytes check "$dir"
     release scratch
 }
+# VG's P-256 code, which `Cosim.ProgsX86_64` imports for `vg` and the Lean
+# proofs, reads two tables of points that Git ignores and this writes, so
+# every Lean build after it, `lake build` by hand included, finds them.
+admin/import-vg-models --tables
+
 if [[ -z $only || $only == bytes ]]; then
     bytes
 fi
