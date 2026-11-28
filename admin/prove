@@ -1609,6 +1609,7 @@ check_quote X86_64/GatherModel items rind/src/low/x86_64/mont_exp.rs 'fn gather_
     '#[target_feature(enable = "avx,avx2")]'
 funs_external_items() {
     items rind/src/low/x86_64/sha3_keccak8_f1600.rs 'fn set_row('
+    items rind/src/low/x86_64/mlkem_sample_poly_ntt_8x.rs 'fn load(' 'fn store(' 'fn store_low('
     items rind/src/low/generic/zeroise.rs 'pub(crate) fn zeroise<'
 }
 check_quote X86_64/FunsExternal funs_external_items
@@ -2203,6 +2204,10 @@ extract x86_64 X86_64 "${hashes[@]}" "${assembly[@]}" \
     --include crate::low::x86_64::sha3_keccak8_f1600 \
     --opaque crate::low::x86_64::sha3_keccak8_f1600::set_row \
     --include crate::low::generic::keccak8 \
+    --include crate::low::x86_64::mlkem_sample_poly_ntt_8x \
+    --opaque crate::low::x86_64::mlkem_sample_poly_ntt_8x::load \
+    --opaque crate::low::x86_64::mlkem_sample_poly_ntt_8x::store \
+    --opaque crate::low::x86_64::mlkem_sample_poly_ntt_8x::store_low \
     --start-from '{impl crate::aead::Cipher for crate::mid::aes_gcm::AesGcm}' \
     --start-from crate::mid::aes_gcm::AesGcm::encrypt_any \
     --start-from crate::mid::aes_gcm::AesGcm::decrypt_any \
@@ -2291,8 +2296,7 @@ extract x86_64 X86_64 "${hashes[@]}" "${assembly[@]}" \
     --start-from crate::low::x86_64::mlkem768_vg::Encaps::check_ek \
     --start-from crate::low::x86_64::mlkem768_vg::Encaps::encaps \
     --start-from crate::low::x86_64::mlkem768_vg::KeyPair::keygen \
-    --start-from crate::low::x86_64::mlkem768_vg::KeyPair::decaps \
-    --opaque crate::mid::mlkem::sample_ntt::sample_ntt_8x
+    --start-from crate::low::x86_64::mlkem768_vg::KeyPair::decaps
 extract aarch64 Aarch64 "${hashes[@]}" "${assembly[@]}" \
     --include crate::low::aarch64::sha512::sha512_compress_blocks \
     --start-from crate::mid::p256::PrivateKey::from_bytes \

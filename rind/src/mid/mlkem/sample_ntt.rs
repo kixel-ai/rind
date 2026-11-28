@@ -86,31 +86,40 @@ fn next_index(k: usize, i: u8, j: u8) -> (u8, u8) {
 #[cfg(rind_backend = "x86_64")]
 fn sample_ntt_8x(rho: &[u8; 32], transposed: bool, out: &mut [Poly]) {
     let (mut i, mut j) = (0, 0);
-    let (eights, _) = out.as_chunks_mut::<8>();
-    for outputs in eights {
+    let mut done = 0;
+    while done + 8 <= out.len() {
         let mut inputs = [[0; 40]; 8];
-        for input in &mut inputs {
-            *input = shake_input(rho, transposed, i, j);
+        for input in 0..8 {
+            inputs[input] = shake_input(rho, transposed, i, j);
             (i, j) = next_index(4, i, j);
         }
-        let outputs = outputs.as_flattened_mut().try_into().unwrap();
-        // The eight-way sampler hands back the tails.
-        low::mlkem_sample_poly_ntt_8x(&inputs, outputs, sample_poly_ntt_8x, sample_poly_ntt_tail);
+        let outputs = (&mut out[done..done + 8]).try_into().unwrap();
+        sample_poly_ntt_8x(&inputs, outputs);
+        done += 8;
     }
 }
 
+/// [`sample_poly_ntt_4x`] of eight polynomials, on the eight-way sampler where the
+/// CPU has it, which hands back the tails, and otherwise four at a time.
 #[cfg(rind_backend = "x86_64")]
-fn sample_poly_ntt_8x(inputs: &[[u8; 40]; 8], outputs: &mut [i16; N * 8]) {
-    let (input_quads, _) = inputs.as_chunks::<4>();
-    let (output_quads, _) = outputs.as_chunks_mut::<N>().0.as_chunks_mut::<4>();
-    for (inputs, outputs) in input_quads.iter().zip(output_quads.iter_mut()) {
-        sample_poly_ntt_4x(inputs, outputs);
+fn sample_poly_ntt_8x(inputs: &[[u8; 40]; 8], outputs: &mut [Poly; 8]) {
+    match low::mlkem_sample_poly_ntt_8x(inputs, outputs) {
+        Some(tails) => {
+            for poly in 0..8 {
+                let used = tails.used[poly];
+                if used < N {
+                    let mut sponge = sha3::SqueezingSponge::new(tails.states[poly]);
+                    tail_case(&mut sponge, &mut outputs[poly][used..]);
+                }
+            }
+        }
+        None => {
+            let inputs: (&[[u8; 40]; 4], &[[u8; 40]; 4]) =
+                (inputs[..4].try_into().unwrap(), inputs[4..].try_into().unwrap());
+            sample_poly_ntt_4x(inputs.0, (&mut outputs[..4]).try_into().unwrap());
+            sample_poly_ntt_4x(inputs.1, (&mut outputs[4..]).try_into().unwrap());
+        }
     }
-}
-
-#[cfg(rind_backend = "x86_64")]
-fn sample_poly_ntt_tail(tail_sponge: &mut [u64; 25], tail: &mut [i16]) {
-    tail_case(&mut sha3::SqueezingSponge::new(*tail_sponge), tail);
 }
 
 fn sample_poly_ntt_4x(inputs: &[[u8; 40]; 4], outputs: &mut [Poly; 4]) {
