@@ -101,6 +101,30 @@ theorem aesRounds192_eq (x : BitVec 128) (k : Nat → BitVec 128) :
   simp only [aesRound_eq]
   simp
 
+/-- AES-192 in the form s2n-bignum states AES-128 and AES-256
+(`aes128Cipher`, `aes256Cipher`): FIPS 197's cipher on a block in SP
+800-38D's byte order, under round keys in that order. s2n-bignum has none. -/
+def aes192Cipher (plaintext : BitVec 128) (ks : List (BitVec 128)) : BitVec 128 :=
+  let s0 := plaintext ^^^ ks[0]!
+  let s1 := fips197Round s0 ks[1]!
+  let s2 := fips197Round s1 ks[2]!
+  let s3 := fips197Round s2 ks[3]!
+  let s4 := fips197Round s3 ks[4]!
+  let s5 := fips197Round s4 ks[5]!
+  let s6 := fips197Round s5 ks[6]!
+  let s7 := fips197Round s6 ks[7]!
+  let s8 := fips197Round s7 ks[8]!
+  let s9 := fips197Round s8 ks[9]!
+  let s10 := fips197Round s9 ks[10]!
+  let s11 := fips197Round s10 ks[11]!
+  fips197FinalRound s11 ks[12]!
+
+/-- `aes192Cipher`, bytes reversed, is Vale's AES-192 on the reversed round keys. -/
+theorem aes192Cipher_eq (x : BitVec 128) (ks : List (BitVec 128)) :
+    reverseBytesQuad32 (aes192Cipher x ks) =
+      evalCipher .AES_192 (reverseBytesQuad32 x) (ks.map reverseBytesQuad32) := by
+  simp only [aes192Cipher, evalCipher, nr, evalRounds, rev_finalRound, rev_round, rev_xor, getElem!_map_rev]
+
 /-! ## PMULL and the halves -/
 
 theorem foldl_polyMul (a b : BitVec 64) : ∀ n,

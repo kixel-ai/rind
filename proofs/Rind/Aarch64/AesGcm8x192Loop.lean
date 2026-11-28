@@ -34,6 +34,18 @@ def block (m : Mem) (a : Addr) (i : Nat) : BitVec 128 := m.read (a + BitVec.ofNa
 def keystream (nonce : BitVec 96) (c : Nat) (k : Nat → BitVec 128) (i : Nat) : BitVec 128 :=
   evalCipher .AES_192 (ctrLane nonce (c + i)) (keys13 k)
 
+/-- With round keys `rk` in SP 800-38D's byte order, reversed into lanes as
+LDP loads them, the keystream is s2n-bignum's `aes_ctr_block` of AES-192,
+the block `GcmKernelOut` states its kernels' outputs over. -/
+theorem keystream_eq (nonce : BitVec 96) (c : Nat) (rk : List (BitVec 128)) (hrk : rk.length = 13) (i : Nat) :
+    keystream nonce c (fun j => reverseBytesQuad32 rk[j]!) i = aesCtrBlock aes192Cipher c nonce rk i := by
+  have hk : keys13 (fun j => reverseBytesQuad32 rk[j]!) = rk.map reverseBytesQuad32 := by
+    apply List.ext_getElem (by simp [keys13, hrk])
+    intro n h1 h2
+    simp only [keys13, List.getElem_map, List.getElem_range]
+    rw [List.getElem!_eq_getElem?_getD, List.getElem?_eq_getElem (by simp_all), Option.getD_some]
+  rw [keystream, hk, ctrLane, ← aes192Cipher_eq, aesCtrBlock, wordReversefields8, Nat.add_comm]
+
 /-- What an iteration of either main loop needs of the state it starts in:
 the round keys `k` at `x11`, the table of powers of the twisted key `H` at
 `x6`, the reduction constant at `x10`, counter blocks `c` to `c + 4` in `v0`

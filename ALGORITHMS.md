@@ -1088,7 +1088,9 @@ run; s2n-bignum's aarch64 AES-GCM kernels, so aarch64 runs aws-lc's by-8
 `aesv8_gcm_8x_enc_192` and `aesv8_gcm_8x_dec_192` past `short`'s lengths on a
 core with SHA3, which aws-lc runs on Apple and Neoverse V cores, and AES-CTR
 and GHASH in turn without it.
-aws-lc's routines are not verified. Valgrind hides SHA3 from
+aws-lc's routines are not verified, but for one iteration of the eight-way
+kernels' main loops, which `proofs/Rind/Aarch64/AesGcm8x192Loop.lean`
+proves on rind's model of AArch64. Valgrind hides SHA3 from
 `admin/ctgrind`, so `admin/ct-qemu` checks them, and the eight-way kernels,
 under qemu-aarch64.
 AES-NI and ARMv8 expand an AES-192 key six words per vector step, with the
