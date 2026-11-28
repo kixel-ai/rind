@@ -556,7 +556,10 @@ padding (`.align` and the `jmp` over it), which runs as no instructions. It
 lays out `ite` and `loop` as the AArch64 model does. For BoringSSL's AVX2
 AES-GCM code it adds `vpshufd` from memory and RIP-relative operands
 (`rip`) that read the start of a static, as the words the program names,
-leaking offset 0 as VG's table instructions do. `admin/prove lean` compares
+leaking offset 0 as VG's table instructions do, and for its AVX-512 key
+setup `vpternlogd` and `vbroadcasti32x4` of a static, the EVEX forms
+`vpxord` of `ymm` registers, `vshufi64x2`, and `vmovdqu8` to memory, and a
+32-bit `dec`. `admin/prove lean` compares
 each x86_64 program's bytes and relocations with the Linux build the same
 way, `rind-asm x86_64` printing them: the function must be the whole of its
 own section, and each RIP-relative operand's `R_X86_64_PC32` relocation must
@@ -653,6 +656,15 @@ comparison checks.
   `Pre`. Nothing restates it yet: the Rust that calls it and the kernels
   that read its table are [the VAES
   quest](/quest/m4/verified/aes-gcm-x86-vaes.md)'s.
+
+- `Rind/X86_64/GcmInitAvx512.lean`: `gcm_init_vpclmulqdq_avx512_correct`,
+  the same of `low::x86_64::aes_gcm_vaes::gcm_init_vpclmulqdq_avx512`,
+  BoringSSL's key setup for its AVX-512 AES-GCM routines: from the same
+  `Pre`, it writes H^16 down to H^1 of the key at `rsi`, each shifted as
+  Vale's `shift_key_1` does, to the table's 256 bytes (`VaesKernel::powers`'
+  layout, which `Avx512Powers` states), and changes no other memory and no
+  general register but `rax` and `r8`; its trace is a function of its two
+  pointers. Nothing restates it yet either.
 
 - `Rind/Aarch64/Sha256HwAsm.lean`: `sha256_block_data_order_hw_correct`,
   that `low::aarch64::sha256::sha256_block_data_order_hw`, aws-lc's routine
