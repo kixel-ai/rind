@@ -426,6 +426,10 @@ dispatched `prove` run. It cannot run the intrinsic vectors, which need an
 x86_64 Linux CPU with AVX2, so it names them as not run and exits nonzero, and
 it computes no cache key. The HOL Light proofs, `vg`, and the cosimulation are
 not run on macOS.
+On any host, `admin/prove lean Rind.X86_64.AesGcm` (any Lean modules) builds
+only those modules and what they import, translating only the targets they
+reach, for a fast loop while editing a proof. It runs none of `lean`'s other
+checks and computes no key, so a bare `admin/prove lean` still decides.
 
 ## Scheduled workflows
 

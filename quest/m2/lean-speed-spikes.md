@@ -33,7 +33,6 @@ Approach:
 ## Related
 
 - [Aeneas translation cache and SSH-shared Lake outputs](https://github.com/kixel-ai/rind/pull/1138) - shared cross-host proof cache
-- [Build spec-server once in prove.yml and add scoped admin/prove lean targets](/quest/m0/spec-server-single-build.md) - CI `spec-server` deduplication and scoped local targets
 - [Split charon/aeneas Funs.lean per algorithm family, parallelize, and cache](/quest/m2/split-aeneas-extractions.md) - breaks monolithic `Funs.lean` invalidations
 - [rind's HOL Light proofs are ported to Lean](/quest/m5/verified/hol-light-to-lean.md) - upcoming Lean proof growth
 - `kixel-ai/dotfiles` `quest/m0/lake-auto-cache.md` - Tailscale Lake cache server and transparent `lake` PATH shim

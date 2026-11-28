@@ -15,7 +15,9 @@ build on, from s2n-bignum, Vale, and aws-lc, is in rind's build the object
 code its own proof is about. The `prove` workflow runs it nightly and on each
 push to main that changes rind's source or these files. A failure gates no
 merge; it alerts, and a release publishes only once these proofs passed on
-the code it releases.
+the code it releases. While editing a proof, `admin/prove lean
+Rind.X86_64.AesGcm` (any Lean modules) builds only those modules and what they
+import, translating only the targets they reach; it is no pass of `lean`.
 
 `lakefile.toml` turns on Lake's artifact cache, which lives in the Lean
 toolchain's directory under `~/.elan` and every checkout of a user shares, so
@@ -2485,7 +2487,9 @@ says of each), and a budget of 8 random cases a test from seed 1. The
 `prove` workflow's nightly `spec-tests` job samples nothing: it runs every
 vector the filters in `cases.rs` admit, and a budget of 64 random cases a
 test from the run's own seed, each of the driver's groups of sections on a
-runner of its own (`SPEC_TESTS_GROUP`). Most filters keep a spec to the domain its
+runner of its own (`SPEC_TESTS_GROUP`), all against one `spec-server` that
+the workflow's `spec-server-build` job links with `admin/prove spec-server`
+and hands each row as `SPEC_TESTS_SERVER`. Most filters keep a spec to the domain its
 theorems pass it; one is a runtime limit, PBKDF2's vectors past 100,000
 iterations (RFC 6070's 2^24), which would take hours. A case may send more than one request, ML-KEM's sampled run spends a
 quarter of the budget, and the specs `NO_RANDOM` in
