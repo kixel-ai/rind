@@ -560,9 +560,9 @@ const VG_FROM: usize = 6144;
 /// 0.93-0.96x at 16 KB, and 0.89-0.92x at 64 KB, and its opens 0.98-0.99x,
 /// 0.95-0.97x, and 0.92-0.94x; at 9 KB its AES-128 seals and AES-192 and
 /// AES-256 opens were level, and below 8 KB both lost, by 1.2-1.5x at
-/// 1350 bytes. On its E-cores VG lost at every length, by 1.03-1.05x at
+/// 1350 bytes. On its E-cores VG lost at every length, by 1.02-1.05x at
 /// 16 KB but for AES-192 seals (1.00x). Preparing its key context costs
-/// 125-190 ns, about a key setup's, so a key makes it on its first message
+/// 125-180 ns, about a key setup's, so a key makes it on its first message
 /// this long.
 const VAES_AVX2_VG_FROM: usize = 10240;
 

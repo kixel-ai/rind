@@ -1026,7 +1026,7 @@ BoringSSL's. On Intel without AVX-512, messages of 10 KB or more run VG's
 256-bit kernel's time at 10 KB, 0.93-0.97x at 16 KB, and 0.89-0.94x at
 64 KB, but were level at 9 KB and lost below 8 KB; on its E-cores they lost
 at every length, by 1.00-1.05x at 16 KB. Their key context holds 16 powers,
-which take 125-190 ns to prepare, made lazily as on Zen 5. AMD's Zen 3 and 4
+which take 125-180 ns to prepare, made lazily as on Zen 5. AMD's Zen 3 and 4
 keep BoringSSL's 256-bit kernel.
 Below 256 bytes, Vale's AES-GCM opens on VAES cores without AVX-512, where it
 measured 0.83-1.09x the by-8 path's time on Zen 3 (median 0.95x), and
