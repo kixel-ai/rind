@@ -29,6 +29,13 @@ pub(crate) fn sha256_finish_x8(
     }
 }
 
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    clippy::unwrap_used,
+    reason = "messages holds two to eight of one length, so lane(j) and messages[0] index it; \
+              whole is a multiple of 64 bytes within each; and pad fills at most the two blocks of last"
+)]
 fn finish_avx2(
     state: &[u32; 8],
     messages: &[&[u8]],
@@ -65,6 +72,12 @@ fn sha256_compress_x8_avx2(states: &mut [[u32; 8]; 8], blocks: &[[u8; 64]; 8], _
     unsafe { compress(states, blocks) }
 }
 
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    clippy::unwrap_used,
+    reason = "j < 8 and i < 64 = K.len(), with i >= 16 where i - 15 is taken; w's halves are 8 vectors each"
+)]
 #[target_feature(enable = "avx,avx2")]
 fn compress(states: &mut [[u32; 8]; 8], blocks: &[[u8; 64]; 8]) {
     let bswap = _mm256_set_epi8(
@@ -132,6 +145,11 @@ fn compress(states: &mut [[u32; 8]; 8], blocks: &[[u8; 64]; 8]) {
 }
 
 /// Transposes eight vectors of eight 32-bit words.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "i < 4, so i + 4 < 8 = s.len()"
+)]
 #[target_feature(enable = "avx,avx2")]
 fn transpose(s: &mut [__m256i; 8]) {
     let t0 = [

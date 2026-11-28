@@ -233,6 +233,12 @@ struct Padded {
 /// made a one-block SHA-256 twice as slow on Arrow Lake.
 // Inline, so the words reach the block in registers: through memory, a
 // one-block SHA-256 measured 7.7% slower.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    clippy::unwrap_used,
+    reason = "16 * (len / 16) <= len, part holds at least 8 bytes where it is split, and tail is in memory, so len + 9 fits"
+)]
 #[inline(always)]
 fn padded(tail: &[u8], length: [u8; 8]) -> Padded {
     let lanes = tail.len() / 16;
@@ -263,6 +269,10 @@ fn padded(tail: &[u8], length: [u8; 8]) -> Padded {
 
 /// `part`, under 8 bytes, then the 0x80 that ends a message, as a
 /// little-endian word.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "part is under 8 bytes, so every shift is under 64 and shift reaches at most 48"
+)]
 #[inline(always)]
 fn ended(part: &[u8]) -> u64 {
     let mut word = 0x80 << (8 * part.len());

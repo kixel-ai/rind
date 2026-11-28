@@ -18,6 +18,11 @@ use core::arch::x86_64::*;
 /// 8, 4, 2, and 1 bytes from the lane's start, so each load is likely to lie
 /// within one store its writer made, and forward from it.
 // Inline, so the lanes stay in registers rather than return through memory.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "at <= 48 and tail is in memory, so at + 16 and len + 9 fit; each slice starts at most at tail.len()"
+)]
 #[inline(always)]
 pub(super) fn padded_tail(tail: &[u8], length: [u8; 8]) -> ([__m128i; 4], Option<[__m128i; 4]>) {
     let lane = |at: usize| {
@@ -48,6 +53,12 @@ pub(super) fn padded_tail(tail: &[u8], length: [u8; 8]) -> ([__m128i; 4], Option
 }
 
 /// `part`, under 16 bytes, then the 0x80 that ends a message, as a lane.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    clippy::unwrap_used,
+    reason = "rest is under 8 bytes, and each read covers the bytes its bit of rest.len() counts, at shifts under 64"
+)]
 #[inline(always)]
 fn ended(part: &[u8]) -> __m128i {
     let (first, rest) = match part.split_first_chunk::<8>() {

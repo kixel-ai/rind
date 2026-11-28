@@ -106,6 +106,10 @@ macro_rules! d {
 /// Does the "z := x * y" operation where x is m digits, y is n, result z is k.
 /// Truncates the result in general unless k >= m + n
 #[inline(never)]
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "u64 slices hold under 2^61 words, so a sum of two lengths or a length times 3 fits in usize"
+)]
 pub(crate) fn bignum_mul(z: &mut [u64], x: &[u64], y: &[u64]) {
     assert!(z.len() >= x.len() + y.len());
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.

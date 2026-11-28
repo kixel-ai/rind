@@ -139,6 +139,10 @@ pub(crate) fn tagged_from<const ENC: bool>(
 }
 
 /// GCM's first counter block for a 96-bit nonce: the nonce, then 1.
+#[expect(
+    clippy::unwrap_used,
+    reason = "the 12-byte nonce splits into 8 and 4 bytes"
+)]
 fn counter_block(nonce: &[u8; 12]) -> [u8; 16] {
     let lo = u64::from_le_bytes(nonce[..8].try_into().unwrap());
     let hi = u64::from(u32::from_le_bytes(nonce[8..].try_into().unwrap())) | 1 << 56;
@@ -199,6 +203,11 @@ fn cipher<const ENC: bool>(
 /// composes vpaes and SSSE3 GHASH, or its SSE2 AES and integer GHASH: they
 /// take turns over 3 KB at a time, as aws-lc's `GHASH_CHUNK`, which stays in
 /// L1 and spreads each routine's setup.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::unwrap_used,
+    reason = "the 16-byte counter splits into 12 and 4 bytes, and a group holds at most 24 chunks, so 8 * 24 fits in u32"
+)]
 fn composed<const ENC: bool>(
     key: &AesKey,
     ghash: &mut Ghash<'_>,
@@ -402,6 +411,10 @@ fn by8<const ENC: bool>(
 #[target_feature(
     enable = "aes,avx,avx2,avx512bw,avx512f,avx512vl,sse3,ssse3,pclmulqdq,vaes,vpclmulqdq"
 )]
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "a tail chunk holds 1 to 64 bytes, so 64 - chunk.len() is a shift below 64"
+)]
 fn _cipher_avx512<const ENC: bool>(
     key: &HwKey,
     ghash: &mut Ghash<'_>,
@@ -420,7 +433,7 @@ fn _cipher_avx512<const ENC: bool>(
 
     let ghash_avx512 = match ghash.table {
         GhashTable::Avx512(ghash_avx512) => ghash_avx512,
-        _ => panic!("unexpected ghash table variant"),
+        _ => unreachable!("cipher calls this only with an AVX-512 GHASH table"),
     };
 
     for blocks in by16_iter {

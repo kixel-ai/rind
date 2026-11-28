@@ -41,6 +41,10 @@ impl VpaesKey {
 
     /// The key's length in bytes, from the `nbits / 32 + 5` rounds that
     /// `vpaes_set_encrypt_key` stores.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "a 128-, 192-, or 256-bit key stores 9, 11, or 13 rounds"
+    )]
     pub(crate) fn key_len(&self) -> usize {
         (self.rounds as usize - 5) * 4
     }
@@ -152,6 +156,10 @@ impl low::generic::zeroise::Zeroable for VpaesDecKey {}
 /// # Safety
 ///
 /// `key` must be that key, which only a `HaveSsse3` token builds.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "blocks is in memory, so its 16 * len bytes fit in usize"
+)]
 unsafe fn cbc(blocks: &mut [[u8; 16]], key: *const u8, iv: &[u8; 16], enc: i32) {
     // The routine leaves the next IV here; CBC callers here start afresh.
     let mut ivec = *iv;

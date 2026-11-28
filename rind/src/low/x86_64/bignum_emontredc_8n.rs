@@ -32,6 +32,10 @@ use crate::low::macros::*;
 /// Functionally equivalent to bignum_emontredc (see that file for more detail).
 /// But in general assumes that the input k is a multiple of 8.
 #[inline(never)]
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "u64 slices hold under 2^61 words, so a sum of two lengths or a length times 3 fits in usize"
+)]
 pub(crate) fn bignum_emontredc_8n(z: &mut [u64], m: &[u64], w: u64) -> u64 {
     let ret: u64;
     assert!(z.len() == m.len() * 2);

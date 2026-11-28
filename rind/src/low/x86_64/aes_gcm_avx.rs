@@ -77,6 +77,11 @@ impl AvxKernel {
 
     /// Runs the encrypting or decrypting routine, which writes the tag to, or
     /// checks it against, `tag`, and returns the decrypting one's result.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "len / 16 * 16 <= len, so aad_whole indexes aad and the split is in bounds"
+    )]
     fn cipher<const ENC: bool>(
         &self,
         key: &HwKey,
@@ -170,6 +175,10 @@ struct Buffers<'a> {
 
 /// Runs the encrypting or decrypting routine for `key`'s size, in place on
 /// `b`'s blocks, and returns the decrypting one's result.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "six is a multiple of 6 at most blocks.len() / 16, so the subtraction and six * 16 stay in blocks"
+)]
 #[inline(always)]
 fn aead<const ENC: bool>(
     key: &HwKey,

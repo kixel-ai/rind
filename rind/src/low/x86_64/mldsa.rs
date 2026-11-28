@@ -139,6 +139,10 @@ macro_rules! rej_eta {
         ///
         /// Which nibbles are rejected is public, as FIPS 204 allows: the
         /// accepted values are independent of it.
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "the routine writes at most 256 = r.len() coefficients and returns how many"
+        )]
         pub(crate) fn $name(r: &mut [i32; 256], offset: usize, buf: &[u8]) -> usize {
             if let (Some(_), 0, Ok(buf)) = (HaveAvx2::check(), offset, <&[u8; $len]>::try_from(buf)) {
                 low::ct::public_slice(buf);
@@ -160,6 +164,11 @@ rej_eta!(
 
 /// For each 8-bit mask, the indices of its set bits, packed low first.
 #[cfg_attr(coverage_nightly, coverage(off))] // const-evaluated only
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "const-evaluated, where an overflow or index out of bounds fails to compile"
+)]
 const fn rej_uniform_table() -> [u8; 2048] {
     let mut t = [0; 2048];
     let mut m = 0;

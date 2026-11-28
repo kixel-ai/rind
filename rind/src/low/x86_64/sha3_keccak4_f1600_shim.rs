@@ -4,7 +4,11 @@
 /// Computes Keccak-f1600 on all four states in `a`: four at once with AVX2,
 /// or one at a time without it.
 // Indexed rather than iterated, which `proofs/` reasons about more simply.
-#[allow(clippy::needless_range_loop)]
+#[allow(
+    clippy::needless_range_loop,
+    reason = "indexed rather than iterated, which proofs/ reasons about more simply"
+)]
+#[expect(clippy::indexing_slicing, reason = "i < 4 = a.len()")]
 #[inline]
 pub(crate) fn sha3_keccak4_f1600(a: &mut [[u64; 25]; 4], rc: &[u64; 24]) {
     match super::cpu::HaveAvx2::check() {

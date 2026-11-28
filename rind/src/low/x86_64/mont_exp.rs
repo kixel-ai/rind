@@ -65,6 +65,13 @@ pub(crate) fn mont_exp(z: &mut [u64], x: &[u64], one: &[u64], e: &[u64], m: &[u6
 }
 
 /// `mont_exp` by `mulx`, `adcx`, and `adox` given the proof of BMI2 and ADX.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "k and e.len() are at most a PosInt's few hundred words, so 34 * w and 64 * e.len() fit in usize; \
+              each slice is k <= w words within one of the 32 rows; lsb > 0 is a multiple of 5 before each \
+              subtraction; and bignum_cmp_lt returns 0 or 1"
+)]
 fn mont_exp_by(
     z: &mut [u64],
     x: &[u64],
@@ -140,6 +147,11 @@ fn mont_exp_by(
 /// the value, laid out as `bn_scatter5` does for `bn_power5`.
 // Inlined before it is optimized, where the compiler sees `powers` hold 32
 // rows: optimized alone, it bounds the loop by dividing the length by `w`.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "powers holds 32 rows of w words, so i * w <= powers.len() for i < 32 = Row's length"
+)]
 #[inline(always)]
 fn power5_table(powers: &[u64], w: usize, k: usize) -> Vec<Row> {
     let mut table = alloc::vec![Row([0; 32]); k];
@@ -164,6 +176,10 @@ fn gather(z: &mut [u64], powers: &[u64], i: u64) {
 }
 
 /// [`gather`] by AVX2, given the proof of it.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "z and the 32 rows of w = z.len() words are in memory, so 32 * w and 16 * b fit in usize"
+)]
 fn gather_avx2(z: &mut [u64], powers: &[u64], i: u64, _token: HaveAvx2) {
     let w = z.len();
     assert!(w.is_multiple_of(4) && powers.len() == 32 * w);
@@ -184,6 +200,11 @@ fn gather_avx2(z: &mut [u64], powers: &[u64], i: u64, _token: HaveAvx2) {
 
 /// Copies the `4 * V` words from column `col` of power `i` of the 32 rows
 /// of `powers` into `z`, masking each row's vectors by whether it is row `i`.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "V <= 4 and col + 4 * V <= w = powers.len() / 32, so col indexes powers and 4 * j < 16"
+)]
 #[target_feature(enable = "avx,avx2")]
 fn gather_columns<const V: usize>(z: &mut [u64], powers: &[u64], col: usize, i: u64) {
     let w = powers.len() / 32;
@@ -212,6 +233,11 @@ fn gather_columns<const V: usize>(z: &mut [u64], powers: &[u64], col: usize, i: 
 
 /// The `width` bits of `e` from bit `lsb` up, which must lie within it. Only
 /// the positions decide which words are read, so the bits may be secret.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "the bits lie within e and width <= 5, so word + 1 indexes e when they cross a word and shifts are under 64"
+)]
 fn bits(e: &[u64], lsb: usize, width: usize) -> u64 {
     let (word, shift) = (lsb / 64, lsb % 64);
     let mut bits = e[word] >> shift;

@@ -95,6 +95,10 @@ impl<const H: usize> Pair<H> {
     }
 
     /// `v << shift` in the value for each modulus, for `v` below `2^52`.
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "callers shift by 0, 96, or 128 bits, within H's 32 or 40 limbs"
+    )]
     fn both(v: u64, shift: usize) -> Self {
         let mut pair = Self::ZERO;
         for limbs in &mut pair.0 {
@@ -110,6 +114,10 @@ impl<const H: usize> low::Zeroable for Pair<H> {}
 const MASK: u64 = (1 << 52) - 1;
 
 /// Splits `words` into 52-bit `limbs`, zero above them.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "held stays below 116, as each limb takes 52 of it"
+)]
 fn to_limbs(limbs: &mut [u64], words: &[u64]) {
     let (mut acc, mut held) = (0u128, 0);
     let mut words = words.iter();
@@ -125,6 +133,10 @@ fn to_limbs(limbs: &mut [u64], words: &[u64]) {
 }
 
 /// Joins 52-bit `limbs` into `words`, which must hold their value.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "held stays below 116, as each word takes 64 of it"
+)]
 fn from_limbs(words: &mut [u64], limbs: &[u64]) {
     let (mut acc, mut held) = (0u128, 0);
     let mut limbs = limbs.iter();
@@ -165,6 +177,13 @@ static X40: Routines<40> = Routines {
     extract: extract_multiplier_2x40_win5,
 };
 
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "k is 24 or 32 with 30 or 40 limbs, so 52 * limbs > 64 * k; 2 <= i < 32 = table.len(); \
+              64 * k is no multiple of 5, so each window's bit < 64 * k and w < k = e.len(); \
+              and bignum_cmp_lt returns 0 or 1"
+)]
 fn mod_exp<const H: usize>(
     token: HaveAvx512ForRsa,
     routines: &Routines<H>,

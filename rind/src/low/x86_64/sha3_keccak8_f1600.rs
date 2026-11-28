@@ -121,6 +121,11 @@ fn rows(a: &[[u64; 25]; 8], i: usize) -> [__m512i; 8] {
 }
 
 /// Lanes `i` to `i + 7` of `s`, lane `i` in element 0.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "callers pass i of 0, 8, or 16, so i + 7 < 25 = s.len()"
+)]
 #[inline]
 #[target_feature(enable = "avx512f")]
 fn row(s: &[u64; 25], i: usize) -> __m512i {
@@ -154,6 +159,11 @@ fn set_rows(a: &mut [[u64; 25]; 8], i: usize, r: [__m512i; 8]) {
 //
 // The one store through a pointer, which `proofs/` models by hand: LLVM splits
 // a store built from `v`'s elements into 128-bit pieces.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "callers pass i of 0, 8, or 16, so i + 8 <= 25 = s.len()"
+)]
 #[inline]
 #[target_feature(enable = "avx512f")]
 fn set_row(s: &mut [u64; 25], i: usize, v: __m512i) {
@@ -204,7 +214,11 @@ fn transpose(r: [__m512i; 8]) -> [__m512i; 8] {
 /// `state[i]`.
 //
 // A range loop, since Aeneas translates no iterator over `rc`.
-#[allow(clippy::needless_range_loop)]
+#[allow(
+    clippy::needless_range_loop,
+    reason = "Aeneas translates no iterator over rc"
+)]
+#[expect(clippy::indexing_slicing, reason = "i < 24 = rc.len()")]
 #[target_feature(enable = "avx512f")]
 pub(super) fn keccak8_f1600(state: &mut [__m512i; 25], rc: &[u64; 24]) {
     for i in 0..24 {
