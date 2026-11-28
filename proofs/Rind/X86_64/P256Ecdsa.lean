@@ -2124,6 +2124,15 @@ end P256
 what it draws the functional spec leaves out. -/
 def Fills : Prop := ∀ s : Slice U8, ∃ r, getrandom.fill s = ok r
 
+/-- The system source's draws: `getrandom::fill`'s failure is `RngFailed`. -/
+theorem system_draws (hfill : Fills) : Draws mid.rng.SystemRandom.Insts.RindMidRngRandomSource := by
+  intro rng s
+  obtain ⟨⟨fr, fs⟩, hf⟩ := hfill s
+  simp only [mid.rng.SystemRandom.Insts.RindMidRngRandomSource.fill, hf, bind_ok]
+  rcases fr with _ | e <;>
+    simp [core.result.Result.map_err,
+      mid.rng.RandomSourceSystemRandom.fill.closure.Insts.CoreOpsFunctionFnOnceTupleErrorError.call_once]
+
 namespace P256
 
 /-- `ecdsa::SigningKey::sign` at P-256. -/

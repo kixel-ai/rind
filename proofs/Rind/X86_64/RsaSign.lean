@@ -477,4 +477,156 @@ theorem encode_pss_sig_spec (hs : HashSpec inst H B L max Abs CAbs) (hnew : inst
 
 end
 
+/-- `PssSalt::len` is the salt length it names. -/
+theorem pss_salt_len_of (salt : high.rsa.PssSalt) (em_len h_len : Usize) (hh : h_len.val ≤ 64)
+    (hem : em_len.val ≤ 1024) :
+    high.rsa.PssSalt.len salt em_len h_len ⦃ x => x.val = pssSaltLen em_len.val h_len.val salt ∧ x.val ≤ 65535 ⦄ := by
+  unfold high.rsa.PssSalt.len
+  cases salt with
+  | Hash =>
+    show (ok h_len : Result Usize) ⦃ x => _ ⦄
+    simp only [WP.spec_ok, pssSaltLen]
+    exact ⟨trivial, by omega⟩
+  | Max =>
+    show (do
+      let i ← h_len + 2#usize
+      ok (core.num.Usize.saturating_sub em_len i) : Result Usize) ⦃ x => _ ⦄
+    step as ⟨i, hi⟩
+    simp only [pssSaltLen]
+    rw [usize_saturating_sub_val, hi]
+    omega
+  | Len l =>
+    show core.convert.IntoFrom.into core.convert.FromUsizeU16 l ⦃ x => _ ⦄
+    simp only [core.convert.IntoFrom.into, WP.spec_ok, pssSaltLen, core.convert.num.FromUsizeU16.from_val_eq]
+    exact ⟨trivial, by scalar_tac⟩
+
+section
+variable {Self C S : Type} {inst : high.hash.Hash Self C S} {H : List Byte → List Byte}
+  {B L max : Nat} {Abs : List U8 → S → Prop} {CAbs : List U8 → C → Prop}
+
+/-- `_sign_pss` refuses a buffer shorter than the modulus, a salt too long
+for its encoded message, and a failed draw, and otherwise signs the
+EMSA-PSS encoding of `message` with the salt it drew. -/
+theorem sign_pss_core_spec (hs : HashSpec inst H B L max Abs CAbs) (hnew : inst.new ⦃ c => CAbs [] c ⦄)
+    (hL : 0 < L) (hmax : 2048 ≤ max) (hd : Draws mid.rng.SystemRandom.Insts.RindMidRngRandomSource)
+    (havx : ∃ t, low.x86_64.cpu.HaveAvx2.check = ok t)
+    (t : low.x86_64.cpu.HaveBmi2Adx) (hadx : low.x86_64.cpu.HaveBmi2Adx.check = ok (some t))
+    (hifma : IfmaCheckReturns) (key : high.rsa.SigningKey) (hinv : PrivKeyInv key)
+    (hPn : MontProducts key.public.n.used.val)
+    (hcrt : key.ifma.w = 0#usize → MontProducts key.p.used.val ∧
+      (key.p.used.val = 16 ∨ key.p.used.val = 32) ∧ NoRsazPair key.p.used.val)
+    (salt : high.rsa.PssSalt) (signature message : Slice U8) (hm : message.length ≤ max)
+    (hroom : octetLen (keyN key) ≤ signature.length) :
+    high.rsa.SigningKey._sign_pss inst key salt signature message ⦃ r sig' =>
+      (∃ e, r = .Err e ∧ (e = .RngFailed ∨ (e = .KeyRejected .RsaModulus ∧
+        ((keyN key).size - 1 + 7) / 8 < L + pssSaltLen (((keyN key).size - 1 + 7) / 8) L salt + 2))) ∨
+      ∃ salt' : List U8, salt'.length = pssSaltLen (((keyN key).size - 1 + 7) / 8) L salt ∧
+        ∃ EM : List U8, emsaPssEncode H L (bv message.val) (bv salt') ((keyN key).size - 1) = some (bv EM) ∧
+          SignedAs key EM r ∧ ∀ s, r = .Ok s → sig'.length = signature.length ∧ sig'.val.take s.length = s.val ⦄ := by
+  have hpub := hinv.1
+  obtain ⟨hk2, hk, hodd, hn0, hmont, he, he3, hs1, hs2, htop⟩ := hpub
+  have hL64 : L ≤ 64 := hs.out.2.1
+  unfold high.rsa.SigningKey._sign_pss mid.rsa_priv.RsaPrivateKey.modulus_len_bytes
+  step with modulus_len_bytes_spec key.public hinv.1 as ⟨k, hkv⟩
+  split
+  · rename_i hlt
+    exfalso
+    have h1 : signature.len.val < k.val := hlt
+    have h2 : signature.len.val = signature.length := rfl
+    unfold keyN at hroom
+    omega
+  · step with hs.hash_spec message hm as ⟨d, hdl, hdv⟩
+    unfold mid.rsa_priv.RsaPrivateKey.modulus_len_bits mid.rsa_pub.RsaPublicKey.modulus_len_bits
+    step with len_bits_spec key.public.n hk as ⟨b, hb⟩
+    step as ⟨em_bits, hemb⟩
+    have hemb' : em_bits.val = (keyN key).size - 1 := by rw [hemb, hb]
+    unfold core.num.Usize.div_ceil
+    simp only [show ¬ (8#usize).val = 0 by decide, _root_.dite_false, bind_ok]
+    step as ⟨em1, _b, hem1, hem1l, _⟩
+    have hemL : em1.length = ((keyN key).size - 1 + 7) / 8 := by rw [hem1l, hemb']; omega
+    step with digest_as_ref_spec d as ⟨sh, hshl, hshv⟩
+    rw [hdl] at hshl
+    step with pss_salt_len_of salt em1.len sh.len (by show sh.length ≤ 64; omega)
+      (by show em1.length ≤ 1024; rw [hemL]; unfold keyN; omega) as ⟨sl, hslv, hslb⟩
+    have hslv' : sl.val = pssSaltLen (((keyN key).size - 1 + 7) / 8) L salt := by
+      rw [hslv, show em1.len.val = em1.length from rfl, hemL, show sh.len.val = sh.length from rfl, hshl]
+    have hHL := hs.out.2.2.2.2
+    step with encode_pss_sig_spec hs hnew hL hmax _ hd () em1 em_bits (by rw [hemL, hemb'])
+      (by rw [hemL]; unfold keyN; omega) sh (bv message.val) (by rw [hshv, hdv]) sl hslb as ⟨r, em2, hr⟩
+    rcases r with ⟨⟩ | e
+    · obtain ⟨salt', hsl', henc⟩ := hr
+      simp only [core.result.Result.Insts.CoreOpsTry.branch, bind_ok, low.ct.public_slice]
+      obtain ⟨hEMl, hEMlt⟩ := emsaPssEncode_lt H L hL hHL _ _ _ _ henc
+      rw [bv_length] at hEMl
+      have hlt : beNat em2.val < keyN key := by
+        rw [← os2ip_bv]
+        calc _ < 2 ^ ((keyN key).size - 1) := by rw [← hemb']; exact hEMlt
+          _ ≤ keyN key := two_pow_size_le _ (by unfold keyN; omega)
+      have hem2L : em2.val.length ≤ 1024 := by rw [hEMl, hemb']; unfold keyN; omega
+      step with posint_from_bytes_spec em2 (beNat_lt_8192 _ hem2L) as ⟨r, c, hr, hcu, hcz, hcv, _⟩
+      subst hr
+      simp only [core.result.Result.Insts.CoreOpsTry.branch, bind_ok]
+      step with private_op_spec havx t hadx hifma key hinv hPn hcrt c hcu hcz as ⟨r1, hr1⟩
+      have henc' : emsaPssEncode H L (bv message.val) (bv salt') ((keyN key).size - 1) = some (bv em2.val) := by
+        rw [← hemb']; exact henc
+      have hsl'' : salt'.length = pssSaltLen (((keyN key).size - 1 + 7) / 8) L salt := by rw [hsl', hslv']
+      cases r1 with
+      | Err e =>
+        simp only [PrivateOpResult] at hr1
+        rcases hr1 with ⟨-, hge⟩ | ⟨rfl, -, hne⟩
+        · exfalso; unfold keyN at hlt; rw [hcv] at hge; omega
+        · simp only [core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual,
+            core.convert.FromSame.from, bind_ok, bind_tc_ok]
+          refine (WP.spec_ok _).mpr ?_
+          simp only [WP.uncurry'_pair]
+          exact Or.inr ⟨salt', hsl'', em2.val, henc', ⟨rfl, by rw [hcv] at hne; exact hne⟩, fun s h => nomatch h⟩
+      | Ok sv =>
+        obtain ⟨-, hsu, hsv, hchk⟩ := hr1
+        simp only [low.ct.into_public, bind_ok]
+        have hsN : wordsNat (lowWords sv sv.used) < keyN key := by
+          rw [hsv]; exact keyRsasp1_lt key hinv _
+        step with to_signature_spec key hinv.1 sv (by rw [hsu]; exact hk) hsN signature hroom
+          as ⟨r2, sig', s, hr2, hsl, hsb, hsig'l, hsig'v⟩
+        subst hr2
+        refine Or.inr ⟨salt', hsl'', em2.val, henc', ?_,
+          fun s' h => by injection h with h; subst h; exact ⟨hsig'l, hsig'v⟩⟩
+        simp only [SignedAs]
+        rw [← hcv, ← hsv, ← hsb, ← hsl, i2osp_beNat]
+    · simp only [core.result.Result.Insts.CoreOpsTry.branch, bind_ok,
+        core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual,
+        core.convert.FromSame.from, bind_tc_ok]
+      refine (WP.spec_ok _).mpr ?_
+      simp only [WP.uncurry'_pair]
+      left
+      refine ⟨e, rfl, ?_⟩
+      rcases hr with h | ⟨hl, he⟩
+      · exact Or.inl h
+      · right; refine ⟨he, ?_⟩; rw [hemL, hslv'] at hl; exact hl
+
+end
+
+/-- RSASSA-PSS-SIGN with SHA-256 and MGF1 with SHA-256: `sign_pss_sha256`
+signs the EMSA-PSS encoding of `message` with a salt of the length `salt`
+names, which the system random source drew, or refuses a salt too long for
+the modulus, a failed draw, or what `private_op`'s fault check refuses. -/
+theorem sign_pss_sha256_spec (h : Runs) (hb : Sha256Blocks) (hfill : Fills)
+    (t : low.x86_64.cpu.HaveBmi2Adx) (hadx : low.x86_64.cpu.HaveBmi2Adx.check = ok (some t))
+    (hifma : IfmaCheckReturns) (key : high.rsa.SigningKey) (hinv : PrivKeyInv key)
+    (hPn : MontProducts key.public.n.used.val)
+    (hcrt : key.ifma.w = 0#usize → MontProducts key.p.used.val ∧
+      (key.p.used.val = 16 ∨ key.p.used.val = 32) ∧ NoRsazPair key.p.used.val)
+    (salt : high.rsa.PssSalt) (signature message : Slice U8) (hm : message.length ≤ maxInput)
+    (hroom : octetLen (keyN key) ≤ signature.length) :
+    high.rsa.SigningKey.sign_pss_sha256 key salt signature message ⦃ r sig' =>
+      (∃ e, r = .Err e ∧ (e = .RngFailed ∨ (e = .KeyRejected .RsaModulus ∧
+        ((keyN key).size - 1 + 7) / 8 < 32 + pssSaltLen (((keyN key).size - 1 + 7) / 8) 32 salt + 2))) ∨
+      ∃ salt' : List U8, salt'.length = pssSaltLen (((keyN key).size - 1 + 7) / 8) 32 salt ∧
+        ∃ EM : List U8, emsaPssEncode sha256.hash 32 (bv message.val) (bv salt') ((keyN key).size - 1) =
+            some (bv EM) ∧
+          SignedAs key EM r ∧ ∀ s, r = .Ok s → sig'.length = signature.length ∧ sig'.val.take s.length = s.val ⦄ := by
+  unfold high.rsa.SigningKey.sign_pss_sha256
+  step with new_secret_spec h
+  exact sign_pss_core_spec (sha256_hashSpec hb) sha256_ctx_new_spec (by decide) maxInput_ge (system_draws hfill)
+    h.2.2.2 t hadx hifma key hinv hPn hcrt salt signature message hm hroom
+
 end rind.x86_64

@@ -98,7 +98,7 @@ theorem signing_generate_spec (h : Runs) (hc : P384.Cached) (hfill : Fills) :
       (∀ key, r = .Ok key → ∃ d, SigningKeyOf384 key d) ∧ ∀ e, r = .Err e → e = .RngFailed ⦄ := by
   unfold high.ecdsa.SigningKey.generate
   step with new_secret_spec h
-  step with static_generate_spec h _ (P256.system_draws hfill) () as ⟨rr, hrr⟩
+  step with static_generate_spec h _ (system_draws hfill) () as ⟨rr, hrr⟩
   obtain ⟨hok, herr⟩ := hrr
   rcases rr with k | e
   · obtain ⟨hk0, hk⟩ := hok k rfl
