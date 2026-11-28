@@ -1006,8 +1006,8 @@ impl SigningKey {
 
     /// Writes `c` to the front of `signature` in exactly the modulus length.
     ///
-    /// By a length check and an index rather than `get_mut(..).ok_or(..)?`,
-    /// which Aeneas cannot translate, so `proofs/` can prove RSA signing.
+    /// By index rather than `get_mut(..).ok_or(..)?`, whose Aeneas translation
+    /// does not type, so `proofs/` can prove RSA signing.
     fn to_signature<'a, const N: usize>(
         &self,
         c: &PosInt<N>,
