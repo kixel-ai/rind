@@ -3,7 +3,8 @@
 //! explicit parameters, and DSA and DH keys. `keys.rs` checks each public key
 //! through `rsa::PublicEncryptingKey::from_der` and `parity.rs` each private
 //! key through `signature::PqdsaKeyPair::from_pkcs8`, both refusing it with
-//! aws-lc-rs's kind.
+//! aws-lc-rs's kind, but for the mismatched EC keys README.md lists under
+//! "Behaves differently", which `mismatched_private_keys` holds.
 //!
 //! The curves' parameters are the crate's own `src/evp/*.der`, OpenSSL's
 //! `openssl ecparam -name <curve> -param_enc explicit -outform DER`. The

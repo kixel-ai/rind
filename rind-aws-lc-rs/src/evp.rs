@@ -5,7 +5,10 @@
 //! `InvalidEncoding` when it does not (`parse_rfc5280_public_key` and
 //! `parse_rfc5208_private_key` in aws-lc-rs 1.19.0 `aws-lc-rs/src/evp_pkey.rs`),
 //! so these follow the decoders in aws-lc's `crypto/evp_extra` and what they
-//! call.
+//! call, but for one case README.md lists under "Behaves differently": a
+//! PKCS#8 EC key on a curve rind cannot back whose public point is on the
+//! curve but not its scalar's passes here, so it is `WrongAlgorithm` where
+//! aws-lc's `EC_KEY_check_key` makes it `InvalidEncoding`.
 //!
 //! Everything read here is public and checked in variable time, except a
 //! private key's scalar or DSA `x`, which is compared with its bound without
