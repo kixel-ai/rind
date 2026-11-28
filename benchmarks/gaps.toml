@@ -36,7 +36,7 @@ quest = "/quest/m2/speed/portable-aes-8way.md"
 [[gap]]
 operations = ["sha1/*", "hmac-sha1/*"]
 on = ["portable"]
-quest = "/quest/m2/speed/portable-sha1.md"
+reason = "Not yet re-measured: the weekly data predates the portable backend's SHA-1 writing out all 80 rounds, so every message-schedule index is a constant, as aws-lc's integer `sha1_block_data_order_nohw` does. On a shared 2-core Xeon VM it ran about 1,355 instructions a block against aws-lc's C at 1,442 and the old loop's 1,530, and took a median 0.95, 0.96, and 0.98 of aws-lc-rs's time at 1200 B, 8 KB, and 16 KB in interleaved runs where the old code took 1.11, 1.01, and 1.05. The next weekly run rechecks it and drops the entry if the gap is gone."
 
 [[gap]]
 operations = ["aes*-kw-unwrap/*/16B", "aes*-kwp-unwrap/*/16B"]
