@@ -3,7 +3,7 @@
     non_upper_case_globals,
     unused_macros,
     unused_imports,
-    reason = "generated: names follow the assembly, and not every file uses each macro or import"
+    reason = "generated from assembly: constants keep their assembly names, and a routine uses only some of the shared macros"
 )]
 use crate::low::macros::*;
 

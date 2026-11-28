@@ -10,7 +10,7 @@
     unreachable_pub,
     unused_macros,
     clippy::all,
-    reason = "imported verbatim: rind runs only some of the routines, tables and macros, and keeps upstream's style"
+    reason = "imported verbatim: rind runs only some of the routines, tables and macros, and lints none of their text"
 )]
 
 /// The page of a `static`'s address, in the assembler syntax of the object format.

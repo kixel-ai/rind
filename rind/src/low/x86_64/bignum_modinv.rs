@@ -273,7 +273,7 @@ macro_rules! n_nshort {
 #[inline(never)]
 #[expect(
     clippy::arithmetic_side_effects,
-    reason = "u64 slices hold under 2^61 words, so a sum of two lengths or a length times 3 fits in usize"
+    reason = "a u64 slice is at most isize::MAX / 8 words long, so sums and small multiples of lengths fit in usize"
 )]
 pub(crate) fn bignum_modinv(z: &mut [u64], a: &[u64], b: &[u64], t: &mut [u64]) {
     assert!(z.len() == a.len());

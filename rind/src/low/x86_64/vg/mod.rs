@@ -10,7 +10,7 @@
     unreachable_pub,
     unused_macros,
     clippy::all,
-    reason = "imported verbatim: rind runs only some of the routines and tables, and lints none of their text"
+    reason = "imported verbatim: rind runs only some of the routines, tables and macros, and lints none of their text"
 )]
 
 /// A table of constants, aligned to a cache line.

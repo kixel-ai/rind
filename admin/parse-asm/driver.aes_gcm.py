@@ -32,7 +32,8 @@ if __name__ == "__main__":
                         ("inout", "key.as_ptr() => _"),
                         ("inout", "htable.as_ptr() => _"),
                     ],
-                    func_attrs='#[target_feature(enable = "%s")]\n'
+                    func_attrs='#[expect(clippy::arithmetic_side_effects, reason = "callers cap the message at 2^36 - 32 bytes, so blocks * 128 bits fits in usize")]\n'
+                    '#[target_feature(enable = "%s")]\n'
                     % ("aes,sha3" if alt else "aes"),
                     # In place, which the proofs allow: `in_p = out_p`.
                     rust_decl="unsafe fn %s(inout: *mut [u8; 16], blocks: usize, tag: &mut [u8; 16], ivec: &mut [u8; 16], key: &[core::arch::aarch64::uint8x16_t; %d], htable: &[core::arch::aarch64::uint64x2_t; %d])"

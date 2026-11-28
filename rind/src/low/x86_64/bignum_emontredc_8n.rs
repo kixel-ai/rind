@@ -34,7 +34,7 @@ use crate::low::macros::*;
 #[inline(never)]
 #[expect(
     clippy::arithmetic_side_effects,
-    reason = "u64 slices hold under 2^61 words, so a sum of two lengths or a length times 3 fits in usize"
+    reason = "a u64 slice is at most isize::MAX / 8 words long, so sums and small multiples of lengths fit in usize"
 )]
 pub(crate) fn bignum_emontredc_8n(z: &mut [u64], m: &[u64], w: u64) -> u64 {
     let ret: u64;

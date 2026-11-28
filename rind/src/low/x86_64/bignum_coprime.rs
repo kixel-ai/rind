@@ -272,7 +272,7 @@ macro_rules! arg4 {
 #[inline(never)]
 #[expect(
     clippy::arithmetic_side_effects,
-    reason = "u64 slices hold under 2^61 words, so a sum of two lengths or a length times 3 fits in usize"
+    reason = "a u64 slice is at most isize::MAX / 8 words long, so sums and small multiples of lengths fit in usize"
 )]
 pub(crate) fn bignum_coprime(x: &[u64], y: &[u64], t: &mut [u64]) -> bool {
     let ret: u64;

@@ -243,11 +243,12 @@ def rewrite(arch, text):
 
 def macros(crate):
     """lib.rs's `vg_sym_page!` and `vg_sym_pageoff!` definitions, with their
-    documentation and attributes."""
+    documentation and attributes but `#[allow(unused_macros)]`."""
     with open(os.path.join(crate, "src", "lib.rs")) as f:
         text = f.read()
     blocks = re.findall(r"(?:///[^\n]*\n)?(?:#\[[^\n]*\]\n)*macro_rules! vg_sym_page(?:off)? \{\n.*?\n\}\n", text, re.S)
-    return "\n".join(blocks)
+    # mod.rs allows `unused_macros` for the whole module.
+    return "\n".join(block.replace("#[allow(unused_macros)]\n", "") for block in blocks)
 
 
 def table(crate):
@@ -292,7 +293,13 @@ def import_arch(vg, arch, roots):
         "//! pyca/verified-garbage's verified routines that rind runs, and the",
         "//! routines and tables they reach: see admin/import-vg.",
         "",
-        "#![allow(dead_code, unreachable_pub, unused_macros, clippy::all)]",
+        "#![allow(",
+        "    dead_code,",
+        "    unreachable_pub,",
+        "    unused_macros,",
+        "    clippy::all,",
+        '    reason = "imported verbatim: rind runs only some of the routines, tables and macros, and lints none of their text"',
+        ")]",
         "",
     ]
     if uses_macros:
