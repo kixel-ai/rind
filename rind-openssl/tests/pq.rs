@@ -5,10 +5,11 @@
 //! give the same outputs.
 //!
 //! The default provider has ML-KEM and ML-DSA from OpenSSL 3.5, as do its
-//! encoders and its TLS groups and signature schemes, so the tests that need
-//! them pass vacuously, saying so, where the linked OpenSSL is older, as
-//! Ubuntu 24.04's 3.0 is; the macOS runners' Homebrew OpenSSL and the Nix dev
-//! shell's run them. The rest run on every OpenSSL 3.
+//! encoders and its TLS groups and signature schemes, and older releases
+//! refuse rind's ML-DSA signature functions, so the tests that need either
+//! pass vacuously, saying so, where the linked OpenSSL is older, as Ubuntu
+//! 24.04's 3.0 is; Ubuntu 26.04's, the macOS runners' Homebrew OpenSSL, and
+//! the Nix dev shell's run them. The rest run on every OpenSSL 3.
 #![cfg(unix)]
 #![allow(clippy::undocumented_unsafe_blocks)]
 
@@ -165,16 +166,6 @@ fn name(provider: *const OSSL_PROVIDER) -> String {
     unsafe { CStr::from_ptr(OSSL_PROVIDER_get0_name(provider)) }
         .to_string_lossy()
         .into_owned()
-}
-
-/// Whether the linked OpenSSL has its own ML-KEM and ML-DSA, from 3.5, to
-/// check rind's against; a test that needs them says when it cannot run.
-fn has_reference(test: &str) -> bool {
-    let has = unsafe { OpenSSL_version_num() } >= 0x3050_0000;
-    if !has {
-        eprintln!("{test}: skipped, as it needs OpenSSL 3.5's ML-KEM and ML-DSA");
-    }
-    has
 }
 
 /// `SSL_CTRL_GET_NEGOTIATED_GROUP`, behind OpenSSL's
@@ -502,6 +493,9 @@ fn rind_backs_ml_kem_and_ml_dsa() {
         assert_eq!(name(unsafe { EVP_KEM_get0_provider(kem) }), "rind");
         unsafe { EVP_KEM_free(kem) };
     }
+    if !common::openssl_3_5("rind_backs_ml_kem_and_ml_dsa (the ML-DSA signatures)") {
+        return;
+    }
     for algorithm in ML_DSA {
         let signature = non_null(unsafe { EVP_SIGNATURE_fetch(ctx.0, algorithm.as_ptr(), null()) });
         assert_eq!(
@@ -561,7 +555,7 @@ fn rind_offers_the_ml_dsa_tls_sigalgs() {
 /// each way: the same seed, expanded private key, and public key.
 #[test]
 fn keys_from_a_seed_match_the_default_provider() {
-    if !has_reference("keys_from_a_seed_match_the_default_provider") {
+    if !common::openssl_3_5("keys_from_a_seed_match_the_default_provider") {
         return;
     }
     let ctx = Context::new();
@@ -598,7 +592,7 @@ fn keys_from_a_seed_match_the_default_provider() {
 /// replacement for it is refused.
 #[test]
 fn a_generation_seed_is_reused_as_the_default_provider_reuses_it() {
-    if !has_reference("a_generation_seed_is_reused_as_the_default_provider_reuses_it") {
+    if !common::openssl_3_5("a_generation_seed_is_reused_as_the_default_provider_reuses_it") {
         return;
     }
     let ctx = Context::new();
@@ -659,7 +653,8 @@ fn a_generation_seed_is_reused_as_the_default_provider_reuses_it() {
 #[test]
 fn ml_kem_agrees_with_the_default_provider() {
     let ctx = Context::new();
-    let reference = has_reference("ml_kem_agrees_with_the_default_provider (the cross-checks)");
+    let reference =
+        common::openssl_3_5("ml_kem_agrees_with_the_default_provider (the cross-checks)");
     for algorithm in ML_KEM {
         let ours = ctx.generate(algorithm, None, None);
         let (ct, secret, provider) = ctx.encapsulate(&ours, None).unwrap();
@@ -706,7 +701,7 @@ fn ml_kem_agrees_with_the_default_provider() {
 /// embedded public key hash is wrong is refused at each use.
 #[test]
 fn ml_kem_loads_an_expanded_key() {
-    if !has_reference("ml_kem_loads_an_expanded_key") {
+    if !common::openssl_3_5("ml_kem_loads_an_expanded_key") {
         return;
     }
     let ctx = Context::new();
@@ -758,8 +753,10 @@ fn ml_kem_loads_an_expanded_key() {
 /// neither verifies a tampered signature or message.
 #[test]
 fn ml_dsa_agrees_with_the_default_provider() {
+    if !common::openssl_3_5("ml_dsa_agrees_with_the_default_provider") {
+        return;
+    }
     let ctx = Context::new();
-    let reference = has_reference("ml_dsa_agrees_with_the_default_provider (the cross-checks)");
     let message = b"rind as an OpenSSL provider";
     for algorithm in ML_DSA {
         let ours = ctx.generate(algorithm, None, None);
@@ -775,9 +772,6 @@ fn ml_dsa_agrees_with_the_default_provider() {
         tampered[0] ^= 1;
         assert!(!ctx.verify(&ours, None, message, &tampered).0);
 
-        if !reference {
-            continue;
-        }
         assert_eq!(
             ctx.verify(&ours, Some(DEFAULT), message, &signature),
             (true, "default".into())
@@ -825,8 +819,10 @@ fn context_params(context: &mut [u8]) -> [OSSL_PARAM; 2] {
 /// one it was given, the empty string included.
 #[test]
 fn ml_dsa_binds_the_context_string() {
+    if !common::openssl_3_5("ml_dsa_binds_the_context_string") {
+        return;
+    }
     let ctx = Context::new();
-    let reference = has_reference("ml_dsa_binds_the_context_string (the cross-checks)");
     let message = b"rind as an OpenSSL provider";
     for algorithm in ML_DSA {
         let key = ctx.generate(algorithm, None, None);
@@ -849,19 +845,17 @@ fn ml_dsa_binds_the_context_string() {
         assert!(ctx.verify(&key, None, message, &empty).0);
         assert!(!verify_under(&ctx, &key, message, &empty, &mut context));
 
-        if reference {
-            assert_eq!(verify(&with, Some(DEFAULT)), (true, "default".into()));
-            assert!(!verify(&context_params(&mut other), Some(DEFAULT)).0);
-            assert!(!ctx.verify(&key, Some(DEFAULT), message, &signature).0);
-            let (theirs, provider) = ctx
-                .sign(&key, message, Some(DEFAULT), with.as_ptr())
-                .unwrap();
-            assert_eq!(provider, "default");
-            assert!(
-                ctx.verify_with(&key, None, message, &theirs, with.as_ptr())
-                    .0
-            );
-        }
+        assert_eq!(verify(&with, Some(DEFAULT)), (true, "default".into()));
+        assert!(!verify(&context_params(&mut other), Some(DEFAULT)).0);
+        assert!(!ctx.verify(&key, Some(DEFAULT), message, &signature).0);
+        let (theirs, provider) = ctx
+            .sign(&key, message, Some(DEFAULT), with.as_ptr())
+            .unwrap();
+        assert_eq!(provider, "default");
+        assert!(
+            ctx.verify_with(&key, None, message, &theirs, with.as_ptr())
+                .0
+        );
 
         // 255 bytes is the longest, and one more is refused, as OpenSSL
         // refuses it.
@@ -918,6 +912,9 @@ fn verify_under(
 /// than signing something else.
 #[test]
 fn ml_dsa_refuses_what_rind_cannot_back() {
+    if !common::openssl_3_5("ml_dsa_refuses_what_rind_cannot_back") {
+        return;
+    }
     let ctx = Context::new();
     let key = ctx.generate(c"ML-DSA-65", None, None);
     let mut entropy = [0u8; 32];
@@ -982,6 +979,9 @@ fn ml_dsa_refuses_what_rind_cannot_back() {
 /// storing it.
 #[test]
 fn ml_dsa_keeps_what_was_set_before_a_refusal() {
+    if !common::openssl_3_5("ml_dsa_keeps_what_was_set_before_a_refusal") {
+        return;
+    }
     let ctx = Context::new();
     let key = ctx.generate(c"ML-DSA-65", None, None);
     let (mut deterministic, mut raw) = (1 as c_int, 0 as c_int);
@@ -1068,8 +1068,9 @@ unsafe fn digest_sign_bytes(md: *mut EVP_MD_CTX, message: &[u8]) -> Result<Vec<u
 #[test]
 fn ml_kem_operations_take_what_the_default_provider_takes() {
     let ctx = Context::new();
-    let reference =
-        has_reference("ml_kem_operations_take_what_the_default_provider_takes (the cross-checks)");
+    let reference = common::openssl_3_5(
+        "ml_kem_operations_take_what_the_default_provider_takes (the cross-checks)",
+    );
     let key = ctx.generate(c"ML-KEM-768", None, None);
     let mut ikme = [0u8; 32];
     let params = unsafe {
@@ -1109,7 +1110,8 @@ fn ml_kem_operations_take_what_the_default_provider_takes() {
 #[test]
 fn a_mismatched_key_fails_every_use() {
     let ctx = Context::new();
-    for algorithm in ML_KEM.iter().chain(&ML_DSA) {
+    let ml_dsa = common::openssl_3_5("a_mismatched_key_fails_every_use (ML-DSA)");
+    for algorithm in ML_KEM.iter().chain(ML_DSA.iter().filter(|_| ml_dsa)) {
         let ours = ctx.generate(algorithm, None, None);
         let theirs = ctx.generate(algorithm, None, None);
         let seed = ours.octets(c"seed").unwrap();
@@ -1139,7 +1141,7 @@ fn a_mismatched_key_fails_every_use() {
 /// provider's, and come back usable.
 #[test]
 fn keys_round_trip_through_pem() {
-    if !has_reference("keys_round_trip_through_pem") {
+    if !common::openssl_3_5("keys_round_trip_through_pem") {
         return;
     }
     let ctx = Context::new();
@@ -1198,7 +1200,7 @@ fn keys_round_trip_through_pem() {
 /// handshake with.
 #[test]
 fn tls13_handshake_over_x25519mlkem768_and_ml_dsa() {
-    if !has_reference("tls13_handshake_over_x25519mlkem768_and_ml_dsa") {
+    if !common::openssl_3_5("tls13_handshake_over_x25519mlkem768_and_ml_dsa") {
         return;
     }
     let ctx = Context::new();

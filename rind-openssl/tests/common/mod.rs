@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 //! What the provider and ctgrind tests share: loading rind with the README's
-//! configuration.
+//! configuration, and telling whether the linked OpenSSL can use its ML-DSA.
 //!
 //! The tests link rind's provider into the test binary and register it with
 //! OpenSSL as a built-in, so they always check the build under test, with its
@@ -30,6 +30,20 @@ unsafe extern "C" {
             *mut *mut c_void,
         ) -> c_int,
     ) -> c_int;
+}
+
+/// Whether the linked OpenSSL is 3.5 or later, which a test of ML-DSA
+/// signatures needs, saying when it cannot run: OpenSSL 3.0 refuses rind's
+/// signature functions for ML-DSA, which follow 3.5's default provider in
+/// offering message and digest initialisation but no `sign_init`. 3.5's
+/// default provider is also the first with ML-KEM and ML-DSA of its own to
+/// check rind's against.
+pub fn openssl_3_5(test: &str) -> bool {
+    let has = unsafe { openssl_sys::OpenSSL_version_num() } >= 0x3050_0000;
+    if !has {
+        eprintln!("{test}: skipped, as it needs OpenSSL 3.5 or later");
+    }
+    has
 }
 
 /// Makes rind's provider, linked into this binary, the one `ctx` activates
