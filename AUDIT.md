@@ -68,8 +68,13 @@ Outside the model:
 - Speculative execution beyond what the constant-time rule gives: only
   secret-independent control flow and addresses stand against it. The one
   speculation barrier rind adds follows setting DIT on Apple's platforms, as
-  Apple asks, so no instruction after it runs speculatively without DIT;
-  rind sets DIT on other aarch64 cores too, where Arm asks for no barrier.
+  Apple asks, so no instruction after it runs speculatively without DIT. On
+  other aarch64 cores, where rind sets DIT too, it adds none and relies on
+  the Arm architecture (Arm ARM DDI 0487 M.d, C5.1.3.3 and B1.5.6),
+  untested on hardware. The FIPS module's code keeps Apple's barrier on
+  every target, its glibc Linux cores included. `admin/dit-disasm` checks
+  the emitted sequence per target; benchmarks/apple-dit-barrier.md collects
+  the sources.
 - A compromised toolchain, build machine, or dependency. `cargo deny`
   checks crates against RustSec's advisories, licenses, and sources, and
   `cargo vet` holds the published crate's dependencies to audits; a release's
@@ -299,8 +304,9 @@ Hand-written arithmetic no proof covers, by where it came from:
   ML-KEM, and RSA, wherever ALGORITHMS.md names it. Vectors, differential
   tests independent of it, and fuzzing reach each.
 - **rind's own**, which ALGORITHMS.md marks ⚡, such as its parts of P-384 and
-  P-521, x86_64 SHA-256, the portable RSA multiplication but its Montgomery
-  products on 64-bit limbs, and armv7 Ed25519, whose Lean proof holds only
+  P-521, x86_64 SHA-256, the portable RSA multiplication (its Montgomery
+  products on 64-bit limbs too, whose proof is parked until
+  quest/m4/verified/rsa-verify-portable-four-product.md), and armv7 Ed25519, whose Lean proof holds only
   on CPUs with NEON, since a CPU without it hashes with aws-lc's unproven
   integer 32-bit ARM SHA-384/512, and so earns no ✓. Vectors, independent differential tests, and fuzzing reach each,
   and each Montgomery routine's unit tests compare it with proven or
@@ -347,10 +353,7 @@ Functions no test runs: the nightly `coverage` workflow fails on a
 published function that no tier runs, unless `admin/coverage.allow` gives
 a reason. It allows the unpublished rind-fips and rind-openssl and rind's
 FIPS code, which only rind-fips runs; the decryption keys' wipes that drop
-glue never reaches; error arms for failures no test can cause; and pyrind's
-and rind-dart's functions their 0.4 reshapes rewrite, which
-[Every published function runs under a test](/quest/m2/confidence/uncovered-functions.md)
-then tests.
+glue never reaches; and error arms for failures no test can cause.
 
 ## `unsafe`
 

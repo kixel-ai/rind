@@ -44,6 +44,12 @@ fi
 
 cd "$(git rev-parse --show-toplevel)"
 
+# Inside the dev shell, Cargo can still run a host's rustup rustfmt and clippy
+# from $CARGO_HOME/bin; sh/toolchain.sh stops before any check runs with them.
+if [[ -z "$query" && -n "${IN_RIND_DEV_SHELL:-}" && -z "${ALLOW_HOST_TOOLCHAIN:-}" ]]; then
+    sh/toolchain.sh
+fi
+
 changed=$(mktemp)
 trap 'rm -f "$changed"' EXIT
 
@@ -132,18 +138,21 @@ module scope '^(admin/test-scope(\.toml)?$|rind/tests/)' \
 # armv7 builds run in nix's cross shells.
 cross_tools=cargo
 [[ $(uname -s) != Linux ]] || cross_tools='cargo nix'
-module cross '^(rind/(src/|tests/|Cargo\.toml$|build\.rs$)|Cargo\.(toml|lock)$|flake\.(nix|lock)$)' \
+# `sh/bare-metal.sh`, `sh/bare-metal-rustc` and `sh/build-target-test.sh`
+# are this module's scripts. They are not under `rind/src/`, so `reach`
+# treats a change to them as every backend.
+module cross '^(rind/(src/|tests/|Cargo\.toml$|build\.rs$)|rind-bench/Cargo\.toml$|sh/(bare-metal((-test)?\.sh|-rustc)|build-target-test\.sh)$|Cargo\.(toml|lock)$|flake\.(nix|lock)$)' \
     tools="$cross_tools" compiles
 # The published adapters' wasm32 builds, and the tests the nightly runs there.
 # rind's manifest picks the random source rind-ring's browser feature reaches.
-module wasm '^(rind/Cargo\.toml$|rind-(aws-lc-rs|ring|rustls|rcgen|jsonwebtoken|dimpl|str0m|openmls|object-store|rand-core)/(src/|tests/|Cargo\.toml$)|admin/wasm-fixture/|Cargo\.(toml|lock)$|flake\.(nix|lock)$)' \
+module wasm '^(rind/Cargo\.toml$|rind-(aws-lc-rs|ring|digest|aead|signature|kem|rustls|rcgen|jsonwebtoken|dimpl|str0m|openmls|object-store|rand-core)/(src/|tests/|Cargo\.toml$)|admin/wasm-fixture/|Cargo\.(toml|lock)$|flake\.(nix|lock)$)' \
     tools='cargo jq' compiles
 # The adapters that build without `std`, on a target with none: rind-ring and
-# rind-rustls, as ring 0.17 and rustls 0.23 build, and rind-aws-lc-rs, which
-# aws-lc-rs cannot.
-module nostd '^(rind/Cargo\.toml$|rind-(ring|rustls|aws-lc-rs)/(src/|Cargo\.toml$)|Cargo\.(toml|lock)$|flake\.(nix|lock)$)' \
+# rind-rustls, as ring 0.17 and rustls 0.23 build, rind-aws-lc-rs, which
+# aws-lc-rs cannot, and the RustCrypto trait adapters, as their upstreams build.
+module nostd '^(rind/Cargo\.toml$|rind-(ring|rustls|aws-lc-rs|digest|aead|signature|kem)/(src/|Cargo\.toml$)|Cargo\.(toml|lock)$|flake\.(nix|lock)$)' \
     tools='cargo' compiles
-# Dependents may build with the workspace's declared rust-version. Plain
+# Dependents may build each crate with the rust-version it declares. Plain
 # `cargo check` covers the lib and bin targets, all a dependent builds, so a
 # crate's tests, benches, and docs cannot break it. A Rust crate nested in
 # an adapter, such as rind-fips/module/, counts too.
@@ -173,6 +182,14 @@ module patch '^(patch/|rind-ring/|(rind/)?Cargo\.toml$|sh/patch\.sh$)' \
 # rind's low, mid, and high layers reference only the layers below them.
 module structure '^(rind/(src/|Cargo\.toml$)|admin/structure$)' \
     tools='cargo cargo-modules'
+# Every public function of rind's either makes an `Entry`, which sets DIT on
+# aarch64 for a secret, or admin/dit-coverage.txt says how it needs none.
+module dit '^(rind/src/|admin/dit-coverage(\.txt)?$)' \
+    tools='python3' check
+# The barrier after `msr DIT, #1` in rind's release builds: Apple's sequence
+# on Apple's targets, none on other aarch64 targets (admin/dit-disasm).
+module ditbarrier '^(rind/(src/low/(aarch64/|entry)|build\.rs$|Cargo\.toml$)|admin/dit-disasm$|flake\.(nix|lock)$)' \
+    tools='nix' compiles
 # admin/build-cost builds these against rind's public API, and
 # admin/binary-size reports what the diff does to rind's size in each, which
 # any change to rind's code or the toolchain can move, passing whatever it is.
@@ -203,7 +220,8 @@ module semver '^(rind[^/]*/(src/|Cargo\.toml$)|sh/semver\.sh$)' \
     tools='cargo cargo-semver-checks jq' compiles pr
 # Each adapter's API against its upstream's, which reaches rind only through a
 # lockfile change, as read by the flake's rustdoc. rind-object-store and
-# rind-rand-core have none to copy.
+# rind-rand-core have none to copy, and the RustCrypto trait adapters check
+# theirs in tests/upstream.rs (admin/adapter-api says why).
 module adapters '^(rind/(src/|Cargo\.toml$)|rind-(aws-lc-rs|ring|rustls|rcgen|jsonwebtoken|dimpl|str0m|openmls)/(src/|Cargo\.toml$|README\.md$)|Cargo\.lock$|flake\.(nix|lock)$|admin/adapter-api$)' \
     tools='cargo python3' compiles
 module license '^(rind/src/|rind/LICENSE$|rind-python/LICENSE$|admin/scan-license$)' \
@@ -251,6 +269,9 @@ module gh '^(\.github/|sh/(alert|pins|release-check|select-jobs)\.sh$)' \
     tools='actionlint yq jq' check
 module shell '' \
     tools='shellcheck' check
+# The check above that Cargo's fmt and clippy are the shell's toolchain.
+module toolchain '^sh/toolchain\.sh$' \
+    tools='bash grep' check
 module nix '' \
     tools='nixfmt' check fix
 
@@ -625,26 +646,57 @@ step() {
                 ((${#packages[@]} > 0)) || packages=(--workspace)
                 # An adapter whose upstream needs a newer Rust declares that
                 # rust-version instead, which its users need anyway, so it is
-                # left out.
-                local newer args=() i name
-                mapfile -t newer < <(cargo metadata --format-version 1 --no-deps --locked |
-                    jq -r '(.packages[] | select(.name == "rind") | .rust_version) as $v | .packages[] | select(.rust_version != $v) | .name')
+                # checked on its own version, in the flake's msrv-<version>
+                # shell, with every crate sharing that version, rather than
+                # on rind's. An unpublished crate with a rust-version of its
+                # own, or none, is left out: no user builds it on that
+                # version. A published crate with none promises no Rust
+                # version, which is an error rather than a skip.
+                local metadata own_list args=() i name version names
+                local -A own=() versions=()
+                # Plain assignments, so a failing cargo or jq stops the
+                # module instead of reading as no crate of its own.
+                metadata=$(cargo metadata --format-version 1 --no-deps --locked)
+                own_list=$(jq -r '(.packages[] | select(.name == "rind") | .rust_version) as $rind
+                    | .packages[] | select(.rust_version != $rind)
+                    | if .publish == [] then [.name, ""]
+                      elif .rust_version == null then error("\(.name) is published but declares no rust-version")
+                      else [.name, .rust_version] end
+                    | @tsv' <<<"$metadata")
+                while IFS=$'\t' read -r name version; do
+                    [[ -z "$name" ]] || own[$name]=$version
+                done <<<"$own_list"
                 for ((i = 0; i < ${#packages[@]}; i++)); do
                     if [[ "${packages[i]}" == -p ]]; then
                         i=$((i + 1))
-                        if ! printf '%s\n' "${newer[@]}" | grep -qxF "${packages[i]}"; then
-                            args+=(-p "${packages[i]}")
+                        name=${packages[i]}
+                        if [[ ! -v "own[$name]" ]]; then
+                            args+=(-p "$name")
+                        elif [[ -n "${own[$name]}" ]]; then
+                            versions[${own[$name]}]+=" $name"
                         fi
                     elif [[ "${packages[i]}" == --workspace ]]; then
                         args+=(--workspace)
-                        for name in "${newer[@]}"; do
+                        # Sorted, as bash's associative arrays iterate in hash order.
+                        while IFS= read -r name; do
+                            [[ -n "$name" ]] || continue
                             args+=(--exclude "$name")
-                        done
+                            [[ -z "${own[$name]}" ]] || versions[${own[$name]}]+=" $name"
+                        done < <(printf '%s\n' "${!own[@]}" | LC_ALL=C sort)
                     fi
                 done
                 if ((${#args[@]} > 0)); then
                     run nix develop .#msrv --command cargo check "${args[@]}" --locked
                 fi
+                while IFS= read -r version; do
+                    [[ -n "$version" ]] || continue
+                    read -ra names <<<"${versions[$version]}"
+                    args=()
+                    for name in "${names[@]}"; do
+                        args+=(-p "$name")
+                    done
+                    run nix develop ".#msrv-${version//./_}" --command cargo check "${args[@]}" --locked
+                done < <(printf '%s\n' "${!versions[@]}" | LC_ALL=C sort -V)
             fi
             # rind and rind-rustls on each other backend this change reaches.
             # i686 has only the portable one.
@@ -697,25 +749,19 @@ step() {
                 run cargo clippy -p rind --test heap_scratch --test cctv --locked \
                     --target wasm32-wasip2 -- --deny warnings
             fi
-            # A target with no `std` for each architecture rind has assembly
-            # for; x86_64's, which disables SSE2, runs the portable backend.
-            # Without an OS getrandom has no source but the one its caller
-            # supplies, which a library build need not link. Built as well as
-            # linted, since codegen can fail where a check passes: on
-            # x86_64-unknown-none, curve25519-dalek compiles its AVX2 backend,
-            # which crashes LLVM there, unless the caller picks `serial`.
-            # See UPSTREAM.md, "curve25519-dalek cannot compile without SSE".
-            local rustflags
-            for target in aarch64:aarch64-unknown-none arm:armv7a-none-eabi portable:x86_64-unknown-none; do
-                if reaches "$backends" "${target%%:*}"; then
-                    rustflags='--cfg getrandom_backend="custom"'
-                    [[ $target != *x86_64* ]] || rustflags+=' --cfg curve25519_dalek_backend="serial"'
-                    RUSTFLAGS="$rustflags" \
-                        run cargo clippy -p rind --lib --locked --target "${target#*:}" -- --deny warnings
-                    RUSTFLAGS="$rustflags --deny warnings" \
-                        run cargo build -p rind --lib --locked --target "${target#*:}"
-                fi
-            done
+            # And without std, on bare metal, which builds only the portable
+            # backend and, on `x86_64-unknown-none` with SSE2, the x86_64 one
+            # (see rind/build.rs). A change that reaches neither skips the
+            # script. `run` keeps the lane's INT/QUIT trap, which a bare
+            # script would not. The harness needs no toolchain. Xtensa is
+            # `just xtensa`: its compiler is not in this shell.
+            if reaches "$backends" x86_64 portable; then
+                run sh/bare-metal-test.sh
+                run sh/bare-metal.sh
+            fi
+            # rind/build.rs's ARM backend and Poly1305 multiply choice, for
+            # built-in triples and custom specifications under any file name.
+            run sh/build-target-test.sh
             ;;
         check:wasm)
             # Each published adapter, as sh/adapter-versions.sh finds them.
@@ -737,19 +783,26 @@ step() {
             # rind-ring with and without `alloc`, which gates RSA, and
             # rind-rustls without `std`, which gates what it gates in rustls,
             # with and without `tls12`; rind-aws-lc-rs has no `std` to turn
-            # off. x86_64-unknown-none builds rind's portable backend, as
-            # check:cross explains, and is built as well as linted for the
-            # same reason.
+            # off, nor have the RustCrypto trait adapters, whose features
+            # only turn on their trait crates' (rind-aead's `alloc` the
+            # allocating `Aead`). x86_64-unknown-none builds rind's portable
+            # backend, as check:cross explains, and is built as well as
+            # linted for the same reason.
             local nostd='--cfg getrandom_backend="custom" --cfg curve25519_dalek_backend="serial"' args
             for args in 'rind-ring --no-default-features' 'rind-ring --features=alloc' \
                 'rind-rustls --no-default-features' 'rind-rustls --no-default-features --features=tls12' \
-                rind-aws-lc-rs; do
+                rind-aws-lc-rs 'rind-aead --no-default-features' \
+                'rind-digest -p rind-aead -p rind-signature -p rind-kem --all-features'; do
                 # shellcheck disable=SC2086 # each row is a package and its flags
                 RUSTFLAGS="$nostd" run cargo clippy --lib --locked --target x86_64-unknown-none -p $args -- --deny warnings
             done
             RUSTFLAGS="$nostd --deny warnings" run cargo build --lib --locked --target x86_64-unknown-none \
                 -p rind-ring -p rind-rustls -p rind-aws-lc-rs --no-default-features \
                 --features=rind-ring/alloc,rind-rustls/tls12,rind-aws-lc-rs/ring-io,rind-aws-lc-rs/ring-sig-verify
+            # rind-signature is linted only: rsa's sha2 dependency fails
+            # LLVM codegen for its x86 backend on a target without SSE.
+            RUSTFLAGS="$nostd --deny warnings" run cargo build --lib --locked --target x86_64-unknown-none \
+                -p rind-digest -p rind-aead -p rind-kem --all-features
             ;;
         check:vartime)
             # Each backend's targets, as admin/ct-vartime names them; no
@@ -765,11 +818,17 @@ step() {
                     i686-unknown-linux-gnu arm-unknown-linux-gnueabihf loongarch64-unknown-linux-gnu
                     powerpc-unknown-linux-gnu powerpc64-unknown-linux-gnu powerpc64le-unknown-linux-gnu
                     riscv64gc-unknown-linux-gnu s390x-unknown-linux-gnu
+                    armv7-unknown-linux-gnueabihf+mul16 thumbv6m-none-eabi+mul16
+                    thumbv7m-none-eabi+mul16 thumbv8m.base-none-eabi+mul16
+                    armv5te-unknown-linux-gnueabi+mul16 riscv32i-unknown-none-elf+mul16
+                    riscv32imac-unknown-none-elf+branch
                 )
             fi
             run nix develop .#ct-vartime --command admin/ct-vartime "${targets[@]}"
             ;;
         check:structure) run admin/structure ;;
+        check:dit) run python3 admin/dit-coverage ;;
+        check:ditbarrier) run nix develop .#dit-disasm --command admin/dit-disasm ;;
         check:deny) run cargo deny --locked check ;;
         check:vet) run cargo vet --locked ;;
         check:versions) run sh/adapter-versions.sh ;;
@@ -823,9 +882,10 @@ step() {
             run sh/select-jobs.sh --check
             ;;
         check:shell)
-            files 'sh/*.sh'
+            files 'sh/*.sh' 'admin/hw/*.sh'
             run xargs -0 shellcheck <"$listed"
             ;;
+        check:toolchain) run sh/toolchain.sh --self-test ;;
         check:nix)
             files '*.nix'
             run xargs -0 nixfmt --check <"$listed"

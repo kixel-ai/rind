@@ -14,7 +14,7 @@ fi
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 # The bench and fuzz crates compare against other libraries, not backends.
-packages=(-p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-rand-core -p rind-ring -p rind-dimpl -p rind-openmls)
+packages=(-p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-rand-core -p rind-ring -p rind-digest -p rind-aead -p rind-signature -p rind-kem -p rind-dimpl -p rind-openmls)
 
 # The explicit target keeps these builds apart from the host's, whose flags
 # differ.
@@ -28,3 +28,11 @@ export CARGO_PROFILE_RELEASE_OVERFLOW_CHECKS=true
 SLOW_TESTS=1 cargo nextest run "${packages[@]}" --locked --release --target "$target"
 # nextest runs no doc tests; this bounds theirs (.config/nextest.toml).
 timeout 5m cargo test --doc "${packages[@]}" --locked --release --target "$target"
+# wasm runs on 32-bit limbs and generates only RSA-2048 keys, so every size's
+# key generation is wipe-checked here on those limbs, with the checks above.
+# Its own target directory keeps this cfg from rebuilding the tree above, at
+# the price of one cold build of the test's dependencies, about three minutes:
+# CI keeps no cargo cache for this job, so every run pays it.
+CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-target}/rind-limb32" \
+    CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS="$CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS --cfg rind_limb=\"32\"" \
+    SLOW_TESTS=1 cargo nextest run -p rind --test heap_scratch --locked --release --target "$target" -E 'test(=rsa_generate)'
