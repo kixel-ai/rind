@@ -24,6 +24,12 @@ use crate::low::generic::edwards25519_msm::{non_adjacent_forms, top};
 
 /// Computes `res := [base]B + [scalars[0]]points[0] + [scalars[1]]points[1]`
 /// as `low::generic::edwards25519_msm` does.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    clippy::unwrap_used,
+    reason = "i < 4, so each coordinate's four words 4 * i..4 * i + 4 lie within the point's 16"
+)]
 pub(crate) fn edwards25519_msm(
     res: &mut [u64; 12],
     base: &[u64; 4],
@@ -46,6 +52,12 @@ pub(crate) fn edwards25519_msm(
 /// Computes `[base]B + [s0]P0 + [s1]P1` from the points' extended
 /// coordinates `(X, Y, Z, T)`, returning the result's `(X, Y, Z)`, each
 /// reduced.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "i < top(&nafs) <= 257, the forms' length; j < 4, so j - 2 < 2 where taken; and a width-8 \
+              digit's |d| / 2 < 64 and a width-5 one's < 8, the tables' lengths"
+)]
 #[target_feature(enable = "avx,avx2")]
 fn msm(base: &[u64; 4], scalars: &[[u64; 4]; 2], points: &[[[u64; 4]; 4]; 2]) -> [[u64; 4]; 3] {
     // Its operands are public, but `admin/ct-vartime` holds every `vpmuludq`
@@ -77,6 +89,11 @@ fn msm(base: &[u64; 4], scalars: &[[u64; 4]; 2], points: &[[[u64; 4]; 4]; 2]) ->
 }
 
 /// `[P, 3P, 5P, ..., 15P]`, the odd multiples a width-5 form's digits take.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "i < 7, so i + 1 < 8 = table.len()"
+)]
 #[target_feature(enable = "avx,avx2")]
 fn odd_multiples(point: &[[u64; 4]; 4]) -> [Cached; 8] {
     let p1 = Extended(Fe4::new(point));
@@ -253,6 +270,12 @@ const LIMB_OFFSETS: [u32; 10] = [0, 26, 51, 77, 102, 128, 153, 179, 204, 230];
 
 impl Fe4 {
     /// Packs four field elements below 2^255.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "i < 10 = LIMB_OFFSETS.len(); a limb crossing a word has offset at most 230, so word + 1 < 4; \
+                  and every shift is under 64"
+    )]
     #[target_feature(enable = "avx,avx2")]
     fn new(x: &[[u64; 4]; 4]) -> Self {
         let limb = |x: &[u64; 4], i: usize| -> i32 {
@@ -283,6 +306,12 @@ impl Fe4 {
     }
 
     /// Unpacks the four field elements, each reduced.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "i < 4 indexes the limb rows; 26- and 25-bit limbs join below 2^52, and dalek's bounds keep \
+                  each limb below 2^51 + 2^13 through the carries"
+    )]
     #[target_feature(enable = "avx,avx2")]
     fn split(&self) -> [[u64; 4]; 4] {
         let mut lanes = [[0u32; 8]; 5];
@@ -451,6 +480,11 @@ impl Fe4 {
     }
 
     /// Reduces ten 64-bit lanes of products to a `Fe4`.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "the carry chains take limbs i <= 8, so i + 1 < 10 = z.len()"
+    )]
     #[target_feature(enable = "avx,avx2")]
     fn reduce64(mut z: [__m256i; 10]) -> Self {
         let low_25_bits = _mm256_set1_epi64x((1 << 25) - 1);
@@ -508,6 +542,11 @@ impl Fe4 {
     }
 
     /// Splits `self` into its ten limbs, each in the low half of a 64-bit lane.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "i < 5, so 2 * i + 1 < 10 = out.len()"
+    )]
     #[target_feature(enable = "avx,avx2")]
     fn unpack(&self) -> [__m256i; 10] {
         let zero = _mm256_setzero_si256();
@@ -551,7 +590,13 @@ impl Fe4 {
         let x8_19 = m(v19, x8);
         let x9_19 = m(v19, x9);
 
-        let sum = |terms: &[__m256i]| terms.iter().copied().reduce(add).unwrap();
+        let sum = |terms: &[__m256i]| {
+            terms
+                .iter()
+                .copied()
+                .reduce(add)
+                .expect("each sum has terms")
+        };
 
         let z0 = sum(&[
             m(x0, x0),
@@ -670,7 +715,7 @@ impl Fe4 {
         let x7_2 = _mm256_add_epi32(x7, x7);
         let x9_2 = _mm256_add_epi32(x9, x9);
 
-        let sum = |terms: [__m256i; 10]| terms.into_iter().reduce(|x, y| _mm256_add_epi64(x, y)).unwrap();
+        let sum = |terms: [__m256i; 10]| terms.into_iter().reduce(|x, y| _mm256_add_epi64(x, y)).expect("ten terms");
 
         Self::reduce64([
             sum([m(x0, y0), m(x1_2, y9_19), m(x2, y8_19), m(x3_2, y7_19), m(x4, y6_19), m(x5_2, y5_19), m(x6, y4_19), m(x7_2, y3_19), m(x8, y2_19), m(x9_2, y1_19)]),
@@ -688,6 +733,10 @@ impl Fe4 {
 }
 
 /// `[B, 3B, 5B, ..., 127B]` as [`Cached`] points, B the base point.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "const-evaluated, where an index out of bounds fails to compile"
+)]
 static BASE_ODD_MULTIPLES: [[__m256i; 5]; 64] = {
     let mut out = [ZERO; 64];
     let mut i = 0;
@@ -703,6 +752,10 @@ static BASE_ODD_MULTIPLES: [[__m256i; 5]; 64] = {
 };
 
 /// `[B', 3B', 5B', ..., 127B']` as [`Cached`] points, for `B' = [2^128]B`.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "const-evaluated, where an index out of bounds fails to compile"
+)]
 static BASE128_ODD_MULTIPLES: [[__m256i; 5]; 64] = {
     let mut out = [ZERO; 64];
     let mut i = 0;

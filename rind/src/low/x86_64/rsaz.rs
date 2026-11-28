@@ -85,12 +85,22 @@ static ONE: Red = limb(0, 1);
 static TWO80: Red = limb(2, 1 << 22);
 
 #[cfg_attr(coverage_nightly, coverage(off))] // const-evaluated only
+#[expect(
+    clippy::indexing_slicing,
+    reason = "only constants call it, whose evaluation fails to compile for i >= 40"
+)]
 const fn limb(i: usize, v: u64) -> Red {
     let mut r = [0; 40];
     r[i] = v;
     r
 }
 
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "an address masked to 12 bits plus 320 fits in usize; 3 <= i < 32 and j < 64; window's bit <= 1019 \
+              makes w < 16 = e.len(); and bignum_cmp_lt returns 0 or 1"
+)]
 fn mod_exp(
     token: HaveAvx2,
     z: &mut [u64; 16],

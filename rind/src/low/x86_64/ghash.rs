@@ -214,6 +214,10 @@ impl ClmulTable {
     /// Hashes the fewer than eight blocks after `add`'s chunks, zero-padding
     /// the last: block `i` of `n` is multiplied by H^(n-i), so the sum needs
     /// one reduction rather than one per block.
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "bytes is under eight blocks, so n <= 8, the number of powers"
+    )]
     #[target_feature(enable = "pclmulqdq,ssse3")]
     fn add_tail(&self, bytes: &[u8], current: __m128i) -> __m128i {
         if bytes.is_empty() {
@@ -345,6 +349,10 @@ impl<'a> Ghash<'a> {
 
     /// Inputs `bytes`, zero-padded, by `ghash`, which folds whole blocks into
     /// the state in GCM's byte order.
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "as_chunks leaves a tail under 16 bytes"
+    )]
     fn add_by(&mut self, bytes: &[u8], ghash: impl Fn(&mut [u8; 16], &[[u8; 16]])) {
         let mut xi = self.xi();
         let (blocks, tail) = bytes.as_chunks::<16>();
@@ -502,6 +510,11 @@ pub(crate) fn _mul16(
 /// `x` holds the tail's blocks byte-reversed and zero-padded, so the vectors
 /// past it are zero. Block `i` of `n` is multiplied by H^(n-i), so the sum
 /// needs one reduction rather than one per block.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "len <= 256, so n <= 16 = powers.len(), 4 * j < n, and 1 <= h.len() <= 4"
+)]
 #[inline]
 #[target_feature(enable = "vpclmulqdq,avx512f,avx512vl")]
 pub(crate) fn _mul_tail(
@@ -612,6 +625,12 @@ fn load_be(block: &[u8; 16]) -> __m128i {
 /// length alone. Copying to a zeroed block instead calls `memcpy`, whose
 /// narrow stores then stall the block's 16-byte load, which nearly doubled a
 /// short seal's time on Xeons under a partial-block AAD, such as QUIC's.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    clippy::unwrap_used,
+    reason = "n < 16, and each arm reads only within its n bytes and shifts by under 64"
+)]
 #[inline]
 pub(crate) fn load_partial(bytes: &[u8]) -> __m128i {
     let n = bytes.len();
@@ -635,6 +654,11 @@ pub(crate) fn load_partial(bytes: &[u8]) -> __m128i {
 
 /// Stores the first `out.len()` bytes, fewer than 16, of `block` in GCM's
 /// byte order, without `load_partial`'s `memcpy` either.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "n < 16, and each arm writes only within its n bytes and shifts by under 64"
+)]
 #[inline]
 pub(crate) fn store_partial(out: &mut [u8], block: __m128i) {
     let n = out.len();

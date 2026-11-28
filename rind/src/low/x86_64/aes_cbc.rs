@@ -35,6 +35,10 @@ fn hw_decrypt(key: &HwDecKey, iv: &[u8; 16], blocks: &mut [[u8; 16]]) {
 ///
 /// `key` is an `AES_KEY` from a `HwKey` to encrypt, or a `HwDecKey` to
 /// decrypt.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "blocks is in memory, so its 16 * len bytes fit in usize"
+)]
 fn hw_cbc(key: *const u8, iv: &[u8; 16], blocks: &mut [[u8; 16]], encrypt: bool) {
     // The routine leaves the next IV here; CBC callers here start afresh.
     let mut ivec = *iv;

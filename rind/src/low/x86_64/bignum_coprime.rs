@@ -1,5 +1,10 @@
 // generated source. do not edit.
-#![allow(non_upper_case_globals, unused_macros, unused_imports)]
+#![allow(
+    non_upper_case_globals,
+    unused_macros,
+    unused_imports,
+    reason = "generated from assembly: constants keep their assembly names, and a routine uses only some of the shared macros"
+)]
 use crate::low::macros::*;
 
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
@@ -265,6 +270,10 @@ macro_rules! arg4 {
 /// buffer t needs to be 2 * max(m,n) digits long. The return value is
 /// 1 if coprime(x,y) and 0 otherwise.
 #[inline(never)]
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "u64 slices hold under 2^61 words, so a sum of two lengths or a length times 3 fits in usize"
+)]
 pub(crate) fn bignum_coprime(x: &[u64], y: &[u64], t: &mut [u64]) -> bool {
     let ret: u64;
     assert!(t.len() >= 2 * core::cmp::max(x.len(), y.len()));

@@ -30,6 +30,11 @@ pub(crate) struct Precompute(HaveBmi2Adx);
 impl Precompute {
     /// For the modulus of little-endian words `n`, where it has a multiple
     /// of four words and its top bit is set.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "w = n.len() is nonzero by then, so w - 1 indexes n"
+    )]
     pub(crate) fn check(n: &[u64]) -> Option<Self> {
         let w = n.len();
         if w == 0 || !w.is_multiple_of(4) || n[w - 1] >> 63 == 0 {
@@ -47,6 +52,10 @@ impl Precompute {
     /// Returns whether it did: it refuses, writing zeros, an `n` that is
     /// even, outside 512 to 8192 bits, or with a leading zero byte, or a
     /// `pre` that is not `2w` words.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "MAX_WORDS * 8 is a constant, and w <= MAX_WORDS once k is checked, so 2 * w and 8 * w + 48 fit in usize"
+    )]
     pub(crate) fn precompute(self, pre: &mut [u64], n: &[u8]) -> bool {
         let k = n.len();
         let w = k.div_ceil(8);

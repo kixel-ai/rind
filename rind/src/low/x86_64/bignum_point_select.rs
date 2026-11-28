@@ -50,6 +50,10 @@ fn select_avx2<const N: usize, const V: usize>(
     unsafe { _select_avx2::<N, V>(z, table, index) }
 }
 
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "N is a row's word count, 4 * V or 4 * V + 2, and i < V, so 4 * i and 4 * V are at most N"
+)]
 #[target_feature(enable = "avx,avx2")]
 fn _select_avx2<const N: usize, const V: usize>(z: &mut [u64; N], table: &[u64], index: u8) {
     super::cpu::prefetch(table, N);
@@ -90,6 +94,10 @@ fn _select_avx2<const N: usize, const V: usize>(z: &mut [u64; N], table: &[u64],
 
 /// Selects a row of `N` words, held in `V` 128-bit vectors, with the SSE2
 /// every x86_64 CPU has.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "N == 2 * V is a row's word count and i < V, so 2 * i < N"
+)]
 #[target_feature(enable = "sse2")]
 fn select_sse2<const N: usize, const V: usize>(z: &mut [u64; N], table: &[u64], index: u8) {
     const { assert!(N == 2 * V) };

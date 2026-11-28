@@ -133,17 +133,22 @@ impl VgKey {
         // bytes 240 to 255.
         let mut ctx = [0u64; 129];
         let (first, middle, last) = key.round_keys();
+        #[expect(
+            clippy::arithmetic_side_effects,
+            reason = "an AES key has at most 13 middle round keys"
+        )]
         let rounds = middle.len() + 1;
-        for (i, rk) in [first].iter().chain(middle).chain([&last]).enumerate() {
+        // At most 15 round keys, in the first 30 of the context's words.
+        let round_keys = core::iter::once(&first).chain(middle).chain([&last]);
+        for (words, rk) in ctx.as_chunks_mut::<2>().0.iter_mut().zip(round_keys) {
             // SAFETY: every bit pattern of an `__m128i` is two valid words,
             // in the order x86_64 stores them.
             let rk: [u64; 2] = unsafe { core::mem::transmute(*rk) };
-            ctx[2 * i..2 * i + 2].copy_from_slice(&rk);
+            *words = rk;
         }
-        let h = key.encrypt_block(&[0; 16]);
-        let (h_lo, h_hi) = h.split_at(8);
-        ctx[30] = u64::from_le_bytes(h_lo.try_into().unwrap());
-        ctx[31] = u64::from_le_bytes(h_hi.try_into().unwrap());
+        let h = u128::from_le_bytes(key.encrypt_block(&[0; 16]));
+        ctx[30] = h as u64;
+        ctx[31] = (h >> 64) as u64;
         // SAFETY: `ctx` is 1032 readable and writable bytes, a key context
         // of `vg_aes_gcm_init` in its first 256, and overlaps nothing on the
         // stack; the token proves the CPU has SSSE3, PCLMULQDQ, AVX, AVX2,

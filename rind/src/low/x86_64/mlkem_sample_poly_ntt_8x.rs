@@ -19,6 +19,12 @@ pub(crate) fn mlkem_sample_poly_ntt_8x(
     }
 }
 
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    clippy::unwrap_used,
+    reason = "i < 5, so each word i * 8..(i + 1) * 8 lies within an input's 40 bytes, and left <= 256"
+)]
 #[target_feature(enable = "avx512f,avx512bw,avx512vbmi,avx512vbmi2")]
 unsafe fn sample_poly_ntt_8x_avx512(
     inputs: &[[u8; 40]; 8],
@@ -75,6 +81,10 @@ unsafe fn sample_poly_ntt_8x_avx512(
 ///
 /// `states[lane]` holds `lane` for all eight states, so the result collects the
 /// `index`th 64-bit word of each lane.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "lane < 25 = states.len(), and callers pass index < 8 = words.len()"
+)]
 #[target_feature(enable = "avx512f")]
 fn extract_state(states: &[__m512i; 25], index: usize) -> [u64; 25] {
     let mut r = [0u64; 25];
@@ -91,6 +101,12 @@ fn extract_state(states: &[__m512i; 25], index: usize) -> [u64; 25] {
 ///
 /// `left` indicates how many items in each polynomial in `output` remains unwritten.
 /// It should be updated to indicate how many were written.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "lane < RATE_WORDS < 25 and i < 8; offset < RATE_BYTES, which bytes pads by 64; \
+              used <= 256 and take <= 256 - used, so take and valid are shifts under 64"
+)]
 #[target_feature(enable = "avx512f,avx512bw,avx512vbmi,avx512vbmi2")]
 fn _squeeze_rate_and_reject(
     state: &[__m512i; 25],
@@ -192,6 +208,10 @@ const GROUP_BYTES: usize = GROUP_CANDIDATES / 2 * 3;
 ///
 /// Lane `k` (where `j = k / 2`) takes bytes `3j` and `3j + 1` when `k` is even,
 /// or `3j + 1` and `3j + 2` when it is odd.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "const-evaluated, where an index out of bounds fails to compile"
+)]
 static SPREAD: [u8; 64] = {
     let mut r = [0u8; 64];
     let mut k = 0;

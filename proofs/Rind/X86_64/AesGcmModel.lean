@@ -646,7 +646,7 @@ fn _cipher_avx512<const ENC: bool>(
 
     let ghash_avx512 = match ghash.table {
         GhashTable::Avx512(ghash_avx512) => ghash_avx512,
-        _ => panic!("unexpected ghash table variant"),
+        _ => unreachable!("cipher calls this only with an AVX-512 GHASH table"),
     };
 
     for blocks in by16_iter {
