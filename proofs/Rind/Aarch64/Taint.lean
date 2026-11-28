@@ -190,6 +190,21 @@ theorem same_ldD {g g' : VG.AArch64.State} {a : Addr} {t1 t2 : VReg}
     obtain ⟨x, -, y, -, rfl⟩ := h
     exact (same_setV _ _ _).trans (same_setV _ _ _)
 
+theorem same_ldQ {g g' : VG.AArch64.State} {a b : Addr} {t1 t2 : VReg}
+    (h : ldQ g a b t1 t2 = some g') : Same g g' := by
+  simp only [ldQ] at h
+  split at h
+  · simp at h
+  · simp only [Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+    obtain ⟨x, -, y, -, rfl⟩ := h
+    exact (same_setV _ _ _).trans (same_setV _ _ _)
+
+theorem same_stQ {g g' : VG.AArch64.State} {a : Addr} {t1 t2 : VReg}
+    (h : stQ g a t1 t2 = some g') : Same g g' := by
+  simp only [stQ, Option.bind_eq_some_iff] at h
+  obtain ⟨g₁, h₁, h⟩ := h
+  exact (same_store h₁).trans (same_store h)
+
 namespace AgreeV
 
 variable {names : List String} {a : Taint} {g₁ g₂ : VG.AArch64.State}
@@ -280,7 +295,7 @@ def step (names : List String) : Rind.AArch64.Instr → Taint → Option Taint
   | .vg (.movz .x d _ _), a => some (a.set d true)
   | .vg (.adrSym d name), a => some (a.set d (names.contains name))
   | .vg (.umov .x d _ _), a => some (a.set d false)
-  | .vg (.stp _ _ n _), a => if a.pub n then some a else none
+  | .vg (.stp _ _ n _), a | .vg (.ldrq _ n _), a => if a.pub n then some a else none
   | .ld1 _ _ _ n _, a | .st1 _ _ _ n _, a | .ld4r _ n _, a => if a.pub n then some a else none
   | .cmpImm n _, a => some { a with flags := a.pub n }
   | .subsImm d n _, a | .addsImm d n _, a => some { a.set d (a.pub n) with flags := a.pub n }
@@ -293,6 +308,9 @@ def step (names : List String) : Rind.AArch64.Instr → Taint → Option Taint
   | .strbPostInc _ n, a => if a.pub n then some a else none
   | .umovB d _ _, a => some (a.set d false)
   | .stpDPre .., a | .stpD .., a | .ldpD .., a | .ldpDPost .., a => some a
+  | .ldpQ _ _ n _, a | .ldpQPost _ _ n _, a | .stpQPost _ _ n _, a | .ldrD _ n, a =>
+    if a.pub n then some a else none
+  | .cmpReg n m, a => some { a with flags := a.pub n && a.pub m }
   | _, _ => none
 
 /-- Whether a branch on `c` goes the same way in both runs. -/
@@ -466,6 +484,12 @@ theorem vg_sound {names : List String} {a a' : Taint} {j : VG.AArch64.Instr}
     obtain ⟨u₁, hu₁, hv₁⟩ := h₁; obtain ⟨u₂, hu₂, hv₂⟩ := h₂
     refine ⟨by simp only [VG.AArch64.addrs, hA.gpr hn], ?_⟩
     exact hA.same ((same_store hu₁).trans (same_store hv₁)) ((same_store hu₂).trans (same_store hv₂))
+  case ldrq t n off =>
+    simp only [step] at h
+    obtain ⟨hn, rfl⟩ := ite_some h
+    simp only [VG.AArch64.exec, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h₁ h₂
+    obtain ⟨b₁, -, x₁, -, rfl⟩ := h₁; obtain ⟨b₂, -, x₂, -, rfl⟩ := h₂
+    exact ⟨by simp only [VG.AArch64.addrs, hA.gpr hn], hA.same (same_setV _ _ _) (same_setV _ _ _)⟩
   all_goals simp [step] at h
 
 theorem step_sound {names : List String} {a a' : Taint} {i : Rind.AArch64.Instr}
@@ -611,6 +635,43 @@ theorem step_sound {names : List String} {a a' : Taint} {i : Rind.AArch64.Instr}
     obtain ⟨u₁, hu₁, rfl⟩ := h₁; obtain ⟨u₂, hu₂, rfl⟩ := h₂
     refine ⟨by simp only [Rind.AArch64.addrs, hA.2.2.1], ?_⟩
     exact (hA.same (same_ldD hu₁) (same_ldD hu₂)).setSp (by rw [hA.2.2.1])
+  case ldpQ t1 t2 n off =>
+    simp only [step] at h
+    obtain ⟨hn, rfl⟩ := ite_some h
+    simp only [Rind.AArch64.exec] at h₁ h₂
+    obtain ⟨-, h₁⟩ := ite_none h₁; obtain ⟨-, h₂⟩ := ite_none h₂
+    simp only [Option.map_eq_some_iff] at h₁ h₂
+    obtain ⟨u₁, hu₁, rfl⟩ := h₁; obtain ⟨u₂, hu₂, rfl⟩ := h₂
+    exact ⟨by simp only [Rind.AArch64.addrs, hA.gpr hn], hA.same (same_ldQ hu₁) (same_ldQ hu₂)⟩
+  case ldpQPost t1 t2 n imm =>
+    simp only [step] at h
+    obtain ⟨hn, rfl⟩ := ite_some h
+    simp only [Rind.AArch64.exec] at h₁ h₂
+    obtain ⟨-, h₁⟩ := ite_none h₁; obtain ⟨-, h₂⟩ := ite_none h₂
+    simp only [Option.map_eq_some_iff] at h₁ h₂
+    obtain ⟨u₁, hu₁, rfl⟩ := h₁; obtain ⟨u₂, hu₂, rfl⟩ := h₂
+    refine ⟨by simp only [Rind.AArch64.addrs, hA.gpr hn], ?_⟩
+    exact (hA.same (same_ldQ hu₁) (same_ldQ hu₂)).write_pub hn (by rw [hA.gpr hn])
+  case stpQPost t1 t2 n imm =>
+    simp only [step] at h
+    obtain ⟨hn, rfl⟩ := ite_some h
+    simp only [Rind.AArch64.exec] at h₁ h₂
+    obtain ⟨-, h₁⟩ := ite_none h₁; obtain ⟨-, h₂⟩ := ite_none h₂
+    simp only [Option.map_eq_some_iff] at h₁ h₂
+    obtain ⟨u₁, hu₁, rfl⟩ := h₁; obtain ⟨u₂, hu₂, rfl⟩ := h₂
+    refine ⟨by simp only [Rind.AArch64.addrs, hA.gpr hn], ?_⟩
+    exact (hA.same (same_stQ hu₁) (same_stQ hu₂)).write_pub hn (by rw [hA.gpr hn])
+  case ldrD t n =>
+    simp only [step] at h
+    obtain ⟨hn, rfl⟩ := ite_some h
+    simp only [Rind.AArch64.exec, Option.map_eq_some_iff] at h₁ h₂
+    obtain ⟨x₁, -, rfl⟩ := h₁; obtain ⟨x₂, -, rfl⟩ := h₂
+    exact ⟨by simp only [Rind.AArch64.addrs, hA.gpr hn], hA.same (same_setV _ _ _) (same_setV _ _ _)⟩
+  case cmpReg n m =>
+    simp only [step, Option.some.injEq] at h; subst h
+    simp only [Rind.AArch64.exec, Option.some.injEq] at h₁ h₂; subst h₁ h₂
+    exact ⟨rfl, hA.flagsAdd fun hp => by
+      simp only [Bool.and_eq_true] at hp; exact ⟨hA.gpr hp.1, by rw [hA.gpr hp.2]⟩⟩
   all_goals simp [step] at h
 
 theorem eval_eq {names : List String} {a : Taint} {c : Rind.AArch64.Cond} {s₁ s₂ : Rind.AArch64.State}

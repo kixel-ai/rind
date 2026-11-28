@@ -9,7 +9,9 @@ for `admin/prove lean` to compare with rind's build: for each, a line
 `function <Rust path>`, then on aarch64 one line `insn <word>` for each
 instruction word, in hex, one `reloc <byte offset> <type> <symbol>` for each
 relocation, and one `static <symbol> <Rust path> <bytes>` for each static,
-the bytes it must begin with, in hex; on x86_64 one line `text <offset>
+the bytes it must begin with, in hex, then for each of `provenBlocks` a
+line `block <Rust path> <words>`, its instruction words in hex, comma-separated,
+which the function's must contain in a row; on x86_64 one line `text <offset>
 <bytes>` for each 16 bytes of its section, in hex, one `reloc <byte offset>
 <type> <symbol><addend>` for each relocation, its addend as `llvm-objdump`
 prints it (`-0x4`), and the statics as on aarch64, a call's relocation
@@ -37,6 +39,10 @@ def aarch64 : IO UInt32 := do
       IO.println s!"reloc {r.off} {r.type} {r.sym}"
     for (sym, path, words) in p.statics do
       IO.println s!"static {sym} {path} {leHex 4 words}"
+  for (path, is) in Rind.AArch64.provenBlocks do
+    let some ws := is.mapM Rind.AArch64.Instr.encode
+      | IO.eprintln s!"rind-asm: a block of {path} does not encode"; return 1
+    IO.println s!"block {path} {",".intercalate (ws.flatten.map (hex 8))}"
   return 0
 
 /-- A relocation's addend as `llvm-objdump -r` prints it after its target:

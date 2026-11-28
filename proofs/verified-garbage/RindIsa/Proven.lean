@@ -1,3 +1,4 @@
+import RindIsa.AArch64.AesGcm8x192
 import RindIsa.AArch64.ChaCha20Poly1305
 import RindIsa.AArch64.Sha256Hw
 import RindIsa.X86_64.ChaCha20Poly1305
@@ -32,6 +33,15 @@ def proven : List Proven :=
      prog := ChaCha20Poly1305.openProg,
      statics := [(ChaCha20Poly1305.constsName, "rind::low::aarch64::chacha20poly1305::CHACHA20_CONSTS",
        ChaCha20Poly1305.consts)] }]
+
+/-- Blocks of functions that are not yet programs here, about which rind
+proves lemmas ahead of them, each with the Rust path of its function: the
+main loops of aws-lc's eight-way AES-192-GCM kernels. `rind-asm` prints
+them for `admin/prove lean` to find in each function's machine code, and
+`vg-cosim --rind` cosimulates their instructions. -/
+def provenBlocks : List (String × List Instr) :=
+  [("rind::low::aarch64::aes_gcm::aesv8_gcm_8x_enc_192", AesGcm8x192.encLoop),
+   ("rind::low::aarch64::aes_gcm::aesv8_gcm_8x_dec_192", AesGcm8x192.decLoop)]
 
 end Rind.AArch64
 

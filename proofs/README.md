@@ -526,7 +526,9 @@ one to four registers, aws-lc's frame of `x29` and `x30`, and the rest of
 what aws-lc's NEON ChaCha20-Poly1305 uses (LD4R, CMP, SUBS, and ADDS of an
 immediate, AND of a bit mask, ADC of the zero register, NEG, MOV between
 registers, post-index LDP, byte loads and stores, UMOV of a byte, and STP
-and LDP of `d` registers through `sp`). Its branches are VG's CBZ and CBNZ
+and LDP of `d` registers through `sp`), and what the main loops of aws-lc's
+eight-way AES-192-GCM kernels use (LDP and STP of `q` registers, LDR of a
+`d` register, and CMP of two registers). Its branches are VG's CBZ and CBNZ
 and B.cond on the flags, and it lays an `ite` out as a branch to the `then`
 code placed after the `else` code and a jump over it, or, with no `then`
 code, a branch past the `else` code, and a `loop` as its body and a branch
@@ -541,6 +543,11 @@ the static's `.rodata`, and the static's bytes. `admin/prove vg` cosimulates
 each distinct instruction and branch condition of those programs
 (`Cosim/Rind.lean`, `--rind`) as it does VG's, comparing `x29` too, but for
 the `adrp` and `add` the linker fills and the final `ret`, as VG's are not.
+A block of a function that is not yet a program, which rind proves lemmas
+about ahead of the function, is in `provenBlocks` with that function's Rust
+path: `rind-asm` prints its words, `admin/prove lean` fails unless the
+function's `.text` in rind's build holds them in a row, and `admin/prove vg`
+cosimulates its instructions.
 
 `verified-garbage/RindIsa/X86_64.lean` extends VG's x86_64 model the same
 way: its state is VG's with `lo`, the lowest address the stack may reach, and
@@ -705,6 +712,48 @@ comparison checks.
   register but its scratch ones and `v20`, and its trace is a function of
   the AAD's address and length. `Rind/Aarch64/Asm.lean` holds the symbolic
   execution they share.
+
+- `Rind/Aarch64/AesGcm8x192Loop.lean`: `encLoop_ok` and `decLoop_ok`, one
+  iteration of the main loops of aws-lc's eight-way AES-192-GCM kernels,
+  `low::aarch64::aes_gcm::aesv8_gcm_8x_enc_192` and `aesv8_gcm_8x_dec_192`,
+  whose bodies `RindIsa/AArch64/AesGcm8x192.lean` transcribes and
+  `provenBlocks` lists. From a state `LoopPre` holds of (the thirteen lane
+  round keys at `x11`, s2n-bignum's `htable8` of the twisted GHASH key at
+  `x6`, the reduction constant at `x10`, counter blocks `c` to `c + 4` in
+  `v0` to `v4` and `c + 5` in `v30` reversed by words, the counter's step in
+  `v31`, the eight blocks at `x0` readable and the eight at `x2` writable),
+  an iteration writes to `x2` the eight blocks at `x0` XORed with Vale's
+  AES-192 (`evalCipher .AES_192`) of counter blocks `c` to `c + 7`, leaves
+  in `v19` SP 800-38D's GHASH, s2n-bignum's `nist_ghash`, of the eight
+  blocks it started with in `v8` to `v15` from the state in `v19`, leaves
+  the blocks it wrote (encrypting) or read (decrypting) in `v8` to `v15`
+  and counter blocks `c + 8` to `c + 13` where it found `c` to `c + 5`,
+  steps `x0` and `x2` past the blocks, sets the flags as `cmp x0, x5`, and
+  changes no other memory, no other general register, and no vector
+  register but `v0` to `v30`. `Rind/Aarch64/AesGcm8x192Ops.lean` proves
+  what the loops' instructions compute: AESE and AESMC are Vale's rounds,
+  PMULL is the carry-less product, REV64 is SP 800-38D's byte order with its
+  halves swapped, REV32 and ADD on 32-bit lanes step the counter, the
+  reduction is `reduceModel`'s, and GHASH by the table's powers is the
+  one-reduction sum `reduceAll` (`nistGhash_reduceAll`); `aes192Cipher`
+  states AES-192 in s2n-bignum's form, and `keystream_eq` restates the
+  iterations' keystream as its `aes_ctr_block`. `encLoop_constant_time`
+  and `decLoop_constant_time`: each main loop, run any number of times,
+  takes the same branches and addresses in any two runs that agree on
+  `x0`, `x2`, `x5`, `x6`, `x10`, `x11`, and the stack pointer (`LoopPub`),
+  which `check` shows.
+
+- `Rind/Aarch64/AesGcm8x192MainLoop.lean`: `encMainLoop_ok` and
+  `decMainLoop_ok`, each main loop run in place from iteration 0 (`LoopInv`)
+  until its compare says stop after `m + 1` iterations, within the `N`
+  groups of eight blocks `LoopStatic` allows (the keys, table, and constant
+  readable and outside the buffer, the buffer writable, `128 N` below
+  `2^64`): the buffer's first `m + 1` groups hold their AES-192 CTR outputs
+  (`memAfter`), `v19` the GHASH of every group but the last of those it
+  hashed (`accAfter`), and `LoopInv` holds at iteration `m + 1`. The
+  kernels' entry, prepretail, and tails are not yet proven, nor are the
+  whole functions programs of the model: [the
+  quest](/quest/m4/verified/aes-gcm-aarch64-192.md) says what remains.
 
 - `Rind/X86_64/Taint.lean`: `constantTime_of_check`, the same check for
   rind's x86_64 model. It tracks CF apart from ZF, SF, and OF, since `dec`
