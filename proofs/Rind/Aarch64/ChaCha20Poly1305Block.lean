@@ -17,7 +17,9 @@ prove the short paths' blocks before and after their rounds
 key from the counter itself. `finalInit_ok` proves seal's first five
 blocks after theirs (`rounds5_ok`): it turns the four vertical blocks'
 key streams to rows (`zip1s_W` to `zip2d_W`), and takes Poly1305's key
-from the fifth.
+from the fifth; `finalMain_ok` proves seal's main loop's five blocks after
+theirs, the fifth's counter one past the vertical blocks' (`counter5`),
+and moves the counters in `v25` on five.
 -/
 
 namespace rind.aarch64.chacha20poly1305asm
@@ -248,6 +250,83 @@ theorem finalInit_ok (s : S) (x : List chacha20.Word) (hx : x.length = 16) (h : 
     case hp.refine_21 => exact subFlags_flagsAdd _ _ _ (by norm_num) h4
     all_goals a64_out'
 
+/-! ## Seal's main loop's five blocks -/
+
+theorem not_W (a b c d : BitVec 32) : ~~~(W a b c d) = W (~~~a) (~~~b) (~~~c) (~~~d) := by
+  apply BitVec.eq_of_getLsbD_eq; intro k hk
+  simp only [BitVec.getLsbD_not, getLsbD_W]
+  interval_cases k <;> simp
+
+theorem sub_W (a0 a1 a2 a3 b0 b1 b2 b3 : BitVec 32) :
+    VArr.s4.map2 (fun _ x y => x - y) (W a0 a1 a2 a3) (W b0 b1 b2 b3) =
+      W (a0 - b0) (a1 - b1) (a2 - b2) (a3 - b3) := by
+  simp only [VArr.map2, vword_W0, vword_W1, vword_W2, vword_W3]
+
+/-- `ext vd, vn, vm, #12` of two registers: `vn`'s top lane, then `vm`'s three below. -/
+theorem ext12g_W (a b c d e f g h : BitVec 32) :
+    ((W e f g h ++ W a b c d) >>> 96).extractLsb' 0 128 = W d e f g := by
+  lane_bits
+
+theorem dup5 : BitVec.setWidth 32 (BitVec.setWidth 64 (5 : BitVec 16) <<< 0) = 5#32 := by decide
+
+/-- The fifth block's counter, `v25`'s top lane plus one, as `not`, `sub`, and `ext` make it. -/
+theorem counter5 (n : Nat) : BitVec.ofNat 32 (n + 3) - ~~~0 = BitVec.ofNat 32 (n + 4) := by
+  rw [show (~~~0 : BitVec 32) = BitVec.ofNat 32 (2 ^ 32 - 1) by decide]
+  apply BitVec.eq_of_toNat_eq
+  simp only [BitVec.toNat_sub, BitVec.toNat_ofNat]
+  omega
+
+theorem add5 (n : Nat) : BitVec.ofNat 32 n + 5#32 = BitVec.ofNat 32 (n + 5) := by
+  rw [← BitVec.ofNat_add]
+
+/-- The counters in `v25`, from `n`. -/
+def ctrs (n : Nat) : BitVec 128 :=
+  W (BitVec.ofNat 32 n) (BitVec.ofNat 32 (n + 1)) (BitVec.ofNat 32 (n + 2)) (BitVec.ofNat 32 (n + 3))
+
+set_option maxRecDepth 8000 in
+theorem finalMain_ok (s : S) (x : List chacha20.Word) (hx : x.length = 16) (n : Nat)
+    (h : Rows s .v24 .v28 .v29 .v30 x) (h25 : s.vg.v .v25 = ctrs n)
+    (hv : Vert s (chacha20.innerBlock^[10] (bump x n)) (chacha20.innerBlock^[10] (bump x (n + 1)))
+      (chacha20.innerBlock^[10] (bump x (n + 2))) (chacha20.innerBlock^[10] (bump x (n + 3))))
+    (he : Rows s .v4 .v9 .v14 .v19 (chacha20.innerBlock^[10] (bump x (n + 4))))
+    (h2 : (s.vg.gpr .x2).toNat < 2 ^ 63) :
+    ∃ s', execBlock I finalMain s = some (s', []) ∧ Rows s' .v0 .v5 .v10 .v15 (keyBlock (bump x n)) ∧
+      Rows s' .v1 .v6 .v11 .v16 (keyBlock (bump x (n + 1))) ∧
+      Rows s' .v2 .v7 .v12 .v17 (keyBlock (bump x (n + 2))) ∧
+      Rows s' .v3 .v8 .v13 .v18 (keyBlock (bump x (n + 3))) ∧
+      Rows s' .v4 .v9 .v14 .v19 (keyBlock (bump x (n + 4))) ∧ s'.vg.v .v25 = ctrs (n + 5) ∧
+      SubFlags s'.vg (s.vg.gpr .x2) 320 ∧ s'.vg.mem = s.vg.mem ∧
+      Frame s s' [.v0, .v1, .v2, .v3, .v4, .v5, .v6, .v7, .v8, .v9, .v10, .v11, .v12, .v13, .v14, .v15, .v16,
+        .v17, .v18, .v19, .v20, .v21, .v22, .v23, .v25] [.x11] := by
+  have l0 : (bump x n).length = 16 := by rw [bump_length, hx]
+  have l1 : (bump x (n + 1)).length = 16 := by rw [bump_length, hx]
+  have l2 : (bump x (n + 2)).length = 16 := by rw [bump_length, hx]
+  have l3 : (bump x (n + 3)).length = 16 := by rw [bump_length, hx]
+  have l4 : (bump x (n + 4)).length = 16 := by rw [bump_length, hx]
+  obtain ⟨h0, h1, h2', h3⟩ := h
+  obtain ⟨v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15⟩ := hv
+  obtain ⟨e0, e1, e2, e3⟩ := he
+  simp only [row, Nat.reduceMul, Nat.reduceAdd] at h0 h1 h2' h3 e0 e1 e2 e3
+  simp only [lanes] at v0 v1 v2 v3 v4 v5 v6 v7 v8 v9 v10 v11 v12 v13 v14 v15
+  simp only [ctrs] at h25 ⊢
+  simp only [Rows]
+  simp (disch := decide) only [row, Nat.reduceMul, Nat.reduceAdd, keyBlock_get _ l0, keyBlock_get _ l1,
+    keyBlock_get _ l2, keyBlock_get _ l3, keyBlock_get _ l4, bump_get x hx, Nat.reduceEqDiff, ↓reduceIte]
+  apply ex_of_eq
+  · rw [execBlock_acc]
+    simp only [finalMain]
+    a64_run [vop, h0, h1, h2', h3, v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, e0, e1,
+      e2, e3, h25, add_W, sub_W, not_W, BitVec.xor_self, zero_W', ext12g_W, zip1s_W, zip2s_W, zip1d_W, zip2d_W,
+      dup5]
+    apply congrArg some; exact Prod.ext rfl rfl
+  · exact rfl
+  · refine ⟨⟨?_, ?_, ?_, ?_⟩, ⟨?_, ?_, ?_, ?_⟩, ⟨?_, ?_, ?_, ?_⟩, ⟨?_, ?_, ?_, ?_⟩, ⟨?_, ?_, ?_, ?_⟩, ?_, ?_,
+      ?_, ?_⟩
+    all_goals try a64_read
+    all_goals try (simp only [final_init_counter, counter5, add5, add_zero32]; done)
+    case hp.refine_22 => exact subFlags_flagsAdd _ _ _ (by norm_num) h2
+    all_goals a64_out'
+
 end rind.aarch64.chacha20poly1305asm
 
 /-- info: 'rind.aarch64.chacha20poly1305asm.setup128_ok' depends on axioms: [propext, Classical.choice, Quot.sound] -/
@@ -261,3 +340,7 @@ end rind.aarch64.chacha20poly1305asm
 /-- info: 'rind.aarch64.chacha20poly1305asm.finalInit_ok' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms rind.aarch64.chacha20poly1305asm.finalInit_ok
+
+/-- info: 'rind.aarch64.chacha20poly1305asm.finalMain_ok' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms rind.aarch64.chacha20poly1305asm.finalMain_ok
