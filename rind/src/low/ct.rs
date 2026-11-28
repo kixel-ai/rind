@@ -87,18 +87,25 @@ cfg_if::cfg_if! {
             v
         }
     } else {
+        // Uninstrumented: these do nothing, so a copy of one tells only
+        // which types reach a marker from outside rind's unit tests, which
+        // build the markers above, and that changes with every caller.
         #[inline]
+        #[cfg_attr(coverage_nightly, coverage(off))]
         pub(crate) fn secret_slice<T>(_v: &[T]) {}
 
         #[inline]
+        #[cfg_attr(coverage_nightly, coverage(off))]
         pub(crate) fn public_slice<T>(_v: &[T]) {}
 
         #[inline]
         #[must_use]
+        #[cfg_attr(coverage_nightly, coverage(off))]
         pub(crate) fn into_secret<T>(v: T) -> T { v }
 
         #[inline]
         #[must_use]
+        #[cfg_attr(coverage_nightly, coverage(off))]
         pub(crate) fn into_public<T>(v: T) -> T { v }
     }
 }

@@ -209,9 +209,15 @@ fn kem_keys_report_their_algorithm() {
         let theirs_key = theirs::kem::DecapsulationKey::generate(reference).unwrap();
         assert_eq!(key.algorithm(), algorithm);
         debug_eq!(key, theirs_key);
+        debug_eq!(key.key_bytes().unwrap(), theirs_key.key_bytes().unwrap());
         let public = key.encapsulation_key().unwrap();
+        let theirs_public = theirs_key.encapsulation_key().unwrap();
         assert_eq!(public.algorithm(), algorithm);
-        debug_eq!(public, theirs_key.encapsulation_key().unwrap());
+        debug_eq!(public, theirs_public);
+        debug_eq!(
+            public.key_bytes().unwrap(),
+            theirs_public.key_bytes().unwrap()
+        );
     }
 }
 

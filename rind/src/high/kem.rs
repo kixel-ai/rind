@@ -446,6 +446,12 @@ mod tests {
                 // Generation never makes a seed of another length.
                 if test.seed.len() != 64 {
                     assert_eq!(test.result, Expected::Invalid, "{}", test.id);
+                    assert_eq!(
+                        DecapsulationKey::<A>::from_seed(&test.seed).err(),
+                        Some(KeyFormatError::WrongLength.into()),
+                        "{}",
+                        test.id
+                    );
                     continue;
                 }
 
@@ -457,6 +463,32 @@ mod tests {
                     (Expected::Invalid, Err(Error::WrongLength)) => {}
                     _ => panic!("{}: expected {:?} got {:?}", test.id, test.result, result),
                 }
+            }
+        }
+        each_set!(check);
+    }
+
+    /// An expanded key with a coefficient of q or more in its secret
+    /// vector, or in its encapsulation key's, is refused for its modulus.
+    #[test]
+    fn expanded_key_modulus() {
+        fn check<A: Algorithm>() {
+            let key = DecapsulationKey::<A>::from_seed(&[7; 64]).unwrap();
+            let dk = low::ct::into_public(key.to_bytes()).as_ref().to_vec();
+            // `dkPKE` and `ek`'s `t_hat` are each the length of `ek` less
+            // its 32-byte `rho`.
+            let vector = key.public_key().as_ref().len() - 32;
+            for start in [0, vector] {
+                let mut bad = dk.clone();
+                // The first coefficient becomes 4095.
+                bad[start] = 0xff;
+                bad[start + 1] |= 0x0f;
+                assert_eq!(
+                    DecapsulationKey::<A>::new(&bad).err(),
+                    Some(KeyFormatError::MlKemModulus.into()),
+                    "{} at {start}",
+                    A::NAME
+                );
             }
         }
         each_set!(check);
