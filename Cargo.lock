@@ -3034,6 +3034,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "libcrux-poly1305"
+version = "0.0.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "095f778be28b50af4c32887b31c8cc1911c8cd3cb3d51529232f17434cb90c20"
+dependencies = [
+ "libcrux-hacl-rs 0.0.7",
+ "libcrux-macros 0.0.4",
+]
+
+[[package]]
 name = "libcrux-rsa"
 version = "0.0.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4520,10 +4530,10 @@ dependencies = [
  "libc",
  "libcrux-curve25519 0.0.10",
  "libcrux-ed25519 0.0.11",
- "libcrux-hacl-rs 0.0.6",
+ "libcrux-hacl-rs 0.0.7",
  "libcrux-macros 0.0.4",
  "libcrux-p256 0.0.10",
- "libcrux-poly1305 0.0.7",
+ "libcrux-poly1305 0.0.8",
  "matter-crypto",
  "md-5",
  "ml-dsa",
@@ -4561,7 +4571,7 @@ version = "0.1.0"
 dependencies = [
  "aws-lc-rs",
  "hex",
- "num-bigint 0.4.8",
+ "num-bigint 0.5.1",
  "rind-fips",
  "serde_json",
 ]

@@ -156,7 +156,7 @@ library = "rind"
 operations = ["sha512/*"]
 arch = "x86_64"
 cpu = ["intel", "avx", "ssse3", "!avx2"]
-proof = "rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch Aeneas cannot translate, of its digest API's SHA-512, padding included, down to aws-lc's sha512_block_data_order_avx, which rind runs only on Intel's CPUs without AVX2, composed with aws-lc-verification's SAW proof of that routine, of aws-lc c21d40da, whose SHA-512 code rind's copy from 5ed12cce keeps"
+proof = "rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch Aeneas cannot translate, of its digest API's SHA-512, padding included, down to aws-lc's sha512_block_data_order_avx, which rind runs only on Intel's CPUs without AVX2, composed with aws-lc-verification's SAW proof of that routine, of aws-lc c21d40da, whose SHA-512 code rind's copy from d313cb9c keeps"
 link = "https://github.com/kixel-ai/rind/blob/main/proofs/Rind/X86_64/Sha512.lean"
 
 [[verified]]
@@ -171,7 +171,7 @@ link = "https://github.com/kixel-ai/rind/blob/main/proofs/Rind/X86_64/Sha512.lea
 library = "rind"
 operations = ["sha512/*"]
 arch = "aarch64"
-proof = "rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch Aeneas cannot translate, of its digest API's SHA-512, padding included, down to pyca/verified-garbage's vg_sha512_compress_sha512, which rind runs with the SHA-512 instructions, and aws-lc's sha512_block_data_order_nohw, which it runs without them, composed with VG's Lean proof of the first, of the code VG prints at 0aa40d6c, which rind imports, over VG's model of the instructions, which rind cosimulates against the CPU, against VG's FIPS 180-4 spec, which rind proves its own, and aws-lc-verification's NSym proof of the second, with its ArmSpecGap caveat, of aws-lc c21d40da, whose SHA-512 code rind's copy from 5ed12cce keeps"
+proof = "rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch Aeneas cannot translate, of its digest API's SHA-512, padding included, down to pyca/verified-garbage's vg_sha512_compress_sha512, which rind runs with the SHA-512 instructions, and aws-lc's sha512_block_data_order_nohw, which it runs without them, composed with VG's Lean proof of the first, of the code VG prints at 0aa40d6c, which rind imports, over VG's model of the instructions, which rind cosimulates against the CPU, against VG's FIPS 180-4 spec, which rind proves its own, and aws-lc-verification's NSym proof of the second, with its ArmSpecGap caveat, of aws-lc c21d40da, whose SHA-512 code rind's copy from d313cb9c keeps"
 link = "https://github.com/kixel-ai/rind/blob/main/proofs/Rind/X86_64/Sha512.lean"
 
 [[verified]]
