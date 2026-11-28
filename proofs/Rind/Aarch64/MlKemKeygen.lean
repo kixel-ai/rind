@@ -596,6 +596,99 @@ theorem kpke_keygen_spec (h : RunsSha3) {X : Type}
   · exact bv_flat3 _ dk.property _ hdk
 
 
+/-- `ByteDecode_12` undoes `ByteEncode_12`. -/
+theorem byteDecode_byteEncode12 (F : Polynomial) :
+    (ByteDecode (d := 12) (ByteEncode 12 F (by omega)) (by omega) : Polynomial) = F := by
+  apply Vector.ext
+  intro i hi
+  rw [← getElem!_pos _ i hi, ← getElem!_pos F i hi, ByteDecode_get _ _ i hi]
+  have hb : ∀ j : Fin 12, bit (ByteEncode 12 F (by omega)) (i * 12 + j.val) = (F[i]!).val.testBit j.val := by
+    intro j
+    rw [ByteEncode_bit (d := 12) F _ _ (by omega), show (i * 12 + j.val) / 12 = i by omega,
+      show (i * 12 + j.val) % 12 = j.val by omega]
+  simp only [hb]
+  have hlt : (F[i]!).val < 3329 := ZMod.val_lt (F[i]!)
+  rw [← mod_two_pow_eq_sum, Nat.mod_eq_of_lt (by omega)]
+  exact ZMod.natCast_zmod_val (F[i]!)
+
+/-- 384 bytes from `384 j` of `ByteEncode_12` of three polynomials, then more
+bytes, are polynomial `j`'s encoding. -/
+theorem sub_enc3 (l : List U8) (T : ℕ → Polynomial) (ρ : List Byte) (h : bv l = enc3 T ++ ρ) (j : ℕ)
+    (hj : j < 3) : bv (sub l (384 * j) 384) = (ByteEncode 12 (T j)).toList := by
+  have hb : bv (sub l (384 * j) 384) = ((bv l).drop (384 * j)).take 384 := by simp [bv, sub, List.map_take, List.map_drop]
+  rw [hb, h]
+  unfold enc3
+  have h0 := (ByteEncode 12 (T 0) (by omega)).length_toList
+  have h1 := (ByteEncode 12 (T 1) (by omega)).length_toList
+  have h2 := (ByteEncode 12 (T 2) (by omega)).length_toList
+  interval_cases j <;> simp [List.drop_append, h0, h1, h2]
+
+/-- An encapsulation key's polynomial `j` of `t̂`, as `K-PKE.Encrypt` decodes it,
+is `T j` when the key is `ByteEncode_12(t̂) ‖ ρ` of coefficients in `[0, q)`. -/
+theorem decode_enc3 (ek : EkBytes) (T : ℕ → Polynomial) (ρ : List Byte) (h : bv ek.val = enc3 T ++ ρ) (j : ℕ)
+    (hj : j < 3) :
+    (PolyVector.ByteDecode (k := k .ML_KEM_768) 12 (slice (toVec 1184 ek.val ek.property) 0 1152))[j]! = T j := by
+  have hek : ek.val.length = 1184 := ek.property
+  have hl : (sub ek.val (384 * j) 384).length = (384#usize).val := sub_length _ _ _ (by omega)
+  rw [← decode_t_hat ek (Std.Array.from _ hl) j hj (by rw [Std.Array.from_val])]
+  unfold decode12
+  rw [show toVec (32 * 12) (Std.Array.from (sub ek.val (384 * j) 384) hl).val (Std.Array.property _) =
+      ByteEncode 12 (T j) (by omega) from Vector.toList_inj.mp (by rw [toVec_toList, Std.Array.from_val,
+        sub_enc3 _ T ρ h j hj])]
+  exact byteDecode_byteEncode12 (T j)
+
+/-- The 32 bytes after an encapsulation key's encoded `t̂` are `ρ`. -/
+theorem rho_enc3 (ek : EkBytes) (T : ℕ → Polynomial) (ρ : 𝔹 32) (h : bv ek.val = enc3 T ++ ρ.toList) :
+    slice (toVec 1184 ek.val ek.property) 1152 32 = ρ := by
+  have hek : ek.val.length = 1184 := ek.property
+  rw [slice_toVec]
+  apply Vector.toList_inj.mp
+  rw [toVec_toList]
+  have hb : bv (sub ek.val 1152 32) = ((bv ek.val).drop 1152).take 32 := by simp [bv, sub, List.map_take, List.map_drop]
+  rw [hb, h]
+  unfold enc3
+  have h0 := (ByteEncode 12 (T 0) (by omega)).length_toList
+  have h1 := (ByteEncode 12 (T 1) (by omega)).length_toList
+  have h2 := (ByteEncode 12 (T 2) (by omega)).length_toList
+  simp [List.drop_append, h0, h1, h2]
+
+/-- The encapsulation key `ek` holds `E`: its bytes, their hash `H(E)`, and the
+decoded `t̂` and transposed matrix `kpke_encrypt_fips` takes. -/
+structure EkHolds {X : Type} (ek : mid.mlkem.EncapKey X Vec Mat EkBytes CtBytes DkBytes Cache Enc) (E : 𝔹 1184) :
+    Prop where
+  bytes : toVec 1184 ek.bytes.val ek.bytes.property = E
+  h_ek : toVec 32 ek.h_ek.val ek.h_ek.property = H E
+  hashed : ek.hashed = true
+  decoded : ∃ D, ek.decoded = some D ∧
+    DecodedHolds D (fun j => (PolyVector.ByteDecode (k := k .ML_KEM_768) 12 (slice E 0 1152))[j]!)
+      (fun i j => SampleNTT (slice E 1152 32 ‖ #v[(i : Byte)] ‖ #v[(j : Byte)]))
+
+/-- `kpke_keygen` is FIPS 203's `K-PKE.KeyGen` for ML-KEM-768, and the
+encapsulation key it returns holds its encoding, given that `SampleNTT`
+finishes on each of the matrix's inputs. -/
+theorem kpke_keygen_fips (h : RunsSha3) {X : Type}
+    (P : mid.mlkem.Params X Vec Mat EkBytes CtBytes DkBytes Cache Enc) (hP : Is768 P) (d : Std.Array U8 32#usize)
+    (hH : ∀ i : ℕ, i < 3 → ∀ j : ℕ, j < 3 →
+      Halts ((kgG (toVec 32 d.val d.property)).1 ‖ #v[(j : Byte)] ‖ #v[(i : Byte)]).toList) :
+    mid.mlkem.DecapKey.kpke_keygen P d ⦃ r =>
+      toVec 1184 r.1.bytes.val r.1.bytes.property = (K_PKE.KeyGen .ML_KEM_768 (toVec 32 d.val d.property)).1 ∧
+        dkPke r.2 = (K_PKE.KeyGen .ML_KEM_768 (toVec 32 d.val d.property)).2 ∧
+        EkHolds r.1 (toVec 1184 r.1.bytes.val r.1.bytes.property) ⦄ := by
+  apply WP.spec_mono (kpke_keygen_spec h P hP d hH)
+  rintro ⟨ek, dk⟩ ⟨hb, hh, hhs, ⟨D, hD, hDT, hDA⟩, hdk⟩
+  obtain ⟨heq1, heq2⟩ := keygen_eq (toVec 32 d.val d.property)
+  refine ⟨Vector.toList_inj.mp (by rw [toVec_toList, hb, heq1]), Vector.toList_inj.mp (by
+    unfold dkPke; rw [toVec_toList, hdk, heq2]), rfl, h_eq _ _ _ (by rw [toVec_toList]; exact hh), hhs,
+    D, hD, ?_, ?_⟩
+  · intro j hj
+    simp only
+    rw [decode_enc3 ek.bytes _ _ hb j hj]
+    exact hDT j hj
+  · intro i hi j hj
+    simp only
+    rw [rho_enc3 ek.bytes _ _ hb]
+    exact hDA i hi j hj
+
 end MlKemKeygen
 
 end rind.aarch64
