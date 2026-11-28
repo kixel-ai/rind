@@ -942,6 +942,68 @@ theorem rsa_pkcs1_sha256_sign_spec (h : Runs) (hb : Sha256Blocks)
     rw [os2ip_bv, ← hkey, ← hkN, ← hE]
     exact hne
 
+/-- `KeyPair::sign(&sign::PSS_SHA256, ..)` with a key pair holding `(n, e, d,
+p, q, dP, dQ, qInv)`: RSASSA-PSS-SIGN with SHA-256, MGF1 with SHA-256, a
+32-byte salt the system random source drew, and RSASP1 by the CRT, over
+Montgomery products at the modulus's width and, where rind's CRT runs, the
+primes'. It refuses only a failed draw, with `RngFailed`, and with `Fault`
+where RSASP1's result raised to `e` modulo `n` is not the encoded message's
+representative, which two primes rule out. -/
+theorem rsa_pss_sha256_sign_spec (h : Runs) (hb : Sha256Blocks) (hfill : Fills)
+    (t : low.x86_64.cpu.HaveBmi2Adx) (hadx : low.x86_64.cpu.HaveBmi2Adx.check = ok (some t))
+    (hifma : IfmaCheckReturns) (kp : high.signature.rsa.KeyPair) (N E D P Q DP DQ QINV : Nat)
+    (hkp : KeyPairOf kp N E D P Q DP DQ QINV) (hPn : MontProducts ((N.size + 63) / 64))
+    (hcrt : kp.key.ifma.w = 0#usize → MontProducts (keyWords P Q) ∧
+      (keyWords P Q = 16 ∨ keyWords P Q = 32) ∧ NoRsazPair (keyWords P Q))
+    (message : Slice U8) (hm : message.length ≤ maxInput) :
+    high.signature.rsa.KeyPair.sign kp high.signature.rsa.sign.PSS_SHA256 message ⦃ r =>
+      (∀ sig, r = .Ok sig → ∃ salt : List U8, salt.length = 32 ∧
+        high.signature.rsa.Signature.Insts.CoreConvertAsRefSliceU8.as_ref sig ⦃ b =>
+          rsassaPssSign N P Q DP DQ QINV sha256.hash 32 (bv message.val) (bv salt) = some (bv b.val) ⦄) ∧
+      ∀ e, r = .Err e → e = .RngFailed ∨ e = .Fault ∧ ∃ salt : List U8, salt.length = 32 ∧
+        ∃ EM, emsaPssEncode sha256.hash 32 (bv message.val) (bv salt) (N.size - 1) = some EM ∧
+          rsasp1Crt P Q DP DQ QINV (os2ip EM) ^ E % N ≠ os2ip EM ⦄ := by
+  obtain ⟨hinv, hpub, hkl, hD, hP, hQ, hDP, hDQ, hQI, hpw, hrel⟩ := hkp
+  have hs1 := hinv.1.2.2.2.2.2.2.2.1
+  obtain ⟨-, hN, hE, hused⟩ := hkl
+  rw [hpub] at hN hE hused
+  have hkN : keyN kp.key = N := hN
+  have hkey : ∀ c, keyRsasp1 kp.key c = rsasp1Crt P Q DP DQ QINV c := by
+    intro c; unfold keyRsasp1; rw [hP, hQ, hDP, hDQ, hQI]
+  have hsalt : pssSaltLen (((keyN kp.key).size - 1 + 7) / 8) 32 .Hash = 32 := rfl
+  have hs := key_pair_sign_of h kp hinv.1 high.signature.rsa.sign.PSS_SHA256 message
+    (fun r => (∃ e, r = .Err e ∧ e = .RngFailed) ∨ ∃ salt : List U8, salt.length = 32 ∧
+      ∃ EM : List U8, emsaPssEncode sha256.hash 32 (bv message.val) (bv salt) ((keyN kp.key).size - 1) =
+        some (bv EM) ∧ SignedAs kp.key EM r)
+    (fun out hout => by
+      apply WP.spec_mono (sign_pss_sha256_spec h hb hfill t hadx hifma kp.key hinv (by rw [hused]; exact hPn)
+        (by rw [hpw]; exact hcrt) .Hash out message hm (by omega))
+      rintro ⟨r, sig'⟩ hr
+      rw [hsalt] at hr
+      rcases hr with ⟨e, he, hrng | ⟨-, hlt⟩⟩ | ⟨salt, hsl, EM, hEM, hSA, hok⟩
+      · exact ⟨Or.inl ⟨e, he, hrng⟩, fun s h => by rw [he] at h; exact (nomatch h)⟩
+      · exfalso; unfold keyN at hlt; omega
+      · exact ⟨Or.inr ⟨salt, hsl, EM, hEM, hSA⟩, hok⟩)
+  apply WP.spec_mono hs
+  rintro r ⟨hok, herr⟩
+  refine ⟨fun sig hsig => ?_, fun e he => ?_⟩
+  · obtain ⟨s, hPs, has⟩ := hok sig hsig
+    rcases hPs with ⟨e, he, -⟩ | ⟨salt, hsl, EM, hEM, hSA⟩
+    · cases he
+    refine ⟨salt, hsl, ?_⟩
+    apply WP.spec_mono has
+    intro b hb
+    simp only [SignedAs] at hSA
+    unfold rsassaPssSign
+    rw [← hkN, hEM, Option.bind_some, os2ip_bv, ← hkey, hb]
+    exact hSA
+  · rcases herr e he with ⟨e', he', hrng⟩ | ⟨salt, hsl, EM, hEM, hSA⟩
+    · cases he'; exact Or.inl hrng
+    · simp only [SignedAs] at hSA
+      obtain ⟨rfl, hne⟩ := hSA
+      refine Or.inr ⟨rfl, salt, hsl, bv EM, by rw [← hkN]; exact hEM, ?_⟩
+      rw [os2ip_bv, ← hkey, ← hkN, ← hE]
+      exact hne
 -- END x86_64
 
 end rind.x86_64
