@@ -5,7 +5,9 @@
 # with Charon and Aeneas, into `proofs/Rind/<Arch>/{Types,Funs}.lean`.
 #
 # Each target's translation is its own namespace, but they share global names,
-# so no Lean module imports both. The aarch64 hand models and its X25519,
+# so no Lean module imports both. A family of algorithms a target translates
+# on its own, as `extract_family` below describes, is a namespace under the
+# target's, so an edit to it rebuilds only its own proofs. The aarch64 hand models and its X25519,
 # SHA-512, ChaCha20, Ed25519, SHA-1, SHA-256, HMAC, digest, HKDF, PBKDF2, and AEAD API proofs are the
 # x86_64 ones with the target renamed, which this writes too, all but each
 # target's own `ShaBlocks.lean` and `HashAxioms.lean`; aarch64 alone also
@@ -1785,9 +1787,11 @@ only_quoted rind/src/aead.rs "$out/AeadDispatch.rs" '= Algorithm \{'
 # models `signature::rsa::PublicKey` above it.
 # x86_64's RSA reaches `Digest::ct_equal`, so every target starts from it,
 # for the HMAC model all share.
-# ML-KEM's construction is translated from its key generation, key parsing,
+# ML-KEM's construction is translated, in a family of its own on each
+# assembly target (`mlkem` below), from its key generation, key parsing,
 # encapsulation, and decapsulation, generic over the parameter set, down to
-# its polynomial routines in `low`, which are opaque. The sets' `Params`
+# its polynomial routines in `low`, which are opaque, over the SHA-3 sponge,
+# which the target's translation keeps. The sets' `Params`
 # impls are not translated, so the translation takes a set's impl as a
 # parameter: see UPSTREAM.md, "Aeneas cannot translate an auto trait's
 # built-in impl". x86_64's eight-way matrix sampler, which only ML-KEM-1024
@@ -1909,6 +1913,10 @@ assembly=(
     --opaque 'crate::mid::p384::_::new_random'
     --opaque 'crate::mid::p521::_::_'
     --include 'crate::mid::p521::_::BYTES'
+)
+# ML-KEM, each target's family of its own: see `extract_family`.
+mlkem=(
+    --include crate::mid::mlkem
     --start-from crate::mid::mlkem::sample_cbd2
     --start-from crate::mid::mlkem::sample_cbd3
     --start-from crate::mid::mlkem::decompress
@@ -1948,18 +1956,119 @@ extract() {
     (cd rind && charon cargo --preset=aeneas "$@" \
         --dest-file "$PWD/../$out/${dir,,}.llbc" \
         -- -p rind --lib --target "$(triple "$arch")")
-    to_lean "$dir"
+    to_lean "${dir,,}" "Rind/$dir" "rind.${dir,,}"
 }
 
-# Translates `$out/<dir, lowercased>.llbc` into `proofs/Rind/<dir>/{Types,Funs}.lean`.
+# Translates `$out/<name>.llbc` into `proofs/<subdir>/{Types,Funs}.lean`, in
+# the namespace `$3`.
 to_lean() {
-    local dir=$1
+    local name=$1 subdir=$2 file
+    aeneas_lean "$@"
+    mkdir -p "proofs/$subdir"
+    for file in Types Funs; do
+        install_lean "$out/lean-$name/$subdir/$file.lean" "proofs/$subdir/$file.lean"
+    done
+}
+
+# Translates `$out/<name>.llbc` into `$out/lean-<name>/<subdir>/`, a
+# directory of its own, so translations can run at once.
+aeneas_lean() {
+    local name=$1 subdir=$2 namespace=$3
     # x86_64's generator table rows are 512-word literals, and Ed25519's
     # tables of B's odd multiples 1024-word ones, which elaborate past Aeneas's
     # default recursion depth of 2048.
-    aeneas_cached aeneas "$out/${dir,,}.llbc" "$out/lean" -backend lean -split-files -abort-on-error \
-        -no-progress-bar -max-recdepth 8192 -subdir "Rind/$dir" -namespace "rind.${dir,,}"
-    cp "$out/lean/Rind/$dir/Types.lean" "$out/lean/Rind/$dir/Funs.lean" "proofs/Rind/$dir/"
+    aeneas_cached aeneas "$out/$name.llbc" "$out/lean-$name" -backend lean -split-files -abort-on-error \
+        -no-progress-bar -max-recdepth 8192 -subdir "$subdir" -namespace "$namespace"
+}
+
+# Copies the file `$1` to `$2` unless `$2` already holds the same bytes, so an
+# unchanged translation keeps its timestamp and Lake has nothing to rehash.
+install_lean() {
+    cmp -s "$1" "$2" || cp "$1" "$2"
+}
+
+# One family of algorithms of `arch`'s Rust, `$3`, translated on its own, so
+# an edit to the family changes no other translation, and Lake rebuilds only
+# the proofs that import it; `family_lean` installs it. As `extract_kdf`'s, its
+# namespace is under the target's, `rind.<dir>.<family>`, whose names it
+# reaches for the rind it leaves opaque: all of it but what the options after
+# `$3` include, and the error types, whose constructors it builds.
+# `proofs/Rind/<dir>/<Family>/{Types,Funs}External.lean` define what the
+# target's translation does not.
+extract_family() {
+    local arch=$1 dir=$2 family=$3
+    shift 3
+    (cd rind && charon cargo --preset=aeneas --opaque crate --include crate::error "$@" \
+        --dest-file "$PWD/../$out/${dir,,}-${family,,}.llbc" \
+        -- -p rind --lib --target "$(triple "$arch")")
+    aeneas_lean "${dir,,}-${family,,}" "Rind/$dir/$family" "rind.${dir,,}.${family,,}"
+}
+
+# Installs `extract_family`'s translation of the family `$2` of the target
+# `$1`, once the target's own is in `proofs/`, into
+# `proofs/Rind/<dir>/<Family>/{Types,Funs}.lean`, without each declaration the
+# target's translation makes too: the error types and their conversions,
+# whose global names, such as their `@[discriminant]` instances, two sibling
+# translations would otherwise both take. Each must be the target's word for
+# word, but for its doc comment, so the family reads the same definition from
+# the namespace above its own, and Lean checks every use of it there.
+family_lean() {
+    local dir=$1 family=$2 lean file
+    lean=$out/lean-${dir,,}-${family,,}/Rind/$dir/$family
+    python3 - "$lean" "proofs/Rind/$dir" <<'EOF'
+import re, sys
+family, target = sys.argv[1:]
+decl = re.compile(r'(?:@\[[^\n]*\]\n)*(?:noncomputable )?(?:def|structure|inductive|class|abbrev|opaque|axiom|instance) (\S+)')
+def without_doc(block):
+    return re.sub(r'^/--.*?-/\n', '', block, flags=re.S)
+def declared(block):
+    m = decl.match(without_doc(block))
+    return m and m.group(1)
+for file in ('Types', 'Funs'):
+    known = {}
+    for block in open(f'{target}/{file}.lean').read().split('\n\n'):
+        if name := declared(block):
+            known[name] = without_doc(block)
+    kept = []
+    for block in open(f'{family}/{file}.lean').read().split('\n\n'):
+        name = declared(block)
+        if name in known:
+            if without_doc(block) != known[name]:
+                sys.exit(f'admin/prove: {family}/{file}.lean translates {name} otherwise than {target}/{file}.lean')
+            continue
+        kept.append(block)
+    open(f'{family}/{file}.lean', 'w').write('\n\n'.join(kept))
+EOF
+    mkdir -p "proofs/Rind/$dir/$family"
+    for file in Types Funs; do
+        install_lean "$lean/$file.lean" "proofs/Rind/$dir/$family/$file.lean"
+    done
+}
+
+# Runs a translation, its command and arguments, in the background, so
+# Aeneas, which takes most of a translation's time, runs for every target at
+# once. Charon's builds that share a target directory still take turns, on
+# Cargo's lock. `translated` waits for them all and fails if any did.
+translations_running=()
+translating() {
+    local arg name=
+    for arg; do
+        [[ $arg != --* ]] || break
+        name+=${name:+ }$arg
+    done
+    "$@" &
+    translations_running+=("$! $name")
+}
+translated() {
+    local job failed=()
+    for job in "${translations_running[@]}"; do
+        wait "${job%% *}" || failed+=("${job#* }")
+    done
+    translations_running=()
+    if [[ ${#failed[@]} -gt 0 ]]; then
+        printf 'admin/prove: translating %s failed\n' "${failed[@]}" >&2
+        return 1
+    fi
 }
 
 # armv7's translation reaches the header-protection API, ChaCha20's the one
@@ -2056,7 +2165,7 @@ extract_armv7() {
         --include crate::low::portable::bignum_eq \
         --dest-file "$PWD/../$out/armv7.llbc" \
         -- -p rind --lib --target armv7-unknown-linux-gnueabihf)
-    to_lean Armv7
+    to_lean armv7 Rind/Armv7 rind.armv7
 }
 
 # HKDF and PBKDF2, in a second translation above the HMAC API, whose dispatch
@@ -2091,7 +2200,8 @@ extract_kdf() {
         "$@" \
         --dest-file "$PWD/../$out/${dir,,}-kdf.llbc" \
         -- -p rind --lib --target "$arch-unknown-linux-gnu")
-    aeneas_cached aeneas "$out/${dir,,}-kdf.llbc" "$out/lean" -backend lean -split-files -abort-on-error \
+    local lean=$out/lean-${dir,,}-kdf
+    aeneas_cached aeneas "$out/${dir,,}-kdf.llbc" "$lean" -backend lean -split-files -abort-on-error \
         -no-progress-bar -subdir "Rind/$dir/Kdf" -namespace "rind.${dir,,}.kdf"
     mkdir -p "proofs/Rind/$dir/Kdf"
     # Aeneas names both of `ZeroablePrimitive`'s `Copy` clauses, which
@@ -2100,9 +2210,11 @@ extract_kdf() {
     # See UPSTREAM.md, "Aeneas emits a duplicate `markerCopyInst` field".
     sed 's/"markerCopyInst", "markerCopyInst"/"markerCopyInst", "markerCopyInst1"/;
         s/^  markerCopyInst : core.marker.Copy Self_NonZeroInner$/  markerCopyInst1 : core.marker.Copy Self_NonZeroInner/' \
-        "$out/lean/Rind/$dir/Kdf/Types.lean" >"proofs/Rind/$dir/Kdf/Types.lean"
+        "$lean/Rind/$dir/Kdf/Types.lean" >"$lean/Types.lean"
     sed 's/^  markerCopyInst := core.num.niche_types.NonZeroU32Inner.Insts.CoreMarkerCopy$/  markerCopyInst1 := core.num.niche_types.NonZeroU32Inner.Insts.CoreMarkerCopy/' \
-        "$out/lean/Rind/$dir/Kdf/Funs.lean" >"proofs/Rind/$dir/Kdf/Funs.lean"
+        "$lean/Rind/$dir/Kdf/Funs.lean" >"$lean/Funs.lean"
+    install_lean "$lean/Types.lean" "proofs/Rind/$dir/Kdf/Types.lean"
+    install_lean "$lean/Funs.lean" "proofs/Rind/$dir/Kdf/Funs.lean"
 }
 
 # Charon's builds take target directories of their own, the portable
@@ -2127,7 +2239,7 @@ find "$PWD/target" -mindepth 1 -maxdepth 1 -name 'prove*' ! -name "prove-${toolc
     ! -name "prove-${toolchain:0:16}-mcu" -exec rm -rf {} +
 export CARGO_TARGET_DIR=$prove_target
 
-extract x86_64 X86_64 "${hashes[@]}" "${assembly[@]}" \
+translating extract x86_64 X86_64 "${hashes[@]}" "${assembly[@]}" \
     --include crate::low::x86_64::sha512::sha512_compress_blocks \
     --include crate::low::x86_64::sha256::sha256_finish_shaext \
     --include crate::low::x86_64::sha256::Padded \
@@ -2287,13 +2399,8 @@ extract x86_64 X86_64 "${hashes[@]}" "${assembly[@]}" \
     --include crate::low::x86_64::rsaz::Rsaz \
     --include 'crate::low::x86_64::rsaz::_::check' \
     --include crate::low::x86_64::rsaz_avx512::RsazAvx512 \
-    --include 'crate::low::x86_64::rsaz_avx512::_::check' \
-    --start-from crate::low::x86_64::mlkem768_vg::Encaps::check_ek \
-    --start-from crate::low::x86_64::mlkem768_vg::Encaps::encaps \
-    --start-from crate::low::x86_64::mlkem768_vg::KeyPair::keygen \
-    --start-from crate::low::x86_64::mlkem768_vg::KeyPair::decaps \
-    --opaque crate::mid::mlkem::sample_ntt::sample_ntt_8x
-extract aarch64 Aarch64 "${hashes[@]}" "${assembly[@]}" \
+    --include 'crate::low::x86_64::rsaz_avx512::_::check'
+translating extract aarch64 Aarch64 "${hashes[@]}" "${assembly[@]}" \
     --include crate::low::aarch64::sha512::sha512_compress_blocks \
     --start-from crate::mid::p256::PrivateKey::from_bytes \
     --start-from crate::high::ecdsa::VerifyingKey::from_x962_uncompressed \
@@ -2344,16 +2451,6 @@ extract aarch64 Aarch64 "${hashes[@]}" "${assembly[@]}" \
     --start-from crate::low::aarch64::aes_cbc::encrypt \
     --start-from crate::low::aarch64::aes_cbc::decrypt \
     --opaque crate::low::aarch64::aes_cbc::aese_chained \
-    --include crate::low::generic::mlkem \
-    --start-from crate::low::generic::mlkem::mlkem_frombytes \
-    --include crate::low::aarch64::mlkem \
-    --opaque crate::low::aarch64::mlkem::mlkem_compress_d4 \
-    --opaque crate::low::aarch64::mlkem::mlkem_compress_d5 \
-    --opaque crate::low::aarch64::mlkem::mlkem_compress_d10 \
-    --opaque crate::low::aarch64::mlkem::mlkem_compress_d11 \
-    --opaque crate::low::aarch64::mlkem::mlkem_rej_uniform_vartime \
-    --start-from crate::low::aarch64::mlkem768_vg::Encaps::check_ek \
-    --start-from crate::low::aarch64::mlkem768_vg::Encaps::encaps \
     --include crate::low::aarch64::pbkdf2_vg \
     --start-from crate::low::aarch64::pbkdf2_vg::Pbkdf2::sha1 \
     --start-from crate::low::aarch64::pbkdf2_vg::Pbkdf2::sha256 \
@@ -2400,13 +2497,24 @@ extract aarch64 Aarch64 "${hashes[@]}" "${assembly[@]}" \
     --include crate::low::aarch64::aes_gcm \
     --opaque crate::low::aarch64::aes_gcm::short \
     --opaque crate::low::aarch64::aes_gcm::stitched
+translating extract_family x86_64 X86_64 MlKem "${mlkem[@]}" \
+    --opaque crate::mid::mlkem::sample_ntt::sample_ntt_8x
+translating extract_family aarch64 Aarch64 MlKem "${mlkem[@]}" \
+    --include crate::low::generic::mlkem \
+    --start-from crate::low::generic::mlkem::mlkem_frombytes \
+    --include crate::low::aarch64::mlkem \
+    --opaque crate::low::aarch64::mlkem::mlkem_compress_d4 \
+    --opaque crate::low::aarch64::mlkem::mlkem_compress_d5 \
+    --opaque crate::low::aarch64::mlkem::mlkem_compress_d10 \
+    --opaque crate::low::aarch64::mlkem::mlkem_compress_d11 \
+    --opaque crate::low::aarch64::mlkem::mlkem_rej_uniform_vartime
 
 # The AEAD key's conversion from HKDF's output is proven on x86_64 alone.
-extract_kdf x86_64 X86_64 --start-from '{impl core::convert::From for crate::aead::Key}'
-extract_kdf aarch64 Aarch64 --include crate::mid::pbkdf2_vg \
+translating extract_kdf x86_64 X86_64 --start-from '{impl core::convert::From for crate::aead::Key}'
+translating extract_kdf aarch64 Aarch64 --include crate::mid::pbkdf2_vg \
     --include 'crate::mid::sha1::_::BLOCK_SZ' --include 'crate::mid::sha1::_::OUTPUT_SZ' \
     --include 'crate::mid::sha2::_::BLOCK_SZ' --include 'crate::mid::sha2::_::OUTPUT_SZ'
-extract_armv7
+translating extract_armv7
 
 # The portable backend, which builds only under the cfg CI's portable jobs
 # build with, here on x86_64: the hashes, down to the SHA-2 block functions in
@@ -2419,7 +2527,7 @@ extract_armv7
 # through their curves, are start points of their own here.
 portable_cfg='--cfg rind_portable --cfg curve25519_dalek_backend="serial"'
 portable_target=$prove_target-portable
-CARGO_TARGET_DIR=$portable_target RUSTFLAGS=$portable_cfg extract x86_64 Portable "${hashes[@]}" --include crate::low::portable::sha \
+CARGO_TARGET_DIR=$portable_target RUSTFLAGS=$portable_cfg translating extract x86_64 Portable "${hashes[@]}" --include crate::low::portable::sha \
     --include crate::low::generic::sha256 --include crate::low::generic::sha256_k \
     --include crate::low::generic::sha512 \
     --start-from crate::error::Error --start-from crate::low::ct::into_public \
@@ -2436,7 +2544,7 @@ CARGO_TARGET_DIR=$portable_target RUSTFLAGS=$portable_cfg extract x86_64 Portabl
     --include crate::low::generic::limb64::join \
     --include crate::low::generic::limb64::limbs \
     --include crate::low::generic::limb64::mont
-CARGO_TARGET_DIR=$portable_target RUSTFLAGS=$portable_cfg extract_kdf x86_64 Portable
+CARGO_TARGET_DIR=$portable_target RUSTFLAGS=$portable_cfg translating extract_kdf x86_64 Portable
 
 # The portable backend on 32-bit microcontrollers, `target_os = "espidf"` or
 # `"none"`, whose SHA-2 differs from the other targets': SHA-384/512 is the
@@ -2449,7 +2557,7 @@ CARGO_TARGET_DIR=$portable_target RUSTFLAGS=$portable_cfg extract_kdf x86_64 Por
 # pointer cursors it leaves opaque. The hashes alone: no other operation
 # differs here.
 mcu_cfg='--cfg rind_portable --cfg rind_sha256_iram --cfg getrandom_backend="custom"'
-CARGO_TARGET_DIR=$prove_target-mcu RUSTFLAGS=$mcu_cfg extract armv7a-none-eabi Mcu "${hashes[@]}" \
+CARGO_TARGET_DIR=$prove_target-mcu RUSTFLAGS=$mcu_cfg translating extract armv7a-none-eabi Mcu "${hashes[@]}" \
     --include crate::low::portable::sha \
     --opaque crate::low::portable::sha::iram::RoundConstants \
     --opaque crate::low::portable::sha::iram::Window \
@@ -2465,8 +2573,11 @@ CARGO_TARGET_DIR=$prove_target-mcu RUSTFLAGS=$mcu_cfg extract armv7a-none-eabi M
     --include crate::low::generic::sha512_rolled \
     --opaque crate::mid::sha3 \
     --start-from crate::error::Error --start-from crate::low::ct::into_public
+translated
+family_lean X86_64 MlKem
+family_lean Aarch64 MlKem
 
-mkdir -p proofs/Rind/Aarch64/Kdf
+mkdir -p proofs/Rind/Aarch64/Kdf proofs/Rind/Aarch64/MlKem
 # P-256's generator multiplication and its table differ per target, so each
 # target has its own `P256Base` stating it, and `P256KeyCheck` for the key
 # check x86_64 shortcuts; key generation and ECDSA above them are shared.
@@ -2475,7 +2586,8 @@ for file in Dispatch QuicDispatch P256Dispatch P256Agree P384Dispatch X25519Byte
     DigestDispatch Sha512Context Sha512 ChaCha20 SignatureBuffer Ed25519 \
     Blockwise Sha Hmac HmacDispatch HkdfExpand Kdf/TypesExternal Kdf/FunsExternal \
     CtEqual HmacApi DigestApi Hkdf Pbkdf2 Sha3 AesCipher HkdfAes AesModesApi AesKw P256 EcdsaDispatch Naf P256Ecdsa P256Signature \
-    P384Ecdsa P384Signature MlKemCoding MlKemCbd AeadDispatch AeadVec ChaCha20Poly1305Api; do
+    P384Ecdsa P384Signature MlKemCoding MlKemCbd MlKem/TypesExternal MlKem/FunsExternal AeadDispatch AeadVec \
+    ChaCha20Poly1305Api; do
     sed 's/X86_64/Aarch64/g; s/x86_64/aarch64/g' "proofs/Rind/X86_64/$file.lean" >"proofs/Rind/Aarch64/$file.lean"
 done
 # aarch64's KDF translation does not reach the AEAD key's conversion.

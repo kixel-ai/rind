@@ -1,5 +1,5 @@
 import Rind.Aarch64.MlKemPoly
-open Aeneas Aeneas.Std Result rind.spec Spec Spec.MLKEM rind.spec.mlkem rind.spec.s2n
+open Aeneas Aeneas.Std Result rind.spec Spec Spec.MLKEM rind.spec.mlkem rind.spec.s2n rind.aarch64.mlkem
 
 /-!
 # K-PKE on aarch64

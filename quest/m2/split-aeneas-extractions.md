@@ -29,9 +29,22 @@ Approach:
      - a clean/unchanged Rust run (testing extraction parallelization + caching), and
      - a 1-line edit inside a single algorithm (e.g., `rind/src/mid/mlkem.rs`), reporting how many of the 261 Lean modules re-elaborate before vs after.
 
+Progress (2026-11-28, [kixel-ai/rind#1182](https://github.com/kixel-ai/rind/pull/1182)):
+- Landed: ML-KEM is a family of its own on x86_64 and aarch64 (`extract_family`, `family_lean`, `proofs/Rind/X86_64/MlKem/{Types,Funs}External.lean`, written for aarch64 too). Every translation runs Aeneas at once, each in its own `$out/lean-<name>`, and installs only what changed. Each family is its own `aeneas_cached` entry, so it shares through whatever store `cached` reads, [kixel-ai/rind#1180](https://github.com/kixel-ai/rind/pull/1180)'s included, with no key of its own.
+- Measured on a 24-core host shared with other agents: a one-line comment in `rind/src/mid/mlkem.rs` took `admin/prove lean` from 14:19 wall and 4,114 CPU-s, rebuilding 203 Lean modules (both targets' `Funs` and everything above them), to 6:08 and 734 CPU-s, rebuilding 16 (the two ML-KEM translations, their proofs, and `Axioms`). Up to the end of `lake build`: 602 s to 112 s. An unchanged run: 4:49 to 4:27. About 4 of those minutes, in every run, are `SimdVectors.lean`'s check, which [its quest](/quest/m2/simd-vectors-cache.md) caches.
+- Charon still runs for every translation, about 5 s each once its target directory is warm, taking turns on Cargo's lock while Aeneas runs.
+- Next, roughly by payoff: Ed25519 (its 1,024-word tables elaborate in the target's `Funs`), P-256 and P-384 with ECDSA (their generator tables, the largest literals there), RSA (x86_64 and portable, on the critical path [kixel-ai/rind#1176](https://github.com/kixel-ai/rind/pull/1176) measured), AES and AES-GCM, ChaCha20 and ChaCha20-Poly1305, and SHA-3's sponge, which ML-KEM reaches from the target. The hashes, HMAC, and the error types stay in the target's translation, which every family reaches.
+- What the next family will meet, as ML-KEM did:
+  - Items only the family reached leave the target's translation and come with the family, such as `core.marker.PhantomData` and `ct_copy` for ML-KEM. One two families share must stay in the target's: start it from there.
+  - The family translates the error types, whose constructors it builds, and `family_lean` drops each declaration the target makes word for word, since two siblings' `@[discriminant]` instances would take the same global name (`instDiscriminantKeyFormatErrorIsize_1`, with HKDF's).
+  - A constant the target translates as a value, the family, which leaves it opaque, reads as a computation: its `FunsExternal` gives it with a `@[step]` spec, and a proof stepping over it takes one more `step` (`SHAKE_PAD_BYTE`).
+  - Hand models (`Dispatch`, `EcdsaDispatch`, `RsaDispatch`, and the like) build on the target's translation, and a translation cannot call a model built on itself, so a family whose Rust calls a model needs its own pass above that model, as HKDF's does. `S2nBignum.lean` states axioms about translated wrappers in `low::<arch>::adx_mux`, which Ed25519 and the curves call: they stay in the target's translation.
+  - The proofs `open rind.<arch>.<family>`; the target's names win over the family's where both exist.
+
 ## Related
 
 - [Aeneas translation cache and SSH-shared Lake outputs](https://github.com/kixel-ai/rind/pull/1138) - shared cross-host cache work
 - [Build spec-server once in prove.yml and add scoped admin/prove lean targets](/quest/m0/spec-server-single-build.md) - scoped `admin/prove lean <Module>` runs
 - [Spike and benchmark Lean 4.35 speedup levers on rind's proof corpus](/quest/m2/lean-speed-spikes.md) - `module` system and tactic profiling
 - [rind's HOL Light proofs are ported to Lean](/quest/m5/verified/hol-light-to-lean.md) - will add ~19.7k more lines of Lean proofs benefiting from split extractions
+- [admin/prove caches the intrinsic vectors' check](/quest/m2/simd-vectors-cache.md) - the four minutes every run spends after the split's rebuild

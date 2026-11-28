@@ -8,6 +8,10 @@ proofs/Rind/*/Types.lean
 proofs/Rind/*/Funs.lean
 proofs/Rind/*/Kdf/Types.lean
 proofs/Rind/*/Kdf/Funs.lean
+proofs/Rind/*/MlKem/Types.lean
+proofs/Rind/*/MlKem/Funs.lean
+proofs/Rind/Aarch64/MlKem/TypesExternal.lean
+proofs/Rind/Aarch64/MlKem/FunsExternal.lean
 proofs/Rind/Aarch64/X25519Bytes.lean
 proofs/Rind/Aarch64/X25519.lean
 proofs/Rind/Aarch64/P384.lean

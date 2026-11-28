@@ -1297,6 +1297,17 @@ the Fujisaki-Okamoto transform have
   `pmulaccred0K3_eq` and its siblings: the same for the x86_64 routines, which
   keep FIPS 203's coefficients in the AVX2 order.
 
+`admin/prove` translates ML-KEM in a pass of its own on each target, into
+`Rind/<Arch>/MlKem/{Types,Funs}.lean`, in the namespace `rind.<arch>.mlkem`
+under the target's, so an edit to it rebuilds only the proofs below, which
+`open` that namespace, and not every proof of the target. That pass leaves
+the rest of rind opaque, and reaches the target's translation for it, as the
+HKDF and PBKDF2 pass does. It translates the error types, whose constructors it
+builds, too, but `admin/prove` drops each declaration the target's translation
+makes word for word, so both read the target's; and
+`Rind/X86_64/MlKem/FunsExternal.lean` gives SHAKE's padding byte, which the
+target reads as a value, as the computation this pass calls.
+
 ML-KEM's decompression, message coding, and CBD sampling, on x86_64 and
 aarch64, in `Rind/X86_64/MlKemCoding.lean`, which `admin/prove` also writes
 for aarch64. They are the same Rust for ML-KEM-512, 768, and 1024, and rest
@@ -2161,7 +2172,8 @@ beyond Lean's own.
 - `curve25519-dalek/`: BAIF's curve25519-dalek specs, copied, which
   [curve25519-dalek's proofs](#curve25519-daleks-proofs) describes.
 - `Rind/<Arch>/{Types,Funs}.lean`: Aeneas's translation, which `admin/prove`
-  writes and git ignores.
+  writes and git ignores, and `Rind/<Arch>/{Kdf,MlKem}/{Types,Funs}.lean`, the
+  passes it translates on their own.
 - `Rind/<Arch>/{Types,Funs}External.lean` and `Rind/Core.lean`: what the
   translation leaves opaque, and models of the few standard-library items
   Aeneas's library lacks.
@@ -2210,7 +2222,9 @@ beyond Lean's own.
   modules' `Buffer::write`, and of `aead::gcm::Key` over the AEAD model; `Rind/X86_64/HkdfExpand.lean` and
   `Rind/X86_64/Kdf/{TypesExternal,FunsExternal}.lean`, of what the HKDF and
   PBKDF2 pass leaves opaque, and `Rind/Aarch64/Kdf/VgExternal.lean`, of what
-  aarch64's alone does.
+  aarch64's alone does; `Rind/X86_64/MlKem/{TypesExternal,FunsExternal}.lean`,
+  of what the ML-KEM pass leaves opaque, which `admin/prove` also writes for
+  aarch64.
 - `Rind/Armv7/Curve25519.lean`: armv7's X25519 dispatch, over
   `Rind/Armv7/Dalek.lean`, the axioms restating BAIF's theorems, and
   `Rind/Dalek.lean`, BAIF's X25519 and byte encodings as those proofs read

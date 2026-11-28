@@ -1,6 +1,6 @@
 import Rind.X86_64.MlKemCoding
 import Rind.X86_64.Sha3
-open Aeneas Aeneas.Std Result rind.spec Spec Spec.MLKEM rind.spec.mlkem
+open Aeneas Aeneas.Std Result rind.spec Spec Spec.MLKEM rind.spec.mlkem rind.x86_64.mlkem
 
 /-!
 # ML-KEM's noise sampling
@@ -120,6 +120,8 @@ theorem cbd_inputs_spec (sigma : Std.Array U8 32#usize) (n : U8) (count : Usize)
       step as ⟨a2, back2, ha2, hback2⟩
       step as ⟨a3, ha3⟩
       step as ⟨a4, back3, ha4, hback3⟩
+      step as ⟨pad, hpad⟩
+      subst hpad
       step as ⟨a5, ha5⟩
       refine ⟨by rw [he1]; exact he, hst, by omega, fun j hj => ?_⟩
       subst hback hback2 hback3
