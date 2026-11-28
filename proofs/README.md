@@ -737,8 +737,12 @@ comparison checks.
   reduction is `reduceModel`'s, and GHASH by the table's powers is the
   one-reduction sum `reduceAll` (`nistGhash_reduceAll`); `aes192Cipher`
   states AES-192 in s2n-bignum's form, and `keystream_eq` restates the
-  iterations' keystream as its `aes_ctr_block`. The kernels' entry,
-  tails, and the loop around these iterations are not yet proven: [the
+  iterations' keystream as its `aes_ctr_block`. `encLoop_constant_time`
+  and `decLoop_constant_time`: each main loop, run any number of times,
+  takes the same branches and addresses in any two runs that agree on
+  `x0`, `x2`, `x5`, `x6`, `x10`, `x11`, and the stack pointer (`LoopPub`),
+  which `check` shows. The kernels' entry and tails, and the functional
+  proof of the loop around the iterations, are not yet proven: [the
   quest](/quest/m4/verified/aes-gcm-aarch64-192.md) says what remains.
 
 - `Rind/X86_64/Taint.lean`: `constantTime_of_check`, the same check for

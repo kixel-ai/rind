@@ -1,11 +1,30 @@
 import RindIsa.AArch64.AesGcm8x192
 import Rind.Aarch64.Asm
 import Rind.Aarch64.AesGcm8x192Ops
+import Rind.Aarch64.Taint
 
 open VG VG.AArch64 VG.VectorCrypto Rind.AArch64 rind.aarch64.asm rind.vale rind.simd rind.s2n
 
 /-!
-# One iteration of aws-lc's eight-way AES-192-GCM main loops, proven
+# aws-lc's eight-way AES-192-GCM main loops, an iteration at a time
+
+`encLoop_ok` and `decLoop_ok`: one iteration of the main loop of
+`aesv8_gcm_8x_enc_192` or `aesv8_gcm_8x_dec_192`, the bodies
+`RindIsa/AArch64/AesGcm8x192.lean` transcribes, which `admin/prove lean`
+finds in rind's build, run in rind's extension of VG's AArch64 model from a
+state `LoopPre` holds of, encrypts or decrypts the eight blocks at `x0` into
+`x2` with AES-192 in counter mode and hashes the eight blocks of ciphertext
+it started with in `v8`–`v15` into `v19` by SP 800-38D's GHASH, leaving the
+state the next iteration starts from. `encLoop_constant_time` and
+`decLoop_constant_time`: each loop, run any number of times, is
+constant-time for its pointers, its bound, and the stack pointer, which
+`Rind/Aarch64/Taint.lean`'s `check` shows.
+
+The proofs run each body symbolically (`a64_run`), then read off each
+register with `Rind/Aarch64/AesGcm8x192Ops.lean`'s lemmas: the AES rounds
+fold to Vale's cipher, and the GHASH half's three Karatsuba sums, under
+the reduction `code_reduce` names, are `reduceAll`'s, term by term up to
+the order of their XORs.
 -/
 
 namespace rind.aarch64.gcm8x192
@@ -272,4 +291,61 @@ theorem decLoop_ok (s : S) (nonce : BitVec 96) (c : Nat) (k : Nat → BitVec 128
   · unfold clobbered
     a64_out
 
+/-! ## Constant time -/
+
+open rind.aarch64.taint in
+/-- What two runs of a main loop are known to agree on at the start: the
+pointers `x0`, `x2`, `x6`, `x10`, and `x11`, and the bound `x5`. -/
+def loopStart : Taint := ⟨3173, false⟩
+
+/-- Two states agree on the main loops' pointers and bound, and the stack
+pointer. -/
+def LoopPub (s₁ s₂ : S) : Prop :=
+  s₁.vg.gpr .x0 = s₂.vg.gpr .x0 ∧ s₁.vg.gpr .x2 = s₂.vg.gpr .x2 ∧ s₁.vg.gpr .x5 = s₂.vg.gpr .x5 ∧
+    s₁.vg.gpr .x6 = s₂.vg.gpr .x6 ∧ s₁.vg.gpr .x10 = s₂.vg.gpr .x10 ∧
+    s₁.vg.gpr .x11 = s₂.vg.gpr .x11 ∧ s₁.vg.sp = s₂.vg.sp
+
+open rind.aarch64.taint in
+theorem agree_of_loopPub {s₁ s₂ : S} (h : LoopPub s₁ s₂) : Agree [] loopStart s₁ s₂ := by
+  obtain ⟨h0, h2, h5, h6, h10, h11, hsp⟩ := h
+  refine ⟨fun r hr => ?_, fun hf => absurd hf (by decide), hsp, fun n hn => by simp at hn⟩
+  cases r <;> first | assumption | exact absurd hr (by decide)
+
+open rind.aarch64.taint in
+theorem loop_constant_time {body : List Ins}
+    (h : (check [] (.loop (.block body) (.flags .lt)) loopStart).isSome = true) :
+    ConstantTime I (fun _ => True) LoopPub (.loop (.block body) (.flags .lt)) := by
+  obtain ⟨_, h⟩ := Option.isSome_iff_exists.mp h
+  exact fun s₁ s₂ t₁ t₂ s₁' s₂' p₁ p₂ hp e₁ e₂ =>
+    constantTime_of_check h s₁ s₂ t₁ t₂ s₁' s₂' p₁ p₂ (agree_of_loopPub hp) e₁ e₂
+
+/-- The encrypt main loop, run any number of times, takes the same branches
+and accesses the same addresses in any two runs that agree on its pointers,
+its bound, and the stack pointer, whatever the keys, data, and GHASH state. -/
+theorem encLoop_constant_time :
+    ConstantTime I (fun _ => True) LoopPub (.loop (.block AesGcm8x192.encLoop) (.flags .lt)) :=
+  loop_constant_time (by decide +kernel)
+
+/-- The decrypt main loop's trace depends only on its pointers, its bound,
+and the stack pointer, as the encrypt loop's does. -/
+theorem decLoop_constant_time :
+    ConstantTime I (fun _ => True) LoopPub (.loop (.block AesGcm8x192.decLoop) (.flags .lt)) :=
+  loop_constant_time (by decide +kernel)
+
 end rind.aarch64.gcm8x192
+
+/-- info: 'rind.aarch64.gcm8x192.encLoop_ok' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms rind.aarch64.gcm8x192.encLoop_ok
+
+/-- info: 'rind.aarch64.gcm8x192.decLoop_ok' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms rind.aarch64.gcm8x192.decLoop_ok
+
+/-- info: 'rind.aarch64.gcm8x192.encLoop_constant_time' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms rind.aarch64.gcm8x192.encLoop_constant_time
+
+/-- info: 'rind.aarch64.gcm8x192.decLoop_constant_time' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms rind.aarch64.gcm8x192.decLoop_constant_time
