@@ -177,7 +177,7 @@ theorem groups_spec : low.x86_64.mlkem_sample_poly_ntt_8x.GROUPS ⦃ r => r.val 
   step with rate_bytes_spec as ⟨i, hi⟩
   step with group_bytes_spec as ⟨i1, hi1⟩
   unfold core.num.Usize.div_ceil
-  rw [dif_neg (by omega)]
+  rw [dite_eq_right (by omega)]
   simp only [WP.spec_ok, UScalar.ofNatCore_val_eq, hi, hi1]
 
 theorem last_group_spec : low.x86_64.mlkem_sample_poly_ntt_8x.LAST_GROUP ⦃ r => r.val = 65535 ⦄ := by
@@ -325,7 +325,7 @@ theorem store_low_spec (out : Slice I16) (v : BitVec 512) (h : out.length ≤ 32
   simp only [low.x86_64.mlkem_sample_poly_ntt_8x.store_low, WP.spec_ok]
   refine ⟨by simp [Slice.length, Slice.from_val], fun t ht => ?_⟩
   have ht' : t < out.val.length := ht
-  rw [Slice.from_val, getElem!_pos _ t (by simp; omega), List.getElem_mapIdx, if_pos (by omega)]
+  rw [Slice.from_val, getElem!_pos _ t (by simp; omega), List.getElem_mapIdx, ite_eq_left (by omega)]
 
 /-! ## A vector pass -/
 
@@ -746,7 +746,7 @@ theorem getElem!_padded (M : List Byte) (hM : M.length = 34) (j : ℕ) (hj : j <
     · by_cases h3 : j = 167
       · subst h3; simp
       · simp [h1, h2, h3]
-        rw [if_neg (by omega), if_neg (by omega)]
+        rw [ite_eq_right (by omega), ite_eq_right (by omega)]
 
 /-- The lanes the setup gives a state: its input's five words `w`, the
 padding's last bit, and zeros. -/
@@ -781,16 +781,16 @@ theorem stateBytes_setup (M : List Byte) (hM : M.length = 34) (input : Std.Array
     · rename_i h
       by_cases h34 : k = 34
       · subst h34; simp
-      · rw [if_neg h34, show k - 34 = (k - 35) + 1 by omega, List.getElem!_cons_succ, getElem!_replicate_zero]
+      · rw [ite_eq_right h34, show k - 34 = (k - 35) + 1 by omega, List.getElem!_cons_succ, getElem!_replicate_zero]
   by_cases h40 : j < 40
-  · rw [if_pos (show j / 8 < 5 by omega), hw _ (by omega) _ (by omega), show 8 * (j / 8) + j % 8 = j by omega,
+  · rw [ite_eq_left (show j / 8 < 5 by omega), hw _ (by omega) _ (by omega), show 8 * (j / 8) + j % 8 = j by omega,
       hinj j h40]
     by_cases h34 : j < 34
     · simp [h34]
     · simp [h34, show j ≠ 167 by omega]
-  · rw [if_neg (show ¬ j / 8 < 5 by omega), if_neg (show ¬ j < 34 by omega), if_neg (show j ≠ 34 by omega)]
+  · rw [ite_eq_right (show ¬ j / 8 < 5 by omega), ite_eq_right (show ¬ j < 34 by omega), ite_eq_right (show j ≠ 34 by omega)]
     by_cases h20 : j / 8 = 20
-    · rw [if_pos h20]
+    · rw [ite_eq_left h20]
       have ht : j % 8 < 8 := Nat.mod_lt _ (by omega)
       have hj' : j = 160 + j % 8 := by omega
       rw [toLEBytes_getElem!]
@@ -799,7 +799,7 @@ theorem stateBytes_setup (M : List Byte) (hM : M.length = 34) (input : Std.Array
       intro hj'
       subst hj'
       interval_cases t <;> decide
-    · rw [if_neg h20, toLEBytes_getElem!, if_neg (show j ≠ 167 by omega)]
+    · rw [ite_eq_right h20, toLEBytes_getElem!, ite_eq_right (show j ≠ 167 by omega)]
       simp
 
 theorem keccakF_stateBytes (L : List (BitVec 64)) (hL : L.length = 25) :
@@ -982,7 +982,8 @@ theorem getElem!_setupLanes (w : ℕ → BitVec 64) (k : ℕ) (hk : k < 25) :
     (setupLanes w)[k]! = if k < 5 then w k else if k = 20 then 0x8000000000000000#64 else 0 := by
   rw [setupLanes, getElem!_pos _ k (by simp; omega), List.getElem_map, List.getElem_range]
 
-theorem ofLanes64x8_zero : ofLanes64x8 (fun _ => 0) = 0 := by decide
+theorem ofLanes64x8_zero : ofLanes64x8 (fun _ => 0) = 0 := by
+  apply BitVec.eq_of_getLsbD_eq; intro k hk; simp [getLsbD_Q]
 
 theorem i64_min_bv : core.num.I64.MIN.bv = 0x8000000000000000#64 := by decide
 
@@ -1031,11 +1032,11 @@ theorem sample_poly_ntt_8x_avx512_spec (M : ℕ → List Byte)
       · conv_lhs => rw [← Q_lane (st1.val[k]!)]
         apply Q_congr
         intro p hp
-        rw [hS0, getElem!_setupLanes _ _ hk25, if_pos h5]
+        rw [hS0, getElem!_setupLanes _ _ hk25, ite_eq_left h5]
       · rw [hz k (by omega) hk25, ← ofLanes64x8_zero]
         apply Q_congr
         intro p hp
-        rw [hS0, getElem!_setupLanes _ _ hk25, if_neg h5, if_neg h20]
+        rw [hS0, getElem!_setupLanes _ _ hk25, ite_eq_right h5, ite_eq_right h20]
   have hA0 : AtBlock M (fun p => keccak 24 (S0 p)) 0 := by
     intro p hp
     obtain ⟨hMl, hinp⟩ := hin p hp
