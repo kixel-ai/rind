@@ -79,7 +79,7 @@ exclude_re = [
   'rind/src/low/x86_64/chacha20poly1305\.rs:\d+:\d+: replace \| with \^$',
   # Pinned to its line: a `const` has no name to match, and only `AES`'s
   # `1 << 0` survives.
-  'rind/src/low/x86_64/cpu\.rs:539:\d+: replace << with >>$',
+  'rind/src/low/x86_64/cpu\.rs:567:\d+: replace << with >>$',
   'rind/src/low/x86_64/cpu\.rs:\d+:\d+: replace \| with \^$',
   'rind/src/low/x86_64/cpu\.rs:\d+:\d+: replace \| with \^ in (HaveAdxForVg::check|HaveAesHardware::check|HaveAvx::check|HaveAvx512ForVgMlKem::check|HaveAvxMovbeForAesGcm::check|HaveBmi2Adx::check|HaveIfmaForCurve25519::check|HaveIfmaForVgChaCha20Poly1305::check|HaveIfmaForVgP256::check|HaveSha1::check|HaveSha256::check|HaveSse41::check|HaveVaesAvx2ForAesGcm::check|detect|detect_once)$',
   'rind/src/low/x86_64/edwards25519_msm_avx2\.rs:\d+:\d+: replace \| with \^$',
@@ -297,7 +297,7 @@ exclude_re = [
   'rind/src/low/x86_64/cpu\.rs:\d+:45: replace \| with &$',
   'rind/src/low/x86_64/cpu\.rs:\d+:52: replace \| with &$',
   # Pinned to its line: `AVX2_KERNELS`'s `|` at the same column is caught.
-  'rind/src/low/x86_64/cpu\.rs:572:31: replace \| with &$',
+  'rind/src/low/x86_64/cpu\.rs:600:31: replace \| with &$',
   'rind/src/low/x86_64/cpu\.rs:\d+:72: replace \| with &$',
   'rind/src/low/x86_64/cpu\.rs:\d+:17: replace \| with & in HaveAvxMovbeForAesGcm::check$',
   'rind/src/low/x86_64/cpu\.rs:\d+:17: replace \| with & in HaveAesHardware::check$',
@@ -406,10 +406,12 @@ exclude_re = [
   # kernel or rind's by-16 path, which compute the same result, as
   # `paths_match` checks; only the time differs.
   'rind/src/low/x86_64/cpu\.rs:\d+:\d+: replace HaveAvx512ForAesGcm::vg -> Option<HaveAvx512ForVgAesGcm> with None$',
+  'rind/src/low/x86_64/cpu\.rs:\d+:\d+: replace HaveVaesAvx2ForAesGcm::vg -> Option<HaveVaesAvx2ForVgAesGcm> with None$',
   'rind/src/low/x86_64/aes_gcm\.rs:\d+:\d+: replace >= with < in vg$',
-  # Wipe and free VG's AES-GCM context, which only Zen 5 makes through the
-  # API, where rind/tests/zeroing.rs checks every key that holds one leaks
-  # no block and frees none unwiped; the hosted runners are not Zen 5.
+  # Wipe and free VG's AES-GCM context, which only Zen 5 and Intel's VAES
+  # cores without AVX-512 make through the API, where rind/tests/zeroing.rs
+  # checks every key that holds one leaks no block and frees none unwiped;
+  # the hosted runners are neither.
   'rind/src/aead\.rs:\d+:\d+: replace (Key::release|Inner::release|<impl Cipher for AesGcm>::release) with \(\)$',
   'rind/src/mid/aes_gcm\.rs:\d+:\d+: replace AesGcm::release with \(\)$',
   'rind/src/low/x86_64/ghash\.rs:\d+:\d+: replace GhashTable::release with \(\)$',

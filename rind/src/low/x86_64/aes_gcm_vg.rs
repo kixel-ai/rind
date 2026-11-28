@@ -1,20 +1,36 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
-//! AES-GCM on AVX-512, VAES, and VPCLMULQDQ with pyca/verified-garbage's
-//! `vg_aes_gcm_{seal,open}_prepared_vaes_vpclmul_avx512`, imported by
+//! AES-GCM on VAES and VPCLMULQDQ with pyca/verified-garbage's
+//! `vg_aes_gcm_{seal,open}_prepared_vaes_vpclmul_avx512`, and without
+//! AVX-512 its `vg_aes_gcm_{seal,open}_prepared_vaes_vpclmul`, imported by
 //! `admin/import-vg`, for the CPUs and lengths where they are faster than
-//! BoringSSL's 512-bit kernel.
+//! BoringSSL's kernels.
 
 use alloc::boxed::Box;
 use core::ptr;
 use core::sync::atomic::{AtomicPtr, Ordering};
 
 use super::aes::HwKey;
-use super::cpu::{HaveAvx512ForAesGcm, HaveAvx512ForVgAesGcm};
+use super::cpu::{
+    HaveAvx512ForAesGcm, HaveAvx512ForVgAesGcm, HaveVaesAvx2ForAesGcm, HaveVaesAvx2ForVgAesGcm,
+};
+use super::vg::vg_aes_gcm_open_prepared_vaes_vpclmul::vg_aes_gcm_open_prepared_vaes_vpclmul;
 use super::vg::vg_aes_gcm_open_prepared_vaes_vpclmul_avx512::vg_aes_gcm_open_prepared_vaes_vpclmul_avx512;
+use super::vg::vg_aes_gcm_prepare_vpclmul::vg_aes_gcm_prepare_vpclmul;
 use super::vg::vg_aes_gcm_prepare_vpclmul_avx512::vg_aes_gcm_prepare_vpclmul_avx512;
+use super::vg::vg_aes_gcm_seal_prepared_vaes_vpclmul::vg_aes_gcm_seal_prepared_vaes_vpclmul;
 use super::vg::vg_aes_gcm_seal_prepared_vaes_vpclmul_avx512::vg_aes_gcm_seal_prepared_vaes_vpclmul_avx512;
 use crate::low;
+
+/// Which of VG's routines run: its 512-bit ones or its 256-bit ones, each
+/// with the proof that the CPU runs them. The 512-bit width is all-zero
+/// bytes, as [`VgKey`]'s `Zeroable` needs.
+#[derive(Clone, Copy)]
+#[repr(u8)]
+pub(crate) enum Width {
+    Avx512(HaveAvx512ForVgAesGcm),
+    Avx2(HaveVaesAvx2ForVgAesGcm),
+}
 
 /// VG's key context for one AES key, made on the first message long enough
 /// to run VG's code: preparing it costs more than the rest of the key's
@@ -29,21 +45,27 @@ use crate::low;
 /// and drop from about 80 ns to 105 ns on Zen 5.
 pub(crate) struct LazyVgKey {
     ctx: AtomicPtr<VgKey>,
-    token: HaveAvx512ForVgAesGcm,
+    width: Width,
 }
 
 impl LazyVgKey {
-    /// An empty cell, on the CPUs where VG's AES-GCM is faster: see
-    /// [`HaveAvx512ForAesGcm::vg`].
-    pub(crate) fn new(token: HaveAvx512ForAesGcm) -> Option<Self> {
-        token.vg().map(Self::with)
+    /// An empty cell for VG's 512-bit AES-GCM, on the CPUs where it is
+    /// faster: see [`HaveAvx512ForAesGcm::vg`].
+    pub(crate) fn avx512(token: HaveAvx512ForAesGcm) -> Option<Self> {
+        token.vg().map(|t| Self::with(Width::Avx512(t)))
     }
 
-    /// An empty cell, on any CPU VG's AES-GCM runs on.
-    pub(crate) fn with(token: HaveAvx512ForVgAesGcm) -> Self {
+    /// An empty cell for VG's 256-bit AES-GCM, on the CPUs where it is
+    /// faster: see [`HaveVaesAvx2ForAesGcm::vg`].
+    pub(crate) fn avx2(token: HaveVaesAvx2ForAesGcm) -> Option<Self> {
+        token.vg().map(|t| Self::with(Width::Avx2(t)))
+    }
+
+    /// An empty cell, on any CPU `width`'s routines run on.
+    pub(crate) fn with(width: Width) -> Self {
         Self {
             ctx: AtomicPtr::new(ptr::null_mut()),
-            token,
+            width,
         }
     }
 
@@ -62,7 +84,7 @@ impl LazyVgKey {
     #[cold]
     #[inline(never)]
     fn init(&self, key: &HwKey) -> &VgKey {
-        let new = Box::into_raw(Box::new(VgKey::new(key, self.token)));
+        let new = Box::into_raw(Box::new(VgKey::new(key, self.width)));
         // Two threads may race to make it: the first one stored wins, and
         // the other wipes and frees its own.
         match self
@@ -111,22 +133,23 @@ unsafe fn free(ctx: *mut VgKey) {
 }
 
 /// VG's prepared key context for one AES key: its key schedule, H, and 48
-/// powers of H (`VG.Spec.Gcm.PreparedRepr`). Aligned to a cache line, as
-/// VG's own key is, so no read of the powers splits one.
+/// powers of H for the 512-bit routines or 16 for the 256-bit ones
+/// (`VG.Spec.Gcm.PreparedRepr`). Aligned to a cache line, as VG's own key
+/// is, so no read of the powers splits one.
 #[repr(C, align(64))]
 pub(crate) struct VgKey {
     ctx: [u64; 129],
     rounds: usize,
-    _token: HaveAvx512ForVgAesGcm,
+    width: Width,
 }
 
-// All-zero is the context of no key, which nothing reads, and the token is
-// zero-sized.
+// All-zero is the context of no key, which nothing reads, with the 512-bit
+// width, whose token is zero-sized: no zeroed key is ever used.
 impl low::Zeroable for VgKey {}
 
 impl VgKey {
     /// The context for `key`.
-    fn new(key: &HwKey, token: HaveAvx512ForVgAesGcm) -> Self {
+    fn new(key: &HwKey, width: Width) -> Self {
         // VG's key context of `vg_aes_gcm_init` (`VG.Spec.Gcm.KeyRepr`): the
         // FIPS 197 key schedule, which rind's AES-NI round keys are, from
         // byte 0, and the hash subkey H, the zero block's encryption, at
@@ -147,13 +170,18 @@ impl VgKey {
         // SAFETY: `ctx` is 1032 readable and writable bytes, a key context
         // of `vg_aes_gcm_init` in its first 256, and overlaps nothing on the
         // stack; the token proves the CPU has SSSE3, PCLMULQDQ, AVX, AVX2,
-        // VPCLMULQDQ, and AVX-512 F.
-        unsafe { asm_call!(unsafe extern "sysv64" vg_aes_gcm_prepare_vpclmul_avx512(&mut ctx)) };
-        Self {
-            ctx,
-            rounds,
-            _token: token,
-        }
+        // VPCLMULQDQ, and, for the 512-bit routine, AVX-512 F.
+        unsafe {
+            match width {
+                Width::Avx512(_) => {
+                    asm_call!(unsafe extern "sysv64" vg_aes_gcm_prepare_vpclmul_avx512(&mut ctx))
+                }
+                Width::Avx2(_) => {
+                    asm_call!(unsafe extern "sysv64" vg_aes_gcm_prepare_vpclmul(&mut ctx))
+                }
+            }
+        };
+        Self { ctx, rounds, width }
     }
 
     /// Encrypts `inout` in place under `nonce`, and returns its tag over
@@ -166,20 +194,37 @@ impl VgKey {
         // object of the length the routine reads or writes, none of which
         // overlaps the stack below the return address or wraps the address
         // space, as no object does. The token proves the CPU has SSSE3,
-        // PCLMULQDQ, AVX, AVX2, AVX-512 F and BW, VAES, VPCLMULQDQ, and
-        // AES-NI.
+        // PCLMULQDQ, AVX, AVX2, VAES, VPCLMULQDQ, AES-NI, and, for the
+        // 512-bit routine, AVX-512 F and BW.
         unsafe {
-            asm_call!(unsafe extern "sysv64" vg_aes_gcm_seal_prepared_vaes_vpclmul_avx512(
-                &self.ctx,
-                self.rounds,
-                nonce.as_ptr(),
-                nonce.len(),
-                aad.as_ptr(),
-                aad.len(),
-                data,
-                len,
-                &mut tag,
-            ))
+            match self.width {
+                Width::Avx512(_) => {
+                    asm_call!(unsafe extern "sysv64" vg_aes_gcm_seal_prepared_vaes_vpclmul_avx512(
+                        &self.ctx,
+                        self.rounds,
+                        nonce.as_ptr(),
+                        nonce.len(),
+                        aad.as_ptr(),
+                        aad.len(),
+                        data,
+                        len,
+                        &mut tag,
+                    ))
+                }
+                Width::Avx2(_) => {
+                    asm_call!(unsafe extern "sysv64" vg_aes_gcm_seal_prepared_vaes_vpclmul(
+                        &self.ctx,
+                        self.rounds,
+                        nonce.as_ptr(),
+                        nonce.len(),
+                        aad.as_ptr(),
+                        aad.len(),
+                        data,
+                        len,
+                        &mut tag,
+                    ))
+                }
+            }
         };
         tag
     }
@@ -202,18 +247,36 @@ impl VgKey {
         let (data, len) = (inout.as_mut_ptr(), inout.len());
         // SAFETY: as in `seal`, with `tag` 16 readable bytes.
         let valid = unsafe {
-            asm_call!(unsafe extern "sysv64" vg_aes_gcm_open_prepared_vaes_vpclmul_avx512(
-                &self.ctx,
-                self.rounds,
-                nonce.as_ptr(),
-                nonce.len(),
-                aad.as_ptr(),
-                aad.len(),
-                data,
-                len,
-                tag.as_ptr(),
-                tag.len(),
-            ))
+            match self.width {
+                Width::Avx512(_) => {
+                    asm_call!(unsafe extern "sysv64" vg_aes_gcm_open_prepared_vaes_vpclmul_avx512(
+                        &self.ctx,
+                        self.rounds,
+                        nonce.as_ptr(),
+                        nonce.len(),
+                        aad.as_ptr(),
+                        aad.len(),
+                        data,
+                        len,
+                        tag.as_ptr(),
+                        tag.len(),
+                    ))
+                }
+                Width::Avx2(_) => {
+                    asm_call!(unsafe extern "sysv64" vg_aes_gcm_open_prepared_vaes_vpclmul(
+                        &self.ctx,
+                        self.rounds,
+                        nonce.as_ptr(),
+                        nonce.len(),
+                        aad.as_ptr(),
+                        aad.len(),
+                        data,
+                        len,
+                        tag.as_ptr(),
+                        tag.len(),
+                    ))
+                }
+            }
         };
         valid == 1
     }
@@ -235,7 +298,7 @@ mod tests {
         let AesKey::Hw(key) = &key else {
             unreachable!("AVX-512 CPUs have AES-NI");
         };
-        let cell = LazyVgKey::with(token.vg_anywhere());
+        let cell = LazyVgKey::with(Width::Avx512(token.vg_anywhere()));
         let won: *const VgKey = cell.get(key);
         assert_eq!(cell.init(key) as *const VgKey, won);
         assert_eq!(cell.get(key) as *const VgKey, won);
@@ -252,7 +315,7 @@ mod tests {
         let AesKey::Hw(key) = &key else {
             unreachable!("AVX-512 CPUs have AES-NI");
         };
-        let mut cell = LazyVgKey::with(token.vg_anywhere());
+        let mut cell = LazyVgKey::with(Width::Avx512(token.vg_anywhere()));
         let _ = cell.get(key);
         cell.wipe();
         assert!(cell.ctx.get_mut().is_null());

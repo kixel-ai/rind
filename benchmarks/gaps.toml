@@ -61,7 +61,7 @@ reason = "Measured before [kixel-ai/rind#1139](https://github.com/kixel-ai/rind/
 [[gap]]
 operations = ["aes*-gcm*/16KB"]
 on = ["desktop"]
-quest = "/quest/m2/speed/arrow-lake-vg-aes-gcm.md"
+reason = "Measured before [kixel-ai/rind#1181](https://github.com/kixel-ai/rind/pull/1181), which runs pyca/verified-garbage's 256-bit seal and open on Intel without AVX-512 from 10 KB: under rind's glue on an Arrow Lake P-core it took 16 KB seals to 0.93 to 0.96 of the time before and opens to 0.95 to 0.97, which brings these rows within 10% of VG's own API by this data's times (0.90 to 0.94 of rind's). The next refresh rechecks them."
 
 [[gap]]
 operations = ["chacha20poly1305/32B"]

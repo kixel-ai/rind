@@ -169,9 +169,13 @@ opaque low.x86_64.aes_gcm_vaes.VaesKernel.avx512
 opaque low.x86_64.aes_gcm_vaes.VaesKernel.avx2
   : Std.U128 → low.x86_64.cpu.HaveVaesAvx2ForAesGcm → Result low.x86_64.aes_gcm_vaes.VaesKernel
 
-/-- The empty cell for VG's AES-GCM context, on the CPUs that run it. -/
-opaque low.x86_64.aes_gcm_vg.LazyVgKey.new
+/-- The empty cell for VG's 512-bit AES-GCM context, on the CPUs that run it. -/
+opaque low.x86_64.aes_gcm_vg.LazyVgKey.avx512
   : low.x86_64.cpu.HaveAvx512ForAesGcm → Result (Option low.x86_64.aes_gcm_vg.LazyVgKey)
+
+/-- The empty cell for VG's 256-bit AES-GCM context, on the CPUs that run it. -/
+opaque low.x86_64.aes_gcm_vg.LazyVgKey.avx2
+  : low.x86_64.cpu.HaveVaesAvx2ForAesGcm → Result (Option low.x86_64.aes_gcm_vg.LazyVgKey)
 
 /-- Wiping and freeing VG's AES-GCM context, which no proof observes. -/
 opaque low.x86_64.aes_gcm_vg.LazyVgKey.wipe

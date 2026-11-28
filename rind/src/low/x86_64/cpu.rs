@@ -228,7 +228,36 @@ impl HaveVaesAvx2ForAesGcm {
     pub(crate) fn avx_movbe(self) -> HaveAvxMovbeForAesGcm {
         HaveAvxMovbeForAesGcm(())
     }
+
+    /// pyca/verified-garbage's 256-bit AES-GCM, where it is faster for long
+    /// messages: on Intel, measured on Arrow Lake, whose P-cores it speeds
+    /// up and whose E-cores it slows, less. AMD's Zen 3 and 4 keep
+    /// BoringSSL's kernel, unmeasured with VG's.
+    pub(crate) fn vg(self) -> Option<HaveVaesAvx2ForVgAesGcm> {
+        has(INTEL).then(|| self.vg_anywhere())
+    }
+
+    /// pyca/verified-garbage's 256-bit AES-GCM, which runs on every CPU this
+    /// token is for, whether or not it is faster there.
+    pub(crate) fn vg_anywhere(self) -> HaveVaesAvx2ForVgAesGcm {
+        // VG's `_FEATURES` for seal and open.
+        const {
+            assert!(
+                (AES_GCM_BASE | VPCLMULQDQ | VAES)
+                    & (SSSE3 | PCLMULQDQ | AVX | AVX2 | VAES | VPCLMULQDQ | AES)
+                    == SSSE3 | PCLMULQDQ | AVX | AVX2 | VAES | VPCLMULQDQ | AES
+            )
+        };
+        HaveVaesAvx2ForVgAesGcm(())
+    }
 }
+
+/// Proof that the CPU has what pyca/verified-garbage's 256-bit AES-GCM runs:
+/// SSSE3, PCLMULQDQ, AVX, AVX2, VAES, VPCLMULQDQ, and AES-NI, its
+/// `_FEATURES` for seal and open, of which its key preparation needs a
+/// subset.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct HaveVaesAvx2ForVgAesGcm(());
 
 /// Proof that the CPU has AVX and MOVBE, with AES-NI and PCLMULQDQ, which
 /// Vale's AES-GCM uses.

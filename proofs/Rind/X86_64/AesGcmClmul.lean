@@ -34,7 +34,7 @@ theorem add_lengths_spec (g : low.x86_64.ghash.Ghash) (t : low.x86_64.ghash.Clmu
   obtain ⟨tb, cur⟩ := g
   simp only at hg
   unfold low.x86_64.ghash.Ghash.add_lengths
-  rcases hg with (rfl | ⟨k, rfl⟩ | ⟨k1, k2, rfl⟩) | ⟨k, rfl, rfl⟩ <;>
+  rcases hg with (rfl | ⟨k, rfl⟩ | ⟨k1, k2, k3, rfl⟩) | ⟨k, rfl, rfl⟩ <;>
   all_goals
     step*
     case hmax =>
@@ -219,7 +219,7 @@ theorem vale_clmul (enc : Bool) (hk : low.x86_64.aes.HwKey) (t : low.x86_64.ghas
   cases hk <;> cases enc <;> step*
 
 /-- `seal` and `open` run pyca/verified-garbage's AES-GCM only on the AVX-512
-tier, so never on a by8 table. -/
+and VAES-AVX2 tiers, so never on a by8 table. -/
 theorem vg_by8 (key : low.x86_64.aes.AesKey) (g : low.x86_64.ghash.GhashTable)
     (t : low.x86_64.ghash.ClmulTable) (hg : By8Of g t) (len : Usize) :
     low.x86_64.aes_gcm.vg key g len ⦃ o => o = none ⦄ := by
