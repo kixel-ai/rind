@@ -182,7 +182,7 @@ impl PrivateKey {
         let labels = Labels::kem(kem);
         let dkp_prk = labels.extract_prk(b"", b"dkp_prk", ikm);
         let mut bytes = [0u8; MAX_SCALAR_LEN];
-        let bytes = &mut bytes[..kem.scalar_len];
+        let bytes = bytes.get_mut(..kem.scalar_len).ok_or(Error::WrongLength)?;
         let Some(mask) = kem.candidate_mask else {
             labels.expand(&dkp_prk, b"sk", &[], bytes)?;
             return Self::from_scalar(kem, bytes);
@@ -193,7 +193,9 @@ impl PrivateKey {
         let mut result: Result<Self, Error> = Err(KeyFormatError::ScalarOutOfRange.into());
         for counter in 0..=255u8 {
             labels.expand(&dkp_prk, b"candidate", &[&[counter]], bytes)?;
-            bytes[0] &= mask;
+            if let Some(first) = bytes.first_mut() {
+                *first &= mask;
+            }
             result = Self::from_scalar(kem, bytes);
             if result.is_ok() {
                 break;
@@ -623,17 +625,21 @@ impl SharedSecret {
         let labels = Labels::kem(kem);
         let eae_prk = labels.extract_prk(b"", b"eae_prk", dh);
         let mut bytes = [0u8; MAX_HASH_LEN];
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "every KDF's hash output is at most MAX_HASH_LEN = bytes.len()"
+        )]
+        let secret = &mut bytes[..kem.kdf.hash_len()];
         labels
-            .expand(
-                &eae_prk,
-                b"shared_secret",
-                &[enc, pk_rm],
-                &mut bytes[..kem.kdf.hash_len()],
-            )
+            .expand(&eae_prk, b"shared_secret", &[enc, pk_rm], secret)
             .expect("Nsecret is one hash output");
         Self { kem, bytes }
     }
 
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "every KDF's hash output is at most MAX_HASH_LEN = bytes.len()"
+    )]
     fn as_ref(&self) -> &[u8] {
         &self.bytes[..self.kem.kdf.hash_len()]
     }
@@ -649,6 +655,11 @@ struct KeySchedule {
 }
 
 impl KeySchedule {
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "the parts are a byte and two hash outputs, at most 1 + 2 MAX_HASH_LEN = context.len()"
+    )]
     fn new(labels: &Labels, shared_secret: &SharedSecret, info: &[u8]) -> Self {
         const MODE_BASE: u8 = 0x00;
         let psk_id_hash = labels.extract(b"", b"psk_id_hash", b"");
@@ -666,12 +677,20 @@ impl KeySchedule {
         }
     }
 
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "new sets context_len to the bytes it wrote into context"
+    )]
     fn context(&self) -> &[u8] {
         &self.context[..self.context_len]
     }
 
     fn exporter(&self, labels: &Labels) -> Exporter {
         let mut secret = [0u8; MAX_HASH_LEN];
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "every KDF's hash output is at most MAX_HASH_LEN = secret.len()"
+        )]
         let secret = &mut secret[..labels.kdf.hash_len()];
         labels
             .expand(&self.secret, b"exp", &[self.context()], secret)
@@ -689,6 +708,10 @@ fn schedule(suite: Suite, secret: &SharedSecret, info: &[u8]) -> (Sealing, Expor
     let schedule = KeySchedule::new(&labels, secret, info);
     let algorithm = suite.aead.algorithm;
     let mut key = [0u8; 32];
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "every AEAD's key is at most 32 bytes"
+    )]
     let key = &mut key[..algorithm.key_len()];
     let mut base_nonce = [0u8; NONCE_LEN];
     labels
@@ -745,6 +768,10 @@ impl Labels {
         }
     }
 
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "suite_id_len is 5 or 10, at most suite_id.len()"
+    )]
     fn suite_id(&self) -> &[u8] {
         &self.suite_id[..self.suite_id_len]
     }
@@ -787,9 +814,13 @@ fn labeled_expand(
     let len = u16::try_from(out.len())
         .map_err(|_| Error::WrongLength)?
         .to_be_bytes();
+    // An unused part is empty, which adds nothing to the concatenation.
+    debug_assert!(info.len() <= 2);
     let mut parts: [&[u8]; 6] = [&len, VERSION, suite_id, label, &[], &[]];
-    parts[4..4 + info.len()].copy_from_slice(info);
-    prk.fill(&parts[..4 + info.len()], out)
+    for (slot, part) in parts.iter_mut().skip(4).zip(info) {
+        *slot = part;
+    }
+    prk.fill(&parts, out)
 }
 
 const VERSION: &[u8] = b"HPKE-v1";

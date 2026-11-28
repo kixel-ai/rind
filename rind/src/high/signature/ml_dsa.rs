@@ -209,14 +209,13 @@ impl<P: ParameterSet> KeyPair<P> {
         let len = private_key
             .encode(&mut asn1::Encoder::new(&mut private_key_buf))
             .expect("sized for the largest key");
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "encode returns the bytes it wrote into private_key_buf"
+        )]
+        let private_key = &private_key_buf[..len];
         let pkcs8 = Pkcs8(Buffer::encode(|output| {
-            pkcs8::Key::construct(
-                &private_key_buf[..len],
-                None,
-                P::ALGORITHM.oid.clone(),
-                None,
-            )
-            .encode(output)
+            pkcs8::Key::construct(private_key, None, P::ALGORITHM.oid.clone(), None).encode(output)
         }));
         low::ct::public_slice(pkcs8.as_ref());
         pkcs8

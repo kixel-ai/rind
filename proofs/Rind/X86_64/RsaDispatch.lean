@@ -96,6 +96,10 @@ impl RsaScheme {
     /// The smallest modulus whose PSS encoding fits the salt, if over
     /// `min_bits`: RFC 8017 section 9.1.1 needs `ceil((bits - 1) / 8)`
     /// bytes for the hash, the salt, and two more.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "a hash is at most 64 bytes and a salt at most 2^16 - 1, so fits stays under 2^20"
+    )]
     const fn min_bits(self, min_bits: usize) -> usize {
         let salt = match self.padding {
             RsaPadding::Pkcs1 => return min_bits,

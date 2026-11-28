@@ -82,6 +82,10 @@ impl RsaScheme {
     /// The smallest modulus whose PSS encoding fits the salt, if over
     /// `min_bits`: RFC 8017 section 9.1.1 needs `ceil((bits - 1) / 8)`
     /// bytes for the hash, the salt, and two more.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "a hash is at most 64 bytes and a salt at most 2^16 - 1, so fits stays under 2^20"
+    )]
     const fn min_bits(self, min_bits: usize) -> usize {
         let salt = match self.padding {
             RsaPadding::Pkcs1 => return min_bits,
@@ -169,6 +173,10 @@ impl VerificationAlgorithm {
     /// This algorithm with its modulus floor counted in whole bytes, as ring
     /// does: a modulus a bit short of the floor, such as 2047 bits for a
     /// floor of 2048, still verifies as long as it fills the floor's bytes.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "every algorithm floor is 1024 bits or more, so the subtraction does not wrap"
+    )]
     pub const fn floor_in_bytes(&self) -> Self {
         Self {
             verification: self.verification,

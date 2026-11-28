@@ -90,6 +90,11 @@ impl<H: Hash> HmacDrbg<H> {
 
     /// SP 800-90A section 10.1.2.5's generate, steps 2 to 7: the caller
     /// checks the reseed counter and bounds the request.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "chunks are at most hashlen = v.len() bytes, and reseed_counter counts calls, far below 2^64"
+    )]
     pub(crate) fn generate(&mut self, out: &mut [u8], additional_input: &[u8]) {
         let hashlen = self.v.as_ref().len();
         let one = [additional_input];

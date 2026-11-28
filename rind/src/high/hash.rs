@@ -26,12 +26,20 @@ impl HashBlock {
 
 impl Deref for HashBlock {
     type Target = [u8];
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "len is a block size, 64 or 128 <= buf.len()"
+    )]
     fn deref(&self) -> &Self::Target {
         &self.buf[..self.len]
     }
 }
 
 impl DerefMut for HashBlock {
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "len is a block size, 64 or 128 <= buf.len()"
+    )]
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.buf[..self.len]
     }

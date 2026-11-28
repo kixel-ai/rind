@@ -36,18 +36,20 @@ pub(crate) use _asn1_struct_parse_ty;
 
 macro_rules! asn1_struct {
     ($name:ident ::= SEQUENCE { $($itname:ident $([$context:literal])? $($itty:ident)+ ),+ }) => {
-        #[allow(non_snake_case)]
+        #[allow(non_snake_case, reason = "fields keep their names from the ASN.1 module")]
         #[derive(Clone, Debug)]
         pub(crate) struct $name<'a> {
             $( pub(crate) $itname: $crate::high::asn1::_asn1_struct_ty!($([$context])? $($itty)+), )+
         }
 
         impl<'a> $name<'a> {
-            #[allow(dead_code)]
+            #[allow(dead_code, reason = "a SEQUENCE rind only parses never asks its length")]
             pub(crate) fn body_len(&self) -> usize {
                 use $crate::high::asn1::Type;
-                let mut result = 0;
-                $( result += self.$itname.encoded_len(); )+
+                // Saturates, as `encoded_length_for` does: no output fits
+                // usize::MAX bytes, so encoding fails rather than wraps.
+                let mut result: usize = 0;
+                $( result = result.saturating_add(self.$itname.encoded_len()); )+
                 result
             }
         }
@@ -85,7 +87,7 @@ macro_rules! asn1_struct {
 
 macro_rules! asn1_enum {
     ($name:ident ::= INTEGER { $( $vname:ident($num:expr) ),+ }) => {
-        #[allow(non_camel_case_types)]
+        #[allow(non_camel_case_types, reason = "names are kept from the ASN.1 module")]
         #[derive(Copy, Clone, Debug, PartialEq)]
         pub(crate) enum $name {
             $( $vname = $num, )+
@@ -332,6 +334,11 @@ pub(crate) struct ObjectId {
 }
 
 impl ObjectId {
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "evaluated only at compile time, for the OIDs in oid.rs, where a panic fails the build"
+    )]
     const fn from_path(path: &[usize]) -> Self {
         let mut r = Self {
             buf: [0u8; Self::MAX_LEN],
@@ -384,12 +391,10 @@ impl ObjectId {
 impl Type<'_> for ObjectId {
     fn parse_with_tag(p: &mut Parser<'_>, tag: Tag) -> Result<Self, Error> {
         let (_, body) = p.take(tag)?;
-        if body.len() > Self::MAX_LEN {
-            return Err(Error::UnsupportedLargeObjectId);
-        }
-
         let mut buf = [0u8; Self::MAX_LEN];
-        buf[..body.len()].copy_from_slice(body);
+        buf.get_mut(..body.len())
+            .ok_or(Error::UnsupportedLargeObjectId)?
+            .copy_from_slice(body);
         Ok(Self {
             buf,
             used: body.len(),
@@ -410,6 +415,10 @@ impl Type<'_> for ObjectId {
 }
 
 impl AsRef<[u8]> for ObjectId {
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "parse_with_tag and from_path set used <= MAX_LEN = buf.len()"
+    )]
     fn as_ref(&self) -> &[u8] {
         &self.buf[..self.used]
     }
@@ -441,16 +450,14 @@ impl<'a> Integer<'a> {
             };
         }
 
-        let negative = bytes[0] & 0x80 == 0x80;
-
-        if negative {
-            while bytes.len() > 1 && bytes[0] == 0xff && bytes[1] & 0x80 == 0x80 {
-                bytes = &bytes[1..];
-            }
-        } else {
-            while bytes.len() > 1 && bytes[0] == 0x00 && bytes[1] & 0x80 == 0x00 {
-                bytes = &bytes[1..];
-            }
+        // A first byte that only extends the sign of the next is excess:
+        // 0xff before a set top bit, or 0x00 before a clear one.
+        while let [first, rest @ ..] = bytes
+            && let Some(second) = rest.first()
+            && ((*first == 0xff && second & 0x80 == 0x80)
+                || (*first == 0x00 && second & 0x80 == 0x00))
+        {
+            bytes = rest;
         }
 
         Integer {
@@ -470,10 +477,15 @@ impl<'a> Integer<'a> {
     /// The number of leading zeros is deemed a public property.
     ///
     /// `buffer` must be at least 1 octet larger than `magnitude`.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "callers pass a buffer at least one byte longer than value, which value.len() + 1 fits"
+    )]
     pub(crate) fn new_positive(buffer: &'a mut [u8], mut value: &'_ [u8]) -> Self {
         // strip leading zero bytes
-        while !value.is_empty() && value[0] == 0x00 {
-            value = &value[1..];
+        while let [0x00, rest @ ..] = value {
+            value = rest;
         }
 
         let buf_len = if !value.is_empty() && value[0] & 0x80 == 0x80 {
@@ -511,9 +523,15 @@ impl<'a> Integer<'a> {
             return Err(Error::IntegerOutOfRange);
         }
 
+        // Right-aligned, as the check above leaves room for it.
         let mut bytes = [0u8; size_of::<usize>()];
-        bytes[size_of::<usize>() - self.twos_complement.len()..]
-            .copy_from_slice(self.twos_complement);
+        for (byte, value) in bytes
+            .iter_mut()
+            .rev()
+            .zip(self.twos_complement.iter().rev())
+        {
+            *byte = *value;
+        }
         Ok(usize::from_be_bytes(bytes))
     }
 
@@ -532,9 +550,9 @@ impl<'a> Integer<'a> {
         // That is, the first octet is not bit 8 of the second, extended. A
         // private key's integers are secret, so only the verdict is
         // revealed.
-        if let Some(first_two) = twos_complement.get(..2) {
-            let extended = 0u8.wrapping_sub(first_two[1] >> 7);
-            if ct::into_public(first_two[0] == extended) {
+        if let [first, second, ..] = *twos_complement {
+            let extended = 0u8.wrapping_sub(second >> 7);
+            if ct::into_public(first == extended) {
                 return Err(Error::IntegerOutOfRange);
             }
         }
@@ -631,14 +649,14 @@ impl<'a> Type<'a> for BitString<'a> {
     }
 
     fn encode_with_tag(&self, encoder: &mut Encoder<'_>, tag: Tag) -> Result<usize, Error> {
-        let mut body = encoder.begin(tag, self.octets.len() + 1)?;
+        let mut body = encoder.begin(tag, self.octets.len().saturating_add(1))?;
         body.push(0)?;
         body.append_slice(self.octets)?;
         Ok(body.finish())
     }
 
     fn encoded_len(&self) -> usize {
-        encoded_length_for(self.octets.len() + 1)
+        encoded_length_for(self.octets.len().saturating_add(1))
     }
 
     const TAG: Tag = Tag(Tag::BIT_STRING);
@@ -792,39 +810,50 @@ impl<'a, 's> Encoder<'a> {
         Encoder { out, written: 0 }
     }
 
+    // An encoder that runs out of room is left empty: nothing encodes with
+    // it after an error.
     fn push(&'s mut self, byte: u8) -> Result<(), Error> {
-        if self.out.is_empty() {
-            return Err(Error::UnexpectedEof);
-        }
-        let out = mem::take(&mut self.out);
-        out[0] = byte;
-        self.out = &mut out[1..];
-        self.written += 1;
+        let (first, rest) = mem::take(&mut self.out)
+            .split_first_mut()
+            .ok_or(Error::UnexpectedEof)?;
+        *first = byte;
+        self.out = rest;
+        #[expect(
+            clippy::arithmetic_side_effects,
+            reason = "written counts bytes of the buffer the outermost Encoder began with"
+        )]
+        let written = self.written + 1;
+        self.written = written;
         Ok(())
     }
 
     fn append_slice(&'s mut self, bytes: &[u8]) -> Result<(), Error> {
-        if self.out.len() < bytes.len() {
-            return Err(Error::UnexpectedEof);
-        }
-
-        let out = mem::take(&mut self.out);
-        out[..bytes.len()].copy_from_slice(bytes);
-        self.out = &mut out[bytes.len()..];
-        self.written += bytes.len();
+        let (head, rest) = mem::take(&mut self.out)
+            .split_at_mut_checked(bytes.len())
+            .ok_or(Error::UnexpectedEof)?;
+        head.copy_from_slice(bytes);
+        self.out = rest;
+        #[expect(
+            clippy::arithmetic_side_effects,
+            reason = "written counts bytes of the buffer the outermost Encoder began with"
+        )]
+        let written = self.written + bytes.len();
+        self.written = written;
         Ok(())
     }
 
     fn split(&'s mut self, len: usize) -> Result<Self, Error> {
-        if self.out.len() < len {
-            return Err(Error::UnexpectedEof);
-        }
-
-        let buffer = mem::take(&mut self.out);
-        let (split, rest) = buffer.split_at_mut(len);
+        let (split, rest) = mem::take(&mut self.out)
+            .split_at_mut_checked(len)
+            .ok_or(Error::UnexpectedEof)?;
         self.out = rest;
         let before = self.written;
-        self.written += len;
+        #[expect(
+            clippy::arithmetic_side_effects,
+            reason = "written counts bytes of the buffer the outermost Encoder began with"
+        )]
+        let written = before + len;
+        self.written = written;
         Ok(Encoder {
             out: split,
             written: before,
@@ -837,12 +866,15 @@ impl<'a, 's> Encoder<'a> {
         match body_len {
             0..=0x7f => self.push(body_len as u8)?,
             _ => {
-                let bytes = (body_len.ilog2() + 1).div_ceil(8) as usize;
-                self.push(0x80 + bytes as u8)?;
+                // The length's big-endian bytes from its first nonzero one,
+                // after a byte counting them: 1 to size_of::<usize>().
                 let len_encoded = body_len.to_be_bytes();
-                for i in 0..bytes {
-                    self.push(len_encoded[len_encoded.len() - bytes + i])?;
+                let mut significant = len_encoded.as_slice();
+                while let [0, rest @ ..] = significant {
+                    significant = rest;
                 }
+                self.push(0x80 | significant.len() as u8)?;
+                self.append_slice(significant)?;
             }
         }
 
@@ -854,16 +886,18 @@ impl<'a, 's> Encoder<'a> {
     }
 }
 
+// Saturates: a length past usize::MAX fits no output, so encoding it fails.
 fn encoded_length_for(len: usize) -> usize {
-    const TAG: usize = 1;
-    match len {
-        0..=0x7f => TAG + 1 + len,
-        0x80..=0xff => TAG + 1 + 1 + len,
-        0x01_00..=0xff_ff => TAG + 1 + 2 + len,
-        0x01_00_00..=0xff_ff_ff => TAG + 1 + 3 + len,
-        0x01_00_00_00..=0xff_ff_ff_ff => TAG + 1 + 4 + len,
+    // The tag, the length's first byte, and its further bytes.
+    let header = match len {
+        0..=0x7f => 2,
+        0x80..=0xff => 3,
+        0x01_00..=0xff_ff => 4,
+        0x01_00_00..=0xff_ff_ff => 5,
+        0x01_00_00_00..=0xff_ff_ff_ff => 6,
         _ => unimplemented!("extremely long asn1 object"),
-    }
+    };
+    len.saturating_add(header)
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1169,7 +1203,10 @@ mod tests {
         test_round_trip(&[], None::<ObjectId>);
     }
 
-    #[allow(clippy::enum_clike_unportable_variant)]
+    #[allow(
+        clippy::enum_clike_unportable_variant,
+        reason = "the test enum takes a 64-bit value, and runs only where usize is 64 bits"
+    )]
     #[test]
     #[cfg(target_pointer_width = "64")]
     fn test_enum() {

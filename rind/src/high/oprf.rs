@@ -46,7 +46,7 @@ impl Eq for Suite {}
 
 impl fmt::Debug for Suite {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        with_group!(self, G => f.write_str(core::str::from_utf8(G::NAME).unwrap()))
+        with_group!(self, G => write!(f, "{}", G::NAME.escape_ascii()))
     }
 }
 
@@ -547,6 +547,20 @@ fn len_prefix(x: &[u8]) -> [u8; 2] {
     (x.len() as u16).to_be_bytes()
 }
 
+/// The concatenation of `parts`, at most `N` bytes.
+pub(super) fn concat<const N: usize>(parts: &[&[u8]]) -> Bytes<N> {
+    let mut out = Bytes::zeroed(parts.iter().map(|part| part.len()).sum());
+    let mut rest = out.as_mut();
+    for part in parts {
+        let (head, tail) = core::mem::take(&mut rest)
+            .split_at_mut_checked(part.len())
+            .expect("out is as long as the parts together");
+        head.copy_from_slice(part);
+        rest = tail;
+    }
+    out
+}
+
 /// The error for the identity where RFC 9497 forbids it, which no input or
 /// batch is known to reach: as the NIST curves' `hash_to_curve` refuses it.
 const IDENTITY_ERROR: KeyFormatError = KeyFormatError::SmallOrder;
@@ -556,14 +570,10 @@ struct Dst(Bytes<48>);
 
 impl Dst {
     /// `prefix || "OPRFV1-" || I2OSP(mode, 1) || "-" || identifier`.
+    ///
+    /// At most 41 bytes: prefixes are at most 13 and identifiers 19.
     fn new<G: Group>(prefix: &[u8], mode: Mode) -> Self {
-        let parts: [&[u8]; 5] = [prefix, b"OPRFV1-", &[mode as u8], b"-", G::NAME];
-        let mut dst = Bytes::zeroed(0);
-        for part in parts {
-            dst.bytes[dst.len..dst.len + part.len()].copy_from_slice(part);
-            dst.len += part.len();
-        }
-        Self(dst)
+        Self(concat(&[prefix, b"OPRFV1-", &[mode as u8], b"-", G::NAME]))
     }
 }
 
@@ -669,7 +679,12 @@ fn finish<G: Group>(mut hash: G::Hash, element: &[u8]) -> Output {
     let mut output = Output(Bytes::zeroed(G::Hash::OUTPUT));
     let mut full = [0u8; MAX_OUTPUT];
     hash.finish_into(&mut full);
-    output.0.as_mut().copy_from_slice(&full[..G::Hash::OUTPUT]);
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "every suite's hash output is at most MAX_OUTPUT = full.len()"
+    )]
+    let full = &full[..G::Hash::OUTPUT];
+    output.0.as_mut().copy_from_slice(full);
     output
 }
 

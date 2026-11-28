@@ -19,8 +19,8 @@ use core::fmt;
 
 use super::argon2::Params;
 use super::oprf::{
-    Bytes, ClientState, Group, MAX_ELEMENT, Mode, P256, Ristretto255, decode, derive_scalar,
-    encode, scalar_from_key,
+    Bytes, ClientState, Group, MAX_ELEMENT, Mode, P256, Ristretto255, concat, decode,
+    derive_scalar, encode, scalar_from_key,
 };
 use super::{digest, hkdf, hmac};
 use crate::error::{Error, KeyFormatError};
@@ -44,6 +44,10 @@ struct Lens {
     nh: usize,
 }
 
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "npk is at most 33 and nh at most 64 in every suite, so each sum is a few hundred"
+)]
 impl Lens {
     /// `client_public_key || masking_key || envelope_nonce || auth_tag`.
     const fn record(self) -> usize {
@@ -66,10 +70,33 @@ impl Lens {
         self.npk + NN + self.masked() + NN + self.npk + self.nh
     }
 
+    /// KE2 short of its `server_mac`.
+    const fn ke2_head(self) -> usize {
+        self.ke2() - self.nh
+    }
+
     /// `oprf_seed || server_private_key || fake_client_public_key`.
     const fn setup(self) -> usize {
         self.nh + NSK + self.npk
     }
+}
+
+/// The first `Nh` bytes of a buffer sized for any suite's hash.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "every suite's Nh is at most MAX_HASH, as tests::lengths checks"
+)]
+fn first_nh<G: Ake>(buf: &[u8; MAX_HASH]) -> &[u8] {
+    &buf[..G::LENS.nh]
+}
+
+/// [`first_nh`], mutably.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "every suite's Nh is at most MAX_HASH, as tests::lengths checks"
+)]
+fn first_nh_mut<G: Ake>(buf: &mut [u8; MAX_HASH]) -> &mut [u8] {
+    &mut buf[..G::LENS.nh]
 }
 
 // The longest of each, over both suites, as `tests::lengths` checks: P-256's
@@ -287,15 +314,11 @@ fn len_prefix(x: &[u8]) -> [u8; 2] {
     (x.len() as u16).to_be_bytes()
 }
 
-/// The concatenation of `parts`, at most `N` bytes.
-fn concat<const N: usize>(parts: &[&[u8]]) -> Bytes<N> {
-    let mut out = Bytes::zeroed(parts.iter().map(|part| part.len()).sum());
-    let mut at = 0;
-    for part in parts {
-        out.as_mut()[at..at + part.len()].copy_from_slice(part);
-        at += part.len();
-    }
-    out
+/// `bytes` split `at` a field's end, refused if it is shorter.
+fn split(bytes: &[u8], at: usize) -> Result<(&[u8], &[u8]), Error> {
+    bytes
+        .split_at_checked(at)
+        .ok_or_else(|| KeyFormatError::WrongLength.into())
 }
 
 /// Refuses `bytes` unless it is `len` long.
@@ -361,9 +384,16 @@ impl Stretch {
 fn randomized_password<G: Ake>(stretch: Stretch, oprf_output: &[u8]) -> Result<hkdf::Prk, Error> {
     let nh = G::LENS.nh;
     let mut ikm = [0u8; 2 * MAX_HASH];
-    ikm[..nh].copy_from_slice(oprf_output);
-    stretch.apply(oprf_output, &mut ikm[nh..2 * nh])?;
-    hkdf::Salt::new(G::hkdf(), b"").extract(&ikm[..2 * nh])
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "every suite's Nh is at most MAX_HASH, so 2 Nh fits ikm"
+    )]
+    let ikm = &mut ikm[..2 * nh];
+    let (output, stretched) = ikm.split_at_mut(nh);
+    output.copy_from_slice(oprf_output);
+    stretch.apply(oprf_output, stretched)?;
+    hkdf::Salt::new(G::hkdf(), b"").extract(ikm)
 }
 
 /// `masking_key = Expand(randomized_password, "MaskingKey", Nh)`.
@@ -372,7 +402,7 @@ fn masking_key<G: Ake>(randomized_password: &hkdf::Prk) -> Result<[u8; MAX_HASH]
     expand(
         randomized_password,
         &[b"MaskingKey"],
-        &mut key[..G::LENS.nh],
+        first_nh_mut::<G>(&mut key),
     )?;
     Ok(key)
 }
@@ -380,7 +410,7 @@ fn masking_key<G: Ake>(randomized_password: &hkdf::Prk) -> Result<[u8; MAX_HASH]
 /// `credential_response_pad`, XORed into `out`: `Npk + Nn + Nm` bytes.
 fn mask<G: Ake>(masking_key: &[u8], masking_nonce: &[u8], out: &mut [u8]) -> Result<(), Error> {
     let mut pad = [0u8; MAX_MASKED];
-    let pad = &mut pad[..out.len()];
+    let pad = pad.get_mut(..out.len()).ok_or(Error::WrongLength)?;
     let prk = hkdf::Prk::new(G::hkdf(), masking_key);
     expand(&prk, &[masking_nonce, b"CredentialResponsePad"], pad)?;
     for (out, pad) in out.iter_mut().zip(pad.iter()) {
@@ -409,7 +439,7 @@ impl EnvelopeKeys {
         expand(
             randomized_password,
             &[nonce, b"AuthKey"],
-            &mut keys.auth_key[..nh],
+            first_nh_mut::<G>(&mut keys.auth_key),
         )?;
         expand(
             randomized_password,
@@ -430,7 +460,7 @@ impl EnvelopeKeys {
         client_public_key: &[u8],
         session: &Session<'_>,
     ) -> hmac::Tag {
-        let key = hmac::Key::new(G::hmac(), &self.auth_key[..G::LENS.nh]);
+        let key = hmac::Key::new(G::hmac(), first_nh::<G>(&self.auth_key));
         let mut ctx = hmac::Context::with_key(&key);
         ctx.update(nonce);
         ctx.update(server_public_key);
@@ -491,7 +521,7 @@ impl AkeKeys {
             &prk,
             b"HandshakeSecret",
             preamble_hash,
-            &mut handshake_secret[..nx],
+            first_nh_mut::<G>(&mut handshake_secret),
         )?;
         derive_secret(
             &prk,
@@ -499,22 +529,32 @@ impl AkeKeys {
             preamble_hash,
             keys.session_key.0.as_mut(),
         )?;
-        let handshake_secret = hkdf::Prk::new(G::hkdf(), &handshake_secret[..nx]);
-        derive_secret(&handshake_secret, b"ServerMAC", b"", &mut keys.km2[..nx])?;
-        derive_secret(&handshake_secret, b"ClientMAC", b"", &mut keys.km3[..nx])?;
+        let handshake_secret = hkdf::Prk::new(G::hkdf(), first_nh::<G>(&handshake_secret));
+        derive_secret(
+            &handshake_secret,
+            b"ServerMAC",
+            b"",
+            first_nh_mut::<G>(&mut keys.km2),
+        )?;
+        derive_secret(
+            &handshake_secret,
+            b"ClientMAC",
+            b"",
+            first_nh_mut::<G>(&mut keys.km3),
+        )?;
         Ok(keys)
     }
 
     /// `server_mac = MAC(Km2, Hash(preamble))`.
     fn server_mac<G: Ake>(&self, preamble_hash: &[u8]) -> hmac::Tag {
-        mac::<G>(&self.km2[..G::LENS.nh], preamble_hash)
+        mac::<G>(first_nh::<G>(&self.km2), preamble_hash)
     }
 
     /// `MAC(Km3, Hash(concat(preamble, server_mac)))`, for `preamble`'s hash
     /// context.
     fn client_mac<G: Ake>(&self, mut preamble: digest::Context, server_mac: &[u8]) -> hmac::Tag {
         preamble.update(server_mac);
-        mac::<G>(&self.km3[..G::LENS.nh], preamble.finish().as_ref())
+        mac::<G>(first_nh::<G>(&self.km3), preamble.finish().as_ref())
     }
 }
 
@@ -527,6 +567,10 @@ fn derive_secret(
     out: &mut [u8],
 ) -> Result<(), Error> {
     let length = (out.len() as u16).to_be_bytes();
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "labels are this module's constants, a few bytes long"
+    )]
     let label_len = [(b"OPAQUE-".len() + label.len()) as u8];
     let context_len = [transcript_hash.len() as u8];
     let info: [&[u8]; 6] = [
@@ -539,6 +583,10 @@ fn derive_secret(
     ];
     expand(secret, &info, out)
 }
+
+/// A setup's `oprf_seed`, `server_private_key`, and
+/// `fake_client_public_key`.
+type SetupParts<'a> = (&'a [u8], &'a [u8], &'a [u8]);
 
 /// The server's long-term state: its OPRF seed, its key pair, and the
 /// public key of the fake record it answers an unknown client with; wiped
@@ -568,9 +616,8 @@ impl ServerSetup {
         suite: &'static Suite,
         rng: &mut dyn RandomSource,
     ) -> Result<Self, Error> {
-        let l = G::LENS;
         let mut oprf_seed = [0u8; MAX_HASH];
-        rng.fill(&mut oprf_seed[..l.nh])?;
+        rng.fill(first_nh_mut::<G>(&mut oprf_seed))?;
         ct::secret_slice(&oprf_seed);
         let private = G::random_scalar()?;
         let fake = ct::into_public(encode::<G>(&G::mul_base(&G::random_scalar()?)));
@@ -578,7 +625,7 @@ impl ServerSetup {
         G::scalar_to_bytes(&private, &mut private_bytes);
         Self::new::<G>(
             suite,
-            concat(&[&oprf_seed[..l.nh], &private_bytes, fake.as_ref()]),
+            concat(&[first_nh::<G>(&oprf_seed), &private_bytes, fake.as_ref()]),
         )
     }
 
@@ -605,10 +652,11 @@ impl ServerSetup {
     /// Checks `bytes`, of the suite's setup length, and derives the public
     /// key. Marks the seed and private key secret.
     fn new<G: Ake>(suite: &'static Suite, bytes: Bytes<MAX_SETUP>) -> Result<Self, Error> {
-        let l = G::LENS;
-        ct::secret_slice(&bytes.as_ref()[..l.nh + NSK]);
-        let private = scalar_from_key::<G>(&bytes.as_ref()[l.nh..l.nh + NSK])?;
-        decode::<G>(&bytes.as_ref()[l.nh + NSK..])?;
+        let (seed, private, fake) = Self::split(bytes.as_ref(), G::LENS)?;
+        ct::secret_slice(seed);
+        ct::secret_slice(private);
+        let private = scalar_from_key::<G>(private)?;
+        decode::<G>(fake)?;
         let public = ct::into_public(encode::<G>(&G::mul_base(&private)));
         Ok(Self {
             suite: ZeroableRef::new(suite),
@@ -633,16 +681,28 @@ impl ServerSetup {
         self.public_key.as_ref()
     }
 
+    /// `oprf_seed`, `server_private_key`, and `fake_client_public_key`,
+    /// refused if `bytes` is too short for them.
+    fn split(bytes: &[u8], l: Lens) -> Result<SetupParts<'_>, Error> {
+        let (seed, rest) = split(bytes, l.nh)?;
+        let (private, fake) = split(rest, NSK)?;
+        Ok((seed, private, fake))
+    }
+
+    fn parts(&self, l: Lens) -> SetupParts<'_> {
+        Self::split(self.bytes.as_ref(), l).expect("new split these bytes")
+    }
+
     fn oprf_seed(&self, l: Lens) -> &[u8] {
-        &self.bytes.as_ref()[..l.nh]
+        self.parts(l).0
     }
 
     fn private_key(&self, l: Lens) -> &[u8] {
-        &self.bytes.as_ref()[l.nh..l.nh + NSK]
+        self.parts(l).1
     }
 
     fn fake_public_key(&self, l: Lens) -> &[u8] {
-        &self.bytes.as_ref()[l.nh + NSK..]
+        self.parts(l).2
     }
 
     /// Answers a client's registration request for the account
@@ -735,14 +795,15 @@ impl ServerSetup {
         let l = G::LENS;
         // Both paths draw the fake masking key, so neither takes longer.
         let mut fake_masking_key = [0u8; MAX_HASH];
-        rng.fill(&mut fake_masking_key[..l.nh])?;
+        rng.fill(first_nh_mut::<G>(&mut fake_masking_key))?;
         ct::secret_slice(&fake_masking_key);
         let record: Bytes<MAX_RECORD> = match credential.record {
             Some(record) => concat(&[record.as_ref()]),
             None => concat(&[
                 self.fake_public_key(l),
-                &fake_masking_key[..l.nh],
-                &[0; NN + MAX_HASH][..NN + l.nh],
+                first_nh::<G>(&fake_masking_key),
+                &[0; NN],
+                first_nh::<G>(&[0; MAX_HASH]),
             ]),
         };
         let (client_public_key, rest) = record.as_ref().split_at(l.npk);
@@ -752,7 +813,9 @@ impl ServerSetup {
 
         // RFC 9807 6.3.2.2's `CreateCredentialResponse`.
         let ke1 = ke1.as_ref();
-        let evaluated = self.evaluate::<G>(credential.identifier, &ke1[..l.npk])?;
+        let (blinded, rest) = split(ke1, l.npk)?;
+        let (_, client_keyshare) = split(rest, NN)?;
+        let evaluated = self.evaluate::<G>(credential.identifier, blinded)?;
         let mut masking_nonce = [0u8; NN];
         rng.fill(&mut masking_nonce)?;
         let mut masked: Bytes<MAX_MASKED> = concat(&[self.public_key(), envelope]);
@@ -769,18 +832,18 @@ impl ServerSetup {
             masked.as_ref(),
             &server_nonce,
             keyshare_public.as_ref(),
-            &[0; MAX_HASH][..l.nh],
+            first_nh::<G>(&[0; MAX_HASH]),
         ]);
-        let head = l.ke2() - l.nh;
+        let head = l.ke2_head();
         let preamble = preamble::<G>(
             session.context,
             session.client_identity.unwrap_or(client_public_key),
             ke1,
             session.server_identity.unwrap_or(self.public_key()),
-            &ke2.as_ref()[..head],
+            split(ke2.as_ref(), head)?.0,
         );
 
-        let client_keyshare = decode::<G>(&ke1[l.npk + NN..])?;
+        let client_keyshare = decode::<G>(client_keyshare)?;
         let client_public_key = decode::<G>(client_public_key)?;
         let private = scalar_from_key::<G>(self.private_key(l))?;
         let ikm: Bytes<{ 3 * MAX_ELEMENT }> = concat(&[
@@ -790,7 +853,11 @@ impl ServerSetup {
         ]);
         let keys = AkeKeys::new::<G>(ikm.as_ref(), preamble.clone().finish().as_ref())?;
         let server_mac = ct::into_public(keys.server_mac::<G>(preamble.clone().finish().as_ref()));
-        ke2.as_mut()[head..].copy_from_slice(server_mac.as_ref());
+        let (_, mac) = ke2
+            .as_mut()
+            .split_at_mut_checked(head)
+            .ok_or(Error::WrongLength)?;
+        mac.copy_from_slice(server_mac.as_ref());
         let expected_client_mac = keys.client_mac::<G>(preamble, server_mac.as_ref());
 
         Ok((
@@ -953,7 +1020,7 @@ fn store<G: Ake>(
     // The client uploads all of it.
     let record = ct::into_public(concat(&[
         client_public_key.as_ref(),
-        &masking_key[..l.nh],
+        first_nh::<G>(&masking_key),
         &nonce,
         auth_tag.as_ref(),
     ]));
@@ -1088,17 +1155,21 @@ impl<G: Ake> LoginState<G> {
     ) -> Result<(Ke3, SessionKey, ExportKey), Error> {
         let l = G::LENS;
         let ke2 = ke2.as_ref();
-        let (evaluated, rest) = ke2.split_at(l.npk);
-        let (masking_nonce, rest) = rest.split_at(NN);
-        let (masked, rest) = rest.split_at(l.masked());
-        let server_keyshare = &rest[NN..NN + l.npk];
-        let server_mac = &rest[NN + l.npk..];
+        let (evaluated, rest) = split(ke2, l.npk)?;
+        let (masking_nonce, rest) = split(rest, NN)?;
+        let (masked, rest) = split(rest, l.masked())?;
+        let (_, rest) = split(rest, NN)?;
+        let (server_keyshare, server_mac) = split(rest, l.npk)?;
 
         let oprf_output = self.oprf.finalize(&decode::<G>(evaluated)?);
         let randomized_password = randomized_password::<G>(suite.stretch, oprf_output.as_ref())?;
         let masking_key = masking_key::<G>(&randomized_password)?;
         let mut unmasked: Bytes<MAX_MASKED> = concat(&[masked]);
-        mask::<G>(&masking_key[..l.nh], masking_nonce, unmasked.as_mut())?;
+        mask::<G>(
+            first_nh::<G>(&masking_key),
+            masking_nonce,
+            unmasked.as_mut(),
+        )?;
         let (server_public_key, envelope) = unmasked.as_ref().split_at(l.npk);
         let (envelope_nonce, auth_tag) = envelope.split_at(NN);
 
@@ -1134,7 +1205,7 @@ impl<G: Ake> LoginState<G> {
             session
                 .server_identity
                 .unwrap_or(server_public_key.as_ref()),
-            &ke2[..l.ke2() - l.nh],
+            split(ke2, l.ke2_head())?.0,
         );
         let preamble_hash = preamble.clone().finish();
         let ake = AkeKeys::new::<G>(ikm.as_ref(), preamble_hash.as_ref())?;
@@ -1287,9 +1358,10 @@ fn check_request<G: Ake>(bytes: &[u8]) -> Result<(), Error> {
 /// `evaluated_message || server_public_key`.
 fn check_response<G: Ake>(bytes: &[u8]) -> Result<(), Error> {
     let l = G::LENS;
-    check_len(bytes, 2 * l.npk)?;
-    decode::<G>(&bytes[..l.npk])?;
-    decode::<G>(&bytes[l.npk..])?;
+    let (evaluated, public_key) = split(bytes, l.npk)?;
+    check_len(public_key, l.npk)?;
+    decode::<G>(evaluated)?;
+    decode::<G>(public_key)?;
     Ok(())
 }
 
@@ -1297,15 +1369,17 @@ fn check_response<G: Ake>(bytes: &[u8]) -> Result<(), Error> {
 fn check_record<G: Ake>(bytes: &[u8]) -> Result<(), Error> {
     let l = G::LENS;
     check_len(bytes, l.record())?;
-    decode::<G>(&bytes[..l.npk]).map(|_| ())
+    decode::<G>(split(bytes, l.npk)?.0).map(|_| ())
 }
 
 /// `blinded_message || client_nonce || client_public_keyshare`.
 fn check_ke1<G: Ake>(bytes: &[u8]) -> Result<(), Error> {
     let l = G::LENS;
     check_len(bytes, l.ke1())?;
-    decode::<G>(&bytes[..l.npk])?;
-    decode::<G>(&bytes[l.npk + NN..])?;
+    let (blinded, rest) = split(bytes, l.npk)?;
+    let (_, keyshare) = split(rest, NN)?;
+    decode::<G>(blinded)?;
+    decode::<G>(keyshare)?;
     Ok(())
 }
 
@@ -1314,9 +1388,13 @@ fn check_ke1<G: Ake>(bytes: &[u8]) -> Result<(), Error> {
 fn check_ke2<G: Ake>(bytes: &[u8]) -> Result<(), Error> {
     let l = G::LENS;
     check_len(bytes, l.ke2())?;
-    decode::<G>(&bytes[..l.npk])?;
-    let keyshare = l.npk + NN + l.masked() + NN;
-    decode::<G>(&bytes[keyshare..keyshare + l.npk])?;
+    let (evaluated, rest) = split(bytes, l.npk)?;
+    let (_, rest) = split(rest, NN)?;
+    let (_, rest) = split(rest, l.masked())?;
+    let (_, rest) = split(rest, NN)?;
+    let (keyshare, _) = split(rest, l.npk)?;
+    decode::<G>(evaluated)?;
+    decode::<G>(keyshare)?;
     Ok(())
 }
 
