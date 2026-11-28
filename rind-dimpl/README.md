@@ -35,6 +35,7 @@ It negotiates DTLS 1.2 ECDHE-ECDSA and DTLS 1.3 with AES-128-GCM, AES-256-GCM, a
 ## Behaves differently
 
 - On a CPU where rind runs AES without CPU instructions, it puts ChaCha20-Poly1305 first, for speed.
+- A peer's P-256 or P-384 key share must be an uncompressed or compressed point. Unlike dimpl's aws-lc-rs provider, it refuses a hybrid point (SEC1 prefix `0x06` or `0x07`) and a share wrapped in a DER `SubjectPublicKeyInfo`, matching `PublicKey::new`, rind-aws-lc-rs, and dimpl's RustCrypto provider; X25519 refuses the wrapped form too.
 - A PEM key whose preamble starts with `0` is refused: that byte is the tag every DER key starts with, and a DER key's later bytes are secret, so rind never searches them for PEM.
 
 ## WebAssembly

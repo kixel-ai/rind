@@ -189,6 +189,178 @@ fn invalid_key_shares_are_refused() {
     }
 }
 
+/// Applies the dimpl fuzzer's `Edit` to `share`: XOR, then cut from the end.
+fn edit_share(share: &mut Vec<u8>, flips: &[(u16, u8)], cut: u8) {
+    if !share.is_empty() {
+        for &(index, xor) in flips {
+            let index = usize::from(index) % share.len();
+            share[index] ^= xor;
+        }
+    }
+    share.truncate(share.len().saturating_sub(usize::from(cut)));
+}
+
+fn accepts(provider: &CryptoProvider, group: NamedGroup, share: &[u8]) -> bool {
+    provider
+        .kx_groups
+        .iter()
+        .find(|kx| kx.name() == group)
+        .unwrap()
+        .start_exchange(Buf::new())
+        .unwrap()
+        .complete(share, &mut Buf::new())
+        .is_ok()
+}
+
+/// A fresh aws-lc public key, edited as the fuzzer does, whose hybrid prefix
+/// matches `y`. aws-lc accepts that point and refuses the other parity.
+fn matching_hybrid(group: NamedGroup, flips: &[(u16, u8)]) -> Vec<u8> {
+    let aws = aws_lc_rs::default_provider();
+    let kx = aws.kx_groups.iter().find(|kx| kx.name() == group).unwrap();
+    for _ in 0..64 {
+        let mut share = kx.start_exchange(Buf::new()).unwrap().pub_key().to_vec();
+        assert_eq!(share[0], 0x04, "{group:?} publishes an uncompressed point");
+        edit_share(&mut share, flips, 0);
+        if (share[0] & 1) == (share[share.len() - 1] & 1) {
+            return share;
+        }
+    }
+    panic!("{group:?} produced no parity-matching hybrid share");
+}
+
+/// `point`, an uncompressed NIST point, in SEC1 compressed form.
+fn compress(point: &[u8]) -> Vec<u8> {
+    let (x, y) = point[1..].split_at(point.len() / 2);
+    let mut compressed = vec![2 | (y[y.len() - 1] & 1)];
+    compressed.extend_from_slice(x);
+    compressed
+}
+
+/// The dimpl fuzzer inputs `Av9paRCkAHn///cAAP8AAAIK` (P-256) and
+/// `09a0ff97fbffffff970100000340002b01db0d250c0c06` (P-384) are `KeyShare`
+/// edits of a fresh uncompressed point: P-256 XORs index 247 with 0 and index
+/// 0 with 2, and P-384 XORs index 0 with 3. Neither cuts. The prefix becomes
+/// SEC1 hybrid `0x06` or `0x07`, and the coordinates stay. aws-lc-rs accepts
+/// that point when the prefix's low bit matches `y`; rind-dimpl refuses every
+/// hybrid point, as dimpl's RustCrypto provider does, and takes the same point
+/// compressed.
+#[test]
+fn nist_hybrid_key_shares_are_refused() {
+    let aws = aws_lc_rs::default_provider();
+    let rind = rind();
+    let cases = [
+        (NamedGroup::Secp256r1, &[(247u16, 0u8), (0, 2)][..]),
+        (NamedGroup::Secp384r1, &[(0, 3)][..]),
+    ];
+    for (group, flips) in cases {
+        let share = matching_hybrid(group, flips);
+        assert!(
+            accepts(&aws, group, &share),
+            "{group:?} aws-lc-rs refused a hybrid point"
+        );
+        assert!(!accepts(&rind, group, &share), "{group:?} hybrid");
+
+        let mut mismatched = share.clone();
+        mismatched[0] ^= 1;
+        assert!(!accepts(&aws, group, &mismatched));
+        assert!(!accepts(&rind, group, &mismatched), "{group:?} parity");
+
+        let mut uncompressed = share.clone();
+        uncompressed[0] = 0x04;
+        let compressed = compress(&uncompressed);
+        assert!(accepts(&aws, group, &compressed), "{group:?}");
+        assert!(accepts(&rind, group, &compressed), "{group:?} compressed");
+
+        for peer in [&[0u8][..], &compressed[..compressed.len() - 1]] {
+            assert!(!accepts(&aws, group, peer), "{group:?} {peer:?}");
+            assert!(!accepts(&rind, group, peer), "{group:?} {peer:?}");
+        }
+    }
+}
+
+/// Every malformed neighbour of a fresh compressed NIST share, and of an
+/// uncompressed or `0x05` one, gets the same verdict from rind-dimpl as from
+/// dimpl's aws-lc-rs provider: the other `y`, `x` all ones (at least the field
+/// prime), a flipped `x` bit, an off-curve `y`, one byte short or long, prefix
+/// `0x05`, and the point at infinity alone or padded.
+#[test]
+fn nist_share_edges_match_aws_lc() {
+    let aws = aws_lc_rs::default_provider();
+    let rind = rind();
+    for group in [NamedGroup::Secp256r1, NamedGroup::Secp384r1] {
+        let kx = aws.kx_groups.iter().find(|kx| kx.name() == group).unwrap();
+        let point = kx.start_exchange(Buf::new()).unwrap().pub_key().to_vec();
+        let field = (point.len() - 1) / 2;
+        let mut bases = vec![compress(&point)];
+        let mut share = point.clone();
+        share[0] = 0x05;
+        bases.push(share);
+        let mut shares = vec![vec![], vec![0], vec![0; point.len()]];
+        for share in &bases {
+            let mut x_max = share.clone();
+            x_max[1..=field].fill(0xff);
+            let mut x_flip = share.clone();
+            x_flip[field] ^= 1;
+            let mut other_y = share.clone();
+            other_y[0] ^= 1;
+            let mut long = share.clone();
+            long.push(0);
+            shares.extend([
+                x_max,
+                x_flip,
+                other_y,
+                long,
+                share[..share.len() - 1].to_vec(),
+            ]);
+            if share.len() == point.len() {
+                let mut off_curve = share.clone();
+                off_curve[share.len() - 2] ^= 1;
+                shares.push(off_curve);
+            }
+        }
+        shares.extend(bases);
+        for share in shares {
+            assert_eq!(
+                accepts(&rind, group, &share),
+                accepts(&aws, group, &share),
+                "{group:?} {share:02x?}"
+            );
+        }
+    }
+}
+
+/// A share wrapped in an X.509 `SubjectPublicKeyInfo` is a known difference:
+/// aws-lc-rs's `ParsedPublicKey::new` (`aws-lc-rs-1.19.0/src/agreement.rs`,
+/// lines 747-790) tries `parse_rfc5280_public_key` before the raw point, so
+/// dimpl's aws-lc-rs provider takes it, and rind-dimpl, like dimpl's
+/// RustCrypto provider, `PublicKey::new` and rind-aws-lc-rs, refuses it.
+#[test]
+fn spki_key_shares_are_refused() {
+    let aws = aws_lc_rs::default_provider();
+    let rind = rind();
+    for (group, algorithm) in [
+        (NamedGroup::Secp256r1, &rcgen::PKCS_ECDSA_P256_SHA256),
+        (NamedGroup::Secp384r1, &rcgen::PKCS_ECDSA_P384_SHA384),
+    ] {
+        let key = rcgen::KeyPair::generate_for(algorithm).unwrap();
+        let spki = pem::parse(key.public_key_pem()).unwrap().into_contents();
+        assert!(accepts(&aws, group, &spki), "{group:?}");
+        assert!(!accepts(&rind, group, &spki), "{group:?}");
+    }
+
+    let kx = aws
+        .kx_groups
+        .iter()
+        .find(|kx| kx.name() == NamedGroup::X25519)
+        .unwrap();
+    let mut spki = vec![
+        0x30, 0x2a, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x6e, 0x03, 0x21, 0x00,
+    ];
+    spki.extend_from_slice(kx.start_exchange(Buf::new()).unwrap().pub_key());
+    assert!(accepts(&aws, NamedGroup::X25519, &spki));
+    assert!(!accepts(&rind, NamedGroup::X25519, &spki));
+}
+
 #[test]
 fn signatures_are_checked_against_the_certificate() {
     let provider = rind();
