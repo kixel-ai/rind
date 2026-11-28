@@ -240,9 +240,12 @@ impl HaveVaesAvx2ForAesGcm {
     /// pyca/verified-garbage's 256-bit AES-GCM, which runs on every CPU this
     /// token is for, whether or not it is faster there.
     pub(crate) fn vg_anywhere(self) -> HaveVaesAvx2ForVgAesGcm {
+        // VG's `_FEATURES` for seal and open.
         const {
             assert!(
-                (AES_GCM_BASE | VPCLMULQDQ | VAES) & VG_VAES_AVX2_AES_GCM == VG_VAES_AVX2_AES_GCM
+                (AES_GCM_BASE | VPCLMULQDQ | VAES)
+                    & (SSSE3 | PCLMULQDQ | AVX | AVX2 | VAES | VPCLMULQDQ | AES)
+                    == SSSE3 | PCLMULQDQ | AVX | AVX2 | VAES | VPCLMULQDQ | AES
             )
         };
         HaveVaesAvx2ForVgAesGcm(())
@@ -255,8 +258,6 @@ impl HaveVaesAvx2ForAesGcm {
 /// subset.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct HaveVaesAvx2ForVgAesGcm(());
-
-const VG_VAES_AVX2_AES_GCM: u32 = SSSE3 | PCLMULQDQ | AVX | AVX2 | VAES | VPCLMULQDQ | AES;
 
 /// Proof that the CPU has AVX and MOVBE, with AES-NI and PCLMULQDQ, which
 /// Vale's AES-GCM uses.
