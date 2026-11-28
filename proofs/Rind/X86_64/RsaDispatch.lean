@@ -6,16 +6,19 @@ import Rind.X86_64.RsaSign
 open Aeneas Aeneas.Std Result rind.spec rind.spec.rsa
 
 /-!
-# The signature API's RSA public keys, modelled by hand
+# The signature API's RSA keys, modelled by hand
 
-`rsa::PublicKey::verify` reaches each algorithm's verification through the
-function pointer its `VerificationAlgorithm` holds, and every loader builds
-the key's encoding with `Buffer::write`, both of which Aeneas cannot
-translate, so the translation stops below them and this file models the Rust
-above them for RSASSA-PKCS1-v1_5 and RSASSA-PSS with SHA-256,
-`verify::PKCS1_SHA256` and `verify::PSS_SHA256`. `admin/prove` fails unless
-this quote, and `SignatureBuffer`'s of `Buffer`, are still that Rust, so a
-change to it is a change to this model:
+`rsa::PublicKey::verify` reaches each algorithm's verification, and
+`rsa::KeyPair::sign` each algorithm's signing, through the function pointer
+its `VerificationAlgorithm` or `SigningAlgorithm` holds, and every loader
+builds the public key's encoding, and `sign` the signature, with
+`Buffer::write`, both of which Aeneas cannot translate, so the translation
+stops below them and this file models the Rust above them for
+RSASSA-PKCS1-v1_5 and RSASSA-PSS with SHA-256: `verify::PKCS1_SHA256` and
+`verify::PSS_SHA256`, and, on x86_64, whose translation alone reaches the
+private key, `sign::PKCS1_SHA256` and `sign::PSS_SHA256`. `admin/prove` fails
+unless this quote, and `SignatureBuffer`'s of `Buffer`, are still that Rust,
+so a change to it is a change to this model:
 
 ```rust
 enum HashId {
@@ -368,8 +371,7 @@ The model departs from the Rust in these ways, and adds no axiom:
 - A `VerificationAlgorithm` is its `min_bits` and its `verify` with its
   `verification.salt()` passed, as `(key, signature, message)`:
   `algorithm` pairs the `verification` with that `verification`'s own
-  `verifier()`, as the quote's only `VerificationAlgorithm` literal shows;
-  `admin/prove` checks it is the only one.
+  `verifier()`, and builds both statics.
 - `verify::PKCS1_SHA256` is `verification(PKCS1_SHA256_SCHEME, 2048)`:
   `min_bits` 2048, as PKCS#1 v1.5 keeps the floor, `verify`
   `|key, _, s, m| key.verify_pkcs1_sha256(s, m)`, and salt
@@ -386,9 +388,27 @@ The model departs from the Rust in these ways, and adds no axiom:
   `to_pkcs1_der`, is DER, which the ✓ leaves out, and opaque, as are
   `pkcs1_components` and `spki_components`, which `from_pkcs1_der` and
   `from_spki_der` read their components with.
+- A `SigningAlgorithm` is its `sign` with its `scheme.salt()` passed, as
+  `(key, output, message)`: `signing` pairs the `scheme` with that scheme's
+  own `signer()`, and builds both statics. `sign::PKCS1_SHA256` is
+  `signing(PKCS1_SHA256_SCHEME)`: `sign`
+  `|key, _, out, m| key.sign_pkcs1_sha256(out, m)`, and salt
+  `PssSalt::Hash`, which it ignores. `sign::PSS_SHA256` is
+  `signing(PSS_SHA256_SCHEME)`: `sign` `SigningKey::sign_pss_sha256`, and
+  salt `PssSalt::Hash`.
+- `KeyPair::sign`'s `.get_mut(..).ok_or(Error::WrongLength)?` is a `match` on
+  the `Option`, and `.map(Signature)` is the identity: the translation's
+  `Signature` is its `Buffer`, of `MAX_PUBLIC_MODULUS_BYTES`, 1024 bytes.
+- `KeyPair::from_components` takes the components' integers as slices, what
+  their `as_ref` returns.
+- The DER `SigningKey::from_pkcs8_der` and `from_pkcs1_der` read, which the
+  ✓ leaves out, is opaque: `pkcs8_private_key` and
+  `pkcs1_private_components`.
 - `?` is a `match`, since each error it passes on is already an `Error`.
-- `to_spki`, `modulus_len`, `modulus_bits`, and `PublicKey`'s `AsRef`, which no theorem here
-  is about, are not modelled.
+- `to_spki`, `modulus_len`, `modulus_bits`, `PublicKey`'s `AsRef`,
+  `KeyPair::generate`, `prime_bits`, and `to_pkcs8`, which no theorem here is
+  about, are not modelled; `generate`'s key waits on
+  [its quest](/quest/m4/verified/rsa-sign.md).
 
 Drops are not modelled, as everywhere in the translation.
 -/
