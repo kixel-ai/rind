@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [12.0.0](https://github.com/kixel-ai/rind/compare/rind-jsonwebtoken-v11.0.3...rind-jsonwebtoken-v12.0.0) - 2026-11-28
+
+Requires rind 0.4 and jsonwebtoken 12. `DEFAULT_PROVIDER` replaces `default_provider()` and `MissingFeature`, matching jsonwebtoken's `crypto::aws_lc::DEFAULT_PROVIDER`. The other entries marked breaking change rind's API or another crate's, which this crate does not expose.
+
+### Added
+
+- rind's `ml-dsa` and `slh-dsa` features, on by default, so building rind with `default-features = false` leaves ML-DSA and SLH-DSA out, as the adapters do (rind-aws-lc-rs and rind-openssl turn ML-DSA back on); a build for one CPU links one tier, and CI holds rind's size in a binary ([#1008](https://github.com/kixel-ai/rind/pull/1008))
+- *(jsonwebtoken)* [**breaking**] rind-jsonwebtoken 12 is a provider for jsonwebtoken 12 ([#948](https://github.com/kixel-ai/rind/pull/948))
+- *(site)* the README and crates link rind.kixel.ai, and a pasted link shows a social card ([#844](https://github.com/kixel-ai/rind/pull/844))
+- *(site)* a page per library at `/from/<library>`, with a picker on the landing page ([#826](https://github.com/kixel-ai/rind/pull/826))
+- rind's adapters build for wasm32, and rind-rustls's and rind-ring's tests run on wasip2 ([#762](https://github.com/kixel-ai/rind/pull/762))
+- [**breaking**] per-algorithm signature modules and one API shape; in rind, `aead::gcm::TagLength` is now `#[non_exhaustive]`, so a `match` on it needs a `_` arm ([#781](https://github.com/kixel-ai/rind/pull/781))
+
+### Fixed
+
+- *(adapters)* [**breaking**] rind-dimpl, rind-str0m, rind-jsonwebtoken, and rind-object-store match their upstream providers ([#519](https://github.com/kixel-ai/rind/pull/519))
+
+### Other
+
+- rind-ring sizes RSA keys by their primes, as ring does ([#1032](https://github.com/kixel-ai/rind/pull/1032))
+- diff each adapter's API against its upstream's ([#698](https://github.com/kixel-ai/rind/pull/698))
+- release and queue from the kixel-ai org ([#711](https://github.com/kixel-ai/rind/pull/711))
+
 ## [11.0.3](https://github.com/kixel-ai/rind/compare/rind-jsonwebtoken-v11.0.2...rind-jsonwebtoken-v11.0.3) - 2026-11-08
 
 ### Other

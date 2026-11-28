@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.4](https://github.com/kixel-ai/rind/compare/rind-ring-v0.17.3...rind-ring-v0.17.4) - 2026-11-28
+
+Requires rind 0.4. This release matches ring 0.17's API and features, but for what its README lists under "What rind cannot back": the `cpu` module (`cpu::check` and `cpu::MissingFeature`), which ring keeps private, is gone, so drop any `cpu::check()` call. A change that restores upstream's API is a bug fix, released as a patch (CONTRIBUTING.md's Releases section). The other entries marked breaking change rind's API or another crate's, which this crate does not expose.
+
+### Added
+
+- generated unsafe table, benchmark methodology and exact versions, docs.rs metadata, favicon, and security links ([#1038](https://github.com/kixel-ai/rind/pull/1038))
+- rind's `ml-dsa` and `slh-dsa` features, on by default, so building rind with `default-features = false` leaves ML-DSA and SLH-DSA out, as the adapters do (rind-aws-lc-rs and rind-openssl turn ML-DSA back on); a build for one CPU links one tier, and CI holds rind's size in a binary ([#1008](https://github.com/kixel-ai/rind/pull/1008))
+- *(site)* the README and crates link rind.kixel.ai, and a pasted link shows a social card ([#844](https://github.com/kixel-ai/rind/pull/844))
+- *(site)* a page per library at `/from/<library>`, with a picker on the landing page ([#826](https://github.com/kixel-ai/rind/pull/826))
+- [**breaking**] always wipe keys, removing the `wipe` feature ([#609](https://github.com/kixel-ai/rind/pull/609))
+- rind's adapters build for wasm32, and rind-rustls's and rind-ring's tests run on wasip2 ([#762](https://github.com/kixel-ai/rind/pull/762))
+- [**breaking**] per-algorithm signature modules and one API shape; in rind, `aead::gcm::TagLength` is now `#[non_exhaustive]`, so a `match` on it needs a `_` arm ([#781](https://github.com/kixel-ai/rind/pull/781))
+- *(hkdf)* [**breaking**] Prk::new loads a pseudorandom key, Prk::fill writes a slice ([#758](https://github.com/kixel-ai/rind/pull/758))
+- rind loads a PKCS#8 v2 key without its public key, as aws-lc-rs does ([#750](https://github.com/kixel-ai/rind/pull/750))
+- *(agreement)* [**breaking**] keys keep their public key and algorithm ([#529](https://github.com/kixel-ai/rind/pull/529))
+
+### Fixed
+
+- *(ring)* rind-ring builds without std, as ring 0.17 does ([#960](https://github.com/kixel-ai/rind/pull/960))
+- *(adapters)* match each adapter's API to its upstream's, and drop the drift list ([#783](https://github.com/kixel-ai/rind/pull/783))
+- *(rind-ring)* [**breaking**] offer exactly ring 0.17's API and features ([#516](https://github.com/kixel-ai/rind/pull/516))
+
+### Other
+
+- rind-ring sizes RSA keys by their primes, as ring does ([#1032](https://github.com/kixel-ai/rind/pull/1032))
+- gate nightly coverage across every tier, lint feature powersets, and run wasm32-unknown-unknown tests ([#965](https://github.com/kixel-ai/rind/pull/965))
+- Close existing adapter parity gaps across rind-rcgen, rind_cryptography, rind-ring, and rind-aws-lc-rs ([#961](https://github.com/kixel-ai/rind/pull/961))
+- *(release)* prepare rind 0.4: hold rind-openmls, README asks for 0.4, adapters at their next patch ([#992](https://github.com/kixel-ai/rind/pull/992))
+- *(adapters)* catch the mutants the adapter campaign excluded ([#792](https://github.com/kixel-ai/rind/pull/792))
+- every published function the coverage report listed runs under a test, or says why not ([#862](https://github.com/kixel-ai/rind/pull/862))
+- [**breaking**] digest contexts build their state in place, and hmac::Context::sign takes &mut self ([#864](https://github.com/kixel-ai/rind/pull/864))
+- vendor the Wycheproof, CAVP, and CCTV vectors the tests read ([#714](https://github.com/kixel-ai/rind/pull/714))
+- diff each adapter's API against its upstream's ([#698](https://github.com/kixel-ai/rind/pull/698))
+- release and queue from the kixel-ai org ([#711](https://github.com/kixel-ai/rind/pull/711))
+
 ## [0.17.3](https://github.com/kixel-ai/rind/compare/rind-ring-v0.17.2...rind-ring-v0.17.3) - 2026-11-08
 
 ### Other
