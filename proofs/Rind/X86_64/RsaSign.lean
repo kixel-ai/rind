@@ -565,7 +565,7 @@ theorem sign_pss_core_spec (hs : HashSpec inst H B L max Abs CAbs) (hnew : inst.
       have hem2L : em2.val.length ≤ 1024 := by rw [hEMl, hemb']; unfold keyN; omega
       step with posint_from_bytes_spec em2 (beNat_lt_8192 _ hem2L) as ⟨r, c, hr, hcu, hcz, hcv, _⟩
       subst hr
-      simp only [core.result.Result.Insts.CoreOpsTry.branch, bind_ok]
+      simp only [bind_ok]
       step with private_op_spec havx t hadx hifma key hinv hPn hcrt c hcu hcz as ⟨r1, hr1⟩
       have henc' : emsaPssEncode H L (bv message.val) (bv salt') ((keyN key).size - 1) = some (bv em2.val) := by
         rw [← hemb']; exact henc
@@ -628,5 +628,247 @@ theorem sign_pss_sha256_spec (h : Runs) (hb : Sha256Blocks) (hfill : Fills)
   step with new_secret_spec h
   exact sign_pss_core_spec (sha256_hashSpec hb) sha256_ctx_new_spec (by decide) maxInput_ge (system_draws hfill)
     h.2.2.2 t hadx hifma key hinv hPn hcrt salt signature message hm hroom
+
+/-! ## Loading a signing key -/
+
+/-- `from_secret_bytes`'s check of the bytes beyond its width: whether those
+read so far are all zero. -/
+theorem from_secret_bytes_loop0_spec (bytes : Slice U8) (iter : core.ops.range.Range Usize)
+    (hend : iter.end.val ≤ bytes.length) (hstart : iter.start.val ≤ iter.end.val) (high : U8)
+    (hhigh : high.val = 0 ↔ ∀ x ∈ bytes.val.take iter.start.val, x = 0#u8) :
+    low.posint.PosInt.from_secret_bytes_loop0 iter bytes high ⦃ a =>
+      a.val = 0 ↔ ∀ x ∈ bytes.val.take iter.end.val, x = 0#u8 ⦄ := by
+  unfold low.posint.PosInt.from_secret_bytes_loop0
+  apply loop.spec_decr_nat (fun x => x.1.end.val - x.1.start.val)
+    (fun x : core.ops.range.Range Usize × U8 => x.1.end = iter.end ∧ x.1.start.val ≤ x.1.end.val ∧
+      (x.2.val = 0 ↔ ∀ y ∈ bytes.val.take x.1.start.val, y = 0#u8))
+  · rintro ⟨it, a⟩ ⟨he, hs, ha⟩
+    simp only at he hs ha
+    have h2 : it.end.val = iter.end.val := by rw [he]
+    have hbL : bytes.length = bytes.val.length := rfl
+    unfold low.posint.PosInt.from_secret_bytes_loop0.body
+    step as ⟨o, iter1, ho, hend1⟩
+    cases o with
+    | none =>
+      have : it.start.val = iter.end.val := by
+        split at ho
+        · simp at ho
+        · omega
+      simp only [WP.spec_ok]
+      rw [ha, this]
+    | some i =>
+      have hlt : it.start.val < it.end.val := by
+        by_contra hc; simp [hc] at ho
+      simp only [hlt, ↓reduceIte, Option.some.injEq] at ho
+      obtain ⟨rfl, hst⟩ := ho
+      have h3 : iter1.end.val = it.end.val := by rw [hend1]
+      step as ⟨b, hb⟩
+      step as ⟨a1, ha1⟩
+      refine ⟨by rw [hend1, he], by omega, ?_, by omega⟩
+      rw [ha1, UScalar.val_or, Nat.or_eq_zero_iff, ha, hst, List.take_add_one,
+        List.getElem?_eq_getElem (by omega)]
+      simp only [Option.toList_some, List.mem_append, List.mem_singleton]
+      constructor
+      · rintro ⟨h1, h2⟩ y (hy | rfl)
+        · exact h1 y hy
+        · rw [← hb]; simpa [UScalar.eq_equiv] using h2
+      · intro h
+        refine ⟨fun y hy => h y (Or.inl hy), ?_⟩
+        have := h _ (Or.inr rfl)
+        rw [← hb] at this
+        simpa [UScalar.eq_equiv] using this
+  · exact ⟨rfl, hstart, hhigh⟩
+
+theorem from_secret_bytes_loop1_eq {N : Usize} :
+    @low.posint.PosInt.from_secret_bytes_loop1 N = @low.posint.PosInt.from_secret_bytes_loop2 N := by
+  funext iter bytes r len
+  rfl
+
+/-- A number below `256^len` fills at most `⌈len / 8⌉` words: those above
+are zero. -/
+theorem clean_of_lt {N : Usize} (p : low.posint.PosInt N) (len : Nat) (hu : p.used.val = (len + 7) / 8)
+    (hv : wordsNat p.words.val < 256 ^ len) : PrivKey.Clean p := by
+  unfold PrivKey.Clean lowWords
+  rw [wordsNat_take_mod]
+  symm
+  apply Nat.mod_eq_of_lt
+  calc _ < 256 ^ len := hv
+    _ = 2 ^ (8 * len) := by rw [pow_mul]; norm_num
+    _ ≤ 2 ^ (64 * p.used.val) := Nat.pow_le_pow_right (by norm_num) (by omega)
+
+/-- `from_secret_bytes` reads big-endian bytes as the number they encode, in
+at most its `N` words, with nothing above its width. -/
+theorem from_secret_bytes_gen_spec (N : Usize) (hN : N.val ≤ 128) (bytes : Slice U8) :
+    low.posint.PosInt.from_secret_bytes N bytes ⦃ r => ∀ p, r = .Ok p →
+      p.used.val ≤ N.val ∧ PrivKey.Clean p ∧ wordsNat (lowWords p p.used) = beNat bytes.val ⦄ := by
+  unfold low.posint.PosInt.from_secret_bytes low.posint.PosInt.zero
+  step as ⟨i1, hi1⟩
+  have hbl : bytes.length = bytes.val.length := rfl
+  have hbn : bytes.len.val = bytes.length := rfl
+  split
+  · rename_i hgt
+    have hgt' : 8 * N.val < bytes.length := by
+      have : (Slice.len bytes).val > i1.val := hgt; simp at this; omega
+    step as ⟨excess, hex⟩
+    step with from_secret_bytes_loop0_spec bytes { start := 0#usize, «end» := excess } (by simp; omega)
+      (by simp) 0#u8 (by simp) as ⟨high, hhigh⟩
+    simp only [lift, core.cmp.impls.PartialEqU8.eq, bind_ok, low.ct.into_public]
+    split
+    · rename_i hz
+      have hz' : ∀ x ∈ bytes.val.take excess.val, x = 0#u8 := by
+        rw [← hhigh]; simpa [UScalar.eq_equiv] using hz
+      step as ⟨bytes1, hb1v, hb1l⟩
+      rw [from_secret_bytes_loop1_eq]
+      have hl1 : bytes1.val.length = 8 * N.val := by
+        have := hb1l; have : bytes1.length = bytes1.val.length := rfl; scalar_tac
+      step with from_secret_bytes_loop2_spec bytes1 (Slice.len bytes1) (by simp) (by simp; omega)
+        { start := 0#usize, «end» := Slice.len bytes1 } rfl (by simp)
+        { words := Array.repeat N 0#u64, used := 0#usize }
+        (by rw [Array.repeat_val, wordsNat_replicate_zero]; simp [beNat, leNat]) as ⟨r1, hu, hv⟩
+      unfold core.num.Usize.div_ceil
+      simp only [show ¬ (8#usize).val = 0 by decide, _root_.dite_false, bind_ok, WP.spec_ok]
+      rintro p ⟨⟩
+      have hv' : wordsNat r1.words.val = beNat bytes.val := by
+        rw [hv, hb1v, beNat_drop_zeros _ _ hz']
+      set q : low.posint.PosInt N :=
+        { words := r1.words, used := UScalar.ofNatCore ((bytes1.len.val + (8#usize : Usize).val - 1) / (8#usize : Usize).val) (by scalar_tac) } with hq
+      have hqu : q.used.val = (bytes1.val.length + 7) / 8 := by
+        rw [hq, UScalar.ofNatCore_val_eq]; rfl
+      have hqc : PrivKey.Clean q := clean_of_lt q bytes1.val.length hqu (by rw [hq]; dsimp only; rw [hv]; exact beNat_lt _)
+      refine ⟨by rw [hqu, hl1]; omega, hqc, ?_⟩
+      rw [← hqc]
+      exact hv'
+    · simp
+  · rename_i hle
+    have hle' : bytes.length ≤ 8 * N.val := by
+      have : ¬ (Slice.len bytes).val > i1.val := hle; simp at this; omega
+    step with from_secret_bytes_loop2_spec bytes (Slice.len bytes) (by simp) (by simp; omega)
+      { start := 0#usize, «end» := Slice.len bytes } rfl (by simp)
+      { words := Array.repeat N 0#u64, used := 0#usize }
+      (by rw [Array.repeat_val, wordsNat_replicate_zero]; simp [beNat, leNat]) as ⟨r1, hu, hv⟩
+    unfold core.num.Usize.div_ceil
+    simp only [show ¬ (8#usize).val = 0 by decide, _root_.dite_false, bind_ok, WP.spec_ok]
+    rintro p ⟨⟩
+    set q : low.posint.PosInt N :=
+      { words := r1.words, used := UScalar.ofNatCore ((bytes.len.val + (8#usize : Usize).val - 1) / (8#usize : Usize).val) (by scalar_tac) } with hq
+    have hqu : q.used.val = (bytes.val.length + 7) / 8 := by
+      rw [hq, UScalar.ofNatCore_val_eq]; rfl
+    have hqc : PrivKey.Clean q := clean_of_lt q bytes.val.length hqu (by rw [hq]; dsimp only; rw [hv]; exact beNat_lt _)
+    refine ⟨by rw [hqu]; omega, hqc, ?_⟩
+    rw [← hqc]
+    exact hv
+
+/-- `from_unsigned`'s `secret` reads a private component as `from_secret_bytes`
+does. -/
+theorem secret_spec (N : Usize) (hN : N.val ≤ 128) (x : Slice U8) (err : error.KeyFormatError) :
+    high.rsa.SigningKey.from_unsigned.secret N x err ⦃ r => ∀ p, r = .Ok p →
+      p.used.val ≤ N.val ∧ PrivKey.Clean p ∧ wordsNat (lowWords p p.used) = beNat x.val ⦄ := by
+  unfold high.rsa.SigningKey.from_unsigned.secret
+  step with from_secret_bytes_gen_spec N hN x as ⟨r, hr⟩
+  rcases r with p | e
+  · simp only [core.result.Result.map_err, WP.spec_ok]
+    rintro p' ⟨⟩
+    exact hr p rfl
+  · simp [core.result.Result.map_err,
+      high.rsa.SigningKey.from_unsigned.secret.closure.Insts.CoreOpsFunctionFnOnceTupleErrorKeyFormatError.call_once]
+
+/-- `key` is the private key `RsaPrivateKey::new` loaded from the big-endian
+components `c`: it meets `PrivKeyInv`, works at the wider prime's width, and
+holds the components, which meet RFC 8017's relations but for the primes'
+primality. -/
+def KeyFrom (c : high.rsa.Components) (key : mid.rsa_priv.RsaPrivateKey) : Prop :=
+  PrivKeyInv key ∧ keyN key = beNat c.n.val ∧ key.public.e.val = beNat c.e.val ∧
+    wordsNat (lowWords key.d key.d.used) = beNat c.d.val ∧
+    wordsNat (lowWords key.p key.p.used) = beNat c.p.val ∧
+    wordsNat (lowWords key.q key.p.used) = beNat c.q.val ∧
+    wordsNat (lowWords key.dp key.dp.used) = beNat c.dp.val ∧
+    wordsNat (lowWords key.dq key.dq.used) = beNat c.dq.val ∧
+    wordsNat (lowWords key.iqmp key.p.used) = beNat c.qi.val ∧
+    key.p.used.val = keyWords (beNat c.p.val) (beNat c.q.val) ∧
+    CrtRelations (beNat c.n.val) (beNat c.p.val) (beNat c.q.val) (beNat c.d.val) (beNat c.dp.val)
+      (beNat c.dq.val) (beNat c.qi.val) (beNat c.e.val)
+
+set_option maxHeartbeats 1000000 in
+/-- `SigningKey::from_unsigned` returns only a key it loaded from its
+components. -/
+theorem from_unsigned_priv_spec (hrun : Runs) (h : low.entry.Entry.assert_held = ok ())
+    (hifma : IfmaCheckReturns) (hfp16 : ∀ t, ∃ b, low.x86_64.cpu.HaveAvx512ForRsa.fp16 t = ok b)
+    (c : high.rsa.Components) (hP : MontProducts (keyWords (beNat c.p.val) (beNat c.q.val))) :
+    high.rsa.SigningKey.from_unsigned c ⦃ r => ∀ key, r = .Ok key → KeyFrom c key ⦄ := by
+  unfold high.rsa.SigningKey.from_unsigned
+  by_cases hN : beNat c.n.val < 2 ^ 8192
+  · step with posint_from_bytes_spec c.n hN as ⟨r, n, hr, hnu, hnz, hnv, hnt⟩
+    subst hr
+    simp only [core.result.Result.map_err, core.result.Result.Insts.CoreOpsTry.branch, bind_ok]
+    step with public_exponent_spec c.e as ⟨r2, hr2a, hr2b⟩
+    rcases r2 with e | err
+    · have hev : e.val = beNat c.e.val := by
+        by_cases hel : c.e.length ≤ 8
+        · obtain ⟨v, hv, hvv⟩ := hr2a hel; cases hv; exact hvv
+        · obtain ⟨err, h⟩ := hr2b (by omega); cases h
+      simp only [bind_ok]
+      step with secret_spec 64#usize (by decide) c.p _ as ⟨r3, hr3⟩
+      rcases r3 with p | err
+      swap
+      · simp [core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual,
+          error.Error.Insts.CoreConvertFromKeyFormatError.from, core.convert.FromSame.from]
+      obtain ⟨hpu, hpc, hpv⟩ := hr3 p rfl
+      simp only [bind_ok]
+      step with secret_spec 64#usize (by decide) c.q _ as ⟨r4, hr4⟩
+      rcases r4 with q | err
+      swap
+      · simp [core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual,
+          error.Error.Insts.CoreConvertFromKeyFormatError.from, core.convert.FromSame.from]
+      obtain ⟨hqu, hqc, hqv⟩ := hr4 q rfl
+      simp only [bind_ok]
+      step with secret_spec 128#usize (by decide) c.d _ as ⟨r5, hr5⟩
+      rcases r5 with d | err
+      swap
+      · simp [core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual,
+          error.Error.Insts.CoreConvertFromKeyFormatError.from, core.convert.FromSame.from]
+      obtain ⟨hdu, hdc, hdv⟩ := hr5 d rfl
+      simp only [bind_ok]
+      step with secret_spec 64#usize (by decide) c.dp _ as ⟨r6, hr6⟩
+      rcases r6 with dp | err
+      swap
+      · simp [core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual,
+          error.Error.Insts.CoreConvertFromKeyFormatError.from, core.convert.FromSame.from]
+      obtain ⟨hdpu, hdpc, hdpv⟩ := hr6 dp rfl
+      simp only [bind_ok]
+      step with secret_spec 64#usize (by decide) c.dq _ as ⟨r7, hr7⟩
+      rcases r7 with dq | err
+      swap
+      · simp [core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual,
+          error.Error.Insts.CoreConvertFromKeyFormatError.from, core.convert.FromSame.from]
+      obtain ⟨hdqu, hdqc, hdqv⟩ := hr7 dq rfl
+      simp only [bind_ok]
+      step with secret_spec 64#usize (by decide) c.qi _ as ⟨r8, hr8⟩
+      rcases r8 with qi | err
+      swap
+      · simp [core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual,
+          error.Error.Insts.CoreConvertFromKeyFormatError.from, core.convert.FromSame.from]
+      obtain ⟨hiu, hic, hiv⟩ := hr8 qi rfl
+      simp only [bind_ok]
+      step with rsa_private_key_new_spec hrun h hifma hfp16 p q dp dq qi d n e hpu hqu hdpu hdqu hiu hdu hnu
+        hpc hqc hdpc hdqc hic (by rw [hnv]; exact hnt) (by rw [hpv, hqv]; exact hP) as ⟨r9, hr9⟩
+      rcases r9 with key | err
+      swap
+      · simp [core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual,
+          core.convert.FromSame.from]
+      simp only [bind_ok, WP.spec_ok]
+      rintro key' ⟨⟩
+      obtain ⟨hinv, hn, he, hpw, hpv', hqv', hdv', hdpv', hdqv', hiv', hcrt⟩ := hr9
+      rw [hpv, hqv, hdv, hdpv, hdqv, hiv, hnv, hev] at hcrt
+      refine ⟨hinv, ?_, by rw [he, hev], by rw [hdv', hdv], by rw [hpv', hpv], by rw [hqv', hqv],
+        by rw [hdpv', hdpv], by rw [hdqv', hdqv], by rw [hiv', hiv], by rw [hpw, hpv, hqv], hcrt⟩
+      unfold keyN; rw [hn, hnv]
+    · simp [core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual,
+        error.Error.Insts.CoreConvertFromKeyFormatError.from, core.convert.FromSame.from]
+  · step with posint_from_bytes_long_spec c.n (by omega) as ⟨r, err, hr⟩
+    rw [hr]
+    simp [core.result.Result.map_err, core.result.Result.Insts.CoreOpsTry.branch,
+      core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual,
+      error.Error.Insts.CoreConvertFromKeyFormatError.from,
+      high.rsa.SigningKey.from_unsigned.closure.Insts.CoreOpsFunctionFnOnceTupleErrorKeyFormatError.call_once]
 
 end rind.x86_64
