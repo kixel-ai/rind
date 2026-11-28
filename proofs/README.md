@@ -1151,9 +1151,8 @@ and RFC 8018 as `Rind/HashSpec.lean` transliterates them:
   second pass leaves it opaque, as no CPU of theirs runs it.
 
 HKDF's `From<Okm>` conversions, each filling the key's length of HKDF-Expand
-into a zeroed buffer and keying it, in `Rind/X86_64/Hkdf.lean` and
-`Rind/X86_64/HkdfAes.lean` on both targets and `Rind/X86_64/HkdfAead.lean` on
-x86_64:
+into a zeroed buffer and keying it, in `Rind/X86_64/Hkdf.lean`,
+`Rind/X86_64/HkdfAes.lean`, and `Rind/X86_64/HkdfAead.lean` on both targets:
 
 - `hmac_key_from_spec`, `prk_from_spec`: the `hmac::Key` and `Prk` are keyed
   under the algorithm with the `tag_len` bytes of HKDF-Expand;
@@ -1161,7 +1160,9 @@ x86_64:
   HKDF-Expand, through `header_new_spec` over `chacha20_new`;
 - `aead_key_from_spec`: an AES-128-GCM, AES-192-GCM, or AES-256-GCM key holds AES-GCM for
   the `4 * nk` bytes of HKDF-Expand, under `RunsAesGcm`, through
-  `aead_key_new_spec` over `aes_gcm_new`;
+  `aead_key_new_spec` over `aes_gcm_new`; aarch64's `RunsAesGcm` takes the
+  key's algorithm and holds for AES-192 only on cores without SHA3, since
+  cores with it run aws-lc's unproven eight-way kernels;
 - `aead_key_from_chacha20_poly1305_spec`: a ChaCha20-Poly1305 key holds the
   32 bytes of HKDF-Expand, through `aead_key_new_chacha20_poly1305_spec` over
   `chacha20_poly1305_new`;

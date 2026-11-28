@@ -23,6 +23,7 @@ import Rind.Aarch64.GhashPmull
 import Rind.Aarch64.AesGcm
 import Rind.Aarch64.AesGcmLong
 import Rind.Aarch64.GcmKey
+import Rind.Aarch64.HkdfAead
 import Rind.Aarch64.ChaCha20Poly1305
 import Rind.Aarch64.VgChaCha20Poly1305
 import Rind.Aarch64.VgChaCha20
@@ -329,6 +330,24 @@ A change here is a change to the trust base.
  vg_sha512_compress_sha512_spec] -/
 #guard_msgs in
 #print axioms kdf.prk_new_fill
+
+/-- info: 'rind.aarch64.kdf.aead_key_from_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ compress_nohw_spec,
+ sha256_block_data_order_hw_spec,
+ vg_sha512_compress_sha512_spec] -/
+#guard_msgs in
+#print axioms kdf.aead_key_from_spec
+
+/-- info: 'rind.aarch64.kdf.aead_key_from_chacha20_poly1305_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ compress_nohw_spec,
+ sha256_block_data_order_hw_spec,
+ vg_sha512_compress_sha512_spec] -/
+#guard_msgs in
+#print axioms kdf.aead_key_from_chacha20_poly1305_spec
 
 /-- info: 'rind.aarch64.kdf.derive_spec' depends on axioms: [propext,
  Classical.choice,

@@ -66,7 +66,7 @@ def aead.quic.HeaderProtectionKey.new (algorithm : aead.quic.Algorithm) (key : S
   | .Ok k => ok (.Ok k)
   | .Err _ => fail .panic
 
--- BEGIN aead (x86_64 only: its AEAD model and proofs are x86_64's)
+-- BEGIN aead (x86_64 and aarch64 only: the portable backend has no AEAD model)
 /-- `Algorithm::key_len`. -/
 def aead.Algorithm.key_len (self : aead.Algorithm) : Result Usize :=
   ok (rind.x86_64.aead.Algorithm.key_len self)
