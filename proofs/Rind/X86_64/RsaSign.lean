@@ -892,17 +892,32 @@ theorem signing_from_components_spec (hrun : Runs) (h : low.entry.Entry.assert_h
   · simp [error.Error.Insts.CoreConvertFromKeyFormatError.from]
   exact from_unsigned_priv_spec hrun h hifma hfp16 c hP
 
-/-- A signing key's public key is its own. -/
-theorem signing_public_key_spec (hrun : Runs) (key : high.rsa.SigningKey) :
-    high.rsa.SigningKey.public_key key ⦃ vk => vk = key.public ⦄ := by
-  unfold high.rsa.SigningKey.public_key mid.rsa_priv.RsaPrivateKey.public_key
-    mid.rsa_pub.RsaPublicKey.Insts.CoreCloneClone.clone
-  step with new_public_spec hrun
+/-- A private key's public key is a copy of its own. -/
+theorem priv_public_key_spec (key : mid.rsa_priv.RsaPrivateKey) :
+    mid.rsa_priv.RsaPrivateKey.public_key key ⦃ vk => vk = key.public ⦄ := by
+  unfold mid.rsa_priv.RsaPrivateKey.public_key mid.rsa_pub.RsaPublicKey.Insts.CoreCloneClone.clone
   step with clone_spec as ⟨n, hn⟩
   simp only [lift, core.clone.impls.CloneU64.clone, bind_ok]
   step with clone_spec as ⟨m, hm⟩
   subst hn hm
-  simp only [WP.spec_ok]
+  simp only
+
+/-- A signing key's public key is its own. -/
+theorem signing_public_key_spec (hrun : Runs) (key : high.rsa.SigningKey) :
+    high.rsa.SigningKey.public_key key ⦃ vk => vk = key.public ⦄ := by
+  unfold high.rsa.SigningKey.public_key
+  step with new_public_spec hrun
+  step with priv_public_key_spec key as ⟨vk, hvk⟩
+  exact hvk
+
+/-- A signing key's modulus's length in bytes. -/
+theorem signing_modulus_len_bytes_spec (hrun : Runs) (key : high.rsa.SigningKey) (hinv : PubKeyInv key.public) :
+    high.rsa.SigningKey.modulus_len_bytes key ⦃ k => k.val = octetLen (keyN key) ⦄ := by
+  unfold high.rsa.SigningKey.modulus_len_bytes
+  step with new_public_spec hrun
+  step with priv_public_key_spec key as ⟨vk, hvk⟩
+  subst hvk
+  exact modulus_len_bytes_spec key.public hinv
 
 /-- A public key meeting `PubKeyInv` is the RSA public key its modulus and
 exponent are, in exactly the modulus's words. -/

@@ -1,5 +1,8 @@
 import Rind.X86_64.SignatureBuffer
 import Rind.X86_64.RsaKey
+-- BEGIN x86_64
+import Rind.X86_64.RsaSign
+-- END x86_64
 open Aeneas Aeneas.Std Result rind.spec rind.spec.rsa
 
 /-!
@@ -621,6 +624,217 @@ theorem rsa2048_mont_products (o : Option low.x86_64.cpu.HaveBmi2Adx)
     MontProducts ((N.size + 63) / 64) := by
   rw [hN]
   exact karatsuba_products o hcheck hsome (Or.inr rfl)
+-- END x86_64
+
+-- BEGIN x86_64
+/-! ## Key pairs, on x86_64 -/
+
+/-- `SigningAlgorithm`: its `sign` with its `scheme.salt()` passed, as `(key,
+output, message)`. -/
+structure high.signature.rsa.SigningAlgorithm where
+  sign : high.rsa.SigningKey → Slice Std.U8 → Slice Std.U8 →
+    Result (core.result.Result (Slice Std.U8) error.Error × Slice Std.U8)
+
+/-- `KeyPair`. -/
+structure high.signature.rsa.KeyPair where
+  key : high.rsa.SigningKey
+  «public» : high.signature.rsa.PublicKey
+
+/-- `KeyPair::new`. -/
+def high.signature.rsa.KeyPair.new (key : high.rsa.SigningKey) :
+    Result (core.result.Result high.signature.rsa.KeyPair error.Error) := do
+  let vk ← high.rsa.SigningKey.public_key key
+  let r ← high.signature.rsa.PublicKey.from_key vk
+  match r with
+  | .Ok «public» => ok (.Ok { key, «public» })
+  | .Err e => ok (.Err e)
+
+/-- `KeyPair::from_pkcs8`. -/
+def high.signature.rsa.KeyPair.from_pkcs8 (der : Slice Std.U8) :
+    Result (core.result.Result high.signature.rsa.KeyPair error.Error) := do
+  let r ← high.rsa.SigningKey.from_pkcs8_der der
+  match r with
+  | .Ok key => high.signature.rsa.KeyPair.new key
+  | .Err e => ok (.Err e)
+
+/-- `KeyPair::from_pkcs1`. -/
+def high.signature.rsa.KeyPair.from_pkcs1 (der : Slice Std.U8) :
+    Result (core.result.Result high.signature.rsa.KeyPair error.Error) := do
+  let r ← high.rsa.SigningKey.from_pkcs1_der der
+  match r with
+  | .Ok key => high.signature.rsa.KeyPair.new key
+  | .Err e => ok (.Err e)
+
+/-- `KeyPair::from_components`, with the components' integers. -/
+def high.signature.rsa.KeyPair.from_components (n e d p q dp dq qi : Slice Std.U8) :
+    Result (core.result.Result high.signature.rsa.KeyPair error.Error) := do
+  let r ← high.rsa.SigningKey.from_components { n, e, d, p, q, dp, dq, qi }
+  match r with
+  | .Ok key => high.signature.rsa.KeyPair.new key
+  | .Err e => ok (.Err e)
+
+/-- `KeyPair::sign`. -/
+def high.signature.rsa.KeyPair.sign (self : high.signature.rsa.KeyPair)
+    (algorithm : high.signature.rsa.SigningAlgorithm) (message : Slice Std.U8) :
+    Result (core.result.Result high.signature.rsa.Signature error.Error) :=
+  high.signature.Buffer.write 1024#usize fun output => do
+    let k ← high.rsa.SigningKey.modulus_len_bytes self.key
+    let (o, get_mut_back) ←
+      core.slice.Slice.get_mut (core.slice.index.SliceIndexRangeToUsizeSlice Std.U8) output { «end» := k }
+    match o with
+    | none => ok (.Err .WrongLength, get_mut_back none)
+    | some out =>
+      let (r, out1) ← algorithm.sign self.key out message
+      ok (r, get_mut_back (some out1))
+
+/-- The `sign::PKCS1_SHA256` static, `signing(PKCS1_SHA256_SCHEME)`. -/
+def high.signature.rsa.sign.PKCS1_SHA256 : high.signature.rsa.SigningAlgorithm where
+  sign key out m := high.rsa.SigningKey.sign_pkcs1_sha256 key out m
+
+/-- The `sign::PSS_SHA256` static, `signing(PSS_SHA256_SCHEME)`. -/
+def high.signature.rsa.sign.PSS_SHA256 : high.signature.rsa.SigningAlgorithm where
+  sign key out m := high.rsa.SigningKey.sign_pss_sha256 key .Hash out m
+
+/-- A key pair holding the two-prime RSA private key `(n, e, d, p, q, dP, dQ,
+qInv)`, which meets RFC 8017's relations but for the primes' primality, with
+the values `RsaPrivateKey::new` computes from it, working at the wider
+prime's width, and its own public key. -/
+def KeyPairOf (kp : high.signature.rsa.KeyPair) (N E D P Q DP DQ QINV : Nat) : Prop :=
+  PrivKeyInv kp.key ∧ kp.public.key = kp.key.public ∧ KeyLoaded kp.public.key N E ∧
+    wordsNat (lowWords kp.key.d kp.key.d.used) = D ∧
+    wordsNat (lowWords kp.key.p kp.key.p.used) = P ∧
+    wordsNat (lowWords kp.key.q kp.key.p.used) = Q ∧
+    wordsNat (lowWords kp.key.dp kp.key.dp.used) = DP ∧
+    wordsNat (lowWords kp.key.dq kp.key.dq.used) = DQ ∧
+    wordsNat (lowWords kp.key.iqmp kp.key.p.used) = QINV ∧
+    kp.key.p.used.val = keyWords P Q ∧
+    CrtRelations N P Q D DP DQ QINV E
+
+/-- A key pair `KeyPair::new` makes of a key loaded from components holds
+that key and its public key. -/
+theorem key_pair_new_ok (h : Runs) {c : high.rsa.Components} {key : high.rsa.SigningKey} (hk : KeyFrom c key)
+    {kp : high.signature.rsa.KeyPair} (hkp : high.signature.rsa.KeyPair.new key = ok (.Ok kp)) :
+    KeyPairOf kp (beNat c.n.val) (beNat c.e.val) (beNat c.d.val) (beNat c.p.val) (beNat c.q.val)
+      (beNat c.dp.val) (beNat c.dq.val) (beNat c.qi.val) := by
+  obtain ⟨hinv, hn, he, hd, hp, hq, hdp, hdq, hqi, hpw, hcrt⟩ := hk
+  unfold high.signature.rsa.KeyPair.new at hkp
+  obtain ⟨vk, hvk, hkp⟩ := bind_eq_ok hkp
+  have hs := signing_public_key_spec h key
+  rw [hvk, WP.spec_ok] at hs
+  subst hs
+  obtain ⟨r, hr, hkp⟩ := bind_eq_ok hkp
+  rcases r with pk | e
+  · simp only [ok.injEq, core.result.Result.Ok.injEq] at hkp
+    subst hkp
+    have hkl := keyLoaded_of_inv key.public hinv.1
+    obtain ⟨hl, -⟩ := from_key_ok hkl hr
+    have hpk : pk.key = key.public := by
+      unfold high.signature.rsa.PublicKey.from_key at hr
+      obtain ⟨b, -, hb⟩ := bind_eq_ok hr
+      split at hb
+      · simp only [ok.injEq, core.result.Result.Ok.injEq] at hb; rw [← hb]
+      · simp at hb
+    refine ⟨hinv, hpk, ?_, hd, hp, hq, hdp, hdq, hqi, hpw, hcrt⟩
+    rw [← he, ← hn]
+    exact hl
+  · simp at hkp
+
+/-- `KeyPair::from_components(&KeyPairComponents { .. })`: a key pair it
+returns holds the two-prime RSA private key its big-endian integers are,
+which meet RFC 8017's relations but for the primes' primality, given
+Montgomery products at the wider prime's width. -/
+theorem rsa_key_pair_from_components_spec (h : Runs) (hheld : low.entry.Entry.assert_held = ok ())
+    (hifma : IfmaCheckReturns) (hfp16 : ∀ t, ∃ b, low.x86_64.cpu.HaveAvx512ForRsa.fp16 t = ok b)
+    (n e d p q dp dq qi : Slice U8) (hP : MontProducts (keyWords (beNat p.val) (beNat q.val)))
+    (kp : high.signature.rsa.KeyPair)
+    (hkp : high.signature.rsa.KeyPair.from_components n e d p q dp dq qi = ok (.Ok kp)) :
+    KeyPairOf kp (beNat n.val) (beNat e.val) (beNat d.val) (beNat p.val) (beNat q.val) (beNat dp.val)
+      (beNat dq.val) (beNat qi.val) := by
+  unfold high.signature.rsa.KeyPair.from_components at hkp
+  obtain ⟨r, hr, hkp⟩ := bind_eq_ok hkp
+  have hs := signing_from_components_spec h hheld hifma hfp16 { n, e, d, p, q, dp, dq, qi } hP
+  rw [hr, WP.spec_ok] at hs
+  rcases r with key | err
+  · exact key_pair_new_ok h (hs key rfl) hkp
+  · simp at hkp
+
+/-- A key `SigningKey::from_pkcs1_der` returns is one `from_unsigned` loaded
+from some components. -/
+theorem signing_from_pkcs1_ok {der : Slice U8} {key : high.rsa.SigningKey}
+    (hk : high.rsa.SigningKey.from_pkcs1_der der = ok (.Ok key)) :
+    ∃ c, high.rsa.SigningKey.from_unsigned c = ok (.Ok key) := by
+  unfold high.rsa.SigningKey.from_pkcs1_der at hk
+  obtain ⟨_, -, hk⟩ := bind_eq_ok hk
+  obtain ⟨r, -, hk⟩ := bind_eq_ok hk
+  obtain ⟨cf, hcf, hk⟩ := bind_eq_ok hk
+  rcases r with c | err
+  · simp only [core.result.Result.Insts.CoreOpsTry.branch, ok.injEq] at hcf
+    subst hcf
+    exact ⟨c, hk⟩
+  · simp only [core.result.Result.Insts.CoreOpsTry.branch, ok.injEq] at hcf
+    subst hcf
+    simp [core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual,
+      core.convert.FromSame.from] at hk
+
+/-- A key pair whose key `from_unsigned` loaded from `c` holds it, given
+Montgomery products at the wider prime's width. -/
+theorem key_pair_of_unsigned (h : Runs) (hheld : low.entry.Entry.assert_held = ok ())
+    (hifma : IfmaCheckReturns) (hfp16 : ∀ t, ∃ b, low.x86_64.cpu.HaveAvx512ForRsa.fp16 t = ok b)
+    {c : high.rsa.Components} {key : high.rsa.SigningKey} (hk : high.rsa.SigningKey.from_unsigned c = ok (.Ok key))
+    (hP : MontProducts (keyWords (beNat c.p.val) (beNat c.q.val)))
+    {kp : high.signature.rsa.KeyPair} (hkp : high.signature.rsa.KeyPair.new key = ok (.Ok kp)) :
+    KeyPairOf kp (beNat c.n.val) (beNat c.e.val) (beNat c.d.val) (beNat c.p.val) (beNat c.q.val)
+      (beNat c.dp.val) (beNat c.dq.val) (beNat c.qi.val) := by
+  have hs := from_unsigned_priv_spec h hheld hifma hfp16 c hP
+  rw [hk, WP.spec_ok] at hs
+  exact key_pair_new_ok h (hs key rfl) hkp
+
+/-- `KeyPair::from_pkcs1`: a key pair it returns holds the two-prime RSA
+private key of the integers its PKCS#1 DER, which the ✓ leaves out, encodes,
+which meet RFC 8017's relations but for the primes' primality, given
+Montgomery products at the wider prime's width. -/
+theorem rsa_key_pair_from_pkcs1_spec (h : Runs) (hheld : low.entry.Entry.assert_held = ok ())
+    (hifma : IfmaCheckReturns) (hfp16 : ∀ t, ∃ b, low.x86_64.cpu.HaveAvx512ForRsa.fp16 t = ok b)
+    (der : Slice U8) (kp : high.signature.rsa.KeyPair)
+    (hkp : high.signature.rsa.KeyPair.from_pkcs1 der = ok (.Ok kp)) :
+    ∃ c : high.rsa.Components, MontProducts (keyWords (beNat c.p.val) (beNat c.q.val)) →
+      KeyPairOf kp (beNat c.n.val) (beNat c.e.val) (beNat c.d.val) (beNat c.p.val) (beNat c.q.val)
+        (beNat c.dp.val) (beNat c.dq.val) (beNat c.qi.val) := by
+  unfold high.signature.rsa.KeyPair.from_pkcs1 at hkp
+  obtain ⟨r, hr, hkp⟩ := bind_eq_ok hkp
+  rcases r with key | err
+  · obtain ⟨c, hc⟩ := signing_from_pkcs1_ok hr
+    exact ⟨c, fun hP => key_pair_of_unsigned h hheld hifma hfp16 hc hP hkp⟩
+  · simp at hkp
+
+/-- `KeyPair::from_pkcs8`: a key pair it returns holds the two-prime RSA
+private key of the integers its PKCS#8 DER, which the ✓ leaves out, encodes,
+which meet RFC 8017's relations but for the primes' primality, given
+Montgomery products at the wider prime's width. -/
+theorem rsa_key_pair_from_pkcs8_spec (h : Runs) (hheld : low.entry.Entry.assert_held = ok ())
+    (hifma : IfmaCheckReturns) (hfp16 : ∀ t, ∃ b, low.x86_64.cpu.HaveAvx512ForRsa.fp16 t = ok b)
+    (der : Slice U8) (kp : high.signature.rsa.KeyPair)
+    (hkp : high.signature.rsa.KeyPair.from_pkcs8 der = ok (.Ok kp)) :
+    ∃ c : high.rsa.Components, MontProducts (keyWords (beNat c.p.val) (beNat c.q.val)) →
+      KeyPairOf kp (beNat c.n.val) (beNat c.e.val) (beNat c.d.val) (beNat c.p.val) (beNat c.q.val)
+        (beNat c.dp.val) (beNat c.dq.val) (beNat c.qi.val) := by
+  unfold high.signature.rsa.KeyPair.from_pkcs8 at hkp
+  obtain ⟨r, hr, hkp⟩ := bind_eq_ok hkp
+  rcases r with key | err
+  · unfold high.rsa.SigningKey.from_pkcs8_der at hr
+    obtain ⟨_, -, hr⟩ := bind_eq_ok hr
+    obtain ⟨r2, -, hr⟩ := bind_eq_ok hr
+    obtain ⟨cf, hcf, hr⟩ := bind_eq_ok hr
+    rcases r2 with inner | err
+    · simp only [core.result.Result.Insts.CoreOpsTry.branch, ok.injEq] at hcf
+      subst hcf
+      obtain ⟨c, hc⟩ := signing_from_pkcs1_ok hr
+      exact ⟨c, fun hP => key_pair_of_unsigned h hheld hifma hfp16 hc hP hkp⟩
+    · simp only [core.result.Result.Insts.CoreOpsTry.branch, ok.injEq] at hcf
+      subst hcf
+      simp [core.result.Result.Insts.CoreOpsTry_traitFromResidualResult.from_residual,
+        core.convert.FromSame.from] at hr
+  · simp at hkp
 -- END x86_64
 
 end rind.x86_64
