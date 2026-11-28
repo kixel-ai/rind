@@ -14,4 +14,4 @@ Planned with the maintainer on 2026-11-27 (`/quest-run`, found by [kixel-ai/rind
   - `rind/src/low/ct.rs`: 2 unrun copies, against 0.
   - `rind-aws-lc-rs/src/buffer.rs`: 12 unrun copies, against 11.
 - Find the PR behind each regression with blame, and list it under `## Caused by`. Add tests where the uncovered code is reachable, and lower the baseline only for code no test can reach.
-- Recommended: so coverage lost in a merge doesn't strand the nightly, have it fail the PR that loses it. That fits [merge-gate-batching](/quest/m0/ci-speed/merge-gate-batching.md)'s rule that a post-merge failure files a quest. Settle how in this quest's PR.
+- Recommended: so coverage lost in a merge doesn't strand the nightly, have it fail the PR that loses it. That fits the rule, from the merge gate's batching, that a check off the gate runs on main after the merge and its failure files a quest. Settle how in this quest's PR.

@@ -3,41 +3,91 @@ name: Check
 permissions:
   contents: read
 
-# The unscoped backstop for the PR check's and the queue's diff-scoped gate,
-# and the one run of the modules that gate leaves out: every module on main's
-# head once a day, rather than on each push, which the next push cancelled a
-# quarter of the time.
+# What the merge queue leaves out, after the merge. On each push to main,
+# every module over the merges since the last passing push run, and rind's
+# tests on macOS: the rest of `rs` (the other targets' builds, rind's feature
+# sets, the FIPS module, the doc tests, the docs), the slower modules, and a
+# break only two PRs make together in one of them show here, minutes after
+# they land, and alert.yml posts the failure. Once a day, every module over
+# main's whole tree, the unscoped backstop, as `just release-check` runs it
+# before a release.
 on:
   schedule:
     - cron: "23 15 * * *"
   workflow_dispatch:
+  push:
+    branches: [main]
 
+# Pushes coalesce: a push run waits for the one before it, a newer push
+# replaces it while it waits, and none is cancelled midway, so each run checks
+# every merge since the last one that passed. The nightly and a dispatch keep
+# a group of their own, which a push never cancels.
 concurrency:
-  group: check-${{ github.ref }}
-  cancel-in-progress: true
+  group: check-${{ github.ref }}-${{ github.event_name == 'push' && 'push' || 'all' }}
+  cancel-in-progress: ${{ github.event_name != 'push' }}
 
 jobs:
+  # The base a push run's diff starts from: the commit the last passing push
+  # run checked, so a failure stays in every later push run's diff until a
+  # run passes. The first push run, the nightly, and a dispatch check
+  # everything.
+  base:
+    name: Base
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: read
+    outputs:
+      base: ${{ steps.base.outputs.base }}
+    steps:
+      - name: Find the last passing push run
+        id: base
+        env:
+          EVENT: ${{ github.event_name }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          base=--all
+          if [[ "$EVENT" == push ]]; then
+            last=$(gh api "repos/$REPO/actions/workflows/check.yml/runs?branch=main&event=push&status=success&per_page=1" \
+              --jq '.workflow_runs[0].head_sha // empty')
+            [[ -z "$last" ]] || base=$last
+          fi
+          echo "base=$base" >>"$GITHUB_OUTPUT"
+
   check:
     name: Check
+    needs: base
     runs-on: ubuntu-24.04
     # Backstop a hang instead of holding the runner for the 6-hour default.
     timeout-minutes: 60
+    env:
+      BASE: ${{ needs.base.outputs.base }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # A push run diffs against an older commit of main, and
           # sh/semver.sh finds a merge-base with main, which a release PR's
           # dispatch needs history for.
           fetch-depth: 0
 
       - uses: ./.github/actions/just
 
-      # A query failure fails this job.
+      # Over a diff, ci runs only the gate's modules unless CHECK_MODULES
+      # names others, so a push run names every one. A query failure fails
+      # this job.
       - name: Select work
         id: scope
-        run: just ci-select --all >> "$GITHUB_OUTPUT"
+        run: |
+          if [[ "$BASE" != --all ]]; then
+            CHECK_MODULES=$(just ci-select --all | sed -n 's/^modules=//p')
+            export CHECK_MODULES
+            echo "CHECK_MODULES=$CHECK_MODULES" >>"$GITHUB_ENV"
+          fi
+          just ci-select "$BASE" >>"$GITHUB_OUTPUT"
 
       - uses: ./.github/actions/nix
         if: steps.scope.outputs.needed == 'true'
@@ -48,4 +98,51 @@ jobs:
 
       - name: Check
         if: steps.scope.outputs.needed == 'true'
-        run: nix develop --command just ci --all
+        run: nix develop --command just ci "$BASE"
+
+  # rind's debug tests on Apple silicon, which the merge queue no longer runs,
+  # when the merges since the base change rind or the workspace's manifest,
+  # lockfile, or test config. The nightly `build` runs the whole macOS matrix.
+  # The doc tests and the adapters are left out: they are no more
+  # platform-specific than rind's own tests, which the job above runs on
+  # Linux. No Rust cache, which would crowd main's Linux one out of the
+  # repository's cache quota.
+  macos:
+    name: macOS
+    needs: base
+    if: github.event_name == 'push'
+    runs-on: macos-latest
+    timeout-minutes: 45
+    env:
+      BASE: ${{ needs.base.outputs.base }}
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Select work
+        id: scope
+        run: |
+          needed=true
+          if [[ "$BASE" != --all ]] &&
+            ! git diff --name-only "$BASE" HEAD | grep -qE '^(rind/|Cargo\.(toml|lock)$|\.config/nextest\.toml$|\.github/workflows/check\.yml$)'; then
+            needed=false
+          fi
+          echo "needed=$needed" >>"$GITHUB_OUTPUT"
+
+      - name: Install stable toolchain
+        if: steps.scope.outputs.needed == 'true'
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: stable
+
+      - uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
+        if: steps.scope.outputs.needed == 'true'
+        with:
+          tool: cargo-nextest@0.9.149
+
+      - name: Run rind's tests (debug)
+        if: steps.scope.outputs.needed == 'true'
+        run: cargo nextest run -p rind --tests --locked
