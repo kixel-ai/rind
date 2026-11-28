@@ -71,6 +71,10 @@ fn karatsuba_sqr(z: &mut [u64], x: &[u64], m: &[u64], n0: u64) {
 }
 
 /// Reduces the `2k`-word `product` into the `k`-word `z`, fully, modulo `m`.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "bignum_cmp_lt returns 0 or 1"
+)]
 fn redc_8n(z: &mut [u64], product: &mut [u64], m: &[u64], n0: u64) {
     let carry = super::bignum_emontredc_8n::bignum_emontredc_8n(product, m, n0);
     let (_, reduced) = product.split_at(m.len());

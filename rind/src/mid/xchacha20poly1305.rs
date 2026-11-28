@@ -85,6 +85,10 @@ impl XChaCha20Poly1305 {
     }
 
     /// The ChaCha20-Poly1305 key and nonce that `nonce` picks under this key.
+    #[expect(
+        clippy::unwrap_used,
+        reason = "the 24-byte nonce splits into a 16-byte head and an 8-byte tail"
+    )]
     fn subkey(&self, nonce: &[u8; 24]) -> ([u8; 32], [u8; 12]) {
         let (head, tail) = nonce.split_at(16);
         let mut chacha_nonce = [0u8; 12];

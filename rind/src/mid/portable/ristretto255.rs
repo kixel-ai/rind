@@ -15,6 +15,10 @@ pub(crate) struct Element(RistrettoPoint);
 
 impl Element {
     /// `[scalar]G`, for the generator `G`.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "dalek's point operators are group operations, which cannot overflow or panic"
+    )]
     pub(crate) fn mul_base(scalar: &Scalar) -> Self {
         low::Entry::assert_held();
         Self(RISTRETTO_BASEPOINT_TABLE * &scalar.0)
@@ -42,11 +46,19 @@ impl Element {
         Self(RistrettoPoint::from_uniform_bytes(bytes))
     }
 
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "dalek's point operators are group operations, which cannot overflow or panic"
+    )]
     pub(crate) fn add(&self, other: &Self) -> Self {
         Self(self.0 + other.0)
     }
 
     /// `[scalar]self`, in constant time.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "dalek's point operators are group operations, which cannot overflow or panic"
+    )]
     pub(crate) fn mul(&self, scalar: &Scalar) -> Self {
         low::Entry::assert_held();
         Self(self.0 * scalar.0)

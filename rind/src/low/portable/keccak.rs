@@ -8,7 +8,11 @@
 
 /// Keccak-f[1600] on `s`, round `i` with constant `rc[i]`.
 // Indexed rather than iterated, which `proofs/` reasons about more simply.
-#[allow(clippy::needless_range_loop)]
+#[allow(
+    clippy::needless_range_loop,
+    reason = "indexes, for Aeneas, as the comment above says"
+)]
+#[expect(clippy::indexing_slicing, reason = "i < 24, the length of rc")]
 pub(crate) fn sha3_keccak_f1600(s: &mut [u64; 25], rc: &[u64; 24]) {
     for i in 0..24 {
         *s = round(s, rc[i]);
@@ -120,7 +124,14 @@ pub(crate) fn sha3_keccak4_f1600(a: &mut [[u64; 25]; 4], rc: &[u64; 24]) {
 }
 
 /// Keccak-f[1600] on the first `N` states in `a`, one at a time.
-#[allow(clippy::needless_range_loop)]
+#[allow(
+    clippy::needless_range_loop,
+    reason = "indexed rather than iterated, as `sha3_keccak_f1600` is"
+)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "callers pass N of at most 4, the number of states"
+)]
 pub(crate) fn sha3_keccak_nof4_f1600<const N: usize>(a: &mut [[u64; 25]; 4], rc: &[u64; 24]) {
     for i in 0..N {
         sha3_keccak_f1600(&mut a[i], rc);

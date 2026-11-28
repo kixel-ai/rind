@@ -4,6 +4,11 @@
 /// one to eight, four at a time: the backend's four-way routine on each
 /// group of four, fewer as `sha3_keccak_nof4_f1600` runs them. The states
 /// past `n` are left unspecified.
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "eight states make two chunks of four, and n > 4 in that branch"
+)]
 pub(crate) fn sha3_keccak_nof8_f1600(a: &mut [[u64; 25]; 8], n: usize, rc: &[u64; 24]) {
     let (halves, _) = a.as_chunks_mut::<4>();
     if n > 4 {

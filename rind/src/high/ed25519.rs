@@ -33,6 +33,10 @@ impl Ed25519VerifyingKey {
         let len = spki
             .encode(&mut asn1::Encoder::new(output))
             .map_err(|_| Error::WrongLength)?;
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "encode returns the bytes it wrote into output, so len <= output.len()"
+        )]
         Ok(&output[..len])
     }
 

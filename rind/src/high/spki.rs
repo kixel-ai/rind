@@ -42,5 +42,5 @@ pub(crate) fn encode<'a>(
     let len = spki
         .encode(&mut asn1::Encoder::new(output))
         .map_err(|_| Error::WrongLength)?;
-    Ok(&output[..len])
+    output.get(..len).ok_or(Error::WrongLength)
 }

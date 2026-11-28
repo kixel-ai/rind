@@ -265,7 +265,8 @@ impl PublicKey {
     ) -> Result<(BlindedMessage, Blinding), Error> {
         let _entry = low::Entry::new_secret();
         let mut prefix = [0; PREFIX_LEN];
-        rng.fill(&mut prefix[..self.algorithm().prefix_len()])?;
+        let random = prefix.get_mut(..self.algorithm().prefix_len());
+        rng.fill(random.ok_or(Error::WrongLength)?)?;
         let digest = self.algorithm().digest(&prefix, message);
 
         let mut unblinder = None;
@@ -294,7 +295,10 @@ impl PublicKey {
             return Err(Error::BadSignature);
         };
         let mut padded = [0; PREFIX_LEN];
-        padded[..prefix.len()].copy_from_slice(prefix);
+        padded
+            .get_mut(..prefix.len())
+            .ok_or(Error::BadSignature)?
+            .copy_from_slice(prefix);
         let digest = self.algorithm().digest(&padded, message);
         self.key
             .verify_pss_digest::<Sha384>(Some(self.algorithm().salt), signature, &digest)
@@ -313,7 +317,7 @@ impl PublicKey {
             }
             .encode(&mut asn1::Encoder::new(output))
             .map_err(|_| Error::WrongLength)?;
-            Ok(&output[..len])
+            output.get(..len).ok_or(Error::WrongLength)
         }))
     }
 }
@@ -348,15 +352,19 @@ impl Blinding {
     pub fn finalize(self, blind_signature: &[u8]) -> Result<Signature, Error> {
         let prefix_len = self.key.algorithm().prefix_len();
         Buffer::write(|output| {
-            let (prefix, rest) = output.split_at_mut(prefix_len);
-            let len = prefix_len
-                + (self.key.key)
-                    .finalize(&self.unblinder, blind_signature, rest)?
-                    .len();
+            let (prefix, rest) = output
+                .split_at_mut_checked(prefix_len)
+                .ok_or(Error::WrongLength)?;
+            let signature = (self.key.key).finalize(&self.unblinder, blind_signature, rest)?;
+            #[expect(
+                clippy::arithmetic_side_effects,
+                reason = "the signature lies in rest, after prefix_len bytes of output"
+            )]
+            let len = prefix_len + signature.len();
             // The prefix is revealed with the signature it begins.
-            prefix.copy_from_slice(&self.prefix[..prefix_len]);
+            prefix.copy_from_slice(self.prefix.get(..prefix_len).ok_or(Error::WrongLength)?);
             low::ct::public_slice(prefix);
-            Ok(&output[..len])
+            output.get(..len).ok_or(Error::WrongLength)
         })
         .map(Signature)
     }

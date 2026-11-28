@@ -28,7 +28,7 @@ impl Layout {
     /// Splits a received share into its post-quantum and classical parts,
     /// refusing any other length.
     fn split(self, share: &[u8], post_quantum_len: usize) -> Result<(&[u8], &[u8]), Error> {
-        if share.len() != post_quantum_len + self.classical_share_len {
+        if share.len().checked_sub(post_quantum_len) != Some(self.classical_share_len) {
             return Err(INVALID_KEY_SHARE);
         }
         Ok(match self.post_quantum_first {

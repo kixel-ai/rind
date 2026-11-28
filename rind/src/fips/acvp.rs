@@ -84,7 +84,8 @@ pub fn ml_kem_encap<P: Algorithm>(
     let ek = encapsulation_key::<P>(ek)?;
     let _entry = Entry::new_secret();
     let (secret, ciphertext) = ek.encaps_internal(Message(*m));
-    let ciphertext = P::CiphertextBytes::from_slice(ciphertext.as_ref()).unwrap();
+    let ciphertext = P::CiphertextBytes::from_slice(ciphertext.as_ref())
+        .expect("a Ciphertext<P> is P's ciphertext length");
     Ok((ciphertext, *secret.as_ref()))
 }
 
@@ -112,6 +113,11 @@ pub fn ml_kem_check_decapsulation_key<P: Algorithm>(dk: &[u8]) -> Result<(), Err
     let _entry = Entry::new_public();
     let dk =
         P::DecapKeyBytes::from_slice(dk).ok_or_else(|| Error::from(KeyFormatError::WrongLength))?;
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "K is 2, 3 or 4 and dk is 768 K + 96 bytes, so the bounds are small and in range"
+    )]
     let (ek, h) = dk.as_ref()[P::K * 384..P::K * 768 + 64].split_at(P::K * 384 + 32);
     let mut hash = Sha3_256Context::new();
     hash.update(ek);

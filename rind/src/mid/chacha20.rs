@@ -66,6 +66,10 @@ impl ChaCha20 {
 
 /// Fails with [`Error::WrongLength`] if `len` bytes need more blocks than
 /// remain from block `counter` before the 32-bit counter wraps.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "a u32 plus a byte count / 64, under 2^58, fits in u64"
+)]
 pub(super) fn check_counter(counter: u32, len: usize) -> Result<(), Error> {
     if u64::from(counter) + len.div_ceil(64) as u64 > 1 << 32 {
         return Err(Error::WrongLength);

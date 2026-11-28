@@ -51,6 +51,10 @@ impl EncodedPoint {
 }
 
 impl AsRef<[u8]> for EncodedPoint {
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "len is set only alongside a copy of len bytes into bytes, so len <= bytes.len()"
+    )]
     fn as_ref(&self) -> &[u8] {
         &self.bytes[..self.len]
     }
@@ -137,6 +141,10 @@ impl<C: Curve> SigningKey<C> {
         // Indexed rather than matched on a slice pattern, which Aeneas cannot
         // translate.
         #[cfg(rind_backend = "x86_64")]
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "encoded is nonempty, and public_key_is_uncompressed matches only a point of this curve, which fits bytes"
+        )]
         if !encoded.is_empty()
             && encoded[0] == 0x04
             && let Some(matches) = self.private_key.public_key_is_uncompressed(encoded)
@@ -253,6 +261,10 @@ impl<C: Curve> SigningKey<C> {
         Self::fixed_to_asn1(fixed_sig, asn1_signature)
     }
 
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "fixed_signature is sign_digest output of 2 LEN_BYTES; encode returns the bytes it wrote"
+    )]
     fn fixed_to_asn1<'a>(
         fixed_signature: &[u8],
         asn1_signature: &'a mut [u8],
@@ -281,6 +293,11 @@ impl<C: Curve> SigningKey<C> {
     /// RFC6979 allows for this: see section 3.6:
     /// <https://datatracker.ietf.org/doc/html/rfc6979#section-3.6>.  And HMAC_DRBG
     /// also allows for it, it is the `personalization_string` input.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "LEN_BYTES <= MAX_SCALAR_LEN = e_bytes.len(), and output is 2 LEN_BYTES long"
+    )]
     fn rfc6979_sign_with_random<'a, H: Hash>(
         &self,
         message: &[u8],
@@ -316,6 +333,11 @@ impl<C: Curve> SigningKey<C> {
     ///
     /// That function does not call this one, as `proofs/` checks its
     /// translation as it stands.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "LEN_BYTES <= MAX_SCALAR_LEN = e_bytes.len(), and output is 2 LEN_BYTES long"
+    )]
     fn rfc6979_sign_digest_with_random<'a, H: Hash>(
         &self,
         digest: &[u8],
@@ -398,6 +420,11 @@ impl<C: Curve> VerifyingKey<C> {
     /// `signature` is the purported signature.
     ///
     /// Fails with [`Error::BadSignature`] unless the signature is valid.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "LEN_BYTES is at most 66, and signature was checked to be 2 LEN_BYTES long"
+    )]
     pub(crate) fn verify<H: SignatureHash>(
         &self,
         message: &[u8],
@@ -443,6 +470,11 @@ impl<C: Curve> VerifyingKey<C> {
     ///
     /// That function does not call this one, as `proofs/` checks its
     /// translation as it stands.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "LEN_BYTES is at most 66, and signature was checked to be 2 LEN_BYTES long"
+    )]
     pub(crate) fn verify_digest(&self, digest: &[u8], signature: &[u8]) -> Result<(), Error> {
         let _entry = Entry::new_public();
         if signature.len() != C::Scalar::LEN_BYTES * 2 {
@@ -466,6 +498,11 @@ impl<C: Curve> VerifyingKey<C> {
 
     /// Converts an ASN.1 signature to fixed length in `fixed`, returning the
     /// used span.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "callers pass fixed of 2 MAX_SCALAR_LEN bytes, and LEN_BYTES <= MAX_SCALAR_LEN = 66"
+    )]
     fn asn1_to_fixed<'a>(signature: &[u8], fixed: &'a mut [u8]) -> Result<&'a [u8], Error> {
         let sig =
             asn1::pkix::EcdsaSigValue::from_bytes(signature).map_err(|_| Error::BadSignature)?;
@@ -487,6 +524,10 @@ impl<C: Curve> VerifyingKey<C> {
 /// 66-byte scalar, whose order has 521 bits. No `Digest` is that long.
 fn hash_to_scalar<C: Curve>(hash: &[u8]) -> Result<C::Scalar, Error> {
     let hash = if hash.len() > C::Scalar::LEN_BYTES {
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "this branch has hash.len() > LEN_BYTES"
+        )]
         &hash[..C::Scalar::LEN_BYTES]
     } else {
         hash
@@ -494,6 +535,11 @@ fn hash_to_scalar<C: Curve>(hash: &[u8]) -> Result<C::Scalar, Error> {
     Ok(C::Scalar::from_bytes_reduced(hash))
 }
 
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "value is nonempty when indexed, and out.len() >= value.len() when subtracted"
+)]
 fn write_fixed(out: &mut [u8], mut value: &[u8]) -> Result<(), Error> {
     // strip (one) leading zero byte
     if !value.is_empty() && value[0] == 0x00 {

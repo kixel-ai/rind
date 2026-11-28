@@ -6,8 +6,20 @@
 //! OpenSSL loads the shared library this crate builds through
 //! `openssl.cnf`, as the README shows. Its one export is
 //! [`OSSL_provider_init`]; everything else is OpenSSL's provider ABI.
-#![allow(clippy::missing_safety_doc)]
+#![allow(
+    clippy::missing_safety_doc,
+    reason = "OpenSSL's provider ABI sets every export's safety contract"
+)]
 #![warn(clippy::undocumented_unsafe_blocks, unreachable_pub)]
+// Library code never panics by accident: what can fail returns an error, and
+// what cannot states why it holds. Tests may panic (clippy.toml).
+#![warn(
+    clippy::allow_attributes_without_reason,
+    clippy::indexing_slicing,
+    clippy::panic,
+    clippy::unwrap_used
+)]
+#![cfg_attr(not(test), warn(clippy::arithmetic_side_effects))]
 
 use core::ffi::{c_int, c_void};
 

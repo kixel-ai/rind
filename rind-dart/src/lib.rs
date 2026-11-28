@@ -11,8 +11,20 @@
 //! zero. The Dart side owns every other invariant: pointers are valid for
 //! their lengths, outputs do not overlap inputs, and handles are live and
 //! of the type each function names.
-#![allow(clippy::missing_safety_doc)]
+#![allow(
+    clippy::missing_safety_doc,
+    reason = "the module docs above state every function's safety contract once"
+)]
 #![warn(clippy::undocumented_unsafe_blocks, unreachable_pub)]
+// Library code never panics by accident: what can fail returns an error, and
+// what cannot states why it holds. Tests may panic (clippy.toml).
+#![warn(
+    clippy::allow_attributes_without_reason,
+    clippy::indexing_slicing,
+    clippy::panic,
+    clippy::unwrap_used
+)]
+#![cfg_attr(not(test), warn(clippy::arithmetic_side_effects))]
 
 use core::cell::RefCell;
 use core::slice;
@@ -352,7 +364,10 @@ enum Verification {
 }
 
 /// A public key and, for RSA, the algorithm it verifies with.
-#[allow(clippy::large_enum_variant)]
+#[allow(
+    clippy::large_enum_variant,
+    reason = "one key per handle, which is already boxed"
+)]
 pub enum PublicKey {
     Ecdsa(ecdsa::PublicKey),
     Ed25519(ed25519::PublicKey),
@@ -443,8 +458,9 @@ pub unsafe extern "C" fn rind_dart_message(out: *mut u8, out_len: usize) -> isiz
     let out = unsafe { output(out, out_len) };
     MESSAGE.with(|m| {
         let m = m.borrow();
-        let n = m.len().min(out.len());
-        out[..n].copy_from_slice(&m.as_bytes()[..n]);
+        for (slot, byte) in out.iter_mut().zip(m.as_bytes()) {
+            *slot = *byte;
+        }
         m.len() as isize
     })
 }
@@ -711,12 +727,21 @@ struct Room<'a> {
 }
 
 impl AsMut<[u8]> for Room<'_> {
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "callers check that len, plus the tag or padding, fits buf"
+    )]
     fn as_mut(&mut self) -> &mut [u8] {
         &mut self.buf[..self.len]
     }
 }
 
 impl<'b> Extend<&'b u8> for Room<'_> {
+    #[expect(
+        clippy::indexing_slicing,
+        clippy::arithmetic_side_effects,
+        reason = "callers check that len, plus the tag or padding extending it, fits buf"
+    )]
     fn extend<I: IntoIterator<Item = &'b u8>>(&mut self, bytes: I) {
         for &byte in bytes {
             // The caller sized `buf` for the tag or padding.
@@ -770,12 +795,17 @@ pub unsafe extern "C" fn rind_dart_aes_cbc_encrypt(
         let iv = cipher::CbcIv::assume_unpredictable(*block(iv)?);
         let padded_len = match pad {
             0 => Some(len),
-            _ => (len / 16 + 1).checked_mul(16),
+            _ => (len / 16)
+                .checked_add(1)
+                .and_then(|blocks| blocks.checked_mul(16)),
         }
         .filter(|&padded_len| padded_len <= in_out_len)
         .ok_or(Misuse("no room for the plaintext and padding"))?;
         if pad == 0 {
-            key.encrypt_blocks(iv, &mut in_out[..len])?;
+            let plaintext = in_out
+                .get_mut(..len)
+                .ok_or(Misuse("no room for the plaintext"))?;
+            key.encrypt_blocks(iv, plaintext)?;
         } else {
             key.encrypt(iv, &mut Room { buf: in_out, len })?;
         }

@@ -136,7 +136,7 @@ macro_rules! errors {
         ];
 
         // Fails to compile when a variant is added but not listed.
-        #[allow(dead_code)]
+        #[allow(dead_code, reason = "never called: only its match, checked at compile time, matters")]
         fn exhaustive(error: Error) {
             match error {
                 $(Error::$plain)|* => {}
@@ -243,9 +243,9 @@ pub fn missing_cpu_feature() -> Option<&'static str> {
 
 /// `error`'s code, which is never 0, the code of success.
 pub fn error_code(error: Error) -> u32 {
-    let index = ERRORS.iter().position(|e| *e == error);
     // `exhaustive` keeps every error listed.
-    index.map_or(u32::MAX, |i| i as u32 + 1)
+    let found = ERRORS.iter().zip(1..).find(|(e, _)| **e == error);
+    found.map_or(u32::MAX, |(_, code)| code)
 }
 
 /// The error whose code is `code`.
@@ -283,7 +283,9 @@ mod kat {
     /// The SHA-256 of a self-test's output, which the test compares with
     /// the expected answer's.
     fn sha256_of(data: &[u8]) -> [u8; 32] {
-        known(Sha256::hash(data).as_ref()).try_into().unwrap()
+        known(Sha256::hash(data).as_ref())
+            .try_into()
+            .expect("SHA-256's output is 32 bytes")
     }
 
     /// `value`, marked public for ctgrind: a self-test computes from fixed
@@ -409,19 +411,15 @@ mod kat {
     pub(super) fn aes() -> Result<(), &'static str> {
         use crate::cipher::{AES_128, AesCbcDecryptingKey, AesCbcEncryptingKey, CbcIv};
         let key = hex("2b7e151628aed2a6abf7158809cf4f3c");
-        let iv: [u8; 16] = hex("000102030405060708090a0b0c0d0e0f").try_into().unwrap();
-        let plaintext: [u8; 32] = hex(concat!(
+        let iv: [u8; 16] = hex_array("000102030405060708090a0b0c0d0e0f");
+        let plaintext: [u8; 32] = hex_array(concat!(
             "6bc1bee22e409f96e93d7e117393172a",
             "ae2d8a571e03ac9c9eb76fac45af8e51"
-        ))
-        .try_into()
-        .unwrap();
-        let ciphertext: [u8; 32] = hex(concat!(
+        ));
+        let ciphertext: [u8; 32] = hex_array(concat!(
             "7649abac8119b246cee98e9b12e9197d",
             "5086cb9b507219ee95db113a917678b2"
-        ))
-        .try_into()
-        .unwrap();
+        ));
 
         let mut buf = input("aes_encrypt", plaintext);
         let encrypted = AesCbcEncryptingKey::new(&AES_128, &key)
@@ -443,33 +441,25 @@ mod kat {
         };
         let nonce = || Nonce::assume_unique_for_key(hex_array("cafebabefacedbaddecaf888"));
         let aad = hex("feedfacedeadbeeffeedfacedeadbeefabaddad2");
-        let plaintext = hex(concat!(
+        let plaintext: [u8; 60] = hex_array(concat!(
             "d9313225f88406e5a55909c5aff5269a86a7a9531534f7da2e4c303d8a318a72",
             "1c3c0c95956809532fcf0e2449a6b525b16aedf5aa0de657ba637b39"
         ));
-        let sealed = hex(concat!(
+        let sealed: [u8; 76] = hex_array(concat!(
             "42831ec2217774244b7221b784d0d49ce3aa212f2c02a4e035c17e2329aca12e",
             "21d514b25466931c7d8f6a5aac84aa051ba30b396a0aac973d58e091",
             "5bc94fbc3221a5db94fae95ae7121a47"
         ));
+        let (ciphertext, expected_tag) = sealed.split_first_chunk::<60>().ok_or("aes_gcm_seal")?;
 
-        let mut buf = plaintext.clone();
-        if broken("aes_gcm_seal") {
-            buf[0] ^= 1;
-        }
+        let mut buf = input("aes_gcm_seal", plaintext);
         let tag = key.seal_in_place_separate_tag(nonce(), &aad, &mut buf);
-        let tag_matches = tag.is_ok_and(|tag| sealed[plaintext.len()..] == *tag.as_ref());
-        check(
-            "aes_gcm_seal",
-            tag_matches && buf[..] == sealed[..plaintext.len()],
-        )?;
+        let tag_matches = tag.is_ok_and(|tag| *expected_tag == *tag.as_ref());
+        check("aes_gcm_seal", tag_matches && buf == *ciphertext)?;
 
-        let mut buf = sealed;
-        if broken("aes_gcm_open") {
-            buf[0] ^= 1;
-        }
+        let mut buf = input("aes_gcm_open", sealed);
         let opened = key.open_in_place(nonce(), &aad, &mut buf);
-        check("aes_gcm_open", opened.is_ok_and(|p| *p == plaintext[..]))
+        check("aes_gcm_open", opened.is_ok_and(|p| *p == plaintext))
     }
 
     // P-256 with SHA-256, signing with a fixed nonce source.
@@ -656,14 +646,22 @@ mod kat {
 
     /// Decodes hex this module writes, so a typo fails its test.
     fn hex(s: &str) -> Vec<u8> {
-        (0..s.len())
-            .step_by(2)
-            .map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap())
+        let (pairs, odd) = s.as_bytes().as_chunks::<2>();
+        assert!(odd.is_empty(), "a hex literal of odd length: {s}");
+        pairs
+            .iter()
+            .map(|pair| {
+                let pair = core::str::from_utf8(pair).ok();
+                let byte = pair.and_then(|pair| u8::from_str_radix(pair, 16).ok());
+                byte.expect("this module's hex literals are hex digits")
+            })
             .collect()
     }
 
     fn hex_array<const N: usize>(s: &str) -> [u8; N] {
-        hex(s).try_into().unwrap()
+        hex(s)
+            .try_into()
+            .expect("each hex literal is its array's length")
     }
 }
 

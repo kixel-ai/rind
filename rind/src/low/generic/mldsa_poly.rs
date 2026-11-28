@@ -27,7 +27,9 @@ impl low::Zeroable for MldsaPoly {}
 /// `polys` as the contiguous coefficient arrays s2n-bignum's routines read.
 #[cfg(any(rind_backend = "x86_64", rind_backend = "aarch64"))]
 pub(crate) fn rows<const L: usize>(polys: &[MldsaPoly]) -> &[[i32; 256]; L] {
-    let polys: &[MldsaPoly; L] = polys.try_into().unwrap();
+    let polys: &[MldsaPoly; L] = polys
+        .try_into()
+        .expect("callers dispatch on polys.len(), passing it as L");
     // SAFETY: `MldsaPoly` is `repr(C)` over `[i32; 256]`, whose 1024 bytes
     // leave no padding at its 32-byte alignment, so `L` of them are laid
     // out as `[[i32; 256]; L]`.
@@ -91,6 +93,11 @@ fn negative_mask(a: i32) -> i32 {
 
 /// Forward NTT: coefficients bounded by `q` map to ones bounded by `9q`, in
 /// bit-reversed order.
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "len is a power of two at most 128, so 2 * len <= 256, and k counts the 255 blocks of all levels from 1, ending at 255 < ZETAS.len()"
+)]
 pub(crate) fn mldsa_ntt(a: &mut [i32; 256]) {
     let mut k = 1;
     let mut len = 128;
@@ -111,6 +118,11 @@ pub(crate) fn mldsa_ntt(a: &mut [i32; 256]) {
 
 /// Inverse NTT, multiplying by the Montgomery factor `2^32`: coefficients
 /// bounded by `q` map to ones bounded by `q`.
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "len is a power of two at most 128, so 2 * len <= 256, and k counts the 255 blocks of all levels down from 255, ending at 1"
+)]
 pub(crate) fn mldsa_intt(a: &mut [i32; 256]) {
     // mont^2 / 256
     const F: i32 = 41978;
@@ -147,6 +159,10 @@ pub(crate) fn mldsa_pointwise(c: &mut [i32; 256], a: &[i32; 256], b: &[i32; 256]
 
 /// `c = sum(a[i] * b[i]) * 2^-32` coefficient-wise, for `|a| < q` and
 /// `|b| < 9q`, giving `|c| < q`.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "j < 256, the length of c and of each polynomial"
+)]
 pub(crate) fn mldsa_pointwise_acc(c: &mut [i32; 256], a: &[MldsaPoly], b: &[MldsaPoly]) {
     assert_eq!(a.len(), b.len());
     for (j, c) in c.iter_mut().enumerate() {
@@ -191,6 +207,10 @@ pub(crate) fn mldsa_chknorm(a: &[i32; 256], bound: u64) -> u64 {
 /// with `-gamma2 < a0 <= gamma2`, except that `a1 = (q - 1) / (2 * gamma2)`
 /// becomes `a1 = 0` with `a0` lowered by `q`.
 #[inline(always)]
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "GAMMA2 is (q - 1) / 32 or (q - 1) / 88, so 2 * GAMMA2 < q fits in i32"
+)]
 fn decompose<const GAMMA2: i32>(a1: &mut [i32; 256], a0: &mut [i32; 256]) {
     for (a1, a0) in a1.iter_mut().zip(a0.iter_mut()) {
         let a = *a0;
@@ -223,6 +243,10 @@ pub(crate) fn mldsa_decompose_88(a1: &mut [i32; 256], a0: &mut [i32; 256]) {
 /// corrected by the hint bit in `h`. Verification calls this on public
 /// values alone.
 #[inline(always)]
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "decompose leaves a1 in [0, 15] or [0, 43], so a1 + 1 and a1 - 1 fit in i32"
+)]
 fn use_hint<const GAMMA2: i32>(a: &mut [i32; 256], h: &[i32; 256]) {
     let mut a1 = [0; 256];
     decompose::<GAMMA2>(&mut a1, a);
@@ -301,6 +325,11 @@ pub(crate) fn mldsa_polyz_unpack_19(r: &mut [i32; 256], b: &[u8; 640]) {
 /// `q`, returning how many of `r` are now written. Its time depends on which
 /// candidates are rejected, which is public: the bytes expand the public
 /// seed `rho`.
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "callers pass offset <= 256 = r.len(), and the loop stops once ctr reaches it, so ctr < 256 at each write"
+)]
 pub(crate) fn mldsa_rej_uniform_vartime(r: &mut [i32; 256], offset: usize, buf: &[u8]) -> usize {
     let mut ctr = offset;
     for b in buf.as_chunks::<3>().0 {
@@ -323,6 +352,11 @@ pub(crate) fn mldsa_rej_uniform_vartime(r: &mut [i32; 256], offset: usize, buf: 
 /// Which nibbles are rejected is public, as FIPS 204 allows: the accepted
 /// values are independent of it.
 #[inline(always)]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "each write is guarded by ctr < r.len() = 256, so ctr stays at most 256"
+)]
 fn rej_eta(
     r: &mut [i32; 256],
     offset: usize,
@@ -371,7 +405,10 @@ pub(crate) fn mldsa_rej_uniform_eta4_vartime(
 // it runs; where that is this port's own, as aarch64's `mldsa_nttunpack` and
 // `mldsa_reduce` are, the path is redundant.
 #[cfg(test)]
-#[allow(unused_qualifications)]
+#[allow(
+    unused_qualifications,
+    reason = "calls each routine through `low::`, even where that is this module's own"
+)]
 mod tests {
     //! Checks the backend's routines, which are s2n-bignum's where it has
     //! them, against this port.

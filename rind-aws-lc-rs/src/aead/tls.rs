@@ -52,11 +52,13 @@ impl TlsRecordSealingKey {
             TlsProtocolId::TLS12 => given,
             TlsProtocolId::TLS13 => given ^ *self.mask.get_or_insert(given),
         };
-        if given == u64::MAX || given < self.min_next {
-            return Err(Unspecified);
+        match given.checked_add(1) {
+            Some(next) if given >= self.min_next => {
+                self.min_next = next;
+                Ok(())
+            }
+            _ => Err(Unspecified),
         }
-        self.min_next = given + 1;
-        Ok(())
     }
 
     /// Seals `in_out` in place and appends the tag to it.

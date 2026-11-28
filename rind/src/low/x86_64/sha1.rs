@@ -366,6 +366,10 @@ unsafe extern "sysv64" fn sha1_block_data_order_nohw(
     );
 }
 
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "i < pairs.len(), a slice's length, and the groups g are below 20"
+)]
 #[target_feature(enable = "avx,avx2,bmi2")]
 fn sha1_avx2(state: &mut [u32; 5], blocks: &[u8]) {
     let (blocks, _) = blocks.as_chunks::<64>();
@@ -444,6 +448,12 @@ impl<'a> Expander<'a> {
 
     /// Computes group `g`, after groups `0..g`. Every AVX2 op used here works
     /// within its 128-bit lane, so the two blocks never mix.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "callers pass constant groups g < 20, so g indexes w and wk, 16 * g < 64 where g < 4, \
+                  g - 8 >= 0 where g >= 8, and g / 5 < 4 = K.len()"
+    )]
     #[inline]
     #[target_feature(enable = "avx,avx2")]
     fn step(&mut self, g: usize) {
@@ -508,6 +518,11 @@ const K: [u32; 4] = [0x5a827999, 0x6ed9eba1, 0x8f1bbcdc, 0xca62c1d6];
 
 /// The 80 rounds of FIPS 180-4, 6.1.2, for the block in words
 /// `LANE..LANE + 4` of each group of `wk`, calling `then(g)` after group `g`.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "each round t < 80 is a literal and LANE is 0 or 4, so t / 4 < 20 and LANE + t % 4 < 8"
+)]
 #[inline]
 fn rounds<const LANE: usize>(state: &mut [u32; 5], wk: &Schedule, mut then: impl FnMut(usize)) {
     let [mut a, mut b, mut c, mut d, mut e] = *state;

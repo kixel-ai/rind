@@ -75,6 +75,7 @@ enum Width {
 
 impl Width {
     /// The widest the CPU runs, as VG's dispatcher picks.
+    #[expect(clippy::unwrap_used, reason = "all() always holds Some(Base) first")]
     fn best() -> Self {
         let all = Self::all();
         all.into_iter().flatten().last().unwrap()

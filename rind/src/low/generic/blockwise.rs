@@ -25,6 +25,10 @@ impl<const N: usize> Blockwise<N> {
     /// in one call.
     // Inlined for the reason `high::hash::HashContext::update` gives.
     #[inline(always)]
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "used <= N always, and bytes.len() <= N - used on the add, so used + bytes.len() <= N"
+    )]
     pub(crate) fn update(&mut self, bytes: &[u8], state: &mut impl UpdateBlocks) {
         let used = self.used;
         // A short update, such as a one-byte one, only copies. Storing
@@ -40,6 +44,10 @@ impl<const N: usize> Blockwise<N> {
 
     /// As [`Self::update`], for `bytes` longer than the room left.
     #[inline(never)]
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "used <= N always; bytes is longer than the N - used bytes of room, so at least one byte follows the head; N is a block size, never 0"
+    )]
     fn complete_blocks(&mut self, mut bytes: &[u8], state: &mut impl UpdateBlocks) {
         let used = self.used;
         if used > 0 {
@@ -64,6 +72,10 @@ impl<const N: usize> Blockwise<N> {
         all(rind_backend = "portable", target_pointer_width = "64"),
         all(rind_backend = "aarch64", test)
     ))]
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "used <= N always, and take <= space = N - used, so used + take <= N"
+    )]
     pub(crate) fn add_leading<'a>(&mut self, bytes: &'a [u8]) -> &'a [u8] {
         if self.used == 0 {
             return bytes;
@@ -117,6 +129,10 @@ impl<const N: usize> Blockwise<N> {
         all(rind_backend = "portable", target_pointer_width = "64"),
         all(rind_backend = "aarch64", test)
     ))]
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "Poly1305 adds its under-N-byte remainder only once used is 0, or when the remainder is empty"
+    )]
     pub(crate) fn add_trailing(&mut self, trailing: &[u8]) {
         self.buffer[..trailing.len()].copy_from_slice(trailing);
         self.used += trailing.len();
@@ -134,6 +150,11 @@ impl<const N: usize> Blockwise<N> {
 // A loop over whole lanes would become a `memcpy` call; this one, with its
 // count bounded and its exit inside, unrolls into the lanes instead.
 #[inline(always)]
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "i <= src.len() = dst.len(): i grows by a lane only after src.len() - i was checked to hold it"
+)]
 fn copy_lanes<const N: usize>(dst: &mut [u8], src: &[u8]) {
     let mut i = 0;
     for _ in 0..N / 16 {
@@ -175,6 +196,10 @@ pub(crate) trait UpdateBlocks {
 /// message's last whole block, the rest takes that block too, so one call
 /// compresses both, and the routine's entry and exit and the chaining value's
 /// trip through memory come once fewer.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "N is a block size, never 0, and L < N; tail = len % N, so len - tail is a multiple of N, at least N on the branch that subtracts N"
+)]
 pub(crate) fn split_tail<const N: usize, const L: usize>(message: &[u8]) -> (&[u8], &[u8]) {
     let tail = message.len() % N;
     let start = if tail + 1 + L <= N && message.len() >= N {
@@ -186,6 +211,11 @@ pub(crate) fn split_tail<const N: usize, const L: usize>(message: &[u8]) -> (&[u
 }
 
 /// `rest`, under two blocks, padded in `last`, which must be zeroed.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "N is a block size, never 0, and L < N; rest is split_tail's, under one block or one block plus a tail the padding fits after, so rest.len() < padded - L and padded <= 2 * N"
+)]
 pub(crate) fn pad<'l, const N: usize, const L: usize>(
     rest: &[u8],
     length: [u8; L],
@@ -208,6 +238,11 @@ pub(crate) fn pad<'l, const N: usize, const L: usize>(
 // so `proofs/` can prove the encoding. Inline, so the digest is written where
 // its caller keeps it, rather than returned through memory a copy then loads.
 #[inline(always)]
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "i < 8 = h.len(), so (i + 1) * 4 <= 32 = r.len()"
+)]
 pub(crate) fn sha256_digest(h: &[u32; 8]) -> [u8; 32] {
     let mut r = [0u8; 32];
     for (i, word) in h.iter().enumerate() {

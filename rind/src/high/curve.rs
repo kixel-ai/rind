@@ -58,7 +58,7 @@ pub(crate) trait PrivateKey<S> {
     /// Output an uncompressed encoding of this key's public half.
     ///
     /// The return value is the written prefix of `out`.
-    #[allow(dead_code)] // ??? false positive
+    #[allow(dead_code, reason = "rustc calls it unused though ecdsa calls it")]
     fn public_key_encode_uncompressed<'a>(&self, out: &'a mut [u8]) -> Result<&'a [u8], Error>;
 
     /// Whether `encoded`, an X9.62 uncompressed point, is this key's public
@@ -206,6 +206,10 @@ impl Scalar for p256::Scalar {
         Self::from_bytes_checked(bytes)
     }
 
+    #[expect(
+        clippy::unwrap_used,
+        reason = "callers pass at most LEN_BYTES, which reduces without error"
+    )]
     fn from_bytes_reduced(bytes: &[u8]) -> Self {
         Self::from_bytes_reduced(bytes).unwrap()
     }
@@ -294,6 +298,10 @@ impl Scalar for p384::Scalar {
         Self::from_bytes_checked(bytes)
     }
 
+    #[expect(
+        clippy::unwrap_used,
+        reason = "callers pass at most LEN_BYTES, which reduces without error"
+    )]
     fn from_bytes_reduced(bytes: &[u8]) -> Self {
         Self::from_bytes_reduced(bytes).unwrap()
     }
@@ -382,6 +390,10 @@ impl Scalar for p521::Scalar {
         Self::from_bytes_checked(bytes)
     }
 
+    #[expect(
+        clippy::unwrap_used,
+        reason = "callers pass at most LEN_BYTES, which reduces without error"
+    )]
     fn from_bytes_reduced(bytes: &[u8]) -> Self {
         Self::from_bytes_reduced(bytes).unwrap()
     }

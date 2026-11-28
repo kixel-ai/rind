@@ -158,7 +158,7 @@ impl KeyPair {
                     secret: Secret::Edwards25519 {
                         seed: *bytes,
                         x,
-                        prefix: h[32..].try_into().unwrap(),
+                        prefix: *h.last_chunk().expect("SHA-512's output is 64 bytes"),
                     },
                     public: PublicKey(Public::Edwards25519 {
                         bytes: point.to_bytes(),
@@ -263,7 +263,9 @@ impl KeyPair {
                     &[0],
                 ]);
                 let c = &c[..CHALLENGE_LEN];
-                let s = p256::Scalar::from_bytes_reduced(c).unwrap().mul_add(x, &k);
+                let s = p256::Scalar::from_bytes_reduced(c)
+                    .expect("a 16-byte challenge is shorter than a scalar")
+                    .mul_add(x, &k);
                 proof.bytes[..33].copy_from_slice(&gamma);
                 proof.bytes[33..49].copy_from_slice(c);
                 proof.bytes[49..81].copy_from_slice(&s.as_bytes());
@@ -379,12 +381,16 @@ impl PublicKey {
         let _entry = Entry::new_public();
         match &self.0 {
             Public::Edwards25519 { bytes, point } => {
-                let proof: &[u8; EDWARDS25519_PROOF_LEN] =
-                    proof.try_into().map_err(|_| Error::BadSignature)?;
-                let gamma = edwards25519::Point::from_bytes(proof[..32].try_into().unwrap())
+                // `Gamma || c || s`, EDWARDS25519_PROOF_LEN bytes.
+                let (gamma_string, rest) =
+                    proof.split_first_chunk::<32>().ok_or(Error::BadSignature)?;
+                let (c_bytes, s_bytes) = rest
+                    .split_first_chunk::<CHALLENGE_LEN>()
                     .ok_or(Error::BadSignature)?;
-                let c_bytes = &proof[32..48];
-                let s = edwards25519::Scalar::from_canonical_bytes(proof[48..].try_into().unwrap())
+                let s_bytes: &[u8; 32] = s_bytes.try_into().map_err(|_| Error::BadSignature)?;
+                let gamma =
+                    edwards25519::Point::from_bytes(gamma_string).ok_or(Error::BadSignature)?;
+                let s = edwards25519::Scalar::from_canonical_bytes(s_bytes)
                     .ok_or(Error::BadSignature)?;
                 let (h, h_string) =
                     edwards25519_encode_to_curve(bytes, alpha).ok_or(Error::BadSignature)?;
@@ -396,7 +402,7 @@ impl PublicKey {
                     &[EDWARDS25519_SUITE, CHALLENGE],
                     bytes,
                     &h_string,
-                    &proof[..32],
+                    gamma_string,
                     &u.to_bytes(),
                     &v.to_bytes(),
                     &[0],
@@ -407,14 +413,18 @@ impl PublicKey {
                 }
             }
             Public::P256 { bytes, point } => {
-                let proof: &[u8; P256_PROOF_LEN] =
-                    proof.try_into().map_err(|_| Error::BadSignature)?;
-                let gamma_string = &proof[..33];
+                // `Gamma || c || s`, P256_PROOF_LEN bytes.
+                let (gamma_string, rest) = proof
+                    .split_first_chunk::<{ p256::Point::COMPRESSED_BYTES }>()
+                    .ok_or(Error::BadSignature)?;
+                let (c_bytes, s_bytes) = rest
+                    .split_first_chunk::<CHALLENGE_LEN>()
+                    .ok_or(Error::BadSignature)?;
+                let s_bytes: &[u8; p256::Scalar::BYTES] =
+                    s_bytes.try_into().map_err(|_| Error::BadSignature)?;
                 let gamma =
                     p256::Point::from_compressed(gamma_string).ok_or(Error::BadSignature)?;
-                let c_bytes = &proof[33..49];
-                let s = p256::Scalar::from_bytes_below_n(proof[49..].try_into().unwrap())
-                    .ok_or(Error::BadSignature)?;
+                let s = p256::Scalar::from_bytes_below_n(s_bytes).ok_or(Error::BadSignature)?;
                 let (h, h_string) =
                     p256_encode_to_curve(bytes, alpha).ok_or(Error::BadSignature)?;
                 let minus_c = p256::Scalar::from_bytes_reduced(c_bytes)?.neg();
@@ -436,7 +446,7 @@ impl PublicKey {
                     &[0],
                 ]);
                 match want[..CHALLENGE_LEN] == *c_bytes {
-                    true => Ok(p256_proof_to_hash(gamma_string.try_into().unwrap())),
+                    true => Ok(p256_proof_to_hash(gamma_string)),
                     false => Err(Error::BadSignature),
                 }
             }
@@ -471,6 +481,10 @@ impl Proof {
 }
 
 impl AsRef<[u8]> for Proof {
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "len is a suite's proof length, at most P256_PROOF_LEN = MAX_LEN"
+    )]
     fn as_ref(&self) -> &[u8] {
         &self.bytes[..self.len]
     }
@@ -495,6 +509,10 @@ impl Output {
 }
 
 impl AsRef<[u8]> for Output {
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "len is a suite's hash length, at most SHA-512's = MAX_LEN"
+    )]
     fn as_ref(&self) -> &[u8] {
         &self.bytes[..self.len]
     }
@@ -539,7 +557,7 @@ fn edwards25519_encode_to_curve(
             alpha,
             &[ctr, 0],
         ]);
-        let h = edwards25519::Point::from_bytes(hash[..32].try_into().unwrap())?;
+        let h = edwards25519::Point::from_bytes(hash.first_chunk()?)?;
         let h = h.mul_by_cofactor();
         let encoding = h.to_bytes();
         // A candidate of small order clears to the identity, which the loop
@@ -559,8 +577,7 @@ const EDWARDS25519_IDENTITY: [u8; 32] = {
 fn edwards25519_challenge(c: &[u8]) -> edwards25519::Scalar {
     let mut bytes = [0u8; 32];
     bytes[..CHALLENGE_LEN].copy_from_slice(c);
-    // Below 2^128, so below `L`.
-    edwards25519::Scalar::from_canonical_bytes(&bytes).unwrap()
+    edwards25519::Scalar::from_canonical_bytes(&bytes).expect("below 2^128, so below L")
 }
 
 /// RFC 9381 5.2's output, from `Gamma`.
@@ -607,14 +624,14 @@ fn p256_nonce(x: &p256::Scalar, h_string: &[u8]) -> p256::Scalar {
     // `bits2octets(H(m))`: qlen and hlen are both 256 bits, so the hash is
     // only reduced.
     let h1 = p256::Scalar::from_bytes_reduced(&sha256(&[h_string]))
-        .unwrap()
+        .expect("a 32-byte hash is a scalar's length")
         .as_bytes();
     let mut drbg = HmacDrbg::<Sha256>::new(&x.as_bytes(), &h1, &[]);
     let mut candidate = [0u8; p256::Scalar::BYTES];
     loop {
         // Each draw regenerates as RFC 6979 3.2 h.3 does; HMAC-DRBG cannot
         // fail.
-        drbg.fill(&mut candidate).unwrap();
+        drbg.fill(&mut candidate).expect("HMAC-DRBG cannot fail");
         if let Ok(k) = p256::Scalar::from_bytes_checked(&candidate) {
             return k;
         }
@@ -625,7 +642,9 @@ fn p256_nonce(x: &p256::Scalar, h_string: &[u8]) -> p256::Scalar {
 fn p256_proof_to_hash(gamma: &[u8; p256::Point::COMPRESSED_BYTES]) -> Output {
     let hash = sha256(&[&[P256_SUITE, PROOF_TO_HASH], gamma, &[0]]);
     let mut bytes = [0u8; Output::MAX_LEN];
-    bytes[..hash.len()].copy_from_slice(&hash);
+    for (out, byte) in bytes.iter_mut().zip(hash) {
+        *out = byte;
+    }
     Output {
         bytes,
         len: hash.len(),

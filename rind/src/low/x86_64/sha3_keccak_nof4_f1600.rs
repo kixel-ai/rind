@@ -7,7 +7,11 @@ use super::cpu::HaveAvx2;
 ///
 /// With AVX2, permuting all four states costs less than two one at a time.
 // Indexed rather than iterated, which `proofs/` reasons about more simply.
-#[allow(clippy::needless_range_loop)]
+#[allow(
+    clippy::needless_range_loop,
+    reason = "indexed rather than iterated, which proofs/ reasons about more simply"
+)]
+#[expect(clippy::indexing_slicing, reason = "callers pass N <= 4 = a.len()")]
 #[inline]
 pub(crate) fn sha3_keccak_nof4_f1600<const N: usize>(a: &mut [[u64; 25]; 4], rc: &[u64; 24]) {
     match HaveAvx2::check() {

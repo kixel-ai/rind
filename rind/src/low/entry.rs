@@ -36,6 +36,10 @@ impl Entry {
     #[must_use]
     pub(crate) fn new_public() -> Self {
         #[cfg(all(debug_assertions, not(test), rind_std))]
+        #[expect(
+            clippy::arithmetic_side_effects,
+            reason = "one count per live Entry, which the stack bounds far below usize::MAX"
+        )]
         HELD.set(HELD.get() + 1);
 
         Self {
@@ -57,6 +61,10 @@ impl Entry {
     pub(crate) fn new_secret() -> Self {
         let cpu_state = enter_cpu_state();
         #[cfg(all(debug_assertions, not(test), rind_std))]
+        #[expect(
+            clippy::arithmetic_side_effects,
+            reason = "one count per live Entry, which the stack bounds far below usize::MAX"
+        )]
         HELD.set(HELD.get() + 1);
 
         Self {
@@ -83,6 +91,10 @@ impl Entry {
 impl Drop for Entry {
     fn drop(&mut self) {
         #[cfg(all(debug_assertions, not(test), rind_std))]
+        #[expect(
+            clippy::arithmetic_side_effects,
+            reason = "this Entry's constructor counted it, so the count is at least one"
+        )]
         HELD.set(HELD.get() - 1);
         if self.secret {
             leave_cpu_state(self.cpu_state);

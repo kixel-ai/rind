@@ -140,6 +140,10 @@ impl Param {
         // truncated, refused unless the truncated bytes are all sign and
         // what is left keeps the sign, as `params.c`'s `copy_integer` does.
         let size = self.data_size;
+        #[expect(
+            clippy::arithmetic_side_effects,
+            reason = "size is 1 to 7 in the shifting arms, so 8 * size - 1 is 7 to 55 and -half fits in i64"
+        )]
         let fits = match size {
             0 => false,
             8.. => true,
@@ -157,6 +161,7 @@ impl Param {
         let data = self.data.cast::<u8>();
         for k in 0..size {
             let byte = le.get(k).copied().unwrap_or(pad);
+            #[expect(clippy::arithmetic_side_effects, reason = "k < size")]
             let at = match cfg!(target_endian = "little") {
                 true => k,
                 false => size - 1 - k,

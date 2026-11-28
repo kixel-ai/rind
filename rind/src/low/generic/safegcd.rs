@@ -49,11 +49,19 @@ const MAX_SIGNED: usize = signed_len(MAX_WORDS);
 /// Signed limbs for values of `k` words, with room for `d` and `e`, which
 /// stay above `-2m`: `B` bits a limb for 64k + 2 bits, leaving the top limb
 /// below 2^(B - 1) in magnitude.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "k is at most MAX_WORDS = 128, so 64 * k + 2 fits usize, and B is 30 or 62"
+)]
 const fn signed_len(k: usize) -> usize {
     (64 * k + 2).div_ceil(B as usize)
 }
 
 /// Batches of `B` divsteps that find the gcd of values of `k` words.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "k is at most MAX_WORDS = 128, so 45907 * 64 * k + 30179 is below 2^29, and B is 30 or 62"
+)]
 const fn batches(k: usize) -> usize {
     ((45907 * 64 * k + 30179) / 19929).div_ceil(B as usize)
 }
@@ -63,6 +71,11 @@ const fn batches(k: usize) -> usize {
 /// Inputs a[k], b[k]; output z[k]; temporary buffer t[>=3*k]
 ///
 /// `_t` is s2n-bignum's scratch space, which this does not need.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "b is at most MAX_WORDS words, so n = signed_len(k) <= MAX_SIGNED, and n >= 1 for every k"
+)]
 pub(crate) fn bignum_modinv(z: &mut [u64], a: &[u64], b: &[u64], _t: &mut [u64]) {
     let k = b.len();
     assert!(a.len() <= k && z.len() == k);
@@ -101,6 +114,11 @@ pub(crate) fn bignum_modinv(z: &mut [u64], a: &[u64], b: &[u64], _t: &mut [u64])
 /// Inputs x[m], y[n]; output function return; temporary buffer t[>=2*max(m,n)]
 ///
 /// `_t` is s2n-bignum's scratch space, which this does not need.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "x and y are at most MAX_WORDS words, so k <= MAX_WORDS and n = signed_len(k) <= MAX_SIGNED, and n >= 1 for every k"
+)]
 pub(crate) fn bignum_coprime(x: &[u64], y: &[u64], _t: &mut [u64]) -> bool {
     let k = x.len().max(y.len());
     let n = signed_len(k);
@@ -175,6 +193,11 @@ fn divsteps(mut zeta: Signed, f0: Signed, g0: Signed) -> (Signed, [Signed; 4]) {
 
 /// `[f, g] := t [f, g] / 2^B`, which is exact: libsecp256k1's
 /// `update_fg_30` and `update_fg_62`.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "f and g are both n >= 1 limbs, and 1 <= i < n"
+)]
 fn update_fg(f: &mut [Signed], g: &mut [Signed], t: &[Signed; 4]) {
     let [u, v, q, r] = t.map(SignedWide::from);
     let mut cf = mul(u, f[0]).wrapping_add(mul(v, g[0])) >> B;
@@ -195,6 +218,11 @@ fn update_fg(f: &mut [Signed], g: &mut [Signed], t: &[Signed; 4]) {
 /// `[d, e] := t [d, e] / 2^B mod m`, for `d` and `e` in (-2m, m), which
 /// stay there, where `m_inv` is `m^-1 mod 2^B`: libsecp256k1's
 /// `update_de_30` and `update_de_62`.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "d, e, and m are all n >= 1 limbs, and 1 <= i < n"
+)]
 fn update_de(d: &mut [Signed], e: &mut [Signed], t: &[Signed; 4], m: &[Signed], m_inv: Limb) {
     let n = d.len();
     let [u, v, q, r] = *t;
@@ -229,6 +257,11 @@ fn update_de(d: &mut [Signed], e: &mut [Signed], t: &[Signed; 4], m: &[Signed], 
 /// `r := r mod m`, negated first where `sign` is negative, for `r` in (-2m,
 /// m), leaving every limb in [0, 2^B): libsecp256k1's `normalize_30` and
 /// `normalize_62`.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "r is n >= 1 limbs, as signed_len gives every value"
+)]
 fn normalize(r: &mut [Signed], sign: Signed, m: &[Signed]) {
     let n = r.len();
     let add = black_box(r[n - 1] >> (Signed::BITS - 1));
@@ -249,6 +282,11 @@ fn normalize(r: &mut [Signed], sign: Signed, m: &[Signed]) {
 }
 
 /// Moves each limb's bits above `B` into the next, leaving it in [0, 2^B).
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "1 <= i < r.len()"
+)]
 fn carry(r: &mut [Signed]) {
     for i in 1..r.len() {
         r[i] = r[i].wrapping_add(r[i - 1] >> B);
@@ -262,6 +300,10 @@ fn mul(a: SignedWide, b: Signed) -> SignedWide {
 }
 
 /// `m^-1 mod 2^B`, for an odd `m`.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "Limb::BITS is 32 or 64, so its log2 is 5 or 6, above 2"
+)]
 fn inverse(m: Limb) -> Limb {
     // Correct to 5 bits, then Newton's iteration doubles that each time.
     let mut inv = m.wrapping_mul(3) ^ 2;
@@ -272,6 +314,10 @@ fn inverse(m: Limb) -> Limb {
 }
 
 /// `x`'s bits in `B`-bit limbs, low first, as `out` holds them.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "i < out.len() <= MAX_SIGNED, so B * i is below 2^14; shift < 64, so 64 - shift is in 1..=64"
+)]
 fn to_signed(x: &[u64], out: &mut [Signed]) {
     for (i, out) in out.iter_mut().enumerate() {
         let (at, shift) = ((B as usize * i) / 64, (B as usize * i) % 64);
@@ -282,6 +328,10 @@ fn to_signed(x: &[u64], out: &mut [Signed]) {
 }
 
 /// The value of `x`, whose limbs are all in [0, 2^B), in the words of `z`.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "i < x.len() <= MAX_SIGNED, so B * i is below 2^14; shift < 64, so 64 - shift is in 1..=64"
+)]
 fn from_signed(x: &[Signed], z: &mut [u64]) {
     z.fill(0);
     for (i, limb) in x.iter().enumerate() {

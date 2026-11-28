@@ -315,7 +315,8 @@ impl Blind {
         // A copy, not a move: moving it out would leave its bytes in the
         // vector's block, which then frees unwiped. The vector's drop wipes
         // the output in place.
-        Ok(Output(outputs[0].0.clone()))
+        let output = outputs.first().ok_or(Error::WrongLength)?;
+        Ok(Output(output.0.clone()))
     }
 
     /// Verifies the server's one proof for a batch, then finalizes each
@@ -375,7 +376,7 @@ where
         .map(|blind| blind.0.pick().ok_or(Error::Unsupported))
         .collect::<Result<Vec<_>, _>>()?;
     // Refuse a wrong count before paying a decompression per element.
-    if evaluated_elements.len() != states.len() * G::ELEMENT_LEN {
+    if states.len().checked_mul(G::ELEMENT_LEN) != Some(evaluated_elements.len()) {
         return Err(Error::WrongLength);
     }
     let evaluated = decode_batch::<G>(evaluated_elements)?;
@@ -454,20 +455,24 @@ impl fmt::Debug for Proof {
 
 /// Decodes a batch of 1 to [`MAX_BATCH`] concatenated elements.
 fn decode_batch<G: Group>(bytes: &[u8]) -> Result<Vec<G::Element>, Error> {
-    if bytes.is_empty()
-        || !bytes.len().is_multiple_of(G::ELEMENT_LEN)
-        || bytes.len() / G::ELEMENT_LEN > MAX_BATCH
-    {
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "ELEMENT_LEN is a nonzero constant of the group"
+    )]
+    let count = bytes.len() / G::ELEMENT_LEN;
+    if bytes.is_empty() || !bytes.len().is_multiple_of(G::ELEMENT_LEN) || count > MAX_BATCH {
         return Err(Error::WrongLength);
     }
     // A loop over the count, not `chunks`, whose size hint divides by the
     // element length at run time, which `admin/ct-vartime` refuses.
-    let count = bytes.len() / G::ELEMENT_LEN;
     let mut elements = Vec::with_capacity(count);
-    for i in 0..count {
-        elements.push(decode::<G>(
-            &bytes[i * G::ELEMENT_LEN..(i + 1) * G::ELEMENT_LEN],
-        )?);
+    let mut rest = bytes;
+    for _ in 0..count {
+        let (element, tail) = rest
+            .split_at_checked(G::ELEMENT_LEN)
+            .ok_or(Error::WrongLength)?;
+        elements.push(decode::<G>(element)?);
+        rest = tail;
     }
     Ok(elements)
 }
@@ -488,14 +493,28 @@ fn composite_weights<G: Group>(
     hash.update(dst.as_ref());
     let mut seed = [0u8; MAX_OUTPUT];
     hash.finish_into(&mut seed);
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "every suite's hash output is at most MAX_OUTPUT = seed.len()"
+    )]
     let seed = &seed[..G::Hash::OUTPUT];
 
     // As in `decode_batch`, a loop over the count rather than `chunks`.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "ELEMENT_LEN is a nonzero constant of the group"
+    )]
     let count = blinded.len() / G::ELEMENT_LEN;
+    let (mut blinded, mut evaluated) = (blinded, evaluated);
     (0..count)
         .map(|i| {
-            let range = i * G::ELEMENT_LEN..(i + 1) * G::ELEMENT_LEN;
-            let (c, d) = (&blinded[range.clone()], &evaluated[range]);
+            let (c, blinded_rest) = blinded
+                .split_at_checked(G::ELEMENT_LEN)
+                .ok_or(Error::WrongLength)?;
+            let (d, evaluated_rest) = evaluated
+                .split_at_checked(G::ELEMENT_LEN)
+                .ok_or(Error::WrongLength)?;
+            (blinded, evaluated) = (blinded_rest, evaluated_rest);
             // `decode_batch` bounds the batch at 2^16 elements.
             let i = (i as u16).to_be_bytes();
             hash_to_scalar::<G>(
@@ -569,6 +588,7 @@ fn prove<G: Group>(
     let c = ct::into_public(challenge::<G>(public, [&m, &z, &t2, &t3])?);
     let s = G::mul_add(&G::neg(&c), k, &r);
 
+    #[expect(clippy::arithmetic_side_effects, reason = "SCALAR_LEN is at most 66")]
     let mut proof = Bytes::zeroed(2 * G::SCALAR_LEN);
     let (c_bytes, s_bytes) = proof.as_mut().split_at_mut(G::SCALAR_LEN);
     G::scalar_to_bytes(&c, c_bytes);
@@ -587,10 +607,12 @@ fn verify<G: Group>(
     evaluated_bytes: &[u8],
     proof: &[u8],
 ) -> Result<(), Error> {
-    if proof.len() != 2 * G::SCALAR_LEN {
+    let (c_bytes, s_bytes) = proof
+        .split_at_checked(G::SCALAR_LEN)
+        .ok_or(Error::BadSignature)?;
+    if s_bytes.len() != G::SCALAR_LEN {
         return Err(Error::BadSignature);
     }
-    let (c_bytes, s_bytes) = proof.split_at(G::SCALAR_LEN);
     let c = G::scalar_from_bytes(c_bytes).ok_or(Error::BadSignature)?;
     let s = G::scalar_from_bytes(s_bytes).ok_or(Error::BadSignature)?;
 

@@ -338,6 +338,10 @@ impl<P: Params> DecapKey<P> {
 
     /// FIPS 203's encoding of the key, `dkPKE || ek || H(ek) || z`, as VG's
     /// decapsulation takes it.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "K is 2, 3 or 4, so 384 * K + 32 fits in usize"
+    )]
     fn encode(&self) -> P::DecapKeyBytes {
         let mut out = P::DecapKeyBytes::filled(0);
         let (dk_pke, rest) = out.as_mut().split_at_mut(P::K * 384);
@@ -352,6 +356,14 @@ impl<P: Params> DecapKey<P> {
 
     /// The fields of FIPS 203's encoding `dk`, with the encapsulation key's
     /// decoded form if `decode`, trusting the `H(ek)` it holds.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "K is 2, 3 or 4, so 384 * K + 32 fits in usize"
+    )]
+    #[expect(
+        clippy::unwrap_used,
+        reason = "dk is 768 * K + 96 bytes, so ek is the 384 * K + 32 of EncapKeyBytes, and h_ek and z are 32 each"
+    )]
     fn decode(dk: &P::DecapKeyBytes, decode: bool) -> Self {
         let (dk_pke, rest) = dk.as_ref().split_at(P::K * 384);
         let (ek, rest) = rest.split_at(P::K * 384 + 32);
@@ -417,6 +429,14 @@ impl<P: Params> DecapKey<P> {
     }
 
     /// [`Self::parse`], under the caller's MXCSR mitigation.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "K is 2, 3 or 4, so 384 * K fits in usize"
+    )]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "dk is 768 * K + 96 bytes, so 96 follow its two 384 * K-byte vectors"
+    )]
     fn parse_mitigated(dk: &P::DecapKeyBytes) -> Result<Self, Error> {
         let (dk_pke, rest) = dk.as_ref().split_at(P::K * 384);
         let (t_hat, rest) = rest.split_at(P::K * 384);
@@ -440,6 +460,18 @@ impl<P: Params> DecapKey<P> {
     }
 
     /// [`Self::keygen_internal`], under the caller's MXCSR mitigation.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "K is 2, 3 or 4, so 768 * K + 64 fits in usize"
+    )]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "VG runs only for ML-KEM-768, whose 2400-byte key holds 768 * 3 + 64 bytes"
+    )]
+    #[expect(
+        clippy::unwrap_used,
+        reason = "VG's 2400-byte key is ML-KEM-768's DecapKeyBytes, the only set VG runs for, and the 64-byte seed splits at 32 into two 32-byte halves"
+    )]
     fn keygen_mitigated(seed: &[u8; 64]) -> Self {
         if let Some(vg) = vg_key_pair::<P>() {
             low::ct::secret_slice(seed);
@@ -489,6 +521,10 @@ impl<P: Params> DecapKey<P> {
 
     /// FIPS 203's `ML-KEM.Decaps_internal`, on rind's arithmetic: the
     /// encapsulation key holds its decoded form.
+    #[expect(
+        clippy::unwrap_used,
+        reason = "G's 64-byte output splits at 32 into two 32-byte halves"
+    )]
     fn decaps_rind(&self, c: &Ciphertext<P>) -> SharedSecret {
         // Steps 1. - 4. are not relevant for us.
         // 5. m' <- K-PKE.Decrypt(dkPKE, c)
@@ -527,6 +563,14 @@ impl<P: Params> DecapKey<P> {
     }
 
     /// This is Algorithm 13: K-PKE.KeyGen(d) -> (ek_PKE, dk_PKE)
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "K is 2, 3 or 4, so 384 * K fits in usize"
+    )]
+    #[expect(
+        clippy::unwrap_used,
+        reason = "G's 64-byte output splits at 32 into two 32-byte halves"
+    )]
     fn kpke_keygen(d: &[u8; 32]) -> (EncapKey<P>, Encoded<P>) {
         // 1. (𝜌, 𝜎) <- G(d || k)
         let mut g = sha3::Sha3_512Context::new();
@@ -576,6 +620,14 @@ impl<P: Params> DecapKey<P> {
     }
 
     /// This is Algorithm 15: K-PKE.Decrypt(dk_PKE, c)
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "K is 2, 3 or 4 and DU is 10 or 11, so 32 * DU * K fits in usize"
+    )]
+    #[expect(
+        clippy::unwrap_used,
+        reason = "c is 32 * (DU * K + DV) bytes, so c_2 is 32 * DV: 128 when DV is 4 and 160 when it is 5"
+    )]
     fn kpke_decrypt(&self, c: &Ciphertext<P>) -> Message {
         // 1. c_1 <- c[0 ∶ 32 * du * k]
         // 2. c_2 <- c[32 * du * k ∶ 32 * (du * k + dv)]
@@ -658,6 +710,14 @@ impl<P: Params> Clone for Decoded<P> {
 impl<P: Params> Decoded<P> {
     /// `bytes` decoded, each coefficient reduced mod q, and its matrix
     /// sampled.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "K is 2, 3 or 4, so 384 * K fits in usize"
+    )]
+    #[expect(
+        clippy::unwrap_used,
+        reason = "bytes is 384 * K + 32 bytes, so rho is 32"
+    )]
     fn new(bytes: &P::EncapKeyBytes) -> Self {
         let (t_hat, rho) = bytes.as_ref().split_at(P::K * 384);
         let mut encoded = Encoded::<P>::filled([0; 384]);
@@ -668,6 +728,14 @@ impl<P: Params> Decoded<P> {
         }
     }
 
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "K is 2, 3 or 4 and DU is 10 or 11, so 32 * DU * K fits in usize"
+    )]
+    #[expect(
+        clippy::unwrap_used,
+        reason = "c is 32 * (DU * K + DV) bytes, so c_2 is 32 * DV: 128 when DV is 4 and 160 when it is 5"
+    )]
     fn kpke_encrypt(&self, m: Message, r: KpkeRandomness) -> Ciphertext<P> {
         // 2. t^ <- ByteDecode12(ekPKE[0 ∶ 384k])
         //  - already decoded, as self.t_hat_coeffs.
@@ -776,6 +844,11 @@ impl<P: Params> EncapKey<P> {
     }
 
     /// [`Self::from_bytes`], under the caller's MXCSR mitigation.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "K is 2, 3 or 4, so 384 * K fits in usize"
+    )]
+    #[expect(clippy::indexing_slicing, reason = "input is 384 * K + 32 bytes")]
     fn parse_mitigated(input: &P::EncapKeyBytes) -> Result<Self, Error> {
         // 2. (Modulus check) Perform the computation
         //
@@ -824,6 +897,10 @@ impl<P: Params> EncapKey<P> {
     }
 
     /// [`Self::encaps_internal`], under the caller's MXCSR mitigation.
+    #[expect(
+        clippy::unwrap_used,
+        reason = "VG's 1088-byte ciphertext is ML-KEM-768's CiphertextBytes, the only set VG runs for"
+    )]
     fn encaps_mitigated(&self, m: Message) -> (SharedSecret, Ciphertext<P>) {
         low::ct::secret_slice(&m.0);
 
@@ -846,6 +923,10 @@ impl<P: Params> EncapKey<P> {
 
     /// FIPS 203's `ML-KEM.Encaps_internal`, on rind's arithmetic over
     /// `decoded`, this key's decoded form, with its hash known.
+    #[expect(
+        clippy::unwrap_used,
+        reason = "G's 64-byte output splits at 32 into two 32-byte halves"
+    )]
     fn encaps_rind(&self, decoded: &Decoded<P>, m: Message) -> (SharedSecret, Ciphertext<P>) {
         // 1. (K, r) <- G(m || H(ek))
         let mut g = sha3::Sha3_512Context::new();
@@ -970,6 +1051,7 @@ impl<V: FixedArray<Poly>, D: Domain> Coeffs<V, D> {
     }
 
     /// Reduce coefficients into [0, Q)
+    #[expect(clippy::indexing_slicing, reason = "i < polys.len()")]
     fn reduce_in_place(&mut self) {
         let polys = self.0.as_mut();
         for i in 0..polys.len() {
@@ -987,6 +1069,7 @@ impl<D: Domain> Coeffs<Poly, D> {
 impl<M: FixedArray<Poly>> Coeffs<M, Ntt> {
     /// FIPS-203's `SampleNTT` of the matrix `A^` from `rho`, or of its
     /// transpose.
+    #[expect(clippy::indexing_slicing, reason = "i < polys.len()")]
     fn sample(rho: &[u8; 32], transposed: bool) -> Self {
         let mut r = Self(M::filled([0; N]), PhantomData);
         let polys = r.0.as_mut();
@@ -998,6 +1081,14 @@ impl<M: FixedArray<Poly>> Coeffs<M, Ntt> {
     }
 
     // a * s + e
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "i < k <= 4, so i * k + k <= 16"
+    )]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "a holds k * k polynomials and rows k, for i < k, and c < N, a polynomial's length"
+    )]
     fn mul_add<V: Vector>(&self, s: &Coeffs<V, Ntt>, e: &Coeffs<V, Ntt>) -> Coeffs<V, Ntt> {
         let mut r = e.clone();
 
@@ -1027,6 +1118,10 @@ impl<M: FixedArray<Poly>> Coeffs<M, Ntt> {
         r
     }
 
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "i, j < k <= 4, so i * k + j < 16"
+    )]
     fn transpose(mut self) -> Self {
         let polys = self.0.as_mut();
         let k = rank(polys.len());
@@ -1043,6 +1138,14 @@ impl<M: FixedArray<Poly>> Coeffs<M, Ntt> {
     /// This is `NTT-1(self * y)`, given `y`'s mulcache `y_cache`.
     ///
     /// The inverse NTT takes any `i16`, so the products go in unreduced.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "i < k <= 4, so i * k + k <= 16"
+    )]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "a holds k * k polynomials and rows k, for i < k"
+    )]
     fn mul_and_inverse_ntt<V: Vector>(
         &self,
         y: &Coeffs<V, Ntt>,
@@ -1068,6 +1171,10 @@ impl<M: FixedArray<Poly>> Coeffs<M, Ntt> {
 
 impl<V: Vector> Coeffs<V, Ntt> {
     /// This is `ByteDecode_12(bytes)`.
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "i < polys.len() = bytes.len(), both K"
+    )]
     fn from_bytes(bytes: &V::Encoded) -> Self {
         let mut r = Self::zero();
 
@@ -1082,6 +1189,10 @@ impl<V: Vector> Coeffs<V, Ntt> {
     }
 
     /// This is `ByteEncode_12(self)`
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "i < out.len() = polys.len(), both K"
+    )]
     fn to_bytes(&self) -> V::Encoded {
         let mut r = V::Encoded::filled([0; 384]);
 
@@ -1108,6 +1219,10 @@ impl<V: Vector> Coeffs<V, Ntt> {
         r.inverse_ntt()
     }
 
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "i < out.len() = polys.len(), both K"
+    )]
     fn mul_cache(&self) -> Coeffs<V::MulCache, MulCache> {
         let mut r = Coeffs(V::MulCache::filled([0; N / 2]), PhantomData);
 
@@ -1120,6 +1235,7 @@ impl<V: Vector> Coeffs<V, Ntt> {
         r
     }
 
+    #[expect(clippy::indexing_slicing, reason = "i < polys.len()")]
     fn inverse_ntt(mut self) -> Coeffs<V, Normal> {
         let polys = self.0.as_mut();
         for i in 0..polys.len() {
@@ -1138,6 +1254,10 @@ impl Coeffs<Poly, Ntt> {
 
 /// The scalar product of the vectors `a` and `b`, given `b`'s mulcache `bt`,
 /// in the NTT domain.
+#[expect(
+    clippy::unwrap_used,
+    reason = "a and b hold k polynomials and bt k mulcaches, for the k = bt.len() / (N / 2) that picks the routine"
+)]
 fn basemul(r: &mut Poly, a: &[Poly], b: &[Poly], bt: &[[i16; N / 2]]) {
     let (a, b, bt) = (a.as_flattened(), b.as_flattened(), bt.as_flattened());
     match bt.len() / (N / 2) {
@@ -1166,6 +1286,14 @@ fn basemul(r: &mut Poly, a: &[Poly], b: &[Poly], bt: &[[i16; N / 2]]) {
 /// `Decompress_D(ByteDecode_D(bytes))` into `out`, for `bytes` of `L = 32 * D`
 /// bytes: each `D` bytes yield eight `D`-bit values, little-endian bit order,
 /// and each value `y` becomes `round((q / 2^D) * y)`.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "D is 4, 5, 10 or 11 and i < N / 8 = 32, j < 8, so D * i + D <= 32 * D, 8 * i + j < N, and y * Q + 2^(D - 1) < 2^23"
+)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "L = 32 * D and i < 32, so D * i + D <= L, and 8 * i + j < N"
+)]
 fn decompress<const D: usize, const L: usize>(bytes: &[u8; L], out: &mut Poly) {
     debug_assert_eq!(L, 32 * D);
     for i in 0..N / 8 {
@@ -1180,6 +1308,15 @@ fn decompress<const D: usize, const L: usize>(bytes: &[u8; L], out: &mut Poly) {
 }
 
 /// [`decompress`] of each `L` bytes of `bytes` into each of `polys`.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "L <= 352 and i < polys.len() <= 4"
+)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "bytes is c_1, L * K bytes for the K polys, so L * i + L <= bytes.len()"
+)]
+#[expect(clippy::unwrap_used, reason = "the range is L bytes long")]
 fn decompress_vector<const D: usize, const L: usize>(bytes: &[u8], polys: &mut [Poly]) {
     for i in 0..polys.len() {
         decompress::<D, L>(bytes[L * i..L * i + L].try_into().unwrap(), &mut polys[i]);
@@ -1188,6 +1325,15 @@ fn decompress_vector<const D: usize, const L: usize>(bytes: &[u8], polys: &mut [
 
 /// `ByteEncode_10(Compress_10(poly))` of each of `polys` into each 320 bytes
 /// of `out`.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "i < polys.len() <= 4, so 320 * i + 320 <= 1280"
+)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "out is c_1, 320 * K bytes for the K polys"
+)]
+#[expect(clippy::unwrap_used, reason = "the range is 320 bytes long")]
 fn compress_d10_vector(out: &mut [u8], polys: &[Poly]) {
     for i in 0..polys.len() {
         let out = (&mut out[320 * i..320 * i + 320]).try_into().unwrap();
@@ -1197,6 +1343,15 @@ fn compress_d10_vector(out: &mut [u8], polys: &[Poly]) {
 
 /// `ByteEncode_11(Compress_11(poly))` of each of `polys` into each 352 bytes
 /// of `out`.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "i < polys.len() <= 4, so 352 * i + 352 <= 1408"
+)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "out is c_1, 352 * K bytes for the K polys"
+)]
+#[expect(clippy::unwrap_used, reason = "the range is 352 bytes long")]
 fn compress_d11_vector(out: &mut [u8], polys: &[Poly]) {
     for i in 0..polys.len() {
         let out = (&mut out[352 * i..352 * i + 352]).try_into().unwrap();
@@ -1221,6 +1376,7 @@ fn compress_1(x: i16) -> u8 {
 
 impl<V: FixedArray<Poly>> Coeffs<V, Normal> {
     /// K-wise NTT
+    #[expect(clippy::indexing_slicing, reason = "i < polys.len()")]
     fn ntt(mut self) -> Coeffs<V, Ntt> {
         let polys = self.0.as_mut();
         for i in 0..polys.len() {
@@ -1235,6 +1391,14 @@ impl Coeffs<Poly, Normal> {
     ///
     /// `ByteDecode_1` is just `BytesToBits`.
     /// `Decompress_1` maps set bits to Q/2.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "i < 32 and bit < 8, so i * 8 + bit < N = 256"
+    )]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "i < 32, the message's length, and i * 8 + bit < N"
+    )]
     fn from_message_bits(m: Message) -> Self {
         let mut r = Self::zero();
 
@@ -1248,6 +1412,14 @@ impl Coeffs<Poly, Normal> {
     }
 
     /// This is `ByteEncode_1(Compress_1(m))`
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "i < 32 and bit < 8, so i * 8 + bit < N = 256"
+    )]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "i < 32, the message's length, and i * 8 + bit < N"
+    )]
     fn to_message_bits(&self) -> Message {
         let mut r = Message([0; 32]);
 
@@ -1265,6 +1437,7 @@ impl Coeffs<Poly, Normal> {
 
 impl Coeffs<Poly, Normal> {
     /// Simple addition, leaving the sum unreduced
+    #[expect(clippy::indexing_slicing, reason = "c < N, both polynomials' length")]
     fn add(mut self, term: &Poly) -> Self {
         for c in 0..N {
             self.0[c] = self.0[c].wrapping_add(term[c]);
@@ -1273,6 +1446,7 @@ impl Coeffs<Poly, Normal> {
     }
 
     /// Simple subtraction
+    #[expect(clippy::indexing_slicing, reason = "c < N, both polynomials' length")]
     fn sub(mut self, term: &Self) -> Self {
         for c in 0..N {
             self.0[c] = self.0[c].wrapping_sub(term.0[c]);
@@ -1284,6 +1458,10 @@ impl Coeffs<Poly, Normal> {
 
 impl<V: FixedArray<Poly>> Coeffs<V, Normal> {
     /// Simple addition, leaving the sum unreduced
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "i < polys.len() = terms.len(), both V, and c < N"
+    )]
     fn add(mut self, term: &Self) -> Self {
         let polys = self.0.as_mut();
         let terms = term.0.as_ref();
@@ -1298,6 +1476,14 @@ impl<V: FixedArray<Poly>> Coeffs<V, Normal> {
 
 /// `SamplePolyCBD_eta(PRF_eta(sigma, n))` into each polynomial of `a`, then
 /// of `b`, with `n` counting from `first`, four polynomials at a time.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "a and b hold at most 2 * K + 1 <= 9 polynomials and first is 0 or K, so the counts and first + done stay below 18"
+)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "poly < a.len() picks a, and otherwise a.len() <= poly < a.len() + b.len()"
+)]
 fn sample_poly_cbd(eta: usize, sigma: &[u8; 32], first: u8, a: &mut [Poly], b: &mut [Poly]) {
     let total = a.len() + b.len();
     let mut done = 0;
@@ -1318,6 +1504,18 @@ fn sample_poly_cbd(eta: usize, sigma: &[u8; 32], first: u8, a: &mut [Poly], b: &
 
 /// `SamplePolyCBD_eta(PRF_eta(sigma, n + t))` for each `t` below `count`,
 /// which is one to four, at once; the rest are zero.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "n <= 2 * K <= 8 and t < count <= 4, so n + t < 12"
+)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "t < count <= 4, each array's length, and sigma fills the first 32 bytes of each 33- or 40-byte input"
+)]
+#[expect(
+    clippy::unwrap_used,
+    reason = "each arm's count is the length of the slices it takes, and each 272-byte sample holds 192"
+)]
 fn sample_poly_cbd_4x(eta: usize, sigma: &[u8; 32], n: u8, count: usize) -> [Poly; 4] {
     let mut polys = [[0; N]; 4];
     match eta {
@@ -1370,6 +1568,14 @@ fn sample_poly_cbd_4x(eta: usize, sigma: &[u8; 32], n: u8, count: usize) -> [Pol
     polys
 }
 
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "i < N / 8 = 32 and j < 8, so 4 * i + 3 < 128, 8 * i + j < N, and 4 * j + 2 < 32"
+)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "i < 32, so 4 * i + 3 < 128 = buf.len() and 8 * i + j < N"
+)]
 fn sample_cbd2(buf: &[u8; 128], out: &mut Poly) {
     for i in 0..N / 8 {
         let t = u32::from_le_bytes([buf[4 * i], buf[4 * i + 1], buf[4 * i + 2], buf[4 * i + 3]]);
@@ -1383,6 +1589,14 @@ fn sample_cbd2(buf: &[u8; 128], out: &mut Poly) {
     }
 }
 
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "i < N / 4 = 64 and j < 4, so 3 * i + 2 < 192, 4 * i + j < N, and 6 * j + 3 < 32"
+)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "i < 64, so 3 * i + 2 < 192 = buf.len() and 4 * i + j < N"
+)]
 fn sample_cbd3(buf: &[u8; 192], out: &mut Poly) {
     for i in 0..N / 4 {
         let t = u32::from_le_bytes([buf[3 * i], buf[3 * i + 1], buf[3 * i + 2], 0]);

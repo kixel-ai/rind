@@ -193,23 +193,25 @@ impl SignatureVerifier for Verifier {
 /// none reads key bytes.
 fn relabel(pem: &[u8]) -> Option<Vec<u8>> {
     const BEGIN: &[u8] = b"-----BEGIN ";
+    const LINE_BEGIN: &[u8] = b"\n-----BEGIN ";
     const DASHES: &[u8] = b"-----";
     if pem.first() == Some(&0x30) {
         return None;
     }
-    let start = match pem.starts_with(BEGIN) {
-        true => 0,
-        false => {
-            pem.windows(BEGIN.len() + 1)
-                .position(|w| w == b"\n-----BEGIN ")?
-                + 1
+    // The preamble without its final line feed, which changes neither check.
+    let (preamble, rest) = match pem.strip_prefix(BEGIN) {
+        Some(rest) => (&[] as &[u8], rest),
+        None => {
+            let at = pem
+                .windows(LINE_BEGIN.len())
+                .position(|w| w == LINE_BEGIN)?;
+            let (preamble, line) = pem.split_at_checked(at)?;
+            (preamble, line.strip_prefix(LINE_BEGIN)?)
         }
     };
-    let preamble = &pem[..start];
     if preamble.contains(&0) || str::from_utf8(preamble).is_err() {
         return None;
     }
-    let rest = &pem[start + BEGIN.len()..];
     let label_len = rest.windows(DASHES.len()).position(|w| w == DASHES)?;
     let (label, rest) = rest.split_at(label_len);
     // pem-rfc7468's label grammar: printable characters other than hyphens,
@@ -222,7 +224,7 @@ fn relabel(pem: &[u8]) -> Option<Vec<u8>> {
         }
         separated = separator;
     }
-    let rest = &rest[DASHES.len()..];
+    let rest = rest.strip_prefix(DASHES)?;
     let rest = [&b"\r\n"[..], b"\n", b"\r"]
         .into_iter()
         .find_map(|eol| rest.strip_suffix(eol))

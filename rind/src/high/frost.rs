@@ -16,7 +16,10 @@
 
 // `as_chunks` takes no associated constant of a generic group, as clippy's
 // suggestion for `chunks_exact(G::ELEMENT_LEN)` would need.
-#![allow(clippy::chunks_exact_to_as_chunks)]
+#![allow(
+    clippy::chunks_exact_to_as_chunks,
+    reason = "as_chunks takes no associated constant of a generic group"
+)]
 
 use alloc::vec::Vec;
 use core::cmp::Ordering;
@@ -449,6 +452,11 @@ impl Group for P256 {
     }
 
     /// RFC 9380's `hash_to_field` with the DST `contextString || tag`.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "CONTEXT is 20 bytes and every tag at most 5, so len <= 25 < dst.len()"
+    )]
     fn hash_to_scalar(tag: &[u8], msg: &[&[u8]]) -> Result<Self::Scalar, Error> {
         let mut dst = [0u8; 32];
         let len = Self::CONTEXT.len() + tag.len();
@@ -540,6 +548,12 @@ impl<const N: usize> AsRef<[u8]> for Bytes<N> {
 }
 
 impl<const N: usize> low::Zeroable for Bytes<N> {}
+
+/// `identifier || hiding || binding`: [`Commitments`]' length on `G`.
+#[expect(clippy::arithmetic_side_effects, reason = "ELEMENT_LEN is at most 33")]
+const fn commitments_len<G: Group>() -> usize {
+    SCALAR_LEN + 2 * G::ELEMENT_LEN
+}
 
 /// `n` as a scalar, for the dealer's identifiers and polynomial powers.
 fn scalar_from_u16<G: Group>(n: u16) -> G::Scalar {
@@ -734,12 +748,12 @@ impl PublicKey {
 
     /// `z * G == R + c * PK`, for `c = H2(R || PK || message)`.
     fn verify_prime_order<G: Group>(&self, message: &[u8], signature: &[u8]) -> Result<(), Error> {
-        if signature.len() != G::ELEMENT_LEN + SCALAR_LEN {
-            return Err(Error::BadSignature);
-        }
-        let (r, z) = signature.split_at(G::ELEMENT_LEN);
+        let (r, z) = signature
+            .split_at_checked(G::ELEMENT_LEN)
+            .ok_or(Error::BadSignature)?;
+        let z: &[u8; SCALAR_LEN] = z.try_into().map_err(|_| Error::BadSignature)?;
         let r = G::element_from_bytes(r).ok_or(Error::BadSignature)?;
-        let z = G::scalar_from_bytes(z.try_into().unwrap()).ok_or(Error::BadSignature)?;
+        let z = G::scalar_from_bytes(z).ok_or(Error::BadSignature)?;
         let c = challenge::<G>(&G::element_to_bytes(&r), self, message)?;
         check_equation::<G>(&z, &element::<G>(self.as_ref()), &c, &r)
     }
@@ -832,9 +846,10 @@ impl VssCommitment {
     /// A commitment of `min_signers` checked elements.
     fn from_checked<G: Group>(bytes: Vec<u8>, min_signers: u16) -> Self {
         let mut public_key = Bytes::zeroed(G::ELEMENT_LEN);
-        public_key
-            .as_mut()
-            .copy_from_slice(&bytes[..G::ELEMENT_LEN]);
+        let (constant_term, _) = bytes
+            .split_at_checked(G::ELEMENT_LEN)
+            .expect("min_signers >= 1 elements");
+        public_key.as_mut().copy_from_slice(constant_term);
         Self {
             suite: G::suite(),
             public_key: PublicKey {
@@ -937,6 +952,10 @@ fn deal_with<G: Group>(
     coefficients: &[G::Scalar],
     max_signers: u16,
 ) -> (Vec<SigningShare>, VssCommitment) {
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "there are at most 2^16 - 1 coefficients, of elements of at most 33 bytes"
+    )]
     let mut commitment = Vec::with_capacity(coefficients.len() * G::ELEMENT_LEN);
     for coefficient in coefficients {
         let element = ct::into_public(G::element_to_bytes(&G::mul_base(coefficient)));
@@ -1142,13 +1161,17 @@ impl SigningNonces {
         }
         let mut commitments = Commitments {
             suite: ZeroableRef::new(G::suite()),
-            bytes: Bytes::zeroed(SCALAR_LEN + 2 * G::ELEMENT_LEN),
+            bytes: Bytes::zeroed(commitments_len::<G>()),
         };
-        let bytes = commitments.bytes.as_mut();
-        bytes[..SCALAR_LEN].copy_from_slice(share.identifier.as_ref());
+        let (identifier, elements) = commitments
+            .bytes
+            .as_mut()
+            .split_first_chunk_mut::<SCALAR_LEN>()
+            .ok_or(Error::WrongLength)?;
+        *identifier = share.identifier.bytes;
         for (nonce, out) in [&hiding, &binding]
             .into_iter()
-            .zip(bytes[SCALAR_LEN..].chunks_exact_mut(G::ELEMENT_LEN))
+            .zip(elements.chunks_exact_mut(G::ELEMENT_LEN))
         {
             out.copy_from_slice(ct::into_public(G::element_to_bytes(&G::mul_base(nonce))).as_ref());
         }
@@ -1193,10 +1216,12 @@ impl SigningNonces {
             return Err(Error::WrongLength);
         }
         let index = package.index(&share.identifier)?;
-        if package.commitments[index] != self.commitments {
+        if package.commitments.get(index) != Some(&self.commitments) {
             return Err(KeyFormatError::MismatchedCommitments.into());
         }
-        with_group!(share.suite(), G => Ok(self.sign_with::<G>(share, package, index)))
+        let rho = package.binding_factors.get(index);
+        let rho = rho.ok_or(KeyFormatError::UnknownIdentifier)?;
+        with_group!(share.suite(), G => Ok(self.sign_with::<G>(share, package, rho)))
     }
 
     /// `hiding + binding * rho + lambda * c * sk`.
@@ -1204,11 +1229,11 @@ impl SigningNonces {
         &self,
         share: &SigningShare,
         package: &SigningPackage,
-        index: usize,
+        rho: &[u8; SCALAR_LEN],
     ) -> SignatureShare {
-        let rho = scalar::<G>(&package.binding_factors[index]);
+        let rho = scalar::<G>(rho);
         let c = scalar::<G>(&package.challenge);
-        let lambda = package.lagrange::<G>(index);
+        let lambda = package.lagrange::<G>(&share.identifier);
         let z = G::mul_add(
             &mul::<G>(&lambda, &c),
             &scalar::<G>(&share.secret),
@@ -1218,12 +1243,12 @@ impl SigningNonces {
                 &scalar::<G>(&self.hiding),
             ),
         );
-        let mut bytes = [0u8; SCALAR_LEN * 2];
-        bytes[..SCALAR_LEN].copy_from_slice(share.identifier.as_ref());
-        bytes[SCALAR_LEN..].copy_from_slice(&ct::into_public(G::scalar_to_bytes(&z)));
         SignatureShare {
             suite: G::suite(),
-            bytes,
+            bytes: [
+                share.identifier.bytes,
+                ct::into_public(G::scalar_to_bytes(&z)),
+            ],
         }
     }
 
@@ -1267,11 +1292,14 @@ impl Commitments {
     pub fn new(suite: &'static Suite, bytes: &[u8]) -> Result<Self, Error> {
         let _entry = Entry::new_public();
         with_group!(suite, G => {
-            if bytes.len() != SCALAR_LEN + 2 * G::ELEMENT_LEN {
+            if bytes.len() != commitments_len::<G>() {
                 return Err(KeyFormatError::WrongLength.into());
             }
-            Identifier::new(suite, &bytes[..SCALAR_LEN])?;
-            for element in bytes[SCALAR_LEN..].chunks_exact(G::ELEMENT_LEN) {
+            let (identifier, elements) = bytes
+                .split_first_chunk::<SCALAR_LEN>()
+                .ok_or(KeyFormatError::WrongLength)?;
+            Identifier::new(suite, identifier)?;
+            for element in elements.chunks_exact(G::ELEMENT_LEN) {
                 decode_element::<G>(element)?;
             }
         });
@@ -1290,16 +1318,24 @@ impl Commitments {
 
     /// Returns the participant's identifier.
     pub fn identifier(&self) -> Identifier {
+        let (identifier, _) = self.split();
         Identifier {
             suite: self.suite,
-            bytes: self.bytes.as_ref()[..SCALAR_LEN].try_into().unwrap(),
+            bytes: *identifier,
         }
     }
 
     /// The hiding and binding commitments.
     fn elements<G: Group>(&self) -> [G::Element; 2] {
-        let (hiding, binding) = self.bytes.as_ref()[SCALAR_LEN..].split_at(G::ELEMENT_LEN);
+        let (_, elements) = self.split();
+        let (hiding, binding) = elements.split_at(G::ELEMENT_LEN);
         [element::<G>(hiding), element::<G>(binding)]
+    }
+
+    /// The identifier and the elements, which `new` checked follow it.
+    fn split(&self) -> (&[u8; SCALAR_LEN], &[u8]) {
+        let split = self.bytes.as_ref().split_first_chunk::<SCALAR_LEN>();
+        split.expect("commitments start with an identifier")
     }
 }
 
@@ -1367,8 +1403,9 @@ impl SigningPackage {
         // Unstable, as the stable sort divides; equal identifiers are refused.
         commitments.sort_unstable_by_key(Commitments::identifier);
         if commitments
-            .windows(2)
-            .any(|pair| pair[0].identifier() == pair[1].identifier())
+            .iter()
+            .zip(commitments.iter().skip(1))
+            .any(|(a, b)| a.identifier() == b.identifier())
         {
             return Err(KeyFormatError::DuplicateIdentifier.into());
         }
@@ -1391,6 +1428,10 @@ impl SigningPackage {
             commitment_hash.as_ref(),
         ];
         let mut binding_factors = Vec::with_capacity(commitments.len());
+        #[expect(
+            clippy::arithmetic_side_effects,
+            reason = "new allows at most 2^16 - 1 commitments"
+        )]
         let mut terms = Vec::with_capacity(2 * commitments.len());
         for commitment in &commitments {
             let rho = G::hash_to_scalar(
@@ -1438,15 +1479,17 @@ impl SigningPackage {
             .map_err(|_| KeyFormatError::UnknownIdentifier.into())
     }
 
-    /// RFC 9591's `derive_interpolating_value` for the participant at
-    /// `index`, over public identifiers.
-    fn lagrange<G: Group>(&self, index: usize) -> G::Scalar {
-        let x_i = self.commitments[index].identifier().scalar::<G>();
+    /// RFC 9591's `derive_interpolating_value` for the participant
+    /// `identifier`, over public identifiers, which `new` checked are
+    /// distinct.
+    fn lagrange<G: Group>(&self, identifier: &Identifier) -> G::Scalar {
+        let x_i = identifier.scalar::<G>();
         let mut numerator = scalar_from_u16::<G>(1);
         let mut denominator = scalar_from_u16::<G>(1);
-        for (j, commitment) in self.commitments.iter().enumerate() {
-            if j != index {
-                let x_j = commitment.identifier().scalar::<G>();
+        for commitment in &self.commitments {
+            let x_j = commitment.identifier();
+            if x_j != *identifier {
+                let x_j = x_j.scalar::<G>();
                 numerator = mul::<G>(&numerator, &x_j);
                 denominator = mul::<G>(&denominator, &add::<G>(&x_j, &G::neg(&x_i)));
             }
@@ -1494,10 +1537,11 @@ impl SigningPackage {
             &scalar::<G>(&self.challenge),
             &r,
         )?;
+        #[expect(clippy::arithmetic_side_effects, reason = "ELEMENT_LEN is at most 33")]
         let mut signature = Signature(Bytes::zeroed(G::ELEMENT_LEN + SCALAR_LEN));
-        let bytes = signature.0.as_mut();
-        bytes[..G::ELEMENT_LEN].copy_from_slice(self.group_commitment.as_ref());
-        bytes[G::ELEMENT_LEN..].copy_from_slice(&G::scalar_to_bytes(&z));
+        let (r_out, z_out) = signature.0.as_mut().split_at_mut(G::ELEMENT_LEN);
+        r_out.copy_from_slice(self.group_commitment.as_ref());
+        z_out.copy_from_slice(&G::scalar_to_bytes(&z));
         Ok(signature)
     }
 
@@ -1534,11 +1578,17 @@ impl SigningPackage {
         let public = commitment
             .public_share::<G>(&share.identifier())
             .ok_or(Error::BadSignature)?;
-        let [hiding, binding] = self.commitments[index].elements::<G>();
-        let rho = scalar::<G>(&self.binding_factors[index]);
+        let unknown = || Error::from(KeyFormatError::UnknownIdentifier);
+        let commitments = self.commitments.get(index).ok_or_else(unknown)?;
+        let [hiding, binding] = commitments.elements::<G>();
+        let rho = scalar::<G>(self.binding_factors.get(index).ok_or_else(unknown)?);
         let r = G::public_mul_sum(&[(hiding, scalar_from_u16::<G>(1)), (binding, rho)])
             .ok_or(Error::BadSignature)?;
-        let c = mul::<G>(&scalar::<G>(&self.challenge), &self.lagrange::<G>(index));
+        let identifier = commitments.identifier();
+        let c = mul::<G>(
+            &scalar::<G>(&self.challenge),
+            &self.lagrange::<G>(&identifier),
+        );
         check_equation::<G>(&share.z::<G>(), &public, &c, &r)
     }
 }
@@ -1557,7 +1607,8 @@ impl fmt::Debug for SigningPackage {
 #[derive(Clone, PartialEq, Eq)]
 pub struct SignatureShare {
     suite: &'static Suite,
-    bytes: [u8; SCALAR_LEN * 2],
+    /// The identifier and `z_i`.
+    bytes: [[u8; SCALAR_LEN]; 2],
 }
 
 impl SignatureShare {
@@ -1567,14 +1618,17 @@ impl SignatureShare {
     /// to the group order less one, or the scalar is not below the order.
     pub fn new(suite: &'static Suite, bytes: &[u8]) -> Result<Self, Error> {
         let _entry = Entry::new_public();
-        let bytes: [u8; SCALAR_LEN * 2] = bytes
-            .try_into()
-            .map_err(|_| Error::from(KeyFormatError::WrongLength))?;
-        Identifier::new(suite, &bytes[..SCALAR_LEN])?;
-        with_group!(suite, G => G::scalar_from_bytes(bytes[SCALAR_LEN..].try_into().unwrap())
+        let (&[identifier, z], []) = bytes.as_chunks::<SCALAR_LEN>() else {
+            return Err(KeyFormatError::WrongLength.into());
+        };
+        Identifier::new(suite, &identifier)?;
+        with_group!(suite, G => G::scalar_from_bytes(&z)
             .map(|_| ())
             .ok_or(Error::from(KeyFormatError::ScalarOutOfRange)))?;
-        Ok(Self { suite, bytes })
+        Ok(Self {
+            suite,
+            bytes: [identifier, z],
+        })
     }
 
     /// Returns the share's suite.
@@ -1584,20 +1638,22 @@ impl SignatureShare {
 
     /// Returns the participant's identifier.
     pub fn identifier(&self) -> Identifier {
+        let [identifier, _] = self.bytes;
         Identifier {
             suite: ZeroableRef::new(self.suite),
-            bytes: self.bytes[..SCALAR_LEN].try_into().unwrap(),
+            bytes: identifier,
         }
     }
 
     fn z<G: Group>(&self) -> G::Scalar {
-        scalar::<G>(self.bytes[SCALAR_LEN..].try_into().unwrap())
+        let [_, z] = &self.bytes;
+        scalar::<G>(z)
     }
 }
 
 impl AsRef<[u8]> for SignatureShare {
     fn as_ref(&self) -> &[u8] {
-        &self.bytes
+        self.bytes.as_flattened()
     }
 }
 

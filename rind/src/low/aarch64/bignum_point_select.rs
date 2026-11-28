@@ -26,6 +26,10 @@ fn select<const N: usize, const V: usize>(z: &mut [u64; N], table: &[u64], index
     unsafe { _select::<N, V>(z, table, index) }
 }
 
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "i < V and N = 2 * V, so 2 * i < N"
+)]
 #[target_feature(enable = "neon")]
 fn _select<const N: usize, const V: usize>(z: &mut [u64; N], table: &[u64], index: u8) {
     // SAFETY: uint32x4_t and u128 have the same number and meaning of bits

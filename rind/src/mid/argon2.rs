@@ -46,7 +46,15 @@ pub(crate) fn argon2id(
     let _mcdt = low::Mcdt::enter();
     let lanes = cost.lanes as usize;
     // RFC 9106 rounds the memory down to a whole number of segments.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "`Cost` holds lanes from 1 to 2^24 - 1, so SYNC_POINTS * lanes fits and is nonzero"
+    )]
     let segment_len = cost.memory_kib as usize / (SYNC_POINTS * lanes);
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "lanes is nonzero, and segment_len * SYNC_POINTS is at most memory_kib, a u32"
+    )]
     let geometry = Geometry {
         lanes: cost.lanes,
         lane_reciprocal: (u64::MAX / cost.lanes as u64).wrapping_add(1),
@@ -82,11 +90,11 @@ pub(crate) fn argon2id(
             h0[64..68].copy_from_slice(&column.to_le_bytes());
             h0[68..].copy_from_slice(&lane.to_le_bytes());
             long_hash(&[&h0], &mut bytes);
-            let words = bytes.as_chunks::<8>().0;
-            memory.push(
-                lane as usize,
-                Block(core::array::from_fn(|i| u64::from_le_bytes(words[i]))),
-            );
+            let mut block = Block::ZERO;
+            for (word, bytes) in block.0.iter_mut().zip(bytes.as_chunks::<8>().0) {
+                *word = u64::from_le_bytes(*bytes);
+            }
+            memory.push(lane as usize, block);
         }
     }
 
@@ -107,6 +115,10 @@ pub(crate) fn argon2id(
     // `chunks_exact`, whose `len % chunk` the compiler folds away only in
     // some builds, so `admin/ct-vartime` would find it in others.
     let mut last = Block::ZERO;
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "`Cost` holds at least 8 KiB a lane, so lane_len >= 8"
+    )]
     for lane in 0..lanes {
         for (last, word) in last
             .0
@@ -134,6 +146,11 @@ struct Geometry {
 }
 
 impl Geometry {
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "lanes * lane_len is at most memory_kib, a u32; slice < SYNC_POINTS and index < segment_len, so column < lane_len, at least 8; and index % ADDRESSES_PER_BLOCK indexes a block's 128 words"
+    )]
     fn fill_segment(
         &self,
         g: Argon2Kernel,
@@ -204,6 +221,10 @@ impl Geometry {
     // computation" (2019), exact for every 32-bit word and lane count. The
     // loop holds no division, so `admin/ct-vartime` finds only the setup's,
     // however the compiler duplicates the loop.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "a u64 times a u32 fits in u128"
+    )]
     fn lane_of(&self, word: u32) -> u32 {
         let fraction = self.lane_reciprocal.wrapping_mul(word as u64);
         ((fraction as u128 * self.lanes as u128) >> 64) as u32
@@ -211,6 +232,10 @@ impl Geometry {
 
     // The reference implementation's `index_alpha`: the column `random`
     // picks, nonuniformly, from the blocks this one may reference.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "slice < SYNC_POINTS and index < segment_len, and the first pass's first slice starts at index 2, so finished is at least 1 and below lane_len; x < 2^32, so finished * x fits in u64 and (finished * x) >> 32 < finished; and start + relative < 2 * lane_len"
+    )]
     fn reference_index(
         &self,
         pass: u32,
@@ -245,6 +270,10 @@ impl Geometry {
 
 // The next 128 data-independent references: G(0, G(0, input)), after
 // counting `input` up.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "word 6 counts the address blocks of one segment, under 2^32"
+)]
 fn next_addresses(g: Argon2Kernel, input: &mut Block) -> Block {
     input.0[6] += 1;
     g.g(&Block::ZERO, &g.g(&Block::ZERO, input))
@@ -252,6 +281,11 @@ fn next_addresses(g: Argon2Kernel, input: &mut Block) -> Block {
 
 // RFC 9106's variable-length hash H', of `out.len()` bytes over the
 // concatenation of `input`.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "past the early return out.len() > 64, and the loop stops once at most 64 bytes remain, so written + 32 <= out.len()"
+)]
 fn long_hash(input: &[&[u8]], out: &mut [u8]) {
     let mut h = Blake2b::new(out.len().min(blake2b::MAX_OUT_LEN));
     h.update(&(out.len() as u32).to_le_bytes());

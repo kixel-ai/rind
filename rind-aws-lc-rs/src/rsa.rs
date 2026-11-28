@@ -191,7 +191,7 @@ impl AsDer<Pkcs8V1Der<'static>> for KeyPair {
 }
 
 /// An RSA private key as its big-endian integers.
-#[allow(non_snake_case)]
+#[allow(non_snake_case, reason = "named as aws-lc-rs names the CRT components")]
 #[derive(Clone, Copy)]
 pub struct KeyPairComponents<Public, Private = Public> {
     /// The modulus and public exponent.
@@ -244,7 +244,10 @@ fn spki(pkcs1: &[u8]) -> Result<PublicKeyX509Der<'static>, Unspecified> {
 pub struct PublicKey {
     der: Box<[u8]>,
     n: Box<[u8]>,
-    #[cfg_attr(not(feature = "ring-io"), allow(dead_code))]
+    #[cfg_attr(
+        not(feature = "ring-io"),
+        allow(dead_code, reason = "only `ring-io`'s `exponent` reads it")
+    )]
     e: Box<[u8]>,
 }
 
@@ -389,7 +392,10 @@ impl From<&PublicKey> for PublicKeyComponents<Vec<u8>> {
 
 // aws-lc-rs implements `TryInto` rather than `TryFrom`, so
 // `PublicEncryptingKey::try_from(components)` does not build there either.
-#[allow(clippy::from_over_into)]
+#[allow(
+    clippy::from_over_into,
+    reason = "aws-lc-rs implements `TryInto`, as the comment above says"
+)]
 impl<B: AsRef<[u8]>> TryInto<PublicEncryptingKey> for PublicKeyComponents<B> {
     type Error = Unspecified;
 
@@ -782,12 +788,14 @@ impl OaepAlgorithm {
     }
 
     /// The algorithm's slot in a key's per-algorithm cache.
-    fn index(&self) -> usize {
+    /// This algorithm's slot in `keys`, which holds one per algorithm.
+    fn slot<'a, T>(&self, keys: &'a [T; 4]) -> &'a T {
+        let [sha1, sha256, sha384, sha512] = keys;
         match self.id {
-            EncryptionAlgorithmId::OaepSha1Mgf1sha1 => 0,
-            EncryptionAlgorithmId::OaepSha256Mgf1sha256 => 1,
-            EncryptionAlgorithmId::OaepSha384Mgf1sha384 => 2,
-            EncryptionAlgorithmId::OaepSha512Mgf1sha512 => 3,
+            EncryptionAlgorithmId::OaepSha1Mgf1sha1 => sha1,
+            EncryptionAlgorithmId::OaepSha256Mgf1sha256 => sha256,
+            EncryptionAlgorithmId::OaepSha384Mgf1sha384 => sha384,
+            EncryptionAlgorithmId::OaepSha512Mgf1sha512 => sha512,
         }
     }
 }
@@ -842,7 +850,7 @@ impl PrivateDecryptingKey {
         let public = PublicEncryptingKey::new(key.public_key().as_ref())?;
         let keys = [const { OnceBox::new() }; 4];
         let pkcs8 = Wiped::new(key.to_pkcs8().as_ref().to_vec());
-        let _ = keys[OAEP_SHA256_MGF1SHA256.index()].set(Box::new(key));
+        let _ = OAEP_SHA256_MGF1SHA256.slot(&keys).set(Box::new(key));
         Ok(Self(Arc::new(DecryptingInner {
             pkcs8,
             keys,
@@ -883,7 +891,7 @@ impl PrivateDecryptingKey {
     }
 
     fn key(&self, algorithm: &OaepAlgorithm) -> Result<&rind::rsa::DecryptingKey, Unspecified> {
-        self.0.keys[algorithm.index()].get_or_try_init(|| {
+        algorithm.slot(&self.0.keys).get_or_try_init(|| {
             rind::rsa::DecryptingKey::from_pkcs8(algorithm.rind(), &self.0.pkcs8)
                 .map(Box::new)
                 .map_err(unspecified)
@@ -951,7 +959,7 @@ impl PublicEncryptingKey {
     }
 
     fn key(&self, algorithm: &OaepAlgorithm) -> Result<&rind::rsa::EncryptingKey, Unspecified> {
-        self.0.keys[algorithm.index()].get_or_try_init(|| {
+        algorithm.slot(&self.0.keys).get_or_try_init(|| {
             rind::rsa::EncryptingKey::new(algorithm.rind(), &self.0.der)
                 .map(Box::new)
                 .map_err(unspecified)
@@ -1020,7 +1028,7 @@ impl OaepPublicEncryptingKey {
     #[must_use]
     pub fn max_plaintext_size(&self, algorithm: &'static OaepAlgorithm) -> usize {
         self.key_size_bytes()
-            .saturating_sub(2 * algorithm.hash.output_len())
+            .saturating_sub(algorithm.hash.output_len().saturating_mul(2))
             .saturating_sub(2)
     }
 
@@ -1070,7 +1078,9 @@ impl OaepPrivateDecryptingKey {
             .key(algorithm)?
             .decrypt(ciphertext, label.unwrap_or_default())
             .map_err(unspecified)?;
-        let output = &mut plaintext[..decrypted.as_ref().len()];
+        let output = plaintext
+            .get_mut(..decrypted.as_ref().len())
+            .ok_or(Unspecified)?;
         output.copy_from_slice(decrypted.as_ref());
         Ok(output)
     }

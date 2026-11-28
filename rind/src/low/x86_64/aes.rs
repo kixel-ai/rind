@@ -26,6 +26,10 @@ pub(crate) enum AesKey {
 
 impl AesKey {
     /// Expands `key`, which must be 16, 24, or 32 bytes.
+    #[expect(
+        clippy::unwrap_used,
+        reason = "each arm's match on key.len() fixes the array length"
+    )]
     pub(crate) fn new(key: &[u8]) -> Self {
         match (key.len(), HaveAesHardware::check(), HaveSsse3::check()) {
             (16, Some(token), _) => Self::Hw(HwKey::Aes128(AesKey128::new(
@@ -87,6 +91,10 @@ pub(crate) enum AesDecKey {
 
 impl AesDecKey {
     /// Expands `key`, which must be 16, 24, or 32 bytes.
+    #[expect(
+        clippy::unwrap_used,
+        reason = "each arm's match on key.len() fixes the array length"
+    )]
     pub(crate) fn new(key: &[u8]) -> Self {
         match (key.len(), HaveAesHardware::check(), HaveSsse3::check()) {
             (16, Some(token), _) => Self::Hw(HwDecKey::Aes128(
@@ -395,7 +403,15 @@ const RCON: [i32; 10] = [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0
 // The expansions fill a local array, indexing their loops, and write `out`
 // once: Aeneas translates neither a loop that writes through a reference nor
 // one over an iterator of the round constants.
-#[allow(clippy::needless_range_loop)]
+#[allow(
+    clippy::needless_range_loop,
+    reason = "Aeneas translates neither a loop writing through a reference nor one over an iterator"
+)]
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "i < 10 = RCON.len(), so i + 1 < 11 = rk.len()"
+)]
 #[target_feature(enable = "aes,ssse3")]
 fn aes128_expand(key: &[u8; 16], out: &mut [__m128i; 11]) {
     let mut t = load(key);
@@ -407,7 +423,16 @@ fn aes128_expand(key: &[u8; 16], out: &mut [__m128i; 11]) {
     *out = rk;
 }
 
-#[allow(clippy::needless_range_loop)]
+#[allow(
+    clippy::needless_range_loop,
+    reason = "Aeneas translates neither a loop writing through a reference nor one over an iterator"
+)]
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    clippy::unwrap_used,
+    reason = "i < 7 = RCON.len() - 3, so 2 * i + 3 < 15 = rk.len(), and key's halves are 16 bytes"
+)]
 #[target_feature(enable = "aes,ssse3")]
 fn aes256_expand(key: &[u8; 32], out: &mut [__m128i; 15]) {
     let mut a = load(key[..16].try_into().unwrap());
@@ -435,6 +460,12 @@ fn aes256_expand(key: &[u8; 32], out: &mut [__m128i; 15]) {
 /// straddles the two. Each step's first word takes RotWord, SubWord, and the
 /// round constant of the step before's last, as `sub_rot_word` computes
 /// them from a vector's last word.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    clippy::unwrap_used,
+    reason = "1 <= step <= 8, so step - 1 < RCON.len() and 3 * step / 2 + 1 < 13 = out.len(); key splits into 16 and 8 bytes"
+)]
 #[target_feature(enable = "aes,ssse3")]
 fn aes192_expand(key: &[u8; 24]) -> [__m128i; 13] {
     let mut a = load(key[..16].try_into().unwrap());
@@ -528,6 +559,11 @@ fn aes128_block(round_keys: &[__m128i; 11], block: &[u8; 16]) -> [u8; 16] {
 }
 
 /// One block under any key size, by its number of round keys.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "N is 13, AES-192's round keys, so N - 1 indexes the last"
+)]
 #[target_feature(enable = "aes")]
 fn aes_block<const N: usize>(round_keys: &[__m128i; N], block: &[u8; 16]) -> [u8; 16] {
     let mut block = load(block);
@@ -561,6 +597,11 @@ fn aes256_block(round_keys: &[__m128i; 15], block: &[u8; 16]) -> [u8; 16] {
 }
 
 /// The round keys for `aesdec` from those for `aesenc`.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "N is 11, 13, or 15 round keys, and 1 <= i < N - 1, so N - 1 - i < N"
+)]
 #[target_feature(enable = "aes")]
 fn invert_round_keys<const N: usize>(round_keys: &[__m128i; N]) -> [__m128i; N] {
     let mut out = [zero(); N];
@@ -572,6 +613,11 @@ fn invert_round_keys<const N: usize>(round_keys: &[__m128i; N]) -> [__m128i; N] 
     out
 }
 
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "N is 11, 13, or 15 round keys, so N - 1 indexes the last"
+)]
 #[target_feature(enable = "aes")]
 fn hw_decrypt_block<const N: usize>(round_keys: &[__m128i; N], block_inout: &mut [u8; 16]) {
     let mut block = load(block_inout);

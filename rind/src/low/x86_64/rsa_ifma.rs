@@ -170,6 +170,11 @@ impl RsaIfma {
     /// even, below 3, or of more than 33 bits, and an `x` not below `n`.
     /// Constant time in `x`.
     // Never inlined, holding its `Mcdt` throughout, as `low::mcdt` requires.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "k <= MAX_WORDS * 8 is asserted first, so w <= MAX_WORDS and 8 * w + 48 words fit in scratch"
+    )]
     #[inline(never)]
     pub(crate) fn public(self, out: &mut [u8], pre: &[u64], e: &[u8], x: &[u8]) -> bool {
         // `vpmadd52luq` and `vpmadd52huq` multiply `x`, which may be secret.
@@ -222,6 +227,10 @@ impl IfmaCrt {
         })
     }
 
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "w is 16, 24, or 32 when 2 * w is taken"
+    )]
     fn try_new(n: &[u64], n_montifier: &[u64], p: &[u64], q: &[u64]) -> Option<Self> {
         let token = HaveAvx512ForRsa::check()?;
         let w = p.len();
@@ -236,6 +245,12 @@ impl IfmaCrt {
     /// `w` words and `n` and `n_montifier` of `2 w`. It runs on any CPU, so
     /// `admin/ctgrind` checks it, as Valgrind hides AVX-512 IFMA from
     /// `try_new`.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "callers pass p and q of w = 16, 24, or 32 words and n and n_montifier of 2 * w, \
+                  so 6 * w <= pre.len() and every slice fits"
+    )]
     fn precompute(n: &[u64], n_montifier: &[u64], p: &[u64], q: &[u64]) -> Option<Self> {
         let w = p.len();
         let n = low::PosInt::<{ 2 * MAX_PRIME_WORDS }>::from_words(n).ok()?;
@@ -282,6 +297,12 @@ impl IfmaCrt {
     /// `n` and a `qinv` not below `p`, revealing only that, and does nothing
     /// unless [`IfmaCrt::runs`]. Constant time in all but `n`.
     // Never inlined, holding its `Mcdt` throughout, as `low::mcdt` requires.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "new set w <= MAX_PRIME_WORDS, so 6 * w <= pre.len(), k <= 16 * MAX_PRIME_WORDS bytes, \
+                  and 16 * k + 32 words fit in lines"
+    )]
     #[inline(never)]
     pub(crate) fn crt(&self, out: &mut [u8], x: &[u8], dp: &[u8], dq: &[u8], qinv: &[u8]) -> bool {
         // `vpmadd52luq` and `vpmadd52huq` multiply the secrets.
@@ -356,6 +377,10 @@ impl IfmaCrt {
 struct Line([u64; 8]);
 
 impl Line {
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "lines is in memory, so its 8 * len words fit in usize"
+    )]
     fn words(lines: &mut [Self]) -> &mut [u64] {
         // SAFETY: `Line` is `repr(C)` of 8 `u64`s with no padding, so `lines`
         // is `8 * lines.len()` contiguous initialized words, which this
@@ -365,6 +390,10 @@ impl Line {
 }
 
 /// Writes little-endian `words` to `out`, big-endian, as long as `out`.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "i % 8 < 8, so 8 * (i % 8) is a shift under 64"
+)]
 fn be_bytes(words: &[u64], out: &mut [u8]) {
     for (i, byte) in out.iter_mut().rev().enumerate() {
         *byte = (words.get(i / 8).copied().unwrap_or(0) >> (8 * (i % 8))) as u8;

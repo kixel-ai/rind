@@ -49,8 +49,11 @@ pub(crate) fn decode(pem: &str) -> Result<Vec<u8>, Error> {
 
     // `data` lies between ASCII delimiters, so it is a slice of `pem` at
     // character boundaries; taking it as one checks only its first byte.
-    let at = data.as_ptr().addr() - pem.as_ptr().addr();
-    let data = pem.get(at..at + data.len()).ok_or_else(malformed)?;
+    let at = data.as_ptr().addr().checked_sub(pem.as_ptr().addr());
+    let data = at
+        .and_then(|at| pem.get(at..))
+        .and_then(|rest| rest.get(..data.len()))
+        .ok_or_else(malformed)?;
     let der = Base64::decode_vec(&strip_whitespace(data))
         .map_err(|e| Error::PemError(format!("invalid data: {e}")))?;
 
@@ -86,14 +89,9 @@ pub(crate) fn encode(label: &str, contents: &[u8]) -> String {
 /// secret value.
 fn strip_whitespace(data: &str) -> String {
     let mut out = String::with_capacity(data.len());
-    let mut run = 0;
-    for (i, c) in data.char_indices() {
-        if c.is_whitespace() {
-            out.push_str(&data[run..i]);
-            run = i + c.len_utf8();
-        }
+    for run in data.split(char::is_whitespace) {
+        out.push_str(run);
     }
-    out.push_str(&data[run..]);
     out
 }
 
@@ -108,6 +106,11 @@ fn skip_whitespace(mut input: &[u8]) -> &[u8] {
 /// Splits `input` at the first `marker`, returning what follows it and what
 /// precedes it. Like `pem`'s, a partial match that fails restarts after the
 /// failing byte rather than at it, so `------BEGIN ` holds no `-----BEGIN `.
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "callers pass a nonempty marker, and found < marker.len() at each read since reaching it returns; found <= index + 1 <= input.len()"
+)]
 fn read_until<'a>(input: &'a [u8], marker: &[u8]) -> Option<(&'a [u8], &'a [u8])> {
     let mut found = 0;
     for (index, &byte) in input.iter().enumerate() {

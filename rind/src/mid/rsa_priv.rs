@@ -261,6 +261,11 @@ impl RsaPrivateKey {
 
     /// The CRT by pyca/verified-garbage's IFMA routine, for `c` below `n`.
     #[cfg(rind_backend = "x86_64")]
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "`new` bounds n by MAX_PUBLIC_MODULUS_BYTES and p by MAX_PRIVATE_MODULUS_WORDS, so k and p_len = 8 * p's words fit their buffers"
+    )]
     fn crt_ifma(&self, c: &RsaPosIntModN) -> Result<RsaPosIntModN, Error> {
         let k = self.modulus_len_bytes();
         let p_len = self.p.as_words().len() * 8;
@@ -291,7 +296,8 @@ impl RsaPrivateKey {
 
     /// The CRT by pyca/verified-garbage's IFMA routine and by rind's, where
     /// the former runs.
-    #[cfg(all(test, rind_backend = "x86_64"))]
+    #[cfg(test)]
+    #[cfg(rind_backend = "x86_64")]
     pub(crate) fn crt_both(&self, c: &RsaPosIntModN) -> Option<[RsaPosIntModN; 2]> {
         self.ifma
             .runs()

@@ -1,5 +1,10 @@
 // generated source. do not edit.
-#![allow(non_upper_case_globals, unused_macros, unused_imports)]
+#![allow(
+    non_upper_case_globals,
+    unused_macros,
+    unused_imports,
+    reason = "generated from assembly: constants keep their assembly names, and a routine uses only some of the shared macros"
+)]
 use crate::low::macros::*;
 
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
@@ -27,6 +32,10 @@ use crate::low::macros::*;
 /// Functionally equivalent to bignum_emontredc (see that file for more detail).
 /// But in general assumes that the input k is a multiple of 8.
 #[inline(never)]
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "a u64 slice is at most isize::MAX / 8 words long, so sums and small multiples of lengths fit in usize"
+)]
 pub(crate) fn bignum_emontredc_8n(z: &mut [u64], m: &[u64], w: u64) -> u64 {
     let ret: u64;
     assert!(z.len() == m.len() * 2);

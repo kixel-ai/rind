@@ -11,11 +11,17 @@
 // skips this setup and runs HACL*'s rounds in `generic::chacha20`, which took
 // 0.79 of `chacha_armv4`'s time for it on a Neoverse-N2.
 
-#![allow(non_snake_case)]
-#![allow(non_upper_case_globals)]
-#![allow(non_camel_case_types)]
-#![allow(unused_assignments)]
-#![allow(unreachable_patterns)]
+#![allow(
+    non_snake_case,
+    non_upper_case_globals,
+    non_camel_case_types,
+    reason = "HACL*'s extracted code keeps its C names"
+)]
+#![allow(
+    unused_assignments,
+    unreachable_patterns,
+    reason = "HACL*'s extracted code is kept as libcrux ships it"
+)]
 
 use libcrux_hacl_rs::prelude::*;
 use libcrux_macros as krml;
@@ -26,6 +32,11 @@ use super::cpu::HaveNeon;
 pub(crate) const chacha20_constants: [u32; 4] =
     [0x61707865u32, 0x3320646eu32, 0x79622d32u32, 0x6b206574u32];
 
+#[expect(
+    clippy::indexing_slicing,
+    reason = "ctx is 16 words, k 32 bytes and n 12, as ChaCha20::new passes them, so the unrolled loops' i < 4, 8 \
+              and 3 index ctx[..4], ctx[4..12] and ctx[13..16]"
+)]
 fn chacha20_init(ctx: &mut [u32], k: &[u8], n: &[u8], ctr: u32) {
     krml::unroll_for!(4, "i", 0u32, 1u32, {
         let x: u32 = (&chacha20_constants)[i as usize];
@@ -62,12 +73,12 @@ impl ChaCha20 {
     /// `nonce` is the little-endian block counter followed by the 96-bit nonce.
     pub(crate) fn new(key: &[u8; 32], nonce: &[u8; 16]) -> Self {
         let mut ctx = [0u32; 16];
-        let (counter, nonce) = nonce.split_at(4);
+        let [c0, c1, c2, c3, nonce @ ..] = nonce;
         chacha20_init(
             &mut ctx,
             key,
             nonce,
-            u32::from_le_bytes([counter[0], counter[1], counter[2], counter[3]]),
+            u32::from_le_bytes([*c0, *c1, *c2, *c3]),
         );
         Self {
             ctx,

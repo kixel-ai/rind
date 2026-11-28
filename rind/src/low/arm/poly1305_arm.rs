@@ -120,6 +120,11 @@ fn freeze(r: &mut Fe1305x2) {
     r.v[8] = y4;
 }
 
+#[expect(
+    clippy::indexing_slicing,
+    reason = "callers pass at least 4 bytes: from offsets up to 13 of load_lane's 17-byte t, and up to 12 of the \
+              32-byte key"
+)]
 fn load32(t: &[u8]) -> u32 {
     u32::from_le_bytes([t[0], t[1], t[2], t[3]])
 }
@@ -148,6 +153,7 @@ fn fe1305x2_tobytearray(r: &mut [u8; 16], x: &Fe1305x2) {
 
 /// Loads up to two blocks from `x`, at most 32 bytes, each with its final 1
 /// bit; lane 1 is zero when `x` has 16 bytes or fewer.
+#[expect(clippy::indexing_slicing, reason = "each i <= 9 < 12 = r.v.len()")]
 fn fe1305x2_frombytearray(r: &mut Fe1305x2, x: &[u8]) {
     let (first, second) = x.split_at(x.len().min(16));
     load_lane(r, 0, first);
@@ -161,6 +167,11 @@ fn fe1305x2_frombytearray(r: &mut Fe1305x2, x: &[u8]) {
 }
 
 /// Loads `block`, at most 16 bytes, and its final 1 bit into `lane`.
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "block is at most 16 bytes, under t's 17, and lane is 0 or 1, so lane + 8 < 12 = r.v.len()"
+)]
 fn load_lane(r: &mut Fe1305x2, lane: usize, block: &[u8]) {
     let mut t = [0u8; 17];
     t[..block.len()].copy_from_slice(block);
@@ -185,6 +196,11 @@ pub(crate) struct Poly1305Neon {
 }
 
 impl Poly1305Neon {
+    #[expect(
+        clippy::indexing_slicing,
+        clippy::arithmetic_side_effects,
+        reason = "i <= 8, so i + 1 < 12 = r.v.len(), and i < 16, so 16 + i < 32 = key.len()"
+    )]
     pub(crate) fn new(key: &[u8; 32], _: HaveNeon) -> Self {
         let mut r = Fe1305x2 { v: [0; 12] };
         r.v[0] = 0x3ffffff & load32(&key[0..]);
@@ -212,6 +228,12 @@ impl Poly1305Neon {
         st
     }
 
+    #[expect(
+        clippy::indexing_slicing,
+        clippy::arithmetic_side_effects,
+        reason = "buf_used <= 32 = buf.len() always, so todo fits the buffer's free bytes; the routine returns \
+                  left <= len, the bytes it left; the loop leaves input at most 32 bytes; i < 10 < 12 = v.len()"
+    )]
     pub(crate) fn add_bytes(&mut self, mut input: &[u8]) {
         if self.buf_used != 0 {
             let todo = (self.buf.len() - self.buf_used).min(input.len());
@@ -247,6 +269,11 @@ impl Poly1305Neon {
         }
     }
 
+    #[expect(
+        clippy::indexing_slicing,
+        clippy::arithmetic_side_effects,
+        reason = "buf_used <= 32 = buf.len() always, and each i <= 9, so i + 1 < 12 = v.len()"
+    )]
     pub(crate) fn finish(mut self) -> [u8; 16] {
         let h: *mut Fe1305x2 = &mut self.h;
         addmulmod(h, h, &self.precomp[0], &ZERO);

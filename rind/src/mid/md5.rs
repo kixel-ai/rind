@@ -32,7 +32,7 @@ impl Md5State {
         // longer one is still a message.
         let bits = self
             .nblocks
-            .wrapping_mul(BLOCK_SZ as u64 * 8)
+            .wrapping_mul(const { BLOCK_SZ as u64 * 8 })
             .wrapping_add((message.len() as u64).wrapping_mul(8));
 
         let mut h = self.h;
@@ -43,8 +43,8 @@ impl Md5State {
         md5_compress_blocks(&mut h, pad(rest, bits.to_le_bytes(), &mut last));
 
         let mut r = [0u8; Md5Context::OUTPUT_SZ];
-        for (i, word) in h.iter().enumerate() {
-            r[i * 4..(i + 1) * 4].copy_from_slice(&word.to_le_bytes());
+        for (out, word) in r.as_chunks_mut::<4>().0.iter_mut().zip(&h) {
+            *out = word.to_le_bytes();
         }
         r
     }

@@ -81,6 +81,11 @@ fn lengths(aad: usize, msg: usize) -> [u8; 16] {
 ///
 /// Inlined, as is `cipher`, so `tagged` compiles as when it was the only
 /// caller.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "callers cap aad below 2^61 and the message at 2^36 - 32 bytes, so their block counts sum far below \
+              usize::MAX"
+)]
 #[inline(always)]
 pub(crate) fn tagged_from<const ENC: bool>(
     key: &AesKey,
@@ -127,6 +132,12 @@ const SHORT_OPEN_BLOCKS: usize = 31;
 /// its tag: its counter blocks and `y0` encrypt together, and one GHASH
 /// reduction per eight blocks hashes the AAD, the message, and the lengths
 /// block, where the kernels' path hashes each of them in a separate call.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "callers cap aad below 2^61 and the message at 2^36 - 32 bytes, so blocks fits in usize; a chunk of \
+              chunks_mut(16) is 1 to 16 bytes, so 16 - chunk.len() is 0 to 15 and 16 more bytes fit in KEEP's 32"
+)]
 #[target_feature(enable = "aes")]
 fn short<const ENC: bool, const ROUND_KEYS: usize>(
     round_keys: &[uint8x16_t; ROUND_KEYS],
@@ -169,6 +180,7 @@ fn short<const ENC: bool, const ROUND_KEYS: usize>(
 
 /// Sixteen ones then sixteen zeros: the 16 bytes from `16 - n` keep the
 /// first `n` bytes of a block.
+#[expect(clippy::indexing_slicing, reason = "i < 16 < 32 = keep.len()")]
 static KEEP: [u8; 32] = {
     let mut keep = [0; 32];
     let mut i = 0;
@@ -193,6 +205,12 @@ fn encrypt<const N: usize>(round_keys: &[uint8x16_t; N], mut block: uint8x16_t) 
 }
 
 /// Loads up to 16 bytes, zero-padded.
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "a short bytes is under 16 long and each size is a distinct bit of its length, so at + size <= \
+              bytes.len() < 16, size <= 8 = part.len(), and 8 * at < 128"
+)]
 #[target_feature(enable = "neon")]
 #[inline]
 fn load(bytes: &[u8]) -> uint8x16_t {
@@ -220,6 +238,11 @@ fn load(bytes: &[u8]) -> uint8x16_t {
 }
 
 /// Stores the first `bytes.len()` bytes of `block`, up to 16.
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "as in load: at + size <= bytes.len() < 16, size <= 8 = part.len(), and 8 * at < 128"
+)]
 #[target_feature(enable = "neon")]
 #[inline]
 fn store(bytes: &mut [u8], block: uint8x16_t) {
@@ -295,6 +318,10 @@ fn partial<const ENC: bool>(
     let keystream = key.encrypt_block(counter);
     // By index: Aeneas translates no loop that writes through an iterator's
     // references.
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "remainder is as_chunks_mut::<16>'s, so i < remainder.len() < 16 = keystream.len()"
+    )]
     for i in 0..remainder.len() {
         remainder[i] ^= keystream[i];
     }
@@ -309,6 +336,11 @@ fn partial<const ENC: bool>(
 /// `Ghash::state`'s byte order, and advances both past them. Checking for no
 /// blocks here, not in `cipher`, keeps that `if` out of `cipher`, as
 /// `partial` says.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "a slice is at most isize::MAX bytes, so (1 << 63) - size_of_val(blocks) can't wrap, and callers cap \
+              the message at 2^36 - 32 bytes, so len * 128 bits fits in usize"
+)]
 #[inline(always)]
 fn stitched<const ENC: bool>(
     key: &HwKey,
@@ -419,7 +451,15 @@ gcm_8x!(aesv8_gcm_8x_dec_192);
 
 /// AES-CTR and GHASH in separate passes over each eight blocks, for keys
 /// without the stitched kernels, as aws-lc composes vpaes and NEON GHASH.
-#[allow(clippy::needless_range_loop)]
+#[allow(
+    clippy::needless_range_loop,
+    reason = "Aeneas translates no loop that writes through an iterator"
+)]
+#[expect(
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    reason = "split_at(12) of a 16-byte counter gives 12 and 4 bytes, and i < chunks.len()"
+)]
 fn composed<const ENC: bool>(
     key: &AesKey,
     ghash: &mut Ghash<'_>,

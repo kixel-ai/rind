@@ -26,6 +26,10 @@ is still that Rust, so a change to it is a change to this model:
             }
             ctx.update(&[counter]);
             let tag = ctx.finish();
+            #[expect(
+                clippy::indexing_slicing,
+                reason = "chunks_mut(tag_len) yields chunks of at most tag_len = tag.as_ref().len() bytes"
+            )]
             chunk.copy_from_slice(&tag.as_ref()[..chunk.len()]);
             block = Some(tag);
         }

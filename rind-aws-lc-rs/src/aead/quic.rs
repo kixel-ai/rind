@@ -14,7 +14,10 @@ pub struct Algorithm {
     id: AlgorithmId,
 }
 
-#[allow(non_camel_case_types)]
+#[allow(
+    non_camel_case_types,
+    reason = "named as aws-lc-rs names its algorithms"
+)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum AlgorithmId {
     AES_128,
@@ -112,7 +115,9 @@ impl From<hkdf::Okm<'_, &'static Algorithm>> for HeaderProtectionKey {
     fn from(okm: hkdf::Okm<'_, &'static Algorithm>) -> Self {
         let algorithm = *okm.len();
         let mut key = [0u8; 32];
-        let key = &mut key[..algorithm.key_len()];
+        let key = key
+            .get_mut(..algorithm.key_len())
+            .expect("every key_len is at most 32");
         okm.fill_exact(key);
         Self::new(algorithm, key).expect("key_len bytes are a valid key")
     }

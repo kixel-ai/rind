@@ -104,7 +104,7 @@ fn algorithm_id<P: Set>() -> [u8; 13] {
 /// unwiped.
 fn der(tag: u8, content: &[&[u8]]) -> Secret {
     let len = content.iter().map(|part| part.len()).sum::<usize>();
-    let mut out = Zeroizing::new(Vec::with_capacity(len + 4));
+    let mut out = Zeroizing::new(Vec::with_capacity(len.saturating_add(4)));
     out.push(tag);
     match len {
         0..0x80 => out.push(len as u8),
@@ -201,8 +201,9 @@ impl<P: Set> Scheme for MlDsa<P> {
             (P::PRIVATE_LEN >> 8) as u8,
             P::PRIVATE_LEN as u8,
         ];
+        let key = der.get(start..)?;
         (der.get(start.checked_sub(header.len())?..start)? == header)
-            .then(|| Zeroizing::new(der[start..].to_vec()))
+            .then(|| Zeroizing::new(key.to_vec()))
     }
 }
 
@@ -399,17 +400,17 @@ fn integer(param: &Param) -> Option<i64> {
     // SAFETY: a parameter's data is valid for its size.
     let bytes = unsafe { slice::from_raw_parts(param.data.cast::<u8>(), param.data_size) };
     let value = match bytes.len() {
-        1 => i64::from(bytes[0] as i8),
+        1 => i64::from(i8::from_ne_bytes(bytes.try_into().ok()?)),
         2 => i64::from(i16::from_ne_bytes(bytes.try_into().ok()?)),
         4 => i64::from(i32::from_ne_bytes(bytes.try_into().ok()?)),
         8 => i64::from_ne_bytes(bytes.try_into().ok()?),
         _ => return None,
     };
-    match param.data_type {
+    match (param.data_type, bytes) {
         // An unsigned value read as signed is negative only if it is too
         // large for any flag.
-        UNSIGNED_INTEGER if value < 0 => None,
-        UNSIGNED_INTEGER if bytes.len() == 1 => Some(i64::from(bytes[0])),
+        (UNSIGNED_INTEGER, _) if value < 0 => None,
+        (UNSIGNED_INTEGER, [byte]) => Some(i64::from(*byte)),
         _ => Some(value),
     }
 }

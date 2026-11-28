@@ -13,6 +13,15 @@
 //!
 //! And then use jsonwebtoken as normal.
 
+// Library code never panics by accident: what can fail returns an error, and
+// what cannot states why it holds. Tests may panic (clippy.toml).
+#![warn(
+    clippy::allow_attributes_without_reason,
+    clippy::indexing_slicing,
+    clippy::panic,
+    clippy::unwrap_used
+)]
+#![cfg_attr(not(test), warn(clippy::arithmetic_side_effects))]
 use jsonwebtoken::crypto::{CryptoProvider, JwtSigner, JwtVerifier, KeyUtils};
 use jsonwebtoken::errors::{Error, ErrorKind, Result};
 use jsonwebtoken::jwk::{EllipticCurve, ThumbprintHash};
@@ -289,7 +298,11 @@ fn ec_pub_components_from_private_key(
     let key = EcdsaKeyPair::from_pkcs8(signing, der).map_err(|_| ErrorKind::InvalidEcdsaKey)?;
 
     // An uncompressed point is 0x04 || x || y.
-    let point = &key.public_key().as_ref()[1..];
+    let point = key
+        .public_key()
+        .as_ref()
+        .get(1..)
+        .ok_or(ErrorKind::InvalidEcdsaKey)?;
     let (x, y) = point.split_at(point.len() / 2);
     Ok((curve, x.to_vec(), y.to_vec()))
 }

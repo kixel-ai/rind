@@ -1,10 +1,23 @@
 #![doc = include_str!("../README.md")]
 #![no_std]
 // aws-lc-rs's API has these shapes, which a drop-in keeps.
-#![allow(clippy::len_without_is_empty, clippy::new_without_default)]
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::new_without_default,
+    reason = "aws-lc-rs's API has these shapes, which a drop-in keeps"
+)]
 #![warn(missing_docs, unreachable_pub)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
+// Library code never panics by accident: what can fail returns an error, and
+// what cannot states why it holds. Tests may panic (clippy.toml).
+#![warn(
+    clippy::allow_attributes_without_reason,
+    clippy::indexing_slicing,
+    clippy::panic,
+    clippy::unwrap_used
+)]
+#![cfg_attr(not(test), warn(clippy::arithmetic_side_effects))]
 
 use core::fmt;
 

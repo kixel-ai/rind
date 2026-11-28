@@ -3,13 +3,11 @@
 
 /// Calls an `extern` assembly routine, through `abi`'s trampoline in tests,
 /// which checks it preserves what its ABI says it must.
-#[cfg(all(
-    test,
-    any(
-        rind_backend = "x86_64",
-        rind_backend = "aarch64",
-        rind_backend = "arm"
-    )
+#[cfg(test)]
+#[cfg(any(
+    rind_backend = "x86_64",
+    rind_backend = "aarch64",
+    rind_backend = "arm"
 ))]
 macro_rules! asm_call {
     (unsafe extern $abi:tt $f:tt($($arg:expr),* $(,)?)) => {
@@ -117,7 +115,10 @@ mod generic {
     // AVX2, and what s2n-bignum has no Neon routine for. aarch64 runs the
     // rest only in tests, to check its routines against.
     #[cfg(feature = "ml-dsa")]
-    #[cfg_attr(all(rind_backend = "aarch64", not(test)), allow(dead_code))]
+    #[cfg_attr(
+        all(rind_backend = "aarch64", not(test)),
+        allow(dead_code, reason = "aarch64 runs it only in tests")
+    )]
     pub(crate) mod mldsa_poly;
     pub(crate) mod mlkem;
     // pyca/verified-garbage's ML-KEM-768 where it does not run: aarch64's
@@ -213,7 +214,13 @@ mod entry;
 /// crate. The variable drops the dot from `sse4.1`, since shells drop
 /// variables whose names have one. A target without an OS has no variables.
 #[cfg(all(rind_std, any(debug_assertions, rind_cpu_disable)))]
-#[cfg_attr(any(rind_backend = "portable", rind_backend = "arm"), allow(dead_code))]
+#[cfg_attr(
+    any(rind_backend = "portable", rind_backend = "arm"),
+    allow(
+        dead_code,
+        reason = "the portable backend asks only on x86, and arm only on Linux and Android"
+    )
+)]
 pub(crate) fn cpu_denied(id: &str) -> bool {
     // Set is enough, whatever the value. Silent, since detection runs inside
     // any call, where the caller may hold stdout's lock or have closed it.
@@ -223,21 +230,39 @@ pub(crate) fn cpu_denied(id: &str) -> bool {
 /// Denies nothing, in a release build or without an OS. The portable backend
 /// asks only on x86, and arm only on Linux and Android.
 #[cfg(not(all(rind_std, any(debug_assertions, rind_cpu_disable))))]
-#[cfg_attr(any(rind_backend = "portable", rind_backend = "arm"), allow(dead_code))]
+#[cfg_attr(
+    any(rind_backend = "portable", rind_backend = "arm"),
+    allow(
+        dead_code,
+        reason = "the portable backend asks only on x86, and arm only on Linux and Android"
+    )
+)]
 #[inline(always)]
 pub(crate) fn cpu_denied(_id: &str) -> bool {
     false
 }
 
 /// Whether the build reads `RIND_CPU_DISABLE_*`: where `cpu_denied` can deny.
-#[cfg_attr(any(rind_backend = "portable", rind_backend = "arm"), allow(dead_code))]
+#[cfg_attr(
+    any(rind_backend = "portable", rind_backend = "arm"),
+    allow(
+        dead_code,
+        reason = "only the x86_64 and aarch64 backends pick kernels by CPU feature"
+    )
+)]
 pub(crate) const CPU_DENIABLE: bool = cfg!(all(rind_std, any(debug_assertions, rind_cpu_disable)));
 
 /// Whether the target enables every CPU feature in `wanted`, in a build that
 /// cannot deny one. Each is then on every CPU the binary runs on, so a check
 /// for them is true at compile time, and the linker drops the kernels for
 /// CPUs without them.
-#[cfg_attr(any(rind_backend = "portable", rind_backend = "arm"), allow(dead_code))]
+#[cfg_attr(
+    any(rind_backend = "portable", rind_backend = "arm"),
+    allow(
+        dead_code,
+        reason = "only the x86_64 and aarch64 backends pick kernels by CPU feature"
+    )
+)]
 #[inline(always)]
 pub(crate) const fn cpu_enabled(deniable: bool, enabled: u32, wanted: u32) -> bool {
     !deniable && wanted & !enabled == 0
@@ -264,7 +289,8 @@ pub(crate) use generic::blockwise::{Blockwise, UpdateBlocks, pad, sha256_digest,
 pub(crate) use generic::chacha20::{chacha20_block, hchacha20};
 pub(crate) use generic::ct_copy::{ct_copy, ct_select_i16};
 pub(crate) use generic::ct_equal::ct_equal;
-#[cfg(all(test, any(rind_backend = "arm", rind_backend = "portable")))]
+#[cfg(test)]
+#[cfg(any(rind_backend = "arm", rind_backend = "portable"))]
 pub(crate) use generic::ghash::gcm_model;
 pub(crate) use generic::md5::md5_compress_blocks;
 pub(crate) use generic::naf::public_naf;
@@ -277,17 +303,16 @@ pub(crate) use mcdt::Mcdt;
 pub(crate) use portable::poly1305;
 pub(crate) use posint::{ModExp, PosInt, SecretPosInt};
 
-#[cfg(all(test, any(rind_backend = "x86_64", rind_backend = "aarch64")))]
+#[cfg(test)]
+#[cfg(any(rind_backend = "x86_64", rind_backend = "aarch64"))]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests;
 
-#[cfg(all(
-    test,
-    any(
-        rind_backend = "x86_64",
-        rind_backend = "aarch64",
-        rind_backend = "arm"
-    )
+#[cfg(test)]
+#[cfg(any(
+    rind_backend = "x86_64",
+    rind_backend = "aarch64",
+    rind_backend = "arm"
 ))]
 #[cfg_attr(coverage_nightly, coverage(off))]
 pub(crate) mod abi;
@@ -296,7 +321,8 @@ pub(crate) mod abi;
 // pages on every target, so ctgrind builds leave it out, and Miri cannot run
 // the PROT_NONE mappings it faults on.
 // See UPSTREAM.md, "Valgrind on ARM does not fault guard pages".
-#[cfg(all(test, unix, not(feature = "__ctgrind"), not(miri)))]
+#[cfg(test)]
+#[cfg(all(unix, not(feature = "__ctgrind"), not(miri)))]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod guard_pages;
 
@@ -385,7 +411,8 @@ cfg_if::cfg_if! {
         pub(crate) use x86_64::ct_sde;
         #[cfg(test)]
         pub(crate) use x86_64::cpu::force_avx512_for_vg_mlkem;
-        #[cfg(all(test, feature = "ml-dsa"))]
+        #[cfg(test)]
+        #[cfg(feature = "ml-dsa")]
         pub(crate) use x86_64::cpu::HaveAvx512Vl;
         pub(crate) use x86_64::bignum_add::bignum_add;
         pub(crate) use x86_64::bignum_add_p25519::bignum_add_p25519;

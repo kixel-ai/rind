@@ -131,7 +131,12 @@ impl Prk {
         len: L,
     ) -> Result<Okm<'a, L>, error::Unspecified> {
         let len_cached = len.len();
-        if len_cached > 255 * self.algorithm.len() {
+        if self
+            .algorithm
+            .len()
+            .checked_mul(255)
+            .is_none_or(|max| len_cached > max)
+        {
             return Err(error::Unspecified);
         }
         Ok(Okm {
@@ -166,7 +171,9 @@ impl From<Okm<'_, Algorithm>> for Prk {
     fn from(okm: Okm<'_, Algorithm>) -> Self {
         let algorithm = *okm.len();
         let mut key = [0u8; digest::MAX_OUTPUT_LEN];
-        let key = &mut key[..algorithm.len()];
+        let key = key
+            .get_mut(..algorithm.len())
+            .expect("every output_len is at most MAX_OUTPUT_LEN");
         okm.fill_exact(key);
         Self::new_less_safe(algorithm, key)
     }

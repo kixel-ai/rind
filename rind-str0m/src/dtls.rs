@@ -90,9 +90,9 @@ fn generate_certificate() -> Option<DtlsCert> {
     // rcgen's `KeyIdMethod::Sha256`, which needs its `crypto` feature: the first
     // 20 bytes of the SubjectPublicKeyInfo's SHA-256 (RFC 7093 method 1).
     let hash = digest(&SHA256, &key.subject_public_key_info());
-    params.key_identifier_method = KeyIdMethod::PreSpecified(hash.as_ref()[..20].to_vec());
+    params.key_identifier_method = KeyIdMethod::PreSpecified(hash.as_ref().get(..20)?.to_vec());
     params.not_before = OffsetDateTime::now_utc();
-    params.not_after = params.not_before + Duration::days(365);
+    params.not_after = params.not_before.checked_add(Duration::days(365))?;
 
     let certificate = params.self_signed(&key).ok()?;
     Some(DtlsCert {

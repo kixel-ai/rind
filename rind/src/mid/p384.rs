@@ -200,6 +200,10 @@ impl PrivateKey {
 
     /// The public key's X9.62 uncompressed encoding, by
     /// pyca/verified-garbage's `d·G`, which measured faster than rind's comb.
+    #[expect(
+        clippy::panic,
+        reason = "only a fault reaches either panic: `Scalar` holds a value in [1, n), for which the routine returns a point on the curve"
+    )]
     fn vg_public_key(&self, vg: low::p384_vg::MulBase) -> [u8; PublicKey::BYTES] {
         // It fails only for a scalar outside [1, n), which `Scalar`'s
         // checked decoding refuses.
@@ -214,6 +218,10 @@ impl PrivateKey {
         }
     }
 
+    #[expect(
+        clippy::panic,
+        reason = "only a fault reaches the panic: a multiple of G by a scalar in [1, n) is on the curve"
+    )]
     fn public_point(&self) -> AffineMontPoint {
         let point = JacobianMontPoint::base_multiply(&self.scalar).as_affine();
         let point = low::ct::into_public(point);
@@ -297,6 +305,10 @@ impl StaticPrivateKey {
         self.0.public_point().as_bytes_uncompressed()
     }
 
+    #[expect(
+        clippy::unwrap_used,
+        reason = "a 48-byte slice is within the length `from_bytes_reduced` accepts"
+    )]
     pub(crate) fn public_key_x_scalar(&self) -> Scalar {
         let _entry = low::Entry::new_secret();
         if let Some(vg) = low::p384_vg::MulBase::check() {
@@ -409,6 +421,10 @@ impl AffineMontPoint {
     const X: Range<usize> = 0..6;
     const Y: Range<usize> = 6..12;
 
+    #[expect(
+        clippy::unwrap_used,
+        reason = "x and y are FieldElement::BYTES = 48 bytes each, split from an encoding of checked length"
+    )]
     fn from_x962_uncompressed(bytes: &[u8]) -> Result<Self, Error> {
         match bytes.first() {
             Some(0x04) => (),
@@ -477,6 +493,10 @@ impl AffineMontPoint {
         Ok(Self::from_xy(x, y.as_mont()))
     }
 
+    #[expect(
+        clippy::unwrap_used,
+        reason = "a 48-byte slice is within the length `from_bytes_reduced` accepts"
+    )]
     fn x_scalar(&self) -> Scalar {
         let bytes = self.as_bytes_uncompressed();
         Scalar::from_bytes_reduced(&bytes[1..1 + FieldElement::BYTES]).unwrap()
@@ -489,10 +509,18 @@ impl AffineMontPoint {
         r
     }
 
+    #[expect(
+        clippy::unwrap_used,
+        reason = "Self::X is 0..6, so the slice is 6 limbs"
+    )]
     fn x(&self) -> FieldElement {
         FieldElement(self.xy[Self::X].try_into().unwrap())
     }
 
+    #[expect(
+        clippy::unwrap_used,
+        reason = "Self::Y is 6..12, so the slice is 6 limbs"
+    )]
     fn y(&self) -> FieldElement {
         FieldElement(self.xy[Self::Y].try_into().unwrap())
     }
@@ -517,6 +545,10 @@ impl AffineMontPoint {
         low::bignum_eq(&lhs.0, &rhs.0)
     }
 
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "split_at_mut(1) leaves `indicator` one byte long"
+    )]
     fn as_bytes_uncompressed(&self) -> [u8; PublicKey::BYTES] {
         let mut r = [0u8; PublicKey::BYTES];
 
@@ -551,6 +583,11 @@ impl AffineMontPoint {
     }
 
     /// Returns table[i - 1] for a public index > 0
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "callers pass a nonzero width-5 NAF digit's magnitude, 1 to 15, so offs + 12 <= 180 < 192"
+    )]
     fn public_lookup_comb(table: &[u64; 192], index: u8) -> Self {
         let offs = (index - 1) as usize * 12;
         let mut r = Self::default();
@@ -575,6 +612,11 @@ impl AffineMontPoint {
     ///
     /// Each sum adds 2P to an odd multiple below n, never equal, as
     /// `p384_montjadd` requires, and none is at infinity.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "i is in 1..8, the length of `multiples`"
+    )]
     fn public_odd_multiples(&self) -> [Self; 8] {
         let p = JacobianMontPoint::from_affine(self);
         let p2 = p.double();
@@ -663,14 +705,26 @@ impl JacobianMontPoint {
         Self { xyz: [0; 18] }
     }
 
+    #[expect(
+        clippy::unwrap_used,
+        reason = "Self::X is 0..6, so the slice is 6 limbs"
+    )]
     fn x(&self) -> FieldElement {
         FieldElement(self.xyz[Self::X].try_into().unwrap())
     }
 
+    #[expect(
+        clippy::unwrap_used,
+        reason = "Self::Y is 6..12, so the slice is 6 limbs"
+    )]
     fn y(&self) -> FieldElement {
         FieldElement(self.xyz[Self::Y].try_into().unwrap())
     }
 
+    #[expect(
+        clippy::unwrap_used,
+        reason = "Self::Z is 12..18, so the slice is 6 limbs"
+    )]
     fn z(&self) -> FieldElement {
         FieldElement(self.xyz[Self::Z].try_into().unwrap())
     }
@@ -694,6 +748,11 @@ impl JacobianMontPoint {
     ///
     /// The windows and tables are indexed rather than zipped, which Aeneas
     /// cannot translate.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "j < 20, the number of comb tables, tooth < 4, and w = 4 * j + tooth is read only when under 77, the number of windows"
+    )]
     fn base_multiply(scalar: &Scalar) -> Self {
         let windows = scalar.booth_w5();
 
@@ -738,6 +797,7 @@ impl JacobianMontPoint {
     /// needs the last window, a negative d, and n = -d mod 32, which the
     /// assertion below rules out.
     #[cfg(any(rind_backend = "arm", rind_backend = "portable"))]
+    #[expect(clippy::indexing_slicing, reason = "w < 76 indexes the 77 windows")]
     fn multiply(scalar: &Scalar, point: &AffineMontPoint) -> Self {
         const { assert!(CURVE_ORDER[0] % 32 > 16) };
         let precomp = point.public_precomp_w5();
@@ -763,6 +823,11 @@ impl JacobianMontPoint {
     ///
     /// The rows are two arguments, and the digits indexed rather than zipped,
     /// as Aeneas cannot translate a slice of borrowed rows or the zip.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "both NAFs have the same length, and a width-5 digit's magnitude is at most 15 and a width-6 one's at most 31, so i < 8, or i < 16 when `more` holds 8 to 15"
+    )]
     fn public_twin_multiply(
         g: &Scalar,
         p: &Scalar,
@@ -820,6 +885,11 @@ impl JacobianMontPoint {
 
     /// `points` in affine form, none at infinity, by one inversion of the
     /// product of their z's (Montgomery's trick).
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "i is in 0..8 or 1..8, within the eight points and prefixes"
+    )]
     fn public_batch_as_affine(points: &[Self; 8]) -> [AffineMontPoint; 8] {
         // `prefix[i]` is the product of the z's before `points[i]`.
         let mut prefix = [CURVE_ONE_MONT; 8];
@@ -879,6 +949,7 @@ impl JacobianMontPoint {
     /// x = X / z², so this checks X = r * z², and (r + n) * z² when that is
     /// below p, the only other x that reduces to `r`. Unlike computing x,
     /// that needs no inversion.
+    #[expect(clippy::indexing_slicing, reason = "i < 6, the limb count")]
     fn public_x_is(&self, r: &Scalar) -> bool {
         let z2 = self.z().mont_sqr();
         let is = |x: [u64; 6]| FieldElement(x).as_mont().mont_mul(&z2).public_eq(&self.x());
@@ -972,6 +1043,11 @@ impl JacobianMontPoint {
 ///
 /// A loop from the top limb rather than `Iterator::lt`, which Aeneas cannot
 /// translate.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "i < 6, so j = 5 - i is a limb index"
+)]
 fn public_below_p(v: &[u64; 6]) -> bool {
     for i in 0..6 {
         let j = 5 - i;
@@ -1246,11 +1322,18 @@ impl Scalar {
     /// Window `w` recodes the six bits from bit `5w - 1`, the bit below the
     /// scalar being zero. Its position is public, so the shifts reveal
     /// nothing of the scalar.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "w is in 1..77, so bit <= 379, word <= 5, word + 1 is read only when word < 5, and shift > 58 keeps 64 - shift positive"
+    )]
     fn booth_w5(&self) -> [(u8, u8); 77] {
         let mut windows = [(0, 0); 77];
         windows[0] = booth_recode_w5(((self.0[0] << 1) & 0x3f) as u8);
-        // Indexed rather than `iter_mut`, which Aeneas cannot translate.
-        #[allow(clippy::needless_range_loop)]
+        #[allow(
+            clippy::needless_range_loop,
+            reason = "indexed rather than `iter_mut`, which Aeneas cannot translate"
+        )]
         for w in 1..77 {
             let bit = 5 * w - 1;
             let (word, shift) = (bit / 64, bit % 64);

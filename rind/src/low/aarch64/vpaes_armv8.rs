@@ -40,6 +40,10 @@ impl VpaesKey {
 
     /// The key's length in bytes, from the `nbits / 32 + 5` rounds that
     /// `vpaes_set_encrypt_key` stores.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "the stored rounds are 9, 11 or 13, so the result is 16 to 32"
+    )]
     pub(crate) fn key_len(&self) -> usize {
         (self.rounds as usize - 5) * 4
     }
@@ -152,14 +156,14 @@ unsafe fn cbc(blocks: &mut [[u8; 16]], key: *const u8, iv: &[u8; 16], enc: i32) 
     // The routine leaves the next IV here; CBC callers here start afresh.
     let mut ivec = *iv;
     let io = blocks.as_mut_ptr().cast::<u8>();
-    // SAFETY: `blocks` is `16 * blocks.len()` readable and writable bytes,
+    // SAFETY: `blocks` is `size_of_val(blocks)` readable and writable bytes,
     // which aws-lc allows to alias, and the caller vouches for `key`. The
     // routine returns at once for zero bytes.
     unsafe {
         asm_call!(unsafe extern "C" vpaes_cbc_encrypt(
             io,
             io,
-            16 * blocks.len(),
+            size_of_val(blocks),
             key,
             &mut ivec,
             enc,

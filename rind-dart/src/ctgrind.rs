@@ -9,7 +9,10 @@
 //! structure is public, goes in unmarked.
 
 // Each unsafe block calls the C ABI with live buffers and handles.
-#![allow(clippy::undocumented_unsafe_blocks)]
+#![allow(
+    clippy::undocumented_unsafe_blocks,
+    reason = "each unsafe block calls the C ABI with live buffers and handles, as the comment above says"
+)]
 
 use core::ptr;
 

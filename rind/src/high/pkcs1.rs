@@ -18,7 +18,15 @@ use crate::mid::rng::RandomSource;
 /// panics if the encoding cannot fit.  this is not reachable
 /// for the combinations of hash functions / key sizes that
 /// we support.
-#[allow(clippy::needless_range_loop)]
+#[allow(
+    clippy::needless_range_loop,
+    reason = "Aeneas cannot translate the iterator it suggests"
+)]
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "digest_info and hash are at most 83 bytes, and the assert puts every index below em_len"
+)]
 pub(crate) fn encode_pkcs1_sig(out: &mut [u8], digest_info: &[u8], hash: &[u8]) {
     // 1.  Apply the hash function to the message M to produce a hash
     //     value H:
@@ -100,20 +108,24 @@ pub(crate) fn encode_pss_sig<H: Hash>(
     // (by caller)
 
     // 3.  If emLen < hLen + sLen + 2, output "encoding error" and stop.
+    // (as DB's length, emLen - hLen - 1, and PS's, DB's less sLen + 1,
+    // both not negative)
+    let refused = || Error::from(KeyFormatError::RsaModulus);
     let h_len = hash.len();
     let em_len = out.len();
-    if em_len < h_len + s_len + 2 {
-        return Err(KeyFormatError::RsaModulus.into());
-    }
+    let db_len = em_len.checked_sub(h_len).and_then(|len| len.checked_sub(1));
+    let db_len = db_len.ok_or_else(refused)?;
+    let ps_len = db_len.checked_sub(s_len).and_then(|len| len.checked_sub(1));
+    let ps_len = ps_len.ok_or_else(refused)?;
 
     // 7.  Generate an octet string PS consisting of emLen - sLen - hLen - 2
     //     zero octets.  The length of PS may be 0.
     // 8.  Let DB = PS || 0x01 || salt; DB is an octet string of length
     //     emLen - hLen - 1.
     // (laid out first, so step 4 writes the salt in place)
-    let (db, h_bc) = out.split_at_mut(em_len - h_len - 1);
-    let (ps, ps_sep_salt) = db.split_at_mut(em_len - s_len - h_len - 2);
-    let (ps_sep, salt) = ps_sep_salt.split_first_mut().unwrap();
+    let (db, h_bc) = out.split_at_mut_checked(db_len).ok_or_else(refused)?;
+    let (ps, ps_sep_salt) = db.split_at_mut_checked(ps_len).ok_or_else(refused)?;
+    let (ps_sep, salt) = ps_sep_salt.split_first_mut().ok_or_else(refused)?;
     ps.fill(0x00);
     *ps_sep = 0x01;
 
@@ -141,10 +153,17 @@ pub(crate) fn encode_pss_sig<H: Hash>(
 
     // 11. Set the leftmost 8emLen - emBits bits of the leftmost octet in
     //     maskedDB to zero.
-    db[0] &= u8::MAX >> (8 * em_len - em_bits);
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "callers pass em_len = ceil(em_bits / 8), so 8 em_len - em_bits is 0 to 7"
+    )]
+    let top_mask = u8::MAX >> (8 * em_len - em_bits);
+    if let Some(first) = db.first_mut() {
+        *first &= top_mask;
+    }
 
     // 12. Let EM = maskedDB || H || 0xbc.
-    let (bc, h_out) = h_bc.split_last_mut().unwrap();
+    let (bc, h_out) = h_bc.split_last_mut().ok_or_else(refused)?;
     h_out.copy_from_slice(h.as_ref());
     *bc = 0xbc;
 
@@ -164,6 +183,11 @@ pub(crate) fn encode_pss_sig<H: Hash>(
 /// `s_len` is the salt length, or `None` to take any, as the signature's
 /// padding has it: the salt is public, so finding its end needs no constant
 /// time.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "callers pass em_len = ceil(em_bits / 8) >= 127; past the length check, emLen - hLen - sLen - 2 >= 0 bounds every index"
+)]
 pub(crate) fn verify_pss_sig<H: Hash>(
     em: &mut [u8],
     em_bits: usize,
@@ -252,6 +276,10 @@ pub(crate) fn verify_pss_sig<H: Hash>(
 
 /// The longest message EME-OAEP with `H` fits in `k` octets, the modulus
 /// length; RFC 8017 section 7.1.1, step 1b.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "a hash output is at most 64 bytes"
+)]
 pub(crate) fn oaep_max_message_len<H: Hash>(k: usize) -> usize {
     k.saturating_sub(2 * H::zeroed_output().as_ref().len() + 2)
 }
@@ -271,7 +299,12 @@ pub(crate) fn encode_oaep<H: Hash>(
     // 1b.  If mLen > k - 2hLen - 2, output "message too long" and stop.
     let k = out.len();
     let h_len = H::zeroed_output().as_ref().len();
-    if k < 2 * h_len + 2 || message.len() > oaep_max_message_len::<H>(k) {
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "h_len is a hash output length, at most 64"
+    )]
+    let min_k = 2 * h_len + 2;
+    if k < min_k || message.len() > oaep_max_message_len::<H>(k) {
         return Err(Error::WrongLength);
     }
 
@@ -285,11 +318,16 @@ pub(crate) fn encode_oaep<H: Hash>(
     //      k - hLen - 1 octets as
     //
     //         DB = lHash || PS || 0x01 || M.
-    let (y, rest) = out.split_first_mut().unwrap();
-    let (seed, db) = rest.split_at_mut(h_len);
-    let (l_hash_out, ps_one_m) = db.split_at_mut(h_len);
-    let (ps_one, m_out) = ps_one_m.split_at_mut(ps_one_m.len() - message.len());
-    let (one, ps) = ps_one.split_last_mut().unwrap();
+    // (each split fits, by the check above)
+    let (y, rest) = out.split_first_mut().ok_or(Error::WrongLength)?;
+    let (seed, db) = rest.split_at_mut_checked(h_len).ok_or(Error::WrongLength)?;
+    let (l_hash_out, ps_one_m) = db.split_at_mut_checked(h_len).ok_or(Error::WrongLength)?;
+    let ps_one_len = ps_one_m.len().checked_sub(message.len());
+    let ps_one_len = ps_one_len.ok_or(Error::WrongLength)?;
+    let (ps_one, m_out) = ps_one_m
+        .split_at_mut_checked(ps_one_len)
+        .ok_or(Error::WrongLength)?;
+    let (one, ps) = ps_one.split_last_mut().ok_or(Error::WrongLength)?;
     l_hash_out.copy_from_slice(l_hash.as_ref());
     ps.fill(0x00);
     *one = 0x01;
@@ -333,7 +371,12 @@ pub(crate) fn decode_oaep<'a, H: Hash>(
 ) -> Result<&'a [u8], Error> {
     // 1c.  If k < 2hLen + 2, output "decryption error" and stop.
     let h_len = H::zeroed_output().as_ref().len();
-    if em.len() < 2 * h_len + 2 {
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "h_len is a hash output length, at most 64"
+    )]
+    let min_k = 2 * h_len + 2;
+    if em.len() < min_k {
         return Err(Error::DecryptFailed);
     }
 
@@ -346,8 +389,11 @@ pub(crate) fn decode_oaep<'a, H: Hash>(
     //      of length k - hLen - 1 as
     //
     //         EM = Y || maskedSeed || maskedDB.
-    let (y, rest) = em.split_first_mut().unwrap();
-    let (seed, db) = rest.split_at_mut(h_len);
+    // (each split fits, by the check above)
+    let (y, rest) = em.split_first_mut().ok_or(Error::DecryptFailed)?;
+    let (seed, db) = rest
+        .split_at_mut_checked(h_len)
+        .ok_or(Error::DecryptFailed)?;
 
     // 3c.  Let seedMask = MGF(maskedDB, hLen).
     // 3d.  Let seed = maskedSeed \xor seedMask.
@@ -370,7 +416,7 @@ pub(crate) fn decode_oaep<'a, H: Hash>(
     // Each check folds into `bad`, an all-ones mask once any fails, and
     // the 0x01 is found by a scan of every octet, so neither which check
     // failed nor where PS ends shows until `bad` is revealed.
-    let (l_hash_prime, ps_one_m) = db.split_at(h_len);
+    let (l_hash_prime, ps_one_m) = db.split_at_checked(h_len).ok_or(Error::DecryptFailed)?;
     let mut bad = !ct_mask(ct_equal(l_hash_prime, l_hash.as_ref())) | !ct_is_zero(*y);
     let mut looking = u8::MAX;
     let mut one_index = 0usize;
@@ -387,8 +433,12 @@ pub(crate) fn decode_oaep<'a, H: Hash>(
         return Err(Error::DecryptFailed);
     }
 
-    // The message length is revealed by the plaintext anyway.
-    let m = &ps_one_m[ct::into_public(one_index) + 1..];
+    // The message length is revealed by the plaintext anyway. The scan
+    // found the 0x01 at `one_index`, so `m` follows it.
+    let one_m = ps_one_m.get(ct::into_public(one_index)..);
+    let (_, m) = one_m
+        .and_then(<[u8]>::split_first)
+        .ok_or(Error::DecryptFailed)?;
     let out = out.get_mut(..m.len()).ok_or(Error::WrongLength)?;
     out.copy_from_slice(m);
     Ok(out)
@@ -408,7 +458,15 @@ fn ct_mask(b: bool) -> u8 {
 ///
 /// By index rather than through closures, which Aeneas cannot translate, so
 /// `proofs/` can prove RSA verification.
-#[allow(clippy::needless_range_loop)]
+#[allow(
+    clippy::needless_range_loop,
+    reason = "Aeneas cannot translate the iterator it suggests"
+)]
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "i < bytes.len() from the range, and len counts at most bytes.len()"
+)]
 fn leading_zeroes(bytes: &[u8]) -> usize {
     let mut len = 0;
     let mut zeroes = true;
@@ -423,6 +481,11 @@ fn leading_zeroes(bytes: &[u8]) -> usize {
 ///
 /// By index rather than zipping chunks, which Aeneas cannot translate, so
 /// `proofs/` can prove RSA verification.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "done < out.len() in the loop, len <= h_len = term.len() as callers pass H's output length, and out is far under 2^32 blocks"
+)]
 fn mgf1_xor<H: Hash>(seed: &[u8], h_len: usize, out: &mut [u8]) {
     let mut counter = 0u32;
     let mut done = 0;

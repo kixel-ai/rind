@@ -4,6 +4,16 @@
 //! [OpenMLS]: https://github.com/openmls/openmls
 //! [openmls_rust_crypto]: https://docs.rs/openmls_rust_crypto
 
+// Library code never panics by accident: what can fail returns an error, and
+// what cannot states why it holds. Tests may panic (clippy.toml).
+#![warn(
+    clippy::allow_attributes_without_reason,
+    clippy::indexing_slicing,
+    clippy::panic,
+    clippy::unwrap_used
+)]
+#![cfg_attr(not(test), warn(clippy::arithmetic_side_effects))]
+
 pub use openmls_memory_storage::{MemoryStorage, MemoryStorageError};
 use openmls_traits::OpenMlsProvider;
 

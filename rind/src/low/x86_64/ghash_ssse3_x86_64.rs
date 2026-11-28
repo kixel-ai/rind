@@ -23,14 +23,16 @@ pub(crate) struct Ssse3Table([[u8; 16]; 16]);
 
 impl Ssse3Table {
     /// Precomputes for the GHASH key `h`, AES's encryption of the zero block.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "every index is below 16, the tables' length, and i >= 3 where i - 1 is taken"
+    )]
     pub(crate) fn new(h: &[u8; 16], _: HaveSsse3) -> Self {
-        let (hi, lo) = h.split_at(8);
         // aws-lc's `u128` is `{ hi, lo }`, and `gcm_init_ssse3` starts from
         // `{ H[1], H[0] }`, with the key's halves read big-endian as `H`.
-        let mut v = [
-            u64::from_be_bytes(lo.try_into().unwrap()),
-            u64::from_be_bytes(hi.try_into().unwrap()),
-        ];
+        let h = u128::from_be_bytes(*h);
+        let mut v = [h as u64, (h >> 64) as u64];
         // Multiplying by x three times gives the multiples for single bits,
         // and their sums the rest.
         let mut multiples = [[0u64; 2]; 16];

@@ -69,6 +69,10 @@ impl ChaCha20 {
     ///
     /// The 32-bit counter must not pass 2^32 - 1, which callers rule out
     /// with `mid::chacha20::check_counter`.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "tail is len % 512 or 0, at most len"
+    )]
     pub(crate) fn cipher(&mut self, buffer: &mut [u8]) {
         match (self.vg, self.ssse3, buffer.len()) {
             (Some(vg), _, len @ VG_MIN_LEN..) => {
@@ -223,6 +227,11 @@ unsafe fn cipher_ssse3_4x(
 //
 // Indexes rather than splitting into chunks, which Aeneas cannot translate,
 // so `proofs/` can prove `cipher`.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "B == 4 * W, asserted at compile time, so 4 * i + 3 < B for i < W"
+)]
 fn words<const B: usize, const W: usize>(bytes: &[u8; B]) -> [u32; W] {
     const { assert!(B == 4 * W) };
     let mut words = [0; W];
@@ -336,6 +345,11 @@ macro_rules! rotate_left {
 //
 // Indexes and loads values rather than splitting into chunks and loading
 // through pointers, which Aeneas cannot translate, so `proofs/` can prove it.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "done < buffer.len() in the loop and n <= buffer.len() - done, so done + n <= buffer.len()"
+)]
 #[target_feature(enable = "avx2")]
 fn cipher_avx2(key: &[u32; 8], counter_nonce: &[u32; 4], buffer: &mut [u8]) {
     let mut counter = counter_nonce[0];
@@ -355,6 +369,10 @@ fn cipher_avx2(key: &[u32; 8], counter_nonce: &[u32; 4], buffer: &mut [u8]) {
 /// XORs the two keystream blocks from block `counter` into `xor_out`, of up
 /// to 128 bytes: the first block's state in each vector's low 128-bit lane,
 /// the second's in its high lane, a row of the state each.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "callers pass xor_out of at most 128 bytes = ks.len(), and i < ks.len()"
+)]
 #[target_feature(enable = "avx2")]
 #[inline]
 fn core_2x(key: &[u32; 8], counter_nonce: &[u32; 4], counter: u32, xor_out: &mut [u8]) {

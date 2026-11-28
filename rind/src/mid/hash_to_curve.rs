@@ -93,6 +93,10 @@ impl Xmd for Sha512Context {
 /// refused, as aws-lc's `crypto/ec_extra/hash_to_curve.c`
 /// (`expand_message_xmd`) refuses a zero `dst_len` and a counter that wraps
 /// after 255 hashes.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "every Xmd hash has OUTPUT <= MAX_OUTPUT and BLOCK <= 128, and each chunk is at most OUTPUT bytes"
+)]
 pub(crate) fn expand_message_xmd<H: Xmd>(
     msg: &[&[u8]],
     dst: &[u8],
@@ -114,8 +118,7 @@ pub(crate) fn expand_message_xmd<H: Xmd>(
             &oversize[..H::OUTPUT]
         }
     };
-    // unwrap: `dst` is at most 255 bytes now.
-    let dst_len = [u8::try_from(dst.len()).unwrap()];
+    let dst_len = [u8::try_from(dst.len()).expect("dst is at most 255 bytes now")];
 
     let mut h = H::new();
     h.update(&[0; 128][..H::BLOCK]);
@@ -209,6 +212,11 @@ const MAX_L: usize = 98;
 /// The cofactor is one, so `clear_cofactor` does nothing.
 pub(crate) fn hash_to_curve<C: Curve, H: Xmd>(msg: &[u8], dst: &[u8]) -> Result<[C; 3], Error> {
     let mut uniform = [0u8; 2 * MAX_L];
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "every curve's L is at most MAX_L"
+    )]
     let uniform = &mut uniform[..2 * C::L];
     expand_message_xmd::<H>(&[msg], dst, uniform)?;
     let (u0, u1) = uniform.split_at(C::L);
@@ -269,8 +277,13 @@ pub(crate) fn sum<C: Curve>(q0: &[C; 3], q1: &[C; 3]) -> [C; 3] {
     let doubled = C::double_point(q0);
     let same = same_x & same_y;
     let opposite = same_x & !same_y;
-    let [x, y, z] = [0, 1, 2].map(|i| added[i].select(&doubled[i], same));
-    [x, y, z.select(&C::ZERO, opposite)]
+    let [added_x, added_y, added_z] = added;
+    let [doubled_x, doubled_y, doubled_z] = doubled;
+    [
+        added_x.select(&doubled_x, same),
+        added_y.select(&doubled_y, same),
+        added_z.select(&doubled_z, same).select(&C::ZERO, opposite),
+    ]
 }
 
 /// The affine image of `point`, or [`KeyFormatError::SmallOrder`] at infinity,

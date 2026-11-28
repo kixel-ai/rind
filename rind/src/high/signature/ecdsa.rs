@@ -215,7 +215,10 @@ ecdsa_curve!(P521);
 // `repr(u8)` puts `P256` at tag zero, and every key is plain words beside a
 // `ZeroableRef`, so all-bits-zero is a valid value, as a key pair's wipe
 // needs.
-#[allow(clippy::large_enum_variant)]
+#[allow(
+    clippy::large_enum_variant,
+    reason = "a boxed key would allocate, and the wipe needs the key inline"
+)]
 #[repr(u8)]
 enum Key {
     P256(EcdsaVerifier<P256>),
@@ -528,7 +531,10 @@ pub struct KeyPair {
 
 // `repr(u8)` puts `P256` at tag zero, and every key is plain words beside a
 // `ZeroableRef`, so all-bits-zero is a valid value.
-#[allow(clippy::large_enum_variant)]
+#[allow(
+    clippy::large_enum_variant,
+    reason = "a boxed key would allocate, and the wipe needs the key inline"
+)]
 #[repr(u8)]
 enum EcdsaKey {
     P256(EcdsaPair<P256>),

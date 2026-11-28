@@ -47,6 +47,11 @@ impl RsaPublicKey {
     /// `R^2 mod n`, `R = 2^(64w)` for `n`'s `w` words: by
     /// pyca/verified-garbage's routine where it is faster, and otherwise by
     /// `PosInt::pub_montifier`, for an odd `n` of 1017 to 8192 bits.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "n is an RsaPosInt, at most MAX_PUBLIC_MODULUS_WORDS words and MAX_PUBLIC_MODULUS_BYTES bytes, so k and 2 * w fit their buffers"
+    )]
     fn montifier_of(n: &RsaPosInt) -> Result<RsaPosInt, Error> {
         let Some(vg) = low::rsa_vg::Precompute::check(n.as_words()) else {
             return Ok(n.pub_montifier());
@@ -133,6 +138,11 @@ impl RsaPublicKey {
     /// [`Self::public_op`] by pyca/verified-garbage's routine, for `c`
     /// below `n` and at its width.
     #[cfg(rind_backend = "x86_64")]
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "n is an RsaPosInt, at most MAX_PUBLIC_MODULUS_WORDS words and MAX_PUBLIC_MODULUS_BYTES bytes, so k and 2 * w fit their buffers, and leading_zeros() / 8 is at most e's 8 bytes"
+    )]
     fn public_op_ifma(&self, ifma: low::RsaIfma, c: &RsaPosInt) -> Result<RsaPosInt, Error> {
         let k = self.modulus_len_bytes();
         // pyca/verified-garbage's precomputed values of `n`: `n` and then
@@ -156,7 +166,8 @@ impl RsaPublicKey {
 
     /// `c^e mod n` by pyca/verified-garbage's routine, and by square and
     /// multiply on [`Self::mul`], for `c` below `n`, where the former runs.
-    #[cfg(all(test, rind_backend = "x86_64"))]
+    #[cfg(test)]
+    #[cfg(rind_backend = "x86_64")]
     pub(crate) fn public_op_both(&self, c: &RsaPosInt) -> Option<[RsaPosInt; 2]> {
         let ifma = low::RsaIfma::check(&self.n, self.e)?;
         let mut c = c.clone();

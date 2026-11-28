@@ -36,6 +36,11 @@ impl Precompute {
     /// Returns whether it did: it refuses, writing zeros, an `n` that is
     /// even, outside 512 to 8192 bits, or with a leading zero byte, or a
     /// `pre` that is not `2w` words.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "w = k.div_ceil(8) <= k = n.len(), so 2 * w fits in usize, and past the range check w <= MAX_WORDS, \
+                  so 8 * w + 48 is small"
+    )]
     pub(crate) fn precompute(self, pre: &mut [u64], n: &[u8]) -> bool {
         let k = n.len();
         let w = k.div_ceil(8);

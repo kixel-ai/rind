@@ -8,7 +8,11 @@ use core::hint::black_box;
 
 /// Copy `if_false` into `output` if `cond` is false.
 // Indexed rather than zipped, which Aeneas cannot translate.
-#[allow(clippy::needless_range_loop)]
+#[allow(
+    clippy::needless_range_loop,
+    reason = "indexes, for Aeneas, as the comment above says"
+)]
+#[expect(clippy::indexing_slicing, reason = "i < N, the length of both arrays")]
 pub(crate) fn ct_copy<const N: usize>(cond: bool, output: &mut [u8; N], if_false: &[u8; N]) {
     let mask = (black_box(cond as i16).wrapping_neg() >> 8) as u8;
     for i in 0..N {

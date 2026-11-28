@@ -23,6 +23,10 @@ pub(crate) struct SigningKey {
 }
 
 impl SigningKey {
+    #[expect(
+        clippy::unwrap_used,
+        reason = "h is 64 bytes, so its split at 32 gives two 32-byte halves"
+    )]
     pub(crate) fn from_seed(seed: &[u8; 32]) -> Self {
         // Mark rind's own copy secret, never the caller's buffer.
         let seed = &low::ct::into_secret(*seed);
@@ -54,6 +58,10 @@ impl SigningKey {
     }
 
     /// `PureEd25519` signing
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "dalek's scalar operators are arithmetic mod L, which cannot overflow or panic"
+    )]
     pub(crate) fn sign(&self, msg: &[u8]) -> [u8; 64] {
         // Step: rfc8032 5.1.6.2
         // `r := SHA-512(dom2(F, C) || prefix || msg) mod L`
@@ -119,6 +127,11 @@ impl VerifyingKey {
     }
 
     /// `PureEd25519` signature verification
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::unwrap_used,
+        reason = "sig is 64 bytes, so its split at 32 gives two 32-byte halves, and dalek's point negation cannot overflow or panic"
+    )]
     pub(crate) fn verify(&self, sig: &[u8; 64], msg: &[u8]) -> Result<(), Error> {
         // Step: rfc8032 5.1.7.1 (A' := A is an invariant for `self`)
         let (sig_r, s) = sig.split_at(32);

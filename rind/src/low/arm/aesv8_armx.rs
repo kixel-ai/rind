@@ -89,6 +89,10 @@ impl AesHwKey {
 
     /// The key's length in bytes, from the 10, 12, or 14 rounds that
     /// `aes_hw_set_encrypt_key` stores.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "the stored rounds are 10, 12 or 14, so the result is 16 to 32"
+    )]
     pub(crate) fn key_len(&self) -> usize {
         self.rounds as usize * 4 - 24
     }
@@ -192,14 +196,14 @@ unsafe fn cbc(blocks: &mut [[u8; 16]], key: *const u8, iv: &[u8; 16], enc: i32) 
     // The routine leaves the next IV here; CBC callers here start afresh.
     let mut ivec = *iv;
     let io = blocks.as_mut_ptr().cast::<u8>();
-    // SAFETY: `io` is `16 * blocks.len()` readable and writable bytes,
+    // SAFETY: `io` is `size_of_val(blocks)` readable and writable bytes,
     // which aws-lc allows to alias, and the caller vouches for `key`. The
     // routine returns at once for fewer than 16 bytes.
     unsafe {
         asm_call!(unsafe extern "C" aes_hw_cbc_encrypt(
             io,
             io,
-            16 * blocks.len(),
+            size_of_val(blocks),
             key,
             &mut ivec,
             enc,

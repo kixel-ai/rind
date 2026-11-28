@@ -26,6 +26,15 @@
 //! # }
 //! ```
 #![cfg_attr(docsrs, feature(doc_cfg))]
+// Library code never panics by accident: what can fail returns an error, and
+// what cannot states why it holds. Tests may panic (clippy.toml).
+#![warn(
+    clippy::allow_attributes_without_reason,
+    clippy::indexing_slicing,
+    clippy::panic,
+    clippy::unwrap_used
+)]
+#![cfg_attr(not(test), warn(clippy::arithmetic_side_effects))]
 
 use core::fmt;
 
@@ -49,7 +58,10 @@ pub struct KeyPair {
     serialized_der: Wiped,
 }
 
-#[allow(clippy::large_enum_variant)]
+#[allow(
+    clippy::large_enum_variant,
+    reason = "one key per `KeyPair`, so boxing the large ones would only add an allocation"
+)]
 enum Key {
     Ecdsa(EcdsaKeyPair),
     Ed25519(Ed25519KeyPair),

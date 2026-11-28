@@ -18,7 +18,10 @@ impl Ticketer {
     ///
     /// Tickets are encrypted with XChaCha20Poly1305.
     /// Ticket keys are rotated every 6 hours.
-    #[allow(clippy::new_ret_no_self)]
+    #[allow(
+        clippy::new_ret_no_self,
+        reason = "rustls's providers return the ticketer as a trait object"
+    )]
     pub fn new() -> Result<Arc<dyn ProducesTickets>, Error> {
         Ok(Arc::new(TicketRotator::new(
             ONE_TICKET_LIFETIME_SECS,
@@ -81,10 +84,7 @@ impl ProducesTickets for XChaCha20Ticketer {
             .seal_in_place_append_tag(&self.key_name, &mut sealed)
             .ok()?;
 
-        let mut res = Vec::with_capacity(self.key_name.len() + NONCE_LEN + sealed.len());
-        res.extend(&self.key_name);
-        res.extend(nonce.as_ref());
-        res.extend(sealed);
+        let res = [&self.key_name[..], nonce.as_ref(), &sealed[..]].concat();
 
         self.maximum_ciphertext_len
             .fetch_max(res.len(), Ordering::SeqCst);
@@ -99,7 +99,8 @@ impl ProducesTickets for XChaCha20Ticketer {
 
         let plain_len = ciphertext
             .len()
-            .saturating_sub(self.key_name.len() + NONCE_LEN + TAG_LEN);
+            .saturating_sub(self.key_name.len())
+            .saturating_sub(NONCE_LEN + TAG_LEN);
 
         if plain_len == 0 {
             return None;
@@ -112,8 +113,8 @@ impl ProducesTickets for XChaCha20Ticketer {
             return None;
         }
 
-        let (nonce, sealed) = rest.split_at(NONCE_LEN);
-        let nonce = RandomNonce::from(<[u8; NONCE_LEN]>::try_from(nonce).unwrap());
+        let (nonce, sealed) = rest.split_first_chunk::<NONCE_LEN>()?;
+        let nonce = RandomNonce::from(*nonce);
         let mut plain = sealed.to_vec();
 
         self.key

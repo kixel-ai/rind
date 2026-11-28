@@ -101,7 +101,8 @@ impl Kek {
     /// Wraps `key`, a multiple of 8 bytes from 16, with AES-KW; raises
     /// `WrongLength` for any other length.
     fn wrap<'py>(&self, py: Python<'py>, key: Secret<'_>) -> PyResult<Bound<'py, PyBytes>> {
-        bytes_with(py, &[], key.len() + 8, |out| {
+        // Saturating, as `bytes_with` refuses any length past `isize::MAX`.
+        bytes_with(py, &[], key.len().saturating_add(8), |out| {
             self.0.wrap_key(Mode::Kw, &key, out).map_err(error)
         })
     }
@@ -109,10 +110,11 @@ impl Kek {
     /// Unwraps an AES-KW `wrapped`; raises `DecryptFailed` unless this key
     /// wrapped it.
     fn unwrap<'py>(&self, py: Python<'py>, wrapped: Bytes<'_>) -> PyResult<Bound<'py, PyBytes>> {
-        if wrapped.len() < 24 || !wrapped.len().is_multiple_of(8) {
-            return Err(error(rind::Error::DecryptFailed));
-        }
-        bytes_with(py, &[], wrapped.len() - 8, |out| {
+        let len = match wrapped.len().checked_sub(8) {
+            Some(len) if len >= 16 && len.is_multiple_of(8) => len,
+            _ => return Err(error(rind::Error::DecryptFailed)),
+        };
+        bytes_with(py, &[], len, |out| {
             self.0
                 .unwrap_key(Mode::Kw, &wrapped, out)
                 .map(|_| ())
@@ -122,7 +124,13 @@ impl Kek {
 
     /// Wraps `key`, of any length from 1 byte, with AES-KWP.
     fn wrap_padded<'py>(&self, py: Python<'py>, key: Secret<'_>) -> PyResult<Bound<'py, PyBytes>> {
-        bytes_with(py, &[], key.len().next_multiple_of(8) + 8, |out| {
+        // `usize::MAX` on overflow, which `bytes_with` refuses as past `isize::MAX`.
+        let len = key
+            .len()
+            .checked_next_multiple_of(8)
+            .and_then(|len| len.checked_add(8))
+            .unwrap_or(usize::MAX);
+        bytes_with(py, &[], len, |out| {
             self.0.wrap_key(Mode::Kwp, &key, out).map_err(error)
         })
     }
@@ -134,18 +142,18 @@ impl Kek {
         py: Python<'py>,
         wrapped: Bytes<'_>,
     ) -> PyResult<Bound<'py, PyBytes>> {
-        if wrapped.len() < 16 || !wrapped.len().is_multiple_of(8) {
-            return Err(error(rind::Error::DecryptFailed));
-        }
+        let len = match wrapped.len().checked_sub(8) {
+            Some(len) if len >= 8 && len.is_multiple_of(8) => len,
+            _ => return Err(error(rind::Error::DecryptFailed)),
+        };
         // The unwrapped key's length is known only once unwrapped, so it
         // lands in scratch first, wiped before it is freed.
-        let mut key = Zeroizing::new(vec![0; wrapped.len() - 8]);
-        let len = self
+        let mut key = Zeroizing::new(vec![0; len]);
+        let unwrapped = self
             .0
             .unwrap_key(Mode::Kwp, &wrapped, &mut key)
-            .map_err(error)?
-            .len();
-        Ok(bytes(py, &key[..len]))
+            .map_err(error)?;
+        Ok(bytes(py, unwrapped))
     }
 }
 

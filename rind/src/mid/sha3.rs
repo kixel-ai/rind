@@ -88,6 +88,11 @@ impl<const R: usize> Shake<R> {
     }
 
     /// Fills `output` with the next bytes of output.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "buffer_offset <= R, held <= min(R - buffer_offset, len) and held <= whole <= len, so every difference and range is in bounds"
+    )]
     pub(crate) fn read(&mut self, output: &mut [u8]) {
         let len = output.len();
         let held = Ord::min(R - self.buffer_offset, len);
@@ -114,6 +119,11 @@ impl<const R: usize> Shake<R> {
 /// Each item of `inputs` shall be 40 bytes in length, which accommodates ML-KEM's `SamplePolyCBD`
 /// requirements of 33 bytes.  The 34th byte shall be `SHAKE_PAD_BYTE` and the remainder shall be
 /// zeroes.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "j < n = min(P - done, 8) and done advances by n up to P, so done + j < P and j < 8"
+)]
 pub(crate) fn shake256_batch<const P: usize>(inputs: &[[u8; 40]; P], outputs: &mut [[u8; 128]; P]) {
     let mut states = [[0; 25]; 8];
     let mut done = 0;
@@ -148,6 +158,11 @@ impl<const R: usize> SqueezingSponge<R> {
     }
 
     /// Squeeze into `output`.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "done < output.len() and n <= output.len() - done, so done + n <= output.len()"
+    )]
     pub(crate) fn squeeze(&mut self, output: &mut [u8]) {
         Entry::assert_held();
         let mut done = 0;
@@ -173,6 +188,10 @@ impl SqueezingSponge4xShake128 {
     ///
     /// Each item of `input` shall be 40 bytes in length, which matches ML-KEM's requirements
     /// of 34 bytes.  The 35th byte shall be `SHAKE_PAD_BYTE` and the remainder shall be zeroes.
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "j < 4, inside both arrays, and byte 34 is inside each 40-byte input"
+    )]
     pub(crate) fn new(inputs: &[[u8; 40]; 4]) -> Self {
         let mut states = [[0; 25]; 8];
         for j in 0..4 {
@@ -186,8 +205,15 @@ impl SqueezingSponge4xShake128 {
 
     /// Squeezes three blocks of each sponge into `output`, returning the
     /// sponges, which then owe a Keccak-f as a `SqueezingSponge` expects.
-    // Indexed rather than zipped, which Aeneas cannot translate.
-    #[allow(clippy::needless_range_loop)]
+    #[allow(
+        clippy::needless_range_loop,
+        reason = "indexed rather than zipped, which Aeneas cannot translate"
+    )]
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "block < 3 and j < 4, so start + SHAKE_128_R_BYTES <= 3 * SHAKE_128_R_BYTES, the row length"
+    )]
     pub(crate) fn squeeze(
         mut self,
         output: &mut [[u8; SHAKE_128_R_BYTES * 3]; 4],
@@ -229,8 +255,14 @@ pub(crate) type Shake256x8 = Shake8x<SHAKE_256_R_BYTES>;
 
 impl<const R: usize> Shake8x<R> {
     /// Absorbs each of `inputs`, one to eight of them, into its own instance.
-    // Indexed rather than zipped, which Aeneas cannot translate.
-    #[allow(clippy::needless_range_loop)]
+    #[allow(
+        clippy::needless_range_loop,
+        reason = "indexed rather than zipped, which Aeneas cannot translate"
+    )]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "j < lanes, which the assert bounds by 8, the length of states, and lanes = inputs.len()"
+    )]
     pub(crate) fn new<const LEN: usize>(inputs: &[[u8; LEN]]) -> Self {
         const { assert!(LEN < R) };
         let lanes = inputs.len();
@@ -246,8 +278,15 @@ impl<const R: usize> Shake8x<R> {
     /// Squeezes the next `N` bytes of each instance into its item of
     /// `outputs`, a whole number of blocks. The items for lanes not in use
     /// are left unchanged.
-    // Indexed rather than zipped, which Aeneas cannot translate.
-    #[allow(clippy::needless_range_loop)]
+    #[allow(
+        clippy::needless_range_loop,
+        reason = "indexed rather than zipped, which Aeneas cannot translate"
+    )]
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "R is a nonzero rate, block < N / R so (block + 1) * R <= N, and j < lanes <= 8"
+    )]
     pub(crate) fn squeeze<const N: usize>(&mut self, outputs: &mut [[u8; N]; 8]) {
         const { assert!(N.is_multiple_of(R)) };
         Entry::assert_held();
@@ -270,6 +309,11 @@ impl<const R: usize> Shake8x<R> {
 ///
 /// SLH-DSA hashes this way; unlike `Shake8x`, an input may span blocks.
 #[cfg(feature = "slh-dsa")]
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "lanes is 1 to 4 and at most outputs.len() (asserted), every input has P parts, used < R, and done + take <= len for each part"
+)]
 pub(crate) fn shake256_x4<const OUT: usize, const P: usize>(
     inputs: &[[&[u8]; P]],
     outputs: &mut [[u8; OUT]],
@@ -332,6 +376,10 @@ impl<const R: usize, const PAD: u8> Sponge<R, PAD> {
         Self { s: [0; _], used: 0 }
     }
 
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "used < R, and the first branch only adds a length under R - used"
+    )]
     pub(crate) fn absorb(&mut self, bytes: &[u8]) {
         let room = R - self.used;
         if bytes.len() < room {
@@ -371,12 +419,22 @@ impl<const R: usize, const PAD: u8> Sponge<R, PAD> {
 
 /// Pads input absorbed `used` bytes into the state's block, under the rate
 /// `R`: the domain byte `PAD`, then the rate's last bit.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "R is a rate from 8 to 200 bytes, so R / 8 - 1 is a lane of the 25"
+)]
 fn pad<const R: usize, const PAD: u8>(s: &mut [u64; 25], used: usize) {
     add_bytes(s, used, &[PAD]);
     s[R / 8 - 1] ^= 0x80 << 56;
 }
 
 /// XORs `bytes` into the state's little-endian lanes from byte `offset`.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "offset + bytes.len() is within the 200-byte state, so every lane index is under 25"
+)]
 fn add_bytes(s: &mut [u64; 25], offset: usize, bytes: &[u8]) {
     // Up to the next lane boundary, then whole lanes, then the rest.
     let (lane, shift) = (offset / 8, offset % 8);
@@ -399,6 +457,11 @@ fn add_bytes(s: &mut [u64; 25], offset: usize, bytes: &[u8]) {
 
 /// The state absorbing the one block `input`: a message, its first padding
 /// byte, then zeroes, under the rate `R`, whose last bit then ends the padding.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "R is a rate from 8 to 200 bytes, so R / 8 - 1 is a lane of the 25"
+)]
 fn padded_block<const R: usize>(input: &[u8; 40]) -> [u64; 25] {
     let mut s = [0; 25];
     add_bytes(&mut s, 0, input);
@@ -410,11 +473,17 @@ fn padded_block<const R: usize>(input: &[u8; 40]) -> [u64; 25] {
 /// `output`: its lanes little-endian.
 // Inlined so that a squeeze of whole blocks stores them as vectors.
 #[inline(always)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "output.len() is at most the rate, under 200 bytes, so lanes.len() < 25 and i < lanes.len()"
+)]
 fn store_bytes(s: &[u64; 25], output: &mut [u8]) {
     let (lanes, tail) = output.as_chunks_mut::<8>();
     let whole = &s[..lanes.len()];
-    // Indexed, since Aeneas cannot translate `iter_mut`.
-    #[allow(clippy::needless_range_loop)]
+    #[allow(
+        clippy::needless_range_loop,
+        reason = "indexed, since Aeneas cannot translate `iter_mut`"
+    )]
     for i in 0..lanes.len() {
         lanes[i] = whole[i].to_le_bytes();
     }
@@ -425,6 +494,7 @@ fn store_bytes(s: &[u64; 25], output: &mut [u8]) {
 }
 
 /// `bytes`, under eight, as the low bytes of a little-endian lane.
+#[expect(clippy::indexing_slicing, reason = "callers pass under 8 bytes")]
 fn partial_lane(bytes: &[u8]) -> u64 {
     let mut lane = [0u8; 8];
     lane[..bytes.len()].copy_from_slice(bytes);

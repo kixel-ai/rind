@@ -810,7 +810,7 @@ fn setup_encoding() {
 /// Drops `value` in place and checks every byte of it reads zero after.
 /// `tests/zeroing.rs` does this for the other key types, but a returned key
 /// takes a login, which only the identity-stretch suites here run cheaply.
-#[allow(unsafe_code)]
+#[allow(unsafe_code, reason = "reads the dropped value's bytes in place")]
 fn assert_wiped_on_drop<T>(value: T) {
     let mut value = core::mem::ManuallyDrop::new(value);
     // SAFETY: dropped once, and the value stays in place, so its bytes can be

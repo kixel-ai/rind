@@ -706,6 +706,7 @@ class RustFormatter(Dispatcher):
     non_upper_case_globals,
     unused_macros,
     unused_imports,
+    reason = "generated from assembly: constants keep their assembly names, and a routine uses only some of the shared macros"
 )]
 use crate::low::macros::*;
 
@@ -949,6 +950,13 @@ use crate::low::macros::*;
                 # call costs more than its copies.
                 if not allow_inline:
                     print("#[inline(never)]", file=self.output)
+
+                # A precondition that adds or multiplies slice lengths.
+                if any(re.search(r" [-+*] ", a) for a in assertions):
+                    print(
+                        '#[expect(clippy::arithmetic_side_effects, reason = "a u64 slice is at most isize::MAX / 8 words long, so sums and small multiples of lengths fit in usize")]',
+                        file=self.output,
+                    )
 
                 print(
                     """%spub(crate) %s {

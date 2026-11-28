@@ -220,6 +220,10 @@ pub struct SharedKey {
 }
 
 impl SharedKey {
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "callers pass a schedule's shared key, 16 or 32 bytes"
+    )]
     fn new(bytes: &[u8]) -> Self {
         let mut stored = [0u8; 32];
         stored[..bytes.len()].copy_from_slice(bytes);
@@ -231,6 +235,10 @@ impl SharedKey {
 }
 
 impl AsRef<[u8]> for SharedKey {
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "new sets len to at most 32 = bytes.len()"
+    )]
     fn as_ref(&self) -> &[u8] {
         &self.bytes[..usize::from(self.len)]
     }
@@ -455,7 +463,12 @@ impl VerifierRecord {
         let confirm_v: Confirm<S> = sent(mac(keys.verifier_key(), prover.as_ref()));
         let confirm_p: Confirm<S> = mac(keys.prover_key(), share_v.as_ref());
         let mut shared = [0u8; 32];
-        shared[..keys.shared().len()].copy_from_slice(keys.shared());
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "a schedule's shared key is 16 or 32 bytes"
+        )]
+        let shared_key = &mut shared[..keys.shared().len()];
+        shared_key.copy_from_slice(keys.shared());
         let state = VerifierAwaiting {
             confirm_p: confirm_p.bytes,
             shared,
@@ -591,6 +604,10 @@ impl<S> VerifierAwaiting<S> {
     /// `w1` reduced to zero. The key is wiped on failure.
     pub fn finish(self, confirm: &Confirm<S>) -> Result<SharedKey, Error> {
         let _entry = Entry::new_secret();
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "shared_len is a schedule's shared key length, 16 or 32"
+        )]
         let key = SharedKey::new(&self.shared[..usize::from(self.shared_len)]);
         let ok = ct_equal(&self.confirm_p, confirm.as_ref()) & (self.rejected == 0);
         match ct::into_public(ok) {
@@ -621,17 +638,18 @@ struct Label {
 
 impl Label {
     fn new(bytes: &[u8]) -> Result<Self, Error> {
-        if bytes.len() > MAX_LABEL {
-            return Err(Error::WrongLength);
-        }
         let mut stored = [0u8; MAX_LABEL];
-        stored[..bytes.len()].copy_from_slice(bytes);
+        stored
+            .get_mut(..bytes.len())
+            .ok_or(Error::WrongLength)?
+            .copy_from_slice(bytes);
         Ok(Self {
             bytes: stored,
             len: bytes.len() as u16,
         })
     }
 
+    #[expect(clippy::indexing_slicing, reason = "new sets len to at most MAX_LABEL")]
     fn as_slice(&self) -> &[u8] {
         &self.bytes[..usize::from(self.len)]
     }
@@ -667,6 +685,10 @@ struct Keys {
     shared_len: usize,
 }
 
+#[expect(
+    clippy::indexing_slicing,
+    reason = "schedule_keys sets each length to 16 or 32, within its 32-byte key"
+)]
 impl Keys {
     fn prover_key(&self) -> &[u8] {
         &self.prover[..self.prover_len]
@@ -771,6 +793,7 @@ struct EncodedPoint {
 }
 
 impl EncodedPoint {
+    #[expect(clippy::indexing_slicing, reason = "len is always Affine::BYTES")]
     fn as_slice(&self) -> &[u8] {
         &self.bytes[..usize::from(self.len)]
     }

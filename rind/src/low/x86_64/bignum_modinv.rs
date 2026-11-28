@@ -1,5 +1,10 @@
 // generated source. do not edit.
-#![allow(non_upper_case_globals, unused_macros, unused_imports)]
+#![allow(
+    non_upper_case_globals,
+    unused_macros,
+    unused_imports,
+    reason = "generated from assembly: constants keep their assembly names, and a routine uses only some of the shared macros"
+)]
 use crate::low::macros::*;
 
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
@@ -266,6 +271,10 @@ macro_rules! n_nshort {
 /// using t as a temporary buffer (t at least 3*k words = 24*k bytes), and
 /// assuming that a and b are coprime *and* that b is an odd number > 1.
 #[inline(never)]
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "a u64 slice is at most isize::MAX / 8 words long, so sums and small multiples of lengths fit in usize"
+)]
 pub(crate) fn bignum_modinv(z: &mut [u64], a: &[u64], b: &[u64], t: &mut [u64]) {
     assert!(z.len() == a.len());
     assert!(z.len() == b.len());

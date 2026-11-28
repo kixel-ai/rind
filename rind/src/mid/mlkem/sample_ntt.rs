@@ -14,6 +14,15 @@ use crate::{low, mid::sha3};
 /// FIPS-203's `SampleNTT` of each polynomial of a `K` by `K` matrix into
 /// `out`, row by row, or of its transpose: eight at a time where the CPU
 /// samples eight at once (but for ML-KEM-768), then four, then one.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "out holds k * k <= 16 polynomials, so done + 4 <= 20"
+)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "inputs has 4 entries for input < 4, and done + 4 <= out.len() or done < out.len() as each loop checks"
+)]
+#[expect(clippy::unwrap_used, reason = "the range is four polynomials long")]
 pub(super) fn sample_ntt(rho: &[u8; 32], transposed: bool, out: &mut [Poly]) {
     let k = super::rank(out.len());
 
@@ -73,6 +82,10 @@ fn shake_input(rho: &[u8; 32], transposed: bool, i: u8, j: u8) -> [u8; 40] {
 }
 
 /// The row and column after row `i` and column `j` of a `k` by `k` matrix.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "j + 1 < k <= 4, and i < k but for the index after the last, k <= 4"
+)]
 fn next_index(k: usize, i: u8, j: u8) -> (u8, u8) {
     if j as usize + 1 == k {
         (i + 1, 0)
@@ -93,6 +106,10 @@ fn sample_ntt_8x(rho: &[u8; 32], transposed: bool, out: &mut [Poly]) {
             *input = shake_input(rho, transposed, i, j);
             (i, j) = next_index(4, i, j);
         }
+        #[expect(
+            clippy::unwrap_used,
+            reason = "eight polynomials of N coefficients are N * 8 of them"
+        )]
         let outputs = outputs.as_flattened_mut().try_into().unwrap();
         // The eight-way sampler hands back the tails.
         low::mlkem_sample_poly_ntt_8x(&inputs, outputs, sample_poly_ntt_8x, sample_poly_ntt_tail);
@@ -113,6 +130,7 @@ fn sample_poly_ntt_tail(tail_sponge: &mut [u64; 25], tail: &mut [i16]) {
     tail_case(&mut sha3::SqueezingSponge::new(*tail_sponge), tail);
 }
 
+#[expect(clippy::indexing_slicing, reason = "poly < 4, each array's length")]
 fn sample_poly_ntt_4x(inputs: &[[u8; 40]; 4], outputs: &mut [Poly; 4]) {
     let sponge_4x = sha3::SqueezingSponge4xShake128::new(inputs);
 
@@ -138,6 +156,10 @@ fn sample_into(mut sponge: sha3::Shake128SqueezingSponge, output: &mut Poly) {
 /// then from `sponge`, which continues after them, if 336 candidates were
 /// not enough. That happens with low but not negligible probability (1 in
 /// ~120).
+#[expect(
+    clippy::indexing_slicing,
+    reason = "mlkem_rej_uniform_vartime returns how many coefficients it wrote, at most N = output.len()"
+)]
 fn sample_from(
     samples: &[u8; sha3::SHAKE_128_R_BYTES * 3],
     sponge: &mut sha3::Shake128SqueezingSponge,
@@ -153,6 +175,14 @@ fn sample_from(
 /// block at a time: each three bytes yield two samples, the low 12 bits
 /// first.
 #[cold]
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "t < SHAKE_128_R_BYTES / 3, so 3 * t + 2 < SHAKE_128_R_BYTES, and done < output.len() before each increment"
+)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "3 * t + 2 < SHAKE_128_R_BYTES = bytes.len(), and done < output.len() as each store checks"
+)]
 fn tail_case(sponge: &mut sha3::Shake128SqueezingSponge, output: &mut [i16]) {
     let mut done = 0;
     while done < output.len() {

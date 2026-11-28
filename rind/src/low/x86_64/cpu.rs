@@ -692,7 +692,10 @@ struct Registers {
 }
 
 /// Reads the registers `decode` reads.
-#[allow(unused_unsafe)]
+#[allow(
+    unused_unsafe,
+    reason = "`__cpuid` is safe from Rust 1.94 but `unsafe` on the 1.90 MSRV"
+)]
 fn registers() -> Registers {
     let mut found = Registers::default();
     // An SGX enclave cannot trust `cpuid`, so `std` reports nothing there.
@@ -741,6 +744,10 @@ fn decode(r: Registers) -> u32 {
     };
     set(r.intel, INTEL);
     // The family is leaf 1's EAX bits 11:8, plus bits 27:20 where those are 0xf.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "a 4-bit and an 8-bit field sum below 2^9"
+    )]
     let family = (r.eax1 >> 8 & 0xf)
         + if r.eax1 >> 8 & 0xf == 0xf {
             r.eax1 >> 20 & 0xff
@@ -800,8 +807,10 @@ fn decode(r: Registers) -> u32 {
 #[target_feature(enable = "sse")]
 #[inline]
 pub(crate) fn prefetch<T>(table: &[T], stride: usize) {
-    // `_mm_prefetch` is safe on newer Rust but `unsafe` on the 1.90 MSRV.
-    #[allow(unused_unsafe)]
+    #[allow(
+        unused_unsafe,
+        reason = "`_mm_prefetch` is safe on newer Rust but `unsafe` on the 1.90 MSRV"
+    )]
     // SAFETY: a prefetch never faults and is not architecturally visible.
     unsafe {
         _mm_prefetch(table.as_ptr().cast(), _MM_HINT_T0);
@@ -1224,8 +1233,11 @@ mod tests {
             assert_eq!(check, expected, "check {i}");
         }
 
+        #[allow(
+            unused_unsafe,
+            reason = "`__cpuid` is safe from Rust 1.94 but `unsafe` on the 1.90 MSRV"
+        )]
         // SAFETY: every x86_64 CPU has `cpuid`.
-        #[allow(unused_unsafe)]
         let id = unsafe { __cpuid(0) };
         let vendor = [id.ebx, id.edx, id.ecx].map(u32::to_le_bytes);
         assert_eq!(

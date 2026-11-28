@@ -13,6 +13,15 @@
 //! as ML-KEM's coefficients that AVX2 loads aligned
 //! (<https://github.com/PyO3/pyo3/issues/6526>).
 
+// Library code never panics by accident: what can fail returns an error, and
+// what cannot states why it holds. Tests may panic (clippy.toml).
+#![warn(
+    clippy::allow_attributes_without_reason,
+    clippy::indexing_slicing,
+    clippy::panic,
+    clippy::unwrap_used
+)]
+#![cfg_attr(not(test), warn(clippy::arithmetic_side_effects))]
 use std::borrow::Cow;
 use std::mem::MaybeUninit;
 
@@ -238,6 +247,10 @@ pub(crate) fn bytes_with<'py>(
         let bytes = Bound::from_owned_ptr_or_err(py, object)?.cast_into_unchecked::<PyBytes>();
         let buffer = pyo3::ffi::PyBytes_AsString(object).cast::<u8>();
         core::ptr::copy_nonoverlapping(prefix.as_ptr(), buffer, prefix.len());
+        #[expect(
+            clippy::arithmetic_side_effects,
+            reason = "prefix.len() <= len, asserted above"
+        )]
         core::ptr::write_bytes(buffer.add(prefix.len()), 0, len - prefix.len());
         fill(core::slice::from_raw_parts_mut(buffer, len))?;
         Ok(bytes)

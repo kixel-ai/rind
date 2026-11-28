@@ -15,7 +15,10 @@ impl Sha1HmacProvider for RindSha1Hmac {
         for payload in payloads {
             ctx.update(payload);
         }
-        ctx.sign().as_ref().try_into().unwrap()
+        ctx.sign()
+            .as_ref()
+            .try_into()
+            .expect("HMAC-SHA1's tag is 20 bytes")
     }
 }
 
@@ -27,7 +30,7 @@ impl Sha1Provider for RindSha1 {
         digest::digest(&digest::legacy::SHA1, data)
             .as_ref()
             .try_into()
-            .unwrap()
+            .expect("SHA-1's output is 20 bytes")
     }
 }
 
@@ -39,6 +42,6 @@ impl Sha256Provider for RindSha256 {
         digest::digest(&digest::SHA256, data)
             .as_ref()
             .try_into()
-            .unwrap()
+            .expect("SHA-256's output is 32 bytes")
     }
 }

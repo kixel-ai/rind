@@ -1,5 +1,10 @@
 // generated source. do not edit.
-#![allow(non_upper_case_globals, unused_macros, unused_imports)]
+#![allow(
+    non_upper_case_globals,
+    unused_macros,
+    unused_imports,
+    reason = "generated from assembly: constants keep their assembly names, and a routine uses only some of the shared macros"
+)]
 use crate::low::macros::*;
 
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
@@ -101,6 +106,10 @@ macro_rules! d {
 /// Does the "z := x * y" operation where x is m digits, y is n, result z is k.
 /// Truncates the result in general unless k >= m + n
 #[inline(never)]
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "a u64 slice is at most isize::MAX / 8 words long, so sums and small multiples of lengths fit in usize"
+)]
 pub(crate) fn bignum_mul(z: &mut [u64], x: &[u64], y: &[u64]) {
     assert!(z.len() >= x.len() + y.len());
     // SAFETY: inline assembly. see [crate::low::inline_assembly_safety] for safety info.

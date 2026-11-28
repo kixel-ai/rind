@@ -43,7 +43,10 @@ macro_rules! key_pair {
         /// # }
         /// ```
         #[non_exhaustive]
-        #[allow(clippy::large_enum_variant)]
+        #[allow(
+            clippy::large_enum_variant,
+            reason = "boxing would allocate per key and change the public type's layout"
+        )]
         pub enum KeyPair {
             /// An ECDSA key on P-256, which signs with
             /// [`P256_SHA256_ASN1`](crate::ecdsa::sign::P256_SHA256_ASN1).
@@ -175,7 +178,9 @@ impl KeyPair {
 }
 
 // The tests load every key type.
-#[cfg(all(test, feature = "ml-dsa", feature = "slh-dsa"))]
+// `cfg(test)` alone, so clippy sees a test module.
+#[cfg(test)]
+#[cfg(all(feature = "ml-dsa", feature = "slh-dsa"))]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
@@ -454,7 +459,8 @@ mod tests {
     }
 }
 
-#[cfg(all(test, not(all(feature = "ml-dsa", feature = "slh-dsa"))))]
+#[cfg(test)]
+#[cfg(not(all(feature = "ml-dsa", feature = "slh-dsa")))]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod left_out_tests {
     use super::*;

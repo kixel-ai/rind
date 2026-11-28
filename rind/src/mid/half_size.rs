@@ -37,6 +37,10 @@ pub(crate) struct Split {
 }
 
 /// Splits `k < 2^255` as [`Split`] describes.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "big.r >= small.r >= 2^128 in the loop, so big.r.bits() >= small.r.bits(), shift is positive when it falls, and |t| < 2^127 + 1 keeps big.t + (small.t << shift) within u128, as the comment above the loop shows"
+)]
 pub(crate) fn split(k: &[u64; 4]) -> Split {
     // Each row (r, t) has r ≡ t k (mod 8L): (8L, 0) and (k, 1) to start,
     // and every step subtracts a multiple of one row from the other. The
@@ -107,6 +111,10 @@ struct Row {
     from_k: bool,
 }
 
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "leading_zeros() of a u128 is at most 128"
+)]
 fn bits(x: u128) -> u32 {
     128 - x.leading_zeros()
 }
@@ -135,6 +143,10 @@ impl U256 {
         ]
     }
 
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "bits(hi) is at most 128, so 128 + bits(hi) <= 256"
+    )]
     fn bits(&self) -> u32 {
         match self.hi {
             0 => bits(self.lo),
@@ -144,6 +156,10 @@ impl U256 {
 
     /// `self << shift`, for `shift < 128` and no bits shifted out: `split`
     /// shifts only a row of at least 2^128 toward one below 2^256.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "callers pass shift < 128, and s is nonzero in its arm, so 128 - s is 1 to 127"
+    )]
     fn shl(&self, shift: u32) -> Self {
         match shift {
             0 => *self,
@@ -155,6 +171,10 @@ impl U256 {
     }
 
     /// `self - other`, for `other <= self`.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "callers pass other <= self, so the high halves less the borrow do not underflow"
+    )]
     fn sub(&self, other: &Self) -> Self {
         let (lo, borrow) = self.lo.overflowing_sub(other.lo);
         Self {

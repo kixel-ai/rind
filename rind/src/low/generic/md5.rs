@@ -15,7 +15,10 @@
 #[inline(always)]
 #[cfg(not(any(target_family = "wasm", miri)))]
 // The operand appears only in a comment, so no register width is printed.
-#[allow(asm_sub_register)]
+#[allow(
+    asm_sub_register,
+    reason = "the operand appears only in a comment, so its register width never matters"
+)]
 fn opaque(mut v: u32) -> u32 {
     // SAFETY: the assembly is empty, so it reads, writes, and clobbers
     // nothing but returns `v` in the register it took it in.

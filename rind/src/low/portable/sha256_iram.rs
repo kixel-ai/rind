@@ -247,6 +247,10 @@ fn message_word<const BYTE: usize>(block: &[u8; 64]) -> u32 {
 
 #[cfg(not(target_arch = "xtensa"))]
 #[inline(always)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "callers pass BYTE < 64, so BYTE / 4 indexes the block's 16 words"
+)]
 fn message_word<const BYTE: usize>(block: &[u8; 64]) -> u32 {
     let (words, _) = block.as_chunks::<4>();
     u32::from_be_bytes(words[BYTE / 4])
@@ -268,6 +272,10 @@ impl Window {
     }
 
     #[inline(always)]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "callers pass constant slots below 16"
+    )]
     fn set(&mut self, slot: usize, w: u32) {
         self.0[slot].write(w);
     }
@@ -278,6 +286,10 @@ impl Window {
     ///
     /// `slot` has been written.
     #[inline(always)]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "callers pass constant slots below 16"
+    )]
     unsafe fn get(&self, slot: usize) -> u32 {
         // SAFETY: the caller's promise.
         unsafe { self.0[slot].assume_init() }
@@ -287,6 +299,10 @@ impl Window {
 // `W[t] = σ1(W[t-2]) + W[t-7] + σ0(W[t-15]) + W[t-16]`, `SLOT = t mod 16`.
 // The slot is the round number, not the message.
 #[inline(always)]
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "SLOT is below 16, so SLOT + 14 does not overflow"
+)]
 fn schedule<const SLOT: usize>(w: &mut Window) -> u32 {
     // SAFETY: the message rounds write every slot before the first call.
     // `SLOT` is `0..16`. A slot already written in this group is the new
@@ -338,6 +354,7 @@ macro_rules! schedule_rounds {
     all(target_arch = "xtensa", target_os = "espidf"),
     unsafe(link_section = ".iram1.rind_sha256_compress_block")
 )]
+#[expect(clippy::arithmetic_side_effects, reason = "n counts three trips")]
 fn sha256_compress_block(state: &mut [u32; 8], block: &[u8; 64]) {
     let mut a = state[0];
     let mut b = state[1];
@@ -434,6 +451,7 @@ impl<'a> Blocks<'a> {
     all(target_arch = "xtensa", target_os = "espidf"),
     unsafe(link_section = ".iram1.rind_sha256_nblocks")
 )]
+#[expect(clippy::arithmetic_side_effects, reason = "n < whole before each step")]
 pub(super) fn sha256_update_nblocks(st: &mut [u32; 8], blocks: &[u8]) {
     // The length is public.
     let mut cursor = Blocks::new(blocks);

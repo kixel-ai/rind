@@ -20,7 +20,10 @@
 
 // A parameter set's sizes are associated constants, which stable Rust cannot
 // pass as `as_chunks`'s const argument in generic code.
-#![allow(clippy::chunks_exact_to_as_chunks)]
+#![expect(
+    clippy::chunks_exact_to_as_chunks,
+    reason = "as_chunks takes no associated constant in generic code"
+)]
 
 use alloc::boxed::Box;
 use core::fmt;
@@ -183,7 +186,7 @@ params! {
 /// `m`, the message digest's length: the FORS indices, then the tree and
 /// leaf indices.
 const fn digest_len<P: Params>() -> usize {
-    (P::K * P::A).div_ceil(8) + (P::H - P::HP).div_ceil(8) + P::HP.div_ceil(8)
+    const { (P::K * P::A).div_ceil(8) + (P::H - P::HP).div_ceil(8) + P::HP.div_ceil(8) }
 }
 
 /// The hashes a parameter set runs at once.
@@ -205,12 +208,11 @@ impl<P: Params> KeyPair<P> {
         let _entry = Entry::new_secret();
         let n = P::N;
         let mut seeds = [0u8; 3 * MAX_N];
-        SystemRandom.fill(&mut seeds[..3 * n])?;
-        Ok(Self::from_seeds(
-            &seeds[..n],
-            &seeds[n..2 * n],
-            &seeds[2 * n..3 * n],
-        ))
+        let (seeds, _) = seeds.split_at_mut(const { 3 * P::N });
+        SystemRandom.fill(seeds)?;
+        let (sk_seed, rest) = seeds.split_at(n);
+        let (sk_prf, pk_seed) = rest.split_at(n);
+        Ok(Self::from_seeds(sk_seed, sk_prf, pk_seed))
     }
 
     /// FIPS 205's `slh_keygen_internal`: the key pair `SK.seed`, `SK.prf`,
@@ -221,13 +223,16 @@ impl<P: Params> KeyPair<P> {
         let mut key = Self {
             secret_key: P::SecretKey::zeroed(),
         };
-        let sk = key.secret_key.as_mut();
-        sk[..n].copy_from_slice(sk_seed);
-        sk[n..2 * n].copy_from_slice(sk_prf);
-        sk[2 * n..3 * n].copy_from_slice(pk_seed);
-        low::ct::secret_slice(&sk[..2 * n]);
-        let root = top_root::<P>(&sk[..n], &sk[2 * n..3 * n]);
-        sk[3 * n..].copy_from_slice(&root[..n]);
+        let (secret, public) = key.secret_key.as_mut().split_at_mut(const { 2 * P::N });
+        let (sk_seed_out, sk_prf_out) = secret.split_at_mut(n);
+        let (pk_seed_out, pk_root) = public.split_at_mut(n);
+        sk_seed_out.copy_from_slice(sk_seed);
+        sk_prf_out.copy_from_slice(sk_prf);
+        pk_seed_out.copy_from_slice(pk_seed);
+        low::ct::secret_slice(secret);
+        let (sk_seed, _) = secret.split_at(n);
+        let root = top_root::<P>(sk_seed, pk_seed_out);
+        pk_root.copy_from_slice(root.split_at(n).0);
         key
     }
 
@@ -237,11 +242,14 @@ impl<P: Params> KeyPair<P> {
     pub(crate) fn from_secret_key(sk: &[u8]) -> Result<Self, Error> {
         let _entry = Entry::new_secret();
         let n = P::N;
-        if sk.len() != 4 * n {
+        if sk.len() != const { 4 * P::N } {
             return Err(KeyFormatError::WrongLength.into());
         }
-        let key = Self::from_seeds(&sk[..n], &sk[n..2 * n], &sk[2 * n..3 * n]);
-        match key.public_key()[n..] == sk[3 * n..] {
+        let (sk_seed, rest) = sk.split_at(n);
+        let (sk_prf, rest) = rest.split_at(n);
+        let (pk_seed, pk_root) = rest.split_at(n);
+        let key = Self::from_seeds(sk_seed, sk_prf, pk_seed);
+        match key.public_key().split_at(n).1 == pk_root {
             true => Ok(key),
             false => Err(KeyFormatError::MismatchedPublicKey.into()),
         }
@@ -254,7 +262,7 @@ impl<P: Params> KeyPair<P> {
 
     /// FIPS 205's public key encoding, `PK.seed || PK.root`.
     pub(crate) fn public_key(&self) -> &[u8] {
-        &self.secret_key.as_ref()[2 * P::N..]
+        self.secret_key.as_ref().split_at(const { 2 * P::N }).1
     }
 
     /// Signs `prefix || message` with fresh randomness: FIPS 205's
@@ -263,9 +271,10 @@ impl<P: Params> KeyPair<P> {
     pub(crate) fn sign(&self, prefix: &[u8], message: &[u8]) -> Result<Box<[u8]>, Error> {
         let _entry = Entry::new_secret();
         let mut addrnd = [0u8; MAX_N];
-        SystemRandom.fill(&mut addrnd[..P::N])?;
-        low::ct::secret_slice(&addrnd);
-        Ok(self.sign_internal(prefix, message, &addrnd[..P::N]))
+        let (addrnd, _) = addrnd.split_at_mut(P::N);
+        SystemRandom.fill(addrnd)?;
+        low::ct::secret_slice(addrnd);
+        Ok(self.sign_internal(prefix, message, addrnd))
     }
 
     /// FIPS 205's `slh_sign_internal` with randomness `addrnd`, `n` bytes.
@@ -303,11 +312,11 @@ pub(crate) fn verify<P: Params>(
 ) -> Result<(), Error> {
     let _entry = Entry::new_public();
     let n = P::N;
-    if pk.len() != 2 * n || signature.len() != P::SIG_LEN {
+    if pk.len() != const { 2 * P::N } || signature.len() != P::SIG_LEN {
         return Err(Error::BadSignature);
     }
     let (pk_seed, pk_root) = pk.split_at(n);
-    let hasher = Hasher::<P>::new(pk_seed, &[0; MAX_N][..n]);
+    let hasher = Hasher::<P>::new(pk_seed, [0; MAX_N].split_at(n).0);
 
     let (r, signature) = signature.split_at(n);
     let (md, mut tree, mut idx_leaf) = hash_message::<P>(r, pk_seed, pk_root, prefix, message);
@@ -328,17 +337,18 @@ pub(crate) fn verify<P: Params>(
         wots_addr.set_keypair(idx_leaf);
         wots_pk_addr.copy_keypair(&wots_addr);
 
-        let (wots, auth_path) = xmss.split_at(P::LEN * n);
+        let (wots, auth_path) = xmss.split_at(const { P::LEN * P::N });
         let mut wots_pk = [0u8; MAX_LEN * MAX_N];
-        wots_pk_from_sig::<P>(&hasher, &mut wots_pk[..P::LEN * n], wots, &root, &wots_addr);
-        let leaf = hasher.thash1(&wots_pk[..P::LEN * n], &wots_pk_addr);
+        let (wots_pk, _) = wots_pk.split_at_mut(const { P::LEN * P::N });
+        wots_pk_from_sig::<P>(&hasher, wots_pk, wots, &root, &wots_addr);
+        let leaf = hasher.thash1(wots_pk, &wots_pk_addr);
         root = compute_root::<P>(&hasher, &leaf, idx_leaf, 0, auth_path, &mut tree_addr);
 
-        idx_leaf = (tree & ((1 << P::HP) - 1)) as u32;
+        idx_leaf = (tree & const { (1 << P::HP) - 1 }) as u32;
         tree >>= P::HP;
     }
 
-    match root[..n] == *pk_root {
+    match root.split_at(n).0 == pk_root {
         true => Ok(()),
         false => Err(Error::BadSignature),
     }
@@ -349,15 +359,15 @@ fn top_root<P: Params>(sk_seed: &[u8], pk_seed: &[u8]) -> [u8; MAX_N] {
     let hasher = Hasher::<P>::new(pk_seed, sk_seed);
     let mut top_tree_addr = Address::new(TREE);
     let mut wots_addr = Address::new(WOTS_HASH);
-    top_tree_addr.set_layer(P::D as u32 - 1);
-    wots_addr.set_layer(P::D as u32 - 1);
+    top_tree_addr.set_layer(const { P::D as u32 - 1 });
+    wots_addr.set_layer(const { P::D as u32 - 1 });
     // Leaf `u32::MAX` is none, so no signature or authentication path is
     // written.
     let mut unused = [0u8; (MAX_LEN + MAX_A) * MAX_N];
     let mut root = [0u8; MAX_N];
     merkle_sign::<P>(
         &hasher,
-        &mut unused[..P::XMSS_LEN],
+        unused.split_at_mut(P::XMSS_LEN).0,
         &mut root,
         &wots_addr,
         &top_tree_addr,
@@ -382,9 +392,9 @@ fn sign_internal<P: Params>(
     // `R` is the signature's first `n` bytes.
     let r = low::ct::into_public(prf_msg::<P>(sk_prf, addrnd, prefix, message));
     let (sig_r, signature) = signature.split_at_mut(n);
-    sig_r.copy_from_slice(&r[..n]);
-    let (md, mut tree, mut idx_leaf) =
-        hash_message::<P>(&r[..n], pk_seed, pk_root, prefix, message);
+    let (r, _) = r.split_at(n);
+    sig_r.copy_from_slice(r);
+    let (md, mut tree, mut idx_leaf) = hash_message::<P>(r, pk_seed, pk_root, prefix, message);
 
     let mut wots_addr = Address::new(WOTS_HASH);
     let mut tree_addr = Address::new(TREE);
@@ -404,7 +414,7 @@ fn sign_internal<P: Params>(
         merkle_sign::<P>(&hasher, xmss, &mut root, &wots_addr, &tree_addr, idx_leaf);
         root = low::ct::into_public(root);
 
-        idx_leaf = (tree & ((1 << P::HP) - 1)) as u32;
+        idx_leaf = (tree & const { (1 << P::HP) - 1 }) as u32;
         tree >>= P::HP;
     }
 }
@@ -418,26 +428,27 @@ fn hash_message<P: Params>(
     prefix: &[u8],
     message: &[u8],
 ) -> ([u8; MAX_M], u64, u32) {
-    let m = digest_len::<P>();
     let mut digest = [0u8; MAX_M];
+    let (digest_m, _) = digest.split_at_mut(digest_len::<P>());
     if P::SHAKE {
-        shake256(&[r, pk_seed, pk_root, prefix, message], &mut digest[..m]);
+        shake256(&[r, pk_seed, pk_root, prefix, message], digest_m);
     } else {
         // MGF1-SHA-X(R || PK.seed || SHA-X(R || PK.seed || PK.root || M), m)
         let (inner, len) = sha2::<P>(&[r, pk_seed, pk_root, prefix, message]);
-        for (counter, chunk) in (0u32..).zip(digest[..m].chunks_mut(len)) {
-            let (block, _) = sha2::<P>(&[r, pk_seed, &inner[..len], &counter.to_be_bytes()]);
-            chunk.copy_from_slice(&block[..chunk.len()]);
+        let (inner, _) = inner.split_at(len);
+        for (counter, chunk) in (0u32..).zip(digest_m.chunks_mut(len)) {
+            let (block, _) = sha2::<P>(&[r, pk_seed, inner, &counter.to_be_bytes()]);
+            chunk.copy_from_slice(block.split_at(chunk.len()).0);
         }
     }
 
-    let md_len = (P::K * P::A).div_ceil(8);
-    let tree_len = (P::H - P::HP).div_ceil(8);
-    let tree_bits = P::H - P::HP;
+    let md_len = const { (P::K * P::A).div_ceil(8) };
+    let tree_len = const { (P::H - P::HP).div_ceil(8) };
     let (_, rest) = digest.split_at(md_len);
     let (tree_bytes, rest) = rest.split_at(tree_len);
-    let tree = to_int(tree_bytes) & (u64::MAX >> (64 - tree_bits));
-    let leaf = to_int(&rest[..P::HP.div_ceil(8)]) & ((1 << P::HP) - 1);
+    let (leaf_bytes, _) = rest.split_at(const { P::HP.div_ceil(8) });
+    let tree = to_int(tree_bytes) & const { u64::MAX >> (64 - (P::H - P::HP)) };
+    let leaf = to_int(leaf_bytes) & const { (1 << P::HP) - 1 };
     (digest, tree, leaf as u32)
 }
 
@@ -459,7 +470,7 @@ fn prf_msg<P: Params>(
 ) -> [u8; MAX_N] {
     let mut r = [0u8; MAX_N];
     if P::SHAKE {
-        shake256(&[sk_prf, opt_rand, prefix, message], &mut r[..P::N]);
+        shake256(&[sk_prf, opt_rand, prefix, message], r.split_at_mut(P::N).0);
     } else {
         // HMAC-SHA-X(SK.prf, opt_rand || prefix || message), whose key is
         // shorter than a block.
@@ -471,9 +482,12 @@ fn prf_msg<P: Params>(
             }
             pad
         };
-        let (inner, len) = sha2::<P>(&[&keyed(0x36)[..block], opt_rand, prefix, message]);
-        let (outer, _) = sha2::<P>(&[&keyed(0x5c)[..block], &inner[..len]]);
-        r[..P::N].copy_from_slice(&outer[..P::N]);
+        let (inner_pad, outer_pad) = (keyed(0x36), keyed(0x5c));
+        let (inner, len) = sha2::<P>(&[inner_pad.split_at(block).0, opt_rand, prefix, message]);
+        let (outer, _) = sha2::<P>(&[outer_pad.split_at(block).0, inner.split_at(len).0]);
+        r.split_at_mut(P::N)
+            .0
+            .copy_from_slice(outer.split_at(P::N).0);
     }
     r
 }
@@ -512,16 +526,19 @@ fn to_int(bytes: &[u8]) -> u64 {
 /// The WOTS+ chain lengths that sign `message`, `n` bytes: its base-16
 /// digits, then their checksum's three.
 fn chain_lengths<P: Params>(message: &[u8]) -> [u8; MAX_LEN] {
-    let len1 = 2 * P::N;
     let mut lengths = [0u8; MAX_LEN];
-    for (i, byte) in message[..P::N].iter().enumerate() {
-        lengths[2 * i] = byte >> 4;
-        lengths[2 * i + 1] = byte & 0xf;
+    let (digits, checksum_digits) = lengths.split_at_mut(const { 2 * P::N });
+    for (pair, byte) in digits.as_chunks_mut::<2>().0.iter_mut().zip(message) {
+        *pair = [byte >> 4, byte & 0xf];
     }
-    let checksum: u32 = lengths[..len1].iter().map(|&l| W - 1 - u32::from(l)).sum();
-    lengths[len1] = (checksum >> 8) as u8 & 0xf;
-    lengths[len1 + 1] = (checksum >> 4) as u8 & 0xf;
-    lengths[len1 + 2] = checksum as u8 & 0xf;
+    // Each digit's `w - 1 - digit`, which for a digit below `w = 16` is its
+    // complement in four bits; the at most 64 of them sum below 2^10.
+    let checksum: u32 = digits.iter().map(|&l| u32::from(l ^ 0xf)).sum();
+    checksum_digits.split_at_mut(3).0.copy_from_slice(&[
+        (checksum >> 8) as u8 & 0xf,
+        (checksum >> 4) as u8 & 0xf,
+        checksum as u8 & 0xf,
+    ]);
     lengths
 }
 
@@ -538,16 +555,20 @@ fn merkle_sign<P: Params>(
     tree_addr: &Address,
     idx_leaf: u32,
 ) {
-    let (wots_sig, auth_path) = xmss.split_at_mut(P::LEN * P::N);
+    let (wots_sig, auth_path) = xmss.split_at_mut(const { P::LEN * P::N });
     let steps = chain_lengths::<P>(&root[..]);
 
     let mut tree_addrs = [Address::new(TREE); MAX_LANES];
     let mut leaf_addrs = [Address::new(WOTS_HASH); MAX_LANES];
     let mut pk_addrs = [Address::new(WOTS_PK); MAX_LANES];
-    for j in 0..MAX_LANES {
-        tree_addrs[j].copy_subtree(tree_addr);
-        leaf_addrs[j].copy_subtree(wots_addr);
-        pk_addrs[j].copy_subtree(wots_addr);
+    for ((tree, leaf), pk) in tree_addrs
+        .iter_mut()
+        .zip(&mut leaf_addrs)
+        .zip(&mut pk_addrs)
+    {
+        tree.copy_subtree(tree_addr);
+        leaf.copy_subtree(wots_addr);
+        pk.copy_subtree(wots_addr);
     }
 
     treehash::<P>(
@@ -584,54 +605,81 @@ fn wots_gen_leaves<P: Params>(
 ) {
     let lanes = lanes::<P>();
     let n = P::N;
-    let mask = lanes as u32 - 1;
+    let mask = const { self::lanes::<P>() as u32 - 1 };
     // The lane whose chains sign, if any.
     let signing = ((leaf_idx ^ sign_leaf) & !mask == 0).then_some((sign_leaf & mask) as usize);
+    let (leaf_addrs, _) = leaf_addrs.split_at_mut(lanes);
+    let (pk_addrs, _) = pk_addrs.split_at_mut(lanes);
 
-    for j in 0..lanes {
-        leaf_addrs[j].set_keypair(leaf_idx + j as u32);
-        pk_addrs[j].set_keypair(leaf_idx + j as u32);
+    for (j, (leaf, pk)) in (0u32..).zip(leaf_addrs.iter_mut().zip(pk_addrs.iter_mut())) {
+        #[expect(
+            clippy::arithmetic_side_effects,
+            reason = "leaf_idx + j < 2^h' <= 2^9, the tree's leaves"
+        )]
+        let keypair = leaf_idx + j;
+        leaf.set_keypair(keypair);
+        pk.set_keypair(keypair);
     }
 
     let mut public_keys = [[0u8; MAX_LEN * MAX_N]; MAX_LANES];
-    for chain in 0..P::LEN {
-        for addr in &mut leaf_addrs[..lanes] {
-            addr.set_chain(chain as u32);
+    // `sig` is `len` chains of `n` bytes.
+    for (chain, (&step, sig_chain)) in (0u32..).zip(steps.iter().zip(sig.chunks_exact_mut(n))) {
+        for addr in leaf_addrs.iter_mut() {
+            addr.set_chain(chain);
             addr.set_hash(0);
             addr.set_type(WOTS_PRF);
         }
         let mut nodes = [[0u8; MAX_N]; MAX_LANES];
-        hasher.prf(&leaf_addrs[..lanes], &mut nodes);
-        for addr in &mut leaf_addrs[..lanes] {
+        hasher.prf(leaf_addrs, &mut nodes);
+        for addr in leaf_addrs.iter_mut() {
             addr.set_type(WOTS_HASH);
         }
 
-        let step = u32::from(steps[chain]);
+        let step = u32::from(step);
         for k in 0..W {
             if let Some(lane) = signing
                 && k == step
             {
-                sig[chain * n..(chain + 1) * n].copy_from_slice(&nodes[lane][..n]);
+                #[expect(clippy::indexing_slicing, reason = "lane = sign_leaf & mask < lanes")]
+                let node = &nodes[lane];
+                sig_chain.copy_from_slice(node.split_at(n).0);
             }
             if k == W - 1 {
                 break;
             }
-            for addr in &mut leaf_addrs[..lanes] {
+            for addr in leaf_addrs.iter_mut() {
                 addr.set_hash(k);
             }
-            hasher.f_in_place(&mut nodes, &leaf_addrs[..lanes]);
+            hasher.f_in_place(&mut nodes, leaf_addrs);
         }
-        for (public_key, node) in public_keys.iter_mut().zip(&nodes[..lanes]) {
-            public_key[chain * n..(chain + 1) * n].copy_from_slice(&node[..n]);
+        let chain = chain as usize;
+        for (public_key, node) in public_keys.iter_mut().zip(&nodes).take(lanes) {
+            #[expect(
+                clippy::arithmetic_side_effects,
+                clippy::indexing_slicing,
+                reason = "chain < len, so (chain + 1) * n <= len * n <= MAX_LEN * MAX_N"
+            )]
+            let public_key = &mut public_key[chain * n..(chain + 1) * n];
+            public_key.copy_from_slice(node.split_at(n).0);
         }
     }
 
-    let inputs: [&[u8]; MAX_LANES] = core::array::from_fn(|j| &public_keys[j][..P::LEN * n]);
-    hasher.thash(&inputs[..lanes], &pk_addrs[..lanes], leaves);
+    let inputs = public_keys
+        .each_ref()
+        .map(|public_key| public_key.split_at(const { P::LEN * P::N }).0);
+    hasher.thash(inputs.split_at(lanes).0, pk_addrs, leaves);
 }
 
 /// The WOTS+ public key a signature `sig` on `message` makes, written to
 /// `pk`.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "steps and start are digits below w = 16, the counts total len, active > 0 where it falls, and k + start[chain] < w"
+)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "steps are below w = 16, the counts' length; chain < len <= MAX_LEN and j < group.len() <= lanes <= MAX_LANES index the arrays, active <= group.len(), and pk is len chains of n bytes"
+)]
 fn wots_pk_from_sig<P: Params>(
     hasher: &Hasher<P>,
     pk: &mut [u8],
@@ -642,7 +690,7 @@ fn wots_pk_from_sig<P: Params>(
     let n = P::N;
     let lanes = lanes::<P>();
     let start = chain_lengths::<P>(message);
-    let steps: [u8; MAX_LEN] = core::array::from_fn(|i| W as u8 - 1 - start[i]);
+    let steps = start.map(|start| W as u8 - 1 - start);
     pk.copy_from_slice(sig);
 
     // Sorting the chains longest first lets each group of lanes drop its
@@ -689,10 +737,18 @@ fn wots_pk_from_sig<P: Params>(
 
 /// The FORS indices `md` encodes: `k` integers of `a` bits, most significant
 /// bit first.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "offset < k * a <= 35 * 14, and 7 - (offset & 7) >= 0"
+)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "offset < k * a, so offset >> 3 < ceil(k * a / 8) <= m, md's length"
+)]
 fn fors_indices<P: Params>(md: &[u8]) -> [u32; MAX_K] {
     let mut indices = [0u32; MAX_K];
     let mut offset = 0;
-    for index in &mut indices[..P::K] {
+    for index in indices.iter_mut().take(P::K) {
         for _ in 0..P::A {
             let bit = (md[offset >> 3] >> (7 - (offset & 7))) & 1;
             *index = (*index << 1) | u32::from(bit);
@@ -714,23 +770,34 @@ fn fors_sign<P: Params>(
     let lanes = lanes::<P>();
     let mut tree_addrs = [Address::new(FORS_TREE); MAX_LANES];
     let mut leaf_addrs = [Address::new(FORS_TREE); MAX_LANES];
-    for j in 0..MAX_LANES {
-        tree_addrs[j].copy_keypair(fors_addr);
-        leaf_addrs[j].copy_keypair(fors_addr);
+    for (tree, leaf) in tree_addrs.iter_mut().zip(&mut leaf_addrs) {
+        tree.copy_keypair(fors_addr);
+        leaf.copy_keypair(fors_addr);
     }
+    let (leaf_addrs, _) = leaf_addrs.split_at_mut(lanes);
     let mut roots_addr = Address::new(FORS_ROOTS);
     roots_addr.copy_keypair(fors_addr);
 
     let indices = fors_indices::<P>(md);
     let mut roots = [0u8; MAX_K * MAX_N];
-    for (i, tree) in sig.chunks_exact_mut((P::A + 1) * n).enumerate() {
-        let idx_offset = (i as u32) << P::A;
+    // `sig` is `k` trees, and `roots` has room for `k` roots.
+    let trees = sig.chunks_exact_mut(const { (P::A + 1) * P::N });
+    for ((i, tree), (&index, root_out)) in (0u32..)
+        .zip(trees)
+        .zip(indices.iter().zip(roots.chunks_exact_mut(n)))
+    {
+        let idx_offset = i << P::A;
         let (sk, auth_path) = tree.split_at_mut(n);
 
+        #[expect(
+            clippy::arithmetic_side_effects,
+            reason = "index < 2^a and idx_offset = i * 2^a with i < k, so the sum is below k * 2^a <= 35 * 2^14"
+        )]
+        let leaf = index + idx_offset;
         tree_addrs[0].set_tree_height(0);
-        tree_addrs[0].set_tree_index(indices[i] + idx_offset);
+        tree_addrs[0].set_tree_index(leaf);
         tree_addrs[0].set_type(FORS_PRF);
-        sk.copy_from_slice(&hasher.prf1(&tree_addrs[0])[..n]);
+        sk.copy_from_slice(hasher.prf1(&tree_addrs[0]).split_at(n).0);
         tree_addrs[0].set_type(FORS_TREE);
 
         let mut root = [0u8; MAX_N];
@@ -738,25 +805,30 @@ fn fors_sign<P: Params>(
             hasher,
             &mut root,
             auth_path,
-            indices[i],
+            index,
             idx_offset,
             P::A as u32,
             &mut tree_addrs,
             |leaves, addr_idx| {
-                for (j, addr) in leaf_addrs[..lanes].iter_mut().enumerate() {
-                    addr.set_tree_index(addr_idx + j as u32);
+                for (j, addr) in (0u32..).zip(leaf_addrs.iter_mut()) {
+                    #[expect(
+                        clippy::arithmetic_side_effects,
+                        reason = "addr_idx + j < k * 2^a <= 35 * 2^14, the FORS leaves"
+                    )]
+                    let tree_index = addr_idx + j;
+                    addr.set_tree_index(tree_index);
                     addr.set_type(FORS_PRF);
                 }
-                hasher.prf(&leaf_addrs[..lanes], leaves);
-                for addr in &mut leaf_addrs[..lanes] {
+                hasher.prf(leaf_addrs, leaves);
+                for addr in leaf_addrs.iter_mut() {
                     addr.set_type(FORS_TREE);
                 }
-                hasher.f_in_place(leaves, &leaf_addrs[..lanes]);
+                hasher.f_in_place(leaves, leaf_addrs);
             },
         );
-        roots[i * n..(i + 1) * n].copy_from_slice(&root[..n]);
+        root_out.copy_from_slice(root.split_at(n).0);
     }
-    hasher.thash1(&roots[..P::K * n], &roots_addr)
+    hasher.thash1(roots.split_at(const { P::K * P::N }).0, &roots_addr)
 }
 
 /// The FORS public key a signature `sig` on `md` makes.
@@ -774,23 +846,26 @@ fn fors_pk_from_sig<P: Params>(
 
     let indices = fors_indices::<P>(md);
     let mut roots = [0u8; MAX_K * MAX_N];
-    for (i, tree) in sig.chunks_exact((P::A + 1) * n).enumerate() {
-        let idx_offset = (i as u32) << P::A;
+    // `sig` is `k` trees, and `roots` has room for `k` roots.
+    let trees = sig.chunks_exact(const { (P::A + 1) * P::N });
+    for ((i, tree), (&index, root_out)) in (0u32..)
+        .zip(trees)
+        .zip(indices.iter().zip(roots.chunks_exact_mut(n)))
+    {
+        let idx_offset = i << P::A;
         let (sk, auth_path) = tree.split_at(n);
+        #[expect(
+            clippy::arithmetic_side_effects,
+            reason = "index < 2^a and idx_offset = i * 2^a with i < k, so the sum is below k * 2^a <= 35 * 2^14"
+        )]
+        let tree_index = index + idx_offset;
         tree_addr.set_tree_height(0);
-        tree_addr.set_tree_index(indices[i] + idx_offset);
+        tree_addr.set_tree_index(tree_index);
         let leaf = hasher.thash1(sk, &tree_addr);
-        let root = compute_root::<P>(
-            hasher,
-            &leaf,
-            indices[i],
-            idx_offset,
-            auth_path,
-            &mut tree_addr,
-        );
-        roots[i * n..(i + 1) * n].copy_from_slice(&root[..n]);
+        let root = compute_root::<P>(hasher, &leaf, index, idx_offset, auth_path, &mut tree_addr);
+        root_out.copy_from_slice(root.split_at(n).0);
     }
-    hasher.thash1(&roots[..P::K * n], &roots_addr)
+    hasher.thash1(roots.split_at(const { P::K * P::N }).0, &roots_addr)
 }
 
 /// The root a leaf and its authentication path make, `auth_path.len() / n`
@@ -805,23 +880,31 @@ fn compute_root<P: Params>(
 ) -> [u8; MAX_N] {
     let n = P::N;
     let mut node = *leaf;
-    for (height, sibling) in auth_path.chunks_exact(n).enumerate() {
+    for (height, sibling) in (1u32..).zip(auth_path.chunks_exact(n)) {
         let mut pair = [0u8; 2 * MAX_N];
+        let (pair, _) = pair.split_at_mut(const { 2 * P::N });
+        let (left, right) = pair.split_at_mut(n);
+        let (node_n, _) = node.split_at(n);
         match leaf_idx & 1 {
             0 => {
-                pair[..n].copy_from_slice(&node[..n]);
-                pair[n..2 * n].copy_from_slice(sibling);
+                left.copy_from_slice(node_n);
+                right.copy_from_slice(sibling);
             }
             _ => {
-                pair[..n].copy_from_slice(sibling);
-                pair[n..2 * n].copy_from_slice(&node[..n]);
+                left.copy_from_slice(sibling);
+                right.copy_from_slice(node_n);
             }
         }
         leaf_idx >>= 1;
         idx_offset >>= 1;
-        addr.set_tree_height(height as u32 + 1);
-        addr.set_tree_index(leaf_idx + idx_offset);
-        node = hasher.thash1(&pair[..2 * n], addr);
+        addr.set_tree_height(height);
+        #[expect(
+            clippy::arithmetic_side_effects,
+            reason = "leaf_idx is below 2^h', or 2^a with idx_offset = i * 2^a for FORS tree i < k, each shifted alike, so the sum is below 35 * 2^14"
+        )]
+        let tree_index = leaf_idx + idx_offset;
+        addr.set_tree_index(tree_index);
+        node = hasher.thash1(pair, addr);
     }
     node
 }
@@ -835,7 +918,14 @@ fn compute_root<P: Params>(
 /// combine into their parents. The top levels, where fewer nodes remain than
 /// lanes, keep combining in place, the leftmost lanes then holding garbage
 /// and `left_adj` saying where the real nodes start.
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "lane_bits = log2(lanes) <= 3 <= h <= tree_height <= MAX_A = 14 (params! asserts 2^h' and 2^a reach MAX_LANES), so the shifts and differences stay in range, and every index and count stays below k * 2^a <= 35 * 2^14"
+)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "h < tree_height <= MAX_A indexes stack and the auth path's tree_height nodes of n bytes, and lane, j + 1 < lanes <= MAX_LANES index the lanes"
+)]
 fn treehash<P: Params>(
     hasher: &Hasher<P>,
     root: &mut [u8; MAX_N],
@@ -1020,11 +1110,11 @@ impl<P: Params> Hasher<P> {
             sha512: Sha512State::new(),
             _params: core::marker::PhantomData,
         };
-        hasher.pk_seed[..n].copy_from_slice(pk_seed);
-        hasher.sk_seed[..n].copy_from_slice(sk_seed);
+        hasher.pk_seed.split_at_mut(n).0.copy_from_slice(pk_seed);
+        hasher.sk_seed.split_at_mut(n).0.copy_from_slice(sk_seed);
         if !P::SHAKE {
             let mut block = [0u8; 128];
-            block[..n].copy_from_slice(pk_seed);
+            block.split_at_mut(n).0.copy_from_slice(pk_seed);
             hasher.sha256.update_blocks(&block[..64]);
             if P::N >= 24 {
                 hasher.sha512.update_blocks(&block);
@@ -1050,15 +1140,25 @@ impl<P: Params> Hasher<P> {
     /// `PRF(PK.seed, SK.seed, ADRS)` of each of `addrs`, a lane each.
     fn prf(&self, addrs: &[Address], out: &mut [[u8; MAX_N]; MAX_LANES]) {
         // PRF is F with `SK.seed` as its message.
-        let inputs = [&self.sk_seed[..P::N]; MAX_LANES];
-        self.thash(&inputs[..addrs.len()], addrs, out);
+        let inputs = [self.sk_seed.split_at(P::N).0; MAX_LANES];
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "addrs holds at most lanes <= MAX_LANES"
+        )]
+        let inputs = &inputs[..addrs.len()];
+        self.thash(inputs, addrs, out);
     }
 
     /// F of each of `nodes`' first `addrs.len()` lanes, in place.
     fn f_in_place(&self, nodes: &mut [[u8; MAX_N]; MAX_LANES], addrs: &[Address]) {
         let copy = *nodes;
-        let inputs: [&[u8]; MAX_LANES] = core::array::from_fn(|j| &copy[j][..P::N]);
-        self.thash(&inputs[..addrs.len()], addrs, nodes);
+        let inputs = copy.each_ref().map(|node| node.split_at(P::N).0);
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "addrs holds at most lanes <= MAX_LANES"
+        )]
+        let inputs = &inputs[..addrs.len()];
+        self.thash(inputs, addrs, nodes);
     }
 
     /// `T_l(PK.seed, ADRS, M)`, F and H as its one- and two-block cases, of
@@ -1068,31 +1168,53 @@ impl<P: Params> Hasher<P> {
         debug_assert!(inputs.len() <= lanes::<P>() && addrs.len() >= inputs.len());
         if P::SHAKE {
             // SHAKE256(PK.seed || ADRS || M)
-            let pk_seed = &self.pk_seed[..P::N];
-            if let [input] = inputs {
+            let (pk_seed, _) = self.pk_seed.split_at(P::N);
+            if let ([input], [addr, ..]) = (inputs, addrs) {
                 // Verification's paths up the trees hash one lane at a
                 // time, which one state does with less to set up.
-                shake256(&[pk_seed, &addrs[0].0, input], &mut out[0][..P::N]);
+                shake256(&[pk_seed, &addr.0, input], out[0].split_at_mut(P::N).0);
                 return;
             }
+            #[expect(
+                clippy::arithmetic_side_effects,
+                clippy::indexing_slicing,
+                reason = "inputs is not empty, and addrs holds as many, so j <= inputs.len() - 1 indexes both"
+            )]
             let parts: [[&[u8]; 3]; 4] = core::array::from_fn(|j| {
                 let j = Ord::min(j, inputs.len() - 1);
                 [pk_seed, &addrs[j].0, inputs[j]]
             });
             let mut digests = [[0u8; MAX_N]; 4];
-            shake256_x4(&parts[..inputs.len()], &mut digests);
-            for (out, digest) in out.iter_mut().zip(&digests[..inputs.len()]) {
-                out[..P::N].copy_from_slice(&digest[..P::N]);
+            #[expect(clippy::indexing_slicing, reason = "inputs holds at most lanes = 4")]
+            let parts = &parts[..inputs.len()];
+            shake256_x4(parts, &mut digests);
+            for (out, digest) in out.iter_mut().zip(&digests).take(inputs.len()) {
+                out.split_at_mut(P::N)
+                    .0
+                    .copy_from_slice(digest.split_at(P::N).0);
             }
             return;
         }
         // F and H fill a small buffer, which zeroing costs little against.
-        match inputs[0].len() <= 2 * MAX_N {
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "every caller hashes at least one input"
+        )]
+        let len = inputs[0].len();
+        match len <= 2 * MAX_N {
             true => self.thash_in::<{ 64 + 2 * MAX_N }>(inputs, addrs, out),
             false => self.thash_in::<{ 64 + MAX_LEN * MAX_N }>(inputs, addrs, out),
         }
     }
 
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "an input is at most MAX_LEN * MAX_N bytes, so 22 + len fits in usize"
+    )]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "inputs is not empty, thash picked CAP >= 22 + len, lanes = inputs.len() <= MAX_LANES, and n <= MAX_N <= 32, each digest's length"
+    )]
     fn thash_in<const CAP: usize>(
         &self,
         inputs: &[&[u8]],

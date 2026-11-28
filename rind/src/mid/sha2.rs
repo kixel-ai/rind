@@ -50,6 +50,10 @@ impl Sha256State {
     /// `messages` are unspecified. AVX2 runs eight at once, and aarch64's
     /// SHA-256 instructions four.
     #[cfg(feature = "slh-dsa")]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "callers pass one to eight messages"
+    )]
     pub(crate) fn finish_x8(&self, messages: &[&[u8]]) -> [[u8; Sha256Context::OUTPUT_SZ]; 8] {
         let length = self.length(messages[0].len());
         Entry::assert_held();
@@ -172,6 +176,10 @@ impl Sha384Context {
     }
 
     /// The SHA384 output within a SHA512 one.
+    #[expect(
+        clippy::unwrap_used,
+        reason = "48 bytes is a prefix of the 64-byte output"
+    )]
     pub(crate) fn truncate(output: &[u8; Sha512Context::OUTPUT_SZ]) -> [u8; Self::OUTPUT_SZ] {
         *output.first_chunk().unwrap()
     }
@@ -219,6 +227,10 @@ impl Sha512_256Context {
     }
 
     /// The SHA512/256 output within a SHA512 one.
+    #[expect(
+        clippy::unwrap_used,
+        reason = "32 bytes is a prefix of the 64-byte output"
+    )]
     pub(crate) fn truncate(output: &[u8; Sha512Context::OUTPUT_SZ]) -> [u8; Self::OUTPUT_SZ] {
         *output.first_chunk().unwrap()
     }
@@ -265,6 +277,11 @@ impl Sha512State {
     }
 
     /// The hash of the input so far followed by `message`, leaving this state as it was.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "a u64 block count times 128 plus a length, times 8, is under 2^76, and i < 8 words gives (i + 1) * 8 <= 64, the output length"
+    )]
     pub(crate) fn finish_with(&self, message: &[u8]) -> [u8; Sha512Context::OUTPUT_SZ] {
         const BLOCK_SZ: usize = Sha512Context::BLOCK_SZ;
         let bits = (u128::from(self.nblocks) * BLOCK_SZ as u128 + message.len() as u128) * 8;

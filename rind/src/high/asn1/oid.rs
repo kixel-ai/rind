@@ -1,7 +1,11 @@
 // Written for Graviola by Joe Birr-Pixton, 2024.
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
-#![allow(non_upper_case_globals, dead_code)]
+#![allow(
+    non_upper_case_globals,
+    dead_code,
+    reason = "OIDs keep their ASN.1 names, and no one build uses every OID"
+)]
 
 asn1_oid! {
     id_ecPublicKey OBJECT IDENTIFIER ::= {

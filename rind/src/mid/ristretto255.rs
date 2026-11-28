@@ -113,6 +113,10 @@ impl Element {
     }
 
     /// RFC 9496 4.3.4's one-way map from 64 uniformly random bytes.
+    #[expect(
+        clippy::unwrap_used,
+        reason = "bytes is 64 bytes, so its split at 32 gives two 32-byte halves"
+    )]
     pub(crate) fn from_uniform_bytes(bytes: &[u8; 64]) -> Self {
         low::Entry::assert_held();
         let (lo, hi) = bytes.split_at(32);

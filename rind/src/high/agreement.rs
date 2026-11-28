@@ -419,6 +419,10 @@ fn x25519_to_pkcs8<'a>(key: &x25519::PrivateKey, output: &'a mut [u8]) -> Result
         .encode(&mut asn1::Encoder::new(&mut private_key))
         .map_err(|_| Error::WrongLength)?;
     let encoded = pkcs8::Key::construct(
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "encode returns the bytes it wrote into private_key, so len <= 34"
+        )]
         &private_key[..len],
         None,
         asn1::oid::id_X25519.clone(),
@@ -576,6 +580,10 @@ impl PublicKey {
         }))
     }
 
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "callers pass checked encodings of at most P-521 public key size, MAX_LEN"
+    )]
     fn from_encoding(algorithm: &'static Algorithm, encoded: &[u8]) -> Self {
         let mut public = Self {
             algorithm: low::ZeroableRef::new(algorithm),
@@ -590,6 +598,10 @@ impl PublicKey {
 impl low::Zeroable for PublicKey {}
 
 impl AsRef<[u8]> for PublicKey {
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "len is an encoding length that from_encoding fit in bytes, so len <= MAX_LEN"
+    )]
     fn as_ref(&self) -> &[u8] {
         &self.bytes[..self.len]
     }

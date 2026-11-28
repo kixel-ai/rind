@@ -103,6 +103,10 @@ macro_rules! rej_eta {
                 low::ct::public_slice(buf);
                 // ML-KEM's table: the byte offsets of the set bits' 16-bit lanes.
                 let n = super::$name::$name(r, buf, &super::mlkem::MLKEM_REJ_UNIFORM_TABLE) as usize;
+                #[expect(
+                    clippy::indexing_slicing,
+                    reason = "the routine returns how many of r's 256 coefficients it wrote"
+                )]
                 low::ct::secret_slice(&r[..n]);
                 return n;
             }
@@ -121,6 +125,12 @@ rej_eta!(
 /// For each 4-bit mask, the byte offsets of its set bits' 32-bit lanes,
 /// packed low first, then 255.
 #[cfg_attr(coverage_nightly, coverage(off))] // const-evaluated only
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "m < 16 and a mask has at most 4 set bits of 4 lanes each, so n < 16 and m * 16 + n < 256 = \
+              t.len(); i, b < 4"
+)]
 const fn rej_uniform_table() -> [u8; 256] {
     let mut t = [255; 256];
     let mut m = 0;

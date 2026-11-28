@@ -5,7 +5,13 @@
 //! pyca/verified-garbage's verified routines that rind runs, and the
 //! routines and tables they reach: see admin/import-vg.
 
-#![allow(dead_code, unreachable_pub, unused_macros, clippy::all)]
+#![allow(
+    dead_code,
+    unreachable_pub,
+    unused_macros,
+    clippy::all,
+    reason = "imported verbatim: rind runs only some of the routines, tables and macros, and lints none of their text"
+)]
 
 /// A table of constants, aligned to a cache line.
 #[repr(C, align(64))]

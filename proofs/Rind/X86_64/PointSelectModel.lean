@@ -120,8 +120,10 @@ fn select_sse2<const N: usize, const V: usize>(z: &mut [u64; N], table: &[u64], 
 }
 
 pub(crate) fn prefetch<T>(table: &[T], stride: usize) {
-    // `_mm_prefetch` is safe on newer Rust but `unsafe` on the 1.90 MSRV.
-    #[allow(unused_unsafe)]
+    #[allow(
+        unused_unsafe,
+        reason = "`_mm_prefetch` is safe on newer Rust but `unsafe` on the 1.90 MSRV"
+    )]
     // SAFETY: a prefetch never faults and is not architecturally visible.
     unsafe {
         _mm_prefetch(table.as_ptr().cast(), _MM_HINT_T0);

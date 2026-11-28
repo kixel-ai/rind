@@ -23,6 +23,7 @@ impl<'a> Positive<'a> {
     /// The integer's first byte.
     #[must_use]
     pub fn first_byte(&self) -> u8 {
-        self.0[0]
+        // Nonempty, as every `Positive` is, so the zero is never read.
+        self.0.first().copied().unwrap_or(0)
     }
 }

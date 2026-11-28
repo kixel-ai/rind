@@ -46,13 +46,19 @@ macro_rules! PageOffRef {
     ($sym:literal) => { Q!( "{" $sym "}@PAGEOFF" ) }
 }
 
-#[allow(unused_macros)]
+#[allow(
+    unused_macros,
+    reason = "only some aarch64 routines take page-relative addresses"
+)]
 #[cfg(not(target_vendor = "apple"))]
 macro_rules! PageRef {
     ($sym:literal) => { Q!( "{" $sym "}" ) }
 }
 
-#[allow(unused_macros)]
+#[allow(
+    unused_macros,
+    reason = "only some aarch64 routines take page-relative addresses"
+)]
 #[cfg(not(target_vendor = "apple"))]
 macro_rules! PageOffRef {
     ($sym:literal) => { Q!( ":lo12:" "{" $sym "}" ) }

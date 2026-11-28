@@ -61,13 +61,15 @@ fn compress_avx2(x: &Argon2Block, y: &Argon2Block, out: Argon2Out<'_>) {
     let mut state: [__m256i; 32] =
         core::array::from_fn(|i| _mm256_xor_si256(load(x, i), load(y, i)));
     // Only an `Xor` block is read, and it holds a whole initialized block.
+    #[expect(clippy::indexing_slicing, reason = "from_fn's i < 32 = state.len()")]
     let r: [__m256i; 32] = core::array::from_fn(|i| match xor {
         true => _mm256_xor_si256(state[i], load(out, i)),
         false => state[i],
     });
 
-    for i in 0..4 {
-        let [a0, b0, c0, d0, a1, b1, c1, d1] = rows(&mut state, 8 * i);
+    // Each eight vectors hold two rows.
+    for rows in state.as_chunks_mut::<8>().0 {
+        let [a0, b0, c0, d0, a1, b1, c1, d1] = rows.each_mut();
         round_rows([a0, a1, b0, b1, c0, c1, d0, d1]);
     }
     for i in 0..4 {
@@ -75,23 +77,21 @@ fn compress_avx2(x: &Argon2Block, y: &Argon2Block, out: Argon2Out<'_>) {
         round_columns([a0, a1, b0, b1, c0, c1, d0, d1]);
     }
 
-    for i in 0..32 {
-        let word = _mm256_xor_si256(state[i], r[i]);
+    for (i, (state, r)) in state.iter().zip(r).enumerate() {
+        let word = _mm256_xor_si256(*state, r);
         // SAFETY: as `load`, writing.
         unsafe { _mm256_store_si256(out.cast::<__m256i>().add(i), word) };
     }
 }
 
-// The eight vectors of two rows, starting at `first`, in place.
-fn rows(state: &mut [__m256i; 32], first: usize) -> [&mut __m256i; 8] {
-    let rows: &mut [__m256i; 8] = (&mut state[first..first + 8]).try_into().unwrap();
-    rows.each_mut()
-}
-
 // Columns `2 * i` and `2 * i + 1`: the vector at `i` of each row, in place.
 fn columns(state: &mut [__m256i; 32], i: usize) -> [&mut __m256i; 8] {
     let mut picked = state.iter_mut().skip(i).step_by(4);
-    core::array::from_fn(|_| picked.next().unwrap())
+    core::array::from_fn(|_| {
+        picked
+            .next()
+            .expect("every fourth of 32 vectors from i < 4 is eight")
+    })
 }
 
 type Vectors<'a> = [&'a mut __m256i; 8];
