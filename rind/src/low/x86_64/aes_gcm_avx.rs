@@ -49,6 +49,10 @@ impl AvxKernel {
 
     /// Encrypts `inout` in place under `nonce`, and returns its tag. `aad`
     /// and `inout` are each shorter than 2^32 bytes.
+    // Inlined, with `cipher`, into the AEAD's seal and open: left to LLVM,
+    // unrelated changes elsewhere in the crate flip whether it inlines, which
+    // costs a message of up to 128 bytes about 35 instructions.
+    #[inline(always)]
     pub(crate) fn seal(
         &self,
         key: &HwKey,
@@ -63,6 +67,8 @@ impl AvxKernel {
 
     /// Decrypts `inout` in place under `nonce`, and returns whether `tag` is
     /// its tag. `aad` and `inout` are each shorter than 2^32 bytes.
+    // As `seal`.
+    #[inline(always)]
     pub(crate) fn open(
         &self,
         key: &HwKey,
@@ -82,6 +88,7 @@ impl AvxKernel {
         clippy::indexing_slicing,
         reason = "len / 16 * 16 <= len, so aad_whole indexes aad and the split is in bounds"
     )]
+    #[inline(always)]
     fn cipher<const ENC: bool>(
         &self,
         key: &HwKey,
