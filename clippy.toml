@@ -1,0 +1,5 @@
+# Tests may panic: library crates forbid accidental panics (AGENTS.md), and
+# these keep `#[cfg(test)]` code exempt from those lints.
+allow-indexing-slicing-in-tests = true
+allow-panic-in-tests = true
+allow-unwrap-in-tests = true

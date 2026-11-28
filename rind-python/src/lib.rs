@@ -13,6 +13,15 @@
 //! as ML-KEM's coefficients that AVX2 loads aligned
 //! (<https://github.com/PyO3/pyo3/issues/6526>).
 
+// Library code never panics by accident: what can fail returns an error, and
+// what cannot states why it holds. Tests may panic (clippy.toml).
+#![warn(
+    clippy::allow_attributes_without_reason,
+    clippy::indexing_slicing,
+    clippy::panic,
+    clippy::unwrap_used
+)]
+#![cfg_attr(not(test), warn(clippy::arithmetic_side_effects))]
 use std::borrow::Cow;
 use std::mem::MaybeUninit;
 

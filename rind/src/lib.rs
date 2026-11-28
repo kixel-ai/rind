@@ -28,6 +28,15 @@
 #![cfg_attr(target_arch = "xtensa", feature(asm_experimental_arch))]
 // Unit tests run on hosted targets and keep `std`'s prelude.
 #![cfg_attr(not(test), no_std)]
+// Library code never panics by accident: what can fail returns an error, and
+// what cannot states why it holds. Tests may panic (clippy.toml).
+#![warn(
+    clippy::allow_attributes_without_reason,
+    clippy::indexing_slicing,
+    clippy::panic,
+    clippy::unwrap_used
+)]
+#![cfg_attr(not(test), warn(clippy::arithmetic_side_effects))]
 
 extern crate alloc;
 
