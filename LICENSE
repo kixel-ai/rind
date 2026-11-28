@@ -283,6 +283,19 @@ pyca/verified-garbage <https://github.com/pyca/verified-garbage>
   point routines and tables they call.
   Copyright (c) Individual contributors.
   License: Apache-2.0 OR BSD-3-Clause, which the files keep.
+  At that commit, verified-garbage adapts some of its aarch64 code
+  from other sources, whose notices its Lean sources keep: P-256's
+  Montgomery square from p256-armv8-asm.pl (see OpenSSL; Copyright
+  2015-2020 The OpenSSL Project Authors, Apache-2.0 OR ISC); P-384's
+  Montgomery product and square from s2n-bignum's
+  bignum_montmul_p384_alt and bignum_montsqr_p384_alt (see s2n-bignum;
+  Copyright Amazon.com, Inc. or its affiliates, Apache-2.0 OR ISC OR
+  MIT-0); ML-KEM's NTT and inverse NTT from mlkem-native's (see
+  mlkem-native; Copyright (c) 2022 Arm Limited, Copyright (c) 2022
+  Hanno Becker, Copyright (c) 2023 Amin Abdulrahman, Matthias
+  Kannwischer, Copyright (c) The mlkem-native project authors,
+  Apache-2.0 OR ISC OR MIT); and its scalar Keccak-f's schedule
+  follows OpenSSL's keccak1600-armv8.pl.
 
   What: the Lean ISA models, the ML-KEM, SHA-3, SHA-512, X25519, Poly1305, and
   ChaCha20-Poly1305 specs, and the RSA, ChaCha20, Ed25519, P-256, P-384, and
