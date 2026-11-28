@@ -6,6 +6,14 @@
 //! and `ct::into_secret` mark takes every value at once, and BINSEC fails on
 //! a branch or memory address that depends on it; what `ct::public_slice`
 //! and `ct::into_public` mark becomes public again, as under valgrind.
+//!
+//! BINSEC sees a mark as a write to the bytes at that address, but
+//! `ct::secret_slice` and `ct::public_slice` take a shared reference, which
+//! promises the compiler they do not change, so it may go on reading a copy
+//! it made before the call, unmarked. `ct::into_secret` and `ct::into_public`
+//! take the value and return it, so the code reads only what the mark wrote:
+//! mark by value where the marked bytes are copied on, as from a buffer into
+//! a key.
 
 /// Runs `f` as the region BINSEC checks, after a first run that fixes what
 /// rind sets up lazily, such as the CPU features it detects.
