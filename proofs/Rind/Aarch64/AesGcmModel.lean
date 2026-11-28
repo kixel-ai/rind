@@ -199,6 +199,10 @@ pub(crate) struct Aggregate<'a> {
 
 impl<'a> Aggregate<'a> {
     /// Starts a hash of `n` blocks, at least one.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "n > 0 is asserted, so (n - 1) % 8 + 1 is 1 to 8"
+    )]
     pub(crate) fn new(table: &'a PmullTable, n: usize) -> Self {
         assert!(n > 0);
         Self {
@@ -211,6 +215,12 @@ impl<'a> Aggregate<'a> {
     }
 
     /// Adds the next block, in memory order.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "power is 0 to 8 and reset to 8 at 0, so power - 1 < 8 = POWERS.len(), whose entries index the \
+                  12 vectors and 24 words of htable"
+    )]
     #[target_feature(enable = "neon,aes")]
     #[inline]
     pub(crate) fn add(&mut self, block: uint8x16_t) {

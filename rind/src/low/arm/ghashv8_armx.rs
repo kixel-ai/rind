@@ -37,11 +37,8 @@ pub(crate) struct GhashTable([[u64; 2]; 16]);
 impl GhashTable {
     /// Precomputes for the GHASH key `h`, AES's encryption of the zero block.
     pub(crate) fn new(h: &[u8; 16], _: HaveCryptoExt) -> Self {
-        let (hi, lo) = h.split_at(8);
-        let h = [
-            u64::from_be_bytes(hi.try_into().unwrap()),
-            u64::from_be_bytes(lo.try_into().unwrap()),
-        ];
+        let h = u128::from_be_bytes(*h);
+        let h = [(h >> 64) as u64, h as u64];
         let mut r = Self([[0; 2]; 16]);
         // SAFETY: `r` is an `Htable` and `h` two words. The token proves the
         // CPU has PMULL.

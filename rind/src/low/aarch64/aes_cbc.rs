@@ -45,7 +45,15 @@ pub(crate) fn decrypt(key: &AesDecKey, iv: &[u8; 16], blocks: &mut [[u8; 16]]) {
 /// round key.
 // Loops by index, each in its own function: Aeneas translates no loop that
 // writes through an iterator's references, nor one nested in another.
-#[allow(clippy::needless_range_loop)]
+#[allow(
+    clippy::needless_range_loop,
+    reason = "Aeneas translates no loop that writes through an iterator"
+)]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "N is 11, 13 or 15 round keys, so N - 1 indexes the last; i < blocks.len()"
+)]
 #[target_feature(enable = "aes,neon")]
 fn hw_encrypt<const N: usize>(
     round_keys: &[uint8x16_t; N],
@@ -64,6 +72,11 @@ fn hw_encrypt<const N: usize>(
 
 /// The middle rounds of [`hw_encrypt`]'s block, `b` after its first, and
 /// the `aese` of the second-last round key.
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "N is 11, 13 or 15 round keys, so 1..N - 2 and N - 2 index them"
+)]
 #[inline]
 #[target_feature(enable = "aes,neon")]
 fn encrypt_rounds<const N: usize>(round_keys: &[uint8x16_t; N], mut b: uint8x16_t) -> uint8x16_t {
@@ -99,7 +112,15 @@ fn aese_chained(y: uint8x16_t, b: uint8x16_t) -> uint8x16_t {
 /// units pipeline them; the rest go one at a time. The round keys are the
 /// equivalent inverse cipher's, as `hw_decrypt_block` takes them, and the
 /// last joins the chaining block off the critical path.
-#[allow(clippy::needless_range_loop)]
+#[allow(
+    clippy::needless_range_loop,
+    reason = "Aeneas translates no loop that writes through an iterator"
+)]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "N is 11, 13 or 15 round keys, so N - 1 indexes the last; c < chunks.len() and t < tail.len()"
+)]
 #[target_feature(enable = "aes,neon")]
 fn hw_decrypt<const N: usize>(
     round_keys: &[uint8x16_t; N],
@@ -123,7 +144,16 @@ fn hw_decrypt<const N: usize>(
 
 /// [`hw_decrypt`] of eight blocks chained from `prev`, returning the last
 /// ciphertext block, the next chaining block.
-#[allow(clippy::needless_range_loop)]
+#[allow(
+    clippy::needless_range_loop,
+    reason = "Aeneas translates no loop that writes through an iterator"
+)]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "N is 11, 13 or 15 round keys, so r < N - 2 and N - 2, N - 1 index them; j, k < 8, so i = 7 - k \
+              and i - 1 (taken only when i > 0) index the 8 blocks"
+)]
 #[inline]
 #[target_feature(enable = "aes,neon")]
 fn decrypt_8<const N: usize>(
@@ -152,7 +182,11 @@ fn decrypt_8<const N: usize>(
 }
 
 /// An `aesd` and `aesimc` round of each of eight blocks.
-#[allow(clippy::needless_range_loop)]
+#[allow(
+    clippy::needless_range_loop,
+    reason = "Aeneas translates no loop that writes through an iterator"
+)]
+#[expect(clippy::indexing_slicing, reason = "j < 8 = b.len()")]
 #[inline]
 #[target_feature(enable = "aes,neon")]
 fn decrypt_round_8(mut b: [uint8x16_t; 8], round_key: uint8x16_t) -> [uint8x16_t; 8] {
@@ -163,6 +197,11 @@ fn decrypt_round_8(mut b: [uint8x16_t; 8], round_key: uint8x16_t) -> [uint8x16_t
 }
 
 /// All but the last round key's XOR of [`hw_decrypt`]'s block `b`.
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "N is 11, 13 or 15 round keys, so ..N - 2 and N - 2 index them"
+)]
 #[inline]
 #[target_feature(enable = "aes,neon")]
 fn decrypt_rounds<const N: usize>(round_keys: &[uint8x16_t; N], mut b: uint8x16_t) -> uint8x16_t {

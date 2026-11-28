@@ -18,6 +18,10 @@ pub(crate) fn apply(key: &AesKey, nonce: &[u8; 12], counter: u32, inout: &mut [u
     }
 }
 
+#[expect(
+    clippy::indexing_slicing,
+    reason = "inout is 128 bytes, so as_chunks_mut gives exactly 8 blocks"
+)]
 #[target_feature(enable = "aes,neon")]
 fn _apply_8(key: &HwKey, nonce: &[u8; 12], counter: u32, inout: &mut [u8; 128]) {
     let mut base = [0u8; 16];
@@ -55,7 +59,6 @@ fn _apply_8(key: &HwKey, nonce: &[u8; 12], counter: u32, inout: &mut [u8; 128]) 
 }
 
 /// Eight blocks under `key`.
-#[allow(clippy::too_many_arguments)]
 #[inline]
 #[target_feature(enable = "aes,neon")]
 fn encrypt_8(

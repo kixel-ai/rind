@@ -45,6 +45,12 @@ const WIDTH: usize = 4;
 /// would repeat messages to fill its lanes.
 const SERIAL: usize = 2;
 
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "messages holds 1 to 8 (asserted), and a group of chunks(WIDTH) 1 to WIDTH of them, so \
+              group.len() - 1 indexes it and group.len() <= WIDTH, the digests of each side"
+)]
 fn finish(
     state: &[u32; 8],
     messages: &[&[u8]],
@@ -74,6 +80,10 @@ fn finish(
 
 /// The digests of `state` over each of `lanes`, of equal length, padded and
 /// closed by `length`.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "whole <= lanes[0].len(), and finish asserts every lane is as long"
+)]
 fn finish_group(
     state: &[u32; 8],
     lanes: [&[u8]; WIDTH],
@@ -94,6 +104,11 @@ fn finish_group(
 
 /// The digests of `state` over each lane of `whole`, then of `padded`, each
 /// lane's a whole number of blocks, as many as the other lanes'.
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "every lane is len long, a multiple of 64 (asserted), so start + 64 <= len; j < WIDTH = abcd.len()"
+)]
 #[target_feature(enable = "neon,sha2")]
 fn finish_neon(
     state: &[u32; 8],
@@ -134,6 +149,12 @@ fn finish_neon(
 }
 
 /// One block of each lane, from chaining values `abcd` and `efgh`.
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "j < WIDTH, the lanes' count; each block is 64 bytes (asserted), so 16 * i < 64 for i < 4; \
+              i < 16, so 4 * i + 4 <= 64 = K.len(); a value % 4 indexes the 4 message vectors"
+)]
 #[inline]
 #[target_feature(enable = "neon,sha2")]
 fn block(
