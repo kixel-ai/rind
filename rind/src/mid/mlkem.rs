@@ -446,9 +446,12 @@ impl<P: Params> DecapKey<P> {
             // `None` with probability below 2^-261: rind's arithmetic then
             // computes the same key.
             if let Some(dk) = vg_ran(vg.keygen(seed)) {
-                // The encapsulation key and its hash are public.
-                low::ct::public_slice(&dk[P::K * 384..P::K * 768 + 64]);
-                return Self::decode(&P::DecapKeyBytes::from_slice(&dk).unwrap(), false);
+                let mut key = Self::decode(&P::DecapKeyBytes::from_slice(&dk).unwrap(), false);
+                // The encapsulation key and its hash are public, marked by
+                // value in the key itself: see `low::ct_binsec`.
+                key.ek_pke.bytes = low::ct::into_public(key.ek_pke.bytes.clone());
+                key.ek_pke.h_ek = low::ct::into_public(key.ek_pke.h_ek);
+                return key;
             }
         }
 
