@@ -55,8 +55,9 @@ Recommendations, the implementer's to take:
 - Key objects `rind/translations/<key>.tar.gz`, keeping the local
   `~/.cache/rind/translations` as the first layer, so a host rereads its own
   entries without a request.
-- Check the `url` and `token` files once at startup, so a missing token
-  fails before any translation runs rather than at the first upload.
+- Check the `url` and `token` files before the first translation, so a
+  missing token fails early, but only in commands that translate: `bytes`,
+  `hol-light`, and `cosim` never touch the cache and need no token.
 - Update the header comment, `cached`'s comment, and any doc naming
   `RIND_PROVE_CACHE_HOST`.
 - [#1172](https://github.com/kixel-ai/rind/pull/1172) also edits
@@ -67,8 +68,10 @@ fetches it, a fresh key is uploaded and reads back from another host, and a
 run with the token moved aside fails before translating. Record wall and
 CPU time against the baseline above.
 
-Once merged, delete fedora's `~/.cache/rind/translations` and
-`~/.cache/rind/lake`, which only the ssh path used.
+Once merged, upload the archives already in fedora's
+`~/.cache/rind/translations` to `rind/translations/`, so no host reruns a
+translation fedora holds, and keep that directory as fedora's local layer.
+Delete fedora's `~/.cache/rind/lake`, which only the ssh path used.
 
 ## Related
 
