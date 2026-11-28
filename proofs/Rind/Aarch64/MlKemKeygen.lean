@@ -330,6 +330,272 @@ theorem keygen_eq (d : 𝔹 32) :
     unfold enc3 kgS
     rfl
 
+/-! ## SHA-3 as FIPS 203's `H` and `G` -/
+
+theorem sha3_256_congr {n n' : ℕ} (B : 𝔹 n) (C : 𝔹 n') (h : B.toList = C.toList) :
+    Spec.SHA3.sha3_256 B = Spec.SHA3.sha3_256 C := by
+  have hn : n = n' := by rw [← B.length_toList, ← C.length_toList, h]
+  subst hn
+  rw [Vector.toList_inj.mp h]
+
+theorem sha3_512_congr {n n' : ℕ} (B : 𝔹 n) (C : 𝔹 n') (h : B.toList = C.toList) :
+    Spec.SHA3.sha3_512 B = Spec.SHA3.sha3_512 C := by
+  have hn : n = n' := by rw [← B.length_toList, ← C.length_toList, h]
+  subst hn
+  rw [Vector.toList_inj.mp h]
+
+/-- Bytes that are SHA3-256's of `M` are `H(M)`. -/
+theorem h_eq {n : ℕ} (x : List U8) (hl : x.length = 32) (M : 𝔹 n) (hx : bv x = sha3_256 M.toList) :
+    toVec 32 x hl = H M := by
+  apply Vector.toList_inj.mp
+  rw [toVec_toList, hx, sha3_256_eq]
+  unfold H
+  rw [sha3_256_congr (toB M.toList) M (by simp [toB])]
+
+/-- Bytes that are SHA3-512's of `M` are FIPS 202's. -/
+theorem sha512_toVec {n : ℕ} (x : List U8) (hl : x.length = 64) (M : 𝔹 n) (hx : bv x = sha3_512 M.toList) :
+    toVec 64 x hl = Spec.SHA3.sha3_512 M := by
+  apply Vector.toList_inj.mp
+  rw [toVec_toList, hx, sha3_512_eq, sha3_512_congr (toB M.toList) M (by simp [toB])]
+
+/-- The halves of SHA3-512's bytes on `M` are `G(M)`. -/
+theorem g_eq {n : ℕ} (x : List U8) (hl : x.length = 64) (M : 𝔹 n) (hx : bv x = sha3_512 M.toList) :
+    toVec 32 (sub x 0 32) (sub_length _ _ _ (by omega)) = (G M).1 ∧
+      toVec 32 (sub x 32 32) (sub_length _ _ _ (by omega)) = (G M).2 := by
+  unfold G
+  rw [← sha512_toVec x hl M hx]
+  refine ⟨?_, ?_⟩ <;> simp [slice_toVec]
+
+/-! ## `EncapKey::new` -/
+
+/-- `EncapKey::new` keeps the key's bytes and decoded form, and hashes the
+bytes with SHA3-256. -/
+theorem encap_key_new_spec (h : RunsSha3) {X : Type}
+    (P : mid.mlkem.Params X Vec Mat EkBytes CtBytes DkBytes Cache Enc) (hP : Is768 P) (bytes : EkBytes)
+    (d : mid.mlkem.Decoded X Vec Mat EkBytes CtBytes DkBytes Cache Enc) :
+    mid.mlkem.EncapKey.new P bytes d ⦃ ek =>
+      ek.bytes = bytes ∧ bv ek.h_ek.val = sha3_256 (bv bytes.val) ∧ ek.hashed = true ∧ ek.decoded = some d ⦄ := by
+  unfold mid.mlkem.EncapKey.new
+  simp only [hP.ek.as_ref]
+  step with sha3ctx_new_spec 136#usize 32#usize (by decide) (by decide) as ⟨c, hc⟩
+  step as ⟨s, hs⟩
+  step with sha3ctx_update_spec h (by decide) c [] hc s as ⟨c1, hc1⟩
+  step with sha3ctx_finish_spec h (by decide) c1 _ hc1 as ⟨a, ha⟩
+  rw [ha, List.nil_append, hs]
+  rfl
+
+/-! ## `Coeffs::sample`, untransposed -/
+
+/-- Polynomial `3i + j` of ML-KEM-768's matrix is SHAKE128's on `ρ ‖ j ‖ i`. -/
+theorem matMsg_untransposed (rho : List Byte) (i j : ℕ) (hj : j < 3) :
+    matMsg rho false 3 (3 * i + j) = rho ++ [(j : Byte), (i : Byte)] := by
+  unfold matMsg
+  rw [show (3 * i + j) / 3 = i by omega, show (3 * i + j) % 3 = j by omega]
+  rfl
+
+/-- `Coeffs::sample` of ML-KEM-768's matrix: polynomial `3i + j` is FIPS 203's
+`SampleNTT(ρ ‖ j ‖ i)`, the matrix's entry in row `i` and column `j`, given
+that `SampleNTT` finishes on each. -/
+theorem sample_spec (h : RunsSha3) (inst : mid.mlkem.FixedArray Mat Poly) (hi : IsArray inst)
+    (rho : Std.Array U8 32#usize) (ρ : 𝔹 32) (hρ : bv rho.val = ρ.toList)
+    (hH : ∀ i : ℕ, i < 3 → ∀ j : ℕ, j < 3 → Halts (ρ ‖ #v[(j : Byte)] ‖ #v[(i : Byte)]).toList) :
+    mid.mlkem.CoeffsMNtt.sample inst rho false ⦃ r =>
+      ∀ i : ℕ, i < 3 → ∀ j : ℕ, j < 3 →
+        Holds 0 3328 256 (r.1.val[3 * i + j]!).val (SampleNTT (ρ ‖ #v[(j : Byte)] ‖ #v[(i : Byte)])) ⦄ := by
+  have hmsg (i j : ℕ) (hj : j < 3) :
+      matMsg (bv rho.val) false 3 (3 * i + j) = (ρ ‖ #v[(j : Byte)] ‖ #v[(i : Byte)]).toList := by
+    rw [matMsg_untransposed _ _ _ hj, hρ, vappend_toList, vappend_toList, List.append_assoc]
+    rfl
+  apply WP.spec_mono (coeffs_sample_spec h inst hi rho false (fun p hp => by
+    have := hH (p / 3) (by omega) (p % 3) (by omega)
+    rwa [← hmsg _ _ (by omega), show 3 * (p / 3) + p % 3 = p by omega] at this))
+  intro r hr i hi3 j hj3 c hc
+  have hs := hr (3 * i + j) (by omega) c hc
+  rw [hmsg _ _ hj3] at hs
+  have hlt := sampled_lt _ c hc (hH i hi3 j hj3)
+  refine ⟨by rw [hs]; omega, by rw [hs]; omega, ?_⟩
+  rw [hs, getElem!_pos (SampleNTT _) c hc, sampleNTT_sampled _ (hH i hi3 j hj3) c hc]
+  simp
+
+/-! ## `K-PKE.KeyGen` -/
+
+theorem try_copy_eq {T : Type} (N : Usize) (inst : core.marker.Copy T) (s : Slice T) (h : s.length = N.val) :
+    core.array.TryFromArrayCopySlice.try_from N inst s = ok (.Ok (Std.Array.from s.val h)) := by
+  unfold core.array.TryFromArrayCopySlice.try_from
+  rw [dite_true' h]
+
+theorem flat3 (l : List (Std.Array U8 384#usize)) (h : l.length = 3) :
+    l.flatMap (·.val) = (l[0]!).val ++ (l[1]!).val ++ (l[2]!).val := by
+  rcases l with _ | ⟨a, _ | ⟨b, _ | ⟨c, _ | ⟨d, l⟩⟩⟩⟩ <;> simp at h
+  simp
+
+/-- `ByteEncode_12` of three polynomials, as the bytes of three encoded arrays. -/
+theorem bv_flat3 (l : List (Std.Array U8 384#usize)) (h : l.length = 3) (F : ℕ → Polynomial)
+    (hF : ∀ j < 3, toVec (32 * 12) (l[j]!).val (l[j]!).property = ByteEncode 12 (F j)) :
+    bv (l.flatMap (·.val)) = enc3 F := by
+  rw [flat3 l h]
+  simp only [bv, List.map_append]
+  unfold enc3
+  rw [← hF 0 (by omega), ← hF 1 (by omega), ← hF 2 (by omega), toVec_toList, toVec_toList, toVec_toList]
+  rfl
+
+/-- The SHA3-512 input of `K-PKE.KeyGen`'s `G`: `d ‖ k`. -/
+theorem g_input (d : Std.Array U8 32#usize) (x : U8) (hx : x.val = 3) :
+    bv (d.val ++ [x]) = (toVec 32 d.val d.property ‖ #v[((k .ML_KEM_768 : ℕ) : Byte)]).toList := by
+  rw [vappend_toList, toVec_toList]
+  simp only [bv, List.map_append, List.map_cons, List.map_nil]
+  rw [u8_bv x 3 hx]
+  rfl
+
+/-- `kpke_keygen` writes `ByteEncode_12(t̂) ‖ ρ` as the encapsulation key, with
+its hash and decoded form, and `ByteEncode_12(ŝ)` as the decryption key. -/
+theorem kpke_keygen_spec (h : RunsSha3) {X : Type}
+    (P : mid.mlkem.Params X Vec Mat EkBytes CtBytes DkBytes Cache Enc) (hP : Is768 P) (d : Std.Array U8 32#usize)
+    (hH : ∀ i : ℕ, i < 3 → ∀ j : ℕ, j < 3 →
+      Halts ((kgG (toVec 32 d.val d.property)).1 ‖ #v[(j : Byte)] ‖ #v[(i : Byte)]).toList) :
+    mid.mlkem.DecapKey.kpke_keygen P d ⦃ r =>
+      bv r.1.bytes.val = enc3 (kgT (kgG (toVec 32 d.val d.property)).1 (kgG (toVec 32 d.val d.property)).2) ++
+          (kgG (toVec 32 d.val d.property)).1.toList ∧
+        bv r.1.h_ek.val = sha3_256 (bv r.1.bytes.val) ∧ r.1.hashed = true ∧
+        (∃ D, r.1.decoded = some D ∧
+          DecodedHolds D (kgT (kgG (toVec 32 d.val d.property)).1 (kgG (toVec 32 d.val d.property)).2)
+            (fun i j => SampleNTT ((kgG (toVec 32 d.val d.property)).1 ‖ #v[(i : Byte)] ‖ #v[(j : Byte)]))) ∧
+        bv (r.2.val.flatMap (·.val)) = enc3 (kgS (kgG (toVec 32 d.val d.property)).2) ⦄ := by
+  unfold mid.mlkem.DecapKey.kpke_keygen
+  simp only [hP.K, hP.ETA1, zero_eq _ hP.vec, hP.vec.as_mut, hP.ek.filled, hP.ek.as_mut, hP.enc.as_ref, bind_ok]
+  -- `(ρ, σ) ← G(d ‖ k)`.
+  step with sha3ctx_new_spec 72#usize 64#usize (by decide) (by decide) as ⟨g, hg⟩
+  step as ⟨s, hs⟩
+  step with sha3ctx_update_spec h (by decide) g [] hg s as ⟨g1, hg1⟩
+  step as ⟨i1, hi1⟩
+  step as ⟨s1, hs1⟩
+  step with sha3ctx_update_spec h (by decide) g1 _ hg1 s1 as ⟨g2, hg2⟩
+  step with sha3ctx_finish_spec h (by decide) g2 _ hg2 as ⟨g3, hg3⟩
+  step as ⟨s2, hs2⟩
+  step as ⟨rho, sigma, hrl, hsl, hrv, hsv⟩
+  have hg3l : g3.val.length = 64 := g3.property
+  have hs2v : s2.val = g3.val := by rw [hs2, Std.Array.val_to_slice]
+  have hsl' : sigma.length = 32 := by
+    rw [hsl]; show s2.val.length - 32 = 32; rw [hs2v, hg3l]
+  rw [try_copy_eq 32#usize _ rho hrl, try_copy_eq 32#usize _ sigma hsl']
+  simp only [core.result.Result.unwrap, low.ct.into_public, bind_ok]
+  have hi1v : i1.val = 3 := by rw [hi1, UScalar.cast_val_eq]; simp
+  have hM : bv ([] ++ s.val ++ s1.val) = (toVec 32 d.val d.property ‖ #v[((k .ML_KEM_768 : ℕ) : Byte)]).toList := by
+    rw [List.nil_append, hs, hs1, Std.Array.val_to_slice, Std.Array.val_to_slice]
+    exact g_input d i1 hi1v
+  rw [hM] at hg3
+  obtain ⟨hρ, hσ⟩ := g_eq g3.val hg3l _ hg3
+  set ρ := (kgG (toVec 32 d.val d.property)).1 with hρdef
+  set σ := (kgG (toVec 32 d.val d.property)).2 with hσdef
+  have hrho : bv (Std.Array.from (n := 32#usize) rho.val hrl).val = ρ.toList := by
+    rw [Std.Array.from_val, ← hρ, toVec_toList, hrv, hs2v]
+    rfl
+  have hsig : toVec 32 (Std.Array.from (n := 32#usize) sigma.val hsl').val
+      (Std.Array.property _) = σ := by
+    rw [← hσ]
+    apply toVec_congr
+    rw [Std.Array.from_val, hsv, hs2v]
+    simp [sub, List.take_of_length_le, hg3l]
+  -- `Â`.
+  step with sample_spec h P.FixedArraySelf_MatrixArrayI16256Inst hP.mat _ ρ hrho hH as ⟨a_hat, ha_hat⟩
+  obtain ⟨ahat, ⟨⟩⟩ := a_hat
+  -- `s` and `e`.
+  set sg := Std.Array.from (n := 32#usize) sigma.val hsl' with hsg
+  have hcbd : ∀ N : ℕ, cbd2 sg N = SamplePolyCBD (η := η₁ .ML_KEM_768) (PRF (η₁ .ML_KEM_768) σ (N : Byte)) := by
+    intro N
+    unfold cbd2
+    rw [hsig]
+    rfl
+  apply spec_bind_ok
+  step as ⟨s4, back, hs4v, hs4l, hback⟩
+  step as ⟨s5, back1, hs5v, hs5l, hback1⟩
+  refine WP.spec_bind (sample_poly_cbd_spec h sg 0#u8 s4 s5 (by rw [hs4l, hs5l]; scalar_tac)) ?_
+  rintro ⟨s6, s7⟩ ⟨hl6, hl7, hq⟩
+  have h0 : (0#u8).val = 0 := rfl
+  have hS : VHolds (-2) 2 3 (back s6).val (cbd2 sg) := by
+    intro j hj
+    rw [hback s6 (by rw [hl6, hs4l])]
+    have := hq j (by rw [hs4l, hs5l]; scalar_tac)
+    unfold get2 at this
+    rw [ite_eq_left (by rw [hl6, hs4l]; scalar_tac), h0, Nat.zero_add] at this
+    exact this
+  have hE : VHolds (-2) 2 3 (back1 s7).val (fun j => cbd2 sg (3 + j)) := by
+    intro j hj
+    rw [hback1 s7 (by rw [hl7, hs5l])]
+    have := hq (3 + j) (by rw [hs4l, hs5l]; scalar_tac)
+    unfold get2 at this
+    rw [ite_eq_right (by rw [hl6, hs4l]; scalar_tac), hl6, hs4l, h0, Nat.zero_add] at this
+    simpa [show (3#usize).val = 3 from rfl] using this
+  -- `ŝ`, `ê`, and `t̂`.
+  refine WP.spec_bind (ntt_spec _ hP.vec (back s6) (cbd2 sg)
+    (fun j hj => Holds.mono (hS j hj) (by norm_num) (by norm_num))) ?_
+  rintro ⟨sh, ⟨⟩⟩ hsh
+  refine WP.spec_bind (ntt_spec _ hP.vec (back1 s7) (fun j => cbd2 sg (3 + j))
+    (fun j hj => Holds.mono (hE j hj) (by norm_num) (by norm_num))) ?_
+  rintro ⟨eh, ⟨⟩⟩ heh
+  refine WP.spec_bind (mul_add_spec P.VectorInst hP.vec hP.cache P.FixedArraySelf_MatrixArrayI16256Inst hP.mat
+    ahat sh eh (fun i j => SampleNTT (ρ ‖ #v[(j : Byte)] ‖ #v[(i : Byte)])) (fun j => NTT (cbd2 sg j))
+    (fun i => NTT (cbd2 sg (3 + i)))
+    (fun i hi j hj => Holds.mono (ha_hat i hi j hj) (by norm_num) (by norm_num))
+    (fun j hj => Holds.congr (hsh j hj)) heh) ?_
+  rintro ⟨th, ⟨⟩⟩ hth
+  have hT : (fun i : ℕ => dot3 (fun j : ℕ => SampleNTT (ρ ‖ #v[(j : Byte)] ‖ #v[(i : Byte)])) (fun j => NTT (cbd2 sg j)) +
+      NTT (cbd2 sg (3 + i))) = kgT ρ σ := by
+    funext i
+    unfold kgT kgS
+    simp only [hcbd]
+  rw [hT] at hth
+  have hSv : (fun j : ℕ => NTT (cbd2 sg j)) = kgS σ := by
+    funext j
+    unfold kgS
+    rw [hcbd]
+  -- The encapsulation key's bytes.
+  step as ⟨s8, back2, hs8v, hs8l, hback2⟩
+  step as ⟨i3, hi3⟩
+  step as ⟨tb, rb, sback, hr1, hr2, hr3, hr4, hr5⟩
+  refine WP.spec_bind (to_bytes_spec P.VectorInst hP.vec hP.enc th (kgT ρ σ) hth) ?_
+  intro t6 ht6
+  step as ⟨s9, hs9⟩
+  have hs9l : s9.length = 3 := array_length s9 t6 hs9
+  step with as_flattened_spec s9 (by rw [hs9l]; scalar_tac) as ⟨s10, hs10⟩
+  have hfl : (t6.val.flatMap (·.val)).length = 1152 := by rw [flat_length, t6.property]; rfl
+  have hs10l : s10.length = 1152 := by show s10.val.length = _; rw [hs10, hs9, hfl]
+  have hs8l' : s8.length = 1184 := by rw [hs8l]
+  have hi3v : i3.val = 1152 := by rw [hi3]
+  step as ⟨tb1, htb1⟩
+  step as ⟨s11, hs11⟩
+  step as ⟨rb1, hrb1⟩
+  step with transpose_spec P.FixedArraySelf_MatrixArrayI16256Inst hP.mat ahat as ⟨c, hc⟩
+  step with encap_key_new_spec h P hP _ _ as ⟨ek, hek1, hek2, hek3, hek4⟩
+  refine WP.spec_bind (reduce_in_place_spec _ hP.vec _ sh (kgS σ) (fun j hj => by
+    rw [← hSv]; exact Holds.congr (hsh j hj))) ?_
+  rintro ⟨sh1, ⟨⟩⟩ hsh1
+  refine WP.spec_bind (to_bytes_spec P.VectorInst hP.vec hP.enc sh1 (kgS σ) hsh1) ?_
+  intro dk hdk
+  apply (WP.spec_ok _).2
+  have hbytes : (back2 (sback (tb1, rb1))).val = t6.val.flatMap (·.val) ++ rho.val := by
+    have hl1 : tb1.length = i3.val := by rw [htb1, hs10l, hi3v]
+    have hl2 : rb1.length = s8.length - i3.val := by
+      rw [hrb1, hs8l', hi3v, hs11]
+      show (Std.Array.from (n := 32#usize) rho.val hrl).to_slice.val.length = _
+      rw [Std.Array.val_to_slice, Std.Array.from_val]
+      exact hrl
+    obtain ⟨hv, hl⟩ := hr5 tb1 rb1 hl1 hl2
+    rw [hback2 _ (by rw [hl, hs8l']), hv, htb1, hrb1, hs10, hs9, hs11, Std.Array.val_to_slice,
+      Std.Array.from_val]
+  refine ⟨?_, ?_, hek3, ⟨_, hek4, ⟨?_, ?_⟩⟩, ?_⟩
+  · rw [hek1, hbytes]
+    simp only [bv, List.map_append]
+    rw [← bv, ← bv, bv_flat3 _ t6.property _ ht6, ← hrho, Std.Array.from_val]
+  · rw [hek2, hek1]
+  · exact hth
+  · intro i hi j hj
+    simp only
+    rw [hc i hi j hj]
+    exact ha_hat j hj i hi
+  · exact bv_flat3 _ dk.property _ hdk
+
+
 end MlKemKeygen
 
 end rind.aarch64
