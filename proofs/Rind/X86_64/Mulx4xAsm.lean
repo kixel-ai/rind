@@ -1,6 +1,6 @@
 import RindIsa.X86_64.Mulx4x
 import Rind.X86_64.Mulx4xModel
-import Rind.X86_64.Mul4xTailAsm
+import Rind.X86_64.Mul4xRun
 
 /-! # bn_mulx4x_mont's blocks, run
 

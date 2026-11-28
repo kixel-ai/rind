@@ -15,6 +15,7 @@ Decided 2026-11-27 (maintainer, `/quest-plan`):
 Baseline (2026-11-27):
 - `admin/prove:1752-2023` runs 5+ `charon` + `aeneas` extractions serially (`X86_64`, `Aarch64`, `X86_64/Kdf`, `Aarch64/Kdf`, `Armv7`, plus `Portable` and `dalek`), and `to_lean` clobbers a single `$out/lean` scratch directory so extractions cannot overlap.
 - Because `X86_64/Funs.lean` and `Aarch64/Funs.lean` each hold the entire translated Rust surface for that arch, editing a single Rust function (for example in `mlkem`) regenerates the whole `Funs.lean` and forces Lake to re-elaborate every downstream proof module for that architecture (AES-GCM, SHA-2, SHA-3, ChaCha20, P-256, P-384, RSA, Ed25519, ML-KEM).
+- Measured 2026-11-27 in [kixel-ai/rind#1176](https://github.com/kixel-ai/rind/pull/1176), building all of `Rind` on a 24-core host: `X86_64/Funs.lean` takes 549 s, 346 s of it elaboration, which Lean runs on one thread, and `Aarch64/Funs.lean` 318 s. With the bignum proofs' chain cut there, the corpus's critical path, 1,117 s, runs through `X86_64/Funs.lean` and then the RSA proofs, so splitting it is now what shortens a full build on a many-core host.
 
 Approach:
 1. **Parallelize and content-address `charon`/`aeneas` extractions:**
@@ -33,5 +34,5 @@ Approach:
 
 - [Aeneas translation cache and SSH-shared Lake outputs](https://github.com/kixel-ai/rind/pull/1138) - shared cross-host cache work
 - [Build spec-server once in prove.yml and add scoped admin/prove lean targets](/quest/m0/spec-server-single-build.md) - scoped `admin/prove lean <Module>` runs
-- [Spike and benchmark Lean 4.35 speedup levers on rind's proof corpus](/quest/m2/lean-speed-spikes.md) - `module` system and tactic profiling
+- [Every Lean file in rind's proofs is a module](/quest/m2/lean-modules.md) - cuts rebuilds after proof-only edits, which a Rust edit is not
 - [rind's HOL Light proofs are ported to Lean](/quest/m5/verified/hol-light-to-lean.md) - will add ~19.7k more lines of Lean proofs benefiting from split extractions
