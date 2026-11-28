@@ -313,6 +313,68 @@ theorem decaps_rind_fips (h : RunsSha3) {X : Type}
   · have hbf : b = false := by rw [hb, hs4, hs7]; simp [hcc]
     rw [ha4, hbf, MlKemPoly.ite_neg (by simp), MlKemPoly.ite_pos (by rw [hcmp]; exact hcc), hkbar]
 
+/-! ## The entry points -/
+
+theorem vg_key_pair_none {X : Type} (P : mid.mlkem.Params X Vec Mat EkBytes CtBytes DkBytes Cache Enc)
+    (hP : Is768 P) : mid.mlkem.vg_key_pair P = ok none := by
+  unfold mid.mlkem.vg_key_pair
+  simp only [hP.K, bind_ok]
+  rfl
+
+/-- The seed's `d`, its first 32 bytes. -/
+abbrev seedD (seed : Std.Array U8 64#usize) : 𝔹 32 :=
+  toVec 32 (sub seed.val 0 32) (sub_length _ _ _ (by have : seed.val.length = 64 := seed.property; omega))
+
+/-- The seed's `z`, its last 32 bytes. -/
+abbrev seedZ (seed : Std.Array U8 64#usize) : 𝔹 32 :=
+  toVec 32 (sub seed.val 32 32) (sub_length _ _ _ (by have : seed.val.length = 64 := seed.property; omega))
+
+theorem keygen_internal_snd (d z : 𝔹 32) :
+    (KeyGen_internal .ML_KEM_768 d z).2.toList =
+      (K_PKE.KeyGen .ML_KEM_768 d).2.toList ++ (K_PKE.KeyGen .ML_KEM_768 d).1.toList ++
+        (H (K_PKE.KeyGen .ML_KEM_768 d).1).toList ++ z.toList := by
+  unfold KeyGen_internal
+  simp only [Vector.toList_cast, vappend_toList]
+
+/-- `keygen_mitigated`, which `Params::keygen` runs, is FIPS 203's
+`ML-KEM.KeyGen_internal` for ML-KEM-768 on aarch64, which runs rind's
+arithmetic, from the seed `d ‖ z`: the key's encapsulation key holds `ek`
+(`EkHolds`) and its fields encode `dk`, given that `SampleNTT` finishes on each
+of the matrix's inputs. -/
+theorem keygen_mitigated_fips (h : RunsSha3) {X : Type}
+    (P : mid.mlkem.Params X Vec Mat EkBytes CtBytes DkBytes Cache Enc) (hP : Is768 P) (seed : Std.Array U8 64#usize)
+    (hH : ∀ i : ℕ, i < 3 → ∀ j : ℕ, j < 3 → Halts ((kgG (seedD seed)).1 ‖ #v[(j : Byte)] ‖ #v[(i : Byte)]).toList) :
+    mid.mlkem.DecapKey.keygen_mitigated P seed ⦃ key =>
+      toVec 1184 key.ek_pke.bytes.val key.ek_pke.bytes.property =
+          (KeyGen_internal .ML_KEM_768 (seedD seed) (seedZ seed)).1 ∧
+        dkBytes key.dk_pke key.ek_pke.bytes key.ek_pke.h_ek key.z =
+          (KeyGen_internal .ML_KEM_768 (seedD seed) (seedZ seed)).2 ∧
+        EkHolds key.ek_pke (toVec 1184 key.ek_pke.bytes.val key.ek_pke.bytes.property) ⦄ := by
+  have hsl : seed.val.length = 64 := seed.property
+  unfold mid.mlkem.DecapKey.keygen_mitigated
+  simp only [vg_key_pair_none P hP, bind_ok]
+  step as ⟨s, hs⟩
+  step as ⟨d1, z1, hdl, hzl, hdv, hzv⟩
+  have hzl' : z1.length = 32 := by rw [hzl]; show s.val.length - 32 = 32; rw [hs, Std.Array.val_to_slice, hsl]
+  rw [try_copy_eq 32#usize _ d1 hdl, try_copy_eq 32#usize _ z1 hzl']
+  simp only [core.result.Result.unwrap, low.ct.into_secret, bind_ok]
+  have hd : toVec 32 (Std.Array.from (n := 32#usize) d1.val hdl).val (Std.Array.property _) = seedD seed := by
+    apply toVec_congr
+    rw [Std.Array.from_val, hdv, hs, Std.Array.val_to_slice]
+    simp [sub]
+  have hz : toVec 32 (Std.Array.from (n := 32#usize) z1.val hzl').val (Std.Array.property _) = seedZ seed := by
+    apply toVec_congr
+    rw [Std.Array.from_val, hzv, hs, Std.Array.val_to_slice]
+    simp [sub, List.take_of_length_le, hsl]
+  step with kpke_keygen_fips h P hP _ (by rw [hd]; exact hH) as ⟨ek, dk, hek, hdk, hk⟩
+  rw [hd] at hek hdk
+  refine ⟨hek, ?_, hk⟩
+  apply Vector.toList_inj.mp
+  unfold dkBytes
+  rw [toVec_toList, keygen_internal_snd, ← hdk, ← hek, ← hk.h_ek, ← hz]
+  unfold dkPke
+  simp only [bv, List.map_append, toVec_toList]
+
 end MlKemKem
 
 end rind.aarch64
