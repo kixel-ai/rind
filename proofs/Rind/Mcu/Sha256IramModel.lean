@@ -61,6 +61,10 @@ impl Window {
     }
 
     #[inline(always)]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "callers pass constant slots below 16"
+    )]
     fn set(&mut self, slot: usize, w: u32) {
         self.0[slot].write(w);
     }
@@ -71,6 +75,10 @@ impl Window {
     ///
     /// `slot` has been written.
     #[inline(always)]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "callers pass constant slots below 16"
+    )]
     unsafe fn get(&self, slot: usize) -> u32 {
         // SAFETY: the caller's promise.
         unsafe { self.0[slot].assume_init() }

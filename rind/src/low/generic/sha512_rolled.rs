@@ -57,6 +57,11 @@ macro_rules! SSIG1 {
 ///
 /// with every index reduced mod 16 into the window.
 #[inline(always)]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "words holds a block's 16 words and t < 80, so t indexes them below 16 and t - 16 >= 0 above; every window index is reduced mod 16"
+)]
 fn schedule(w: &mut [u64; 16], words: &[[u8; 8]], t: usize) -> u64 {
     if t < 16 {
         let w_t = u64::from_be_bytes(words[t]);
@@ -74,7 +79,11 @@ fn schedule(w: &mut [u64; 16], words: &[[u8; 8]], t: usize) -> u64 {
 
 // The round index also picks the schedule word, so the loop is over it
 // rather than over `K`.
-#[allow(clippy::needless_range_loop)]
+#[allow(
+    clippy::needless_range_loop,
+    reason = "the round index also picks the schedule word, as the comment above says"
+)]
+#[expect(clippy::indexing_slicing, reason = "t < 80 = K.len()")]
 #[inline(never)]
 fn sha512_compress_block(state: &mut [u64; 8], block: &[u8; 128]) {
     // Sixteen big-endian words. The caller already holds a whole block, so
