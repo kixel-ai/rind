@@ -14,7 +14,10 @@ and `v30` (the counter and the nonce), and derive each block's state from
 them by adding to the counter (`bump`). `setup128_ok` and `final128_ok`
 prove the short paths' blocks before and after their rounds
 (`rounds3_ok`): the key stream of the next two counters, and Poly1305's
-key from the counter itself.
+key from the counter itself. `finalInit_ok` proves seal's first five
+blocks after theirs (`rounds5_ok`): it turns the four vertical blocks'
+key streams to rows (`zip1s_W` to `zip2d_W`), and takes Poly1305's key
+from the fifth.
 -/
 
 namespace rind.aarch64.chacha20poly1305asm
@@ -74,6 +77,23 @@ theorem setLane0_W (a b c d x : BitVec 32) : setLane (W a b c d) 32 0 x = W x b 
   · simp [h]
   · simp [h, BitVec.getLsbD_of_ge x k (by omega)]
 
+theorem getLsbD_ofVDwords (d0 d1 : BitVec 64) (k : Nat) :
+    (ofVDwords d0 d1).getLsbD k = if k < 64 then d0.getLsbD k else d1.getLsbD (k - 64) := by
+  simp only [ofVDwords, BitVec.getLsbD_append]
+theorem zip1d_W (a b c d e f g h : BitVec 32) : VPermOp.eval .zip1 .d2 (W a b c d) (W e f g h) = W a b e f := by
+  simp only [VPermOp.eval, VArr.lanes, VArr.ofLanes, List.range_succ, List.range_zero, vdword, List.length_cons, List.length_nil, List.flatMap_cons, List.flatMap_nil, List.nil_append, List.cons_append, List.getD_cons_zero, List.getD_cons_succ, Nat.reduceAdd, Nat.reduceDiv, Nat.reduceMul, List.append_nil]
+  apply BitVec.eq_of_getLsbD_eq; intro k hk
+  simp only [getLsbD_ofVDwords, BitVec.getLsbD_setWidth, BitVec.getLsbD_extractLsb', getLsbD_W]
+  interval_cases k <;> simp only [Nat.reduceLT, Nat.reduceSub, Nat.reduceAdd, ↓reduceIte, decide_true, decide_false, Bool.true_and, Bool.false_and]
+theorem zip2d_W (a b c d e f g h : BitVec 32) : VPermOp.eval .zip2 .d2 (W a b c d) (W e f g h) = W c d g h := by
+  simp only [VPermOp.eval, VArr.lanes, VArr.ofLanes, List.range_succ, List.range_zero, vdword, List.length_cons, List.length_nil, List.flatMap_cons, List.flatMap_nil, List.nil_append, List.cons_append, List.getD_cons_zero, List.getD_cons_succ, Nat.reduceAdd, Nat.reduceDiv, Nat.reduceMul, List.append_nil]
+  apply BitVec.eq_of_getLsbD_eq; intro k hk
+  simp only [getLsbD_ofVDwords, BitVec.getLsbD_setWidth, BitVec.getLsbD_extractLsb', getLsbD_W]
+  interval_cases k <;> simp only [Nat.reduceLT, Nat.reduceSub, Nat.reduceAdd, ↓reduceIte, decide_true, decide_false, Bool.true_and, Bool.false_and]
+theorem zip1s_W (a b c d e f g h : BitVec 32) : VPermOp.eval .zip1 .s4 (W a b c d) (W e f g h) = W a e b f := by
+  simp [VPermOp.eval, VArr.lanes, VArr.ofLanes, List.range_succ]
+theorem zip2s_W (a b c d e f g h : BitVec 32) : VPermOp.eval .zip2 .s4 (W a b c d) (W e f g h) = W c g d h := by
+  simp [VPermOp.eval, VArr.lanes, VArr.ofLanes, List.range_succ]
 /-! ## The block function -/
 
 /-- The state with `j` added to its counter, word 12. -/
@@ -178,4 +198,66 @@ theorem final128_ok (s : S) (x : List chacha20.Word) (hx : x.length = 16) (h : R
     case hp.refine_12 => exact subFlags_flagsAdd _ _ _ (by norm_num) h4
     all_goals a64_out'
 
+/-! ## Seal's first five blocks -/
+
+theorem dup4 : BitVec.setWidth 32 (BitVec.setWidth 64 (4 : BitVec 16) <<< 0) = 4#32 := by decide
+
+theorem final_init_counter (y c n : chacha20.Word) : y + n + c = y + (c + n) := by
+  rw [BitVec.add_assoc, BitVec.add_comm n]
+
+theorem lit32 : (1 : BitVec 32) = 1#32 ∧ (2 : BitVec 32) = 2#32 ∧ (3 : BitVec 32) = 3#32 ∧
+    (4 : BitVec 32) = 4#32 := ⟨rfl, rfl, rfl, rfl⟩
+
+set_option maxRecDepth 8000 in
+theorem finalInit_ok (s : S) (x : List chacha20.Word) (hx : x.length = 16) (h : Rows s .v24 .v28 .v29 .v30 x)
+    (h25 : s.vg.v .v25 = W 1 2 3 4) (h27 : s.vg.v .v27 = clampW)
+    (hv : Vert s (chacha20.innerBlock^[10] (bump x 1)) (chacha20.innerBlock^[10] (bump x 2))
+      (chacha20.innerBlock^[10] (bump x 3)) (chacha20.innerBlock^[10] (bump x 4)))
+    (he : Rows s .v4 .v9 .v14 .v19 (chacha20.innerBlock^[10] x)) (h4 : (s.vg.gpr .x4).toNat < 2 ^ 63) :
+    ∃ s', execBlock I finalInit s = some (s', []) ∧ Rows s' .v0 .v5 .v10 .v15 (keyBlock (bump x 1)) ∧
+      Rows s' .v1 .v6 .v11 .v16 (keyBlock (bump x 2)) ∧ Rows s' .v2 .v7 .v12 .v17 (keyBlock (bump x 3)) ∧
+      Rows s' .v3 .v8 .v13 .v18 (keyBlock (bump x 4)) ∧ s'.vg.v .v25 = W 5 6 7 8 ∧
+      s'.vg.gpr .x16 = (row (keyBlock x) 0 &&& clampW).extractLsb' 0 64 ∧
+      s'.vg.gpr .x17 = (row (keyBlock x) 0 &&& clampW).extractLsb' 64 64 ∧
+      s'.vg.v .v27 = row (keyBlock x) 1 ∧ SubFlags s'.vg (s.vg.gpr .x4) 16 ∧ s'.vg.mem = s.vg.mem ∧
+      Frame s s' [.v0, .v1, .v2, .v3, .v4, .v5, .v6, .v7, .v8, .v9, .v10, .v11, .v12, .v13, .v15, .v16, .v17,
+        .v18, .v20, .v21, .v22, .v23, .v25, .v27] [.x11, .x16, .x17] := by
+  have l1 : (bump x 1).length = 16 := by rw [bump_length, hx]
+  have l2 : (bump x 2).length = 16 := by rw [bump_length, hx]
+  have l3 : (bump x 3).length = 16 := by rw [bump_length, hx]
+  have l4 : (bump x 4).length = 16 := by rw [bump_length, hx]
+  obtain ⟨h0, h1, h2, h3⟩ := h
+  obtain ⟨v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15⟩ := hv
+  obtain ⟨e0, e1, -, -⟩ := he
+  simp only [row, lanes, Nat.reduceMul, Nat.reduceAdd] at h0 h1 h2 h3 e0 e1
+  simp only [lanes] at v0 v1 v2 v3 v4 v5 v6 v7 v8 v9 v10 v11 v12 v13 v14 v15
+  simp only [Rows]
+  simp (disch := decide) only [row, Nat.reduceMul, Nat.reduceAdd, keyBlock_get _ l1, keyBlock_get _ l2,
+    keyBlock_get _ l3, keyBlock_get _ l4, keyBlock_get _ hx, bump_get x hx, Nat.reduceEqDiff, ↓reduceIte]
+  apply ex_of_eq
+  · rw [execBlock_acc]
+    simp only [finalInit]
+    a64_run [vop, h0, h1, h2, h3, v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, e0, e1,
+      h25, h27, clampW, add_W, and_W, zip1s_W, zip2s_W, zip1d_W, zip2d_W, dup4]
+    apply congrArg some; exact Prod.ext rfl rfl
+  · exact rfl
+  · refine ⟨⟨?_, ?_, ?_, ?_⟩, ⟨?_, ?_, ?_, ?_⟩, ⟨?_, ?_, ?_, ?_⟩, ⟨?_, ?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+    all_goals try a64_read
+    all_goals try (simp only [final_init_counter, lit32, clampW, and_W]; done)
+    case hp.refine_17 => exact rfl
+    case hp.refine_21 => exact subFlags_flagsAdd _ _ _ (by norm_num) h4
+    all_goals a64_out'
+
 end rind.aarch64.chacha20poly1305asm
+
+/-- info: 'rind.aarch64.chacha20poly1305asm.setup128_ok' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms rind.aarch64.chacha20poly1305asm.setup128_ok
+
+/-- info: 'rind.aarch64.chacha20poly1305asm.final128_ok' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms rind.aarch64.chacha20poly1305asm.final128_ok
+
+/-- info: 'rind.aarch64.chacha20poly1305asm.finalInit_ok' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms rind.aarch64.chacha20poly1305asm.finalInit_ok
