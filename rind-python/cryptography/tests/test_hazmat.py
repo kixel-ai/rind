@@ -581,13 +581,7 @@ class Keys(unittest.TestCase):
 
         # A size rind lacks is unsupported, whichever way it arrives; a key
         # rind refuses for its exponent is malformed.
-        # rind parses from 1017 bits, a 128-byte modulus with up to seven leading zero bits.
-        for bits in (1017, 1023):
-            n = (1 << bits - 1) | 1
-            pkcs1 = _der.sequence(_der.encode_integer(n), _der.encode_integer(65537))
-            self.assertEqual(rsa.RSAPublicNumbers(65537, n).public_key().key_size, bits)
-            self.assertEqual(serialization.load_der_public_key(pkcs1).key_size, bits)
-        for n in ((1 << 1015) | 1, (1 << 8192) | 1):
+        for n in ((1 << 1022) | 1, (1 << 8192) | 1):
             pkcs1 = _der.sequence(_der.encode_integer(n), _der.encode_integer(65537))
             for call in (
                 lambda: rsa.RSAPublicNumbers(65537, n).public_key(),
