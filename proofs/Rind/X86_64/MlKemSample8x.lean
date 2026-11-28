@@ -694,6 +694,135 @@ theorem squeeze_rate_and_reject_spec (M : ℕ → List Byte) (S : ℕ → List (
   apply polys_spec M S c hS n hn rate (fun l hl p hp => by
     rw [hrate l hl p hp, lane_vecs S l p (by omega) hp]) out used hf
 
+/-! ## The states: one padded block each, then Keccak-f -/
+
+/-- ML-KEM's eight SHAKE128 inputs: messages `M p` of 34 bytes, padded. -/
+def Inputs8 (inputs : Std.Array (Std.Array U8 40#usize) 8#usize) (M : ℕ → List Byte) : Prop :=
+  ∀ p < 8, (M p).length = 34 ∧ bv (inputs.val[p]!).val = M p ++ shakePad :: List.replicate 5 0
+
+theorem word_spec (input : Std.Array U8 40#usize) (lane : Usize) (hl : lane.val < 5) :
+    low.x86_64.mlkem_sample_poly_ntt_8x.word input lane ⦃ w =>
+      ∀ t < 8, w.bv.toLEBytes[t]! = (input.val[8 * lane.val + t]!).bv ⦄ := by
+  unfold low.x86_64.mlkem_sample_poly_ntt_8x.word
+  step as ⟨i, hi⟩
+  step as ⟨i1, hi1⟩
+  step with core.slice.index.SliceIndexRangeUsizeSlice.index.step_spec as ⟨s, hs, hsl⟩
+  step with core.array.TryFromArrayCopySlice.try_from.step as ⟨r, hr⟩
+  rcases r with a | e
+  · simp only at hr
+    simp only [core.result.Result.unwrap, bind_ok]
+    step as ⟨y, hy⟩
+    intro t ht
+    have hal : (a.val.map U8.bv).length = 8 := by simp [hr.1, hsl]; scalar_tac
+    show (UScalar.hcast .I64 y).bv.toLEBytes[t]! = _
+    rw [hcast_I64_bv, hy, toLEBytes_fromLEBytes _ hal]
+    show (bv a.val)[t]! = _
+    rw [getElem!_bv, hr.1, hs, Std.Array.val_to_slice,
+      List.getElem!_slice _ _ _ _ ⟨by simp; scalar_tac, by scalar_tac⟩, hi, Nat.mul_comm]
+  · simp at hr
+    exfalso; apply hr; show s.length = 8; rw [hsl]; scalar_tac
+
+/-- SHAKE128's state once `M`, of 34 bytes, is padded into a block. -/
+def padded (M : List Byte) : List Byte := xorAt (xorAt (xorAt zeros 0 M) 34 [shakePad]) 167 [0x80]
+
+theorem absorbed_padded (M : List Byte) (hM : M.length = 34) :
+    shake128Absorbed M = keccakF (padded M) := by
+  have h0 := absorb_keccakPad 168 ⟨by omega, by omega⟩ shakePad [] M rfl (by omega)
+  rw [List.nil_append] at h0
+  show absorb 168 zeros (keccakPad 168 shakePad M) = _
+  rw [h0, padded, hM]
+  simp [absorb, blocks_nil]
+
+theorem getElem!_padded (M : List Byte) (hM : M.length = 34) (j : ℕ) (hj : j < 200) :
+    (padded M)[j]! = if j < 34 then M[j]! else if j = 34 then shakePad else if j = 167 then 0x80 else 0 := by
+  unfold padded
+  rw [getElem!_xorAt _ _ _ _ (by simp; omega), getElem!_xorAt _ _ _ _ (by simp; omega),
+    getElem!_xorAt _ _ _ _ (by simp; omega), getElem!_replicate_zero]
+  simp only [List.length_singleton, hM, Nat.zero_le, true_and, Nat.sub_zero, Nat.zero_add]
+  by_cases h1 : j < 34
+  · simp [h1, show ¬ (34 ≤ j) by omega, show ¬ (167 ≤ j) by omega]
+  · by_cases h2 : j = 34
+    · subst h2; simp
+    · by_cases h3 : j = 167
+      · subst h3; simp
+      · simp [h1, h2, h3]
+        rw [if_neg (by omega), if_neg (by omega)]
+
+/-- The lanes the setup gives a state: its input's five words `w`, the
+padding's last bit, and zeros. -/
+def setupLanes (w : ℕ → BitVec 64) : List (BitVec 64) :=
+  (List.range 25).map fun l => if l < 5 then w l else if l = 20 then 0x8000000000000000#64 else 0
+
+theorem toLEBytes_getElem! (x : BitVec 64) (i : ℕ) : x.toLEBytes[i]! = x.extractLsb' (8 * i) 8 := by
+  apply Byte.ext_testBit
+  intro t ht
+  have := BitVec.toLEBytes_getElem!_testBit x i t ht
+  simp only [Byte.testBit] at this
+  rw [this, BitVec.getElem!_eq_testBit_toNat, BitVec.testBit_toNat, BitVec.testBit_toNat,
+    BitVec.getLsbD_extractLsb']
+  simp [ht]
+
+theorem stateBytes_setup (M : List Byte) (hM : M.length = 34) (input : Std.Array U8 40#usize)
+    (hin : bv input.val = M ++ shakePad :: List.replicate 5 0) (w : ℕ → BitVec 64)
+    (hw : ∀ l < 5, ∀ t < 8, (w l).toLEBytes[t]! = (input.val[8 * l + t]!).bv) :
+    stateBytes (setupLanes w) = padded M := by
+  apply ext_getElem! (by simp [length_stateBytes, setupLanes, padded])
+  intro j hj
+  rw [length_stateBytes] at hj
+  simp only [setupLanes, List.length_map, List.length_range] at hj
+  rw [getElem!_stateBytes, getElem!_pos _ (j / 8) (by simp [setupLanes]; omega)]
+  simp only [setupLanes, List.getElem_map, List.getElem_range]
+  rw [getElem!_padded M hM j (by omega)]
+  have hinj (k : ℕ) (hk : k < 40) : (input.val[k]!).bv =
+      if k < 34 then M[k]! else if k = 34 then shakePad else 0 := by
+    rw [← getElem!_bv, hin, getElem!_append_if, hM]
+    split
+    · rfl
+    · rename_i h
+      by_cases h34 : k = 34
+      · subst h34; simp
+      · rw [if_neg h34, show k - 34 = (k - 35) + 1 by omega, List.getElem!_cons_succ, getElem!_replicate_zero]
+  by_cases h40 : j < 40
+  · rw [if_pos (show j / 8 < 5 by omega), hw _ (by omega) _ (by omega), show 8 * (j / 8) + j % 8 = j by omega,
+      hinj j h40]
+    by_cases h34 : j < 34
+    · simp [h34]
+    · simp [h34, show j ≠ 167 by omega]
+  · rw [if_neg (show ¬ j / 8 < 5 by omega), if_neg (show ¬ j < 34 by omega), if_neg (show j ≠ 34 by omega)]
+    by_cases h20 : j / 8 = 20
+    · rw [if_pos h20]
+      have ht : j % 8 < 8 := Nat.mod_lt _ (by omega)
+      have hj' : j = 160 + j % 8 := by omega
+      rw [toLEBytes_getElem!]
+      revert hj'
+      generalize j % 8 = t at ht ⊢
+      intro hj'
+      subst hj'
+      interval_cases t <;> decide
+    · rw [if_neg h20, toLEBytes_getElem!, if_neg (show j ≠ 167 by omega)]
+      simp
+
+theorem keccakF_stateBytes (L : List (BitVec 64)) (hL : L.length = 25) :
+    keccakF (stateBytes L) = stateBytes (keccak 24 L) := by
+  rw [keccakF, stateLanes_stateBytes _ hL]
+
+theorem atBlock_succ (M : ℕ → List Byte) (S : ℕ → List (BitVec 64)) (c : ℕ) (h : AtBlock M S c) :
+    AtBlock M (fun p => keccak 24 (S p)) (c + 1) := by
+  intro p hp
+  obtain ⟨hl, hb⟩ := h p hp
+  refine ⟨length_keccak24 _, ?_⟩
+  rw [Function.iterate_succ_apply', ← hb, keccakF_stateBytes _ hl]
+
+theorem rc8_bv : low.x86_64.sha3_keccak8_f1600.RC.val.map (·.bv) = keccakRoundConstants := by
+  unfold low.x86_64.sha3_keccak8_f1600.RC
+  simp [keccakRoundConstants]
+
+theorem keccak8_spec (S : ℕ → List (BitVec 64)) :
+    low.x86_64.sha3_keccak8_f1600.keccak8_f1600 (vecs S) low.x86_64.sha3_keccak8_f1600.RC ⦃ r =>
+      r = vecs fun i => keccak 24 (S i) ⦄ := by
+  unfold low.x86_64.sha3_keccak8_f1600.keccak8_f1600
+  exact rounds_spec S _ rc8_bv _ (vecs S) (by simp) (by simp) rfl
+
 end MlKemSample8x
 
 end rind.x86_64
