@@ -1063,6 +1063,132 @@ theorem sample_poly_ntt_8x_avx512_spec (M : ℕ → List Byte)
   intro p hp
   exact ⟨hf3 p hp, ha2 p hp⟩
 
+/-! ## `sample_poly_ntt_8x`: the tails -/
+
+/-- The CPU has what the eight-way sampler needs: AVX-512 F, BW, VL, VBMI,
+and VBMI2, with AVX2's kernels. -/
+def RunsMlKem8x : Prop := ∃ t, low.x86_64.cpu.HaveAvx512ForMlKem.check = ok (some t)
+
+theorem n_eq : mid.mlkem.N = 256#usize := by unfold mid.mlkem.N; rfl
+
+/-- Where the CPU has what it needs, the eight-way sampler is its AVX-512 body. -/
+theorem mlkem_sample_poly_ntt_8x_spec (h8 : RunsMlKem8x) (M : ℕ → List Byte)
+    (inputs : Std.Array (Std.Array U8 40#usize) 8#usize) (hin : Inputs8 inputs M)
+    (outputs : Std.Array (Std.Array I16 256#usize) 8#usize) :
+    low.x86_64.mlkem_sample_poly_ntt_8x.mlkem_sample_poly_ntt_8x inputs outputs ⦃ r =>
+      ∃ tails, r.1 = some tails ∧ ∀ p < 8, Filled (acc (M p) 504) 0 (r.2.val[p]!).val (tails.used.val[p]!).val ∧
+        ((tails.used.val[p]!).val < 256 →
+          keccakF (sbl (tails.states.val[p]!).val) = keccakF^[3] (shake128Absorbed (M p))) ⦄ := by
+  obtain ⟨t, ht⟩ := h8
+  unfold low.x86_64.mlkem_sample_poly_ntt_8x.mlkem_sample_poly_ntt_8x
+  rw [ht, bind_ok]
+  simp only
+  step with sample_poly_ntt_8x_avx512_spec M inputs hin outputs t as ⟨tails, outs, hr⟩
+  exact ⟨tails, rfl, hr⟩
+
+/-- A polynomial that holds all 256 candidates of SHAKE128's first three
+blocks holds SHAKE128's first 256. -/
+theorem sampled_of_full (M : List Byte) (hH : Halts M) (out : List I16) (d : ℕ)
+    (hf : Filled (acc M 504) 0 out d) (hl : out.length = 256) (hd : ¬ d < 256) : Sampled M out := by
+  obtain ⟨T, hT⟩ := hH
+  obtain ⟨h1, h2, h3⟩ := hf
+  intro k hk
+  rw [h3 k (by omega), Nat.zero_add, sampled_getElem! M T hT k hk, acc_agree M 504 (3 * T) k (by omega) (by omega)]
+
+set_option maxHeartbeats 1000000 in
+/-- The loop that fills each polynomial's rest from its tail. -/
+theorem tails_fill_spec (h : RunsSha3) (M : ℕ → List Byte) (hH : ∀ p < 8, Halts (M p))
+    (outputs : Std.Array (Std.Array I16 256#usize) 8#usize) (tails : low.x86_64.mlkem_sample_poly_ntt_8x.Tails)
+    (ht : ∀ p < 8, Filled (acc (M p) 504) 0 (outputs.val[p]!).val (tails.used.val[p]!).val ∧
+      ((tails.used.val[p]!).val < 256 →
+        keccakF (sbl (tails.states.val[p]!).val) = keccakF^[3] (shake128Absorbed (M p)))) :
+    mid.mlkem.sample_ntt.sample_poly_ntt_8x_loop { start := 0#usize, «end» := 8#usize } outputs tails ⦃ r =>
+      ∀ p < 8, Sampled (M p) (r.val[p]!).val ⦄ := by
+  unfold mid.mlkem.sample_ntt.sample_poly_ntt_8x_loop
+  apply WP.spec_mono (range_loop 8 (fun n (o : Std.Array (Std.Array I16 256#usize) 8#usize) =>
+    (∀ p < n, Sampled (M p) (o.val[p]!).val) ∧ ∀ p, n ≤ p → p < 8 → o.val[p]! = outputs.val[p]!) _ ?_
+    { start := 0#usize, «end» := 8#usize } outputs rfl (Nat.zero_le _)
+    ⟨fun p hp => absurd hp (Nat.not_lt_zero _), fun _ _ _ => rfl⟩)
+  · intro r hr; exact hr.1
+  rintro it o he hs ⟨hdone, hsame⟩
+  unfold mid.mlkem.sample_ntt.sample_poly_ntt_8x_loop.body
+  step as ⟨o', it1, ho, he1⟩
+  split_ifs at ho with hlt
+  · obtain ⟨rfl, hst⟩ := ho
+    simp only
+    have hp8 : it.start.val < 8 := by omega
+    obtain ⟨hf, hstate⟩ := ht _ hp8
+    have hop : o.val[it.start.val]! = outputs.val[it.start.val]! := hsame _ le_rfl hp8
+    step as ⟨u, hu⟩
+    have huv : u = tails.used.val[it.start.val]! := by rw [hu, getElem!_pos]
+    rw [n_eq]
+    split
+    · rename_i hlt256
+      have hu256 : u.val < 256 := by scalar_tac
+      step as ⟨a, ha⟩
+      have hav : a = tails.states.val[it.start.val]! := by rw [ha, getElem!_pos]
+      simp only [mid.sha3.SqueezingSponge.new, bind_ok]
+      step as ⟨a1, back, ha1, hback⟩
+      have ha1v : a1 = o.val[it.start.val]! := by rw [ha1, getElem!_pos]
+      step as ⟨s, back1, hs1, hs1l, hback1⟩
+      obtain ⟨T, hT⟩ := hH _ hp8
+      rw [← huv] at hf hstate
+      have hlen : (acc (M it.start.val) 504).length = u.val := by
+        obtain ⟨_, h2, _⟩ := hf; simp at h2; omega
+      have hsq : Squeezing ({ s := a } : mid.sha3.SqueezingSponge 168#usize) shakePad (M it.start.val) 3 := by
+        show keccakF (sbl a.val) = _
+        rw [hav]; exact hstate hu256
+      have hsl : s.length = 256 - u.val := by rw [hs1l]
+      step with tail_case_spec h (M it.start.val) T 3 _ hsq s (by
+        rw [show 168 * 3 = 504 from rfl, hlen, hsl]; omega) as ⟨sp, s1, hl1, hv1⟩
+      refine ⟨by rw [he1]; exact he, hst, hp8, fun p hp => ?_, fun p hp1 hp2 => ?_⟩
+      · rw [hback, Std.Array.set_val_eq]
+        by_cases hpi : p = it.start.val
+        · subst hpi
+          rw [MlKemCoding.getElem!_set_self _ _ _ (by simp; omega)]
+          intro k hk
+          rw [sampled_getElem! _ T hT k hk, hback1]
+          by_cases hku : k < u.val
+          · rw [List.getElem!_setSlice!_prefix _ _ _ _ hku, ha1v, hop]
+            obtain ⟨_, _, h3⟩ := hf
+            rw [h3 k hku, Nat.zero_add, acc_agree _ 504 (3 * T) k (by omega) (by omega)]
+          · rw [List.getElem!_setSlice!_middle _ _ _ _ ⟨by omega, by
+                rw [← Slice.length, hl1, hsl]; omega, by simp; omega⟩,
+              hv1 (k - u.val) (by rw [hsl]; omega), show 168 * 3 = 504 from rfl, hlen,
+              show u.val + (k - u.val) = k by omega]
+        · rw [MlKemCoding.getElem!_set_ne _ _ _ _ (Ne.symm hpi)]
+          exact hdone p (by omega)
+      · rw [hback, Std.Array.set_val_eq, MlKemCoding.getElem!_set_ne _ _ _ _ (by omega)]
+        exact hsame p (by omega) hp2
+    · rename_i hge
+      apply (WP.spec_ok _).2
+      refine ⟨by rw [he1]; exact he, hst, hp8, fun p hp => ?_, fun p hp1 hp2 => hsame p (by
+        simp only at hp1; omega) hp2⟩
+      by_cases hpi : p = it.start.val
+      · subst hpi
+        rw [hop]
+        rw [← huv] at hf
+        exact sampled_of_full _ (hH _ hp8) _ u.val hf (by simp) (by scalar_tac)
+      · exact hdone p (by simp only at hp; omega)
+  · obtain ⟨rfl, hst⟩ := ho
+    apply (WP.spec_ok _).2
+    have : it.start.val = 8 := by omega
+    rw [this] at hdone hsame
+    exact ⟨hdone, hsame⟩
+
+/-- `sample_poly_ntt_8x`, on a CPU with what the eight-way sampler needs,
+writes SHAKE128's first 256 candidates below `q` on each of its eight
+inputs. -/
+theorem sample_poly_ntt_8x_spec (h : RunsSha3) (h8 : RunsMlKem8x) (M : ℕ → List Byte)
+    (hH : ∀ p < 8, Halts (M p)) (inputs : Std.Array (Std.Array U8 40#usize) 8#usize) (hin : Inputs8 inputs M)
+    (outputs : Std.Array (Std.Array I16 256#usize) 8#usize) :
+    mid.mlkem.sample_ntt.sample_poly_ntt_8x inputs outputs ⦃ r => ∀ p < 8, Sampled (M p) (r.val[p]!).val ⦄ := by
+  unfold mid.mlkem.sample_ntt.sample_poly_ntt_8x
+  step with mlkem_sample_poly_ntt_8x_spec h8 M inputs hin outputs as ⟨o, outs, tails, ho, ht⟩
+  subst ho
+  simp only
+  exact tails_fill_spec h M hH outs tails ht
+
 end MlKemSample8x
 
 end rind.x86_64
