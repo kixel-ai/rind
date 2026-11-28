@@ -183,7 +183,7 @@ impl HaveAvx512ForAesGcm {
     /// pyca/verified-garbage's AVX-512 AES-GCM, where it is faster for long
     /// messages: on AMD's family 1Ah (Zen 5), and nowhere else measured.
     pub(crate) fn vg(self) -> Option<HaveAvx512ForVgAesGcm> {
-        has(FAMILY_1AH).then(|| self.vg_anywhere())
+        has(FAMILY_1AH).then_some(self.vg_anywhere())
     }
 
     /// pyca/verified-garbage's AVX-512 AES-GCM, which runs on every CPU this
@@ -288,6 +288,7 @@ std::thread_local! {
 /// in a test `admin/ct-binsec` runs: it sets `RIND_CT_BINSEC` and stubs VG's
 /// AVX-512 routines, so none runs on a CPU without AVX-512 F, BW, and VL.
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub(crate) fn force_avx512_for_vg_mlkem() {
     assert!(
         std::env::var_os("RIND_CT_BINSEC").is_some(),

@@ -140,6 +140,9 @@ fn kem() {
     let shown = format!("{:?}", ciphertext.as_ref());
     assert_eq!(format!("{ciphertext:?}"), format!("Ciphertext({shown})"));
     assert_eq!(format!("{secret:?}"), "SharedSecret(..)");
+    let key = DecapsulationKey::<MlKem768>::from_seed(&[0xff; 64]).unwrap();
+    assert_eq!(show(&key.to_seed().unwrap()), "Seed(..)");
+    assert_eq!(show(&key.to_bytes()), "DecapsulationKeyBytes(..)");
 }
 
 #[test]

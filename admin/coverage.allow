@@ -13,7 +13,6 @@ rind-openssl/
 rind/src/fips.rs
 rind/src/fips/
 rind/src/fips_rng.rs
-rind/src/high/signature/rsa.rs PublicKey::modulus_bits
 rind/src/mid/mldsa.rs VerifyingKey::verify_mu
 
 # The decryption keys' wipes but the first variant's: only `AesDecKey` holds
