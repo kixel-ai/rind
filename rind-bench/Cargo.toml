@@ -60,7 +60,7 @@ slh-dsa = "=0.2.0-rc.5"
 spake2plus = "0.1"
 # The harness every bench target is written in, from git until its first
 # release: pinned to the runner flake.lock pins, since the two move together.
-swole = { git = "https://github.com/kixel-ai/swole", rev = "8486c8e51ea20c81d76a6848fdb2d88d86783d99" }
+swole = { git = "https://github.com/kixel-ai/swole", rev = "0deb5aebd1bca13b4f199cb76cfb1fc3bb460f60" }
 # The release on RustCrypto's current curves; 0.5 is on the previous ones.
 voprf = { version = "=0.6.0-pre.2", default-features = false, features = ["ristretto255-ciphersuite"] }
 vrf-rfc9381 = { version = "0.0.7", features = ["edwards25519", "p256"] }

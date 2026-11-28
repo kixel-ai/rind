@@ -21,7 +21,7 @@
     # native rows and the benchmark report's hosts. Bumping the rev can move
     # every count, and a new Valgrind starts new series: keep its nixpkgs, not
     # ours. rind-bench/Cargo.toml pins its `swole` harness: move both together.
-    swole.url = "github:kixel-ai/swole/8486c8e51ea20c81d76a6848fdb2d88d86783d99";
+    swole.url = "github:kixel-ai/swole/0deb5aebd1bca13b4f199cb76cfb1fc3bb460f60";
   };
 
   outputs =
