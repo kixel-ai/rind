@@ -8,37 +8,36 @@ name: Queue
 # `main`'s ruleset requires the build's context, `Queue build / Build`, and
 # its aarch64 job's, `Queue build / Build aarch64 Linux`.
 # GitHub admits a PR to the queue only once its required checks pass on the PR
-# itself, so the build also reports, as skipped, on main pull requests; a
-# skipped job satisfies the requirement.
+# itself, so the report job posts both, as skipped, on every main pull
+# request's head; a skipped check satisfies the requirement.
 # Only the merge group build runs code, and only a maintainer's pick enters
 # the queue.
 on:
-  pull_request:
+  # Not `pull_request`: GitHub holds a fork's `pull_request` runs for approval
+  # on every push, and each title or body edit started a run whose skipped
+  # jobs report the contexts pending for a few seconds, refusing a PR enqueued
+  # right after the edit. A `pull_request_target` run takes main's copy of this
+  # file, runs without approval, and posts the contexts already completed.
+  pull_request_target:
     branches: [main]
-    # `edited` covers a PR retargeted to main, which needs the context too.
+    # `edited` covers a PR retargeted to main, which needs the contexts too.
     types: [opened, synchronize, reopened, edited]
   merge_group:
     types: [checks_requested]
-  # Reports the skipped context on a PR's head without a pull_request event.
-  # A PR whose test merge commit predates this workflow gets no pull_request
-  # run from it (GitHub runs PR workflows from that commit, and a dispatch reads
-  # the workflow from the ref it runs on), so
-  # `gh workflow run queue.yml -f sha=<head>` on main reports it there.
+  # The manual fallback: `gh workflow run queue.yml -f sha=<head>` on main
+  # reports the contexts on a head no pull_request_target run reached.
   workflow_dispatch:
     inputs:
       sha:
-        description: The PR head commit to report the skipped required context on.
+        description: The PR head commit to report the skipped required contexts on.
         required: true
 
 permissions:
   contents: read
 
-# No concurrency group. Cancelling a pull request's run before its build job
-# skips, as a second event for the PR would, reports the required context
-# cancelled and fails the requirement; even a group without
-# cancel-in-progress cancels a pending run. Each merge group has its own ref, so
-# its run never had another to replace, and a repeated dispatch only reports the
-# same skipped context twice.
+# No concurrency group: each merge group has its own ref, so its run never had
+# another to replace, and a repeated report only posts the same skipped
+# contexts twice.
 
 jobs:
   # The build runs in queue-build.yml so its runner group can admit that
@@ -48,18 +47,23 @@ jobs:
   #
   # Its jobs report `Queue build / Build` and `Queue build / Build aarch64
   # Linux`, which main's ruleset requires, with no job after them waiting on a
-  # hosted runner. The call runs on pull requests too, where those jobs skip
-  # without a runner; a call skipped here would report no context at all.
+  # hosted runner.
   build:
     name: Queue build
-    if: github.event_name != 'workflow_dispatch'
+    if: github.event_name == 'merge_group'
     uses: kixel-ai/rind/.github/workflows/queue-build.yml@main
 
   # The merge queue still builds every group with the job above; this only
-  # satisfies the PR-side requirement, as a pull_request run's skipped job does.
+  # satisfies the PR-side requirement. It holds write access to checks even on
+  # a fork's PR, so it takes nothing from the PR but its head SHA, through the
+  # environment: no checkout, no action, no PR text in the script.
   report:
     name: Report Queue
-    if: github.event_name == 'workflow_dispatch'
+    # Skips a title or body edit, whose head already carries the contexts.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request_target' &&
+      (github.event.action != 'edited' || github.event.changes.base))
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -69,7 +73,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          SHA: ${{ inputs.sha }}
+          SHA: ${{ inputs.sha || github.event.pull_request.head.sha }}
         run: |
           [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::sha must be a full commit SHA" >&2; exit 1; }
           for name in 'Queue build / Build' 'Queue build / Build aarch64 Linux'; do
